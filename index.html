@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Company Risk Analysis - Portfolio Demo</title>
+    
+    <!-- SEO -->
+    <meta name="description" content="Portfolio demonstration: AI-powered company risk analysis with live data from 15+ sources. Free unlimited reports.">
+    <meta name="robots" content="noindex, nofollow">
+    
+    <!-- Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap" rel="stylesheet">
+    
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        body {
+            font-family: 'Inter', sans-serif;
+            line-height: 1.6;
+            color: #1f2937;
+        }
+        
+        .portfolio-badge {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 12px 24px;
+            border-radius: 50px;
+            font-weight: 700;
+            z-index: 1000;
+            box-shadow: 0 4px 20px rgba(102, 126, 234, 0.4);
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+        }
+        
+        .hero {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 100px 20px;
+            text-align: center;
+        }
+        
+        .hero h1 {
+            font-size: 56px;
+            font-weight: 900;
+            margin-bottom: 20px;
+        }
+        
+        .hero .subtitle {
+            font-size: 28px;
+            margin-bottom: 15px;
+            opacity: 0.95;
+        }
+        
+        .hero .description {
+            font-size: 20px;
+            max-width: 800px;
+            margin: 0 auto 40px;
+            opacity: 0.9;
+        }
+        
+        .free-badge {
+            display: inline-block;
+            background: #10b981;
+            color: white;
+            padding: 15px 40px;
+            border-radius: 50px;
+            font-size: 28px;
+            font-weight: bold;
+            margin: 20px 0;
+            box-shadow: 0 10px 30px rgba(16, 185, 129, 0.4);
+        }
+        
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            max-width: 1000px;
+            margin: 40px auto;
+        }
+        
+        .stat-card {
+            background: rgba(255,255,255,0.15);
+            backdrop-filter: blur(10px);
+            padding: 25px;
+            border-radius: 12px;
+            text-align: center;
+        }
+        
+        .stat-number {
+            font-size: 48px;
+            font-weight: 900;
+            display: block;
+        }
+        
+        .stat-label {
+            font-size: 14px;
+            opacity: 0.9;
+            text-transform: uppercase;
+        }
+        
+        .container {
+            max-width: 900px;
+            margin: 60px auto;
+            padding: 0 20px;
+        }
+        
+        .section-title {
+            font-size: 42px;
+            font-weight: 800;
+            text-align: center;
+            margin-bottom: 40px;
+        }
+        
+        .form-card {
+            background: white;
+            padding: 50px;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.15);
+            margin: 40px auto;
+        }
+        
+        .form-group {
+            margin-bottom: 25px;
+        }
+        
+        label {
+            display: block;
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: #374151;
+        }
+        
+        input {
+            width: 100%;
+            padding: 15px;
+            border: 2px solid #e5e7eb;
+            border-radius: 10px;
+            font-size: 16px;
+            transition: all 0.3s;
+        }
+        
+        input:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+        
+        button {
+            width: 100%;
+            padding: 18px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 12px;
+            font-size: 20px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        button:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 30px rgba(102, 126, 234, 0.4);
+        }
+        
+        button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+        
+        #status {
+            margin-top: 20px;
+            padding: 16px;
+            border-radius: 10px;
+            display: none;
+            font-weight: 600;
+        }
+        
+        .success { background: #d1fae5; color: #065f46; border: 2px solid #10b981; }
+        .error { background: #fee2e2; color: #991b1b; border: 2px solid #ef4444; }
+        .info { background: #dbeafe; color: #1e40af; border: 2px solid #3b82f6; }
+        
+        #report {
+            margin-top: 30px;
+            padding: 30px;
+            background: #f7fafc;
+            border-radius: 12px;
+            white-space: pre-wrap;
+            line-height: 1.8;
+            display: none;
+            border: 2px solid #e2e8f0;
+            max-height: 600px;
+            overflow-y: auto;
+        }
+        
+        .disclaimer {
+            background: #fef3c7;
+            border: 3px solid #f59e0b;
+            border-radius: 16px;
+            padding: 30px;
+            margin: 40px 0;
+        }
+        
+        .disclaimer h3 {
+            color: #92400e;
+            margin-bottom: 15px;
+        }
+        
+        .disclaimer p {
+            color: #78350f;
+            line-height: 1.8;
+        }
+        
+        .spinner {
+            border: 3px solid #f3f4f6;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            animation: spin 1s linear infinite;
+            display: inline-block;
+            margin-right: 10px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        @media (max-width: 768px) {
+            .hero h1 { font-size: 36px; }
+            .portfolio-badge { top: 10px; right: 10px; padding: 8px 16px; font-size: 12px; }
+        }
+    </style>
+</head>
+<body>
+    <!-- Portfolio Badge -->
+    <div class="portfolio-badge">
+        🎓 PORTFOLIO DEMO
+    </div>
+    
+    <!-- Hero -->
+    <div class="hero">
+        <h1>🚀 AI Company Risk Analysis</h1>
+        <p class="subtitle">Portfolio Demonstration Project</p>
+        <p class="description">
+            Showcasing AI development skills: Live data from 15+ sources, 
+            professional risk analysis, and beautiful visualizations.
+        </p>
+        
+        <div class="free-badge">
+            ✅ 100% FREE - UNLIMITED REPORTS
+        </div>
+        
+        <div class="stats">
+            <div class="stat-card">
+                <span class="stat-number">15+</span>
+                <span class="stat-label">Data Sources</span>
+            </div>
+            <div class="stat-card">
+                <span class="stat-number">60s</span>
+                <span class="stat-label">Analysis Time</span>
+            </div>
+            <div class="stat-card">
+                <span class="stat-number">FREE</span>
+                <span class="stat-label">Forever</span>
+            </div>
+            <div class="stat-card">
+                <span class="stat-number" id="report-count">0</span>
+                <span class="stat-label">Reports Generated</span>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Main Form -->
+    <div class="container">
+        <div class="disclaimer">
+            <h3>📋 Portfolio Project Disclaimer</h3>
+            <p>
+                <strong>This is a non-commercial portfolio demonstration.</strong><br><br>
+                Built by an H1B visa holder to showcase AI/ML development capabilities. 
+                All reports are FREE and unlimited. No payments accepted. 
+                This project demonstrates technical skills including: AI agent orchestration, 
+                multi-source data aggregation, natural language processing, and production deployment.<br><br>
+                <strong>✅ H1B Compliant</strong> - Educational/Portfolio use only.
+            </p>
+        </div>
+        
+        <h2 class="section-title">Try It Now - 100% Free</h2>
+        
+        <div class="form-card">
+            <form id="report-form">
+                <div class="form-group">
+                    <label for="email">Your Email</label>
+                    <input type="email" id="email" placeholder="you@example.com" required>
+                    <small style="color: #6b7280; font-size: 14px; display: block; margin-top: 5px;">
+                        📧 Report will be displayed below (email delivery coming soon)
+                    </small>
+                </div>
+                
+                <div class="form-group">
+                    <label for="company">Company to Analyze</label>
+                    <input type="text" id="company" placeholder="e.g., Tesla Inc, Apple Inc, Infosys Limited" required>
+                    <small style="color: #6b7280; font-size: 14px; display: block; margin-top: 5px;">
+                        💡 Try: Tesla, Microsoft, Reliance Industries, Amazon, TCS
+                    </small>
+                </div>
+                
+                <button type="submit" id="submit-btn">
+                    Generate FREE Risk Report →
+                </button>
+                
+                <div id="status"></div>
+                <div id="report"></div>
+            </form>
+        </div>
+        
+        <div class="disclaimer">
+            <h3>🎯 Purpose of This Demo</h3>
+            <p>
+                This project demonstrates:
+                <br><br>
+                ✅ <strong>AI Agent Development:</strong> LangGraph state machine orchestration<br>
+                ✅ <strong>Multi-Source Data Integration:</strong> 15+ financial APIs (SEC, SEBI, Bloomberg, etc.)<br>
+                ✅ <strong>Large Language Models:</strong> Claude 3.5 Sonnet for analysis<br>
+                ✅ <strong>Production Deployment:</strong> FastAPI, Docker, cloud hosting<br>
+                ✅ <strong>Frontend Development:</strong> Interactive UI with real-time updates<br><br>
+                <strong>Built as a portfolio piece to showcase technical capabilities to potential employers and collaborators.</strong>
+            </p>
+        </div>
+    </div>
+    
+    <script>
+        const API_BASE = window.location.origin;
+        const form = document.getElementById('report-form');
+        const submitBtn = document.getElementById('submit-btn');
+        const statusDiv = document.getElementById('status');
+        const reportDiv = document.getElementById('report');
+        const reportCount = document.getElementById('report-count');
+        
+        // Load stats
+        async function loadStats() {
+            try {
+                const response = await fetch(`${API_BASE}/api/stats`);
+                const data = await response.json();
+                reportCount.textContent = data.total_reports || 0;
+            } catch (e) {
+                console.error('Failed to load stats:', e);
+            }
+        }
+        
+        loadStats();
+        
+        function showStatus(message, type) {
+            statusDiv.textContent = message;
+            statusDiv.className = type;
+            statusDiv.style.display = 'block';
+            statusDiv.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+        
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const email = document.getElementById('email').value;
+            const company = document.getElementById('company').value;
+            
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<div class="spinner"></div> Generating report...';
+            reportDiv.style.display = 'none';
+            
+            showStatus('🔍 Analyzing ' + company + ' from 15+ sources... (30-60 seconds)', 'info');
+            
+            try {
+                const response = await fetch(`${API_BASE}/api/generate-report`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        company_name: company,
+                        email: email
+                    })
+                });
+                
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.detail || 'Failed to generate report');
+                }
+                
+                const data = await response.json();
+                
+                showStatus('✅ Report generated successfully! (Report #' + data.report_number + ')', 'success');
+                
+                reportDiv.textContent = data.report;
+                reportDiv.style.display = 'block';
+                reportDiv.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                
+                // Update counter
+                loadStats();
+                
+                form.reset();
+                
+            } catch (error) {
+                showStatus('❌ Error: ' + error.message, 'error');
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Generate FREE Risk Report →';
+            }
+        });
+    </script>
+</body>
+</html>
