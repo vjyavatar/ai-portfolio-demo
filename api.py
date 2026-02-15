@@ -1,15 +1,15 @@
 """
-Portfolio Demo - Direct HTTP calls to Anthropic
-No SDK dependencies - just requests library
+Portfolio Demo - Serves HTML page at root
 """
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
 import os
 import requests
 from datetime import datetime
 import hashlib
-import json
 
 # Initialize
 app = FastAPI(title="AI Risk Reports - Portfolio Demo")
@@ -26,8 +26,26 @@ report_counter = {"count": 0}
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 
 
-@app.get("/")
+@app.get("/", response_class=HTMLResponse)
+async def home():
+    """Serve the main HTML page"""
+    try:
+        with open("index.html", "r") as f:
+            return f.read()
+    except:
+        return """
+        <html>
+            <body style="font-family: Arial; padding: 50px; text-align: center;">
+                <h1>🎓 AI Portfolio Demo</h1>
+                <p>HTML file not found. Please add index.html to your repository.</p>
+            </body>
+        </html>
+        """
+
+
+@app.get("/health")
 async def health():
+    """API health check"""
     return {
         "status": "healthy",
         "portfolio_mode": True,
@@ -71,7 +89,8 @@ Format as markdown. Be professional but clear."""
                 "messages": [
                     {"role": "user", "content": prompt}
                 ]
-            }
+            },
+            timeout=60
         )
         
         if response.status_code != 200:
