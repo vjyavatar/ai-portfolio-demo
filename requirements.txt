@@ -1,18 +1,9 @@
-# B2B Research Agent - Portfolio Demo
-# No payment processing - Educational use only
-
-# Web Framework
 fastapi==0.109.0
 uvicorn[standard]==0.27.0
-pydantic==2.5.3
-
-# AI/ML
+pydantic==2.6.0
+pydantic-core==2.16.1
 langchain==0.1.6
 langchain-anthropic==0.1.1
 langgraph==0.0.26
-
-# Search
 tavily-python==0.3.1
-
-# Utilities
 python-dotenv==1.0.0
