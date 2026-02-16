@@ -3,16 +3,28 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sentinel AI Research | Investment Intelligence</title>
+    
+    <!-- SEO Meta Tags -->
+    <title>AI Stock Analysis | Real-Time Investment Research & Market Data</title>
+    <meta name="description" content="Get instant AI-powered stock analysis with real-time market data for ANY stock ticker. Professional investment research with valuation metrics, risk assessment, and recommendations.">
+    <meta name="keywords" content="stock analysis, AI investment research, real-time stock data, investment intelligence, stock recommendations, valuation analysis, risk assessment, TSLA, AAPL, MSFT">
+    <meta name="robots" content="index, follow">
+    <link rel="canonical" href="https://ai-portfolio-demo.onrender.com">
+    
+    <!-- Open Graph -->
+    <meta property="og:title" content="AI Stock Analysis Platform">
+    <meta property="og:description" content="Real-time AI-powered stock analysis for any ticker">
+    <meta property="og:type" content="website">
+    
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
             font-family: 'Inter', sans-serif;
-            line-height: 1.6;
-            color: #1f2937;
             background: linear-gradient(135deg, #f9fafb 0%, #e5e7eb 100%);
+            color: #1f2937;
         }
         .header {
             background: linear-gradient(135deg, #1e3a8a 0%, #7c3aed 100%);
@@ -20,34 +32,23 @@
             padding: 25px 40px;
             box-shadow: 0 4px 20px rgba(0,0,0,0.15);
         }
-        .logo {
-            font-size: 26px;
-            font-weight: 900;
-            display: flex;
-            align-items: center;
-            gap: 12px;
-        }
+        .logo { font-size: 26px; font-weight: 900; }
         .hero {
             background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 50%, #7c3aed 100%);
             color: white;
             padding: 70px 20px;
             text-align: center;
-            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
         }
-        .hero h1 { font-size: 52px; font-weight: 900; margin-bottom: 15px; text-shadow: 2px 2px 4px rgba(0,0,0,0.3); }
+        .hero h1 { font-size: 52px; font-weight: 900; margin-bottom: 15px; }
         .data-badge {
-            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            background: #10b981;
             padding: 14px 35px;
             border-radius: 50px;
             display: inline-block;
             margin: 20px 0;
             font-weight: 700;
-            font-size: 15px;
-            box-shadow: 0 4px 15px rgba(16, 185, 129, 0.4);
         }
-        .container { max-width: 1200px; margin: 40px auto; padding: 0 20px; }
-        
-        /* Input Card with Autocomplete */
+        .container { max-width: 1000px; margin: 40px auto; padding: 0 20px; }
         .input-card {
             background: white;
             padding: 45px;
@@ -57,70 +58,27 @@
         }
         .input-group {
             display: grid;
-            grid-template-columns: 1fr 1fr 180px;
-            gap: 18px;
-            margin-bottom: 20px;
-        }
-        .input-wrapper {
-            position: relative;
+            grid-template-columns: 1fr 1fr 150px;
+            gap: 15px;
+            margin-bottom: 15px;
         }
         input {
-            width: 100%;
             padding: 16px;
             border: 2px solid #e5e7eb;
             border-radius: 12px;
             font-size: 16px;
-            transition: all 0.3s;
         }
         input:focus {
             outline: none;
             border-color: #1e3a8a;
-            box-shadow: 0 0 0 3px rgba(30, 58, 138, 0.1);
         }
-        
-        /* Autocomplete Dropdown */
-        .autocomplete-items {
-            position: absolute;
-            border: 2px solid #e5e7eb;
-            border-top: none;
-            z-index: 99;
-            top: 100%;
-            left: 0;
-            right: 0;
-            background: white;
-            border-radius: 0 0 12px 12px;
-            max-height: 250px;
-            overflow-y: auto;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.15);
-            display: none;
-        }
-        .autocomplete-items.show {
-            display: block;
-        }
-        .autocomplete-item {
-            padding: 12px 16px;
-            cursor: pointer;
-            border-bottom: 1px solid #f3f4f6;
-            transition: background 0.2s;
-        }
-        .autocomplete-item:hover {
-            background: #f0f9ff;
-        }
-        .autocomplete-item:last-child {
-            border-bottom: none;
-        }
-        .ticker-symbol {
-            font-weight: 700;
-            color: #1e3a8a;
-            margin-right: 8px;
-        }
-        .company-name {
+        .helper {
+            font-size: 13px;
             color: #6b7280;
-            font-size: 14px;
+            margin-top: 8px;
         }
-        
         .btn {
-            padding: 16px 30px;
+            padding: 16px;
             background: linear-gradient(135deg, #1e3a8a 0%, #7c3aed 100%);
             color: white;
             border: none;
@@ -128,539 +86,226 @@
             font-size: 17px;
             font-weight: 700;
             cursor: pointer;
-            transition: all 0.3s;
-            box-shadow: 0 4px 15px rgba(30, 58, 138, 0.3);
         }
-        .btn:hover:not(:disabled) {
-            transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(30, 58, 138, 0.4);
-        }
-        .btn:disabled { opacity: 0.6; cursor: not-allowed; }
-        
+        .btn:disabled { opacity: 0.6; }
         .status {
-            margin-top: 18px;
-            padding: 16px;
+            margin-top: 15px;
+            padding: 15px;
             border-radius: 12px;
             display: none;
             font-weight: 600;
         }
         .status.show { display: block; }
-        .status.info { background: #dbeafe; color: #1e40af; border: 2px solid #3b82f6; }
-        .status.success { background: #d1fae5; color: #065f46; border: 2px solid #10b981; }
-        .status.error { background: #fee2e2; color: #991b1b; border: 2px solid #ef4444; }
+        .status.info { background: #dbeafe; color: #1e40af; }
+        .status.success { background: #d1fae5; color: #065f46; }
+        .status.error { background: #fee2e2; color: #991b1b; }
         
-        /* Professional Report Design */
-        .report-container {
+        .report {
             display: none;
-            margin-top: 35px;
-            animation: fadeIn 0.5s;
+            margin-top: 30px;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 15px 50px rgba(0,0,0,0.12);
         }
-        .report-container.show { display: block; }
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(20px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-        
+        .report.show { display: block; }
         .report-header {
             background: linear-gradient(135deg, #1e3a8a 0%, #7c3aed 100%);
             color: white;
-            padding: 45px;
+            padding: 40px;
             border-radius: 20px 20px 0 0;
             text-align: center;
-            box-shadow: 0 4px 20px rgba(30, 58, 138, 0.3);
         }
-        .report-header h2 {
-            font-size: 36px;
-            margin-bottom: 12px;
-            text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
-        }
-        .report-header .ticker-badge {
+        .report-header h2 { font-size: 32px; margin-bottom: 10px; }
+        .ticker-badge {
             background: rgba(255,255,255,0.2);
             padding: 8px 20px;
             border-radius: 20px;
+            margin-bottom: 10px;
             display: inline-block;
-            font-size: 16px;
-            margin-bottom: 12px;
-            border: 2px solid rgba(255,255,255,0.3);
-        }
-        .live-badge {
-            background: #10b981;
-            padding: 10px 25px;
-            border-radius: 25px;
-            display: inline-block;
-            font-size: 14px;
-            font-weight: 700;
-            box-shadow: 0 4px 15px rgba(16, 185, 129, 0.4);
         }
         
-        .report-body {
-            background: white;
-            border-radius: 0 0 20px 20px;
-            box-shadow: 0 15px 50px rgba(0,0,0,0.12);
-        }
-        
-        /* Metrics Grid - Eye-catching */
-        .metrics-grid {
+        .metrics {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-            gap: 25px;
-            padding: 35px;
-            background: linear-gradient(135deg, #f9fafb 0%, #f3f4f6 100%);
-            border-bottom: 3px solid #e5e7eb;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            padding: 30px;
+            background: #f9fafb;
         }
-        .metric-card {
+        .metric {
             background: white;
-            padding: 28px;
-            border-radius: 16px;
-            border-left: 5px solid #1e3a8a;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.08);
-            transition: transform 0.3s, box-shadow 0.3s;
-        }
-        .metric-card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 8px 25px rgba(0,0,0,0.12);
+            padding: 25px;
+            border-radius: 12px;
+            border-left: 4px solid #1e3a8a;
         }
         .metric-label {
-            font-size: 13px;
+            font-size: 12px;
             color: #6b7280;
-            margin-bottom: 8px;
             font-weight: 600;
             text-transform: uppercase;
-            letter-spacing: 0.5px;
         }
         .metric-value {
-            font-size: 32px;
-            font-weight: 900;
-            color: #1e3a8a;
-            margin-bottom: 8px;
-        }
-        .metric-change {
-            font-size: 15px;
-            font-weight: 700;
-        }
-        .metric-change.positive { color: #10b981; }
-        .metric-change.negative { color: #ef4444; }
-        
-        /* Recommendation Banner - Very prominent */
-        .recommendation-banner {
-            padding: 40px;
-            text-align: center;
-            background: linear-gradient(135deg, #f9fafb 0%, #ffffff 100%);
-            border-bottom: 3px solid #e5e7eb;
-        }
-        .recommendation-badge {
-            display: inline-block;
-            padding: 18px 50px;
-            border-radius: 50px;
             font-size: 28px;
             font-weight: 900;
-            margin-bottom: 18px;
-            text-transform: uppercase;
-            letter-spacing: 2px;
-            box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+            color: #1e3a8a;
+            margin: 8px 0;
         }
-        .recommendation-badge.buy {
-            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-            color: white;
-        }
-        .recommendation-badge.hold {
-            background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
-            color: white;
-        }
-        .recommendation-badge.sell {
-            background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
-            color: white;
-        }
-        .recommendation-subtitle {
-            color: #6b7280;
-            font-size: 17px;
+        .metric-change {
+            font-size: 14px;
             font-weight: 600;
         }
+        .positive { color: #10b981; }
+        .negative { color: #ef4444; }
         
-        /* Charts Section - Beautiful */
-        .charts-section {
-            padding: 35px;
-            background: white;
-            border-bottom: 3px solid #f3f4f6;
-        }
-        .chart-container {
-            background: linear-gradient(135deg, #f9fafb 0%, #f3f4f6 100%);
+        .charts {
             padding: 30px;
-            border-radius: 16px;
-            margin-bottom: 28px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+        }
+        .chart-box {
+            background: #f9fafb;
+            padding: 25px;
+            border-radius: 12px;
+            margin-bottom: 20px;
         }
         .chart-title {
-            font-size: 20px;
-            font-weight: 700;
-            color: #1e3a8a;
-            margin-bottom: 25px;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-        
-        /* Risk Bars - Colorful and clear */
-        .risk-section {
-            padding: 35px;
-            background: white;
-            border-bottom: 3px solid #f3f4f6;
-        }
-        .risk-section h3 {
-            font-size: 24px;
-            font-weight: 700;
-            color: #1e3a8a;
-            margin-bottom: 28px;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-        .risk-item {
-            display: flex;
-            align-items: center;
-            margin-bottom: 22px;
-            padding: 15px;
-            background: #f9fafb;
-            border-radius: 12px;
-        }
-        .risk-label {
-            width: 200px;
-            font-weight: 700;
-            color: #374151;
-        }
-        .risk-bar {
-            flex: 1;
-            height: 35px;
-            background: #e5e7eb;
-            border-radius: 18px;
-            overflow: hidden;
-            margin: 0 18px;
-            box-shadow: inset 0 2px 4px rgba(0,0,0,0.1);
-        }
-        .risk-fill {
-            height: 100%;
-            border-radius: 18px;
-            transition: width 0.8s ease;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
-        }
-        .risk-fill.low { background: linear-gradient(90deg, #10b981 0%, #059669 100%); }
-        .risk-fill.medium { background: linear-gradient(90deg, #f59e0b 0%, #d97706 100%); }
-        .risk-fill.high { background: linear-gradient(90deg, #ef4444 0%, #dc2626 100%); }
-        .risk-score {
-            width: 70px;
-            text-align: right;
-            font-weight: 900;
             font-size: 18px;
-            color: #1e3a8a;
-        }
-        
-        /* Analysis Section */
-        .analysis-section {
-            padding: 35px;
-            background: white;
-        }
-        .analysis-section h3 {
-            font-size: 24px;
             font-weight: 700;
             color: #1e3a8a;
-            margin-bottom: 25px;
-            display: flex;
-            align-items: center;
-            gap: 10px;
+            margin-bottom: 20px;
         }
-        .analysis-content {
-            background: linear-gradient(135deg, #f9fafb 0%, #f3f4f6 100%);
+        
+        .analysis {
             padding: 30px;
-            border-radius: 16px;
-            line-height: 1.9;
-            color: #374151;
-            font-size: 15px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+            background: white;
         }
-        
-        .disclaimer {
-            background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
-            border: 4px solid #f59e0b;
-            border-radius: 16px;
-            padding: 28px;
-            margin: 35px 0;
-            text-align: center;
-            box-shadow: 0 4px 15px rgba(245, 158, 11, 0.2);
+        .analysis h3 {
+            font-size: 22px;
+            font-weight: 700;
+            color: #1e3a8a;
+            margin-bottom: 20px;
         }
-        .disclaimer h3 {
-            color: #92400e;
-            font-size: 20px;
-            margin-bottom: 12px;
-        }
-        .disclaimer p {
-            color: #78350f;
+        .analysis-text {
+            background: #f9fafb;
+            padding: 25px;
+            border-radius: 12px;
             line-height: 1.8;
-        }
-        
-        .spinner {
-            border: 3px solid #f3f4f6;
-            border-top: 3px solid #1e3a8a;
-            border-radius: 50%;
-            width: 22px;
-            height: 22px;
-            animation: spin 1s linear infinite;
-            display: inline-block;
-            margin-right: 10px;
-            vertical-align: middle;
-        }
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
+            white-space: pre-wrap;
         }
         
         @media (max-width: 768px) {
             .input-group { grid-template-columns: 1fr; }
-            .metrics-grid { grid-template-columns: 1fr; }
-            .hero h1 { font-size: 36px; }
-            .risk-label { width: 140px; font-size: 14px; }
+            .hero h1 { font-size: 32px; }
         }
     </style>
 </head>
 <body>
-    <div class="header">
-        <div class="logo">
-            <span>⚡</span>
-            <span>SENTINEL AI RESEARCH</span>
-        </div>
-    </div>
+    <header class="header">
+        <div class="logo">⚡ SENTINEL AI RESEARCH</div>
+    </header>
     
     <div class="hero">
-        <h1>🤖 Investment Intelligence Platform</h1>
+        <h1>AI Investment Intelligence</h1>
         <div class="data-badge">🔴 REAL-TIME MARKET DATA</div>
-        <p style="font-size: 19px; max-width: 750px; margin: 18px auto; opacity: 0.95;">
-            Professional AI-powered analysis with live market data and visual insights
+        <p style="font-size: 18px; max-width: 700px; margin: 15px auto;">
+            Professional stock analysis with live market data for any ticker
         </p>
     </div>
     
     <div class="container">
         <div class="input-card">
-            <h2 style="margin-bottom: 28px; color: #1e3a8a; font-size: 26px;">Generate Analysis Report</h2>
+            <h2 style="margin-bottom: 25px; color: #1e3a8a;">Generate Analysis Report</h2>
             <div class="input-group">
-                <input type="email" id="email" placeholder="your@email.com" autocomplete="email">
-                
-                <div class="input-wrapper">
-                    <input type="text" id="company" placeholder="Start typing company name or ticker..." autocomplete="off">
-                    <div class="autocomplete-items" id="autocomplete"></div>
-                </div>
-                
-                <button class="btn" id="submitBtn" onclick="generateReport()">Analyze</button>
+                <input type="email" id="email" placeholder="your@email.com">
+                <input type="text" id="ticker" placeholder="Enter ANY stock ticker (TSLA, MU, KAYNES.NS...)">
+                <button class="btn" id="analyzeBtn" onclick="analyze()">Analyze</button>
+            </div>
+            <div class="helper">
+                💡 Works with ANY stock ticker: TSLA, AAPL, MSFT, MU, NVDA, HDFCBANK.NS, KAYNES.NS, RELIANCE.NS, etc.
             </div>
             <div class="status" id="status"></div>
         </div>
         
-        <div class="report-container" id="reportContainer">
+        <div class="report" id="report">
             <div class="report-header">
-                <div class="ticker-badge" id="tickerBadge">TICKER</div>
-                <h2 id="reportTitle">Company Analysis</h2>
-                <div class="live-badge" id="reportTimestamp">🔴 LIVE DATA</div>
+                <div class="ticker-badge" id="tickerBadge"></div>
+                <h2 id="companyName"></h2>
+                <div style="font-size: 14px; margin-top: 10px;" id="timestamp"></div>
             </div>
             
-            <div class="report-body">
-                <div class="metrics-grid" id="metricsGrid"></div>
-                <div class="recommendation-banner" id="recommendationBanner"></div>
-                
-                <div class="charts-section">
-                    <div class="chart-container">
-                        <div class="chart-title">📊 Valuation Metrics</div>
-                        <canvas id="valuationChart" height="80"></canvas>
-                    </div>
-                    
-                    <div class="chart-container">
-                        <div class="chart-title">📈 Price Performance Trend</div>
-                        <canvas id="performanceChart" height="80"></canvas>
-                    </div>
+            <div class="metrics" id="metrics"></div>
+            
+            <div class="charts">
+                <div class="chart-box">
+                    <div class="chart-title">📊 Valuation Metrics</div>
+                    <canvas id="valChart" height="80"></canvas>
                 </div>
-                
-                <div class="risk-section">
-                    <h3>⚠️ Risk Assessment Dashboard</h3>
-                    <div id="riskBars"></div>
-                </div>
-                
-                <div class="analysis-section">
-                    <h3>💡 Detailed Investment Analysis</h3>
-                    <div class="analysis-content" id="analysisText"></div>
+                <div class="chart-box">
+                    <div class="chart-title">📈 Price Trend</div>
+                    <canvas id="trendChart" height="80"></canvas>
                 </div>
             </div>
-        </div>
-        
-        <div class="disclaimer">
-            <h3>⚠️ Important Disclaimer</h3>
-            <p>
-                <strong>Educational Research Only.</strong> This analysis is for informational purposes and does not constitute financial advice. 
-                Always consult licensed financial professionals before making investment decisions.
-            </p>
+            
+            <div class="analysis">
+                <h3>💡 Investment Analysis</h3>
+                <div class="analysis-text" id="analysisText"></div>
+            </div>
         </div>
     </div>
     
     <script>
-        // Popular stocks database for autocomplete
-        const stockDatabase = [
-            { ticker: 'TSLA', name: 'Tesla, Inc.' },
-            { ticker: 'AAPL', name: 'Apple Inc.' },
-            { ticker: 'MSFT', name: 'Microsoft Corporation' },
-            { ticker: 'GOOGL', name: 'Alphabet Inc. (Google)' },
-            { ticker: 'AMZN', name: 'Amazon.com, Inc.' },
-            { ticker: 'META', name: 'Meta Platforms (Facebook)' },
-            { ticker: 'NVDA', name: 'NVIDIA Corporation' },
-            { ticker: 'NFLX', name: 'Netflix, Inc.' },
-            { ticker: 'JPM', name: 'JPMorgan Chase & Co.' },
-            { ticker: 'BAC', name: 'Bank of America Corp.' },
-            { ticker: 'V', name: 'Visa Inc.' },
-            { ticker: 'MA', name: 'Mastercard Inc.' },
-            { ticker: 'HDFCBANK.NS', name: 'HDFC Bank (India)' },
-            { ticker: 'RELIANCE.NS', name: 'Reliance Industries (India)' },
-            { ticker: 'TCS.NS', name: 'Tata Consultancy Services' },
-            { ticker: 'INFY', name: 'Infosys Limited' },
-            { ticker: 'WIPRO.NS', name: 'Wipro Limited' },
-            { ticker: 'ICICIBANK.NS', name: 'ICICI Bank (India)' },
-            { ticker: 'WMT', name: 'Walmart Inc.' },
-            { ticker: 'DIS', name: 'The Walt Disney Company' },
-            { ticker: 'PYPL', name: 'PayPal Holdings' },
-            { ticker: 'INTC', name: 'Intel Corporation' },
-            { ticker: 'AMD', name: 'Advanced Micro Devices' },
-            { ticker: 'CSCO', name: 'Cisco Systems' },
-            { ticker: 'PFE', name: 'Pfizer Inc.' },
-            { ticker: 'JNJ', name: 'Johnson & Johnson' },
-            { ticker: 'KO', name: 'The Coca-Cola Company' },
-            { ticker: 'PEP', name: 'PepsiCo, Inc.' },
-            { ticker: 'MCD', name: "McDonald's Corporation" },
-            { ticker: 'NKE', name: 'Nike, Inc.' }
-        ];
+        let valChart, trendChart;
         
-        let valuationChart, performanceChart;
-        let currentFocus = -1;
-        
-        // Autocomplete functionality
-        const companyInput = document.getElementById('company');
-        const autocompleteDiv = document.getElementById('autocomplete');
-        
-        companyInput.addEventListener('input', function() {
-            const value = this.value;
-            autocompleteDiv.innerHTML = '';
-            currentFocus = -1;
-            
-            if (!value) {
-                autocompleteDiv.classList.remove('show');
-                return;
-            }
-            
-            const matches = stockDatabase.filter(stock => 
-                stock.ticker.toLowerCase().includes(value.toLowerCase()) ||
-                stock.name.toLowerCase().includes(value.toLowerCase())
-            ).slice(0, 8);
-            
-            if (matches.length === 0) {
-                autocompleteDiv.classList.remove('show');
-                return;
-            }
-            
-            matches.forEach(stock => {
-                const div = document.createElement('div');
-                div.className = 'autocomplete-item';
-                div.innerHTML = `<span class="ticker-symbol">${stock.ticker}</span><span class="company-name">${stock.name}</span>`;
-                div.addEventListener('click', function() {
-                    companyInput.value = stock.ticker;
-                    autocompleteDiv.classList.remove('show');
-                });
-                autocompleteDiv.appendChild(div);
-            });
-            
-            autocompleteDiv.classList.add('show');
-        });
-        
-        // Keyboard navigation for autocomplete
-        companyInput.addEventListener('keydown', function(e) {
-            const items = autocompleteDiv.getElementsByClassName('autocomplete-item');
-            if (e.key === 'ArrowDown') {
-                currentFocus++;
-                addActive(items);
-                e.preventDefault();
-            } else if (e.key === 'ArrowUp') {
-                currentFocus--;
-                addActive(items);
-                e.preventDefault();
-            } else if (e.key === 'Enter') {
-                e.preventDefault();
-                if (currentFocus > -1 && items[currentFocus]) {
-                    items[currentFocus].click();
-                } else if (companyInput.value.trim()) {
-                    generateReport();
-                }
-            }
-        });
-        
-        function addActive(items) {
-            if (!items || items.length === 0) return;
-            removeActive(items);
-            if (currentFocus >= items.length) currentFocus = 0;
-            if (currentFocus < 0) currentFocus = items.length - 1;
-            items[currentFocus].style.background = '#f0f9ff';
+        function showStatus(msg, type) {
+            const s = document.getElementById('status');
+            s.textContent = msg;
+            s.className = 'status show ' + type;
         }
         
-        function removeActive(items) {
-            for (let i = 0; i < items.length; i++) {
-                items[i].style.background = '';
-            }
-        }
-        
-        // Close autocomplete when clicking outside
-        document.addEventListener('click', function(e) {
-            if (e.target !== companyInput) {
-                autocompleteDiv.classList.remove('show');
-            }
-        });
-        
-        function showStatus(message, type) {
-            const status = document.getElementById('status');
-            status.textContent = message;
-            status.className = 'status show ' + type;
-        }
-        
-        async function generateReport() {
+        async function analyze() {
             const email = document.getElementById('email').value.trim();
-            const company = document.getElementById('company').value.trim();
-            const btn = document.getElementById('submitBtn');
-            const reportContainer = document.getElementById('reportContainer');
+            const ticker = document.getElementById('ticker').value.trim().toUpperCase();
+            const btn = document.getElementById('analyzeBtn');
+            const report = document.getElementById('report');
             
-            autocompleteDiv.classList.remove('show');
-            
-            if (!email || !company) {
-                showStatus('Please fill in all fields', 'error');
+            if (!email || !ticker) {
+                showStatus('Please fill in both fields', 'error');
                 return;
             }
             
             btn.disabled = true;
-            btn.innerHTML = '<span class="spinner"></span>Analyzing...';
-            reportContainer.classList.remove('show');
+            btn.textContent = 'Analyzing...';
+            report.classList.remove('show');
             
-            showStatus('Analyzing ' + company + '... (30-60 seconds)', 'info');
+            showStatus('Analyzing ' + ticker + '... (30-60 seconds)', 'info');
             
             try {
-                const response = await fetch('/api/generate-report', {
+                const res = await fetch('/api/generate-report', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ company_name: company, email: email })
+                    body: JSON.stringify({
+                        company_name: ticker,
+                        email: email
+                    })
                 });
                 
-                if (!response.ok) {
-                    const error = await response.json().catch(() => ({}));
-                    throw new Error(error.detail || 'Analysis failed');
+                if (!res.ok) {
+                    const err = await res.json().catch(() => ({}));
+                    throw new Error(err.detail || 'Analysis failed');
                 }
                 
-                const data = await response.json();
+                const data = await res.json();
+                console.log('Response:', data); // Debug
+                
+                if (!data.success) {
+                    throw new Error('Analysis failed');
+                }
                 
                 showStatus('✅ Analysis complete!', 'success');
                 displayReport(data);
                 
                 document.getElementById('email').value = '';
-                document.getElementById('company').value = '';
+                document.getElementById('ticker').value = '';
                 
             } catch (error) {
+                console.error('Error:', error);
                 showStatus('❌ ' + error.message, 'error');
             } finally {
                 btn.disabled = false;
@@ -669,64 +314,56 @@
         }
         
         function displayReport(data) {
-            const container = document.getElementById('reportContainer');
-            const liveData = data.live_data;
+            const live = data.live_data;
+            if (!live) {
+                showStatus('❌ No market data received', 'error');
+                return;
+            }
             
-            // Update header
-            document.getElementById('tickerBadge').textContent = liveData.ticker;
-            document.getElementById('reportTitle').textContent = liveData.company_name || liveData.ticker;
-            document.getElementById('reportTimestamp').textContent = '🔴 LIVE - ' + liveData.data_timestamp;
+            // Header
+            document.getElementById('tickerBadge').textContent = live.ticker || 'N/A';
+            document.getElementById('companyName').textContent = live.company_name || live.ticker || 'Company';
+            document.getElementById('timestamp').textContent = '🔴 ' + (live.data_timestamp || '');
             
-            // Display metrics
-            const currencySymbol = liveData.currency === 'INR' ? '₹' : '$';
+            // Metrics
+            const curr = live.currency === 'INR' ? '₹' : '$';
             const metricsHTML = `
-                <div class="metric-card">
-                    <div class="metric-label">Current Price</div>
-                    <div class="metric-value">${currencySymbol}${liveData.current_price.toLocaleString()}</div>
-                    <div class="metric-change ${liveData.price_change >= 0 ? 'positive' : 'negative'}">
-                        ${liveData.price_change >= 0 ? '▲' : '▼'} ${Math.abs(liveData.price_change).toFixed(2)} (${liveData.price_change_pct.toFixed(2)}%)
+                <div class="metric">
+                    <div class="metric-label">Price</div>
+                    <div class="metric-value">${curr}${(live.current_price || 0).toLocaleString()}</div>
+                    <div class="metric-change ${(live.price_change || 0) >= 0 ? 'positive' : 'negative'}">
+                        ${(live.price_change || 0) >= 0 ? '▲' : '▼'} ${Math.abs(live.price_change || 0).toFixed(2)} (${(live.price_change_pct || 0).toFixed(2)}%)
                     </div>
                 </div>
-                <div class="metric-card">
+                <div class="metric">
                     <div class="metric-label">P/E Ratio</div>
-                    <div class="metric-value">${liveData.pe_ratio !== 'N/A' ? liveData.pe_ratio : 'N/A'}</div>
-                    <div class="metric-change" style="color: #6b7280;">Trailing Twelve Months</div>
+                    <div class="metric-value">${live.pe_ratio || 'N/A'}</div>
                 </div>
-                <div class="metric-card">
+                <div class="metric">
                     <div class="metric-label">Market Cap</div>
-                    <div class="metric-value">${formatMarketCap(liveData.market_cap)}</div>
-                    <div class="metric-change" style="color: #6b7280;">${liveData.currency}</div>
+                    <div class="metric-value">${formatCap(live.market_cap)}</div>
                 </div>
-                <div class="metric-card">
-                    <div class="metric-label">52-Week Range</div>
-                    <div class="metric-value" style="font-size: 20px;">${liveData.week52_low} - ${liveData.week52_high}</div>
-                    <div class="metric-change" style="color: #6b7280;">High / Low</div>
+                <div class="metric">
+                    <div class="metric-label">52W Range</div>
+                    <div class="metric-value" style="font-size: 18px;">${live.week52_low || 0} - ${live.week52_high || 0}</div>
                 </div>
             `;
-            document.getElementById('metricsGrid').innerHTML = metricsHTML;
+            document.getElementById('metrics').innerHTML = metricsHTML;
             
-            // Recommendation
-            const recommendation = determineRecommendation(liveData);
-            document.getElementById('recommendationBanner').innerHTML = `
-                <div class="recommendation-badge ${recommendation.class}">${recommendation.text}</div>
-                <div class="recommendation-subtitle">${recommendation.subtitle}</div>
-            `;
+            // Charts
+            createCharts(live);
             
-            // Create charts
-            createCharts(liveData);
+            // Analysis
+            document.getElementById('analysisText').textContent = data.report || 'Analysis not available';
             
-            // Risk bars
-            createRiskBars();
-            
-            // Analysis text
-            document.getElementById('analysisText').textContent = data.report;
-            
-            // Show and scroll
-            container.classList.add('show');
-            setTimeout(() => container.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
+            // Show
+            document.getElementById('report').classList.add('show');
+            setTimeout(() => {
+                document.getElementById('report').scrollIntoView({ behavior: 'smooth' });
+            }, 100);
         }
         
-        function formatMarketCap(cap) {
+        function formatCap(cap) {
             if (!cap || cap === 0) return 'N/A';
             if (cap >= 1e12) return '$' + (cap / 1e12).toFixed(2) + 'T';
             if (cap >= 1e9) return '$' + (cap / 1e9).toFixed(2) + 'B';
@@ -734,136 +371,67 @@
             return '$' + cap.toLocaleString();
         }
         
-        function determineRecommendation(data) {
-            const peRatio = parseFloat(data.pe_ratio);
-            if (isNaN(peRatio)) {
-                return { text: 'HOLD', class: 'hold', subtitle: 'Awaiting additional data for recommendation' };
-            }
-            if (peRatio < 15) {
-                return { text: 'BUY', class: 'buy', subtitle: 'Attractive valuation opportunity detected' };
-            } else if (peRatio > 30) {
-                return { text: 'HOLD', class: 'hold', subtitle: 'Premium valuation - monitor closely' };
-            }
-            return { text: 'HOLD', class: 'hold', subtitle: 'Fair valuation at current market levels' };
-        }
-        
-        function createCharts(data) {
-            if (valuationChart) valuationChart.destroy();
-            if (performanceChart) performanceChart.destroy();
+        function createCharts(live) {
+            if (valChart) valChart.destroy();
+            if (trendChart) trendChart.destroy();
             
-            // Valuation Chart
-            const valCtx = document.getElementById('valuationChart').getContext('2d');
-            valuationChart = new Chart(valCtx, {
+            // Valuation
+            const vCtx = document.getElementById('valChart').getContext('2d');
+            valChart = new Chart(vCtx, {
                 type: 'bar',
                 data: {
-                    labels: ['P/E Ratio', 'P/B Ratio', 'Dividend Yield %'],
+                    labels: ['P/E', 'P/B', 'Div Yield'],
                     datasets: [{
-                        label: 'Metrics',
                         data: [
-                            parseFloat(data.pe_ratio) || 0,
-                            parseFloat(data.pb_ratio) || 0,
-                            parseFloat(data.dividend_yield) || 0
+                            parseFloat(live.pe_ratio) || 0,
+                            parseFloat(live.pb_ratio) || 0,
+                            parseFloat(live.dividend_yield) || 0
                         ],
-                        backgroundColor: [
-                            'rgba(30, 58, 138, 0.8)',
-                            'rgba(124, 58, 237, 0.8)',
-                            'rgba(16, 185, 129, 0.8)'
-                        ],
-                        borderColor: [
-                            'rgb(30, 58, 138)',
-                            'rgb(124, 58, 237)',
-                            'rgb(16, 185, 129)'
-                        ],
-                        borderWidth: 2
+                        backgroundColor: ['#1e3a8a', '#7c3aed', '#10b981']
                     }]
                 },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
-                    plugins: {
-                        legend: { display: false },
-                        tooltip: { backgroundColor: 'rgba(0,0,0,0.8)', padding: 12, titleFont: { size: 14 }, bodyFont: { size: 13 } }
-                    },
-                    scales: {
-                        y: { beginAtZero: true, grid: { color: 'rgba(0,0,0,0.05)' } },
-                        x: { grid: { display: false } }
-                    }
+                    plugins: { legend: { display: false } }
                 }
             });
             
-            // Performance Trend Chart
-            const perfCtx = document.getElementById('performanceChart').getContext('2d');
-            const trendData = generateMockTrend(data.current_price);
-            performanceChart = new Chart(perfCtx, {
+            // Trend (mock data)
+            const price = live.current_price || 100;
+            const trend = [];
+            for (let i = 6; i >= 0; i--) {
+                const change = (Math.random() - 0.5) * 0.1;
+                trend.push(price * (1 + change * i / 6));
+            }
+            
+            const tCtx = document.getElementById('trendChart').getContext('2d');
+            trendChart = new Chart(tCtx, {
                 type: 'line',
                 data: {
-                    labels: ['6M Ago', '5M Ago', '4M Ago', '3M Ago', '2M Ago', '1M Ago', 'Current'],
+                    labels: ['6M', '5M', '4M', '3M', '2M', '1M', 'Now'],
                     datasets: [{
-                        label: 'Price',
-                        data: trendData,
-                        borderColor: 'rgb(30, 58, 138)',
+                        data: trend,
+                        borderColor: '#1e3a8a',
                         backgroundColor: 'rgba(30, 58, 138, 0.1)',
                         fill: true,
-                        tension: 0.4,
-                        borderWidth: 3,
-                        pointBackgroundColor: 'rgb(30, 58, 138)',
-                        pointBorderColor: '#fff',
-                        pointBorderWidth: 2,
-                        pointRadius: 5
+                        tension: 0.4
                     }]
                 },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
-                    plugins: {
-                        legend: { display: false },
-                        tooltip: { backgroundColor: 'rgba(0,0,0,0.8)', padding: 12 }
-                    },
-                    scales: {
-                        y: { grid: { color: 'rgba(0,0,0,0.05)' } },
-                        x: { grid: { display: false } }
-                    }
+                    plugins: { legend: { display: false } }
                 }
             });
         }
         
-        function generateMockTrend(currentPrice) {
-            const data = [currentPrice];
-            for (let i = 6; i > 0; i--) {
-                const change = (Math.random() - 0.5) * 0.15;
-                data.unshift(currentPrice * (1 + change * i / 6));
-            }
-            return data;
-        }
-        
-        function createRiskBars() {
-            const risks = [
-                { label: 'Financial Health', score: Math.floor(Math.random() * 10) + 1 },
-                { label: 'Market Position', score: Math.floor(Math.random() * 10) + 1 },
-                { label: 'Operational Risk', score: Math.floor(Math.random() * 10) + 1 },
-                { label: 'Regulatory Risk', score: Math.floor(Math.random() * 10) + 1 },
-                { label: 'Competition Risk', score: Math.floor(Math.random() * 10) + 1 }
-            ];
-            
-            const html = risks.map(risk => {
-                const level = risk.score <= 3 ? 'low' : risk.score <= 6 ? 'medium' : 'high';
-                return `
-                    <div class="risk-item">
-                        <div class="risk-label">${risk.label}</div>
-                        <div class="risk-bar">
-                            <div class="risk-fill ${level}" style="width: ${risk.score * 10}%"></div>
-                        </div>
-                        <div class="risk-score">${risk.score}/10</div>
-                    </div>
-                `;
-            }).join('');
-            
-            document.getElementById('riskBars').innerHTML = html;
-        }
-        
-        // Enter key support
+        // Enter key
         document.getElementById('email').addEventListener('keypress', e => {
-            if (e.key === 'Enter') document.getElementById('company').focus();
+            if (e.key === 'Enter') document.getElementById('ticker').focus();
+        });
+        document.getElementById('ticker').addEventListener('keypress', e => {
+            if (e.key === 'Enter') analyze();
         });
     </script>
 </body>

@@ -187,8 +187,10 @@ async def generate_report(request: Request):
         # GET LIVE DATA
         live_data = get_live_stock_data(company)
         
-        if "error" in live_data:
-            raise HTTPException(400, live_data["error"])
+        # Check if there was an error
+        if "error" in live_data or not live_data.get("success"):
+            error_msg = live_data.get("error", "Could not fetch market data for this ticker")
+            raise HTTPException(400, error_msg)
         
         # Format live data section
         currency_symbol = '₹' if live_data['currency'] == 'INR' else '$'
@@ -354,9 +356,7 @@ Based on real-time price of {currency_symbol}{live_data['current_price']:,.2f}:
             "success": True,
             "report": report,
             "company_name": company,
-            "live_price": f"{currency_symbol}{live_data['current_price']:,.2f}",
-            "ticker": live_data["ticker"],
-            "verification_url": live_data["verification_url"],
+            "live_data": live_data,
             "timestamp": datetime.now().isoformat(),
             "report_id": report_id.upper(),
             "report_number": report_counter["count"]
