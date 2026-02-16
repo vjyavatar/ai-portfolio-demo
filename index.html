@@ -1,0 +1,552 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sentinel AI Research | Agentic Investment Intelligence Platform</title>
+    
+    <meta name="description" content="Sentinel AI Research - Advanced agentic AI system for intelligent investment analysis. Educational research platform for demonstration purposes only.">
+    <meta name="robots" content="noindex, nofollow">
+    
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap" rel="stylesheet">
+    
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        body {
+            font-family: 'Inter', sans-serif;
+            line-height: 1.6;
+            color: #1f2937;
+            background: #f9fafb;
+        }
+        
+        .header {
+            background: white;
+            padding: 20px 40px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+        
+        .header-content {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .logo {
+            font-size: 24px;
+            font-weight: 900;
+            background: linear-gradient(135deg, #1e3a8a 0%, #7c3aed 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        .contact-info {
+            font-size: 14px;
+            color: #6b7280;
+        }
+        
+        .contact-info a {
+            color: #1e3a8a;
+            text-decoration: none;
+            font-weight: 600;
+        }
+        
+        .hero {
+            background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 50%, #7c3aed 100%);
+            color: white;
+            padding: 80px 20px;
+            text-align: center;
+        }
+        
+        .hero h1 {
+            font-size: 48px;
+            font-weight: 900;
+            margin-bottom: 15px;
+            line-height: 1.2;
+        }
+        
+        .hero .tagline {
+            font-size: 22px;
+            margin-bottom: 10px;
+            opacity: 0.95;
+            font-weight: 600;
+        }
+        
+        .hero .subtitle {
+            font-size: 18px;
+            max-width: 800px;
+            margin: 0 auto 30px;
+            opacity: 0.9;
+            line-height: 1.7;
+        }
+        
+        .research-badge {
+            background: rgba(255,255,255,0.15);
+            backdrop-filter: blur(10px);
+            padding: 15px 30px;
+            border-radius: 50px;
+            display: inline-block;
+            margin: 20px 0;
+            font-size: 16px;
+            border: 2px solid rgba(255,255,255,0.3);
+        }
+        
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            max-width: 1100px;
+            margin: 40px auto 0;
+        }
+        
+        .feature-box {
+            background: rgba(255,255,255,0.1);
+            backdrop-filter: blur(10px);
+            padding: 25px;
+            border-radius: 12px;
+            text-align: center;
+            border: 1px solid rgba(255,255,255,0.2);
+        }
+        
+        .feature-icon {
+            font-size: 36px;
+            margin-bottom: 10px;
+        }
+        
+        .container {
+            max-width: 1000px;
+            margin: 60px auto;
+            padding: 0 20px;
+        }
+        
+        .section-title {
+            font-size: 36px;
+            font-weight: 800;
+            text-align: center;
+            margin-bottom: 15px;
+            color: #0f172a;
+        }
+        
+        .section-subtitle {
+            font-size: 18px;
+            text-align: center;
+            color: #6b7280;
+            margin-bottom: 50px;
+        }
+        
+        .capabilities {
+            background: white;
+            padding: 40px;
+            border-radius: 16px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+            margin: 40px 0;
+        }
+        
+        .capabilities h3 {
+            color: #1e3a8a;
+            font-size: 24px;
+            margin-bottom: 25px;
+            text-align: center;
+        }
+        
+        .capabilities-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 20px;
+        }
+        
+        .capability-item {
+            padding: 20px;
+            background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+            border-radius: 12px;
+            border-left: 4px solid #1e3a8a;
+        }
+        
+        .capability-item strong {
+            display: block;
+            color: #1e3a8a;
+            margin-bottom: 5px;
+            font-size: 16px;
+        }
+        
+        .capability-item span {
+            color: #475569;
+            font-size: 14px;
+        }
+        
+        .form-card {
+            background: white;
+            padding: 50px;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.1);
+            margin: 40px auto;
+        }
+        
+        .form-group {
+            margin-bottom: 25px;
+        }
+        
+        label {
+            display: block;
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: #374151;
+            font-size: 15px;
+        }
+        
+        input {
+            width: 100%;
+            padding: 15px;
+            border: 2px solid #e5e7eb;
+            border-radius: 10px;
+            font-size: 16px;
+            transition: all 0.3s;
+        }
+        
+        input:focus {
+            outline: none;
+            border-color: #1e3a8a;
+            box-shadow: 0 0 0 3px rgba(30, 58, 138, 0.1);
+        }
+        
+        button {
+            width: 100%;
+            padding: 18px;
+            background: linear-gradient(135deg, #1e3a8a 0%, #7c3aed 100%);
+            color: white;
+            border: none;
+            border-radius: 12px;
+            font-size: 18px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        button:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 30px rgba(30, 58, 138, 0.4);
+        }
+        
+        button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+        
+        .legal-disclaimer {
+            background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%);
+            border: 4px solid #dc2626;
+            border-radius: 16px;
+            padding: 35px;
+            margin: 50px 0;
+            box-shadow: 0 10px 40px rgba(220, 38, 38, 0.2);
+        }
+        
+        .legal-disclaimer h3 {
+            color: #991b1b;
+            margin-bottom: 20px;
+            font-size: 26px;
+            text-align: center;
+            font-weight: 900;
+        }
+        
+        .legal-disclaimer p {
+            color: #7f1d1d;
+            line-height: 2;
+            font-size: 16px;
+            margin-bottom: 15px;
+        }
+        
+        .legal-disclaimer strong {
+            color: #991b1b;
+            font-size: 17px;
+            text-decoration: underline;
+        }
+        
+        .legal-disclaimer ul {
+            margin: 20px 0 20px 30px;
+            color: #7f1d1d;
+        }
+        
+        .legal-disclaimer li {
+            margin: 10px 0;
+            font-size: 15px;
+        }
+        
+        #status {
+            margin-top: 20px;
+            padding: 16px;
+            border-radius: 10px;
+            display: none;
+            font-weight: 600;
+        }
+        
+        .success { background: #d1fae5; color: #065f46; border: 2px solid #10b981; }
+        .error { background: #fee2e2; color: #991b1b; border: 2px solid #ef4444; }
+        .info { background: #dbeafe; color: #1e40af; border: 2px solid #3b82f6; }
+        
+        #report {
+            margin-top: 30px;
+            padding: 40px;
+            background: white;
+            border-radius: 16px;
+            white-space: pre-wrap;
+            line-height: 1.8;
+            display: none;
+            border: 2px solid #e2e8f0;
+            max-height: 700px;
+            overflow-y: auto;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+            font-size: 15px;
+        }
+        
+        .footer {
+            background: #0f172a;
+            color: white;
+            padding: 40px 20px;
+            text-align: center;
+            margin-top: 80px;
+        }
+        
+        .footer p {
+            margin: 10px 0;
+            opacity: 0.8;
+            font-size: 14px;
+        }
+        
+        .spinner {
+            border: 3px solid #f3f4f6;
+            border-top: 3px solid #1e3a8a;
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            animation: spin 1s linear infinite;
+            display: inline-block;
+            margin-right: 10px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        @media (max-width: 768px) {
+            .hero h1 { font-size: 32px; }
+            .form-card { padding: 30px 20px; }
+            .header { padding: 15px 20px; }
+            .header-content { flex-direction: column; gap: 10px; }
+        }
+    </style>
+</head>
+<body>
+    <!-- Header -->
+    <div class="header">
+        <div class="header-content">
+            <div class="logo">⚡ SENTINEL AI RESEARCH</div>
+            <div class="contact-info">
+                📧 <a href="/cdn-cgi/l/email-protection#88faedfbede9faebe0c8fbede6fce1e6ede4e9e1a5faedfbede9faebe0a6e7faef"><span class="__cf_email__" data-cfemail="aad8cfd9cfcbd8c9c2ead9cfc4dec3c4cfc6cbc387d8cfd9cfcbd8c9c284c5d8cd">[email&#160;protected]</span></a>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Hero -->
+    <div class="hero">
+        <h1>🤖 Agentic Investment Intelligence</h1>
+        <p class="tagline">🔴 LIVE Real-Time Market Data • Advanced AI Analysis</p>
+        <p class="subtitle">
+            Professional investment research with <strong>REAL-TIME stock prices</strong> from 
+            Yahoo Finance. Unlike ChatGPT (outdated Jan 2025 data), this system uses 
+            <strong>CURRENT market data</strong> updated every minute. Get accurate analysis 
+            with today's prices, P/E ratios, and market metrics—delivered in 30 seconds.
+        </p>
+        
+        <div class="research-badge">
+            🔬 Research & Development Platform | Non-Commercial Educational Project<br>
+            🔴 <strong>REAL-TIME DATA:</strong> Live stock prices from Yahoo Finance (NOT outdated training data!)
+        </div>
+        
+        <div class="features-grid">
+            <div class="feature-box">
+                <div class="feature-icon">💰</div>
+                <div><strong>Valuation Analysis</strong></div>
+                <div style="font-size: 14px; opacity: 0.9;">P/E, P/B, EV/EBITDA metrics</div>
+            </div>
+            <div class="feature-box">
+                <div class="feature-icon">📊</div>
+                <div><strong>Visual Analytics</strong></div>
+                <div style="font-size: 14px; opacity: 0.9;">Charts, tables, trends</div>
+            </div>
+            <div class="feature-box">
+                <div class="feature-icon">🎯</div>
+                <div><strong>Entry/Exit Strategy</strong></div>
+                <div style="font-size: 14px; opacity: 0.9;">Precise price targets</div>
+            </div>
+            <div class="feature-box">
+                <div class="feature-icon">⚠️</div>
+                <div><strong>Risk Assessment</strong></div>
+                <div style="font-size: 14px; opacity: 0.9;">Multi-factor scoring</div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Main Content -->
+    <div class="container">
+        <div class="capabilities">
+            <h3>🎯 Comprehensive Analysis with LIVE Market Data</h3>
+            <div class="capabilities-grid">
+                <div class="capability-item">
+                    <strong>🔴 Real-Time Prices</strong>
+                    <span>Live stock data from Yahoo Finance (NOT outdated!)</span>
+                </div>
+                <div class="capability-item">
+                    <strong>Investment Thesis</strong>
+                    <span>Buy/Hold/Sell recommendations</span>
+                </div>
+                <div class="capability-item">
+                    <strong>Current Valuation Metrics</strong>
+                    <span>TODAY's P/E, P/B, EV/EBITDA (not old data)</span>
+                </div>
+                <div class="capability-item">
+                    <strong>Visual Trends</strong>
+                    <span>5-year revenue & margin charts</span>
+                </div>
+                <div class="capability-item">
+                    <strong>Risk Dashboard</strong>
+                    <span>5-category comprehensive scoring</span>
+                </div>
+                <div class="capability-item">
+                    <strong>Price Targets</strong>
+                    <span>Entry zones, exit targets, stop loss</span>
+                </div>
+                <div class="capability-item">
+                    <strong>Position Sizing</strong>
+                    <span>Portfolio allocation guidance</span>
+                </div>
+                <div class="capability-item">
+                    <strong>Peer Comparison</strong>
+                    <span>Side-by-side competitor analysis</span>
+                </div>
+                <div class="capability-item">
+                    <strong>Key Catalysts</strong>
+                    <span>Growth drivers & risk factors</span>
+                </div>
+            </div>
+        </div>
+        
+        <h2 class="section-title">Generate Analysis Report</h2>
+        <p class="section-subtitle">Enter any publicly traded company • AI-powered results in 30 seconds</p>
+        
+        <div class="form-card">
+            <form id="report-form">
+                <div class="form-group">
+                    <label for="email">📧 Your Email</label>
+                    <input type="email" id="email" placeholder="investor@example.com" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="company">🏢 Company Name or Ticker Symbol</label>
+                    <input type="text" id="company" placeholder="Tesla, AAPL, Microsoft, INFY, Reliance Industries" required>
+                    <small style="color: #6b7280; font-size: 14px; display: block; margin-top: 8px;">
+                        💡 Examples: Tesla Inc, Apple (AAPL), Microsoft, Infosys (INFY), Amazon, JPMorgan
+                    </small>
+                </div>
+                
+                <button type="submit" id="submit-btn">
+                    🔍 Generate AI Analysis Report →
+                </button>
+                
+                <div id="status"></div>
+                <div id="report"></div>
+            </form>
+        </div>
+        
+        <!-- CRITICAL LEGAL DISCLAIMER -->
+        <div class="legal-disclaimer">
+            <h3>⚠️ IMPORTANT LEGAL DISCLAIMER</h3>
+            <p>
+                <strong>THIS IS A NON-COMMERCIAL EDUCATIONAL RESEARCH PLATFORM.</strong>
+            </p>
+            <p>
+                The information provided by this agentic AI system is <strong>FOR EDUCATIONAL AND RESEARCH PURPOSES ONLY</strong> and should NOT be considered as financial advice, investment recommendations, or solicitation to buy or sell securities.
+            </p>
+            <ul>
+                <li><strong>NOT FINANCIAL ADVICE:</strong> This platform does not provide personalized investment advice.</li>
+                <li><strong>NO GUARANTEE OF ACCURACY:</strong> AI-generated analysis may contain errors or outdated information.</li>
+                <li><strong>NOT RESPONSIBLE FOR LOSSES:</strong> Sentinel AI Research and its operators are not liable for any financial gains or losses resulting from use of this information.</li>
+                <li><strong>CONSULT PROFESSIONALS:</strong> Always consult with a licensed and certified financial advisor before making ANY investment decisions.</li>
+                <li><strong>DO YOUR OWN RESEARCH:</strong> Verify all information independently before investing.</li>
+            </ul>
+            <p>
+                <strong>By using this platform, you acknowledge that:</strong> (1) You understand this is educational technology demonstration, (2) You will not make investment decisions based solely on this AI analysis, (3) You will consult certified financial professionals before investing, (4) You accept full responsibility for your investment decisions.
+            </p>
+            <p style="text-align: center; margin-top: 25px; font-size: 18px;">
+                <strong>⚖️ Investment decisions should ONLY be made after consulting with a Certified Financial Advisor.</strong>
+            </p>
+        </div>
+    </div>
+    
+    <!-- Footer -->
+    <div class="footer">
+        <p><strong>Sentinel AI Research</strong> | Advanced Agentic AI Systems</p>
+        <p>Non-Commercial Research Platform | Educational Technology Demonstration</p>
+        <p>📧 <a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="1163746274706372795162747f65787f747d70783c63746274706372793f7e6376">[email&#160;protected]</a></p>
+        <p style="margin-top: 20px; font-size: 12px; opacity: 0.6;">
+            © 2026 Sentinel AI Research. All rights reserved. This is a research platform and not a commercial service.
+        </p>
+    </div>
+    
+    <script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script>
+        const API_BASE = window.location.origin;
+        const form = document.getElementById('report-form');
+        const submitBtn = document.getElementById('submit-btn');
+        const statusDiv = document.getElementById('status');
+        const reportDiv = document.getElementById('report');
+        
+        function showStatus(message, type) {
+            statusDiv.textContent = message;
+            statusDiv.className = type;
+            statusDiv.style.display = 'block';
+            statusDiv.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+        
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const email = document.getElementById('email').value;
+            const company = document.getElementById('company').value;
+            
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<div class="spinner"></div> AI Analyzing ' + company + '...';
+            reportDiv.style.display = 'none';
+            
+            showStatus('🔍 Agentic AI is analyzing ' + company + ' across multiple data sources... (30-45 seconds)', 'info');
+            
+            try {
+                const response = await fetch(`${API_BASE}/api/generate-report`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        company_name: company,
+                        email: email
+                    })
+                });
+                
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.detail || 'Failed to generate report');
+                }
+                
+                const data = await response.json();
+                
+                showStatus('✅ Analysis complete! Generated comprehensive report (ID: ' + data.report_id + ')', 'success');
+                
+                reportDiv.textContent = data.report;
+                reportDiv.style.display = 'block';
+                reportDiv.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                
+             
