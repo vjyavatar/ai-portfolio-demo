@@ -135,8 +135,12 @@ nav{position:sticky;top:0;z-index:100;backdrop-filter:blur(24px);-webkit-backdro
 .cc2{height:200px}
 
 /* SECTIONS */
-.sc{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:28px;margin-bottom:16px;backdrop-filter:blur(10px);transition:all .4s;opacity:0;transform:translateY(16px)}
+.sc{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:28px;margin-bottom:16px;backdrop-filter:blur(10px);transition:all .4s;opacity:0;transform:translateY(16px);max-height:480px;overflow-y:auto}
 .sc.vis{opacity:1;transform:translateY(0)}.sc:hover{border-color:var(--border2)}
+.sc::-webkit-scrollbar{width:5px}.sc::-webkit-scrollbar-track{background:transparent;border-radius:3px}.sc::-webkit-scrollbar-thumb{background:rgba(59,130,246,.2);border-radius:3px}.sc::-webkit-scrollbar-thumb:hover{background:rgba(59,130,246,.4)}
+.sc.tall{max-height:560px}
+.sc.xtall{max-height:640px}
+.sind{position:sticky;bottom:0;text-align:center;font-size:10px;letter-spacing:.8px;text-transform:uppercase;color:var(--blue);padding:10px 0 2px;background:linear-gradient(transparent,rgba(11,17,32,.9) 50%);transition:opacity .3s;pointer-events:none;margin:0 -28px;padding-left:28px;padding-right:28px}
 .sh{display:flex;align-items:center;gap:10px;margin-bottom:20px}
 .si{width:38px;height:38px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0}
 .st{font-family:'Sora',sans-serif;font-size:16px;font-weight:700;letter-spacing:-.2px}
@@ -455,8 +459,23 @@ document.getElementById('report').classList.add('show');
 setTimeout(()=>document.getElementById('report').scrollIntoView({behavior:'smooth',block:'start'}),200);
 setTimeout(animSections,400)}
 
-function animSections(){const obs=new IntersectionObserver(e=>{e.forEach(x=>{if(x.isIntersecting){x.target.classList.add('vis');obs.unobserve(x.target)}})},{threshold:.08});
-document.querySelectorAll('.sc:not(.vis)').forEach(c=>obs.observe(c))}
+function animSections(){
+const obs=new IntersectionObserver(e=>{e.forEach(x=>{if(x.isIntersecting){x.target.classList.add('vis');obs.unobserve(x.target)}})},{threshold:.08});
+document.querySelectorAll('.sc:not(.vis)').forEach(c=>obs.observe(c));
+// Add scroll indicators to overflowing sections
+setTimeout(()=>{
+document.querySelectorAll('.sc').forEach(el=>{
+if(el.scrollHeight>el.clientHeight+20){
+const ind=document.createElement('div');
+ind.className='sind';
+ind.innerHTML='\u2193 scroll for more';
+el.appendChild(ind);
+el.addEventListener('scroll',function(){
+const atBottom=this.scrollHeight-this.scrollTop<=this.clientHeight+30;
+ind.style.opacity=atBottom?'0':'1';
+},{passive:true});
+}});
+},600)}
 
 function createAnalysisSections(report,d){
 const curr=d.currency==='INR'?'\u20B9':'$',price=d.current_price,pe=parseFloat(d.pe_ratio)||0;
@@ -480,7 +499,7 @@ const html=`
 </ul></div>
 
 <!-- VALUATION TABLE (FULL) -->
-<div class="sc"><div class="sh"><div class="si" style="background:rgba(59,130,246,.1)">&#9678;</div><div class="st" style="color:var(--blue)">Are You Overpaying? Deep Valuation X-Ray</div></div>
+<div class="sc tall"><div class="sh"><div class="si" style="background:rgba(59,130,246,.1)">&#9678;</div><div class="st" style="color:var(--blue)">Are You Overpaying? Deep Valuation X-Ray</div></div>
 <p style="font-size:12px;color:var(--text3);margin-bottom:14px">Every number decoded. No jargon. Just straight answers on whether this price makes sense:</p>
 <table class="dt"><tr><th>Metric</th><th>Value</th><th>Signal</th><th>What This Means For You</th></tr>
 <tr><td><strong>P/E Ratio</strong><br><span style="font-size:10px;color:var(--text3)">Price-to-Earnings</span></td><td style="font-family:var(--mono);font-weight:700;font-size:16px">${d.pe_ratio}</td>
@@ -533,7 +552,7 @@ const html=`
 </table></div>
 
 <!-- AI ANALYSIS -->
-<div class="sc"><div class="sh"><div class="si" style="background:rgba(59,130,246,.1)">\u26A1</div><div class="st" style="color:var(--blue)">The Full Picture \u2014 What Most Sites Won't Tell You</div></div>
+<div class="sc xtall"><div class="sh"><div class="si" style="background:rgba(59,130,246,.1)">\u26A1</div><div class="st" style="color:var(--blue)">The Full Picture \u2014 What Most Sites Won't Tell You</div></div>
 <div class="ic bl"><h5>Where This Company Stands in the Market</h5><p>${d.company_name||d.ticker} operates in ${d.sector} (${d.industry}). Trading at ${curr}${price.toLocaleString()}, at ${((price/d.week52_high)*100).toFixed(0)}% of 52-week high. Market cap: ${formatCap(d.market_cap)} \u2014 ${d.market_cap>100e9?'large-cap':d.market_cap>10e9?'mid-cap':'small-cap'}.</p></div>
 <div class="ic am"><h5>Is This Company Actually Making Money?</h5><p>Profit margin: ${d.profit_margin}% \u00B7 Operating margin: ${d.operating_margin}% \u00B7 ROE: ${d.roe}% \u2014 ${parseFloat(d.roe)>15?'strong':'moderate'} capital efficiency. P/E of ${d.pe_ratio} suggests ${pe<15?'undervaluation':pe<25?'fair value':'premium'}. Dividend: ${d.dividend_yield}%.</p></div>
 <div class="ic gr"><h5>Which Way Is the Price Heading?</h5><p>${d.price_change>=0?'Positive':'Negative'} momentum today (${Math.abs(d.price_change_pct).toFixed(2)}%). ${price<d.week52_low*1.1?'Near 52-week lows \u2014 potential value entry':price>d.week52_high*0.9?'Near highs \u2014 strong momentum but watch resistance':'Mid-range \u2014 balanced risk-reward'}. Beta: ${d.beta}.</p></div>
@@ -546,7 +565,7 @@ const html=`
 </div></div>
 
 <!-- SMALL CAPS -->
-<div class="sc"><div class="sh"><div class="si" style="background:rgba(245,158,11,.1)">\u2605</div><div class="st" style="color:var(--amber)">Hidden Gems \u2014 Small-Caps That Could 10x in 10 Years</div></div>
+<div class="sc tall"><div class="sh"><div class="si" style="background:rgba(245,158,11,.1)">\u2605</div><div class="st" style="color:var(--amber)">Hidden Gems \u2014 Small-Caps That Could 10x in 10 Years</div></div>
 <p style="font-size:12px;color:var(--text3);margin-bottom:14px">These under-the-radar picks in <strong id="smallCapSector" style="color:var(--amber)">${d.sector}</strong> could be the next blue chips. The kind of stocks you wish you bought 10 years ago:</p>
 <div id="smallCapTable"></div>
 <div class="ic am" style="margin-top:14px"><p><strong>Real talk:</strong> Small-caps are high risk, high reward. These are in the same sector as <strong id="smallCapTicker">${d.ticker}</strong>. Only invest what you can afford to lose. Spread across 5\u20138 picks. Think 10+ years, not 10 days.</p></div>
