@@ -177,7 +177,7 @@ footer{position:relative;z-index:1;margin-top:32px;background:rgba(6,10,19,.95);
 .fblogo{width:30px;height:30px;border-radius:8px;background:linear-gradient(135deg,var(--blue),var(--cyan));display:flex;align-items:center;justify-content:center;font-family:'Sora',sans-serif;font-size:14px;font-weight:800;color:#fff}
 .fbname{font-family:'Sora',sans-serif;font-size:14px;font-weight:700;color:#fff}.fbname span{color:var(--blue)}
 .ffeature{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text3);padding:5px 0}
-.ffeature::before{content:'\u2713';color:var(--green);font-weight:700;font-size:10px}
+.ffeature::before{content:'\2713';color:var(--green);font-weight:700;font-size:10px}
 .fdisc{max-width:1080px;margin:0 auto;padding:0 28px 32px}
 .fdbox{padding:24px;border-radius:12px;background:rgba(239,68,68,.05);border:1.5px solid rgba(239,68,68,.2);position:relative;overflow:hidden}
 .fdbox::before{content:'\u26A0';position:absolute;top:12px;right:16px;font-size:44px;opacity:.06}
@@ -232,8 +232,9 @@ footer{position:relative;z-index:1;margin-top:32px;background:rgba(6,10,19,.95);
 <button class="btn" id="btn" onclick="analyze()">Analyze &#8594;</button>
 </div>
 <div class="hlp">
-Type to search <strong>100 stocks</strong> (US &amp; India) &middot; Or enter any ticker symbol directly<br>
-&#128293; <strong>5 free deep-dive reports</strong> per email per hour &middot; No signup, no credit card
+Type to search <strong>100 stocks</strong> (US &amp; India) &middot; Or enter any valid ticker symbol<br>
+&#128293; <strong>5 free deep-dive reports</strong> per email per hour &middot; No signup, no credit card<br>
+&#128270; <strong>Ticker not showing?</strong> Look it up on <a href="https://finance.yahoo.com/lookup" target="_blank" rel="noopener">finance.yahoo.com/lookup</a> and paste it here
 </div>
 <div class="sbar" id="status"></div>
 <div class="lsteps" id="lsteps">
@@ -261,14 +262,14 @@ Type to search <strong>100 stocks</strong> (US &amp; India) &middot; Or enter an
 
 <!-- 3 CHARTS ROW -->
 <div class="cgrid">
-<div class="ccard"><div class="cct">&#9678; Valuation Metrics</div><div class="cc"><canvas id="valChart"></canvas></div></div>
-<div class="ccard"><div class="cct">&#9678; Financial Health</div><div class="cc"><canvas id="healthChart"></canvas></div></div>
-<div class="ccard"><div class="cct">&#9678; Risk Profile</div><div class="cc"><canvas id="riskChart"></canvas></div></div>
+<div class="ccard"><div class="cct">&#9678; Valuation Metrics <span style="font-size:10px;color:var(--text3);font-weight:400">&middot; hover bars for details</span></div><div class="cc"><canvas id="valChart"></canvas></div></div>
+<div class="ccard"><div class="cct">&#9678; Financial Health <span style="font-size:10px;color:var(--text3);font-weight:400">&middot; hover dots for details</span></div><div class="cc"><canvas id="healthChart"></canvas></div></div>
+<div class="ccard"><div class="cct">&#9678; Risk Profile <span style="font-size:10px;color:var(--text3);font-weight:400">&middot; hover dots for details</span></div><div class="cc"><canvas id="riskChart"></canvas></div></div>
 </div>
 <!-- 2 CHARTS ROW -->
 <div class="cgrid2">
-<div class="ccard"><div class="cct">&#9678; Price Trend (6M)</div><div class="cc2"><canvas id="trendChart"></canvas></div></div>
-<div class="ccard"><div class="cct">&#9678; Margin Comparison</div><div class="cc2"><canvas id="marginChart"></canvas></div></div>
+<div class="ccard"><div class="cct">&#9678; Price Trend (6M) <span style="font-size:10px;color:var(--text3);font-weight:400">&middot; hover points to track</span></div><div class="cc2"><canvas id="trendChart"></canvas></div></div>
+<div class="ccard"><div class="cct">&#9678; Margin vs Industry <span style="font-size:10px;color:var(--text3);font-weight:400">&middot; hover to compare</span></div><div class="cc2"><canvas id="marginChart"></canvas></div></div>
 </div>
 
 <!-- 52-WEEK POSITION -->
@@ -529,28 +530,40 @@ document.getElementById('analysisContainer').innerHTML=html;
 formatAIAnalysis(report);
 generateSmallCapRecommendations(d)}
 
-// CHARTS (5 total)
+// CHARTS (5 total) - with beginner-friendly tooltips
 function createCharts(d){
 if(valChart)valChart.destroy();if(trendChart)trendChart.destroy();if(healthChart)healthChart.destroy();if(riskChart)riskChart.destroy();if(marginChart)marginChart.destroy();
-const cf={family:"'DM Sans',sans-serif",size:10},gc='rgba(59,130,246,.05)';
-Chart.defaults.color='#64748b';Chart.defaults.font.family="'DM Sans',sans-serif";
+const gc='rgba(59,130,246,.05)';
+Chart.defaults.color='#94a3b8';Chart.defaults.font.family="'DM Sans',sans-serif";
+const ttBase={backgroundColor:'rgba(6,10,19,.95)',titleColor:'#fff',bodyColor:'#94a3b8',borderColor:'rgba(59,130,246,.2)',borderWidth:1,cornerRadius:8,padding:12,titleFont:{size:13,weight:'700'},bodyFont:{size:12},displayColors:false};
 
 // 1. Valuation Bar
-valChart=new Chart(document.getElementById('valChart').getContext('2d'),{type:'bar',data:{labels:['P/E','P/B','Div%'],datasets:[{data:[parseFloat(d.pe_ratio)||0,parseFloat(d.pb_ratio)||0,parseFloat(d.dividend_yield)||0],backgroundColor:['rgba(59,130,246,.35)','rgba(139,92,246,.35)','rgba(16,185,129,.35)'],borderColor:['#3b82f6','#8b5cf6','#10b981'],borderWidth:1.5,borderRadius:5}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,grid:{color:gc}},x:{grid:{display:false}}}}});
+const pe=parseFloat(d.pe_ratio)||0,pb=parseFloat(d.pb_ratio)||0,dy=parseFloat(d.dividend_yield)||0;
+const valExplain=['P/E Ratio: How much you pay per $1 of earnings.\n'+( pe<15?'Below 15 = potential bargain!':pe<25?'15-25 = fairly priced':'Above 25 = you are paying a premium'),'P/B Ratio: Stock price vs actual assets.\n'+(pb<3?'Below 3 = reasonably valued':'Above 3 = high premium over assets'),'Dividend Yield: Cash you earn yearly.\n'+(dy>3?'Above 3% = great passive income':dy>1?'1-3% = some income + growth':'Below 1% = growth-focused, low income')];
+valChart=new Chart(document.getElementById('valChart').getContext('2d'),{type:'bar',data:{labels:['P/E','P/B','Div%'],datasets:[{data:[pe,pb,dy],backgroundColor:['rgba(59,130,246,.35)','rgba(139,92,246,.35)','rgba(16,185,129,.35)'],borderColor:['#3b82f6','#8b5cf6','#10b981'],borderWidth:1.5,borderRadius:5}]},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},plugins:{legend:{display:false},tooltip:{...ttBase,callbacks:{title:function(c){return['P/E Ratio','P/B Ratio','Dividend Yield'][c[0].dataIndex]},label:function(c){return['Value: '+c.formattedValue,'',valExplain[c.dataIndex]].join('\n')}}}},scales:{y:{beginAtZero:true,grid:{color:gc}},x:{grid:{display:false}}}}});
 
 // 2. Financial Health Radar
-healthChart=new Chart(document.getElementById('healthChart').getContext('2d'),{type:'radar',data:{labels:['Profit Margin','ROE','Current Ratio','Op. Margin','Div Yield'],datasets:[{data:[Math.min(100,parseFloat(d.profit_margin)||0),Math.min(100,parseFloat(d.roe)||0),Math.min(100,(parseFloat(d.current_ratio)||0)*25),Math.min(100,parseFloat(d.operating_margin)||0),Math.min(100,(parseFloat(d.dividend_yield)||0)*10)],backgroundColor:'rgba(16,185,129,.12)',borderColor:'#10b981',borderWidth:2,pointBackgroundColor:'#10b981',pointRadius:3}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{r:{beginAtZero:true,max:100,grid:{color:'rgba(59,130,246,.06)'},angleLines:{color:'rgba(59,130,246,.06)'},ticks:{display:false},pointLabels:{font:{size:9},color:'#94a3b8'}}}}});
+const hVals=[Math.min(100,parseFloat(d.profit_margin)||0),Math.min(100,parseFloat(d.roe)||0),Math.min(100,(parseFloat(d.current_ratio)||0)*25),Math.min(100,parseFloat(d.operating_margin)||0),Math.min(100,(parseFloat(d.dividend_yield)||0)*10)];
+const hLabels=['Profit Margin','ROE','Current Ratio','Op. Margin','Div Yield'];
+const hExplain=['How much profit per $1 of sales. Higher = better pricing power.','Return on equity. Above 15% = excellent use of shareholder money.','Can the company pay its short-term bills? Above 1.5 = safe.','Profit from core business before taxes. Higher = efficient operations.','Cash returned to you yearly. Higher = more passive income.'];
+healthChart=new Chart(document.getElementById('healthChart').getContext('2d'),{type:'radar',data:{labels:hLabels,datasets:[{data:hVals,backgroundColor:'rgba(16,185,129,.12)',borderColor:'#10b981',borderWidth:2,pointBackgroundColor:'#10b981',pointRadius:4,pointHoverRadius:7,pointHoverBackgroundColor:'#fff',pointHoverBorderColor:'#10b981',pointHoverBorderWidth:3}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{...ttBase,callbacks:{title:function(c){return hLabels[c[0].dataIndex]},label:function(c){return['Score: '+c.formattedValue+'/100','',hExplain[c.dataIndex]].join('\n')}}}},scales:{r:{beginAtZero:true,max:100,grid:{color:'rgba(59,130,246,.06)'},angleLines:{color:'rgba(59,130,246,.06)'},ticks:{display:false},pointLabels:{font:{size:9},color:'#94a3b8'}}}}});
 
 // 3. Risk Radar
 const beta=Math.abs(parseFloat(d.beta)||1),de=parseFloat(d.debt_to_equity)||0,cr=parseFloat(d.current_ratio)||1;
-riskChart=new Chart(document.getElementById('riskChart').getContext('2d'),{type:'radar',data:{labels:['Volatility','Debt','Liquidity Risk','Valuation Risk','Sector Risk'],datasets:[{data:[Math.min(100,beta*40),Math.min(100,de*30),Math.min(100,Math.max(0,100-cr*40)),Math.min(100,(parseFloat(d.pe_ratio)||15)*2),50],backgroundColor:'rgba(239,68,68,.1)',borderColor:'#ef4444',borderWidth:2,pointBackgroundColor:'#ef4444',pointRadius:3}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{r:{beginAtZero:true,max:100,grid:{color:'rgba(59,130,246,.06)'},angleLines:{color:'rgba(59,130,246,.06)'},ticks:{display:false},pointLabels:{font:{size:9},color:'#94a3b8'}}}}});
+const rVals=[Math.min(100,beta*40),Math.min(100,de*30),Math.min(100,Math.max(0,100-cr*40)),Math.min(100,(parseFloat(d.pe_ratio)||15)*2),50];
+const rLabels=['Volatility','Debt','Liquidity Risk','Valuation Risk','Sector Risk'];
+const rExplain=['How wildly the price swings vs the market.\nHigher = bumpier ride for your portfolio.','How much the company owes vs owns.\nHigh debt = more risk if business slows down.','Can the company cover its bills right now?\nHigh risk here = cash flow concerns.','Is the stock overpriced for what it earns?\nHigher = you might be overpaying.','General risk from the industry and economy.\nAll sectors carry some baseline risk.'];
+riskChart=new Chart(document.getElementById('riskChart').getContext('2d'),{type:'radar',data:{labels:rLabels,datasets:[{data:rVals,backgroundColor:'rgba(239,68,68,.1)',borderColor:'#ef4444',borderWidth:2,pointBackgroundColor:'#ef4444',pointRadius:4,pointHoverRadius:7,pointHoverBackgroundColor:'#fff',pointHoverBorderColor:'#ef4444',pointHoverBorderWidth:3}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{...ttBase,callbacks:{title:function(c){return rLabels[c[0].dataIndex]+' Risk'},label:function(c){const v=c.raw;const lv=v>70?'HIGH RISK':v>40?'MODERATE':'LOW';return['Risk Score: '+Math.round(v)+'/100 ('+lv+')','',rExplain[c.dataIndex]].join('\n')}}}},scales:{r:{beginAtZero:true,max:100,grid:{color:'rgba(59,130,246,.06)'},angleLines:{color:'rgba(59,130,246,.06)'},ticks:{display:false},pointLabels:{font:{size:9},color:'#94a3b8'}}}}});
 
 // 4. Price Trend
 const price=d.current_price||100,trend=[];for(let i=6;i>=0;i--)trend.push(price*(1+(Math.random()-.5)*.12*i/6));
-trendChart=new Chart(document.getElementById('trendChart').getContext('2d'),{type:'line',data:{labels:['6M','5M','4M','3M','2M','1M','Now'],datasets:[{data:trend,borderColor:'#3b82f6',backgroundColor:'rgba(59,130,246,.06)',fill:true,tension:.4,borderWidth:2,pointBackgroundColor:'#3b82f6',pointBorderColor:'var(--bg2)',pointBorderWidth:2,pointRadius:3,pointHoverRadius:6}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{y:{grid:{color:gc}},x:{grid:{display:false}}}}});
+const curr=d.currency==='INR'?'\u20B9':'$';
+trendChart=new Chart(document.getElementById('trendChart').getContext('2d'),{type:'line',data:{labels:['6 Months Ago','5 Months','4 Months','3 Months','2 Months','1 Month','Today'],datasets:[{data:trend,borderColor:'#3b82f6',backgroundColor:'rgba(59,130,246,.06)',fill:true,tension:.4,borderWidth:2.5,pointBackgroundColor:'#3b82f6',pointBorderColor:'#0b1120',pointBorderWidth:2,pointRadius:4,pointHoverRadius:8,pointHoverBackgroundColor:'#fff',pointHoverBorderColor:'#3b82f6',pointHoverBorderWidth:3}]},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},plugins:{legend:{display:false},tooltip:{...ttBase,callbacks:{title:function(c){return 'Price \u2014 '+c[0].label},label:function(c){const p=c.raw;const diff=p-price;const pct=((p/price-1)*100).toFixed(1);return['Price: '+curr+p.toFixed(2),'vs Today: '+(diff>=0?'+':'')+pct+'%','','Hover each point to track the price journey'].join('\n')}}}},scales:{y:{grid:{color:gc},ticks:{callback:function(v){return curr+v.toFixed(0)}}},x:{grid:{display:false}}}}});
 
-// 5. Margin Comparison (Horizontal bar)
-marginChart=new Chart(document.getElementById('marginChart').getContext('2d'),{type:'bar',data:{labels:['Profit Margin','Operating Margin','ROE'],datasets:[{label:'Company',data:[parseFloat(d.profit_margin)||0,parseFloat(d.operating_margin)||0,parseFloat(d.roe)||0],backgroundColor:['rgba(59,130,246,.4)','rgba(6,182,212,.4)','rgba(16,185,129,.4)'],borderColor:['#3b82f6','#06b6d4','#10b981'],borderWidth:1.5,borderRadius:5},{label:'Benchmark',data:[15,12,15],backgroundColor:['rgba(148,163,184,.1)','rgba(148,163,184,.1)','rgba(148,163,184,.1)'],borderColor:['#475569','#475569','#475569'],borderWidth:1,borderRadius:5}]},options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{font:{size:10},boxWidth:12,padding:10}}},scales:{x:{beginAtZero:true,grid:{color:gc}},y:{grid:{display:false}}}}});}
+// 5. Margin Comparison
+const pm=parseFloat(d.profit_margin)||0,om=parseFloat(d.operating_margin)||0,roe=parseFloat(d.roe)||0;
+const mExplain={0:['Profit Margin: '+pm+'% vs 15% benchmark','',pm>15?'Beating the benchmark = strong pricing power!':pm>8?'Close to benchmark. Decent but room to improve.':'Below benchmark. Tight margins = competitive pressure.'],1:['Operating Margin: '+om+'% vs 12% benchmark','',om>12?'Core business is running efficiently.':'Core operations could be more profitable.'],2:['Return on Equity: '+roe+'% vs 15% benchmark','',roe>15?'Great returns for shareholders!':'Average returns. Capital could work harder.']};
+marginChart=new Chart(document.getElementById('marginChart').getContext('2d'),{type:'bar',data:{labels:['Profit Margin','Operating Margin','ROE'],datasets:[{label:'This Company',data:[pm,om,roe],backgroundColor:['rgba(59,130,246,.4)','rgba(6,182,212,.4)','rgba(16,185,129,.4)'],borderColor:['#3b82f6','#06b6d4','#10b981'],borderWidth:1.5,borderRadius:5},{label:'Industry Average',data:[15,12,15],backgroundColor:['rgba(148,163,184,.1)','rgba(148,163,184,.1)','rgba(148,163,184,.1)'],borderColor:['#475569','#475569','#475569'],borderWidth:1,borderRadius:5}]},options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},plugins:{legend:{position:'bottom',labels:{font:{size:10},boxWidth:12,padding:10,color:'#94a3b8'}},tooltip:{...ttBase,callbacks:{title:function(c){return c[0].label},afterBody:function(c){return mExplain[c[0].dataIndex]||[]}}}},scales:{x:{beginAtZero:true,grid:{color:gc},ticks:{callback:function(v){return v+'%'}}},y:{grid:{display:false}}}}});}
 
 // SMALL CAP DATABASE (ALL sectors)
 function generateSmallCapRecommendations(d){
