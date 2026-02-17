@@ -56,8 +56,8 @@ document.addEventListener('copy',e=>e.preventDefault());
 document.addEventListener('cut',e=>e.preventDefault());
 </script>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=Sora:wght@600;700;800&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/chart.js">
-
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
 // Anti-copy protection
 document.addEventListener('contextmenu',e=>e.preventDefault());
 document.addEventListener('keydown',e=>{if(e.ctrlKey&&(e.key==='u'||e.key==='s'||e.key==='c'||e.key==='a'||e.key==='p'))e.preventDefault();if(e.key==='F12')e.preventDefault()});
@@ -252,9 +252,65 @@ footer{position:relative;z-index:1;margin-top:32px;background:rgba(6,10,19,.95);
 @media(max-width:768px){.irow{grid-template-columns:1fr}.mgrid{grid-template-columns:1fr 1fr}.cgrid,.cgrid2{grid-template-columns:1fr}.hero{padding:40px 16px 32px}.ncenter,.nright{display:none}.sc{padding:20px 16px}.ftop{grid-template-columns:1fr;gap:24px}.fbot{flex-direction:column;text-align:center}}
 @media(max-width:480px){.mgrid{grid-template-columns:1fr}.hbadges{flex-direction:column;align-items:center}}
 
+/* FLOATING FEEDBACK PANEL */
+.fab{position:fixed;bottom:24px;right:24px;z-index:200;display:flex;align-items:center;gap:6px;padding:10px 20px;border-radius:100px;font-size:13px;font-weight:700;color:#fff;background:linear-gradient(135deg,var(--blue2),var(--purple));cursor:pointer;box-shadow:0 4px 20px rgba(59,130,246,.3);transition:all .3s;border:none;font-family:'DM Sans',sans-serif;letter-spacing:.2px}
+.fab:hover{transform:translateY(-3px) scale(1.03);box-shadow:0 8px 30px rgba(59,130,246,.4)}
+.fab .pulse{width:8px;height:8px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green);animation:pdot 2s infinite}
+
+/* Slide panel */
+.fpanel{position:fixed;top:0;right:-480px;width:460px;max-width:92vw;height:100vh;z-index:300;background:var(--bg2);border-left:1px solid var(--border2);overflow-y:auto;transition:right .4s cubic-bezier(.16,1,.3,1);box-shadow:-8px 0 40px rgba(0,0,0,.5)}
+.fpanel.open{right:0}
+.fpanel::-webkit-scrollbar{width:5px}.fpanel::-webkit-scrollbar-thumb{background:rgba(59,130,246,.2);border-radius:3px}
+.fphdr{position:sticky;top:0;z-index:1;padding:20px 24px;background:rgba(11,17,32,.95);backdrop-filter:blur(16px);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+.fphdr h3{font-family:'Sora',sans-serif;font-size:16px;font-weight:800;background:linear-gradient(135deg,var(--amber),var(--purple));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.fpclose{width:32px;height:32px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--text3);font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .2s}
+.fpclose:hover{background:rgba(239,68,68,.1);color:var(--red);border-color:rgba(239,68,68,.2)}
+.fpbody{padding:20px 24px 32px}
+.fpbody .sub{font-size:13px;color:var(--text2);line-height:1.7;margin-bottom:24px}
+
+/* Feature cards (panel version) */
+.pfcard{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:10px;transition:all .3s}
+.pfcard:hover{border-color:var(--border2)}
+.pfcard .pfrow{display:flex;align-items:flex-start;gap:12px}
+.pfcard .pficon{font-size:24px;flex-shrink:0;width:40px;height:40px;border-radius:10px;display:flex;align-items:center;justify-content:center;background:rgba(59,130,246,.05)}
+.pfcard .pfinfo{flex:1;min-width:0}
+.pfcard .pfname{font-family:'Sora',sans-serif;font-size:13px;font-weight:700;color:#fff;margin-bottom:3px;display:flex;align-items:center;gap:6px}
+.pfcard .pfdesc{font-size:11px;color:var(--text3);line-height:1.6}
+.pfcard .ftag{display:inline-block;font-size:8px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;padding:2px 7px;border-radius:100px}
+.ftag.hot{background:rgba(239,68,68,.1);color:var(--red);border:1px solid rgba(239,68,68,.15)}
+.ftag.new{background:rgba(16,185,129,.1);color:var(--green);border:1px solid rgba(16,185,129,.15)}
+.ftag.pro{background:rgba(139,92,246,.1);color:var(--purple);border:1px solid rgba(139,92,246,.15)}
+
+/* Vote buttons */
+.pvbtns{display:flex;gap:6px;margin-top:10px}
+.pvbtn{display:flex;align-items:center;gap:4px;padding:5px 12px;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;transition:all .2s;border:1px solid var(--border);background:transparent;color:var(--text3);font-family:'DM Sans',sans-serif}
+.pvbtn:hover{transform:scale(1.05)}
+.pvbtn.up:hover,.pvbtn.up.voted{background:rgba(16,185,129,.1);border-color:rgba(16,185,129,.3);color:var(--green)}
+.pvbtn.dn:hover,.pvbtn.dn.voted{background:rgba(239,68,68,.1);border-color:rgba(239,68,68,.3);color:var(--red)}
+.pvbtn .cnt{font-family:var(--mono);font-size:10px}
+.pvbar{margin-top:6px;height:3px;border-radius:2px;background:rgba(148,163,184,.08);overflow:hidden}
+.pvbar .vfill{height:100%;border-radius:2px;background:linear-gradient(90deg,var(--green),var(--blue));transition:width .5s ease}
+
+/* Vote chart in panel */
+.vgp{margin-top:20px;padding:16px;background:var(--surface);border:1px solid var(--border);border-radius:12px}
+.vgp h4{font-family:'Sora',sans-serif;font-size:13px;font-weight:700;color:#fff;margin-bottom:4px;text-align:center}
+.vgp .vsub{font-size:10px;color:var(--text3);text-align:center;margin-bottom:12px}
+.vgp .cc{height:200px}
+
+.sendbox{text-align:center;margin-top:16px}
+.sendbtn{display:inline-flex;align-items:center;gap:6px;padding:9px 20px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;border:1.5px solid rgba(59,130,246,.3);background:rgba(59,130,246,.06);color:var(--blue);transition:all .3s;font-family:'DM Sans',sans-serif;width:100%}
+.sendbtn:hover{background:rgba(59,130,246,.12)}
+
+/* Backdrop */
+.fpbk{position:fixed;inset:0;z-index:250;background:rgba(0,0,0,.5);backdrop-filter:blur(4px);opacity:0;pointer-events:none;transition:opacity .3s}
+.fpbk.open{opacity:1;pointer-events:auto}
+
+@media(max-width:768px){.fab{bottom:16px;right:16px;padding:8px 16px;font-size:12px}}
+
 /* Anti-copy protection */
 body{-webkit-user-select:none;-moz-user-select:none;-ms-user-select:none;user-select:none}
 .ipt,input,textarea{-webkit-user-select:text;-moz-user-select:text;user-select:text}
+
 </style>
 </head>
 <body>
@@ -271,6 +327,7 @@ body{-webkit-user-select:none;-moz-user-select:none;-ms-user-select:none;user-se
 </div>
 <div class="nright">
 <div class="nlive"><div class="ldot"></div> Live Market Data</div>
+
 </div>
 </nav>
 
@@ -285,6 +342,7 @@ body{-webkit-user-select:none;-moz-user-select:none;-ms-user-select:none;user-se
 <div class="hb">&#9651; Risk Scoring</div>
 <div class="hb">&#9733; Hidden Gem Small-Caps</div>
 </div>
+
 </section>
 
 <section class="isection">
@@ -300,6 +358,7 @@ Type to search <strong>100 stocks</strong> (US &amp; India) &middot; Or enter an
 &#128293; <strong>5 free deep-dive reports</strong> per email per hour &middot; No signup, no credit card<br>
 &#128270; <strong>Ticker not showing?</strong> <a href="https://finance.yahoo.com/lookup" target="_blank" rel="noopener">Search for your stock ticker here</a> and paste it above
 </div>
+
 <div class="sbar" id="status"></div>
 <div class="lsteps" id="lsteps">
 <div class="ls" id="s1"><div class="lsi">1</div> Pulling live market data &amp; financials...</div>
@@ -519,7 +578,8 @@ const html=`
 
 <!-- DECISION POINTS -->
 <div class="sc"><div class="sh"><div class="si" style="background:rgba(245,158,11,.1)">&#9651;</div><div class="st" style="color:var(--amber)" id="sec-5things">5 Things You Need to Know Right Now</div></div>
-<div class="sbody"><ul class="dl">
+<div class="sbody">
+<ul class="dl">
 <li><strong>Price Action:</strong> Currently ${curr}${price.toLocaleString()} with ${d.price_change>=0?'positive':'negative'} momentum (${d.price_change_pct.toFixed(2)}%)</li>
 <li><strong>Valuation:</strong> P/E of ${d.pe_ratio} suggests ${pe<15?'undervalued opportunity':pe<25?'fair valuation':'premium pricing'}. Forward P/E: ${d.forward_pe||'N/A'}</li>
 <li><strong>Market Position:</strong> ${formatCap(d.market_cap)} market cap \u2014 ${d.market_cap>100e9?'large-cap':d.market_cap>10e9?'mid-cap':'small-cap'}</li>
@@ -581,6 +641,10 @@ const html=`
 <td style="font-size:12px">${Math.abs(parseFloat(d.beta))>1.5?'Expect bigger price swings':Math.abs(parseFloat(d.beta))<0.8?'Less volatile \u2014 defensive':'Average volatility'}</td></tr>
 <tr><td>Sector</td><td>${d.sector}</td><td><span class="sig n">Monitor</span></td><td style="font-size:12px">Track trends &amp; regulation</td></tr>
 </table></div></div>
+
+<div class="sbody"><div id="earningsCard"></div></div></div>
+
+<div class="sbody"><div id="insiderTable"></div></div></div>
 
 <!-- AI ANALYSIS -->
 <div class="sc"><div class="sh"><div class="si" style="background:rgba(59,130,246,.1)">&#9889;</div><div class="st" style="color:var(--blue)" id="sec-ai">The Full Picture \u2014 What Most Sites Hide</div></div>
@@ -759,11 +823,183 @@ return insights}
 
 function formatCap(c){if(!c)return'N/A';if(c>=1e12)return'$'+(c/1e12).toFixed(2)+'T';if(c>=1e9)return'$'+(c/1e9).toFixed(2)+'B';if(c>=1e6)return'$'+(c/1e6).toFixed(2)+'M';return'$'+c.toLocaleString()}
 
+// ==========================================
+// FEATURE VOTING SYSTEM
+// ==========================================
+const featureKeys=['pdf','cmp','share','tech','peer','earn','insider','theme'];
+const featureNames=['PDF Export','Compare Stocks','Share (WhatsApp/Email)','Technical Indicators','Peer Comparison','Earnings Countdown','Insider Activity','Dark/Light Theme'];
+const votes={};
+featureKeys.forEach(k=>{votes[k]={up:0,dn:0}});
+let voteChart=null;
+let userVotes={};
+
+function vote(feature,dir,btn){
+// Prevent double-voting same direction on same feature
+const voteKey=feature+(dir>0?'up':'dn');
+const oppKey=feature+(dir>0?'dn':'up');
+if(userVotes[voteKey])return;
+
+// If they voted opposite before, undo it
+if(userVotes[oppKey]){
+const oppDir=dir>0?-1:1;
+votes[feature][oppDir>0?'up':'dn']--;
+const oppBtn=btn.parentElement.querySelector(dir>0?'.dn':'.up');
+oppBtn.classList.remove('voted');
+delete userVotes[oppKey];
+}
+
+// Record vote
+if(dir>0)votes[feature].up++;
+else votes[feature].dn++;
+userVotes[voteKey]=true;
+btn.classList.add('voted');
+
+// Update counters
+document.getElementById(feature+'-up').textContent=votes[feature].up;
+document.getElementById(feature+'-dn').textContent=votes[feature].dn;
+
+// Update bar
+const total=votes[feature].up+votes[feature].dn;
+const pct=total>0?Math.round((votes[feature].up/total)*100):0;
+document.getElementById(feature+'-bar').style.width=pct+'%';
+
+// Update chart
+updateVoteChart();
+
+// Send to backend
+fetch('/api/vote',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({feature:feature,direction:dir})}).catch(()=>{});
+}
+
+function updateVoteChart(){
+if(!voteChart)return;
+voteChart.data.datasets[0].data=featureKeys.map(k=>votes[k].up);
+voteChart.data.datasets[1].data=featureKeys.map(k=>-votes[k].dn);
+voteChart.update('none');
+}
+
+function initVoteChart(){
+const ctx=document.getElementById('voteChart');
+if(!ctx)return;
+voteChart=new Chart(ctx,{
+type:'bar',
+data:{
+labels:featureNames,
+datasets:[
+{label:'Want It',data:featureKeys.map(k=>votes[k].up),backgroundColor:'rgba(16,185,129,0.7)',borderRadius:4,barPercentage:.6},
+{label:'Not Needed',data:featureKeys.map(k=>-votes[k].dn),backgroundColor:'rgba(239,68,68,0.5)',borderRadius:4,barPercentage:.6}
+]
+},
+options:{
+indexAxis:'y',
+responsive:true,
+maintainAspectRatio:false,
+scales:{
+x:{stacked:true,grid:{color:'rgba(148,163,184,0.06)'},ticks:{color:'#64748b',font:{size:10},callback:v=>Math.abs(v)},border:{display:false}},
+y:{stacked:true,grid:{display:false},ticks:{color:'#e2e8f0',font:{family:"'DM Sans',sans-serif",size:11,weight:'600'}},border:{display:false}}
+},
+plugins:{
+legend:{labels:{color:'#94a3b8',font:{size:10},usePointStyle:true,pointStyle:'rectRounded'}},
+tooltip:{callbacks:{label:ctx=>ctx.dataset.label+': '+Math.abs(ctx.raw)}}
+}
+}
+});
+}
+
+function loadVotes(){
+fetch('/api/votes').then(r=>r.json()).then(data=>{
+if(data&&data.votes){
+featureKeys.forEach(k=>{
+if(data.votes[k]){
+votes[k].up=data.votes[k].up||0;
+votes[k].dn=data.votes[k].dn||0;
+document.getElementById(k+'-up').textContent=votes[k].up;
+document.getElementById(k+'-dn').textContent=votes[k].dn;
+const total=votes[k].up+votes[k].dn;
+const pct=total>0?Math.round((votes[k].up/total)*100):0;
+document.getElementById(k+'-bar').style.width=pct+'%';
+}
+});
+updateVoteChart();
+}
+}).catch(()=>{});
+}
+
+function sendVoteResults(){
+let body='SENTINEL AI RESEARCH - Feature Vote Results\n\n';
+const sorted=featureKeys.map((k,i)=>({key:k,name:featureNames[i],up:votes[k].up,dn:votes[k].dn,net:votes[k].up-votes[k].dn})).sort((a,b)=>b.net-a.net);
+sorted.forEach((f,i)=>{
+body+=(i+1)+'. '+f.name+' | Upvotes: '+f.up+' | Downvotes: '+f.dn+' | Net: '+f.net+'\n';
+});
+body+='\nTotal votes cast: '+featureKeys.reduce((s,k)=>s+votes[k].up+votes[k].dn,0);
+body+='\nTimestamp: '+new Date().toISOString();
+const mailto='mailto:support@sentinelai.research?subject='+encodeURIComponent('Feature Vote Results - '+new Date().toLocaleDateString())+'&body='+encodeURIComponent(body);
+window.open(mailto);
+}
+
+// Initialize vote chart on page load
+document.addEventListener('DOMContentLoaded',()=>{initVoteChart();loadVotes()});
+
 // Anti-copy protection
 document.addEventListener('contextmenu',e=>e.preventDefault());
 document.addEventListener('keydown',e=>{if(e.ctrlKey&&(e.key==='u'||e.key==='s'||e.key==='c'||e.key==='a'||e.key==='p'))e.preventDefault();if(e.key==='F12')e.preventDefault()});
 document.addEventListener('copy',e=>e.preventDefault());
 document.addEventListener('cut',e=>e.preventDefault());
 </script>
+
+<!-- FLOATING FEEDBACK BUTTON -->
+<button class="fab" onclick="document.getElementById('fpanel').classList.add('open');document.getElementById('fpbk').classList.add('open')">
+<div class="pulse"></div> What's Next? Vote on Features
+</button>
+
+<!-- BACKDROP -->
+<div class="fpbk" id="fpbk" onclick="document.getElementById('fpanel').classList.remove('open');this.classList.remove('open')"></div>
+
+<!-- SLIDE PANEL -->
+<div class="fpanel" id="fpanel">
+<div class="fphdr">
+<h3>&#128640; What Should We Build Next?</h3>
+<button class="fpclose" onclick="document.getElementById('fpanel').classList.remove('open');document.getElementById('fpbk').classList.remove('open')">&times;</button>
+</div>
+<div class="fpbody">
+<p class="sub">You just got a free analysis worth $50+. Now imagine what happens when we add <em>these</em>. Your vote decides what ships first.</p>
+
+<div class="pfcard"><div class="pfrow"><div class="pficon">&#128196;</div><div class="pfinfo"><div class="pfname">PDF Export <span class="ftag hot">Most Wanted</span></div><div class="pfdesc">Download your full report as a branded PDF. Save it, print it, share it.</div></div></div>
+<div class="pvbtns"><button class="pvbtn up" onclick="vote('pdf',1,this)">&#9650; Want it <span class="cnt" id="pdf-up">0</span></button><button class="pvbtn dn" onclick="vote('pdf',-1,this)">&#9660; Skip <span class="cnt" id="pdf-dn">0</span></button></div><div class="pvbar"><div class="vfill" id="pdf-bar" style="width:0%"></div></div></div>
+
+<div class="pfcard"><div class="pfrow"><div class="pficon">&#9878;&#65039;</div><div class="pfinfo"><div class="pfname">Compare 2 Stocks <span class="ftag hot">Most Wanted</span></div><div class="pfdesc">Side-by-side showdown. Which stock wins on every single metric?</div></div></div>
+<div class="pvbtns"><button class="pvbtn up" onclick="vote('cmp',1,this)">&#9650; Want it <span class="cnt" id="cmp-up">0</span></button><button class="pvbtn dn" onclick="vote('cmp',-1,this)">&#9660; Skip <span class="cnt" id="cmp-dn">0</span></button></div><div class="pvbar"><div class="vfill" id="cmp-bar" style="width:0%"></div></div></div>
+
+<div class="pfcard"><div class="pfrow"><div class="pficon">&#128172;</div><div class="pfinfo"><div class="pfname">WhatsApp &amp; Email Share <span class="ftag new">New</span></div><div class="pfdesc">One tap to share your analysis with friends, family, or your broker.</div></div></div>
+<div class="pvbtns"><button class="pvbtn up" onclick="vote('share',1,this)">&#9650; Want it <span class="cnt" id="share-up">0</span></button><button class="pvbtn dn" onclick="vote('share',-1,this)">&#9660; Skip <span class="cnt" id="share-dn">0</span></button></div><div class="pvbar"><div class="vfill" id="share-bar" style="width:0%"></div></div></div>
+
+<div class="pfcard"><div class="pfrow"><div class="pficon">&#128200;</div><div class="pfinfo"><div class="pfname">Technical Indicators <span class="ftag pro">Pro</span></div><div class="pfdesc">RSI, MACD, Moving Averages &mdash; the tools serious traders use daily.</div></div></div>
+<div class="pvbtns"><button class="pvbtn up" onclick="vote('tech',1,this)">&#9650; Want it <span class="cnt" id="tech-up">0</span></button><button class="pvbtn dn" onclick="vote('tech',-1,this)">&#9660; Skip <span class="cnt" id="tech-dn">0</span></button></div><div class="pvbar"><div class="vfill" id="tech-bar" style="width:0%"></div></div></div>
+
+<div class="pfcard"><div class="pfrow"><div class="pficon">&#127919;</div><div class="pfinfo"><div class="pfname">Peer Comparison <span class="ftag new">New</span></div><div class="pfdesc">Auto-compare vs top 3 competitors in the same sector. Who really wins?</div></div></div>
+<div class="pvbtns"><button class="pvbtn up" onclick="vote('peer',1,this)">&#9650; Want it <span class="cnt" id="peer-up">0</span></button><button class="pvbtn dn" onclick="vote('peer',-1,this)">&#9660; Skip <span class="cnt" id="peer-dn">0</span></button></div><div class="pvbar"><div class="vfill" id="peer-bar" style="width:0%"></div></div></div>
+
+<div class="pfcard"><div class="pfrow"><div class="pficon">&#128197;</div><div class="pfinfo"><div class="pfname">Earnings Countdown <span class="ftag pro">Pro</span></div><div class="pfdesc">Next earnings date + analyst expectations. Never get blindsided again.</div></div></div>
+<div class="pvbtns"><button class="pvbtn up" onclick="vote('earn',1,this)">&#9650; Want it <span class="cnt" id="earn-up">0</span></button><button class="pvbtn dn" onclick="vote('earn',-1,this)">&#9660; Skip <span class="cnt" id="earn-dn">0</span></button></div><div class="pvbar"><div class="vfill" id="earn-bar" style="width:0%"></div></div></div>
+
+<div class="pfcard"><div class="pfrow"><div class="pficon">&#128100;</div><div class="pfinfo"><div class="pfname">Insider Activity <span class="ftag hot">Most Wanted</span></div><div class="pfdesc">Are executives buying or selling their own stock? Follow the smart money.</div></div></div>
+<div class="pvbtns"><button class="pvbtn up" onclick="vote('insider',1,this)">&#9650; Want it <span class="cnt" id="insider-up">0</span></button><button class="pvbtn dn" onclick="vote('insider',-1,this)">&#9660; Skip <span class="cnt" id="insider-dn">0</span></button></div><div class="pvbar"><div class="vfill" id="insider-bar" style="width:0%"></div></div></div>
+
+<div class="pfcard"><div class="pfrow"><div class="pficon">&#127763;</div><div class="pfinfo"><div class="pfname">Dark / Light Theme <span class="ftag new">New</span></div><div class="pfdesc">Switch between dark terminal mode and clean light mode instantly.</div></div></div>
+<div class="pvbtns"><button class="pvbtn up" onclick="vote('theme',1,this)">&#9650; Want it <span class="cnt" id="theme-up">0</span></button><button class="pvbtn dn" onclick="vote('theme',-1,this)">&#9660; Skip <span class="cnt" id="theme-dn">0</span></button></div><div class="pvbar"><div class="vfill" id="theme-bar" style="width:0%"></div></div></div>
+
+<!-- LIVE VOTE CHART -->
+<div class="vgp">
+<h4>&#128202; Live Community Votes</h4>
+<div class="vsub">Real-time ranking &mdash; updated as you vote</div>
+<div class="cc"><canvas id="voteChart"></canvas></div>
+</div>
+
+<div class="sendbox">
+<button class="sendbtn" onclick="sendVoteResults()">&#9993; Send Results to Sentinel AI Team</button>
+<p style="font-size:9px;color:var(--text3);margin-top:6px">Opens your email with vote summary &rarr; support@sentinelai.research</p>
+</div>
+</div>
+</div>
+
 </body>
 </html>

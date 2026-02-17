@@ -42,6 +42,20 @@ app.add_middleware(
 report_counter = {"count": 0}
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 
+# ═══════════════════════════════════════════════════════════
+# FEATURE VOTING SYSTEM
+# ═══════════════════════════════════════════════════════════
+feature_votes = {
+    "pdf": {"up": 0, "dn": 0},
+    "cmp": {"up": 0, "dn": 0},
+    "share": {"up": 0, "dn": 0},
+    "tech": {"up": 0, "dn": 0},
+    "peer": {"up": 0, "dn": 0},
+    "earn": {"up": 0, "dn": 0},
+    "insider": {"up": 0, "dn": 0},
+    "theme": {"up": 0, "dn": 0},
+}
+
 
 def check_rate_limit(email: str) -> dict:
     """
@@ -599,6 +613,39 @@ Based on real-time price of {currency_symbol}{live_data['current_price']:,.2f}:
         import traceback
         print(f"❌ Report generation error: {traceback.format_exc()}")
         raise HTTPException(500, f"Report generation failed: {str(e)}")
+
+
+@app.post("/api/vote")
+async def cast_vote(request: Request):
+    """Record a feature vote."""
+    try:
+        data = await request.json()
+        feature = data.get("feature", "")
+        direction = data.get("direction", 0)
+        
+        if feature not in feature_votes:
+            raise HTTPException(400, "Invalid feature")
+        
+        if direction > 0:
+            feature_votes[feature]["up"] += 1
+        elif direction < 0:
+            feature_votes[feature]["dn"] += 1
+        
+        return {"success": True, "votes": feature_votes[feature]}
+    except HTTPException:
+        raise
+    except:
+        return {"success": False}
+
+
+@app.get("/api/votes")
+async def get_votes():
+    """Get current vote tallies for all features."""
+    total = sum(v["up"] + v["dn"] for v in feature_votes.values())
+    return {
+        "votes": feature_votes,
+        "total_votes": total
+    }
 
 
 @app.get("/api/stats")
