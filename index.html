@@ -32,6 +32,37 @@
 <script type="application/ld+json">
 {"@context":"https://schema.org","@type":"WebApplication","name":"Sentinel AI Research","description":"Free AI-powered stock analysis with real-time market data, valuation metrics, entry/exit strategies, risk assessment, and small-cap recommendations.","url":"https://sentinelai.research","applicationCategory":"FinanceApplication","operatingSystem":"Web","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},"featureList":["Real-time stock data","AI-powered analysis","Entry and exit price targets","Risk scoring","Small-cap recommendations","52-week price mapping","Financial health radar","Margin vs industry comparison"]}
 
+
+// Section nav: show when report visible, highlight active section on scroll
+function initSecNav(){
+const nav=document.getElementById('secNav');
+const btns=nav.querySelectorAll('.snav-btn');
+const sectionIds=['sec-verdict','sec-5things','sec-valuation','sec-entry','sec-risk','sec-ai','sec-gems'];
+
+// Smooth scroll with offset
+btns.forEach(b=>{b.addEventListener('click',e=>{
+e.preventDefault();
+const id=b.getAttribute('href').slice(1);
+const el=document.getElementById(id);
+if(el){const y=el.getBoundingClientRect().top+window.pageYOffset-180;
+window.scrollTo({top:y,behavior:'smooth'})}
+})});
+
+// Highlight active section on scroll
+let ticking=false;
+window.addEventListener('scroll',()=>{
+if(!ticking){requestAnimationFrame(()=>{
+const scrollY=window.scrollY+200;
+let activeIdx=0;
+sectionIds.forEach((id,i)=>{
+const el=document.getElementById(id);
+if(el&&el.getBoundingClientRect().top+window.pageYOffset<=scrollY)activeIdx=i;
+});
+btns.forEach((b,i)=>{b.classList.toggle('active',i===activeIdx)});
+ticking=false});ticking=true}
+},{passive:true});
+}
+
 // Anti-copy protection
 document.addEventListener('contextmenu',e=>e.preventDefault());
 document.addEventListener('keydown',e=>{if(e.ctrlKey&&(e.key==='u'||e.key==='s'||e.key==='c'||e.key==='a'||e.key==='p'))e.preventDefault();if(e.key==='F12')e.preventDefault()});
@@ -40,6 +71,37 @@ document.addEventListener('cut',e=>e.preventDefault());
 </script>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=Sora:wght@600;700;800&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js">
+
+// Section nav: show when report visible, highlight active section on scroll
+function initSecNav(){
+const nav=document.getElementById('secNav');
+const btns=nav.querySelectorAll('.snav-btn');
+const sectionIds=['sec-verdict','sec-5things','sec-valuation','sec-entry','sec-risk','sec-ai','sec-gems'];
+
+// Smooth scroll with offset
+btns.forEach(b=>{b.addEventListener('click',e=>{
+e.preventDefault();
+const id=b.getAttribute('href').slice(1);
+const el=document.getElementById(id);
+if(el){const y=el.getBoundingClientRect().top+window.pageYOffset-180;
+window.scrollTo({top:y,behavior:'smooth'})}
+})});
+
+// Highlight active section on scroll
+let ticking=false;
+window.addEventListener('scroll',()=>{
+if(!ticking){requestAnimationFrame(()=>{
+const scrollY=window.scrollY+200;
+let activeIdx=0;
+sectionIds.forEach((id,i)=>{
+const el=document.getElementById(id);
+if(el&&el.getBoundingClientRect().top+window.pageYOffset<=scrollY)activeIdx=i;
+});
+btns.forEach((b,i)=>{b.classList.toggle('active',i===activeIdx)});
+ticking=false});ticking=true}
+},{passive:true});
+}
+
 // Anti-copy protection
 document.addEventListener('contextmenu',e=>e.preventDefault());
 document.addEventListener('keydown',e=>{if(e.ctrlKey&&(e.key==='u'||e.key==='s'||e.key==='c'||e.key==='a'||e.key==='p'))e.preventDefault();if(e.key==='F12')e.preventDefault()});
@@ -78,7 +140,7 @@ nav{position:sticky;top:0;z-index:100;backdrop-filter:blur(24px);-webkit-backdro
 .hb{display:flex;align-items:center;gap:5px;padding:7px 14px;border-radius:8px;font-size:11px;font-weight:600;letter-spacing:.2px;border:1px solid var(--border);background:var(--glass);color:var(--text2)}
 
 /* INPUT */
-.isection{position:sticky;top:60px;z-index:50;max-width:720px;margin:0 auto;padding:0 20px 48px}
+.isection{position:sticky;top:60px;z-index:45;max-width:720px;margin:0 auto;padding:0 20px 48px}
 .icard{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:28px;backdrop-filter:blur(16px);position:relative;overflow:hidden}
 .icard::before{content:'';position:absolute;top:-1px;left:50%;transform:translateX(-50%);width:100px;height:2px;background:linear-gradient(90deg,transparent,var(--blue),transparent);border-radius:2px}
 .ilabel{font-size:12px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.8px;margin-bottom:16px}
@@ -149,28 +211,22 @@ nav{position:sticky;top:0;z-index:100;backdrop-filter:blur(24px);-webkit-backdro
 /* STICKY INPUT */
 .isection{position:sticky;top:60px;z-index:50}
 
-/* SECTIONS - ACCORDION */
-.sc{background:var(--surface);border:1px solid var(--border);border-radius:14px;margin-bottom:8px;backdrop-filter:blur(10px);transition:all .4s;opacity:0;transform:translateY(16px);overflow:hidden}
+/* SECTIONS - Always open, no accordion */
+.sc{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:0;margin-bottom:12px;backdrop-filter:blur(10px);transition:all .4s;opacity:0;transform:translateY(16px);overflow:visible}
 .sc.vis{opacity:1;transform:translateY(0)}.sc:hover{border-color:var(--border2)}
-.sh{display:flex;align-items:center;gap:10px;padding:18px 24px;cursor:pointer;user-select:none;transition:background .2s}
-.sh:hover{background:rgba(59,130,246,.03)}
+.sh{display:flex;align-items:center;gap:10px;padding:18px 24px 0}
 .si{width:34px;height:34px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0}
 .st{font-family:'Sora',sans-serif;font-size:14px;font-weight:700;letter-spacing:-.2px;flex:1}
-.sarrow{color:var(--text3);font-size:14px;transition:transform .3s;flex-shrink:0}
-.sc.open .sarrow{transform:rotate(180deg)}
-.sbody{max-height:0;overflow:hidden;transition:max-height .4s ease,padding .3s ease;padding:0 24px}
-.sc.open .sbody{max-height:2000px;padding:0 24px 24px;overflow-y:auto}
-.sc.open .sbody::-webkit-scrollbar{width:5px}.sc.open .sbody::-webkit-scrollbar-track{background:transparent}.sc.open .sbody::-webkit-scrollbar-thumb{background:rgba(59,130,246,.2);border-radius:3px}
+.sbody{padding:16px 24px 24px;overflow:visible}
 
-/* Verdict stays always open, no accordion */
-.sc.always{overflow:visible}
-.sc.always .sbody{max-height:none;padding:0 24px 24px;overflow:visible}
-.sc.always .sarrow{display:none}
-.sc.always .sh{cursor:default}
-.sc.always .sh:hover{background:transparent}
-
-.sc.tall .sbody{max-height:0}.sc.tall.open .sbody{max-height:560px;overflow-y:auto}
-.sc.xtall .sbody{max-height:0}.sc.xtall.open .sbody{max-height:640px;overflow-y:auto}
+/* STICKY SECTION NAV */
+.secnav{position:sticky;top:130px;z-index:40;background:rgba(6,10,19,.92);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border-bottom:1px solid var(--border);padding:8px 0;display:none;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+.secnav::-webkit-scrollbar{display:none}
+.secnav.show{display:flex}
+.secnav-inner{display:flex;gap:4px;max-width:1080px;margin:0 auto;padding:0 16px;min-width:max-content}
+.snav-btn{padding:6px 14px;border-radius:100px;font-size:11px;font-weight:600;color:var(--text3);background:rgba(59,130,246,.04);border:1px solid var(--border);cursor:pointer;white-space:nowrap;transition:all .2s;text-decoration:none;display:flex;align-items:center;gap:4px}
+.snav-btn:hover,.snav-btn.active{color:var(--blue);border-color:rgba(59,130,246,.3);background:rgba(59,130,246,.08)}
+.snav-btn span{font-size:9px}
 .sind{position:sticky;bottom:0;text-align:center;font-size:10px;letter-spacing:.8px;text-transform:uppercase;color:var(--blue);padding:10px 0 2px;background:linear-gradient(transparent,rgba(11,17,32,.9) 50%);transition:opacity .3s;pointer-events:none}
 
 /* Verdict */
@@ -247,7 +303,7 @@ footer{position:relative;z-index:1;margin-top:32px;background:rgba(6,10,19,.95);
 .fcopy{font-size:11px;color:var(--text3)}.fcopy strong{color:var(--text2)}
 .flinks{display:flex;gap:16px}.flinks a{font-size:11px;color:var(--text3);text-decoration:none;transition:color .2s}.flinks a:hover{color:var(--blue)}
 
-@media(max-width:768px){.irow{grid-template-columns:1fr}.mgrid{grid-template-columns:1fr 1fr}.cgrid,.cgrid2{grid-template-columns:1fr}.hero{padding:40px 16px 32px}.ncenter,.nright{display:none}.sc{padding:20px 16px}.ftop{grid-template-columns:1fr;gap:24px}.fbot{flex-direction:column;text-align:center}}
+@media(max-width:768px){.secnav-inner{padding:0 10px}.snav-btn{padding:5px 10px;font-size:10px}.irow{grid-template-columns:1fr}.mgrid{grid-template-columns:1fr 1fr}.cgrid,.cgrid2{grid-template-columns:1fr}.hero{padding:40px 16px 32px}.ncenter,.nright{display:none}.sc{padding:20px 16px}.ftop{grid-template-columns:1fr;gap:24px}.fbot{flex-direction:column;text-align:center}}
 @media(max-width:480px){.mgrid{grid-template-columns:1fr}.hbadges{flex-direction:column;align-items:center}}
 
 /* Anti-copy protection */
@@ -313,6 +369,19 @@ Type to search <strong>100 stocks</strong> (US &amp; India) &middot; Or enter an
 </div>
 </div>
 </section>
+
+<!-- STICKY SECTION NAV -->
+<div class="secnav" id="secNav">
+<div class="secnav-inner">
+<a class="snav-btn" href="#sec-verdict"><span>&#9678;</span> Verdict</a>
+<a class="snav-btn" href="#sec-5things"><span>&#9651;</span> Key Facts</a>
+<a class="snav-btn" href="#sec-valuation"><span>&#9678;</span> Valuation</a>
+<a class="snav-btn" href="#sec-entry"><span>&#11041;</span> Buy/Sell</a>
+<a class="snav-btn" href="#sec-risk"><span>&#9888;</span> Risk</a>
+<a class="snav-btn" href="#sec-ai"><span>&#9889;</span> AI Analysis</a>
+<a class="snav-btn" href="#sec-gems"><span>&#9733;</span> Small-Caps</a>
+</div>
+</div>
 
 <section class="rpt" id="report">
 <!-- PRE-REPORT DISCLAIMER -->
@@ -482,7 +551,7 @@ document.getElementById('w52section').innerHTML=`
 <p style="font-size:13px;color:var(--text2);line-height:1.7">${w52pct<25?'<strong style="color:var(--green)">\u25CF Bargain Alert:</strong> Trading near the yearly floor. If the fundamentals are solid (check below), this could be your chance to buy what others are panic-selling.':w52pct>75?'<strong style="color:var(--amber)">\u25CF Hot Streak:</strong> This stock is on fire \u2014 near its yearly peak. Great momentum, but do not chase blindly. Watch for resistance and potential pullbacks.':'<strong style="color:var(--blue)">\u25CF Middle Ground:</strong> Not too hot, not too cold. The stock is sitting in a neutral zone. Look at the fundamentals below to decide your next move.'}</p></div>`;
 
 createCharts(d);createAnalysisSections(data.report,d);
-document.getElementById('report').classList.add('show');
+document.getElementById('report').classList.add('show');document.getElementById('secNav').classList.add('show');initSecNav();
 setTimeout(()=>document.getElementById('report').scrollIntoView({behavior:'smooth',block:'start'}),200);
 setTimeout(animSections,400)}
 
@@ -511,12 +580,12 @@ if(pe>0&&pe<15&&d.price_change_pct>0){verdict='BUY';vc='buy'}else if(pe>40||d.pr
 
 const html=`
 <!-- VERDICT (always open) -->
-<div class="sc always vis" style="text-align:center"><div class="sh" style="justify-content:center"><div class="si" style="background:rgba(16,185,129,.1)">&#9678;</div><div class="st" style="color:var(--green)">Investment Verdict</div></div>
+<div class="sc" style="text-align:center"><div class="sh" style="justify-content:center"><div class="si" style="background:rgba(16,185,129,.1)">&#9678;</div><div class="st" style="color:var(--green)" id="sec-verdict">Investment Verdict</div></div>
 <div class="sbody"><div class="vpill ${vc}">${verdict}</div>
 <p style="margin-top:10px;font-size:13px;color:var(--text2)">${verdict==='BUY'?'The numbers say GO. Looks promising at todays price.':verdict==='SELL'?'Red flags detected. Protect your capital.':'Hold steady. Wait for a clearer signal.'}</p></div></div>
 
 <!-- DECISION POINTS -->
-<div class="sc"><div class="sh" onclick="this.parentElement.classList.toggle('open')"><div class="si" style="background:rgba(245,158,11,.1)">&#9651;</div><div class="st" style="color:var(--amber)">5 Things You Need to Know Right Now</div><div class="sarrow">&#9660;</div></div>
+<div class="sc"><div class="sh"><div class="si" style="background:rgba(245,158,11,.1)">&#9651;</div><div class="st" style="color:var(--amber)" id="sec-5things">5 Things You Need to Know Right Now</div></div>
 <div class="sbody"><ul class="dl">
 <li><strong>Price Action:</strong> Currently ${curr}${price.toLocaleString()} with ${d.price_change>=0?'positive':'negative'} momentum (${d.price_change_pct.toFixed(2)}%)</li>
 <li><strong>Valuation:</strong> P/E of ${d.pe_ratio} suggests ${pe<15?'undervalued opportunity':pe<25?'fair valuation':'premium pricing'}. Forward P/E: ${d.forward_pe||'N/A'}</li>
@@ -526,7 +595,7 @@ const html=`
 </ul></div></div>
 
 <!-- VALUATION TABLE -->
-<div class="sc tall"><div class="sh" onclick="this.parentElement.classList.toggle('open')"><div class="si" style="background:rgba(59,130,246,.1)">&#9678;</div><div class="st" style="color:var(--blue)">Are You Overpaying? Deep Valuation X-Ray</div><div class="sarrow">&#9660;</div></div>
+<div class="sc"><div class="sh"><div class="si" style="background:rgba(59,130,246,.1)">&#9678;</div><div class="st" style="color:var(--blue)" id="sec-valuation">Are You Overpaying? Deep Valuation X-Ray</div></div>
 <div class="sbody">
 <p style="font-size:12px;color:var(--text3);margin-bottom:14px">Every number decoded. No jargon:</p>
 <table class="dt"><tr><th>Metric</th><th>Value</th><th>Signal</th><th>What This Means For You</th></tr>
@@ -554,7 +623,7 @@ const html=`
 </div></div>
 
 <!-- ENTRY & EXIT -->
-<div class="sc"><div class="sh" onclick="this.parentElement.classList.toggle('open')"><div class="si" style="background:rgba(139,92,246,.1)">\u2B21</div><div class="st" style="color:var(--purple)">Exact Buy &amp; Sell Prices \u2014 Your Cheat Sheet</div><div class="sarrow">&#9660;</div></div>
+<div class="sc"><div class="sh"><div class="si" style="background:rgba(139,92,246,.1)">\u2B21</div><div class="st" style="color:var(--purple)" id="sec-entry">Exact Buy &amp; Sell Prices \u2014 Your Cheat Sheet</div></div>
 <div class="sbody">
 <table class="dt"><tr><th>Level</th><th>Price</th><th>% from Current</th><th>Action</th></tr>
 <tr><td>\u25CF Buy Zone</td><td><span class="ptag buy">Below ${curr}${(price*.95).toFixed(2)}</span></td><td style="color:var(--green)">-5%</td><td style="font-size:12px">Accumulate \u2014 build position</td></tr>
@@ -565,7 +634,7 @@ const html=`
 </table></div></div>
 
 <!-- RISK ASSESSMENT -->
-<div class="sc"><div class="sh" onclick="this.parentElement.classList.toggle('open')"><div class="si" style="background:rgba(239,68,68,.1)">&#9888;</div><div class="st" style="color:var(--red)">What Could Go Wrong \u2014 Risk Reality Check</div><div class="sarrow">&#9660;</div></div>
+<div class="sc"><div class="sh"><div class="si" style="background:rgba(239,68,68,.1)">&#9888;</div><div class="st" style="color:var(--red)" id="sec-risk">What Could Go Wrong \u2014 Risk Reality Check</div></div>
 <div class="sbody">
 <table class="dt"><tr><th>Factor</th><th>Metric</th><th>Signal</th><th>Assessment</th></tr>
 <tr><td>Debt Level</td><td style="font-family:var(--mono);font-weight:600">${d.debt_to_equity}</td>
@@ -581,7 +650,7 @@ const html=`
 </table></div></div>
 
 <!-- AI ANALYSIS -->
-<div class="sc xtall"><div class="sh" onclick="this.parentElement.classList.toggle('open')"><div class="si" style="background:rgba(59,130,246,.1)">&#9889;</div><div class="st" style="color:var(--blue)">The Full Picture \u2014 What Most Sites Hide</div><div class="sarrow">&#9660;</div></div>
+<div class="sc"><div class="sh"><div class="si" style="background:rgba(59,130,246,.1)">&#9889;</div><div class="st" style="color:var(--blue)" id="sec-ai">The Full Picture \u2014 What Most Sites Hide</div></div>
 <div class="sbody">
 <div class="ic bl"><h5>Market Position</h5><p>${d.company_name||d.ticker} in ${d.sector} (${d.industry}). At ${curr}${price.toLocaleString()}, ${((price/d.week52_high)*100).toFixed(0)}% of 52-week high. Cap: ${formatCap(d.market_cap)} \u2014 ${d.market_cap>100e9?'large-cap':d.market_cap>10e9?'mid-cap':'small-cap'}.</p></div>
 <div class="ic am"><h5>Making Money?</h5><p>Profit: ${d.profit_margin}% \u00B7 Operating: ${d.operating_margin}% \u00B7 ROE: ${d.roe}%. P/E of ${d.pe_ratio} = ${pe<15?'undervalued':pe<25?'fair value':'premium'}. Dividend: ${d.dividend_yield}%.</p></div>
@@ -595,7 +664,7 @@ const html=`
 </div></div></div>
 
 <!-- SMALL CAPS -->
-<div class="sc tall"><div class="sh" onclick="this.parentElement.classList.toggle('open')"><div class="si" style="background:rgba(245,158,11,.1)">\u2605</div><div class="st" style="color:var(--amber)">Hidden Gems \u2014 Small-Caps That Could 10x</div><div class="sarrow">&#9660;</div></div>
+<div class="sc"><div class="sh"><div class="si" style="background:rgba(245,158,11,.1)">\u2605</div><div class="st" style="color:var(--amber)" id="sec-gems">Hidden Gems \u2014 Small-Caps That Could 10x</div></div>
 <div class="sbody">
 <p style="font-size:12px;color:var(--text3);margin-bottom:14px">Under-the-radar picks in <strong id="smallCapSector" style="color:var(--amber)">${d.sector}</strong>:</p>
 <div id="smallCapTable"></div>
@@ -757,6 +826,37 @@ return insights}
 
 function formatCap(c){if(!c)return'N/A';if(c>=1e12)return'$'+(c/1e12).toFixed(2)+'T';if(c>=1e9)return'$'+(c/1e9).toFixed(2)+'B';if(c>=1e6)return'$'+(c/1e6).toFixed(2)+'M';return'$'+c.toLocaleString()}
 
+
+
+// Section nav: show when report visible, highlight active section on scroll
+function initSecNav(){
+const nav=document.getElementById('secNav');
+const btns=nav.querySelectorAll('.snav-btn');
+const sectionIds=['sec-verdict','sec-5things','sec-valuation','sec-entry','sec-risk','sec-ai','sec-gems'];
+
+// Smooth scroll with offset
+btns.forEach(b=>{b.addEventListener('click',e=>{
+e.preventDefault();
+const id=b.getAttribute('href').slice(1);
+const el=document.getElementById(id);
+if(el){const y=el.getBoundingClientRect().top+window.pageYOffset-180;
+window.scrollTo({top:y,behavior:'smooth'})}
+})});
+
+// Highlight active section on scroll
+let ticking=false;
+window.addEventListener('scroll',()=>{
+if(!ticking){requestAnimationFrame(()=>{
+const scrollY=window.scrollY+200;
+let activeIdx=0;
+sectionIds.forEach((id,i)=>{
+const el=document.getElementById(id);
+if(el&&el.getBoundingClientRect().top+window.pageYOffset<=scrollY)activeIdx=i;
+});
+btns.forEach((b,i)=>{b.classList.toggle('active',i===activeIdx)});
+ticking=false});ticking=true}
+},{passive:true});
+}
 
 // Anti-copy protection
 document.addEventListener('contextmenu',e=>e.preventDefault());
