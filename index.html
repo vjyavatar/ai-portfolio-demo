@@ -771,6 +771,8 @@
                 let msg = error.message;
                 if (msg === 'Failed to fetch') {
                     msg = 'Could not connect to server. Please check if the service is running.';
+                } else if (msg.toLowerCase().includes('rate limit') || msg.toLowerCase().includes('too many') || msg.toLowerCase().includes('temporarily')) {
+                    msg = '⏳ Market data provider is temporarily busy due to high traffic. Please wait 2-3 minutes and try again.';
                 }
                 showStatus('❌ ' + msg, 'error');
                 console.error('Analysis error:', error);

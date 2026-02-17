@@ -18,7 +18,8 @@ app = FastAPI(title="Sentinel AI Research - Verified Live Data")
 
 # In-memory cache for stock data (expires after 5 minutes - optimized for LinkedIn launch)
 stock_data_cache = {}
-CACHE_EXPIRY_MINUTES = 5  # 5 min for social media traffic spikes
+CACHE_EXPIRY_MINUTES = 15  # 15 min cache to avoid Yahoo Finance rate limits
+CACHE_STALE_OK_MINUTES = 120  # Serve stale cache up to 2 hours if Yahoo is down
 
 # ═══════════════════════════════════════════════════════════
 # EMAIL-BASED RATE LIMITING
@@ -111,8 +112,10 @@ def record_request(email: str):
 
 def get_live_stock_data(company_name: str) -> dict:
     """
-    Get VERIFIED real-time stock data with CACHING to avoid rate limits
-    Cache expires after 10 minutes
+    Get VERIFIED real-time stock data with:
+    - 15-min cache to minimize Yahoo Finance calls
+    - Retry with exponential backoff on rate limit
+    - Stale cache fallback if Yahoo is completely blocked
     """
     try:
         # Check cache first
@@ -170,15 +173,66 @@ def get_live_stock_data(company_name: str) -> dict:
             else:
                 ticker_symbol = company_name.upper()
         
-        # Fetch data
-        stock = yf.Ticker(ticker_symbol)
-        info = stock.info
-        hist = stock.history(period="5d")  # Get last 5 days for reliability
+        # Fetch data WITH RETRY (Yahoo Finance rate limits aggressively)
+        max_retries = 3
+        last_error = None
         
-        if hist.empty:
-            return {
-                "error": f"No data found for {company_name}. Try using the ticker symbol (e.g., TSLA, HDFCBANK.NS)"
-            }
+        for attempt in range(max_retries):
+            try:
+                if attempt > 0:
+                    wait_time = 2 ** attempt  # 2s, 4s backoff
+                    print(f"⏳ Retry {attempt+1}/{max_retries} for {ticker_symbol}, waiting {wait_time}s...")
+                    time.sleep(wait_time)
+                
+                stock = yf.Ticker(ticker_symbol)
+                hist = stock.history(period="5d")
+                
+                if hist.empty:
+                    # If history is empty but no exception, might be invalid ticker
+                    if attempt == max_retries - 1:
+                        # Check for stale cache before giving up
+                        if cache_key in stock_data_cache:
+                            cached_data, cached_time = stock_data_cache[cache_key]
+                            age_minutes = (current_time - cached_time).total_seconds() / 60
+                            if age_minutes < CACHE_STALE_OK_MINUTES:
+                                print(f"⚠️ Using STALE cache for {cache_key} (age: {age_minutes:.1f} min)")
+                                cached_data["data_timestamp"] = f"{datetime.now().strftime('%B %d, %Y at %I:%M %p UTC')} (cached)"
+                                return cached_data
+                        return {
+                            "error": f"No data found for {company_name}. Try using the ticker symbol (e.g., TSLA, HDFCBANK.NS)"
+                        }
+                    continue
+                
+                info = stock.info
+                break  # Success!
+                
+            except Exception as e:
+                last_error = str(e)
+                error_lower = last_error.lower()
+                
+                # If rate limited, check stale cache
+                if 'too many requests' in error_lower or 'rate limit' in error_lower or '429' in error_lower:
+                    print(f"⚠️ Yahoo Finance rate limited (attempt {attempt+1})")
+                    if attempt == max_retries - 1:
+                        # Return stale cache if available
+                        if cache_key in stock_data_cache:
+                            cached_data, cached_time = stock_data_cache[cache_key]
+                            age_minutes = (current_time - cached_time).total_seconds() / 60
+                            if age_minutes < CACHE_STALE_OK_MINUTES:
+                                print(f"📦 Serving STALE cache for {cache_key} (age: {age_minutes:.1f} min) due to rate limit")
+                                cached_data["data_timestamp"] = f"{datetime.now().strftime('%B %d, %Y at %I:%M %p UTC')} (cached data)"
+                                return cached_data
+                        return {
+                            "error": "Yahoo Finance is temporarily rate limiting us due to high traffic. Please wait 2-3 minutes and try again."
+                        }
+                    continue
+                else:
+                    # Non-rate-limit error, don't retry
+                    if attempt == max_retries - 1:
+                        return {
+                            "error": f"Could not fetch data: {last_error}. Try using ticker symbol (e.g., TSLA for Tesla)"
+                        }
+                    continue
         
         # Get most recent price
         current_price = float(hist['Close'].iloc[-1])
@@ -230,6 +284,16 @@ def get_live_stock_data(company_name: str) -> dict:
         return live_data
         
     except Exception as e:
+        # Last resort: try stale cache
+        cache_key = company_name.upper()
+        if cache_key in stock_data_cache:
+            cached_data, cached_time = stock_data_cache[cache_key]
+            age_minutes = (datetime.now() - cached_time).total_seconds() / 60
+            if age_minutes < CACHE_STALE_OK_MINUTES:
+                print(f"🆘 Exception fallback: serving stale cache for {cache_key}")
+                cached_data["data_timestamp"] = f"{datetime.now().strftime('%B %d, %Y at %I:%M %p UTC')} (cached data)"
+                return cached_data
+        
         return {
             "error": f"Could not fetch data: {str(e)}. Try using ticker symbol (e.g., TSLA for Tesla)"
         }
@@ -256,7 +320,10 @@ async def health():
         "api_key_set": bool(ANTHROPIC_API_KEY),
         "api_key_preview": (ANTHROPIC_API_KEY[:8] + "...") if ANTHROPIC_API_KEY else "NOT SET",
         "active_rate_limits": len(email_rate_limiter),
-        "global_requests_last_min": len(global_request_log)
+        "global_requests_last_min": len(global_request_log),
+        "stock_cache_entries": len(stock_data_cache),
+        "stock_cache_tickers": list(stock_data_cache.keys()),
+        "cache_expiry_minutes": CACHE_EXPIRY_MINUTES
     }
 
 
