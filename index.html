@@ -165,6 +165,48 @@
         .status.success { background: #d1fae5; color: #065f46; border: 2px solid #10b981; }
         .status.error { background: #fee2e2; color: #991b1b; border: 2px solid #ef4444; }
         
+        .rate-limit-box {
+            background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+            border: 2px solid #f59e0b;
+            border-radius: 12px;
+            padding: 20px 24px;
+            margin-top: 15px;
+            text-align: center;
+        }
+        .rate-limit-box .rl-title {
+            font-size: 16px;
+            font-weight: 700;
+            color: #92400e;
+            margin-bottom: 10px;
+        }
+        .rate-limit-box .rl-countdown {
+            font-size: 36px;
+            font-weight: 900;
+            color: #d97706;
+            font-family: 'Inter', monospace;
+            letter-spacing: 2px;
+            margin: 8px 0;
+        }
+        .rate-limit-box .rl-comeback {
+            font-size: 14px;
+            color: #78350f;
+            font-weight: 600;
+        }
+        .rate-limit-box .rl-progress {
+            width: 100%;
+            height: 6px;
+            background: #fde68a;
+            border-radius: 3px;
+            margin-top: 12px;
+            overflow: hidden;
+        }
+        .rate-limit-box .rl-progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg, #f59e0b, #10b981);
+            border-radius: 3px;
+            transition: width 1s linear;
+        }
+        
         .report {
             display: none;
             background: white;
@@ -434,9 +476,16 @@
             <div class="helper-text">
                 💡 <strong>Start typing</strong> to see top 100 stocks (US & India) • <strong>Don't see your stock?</strong> 
                 Enter any valid ticker symbol (find on <a href="https://finance.yahoo.com" target="_blank">Yahoo Finance</a>)
+                <br>📊 <strong>Free usage:</strong> Up to 5 reports per email per hour
             </div>
             
             <div class="status" id="status"></div>
+            <div class="rate-limit-box" id="rateLimitBox" style="display:none;">
+                <div class="rl-title">⏳ Report limit reached for this email</div>
+                <div class="rl-countdown" id="rlCountdown">--:--</div>
+                <div class="rl-comeback" id="rlComeback"></div>
+                <div class="rl-progress"><div class="rl-progress-bar" id="rlProgress" style="width:0%"></div></div>
+            </div>
         </div>
         
         <div class="report" id="report">
@@ -570,6 +619,65 @@
             s.className = 'status show ' + type;
         }
         
+        let countdownInterval = null;
+        
+        function hideRateLimitBox() {
+            document.getElementById('rateLimitBox').style.display = 'none';
+            if (countdownInterval) {
+                clearInterval(countdownInterval);
+                countdownInterval = null;
+            }
+        }
+        
+        function showRateLimitCountdown(data) {
+            const box = document.getElementById('rateLimitBox');
+            const countdownEl = document.getElementById('rlCountdown');
+            const comebackEl = document.getElementById('rlComeback');
+            const progressEl = document.getElementById('rlProgress');
+            
+            // Calculate target time
+            let totalSeconds = data.retry_after_seconds || (data.retry_after_minutes || 5) * 60;
+            const targetTime = new Date(Date.now() + totalSeconds * 1000);
+            const comebackTimeStr = targetTime.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
+            
+            comebackEl.textContent = '🕐 Come back at ' + comebackTimeStr + ' • You\'ll get ' + (data.requests_limit || 5) + ' fresh reports';
+            box.style.display = 'block';
+            
+            // Clear any existing countdown
+            if (countdownInterval) clearInterval(countdownInterval);
+            
+            const startSeconds = totalSeconds;
+            
+            function tick() {
+                const now = Date.now();
+                const remaining = Math.max(0, Math.floor((targetTime - now) / 1000));
+                const mins = Math.floor(remaining / 60);
+                const secs = remaining % 60;
+                
+                countdownEl.textContent = String(mins).padStart(2, '0') + ':' + String(secs).padStart(2, '0');
+                
+                // Progress bar (fills up as time passes)
+                const elapsed = startSeconds - remaining;
+                const pct = Math.min(100, (elapsed / startSeconds) * 100);
+                progressEl.style.width = pct + '%';
+                
+                if (remaining <= 0) {
+                    clearInterval(countdownInterval);
+                    countdownInterval = null;
+                    countdownEl.textContent = '00:00';
+                    comebackEl.textContent = '✅ You can generate reports again! Enter a ticker above.';
+                    progressEl.style.width = '100%';
+                    box.style.background = 'linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%)';
+                    box.style.borderColor = '#10b981';
+                    document.querySelector('.rl-title').textContent = '🎉 Your quota has been refreshed!';
+                    countdownEl.style.color = '#10b981';
+                }
+            }
+            
+            tick(); // run immediately
+            countdownInterval = setInterval(tick, 1000);
+        }
+        
         async function analyze() {
             const email = document.getElementById('email').value.trim();
             const ticker = document.getElementById('ticker').value.trim().toUpperCase();
@@ -583,9 +691,33 @@
                 return;
             }
             
+            // Validate email format
+            if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+                showStatus('⚠️ Please enter a valid email address', 'error');
+                return;
+            }
+            
+            // Pre-check rate limit before heavy API call
+            try {
+                const rlCheck = await fetch('/api/check-rate-limit', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({email: email})
+                });
+                const rlData = await rlCheck.json();
+                if (!rlData.allowed) {
+                    showStatus('⏳ ' + rlData.reason, 'error');
+                    showRateLimitCountdown(rlData);
+                    return;
+                } else {
+                    hideRateLimitBox();
+                }
+            } catch(e) { /* fail open */ }
+            
             btn.disabled = true;
             btn.textContent = 'Analyzing...';
             report.classList.remove('show');
+            hideRateLimitBox();
             
             showStatus('🤖 Agentic AI analyzing ' + ticker + ' with real-time data... (30-60 seconds)', 'info');
             
@@ -596,22 +728,52 @@
                     body: JSON.stringify({company_name: ticker, email: email})
                 });
                 
+                if (res.status === 429) {
+                    const rlData = await res.json().catch(() => ({}));
+                    showStatus('⏳ ' + (rlData.reason || rlData.detail || 'Too many requests.'), 'error');
+                    if (rlData.retry_after_seconds || rlData.retry_after_minutes) {
+                        showRateLimitCountdown(rlData);
+                    }
+                    return;
+                }
+                
+                if (res.status === 503 || res.status === 504) {
+                    const err = await res.json().catch(() => ({}));
+                    showStatus('⏳ ' + (err.detail || 'Service temporarily busy. Please try again in 30 seconds.'), 'error');
+                    return;
+                }
+                
                 if (!res.ok) {
                     const err = await res.json().catch(() => ({}));
-                    throw new Error(err.detail || 'Analysis failed');
+                    const errorMsg = err.detail || err.message || err.error || 'Unknown error - check browser console';
+                    throw new Error(errorMsg);
                 }
                 
                 const data = await res.json();
                 if (!data.success || !data.live_data) throw new Error('No data available for this ticker');
                 
-                showStatus('✅ Analysis complete! Scroll down for detailed insights.', 'success');
+                // Show success with remaining quota info
+                let quotaMsg = '';
+                if (data.rate_limit) {
+                    const r = data.rate_limit.remaining;
+                    if (r === 0) {
+                        quotaMsg = ' ⚠️ This was your last free report this hour.';
+                    } else {
+                        quotaMsg = ` (${r} report${r !== 1 ? 's' : ''} remaining this hour)`;
+                    }
+                }
+                showStatus('✅ Analysis complete! Scroll down for detailed insights.' + quotaMsg, 'success');
                 displayReport(data);
                 
-                document.getElementById('email').value = '';
                 document.getElementById('ticker').value = '';
                 
             } catch (error) {
-                showStatus('❌ ' + error.message, 'error');
+                let msg = error.message;
+                if (msg === 'Failed to fetch') {
+                    msg = 'Could not connect to server. Please check if the service is running.';
+                }
+                showStatus('❌ ' + msg, 'error');
+                console.error('Analysis error:', error);
             } finally {
                 btn.disabled = false;
                 btn.textContent = 'Analyze';

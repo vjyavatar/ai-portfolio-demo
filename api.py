@@ -5,7 +5,7 @@ With built-in verification and ChatGPT comparison
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 import os
 import requests
 from datetime import datetime, timedelta
@@ -20,6 +20,16 @@ app = FastAPI(title="Sentinel AI Research - Verified Live Data")
 stock_data_cache = {}
 CACHE_EXPIRY_MINUTES = 5  # 5 min for social media traffic spikes
 
+# ═══════════════════════════════════════════════════════════
+# EMAIL-BASED RATE LIMITING
+# Goal: Keep usage at ~80% capacity, fair access per user
+# ═══════════════════════════════════════════════════════════
+email_rate_limiter = {}  # { email: [timestamp1, timestamp2, ...] }
+RATE_LIMIT_MAX_REQUESTS = 5       # Max reports per email per window
+RATE_LIMIT_WINDOW_MINUTES = 60    # Rolling window in minutes
+GLOBAL_REQUESTS_PER_MINUTE = 10   # Global cap across all users (80% of API capacity)
+global_request_log = []           # [timestamp1, timestamp2, ...]
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -30,6 +40,73 @@ app.add_middleware(
 
 report_counter = {"count": 0}
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
+
+
+def check_rate_limit(email: str) -> dict:
+    """
+    Check email-based + global rate limits.
+    Returns {"allowed": True} or {"allowed": False, "reason": ..., "retry_after_minutes": ...}
+    """
+    now = datetime.now()
+    cutoff = now - timedelta(minutes=RATE_LIMIT_WINDOW_MINUTES)
+    email_lower = email.lower().strip()
+
+    # --- Clean up old global entries ---
+    global global_request_log
+    global_request_log = [t for t in global_request_log if t > now - timedelta(minutes=1)]
+
+    # --- Global rate limit (protect API capacity) ---
+    if len(global_request_log) >= GLOBAL_REQUESTS_PER_MINUTE:
+        return {
+            "allowed": False,
+            "reason": "High demand right now. Please try again in a minute.",
+            "retry_after_minutes": 1
+        }
+
+    # --- Per-email rate limit ---
+    if email_lower not in email_rate_limiter:
+        email_rate_limiter[email_lower] = []
+
+    # Clean old entries for this email
+    email_rate_limiter[email_lower] = [
+        t for t in email_rate_limiter[email_lower] if t > cutoff
+    ]
+
+    requests_used = len(email_rate_limiter[email_lower])
+
+    if requests_used >= RATE_LIMIT_MAX_REQUESTS:
+        # Find when the oldest request in the window will expire
+        oldest = min(email_rate_limiter[email_lower])
+        retry_at = oldest + timedelta(minutes=RATE_LIMIT_WINDOW_MINUTES)
+        retry_seconds = max(60, int((retry_at - now).total_seconds()))
+        retry_minutes = (retry_seconds + 59) // 60  # round up
+        retry_at_str = retry_at.strftime("%I:%M %p")
+        return {
+            "allowed": False,
+            "reason": f"You've used {requests_used}/{RATE_LIMIT_MAX_REQUESTS} reports this hour.",
+            "retry_after_minutes": retry_minutes,
+            "retry_after_seconds": retry_seconds,
+            "retry_at": retry_at.isoformat(),
+            "retry_at_display": retry_at_str,
+            "requests_used": requests_used,
+            "requests_limit": RATE_LIMIT_MAX_REQUESTS
+        }
+
+    return {
+        "allowed": True,
+        "requests_used": requests_used,
+        "requests_remaining": RATE_LIMIT_MAX_REQUESTS - requests_used - 1  # -1 for current
+    }
+
+
+def record_request(email: str):
+    """Record a successful request for rate limiting."""
+    now = datetime.now()
+    email_lower = email.lower().strip()
+    if email_lower not in email_rate_limiter:
+        email_rate_limiter[email_lower] = []
+    email_rate_limiter[email_lower].append(now)
+    global_request_log.append(now)
 
 
 def get_live_stock_data(company_name: str) -> dict:
@@ -175,7 +252,11 @@ async def health():
     return {
         "status": "healthy",
         "reports_generated": report_counter["count"],
-        "version": "1.0-VERIFIED-REALTIME"
+        "version": "1.0-VERIFIED-REALTIME",
+        "api_key_set": bool(ANTHROPIC_API_KEY),
+        "api_key_preview": (ANTHROPIC_API_KEY[:8] + "...") if ANTHROPIC_API_KEY else "NOT SET",
+        "active_rate_limits": len(email_rate_limiter),
+        "global_requests_last_min": len(global_request_log)
     }
 
 
@@ -201,6 +282,22 @@ async def verify_price(company: str):
     }
 
 
+@app.post("/api/check-rate-limit")
+async def check_rate_limit_endpoint(request: Request):
+    """Check if an email has remaining report quota before submitting."""
+    try:
+        data = await request.json()
+        email = data.get("email", "").strip()
+        if not email:
+            raise HTTPException(400, "Email required")
+        result = check_rate_limit(email)
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        return {"allowed": True}  # Fail open - don't block on errors
+
+
 @app.post("/api/generate-report")
 async def generate_report(request: Request):
     try:
@@ -210,6 +307,14 @@ async def generate_report(request: Request):
         
         if not company or not email:
             raise HTTPException(400, "company_name and email required")
+        
+        # CHECK RATE LIMIT
+        rate_check = check_rate_limit(email)
+        if not rate_check["allowed"]:
+            return JSONResponse(
+                status_code=429,
+                content=rate_check
+            )
         
         # GET LIVE DATA
         live_data = get_live_stock_data(company)
@@ -355,29 +460,56 @@ Based on real-time price of {currency_symbol}{live_data['current_price']:,.2f}:
 """
 
         # CALL CLAUDE API
-        response = requests.post(
-            "https://api.anthropic.com/v1/messages",
-            headers={
-                "x-api-key": ANTHROPIC_API_KEY,
-                "anthropic-version": "2023-06-01",
-                "content-type": "application/json"
-            },
-            json={
-                "model": "claude-sonnet-4-20250514",
-                "max_tokens": 4096,
-                "messages": [{"role": "user", "content": prompt}]
-            },
-            timeout=90
-        )
+        if not ANTHROPIC_API_KEY:
+            raise HTTPException(500, "ANTHROPIC_API_KEY environment variable is not set. Please set it in your deployment settings.")
         
-        if response.status_code != 200:
-            raise HTTPException(500, f"API error: {response.text}")
+        try:
+            response = requests.post(
+                "https://api.anthropic.com/v1/messages",
+                headers={
+                    "x-api-key": ANTHROPIC_API_KEY,
+                    "anthropic-version": "2023-06-01",
+                    "content-type": "application/json"
+                },
+                json={
+                    "model": "claude-sonnet-4-20250514",
+                    "max_tokens": 4096,
+                    "messages": [{"role": "user", "content": prompt}]
+                },
+                timeout=90
+            )
+        except requests.exceptions.Timeout:
+            raise HTTPException(504, "AI analysis timed out. Please try again — the servers may be busy.")
+        except requests.exceptions.ConnectionError:
+            raise HTTPException(502, "Could not connect to AI service. Please try again in a moment.")
+        
+        if response.status_code == 429:
+            raise HTTPException(503, "AI service is temporarily overloaded. Please wait 30 seconds and try again.")
+        elif response.status_code == 401:
+            raise HTTPException(500, "API key is invalid or expired. Please check your ANTHROPIC_API_KEY.")
+        elif response.status_code == 529:
+            raise HTTPException(503, "AI service is temporarily overloaded. Please wait a moment and try again.")
+        elif response.status_code != 200:
+            # Extract useful error info
+            try:
+                err_body = response.json()
+                err_msg = err_body.get("error", {}).get("message", response.text[:200])
+            except:
+                err_msg = response.text[:200]
+            raise HTTPException(500, f"AI service error ({response.status_code}): {err_msg}")
         
         result = response.json()
         report = result["content"][0]["text"]
         
         report_counter["count"] += 1
         report_id = hashlib.md5(f"{company}{datetime.now()}".encode()).hexdigest()[:8]
+        
+        # Record this request for rate limiting
+        record_request(email)
+        remaining = RATE_LIMIT_MAX_REQUESTS - len([
+            t for t in email_rate_limiter.get(email.lower().strip(), [])
+            if t > datetime.now() - timedelta(minutes=RATE_LIMIT_WINDOW_MINUTES)
+        ])
         
         return {
             "success": True,
@@ -386,13 +518,20 @@ Based on real-time price of {currency_symbol}{live_data['current_price']:,.2f}:
             "live_data": live_data,
             "timestamp": datetime.now().isoformat(),
             "report_id": report_id.upper(),
-            "report_number": report_counter["count"]
+            "report_number": report_counter["count"],
+            "rate_limit": {
+                "remaining": max(0, remaining),
+                "limit": RATE_LIMIT_MAX_REQUESTS,
+                "window_minutes": RATE_LIMIT_WINDOW_MINUTES
+            }
         }
         
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(500, f"Error: {str(e)}")
+        import traceback
+        print(f"❌ Report generation error: {traceback.format_exc()}")
+        raise HTTPException(500, f"Report generation failed: {str(e)}")
 
 
 @app.get("/api/stats")
