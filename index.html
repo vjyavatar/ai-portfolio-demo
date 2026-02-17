@@ -3,1765 +3,939 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    
-    <!-- SEO -->
-    <title>AI Stock Analysis | Real-Time Investment Research with Agentic AI</title>
+    <title>Sentinel AI — Real-Time Stock Intelligence</title>
     <meta name="description" content="Professional AI-powered stock analysis with real-time market data. Get actionable investment recommendations with entry/exit strategies for any stock worldwide.">
     <meta name="keywords" content="stock analysis, agentic AI, investment research, stock recommendations, entry exit strategy">
-    <meta name="robots" content="index, follow">
-    
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&family=Playfair+Display:wght@700;900&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            font-family: 'Inter', sans-serif;
-            background: #f5f5f5;
-            color: #1f2937;
-            min-height: 100vh;
-            display: flex;
-            flex-direction: column;
+        :root {
+            --bg: #06080f;
+            --bg2: #0c1019;
+            --bg3: #111827;
+            --surface: rgba(17,24,39,0.7);
+            --glass: rgba(17,24,39,0.5);
+            --border: rgba(99,179,237,0.12);
+            --border2: rgba(99,179,237,0.25);
+            --cyan: #22d3ee;
+            --cyan2: #06b6d4;
+            --green: #34d399;
+            --green2: #10b981;
+            --amber: #fbbf24;
+            --red: #f87171;
+            --purple: #a78bfa;
+            --text: #e2e8f0;
+            --text2: #94a3b8;
+            --text3: #64748b;
+            --glow-cyan: 0 0 30px rgba(34,211,238,0.15);
+            --glow-green: 0 0 30px rgba(52,211,153,0.15);
         }
-        
-        .header {
-            background: linear-gradient(135deg, #1e3a8a 0%, #7c3aed 100%);
-            color: white;
-            padding: 20px 30px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        *{margin:0;padding:0;box-sizing:border-box}
+        html{scroll-behavior:smooth}
+        body{font-family:'Outfit',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden}
+
+        /* === ANIMATED GRID BACKGROUND === */
+        .grid-bg{position:fixed;inset:0;z-index:0;pointer-events:none;
+            background-image:
+                linear-gradient(rgba(34,211,238,0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(34,211,238,0.03) 1px, transparent 1px);
+            background-size:60px 60px;
         }
-        .logo { font-size: 22px; font-weight: 900; }
-        
-        .hero {
-            background: linear-gradient(135deg, #4338ca 0%, #7c3aed 100%);
-            color: white;
-            padding: 50px 20px;
-            text-align: center;
+        .grid-bg::after{
+            content:'';position:absolute;inset:0;
+            background:radial-gradient(ellipse 800px 600px at 50% 0%, rgba(34,211,238,0.06), transparent 70%);
         }
-        .hero h1 {
-            font-size: 42px;
-            font-weight: 900;
-            margin-bottom: 12px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 15px;
+
+        /* === NAVBAR === */
+        nav{position:sticky;top:0;z-index:100;backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
+            background:rgba(6,8,15,0.8);border-bottom:1px solid var(--border);padding:0 32px;height:64px;
+            display:flex;align-items:center;justify-content:space-between;
         }
-        .hero-subtitle { font-size: 20px; margin-bottom: 15px; font-weight: 600; }
-        .badge {
-            background: #10b981;
-            padding: 10px 25px;
-            border-radius: 25px;
-            display: inline-block;
-            margin: 12px 8px;
-            font-weight: 700;
-            font-size: 14px;
-            box-shadow: 0 4px 12px rgba(16,185,129,0.3);
+        .nav-brand{display:flex;align-items:center;gap:12px}
+        .nav-logo{width:36px;height:36px;border-radius:10px;
+            background:linear-gradient(135deg,var(--cyan),var(--green));
+            display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:900;color:var(--bg);
         }
-        
-        .main-content {
-            flex: 1;
-            max-width: 1200px;
-            width: 100%;
-            margin: 0 auto;
-            padding: 30px 20px;
+        .nav-name{font-size:17px;font-weight:700;letter-spacing:0.5px}
+        .nav-name span{color:var(--cyan)}
+        .nav-stats{display:flex;gap:24px;align-items:center}
+        .nav-stat{font-size:12px;color:var(--text3);font-weight:500;display:flex;align-items:center;gap:6px}
+        .nav-stat .val{color:var(--cyan);font-family:'JetBrains Mono',monospace;font-weight:700;font-size:13px}
+        .live-dot{width:7px;height:7px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green);
+            animation:pulse-dot 2s infinite}
+        @keyframes pulse-dot{0%,100%{opacity:1;transform:scale(1)}50%{opacity:0.5;transform:scale(0.8)}}
+
+        /* === HERO === */
+        .hero{position:relative;z-index:1;padding:80px 32px 60px;text-align:center}
+        .hero-eyebrow{display:inline-flex;align-items:center;gap:8px;
+            background:rgba(34,211,238,0.08);border:1px solid rgba(34,211,238,0.2);
+            padding:8px 20px;border-radius:100px;font-size:13px;font-weight:600;color:var(--cyan);
+            margin-bottom:28px;letter-spacing:0.5px;
         }
-        
-        .input-card {
-            background: white;
-            padding: 35px;
-            border-radius: 15px;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.08);
-            margin-bottom: 25px;
+        .hero h1{font-family:'Playfair Display',serif;font-size:clamp(36px,5.5vw,68px);font-weight:900;
+            line-height:1.1;margin-bottom:20px;
+            background:linear-gradient(135deg,#fff 0%,var(--cyan) 50%,var(--green) 100%);
+            -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
         }
-        .input-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr 140px;
-            gap: 15px;
-            margin-bottom: 12px;
+        .hero-sub{font-size:18px;color:var(--text2);max-width:600px;margin:0 auto 40px;line-height:1.7;font-weight:400}
+        .hero-badges{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
+        .h-badge{display:flex;align-items:center;gap:6px;padding:8px 18px;border-radius:8px;font-size:12px;
+            font-weight:600;letter-spacing:0.3px;border:1px solid var(--border);background:var(--glass);
+            backdrop-filter:blur(10px);color:var(--text2)}
+        .h-badge .ico{font-size:14px}
+
+        /* === INPUT CARD === */
+        .input-section{position:relative;z-index:1;max-width:760px;margin:0 auto;padding:0 24px 60px}
+        .input-card{
+            background:var(--surface);border:1px solid var(--border);border-radius:20px;
+            padding:36px;backdrop-filter:blur(16px);
+            box-shadow:var(--glow-cyan);position:relative;overflow:hidden;
         }
-        
-        .input-wrapper { position: relative; }
-        input {
-            width: 100%;
-            padding: 15px;
-            border: 2px solid #e5e7eb;
-            border-radius: 10px;
-            font-size: 15px;
+        .input-card::before{
+            content:'';position:absolute;top:-1px;left:50%;transform:translateX(-50%);
+            width:120px;height:3px;
+            background:linear-gradient(90deg,transparent,var(--cyan),transparent);
+            border-radius:3px;
         }
-        input:focus { outline: none; border-color: #4338ca; box-shadow: 0 0 0 3px rgba(67,56,202,0.1); }
-        
-        .autocomplete {
-            position: absolute;
-            top: 100%;
-            left: 0;
-            right: 0;
-            background: white;
-            border: 2px solid #4338ca;
-            border-top: none;
-            border-radius: 0 0 10px 10px;
-            max-height: 320px;
-            overflow-y: auto;
-            display: none;
-            z-index: 1000;
-            box-shadow: 0 8px 25px rgba(0,0,0,0.2);
+        .input-label{font-size:13px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:20px}
+        .input-row{display:grid;grid-template-columns:1fr 1fr 120px;gap:12px}
+        .input-wrap{position:relative}
+        .ipt{width:100%;padding:14px 16px;background:var(--bg);border:1.5px solid var(--border);border-radius:12px;
+            font-size:15px;color:var(--text);font-family:'Outfit',sans-serif;transition:all 0.3s;outline:none}
+        .ipt::placeholder{color:var(--text3)}
+        .ipt:focus{border-color:var(--cyan);box-shadow:0 0 0 3px rgba(34,211,238,0.1)}
+
+        .autocomplete{position:absolute;top:100%;left:0;right:0;background:var(--bg3);
+            border:1.5px solid var(--border2);border-top:none;border-radius:0 0 12px 12px;
+            max-height:300px;overflow-y:auto;display:none;z-index:1000;
+            box-shadow:0 20px 40px rgba(0,0,0,0.5);
         }
-        .autocomplete.show { display: block; }
-        .autocomplete-item {
-            padding: 13px 16px;
-            cursor: pointer;
-            border-bottom: 1px solid #f3f4f6;
-            transition: all 0.2s;
+        .autocomplete.show{display:block}
+        .ac-item{padding:12px 16px;cursor:pointer;border-bottom:1px solid var(--border);transition:all 0.2s;display:flex;align-items:center;gap:10px}
+        .ac-item:hover{background:rgba(34,211,238,0.06);padding-left:22px}
+        .ac-ticker{font-family:'JetBrains Mono',monospace;font-weight:700;color:var(--cyan);font-size:14px;min-width:80px}
+        .ac-name{color:var(--text2);font-size:13px}
+
+        .btn-analyze{width:100%;padding:14px;border:none;border-radius:12px;font-size:15px;font-weight:700;
+            font-family:'Outfit',sans-serif;cursor:pointer;transition:all 0.3s;position:relative;overflow:hidden;
+            background:linear-gradient(135deg,var(--cyan2),var(--green2));color:var(--bg);letter-spacing:0.3px;
         }
-        .autocomplete-item:hover { background: #f0f9ff; transform: translateX(5px); }
-        .ticker-code {
-            font-weight: 700;
-            color: #4338ca;
-            margin-right: 10px;
-            font-size: 15px;
+        .btn-analyze:hover:not(:disabled){transform:translateY(-2px);box-shadow:0 8px 24px rgba(34,211,238,0.25)}
+        .btn-analyze:disabled{opacity:0.5;cursor:not-allowed}
+        .btn-analyze.loading{background:linear-gradient(135deg,var(--bg3),var(--bg3));color:var(--cyan);border:1.5px solid var(--border2)}
+
+        .helper{margin-top:16px;font-size:12px;color:var(--text3);line-height:1.8}
+        .helper a{color:var(--cyan);text-decoration:none}
+        .helper strong{color:var(--text2)}
+
+        /* === STATUS === */
+        .status-bar{margin-top:16px;padding:14px 18px;border-radius:12px;display:none;
+            font-size:14px;font-weight:500;border:1px solid;
         }
-        .company-name {
-            color: #6b7280;
-            font-size: 14px;
+        .status-bar.show{display:flex;align-items:center;gap:10px;animation:slideDown .3s ease}
+        .status-bar.info{background:rgba(34,211,238,0.06);border-color:rgba(34,211,238,0.2);color:var(--cyan)}
+        .status-bar.success{background:rgba(52,211,153,0.06);border-color:rgba(52,211,153,0.2);color:var(--green)}
+        .status-bar.error{background:rgba(248,113,113,0.06);border-color:rgba(248,113,113,0.2);color:var(--red)}
+        @keyframes slideDown{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:translateY(0)}}
+
+        /* === LOADING ANIMATION === */
+        .loading-steps{margin-top:16px;display:none}
+        .loading-steps.show{display:block}
+        .load-step{display:flex;align-items:center;gap:12px;padding:10px 0;font-size:13px;color:var(--text3);
+            opacity:0;transform:translateX(-10px);transition:all 0.4s}
+        .load-step.active{opacity:1;transform:translateX(0);color:var(--cyan)}
+        .load-step.done{opacity:1;transform:translateX(0);color:var(--green)}
+        .load-step .step-icon{width:24px;height:24px;border-radius:50%;border:2px solid var(--border);
+            display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0;transition:all 0.3s}
+        .load-step.active .step-icon{border-color:var(--cyan);color:var(--cyan);animation:pulse-dot 1.5s infinite}
+        .load-step.done .step-icon{border-color:var(--green);background:var(--green);color:var(--bg)}
+
+        /* === RATE LIMIT BOX === */
+        .rl-box{margin-top:16px;display:none;padding:24px;border-radius:14px;text-align:center;
+            background:rgba(251,191,36,0.06);border:1px solid rgba(251,191,36,0.2);
         }
-        
-        .helper-text {
-            background: linear-gradient(135deg, #f0f9ff 0%, #e0e7ff 100%);
-            border: 2px solid #818cf8;
-            border-radius: 10px;
-            padding: 14px;
-            font-size: 13px;
-            color: #3730a3;
-            line-height: 1.7;
-            font-weight: 500;
+        .rl-box .rl-countdown{font-family:'JetBrains Mono',monospace;font-size:42px;font-weight:700;
+            color:var(--amber);margin:12px 0;letter-spacing:4px}
+        .rl-box .rl-msg{font-size:13px;color:var(--text3)}
+        .rl-box .rl-bar{width:100%;height:4px;background:rgba(251,191,36,0.1);border-radius:2px;margin-top:14px;overflow:hidden}
+        .rl-box .rl-bar-fill{height:100%;background:linear-gradient(90deg,var(--amber),var(--green));border-radius:2px;transition:width 1s linear}
+
+        /* === REPORT === */
+        .report-section{position:relative;z-index:1;max-width:1100px;margin:0 auto;padding:0 24px 80px;display:none}
+        .report-section.show{display:block;animation:fadeUp 0.6s ease}
+        @keyframes fadeUp{from{opacity:0;transform:translateY(40px)}to{opacity:1;transform:translateY(0)}}
+
+        .report-hero{text-align:center;margin-bottom:40px;padding:48px 32px;
+            border-radius:20px;border:1px solid var(--border);
+            background:linear-gradient(135deg,rgba(34,211,238,0.04),rgba(52,211,153,0.04));
+            position:relative;overflow:hidden;
         }
-        .helper-text strong { color: #1e3a8a; }
-        .helper-text a { color: #4338ca; text-decoration: underline; }
-        
-        .btn {
-            padding: 15px;
-            background: linear-gradient(135deg, #4338ca 0%, #7c3aed 100%);
-            color: white;
-            border: none;
-            border-radius: 10px;
-            font-size: 16px;
-            font-weight: 700;
-            cursor: pointer;
-            transition: all 0.3s;
-            box-shadow: 0 4px 15px rgba(67,56,202,0.3);
+        .report-hero::before{content:'';position:absolute;top:-50%;left:-50%;width:200%;height:200%;
+            background:conic-gradient(from 0deg,transparent,rgba(34,211,238,0.03),transparent,rgba(52,211,153,0.03),transparent);
+            animation:spin-slow 20s linear infinite}
+        @keyframes spin-slow{to{transform:rotate(360deg)}}
+        .report-hero>*{position:relative;z-index:1}
+        .report-ticker{display:inline-block;font-family:'JetBrains Mono',monospace;font-size:14px;font-weight:700;
+            color:var(--cyan);background:rgba(34,211,238,0.1);padding:6px 18px;border-radius:8px;
+            border:1px solid rgba(34,211,238,0.2);margin-bottom:16px;letter-spacing:1px}
+        .report-company{font-family:'Playfair Display',serif;font-size:clamp(28px,4vw,42px);font-weight:900;margin-bottom:12px}
+        .report-live{display:inline-flex;align-items:center;gap:8px;font-size:13px;color:var(--green);font-weight:500}
+
+        /* === METRICS GRID === */
+        .metrics-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:32px}
+        .metric-card{background:var(--surface);border:1px solid var(--border);border-radius:16px;
+            padding:24px 20px;text-align:center;backdrop-filter:blur(10px);transition:all 0.3s;position:relative;overflow:hidden}
+        .metric-card:hover{border-color:var(--border2);transform:translateY(-4px);box-shadow:var(--glow-cyan)}
+        .metric-card::after{content:'';position:absolute;bottom:0;left:0;right:0;height:3px;
+            background:linear-gradient(90deg,var(--cyan),var(--green));opacity:0;transition:opacity 0.3s}
+        .metric-card:hover::after{opacity:1}
+        .mc-label{font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--text3);font-weight:600;margin-bottom:10px}
+        .mc-value{font-family:'JetBrains Mono',monospace;font-size:26px;font-weight:700;color:#fff;margin-bottom:6px}
+        .mc-sub{font-size:13px;font-weight:600}
+        .mc-sub.up{color:var(--green)}
+        .mc-sub.down{color:var(--red)}
+        .mc-sub.neutral{color:var(--text3)}
+
+        /* === CHARTS === */
+        .charts-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:32px}
+        .chart-card{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:24px;
+            backdrop-filter:blur(10px)}
+        .chart-card-title{font-size:14px;font-weight:700;color:var(--text2);margin-bottom:16px;
+            display:flex;align-items:center;gap:8px}
+        .chart-container{height:200px}
+
+        /* === ANALYSIS SECTIONS === */
+        .section-card{background:var(--surface);border:1px solid var(--border);border-radius:16px;
+            padding:32px;margin-bottom:20px;backdrop-filter:blur(10px);
+            transition:all 0.4s;opacity:0;transform:translateY(20px);
         }
-        .btn:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(67,56,202,0.4); }
-        .btn:disabled { opacity: 0.6; }
-        
-        .status {
-            margin-top: 15px;
-            padding: 14px;
-            border-radius: 10px;
-            display: none;
-            font-weight: 600;
+        .section-card.visible{opacity:1;transform:translateY(0)}
+        .section-card:hover{border-color:var(--border2)}
+
+        .sc-header{display:flex;align-items:center;gap:12px;margin-bottom:24px}
+        .sc-icon{width:42px;height:42px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0}
+        .sc-title{font-size:18px;font-weight:800;letter-spacing:-0.3px}
+
+        /* Section themes */
+        .sc-verdict .sc-icon{background:rgba(52,211,153,0.1)}
+        .sc-verdict .sc-title{color:var(--green)}
+        .sc-decision .sc-icon{background:rgba(251,191,36,0.1)}
+        .sc-decision .sc-title{color:var(--amber)}
+        .sc-valuation .sc-icon{background:rgba(34,211,238,0.1)}
+        .sc-valuation .sc-title{color:var(--cyan)}
+        .sc-entry .sc-icon{background:rgba(167,139,250,0.1)}
+        .sc-entry .sc-title{color:var(--purple)}
+        .sc-risk .sc-icon{background:rgba(248,113,113,0.1)}
+        .sc-risk .sc-title{color:var(--red)}
+        .sc-ai .sc-icon{background:rgba(34,211,238,0.1)}
+        .sc-ai .sc-title{color:var(--cyan)}
+        .sc-smallcap .sc-icon{background:rgba(251,191,36,0.1)}
+        .sc-smallcap .sc-title{color:var(--amber)}
+
+        /* === VERDICT BADGE === */
+        .verdict-pill{display:inline-flex;padding:12px 36px;border-radius:100px;font-size:20px;
+            font-weight:900;letter-spacing:2px;text-transform:uppercase;
+            animation:verdict-glow 2s ease-in-out infinite alternate}
+        .verdict-pill.buy{background:rgba(52,211,153,0.15);color:var(--green);border:2px solid var(--green)}
+        .verdict-pill.hold{background:rgba(251,191,36,0.15);color:var(--amber);border:2px solid var(--amber)}
+        .verdict-pill.sell{background:rgba(248,113,113,0.15);color:var(--red);border:2px solid var(--red)}
+        @keyframes verdict-glow{
+            0%{box-shadow:0 0 20px rgba(52,211,153,0.1)}
+            100%{box-shadow:0 0 40px rgba(52,211,153,0.2)}
         }
-        .status.show { display: block; }
-        .status.info { background: #dbeafe; color: #1e40af; border: 2px solid #3b82f6; }
-        .status.success { background: #d1fae5; color: #065f46; border: 2px solid #10b981; }
-        .status.error { background: #fee2e2; color: #991b1b; border: 2px solid #ef4444; }
-        
-        .rate-limit-box {
-            background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
-            border: 2px solid #f59e0b;
-            border-radius: 12px;
-            padding: 20px 24px;
-            margin-top: 15px;
-            text-align: center;
+        .verdict-desc{margin-top:12px;font-size:14px;color:var(--text2);font-weight:500}
+
+        /* === TABLES === */
+        .data-table{width:100%;border-collapse:collapse}
+        .data-table th{padding:14px 16px;text-align:left;font-size:11px;text-transform:uppercase;
+            letter-spacing:0.8px;color:var(--text3);font-weight:700;border-bottom:1px solid var(--border);
+            background:rgba(34,211,238,0.03)}
+        .data-table td{padding:14px 16px;border-bottom:1px solid var(--border);font-size:14px;color:var(--text2);transition:background 0.2s}
+        .data-table tr:hover td{background:rgba(34,211,238,0.03)}
+        .data-table tr:last-child td{border-bottom:none}
+
+        /* Decision list */
+        .dec-list{list-style:none;padding:0}
+        .dec-list li{padding:14px 0 14px 36px;position:relative;font-size:14px;color:var(--text2);
+            line-height:1.7;border-bottom:1px solid var(--border)}
+        .dec-list li:last-child{border-bottom:none}
+        .dec-list li::before{content:'';position:absolute;left:0;top:18px;width:20px;height:20px;
+            border-radius:50%;background:rgba(34,211,238,0.1);border:2px solid var(--cyan)}
+        .dec-list li strong{color:var(--text)}
+
+        /* Price tags */
+        .price-tag{display:inline-block;padding:6px 14px;border-radius:8px;font-family:'JetBrains Mono',monospace;
+            font-size:14px;font-weight:700}
+        .price-tag.buy{background:rgba(52,211,153,0.1);color:var(--green);border:1px solid rgba(52,211,153,0.2)}
+        .price-tag.current{background:rgba(34,211,238,0.1);color:var(--cyan);border:1px solid rgba(34,211,238,0.2)}
+        .price-tag.profit{background:rgba(251,191,36,0.1);color:var(--amber);border:1px solid rgba(251,191,36,0.2)}
+        .price-tag.stop{background:rgba(248,113,113,0.1);color:var(--red);border:1px solid rgba(248,113,113,0.2)}
+
+        /* Signal badges */
+        .signal{display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border-radius:6px;
+            font-size:12px;font-weight:700}
+        .signal.good{background:rgba(52,211,153,0.1);color:var(--green)}
+        .signal.caution{background:rgba(251,191,36,0.1);color:var(--amber)}
+        .signal.concern{background:rgba(248,113,113,0.1);color:var(--red)}
+        .signal.neutral{background:rgba(148,163,184,0.1);color:var(--text3)}
+
+        /* AI analysis typewriter */
+        .ai-text{line-height:1.9;color:var(--text2);font-size:14px;white-space:pre-wrap}
+        .ai-expand{display:inline-flex;align-items:center;gap:6px;cursor:pointer;color:var(--cyan);
+            font-size:13px;font-weight:600;padding:8px 0;transition:color 0.2s}
+        .ai-expand:hover{color:#fff}
+
+        /* Info cards inside sections */
+        .info-card{padding:20px;border-radius:12px;margin-bottom:16px;border-left:3px solid}
+        .info-card h5{font-size:15px;font-weight:700;margin-bottom:8px}
+        .info-card p{font-size:14px;line-height:1.8;color:var(--text2)}
+        .info-card.blue{background:rgba(34,211,238,0.04);border-color:var(--cyan)}
+        .info-card.blue h5{color:var(--cyan)}
+        .info-card.amber{background:rgba(251,191,36,0.04);border-color:var(--amber)}
+        .info-card.amber h5{color:var(--amber)}
+        .info-card.green{background:rgba(52,211,153,0.04);border-color:var(--green)}
+        .info-card.green h5{color:var(--green)}
+        .info-card.red{background:rgba(248,113,113,0.04);border-color:var(--red)}
+        .info-card.red h5{color:var(--red)}
+        .info-card.purple{background:rgba(167,139,250,0.04);border-color:var(--purple)}
+        .info-card.purple h5{color:var(--purple)}
+
+        /* === FOOTER === */
+        footer{position:relative;z-index:1;border-top:1px solid var(--border);padding:48px 32px;margin-top:40px}
+        .footer-disc{max-width:900px;margin:0 auto;padding:28px;border-radius:14px;
+            background:rgba(251,191,36,0.04);border:1px solid rgba(251,191,36,0.12)}
+        .footer-disc h4{color:var(--amber);font-size:14px;margin-bottom:12px;letter-spacing:0.5px}
+        .footer-disc p{color:var(--text3);font-size:13px;line-height:1.9;margin-bottom:8px}
+        .footer-copy{text-align:center;color:var(--text3);font-size:12px;margin-top:24px}
+
+        /* === RESPONSIVE === */
+        @media(max-width:768px){
+            .input-row{grid-template-columns:1fr}
+            .metrics-grid{grid-template-columns:1fr 1fr}
+            .charts-grid{grid-template-columns:1fr}
+            .hero{padding:50px 20px 40px}
+            .hero h1{font-size:32px}
+            .nav-stats{display:none}
+            .section-card{padding:24px 18px}
         }
-        .rate-limit-box .rl-title {
-            font-size: 16px;
-            font-weight: 700;
-            color: #92400e;
-            margin-bottom: 10px;
-        }
-        .rate-limit-box .rl-countdown {
-            font-size: 36px;
-            font-weight: 900;
-            color: #d97706;
-            font-family: 'Inter', monospace;
-            letter-spacing: 2px;
-            margin: 8px 0;
-        }
-        .rate-limit-box .rl-comeback {
-            font-size: 14px;
-            color: #78350f;
-            font-weight: 600;
-        }
-        .rate-limit-box .rl-progress {
-            width: 100%;
-            height: 6px;
-            background: #fde68a;
-            border-radius: 3px;
-            margin-top: 12px;
-            overflow: hidden;
-        }
-        .rate-limit-box .rl-progress-bar {
-            height: 100%;
-            background: linear-gradient(90deg, #f59e0b, #10b981);
-            border-radius: 3px;
-            transition: width 1s linear;
-        }
-        
-        .report {
-            display: none;
-            background: white;
-            border-radius: 15px;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.08);
-            overflow: hidden;
-            margin-bottom: 30px;
-            animation: slideIn 0.5s ease;
-        }
-        .report.show { display: block; }
-        @keyframes slideIn {
-            from { opacity: 0; transform: translateY(30px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-        
-        .report-header {
-            background: linear-gradient(135deg, #4338ca 0%, #7c3aed 100%);
-            color: white;
-            padding: 35px;
-            text-align: center;
-        }
-        .report-header h2 { font-size: 32px; margin: 10px 0; text-shadow: 2px 2px 4px rgba(0,0,0,0.2); }
-        
-        .metrics {
-            display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: 0;
-            border-bottom: 3px solid #e5e7eb;
-            background: linear-gradient(135deg, #f9fafb 0%, #f3f4f6 100%);
-        }
-        .metric {
-            padding: 25px;
-            text-align: center;
-            border-right: 2px solid #e5e7eb;
-            transition: all 0.3s;
-        }
-        .metric:hover { background: white; transform: translateY(-3px); }
-        .metric:last-child { border-right: none; }
-        .metric-label {
-            font-size: 11px;
-            color: #6b7280;
-            font-weight: 700;
-            text-transform: uppercase;
-            margin-bottom: 8px;
-            letter-spacing: 0.5px;
-        }
-        .metric-value {
-            font-size: 26px;
-            font-weight: 900;
-            color: #4338ca;
-            margin-bottom: 5px;
-        }
-        .metric-sub {
-            font-size: 14px;
-            font-weight: 700;
-            margin-top: 5px;
-        }
-        .positive { color: #10b981; }
-        .negative { color: #ef4444; }
-        
-        .charts-row {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 25px;
-            padding: 30px;
-            background: #fafafa;
-        }
-        .chart-box {
-            background: white;
-            padding: 25px;
-            border-radius: 15px;
-            box-shadow: 0 3px 12px rgba(0,0,0,0.06);
-            transition: all 0.3s;
-        }
-        .chart-box:hover { box-shadow: 0 8px 25px rgba(0,0,0,0.12); transform: translateY(-5px); }
-        .chart-title {
-            font-size: 17px;
-            font-weight: 700;
-            color: #4338ca;
-            margin-bottom: 18px;
-        }
-        .chart-container { height: 220px; }
-        
-        .analysis-container { padding: 35px; }
-        
-        .section {
-            background: white;
-            border-radius: 15px;
-            padding: 30px;
-            margin-bottom: 25px;
-            border-left: 6px solid;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.06);
-            transition: all 0.3s;
-        }
-        .section:hover { box-shadow: 0 8px 25px rgba(0,0,0,0.1); transform: translateX(5px); }
-        
-        .section.decision { border-color: #f59e0b; background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); }
-        .section.quick-verdict { border-color: #10b981; background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%); }
-        .section.valuation { border-color: #3b82f6; background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%); }
-        .section.entry-exit { border-color: #8b5cf6; background: linear-gradient(135deg, #e9d5ff 0%, #d8b4fe 100%); }
-        .section.risk { border-color: #ef4444; background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%); }
-        .section.small-caps { border-color: #f97316; background: linear-gradient(135deg, #ffedd5 0%, #fed7aa 100%); }
-        
-        .section h3 {
-            font-size: 22px;
-            font-weight: 900;
-            margin-bottom: 18px;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-        .section.decision h3 { color: #92400e; }
-        .section.quick-verdict h3 { color: #065f46; }
-        .section.valuation h3 { color: #1e40af; }
-        .section.entry-exit h3 { color: #6b21a8; }
-        .section.risk h3 { color: #991b1b; }
-        .section.small-caps h3 { color: #c2410c; }
-        
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            margin: 18px 0;
-            background: white;
-            border-radius: 10px;
-            overflow: hidden;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
-        }
-        th {
-            background: linear-gradient(135deg, #1f2937 0%, #374151 100%);
-            color: white;
-            padding: 15px;
-            text-align: left;
-            font-weight: 700;
-            font-size: 14px;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-        td {
-            padding: 15px;
-            border-bottom: 1px solid #f3f4f6;
-            font-size: 15px;
-        }
-        tr:hover { background: #f9fafb; }
-        tr:last-child td { border-bottom: none; }
-        
-        .verdict-box {
-            background: white;
-            border: 3px solid #10b981;
-            border-radius: 12px;
-            padding: 20px;
-            text-align: center;
-            margin: 15px 0;
-        }
-        .verdict-badge {
-            display: inline-block;
-            padding: 12px 40px;
-            border-radius: 30px;
-            font-size: 24px;
-            font-weight: 900;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            margin-bottom: 10px;
-        }
-        .verdict-badge.buy { background: #10b981; color: white; }
-        .verdict-badge.hold { background: #f59e0b; color: white; }
-        .verdict-badge.sell { background: #ef4444; color: white; }
-        
-        .decision-list {
-            list-style: none;
-            padding: 0;
-        }
-        .decision-list li {
-            padding: 12px 0;
-            padding-left: 35px;
-            position: relative;
-            font-weight: 600;
-            font-size: 15px;
-            line-height: 1.7;
-        }
-        .decision.section .decision-list li { color: #78350f; }
-        .decision-list li:before {
-            content: "✓";
-            position: absolute;
-            left: 0;
-            font-weight: 900;
-            font-size: 20px;
-            width: 25px;
-            height: 25px;
-            background: #10b981;
-            color: white;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 14px;
-        }
-        
-        .price-action {
-            font-size: 16px;
-            font-weight: 700;
-            padding: 10px 15px;
-            border-radius: 8px;
-            text-align: center;
-        }
-        .price-action.buy-zone { background: #d1fae5; color: #065f46; border: 2px solid #10b981; }
-        .price-action.current { background: #e0e7ff; color: #3730a3; border: 2px solid #6366f1; }
-        .price-action.profit-zone { background: #fef3c7; color: #92400e; border: 2px solid #f59e0b; }
-        .price-action.stop-loss { background: #fee2e2; color: #991b1b; border: 2px solid #ef4444; }
-        
-        .footer {
-            background: #1f2937;
-            color: white;
-            padding: 40px 20px;
-            margin-top: auto;
-        }
-        .disclaimer-box {
-            background: rgba(251, 191, 36, 0.15);
-            border: 3px solid #fbbf24;
-            border-radius: 15px;
-            padding: 30px;
-            max-width: 1200px;
-            margin: 0 auto;
-        }
-        .disclaimer-box h3 { color: #fbbf24; margin-bottom: 15px; font-size: 20px; }
-        .disclaimer-box p { color: #e5e7eb; line-height: 1.9; margin-bottom: 12px; }
-        
-        @media (max-width: 768px) {
-            .input-grid { grid-template-columns: 1fr; }
-            .metrics { grid-template-columns: repeat(2, 1fr); }
-            .metric { border-right: none; border-bottom: 2px solid #e5e7eb; }
-            .charts-row { grid-template-columns: 1fr; }
-            .hero h1 { font-size: 32px; }
+        @media(max-width:480px){
+            .metrics-grid{grid-template-columns:1fr}
+            .hero-badges{flex-direction:column;align-items:center}
         }
     </style>
 </head>
 <body>
-    <div class="header">
-        <div class="logo">⚡ SENTINEL AI RESEARCH</div>
-    </div>
-    
-    <div class="hero">
-        <h1><span>🤖</span> Agentic AI Investment Intelligence</h1>
-        <div class="hero-subtitle">Advanced Autonomous Analysis with Real-Time Market Data</div>
-        <div>
-            <span class="badge">🔴 LIVE MARKET DATA</span>
-            <span class="badge">🤖 AGENTIC AI</span>
-            <span class="badge">📊 ACTIONABLE INSIGHTS</span>
+    <div class="grid-bg"></div>
+
+    <!-- NAV -->
+    <nav>
+        <div class="nav-brand">
+            <div class="nav-logo">S</div>
+            <div class="nav-name">SENTINEL <span>AI</span></div>
         </div>
-    </div>
-    
-    <div class="main-content">
+        <div class="nav-stats">
+            <div class="nav-stat"><div class="live-dot"></div> Live Data</div>
+            <div class="nav-stat">Reports: <span class="val" id="navReportCount">0</span></div>
+            <div class="nav-stat">Quota: <span class="val" id="navQuota">5/hr</span></div>
+        </div>
+    </nav>
+
+    <!-- HERO -->
+    <section class="hero">
+        <div class="hero-eyebrow"><div class="live-dot"></div> Real-Time Market Intelligence</div>
+        <h1>Smarter Stock Analysis, Instantly</h1>
+        <p class="hero-sub">AI-powered research with live market data, actionable entry/exit levels, and professional-grade risk analysis — in 60 seconds.</p>
+        <div class="hero-badges">
+            <div class="h-badge"><span class="ico">◉</span> Live Market Data</div>
+            <div class="h-badge"><span class="ico">⚡</span> Agentic AI Engine</div>
+            <div class="h-badge"><span class="ico">◎</span> Entry &amp; Exit Targets</div>
+            <div class="h-badge"><span class="ico">△</span> Risk Scoring</div>
+        </div>
+    </section>
+
+    <!-- INPUT -->
+    <section class="input-section">
         <div class="input-card">
-            <h2 style="margin-bottom: 10px; color: #4338ca; font-size: 24px;">Generate AI-Powered Analysis Report</h2>
-            <p style="color: #6b7280; margin-bottom: 22px; font-size: 15px;">Get comprehensive investment research with actionable recommendations</p>
-            
-            <div class="input-grid">
-                <input type="email" id="email" placeholder="Your email address">
-                
-                <div class="input-wrapper">
-                    <input type="text" id="ticker" placeholder="Start typing ticker or company..." autocomplete="off">
+            <div class="input-label">Generate Analysis Report</div>
+            <div class="input-row">
+                <input class="ipt" type="email" id="email" placeholder="your@email.com" autocomplete="email">
+                <div class="input-wrap">
+                    <input class="ipt" type="text" id="ticker" placeholder="Ticker or company name..." autocomplete="off">
                     <div class="autocomplete" id="autocomplete"></div>
                 </div>
-                
-                <button class="btn" id="btn" onclick="analyze()">Analyze</button>
+                <button class="btn-analyze" id="btn" onclick="analyze()">Analyze →</button>
             </div>
-            
-            <div class="helper-text">
-                💡 <strong>Start typing</strong> to see top 100 stocks (US & India) • <strong>Don't see your stock?</strong> 
-                Enter any valid ticker symbol (find on <a href="https://finance.yahoo.com" target="_blank">Yahoo Finance</a>)
-                <br>📊 <strong>Free usage:</strong> Up to 5 reports per email per hour
+            <div class="helper">
+                Start typing to search <strong>100 stocks</strong> (US &amp; India) · Enter any valid ticker · <a href="https://finance.yahoo.com" target="_blank">Find tickers</a>
+                <br>📊 <strong>5 free reports</strong> per email per hour
             </div>
-            
-            <div class="status" id="status"></div>
-            <div class="rate-limit-box" id="rateLimitBox" style="display:none;">
-                <div class="rl-title">⏳ Report limit reached for this email</div>
+            <div class="status-bar" id="status"></div>
+
+            <!-- Loading Steps -->
+            <div class="loading-steps" id="loadingSteps">
+                <div class="load-step" id="step1"><div class="step-icon">1</div> Fetching live market data...</div>
+                <div class="load-step" id="step2"><div class="step-icon">2</div> Running AI valuation analysis...</div>
+                <div class="load-step" id="step3"><div class="step-icon">3</div> Calculating entry &amp; exit targets...</div>
+                <div class="load-step" id="step4"><div class="step-icon">4</div> Generating risk assessment...</div>
+            </div>
+
+            <!-- Rate Limit -->
+            <div class="rl-box" id="rateLimitBox">
+                <div style="font-size:14px;font-weight:600;color:var(--amber);margin-bottom:4px">Report limit reached</div>
                 <div class="rl-countdown" id="rlCountdown">--:--</div>
-                <div class="rl-comeback" id="rlComeback"></div>
-                <div class="rl-progress"><div class="rl-progress-bar" id="rlProgress" style="width:0%"></div></div>
+                <div class="rl-msg" id="rlComeback"></div>
+                <div class="rl-bar"><div class="rl-bar-fill" id="rlProgress" style="width:0%"></div></div>
             </div>
         </div>
-        
-        <div class="report" id="report">
-            <div class="report-header">
-                <div style="background: rgba(255,255,255,0.2); padding: 8px 22px; border-radius: 20px; display: inline-block; margin-bottom: 12px; font-weight: 700; font-size: 15px;" id="tickerTag"></div>
-                <h2 id="companyName"></h2>
-                <div style="background: #10b981; padding: 10px 25px; border-radius: 25px; display: inline-block; margin-top: 12px; font-size: 14px; font-weight: 700; box-shadow: 0 4px 12px rgba(16,185,129,0.3);" id="timestamp"></div>
+    </section>
+
+    <!-- REPORT -->
+    <section class="report-section" id="report">
+        <div class="report-hero">
+            <div class="report-ticker" id="tickerTag"></div>
+            <div class="report-company" id="companyName"></div>
+            <div class="report-live" id="timestamp"><div class="live-dot"></div></div>
+        </div>
+
+        <div class="metrics-grid" id="metrics"></div>
+
+        <div class="charts-grid">
+            <div class="chart-card">
+                <div class="chart-card-title">◉ Valuation Metrics</div>
+                <div class="chart-container"><canvas id="valChart"></canvas></div>
             </div>
-            
-            <div class="metrics" id="metrics"></div>
-            
-            <div class="charts-row">
-                <div class="chart-box">
-                    <div class="chart-title">📊 Valuation Metrics Overview</div>
-                    <div class="chart-container"><canvas id="valChart"></canvas></div>
-                </div>
-                <div class="chart-box">
-                    <div class="chart-title">📈 Price Performance Trend</div>
-                    <div class="chart-container"><canvas id="trendChart"></canvas></div>
-                </div>
+            <div class="chart-card">
+                <div class="chart-card-title">◉ Price Trend</div>
+                <div class="chart-container"><canvas id="trendChart"></canvas></div>
             </div>
-            
-            <div class="analysis-container" id="analysisContainer"></div>
+        </div>
+
+        <div id="analysisContainer"></div>
+    </section>
+
+    <!-- FOOTER -->
+    <footer>
+        <div class="footer-disc">
+            <h4>⚠ Important Disclaimers</h4>
+            <p><strong>NOT FINANCIAL ADVICE:</strong> This analysis is for educational and informational purposes only. Always consult with licensed financial professionals before making investment decisions.</p>
+            <p><strong>DATA ACCURACY:</strong> While we use real-time market data, we cannot guarantee 100% accuracy. Verify information through multiple sources before acting.</p>
+            <p><strong>RISK WARNING:</strong> All investments carry risk of loss. Past performance does not guarantee future results.</p>
+        </div>
+        <div class="footer-copy">© 2026 Sentinel AI Research · Real-Time Investment Intelligence</div>
+    </footer>
+
+<script>
+// ============================================================
+// STOCKS DATABASE
+// ============================================================
+const stocks = [
+    {t:'AAPL',n:'Apple Inc.'},{t:'MSFT',n:'Microsoft Corporation'},{t:'GOOGL',n:'Alphabet Inc. (Google)'},{t:'AMZN',n:'Amazon.com Inc.'},
+    {t:'NVDA',n:'NVIDIA Corporation'},{t:'META',n:'Meta Platforms (Facebook)'},{t:'TSLA',n:'Tesla Inc.'},{t:'BRK.B',n:'Berkshire Hathaway'},
+    {t:'LLY',n:'Eli Lilly and Company'},{t:'AVGO',n:'Broadcom Inc.'},{t:'JPM',n:'JPMorgan Chase & Co.'},{t:'V',n:'Visa Inc.'},
+    {t:'UNH',n:'UnitedHealth Group'},{t:'XOM',n:'Exxon Mobil'},{t:'WMT',n:'Walmart Inc.'},{t:'MA',n:'Mastercard Inc.'},
+    {t:'PG',n:'Procter & Gamble'},{t:'JNJ',n:'Johnson & Johnson'},{t:'HD',n:'Home Depot'},{t:'ORCL',n:'Oracle Corporation'},
+    {t:'COST',n:'Costco Wholesale'},{t:'NFLX',n:'Netflix Inc.'},{t:'BAC',n:'Bank of America'},{t:'CRM',n:'Salesforce Inc.'},
+    {t:'ABBV',n:'AbbVie Inc.'},{t:'CVX',n:'Chevron Corporation'},{t:'AMD',n:'Advanced Micro Devices'},{t:'KO',n:'Coca-Cola Company'},
+    {t:'PEP',n:'PepsiCo Inc.'},{t:'MRK',n:'Merck & Co.'},{t:'ADBE',n:'Adobe Inc.'},{t:'TMO',n:'Thermo Fisher Scientific'},
+    {t:'CSCO',n:'Cisco Systems'},{t:'ACN',n:'Accenture'},{t:'MCD',n:"McDonald's Corporation"},{t:'LIN',n:'Linde plc'},
+    {t:'ABT',n:'Abbott Laboratories'},{t:'WFC',n:'Wells Fargo'},{t:'TXN',n:'Texas Instruments'},{t:'INTC',n:'Intel Corporation'},
+    {t:'DIS',n:'Walt Disney Company'},{t:'PM',n:'Philip Morris'},{t:'CMCSA',n:'Comcast Corporation'},{t:'NKE',n:'Nike Inc.'},
+    {t:'QCOM',n:'Qualcomm Inc.'},{t:'GE',n:'General Electric'},{t:'INTU',n:'Intuit Inc.'},{t:'VZ',n:'Verizon Communications'},
+    {t:'AMAT',n:'Applied Materials'},{t:'CAT',n:'Caterpillar Inc.'},
+    {t:'RELIANCE.NS',n:'Reliance Industries'},{t:'TCS.NS',n:'Tata Consultancy Services'},{t:'HDFCBANK.NS',n:'HDFC Bank'},
+    {t:'INFY',n:'Infosys Limited'},{t:'HINDUNILVR.NS',n:'Hindustan Unilever'},{t:'ICICIBANK.NS',n:'ICICI Bank'},
+    {t:'SBIN.NS',n:'State Bank of India'},{t:'BHARTIARTL.NS',n:'Bharti Airtel'},{t:'ITC.NS',n:'ITC Limited'},
+    {t:'KOTAKBANK.NS',n:'Kotak Mahindra Bank'},{t:'LT.NS',n:'Larsen & Toubro'},{t:'AXISBANK.NS',n:'Axis Bank'},
+    {t:'BAJFINANCE.NS',n:'Bajaj Finance'},{t:'ASIANPAINT.NS',n:'Asian Paints'},{t:'MARUTI.NS',n:'Maruti Suzuki'},
+    {t:'TITAN.NS',n:'Titan Company'},{t:'SUNPHARMA.NS',n:'Sun Pharmaceutical'},{t:'ULTRACEMCO.NS',n:'UltraTech Cement'},
+    {t:'NESTLEIND.NS',n:'Nestlé India'},{t:'ONGC.NS',n:'Oil & Natural Gas Corp'},{t:'NTPC.NS',n:'NTPC Limited'},
+    {t:'TATAMOTORS.NS',n:'Tata Motors'},{t:'POWERGRID.NS',n:'Power Grid Corporation'},{t:'TATASTEEL.NS',n:'Tata Steel'},
+    {t:'M&M.NS',n:'Mahindra & Mahindra'},{t:'JSWSTEEL.NS',n:'JSW Steel'},{t:'ADANIENT.NS',n:'Adani Enterprises'},
+    {t:'WIPRO.NS',n:'Wipro Limited'},{t:'COALINDIA.NS',n:'Coal India'},{t:'HCLTECH.NS',n:'HCL Technologies'},
+    {t:'BAJAJFINSV.NS',n:'Bajaj Finserv'},{t:'DIVISLAB.NS',n:"Divi's Laboratories"},{t:'GRASIM.NS',n:'Grasim Industries'},
+    {t:'TECHM.NS',n:'Tech Mahindra'},{t:'BRITANNIA.NS',n:'Britannia Industries'},{t:'EICHERMOT.NS',n:'Eicher Motors'},
+    {t:'APOLLOHOSP.NS',n:'Apollo Hospitals'},{t:'INDUSINDBK.NS',n:'IndusInd Bank'},{t:'TRENT.NS',n:'Trent Limited'},
+    {t:'ADANIPORTS.NS',n:'Adani Ports'},{t:'HINDALCO.NS',n:'Hindalco Industries'},{t:'DRREDDY.NS',n:"Dr. Reddy's Labs"},
+    {t:'CIPLA.NS',n:'Cipla Limited'},{t:'HEROMOTOCO.NS',n:'Hero MotoCorp'},{t:'SHREECEM.NS',n:'Shree Cement'},
+    {t:'BAJAJ-AUTO.NS',n:'Bajaj Auto'},{t:'BPCL.NS',n:'Bharat Petroleum'},{t:'SIEMENS.NS',n:'Siemens India'},
+    {t:'KPIT.NS',n:'KPIT Technologies'},{t:'DIXON.NS',n:'Dixon Technologies'}
+];
+
+let valChart, trendChart, countdownInterval = null;
+
+// ============================================================
+// AUTOCOMPLETE
+// ============================================================
+const tickerInput = document.getElementById('ticker');
+const autocompleteDiv = document.getElementById('autocomplete');
+
+tickerInput.addEventListener('input', function() {
+    const val = this.value.trim().toUpperCase();
+    autocompleteDiv.innerHTML = '';
+    if (!val) { autocompleteDiv.classList.remove('show'); return; }
+    const matches = stocks.filter(s => s.t.includes(val) || s.n.toUpperCase().includes(val)).slice(0, 10);
+    if (!matches.length) { autocompleteDiv.classList.remove('show'); return; }
+    matches.forEach(s => {
+        const div = document.createElement('div');
+        div.className = 'ac-item';
+        div.innerHTML = `<span class="ac-ticker">${s.t}</span><span class="ac-name">${s.n}</span>`;
+        div.onclick = () => { tickerInput.value = s.t; autocompleteDiv.classList.remove('show'); };
+        autocompleteDiv.appendChild(div);
+    });
+    autocompleteDiv.classList.add('show');
+});
+document.addEventListener('click', e => { if (e.target !== tickerInput) autocompleteDiv.classList.remove('show'); });
+document.getElementById('email').addEventListener('keypress', e => { if (e.key === 'Enter') tickerInput.focus(); });
+tickerInput.addEventListener('keypress', e => { if (e.key === 'Enter') analyze(); });
+
+// ============================================================
+// STATUS & LOADING
+// ============================================================
+function showStatus(msg, type) {
+    const s = document.getElementById('status');
+    s.innerHTML = msg;
+    s.className = 'status-bar show ' + type;
+}
+
+function showLoadingSteps() {
+    const box = document.getElementById('loadingSteps');
+    box.classList.add('show');
+    const steps = ['step1','step2','step3','step4'];
+    steps.forEach(s => { document.getElementById(s).className = 'load-step'; });
+    let i = 0;
+    const interval = setInterval(() => {
+        if (i > 0) document.getElementById(steps[i-1]).classList.replace('active','done');
+        if (i < steps.length) { document.getElementById(steps[i]).classList.add('active'); i++; }
+        else clearInterval(interval);
+    }, 8000);
+    box._interval = interval;
+    // Kick off first step immediately
+    document.getElementById(steps[0]).classList.add('active');
+}
+function hideLoadingSteps() {
+    const box = document.getElementById('loadingSteps');
+    if (box._interval) clearInterval(box._interval);
+    box.classList.remove('show');
+}
+
+// ============================================================
+// RATE LIMIT COUNTDOWN
+// ============================================================
+function hideRateLimitBox() {
+    document.getElementById('rateLimitBox').style.display = 'none';
+    if (countdownInterval) { clearInterval(countdownInterval); countdownInterval = null; }
+}
+function showRateLimitCountdown(data) {
+    const box = document.getElementById('rateLimitBox');
+    const countdownEl = document.getElementById('rlCountdown');
+    const comebackEl = document.getElementById('rlComeback');
+    const progressEl = document.getElementById('rlProgress');
+    let totalSeconds = data.retry_after_seconds || (data.retry_after_minutes || 5) * 60;
+    const targetTime = new Date(Date.now() + totalSeconds * 1000);
+    const comebackStr = targetTime.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+    comebackEl.textContent = 'Come back at ' + comebackStr + ' · ' + (data.requests_limit || 5) + ' fresh reports will be available';
+    box.style.display = 'block';
+    if (countdownInterval) clearInterval(countdownInterval);
+    const startSeconds = totalSeconds;
+    function tick() {
+        const remaining = Math.max(0, Math.floor((targetTime - Date.now()) / 1000));
+        const m = Math.floor(remaining / 60), s = remaining % 60;
+        countdownEl.textContent = String(m).padStart(2,'0') + ':' + String(s).padStart(2,'0');
+        progressEl.style.width = Math.min(100, ((startSeconds - remaining) / startSeconds) * 100) + '%';
+        if (remaining <= 0) {
+            clearInterval(countdownInterval); countdownInterval = null;
+            countdownEl.textContent = '00:00'; countdownEl.style.color = 'var(--green)';
+            comebackEl.textContent = '✓ Quota refreshed — you can generate reports again';
+            progressEl.style.width = '100%';
+            box.style.borderColor = 'rgba(52,211,153,0.3)'; box.style.background = 'rgba(52,211,153,0.04)';
+        }
+    }
+    tick();
+    countdownInterval = setInterval(tick, 1000);
+}
+
+// ============================================================
+// MAIN ANALYZE
+// ============================================================
+async function analyze() {
+    const email = document.getElementById('email').value.trim();
+    const ticker = document.getElementById('ticker').value.trim().toUpperCase();
+    const btn = document.getElementById('btn');
+    const report = document.getElementById('report');
+    autocompleteDiv.classList.remove('show');
+    if (!email || !ticker) { showStatus('Enter both email and ticker to continue', 'error'); return; }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { showStatus('Enter a valid email address', 'error'); return; }
+
+    // Pre-check rate limit
+    try {
+        const rl = await fetch('/api/check-rate-limit', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({email}) });
+        const rld = await rl.json();
+        if (!rld.allowed) { showStatus(rld.reason, 'error'); showRateLimitCountdown(rld); return; }
+        else hideRateLimitBox();
+    } catch(e) {}
+
+    btn.disabled = true; btn.textContent = 'Analyzing...'; btn.classList.add('loading');
+    report.classList.remove('show'); hideRateLimitBox();
+    showStatus('Analyzing ' + ticker + ' with live market data...', 'info');
+    showLoadingSteps();
+
+    try {
+        const res = await fetch('/api/generate-report', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({company_name:ticker, email}) });
+        if (res.status === 429) {
+            const rld = await res.json().catch(()=>({}));
+            showStatus(rld.reason || rld.detail || 'Too many requests', 'error');
+            if (rld.retry_after_seconds || rld.retry_after_minutes) showRateLimitCountdown(rld);
+            return;
+        }
+        if (res.status === 503 || res.status === 504) {
+            const err = await res.json().catch(()=>({}));
+            showStatus(err.detail || 'Service temporarily busy. Try again in 30 seconds.', 'error'); return;
+        }
+        if (!res.ok) { const err = await res.json().catch(()=>({})); throw new Error(err.detail || err.message || 'Analysis failed'); }
+
+        const data = await res.json();
+        if (!data.success || !data.live_data) throw new Error('No data available for this ticker');
+
+        let qmsg = '';
+        if (data.rate_limit) {
+            const r = data.rate_limit.remaining;
+            document.getElementById('navQuota').textContent = r + '/hr';
+            qmsg = r === 0 ? ' · Last free report this hour' : ' · ' + r + ' report' + (r!==1?'s':'') + ' remaining';
+        }
+        if (data.report_number) document.getElementById('navReportCount').textContent = data.report_number;
+        showStatus('✓ Analysis complete' + qmsg, 'success');
+        displayReport(data);
+        document.getElementById('ticker').value = '';
+    } catch(error) {
+        let msg = error.message;
+        if (msg === 'Failed to fetch') msg = 'Could not connect to server.';
+        else if (msg.toLowerCase().includes('rate limit') || msg.toLowerCase().includes('too many') || msg.toLowerCase().includes('temporarily'))
+            msg = 'Market data provider is busy. Please wait 2-3 minutes.';
+        showStatus(msg, 'error');
+    } finally {
+        btn.disabled = false; btn.textContent = 'Analyze →'; btn.classList.remove('loading');
+        hideLoadingSteps();
+    }
+}
+
+// ============================================================
+// DISPLAY REPORT
+// ============================================================
+function displayReport(data) {
+    const d = data.live_data;
+    const curr = d.currency === 'INR' ? '₹' : '$';
+    const price = d.current_price;
+
+    document.getElementById('tickerTag').textContent = d.ticker;
+    document.getElementById('companyName').textContent = d.company_name || d.ticker;
+    document.getElementById('timestamp').innerHTML = `<div class="live-dot"></div> LIVE · ${d.data_timestamp}`;
+
+    document.getElementById('metrics').innerHTML = `
+        <div class="metric-card">
+            <div class="mc-label">Current Price</div>
+            <div class="mc-value">${curr}${price.toLocaleString()}</div>
+            <div class="mc-sub ${d.price_change >= 0 ? 'up' : 'down'}">
+                ${d.price_change >= 0 ? '▲' : '▼'} ${Math.abs(d.price_change).toFixed(2)} (${d.price_change_pct.toFixed(2)}%)
+            </div>
+        </div>
+        <div class="metric-card">
+            <div class="mc-label">P/E Ratio</div>
+            <div class="mc-value">${d.pe_ratio || 'N/A'}</div>
+            <div class="mc-sub neutral">Trailing TTM</div>
+        </div>
+        <div class="metric-card">
+            <div class="mc-label">Market Cap</div>
+            <div class="mc-value">${formatCap(d.market_cap)}</div>
+            <div class="mc-sub neutral">${d.currency}</div>
+        </div>
+        <div class="metric-card">
+            <div class="mc-label">52-Week Range</div>
+            <div class="mc-value" style="font-size:18px">${curr}${d.week52_low} — ${curr}${d.week52_high}</div>
+            <div class="mc-sub neutral">Low / High</div>
+        </div>
+    `;
+
+    createCharts(d);
+    createAnalysisSections(data.report, d);
+    document.getElementById('report').classList.add('show');
+    setTimeout(() => document.getElementById('report').scrollIntoView({behavior:'smooth',block:'start'}), 200);
+    // Animate section reveals
+    setTimeout(animateSections, 400);
+}
+
+function animateSections() {
+    const cards = document.querySelectorAll('.section-card');
+    const observer = new IntersectionObserver((entries) => {
+        entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('visible'); observer.unobserve(e.target); }});
+    }, {threshold:0.1});
+    cards.forEach(c => observer.observe(c));
+}
+
+// ============================================================
+// ANALYSIS SECTIONS
+// ============================================================
+function createAnalysisSections(report, d) {
+    const curr = d.currency === 'INR' ? '₹' : '$';
+    const price = d.current_price;
+    const pe = parseFloat(d.pe_ratio) || 0;
+    let verdict = 'HOLD', vc = 'hold';
+    if (pe > 0 && pe < 15 && d.price_change_pct > 0) { verdict = 'BUY'; vc = 'buy'; }
+    else if (pe > 40 || d.price_change_pct < -5) { verdict = 'SELL'; vc = 'sell'; }
+
+    const html = `
+    <!-- VERDICT -->
+    <div class="section-card sc-verdict" style="text-align:center">
+        <div class="sc-header" style="justify-content:center">
+            <div class="sc-icon">◎</div><div class="sc-title">Investment Verdict</div>
+        </div>
+        <div class="verdict-pill ${vc}">${verdict}</div>
+        <div class="verdict-desc">
+            ${verdict==='BUY'?'Favorable opportunity at current levels':verdict==='SELL'?'Caution advised — consider exit strategy':'Hold position — monitor conditions'}
         </div>
     </div>
-    
-    <footer class="footer">
-        <div class="disclaimer-box">
-            <h3>⚠️ Important Legal Disclaimers</h3>
-            <p>
-                <strong>NOT FINANCIAL ADVICE:</strong> This analysis is for educational and informational purposes only. 
-                It does not constitute financial, investment, or trading advice. Always consult with licensed financial professionals before making investment decisions.
-            </p>
-            <p>
-                <strong>DATA ACCURACY:</strong> While we use real-time market data from reliable sources, we cannot guarantee 100% accuracy. 
-                Market conditions change rapidly. Always verify information through multiple sources before acting.
-            </p>
-            <p>
-                <strong>RISK WARNING:</strong> All investments carry risk of loss. Past performance does not guarantee future results. 
-                You may lose some or all of your investment. This platform is for research and educational purposes only.
-            </p>
+
+    <!-- KEY DECISIONS -->
+    <div class="section-card sc-decision">
+        <div class="sc-header"><div class="sc-icon">△</div><div class="sc-title">Key Decision Points</div></div>
+        <ul class="dec-list">
+            <li><strong>Price Action:</strong> Currently ${curr}${price.toLocaleString()} with ${d.price_change>=0?'positive':'negative'} daily momentum (${d.price_change_pct.toFixed(2)}%)</li>
+            <li><strong>Valuation:</strong> P/E of ${d.pe_ratio} suggests ${pe<15?'undervalued opportunity':pe<25?'fair valuation':'premium pricing'}</li>
+            <li><strong>Market Position:</strong> ${formatCap(d.market_cap)} market cap — ${d.market_cap>100e9?'large-cap':d.market_cap>10e9?'mid-cap':'small-cap'}</li>
+            <li><strong>Sector:</strong> ${d.sector} · ${d.industry}</li>
+            <li><strong>Range Position:</strong> Trading at ${((price/d.week52_high)*100).toFixed(0)}% of 52-week high</li>
+        </ul>
+    </div>
+
+    <!-- VALUATION TABLE -->
+    <div class="section-card sc-valuation">
+        <div class="sc-header"><div class="sc-icon">◉</div><div class="sc-title">Valuation Analysis</div></div>
+        <table class="data-table">
+            <tr><th>Metric</th><th>Value</th><th>Assessment</th></tr>
+            <tr>
+                <td><strong>P/E Ratio</strong><br><span style="font-size:11px;color:var(--text3)">Price-to-Earnings</span></td>
+                <td><span class="signal ${pe<15?'good':pe<25?'neutral':'caution'}">${d.pe_ratio}</span></td>
+                <td>${pe<15?'Below average — potential bargain':pe<25?'Fairly priced relative to earnings':'Trading at premium — growth must justify price'}</td>
+            </tr>
+            <tr>
+                <td><strong>P/B Ratio</strong><br><span style="font-size:11px;color:var(--text3)">Price-to-Book</span></td>
+                <td><span class="signal ${parseFloat(d.pb_ratio)<3?'good':'caution'}">${d.pb_ratio}</span></td>
+                <td>${parseFloat(d.pb_ratio)<3?'Reasonable asset valuation':'Investors paying for intangibles and growth'}</td>
+            </tr>
+            <tr>
+                <td><strong>Profit Margin</strong></td>
+                <td><span class="signal ${parseFloat(d.profit_margin)>15?'good':parseFloat(d.profit_margin)>8?'neutral':'concern'}">${d.profit_margin}%</span></td>
+                <td>${parseFloat(d.profit_margin)>15?'Strong pricing power and efficiency':parseFloat(d.profit_margin)>8?'Moderate profitability':'Thin margins — competitive pressure'}</td>
+            </tr>
+            <tr>
+                <td><strong>ROE</strong><br><span style="font-size:11px;color:var(--text3)">Return on Equity</span></td>
+                <td><span class="signal ${parseFloat(d.roe)>15?'good':'neutral'}">${d.roe}%</span></td>
+                <td>${parseFloat(d.roe)>15?'Efficient capital allocation — strong returns':'Moderate capital efficiency'}</td>
+            </tr>
+            <tr>
+                <td><strong>Dividend Yield</strong></td>
+                <td><span class="signal ${parseFloat(d.dividend_yield)>3?'good':parseFloat(d.dividend_yield)>1?'neutral':'caution'}">${d.dividend_yield}%</span></td>
+                <td>${parseFloat(d.dividend_yield)>3?'Strong income component':parseFloat(d.dividend_yield)>1?'Some passive income plus growth':'Growth-focused — reinvests profits'}</td>
+            </tr>
+        </table>
+    </div>
+
+    <!-- ENTRY & EXIT -->
+    <div class="section-card sc-entry">
+        <div class="sc-header"><div class="sc-icon">⬡</div><div class="sc-title">Entry &amp; Exit Strategy</div></div>
+        <table class="data-table">
+            <tr><th>Level</th><th>Price</th><th>Action</th></tr>
+            <tr><td>Buy Zone</td><td><span class="price-tag buy">Below ${curr}${(price*0.95).toFixed(2)}</span></td><td>Strong accumulation — build position</td></tr>
+            <tr><td>Current Price</td><td><span class="price-tag current">${curr}${price.toLocaleString()}</span></td><td>Monitor for confirmation signals</td></tr>
+            <tr><td>Take Profit 1</td><td><span class="price-tag profit">Above ${curr}${(price*1.10).toFixed(2)}</span></td><td>Book 30–50% profits at +10%</td></tr>
+            <tr><td>Take Profit 2</td><td><span class="price-tag profit">Above ${curr}${(price*1.20).toFixed(2)}</span></td><td>Exit remaining at +20%</td></tr>
+            <tr><td>Stop Loss</td><td><span class="price-tag stop">Below ${curr}${(price*0.90).toFixed(2)}</span></td><td>Strict exit — limit downside to 10%</td></tr>
+        </table>
+    </div>
+
+    <!-- RISK -->
+    <div class="section-card sc-risk">
+        <div class="sc-header"><div class="sc-icon">⚠</div><div class="sc-title">Risk Assessment</div></div>
+        <table class="data-table">
+            <tr><th>Factor</th><th>Metric</th><th>Assessment</th></tr>
+            <tr><td>Debt Level</td><td><span class="signal ${parseFloat(d.debt_to_equity)>1.5?'concern':parseFloat(d.debt_to_equity)>0.8?'caution':'good'}">${d.debt_to_equity}</span></td>
+                <td>${parseFloat(d.debt_to_equity)>1.5?'High leverage — monitor carefully':parseFloat(d.debt_to_equity)>0.8?'Moderate debt levels':'Conservative balance sheet'}</td></tr>
+            <tr><td>Liquidity</td><td><span class="signal ${parseFloat(d.current_ratio)>1.5?'good':parseFloat(d.current_ratio)>1?'caution':'concern'}">${d.current_ratio}</span></td>
+                <td>${parseFloat(d.current_ratio)>1.5?'Strong — can meet obligations':parseFloat(d.current_ratio)>1?'Adequate coverage':'Liquidity concerns'}</td></tr>
+            <tr><td>Volatility</td><td><span class="signal ${Math.abs(parseFloat(d.beta))>1.5?'concern':Math.abs(parseFloat(d.beta))<0.8?'good':'neutral'}">${d.beta}</span></td>
+                <td>${Math.abs(parseFloat(d.beta))>1.5?'High volatility — larger price swings':Math.abs(parseFloat(d.beta))<0.8?'Lower volatility than market':'Average market volatility'}</td></tr>
+            <tr><td>Sector</td><td><span class="signal neutral">${d.sector}</span></td><td>Monitor sector trends and regulatory changes</td></tr>
+        </table>
+    </div>
+
+    <!-- AI ANALYSIS -->
+    <div class="section-card sc-ai">
+        <div class="sc-header"><div class="sc-icon">⚡</div><div class="sc-title">AI-Powered Analysis</div></div>
+        <div class="info-card blue"><h5>Market Overview</h5>
+            <p>${d.company_name||d.ticker} operates in ${d.sector} (${d.industry}). Trading at ${curr}${price.toLocaleString()}, positioned at ${((price/d.week52_high)*100).toFixed(0)}% of 52-week high. Market cap: ${formatCap(d.market_cap)} — ${d.market_cap>100e9?'large-cap':d.market_cap>10e9?'mid-cap':'small-cap'}.</p>
         </div>
-        <div style="text-align: center; color: #9ca3af; margin-top: 25px; font-size: 14px;">
-            © 2026 Sentinel AI Research | Agentic AI Investment Platform | Educational Tool
+        <div class="info-card amber"><h5>Financial Health</h5>
+            <p>Profit margin: ${d.profit_margin}% · ROE: ${d.roe}% — ${parseFloat(d.roe)>15?'strong':'moderate'} capital efficiency. P/E of ${d.pe_ratio} suggests ${pe<15?'undervaluation':pe<25?'fair value':'premium'}. Dividend yield: ${d.dividend_yield}%.</p>
         </div>
-    </footer>
-    
-    <script>
-        // TOP 100 STOCKS (50 US + 50 India)
-        const stocks = [
-            // TOP 50 US STOCKS
-            {t:'AAPL',n:'Apple Inc.'},{t:'MSFT',n:'Microsoft Corporation'},{t:'GOOGL',n:'Alphabet Inc. (Google)'},{t:'AMZN',n:'Amazon.com Inc.'},
-            {t:'NVDA',n:'NVIDIA Corporation'},{t:'META',n:'Meta Platforms (Facebook)'},{t:'TSLA',n:'Tesla Inc.'},{t:'BRK.B',n:'Berkshire Hathaway'},
-            {t:'LLY',n:'Eli Lilly and Company'},{t:'AVGO',n:'Broadcom Inc.'},{t:'JPM',n:'JPMorgan Chase & Co.'},{t:'V',n:'Visa Inc.'},
-            {t:'UNH',n:'UnitedHealth Group'},{t:'XOM',n:'Exxon Mobil'},{t:'WMT',n:'Walmart Inc.'},{t:'MA',n:'Mastercard Inc.'},
-            {t:'PG',n:'Procter & Gamble'},{t:'JNJ',n:'Johnson & Johnson'},{t:'HD',n:'Home Depot'},{t:'ORCL',n:'Oracle Corporation'},
-            {t:'COST',n:'Costco Wholesale'},{t:'NFLX',n:'Netflix Inc.'},{t:'BAC',n:'Bank of America'},{t:'CRM',n:'Salesforce Inc.'},
-            {t:'ABBV',n:'AbbVie Inc.'},{t:'CVX',n:'Chevron Corporation'},{t:'AMD',n:'Advanced Micro Devices'},{t:'KO',n:'Coca-Cola Company'},
-            {t:'PEP',n:'PepsiCo Inc.'},{t:'MRK',n:'Merck & Co.'},{t:'ADBE',n:'Adobe Inc.'},{t:'TMO',n:'Thermo Fisher Scientific'},
-            {t:'CSCO',n:'Cisco Systems'},{t:'ACN',n:'Accenture'},{t:'MCD',n:"McDonald's Corporation"},{t:'LIN',n:'Linde plc'},
-            {t:'ABT',n:'Abbott Laboratories'},{t:'WFC',n:'Wells Fargo'},{t:'TXN',n:'Texas Instruments'},{t:'INTC',n:'Intel Corporation'},
-            {t:'DIS',n:'Walt Disney Company'},{t:'PM',n:'Philip Morris'},{t:'CMCSA',n:'Comcast Corporation'},{t:'NKE',n:'Nike Inc.'},
-            {t:'QCOM',n:'Qualcomm Inc.'},{t:'GE',n:'General Electric'},{t:'INTU',n:'Intuit Inc.'},{t:'VZ',n:'Verizon Communications'},
-            {t:'AMAT',n:'Applied Materials'},{t:'CAT',n:'Caterpillar Inc.'},
-            
-            // TOP 50 INDIAN STOCKS
-            {t:'RELIANCE.NS',n:'Reliance Industries'},{t:'TCS.NS',n:'Tata Consultancy Services'},{t:'HDFCBANK.NS',n:'HDFC Bank'},
-            {t:'INFY',n:'Infosys Limited'},{t:'HINDUNILVR.NS',n:'Hindustan Unilever'},{t:'ICICIBANK.NS',n:'ICICI Bank'},
-            {t:'SBIN.NS',n:'State Bank of India'},{t:'BHARTIARTL.NS',n:'Bharti Airtel'},{t:'ITC.NS',n:'ITC Limited'},
-            {t:'KOTAKBANK.NS',n:'Kotak Mahindra Bank'},{t:'LT.NS',n:'Larsen & Toubro'},{t:'AXISBANK.NS',n:'Axis Bank'},
-            {t:'BAJFINANCE.NS',n:'Bajaj Finance'},{t:'ASIANPAINT.NS',n:'Asian Paints'},{t:'MARUTI.NS',n:'Maruti Suzuki'},
-            {t:'TITAN.NS',n:'Titan Company'},{t:'SUNPHARMA.NS',n:'Sun Pharmaceutical'},{t:'ULTRACEMCO.NS',n:'UltraTech Cement'},
-            {t:'NESTLEIND.NS',n:'Nestlé India'},{t:'ONGC.NS',n:'Oil & Natural Gas Corp'},{t:'NTPC.NS',n:'NTPC Limited'},
-            {t:'TATAMOTORS.NS',n:'Tata Motors'},{t:'POWERGRID.NS',n:'Power Grid Corporation'},{t:'TATASTEEL.NS',n:'Tata Steel'},
-            {t:'M&M.NS',n:'Mahindra & Mahindra'},{t:'JSWSTEEL.NS',n:'JSW Steel'},{t:'ADANIENT.NS',n:'Adani Enterprises'},
-            {t:'WIPRO.NS',n:'Wipro Limited'},{t:'COALINDIA.NS',n:'Coal India'},{t:'HCLTECH.NS',n:'HCL Technologies'},
-            {t:'BAJAJFINSV.NS',n:'Bajaj Finserv'},{t:'DIVISLAB.NS',n:'Divi\'s Laboratories'},{t:'GRASIM.NS',n:'Grasim Industries'},
-            {t:'TECHM.NS',n:'Tech Mahindra'},{t:'BRITANNIA.NS',n:'Britannia Industries'},{t:'EICHERMOT.NS',n:'Eicher Motors'},
-            {t:'APOLLOHOSP.NS',n:'Apollo Hospitals'},{t:'INDUSINDBK.NS',n:'IndusInd Bank'},{t:'TRENT.NS',n:'Trent Limited'},
-            {t:'ADANIPORTS.NS',n:'Adani Ports'},{t:'HINDALCO.NS',n:'Hindalco Industries'},{t:'DRREDDY.NS',n:'Dr. Reddy\'s Labs'},
-            {t:'CIPLA.NS',n:'Cipla Limited'},{t:'HEROMOTOCO.NS',n:'Hero MotoCorp'},{t:'SHREECEM.NS',n:'Shree Cement'},
-            {t:'BAJAJ-AUTO.NS',n:'Bajaj Auto'},{t:'BPCL.NS',n:'Bharat Petroleum'},{t:'SIEMENS.NS',n:'Siemens India'},
-            {t:'KPIT.NS',n:'KPIT Technologies'},{t:'DIXON.NS',n:'Dixon Technologies'}
-        ];
-        
-        let valChart, trendChart;
-        
-        // Autocomplete
-        const tickerInput = document.getElementById('ticker');
-        const autocompleteDiv = document.getElementById('autocomplete');
-        
-        tickerInput.addEventListener('input', function() {
-            const val = this.value.trim().toUpperCase();
-            autocompleteDiv.innerHTML = '';
-            
-            if (!val) {
-                autocompleteDiv.classList.remove('show');
-                return;
-            }
-            
-            const matches = stocks.filter(s => 
-                s.t.includes(val) || s.n.toUpperCase().includes(val)
-            ).slice(0, 12);
-            
-            if (!matches.length) {
-                autocompleteDiv.classList.remove('show');
-                return;
-            }
-            
-            matches.forEach(s => {
-                const div = document.createElement('div');
-                div.className = 'autocomplete-item';
-                div.innerHTML = `<span class="ticker-code">${s.t}</span><span class="company-name">${s.n}</span>`;
-                div.onclick = () => {
-                    tickerInput.value = s.t;
-                    autocompleteDiv.classList.remove('show');
-                };
-                autocompleteDiv.appendChild(div);
-            });
-            
-            autocompleteDiv.classList.add('show');
+        <div class="info-card green"><h5>Technical Momentum</h5>
+            <p>${d.price_change>=0?'Positive':'Negative'} momentum today (${Math.abs(d.price_change_pct).toFixed(2)}%). ${price<d.week52_low*1.1?'Near 52-week lows — potential value entry':price>d.week52_high*0.9?'Approaching highs — strong momentum':'Mid-range — balanced risk-reward'}. Beta: ${d.beta}.</p>
+        </div>
+        <div class="info-card red"><h5>Risks &amp; Catalysts</h5>
+            <p>D/E ratio: ${d.debt_to_equity} — ${parseFloat(d.debt_to_equity)>1.5?'elevated leverage':'manageable debt'}. Current ratio: ${d.current_ratio} — ${parseFloat(d.current_ratio)>1.5?'strong':'adequate'} liquidity. Monitor earnings, guidance, and sector trends.</p>
+        </div>
+        <div class="info-card purple"><h5>Recommendation</h5>
+            <p style="font-weight:600">${verdict==='BUY'?'BUY — Attractive valuation and solid fundamentals. Consider initiating position with proper sizing.':verdict==='SELL'?'SELL/AVOID — Stretched valuation. Take profits or wait for better entry.':'HOLD — Fair value. Maintain positions, monitor catalysts. New investors may wait for pullback.'}</p>
+        </div>
+        <div style="margin-top:20px;padding:20px;border-radius:12px;background:var(--bg);border:1px solid var(--border)">
+            <span class="ai-expand" onclick="document.getElementById('fullAI').style.display=document.getElementById('fullAI').style.display==='none'?'block':'none'">
+                ▸ View full AI analysis
+            </span>
+            <div id="fullAI" class="ai-text" style="display:none;margin-top:12px">${report}</div>
+        </div>
+    </div>
+
+    <!-- SMALL CAPS -->
+    <div class="section-card sc-smallcap">
+        <div class="sc-header"><div class="sc-icon">★</div><div class="sc-title">10-Year Small-Cap Wealth Builders</div></div>
+        <p style="font-size:13px;color:var(--text3);margin-bottom:16px">High-potential picks in <strong id="smallCapSector" style="color:var(--amber)">${d.sector}</strong> for long-term wealth creation:</p>
+        <div id="smallCapTable"></div>
+        <div class="info-card amber" style="margin-top:16px">
+            <p><strong>Advisory:</strong> Small caps carry higher risk but offer superior long-term potential. Recommendations match <strong id="smallCapTicker">${d.ticker}</strong>'s sector/region. Suitable for 10+ year horizon. Diversify across 5–8 picks.</p>
+        </div>
+    </div>
+    `;
+    document.getElementById('analysisContainer').innerHTML = html;
+    formatAIAnalysis(report);
+    generateSmallCapRecommendations(d);
+}
+
+// ============================================================
+// AI ANALYSIS FORMATTING (EDUCATIONAL TABLES)
+// ============================================================
+function formatAIAnalysis(rawText) {
+    const sections = [
+        {title:'Valuation Check',icon:'◉',color:'var(--cyan)',data:extractValuationInsights(rawText)},
+        {title:'Price Momentum',icon:'▲',color:'var(--green)',data:extractMomentumInsights(rawText)},
+        {title:'Risk Factors',icon:'⚠',color:'var(--red)',data:extractRiskInsights(rawText)},
+        {title:'Strategy',icon:'◎',color:'var(--purple)',data:extractStrategyInsights(rawText)}
+    ];
+    let html = `<div style="padding:16px;border-radius:12px;margin-bottom:20px;background:rgba(34,211,238,0.04);border:1px solid rgba(34,211,238,0.15);text-align:center">
+        <div style="font-size:15px;font-weight:700;color:var(--cyan);margin-bottom:6px">AI Insight Breakdown</div>
+        <div style="font-size:12px;color:var(--text3)">Look for <span class="signal good">Good</span> <span class="signal caution">Caution</span> <span class="signal concern">Warning</span> signals</div>
+    </div>`;
+    sections.forEach(s => {
+        if (!s.data || !s.data.length) return;
+        html += `<div style="margin-bottom:16px"><div style="font-size:14px;font-weight:700;color:${s.color};margin-bottom:10px;display:flex;align-items:center;gap:8px">${s.icon} ${s.title}</div>
+        <table class="data-table"><tr><th style="width:25%">Factor</th><th style="width:22%">Status</th><th>Insight</th></tr>`;
+        s.data.forEach(r => {
+            html += `<tr><td><strong>${r.factor}</strong></td><td><span class="signal ${r.signal}">${r.status}</span></td><td style="font-size:13px">${r.explanation}</td></tr>`;
         });
-        
-        document.addEventListener('click', e => {
-            if (e.target !== tickerInput) autocompleteDiv.classList.remove('show');
-        });
-        
-        function showStatus(msg, type) {
-            const s = document.getElementById('status');
-            s.textContent = msg;
-            s.className = 'status show ' + type;
-        }
-        
-        let countdownInterval = null;
-        
-        function hideRateLimitBox() {
-            document.getElementById('rateLimitBox').style.display = 'none';
-            if (countdownInterval) {
-                clearInterval(countdownInterval);
-                countdownInterval = null;
-            }
-        }
-        
-        function showRateLimitCountdown(data) {
-            const box = document.getElementById('rateLimitBox');
-            const countdownEl = document.getElementById('rlCountdown');
-            const comebackEl = document.getElementById('rlComeback');
-            const progressEl = document.getElementById('rlProgress');
-            
-            // Calculate target time
-            let totalSeconds = data.retry_after_seconds || (data.retry_after_minutes || 5) * 60;
-            const targetTime = new Date(Date.now() + totalSeconds * 1000);
-            const comebackTimeStr = targetTime.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
-            
-            comebackEl.textContent = '🕐 Come back at ' + comebackTimeStr + ' • You\'ll get ' + (data.requests_limit || 5) + ' fresh reports';
-            box.style.display = 'block';
-            
-            // Clear any existing countdown
-            if (countdownInterval) clearInterval(countdownInterval);
-            
-            const startSeconds = totalSeconds;
-            
-            function tick() {
-                const now = Date.now();
-                const remaining = Math.max(0, Math.floor((targetTime - now) / 1000));
-                const mins = Math.floor(remaining / 60);
-                const secs = remaining % 60;
-                
-                countdownEl.textContent = String(mins).padStart(2, '0') + ':' + String(secs).padStart(2, '0');
-                
-                // Progress bar (fills up as time passes)
-                const elapsed = startSeconds - remaining;
-                const pct = Math.min(100, (elapsed / startSeconds) * 100);
-                progressEl.style.width = pct + '%';
-                
-                if (remaining <= 0) {
-                    clearInterval(countdownInterval);
-                    countdownInterval = null;
-                    countdownEl.textContent = '00:00';
-                    comebackEl.textContent = '✅ You can generate reports again! Enter a ticker above.';
-                    progressEl.style.width = '100%';
-                    box.style.background = 'linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%)';
-                    box.style.borderColor = '#10b981';
-                    document.querySelector('.rl-title').textContent = '🎉 Your quota has been refreshed!';
-                    countdownEl.style.color = '#10b981';
-                }
-            }
-            
-            tick(); // run immediately
-            countdownInterval = setInterval(tick, 1000);
-        }
-        
-        async function analyze() {
-            const email = document.getElementById('email').value.trim();
-            const ticker = document.getElementById('ticker').value.trim().toUpperCase();
-            const btn = document.getElementById('btn');
-            const report = document.getElementById('report');
-            
-            autocompleteDiv.classList.remove('show');
-            
-            if (!email || !ticker) {
-                showStatus('⚠️ Please fill in both email and ticker fields', 'error');
-                return;
-            }
-            
-            // Validate email format
-            if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-                showStatus('⚠️ Please enter a valid email address', 'error');
-                return;
-            }
-            
-            // Pre-check rate limit before heavy API call
-            try {
-                const rlCheck = await fetch('/api/check-rate-limit', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({email: email})
-                });
-                const rlData = await rlCheck.json();
-                if (!rlData.allowed) {
-                    showStatus('⏳ ' + rlData.reason, 'error');
-                    showRateLimitCountdown(rlData);
-                    return;
-                } else {
-                    hideRateLimitBox();
-                }
-            } catch(e) { /* fail open */ }
-            
-            btn.disabled = true;
-            btn.textContent = 'Analyzing...';
-            report.classList.remove('show');
-            hideRateLimitBox();
-            
-            showStatus('🤖 Agentic AI analyzing ' + ticker + ' with real-time data... (30-60 seconds)', 'info');
-            
-            try {
-                const res = await fetch('/api/generate-report', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({company_name: ticker, email: email})
-                });
-                
-                if (res.status === 429) {
-                    const rlData = await res.json().catch(() => ({}));
-                    showStatus('⏳ ' + (rlData.reason || rlData.detail || 'Too many requests.'), 'error');
-                    if (rlData.retry_after_seconds || rlData.retry_after_minutes) {
-                        showRateLimitCountdown(rlData);
-                    }
-                    return;
-                }
-                
-                if (res.status === 503 || res.status === 504) {
-                    const err = await res.json().catch(() => ({}));
-                    showStatus('⏳ ' + (err.detail || 'Service temporarily busy. Please try again in 30 seconds.'), 'error');
-                    return;
-                }
-                
-                if (!res.ok) {
-                    const err = await res.json().catch(() => ({}));
-                    const errorMsg = err.detail || err.message || err.error || 'Unknown error - check browser console';
-                    throw new Error(errorMsg);
-                }
-                
-                const data = await res.json();
-                if (!data.success || !data.live_data) throw new Error('No data available for this ticker');
-                
-                // Show success with remaining quota info
-                let quotaMsg = '';
-                if (data.rate_limit) {
-                    const r = data.rate_limit.remaining;
-                    if (r === 0) {
-                        quotaMsg = ' ⚠️ This was your last free report this hour.';
-                    } else {
-                        quotaMsg = ` (${r} report${r !== 1 ? 's' : ''} remaining this hour)`;
-                    }
-                }
-                showStatus('✅ Analysis complete! Scroll down for detailed insights.' + quotaMsg, 'success');
-                displayReport(data);
-                
-                document.getElementById('ticker').value = '';
-                
-            } catch (error) {
-                let msg = error.message;
-                if (msg === 'Failed to fetch') {
-                    msg = 'Could not connect to server. Please check if the service is running.';
-                } else if (msg.toLowerCase().includes('rate limit') || msg.toLowerCase().includes('too many') || msg.toLowerCase().includes('temporarily')) {
-                    msg = '⏳ Market data provider is temporarily busy due to high traffic. Please wait 2-3 minutes and try again.';
-                }
-                showStatus('❌ ' + msg, 'error');
-                console.error('Analysis error:', error);
-            } finally {
-                btn.disabled = false;
-                btn.textContent = 'Analyze';
-            }
-        }
-        
-        function displayReport(data) {
-            const d = data.live_data;
-            const curr = d.currency === 'INR' ? '₹' : '$';
-            const price = d.current_price;
-            
-            document.getElementById('tickerTag').textContent = d.ticker;
-            document.getElementById('companyName').textContent = d.company_name || d.ticker;
-            document.getElementById('timestamp').textContent = '🔴 LIVE • ' + d.data_timestamp;
-            
-            // Metrics
-            document.getElementById('metrics').innerHTML = `
-                <div class="metric">
-                    <div class="metric-label">Current Price</div>
-                    <div class="metric-value">${curr}${price.toLocaleString()}</div>
-                    <div class="metric-sub ${d.price_change >= 0 ? 'positive' : 'negative'}">
-                        ${d.price_change >= 0 ? '▲' : '▼'} ${Math.abs(d.price_change).toFixed(2)} (${d.price_change_pct.toFixed(2)}%)
-                    </div>
-                </div>
-                <div class="metric">
-                    <div class="metric-label">P/E Ratio</div>
-                    <div class="metric-value">${d.pe_ratio || 'N/A'}</div>
-                    <div class="metric-sub" style="color:#6b7280;">Trailing TTM</div>
-                </div>
-                <div class="metric">
-                    <div class="metric-label">Market Cap</div>
-                    <div class="metric-value">${formatCap(d.market_cap)}</div>
-                    <div class="metric-sub" style="color:#6b7280;">${d.currency}</div>
-                </div>
-                <div class="metric">
-                    <div class="metric-label">52-Week Range</div>
-                    <div class="metric-value" style="font-size:18px;">${d.week52_low}-${d.week52_high}</div>
-                    <div class="metric-sub" style="color:#6b7280;">High / Low</div>
-                </div>
-            `;
-            
-            createCharts(d);
-            createAnalysisSections(data.report, d);
-            
-            document.getElementById('report').classList.add('show');
-            setTimeout(() => {
-                document.getElementById('report').scrollIntoView({behavior: 'smooth', block: 'start'});
-            }, 150);
-        }
-        
-        function createAnalysisSections(report, d) {
-            const curr = d.currency === 'INR' ? '₹' : '$';
-            const price = d.current_price;
-            const peRatio = parseFloat(d.pe_ratio) || 0;
-            
-            // Determine verdict
-            let verdict = 'HOLD';
-            let verdictClass = 'hold';
-            if (peRatio > 0 && peRatio < 15 && d.price_change_pct > 0) {
-                verdict = 'BUY';
-                verdictClass = 'buy';
-            } else if (peRatio > 40 || d.price_change_pct < -5) {
-                verdict = 'SELL';
-                verdictClass = 'sell';
-            }
-            
-            const html = `
-                <div class="section quick-verdict">
-                    <h3>🎯 QUICK INVESTMENT VERDICT</h3>
-                    <div class="verdict-box">
-                        <div class="verdict-badge ${verdictClass}">${verdict}</div>
-                        <div style="color:#065f46; font-weight:600; font-size:15px;">
-                            ${verdict === 'BUY' ? 'Favorable investment opportunity identified' : 
-                              verdict === 'SELL' ? 'Exercise caution - consider exit strategy' : 
-                              'Hold position - monitor market conditions'}
-                        </div>
-                    </div>
-                </div>
-                
-                <div class="section decision">
-                    <h3>✓ KEY DECISION POINTS</h3>
-                    <ul class="decision-list">
-                        <li><strong>Price Action:</strong> Currently ${curr}${price.toLocaleString()} with ${d.price_change >= 0 ? 'positive' : 'negative'} daily momentum (${d.price_change_pct.toFixed(2)}%)</li>
-                        <li><strong>Valuation Assessment:</strong> P/E ratio of ${d.pe_ratio} suggests ${peRatio < 15 ? 'undervalued opportunity' : peRatio < 25 ? 'fair valuation' : 'premium pricing'}</li>
-                        <li><strong>Market Position:</strong> ${formatCap(d.market_cap)} market cap - classified as ${d.market_cap > 100e9 ? 'large-cap' : d.market_cap > 10e9 ? 'mid-cap' : 'small-cap'} stock</li>
-                        <li><strong>Sector Exposure:</strong> ${d.sector} sector, ${d.industry} industry</li>
-                        <li><strong>Price Range:</strong> Trading ${((price/d.week52_high)*100).toFixed(0)}% from 52-week high</li>
-                    </ul>
-                </div>
-                
-                <div class="section valuation">
-                    <h3>💰 LIVE VALUATION ANALYSIS</h3>
-                    <p style="margin-bottom:18px; font-weight:600; color:#065f46;">
-                        Understanding if you're paying a fair price for this stock (Updated in real-time):
-                    </p>
-                    <table>
-                        <tr style="background:linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%);">
-                            <th style="border-bottom:3px solid #10b981;">Metric</th>
-                            <th style="border-bottom:3px solid #10b981;">Current Value</th>
-                            <th style="border-bottom:3px solid #10b981;">What This Number Means</th>
-                        </tr>
-                        <tr>
-                            <td><strong>📊 P/E Ratio</strong><br><span style="font-size:12px; color:#6b7280;">Price-to-Earnings</span></td>
-                            <td style="font-size:20px; font-weight:900; color:${parseFloat(d.pe_ratio) < 15 ? '#10b981' : parseFloat(d.pe_ratio) < 25 ? '#f59e0b' : '#ef4444'};">${d.pe_ratio}</td>
-                            <td style="line-height:1.8;">
-                                ${parseFloat(d.pe_ratio) < 15 ? 
-                                    '<strong style="color:#10b981;">🟢 UNDERVALUED:</strong> You pay less than $15 for every $1 of earnings. This could be a bargain!' : 
-                                  parseFloat(d.pe_ratio) < 25 ? 
-                                    '<strong style="color:#f59e0b;">🟡 FAIR VALUE:</strong> You pay $15-25 for every $1 of earnings. Reasonably priced.' : 
-                                    '<strong style="color:#ef4444;">🔴 EXPENSIVE:</strong> You pay $' + d.pe_ratio + ' for every $1 of earnings. Make sure growth justifies this premium!'
-                                }
-                            </td>
-                        </tr>
-                        <tr style="background:#f9fafb;">
-                            <td><strong>📈 P/B Ratio</strong><br><span style="font-size:12px; color:#6b7280;">Price-to-Book</span></td>
-                            <td style="font-size:20px; font-weight:900; color:#4338ca;">${d.pb_ratio}</td>
-                            <td style="line-height:1.8;">
-                                ${parseFloat(d.pb_ratio) < 3 ? 
-                                    '<strong>Reasonable Asset Valuation:</strong> Stock is trading at ' + d.pb_ratio + 'x its book value. The company\'s assets back up most of the stock price.' :
-                                    '<strong>Premium to Assets:</strong> Stock trades at ' + d.pb_ratio + 'x book value. Investors are paying for intangibles like brand and growth potential.'
-                                }
-                            </td>
-                        </tr>
-                        <tr>
-                            <td><strong>💵 Profit Margin</strong><br><span style="font-size:12px; color:#6b7280;">How much profit per dollar</span></td>
-                            <td style="font-size:20px; font-weight:900; color:${parseFloat(d.profit_margin) > 15 ? '#10b981' : parseFloat(d.profit_margin) > 8 ? '#f59e0b' : '#ef4444'};">${d.profit_margin}%</td>
-                            <td style="line-height:1.8;">
-                                ${parseFloat(d.profit_margin) > 15 ? 
-                                    '<strong style="color:#10b981;">🟢 EXCELLENT:</strong> Company keeps $' + d.profit_margin + ' profit from every $100 in sales. Strong pricing power!' :
-                                  parseFloat(d.profit_margin) > 8 ?
-                                    '<strong style="color:#f59e0b;">🟡 MODERATE:</strong> Company keeps $' + d.profit_margin + ' profit per $100 sales. Decent but could improve.' :
-                                    '<strong style="color:#ef4444;">🔴 THIN:</strong> Only $' + d.profit_margin + ' profit per $100 sales. Intense competition or high costs.'
-                                }
-                            </td>
-                        </tr>
-                        <tr style="background:#f9fafb;">
-                            <td><strong>🎯 ROE</strong><br><span style="font-size:12px; color:#6b7280;">Return on Equity</span></td>
-                            <td style="font-size:20px; font-weight:900; color:${parseFloat(d.roe) > 15 ? '#10b981' : '#f59e0b'};">${d.roe}%</td>
-                            <td style="line-height:1.8;">
-                                ${parseFloat(d.roe) > 15 ?
-                                    '<strong style="color:#10b981;">🟢 HIGH RETURNS:</strong> Company generates $' + d.roe + ' profit for every $100 invested by shareholders. Efficient use of capital!' :
-                                    '<strong style="color:#f59e0b;">🟡 MODERATE:</strong> Returns $' + d.roe + ' per $100 of shareholder money. Average capital efficiency.'
-                                }
-                            </td>
-                        </tr>
-                        <tr>
-                            <td><strong>💰 Dividend Yield</strong><br><span style="font-size:12px; color:#6b7280;">Income you receive</span></td>
-                            <td style="font-size:20px; font-weight:900; color:#8b5cf6;">${d.dividend_yield}%</td>
-                            <td style="line-height:1.8;">
-                                ${parseFloat(d.dividend_yield) > 3 ?
-                                    '<strong>High Income:</strong> You earn $' + d.dividend_yield + ' per year for every $100 invested. Good for income-seeking investors!' :
-                                  parseFloat(d.dividend_yield) > 1 ?
-                                    '<strong>Moderate Income:</strong> You get $' + d.dividend_yield + ' yearly income per $100 invested. Some passive income plus growth.' :
-                                    '<strong>Growth Focus:</strong> Low/no dividend. Company reinvests profits for growth instead of paying shareholders.'
-                                }
-                            </td>
-                        </tr>
-                    </table>
-                    
-                    <div style="background:linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%); padding:18px; border-radius:10px; margin-top:20px; border-left:4px solid #3b82f6;">
-                        <h5 style="color:#1e40af; font-weight:700; margin-bottom:10px;">💡 Quick Valuation Summary:</h5>
-                        <p style="color:#1e3a8a; line-height:1.9; margin:0;">
-                            ${parseFloat(d.pe_ratio) < 20 ?
-                                '<strong>Value Opportunity:</strong> Multiple metrics suggest the stock may be undervalued or fairly priced. Good for value investors.' :
-                                '<strong>Growth Premium:</strong> Stock trades at higher multiples. Suitable if you believe in strong future growth.'
-                            }
-                        </p>
-                    </div>
-                </div>
-                
-                <div class="section entry-exit">
-                    <h3>🎯 STRATEGIC ENTRY & EXIT LEVELS</h3>
-                    <p style="margin-bottom:18px; font-weight:600; color:#6b21a8;">
-                        Based on technical analysis and current momentum, here are recommended action levels:
-                    </p>
-                    <table>
-                        <tr>
-                            <th>Action Level</th>
-                            <th>Price Target</th>
-                            <th>Strategic Recommendation</th>
-                        </tr>
-                        <tr style="background:#d1fae5;">
-                            <td><strong>🟢 BUY ZONE</strong></td>
-                            <td class="price-action buy-zone">Below ${curr}${(price * 0.95).toFixed(2)}</td>
-                            <td>Strong accumulation opportunity - consider building position</td>
-                        </tr>
-                        <tr style="background:#e0e7ff;">
-                            <td><strong>📍 CURRENT PRICE</strong></td>
-                            <td class="price-action current">${curr}${price.toLocaleString()}</td>
-                            <td>Monitor for confirmation signals before adding</td>
-                        </tr>
-                        <tr style="background:#fef3c7;">
-                            <td><strong>🟡 TAKE PROFIT 1</strong></td>
-                            <td class="price-action profit-zone">Above ${curr}${(price * 1.10).toFixed(2)}</td>
-                            <td>Consider booking 30-50% profits at +10% gain</td>
-                        </tr>
-                        <tr style="background:#fde68a;">
-                            <td><strong>🟡 TAKE PROFIT 2</strong></td>
-                            <td class="price-action profit-zone">Above ${curr}${(price * 1.20).toFixed(2)}</td>
-                            <td>Exit remaining position at +20% for maximum gains</td>
-                        </tr>
-                        <tr style="background:#fee2e2;">
-                            <td><strong>🔴 STOP LOSS</strong></td>
-                            <td class="price-action stop-loss">Below ${curr}${(price * 0.90).toFixed(2)}</td>
-                            <td>Strict exit level to limit downside risk to 10%</td>
-                        </tr>
-                    </table>
-                </div>
-                
-                <div class="section risk">
-                    <h3>⚠️ COMPREHENSIVE RISK ANALYSIS</h3>
-                    <table>
-                        <tr>
-                            <th>Risk Category</th>
-                            <th>Current Metric</th>
-                            <th>Risk Assessment</th>
-                        </tr>
-                        <tr>
-                            <td><strong>Price Positioning</strong></td>
-                            <td>${((price/d.week52_high)*100).toFixed(1)}% of 52-week high</td>
-                            <td>${price/d.week52_high > 0.9 ? '⚠ Near peak - limited upside, watch for reversal' : price/d.week52_high < 0.6 ? '✓ Recovery potential from lows' : '↔ Mid-range - balanced risk/reward'}</td>
-                        </tr>
-                        <tr>
-                            <td><strong>Financial Leverage</strong></td>
-                            <td>Debt/Equity: ${d.debt_to_equity}</td>
-                            <td>${parseFloat(d.debt_to_equity) > 2 ? '⚠ High leverage - monitor debt servicing' : parseFloat(d.debt_to_equity) > 1 ? '↔ Moderate debt levels' : '✓ Conservative balance sheet'}</td>
-                        </tr>
-                        <tr>
-                            <td><strong>Liquidity Position</strong></td>
-                            <td>Current Ratio: ${d.current_ratio}</td>
-                            <td>${parseFloat(d.current_ratio) > 1.5 ? '✓ Strong liquidity, can meet obligations' : parseFloat(d.current_ratio) > 1 ? '↔ Adequate short-term coverage' : '⚠ Liquidity concerns - monitor cash flow'}</td>
-                        </tr>
-                        <tr>
-                            <td><strong>Volatility (Beta)</strong></td>
-                            <td>${d.beta}</td>
-                            <td>${Math.abs(parseFloat(d.beta)) > 1.5 ? '⚠ High volatility - expect larger price swings' : Math.abs(parseFloat(d.beta)) < 0.8 ? '✓ Lower volatility than market' : '↔ Average market volatility'}</td>
-                        </tr>
-                        <tr>
-                            <td><strong>Sector Dynamics</strong></td>
-                            <td>${d.sector}</td>
-                            <td>Monitor sector-specific trends and regulatory changes</td>
-                        </tr>
-                    </table>
-                </div>
-                
-                <div class="section" style="border-color:#6b7280; background:white;">
-                    <h3 style="color:#1f2937;">🤖 AI-POWERED COMPREHENSIVE ANALYSIS</h3>
-                    <div style="background:linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%); padding:20px; border-radius:12px; margin-bottom:20px; border-left:4px solid #0ea5e9;">
-                        <h4 style="color:#0c4a6e; font-size:18px; font-weight:700; margin-bottom:12px;">📊 Market Overview & Positioning</h4>
-                        <p style="line-height:1.9; color:#374151;">
-                            ${d.company_name || d.ticker} operates in the ${d.sector} sector, specifically within ${d.industry}. 
-                            The stock is currently trading at ${curr}${price.toLocaleString()}, positioning it at ${((price/d.week52_high)*100).toFixed(0)}% of its 52-week high. 
-                            With a market capitalization of ${formatCap(d.market_cap)}, this is classified as a ${d.market_cap > 100e9 ? 'large-cap' : d.market_cap > 10e9 ? 'mid-cap' : 'small-cap'} investment opportunity.
-                        </p>
-                    </div>
-                    
-                    <div style="background:linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); padding:20px; border-radius:12px; margin-bottom:20px; border-left:4px solid #f59e0b;">
-                        <h4 style="color:#92400e; font-size:18px; font-weight:700; margin-bottom:12px;">💰 Financial Health Snapshot</h4>
-                        <p style="line-height:1.9; color:#374151;">
-                            <strong>Profitability:</strong> Operating with a profit margin of ${d.profit_margin}% and generating a return on equity (ROE) of ${d.roe}%, 
-                            the company demonstrates ${parseFloat(d.roe) > 15 ? 'strong' : 'moderate'} capital efficiency. 
-                            <strong>Valuation:</strong> The P/E ratio of ${d.pe_ratio} suggests the stock is ${peRatio < 15 ? 'potentially undervalued' : peRatio < 25 ? 'fairly valued' : 'trading at a premium'} relative to earnings.
-                            <strong>Shareholder Returns:</strong> Current dividend yield stands at ${d.dividend_yield}%.
-                        </p>
-                    </div>
-                    
-                    <div style="background:linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%); padding:20px; border-radius:12px; margin-bottom:20px; border-left:4px solid #10b981;">
-                        <h4 style="color:#065f46; font-size:18px; font-weight:700; margin-bottom:12px;">📈 Technical Analysis & Momentum</h4>
-                        <p style="line-height:1.9; color:#374151;">
-                            The stock has shown ${d.price_change >= 0 ? 'positive' : 'negative'} momentum today with a ${Math.abs(d.price_change_pct).toFixed(2)}% move. 
-                            Trading range analysis shows the stock is ${price < d.week52_low * 1.1 ? 'near its 52-week lows, potentially offering a value entry point' : 
-                            price > d.week52_high * 0.9 ? 'approaching 52-week highs, suggesting strong momentum but limited near-term upside' : 
-                            'in the middle of its 52-week range, offering balanced risk-reward'}.
-                            Beta of ${d.beta} indicates ${Math.abs(parseFloat(d.beta)) > 1.2 ? 'higher than average' : 'average'} volatility compared to the broader market.
-                        </p>
-                    </div>
-                    
-                    <div style="background:linear-gradient(135deg, #fee2e2 0%, #fecaca 100%); padding:20px; border-radius:12px; margin-bottom:20px; border-left:4px solid #ef4444;">
-                        <h4 style="color:#991b1b; font-size:18px; font-weight:700; margin-bottom:12px;">⚡ Key Catalysts & Risks</h4>
-                        <p style="line-height:1.9; color:#374151;">
-                            <strong>Growth Drivers:</strong> Sector-specific tailwinds in ${d.sector} could provide upside momentum. 
-                            Monitor quarterly earnings, guidance updates, and industry trends.
-                            <strong>Risk Factors:</strong> Debt-to-equity ratio of ${d.debt_to_equity} indicates ${parseFloat(d.debt_to_equity) > 1.5 ? 'elevated leverage requiring monitoring' : 'manageable debt levels'}. 
-                            Current ratio of ${d.current_ratio} suggests ${parseFloat(d.current_ratio) > 1.5 ? 'strong' : 'adequate'} liquidity to meet short-term obligations.
-                        </p>
-                    </div>
-                    
-                    <div style="background:linear-gradient(135deg, #e9d5ff 0%, #d8b4fe 100%); padding:20px; border-radius:12px; margin-bottom:20px; border-left:4px solid #8b5cf6;">
-                        <h4 style="color:#6b21a8; font-size:18px; font-weight:700; margin-bottom:12px;">🎯 Investment Recommendation</h4>
-                        <p style="line-height:1.9; color:#374151; font-weight:600;">
-                            ${verdict === 'BUY' ? 
-                                '✅ <strong>BUY RECOMMENDATION:</strong> The combination of attractive valuation, positive momentum, and solid fundamentals makes this a compelling investment opportunity at current levels. Consider initiating a position with appropriate position sizing.' :
-                              verdict === 'SELL' ?
-                                '⚠️ <strong>SELL/AVOID:</strong> Current valuation appears stretched and risk factors suggest limited upside potential. Consider taking profits or avoiding new positions until better entry points emerge.' :
-                                '↔ <strong>HOLD RECOMMENDATION:</strong> The stock appears fairly valued at current levels. Existing investors should maintain positions while monitoring upcoming catalysts. New investors may wait for better entry points.'
-                            }
-                        </p>
-                    </div>
-                    
-                    <div style="background:white; padding:25px; border-radius:12px; border:2px solid #e5e7eb;">
-                        <h4 style="color:#1f2937; font-size:18px; font-weight:700; margin-bottom:15px;">📝 Full AI-Generated Analysis</h4>
-                        <div id="aiAnalysisFormatted" style="line-height:2; color:#374151; font-size:15px;"></div>
-                    </div>
-                </div>
-                
-                <div class="section small-caps">
-                    <h3>🌟 10-YEAR SMALL-CAP WEALTH BUILDERS</h3>
-                    <p style="margin-bottom:18px; font-weight:600; color:#c2410c;">
-                        High-potential small-cap opportunities in <strong id="smallCapSector"></strong> sector for long-term wealth creation:
-                    </p>
-                    <div id="smallCapTable"></div>
-                    <p style="margin-top:18px; font-size:14px; color:#78350f; font-weight:600; background:white; padding:15px; border-radius:8px; border-left:4px solid #f59e0b;">
-                        <strong>⚠️ Investment Advisory:</strong> Small-cap stocks carry higher risk but offer superior long-term wealth creation potential. 
-                        These recommendations are in the same sector/region as <strong id="smallCapTicker"></strong>. 
-                        Suitable for investors with 10+ year horizon and risk appetite. Diversify across 5-8 small-caps to mitigate individual stock risk.
-                    </p>
-                </div>
-            `;
-            
-            // Set the HTML first to create the DOM elements
-            document.getElementById('analysisContainer').innerHTML = html;
-            
-            // Now populate the dynamic content
-            formatAIAnalysis(report);
-            generateSmallCapRecommendations(d);
-        }
-        
-        function formatAIAnalysis(rawText) {
-            // Parse AI text and create beautiful, educational, interactive tables
-            
-            const sections = [
-                {
-                    title: '📊 Valuation Check - Is The Price Right?',
-                    icon: '💰',
-                    color: '#3b82f6',
-                    data: extractValuationInsights(rawText)
-                },
-                {
-                    title: '📈 Price Momentum - Where Is It Heading?',
-                    icon: '🎯',
-                    color: '#10b981',
-                    data: extractMomentumInsights(rawText)
-                },
-                {
-                    title: '⚠️ Risk Factors - What Could Go Wrong?',
-                    icon: '🛡️',
-                    color: '#ef4444',
-                    data: extractRiskInsights(rawText)
-                },
-                {
-                    title: '💡 Investment Strategy - Should You Buy?',
-                    icon: '🎯',
-                    color: '#8b5cf6',
-                    data: extractStrategyInsights(rawText)
-                }
-            ];
-            
-            let formattedHTML = `
-                <div style="background:linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%); padding:20px; border-radius:12px; margin-bottom:25px; border:3px solid #3b82f6;">
-                    <h4 style="color:#1e40af; font-size:20px; font-weight:900; margin-bottom:12px; text-align:center;">
-                        🎓 EASY-TO-UNDERSTAND AI ANALYSIS
-                    </h4>
-                    <p style="text-align:center; color:#475569; font-size:15px; line-height:1.8;">
-                        We've analyzed this stock and broken it down into simple, actionable insights.<br>
-                        <strong>Look for 🟢 GREEN (good signs), 🟡 YELLOW (be careful), and 🔴 RED (warning signals)</strong>
-                    </p>
-                </div>
-            `;
-            
-            sections.forEach(section => {
-                formattedHTML += createEducationalSection(section);
-            });
-            
-            // Add the raw AI analysis at the end for reference
-            formattedHTML += `
-                <div style="background:#f9fafb; padding:20px; border-radius:12px; margin-top:25px; border:2px solid #e5e7eb;">
-                    <h4 style="color:#374151; font-size:16px; font-weight:700; margin-bottom:15px; cursor:pointer;" onclick="document.getElementById('fullAI').style.display = document.getElementById('fullAI').style.display === 'none' ? 'block' : 'none'">
-                        📄 Full AI Analysis (Click to expand) ▼
-                    </h4>
-                    <div id="fullAI" style="display:none; line-height:1.9; color:#4b5563; font-size:14px; white-space:pre-wrap;">${rawText}</div>
-                </div>
-            `;
-            
-            document.getElementById('aiAnalysisFormatted').innerHTML = formattedHTML;
-        }
-        
-        function createEducationalSection(section) {
-            if (!section.data || section.data.length === 0) {
-                return ''; // Skip empty sections
-            }
-            
-            return `
-                <div style="background:white; padding:25px; border-radius:12px; margin-bottom:20px; border-left:6px solid ${section.color}; box-shadow:0 4px 12px rgba(0,0,0,0.08);">
-                    <h4 style="color:${section.color}; font-size:19px; font-weight:900; margin-bottom:18px; display:flex; align-items:center; gap:10px;">
-                        <span style="font-size:28px;">${section.icon}</span>
-                        ${section.title}
-                    </h4>
-                    
-                    <table style="width:100%; border-collapse:collapse; margin-top:15px;">
-                        <thead>
-                            <tr style="background:linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%);">
-                                <th style="padding:15px; text-align:left; font-weight:700; color:#1f2937; border-bottom:3px solid ${section.color}; width:25%;">Factor</th>
-                                <th style="padding:15px; text-align:left; font-weight:700; color:#1f2937; border-bottom:3px solid ${section.color}; width:25%;">Current Status</th>
-                                <th style="padding:15px; text-align:left; font-weight:700; color:#1f2937; border-bottom:3px solid ${section.color}; width:50%;">What This Means For You</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            ${section.data.map(row => createTableRow(row)).join('')}
-                        </tbody>
-                    </table>
-                </div>
-            `;
-        }
-        
-        function createTableRow(row) {
-            const signalColors = {
-                'good': '#10b981',
-                'caution': '#f59e0b',
-                'concern': '#ef4444',
-                'neutral': '#6b7280'
-            };
-            
-            const signalIcons = {
-                'good': '🟢',
-                'caution': '🟡',
-                'concern': '🔴',
-                'neutral': '⚪'
-            };
-            
-            return `
-                <tr style="border-bottom:1px solid #f3f4f6; transition:all 0.2s;" onmouseover="this.style.background='#f9fafb'" onmouseout="this.style.background='white'">
-                    <td style="padding:15px; font-weight:700; color:#374151; font-size:15px;">
-                        ${row.factor}
-                    </td>
-                    <td style="padding:15px; color:${signalColors[row.signal]}; font-weight:700; font-size:15px;">
-                        ${signalIcons[row.signal]} ${row.status}
-                    </td>
-                    <td style="padding:15px; color:#4b5563; line-height:1.7; font-size:14px;">
-                        ${row.explanation}
-                    </td>
-                </tr>
-            `;
-        }
-        
-        function extractValuationInsights(text) {
-            // Parse AI text and extract valuation insights
-            // This creates simple, educational rows
-            const insights = [];
-            
-            // Look for P/E mentions
-            if (text.toLowerCase().includes('p/e') || text.toLowerCase().includes('price-to-earnings')) {
-                const peMatch = text.match(/p\/e.*?(\d+\.?\d*)/i);
-                if (peMatch) {
-                    const pe = parseFloat(peMatch[1]);
-                    insights.push({
-                        factor: 'Price-to-Earnings (P/E) Ratio',
-                        status: pe < 15 ? 'Undervalued' : pe < 25 ? 'Fair Value' : 'Expensive',
-                        signal: pe < 15 ? 'good' : pe < 25 ? 'neutral' : 'caution',
-                        explanation: pe < 15 ? 
-                            `Stock is trading below average market multiples. This could be a good buying opportunity if fundamentals are strong.` :
-                            pe < 25 ?
-                            `Stock is reasonably priced compared to its earnings. Not too cheap, not too expensive.` :
-                            `Stock is trading at a premium. You're paying more for each dollar of earnings. Make sure growth justifies the price.`
-                    });
-                }
-            }
-            
-            // Look for valuation keywords
-            if (text.toLowerCase().includes('undervalued')) {
-                insights.push({
-                    factor: 'Overall Valuation',
-                    status: 'Below Fair Value',
-                    signal: 'good',
-                    explanation: 'The stock appears to be trading below its intrinsic worth. This could present a buying opportunity for long-term investors.'
-                });
-            } else if (text.toLowerCase().includes('overvalued') || text.toLowerCase().includes('expensive')) {
-                insights.push({
-                    factor: 'Overall Valuation',
-                    status: 'Above Fair Value',
-                    signal: 'caution',
-                    explanation: 'The stock may be trading above its fundamental value. Consider waiting for a better entry price or ensure growth prospects justify the premium.'
-                });
-            } else if (text.toLowerCase().includes('fairly valued') || text.toLowerCase().includes('reasonable')) {
-                insights.push({
-                    factor: 'Overall Valuation',
-                    status: 'Fair Value',
-                    signal: 'neutral',
-                    explanation: 'The stock is priced appropriately based on current fundamentals. Neither a bargain nor overpriced.'
-                });
-            }
-            
-            // Profit margins
-            if (text.toLowerCase().includes('margin')) {
-                const marginMatch = text.match(/margin.*?(\d+\.?\d*)%/i);
-                if (marginMatch) {
-                    const margin = parseFloat(marginMatch[1]);
-                    insights.push({
-                        factor: 'Profit Margins',
-                        status: margin > 15 ? 'Healthy' : margin > 8 ? 'Moderate' : 'Weak',
-                        signal: margin > 15 ? 'good' : margin > 8 ? 'neutral' : 'concern',
-                        explanation: margin > 15 ?
-                            `Strong profit margins (${margin}%) indicate efficient operations and pricing power. The company keeps more of each dollar in revenue.` :
-                            margin > 8 ?
-                            `Moderate margins (${margin}%). Company is profitable but facing competitive pressure on pricing.` :
-                            `Low margins (${margin}%) suggest intense competition or operational challenges. Monitor carefully.`
-                    });
-                }
-            }
-            
-            // Growth
-            if (text.toLowerCase().includes('growth')) {
-                insights.push({
-                    factor: 'Growth Prospects',
-                    status: text.toLowerCase().includes('high growth') || text.toLowerCase().includes('strong growth') ? 'Strong Growth Expected' : 'Moderate Growth',
-                    signal: text.toLowerCase().includes('high growth') || text.toLowerCase().includes('strong growth') ? 'good' : 'neutral',
-                    explanation: text.toLowerCase().includes('high growth') || text.toLowerCase().includes('strong growth') ?
-                        'Company is expected to grow revenues and earnings faster than the market average. This can justify higher valuations.' :
-                        'Company shows steady but not spectacular growth. Suitable for conservative investors seeking stability.'
-                });
-            }
-            
-            return insights.length > 0 ? insights : [
-                {
-                    factor: 'Valuation Assessment',
-                    status: 'Under Review',
-                    signal: 'neutral',
-                    explanation: 'AI is analyzing multiple valuation metrics to determine if the stock is fairly priced. Check detailed analysis below.'
-                }
-            ];
-        }
-        
-        function extractMomentumInsights(text) {
-            const insights = [];
-            
-            // Price trend
-            if (text.toLowerCase().includes('uptrend') || text.toLowerCase().includes('rising') || text.toLowerCase().includes('bullish')) {
-                insights.push({
-                    factor: 'Price Trend',
-                    status: 'Upward Momentum',
-                    signal: 'good',
-                    explanation: 'Stock price is in an upward trend. Buyers are in control, and sentiment is positive. Good for momentum investors.'
-                });
-            } else if (text.toLowerCase().includes('downtrend') || text.toLowerCase().includes('falling') || text.toLowerCase().includes('bearish')) {
-                insights.push({
-                    factor: 'Price Trend',
-                    status: 'Downward Momentum',
-                    signal: 'concern',
-                    explanation: 'Stock price is trending down. Sellers dominate. Wait for stabilization before buying, or consider for short-term trading only.'
-                });
-            } else if (text.toLowerCase().includes('sideways') || text.toLowerCase().includes('range-bound')) {
-                insights.push({
-                    factor: 'Price Trend',
-                    status: 'Consolidating',
-                    signal: 'neutral',
-                    explanation: 'Stock is moving sideways in a range. Market is undecided. Watch for a breakout in either direction.'
-                });
-            }
-            
-            // Volume
-            if (text.toLowerCase().includes('volume')) {
-                insights.push({
-                    factor: 'Trading Volume',
-                    status: text.toLowerCase().includes('high volume') ? 'High Interest' : 'Normal Activity',
-                    signal: text.toLowerCase().includes('high volume') ? 'good' : 'neutral',
-                    explanation: text.toLowerCase().includes('high volume') ?
-                        'High trading volume confirms the price move. More buyers/sellers = more reliable trend.' :
-                        'Normal trading activity. Price moves are less significant without volume confirmation.'
-                });
-            }
-            
-            // 52-week position
-            if (text.includes('52') || text.includes('week high') || text.includes('week low')) {
-                if (text.toLowerCase().includes('near.*high')) {
-                    insights.push({
-                        factor: '52-Week Position',
-                        status: 'Near Yearly High',
-                        signal: 'caution',
-                        explanation: 'Stock is trading close to its highest price in the past year. Limited upside in short term. Be cautious about chasing.'
-                    });
-                } else if (text.toLowerCase().includes('near.*low')) {
-                    insights.push({
-                        factor: '52-Week Position',
-                        status: 'Near Yearly Low',
-                        signal: 'neutral',
-                        explanation: 'Stock is near its lowest price this year. Could be a value opportunity if fundamentals are intact, or a value trap if problems persist.'
-                    });
-                }
-            }
-            
-            return insights.length > 0 ? insights : [
-                {
-                    factor: 'Price Momentum',
-                    status: 'Analyzing Trends',
-                    signal: 'neutral',
-                    explanation: 'AI is reviewing price patterns and momentum indicators. Check the price chart above for visual trends.'
-                }
-            ];
-        }
-        
-        function extractRiskInsights(text) {
-            const insights = [];
-            
-            // Debt levels
-            if (text.toLowerCase().includes('debt')) {
-                if (text.toLowerCase().includes('high debt') || text.toLowerCase().includes('leverage')) {
-                    insights.push({
-                        factor: 'Debt Burden',
-                        status: 'High Leverage',
-                        signal: 'concern',
-                        explanation: 'Company carries significant debt. This increases risk during downturns as interest payments must be made. Monitor cash flow carefully.'
-                    });
-                } else if (text.toLowerCase().includes('low debt') || text.toLowerCase().includes('strong balance sheet')) {
-                    insights.push({
-                        factor: 'Financial Health',
-                        status: 'Low Debt',
-                        signal: 'good',
-                        explanation: 'Company has manageable debt levels. This provides financial flexibility and reduces risk during economic downturns.'
-                    });
-                }
-            }
-            
-            // Volatility
-            if (text.toLowerCase().includes('volatile') || text.toLowerCase().includes('volatility')) {
-                insights.push({
-                    factor: 'Price Volatility',
-                    status: 'High Swings',
-                    signal: 'caution',
-                    explanation: 'Stock experiences large price swings. Higher risk but also higher potential reward. Suitable for risk-tolerant investors only.'
-                });
-            }
-            
-            // Sector risks
-            if (text.toLowerCase().includes('sector') || text.toLowerCase().includes('industry')) {
-                insights.push({
-                    factor: 'Industry Dynamics',
-                    status: 'Sector-Specific Risks',
-                    signal: 'neutral',
-                    explanation: 'Monitor industry trends, regulatory changes, and competitive dynamics. These affect all companies in the sector.'
-                });
-            }
-            
-            // Market risk
-            if (text.toLowerCase().includes('market') || text.toLowerCase().includes('economy')) {
-                insights.push({
-                    factor: 'Market Conditions',
-                    status: 'Macro Environment',
-                    signal: 'neutral',
-                    explanation: 'Overall market conditions and economic factors affect this stock. Stay informed about interest rates, inflation, and economic indicators.'
-                });
-            }
-            
-            return insights.length > 0 ? insights : [
-                {
-                    factor: 'Risk Assessment',
-                    status: 'Standard Market Risks',
-                    signal: 'neutral',
-                    explanation: 'All investments carry risk. Diversify your portfolio and invest only what you can afford to lose. Consider your risk tolerance.'
-                }
-            ];
-        }
-        
-        function extractStrategyInsights(text) {
-            const insights = [];
-            
-            // Buy/Sell/Hold recommendation
-            if (text.toUpperCase().includes('BUY') && !text.toUpperCase().includes('DON\'T BUY')) {
-                insights.push({
-                    factor: 'Overall Recommendation',
-                    status: 'BUY',
-                    signal: 'good',
-                    explanation: 'Based on analysis, this stock appears to be a good investment opportunity at current levels. Consider building a position gradually.'
-                });
-            } else if (text.toUpperCase().includes('SELL') || text.toUpperCase().includes('AVOID')) {
-                insights.push({
-                    factor: 'Overall Recommendation',
-                    status: 'SELL / AVOID',
-                    signal: 'concern',
-                    explanation: 'Analysis suggests avoiding this stock or exiting positions. Risk factors outweigh potential rewards at current prices.'
-                });
-            } else if (text.toUpperCase().includes('HOLD')) {
-                insights.push({
-                    factor: 'Overall Recommendation',
-                    status: 'HOLD',
-                    signal: 'neutral',
-                    explanation: 'If you own this stock, hold your position. If looking to buy, wait for a better entry point or more positive catalysts.'
-                });
-            }
-            
-            // Time horizon
-            if (text.toLowerCase().includes('long-term') || text.toLowerCase().includes('long term')) {
-                insights.push({
-                    factor: 'Investment Horizon',
-                    status: 'Long-Term Hold',
-                    signal: 'good',
-                    explanation: 'This stock is suitable for buy-and-hold investors with a 3-5+ year horizon. Short-term volatility should be expected and tolerated.'
-                });
-            } else if (text.toLowerCase().includes('short-term') || text.toLowerCase().includes('trading')) {
-                insights.push({
-                    factor: 'Investment Horizon',
-                    status: 'Short-Term Trade',
-                    signal: 'caution',
-                    explanation: 'Better suited for active traders. Not ideal for long-term passive investors. Requires close monitoring and quick decisions.'
-                });
-            }
-            
-            // Position sizing
-            insights.push({
-                factor: 'Position Sizing',
-                status: 'Diversify Appropriately',
-                signal: 'neutral',
-                explanation: 'Don\'t put all eggs in one basket. This stock should represent no more than 5-10% of your total portfolio. Spread risk across multiple investments.'
-            });
-            
-            // Entry strategy
-            if (text.toLowerCase().includes('dip') || text.toLowerCase().includes('pullback')) {
-                insights.push({
-                    factor: 'Entry Strategy',
-                    status: 'Buy on Dips',
-                    signal: 'good',
-                    explanation: 'Consider building position gradually when stock pulls back. This gives better average entry price than buying all at once.'
-                });
-            }
-            
-            return insights.length > 0 ? insights : [
-                {
-                    factor: 'Investment Approach',
-                    status: 'Do Your Research',
-                    signal: 'neutral',
-                    explanation: 'This AI analysis is a starting point. Always do your own research, consult financial advisors, and invest based on your personal goals and risk tolerance.'
-                }
-            ];
-        }
-        
-        function generateSmallCapRecommendations(stockData) {
-            const sector = stockData.sector || 'Technology';
-            const ticker = stockData.ticker;
-            const isIndian = ticker.includes('.NS') || ticker.includes('.BO');
-            
-            // Update display elements
-            document.getElementById('smallCapSector').textContent = sector;
-            document.getElementById('smallCapTicker').textContent = ticker;
-            
-            // Comprehensive small-cap database by sector and geography
-            const smallCapDatabase = {
-                // TECHNOLOGY - US
-                'Technology_US': [
-                    {name: 'CrowdStrike (CRWD)', sector: 'Cybersecurity', strengths: 'AI-powered endpoint protection, cloud-native platform', potential: 'Very High', stars: '⭐⭐⭐⭐⭐'},
-                    {name: 'Datadog (DDOG)', sector: 'Cloud Monitoring', strengths: 'SaaS observability platform, enterprise adoption', potential: 'Very High', stars: '⭐⭐⭐⭐⭐'},
-                    {name: 'Snowflake (SNOW)', sector: 'Data Cloud', strengths: 'Cloud data warehousing, multi-cloud support', potential: 'Very High', stars: '⭐⭐⭐⭐'},
-                    {name: 'Cloudflare (NET)', sector: 'Edge Computing', strengths: 'Global CDN, security services', potential: 'High', stars: '⭐⭐⭐⭐'},
-                    {name: 'MongoDB (MDB)', sector: 'Database', strengths: 'NoSQL database leader, developer-friendly', potential: 'High', stars: '⭐⭐⭐⭐'},
-                    {name: 'Zscaler (ZS)', sector: 'Cloud Security', strengths: 'Zero trust architecture, enterprise security', potential: 'Very High', stars: '⭐⭐⭐⭐'}
-                ],
-                
-                // TECHNOLOGY - INDIA
-                'Technology_India': [
-                    {name: 'KPIT Technologies', sector: 'Auto Tech', strengths: 'EV software, ADAS solutions, Tier-1 automotive clients', potential: 'Very High', stars: '⭐⭐⭐⭐⭐'},
-                    {name: 'Persistent Systems', sector: 'IT Services', strengths: 'Digital engineering, product development services', potential: 'Very High', stars: '⭐⭐⭐⭐'},
-                    {name: 'Coforge Limited', sector: 'IT Consulting', strengths: 'Banking IT, insurance tech, global delivery', potential: 'High', stars: '⭐⭐⭐⭐'},
-                    {name: 'Tata Elxsi', sector: 'Design & Tech', strengths: 'Automotive design, embedded systems, IoT', potential: 'Very High', stars: '⭐⭐⭐⭐'},
-                    {name: 'L&T Technology', sector: 'Engineering R&D', strengths: 'ER&D services, digital manufacturing', potential: 'High', stars: '⭐⭐⭐⭐'},
-                    {name: 'Cyient Limited', sector: 'Engineering', strengths: 'Aerospace, defense, semiconductor services', potential: 'High', stars: '⭐⭐⭐'}
-                ],
-                
-                // HEALTHCARE - US
-                'Healthcare_US': [
-                    {name: 'Exact Sciences (EXAS)', sector: 'Diagnostics', strengths: 'Cancer screening (Cologuard), liquid biopsy tech', potential: 'Very High', stars: '⭐⭐⭐⭐⭐'},
-                    {name: 'Insulet (PODD)', sector: 'Medical Devices', strengths: 'Omnipod insulin pump, tubeless technology', potential: 'Very High', stars: '⭐⭐⭐⭐'},
-                    {name: 'Penumbra (PEN)', sector: 'Neurovascular', strengths: 'Stroke treatment devices, thrombectomy systems', potential: 'High', stars: '⭐⭐⭐⭐'},
-                    {name: 'Natera (NTRA)', sector: 'Genetic Testing', strengths: 'Prenatal testing, oncology genomics', potential: 'Very High', stars: '⭐⭐⭐⭐'},
-                    {name: 'iRhythm Tech (IRTC)', sector: 'Digital Health', strengths: 'Cardiac monitoring (Zio), wearable devices', potential: 'High', stars: '⭐⭐⭐⭐'},
-                    {name: 'Inspire Medical (INSP)', sector: 'Sleep Medicine', strengths: 'Sleep apnea implant, innovative therapy', potential: 'High', stars: '⭐⭐⭐'}
-                ],
-                
-                // HEALTHCARE - INDIA  
-                'Healthcare_India': [
-                    {name: 'Laurus Labs', sector: 'Pharma API', strengths: 'ARV APIs, oncology APIs, backward integration', potential: 'Very High', stars: '⭐⭐⭐⭐⭐'},
-                    {name: 'Suven Pharmaceuticals', sector: 'CRAMS', strengths: 'Contract manufacturing, niche APIs, US/Europe clients', potential: 'Very High', stars: '⭐⭐⭐⭐'},
-                    {name: 'Solara Active Pharma', sector: 'API Mfg', strengths: 'Ibuprofen APIs, global presence, R&D focus', potential: 'High', stars: '⭐⭐⭐⭐'},
-                    {name: 'Neuland Laboratories', sector: 'Specialty APIs', strengths: 'Custom synthesis, regulated markets', potential: 'High', stars: '⭐⭐⭐'},
-                    {name: 'Poly Medicure', sector: 'Medical Devices', strengths: 'IV sets, blood bags, export-oriented', potential: 'High', stars: '⭐⭐⭐'},
-                    {name: 'Granules India', sector: 'Pharma', strengths: 'APIs & formulations, US FDA approvals', potential: 'High', stars: '⭐⭐⭐'}
-                ],
-                
-                // FINANCIAL SERVICES - US
-                'Financial Services_US': [
-                    {name: 'SoFi Technologies (SOFI)', sector: 'Digital Banking', strengths: 'Student loans, personal finance, bank charter', potential: 'Very High', stars: '⭐⭐⭐⭐'},
-                    {name: 'Affirm Holdings (AFRM)', sector: 'BNPL', strengths: 'Buy-now-pay-later, merchant partnerships', potential: 'High', stars: '⭐⭐⭐⭐'},
-                    {name: 'Upstart Holdings (UPST)', sector: 'AI Lending', strengths: 'AI credit underwriting, banking partnerships', potential: 'Very High', stars: '⭐⭐⭐⭐'},
-                    {name: 'LendingClub (LC)', sector: 'Online Banking', strengths: 'Digital bank, marketplace lending', potential: 'High', stars: '⭐⭐⭐'},
-                    {name: 'Marqeta (MQ)', sector: 'Card Issuing', strengths: 'Modern card issuing platform, embedded finance', potential: 'High', stars: '⭐⭐⭐'},
-                    {name: 'Toast Inc (TOST)', sector: 'Restaurant Tech', strengths: 'POS systems, payment processing', potential: 'High', stars: '⭐⭐⭐⭐'}
-                ],
-                
-                // FINANCIAL SERVICES - INDIA
-                'Financial Services_India': [
-                    {name: 'Bajaj Finance', sector: 'NBFC', strengths: 'Consumer finance leader, digital-first, cross-sell', potential: 'Exceptional', stars: '⭐⭐⭐⭐⭐'},
-                    {name: 'Cholamandalam Investment', sector: 'NBFC', strengths: 'Vehicle finance, used car loans, asset quality', potential: 'Very High', stars: '⭐⭐⭐⭐'},
-                    {name: 'Shriram Finance', sector: 'NBFC', strengths: 'Commercial vehicle finance, rural reach', potential: 'High', stars: '⭐⭐⭐⭐'},
-                    {name: 'Aavas Financiers', sector: 'Housing Finance', strengths: 'Affordable housing, Tier 2/3 cities focus', potential: 'Very High', stars: '⭐⭐⭐⭐'},
-                    {name: 'Home First Finance', sector: 'Housing Finance', strengths: 'Low-income housing, high growth potential', potential: 'Very High', stars: '⭐⭐⭐⭐'},
-                    {name: 'IIFL Finance', sector: 'NBFC', strengths: 'Gold loans, home loans, diverse portfolio', potential: 'High', stars: '⭐⭐⭐'}
-                ],
-                
-                // CONSUMER - US
-                'Consumer_US': [
-                    {name: 'Celsius Holdings (CELH)', sector: 'Beverages', strengths: 'Energy drinks, health-focused, rapid growth', potential: 'Very High', stars: '⭐⭐⭐⭐⭐'},
-                    {name: 'Dutch Bros (BROS)', sector: 'Coffee Shops', strengths: 'Drive-thru model, West Coast expansion', potential: 'Very High', stars: '⭐⭐⭐⭐'},
-                    {name: 'Planet Fitness (PLNT)', sector: 'Fitness', strengths: 'Budget gym model, franchise expansion', potential: 'High', stars: '⭐⭐⭐'},
-                    {name: 'Boot Barn (BOOT)', sector: 'Specialty Retail', strengths: 'Western wear, work boots, lifestyle brand', potential: 'High', stars: '⭐⭐⭐⭐'},
-                    {name: 'Floor & Decor (FND)', sector: 'Home Improvement', strengths: 'Flooring specialty, warehouse format', potential: 'High', stars: '⭐⭐⭐⭐'},
-                    {name: 'Wingstop (WING)', sector: 'QSR', strengths: 'Chicken wings, franchise model, delivery', potential: 'Very High', stars: '⭐⭐⭐⭐'}
-                ],
-                
-                // CONSUMER - INDIA
-                'Consumer_India': [
-                    {name: 'Trent Limited', sector: 'Retail', strengths: 'Westside & Zudio brands, rapid store expansion', potential: 'Exceptional', stars: '⭐⭐⭐⭐⭐'},
-                    {name: 'Avenue Supermarts (D-Mart)', sector: 'Retail', strengths: 'Value retail leader, EDLP model, strong execution', potential: 'Very High', stars: '⭐⭐⭐⭐⭐'},
-                    {name: 'Vedant Fashions', sector: 'Ethnic Wear', strengths: 'Manyavar brand, wedding market leader', potential: 'Very High', stars: '⭐⭐⭐⭐'},
-                    {name: 'Varun Beverages', sector: 'Beverages', strengths: 'PepsiCo franchisee, geographic expansion', potential: 'Very High', stars: '⭐⭐⭐⭐'},
-                    {name: 'Jubilant FoodWorks', sector: 'QSR', strengths: 'Dominos India, Dunkin, store network', potential: 'High', stars: '⭐⭐⭐'},
-                    {name: 'Bata India', sector: 'Footwear', strengths: 'Brand heritage, retail presence, premiumization', potential: 'High', stars: '⭐⭐⭐'}
-                ],
-                
-                // INDUSTRIALS - US
-                'Industrials_US': [
-                    {name: 'Chart Industries (GTLS)', sector: 'Industrial Equipment', strengths: 'LNG equipment, hydrogen infrastructure', potential: 'Very High', stars: '⭐⭐⭐⭐'},
-                    {name: 'Generac Holdings (GNRC)', sector: 'Power Equipment', strengths: 'Home generators, clean energy storage', potential: 'High', stars: '⭐⭐⭐⭐'},
-                    {name: 'Bloom Energy (BE)', sector: 'Fuel Cells', strengths: 'Solid oxide fuel cells, distributed power', potential: 'Very High', stars: '⭐⭐⭐⭐'},
-                    {name: 'AAON Inc (AAON)', sector: 'HVAC', strengths: 'Commercial HVAC, energy efficiency', potential: 'High', stars: '⭐⭐⭐'},
-                    {name: 'AZEK Company (AZEK)', sector: 'Building Products', strengths: 'Composite decking, sustainable materials', potential: 'High', stars: '⭐⭐⭐'},
-                    {name: 'Fluence Energy (FLNC)', sector: 'Energy Storage', strengths: 'Battery storage systems, renewable integration', potential: 'Very High', stars: '⭐⭐⭐⭐'}
-                ],
-                
-                // INDUSTRIALS - INDIA
-                'Industrials_India': [
-                    {name: 'Kaynes Technology', sector: 'Defense Electronics', strengths: 'Defense & space electronics, IoT, govt contracts', potential: 'Exceptional', stars: '⭐⭐⭐⭐⭐'},
-                    {name: 'Dixon Technologies', sector: 'Electronics Mfg', strengths: 'PLI beneficiary, contract mfg, diversified products', potential: 'Very High', stars: '⭐⭐⭐⭐⭐'},
-                    {name: 'Polycab India', sector: 'Cables & Wires', strengths: 'Infrastructure growth, brand strength, FMEG', potential: 'Very High', stars: '⭐⭐⭐⭐'},
-                    {name: 'KEI Industries', sector: 'Cables', strengths: 'Power cables, infrastructure demand', potential: 'High', stars: '⭐⭐⭐'},
-                    {name: 'Kalpataru Projects', sector: 'Infrastructure EPC', strengths: 'Power transmission, global projects', potential: 'High', stars: '⭐⭐⭐'},
-                    {name: 'Apar Industries', sector: 'Cables/Conductors', strengths: 'Specialty cables, transformer oils, exports', potential: 'High', stars: '⭐⭐⭐⭐'}
-                ],
-                
-                // ENERGY - US
-                'Energy_US': [
-                    {name: 'Enphase Energy (ENPH)', sector: 'Solar Equipment', strengths: 'Microinverters, residential solar, battery storage', potential: 'Very High', stars: '⭐⭐⭐⭐'},
-                    {name: 'Array Technologies (ARRY)', sector: 'Solar Trackers', strengths: 'Solar tracking systems, utility-scale projects', potential: 'High', stars: '⭐⭐⭐'},
-                    {name: 'Chord Energy (CHRD)', sector: 'Oil & Gas', strengths: 'Bakken Shale production, low-cost operator', potential: 'High', stars: '⭐⭐⭐'},
-                    {name: 'Magnolia Oil & Gas (MGY)', sector: 'Oil & Gas', strengths: 'Eagle Ford assets, efficient operations', potential: 'High', stars: '⭐⭐⭐'},
-                    {name: 'Shoals Technologies (SHLS)', sector: 'Solar Components', strengths: 'Electrical balance of systems, solar growth', potential: 'High', stars: '⭐⭐⭐'},
-                    {name: 'NextEra Energy Partners (NEP)', sector: 'Renewable Energy', strengths: 'Wind & solar portfolio, stable dividends', potential: 'High', stars: '⭐⭐⭐'}
-                ],
-                
-                // ENERGY - INDIA
-                'Energy_India': [
-                    {name: 'Adani Green Energy', sector: 'Renewable Energy', strengths: 'Massive solar/wind capacity, govt support', potential: 'Very High', stars: '⭐⭐⭐⭐'},
-                    {name: 'Tata Power', sector: 'Power Utility', strengths: 'Renewable transition, distribution network', potential: 'Very High', stars: '⭐⭐⭐⭐'},
-                    {name: 'SJVN Limited', sector: 'Hydro Power', strengths: 'Hydroelectric projects, PSU backing', potential: 'High', stars: '⭐⭐⭐'},
-                    {name: 'Borosil Renewables', sector: 'Solar Glass', strengths: 'Solar glass manufacturing, capacity expansion', potential: 'Very High', stars: '⭐⭐⭐⭐'},
-                    {name: 'Suzlon Energy', sector: 'Wind Turbines', strengths: 'Wind power solutions, turnaround story', potential: 'High', stars: '⭐⭐⭐'},
-                    {name: 'Waaree Energies', sector: 'Solar Modules', strengths: 'Solar PV manufacturing, integrated player', potential: 'Very High', stars: '⭐⭐⭐⭐'}
-                ]
-            };
-            
-            // Normalize sector name and determine geography
-            let sectorKey = sector.replace(' Services', '').replace('Financial', 'Financial Services').trim();
-            let geography = isIndian ? 'India' : 'US';
-            let lookupKey = `${sectorKey}_${geography}`;
-            
-            // Try exact match first
-            let recommendations = smallCapDatabase[lookupKey];
-            
-            // Fallback logic
-            if (!recommendations) {
-                // Try without Services
-                lookupKey = `${sector.split(' ')[0]}_${geography}`;
-                recommendations = smallCapDatabase[lookupKey];
-            }
-            
-            // Final fallback to Technology
-            if (!recommendations) {
-                recommendations = smallCapDatabase[`Technology_${geography}`];
-            }
-            
-            // Build HTML table
-            let tableHTML = `
-                <table>
-                    <tr>
-                        <th>Company Name</th>
-                        <th>Specific Focus</th>
-                        <th>Key Competitive Advantages</th>
-                        <th>10Y Potential</th>
-                    </tr>
-            `;
-            
-            recommendations.forEach(company => {
-                const colorClass = company.potential.includes('Exceptional') || company.potential.includes('Very High') ? '#10b981' : '#f59e0b';
-                tableHTML += `
-                    <tr>
-                        <td><strong>${company.name}</strong></td>
-                        <td>${company.sector}</td>
-                        <td>${company.strengths}</td>
-                        <td style="color:${colorClass}; font-weight:700;">${company.stars} ${company.potential}</td>
-                    </tr>
-                `;
-            });
-            
-            tableHTML += `</table>`;
-            document.getElementById('smallCapTable').innerHTML = tableHTML;
-        }
-        
-        function formatCap(cap) {
-            if (!cap) return 'N/A';
-            if (cap >= 1e12) return '$' + (cap / 1e12).toFixed(2) + 'T';
-            if (cap >= 1e9) return '$' + (cap / 1e9).toFixed(2) + 'B';
-            if (cap >= 1e6) return '$' + (cap / 1e6).toFixed(2) + 'M';
-            return '$' + cap.toLocaleString();
-        }
-        
-        function createCharts(d) {
-            if (valChart) valChart.destroy();
-            if (trendChart) trendChart.destroy();
-            
-            const vCtx = document.getElementById('valChart').getContext('2d');
-            valChart = new Chart(vCtx, {
-                type: 'bar',
-                data: {
-                    labels: ['P/E Ratio', 'P/B Ratio', 'Dividend Yield'],
-                    datasets: [{
-                        data: [parseFloat(d.pe_ratio) || 0, parseFloat(d.pb_ratio) || 0, parseFloat(d.dividend_yield) || 0],
-                        backgroundColor: ['#4338ca', '#7c3aed', '#10b981'],
-                        borderColor: ['#312e81', '#5b21b6', '#059669'],
-                        borderWidth: 2
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {legend: {display: false}},
-                    scales: {y: {beginAtZero: true, grid: {color: 'rgba(0,0,0,0.05)'}}}
-                }
-            });
-            
-            const price = d.current_price || 100;
-            const trend = [];
-            for (let i = 6; i >= 0; i--) {
-                trend.push(price * (1 + (Math.random() - 0.5) * 0.12 * i / 6));
-            }
-            
-            const tCtx = document.getElementById('trendChart').getContext('2d');
-            trendChart = new Chart(tCtx, {
-                type: 'line',
-                data: {
-                    labels: ['6M Ago', '5M', '4M', '3M', '2M', '1M', 'Current'],
-                    datasets: [{
-                        data: trend,
-                        borderColor: '#4338ca',
-                        backgroundColor: 'rgba(67,56,202,0.15)',
-                        fill: true,
-                        tension: 0.4,
-                        borderWidth: 3,
-                        pointBackgroundColor: '#4338ca',
-                        pointBorderColor: '#fff',
-                        pointBorderWidth: 2,
-                        pointRadius: 5
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {legend: {display: false}},
-                    scales: {
-                        y: {grid: {color: 'rgba(0,0,0,0.05)'}},
-                        x: {grid: {display: false}}
-                    }
-                }
-            });
-        }
-        
-        document.getElementById('email').addEventListener('keypress', e => {
-            if (e.key === 'Enter') document.getElementById('ticker').focus();
-        });
-        document.getElementById('ticker').addEventListener('keypress', e => {
-            if (e.key === 'Enter') analyze();
-        });
-    </script>
+        html += `</table></div>`;
+    });
+    document.getElementById('aiAnalysisFormatted')?.remove(); // Prevent duplication
+    const container = document.getElementById('fullAI');
+    if (container) container.insertAdjacentHTML('beforebegin', `<div id="aiAnalysisFormatted">${html}</div>`);
+}
+
+function extractValuationInsights(text) {
+    const insights = [];
+    if (text.toLowerCase().includes('p/e') || text.toLowerCase().includes('price-to-earnings')) {
+        const m = text.match(/p\/e.*?(\d+\.?\d*)/i);
+        if (m) { const pe = parseFloat(m[1]); insights.push({factor:'P/E Ratio',status:pe<15?'Undervalued':pe<25?'Fair':'Expensive',signal:pe<15?'good':pe<25?'neutral':'caution',explanation:pe<15?'Below average — potential buying opportunity.':pe<25?'Reasonably priced relative to earnings.':'Premium pricing — growth must justify.'}); }
+    }
+    if (text.toLowerCase().includes('undervalued')) insights.push({factor:'Overall Valuation',status:'Below Fair Value',signal:'good',explanation:'Trading below intrinsic worth — buying opportunity for long-term investors.'});
+    else if (text.toLowerCase().includes('overvalued')) insights.push({factor:'Overall Valuation',status:'Above Fair Value',signal:'caution',explanation:'May be above fundamental value. Consider waiting for better entry.'});
+    if (text.toLowerCase().includes('margin')) { const m = text.match(/margin.*?(\d+\.?\d*)%/i); if (m) { const v = parseFloat(m[1]); insights.push({factor:'Margins',status:v>15?'Healthy':v>8?'Moderate':'Weak',signal:v>15?'good':v>8?'neutral':'concern',explanation:`${v}% margins — ${v>15?'strong pricing power':'competitive pressure on profitability'}.`}); }}
+    if (text.toLowerCase().includes('growth')) insights.push({factor:'Growth',status:text.toLowerCase().includes('strong growth')?'Strong':'Moderate',signal:text.toLowerCase().includes('strong growth')?'good':'neutral',explanation:text.toLowerCase().includes('strong growth')?'Above-average growth expected.':'Steady growth trajectory.'});
+    return insights.length ? insights : [{factor:'Valuation',status:'See Full Report',signal:'neutral',explanation:'Detailed valuation in the AI analysis above.'}];
+}
+function extractMomentumInsights(text) {
+    const i = [];
+    if (text.toLowerCase().includes('bullish') || text.toLowerCase().includes('uptrend')) i.push({factor:'Trend',status:'Bullish',signal:'good',explanation:'Positive momentum and uptrend detected.'});
+    else if (text.toLowerCase().includes('bearish') || text.toLowerCase().includes('downtrend')) i.push({factor:'Trend',status:'Bearish',signal:'concern',explanation:'Negative momentum — caution advised.'});
+    if (text.toLowerCase().includes('support')) i.push({factor:'Support',status:'Identified',signal:'good',explanation:'Key support levels provide downside protection.'});
+    if (text.toLowerCase().includes('resistance')) i.push({factor:'Resistance',status:'Present',signal:'caution',explanation:'Overhead resistance may cap near-term upside.'});
+    return i.length ? i : [{factor:'Momentum',status:'See Full Report',signal:'neutral',explanation:'Detailed analysis in the AI report.'}];
+}
+function extractRiskInsights(text) {
+    const i = [];
+    if (text.toLowerCase().includes('debt')) i.push({factor:'Debt',status:text.toLowerCase().includes('high debt')?'High':'Manageable',signal:text.toLowerCase().includes('high debt')?'concern':'good',explanation:text.toLowerCase().includes('high debt')?'Elevated leverage — monitor closely.':'Debt levels are manageable.'});
+    if (text.toLowerCase().includes('competition') || text.toLowerCase().includes('competitive')) i.push({factor:'Competition',status:'Present',signal:'caution',explanation:'Competitive landscape poses ongoing risk.'});
+    if (text.toLowerCase().includes('regulation') || text.toLowerCase().includes('regulatory')) i.push({factor:'Regulatory',status:'Monitor',signal:'caution',explanation:'Regulatory environment could impact operations.'});
+    return i.length ? i : [{factor:'Risk',status:'See Full Report',signal:'neutral',explanation:'Detailed risk breakdown in AI analysis.'}];
+}
+function extractStrategyInsights(text) {
+    const i = [];
+    if (text.toLowerCase().includes('buy') && !text.toLowerCase().includes('don\'t buy')) i.push({factor:'Action',status:'Consider Buying',signal:'good',explanation:'AI identifies favorable entry conditions.'});
+    else if (text.toLowerCase().includes('sell') || text.toLowerCase().includes('avoid')) i.push({factor:'Action',status:'Consider Selling',signal:'concern',explanation:'AI suggests caution at current levels.'});
+    else i.push({factor:'Action',status:'Hold & Monitor',signal:'neutral',explanation:'Wait for clearer signals before acting.'});
+    if (text.toLowerCase().includes('long-term') || text.toLowerCase().includes('long term')) i.push({factor:'Horizon',status:'Long-Term',signal:'good',explanation:'Best suited for patient, long-term investors.'});
+    return i;
+}
+
+// ============================================================
+// SMALL CAP RECOMMENDATIONS
+// ============================================================
+function generateSmallCapRecommendations(d) {
+    const sector = d.sector || 'Technology';
+    const isIndian = d.ticker && (d.ticker.includes('.NS') || d.ticker.includes('.BO') || d.currency === 'INR');
+    const db = {
+        'Technology_US':[{name:'Palantir Technologies (PLTR)',sector:'AI/Big Data',strengths:'Government + enterprise AI platform',potential:'Very High',stars:'★★★★★'},{name:'CrowdStrike (CRWD)',sector:'Cybersecurity',strengths:'Cloud-native endpoint protection leader',potential:'Very High',stars:'★★★★★'},{name:'Datadog (DDOG)',sector:'Cloud Monitoring',strengths:'Unified observability platform',potential:'Very High',stars:'★★★★'},{name:'MongoDB (MDB)',sector:'Database',strengths:'Modern document database, developer-first',potential:'High',stars:'★★★★'},{name:'Cloudflare (NET)',sector:'Edge Computing',strengths:'CDN, security, serverless compute',potential:'Very High',stars:'★★★★'},{name:'Unity Software (U)',sector:'3D/Gaming Engine',strengths:'Real-time 3D creation platform',potential:'High',stars:'★★★'}],
+        'Technology_India':[{name:'Kaynes Technology',sector:'IoT/Defense',strengths:'Defense electronics, govt contracts',potential:'Exceptional',stars:'★★★★★'},{name:'Dixon Technologies',sector:'Electronics Mfg',strengths:'PLI beneficiary, contract manufacturing',potential:'Very High',stars:'★★★★★'},{name:'Persistent Systems',sector:'Software',strengths:'Digital engineering, healthcare IT',potential:'Very High',stars:'★★★★'},{name:'Coforge',sector:'IT Services',strengths:'Insurance & banking tech, BPA leader',potential:'High',stars:'★★★★'},{name:'KPIT Technologies',sector:'Auto Software',strengths:'EV software, T25 auto clients',potential:'Very High',stars:'★★★★'},{name:'Happiest Minds',sector:'Digital',strengths:'Cloud, IoT, security services',potential:'High',stars:'★★★'}],
+        'Financial Services_US':[{name:'SoFi Technologies (SOFI)',sector:'Fintech',strengths:'Digital banking, lending, investing',potential:'Very High',stars:'★★★★★'},{name:'Markel Group (MKL)',sector:'Specialty Insurance',strengths:'Mini Berkshire model, diversified',potential:'High',stars:'★★★★'},{name:'Shift4 Payments (FOUR)',sector:'Payments',strengths:'Integrated payment processing',potential:'Very High',stars:'★★★★'},{name:'Ally Financial (ALLY)',sector:'Digital Banking',strengths:'Top online bank, auto lending',potential:'High',stars:'★★★'},{name:'Houlihan Lokey (HLI)',sector:'Investment Banking',strengths:'M&A advisory, restructuring',potential:'High',stars:'★★★★'},{name:'Kinsale Capital (KNSL)',sector:'Specialty Insurance',strengths:'E&S insurance, tech-driven underwriting',potential:'High',stars:'★★★'}],
+        'Financial Services_India':[{name:'Bajaj Finance',sector:'NBFC',strengths:'Consumer lending leader, digital push',potential:'Very High',stars:'★★★★★'},{name:'Chola Finance (CHOLAFIN)',sector:'Vehicle Finance',strengths:'Vehicle + home loans, rural reach',potential:'Very High',stars:'★★★★'},{name:'SBI Cards',sector:'Credit Cards',strengths:'SBI network, growing card market',potential:'High',stars:'★★★★'},{name:'CDSL',sector:'Depository',strengths:'Duopoly, demat account growth',potential:'High',stars:'★★★★'},{name:'Angel One',sector:'Broking',strengths:'Discount broking, fintech platform',potential:'Very High',stars:'★★★★'},{name:'Motilal Oswal',sector:'Financial Services',strengths:'Broking, AMC, PE, wealth mgmt',potential:'High',stars:'★★★'}],
+        'Healthcare_US':[{name:'Intuitive Surgical (ISRG)',sector:'Robotic Surgery',strengths:'Da Vinci system monopoly',potential:'Very High',stars:'★★★★★'},{name:'Dexcom (DXCM)',sector:'Medical Devices',strengths:'CGM leader for diabetes',potential:'Very High',stars:'★★★★'},{name:'Veeva Systems (VEEV)',sector:'Life Sciences IT',strengths:'Cloud for pharma, switching costs',potential:'High',stars:'★★★★'},{name:'Shockwave Medical (SWAV)',sector:'Cardiology',strengths:'Intravascular lithotripsy',potential:'Very High',stars:'★★★★'},{name:'Axonics (AXNX)',sector:'Neuromodulation',strengths:'Bladder/bowel therapy devices',potential:'High',stars:'★★★'},{name:'Inspire Medical (INSP)',sector:'Sleep Apnea',strengths:'Implantable neurostimulation',potential:'High',stars:'★★★'}],
+        'Healthcare_India':[{name:'Max Healthcare',sector:'Hospitals',strengths:'Premium hospitals, strong brand',potential:'Very High',stars:'★★★★★'},{name:'Narayana Health',sector:'Hospitals',strengths:'Affordable healthcare model',potential:'Very High',stars:'★★★★'},{name:'Laurus Labs',sector:'Pharma',strengths:'API + formulations, ARV leader',potential:'High',stars:'★★★★'},{name:'Metropolis Healthcare',sector:'Diagnostics',strengths:'Premium diagnostics chain',potential:'High',stars:'★★★'},{name:'Syngene International',sector:'CRAMS',strengths:'Contract research for global pharma',potential:'Very High',stars:'★★★★'},{name:'Gland Pharma',sector:'Injectables',strengths:'Global injectables leader',potential:'High',stars:'★★★'}],
+        'Consumer Cyclical_US':[{name:'Airbnb (ABNB)',sector:'Travel Platform',strengths:'Global travel marketplace',potential:'Very High',stars:'★★★★★'},{name:'Lululemon (LULU)',sector:'Athletic Wear',strengths:'Premium athleisure, cult brand',potential:'High',stars:'★★★★'},{name:'DraftKings (DKNG)',sector:'Sports Betting',strengths:'Online gaming leader, state expansion',potential:'Very High',stars:'★★★★'},{name:'Carvana (CVNA)',sector:'Auto E-commerce',strengths:'Online used car marketplace',potential:'High',stars:'★★★'},{name:'Floor & Decor (FND)',sector:'Home Improvement',strengths:'Specialty flooring, store growth',potential:'High',stars:'★★★'},{name:'Five Below (FIVE)',sector:'Discount Retail',strengths:'Teen/tween value retail',potential:'High',stars:'★★★'}],
+        'Consumer Cyclical_India':[{name:'Trent Limited',sector:'Retail',strengths:'Zara India + Westside + Zudio',potential:'Exceptional',stars:'★★★★★'},{name:'Page Industries',sector:'Innerwear',strengths:'Jockey India, pricing power',potential:'Very High',stars:'★★★★'},{name:'Devyani International',sector:'QSR',strengths:'KFC + Pizza Hut India franchise',potential:'Very High',stars:'★★★★'},{name:'Varun Beverages',sector:'Beverages',strengths:'PepsiCo franchise, geographic expansion',potential:'Very High',stars:'★★★★'},{name:'Jubilant FoodWorks',sector:'QSR',strengths:'Dominos India, store network',potential:'High',stars:'★★★'},{name:'Bata India',sector:'Footwear',strengths:'Brand heritage, premiumization',potential:'High',stars:'★★★'}],
+        'Industrials_US':[{name:'Chart Industries (GTLS)',sector:'Industrial Equipment',strengths:'LNG, hydrogen infrastructure',potential:'Very High',stars:'★★★★'},{name:'Generac (GNRC)',sector:'Power Equipment',strengths:'Home generators, clean energy storage',potential:'High',stars:'★★★★'},{name:'Bloom Energy (BE)',sector:'Fuel Cells',strengths:'Solid oxide fuel cells',potential:'Very High',stars:'★★★★'},{name:'AAON Inc (AAON)',sector:'HVAC',strengths:'Commercial HVAC, energy efficiency',potential:'High',stars:'★★★'},{name:'AZEK (AZEK)',sector:'Building Products',strengths:'Sustainable composite decking',potential:'High',stars:'★★★'},{name:'Fluence Energy (FLNC)',sector:'Energy Storage',strengths:'Battery storage systems',potential:'Very High',stars:'★★★★'}],
+        'Industrials_India':[{name:'Kaynes Technology',sector:'Defense Electronics',strengths:'Defense & space, IoT, govt contracts',potential:'Exceptional',stars:'★★★★★'},{name:'Dixon Technologies',sector:'Electronics Mfg',strengths:'PLI beneficiary, diversified products',potential:'Very High',stars:'★★★★★'},{name:'Polycab India',sector:'Cables & Wires',strengths:'Infrastructure growth, FMEG',potential:'Very High',stars:'★★★★'},{name:'KEI Industries',sector:'Cables',strengths:'Power cables, infra demand',potential:'High',stars:'★★★'},{name:'Kalpataru Projects',sector:'EPC',strengths:'Power transmission, global projects',potential:'High',stars:'★★★'},{name:'Apar Industries',sector:'Conductors',strengths:'Specialty cables, transformer oils',potential:'High',stars:'★★★★'}],
+        'Energy_US':[{name:'Enphase Energy (ENPH)',sector:'Solar',strengths:'Microinverters, residential solar',potential:'Very High',stars:'★★★★'},{name:'Array Technologies (ARRY)',sector:'Solar Trackers',strengths:'Utility-scale tracking systems',potential:'High',stars:'★★★'},{name:'Chord Energy (CHRD)',sector:'Oil & Gas',strengths:'Bakken Shale, low-cost operator',potential:'High',stars:'★★★'},{name:'Magnolia Oil (MGY)',sector:'Oil & Gas',strengths:'Eagle Ford, efficient ops',potential:'High',stars:'★★★'},{name:'Shoals Tech (SHLS)',sector:'Solar Components',strengths:'Electrical balance of systems',potential:'High',stars:'★★★'},{name:'NextEra Partners (NEP)',sector:'Renewables',strengths:'Wind & solar portfolio',potential:'High',stars:'★★★'}],
+        'Energy_India':[{name:'Adani Green Energy',sector:'Renewables',strengths:'Massive solar/wind capacity',potential:'Very High',stars:'★★★★'},{name:'Tata Power',sector:'Power',strengths:'Renewable transition, distribution',potential:'Very High',stars:'★★★★'},{name:'SJVN Limited',sector:'Hydro Power',strengths:'Hydroelectric, PSU backing',potential:'High',stars:'★★★'},{name:'Borosil Renewables',sector:'Solar Glass',strengths:'Solar glass manufacturing',potential:'Very High',stars:'★★★★'},{name:'Suzlon Energy',sector:'Wind Turbines',strengths:'Wind power, turnaround story',potential:'High',stars:'★★★'},{name:'Waaree Energies',sector:'Solar Modules',strengths:'PV manufacturing, integrated',potential:'Very High',stars:'★★★★'}]
+    };
+    let geo = isIndian ? 'India' : 'US';
+    let key = `${sector.replace(' Services','').replace('Financial','Financial Services').trim()}_${geo}`;
+    let recs = db[key] || db[`${sector.split(' ')[0]}_${geo}`] || db[`Technology_${geo}`];
+    let tbl = `<table class="data-table"><tr><th>Company</th><th>Focus</th><th>Strengths</th><th>Potential</th></tr>`;
+    recs.forEach(c => {
+        const clr = c.potential.includes('Exceptional')||c.potential.includes('Very High')?'var(--green)':'var(--amber)';
+        tbl += `<tr><td><strong>${c.name}</strong></td><td>${c.sector}</td><td style="font-size:13px">${c.strengths}</td><td style="color:${clr};font-weight:700;font-size:13px">${c.stars}<br>${c.potential}</td></tr>`;
+    });
+    tbl += '</table>';
+    document.getElementById('smallCapTable').innerHTML = tbl;
+}
+
+// ============================================================
+// UTILITIES
+// ============================================================
+function formatCap(cap) {
+    if (!cap) return 'N/A';
+    if (cap >= 1e12) return '$' + (cap/1e12).toFixed(2) + 'T';
+    if (cap >= 1e9) return '$' + (cap/1e9).toFixed(2) + 'B';
+    if (cap >= 1e6) return '$' + (cap/1e6).toFixed(2) + 'M';
+    return '$' + cap.toLocaleString();
+}
+
+function createCharts(d) {
+    if (valChart) valChart.destroy();
+    if (trendChart) trendChart.destroy();
+    const chartFont = {family:"'Outfit',sans-serif",size:11};
+    const gridColor = 'rgba(99,179,237,0.06)';
+
+    valChart = new Chart(document.getElementById('valChart').getContext('2d'), {
+        type:'bar',
+        data:{labels:['P/E','P/B','Div Yield'],datasets:[{data:[parseFloat(d.pe_ratio)||0,parseFloat(d.pb_ratio)||0,parseFloat(d.dividend_yield)||0],backgroundColor:['rgba(34,211,238,0.3)','rgba(167,139,250,0.3)','rgba(52,211,153,0.3)'],borderColor:['#22d3ee','#a78bfa','#34d399'],borderWidth:2,borderRadius:6}]},
+        options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,grid:{color:gridColor},ticks:{color:'#64748b',font:chartFont}},x:{grid:{display:false},ticks:{color:'#94a3b8',font:chartFont}}}}
+    });
+
+    const price = d.current_price||100, trend=[];
+    for (let i=6;i>=0;i--) trend.push(price*(1+(Math.random()-0.5)*0.12*i/6));
+
+    trendChart = new Chart(document.getElementById('trendChart').getContext('2d'), {
+        type:'line',
+        data:{labels:['6M','5M','4M','3M','2M','1M','Now'],datasets:[{data:trend,borderColor:'#22d3ee',backgroundColor:'rgba(34,211,238,0.08)',fill:true,tension:0.4,borderWidth:2.5,pointBackgroundColor:'#22d3ee',pointBorderColor:'#0c1019',pointBorderWidth:2,pointRadius:4,pointHoverRadius:7}]},
+        options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{y:{grid:{color:gridColor},ticks:{color:'#64748b',font:chartFont}},x:{grid:{display:false},ticks:{color:'#94a3b8',font:chartFont}}}}
+    });
+}
+</script>
 </body>
 </html>
