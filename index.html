@@ -358,6 +358,9 @@ Type to search <strong>100 stocks</strong> (US &amp; India) &middot; Or enter an
 &#128293; <strong>5 free deep-dive reports</strong> per email per hour &middot; No signup, no credit card<br>
 &#128270; <strong>Ticker not showing?</strong> <a href="https://finance.yahoo.com/lookup" target="_blank" rel="noopener">Search for your stock ticker here</a> and paste it above
 </div>
+<div style="text-align:center;margin-top:10px;font-size:12px;color:var(--text3)">
+&#128200; <strong style="color:var(--blue);font-family:var(--mono)" id="globalRC">0</strong> reports generated and counting
+</div>
 
 <div class="sbar" id="status"></div>
 <div class="lsteps" id="lsteps">
@@ -516,6 +519,7 @@ const data=await res.json();if(!data.success||!data.live_data)throw new Error('N
 let q='';if(data.rate_limit){const r=data.rate_limit.remaining;document.getElementById('navQ').textContent=r+'/hr';
 q=r===0?' \u00B7 Last free report this hour':' \u00B7 '+r+' remaining'}
 if(data.report_number)document.getElementById('navRC').textContent=data.report_number;
+if(data.report_number)document.getElementById('globalRC').textContent=data.report_number.toLocaleString();
 showStatus('\u2713 Your report is ready. Scroll down \u2014 this is the good stuff.'+q,'success');displayReport(data);TI.value='';
 }catch(e){let m=e.message;if(m==='Failed to fetch')m='Cannot connect to server.';
 else if(m.toLowerCase().includes('rate limit')||m.toLowerCase().includes('too many')||m.toLowerCase().includes('temporarily'))m='Market data busy. Wait 2-3 min.';
@@ -937,7 +941,10 @@ window.open(mailto);
 }
 
 // Initialize vote chart on page load
-document.addEventListener('DOMContentLoaded',()=>{initVoteChart();loadVotes()});
+document.addEventListener('DOMContentLoaded',()=>{initVoteChart();loadVotes();
+fetch('/api/stats').then(r=>r.json()).then(d=>{
+if(d.total_reports){document.getElementById('navRC').textContent=d.total_reports;document.getElementById('globalRC').textContent=d.total_reports.toLocaleString()}
+}).catch(()=>{})});
 
 // Anti-copy protection
 document.addEventListener('contextmenu',e=>e.preventDefault());

@@ -40,6 +40,35 @@ app.add_middleware(
 )
 
 report_counter = {"count": 0}
+COUNTER_FILE = "report_count.json"
+
+def load_counter():
+    """Load report count from file (survives restarts/deploys)."""
+    try:
+        import json
+        with open(COUNTER_FILE, "r") as f:
+            data = json.load(f)
+            report_counter["count"] = data.get("count", 0)
+            print(f"📊 Loaded report counter: {report_counter['count']}")
+    except FileNotFoundError:
+        # First deploy or file missing — check env var for seed value
+        seed = int(os.getenv("REPORT_COUNT_SEED", "0"))
+        report_counter["count"] = seed
+        save_counter()
+        print(f"📊 Initialized counter at {seed}")
+    except Exception as e:
+        print(f"⚠️ Counter load failed: {e}")
+
+def save_counter():
+    """Persist report count to file."""
+    try:
+        import json
+        with open(COUNTER_FILE, "w") as f:
+            json.dump({"count": report_counter["count"]}, f)
+    except Exception as e:
+        print(f"⚠️ Counter save failed: {e}")
+
+load_counter()
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 
 # ═══════════════════════════════════════════════════════════
@@ -55,6 +84,34 @@ feature_votes = {
     "insider": {"up": 0, "dn": 0},
     "theme": {"up": 0, "dn": 0},
 }
+VOTES_FILE = "feature_votes.json"
+
+def load_votes():
+    """Load feature votes from file (survives restarts/deploys)."""
+    try:
+        import json
+        with open(VOTES_FILE, "r") as f:
+            data = json.load(f)
+            for k in feature_votes:
+                if k in data:
+                    feature_votes[k] = data[k]
+            print(f"🗳️ Loaded votes: {sum(v['up']+v['dn'] for v in feature_votes.values())} total")
+    except FileNotFoundError:
+        save_votes()
+        print("🗳️ Initialized empty vote file")
+    except Exception as e:
+        print(f"⚠️ Vote load failed: {e}")
+
+def save_votes():
+    """Persist feature votes to file."""
+    try:
+        import json
+        with open(VOTES_FILE, "w") as f:
+            json.dump(feature_votes, f)
+    except Exception as e:
+        print(f"⚠️ Vote save failed: {e}")
+
+load_votes()
 
 
 def check_rate_limit(email: str) -> dict:
@@ -583,6 +640,7 @@ Based on real-time price of {currency_symbol}{live_data['current_price']:,.2f}:
         report = result["content"][0]["text"]
         
         report_counter["count"] += 1
+        save_counter()
         report_id = hashlib.md5(f"{company}{datetime.now()}".encode()).hexdigest()[:8]
         
         # Record this request for rate limiting
@@ -631,6 +689,7 @@ async def cast_vote(request: Request):
         elif direction < 0:
             feature_votes[feature]["dn"] += 1
         
+        save_votes()
         return {"success": True, "votes": feature_votes[feature]}
     except HTTPException:
         raise
