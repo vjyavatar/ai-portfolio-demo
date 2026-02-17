@@ -4,9 +4,34 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Sentinel AI Research — Free Real-Time Stock Analysis in 60 Seconds</title>
-<meta name="description" content="Free AI stock analysis with real-time data. Get exact buy/sell prices, risk scoring, valuation breakdown, and hidden small-cap picks in 60 seconds.">
-<meta name="keywords" content="stock analysis, agentic AI, investment research, stock recommendations, entry exit strategy">
-<meta name="robots" content="index, follow">
+<meta name="description" content="Free AI stock analysis with real-time data. Get exact buy/sell prices, risk scoring, deep valuation breakdown, and hidden small-cap picks — all in 60 seconds. No signup required.">
+<meta name="keywords" content="stock analysis, AI stock research, free stock analysis, real-time stock data, stock valuation, entry exit strategy, stop loss calculator, PE ratio checker, stock risk assessment, small cap stocks, Indian stocks, US stocks, investment research, stock screener, AI investment tool, portfolio analysis, stock recommendation, market intelligence">
+<meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large">
+<meta name="author" content="Sentinel AI Research">
+<link rel="canonical" href="https://sentinelai.research">
+
+<!-- Open Graph / Social Sharing -->
+<meta property="og:type" content="website">
+<meta property="og:title" content="Sentinel AI Research — Free AI Stock Analysis">
+<meta property="og:description" content="Get professional-grade stock analysis in 60 seconds. Real-time data, AI valuation, exact buy/sell prices, risk scoring, and hidden small-cap picks. Completely free.">
+<meta property="og:site_name" content="Sentinel AI Research">
+<meta property="og:locale" content="en_US">
+
+<!-- Twitter Card -->
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Sentinel AI Research — Free AI Stock Analysis">
+<meta name="twitter:description" content="Stop guessing. Get AI-powered stock analysis with real-time data, exact entry/exit prices, and risk scoring — free, in 60 seconds.">
+
+<!-- Additional SEO -->
+<meta name="theme-color" content="#060a13">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Sentinel AI">
+
+<!-- Structured Data / JSON-LD -->
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"WebApplication","name":"Sentinel AI Research","description":"Free AI-powered stock analysis with real-time market data, valuation metrics, entry/exit strategies, risk assessment, and small-cap recommendations.","url":"https://sentinelai.research","applicationCategory":"FinanceApplication","operatingSystem":"Web","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},"featureList":["Real-time stock data","AI-powered analysis","Entry and exit price targets","Risk scoring","Small-cap recommendations","52-week price mapping","Financial health radar","Margin vs industry comparison"]}
+</script>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=Sora:wght@600;700;800&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <style>
@@ -157,6 +182,7 @@ nav{position:sticky;top:0;z-index:100;backdrop-filter:blur(24px);-webkit-backdro
 
 .aix{display:inline-flex;align-items:center;gap:5px;cursor:pointer;color:var(--blue);font-size:12px;font-weight:600;padding:6px 0;transition:color .2s}.aix:hover{color:#fff}
 .ait{line-height:1.9;color:var(--text2);font-size:13px;white-space:pre-wrap}
+.ait::-webkit-scrollbar{width:5px}.ait::-webkit-scrollbar-track{background:var(--bg);border-radius:3px}.ait::-webkit-scrollbar-thumb{background:rgba(59,130,246,.25);border-radius:3px}.ait::-webkit-scrollbar-thumb:hover{background:rgba(59,130,246,.4)}
 
 /* 52-week position bar */
 .w52bar{position:relative;height:8px;background:rgba(148,163,184,.1);border-radius:4px;margin:16px 0 8px;overflow:visible}
@@ -234,7 +260,7 @@ footer{position:relative;z-index:1;margin-top:32px;background:rgba(6,10,19,.95);
 <div class="hlp">
 Type to search <strong>100 stocks</strong> (US &amp; India) &middot; Or enter any valid ticker symbol<br>
 &#128293; <strong>5 free deep-dive reports</strong> per email per hour &middot; No signup, no credit card<br>
-&#128270; <strong>Ticker not showing?</strong> Look it up on <a href="https://finance.yahoo.com/lookup" target="_blank" rel="noopener">finance.yahoo.com/lookup</a> and paste it here
+&#128270; <strong>Ticker not showing?</strong> <a href="https://finance.yahoo.com/lookup" target="_blank" rel="noopener">Search for your stock ticker here</a> and paste it above
 </div>
 <div class="sbar" id="status"></div>
 <div class="lsteps" id="lsteps">
@@ -515,8 +541,8 @@ const html=`
 <div class="ic pu"><h5>The Bottom Line \u2014 What Should You Do?</h5><p style="font-weight:600">${verdict==='BUY'?'\u2705 BUY \u2014 The math checks out. Strong fundamentals at a price that makes sense. Consider starting a position.':verdict==='SELL'?'\u26A0\uFE0F SELL/AVOID \u2014 The numbers do not justify the price. Take profits or stay on the sidelines.':'\u2194\uFE0F HOLD \u2014 Not cheap enough to buy more, not expensive enough to sell. Patience pays here.'}</p></div>
 <div id="aiAnalysisFormatted"></div>
 <div style="margin-top:16px;padding:16px;border-radius:10px;background:var(--bg);border:1px solid var(--border)">
-<span class="aix" onclick="document.getElementById('fullAI').style.display=document.getElementById('fullAI').style.display==='none'?'block':'none'">\u25B8 Read the full AI brain dump (detailed analysis)</span>
-<div id="fullAI" class="ait" style="display:none;margin-top:10px">${report}</div>
+<span class="aix" onclick="const e=document.getElementById('fullAIraw');e.style.display=e.style.display==='none'?'block':'none';this.innerHTML=e.style.display==='none'?'\u25B8 Read the complete AI report':'\u25BE Close AI report'">\u25B8 Read the complete AI report</span>
+<div id="fullAIraw" class="ait" style="display:none;margin-top:10px;max-height:400px;overflow-y:auto;padding-right:8px">${report}</div>
 </div></div>
 
 <!-- SMALL CAPS -->
@@ -608,8 +634,8 @@ let h=`<div style="padding:16px;border-radius:10px;margin-bottom:18px;background
 <div style="font-size:12px;color:var(--text3);line-height:1.7">We've broken down the AI analysis into simple, actionable insights.<br><strong>Look for <span style="color:var(--green)">\ud83d\udfe2 GREEN</span> (good), <span style="color:var(--amber)">\ud83d\udfe1 YELLOW</span> (caution), <span style="color:var(--red)">\ud83d\udd34 RED</span> (warning)</strong></div></div>`;
 sections.forEach(s=>{h+=createEducationalSection(s)});
 h+=`<div style="padding:16px;border-radius:10px;margin-top:18px;background:var(--bg);border:1px solid var(--border)">
-<span class="aix" onclick="document.getElementById('fullAI').style.display=document.getElementById('fullAI').style.display==='none'?'block':'none'">\u25b8 Full AI Analysis (click to expand)</span>
-<div id="fullAI" class="ait" style="display:none;margin-top:10px">${rawText}</div></div>`;
+<span class="aix" onclick="const e=document.getElementById('fullAIedu');e.style.display=e.style.display==='none'?'block':'none';this.innerHTML=e.style.display==='none'?'\u25b8 View detailed AI breakdown':'\u25be Close AI breakdown'">\u25b8 View detailed AI breakdown</span>
+<div id="fullAIedu" class="ait" style="display:none;margin-top:10px;max-height:400px;overflow-y:auto;padding-right:8px">${rawText}</div></div>`;
 const el=document.getElementById('aiAnalysisFormatted');if(el)el.innerHTML=h}
 
 function createEducationalSection(section){
