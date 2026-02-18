@@ -416,6 +416,15 @@ footer{position:relative;z-index:1;margin-top:32px;background:rgba(6,10,19,.95);
 .scroll-hint{text-align:center;padding:16px 0;animation:scrollBounce 2s ease-in-out infinite}
 .scroll-hint span{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--text3);background:var(--surface);padding:8px 18px;border-radius:100px;border:1px solid var(--border)}
 @keyframes scrollBounce{0%,100%{transform:translateY(0)}50%{transform:translateY(6px)}}
+@keyframes eventSlide{from{opacity:0;transform:translateY(-20px);max-height:0}to{opacity:1;transform:translateY(0);max-height:300px}}
+@keyframes eventGlow{0%,100%{box-shadow:0 0 15px rgba(245,158,11,.15),inset 0 0 15px rgba(245,158,11,.03)}50%{box-shadow:0 0 30px rgba(245,158,11,.25),inset 0 0 20px rgba(245,158,11,.05)}}
+@keyframes eventGlowHigh{0%,100%{box-shadow:0 0 15px rgba(239,68,68,.2),inset 0 0 15px rgba(239,68,68,.03)}50%{box-shadow:0 0 35px rgba(239,68,68,.35),inset 0 0 20px rgba(239,68,68,.06)}}
+@keyframes borderShimmer{0%{background-position:0% 50%}50%{background-position:100% 50%}100%{background-position:0% 50%}}
+.event-alert-global{animation:eventSlide .5s ease-out;overflow:hidden;margin-bottom:10px;border-radius:12px;position:relative}
+.event-alert-global::before{content:'';position:absolute;inset:-2px;border-radius:14px;background:linear-gradient(90deg,transparent,rgba(245,158,11,.4),transparent,rgba(239,68,68,.3),transparent);background-size:300% 100%;animation:borderShimmer 4s linear infinite;z-index:-1}
+.event-alert-global.high::before{background:linear-gradient(90deg,transparent,rgba(239,68,68,.5),transparent,rgba(245,158,11,.4),transparent);background-size:300% 100%}
+.event-dismiss{position:absolute;top:8px;right:10px;background:none;border:none;color:var(--text3);cursor:pointer;font-size:16px;padding:4px 8px;border-radius:4px;transition:all .2s}
+.event-dismiss:hover{color:var(--text);background:rgba(255,255,255,.1)}
 .ipt,input,textarea{-webkit-user-select:text;-moz-user-select:text;user-select:text}
 
 /* ═══ ANTI-SCREENSHOT & ANTI-SHARING PROTECTIONS ═══ */
@@ -529,7 +538,7 @@ Type to search <strong>100 stocks</strong> (US &amp; India) &middot; Or enter an
 &#128270; <strong>Ticker not showing?</strong> <a href="https://finance.yahoo.com/lookup" target="_blank" rel="noopener">Search for your stock ticker here</a> and paste it above
 </div>
 <div style="text-align:center;margin-top:10px;font-size:11px;color:var(--text3);letter-spacing:.3px">
-<span id="globalRC" style="display:none">0</span>Trusted by retail investors across US &amp; India &middot; Research for the Modern Mind
+<span id="globalRC" style="display:none">0</span>
 </div>
 
 <div class="sbar" id="status"></div>
@@ -883,6 +892,9 @@ let verdict='HOLD',vc='hold';
 if(pe>0&&pe<15&&d.price_change_pct>0){verdict='BUY';vc='buy'}else if(pe>40||d.price_change_pct<-5){verdict='SELL';vc='sell'}
 
 const html=`
+<!-- GLOBAL EVENT ALERT — appears above tabs for authorized users -->
+<div id="eventAlertGlobal" style="display:none"></div>
+
 <!-- TAB BAR -->
 <div class="scroll-hint"><span>&#8595; Scroll for detailed breakdown &#8595;</span></div>
 <div class="tab-bar">
@@ -920,25 +932,25 @@ const html=`
 <table class="dt"><tr><th>Metric</th><th>Value</th><th>Signal</th><th>What This Means For You</th></tr>
 <tr><td><strong>P/E Ratio</strong><br><span style="font-size:10px;color:var(--text3)">Price-to-Earnings</span></td><td style="font-family:var(--mono);font-weight:700;font-size:16px">${d.pe_ratio}</td>
 <td><span class="sig ${pe<15?'g':pe<25?'n':'c'}">${pe<15?'\u25CF Undervalued':pe<25?'\u25CF Fair':'\u25CF Expensive'}</span></td>
-<td style="font-size:12px;line-height:1.7">${pe<15?'Under $15 per $1 of earnings. Potential bargain!':pe<25?'Reasonably priced at $'+d.pe_ratio+' per $1 of earnings.':'$'+d.pe_ratio+' per $1 earned. Growth must justify this.'}</td></tr>
+<td style="font-size:12px;line-height:1.7">${pe<15?'Below 15x earnings. Bargain zone.':pe<25?'Fair at '+d.pe_ratio+'x earnings.':d.pe_ratio+'x earnings. Growth must justify.'}</td></tr>
 <tr><td><strong>P/B Ratio</strong><br><span style="font-size:10px;color:var(--text3)">Price-to-Book</span></td><td style="font-family:var(--mono);font-weight:700;font-size:16px">${d.pb_ratio}</td>
 <td><span class="sig ${parseFloat(d.pb_ratio)<3?'g':'c'}">${parseFloat(d.pb_ratio)<3?'\u25CF Reasonable':'\u25CF Premium'}</span></td>
-<td style="font-size:12px;line-height:1.7">${parseFloat(d.pb_ratio)<3?'At '+d.pb_ratio+'x book value. Assets back up the price.':'At '+d.pb_ratio+'x book. Paying for brand & growth.'}</td></tr>
+<td style="font-size:12px;line-height:1.7">${parseFloat(d.pb_ratio)<3?d.pb_ratio+'x book. Asset-backed.':d.pb_ratio+'x book. Paying for intangibles.'}</td></tr>
 <tr><td><strong>Profit Margin</strong><br><span style="font-size:10px;color:var(--text3)">Profit per $ revenue</span></td><td style="font-family:var(--mono);font-weight:700;font-size:16px">${d.profit_margin}%</td>
 <td><span class="sig ${parseFloat(d.profit_margin)>15?'g':parseFloat(d.profit_margin)>8?'n':'r'}">${parseFloat(d.profit_margin)>15?'\u25CF Excellent':parseFloat(d.profit_margin)>8?'\u25CF Moderate':'\u25CF Thin'}</span></td>
-<td style="font-size:12px;line-height:1.7">${parseFloat(d.profit_margin)>15?'Keeps $'+d.profit_margin+' from every $100 in sales. Strong!':parseFloat(d.profit_margin)>8?'$'+d.profit_margin+' per $100 sales. Decent.':'Only $'+d.profit_margin+' per $100 sales. Tight margins.'}</td></tr>
+<td style="font-size:12px;line-height:1.7">${d.profit_margin}% net margin. ${parseFloat(d.profit_margin)>15?'Strong moat.':parseFloat(d.profit_margin)>8?'Decent.':'Tight.'}</td></tr>
 <tr><td><strong>Operating Margin</strong><br><span style="font-size:10px;color:var(--text3)">Core profitability</span></td><td style="font-family:var(--mono);font-weight:700;font-size:16px">${d.operating_margin}%</td>
 <td><span class="sig ${parseFloat(d.operating_margin)>20?'g':parseFloat(d.operating_margin)>10?'n':'r'}">${parseFloat(d.operating_margin)>20?'\u25CF Strong':parseFloat(d.operating_margin)>10?'\u25CF OK':'\u25CF Weak'}</span></td>
-<td style="font-size:12px;line-height:1.7">${d.operating_margin}% core margin. ${parseFloat(d.operating_margin)>20?'Excellent efficiency.':'Room to improve.'}</td></tr>
+<td style="font-size:12px;line-height:1.7">${d.operating_margin}% ops margin. ${parseFloat(d.operating_margin)>20?'Efficient.':'Room to improve.'}</td></tr>
 <tr><td><strong>ROE</strong><br><span style="font-size:10px;color:var(--text3)">Return on Equity</span></td><td style="font-family:var(--mono);font-weight:700;font-size:16px">${d.roe}%</td>
 <td><span class="sig ${parseFloat(d.roe)>15?'g':'n'}">${parseFloat(d.roe)>15?'\u25CF High':'\u25CF Moderate'}</span></td>
-<td style="font-size:12px;line-height:1.7">${parseFloat(d.roe)>15?'$'+d.roe+' profit per $100 equity. Efficient!':'$'+d.roe+' per $100 invested. Average.'}</td></tr>
+<td style="font-size:12px;line-height:1.7">${d.roe}% return on equity. ${parseFloat(d.roe)>15?'Capital-efficient.':'Average.'}</td></tr>
 <tr><td><strong>Dividend Yield</strong><br><span style="font-size:10px;color:var(--text3)">Annual income</span></td><td style="font-family:var(--mono);font-weight:700;font-size:16px">${d.dividend_yield}%</td>
 <td><span class="sig ${parseFloat(d.dividend_yield)>3?'g':parseFloat(d.dividend_yield)>1?'n':'c'}">${parseFloat(d.dividend_yield)>3?'\u25CF High Income':parseFloat(d.dividend_yield)>1?'\u25CF Some Income':'\u25CF Growth Focus'}</span></td>
-<td style="font-size:12px;line-height:1.7">${parseFloat(d.dividend_yield)>3?'$'+d.dividend_yield+' yearly per $100. Great income!':parseFloat(d.dividend_yield)>1?'$'+d.dividend_yield+' per $100. Some income + growth.':'Reinvests profits for growth.'}</td></tr>
+<td style="font-size:12px;line-height:1.7">${parseFloat(d.dividend_yield)>3?d.dividend_yield+'% yield. Solid income.':parseFloat(d.dividend_yield)>1?d.dividend_yield+'% yield + growth.':'Reinvests for growth.'}</td></tr>
 </table>
 <div style="margin-top:14px;padding:14px;border-radius:8px;background:rgba(59,130,246,.04);border:1px solid rgba(59,130,246,.1)">
-<p style="font-size:13px;color:var(--text2);line-height:1.7"><strong style="color:var(--blue)">\u25CF Bottom Line:</strong> ${pe<20?'Numbers lean in your favor. Fair or discounted pricing \u2014 could be a smart entry.':'Paying a growth premium. Fine IF the company delivers. Keep expectations realistic.'}</p></div>
+<p style="font-size:13px;color:var(--text2);line-height:1.7"><strong style="color:var(--blue)">\u25CF Bottom Line:</strong> ${pe<20?'Fair or discounted. Could be a smart entry.':'Growth premium. Fine IF the company delivers.'}</p></div>
 </div></div>
 
 <!-- ENTRY & EXIT -->
@@ -1832,23 +1844,34 @@ ${ma.global_impact?'<div><strong style="color:var(--blue)">Global:</strong> '+ma
 }
 }
 
-// ═══ EVENT ALERT — Breaking market events ═══
+// ═══ EVENT ALERT — Render to GLOBAL position above tabs ═══
 const evt=data.event_alert||{};
-if(evt.has_event){
-const sevCol=evt.severity==='HIGH'?'var(--red)':evt.severity==='MEDIUM'?'var(--amber)':'var(--blue)';
-const sevBg=evt.severity==='HIGH'?'rgba(239,68,68,.1)':evt.severity==='MEDIUM'?'rgba(245,158,11,.08)':'rgba(59,130,246,.06)';
-const impCol=evt.impact==='BULLISH'?'var(--green)':evt.impact==='BEARISH'?'var(--red)':'var(--amber)';
-html+=`<div style="margin-bottom:14px;padding:14px 16px;border-radius:10px;background:${sevBg};border:1px solid ${sevCol}40;border-left:4px solid ${sevCol}">
-<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap">
-<span style="font-size:20px;${evt.severity==='HIGH'?'animation:pulse 1.5s infinite':''}">&#9889;</span>
-<span style="font-family:'Sora',sans-serif;font-size:13px;font-weight:800;color:${sevCol};letter-spacing:.3px">${evt.headline||'Market Event'}</span>
-<span style="font-size:10px;font-weight:800;color:#fff;background:${sevCol};padding:2px 8px;border-radius:4px">${evt.severity||'MEDIUM'}</span>
-<span style="font-size:10px;font-weight:800;color:${impCol};background:${impCol}15;border:1px solid ${impCol}30;padding:2px 8px;border-radius:4px">${evt.impact||'-'}</span>
+const evtDiv=document.getElementById('eventAlertGlobal');
+if(evt.has_event&&evtDiv){
+const isHigh=evt.severity==='HIGH';
+const isMed=evt.severity==='MEDIUM';
+const sevCol=isHigh?'#ef4444':isMed?'#f59e0b':'#3b82f6';
+const sevBg=isHigh?'rgba(239,68,68,.06)':isMed?'rgba(245,158,11,.05)':'rgba(59,130,246,.04)';
+const impCol=evt.impact==='BULLISH'?'#10b981':evt.impact==='BEARISH'?'#ef4444':'#f59e0b';
+const impIcon=evt.impact==='BULLISH'?'&#128200;':evt.impact==='BEARISH'?'&#128201;':'&#128260;';
+const sevIcon=isHigh?'&#128680;':isMed?'&#9889;':'&#128276;';
+evtDiv.style.display='block';
+evtDiv.innerHTML=`<div class="event-alert-global ${isHigh?'high':''}" style="background:${sevBg};padding:14px 16px 14px 14px;position:relative;${isHigh?'animation:eventGlowHigh 2s ease infinite':'animation:eventGlow 3s ease infinite'}">
+<button class="event-dismiss" onclick="this.parentElement.parentElement.style.display='none'" title="Dismiss">&#10005;</button>
+<div style="display:flex;gap:12px;align-items:flex-start">
+<div style="min-width:40px;height:40px;border-radius:10px;background:${sevCol}18;display:flex;align-items:center;justify-content:center;font-size:22px;${isHigh?'animation:notifPop 1.5s ease infinite':''}">${sevIcon}</div>
+<div style="flex:1;min-width:0">
+<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px">
+<span style="font-family:'Sora',sans-serif;font-size:13px;font-weight:800;color:${sevCol};letter-spacing:.2px">${evt.headline||'Market Event'}</span>
+<span style="font-size:9px;font-weight:800;color:#fff;background:${sevCol};padding:2px 8px;border-radius:10px;letter-spacing:.5px">${evt.severity}</span>
+<span style="font-size:9px;font-weight:800;color:${impCol};background:${impCol}15;border:1px solid ${impCol}30;padding:2px 8px;border-radius:10px;display:flex;align-items:center;gap:3px">${impIcon} ${evt.impact}</span>
 </div>
-<div style="font-size:12px;color:var(--text2);line-height:1.7;margin-bottom:8px">${evt.detail||''}</div>
-${evt.action?`<div style="padding:8px 12px;border-radius:6px;background:rgba(255,255,255,.04);font-size:12px"><strong style="color:${sevCol}">&#9654; Action:</strong> <span style="color:var(--text)">${evt.action}</span></div>`:''}
+<div style="font-size:12px;color:var(--text2);line-height:1.6;margin-bottom:8px">${evt.detail||''}</div>
+${evt.action?`<div style="padding:8px 12px;border-radius:8px;background:rgba(255,255,255,.04);border:1px solid ${sevCol}20;font-size:12px;display:flex;align-items:flex-start;gap:6px"><span style="color:${sevCol};font-size:14px">&#9654;</span><span><strong style="color:${sevCol}">Action:</strong> <span style="color:var(--text)">${evt.action}</span></span></div>`:''}
+</div>
+</div>
 </div>`;
-}
+}else if(evtDiv){evtDiv.style.display='none';}
 
 // ═══ GAMMA BLAST PROBABILITY ═══
 const gb=data.gamma_blast||{};

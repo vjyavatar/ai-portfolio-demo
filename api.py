@@ -2003,6 +2003,8 @@ Mark each trade's probability explicitly.
 
 Today is {today}.
 
+CRITICAL: ALL analysis below must be based on the LIVE MARKET DATA provided here. Use current prices, day ranges, volumes, and 5-day ranges for price action analysis. Infer option chain dynamics (OI walls, PCR, max pain, straddle premium) from price behavior, volume patterns, and support/resistance levels. This is real-time data — treat it as your trading terminal.
+
 LIVE INDIAN INDEX DATA:
 {indices_text}
 
