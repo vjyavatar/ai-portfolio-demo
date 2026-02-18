@@ -1983,15 +1983,36 @@ RULES FOR STOCK OPTIONS (2 trades):
 - Explain WHY this stock specifically — momentum, sector play, earnings, breakout etc.
 """
 
-    # Call Claude API
+    # Call Claude API via HTTP (same method as main report)
     try:
-        response = client.messages.create(
-            model="claude-sonnet-4-20250514",
-            max_tokens=4000,
-            messages=[{"role": "user", "content": prompt}]
+        if not ANTHROPIC_API_KEY:
+            return {"success": False, "error": "AI service not configured. Please set ANTHROPIC_API_KEY."}
+        
+        response = requests.post(
+            "https://api.anthropic.com/v1/messages",
+            headers={
+                "x-api-key": ANTHROPIC_API_KEY,
+                "anthropic-version": "2023-06-01",
+                "content-type": "application/json"
+            },
+            json={
+                "model": "claude-sonnet-4-20250514",
+                "max_tokens": 4000,
+                "messages": [{"role": "user", "content": prompt}]
+            },
+            timeout=120
         )
         
-        raw = response.content[0].text.strip()
+        if response.status_code != 200:
+            error_detail = ""
+            try:
+                error_detail = response.json().get("error", {}).get("message", "")
+            except:
+                pass
+            print(f"❌ Anthropic API error {response.status_code}: {error_detail}")
+            return {"success": False, "error": "AI service temporarily unavailable. Please try again in a moment."}
+        
+        raw = response.json()["content"][0]["text"].strip()
         # Clean JSON
         raw = raw.replace("```json", "").replace("```", "").strip()
         
@@ -2011,7 +2032,6 @@ RULES FOR STOCK OPTIONS (2 trades):
     except json_mod.JSONDecodeError as e:
         print(f"⚠️ JSON parse error: {e}")
         print(f"Raw response: {raw[:500]}")
-        # Try to extract JSON from response
         try:
             start = raw.index('{')
             end = raw.rindex('}') + 1
@@ -2021,15 +2041,17 @@ RULES FOR STOCK OPTIONS (2 trades):
                 "market_context": result.get("market_context", ""),
                 "indices": [d for d in indices_data if d['name'] != 'INDIA VIX'],
                 "trades": result.get("trades", []),
-            "stock_trades": result.get("stock_trades", []),
+                "stock_trades": result.get("stock_trades", []),
                 "vix": next((d for d in indices_data if d['name'] == 'INDIA VIX'), None),
                 "generated_at": datetime.now().isoformat()
             }
         except:
-            return {"success": False, "error": "AI analysis failed. Please try again."}
+            return {"success": False, "error": "AI service temporarily unavailable. Please try again."}
+    except requests.exceptions.Timeout:
+        return {"success": False, "error": "Analysis is taking longer than expected. Please try again."}
     except Exception as e:
         print(f"❌ Index trades error: {e}")
-        return {"success": False, "error": f"Trade generation failed: {str(e)}"}
+        return {"success": False, "error": "Service temporarily unavailable. Please try again in a moment."}
 
 
 @app.get("/api/verify-price/{company}")

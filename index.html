@@ -709,7 +709,7 @@ const html=`
 <button class="tab-btn" onclick="switchTab('mgmt')" id="tabBtnMgmt" aria-label="Management Read tab" data-tip="CEO/CFO confidence level, earnings call tone, red & green flags, what management is hiding">\uD83C\uDFA4 Management Read</button>
 <button class="tab-btn" onclick="switchTab('next')" id="tabBtnNext" aria-label="What's Next tab" data-tip="Top mutual fund & institutional holders, upcoming catalysts, bull/bear/base case scenarios">\uD83D\uDD2E What's Next</button>
 <button class="tab-btn" onclick="switchTab('gems')" id="tabBtnGems" aria-label="Hidden Gems tab" data-tip="Under-the-radar small-cap picks in the same sector with growth potential ratings">\u2B50 Hidden Gems</button>
-<button class="tab-btn" onclick="switchTab('trades')" id="tabBtnTrades" aria-label="Index Trades tab" data-tip="AI-powered daily trade ideas for Nifty, Bank Nifty & Sensex based on option chain, price action, momentum" style="border-color:rgba(245,158,11,.3)">&#128293; Index Trades</button>
+<button class="tab-btn" onclick="switchTab('trades')" id="tabBtnTrades" aria-label="Smart Trades tab" data-tip="Daily trade ideas for Nifty, Bank Nifty, Sensex & top stocks" style="border-color:rgba(245,158,11,.3)">&#128293; Smart Trades</button>
 </div>
 
 <div class="tab-scroll-area" id="tabScrollArea">
@@ -851,13 +851,13 @@ const html=`
 </div></div>
 
 <!-- TAB 7: INDEX TRADES (Restricted Access) -->
-<div class="sc" data-tab="trades"><div class="sh"><div class="si" style="background:rgba(245,158,11,.1)">&#128293;</div><div class="st" style="color:var(--amber)" id="sec-trades">Index Trades &#8212; AI-Powered Daily Ideas</div></div>
+<div class="sc" data-tab="trades"><div class="sh"><div class="si" style="background:rgba(245,158,11,.1)">&#128293;</div><div class="st" style="color:var(--amber)" id="sec-trades">Smart Trades &#8212; Daily Ideas</div></div>
 <div class="sbody">
 <div id="tradesContent">
 <div style="text-align:center;padding:30px 20px">
 <div style="font-size:40px;margin-bottom:12px">&#128274;</div>
-<div style="font-family:'Sora',sans-serif;font-size:16px;font-weight:700;color:var(--amber);margin-bottom:8px">Premium Index Trading Intelligence</div>
-<p style="font-size:13px;color:var(--text3);max-width:450px;margin:0 auto 20px;line-height:1.7">AI analyzes Option Chain, Price Action, Volatility, Momentum, Geopolitics &amp; Global Markets to generate top 5 daily trade ideas for Nifty, Bank Nifty &amp; Sensex.</p>
+<div style="font-family:'Sora',sans-serif;font-size:16px;font-weight:700;color:var(--amber);margin-bottom:8px">Premium Trading Intelligence</div>
+<p style="font-size:13px;color:var(--text3);max-width:450px;margin:0 auto 20px;line-height:1.7">Top 5 index + 2 stock option trade ideas daily. Nifty, Bank Nifty, Sensex &amp; high-momentum stocks.</p>
 <button id="tradesLoadBtn" onclick="loadIndexTrades()" style="padding:12px 28px;border-radius:10px;border:2px solid var(--amber);background:rgba(245,158,11,.1);color:var(--amber);font-family:'Sora',sans-serif;font-size:14px;font-weight:700;cursor:pointer;transition:all .3s">&#9889; Generate Today's Trades</button>
 <div id="tradesError" style="margin-top:12px;font-size:12px;color:var(--red);display:none"></div>
 </div>
@@ -1620,7 +1620,7 @@ btn.disabled=true;btn.textContent='⏳ Analyzing markets...';errEl.style.display
 try{
 const r=await fetch('/api/index-trades',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:email})});
 const data=await r.json();
-if(!data.success){errEl.textContent=data.detail||data.error||'Access denied or generation failed.';errEl.style.display='block';btn.disabled=false;btn.textContent='⚡ Generate Today\'s Trades';return}
+if(!data.success){errEl.textContent=data.error||'Service busy. Please try again in a moment.';errEl.style.display='block';btn.disabled=false;btn.textContent='⚡ Generate Today\'s Trades';return}
 
 // Render the trades
 let html='';
@@ -1762,7 +1762,7 @@ html+=`<div style="margin-top:16px;padding:14px;border-radius:8px;background:rgb
 
 el.innerHTML=html;
 }catch(e){
-errEl.textContent='Failed to generate trades: '+e.message;errEl.style.display='block';
+errEl.textContent='Service busy. Please try again in a moment.';errEl.style.display='block';
 btn.disabled=false;btn.textContent='⚡ Generate Today\'s Trades';
 }}
 
