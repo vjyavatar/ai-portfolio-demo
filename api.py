@@ -1519,16 +1519,227 @@ Sitemap: https://celesys.ai/sitemap.xml
 
 @app.get("/sitemap.xml", response_class=Response)
 async def sitemap():
+    today = datetime.now().strftime('%Y-%m-%d')
+    pages = [
+        ("https://celesys.ai", "daily", "1.0"),
+        ("https://celesys.ai/about", "monthly", "0.8"),
+        ("https://celesys.ai/privacy", "monthly", "0.5"),
+        ("https://celesys.ai/terms", "monthly", "0.5"),
+        ("https://celesys.ai/disclaimer", "monthly", "0.5"),
+        ("https://celesys.ai/contact", "monthly", "0.6"),
+    ]
+    urls = "\n".join([f"""  <url>
+    <loc>{loc}</loc>
+    <lastmod>{today}</lastmod>
+    <changefreq>{freq}</changefreq>
+    <priority>{pri}</priority>
+  </url>""" for loc, freq, pri in pages])
     content = f"""<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-  <url>
-    <loc>https://celesys.ai</loc>
-    <lastmod>{datetime.now().strftime('%Y-%m-%d')}</lastmod>
-    <changefreq>daily</changefreq>
-    <priority>1.0</priority>
-  </url>
+{urls}
 </urlset>"""
     return Response(content=content, media_type="application/xml")
+
+# ═══════════════════════════════════════════════════════════
+# ADSENSE-REQUIRED PAGES
+# ═══════════════════════════════════════════════════════════
+
+def _page_shell(title: str, body: str) -> str:
+    return f"""<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>{title} — Celesys AI</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;700&family=DM+Sans:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+*{{margin:0;padding:0;box-sizing:border-box}}body{{background:#0a0e1a;color:#c9d1d9;font-family:'DM Sans',sans-serif;line-height:1.8;padding:40px 20px}}
+.wrap{{max-width:720px;margin:0 auto}}h1{{font-family:'Sora',sans-serif;font-size:28px;color:#fff;margin-bottom:8px}}
+.sub{{color:#6b7280;font-size:13px;margin-bottom:32px}}.back{{display:inline-block;margin-bottom:24px;color:#3b82f6;text-decoration:none;font-size:13px;font-weight:600}}
+.back:hover{{text-decoration:underline}}h2{{font-family:'Sora',sans-serif;font-size:18px;color:#e5e7eb;margin:28px 0 10px}}
+p,li{{font-size:14px;color:#9ca3af;margin-bottom:12px}}ul{{padding-left:20px}}a{{color:#3b82f6}}
+.foot{{margin-top:48px;padding-top:20px;border-top:1px solid #1e2433;font-size:11px;color:#4b5563;text-align:center}}
+</style></head><body><div class="wrap"><a href="/" class="back">← Back to Celesys AI</a>
+<h1>{title}</h1><p class="sub">Last updated: February 2026</p>
+{body}
+<div class="foot">© 2026 Celesys AI — Free AI-Powered Stock Analysis Platform</div>
+</div></body></html>"""
+
+@app.get("/privacy", response_class=HTMLResponse)
+async def privacy_page():
+    return _page_shell("Privacy Policy", """
+<p>Celesys AI ("we", "us", "our") operates the website celesys.ai. This Privacy Policy explains how we collect, use, and protect your information.</p>
+
+<h2>Information We Collect</h2>
+<p>We collect minimal information to provide our stock analysis service:</p>
+<ul>
+<li><strong>Email Address:</strong> Used solely for rate limiting (5 reports per hour). We do not send marketing emails or share your email with third parties.</li>
+<li><strong>Stock Ticker Searches:</strong> We log which stocks are analyzed to improve our service. This data is not linked to individual users.</li>
+<li><strong>Analytics Data:</strong> We use Google Analytics to understand how visitors use our site. This includes anonymized data such as page views, session duration, device type, and approximate geographic location.</li>
+</ul>
+
+<h2>How We Use Your Information</h2>
+<ul>
+<li>To provide free AI-powered stock analysis reports</li>
+<li>To enforce fair usage limits (rate limiting)</li>
+<li>To improve our service and user experience</li>
+<li>To display relevant advertisements through Google AdSense</li>
+</ul>
+
+<h2>Cookies & Advertising</h2>
+<p>We use cookies for Google Analytics and Google AdSense. Third-party advertising partners, including Google, may use cookies to serve ads based on your prior visits to our website or other websites. You can opt out of personalized advertising by visiting <a href="https://www.google.com/settings/ads" target="_blank" rel="noopener">Google Ads Settings</a>.</p>
+
+<h2>Data Storage & Security</h2>
+<p>We do not store personal data on our servers beyond temporary rate-limiting records. All stock analysis is generated in real-time and not permanently stored. We use HTTPS encryption for all data transmission.</p>
+
+<h2>Third-Party Services</h2>
+<ul>
+<li><strong>Yahoo Finance:</strong> Market data provider</li>
+<li><strong>Anthropic Claude:</strong> AI analysis engine</li>
+<li><strong>Google Analytics:</strong> Website analytics</li>
+<li><strong>Google AdSense:</strong> Advertising</li>
+<li><strong>Render:</strong> Web hosting</li>
+</ul>
+
+<h2>Your Rights</h2>
+<p>You may request deletion of any data associated with your email address by contacting us. Since we store minimal data, in most cases there is nothing to delete beyond rate-limiting records that expire automatically.</p>
+
+<h2>Children's Privacy</h2>
+<p>Our service is not directed to individuals under 18. We do not knowingly collect personal information from children.</p>
+
+<h2>Changes to This Policy</h2>
+<p>We may update this policy from time to time. Changes will be posted on this page with an updated revision date.</p>
+
+<h2>Contact</h2>
+<p>For questions about this Privacy Policy, contact us at: <a href="mailto:contact@celesys.ai">contact@celesys.ai</a></p>
+""")
+
+@app.get("/terms", response_class=HTMLResponse)
+async def terms_page():
+    return _page_shell("Terms of Service", """
+<p>By using Celesys AI (celesys.ai), you agree to these Terms of Service. Please read them carefully.</p>
+
+<h2>Service Description</h2>
+<p>Celesys AI is a free, educational AI-powered stock analysis platform. We provide research reports on publicly traded stocks using real-time market data and artificial intelligence. Our service is provided "as is" without any warranties.</p>
+
+<h2>Not Financial Advice</h2>
+<p><strong>IMPORTANT:</strong> All content on Celesys AI is for educational and informational purposes only. Nothing on this website constitutes financial advice, investment advice, trading advice, or any other form of professional advice. You should not make any investment decisions based solely on the information provided by our service.</p>
+<ul>
+<li>Always consult a qualified, licensed financial advisor before making investment decisions</li>
+<li>Past performance does not guarantee future results</li>
+<li>Stock investing involves risk, including potential loss of principal</li>
+<li>AI-generated analysis may contain errors or inaccuracies</li>
+</ul>
+
+<h2>Fair Usage</h2>
+<ul>
+<li>Each email address is limited to 5 reports per hour</li>
+<li>Automated scraping or bot access is prohibited</li>
+<li>You may not resell or redistribute our reports commercially</li>
+<li>Personal and educational use is encouraged</li>
+</ul>
+
+<h2>Data Accuracy</h2>
+<p>While we source data from reputable financial providers (Yahoo Finance, Google Finance), we cannot guarantee 100% accuracy of all data points. Market data may be delayed. Users should verify critical information independently before making any decisions.</p>
+
+<h2>Intellectual Property</h2>
+<p>The Celesys AI brand, logo, website design, and analysis methodology are our intellectual property. Generated reports may be used for personal purposes. You may share reports with attribution to celesys.ai.</p>
+
+<h2>Limitation of Liability</h2>
+<p>Celesys AI shall not be liable for any losses, damages, or claims arising from: the use of our reports for investment decisions, data inaccuracies, service interruptions, or any other use of our platform.</p>
+
+<h2>Modifications</h2>
+<p>We reserve the right to modify these terms at any time. Continued use of our service constitutes acceptance of updated terms.</p>
+
+<h2>Contact</h2>
+<p>For questions about these Terms, contact us at: <a href="mailto:contact@celesys.ai">contact@celesys.ai</a></p>
+""")
+
+@app.get("/about", response_class=HTMLResponse)
+async def about_page():
+    return _page_shell("About Celesys AI", """
+<p>Celesys AI is a free AI-powered stock analysis platform that delivers institutional-grade research reports to everyday investors — in 60 seconds.</p>
+
+<h2>Our Mission</h2>
+<p>We believe every investor deserves access to the same quality of research that Wall Street professionals get. Celesys AI democratizes stock analysis by combining real-time market data with advanced artificial intelligence to produce deep-dive reports — completely free.</p>
+
+<h2>What We Offer</h2>
+<ul>
+<li><strong>Precision Entry & Exit Targets:</strong> AI-calculated buy and sell prices based on live market data</li>
+<li><strong>Institutional Risk Profiling:</strong> Comprehensive risk scoring across multiple dimensions</li>
+<li><strong>Earnings Alpha:</strong> Quarter-over-quarter and year-over-year earnings analysis with growth verdicts</li>
+<li><strong>Insider Sentiment & CEO Read:</strong> Management tone analysis from earnings calls and guidance</li>
+<li><strong>Mutual Fund & Institutional Holdings:</strong> Who's buying, who's selling, and what it means</li>
+<li><strong>Catalyst Timeline:</strong> What's coming next — 30 days, 90 days, 12 months</li>
+<li><strong>Hidden Gems:</strong> Under-the-radar small-cap recommendations in the same sector</li>
+</ul>
+
+<h2>Coverage</h2>
+<p>We cover stocks across US markets (NYSE, NASDAQ) and Indian markets (NSE, BSE). Enter any valid ticker symbol and get a complete analysis.</p>
+
+<h2>How It Works</h2>
+<p>Enter a stock ticker or company name → Our system fetches real-time data from multiple financial sources → AI analyzes fundamentals, technicals, management signals, and risk factors → You receive a comprehensive research report in under 60 seconds.</p>
+
+<h2>Our Technology</h2>
+<p>Celesys AI is built with a multi-source data pipeline (Yahoo Finance, Google Finance, Screener.in, Finviz) and powered by Anthropic's Claude AI for intelligent analysis. We use a 5-layer data fallback system to ensure you always get accurate, current information.</p>
+
+<h2>Free & No Signup</h2>
+<p>We offer 5 free deep-dive reports per email per hour. No credit card, no registration, no hidden fees. Just enter your email for rate limiting and start analyzing.</p>
+
+<h2>Contact</h2>
+<p>Have questions, feedback, or partnership inquiries? Reach us at: <a href="mailto:contact@celesys.ai">contact@celesys.ai</a></p>
+""")
+
+@app.get("/contact", response_class=HTMLResponse)
+async def contact_page():
+    return _page_shell("Contact Us", """
+<p>We'd love to hear from you! Whether you have feedback, questions, feature requests, or partnership inquiries, we're here to help.</p>
+
+<h2>Email</h2>
+<p>📧 <a href="mailto:contact@celesys.ai">contact@celesys.ai</a></p>
+<p>We aim to respond within 24-48 hours.</p>
+
+<h2>What You Can Reach Out About</h2>
+<ul>
+<li><strong>Bug Reports:</strong> Found something broken? Let us know the stock ticker and what went wrong</li>
+<li><strong>Feature Requests:</strong> Want a new feature? Use the "Shape Our Roadmap" button on the main page to vote, or email us directly</li>
+<li><strong>Data Accuracy:</strong> If you spot incorrect data in a report, we want to know</li>
+<li><strong>Partnership & API:</strong> Interested in integrating Celesys AI data? Let's talk</li>
+<li><strong>Press & Media:</strong> For media inquiries and interviews</li>
+</ul>
+
+<h2>Social</h2>
+<p>Follow us for daily stock analysis and updates:</p>
+<ul>
+<li>Twitter/X: Coming soon</li>
+<li>LinkedIn: Coming soon</li>
+</ul>
+
+<h2>Feedback</h2>
+<p>Your feedback shapes our product. Every suggestion is read and considered for future updates. Thank you for helping us build the best free stock analysis tool on the internet.</p>
+""")
+
+@app.get("/disclaimer", response_class=HTMLResponse)
+async def disclaimer_page():
+    return _page_shell("Disclaimer", """
+<p>The information provided by Celesys AI is for general educational and informational purposes only.</p>
+
+<h2>No Financial Advice</h2>
+<p>All analysis, reports, buy/sell targets, risk scores, and recommendations generated by Celesys AI are produced by artificial intelligence and should NOT be considered as financial advice. We are not registered financial advisors, brokers, or dealers.</p>
+
+<h2>Investment Risk</h2>
+<p>Investing in stocks involves substantial risk of loss and is not suitable for every investor. The value of stocks can fluctuate significantly, and you may lose some or all of your investment. Before making any investment decisions, consult with a qualified, licensed financial professional.</p>
+
+<h2>AI Limitations</h2>
+<p>Our AI analysis is based on publicly available data and algorithmic processing. AI can make errors, misinterpret data, or produce inaccurate predictions. No AI system can reliably predict stock market movements. Historical patterns do not guarantee future results.</p>
+
+<h2>Data Sources</h2>
+<p>We source market data from Yahoo Finance, Google Finance, and other public financial data providers. While we strive for accuracy, we cannot guarantee that all data is current, complete, or error-free. Real-time data may be delayed by 15-20 minutes depending on the source.</p>
+
+<h2>No Guarantees</h2>
+<p>Celesys AI makes no representations or warranties about the accuracy, reliability, or completeness of any information on this site. Use our service at your own risk.</p>
+""")
+
+@app.get("/ads.txt", response_class=PlainTextResponse)
+async def ads_txt():
+    # Replace ca-pub-XXXXXXXXXXXXXXXX with your real AdSense publisher ID after approval
+    return "google.com, ca-pub-XXXXXXXXXXXXXXXX, DIRECT, f08c47fec0942fa0"
 
 
 @app.get("/api/verify-price/{company}")
