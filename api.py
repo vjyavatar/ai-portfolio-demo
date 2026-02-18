@@ -1880,7 +1880,100 @@ async def index_trades(request: Request):
     
     global_text = "\n".join([f"- {g}" for g in global_data]) if global_data else "Global data unavailable"
     
-    today = datetime.now().strftime("%A, %B %d, %Y")
+    now = datetime.now()
+    today = now.strftime("%A, %B %d, %Y")
+    weekday = now.weekday()  # 0=Monday, 1=Tuesday, 2=Wednesday, 3=Thursday, 4=Friday
+    day_name = now.strftime("%A")
+    
+    # ═══════════════════════════════════════════════════
+    # SEBI EXPIRY SCHEDULE (effective Sep 1, 2025)
+    # NSE: ALL derivatives expire on TUESDAY
+    #   - Nifty 50: weekly expiry every Tuesday
+    #   - Bank Nifty: monthly expiry last Tuesday (NO weekly)
+    #   - Fin Nifty: monthly expiry last Tuesday (NO weekly)
+    #   - Stock F&O: monthly expiry last Tuesday
+    # BSE: ALL derivatives expire on THURSDAY
+    #   - Sensex: weekly expiry every Thursday
+    #   - Bankex: monthly expiry last Thursday (NO weekly)
+    # ═══════════════════════════════════════════════════
+    
+    # Check if today is last Tuesday or last Thursday of month
+    import calendar
+    year, month = now.year, now.month
+    last_day = calendar.monthrange(year, month)[1]
+    
+    # Find last Tuesday (weekday=1) of this month
+    last_tuesday = last_day
+    while datetime(year, month, last_tuesday).weekday() != 1:
+        last_tuesday -= 1
+    is_last_tuesday = (now.day == last_tuesday and weekday == 1)
+    
+    # Find last Thursday (weekday=3) of this month
+    last_thursday = last_day
+    while datetime(year, month, last_thursday).weekday() != 3:
+        last_thursday -= 1
+    is_last_thursday = (now.day == last_thursday and weekday == 3)
+    
+    is_tuesday = (weekday == 1)
+    is_thursday = (weekday == 3)
+    
+    # Build dynamic expiry context
+    expiry_today = []
+    expiry_context_lines = []
+    
+    if is_tuesday:
+        expiry_today.append("NIFTY 50 (weekly)")
+        expiry_context_lines.append("🔴 NIFTY 50 WEEKLY EXPIRY TODAY (Tuesday) — High theta decay, gamma spike expected after 2 PM")
+        if is_last_tuesday:
+            expiry_today.append("BANK NIFTY (monthly)")
+            expiry_today.append("FIN NIFTY (monthly)")
+            expiry_today.append("Stock F&O (monthly)")
+            expiry_context_lines.append("🔴🔴 BANK NIFTY MONTHLY EXPIRY TODAY (last Tuesday) — Major event! Heavy OI unwinding expected")
+            expiry_context_lines.append("🔴 FIN NIFTY + ALL STOCK F&O MONTHLY EXPIRY TODAY")
+    
+    if is_thursday:
+        expiry_today.append("SENSEX (weekly)")
+        expiry_context_lines.append("🔴 SENSEX WEEKLY EXPIRY TODAY (Thursday) — BSE options theta decay in play")
+        if is_last_thursday:
+            expiry_today.append("BANKEX (monthly)")
+            expiry_context_lines.append("🔴 BANKEX MONTHLY EXPIRY TODAY (last Thursday)")
+    
+    if not expiry_today:
+        # Calculate days to next expiry
+        days_to_tuesday = (1 - weekday) % 7
+        if days_to_tuesday == 0:
+            days_to_tuesday = 7
+        days_to_thursday = (3 - weekday) % 7
+        if days_to_thursday == 0:
+            days_to_thursday = 7
+        next_nifty_expiry = (now + timedelta(days=days_to_tuesday)).strftime("%A, %B %d")
+        next_sensex_expiry = (now + timedelta(days=days_to_thursday)).strftime("%A, %B %d")
+        expiry_context_lines.append(f"⚪ NO EXPIRY TODAY ({day_name}) — Next Nifty expiry: {next_nifty_expiry} (Tuesday), Next Sensex expiry: {next_sensex_expiry} (Thursday)")
+        expiry_context_lines.append("Focus on positional/swing trades. No Hero Zero today.")
+    
+    is_expiry_day = len(expiry_today) > 0
+    expiry_text = "\n".join(expiry_context_lines)
+    expiry_list = ", ".join(expiry_today) if expiry_today else "NONE"
+    
+    print(f"📅 {day_name} | Expiry today: {expiry_list} | Last Tue: {is_last_tuesday} | Last Thu: {is_last_thursday}")
+    
+    # Hero Zero instruction based on whether it's expiry day
+    if is_expiry_day:
+        hero_zero_instruction = f"""
+RULES FOR HERO ZERO (1-2 trades — TODAY IS EXPIRY DAY for {expiry_list}):
+- Hero Zero = deep OTM options bought cheap (₹2-15 premium) on EXPIRY DAY for potential 3x-10x returns
+- Pick from the expiring index/indices: {expiry_list}
+- Strike should be 300-500+ points OTM from current level (for index), or appropriately far OTM for stocks
+- Entry premium must be in ₹2-15 range (lottery ticket pricing)
+- Timing is crucial: usually 1:00-2:30 PM IST when gamma spikes on expiry
+- Mark confidence as SPECULATIVE — make it clear this is a high-risk lottery play
+- Stop loss is always full premium (all-or-nothing play)
+- Maximum 1-2% of capital allocation
+- MUST include timing field with specific IST time window"""
+    else:
+        hero_zero_instruction = """
+HERO ZERO: Return empty array "hero_zero": [] because today is NOT an expiry day.
+Do NOT generate any hero_zero trades on non-expiry days."""
     
     prompt = f"""You are an expert Indian market derivatives trader and analyst. Today is {today}.
 
@@ -1938,13 +2031,14 @@ RESPOND IN STRICT JSON FORMAT (no markdown, no backticks, no explanation outside
       "direction": "BUY | SELL",
       "spot_price": "current index level number only",
       "entry": "option/futures entry price number only",
-      "entry_condition": "MANDATORY — Exact trigger like: Nifty > 24600 | Bank Nifty < 52700 | Premium drops below 120. Always use > or < with a specific number.",
+      "entry_condition": "MANDATORY — Exact trigger like: Nifty > 24600 | Bank Nifty < 52700. Always use > or < with a specific number.",
+      "timing": "MANDATORY — Best time window to enter. E.g. '9:20-9:45 AM (opening momentum)' or '11:30 AM-12:30 PM (post-consolidation breakout)' or '2:00-2:30 PM (expiry day final hour move)'. Give specific IST time range and reason.",
       "target": "target price number only",
       "stop_loss": "stop loss price number only",
       "risk_reward": "1:2 format",
       "confidence": "HIGH | MEDIUM",
       "reason": "Detailed 2-3 sentence rationale covering which factors support this trade",
-      "option_detail": "Strike price, expiry, premium range, Greeks consideration if applicable"
+      "option_detail": "Strike price, expiry DATE, premium range, Greeks consideration if applicable"
     }}
   ],
   "stock_trades": [
@@ -1954,7 +2048,8 @@ RESPOND IN STRICT JSON FORMAT (no markdown, no backticks, no explanation outside
       "direction": "BUY | SELL",
       "spot_price": "current stock price number only",
       "entry": "option entry price number only",
-      "entry_condition": "MANDATORY — Exact trigger like: RELIANCE > 2880 | TCS < 4180 | Premium drops below 90. Always use > or < with a specific number.",
+      "entry_condition": "MANDATORY — Exact trigger like: RELIANCE > 2880 | TCS < 4180. Always use > or < with a specific number.",
+      "timing": "MANDATORY — Best IST time window with reason. E.g. '10:00-11:00 AM (after opening range established)'",
       "target": "target price number only",
       "stop_loss": "stop loss price number only",
       "risk_reward": "1:2 format",
@@ -1962,31 +2057,84 @@ RESPOND IN STRICT JSON FORMAT (no markdown, no backticks, no explanation outside
       "reason": "Detailed 2-3 sentence rationale — include volume spike, price action, sector momentum, options activity. Why THIS stock today?",
       "option_detail": "Strike price, monthly expiry, lot size, premium, expected IV behavior"
     }}
+  ],
+  "hero_zero": [
+    {{
+      "index": "NIFTY | BANK NIFTY | SENSEX — must be the one expiring today",
+      "instrument": "Deep OTM option, e.g. NIFTY 25000 CE (500+ points OTM)",
+      "direction": "BUY",
+      "spot_price": "current index level",
+      "entry": "option premium — should be ₹2-15 range (cheap lottery ticket)",
+      "entry_condition": "MANDATORY — trigger condition with > or <",
+      "timing": "MANDATORY — Best IST time for hero zero. Usually '1:30-2:30 PM (final hour gamma explosion zone)' or '12:00-1:00 PM (if trending day confirmed)'",
+      "target": "premium target (3x-10x of entry)",
+      "stop_loss": "Full premium loss (₹0) — hero zero is all-or-nothing",
+      "risk_reward": "Risk full premium for 3x-10x reward",
+      "confidence": "SPECULATIVE",
+      "reason": "Why this strike? Gamma explosion potential, trending day signal, one-side move expected. MUST mention it's high-risk expiry play.",
+      "option_detail": "Strike price, TODAY's expiry, lot size, premium ₹2-15, delta near 0.05-0.15, gamma spiking"
+    }}
   ]
 }}
 
+CRITICAL — TODAY'S EXPIRY STATUS:
+{expiry_text}
+Expiring today: {expiry_list}
+Day: {day_name}
+
+SEBI EXPIRY SCHEDULE (effective Sep 1, 2025):
+- NSE — ALL derivatives expire on TUESDAY:
+  * Nifty 50: WEEKLY expiry every Tuesday (only index with weekly on NSE)
+  * Bank Nifty: MONTHLY expiry on LAST TUESDAY of month only (NO weekly expiry since Nov 2024)
+  * Fin Nifty: MONTHLY expiry on last Tuesday (NO weekly)
+  * Stock F&O: MONTHLY expiry on last Tuesday
+  * Lot size: Nifty = 75, Bank Nifty = 30
+- BSE — ALL derivatives expire on THURSDAY:
+  * Sensex: WEEKLY expiry every Thursday (only index with weekly on BSE)
+  * Bankex: MONTHLY expiry on last Thursday (NO weekly)
+  * Lot size: Sensex = 20
+- If expiry falls on holiday, it moves to previous trading day
+
+IMPORTANT EXPIRY DAY BEHAVIORS:
+- Tuesday: Nifty weekly theta crush accelerates after 1 PM. Max Pain level becomes magnet. OI at round strikes unwinds.
+- Last Tuesday: Bank Nifty + Nifty both expire = DOUBLE EXPIRY = extreme volatility, heavy institutional activity
+- Thursday: Sensex weekly expiry on BSE. Typically lower volumes than Nifty but can see sharp moves.
+- Monday/Wednesday/Friday: No expiry — focus on positional/swing trades, carry trades for next expiry.
+
+TIMING GUIDELINES (Indian market hours 9:15 AM - 3:30 PM IST):
+- 9:15-9:30 AM: Opening volatility — avoid entries, observe gap direction
+- 9:30-10:00 AM: Opening range establishment — good for momentum entries if gap sustains
+- 10:00-11:30 AM: Trend development phase — best for directional trades
+- 11:30 AM-1:00 PM: Consolidation/lunch lull — good for range-bound or mean-reversion setups
+- 1:00-2:00 PM: Afternoon session starts — watch for breakout from consolidation
+- 2:00-3:00 PM: Power hour — strongest moves, expiry-day gamma spikes here
+- 3:00-3:30 PM: Final 30 min — high volatility, avoid new entries unless scalping
+- EVERY trade MUST have a specific IST time window in the "timing" field
+
 RULES FOR INDEX TRADES (5 trades):
 - Generate EXACTLY 5 index trades — mix of NIFTY, BANK NIFTY (at least 2 each), and optionally SENSEX
-- EVERY trade MUST include entry_condition with > or < format (e.g. "Nifty > 24600" or "Bank Nifty < 52700" or "Premium < 130")
+- EVERY trade MUST include entry_condition with > or < format
+- EVERY trade MUST include timing with specific IST time range and reason
 - Include both CALL and PUT options, and at least 1 futures trade
 - Use REALISTIC strike prices near current levels (ATM or 1-2 strikes OTM)
 - Entry, target, stop loss must be specific numbers (not ranges)
 - Risk:Reward must be minimum 1:1.5
 - Confidence: mark HIGH only for trades with 3+ confirming factors
-- Consider the day of the week (Monday=fresh positions, Thursday=expiry plays, Friday=carry trades)
-- Be specific about expiry (weekly/monthly)
-- ENTRY CONDITION is CRITICAL: For each trade specify the EXACT price trigger on the underlying index/stock. Example: "Enter when Nifty spot crosses above 24550" or "Enter when Bank Nifty sustains below 52700 for 5 min". Use > or < with specific price levels. This tells the trader WHEN to pull the trigger.
+- Use correct expiry dates based on SEBI schedule: Nifty weekly=Tuesday, Sensex weekly=Thursday, Bank Nifty monthly=last Tuesday
+- {"TODAY IS EXPIRY DAY for " + expiry_list + ". Prioritize expiry-day strategies: theta decay plays, gamma scalping, straddle/strangle adjustments. At least 2 trades should be expiry-specific." if is_expiry_day else "Today is NOT an expiry day. Focus on positional/swing trades for upcoming expiry. Use next week's expiry for weekly options."}
 
 RULES FOR STOCK OPTIONS (2 trades):
 - Pick 2 stocks from the list above with STRONGEST setups
-- EVERY trade MUST include entry_condition with > or < format (e.g. "RELIANCE > 2880" or "TCS < 4180")
+- EVERY trade MUST include entry_condition with > or < format
+- EVERY trade MUST include timing with specific IST time range
 - Prefer stocks with high volume spike (institutional interest) or big price moves
 - Use MONTHLY expiry stock options (not weekly)
 - Include lot size in option_detail
 - One should be a bullish trade (CE), one bearish (PE) for diversification
 - Strike prices should be ATM or slightly OTM
 - Explain WHY this stock specifically — momentum, sector play, earnings, breakout etc.
-- ENTRY CONDITION: Specify exact stock price trigger. Example: "Enter when RELIANCE spot > ₹2880" or "Enter when TATASTEEL breaks below ₹142". Use > or < operators.
+
+{hero_zero_instruction}
 """
 
     # Call Claude API via HTTP (same method as main report)
@@ -2031,8 +2179,12 @@ RULES FOR STOCK OPTIONS (2 trades):
             "indices": [d for d in indices_data if d['name'] != 'INDIA VIX'],
             "trades": result.get("trades", []),
             "stock_trades": result.get("stock_trades", []),
+            "hero_zero": result.get("hero_zero", []),
             "vix": next((d for d in indices_data if d['name'] == 'INDIA VIX'), None),
-            "generated_at": datetime.now().isoformat()
+            "generated_at": datetime.now().isoformat(),
+            "expiry_today": expiry_list,
+            "is_expiry_day": is_expiry_day,
+            "day_name": day_name
         }
         
     except json_mod.JSONDecodeError as e:
@@ -2048,8 +2200,12 @@ RULES FOR STOCK OPTIONS (2 trades):
                 "indices": [d for d in indices_data if d['name'] != 'INDIA VIX'],
                 "trades": result.get("trades", []),
                 "stock_trades": result.get("stock_trades", []),
+            "hero_zero": result.get("hero_zero", []),
                 "vix": next((d for d in indices_data if d['name'] == 'INDIA VIX'), None),
-                "generated_at": datetime.now().isoformat()
+                "generated_at": datetime.now().isoformat(),
+            "expiry_today": expiry_list,
+            "is_expiry_day": is_expiry_day,
+            "day_name": day_name
             }
         except:
             return {"success": False, "error": "AI service temporarily unavailable. Please try again."}
