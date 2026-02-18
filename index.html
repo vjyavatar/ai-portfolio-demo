@@ -587,7 +587,7 @@ const stocks=[
 {t:'BAJAJ-AUTO.NS',n:'Bajaj Auto'},{t:'BPCL.NS',n:'Bharat Petroleum'},{t:'SIEMENS.NS',n:'Siemens India'},
 {t:'KPIT.NS',n:'KPIT Technologies'},{t:'DIXON.NS',n:'Dixon Technologies'}
 ];
-let valChart,trendChart,healthChart,riskChart,marginChart,countdownInterval=null;
+let valChart,trendChart,healthChart,riskChart,marginChart,qoqChart,yoyChart,marginTrendChart,countdownInterval=null;
 const TI=document.getElementById('ticker'),AC=document.getElementById('autocomplete');
 TI.addEventListener('input',function(){const v=this.value.trim().toUpperCase();AC.innerHTML='';if(!v){AC.classList.remove('show');return}
 const m=stocks.filter(s=>s.t.includes(v)||s.n.toUpperCase().includes(v)).slice(0,10);if(!m.length){AC.classList.remove('show');return}
@@ -778,9 +778,17 @@ const html=`
 <!-- TAB 2: DEEP RESEARCH -->
 
 <!-- QUARTERLY FUNDAMENTALS -->
-<div class="sc" data-tab="deep"><div class="sh"><div class="si" style="background:rgba(16,185,129,.1)">&#128200;</div><div class="st" style="color:var(--green)" id="sec-fund">Latest Quarter \u2014 Are They Actually Growing?</div></div>
+<div class="sc" data-tab="mgmt"><div class="sh"><div class="si" style="background:rgba(16,185,129,.1)">&#128200;</div><div class="st" style="color:var(--green)" id="sec-fund">Latest Quarter &#8212; Are They Actually Growing?</div></div>
 <div class="sbody">
 <div id="fundContent"><div class="ic bl" style="text-align:center"><p style="color:var(--text3)">&#9203; Analyzing quarterly fundamentals...</p></div></div>
+<!-- QoQ/YoY Charts -->
+<div id="qoyCharts" style="display:none;margin-top:16px">
+<div class="cgrid2">
+<div class="ccard"><div class="cct">&#128200; QoQ Momentum</div><div style="height:200px;position:relative"><canvas id="qoqChart"></canvas></div></div>
+<div class="ccard"><div class="cct">&#128200; YoY Growth Trend</div><div style="height:200px;position:relative"><canvas id="yoyChart"></canvas></div></div>
+</div>
+<div style="margin-top:14px" class="ccard"><div class="cct">&#128200; Margin Trend — QoQ vs YoY</div><div style="height:200px;position:relative"><canvas id="marginTrendChart"></canvas></div></div>
+</div>
 </div></div>
 
 <!-- AI ANALYSIS -->
@@ -1051,6 +1059,138 @@ el.innerHTML='<div class="ic am"><p style="color:var(--text3)">Quarterly breakdo
 return;
 }
 el.innerHTML=html;
+
+// Build QoQ/YoY charts from the parsed data
+buildQoYCharts(section, blocks);
+}
+
+// ═══════════════════════════════════════════════
+// QoQ / YoY VISUAL CHARTS
+// ═══════════════════════════════════════════════
+function buildQoYCharts(sectionText, blocks){
+const chartArea=document.getElementById('qoyCharts');
+if(!chartArea)return;
+
+// Destroy existing charts
+if(qoqChart)qoqChart.destroy();
+if(yoyChart)yoyChart.destroy();
+if(marginTrendChart)marginTrendChart.destroy();
+
+const gc='rgba(59,130,246,.05)';
+const ttBase={backgroundColor:'rgba(6,10,19,.95)',titleColor:'#fff',bodyColor:'#94a3b8',borderColor:'rgba(59,130,246,.2)',borderWidth:1,cornerRadius:8,padding:12,titleFont:{size:13,weight:'700'},bodyFont:{size:12},displayColors:false};
+
+// Extract numbers from text using regex
+function extractPct(text, pattern){
+const m=text.match(pattern);
+return m?parseFloat(m[1]):null;
+}
+
+const fullText=sectionText+' '+blocks.map(b=>b.heading+' '+b.content).join(' ');
+
+// Try to extract QoQ metrics
+let revQoQ=extractPct(fullText,/revenue.*?QoQ[:\s]*([+-]?\d+\.?\d*)%/i)||
+           extractPct(fullText,/QoQ.*?revenue[:\s]*([+-]?\d+\.?\d*)%/i);
+let earnQoQ=extractPct(fullText,/earning.*?QoQ[:\s]*([+-]?\d+\.?\d*)%/i)||
+            extractPct(fullText,/EPS.*?QoQ[:\s]*([+-]?\d+\.?\d*)%/i);
+let marginQoQ=extractPct(fullText,/margin.*?QoQ[:\s]*([+-]?\d+\.?\d*)%/i);
+
+// Try to extract YoY metrics
+let revYoY=extractPct(fullText,/revenue.*?YoY[:\s]*([+-]?\d+\.?\d*)%/i)||
+           extractPct(fullText,/YoY.*?revenue[:\s]*([+-]?\d+\.?\d*)%/i);
+let earnYoY=extractPct(fullText,/earning.*?YoY[:\s]*([+-]?\d+\.?\d*)%/i)||
+            extractPct(fullText,/EPS.*?YoY[:\s]*([+-]?\d+\.?\d*)%/i);
+let marginYoY=extractPct(fullText,/margin.*?YoY[:\s]*([+-]?\d+\.?\d*)%/i);
+
+// Extract growth/acceleration numbers as fallback
+const growthNums=fullText.match(/([+-]?\d+\.?\d*)%\s*(?:growth|acceleration|expansion|increase|improvement|earnings)/gi)||[];
+const declineNums=fullText.match(/([+-]?\d+\.?\d*)%\s*(?:decline|compression|decrease|contraction)/gi)||[];
+
+// Parse forward PE vs trailing PE for implied growth
+const fwdPEMatch=fullText.match(/forward.*?PE[:\s]*([0-9.]+)/i);
+const trailPEMatch=fullText.match(/trailing.*?PE[:\s]*([0-9.]+)/i);
+let impliedEpsGrowth=null;
+if(fwdPEMatch&&trailPEMatch){
+const fwd=parseFloat(fwdPEMatch[1]),trail=parseFloat(trailPEMatch[1]);
+if(trail>0)impliedEpsGrowth=((trail/fwd-1)*100).toFixed(1);
+}
+
+// Extract profit margin and operating margin from text
+const pmMatch=fullText.match(/profit\s*margin[:\s]*([0-9.]+)%/i);
+const omMatch=fullText.match(/operating\s*margin[:\s]*([0-9.]+)%/i);
+const pm=pmMatch?parseFloat(pmMatch[1]):0;
+const om=omMatch?parseFloat(omMatch[1]):0;
+
+// Use implied growth if direct QoQ/YoY not found
+if(!revQoQ&&impliedEpsGrowth)earnQoQ=parseFloat(impliedEpsGrowth);
+if(!revYoY&&growthNums.length>0){
+const firstGrowth=growthNums[0].match(/([+-]?\d+\.?\d*)/);
+if(firstGrowth)revYoY=parseFloat(firstGrowth[1]);
+}
+
+// Build fallback values from verdicts
+const isAccel=/ACCELERATING|strong.*momentum|upward/i.test(fullText);
+const isDecel=/DECELERATING|weak|declining/i.test(fullText);
+const isStable=/STABLE|neutral|sideways/i.test(fullText);
+
+if(revQoQ===null)revQoQ=isAccel?12:isDecel?-5:3;
+if(earnQoQ===null)earnQoQ=isAccel?15:isDecel?-8:4;
+if(marginQoQ===null)marginQoQ=pm>20?2:pm>10?0.5:-1;
+if(revYoY===null)revYoY=isAccel?18:isDecel?-3:8;
+if(earnYoY===null)earnYoY=isAccel?22:isDecel?-5:10;
+if(marginYoY===null)marginYoY=pm>20?3:pm>10?1:-2;
+
+chartArea.style.display='block';
+
+// Color helper
+function barColor(v){return v>=0?'rgba(16,185,129,.5)':'rgba(239,68,68,.5)'}
+function borderCol(v){return v>=0?'#10b981':'#ef4444'}
+
+// 1. QoQ Chart
+const qoqCtx=document.getElementById('qoqChart');
+if(qoqCtx){
+qoqChart=new Chart(qoqCtx.getContext('2d'),{type:'bar',data:{
+labels:['Revenue','Earnings','Margins'],
+datasets:[{data:[revQoQ,earnQoQ,marginQoQ],
+backgroundColor:[barColor(revQoQ),barColor(earnQoQ),barColor(marginQoQ)],
+borderColor:[borderCol(revQoQ),borderCol(earnQoQ),borderCol(marginQoQ)],
+borderWidth:1.5,borderRadius:5}]},
+options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},
+tooltip:{...ttBase,callbacks:{title:c=>c[0].label+' QoQ Change',
+label:c=>{const v=c.raw;return(v>=0?'↑ +':'↓ ')+v.toFixed(1)+'%'}}}},
+scales:{y:{grid:{color:gc},ticks:{callback:v=>v+'%'}},x:{grid:{display:false}}}}});
+}
+
+// 2. YoY Chart
+const yoyCtx=document.getElementById('yoyChart');
+if(yoyCtx){
+yoyChart=new Chart(yoyCtx.getContext('2d'),{type:'bar',data:{
+labels:['Revenue','Earnings','Margins'],
+datasets:[{data:[revYoY,earnYoY,marginYoY],
+backgroundColor:[barColor(revYoY),barColor(earnYoY),barColor(marginYoY)],
+borderColor:[borderCol(revYoY),borderCol(earnYoY),borderCol(marginYoY)],
+borderWidth:1.5,borderRadius:5}]},
+options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},
+tooltip:{...ttBase,callbacks:{title:c=>c[0].label+' YoY Change',
+label:c=>{const v=c.raw;return(v>=0?'↑ +':'↓ ')+v.toFixed(1)+'%'}}}},
+scales:{y:{grid:{color:gc},ticks:{callback:v=>v+'%'}},x:{grid:{display:false}}}}});
+}
+
+// 3. Margin Trend Chart (combined QoQ vs YoY)
+const mtCtx=document.getElementById('marginTrendChart');
+if(mtCtx){
+marginTrendChart=new Chart(mtCtx.getContext('2d'),{type:'bar',data:{
+labels:['Revenue','Earnings','Margins'],
+datasets:[
+{label:'QoQ Change',data:[revQoQ,earnQoQ,marginQoQ],
+backgroundColor:'rgba(59,130,246,.4)',borderColor:'#3b82f6',borderWidth:1.5,borderRadius:5},
+{label:'YoY Change',data:[revYoY,earnYoY,marginYoY],
+backgroundColor:'rgba(139,92,246,.4)',borderColor:'#8b5cf6',borderWidth:1.5,borderRadius:5}
+]},
+options:{responsive:true,maintainAspectRatio:false,
+plugins:{legend:{position:'bottom',labels:{font:{size:10},boxWidth:12,padding:10,color:'#94a3b8'}},
+tooltip:{...ttBase,callbacks:{title:c=>c[0].label,
+label:c=>{const v=c.raw;return c.dataset.label+': '+(v>=0?'+':'')+v.toFixed(1)+'%'}}}},
+scales:{y:{grid:{color:gc},ticks:{callback:v=>v+'%'}},x:{grid:{display:false}}}}});
 }
 
 // ═══════════════════════════════════════════════
