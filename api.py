@@ -1738,8 +1738,8 @@ async def disclaimer_page():
 
 @app.get("/ads.txt", response_class=PlainTextResponse)
 async def ads_txt():
-    # Replace ca-pub-XXXXXXXXXXXXXXXX with your real AdSense publisher ID after approval
-    return "google.com, ca-pub-XXXXXXXXXXXXXXXX, DIRECT, f08c47fec0942fa0"
+    # Replace ca-pub-2084524493538975 with your real AdSense publisher ID after approval
+    return "google.com, ca-pub-2084524493538975, DIRECT, f08c47fec0942fa0"
 
 
 @app.get("/api/verify-price/{company}")
