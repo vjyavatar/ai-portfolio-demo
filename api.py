@@ -265,6 +265,62 @@ def fetch_management_context(ticker: str, company_name: str) -> str:
     except Exception as e:
         print(f"⚠️ Earnings data fetch failed: {e}")
     
+    # ── 2b. Yahoo Fund/Institutional Holdings ──
+    try:
+        url = f"https://query2.finance.yahoo.com/v10/finance/quoteSummary/{ticker}?modules=institutionOwnership,fundOwnership,majorHoldersBreakdown"
+        r = requests.get(url, headers={**YAHOO_HEADERS}, timeout=8)
+        ct = r.headers.get('content-type', '')
+        if r.status_code == 200 and 'json' in ct and '<html' not in r.text[:200].lower():
+            data = r.json().get('quoteSummary', {}).get('result', [])
+            if data:
+                d = data[0]
+                parts = []
+                
+                # Major holders breakdown
+                mh = d.get('majorHoldersBreakdown', {})
+                if mh:
+                    def rv(x): return x.get('raw', 0) if isinstance(x, dict) else (x or 0)
+                    insider_pct = rv(mh.get('insidersPercentHeld', {}))
+                    inst_pct = rv(mh.get('institutionsPercentHeld', {}))
+                    float_inst = rv(mh.get('institutionsFloatPercentHeld', {}))
+                    inst_count = rv(mh.get('institutionsCount', {}))
+                    if inst_pct: parts.append(f"Institutional Ownership: {inst_pct*100:.1f}%")
+                    if insider_pct: parts.append(f"Insider Ownership: {insider_pct*100:.1f}%")
+                    if float_inst: parts.append(f"Institutions % of Float: {float_inst*100:.1f}%")
+                    if inst_count: parts.append(f"Number of Institutions: {int(inst_count)}")
+                
+                # Top institutional holders
+                inst = d.get('institutionOwnership', {}).get('ownershipList', [])
+                if inst:
+                    parts.append("\n--- TOP INSTITUTIONAL HOLDERS ---")
+                    for h in inst[:10]:
+                        name = h.get('organization', 'Unknown')
+                        pct = h.get('pctHeld', {})
+                        pct_val = pct.get('raw', 0) if isinstance(pct, dict) else 0
+                        shares = h.get('position', {})
+                        shares_val = shares.get('raw', 0) if isinstance(shares, dict) else 0
+                        value = h.get('value', {})
+                        value_val = value.get('raw', 0) if isinstance(value, dict) else 0
+                        parts.append(f"{name}: {pct_val*100:.2f}% ({int(shares_val):,} shares, ${int(value_val):,})")
+                
+                # Top mutual fund holders
+                funds = d.get('fundOwnership', {}).get('ownershipList', [])
+                if funds:
+                    parts.append("\n--- TOP MUTUAL FUND HOLDERS ---")
+                    for f in funds[:10]:
+                        name = f.get('organization', 'Unknown')
+                        pct = f.get('pctHeld', {})
+                        pct_val = pct.get('raw', 0) if isinstance(pct, dict) else 0
+                        shares = f.get('position', {})
+                        shares_val = shares.get('raw', 0) if isinstance(shares, dict) else 0
+                        parts.append(f"{name}: {pct_val*100:.2f}% ({int(shares_val):,} shares)")
+                
+                if parts:
+                    context_parts.append("=== FUND & INSTITUTIONAL HOLDINGS (REAL) ===\n" + "\n".join(parts))
+                    print(f"✅ Got {len(inst)} institutional + {len(funds)} fund holders for {ticker}")
+    except Exception as e:
+        print(f"⚠️ Fund holdings fetch failed: {e}")
+    
     # ── 3. For Indian stocks: Screener.in data ──
     if is_indian:
         try:
@@ -1381,6 +1437,32 @@ Include specific price targets tied to management tone.]
 
 **Investment Inference from Management Behavior:**
 [Based on tone, body language of guidance, insider transactions, and communication patterns — is this management team building value or managing decline? Should investors trust the forward narrative? Concrete recommendation tied to management credibility.]
+
+---
+
+## 🏦 TOP FUND & INSTITUTIONAL HOLDINGS
+
+**Smart Money Snapshot:** [If fund/institutional data is provided above, list the top 5 holders with % ownership. Comment on: Are big funds accumulating or reducing? Is institutional ownership high (>60%) = strong backing, or low = under the radar?]
+
+**Top Holders:** [List top 5 institutional/mutual fund holders from the data. Format: "1. Vanguard (8.2%) 2. BlackRock (6.1%) etc." If data not available, note that institutional data was not available and skip this.]
+
+**What Smart Money Tells Us:** [High institutional ownership = validation by professional analysts. Rising institutional % = accumulation phase. Declining = distribution/exit. Low institutional = either undiscovered gem or avoided for reasons.]
+
+---
+
+## 🔮 WHAT'S NEXT — Catalysts & Timeline
+
+**Next 30 Days:** [What specific events/catalysts are coming? Earnings date, ex-dividend date, product launches, regulatory decisions, macro events]
+
+**Next 90 Days:** [Medium-term catalysts — seasonal trends, industry events, guidance updates, competitive dynamics that will impact price]
+
+**Next 12 Months:** [Big picture — growth trajectory, expansion plans, sector tailwinds/headwinds, regulatory changes, M&A potential]
+
+**Key Trigger to Watch:** [The single most important catalyst that will determine if this stock goes up or down. Be specific — "Q3 earnings on [date]" or "Fed rate decision" or "New product launch in [month]"]
+
+**Bull Case Scenario:** [If everything goes right — specific price target with reasoning]
+**Bear Case Scenario:** [If things go wrong — specific downside target with reasoning]
+**Most Likely Scenario:** [Your base case with probability assessment]
 
 ---
 

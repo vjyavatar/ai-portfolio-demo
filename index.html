@@ -812,6 +812,18 @@ const html=`
 <div id="mgmtContent"><div class="ic pu" style="text-align:center"><p style="color:var(--text3)">&#9203; Analyzing management tone...</p></div></div>
 </div></div>
 
+<!-- FUND HOLDINGS -->
+<div class="sc" data-tab="mgmt"><div class="sh"><div class="si" style="background:rgba(59,130,246,.1)">&#127974;</div><div class="st" style="color:var(--blue)" id="sec-funds">Top Fund &amp; Institutional Holdings</div></div>
+<div class="sbody">
+<div id="fundHoldingsContent"><div class="ic bl" style="text-align:center"><p style="color:var(--text3)">&#9203; Loading fund holdings...</p></div></div>
+</div></div>
+
+<!-- WHAT'S NEXT -->
+<div class="sc" data-tab="mgmt"><div class="sh"><div class="si" style="background:rgba(6,182,212,.1)">&#128302;</div><div class="st" style="color:var(--cyan)" id="sec-next">What's Next \u2014 Catalysts &amp; Timeline</div></div>
+<div class="sbody">
+<div id="whatsNextContent"><div class="ic bl" style="text-align:center"><p style="color:var(--text3)">&#9203; Analyzing upcoming catalysts...</p></div></div>
+</div></div>
+
 
 <!-- TAB 4: HIDDEN GEMS -->
 
@@ -829,6 +841,8 @@ document.getElementById('analysisContainer').innerHTML=html;
 formatAIAnalysis(report);
 populateFundamentals(report);
 populateManagement(report);
+populateFundHoldings(report);
+populateWhatsNext(report);
 generateSmallCapRecommendations(d);
 // Auto-open Quick Intel tab
 switchTab('quick');
@@ -1341,8 +1355,123 @@ if(fallback)html+=`<div style="border-left:4px solid var(--border);border-radius
 el.innerHTML=html}
 
 // ═══════════════════════════════════════════════
-// COLOR-CODE KEY TERMS IN TEXT
+// FUND & INSTITUTIONAL HOLDINGS PARSER
 // ═══════════════════════════════════════════════
+function populateFundHoldings(rawText){
+const el=document.getElementById('fundHoldingsContent');
+if(!el)return;
+
+// Extract fund holdings section
+const start=rawText.search(/TOP FUND.*INSTITUTIONAL|FUND.*INSTITUTIONAL HOLDINGS|🏦.*HOLDINGS|Smart Money/i);
+const end=rawText.search(/WHAT'S NEXT|🔮.*WHAT|ENTRY.*EXIT|🎯.*ENTRY/i);
+if(start===-1){el.innerHTML='<div class="ic bl"><p style="color:var(--text3)">Fund holdings data not available for this stock.</p></div>';return}
+
+const section=end>start?rawText.substring(start,end):rawText.substring(start,start+2000);
+const cleaned=section.replace(/[│┌┐└┘├┤─┬┴┼═]/g,'').replace(/^#+\s*/gm,'');
+
+let html='';
+
+// Parse numbered holders list (1. Vanguard (8.2%) format)
+const holders=cleaned.match(/\d+\.\s*([^(]+)\s*\(([^)]+)\)/g)||[];
+if(holders.length>0){
+html+='<div style="margin-bottom:14px">';
+holders.forEach((h,i)=>{
+const m=h.match(/\d+\.\s*([^(]+)\s*\(([^)]+)\)/);
+if(m){
+const name=m[1].trim(),pct=m[2].trim();
+const pctNum=parseFloat(pct)||0;
+const barW=Math.min(100,pctNum*8);
+html+=`<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;padding:8px 12px;border-radius:8px;background:rgba(59,130,246,.04);border:1px solid rgba(59,130,246,.08)">
+<span style="font-size:12px;color:var(--text3);min-width:20px;font-weight:700">#${i+1}</span>
+<div style="flex:1;min-width:0">
+<div style="font-size:13px;color:var(--text);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${name}</div>
+<div style="height:4px;border-radius:2px;background:rgba(59,130,246,.1);margin-top:4px"><div style="height:100%;border-radius:2px;background:var(--blue);width:${barW}%"></div></div>
+</div>
+<span style="font-size:13px;font-weight:700;color:var(--blue);white-space:nowrap">${pct}</span>
+</div>`;
+}});
+html+='</div>';
+}
+
+// Parse **heading:** content blocks
+const blocks=[];
+const parts=cleaned.split(/\*\*([^*]+)\*\*/);
+for(let i=1;i<parts.length;i+=2){
+const heading=(parts[i]||'').replace(/[:*]/g,'').trim();
+const content=(parts[i+1]||'').replace(/^\s*[:]\s*/,'').trim().split('\n').filter(l=>l.trim().length>5).join(' ').trim();
+if(heading&&content&&content.length>10)blocks.push({heading,content});
+}
+
+blocks.forEach(b=>{
+if(/top holder/i.test(b.heading)&&holders.length>0)return; // Skip if we already rendered holders
+const icon=/smart money|institutional/i.test(b.heading)?'🧠':/ownership/i.test(b.heading)?'📊':'💼';
+html+=`<div style="border-left:4px solid rgba(59,130,246,.3);border-radius:10px;padding:14px 16px;margin-bottom:10px;background:rgba(59,130,246,.04)">
+<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+<span style="font-size:16px">${icon}</span>
+<span style="font-family:'Sora',sans-serif;font-size:13px;font-weight:700;color:var(--blue)">${b.heading}</span>
+</div>
+<p style="font-size:13px;color:var(--text2);line-height:1.7;margin:0">${colorizeText(b.content)}</p>
+</div>`;
+});
+
+if(!html)el.innerHTML='<div class="ic bl"><p style="color:var(--text3)">Fund holdings analysis not available.</p></div>';
+else el.innerHTML=html;
+}
+
+// ═══════════════════════════════════════════════
+// WHAT'S NEXT - Catalysts & Timeline Parser
+// ═══════════════════════════════════════════════
+function populateWhatsNext(rawText){
+const el=document.getElementById('whatsNextContent');
+if(!el)return;
+
+const start=rawText.search(/WHAT'S NEXT|🔮.*WHAT.*NEXT|Catalysts.*Timeline/i);
+const end=rawText.search(/ENTRY.*EXIT|🎯.*ENTRY|SMALL.CAP|10.YEAR/i);
+if(start===-1){el.innerHTML='<div class="ic bl"><p style="color:var(--text3)">Catalyst analysis not available for this stock.</p></div>';return}
+
+const section=end>start?rawText.substring(start,end):rawText.substring(start,start+2500);
+const cleaned=section.replace(/[│┌┐└┘├┤─┬┴┼═]/g,'').replace(/^#+\s*/gm,'');
+
+let html='';
+
+// Parse blocks
+const blocks=[];
+const parts=cleaned.split(/\*\*([^*]+)\*\*/);
+for(let i=1;i<parts.length;i+=2){
+const heading=(parts[i]||'').replace(/[:*]/g,'').trim();
+const content=(parts[i+1]||'').replace(/^\s*[:]\s*/,'').trim().split('\n').filter(l=>l.trim().length>5).join(' ').trim();
+if(heading&&content&&content.length>10)blocks.push({heading,content});
+}
+
+// Timeline theme mapping
+const timeThemes=[
+{match:/30 day|next month|short.term/i,icon:'📅',color:'var(--cyan)',bg:'rgba(6,182,212,.05)',border:'rgba(6,182,212,.3)'},
+{match:/90 day|3 month|quarter/i,icon:'📆',color:'var(--blue)',bg:'rgba(59,130,246,.05)',border:'rgba(59,130,246,.3)'},
+{match:/12 month|year|long.term/i,icon:'🗓️',color:'var(--purple)',bg:'rgba(139,92,246,.05)',border:'rgba(139,92,246,.3)'},
+{match:/trigger|key.*watch|catalyst/i,icon:'⚡',color:'var(--amber)',bg:'rgba(245,158,11,.05)',border:'rgba(245,158,11,.3)'},
+{match:/bull.*case|upside|best.*case/i,icon:'🟢',color:'var(--green)',bg:'rgba(16,185,129,.05)',border:'rgba(16,185,129,.3)'},
+{match:/bear.*case|downside|worst.*case/i,icon:'🔴',color:'var(--red)',bg:'rgba(239,68,68,.05)',border:'rgba(239,68,68,.3)'},
+{match:/most likely|base.*case|probable/i,icon:'🎯',color:'var(--blue)',bg:'rgba(59,130,246,.05)',border:'rgba(59,130,246,.3)'}
+];
+const defTheme={icon:'📋',color:'var(--text2)',bg:'var(--surface)',border:'var(--border)'};
+
+blocks.forEach(b=>{
+let theme=defTheme;
+const test=b.heading+' '+b.content;
+for(const t of timeThemes){if(t.match.test(test)){theme=t;break}}
+
+html+=`<div style="border-left:4px solid ${theme.border};border-radius:10px;padding:14px 16px;margin-bottom:10px;background:${theme.bg}">
+<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+<span style="font-size:16px">${theme.icon}</span>
+<span style="font-family:'Sora',sans-serif;font-size:13px;font-weight:700;color:${theme.color}">${b.heading}</span>
+</div>
+<p style="font-size:13px;color:var(--text2);line-height:1.7;margin:0">${colorizeText(b.content)}</p>
+</div>`;
+});
+
+if(!html)el.innerHTML='<div class="ic bl"><p style="color:var(--text3)">Catalyst timeline not available.</p></div>';
+else el.innerHTML=html;
+}
 function colorizeText(text){
 return text
 .replace(/🟢|bullish|strong buy|accelerating|beat|raised|expansion|green flag|positive/gi,m=>`<span style="color:var(--green);font-weight:600">${m}</span>`)
