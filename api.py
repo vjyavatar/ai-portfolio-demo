@@ -1938,6 +1938,7 @@ RESPOND IN STRICT JSON FORMAT (no markdown, no backticks, no explanation outside
       "direction": "BUY | SELL",
       "spot_price": "current index level number only",
       "entry": "option/futures entry price number only",
+      "entry_condition": "MANDATORY — Exact trigger like: Nifty > 24600 | Bank Nifty < 52700 | Premium drops below 120. Always use > or < with a specific number.",
       "target": "target price number only",
       "stop_loss": "stop loss price number only",
       "risk_reward": "1:2 format",
@@ -1953,6 +1954,7 @@ RESPOND IN STRICT JSON FORMAT (no markdown, no backticks, no explanation outside
       "direction": "BUY | SELL",
       "spot_price": "current stock price number only",
       "entry": "option entry price number only",
+      "entry_condition": "MANDATORY — Exact trigger like: RELIANCE > 2880 | TCS < 4180 | Premium drops below 90. Always use > or < with a specific number.",
       "target": "target price number only",
       "stop_loss": "stop loss price number only",
       "risk_reward": "1:2 format",
@@ -1965,6 +1967,7 @@ RESPOND IN STRICT JSON FORMAT (no markdown, no backticks, no explanation outside
 
 RULES FOR INDEX TRADES (5 trades):
 - Generate EXACTLY 5 index trades — mix of NIFTY, BANK NIFTY (at least 2 each), and optionally SENSEX
+- EVERY trade MUST include entry_condition with > or < format (e.g. "Nifty > 24600" or "Bank Nifty < 52700" or "Premium < 130")
 - Include both CALL and PUT options, and at least 1 futures trade
 - Use REALISTIC strike prices near current levels (ATM or 1-2 strikes OTM)
 - Entry, target, stop loss must be specific numbers (not ranges)
@@ -1972,15 +1975,18 @@ RULES FOR INDEX TRADES (5 trades):
 - Confidence: mark HIGH only for trades with 3+ confirming factors
 - Consider the day of the week (Monday=fresh positions, Thursday=expiry plays, Friday=carry trades)
 - Be specific about expiry (weekly/monthly)
+- ENTRY CONDITION is CRITICAL: For each trade specify the EXACT price trigger on the underlying index/stock. Example: "Enter when Nifty spot crosses above 24550" or "Enter when Bank Nifty sustains below 52700 for 5 min". Use > or < with specific price levels. This tells the trader WHEN to pull the trigger.
 
 RULES FOR STOCK OPTIONS (2 trades):
 - Pick 2 stocks from the list above with STRONGEST setups
+- EVERY trade MUST include entry_condition with > or < format (e.g. "RELIANCE > 2880" or "TCS < 4180")
 - Prefer stocks with high volume spike (institutional interest) or big price moves
 - Use MONTHLY expiry stock options (not weekly)
 - Include lot size in option_detail
 - One should be a bullish trade (CE), one bearish (PE) for diversification
 - Strike prices should be ATM or slightly OTM
 - Explain WHY this stock specifically — momentum, sector play, earnings, breakout etc.
+- ENTRY CONDITION: Specify exact stock price trigger. Example: "Enter when RELIANCE spot > ₹2880" or "Enter when TATASTEEL breaks below ₹142". Use > or < operators.
 """
 
     # Call Claude API via HTTP (same method as main report)
