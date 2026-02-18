@@ -534,26 +534,33 @@ def fetch_google_finance(ticker: str) -> dict:
     """
     import re
     try:
-        # Convert ticker format: TSLA → TSLA:NASDAQ, RELIANCE.NS → RELIANCE:NSE
+        # Convert ticker format for Google Finance URLs
         if '.NS' in ticker:
-            g_ticker = ticker.replace('.NS', '') + ':NSE'
+            g_tickers = [ticker.replace('.NS', '') + ':NSE']
         elif '.BO' in ticker:
-            g_ticker = ticker.replace('.BO', '') + ':BOM'
+            g_tickers = [ticker.replace('.BO', '') + ':BOM']
         else:
-            g_ticker = ticker  # Google will auto-resolve
+            # US stocks need exchange suffix — try NASDAQ first, then NYSE
+            base = ticker.replace('.', '-')
+            g_tickers = [f"{base}:NASDAQ", f"{base}:NYSE", f"{base}:NYSEARCA", base]
         
-        url = f"https://www.google.com/finance/quote/{g_ticker}"
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/122.0.0.0 Safari/537.36',
             'Accept': 'text/html',
             'Accept-Language': 'en-US,en;q=0.9',
         }
         
-        resp = requests.get(url, headers=headers, timeout=10)
-        if resp.status_code != 200:
-            return None
+        text = None
+        for g_ticker in g_tickers:
+            url = f"https://www.google.com/finance/quote/{g_ticker}"
+            resp = requests.get(url, headers=headers, timeout=10)
+            if resp.status_code == 200 and 'data-last-price' in resp.text:
+                text = resp.text
+                print(f"  ✅ Google Finance resolved: {g_ticker}")
+                break
         
-        text = resp.text
+        if not text:
+            return None
         
         # Extract price from Google Finance page
         price_match = re.search(r'data-last-price="([0-9.]+)"', text)
@@ -625,6 +632,234 @@ def fetch_google_finance(ticker: str) -> dict:
         return None
 
 app = FastAPI(title="Celesys AI - Verified Live Data")
+
+# ═══════════════════════════════════════════════════════════
+# SOURCE 5: FINVIZ FUNDAMENTALS (US stocks)
+# ═══════════════════════════════════════════════════════════
+def fetch_finviz_fundamentals(ticker: str) -> dict:
+    """Scrape Finviz for P/E, P/B, Market Cap, margins, ROE, beta, debt/equity etc."""
+    import re as re_fv
+    try:
+        clean_ticker = ticker.replace('.NS', '').replace('.BO', '')
+        url = f"https://finviz.com/quote.ashx?t={clean_ticker}&ty=c&p=d&b=1"
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/122.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml',
+            'Accept-Language': 'en-US,en;q=0.9',
+            'Referer': 'https://finviz.com/',
+        }
+        resp = requests.get(url, headers=headers, timeout=10)
+        if resp.status_code != 200:
+            print(f"  ⚠️ Finviz returned {resp.status_code}")
+            return None
+        
+        text = resp.text
+        result = {}
+        
+        metric_map = {
+            'P/E': ('trailingPE', 'float'),
+            'Forward P/E': ('forwardPE', 'float'),
+            'P/B': ('priceToBook', 'float'),
+            'Market Cap': ('marketCap', 'mcap'),
+            'Dividend %': ('dividendYield', 'pct'),
+            'ROE': ('returnOnEquity', 'pct'),
+            'ROA': ('returnOnAssets', 'pct'),
+            'Profit Margin': ('profitMargins', 'pct'),
+            'Oper. Margin': ('operatingMargins', 'pct'),
+            'Gross Margin': ('grossMargins', 'pct'),
+            'Debt/Eq': ('debtToEquity', 'float_x100'),
+            'Current Ratio': ('currentRatio', 'float'),
+            'Beta': ('beta', 'float'),
+            'EPS (ttm)': ('trailingEps', 'float'),
+        }
+        
+        for label, (key, typ) in metric_map.items():
+            # Try multiple patterns for Finviz HTML
+            patterns = [
+                f'>{re_fv.escape(label)}</td>.*?<b>([^<]+)</b>',
+                f'>{re_fv.escape(label)}</td>\\s*<td[^>]*>([^<]+)</td>',
+                f'"{re_fv.escape(label)}"[^>]*>.*?<b>([^<]+)</b>',
+            ]
+            raw = None
+            for pat in patterns:
+                m = re_fv.search(pat, text, re_fv.DOTALL | re_fv.I)
+                if m:
+                    raw = m.group(1).strip()
+                    if raw and raw != '-':
+                        break
+                    raw = None
+            
+            if not raw:
+                continue
+            try:
+                if typ == 'float':
+                    result[key] = float(raw.replace(',', ''))
+                elif typ == 'float_x100':
+                    result[key] = float(raw.replace(',', '')) * 100
+                elif typ == 'pct':
+                    result[key] = float(raw.replace('%', '').replace(',', '')) / 100
+                elif typ == 'mcap':
+                    raw = raw.upper().replace(',', '')
+                    mult = 1
+                    if 'T' in raw: mult = 1e12; raw = raw.replace('T', '')
+                    elif 'B' in raw: mult = 1e9; raw = raw.replace('B', '')
+                    elif 'M' in raw: mult = 1e6; raw = raw.replace('M', '')
+                    result[key] = float(raw) * mult
+            except:
+                pass
+        
+        # Sector/Industry
+        sec_m = re_fv.search(r'Sector[^<]*</a>.*?<a[^>]*>([^<]+)</a>', text, re_fv.DOTALL)
+        if sec_m: result['sector'] = sec_m.group(1).strip()
+        ind_m = re_fv.search(r'Industry[^<]*</a>.*?<a[^>]*>([^<]+)</a>', text, re_fv.DOTALL)
+        if ind_m: result['industry'] = ind_m.group(1).strip()
+        
+        if result:
+            print(f"  ✅ Finviz fundamentals: got {len(result)} metrics ({', '.join(result.keys())})")
+        return result if result else None
+    except Exception as e:
+        print(f"  ⚠️ Finviz fundamentals failed: {e}")
+        return None
+
+
+def fetch_stockanalysis_fundamentals(ticker: str) -> dict:
+    """Scrape stockanalysis.com for financials — another Yahoo alternative."""
+    try:
+        clean = ticker.replace('.NS', '').replace('.BO', '')
+        url = f"https://stockanalysis.com/stocks/{clean.lower()}/financials/quarterly/"
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/122.0.0.0 Safari/537.36',
+            'Accept': 'text/html',
+        }
+        resp = requests.get(url, headers=headers, timeout=10)
+        if resp.status_code != 200:
+            return {}
+        text = resp.text
+        result = {}
+        
+        # Try the overview page for ratios
+        url2 = f"https://stockanalysis.com/stocks/{clean.lower()}/"
+        resp2 = requests.get(url2, headers=headers, timeout=8)
+        if resp2.status_code == 200:
+            text2 = resp2.text
+            
+            def extract_sa(label):
+                # Pattern: "Market Cap" ... some value like "$2.51T" or "25.3"
+                pat = f'{re.escape(label)}[^<]*</td>\\s*<td[^>]*>([^<]+)</td>'
+                m = re.search(pat, text2, re.I | re.DOTALL)
+                if m:
+                    val = m.group(1).strip().replace('$', '').replace(',', '').replace('%', '')
+                    if val and val != '-' and val != 'n/a':
+                        # Handle T/B/M suffixes
+                        mult = 1
+                        if val.endswith('T'): mult = 1e12; val = val[:-1]
+                        elif val.endswith('B'): mult = 1e9; val = val[:-1]
+                        elif val.endswith('M'): mult = 1e6; val = val[:-1]
+                        try:
+                            return float(val) * mult
+                        except:
+                            return None
+                return None
+            
+            pe = extract_sa('PE Ratio')
+            if pe: result['trailingPE'] = pe
+            
+            fpe = extract_sa('Forward PE')
+            if fpe: result['forwardPE'] = fpe
+            
+            mcap = extract_sa('Market Cap')
+            if mcap: result['marketCap'] = mcap
+            
+            dy = extract_sa('Dividend Yield')
+            if dy and dy < 100: result['dividendYield'] = dy / 100
+            
+            pb = extract_sa('Price-to-Book')
+            if pb: result['priceToBook'] = pb
+            
+            beta = extract_sa('Beta')
+            if beta: result['beta'] = beta
+        
+        if result:
+            print(f"  ✅ StockAnalysis fundamentals: got {len(result)} metrics ({', '.join(result.keys())})")
+        return result
+    except Exception as e:
+        print(f"  ⚠️ StockAnalysis failed: {e}")
+        return {}
+
+
+def fetch_screener_fundamentals(ticker: str) -> dict:
+    """Scrape Screener.in API for Indian stock fundamentals (P/E, ROE, margins, etc.)"""
+    try:
+        # Convert .NS/.BO ticker to clean name for Screener
+        clean = ticker.replace('.NS', '').replace('.BO', '').upper()
+        url = f"https://www.screener.in/api/company/{clean}/consolidated/"
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/122.0.0.0',
+            'Accept': 'application/json',
+        }
+        resp = requests.get(url, headers=headers, timeout=10)
+        if resp.status_code != 200:
+            # Try standalone
+            url = f"https://www.screener.in/api/company/{clean}/"
+            resp = requests.get(url, headers=headers, timeout=10)
+        
+        if resp.status_code != 200 or 'json' not in resp.headers.get('content-type', ''):
+            return None
+        
+        data = resp.json()
+        result = {}
+        
+        # Screener.in returns data in specific keys
+        # Number dict format: {"<key>": value}
+        number = data.get('number_set', {}) or {}
+        ratios = data.get('warehouse_set', {}).get('standalone', {}) or data.get('warehouse_set', {}) or {}
+        
+        # Try to extract from various locations
+        def get_num(d, keys):
+            for k in keys:
+                v = d.get(k)
+                if v is not None and v != '' and v != 0:
+                    try: return float(v)
+                    except: pass
+            return None
+        
+        pe = get_num(number, ['price_to_earning', 'pe_ratio', 'stock_pe'])
+        if pe: result['trailingPE'] = pe
+        
+        pb = get_num(number, ['price_to_book', 'book_value_per_share'])
+        if pb: result['priceToBook'] = pb
+        
+        mcap = get_num(number, ['market_capitalization', 'market_cap'])
+        if mcap: result['marketCap'] = mcap * 10000000  # Screener shows in Cr, convert to raw
+        
+        roe = get_num(number, ['return_on_equity', 'roe'])
+        if roe: result['returnOnEquity'] = roe / 100  # Convert % to decimal
+        
+        roce = get_num(number, ['return_on_capital_employed', 'roce'])
+        if roce: result['returnOnAssets'] = roce / 100
+        
+        de = get_num(number, ['debt_to_equity', 'debt_equity'])
+        if de is not None: result['debtToEquity'] = de
+        
+        cr = get_num(number, ['current_ratio'])
+        if cr: result['currentRatio'] = cr
+        
+        npm = get_num(number, ['net_profit_margin', 'npm', 'opm'])
+        if npm: result['profitMargins'] = npm / 100
+        
+        opm = get_num(number, ['operating_profit_margin', 'opm'])
+        if opm: result['operatingMargins'] = opm / 100
+        
+        dy = get_num(number, ['dividend_yield'])
+        if dy: result['dividendYield'] = dy / 100
+        
+        if result:
+            print(f"  ✅ Screener.in fundamentals: got {len(result)} metrics ({', '.join(result.keys())})")
+        return result if result else None
+    except Exception as e:
+        print(f"  ⚠️ Screener.in fundamentals failed: {e}")
+        return None
+
 
 # In-memory cache for stock data (expires after 5 minutes - optimized for LinkedIn launch)
 stock_data_cache = {}
@@ -978,9 +1213,76 @@ def get_live_stock_data(company_name: str) -> dict:
                 except Exception as e:
                     print(f"  ⚠️ Google enrichment failed: {e}")
             
-            # ── MARGIN ENRICHMENT: If margins/ROE still missing, try yfinance directly ──
+            # ── COMPREHENSIVE ENRICHMENT: Finviz (US) or Screener.in (India) ──
+            # These are the BEST fallbacks when Yahoo is rate-limited
+            is_indian_stock = '.NS' in ticker_symbol or '.BO' in ticker_symbol
+            
+            # Check what's still missing
+            missing_metrics = []
+            if not info.get('trailingPE') or info.get('trailingPE') == 0: missing_metrics.append('P/E')
+            if not info.get('marketCap') or info.get('marketCap') == 0: missing_metrics.append('MCap')
+            if not info.get('profitMargins') or info.get('profitMargins') == 0: missing_metrics.append('Margins')
+            if not info.get('returnOnEquity') or info.get('returnOnEquity') == 0: missing_metrics.append('ROE')
+            if not info.get('debtToEquity'): missing_metrics.append('Debt/Eq')
+            if not info.get('beta') or info.get('beta') == 0: missing_metrics.append('Beta')
+            if not info.get('priceToBook') or info.get('priceToBook') == 0: missing_metrics.append('P/B')
+            
+            if missing_metrics:
+                print(f"⚠️ Still missing: {', '.join(missing_metrics)}. Trying {'Screener.in' if is_indian_stock else 'Finviz'}...")
+                
+                alt_data = None
+                if is_indian_stock:
+                    alt_data = fetch_screener_fundamentals(ticker_symbol)
+                else:
+                    alt_data = fetch_finviz_fundamentals(ticker_symbol)
+                
+                if alt_data:
+                    # Fill ALL missing metrics from alternative source
+                    fill_keys = [
+                        'trailingPE', 'forwardPE', 'priceToBook', 'marketCap',
+                        'profitMargins', 'operatingMargins', 'grossMargins',
+                        'returnOnEquity', 'returnOnAssets', 'debtToEquity',
+                        'currentRatio', 'beta', 'dividendYield', 'trailingEps',
+                        'sector', 'industry'
+                    ]
+                    filled = []
+                    for key in fill_keys:
+                        if alt_data.get(key) is not None and (not info.get(key) or info.get(key) == 0 or info.get(key) == 'N/A'):
+                            info[key] = alt_data[key]
+                            filled.append(key)
+                    if filled:
+                        print(f"  ✅ Enriched {len(filled)} metrics from {'Screener.in' if is_indian_stock else 'Finviz'}: {', '.join(filled)}")
+                    
+                    # Update flags
+                    has_pe = info.get('trailingPE') and info['trailingPE'] != 0
+                    has_mcap = info.get('marketCap') and info['marketCap'] != 0
+                    has_margins = info.get('profitMargins') and info['profitMargins'] != 0
+            
+            # ── SECOND ALT: StockAnalysis.com (US stocks only, if still missing) ──
+            still_missing = []
+            if not info.get('trailingPE') or info.get('trailingPE') == 0: still_missing.append('P/E')
+            if not info.get('marketCap') or info.get('marketCap') == 0: still_missing.append('MCap')
+            if not info.get('priceToBook') or info.get('priceToBook') == 0: still_missing.append('P/B')
+            if not info.get('beta') or info.get('beta') == 0: still_missing.append('Beta')
+            
+            if still_missing and not is_indian_stock:
+                print(f"⚠️ Still missing after Finviz: {', '.join(still_missing)}. Trying StockAnalysis.com...")
+                try:
+                    sa_data = fetch_stockanalysis_fundamentals(ticker_symbol)
+                    if sa_data:
+                        sa_filled = []
+                        for key in ['trailingPE', 'forwardPE', 'priceToBook', 'marketCap', 'beta', 'dividendYield']:
+                            if sa_data.get(key) and (not info.get(key) or info.get(key) == 0):
+                                info[key] = sa_data[key]
+                                sa_filled.append(key)
+                        if sa_filled:
+                            print(f"  ✅ StockAnalysis enriched: {', '.join(sa_filled)}")
+                except Exception as e:
+                    print(f"  ⚠️ StockAnalysis enrichment failed: {e}")
+            
+            # ── LAST RESORT MARGIN ENRICHMENT: yfinance .info (may also fail if Yahoo blocked) ──
             if not has_margins:
-                print(f"⚠️ Missing margins. Trying yfinance .info for margins...")
+                print(f"⚠️ Margins still missing. Last resort: yfinance .info...")
                 try:
                     stock_margins = yf.Ticker(ticker_symbol)
                     margin_info = stock_margins.info
@@ -990,10 +1292,8 @@ def get_live_stock_data(company_name: str) -> dict:
                             print(f"  ✅ Enriched profit margin: {margin_info['profitMargins']}")
                         if not info.get('operatingMargins') and margin_info.get('operatingMargins'):
                             info['operatingMargins'] = margin_info['operatingMargins']
-                            print(f"  ✅ Enriched operating margin: {margin_info['operatingMargins']}")
                         if not info.get('returnOnEquity') and margin_info.get('returnOnEquity'):
                             info['returnOnEquity'] = margin_info['returnOnEquity']
-                            print(f"  ✅ Enriched ROE: {margin_info['returnOnEquity']}")
                         if not info.get('debtToEquity') and margin_info.get('debtToEquity'):
                             info['debtToEquity'] = margin_info['debtToEquity']
                         if not info.get('currentRatio') and margin_info.get('currentRatio'):
@@ -1005,6 +1305,66 @@ def get_live_stock_data(company_name: str) -> dict:
                             info['industry'] = margin_info.get('industry', info.get('industry', 'N/A'))
                 except Exception as e:
                     print(f"  ⚠️ yfinance margin enrichment failed: {e}")
+            
+            # ── ABSOLUTE LAST RESORT: Yahoo crumb-based v10 (fresh session) ──
+            final_missing = []
+            if not info.get('trailingPE') or info.get('trailingPE') == 0: final_missing.append('P/E')
+            if not info.get('marketCap') or info.get('marketCap') == 0: final_missing.append('MCap')
+            if not info.get('profitMargins') or info.get('profitMargins') == 0: final_missing.append('Margins')
+            
+            if final_missing:
+                print(f"⚠️ FINAL RESORT for {', '.join(final_missing)}: Yahoo crumb session...")
+                try:
+                    session = requests.Session()
+                    session.headers.update({
+                        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Safari/605.1.15',
+                    })
+                    # Get crumb
+                    cr = session.get('https://fc.yahoo.com', timeout=5)
+                    crumb_r = session.get('https://query2.finance.yahoo.com/v1/test/getcrumb', timeout=5)
+                    if crumb_r.status_code == 200:
+                        crumb = crumb_r.text.strip()
+                        if crumb and len(crumb) < 20:
+                            modules = 'defaultKeyStatistics,financialData,summaryDetail'
+                            v10_url = f'https://query2.finance.yahoo.com/v10/finance/quoteSummary/{ticker_symbol}?modules={modules}&crumb={crumb}'
+                            dr = session.get(v10_url, timeout=8)
+                            ct = dr.headers.get('content-type', '')
+                            if dr.status_code == 200 and 'json' in ct:
+                                d10 = dr.json().get('quoteSummary', {}).get('result', [])
+                                if d10:
+                                    d10 = d10[0]
+                                    def rv10(sec, key):
+                                        return d10.get(sec, {}).get(key, {}).get('raw', 0) if isinstance(d10.get(sec, {}).get(key, {}), dict) else 0
+                                    
+                                    enriched = []
+                                    if not info.get('trailingPE') or info['trailingPE'] == 0:
+                                        pe_val = rv10('summaryDetail', 'trailingPE')
+                                        if pe_val: info['trailingPE'] = pe_val; enriched.append(f'PE={pe_val}')
+                                    if not info.get('marketCap') or info['marketCap'] == 0:
+                                        mc = rv10('summaryDetail', 'marketCap')
+                                        if mc: info['marketCap'] = mc; enriched.append(f'MCap={mc}')
+                                    if not info.get('profitMargins') or info['profitMargins'] == 0:
+                                        pm_val = rv10('financialData', 'profitMargins')
+                                        if pm_val: info['profitMargins'] = pm_val; enriched.append(f'PM={pm_val}')
+                                    if not info.get('operatingMargins') or info['operatingMargins'] == 0:
+                                        om_val = rv10('financialData', 'operatingMargins')
+                                        if om_val: info['operatingMargins'] = om_val; enriched.append(f'OM={om_val}')
+                                    if not info.get('returnOnEquity') or info['returnOnEquity'] == 0:
+                                        roe_val = rv10('financialData', 'returnOnEquity')
+                                        if roe_val: info['returnOnEquity'] = roe_val; enriched.append(f'ROE={roe_val}')
+                                    if not info.get('debtToEquity'):
+                                        de_val = rv10('financialData', 'debtToEquity')
+                                        if de_val: info['debtToEquity'] = de_val; enriched.append(f'D/E={de_val}')
+                                    if not info.get('priceToBook') or info['priceToBook'] == 0:
+                                        pb_val = rv10('defaultKeyStatistics', 'priceToBook')
+                                        if pb_val: info['priceToBook'] = pb_val; enriched.append(f'PB={pb_val}')
+                                    if not info.get('beta') or info['beta'] == 0:
+                                        beta_val = rv10('defaultKeyStatistics', 'beta')
+                                        if beta_val: info['beta'] = beta_val; enriched.append(f'Beta={beta_val}')
+                                    if enriched:
+                                        print(f"  ✅ Yahoo crumb session: {', '.join(enriched)}")
+                except Exception as e:
+                    print(f"  ⚠️ Yahoo crumb enrichment failed: {e}")
         
         # ── ALL SOURCES FAILED: check stale cache ──
         if current_price is None:
