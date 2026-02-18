@@ -153,7 +153,7 @@ def fetch_yahoo_direct(ticker: str) -> dict:
         return None
 
 
-def fetch_management_context(ticker: str, company_name: str) -> str:
+def fetch_management_context(ticker: str, company_name: str) -> tuple:
     """
     Fetch real analyst/earnings/insider data from free sources.
     Returns text that gets injected into the AI prompt for real analysis.
@@ -266,6 +266,7 @@ def fetch_management_context(ticker: str, company_name: str) -> str:
         print(f"⚠️ Earnings data fetch failed: {e}")
     
     # ── 2b. Yahoo Fund/Institutional Holdings ──
+    fund_holdings_data = {"institutions": [], "funds": [], "summary": {}}
     try:
         url = f"https://query2.finance.yahoo.com/v10/finance/quoteSummary/{ticker}?modules=institutionOwnership,fundOwnership,majorHoldersBreakdown"
         r = requests.get(url, headers={**YAHOO_HEADERS}, timeout=8)
@@ -284,6 +285,12 @@ def fetch_management_context(ticker: str, company_name: str) -> str:
                     inst_pct = rv(mh.get('institutionsPercentHeld', {}))
                     float_inst = rv(mh.get('institutionsFloatPercentHeld', {}))
                     inst_count = rv(mh.get('institutionsCount', {}))
+                    fund_holdings_data["summary"] = {
+                        "institutional_pct": round(inst_pct * 100, 2) if inst_pct else 0,
+                        "insider_pct": round(insider_pct * 100, 2) if insider_pct else 0,
+                        "float_inst_pct": round(float_inst * 100, 2) if float_inst else 0,
+                        "inst_count": int(inst_count) if inst_count else 0
+                    }
                     if inst_pct: parts.append(f"Institutional Ownership: {inst_pct*100:.1f}%")
                     if insider_pct: parts.append(f"Insider Ownership: {insider_pct*100:.1f}%")
                     if float_inst: parts.append(f"Institutions % of Float: {float_inst*100:.1f}%")
@@ -301,6 +308,10 @@ def fetch_management_context(ticker: str, company_name: str) -> str:
                         shares_val = shares.get('raw', 0) if isinstance(shares, dict) else 0
                         value = h.get('value', {})
                         value_val = value.get('raw', 0) if isinstance(value, dict) else 0
+                        fund_holdings_data["institutions"].append({
+                            "name": name, "pct": round(pct_val * 100, 2),
+                            "shares": int(shares_val), "value": int(value_val)
+                        })
                         parts.append(f"{name}: {pct_val*100:.2f}% ({int(shares_val):,} shares, ${int(value_val):,})")
                 
                 # Top mutual fund holders
@@ -313,6 +324,10 @@ def fetch_management_context(ticker: str, company_name: str) -> str:
                         pct_val = pct.get('raw', 0) if isinstance(pct, dict) else 0
                         shares = f.get('position', {})
                         shares_val = shares.get('raw', 0) if isinstance(shares, dict) else 0
+                        fund_holdings_data["funds"].append({
+                            "name": name, "pct": round(pct_val * 100, 2),
+                            "shares": int(shares_val)
+                        })
                         parts.append(f"{name}: {pct_val*100:.2f}% ({int(shares_val):,} shares)")
                 
                 if parts:
@@ -418,7 +433,7 @@ def fetch_management_context(ticker: str, company_name: str) -> str:
             print(f"⚠️ Finviz failed: {e}")
     
     if not context_parts:
-        return ""
+        return "", fund_holdings_data
     
     # CRITICAL: Sanitize — strip any HTML that leaked from Yahoo/Moneycontrol responses
     import re as re_clean
@@ -442,7 +457,7 @@ def fetch_management_context(ticker: str, company_name: str) -> str:
     result = '\n'.join(clean_lines)
     
     print(f"📊 Management context: {len(result)} chars (sanitized)")
-    return result
+    return result, fund_holdings_data
 
 
 def fetch_yahoo_scrape(ticker: str) -> dict:
@@ -1261,8 +1276,9 @@ COMPANY INFORMATION:
 
         # FETCH REAL MANAGEMENT/EARNINGS DATA
         mgmt_context = ""
+        fund_holdings = {"institutions": [], "funds": [], "summary": {}}
         try:
-            mgmt_context = fetch_management_context(live_data['ticker'], live_data.get('company_name', company))
+            mgmt_context, fund_holdings = fetch_management_context(live_data['ticker'], live_data.get('company_name', company))
             if mgmt_context:
                 # Final safety: reject if it's mostly HTML
                 import re as re_safety
@@ -1567,6 +1583,7 @@ Based on real-time price of {currency_symbol}{live_data['current_price']:,.2f}:
             "report": report,
             "company_name": company,
             "live_data": live_data,
+            "fund_holdings": fund_holdings,
             "timestamp": datetime.now().isoformat(),
             "report_id": report_id.upper(),
             "report_number": report_counter["count"],
