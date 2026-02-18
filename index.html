@@ -418,6 +418,70 @@ footer{position:relative;z-index:1;margin-top:32px;background:rgba(6,10,19,.95);
 @keyframes scrollBounce{0%,100%{transform:translateY(0)}50%{transform:translateY(6px)}}
 .ipt,input,textarea{-webkit-user-select:text;-moz-user-select:text;user-select:text}
 
+/* ═══ ANTI-SCREENSHOT & ANTI-SHARING PROTECTIONS ═══ */
+/* Smart Trades content cannot be selected, copied, or printed */
+[data-tab="trades"] {
+  -webkit-user-select: none !important;
+  -moz-user-select: none !important;
+  -ms-user-select: none !important;
+  user-select: none !important;
+  -webkit-touch-callout: none !important;
+  -webkit-user-drag: none !important;
+}
+[data-tab="trades"] * {
+  -webkit-user-select: none !important;
+  -moz-user-select: none !important;
+  user-select: none !important;
+}
+/* Hide completely when printing */
+@media print {
+  [data-tab="trades"], #tabBtnTrades, .trades-watermark {
+    display: none !important;
+    visibility: hidden !important;
+  }
+  body::before {
+    content: "Smart Trades content is protected and cannot be printed.";
+    display: block;
+    text-align: center;
+    font-size: 24px;
+    padding: 60px;
+    color: #666;
+  }
+}
+/* Watermark overlay for trades */
+.trades-watermark {
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  pointer-events: none;
+  z-index: 10;
+  overflow: hidden;
+  opacity: 0.04;
+}
+.trades-watermark-text {
+  position: absolute;
+  font-size: 14px;
+  font-weight: 800;
+  color: #fff;
+  transform: rotate(-35deg);
+  white-space: nowrap;
+  letter-spacing: 2px;
+  font-family: 'Sora', sans-serif;
+}
+/* Blur trades when page is not visible (anti-screenshot via tab switch) */
+.trades-blurred [data-tab="trades"] .sbody {
+  filter: blur(20px) !important;
+  transition: filter 0.1s;
+}
+.trades-blurred [data-tab="trades"] .sbody::after {
+  content: "Content hidden for security";
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--amber);
+  z-index: 100;
+}
 </style>
 </head>
 <body>
@@ -614,8 +678,113 @@ const email=(el.dataset.real||el.value).trim().toLowerCase();
 const show=TRADES_EMAILS.includes(email);
 document.getElementById('tabBtnTrades').style.display=show?'':'none';
 document.querySelectorAll('.sc[data-tab="trades"]').forEach(s=>s.style.display=show?'':'none');
+if(show)initTradesProtection(email);
 }
 document.getElementById('email').addEventListener('blur',checkTradesAccess);
+
+// ═══════════════════════════════════════════════
+// ANTI-SCREENSHOT & ANTI-SHARING PROTECTION
+// ═══════════════════════════════════════════════
+function initTradesProtection(email){
+const tradesTab=document.querySelector('[data-tab="trades"]');
+if(!tradesTab||tradesTab.dataset.protected)return;
+tradesTab.dataset.protected='true';
+tradesTab.style.position='relative';
+
+// 1. Dynamic watermark grid with user's email
+const wm=document.createElement('div');
+wm.className='trades-watermark';
+let wmHtml='';
+for(let row=0;row<20;row++){
+for(let col=0;col<6;col++){
+const top=row*120+Math.random()*40;
+const left=col*280+Math.random()*60-40;
+wmHtml+=`<span class="trades-watermark-text" style="top:${top}px;left:${left}px">contact@celesys.ai • CELESYS.AI • CONFIDENTIAL</span>`;
+}}
+wm.innerHTML=wmHtml;
+tradesTab.appendChild(wm);
+
+// 2. Block right-click on trades section
+tradesTab.addEventListener('contextmenu',e=>{e.preventDefault();e.stopPropagation();return false});
+
+// 3. Block drag/drop (prevents dragging content out)
+tradesTab.addEventListener('dragstart',e=>{e.preventDefault()});
+
+// 4. Block copy/cut
+tradesTab.addEventListener('copy',e=>{e.preventDefault();e.clipboardData&&e.clipboardData.setData('text/plain','Smart Trades content is protected.')});
+tradesTab.addEventListener('cut',e=>{e.preventDefault()});
+}
+
+// 5. Block keyboard shortcuts globally when trades tab is active
+document.addEventListener('keydown',function(e){
+const tradesVisible=document.querySelector('[data-tab="trades"]')&&
+document.querySelector('[data-tab="trades"]').style.display!=='none'&&
+document.querySelector('.tab-btn-active')&&
+document.querySelector('.tab-btn-active').id==='tabBtnTrades';
+if(!tradesVisible)return;
+
+// Block PrintScreen
+if(e.key==='PrintScreen'){e.preventDefault();return false}
+// Block Ctrl+P (print)
+if(e.ctrlKey&&e.key==='p'){e.preventDefault();return false}
+// Block Ctrl+S (save)
+if(e.ctrlKey&&e.key==='s'){e.preventDefault();return false}
+// Block Ctrl+Shift+I / Ctrl+Shift+J (dev tools)
+if(e.ctrlKey&&e.shiftKey&&(e.key==='I'||e.key==='i'||e.key==='J'||e.key==='j')){e.preventDefault();return false}
+// Block Ctrl+U (view source)
+if(e.ctrlKey&&(e.key==='u'||e.key==='U')){e.preventDefault();return false}
+// Block F12 (dev tools)
+if(e.key==='F12'){e.preventDefault();return false}
+// Block Ctrl+Shift+S (screenshot in some browsers)
+if(e.ctrlKey&&e.shiftKey&&(e.key==='S'||e.key==='s')){e.preventDefault();return false}
+// Block Ctrl+C (copy)
+if(e.ctrlKey&&(e.key==='c'||e.key==='C')){e.preventDefault();return false}
+// Block Ctrl+A (select all)
+if(e.ctrlKey&&(e.key==='a'||e.key==='A')){e.preventDefault();return false}
+// Block Windows+Shift+S (Windows snipping tool)
+if(e.metaKey&&e.shiftKey&&(e.key==='S'||e.key==='s')){e.preventDefault();return false}
+});
+
+// 6. Blur content when page loses visibility (alt-tab, screenshot tools)
+document.addEventListener('visibilitychange',function(){
+if(document.hidden){
+document.body.classList.add('trades-blurred');
+}else{
+// Small delay before unblurring to catch screenshot tools
+setTimeout(()=>document.body.classList.remove('trades-blurred'),800);
+}
+});
+
+// 7. Blur on window blur (when focus moves away from browser)
+window.addEventListener('blur',function(){
+document.body.classList.add('trades-blurred');
+});
+window.addEventListener('focus',function(){
+setTimeout(()=>document.body.classList.remove('trades-blurred'),600);
+});
+
+// 8. Detect and warn about screen recording/capture API
+if(navigator.mediaDevices&&navigator.mediaDevices.getDisplayMedia){
+const origGetDisplay=navigator.mediaDevices.getDisplayMedia.bind(navigator.mediaDevices);
+navigator.mediaDevices.getDisplayMedia=function(){
+alert('Screen recording is not allowed on Smart Trades content.');
+return Promise.reject(new Error('Screen capture blocked'));
+};
+}
+
+// 9. Periodic check — if dev tools are open (detected by debugger timing)
+(function detectDevTools(){
+const el=new Image();
+let open=false;
+Object.defineProperty(el,'id',{get:function(){open=true}});
+setInterval(()=>{
+open=false;
+console.log(el);
+if(open){
+document.body.classList.add('trades-blurred');
+}
+},3000);
+})();
 TI.addEventListener('keypress',e=>{if(e.key==='Enter')analyze()});
 
 function showStatus(m,t){const s=document.getElementById('status');s.innerHTML=m;s.className='sbar show '+t}
@@ -1636,6 +1805,30 @@ if(!data.success){errEl.textContent=data.error||'Service busy. Please try again 
 // Render the trades
 let html='';
 
+// Market assessment dashboard
+const ma=data.market_assessment||{};
+if(ma.bias){
+const biasCol=ma.bias.includes('BULL')?'var(--green)':ma.bias.includes('BEAR')?'var(--red)':'var(--amber)';
+const edgeCol=ma.edge_clarity==='CLEAR'?'var(--green)':ma.edge_clarity==='MODERATE'?'var(--amber)':'var(--red)';
+html+=`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;margin-bottom:14px">
+<div style="text-align:center;padding:10px;border-radius:8px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06)">
+<div style="font-size:10px;color:var(--text3);font-weight:600;letter-spacing:.5px">MARKET BIAS</div>
+<div style="font-size:15px;font-weight:800;color:${biasCol}">${ma.bias||'-'}</div></div>
+<div style="text-align:center;padding:10px;border-radius:8px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06)">
+<div style="font-size:10px;color:var(--text3);font-weight:600;letter-spacing:.5px">REGIME</div>
+<div style="font-size:15px;font-weight:800;color:var(--blue)">${ma.regime||'-'}</div></div>
+<div style="text-align:center;padding:10px;border-radius:8px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06)">
+<div style="font-size:10px;color:var(--text3);font-weight:600;letter-spacing:.5px">EDGE CLARITY</div>
+<div style="font-size:15px;font-weight:800;color:${edgeCol}">${ma.edge_clarity||'-'}</div></div>
+</div>`;
+if(ma.vix_signal||ma.global_impact){
+html+=`<div style="font-size:12px;color:var(--text3);margin-bottom:14px;padding:10px 14px;border-radius:8px;background:rgba(255,255,255,.02)">
+${ma.vix_signal?'<div style="margin-bottom:4px"><strong style="color:var(--amber)">VIX:</strong> '+ma.vix_signal+'</div>':''}
+${ma.global_impact?'<div><strong style="color:var(--blue)">Global:</strong> '+ma.global_impact+'</div>':''}
+</div>`;
+}
+}
+
 // Market pulse header
 html+=`<div style="border-radius:12px;background:linear-gradient(135deg,rgba(245,158,11,.08),rgba(239,68,68,.05));border:1px solid rgba(245,158,11,.2);padding:16px 20px;margin-bottom:16px">
 <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
@@ -1672,114 +1865,85 @@ html+=`<div style="text-align:center;padding:12px;border-radius:8px;background:r
 html+=`</div>`;
 }
 
-// Trades table
+// Trades table — ranked by probability, with time planner and gut picks
+// Collect ALL trades for time-ordered planner
+const allTrades=[];
+
 if(data.trades&&data.trades.length>0){
-html+=`<div style="font-family:'Sora',sans-serif;font-size:13px;font-weight:700;color:var(--amber);margin-bottom:10px;letter-spacing:.3px">&#127919; TOP ${data.trades.length} TRADE IDEAS FOR TODAY</div>`;
-
-data.trades.forEach((t,i)=>{
-const isBuy=(/buy|long|call/i).test(t.direction||t.action||'');
-const col=isBuy?'var(--green)':'var(--red)';
-const bg=isBuy?'rgba(16,185,129,.04)':'rgba(239,68,68,.04)';
-const border=isBuy?'rgba(16,185,129,.25)':'rgba(239,68,68,.25)';
-
-html+=`<div style="border-left:4px solid ${border};border-radius:10px;padding:16px;margin-bottom:12px;background:${bg};border:1px solid ${border}">
+const sorted=[...data.trades].sort((a,b)=>(parseInt(b.probability)||80)-(parseInt(a.probability)||80));
+html+=`<div style="font-family:'Sora',sans-serif;font-size:13px;font-weight:700;color:var(--amber);margin-bottom:10px;letter-spacing:.3px">&#127919; INDEX TRADES — Ranked by Probability</div>`;
+sorted.forEach((t,i)=>{
+const up=(t.direction||'').toUpperCase()==='BUY';
+const col=up?'var(--green)':'var(--red)';
+const bg=up?'rgba(16,185,129,.04)':'rgba(239,68,68,.04)';
+const bdr=up?'rgba(16,185,129,.2)':'rgba(239,68,68,.2)';
+const prob=parseInt(t.probability)||80;
+const pCol=prob>=90?'var(--green)':prob>=85?'#22d3ee':'var(--amber)';
+allTrades.push({...t,_type:'INDEX',_rank:t.rank||i+1,_prob:prob,_inst:t.instrument});
+html+=`<div style="border-left:4px solid ${bdr};border-radius:10px;padding:16px;margin-bottom:12px;background:${bg};border:1px solid ${bdr}">
 <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px">
-<div style="display:flex;align-items:center;gap:8px">
-<span style="font-size:11px;background:${col};color:#fff;padding:2px 8px;border-radius:4px;font-weight:800">#${i+1}</span>
+<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+<span style="font-size:11px;background:${col};color:#fff;padding:2px 8px;border-radius:4px;font-weight:800">#${t.rank||i+1}</span>
 <span style="font-family:'Sora',sans-serif;font-size:15px;font-weight:700;color:var(--text)">${t.instrument||'-'}</span>
-<span style="font-size:12px;font-weight:700;color:${col};background:${bg};border:1px solid ${border};padding:2px 8px;border-radius:4px">${(t.direction||t.action||'').toUpperCase()}</span>
+<span style="font-size:12px;font-weight:700;color:${col};background:${bg};border:1px solid ${bdr};padding:2px 8px;border-radius:4px">${(t.direction||'').toUpperCase()}</span>
+${t.probability?`<span style="font-size:11px;font-weight:800;color:#fff;background:${pCol};padding:2px 8px;border-radius:4px">${t.probability}</span>`:''}
 </div>
 <span style="font-size:11px;color:var(--text3);font-weight:600">${t.index||''}</span>
 </div>
-
+${t.factors_aligned?`<div style="font-size:11px;color:var(--text3);margin-bottom:8px;padding:4px 8px;border-radius:4px;background:rgba(255,255,255,.03)">&#9989; <strong style="color:var(--green)">Factors:</strong> ${t.factors_aligned}</div>`:''}
 <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:8px;margin-bottom:10px">
-<div style="padding:8px;border-radius:6px;background:rgba(255,255,255,.03)">
-<div style="font-size:10px;color:var(--text3);font-weight:600">SPOT PRICE</div>
-<div style="font-size:14px;font-weight:700;color:var(--text)">₹${t.spot_price||'-'}</div></div>
-<div style="padding:8px;border-radius:6px;background:rgba(255,255,255,.03)">
-<div style="font-size:10px;color:var(--text3);font-weight:600">ENTRY</div>
-<div style="font-size:14px;font-weight:700;color:var(--blue)">₹${t.entry||'-'}</div></div>
-<div style="padding:8px;border-radius:6px;background:rgba(255,255,255,.03)">
-<div style="font-size:10px;color:var(--text3);font-weight:600">TARGET</div>
-<div style="font-size:14px;font-weight:700;color:var(--green)">₹${t.target||'-'}</div></div>
-<div style="padding:8px;border-radius:6px;background:rgba(255,255,255,.03)">
-<div style="font-size:10px;color:var(--text3);font-weight:600">STOP LOSS</div>
-<div style="font-size:14px;font-weight:700;color:var(--red)">₹${t.stop_loss||'-'}</div></div>
-<div style="padding:8px;border-radius:6px;background:rgba(255,255,255,.03)">
-<div style="font-size:10px;color:var(--text3);font-weight:600">RISK:REWARD</div>
-<div style="font-size:14px;font-weight:700;color:var(--purple)">${t.risk_reward||'-'}</div></div>
-<div style="padding:8px;border-radius:6px;background:rgba(255,255,255,.03)">
-<div style="font-size:10px;color:var(--text3);font-weight:600">CONFIDENCE</div>
-<div style="font-size:14px;font-weight:700;color:var(--amber)">${t.confidence||'-'}</div></div>
+<div style="padding:8px;border-radius:6px;background:rgba(255,255,255,.03)"><div style="font-size:10px;color:var(--text3);font-weight:600">SPOT</div><div style="font-size:14px;font-weight:700;color:var(--text)">₹${t.spot_price||'-'}</div></div>
+<div style="padding:8px;border-radius:6px;background:rgba(255,255,255,.03)"><div style="font-size:10px;color:var(--text3);font-weight:600">ENTRY</div><div style="font-size:14px;font-weight:700;color:var(--blue)">₹${t.entry||'-'}</div></div>
+<div style="padding:8px;border-radius:6px;background:rgba(16,185,129,.06)"><div style="font-size:10px;color:var(--text3);font-weight:600">TARGET ${t.target_pct?'<span style="color:var(--green);font-weight:800">('+t.target_pct+')</span>':''}</div><div style="font-size:14px;font-weight:700;color:var(--green)">₹${t.target||'-'}</div></div>
+<div style="padding:8px;border-radius:6px;background:rgba(239,68,68,.06)"><div style="font-size:10px;color:var(--text3);font-weight:600">SL ${t.sl_pct?'<span style="color:var(--red);font-weight:800">('+t.sl_pct+')</span>':''}</div><div style="font-size:14px;font-weight:700;color:var(--red)">₹${t.stop_loss||'-'}</div></div>
+<div style="padding:8px;border-radius:6px;background:rgba(255,255,255,.03)"><div style="font-size:10px;color:var(--text3);font-weight:600">R:R</div><div style="font-size:14px;font-weight:700;color:var(--purple)">${t.risk_reward||'-'}</div></div>
+<div style="padding:8px;border-radius:6px;background:rgba(255,255,255,.03)"><div style="font-size:10px;color:var(--text3);font-weight:600">CONFIDENCE</div><div style="font-size:14px;font-weight:700;color:var(--amber)">${t.confidence||'-'}</div></div>
 </div>
-
-${t.entry_condition?`<div style="margin-bottom:10px;padding:10px 14px;border-radius:8px;background:rgba(59,130,246,.1);border:1px solid rgba(59,130,246,.25);display:flex;align-items:center;gap:10px">
-<span style="font-size:20px">&#127919;</span>
-<div><span style="font-size:10px;font-weight:700;color:var(--blue);letter-spacing:.8px">&#9654; WHEN TO ENTER</span><br>
-<span style="font-size:14px;font-weight:800;color:#fff;letter-spacing:.3px">${t.entry_condition}</span></div></div>`:''}
-
-${t.timing?`<div style="margin-bottom:10px;padding:10px 14px;border-radius:8px;background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.2);display:flex;align-items:center;gap:10px">
-<span style="font-size:18px">&#128337;</span>
-<div><span style="font-size:10px;font-weight:700;color:var(--amber);letter-spacing:.8px">&#9200; BEST TIME</span><br>
-<span style="font-size:13px;font-weight:700;color:var(--amber)">${t.timing}</span></div></div>`:''}\
-
-<div style="font-size:12px;color:var(--text2);line-height:1.7">
-<strong style="color:var(--text3)">Rationale:</strong> ${t.reason||'-'}
-</div>
+${t.entry_condition?`<div style="margin-bottom:8px;padding:10px 14px;border-radius:8px;background:rgba(59,130,246,.1);border:1px solid rgba(59,130,246,.25);display:flex;align-items:center;gap:10px"><span style="font-size:20px">&#127919;</span><div><span style="font-size:10px;font-weight:700;color:var(--blue);letter-spacing:.8px">&#9654; WHEN TO ENTER</span><br><span style="font-size:14px;font-weight:800;color:#fff">${t.entry_condition}</span></div></div>`:''}
+${t.timing?`<div style="margin-bottom:8px;padding:10px 14px;border-radius:8px;background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.2);display:flex;align-items:center;gap:10px"><span style="font-size:18px">&#128337;</span><div><span style="font-size:10px;font-weight:700;color:var(--amber);letter-spacing:.8px">&#9200; BEST TIME</span><br><span style="font-size:13px;font-weight:700;color:var(--amber)">${t.timing}</span></div></div>`:''}
+<div style="font-size:12px;color:var(--text2);line-height:1.7"><strong style="color:var(--text3)">Rationale:</strong> ${t.reason||'-'}</div>
 ${t.option_detail?'<div style="margin-top:6px;font-size:11px;color:var(--cyan)"><strong>Option:</strong> '+t.option_detail+'</div>':''}
+${t.what_invalidates?`<div style="margin-top:8px;padding:8px 12px;border-radius:6px;background:rgba(239,68,68,.06);border:1px solid rgba(239,68,68,.12);font-size:11px"><strong style="color:var(--red)">&#9888; KILL IF:</strong> <span style="color:var(--text2)">${t.what_invalidates}</span></div>`:''}
 </div>`;
 });
 }
+
+// Stock trades
 if(data.stock_trades&&data.stock_trades.length>0){
-html+=`<div style="font-family:'Sora',sans-serif;font-size:13px;font-weight:700;color:var(--purple);margin:20px 0 10px;letter-spacing:.3px">&#128640; STOCK OPTION PICKS — Today's Top Movers</div>`;
-data.stock_trades.forEach((t,i)=>{
-const isBuy=(/buy|long|call/i).test(t.direction||t.action||'');
-const col=isBuy?'var(--green)':'var(--red)';
-const bg=isBuy?'rgba(139,92,246,.04)':'rgba(239,68,68,.04)';
-const border=isBuy?'rgba(139,92,246,.25)':'rgba(239,68,68,.25)';
-html+=`<div style="border-left:4px solid rgba(139,92,246,.4);border-radius:10px;padding:16px;margin-bottom:12px;background:${bg};border:1px solid ${border}">
+const sorted=[...data.stock_trades].sort((a,b)=>(parseInt(b.probability)||80)-(parseInt(a.probability)||80));
+html+=`<div style="margin-top:20px;font-family:'Sora',sans-serif;font-size:13px;font-weight:700;color:var(--purple);margin-bottom:10px">&#128640; STOCK OPTION PICKS — Ranked by Probability</div>`;
+sorted.forEach((t,i)=>{
+const up=(t.direction||'').toUpperCase()==='BUY';
+const col=up?'var(--green)':'var(--red)';
+const bg=up?'rgba(16,185,129,.04)':'rgba(239,68,68,.04)';
+const bdr=up?'rgba(16,185,129,.2)':'rgba(239,68,68,.2)';
+const prob=parseInt(t.probability)||80;
+const pCol=prob>=90?'var(--green)':prob>=85?'#22d3ee':'var(--amber)';
+allTrades.push({...t,_type:'STOCK',_rank:t.rank||'S'+(i+1),_prob:prob,_inst:t.instrument||t.stock});
+html+=`<div style="border-left:4px solid rgba(139,92,246,.3);border-radius:10px;padding:16px;margin-bottom:12px;background:rgba(139,92,246,.04);border:1px solid rgba(139,92,246,.15)">
 <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px">
-<div style="display:flex;align-items:center;gap:8px">
-<span style="font-size:11px;background:var(--purple);color:#fff;padding:2px 8px;border-radius:4px;font-weight:800">S${i+1}</span>
+<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+<span style="font-size:11px;background:var(--purple);color:#fff;padding:2px 8px;border-radius:4px;font-weight:800">${t.rank||'S'+(i+1)}</span>
 <span style="font-family:'Sora',sans-serif;font-size:15px;font-weight:700;color:var(--text)">${t.instrument||t.stock||'-'}</span>
-<span style="font-size:12px;font-weight:700;color:${col};background:${bg};border:1px solid ${border};padding:2px 8px;border-radius:4px">${(t.direction||t.action||'').toUpperCase()}</span>
+<span style="font-size:12px;font-weight:700;color:${col};background:${bg};border:1px solid ${bdr};padding:2px 8px;border-radius:4px">${(t.direction||'').toUpperCase()}</span>
+${t.probability?`<span style="font-size:11px;font-weight:800;color:#fff;background:${pCol};padding:2px 8px;border-radius:4px">${t.probability}</span>`:''}
 </div>
 <span style="font-size:11px;color:var(--text3);font-weight:600">${t.stock||''}</span>
 </div>
+${t.factors_aligned?`<div style="font-size:11px;color:var(--text3);margin-bottom:8px;padding:4px 8px;border-radius:4px;background:rgba(255,255,255,.03)">&#9989; <strong style="color:var(--green)">Factors:</strong> ${t.factors_aligned}</div>`:''}
 <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:8px;margin-bottom:10px">
-<div style="padding:8px;border-radius:6px;background:rgba(255,255,255,.03)">
-<div style="font-size:10px;color:var(--text3);font-weight:600">SPOT PRICE</div>
-<div style="font-size:14px;font-weight:700;color:var(--text)">₹${t.spot_price||'-'}</div></div>
-<div style="padding:8px;border-radius:6px;background:rgba(255,255,255,.03)">
-<div style="font-size:10px;color:var(--text3);font-weight:600">ENTRY</div>
-<div style="font-size:14px;font-weight:700;color:var(--blue)">₹${t.entry||'-'}</div></div>
-<div style="padding:8px;border-radius:6px;background:rgba(255,255,255,.03)">
-<div style="font-size:10px;color:var(--text3);font-weight:600">TARGET</div>
-<div style="font-size:14px;font-weight:700;color:var(--green)">₹${t.target||'-'}</div></div>
-<div style="padding:8px;border-radius:6px;background:rgba(255,255,255,.03)">
-<div style="font-size:10px;color:var(--text3);font-weight:600">STOP LOSS</div>
-<div style="font-size:14px;font-weight:700;color:var(--red)">₹${t.stop_loss||'-'}</div></div>
-<div style="padding:8px;border-radius:6px;background:rgba(255,255,255,.03)">
-<div style="font-size:10px;color:var(--text3);font-weight:600">RISK:REWARD</div>
-<div style="font-size:14px;font-weight:700;color:var(--purple)">${t.risk_reward||'-'}</div></div>
-<div style="padding:8px;border-radius:6px;background:rgba(255,255,255,.03)">
-<div style="font-size:10px;color:var(--text3);font-weight:600">CONFIDENCE</div>
-<div style="font-size:14px;font-weight:700;color:var(--amber)">${t.confidence||'-'}</div></div>
+<div style="padding:8px;border-radius:6px;background:rgba(255,255,255,.03)"><div style="font-size:10px;color:var(--text3);font-weight:600">SPOT</div><div style="font-size:14px;font-weight:700;color:var(--text)">₹${t.spot_price||'-'}</div></div>
+<div style="padding:8px;border-radius:6px;background:rgba(255,255,255,.03)"><div style="font-size:10px;color:var(--text3);font-weight:600">ENTRY</div><div style="font-size:14px;font-weight:700;color:var(--blue)">₹${t.entry||'-'}</div></div>
+<div style="padding:8px;border-radius:6px;background:rgba(16,185,129,.06)"><div style="font-size:10px;color:var(--text3);font-weight:600">TARGET ${t.target_pct?'<span style="color:var(--green);font-weight:800">('+t.target_pct+')</span>':''}</div><div style="font-size:14px;font-weight:700;color:var(--green)">₹${t.target||'-'}</div></div>
+<div style="padding:8px;border-radius:6px;background:rgba(239,68,68,.06)"><div style="font-size:10px;color:var(--text3);font-weight:600">SL ${t.sl_pct?'<span style="color:var(--red);font-weight:800">('+t.sl_pct+')</span>':''}</div><div style="font-size:14px;font-weight:700;color:var(--red)">₹${t.stop_loss||'-'}</div></div>
+<div style="padding:8px;border-radius:6px;background:rgba(255,255,255,.03)"><div style="font-size:10px;color:var(--text3);font-weight:600">R:R</div><div style="font-size:14px;font-weight:700;color:var(--purple)">${t.risk_reward||'-'}</div></div>
+<div style="padding:8px;border-radius:6px;background:rgba(255,255,255,.03)"><div style="font-size:10px;color:var(--text3);font-weight:600">CONFIDENCE</div><div style="font-size:14px;font-weight:700;color:var(--amber)">${t.confidence||'-'}</div></div>
 </div>
-${t.entry_condition?`<div style="margin-bottom:10px;padding:10px 14px;border-radius:8px;background:rgba(139,92,246,.1);border:1px solid rgba(139,92,246,.25);display:flex;align-items:center;gap:10px">
-<span style="font-size:20px">&#127919;</span>
-<div><span style="font-size:10px;font-weight:700;color:var(--purple);letter-spacing:.8px">&#9654; WHEN TO ENTER</span><br>
-<span style="font-size:14px;font-weight:800;color:#fff;letter-spacing:.3px">${t.entry_condition}</span></div></div>`:''}
-
-${t.timing?`<div style="margin-bottom:10px;padding:10px 14px;border-radius:8px;background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.2);display:flex;align-items:center;gap:10px">
-<span style="font-size:18px">&#128337;</span>
-<div><span style="font-size:10px;font-weight:700;color:var(--purple);letter-spacing:.8px">&#9200; BEST TIME</span><br>
-<span style="font-size:13px;font-weight:700;color:var(--amber)">${t.timing}</span></div></div>`:''}\
-
-<div style="font-size:12px;color:var(--text2);line-height:1.7">
-<strong style="color:var(--text3)">Rationale:</strong> ${t.reason||'-'}
-</div>
+${t.entry_condition?`<div style="margin-bottom:8px;padding:10px 14px;border-radius:8px;background:rgba(139,92,246,.1);border:1px solid rgba(139,92,246,.25);display:flex;align-items:center;gap:10px"><span style="font-size:20px">&#127919;</span><div><span style="font-size:10px;font-weight:700;color:var(--purple);letter-spacing:.8px">&#9654; WHEN TO ENTER</span><br><span style="font-size:14px;font-weight:800;color:#fff">${t.entry_condition}</span></div></div>`:''}
+${t.timing?`<div style="margin-bottom:8px;padding:10px 14px;border-radius:8px;background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.2);display:flex;align-items:center;gap:10px"><span style="font-size:18px">&#128337;</span><div><span style="font-size:10px;font-weight:700;color:var(--amber);letter-spacing:.8px">&#9200; BEST TIME</span><br><span style="font-size:13px;font-weight:700;color:var(--amber)">${t.timing}</span></div></div>`:''}
+<div style="font-size:12px;color:var(--text2);line-height:1.7"><strong style="color:var(--text3)">Rationale:</strong> ${t.reason||'-'}</div>
 ${t.option_detail?'<div style="margin-top:6px;font-size:11px;color:var(--cyan)"><strong>Option:</strong> '+t.option_detail+'</div>':''}
+${t.what_invalidates?`<div style="margin-top:8px;padding:8px 12px;border-radius:6px;background:rgba(239,68,68,.06);border:1px solid rgba(239,68,68,.12);font-size:11px"><strong style="color:var(--red)">&#9888; KILL IF:</strong> <span style="color:var(--text2)">${t.what_invalidates}</span></div>`:''}
 </div>`;
 });
 }
@@ -1787,67 +1951,141 @@ ${t.option_detail?'<div style="margin-top:6px;font-size:11px;color:var(--cyan)">
 // VIX indicator
 if(data.vix){
 const vix=data.vix;
-const vixCol=vix.price>18?'var(--red)':vix.price>14?'var(--amber)':'var(--green)';
-const vixLabel=vix.price>18?'HIGH FEAR':vix.price>14?'CAUTIOUS':'LOW FEAR';
-html+=`<div style="display:flex;align-items:center;gap:12px;padding:12px 16px;border-radius:8px;background:rgba(${vix.price>18?'239,68,68':vix.price>14?'245,158,11':'16,185,129'},.06);border:1px solid rgba(${vix.price>18?'239,68,68':vix.price>14?'245,158,11':'16,185,129'},.15);margin-bottom:14px">
-<span style="font-size:20px">${vix.price>18?'&#128680;':vix.price>14?'&#9888;&#65039;':'&#9989;'}</span>
-<div><div style="font-size:12px;font-weight:700;color:${vixCol}">INDIA VIX: ${vix.price} (${vixLabel})</div>
-<div style="font-size:11px;color:var(--text3)">${vix.price>18?'High volatility — use wider stop losses, smaller positions':'Moderate volatility — standard position sizing applies'}</div></div></div>`;
+const vC=vix.price>18?'var(--red)':vix.price>14?'var(--amber)':'var(--green)';
+const vBg=vix.price>18?'rgba(239,68,68,.08)':vix.price>14?'rgba(245,158,11,.08)':'rgba(16,185,129,.08)';
+const vAdv=vix.price>20?'HIGH FEAR — Reduce sizes to 50%.':vix.price>16?'ELEVATED — Standard sizing. Stay alert.':'LOW — Full sizing. Trends likely.';
+const vP=Math.min(((vix.price-8)/(30-8))*100,100);
+html+=`<div style="margin-top:16px;padding:14px;border-radius:10px;background:${vBg};border:1px solid ${vC}30">
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:6px">
+<span style="font-family:'Sora',sans-serif;font-size:12px;font-weight:700;color:${vC}">INDIA VIX: ${vix.price} ${vix.change>=0?'▲':'▼'} ${Math.abs(vix.change||0).toFixed(2)} (${(vix.change_pct||0).toFixed(2)}%)</span>
+<span style="font-size:11px;color:var(--text3)">${vAdv}</span></div>
+<div style="width:100%;height:6px;border-radius:3px;background:rgba(255,255,255,.1);overflow:hidden"><div style="width:${vP}%;height:100%;border-radius:3px;background:linear-gradient(90deg,var(--green),var(--amber),var(--red))"></div></div>
+<div style="display:flex;justify-content:space-between;font-size:9px;color:var(--text3);margin-top:4px"><span>8 (Calm)</span><span>15</span><span>20</span><span>30+ (Panic)</span></div></div>`;
 }
 
-// Hero Zero trades (expiry day specials)
+// Hero Zero
 if(data.hero_zero&&data.hero_zero.length>0){
 html+=`<div style="margin-top:20px;margin-bottom:16px">
 <div style="font-family:'Sora',sans-serif;font-size:14px;font-weight:800;color:var(--red);letter-spacing:.3px;margin-bottom:4px">&#128165; HERO ZERO — Expiry Day Lottery</div>
-<div style="font-size:11px;color:var(--text3);margin-bottom:12px">Deep OTM options, ₹2-15 premium. Risk it all for 3x-10x. Max 1-2% of capital. Today's expiry ONLY.</div>
-</div>`;
+<div style="font-size:11px;color:var(--text3);margin-bottom:12px">Deep OTM, ₹2-15 premium. All-or-nothing for 3x-10x. Max 1-2% capital. Today's expiry ONLY.</div></div>`;
 data.hero_zero.forEach((t,i)=>{
+allTrades.push({...t,_type:'HERO ZERO',_rank:'H'+(i+1),_prob:0,_inst:t.instrument});
 html+=`<div style="border-left:4px solid rgba(239,68,68,.5);border-radius:10px;padding:16px;margin-bottom:12px;background:rgba(239,68,68,.04);border:1px solid rgba(239,68,68,.2)">
 <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px">
 <div style="display:flex;align-items:center;gap:8px">
 <span style="font-size:11px;background:var(--red);color:#fff;padding:2px 8px;border-radius:4px;font-weight:800;animation:pulse 2s infinite">&#128165;H${i+1}</span>
 <span style="font-family:'Sora',sans-serif;font-size:15px;font-weight:700;color:var(--text)">${t.instrument||'-'}</span>
-<span style="font-size:10px;font-weight:800;color:var(--red);background:rgba(239,68,68,.15);padding:2px 8px;border-radius:4px;letter-spacing:.5px">HERO ZERO</span>
-</div>
-<span style="font-size:11px;color:var(--text3);font-weight:600">${t.index||''}</span>
-</div>
+<span style="font-size:10px;font-weight:800;color:var(--red);background:rgba(239,68,68,.15);padding:2px 8px;border-radius:4px">HERO ZERO</span></div>
+<span style="font-size:11px;color:var(--text3);font-weight:600">${t.index||''}</span></div>
 <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:8px;margin-bottom:10px">
-<div style="padding:8px;border-radius:6px;background:rgba(255,255,255,.03)">
-<div style="font-size:10px;color:var(--text3);font-weight:600">SPOT</div>
-<div style="font-size:14px;font-weight:700;color:var(--text)">₹${t.spot_price||'-'}</div></div>
-<div style="padding:8px;border-radius:6px;background:rgba(255,255,255,.03)">
-<div style="font-size:10px;color:var(--text3);font-weight:600">PREMIUM</div>
-<div style="font-size:14px;font-weight:700;color:var(--amber)">₹${t.entry||'-'}</div></div>
-<div style="padding:8px;border-radius:6px;background:rgba(255,255,255,.03)">
-<div style="font-size:10px;color:var(--text3);font-weight:600">TARGET</div>
-<div style="font-size:14px;font-weight:700;color:var(--green)">₹${t.target||'-'}</div></div>
-<div style="padding:8px;border-radius:6px;background:rgba(255,255,255,.03)">
-<div style="font-size:10px;color:var(--text3);font-weight:600">STOP LOSS</div>
-<div style="font-size:14px;font-weight:700;color:var(--red)">₹0 (full loss)</div></div>
-<div style="padding:8px;border-radius:6px;background:rgba(255,255,255,.03)">
-<div style="font-size:10px;color:var(--text3);font-weight:600">POTENTIAL</div>
-<div style="font-size:14px;font-weight:700;color:var(--green)">${t.risk_reward||'3x-10x'}</div></div>
-<div style="padding:8px;border-radius:6px;background:rgba(255,255,255,.03)">
-<div style="font-size:10px;color:var(--text3);font-weight:600">CONFIDENCE</div>
-<div style="font-size:14px;font-weight:700;color:var(--red)">${t.confidence||'SPECULATIVE'}</div></div>
-</div>
-
-${t.entry_condition?`<div style="margin-bottom:8px;padding:10px 14px;border-radius:8px;background:rgba(59,130,246,.1);border:1px solid rgba(59,130,246,.25);display:flex;align-items:center;gap:10px">
-<span style="font-size:18px">&#127919;</span>
-<div><span style="font-size:10px;font-weight:700;color:var(--blue);letter-spacing:.8px">&#9654; WHEN TO ENTER</span><br>
-<span style="font-size:14px;font-weight:800;color:#fff">${t.entry_condition}</span></div></div>`:''}\
-
-${t.timing?`<div style="margin-bottom:8px;padding:10px 14px;border-radius:8px;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.2);display:flex;align-items:center;gap:10px">
-<span style="font-size:18px">&#128337;</span>
-<div><span style="font-size:10px;font-weight:700;color:var(--red);letter-spacing:.8px">&#9200; TIMING IS EVERYTHING</span><br>
-<span style="font-size:13px;font-weight:700;color:var(--amber)">${t.timing}</span></div></div>`:''}\
-
-<div style="font-size:12px;color:var(--text2);line-height:1.7">
-<strong style="color:var(--text3)">Rationale:</strong> ${t.reason||'-'}
-</div>
+<div style="padding:8px;border-radius:6px;background:rgba(255,255,255,.03)"><div style="font-size:10px;color:var(--text3);font-weight:600">SPOT</div><div style="font-size:14px;font-weight:700;color:var(--text)">₹${t.spot_price||'-'}</div></div>
+<div style="padding:8px;border-radius:6px;background:rgba(255,255,255,.03)"><div style="font-size:10px;color:var(--text3);font-weight:600">PREMIUM</div><div style="font-size:14px;font-weight:700;color:var(--amber)">₹${t.entry||'-'}</div></div>
+<div style="padding:8px;border-radius:6px;background:rgba(16,185,129,.06)"><div style="font-size:10px;color:var(--text3);font-weight:600">TARGET ${t.target_pct?'<span style="color:var(--green);font-weight:800">('+t.target_pct+')</span>':''}</div><div style="font-size:14px;font-weight:700;color:var(--green)">₹${t.target||'-'}</div></div>
+<div style="padding:8px;border-radius:6px;background:rgba(239,68,68,.06)"><div style="font-size:10px;color:var(--text3);font-weight:600">SL <span style="color:var(--red);font-weight:800">(-100%)</span></div><div style="font-size:14px;font-weight:700;color:var(--red)">₹0 (full loss)</div></div>
+<div style="padding:8px;border-radius:6px;background:rgba(255,255,255,.03)"><div style="font-size:10px;color:var(--text3);font-weight:600">POTENTIAL</div><div style="font-size:14px;font-weight:700;color:var(--green)">${t.risk_reward||'3x-10x'}</div></div>
+<div style="padding:8px;border-radius:6px;background:rgba(255,255,255,.03)"><div style="font-size:10px;color:var(--text3);font-weight:600">CONFIDENCE</div><div style="font-size:14px;font-weight:700;color:var(--red)">SPECULATIVE</div></div></div>
+${t.entry_condition?`<div style="margin-bottom:8px;padding:10px 14px;border-radius:8px;background:rgba(59,130,246,.1);border:1px solid rgba(59,130,246,.25);display:flex;align-items:center;gap:10px"><span style="font-size:20px">&#127919;</span><div><span style="font-size:10px;font-weight:700;color:var(--blue);letter-spacing:.8px">&#9654; WHEN TO ENTER</span><br><span style="font-size:14px;font-weight:800;color:#fff">${t.entry_condition}</span></div></div>`:''}
+${t.timing?`<div style="margin-bottom:8px;padding:10px 14px;border-radius:8px;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.2);display:flex;align-items:center;gap:10px"><span style="font-size:18px">&#128337;</span><div><span style="font-size:10px;font-weight:700;color:var(--red);letter-spacing:.8px">&#9200; TIMING IS EVERYTHING</span><br><span style="font-size:13px;font-weight:700;color:var(--amber)">${t.timing}</span></div></div>`:''}
+<div style="font-size:12px;color:var(--text2);line-height:1.7"><strong style="color:var(--text3)">Rationale:</strong> ${t.reason||'-'}</div>
 ${t.option_detail?'<div style="margin-top:6px;font-size:11px;color:var(--cyan)"><strong>Option:</strong> '+t.option_detail+'</div>':''}
+${t.what_invalidates?`<div style="margin-top:8px;padding:8px 12px;border-radius:6px;background:rgba(239,68,68,.06);border:1px solid rgba(239,68,68,.12);font-size:11px"><strong style="color:var(--red)">&#9888; ZERO IF:</strong> <span style="color:var(--text2)">${t.what_invalidates}</span></div>`:''}
 </div>`;
 });
+}
+
+// ═══ TIME-ORDERED DAY PLANNER ═══
+if(allTrades.length>0){
+const timeSorted=[...allTrades].sort((a,b)=>{
+const ta=parseInt(a.time_sort)||9999;
+const tb=parseInt(b.time_sort)||9999;
+return ta-tb;
+});
+html+=`<div style="margin-top:24px;padding:16px;border-radius:12px;background:linear-gradient(135deg,rgba(59,130,246,.06),rgba(139,92,246,.04));border:1px solid rgba(59,130,246,.15)">
+<div style="font-family:'Sora',sans-serif;font-size:14px;font-weight:800;color:var(--blue);margin-bottom:4px">&#128197; YOUR TRADING DAY PLAN (IST)</div>
+<div style="font-size:11px;color:var(--text3);margin-bottom:12px">All trades sorted by execution time — follow this order through the day</div>
+<div style="overflow-x:auto">
+<table style="width:100%;border-collapse:collapse;font-size:12px">
+<thead><tr style="border-bottom:2px solid rgba(59,130,246,.2)">
+<th style="padding:8px 6px;text-align:left;color:var(--blue);font-weight:700;font-size:10px;letter-spacing:.5px">TIME</th>
+<th style="padding:8px 6px;text-align:left;color:var(--blue);font-weight:700;font-size:10px;letter-spacing:.5px">RANK</th>
+<th style="padding:8px 6px;text-align:left;color:var(--blue);font-weight:700;font-size:10px;letter-spacing:.5px">INSTRUMENT</th>
+<th style="padding:8px 6px;text-align:center;color:var(--blue);font-weight:700;font-size:10px;letter-spacing:.5px">DIR</th>
+<th style="padding:8px 6px;text-align:right;color:var(--blue);font-weight:700;font-size:10px;letter-spacing:.5px">ENTRY</th>
+<th style="padding:8px 6px;text-align:center;color:var(--blue);font-weight:700;font-size:10px;letter-spacing:.5px">TRIGGER</th>
+<th style="padding:8px 6px;text-align:right;color:var(--blue);font-weight:700;font-size:10px;letter-spacing:.5px">TARGET</th>
+<th style="padding:8px 6px;text-align:right;color:var(--blue);font-weight:700;font-size:10px;letter-spacing:.5px">SL</th>
+<th style="padding:8px 6px;text-align:center;color:var(--blue);font-weight:700;font-size:10px;letter-spacing:.5px">PROB</th>
+</tr></thead><tbody>`;
+timeSorted.forEach((t,i)=>{
+const dir=(t.direction||'').toUpperCase();
+const dCol=dir==='BUY'?'var(--green)':'var(--red)';
+const tBg=i%2===0?'rgba(255,255,255,.01)':'rgba(255,255,255,.03)';
+const typeCol=t._type==='INDEX'?'var(--amber)':t._type==='STOCK'?'var(--purple)':'var(--red)';
+const ts=t.time_sort||'--';
+const timeStr=ts.length===4?ts.substring(0,2)+':'+ts.substring(2):ts;
+html+=`<tr style="background:${tBg};border-bottom:1px solid rgba(255,255,255,.04)">
+<td style="padding:8px 6px;font-weight:700;color:var(--amber)">${timeStr}</td>
+<td style="padding:8px 6px"><span style="font-size:10px;background:${typeCol};color:#fff;padding:1px 6px;border-radius:3px;font-weight:800">${t._rank}</span></td>
+<td style="padding:8px 6px;font-weight:600;color:var(--text)">${t._inst||t.instrument||'-'}</td>
+<td style="padding:8px 6px;text-align:center;font-weight:700;color:${dCol}">${dir}</td>
+<td style="padding:8px 6px;text-align:right;color:var(--blue)">₹${t.entry||'-'}</td>
+<td style="padding:8px 6px;text-align:center;font-size:11px;color:var(--text2)">${t.entry_condition||'-'}</td>
+<td style="padding:8px 6px;text-align:right;color:var(--green)">${t.target_pct||'-'}</td>
+<td style="padding:8px 6px;text-align:right;color:var(--red)">${t.sl_pct||'-'}</td>
+<td style="padding:8px 6px;text-align:center"><span style="font-weight:800;color:${parseInt(t.probability)>=85?'var(--green)':'var(--amber)'}">${t.probability||'-'}</span></td>
+</tr>`;
+});
+html+=`</tbody></table></div></div>`;
+}
+
+// ═══ GUT PICKS — TOP 2 HIGHEST CONVICTION ═══
+if(data.gut_picks&&data.gut_picks.length>0){
+html+=`<div style="margin-top:24px;padding:16px;border-radius:12px;background:linear-gradient(135deg,rgba(16,185,129,.08),rgba(245,158,11,.06));border:2px solid rgba(16,185,129,.25)">
+<div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
+<span style="font-size:24px">&#129504;</span>
+<div style="font-family:'Sora',sans-serif;font-size:14px;font-weight:800;color:var(--green);letter-spacing:.3px">TOP GUT PICKS — Highest Conviction Trades</div>
+</div>
+<div style="font-size:11px;color:var(--text3);margin-bottom:14px">If you could only take 2 trades today, take THESE. Maximum data confluence.</div>
+<div style="overflow-x:auto">
+<table style="width:100%;border-collapse:collapse;font-size:12px">
+<thead><tr style="border-bottom:2px solid rgba(16,185,129,.3)">
+<th style="padding:8px 6px;text-align:left;color:var(--green);font-weight:700;font-size:10px;letter-spacing:.5px">PICK</th>
+<th style="padding:8px 6px;text-align:left;color:var(--green);font-weight:700;font-size:10px;letter-spacing:.5px">INSTRUMENT</th>
+<th style="padding:8px 6px;text-align:center;color:var(--green);font-weight:700;font-size:10px;letter-spacing:.5px">DIR</th>
+<th style="padding:8px 6px;text-align:right;color:var(--green);font-weight:700;font-size:10px;letter-spacing:.5px">ENTRY</th>
+<th style="padding:8px 6px;text-align:center;color:var(--green);font-weight:700;font-size:10px;letter-spacing:.5px">TRIGGER</th>
+<th style="padding:8px 6px;text-align:center;color:var(--green);font-weight:700;font-size:10px;letter-spacing:.5px">TIME</th>
+<th style="padding:8px 6px;text-align:right;color:var(--green);font-weight:700;font-size:10px;letter-spacing:.5px">TARGET</th>
+<th style="padding:8px 6px;text-align:right;color:var(--green);font-weight:700;font-size:10px;letter-spacing:.5px">SL</th>
+<th style="padding:8px 6px;text-align:center;color:var(--green);font-weight:700;font-size:10px;letter-spacing:.5px">PROB</th>
+</tr></thead><tbody>`;
+data.gut_picks.forEach((g,i)=>{
+const dir=(g.direction||'').toUpperCase();
+const dCol=dir==='BUY'?'var(--green)':'var(--red)';
+html+=`<tr style="background:rgba(16,185,129,.04);border-bottom:1px solid rgba(16,185,129,.1)">
+<td style="padding:10px 6px"><span style="font-size:11px;background:var(--green);color:#000;padding:2px 8px;border-radius:4px;font-weight:900">&#127942; #${i+1}</span></td>
+<td style="padding:10px 6px;font-weight:700;color:var(--text)">${g.instrument||'-'}</td>
+<td style="padding:10px 6px;text-align:center;font-weight:700;color:${dCol}">${dir}</td>
+<td style="padding:10px 6px;text-align:right;color:var(--blue);font-weight:700">₹${g.entry||'-'}</td>
+<td style="padding:10px 6px;text-align:center;font-size:11px;font-weight:700;color:var(--text)">${g.entry_condition||'-'}</td>
+<td style="padding:10px 6px;text-align:center;font-weight:700;color:var(--amber)">${g.timing||'-'}</td>
+<td style="padding:10px 6px;text-align:right;font-weight:800;color:var(--green)">${g.target_pct||'-'}</td>
+<td style="padding:10px 6px;text-align:right;font-weight:700;color:var(--red)">${g.sl_pct||'-'}</td>
+<td style="padding:10px 6px;text-align:center"><span style="font-weight:900;color:var(--green);font-size:13px">${g.probability||'-'}</span></td>
+</tr>
+<tr style="background:rgba(16,185,129,.02)">
+<td colspan="9" style="padding:6px 6px 10px 40px;font-size:11px;color:var(--text2);line-height:1.5">&#128161; <strong style="color:var(--amber)">Why this one:</strong> ${g.why_this_one||'-'}</td>
+</tr>`;
+});
+html+=`</tbody></table></div></div>`;
+}
+
+// Skipped trades honesty note
+if(data.skipped_trades&&!data.skipped_trades.includes('All')){
+html+=`<div style="margin-top:12px;padding:12px 16px;border-radius:8px;background:rgba(245,158,11,.06);border:1px solid rgba(245,158,11,.15);display:flex;align-items:flex-start;gap:10px">
+<span style="font-size:18px">&#9888;&#65039;</span>
+<div><div style="font-size:11px;font-weight:800;color:var(--amber);letter-spacing:.5px;margin-bottom:4px">HONEST NOTE</div>
+<div style="font-size:12px;color:var(--text2);line-height:1.6">${data.skipped_trades}</div></div></div>`;
 }
 
 // Disclaimer

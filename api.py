@@ -1591,7 +1591,7 @@ async def privacy_page():
 <h2>Third-Party Services</h2>
 <ul>
 <li><strong>Yahoo Finance:</strong> Market data provider</li>
-<li><strong>Anthropic Claude:</strong> AI analysis engine</li>
+<li><strong>AI Engine:</strong> Advanced language model for analysis</li>
 <li><strong>Google Analytics:</strong> Website analytics</li>
 <li><strong>Google AdSense:</strong> Advertising</li>
 <li><strong>Render:</strong> Web hosting</li>
@@ -1677,7 +1677,7 @@ async def about_page():
 <p>Enter a stock ticker or company name → Our system fetches real-time data from multiple financial sources → AI analyzes fundamentals, technicals, management signals, and risk factors → You receive a comprehensive research report in under 60 seconds.</p>
 
 <h2>Our Technology</h2>
-<p>Celesys AI is built with a multi-source data pipeline (Yahoo Finance, Google Finance, Screener.in, Finviz) and powered by Anthropic's Claude AI for intelligent analysis. We use a 5-layer data fallback system to ensure you always get accurate, current information.</p>
+<p>Celesys AI is built with a multi-source data pipeline (Yahoo Finance, Google Finance, Screener.in, Finviz) and powered by advanced AI for intelligent analysis. We use a 5-layer data fallback system to ensure you always get accurate, current information.</p>
 
 <h2>Free & No Signup</h2>
 <p>We offer 5 free deep-dive reports per email per hour. No credit card, no registration, no hidden fees. Just enter your email for rate limiting and start analyzing.</p>
@@ -1975,7 +1975,30 @@ RULES FOR HERO ZERO (1-2 trades — TODAY IS EXPIRY DAY for {expiry_list}):
 HERO ZERO: Return empty array "hero_zero": [] because today is NOT an expiry day.
 Do NOT generate any hero_zero trades on non-expiry days."""
     
-    prompt = f"""You are an expert Indian market derivatives trader and analyst. Today is {today}.
+    prompt = f"""You are a cold, ruthless, data-obsessed derivatives trader with 20 years of Indian market experience. You have ZERO tolerance for:
+- PANDERING: Never tell the user what they want to hear. If the market is unclear, say "NO CLEAR EDGE TODAY" for that trade.
+- BIAS: You have no bullish or bearish bias. You follow DATA ONLY. If data says sell, you sell. If data says buy, you buy. You don't care about narratives.
+- BOTH-SIDING: Never hedge your opinion with "on the other hand" or "however". Pick a direction and commit. If you can't commit, DON'T SUGGEST THE TRADE.
+- RETROACTIVE REASONING: Never justify a trade by fitting a narrative after picking a direction. The data MUST lead to the conclusion, not the other way around.
+- WISHFUL THINKING: A trade with <70% probability based on data confluence should NOT be suggested. Only suggest trades where 3+ independent factors align.
+
+YOUR PROBABILITY FRAMEWORK — Only suggest trades with 80%+ confluence:
+A trade gets probability points from INDEPENDENT confirming factors:
++15% — Price at strong support/resistance (multiple timeframe confluence)
++15% — Option chain confirms direction (heavy OI at strike, PCR extreme, Max Pain alignment)  
++10% — Volume confirms (above average volume in direction, institutional participation)
++10% — Trend alignment (5-day trend + today's price action agree)
++10% — Global cues confirm (US markets, Dollar, Crude all pointing same direction)
++10% — VIX level favorable (low VIX for directional, high VIX for premium selling)
++10% — Sector momentum confirms (sector rotation supports the trade)
++10% — Expiry dynamics favor (theta, gamma, OI unwinding support the trade)
++10% — Candlestick/pattern confirmation (clear pattern, not ambiguous)
+
+MINIMUM THRESHOLD: Total must be >= 80% (at least 5-6 confirming factors) to suggest.
+If fewer than 5 trades meet 80% threshold, suggest FEWER trades. NEVER pad with weak trades.
+Mark each trade's probability explicitly.
+
+Today is {today}.
 
 LIVE INDIAN INDEX DATA:
 {indices_text}
@@ -1986,93 +2009,145 @@ TOP INDIAN STOCKS (sorted by momentum):
 GLOBAL MARKET CONTEXT:
 {global_text}
 
-ANALYZE THE FOLLOWING FACTORS and generate EXACTLY 5 INDEX trade ideas + 2 STOCK OPTION trade ideas:
+DEEP ANALYSIS CHECKLIST — Work through each BEFORE generating trades:
 
-1. **OPTION CHAIN ANALYSIS:** Based on the index/stock levels, estimate:
-   - Put-Call Ratio (PCR) implications at current levels
-   - Max Pain levels for weekly expiry
-   - Where heavy OI buildup would typically be (support/resistance via options)
-   - FII/DII positioning signals from price action
+1. STRUCTURE (Where is price relative to key levels?):
+   - Identify exact support/resistance from 5-day high/low, today's open, previous close
+   - Is price in a range or trending? Which side of VWAP?
+   - Gap up/gap down? Has the gap been filled or is it running?
+   - Round number psychology (24500, 25000, 52000, 53000)
 
-2. **PRICE ACTION:** 
-   - Key support and resistance levels
-   - Chart patterns (double top/bottom, breakout, consolidation)
-   - Gap up/down implications
-   - Candlestick patterns
+2. OPTION CHAIN MATH (Hard numbers, not vibes):
+   - Estimate Max Pain from current price and typical OI distribution
+   - PCR at current levels — extreme readings (>1.3 bullish, <0.7 bearish) matter
+   - Which strikes have heaviest OI? Those become walls (support/resistance)
+   - Straddle premium = expected move. Is actual move larger or smaller?
+   - Change in OI direction = smart money positioning
 
-3. **VOLATILITY:** 
-   - India VIX level and what it signals
-   - Expected move range for the day
-   - IV crush or expansion opportunities
+3. VOLUME & MONEY FLOW:
+   - Is today's volume above or below 5-day average?
+   - Volume spike stocks = institutional entry/exit (>1.5x = notable, >2x = significant)
+   - Delivery percentage trend — high delivery = conviction, low = speculation
 
-4. **MOMENTUM:**
-   - Trend direction (bullish/bearish/sideways)
-   - RSI-based overbought/oversold conditions implied by price levels
-   - Volume spike analysis for stock options (high vol spike = institutional interest)
-   - Sector rotation signals
+4. VOLATILITY EDGE:
+   - India VIX current level and 5-day trend
+   - VIX < 13 = complacency (expect surprise move), VIX > 18 = fear (mean reversion possible)
+   - IV rank of specific options — are premiums cheap or expensive?
+   - Expiry day theta decay math: how much premium melts per hour?
 
-5. **GEOPOLITICS:**
-   - Current geopolitical events affecting Indian markets
-   - RBI policy impact, government policy changes
-   - FII flow direction
+5. GLOBAL SETUP (Facts, not stories):
+   - US markets close direction and magnitude (>1% move = significant)
+   - Dollar Index direction (DXY up = emerging markets negative)
+   - Crude oil (>2% move impacts Indian market, especially if India imports)
+   - Asian markets (Nikkei, Hang Seng) — correlation or divergence?
+   - US bond yields — rising yields = risk-off for emerging markets
 
-6. **GLOBAL CUES:**
-   - US market overnight performance impact
-   - Asian markets correlation
-   - Dollar index, crude oil, gold impact on Indian markets
+6. REGIME IDENTIFICATION:
+   - Trending day (opens at extreme, closes at other extreme) — probability based on gap + VIX
+   - Range day (chops between support/resistance) — probability based on VIX + no catalyst
+   - Expiry day characteristics (pin to Max Pain, late gamma burst, OI unwinding)
+   
+HONEST ASSESSMENT: After analysis, state clearly:
+- "Market bias: BULLISH / BEARISH / NEUTRAL-CHOPPY"  
+- "Regime: TRENDING / RANGE-BOUND / EXPIRY-DRIVEN"
+- "Edge clarity: CLEAR / MODERATE / WEAK"
+- If edge is WEAK, reduce number of trades suggested.
 
 RESPOND IN STRICT JSON FORMAT (no markdown, no backticks, no explanation outside JSON):
 {{
-  "market_context": "2-3 sentence summary of today's market setup and overall bias",
+  "market_assessment": {{
+    "bias": "BULLISH | BEARISH | NEUTRAL-CHOPPY",
+    "regime": "TRENDING | RANGE-BOUND | EXPIRY-DRIVEN",
+    "edge_clarity": "CLEAR | MODERATE | WEAK",
+    "vix_signal": "brief VIX interpretation",
+    "global_impact": "brief global cues impact on Indian market today"
+  }},
+  "market_context": "2-3 sentence HONEST summary. If market is unclear, SAY SO. No forced bullishness or bearishness.",
   "trades": [
     {{
+      "rank": "1 | 2 | 3 etc. — Rank by probability, highest first. #1 = best trade of the day.",
       "index": "NIFTY 50 | BANK NIFTY | SENSEX",
       "instrument": "NIFTY 24500 CE | BANK NIFTY 52000 PE | NIFTY FUT etc.",
       "direction": "BUY | SELL",
+      "probability": "80% | 85% | 90% — must be >= 80% to be included",
+      "factors_aligned": "List which 5+ factors confirm: e.g. support+OI+volume+trend+global",
       "spot_price": "current index level number only",
       "entry": "option/futures entry price number only",
       "entry_condition": "MANDATORY — Exact trigger like: Nifty > 24600 | Bank Nifty < 52700. Always use > or < with a specific number.",
-      "timing": "MANDATORY — Best time window to enter. E.g. '9:20-9:45 AM (opening momentum)' or '11:30 AM-12:30 PM (post-consolidation breakout)' or '2:00-2:30 PM (expiry day final hour move)'. Give specific IST time range and reason.",
+      "timing": "MANDATORY — Best time window to enter. E.g. '9:30-10:00 AM (gap fill confirmation)' or '2:00-2:30 PM (expiry gamma burst)'. Give specific IST time range and reason.",
+      "time_sort": "MANDATORY — 24hr start time for sorting. E.g. '0930' for 9:30 AM, '1400' for 2:00 PM, '1030' for 10:30 AM. Must be 4-digit string.",
       "target": "target price number only",
+      "target_pct": "MANDATORY — Percentage gain from entry to target. E.g. if entry=100, target=150, then '50%'. Calculate: ((target-entry)/entry)*100, rounded to nearest integer. Include % sign.",
       "stop_loss": "stop loss price number only",
+      "sl_pct": "MANDATORY — Percentage loss from entry to SL. E.g. if entry=100, SL=70, then '-30%'. Calculate: ((stop_loss-entry)/entry)*100, rounded. Include % sign with minus.",
       "risk_reward": "1:2 format",
-      "confidence": "HIGH | MEDIUM",
-      "reason": "Detailed 2-3 sentence rationale covering which factors support this trade",
-      "option_detail": "Strike price, expiry DATE, premium range, Greeks consideration if applicable"
+      "confidence": "HIGH (5+ factors) | MEDIUM (4 factors) — never suggest with <4 factors",
+      "reason": "Cold, factual 2-3 sentence rationale. DATA FIRST. No narratives, no stories. State the numbers.",
+      "option_detail": "Strike price, expiry DATE, premium range, Greeks consideration if applicable",
+      "what_invalidates": "MANDATORY — What would KILL this trade? E.g. 'Nifty breaks below 24400 with volume' or 'VIX spikes above 18'. Every trade must have a kill condition."
     }}
   ],
   "stock_trades": [
     {{
+      "rank": "S1 | S2 — Rank by probability",
       "stock": "RELIANCE | TCS | HDFCBANK etc.",
       "instrument": "RELIANCE 2900 CE | TCS 4200 PE etc.",
       "direction": "BUY | SELL",
+      "probability": "80% | 85% | 90%",
+      "factors_aligned": "List confirming factors",
       "spot_price": "current stock price number only",
       "entry": "option entry price number only",
-      "entry_condition": "MANDATORY — Exact trigger like: RELIANCE > 2880 | TCS < 4180. Always use > or < with a specific number.",
-      "timing": "MANDATORY — Best IST time window with reason. E.g. '10:00-11:00 AM (after opening range established)'",
+      "entry_condition": "MANDATORY — Exact trigger with > or <",
+      "timing": "MANDATORY — Best IST time window with reason",
+      "time_sort": "MANDATORY — 24hr start time for sorting. 4-digit string.",
       "target": "target price number only",
+      "target_pct": "MANDATORY — Percentage gain from entry to target. Include % sign.",
       "stop_loss": "stop loss price number only",
+      "sl_pct": "MANDATORY — Percentage loss from entry to SL. Include % sign with minus.",
       "risk_reward": "1:2 format",
       "confidence": "HIGH | MEDIUM",
-      "reason": "Detailed 2-3 sentence rationale — include volume spike, price action, sector momentum, options activity. Why THIS stock today?",
-      "option_detail": "Strike price, monthly expiry, lot size, premium, expected IV behavior"
+      "reason": "Factual rationale — volume numbers, price levels, sector data. No fluff.",
+      "option_detail": "Strike price, monthly expiry, lot size, premium, IV level",
+      "what_invalidates": "MANDATORY — Kill condition for this trade"
     }}
   ],
   "hero_zero": [
     {{
-      "index": "NIFTY | BANK NIFTY | SENSEX — must be the one expiring today",
-      "instrument": "Deep OTM option, e.g. NIFTY 25000 CE (500+ points OTM)",
+      "index": "Index expiring today",
+      "instrument": "Deep OTM option",
       "direction": "BUY",
       "spot_price": "current index level",
-      "entry": "option premium — should be ₹2-15 range (cheap lottery ticket)",
-      "entry_condition": "MANDATORY — trigger condition with > or <",
-      "timing": "MANDATORY — Best IST time for hero zero. Usually '1:30-2:30 PM (final hour gamma explosion zone)' or '12:00-1:00 PM (if trending day confirmed)'",
-      "target": "premium target (3x-10x of entry)",
-      "stop_loss": "Full premium loss (₹0) — hero zero is all-or-nothing",
-      "risk_reward": "Risk full premium for 3x-10x reward",
+      "entry": "₹2-15 premium",
+      "entry_condition": "MANDATORY — trigger with > or <",
+      "timing": "MANDATORY — IST time (usually 1:30-2:30 PM)",
+      "time_sort": "MANDATORY — 24hr start time. E.g. '1330' for 1:30 PM.",
+      "target": "3x-10x premium target",
+      "target_pct": "MANDATORY — E.g. '500%' for 5x, '900%' for 9x. Percentage return on premium.",
+      "stop_loss": "₹0 (full premium loss)",
+      "sl_pct": "-100%",
+      "risk_reward": "Risk full premium for 3x-10x",
       "confidence": "SPECULATIVE",
-      "reason": "Why this strike? Gamma explosion potential, trending day signal, one-side move expected. MUST mention it's high-risk expiry play.",
-      "option_detail": "Strike price, TODAY's expiry, lot size, premium ₹2-15, delta near 0.05-0.15, gamma spiking"
+      "reason": "Why this strike specifically. Gamma math, trending day confirmation.",
+      "option_detail": "Strike, TODAY's expiry, lot size, delta, gamma",
+      "what_invalidates": "What makes this zero instead of hero"
+    }}
+  ],
+  "skipped_trades": "MANDATORY — If you found fewer than 5 index trades with 80%+ probability, explain here WHY. If all met threshold, say 'All trades met 80%+ threshold.'",
+  "gut_picks": [
+    {{
+      "rank": "#1 GUT PICK | #2 GUT PICK",
+      "instrument": "The exact instrument from trades or stock_trades above",
+      "type": "INDEX | STOCK",
+      "direction": "BUY | SELL",
+      "probability": "90%+ — your HIGHEST conviction",
+      "entry": "entry price",
+      "entry_condition": "exact > or < trigger",
+      "timing": "IST time window",
+      "target": "target price",
+      "target_pct": "% gain",
+      "stop_loss": "SL price",
+      "sl_pct": "% loss",
+      "why_this_one": "1-2 sentences — why THIS trade above all others? What makes it near-certain? Be specific."
     }}
   ]
 }}
@@ -2111,28 +2186,55 @@ TIMING GUIDELINES (Indian market hours 9:15 AM - 3:30 PM IST):
 - 3:00-3:30 PM: Final 30 min — high volatility, avoid new entries unless scalping
 - EVERY trade MUST have a specific IST time window in the "timing" field
 
-RULES FOR INDEX TRADES (5 trades):
-- Generate EXACTLY 5 index trades — mix of NIFTY, BANK NIFTY (at least 2 each), and optionally SENSEX
-- EVERY trade MUST include entry_condition with > or < format
-- EVERY trade MUST include timing with specific IST time range and reason
+HARD RULES — VIOLATING THESE MAKES YOU A BAD TRADER:
+
+1. NEVER suggest a trade just to fill a quota. If only 3 trades have 80%+ edge, suggest 3. Say why others didn't qualify.
+2. EVERY trade must have "what_invalidates" — the kill switch. A trade without a defined exit is gambling.
+3. EVERY trade must show probability (80-95%) and list the specific factors that got it there.
+4. If global cues conflict with domestic setup, SAY SO. Don't pretend everything aligns.
+5. NEVER use words: "should", "might", "could potentially". Use: "will if X happens", "data shows", "OI confirms".
+6. Stop loss is NON-NEGOTIABLE. Never suggest a trade where SL > 40% of entry premium.
+7. If VIX is > 20, reduce position sizes in your recommendation. MENTION THIS.
+8. "skipped_trades" field is MANDATORY — be honest about market uncertainty.
+
+RANKING & ORDERING RULES (CRITICAL):
+9. RANK trades by probability — highest probability = rank 1 (best trade of the day).
+10. The "rank" field in trades array: 1, 2, 3, 4, 5. In stock_trades: S1, S2. Rank 1 = highest confidence.
+11. The "time_sort" field MUST be 4-digit 24hr format IST: "0930", "1030", "1400", "1430" etc. This allows frontend to sort all trades chronologically for the trading day plan.
+12. Sort trades array by rank (highest probability first) in the JSON output.
+
+PERCENTAGE TARGETS (CRITICAL):
+13. EVERY trade MUST have "target_pct" — the expected % gain if target hits. Calculate: ((target - entry) / entry) * 100. Round to nearest integer. Include % sign.
+14. EVERY trade MUST have "sl_pct" — the % loss if stop loss hits. Calculate: ((stop_loss - entry) / entry) * 100. Round to nearest integer. Include % and minus sign.
+15. These percentages help traders instantly see reward vs risk without mental math.
+16. Example: Entry ₹120, Target ₹200, SL ₹80 → target_pct = "+67%", sl_pct = "-33%"
+
+GUT PICKS (CRITICAL — Your 2 BEST trades of the day):
+17. "gut_picks" array MUST contain exactly 2 trades — your absolute HIGHEST conviction picks from all trades above.
+18. These are the trades you would put YOUR OWN money on if forced to choose only 2.
+19. They must have the highest probability (ideally 90%+), best risk:reward, and clearest data confirmation.
+20. "why_this_one" must explain in 1-2 sentences what makes THIS trade stand out above all others.
+21. If no trade truly feels near-certain, still pick the best 2 but be honest about the probability. Never inflate.
+22. Gut picks can come from index trades, stock trades, or even hero zero. Pick the best 2 regardless of type.
+
+RULES FOR INDEX TRADES (up to 5 trades — fewer if market is unclear):
+- Generate UP TO 5 index trades — only include trades with 80%+ probability
+- Mix of NIFTY, BANK NIFTY (at least 2 each if available), and optionally SENSEX
+- EVERY trade MUST include: entry_condition (> or <), timing (IST), probability (%), factors_aligned, what_invalidates
 - Include both CALL and PUT options, and at least 1 futures trade
 - Use REALISTIC strike prices near current levels (ATM or 1-2 strikes OTM)
-- Entry, target, stop loss must be specific numbers (not ranges)
+- Entry, target, stop loss must be specific numbers
 - Risk:Reward must be minimum 1:1.5
-- Confidence: mark HIGH only for trades with 3+ confirming factors
 - Use correct expiry dates based on SEBI schedule: Nifty weekly=Tuesday, Sensex weekly=Thursday, Bank Nifty monthly=last Tuesday
-- {"TODAY IS EXPIRY DAY for " + expiry_list + ". Prioritize expiry-day strategies: theta decay plays, gamma scalping, straddle/strangle adjustments. At least 2 trades should be expiry-specific." if is_expiry_day else "Today is NOT an expiry day. Focus on positional/swing trades for upcoming expiry. Use next week's expiry for weekly options."}
+- {"TODAY IS EXPIRY DAY for " + expiry_list + ". Prioritize expiry-day strategies: theta decay plays, gamma scalping. At least 2 trades should be expiry-specific." if is_expiry_day else "Today is NOT an expiry day. Use next week's expiry for weekly options. Focus on positional/swing trades."}
 
-RULES FOR STOCK OPTIONS (2 trades):
-- Pick 2 stocks from the list above with STRONGEST setups
-- EVERY trade MUST include entry_condition with > or < format
-- EVERY trade MUST include timing with specific IST time range
-- Prefer stocks with high volume spike (institutional interest) or big price moves
+RULES FOR STOCK OPTIONS (up to 2 trades — 0 if no clear setup):
+- Pick stocks with STRONGEST data-backed setups ONLY
+- EVERY trade MUST include: entry_condition, timing, probability, factors_aligned, what_invalidates
+- Prefer stocks with volume spike > 1.5x (institutional fingerprint)
 - Use MONTHLY expiry stock options (not weekly)
 - Include lot size in option_detail
-- One should be a bullish trade (CE), one bearish (PE) for diversification
-- Strike prices should be ATM or slightly OTM
-- Explain WHY this stock specifically — momentum, sector play, earnings, breakout etc.
+- If no stock has clear 80%+ edge today, return empty array and explain in skipped_trades
 
 {hero_zero_instruction}
 """
@@ -2140,7 +2242,7 @@ RULES FOR STOCK OPTIONS (2 trades):
     # Call Claude API via HTTP (same method as main report)
     try:
         if not ANTHROPIC_API_KEY:
-            return {"success": False, "error": "AI service not configured. Please set ANTHROPIC_API_KEY."}
+            return {"success": False, "error": "AI analysis service is not configured. Please contact support at contact@celesys.ai."}
         
         response = requests.post(
             "https://api.anthropic.com/v1/messages",
@@ -2151,7 +2253,7 @@ RULES FOR STOCK OPTIONS (2 trades):
             },
             json={
                 "model": "claude-sonnet-4-20250514",
-                "max_tokens": 4000,
+                "max_tokens": 5000,
                 "messages": [{"role": "user", "content": prompt}]
             },
             timeout=120
@@ -2175,11 +2277,14 @@ RULES FOR STOCK OPTIONS (2 trades):
         
         return {
             "success": True,
+            "market_assessment": result.get("market_assessment", {}),
             "market_context": result.get("market_context", ""),
             "indices": [d for d in indices_data if d['name'] != 'INDIA VIX'],
             "trades": result.get("trades", []),
             "stock_trades": result.get("stock_trades", []),
             "hero_zero": result.get("hero_zero", []),
+            "skipped_trades": result.get("skipped_trades", ""),
+            "gut_picks": result.get("gut_picks", []),
             "vix": next((d for d in indices_data if d['name'] == 'INDIA VIX'), None),
             "generated_at": datetime.now().isoformat(),
             "expiry_today": expiry_list,
@@ -2196,16 +2301,19 @@ RULES FOR STOCK OPTIONS (2 trades):
             result = json_mod.loads(raw[start:end])
             return {
                 "success": True,
+                "market_assessment": result.get("market_assessment", {}),
                 "market_context": result.get("market_context", ""),
                 "indices": [d for d in indices_data if d['name'] != 'INDIA VIX'],
                 "trades": result.get("trades", []),
                 "stock_trades": result.get("stock_trades", []),
-            "hero_zero": result.get("hero_zero", []),
+                "hero_zero": result.get("hero_zero", []),
+                "skipped_trades": result.get("skipped_trades", ""),
+            "gut_picks": result.get("gut_picks", []),
                 "vix": next((d for d in indices_data if d['name'] == 'INDIA VIX'), None),
                 "generated_at": datetime.now().isoformat(),
-            "expiry_today": expiry_list,
-            "is_expiry_day": is_expiry_day,
-            "day_name": day_name
+                "expiry_today": expiry_list,
+                "is_expiry_day": is_expiry_day,
+                "day_name": day_name
             }
         except:
             return {"success": False, "error": "AI service temporarily unavailable. Please try again."}
@@ -2572,7 +2680,7 @@ Based on real-time price of {currency_symbol}{live_data['current_price']:,.2f}:
 
         # CALL CLAUDE API
         if not ANTHROPIC_API_KEY:
-            raise HTTPException(500, "ANTHROPIC_API_KEY environment variable is not set. Please set it in your deployment settings.")
+            raise HTTPException(500, "AI analysis service is not configured. Please contact support at contact@celesys.ai.")
         
         try:
             response = requests.post(
