@@ -3,6 +3,13 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<!-- Google Analytics 4 — Replace G-WW55EQ7ZB8 with your Measurement ID -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-WW55EQ7ZB8"></script>
+<script>
+window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}
+gtag('js',new Date());gtag('config','G-WW55EQ7ZB8');
+</script>
 <title>Celesys AI — Free Real-Time Stock Analysis in 60 Seconds</title>
 <meta name="description" content="Wall Street intelligence for your wallet. Institutional-grade stock analysis with precision entry/exit targets, risk profiling, earnings alpha, insider sentiment and mutual fund holdings — in 60 seconds.">
 <meta name="keywords" content="stock analysis, AI stock research, free stock analysis, real-time stock data, stock valuation, entry exit strategy, stop loss calculator, PE ratio checker, stock risk assessment, small cap stocks, Indian stocks NSE BSE, US stocks NYSE NASDAQ, investment research, stock screener, AI investment tool, portfolio analysis, stock recommendation, market intelligence, celesys, celesys ai">
@@ -629,6 +636,8 @@ q=r===0?' \u00B7 Last free report this hour':' \u00B7 '+r+' remaining'}
 if(data.report_number)document.getElementById('navRC').textContent=data.report_number;
 if(data.report_number){document.getElementById('globalRC').textContent=data.report_number.toLocaleString();const hb=document.getElementById('reportBadgeCount');if(hb)hb.textContent=data.report_number.toLocaleString()}
 showStatus('\u2713 Your report is ready. Scroll down \u2014 this is the good stuff.'+q,'success');displayReport(data);TI.value='';
+// GA4: Track report generation
+if(typeof gtag==='function')gtag('event','generate_report',{ticker:data.live_data?.ticker||'',company:data.company_name||''});
 }catch(e){let m=e.message;if(m==='Failed to fetch')m='Cannot connect to server.';
 else if(m.toLowerCase().includes('rate limit')||m.toLowerCase().includes('too many')||m.toLowerCase().includes('temporarily')||m.toLowerCase().includes('all data sources'))m='All data sources busy. Try again in 30 seconds.';
 showStatus(m,'error')}finally{btn.disabled=false;btn.textContent='Analyze \u2192';btn.classList.remove('ld');hideLS()}}
@@ -858,6 +867,7 @@ if(tbar){tbar.classList.add('attention');setTimeout(()=>tbar.classList.remove('a
 // TAB SWITCHING
 // ═══════════════════════════════════════════════
 function switchTab(tab){
+if(typeof gtag==='function')gtag('event','switch_tab',{tab_name:tab});
 // Hide all tab sections
 document.querySelectorAll('.sc[data-tab]').forEach(s=>s.classList.remove('tab-visible'));
 // Deactivate all buttons
@@ -1576,6 +1586,7 @@ let voteChart=null;
 let userVotes={};
 
 function vote(feature,dir,btn){
+if(typeof gtag==='function')gtag('event','feature_vote',{feature_name:feature,vote_direction:dir>0?'up':'down'});
 // Prevent double-voting same direction on same feature
 const voteKey=feature+(dir>0?'up':'dn');
 const oppKey=feature+(dir>0?'dn':'up');
