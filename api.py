@@ -13,6 +13,188 @@ import hashlib
 import yfinance as yf
 from functools import lru_cache
 import time
+import json
+import random
+
+# ═══════════════════════════════════════════════════════════
+# DIRECT YAHOO FINANCE HTTP API (bypasses yfinance library)
+# Works when yfinance breaks due to rate limits/version bugs
+# ═══════════════════════════════════════════════════════════
+
+YAHOO_HEADERS = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'Accept': 'application/json',
+    'Accept-Language': 'en-US,en;q=0.9',
+}
+
+def fetch_yahoo_direct(ticker: str) -> dict:
+    """
+    Fallback: Direct HTTP call to Yahoo Finance API.
+    No yfinance library needed — just raw HTTP.
+    Returns same format as yfinance info dict or None on failure.
+    """
+    try:
+        # Endpoint 1: v8 chart API (price + history)
+        chart_url = f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}?interval=1d&range=5d"
+        headers = {**YAHOO_HEADERS, 'User-Agent': f'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/{random.randint(110,125)}.0.0.0'}
+        
+        chart_resp = requests.get(chart_url, headers=headers, timeout=10)
+        if chart_resp.status_code != 200:
+            print(f"⚠️ Yahoo chart API returned {chart_resp.status_code}")
+            return None
+        
+        chart_data = chart_resp.json()
+        result = chart_data.get('chart', {}).get('result', [])
+        if not result:
+            return None
+        
+        meta = result[0].get('meta', {})
+        indicators = result[0].get('indicators', {}).get('quote', [{}])[0]
+        timestamps = result[0].get('timestamp', [])
+        closes = indicators.get('close', [])
+        highs = indicators.get('high', [])
+        lows = indicators.get('low', [])
+        
+        # Get current price from meta
+        current_price = meta.get('regularMarketPrice', 0)
+        previous_close = meta.get('chartPreviousClose', meta.get('previousClose', current_price))
+        
+        # 52-week from chart history (limited but better than nothing)
+        valid_highs = [h for h in highs if h is not None]
+        valid_lows = [l for l in lows if l is not None]
+        valid_closes = [c for c in closes if c is not None]
+        
+        chart_info = {
+            'currentPrice': current_price,
+            'previousClose': previous_close,
+            'currency': meta.get('currency', 'USD'),
+            'exchangeName': meta.get('exchangeName', ''),
+            'symbol': meta.get('symbol', ticker),
+            'longName': meta.get('longName', ticker),
+            'chartHigh': max(valid_highs) if valid_highs else current_price,
+            'chartLow': min(valid_lows) if valid_lows else current_price,
+            'closes': valid_closes,
+            '_source': 'yahoo_chart_v8'
+        }
+        
+        # Endpoint 2: quoteSummary for fundamentals
+        modules = 'summaryProfile,financialData,defaultKeyStatistics,summaryDetail,price'
+        summary_url = f"https://query2.finance.yahoo.com/v10/finance/quoteSummary/{ticker}?modules={modules}"
+        
+        try:
+            summary_resp = requests.get(summary_url, headers=headers, timeout=10)
+            if summary_resp.status_code == 200:
+                summary_data = summary_resp.json()
+                qresult = summary_data.get('quoteSummary', {}).get('result', [])
+                if qresult:
+                    r = qresult[0]
+                    fin = r.get('financialData', {})
+                    stats = r.get('defaultKeyStatistics', {})
+                    detail = r.get('summaryDetail', {})
+                    profile = r.get('summaryProfile', {})
+                    price_data = r.get('price', {})
+                    
+                    def raw(d, key, default=0):
+                        """Extract raw value from Yahoo's nested format"""
+                        v = d.get(key, {})
+                        if isinstance(v, dict):
+                            return v.get('raw', v.get('fmt', default))
+                        return v if v else default
+                    
+                    chart_info.update({
+                        'longName': price_data.get('longName', chart_info.get('longName', ticker)),
+                        'marketCap': raw(price_data, 'marketCap'),
+                        'trailingPE': raw(detail, 'trailingPE'),
+                        'forwardPE': raw(stats, 'forwardPE') or raw(detail, 'forwardPE'),
+                        'priceToBook': raw(stats, 'priceToBook'),
+                        'dividendYield': raw(detail, 'dividendYield'),
+                        'beta': raw(stats, 'beta') or raw(detail, 'beta'),
+                        'sector': profile.get('sector', 'N/A'),
+                        'industry': profile.get('industry', 'N/A'),
+                        'profitMargins': raw(fin, 'profitMargins') or raw(stats, 'profitMargins'),
+                        'operatingMargins': raw(fin, 'operatingMargins'),
+                        'returnOnEquity': raw(fin, 'returnOnEquity'),
+                        'debtToEquity': raw(fin, 'debtToEquity'),
+                        'currentRatio': raw(fin, 'currentRatio'),
+                        'fiftyTwoWeekHigh': raw(detail, 'fiftyTwoWeekHigh', chart_info['chartHigh']),
+                        'fiftyTwoWeekLow': raw(detail, 'fiftyTwoWeekLow', chart_info['chartLow']),
+                        '_source': 'yahoo_direct_full'
+                    })
+        except Exception as e:
+            print(f"⚠️ Yahoo summary API failed: {e} — using chart data only")
+            chart_info['_source'] = 'yahoo_chart_only'
+        
+        return chart_info
+        
+    except Exception as e:
+        print(f"❌ Yahoo direct HTTP failed: {e}")
+        return None
+
+
+def fetch_yahoo_scrape(ticker: str) -> dict:
+    """
+    Last resort: Scrape Yahoo Finance quote page for basic data.
+    Works even when APIs are blocked.
+    """
+    try:
+        url = f"https://finance.yahoo.com/quote/{ticker}/"
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml',
+        }
+        resp = requests.get(url, headers=headers, timeout=12)
+        if resp.status_code != 200:
+            return None
+        
+        text = resp.text
+        
+        # Try to find JSON data embedded in page
+        import re
+        
+        # Look for price in page title or meta
+        price_match = re.search(r'data-testid="qsp-price"[^>]*>([0-9,.]+)', text)
+        if not price_match:
+            price_match = re.search(r'"regularMarketPrice":\{"raw":([0-9.]+)', text)
+        
+        if not price_match:
+            return None
+        
+        price = float(price_match.group(1).replace(',', ''))
+        
+        # Extract other fields from JSON blobs in page
+        def extract_raw(field):
+            m = re.search(f'"{field}":{{"raw":([0-9.eE+\\-]+)', text)
+            return float(m.group(1)) if m else 0
+        
+        def extract_str(field):
+            m = re.search(f'"{field}":"([^"]+)"', text)
+            return m.group(1) if m else 'N/A'
+        
+        return {
+            'currentPrice': price,
+            'previousClose': extract_raw('regularMarketPreviousClose') or extract_raw('previousClose') or price,
+            'currency': extract_str('currency') or 'USD',
+            'longName': extract_str('longName') or ticker,
+            'marketCap': extract_raw('marketCap'),
+            'trailingPE': extract_raw('trailingPE'),
+            'forwardPE': extract_raw('forwardPE'),
+            'priceToBook': extract_raw('priceToBook'),
+            'dividendYield': extract_raw('dividendYield'),
+            'beta': extract_raw('beta'),
+            'sector': extract_str('sector'),
+            'industry': extract_str('industry'),
+            'profitMargins': extract_raw('profitMargins'),
+            'operatingMargins': extract_raw('operatingMargins'),
+            'returnOnEquity': extract_raw('returnOnEquity'),
+            'debtToEquity': extract_raw('debtToEquity'),
+            'currentRatio': extract_raw('currentRatio'),
+            'fiftyTwoWeekHigh': extract_raw('fiftyTwoWeekHigh') or price * 1.1,
+            'fiftyTwoWeekLow': extract_raw('fiftyTwoWeekLow') or price * 0.8,
+            '_source': 'yahoo_scrape'
+        }
+    except Exception as e:
+        print(f"❌ Yahoo scrape failed: {e}")
+        return None
 
 app = FastAPI(title="Celesys AI - Verified Live Data")
 
@@ -244,83 +426,125 @@ def get_live_stock_data(company_name: str) -> dict:
             else:
                 ticker_symbol = company_name.upper()
         
-        # Fetch data WITH RETRY (Yahoo Finance rate limits aggressively)
-        max_retries = 3
-        last_error = None
+        # ════════════════════════════════════════════
+        # 3-SOURCE FALLBACK CHAIN
+        # Source 1: yfinance library
+        # Source 2: Yahoo Finance direct HTTP API
+        # Source 3: Yahoo Finance page scrape
+        # ════════════════════════════════════════════
         
-        for attempt in range(max_retries):
-            try:
-                if attempt > 0:
-                    wait_time = 2 ** attempt  # 2s, 4s backoff
-                    print(f"⏳ Retry {attempt+1}/{max_retries} for {ticker_symbol}, waiting {wait_time}s...")
-                    time.sleep(wait_time)
-                
-                stock = yf.Ticker(ticker_symbol)
-                hist = stock.history(period="5d")
-                
-                if hist.empty:
-                    # If history is empty but no exception, might be invalid ticker
-                    if attempt == max_retries - 1:
-                        # Check for stale cache before giving up
-                        if cache_key in stock_data_cache:
-                            cached_data, cached_time = stock_data_cache[cache_key]
-                            age_minutes = (current_time - cached_time).total_seconds() / 60
-                            if age_minutes < CACHE_STALE_OK_MINUTES:
-                                print(f"⚠️ Using STALE cache for {cache_key} (age: {age_minutes:.1f} min)")
-                                cached_data["data_timestamp"] = f"{datetime.now().strftime('%B %d, %Y at %I:%M %p UTC')} (cached)"
-                                return cached_data
-                        return {
-                            "error": f"No data found for {company_name}. Try using the ticker symbol (e.g., TSLA, HDFCBANK.NS)"
-                        }
-                    continue
-                
+        info = None
+        current_price = None
+        previous_close = None
+        week52_high = None
+        week52_low = None
+        data_source = 'unknown'
+        
+        # ── SOURCE 1: yfinance library ──
+        try:
+            print(f"🔍 Source 1: yfinance for {ticker_symbol}...")
+            stock = yf.Ticker(ticker_symbol)
+            hist = stock.history(period="5d")
+            
+            if not hist.empty:
                 info = stock.info
-                break  # Success!
-                
-            except Exception as e:
-                last_error = str(e)
-                error_lower = last_error.lower()
-                
-                # If rate limited, check stale cache
-                if 'too many requests' in error_lower or 'rate limit' in error_lower or '429' in error_lower:
-                    print(f"⚠️ Yahoo Finance rate limited (attempt {attempt+1})")
-                    if attempt == max_retries - 1:
-                        # Return stale cache if available
-                        if cache_key in stock_data_cache:
-                            cached_data, cached_time = stock_data_cache[cache_key]
-                            age_minutes = (current_time - cached_time).total_seconds() / 60
-                            if age_minutes < CACHE_STALE_OK_MINUTES:
-                                print(f"📦 Serving STALE cache for {cache_key} (age: {age_minutes:.1f} min) due to rate limit")
-                                cached_data["data_timestamp"] = f"{datetime.now().strftime('%B %d, %Y at %I:%M %p UTC')} (cached data)"
-                                return cached_data
-                        return {
-                            "error": "Yahoo Finance is temporarily rate limiting us due to high traffic. Please wait 2-3 minutes and try again."
-                        }
-                    continue
-                else:
-                    # Non-rate-limit error, don't retry
-                    if attempt == max_retries - 1:
-                        return {
-                            "error": f"Could not fetch data: {last_error}. Try using ticker symbol (e.g., TSLA for Tesla)"
-                        }
-                    continue
+                current_price = float(hist['Close'].iloc[-1])
+                previous_close = float(hist['Close'].iloc[-2]) if len(hist) > 1 else current_price
+                week52_high = float(hist['High'].max())
+                week52_low = float(hist['Low'].min())
+                # Override with better 52-week data from info
+                if info.get('fiftyTwoWeekHigh'):
+                    week52_high = float(info['fiftyTwoWeekHigh'])
+                if info.get('fiftyTwoWeekLow'):
+                    week52_low = float(info['fiftyTwoWeekLow'])
+                data_source = 'yfinance'
+                print(f"✅ Source 1 SUCCESS: {ticker_symbol} @ {current_price}")
+            else:
+                print(f"⚠️ Source 1: yfinance returned empty history")
+                info = None
+        except Exception as e:
+            print(f"❌ Source 1 FAILED: {e}")
+            info = None
         
-        # Get most recent price
-        current_price = float(hist['Close'].iloc[-1])
-        previous_close = float(hist['Close'].iloc[-2]) if len(hist) > 1 else current_price
+        # ── SOURCE 2: Yahoo Finance direct HTTP API ──
+        if info is None or current_price is None:
+            try:
+                print(f"🔍 Source 2: Yahoo direct HTTP for {ticker_symbol}...")
+                direct_data = fetch_yahoo_direct(ticker_symbol)
+                
+                if direct_data and direct_data.get('currentPrice'):
+                    current_price = float(direct_data['currentPrice'])
+                    previous_close = float(direct_data.get('previousClose', current_price))
+                    week52_high = float(direct_data.get('fiftyTwoWeekHigh', direct_data.get('chartHigh', current_price * 1.1)))
+                    week52_low = float(direct_data.get('fiftyTwoWeekLow', direct_data.get('chartLow', current_price * 0.8)))
+                    info = direct_data
+                    data_source = direct_data.get('_source', 'yahoo_direct')
+                    print(f"✅ Source 2 SUCCESS: {ticker_symbol} @ {current_price} via {data_source}")
+                else:
+                    print(f"⚠️ Source 2: No price data returned")
+            except Exception as e:
+                print(f"❌ Source 2 FAILED: {e}")
+        
+        # ── SOURCE 3: Yahoo Finance page scrape ──
+        if info is None or current_price is None:
+            try:
+                print(f"🔍 Source 3: Yahoo scrape for {ticker_symbol}...")
+                scrape_data = fetch_yahoo_scrape(ticker_symbol)
+                
+                if scrape_data and scrape_data.get('currentPrice'):
+                    current_price = float(scrape_data['currentPrice'])
+                    previous_close = float(scrape_data.get('previousClose', current_price))
+                    week52_high = float(scrape_data.get('fiftyTwoWeekHigh', current_price * 1.1))
+                    week52_low = float(scrape_data.get('fiftyTwoWeekLow', current_price * 0.8))
+                    info = scrape_data
+                    data_source = 'yahoo_scrape'
+                    print(f"✅ Source 3 SUCCESS: {ticker_symbol} @ {current_price}")
+                else:
+                    print(f"⚠️ Source 3: Scrape returned no data")
+            except Exception as e:
+                print(f"❌ Source 3 FAILED: {e}")
+        
+        # ── ALL SOURCES FAILED: check stale cache ──
+        if current_price is None:
+            if cache_key in stock_data_cache:
+                cached_data, cached_time = stock_data_cache[cache_key]
+                age_minutes = (current_time - cached_time).total_seconds() / 60
+                if age_minutes < CACHE_STALE_OK_MINUTES:
+                    print(f"🆘 All sources failed — serving stale cache for {cache_key} (age: {age_minutes:.1f} min)")
+                    cached_data["data_timestamp"] = f"{datetime.now().strftime('%B %d, %Y at %I:%M %p UTC')} (cached)"
+                    cached_data["data_source"] = "stale_cache"
+                    return cached_data
+            
+            return {
+                "error": f"All data sources failed for {ticker_symbol}. Yahoo Finance may be temporarily down. Try again in 1-2 minutes."
+            }
+        
+        # ── SUCCESS: Build response ──
+        if info is None:
+            info = {}
+        
         price_change = current_price - previous_close
         price_change_pct = (price_change / previous_close * 100) if previous_close > 0 else 0
-        
-        # Get 52-week range
-        week52_high = float(hist['High'].max())
-        week52_low = float(hist['Low'].min())
         
         # Currency detection
         currency = info.get('currency', 'USD')
         if '.NS' in ticker_symbol or '.BO' in ticker_symbol:
             currency = 'INR'
         
-        # Build response data
+        # Safe getter for info (handles both yfinance dict and our custom dict)
+        def safe_get(key, default=0, is_pct=False):
+            val = info.get(key)
+            if val is None or val == 'N/A' or val == 0:
+                return default
+            try:
+                v = float(val)
+                return round(v * 100, 2) if is_pct and abs(v) < 1 else round(v, 2)
+            except:
+                return default
+        
+        # For direct/scrape sources, margins are already raw decimals
+        is_direct = data_source != 'yfinance'
+        
         live_data = {
             "success": True,
             "ticker": ticker_symbol,
@@ -329,22 +553,23 @@ def get_live_stock_data(company_name: str) -> dict:
             "price_change": round(price_change, 2),
             "price_change_pct": round(price_change_pct, 2),
             "currency": currency,
-            "market_cap": info.get('marketCap', 0),
-            "pe_ratio": round(info.get('trailingPE', 0), 2) if info.get('trailingPE') else 'N/A',
-            "forward_pe": round(info.get('forwardPE', 0), 2) if info.get('forwardPE') else 'N/A',
-            "pb_ratio": round(info.get('priceToBook', 0), 2) if info.get('priceToBook') else 'N/A',
-            "dividend_yield": round(info.get('dividendYield', 0) * 100, 2) if info.get('dividendYield') else 0,
+            "market_cap": safe_get('marketCap'),
+            "pe_ratio": safe_get('trailingPE') or 'N/A',
+            "forward_pe": safe_get('forwardPE') or 'N/A',
+            "pb_ratio": safe_get('priceToBook') or 'N/A',
+            "dividend_yield": round(safe_get('dividendYield') * (100 if data_source == 'yfinance' and safe_get('dividendYield') < 1 else 1), 2) if safe_get('dividendYield') else 0,
             "week52_high": round(week52_high, 2),
             "week52_low": round(week52_low, 2),
-            "beta": round(info.get('beta', 0), 2) if info.get('beta') else 'N/A',
+            "beta": safe_get('beta') or 'N/A',
             "sector": info.get('sector', 'N/A'),
             "industry": info.get('industry', 'N/A'),
-            "profit_margin": round(info.get('profitMargins', 0) * 100, 2) if info.get('profitMargins') else 'N/A',
-            "operating_margin": round(info.get('operatingMargins', 0) * 100, 2) if info.get('operatingMargins') else 'N/A',
-            "roe": round(info.get('returnOnEquity', 0) * 100, 2) if info.get('returnOnEquity') else 'N/A',
-            "debt_to_equity": round(info.get('debtToEquity', 0), 2) if info.get('debtToEquity') else 'N/A',
-            "current_ratio": round(info.get('currentRatio', 0), 2) if info.get('currentRatio') else 'N/A',
+            "profit_margin": safe_get('profitMargins', 'N/A', is_pct=(data_source=='yfinance')),
+            "operating_margin": safe_get('operatingMargins', 'N/A', is_pct=(data_source=='yfinance')),
+            "roe": safe_get('returnOnEquity', 'N/A', is_pct=(data_source=='yfinance')),
+            "debt_to_equity": safe_get('debtToEquity') or 'N/A',
+            "current_ratio": safe_get('currentRatio') or 'N/A',
             "data_timestamp": datetime.now().strftime("%B %d, %Y at %I:%M %p UTC"),
+            "data_source": data_source,
             "verification_url": f"https://www.google.com/finance/quote/{ticker_symbol.replace('.NS', ':NSE').replace('.BO', ':BOM')}"
         }
         

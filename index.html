@@ -532,12 +532,13 @@ if(data.report_number)document.getElementById('navRC').textContent=data.report_n
 if(data.report_number){document.getElementById('globalRC').textContent=data.report_number.toLocaleString();const hb=document.getElementById('reportBadgeCount');if(hb)hb.textContent=data.report_number.toLocaleString()}
 showStatus('\u2713 Your report is ready. Scroll down \u2014 this is the good stuff.'+q,'success');displayReport(data);TI.value='';
 }catch(e){let m=e.message;if(m==='Failed to fetch')m='Cannot connect to server.';
-else if(m.toLowerCase().includes('rate limit')||m.toLowerCase().includes('too many')||m.toLowerCase().includes('temporarily'))m='Market data busy. Wait 2-3 min.';
+else if(m.toLowerCase().includes('rate limit')||m.toLowerCase().includes('too many')||m.toLowerCase().includes('temporarily')||m.toLowerCase().includes('all data sources'))m='All data sources busy. Try again in 30 seconds.';
 showStatus(m,'error')}finally{btn.disabled=false;btn.textContent='Analyze \u2192';btn.classList.remove('ld');hideLS()}}
 
 function displayReport(data){const d=data.live_data,curr=d.currency==='INR'?'\u20B9':'$',price=d.current_price;
 document.getElementById('tickerTag').textContent=d.ticker;document.getElementById('companyName').textContent=d.company_name||d.ticker;
-document.getElementById('timestamp').innerHTML='<div class="ldot"></div> LIVE \u00B7 '+d.data_timestamp;
+const srcLabel=d.data_source==='yfinance'?'':'d.data_source==='yahoo_direct_full'?'':'d.data_source==='yahoo_chart_only'?' (chart)':d.data_source==='yahoo_scrape'?' (alt)':d.data_source==='stale_cache'?' (cached)':'';
+document.getElementById('timestamp').innerHTML='<div class="ldot"></div> LIVE'+srcLabel+' \u00B7 '+d.data_timestamp;
 
 // 8 METRICS (expanded from 4)
 document.getElementById('metrics').innerHTML=`
