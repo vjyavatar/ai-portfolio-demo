@@ -179,9 +179,9 @@ nav{position:sticky;top:0;z-index:100;backdrop-filter:blur(24px);-webkit-backdro
 .tab-btn.active{background:linear-gradient(135deg,rgba(59,130,246,.2),rgba(139,92,246,.15));color:var(--text1);box-shadow:0 2px 12px rgba(59,130,246,.15)}
 .tab-btn:hover:not(.active){background:rgba(255,255,255,.03);color:var(--text2)}
 .tab-btn{position:relative}
-.tab-btn::after{content:attr(title);position:absolute;bottom:calc(100% + 10px);left:50%;transform:translateX(-50%);background:var(--surface);color:var(--text2);font-size:11px;font-weight:400;padding:8px 14px;border-radius:8px;border:1px solid var(--border);white-space:nowrap;max-width:280px;white-space:normal;text-align:center;line-height:1.5;opacity:0;pointer-events:none;transition:opacity .2s;z-index:100;box-shadow:0 4px 16px rgba(0,0,0,.4)}
+.tab-btn::after{content:attr(data-tip);position:absolute;bottom:calc(100% + 10px);left:50%;transform:translateX(-50%);background:var(--surface);color:var(--text2);font-size:11px;font-weight:400;padding:8px 14px;border-radius:8px;border:1px solid var(--border);white-space:nowrap;max-width:280px;white-space:normal;text-align:center;line-height:1.5;opacity:0;pointer-events:none;transition:opacity .2s;z-index:100;box-shadow:0 4px 16px rgba(0,0,0,.4)}
 .tab-btn:hover::after{opacity:1}
-.tab-panel{display:none}.tab-panel.active{display:block}
+.sc[data-tab]{display:none}.sc[data-tab].tab-visible{display:block;opacity:1;transform:translateY(0)}
 .go-deeper-btn{display:block;width:100%;margin:18px 0;padding:16px;border:2px dashed rgba(139,92,246,.4);border-radius:12px;background:rgba(139,92,246,.06);color:var(--purple);font-family:'Sora',sans-serif;font-size:15px;font-weight:700;cursor:pointer;transition:all .3s;text-align:center}
 .go-deeper-btn:hover{background:rgba(139,92,246,.12);border-color:var(--purple);transform:translateY(-1px)}
 
@@ -587,22 +587,21 @@ if(pe>0&&pe<15&&d.price_change_pct>0){verdict='BUY';vc='buy'}else if(pe>40||d.pr
 const html=`
 <!-- TAB BAR -->
 <div class="tab-bar">
-<button class="tab-btn" onclick="switchTab('quick')" id="tabBtnQuick" title="Investment verdict, 5 key insights, valuation, buy/sell prices, risk score & AI color-coded breakdown">\u26A1 Quick Intel</button>
-<button class="tab-btn" onclick="switchTab('deep')" id="tabBtnDeep" title="Quarterly earnings snapshot, QoQ vs YoY trends, full AI deep-dive report">\uD83D\uDD2C Deep Research</button>
-<button class="tab-btn" onclick="switchTab('mgmt')" id="tabBtnMgmt" title="CEO/CFO confidence level, earnings call tone, red & green flags, what management is hiding">\uD83C\uDFA4 Management Read</button>
-<button class="tab-btn" onclick="switchTab('gems')" id="tabBtnGems" title="Under-the-radar small-cap picks in the same sector with growth potential ratings">\u2B50 Hidden Gems</button>
+<button class="tab-btn" onclick="switchTab('quick')" id="tabBtnQuick" data-tip="Investment verdict, 5 key insights, valuation, buy/sell prices, risk score & AI color-coded breakdown">\u26A1 Quick Intel</button>
+<button class="tab-btn" onclick="switchTab('deep')" id="tabBtnDeep" data-tip="Quarterly earnings snapshot, QoQ vs YoY trends, full AI deep-dive report">\uD83D\uDD2C Deep Research</button>
+<button class="tab-btn" onclick="switchTab('mgmt')" id="tabBtnMgmt" data-tip="CEO/CFO confidence level, earnings call tone, red & green flags, what management is hiding">\uD83C\uDFA4 Management Read</button>
+<button class="tab-btn" onclick="switchTab('gems')" id="tabBtnGems" data-tip="Under-the-radar small-cap picks in the same sector with growth potential ratings">\u2B50 Hidden Gems</button>
 </div>
 
 <!-- TAB 1: QUICK INTEL -->
-<div class="tab-panel" id="tabQuick">
 
 <!-- VERDICT (always open) -->
-<div class="sc" style="text-align:center"><div class="sh" style="justify-content:center"><div class="si" style="background:rgba(16,185,129,.1)">&#9678;</div><div class="st" style="color:var(--green)" id="sec-verdict">Investment Verdict</div></div>
+<div class="sc" data-tab="quick" style="text-align:center"><div class="sh" style="justify-content:center"><div class="si" style="background:rgba(16,185,129,.1)">&#9678;</div><div class="st" style="color:var(--green)" id="sec-verdict">Investment Verdict</div></div>
 <div class="sbody"><div class="vpill ${vc}">${verdict}</div>
 <p style="margin-top:10px;font-size:13px;color:var(--text2)">${verdict==='BUY'?'The numbers say GO. Looks promising at todays price.':verdict==='SELL'?'Red flags detected. Protect your capital.':'Hold steady. Wait for a clearer signal.'}</p></div></div>
 
 <!-- DECISION POINTS -->
-<div class="sc"><div class="sh"><div class="si" style="background:rgba(245,158,11,.1)">&#9651;</div><div class="st" style="color:var(--amber)" id="sec-5things">5 Things You Need to Know Right Now</div></div>
+<div class="sc" data-tab="quick"><div class="sh"><div class="si" style="background:rgba(245,158,11,.1)">&#9651;</div><div class="st" style="color:var(--amber)" id="sec-5things">5 Things You Need to Know Right Now</div></div>
 <div class="sbody">
 <ul class="dl">
 <li><strong>Price Action:</strong> Currently ${curr}${price.toLocaleString()} with ${d.price_change>=0?'positive':'negative'} momentum (${d.price_change_pct.toFixed(2)}%)</li>
@@ -613,7 +612,7 @@ const html=`
 </ul></div></div>
 
 <!-- VALUATION TABLE -->
-<div class="sc"><div class="sh"><div class="si" style="background:rgba(59,130,246,.1)">&#9678;</div><div class="st" style="color:var(--blue)" id="sec-valuation">Are You Overpaying? Deep Valuation X-Ray</div></div>
+<div class="sc" data-tab="quick"><div class="sh"><div class="si" style="background:rgba(59,130,246,.1)">&#9678;</div><div class="st" style="color:var(--blue)" id="sec-valuation">Are You Overpaying? Deep Valuation X-Ray</div></div>
 <div class="sbody">
 <p style="font-size:12px;color:var(--text3);margin-bottom:14px">Every number decoded. No jargon:</p>
 <table class="dt"><tr><th>Metric</th><th>Value</th><th>Signal</th><th>What This Means For You</th></tr>
@@ -641,7 +640,7 @@ const html=`
 </div></div>
 
 <!-- ENTRY & EXIT -->
-<div class="sc"><div class="sh"><div class="si" style="background:rgba(139,92,246,.1)">\u2B21</div><div class="st" style="color:var(--purple)" id="sec-entry">Exact Buy &amp; Sell Prices \u2014 Your Cheat Sheet</div></div>
+<div class="sc" data-tab="quick"><div class="sh"><div class="si" style="background:rgba(139,92,246,.1)">\u2B21</div><div class="st" style="color:var(--purple)" id="sec-entry">Exact Buy &amp; Sell Prices \u2014 Your Cheat Sheet</div></div>
 <div class="sbody">
 <table class="dt"><tr><th>Level</th><th>Price</th><th>% from Current</th><th>Action</th></tr>
 <tr><td>\u25CF Buy Zone</td><td><span class="ptag buy">Below ${curr}${(price*.95).toFixed(2)}</span></td><td style="color:var(--green)">-5%</td><td style="font-size:12px">Accumulate \u2014 build position</td></tr>
@@ -652,7 +651,7 @@ const html=`
 </table></div></div>
 
 <!-- RISK ASSESSMENT -->
-<div class="sc"><div class="sh"><div class="si" style="background:rgba(239,68,68,.1)">&#9888;</div><div class="st" style="color:var(--red)" id="sec-risk">What Could Go Wrong \u2014 Risk Reality Check</div></div>
+<div class="sc" data-tab="quick"><div class="sh"><div class="si" style="background:rgba(239,68,68,.1)">&#9888;</div><div class="st" style="color:var(--red)" id="sec-risk">What Could Go Wrong \u2014 Risk Reality Check</div></div>
 <div class="sbody">
 <table class="dt"><tr><th>Factor</th><th>Metric</th><th>Signal</th><th>Assessment</th></tr>
 <tr><td>Debt Level</td><td style="font-family:var(--mono);font-weight:600">${d.debt_to_equity}</td>
@@ -667,27 +666,21 @@ const html=`
 <tr><td>Sector</td><td>${d.sector}</td><td><span class="sig n">Monitor</span></td><td style="font-size:12px">Track trends &amp; regulation</td></tr>
 </table></div></div>
 
-<div class="sbody"><div id="earningsCard"></div></div></div>
-
-<div class="sbody"><div id="insiderTable"></div></div></div>
-
 <!-- EASY AI ANALYSIS (in Tab 1) -->
-<div class="sc"><div class="sh"><div class="si" style="background:rgba(59,130,246,.1)">\uD83C\uDF93</div><div class="st" style="color:var(--blue)">AI Verdict Breakdown \u2014 Green, Yellow & Red</div></div>
+<div class="sc" data-tab="quick"><div class="sh"><div class="si" style="background:rgba(59,130,246,.1)">\uD83C\uDF93</div><div class="st" style="color:var(--blue)">AI Verdict Breakdown \u2014 Green, Yellow & Red</div></div>
 <div class="sbody"><div id="aiAnalysisFormatted"></div></div></div>
 
-</div><!-- END TAB 1: QUICK INTEL -->
 
 <!-- TAB 2: DEEP RESEARCH -->
-<div class="tab-panel" id="tabDeep">
 
 <!-- QUARTERLY FUNDAMENTALS -->
-<div class="sc"><div class="sh"><div class="si" style="background:rgba(16,185,129,.1)">&#128200;</div><div class="st" style="color:var(--green)" id="sec-fund">Latest Quarter \u2014 Are They Actually Growing?</div></div>
+<div class="sc" data-tab="deep"><div class="sh"><div class="si" style="background:rgba(16,185,129,.1)">&#128200;</div><div class="st" style="color:var(--green)" id="sec-fund">Latest Quarter \u2014 Are They Actually Growing?</div></div>
 <div class="sbody">
 <div id="fundContent"><div class="ic bl" style="text-align:center"><p style="color:var(--text3)">&#9203; Analyzing quarterly fundamentals...</p></div></div>
 </div></div>
 
 <!-- AI ANALYSIS -->
-<div class="sc"><div class="sh"><div class="si" style="background:rgba(59,130,246,.1)">&#9889;</div><div class="st" style="color:var(--blue)" id="sec-ai">The Full Picture \u2014 What Most Sites Hide</div></div>
+<div class="sc" data-tab="deep"><div class="sh"><div class="si" style="background:rgba(59,130,246,.1)">&#9889;</div><div class="st" style="color:var(--blue)" id="sec-ai">The Full Picture \u2014 What Most Sites Hide</div></div>
 <div class="sbody">
 <div class="ic bl"><h5>Market Position</h5><p>${d.company_name||d.ticker} in ${d.sector} (${d.industry}). At ${curr}${price.toLocaleString()}, ${((price/d.week52_high)*100).toFixed(0)}% of 52-week high. Cap: ${formatCap(d.market_cap)} \u2014 ${d.market_cap>100e9?'large-cap':d.market_cap>10e9?'mid-cap':'small-cap'}.</p></div>
 <div class="ic am"><h5>Making Money?</h5><p>Profit: ${d.profit_margin}% \u00B7 Operating: ${d.operating_margin}% \u00B7 ROE: ${d.roe}%. P/E of ${d.pe_ratio} = ${pe<15?'undervalued':pe<25?'fair value':'premium'}. Dividend: ${d.dividend_yield}%.</p></div>
@@ -699,29 +692,24 @@ const html=`
 <div id="fullAIraw" class="ait" style="display:none;margin-top:10px;max-height:400px;overflow-y:auto;padding-right:8px">${report}</div>
 </div></div></div>
 
-</div><!-- END TAB 2: DEEP RESEARCH -->
 
 <!-- TAB 3: MANAGEMENT READ -->
-<div class="tab-panel" id="tabMgmt">
 
-<div class="sc"><div class="sh"><div class="si" style="background:rgba(168,85,247,.1)">&#127908;</div><div class="st" style="color:var(--purple)" id="sec-mgmt">Management Tone \u2014 Read Between the Lines</div></div>
+<div class="sc" data-tab="mgmt"><div class="sh"><div class="si" style="background:rgba(168,85,247,.1)">&#127908;</div><div class="st" style="color:var(--purple)" id="sec-mgmt">Management Tone \u2014 Read Between the Lines</div></div>
 <div class="sbody">
 <div id="mgmtContent"><div class="ic pu" style="text-align:center"><p style="color:var(--text3)">&#9203; Analyzing management tone...</p></div></div>
 </div></div>
 
-</div><!-- END TAB 3: MANAGEMENT READ -->
 
 <!-- TAB 4: HIDDEN GEMS -->
-<div class="tab-panel" id="tabGems">
 
-<div class="sc"><div class="sh"><div class="si" style="background:rgba(245,158,11,.1)">\u2B50</div><div class="st" style="color:var(--amber)" id="sec-gems">Hidden Gems \u2014 Small-Caps That Could 10x</div></div>
+<div class="sc" data-tab="gems"><div class="sh"><div class="si" style="background:rgba(245,158,11,.1)">\u2B50</div><div class="st" style="color:var(--amber)" id="sec-gems">Hidden Gems \u2014 Small-Caps That Could 10x</div></div>
 <div class="sbody">
 <p style="font-size:12px;color:var(--text3);margin-bottom:14px">Under-the-radar picks in <strong id="smallCapSector" style="color:var(--amber)">${d.sector}</strong>:</p>
 <div id="smallCapTable"></div>
 <div class="ic am" style="margin-top:14px"><p><strong>Real talk:</strong> Small-caps = high risk, high reward. Same sector as <strong id="smallCapTicker">${d.ticker}</strong>. Only invest what you can lose. Spread across 5\u20138 picks. Think 10+ years.</p></div>
 </div></div>
 
-</div><!-- END TAB 4: HIDDEN GEMS -->
 `;
 
 document.getElementById('analysisContainer').innerHTML=html;
@@ -734,202 +722,23 @@ generateSmallCapRecommendations(d)}
 // TAB SWITCHING
 // ═══════════════════════════════════════════════
 function switchTab(tab){
-document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));
+// Hide all tab sections
+document.querySelectorAll('.sc[data-tab]').forEach(s=>s.classList.remove('tab-visible'));
+// Deactivate all buttons
 document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
-const map={quick:'tabQuick',deep:'tabDeep',mgmt:'tabMgmt',gems:'tabGems'};
+// Show selected tab sections
+document.querySelectorAll('.sc[data-tab="'+tab+'"]').forEach(s=>s.classList.add('tab-visible'));
+// Activate selected button
 const btnMap={quick:'tabBtnQuick',deep:'tabBtnDeep',mgmt:'tabBtnMgmt',gems:'tabBtnGems'};
-if(map[tab]){
-document.getElementById(map[tab]).classList.add('active');
-document.getElementById(btnMap[tab]).classList.add('active');
-}
+if(btnMap[tab])document.getElementById(btnMap[tab]).classList.add('active');
+// Scroll to content
 window.scrollTo({top:document.getElementById('analysisContainer').offsetTop-80,behavior:'smooth'})}
 
 // ═══════════════════════════════════════════════
 // PARSE AI TEXT → QUARTERLY FUNDAMENTALS
 // ═══════════════════════════════════════════════
-function populateFundamentals(rawText){
-const el=document.getElementById('fundContent');
-if(!el)return;
-const t=rawText||'';
-// Extract sections by markers
-const fundStart=t.search(/QUARTERLY FUNDAMENTALS/i);
-const mgmtStart=t.search(/MANAGEMENT TONE/i);
-const fundText=fundStart>-1?(mgmtStart>fundStart?t.slice(fundStart,mgmtStart):t.slice(fundStart,fundStart+3000)):'';
-
-// Parse earnings snapshot
-let snapRows=[];
-const revMatch=fundText.match(/Revenue[^:]*:\s*\$?([\d.,BMK]+)/i);
-const epsMatch=fundText.match(/EPS[^:]*:\s*\$?([\d.,\-]+)/i);
-const revGrowth=fundText.match(/Revenue Growth[^:]*:\s*([\+\-]?[\d.]+%?)/i);
-const earnGrowth=fundText.match(/Earnings Growth[^:]*:\s*([\+\-]?[\d.]+%?)/i);
-const guidance=fundText.match(/Guidance[^:]*:\s*([^\n|│]+)/i);
-const surprise=fundText.match(/Surprise[^:]*:\s*([^\n|│]+)/i);
-
-if(revMatch)snapRows.push({m:'Revenue (Last Qtr)',v:revMatch[1],s:''});
-if(epsMatch)snapRows.push({m:'EPS (Last Qtr)',v:'$'+epsMatch[1],s:''});
-if(revGrowth){const g=revGrowth[1];snapRows.push({m:'Revenue Growth (YoY)',v:g,s:g.includes('-')?'concern':parseFloat(g)>10?'good':'caution'})}
-if(earnGrowth){const g=earnGrowth[1];snapRows.push({m:'Earnings Growth (YoY)',v:g,s:g.includes('-')?'concern':parseFloat(g)>10?'good':'caution'})}
-if(guidance){const g=guidance[1].trim();snapRows.push({m:'Guidance',v:g,s:g.toLowerCase().includes('raised')?'good':g.toLowerCase().includes('lowered')?'concern':'caution'})}
-if(surprise){const g=surprise[1].trim();snapRows.push({m:'Surprise Factor',v:g,s:g.toLowerCase().includes('beat')?'good':'concern'})}
-
-// Parse QoQ/YoY table rows
-let trendRows=[];
-const metrics=['Revenue','Net Income','EPS','Gross Margin','Operating Margin','Free Cash Flow','Debt.to.Equity'];
-metrics.forEach(metric=>{
-const re=new RegExp(metric.replace('.','.?')+'[^\\n│]*│\\s*([^│\\n]+)│\\s*([^│\\n]+)│\\s*([^│\\n]+)','i');
-const m=fundText.match(re);
-if(m)trendRows.push({metric:metric.replace('.',''),qoq:m[1].trim(),yoy:m[2].trim(),trend:m[3].trim()})});
-
-// Parse momentum/structural reads
-const qoqMomentum=fundText.match(/QoQ Momentum Read[:\*]*\s*([^\n]+(?:\n(?!\*\*)[^\n]+)*)/i);
-const yoyTrend=fundText.match(/YoY Structural Trend[:\*]*\s*([^\n]+(?:\n(?!\*\*)[^\n]+)*)/i);
-const keyShifts=fundText.match(/Key Fundamental Shifts?[:\*]*\s*([^\n]+(?:\n(?!\*\*)[^\n]+)*)/i);
-
-// Determine overall signal
-let overallSignal='caution';
-const fundLower=fundText.toLowerCase();
-if(fundLower.includes('bullish')||fundLower.includes('accelerat')||fundLower.includes('strong buy'))overallSignal='good';
-else if(fundLower.includes('red flag')||fundLower.includes('declining')||fundLower.includes('avoid'))overallSignal='concern';
-
-const sig={'good':['var(--green)','\uD83D\uDFE2'],'caution':['var(--amber)','\uD83D\uDFE1'],'concern':['var(--red)','\uD83D\uDD34']};
-const rs=(s)=>sig[s]||sig['caution'];
-
-let h='';
-
-// Earnings Snapshot Table
-if(snapRows.length>0){
-h+=`<div class="ic gr" style="padding:16px"><h5 style="margin-bottom:10px">\uD83D\uDCCA Latest Earnings Snapshot</h5>
-<table class="dt"><tr><th>Metric</th><th>Value</th><th>Signal</th></tr>`;
-snapRows.forEach(r=>{
-const [clr,icon]=rs(r.s||'caution');
-h+=`<tr><td>${r.m}</td><td style="font-family:var(--mono);font-weight:700">${r.v}</td>
-<td><span style="color:${clr};font-weight:600">${r.s?icon+' '+r.s.charAt(0).toUpperCase()+r.s.slice(1):'\u2014'}</span></td></tr>`});
-h+=`</table></div>`}
-
-// QoQ vs YoY Trend Table
-if(trendRows.length>0){
-h+=`<div class="ic bl" style="padding:16px"><h5 style="margin-bottom:10px">\uD83D\uDD04 QoQ vs YoY Comparison</h5>
-<table class="dt"><tr><th>Metric</th><th>QoQ Change</th><th>YoY Change</th><th>Trend</th></tr>`;
-trendRows.forEach(r=>{
-const tl=r.trend.toLowerCase();
-const clr=tl.includes('\u2191')||tl.includes('expand')||tl.includes('improv')||tl.includes('delever')?'var(--green)':tl.includes('\u2193')||tl.includes('compress')||tl.includes('declin')||tl.includes('loading')?'var(--red)':'var(--amber)';
-h+=`<tr><td>${r.metric}</td><td style="font-family:var(--mono)">${r.qoq}</td><td style="font-family:var(--mono)">${r.yoy}</td><td style="color:${clr};font-weight:600">${r.trend}</td></tr>`});
-h+=`</table></div>`}
-
-// Momentum & Structural reads
-if(qoqMomentum){
-const txt=qoqMomentum[1].trim();
-const isGood=txt.toLowerCase().includes('bullish')||txt.toLowerCase().includes('accelerat');
-const isBad=txt.toLowerCase().includes('red flag')||txt.toLowerCase().includes('declin');
-const [clr,icon]=rs(isGood?'good':isBad?'concern':'caution');
-h+=`<div class="ic" style="border-left:4px solid ${clr};padding:14px"><h5 style="color:${clr}">${icon} QoQ Momentum Read</h5><p style="font-size:13px;color:var(--text2);margin-top:6px">${txt}</p></div>`}
-
-if(yoyTrend){
-const txt=yoyTrend[1].trim();
-const isGood=txt.toLowerCase().includes('strong')||txt.toLowerCase().includes('expansion');
-const isBad=txt.toLowerCase().includes('avoid')||txt.toLowerCase().includes('both declining');
-const [clr,icon]=rs(isGood?'good':isBad?'concern':'caution');
-h+=`<div class="ic" style="border-left:4px solid ${clr};padding:14px"><h5 style="color:${clr}">${icon} YoY Structural Trend</h5><p style="font-size:13px;color:var(--text2);margin-top:6px">${txt}</p></div>`}
-
-if(keyShifts){
-h+=`<div class="ic am" style="padding:14px"><h5>\u26A1 Key Shifts</h5><p style="font-size:13px;color:var(--text2);margin-top:6px">${keyShifts[1].trim()}</p></div>`}
-
-// Fallback if parsing got nothing
-if(!h){
-const [clr,icon]=rs(overallSignal);
-h=`<div class="ic" style="border-left:4px solid ${clr};padding:16px"><h5 style="color:${clr}">${icon} Quarterly Assessment</h5>
-<p style="font-size:13px;color:var(--text2);margin-top:8px;line-height:1.7">${fundText.slice(0,1200).replace(/[#*│┌┐└┘├┤─┬┴┼]/g,'').trim()||'Quarterly data will appear here once the AI analysis completes.'}</p></div>`}
-
-el.innerHTML=h}
-
-// ═══════════════════════════════════════════════
-// PARSE AI TEXT → MANAGEMENT TONE
-// ═══════════════════════════════════════════════
-function populateManagement(rawText){
-const el=document.getElementById('mgmtContent');
-if(!el)return;
-const t=rawText||'';
-const mgmtStart=t.search(/MANAGEMENT TONE/i);
-if(mgmtStart===-1){el.innerHTML='<div class="ic pu" style="padding:14px"><p style="color:var(--text3)">Management tone analysis not available for this stock.</p></div>';return}
-const mgmtText=t.slice(mgmtStart,mgmtStart+3000);
-
-// CEO/CFO Confidence Level
-const confMatch=mgmtText.match(/Confidence Level[:\*]*\s*([^\n]+)/i);
-let confLevel='Unknown',confSignal='caution';
-if(confMatch){
-const c=confMatch[1].trim();
-confLevel=c;
-if(c.includes('\uD83D\uDFE2')||c.toLowerCase().includes('bullish'))confSignal='good';
-else if(c.includes('\uD83D\uDD34')||c.toLowerCase().includes('defensive'))confSignal='concern';
-}
-
-// Language Sentiment
-const sentMatch=mgmtText.match(/Language Sentiment[:\*]*\s*([^\n]+)/i);
-// Forward Guidance
-const fwdMatch=mgmtText.match(/Forward Guidance[^:]*[:\*]*\s*([^\n]+)/i);
-// Buzzwords
-const buzzMatch=mgmtText.match(/Key Buzzwords[^:]*[:\*]*\s*([^\n]+)/i);
-// Red Flags
-const redMatch=mgmtText.match(/Red Flags[^:]*[:\*]*\s*([^\n]+)/i);
-// Green Flags
-const greenMatch=mgmtText.match(/Green Flags[^:]*[:\*]*\s*([^\n]+)/i);
-// What Management Isn't Telling
-const hiddenMatch=mgmtText.match(/What Management Isn.t Telling[^:]*[:\*]*\s*([^\n]+(?:\n(?!\*\*)[^\n]+)*)/i);
-// Investment Inference
-const inferMatch=mgmtText.match(/Investment Inference[^:]*[:\*]*\s*([^\n]+(?:\n(?!\*\*)[^\n]+)*)/i);
-
-const sig={'good':['var(--green)','\uD83D\uDFE2'],'caution':['var(--amber)','\uD83D\uDFE1'],'concern':['var(--red)','\uD83D\uDD34']};
-const rs=(s)=>sig[s]||sig['caution'];
-const [confClr,confIcon]=rs(confSignal);
-
-let h='';
-
-// Confidence Badge
-h+=`<div style="text-align:center;padding:18px;margin-bottom:14px;border-radius:12px;background:${confSignal==='good'?'rgba(16,185,129,.08)':confSignal==='concern'?'rgba(239,68,68,.08)':'rgba(245,158,11,.08)'};border:1px solid ${confClr}30">
-<div style="font-size:28px;margin-bottom:4px">${confIcon}</div>
-<div style="font-family:'Sora',sans-serif;font-size:16px;font-weight:700;color:${confClr}">${confLevel.replace(/[\uD83D\uDFE2\uD83D\uDFE1\uD83D\uDD34]/g,'').trim()}</div>
-<div style="font-size:12px;color:var(--text3);margin-top:4px">CEO/CFO Confidence Level</div></div>`;
-
-// Tone Analysis Cards
-const cards=[
-{label:'Language Sentiment',val:sentMatch?sentMatch[1].trim():null,icon:'\uD83D\uDDE3\uFE0F'},
-{label:'Forward Guidance',val:fwdMatch?fwdMatch[1].trim():null,icon:'\uD83D\uDD2E'},
-{label:'Key Buzzwords',val:buzzMatch?buzzMatch[1].trim():null,icon:'\uD83D\uDCAC'}
-].filter(c=>c.val);
-
-if(cards.length){
-h+=`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;margin-bottom:14px">`;
-cards.forEach(c=>{
-h+=`<div class="ic" style="padding:12px"><div style="font-size:18px;margin-bottom:4px">${c.icon}</div>
-<div style="font-size:11px;color:var(--text3);margin-bottom:4px">${c.label}</div>
-<div style="font-size:13px;color:var(--text2);line-height:1.5">${c.val}</div></div>`});
-h+=`</div>`}
-
-// Red & Green Flags side by side
-if(redMatch||greenMatch){
-h+=`<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">`;
-if(redMatch)h+=`<div class="ic" style="border-left:4px solid var(--red);padding:12px"><h5 style="color:var(--red)">\uD83D\uDD34 Red Flags</h5><p style="font-size:12px;color:var(--text2);margin-top:6px;line-height:1.6">${redMatch[1].trim()}</p></div>`;
-if(greenMatch)h+=`<div class="ic" style="border-left:4px solid var(--green);padding:12px"><h5 style="color:var(--green)">\uD83D\uDFE2 Green Flags</h5><p style="font-size:12px;color:var(--text2);margin-top:6px;line-height:1.6">${greenMatch[1].trim()}</p></div>`;
-h+=`</div>`}
-
-// What They're NOT Telling You
-if(hiddenMatch){
-h+=`<div class="ic" style="border-left:4px solid var(--amber);padding:14px;background:rgba(245,158,11,.04)"><h5 style="color:var(--amber)">\uD83D\uDD75\uFE0F What They're NOT Telling You</h5>
-<p style="font-size:13px;color:var(--text2);margin-top:6px;line-height:1.7">${hiddenMatch[1].trim()}</p></div>`}
-
-// Investment Inference
-if(inferMatch){
-const txt=inferMatch[1].trim().toLowerCase();
-const infSig=txt.includes('trust')||txt.includes('building value')||txt.includes('confident')?'good':txt.includes('decline')||txt.includes('distrust')||txt.includes('avoid')?'concern':'caution';
-const [iClr,iIcon]=rs(infSig);
-h+=`<div class="ic" style="border-left:4px solid ${iClr};padding:14px;background:${iClr}08"><h5 style="color:${iClr}">${iIcon} Investment Inference from Management</h5>
-<p style="font-size:13px;color:var(--text2);margin-top:6px;line-height:1.7">${inferMatch[1].trim()}</p></div>`}
-
-// Fallback
-if(!h||h.length<200){
-h+=`<div class="ic pu" style="padding:14px"><p style="font-size:13px;color:var(--text2);line-height:1.7">${mgmtText.slice(0,1200).replace(/[#*│┌┐└┘├┤─┬┴┼]/g,'').trim()}</p></div>`}
-
-el.innerHTML=h}
+// populateFundamentals is defined below after colorizeText
+// populateManagement is defined below after colorizeText
 
 // CHARTS (5 total) - with beginner-friendly tooltips
 function createCharts(d){
@@ -1090,59 +899,100 @@ el.innerHTML=html;
 function populateManagement(rawText){
 const el=document.getElementById('mgmtContent');
 if(!el)return;
-// Extract section from MANAGEMENT TONE to next major section or end
-let section='';
+
+// Extract management section
 const mgmtStart=rawText.search(/MANAGEMENT TONE|🎙️|CEO\/CFO Confidence/i);
-const mgmtEnd=rawText.search(/(?:TECHNICAL|DISCLAIMER|INVESTMENT STRATEGY|VALUATION|PRICE TARGET|The Bottom Line|OVERALL)/i);
-if(mgmtStart!==-1){
-const endIdx=mgmtEnd>mgmtStart?mgmtEnd:mgmtStart+3000;
-section=rawText.substring(mgmtStart,endIdx);
-}
-if(!section||section.length<50){
-el.innerHTML='<div class="ic pu"><p style="color:var(--text3)">Management tone analysis not available for this stock.</p></div>';
-return;
-}
-const lines=section.split('\n').filter(l=>l.trim()&&l.trim().length>10&&!/^[-═─#]+$/.test(l.trim()));
-let html='';
-// Detect confidence level
-let confLevel='',confColor='',confBg='';
-if(/🟢|bullish|confident|strong|aggressive/i.test(section.substring(0,500))){
-confLevel='🟢 BULLISH';confColor='var(--green)';confBg='rgba(16,185,129,.1)';
-}else if(/🔴|defensive|bearish|concern|weak|evasive/i.test(section.substring(0,500))){
-confLevel='🔴 DEFENSIVE';confColor='var(--red)';confBg='rgba(239,68,68,.1)';
-}else{
-confLevel='🟡 CAUTIOUS';confColor='var(--amber)';confBg='rgba(245,158,11,.1)';
-}
-// Confidence badge
-html+=`<div style="display:flex;align-items:center;gap:12px;padding:14px 18px;border-radius:10px;background:${confBg};border:1px solid ${confColor}30;margin-bottom:16px">
-<span style="font-size:28px">${confLevel.split(' ')[0]}</span>
-<div><div style="font-family:'Sora',sans-serif;font-size:14px;font-weight:700;color:${confColor}">${confLevel}</div>
-<div style="font-size:11px;color:var(--text3)">CEO/CFO Confidence Level</div></div></div>`;
-// Parse into themed blocks
-const mgmtBlocks=[
-{key:/Earnings Call.*Tone|Language.*Sentiment|tone.*analysis|buzzword|language.*pattern/i,title:'Earnings Call Tone',icon:'pu'},
-{key:/Green Flag|positive.*signal|insider.*buying|buyback|dividend.*raise/i,title:'Green Flags',icon:'gr'},
-{key:/Red Flag|dodg|evasi|vague|deflect|departure|changing.*metric|excuse/i,title:'Red Flags',icon:'rd'},
-{key:/Not Telling|avoiding|between the lines|hiding|deflect/i,title:'What They\'re NOT Telling You',icon:'am'},
-{key:/Investment Inference|management.*credibility|trust|building.*value|managing.*decline/i,title:'Investment Inference',icon:'bl'}
+if(mgmtStart===-1){el.innerHTML='<div class="ic pu"><p style="color:var(--text3)">Management tone analysis not available for this stock.</p></div>';return}
+const afterMgmt=rawText.substring(mgmtStart);
+const mgmtEnd=afterMgmt.search(/\n##[^#]|TECHNICAL ANALYSIS|DISCLAIMER|PRICE TARGET|The Bottom Line|OVERALL ASSESSMENT/i);
+const section=afterMgmt.substring(0,mgmtEnd>100?mgmtEnd:3000);
+
+// Clean and split into heading:content pairs
+const cleaned=section.replace(/[│┌┐└┘├┤─┬┴┼═]/g,'').replace(/^#+\s*/gm,'');
+const blocks=[];
+const parts=cleaned.split(/\*\*([^*]+)\*\*/);
+for(let i=1;i<parts.length;i+=2){
+const heading=(parts[i]||'').replace(/[:*]/g,'').trim();
+const content=(parts[i+1]||'').replace(/^\s*[:]\s*/,'').trim().split('\n').filter(l=>l.trim().length>5).join(' ').trim();
+if(heading&&content&&content.length>10)blocks.push({heading,content})}
+
+// If no **bold** parsing worked, try line-by-line
+if(blocks.length<2){
+const lines=cleaned.split('\n').filter(l=>l.trim().length>15&&!/^MANAGEMENT|^🎙️|^---/i.test(l.trim()));
+lines.forEach(l=>{
+const colonSplit=l.match(/^([^:]{5,50}):\s*(.{15,})/);
+if(colonSplit)blocks.push({heading:colonSplit[1].trim(),content:colonSplit[2].trim()});
+else if(l.trim().length>30)blocks.push({heading:'',content:l.trim()})
+})}
+
+// Detect overall confidence
+let confLevel='🟡 CAUTIOUS',confColor='var(--amber)',confBg='rgba(245,158,11,.08)';
+const top=section.substring(0,600).toLowerCase();
+if(/🟢|bullish|confident|strong momentum|aggressive/i.test(top)){confLevel='🟢 BULLISH';confColor='var(--green)';confBg='rgba(16,185,129,.08)'}
+else if(/🔴|defensive|bearish|evasive|weak|concerning/i.test(top)){confLevel='🔴 DEFENSIVE';confColor='var(--red)';confBg='rgba(239,68,68,.08)'}
+
+// Map headings to visual themes
+const themeMap=[
+{match:/confidence|ceo.*cfo|cfo.*ceo/i,icon:'👔',color:'var(--blue)',border:'rgba(59,130,246,.3)',bg:'rgba(59,130,246,.05)'},
+{match:/language|sentiment|tone.*analy/i,icon:'🗣️',color:'var(--purple)',border:'rgba(139,92,246,.3)',bg:'rgba(139,92,246,.05)'},
+{match:/forward.*guidance|outlook|raising|sandbagging/i,icon:'🔮',color:'var(--cyan)',border:'rgba(6,182,212,.3)',bg:'rgba(6,182,212,.05)'},
+{match:/buzzword|keyword|phrase/i,icon:'💬',color:'var(--blue)',border:'rgba(59,130,246,.3)',bg:'rgba(59,130,246,.05)'},
+{match:/red flag|warning|dodg|evasiv|concern/i,icon:'🔴',color:'var(--red)',border:'rgba(239,68,68,.3)',bg:'rgba(239,68,68,.05)'},
+{match:/green flag|positive|insider.*buy|buyback|dividend/i,icon:'🟢',color:'var(--green)',border:'rgba(16,185,129,.3)',bg:'rgba(16,185,129,.05)'},
+{match:/not telling|hiding|avoiding|between.*line|deflect/i,icon:'🕵️',color:'var(--amber)',border:'rgba(245,158,11,.3)',bg:'rgba(245,158,11,.05)'},
+{match:/investment.*inference|credibility|trust|verdict|recommend/i,icon:'⚖️',color:'var(--green)',border:'rgba(16,185,129,.3)',bg:'rgba(16,185,129,.05)'}
 ];
-let usedLines=new Set();
-const paras=lines.filter(l=>!l.includes('│')&&!/^MANAGEMENT|^🎙️/i.test(l.trim()));
-mgmtBlocks.forEach(b=>{
-const matching=paras.filter((p,i)=>!usedLines.has(i)&&b.key.test(p));
-if(matching.length>0){
-matching.forEach(m=>{usedLines.add(paras.indexOf(m))});
-const content=matching.slice(0,3).join(' ');
-html+=`<div class="ic ${b.icon}"><h5>${b.title}</h5><p style="font-size:13px;line-height:1.7">${colorizeText(content)}</p></div>`;
-}
-});
-// Remaining content
-const remaining=paras.filter((p,i)=>!usedLines.has(i)&&p.length>25&&!/MANAGEMENT TONE/i.test(p));
-if(remaining.length>0){
-html+=`<div class="ic pu"><h5>Management Analysis</h5><p style="font-size:13px;line-height:1.7">${colorizeText(remaining.slice(0,5).join(' '))}</p></div>`;
-}
-el.innerHTML=html;
-}
+const defaultTheme={icon:'📋',color:'var(--text2)',border:'var(--border)',bg:'var(--surface)'};
+
+function getTheme(heading,content){
+const test=heading+' '+content;
+for(const t of themeMap){if(t.match.test(test))return t}
+return defaultTheme}
+
+let html='';
+
+// Confidence badge at top
+html+=`<div style="display:flex;align-items:center;gap:14px;padding:16px 20px;border-radius:12px;background:${confBg};border:1px solid ${confColor}25;margin-bottom:16px">
+<span style="font-size:32px">${confLevel.split(' ')[0]}</span>
+<div><div style="font-family:'Sora',sans-serif;font-size:16px;font-weight:700;color:${confColor};letter-spacing:.3px">${confLevel.split(' ').slice(1).join(' ')}</div>
+<div style="font-size:12px;color:var(--text3);margin-top:2px">CEO/CFO Confidence Level</div></div></div>`;
+
+// Render each block as a themed card
+let redFlags='',greenFlags='';
+blocks.forEach(b=>{
+const theme=getTheme(b.heading,b.content);
+const h=b.heading.replace(/[🟢🟡🔴]/g,'').trim();
+
+// Collect red/green flags for side-by-side display
+if(/red flag/i.test(b.heading)){redFlags=b.content;return}
+if(/green flag/i.test(b.heading)){greenFlags=b.content;return}
+
+html+=`<div style="border-left:4px solid ${theme.border};border-radius:10px;padding:16px 18px;margin-bottom:12px;background:${theme.bg}">
+<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+<span style="font-size:18px">${theme.icon}</span>
+<span style="font-family:'Sora',sans-serif;font-size:14px;font-weight:700;color:${theme.color}">${h||'Analysis'}</span>
+</div>
+<p style="font-size:13px;color:var(--text2);line-height:1.8;margin:0">${colorizeText(b.content)}</p>
+</div>`});
+
+// Red & Green flags side by side
+if(redFlags||greenFlags){
+html+=`<div style="display:grid;grid-template-columns:${redFlags&&greenFlags?'1fr 1fr':'1fr'};gap:10px;margin-bottom:12px">`;
+if(redFlags)html+=`<div style="border-left:4px solid rgba(239,68,68,.4);border-radius:10px;padding:14px 16px;background:rgba(239,68,68,.04)">
+<div style="display:flex;align-items:center;gap:6px;margin-bottom:8px"><span style="font-size:16px">🔴</span><span style="font-family:'Sora',sans-serif;font-size:13px;font-weight:700;color:var(--red)">Red Flags</span></div>
+<p style="font-size:12px;color:var(--text2);line-height:1.7;margin:0">${colorizeText(redFlags)}</p></div>`;
+if(greenFlags)html+=`<div style="border-left:4px solid rgba(16,185,129,.4);border-radius:10px;padding:14px 16px;background:rgba(16,185,129,.04)">
+<div style="display:flex;align-items:center;gap:6px;margin-bottom:8px"><span style="font-size:16px">🟢</span><span style="font-family:'Sora',sans-serif;font-size:13px;font-weight:700;color:var(--green)">Green Flags</span></div>
+<p style="font-size:12px;color:var(--text2);line-height:1.7;margin:0">${colorizeText(greenFlags)}</p></div>`;
+html+=`</div>`}
+
+// Fallback if very little was parsed
+if(blocks.length<2){
+const fallback=cleaned.split('\n').filter(l=>l.trim().length>20&&!/MANAGEMENT|🎙️/i.test(l)).slice(0,8).join('<br>');
+html+=`<div style="border-left:4px solid var(--border);border-radius:10px;padding:16px 18px;background:var(--surface)">
+<p style="font-size:13px;color:var(--text2);line-height:1.8;margin:0">${colorizeText(fallback)}</p></div>`}
+
+el.innerHTML=html}
 
 // ═══════════════════════════════════════════════
 // COLOR-CODE KEY TERMS IN TEXT
