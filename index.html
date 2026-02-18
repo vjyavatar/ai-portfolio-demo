@@ -91,7 +91,7 @@ nav{position:sticky;top:0;z-index:100;backdrop-filter:blur(24px);-webkit-backdro
 .hero{position:relative;z-index:1;padding:64px 28px 48px;text-align:center}
 .hero-eye{display:inline-flex;align-items:center;gap:6px;background:rgba(59,130,246,0.08);border:1px solid rgba(59,130,246,0.2);padding:7px 18px;border-radius:100px;font-size:12px;font-weight:600;color:var(--blue);margin-bottom:24px;letter-spacing:.3px}
 .hero h1{font-family:'Sora',sans-serif;font-size:clamp(32px,5vw,56px);font-weight:800;line-height:1.15;margin-bottom:16px;background:linear-gradient(135deg,#fff 0%,var(--blue) 60%,var(--cyan) 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
-.hero-sub{font-size:16px;color:var(--text2);max-width:580px;margin:0 auto 32px;line-height:1.7}
+.hero-sub{font-size:18px;color:var(--text2);max-width:580px;margin:0 auto 32px;line-height:1.7}
 .hbadges{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
 .hb{display:flex;align-items:center;gap:5px;padding:7px 14px;border-radius:8px;font-size:11px;font-weight:600;letter-spacing:.2px;border:1px solid var(--border);background:var(--glass);color:var(--text2)}
 
@@ -334,7 +334,7 @@ body{-webkit-user-select:none;-moz-user-select:none;-ms-user-select:none;user-se
 <section class="hero">
 <div class="hero-eye"><div class="ldot"></div> Live Market Data &middot; Updated Every Minute</div>
 <h1>Stop Guessing. Start Knowing.</h1>
-<p class="hero-sub">Premium research firms charge hundreds per report for this. You get it in 60 seconds, for free. Real-time data, AI-powered insights, exact buy/sell prices — everything you need to make your next move.</p>
+<p class="hero-sub">Enter any ticker. Get exact buy &amp; sell prices, risk score &amp; profit targets.<br>Reports Wall Street charges $500 for &mdash; yours in 60 seconds, free.</p>
 <div class="hbadges">
 <div class="hb">&#9678; Real-Time Market Data</div>
 <div class="hb">&#9889; AI Deep Analysis</div>
@@ -650,6 +650,23 @@ const html=`
 <div class="sbody"><div id="earningsCard"></div></div></div>
 
 <div class="sbody"><div id="insiderTable"></div></div></div>
+
+<!-- QUARTERLY FUNDAMENTALS -->
+<div class="sc"><div class="sh"><div class="si" style="background:rgba(16,185,129,.1)">&#128200;</div><div class="st" style="color:var(--green)" id="sec-fund">Latest Quarter \u2014 Are They Actually Growing?</div></div>
+<div class="sbody">
+<div class="ic gr"><h5>\u25CF Revenue & Earnings vs Estimates</h5><p>Did they beat or miss? The AI breaks down latest quarter revenue, EPS, and whether management raised or lowered guidance. Surprise factor included.</p></div>
+<div class="ic bl"><h5>\u25CF QoQ Momentum (Quarter vs Quarter)</h5><p>Is the business improving RIGHT NOW? Two consecutive QoQ declines = red flag. Acceleration = bullish signal. The AI tracks revenue, margins, and cash flow quarter by quarter.</p></div>
+<div class="ic am"><h5>\u25CF YoY Structural Trend (vs Last Year)</h5><p>Revenue up but margins shrinking = growth at a cost. Both expanding = strong buy signal. AI compares 7 key metrics YoY to tell you if the company is fundamentally stronger or weaker.</p></div>
+<div class="ic pu"><h5>\u25CF Key Shifts & Inflection Points</h5><p>New revenue streams, market share moves, debt changes, cash flow shifts \u2014 what changed in the business that most investors haven't noticed yet.</p></div>
+</div></div>
+
+<!-- MANAGEMENT TONE -->
+<div class="sc"><div class="sh"><div class="si" style="background:rgba(168,85,247,.1)">&#127908;</div><div class="st" style="color:var(--purple)" id="sec-mgmt">Management Tone \u2014 Read Between the Lines</div></div>
+<div class="sbody">
+<div class="ic pu"><h5>\u25CF CEO/CFO Confidence</h5><p>Are they bullish & specific or vague & defensive? The AI analyzes earnings call language patterns, buzzwords, and red/green flags in management communication.</p></div>
+<div class="ic am"><h5>\u25CF What They're NOT Telling You</h5><p>Dodged questions, changed metrics, sudden departures \u2014 the AI reads between the lines and flags what management is avoiding.</p></div>
+<div class="ic rd"><h5>\u25CF Investment Inference</h5><p>Based on management tone, insider buying/selling patterns, and guidance credibility \u2014 should you trust the forward narrative? AI verdict below.</p></div>
+</div></div>
 
 <!-- AI ANALYSIS -->
 <div class="sc"><div class="sh"><div class="si" style="background:rgba(59,130,246,.1)">&#9889;</div><div class="st" style="color:var(--blue)" id="sec-ai">The Full Picture \u2014 What Most Sites Hide</div></div>

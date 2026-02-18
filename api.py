@@ -554,6 +554,66 @@ CRITICAL INSTRUCTIONS:
 
 ---
 
+## 📈 QUARTERLY FUNDAMENTALS UPDATE
+
+**Latest Earnings Snapshot:**
+
+```
+┌──────────────────────────────────────────────────────┐
+│ Revenue (Last Qtr):    $XXX [vs estimate / beat-miss]│
+│ EPS (Last Qtr):        $XXX [vs estimate / beat-miss]│
+│ Revenue Growth (YoY):  XX%  [accelerating/slowing]   │
+│ Earnings Growth (YoY): XX%  [trend direction]        │
+│ Guidance:              [Raised / Maintained / Lowered]│
+│ Surprise Factor:       [Beat by X% / Missed by X%]  │
+└──────────────────────────────────────────────────────┘
+```
+
+**QoQ vs YoY Trend (Quarter-over-Quarter & Year-over-Year):**
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│ METRIC              QoQ Change    YoY Change    TREND        │
+├──────────────────────────────────────────────────────────────┤
+│ Revenue             +/-XX%        +/-XX%        [↑↓→]        │
+│ Net Income          +/-XX%        +/-XX%        [↑↓→]        │
+│ EPS                 +/-XX%        +/-XX%        [↑↓→]        │
+│ Gross Margin        XX% → XX%    XX% → XX%     [Expanding/  │
+│                                                  Compressing]│
+│ Operating Margin    XX% → XX%    XX% → XX%     [Improving/  │
+│                                                  Declining]  │
+│ Free Cash Flow      $XXX → $XXX  $XXX → $XXX   [↑↓→]        │
+│ Debt-to-Equity      XX → XX      XX → XX       [Deleveraging│
+│                                                  /Loading]   │
+└──────────────────────────────────────────────────────────────┘
+```
+
+**QoQ Momentum Read:** [Is the business improving THIS quarter vs last quarter? Acceleration = bullish. Deceleration even if positive = caution. Two consecutive QoQ declines = red flag.]
+
+**YoY Structural Trend:** [Is the company fundamentally stronger than 1 year ago? Revenue + margin expansion YoY = strong. Revenue up but margins down YoY = growth at a cost. Both declining = avoid.]
+
+**Key Fundamental Shifts:** [What changed fundamentally in the last 1-2 quarters — margins, debt, cash flow, new revenue streams, market share gains/losses]
+
+---
+
+## 🎙️ MANAGEMENT TONE & OUTLOOK
+
+**CEO/CFO Confidence Level:** [🟢 Bullish / 🟡 Cautious / 🔴 Defensive]
+
+**Earnings Call Tone Analysis:**
+- **Language Sentiment:** [Confident & aggressive OR cautious & hedging OR defensive & excuse-making — cite specific patterns like "strong momentum" vs "challenging headwinds"]
+- **Forward Guidance Tone:** [Are they raising outlook confidently or sandbagging expectations?]
+- **Key Buzzwords Used:** [e.g., "record pipeline", "accelerating growth", "disciplined execution" vs "macro uncertainty", "one-time charges", "restructuring"]
+- **Red Flags in Communication:** [Dodging questions, vague answers, sudden CFO departure, changing metrics, blaming macro]
+- **Green Flags in Communication:** [Specific numbers, confident buyback announcements, insider buying, raising dividends]
+
+**What Management Isn't Telling You:** [Read between the lines — what are they avoiding? What questions did they deflect on earnings calls?]
+
+**Investment Inference from Management Behavior:**
+[Based on tone, body language of guidance, insider transactions, and communication patterns — is this management team building value or managing decline? Should investors trust the forward narrative? Concrete recommendation tied to management credibility.]
+
+---
+
 ## 🎯 ENTRY & EXIT STRATEGY
 
 **Based on LIVE Price: {currency_symbol}{live_data['current_price']:,.2f}**
