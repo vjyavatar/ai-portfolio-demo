@@ -537,7 +537,7 @@ showStatus(m,'error')}finally{btn.disabled=false;btn.textContent='Analyze \u2192
 
 function displayReport(data){const d=data.live_data,curr=d.currency==='INR'?'\u20B9':'$',price=d.current_price;
 document.getElementById('tickerTag').textContent=d.ticker;document.getElementById('companyName').textContent=d.company_name||d.ticker;
-const srcLabel=d.data_source==='yfinance'?'':'d.data_source==='yahoo_direct_full'?'':'d.data_source==='yahoo_chart_only'?' (chart)':d.data_source==='yahoo_scrape'?' (alt)':d.data_source==='stale_cache'?' (cached)':'';
+const srcLabel=d.data_source==='yahoo_chart_only'?' (chart)':d.data_source==='yahoo_scrape'?' (alt)':d.data_source==='stale_cache'?' (cached)':'';
 document.getElementById('timestamp').innerHTML='<div class="ldot"></div> LIVE'+srcLabel+' \u00B7 '+d.data_timestamp;
 
 // 8 METRICS (expanded from 4)
