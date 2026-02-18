@@ -429,8 +429,9 @@ footer{position:relative;z-index:1;margin-top:32px;background:rgba(6,10,19,.95);
 
 <section class="hero">
 <div class="hero-eye"><div class="ldot"></div> Live Market Data &middot; Updated Every Minute</div>
-<h1>Wall Street Intelligence for Your Wallet.</h1>
+<h1>Master Global Equities in 60 Seconds.</h1>
 <p class="hero-sub" style="font-size:16px;line-height:1.8;max-width:620px">Precision Entry &amp; Exit Targets &middot; Institutional Risk Profiling &middot; Earnings Alpha &middot; Insider Sentiment<br><span style="color:var(--text3);font-size:14px">Institutional-grade reports at the speed of thought.</span></p>
+<p style="font-size:13px;font-weight:700;letter-spacing:1.5px;color:var(--cyan);margin:12px 0 16px;text-transform:uppercase">Wall Street Intelligence for Your Wallet</p>
 <div class="hbadges">
 <div class="hb" style="border-color:rgba(16,185,129,.3);color:var(--green)">&#10003; Zero Signup &middot; Zero Cost</div>
 <div class="hb" style="border-color:rgba(59,130,246,.3);color:var(--blue)">&#9889; 60-Second Deep Dive</div>
@@ -815,7 +816,7 @@ const html=`
 </div></div>
 
 <!-- FUND HOLDINGS -->
-<div class="sc" data-tab="next"><div class="sh"><div class="si" style="background:rgba(59,130,246,.1)">&#127974;</div><div class="st" style="color:var(--blue)" id="sec-funds">Top Fund &amp; Institutional Holdings</div></div>
+<div class="sc" data-tab="mgmt"><div class="sh"><div class="si" style="background:rgba(59,130,246,.1)">&#127974;</div><div class="st" style="color:var(--blue)" id="sec-funds">Top Fund &amp; Institutional Holdings</div></div>
 <div class="sbody">
 <div id="fundHoldingsContent"><div class="ic bl" style="text-align:center"><p style="color:var(--text3)">&#9203; Loading fund holdings...</p></div></div>
 </div></div>
@@ -865,7 +866,7 @@ document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
 // Show selected tab sections
 document.querySelectorAll('.sc[data-tab="'+tab+'"]').forEach(s=>s.classList.add('tab-visible'));
 // Activate selected button
-const btnMap={quick:'tabBtnQuick',deep:'tabBtnDeep',mgmt:'tabBtnMgmt',gems:'tabBtnGems'};
+const btnMap={quick:'tabBtnQuick',deep:'tabBtnDeep',mgmt:'tabBtnMgmt',next:'tabBtnNext',gems:'tabBtnGems'};
 if(btnMap[tab])document.getElementById(btnMap[tab]).classList.add('active');
 // Scroll to tab bar (not graphs above)
 const tb=document.querySelector('.tab-bar');
