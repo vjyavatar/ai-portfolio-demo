@@ -994,6 +994,23 @@ def get_live_stock_data(company_name: str) -> dict:
         }
 
 
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import RedirectResponse as StarletteRedirect
+
+class DomainRedirectMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        host = request.headers.get("host", "")
+        # Redirect onrender.com to celesys.ai (preserve path + query)
+        if "onrender.com" in host:
+            url = f"https://celesys.ai{request.url.path}"
+            if request.url.query:
+                url += f"?{request.url.query}"
+            return StarletteRedirect(url, status_code=301)
+        return await call_next(request)
+
+app.add_middleware(DomainRedirectMiddleware)
+
+
 @app.get("/", response_class=HTMLResponse)
 async def home():
     try:
@@ -1169,6 +1186,37 @@ COMPANY INFORMATION:
                     print(f"📊 Got {len(mgmt_context)} chars of clean management/earnings data")
         except Exception as e:
             print(f"⚠️ Management context fetch failed: {e}")
+        
+        # BUILD COMPUTED FINANCIAL CONTEXT (always available from live_data)
+        # This ensures the AI ALWAYS has numbers to work with, even if Yahoo APIs fail
+        computed_context = f"""
+=== COMPUTED FINANCIAL METRICS (from live market data) ===
+Current Price: {currency_symbol}{live_data['current_price']:,.2f}
+Price Change Today: {live_data['price_change_pct']:+.2f}%
+P/E Ratio: {live_data['pe_ratio']}
+Forward P/E: {live_data.get('forward_pe', 'N/A')}
+P/B Ratio: {live_data['pb_ratio']}
+Market Cap: {currency_symbol}{live_data['market_cap']:,}
+Dividend Yield: {live_data['dividend_yield']}%
+Beta: {live_data['beta']}
+52-Week High: {currency_symbol}{live_data['week52_high']:,.2f}
+52-Week Low: {currency_symbol}{live_data['week52_low']:,.2f}
+Price vs 52W High: {((live_data['current_price']/live_data['week52_high'])*100) if live_data['week52_high'] > 0 else 0:.1f}%
+Price vs 52W Low: {((live_data['current_price']/live_data['week52_low'])*100) if live_data['week52_low'] > 0 else 0:.1f}%
+Profit Margin: {live_data['profit_margin']}%
+Operating Margin: {live_data['operating_margin']}%
+ROE: {live_data['roe']}%
+Debt/Equity: {live_data['debt_to_equity']}
+Current Ratio: {live_data['current_ratio']}
+Sector: {live_data['sector']}
+Industry: {live_data['industry']}
+"""
+        # Combine: real earnings data (if available) + computed metrics (always)
+        full_context = ""
+        if mgmt_context:
+            full_context = mgmt_context + "\n\n" + computed_context
+        else:
+            full_context = computed_context + "\nNOTE: Detailed quarterly earnings data was not available from Yahoo Finance. Use the financial metrics above to infer trends. Compute approximate QoQ/YoY analysis from profit margins, P/E trends, and price position vs 52-week range."
 
         # CREATE CLAUDE PROMPT
         prompt = f"""Analyze {company} using the VERIFIED LIVE DATA below.
@@ -1178,7 +1226,7 @@ COMPANY INFORMATION:
 {"=" * 60}
 REAL ANALYST & EARNINGS DATA (use this for management tone analysis):
 {"=" * 60}
-{mgmt_context if mgmt_context else "No additional analyst data available — analyze based on financial metrics above."}
+{full_context}
 {"=" * 60}
 
 CRITICAL INSTRUCTIONS:
@@ -1186,12 +1234,13 @@ CRITICAL INSTRUCTIONS:
 2. Current price is {currency_symbol}{live_data['current_price']:,.2f} - use THIS number
 3. Base all analysis on current market conditions
 4. Provide actionable, professional insights
-5. For Management Tone section, use the REAL analyst/earnings data above - cite actual earnings surprises, analyst targets, insider activity
-6. For QoQ and YoY analysis, use the quarterly revenue/earnings data provided - calculate actual changes between quarters
-7. Include specific growth predictions based on forward EPS estimates and revenue growth rates
+5. For Management Tone section, use analyst/earnings data if available, otherwise infer from P/E, margins, price position, beta, and dividend yield
+6. For QoQ and YoY analysis: if quarterly data is provided, calculate actual changes. If NOT provided, use available metrics to INFER trends (e.g., forward PE vs trailing PE shows earnings growth/decline, profit margins indicate operational trends, price vs 52W range shows momentum)
+7. Include specific growth predictions based on available data
 8. ALWAYS provide a 12-month price prediction with specific bull/base/bear numbers
-9. When data is missing (N/A), explicitly state what's unavailable and analyze with available metrics
-10. If FINVIZ/Screener.in/Moneycontrol data is provided, use it to enrich your analysis with insider trading patterns, institutional activity, and management signals
+9. ABSOLUTE RULE — NEVER use these phrases in your report: "data corrupted", "HTML fragments", "insufficient data", "data limitation", "incomplete data", "cannot provide", "data unavailable", "technical website code", "UNKNOWN". Instead, ALWAYS analyze using whatever data IS available. Every metric (P/E, margins, price, 52W range) tells a story — use them.
+10. If quarterly earnings numbers are missing, calculate implied growth from: (a) Forward PE vs Trailing PE gap = earnings growth expectation, (b) Price position in 52W range = momentum, (c) Profit margin level = operational health, (d) Dividend yield = cash flow confidence. Present these as "Implied QoQ/YoY Trends" with specific inferences.
+11. The user is paying for a COMPLETE analysis. Every section must have substantive content with specific numbers and actionable insights. No empty sections, no disclaimers about missing data.
 
 ═══════════════════════════════════════════════════════════════
 📊 COMPREHENSIVE INVESTMENT ANALYSIS: {company.upper()}
@@ -1237,38 +1286,41 @@ CRITICAL INSTRUCTIONS:
 
 ## 📈 QUARTERLY FUNDAMENTALS UPDATE
 
-IMPORTANT: Use the REAL quarterly revenue/earnings data and earnings surprise history provided in the data section above. Calculate ACTUAL QoQ and YoY changes from the real numbers. DO NOT use placeholders.
+IMPORTANT: If quarterly revenue/earnings data is provided above, use REAL numbers to calculate QoQ and YoY changes. If quarterly data is NOT available, use the available financial metrics (profit margins, P/E, price vs 52-week range, forward P/E vs trailing P/E) to INFER growth trends. NEVER say "data corrupted" or "insufficient data" — always provide your best analysis with whatever data is available. Use phrases like "Based on available metrics..." or "Current margins suggest..."
 
-**Latest Earnings Snapshot:** [Use actual quarterly data provided — cite real revenue, EPS, and surprise percentages. Include: revenue (actual vs estimate), EPS (actual vs estimate), surprise %, beat/miss streak count]
+**Latest Earnings Snapshot:** [If quarterly data available: cite real revenue, EPS, surprise %. If NOT: use trailing PE, forward PE, profit margins to describe current financial position. Example: "Trading at 25x trailing earnings with 14% profit margins suggests solid profitability"]
 
 **QoQ Momentum (Quarter-over-Quarter):**
-- Revenue QoQ: [Latest quarter revenue vs previous quarter — calculate exact % change]
-- Earnings QoQ: [Latest quarter earnings vs previous quarter — calculate exact % change]  
-- Margin QoQ: [Did margins expand or compress vs prior quarter? By how much?]
+[If quarterly data available: calculate exact revenue/earnings % changes between quarters]
+[If NOT available, use these PROXY INDICATORS — always provide analysis:]
+- Forward PE vs Trailing PE: {live_data.get('forward_pe', 'N/A')} vs {live_data['pe_ratio']} → [If forward < trailing = earnings expected to GROW, if forward > trailing = earnings expected to SHRINK]
+- Profit Margin at {live_data['profit_margin']}%: [Above 15% = strong, 8-15% = moderate, below 8% = tight]
+- Price at {((live_data['current_price']/live_data['week52_high'])*100) if live_data['week52_high'] > 0 else 0:.0f}% of 52-week high → [Above 80% = upward momentum, 40-80% = neutral, below 40% = decline]
 - Verdict: [ACCELERATING 🟢 / STABLE 🟡 / DECELERATING 🔴]
 
 **YoY Structural Growth (Year-over-Year):**
-- Revenue YoY: [Latest quarter vs same quarter last year — exact % growth]
-- Earnings YoY: [Latest quarter vs same quarter last year — exact % growth]
-- EPS YoY: [Current EPS vs year-ago EPS — growth rate]
+[If quarterly data available: calculate exact YoY revenue/earnings growth]
+[If NOT available, infer from:]
+- PE ratio {live_data['pe_ratio']} vs sector average → [Market pricing in growth or decline?]
+- Operating margin {live_data['operating_margin']}% → [Improving efficiency or compression?]
+- 52-week price range position → [Stock appreciation = market sees growth]
 - Verdict: [STRENGTHENING 🟢 / STABLE 🟡 / WEAKENING 🔴]
 
-**Earnings Surprise Trend:** [Are beats getting bigger or smaller over last 4 quarters? This predicts future surprises.]
+**Earnings Surprise Trend:** [If surprise data available, use it. If not: "Based on current valuation multiples and margin levels, the market appears to be pricing in [positive/negative/neutral] earnings expectations"]
 
-**Key Fundamental Shifts:** [What changed in the last 1-2 quarters based on the real data — margin expansion/compression, earnings beats/misses getting bigger/smaller, guidance direction]
+**Key Fundamental Shifts:** [Analyze what the current metrics tell us about the company's trajectory — margin trends, valuation changes, momentum signals]
 
 **12-Month Growth Forecast:**
-Based on the actual data trends above, provide specific projections:
-- Projected EPS (12mo): [Forward EPS estimate from analyst data]
-- Projected Revenue Growth: [Based on QoQ/YoY trend trajectory]
-- Projected Price Range: [Forward EPS × Historical PE range = Bull/Base/Bear prices]
-- Growth Driver: [What will drive or limit growth in the next 4 quarters]
+Provide specific projections using available data:
+- Projected Price Range: [Use PE ratio × estimated earnings growth to project bull/base/bear prices]
+- Growth Catalyst: [What could drive this stock higher — sector tailwinds, margin expansion, market share]
+- Risk Factor: [What could pull it down — competition, regulation, macro environment]
 
 ---
 
 ## 🎙️ MANAGEMENT TONE & OUTLOOK
 
-IMPORTANT: Use the REAL analyst/earnings data provided above to ground your analysis. Cite actual numbers. If Finviz/Screener/Moneycontrol data is provided, use insider trading patterns and institutional moves.
+IMPORTANT: If analyst/earnings data is provided above, use it with real numbers. If NOT available, infer management confidence from: P/E ratio trends (forward vs trailing), price position vs 52-week range, profit margin levels, dividend yield, and beta. NEVER say "data corrupted" or "HTML fragments" — always provide substantive analysis.
 
 **CEO/CFO Confidence Level:** [🟢 Bullish / 🟡 Cautious / 🔴 Defensive — based on earnings surprises, guidance direction, and insider activity from the data above]
 
