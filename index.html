@@ -178,6 +178,9 @@ nav{position:sticky;top:0;z-index:100;backdrop-filter:blur(24px);-webkit-backdro
 .tab-btn{flex:1;padding:14px 20px;border:none;border-radius:9px;cursor:pointer;font-family:'Sora',sans-serif;font-size:14px;font-weight:700;transition:all .3s;background:transparent;color:var(--text3);letter-spacing:.3px;display:flex;align-items:center;justify-content:center;gap:8px}
 .tab-btn.active{background:linear-gradient(135deg,rgba(59,130,246,.2),rgba(139,92,246,.15));color:var(--text1);box-shadow:0 2px 12px rgba(59,130,246,.15)}
 .tab-btn:hover:not(.active){background:rgba(255,255,255,.03);color:var(--text2)}
+.tab-btn{position:relative}
+.tab-btn::after{content:attr(title);position:absolute;bottom:calc(100% + 10px);left:50%;transform:translateX(-50%);background:var(--surface);color:var(--text2);font-size:11px;font-weight:400;padding:8px 14px;border-radius:8px;border:1px solid var(--border);white-space:nowrap;max-width:280px;white-space:normal;text-align:center;line-height:1.5;opacity:0;pointer-events:none;transition:opacity .2s;z-index:100;box-shadow:0 4px 16px rgba(0,0,0,.4)}
+.tab-btn:hover::after{opacity:1}
 .tab-panel{display:none}.tab-panel.active{display:block}
 .go-deeper-btn{display:block;width:100%;margin:18px 0;padding:16px;border:2px dashed rgba(139,92,246,.4);border-radius:12px;background:rgba(139,92,246,.06);color:var(--purple);font-family:'Sora',sans-serif;font-size:15px;font-weight:700;cursor:pointer;transition:all .3s;text-align:center}
 .go-deeper-btn:hover{background:rgba(139,92,246,.12);border-color:var(--purple);transform:translateY(-1px)}
@@ -584,12 +587,14 @@ if(pe>0&&pe<15&&d.price_change_pct>0){verdict='BUY';vc='buy'}else if(pe>40||d.pr
 const html=`
 <!-- TAB BAR -->
 <div class="tab-bar">
-<button class="tab-btn active" onclick="switchTab('quick')" id="tabBtnQuick">\u26A1 Quick Intel</button>
-<button class="tab-btn" onclick="switchTab('deep')" id="tabBtnDeep">\uD83D\uDD2C Deep Research</button>
+<button class="tab-btn" onclick="switchTab('quick')" id="tabBtnQuick" title="Investment verdict, 5 key insights, valuation, buy/sell prices, risk score & AI color-coded breakdown">\u26A1 Quick Intel</button>
+<button class="tab-btn" onclick="switchTab('deep')" id="tabBtnDeep" title="Quarterly earnings snapshot, QoQ vs YoY trends, full AI deep-dive report">\uD83D\uDD2C Deep Research</button>
+<button class="tab-btn" onclick="switchTab('mgmt')" id="tabBtnMgmt" title="CEO/CFO confidence level, earnings call tone, red & green flags, what management is hiding">\uD83C\uDFA4 Management Read</button>
+<button class="tab-btn" onclick="switchTab('gems')" id="tabBtnGems" title="Under-the-radar small-cap picks in the same sector with growth potential ratings">\u2B50 Hidden Gems</button>
 </div>
 
 <!-- TAB 1: QUICK INTEL -->
-<div class="tab-panel active" id="tabQuick">
+<div class="tab-panel" id="tabQuick">
 
 <!-- VERDICT (always open) -->
 <div class="sc" style="text-align:center"><div class="sh" style="justify-content:center"><div class="si" style="background:rgba(16,185,129,.1)">&#9678;</div><div class="st" style="color:var(--green)" id="sec-verdict">Investment Verdict</div></div>
@@ -670,8 +675,6 @@ const html=`
 <div class="sc"><div class="sh"><div class="si" style="background:rgba(59,130,246,.1)">\uD83C\uDF93</div><div class="st" style="color:var(--blue)">AI Verdict Breakdown \u2014 Green, Yellow & Red</div></div>
 <div class="sbody"><div id="aiAnalysisFormatted"></div></div></div>
 
-<button class="go-deeper-btn" onclick="switchTab('deep')">\uD83D\uDD2C Go Deeper \u2014 Quarterly Data, Management Tone & Full AI Report \u2192</button>
-
 </div><!-- END TAB 1: QUICK INTEL -->
 
 <!-- TAB 2: DEEP RESEARCH -->
@@ -681,12 +684,6 @@ const html=`
 <div class="sc"><div class="sh"><div class="si" style="background:rgba(16,185,129,.1)">&#128200;</div><div class="st" style="color:var(--green)" id="sec-fund">Latest Quarter \u2014 Are They Actually Growing?</div></div>
 <div class="sbody">
 <div id="fundContent"><div class="ic bl" style="text-align:center"><p style="color:var(--text3)">&#9203; Analyzing quarterly fundamentals...</p></div></div>
-</div></div>
-
-<!-- MANAGEMENT TONE -->
-<div class="sc"><div class="sh"><div class="si" style="background:rgba(168,85,247,.1)">&#127908;</div><div class="st" style="color:var(--purple)" id="sec-mgmt">Management Tone \u2014 Read Between the Lines</div></div>
-<div class="sbody">
-<div id="mgmtContent"><div class="ic pu" style="text-align:center"><p style="color:var(--text3)">&#9203; Analyzing management tone...</p></div></div>
 </div></div>
 
 <!-- AI ANALYSIS -->
@@ -702,17 +699,29 @@ const html=`
 <div id="fullAIraw" class="ait" style="display:none;margin-top:10px;max-height:400px;overflow-y:auto;padding-right:8px">${report}</div>
 </div></div></div>
 
-<!-- SMALL CAPS -->
-<div class="sc"><div class="sh"><div class="si" style="background:rgba(245,158,11,.1)">\u2605</div><div class="st" style="color:var(--amber)" id="sec-gems">Hidden Gems \u2014 Small-Caps That Could 10x</div></div>
+</div><!-- END TAB 2: DEEP RESEARCH -->
+
+<!-- TAB 3: MANAGEMENT READ -->
+<div class="tab-panel" id="tabMgmt">
+
+<div class="sc"><div class="sh"><div class="si" style="background:rgba(168,85,247,.1)">&#127908;</div><div class="st" style="color:var(--purple)" id="sec-mgmt">Management Tone \u2014 Read Between the Lines</div></div>
+<div class="sbody">
+<div id="mgmtContent"><div class="ic pu" style="text-align:center"><p style="color:var(--text3)">&#9203; Analyzing management tone...</p></div></div>
+</div></div>
+
+</div><!-- END TAB 3: MANAGEMENT READ -->
+
+<!-- TAB 4: HIDDEN GEMS -->
+<div class="tab-panel" id="tabGems">
+
+<div class="sc"><div class="sh"><div class="si" style="background:rgba(245,158,11,.1)">\u2B50</div><div class="st" style="color:var(--amber)" id="sec-gems">Hidden Gems \u2014 Small-Caps That Could 10x</div></div>
 <div class="sbody">
 <p style="font-size:12px;color:var(--text3);margin-bottom:14px">Under-the-radar picks in <strong id="smallCapSector" style="color:var(--amber)">${d.sector}</strong>:</p>
 <div id="smallCapTable"></div>
 <div class="ic am" style="margin-top:14px"><p><strong>Real talk:</strong> Small-caps = high risk, high reward. Same sector as <strong id="smallCapTicker">${d.ticker}</strong>. Only invest what you can lose. Spread across 5\u20138 picks. Think 10+ years.</p></div>
 </div></div>
 
-<button class="go-deeper-btn" onclick="switchTab('quick')" style="border-color:rgba(59,130,246,.4);background:rgba(59,130,246,.06);color:var(--blue)">\u26A1 Back to Quick Intel</button>
-
-</div><!-- END TAB 2: DEEP RESEARCH -->
+</div><!-- END TAB 4: HIDDEN GEMS -->
 `;
 
 document.getElementById('analysisContainer').innerHTML=html;
@@ -727,12 +736,11 @@ generateSmallCapRecommendations(d)}
 function switchTab(tab){
 document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));
 document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
-if(tab==='quick'){
-document.getElementById('tabQuick').classList.add('active');
-document.getElementById('tabBtnQuick').classList.add('active');
-}else{
-document.getElementById('tabDeep').classList.add('active');
-document.getElementById('tabBtnDeep').classList.add('active');
+const map={quick:'tabQuick',deep:'tabDeep',mgmt:'tabMgmt',gems:'tabGems'};
+const btnMap={quick:'tabBtnQuick',deep:'tabBtnDeep',mgmt:'tabBtnMgmt',gems:'tabBtnGems'};
+if(map[tab]){
+document.getElementById(map[tab]).classList.add('active');
+document.getElementById(btnMap[tab]).classList.add('active');
 }
 window.scrollTo({top:document.getElementById('analysisContainer').offsetTop-80,behavior:'smooth'})}
 
