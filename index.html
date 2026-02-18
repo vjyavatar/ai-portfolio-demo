@@ -640,7 +640,7 @@ document.getElementById('timestamp').innerHTML='<div class="ldot"></div> LIVE'+s
 // 8 METRICS (expanded from 4) - graceful N/A handling
 const peDisplay=d.pe_ratio&&d.pe_ratio!=='N/A'&&d.pe_ratio!==0?d.pe_ratio:'—';
 const peLabel=peDisplay==='—'?'<span style="font-size:9px;color:var(--text3)">Data pending</span>':'TTM';
-const mcapDisplay=d.market_cap&&d.market_cap>0?formatCap(d.market_cap):'—';
+const mcapDisplay=d.market_cap&&d.market_cap>0?formatCap(d.market_cap,curr):'—';
 const mcapLabel=mcapDisplay==='—'?'<span style="font-size:9px;color:var(--text3)">Data pending</span>':d.currency;
 document.getElementById('metrics').innerHTML=`
 <div class="mcard"><div class="ml">Price</div><div class="mv">${curr}${price.toLocaleString()}</div><div class="ms ${d.price_change>=0?'up':'dn'}">${d.price_change>=0?'\u25B2':'\u25BC'} ${Math.abs(d.price_change).toFixed(2)} (${d.price_change_pct.toFixed(2)}%)</div></div>
@@ -710,7 +710,7 @@ const html=`
 <ul class="dl">
 <li><strong>Price Action:</strong> Currently ${curr}${price.toLocaleString()} with ${d.price_change>=0?'positive':'negative'} momentum (${d.price_change_pct.toFixed(2)}%)</li>
 <li><strong>Valuation:</strong> P/E of ${d.pe_ratio} suggests ${pe<15?'undervalued opportunity':pe<25?'fair valuation':'premium pricing'}. Forward P/E: ${d.forward_pe||'N/A'}</li>
-<li><strong>Market Position:</strong> ${formatCap(d.market_cap)} market cap \u2014 ${d.market_cap>100e9?'large-cap':d.market_cap>10e9?'mid-cap':'small-cap'}</li>
+<li><strong>Market Position:</strong> ${formatCap(d.market_cap,curr)} market cap \u2014 ${d.market_cap>100e9?'large-cap':d.market_cap>10e9?'mid-cap':'small-cap'}</li>
 <li><strong>Sector:</strong> ${d.sector} \u00B7 ${d.industry}</li>
 <li><strong>Range:</strong> Trading at ${((price/d.week52_high)*100).toFixed(0)}% of 52-week high (Beta: ${d.beta})</li>
 </ul></div></div>
@@ -794,7 +794,7 @@ const html=`
 <!-- AI ANALYSIS -->
 <div class="sc" data-tab="deep"><div class="sh"><div class="si" style="background:rgba(59,130,246,.1)">&#9889;</div><div class="st" style="color:var(--blue)" id="sec-ai">The Full Picture \u2014 What Most Sites Hide</div></div>
 <div class="sbody">
-<div class="ic bl"><h5>Market Position</h5><p>${d.company_name||d.ticker} in ${d.sector} (${d.industry}). At ${curr}${price.toLocaleString()}, ${((price/d.week52_high)*100).toFixed(0)}% of 52-week high. Cap: ${formatCap(d.market_cap)} \u2014 ${d.market_cap>100e9?'large-cap':d.market_cap>10e9?'mid-cap':'small-cap'}.</p></div>
+<div class="ic bl"><h5>Market Position</h5><p>${d.company_name||d.ticker} in ${d.sector} (${d.industry}). At ${curr}${price.toLocaleString()}, ${((price/d.week52_high)*100).toFixed(0)}% of 52-week high. Cap: ${formatCap(d.market_cap,curr)} \u2014 ${d.market_cap>100e9?'large-cap':d.market_cap>10e9?'mid-cap':'small-cap'}.</p></div>
 <div class="ic am"><h5>Making Money?</h5><p>Profit: ${d.profit_margin}% \u00B7 Operating: ${d.operating_margin}% \u00B7 ROE: ${d.roe}%. P/E of ${d.pe_ratio} = ${pe<15?'undervalued':pe<25?'fair value':'premium'}. Dividend: ${d.dividend_yield}%.</p></div>
 <div class="ic gr"><h5>Price Direction</h5><p>${d.price_change>=0?'Positive':'Negative'} momentum (${Math.abs(d.price_change_pct).toFixed(2)}%). ${price<d.week52_low*1.1?'Near lows \u2014 value entry':price>d.week52_high*0.9?'Near highs \u2014 watch resistance':'Mid-range \u2014 balanced'}. Beta: ${d.beta}.</p></div>
 <div class="ic rd"><h5>Red Flags</h5><p>D/E: ${d.debt_to_equity} \u2014 ${parseFloat(d.debt_to_equity)>1.5?'elevated':'manageable'}. Current ratio: ${d.current_ratio} \u2014 ${parseFloat(d.current_ratio)>1.5?'strong':'adequate'} liquidity. Monitor earnings &amp; macro.</p></div>
@@ -1441,7 +1441,7 @@ insights.push({factor:'Position Sizing',status:'Diversify',signal:'neutral',expl
 if(tl.includes('dip')||tl.includes('pullback'))insights.push({factor:'Entry',status:'Buy on Dips',signal:'good',explanation:'Build position on pullbacks for better average entry price.'});
 return insights}
 
-function formatCap(c){if(!c)return'N/A';if(c>=1e12)return'$'+(c/1e12).toFixed(2)+'T';if(c>=1e9)return'$'+(c/1e9).toFixed(2)+'B';if(c>=1e6)return'$'+(c/1e6).toFixed(2)+'M';return'$'+c.toLocaleString()}
+function formatCap(c,sym){const s=sym||'$';if(!c)return'N/A';if(c>=1e12)return s+(c/1e12).toFixed(2)+'T';if(c>=1e9)return s+(c/1e9).toFixed(2)+'B';if(c>=1e6)return s+(c/1e6).toFixed(2)+'M';return s+c.toLocaleString()}
 
 // ==========================================
 // FEATURE VOTING SYSTEM

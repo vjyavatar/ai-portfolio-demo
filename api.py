@@ -101,7 +101,8 @@ def fetch_yahoo_direct(ticker: str) -> dict:
         try:
             modules = 'summaryProfile,financialData,defaultKeyStatistics,summaryDetail,price'
             sr = requests.get(f"https://query2.finance.yahoo.com/v10/finance/quoteSummary/{ticker}?modules={modules}", headers=headers, timeout=8)
-            if sr.status_code == 200:
+            sr_ct = sr.headers.get('content-type', '')
+            if sr.status_code == 200 and 'json' in sr_ct and '<html' not in sr.text[:200].lower():
                 qresult = sr.json().get('quoteSummary', {}).get('result', [])
                 if qresult:
                     r = qresult[0]
@@ -115,14 +116,15 @@ def fetch_yahoo_direct(ticker: str) -> dict:
                         v = d.get(key, {})
                         return v.get('raw', v.get('fmt', default)) if isinstance(v, dict) else (v or default)
                     
-                    # Only override if we didn't get from v6 or values are better
+                    # Always set margins/ROE/debt (these only come from v10)
                     updates = {
                         'sector': profile.get('sector', info.get('sector', 'N/A')),
                         'industry': profile.get('industry', info.get('industry', 'N/A')),
-                        'operatingMargins': raw(fin, 'operatingMargins'),
-                        'returnOnEquity': raw(fin, 'returnOnEquity'),
-                        'debtToEquity': raw(fin, 'debtToEquity'),
-                        'currentRatio': raw(fin, 'currentRatio'),
+                        'profitMargins': raw(fin, 'profitMargins') or info.get('profitMargins', 0),
+                        'operatingMargins': raw(fin, 'operatingMargins') or info.get('operatingMargins', 0),
+                        'returnOnEquity': raw(fin, 'returnOnEquity') or info.get('returnOnEquity', 0),
+                        'debtToEquity': raw(fin, 'debtToEquity') or info.get('debtToEquity', 0),
+                        'currentRatio': raw(fin, 'currentRatio') or info.get('currentRatio', 0),
                     }
                     if not got_fundamentals:
                         updates.update({
@@ -133,13 +135,14 @@ def fetch_yahoo_direct(ticker: str) -> dict:
                             'priceToBook': raw(stats, 'priceToBook') or info.get('priceToBook', 0),
                             'dividendYield': raw(detail, 'dividendYield') or info.get('dividendYield', 0),
                             'beta': raw(stats, 'beta') or info.get('beta', 0),
-                            'profitMargins': raw(fin, 'profitMargins') or info.get('profitMargins', 0),
                             'fiftyTwoWeekHigh': raw(detail, 'fiftyTwoWeekHigh') or info['fiftyTwoWeekHigh'],
                             'fiftyTwoWeekLow': raw(detail, 'fiftyTwoWeekLow') or info['fiftyTwoWeekLow'],
                         })
                     info.update(updates)
                     info['_source'] = 'yahoo_direct_full'
-                    print(f"  v10 summary: sector={info.get('sector')}, ROE={info.get('returnOnEquity')}")
+                    print(f"  v10 summary: sector={info.get('sector')}, margins={info.get('profitMargins')}, ROE={info.get('returnOnEquity')}")
+            else:
+                print(f"  v10 blocked (status={sr.status_code}, ct={sr_ct[:30]})")
         except Exception as e:
             print(f"  v10 summary failed: {e}")
         
@@ -874,10 +877,11 @@ def get_live_stock_data(company_name: str) -> dict:
             except Exception as e:
                 print(f"❌ Source 4 FAILED: {e}")
         
-        # ── FUNDAMENTALS ENRICHMENT: If we got price but missing P/E, Market Cap, etc. ──
+        # ── FUNDAMENTALS ENRICHMENT: If we got price but missing P/E, Market Cap, margins, etc. ──
         if current_price is not None and info is not None:
             has_pe = info.get('trailingPE') and info['trailingPE'] != 0
             has_mcap = info.get('marketCap') and info['marketCap'] != 0
+            has_margins = info.get('profitMargins') and info['profitMargins'] != 0
             
             if not has_pe or not has_mcap:
                 print(f"⚠️ Missing fundamentals (PE={info.get('trailingPE')}, MCap={info.get('marketCap')}). Trying enrichment...")
@@ -902,6 +906,34 @@ def get_live_stock_data(company_name: str) -> dict:
                             info['dividendYield'] = gf_enrich['dividendYield']
                 except Exception as e:
                     print(f"  ⚠️ Google enrichment failed: {e}")
+            
+            # ── MARGIN ENRICHMENT: If margins/ROE still missing, try yfinance directly ──
+            if not has_margins:
+                print(f"⚠️ Missing margins. Trying yfinance .info for margins...")
+                try:
+                    stock_margins = yf.Ticker(ticker_symbol)
+                    margin_info = stock_margins.info
+                    if margin_info:
+                        if not info.get('profitMargins') and margin_info.get('profitMargins'):
+                            info['profitMargins'] = margin_info['profitMargins']
+                            print(f"  ✅ Enriched profit margin: {margin_info['profitMargins']}")
+                        if not info.get('operatingMargins') and margin_info.get('operatingMargins'):
+                            info['operatingMargins'] = margin_info['operatingMargins']
+                            print(f"  ✅ Enriched operating margin: {margin_info['operatingMargins']}")
+                        if not info.get('returnOnEquity') and margin_info.get('returnOnEquity'):
+                            info['returnOnEquity'] = margin_info['returnOnEquity']
+                            print(f"  ✅ Enriched ROE: {margin_info['returnOnEquity']}")
+                        if not info.get('debtToEquity') and margin_info.get('debtToEquity'):
+                            info['debtToEquity'] = margin_info['debtToEquity']
+                        if not info.get('currentRatio') and margin_info.get('currentRatio'):
+                            info['currentRatio'] = margin_info['currentRatio']
+                        if not info.get('beta') and margin_info.get('beta'):
+                            info['beta'] = margin_info['beta']
+                        if not info.get('sector') or info['sector'] == 'N/A':
+                            info['sector'] = margin_info.get('sector', info.get('sector', 'N/A'))
+                            info['industry'] = margin_info.get('industry', info.get('industry', 'N/A'))
+                except Exception as e:
+                    print(f"  ⚠️ yfinance margin enrichment failed: {e}")
         
         # ── ALL SOURCES FAILED: check stale cache ──
         if current_price is None:
@@ -956,15 +988,15 @@ def get_live_stock_data(company_name: str) -> dict:
             "pe_ratio": safe_get('trailingPE') or 'N/A',
             "forward_pe": safe_get('forwardPE') or 'N/A',
             "pb_ratio": safe_get('priceToBook') or 'N/A',
-            "dividend_yield": round(safe_get('dividendYield') * (100 if data_source == 'yfinance' and safe_get('dividendYield') < 1 else 1), 2) if safe_get('dividendYield') else 0,
+            "dividend_yield": round(safe_get('dividendYield') * (100 if safe_get('dividendYield') < 1 else 1), 2) if safe_get('dividendYield') else 0,
             "week52_high": round(week52_high, 2),
             "week52_low": round(week52_low, 2),
             "beta": safe_get('beta') or 'N/A',
             "sector": info.get('sector', 'N/A'),
             "industry": info.get('industry', 'N/A'),
-            "profit_margin": safe_get('profitMargins', 'N/A', is_pct=(data_source=='yfinance')),
-            "operating_margin": safe_get('operatingMargins', 'N/A', is_pct=(data_source=='yfinance')),
-            "roe": safe_get('returnOnEquity', 'N/A', is_pct=(data_source=='yfinance')),
+            "profit_margin": safe_get('profitMargins', 'N/A', is_pct=True),
+            "operating_margin": safe_get('operatingMargins', 'N/A', is_pct=True),
+            "roe": safe_get('returnOnEquity', 'N/A', is_pct=True),
             "debt_to_equity": safe_get('debtToEquity') or 'N/A',
             "current_ratio": safe_get('currentRatio') or 'N/A',
             "data_timestamp": datetime.now().strftime("%B %d, %Y at %I:%M %p UTC"),
