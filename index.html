@@ -49,20 +49,12 @@ ticking=false});ticking=true}
 },{passive:true});
 }
 
-// Anti-copy protection
-document.addEventListener('contextmenu',e=>e.preventDefault());
-document.addEventListener('keydown',e=>{if(e.ctrlKey&&(e.key==='u'||e.key==='s'||e.key==='c'||e.key==='a'||e.key==='p'))e.preventDefault();if(e.key==='F12')e.preventDefault()});
-document.addEventListener('copy',e=>e.preventDefault());
-document.addEventListener('cut',e=>e.preventDefault());
+// User can copy prices and data freely
 </script>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=Sora:wght@600;700;800&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
-// Anti-copy protection
-document.addEventListener('contextmenu',e=>e.preventDefault());
-document.addEventListener('keydown',e=>{if(e.ctrlKey&&(e.key==='u'||e.key==='s'||e.key==='c'||e.key==='a'||e.key==='p'))e.preventDefault();if(e.key==='F12')e.preventDefault()});
-document.addEventListener('copy',e=>e.preventDefault());
-document.addEventListener('cut',e=>e.preventDefault());
+// User can copy prices and data freely
 </script>
 <style>
 :root{--bg:#060a13;--bg2:#0b1120;--bg3:#111a2e;--surface:rgba(11,17,32,0.85);--glass:rgba(11,17,32,0.6);--border:rgba(59,130,246,0.1);--border2:rgba(59,130,246,0.25);--blue:#3b82f6;--blue2:#2563eb;--cyan:#06b6d4;--green:#10b981;--green2:#059669;--amber:#f59e0b;--red:#ef4444;--purple:#8b5cf6;--text:#e2e8f0;--text2:#94a3b8;--text3:#64748b;--mono:'IBM Plex Mono',monospace}
@@ -174,7 +166,11 @@ nav{position:sticky;top:0;z-index:100;backdrop-filter:blur(24px);-webkit-backdro
 .si{width:34px;height:34px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0}
 .st{font-family:'Sora',sans-serif;font-size:14px;font-weight:700;letter-spacing:-.2px;flex:1}
 .sbody{padding:16px 24px 24px;overflow:visible}
-.tab-bar{display:flex;gap:6px;margin-bottom:18px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:6px;position:sticky;top:0;z-index:10}
+.tab-bar{display:flex;gap:6px;margin-bottom:0;background:var(--bg2);border:1px solid var(--border);border-radius:12px 12px 0 0;padding:6px;position:sticky;top:0;z-index:10;box-shadow:0 4px 20px rgba(0,0,0,.3)}
+.tab-bar.attention{animation:tabPulse 2s ease 3;border-color:rgba(59,130,246,.5);box-shadow:0 0 20px rgba(59,130,246,.15)}
+@keyframes tabPulse{0%,100%{border-color:rgba(59,130,246,.2);box-shadow:0 0 10px rgba(59,130,246,.05)}50%{border-color:rgba(59,130,246,.6);box-shadow:0 0 25px rgba(59,130,246,.2)}}
+.tab-scroll-area{max-height:75vh;overflow-y:auto;border:1px solid var(--border);border-top:none;border-radius:0 0 12px 12px;padding:18px;background:rgba(6,10,19,.4);scrollbar-width:thin;scrollbar-color:rgba(59,130,246,.2) transparent}
+.tab-scroll-area::-webkit-scrollbar{width:6px}.tab-scroll-area::-webkit-scrollbar-thumb{background:rgba(59,130,246,.25);border-radius:3px}.tab-scroll-area::-webkit-scrollbar-track{background:transparent}
 .tab-btn{flex:1;padding:14px 20px;border:none;border-radius:9px;cursor:pointer;font-family:'Sora',sans-serif;font-size:14px;font-weight:700;transition:all .3s;background:transparent;color:var(--text3);letter-spacing:.3px;display:flex;align-items:center;justify-content:center;gap:8px}
 .tab-btn.active{background:linear-gradient(135deg,rgba(59,130,246,.2),rgba(139,92,246,.15));color:var(--text1);box-shadow:0 2px 12px rgba(59,130,246,.15)}
 .tab-btn:hover:not(.active){background:rgba(255,255,255,.03);color:var(--text2)}
@@ -259,13 +255,14 @@ footer{position:relative;z-index:1;margin-top:32px;background:rgba(6,10,19,.95);
 .fcopy{font-size:11px;color:var(--text3)}.fcopy strong{color:var(--text2)}
 .flinks{display:flex;gap:16px}.flinks a{font-size:11px;color:var(--text3);text-decoration:none;transition:color .2s}.flinks a:hover{color:var(--blue)}
 
-@media(max-width:768px){.irow{grid-template-columns:1fr}.mgrid{grid-template-columns:1fr 1fr}.cgrid,.cgrid2{grid-template-columns:1fr}.hero{padding:40px 16px 32px}.ncenter,.nright{display:none}.sc{padding:20px 16px}.ftop{grid-template-columns:1fr;gap:24px}.fbot{flex-direction:column;text-align:center}.tab-btn{font-size:12px;padding:10px 8px;gap:4px}.tab-bar{position:static}}
+@media(max-width:768px){.irow{grid-template-columns:1fr}.mgrid{grid-template-columns:1fr 1fr}.cgrid,.cgrid2{grid-template-columns:1fr}.hero{padding:40px 16px 32px}.ncenter,.nright{display:none}.sc{padding:20px 16px}.ftop{grid-template-columns:1fr;gap:24px}.fbot{flex-direction:column;text-align:center}.tab-btn{font-size:12px;padding:10px 8px;gap:4px}.tab-bar{position:sticky;top:0}.tab-scroll-area{max-height:70vh;padding:12px}.fab{bottom:16px;right:16px;padding:8px 16px;font-size:12px}}
 @media(max-width:480px){.mgrid{grid-template-columns:1fr}.hbadges{flex-direction:column;align-items:center}}
 
 /* FLOATING FEEDBACK PANEL */
-.fab{position:fixed;bottom:24px;right:24px;z-index:200;display:flex;align-items:center;gap:6px;padding:10px 20px;border-radius:100px;font-size:13px;font-weight:700;color:#fff;background:linear-gradient(135deg,var(--blue2),var(--purple));cursor:pointer;box-shadow:0 4px 20px rgba(59,130,246,.3);transition:all .3s;border:none;font-family:'DM Sans',sans-serif;letter-spacing:.2px}
-.fab:hover{transform:translateY(-3px) scale(1.03);box-shadow:0 8px 30px rgba(59,130,246,.4)}
+.fab{position:fixed;bottom:24px;right:24px;z-index:200;display:flex;align-items:center;gap:6px;padding:10px 20px;border-radius:100px;font-size:13px;font-weight:700;color:#fff;background:linear-gradient(135deg,var(--blue2),var(--purple));cursor:pointer;box-shadow:0 4px 20px rgba(59,130,246,.3);transition:all .3s;border:none;font-family:'DM Sans',sans-serif;letter-spacing:.2px;animation:fabBounce 3s ease-in-out infinite}
+.fab:hover{transform:translateY(-3px) scale(1.03);box-shadow:0 8px 30px rgba(59,130,246,.4);animation:none}
 .fab .pulse{width:8px;height:8px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green);animation:pdot 2s infinite}
+@keyframes fabBounce{0%,100%{transform:translateY(0);box-shadow:0 4px 20px rgba(59,130,246,.3)}25%{transform:translateY(-8px);box-shadow:0 12px 30px rgba(139,92,246,.4)}50%{transform:translateY(0);box-shadow:0 4px 20px rgba(59,130,246,.3)}75%{transform:translateY(-4px);box-shadow:0 8px 25px rgba(139,92,246,.35)}}
 
 /* Slide panel */
 .fpanel{position:fixed;top:0;right:-480px;width:460px;max-width:92vw;height:100vh;z-index:300;background:var(--bg2);border-left:1px solid var(--border2);overflow-y:auto;transition:right .4s cubic-bezier(.16,1,.3,1);box-shadow:-8px 0 40px rgba(0,0,0,.5)}
@@ -317,8 +314,18 @@ footer{position:relative;z-index:1;margin-top:32px;background:rgba(6,10,19,.95);
 
 @media(max-width:768px){.fab{bottom:16px;right:16px;padding:8px 16px;font-size:12px}}
 
-/* Anti-copy protection */
-body{-webkit-user-select:none;-moz-user-select:none;-ms-user-select:none;user-select:none}
+/* Allow users to copy prices, data, and analysis text */
+.hbadges,.tab-bar,.fab,.nav,.sh{-webkit-user-select:none;-moz-user-select:none;user-select:none}
+
+/* Back to top button */
+.btt{position:fixed;bottom:24px;left:24px;z-index:200;padding:8px 16px;border-radius:100px;font-size:12px;font-weight:700;color:var(--text3);background:var(--surface);border:1px solid var(--border);cursor:pointer;opacity:0;transform:translateY(20px);transition:all .3s;font-family:'DM Sans',sans-serif}
+.btt.show{opacity:1;transform:translateY(0)}
+.btt:hover{color:var(--blue);border-color:var(--blue);background:rgba(59,130,246,.06)}
+
+/* Scroll down hint between charts and tabs */
+.scroll-hint{text-align:center;padding:16px 0;animation:scrollBounce 2s ease-in-out infinite}
+.scroll-hint span{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--text3);background:var(--surface);padding:8px 18px;border-radius:100px;border:1px solid var(--border)}
+@keyframes scrollBounce{0%,100%{transform:translateY(0)}50%{transform:translateY(6px)}}
 .ipt,input,textarea{-webkit-user-select:text;-moz-user-select:text;user-select:text}
 
 </style>
@@ -358,9 +365,9 @@ body{-webkit-user-select:none;-moz-user-select:none;-ms-user-select:none;user-se
 <div class="icard">
 <div class="ilabel">Your next smart move starts here</div>
 <div class="irow">
-<input class="ipt" type="email" id="email" placeholder="your@email.com" autocomplete="email">
-<div class="iwrap"><input class="ipt" type="text" id="ticker" placeholder="Ticker or company..." autocomplete="off"><div class="ac" id="autocomplete"></div></div>
-<button class="btn" id="btn" onclick="analyze()">Analyze &#8594;</button>
+<input class="ipt" type="email" id="email" aria-label="Your email address" placeholder="your@email.com" autocomplete="email">
+<div class="iwrap"><input class="ipt" type="text" id="ticker" aria-label="Stock ticker or company name" placeholder="Ticker or company..." autocomplete="off"><div class="ac" id="autocomplete"></div></div>
+<button class="btn" id="btn" aria-label="Analyze stock" onclick="analyze()">Analyze &#8594;</button>
 </div>
 <div class="hlp">
 Type to search <strong>100 stocks</strong> (US &amp; India) &middot; Or enter any valid ticker symbol<br>
@@ -455,6 +462,9 @@ Type to search <strong>100 stocks</strong> (US &amp; India) &middot; Or enter an
 </div>
 </div>
 </footer>
+
+<!-- BACK TO TOP -->
+<button class="btt" id="bttBtn" onclick="window.scrollTo({top:0,behavior:'smooth'})" aria-label="Back to top">&#8593; Top</button>
 
 <script>
 
@@ -587,13 +597,15 @@ if(pe>0&&pe<15&&d.price_change_pct>0){verdict='BUY';vc='buy'}else if(pe>40||d.pr
 
 const html=`
 <!-- TAB BAR -->
+<div class="scroll-hint"><span>&#8595; Scroll for detailed breakdown &#8595;</span></div>
 <div class="tab-bar">
-<button class="tab-btn" onclick="switchTab('quick')" id="tabBtnQuick" data-tip="Investment verdict, 5 key insights, valuation, buy/sell prices, risk score & AI color-coded breakdown">\u26A1 Quick Intel</button>
-<button class="tab-btn" onclick="switchTab('deep')" id="tabBtnDeep" data-tip="Quarterly earnings snapshot, QoQ vs YoY trends, full AI deep-dive report">\uD83D\uDD2C Deep Research</button>
-<button class="tab-btn" onclick="switchTab('mgmt')" id="tabBtnMgmt" data-tip="CEO/CFO confidence level, earnings call tone, red & green flags, what management is hiding">\uD83C\uDFA4 Management Read</button>
-<button class="tab-btn" onclick="switchTab('gems')" id="tabBtnGems" data-tip="Under-the-radar small-cap picks in the same sector with growth potential ratings">\u2B50 Hidden Gems</button>
+<button class="tab-btn" onclick="switchTab('quick')" id="tabBtnQuick" aria-label="Quick Intel tab" data-tip="Investment verdict, 5 key insights, valuation, buy/sell prices, risk score & AI color-coded breakdown">\u26A1 Quick Intel</button>
+<button class="tab-btn" onclick="switchTab('deep')" id="tabBtnDeep" aria-label="Deep Research tab" data-tip="Quarterly earnings snapshot, QoQ vs YoY trends, full AI deep-dive report">\uD83D\uDD2C Deep Research</button>
+<button class="tab-btn" onclick="switchTab('mgmt')" id="tabBtnMgmt" aria-label="Management Read tab" data-tip="CEO/CFO confidence level, earnings call tone, red & green flags, what management is hiding">\uD83C\uDFA4 Management Read</button>
+<button class="tab-btn" onclick="switchTab('gems')" id="tabBtnGems" aria-label="Hidden Gems tab" data-tip="Under-the-radar small-cap picks in the same sector with growth potential ratings">\u2B50 Hidden Gems</button>
 </div>
 
+<div class="tab-scroll-area" id="tabScrollArea">
 <!-- TAB 1: QUICK INTEL -->
 
 <!-- VERDICT (always open) -->
@@ -711,6 +723,7 @@ const html=`
 <div class="ic am" style="margin-top:14px"><p><strong>Real talk:</strong> Small-caps = high risk, high reward. Same sector as <strong id="smallCapTicker">${d.ticker}</strong>. Only invest what you can lose. Spread across 5\u20138 picks. Think 10+ years.</p></div>
 </div></div>
 
+</div><!-- end tab-scroll-area -->
 `;
 
 document.getElementById('analysisContainer').innerHTML=html;
@@ -719,7 +732,10 @@ populateFundamentals(report);
 populateManagement(report);
 generateSmallCapRecommendations(d);
 // Auto-open Quick Intel tab
-switchTab('quick')}
+switchTab('quick');
+// Draw attention to tab bar with pulse animation
+const tbar=document.querySelector('.tab-bar');
+if(tbar){tbar.classList.add('attention');setTimeout(()=>tbar.classList.remove('attention'),6500)}}
 
 // ═══════════════════════════════════════════════
 // TAB SWITCHING
@@ -734,8 +750,12 @@ document.querySelectorAll('.sc[data-tab="'+tab+'"]').forEach(s=>s.classList.add(
 // Activate selected button
 const btnMap={quick:'tabBtnQuick',deep:'tabBtnDeep',mgmt:'tabBtnMgmt',gems:'tabBtnGems'};
 if(btnMap[tab])document.getElementById(btnMap[tab]).classList.add('active');
-// Scroll to content
-window.scrollTo({top:document.getElementById('analysisContainer').offsetTop-80,behavior:'smooth'})}
+// Scroll to tab bar (not graphs above)
+const tb=document.querySelector('.tab-bar');
+if(tb){const y=tb.getBoundingClientRect().top+window.pageYOffset-20;window.scrollTo({top:y,behavior:'smooth'})}
+// Reset scroll inside tab content area
+const sa=document.getElementById('tabScrollArea');
+if(sa)sa.scrollTop=0;}
 
 // ═══════════════════════════════════════════════
 // PARSE AI TEXT → QUARTERLY FUNDAMENTALS
@@ -812,83 +832,104 @@ t+='</table>';document.getElementById('smallCapTable').innerHTML=t}
 function populateFundamentals(rawText){
 const el=document.getElementById('fundContent');
 if(!el)return;
+
 // Extract section between QUARTERLY FUNDAMENTALS and MANAGEMENT TONE
 let section='';
-const fundStart=rawText.search(/QUARTERLY FUNDAMENTALS/i);
-const fundEnd=rawText.search(/MANAGEMENT TONE|🎙️/i);
+const fundStart=rawText.search(/QUARTERLY FUNDAMENTALS|QUARTERLY ANALYSIS|EARNINGS ANALYSIS|FUNDAMENTAL.*SNAPSHOT/i);
+const fundEnd=rawText.search(/MANAGEMENT TONE|🎙️|CEO\/CFO Confidence/i);
 if(fundStart!==-1){
-section=fundEnd!==-1?rawText.substring(fundStart,fundEnd):rawText.substring(fundStart,fundStart+3000);
-} else {
-// Fallback: look for QoQ/YoY keywords
-const qoqMatch=rawText.search(/QoQ|Quarter.over.Quarter|quarter.*vs.*quarter/i);
-if(qoqMatch!==-1) section=rawText.substring(Math.max(0,qoqMatch-200),qoqMatch+2000);
+section=fundEnd>fundStart?rawText.substring(fundStart,fundEnd):rawText.substring(fundStart,fundStart+3000);
+}else{
+// Broader fallback: look for earnings/revenue keywords
+const earningsMatch=rawText.search(/(?:latest|recent|last).*(?:quarter|earnings|revenue|QoQ|YoY)/i);
+if(earningsMatch!==-1)section=rawText.substring(Math.max(0,earningsMatch-100),earningsMatch+2500);
 }
 if(!section||section.length<50){
 el.innerHTML='<div class="ic am"><p style="color:var(--text3)">Quarterly data not available for this stock.</p></div>';
 return;
 }
-// Parse into blocks
-const lines=section.split('\n').filter(l=>l.trim());
+
+// Clean
+const cleaned=section.replace(/[│┌┐└┘├┤─┬┴┼═]/g,'').replace(/^#+\s*/gm,'');
 let html='';
-// Find and render table if present
-const tableLines=lines.filter(l=>l.includes('│')||l.includes('|'));
-if(tableLines.length>2){
-html+='<div style="overflow-x:auto;margin-bottom:16px"><table class="dt"><thead>';
-let headerDone=false;
-tableLines.forEach(line=>{
-const cells=line.split(/[│|]/).map(c=>c.trim()).filter(c=>c&&!c.match(/^[-═─┼+]+$/));
-if(cells.length<2)return;
-if(!headerDone){
-html+='<tr>'+cells.map(c=>'<th style="font-size:11px">'+c+'</th>').join('')+'</tr></thead><tbody>';
-headerDone=true;
-}else{
-html+='<tr>'+cells.map(c=>{
-let color='var(--text2)';
-if(/↑|accelerat|expan|deleverag|improv|\+\d/.test(c))color='var(--green)';
-else if(/↓|declin|compress|loading|slow|-\d/.test(c))color='var(--red)';
-else if(/→|flat|stable/i.test(c))color='var(--amber)';
-return'<td style="font-size:12px;color:'+color+'">'+c+'</td>';
-}).join('')+'</tr>';
+
+// Parse **heading:** content blocks
+const blocks=[];
+const parts=cleaned.split(/\*\*([^*]+)\*\*/);
+for(let i=1;i<parts.length;i+=2){
+const heading=(parts[i]||'').replace(/[:*]/g,'').trim();
+const content=(parts[i+1]||'').replace(/^\s*[:]\s*/,'').trim().split('\n').filter(l=>l.trim().length>5).join(' ').trim();
+if(heading&&content&&content.length>10)blocks.push({heading,content});
+else if(heading&&!content){
+// Sometimes heading has the content inline after colon
+const nextLine=(parts[i+1]||'').trim();
+if(nextLine.length>5)blocks.push({heading,content:nextLine});
 }
+}
+
+// Fallback line-by-line if blocks are sparse
+if(blocks.length<2){
+const lines=cleaned.split('\n').filter(l=>l.trim().length>20&&!/^QUARTERLY|^---/i.test(l.trim()));
+lines.forEach(l=>{
+const colonSplit=l.match(/^([^:]{5,50}):\s*(.{10,})/);
+if(colonSplit)blocks.push({heading:colonSplit[1].trim(),content:colonSplit[2].trim()});
+else if(l.trim().length>30&&blocks.length<8)blocks.push({heading:'',content:l.trim()});
 });
-html+='</tbody></table></div>';
 }
-// Parse key insight blocks
-const blocks=[
-{key:/Revenue.*(?:Growth|Earnings|EPS|estimate|beat|miss)/i,title:'Revenue & Earnings vs Estimates',icon:'gr'},
-{key:/QoQ.*Momentum|quarter.*vs.*last.*quarter|sequential/i,title:'QoQ Momentum',icon:'bl'},
-{key:/YoY.*Structural|year.*ago|fundamentally.*stronger/i,title:'YoY Structural Trend',icon:'am'},
-{key:/Key.*Fundamental|shift|inflection|changed.*quarter/i,title:'Key Shifts',icon:'pu'},
-{key:/Guidance|raised|lowered|maintained/i,title:'Forward Guidance',icon:'gr'}
+
+// Theme mapping for quarterly blocks
+const qThemes=[
+{match:/revenue|top.line|sales/i,icon:'💰',color:'var(--green)',bg:'rgba(16,185,129,.05)',border:'rgba(16,185,129,.3)'},
+{match:/earning|eps|bottom.line|net income|profit/i,icon:'📊',color:'var(--blue)',bg:'rgba(59,130,246,.05)',border:'rgba(59,130,246,.3)'},
+{match:/margin|gross|operating/i,icon:'📐',color:'var(--purple)',bg:'rgba(139,92,246,.05)',border:'rgba(139,92,246,.3)'},
+{match:/guidance|outlook|forecast|forward/i,icon:'🔮',color:'var(--cyan)',bg:'rgba(6,182,212,.05)',border:'rgba(6,182,212,.3)'},
+{match:/QoQ|quarter.*over|sequential/i,icon:'🔄',color:'var(--blue)',bg:'rgba(59,130,246,.05)',border:'rgba(59,130,246,.3)'},
+{match:/YoY|year.*over|annual/i,icon:'📈',color:'var(--green)',bg:'rgba(16,185,129,.05)',border:'rgba(16,185,129,.3)'},
+{match:/shift|inflection|change|strength|weakness/i,icon:'⚡',color:'var(--amber)',bg:'rgba(245,158,11,.05)',border:'rgba(245,158,11,.3)'},
+{match:/debt|leverage|cash|balance sheet/i,icon:'🏦',color:'var(--amber)',bg:'rgba(245,158,11,.05)',border:'rgba(245,158,11,.3)'},
+{match:/beat|surprise|exceeded/i,icon:'🎯',color:'var(--green)',bg:'rgba(16,185,129,.05)',border:'rgba(16,185,129,.3)'},
+{match:/miss|disappoint|below/i,icon:'⚠️',color:'var(--red)',bg:'rgba(239,68,68,.05)',border:'rgba(239,68,68,.3)'},
+{match:/gap|absent|unavailable|missing/i,icon:'⚠️',color:'var(--amber)',bg:'rgba(245,158,11,.05)',border:'rgba(245,158,11,.3)'}
 ];
-// Extract paragraphs (non-table lines with meaningful content)
-const paragraphs=lines.filter(l=>!l.includes('│')&&!l.includes('┼')&&!l.match(/^[-═─]+$/)&&l.trim().length>15);
-// Group into themed cards
-let usedLines=new Set();
-blocks.forEach(b=>{
-const matching=paragraphs.filter((p,i)=>!usedLines.has(i)&&b.key.test(p));
-if(matching.length>0){
-const content=matching.slice(0,3).join(' ');
-matching.forEach(m=>{const idx=paragraphs.indexOf(m);usedLines.add(idx)});
-// Color-code the signal
+const defaultQTheme={icon:'📋',color:'var(--text2)',bg:'var(--surface)',border:'var(--border)'};
+
+function getQTheme(h,c){
+const test=h+' '+c;
+for(const t of qThemes){if(t.match.test(test))return t}
+return defaultQTheme;
+}
+
+// Detect overall signal
+const sectionLower=section.toLowerCase();
 let signal='',sigColor='';
-if(/beat|strong|bullish|accelerat|expan|positive|raised|green/i.test(content)){
-signal='🟢 POSITIVE';sigColor='var(--green)';
-}else if(/miss|weak|bearish|declin|negative|lowered|red flag|concern|defensive/i.test(content)){
-signal='🔴 WARNING';sigColor='var(--red)';
-}else if(/mixed|caution|neutral|flat|maintain|stable/i.test(content)){
-signal='🟡 MIXED';sigColor='var(--amber)';
+if(/beat.*estimate|strong.*quarter|revenue.*grew|positive.*surprise/i.test(sectionLower)){
+signal='🟢 BEAT ESTIMATES';sigColor='var(--green)';
+}else if(/miss.*estimate|weak.*quarter|revenue.*declin|negative.*surprise/i.test(sectionLower)){
+signal='🔴 MISSED';sigColor='var(--red)';
+}else if(/mixed|in.line|met.*expect/i.test(sectionLower)){
+signal='🟡 IN LINE';sigColor='var(--amber)';
 }
-const cleanContent=colorizeText(content);
-html+=`<div class="ic ${b.icon}"><h5 style="display:flex;justify-content:space-between;align-items:center">${b.title}${signal?'<span style="font-size:11px;color:'+sigColor+';font-weight:700;padding:2px 8px;border-radius:4px;background:'+sigColor+'15">'+signal+'</span>':''}</h5><p style="font-size:13px;line-height:1.7">${cleanContent}</p></div>`;
+
+// Signal badge at top
+if(signal){
+html+=`<div style="text-align:center;padding:10px;margin-bottom:14px;border-radius:8px;background:${sigColor}10;border:1px solid ${sigColor}25">
+<span style="font-size:13px;font-weight:700;color:${sigColor}">${signal}</span></div>`;
 }
+
+// Render blocks as cards
+blocks.forEach(b=>{
+const theme=getQTheme(b.heading,b.content);
+const h=b.heading.replace(/[🟢🟡🔴]/g,'').trim();
+
+html+=`<div style="border-left:4px solid ${theme.border};border-radius:10px;padding:14px 16px;margin-bottom:10px;background:${theme.bg}">
+<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+<span style="font-size:16px">${theme.icon}</span>
+<span style="font-family:'Sora',sans-serif;font-size:13px;font-weight:700;color:${theme.color}">${h||'Quarterly Insight'}</span>
+</div>
+<p style="font-size:13px;color:var(--text2);line-height:1.7;margin:0">${colorizeText(b.content)}</p>
+</div>`;
 });
-// Remaining unmatched paragraphs
-const remaining=paragraphs.filter((p,i)=>!usedLines.has(i)&&p.length>20&&!/^#|^═|QUARTERLY/i.test(p));
-if(remaining.length>0&&html.indexOf('ic ')===-1){
-// No themed cards matched - render all as general analysis
-html+=`<div class="ic gr"><h5 style="display:flex;justify-content:space-between;align-items:center">Quarterly Analysis</h5><p style="font-size:13px;line-height:1.7">${colorizeText(remaining.join(' '))}</p></div>`;
-}
+
 if(!html){
 el.innerHTML='<div class="ic am"><p style="color:var(--text3)">Quarterly breakdown not available for this stock.</p></div>';
 return;
@@ -1264,11 +1305,11 @@ fetch('/api/stats').then(r=>r.json()).then(d=>{
 if(d.total_reports){document.getElementById('navRC').textContent=d.total_reports;document.getElementById('globalRC').textContent=d.total_reports.toLocaleString();const hb=document.getElementById('reportBadgeCount');if(hb)hb.textContent=d.total_reports.toLocaleString()}
 }).catch(()=>{})});
 
-// Anti-copy protection
-document.addEventListener('contextmenu',e=>e.preventDefault());
-document.addEventListener('keydown',e=>{if(e.ctrlKey&&(e.key==='u'||e.key==='s'||e.key==='c'||e.key==='a'||e.key==='p'))e.preventDefault();if(e.key==='F12')e.preventDefault()});
-document.addEventListener('copy',e=>e.preventDefault());
-document.addEventListener('cut',e=>e.preventDefault());
+// Back-to-top button visibility
+window.addEventListener('scroll',()=>{
+const btt=document.getElementById('bttBtn');
+if(btt){if(window.scrollY>600)btt.classList.add('show');else btt.classList.remove('show')}
+},{ passive: true });
 </script>
 
 <!-- FLOATING FEEDBACK BUTTON -->
