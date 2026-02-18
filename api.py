@@ -1,5 +1,5 @@
 """
-Sentinel AI Research - VERIFIED Real-Time Data
+Celesys AI - VERIFIED Real-Time Data
 With built-in verification and ChatGPT comparison
 """
 
@@ -14,7 +14,7 @@ import yfinance as yf
 from functools import lru_cache
 import time
 
-app = FastAPI(title="Sentinel AI Research - Verified Live Data")
+app = FastAPI(title="Celesys AI - Verified Live Data")
 
 # In-memory cache for stock data (expires after 5 minutes - optimized for LinkedIn launch)
 stock_data_cache = {}
@@ -377,7 +377,7 @@ async def home():
             return f.read()
     except:
         return """<html><body style="font-family: Arial; padding: 50px; text-align: center;">
-                <h1>⚡ Sentinel AI Research</h1>
+                <h1>⚡ Celesys AI</h1>
                 <h2>Verified Live Data Edition</h2>
                 <p>HTML file not found.</p></body></html>"""
 
@@ -517,7 +517,7 @@ CRITICAL INSTRUCTIONS:
 ═══════════════════════════════════════════════════════════════
 **Report Date:** {datetime.now().strftime("%B %d, %Y at %I:%M %p UTC")}
 **Data Source:** Real-Time Market Data + AI Analysis
-**Platform:** Sentinel AI Research
+**Platform:** Celesys AI
 
 ---
 
@@ -711,7 +711,7 @@ async def get_votes():
 async def stats():
     return {
         "total_reports": report_counter["count"],
-        "platform": "Sentinel AI Research",
+        "platform": "Celesys AI",
         "version": "1.0-VERIFIED",
         "data_source": "Yahoo Finance (Real-Time)",
         "vs_chatgpt": "Live data vs ChatGPT's Jan 2025 cutoff"
