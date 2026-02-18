@@ -668,7 +668,7 @@ const html=`
 </table></div></div>
 
 <!-- EASY AI ANALYSIS (in Tab 1) -->
-<div class="sc" data-tab="quick"><div class="sh"><div class="si" style="background:rgba(59,130,246,.1)">\uD83C\uDF93</div><div class="st" style="color:var(--blue)">AI Verdict Breakdown \u2014 Green, Yellow & Red</div></div>
+<div class="sc" data-tab="deep"><div class="sh"><div class="si" style="background:rgba(59,130,246,.1)">\uD83C\uDF93</div><div class="st" style="color:var(--blue)">AI Verdict Breakdown \u2014 Green, Yellow & Red</div></div>
 <div class="sbody"><div id="aiAnalysisFormatted"></div></div></div>
 
 
@@ -717,7 +717,9 @@ document.getElementById('analysisContainer').innerHTML=html;
 formatAIAnalysis(report);
 populateFundamentals(report);
 populateManagement(report);
-generateSmallCapRecommendations(d)}
+generateSmallCapRecommendations(d);
+// Auto-open Quick Intel tab
+switchTab('quick')}
 
 // ═══════════════════════════════════════════════
 // TAB SWITCHING
@@ -905,8 +907,11 @@ if(!el)return;
 const mgmtStart=rawText.search(/MANAGEMENT TONE|🎙️|CEO\/CFO Confidence/i);
 if(mgmtStart===-1){el.innerHTML='<div class="ic pu"><p style="color:var(--text3)">Management tone analysis not available for this stock.</p></div>';return}
 const afterMgmt=rawText.substring(mgmtStart);
-const mgmtEnd=afterMgmt.search(/\n##[^#]|TECHNICAL ANALYSIS|DISCLAIMER|PRICE TARGET|The Bottom Line|OVERALL ASSESSMENT/i);
-const section=afterMgmt.substring(0,mgmtEnd>100?mgmtEnd:3000);
+const mgmtEnd=afterMgmt.search(/\n##[^#]|TECHNICAL ANALYSIS|DISCLAIMER|PRICE TARGET|The Bottom Line|OVERALL ASSESSMENT|KEY QUESTIONS|FURTHER RESEARCH|WHAT WE NEED/i);
+const section=afterMgmt.substring(0,mgmtEnd>100?mgmtEnd:2500);
+
+// JUNK FILTER: headings that should NOT appear in Management tab
+const junkHeadings=/what we need|key question|further research|disclaimer|data gap|data source|note:|important:|methodology|limitation|caveat|appendix/i;
 
 // Clean and split into heading:content pairs
 const cleaned=section.replace(/[│┌┐└┘├┤─┬┴┼═]/g,'').replace(/^#+\s*/gm,'');
@@ -915,22 +920,57 @@ const parts=cleaned.split(/\*\*([^*]+)\*\*/);
 for(let i=1;i<parts.length;i+=2){
 const heading=(parts[i]||'').replace(/[:*]/g,'').trim();
 const content=(parts[i+1]||'').replace(/^\s*[:]\s*/,'').trim().split('\n').filter(l=>l.trim().length>5).join(' ').trim();
-if(heading&&content&&content.length>10)blocks.push({heading,content})}
+if(heading&&content&&content.length>10&&!junkHeadings.test(heading))blocks.push({heading,content})}
 
 // If no **bold** parsing worked, try line-by-line
 if(blocks.length<2){
-const lines=cleaned.split('\n').filter(l=>l.trim().length>15&&!/^MANAGEMENT|^🎙️|^---/i.test(l.trim()));
+const lines=cleaned.split('\n').filter(l=>l.trim().length>15&&!/^MANAGEMENT|^🎙️|^---/i.test(l.trim())&&!junkHeadings.test(l));
 lines.forEach(l=>{
 const colonSplit=l.match(/^([^:]{5,50}):\s*(.{15,})/);
-if(colonSplit)blocks.push({heading:colonSplit[1].trim(),content:colonSplit[2].trim()});
-else if(l.trim().length>30)blocks.push({heading:'',content:l.trim()})
+if(colonSplit&&!junkHeadings.test(colonSplit[1]))blocks.push({heading:colonSplit[1].trim(),content:colonSplit[2].trim()});
+else if(l.trim().length>30&&!junkHeadings.test(l))blocks.push({heading:'',content:l.trim()})
 })}
 
-// Detect overall confidence
-let confLevel='🟡 CAUTIOUS',confColor='var(--amber)',confBg='rgba(245,158,11,.08)';
-const top=section.substring(0,600).toLowerCase();
-if(/🟢|bullish|confident|strong momentum|aggressive/i.test(top)){confLevel='🟢 BULLISH';confColor='var(--green)';confBg='rgba(16,185,129,.08)'}
-else if(/🔴|defensive|bearish|evasive|weak|concerning/i.test(top)){confLevel='🔴 DEFENSIVE';confColor='var(--red)';confBg='rgba(239,68,68,.08)'}
+// Detect overall confidence + collect WHY reasons
+let confLevel='🟡 CAUTIOUS',confColor='var(--amber)',confBg='rgba(245,158,11,.08)',confReasons=[];
+const top=section.substring(0,800).toLowerCase();
+
+if(/🟢|bullish|confident|strong momentum|aggressive/i.test(top)){
+confLevel='🟢 BULLISH';confColor='var(--green)';confBg='rgba(16,185,129,.08)';
+// Extract WHY bullish
+if(/insider.*buy|insider.*purchas/i.test(top))confReasons.push('Insiders are buying shares');
+if(/raised.*guidance|guidance.*raised|raised.*outlook/i.test(top))confReasons.push('Management raised forward guidance');
+if(/buyback|repurchas/i.test(top))confReasons.push('Share buyback program signals confidence');
+if(/record|beat.*estimate|strong.*quarter/i.test(top))confReasons.push('Strong recent quarterly performance');
+if(/dividend.*increas|raised.*dividend/i.test(top))confReasons.push('Dividend increase reflects cash flow strength');
+if(/expansion|new.*market|growth.*accelerat/i.test(top))confReasons.push('Aggressive expansion plans');
+if(confReasons.length===0)confReasons.push('Management language shows confidence in forward outlook');
+}else if(/🔴|defensive|bearish|evasive|weak|concerning/i.test(top)){
+confLevel='🔴 DEFENSIVE';confColor='var(--red)';confBg='rgba(239,68,68,.08)';
+if(/dodg|evasi|vague/i.test(top))confReasons.push('Management dodging direct questions');
+if(/lowered.*guidance|guidance.*lowered|cut.*outlook/i.test(top))confReasons.push('Forward guidance was lowered');
+if(/restructur|layoff|cost.*cut/i.test(top))confReasons.push('Restructuring or cost-cutting signals trouble');
+if(/insider.*sell|insider.*sold/i.test(top))confReasons.push('Insiders selling shares');
+if(/cfo.*depart|ceo.*resign|exec.*leav/i.test(top))confReasons.push('Executive departures raise concerns');
+if(confReasons.length===0)confReasons.push('Management language shows defensive posture and hedging');
+}else{
+// CAUTIOUS — explain WHY cautious
+if(/mixed/i.test(top))confReasons.push('Mixed signals — some metrics strong, others declining');
+if(/uncertain|macro|headwind/i.test(top))confReasons.push('Management citing macro uncertainty and headwinds');
+if(/maintain.*guidance|guidance.*maintain|reiterat/i.test(top))confReasons.push('Guidance maintained but not raised — playing it safe');
+if(/one.time|non.recurring|special.*charge/i.test(top))confReasons.push('One-time charges being used to explain misses');
+if(/competi|pressure|margin.*compress/i.test(top))confReasons.push('Competitive pressure impacting margins');
+if(confReasons.length===0){
+// Try to extract reason from first block content
+const firstBlock=blocks.find(b=>b.content.length>30);
+if(firstBlock){
+const snippet=firstBlock.content.substring(0,120).replace(/<[^>]*>/g,'');
+confReasons.push(snippet);
+}else{
+confReasons.push('Tone is neither aggressively bullish nor clearly defensive — wait for clearer signals');
+}
+}
+}
 
 // Map headings to visual themes
 const themeMap=[
@@ -941,7 +981,9 @@ const themeMap=[
 {match:/red flag|warning|dodg|evasiv|concern/i,icon:'🔴',color:'var(--red)',border:'rgba(239,68,68,.3)',bg:'rgba(239,68,68,.05)'},
 {match:/green flag|positive|insider.*buy|buyback|dividend/i,icon:'🟢',color:'var(--green)',border:'rgba(16,185,129,.3)',bg:'rgba(16,185,129,.05)'},
 {match:/not telling|hiding|avoiding|between.*line|deflect/i,icon:'🕵️',color:'var(--amber)',border:'rgba(245,158,11,.3)',bg:'rgba(245,158,11,.05)'},
-{match:/investment.*inference|credibility|trust|verdict|recommend/i,icon:'⚖️',color:'var(--green)',border:'rgba(16,185,129,.3)',bg:'rgba(16,185,129,.05)'}
+{match:/investment.*inference|credibility|trust|verdict|recommend/i,icon:'⚖️',color:'var(--green)',border:'rgba(16,185,129,.3)',bg:'rgba(16,185,129,.05)'},
+{match:/debt|leverage|capital/i,icon:'🏦',color:'var(--amber)',border:'rgba(245,158,11,.3)',bg:'rgba(245,158,11,.05)'},
+{match:/risk|volatil|exposure/i,icon:'⚠️',color:'var(--red)',border:'rgba(239,68,68,.3)',bg:'rgba(239,68,68,.05)'}
 ];
 const defaultTheme={icon:'📋',color:'var(--text2)',border:'var(--border)',bg:'var(--surface)'};
 
@@ -952,13 +994,18 @@ return defaultTheme}
 
 let html='';
 
-// Confidence badge at top
-html+=`<div style="display:flex;align-items:center;gap:14px;padding:16px 20px;border-radius:12px;background:${confBg};border:1px solid ${confColor}25;margin-bottom:16px">
+// Confidence badge + WHY reasoning
+html+=`<div style="border-radius:12px;background:${confBg};border:1px solid ${confColor}25;margin-bottom:16px;overflow:hidden">
+<div style="display:flex;align-items:center;gap:14px;padding:16px 20px">
 <span style="font-size:32px">${confLevel.split(' ')[0]}</span>
 <div><div style="font-family:'Sora',sans-serif;font-size:16px;font-weight:700;color:${confColor};letter-spacing:.3px">${confLevel.split(' ').slice(1).join(' ')}</div>
-<div style="font-size:12px;color:var(--text3);margin-top:2px">CEO/CFO Confidence Level</div></div></div>`;
+<div style="font-size:12px;color:var(--text3);margin-top:2px">CEO/CFO Confidence Level</div></div></div>
+<div style="padding:0 20px 14px;border-top:1px solid ${confColor}15">
+<div style="font-size:11px;color:var(--text3);margin:10px 0 6px;font-weight:600;letter-spacing:.5px">WHY THIS RATING:</div>
+${confReasons.map(r=>'<div style="font-size:13px;color:var(--text2);line-height:1.6;padding:3px 0">• '+colorizeText(r)+'</div>').join('')}
+</div></div>`;
 
-// Render each block as a themed card
+// Render each block as a themed card — skip junk
 let redFlags='',greenFlags='';
 blocks.forEach(b=>{
 const theme=getTheme(b.heading,b.content);
@@ -989,8 +1036,8 @@ html+=`</div>`}
 
 // Fallback if very little was parsed
 if(blocks.length<2){
-const fallback=cleaned.split('\n').filter(l=>l.trim().length>20&&!/MANAGEMENT|🎙️/i.test(l)).slice(0,8).join('<br>');
-html+=`<div style="border-left:4px solid var(--border);border-radius:10px;padding:16px 18px;background:var(--surface)">
+const fallback=cleaned.split('\n').filter(l=>l.trim().length>20&&!/MANAGEMENT|🎙️|what we need|key question|further research/i.test(l)).slice(0,8).join('<br>');
+if(fallback)html+=`<div style="border-left:4px solid var(--border);border-radius:10px;padding:16px 18px;background:var(--surface)">
 <p style="font-size:13px;color:var(--text2);line-height:1.8;margin:0">${colorizeText(fallback)}</p></div>`}
 
 el.innerHTML=html}
