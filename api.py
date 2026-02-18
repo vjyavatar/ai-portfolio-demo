@@ -5,7 +5,7 @@ With built-in verification and ChatGPT comparison
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Response
 import os
 import requests
 from datetime import datetime, timedelta
@@ -995,6 +995,35 @@ async def health():
         "stock_cache_tickers": list(stock_data_cache.keys()),
         "cache_expiry_minutes": CACHE_EXPIRY_MINUTES
     }
+
+
+@app.get("/googleb6e1e80f88761fcc.html", response_class=HTMLResponse)
+async def google_verify():
+    return "google-site-verification: googleb6e1e80f88761fcc.html"
+
+@app.get("/robots.txt", response_class=PlainTextResponse)
+async def robots():
+    return """User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /api/generate-report
+Disallow: /api/check-rate-limit
+
+Sitemap: https://celesys.ai/sitemap.xml
+"""
+
+@app.get("/sitemap.xml", response_class=Response)
+async def sitemap():
+    content = f"""<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>https://celesys.ai</loc>
+    <lastmod>{datetime.now().strftime('%Y-%m-%d')}</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>1.0</priority>
+  </url>
+</urlset>"""
+    return Response(content=content, media_type="application/xml")
 
 
 @app.get("/api/verify-price/{company}")
