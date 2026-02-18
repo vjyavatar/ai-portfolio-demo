@@ -165,7 +165,8 @@ def fetch_management_context(ticker: str, company_name: str) -> str:
     try:
         url = f"https://query1.finance.yahoo.com/v6/finance/quote?symbols={ticker}"
         r = requests.get(url, headers={**YAHOO_HEADERS}, timeout=8)
-        if r.status_code == 200:
+        ct = r.headers.get('content-type', '')
+        if r.status_code == 200 and 'json' in ct and '<html' not in r.text[:200].lower():
             quotes = r.json().get('quoteResponse', {}).get('result', [])
             if quotes:
                 q = quotes[0]
@@ -204,7 +205,9 @@ def fetch_management_context(ticker: str, company_name: str) -> str:
     try:
         url = f"https://query2.finance.yahoo.com/v10/finance/quoteSummary/{ticker}?modules=earnings,earningsHistory,earningsTrend"
         r = requests.get(url, headers={**YAHOO_HEADERS}, timeout=8)
-        if r.status_code == 200:
+        # CRITICAL: Validate we got JSON, not HTML (Yahoo rate limits return HTML pages)
+        content_type = r.headers.get('content-type', '')
+        if r.status_code == 200 and 'json' in content_type and '<html' not in r.text[:200].lower():
             data = r.json().get('quoteSummary', {}).get('result', [])
             if data:
                 d = data[0]
@@ -358,7 +361,29 @@ def fetch_management_context(ticker: str, company_name: str) -> str:
     if not context_parts:
         return ""
     
-    return "\n\n".join(context_parts)
+    # CRITICAL: Sanitize — strip any HTML that leaked from Yahoo/Moneycontrol responses
+    import re as re_clean
+    result = "\n\n".join(context_parts)
+    # Remove HTML tags
+    result = re_clean.sub(r'<[^>]+>', '', result)
+    # Remove common HTML artifacts
+    result = re_clean.sub(r'&nbsp;|&amp;|&lt;|&gt;|&quot;|&#\d+;', ' ', result)
+    # Remove excessive whitespace
+    result = re_clean.sub(r'\n{3,}', '\n\n', result)
+    result = re_clean.sub(r' {3,}', ' ', result)
+    # Remove any lines that look like HTML/JS code
+    clean_lines = []
+    for line in result.split('\n'):
+        stripped = line.strip()
+        # Skip lines that look like code/HTML
+        if any(x in stripped.lower() for x in ['<script', '<style', '<div', '<span', '<meta', 'function(', '{display:', 'class="', 'onclick=']):
+            continue
+        if stripped:
+            clean_lines.append(line)
+    result = '\n'.join(clean_lines)
+    
+    print(f"📊 Management context: {len(result)} chars (sanitized)")
+    return result
 
 
 def fetch_yahoo_scrape(ticker: str) -> dict:
@@ -1134,7 +1159,14 @@ COMPANY INFORMATION:
         try:
             mgmt_context = fetch_management_context(live_data['ticker'], live_data.get('company_name', company))
             if mgmt_context:
-                print(f"📊 Got {len(mgmt_context)} chars of real management/earnings data")
+                # Final safety: reject if it's mostly HTML
+                import re as re_safety
+                html_tag_count = len(re_safety.findall(r'<[a-zA-Z/]', mgmt_context))
+                if html_tag_count > 5:
+                    print(f"⚠️ Management context contains {html_tag_count} HTML tags — DISCARDING")
+                    mgmt_context = ""
+                else:
+                    print(f"📊 Got {len(mgmt_context)} chars of clean management/earnings data")
         except Exception as e:
             print(f"⚠️ Management context fetch failed: {e}")
 
