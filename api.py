@@ -1741,6 +1741,296 @@ async def ads_txt():
     # Replace ca-pub-2084524493538975 with your real AdSense publisher ID after approval
     return "google.com, ca-pub-2084524493538975, DIRECT, f08c47fec0942fa0"
 
+# ═══════════════════════════════════════════════════════════
+# INDEX TRADES — AI Daily Trade Ideas (Restricted Access)
+# ═══════════════════════════════════════════════════════════
+TRADES_ALLOWED_EMAILS = ["vijy.dhulipala@gmail.com"]
+
+@app.post("/api/index-trades")
+async def index_trades(request: Request):
+    """Generate AI-powered daily index trade ideas for Indian markets"""
+    import json as json_mod
+    
+    body = await request.json()
+    email = body.get("email", "").strip().lower()
+    
+    if email not in TRADES_ALLOWED_EMAILS:
+        return {"success": False, "error": "Access restricted. This feature is exclusively available to authorized users."}
+    
+    print(f"🔥 Index trades requested by {email}")
+    
+    # Fetch Indian index data
+    indices_data = []
+    tickers = {
+        "^NSEI": "NIFTY 50",
+        "^NSEBANK": "BANK NIFTY",
+        "^BSESN": "SENSEX",
+        "^INDIAVIX": "INDIA VIX"
+    }
+    
+    for ticker, name in tickers.items():
+        try:
+            import yfinance as yf
+            t = yf.Ticker(ticker)
+            hist = t.history(period="5d")
+            info = t.info or {}
+            if not hist.empty:
+                latest = hist.iloc[-1]
+                prev = hist.iloc[-2] if len(hist) > 1 else hist.iloc[0]
+                price = round(latest['Close'], 2)
+                change = round(price - prev['Close'], 2)
+                change_pct = round((change / prev['Close']) * 100, 2) if prev['Close'] else 0
+                high_5d = round(hist['High'].max(), 2)
+                low_5d = round(hist['Low'].min(), 2)
+                vol = int(latest.get('Volume', 0))
+                indices_data.append({
+                    "name": name, "ticker": ticker, "price": price,
+                    "change": change, "change_pct": change_pct,
+                    "high_5d": high_5d, "low_5d": low_5d, "volume": vol,
+                    "day_high": round(latest['High'], 2), "day_low": round(latest['Low'], 2),
+                    "open": round(latest['Open'], 2)
+                })
+                print(f"  ✅ {name}: {price} ({change:+.2f})")
+        except Exception as e:
+            print(f"  ⚠️ Failed to fetch {name}: {e}")
+    
+    # Get global market context
+    global_data = []
+    global_tickers = {
+        "^GSPC": "S&P 500",
+        "^DJI": "Dow Jones",
+        "^IXIC": "NASDAQ",
+        "^N225": "Nikkei 225",
+        "^HSI": "Hang Seng",
+        "DX-Y.NYB": "US Dollar Index",
+        "CL=F": "Crude Oil",
+        "GC=F": "Gold"
+    }
+    for ticker, name in global_tickers.items():
+        try:
+            t = yf.Ticker(ticker)
+            hist = t.history(period="2d")
+            if not hist.empty:
+                price = round(hist.iloc[-1]['Close'], 2)
+                prev = hist.iloc[-2]['Close'] if len(hist) > 1 else price
+                change_pct = round(((price - prev) / prev) * 100, 2) if prev else 0
+                global_data.append(f"{name}: {price} ({change_pct:+.2f}%)")
+        except:
+            pass
+    
+    # Fetch top Indian stock movers for stock option picks
+    stock_data = []
+    stock_tickers = {
+        "RELIANCE.NS": "Reliance Industries",
+        "TCS.NS": "TCS",
+        "HDFCBANK.NS": "HDFC Bank",
+        "INFY.NS": "Infosys",
+        "ICICIBANK.NS": "ICICI Bank",
+        "SBIN.NS": "SBI",
+        "BHARTIARTL.NS": "Bharti Airtel",
+        "TATAMOTORS.NS": "Tata Motors",
+        "ITC.NS": "ITC",
+        "LT.NS": "L&T",
+        "AXISBANK.NS": "Axis Bank",
+        "BAJFINANCE.NS": "Bajaj Finance",
+        "MARUTI.NS": "Maruti Suzuki",
+        "TATASTEEL.NS": "Tata Steel",
+        "ADANIENT.NS": "Adani Enterprises"
+    }
+    for ticker, name in stock_tickers.items():
+        try:
+            t = yf.Ticker(ticker)
+            hist = t.history(period="5d")
+            if not hist.empty and len(hist) >= 2:
+                latest = hist.iloc[-1]
+                prev = hist.iloc[-2]
+                price = round(latest['Close'], 2)
+                change_pct = round(((price - prev['Close']) / prev['Close']) * 100, 2)
+                vol_avg = int(hist['Volume'].mean())
+                vol_today = int(latest['Volume'])
+                vol_spike = round(vol_today / vol_avg, 2) if vol_avg > 0 else 1
+                high_5d = round(hist['High'].max(), 2)
+                low_5d = round(hist['Low'].min(), 2)
+                stock_data.append({
+                    "ticker": ticker.replace(".NS",""), "name": name,
+                    "price": price, "change_pct": change_pct,
+                    "vol_spike": vol_spike, "high_5d": high_5d, "low_5d": low_5d,
+                    "day_high": round(latest['High'], 2), "day_low": round(latest['Low'], 2)
+                })
+        except:
+            pass
+    
+    # Sort by absolute change % to find movers
+    stock_data.sort(key=lambda x: abs(x['change_pct']), reverse=True)
+    
+    stocks_text = "\n".join([
+        f"- {d['ticker']}: ₹{d['price']} ({d['change_pct']:+.2f}%) | "
+        f"Day: ₹{d['day_low']}-₹{d['day_high']} | 5D: ₹{d['low_5d']}-₹{d['high_5d']} | "
+        f"Vol Spike: {d['vol_spike']}x"
+        for d in stock_data[:10]
+    ])
+    
+    # Build AI prompt
+    indices_text = "\n".join([
+        f"- {d['name']}: ₹{d['price']:,.2f} (Change: {d['change']:+.2f}, {d['change_pct']:+.2f}%) | "
+        f"Day Range: ₹{d['day_low']}-₹{d['day_high']} | 5D Range: ₹{d['low_5d']}-₹{d['high_5d']} | "
+        f"Open: ₹{d['open']} | Volume: {d['volume']:,}"
+        for d in indices_data
+    ])
+    
+    global_text = "\n".join([f"- {g}" for g in global_data]) if global_data else "Global data unavailable"
+    
+    today = datetime.now().strftime("%A, %B %d, %Y")
+    
+    prompt = f"""You are an expert Indian market derivatives trader and analyst. Today is {today}.
+
+LIVE INDIAN INDEX DATA:
+{indices_text}
+
+TOP INDIAN STOCKS (sorted by momentum):
+{stocks_text}
+
+GLOBAL MARKET CONTEXT:
+{global_text}
+
+ANALYZE THE FOLLOWING FACTORS and generate EXACTLY 5 INDEX trade ideas + 2 STOCK OPTION trade ideas:
+
+1. **OPTION CHAIN ANALYSIS:** Based on the index/stock levels, estimate:
+   - Put-Call Ratio (PCR) implications at current levels
+   - Max Pain levels for weekly expiry
+   - Where heavy OI buildup would typically be (support/resistance via options)
+   - FII/DII positioning signals from price action
+
+2. **PRICE ACTION:** 
+   - Key support and resistance levels
+   - Chart patterns (double top/bottom, breakout, consolidation)
+   - Gap up/down implications
+   - Candlestick patterns
+
+3. **VOLATILITY:** 
+   - India VIX level and what it signals
+   - Expected move range for the day
+   - IV crush or expansion opportunities
+
+4. **MOMENTUM:**
+   - Trend direction (bullish/bearish/sideways)
+   - RSI-based overbought/oversold conditions implied by price levels
+   - Volume spike analysis for stock options (high vol spike = institutional interest)
+   - Sector rotation signals
+
+5. **GEOPOLITICS:**
+   - Current geopolitical events affecting Indian markets
+   - RBI policy impact, government policy changes
+   - FII flow direction
+
+6. **GLOBAL CUES:**
+   - US market overnight performance impact
+   - Asian markets correlation
+   - Dollar index, crude oil, gold impact on Indian markets
+
+RESPOND IN STRICT JSON FORMAT (no markdown, no backticks, no explanation outside JSON):
+{{
+  "market_context": "2-3 sentence summary of today's market setup and overall bias",
+  "trades": [
+    {{
+      "index": "NIFTY 50 | BANK NIFTY | SENSEX",
+      "instrument": "NIFTY 24500 CE | BANK NIFTY 52000 PE | NIFTY FUT etc.",
+      "direction": "BUY | SELL",
+      "spot_price": "current index level number only",
+      "entry": "option/futures entry price number only",
+      "target": "target price number only",
+      "stop_loss": "stop loss price number only",
+      "risk_reward": "1:2 format",
+      "confidence": "HIGH | MEDIUM",
+      "reason": "Detailed 2-3 sentence rationale covering which factors support this trade",
+      "option_detail": "Strike price, expiry, premium range, Greeks consideration if applicable"
+    }}
+  ],
+  "stock_trades": [
+    {{
+      "stock": "RELIANCE | TCS | HDFCBANK etc.",
+      "instrument": "RELIANCE 2900 CE | TCS 4200 PE etc.",
+      "direction": "BUY | SELL",
+      "spot_price": "current stock price number only",
+      "entry": "option entry price number only",
+      "target": "target price number only",
+      "stop_loss": "stop loss price number only",
+      "risk_reward": "1:2 format",
+      "confidence": "HIGH | MEDIUM",
+      "reason": "Detailed 2-3 sentence rationale — include volume spike, price action, sector momentum, options activity. Why THIS stock today?",
+      "option_detail": "Strike price, monthly expiry, lot size, premium, expected IV behavior"
+    }}
+  ]
+}}
+
+RULES FOR INDEX TRADES (5 trades):
+- Generate EXACTLY 5 index trades — mix of NIFTY, BANK NIFTY (at least 2 each), and optionally SENSEX
+- Include both CALL and PUT options, and at least 1 futures trade
+- Use REALISTIC strike prices near current levels (ATM or 1-2 strikes OTM)
+- Entry, target, stop loss must be specific numbers (not ranges)
+- Risk:Reward must be minimum 1:1.5
+- Confidence: mark HIGH only for trades with 3+ confirming factors
+- Consider the day of the week (Monday=fresh positions, Thursday=expiry plays, Friday=carry trades)
+- Be specific about expiry (weekly/monthly)
+
+RULES FOR STOCK OPTIONS (2 trades):
+- Pick 2 stocks from the list above with STRONGEST setups
+- Prefer stocks with high volume spike (institutional interest) or big price moves
+- Use MONTHLY expiry stock options (not weekly)
+- Include lot size in option_detail
+- One should be a bullish trade (CE), one bearish (PE) for diversification
+- Strike prices should be ATM or slightly OTM
+- Explain WHY this stock specifically — momentum, sector play, earnings, breakout etc.
+"""
+
+    # Call Claude API
+    try:
+        response = client.messages.create(
+            model="claude-sonnet-4-20250514",
+            max_tokens=4000,
+            messages=[{"role": "user", "content": prompt}]
+        )
+        
+        raw = response.content[0].text.strip()
+        # Clean JSON
+        raw = raw.replace("```json", "").replace("```", "").strip()
+        
+        # Parse JSON
+        result = json_mod.loads(raw)
+        
+        return {
+            "success": True,
+            "market_context": result.get("market_context", ""),
+            "indices": [d for d in indices_data if d['name'] != 'INDIA VIX'],
+            "trades": result.get("trades", []),
+            "stock_trades": result.get("stock_trades", []),
+            "vix": next((d for d in indices_data if d['name'] == 'INDIA VIX'), None),
+            "generated_at": datetime.now().isoformat()
+        }
+        
+    except json_mod.JSONDecodeError as e:
+        print(f"⚠️ JSON parse error: {e}")
+        print(f"Raw response: {raw[:500]}")
+        # Try to extract JSON from response
+        try:
+            start = raw.index('{')
+            end = raw.rindex('}') + 1
+            result = json_mod.loads(raw[start:end])
+            return {
+                "success": True,
+                "market_context": result.get("market_context", ""),
+                "indices": [d for d in indices_data if d['name'] != 'INDIA VIX'],
+                "trades": result.get("trades", []),
+            "stock_trades": result.get("stock_trades", []),
+                "vix": next((d for d in indices_data if d['name'] == 'INDIA VIX'), None),
+                "generated_at": datetime.now().isoformat()
+            }
+        except:
+            return {"success": False, "error": "AI analysis failed. Please try again."}
+    except Exception as e:
+        print(f"❌ Index trades error: {e}")
+        return {"success": False, "error": f"Trade generation failed: {str(e)}"}
+
 
 @app.get("/api/verify-price/{company}")
 async def verify_price(company: str):

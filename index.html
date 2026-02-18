@@ -455,7 +455,7 @@ footer{position:relative;z-index:1;margin-top:32px;background:rgba(6,10,19,.95);
 <div class="icard">
 <div class="ilabel">Your next smart move starts here</div>
 <div class="irow">
-<input class="ipt" type="email" id="email" aria-label="Your email address" placeholder="your@email.com" autocomplete="email">
+<input class="ipt" type="email" id="email" aria-label="Your email address" placeholder="your@email.com" autocomplete="off" data-lpignore="true" onfocus="if(this.dataset.real){this.type='email';this.value=this.dataset.real}" onblur="if(this.value.includes('@')){this.dataset.real=this.value;const p=this.value.split('@');this.value=p[0][0]+'***@'+p[1];this.type='text'}">
 <div class="iwrap"><input class="ipt" type="text" id="ticker" aria-label="Stock ticker or company name" placeholder="Ticker or company..." autocomplete="off"><div class="ac" id="autocomplete"></div></div>
 <button class="btn" id="btn" aria-label="Analyze stock" onclick="analyze()">Analyze &#8594;</button>
 </div>
@@ -623,7 +623,7 @@ if(r<=0){clearInterval(countdownInterval);countdownInterval=null;cd.textContent=
 cb.textContent='\u2713 Quota refreshed \u2014 generate reports again';pr.style.width='100%';box.style.borderColor='rgba(16,185,129,.3)';box.style.background='rgba(16,185,129,.04)'}}
 tick();countdownInterval=setInterval(tick,1000)}
 
-async function analyze(){const email=document.getElementById('email').value.trim(),ticker=TI.value.trim().toUpperCase(),btn=document.getElementById('btn'),rpt=document.getElementById('report');
+async function analyze(){const emailEl=document.getElementById('email');const email=(emailEl.dataset.real||emailEl.value).trim(),ticker=TI.value.trim().toUpperCase(),btn=document.getElementById('btn'),rpt=document.getElementById('report');
 AC.classList.remove('show');if(!email||!ticker){showStatus('Enter both email and ticker','error');return}
 if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){showStatus('Enter a valid email','error');return}
 try{const rl=await fetch('/api/check-rate-limit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email})});const rld=await rl.json();
@@ -709,6 +709,7 @@ const html=`
 <button class="tab-btn" onclick="switchTab('mgmt')" id="tabBtnMgmt" aria-label="Management Read tab" data-tip="CEO/CFO confidence level, earnings call tone, red & green flags, what management is hiding">\uD83C\uDFA4 Management Read</button>
 <button class="tab-btn" onclick="switchTab('next')" id="tabBtnNext" aria-label="What's Next tab" data-tip="Top mutual fund & institutional holders, upcoming catalysts, bull/bear/base case scenarios">\uD83D\uDD2E What's Next</button>
 <button class="tab-btn" onclick="switchTab('gems')" id="tabBtnGems" aria-label="Hidden Gems tab" data-tip="Under-the-radar small-cap picks in the same sector with growth potential ratings">\u2B50 Hidden Gems</button>
+<button class="tab-btn" onclick="switchTab('trades')" id="tabBtnTrades" aria-label="Index Trades tab" data-tip="AI-powered daily trade ideas for Nifty, Bank Nifty & Sensex based on option chain, price action, momentum" style="border-color:rgba(245,158,11,.3)">&#128293; Index Trades</button>
 </div>
 
 <div class="tab-scroll-area" id="tabScrollArea">
@@ -849,6 +850,20 @@ const html=`
 <div class="ic am" style="margin-top:14px"><p><strong>Real talk:</strong> Small-caps = high risk, high reward. Same sector as <strong id="smallCapTicker">${d.ticker}</strong>. Only invest what you can lose. Spread across 5\u20138 picks. Think 10+ years.</p></div>
 </div></div>
 
+<!-- TAB 7: INDEX TRADES (Restricted Access) -->
+<div class="sc" data-tab="trades"><div class="sh"><div class="si" style="background:rgba(245,158,11,.1)">&#128293;</div><div class="st" style="color:var(--amber)" id="sec-trades">Index Trades &#8212; AI-Powered Daily Ideas</div></div>
+<div class="sbody">
+<div id="tradesContent">
+<div style="text-align:center;padding:30px 20px">
+<div style="font-size:40px;margin-bottom:12px">&#128274;</div>
+<div style="font-family:'Sora',sans-serif;font-size:16px;font-weight:700;color:var(--amber);margin-bottom:8px">Premium Index Trading Intelligence</div>
+<p style="font-size:13px;color:var(--text3);max-width:450px;margin:0 auto 20px;line-height:1.7">AI analyzes Option Chain, Price Action, Volatility, Momentum, Geopolitics &amp; Global Markets to generate top 5 daily trade ideas for Nifty, Bank Nifty &amp; Sensex.</p>
+<button id="tradesLoadBtn" onclick="loadIndexTrades()" style="padding:12px 28px;border-radius:10px;border:2px solid var(--amber);background:rgba(245,158,11,.1);color:var(--amber);font-family:'Sora',sans-serif;font-size:14px;font-weight:700;cursor:pointer;transition:all .3s">&#9889; Generate Today's Trades</button>
+<div id="tradesError" style="margin-top:12px;font-size:12px;color:var(--red);display:none"></div>
+</div>
+</div>
+</div></div>
+
 </div><!-- end tab-scroll-area -->
 `;
 
@@ -879,7 +894,7 @@ document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
 // Show selected tab sections
 document.querySelectorAll('.sc[data-tab="'+tab+'"]').forEach(s=>s.classList.add('tab-visible'));
 // Activate selected button
-const btnMap={quick:'tabBtnQuick',deep:'tabBtnDeep',mgmt:'tabBtnMgmt',next:'tabBtnNext',gems:'tabBtnGems'};
+const btnMap={quick:'tabBtnQuick',deep:'tabBtnDeep',mgmt:'tabBtnMgmt',next:'tabBtnNext',gems:'tabBtnGems',trades:'tabBtnTrades'};
 if(btnMap[tab])document.getElementById(btnMap[tab]).classList.add('active');
 // Scroll to tab bar (not graphs above)
 const tb=document.querySelector('.tab-bar');
@@ -1588,6 +1603,168 @@ const votes={};
 featureKeys.forEach(k=>{votes[k]={up:0,dn:0}});
 let voteChart=null;
 let userVotes={};
+
+// ═══════════════════════════════════════════════
+// INDEX TRADES — AI-Powered Daily Ideas
+// ═══════════════════════════════════════════════
+async function loadIndexTrades(){
+const el=document.getElementById('tradesContent');
+const errEl=document.getElementById('tradesError');
+const btn=document.getElementById('tradesLoadBtn');
+// Get current email from the input
+const emailInput=document.getElementById('email');
+const email=emailInput?(emailInput.dataset.real||emailInput.value).trim():'';
+if(!email){errEl.textContent='Please enter your email in the search bar above first.';errEl.style.display='block';return}
+// Access check
+btn.disabled=true;btn.textContent='⏳ Analyzing markets...';errEl.style.display='none';
+try{
+const r=await fetch('/api/index-trades',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:email})});
+const data=await r.json();
+if(!data.success){errEl.textContent=data.detail||data.error||'Access denied or generation failed.';errEl.style.display='block';btn.disabled=false;btn.textContent='⚡ Generate Today\'s Trades';return}
+
+// Render the trades
+let html='';
+
+// Market pulse header
+html+=`<div style="border-radius:12px;background:linear-gradient(135deg,rgba(245,158,11,.08),rgba(239,68,68,.05));border:1px solid rgba(245,158,11,.2);padding:16px 20px;margin-bottom:16px">
+<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+<span style="font-size:24px">&#128200;</span>
+<div><div style="font-family:'Sora',sans-serif;font-size:15px;font-weight:700;color:var(--amber)">Market Pulse — ${new Date().toLocaleDateString('en-IN',{weekday:'long',day:'numeric',month:'long',year:'numeric'})}</div>
+<div style="font-size:11px;color:var(--text3)">Generated at ${new Date().toLocaleTimeString('en-IN')} IST</div></div></div>
+${data.market_context?'<p style="font-size:13px;color:var(--text2);line-height:1.7;margin:0">'+data.market_context+'</p>':''}
+</div>`;
+
+// Index snapshot
+if(data.indices&&data.indices.length>0){
+html+=`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:16px">`;
+data.indices.forEach(idx=>{
+const up=idx.change>=0;
+const col=up?'var(--green)':'var(--red)';
+html+=`<div style="text-align:center;padding:12px;border-radius:8px;background:rgba(${up?'16,185,129':'239,68,68'},.06);border:1px solid rgba(${up?'16,185,129':'239,68,68'},.15)">
+<div style="font-size:11px;color:var(--text3);font-weight:600;letter-spacing:.5px">${idx.name}</div>
+<div style="font-size:18px;font-weight:800;color:${col}">${idx.price?idx.price.toLocaleString('en-IN'):'-'}</div>
+<div style="font-size:12px;color:${col}">${up?'▲':'▼'} ${Math.abs(idx.change||0).toFixed(2)} (${(idx.change_pct||0).toFixed(2)}%)</div>
+</div>`;
+});
+html+=`</div>`;
+}
+
+// Trades table
+if(data.trades&&data.trades.length>0){
+html+=`<div style="font-family:'Sora',sans-serif;font-size:13px;font-weight:700;color:var(--amber);margin-bottom:10px;letter-spacing:.3px">&#127919; TOP ${data.trades.length} TRADE IDEAS FOR TODAY</div>`;
+
+data.trades.forEach((t,i)=>{
+const isBuy=(/buy|long|call/i).test(t.direction||t.action||'');
+const col=isBuy?'var(--green)':'var(--red)';
+const bg=isBuy?'rgba(16,185,129,.04)':'rgba(239,68,68,.04)';
+const border=isBuy?'rgba(16,185,129,.25)':'rgba(239,68,68,.25)';
+
+html+=`<div style="border-left:4px solid ${border};border-radius:10px;padding:16px;margin-bottom:12px;background:${bg};border:1px solid ${border}">
+<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px">
+<div style="display:flex;align-items:center;gap:8px">
+<span style="font-size:11px;background:${col};color:#fff;padding:2px 8px;border-radius:4px;font-weight:800">#${i+1}</span>
+<span style="font-family:'Sora',sans-serif;font-size:15px;font-weight:700;color:var(--text)">${t.instrument||'-'}</span>
+<span style="font-size:12px;font-weight:700;color:${col};background:${bg};border:1px solid ${border};padding:2px 8px;border-radius:4px">${(t.direction||t.action||'').toUpperCase()}</span>
+</div>
+<span style="font-size:11px;color:var(--text3);font-weight:600">${t.index||''}</span>
+</div>
+
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:8px;margin-bottom:10px">
+<div style="padding:8px;border-radius:6px;background:rgba(255,255,255,.03)">
+<div style="font-size:10px;color:var(--text3);font-weight:600">SPOT PRICE</div>
+<div style="font-size:14px;font-weight:700;color:var(--text)">₹${t.spot_price||'-'}</div></div>
+<div style="padding:8px;border-radius:6px;background:rgba(255,255,255,.03)">
+<div style="font-size:10px;color:var(--text3);font-weight:600">ENTRY</div>
+<div style="font-size:14px;font-weight:700;color:var(--blue)">₹${t.entry||'-'}</div></div>
+<div style="padding:8px;border-radius:6px;background:rgba(255,255,255,.03)">
+<div style="font-size:10px;color:var(--text3);font-weight:600">TARGET</div>
+<div style="font-size:14px;font-weight:700;color:var(--green)">₹${t.target||'-'}</div></div>
+<div style="padding:8px;border-radius:6px;background:rgba(255,255,255,.03)">
+<div style="font-size:10px;color:var(--text3);font-weight:600">STOP LOSS</div>
+<div style="font-size:14px;font-weight:700;color:var(--red)">₹${t.stop_loss||'-'}</div></div>
+<div style="padding:8px;border-radius:6px;background:rgba(255,255,255,.03)">
+<div style="font-size:10px;color:var(--text3);font-weight:600">RISK:REWARD</div>
+<div style="font-size:14px;font-weight:700;color:var(--purple)">${t.risk_reward||'-'}</div></div>
+<div style="padding:8px;border-radius:6px;background:rgba(255,255,255,.03)">
+<div style="font-size:10px;color:var(--text3);font-weight:600">CONFIDENCE</div>
+<div style="font-size:14px;font-weight:700;color:var(--amber)">${t.confidence||'-'}</div></div>
+</div>
+
+<div style="font-size:12px;color:var(--text2);line-height:1.7">
+<strong style="color:var(--text3)">Rationale:</strong> ${t.reason||'-'}
+</div>
+${t.option_detail?'<div style="margin-top:6px;font-size:11px;color:var(--cyan)"><strong>Option:</strong> '+t.option_detail+'</div>':''}
+</div>`;
+});
+}
+
+// Stock Option Picks
+if(data.stock_trades&&data.stock_trades.length>0){
+html+=`<div style="font-family:'Sora',sans-serif;font-size:13px;font-weight:700;color:var(--purple);margin:20px 0 10px;letter-spacing:.3px">&#128640; STOCK OPTION PICKS — Today's Top Movers</div>`;
+data.stock_trades.forEach((t,i)=>{
+const isBuy=(/buy|long|call/i).test(t.direction||t.action||'');
+const col=isBuy?'var(--green)':'var(--red)';
+const bg=isBuy?'rgba(139,92,246,.04)':'rgba(239,68,68,.04)';
+const border=isBuy?'rgba(139,92,246,.25)':'rgba(239,68,68,.25)';
+html+=`<div style="border-left:4px solid rgba(139,92,246,.4);border-radius:10px;padding:16px;margin-bottom:12px;background:${bg};border:1px solid ${border}">
+<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px">
+<div style="display:flex;align-items:center;gap:8px">
+<span style="font-size:11px;background:var(--purple);color:#fff;padding:2px 8px;border-radius:4px;font-weight:800">S${i+1}</span>
+<span style="font-family:'Sora',sans-serif;font-size:15px;font-weight:700;color:var(--text)">${t.instrument||t.stock||'-'}</span>
+<span style="font-size:12px;font-weight:700;color:${col};background:${bg};border:1px solid ${border};padding:2px 8px;border-radius:4px">${(t.direction||t.action||'').toUpperCase()}</span>
+</div>
+<span style="font-size:11px;color:var(--text3);font-weight:600">${t.stock||''}</span>
+</div>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:8px;margin-bottom:10px">
+<div style="padding:8px;border-radius:6px;background:rgba(255,255,255,.03)">
+<div style="font-size:10px;color:var(--text3);font-weight:600">SPOT PRICE</div>
+<div style="font-size:14px;font-weight:700;color:var(--text)">₹${t.spot_price||'-'}</div></div>
+<div style="padding:8px;border-radius:6px;background:rgba(255,255,255,.03)">
+<div style="font-size:10px;color:var(--text3);font-weight:600">ENTRY</div>
+<div style="font-size:14px;font-weight:700;color:var(--blue)">₹${t.entry||'-'}</div></div>
+<div style="padding:8px;border-radius:6px;background:rgba(255,255,255,.03)">
+<div style="font-size:10px;color:var(--text3);font-weight:600">TARGET</div>
+<div style="font-size:14px;font-weight:700;color:var(--green)">₹${t.target||'-'}</div></div>
+<div style="padding:8px;border-radius:6px;background:rgba(255,255,255,.03)">
+<div style="font-size:10px;color:var(--text3);font-weight:600">STOP LOSS</div>
+<div style="font-size:14px;font-weight:700;color:var(--red)">₹${t.stop_loss||'-'}</div></div>
+<div style="padding:8px;border-radius:6px;background:rgba(255,255,255,.03)">
+<div style="font-size:10px;color:var(--text3);font-weight:600">RISK:REWARD</div>
+<div style="font-size:14px;font-weight:700;color:var(--purple)">${t.risk_reward||'-'}</div></div>
+<div style="padding:8px;border-radius:6px;background:rgba(255,255,255,.03)">
+<div style="font-size:10px;color:var(--text3);font-weight:600">CONFIDENCE</div>
+<div style="font-size:14px;font-weight:700;color:var(--amber)">${t.confidence||'-'}</div></div>
+</div>
+<div style="font-size:12px;color:var(--text2);line-height:1.7">
+<strong style="color:var(--text3)">Rationale:</strong> ${t.reason||'-'}
+</div>
+${t.option_detail?'<div style="margin-top:6px;font-size:11px;color:var(--cyan)"><strong>Option:</strong> '+t.option_detail+'</div>':''}
+</div>`;
+});
+}
+
+// VIX indicator
+if(data.vix){
+const vix=data.vix;
+const vixCol=vix.price>18?'var(--red)':vix.price>14?'var(--amber)':'var(--green)';
+const vixLabel=vix.price>18?'HIGH FEAR':vix.price>14?'CAUTIOUS':'LOW FEAR';
+html+=`<div style="display:flex;align-items:center;gap:12px;padding:12px 16px;border-radius:8px;background:rgba(${vix.price>18?'239,68,68':vix.price>14?'245,158,11':'16,185,129'},.06);border:1px solid rgba(${vix.price>18?'239,68,68':vix.price>14?'245,158,11':'16,185,129'},.15);margin-bottom:14px">
+<span style="font-size:20px">${vix.price>18?'&#128680;':vix.price>14?'&#9888;&#65039;':'&#9989;'}</span>
+<div><div style="font-size:12px;font-weight:700;color:${vixCol}">INDIA VIX: ${vix.price} (${vixLabel})</div>
+<div style="font-size:11px;color:var(--text3)">${vix.price>18?'High volatility — use wider stop losses, smaller positions':'Moderate volatility — standard position sizing applies'}</div></div></div>`;
+}
+
+// Disclaimer
+html+=`<div style="margin-top:16px;padding:14px;border-radius:8px;background:rgba(239,68,68,.06);border:1px solid rgba(239,68,68,.15)">
+<div style="font-size:11px;font-weight:700;color:var(--red);margin-bottom:4px">⚠️ IMPORTANT DISCLAIMER</div>
+<p style="font-size:11px;color:var(--text3);line-height:1.6;margin:0">These are AI-generated trade ideas for educational purposes ONLY. No trade is ever "sure shot." Markets are unpredictable. Always do your own research, manage position sizing (max 2-3% of capital per trade), and consult a SEBI-registered advisor before trading. Past analysis does not guarantee future results. Options trading involves substantial risk of loss.</p>
+</div>`;
+
+el.innerHTML=html;
+}catch(e){
+errEl.textContent='Failed to generate trades: '+e.message;errEl.style.display='block';
+btn.disabled=false;btn.textContent='⚡ Generate Today\'s Trades';
+}}
 
 function vote(feature,dir,btn){
 if(typeof gtag==='function')gtag('event','feature_vote',{feature_name:feature,vote_direction:dir>0?'up':'down'});
