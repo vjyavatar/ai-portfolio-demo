@@ -341,6 +341,7 @@ footer{position:relative;z-index:1;margin-top:32px;background:rgba(6,10,19,.95);
 .fab:hover{transform:translateY(-3px) scale(1.03);box-shadow:0 8px 30px rgba(59,130,246,.4);animation:none}
 .fab .pulse{width:8px;height:8px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green);animation:pdot 2s infinite}
 @keyframes fabBounce{0%,100%{transform:translateY(0);box-shadow:0 4px 20px rgba(59,130,246,.3)}25%{transform:translateY(-8px);box-shadow:0 12px 30px rgba(139,92,246,.4)}50%{transform:translateY(0);box-shadow:0 4px 20px rgba(59,130,246,.3)}75%{transform:translateY(-4px);box-shadow:0 8px 25px rgba(139,92,246,.35)}}
+@keyframes notifPop{0%,100%{transform:scale(1)}50%{transform:scale(1.25)}}
 
 /* Slide panel */
 .fpanel{position:fixed;top:0;right:-480px;width:460px;max-width:92vw;height:100vh;z-index:300;background:var(--bg2);border-left:1px solid var(--border2);overflow-y:auto;transition:right .4s cubic-bezier(.16,1,.3,1);box-shadow:-8px 0 40px rgba(0,0,0,.5)}
@@ -846,6 +847,8 @@ populateWhatsNext(report);
 generateSmallCapRecommendations(d);
 // Auto-open Quick Intel tab
 switchTab('quick');
+// Draw attention to vote button after report loads
+setTimeout(()=>{const fab=document.querySelector('.fab');if(fab){fab.style.transform='scale(1.15)';fab.style.boxShadow='0 0 40px rgba(139,92,246,.6)';setTimeout(()=>{fab.style.transform='';fab.style.boxShadow=''},1500)}},4000);
 // Draw attention to tab bar with pulse animation
 const tbar=document.querySelector('.tab-bar');
 if(tbar){tbar.classList.add('attention');setTimeout(()=>tbar.classList.remove('attention'),6500)}}
@@ -1219,11 +1222,11 @@ if(!el)return;
 const mgmtStart=rawText.search(/MANAGEMENT TONE|🎙️|CEO\/CFO Confidence/i);
 if(mgmtStart===-1){el.innerHTML='<div class="ic pu"><p style="color:var(--text3)">Management tone analysis not available for this stock.</p></div>';return}
 const afterMgmt=rawText.substring(mgmtStart);
-const mgmtEnd=afterMgmt.search(/\n##[^#]|TECHNICAL ANALYSIS|DISCLAIMER|PRICE TARGET|The Bottom Line|OVERALL ASSESSMENT|KEY QUESTIONS|FURTHER RESEARCH|WHAT WE NEED/i);
+const mgmtEnd=afterMgmt.search(/\n##[^#]|🏦\s*TOP FUND|TOP FUND.*INSTITUTIONAL|🔮\s*WHAT|WHAT['']?S NEXT|TECHNICAL ANALYSIS|DISCLAIMER|PRICE TARGET|The Bottom Line|OVERALL ASSESSMENT|🎯\s*ENTRY|ENTRY.*EXIT/i);
 const section=afterMgmt.substring(0,mgmtEnd>100?mgmtEnd:2500);
 
 // JUNK FILTER: headings that should NOT appear in Management tab
-const junkHeadings=/what we need|key question|further research|disclaimer|data gap|data source|note:|important:|methodology|limitation|caveat|appendix/i;
+const junkHeadings=/what we need|key question|further research|disclaimer|data gap|data source|note:|important:|methodology|limitation|caveat|appendix|bull.*case|bear.*case|base.*case|most likely|next 30|next 90|next 12|key trigger|smart money|top holder|institutional own|fund holder|what.*next|catalyst|timeline/i;
 
 // Clean and split into heading:content pairs
 const cleaned=section.replace(/[│┌┐└┘├┤─┬┴┼═]/g,'').replace(/^#+\s*/gm,'');
@@ -1361,9 +1364,9 @@ function populateFundHoldings(rawText){
 const el=document.getElementById('fundHoldingsContent');
 if(!el)return;
 
-// Extract fund holdings section
-const start=rawText.search(/TOP FUND.*INSTITUTIONAL|FUND.*INSTITUTIONAL HOLDINGS|🏦.*HOLDINGS|Smart Money/i);
-const end=rawText.search(/WHAT'S NEXT|🔮.*WHAT|ENTRY.*EXIT|🎯.*ENTRY/i);
+// Extract ONLY the fund holdings section with strict boundaries
+const start=rawText.search(/🏦\s*TOP FUND|TOP FUND.*INSTITUTIONAL HOLDINGS/i);
+const end=rawText.search(/🔮\s*WHAT['']?S NEXT|WHAT['']?S NEXT.*Catalyst/i);
 if(start===-1){el.innerHTML='<div class="ic bl"><p style="color:var(--text3)">Fund holdings data not available for this stock.</p></div>';return}
 
 const section=end>start?rawText.substring(start,end):rawText.substring(start,start+2000);
@@ -1371,15 +1374,14 @@ const cleaned=section.replace(/[│┌┐└┘├┤─┬┴┼═]/g,'').repl
 
 let html='';
 
-// Parse numbered holders list (1. Vanguard (8.2%) format)
-const holders=cleaned.match(/\d+\.\s*([^(]+)\s*\(([^)]+)\)/g)||[];
+// Parse numbered fund holders: "1. Vanguard Group (8.2%)" — must have % in parentheses
+const holders=cleaned.match(/\d+\.\s*[A-Z][A-Za-z\s&.,'/]+\s*\(\d+\.?\d*%\)/g)||[];
 if(holders.length>0){
 html+='<div style="margin-bottom:14px">';
 holders.forEach((h,i)=>{
-const m=h.match(/\d+\.\s*([^(]+)\s*\(([^)]+)\)/);
+const m=h.match(/\d+\.\s*([A-Z][A-Za-z\s&.,'/]+?)\s*\((\d+\.?\d*)%\)/);
 if(m){
-const name=m[1].trim(),pct=m[2].trim();
-const pctNum=parseFloat(pct)||0;
+const name=m[1].trim(),pctNum=parseFloat(m[2])||0;
 const barW=Math.min(100,pctNum*8);
 html+=`<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;padding:8px 12px;border-radius:8px;background:rgba(59,130,246,.04);border:1px solid rgba(59,130,246,.08)">
 <span style="font-size:12px;color:var(--text3);min-width:20px;font-weight:700">#${i+1}</span>
@@ -1387,23 +1389,25 @@ html+=`<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;pa
 <div style="font-size:13px;color:var(--text);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${name}</div>
 <div style="height:4px;border-radius:2px;background:rgba(59,130,246,.1);margin-top:4px"><div style="height:100%;border-radius:2px;background:var(--blue);width:${barW}%"></div></div>
 </div>
-<span style="font-size:13px;font-weight:700;color:var(--blue);white-space:nowrap">${pct}</span>
+<span style="font-size:13px;font-weight:700;color:var(--blue);white-space:nowrap">${pctNum}%</span>
 </div>`;
 }});
 html+='</div>';
 }
 
-// Parse **heading:** content blocks
+// Parse **heading:** content blocks (only from this section)
 const blocks=[];
 const parts=cleaned.split(/\*\*([^*]+)\*\*/);
 for(let i=1;i<parts.length;i+=2){
 const heading=(parts[i]||'').replace(/[:*]/g,'').trim();
 const content=(parts[i+1]||'').replace(/^\s*[:]\s*/,'').trim().split('\n').filter(l=>l.trim().length>5).join(' ').trim();
-if(heading&&content&&content.length>10)blocks.push({heading,content});
+// Only include fund-related headings, skip price targets/bull/bear
+if(heading&&content&&content.length>10&&!/bull.*case|bear.*case|base.*case|price.*target|entry|exit|stop.*loss|buy.*below|sell.*above/i.test(heading))
+blocks.push({heading,content});
 }
 
 blocks.forEach(b=>{
-if(/top holder/i.test(b.heading)&&holders.length>0)return; // Skip if we already rendered holders
+if(/top holder/i.test(b.heading)&&holders.length>0)return;
 const icon=/smart money|institutional/i.test(b.heading)?'🧠':/ownership/i.test(b.heading)?'📊':'💼';
 html+=`<div style="border-left:4px solid rgba(59,130,246,.3);border-radius:10px;padding:14px 16px;margin-bottom:10px;background:rgba(59,130,246,.04)">
 <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
@@ -1425,8 +1429,8 @@ function populateWhatsNext(rawText){
 const el=document.getElementById('whatsNextContent');
 if(!el)return;
 
-const start=rawText.search(/WHAT'S NEXT|🔮.*WHAT.*NEXT|Catalysts.*Timeline/i);
-const end=rawText.search(/ENTRY.*EXIT|🎯.*ENTRY|SMALL.CAP|10.YEAR/i);
+const start=rawText.search(/🔮\s*WHAT['']?S NEXT|##\s*🔮|WHAT['']?S NEXT.*Catalyst/i);
+const end=rawText.search(/🎯\s*ENTRY.*EXIT|##\s*🎯\s*ENTRY/i);
 if(start===-1){el.innerHTML='<div class="ic bl"><p style="color:var(--text3)">Catalyst analysis not available for this stock.</p></div>';return}
 
 const section=end>start?rawText.substring(start,end):rawText.substring(start,start+2500);
@@ -1434,13 +1438,15 @@ const cleaned=section.replace(/[│┌┐└┘├┤─┬┴┼═]/g,'').repl
 
 let html='';
 
-// Parse blocks
+// Parse blocks — only catalyst/timeline related
 const blocks=[];
 const parts=cleaned.split(/\*\*([^*]+)\*\*/);
 for(let i=1;i<parts.length;i+=2){
 const heading=(parts[i]||'').replace(/[:*]/g,'').trim();
 const content=(parts[i+1]||'').replace(/^\s*[:]\s*/,'').trim().split('\n').filter(l=>l.trim().length>5).join(' ').trim();
-if(heading&&content&&content.length>10)blocks.push({heading,content});
+// Skip headings that belong to other sections
+if(heading&&content&&content.length>10&&!/smart money|institutional|fund holder|ownership|confidence level|ceo.*cfo|management.*tone|investment.*inference/i.test(heading))
+blocks.push({heading,content});
 }
 
 // Timeline theme mapping
@@ -1700,7 +1706,7 @@ if(btt){if(window.scrollY>600)btt.classList.add('show');else btt.classList.remov
 
 <!-- FLOATING FEEDBACK BUTTON -->
 <button class="fab" onclick="document.getElementById('fpanel').classList.add('open');document.getElementById('fpbk').classList.add('open')">
-<div class="pulse"></div> What's Next? Vote on Features
+<div class="pulse"></div> &#128227; Shape Our Roadmap! <span style="background:#ef4444;color:#fff;font-size:10px;padding:2px 6px;border-radius:10px;margin-left:4px;font-weight:800;animation:notifPop 2s ease-in-out infinite">NEW</span>
 </button>
 
 <!-- BACKDROP -->
