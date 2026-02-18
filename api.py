@@ -29,18 +29,16 @@ YAHOO_HEADERS = {
 
 def fetch_yahoo_direct(ticker: str) -> dict:
     """
-    Fallback: Direct HTTP call to Yahoo Finance API.
-    No yfinance library needed — just raw HTTP.
-    Returns same format as yfinance info dict or None on failure.
+    Fallback: Direct HTTP to Yahoo Finance APIs.
+    Chain: v8 chart → v6 quote → v10 quoteSummary
     """
     try:
-        # Endpoint 1: v8 chart API (price + history)
-        chart_url = f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}?interval=1d&range=5d"
         headers = {**YAHOO_HEADERS, 'User-Agent': f'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/{random.randint(110,125)}.0.0.0'}
         
+        # ── v8 chart (price + history) ──
+        chart_url = f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}?interval=1d&range=5d"
         chart_resp = requests.get(chart_url, headers=headers, timeout=10)
         if chart_resp.status_code != 200:
-            print(f"⚠️ Yahoo chart API returned {chart_resp.status_code}")
             return None
         
         chart_data = chart_resp.json()
@@ -50,85 +48,317 @@ def fetch_yahoo_direct(ticker: str) -> dict:
         
         meta = result[0].get('meta', {})
         indicators = result[0].get('indicators', {}).get('quote', [{}])[0]
-        timestamps = result[0].get('timestamp', [])
-        closes = indicators.get('close', [])
-        highs = indicators.get('high', [])
-        lows = indicators.get('low', [])
+        closes = [c for c in indicators.get('close', []) if c is not None]
+        highs = [h for h in indicators.get('high', []) if h is not None]
+        lows = [l for l in indicators.get('low', []) if l is not None]
         
-        # Get current price from meta
         current_price = meta.get('regularMarketPrice', 0)
         previous_close = meta.get('chartPreviousClose', meta.get('previousClose', current_price))
         
-        # 52-week from chart history (limited but better than nothing)
-        valid_highs = [h for h in highs if h is not None]
-        valid_lows = [l for l in lows if l is not None]
-        valid_closes = [c for c in closes if c is not None]
-        
-        chart_info = {
+        info = {
             'currentPrice': current_price,
             'previousClose': previous_close,
             'currency': meta.get('currency', 'USD'),
-            'exchangeName': meta.get('exchangeName', ''),
             'symbol': meta.get('symbol', ticker),
             'longName': meta.get('longName', ticker),
-            'chartHigh': max(valid_highs) if valid_highs else current_price,
-            'chartLow': min(valid_lows) if valid_lows else current_price,
-            'closes': valid_closes,
+            'chartHigh': max(highs) if highs else current_price,
+            'chartLow': min(lows) if lows else current_price,
+            'closes': closes,
+            'fiftyTwoWeekHigh': max(highs) if highs else current_price,
+            'fiftyTwoWeekLow': min(lows) if lows else current_price,
             '_source': 'yahoo_chart_v8'
         }
         
-        # Endpoint 2: quoteSummary for fundamentals
-        modules = 'summaryProfile,financialData,defaultKeyStatistics,summaryDetail,price'
-        summary_url = f"https://query2.finance.yahoo.com/v10/finance/quoteSummary/{ticker}?modules={modules}"
+        got_fundamentals = False
         
+        # ── v6 quote API (best for fundamentals — no crumb needed) ──
         try:
-            summary_resp = requests.get(summary_url, headers=headers, timeout=10)
-            if summary_resp.status_code == 200:
-                summary_data = summary_resp.json()
-                qresult = summary_data.get('quoteSummary', {}).get('result', [])
+            quote_url = f"https://query1.finance.yahoo.com/v6/finance/quote?symbols={ticker}"
+            qr = requests.get(quote_url, headers=headers, timeout=8)
+            if qr.status_code == 200:
+                quotes = qr.json().get('quoteResponse', {}).get('result', [])
+                if quotes:
+                    q = quotes[0]
+                    info.update({
+                        'longName': q.get('longName', q.get('shortName', ticker)),
+                        'marketCap': q.get('marketCap', 0),
+                        'trailingPE': q.get('trailingPE', 0),
+                        'forwardPE': q.get('forwardPE', 0),
+                        'priceToBook': q.get('priceToBook', 0),
+                        'dividendYield': q.get('trailingAnnualDividendYield', 0),
+                        'beta': q.get('beta', 0),
+                        'profitMargins': q.get('profitMargins', 0),
+                        'fiftyTwoWeekHigh': q.get('fiftyTwoWeekHigh', info['chartHigh']),
+                        'fiftyTwoWeekLow': q.get('fiftyTwoWeekLow', info['chartLow']),
+                        '_source': 'yahoo_v6_quote'
+                    })
+                    got_fundamentals = bool(q.get('trailingPE') or q.get('marketCap'))
+                    print(f"  v6 quote: PE={q.get('trailingPE')}, MCap={q.get('marketCap')}")
+        except Exception as e:
+            print(f"  v6 quote failed: {e}")
+        
+        # ── v10 quoteSummary (fuller data — margins, ROE, sector) ──
+        try:
+            modules = 'summaryProfile,financialData,defaultKeyStatistics,summaryDetail,price'
+            sr = requests.get(f"https://query2.finance.yahoo.com/v10/finance/quoteSummary/{ticker}?modules={modules}", headers=headers, timeout=8)
+            if sr.status_code == 200:
+                qresult = sr.json().get('quoteSummary', {}).get('result', [])
                 if qresult:
                     r = qresult[0]
                     fin = r.get('financialData', {})
                     stats = r.get('defaultKeyStatistics', {})
                     detail = r.get('summaryDetail', {})
                     profile = r.get('summaryProfile', {})
-                    price_data = r.get('price', {})
+                    price_d = r.get('price', {})
                     
                     def raw(d, key, default=0):
-                        """Extract raw value from Yahoo's nested format"""
                         v = d.get(key, {})
-                        if isinstance(v, dict):
-                            return v.get('raw', v.get('fmt', default))
-                        return v if v else default
+                        return v.get('raw', v.get('fmt', default)) if isinstance(v, dict) else (v or default)
                     
-                    chart_info.update({
-                        'longName': price_data.get('longName', chart_info.get('longName', ticker)),
-                        'marketCap': raw(price_data, 'marketCap'),
-                        'trailingPE': raw(detail, 'trailingPE'),
-                        'forwardPE': raw(stats, 'forwardPE') or raw(detail, 'forwardPE'),
-                        'priceToBook': raw(stats, 'priceToBook'),
-                        'dividendYield': raw(detail, 'dividendYield'),
-                        'beta': raw(stats, 'beta') or raw(detail, 'beta'),
-                        'sector': profile.get('sector', 'N/A'),
-                        'industry': profile.get('industry', 'N/A'),
-                        'profitMargins': raw(fin, 'profitMargins') or raw(stats, 'profitMargins'),
+                    # Only override if we didn't get from v6 or values are better
+                    updates = {
+                        'sector': profile.get('sector', info.get('sector', 'N/A')),
+                        'industry': profile.get('industry', info.get('industry', 'N/A')),
                         'operatingMargins': raw(fin, 'operatingMargins'),
                         'returnOnEquity': raw(fin, 'returnOnEquity'),
                         'debtToEquity': raw(fin, 'debtToEquity'),
                         'currentRatio': raw(fin, 'currentRatio'),
-                        'fiftyTwoWeekHigh': raw(detail, 'fiftyTwoWeekHigh', chart_info['chartHigh']),
-                        'fiftyTwoWeekLow': raw(detail, 'fiftyTwoWeekLow', chart_info['chartLow']),
-                        '_source': 'yahoo_direct_full'
-                    })
+                    }
+                    if not got_fundamentals:
+                        updates.update({
+                            'longName': raw(price_d, 'longName') or info.get('longName', ticker),
+                            'marketCap': raw(price_d, 'marketCap') or info.get('marketCap', 0),
+                            'trailingPE': raw(detail, 'trailingPE') or info.get('trailingPE', 0),
+                            'forwardPE': raw(stats, 'forwardPE') or info.get('forwardPE', 0),
+                            'priceToBook': raw(stats, 'priceToBook') or info.get('priceToBook', 0),
+                            'dividendYield': raw(detail, 'dividendYield') or info.get('dividendYield', 0),
+                            'beta': raw(stats, 'beta') or info.get('beta', 0),
+                            'profitMargins': raw(fin, 'profitMargins') or info.get('profitMargins', 0),
+                            'fiftyTwoWeekHigh': raw(detail, 'fiftyTwoWeekHigh') or info['fiftyTwoWeekHigh'],
+                            'fiftyTwoWeekLow': raw(detail, 'fiftyTwoWeekLow') or info['fiftyTwoWeekLow'],
+                        })
+                    info.update(updates)
+                    info['_source'] = 'yahoo_direct_full'
+                    print(f"  v10 summary: sector={info.get('sector')}, ROE={info.get('returnOnEquity')}")
         except Exception as e:
-            print(f"⚠️ Yahoo summary API failed: {e} — using chart data only")
-            chart_info['_source'] = 'yahoo_chart_only'
+            print(f"  v10 summary failed: {e}")
         
-        return chart_info
+        return info
         
     except Exception as e:
         print(f"❌ Yahoo direct HTTP failed: {e}")
         return None
+
+
+def fetch_management_context(ticker: str, company_name: str) -> str:
+    """
+    Fetch real analyst/earnings/insider data from free sources.
+    Returns text that gets injected into the AI prompt for real analysis.
+    """
+    import re
+    context_parts = []
+    headers = {'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Chrome/120.0.0.0 Safari/537.36'}
+    is_indian = '.NS' in ticker or '.BO' in ticker
+    clean_ticker = ticker.replace('.NS', '').replace('.BO', '')
+    
+    # ── 1. Yahoo Finance analysis page (analyst targets + estimates) ──
+    try:
+        url = f"https://query1.finance.yahoo.com/v6/finance/quote?symbols={ticker}"
+        r = requests.get(url, headers={**YAHOO_HEADERS}, timeout=8)
+        if r.status_code == 200:
+            quotes = r.json().get('quoteResponse', {}).get('result', [])
+            if quotes:
+                q = quotes[0]
+                parts = []
+                if q.get('averageAnalystRating'): parts.append(f"Analyst Rating: {q['averageAnalystRating']}")
+                if q.get('targetMeanPrice'): parts.append(f"Mean Price Target: ${q['targetMeanPrice']}")  
+                if q.get('targetHighPrice'): parts.append(f"High Target: ${q['targetHighPrice']}")
+                if q.get('targetLowPrice'): parts.append(f"Low Target: ${q['targetLowPrice']}")
+                if q.get('recommendationKey'): parts.append(f"Recommendation: {q['recommendationKey'].upper()}")
+                if q.get('numberOfAnalystOpinions'): parts.append(f"Analyst Count: {q['numberOfAnalystOpinions']}")
+                if q.get('earningsTimestamp'):
+                    from datetime import datetime
+                    ts = datetime.fromtimestamp(q['earningsTimestamp'])
+                    parts.append(f"Last Earnings Date: {ts.strftime('%Y-%m-%d')}")
+                if q.get('epsTrailingTwelveMonths'): parts.append(f"EPS (TTM): ${q['epsTrailingTwelveMonths']:.2f}")
+                if q.get('epsForward'): parts.append(f"EPS Forward: ${q['epsForward']:.2f}")
+                if q.get('epsCurrentYear'): parts.append(f"EPS Current Year: ${q['epsCurrentYear']:.2f}")
+                if q.get('revenueGrowth'): parts.append(f"Revenue Growth: {q['revenueGrowth']*100:.1f}%")
+                if q.get('earningsGrowth'): parts.append(f"Earnings Growth: {q['earningsGrowth']*100:.1f}%")
+                if q.get('revenuePerShare'): parts.append(f"Revenue/Share: ${q['revenuePerShare']:.2f}")
+                if q.get('heldPercentInsiders'): parts.append(f"Insider Ownership: {q['heldPercentInsiders']*100:.1f}%")
+                if q.get('heldPercentInstitutions'): parts.append(f"Institutional Ownership: {q['heldPercentInstitutions']*100:.1f}%")
+                if q.get('shortPercentOfFloat'): parts.append(f"Short Interest: {q['shortPercentOfFloat']*100:.1f}%")
+                if q.get('sharesShortPreviousMonthDate'):
+                    if q.get('sharesShort') and q.get('sharesShortPriorMonth'):
+                        chg = q['sharesShort'] - q['sharesShortPriorMonth']
+                        direction = "increased" if chg > 0 else "decreased"
+                        parts.append(f"Short Interest {direction} by {abs(chg):,} shares vs prior month")
+                if parts:
+                    context_parts.append("=== ANALYST & MARKET DATA (REAL) ===\n" + "\n".join(parts))
+                    print(f"✅ Got {len(parts)} analyst data points for {ticker}")
+    except Exception as e:
+        print(f"⚠️ Analyst data fetch failed: {e}")
+    
+    # ── 2. Yahoo earnings history ──
+    try:
+        url = f"https://query2.finance.yahoo.com/v10/finance/quoteSummary/{ticker}?modules=earnings,earningsHistory,earningsTrend"
+        r = requests.get(url, headers={**YAHOO_HEADERS}, timeout=8)
+        if r.status_code == 200:
+            data = r.json().get('quoteSummary', {}).get('result', [])
+            if data:
+                d = data[0]
+                parts = []
+                
+                # Earnings history (actual vs estimate)
+                eh = d.get('earningsHistory', {}).get('history', [])
+                if eh:
+                    parts.append("\n--- EARNINGS SURPRISE HISTORY ---")
+                    for e in eh[-4:]:  # last 4 quarters
+                        def rv(x): 
+                            return x.get('raw', 0) if isinstance(x, dict) else (x or 0)
+                        actual = rv(e.get('epsActual', {}))
+                        est = rv(e.get('epsEstimate', {}))
+                        surprise = rv(e.get('epsDifference', {}))
+                        surprise_pct = rv(e.get('surprisePercent', {}))
+                        qtr = e.get('quarter', {})
+                        qtr_val = rv(qtr) if isinstance(qtr, dict) else qtr
+                        parts.append(f"Q{qtr_val}: Actual EPS ${actual:.2f} vs Est ${est:.2f} | Surprise: {surprise_pct*100:.1f}%")
+                
+                # Earnings trend (forward estimates)
+                et = d.get('earningsTrend', {}).get('trend', [])
+                if et:
+                    parts.append("\n--- FORWARD EARNINGS ESTIMATES ---")
+                    for t in et[:4]:
+                        period = t.get('period', '')
+                        growth = t.get('growth', {})
+                        growth_val = growth.get('raw', 0) if isinstance(growth, dict) else 0
+                        eps_est = t.get('earningsEstimate', {}).get('avg', {})
+                        eps_val = eps_est.get('raw', 0) if isinstance(eps_est, dict) else 0
+                        rev_est = t.get('revenueEstimate', {}).get('avg', {})
+                        rev_val = rev_est.get('raw', 0) if isinstance(rev_est, dict) else 0
+                        if eps_val:
+                            parts.append(f"{period}: EPS Est ${eps_val:.2f} | Growth {growth_val*100:.1f}% | Rev Est ${rev_val:,.0f}")
+                
+                # Quarterly financials
+                earnings = d.get('earnings', {}).get('financialsChart', {})
+                quarterly = earnings.get('quarterly', [])
+                if quarterly:
+                    parts.append("\n--- QUARTERLY REVENUE & EARNINGS ---")
+                    for q in quarterly[-4:]:
+                        rev = q.get('revenue', {})
+                        earn = q.get('earnings', {})
+                        rev_val = rev.get('raw', 0) if isinstance(rev, dict) else 0
+                        earn_val = earn.get('raw', 0) if isinstance(earn, dict) else 0
+                        date = q.get('date', '')
+                        parts.append(f"{date}: Revenue ${rev_val:,.0f} | Earnings ${earn_val:,.0f}")
+                
+                if parts:
+                    context_parts.append("=== EARNINGS & QUARTERLY DATA (REAL) ===\n" + "\n".join(parts))
+                    print(f"✅ Got earnings history for {ticker}")
+    except Exception as e:
+        print(f"⚠️ Earnings data fetch failed: {e}")
+    
+    # ── 3. For Indian stocks: Screener.in data ──
+    if is_indian:
+        try:
+            screener_url = f"https://www.screener.in/api/company/{clean_ticker}/consolidated/"
+            r = requests.get(screener_url, headers=headers, timeout=8)
+            if r.status_code == 200:
+                data = r.json() if r.headers.get('content-type', '').startswith('application/json') else {}
+                parts = []
+                if data.get('warehouse_set'):
+                    wh = data['warehouse_set']
+                    if wh.get('promoter_holding'): parts.append(f"Promoter Holding: {wh['promoter_holding']}%")
+                    if wh.get('pledged_percentage'): parts.append(f"Promoter Pledge: {wh['pledged_percentage']}%")
+                    if wh.get('roce'): parts.append(f"ROCE: {wh['roce']}%")
+                    if wh.get('roe'): parts.append(f"ROE: {wh['roe']}%")
+                    if wh.get('sales_growth_3years'): parts.append(f"3Y Sales Growth: {wh['sales_growth_3years']}%")
+                    if wh.get('profit_growth_3years'): parts.append(f"3Y Profit Growth: {wh['profit_growth_3years']}%")
+                if parts:
+                    context_parts.append("=== INDIAN MARKET DATA (Screener.in) ===\n" + "\n".join(parts))
+                    print(f"✅ Got Screener.in data for {clean_ticker}")
+        except Exception as e:
+            print(f"⚠️ Screener.in failed: {e}")
+        
+        # ── 4. For Indian stocks: Moneycontrol data (management commentary, quarterly results) ──
+        try:
+            import re as re_mc
+            # Moneycontrol search - find stock URL
+            mc_search = f"https://www.moneycontrol.com/stocks/company_info/stock_news.php?sc_id={clean_ticker}"
+            mc_resp = requests.get(f"https://www.moneycontrol.com/indian-indices/nifty-50-9", headers=headers, timeout=6)
+            # Alternative: direct company page
+            mc_url = f"https://www.moneycontrol.com/stocks/company_info/print_financials.php?sc_did={clean_ticker}"
+            mc_resp = requests.get(mc_url, headers=headers, timeout=6)
+            if mc_resp.status_code == 200:
+                text = mc_resp.text
+                parts = []
+                
+                # Extract management discussions/commentary from page
+                mgmt_disc = re_mc.findall(r'(?:management|board|promoter|chairman|CEO|MD)[^<]{10,300}', text, re_mc.IGNORECASE)
+                for disc in mgmt_disc[:3]:
+                    clean = re_mc.sub(r'<[^>]+>', '', disc).strip()
+                    if len(clean) > 20:
+                        parts.append(f"Management Note: {clean[:200]}")
+                
+                # Extract quarterly results mentions  
+                qr_mentions = re_mc.findall(r'(?:quarterly|Q[1-4]|results?|revenue|profit|EPS|earnings)[^<]{10,200}', text, re_mc.IGNORECASE)
+                for qr in qr_mentions[:3]:
+                    clean = re_mc.sub(r'<[^>]+>', '', qr).strip()
+                    if len(clean) > 15:
+                        parts.append(f"Quarterly Info: {clean[:200]}")
+                
+                if parts:
+                    context_parts.append("=== MONEYCONTROL DATA (India) ===\n" + "\n".join(parts))
+                    print(f"✅ Got Moneycontrol data for {clean_ticker}")
+        except Exception as e:
+            print(f"⚠️ Moneycontrol failed: {e}")
+    
+    # ── 5. For US stocks: Finviz data (analyst targets, insider trading, earnings) ──
+    if not is_indian:
+        try:
+            import re as re_fv
+            finviz_url = f"https://finviz.com/quote.ashx?t={ticker}&ty=c&p=d&b=1"
+            fv_headers = {**headers, 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/122.0.0.0'}
+            fv_resp = requests.get(finviz_url, headers=fv_headers, timeout=8)
+            if fv_resp.status_code == 200:
+                text = fv_resp.text
+                parts = []
+                
+                # Extract key Finviz stats
+                stat_map = {
+                    'Target Price': 'targetPrice', 'Insider Own': 'insiderOwn', 
+                    'Insider Trans': 'insiderTrans', 'Inst Own': 'instOwn',
+                    'Inst Trans': 'instTrans', 'Short Float': 'shortFloat',
+                    'Earnings': 'earningsDate', 'EPS next Y': 'epsNextY',
+                    'EPS next Q': 'epsNextQ', 'Sales Q/Q': 'salesQQ',
+                    'EPS Q/Q': 'epsQQ', 'Perf Quarter': 'perfQ',
+                    'Perf Half Y': 'perfHY', 'Perf Year': 'perfY',
+                    'Recom': 'recommendation', 'Avg Volume': 'avgVol',
+                    'SMA20': 'sma20', 'SMA50': 'sma50', 'SMA200': 'sma200',
+                }
+                
+                for label, key in stat_map.items():
+                    pattern = f'>{re_fv.escape(label)}</td>.*?<b>([^<]+)</b>'
+                    m = re_fv.search(pattern, text, re_fv.DOTALL)
+                    if m:
+                        parts.append(f"{label}: {m.group(1).strip()}")
+                
+                # Extract recent insider transactions
+                insider_matches = re_fv.findall(r'class="insider-(?:buy|sale)-cell[^"]*"[^>]*>([^<]+)', text)
+                if insider_matches:
+                    parts.append(f"\nRecent Insider Activity: {', '.join(insider_matches[:5])}")
+                
+                if parts:
+                    context_parts.append("=== FINVIZ DATA (US Market) ===\n" + "\n".join(parts))
+                    print(f"✅ Got Finviz data for {ticker}")
+        except Exception as e:
+            print(f"⚠️ Finviz failed: {e}")
+    
+    if not context_parts:
+        return ""
+    
+    return "\n\n".join(context_parts)
 
 
 def fetch_yahoo_scrape(ticker: str) -> dict:
@@ -194,6 +424,105 @@ def fetch_yahoo_scrape(ticker: str) -> dict:
         }
     except Exception as e:
         print(f"❌ Yahoo scrape failed: {e}")
+        return None
+
+
+def fetch_google_finance(ticker: str) -> dict:
+    """
+    Source 4: Google Finance page scrape for fundamentals.
+    Google Finance pages are public and rarely rate-limited.
+    Extracts: P/E, Market Cap, Dividend Yield, 52W range, etc.
+    """
+    import re
+    try:
+        # Convert ticker format: TSLA → TSLA:NASDAQ, RELIANCE.NS → RELIANCE:NSE
+        if '.NS' in ticker:
+            g_ticker = ticker.replace('.NS', '') + ':NSE'
+        elif '.BO' in ticker:
+            g_ticker = ticker.replace('.BO', '') + ':BOM'
+        else:
+            g_ticker = ticker  # Google will auto-resolve
+        
+        url = f"https://www.google.com/finance/quote/{g_ticker}"
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/122.0.0.0 Safari/537.36',
+            'Accept': 'text/html',
+            'Accept-Language': 'en-US,en;q=0.9',
+        }
+        
+        resp = requests.get(url, headers=headers, timeout=10)
+        if resp.status_code != 200:
+            return None
+        
+        text = resp.text
+        
+        # Extract price from Google Finance page
+        price_match = re.search(r'data-last-price="([0-9.]+)"', text)
+        if not price_match:
+            price_match = re.search(r'class="YMlKec fxKbKc"[^>]*>([0-9,.]+)', text)
+        if not price_match:
+            return None
+        
+        price = float(price_match.group(1).replace(',', ''))
+        
+        # Google Finance shows key stats in structured data
+        info = {
+            'currentPrice': price,
+            'previousClose': price,  # Will be refined below
+            'currency': 'INR' if '.NS' in ticker or '.BO' in ticker else 'USD',
+            'longName': ticker,
+            '_source': 'google_finance'
+        }
+        
+        # Extract key stats from Google Finance page
+        # Google uses format: <div class="...">P/E ratio</div><div class="...">25.30</div>
+        stat_patterns = [
+            (r'P/E ratio.*?<div[^>]*>([0-9,.]+)', 'trailingPE'),
+            (r'Market cap.*?<div[^>]*>([0-9,.]+[TBMK]?)', 'marketCap_str'),
+            (r'Dividend yield.*?<div[^>]*>([0-9,.]+)%', 'dividendYield_pct'),
+            (r'52-wk high.*?<div[^>]*>([0-9,.]+)', 'fiftyTwoWeekHigh'),
+            (r'52-wk low.*?<div[^>]*>([0-9,.]+)', 'fiftyTwoWeekLow'),
+            (r'Prev close.*?<div[^>]*>([0-9,.]+)', 'previousClose'),
+            (r'Revenue.*?<div[^>]*>\$?₹?([0-9,.]+[TBMK]?)', 'revenue_str'),
+            (r'Net income.*?<div[^>]*>\$?₹?([0-9,.]+[TBMK]?)', 'netIncome_str'),
+            (r'EPS.*?<div[^>]*>\$?₹?([0-9,.]+)', 'eps'),
+        ]
+        
+        for pattern, key in stat_patterns:
+            m = re.search(pattern, text, re.DOTALL | re.IGNORECASE)
+            if m:
+                val_str = m.group(1).replace(',', '')
+                try:
+                    if key == 'marketCap_str':
+                        # Convert 1.23T, 456B, 78M format
+                        mult = 1
+                        if val_str.endswith('T'): mult = 1e12; val_str = val_str[:-1]
+                        elif val_str.endswith('B'): mult = 1e9; val_str = val_str[:-1]
+                        elif val_str.endswith('M'): mult = 1e6; val_str = val_str[:-1]
+                        elif val_str.endswith('K'): mult = 1e3; val_str = val_str[:-1]
+                        info['marketCap'] = float(val_str) * mult
+                    elif key == 'dividendYield_pct':
+                        info['dividendYield'] = float(val_str) / 100  # Convert to decimal
+                    elif key == 'previousClose':
+                        info['previousClose'] = float(val_str)
+                    else:
+                        info[key] = float(val_str)
+                except:
+                    pass
+        
+        # Extract company name
+        name_match = re.search(r'<div[^>]*class="zzDege"[^>]*>([^<]+)', text)
+        if name_match:
+            info['longName'] = name_match.group(1).strip()
+        
+        if info.get('trailingPE') or info.get('marketCap'):
+            print(f"✅ Google Finance: PE={info.get('trailingPE')}, MCap={info.get('marketCap')}")
+            return info
+        
+        return None
+        
+    except Exception as e:
+        print(f"❌ Google Finance scrape failed: {e}")
         return None
 
 app = FastAPI(title="Celesys AI - Verified Live Data")
@@ -504,6 +833,51 @@ def get_live_stock_data(company_name: str) -> dict:
             except Exception as e:
                 print(f"❌ Source 3 FAILED: {e}")
         
+        # ── SOURCE 4: Google Finance (if no price yet, or as fundamentals enrichment) ──
+        if info is None or current_price is None:
+            try:
+                print(f"🔍 Source 4: Google Finance for {ticker_symbol}...")
+                gf_data = fetch_google_finance(ticker_symbol)
+                if gf_data and gf_data.get('currentPrice'):
+                    current_price = float(gf_data['currentPrice'])
+                    previous_close = float(gf_data.get('previousClose', current_price))
+                    week52_high = float(gf_data.get('fiftyTwoWeekHigh', current_price * 1.1))
+                    week52_low = float(gf_data.get('fiftyTwoWeekLow', current_price * 0.8))
+                    info = gf_data
+                    data_source = 'google_finance'
+                    print(f"✅ Source 4 SUCCESS: {ticker_symbol} @ {current_price}")
+            except Exception as e:
+                print(f"❌ Source 4 FAILED: {e}")
+        
+        # ── FUNDAMENTALS ENRICHMENT: If we got price but missing P/E, Market Cap, etc. ──
+        if current_price is not None and info is not None:
+            has_pe = info.get('trailingPE') and info['trailingPE'] != 0
+            has_mcap = info.get('marketCap') and info['marketCap'] != 0
+            
+            if not has_pe or not has_mcap:
+                print(f"⚠️ Missing fundamentals (PE={info.get('trailingPE')}, MCap={info.get('marketCap')}). Trying enrichment...")
+                
+                # Try Google Finance for missing fundamentals
+                try:
+                    gf_enrich = fetch_google_finance(ticker_symbol)
+                    if gf_enrich:
+                        if not has_pe and gf_enrich.get('trailingPE'):
+                            info['trailingPE'] = gf_enrich['trailingPE']
+                            print(f"  ✅ Enriched PE from Google: {gf_enrich['trailingPE']}")
+                        if not has_mcap and gf_enrich.get('marketCap'):
+                            info['marketCap'] = gf_enrich['marketCap']
+                            print(f"  ✅ Enriched Market Cap from Google: {gf_enrich['marketCap']}")
+                        if not info.get('fiftyTwoWeekHigh') and gf_enrich.get('fiftyTwoWeekHigh'):
+                            info['fiftyTwoWeekHigh'] = gf_enrich['fiftyTwoWeekHigh']
+                            week52_high = float(gf_enrich['fiftyTwoWeekHigh'])
+                        if not info.get('fiftyTwoWeekLow') and gf_enrich.get('fiftyTwoWeekLow'):
+                            info['fiftyTwoWeekLow'] = gf_enrich['fiftyTwoWeekLow']
+                            week52_low = float(gf_enrich['fiftyTwoWeekLow'])
+                        if gf_enrich.get('dividendYield') and not info.get('dividendYield'):
+                            info['dividendYield'] = gf_enrich['dividendYield']
+                except Exception as e:
+                    print(f"  ⚠️ Google enrichment failed: {e}")
+        
         # ── ALL SOURCES FAILED: check stale cache ──
         if current_price is None:
             if cache_key in stock_data_cache:
@@ -726,16 +1100,37 @@ COMPANY INFORMATION:
 ═══════════════════════════════════════════════════════════════
 """
 
+        # FETCH REAL MANAGEMENT/EARNINGS DATA
+        mgmt_context = ""
+        try:
+            mgmt_context = fetch_management_context(live_data['ticker'], live_data.get('company_name', company))
+            if mgmt_context:
+                print(f"📊 Got {len(mgmt_context)} chars of real management/earnings data")
+        except Exception as e:
+            print(f"⚠️ Management context fetch failed: {e}")
+
         # CREATE CLAUDE PROMPT
         prompt = f"""Analyze {company} using the VERIFIED LIVE DATA below.
 
 {live_data_section}
+
+{"=" * 60}
+REAL ANALYST & EARNINGS DATA (use this for management tone analysis):
+{"=" * 60}
+{mgmt_context if mgmt_context else "No additional analyst data available — analyze based on financial metrics above."}
+{"=" * 60}
 
 CRITICAL INSTRUCTIONS:
 1. Use ONLY the real-time data provided above
 2. Current price is {currency_symbol}{live_data['current_price']:,.2f} - use THIS number
 3. Base all analysis on current market conditions
 4. Provide actionable, professional insights
+5. For Management Tone section, use the REAL analyst/earnings data above - cite actual earnings surprises, analyst targets, insider activity
+6. For QoQ and YoY analysis, use the quarterly revenue/earnings data provided - calculate actual changes between quarters
+7. Include specific growth predictions based on forward EPS estimates and revenue growth rates
+8. ALWAYS provide a 12-month price prediction with specific bull/base/bear numbers
+9. When data is missing (N/A), explicitly state what's unavailable and analyze with available metrics
+10. If FINVIZ/Screener.in/Moneycontrol data is provided, use it to enrich your analysis with insider trading patterns, institutional activity, and management signals
 
 ═══════════════════════════════════════════════════════════════
 📊 COMPREHENSIVE INVESTMENT ANALYSIS: {company.upper()}
@@ -781,58 +1176,63 @@ CRITICAL INSTRUCTIONS:
 
 ## 📈 QUARTERLY FUNDAMENTALS UPDATE
 
-**Latest Earnings Snapshot:**
+IMPORTANT: Use the REAL quarterly revenue/earnings data and earnings surprise history provided in the data section above. Calculate ACTUAL QoQ and YoY changes from the real numbers. DO NOT use placeholders.
 
-```
-┌──────────────────────────────────────────────────────┐
-│ Revenue (Last Qtr):    $XXX [vs estimate / beat-miss]│
-│ EPS (Last Qtr):        $XXX [vs estimate / beat-miss]│
-│ Revenue Growth (YoY):  XX%  [accelerating/slowing]   │
-│ Earnings Growth (YoY): XX%  [trend direction]        │
-│ Guidance:              [Raised / Maintained / Lowered]│
-│ Surprise Factor:       [Beat by X% / Missed by X%]  │
-└──────────────────────────────────────────────────────┘
-```
+**Latest Earnings Snapshot:** [Use actual quarterly data provided — cite real revenue, EPS, and surprise percentages. Include: revenue (actual vs estimate), EPS (actual vs estimate), surprise %, beat/miss streak count]
 
-**QoQ vs YoY Trend (Quarter-over-Quarter & Year-over-Year):**
+**QoQ Momentum (Quarter-over-Quarter):**
+- Revenue QoQ: [Latest quarter revenue vs previous quarter — calculate exact % change]
+- Earnings QoQ: [Latest quarter earnings vs previous quarter — calculate exact % change]  
+- Margin QoQ: [Did margins expand or compress vs prior quarter? By how much?]
+- Verdict: [ACCELERATING 🟢 / STABLE 🟡 / DECELERATING 🔴]
 
-```
-┌──────────────────────────────────────────────────────────────┐
-│ METRIC              QoQ Change    YoY Change    TREND        │
-├──────────────────────────────────────────────────────────────┤
-│ Revenue             +/-XX%        +/-XX%        [↑↓→]        │
-│ Net Income          +/-XX%        +/-XX%        [↑↓→]        │
-│ EPS                 +/-XX%        +/-XX%        [↑↓→]        │
-│ Gross Margin        XX% → XX%    XX% → XX%     [Expanding/  │
-│                                                  Compressing]│
-│ Operating Margin    XX% → XX%    XX% → XX%     [Improving/  │
-│                                                  Declining]  │
-│ Free Cash Flow      $XXX → $XXX  $XXX → $XXX   [↑↓→]        │
-│ Debt-to-Equity      XX → XX      XX → XX       [Deleveraging│
-│                                                  /Loading]   │
-└──────────────────────────────────────────────────────────────┘
-```
+**YoY Structural Growth (Year-over-Year):**
+- Revenue YoY: [Latest quarter vs same quarter last year — exact % growth]
+- Earnings YoY: [Latest quarter vs same quarter last year — exact % growth]
+- EPS YoY: [Current EPS vs year-ago EPS — growth rate]
+- Verdict: [STRENGTHENING 🟢 / STABLE 🟡 / WEAKENING 🔴]
 
-**QoQ Momentum Read:** [Is the business improving THIS quarter vs last quarter? Acceleration = bullish. Deceleration even if positive = caution. Two consecutive QoQ declines = red flag.]
+**Earnings Surprise Trend:** [Are beats getting bigger or smaller over last 4 quarters? This predicts future surprises.]
 
-**YoY Structural Trend:** [Is the company fundamentally stronger than 1 year ago? Revenue + margin expansion YoY = strong. Revenue up but margins down YoY = growth at a cost. Both declining = avoid.]
+**Key Fundamental Shifts:** [What changed in the last 1-2 quarters based on the real data — margin expansion/compression, earnings beats/misses getting bigger/smaller, guidance direction]
 
-**Key Fundamental Shifts:** [What changed fundamentally in the last 1-2 quarters — margins, debt, cash flow, new revenue streams, market share gains/losses]
+**12-Month Growth Forecast:**
+Based on the actual data trends above, provide specific projections:
+- Projected EPS (12mo): [Forward EPS estimate from analyst data]
+- Projected Revenue Growth: [Based on QoQ/YoY trend trajectory]
+- Projected Price Range: [Forward EPS × Historical PE range = Bull/Base/Bear prices]
+- Growth Driver: [What will drive or limit growth in the next 4 quarters]
 
 ---
 
 ## 🎙️ MANAGEMENT TONE & OUTLOOK
 
-**CEO/CFO Confidence Level:** [🟢 Bullish / 🟡 Cautious / 🔴 Defensive]
+IMPORTANT: Use the REAL analyst/earnings data provided above to ground your analysis. Cite actual numbers. If Finviz/Screener/Moneycontrol data is provided, use insider trading patterns and institutional moves.
 
-**Earnings Call Tone Analysis:**
-- **Language Sentiment:** [Confident & aggressive OR cautious & hedging OR defensive & excuse-making — cite specific patterns like "strong momentum" vs "challenging headwinds"]
-- **Forward Guidance Tone:** [Are they raising outlook confidently or sandbagging expectations?]
-- **Key Buzzwords Used:** [e.g., "record pipeline", "accelerating growth", "disciplined execution" vs "macro uncertainty", "one-time charges", "restructuring"]
-- **Red Flags in Communication:** [Dodging questions, vague answers, sudden CFO departure, changing metrics, blaming macro]
-- **Green Flags in Communication:** [Specific numbers, confident buyback announcements, insider buying, raising dividends]
+**CEO/CFO Confidence Level:** [🟢 Bullish / 🟡 Cautious / 🔴 Defensive — based on earnings surprises, guidance direction, and insider activity from the data above]
 
-**What Management Isn't Telling You:** [Read between the lines — what are they avoiding? What questions did they deflect on earnings calls?]
+**Earnings Performance:** [Use the actual earnings surprise history — did they beat or miss? By how much? Is the trend improving or deteriorating?]
+
+**Analyst Consensus:** [What do analysts actually think? Use real price targets and recommendation data. How does current price compare to mean/high/low targets?]
+
+**Forward Growth Outlook:** [Use forward EPS estimates and revenue growth data to project 12-month outlook. Be specific with numbers.]
+
+**Insider & Institutional Signal:** [Use actual insider ownership %, institutional %, and short interest data. Are insiders buying or selling? Is short interest rising?]
+
+**Red Flags:** [Based on real data — declining earnings surprises, lowered guidance, increasing short interest, insider selling, etc.]
+
+**Green Flags:** [Based on real data — consecutive beats, raised targets, insider buying, institutional accumulation, etc.]
+
+**What Management Isn't Telling You:** [Read between the numbers — what do the data patterns suggest that management wouldn't say directly?]
+
+**Management Tone → Future Stock Impact:** 
+[Based on everything above — how will management's current stance likely impact the stock price in the next 3-6-12 months? Be specific:
+- If BULLISH: "Management confidence + rising estimates suggest X% upside to $XXX by [date]"
+- If CAUTIOUS: "Mixed signals suggest sideways trading in $XXX-$XXX range until [catalyst]"  
+- If DEFENSIVE: "Declining metrics + hedged language suggests X% downside risk to $XXX"
+Include specific price targets tied to management tone.]
+
+**12-Month Price Prediction:** [Based on forward EPS × historical PE range, analyst targets, and growth trajectory — give a specific price range with bull/base/bear cases]
 
 **Investment Inference from Management Behavior:**
 [Based on tone, body language of guidance, insider transactions, and communication patterns — is this management team building value or managing decline? Should investors trust the forward narrative? Concrete recommendation tied to management credibility.]
