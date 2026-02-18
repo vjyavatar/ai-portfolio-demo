@@ -1880,10 +1880,13 @@ async def index_trades(request: Request):
     
     global_text = "\n".join([f"- {g}" for g in global_data]) if global_data else "Global data unavailable"
     
-    now = datetime.now()
+    # Use IST (UTC+5:30) for Indian market — CRITICAL for correct expiry day detection
+    IST_OFFSET = timedelta(hours=5, minutes=30)
+    now = datetime.utcnow() + IST_OFFSET
     today = now.strftime("%A, %B %d, %Y")
     weekday = now.weekday()  # 0=Monday, 1=Tuesday, 2=Wednesday, 3=Thursday, 4=Friday
     day_name = now.strftime("%A")
+    print(f"🕐 IST Time: {now.strftime('%Y-%m-%d %H:%M:%S')} ({day_name})")
     
     # ═══════════════════════════════════════════════════
     # SEBI EXPIRY SCHEDULE (effective Sep 1, 2025)
@@ -2149,7 +2152,28 @@ RESPOND IN STRICT JSON FORMAT (no markdown, no backticks, no explanation outside
       "sl_pct": "% loss",
       "why_this_one": "1-2 sentences — why THIS trade above all others? What makes it near-certain? Be specific."
     }}
-  ]
+  ],
+  "event_alert": {{
+    "has_event": true,
+    "headline": "Short headline e.g. 'RBI Rate Decision Today' or 'US CPI Data Above Estimates' or 'FII Sell-Off ₹5000Cr' or 'Crude Spikes +4%'",
+    "impact": "BULLISH | BEARISH | VOLATILE — how it impacts Indian markets",
+    "severity": "HIGH | MEDIUM | LOW",
+    "detail": "2-3 sentence explanation of what happened, why it matters for today's trading, and which sectors/indices are most affected.",
+    "action": "What traders should do: e.g. 'Avoid fresh longs until dust settles' or 'Banking stocks will benefit, add to Bank Nifty CE positions' or 'Hedge existing positions with protective puts'"
+  }},
+  "gamma_blast": {{
+    "active": true,
+    "source": "EXPIRY | EVENT | BOTH — What's driving the gamma blast potential today",
+    "index": "MANDATORY — For expiry-driven: the specific index expiring TODAY (e.g. 'SENSEX' on Thursday, 'NIFTY 50' on Tuesday). For event-driven: the index most impacted by the event. For BOTH: list both.",
+    "probability": "0-100% — combined probability from BOTH expiry mechanics AND event impact",
+    "direction": "UP | DOWN | EITHER",
+    "trigger_zone": "Price level on the target INDEX where gamma blast activates",
+    "expected_move": "Expected point move if gamma blast triggers",
+    "best_play": "Exact trade to capture gamma blast — must specify the correct index and expiry",
+    "timing": "IST time window when gamma blast is most likely",
+    "expiry_factors": "Expiry-specific factors: OI concentration, max pain distance, PCR, theta decay rate, straddle premium — ONLY if expiry day, else 'N/A - not expiry day'",
+    "event_factors": "Event-specific factors: What geopolitical/macro event creates sudden gamma? RBI decision, US CPI, crude spike, FII panic, war escalation, currency crash etc. — ONLY if event exists, else 'No major event today'"
+  }}
 }}
 
 CRITICAL — TODAY'S EXPIRY STATUS:
@@ -2217,6 +2241,73 @@ GUT PICKS (CRITICAL — Your 2 BEST trades of the day):
 21. If no trade truly feels near-certain, still pick the best 2 but be honest about the probability. Never inflate.
 22. Gut picks can come from index trades, stock trades, or even hero zero. Pick the best 2 regardless of type.
 
+EVENT ALERT (CRITICAL):
+23. ALWAYS scan the global/domestic data for any sudden event that could impact trading today: RBI decisions, US CPI/jobs data, FII/DII massive flows, crude oil spikes, geopolitical events, earnings surprises, government policy announcements, currency moves > 1%.
+24. If ANY significant event exists, populate "event_alert" with has_event=true and all fields filled.
+25. If no significant event today, set has_event=false and leave other fields empty.
+26. Severity: HIGH = can move market 1%+ (rate decision, war, crude spike >5%), MEDIUM = 0.3-1% impact, LOW = sector-specific.
+27. The "action" field must be specific and actionable — not generic "be careful". Tell the trader exactly what to do.
+
+GAMMA BLAST PROBABILITY (CRITICAL — Analyze for BOTH expiry AND events):
+Gamma blast = sudden explosive move caused by options gamma forcing market makers to hedge rapidly.
+Two sources trigger gamma blasts — analyze BOTH and combine:
+
+SOURCE 1: EXPIRY-DRIVEN GAMMA (applies on ALL expiry days — weekly AND monthly):
+COMPLETE EXPIRY MAP (analyze gamma for EVERY index expiring today):
+- TUESDAY (NSE): NIFTY 50 WEEKLY expiry → Gamma on Nifty
+- LAST TUESDAY (NSE): NIFTY 50 weekly + BANK NIFTY monthly + FIN NIFTY monthly + ALL Stock F&O monthly = MEGA EXPIRY DAY
+- THURSDAY (BSE): SENSEX WEEKLY expiry → Gamma on Sensex
+- LAST THURSDAY (BSE): SENSEX weekly + BANKEX monthly = DOUBLE BSE EXPIRY
+
+CRITICAL: Monthly expiry has MORE gamma than weekly because:
+- 4 weeks of OI accumulation unwinds in one day
+- Institutional positions are larger on monthly series
+- Bank Nifty monthly = highest gamma potential of any single expiry (lot size 30 + heavy institutional OI)
+- Stock F&O monthly expiry can cause individual stock gamma cascades
+
+Scoring for expiry-driven gamma:
+    * Weekly expiry day: +25% base
+    * Monthly expiry day: +35% base (MORE OI = MORE gamma)
+    * DOUBLE EXPIRY (Nifty weekly + Bank Nifty monthly on last Tue): +45% base (maximum gamma potential)
+    * Price within 50 points of max pain on EXPIRING index: +20%
+    * Heavy OI at single strike on EXPIRING index: +15%
+    * After 2 PM IST on expiry day: +10%
+    * VIX < 13 (complacency → surprise move): +15%
+    * Straddle premium low (market underpricing move): +10%
+- "index" field: List ALL indices expiring today. E.g. on last Tuesday: "NIFTY 50 + BANK NIFTY + FIN NIFTY"
+- "expiry_factors" must reference EACH EXPIRING INDEX's OI, max pain, PCR separately
+- On NON-expiry days: expiry component = 0%, set expiry_factors to "N/A - not expiry day"
+
+SOURCE 2: EVENT-DRIVEN GAMMA (applies ANY day):
+- Sudden geopolitical/macro events create gamma blasts even on non-expiry days
+- Scoring for event-driven:
+    * RBI rate decision / policy announcement: +25%
+    * US CPI / Jobs / Fed decision (if released today or overnight): +20%
+    * Crude oil spike > 3% overnight: +15%
+    * FII selling > ₹3000Cr in a single session: +15%
+    * War escalation / border tension / sanctions: +20%
+    * Currency move > 1% (INR crash): +15%
+    * Major earnings surprise (top 5 Nifty stock): +10%
+    * Global flash crash / circuit breaker triggered anywhere: +25%
+- "event_factors" must name the SPECIFIC event and explain the transmission mechanism
+- If NO major event: event component = 0%, set event_factors to "No major event today"
+
+COMBINED PROBABILITY:
+28. Final gamma_blast probability = max(expiry_component, event_component) + overlap_bonus
+    - If BOTH expiry AND event exist on same day: add +10% overlap bonus (double whammy)
+    - DOUBLE EXPIRY (last Tue/last Thu) + major event = add +15% overlap bonus (triple whammy)
+    - Cap at 95% — never claim 100% certainty
+29. "source" field: "EXPIRY" if only expiry-driven, "EVENT" if only event-driven, "BOTH" if both
+30. "index" field must name ALL INDICES EXPIRING TODAY (e.g. "NIFTY 50 + BANK NIFTY" on last Tuesday). For event-driven: name the MOST IMPACTED index.
+31. "best_play" must be SPECIFIC: exact instrument, entry price, target, on the correct index with correct expiry. On double expiry days, pick the index with the BEST gamma setup.
+32. Reference ranges:
+    - Calm non-expiry day, no events: 5-15%
+    - Weekly expiry day (Tue/Thu): 25-55%
+    - Monthly expiry day (last Tue/Thu): 35-70%
+    - Double/Mega expiry (last Tue = Nifty + Bank Nifty): 45-80%
+    - Major event day (any day): 20-50%
+    - Double expiry + major event: 55-95%
+
 RULES FOR INDEX TRADES (up to 5 trades — fewer if market is unclear):
 - Generate UP TO 5 index trades — only include trades with 80%+ probability
 - Mix of NIFTY, BANK NIFTY (at least 2 each if available), and optionally SENSEX
@@ -2253,7 +2344,7 @@ RULES FOR STOCK OPTIONS (up to 2 trades — 0 if no clear setup):
             },
             json={
                 "model": "claude-sonnet-4-20250514",
-                "max_tokens": 5000,
+                "max_tokens": 6000,
                 "messages": [{"role": "user", "content": prompt}]
             },
             timeout=120
@@ -2285,8 +2376,10 @@ RULES FOR STOCK OPTIONS (up to 2 trades — 0 if no clear setup):
             "hero_zero": result.get("hero_zero", []),
             "skipped_trades": result.get("skipped_trades", ""),
             "gut_picks": result.get("gut_picks", []),
+            "event_alert": result.get("event_alert", {}),
+            "gamma_blast": result.get("gamma_blast", {}),
             "vix": next((d for d in indices_data if d['name'] == 'INDIA VIX'), None),
-            "generated_at": datetime.now().isoformat(),
+            "generated_at": (datetime.utcnow() + timedelta(hours=5, minutes=30)).isoformat(),
             "expiry_today": expiry_list,
             "is_expiry_day": is_expiry_day,
             "day_name": day_name
@@ -2309,8 +2402,10 @@ RULES FOR STOCK OPTIONS (up to 2 trades — 0 if no clear setup):
                 "hero_zero": result.get("hero_zero", []),
                 "skipped_trades": result.get("skipped_trades", ""),
             "gut_picks": result.get("gut_picks", []),
+            "event_alert": result.get("event_alert", {}),
+            "gamma_blast": result.get("gamma_blast", {}),
                 "vix": next((d for d in indices_data if d['name'] == 'INDIA VIX'), None),
-                "generated_at": datetime.now().isoformat(),
+                "generated_at": (datetime.utcnow() + timedelta(hours=5, minutes=30)).isoformat(),
                 "expiry_today": expiry_list,
                 "is_expiry_day": is_expiry_day,
                 "day_name": day_name

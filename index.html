@@ -678,6 +678,9 @@ const email=(el.dataset.real||el.value).trim().toLowerCase();
 const show=TRADES_EMAILS.includes(email);
 document.getElementById('tabBtnTrades').style.display=show?'':'none';
 document.querySelectorAll('.sc[data-tab="trades"]').forEach(s=>s.style.display=show?'':'none');
+// Hidden Gems also restricted to same authorized emails
+document.getElementById('tabBtnGems').style.display=show?'':'none';
+document.querySelectorAll('.sc[data-tab="gems"]').forEach(s=>s.style.display=show?'':'none');
 if(show)initTradesProtection(email);
 }
 document.getElementById('email').addEventListener('blur',checkTradesAccess);
@@ -887,7 +890,7 @@ const html=`
 <button class="tab-btn" onclick="switchTab('deep')" id="tabBtnDeep" aria-label="Deep Research tab" data-tip="Quarterly earnings snapshot, QoQ vs YoY trends, full AI deep-dive report">\uD83D\uDD2C Deep Research</button>
 <button class="tab-btn" onclick="switchTab('mgmt')" id="tabBtnMgmt" aria-label="Management Read tab" data-tip="CEO/CFO confidence level, earnings call tone, red & green flags, what management is hiding">\uD83C\uDFA4 Management Read</button>
 <button class="tab-btn" onclick="switchTab('next')" id="tabBtnNext" aria-label="What's Next tab" data-tip="Top mutual fund & institutional holders, upcoming catalysts, bull/bear/base case scenarios">\uD83D\uDD2E What's Next</button>
-<button class="tab-btn" onclick="switchTab('gems')" id="tabBtnGems" aria-label="Hidden Gems tab" data-tip="Under-the-radar small-cap picks in the same sector with growth potential ratings">\u2B50 Hidden Gems</button>
+<button class="tab-btn" onclick="switchTab('gems')" id="tabBtnGems" aria-label="Hidden Gems tab" data-tip="Under-the-radar small-cap picks in the same sector with growth potential ratings" style="display:none">\u2B50 Hidden Gems</button>
 <button class="tab-btn" onclick="switchTab('trades')" id="tabBtnTrades" aria-label="Smart Trades tab" data-tip="Daily trade ideas for Nifty, Bank Nifty, Sensex & top stocks" style="border-color:rgba(245,158,11,.3);display:none">&#128293; Smart Trades</button>
 </div>
 
@@ -1827,6 +1830,59 @@ ${ma.vix_signal?'<div style="margin-bottom:4px"><strong style="color:var(--amber
 ${ma.global_impact?'<div><strong style="color:var(--blue)">Global:</strong> '+ma.global_impact+'</div>':''}
 </div>`;
 }
+}
+
+// ═══ EVENT ALERT — Breaking market events ═══
+const evt=data.event_alert||{};
+if(evt.has_event){
+const sevCol=evt.severity==='HIGH'?'var(--red)':evt.severity==='MEDIUM'?'var(--amber)':'var(--blue)';
+const sevBg=evt.severity==='HIGH'?'rgba(239,68,68,.1)':evt.severity==='MEDIUM'?'rgba(245,158,11,.08)':'rgba(59,130,246,.06)';
+const impCol=evt.impact==='BULLISH'?'var(--green)':evt.impact==='BEARISH'?'var(--red)':'var(--amber)';
+html+=`<div style="margin-bottom:14px;padding:14px 16px;border-radius:10px;background:${sevBg};border:1px solid ${sevCol}40;border-left:4px solid ${sevCol}">
+<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap">
+<span style="font-size:20px;${evt.severity==='HIGH'?'animation:pulse 1.5s infinite':''}">&#9889;</span>
+<span style="font-family:'Sora',sans-serif;font-size:13px;font-weight:800;color:${sevCol};letter-spacing:.3px">${evt.headline||'Market Event'}</span>
+<span style="font-size:10px;font-weight:800;color:#fff;background:${sevCol};padding:2px 8px;border-radius:4px">${evt.severity||'MEDIUM'}</span>
+<span style="font-size:10px;font-weight:800;color:${impCol};background:${impCol}15;border:1px solid ${impCol}30;padding:2px 8px;border-radius:4px">${evt.impact||'-'}</span>
+</div>
+<div style="font-size:12px;color:var(--text2);line-height:1.7;margin-bottom:8px">${evt.detail||''}</div>
+${evt.action?`<div style="padding:8px 12px;border-radius:6px;background:rgba(255,255,255,.04);font-size:12px"><strong style="color:${sevCol}">&#9654; Action:</strong> <span style="color:var(--text)">${evt.action}</span></div>`:''}
+</div>`;
+}
+
+// ═══ GAMMA BLAST PROBABILITY ═══
+const gb=data.gamma_blast||{};
+if(gb.probability){
+const gbProb=parseInt(gb.probability)||0;
+const gbCol=gbProb>=60?'var(--red)':gbProb>=40?'var(--amber)':gbProb>=20?'var(--blue)':'var(--text3)';
+const gbBg=gbProb>=60?'rgba(239,68,68,.08)':gbProb>=40?'rgba(245,158,11,.06)':'rgba(59,130,246,.04)';
+const gbW=Math.min(gbProb,100);
+const dirIcon=gb.direction==='UP'?'&#128640;':gb.direction==='DOWN'?'&#128546;':'&#128260;';
+const srcCol=gb.source==='BOTH'?'var(--red)':gb.source==='EVENT'?'var(--amber)':'var(--blue)';
+const srcLabel=gb.source==='BOTH'?'&#9889; EXPIRY + EVENT':gb.source==='EVENT'?'&#127758; EVENT-DRIVEN':'&#128197; EXPIRY-DRIVEN';
+html+=`<div style="margin-bottom:14px;padding:14px 16px;border-radius:10px;background:${gbBg};border:1px solid ${gbCol}30">
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:6px">
+<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+<span style="font-size:20px;${gbProb>=50?'animation:pulse 1.5s infinite':''}">${dirIcon}</span>
+<span style="font-family:'Sora',sans-serif;font-size:13px;font-weight:800;color:${gbCol}">GAMMA BLAST: ${gb.probability}</span>
+<span style="font-size:10px;font-weight:800;color:#fff;background:${gbCol};padding:2px 8px;border-radius:4px">${gb.direction||'-'}</span>
+<span style="font-size:10px;font-weight:700;color:${srcCol};background:${srcCol}12;border:1px solid ${srcCol}30;padding:2px 8px;border-radius:4px">${srcLabel}</span>
+${gb.index?`<span style="font-size:10px;font-weight:700;color:var(--text3);background:rgba(255,255,255,.06);padding:2px 8px;border-radius:4px">${gb.index}</span>`:''}
+</div>
+<span style="font-size:11px;color:var(--text3);font-weight:600">${gb.timing||''}</span>
+</div>
+<div style="width:100%;height:8px;border-radius:4px;background:rgba(255,255,255,.08);overflow:hidden;margin-bottom:10px">
+<div style="width:${gbW}%;height:100%;border-radius:4px;background:linear-gradient(90deg,var(--green),var(--amber),var(--red));transition:width 1s"></div></div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">
+<div style="font-size:11px;color:var(--text3)"><strong style="color:var(--amber)">Trigger Zone:</strong> ${gb.trigger_zone||'-'}</div>
+<div style="font-size:11px;color:var(--text3)"><strong style="color:var(--amber)">Expected Move:</strong> ${gb.expected_move||'-'}</div>
+</div>
+${gb.best_play?`<div style="padding:8px 12px;border-radius:6px;background:rgba(16,185,129,.06);border:1px solid rgba(16,185,129,.15);font-size:12px;margin-bottom:8px"><strong style="color:var(--green)">&#127919; Best Play:</strong> <span style="color:var(--text)">${gb.best_play}</span></div>`:''}
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+${gb.expiry_factors&&!gb.expiry_factors.includes('N/A')?`<div style="padding:8px 10px;border-radius:6px;background:rgba(59,130,246,.04);border:1px solid rgba(59,130,246,.1);font-size:11px;color:var(--text3);line-height:1.5"><strong style="color:var(--blue)">&#128197; Expiry Factors:</strong><br>${gb.expiry_factors}</div>`:`<div style="padding:8px 10px;border-radius:6px;background:rgba(255,255,255,.02);font-size:11px;color:var(--text3)">&#128197; Expiry: Not expiry day</div>`}
+${gb.event_factors&&!gb.event_factors.includes('No major')?`<div style="padding:8px 10px;border-radius:6px;background:rgba(245,158,11,.04);border:1px solid rgba(245,158,11,.1);font-size:11px;color:var(--text3);line-height:1.5"><strong style="color:var(--amber)">&#127758; Event Factors:</strong><br>${gb.event_factors}</div>`:`<div style="padding:8px 10px;border-radius:6px;background:rgba(255,255,255,.02);font-size:11px;color:var(--text3)">&#127758; Events: No major event today</div>`}
+</div>
+</div>`;
 }
 
 // Market pulse header
