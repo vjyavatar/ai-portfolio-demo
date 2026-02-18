@@ -340,14 +340,13 @@ body{-webkit-user-select:none;-moz-user-select:none;-ms-user-select:none;user-se
 
 <section class="hero">
 <div class="hero-eye"><div class="ldot"></div> Live Market Data &middot; Updated Every Minute</div>
-<h1>Stop Guessing. Start Knowing.</h1>
-<p class="hero-sub">Enter any ticker. Get exact buy &amp; sell prices, risk score &amp; profit targets.<br>Reports Wall Street charges $500 for &mdash; yours in 60 seconds, free.</p>
+<h1>One Ticker. Full Intelligence.</h1>
+<p class="hero-sub" style="font-size:16px;line-height:1.8;max-width:620px">Buy &amp; sell targets &middot; Risk score &middot; Earnings deep-dive &middot; Management read<br><span style="color:var(--text3);font-size:14px">The full research desk, in 60 seconds.</span></p>
 <div class="hbadges">
-<div class="hb">&#9678; Real-Time Market Data</div>
-<div class="hb">&#9889; AI Deep Analysis</div>
-<div class="hb">&#9678; Exact Entry &amp; Exit Prices</div>
-<div class="hb">&#9651; Risk Scoring</div>
-<div class="hb">&#9733; Hidden Gem Small-Caps</div>
+<div class="hb" style="border-color:rgba(16,185,129,.3);color:var(--green)">&#9679; Free &middot; No Login</div>
+<div class="hb" style="border-color:rgba(59,130,246,.3);color:var(--blue)">&#9889; AI-Powered</div>
+<div class="hb" style="border-color:rgba(139,92,246,.3);color:var(--purple)">&#9678; Live Data</div>
+<div class="hb" style="border-color:rgba(6,182,212,.3);color:var(--cyan)"><span id="reportBadgeCount">12,847</span> Reports Generated</div>
 </div>
 
 </section>
@@ -527,7 +526,7 @@ const data=await res.json();if(!data.success||!data.live_data)throw new Error('N
 let q='';if(data.rate_limit){const r=data.rate_limit.remaining;document.getElementById('navQ').textContent=r+'/hr';
 q=r===0?' \u00B7 Last free report this hour':' \u00B7 '+r+' remaining'}
 if(data.report_number)document.getElementById('navRC').textContent=data.report_number;
-if(data.report_number)document.getElementById('globalRC').textContent=data.report_number.toLocaleString();
+if(data.report_number){document.getElementById('globalRC').textContent=data.report_number.toLocaleString();const hb=document.getElementById('reportBadgeCount');if(hb)hb.textContent=data.report_number.toLocaleString()}
 showStatus('\u2713 Your report is ready. Scroll down \u2014 this is the good stuff.'+q,'success');displayReport(data);TI.value='';
 }catch(e){let m=e.message;if(m==='Failed to fetch')m='Cannot connect to server.';
 else if(m.toLowerCase().includes('rate limit')||m.toLowerCase().includes('too many')||m.toLowerCase().includes('temporarily'))m='Market data busy. Wait 2-3 min.';
@@ -1356,7 +1355,7 @@ window.open(mailto);
 // Initialize vote chart on page load
 document.addEventListener('DOMContentLoaded',()=>{initVoteChart();loadVotes();
 fetch('/api/stats').then(r=>r.json()).then(d=>{
-if(d.total_reports){document.getElementById('navRC').textContent=d.total_reports;document.getElementById('globalRC').textContent=d.total_reports.toLocaleString()}
+if(d.total_reports){document.getElementById('navRC').textContent=d.total_reports;document.getElementById('globalRC').textContent=d.total_reports.toLocaleString();const hb=document.getElementById('reportBadgeCount');if(hb)hb.textContent=d.total_reports.toLocaleString()}
 }).catch(()=>{})});
 
 // Anti-copy protection
