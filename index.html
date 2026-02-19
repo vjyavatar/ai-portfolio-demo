@@ -1032,7 +1032,8 @@ document.getElementById('timestamp').innerHTML='<div class="ldot"></div> LIVE'+s
 // 8 METRICS (expanded from 4) - graceful N/A handling
 const peDisplay=d.pe_ratio&&d.pe_ratio!=='N/A'&&d.pe_ratio!==0?d.pe_ratio:'—';
 const peLabel=peDisplay==='—'?'<span style="font-size:9px;color:var(--text3)">Data pending</span>':'TTM';
-const mcapDisplay=d.market_cap&&d.market_cap>0?formatCap(d.market_cap,curr):'—';
+const mcapRaw=d.market_cap&&d.market_cap>1e6?d.market_cap:0; // Sanity: any real company > $1M
+const mcapDisplay=mcapRaw>0?formatCap(mcapRaw,curr):'—';
 const mcapLabel=mcapDisplay==='—'?'<span style="font-size:9px;color:var(--text3)">Data pending</span>':d.currency;
 document.getElementById('metrics').innerHTML=`
 <div class="mcard"><div class="ml">Price</div><div class="mv">${curr}${price.toLocaleString()}</div><div class="ms ${d.price_change>=0?'up':'dn'}">${d.price_change>=0?'\u25B2':'\u25BC'} ${Math.abs(d.price_change).toFixed(2)} (${d.price_change_pct.toFixed(2)}%)</div></div>
@@ -1409,7 +1410,7 @@ document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
 // Show selected tab sections
 document.querySelectorAll('.sc[data-tab="'+tab+'"]').forEach(s=>s.classList.add('tab-visible'));
 // Activate selected button
-const btnMap={quick:'tabBtnQuick',deep:'tabBtnDeep',mgmt:'tabBtnMgmt',next:'tabBtnNext',gems:'tabBtnGems',trades:'tabBtnTrades'};
+const btnMap={quick:'tabBtnQuick',deep:'tabBtnDeep',mgmt:'tabBtnMgmt',next:'tabBtnNext',gems:'tabBtnGems',picks:'tabBtnPicks',trades:'tabBtnTrades'};
 if(btnMap[tab])document.getElementById(btnMap[tab]).classList.add('active');
 // Scroll to tab bar (not graphs above)
 const tb=document.querySelector('.tab-bar');

@@ -1400,7 +1400,12 @@ def get_live_stock_data(company_name: str) -> dict:
                 return default
             try:
                 v = float(val)
-                return round(v * 100, 2) if is_pct and abs(v) < 1 else round(v, 2)
+                if is_pct and abs(v) < 1:
+                    return round(v * 100, 2)
+                # Don't round large values like marketCap — preserve full magnitude
+                if abs(v) > 1e9:
+                    return int(v)
+                return round(v, 2)
             except:
                 return default
         
