@@ -1583,7 +1583,75 @@ Disallow: /api/
 Disallow: /api/generate-report
 Disallow: /api/check-rate-limit
 
+# AI Crawlers — welcome to index our public pages
+User-agent: GPTBot
+Allow: /
+Allow: /about
+Allow: /faq
+Allow: /disclaimer
+Disallow: /api/
+
+User-agent: ChatGPT-User
+Allow: /
+Disallow: /api/
+
+User-agent: Google-Extended
+Allow: /
+Disallow: /api/
+
+User-agent: Anthropic-ai
+Allow: /
+Disallow: /api/
+
+User-agent: PerplexityBot
+Allow: /
+Disallow: /api/
+
 Sitemap: https://celesys.ai/sitemap.xml
+"""
+
+@app.get("/llms.txt", response_class=PlainTextResponse)
+async def llms_txt():
+    return """# Celesys AI — llms.txt
+# https://celesys.ai
+
+## About
+Celesys AI is a free, AI-powered stock analysis platform for retail investors.
+It generates institutional-grade research reports in 60 seconds for US (NYSE, NASDAQ)
+and Indian (NSE, BSE) stock markets. No signup required.
+
+## Core Features
+- Real-time stock price data and live market indicators
+- 8-factor deterministic stock verdict engine (Strong Buy / Buy / Hold / Sell / Strong Sell)
+- Intrinsic value calculations: Graham Number, DCF growth model, Peter Lynch fair value, earnings yield vs bond
+- AI-generated buy/sell price targets with entry and exit levels
+- Quarterly earnings analysis with QoQ and YoY growth trends
+- Management tone and CEO/CFO confidence assessment
+- Financial health radar: profit margin, ROE, current ratio, operating margin, debt-to-equity
+- Risk profile scoring: volatility (beta), debt, liquidity, valuation risk, sector risk
+- Valuation metrics: P/E ratio, P/B ratio, dividend yield, forward P/E
+- 6-month historical price trend chart with real monthly close data
+- Margin vs industry comparison benchmarking
+- Hidden small-cap and micro-cap stock recommendations with growth potential ratings
+- Smart Trades: daily AI-generated index and stock trade ideas using 10-factor scoring with NSE option chain data
+- Curated stock picks across 6 categories: large-cap, mid-cap, small-cap, niche/moat, micro-cap multibagger, best indices
+- Global market indices live ticker: S&P 500, NASDAQ, Dow Jones, Nifty 50, Sensex, FTSE 100, DAX, Nikkei 225
+
+## Pages
+- Home: https://celesys.ai — Main stock analysis tool
+- About: https://celesys.ai/about — Company mission and how it works
+- FAQ: https://celesys.ai/faq — Frequently asked questions
+- Privacy: https://celesys.ai/privacy — Privacy policy
+- Terms: https://celesys.ai/terms — Terms of service
+- Disclaimer: https://celesys.ai/disclaimer — Investment disclaimer
+
+## Data Sources
+Real-time market data sourced from Yahoo Finance, Google Finance, NSE India, and Screener.in.
+AI analysis powered by Anthropic Claude. All data is for educational purposes only.
+
+## Contact
+Email: contact@celesys.ai
+Website: https://celesys.ai
 """
 
 @app.get("/sitemap.xml", response_class=Response)
@@ -1592,6 +1660,7 @@ async def sitemap():
     pages = [
         ("https://celesys.ai", "daily", "1.0"),
         ("https://celesys.ai/about", "monthly", "0.8"),
+        ("https://celesys.ai/faq", "monthly", "0.9"),
         ("https://celesys.ai/privacy", "monthly", "0.5"),
         ("https://celesys.ai/terms", "monthly", "0.5"),
         ("https://celesys.ai/disclaimer", "monthly", "0.5"),
@@ -1829,23 +1898,29 @@ async def disclaimer_page():
 @app.get("/faq", response_class=HTMLResponse)
 async def faq_page():
     return _page_shell("Frequently Asked Questions", """
-<h2>What is Celesys AI?</h2>
-<p>Celesys AI is a free AI-powered stock analysis platform. Enter any US or Indian stock ticker and get a complete research report in 60 seconds — including buy/sell targets, risk scoring, quarterly earnings analysis, management tone reading, and hidden small-cap picks. No signup required.</p>
+<h2>What is Celesys AI and how does it work?</h2>
+<p>Celesys AI is a free, AI-powered stock analysis platform that generates institutional-grade research reports in 60 seconds. Enter any US (NYSE, NASDAQ) or Indian (NSE, BSE) stock ticker to receive real-time valuation metrics, intrinsic value estimates using the Graham Number and DCF model, 8-factor buy/sell verdicts, quarterly earnings analysis with QoQ and YoY trends, management tone assessment, and curated small-cap picks. No signup required.</p>
 
-<h2>Is it really free?</h2>
-<p>Yes — 5 deep-dive reports per email per hour, completely free. No credit card, no subscription, no hidden fees. We believe everyone deserves access to institutional-quality research.</p>
+<h2>Is Celesys AI free to use?</h2>
+<p>Yes — 5 deep-dive reports per email per hour, completely free. No credit card, no subscription, no hidden fees. Celesys AI is funded as an educational research tool to democratize access to institutional-quality financial analysis for retail investors worldwide.</p>
 
-<h2>Which stocks are supported?</h2>
-<p>100+ pre-loaded US stocks (TSLA, AAPL, NVDA, etc.) and Indian NSE/BSE stocks (RELIANCE.NS, TCS.NS, HDFCBANK.NS, etc.). You can also enter any valid Yahoo Finance ticker symbol for global coverage.</p>
+<h2>Which stock markets and tickers are supported?</h2>
+<p>Celesys AI supports 100+ pre-loaded US stocks (AAPL, TSLA, NVDA, GOOGL, META, MSFT, AMZN, JPM) and Indian stocks (RELIANCE.NS, TCS.NS, HDFCBANK.NS, INFY.NS, ICICIBANK.NS). You can also enter any valid Yahoo Finance ticker for global market coverage including European, Asian, and emerging market equities.</p>
 
-<h2>How accurate is the analysis?</h2>
-<p>Celesys AI uses real-time market data from Yahoo Finance combined with AI analysis. Price data is live and verified. The AI insights are for educational purposes — always cross-reference with your financial advisor before making investment decisions.</p>
+<h2>How does the 8-factor stock verdict engine work?</h2>
+<p>The verdict engine scores stocks across 8 quantitative factors: P/E valuation, profitability (profit margins and ROE), financial health (debt-to-equity and current ratio), 52-week price position, price-to-book value, dividend yield, beta/volatility risk, and operating efficiency. The combined score produces a deterministic verdict — Strong Buy, Buy, Hold, Sell, or Strong Sell — that remains consistent regardless of daily price fluctuations.</p>
+
+<h2>How does Celesys AI calculate intrinsic value?</h2>
+<p>Celesys AI computes intrinsic value using four established financial models: the Graham Number (square root of 22.5 × EPS × book value per share), the Benjamin Graham DCF growth formula (EPS × (8.5 + 2g) where g is the earnings growth rate), the Peter Lynch fair value (EPS × growth rate for PEG ratio of 1), and earnings yield comparison versus 10-year treasury bond rates. These models help investors determine whether a stock is trading above or below its fundamental worth.</p>
 
 <h2>What does the management tone analysis show?</h2>
-<p>Our management tone analysis uses real earnings data, analyst ratings, insider trading activity, and institutional ownership patterns to assess whether company leadership is bullish, cautious, or defensive — helping you read between the lines of earnings calls and corporate communications.</p>
+<p>The management tone analysis uses real earnings data, analyst ratings, insider trading activity, institutional ownership patterns, and forward guidance to assess whether company leadership is bullish, cautious, or defensive. It examines CEO/CFO confidence through earnings call sentiment, insider buy/sell ratios, and how closely actual results match prior guidance.</p>
 
-<h2>What are Smart Trades?</h2>
-<p>Smart Trades is a premium feature that provides daily AI-generated trade ideas for Nifty, Bank Nifty, Sensex, and high-momentum stocks. It uses a 10-factor scoring engine with live NSE option chain data. Currently available by invitation only.</p>
+<h2>What are Smart Trades and curated stock picks?</h2>
+<p>Smart Trades provides daily AI-generated trade ideas for Nifty 50, Bank Nifty, Sensex, and high-momentum individual stocks using a 10-factor scoring engine powered by live NSE option chain data (put-call ratio, max pain, open interest walls). Curated Stock Picks lists the top 5 undervalued companies across six categories: large-cap value, mid-cap growth, small-cap opportunities, niche/deep moat monopolies, micro-cap multibagger candidates, and best-performing stock market indices — for both India and USA markets.</p>
+
+<h2>Is Celesys AI a replacement for a financial advisor?</h2>
+<p>No. Celesys AI is an educational research tool, not a licensed financial advisor. All analysis, buy/sell targets, risk scores, intrinsic value calculations, and stock recommendations are AI-generated for educational purposes only. Always consult a certified financial advisor before making investment decisions. Market data from third-party providers may be delayed or incomplete — always cross-check with your broker.</p>
 """)
 
 @app.get("/ads.txt", response_class=PlainTextResponse)
