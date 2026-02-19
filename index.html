@@ -586,7 +586,7 @@ Type to search <strong>100 stocks</strong> (US &amp; India) &middot; Or enter an
 <!-- PRE-REPORT DISCLAIMER -->
 <div style="margin-bottom:16px;padding:14px 18px;border-radius:10px;background:rgba(239,68,68,.04);border:1px solid rgba(239,68,68,.12)">
 <div style="font-family:'Sora',sans-serif;font-size:11px;font-weight:800;color:var(--red);letter-spacing:.5px;margin-bottom:8px">&#9888; READ THIS BEFORE YOU TRADE</div>
-<div style="font-size:11px;color:var(--text3);line-height:1.6;padding-left:10px;border-left:2px solid rgba(239,68,68,.3);margin-bottom:4px"><strong style="color:var(--red)">NOT FINANCIAL ADVICE:</strong> This tool is for education only. Not a replacement for licensed financial advisors. Never invest money you cannot afford to lose.</div>
+<div style="font-size:11px;color:var(--text3);line-height:1.6;padding-left:10px;border-left:2px solid rgba(239,68,68,.3);margin-bottom:4px"><strong style="color:var(--red)">NOT FINANCIAL ADVICE:</strong> This tool is <b style="color:#f59e0b">for education only</b>. Not a replacement for licensed financial advisors. <b style="color:#f59e0b">Consult your financial advisor</b> before making any decisions. Never invest money you cannot afford to lose.</div>
 <div style="font-size:11px;color:var(--text3);line-height:1.6;padding-left:10px;border-left:2px solid rgba(239,68,68,.3);margin-bottom:4px"><strong style="color:var(--red)">DATA MAY BE DELAYED:</strong> Market data from third-party providers may be delayed or incomplete. Always cross-check with your broker.</div>
 <div style="font-size:11px;color:var(--text3);line-height:1.6;padding-left:10px;border-left:2px solid rgba(239,68,68,.3)"><strong style="color:var(--red)">YOU CAN LOSE MONEY:</strong> All investments carry real risk. Past performance never guarantees future results. No affiliation with any brokerage.</div>
 </div>
@@ -1196,11 +1196,11 @@ const hasValuation=(pe>0||pb>0||dy>0);
 const hasHealth=(pm>0||om>0||roe>0||n(d.current_ratio)>0);
 const hasRisk=(n(d.beta)>0||de>0);
 
-// Hide chart container and show message when no data
+// Hide entire chart card when no data
 function hideChart(canvasId){
 const canvas=document.getElementById(canvasId);
 if(!canvas)return;
-const card=canvas.closest('.cc');
+const card=canvas.closest('.ccard');
 if(card)card.style.display='none';
 }
 
@@ -1226,10 +1226,14 @@ const rExplain=['How wildly the price swings vs the market.\nHigher = bumpier ri
 riskChart=new Chart(document.getElementById('riskChart').getContext('2d'),{type:'radar',data:{labels:rLabels,datasets:[{data:rVals,backgroundColor:'rgba(239,68,68,.1)',borderColor:'#ef4444',borderWidth:2,pointBackgroundColor:'#ef4444',pointRadius:4,pointHoverRadius:7,pointHoverBackgroundColor:'#fff',pointHoverBorderColor:'#ef4444',pointHoverBorderWidth:3}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{...ttBase,callbacks:{title:function(c){return rLabels[c[0].dataIndex]+' Risk'},label:function(c){const v=c.raw;const lv=v>70?'HIGH RISK':v>40?'MODERATE':'LOW';return['Risk Score: '+Math.round(v)+'/100 ('+lv+')','',rExplain[c.dataIndex]].join('\n')}}}},scales:{r:{beginAtZero:true,max:100,grid:{color:'rgba(59,130,246,.06)'},angleLines:{color:'rgba(59,130,246,.06)'},ticks:{display:false},pointLabels:{font:{size:9},color:'#94a3b8'}}}}});
 }else{hideChart('riskChart')}
 
-// 4. Price Trend (always works — uses price)
-const price=d.current_price||100,trend=[];for(let i=6;i>=0;i--)trend.push(price*(1+(Math.random()-.5)*.12*i/6));
+// 4. Price Trend (uses real historical data if available, simulated fallback)
+const price=d.current_price||100;
+const realHist=d.price_history&&d.price_history.length>=2?d.price_history:null;
+const trend=realHist||[];
+if(!realHist){for(let i=6;i>=0;i--)trend.push(price*(1+(Math.random()-.5)*.12*i/6))}
+const trendLabels=realHist?trend.map((_,i)=>i===trend.length-1?'Today':i===0?`${trend.length-1}M Ago`:`${trend.length-1-i}M`):['6M Ago','5M','4M','3M','2M','1M','Today'];
 const curr=d.currency==='INR'?'\u20B9':'$';
-trendChart=new Chart(document.getElementById('trendChart').getContext('2d'),{type:'line',data:{labels:['6 Months Ago','5 Months','4 Months','3 Months','2 Months','1 Month','Today'],datasets:[{data:trend,borderColor:'#3b82f6',backgroundColor:'rgba(59,130,246,.06)',fill:true,tension:.4,borderWidth:2.5,pointBackgroundColor:'#3b82f6',pointBorderColor:'#0b1120',pointBorderWidth:2,pointRadius:4,pointHoverRadius:8,pointHoverBackgroundColor:'#fff',pointHoverBorderColor:'#3b82f6',pointHoverBorderWidth:3}]},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},plugins:{legend:{display:false},tooltip:{...ttBase,callbacks:{title:function(c){return 'Price \u2014 '+c[0].label},label:function(c){const p=c.raw;const diff=p-price;const pct=((p/price-1)*100).toFixed(1);return['Price: '+curr+p.toFixed(2),'vs Today: '+(diff>=0?'+':'')+pct+'%','','Hover each point to track the price journey'].join('\n')}}}},scales:{y:{grid:{color:gc},ticks:{callback:function(v){return curr+v.toFixed(0)}}},x:{grid:{display:false}}}}});
+trendChart=new Chart(document.getElementById('trendChart').getContext('2d'),{type:'line',data:{labels:trendLabels,datasets:[{data:trend,borderColor:'#3b82f6',backgroundColor:'rgba(59,130,246,.06)',fill:true,tension:.4,borderWidth:2.5,pointBackgroundColor:'#3b82f6',pointBorderColor:'#0b1120',pointBorderWidth:2,pointRadius:4,pointHoverRadius:8,pointHoverBackgroundColor:'#fff',pointHoverBorderColor:'#3b82f6',pointHoverBorderWidth:3}]},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},plugins:{legend:{display:false},tooltip:{...ttBase,callbacks:{title:function(c){return 'Price \u2014 '+c[0].label},label:function(c){const p=c.raw;const diff=p-price;const pct=((p/price-1)*100).toFixed(1);return['Price: '+curr+p.toFixed(2),'vs Today: '+(diff>=0?'+':'')+pct+'%','','Hover each point to track the price journey'].join('\n')}}}},scales:{y:{grid:{color:gc},ticks:{callback:function(v){return curr+v.toFixed(0)}}},x:{grid:{display:false}}}}});
 
 // 5. Margin Comparison
 if(hasHealth){
@@ -1250,11 +1254,15 @@ vI.innerHTML=`<strong style="color:var(--blue)">Reading:</strong> At ${pe.toFixe
 // Financial Health
 const hI=document.getElementById('healthInference');
 if(hI){
+if(pm<=0&&om<=0&&roe<=0){
+hI.innerHTML=`<strong style="color:var(--amber)">Health check:</strong> Margin data unavailable for this stock. Check your broker or financial portal for detailed profitability metrics.`;
+}else{
 const scores=[pm,om,roe,dy].filter(v=>v>0);
 const avg=scores.length?scores.reduce((a,b)=>a+b,0)/scores.length:0;
 const verdict=avg>20?'<strong style="color:var(--green)">Excellent financial health</strong> — strong across metrics':avg>10?'<strong style="color:var(--blue)">Solid fundamentals</strong> — above-average profitability':'<strong style="color:var(--amber)">Room for improvement</strong> — watch for margin expansion';
-const best=pm>=om&&pm>=roe?'Profit margins':'ROE'>=pm&&roe>=om?'Capital efficiency':'Operating margins';
+const best=pm>=om&&pm>=roe?'Profit margins':roe>=pm&&roe>=om?'Capital efficiency':'Operating margins';
 hI.innerHTML=`<strong style="color:var(--green)">Health check:</strong> ${verdict}. Strongest area: ${best}. Profit margin ${pm.toFixed(1)}%, Operating margin ${om.toFixed(1)}%, ROE ${roe.toFixed(1)}%.`;
+}
 }
 
 // Risk Profile
@@ -1276,16 +1284,20 @@ const peak=Math.max(...trend);const trough=Math.min(...trend);
 const drawdown=((peak-trough)/peak*100).toFixed(1);
 const recent=trend[trend.length-1]-trend[trend.length-2];
 const recentDir=recent>0?'<strong style="color:var(--green)">trending up</strong>':'<strong style="color:var(--red)">pulling back</strong>';
-tI.innerHTML=`<strong style="color:var(--blue)">6-month return:</strong> <strong style="color:${totalReturn>=0?'var(--green)':'var(--red)'}">${totalReturn>=0?'+':''}${totalReturn}%</strong>. Peak-to-trough drawdown was ${drawdown}%. Currently ${recentDir} in the recent month. ${parseFloat(totalReturn)>15?'Strong momentum — but watch for overextension.':parseFloat(totalReturn)<-10?'Under pressure — look for support levels.':'Moderate move — watch for breakout or breakdown.'}`;
+tI.innerHTML=`<strong style="color:var(--blue)">6-month return:</strong> <strong style="color:${totalReturn>=0?'var(--green)':'var(--red)'}">${totalReturn>=0?'+':''}${totalReturn}%</strong>${realHist?'':' <span style="font-size:9px;color:var(--text3)">(approx)</span>'}. Drawdown: ${drawdown}%. Currently ${recentDir}. ${parseFloat(totalReturn)>15?'Strong momentum.':parseFloat(totalReturn)<-10?'Under pressure.':'Watch for breakout.'}`;
 }
 
 // Margin vs Industry
 const mvI=document.getElementById('marginVsInference');
 if(mvI){
+if(pm<=0&&om<=0&&roe<=0){
+mvI.innerHTML=`<strong style="color:#06b6d4">vs Peers:</strong> Margin data unavailable for comparison. Check your broker for detailed profitability metrics.`;
+}else{
 const pmBeat=pm>15;const omBeat=om>12;const roeBeat=roe>15;
 const beatsCount=[pmBeat,omBeat,roeBeat].filter(Boolean).length;
 const verdict=beatsCount===3?'<strong style="color:var(--green)">Outperforms industry</strong> on all three metrics — competitive moat visible':beatsCount>=1?'<strong style="color:var(--blue)">Mixed vs industry</strong> — beats on some metrics, lags on others':'<strong style="color:var(--red)">Underperforms industry averages</strong> — efficiency improvements needed';
-mvI.innerHTML=`<strong style="color:#06b6d4">vs Peers:</strong> ${verdict}. Profit margin ${pm.toFixed(1)}% ${pmBeat?'&#10003;':'&#10007;'} | Op. margin ${om.toFixed(1)}% ${omBeat?'&#10003;':'&#10007;'} | ROE ${roe.toFixed(1)}% ${roeBeat?'&#10003;':'&#10007;'} <span style="color:var(--text3)">(&#10003;=beats avg, &#10007;=below avg)</span>`;
+mvI.innerHTML=`<strong style="color:#06b6d4">vs Peers:</strong> ${verdict}. ${pm>0?'Profit margin '+pm.toFixed(1)+'% '+(pmBeat?'&#10003;':'&#10007;')+' | ':''} ${om>0?'Op. margin '+om.toFixed(1)+'% '+(omBeat?'&#10003;':'&#10007;')+' | ':''} ${roe>0?'ROE '+roe.toFixed(1)+'% '+(roeBeat?'&#10003;':'&#10007;'):''} <span style="color:var(--text3)">(&#10003;=beats avg, &#10007;=below avg)</span>`;
+}
 }
 }
 
@@ -2294,7 +2306,7 @@ html+=`<div style="margin-top:12px;padding:12px 16px;border-radius:8px;backgroun
 // Disclaimer
 html+=`<div style="margin-top:20px;padding:14px 18px;border-radius:10px;background:rgba(239,68,68,.04);border:1px solid rgba(239,68,68,.15)">
 <div style="font-family:'Sora',sans-serif;font-size:11px;font-weight:800;color:var(--red);letter-spacing:.5px;margin-bottom:8px">&#9888; READ THIS BEFORE YOU TRADE</div>
-<div style="font-size:11px;color:var(--text3);line-height:1.6;padding-left:10px;border-left:2px solid rgba(239,68,68,.3);margin-bottom:4px"><strong style="color:var(--red)">NOT FINANCIAL ADVICE:</strong> This tool is for education only. Not a replacement for licensed financial advisors. Never invest money you cannot afford to lose.</div>
+<div style="font-size:11px;color:var(--text3);line-height:1.6;padding-left:10px;border-left:2px solid rgba(239,68,68,.3);margin-bottom:4px"><strong style="color:var(--red)">NOT FINANCIAL ADVICE:</strong> This tool is <b style="color:#f59e0b">for education only</b>. Not a replacement for licensed financial advisors. <b style="color:#f59e0b">Consult your financial advisor</b> before making any decisions. Never invest money you cannot afford to lose.</div>
 <div style="font-size:11px;color:var(--text3);line-height:1.6;padding-left:10px;border-left:2px solid rgba(239,68,68,.3);margin-bottom:4px"><strong style="color:var(--red)">DATA MAY BE DELAYED:</strong> Market data from third-party providers may be delayed or incomplete. Always cross-check with your broker.</div>
 <div style="font-size:11px;color:var(--text3);line-height:1.6;padding-left:10px;border-left:2px solid rgba(239,68,68,.3)"><strong style="color:var(--red)">YOU CAN LOSE MONEY:</strong> All investments carry real risk. Past performance never guarantees future results. No affiliation with any brokerage.</div>
 </div>`;
@@ -2507,7 +2519,7 @@ obs.observe(heroEl);
 <div class="edu-bar">
 <div class="edu-title">&#9888; READ THIS BEFORE YOU TRADE</div>
 <div class="edu-lines">
-<div class="edu-line"><strong>NOT FINANCIAL ADVICE:</strong> This tool is for education only. Not a replacement for licensed financial advisors. Never invest money you cannot afford to lose.</div>
+<div class="edu-line"><strong>NOT FINANCIAL ADVICE:</strong> This tool is <b style="color:var(--amber)">for education only</b>. Not a replacement for licensed financial advisors. <b style="color:var(--amber)">Consult your financial advisor</b> before making any decisions. Never invest money you cannot afford to lose.</div>
 <div class="edu-line"><strong>DATA MAY BE DELAYED:</strong> Market data from third-party providers may be delayed or incomplete. Always cross-check with your broker.</div>
 <div class="edu-line"><strong>YOU CAN LOSE MONEY:</strong> All investments carry real risk. Past performance never guarantees future results. No affiliation with any brokerage.</div>
 </div>
