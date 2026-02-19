@@ -2048,31 +2048,31 @@ async def market_pulse():
                 global_snapshot[name] = {"price": price, "change_pct": chg_pct}
                 
                 # Auto-detect events from data
-                if name == "Crude Oil" and abs(chg_pct) >= 2.5:
+                if name == "Crude Oil" and abs(chg_pct) >= 1.5:
                     direction = "spikes" if chg_pct > 0 else "crashes"
                     impact = "BEARISH" if chg_pct > 0 else "BULLISH"
                     events.append({
                         "headline": f"Crude Oil {direction} {chg_pct:+.1f}% to ${price}",
-                        "impact": impact, "severity": "HIGH" if abs(chg_pct) >= 4 else "MEDIUM",
+                        "impact": impact, "severity": "HIGH" if abs(chg_pct) >= 3 else "MEDIUM",
                         "detail": f"{'Higher crude increases input costs for airlines, paint, chemicals, and boosts inflation pressure on RBI.' if chg_pct > 0 else 'Lower crude benefits India as net importer. Positive for current account deficit and inflation outlook.'}",
                         "action": f"{'Watch ONGC/Oil India for gains. Avoid IndianOil, BPCL on marketing margin pressure. Negative for Nifty if sustained.' if chg_pct > 0 else 'Positive for Indian markets. Airlines, paint stocks benefit. Bank Nifty could see inflows.'}"
                     })
-                elif name == "Gold" and abs(chg_pct) >= 1.5:
+                elif name == "Gold" and abs(chg_pct) >= 0.8:
                     events.append({
                         "headline": f"Gold {'surges' if chg_pct > 0 else 'drops'} {chg_pct:+.1f}% to ${price}",
                         "impact": "VOLATILE", "severity": "MEDIUM",
                         "detail": f"{'Gold rally signals risk-off sentiment globally. Investors moving to safe havens.' if chg_pct > 0 else 'Gold decline suggests risk-on appetite returning. Equities may benefit.'}",
                         "action": f"{'Consider gold ETF hedge. Watch for FII outflows from equities.' if chg_pct > 0 else 'Positive for equity markets. Growth stocks could benefit.'}"
                     })
-                elif name == "S&P 500" and abs(chg_pct) >= 1.0:
+                elif name == "S&P 500" and abs(chg_pct) >= 0.5:
                     events.append({
                         "headline": f"US Markets {'rally' if chg_pct > 0 else 'sell-off'} {chg_pct:+.1f}%",
                         "impact": "BULLISH" if chg_pct > 0 else "BEARISH",
-                        "severity": "HIGH" if abs(chg_pct) >= 2 else "MEDIUM",
+                        "severity": "HIGH" if abs(chg_pct) >= 1.5 else "MEDIUM",
                         "detail": f"S&P 500 {'gained' if chg_pct > 0 else 'lost'} {abs(chg_pct):.1f}%. Indian markets typically follow with 0.5-0.8x correlation.",
                         "action": f"{'Expect gap-up opening for Nifty. IT stocks (TCS, Infosys) likely to lead.' if chg_pct > 0 else 'Expect weak opening. Consider hedging with Nifty puts.'}"
                     })
-                elif name == "US Dollar" and abs(chg_pct) >= 0.5:
+                elif name == "US Dollar" and abs(chg_pct) >= 0.3:
                     events.append({
                         "headline": f"Dollar Index {'strengthens' if chg_pct > 0 else 'weakens'} {chg_pct:+.1f}%",
                         "impact": "BEARISH" if chg_pct > 0 else "BULLISH",
@@ -2080,11 +2080,11 @@ async def market_pulse():
                         "detail": f"{'Stronger dollar pressures EM currencies and triggers FII outflows from India.' if chg_pct > 0 else 'Weaker dollar supports EM inflows. Positive for FII buying in India.'}",
                         "action": f"{'Watch for INR weakness. IT exporters benefit, but FII selling risk rises.' if chg_pct > 0 else 'FII inflows likely. Banking and consumption stocks benefit.'}"
                     })
-                elif name == "USD/INR" and abs(chg_pct) >= 0.3:
+                elif name == "USD/INR" and abs(chg_pct) >= 0.15:
                     events.append({
                         "headline": f"Rupee {'weakens' if chg_pct > 0 else 'strengthens'} {chg_pct:+.1f}% to ₹{price}",
                         "impact": "BEARISH" if chg_pct > 0 else "BULLISH",
-                        "severity": "HIGH" if abs(chg_pct) >= 0.8 else "MEDIUM",
+                        "severity": "HIGH" if abs(chg_pct) >= 0.5 else "MEDIUM",
                         "detail": f"{'Rupee depreciation signals capital outflows. RBI may intervene.' if chg_pct > 0 else 'Rupee strength attracts FII flows. Positive for market sentiment.'}",
                         "action": f"{'IT exporters benefit. Import-heavy sectors (oil, electronics) under pressure.' if chg_pct > 0 else 'Domestic consumption plays benefit. Watch for FII buying.'}"
                     })
@@ -2138,7 +2138,7 @@ async def market_pulse():
         "ist_time": now.strftime("%I:%M %p IST"),
         "is_expiry": is_expiry,
         "expiry_today": expiry_today,
-        "events": events[:3],  # Top 3 events
+        "events": events[:6],  # Show all detected events
         "upcoming": upcoming[:5],  # Next 5 upcoming
         "global_snapshot": global_snapshot
     }
@@ -3065,6 +3065,18 @@ CRITICAL RULES:
 4. Your "bias" field (Buy CE, Buy PE, etc.) is a DIRECTIONAL SUGGESTION based on the real option chain signals.
 5. Key levels must reference the REAL support/resistance walls from the OI data provided, plus 5-day range levels.
 6. If option chain data is unavailable for an index, state that and use price action only.
+
+INSTITUTIONAL-GRADE TRADE LOGIC — FOLLOW EXACTLY:
+A. ENTRY VALIDATION: Every entry must be at a verifiable support/resistance level from OI data, NOT arbitrary round numbers.
+B. RISK-REWARD MINIMUM: Every trade must have minimum 1:2 risk-reward ratio. Stop loss MUST be tighter than target distance.
+C. CONFLUENCE REQUIREMENT: Minimum 3 out of 10 factors must align for ANY trade suggestion. Single-factor trades are BANNED.
+D. STOP LOSS PLACEMENT: Place stops behind the NEXT major OI wall or pivot, not at arbitrary fixed-point distances.
+E. TIME DECAY AWARENESS: On expiry days, adjust probability DOWN for afternoon trades (theta crush after 1 PM).
+F. MAX PAIN GRAVITY: If current price is far from max pain on expiry day, bias should lean TOWARD max pain direction.
+G. STRADDLE PREMIUM = EXPECTED RANGE: The ATM straddle premium on expiry defines the expected move. Targets beyond this range need extra justification.
+H. PCR EXTREMES: PCR > 1.5 = heavily bullish support, PCR < 0.7 = bearish pressure. Use this to validate direction.
+I. VOLUME CONFIRMATION: Trades in direction of volume surge get +5% probability. Counter-volume trades get -5%.
+J. NO PHANTOM DATA: If a data field shows "N/A" or 0, acknowledge the gap. NEVER fabricate numbers to fill it.
 
 LIVE INDIAN INDEX DATA:
 {indices_text}

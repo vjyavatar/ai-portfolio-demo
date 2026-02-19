@@ -516,7 +516,7 @@ footer{position:relative;z-index:1;margin-top:32px;background:rgba(6,10,19,.95);
 .pick-geo button{font-size:9px;padding:3px 8px;border-radius:4px;border:1px solid var(--border);background:var(--surface);color:var(--text3);cursor:pointer;font-weight:700;font-family:'DM Sans',sans-serif}
 .pick-geo button.active{background:var(--amber);color:#000;border-color:var(--amber)}
 .event-alert-global{animation:eventSlide .5s ease-out;overflow:hidden;margin-bottom:0;border-radius:12px;position:relative}
-.evt-bar{display:flex;align-items:center;gap:8px;padding:8px 14px;border-radius:10px;background:linear-gradient(135deg,rgba(245,158,11,.04),rgba(239,68,68,.03));border:1px solid rgba(245,158,11,.12);overflow:visible;position:relative}
+.evt-bar{display:flex;align-items:center;gap:8px;padding:8px 14px;border-radius:10px;background:linear-gradient(135deg,rgba(245,158,11,.04),rgba(239,68,68,.03));border:1px solid rgba(245,158,11,.12);overflow:visible;position:relative;flex-wrap:wrap}
 .evt-label{font-family:'Sora',sans-serif;font-size:9px;font-weight:800;color:var(--amber);letter-spacing:.5px;white-space:nowrap;flex-shrink:0}
 .evt-scroll{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;-ms-overflow-style:none;flex:1;padding:2px 0}
 .evt-scroll::-webkit-scrollbar{display:none}
@@ -1327,7 +1327,7 @@ ${vResult.reasons.map(r=>{const isPos=r.includes('[+');return '<span style="font
 
 <div class="sc" data-tab="gems"><div class="sh"><div class="si" style="background:rgba(245,158,11,.1)">\u2B50</div><div class="st" style="color:var(--amber)" id="sec-gems">Hidden Gems \u2014 Small-Caps That Could 10x</div></div>
 <div class="sbody">
-<p style="font-size:12px;color:var(--text3);margin-bottom:14px">Under-the-radar picks in <strong id="smallCapSector" style="color:var(--amber)">${d.sector}</strong>:</p>
+<p style="font-size:12px;color:var(--text3);margin-bottom:14px">Under-the-radar picks in <strong id="smallCapSector" style="color:var(--amber)">${d.sector}</strong> — India \u{1F1EE}\u{1F1F3} &amp; USA \u{1F1FA}\u{1F1F8}:</p>
 <div id="smallCapTable"></div>
 <div class="ic am" style="margin-top:14px"><p><strong>Real talk:</strong> Small-caps = high risk, high reward. Same sector as <strong id="smallCapTicker">${d.ticker}</strong>. Only invest what you can lose. Spread across 5\u20138 picks. Think 10+ years.</p></div>
 </div></div>
@@ -1588,11 +1588,18 @@ let key=`${sectorKey}_${geo}`;
 let recs=db[key];
 if(!recs){key=`${sector.split(' ')[0]}_${geo}`;recs=db[key]}
 if(!recs){recs=db[`Technology_${geo}`]};
-let t=`<table class="dt"><tr><th>Company</th><th>Focus</th><th>Strengths</th><th>Rating</th><th>Potential</th></tr>`;
-recs.forEach(c=>{const clr=c.p.includes('Exceptional')||c.p.includes('Very High')?'var(--green)':'var(--amber)';
+const altGeo=geo==='India'?'US':'India';
+let altKey=`${sectorKey}_${altGeo}`;let altRecs=db[altKey];
+if(!altRecs){altKey=`${sector.split(' ')[0]}_${altGeo}`;altRecs=db[altKey]}
+if(!altRecs){altRecs=db[`Technology_${altGeo}`]};
+function gemsTable(data,label){
+let t=`<div style="margin-bottom:14px"><div style="font-family:'Sora',sans-serif;font-size:11px;font-weight:700;color:var(--amber);margin-bottom:6px">${label}</div>`;
+t+=`<table class="dt"><tr><th>Company</th><th>Focus</th><th>Strengths</th><th>Rating</th><th>Potential</th></tr>`;
+data.forEach(c=>{const clr=c.p.includes('Exceptional')||c.p.includes('Very High')?'var(--green)':'var(--amber)';
 const stars='\u2605'.repeat(c.r)+'\u2606'.repeat(5-c.r);
 t+=`<tr><td><strong>${c.n}</strong></td><td>${c.s}</td><td style="font-size:12px">${c.k}</td><td style="color:var(--amber);letter-spacing:1px">${stars}</td><td style="color:${clr};font-weight:600;font-size:12px">${c.p}</td></tr>`});
-t+='</table>';document.getElementById('smallCapTable').innerHTML=t}
+return t+'</table></div>'}
+document.getElementById('smallCapTable').innerHTML=gemsTable(recs,geo==='India'?'\u{1F1EE}\u{1F1F3} India Picks':'\u{1F1FA}\u{1F1F8} USA Picks')+gemsTable(altRecs,altGeo==='India'?'\u{1F1EE}\u{1F1F3} India Picks':'\u{1F1FA}\u{1F1F8} USA Picks')}
 
 // ═══════════════════════════════════════════════
 // QUARTERLY FUNDAMENTALS - Extract from AI report
@@ -2441,41 +2448,6 @@ ${ma.vix_signal||ma.global_impact?`<div style="font-size:11px;color:var(--text3)
 
 // Event alert now handled by fetchMarketPulse() on Analyze click — not here
 
-// ═══ GAMMA BLAST PROBABILITY ═══
-const gb=data.gamma_blast||{};
-if(gb.probability){
-const gbProb=parseInt(gb.probability)||0;
-const gbCol=gbProb>=60?'var(--red)':gbProb>=40?'var(--amber)':gbProb>=20?'var(--blue)':'var(--text3)';
-const gbBg=gbProb>=60?'rgba(239,68,68,.08)':gbProb>=40?'rgba(245,158,11,.06)':'rgba(59,130,246,.04)';
-const gbW=Math.min(gbProb,100);
-const dirIcon=gb.direction==='UP'?'&#128640;':gb.direction==='DOWN'?'&#128546;':'&#128260;';
-const srcCol=gb.source==='BOTH'?'var(--red)':gb.source==='EVENT'?'var(--amber)':'var(--blue)';
-const srcLabel=gb.source==='BOTH'?'&#9889; EXPIRY + EVENT':gb.source==='EVENT'?'&#127758; EVENT-DRIVEN':'&#128197; EXPIRY-DRIVEN';
-html+=`<div style="margin-bottom:14px;padding:14px 16px;border-radius:10px;background:${gbBg};border:1px solid ${gbCol}30">
-<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:6px">
-<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-<span style="font-size:20px;${gbProb>=50?'animation:pulse 1.5s infinite':''}">${dirIcon}</span>
-<span style="font-family:'Sora',sans-serif;font-size:13px;font-weight:800;color:${gbCol}">GAMMA BLAST: ${gb.probability}</span>
-<span style="font-size:10px;font-weight:800;color:#fff;background:${gbCol};padding:2px 8px;border-radius:4px">${gb.direction||'-'}</span>
-<span style="font-size:10px;font-weight:700;color:${srcCol};background:${srcCol}12;border:1px solid ${srcCol}30;padding:2px 8px;border-radius:4px">${srcLabel}</span>
-${gb.index?`<span style="font-size:10px;font-weight:700;color:var(--text3);background:rgba(255,255,255,.06);padding:2px 8px;border-radius:4px">${gb.index}</span>`:''}
-</div>
-<span style="font-size:11px;color:var(--text3);font-weight:600">${gb.timing||''}</span>
-</div>
-<div style="width:100%;height:8px;border-radius:4px;background:rgba(255,255,255,.08);overflow:hidden;margin-bottom:10px">
-<div style="width:${gbW}%;height:100%;border-radius:4px;background:linear-gradient(90deg,var(--green),var(--amber),var(--red));transition:width 1s"></div></div>
-<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">
-<div style="font-size:11px;color:var(--text3)"><strong style="color:var(--amber)">Trigger Zone:</strong> ${gb.trigger_zone||'-'}</div>
-<div style="font-size:11px;color:var(--text3)"><strong style="color:var(--amber)">Expected Move:</strong> ${gb.expected_move||'-'}</div>
-</div>
-${gb.best_play?`<div style="padding:8px 12px;border-radius:6px;background:rgba(16,185,129,.06);border:1px solid rgba(16,185,129,.15);font-size:12px;margin-bottom:8px"><strong style="color:var(--green)">&#127919; Best Play:</strong> <span style="color:var(--text)">${gb.best_play}</span></div>`:''}
-<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-${gb.expiry_factors&&!gb.expiry_factors.includes('N/A')?`<div style="padding:8px 10px;border-radius:6px;background:rgba(59,130,246,.04);border:1px solid rgba(59,130,246,.1);font-size:11px;color:var(--text3);line-height:1.5"><strong style="color:var(--blue)">&#128197; Expiry Factors:</strong><br>${gb.expiry_factors}</div>`:`<div style="padding:8px 10px;border-radius:6px;background:rgba(255,255,255,.02);font-size:11px;color:var(--text3)">&#128197; Expiry: Not expiry day</div>`}
-${gb.event_factors&&!gb.event_factors.includes('No major')?`<div style="padding:8px 10px;border-radius:6px;background:rgba(245,158,11,.04);border:1px solid rgba(245,158,11,.1);font-size:11px;color:var(--text3);line-height:1.5"><strong style="color:var(--amber)">&#127758; Event Factors:</strong><br>${gb.event_factors}</div>`:`<div style="padding:8px 10px;border-radius:6px;background:rgba(255,255,255,.02);font-size:11px;color:var(--text3)">&#127758; Events: No major event today</div>`}
-</div>
-</div>`;
-}
-
 // Market pulse header
 html+=`<div style="border-radius:12px;background:linear-gradient(135deg,rgba(245,158,11,.08),rgba(239,68,68,.05));border:1px solid rgba(245,158,11,.2);padding:16px 20px;margin-bottom:16px">
 <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
@@ -2643,6 +2615,8 @@ const ta=parseInt(a.time_sort)||9999;
 const tb=parseInt(b.time_sort)||9999;
 return ta-tb;
 });
+const gb=data.gamma_blast||{};
+const hasGamma=data.is_expiry_day&&gb.probability&&parseInt(gb.probability)>0;
 html+=`<div style="margin-top:24px;padding:16px;border-radius:12px;background:linear-gradient(135deg,rgba(59,130,246,.06),rgba(139,92,246,.04));border:1px solid rgba(59,130,246,.15)">
 <div style="font-family:'Sora',sans-serif;font-size:14px;font-weight:800;color:var(--blue);margin-bottom:4px">&#128197; YOUR TRADING DAY PLAN (IST)</div>
 <div style="font-size:11px;color:var(--text3);margin-bottom:12px">All trades sorted by execution time — follow this order through the day</div>
@@ -2658,6 +2632,7 @@ html+=`<div style="margin-top:24px;padding:16px;border-radius:12px;background:li
 <th style="padding:8px 6px;text-align:right;color:var(--blue);font-weight:700;font-size:10px;letter-spacing:.5px">TARGET</th>
 <th style="padding:8px 6px;text-align:right;color:var(--blue);font-weight:700;font-size:10px;letter-spacing:.5px">SL</th>
 <th style="padding:8px 6px;text-align:center;color:var(--blue);font-weight:700;font-size:10px;letter-spacing:.5px">PROB</th>
+${hasGamma?'<th style="padding:8px 6px;text-align:center;color:var(--red);font-weight:700;font-size:10px;letter-spacing:.5px">GAMMA</th>':''}
 </tr></thead><tbody>`;
 timeSorted.forEach((t,i)=>{
 const dir=(t.direction||'').toUpperCase();
@@ -2666,6 +2641,10 @@ const tBg=i%2===0?'rgba(255,255,255,.01)':'rgba(255,255,255,.03)';
 const typeCol=t._type==='INDEX'?'var(--amber)':t._type==='STOCK'?'var(--purple)':'var(--red)';
 const ts=t.time_sort||'--';
 const timeStr=ts.length===4?ts.substring(0,2)+':'+ts.substring(2):ts;
+// Gamma blast applies to INDEX trades in the 1:30-3:15 PM window on expiry
+const gbApplies=hasGamma&&t._type==='INDEX'&&parseInt(ts)>=1330&&parseInt(ts)<=1515;
+const gbProb=gbApplies?parseInt(gb.probability):0;
+const gbCol=gbProb>=60?'var(--red)':gbProb>=40?'var(--amber)':'var(--blue)';
 html+=`<tr style="background:${tBg};border-bottom:1px solid rgba(255,255,255,.04)">
 <td style="padding:8px 6px;font-weight:700;color:var(--amber)">${timeStr}</td>
 <td style="padding:8px 6px"><span style="font-size:10px;background:${typeCol};color:#fff;padding:1px 6px;border-radius:3px;font-weight:800">${t._rank}</span></td>
@@ -2676,9 +2655,23 @@ html+=`<tr style="background:${tBg};border-bottom:1px solid rgba(255,255,255,.04
 <td style="padding:8px 6px;text-align:right;color:var(--green)">${t.move_pct||t.target_pct||'-'}</td>
 <td style="padding:8px 6px;text-align:right;color:var(--red)">${t.stop_level||t.stop_loss||'-'}</td>
 <td style="padding:8px 6px;text-align:center"><span style="font-weight:800;color:${parseInt(t.probability)>=85?'var(--green)':'var(--amber)'}">${t.probability||'-'}</span></td>
+${hasGamma?`<td style="padding:8px 6px;text-align:center">${gbApplies?`<span style="font-size:9px;font-weight:800;padding:2px 6px;border-radius:4px;background:${gbCol}15;color:${gbCol};white-space:nowrap">${gb.probability} ${gb.direction||''}</span>`:'<span style="font-size:9px;color:var(--text3)">—</span>'}</td>`:''}
 </tr>`;
 });
-html+=`</tbody></table></div></div>`;
+html+=`</tbody></table></div>`;
+// Gamma blast footer on expiry — compact summary below table
+if(hasGamma){
+const gbProb=parseInt(gb.probability)||0;
+const gbCol=gbProb>=60?'var(--red)':gbProb>=40?'var(--amber)':'var(--blue)';
+html+=`<div style="margin-top:10px;padding:8px 12px;border-radius:6px;background:${gbCol}08;border:1px solid ${gbCol}20;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+<span style="font-size:10px;font-weight:800;color:${gbCol}">&#9889; GAMMA BLAST ${gb.probability}</span>
+<span style="font-size:10px;color:var(--text3)">Trigger: <strong style="color:var(--amber)">${gb.trigger_zone||'-'}</strong></span>
+<span style="font-size:10px;color:var(--text3)">Move: <strong style="color:var(--text)">${gb.expected_move||'-'}</strong></span>
+<span style="font-size:10px;color:var(--text3)">Window: <strong style="color:var(--text)">${gb.timing||'1:30-3:00 PM'}</strong></span>
+${gb.best_play?`<span style="font-size:10px;color:var(--green);font-weight:600">&#127919; ${gb.best_play}</span>`:''}
+</div>`;
+}
+html+=`</div>`;
 }
 
 // ═══ GUT PICKS — TOP 2 HIGHEST CONVICTION ═══
