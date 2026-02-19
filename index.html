@@ -681,6 +681,57 @@ document.addEventListener('click',e=>{if(e.target!==TI)AC.classList.remove('show
 document.getElementById('email').addEventListener('keypress',e=>{if(e.key==='Enter')TI.focus()});
 // Smart Trades tab: only visible for authorized email
 const TRADES_EMAILS=['vijy.dhulipala@gmail.com'];
+async function fetchMarketPulse(){
+const el=document.getElementById('email');
+const email=(el.dataset.real||el.value).trim().toLowerCase();
+if(!TRADES_EMAILS.includes(email))return;
+const gDiv=document.getElementById('eventAlertGlobal');
+if(!gDiv)return;
+try{
+const r=await fetch('/api/market-pulse');
+const d=await r.json();
+if(!d.success)return;
+let h='';
+// Events
+if(d.events&&d.events.length>0){
+d.events.forEach(evt=>{
+const isH=evt.severity==='HIGH';
+const isM=evt.severity==='MEDIUM';
+const sC=isH?'#ef4444':isM?'#f59e0b':'#3b82f6';
+const iC=evt.impact==='BULLISH'?'#10b981':evt.impact==='BEARISH'?'#ef4444':'#f59e0b';
+const iI=evt.impact==='BULLISH'?'&#128200;':evt.impact==='BEARISH'?'&#128201;':'&#128260;';
+const sI=isH?'&#128680;':isM?'&#9889;':'&#128276;';
+h+=`<div class="event-alert-global ${isH?'high':''}" style="background:${isH?'rgba(239,68,68,.06)':isM?'rgba(245,158,11,.05)':'rgba(59,130,246,.04)'};padding:12px 14px;position:relative;margin-bottom:8px;${isH?'animation:eventGlowHigh 2s ease infinite':'animation:eventGlow 3s ease infinite'}">
+<button class="event-dismiss" onclick="this.parentElement.remove()" title="Dismiss">&#10005;</button>
+<div style="display:flex;gap:10px;align-items:flex-start">
+<div style="min-width:36px;height:36px;border-radius:9px;background:${sC}18;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0">${sI}</div>
+<div style="flex:1;min-width:0">
+<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:4px">
+<span style="font-family:'Sora',sans-serif;font-size:12px;font-weight:800;color:${sC}">${evt.headline}</span>
+<span style="font-size:9px;font-weight:800;color:#fff;background:${sC};padding:1px 7px;border-radius:10px">${evt.severity}</span>
+<span style="font-size:9px;font-weight:700;color:${iC};background:${iC}12;border:1px solid ${iC}25;padding:1px 7px;border-radius:10px">${iI} ${evt.impact}</span>
+</div>
+<div style="font-size:11px;color:var(--text2);line-height:1.5;margin-bottom:4px">${evt.detail}</div>
+${evt.action?`<div style="font-size:11px;padding:6px 10px;border-radius:6px;background:rgba(255,255,255,.03);border-left:2px solid ${sC}"><strong style="color:${sC}">&#9654;</strong> ${evt.action}</div>`:''}
+</div></div></div>`;
+});
+}
+// Upcoming events ticker
+if(d.upcoming&&d.upcoming.length>0){
+h+=`<div style="padding:8px 14px;border-radius:10px;background:rgba(59,130,246,.04);border:1px solid rgba(59,130,246,.1);margin-bottom:8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+<span style="font-size:14px">&#128197;</span>
+<span style="font-family:'Sora',sans-serif;font-size:10px;font-weight:700;color:var(--blue);letter-spacing:.5px">UPCOMING</span>`;
+d.upcoming.forEach(u=>{
+const uC=u.impact==='HIGH'?'var(--red)':'var(--amber)';
+h+=`<span style="font-size:10px;color:var(--text2);padding:2px 8px;border-radius:6px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.06)"><strong style="color:${uC}">${u.event}</strong> ${u.date} <span style="color:var(--text3)">(${u.days}d)</span></span>`;
+});
+h+=`</div>`;
+}
+gDiv.style.display=h?'block':'none';
+gDiv.innerHTML=h;
+}catch(e){console.log('Market pulse fetch failed:',e)}
+}
+
 function checkTradesAccess(){
 const el=document.getElementById('email');
 const email=(el.dataset.real||el.value).trim().toLowerCase();
@@ -821,6 +872,8 @@ try{const rl=await fetch('/api/check-rate-limit',{method:'POST',headers:{'Conten
 if(!rld.allowed){showStatus(rld.reason,'error');showRL(rld);return}else hideRL()}catch(e){}
 btn.disabled=true;btn.textContent='Analyzing...';btn.classList.add('ld');rpt.classList.remove('show');hideRL();
 showStatus('Crunching the numbers on '+ticker+'...','info');showLS();
+// Parallel: fetch market events for authorized users
+fetchMarketPulse();
 try{const res=await fetch('/api/generate-report',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({company_name:ticker,email})});
 if(res.status===429){const r=await res.json().catch(()=>({}));showStatus(r.reason||r.detail||'Too many requests','error');if(r.retry_after_seconds||r.retry_after_minutes)showRL(r);return}
 if(res.status===503||res.status===504){const e=await res.json().catch(()=>({}));showStatus(e.detail||'Service busy. Try again in 30s.','error');return}
@@ -1820,28 +1873,25 @@ if(!data.success){errEl.textContent=data.error||'Service busy. Please try again 
 // Render the trades
 let html='';
 
-// Market assessment dashboard
+// Market assessment — compact pill design
 const ma=data.market_assessment||{};
 if(ma.bias){
 const biasCol=ma.bias.includes('BULL')?'var(--green)':ma.bias.includes('BEAR')?'var(--red)':'var(--amber)';
+const biasBg=ma.bias.includes('BULL')?'rgba(16,185,129,.1)':ma.bias.includes('BEAR')?'rgba(239,68,68,.1)':'rgba(245,158,11,.08)';
+const biasIcon=ma.bias.includes('BULL')?'&#128200;':ma.bias.includes('BEAR')?'&#128201;':'&#128260;';
+const regimeCol=ma.regime==='TRENDING'?'var(--green)':ma.regime==='RANGE-BOUND'?'var(--amber)':'var(--blue)';
 const edgeCol=ma.edge_clarity==='CLEAR'?'var(--green)':ma.edge_clarity==='MODERATE'?'var(--amber)':'var(--red)';
-html+=`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;margin-bottom:14px">
-<div style="text-align:center;padding:10px;border-radius:8px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06)">
-<div style="font-size:10px;color:var(--text3);font-weight:600;letter-spacing:.5px">MARKET BIAS</div>
-<div style="font-size:15px;font-weight:800;color:${biasCol}">${ma.bias||'-'}</div></div>
-<div style="text-align:center;padding:10px;border-radius:8px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06)">
-<div style="font-size:10px;color:var(--text3);font-weight:600;letter-spacing:.5px">REGIME</div>
-<div style="font-size:15px;font-weight:800;color:var(--blue)">${ma.regime||'-'}</div></div>
-<div style="text-align:center;padding:10px;border-radius:8px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06)">
-<div style="font-size:10px;color:var(--text3);font-weight:600;letter-spacing:.5px">EDGE CLARITY</div>
-<div style="font-size:15px;font-weight:800;color:${edgeCol}">${ma.edge_clarity||'-'}</div></div>
+html+=`<div style="margin-bottom:14px;padding:14px 16px;border-radius:10px;background:${biasBg};border:1px solid ${biasCol}25">
+<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:${ma.vix_signal||ma.global_impact?'10px':'0'}">
+<div style="display:flex;align-items:center;gap:6px">
+<span style="font-size:18px">${biasIcon}</span>
+<span style="font-family:'Sora',sans-serif;font-size:16px;font-weight:800;color:${biasCol}">${ma.bias}</span>
+</div>
+<span style="font-size:10px;font-weight:700;color:${regimeCol};background:${regimeCol}12;border:1px solid ${regimeCol}25;padding:3px 10px;border-radius:10px">${ma.regime||'-'}</span>
+<span style="font-size:10px;font-weight:700;color:${edgeCol};background:${edgeCol}12;border:1px solid ${edgeCol}25;padding:3px 10px;border-radius:10px">Edge: ${ma.edge_clarity||'-'}</span>
+</div>
+${ma.vix_signal||ma.global_impact?`<div style="font-size:11px;color:var(--text3);line-height:1.6">${ma.vix_signal?'<span style="color:var(--amber);font-weight:600">VIX</span> '+ma.vix_signal+(ma.global_impact?' · ':''):''}${ma.global_impact?'<span style="color:var(--blue);font-weight:600">Global</span> '+ma.global_impact:''}</div>`:''}
 </div>`;
-if(ma.vix_signal||ma.global_impact){
-html+=`<div style="font-size:12px;color:var(--text3);margin-bottom:14px;padding:10px 14px;border-radius:8px;background:rgba(255,255,255,.02)">
-${ma.vix_signal?'<div style="margin-bottom:4px"><strong style="color:var(--amber)">VIX:</strong> '+ma.vix_signal+'</div>':''}
-${ma.global_impact?'<div><strong style="color:var(--blue)">Global:</strong> '+ma.global_impact+'</div>':''}
-</div>`;
-}
 }
 
 // ═══ EVENT ALERT — Render to GLOBAL position above tabs ═══

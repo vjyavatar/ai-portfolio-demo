@@ -1654,36 +1654,25 @@ async def terms_page():
 @app.get("/about", response_class=HTMLResponse)
 async def about_page():
     return _page_shell("About Celesys AI", """
-<p>Celesys AI is a free AI-powered stock analysis platform that delivers institutional-grade research reports to everyday investors — in 60 seconds.</p>
+<p style="font-size:16px;line-height:1.8;color:#ccc">Celesys AI turns raw market data into clarity. In under 60 seconds, you get the same depth of stock analysis that hedge funds pay thousands for — and it costs you nothing.</p>
 
-<h2>Our Mission</h2>
-<p>We believe every investor deserves access to the same quality of research that Wall Street professionals get. Celesys AI democratizes stock analysis by combining real-time market data with advanced artificial intelligence to produce deep-dive reports — completely free.</p>
+<h2>Why We Built This</h2>
+<p>Most retail investors make decisions based on tips, headlines, or gut feel. The investors who consistently win? They have systems — data pipelines, quantitative models, and research frameworks. Celesys AI gives you that system. No jargon, no paywalls, no sign-up forms.</p>
 
-<h2>What We Offer</h2>
-<ul>
-<li><strong>Precision Entry & Exit Targets:</strong> AI-calculated buy and sell prices based on live market data</li>
-<li><strong>Institutional Risk Profiling:</strong> Comprehensive risk scoring across multiple dimensions</li>
-<li><strong>Earnings Alpha:</strong> Quarter-over-quarter and year-over-year earnings analysis with growth verdicts</li>
-<li><strong>Insider Sentiment & CEO Read:</strong> Management tone analysis from earnings calls and guidance</li>
-<li><strong>Mutual Fund & Institutional Holdings:</strong> Who's buying, who's selling, and what it means</li>
-<li><strong>Catalyst Timeline:</strong> What's coming next — 30 days, 90 days, 12 months</li>
-<li><strong>Hidden Gems:</strong> Under-the-radar small-cap recommendations in the same sector</li>
-</ul>
+<h2>What Happens When You Hit Analyze</h2>
+<p>The moment you enter a ticker, five things happen simultaneously: live price data streams in from multiple exchanges, AI dissects the company's fundamentals against sector benchmarks, management sentiment gets scored from earnings call patterns, institutional money flow reveals who's accumulating and who's exiting, and a risk model stress-tests your downside. You see all of this in one screen — organized by what matters most to your decision.</p>
+
+<h2>The Technology</h2>
+<p>We pull from Yahoo Finance, Google Finance, Screener.in, and Finviz through a 5-layer fallback system — if one source is down, the next picks up seamlessly. The AI layer doesn't just summarize data; it cross-references signals, identifies contradictions, and tells you when the numbers don't add up. Every analysis is generated fresh. Nothing is cached or recycled.</p>
 
 <h2>Coverage</h2>
-<p>We cover stocks across US markets (NYSE, NASDAQ) and Indian markets (NSE, BSE). Enter any valid ticker symbol and get a complete analysis.</p>
+<p>US markets (NYSE, NASDAQ) and Indian markets (NSE, BSE). Enter any valid ticker — from mega-caps like AAPL and RELIANCE to small-caps most screeners miss.</p>
 
-<h2>How It Works</h2>
-<p>Enter a stock ticker or company name → Our system fetches real-time data from multiple financial sources → AI analyzes fundamentals, technicals, management signals, and risk factors → You receive a comprehensive research report in under 60 seconds.</p>
+<h2>Completely Free</h2>
+<p>5 deep-dive reports per email per hour. No credit card. No account creation. No trial that expires. We believe access to quality research shouldn't depend on your brokerage account size.</p>
 
-<h2>Our Technology</h2>
-<p>Celesys AI is built with a multi-source data pipeline (Yahoo Finance, Google Finance, Screener.in, Finviz) and powered by advanced AI for intelligent analysis. We use a 5-layer data fallback system to ensure you always get accurate, current information.</p>
-
-<h2>Free & No Signup</h2>
-<p>We offer 5 free deep-dive reports per email per hour. No credit card, no registration, no hidden fees. Just enter your email for rate limiting and start analyzing.</p>
-
-<h2>Contact</h2>
-<p>Have questions, feedback, or partnership inquiries? Reach us at: <a href="mailto:contact@celesys.ai">contact@celesys.ai</a></p>
+<h2>Get in Touch</h2>
+<p>Questions, bugs, feature ideas, or just want to say hello — <a href="mailto:contact@celesys.ai" style="color:#3b82f6">contact@celesys.ai</a></p>
 """)
 
 @app.get("/contact", response_class=HTMLResponse)
@@ -1745,6 +1734,154 @@ async def ads_txt():
 # INDEX TRADES — AI Daily Trade Ideas (Restricted Access)
 # ═══════════════════════════════════════════════════════════
 TRADES_ALLOWED_EMAILS = ["vijy.dhulipala@gmail.com"]
+
+@app.get("/api/market-pulse")
+async def market_pulse():
+    """Lightweight market events — no AI, instant response. Called on every Analyze click."""
+    import yfinance as yf
+    from datetime import datetime, timedelta
+    
+    IST_OFFSET = timedelta(hours=5, minutes=30)
+    now = datetime.utcnow() + IST_OFFSET
+    day_name = now.strftime("%A")
+    weekday = now.weekday()
+    date_str = now.strftime("%A, %B %d, %Y")
+    
+    # Expiry detection
+    year, month = now.year, now.month
+    import calendar
+    last_day = calendar.monthrange(year, month)[1]
+    last_tuesday = last_day
+    while datetime(year, month, last_tuesday).weekday() != 1:
+        last_tuesday -= 1
+    is_last_tuesday = (now.day == last_tuesday and weekday == 1)
+    last_thursday = last_day
+    while datetime(year, month, last_thursday).weekday() != 3:
+        last_thursday -= 1
+    is_last_thursday = (now.day == last_thursday and weekday == 3)
+    
+    expiry_today = []
+    if weekday == 1:  # Tuesday
+        expiry_today.append("NIFTY 50 (weekly)")
+        if is_last_tuesday:
+            expiry_today.extend(["BANK NIFTY (monthly)", "FIN NIFTY (monthly)", "Stock F&O (monthly)"])
+    if weekday == 3:  # Thursday
+        expiry_today.append("SENSEX (weekly)")
+        if is_last_thursday:
+            expiry_today.append("BANKEX (monthly)")
+    
+    is_expiry = len(expiry_today) > 0
+    
+    # Fetch key global data for event detection
+    events = []
+    global_snapshot = {}
+    quick_tickers = {"CL=F": "Crude Oil", "GC=F": "Gold", "DX-Y.NYB": "US Dollar", "^GSPC": "S&P 500", "INR=X": "USD/INR"}
+    
+    for ticker, name in quick_tickers.items():
+        try:
+            t = yf.Ticker(ticker)
+            hist = t.history(period="2d")
+            if not hist.empty:
+                price = round(hist.iloc[-1]['Close'], 2)
+                prev = hist.iloc[-2]['Close'] if len(hist) > 1 else price
+                chg_pct = round(((price - prev) / prev) * 100, 2) if prev else 0
+                global_snapshot[name] = {"price": price, "change_pct": chg_pct}
+                
+                # Auto-detect events from data
+                if name == "Crude Oil" and abs(chg_pct) >= 2.5:
+                    direction = "spikes" if chg_pct > 0 else "crashes"
+                    impact = "BEARISH" if chg_pct > 0 else "BULLISH"
+                    events.append({
+                        "headline": f"Crude Oil {direction} {chg_pct:+.1f}% to ${price}",
+                        "impact": impact, "severity": "HIGH" if abs(chg_pct) >= 4 else "MEDIUM",
+                        "detail": f"{'Higher crude increases input costs for airlines, paint, chemicals, and boosts inflation pressure on RBI.' if chg_pct > 0 else 'Lower crude benefits India as net importer. Positive for current account deficit and inflation outlook.'}",
+                        "action": f"{'Watch ONGC/Oil India for gains. Avoid IndianOil, BPCL on marketing margin pressure. Negative for Nifty if sustained.' if chg_pct > 0 else 'Positive for Indian markets. Airlines, paint stocks benefit. Bank Nifty could see inflows.'}"
+                    })
+                elif name == "Gold" and abs(chg_pct) >= 1.5:
+                    events.append({
+                        "headline": f"Gold {'surges' if chg_pct > 0 else 'drops'} {chg_pct:+.1f}% to ${price}",
+                        "impact": "VOLATILE", "severity": "MEDIUM",
+                        "detail": f"{'Gold rally signals risk-off sentiment globally. Investors moving to safe havens.' if chg_pct > 0 else 'Gold decline suggests risk-on appetite returning. Equities may benefit.'}",
+                        "action": f"{'Consider gold ETF hedge. Watch for FII outflows from equities.' if chg_pct > 0 else 'Positive for equity markets. Growth stocks could benefit.'}"
+                    })
+                elif name == "S&P 500" and abs(chg_pct) >= 1.0:
+                    events.append({
+                        "headline": f"US Markets {'rally' if chg_pct > 0 else 'sell-off'} {chg_pct:+.1f}%",
+                        "impact": "BULLISH" if chg_pct > 0 else "BEARISH",
+                        "severity": "HIGH" if abs(chg_pct) >= 2 else "MEDIUM",
+                        "detail": f"S&P 500 {'gained' if chg_pct > 0 else 'lost'} {abs(chg_pct):.1f}%. Indian markets typically follow with 0.5-0.8x correlation.",
+                        "action": f"{'Expect gap-up opening for Nifty. IT stocks (TCS, Infosys) likely to lead.' if chg_pct > 0 else 'Expect weak opening. Consider hedging with Nifty puts.'}"
+                    })
+                elif name == "US Dollar" and abs(chg_pct) >= 0.5:
+                    events.append({
+                        "headline": f"Dollar Index {'strengthens' if chg_pct > 0 else 'weakens'} {chg_pct:+.1f}%",
+                        "impact": "BEARISH" if chg_pct > 0 else "BULLISH",
+                        "severity": "MEDIUM",
+                        "detail": f"{'Stronger dollar pressures EM currencies and triggers FII outflows from India.' if chg_pct > 0 else 'Weaker dollar supports EM inflows. Positive for FII buying in India.'}",
+                        "action": f"{'Watch for INR weakness. IT exporters benefit, but FII selling risk rises.' if chg_pct > 0 else 'FII inflows likely. Banking and consumption stocks benefit.'}"
+                    })
+                elif name == "USD/INR" and abs(chg_pct) >= 0.3:
+                    events.append({
+                        "headline": f"Rupee {'weakens' if chg_pct > 0 else 'strengthens'} {chg_pct:+.1f}% to ₹{price}",
+                        "impact": "BEARISH" if chg_pct > 0 else "BULLISH",
+                        "severity": "HIGH" if abs(chg_pct) >= 0.8 else "MEDIUM",
+                        "detail": f"{'Rupee depreciation signals capital outflows. RBI may intervene.' if chg_pct > 0 else 'Rupee strength attracts FII flows. Positive for market sentiment.'}",
+                        "action": f"{'IT exporters benefit. Import-heavy sectors (oil, electronics) under pressure.' if chg_pct > 0 else 'Domestic consumption plays benefit. Watch for FII buying.'}"
+                    })
+        except:
+            pass
+    
+    # Expiry event
+    if is_expiry:
+        exp_list = ", ".join(expiry_today)
+        sev = "HIGH" if is_last_tuesday or len(expiry_today) > 1 else "MEDIUM"
+        events.append({
+            "headline": f"Expiry Day — {exp_list}",
+            "impact": "VOLATILE", "severity": sev,
+            "detail": f"{'MEGA EXPIRY: Multiple indices expire today. Expect extreme volatility, heavy institutional activity, and pin risk.' if len(expiry_today) > 2 else 'Weekly expiry for '+exp_list+'. Theta decay accelerates after 1 PM. Max Pain becomes price magnet.'}",
+            "action": f"{'Reduce position sizes. Use straddles/strangles. Gamma scalping opportunities after 2 PM.' if sev == 'HIGH' else 'Watch for gamma moves near max pain after 2 PM. Theta sellers collect premium decay.'}"
+        })
+    
+    # Upcoming scheduled events (static calendar)
+    upcoming = []
+    # Known RBI meeting dates 2026 (approximate — first week of Apr, Jun, Aug, Oct, Dec, Feb)
+    rbi_months = [2, 4, 6, 8, 10, 12]
+    for rm in rbi_months:
+        rbi_date = datetime(year if rm >= now.month else year + 1, rm, 7)
+        days_until = (rbi_date - now).days
+        if 0 < days_until <= 30:
+            upcoming.append({"event": f"RBI Monetary Policy", "date": rbi_date.strftime("%b %d"), "days": days_until, "impact": "HIGH"})
+    
+    # Next expiry dates
+    next_tue = now + timedelta(days=(1 - weekday) % 7 or 7)
+    next_thu = now + timedelta(days=(3 - weekday) % 7 or 7)
+    if not (weekday == 1):
+        upcoming.append({"event": "Nifty Weekly Expiry", "date": next_tue.strftime("%b %d (%a)"), "days": (next_tue - now).days, "impact": "MEDIUM"})
+    if not (weekday == 3):
+        upcoming.append({"event": "Sensex Weekly Expiry", "date": next_thu.strftime("%b %d (%a)"), "days": (next_thu - now).days, "impact": "MEDIUM"})
+    
+    # US Fed (approx — Jan, Mar, May, Jun, Jul, Sep, Nov, Dec)
+    fed_months = [1, 3, 5, 6, 7, 9, 11, 12]
+    for fm in fed_months:
+        fed_date = datetime(year if fm >= now.month else year + 1, fm, 18)
+        days_until = (fed_date - now).days
+        if 0 < days_until <= 30:
+            upcoming.append({"event": "US Fed Rate Decision", "date": fed_date.strftime("%b %d"), "days": days_until, "impact": "HIGH"})
+    
+    # Sort upcoming by days
+    upcoming.sort(key=lambda x: x["days"])
+    
+    return {
+        "success": True,
+        "date": date_str,
+        "day": day_name,
+        "ist_time": now.strftime("%I:%M %p IST"),
+        "is_expiry": is_expiry,
+        "expiry_today": expiry_today,
+        "events": events[:3],  # Top 3 events
+        "upcoming": upcoming[:5],  # Next 5 upcoming
+        "global_snapshot": global_snapshot
+    }
 
 @app.post("/api/index-trades")
 async def index_trades(request: Request):
