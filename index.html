@@ -149,7 +149,7 @@ ticking=false});ticking=true}
 :root{--bg:#060a13;--bg2:#0b1120;--bg3:#111a2e;--surface:rgba(11,17,32,0.85);--glass:rgba(11,17,32,0.6);--border:rgba(59,130,246,0.1);--border2:rgba(59,130,246,0.25);--blue:#3b82f6;--blue2:#2563eb;--cyan:#06b6d4;--green:#10b981;--green2:#059669;--amber:#f59e0b;--red:#ef4444;--purple:#8b5cf6;--text:#e2e8f0;--text2:#94a3b8;--text3:#64748b;--mono:'IBM Plex Mono',monospace}
 *{margin:0;padding:0;box-sizing:border-box}
 html{scroll-behavior:smooth}
-body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden}
+body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden;padding-bottom:90px}
 
 /* Grid background */
 .gridbg{position:fixed;inset:0;z-index:0;pointer-events:none;background-image:linear-gradient(rgba(59,130,246,0.025) 1px,transparent 1px),linear-gradient(90deg,rgba(59,130,246,0.025) 1px,transparent 1px);background-size:48px 48px}
@@ -347,11 +347,16 @@ footer{position:relative;z-index:1;margin-top:32px;background:rgba(6,10,19,.95);
 .fcopy{font-size:11px;color:var(--text3)}.fcopy strong{color:var(--text2)}
 .flinks{display:flex;gap:16px}.flinks a{font-size:11px;color:var(--text3);text-decoration:none;transition:color .2s}.flinks a:hover{color:var(--blue)}
 
-@media(max-width:768px){.irow{grid-template-columns:1fr}.mgrid{grid-template-columns:1fr 1fr}.cgrid,.cgrid2{grid-template-columns:1fr}.hero{padding:40px 16px 32px}.ncenter,.nright{display:none}.sc{padding:20px 16px}.ftop{grid-template-columns:1fr;gap:24px}.fbot{flex-direction:column;text-align:center}.tab-btn{font-size:12px;padding:10px 8px;gap:4px}.tab-bar{position:sticky;top:0}.tab-scroll-area{max-height:70vh;padding:12px}.fab{bottom:16px;right:16px;padding:8px 16px;font-size:12px}}
+@media(max-width:768px){.irow{grid-template-columns:1fr}.mgrid{grid-template-columns:1fr 1fr}.cgrid,.cgrid2{grid-template-columns:1fr}.hero{padding:40px 16px 32px}.ncenter,.nright{display:none}.sc{padding:20px 16px}.ftop{grid-template-columns:1fr;gap:24px}.fbot{flex-direction:column;text-align:center}.tab-btn{font-size:12px;padding:10px 8px;gap:4px}.tab-bar{position:sticky;top:0}.tab-scroll-area{max-height:70vh;padding:12px}.fab{bottom:96px;right:16px;padding:8px 16px;font-size:12px}}
 @media(max-width:480px){.mgrid{grid-template-columns:1fr}.hbadges{flex-direction:column;align-items:center}}
 
 /* FLOATING FEEDBACK PANEL */
-.fab{position:fixed;bottom:24px;right:24px;z-index:200;display:flex;align-items:center;gap:6px;padding:10px 20px;border-radius:100px;font-size:13px;font-weight:700;color:#fff;background:linear-gradient(135deg,var(--blue2),var(--purple));cursor:pointer;box-shadow:0 4px 20px rgba(59,130,246,.3);transition:all .3s;border:none;font-family:'DM Sans',sans-serif;letter-spacing:.2px;animation:fabBounce 3s ease-in-out infinite}
+.fab{position:fixed;bottom:100px;right:24px;z-index:200;display:flex;align-items:center;gap:6px;padding:10px 20px;border-radius:100px;font-size:13px;font-weight:700;color:#fff;background:linear-gradient(135deg,var(--blue2),var(--purple));cursor:pointer;box-shadow:0 4px 20px rgba(59,130,246,.3);transition:all .3s;border:none;font-family:'DM Sans',sans-serif;letter-spacing:.2px;animation:fabBounce 3s ease-in-out infinite}
+.edu-bar{position:fixed;bottom:0;left:0;width:100%;z-index:199;padding:14px 24px;background:rgba(10,12,20,.98);border-top:1px solid rgba(239,68,68,.15);backdrop-filter:blur(12px)}
+.edu-bar .edu-title{font-family:'Sora',sans-serif;font-size:12px;font-weight:800;color:var(--red);letter-spacing:.5px;margin-bottom:6px;display:flex;align-items:center;gap:6px}
+.edu-bar .edu-lines{display:flex;flex-wrap:wrap;gap:4px 20px}
+.edu-bar .edu-line{font-size:10px;color:var(--text3);line-height:1.5;padding-left:10px;border-left:2px solid rgba(239,68,68,.3)}
+.edu-bar .edu-line strong{color:var(--red);font-weight:700;font-size:10px;letter-spacing:.3px}
 .fab:hover{transform:translateY(-3px) scale(1.03);box-shadow:0 8px 30px rgba(59,130,246,.4);animation:none}
 .fab .pulse{width:8px;height:8px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green);animation:pdot 2s infinite}
 @keyframes fabBounce{0%,100%{transform:translateY(0);box-shadow:0 4px 20px rgba(59,130,246,.3)}25%{transform:translateY(-8px);box-shadow:0 12px 30px rgba(139,92,246,.4)}50%{transform:translateY(0);box-shadow:0 4px 20px rgba(59,130,246,.3)}75%{transform:translateY(-4px);box-shadow:0 8px 25px rgba(139,92,246,.35)}}
@@ -405,13 +410,13 @@ footer{position:relative;z-index:1;margin-top:32px;background:rgba(6,10,19,.95);
 .fpbk{position:fixed;inset:0;z-index:250;background:rgba(0,0,0,.5);backdrop-filter:blur(4px);opacity:0;pointer-events:none;transition:opacity .3s}
 .fpbk.open{opacity:1;pointer-events:auto}
 
-@media(max-width:768px){.fab{bottom:16px;right:16px;padding:8px 16px;font-size:12px}}
+@media(max-width:768px){.fab{bottom:96px;right:16px;padding:8px 16px;font-size:12px}}
 
 /* Allow users to copy prices, data, and analysis text */
 .hbadges,.tab-bar,.fab,.nav,.sh{-webkit-user-select:none;-moz-user-select:none;user-select:none}
 
 /* Back to top button */
-.btt{position:fixed;bottom:24px;left:24px;z-index:200;padding:8px 16px;border-radius:100px;font-size:12px;font-weight:700;color:var(--text3);background:var(--surface);border:1px solid var(--border);cursor:pointer;opacity:0;transform:translateY(20px);transition:all .3s;font-family:'DM Sans',sans-serif}
+.btt{position:fixed;bottom:100px;left:24px;z-index:200;padding:8px 16px;border-radius:100px;font-size:12px;font-weight:700;color:var(--text3);background:var(--surface);border:1px solid var(--border);cursor:pointer;opacity:0;transform:translateY(20px);transition:all .3s;font-family:'DM Sans',sans-serif}
 .btt.show{opacity:1;transform:translateY(0)}
 .btt:hover{color:var(--blue);border-color:var(--blue);background:rgba(59,130,246,.06)}
 
@@ -579,9 +584,11 @@ Type to search <strong>100 stocks</strong> (US &amp; India) &middot; Or enter an
 
 <section class="rpt" id="report">
 <!-- PRE-REPORT DISCLAIMER -->
-<div style="margin-bottom:16px;padding:12px 18px;border-radius:10px;background:rgba(239,68,68,.05);border:1px solid rgba(239,68,68,.15);display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text2)">
-<span style="font-size:16px">&#9888;</span>
-<span><strong style="color:var(--red)">Reminder:</strong> AI-generated research for education only. Not financial advice. Always verify with a licensed professional.</span>
+<div style="margin-bottom:16px;padding:14px 18px;border-radius:10px;background:rgba(239,68,68,.04);border:1px solid rgba(239,68,68,.12)">
+<div style="font-family:'Sora',sans-serif;font-size:11px;font-weight:800;color:var(--red);letter-spacing:.5px;margin-bottom:8px">&#9888; READ THIS BEFORE YOU TRADE</div>
+<div style="font-size:11px;color:var(--text3);line-height:1.6;padding-left:10px;border-left:2px solid rgba(239,68,68,.3);margin-bottom:4px"><strong style="color:var(--red)">NOT FINANCIAL ADVICE:</strong> This tool is for education only. Not a replacement for licensed financial advisors. Never invest money you cannot afford to lose.</div>
+<div style="font-size:11px;color:var(--text3);line-height:1.6;padding-left:10px;border-left:2px solid rgba(239,68,68,.3);margin-bottom:4px"><strong style="color:var(--red)">DATA MAY BE DELAYED:</strong> Market data from third-party providers may be delayed or incomplete. Always cross-check with your broker.</div>
+<div style="font-size:11px;color:var(--text3);line-height:1.6;padding-left:10px;border-left:2px solid rgba(239,68,68,.3)"><strong style="color:var(--red)">YOU CAN LOSE MONEY:</strong> All investments carry real risk. Past performance never guarantees future results. No affiliation with any brokerage.</div>
 </div>
 <div class="rphero">
 <div class="rptk" id="tickerTag"></div>
@@ -615,42 +622,26 @@ Type to search <strong>100 stocks</strong> (US &amp; India) &middot; Or enter an
 </section>
 
 <footer>
-<div style="max-width:1080px;margin:0 auto;padding:28px 28px 20px">
-<!-- Compact brand row -->
-<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:16px;margin-bottom:20px">
+<div style="max-width:1080px;margin:0 auto;padding:24px 28px 16px">
+<!-- Brand + Links row -->
+<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:16px;padding-bottom:16px;border-bottom:1px solid var(--border)">
 <div style="display:flex;align-items:center;gap:10px">
 <div class="fblogo">S</div>
 <div><div class="fbname">CELESYS <span>AI</span></div><div style="font-size:9px;color:var(--text3);letter-spacing:1px;text-transform:uppercase">Research Platform</div></div>
 </div>
-<div style="display:flex;gap:16px;font-size:11px;color:var(--text3);flex-wrap:wrap">
-<span>✓ Real-time data</span>
-<span>✓ AI analysis</span>
-<span>✓ Entry/exit prices</span>
-<span>✓ Risk scoring</span>
-<span>&#10003; Small-cap picks</span>
+<div style="display:flex;gap:20px;flex-wrap:wrap;align-items:center">
+<a href="/about" style="font-size:11px;color:var(--text3);text-decoration:none;transition:color .2s">About</a>
+<a href="/faq" style="font-size:11px;color:var(--text3);text-decoration:none;transition:color .2s">FAQ</a>
+<a href="/privacy" style="font-size:11px;color:var(--text3);text-decoration:none;transition:color .2s">Privacy</a>
+<a href="/terms" style="font-size:11px;color:var(--text3);text-decoration:none;transition:color .2s">Terms</a>
+<a href="/disclaimer" style="font-size:11px;color:var(--text3);text-decoration:none;transition:color .2s">Disclaimer</a>
+<a href="mailto:contact@celesys.ai" style="font-size:11px;color:var(--blue);text-decoration:none">&#9993; contact@celesys.ai</a>
 </div>
-<a href="mailto:contact@celesys.ai" style="font-size:11px;color:var(--blue);text-decoration:none;display:flex;align-items:center;gap:4px">&#9993; contact@celesys.ai</a>
 </div>
-<!-- FAQ Section (SEO + user trust) -->
-<div style="margin-bottom:20px;padding:20px;border-radius:10px;background:var(--surface);border:1px solid var(--border)">
-<h3 style="font-family:'Sora',sans-serif;font-size:14px;color:var(--text);margin-bottom:14px">Frequently Asked Questions</h3>
-<details style="margin-bottom:10px"><summary style="font-size:13px;color:var(--text2);cursor:pointer;font-weight:600">What is Celesys AI?</summary><p style="font-size:12px;color:var(--text3);line-height:1.7;margin:8px 0 0 0;padding-left:12px">Celesys AI is a free AI-powered stock analysis platform. Enter any US or Indian stock ticker and get a complete research report in 60 seconds — including buy/sell targets, risk scoring, quarterly earnings analysis, management tone reading, and hidden small-cap picks. No signup required.</p></details>
-<details style="margin-bottom:10px"><summary style="font-size:13px;color:var(--text2);cursor:pointer;font-weight:600">Is it really free?</summary><p style="font-size:12px;color:var(--text3);line-height:1.7;margin:8px 0 0 0;padding-left:12px">Yes — 5 deep-dive reports per email per hour, completely free. No credit card, no subscription, no hidden fees. We believe everyone deserves access to institutional-quality research.</p></details>
-<details style="margin-bottom:10px"><summary style="font-size:13px;color:var(--text2);cursor:pointer;font-weight:600">Which stocks are supported?</summary><p style="font-size:12px;color:var(--text3);line-height:1.7;margin:8px 0 0 0;padding-left:12px">100+ pre-loaded US stocks (TSLA, AAPL, NVDA, etc.) and Indian NSE/BSE stocks (RELIANCE.NS, TCS.NS, HDFCBANK.NS, etc.). You can also enter any valid Yahoo Finance ticker symbol for global coverage.</p></details>
-<details style="margin-bottom:10px"><summary style="font-size:13px;color:var(--text2);cursor:pointer;font-weight:600">How accurate is the analysis?</summary><p style="font-size:12px;color:var(--text3);line-height:1.7;margin:8px 0 0 0;padding-left:12px">Celesys AI uses real-time market data from Yahoo Finance combined with AI analysis. Price data is live and verified. The AI insights are for educational purposes — always cross-reference with your financial advisor before making investment decisions.</p></details>
-<details><summary style="font-size:13px;color:var(--text2);cursor:pointer;font-weight:600">What does the management tone analysis show?</summary><p style="font-size:12px;color:var(--text3);line-height:1.7;margin:8px 0 0 0;padding-left:12px">Our management tone analysis uses real earnings data, analyst ratings, insider trading activity, and institutional ownership patterns to assess whether company leadership is bullish, cautious, or defensive — helping you read between the lines of earnings calls and corporate communications.</p></details>
-</div>
-<!-- Disclaimer -->
-<div class="fdbox">
-<h4>&#9888; Read This Before You Trade</h4>
-<p><strong>NOT FINANCIAL ADVICE:</strong> This tool is for education only. Not a replacement for licensed financial advisors. Never invest money you cannot afford to lose.</p>
-<p><strong>DATA MAY BE DELAYED:</strong> Market data from third-party providers may be delayed or incomplete. Always cross-check with your broker.</p>
-<p><strong>YOU CAN LOSE MONEY:</strong> All investments carry real risk. Past performance never guarantees future results. No affiliation with any brokerage.</p>
-</div>
-<!-- Bottom bar -->
-<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-top:20px;padding-top:16px;border-top:1px solid var(--border)">
-<div style="font-size:11px;color:var(--text3)"><strong style="color:var(--text2)">&copy; 2026 Celesys AI</strong> &middot; All rights reserved</div>
-<div style="display:flex;gap:16px;flex-wrap:wrap"><a href="/about" style="font-size:11px;color:var(--text3);text-decoration:none">About</a><a href="/privacy" style="font-size:11px;color:var(--text3);text-decoration:none">Privacy Policy</a><a href="/terms" style="font-size:11px;color:var(--text3);text-decoration:none">Terms of Service</a><a href="/disclaimer" style="font-size:11px;color:var(--text3);text-decoration:none">Disclaimer</a><a href="/contact" style="font-size:11px;color:var(--text3);text-decoration:none">Contact Us</a></div>
+<!-- Copyright -->
+<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;padding-top:12px">
+<div style="font-size:10px;color:var(--text3)">&copy; 2026 Celesys AI &middot; All rights reserved</div>
+<div style="font-size:10px;color:var(--text3)">Real-time data &middot; AI-powered analysis &middot; Not financial advice</div>
 </div>
 </div>
 </footer>
@@ -754,15 +745,20 @@ if(h){div.innerHTML=h;div.style.display='block'}
 }
 
 function checkTradesAccess(){
+try{
 const el=document.getElementById('email');
+if(!el)return;
 const email=(el.dataset.real||el.value).trim().toLowerCase();
 const show=TRADES_EMAILS.includes(email);
-document.getElementById('tabBtnTrades').style.display=show?'':'none';
+const tBtn=document.getElementById('tabBtnTrades');
+const gBtn=document.getElementById('tabBtnGems');
+if(tBtn)tBtn.style.display=show?'':'none';
+if(gBtn)gBtn.style.display=show?'':'none';
 document.querySelectorAll('.sc[data-tab="trades"]').forEach(s=>s.style.display=show?'':'none');
-// Hidden Gems also restricted to same authorized emails
-document.getElementById('tabBtnGems').style.display=show?'':'none';
 document.querySelectorAll('.sc[data-tab="gems"]').forEach(s=>s.style.display=show?'':'none');
 if(show)initTradesProtection(email);
+console.log('checkTradesAccess:',email,'→',show?'GRANTED':'DENIED');
+}catch(e){console.warn('checkTradesAccess error:',e)}
 }
 document.getElementById('email').addEventListener('blur',checkTradesAccess);
 
@@ -938,7 +934,8 @@ document.getElementById('w52section').innerHTML=`
 <div style="margin-top:14px;padding:14px;border-radius:8px;background:rgba(59,130,246,.04);border:1px solid rgba(59,130,246,.1)">
 <p style="font-size:13px;color:var(--text2);line-height:1.7">${w52pct<25?'<strong style="color:var(--green)">\u25CF Bargain Alert:</strong> Trading near the yearly floor. If the fundamentals are solid (check below), this could be your chance to buy what others are panic-selling.':w52pct>75?'<strong style="color:var(--amber)">\u25CF Hot Streak:</strong> This stock is on fire \u2014 near its yearly peak. Great momentum, but do not chase blindly. Watch for resistance and potential pullbacks.':'<strong style="color:var(--blue)">\u25CF Middle Ground:</strong> Not too hot, not too cold. The stock is sitting in a neutral zone. Look at the fundamentals below to decide your next move.'}</p></div>`;
 
-createCharts(d);createAnalysisSections(data.report,d,data.fund_holdings||{institutions:[],funds:[],summary:{}});
+try{createCharts(d)}catch(e){console.warn('createCharts error:',e)}
+createAnalysisSections(data.report,d,data.fund_holdings||{institutions:[],funds:[],summary:{}});
 document.getElementById('report').classList.add('show');
 renderMarketEvents();
 setTimeout(()=>document.getElementById('report').scrollIntoView({behavior:'smooth',block:'start'}),200);
@@ -1138,15 +1135,16 @@ const html=`
 `;
 
 document.getElementById('analysisContainer').innerHTML=html;
-formatAIAnalysis(report);
-populateFundamentals(report);
-populateManagement(report);
-populateFundHoldings(report, fundData);
-populateWhatsNext(report);
-generateSmallCapRecommendations(d);
+// Show tabs FIRST — before any chart/analysis code that might error
+checkTradesAccess();
+try{formatAIAnalysis(report)}catch(e){console.warn('formatAIAnalysis error:',e)}
+try{populateFundamentals(report)}catch(e){console.warn('populateFundamentals error:',e)}
+try{populateManagement(report)}catch(e){console.warn('populateManagement error:',e)}
+try{populateFundHoldings(report, fundData)}catch(e){console.warn('populateFundHoldings error:',e)}
+try{populateWhatsNext(report)}catch(e){console.warn('populateWhatsNext error:',e)}
+try{generateSmallCapRecommendations(d)}catch(e){console.warn('generateSmallCapRecommendations error:',e)}
 // Auto-open Quick Intel tab
 switchTab('quick');
-checkTradesAccess();
 // Draw attention to vote button after report loads
 setTimeout(()=>{const fab=document.querySelector('.fab');if(fab){fab.style.transform='scale(1.15)';fab.style.boxShadow='0 0 40px rgba(139,92,246,.6)';setTimeout(()=>{fab.style.transform='';fab.style.boxShadow=''},1500)}},4000);
 // Draw attention to tab bar with pulse animation
@@ -2294,12 +2292,11 @@ html+=`<div style="margin-top:12px;padding:12px 16px;border-radius:8px;backgroun
 }
 
 // Disclaimer
-html+=`<div style="margin-top:20px;padding:16px 18px;border-radius:10px;background:rgba(239,68,68,.08);border:2px solid rgba(239,68,68,.3)">
-<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
-<span style="font-size:22px">&#9888;</span>
-<span style="font-family:'Sora',sans-serif;font-size:13px;font-weight:800;color:var(--red);letter-spacing:.3px">FOR EDUCATIONAL PURPOSE ONLY</span>
-</div>
-<p style="font-size:12px;color:var(--text2);line-height:1.7;margin:0">This is AI-generated research for <strong style="color:var(--red)">education only</strong>. <strong>Not financial advice.</strong> Always verify with a SEBI-registered investment advisor or licensed professional before making any trading decisions. Markets are unpredictable — no analysis guarantees profits. Options trading involves substantial risk of loss. Max 2-3% of capital per trade. Past analysis does not guarantee future results.</p>
+html+=`<div style="margin-top:20px;padding:14px 18px;border-radius:10px;background:rgba(239,68,68,.04);border:1px solid rgba(239,68,68,.15)">
+<div style="font-family:'Sora',sans-serif;font-size:11px;font-weight:800;color:var(--red);letter-spacing:.5px;margin-bottom:8px">&#9888; READ THIS BEFORE YOU TRADE</div>
+<div style="font-size:11px;color:var(--text3);line-height:1.6;padding-left:10px;border-left:2px solid rgba(239,68,68,.3);margin-bottom:4px"><strong style="color:var(--red)">NOT FINANCIAL ADVICE:</strong> This tool is for education only. Not a replacement for licensed financial advisors. Never invest money you cannot afford to lose.</div>
+<div style="font-size:11px;color:var(--text3);line-height:1.6;padding-left:10px;border-left:2px solid rgba(239,68,68,.3);margin-bottom:4px"><strong style="color:var(--red)">DATA MAY BE DELAYED:</strong> Market data from third-party providers may be delayed or incomplete. Always cross-check with your broker.</div>
+<div style="font-size:11px;color:var(--text3);line-height:1.6;padding-left:10px;border-left:2px solid rgba(239,68,68,.3)"><strong style="color:var(--red)">YOU CAN LOSE MONEY:</strong> All investments carry real risk. Past performance never guarantees future results. No affiliation with any brokerage.</div>
 </div>`;
 
 el.innerHTML=html;
@@ -2501,4 +2498,20 @@ obs.observe(heroEl);
 <div class="vgp">
 <h4>&#128202; Live Community Votes</h4>
 <div class="vsub">Real-time ranking &mdash; updated as you vote</div>
-<div class="cc"><canvas id="voteChart"></can
+<div class="cc"><canvas id="voteChart"></canvas></div></div>
+
+</div><!-- end fpbody -->
+</div><!-- end fpanel -->
+
+<!-- STICKY EDUCATION DISCLAIMER BAR — visible site-wide -->
+<div class="edu-bar">
+<div class="edu-title">&#9888; READ THIS BEFORE YOU TRADE</div>
+<div class="edu-lines">
+<div class="edu-line"><strong>NOT FINANCIAL ADVICE:</strong> This tool is for education only. Not a replacement for licensed financial advisors. Never invest money you cannot afford to lose.</div>
+<div class="edu-line"><strong>DATA MAY BE DELAYED:</strong> Market data from third-party providers may be delayed or incomplete. Always cross-check with your broker.</div>
+<div class="edu-line"><strong>YOU CAN LOSE MONEY:</strong> All investments carry real risk. Past performance never guarantees future results. No affiliation with any brokerage.</div>
+</div>
+</div>
+
+</body>
+</html>

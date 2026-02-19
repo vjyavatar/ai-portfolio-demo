@@ -1549,17 +1549,49 @@ def _page_shell(title: str, body: str) -> str:
 <title>{title} — Celesys AI</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;700&family=DM+Sans:wght@400;500;700&display=swap" rel="stylesheet">
 <style>
-*{{margin:0;padding:0;box-sizing:border-box}}body{{background:#0a0e1a;color:#c9d1d9;font-family:'DM Sans',sans-serif;line-height:1.8;padding:40px 20px}}
+*{{margin:0;padding:0;box-sizing:border-box}}body{{background:#0a0e1a;color:#c9d1d9;font-family:'DM Sans',sans-serif;line-height:1.8;padding:40px 20px 120px}}
 .wrap{{max-width:720px;margin:0 auto}}h1{{font-family:'Sora',sans-serif;font-size:28px;color:#fff;margin-bottom:8px}}
 .sub{{color:#6b7280;font-size:13px;margin-bottom:32px}}.back{{display:inline-block;margin-bottom:24px;color:#3b82f6;text-decoration:none;font-size:13px;font-weight:600}}
 .back:hover{{text-decoration:underline}}h2{{font-family:'Sora',sans-serif;font-size:18px;color:#e5e7eb;margin:28px 0 10px}}
 p,li{{font-size:14px;color:#9ca3af;margin-bottom:12px}}ul{{padding-left:20px}}a{{color:#3b82f6}}
-.foot{{margin-top:48px;padding-top:20px;border-top:1px solid #1e2433;font-size:11px;color:#4b5563;text-align:center}}
+.foot{{margin-top:48px;padding:20px 0 16px;border-top:1px solid #1e2433}}
+.foot-top{{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;padding-bottom:12px;border-bottom:1px solid #1e2433}}
+.foot-brand{{font-family:'Sora',sans-serif;font-size:13px;font-weight:700;color:#fff;letter-spacing:.5px}}
+.foot-brand span{{color:#3b82f6}}
+.foot-links{{display:flex;gap:16px;flex-wrap:wrap}}
+.foot-links a{{font-size:11px;color:#6b7280;text-decoration:none}}
+.foot-links a:hover{{color:#3b82f6}}
+.foot-copy{{font-size:10px;color:#4b5563;padding-top:12px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px}}
+.edu-bar{{position:fixed;bottom:0;left:0;width:100%;z-index:199;padding:14px 24px;background:rgba(10,12,20,.98);border-top:1px solid rgba(239,68,68,.15);backdrop-filter:blur(12px)}}
+.edu-bar .edu-title{{font-family:'Sora',sans-serif;font-size:12px;font-weight:800;color:#ef4444;letter-spacing:.5px;margin-bottom:6px}}
+.edu-bar .edu-lines{{display:flex;flex-wrap:wrap;gap:4px 20px}}
+.edu-bar .edu-line{{font-size:10px;color:#6b7280;line-height:1.5;padding-left:10px;border-left:2px solid rgba(239,68,68,.3)}}
+.edu-bar .edu-line strong{{color:#ef4444;font-weight:700;font-size:10px}}
 </style></head><body><div class="wrap"><a href="/" class="back">← Back to Celesys AI</a>
 <h1>{title}</h1><p class="sub">Last updated: February 2026</p>
 {body}
-<div class="foot">© 2026 Celesys AI — Free AI-Powered Stock Analysis Platform</div>
-</div></body></html>"""
+<div class="foot">
+<div class="foot-top">
+<div class="foot-brand">CELESYS <span>AI</span></div>
+<div class="foot-links">
+<a href="/about">About</a><a href="/faq">FAQ</a><a href="/privacy">Privacy</a><a href="/terms">Terms</a><a href="/disclaimer">Disclaimer</a><a href="mailto:contact@celesys.ai">Contact</a>
+</div>
+</div>
+<div class="foot-copy">
+<span>© 2026 Celesys AI · All rights reserved</span>
+<span>Real-time data · AI-powered analysis · Not financial advice</span>
+</div>
+</div>
+</div>
+<div class="edu-bar">
+<div class="edu-title">⚠ READ THIS BEFORE YOU TRADE</div>
+<div class="edu-lines">
+<div class="edu-line"><strong>NOT FINANCIAL ADVICE:</strong> This tool is for education only. Not a replacement for licensed financial advisors. Never invest money you cannot afford to lose.</div>
+<div class="edu-line"><strong>DATA MAY BE DELAYED:</strong> Market data from third-party providers may be delayed or incomplete. Always cross-check with your broker.</div>
+<div class="edu-line"><strong>YOU CAN LOSE MONEY:</strong> All investments carry real risk. Past performance never guarantees future results. No affiliation with any brokerage.</div>
+</div>
+</div>
+</body></html>"""
 
 @app.get("/privacy", response_class=HTMLResponse)
 async def privacy_page():
@@ -1723,6 +1755,28 @@ async def disclaimer_page():
 
 <h2>No Guarantees</h2>
 <p>Celesys AI makes no representations or warranties about the accuracy, reliability, or completeness of any information on this site. Use our service at your own risk.</p>
+""")
+
+@app.get("/faq", response_class=HTMLResponse)
+async def faq_page():
+    return _page_shell("Frequently Asked Questions", """
+<h2>What is Celesys AI?</h2>
+<p>Celesys AI is a free AI-powered stock analysis platform. Enter any US or Indian stock ticker and get a complete research report in 60 seconds — including buy/sell targets, risk scoring, quarterly earnings analysis, management tone reading, and hidden small-cap picks. No signup required.</p>
+
+<h2>Is it really free?</h2>
+<p>Yes — 5 deep-dive reports per email per hour, completely free. No credit card, no subscription, no hidden fees. We believe everyone deserves access to institutional-quality research.</p>
+
+<h2>Which stocks are supported?</h2>
+<p>100+ pre-loaded US stocks (TSLA, AAPL, NVDA, etc.) and Indian NSE/BSE stocks (RELIANCE.NS, TCS.NS, HDFCBANK.NS, etc.). You can also enter any valid Yahoo Finance ticker symbol for global coverage.</p>
+
+<h2>How accurate is the analysis?</h2>
+<p>Celesys AI uses real-time market data from Yahoo Finance combined with AI analysis. Price data is live and verified. The AI insights are for educational purposes — always cross-reference with your financial advisor before making investment decisions.</p>
+
+<h2>What does the management tone analysis show?</h2>
+<p>Our management tone analysis uses real earnings data, analyst ratings, insider trading activity, and institutional ownership patterns to assess whether company leadership is bullish, cautious, or defensive — helping you read between the lines of earnings calls and corporate communications.</p>
+
+<h2>What are Smart Trades?</h2>
+<p>Smart Trades is a premium feature that provides daily AI-generated trade ideas for Nifty, Bank Nifty, Sensex, and high-momentum stocks. It uses a 10-factor scoring engine with live NSE option chain data. Currently available by invitation only.</p>
 """)
 
 @app.get("/ads.txt", response_class=PlainTextResponse)
