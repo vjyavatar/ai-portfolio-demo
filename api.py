@@ -1734,7 +1734,7 @@ async def ads_txt():
 # INDEX TRADES — AI Daily Trade Ideas (Restricted Access)
 # ═══════════════════════════════════════════════════════════
 TRADES_ALLOWED_EMAILS = ["vijy.dhulipala@gmail.com"]
-_trades_cache = {"date": None, "data": None}  # Cache trades for same day
+_trades_cache = {"timestamp": None, "data": None}  # 30-min cache — live enough for trading, stable enough to not flip-flop
 
 @app.get("/api/global-ticker")
 async def global_ticker():
@@ -1942,20 +1942,31 @@ async def index_trades(request: Request):
     
     body = await request.json()
     email = body.get("email", "").strip().lower()
+    force_refresh = body.get("force_refresh", False)
     
     if email not in TRADES_ALLOWED_EMAILS:
         return {"success": False, "error": "Access restricted. This feature is exclusively available to authorized users."}
     
-    # Check daily cache — same trades for same day (IST)
+    # 30-minute cache — fresh enough for live trading, stable enough to avoid flip-flopping
     from datetime import timedelta
     IST_NOW = datetime.utcnow() + timedelta(hours=5, minutes=30)
-    today_key = IST_NOW.strftime("%Y-%m-%d")
     
-    if _trades_cache["date"] == today_key and _trades_cache["data"]:
-        print(f"📋 Returning cached trades for {today_key}")
+    cache_valid = (
+        not force_refresh
+        and _trades_cache["timestamp"] is not None 
+        and _trades_cache["data"] is not None
+        and (IST_NOW - _trades_cache["timestamp"]).total_seconds() < 1800  # 30 minutes
+    )
+    
+    if cache_valid:
+        age_min = int((IST_NOW - _trades_cache["timestamp"]).total_seconds() / 60)
+        print(f"📋 Returning cached trades ({age_min}min old, refreshes at 30min)")
         return _trades_cache["data"]
     
-    print(f"🔥 Index trades requested by {email} — generating fresh for {today_key}")
+    if force_refresh:
+        print(f"🔄 Force refresh requested by {email} — generating with latest market data")
+    else:
+        print(f"🔥 Index trades requested by {email} — generating fresh (cache expired or empty)")
     
     # Fetch Indian index data
     indices_data = []
@@ -2586,10 +2597,10 @@ RULES FOR STOCK OPTIONS (up to 2 trades — 0 if no clear setup):
             "day_name": day_name
         }
         
-        # Cache for same-day consistency
-        _trades_cache["date"] = today_key
+        # Cache for 30 minutes — next click within window returns same trades
+        _trades_cache["timestamp"] = datetime.utcnow() + timedelta(hours=5, minutes=30)
         _trades_cache["data"] = response_data
-        print(f"💾 Trades cached for {today_key}")
+        print(f"💾 Trades cached at {_trades_cache['timestamp'].strftime('%H:%M IST')} — valid until {(_trades_cache['timestamp'] + timedelta(minutes=30)).strftime('%H:%M IST')}")
         
         return response_data
         

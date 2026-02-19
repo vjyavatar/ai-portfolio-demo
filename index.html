@@ -170,6 +170,9 @@ nav{position:sticky;top:30px;z-index:99;backdrop-filter:blur(24px);-webkit-backd
 
 /* HERO */
 .hero{position:relative;z-index:1;padding:64px 28px 48px;text-align:center}
+.sticky-tagline{position:fixed;top:90px;left:0;width:100%;z-index:98;text-align:center;padding:6px 0;background:linear-gradient(90deg,rgba(6,10,19,.98),rgba(15,23,42,.98));border-bottom:1px solid rgba(59,130,246,.15);transform:translateY(-100%);opacity:0;transition:all .4s cubic-bezier(.4,0,.2,1);pointer-events:none;backdrop-filter:blur(12px)}
+.sticky-tagline.vis{transform:translateY(0);opacity:1;pointer-events:auto}
+.sticky-tagline span{font-family:'Sora',sans-serif;font-size:13px;font-weight:700;background:linear-gradient(135deg,#94a3b8,#60a5fa,#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent;letter-spacing:.3px}
 .hero-eye{display:inline-flex;align-items:center;gap:6px;background:rgba(59,130,246,0.08);border:1px solid rgba(59,130,246,0.2);padding:7px 18px;border-radius:100px;font-size:12px;font-weight:600;color:var(--blue);margin-bottom:24px;letter-spacing:.3px}
 .hero h1{font-family:'Sora',sans-serif;font-size:clamp(32px,5vw,56px);font-weight:800;line-height:1.15;margin-bottom:16px;background:linear-gradient(135deg,#fff 0%,var(--blue) 60%,var(--cyan) 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
 .hero-sub{font-size:18px;color:var(--text2);max-width:580px;margin:0 auto 32px;line-height:1.7}
@@ -525,6 +528,7 @@ footer{position:relative;z-index:1;margin-top:32px;background:rgba(6,10,19,.95);
 
 </div>
 </nav>
+<div class="sticky-tagline" id="stickyTag"><span>Master Global Equities in 60 Seconds</span></div>
 
 <section class="hero">
 <div class="hero-eye"><div class="ldot"></div> Live Market Data &middot; Updated Every Minute</div>
@@ -1064,10 +1068,10 @@ const html=`
 <!-- QoQ/YoY Charts -->
 <div id="qoyCharts" style="display:none;margin-top:16px">
 <div class="cgrid2">
-<div class="ccard"><div class="cct">&#128200; QoQ Momentum</div><div style="height:200px;position:relative"><canvas id="qoqChart"></canvas></div></div>
-<div class="ccard"><div class="cct">&#128200; YoY Growth Trend</div><div style="height:200px;position:relative"><canvas id="yoyChart"></canvas></div></div>
+<div class="ccard"><div class="cct">&#128200; QoQ Momentum</div><div style="height:200px;position:relative"><canvas id="qoqChart"></canvas></div><div id="qoqInference" style="margin-top:10px;padding:10px 12px;border-radius:8px;background:rgba(59,130,246,.04);border:1px solid rgba(59,130,246,.08);font-size:11px;color:var(--text2);line-height:1.6"></div></div>
+<div class="ccard"><div class="cct">&#128200; YoY Growth Trend</div><div style="height:200px;position:relative"><canvas id="yoyChart"></canvas></div><div id="yoyInference" style="margin-top:10px;padding:10px 12px;border-radius:8px;background:rgba(139,92,246,.04);border:1px solid rgba(139,92,246,.08);font-size:11px;color:var(--text2);line-height:1.6"></div></div>
 </div>
-<div style="margin-top:14px" class="ccard"><div class="cct">&#128200; Margin Trend — QoQ vs YoY</div><div style="height:200px;position:relative"><canvas id="marginTrendChart"></canvas></div></div>
+<div style="margin-top:14px" class="ccard"><div class="cct">&#128200; Margin Trend — QoQ vs YoY</div><div style="height:200px;position:relative"><canvas id="marginTrendChart"></canvas></div><div id="marginInference" style="margin-top:10px;padding:10px 12px;border-radius:8px;background:rgba(245,158,11,.04);border:1px solid rgba(245,158,11,.08);font-size:11px;color:var(--text2);line-height:1.6"></div></div>
 </div>
 </div></div>
 
@@ -1504,6 +1508,39 @@ tooltip:{...ttBase,callbacks:{title:c=>c[0].label,
 label:c=>{const v=c.raw;return c.dataset.label+': '+(v>=0?'+':'')+v.toFixed(1)+'%'}}}},
 scales:{y:{grid:{color:gc},ticks:{callback:v=>v+'%'}},x:{grid:{display:false}}}}});
 }
+
+// ═══ CHART INFERENCES — Plain English explanations ═══
+const qI=document.getElementById('qoqInference');
+if(qI){
+const allUp=revQoQ>0&&earnQoQ>0&&marginQoQ>0;
+const allDn=revQoQ<0&&earnQoQ<0&&marginQoQ<0;
+const revStr=revQoQ>0?`Revenue grew <strong style="color:var(--green)">${revQoQ.toFixed(1)}%</strong> vs last quarter`:`Revenue fell <strong style="color:var(--red)">${revQoQ.toFixed(1)}%</strong> vs last quarter`;
+const earnStr=earnQoQ>0?`earnings jumped <strong style="color:var(--green)">${earnQoQ.toFixed(1)}%</strong>`:`earnings dropped <strong style="color:var(--red)">${Math.abs(earnQoQ).toFixed(1)}%</strong>`;
+const mStr=marginQoQ>0?`margins expanded by ${marginQoQ.toFixed(1)}%`:`margins contracted by ${Math.abs(marginQoQ).toFixed(1)}%`;
+const verdict=allUp?'<strong style="color:var(--green)">All three metrics improving — strong short-term momentum.</strong>':allDn?'<strong style="color:var(--red)">Triple decline — watch for trend reversal signals.</strong>':earnQoQ>revQoQ?'<strong style="color:var(--blue)">Earnings growing faster than revenue — improving operational efficiency.</strong>':'<strong style="color:var(--amber)">Mixed signals — look at the YoY trend for the bigger picture.</strong>';
+qI.innerHTML=`<strong style="color:var(--blue)">What this means:</strong> ${revStr}, ${earnStr}, and ${mStr}. ${verdict}`;
+}
+
+const yI=document.getElementById('yoyInference');
+if(yI){
+const allUp=revYoY>0&&earnYoY>0&&marginYoY>0;
+const allDn=revYoY<0&&earnYoY<0&&marginYoY<0;
+const strength=Math.abs(revYoY)>15?'aggressively':Math.abs(revYoY)>8?'steadily':'modestly';
+const revStr=revYoY>0?`Revenue is ${strength} higher at <strong style="color:var(--green)">+${revYoY.toFixed(1)}%</strong> vs same quarter last year`:`Revenue contracted <strong style="color:var(--red)">${revYoY.toFixed(1)}%</strong> year-over-year`;
+const earnStr=earnYoY>0?`earnings up <strong style="color:var(--green)">${earnYoY.toFixed(1)}%</strong>`:`earnings down <strong style="color:var(--red)">${Math.abs(earnYoY).toFixed(1)}%</strong>`;
+const verdict=allUp?'<strong style="color:var(--green)">Consistent annual growth across all metrics — fundamentally healthy.</strong>':allDn?'<strong style="color:var(--red)">Year-over-year decline across the board — structural concern.</strong>':earnYoY>revYoY?'<strong style="color:var(--blue)">Earnings outpacing revenue growth — margin expansion story.</strong>':'<strong style="color:var(--amber)">Revenue growing but margins under pressure — cost discipline needed.</strong>';
+yI.innerHTML=`<strong style="color:var(--purple)">The bigger picture:</strong> ${revStr}, ${earnStr}. ${verdict}`;
+}
+
+const mI=document.getElementById('marginInference');
+if(mI){
+const qGood=marginQoQ>0;const yGood=marginYoY>0;
+const trend=qGood&&yGood?'improving in both short and long term':!qGood&&!yGood?'declining on both timeframes':qGood&&!yGood?'recovering recently but still below last year\'s level':'holding long-term gains despite a recent dip';
+const trendCol=qGood&&yGood?'var(--green)':!qGood&&!yGood?'var(--red)':'var(--amber)';
+const spread=Math.abs(revQoQ-marginQoQ);
+const efficiency=spread>5?'Revenue and margin trends are diverging significantly — investigate cost structure.':'Revenue and margins are moving together — consistent business model.';
+mI.innerHTML=`<strong style="color:var(--amber)">Margin health:</strong> Profitability is <strong style="color:${trendCol}">${trend}</strong>. QoQ margin: <strong>${marginQoQ>=0?'+':''}${marginQoQ.toFixed(1)}%</strong>, YoY margin: <strong>${marginYoY>=0?'+':''}${marginYoY.toFixed(1)}%</strong>. ${efficiency}`;
+}
 }
 
 // ═══════════════════════════════════════════════
@@ -1872,7 +1909,7 @@ let userVotes={};
 // ═══════════════════════════════════════════════
 // INDEX TRADES — AI-Powered Daily Ideas
 // ═══════════════════════════════════════════════
-async function loadIndexTrades(){
+async function loadIndexTrades(forceRefresh){
 const el=document.getElementById('tradesContent');
 const errEl=document.getElementById('tradesError');
 const btn=document.getElementById('tradesLoadBtn');
@@ -1881,9 +1918,9 @@ const emailInput=document.getElementById('email');
 const email=emailInput?(emailInput.dataset.real||emailInput.value).trim():'';
 if(!email){errEl.textContent='Please enter your email in the search bar above first.';errEl.style.display='block';return}
 // Access check
-btn.disabled=true;btn.textContent='⏳ Analyzing markets...';errEl.style.display='none';
+btn.disabled=true;btn.textContent=forceRefresh?'⏳ Refreshing with live data...':'⏳ Analyzing markets...';errEl.style.display='none';
 try{
-const r=await fetch('/api/index-trades',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:email})});
+const r=await fetch('/api/index-trades',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:email,force_refresh:!!forceRefresh})});
 const data=await r.json();
 if(!data.success){errEl.textContent=data.error||'Service busy. Please try again in a moment.';errEl.style.display='block';btn.disabled=false;btn.textContent='⚡ Generate Today\'s Trades';return}
 
@@ -1953,7 +1990,7 @@ html+=`<div style="border-radius:12px;background:linear-gradient(135deg,rgba(245
 <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
 <span style="font-size:24px">&#128200;</span>
 <div><div style="font-family:'Sora',sans-serif;font-size:15px;font-weight:700;color:var(--amber)">Market Pulse — ${new Date().toLocaleDateString('en-IN',{weekday:'long',day:'numeric',month:'long',year:'numeric'})}</div>
-<div style="font-size:11px;color:var(--text3)">Generated at ${new Date().toLocaleTimeString('en-IN')} IST</div></div></div>
+<div style="font-size:11px;color:var(--text3);display:flex;align-items:center;gap:8px">Generated at ${data.generated_at?new Date(data.generated_at).toLocaleTimeString('en-IN'):new Date().toLocaleTimeString('en-IN')} IST <button onclick="loadIndexTrades(true)" style="font-size:10px;color:var(--blue);background:none;border:1px solid var(--blue);border-radius:6px;padding:2px 8px;cursor:pointer" title="Force fresh analysis with latest market data">&#8635; Refresh</button></div></div></div>
 ${data.market_context?'<p style="font-size:13px;color:var(--text2);line-height:1.7;margin:0">'+data.market_context+'</p>':''}
 </div>`;
 
@@ -2350,11 +2387,21 @@ fetch('/api/stats').then(r=>r.json()).then(d=>{
 if(d.total_reports){document.getElementById('navRC').textContent=d.total_reports;document.getElementById('globalRC').textContent=d.total_reports.toLocaleString();const hb=document.getElementById('reportBadgeCount');if(hb)hb.textContent=d.total_reports.toLocaleString()}
 }).catch(()=>{})});
 
-// Back-to-top button visibility
+// Back-to-top button visibility + sticky tagline
 window.addEventListener('scroll',()=>{
 const btt=document.getElementById('bttBtn');
 if(btt){if(window.scrollY>600)btt.classList.add('show');else btt.classList.remove('show')}
 },{ passive: true });
+// Sticky tagline — appears when hero scrolls out of view
+const heroEl=document.querySelector('.hero');
+const sTag=document.getElementById('stickyTag');
+if(heroEl&&sTag){
+const obs=new IntersectionObserver(([e])=>{
+if(e.isIntersecting)sTag.classList.remove('vis');
+else sTag.classList.add('vis');
+},{threshold:0.1});
+obs.observe(heroEl);
+}
 </script>
 
 <!-- FLOATING FEEDBACK BUTTON -->
