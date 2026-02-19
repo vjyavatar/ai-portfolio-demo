@@ -2079,6 +2079,642 @@ async def index_trades(request: Request):
         for d in stock_data[:10]
     ])
     
+    # ═══ FETCH REAL OPTION CHAIN DATA FROM NSE ═══
+    import requests as req_lib
+    
+    def fetch_nse_option_chain(symbol):
+        """Fetch live option chain from NSE for NIFTY, BANKNIFTY, or SENSEX."""
+        try:
+            session = req_lib.Session()
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                "Accept": "application/json, text/javascript, */*; q=0.01",
+                "Accept-Language": "en-US,en;q=0.9",
+                "Accept-Encoding": "gzip, deflate, br",
+                "Referer": "https://www.nseindia.com/option-chain",
+                "X-Requested-With": "XMLHttpRequest"
+            }
+            session.headers.update(headers)
+            # First hit the main page to get cookies
+            session.get("https://www.nseindia.com", timeout=5)
+            
+            # Map symbol to NSE API format
+            nse_symbol = symbol.replace(" ", "").upper()
+            if nse_symbol in ["NIFTY50", "NIFTY"]:
+                nse_symbol = "NIFTY"
+            elif nse_symbol in ["BANKNIFTY", "NIFTYBANK"]:
+                nse_symbol = "BANKNIFTY"
+            
+            # BSE/SENSEX option chain is on BSE, not NSE — skip
+            if nse_symbol in ["SENSEX", "BSE"]:
+                return None
+            
+            url = f"https://www.nseindia.com/api/option-chain-indices?symbol={nse_symbol}"
+            resp = session.get(url, timeout=10)
+            
+            if resp.status_code != 200:
+                print(f"  ⚠️ NSE option chain {symbol}: HTTP {resp.status_code}")
+                return None
+            
+            data = resp.json()
+            records = data.get("records", {})
+            oc_data = records.get("data", [])
+            
+            if not oc_data:
+                return None
+            
+            spot = records.get("underlyingValue", 0)
+            expiry_dates = records.get("expiryDates", [])
+            nearest_expiry = expiry_dates[0] if expiry_dates else ""
+            
+            # Calculate PCR, Max Pain, key OI levels
+            total_ce_oi = 0
+            total_pe_oi = 0
+            max_pain_data = {}
+            strike_oi = []
+            atm_strike = None
+            min_diff = float('inf')
+            straddle_premium = 0
+            
+            for row in oc_data:
+                strike = row.get("strikePrice", 0)
+                ce = row.get("CE", {})
+                pe = row.get("PE", {})
+                
+                # Only consider nearest expiry
+                ce_expiry = ce.get("expiryDate", "")
+                pe_expiry = pe.get("expiryDate", "")
+                
+                if ce_expiry == nearest_expiry or pe_expiry == nearest_expiry:
+                    ce_oi = ce.get("openInterest", 0) or 0
+                    pe_oi = pe.get("openInterest", 0) or 0
+                    ce_ltp = ce.get("lastPrice", 0) or 0
+                    pe_ltp = pe.get("lastPrice", 0) or 0
+                    ce_iv = ce.get("impliedVolatility", 0) or 0
+                    pe_iv = pe.get("impliedVolatility", 0) or 0
+                    ce_chg_oi = ce.get("changeinOpenInterest", 0) or 0
+                    pe_chg_oi = pe.get("changeinOpenInterest", 0) or 0
+                    
+                    total_ce_oi += ce_oi
+                    total_pe_oi += pe_oi
+                    
+                    # ATM strike (closest to spot)
+                    diff = abs(strike - spot)
+                    if diff < min_diff:
+                        min_diff = diff
+                        atm_strike = strike
+                        straddle_premium = round(ce_ltp + pe_ltp, 2)
+                    
+                    if ce_oi > 0 or pe_oi > 0:
+                        strike_oi.append({
+                            "strike": strike,
+                            "ce_oi": ce_oi, "pe_oi": pe_oi,
+                            "ce_chg_oi": ce_chg_oi, "pe_chg_oi": pe_chg_oi,
+                            "ce_ltp": ce_ltp, "pe_ltp": pe_ltp,
+                            "ce_iv": ce_iv, "pe_iv": pe_iv
+                        })
+                    
+                    # Max pain calculation
+                    max_pain_data[strike] = {"ce_oi": ce_oi, "pe_oi": pe_oi}
+            
+            # Calculate max pain
+            max_pain = spot
+            min_pain_value = float('inf')
+            strikes_list = sorted(max_pain_data.keys())
+            for s in strikes_list:
+                pain = 0
+                for s2 in strikes_list:
+                    if s2 < s:
+                        pain += max_pain_data[s2]["ce_oi"] * (s - s2)
+                    elif s2 > s:
+                        pain += max_pain_data[s2]["pe_oi"] * (s2 - s)
+                if pain < min_pain_value:
+                    min_pain_value = pain
+                    max_pain = s
+            
+            pcr = round(total_pe_oi / total_ce_oi, 2) if total_ce_oi > 0 else 0
+            
+            # Top OI strikes (resistance = high CE OI, support = high PE OI)
+            strike_oi.sort(key=lambda x: x["ce_oi"], reverse=True)
+            top_ce_oi = strike_oi[:5]  # Top resistance walls
+            strike_oi.sort(key=lambda x: x["pe_oi"], reverse=True)
+            top_pe_oi = strike_oi[:5]  # Top support walls
+            
+            # Top change in OI (smart money positioning)
+            strike_oi.sort(key=lambda x: abs(x["ce_chg_oi"]) + abs(x["pe_chg_oi"]), reverse=True)
+            top_chg_oi = strike_oi[:5]
+            
+            result = {
+                "symbol": symbol,
+                "spot": spot,
+                "nearest_expiry": nearest_expiry,
+                "pcr": pcr,
+                "max_pain": max_pain,
+                "atm_strike": atm_strike,
+                "straddle_premium": straddle_premium,
+                "expected_move": straddle_premium,
+                "total_ce_oi": total_ce_oi,
+                "total_pe_oi": total_pe_oi,
+                "resistance_walls": [(s["strike"], s["ce_oi"]) for s in top_ce_oi],
+                "support_walls": [(s["strike"], s["pe_oi"]) for s in top_pe_oi],
+                "top_oi_changes": [(s["strike"], s["ce_chg_oi"], s["pe_chg_oi"]) for s in top_chg_oi],
+                "atm_iv": round((top_ce_oi[0]["ce_iv"] + top_pe_oi[0]["pe_iv"]) / 2, 1) if top_ce_oi and top_pe_oi else 0
+            }
+            print(f"  ✅ NSE OC {symbol}: Spot={spot}, PCR={pcr}, MaxPain={max_pain}, ATM={atm_strike}, Straddle=₹{straddle_premium}")
+            return result
+            
+        except Exception as e:
+            print(f"  ⚠️ NSE option chain {symbol} failed: {e}")
+            return None
+    
+    # Fetch option chains for tradeable indices
+    oc_nifty = fetch_nse_option_chain("NIFTY")
+    oc_banknifty = fetch_nse_option_chain("BANKNIFTY")
+    
+    # Build option chain text for prompt
+    oc_text_parts = []
+    for oc in [oc_nifty, oc_banknifty]:
+        if oc:
+            pcr_signal = "BULLISH (PE writers confident)" if oc["pcr"] > 1.2 else "BEARISH (CE writers confident)" if oc["pcr"] < 0.7 else "NEUTRAL"
+            max_pain_dist = oc["max_pain"] - oc["spot"]
+            mp_dir = f"+{max_pain_dist}" if max_pain_dist > 0 else str(max_pain_dist)
+            
+            res_walls = ", ".join([f"{s[0]} ({s[1]:,} OI)" for s in oc["resistance_walls"][:3]])
+            sup_walls = ", ".join([f"{s[0]} ({s[1]:,} OI)" for s in oc["support_walls"][:3]])
+            oi_changes = ", ".join([f"{s[0]} (CE:{s[1]:+,} PE:{s[2]:+,})" for s in oc["top_oi_changes"][:3]])
+            
+            oc_text_parts.append(f"""
+{oc['symbol']} LIVE OPTION CHAIN (Expiry: {oc['nearest_expiry']}):
+  Spot: ₹{oc['spot']:,.2f} | ATM Strike: {oc['atm_strike']} | ATM Straddle: ₹{oc['straddle_premium']}
+  PCR: {oc['pcr']} ({pcr_signal}) | Total CE OI: {oc['total_ce_oi']:,} | Total PE OI: {oc['total_pe_oi']:,}
+  Max Pain: {oc['max_pain']} ({mp_dir} pts from spot) | ATM IV: {oc['atm_iv']}%
+  Resistance Walls (heavy CE OI): {res_walls}
+  Support Walls (heavy PE OI): {sup_walls}
+  Smart Money (biggest OI changes): {oi_changes}
+  Expected Move (straddle): ±₹{oc['straddle_premium']} ({round(oc['straddle_premium']/oc['spot']*100, 2)}% of spot)""")
+    
+    oc_text = "\n".join(oc_text_parts) if oc_text_parts else "Option chain data unavailable — use price action and volume only."
+    
+    # ═══════════════════════════════════════════════════════════════════
+    # MULTI-FACTOR SCORING ENGINE — Pre-computes edge scores from real data
+    # AI sees hard numbers, not guesses
+    # ═══════════════════════════════════════════════════════════════════
+    
+    def compute_index_scores(idx_data, oc_data_dict, global_data_list, vix_data, is_expiry, weekday_num, ist_hour):
+        """Score each index on 10 independent factors. Returns structured score card."""
+        scores = {}
+        
+        for idx in idx_data:
+            name = idx["name"]
+            if name == "INDIA VIX":
+                continue
+            
+            s = {"name": name, "total": 0, "factors": [], "bias": "NEUTRAL"}
+            price = idx["price"]
+            day_high = idx.get("day_high", price)
+            day_low = idx.get("day_low", price)
+            open_p = idx.get("open", price)
+            high_5d = idx.get("high_5d", price)
+            low_5d = idx.get("low_5d", price)
+            change_pct = idx.get("change_pct", 0)
+            vol = idx.get("volume", 0)
+            
+            bullish_points = 0
+            bearish_points = 0
+            
+            # ── FACTOR 1: Price Action Structure (0-15 pts) ──
+            range_5d = high_5d - low_5d if high_5d > low_5d else 1
+            pos_in_range = (price - low_5d) / range_5d  # 0=bottom, 1=top
+            day_range = day_high - day_low
+            
+            if pos_in_range < 0.3:  # Near support
+                bullish_points += 12
+                s["factors"].append(f"Price near 5D support ({pos_in_range:.0%} of range) [+12 BULL]")
+            elif pos_in_range > 0.7:  # Near resistance
+                bearish_points += 12
+                s["factors"].append(f"Price near 5D resistance ({pos_in_range:.0%} of range) [+12 BEAR]")
+            else:
+                s["factors"].append(f"Price mid-range ({pos_in_range:.0%}) [NEUTRAL]")
+            
+            # Gap analysis
+            gap_pct = ((open_p - price) / price * 100) if price else 0
+            if abs(change_pct) > 0.5:
+                if change_pct > 0:
+                    bullish_points += 8
+                    s["factors"].append(f"Gap up +{change_pct:.2f}% [+8 BULL]")
+                else:
+                    bearish_points += 8
+                    s["factors"].append(f"Gap down {change_pct:.2f}% [+8 BEAR]")
+            
+            # ── FACTOR 2: Option Chain Signal (0-15 pts) ──
+            oc = oc_data_dict.get(name.replace(" ", "").replace("50", "").upper())
+            if oc:
+                pcr = oc.get("pcr", 1)
+                max_pain = oc.get("max_pain", price)
+                straddle = oc.get("straddle_premium", 0)
+                mp_dist = max_pain - price
+                mp_pct = (mp_dist / price * 100) if price else 0
+                
+                # PCR signal
+                if pcr > 1.3:
+                    bullish_points += 10
+                    s["factors"].append(f"PCR {pcr:.2f} — strong bullish (heavy PE writing) [+10 BULL]")
+                elif pcr > 1.1:
+                    bullish_points += 5
+                    s["factors"].append(f"PCR {pcr:.2f} — mildly bullish [+5 BULL]")
+                elif pcr < 0.7:
+                    bearish_points += 10
+                    s["factors"].append(f"PCR {pcr:.2f} — strong bearish (heavy CE writing) [+10 BEAR]")
+                elif pcr < 0.9:
+                    bearish_points += 5
+                    s["factors"].append(f"PCR {pcr:.2f} — mildly bearish [+5 BEAR]")
+                else:
+                    s["factors"].append(f"PCR {pcr:.2f} — neutral zone")
+                
+                # Max Pain pull
+                if abs(mp_pct) > 0.3:
+                    if mp_dist > 0:
+                        bullish_points += 8
+                        s["factors"].append(f"Max Pain {max_pain} is {mp_dist:+.0f} pts ABOVE spot — pull-up force [+8 BULL]")
+                    else:
+                        bearish_points += 8
+                        s["factors"].append(f"Max Pain {max_pain} is {mp_dist:+.0f} pts BELOW spot — pull-down force [+8 BEAR]")
+                else:
+                    s["factors"].append(f"Max Pain {max_pain} near spot ({mp_dist:+.0f} pts) — pinning likely")
+                
+                # Straddle vs day range (momentum gauge)
+                if straddle > 0 and day_range > straddle * 1.2:
+                    s["factors"].append(f"Day range ({day_range:.0f}) > straddle (₹{straddle}) — MOMENTUM day")
+                elif straddle > 0:
+                    s["factors"].append(f"Day range ({day_range:.0f}) within straddle (₹{straddle}) — RANGE-BOUND")
+                
+                # OI walls
+                res_walls = oc.get("resistance_walls", [])
+                sup_walls = oc.get("support_walls", [])
+                if res_walls:
+                    s["factors"].append(f"CE OI resistance: {', '.join([str(w[0]) for w in res_walls[:3]])}")
+                if sup_walls:
+                    s["factors"].append(f"PE OI support: {', '.join([str(w[0]) for w in sup_walls[:3]])}")
+            else:
+                s["factors"].append("No option chain data — price action only")
+            
+            # ── FACTOR 3: Momentum & Trend (0-10 pts) ──
+            if change_pct > 1.0:
+                bullish_points += 10
+                s["factors"].append(f"Strong upward momentum +{change_pct:.2f}% [+10 BULL]")
+            elif change_pct > 0.3:
+                bullish_points += 5
+                s["factors"].append(f"Mild upward momentum +{change_pct:.2f}% [+5 BULL]")
+            elif change_pct < -1.0:
+                bearish_points += 10
+                s["factors"].append(f"Strong downward momentum {change_pct:.2f}% [+10 BEAR]")
+            elif change_pct < -0.3:
+                bearish_points += 5
+                s["factors"].append(f"Mild downward momentum {change_pct:.2f}% [+5 BEAR]")
+            
+            # ── FACTOR 4: Volatility/VIX (0-10 pts) ──
+            if vix_data:
+                vix_level = vix_data.get("price", 14)
+                vix_chg = vix_data.get("change_pct", 0)
+                if vix_level < 13:
+                    bullish_points += 8
+                    s["factors"].append(f"VIX {vix_level:.1f} LOW — complacency, directional bets favored [+8 BULL]")
+                elif vix_level > 20:
+                    bearish_points += 8
+                    s["factors"].append(f"VIX {vix_level:.1f} HIGH — fear, mean-reversion or hedging [+8 BEAR]")
+                elif vix_level > 16:
+                    s["factors"].append(f"VIX {vix_level:.1f} ELEVATED — reduce sizes, stay alert")
+                else:
+                    s["factors"].append(f"VIX {vix_level:.1f} NORMAL")
+                    
+                if abs(vix_chg) > 5:
+                    s["factors"].append(f"VIX moving fast ({vix_chg:+.1f}%) — volatility regime shift")
+            
+            # ── FACTOR 5: Global Cues (0-10 pts) ──
+            global_bullish = 0
+            global_bearish = 0
+            for g in global_data_list:
+                if "S&P 500" in g or "Dow" in g or "NASDAQ" in g:
+                    try:
+                        pct = float(g.split("(")[1].split("%")[0])
+                        if pct > 0.5:
+                            global_bullish += 1
+                        elif pct < -0.5:
+                            global_bearish += 1
+                    except:
+                        pass
+                if "Crude" in g:
+                    try:
+                        pct = float(g.split("(")[1].split("%")[0])
+                        if pct > 2:
+                            bearish_points += 3  # Crude up = bearish for India
+                            s["factors"].append(f"Crude spike {pct:+.1f}% — negative for India [+3 BEAR]")
+                        elif pct < -2:
+                            bullish_points += 3
+                            s["factors"].append(f"Crude drop {pct:+.1f}% — positive for India [+3 BULL]")
+                    except:
+                        pass
+                if "Dollar" in g:
+                    try:
+                        pct = float(g.split("(")[1].split("%")[0])
+                        if pct > 0.3:
+                            bearish_points += 3  # Strong dollar = EM negative
+                            s["factors"].append(f"Dollar up {pct:+.1f}% — EM headwind [+3 BEAR]")
+                        elif pct < -0.3:
+                            bullish_points += 3
+                            s["factors"].append(f"Dollar down {pct:+.1f}% — EM tailwind [+3 BULL]")
+                    except:
+                        pass
+            
+            if global_bullish >= 2:
+                bullish_points += 8
+                s["factors"].append(f"US markets positive ({global_bullish}/3 up) [+8 BULL]")
+            elif global_bearish >= 2:
+                bearish_points += 8
+                s["factors"].append(f"US markets negative ({global_bearish}/3 down) [+8 BEAR]")
+            
+            # ── FACTOR 6: Expiry Dynamics (0-10 pts) ──
+            if is_expiry:
+                s["factors"].append("EXPIRY DAY — gamma acceleration, max pain magnet, theta crush after 1 PM [+5 VOLATILE]")
+                # On expiry, max pain pull is stronger
+                if oc and abs(mp_pct) > 0.5:
+                    if mp_dist > 0:
+                        bullish_points += 5
+                    else:
+                        bearish_points += 5
+                    s["factors"].append(f"Expiry max pain pull: {mp_dist:+.0f} pts [+5 directional]")
+            
+            # ── FACTOR 7: Volume Confirmation (0-10 pts) ──
+            # High volume in direction of move = conviction, against = divergence warning
+            if vol > 0:
+                # We don't have vol average for indices from yfinance, but we can check 
+                # if today's candle body matches volume direction
+                body = price - open_p  # positive = bullish candle
+                if body > 0 and change_pct > 0.3:
+                    bullish_points += 7
+                    s["factors"].append(f"Bullish candle + positive session = volume confirming direction [+7 BULL]")
+                elif body < 0 and change_pct < -0.3:
+                    bearish_points += 7
+                    s["factors"].append(f"Bearish candle + negative session = volume confirming direction [+7 BEAR]")
+                elif body > 0 and change_pct < -0.3:
+                    s["factors"].append(f"⚠️ DIVERGENCE: Bullish candle but session negative — distribution pattern")
+                elif body < 0 and change_pct > 0.3:
+                    s["factors"].append(f"⚠️ DIVERGENCE: Bearish candle but session positive — accumulation pattern")
+            
+            # ── FACTOR 8: Intraday Price Pattern (0-10 pts) ──
+            if day_high > day_low:
+                upper_wick = day_high - max(open_p, price)
+                lower_wick = min(open_p, price) - day_low
+                body_size = abs(price - open_p)
+                total_range = day_high - day_low
+                body_ratio = body_size / total_range if total_range > 0 else 0
+                
+                if body_ratio > 0.7:  # Strong body = conviction
+                    if price > open_p:
+                        bullish_points += 8
+                        s["factors"].append(f"Marubozu-like candle (body {body_ratio:.0%}) — strong bullish conviction [+8 BULL]")
+                    else:
+                        bearish_points += 8
+                        s["factors"].append(f"Marubozu-like candle (body {body_ratio:.0%}) — strong bearish conviction [+8 BEAR]")
+                elif lower_wick > body_size * 2 and price > open_p:  # Hammer
+                    bullish_points += 6
+                    s["factors"].append(f"Hammer pattern — buying from lows, reversal signal [+6 BULL]")
+                elif upper_wick > body_size * 2 and price < open_p:  # Shooting star
+                    bearish_points += 6
+                    s["factors"].append(f"Shooting star — rejection from highs [+6 BEAR]")
+                elif body_ratio < 0.2:  # Doji
+                    s["factors"].append(f"Doji-like candle (body {body_ratio:.0%}) — indecision, wait for breakout")
+                
+                # Price position within today's range
+                day_pos = (price - day_low) / total_range if total_range > 0 else 0.5
+                if day_pos > 0.8:
+                    bullish_points += 3
+                    s["factors"].append(f"Closing near day high ({day_pos:.0%}) — buyers in control [+3 BULL]")
+                elif day_pos < 0.2:
+                    bearish_points += 3
+                    s["factors"].append(f"Closing near day low ({day_pos:.0%}) — sellers in control [+3 BEAR]")
+            
+            # ── FACTOR 9: Intermarket Correlation (0-10 pts) ──
+            # Check if global signals are aligned or divergent
+            aligned_signals = 0
+            conflict_signals = 0
+            for g in global_data_list:
+                try:
+                    pct = float(g.split("(")[1].split("%")[0])
+                    if (change_pct > 0 and pct > 0) or (change_pct < 0 and pct < 0):
+                        aligned_signals += 1
+                    elif abs(pct) > 0.3:
+                        conflict_signals += 1
+                except:
+                    pass
+            
+            if aligned_signals >= 5:
+                pts = 8
+                if change_pct > 0:
+                    bullish_points += pts
+                else:
+                    bearish_points += pts
+                s["factors"].append(f"Strong intermarket alignment ({aligned_signals} markets same direction) [+{pts} directional]")
+            elif conflict_signals >= 3:
+                s["factors"].append(f"⚠️ Intermarket divergence ({conflict_signals} conflicting) — lower conviction")
+            
+            # Gold-equity inverse check
+            for g in global_data_list:
+                if "Gold" in g:
+                    try:
+                        gold_pct = float(g.split("(")[1].split("%")[0])
+                        if gold_pct > 1 and change_pct > 0:
+                            s["factors"].append(f"Gold +{gold_pct:.1f}% with equity up — risk-on rally (unusual)")
+                        elif gold_pct > 1.5 and change_pct < 0:
+                            bearish_points += 3
+                            s["factors"].append(f"Gold +{gold_pct:.1f}% = flight to safety [+3 BEAR]")
+                    except:
+                        pass
+            
+            # ── FACTOR 10: Day-of-Week & Time Seasonality (0-8 pts) ──
+            day_names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
+            dow = day_names[weekday_num] if weekday_num < 5 else "Weekend"
+            
+            if weekday_num == 0:  # Monday
+                s["factors"].append("Monday — gap risk from weekend news, often sets weekly direction")
+                if abs(change_pct) > 0.5:
+                    s["factors"].append(f"Monday gap {change_pct:+.2f}% — high probability of continuation first 2 hours")
+            elif weekday_num == 1:  # Tuesday (Nifty expiry)
+                if is_expiry:
+                    bullish_points += 3  # Expiry day has built-in edge from gamma
+                    s["factors"].append("Tuesday Nifty expiry — theta decay accelerates, max pain magnet active [+3]")
+            elif weekday_num == 3:  # Thursday (Sensex expiry)
+                if is_expiry:
+                    s["factors"].append("Thursday Sensex expiry — BSE options gamma play possible")
+            elif weekday_num == 4:  # Friday
+                s["factors"].append("Friday — weekend risk, positions may get squared off. Lighter trade sizes.")
+            
+            # Time-of-day edge
+            if 9 <= ist_hour < 10:
+                s["factors"].append("⏰ Pre-10AM: Opening range forming — observe, don't chase gaps")
+            elif 10 <= ist_hour < 12:
+                s["factors"].append("⏰ 10AM-12PM: Prime trend development window — best for directional entries")
+            elif 12 <= ist_hour < 14:
+                s["factors"].append("⏰ 12-2PM: Lunch consolidation — range-bound strategies or wait")
+            elif 14 <= ist_hour < 15:
+                s["factors"].append("⏰ 2-3PM: Power hour — strongest moves, expiry gamma spikes HERE")
+            elif ist_hour >= 15:
+                s["factors"].append("⏰ Post-3PM: Final 30min — avoid new entries, high chop risk")
+            
+            # ── FINAL SCORING ──
+            net = bullish_points - bearish_points
+            s["bullish_score"] = bullish_points
+            s["bearish_score"] = bearish_points
+            s["net_score"] = net
+            
+            if net > 15:
+                s["bias"] = "STRONG BULLISH"
+                s["suggested_bias"] = "Buy CE / Buy Futures"
+            elif net > 5:
+                s["bias"] = "MILD BULLISH"
+                s["suggested_bias"] = "Buy CE (conservative)"
+            elif net < -15:
+                s["bias"] = "STRONG BEARISH"
+                s["suggested_bias"] = "Buy PE / Sell Futures"
+            elif net < -5:
+                s["bias"] = "MILD BEARISH"
+                s["suggested_bias"] = "Buy PE (conservative)"
+            else:
+                s["bias"] = "NEUTRAL"
+                s["suggested_bias"] = "Range play / Straddle / Wait for clarity"
+            
+            s["edge_pct"] = min(50 + int(abs(net) * 0.6), 95)  # Base 50% + scaled factor edge, cap at 95%
+            s["factor_count"] = len([f for f in s["factors"] if "BULL]" in f or "BEAR]" in f])
+            scores[name] = s
+        
+        return scores
+    
+    # Run scoring engine
+    # Need IST time for day-of-week and time scoring
+    from datetime import timedelta as td_alias
+    IST_NOW = datetime.utcnow() + td_alias(hours=5, minutes=30)
+    IST_WEEKDAY = IST_NOW.weekday()
+    IST_HOUR = IST_NOW.hour
+    # Quick expiry check for scoring (detailed check happens later for prompt)
+    _is_tue = IST_WEEKDAY == 1
+    _is_thu = IST_WEEKDAY == 3
+    _quick_expiry = _is_tue or _is_thu  # At minimum, some expiry on Tue/Thu
+    
+    vix_entry = next((d for d in indices_data if d["name"] == "INDIA VIX"), None)
+    oc_dict = {}
+    if oc_nifty:
+        oc_dict["NIFTY"] = oc_nifty
+    if oc_banknifty:
+        oc_dict["BANKNIFTY"] = oc_banknifty
+    
+    index_scores = compute_index_scores(indices_data, oc_dict, global_data, vix_entry, _quick_expiry, IST_WEEKDAY, IST_HOUR)
+    
+    # Build score cards text for the prompt
+    score_text_parts = []
+    for name, sc in index_scores.items():
+        factors_str = "\n    ".join(sc["factors"])
+        score_text_parts.append(f"""
+{name} SCORE CARD:
+  BULLISH points: {sc['bullish_score']} | BEARISH points: {sc['bearish_score']} | NET: {sc['net_score']:+d}
+  COMPUTED BIAS: {sc['bias']} → Suggested: {sc['suggested_bias']}
+  Computed edge: {sc['edge_pct']}% | Active factors: {sc.get('factor_count', 0)}/10
+  Factor breakdown:
+    {factors_str}""")
+    
+    score_text = "\n".join(score_text_parts) if score_text_parts else "Scoring unavailable"
+    
+    # Also score stocks — comprehensive multi-factor
+    stock_scores = []
+    for st in stock_data[:10]:
+        bull = 0
+        bear = 0
+        factors = []
+        
+        # F1: Momentum (0-15)
+        chg = st["change_pct"]
+        if chg > 2:
+            bull += 15
+            factors.append(f"Strong momentum +{chg:.1f}%")
+        elif chg > 0.5:
+            bull += 8
+            factors.append(f"Positive +{chg:.1f}%")
+        elif chg < -2:
+            bear += 15
+            factors.append(f"Strong sell-off {chg:.1f}%")
+        elif chg < -0.5:
+            bear += 8
+            factors.append(f"Negative {chg:.1f}%")
+        
+        # F2: Volume spike (0-12)
+        vs = st.get("vol_spike", 1)
+        if vs > 2.5:
+            pts = 12
+            if chg > 0: bull += pts
+            else: bear += pts
+            factors.append(f"Vol SPIKE {vs:.1f}x — heavy institutional")
+        elif vs > 1.8:
+            pts = 8
+            if chg > 0: bull += pts
+            else: bear += pts
+            factors.append(f"High volume {vs:.1f}x")
+        elif vs > 1.3:
+            pts = 4
+            if chg > 0: bull += pts
+            else: bear += pts
+            factors.append(f"Above-avg vol {vs:.1f}x")
+        elif vs < 0.6:
+            factors.append(f"Low volume {vs:.1f}x — weak conviction")
+        
+        # F3: 5D range position (0-10)
+        r = st["high_5d"] - st["low_5d"]
+        if r > 0:
+            pos = (st["price"] - st["low_5d"]) / r
+            if pos < 0.2:
+                bull += 10
+                factors.append(f"Near 5D LOW ({pos:.0%}) — bounce zone")
+            elif pos < 0.35:
+                bull += 5
+                factors.append(f"Lower half ({pos:.0%})")
+            elif pos > 0.85:
+                bear += 8
+                factors.append(f"Near 5D HIGH ({pos:.0%}) — resistance")
+            elif pos > 0.7:
+                bear += 3
+                factors.append(f"Upper half ({pos:.0%})")
+        
+        # F4: Day candle pattern (0-8)
+        dh = st.get("day_high", st["price"])
+        dl = st.get("day_low", st["price"])
+        if dh > dl:
+            day_range = dh - dl
+            body = abs(st["price"] - (dh + dl) / 2 * 2 - st["price"])  # simplified
+            day_pos = (st["price"] - dl) / day_range
+            if day_pos > 0.8 and chg > 0:
+                bull += 6
+                factors.append("Closing near high — buyers dominating")
+            elif day_pos < 0.2 and chg < 0:
+                bear += 6
+                factors.append("Closing near low — sellers dominating")
+        
+        # F5: Alignment with parent index
+        nifty_chg = next((d["change_pct"] for d in indices_data if d["name"] == "NIFTY 50"), 0)
+        if (chg > 0 and nifty_chg > 0) or (chg < 0 and nifty_chg < 0):
+            pts = 3
+            if chg > 0: bull += pts
+            else: bear += pts
+            factors.append(f"Aligned with Nifty ({nifty_chg:+.1f}%)")
+        elif abs(chg) > 1 and abs(nifty_chg) > 0.5 and (chg * nifty_chg < 0):
+            factors.append(f"DIVERGING from Nifty — relative strength/weakness")
+        
+        net = bull - bear
+        bias = "BULLISH" if net > 12 else "BEARISH" if net < -12 else "MILD BULL" if net > 5 else "MILD BEAR" if net < -5 else "NEUTRAL"
+        edge = min(50 + int(abs(net) * 0.6), 95)
+        stock_scores.append(f"  {st['ticker']}: Bull={bull} Bear={bear} Net={net:+d} Edge={edge}% → {bias} | {', '.join(factors)}")
+    
+    stock_score_text = "\n".join(stock_scores) if stock_scores else "No stock scores"
+    
+    print(f"📊 Scoring complete: {len(index_scores)} indices, {len(stock_scores)} stocks scored")
+    
     # Build AI prompt
     indices_text = "\n".join([
         f"- {d['name']}: ₹{d['price']:,.2f} (Change: {d['change']:+.2f}, {d['change_pct']:+.2f}%) | "
@@ -2173,14 +2809,12 @@ async def index_trades(request: Request):
     if is_expiry_day:
         hero_zero_instruction = f"""
 RULES FOR HERO ZERO (1-2 trades — TODAY IS EXPIRY DAY for {expiry_list}):
-- Hero Zero = deep OTM options bought cheap (₹2-15 premium) on EXPIRY DAY for potential 3x-10x returns
+- Hero Zero = directional bet on deep OTM side on EXPIRY DAY for potential 3x-10x returns
 - Pick from the expiring index/indices: {expiry_list}
-- Strike should be 300-500+ points OTM from current level (for index), or appropriately far OTM for stocks
-- Entry premium must be in ₹2-15 range (lottery ticket pricing)
+- Identify the breakout SPOT LEVEL where gamma acceleration would kick in (use OI walls from option chain)
 - Timing is crucial: usually 1:00-2:30 PM IST when gamma spikes on expiry
 - Mark confidence as SPECULATIVE — make it clear this is a high-risk lottery play
-- Stop loss is always full premium (all-or-nothing play)
-- Maximum 1-2% of capital allocation
+- Use max pain, OI walls, and straddle premium from the real option chain data to identify the trigger level
 - MUST include timing field with specific IST time window"""
     else:
         hero_zero_instruction = """
@@ -2194,34 +2828,59 @@ Do NOT generate any hero_zero trades on non-expiry days."""
 - RETROACTIVE REASONING: Never justify a trade by fitting a narrative after picking a direction. The data MUST lead to the conclusion, not the other way around.
 - WISHFUL THINKING: A trade with <70% probability based on data confluence should NOT be suggested. Only suggest trades where 3+ independent factors align.
 
-YOUR PROBABILITY FRAMEWORK — Only suggest trades with 80%+ confluence:
-A trade gets probability points from INDEPENDENT confirming factors:
-+15% — Price at strong support/resistance (multiple timeframe confluence)
-+15% — Option chain confirms direction (heavy OI at strike, PCR extreme, Max Pain alignment)  
-+10% — Volume confirms (above average volume in direction, institutional participation)
-+10% — Trend alignment (5-day trend + today's price action agree)
-+10% — Global cues confirm (US markets, Dollar, Crude all pointing same direction)
-+10% — VIX level favorable (low VIX for directional, high VIX for premium selling)
-+10% — Sector momentum confirms (sector rotation supports the trade)
-+10% — Expiry dynamics favor (theta, gamma, OI unwinding support the trade)
-+10% — Candlestick/pattern confirmation (clear pattern, not ambiguous)
+YOUR PROBABILITY FRAMEWORK — Use the PRE-COMPUTED scores above:
+The scoring engine has already computed bullish/bearish points from 10 independent factors:
+F1: Price Action Structure (support/resistance position, gaps)
+F2: Option Chain (PCR, Max Pain, OI walls, straddle premium)
+F3: Momentum & Trend (today's change %, direction)
+F4: Volatility/VIX (level, change, regime)
+F5: Global Cues (US markets, crude, dollar, gold alignment)
+F6: Expiry Dynamics (max pain pull, gamma, theta)
+F7: Volume Confirmation (candle body vs session direction)
+F8: Intraday Price Pattern (candle type, wick analysis, close position)
+F9: Intermarket Correlation (cross-market alignment score)
+F10: Day/Time Seasonality (weekday edge, time-of-day window)
 
-MINIMUM THRESHOLD: Total must be >= 80% (at least 5-6 confirming factors) to suggest.
-If fewer than 5 trades meet 80% threshold, suggest FEWER trades. NEVER pad with weak trades.
-Mark each trade's probability explicitly.
+Use the computed edge_pct as the BASE probability for each index.
+Only suggest a trade if computed edge >= 65% AND your analysis agrees.
+You may adjust ±5% based on your synthesis, but NEVER flip the direction from what the scoring engine computed.
+
+MINIMUM THRESHOLD: edge_pct >= 65% to suggest a trade. 80%+ for high conviction.
+If fewer than 3 trades meet threshold, suggest FEWER trades. NEVER pad with weak trades.
 
 Today is {today}.
 
-CRITICAL: ALL analysis below must be based on the LIVE MARKET DATA provided here. Use current prices, day ranges, volumes, and 5-day ranges for price action analysis. Infer option chain dynamics (OI walls, PCR, max pain, straddle premium) from price behavior, volume patterns, and support/resistance levels. This is real-time data — treat it as your trading terminal.
+CRITICAL RULES:
+1. ALL analysis must be based EXCLUSIVELY on the LIVE MARKET DATA and LIVE OPTION CHAIN DATA provided below.
+2. You have REAL option chain data from NSE — use PCR, Max Pain, OI walls, straddle premium, and IV directly. Do NOT invent different numbers.
+3. ALL entry/target/stop_loss values must be SPOT INDEX LEVELS or STOCK PRICES — never option premiums (we show directional bias, not specific contracts).
+4. Your "bias" field (Buy CE, Buy PE, etc.) is a DIRECTIONAL SUGGESTION based on the real option chain signals.
+5. Key levels must reference the REAL support/resistance walls from the OI data provided, plus 5-day range levels.
+6. If option chain data is unavailable for an index, state that and use price action only.
 
 LIVE INDIAN INDEX DATA:
 {indices_text}
+
+LIVE NSE OPTION CHAIN DATA (REAL — from NSE API):
+{oc_text}
 
 TOP INDIAN STOCKS (sorted by momentum):
 {stocks_text}
 
 GLOBAL MARKET CONTEXT:
 {global_text}
+
+═══ PRE-COMPUTED MULTI-FACTOR SCORES (from real data — USE THESE) ═══
+The scoring engine below has analyzed 10 independent factors for each index.
+Your trade suggestions MUST be consistent with these scores. Do NOT contradict the computed bias.
+If computed bias is BULLISH with 70+ edge, suggest Buy CE. If BEARISH, suggest Buy PE. If NEUTRAL, suggest range plays or fewer trades.
+
+INDEX SCORES:
+{score_text}
+
+STOCK SCORES:
+{stock_score_text}
+═══ END PRE-COMPUTED SCORES ═══
 
 DEEP ANALYSIS CHECKLIST — Work through each BEFORE generating trades:
 
@@ -2231,12 +2890,12 @@ DEEP ANALYSIS CHECKLIST — Work through each BEFORE generating trades:
    - Gap up/gap down? Has the gap been filled or is it running?
    - Round number psychology (24500, 25000, 52000, 53000)
 
-2. OPTION CHAIN MATH (Hard numbers, not vibes):
-   - Estimate Max Pain from current price and typical OI distribution
-   - PCR at current levels — extreme readings (>1.3 bullish, <0.7 bearish) matter
-   - Which strikes have heaviest OI? Those become walls (support/resistance)
-   - Straddle premium = expected move. Is actual move larger or smaller?
-   - Change in OI direction = smart money positioning
+2. OPTION CHAIN ANALYSIS (from REAL NSE data provided above):
+   - PCR: Use the exact PCR value provided. >1.2 = bullish, <0.7 = bearish
+   - Max Pain: Note how far spot is from max pain — price tends to gravitate toward it on expiry
+   - OI Walls: Heavy CE OI at a strike = resistance ceiling. Heavy PE OI = support floor. Use the exact numbers from the data.
+   - Straddle Premium: This is the market's expected move. If actual move exceeds it, breakout trade. If within, range trade.
+   - Smart Money OI Changes: Large OI additions = new positions. Large OI reductions = unwinding. Direction of change matters.
 
 3. VOLUME & MONEY FLOW:
    - Is today's volume above or below 5-day average?
@@ -2246,8 +2905,8 @@ DEEP ANALYSIS CHECKLIST — Work through each BEFORE generating trades:
 4. VOLATILITY EDGE:
    - India VIX current level and 5-day trend
    - VIX < 13 = complacency (expect surprise move), VIX > 18 = fear (mean reversion possible)
-   - IV rank of specific options — are premiums cheap or expensive?
-   - Expiry day theta decay math: how much premium melts per hour?
+   - ATM IV from real option chain — compare with VIX to assess if options are cheap or expensive
+   - Straddle premium vs actual day range — if range > straddle, momentum day. If range < straddle, range-bound.
 
 5. GLOBAL SETUP (Facts, not stories):
    - US markets close direction and magnitude (>1% move = significant)
@@ -2281,68 +2940,63 @@ RESPOND IN STRICT JSON FORMAT (no markdown, no backticks, no explanation outside
     {{
       "rank": "1 | 2 | 3 etc. — Rank by probability, highest first. #1 = best trade of the day.",
       "index": "NIFTY 50 | BANK NIFTY | SENSEX",
-      "instrument": "NIFTY 24500 CE | BANK NIFTY 52000 PE | NIFTY FUT etc.",
-      "direction": "BUY | SELL",
+      "direction": "BULLISH | BEARISH",
+      "bias": "Buy CE | Buy PE | Sell CE | Sell PE | Buy Futures | Sell Futures — directional suggestion only, NOT a specific strike",
       "probability": "80% | 85% | 90% — must be >= 80% to be included",
-      "factors_aligned": "List which 5+ factors confirm: e.g. support+OI+volume+trend+global",
-      "spot_price": "current index level number only",
-      "entry": "option/futures entry price number only",
-      "entry_condition": "MANDATORY — Exact trigger like: Nifty > 24600 | Bank Nifty < 52700. Always use > or < with a specific number.",
-      "timing": "MANDATORY — Best time window to enter. E.g. '9:30-10:00 AM (gap fill confirmation)' or '2:00-2:30 PM (expiry gamma burst)'. Give specific IST time range and reason.",
-      "time_sort": "MANDATORY — 24hr start time for sorting. E.g. '0930' for 9:30 AM, '1400' for 2:00 PM, '1030' for 10:30 AM. Must be 4-digit string.",
-      "target": "target price number only",
-      "target_pct": "MANDATORY — Percentage gain from entry to target. E.g. if entry=100, target=150, then '50%'. Calculate: ((target-entry)/entry)*100, rounded to nearest integer. Include % sign.",
-      "stop_loss": "stop loss price number only",
-      "sl_pct": "MANDATORY — Percentage loss from entry to SL. E.g. if entry=100, SL=70, then '-30%'. Calculate: ((stop_loss-entry)/entry)*100, rounded. Include % sign with minus.",
-      "risk_reward": "1:2 format",
+      "factors_aligned": "List which 5+ factors confirm: e.g. support+volume+trend+global+VIX",
+      "spot_price": "current index spot level — number only",
+      "entry_level": "SPOT LEVEL to enter — number only. This is the INDEX level, NOT an option premium.",
+      "entry_condition": "MANDATORY — Exact trigger like: Nifty spot > 24600 | Bank Nifty spot < 52700. Always use > or < with a specific INDEX LEVEL.",
+      "target_level": "SPOT TARGET — index level where you'd book profits. Number only.",
+      "stop_level": "SPOT STOP LOSS — index level where trade is invalidated. Number only.",
+      "move_points": "Expected move in points. E.g. '+200 pts' or '-150 pts'.",
+      "move_pct": "Expected % move on spot. E.g. '+0.8%' or '-0.6%'. Calculate from entry_level to target_level.",
+      "risk_reward": "1:2 format based on points",
+      "timing": "MANDATORY — Best time window to enter. E.g. '9:30-10:00 AM (gap fill)' or '2:00-2:30 PM (expiry gamma)'. Specific IST time range + reason.",
+      "time_sort": "MANDATORY — 24hr start time for sorting. E.g. '0930'. 4-digit string.",
       "confidence": "HIGH (5+ factors) | MEDIUM (4 factors) — never suggest with <4 factors",
-      "reason": "Cold, factual 2-3 sentence rationale. DATA FIRST. No narratives, no stories. State the numbers.",
-      "option_detail": "Strike price, expiry DATE, premium range, Greeks consideration if applicable",
-      "what_invalidates": "MANDATORY — What would KILL this trade? E.g. 'Nifty breaks below 24400 with volume' or 'VIX spikes above 18'. Every trade must have a kill condition."
+      "reason": "Cold, factual 2-3 sentence rationale. DATA FIRST — cite actual price levels, volume, VIX, global cues. No narratives.",
+      "key_levels": "MANDATORY — Support: 24500, 24350 | Resistance: 24800, 25000 — real levels derived from 5-day range, previous close, round numbers.",
+      "what_invalidates": "MANDATORY — Kill condition. E.g. 'Nifty breaks below 24400 with heavy volume' or 'VIX spikes above 18'."
     }}
   ],
   "stock_trades": [
     {{
       "rank": "S1 | S2 — Rank by probability",
       "stock": "RELIANCE | TCS | HDFCBANK etc.",
-      "instrument": "RELIANCE 2900 CE | TCS 4200 PE etc.",
-      "direction": "BUY | SELL",
+      "direction": "BULLISH | BEARISH",
+      "bias": "Buy CE | Buy PE | Buy Cash — directional suggestion only",
       "probability": "80% | 85% | 90%",
-      "factors_aligned": "List confirming factors",
-      "spot_price": "current stock price number only",
-      "entry": "option entry price number only",
-      "entry_condition": "MANDATORY — Exact trigger with > or <",
-      "timing": "MANDATORY — Best IST time window with reason",
-      "time_sort": "MANDATORY — 24hr start time for sorting. 4-digit string.",
-      "target": "target price number only",
-      "target_pct": "MANDATORY — Percentage gain from entry to target. Include % sign.",
-      "stop_loss": "stop loss price number only",
-      "sl_pct": "MANDATORY — Percentage loss from entry to SL. Include % sign with minus.",
+      "factors_aligned": "List confirming factors from live data",
+      "spot_price": "current stock price — number only",
+      "entry_level": "STOCK PRICE level to enter — number only",
+      "entry_condition": "MANDATORY — Exact trigger with > or < using STOCK PRICE level",
+      "target_level": "STOCK PRICE target — number only",
+      "stop_level": "STOCK PRICE stop loss — number only",
+      "move_pct": "Expected % move. E.g. '+2.5%'",
       "risk_reward": "1:2 format",
+      "timing": "MANDATORY — Best IST time window with reason",
+      "time_sort": "MANDATORY — 24hr start time. 4-digit string.",
       "confidence": "HIGH | MEDIUM",
-      "reason": "Factual rationale — volume numbers, price levels, sector data. No fluff.",
-      "option_detail": "Strike price, monthly expiry, lot size, premium, IV level",
+      "reason": "Factual rationale — cite volume numbers, price levels, sector momentum. No fluff.",
+      "key_levels": "Support and resistance levels from 5-day range",
       "what_invalidates": "MANDATORY — Kill condition for this trade"
     }}
   ],
   "hero_zero": [
     {{
       "index": "Index expiring today",
-      "instrument": "Deep OTM option",
-      "direction": "BUY",
+      "direction": "BULLISH | BEARISH",
+      "bias": "Deep OTM CE | Deep OTM PE — direction only, no specific strike",
       "spot_price": "current index level",
-      "entry": "₹2-15 premium",
-      "entry_condition": "MANDATORY — trigger with > or <",
-      "timing": "MANDATORY — IST time (usually 1:30-2:30 PM)",
-      "time_sort": "MANDATORY — 24hr start time. E.g. '1330' for 1:30 PM.",
-      "target": "3x-10x premium target",
-      "target_pct": "MANDATORY — E.g. '500%' for 5x, '900%' for 9x. Percentage return on premium.",
-      "stop_loss": "₹0 (full premium loss)",
-      "sl_pct": "-100%",
+      "trigger_level": "MANDATORY — Spot level that must break for this play to work",
+      "entry_condition": "MANDATORY — trigger with > or < on SPOT level",
+      "target_move": "Expected point move if breakout happens. E.g. '+300 pts from trigger'",
+      "timing": "MANDATORY — IST time (usually 1:30-2:30 PM for expiry gamma)",
+      "time_sort": "MANDATORY — 24hr start time. E.g. '1330'.",
       "risk_reward": "Risk full premium for 3x-10x",
       "confidence": "SPECULATIVE",
-      "reason": "Why this strike specifically. Gamma math, trending day confirmation.",
-      "option_detail": "Strike, TODAY's expiry, lot size, delta, gamma",
+      "reason": "Why this direction specifically. What data supports the breakout? Cite levels.",
       "what_invalidates": "What makes this zero instead of hero"
     }}
   ],
@@ -2350,17 +3004,17 @@ RESPOND IN STRICT JSON FORMAT (no markdown, no backticks, no explanation outside
   "gut_picks": [
     {{
       "rank": "#1 GUT PICK | #2 GUT PICK",
-      "instrument": "The exact instrument from trades or stock_trades above",
+      "index_or_stock": "NIFTY 50 | RELIANCE etc.",
       "type": "INDEX | STOCK",
-      "direction": "BUY | SELL",
+      "direction": "BULLISH | BEARISH",
+      "bias": "Buy CE | Buy PE | Futures etc.",
       "probability": "90%+ — your HIGHEST conviction",
-      "entry": "entry price",
-      "entry_condition": "exact > or < trigger",
+      "entry_level": "spot level to enter",
+      "entry_condition": "exact > or < trigger on spot",
       "timing": "IST time window",
-      "target": "target price",
-      "target_pct": "% gain",
-      "stop_loss": "SL price",
-      "sl_pct": "% loss",
+      "target_level": "spot target level",
+      "stop_level": "spot SL level",
+      "move_pct": "expected % move",
       "why_this_one": "1-2 sentences — why THIS trade above all others? What makes it near-certain? Be specific."
     }}
   ],
@@ -2428,7 +3082,7 @@ HARD RULES — VIOLATING THESE MAKES YOU A BAD TRADER:
 3. EVERY trade must show probability (80-95%) and list the specific factors that got it there.
 4. If global cues conflict with domestic setup, SAY SO. Don't pretend everything aligns.
 5. NEVER use words: "should", "might", "could potentially". Use: "will if X happens", "data shows", "OI confirms".
-6. Stop loss is NON-NEGOTIABLE. Never suggest a trade where SL > 40% of entry premium.
+6. Stop loss is NON-NEGOTIABLE. Every trade must have a stop_level on the INDEX/STOCK SPOT price. Risk:reward must be at least 1:1.5.
 7. If VIX is > 20, reduce position sizes in your recommendation. MENTION THIS.
 8. "skipped_trades" field is MANDATORY — be honest about market uncertainty.
 
