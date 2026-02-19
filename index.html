@@ -420,6 +420,15 @@ footer{position:relative;z-index:1;margin-top:32px;background:rgba(6,10,19,.95);
 @keyframes eventGlow{0%,100%{box-shadow:0 0 15px rgba(245,158,11,.15),inset 0 0 15px rgba(245,158,11,.03)}50%{box-shadow:0 0 30px rgba(245,158,11,.25),inset 0 0 20px rgba(245,158,11,.05)}}
 @keyframes eventGlowHigh{0%,100%{box-shadow:0 0 15px rgba(239,68,68,.2),inset 0 0 15px rgba(239,68,68,.03)}50%{box-shadow:0 0 35px rgba(239,68,68,.35),inset 0 0 20px rgba(239,68,68,.06)}}
 @keyframes borderShimmer{0%{background-position:0% 50%}50%{background-position:100% 50%}100%{background-position:0% 50%}}
+@keyframes tickerScroll{0%{transform:translateX(0)}100%{transform:translateX(-50%)}}
+.global-ticker{width:100%;overflow:hidden;background:rgba(10,12,20,.95);border-bottom:1px solid rgba(255,255,255,.06);padding:6px 0;position:relative;z-index:50}
+.global-ticker .ticker-track{display:flex;gap:20px;animation:tickerScroll 40s linear infinite;width:max-content}
+.global-ticker .ticker-track:hover{animation-play-state:paused}
+.global-ticker .ti{display:flex;align-items:center;gap:5px;font-size:11px;white-space:nowrap;padding:0 4px}
+.global-ticker .ti .tn{color:var(--text3);font-weight:600;font-size:10px}
+.global-ticker .ti .tp{font-family:var(--mono);font-weight:700;font-size:11px}
+.global-ticker .ti .tc{font-size:10px;font-weight:600}
+.global-ticker .tc.up{color:var(--green)}.global-ticker .tc.dn{color:var(--red)}.global-ticker .tc.fl{color:var(--text3)}
 .event-alert-global{animation:eventSlide .5s ease-out;overflow:hidden;margin-bottom:10px;border-radius:12px;position:relative}
 .event-alert-global::before{content:'';position:absolute;inset:-2px;border-radius:14px;background:linear-gradient(90deg,transparent,rgba(245,158,11,.4),transparent,rgba(239,68,68,.3),transparent);background-size:300% 100%;animation:borderShimmer 4s linear infinite;z-index:-1}
 .event-alert-global.high::before{background:linear-gradient(90deg,transparent,rgba(239,68,68,.5),transparent,rgba(245,158,11,.4),transparent);background-size:300% 100%}
@@ -494,6 +503,12 @@ footer{position:relative;z-index:1;margin-top:32px;background:rgba(6,10,19,.95);
 </style>
 </head>
 <body>
+<!-- Global Indices Ticker — loads on page visit -->
+<div class="global-ticker" id="globalTicker">
+<div class="ticker-track" id="tickerTrack">
+<span style="font-size:10px;color:var(--text3);padding:0 8px">Loading global markets...</span>
+</div>
+</div>
 <div class="gridbg"></div>
 
 <nav>
@@ -1894,34 +1909,7 @@ ${ma.vix_signal||ma.global_impact?`<div style="font-size:11px;color:var(--text3)
 </div>`;
 }
 
-// ═══ EVENT ALERT — Render to GLOBAL position above tabs ═══
-const evt=data.event_alert||{};
-const evtDiv=document.getElementById('eventAlertGlobal');
-if(evt.has_event&&evtDiv){
-const isHigh=evt.severity==='HIGH';
-const isMed=evt.severity==='MEDIUM';
-const sevCol=isHigh?'#ef4444':isMed?'#f59e0b':'#3b82f6';
-const sevBg=isHigh?'rgba(239,68,68,.06)':isMed?'rgba(245,158,11,.05)':'rgba(59,130,246,.04)';
-const impCol=evt.impact==='BULLISH'?'#10b981':evt.impact==='BEARISH'?'#ef4444':'#f59e0b';
-const impIcon=evt.impact==='BULLISH'?'&#128200;':evt.impact==='BEARISH'?'&#128201;':'&#128260;';
-const sevIcon=isHigh?'&#128680;':isMed?'&#9889;':'&#128276;';
-evtDiv.style.display='block';
-evtDiv.innerHTML=`<div class="event-alert-global ${isHigh?'high':''}" style="background:${sevBg};padding:14px 16px 14px 14px;position:relative;${isHigh?'animation:eventGlowHigh 2s ease infinite':'animation:eventGlow 3s ease infinite'}">
-<button class="event-dismiss" onclick="this.parentElement.parentElement.style.display='none'" title="Dismiss">&#10005;</button>
-<div style="display:flex;gap:12px;align-items:flex-start">
-<div style="min-width:40px;height:40px;border-radius:10px;background:${sevCol}18;display:flex;align-items:center;justify-content:center;font-size:22px;${isHigh?'animation:notifPop 1.5s ease infinite':''}">${sevIcon}</div>
-<div style="flex:1;min-width:0">
-<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px">
-<span style="font-family:'Sora',sans-serif;font-size:13px;font-weight:800;color:${sevCol};letter-spacing:.2px">${evt.headline||'Market Event'}</span>
-<span style="font-size:9px;font-weight:800;color:#fff;background:${sevCol};padding:2px 8px;border-radius:10px;letter-spacing:.5px">${evt.severity}</span>
-<span style="font-size:9px;font-weight:800;color:${impCol};background:${impCol}15;border:1px solid ${impCol}30;padding:2px 8px;border-radius:10px;display:flex;align-items:center;gap:3px">${impIcon} ${evt.impact}</span>
-</div>
-<div style="font-size:12px;color:var(--text2);line-height:1.6;margin-bottom:8px">${evt.detail||''}</div>
-${evt.action?`<div style="padding:8px 12px;border-radius:8px;background:rgba(255,255,255,.04);border:1px solid ${sevCol}20;font-size:12px;display:flex;align-items:flex-start;gap:6px"><span style="color:${sevCol};font-size:14px">&#9654;</span><span><strong style="color:${sevCol}">Action:</strong> <span style="color:var(--text)">${evt.action}</span></span></div>`:''}
-</div>
-</div>
-</div>`;
-}else if(evtDiv){evtDiv.style.display='none';}
+// Event alert now handled by fetchMarketPulse() on Analyze click — not here
 
 // ═══ GAMMA BLAST PROBABILITY ═══
 const gb=data.gamma_blast||{};
@@ -2334,7 +2322,28 @@ window.open(mailto);
 }
 
 // Initialize vote chart on page load
-document.addEventListener('DOMContentLoaded',()=>{initVoteChart();loadVotes();
+async function loadGlobalTicker(){
+try{
+const r=await fetch('/api/global-ticker');
+const d=await r.json();
+if(!d.success||!d.indices||!d.indices.length)return;
+const track=document.getElementById('tickerTrack');
+if(!track)return;
+let items='';
+d.indices.forEach(idx=>{
+const up=idx.change_pct>0;
+const flat=idx.change_pct===0;
+const cls=flat?'fl':up?'up':'dn';
+const arrow=flat?'':up?'▲':'▼';
+const fmt=idx.name==='GSR'?idx.price:idx.price>=1000?idx.price.toLocaleString('en-IN'):idx.price;
+items+=`<div class="ti"><span style="font-size:12px">${idx.flag}</span><span class="tn">${idx.name}</span><span class="tp" style="color:var(--text)">${fmt}</span><span class="tc ${cls}">${arrow}${Math.abs(idx.change_pct).toFixed(2)}%</span></div>`;
+});
+// Duplicate for seamless infinite scroll
+track.innerHTML=items+items;
+}catch(e){console.log('Ticker load failed:',e)}
+}
+
+document.addEventListener('DOMContentLoaded',()=>{loadGlobalTicker();initVoteChart();loadVotes();
 fetch('/api/stats').then(r=>r.json()).then(d=>{
 if(d.total_reports){document.getElementById('navRC').textContent=d.total_reports;document.getElementById('globalRC').textContent=d.total_reports.toLocaleString();const hb=document.getElementById('reportBadgeCount');if(hb)hb.textContent=d.total_reports.toLocaleString()}
 }).catch(()=>{})});

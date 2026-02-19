@@ -1735,6 +1735,57 @@ async def ads_txt():
 # ═══════════════════════════════════════════════════════════
 TRADES_ALLOWED_EMAILS = ["vijy.dhulipala@gmail.com"]
 
+@app.get("/api/global-ticker")
+async def global_ticker():
+    """Lightweight global indices ticker — loads on page visit. No auth required."""
+    import yfinance as yf
+    
+    tickers_map = {
+        "^NSEI": {"name": "NIFTY 50", "flag": "🇮🇳"},
+        "^BSESN": {"name": "SENSEX", "flag": "🇮🇳"},
+        "^GSPC": {"name": "S&P 500", "flag": "🇺🇸"},
+        "^DJI": {"name": "DOW", "flag": "🇺🇸"},
+        "^IXIC": {"name": "NASDAQ", "flag": "🇺🇸"},
+        "^FTSE": {"name": "FTSE 100", "flag": "🇬🇧"},
+        "^N225": {"name": "NIKKEI", "flag": "🇯🇵"},
+        "^HSI": {"name": "HANG SENG", "flag": "🇭🇰"},
+        "000001.SS": {"name": "SHANGHAI", "flag": "🇨🇳"},
+        "^GDAXI": {"name": "DAX", "flag": "🇩🇪"},
+        "DX-Y.NYB": {"name": "US DOLLAR", "flag": "💵"},
+        "INR=X": {"name": "USD/INR", "flag": "🇮🇳"},
+        "GC=F": {"name": "GOLD/OZ", "flag": "🥇"},
+        "SI=F": {"name": "SILVER/OZ", "flag": "🥈"},
+    }
+    
+    results = []
+    gold_price = None
+    silver_price = None
+    
+    for ticker, meta in tickers_map.items():
+        try:
+            t = yf.Ticker(ticker)
+            hist = t.history(period="2d")
+            if not hist.empty:
+                price = round(hist.iloc[-1]['Close'], 2)
+                prev = hist.iloc[-2]['Close'] if len(hist) > 1 else price
+                chg = round(price - prev, 2)
+                chg_pct = round(((price - prev) / prev) * 100, 2) if prev else 0
+                results.append({
+                    "name": meta["name"], "flag": meta["flag"],
+                    "price": price, "change": chg, "change_pct": chg_pct
+                })
+                if meta["name"] == "GOLD/OZ": gold_price = price
+                if meta["name"] == "SILVER/OZ": silver_price = price
+        except:
+            pass
+    
+    # Calculate GSR (Gold/Silver Ratio)
+    if gold_price and silver_price and silver_price > 0:
+        gsr = round(gold_price / silver_price, 1)
+        results.append({"name": "GSR", "flag": "⚖️", "price": gsr, "change": 0, "change_pct": 0})
+    
+    return {"success": True, "indices": results}
+
 @app.get("/api/market-pulse")
 async def market_pulse():
     """Lightweight market events — no AI, instant response. Called on every Analyze click."""
