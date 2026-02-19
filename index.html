@@ -432,6 +432,7 @@ footer{position:relative;z-index:1;margin-top:32px;background:rgba(6,10,19,.95);
 .global-ticker .ti .tp{font-family:var(--mono);font-weight:700;font-size:11px}
 .global-ticker .ti .tc{font-size:10px;font-weight:600}
 .global-ticker .tc.up{color:var(--green)}.global-ticker .tc.dn{color:var(--red)}.global-ticker .tc.fl{color:var(--text3)}
+.cinf{margin-top:8px;padding:8px 10px;border-radius:6px;border:1px solid;font-size:11px;color:var(--text2);line-height:1.6}
 .event-alert-global{animation:eventSlide .5s ease-out;overflow:hidden;margin-bottom:10px;border-radius:12px;position:relative}
 .event-alert-global::before{content:'';position:absolute;inset:-2px;border-radius:14px;background:linear-gradient(90deg,transparent,rgba(245,158,11,.4),transparent,rgba(239,68,68,.3),transparent);background-size:300% 100%;animation:borderShimmer 4s linear infinite;z-index:-1}
 .event-alert-global.high::before{background:linear-gradient(90deg,transparent,rgba(239,68,68,.5),transparent,rgba(245,158,11,.4),transparent);background-size:300% 100%}
@@ -528,7 +529,7 @@ footer{position:relative;z-index:1;margin-top:32px;background:rgba(6,10,19,.95);
 
 </div>
 </nav>
-<div class="sticky-tagline" id="stickyTag"><span>Master Global Equities in 60 Seconds</span></div>
+<div class="sticky-tagline" id="stickyTag"><span>Master Global Equities in 60 Seconds</span><span id="stickyCompany" style="display:none;margin-left:12px;font-family:'Sora',sans-serif;font-size:12px;font-weight:600;color:var(--text2);-webkit-text-fill-color:var(--text2);padding-left:12px;border-left:1px solid rgba(255,255,255,.1)"></span></div>
 
 <section class="hero">
 <div class="hero-eye"><div class="ldot"></div> Live Market Data &middot; Updated Every Minute</div>
@@ -591,14 +592,14 @@ Type to search <strong>100 stocks</strong> (US &amp; India) &middot; Or enter an
 
 <!-- 3 CHARTS ROW -->
 <div class="cgrid">
-<div class="ccard"><div class="cct">&#9678; Valuation Metrics <span style="font-size:10px;color:var(--text3);font-weight:400">&middot; hover bars for details</span></div><div class="cc"><canvas id="valChart"></canvas></div></div>
-<div class="ccard"><div class="cct">&#9678; Financial Health <span style="font-size:10px;color:var(--text3);font-weight:400">&middot; hover dots for details</span></div><div class="cc"><canvas id="healthChart"></canvas></div></div>
-<div class="ccard"><div class="cct">&#9678; Risk Profile <span style="font-size:10px;color:var(--text3);font-weight:400">&middot; hover dots for details</span></div><div class="cc"><canvas id="riskChart"></canvas></div></div>
+<div class="ccard"><div class="cct">&#9678; Valuation Metrics <span style="font-size:10px;color:var(--text3);font-weight:400">&middot; hover bars for details</span></div><div class="cc"><canvas id="valChart"></canvas></div><div id="valInference" class="cinf" style="background:rgba(59,130,246,.04);border-color:rgba(59,130,246,.1)"></div></div>
+<div class="ccard"><div class="cct">&#9678; Financial Health <span style="font-size:10px;color:var(--text3);font-weight:400">&middot; hover dots for details</span></div><div class="cc"><canvas id="healthChart"></canvas></div><div id="healthInference" class="cinf" style="background:rgba(16,185,129,.04);border-color:rgba(16,185,129,.1)"></div></div>
+<div class="ccard"><div class="cct">&#9678; Risk Profile <span style="font-size:10px;color:var(--text3);font-weight:400">&middot; hover dots for details</span></div><div class="cc"><canvas id="riskChart"></canvas></div><div id="riskInference" class="cinf" style="background:rgba(239,68,68,.04);border-color:rgba(239,68,68,.1)"></div></div>
 </div>
 <!-- 2 CHARTS ROW -->
 <div class="cgrid2">
-<div class="ccard"><div class="cct">&#9678; Price Trend (6M) <span style="font-size:10px;color:var(--text3);font-weight:400">&middot; hover points to track</span></div><div class="cc2"><canvas id="trendChart"></canvas></div></div>
-<div class="ccard"><div class="cct">&#9678; Margin vs Industry <span style="font-size:10px;color:var(--text3);font-weight:400">&middot; hover to compare</span></div><div class="cc2"><canvas id="marginChart"></canvas></div></div>
+<div class="ccard"><div class="cct">&#9678; Price Trend (6M) <span style="font-size:10px;color:var(--text3);font-weight:400">&middot; hover points to track</span></div><div class="cc2"><canvas id="trendChart"></canvas></div><div id="trendInference" class="cinf" style="background:rgba(59,130,246,.04);border-color:rgba(59,130,246,.1)"></div></div>
+<div class="ccard"><div class="cct">&#9678; Margin vs Industry <span style="font-size:10px;color:var(--text3);font-weight:400">&middot; hover to compare</span></div><div class="cc2"><canvas id="marginChart"></canvas></div><div id="marginVsInference" class="cinf" style="background:rgba(6,182,212,.04);border-color:rgba(6,182,212,.1)"></div></div>
 </div>
 
 <!-- 52-WEEK POSITION -->
@@ -912,6 +913,7 @@ showStatus(m,'error')}finally{btn.disabled=false;btn.textContent='Analyze \u2192
 
 function displayReport(data){const d=data.live_data,curr=d.currency==='INR'?'\u20B9':'$',price=d.current_price;
 document.getElementById('tickerTag').textContent=d.ticker;document.getElementById('companyName').textContent=d.company_name||d.ticker;
+const scEl=document.getElementById('stickyCompany');if(scEl){scEl.textContent=(d.company_name||d.ticker)+' · '+curr+price.toLocaleString();scEl.style.display='inline'}
 const srcLabel=d.data_source==='yahoo_chart_only'?' (chart)':d.data_source==='yahoo_scrape'?' (alt)':d.data_source==='stale_cache'?' (cached)':'';
 document.getElementById('timestamp').innerHTML='<div class="ldot"></div> LIVE'+srcLabel+' \u00B7 '+d.data_timestamp;
 
@@ -1236,6 +1238,57 @@ if(hasHealth){
 const mExplain={0:['Profit Margin: '+pm+'% vs 15% benchmark','',pm>15?'Beating the benchmark = strong pricing power!':pm>8?'Close to benchmark. Decent but room to improve.':'Below benchmark. Tight margins = competitive pressure.'],1:['Operating Margin: '+om+'% vs 12% benchmark','',om>12?'Core business is running efficiently.':'Core operations could be more profitable.'],2:['Return on Equity: '+roe+'% vs 15% benchmark','',roe>15?'Great returns for shareholders!':'Average returns. Capital could work harder.']};
 marginChart=new Chart(document.getElementById('marginChart').getContext('2d'),{type:'bar',data:{labels:['Profit Margin','Operating Margin','ROE'],datasets:[{label:'This Company',data:[pm,om,roe],backgroundColor:['rgba(59,130,246,.4)','rgba(6,182,212,.4)','rgba(16,185,129,.4)'],borderColor:['#3b82f6','#06b6d4','#10b981'],borderWidth:1.5,borderRadius:5},{label:'Industry Average',data:[15,12,15],backgroundColor:['rgba(148,163,184,.1)','rgba(148,163,184,.1)','rgba(148,163,184,.1)'],borderColor:['#475569','#475569','#475569'],borderWidth:1,borderRadius:5}]},options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},plugins:{legend:{position:'bottom',labels:{font:{size:10},boxWidth:12,padding:10,color:'#94a3b8'}},tooltip:{...ttBase,callbacks:{title:function(c){return c[0].label},afterBody:function(c){return mExplain[c[0].dataIndex]||[]}}}},scales:{x:{beginAtZero:true,grid:{color:gc},ticks:{callback:function(v){return v+'%'}}},y:{grid:{display:false}}}}});
 }else{hideChart('marginChart')}
+
+// ═══ CHART INFERENCES — Plain English for all 5 charts ═══
+// Valuation
+const vI=document.getElementById('valInference');
+if(vI&&pe>0){
+const peVerdict=pe<15?'<strong style="color:var(--green)">undervalued</strong> — below 15x earnings':pe<25?'<strong style="color:var(--blue)">fairly valued</strong> — reasonable multiple':'<strong style="color:var(--amber)">premium priced</strong> — market expects high growth';
+const pbVerdict=pb<2?'Book value supports the price.':pb<5?'Moderate premium over book value.':'High premium — mostly intangible value.';
+const dyVerdict=dy>3?'Strong dividend income.':dy>1?'Modest income + growth.':'Growth stock — reinvests profits.';
+vI.innerHTML=`<strong style="color:var(--blue)">Reading:</strong> At ${pe.toFixed(1)}x earnings, this stock is ${peVerdict}. P/B of ${pb.toFixed(1)}x — ${pbVerdict} Yield ${dy.toFixed(1)}% — ${dyVerdict}`;
+}
+
+// Financial Health
+const hI=document.getElementById('healthInference');
+if(hI){
+const scores=[pm,om,roe,dy].filter(v=>v>0);
+const avg=scores.length?scores.reduce((a,b)=>a+b,0)/scores.length:0;
+const verdict=avg>20?'<strong style="color:var(--green)">Excellent financial health</strong> — strong across metrics':avg>10?'<strong style="color:var(--blue)">Solid fundamentals</strong> — above-average profitability':'<strong style="color:var(--amber)">Room for improvement</strong> — watch for margin expansion';
+const best=pm>=om&&pm>=roe?'Profit margins':'ROE'>=pm&&roe>=om?'Capital efficiency':'Operating margins';
+hI.innerHTML=`<strong style="color:var(--green)">Health check:</strong> ${verdict}. Strongest area: ${best}. Profit margin ${pm.toFixed(1)}%, Operating margin ${om.toFixed(1)}%, ROE ${roe.toFixed(1)}%.`;
+}
+
+// Risk Profile
+const riI=document.getElementById('riskInference');
+if(riI){
+const beta=d.beta||1;
+const de=parseFloat(d.debt_to_equity)||0;
+const betaVerdict=beta>1.3?'<strong style="color:var(--red)">high volatility</strong> — swings more than the market':beta>0.8?'<strong style="color:var(--blue)">moderate volatility</strong> — moves with the market':'<strong style="color:var(--green)">low volatility</strong> — defensive stock';
+const debtVerdict=de>100?'Heavy debt load.':de>50?'Moderate leverage.':'Conservative balance sheet.';
+riI.innerHTML=`<strong style="color:var(--red)">Risk summary:</strong> Beta of ${beta.toFixed(2)} means ${betaVerdict}. D/E ratio ${de.toFixed(0)}% — ${debtVerdict} ${de>100?'Watch for interest rate sensitivity.':''}`;
+}
+
+// Price Trend
+const tI=document.getElementById('trendInference');
+if(tI&&trend&&trend.length>=2){
+const sixMoAgo=trend[0];const today=trend[trend.length-1];
+const totalReturn=((today-sixMoAgo)/sixMoAgo*100).toFixed(1);
+const peak=Math.max(...trend);const trough=Math.min(...trend);
+const drawdown=((peak-trough)/peak*100).toFixed(1);
+const recent=trend[trend.length-1]-trend[trend.length-2];
+const recentDir=recent>0?'<strong style="color:var(--green)">trending up</strong>':'<strong style="color:var(--red)">pulling back</strong>';
+tI.innerHTML=`<strong style="color:var(--blue)">6-month return:</strong> <strong style="color:${totalReturn>=0?'var(--green)':'var(--red)'}">${totalReturn>=0?'+':''}${totalReturn}%</strong>. Peak-to-trough drawdown was ${drawdown}%. Currently ${recentDir} in the recent month. ${parseFloat(totalReturn)>15?'Strong momentum — but watch for overextension.':parseFloat(totalReturn)<-10?'Under pressure — look for support levels.':'Moderate move — watch for breakout or breakdown.'}`;
+}
+
+// Margin vs Industry
+const mvI=document.getElementById('marginVsInference');
+if(mvI){
+const pmBeat=pm>15;const omBeat=om>12;const roeBeat=roe>15;
+const beatsCount=[pmBeat,omBeat,roeBeat].filter(Boolean).length;
+const verdict=beatsCount===3?'<strong style="color:var(--green)">Outperforms industry</strong> on all three metrics — competitive moat visible':beatsCount>=1?'<strong style="color:var(--blue)">Mixed vs industry</strong> — beats on some metrics, lags on others':'<strong style="color:var(--red)">Underperforms industry averages</strong> — efficiency improvements needed';
+mvI.innerHTML=`<strong style="color:#06b6d4">vs Peers:</strong> ${verdict}. Profit margin ${pm.toFixed(1)}% ${pmBeat?'&#10003;':'&#10007;'} | Op. margin ${om.toFixed(1)}% ${omBeat?'&#10003;':'&#10007;'} | ROE ${roe.toFixed(1)}% ${roeBeat?'&#10003;':'&#10007;'} <span style="color:var(--text3)">(&#10003;=beats avg, &#10007;=below avg)</span>`;
+}
 }
 
 // SMALL CAP DATABASE (ALL sectors)
