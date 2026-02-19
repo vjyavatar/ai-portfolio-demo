@@ -1430,6 +1430,13 @@ def get_live_stock_data(company_name: str) -> dict:
             "roe": safe_get('returnOnEquity', 'N/A', is_pct=True),
             "debt_to_equity": safe_get('debtToEquity') or 'N/A',
             "current_ratio": safe_get('currentRatio') or 'N/A',
+            "eps_ttm": safe_get('trailingEps') or 'N/A',
+            "eps_forward": safe_get('forwardEps') or safe_get('epsForward') or 'N/A',
+            "book_value": safe_get('bookValue') or 'N/A',
+            "free_cash_flow": safe_get('freeCashflow') or 'N/A',
+            "operating_cash_flow": safe_get('operatingCashflow') or 'N/A',
+            "total_revenue": safe_get('totalRevenue') or 'N/A',
+            "revenue_growth": round(safe_get('revenueGrowth') * (100 if abs(safe_get('revenueGrowth')) < 1 else 1), 2) if safe_get('revenueGrowth') else 'N/A',
             "data_timestamp": datetime.now().strftime("%B %d, %Y at %I:%M %p UTC"),
             "data_source": data_source,
             "verification_url": f"https://www.google.com/finance/quote/{ticker_symbol.replace('.NS', ':NSE').replace('.BO', ':BOM')}",
@@ -1450,7 +1457,54 @@ def get_live_stock_data(company_name: str) -> dict:
             print(f"⚠️ Price history fetch failed: {e}")
             live_data["price_history"] = None
         
-        # Cache the data to reduce API calls
+        # ═══ INTRINSIC VALUE CALCULATIONS ═══
+        try:
+            _eps = float(info.get('trailingEps', 0) or 0)
+            _bvps = float(info.get('bookValue', 0) or 0)
+            _fwd_eps = float(info.get('epsForward', 0) or info.get('forwardEps', 0) or 0)
+            _pe = float(live_data['pe_ratio']) if live_data['pe_ratio'] != 'N/A' else 0
+            _growth = float(info.get('earningsGrowth', 0) or info.get('revenueGrowth', 0) or 0)
+            if abs(_growth) < 1: _growth = _growth * 100  # Convert decimal to %
+            
+            intrinsic = {}
+            
+            # 1. Graham Number = sqrt(22.5 × EPS × BVPS)
+            if _eps > 0 and _bvps > 0:
+                import math
+                graham = round(math.sqrt(22.5 * _eps * _bvps), 2)
+                intrinsic['graham'] = graham
+                intrinsic['graham_upside'] = round((graham / current_price - 1) * 100, 1) if current_price > 0 else 0
+            
+            # 2. Peter Lynch Fair Value = EPS × Growth Rate (PEG = 1)
+            if _eps > 0 and _growth > 0:
+                lynch = round(_eps * _growth, 2)
+                intrinsic['lynch'] = lynch
+            
+            # 3. DCF Simple = Forward EPS × (8.5 + 2g) where g = growth rate
+            # Benjamin Graham's growth formula
+            if _eps > 0:
+                g = max(0, min(_growth, 25))  # Cap growth at 25%
+                dcf_graham = round(_eps * (8.5 + 2 * g), 2)
+                intrinsic['dcf_simple'] = dcf_graham
+                intrinsic['dcf_upside'] = round((dcf_graham / current_price - 1) * 100, 1) if current_price > 0 else 0
+            
+            # 4. Earnings Yield vs Bond (10Y ~4.5%)
+            if _pe > 0:
+                earnings_yield = round(100 / _pe, 2)
+                intrinsic['earnings_yield'] = earnings_yield
+                intrinsic['earnings_yield_premium'] = round(earnings_yield - 4.5, 2)  # vs 10Y bond
+            
+            # 5. Book Value
+            if _bvps > 0:
+                intrinsic['book_value'] = round(_bvps, 2)
+                intrinsic['price_to_book_discount'] = round((1 - current_price / _bvps) * 100, 1) if _bvps > 0 else 0
+            
+            live_data['intrinsic'] = intrinsic if intrinsic else None
+            if intrinsic:
+                print(f"💎 Intrinsic value: Graham={intrinsic.get('graham','N/A')}, DCF={intrinsic.get('dcf_simple','N/A')}")
+        except Exception as e:
+            print(f"⚠️ Intrinsic value calc failed: {e}")
+            live_data['intrinsic'] = None
         stock_data_cache[cache_key] = (live_data, current_time)
         print(f"💾 Cached data for {cache_key}")
         
@@ -3455,6 +3509,12 @@ FINANCIAL HEALTH (LATEST):
 • ROE: {live_data['roe']}%
 • Debt/Equity: {live_data['debt_to_equity']}
 • Current Ratio: {live_data['current_ratio']}
+• EPS (TTM): {live_data['eps_ttm']}
+• EPS (Forward): {live_data['eps_forward']}
+• Book Value/Share: {live_data['book_value']}
+• Free Cash Flow: {live_data.get('free_cash_flow', 'N/A')}
+• Operating Cash Flow: {live_data.get('operating_cash_flow', 'N/A')}
+• Revenue Growth: {live_data.get('revenue_growth', 'N/A')}%
 
 COMPANY INFORMATION:
 • Sector: {live_data['sector']}
@@ -3502,6 +3562,12 @@ Operating Margin: {live_data['operating_margin']}%
 ROE: {live_data['roe']}%
 Debt/Equity: {live_data['debt_to_equity']}
 Current Ratio: {live_data['current_ratio']}
+EPS (TTM): {live_data['eps_ttm']}
+EPS (Forward): {live_data['eps_forward']}
+Book Value/Share: {live_data['book_value']}
+Free Cash Flow: {live_data.get('free_cash_flow', 'N/A')}
+Operating Cash Flow: {live_data.get('operating_cash_flow', 'N/A')}
+Revenue Growth: {live_data.get('revenue_growth', 'N/A')}%
 Sector: {live_data['sector']}
 Industry: {live_data['industry']}
 """
@@ -3511,6 +3577,124 @@ Industry: {live_data['industry']}
             full_context = mgmt_context + "\n\n" + computed_context
         else:
             full_context = computed_context + "\nNOTE: Detailed quarterly earnings data was not available from Yahoo Finance. Use the financial metrics above to infer trends. Compute approximate QoQ/YoY analysis from profit margins, P/E trends, and price position vs 52-week range."
+
+        # ═══ DETERMINISTIC STOCK VERDICT ENGINE (server-side) ═══
+        # This ensures AI always uses the same verdict for same data
+        def _n(v):
+            try:
+                f = float(v)
+                return f if v != 'N/A' else 0
+            except:
+                return 0
+        
+        v_score = 0
+        v_reasons = []
+        v_pe = _n(live_data['pe_ratio'])
+        v_fpe = _n(live_data.get('forward_pe', 0))
+        v_pb = _n(live_data['pb_ratio'])
+        v_dy = _n(live_data['dividend_yield'])
+        v_pm = _n(live_data['profit_margin'])
+        v_om = _n(live_data['operating_margin'])
+        v_roe = _n(live_data['roe'])
+        v_de = _n(live_data['debt_to_equity'])
+        v_cr = _n(live_data['current_ratio'])
+        v_beta = _n(live_data['beta'])
+        v_price = live_data['current_price']
+        v_hi = live_data['week52_high']
+        v_lo = live_data['week52_low']
+        v_w52 = (v_price - v_lo) / (v_hi - v_lo) if v_hi > v_lo else 0.5
+        
+        # F1: VALUATION (±20)
+        if v_pe > 0:
+            if v_pe < 10: v_score += 18; v_reasons.append(f"Deep value P/E {v_pe:.1f}x [+18]")
+            elif v_pe < 15: v_score += 12; v_reasons.append(f"Value P/E {v_pe:.1f}x [+12]")
+            elif v_pe < 22: v_score += 4; v_reasons.append(f"Fair P/E {v_pe:.1f}x [+4]")
+            elif v_pe < 35: v_score -= 6; v_reasons.append(f"Expensive P/E {v_pe:.1f}x [-6]")
+            else: v_score -= 14; v_reasons.append(f"Very expensive P/E {v_pe:.1f}x [-14]")
+        if v_fpe > 0 and v_pe > 0 and v_fpe < v_pe * 0.85:
+            v_score += 5; v_reasons.append("Forward P/E discount — earnings growth [+5]")
+        elif v_fpe > 0 and v_pe > 0 and v_fpe > v_pe * 1.1:
+            v_score -= 3; v_reasons.append("Forward P/E premium — earnings may decline [-3]")
+        
+        # F2: PROFITABILITY (±15)
+        if v_pm > 20: v_score += 12; v_reasons.append(f"Excellent margins {v_pm:.1f}% [+12]")
+        elif v_pm > 10: v_score += 6; v_reasons.append(f"Solid margins {v_pm:.1f}% [+6]")
+        elif v_pm > 0: v_score += 2; v_reasons.append(f"Thin margins {v_pm:.1f}% [+2]")
+        elif v_pm < 0: v_score -= 10; v_reasons.append(f"Unprofitable {v_pm:.1f}% [-10]")
+        
+        if v_roe > 20: v_score += 8; v_reasons.append(f"Strong ROE {v_roe:.1f}% [+8]")
+        elif v_roe > 12: v_score += 4; v_reasons.append(f"Decent ROE {v_roe:.1f}% [+4]")
+        elif 0 < v_roe < 5: v_score -= 3; v_reasons.append(f"Weak ROE {v_roe:.1f}% [-3]")
+        
+        # F3: FINANCIAL HEALTH (±12)
+        if v_de > 0:
+            if v_de < 30: v_score += 10; v_reasons.append(f"Low debt D/E {v_de:.0f} [+10]")
+            elif v_de < 80: v_score += 5; v_reasons.append(f"Moderate debt D/E {v_de:.0f} [+5]")
+            elif v_de < 150: v_score -= 3; v_reasons.append(f"Elevated debt D/E {v_de:.0f} [-3]")
+            else: v_score -= 10; v_reasons.append(f"High leverage D/E {v_de:.0f} [-10]")
+        if v_cr > 2: v_score += 4; v_reasons.append(f"Strong liquidity CR {v_cr:.1f} [+4]")
+        elif 0 < v_cr < 1: v_score -= 6; v_reasons.append(f"Liquidity risk CR {v_cr:.1f} [-6]")
+        
+        # F4: 52-WEEK POSITION (±10)
+        if v_w52 < 0.2: v_score += 8; v_reasons.append(f"Near 52W low ({v_w52*100:.0f}% of range) [+8]")
+        elif v_w52 < 0.35: v_score += 4; v_reasons.append("Lower half of 52W range [+4]")
+        elif v_w52 > 0.9: v_score -= 4; v_reasons.append(f"Near 52W high ({v_w52*100:.0f}%) [-4]")
+        elif v_w52 > 0.75: v_score += 2; v_reasons.append("Upper range, momentum intact [+2]")
+        
+        # F5: P/B (±8)
+        if v_pb > 0:
+            if v_pb < 1: v_score += 8; v_reasons.append(f"Below book P/B {v_pb:.1f} [+8]")
+            elif v_pb < 2.5: v_score += 3; v_reasons.append(f"Reasonable P/B {v_pb:.1f} [+3]")
+            elif v_pb > 8: v_score -= 5; v_reasons.append(f"Extreme P/B {v_pb:.1f} [-5]")
+        
+        # F6: DIVIDEND (±5)
+        if v_dy > 4: v_score += 5; v_reasons.append(f"High yield {v_dy:.1f}% [+5]")
+        elif v_dy > 2: v_score += 3; v_reasons.append(f"Decent yield {v_dy:.1f}% [+3]")
+        
+        # F7: BETA/RISK (±5)
+        if v_beta > 2: v_score -= 5; v_reasons.append(f"High volatility Beta {v_beta:.2f} [-5]")
+        elif v_beta > 1.5: v_score -= 2; v_reasons.append(f"Above-avg vol Beta {v_beta:.2f} [-2]")
+        elif 0 < v_beta < 0.7: v_score += 3; v_reasons.append(f"Defensive Beta {v_beta:.2f} [+3]")
+        
+        # F8: OPERATING EFFICIENCY (±5)
+        if v_om > 20: v_score += 5; v_reasons.append("High operating efficiency [+5]")
+        elif 0 < v_om < 5: v_score -= 3; v_reasons.append("Weak operating margins [-3]")
+        
+        # COMPUTE VERDICT
+        if v_score >= 25: v_verdict = "STRONG BUY"; v_emoji = "🟢"
+        elif v_score >= 12: v_verdict = "BUY"; v_emoji = "🟢"
+        elif v_score >= -8: v_verdict = "HOLD"; v_emoji = "🟡"
+        elif v_score >= -22: v_verdict = "SELL"; v_emoji = "🔴"
+        else: v_verdict = "STRONG SELL"; v_emoji = "🔴"
+        
+        v_conviction = "High" if abs(v_score) > 30 else "Medium" if abs(v_score) > 15 else "Low"
+        
+        verdict_card = f"""
+═══ PRE-COMPUTED STOCK VERDICT (deterministic — USE THIS) ═══
+VERDICT: {v_verdict} {v_emoji}
+Score: {v_score:+d} | Conviction: {v_conviction}
+Factor breakdown:
+  """ + "\n  ".join(v_reasons) + f"""
+
+IMPORTANT: Your recommendation in the report MUST match this verdict ({v_verdict}).
+Do NOT override or contradict this score-based verdict.
+Your job is to EXPLAIN why this verdict makes sense using the data, not to change it.
+═══ END VERDICT ═══"""
+        
+        # Add intrinsic value data to prompt
+        iv = live_data.get('intrinsic')
+        intrinsic_section = ""
+        if iv:
+            intrinsic_section = "\n═══ INTRINSIC VALUE ESTIMATES (pre-computed) ═══\n"
+            if iv.get('graham'): intrinsic_section += f"Graham Number: {currency_symbol}{iv['graham']:,.2f} ({iv['graham_upside']:+.1f}% vs current price)\n"
+            if iv.get('dcf_simple'): intrinsic_section += f"DCF (Graham Growth): {currency_symbol}{iv['dcf_simple']:,.2f} ({iv['dcf_upside']:+.1f}% vs current price)\n"
+            if iv.get('lynch'): intrinsic_section += f"Lynch Fair Value (PEG=1): {currency_symbol}{iv['lynch']:,.2f}\n"
+            if iv.get('earnings_yield'): intrinsic_section += f"Earnings Yield: {iv['earnings_yield']}% (premium vs 10Y bond: {iv['earnings_yield_premium']:+.2f}%)\n"
+            if iv.get('book_value'): intrinsic_section += f"Book Value/Share: {currency_symbol}{iv['book_value']:,.2f}\n"
+            intrinsic_section += "USE these intrinsic values in your Valuation Analysis section.\n═══ END INTRINSIC ═══"
+        
+        print(f"📊 Stock Verdict: {v_verdict} (score: {v_score:+d}, conviction: {v_conviction})")
+        print(f"   Factors: {len(v_reasons)}")
 
         # CREATE CLAUDE PROMPT
         prompt = f"""Analyze {company} using the VERIFIED LIVE DATA below.
@@ -3523,11 +3707,16 @@ REAL ANALYST & EARNINGS DATA (use this for management tone analysis):
 {full_context}
 {"=" * 60}
 
+{verdict_card}
+
+{intrinsic_section}
+
 CRITICAL INSTRUCTIONS:
 1. Use ONLY the real-time data provided above
 2. Current price is {currency_symbol}{live_data['current_price']:,.2f} - use THIS number
 3. Base all analysis on current market conditions
 4. Provide actionable, professional insights
+5. Your Recommendation MUST be: {v_verdict} {v_emoji} — this is pre-computed from 8 quantitative factors and is NON-NEGOTIABLE
 5. For Management Tone section, use analyst/earnings data if available, otherwise infer from P/E, margins, price position, beta, and dividend yield
 6. For QoQ and YoY analysis: if quarterly data is provided, calculate actual changes. If NOT provided, use available metrics to INFER trends (e.g., forward PE vs trailing PE shows earnings growth/decline, profit margins indicate operational trends, price vs 52W range shows momentum)
 7. Include specific growth predictions based on available data
@@ -3548,11 +3737,11 @@ CRITICAL INSTRUCTIONS:
 ## 🎯 INVESTMENT THESIS
 
 **Current Price:** {currency_symbol}{live_data['current_price']:,.2f} {live_data['currency']}  
-**Recommendation:** [BUY 🟢 / HOLD 🟡 / SELL 🔴]  
-**Conviction:** [High / Medium / Low]  
-**Time Horizon:** [Short/Long-term]
+**Recommendation:** {v_verdict} {v_emoji} (Score: {v_score:+d})  
+**Conviction:** {v_conviction}  
+**Time Horizon:** [Short/Long-term based on the data]
 
-[Your analysis based on CURRENT price of {currency_symbol}{live_data['current_price']:,.2f}]
+[Explain WHY this {v_verdict} verdict makes sense. Reference the factor breakdown. Do NOT contradict the verdict.]
 
 ---
 
@@ -3695,8 +3884,10 @@ Stop Loss:        {currency_symbol}XXX  [Risk management]
 
 **Current Assessment ({live_data['data_timestamp']}):**
 
+**Verdict: {v_verdict} {v_emoji}** (Conviction: {v_conviction}, Score: {v_score:+d})
+
 Based on real-time price of {currency_symbol}{live_data['current_price']:,.2f}:
-[Your specific recommendation]
+[Summarize your analysis. Must align with the {v_verdict} verdict. Give specific entry/exit levels if applicable.]
 
 ═══════════════════════════════════════════════════════════════
 ⚠️ IMPORTANT DISCLAIMERS:
