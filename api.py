@@ -1705,14 +1705,19 @@ p,li{{font-size:14px;color:#9ca3af;margin-bottom:12px}}ul{{padding-left:20px}}a{
 .edu-bar .edu-lines{{display:flex;flex-wrap:wrap;gap:4px 20px}}
 .edu-bar .edu-line{{font-size:10px;color:#6b7280;line-height:1.5;padding-left:10px;border-left:2px solid rgba(239,68,68,.3)}}
 .edu-bar .edu-line strong{{color:#ef4444;font-weight:700;font-size:10px}}
-</style></head><body><div class="wrap"><a href="/" class="back">← Back to Celesys AI</a>
+.site-wm{{position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:9998;overflow:hidden;opacity:.03}}
+.site-wm span{{position:absolute;font-size:12px;font-weight:800;color:#fff;transform:rotate(-35deg);white-space:nowrap;letter-spacing:2px;font-family:'Sora',sans-serif;user-select:none}}
+</style></head><body>
+<div class="site-wm" id="swm"></div>
+<script>!function(){{var w=document.getElementById('swm');if(!w)return;var h='';for(var r=0;r<30;r++)for(var c=0;c<8;c++){{var t=r*120+Math.random()*40,l=c*250+Math.random()*60;h+='<span style="top:'+t+'px;left:'+l+'px">CELESYS.AI \u2022 CONFIDENTIAL</span>';}}w.innerHTML=h;}}();</script>
+<div class="wrap"><a href="/" class="back">← Back to Celesys AI</a>
 <h1>{title}</h1><p class="sub">Last updated: February 2026</p>
 {body}
 <div class="foot">
 <div class="foot-top">
-<div class="foot-brand">CELESYS <span>AI</span></div>
+<div><div class="foot-brand">CELESYS <span>AI</span></div><div style="font-size:9px;color:#4b5563;letter-spacing:1px;font-weight:600">RESEARCH PLATFORM</div></div>
 <div class="foot-links">
-<a href="/about">About</a><a href="/faq">FAQ</a><a href="/privacy">Privacy</a><a href="/terms">Terms</a><a href="/disclaimer">Disclaimer</a><a href="mailto:contact@celesys.ai">Contact</a>
+<a href="/about">About</a><a href="/faq">FAQ</a><a href="/privacy">Privacy</a><a href="/terms">Terms</a><a href="/disclaimer">Disclaimer</a><a href="mailto:contact@celesys.ai">✉ contact@celesys.ai</a>
 </div>
 </div>
 <div class="foot-copy">
