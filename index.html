@@ -800,6 +800,10 @@ renderMarketEvents();
 function renderMarketEvents(){
 const div=document.getElementById('eventAlertArea');
 if(!div||!_pulseData)return;
+// Restrict to authorized users only
+const el=document.getElementById('email');
+const em=el?(el.dataset.real||el.value).trim().toLowerCase():'';
+if(!TRADES_EMAILS.includes(em)){div.style.display='none';return}
 const d=_pulseData;
 let hasContent=false;
 let h='<div class="evt-bar">';
