@@ -156,7 +156,7 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
 .gridbg::after{content:'';position:absolute;inset:0;background:radial-gradient(ellipse 900px 500px at 50% 0%,rgba(59,130,246,0.06),transparent 70%)}
 
 /* NAV */
-nav{position:sticky;top:0;z-index:100;backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);background:rgba(6,10,19,0.88);border-bottom:1px solid var(--border);height:60px;display:flex;align-items:center;justify-content:space-between;padding:0 32px}
+nav{position:sticky;top:30px;z-index:99;backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);background:rgba(6,10,19,0.88);border-bottom:1px solid var(--border);height:60px;display:flex;align-items:center;justify-content:space-between;padding:0 32px}
 .nbrand{display:flex;align-items:center;gap:11px}
 .nlogo{width:34px;height:34px;border-radius:9px;background:linear-gradient(135deg,var(--blue),var(--cyan));display:flex;align-items:center;justify-content:center;font-family:'Sora',sans-serif;font-size:16px;font-weight:800;color:#fff;box-shadow:0 0 16px rgba(59,130,246,.2)}
 .nname{font-family:'Sora',sans-serif;font-size:15px;font-weight:700;letter-spacing:.3px;color:#fff}.nname span{color:var(--blue)}.ntag{font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:1.2px;font-weight:600;margin-top:-2px;display:block}
@@ -421,7 +421,7 @@ footer{position:relative;z-index:1;margin-top:32px;background:rgba(6,10,19,.95);
 @keyframes eventGlowHigh{0%,100%{box-shadow:0 0 15px rgba(239,68,68,.2),inset 0 0 15px rgba(239,68,68,.03)}50%{box-shadow:0 0 35px rgba(239,68,68,.35),inset 0 0 20px rgba(239,68,68,.06)}}
 @keyframes borderShimmer{0%{background-position:0% 50%}50%{background-position:100% 50%}100%{background-position:0% 50%}}
 @keyframes tickerScroll{0%{transform:translateX(0)}100%{transform:translateX(-50%)}}
-.global-ticker{width:100%;overflow:hidden;background:rgba(10,12,20,.95);border-bottom:1px solid rgba(255,255,255,.06);padding:6px 0;position:relative;z-index:50}
+.global-ticker{width:100%;overflow:hidden;background:rgba(10,12,20,.97);border-bottom:1px solid rgba(255,255,255,.06);padding:6px 0;position:fixed;top:0;left:0;z-index:100;backdrop-filter:blur(10px)}
 .global-ticker .ticker-track{display:flex;gap:20px;animation:tickerScroll 40s linear infinite;width:max-content}
 .global-ticker .ticker-track:hover{animation-play-state:paused}
 .global-ticker .ti{display:flex;align-items:center;gap:5px;font-size:11px;white-space:nowrap;padding:0 4px}
@@ -529,7 +529,7 @@ footer{position:relative;z-index:1;margin-top:32px;background:rgba(6,10,19,.95);
 <section class="hero">
 <div class="hero-eye"><div class="ldot"></div> Live Market Data &middot; Updated Every Minute</div>
 <h1>Master Global Equities in 60 Seconds.</h1>
-<p class="hero-sub" style="font-size:16px;line-height:1.8;max-width:620px">Precision Entry &amp; Exit Targets &middot; Institutional Risk Profiling &middot; Earnings Alpha &middot; Insider Sentiment<br><span style="color:var(--text3);font-size:14px">Institutional-grade reports at the speed of thought.</span></p>
+<p class="hero-sub" style="font-size:16px;line-height:1.8;max-width:620px">Precision Entry &amp; Exit Targets &middot; Institutional Risk Profiling &middot; Earnings Alpha<br>Insider Sentiment<br><span style="color:var(--text3);font-size:14px">Institutional-grade reports at the speed of thought.</span></p>
 <div class="hbadges">
 <div class="hb" style="border-color:rgba(16,185,129,.3);color:var(--green)">&#10003; Zero Signup &middot; Zero Cost</div>
 <div class="hb" style="border-color:rgba(59,130,246,.3);color:var(--blue)">&#9889; 60-Second Deep Dive</div>
@@ -696,18 +696,22 @@ document.addEventListener('click',e=>{if(e.target!==TI)AC.classList.remove('show
 document.getElementById('email').addEventListener('keypress',e=>{if(e.key==='Enter')TI.focus()});
 // Smart Trades tab: only visible for authorized email
 const TRADES_EMAILS=['vijy.dhulipala@gmail.com'];
+let _pulseData=null;
 async function fetchMarketPulse(){
-const el=document.getElementById('email');
-const email=(el.dataset.real||el.value).trim().toLowerCase();
-if(!TRADES_EMAILS.includes(email))return;
-const gDiv=document.getElementById('eventAlertGlobal');
-if(!gDiv)return;
 try{
 const r=await fetch('/api/market-pulse');
 const d=await r.json();
-if(!d.success)return;
+if(!d.success){console.log('Market pulse: no success');return}
+_pulseData=d;
+console.log('Market pulse loaded:',d.events?.length||0,'events,',d.upcoming?.length||0,'upcoming');
+renderMarketEvents();
+}catch(e){console.log('Market pulse fetch error:',e)}
+}
+function renderMarketEvents(){
+const div=document.getElementById('eventAlertArea');
+if(!div||!_pulseData)return;
+const d=_pulseData;
 let h='';
-// Events
 if(d.events&&d.events.length>0){
 d.events.forEach(evt=>{
 const isH=evt.severity==='HIGH';
@@ -731,7 +735,6 @@ ${evt.action?`<div style="font-size:11px;padding:6px 10px;border-radius:6px;back
 </div></div></div>`;
 });
 }
-// Upcoming events ticker
 if(d.upcoming&&d.upcoming.length>0){
 h+=`<div style="padding:8px 14px;border-radius:10px;background:rgba(59,130,246,.04);border:1px solid rgba(59,130,246,.1);margin-bottom:8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
 <span style="font-size:14px">&#128197;</span>
@@ -742,9 +745,7 @@ h+=`<span style="font-size:10px;color:var(--text2);padding:2px 8px;border-radius
 });
 h+=`</div>`;
 }
-gDiv.style.display=h?'block':'none';
-gDiv.innerHTML=h;
-}catch(e){console.log('Market pulse fetch failed:',e)}
+if(h){div.innerHTML=h;div.style.display='block'}
 }
 
 function checkTradesAccess(){
@@ -933,6 +934,7 @@ document.getElementById('w52section').innerHTML=`
 
 createCharts(d);createAnalysisSections(data.report,d,data.fund_holdings||{institutions:[],funds:[],summary:{}});
 document.getElementById('report').classList.add('show');
+renderMarketEvents();
 setTimeout(()=>document.getElementById('report').scrollIntoView({behavior:'smooth',block:'start'}),200);
 setTimeout(animSections,400)}
 
@@ -960,8 +962,8 @@ let verdict='HOLD',vc='hold';
 if(pe>0&&pe<15&&d.price_change_pct>0){verdict='BUY';vc='buy'}else if(pe>40||d.price_change_pct<-5){verdict='SELL';vc='sell'}
 
 const html=`
-<!-- GLOBAL EVENT ALERT — appears above tabs for authorized users -->
-<div id="eventAlertGlobal" style="display:none"></div>
+<!-- EVENT ALERTS + UPCOMING — rendered by fetchMarketPulse via renderMarketEvents -->
+<div id="eventAlertArea" style="display:none;margin-bottom:10px"></div>
 
 <!-- TAB BAR -->
 <div class="scroll-hint"><span>&#8595; Scroll for detailed breakdown &#8595;</span></div>

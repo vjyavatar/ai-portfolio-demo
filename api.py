@@ -1734,6 +1734,7 @@ async def ads_txt():
 # INDEX TRADES — AI Daily Trade Ideas (Restricted Access)
 # ═══════════════════════════════════════════════════════════
 TRADES_ALLOWED_EMAILS = ["vijy.dhulipala@gmail.com"]
+_trades_cache = {"date": None, "data": None}  # Cache trades for same day
 
 @app.get("/api/global-ticker")
 async def global_ticker():
@@ -1945,7 +1946,16 @@ async def index_trades(request: Request):
     if email not in TRADES_ALLOWED_EMAILS:
         return {"success": False, "error": "Access restricted. This feature is exclusively available to authorized users."}
     
-    print(f"🔥 Index trades requested by {email}")
+    # Check daily cache — same trades for same day (IST)
+    from datetime import timedelta
+    IST_NOW = datetime.utcnow() + timedelta(hours=5, minutes=30)
+    today_key = IST_NOW.strftime("%Y-%m-%d")
+    
+    if _trades_cache["date"] == today_key and _trades_cache["data"]:
+        print(f"📋 Returning cached trades for {today_key}")
+        return _trades_cache["data"]
+    
+    print(f"🔥 Index trades requested by {email} — generating fresh for {today_key}")
     
     # Fetch Indian index data
     indices_data = []
@@ -2535,6 +2545,7 @@ RULES FOR STOCK OPTIONS (up to 2 trades — 0 if no clear setup):
             json={
                 "model": "claude-sonnet-4-20250514",
                 "max_tokens": 6000,
+                "temperature": 0.2,
                 "messages": [{"role": "user", "content": prompt}]
             },
             timeout=120
@@ -2556,7 +2567,7 @@ RULES FOR STOCK OPTIONS (up to 2 trades — 0 if no clear setup):
         # Parse JSON
         result = json_mod.loads(raw)
         
-        return {
+        response_data = {
             "success": True,
             "market_assessment": result.get("market_assessment", {}),
             "market_context": result.get("market_context", ""),
@@ -2574,6 +2585,13 @@ RULES FOR STOCK OPTIONS (up to 2 trades — 0 if no clear setup):
             "is_expiry_day": is_expiry_day,
             "day_name": day_name
         }
+        
+        # Cache for same-day consistency
+        _trades_cache["date"] = today_key
+        _trades_cache["data"] = response_data
+        print(f"💾 Trades cached for {today_key}")
+        
+        return response_data
         
     except json_mod.JSONDecodeError as e:
         print(f"⚠️ JSON parse error: {e}")
