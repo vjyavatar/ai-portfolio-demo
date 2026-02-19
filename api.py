@@ -844,10 +844,10 @@ def fetch_screener_fundamentals(ticker: str) -> dict:
         cr = get_num(number, ['current_ratio'])
         if cr: result['currentRatio'] = cr
         
-        npm = get_num(number, ['net_profit_margin', 'npm', 'opm'])
+        npm = get_num(number, ['net_profit_margin', 'npm', 'profit_margin'])
         if npm: result['profitMargins'] = npm / 100
         
-        opm = get_num(number, ['operating_profit_margin', 'opm'])
+        opm = get_num(number, ['operating_profit_margin', 'opm', 'operating_margin'])
         if opm: result['operatingMargins'] = opm / 100
         
         dy = get_num(number, ['dividend_yield'])
@@ -1432,8 +1432,23 @@ def get_live_stock_data(company_name: str) -> dict:
             "current_ratio": safe_get('currentRatio') or 'N/A',
             "data_timestamp": datetime.now().strftime("%B %d, %Y at %I:%M %p UTC"),
             "data_source": data_source,
-            "verification_url": f"https://www.google.com/finance/quote/{ticker_symbol.replace('.NS', ':NSE').replace('.BO', ':BOM')}"
+            "verification_url": f"https://www.google.com/finance/quote/{ticker_symbol.replace('.NS', ':NSE').replace('.BO', ':BOM')}",
         }
+        
+        # Fetch real 6-month price history for Price Trend chart
+        try:
+            import yfinance as yf
+            hist_ticker = yf.Ticker(ticker_symbol)
+            hist = hist_ticker.history(period="6mo", interval="1mo")
+            if hist is not None and len(hist) > 1:
+                price_history = [round(float(row['Close']), 2) for _, row in hist.iterrows()]
+                live_data["price_history"] = price_history
+                print(f"📈 Price history: {len(price_history)} monthly points")
+            else:
+                live_data["price_history"] = None
+        except Exception as e:
+            print(f"⚠️ Price history fetch failed: {e}")
+            live_data["price_history"] = None
         
         # Cache the data to reduce API calls
         stock_data_cache[cache_key] = (live_data, current_time)
@@ -1586,7 +1601,7 @@ p,li{{font-size:14px;color:#9ca3af;margin-bottom:12px}}ul{{padding-left:20px}}a{
 <div class="edu-bar">
 <div class="edu-title">⚠ READ THIS BEFORE YOU TRADE</div>
 <div class="edu-lines">
-<div class="edu-line"><strong>NOT FINANCIAL ADVICE:</strong> This tool is for education only. Not a replacement for licensed financial advisors. Never invest money you cannot afford to lose.</div>
+<div class="edu-line"><strong>NOT FINANCIAL ADVICE:</strong> This tool is <b style="color:#f59e0b">for education only</b>. Not a replacement for licensed financial advisors. <b style="color:#f59e0b">Consult your financial advisor</b> before making any decisions. Never invest money you cannot afford to lose.</div>
 <div class="edu-line"><strong>DATA MAY BE DELAYED:</strong> Market data from third-party providers may be delayed or incomplete. Always cross-check with your broker.</div>
 <div class="edu-line"><strong>YOU CAN LOSE MONEY:</strong> All investments carry real risk. Past performance never guarantees future results. No affiliation with any brokerage.</div>
 </div>

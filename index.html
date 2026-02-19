@@ -583,13 +583,6 @@ Type to search <strong>100 stocks</strong> (US &amp; India) &middot; Or enter an
 </section>
 
 <section class="rpt" id="report">
-<!-- PRE-REPORT DISCLAIMER -->
-<div style="margin-bottom:16px;padding:14px 18px;border-radius:10px;background:rgba(239,68,68,.04);border:1px solid rgba(239,68,68,.12)">
-<div style="font-family:'Sora',sans-serif;font-size:11px;font-weight:800;color:var(--red);letter-spacing:.5px;margin-bottom:8px">&#9888; READ THIS BEFORE YOU TRADE</div>
-<div style="font-size:11px;color:var(--text3);line-height:1.6;padding-left:10px;border-left:2px solid rgba(239,68,68,.3);margin-bottom:4px"><strong style="color:var(--red)">NOT FINANCIAL ADVICE:</strong> This tool is <b style="color:#f59e0b">for education only</b>. Not a replacement for licensed financial advisors. <b style="color:#f59e0b">Consult your financial advisor</b> before making any decisions. Never invest money you cannot afford to lose.</div>
-<div style="font-size:11px;color:var(--text3);line-height:1.6;padding-left:10px;border-left:2px solid rgba(239,68,68,.3);margin-bottom:4px"><strong style="color:var(--red)">DATA MAY BE DELAYED:</strong> Market data from third-party providers may be delayed or incomplete. Always cross-check with your broker.</div>
-<div style="font-size:11px;color:var(--text3);line-height:1.6;padding-left:10px;border-left:2px solid rgba(239,68,68,.3)"><strong style="color:var(--red)">YOU CAN LOSE MONEY:</strong> All investments carry real risk. Past performance never guarantees future results. No affiliation with any brokerage.</div>
-</div>
 <div class="rphero">
 <div class="rptk" id="tickerTag"></div>
 <div class="rpco" id="companyName"></div>
@@ -2302,14 +2295,6 @@ html+=`<div style="margin-top:12px;padding:12px 16px;border-radius:8px;backgroun
 <div><div style="font-size:11px;font-weight:800;color:var(--amber);letter-spacing:.5px;margin-bottom:4px">HONEST NOTE</div>
 <div style="font-size:12px;color:var(--text2);line-height:1.6">${data.skipped_trades}</div></div></div>`;
 }
-
-// Disclaimer
-html+=`<div style="margin-top:20px;padding:14px 18px;border-radius:10px;background:rgba(239,68,68,.04);border:1px solid rgba(239,68,68,.15)">
-<div style="font-family:'Sora',sans-serif;font-size:11px;font-weight:800;color:var(--red);letter-spacing:.5px;margin-bottom:8px">&#9888; READ THIS BEFORE YOU TRADE</div>
-<div style="font-size:11px;color:var(--text3);line-height:1.6;padding-left:10px;border-left:2px solid rgba(239,68,68,.3);margin-bottom:4px"><strong style="color:var(--red)">NOT FINANCIAL ADVICE:</strong> This tool is <b style="color:#f59e0b">for education only</b>. Not a replacement for licensed financial advisors. <b style="color:#f59e0b">Consult your financial advisor</b> before making any decisions. Never invest money you cannot afford to lose.</div>
-<div style="font-size:11px;color:var(--text3);line-height:1.6;padding-left:10px;border-left:2px solid rgba(239,68,68,.3);margin-bottom:4px"><strong style="color:var(--red)">DATA MAY BE DELAYED:</strong> Market data from third-party providers may be delayed or incomplete. Always cross-check with your broker.</div>
-<div style="font-size:11px;color:var(--text3);line-height:1.6;padding-left:10px;border-left:2px solid rgba(239,68,68,.3)"><strong style="color:var(--red)">YOU CAN LOSE MONEY:</strong> All investments carry real risk. Past performance never guarantees future results. No affiliation with any brokerage.</div>
-</div>`;
 
 el.innerHTML=html;
 }catch(e){
