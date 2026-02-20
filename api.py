@@ -1442,6 +1442,18 @@ def get_live_stock_data(company_name: str) -> dict:
             "operating_cash_flow": safe_get('operatingCashflow') or 'N/A',
             "total_revenue": safe_get('totalRevenue') or 'N/A',
             "revenue_growth": round(safe_get('revenueGrowth') * (100 if abs(safe_get('revenueGrowth')) < 1 else 1), 2) if safe_get('revenueGrowth') else 'N/A',
+            "total_cash": safe_get('totalCash') or 'N/A',
+            "total_debt": safe_get('totalDebt') or 'N/A',
+            "quick_ratio": safe_get('quickRatio') or 'N/A',
+            "gross_margins": safe_get('grossMargins', 'N/A', is_pct=True),
+            "ebitda": safe_get('ebitda') or 'N/A',
+            "ebitda_margins": safe_get('ebitdaMargins', 'N/A', is_pct=True),
+            "revenue_per_share": safe_get('revenuePerShare') or 'N/A',
+            "peg_ratio": safe_get('pegRatio') or 'N/A',
+            "enterprise_to_ebitda": safe_get('enterpriseToEbitda') or 'N/A',
+            "earnings_quarterly_growth": round(safe_get('earningsQuarterlyGrowth') * (100 if abs(safe_get('earningsQuarterlyGrowth')) < 1 else 1), 2) if safe_get('earningsQuarterlyGrowth') else 'N/A',
+            "short_ratio": safe_get('shortRatio') or 'N/A',
+            "payout_ratio": round(safe_get('payoutRatio') * (100 if safe_get('payoutRatio') and abs(safe_get('payoutRatio')) < 1 else 1), 2) if safe_get('payoutRatio') else 'N/A',
             "data_timestamp": datetime.now().strftime("%B %d, %Y at %I:%M %p UTC"),
             "data_source": data_source,
             "verification_url": f"https://www.google.com/finance/quote/{ticker_symbol.replace('.NS', ':NSE').replace('.BO', ':BOM')}",
@@ -1968,7 +1980,7 @@ async def faq_page():
 <p>Celesys AI supports 100+ pre-loaded US stocks (AAPL, TSLA, NVDA, GOOGL, META, MSFT, AMZN, JPM) and Indian stocks (RELIANCE.NS, TCS.NS, HDFCBANK.NS, INFY.NS, ICICIBANK.NS). You can also enter any valid Yahoo Finance ticker for global market coverage including European, Asian, and emerging market equities.</p>
 
 <h2>How does the 8-factor stock verdict engine work?</h2>
-<p>The verdict engine scores stocks across 8 quantitative factors: P/E valuation, profitability (profit margins and ROE), financial health (debt-to-equity and current ratio), 52-week price position, price-to-book value, dividend yield, beta/volatility risk, and operating efficiency. The combined score produces a deterministic verdict — Strong Buy, Buy, Hold, Sell, or Strong Sell — that remains consistent regardless of daily price fluctuations.</p>
+<p>The verdict engine scores stocks across 20 quantitative factors: P/E valuation, profitability (profit margins and ROE), financial health (debt-to-equity and current ratio), 52-week price position, price-to-book value, dividend yield, beta/volatility risk, and operating efficiency. The combined score produces a deterministic verdict — Strong Buy, Buy, Hold, Sell, or Strong Sell — that remains consistent regardless of daily price fluctuations.</p>
 
 <h2>How does Celesys AI calculate intrinsic value?</h2>
 <p>Celesys AI computes intrinsic value using four established financial models: the Graham Number (square root of 22.5 × EPS × book value per share), the Benjamin Graham DCF growth formula (EPS × (8.5 + 2g) where g is the earnings growth rate), the Peter Lynch fair value (EPS × growth rate for PEG ratio of 1), and earnings yield comparison versus 10-year treasury bond rates. These models help investors determine whether a stock is trading above or below its fundamental worth.</p>
@@ -3275,6 +3287,13 @@ F8: Intraday Price Pattern (candle type, wick analysis, close position)
 F9: Intermarket Correlation (cross-market alignment score)
 F10: Day/Time Seasonality (weekday edge, time-of-day window)
 
+ADDITIONAL FACTORS FOR STOCK-SPECIFIC TRADES (apply to stock trades only):
+F11: Earnings Velocity — Revenue + EPS growth rate. Growing >15% = bullish bias. Declining = bearish bias.
+F12: Balance Sheet Health — D/E ratio, cash vs debt, quick ratio. Fortress balance = hold through dips.
+F13: Valuation vs Sector — P/E vs sector avg P/E. Deep discount = mean-reversion upside target.
+F14: FCF Quality — Positive FCF margin >10% = real earnings. Negative FCF = avoid long positions.
+F15: Technical SMA Position — Price vs 20/50/200 SMA. Above all 3 = strong trend. Below all 3 = avoid longs.
+
 Use the computed edge_pct as the BASE probability for each index.
 Only suggest a trade if computed edge >= 65% AND your analysis agrees.
 You may adjust ±5% based on your synthesis, but NEVER flip the direction from what the scoring engine computed.
@@ -3826,30 +3845,60 @@ CURRENT MARKET SNAPSHOT:
 • Change Today: {price_arrow} {currency_symbol}{abs(live_data['price_change']):.2f} ({live_data['price_change_pct']:+.2f}%)
 
 VALUATION METRICS (CURRENT):
-• P/E Ratio: {live_data['pe_ratio']}
+• P/E Ratio (Trailing): {live_data['pe_ratio']}
+• P/E Ratio (Forward): {live_data.get('forward_pe', 'N/A')}
 • P/B Ratio: {live_data['pb_ratio']}
+• PEG Ratio: {live_data.get('peg_ratio', 'N/A')}
+• EV/EBITDA: {live_data.get('enterprise_to_ebitda', 'N/A')}
 • Dividend Yield: {live_data['dividend_yield']}%
+• Payout Ratio: {live_data.get('payout_ratio', 'N/A')}%
+• Sector Avg P/E: {live_data.get('sector_avg_pe', 'N/A')}x
 • 52-Week High: {currency_symbol}{live_data['week52_high']:,.2f}
 • 52-Week Low: {currency_symbol}{live_data['week52_low']:,.2f}
 • Market Cap: {currency_symbol}{live_data['market_cap']:,} if available
 
-FINANCIAL HEALTH (LATEST):
-• Profit Margin: {live_data['profit_margin']}%
+PROFITABILITY & EFFICIENCY:
+• Gross Margins: {live_data.get('gross_margins', 'N/A')}%
 • Operating Margin: {live_data['operating_margin']}%
+• Profit Margin: {live_data['profit_margin']}%
+• EBITDA Margins: {live_data.get('ebitda_margins', 'N/A')}%
 • ROE: {live_data['roe']}%
+• Revenue Per Share: {live_data.get('revenue_per_share', 'N/A')}
+
+BALANCE SHEET & CASH POSITION:
+• Total Cash: {live_data.get('total_cash', 'N/A')}
+• Total Debt: {live_data.get('total_debt', 'N/A')}
 • Debt/Equity: {live_data['debt_to_equity']}
 • Current Ratio: {live_data['current_ratio']}
-• EPS (TTM): {live_data['eps_ttm']}
-• EPS (Forward): {live_data['eps_forward']}
+• Quick Ratio: {live_data.get('quick_ratio', 'N/A')}
 • Book Value/Share: {live_data['book_value']}
 • Free Cash Flow: {live_data.get('free_cash_flow', 'N/A')}
 • Operating Cash Flow: {live_data.get('operating_cash_flow', 'N/A')}
+• EBITDA: {live_data.get('ebitda', 'N/A')}
+
+GROWTH & EARNINGS VELOCITY:
 • Revenue Growth: {live_data.get('revenue_growth', 'N/A')}%
+• EPS Growth (Forward vs TTM): {live_data.get('eps_growth_pct', 'N/A')}%
+• Earnings Growth: {live_data.get('earnings_growth', 'N/A')}%
+• Quarterly Earnings Growth (YoY): {live_data.get('earnings_quarterly_growth', 'N/A')}%
+• EPS (TTM): {live_data['eps_ttm']}
+• EPS (Forward): {live_data['eps_forward']}
+• Total Revenue: {live_data.get('total_revenue', 'N/A')}
+
+TECHNICAL INDICATORS:
+• SMA 20-Day: {live_data.get('sma_20', 'N/A')}
+• SMA 50-Day: {live_data.get('sma_50', 'N/A')}
+• SMA 200-Day: {live_data.get('sma_200', 'N/A')}
+• Price vs SMA20: {'Above' if live_data.get('sma_20') and live_data['current_price'] > live_data['sma_20'] else 'Below' if live_data.get('sma_20') else 'N/A'}
+• Price vs SMA200: {'Above (uptrend)' if live_data.get('sma_200') and live_data['current_price'] > live_data['sma_200'] else 'Below (downtrend)' if live_data.get('sma_200') else 'N/A'}
+
+RISK & SENTIMENT:
+• Beta: {live_data['beta']}
+• Short Ratio: {live_data.get('short_ratio', 'N/A')}
 
 COMPANY INFORMATION:
 • Sector: {live_data['sector']}
 • Industry: {live_data['industry']}
-• Beta: {live_data['beta']}
 
 ═══════════════════════════════════════════════════════════════
 """
@@ -3990,11 +4039,153 @@ Industry: {live_data['industry']}
         if v_om > 20: v_score += 5; v_reasons.append("High operating efficiency [+5]")
         elif 0 < v_om < 5: v_score -= 3; v_reasons.append("Weak operating margins [-3]")
         
-        # COMPUTE VERDICT
-        if v_score >= 25: v_verdict = "STRONG BUY"; v_emoji = "🟢"
-        elif v_score >= 12: v_verdict = "BUY"; v_emoji = "🟢"
-        elif v_score >= -8: v_verdict = "HOLD"; v_emoji = "🟡"
-        elif v_score >= -22: v_verdict = "SELL"; v_emoji = "🔴"
+        # ═══ NEW FACTORS F9-F20 — Deep multi-factor analysis ═══
+        v_revG = _n(live_data.get('revenue_growth', 0))
+        v_epsG = _n(live_data.get('eps_growth_pct', 0))
+        v_earnG = _n(live_data.get('earnings_growth', 0))
+        v_sectorPE = _n(live_data.get('sector_avg_pe', 0)) or 20
+        v_sma20 = _n(live_data.get('sma_20', 0))
+        v_sma50 = _n(live_data.get('sma_50', 0))
+        v_sma200 = _n(live_data.get('sma_200', 0))
+        v_peg = _n(live_data.get('peg_ratio', 0))
+        v_evEbitda = _n(live_data.get('enterprise_to_ebitda', 0))
+        v_fcf = _n(live_data.get('free_cash_flow', 0))
+        v_ocf = _n(live_data.get('operating_cash_flow', 0))
+        v_totalCash = _n(live_data.get('total_cash', 0))
+        v_totalDebt = _n(live_data.get('total_debt', 0))
+        v_totalRev = _n(live_data.get('total_revenue', 0))
+        v_qr = _n(live_data.get('quick_ratio', 0))
+        v_gm = _n(live_data.get('gross_margins', 0))
+        v_ebitdaM = _n(live_data.get('ebitda_margins', 0))
+        v_eqg = _n(live_data.get('earnings_quarterly_growth', 0))
+        v_shortR = _n(live_data.get('short_ratio', 0))
+        v_payout = _n(live_data.get('payout_ratio', 0))
+        v_mcap = _n(live_data.get('market_cap', 0))
+        
+        # F9: EARNINGS VELOCITY — EPS + Revenue CAGR (±15)
+        v_bestEG = v_epsG or v_earnG
+        v_combG = (v_bestEG * 0.6 + v_revG * 0.4) if (v_bestEG and v_revG) else (v_bestEG or v_revG)
+        if v_combG:
+            if v_combG > 30: v_score += 12; v_reasons.append(f"Hypergrowth earnings velocity {v_combG:.0f}% CAGR [+12]")
+            elif v_combG > 15: v_score += 7; v_reasons.append(f"Strong growth trajectory {v_combG:.0f}% [+7]")
+            elif v_combG > 5: v_score += 3; v_reasons.append(f"Moderate growth {v_combG:.0f}% [+3]")
+            elif v_combG <= -15: v_score -= 8; v_reasons.append(f"Severe earnings decline {v_combG:.0f}% [-8]")
+            elif v_combG <= -5: v_score -= 4; v_reasons.append(f"Earnings contracting {v_combG:.0f}% [-4]")
+        if v_bestEG > 10 and v_revG > 10:
+            v_score += 3; v_reasons.append("Revenue + EPS both growing — quality momentum [+3]")
+        elif v_bestEG < -5 and v_revG < -5:
+            v_score -= 3; v_reasons.append("Revenue + EPS both declining — deterioration [-3]")
+        
+        # F10: RELATIVE VALUATION — P/E vs Sector (±10)
+        if v_pe > 0 and v_sectorPE > 0:
+            peR = v_pe / v_sectorPE
+            disc = abs((v_sectorPE - v_pe) / v_sectorPE * 100)
+            if peR < 0.6: v_score += 8; v_reasons.append(f"P/E {disc:.0f}% below sector avg ({v_sectorPE:.0f}x) [+8]")
+            elif peR < 0.85: v_score += 4; v_reasons.append(f"P/E {disc:.0f}% below sector — undervalued [+4]")
+            elif peR > 1.5: v_score -= 6; v_reasons.append(f"P/E {disc:.0f}% above sector — expensive vs peers [-6]")
+            elif peR > 1.2: v_score -= 2; v_reasons.append("P/E premium over sector [-2]")
+        
+        # F11: TECHNICAL MOMENTUM — SMA crossovers (±12)
+        tS = 0; tD = []
+        if v_sma20 > 0:
+            if v_price > v_sma20: tS += 2; tD.append("Above SMA20")
+            else: tS -= 2; tD.append("Below SMA20")
+        if v_sma200 > 0:
+            if v_price > v_sma200: tS += 3; tD.append("Above SMA200 uptrend")
+            else: tS -= 3; tD.append("Below SMA200 downtrend")
+        if v_sma20 > 0 and v_sma200 > 0:
+            if v_sma20 > v_sma200: tS += 2; tD.append("Golden Cross")
+            elif v_sma20 < v_sma200 * 0.95: tS -= 2; tD.append("Death Cross")
+        if v_sma50 > 0 and v_sma200 > 0 and v_price > v_sma50 and v_price > v_sma200:
+            tS += 2; tD.append("All MAs bullish")
+        tS = max(-6, min(6, tS))
+        if tD: v_score += tS; v_reasons.append(f"Technical: {', '.join(tD[:3])} [{'+' if tS >= 0 else ''}{tS}]")
+        
+        # F12: PEG RATIO — Growth at Reasonable Price (±8)
+        if v_peg > 0:
+            if v_peg < 0.8: v_score += 7; v_reasons.append(f"PEG bargain ({v_peg:.1f}) — growth underpriced [+7]")
+            elif v_peg < 1.2: v_score += 3; v_reasons.append(f"PEG fair ({v_peg:.1f}) [+3]")
+            elif v_peg > 2.5: v_score -= 5; v_reasons.append(f"PEG stretched ({v_peg:.1f}) — overpaying for growth [-5]")
+            elif v_peg > 1.8: v_score -= 2; v_reasons.append(f"PEG slightly high ({v_peg:.1f}) [-2]")
+        
+        # F13: CASH FLOW QUALITY — FCF health (±10)
+        if v_fcf > 0 and v_totalRev > 0:
+            fcfM = (v_fcf / v_totalRev) * 100
+            if fcfM > 15: v_score += 7; v_reasons.append(f"Excellent FCF margin {fcfM:.1f}% — cash machine [+7]")
+            elif fcfM > 5: v_score += 4; v_reasons.append(f"Healthy FCF {fcfM:.1f}% of revenue [+4]")
+        elif v_fcf < 0 and v_ocf > 0:
+            v_score -= 2; v_reasons.append("Negative FCF despite positive OCF — heavy capex [-2]")
+        elif v_fcf < 0 and v_ocf <= 0:
+            v_score -= 7; v_reasons.append("Negative cash flows — burning cash [-7]")
+        if v_ocf > 0 and v_totalDebt > 0:
+            dc = v_ocf / v_totalDebt
+            if dc > 0.5: v_score += 2; v_reasons.append(f"OCF covers {dc*100:.0f}% of debt [+2]")
+            elif dc < 0.1: v_score -= 2; v_reasons.append("Cash barely covers debt [-2]")
+        
+        # F14: BALANCE SHEET VERIFICATION — Cash vs Debt (±10)
+        if v_totalCash > 0 and v_totalDebt > 0:
+            cdr = v_totalCash / v_totalDebt
+            if cdr > 1.5: v_score += 6; v_reasons.append(f"Net cash — cash exceeds debt by {(cdr-1)*100:.0f}% [+6]")
+            elif cdr > 0.7: v_score += 3; v_reasons.append(f"Adequate cash — {cdr*100:.0f}% of debt covered [+3]")
+            elif cdr < 0.15: v_score -= 5; v_reasons.append(f"Cash crunch — only {cdr*100:.0f}% of debt covered [-5]")
+        elif v_totalCash > 0 and v_totalDebt == 0:
+            v_score += 4; v_reasons.append("Debt-free with cash on books [+4]")
+        if v_qr > 0:
+            if v_qr > 1.5: v_score += 2; v_reasons.append(f"Strong quick ratio {v_qr:.1f} — meets short-term obligations [+2]")
+            elif v_qr < 0.5: v_score -= 3; v_reasons.append(f"Weak quick ratio {v_qr:.1f} — solvency risk [-3]")
+        
+        # F15: EV/EBITDA — Enterprise valuation (±8)
+        if v_evEbitda > 0:
+            if v_evEbitda < 6: v_score += 7; v_reasons.append(f"Cheap EV/EBITDA {v_evEbitda:.1f}x — potential takeover value [+7]")
+            elif v_evEbitda < 10: v_score += 4; v_reasons.append(f"Reasonable EV/EBITDA {v_evEbitda:.1f}x [+4]")
+            elif v_evEbitda < 16: v_score += 1; v_reasons.append(f"Fair EV/EBITDA {v_evEbitda:.1f}x [+1]")
+            elif v_evEbitda > 25: v_score -= 5; v_reasons.append(f"Very expensive EV/EBITDA {v_evEbitda:.1f}x [-5]")
+            elif v_evEbitda > 18: v_score -= 2; v_reasons.append(f"Elevated EV/EBITDA {v_evEbitda:.1f}x [-2]")
+        
+        # F16: GROSS MARGIN POWER — Pricing power & moat (±7)
+        if v_gm > 0:
+            if v_gm > 60: v_score += 6; v_reasons.append(f"Elite gross margins {v_gm:.0f}% — strong moat [+6]")
+            elif v_gm > 40: v_score += 3; v_reasons.append(f"Healthy gross margins {v_gm:.0f}% [+3]")
+            elif v_gm < 20: v_score -= 4; v_reasons.append(f"Low gross margins {v_gm:.0f}% — weak pricing power [-4]")
+        
+        # F17: QUARTERLY EARNINGS MOMENTUM (±8)
+        if v_eqg:
+            if v_eqg > 30: v_score += 7; v_reasons.append(f"Quarterly earnings surging +{v_eqg:.0f}% YoY [+7]")
+            elif v_eqg > 15: v_score += 4; v_reasons.append(f"Strong quarterly growth +{v_eqg:.0f}% [+4]")
+            elif v_eqg > 5: v_score += 2; v_reasons.append(f"Moderate quarterly growth +{v_eqg:.0f}% [+2]")
+            elif v_eqg < -20: v_score -= 6; v_reasons.append(f"Quarterly earnings plunging {v_eqg:.0f}% [-6]")
+            elif v_eqg < -5: v_score -= 3; v_reasons.append(f"Quarterly decline {v_eqg:.0f}% [-3]")
+        
+        # F18: EBITDA MARGIN QUALITY (±5)
+        if v_ebitdaM > 0:
+            if v_ebitdaM > 30: v_score += 4; v_reasons.append(f"Strong EBITDA margins {v_ebitdaM:.0f}% — operational excellence [+4]")
+            elif v_ebitdaM > 15: v_score += 2; v_reasons.append(f"Healthy EBITDA margins {v_ebitdaM:.0f}% [+2]")
+            elif v_ebitdaM < 5: v_score -= 3; v_reasons.append(f"Thin EBITDA margins {v_ebitdaM:.0f}% [-3]")
+        
+        # F19: SHORT INTEREST SIGNAL (±5)
+        if v_shortR > 0:
+            if v_shortR > 10: v_score -= 4; v_reasons.append(f"Very high short interest ({v_shortR:.1f} days) — bearish sentiment [-4]")
+            elif v_shortR > 5: v_score -= 2; v_reasons.append(f"Elevated short interest ({v_shortR:.1f} days) [-2]")
+            elif v_shortR < 1.5: v_score += 2; v_reasons.append(f"Low short interest ({v_shortR:.1f} days) — bullish sentiment [+2]")
+        
+        # F20: DIVIDEND SUSTAINABILITY (±5)
+        if v_dy > 0 and v_payout > 0:
+            if v_payout < 40 and v_dy > 2: v_score += 4; v_reasons.append(f"Sustainable dividend — low payout {v_payout:.0f}% with {v_dy:.1f}% yield [+4]")
+            elif v_payout > 90: v_score -= 3; v_reasons.append(f"Unsustainable payout ratio {v_payout:.0f}% — dividend at risk [-3]")
+            elif v_payout > 70: v_score -= 1; v_reasons.append(f"High payout ratio {v_payout:.0f}% — limited dividend growth [-1]")
+        
+        # QUALITY COMBO BONUSES (±4)
+        if v_combG and v_combG > 15 and v_pm > 15:
+            v_score += 3; v_reasons.append("Growth + profitability combo — rare quality [+3]")
+        if v_combG and v_combG < 0 and v_pm < 5:
+            v_score -= 3; v_reasons.append("Declining growth + weak margins — avoid [-3]")
+        
+        # COMPUTE VERDICT — Adjusted thresholds for 20-factor scoring
+        if v_score >= 45: v_verdict = "STRONG BUY"; v_emoji = "🟢"
+        elif v_score >= 25: v_verdict = "BUY"; v_emoji = "🟢"
+        elif v_score >= 12: v_verdict = "ACCUMULATE"; v_emoji = "🟢"
+        elif v_score >= -12: v_verdict = "HOLD"; v_emoji = "🟡"
+        elif v_score >= -30: v_verdict = "SELL"; v_emoji = "🔴"
         else: v_verdict = "STRONG SELL"; v_emoji = "🔴"
         
         v_conviction = "High" if abs(v_score) > 30 else "Medium" if abs(v_score) > 15 else "Low"
@@ -4046,7 +4237,7 @@ CRITICAL INSTRUCTIONS:
 2. Current price is {currency_symbol}{live_data['current_price']:,.2f} - use THIS number
 3. Base all analysis on current market conditions
 4. Provide actionable, professional insights
-5. Your Recommendation MUST be: {v_verdict} {v_emoji} — this is pre-computed from 8 quantitative factors and is NON-NEGOTIABLE
+5. Your Recommendation MUST be: {v_verdict} {v_emoji} — this is pre-computed from 20 quantitative factors and is NON-NEGOTIABLE
 5. For Management Tone section, use analyst/earnings data if available, otherwise infer from P/E, margins, price position, beta, and dividend yield
 6. For QoQ and YoY analysis: if quarterly data is provided, calculate actual changes. If NOT provided, use available metrics to INFER trends (e.g., forward PE vs trailing PE shows earnings growth/decline, profit margins indicate operational trends, price vs 52W range shows momentum)
 7. Include specific growth predictions based on available data
@@ -4191,16 +4382,30 @@ Include specific price targets tied to management tone.]
 
 ---
 
-## 🎯 ENTRY & EXIT STRATEGY
+## 🎯 ENTRY & EXIT STRATEGY (Multi-Factor Driven)
 
 **Based on LIVE Price: {currency_symbol}{live_data['current_price']:,.2f}**
 
+CALCULATE ENTRY/EXIT using ALL these factors:
+1. SMA Support: 20-day ({live_data.get('sma_20','N/A')}), 50-day ({live_data.get('sma_50','N/A')}), 200-day ({live_data.get('sma_200','N/A')}) — Buy near SMA support, sell near SMA resistance
+2. 52-Week Range: High {currency_symbol}{live_data['week52_high']:,.2f}, Low {currency_symbol}{live_data['week52_low']:,.2f} — Use for range-based targets
+3. Book Value Floor: {live_data['book_value']} — absolute downside anchor
+4. Intrinsic Value: Use Graham/DCF/Lynch values above as fair value targets
+5. EV/EBITDA Implied: If EV/EBITDA is cheap (<10x), wider upside target; if expensive (>20x), tighter stop loss
+6. FCF Yield: FCF {live_data.get('free_cash_flow','N/A')} vs market cap — determines margin of safety
+7. Sector P/E: Current P/E vs sector avg {live_data.get('sector_avg_pe','N/A')}x — if below, target can be sector-mean reversion price
+8. Beta-Adjusted Risk: Beta {live_data['beta']} — higher beta = wider stop loss, lower beta = tighter
+
 ```
-Buy Below:        {currency_symbol}XXX  [Your target based on current price]
+Aggressive Buy:   {currency_symbol}XXX  [SMA200 or 52W range support — for swing traders]
+Accumulate Zone:  {currency_symbol}XXX  [SMA50 support or -5% from CMP — for investors]
 Current Price:    {currency_symbol}{live_data['current_price']:,.2f}  ◄── LIVE PRICE
-Sell Above:       {currency_symbol}XXX  [Your target]
-Stop Loss:        {currency_symbol}XXX  [Risk management]
+Target 1 (3M):   {currency_symbol}XXX  [Nearest SMA resistance or +10% move]
+Target 2 (12M):  {currency_symbol}XXX  [Intrinsic value / sector P/E convergence price]
+Stop Loss:       {currency_symbol}XXX  [Below SMA200 or key support — max loss defined by beta]
 ```
+
+Explain the LOGIC behind each level — which factor(s) drive it.
 
 ---
 
