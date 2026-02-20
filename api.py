@@ -2041,7 +2041,7 @@ async def ads_txt():
 # ═══════════════════════════════════════════════════════════
 # INDEX TRADES — AI Daily Trade Ideas (Restricted Access)
 # ═══════════════════════════════════════════════════════════
-TRADES_ALLOWED_EMAILS = ["vijy.dhulipala@gmail.com", "keerthi.yash222@gmail.com"]
+TRADES_ALLOWED_EMAILS = ["vijy.dhulipala@gmail.com"]
 _trades_cache = {"timestamp": None, "data": None}  # 30-min cache — live enough for trading, stable enough to not flip-flop
 
 # ═══ TRADE HISTORY — Auto-save for backtesting validation ═══
