@@ -442,7 +442,7 @@ footer{position:relative;z-index:1;margin-top:32px;background:#002f6c;border-top
 .fcopy{font-size:11px;color:var(--text3)}.fcopy strong{color:var(--text2)}
 .flinks{display:flex;gap:16px}.flinks a{font-size:11px;color:var(--text3);text-decoration:none;transition:color .2s}.flinks a:hover{color:var(--blue)}
 
-@media(max-width:768px){.irow{grid-template-columns:1fr}.mgrid{grid-template-columns:1fr 1fr}.cgrid,.cgrid2{grid-template-columns:1fr}.hero{padding:20px 16px 12px}.hero h1{font-size:26px}.ncenter,.nright{display:none}.sc{padding:0}.ftop{grid-template-columns:1fr;gap:24px}.fbot{flex-direction:column;text-align:center}.tab-btn{font-size:10px;padding:10px 12px;gap:3px}.tab-btn .tab-icon{width:20px;height:20px;font-size:12px;border-radius:4px}.tab-bar{position:sticky;top:60px;padding:2px 2px 0}.tab-scroll-area{padding:10px}.fab{bottom:96px;right:16px;padding:8px 16px;font-size:12px}.edu-bar{padding:10px 12px}.edu-bar .edu-lines{gap:3px 12px}.edu-bar .edu-line{font-size:9px}.feat-card{padding:8px}.icard{padding:16px;border-radius:12px}#convGrid{grid-template-columns:1fr !important}}
+@media(max-width:768px){.irow{grid-template-columns:1fr}.mgrid{grid-template-columns:1fr 1fr}.cgrid,.cgrid2{grid-template-columns:1fr}.hero{padding:20px 16px 12px}.hero h1{font-size:26px}.ncenter,.nright{display:none}.sc{padding:0}.ftop{grid-template-columns:1fr;gap:24px}.fbot{flex-direction:column;text-align:center}.tab-btn{font-size:10px;padding:10px 12px;gap:3px}.tab-btn .tab-icon{width:20px;height:20px;font-size:12px;border-radius:4px}.tab-bar{position:sticky;top:60px;padding:2px 2px 0}.sub-nav{top:105px}.tab-scroll-area{padding:10px}.fab{bottom:96px;right:16px;padding:8px 16px;font-size:12px}.edu-bar{padding:10px 12px}.edu-bar .edu-lines{gap:3px 12px}.edu-bar .edu-line{font-size:9px}.feat-card{padding:8px}.icard{padding:16px;border-radius:12px}#convGrid{grid-template-columns:1fr !important}}
 @media(max-width:480px){.mgrid{grid-template-columns:1fr}.hbadges{flex-direction:column;align-items:center}}
 
 /* FLOATING FEEDBACK PANEL */
@@ -516,7 +516,7 @@ footer{position:relative;z-index:1;margin-top:32px;background:#002f6c;border-top
 .btt:hover{color:var(--blue);border-color:var(--blue);background:rgba(59,130,246,.06)}
 
 /* Scroll down hint between charts and tabs */
-.sub-nav{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;padding:8px 0}
+.sub-nav{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;padding:8px 12px;position:sticky;top:140px;z-index:96;background:rgba(255,255,255,.97);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-bottom:1px solid rgba(0,47,108,.06);margin-left:-18px;margin-right:-18px}
 .sub-nav a{font-size:11px;font-weight:600;color:#8899aa;padding:4px 12px;border-radius:100px;background:rgba(0,47,108,.04);border:1px solid rgba(0,47,108,.06);text-decoration:none;transition:all .2s;cursor:pointer;white-space:nowrap}
 .sub-nav a:hover,.sub-nav a.active{color:#002f6c;background:rgba(0,47,108,.08);border-color:rgba(0,47,108,.15)}
 .sub-nav[data-tab]{display:none}
@@ -1407,31 +1407,43 @@ if(dy>0&&payoutR>0){if(payoutR<40&&dy>2){score+=4;reasons.push('Sustainable divi
 else if(payoutR>90){score-=3;reasons.push('Unsustainable payout ('+payoutR.toFixed(0)+'%) \u2014 dividend risk [-3]')}
 else if(payoutR>70){score-=1;reasons.push('High payout ratio ('+payoutR.toFixed(0)+'%) [-1]')}}
 
-// F20: QUALITY COMBOS — Multi-factor convergence (±6)
+// F20: QUALITY COMBOS — Multi-factor convergence (±8)
 if(combG&&combG>15&&pm>15){score+=3;reasons.push('Growth + profitability combo \u2014 rare quality [+3]')}
 if(combG&&combG<0&&pm<5){score-=3;reasons.push('Declining growth + weak margins \u2014 avoid [-3]')}
 if(pb>0&&pb<1.5&&pe>0&&pe<sectorPE&&fcf>0){score+=3;reasons.push('P/B + P/E below sector with positive FCF \u2014 deep value [+3]')}
 if(gm>50&&roe>20&&de<50){score+=3;reasons.push('High margins + high ROE + low debt \u2014 compounding machine [+3]')}
+// VALUE TRAP detection: cheap valuation + deteriorating fundamentals
+if(pe>0&&pe<15&&combG&&combG<-5&&pm<8){score-=6;reasons.push('VALUE TRAP: cheap P/E but shrinking earnings + thin margins [-6]')}
+// GROWTH TRAP detection: expensive + growth decelerating
+if(pe>30&&combG&&combG<5&&fpe>0&&fpe>pe*0.9){score-=5;reasons.push('GROWTH TRAP: premium valuation but growth stalling [-5]')}
+// TRIPLE STRENGTH: valuation + profitability + momentum all positive
+if(pe>0&&pe<20&&pm>15&&roe>15&&price>sma50&&price>sma200){score+=4;reasons.push('Triple Strength: fair value + profitable + above key SMAs [+4]')}
+// TRIPLE WEAKNESS: expensive + unprofitable + below key levels
+if(pe>35&&pm<5&&price<sma200){score-=4;reasons.push('Triple Weakness: overvalued + weak margins + below SMA 200 [-4]')}
 
-// ═══ VERDICT — 20-factor scoring ═══
+// ═══ VERDICT — 20-factor scoring with QUALITY GATES ═══
 const totalFactors=reasons.length;
 const bullish=reasons.filter(r=>r.includes('[+')).length;
 const bearish=reasons.filter(r=>r.includes('[-')).length;
+const netRatio=totalFactors>0?(bullish-bearish)/totalFactors:0;
 let verdict,vc,conviction,emoji;
-if(score>=45){verdict='STRONG BUY';vc='buy';conviction='Very High';emoji='\uD83D\uDFE2'}
-else if(score>=25){verdict='BUY';vc='buy';conviction='High';emoji='\uD83D\uDFE2'}
-else if(score>=12){verdict='ACCUMULATE';vc='buy';conviction='Medium';emoji='\uD83D\uDFE2'}
-else if(score>=-12){verdict='HOLD';vc='hold';conviction=Math.abs(score)<5?'Low':'Medium';emoji='\uD83D\uDFE1'}
-else if(score>=-30){verdict='SELL';vc='sell';conviction='Medium';emoji='\uD83D\uDD34'}
-else{verdict='STRONG SELL';vc='sell';conviction='High';emoji='\uD83D\uDD34'}
+// Quality gates: score threshold PLUS minimum factor count AND net ratio
+// This prevents inflated verdicts from a few extreme factors
+if(score>=55&&bullish>=8&&netRatio>0.4){verdict='STRONG BUY';vc='buy';conviction='Very High';emoji='\uD83D\uDFE2'}
+else if(score>=35&&bullish>=6&&netRatio>0.25){verdict='BUY';vc='buy';conviction='High';emoji='\uD83D\uDFE2'}
+else if(score>=18&&bullish>=4){verdict='ACCUMULATE';vc='buy';conviction='Medium';emoji='\uD83D\uDFE2'}
+else if(score>=-18){verdict='HOLD';vc='hold';conviction=Math.abs(score)<8?'Low':'Medium';emoji='\uD83D\uDFE1'}
+else if(score>=-35){verdict='SELL';vc='sell';conviction='Medium';emoji='\uD83D\uDD34'}
+else if(bearish>=5){verdict='STRONG SELL';vc='sell';conviction='Very High';emoji='\uD83D\uDD34'}
+else{verdict='SELL';vc='sell';conviction='High';emoji='\uD83D\uDD34'}
 
 return {verdict,vc,score,conviction,emoji,reasons,totalFactors,bullish,bearish,
-  explain:verdict==='STRONG BUY'?'Multiple deep-analysis factors strongly favor this stock across valuation, growth, cash flow, balance sheet, and technicals. High conviction.'
-  :verdict==='BUY'?'Fundamentals, growth trajectory and multi-factor analysis look favorable. Worth building a position.'
-  :verdict==='ACCUMULATE'?'Positive signals outweigh negatives across 20 factors. Gradually build position on dips.'
-  :verdict==='SELL'?'Fundamental + technical concerns dominate across multiple factors. Consider reducing.'
-  :verdict==='STRONG SELL'?'Serious red flags across valuation, cash flow, balance sheet and technicals. Protect capital.'
-  :'Balanced signals across 20 factors. No strong directional edge \u2014 wait for catalyst.'}
+  explain:verdict==='STRONG BUY'?'Exceptional multi-factor conviction: '+bullish+' bullish factors across valuation, growth, cash flow, balance sheet, and technicals all align. Rare setup.'
+  :verdict==='BUY'?'Strong fundamentals with '+bullish+' positive factors outweighing '+bearish+' negatives. High-conviction setup worth a meaningful position.'
+  :verdict==='ACCUMULATE'?'More positives than negatives across 20 factors ('+bullish+' vs '+bearish+'). Build position gradually on dips.'
+  :verdict==='SELL'?'Red flags dominate with '+bearish+' negative factors. Multiple concerns across fundamentals and/or technicals.'
+  :verdict==='STRONG SELL'?'Severe multi-factor deterioration: '+bearish+' bearish signals across valuation, cash flow, balance sheet and technicals. Protect capital immediately.'
+  :'Mixed signals — '+bullish+' bullish vs '+bearish+' bearish across 20 factors. No strong directional edge \u2014 wait for catalyst or clarity.'}
 }
 
 let vResult;
@@ -1785,6 +1797,7 @@ try{populateManagement(report)}catch(e){console.warn('populateManagement error:'
 try{populateFundHoldings(report, fundData)}catch(e){console.warn('populateFundHoldings error:',e)}
 try{populateWhatsNext(report)}catch(e){console.warn('populateWhatsNext error:',e)}
 try{generateSmallCapRecommendations(d)}catch(e){console.warn('generateSmallCapRecommendations error:',e)}
+try{renderConviction()}catch(e){console.warn('renderConviction error:',e)}
 // Auto-open Quick Intel tab
 switchTab('quick');
 // Refresh watermark with user email

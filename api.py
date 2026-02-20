@@ -4256,21 +4256,39 @@ Industry: {live_data['industry']}
             elif v_payout > 90: v_score -= 3; v_reasons.append(f"Unsustainable payout ratio {v_payout:.0f}% — dividend at risk [-3]")
             elif v_payout > 70: v_score -= 1; v_reasons.append(f"High payout ratio {v_payout:.0f}% — limited dividend growth [-1]")
         
-        # QUALITY COMBO BONUSES (±4)
+        # QUALITY COMBO BONUSES (±8)
         if v_combG and v_combG > 15 and v_pm > 15:
             v_score += 3; v_reasons.append("Growth + profitability combo — rare quality [+3]")
         if v_combG and v_combG < 0 and v_pm < 5:
             v_score -= 3; v_reasons.append("Declining growth + weak margins — avoid [-3]")
+        # VALUE TRAP: cheap but deteriorating
+        if v_pe > 0 and v_pe < 15 and v_combG and v_combG < -5 and v_pm < 8:
+            v_score -= 6; v_reasons.append("VALUE TRAP: cheap P/E but shrinking earnings + thin margins [-6]")
+        # GROWTH TRAP: expensive + growth stalling
+        if v_pe > 30 and v_combG and v_combG < 5 and v_fpe > 0 and v_fpe > v_pe * 0.9:
+            v_score -= 5; v_reasons.append("GROWTH TRAP: premium valuation but growth stalling [-5]")
+        # TRIPLE STRENGTH
+        if v_pe > 0 and v_pe < 20 and v_pm > 15 and v_roe > 15:
+            v_score += 4; v_reasons.append("Triple Strength: fair value + profitable + strong ROE [+4]")
+        # TRIPLE WEAKNESS
+        if v_pe > 35 and v_pm < 5:
+            v_score -= 4; v_reasons.append("Triple Weakness: overvalued + weak margins [-4]")
         
-        # COMPUTE VERDICT — Adjusted thresholds for 20-factor scoring
-        if v_score >= 45: v_verdict = "STRONG BUY"; v_emoji = "🟢"
-        elif v_score >= 25: v_verdict = "BUY"; v_emoji = "🟢"
-        elif v_score >= 12: v_verdict = "ACCUMULATE"; v_emoji = "🟢"
-        elif v_score >= -12: v_verdict = "HOLD"; v_emoji = "🟡"
-        elif v_score >= -30: v_verdict = "SELL"; v_emoji = "🔴"
-        else: v_verdict = "STRONG SELL"; v_emoji = "🔴"
+        # COMPUTE VERDICT — Tightened thresholds with quality gates
+        v_bullish = len([r for r in v_reasons if '[+' in r])
+        v_bearish = len([r for r in v_reasons if '[-' in r])
+        v_total = len(v_reasons) if v_reasons else 1
+        v_net_ratio = (v_bullish - v_bearish) / v_total
         
-        v_conviction = "High" if abs(v_score) > 30 else "Medium" if abs(v_score) > 15 else "Low"
+        if v_score >= 55 and v_bullish >= 8 and v_net_ratio > 0.4: v_verdict = "STRONG BUY"; v_emoji = "🟢"
+        elif v_score >= 35 and v_bullish >= 6 and v_net_ratio > 0.25: v_verdict = "BUY"; v_emoji = "🟢"
+        elif v_score >= 18 and v_bullish >= 4: v_verdict = "ACCUMULATE"; v_emoji = "🟢"
+        elif v_score >= -18: v_verdict = "HOLD"; v_emoji = "🟡"
+        elif v_score >= -35: v_verdict = "SELL"; v_emoji = "🔴"
+        elif v_bearish >= 5: v_verdict = "STRONG SELL"; v_emoji = "🔴"
+        else: v_verdict = "SELL"; v_emoji = "🔴"
+        
+        v_conviction = "Very High" if abs(v_score) > 50 else "High" if abs(v_score) > 30 else "Medium" if abs(v_score) > 15 else "Low"
         
         verdict_card = f"""
 ═══ PRE-COMPUTED STOCK VERDICT (deterministic — USE THIS) ═══
