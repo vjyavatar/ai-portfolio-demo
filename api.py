@@ -1991,7 +1991,7 @@ async def ads_txt():
 # ═══════════════════════════════════════════════════════════
 # INDEX TRADES — AI Daily Trade Ideas (Restricted Access)
 # ═══════════════════════════════════════════════════════════
-TRADES_ALLOWED_EMAILS = ["vijy.dhulipala@gmail.com"]
+TRADES_ALLOWED_EMAILS = ["vijy.dhulipala@gmail.com", "keerthi.yash222@gmail.com"]
 _trades_cache = {"timestamp": None, "data": None}  # 30-min cache — live enough for trading, stable enough to not flip-flop
 
 # ═══ TRADE HISTORY — Auto-save for backtesting validation ═══
@@ -2104,6 +2104,122 @@ async def global_ticker():
         results.append({"name": "GSR", "flag": "⚖️", "price": gsr, "change": 0, "change_pct": 0})
     
     return {"success": True, "indices": results}
+
+@app.get("/api/stock-quick")
+async def stock_quick(ticker: str = ""):
+    """Lightweight stock data — returns only metrics needed for decision algorithm. No AI, instant response."""
+    import yfinance as yf
+    from datetime import datetime, timedelta
+    
+    ticker = ticker.strip().upper()
+    if not ticker:
+        return {"success": False, "error": "Ticker required"}
+    
+    try:
+        t = yf.Ticker(ticker)
+        info = t.info or {}
+        
+        price = info.get('currentPrice') or info.get('regularMarketPrice') or info.get('previousClose') or 0
+        if not price:
+            return {"success": False, "error": f"No data for {ticker}"}
+        
+        def sn(key, default=0):
+            v = info.get(key)
+            if v is None or v == 'N/A':
+                return default
+            try:
+                return float(v)
+            except:
+                return default
+        
+        # SMA calculations
+        sma20 = sma50 = sma200 = None
+        try:
+            hist = t.history(period="1y")
+            if not hist.empty and len(hist) >= 20:
+                sma20 = round(float(hist['Close'].tail(20).mean()), 2)
+            if not hist.empty and len(hist) >= 50:
+                sma50 = round(float(hist['Close'].tail(50).mean()), 2)
+            if not hist.empty and len(hist) >= 200:
+                sma200 = round(float(hist['Close'].tail(200).mean()), 2)
+        except:
+            pass
+        
+        # EPS growth
+        eps_growth = 'N/A'
+        try:
+            eps_t = sn('trailingEps')
+            eps_f = sn('forwardEps')
+            if eps_t and eps_f and eps_t != 0:
+                eps_growth = round(((eps_f - eps_t) / abs(eps_t)) * 100, 1)
+        except:
+            pass
+        
+        # Revenue growth
+        rev_growth = sn('revenueGrowth')
+        if rev_growth and abs(rev_growth) < 1:
+            rev_growth = round(rev_growth * 100, 2)
+        elif rev_growth:
+            rev_growth = round(rev_growth, 2)
+        else:
+            rev_growth = 'N/A'
+        
+        # Earnings growth
+        eg = sn('earningsGrowth')
+        if eg and abs(eg) < 1 and eg != 0:
+            eg = round(eg * 100, 1)
+        elif eg:
+            eg = round(eg, 1)
+        else:
+            eg = 'N/A'
+        
+        # Sector PE
+        sector_pe_map = {
+            'Technology': 30, 'Communication Services': 22, 'Consumer Cyclical': 25,
+            'Consumer Defensive': 28, 'Financial Services': 15, 'Healthcare': 25,
+            'Industrials': 22, 'Basic Materials': 18, 'Energy': 12,
+            'Utilities': 18, 'Real Estate': 35
+        }
+        sec = info.get('sector', '')
+        
+        pm = sn('profitMargins')
+        if pm and abs(pm) < 1:
+            pm = round(pm * 100, 2)
+        
+        roe_val = sn('returnOnEquity')
+        if roe_val and abs(roe_val) < 1:
+            roe_val = round(roe_val * 100, 2)
+        
+        currency = info.get('currency', 'USD')
+        
+        return {
+            "success": True,
+            "ticker": ticker,
+            "company_name": info.get('longName', ticker),
+            "current_price": round(price, 2),
+            "currency": currency,
+            "pe_ratio": round(sn('trailingPE'), 2) if sn('trailingPE') else 'N/A',
+            "forward_pe": round(sn('forwardPE'), 2) if sn('forwardPE') else 'N/A',
+            "pb_ratio": round(sn('priceToBook'), 2) if sn('priceToBook') else 'N/A',
+            "profit_margin": pm or 'N/A',
+            "roe": roe_val or 'N/A',
+            "beta": round(sn('beta', 1), 2),
+            "dividend_yield": round(sn('dividendYield') * 100, 2) if sn('dividendYield') and sn('dividendYield') < 1 else round(sn('dividendYield'), 2) if sn('dividendYield') else 0,
+            "week52_high": round(sn('fiftyTwoWeekHigh'), 2),
+            "week52_low": round(sn('fiftyTwoWeekLow'), 2),
+            "sma_20": sma20,
+            "sma_50": sma50,
+            "sma_200": sma200,
+            "eps_growth_pct": eps_growth,
+            "revenue_growth": rev_growth,
+            "earnings_growth": eg,
+            "sector_avg_pe": sector_pe_map.get(sec, 20),
+            "sector": sec,
+            "market_cap": int(sn('marketCap')) if sn('marketCap') > 1e6 else 0,
+        }
+    except Exception as e:
+        return {"success": False, "error": f"Failed to fetch data for {ticker}: {str(e)[:100]}"}
+
 
 @app.get("/api/market-pulse")
 async def market_pulse():
