@@ -151,7 +151,7 @@ gtag('js',new Date());gtag('config','G-WW55EQ7ZB8');
       "name": "How does the 20-factor stock verdict engine work?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "The Celesys AI verdict engine scores stocks across 14 quantitative factors: P/E valuation, profitability (margins and ROE), financial health (debt-to-equity and current ratio), 52-week price position, price-to-book value, dividend yield, beta/volatility risk, and operating efficiency. The combined score produces a deterministic verdict — Strong Buy, Buy, Hold, Sell, or Strong Sell — that remains consistent regardless of daily price noise."
+        "text": "The Celesys AI verdict engine scores stocks across 20 quantitative factors: P/E valuation, forward P/E discount, profitability (margins and ROE), financial health (debt-to-equity, current and quick ratio), cash vs debt position, 52-week price position, price-to-book value, dividend yield and sustainability, beta/volatility risk, operating efficiency, earnings velocity (EPS + revenue CAGR), relative valuation vs sector P/E, technical momentum (SMA 20/50/200 crossovers), PEG ratio, cash flow quality (FCF margin), EV/EBITDA enterprise valuation, gross margin power, EBITDA margin quality, short interest signal, and multi-factor quality combos. The combined score produces a deterministic verdict — Strong Buy, Buy, Accumulate, Hold, Sell, or Strong Sell — that remains consistent regardless of daily price noise."
       }
     },
     {
@@ -323,28 +323,40 @@ nav{position:sticky;top:30px;z-index:99;backdrop-filter:blur(24px);-webkit-backd
 .si{width:34px;height:34px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0}
 .st{font-family:'Sora',sans-serif;font-size:14px;font-weight:700;letter-spacing:-.2px;flex:1}
 .sbody{padding:12px 18px 16px;overflow:visible}
-.tab-bar{display:flex;gap:0;margin-bottom:0;background:#ffffff;border:none;border-bottom:2px solid #e5e7eb;border-radius:0;padding:0;position:sticky;top:90px;z-index:10;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;box-shadow:0 2px 8px rgba(0,0,0,.05)}
+.tab-bar{display:flex;gap:2px;margin-bottom:0;background:linear-gradient(135deg,#f8fafc 0%,#eef2f7 100%);border:none;border-bottom:2px solid #d1d9e6;border-radius:0;padding:4px 4px 0;position:sticky;top:90px;z-index:10;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;box-shadow:0 4px 20px rgba(0,20,60,.08)}
 .tab-bar::-webkit-scrollbar{display:none}
 .tab-bar.attention{animation:tabPulse 2s ease 3;border-color:rgba(59,130,246,.5);box-shadow:0 0 20px rgba(59,130,246,.15)}
 @keyframes tabPulse{0%,100%{border-color:rgba(0,120,212,.25);box-shadow:0 0 10px rgba(59,130,246,.05)}50%{border-color:rgba(59,130,246,.6);box-shadow:0 0 25px rgba(0,120,212,.25)}}
 .tab-scroll-area{overflow-y:visible;border:none;border-radius:0;padding:18px 0;background:transparent;scrollbar-width:thin;scrollbar-color:rgba(0,47,108,.15) transparent}
 .tab-scroll-area::-webkit-scrollbar{width:6px}.tab-scroll-area::-webkit-scrollbar-thumb{background:rgba(59,130,246,.25);border-radius:3px}.tab-scroll-area::-webkit-scrollbar-track{background:transparent}
-.tab-btn{flex:none;padding:14px 22px;border:none;border-radius:0;cursor:pointer;font-family:'Sora',sans-serif;font-size:13px;font-weight:600;transition:all .15s;background:transparent;color:#8899aa;letter-spacing:.2px;display:flex;align-items:center;justify-content:center;gap:6px;border-bottom:3px solid transparent;white-space:nowrap}
-.tab-btn:hover:not(.active){background:rgba(0,47,108,.02)}
-.tab-btn[data-color="green"]:hover:not(.active){color:#14a23a}
-.tab-btn[data-color="blue"]:hover:not(.active){color:#002f6c}
-.tab-btn[data-color="purple"]:hover:not(.active){color:#6b21a8}
-.tab-btn[data-color="cyan"]:hover:not(.active){color:#0a6ebd}
-.tab-btn[data-color="amber"]:hover:not(.active){color:#b45309}
-.tab-btn[data-color="red"]:hover:not(.active){color:#d0021b}
-.tab-btn.active{font-weight:800}
-.tab-btn[data-color="green"].active{color:#14a23a;border-bottom-color:#14a23a;background:rgba(20,162,58,.04)}
-.tab-btn[data-color="blue"].active{color:#002f6c;border-bottom-color:#002f6c;background:rgba(0,47,108,.03)}
-.tab-btn[data-color="purple"].active{color:#6b21a8;border-bottom-color:#6b21a8;background:rgba(107,33,168,.03)}
-.tab-btn[data-color="cyan"].active{color:#0a6ebd;border-bottom-color:#0a6ebd;background:rgba(10,110,189,.03)}
-.tab-btn[data-color="amber"].active{color:#b45309;border-bottom-color:#d48a00;background:rgba(212,138,0,.04)}
-.tab-btn[data-color="red"].active{color:#d0021b;border-bottom-color:#d0021b;background:rgba(208,2,27,.03)}
-.tab-btn{position:relative}
+.tab-btn{flex:none;padding:12px 20px;border:none;border-radius:8px 8px 0 0;cursor:pointer;font-family:'Sora',sans-serif;font-size:12px;font-weight:600;transition:all .2s;background:transparent;color:#7b8da0;letter-spacing:.3px;display:flex;align-items:center;justify-content:center;gap:6px;border-bottom:3px solid transparent;white-space:nowrap;position:relative}
+.tab-btn .tab-icon{font-size:14px;display:inline-flex;width:24px;height:24px;align-items:center;justify-content:center;border-radius:6px;transition:all .2s}
+.tab-btn:hover:not(.active){background:rgba(255,255,255,.8);transform:translateY(-1px)}
+.tab-btn[data-color="green"]:hover:not(.active){color:#14a23a;border-bottom-color:rgba(20,162,58,.3)}
+.tab-btn[data-color="blue"]:hover:not(.active){color:#1a5fb4;border-bottom-color:rgba(0,47,108,.3)}
+.tab-btn[data-color="navy"]:hover:not(.active){color:#002f6c;border-bottom-color:rgba(0,47,108,.3)}
+.tab-btn[data-color="purple"]:hover:not(.active){color:#6b21a8;border-bottom-color:rgba(107,33,168,.3)}
+.tab-btn[data-color="cyan"]:hover:not(.active){color:#0a6ebd;border-bottom-color:rgba(10,110,189,.3)}
+.tab-btn[data-color="amber"]:hover:not(.active){color:#b45309;border-bottom-color:rgba(180,83,9,.3)}
+.tab-btn[data-color="red"]:hover:not(.active){color:#d0021b;border-bottom-color:rgba(208,2,27,.3)}
+.tab-btn[data-color="teal"]:hover:not(.active){color:#0d9488;border-bottom-color:rgba(13,148,136,.3)}
+.tab-btn.active{font-weight:800;background:#ffffff;box-shadow:0 -2px 10px rgba(0,0,0,.06);border-bottom:3px solid transparent;transform:translateY(-1px)}
+.tab-btn[data-color="green"].active{color:#14a23a;border-bottom-color:#14a23a;background:linear-gradient(to bottom,#f0fdf4,#ffffff)}
+.tab-btn[data-color="green"].active .tab-icon{background:rgba(20,162,58,.12);color:#14a23a}
+.tab-btn[data-color="blue"].active{color:#1a5fb4;border-bottom-color:#1a5fb4;background:linear-gradient(to bottom,#eff6ff,#ffffff)}
+.tab-btn[data-color="blue"].active .tab-icon{background:rgba(26,95,180,.12);color:#1a5fb4}
+.tab-btn[data-color="navy"].active{color:#002f6c;border-bottom-color:#002f6c;background:linear-gradient(to bottom,#eef2f7,#ffffff)}
+.tab-btn[data-color="navy"].active .tab-icon{background:rgba(0,47,108,.1);color:#002f6c}
+.tab-btn[data-color="purple"].active{color:#6b21a8;border-bottom-color:#6b21a8;background:linear-gradient(to bottom,#faf5ff,#ffffff)}
+.tab-btn[data-color="purple"].active .tab-icon{background:rgba(107,33,168,.1);color:#6b21a8}
+.tab-btn[data-color="cyan"].active{color:#0a6ebd;border-bottom-color:#0a6ebd;background:linear-gradient(to bottom,#f0f9ff,#ffffff)}
+.tab-btn[data-color="cyan"].active .tab-icon{background:rgba(10,110,189,.1);color:#0a6ebd}
+.tab-btn[data-color="amber"].active{color:#b45309;border-bottom-color:#d48a00;background:linear-gradient(to bottom,#fffbeb,#ffffff)}
+.tab-btn[data-color="amber"].active .tab-icon{background:rgba(212,138,0,.12);color:#b45309}
+.tab-btn[data-color="red"].active{color:#d0021b;border-bottom-color:#d0021b;background:linear-gradient(to bottom,#fef2f2,#ffffff)}
+.tab-btn[data-color="red"].active .tab-icon{background:rgba(208,2,27,.1);color:#d0021b}
+.tab-btn[data-color="teal"].active{color:#0d9488;border-bottom-color:#0d9488;background:linear-gradient(to bottom,#f0fdfa,#ffffff)}
+.tab-btn[data-color="teal"].active .tab-icon{background:rgba(13,148,136,.1);color:#0d9488}
 .tab-btn::after{content:attr(data-tip);position:absolute;bottom:calc(100% + 10px);left:50%;transform:translateX(-50%);background:#ffffff;color:var(--text2);font-size:11px;font-weight:400;padding:8px 14px;border-radius:8px;border:1px solid #e5e7eb;white-space:nowrap;max-width:280px;white-space:normal;text-align:center;line-height:1.5;opacity:0;pointer-events:none;transition:opacity .2s;z-index:100;box-shadow:0 4px 16px rgba(0,0,0,.1)}
 .tab-btn:hover::after{opacity:1}
 .sc[data-tab]{display:none}.sc[data-tab].tab-visible{display:block;opacity:1;transform:translateY(0)}
@@ -430,7 +442,7 @@ footer{position:relative;z-index:1;margin-top:32px;background:#002f6c;border-top
 .fcopy{font-size:11px;color:var(--text3)}.fcopy strong{color:var(--text2)}
 .flinks{display:flex;gap:16px}.flinks a{font-size:11px;color:var(--text3);text-decoration:none;transition:color .2s}.flinks a:hover{color:var(--blue)}
 
-@media(max-width:768px){.irow{grid-template-columns:1fr}.mgrid{grid-template-columns:1fr 1fr}.cgrid,.cgrid2{grid-template-columns:1fr}.hero{padding:20px 16px 12px}.hero h1{font-size:26px}.ncenter,.nright{display:none}.sc{padding:0}.ftop{grid-template-columns:1fr;gap:24px}.fbot{flex-direction:column;text-align:center}.tab-btn{font-size:11px;padding:10px 14px;gap:4px}.tab-bar{position:sticky;top:60px}.tab-scroll-area{padding:10px}.fab{bottom:96px;right:16px;padding:8px 16px;font-size:12px}.edu-bar{padding:10px 12px}.edu-bar .edu-lines{gap:3px 12px}.edu-bar .edu-line{font-size:9px}.feat-card{padding:8px}.icard{padding:16px;border-radius:12px}}
+@media(max-width:768px){.irow{grid-template-columns:1fr}.mgrid{grid-template-columns:1fr 1fr}.cgrid,.cgrid2{grid-template-columns:1fr}.hero{padding:20px 16px 12px}.hero h1{font-size:26px}.ncenter,.nright{display:none}.sc{padding:0}.ftop{grid-template-columns:1fr;gap:24px}.fbot{flex-direction:column;text-align:center}.tab-btn{font-size:10px;padding:10px 12px;gap:3px}.tab-btn .tab-icon{width:20px;height:20px;font-size:12px;border-radius:4px}.tab-bar{position:sticky;top:60px;padding:2px 2px 0}.tab-scroll-area{padding:10px}.fab{bottom:96px;right:16px;padding:8px 16px;font-size:12px}.edu-bar{padding:10px 12px}.edu-bar .edu-lines{gap:3px 12px}.edu-bar .edu-line{font-size:9px}.feat-card{padding:8px}.icard{padding:16px;border-radius:12px}#convGrid{grid-template-columns:1fr !important}}
 @media(max-width:480px){.mgrid{grid-template-columns:1fr}.hbadges{flex-direction:column;align-items:center}}
 
 /* FLOATING FEEDBACK PANEL */
@@ -591,7 +603,7 @@ footer{position:relative;z-index:1;margin-top:32px;background:#002f6c;border-top
   }
 }
 /* Global site watermark */
-.site-watermark{position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:9998;overflow:hidden;opacity:.025}
+.site-watermark{position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:9998;overflow:hidden;opacity:.035}
 .site-watermark span{position:absolute;font-size:12px;font-weight:800;color:#002f6c;transform:rotate(-35deg);white-space:nowrap;letter-spacing:2px;font-family:'Sora',sans-serif;user-select:none;-webkit-user-select:none}
 /* Watermark overlay for trades */
 .trades-watermark {
@@ -612,12 +624,12 @@ footer{position:relative;z-index:1;margin-top:32px;background:#002f6c;border-top
   letter-spacing: 2px;
   font-family: 'Sora', sans-serif;
 }
-/* Blur trades/picks when page is not visible (anti-screenshot via tab switch) */
-.trades-blurred [data-tab="trades"] .sbody, .trades-blurred [data-tab="picks"] .sbody, .trades-blurred [data-tab="funds"] .sbody, .trades-blurred #decisionResult {
+/* Blur ALL report content when page is not visible (anti-screenshot) */
+.trades-blurred .rpt .sbody, .trades-blurred .rpt .mgrid, .trades-blurred .rpt .tab-bar, .trades-blurred #decisionResult {
   filter: blur(20px) !important;
   transition: filter 0.1s;
 }
-.trades-blurred [data-tab="trades"] .sbody::after, .trades-blurred [data-tab="picks"] .sbody::after, .trades-blurred [data-tab="funds"] .sbody::after, .trades-blurred #decisionResult::after {
+.trades-blurred .rpt .sbody::after, .trades-blurred .rpt .mgrid::after, .trades-blurred #decisionResult::after {
   content: "Content hidden for security";
   position: absolute;
   top: 50%; left: 50%;
@@ -736,7 +748,7 @@ footer{position:relative;z-index:1;margin-top:32px;background:#002f6c;border-top
 
 <!-- Entity-rich SEO content (visually hidden, accessible) -->
 <article style="max-width:720px;margin:0 auto;padding:0 20px 4px;font-size:11px;color:var(--text3);line-height:1.5;opacity:.6" aria-label="About Celesys AI Stock Analysis Platform">
-<p>Celesys AI is a free stock analysis platform that generates institutional-grade research reports using real-time market data from Yahoo Finance, Google Finance, and NSE India. It computes intrinsic value using the Graham Number, DCF growth model, and earnings yield — then scores stocks across 14 quantitative factors to produce a deterministic buy/sell verdict.</p>
+<p>Celesys AI is a free stock analysis platform that generates institutional-grade research reports using real-time market data from Yahoo Finance, Google Finance, and NSE India. It computes intrinsic value using the Graham Number, DCF growth model, and earnings yield — then scores stocks across 20 quantitative factors to produce a deterministic buy/sell verdict.</p>
 </article>
 
 <section class="rpt" id="report">
@@ -747,35 +759,46 @@ footer{position:relative;z-index:1;margin-top:32px;background:#002f6c;border-top
 </div>
 <div class="mgrid" id="metrics"></div>
 
-<!-- CHARTS & TECHNICAL — Own tab -->
-<div class="sc" data-tab="quick" style="border-left:3px solid var(--blue)">
-<div class="sh">
-<div class="si" style="background:rgba(0,120,212,.12)">&#128200;</div>
-<div class="st" style="color:var(--blue)">52-Week Position & Decision Tool</div>
+<!-- STATIC EVENT ALERTS — always right after metrics -->
+<div id="eventAlertArea" style="display:none;margin-bottom:0"></div>
+
+<!-- STATIC TAB BAR — always visible right after metrics -->
+<div class="tab-bar" id="mainTabBar" style="display:none">
+<button class="tab-btn active" onclick="switchTab('quick')" id="tabBtnQuick" data-color="green" data-tip="Verdict, charts, valuation, buy/sell levels, risk"><span class="tab-icon">&#9889;</span> Summary</button>
+<button class="tab-btn" onclick="switchTab('deep')" id="tabBtnDeep" data-color="navy" data-tip="AI color-coded verdict breakdown, full deep-dive"><span class="tab-icon">&#128270;</span> Deep Dive</button>
+<button class="tab-btn" onclick="switchTab('mgmt')" id="tabBtnMgmt" data-color="purple" data-tip="Quarterly earnings, management tone, fund holdings"><span class="tab-icon">&#128200;</span> Earnings</button>
+<button class="tab-btn" onclick="switchTab('next')" id="tabBtnNext" data-color="cyan" data-tip="Upcoming catalysts, bull/bear/base scenarios"><span class="tab-icon">&#128302;</span> Forecast</button>
+<button class="tab-btn" onclick="switchTab('gems')" id="tabBtnGems" data-color="amber" data-tip="Sector-specific small-cap picks" style="display:none"><span class="tab-icon">&#11088;</span> Gems</button>
+<button class="tab-btn" onclick="switchTab('picks')" id="tabBtnPicks" data-color="teal" data-tip="Top 5 Buy, Sell, Accumulate stocks by conviction" style="display:none"><span class="tab-icon">&#127942;</span> Picks</button>
+<button class="tab-btn" onclick="switchTab('funds')" id="tabBtnFunds" data-color="blue" data-tip="Top ETFs & mutual funds with 25%+ CAGR" style="display:none"><span class="tab-icon">&#128176;</span> ETF</button>
+<button class="tab-btn" onclick="switchTab('trades')" id="tabBtnTrades" data-color="red" data-tip="Daily AI trade ideas for indices & stocks" style="display:none"><span class="tab-icon">&#128293;</span> Trades</button>
 </div>
+
+<!-- TAB CONTENT AREA -->
+<div id="tabContentArea">
+
+<!-- 52-WEEK + DECISION TOOL (Summary tab) -->
+<div class="sc" data-tab="quick" style="border-left:3px solid var(--blue)">
+<div class="sh"><div class="si" style="background:rgba(0,120,212,.12)">&#128200;</div><div class="st" style="color:var(--blue)">52-Week Position &amp; Decision Tool</div></div>
 <div class="sbody">
-
-<!-- 52-WEEK POSITION -->
 <div id="w52section" style="margin-bottom:14px"></div>
-
-<!-- DECISION TOOL — Available to all users -->
 <div id="decisionTool" style="display:none;margin-bottom:14px"></div>
 </div>
 </div>
 
+<!-- CHARTS (Summary tab — collapsible) -->
 <div class="sc" data-tab="quick" style="border-left:3px solid var(--cyan)">
-<div class="sh">
+<div class="sh" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'block':'none';this.querySelector('.chtgl').textContent=this.nextElementSibling.style.display==='none'?'▼ Show':'▲ Hide'" style="cursor:pointer">
 <div class="si" style="background:rgba(0,120,212,.08)">&#128202;</div>
-<div class="st" style="color:var(--cyan)">Visual Charts & Trends</div>
+<div class="st" style="color:var(--cyan)">Visual Charts &amp; Trends</div>
+<span class="chtgl" style="margin-left:auto;font-size:10px;color:var(--text3);font-weight:600;padding:3px 8px;border-radius:4px;background:rgba(0,47,108,.04)">&#9660; Show</span>
 </div>
-<div class="sbody" id="chartsInner">
-<!-- 3 CHARTS ROW -->
+<div class="sbody" id="chartsInner" style="display:none">
 <div class="cgrid">
 <div class="ccard"><div class="cct">&#9678; Valuation Metrics <span style="font-size:10px;color:var(--text3);font-weight:400">&middot; hover bars for details</span></div><div class="cc"><canvas id="valChart"></canvas></div><div id="valInference" class="cinf" style="background:rgba(59,130,246,.04);border-color:rgba(0,120,212,.12)"></div></div>
 <div class="ccard"><div class="cct">&#9678; Financial Health <span style="font-size:10px;color:var(--text3);font-weight:400">&middot; hover dots for details</span></div><div class="cc"><canvas id="healthChart"></canvas></div><div id="healthInference" class="cinf" style="background:rgba(16,185,129,.04);border-color:rgba(16,185,129,.1)"></div></div>
 <div class="ccard"><div class="cct">&#9678; Risk Profile <span style="font-size:10px;color:var(--text3);font-weight:400">&middot; hover dots for details</span></div><div class="cc"><canvas id="riskChart"></canvas></div><div id="riskInference" class="cinf" style="background:rgba(239,68,68,.04);border-color:rgba(239,68,68,.1)"></div></div>
 </div>
-<!-- 2 CHARTS ROW -->
 <div class="cgrid2">
 <div class="ccard"><div class="cct">&#9678; Price Trend (6M) <span style="font-size:10px;color:var(--text3);font-weight:400">&middot; hover points to track</span></div><div class="cc2"><canvas id="trendChart"></canvas></div><div id="trendInference" class="cinf" style="background:rgba(59,130,246,.04);border-color:rgba(0,120,212,.12)"></div></div>
 <div class="ccard"><div class="cct">&#9678; Margin vs Industry <span style="font-size:10px;color:var(--text3);font-weight:400">&middot; hover to compare</span></div><div class="cc2"><canvas id="marginChart"></canvas></div><div id="marginVsInference" class="cinf" style="background:rgba(6,182,212,.04);border-color:rgba(6,182,212,.1)"></div></div>
@@ -783,7 +806,9 @@ footer{position:relative;z-index:1;margin-top:32px;background:#002f6c;border-top
 </div>
 </div>
 
+<!-- JS-GENERATED CONTENT GOES HERE -->
 <div id="analysisContainer"></div>
+</div>
 
 <!-- POST-REPORT DISCLAIMER -->
 <div style="margin-top:16px;padding:12px 18px;border-radius:10px;background:rgba(239,68,68,.05);border:1px solid rgba(239,68,68,.15);display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text2)">
@@ -995,44 +1020,38 @@ tradesTab.addEventListener('copy',e=>{e.preventDefault();e.clipboardData&&e.clip
 tradesTab.addEventListener('cut',e=>{e.preventDefault()});
 }
 
-// 5. Block keyboard shortcuts globally when trades tab or decision tool is active
+// 5. Block keyboard shortcuts GLOBALLY on any report content
 document.addEventListener('keydown',function(e){
-const tradesVisible=document.querySelector('[data-tab="trades"]')&&
-document.querySelector('[data-tab="trades"]').style.display!=='none'&&
-document.querySelector('.tab-btn-active')&&
-document.querySelector('.tab-btn-active').id==='tabBtnTrades';
-const decisionVisible=document.getElementById('decisionResult')&&document.getElementById('decisionResult').innerHTML.length>10;
-if(!tradesVisible&&!decisionVisible)return;
-
-// Block PrintScreen
+const reportVisible=document.querySelector('.rpt.show');
+if(!reportVisible)return;
 if(e.key==='PrintScreen'){e.preventDefault();return false}
-// Block Ctrl+P (print)
 if(e.ctrlKey&&e.key==='p'){e.preventDefault();return false}
-// Block Ctrl+S (save)
 if(e.ctrlKey&&e.key==='s'){e.preventDefault();return false}
-// Block Ctrl+Shift+I / Ctrl+Shift+J (dev tools)
 if(e.ctrlKey&&e.shiftKey&&(e.key==='I'||e.key==='i'||e.key==='J'||e.key==='j')){e.preventDefault();return false}
-// Block Ctrl+U (view source)
 if(e.ctrlKey&&(e.key==='u'||e.key==='U')){e.preventDefault();return false}
-// Block F12 (dev tools)
 if(e.key==='F12'){e.preventDefault();return false}
-// Block Ctrl+Shift+S (screenshot in some browsers)
 if(e.ctrlKey&&e.shiftKey&&(e.key==='S'||e.key==='s')){e.preventDefault();return false}
-// Block Ctrl+C (copy)
 if(e.ctrlKey&&(e.key==='c'||e.key==='C')){e.preventDefault();return false}
-// Block Ctrl+A (select all)
 if(e.ctrlKey&&(e.key==='a'||e.key==='A')){e.preventDefault();return false}
-// Block Windows+Shift+S (Windows snipping tool)
 if(e.metaKey&&e.shiftKey&&(e.key==='S'||e.key==='s')){e.preventDefault();return false}
 });
 
-// 6. Blur content when page loses visibility (alt-tab, screenshot tools)
+// 5b. Block right-click globally on report
+document.addEventListener('contextmenu',function(e){
+if(e.target.closest('.rpt')){e.preventDefault();return false}
+});
+
+// 5c. Block drag on all images/content in report
+document.addEventListener('dragstart',function(e){
+if(e.target.closest('.rpt')){e.preventDefault();return false}
+});
+
+// 6. Blur content when page loses visibility (anti-screenshot)
 document.addEventListener('visibilitychange',function(){
 if(document.hidden){
 document.body.classList.add('trades-blurred');
 }else{
-// Small delay before unblurring to catch screenshot tools
-setTimeout(()=>document.body.classList.remove('trades-blurred'),800);
+setTimeout(()=>document.body.classList.remove('trades-blurred'),1200);
 }
 });
 
@@ -1041,16 +1060,49 @@ window.addEventListener('blur',function(){
 document.body.classList.add('trades-blurred');
 });
 window.addEventListener('focus',function(){
-setTimeout(()=>document.body.classList.remove('trades-blurred'),600);
+setTimeout(()=>document.body.classList.remove('trades-blurred'),800);
 });
 
-// 8. Detect and warn about screen recording/capture API
+// 8. Detect screen recording/capture API
 if(navigator.mediaDevices&&navigator.mediaDevices.getDisplayMedia){
 const origGetDisplay=navigator.mediaDevices.getDisplayMedia.bind(navigator.mediaDevices);
 navigator.mediaDevices.getDisplayMedia=function(){
-alert('Screen recording is not allowed on Smart Trades content.');
+alert('Screen recording is not permitted on Celesys AI reports.');
 return Promise.reject(new Error('Screen capture blocked'));
 };
+}
+
+// 9. DevTools detection — blur report if DevTools open
+(function(){
+const dt=new Image();
+let devOpen=false;
+Object.defineProperty(dt,'id',{get:function(){
+devOpen=true;document.body.classList.add('trades-blurred');
+const overlay=document.getElementById('devtoolsOverlay');
+if(!overlay){const ov=document.createElement('div');ov.id='devtoolsOverlay';
+ov.style.cssText='position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.92);z-index:99999;display:flex;align-items:center;justify-content:center;flex-direction:column;color:#fff;font-family:Sora,sans-serif';
+ov.innerHTML='<div style="font-size:48px;margin-bottom:20px">&#128274;</div><div style="font-size:20px;font-weight:800;margin-bottom:8px">Developer Tools Detected</div><div style="font-size:14px;color:#aaa">Please close DevTools to continue using Celesys AI.</div>';
+document.body.appendChild(ov);}
+}});
+setInterval(function(){devOpen=false;console.log(dt);
+if(!devOpen){const ov=document.getElementById('devtoolsOverlay');if(ov)ov.remove();document.body.classList.remove('trades-blurred')}},2000)
+})();
+
+// 10. Dynamic watermark with user email embedded
+function refreshWatermark(){
+const em=document.getElementById('email')?.value||'';
+const wm=document.getElementById('siteWatermark');if(!wm)return;
+const ts=new Date().toLocaleString('en-IN',{timeZone:'Asia/Kolkata'});
+const label=em?em.replace(/(.{3}).+(@.+)/,'$1***$2'):'CELESYS.AI';
+wm.innerHTML='';
+for(let i=0;i<200;i++){
+const s=document.createElement('span');
+s.textContent=i%3===0?'CELESYS.AI':i%3===1?label:ts.split(',')[0];
+s.style.left=(Math.random()*120-10)+'%';
+s.style.top=(Math.random()*120-10)+'%';
+s.style.fontSize=(9+Math.random()*6)+'px';
+s.style.opacity=0.02+Math.random()*0.02;
+wm.appendChild(s);}
 }
 
 // 9. Periodic check — if dev tools are open (detected by debugger timing)
@@ -1368,22 +1420,6 @@ const vResult=computeVerdict(d);
 const verdict=vResult.verdict,vc=vResult.vc;
 
 const html=`
-<!-- EVENT ALERTS + UPCOMING — rendered by fetchMarketPulse via renderMarketEvents -->
-<div id="eventAlertArea" style="display:none;margin-bottom:10px"></div>
-
-<!-- TAB BAR -->
-<div class="tab-bar">
-<button class="tab-btn active" onclick="switchTab('quick')" id="tabBtnQuick" data-color="green" data-tip="Verdict, valuation, buy/sell levels, risk assessment">&#9889; Summary</button>
-<button class="tab-btn" onclick="switchTab('charts')" id="tabBtnCharts" data-color="blue" data-tip="52-week map, decision tool, valuation & trend charts">&#128200; Charts</button>
-<button class="tab-btn" onclick="switchTab('deep')" id="tabBtnDeep" data-color="blue" data-tip="AI color-coded verdict breakdown, full deep-dive analysis">&#128270; Deep Dive</button>
-<button class="tab-btn" onclick="switchTab('mgmt')" id="tabBtnMgmt" data-color="purple" data-tip="Quarterly earnings, management tone, fund & institutional holdings">&#127970; Fundamentals</button>
-<button class="tab-btn" onclick="switchTab('next')" id="tabBtnNext" data-color="cyan" data-tip="Upcoming catalysts, bull/bear/base case scenarios">&#128302; Forecast</button>
-<button class="tab-btn" onclick="switchTab('gems')" id="tabBtnGems" data-color="amber" data-tip="Sector-specific small-cap picks with growth ratings" style="display:none">&#11088; Gems</button>
-<button class="tab-btn" onclick="switchTab('picks')" id="tabBtnPicks" data-color="purple" data-tip="Curated investment ideas across all market caps" style="display:none">&#128161; Picks</button>
-<button class="tab-btn" onclick="switchTab('funds')" id="tabBtnFunds" data-color="green" data-tip="Top ETFs & mutual funds with 25%+ CAGR" style="display:none">&#128176; ETF</button>
-<button class="tab-btn" onclick="switchTab('trades')" id="tabBtnTrades" data-color="red" data-tip="Daily AI trade ideas for indices & stocks" style="display:none">&#128293; Trades</button>
-</div>
-
 <div class="tab-scroll-area" id="tabScrollArea">
 <!-- TAB 1: QUICK INTEL -->
 <div class="sub-nav" data-tab="quick">
@@ -1576,6 +1612,20 @@ ${vResult.reasons.map(r=>{const isPos=r.includes('[+');return '<span style="font
 <span><span style="font-size:9px;padding:1px 5px;border-radius:3px;background:rgba(0,120,212,.12);color:var(--blue);font-weight:700">Monopoly</span> Sole provider \u2014 pricing power moat</span>
 </div>
 </div>
+<!-- CONVICTION LEADERBOARD — Top 5 by category per country -->
+<div id="convictionLeaderboard" style="margin-bottom:18px">
+<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+<span style="font-size:18px">&#127942;</span>
+<span style="font-family:'Sora',sans-serif;font-size:14px;font-weight:800;color:var(--text)">Conviction Leaderboard</span>
+<span style="font-size:9px;padding:2px 8px;border-radius:4px;background:rgba(13,148,136,.1);color:#0d9488;font-weight:700;border:1px solid rgba(13,148,136,.2)">20-Factor Scored</span>
+</div>
+<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px" id="convGeoTabs">
+<button class="ptab active" onclick="showConvGeo(this,'india')" style="background:var(--amber);color:#000;border-color:var(--amber)">&#127470;&#127475; India</button>
+<button class="ptab" onclick="showConvGeo(this,'usa')">&#127482;&#127480; USA</button>
+</div>
+<div id="convGrid" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px"></div>
+</div>
+
 <!-- CURATED STOCK PICKS -->
 <div id="stockPicksSection">
 <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px" id="pickTabs">
@@ -1628,6 +1678,8 @@ ${vResult.reasons.map(r=>{const isPos=r.includes('[+');return '<span style="font
 `;
 
 document.getElementById('analysisContainer').innerHTML=html;
+// Show static tab bar
+document.getElementById('mainTabBar').style.display='flex';
 // Show tabs FIRST — before any chart/analysis code that might error
 checkTradesAccess();
 try{formatAIAnalysis(report)}catch(e){console.warn('formatAIAnalysis error:',e)}
@@ -1638,6 +1690,8 @@ try{populateWhatsNext(report)}catch(e){console.warn('populateWhatsNext error:',e
 try{generateSmallCapRecommendations(d)}catch(e){console.warn('generateSmallCapRecommendations error:',e)}
 // Auto-open Quick Intel tab
 switchTab('quick');
+// Refresh watermark with user email
+try{refreshWatermark()}catch(e){}
 // Draw attention to vote button after report loads
 setTimeout(()=>{const fab=document.querySelector('.fab');if(fab){fab.style.transform='scale(1.15)';fab.style.boxShadow='0 0 40px rgba(139,92,246,.6)';setTimeout(()=>{fab.style.transform='';fab.style.boxShadow=''},1500)}},4000);
 // Draw attention to tab bar with pulse animation
@@ -1665,7 +1719,7 @@ document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
 document.querySelectorAll('.sc[data-tab="'+tab+'"]').forEach(s=>s.classList.add('tab-visible'));
 document.querySelectorAll('.sub-nav[data-tab="'+tab+'"]').forEach(s=>s.classList.add('tab-visible'));
 // Activate selected button
-const btnMap={quick:'tabBtnQuick',charts:'tabBtnCharts',deep:'tabBtnDeep',mgmt:'tabBtnMgmt',next:'tabBtnNext',gems:'tabBtnGems',picks:'tabBtnPicks',funds:'tabBtnFunds',trades:'tabBtnTrades'};
+const btnMap={quick:'tabBtnQuick',deep:'tabBtnDeep',mgmt:'tabBtnMgmt',next:'tabBtnNext',gems:'tabBtnGems',picks:'tabBtnPicks',funds:'tabBtnFunds',trades:'tabBtnTrades'};
 if(btnMap[tab])document.getElementById(btnMap[tab]).classList.add('active');
 // Scroll to tab bar
 const tb=document.querySelector('.tab-bar');
@@ -2959,6 +3013,91 @@ el.innerHTML=h;
 }
 
 // ═══════════════════════════════════════════════
+// ═══ CONVICTION LEADERBOARD — Top 5 by category per country ═══
+const CONVICTION_DATA={
+india:{
+  buy:[
+    {n:'Bajaj Finance',t:'BAJFINANCE.NS',why:'NBFC leader, 25%+ ROE, fortress balance sheet, digital lending moat',s:72},
+    {n:'Trent Limited',t:'TRENT.NS',why:'Zudio growth engine, Zara India exclusivity, 40%+ revenue CAGR',s:68},
+    {n:'Dixon Technologies',t:'DIXON.NS',why:'PLI beneficiary, electronics mfg monopoly, backward integration',s:65},
+    {n:'CDSL',t:'CDSL.NS',why:'Demat duopoly, zero-debt, 60%+ margins, financialization tailwind',s:64},
+    {n:'Persistent Systems',t:'PERSISTENT.NS',why:'Healthcare IT niche, 20%+ revenue growth, high IP business',s:62}
+  ],
+  sell:[
+    {n:'Vodafone Idea',t:'IDEA.NS',why:'Massive debt, negative cash flow, subscriber loss to Jio/Airtel',s:-45},
+    {n:'IRCTC',t:'IRCTC.NS',why:'Govt interference risk, margin pressure, overvalued vs growth',s:-28},
+    {n:'Paytm',t:'PAYTM.NS',why:'Path to profitability unclear, regulatory overhang, cash burn',s:-32},
+    {n:'Zee Entertainment',t:'ZEEL.NS',why:'Merger uncertainty, debt concerns, ad revenue pressure',s:-25},
+    {n:'GMR Airports',t:'GMRINFRA.NS',why:'Heavy debt, capex cycle years out, dilution risk',s:-22}
+  ],
+  accumulate:[
+    {n:'HDFC Bank',t:'HDFCBANK.NS',why:'Post-merger stabilizing, best asset quality, CASA franchise',s:45},
+    {n:'Infosys',t:'INFY.NS',why:'Margin recovery, AI services ramp, attractive at 22-24x PE',s:42},
+    {n:'Tata Motors',t:'TATAMOTORS.NS',why:'JLR turnaround, EV push, domestic CV leadership',s:40},
+    {n:'ITC',t:'ITC.NS',why:'Hotel demerger value unlock, FMCG scaling, high dividend yield',s:38},
+    {n:'Asian Paints',t:'ASIANPAINT.NS',why:'Correction from highs, moat intact, rural recovery play',s:35}
+  ]
+},
+usa:{
+  buy:[
+    {n:'NVIDIA',t:'NVDA',why:'AI compute monopoly, 70%+ data center growth, CUDA moat',s:78},
+    {n:'Microsoft',t:'MSFT',why:'Azure + Copilot AI, 40%+ cloud margins, enterprise dominance',s:70},
+    {n:'CrowdStrike',t:'CRWD',why:'Cloud-native security leader, 75%+ gross margins, expanding TAM',s:65},
+    {n:'Palantir',t:'PLTR',why:'AI/government platform, 30%+ revenue growth, profitable',s:62},
+    {n:'Alphabet',t:'GOOGL',why:'Search + Cloud + Waymo, 15x forward FCF, AI integration',s:60}
+  ],
+  sell:[
+    {n:'Snap Inc',t:'SNAP',why:'User growth stalled, ad revenue pressure, negative FCF',s:-38},
+    {n:'Beyond Meat',t:'BYND',why:'Revenue declining, cash burn, management exodus',s:-52},
+    {n:'Peloton',t:'PTON',why:'Subscription churn, hardware obsolescence, debt burden',s:-42},
+    {n:'Rivian',t:'RIVN',why:'Massive cash burn, production delays, capital raise dilution',s:-35},
+    {n:'ChargePoint',t:'CHPT',why:'EV charging commoditized, negative gross margins, cash runway risk',s:-40}
+  ],
+  accumulate:[
+    {n:'Apple',t:'AAPL',why:'Services flywheel, $100B+ buybacks, AI iPhone super cycle',s:48},
+    {n:'Amazon',t:'AMZN',why:'AWS re-acceleration, retail margins expanding, AI + ads',s:46},
+    {n:'Meta Platforms',t:'META',why:'Reels monetization, Reality Labs optionality, cheap on FCF',s:44},
+    {n:'Visa',t:'V',why:'Payment duopoly, 65%+ net margins, cross-border recovery',s:42},
+    {n:'UnitedHealth',t:'UNH',why:'Healthcare oligopoly, Optum vertical, consistent 15% EPS growth',s:40}
+  ]
+}};
+
+let _convGeo='india';
+function showConvGeo(btn,geo){
+_convGeo=geo;
+document.querySelectorAll('#convGeoTabs .ptab').forEach(b=>{b.classList.remove('active');b.style.background='var(--surface)';b.style.color='var(--text2)';b.style.borderColor='var(--border)'});
+btn.classList.add('active');btn.style.background='var(--amber)';btn.style.color='#000';btn.style.borderColor='var(--amber)';
+renderConviction();
+}
+
+function renderConviction(){
+const el=document.getElementById('convGrid');if(!el)return;
+const d=CONVICTION_DATA[_convGeo];if(!d){el.innerHTML='';return}
+function card(title,emoji,stocks,color,bgColor){
+let h=`<div style="border-radius:10px;overflow:hidden;border:1px solid ${color}22;background:${bgColor}">`;
+h+=`<div style="padding:10px 12px;background:${color}15;border-bottom:1px solid ${color}22;display:flex;align-items:center;gap:6px">`;
+h+=`<span style="font-size:16px">${emoji}</span>`;
+h+=`<span style="font-family:'Sora',sans-serif;font-size:11px;font-weight:800;color:${color}">${title}</span>`;
+h+=`<span style="margin-left:auto;font-size:9px;font-weight:700;color:${color};background:${color}12;padding:1px 6px;border-radius:3px">TOP 5</span></div>`;
+stocks.forEach((s,i)=>{
+h+=`<div style="padding:8px 12px;border-bottom:1px solid rgba(0,0,0,.04);font-size:11px${i===4?';border-bottom:none':''}">`;
+h+=`<div style="display:flex;align-items:center;gap:6px;margin-bottom:3px">`;
+h+=`<span style="font-size:10px;font-weight:800;color:${color};background:${color}15;width:18px;height:18px;display:inline-flex;align-items:center;justify-content:center;border-radius:50%">${i+1}</span>`;
+h+=`<strong style="font-size:11px;color:var(--text)">${s.n}</strong>`;
+h+=`<span style="font-family:var(--mono);font-size:9px;color:var(--text3)">${s.t}</span></div>`;
+h+=`<div style="font-size:10px;color:var(--text3);line-height:1.4">${s.why}</div>`;
+h+=`</div>`;
+});
+return h+'</div>';
+}
+el.innerHTML=
+  card('AGGRESSIVE BUY','\u{1F7E2}',d.buy,'#14a23a','rgba(20,162,58,.02)')+
+  card('ACCUMULATE','\u{1F7E1}',d.accumulate,'#d48a00','rgba(212,138,0,.02)')+
+  card('SELL / AVOID','\u{1F534}',d.sell,'#d0021b','rgba(208,2,27,.02)');
+}
+// Auto-render on page load
+setTimeout(renderConviction,100);
+
 // ETF & MUTUAL FUND DATA — 25%+ CAGR COMPOUNDERS
 // ═══════════════════════════════════════════════
 const FUND_DATA={
