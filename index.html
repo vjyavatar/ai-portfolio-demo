@@ -1429,7 +1429,9 @@ ${vResult.reasons.map(r=>{const isPos=r.includes('[+');return '<span style="font
 <div style="font-family:'Sora',sans-serif;font-size:16px;font-weight:700;color:var(--amber);margin-bottom:8px">Premium Trading Intelligence</div>
 <p style="font-size:13px;color:var(--text3);max-width:450px;margin:0 auto 20px;line-height:1.7">Top 5 index + 2 stock option trade ideas daily. Nifty, Bank Nifty, Sensex &amp; high-momentum stocks.</p>
 <button id="tradesLoadBtn" onclick="loadIndexTrades()" style="padding:12px 28px;border-radius:10px;border:2px solid var(--amber);background:rgba(245,158,11,.1);color:var(--amber);font-family:'Sora',sans-serif;font-size:14px;font-weight:700;cursor:pointer;transition:all .3s">&#9889; Generate Today's Trades</button>
+<button id="scorecardBtn" onclick="loadTradeScorecard()" style="padding:12px 20px;border-radius:10px;border:2px solid var(--cyan);background:rgba(6,182,212,.08);color:var(--cyan);font-family:'Sora',sans-serif;font-size:12px;font-weight:700;cursor:pointer;margin-left:8px">&#128202; Trade Scorecard</button>
 <div id="tradesError" style="margin-top:12px;font-size:12px;color:var(--red);display:none"></div>
+<div id="scorecardArea" style="display:none;margin-top:16px"></div>
 </div>
 </div>
 </div></div>
@@ -2652,7 +2654,7 @@ usa:[
 {n:'ASML',t:'ASML',r:'★ Aggressive Buy',p:'$720',cl:'None (absolute monopoly)',why:'Only EUV lithography maker on earth, every advanced chip needs ASML',edge:'Absolute monopoly in EUV',cat:'Monopoly',bp:'$650-700',d:'BUY NOW · Hold 24mo · EUV lithography monopoly. No alternative exists. 90% prob of ₹900+ in 18mo.'},
 {n:'Verisign',t:'VRSN',r:'★ Aggressive Buy',p:'$210',cl:'None (.com/.net registry)',why:'.com/.net registry monopoly, ICANN contract, 87%+ margins',edge:'Internet domain infrastructure',cat:'Monopoly',bp:'$195-205',d:'BUY NOW · Hold 12mo · .com/.net domain monopoly. Price hikes = guaranteed earnings growth. 85% prob of $240+ in 12mo.'},
 {n:'S&P Global',t:'SPGI',r:'★ Aggressive Buy',p:'$510',cl:"Moody's, Fitch (ratings)",why:'Credit ratings oligopoly, data analytics, IHS Markit merger synergies',edge:'Financial data indispensable',cat:'Oligopoly',bp:'$480-510',d:'BUY ON DIP · Hold 12mo · Credit rating duopoly. Debt issuance cycle returning. 82% prob of $580+ in 12mo.'},
-{n:"Moody's",t:'MCO',r:'Strong Buy',p:'$470',cl:"S&P Global, Fitch (ratings)",why:'Credit ratings duopoly with S&P, recurring revenue, debt issuance growth',edge:'Regulatory-mandated ratings',cat:'Duopoly',bp:'$430-460',d:'BUY ON DIP · Hold 12mo · Moody's. Same thesis as S&P Global. Rating duopoly. 80% prob of $530+ in 12mo.'},
+{n:"Moody's",t:'MCO',r:'Strong Buy',p:'$470',cl:"S&P Global, Fitch (ratings)",why:'Credit ratings duopoly with S&P, recurring revenue, debt issuance growth',edge:'Regulatory-mandated ratings',cat:'Duopoly',bp:'$430-460',d:"BUY ON DIP · Hold 12mo · Moody\u2019s. Same thesis as S&P Global. Rating duopoly. 80% prob of $530+ in 12mo."},
 {n:'TransDigm',t:'TDG',r:'Strong Buy',p:'$1,350',cl:'Heico (sole-source parts)',why:'Sole-source aerospace parts, 45%+ margins, aftermarket pricing power',edge:'Proprietary aerospace components',cat:'Monopoly',bp:'$1,300-1,400',d:'BUY NOW · Hold 18mo · Aerospace aftermarket monopoly. Locked-in revenue. 84% prob of $1,600+ in 12mo.'}
 ]},
 micro:{title:'Top 5 Multibagger Potential — Micro Caps',
@@ -2911,6 +2913,134 @@ h+=`<div style="margin-top:16px;padding:12px 14px;border-radius:8px;background:l
 
 h+=`<div style="margin-top:10px;font-size:9px;color:var(--text3)">* All CAGR figures are trailing returns as of latest available data. Max drawdown measured from COVID-19 (Mar 2020) or 2022 bear market, whichever was deeper. This is educational analysis — consult your financial advisor for personalized allocation.</div>`;
 el.innerHTML=h;
+}
+
+// ═══════════════════════════════════════════════
+// TRADE SCORECARD — Validate past trades vs actual
+// ═══════════════════════════════════════════════
+async function loadTradeScorecard(){
+const el=document.getElementById('scorecardArea');
+const btn=document.getElementById('scorecardBtn');
+if(!el)return;
+const emailEl=document.getElementById('email');
+const em=emailEl?(emailEl.dataset.real||emailEl.value).trim().toLowerCase():'';
+btn.disabled=true;btn.textContent='Loading...';
+el.style.display='block';
+el.innerHTML='<div style="text-align:center;padding:20px;color:var(--text3)"><div class="spinner" style="width:20px;height:20px;border:2px solid var(--cyan);border-top-color:transparent;border-radius:50%;animation:spin 1s linear infinite;margin:0 auto 8px"></div>Fetching actual market data and validating trades...</div>';
+try{
+const res=await fetch(`/api/validate-trades?email=${encodeURIComponent(em)}`);
+const data=await res.json();
+if(!data.success){el.innerHTML=`<div style="color:var(--red);font-size:12px">${data.error||data.message||'Error loading scorecard'}</div>`;return}
+if(!data.results||data.results.length===0){el.innerHTML=`<div style="padding:16px;border-radius:10px;background:rgba(6,182,212,.06);border:1px solid rgba(6,182,212,.15);text-align:center"><div style="font-size:14px;font-weight:700;color:var(--cyan);margin-bottom:6px">&#128202; Trade Scorecard</div><div style="font-size:12px;color:var(--text2)">${data.message||'No completed trading days to validate yet. Trades will be scored after market close.'}</div></div>`;return}
+const s=data.summary;
+let h='';
+
+// Summary dashboard
+const wr=s.win_rate||0;
+const wrCol=wr>=70?'var(--green)':wr>=50?'var(--amber)':'var(--red)';
+h+=`<div style="padding:16px;border-radius:12px;background:linear-gradient(135deg,rgba(6,182,212,.08),rgba(16,185,129,.05));border:1px solid rgba(6,182,212,.2);margin-bottom:16px">
+<div style="font-family:'Sora',sans-serif;font-size:15px;font-weight:800;color:var(--cyan);margin-bottom:12px">&#128202; TRADE SCORECARD \u2014 ${s.days_tracked} Day${s.days_tracked>1?'s':''} Tracked</div>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:10px;margin-bottom:12px">
+<div style="text-align:center;padding:10px;border-radius:8px;background:rgba(255,255,255,.03)">
+<div style="font-size:24px;font-weight:800;color:${wrCol}">${wr}%</div>
+<div style="font-size:9px;color:var(--text3);font-weight:700">WIN RATE</div>
+</div>
+<div style="text-align:center;padding:10px;border-radius:8px;background:rgba(255,255,255,.03)">
+<div style="font-size:24px;font-weight:800;color:var(--text)">${s.total_trades}</div>
+<div style="font-size:9px;color:var(--text3);font-weight:700">TOTAL TRADES</div>
+</div>
+<div style="text-align:center;padding:10px;border-radius:8px;background:rgba(255,255,255,.03)">
+<div style="font-size:24px;font-weight:800;color:var(--green)">${s.wins}</div>
+<div style="font-size:9px;color:var(--text3);font-weight:700">WINS</div>
+</div>
+<div style="text-align:center;padding:10px;border-radius:8px;background:rgba(255,255,255,.03)">
+<div style="font-size:24px;font-weight:800;color:var(--red)">${s.losses}</div>
+<div style="font-size:9px;color:var(--text3);font-weight:700">LOSSES</div>
+</div>
+<div style="text-align:center;padding:10px;border-radius:8px;background:rgba(255,255,255,.03)">
+<div style="font-size:24px;font-weight:800;color:var(--green)">${s.target_hit_rate}%</div>
+<div style="font-size:9px;color:var(--text3);font-weight:700">TARGET HIT</div>
+</div>
+<div style="text-align:center;padding:10px;border-radius:8px;background:rgba(255,255,255,.03)">
+<div style="font-size:24px;font-weight:800;color:var(--amber)">${s.avg_best_move}%</div>
+<div style="font-size:9px;color:var(--text3);font-weight:700">AVG BEST MOVE</div>
+</div>
+</div>
+
+<div style="height:8px;border-radius:4px;background:rgba(255,255,255,.06);overflow:hidden;margin-bottom:6px">
+<div style="height:100%;width:${wr}%;border-radius:4px;background:linear-gradient(90deg,var(--green),${wrCol});transition:width 1s"></div>
+</div>
+<div style="font-size:10px;color:var(--text3);display:flex;justify-content:space-between">
+<span>Win Rate: ${s.wins}W / ${s.losses}L</span>
+<span>Avg Close Move: ${s.avg_actual_move}%</span>
+</div>
+</div>`;
+
+// Daily breakdown with chart-like bars
+data.results.forEach(day=>{
+const dayTrades=day.trades;
+const dayWins=dayTrades.filter(t=>t.score>=0.5).length;
+const dayTotal=dayTrades.length;
+const dayWR=dayTotal?Math.round(dayWins/dayTotal*100):0;
+const dayCol=dayWR>=70?'var(--green)':dayWR>=50?'var(--amber)':'var(--red)';
+
+h+=`<div style="margin-bottom:12px;padding:12px;border-radius:10px;background:rgba(255,255,255,.02);border:1px solid var(--border)">
+<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+<div style="display:flex;align-items:center;gap:8px">
+<span style="font-family:'Sora',sans-serif;font-size:12px;font-weight:700;color:var(--text)">${day.date}</span>
+${day.is_expiry?'<span style="font-size:8px;padding:2px 6px;border-radius:4px;background:rgba(239,68,68,.1);color:var(--red);font-weight:700">EXPIRY</span>':''}
+</div>
+<span style="font-size:11px;font-weight:800;color:${dayCol}">${dayWR}% (${dayWins}/${dayTotal})</span>
+</div>
+<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:11px">
+<tr style="border-bottom:1px solid var(--border)">
+<th style="padding:4px 6px;text-align:left;color:var(--text3);font-size:9px">TRADE</th>
+<th style="padding:4px 6px;text-align:center;color:var(--text3);font-size:9px">DIR</th>
+<th style="padding:4px 6px;text-align:right;color:var(--text3);font-size:9px">ENTRY</th>
+<th style="padding:4px 6px;text-align:right;color:var(--text3);font-size:9px">TARGET</th>
+<th style="padding:4px 6px;text-align:right;color:var(--text3);font-size:9px">STOP</th>
+<th style="padding:4px 6px;text-align:right;color:var(--text3);font-size:9px">DAY HIGH</th>
+<th style="padding:4px 6px;text-align:right;color:var(--text3);font-size:9px">DAY LOW</th>
+<th style="padding:4px 6px;text-align:right;color:var(--text3);font-size:9px">CLOSE</th>
+<th style="padding:4px 6px;text-align:right;color:var(--text3);font-size:9px">P&L</th>
+<th style="padding:4px 6px;text-align:center;color:var(--text3);font-size:9px">RESULT</th>
+</tr>`;
+dayTrades.forEach(t=>{
+const oc=t.outcome==='TARGET HIT'?'var(--green)':t.outcome==='STOP HIT'?'var(--red)':t.outcome==='PARTIAL WIN'?'#22d3ee':'var(--amber)';
+const obg=t.outcome==='TARGET HIT'?'rgba(16,185,129,.1)':t.outcome==='STOP HIT'?'rgba(239,68,68,.1)':'rgba(245,158,11,.06)';
+h+=`<tr style="border-bottom:1px solid rgba(255,255,255,.03)">
+<td style="padding:4px 6px;font-weight:600">${t.label}</td>
+<td style="padding:4px 6px;text-align:center;color:${t.direction==='BULL'?'var(--green)':'var(--red)'};font-weight:700">${t.direction}</td>
+<td style="padding:4px 6px;text-align:right;color:var(--blue)">${t.entry.toLocaleString()}</td>
+<td style="padding:4px 6px;text-align:right;color:var(--green)">${t.target.toLocaleString()}</td>
+<td style="padding:4px 6px;text-align:right;color:var(--red)">${t.stop.toLocaleString()}</td>
+<td style="padding:4px 6px;text-align:right;color:var(--text2)">${t.day_high.toLocaleString()}</td>
+<td style="padding:4px 6px;text-align:right;color:var(--text2)">${t.day_low.toLocaleString()}</td>
+<td style="padding:4px 6px;text-align:right;font-weight:600;color:var(--text)">${t.day_close.toLocaleString()}</td>
+<td style="padding:4px 6px;text-align:right;font-weight:700;color:${t.actual_move_pct>=0?'var(--green)':'var(--red)'}">${t.actual_move_pct>=0?'+':''}${t.actual_move_pct}%</td>
+<td style="padding:4px 6px;text-align:center"><span style="font-size:8px;padding:2px 6px;border-radius:4px;background:${obg};color:${oc};font-weight:800">${t.outcome}</span></td>
+</tr>`;
+});
+h+=`</table></div>`;
+
+// Visual P&L bar chart for this day
+h+=`<div style="display:flex;gap:3px;margin-top:6px;align-items:end;height:30px">`;
+dayTrades.forEach(t=>{
+const barH=Math.min(28,Math.max(4,Math.abs(t.actual_move_pct)*10));
+const barC=t.actual_move_pct>=0?'var(--green)':'var(--red)';
+h+=`<div style="flex:1;height:${barH}px;background:${barC};border-radius:2px;opacity:.7" title="${t.label}: ${t.actual_move_pct>0?'+':''}${t.actual_move_pct}%"></div>`;
+});
+h+=`</div>`;
+h+=`</div>`;
+});
+
+h+=`<div style="font-size:9px;color:var(--text3);margin-top:6px">Validation compares suggested entry/target/stop levels against actual intraday highs, lows, and closing prices from Yahoo Finance. "TARGET HIT" = price reached target without hitting stop first. Past performance does not predict future results.</div>`;
+el.innerHTML=h;
+}catch(e){
+el.innerHTML=`<div style="color:var(--red);font-size:12px">Error: ${e.message}</div>`;
+}finally{
+btn.disabled=false;btn.textContent='&#128202; Trade Scorecard';
+}
 }
 
 // ═══════════════════════════════════════════════

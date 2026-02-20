@@ -1462,6 +1462,56 @@ def get_live_stock_data(company_name: str) -> dict:
             print(f"⚠️ Price history fetch failed: {e}")
             live_data["price_history"] = None
         
+        # ═══ TECHNICAL INDICATORS: SMA20, SMA200, EPS Growth, Sector PE ═══
+        try:
+            import yfinance as yf
+            tk = yf.Ticker(ticker_symbol)
+            # Daily history for moving averages
+            daily = tk.history(period="1y", interval="1d")
+            if daily is not None and len(daily) > 20:
+                closes = daily['Close'].values
+                sma20 = round(float(closes[-20:].mean()), 2) if len(closes) >= 20 else None
+                sma200 = round(float(closes[-200:].mean()), 2) if len(closes) >= 200 else None
+                sma50 = round(float(closes[-50:].mean()), 2) if len(closes) >= 50 else None
+                live_data["sma_20"] = sma20
+                live_data["sma_50"] = sma50
+                live_data["sma_200"] = sma200
+                print(f"📊 SMAs: 20d={sma20}, 50d={sma50}, 200d={sma200}")
+            else:
+                live_data["sma_20"] = None
+                live_data["sma_50"] = None
+                live_data["sma_200"] = None
+        except Exception as e:
+            print(f"⚠️ SMA calc failed: {e}")
+            live_data["sma_20"] = None
+            live_data["sma_50"] = None
+            live_data["sma_200"] = None
+        
+        # EPS growth rate (forward vs trailing)
+        try:
+            eps_t = float(info.get('trailingEps', 0) or 0)
+            eps_f = float(info.get('forwardEps', 0) or info.get('epsForward', 0) or 0)
+            if eps_t > 0 and eps_f > 0:
+                live_data["eps_growth_pct"] = round(((eps_f - eps_t) / eps_t) * 100, 1)
+            else:
+                live_data["eps_growth_pct"] = 'N/A'
+            # Earnings growth from yfinance
+            eg = info.get('earningsGrowth', 0) or 0
+            live_data["earnings_growth"] = round(eg * 100, 1) if abs(eg) < 1 and eg != 0 else (round(eg, 1) if eg else 'N/A')
+        except:
+            live_data["eps_growth_pct"] = 'N/A'
+            live_data["earnings_growth"] = 'N/A'
+        
+        # Sector average P/E (hardcoded ranges — more reliable than API which often returns None)
+        sector_pe_map = {
+            'Technology': 30, 'Communication Services': 22, 'Consumer Cyclical': 25,
+            'Consumer Defensive': 28, 'Financial Services': 15, 'Healthcare': 25,
+            'Industrials': 22, 'Basic Materials': 18, 'Energy': 12,
+            'Utilities': 18, 'Real Estate': 35
+        }
+        sec = info.get('sector', '')
+        live_data["sector_avg_pe"] = sector_pe_map.get(sec, 20)
+        
         # ═══ INTRINSIC VALUE CALCULATIONS ═══
         try:
             _eps = float(info.get('trailingEps', 0) or 0)
@@ -1943,6 +1993,66 @@ async def ads_txt():
 # ═══════════════════════════════════════════════════════════
 TRADES_ALLOWED_EMAILS = ["vijy.dhulipala@gmail.com"]
 _trades_cache = {"timestamp": None, "data": None}  # 30-min cache — live enough for trading, stable enough to not flip-flop
+
+# ═══ TRADE HISTORY — Auto-save for backtesting validation ═══
+TRADES_HISTORY_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "trades_history.json")
+
+def _load_trade_history():
+    try:
+        if os.path.exists(TRADES_HISTORY_FILE):
+            with open(TRADES_HISTORY_FILE, 'r') as f:
+                return json.load(f)
+    except:
+        pass
+    return {}
+
+def _save_trades_to_history(trades_data, date_str):
+    """Save generated trades for later validation"""
+    try:
+        history = _load_trade_history()
+        # Extract key trade fields for validation
+        saved = []
+        for t in (trades_data.get("trades") or []):
+            saved.append({
+                "type": "INDEX",
+                "index": t.get("index", ""),
+                "direction": t.get("direction", ""),
+                "bias": t.get("bias", ""),
+                "entry_level": t.get("entry_level", ""),
+                "target_level": t.get("target_level", ""),
+                "stop_level": t.get("stop_level", ""),
+                "probability": t.get("probability", ""),
+                "timing": t.get("timing", ""),
+                "move_pct": t.get("move_pct", ""),
+            })
+        for t in (trades_data.get("stock_trades") or []):
+            saved.append({
+                "type": "STOCK",
+                "stock": t.get("stock", ""),
+                "direction": t.get("direction", ""),
+                "bias": t.get("bias", ""),
+                "entry_level": t.get("entry_level", ""),
+                "target_level": t.get("target_level", ""),
+                "stop_level": t.get("stop_level", ""),
+                "probability": t.get("probability", ""),
+                "move_pct": t.get("move_pct", ""),
+            })
+        if saved:
+            history[date_str] = {
+                "trades": saved,
+                "generated_at": trades_data.get("generated_at", ""),
+                "is_expiry_day": trades_data.get("is_expiry_day", False),
+            }
+            # Keep last 30 days only
+            keys = sorted(history.keys())
+            if len(keys) > 30:
+                for k in keys[:-30]:
+                    del history[k]
+            with open(TRADES_HISTORY_FILE, 'w') as f:
+                json.dump(history, f, indent=2)
+            print(f"💾 Saved {len(saved)} trades for {date_str}")
+    except Exception as e:
+        print(f"⚠️ Trade history save error: {e}")
 
 @app.get("/api/global-ticker")
 async def global_ticker():
@@ -3476,6 +3586,13 @@ RULES FOR STOCK OPTIONS (up to 2 trades — 0 if no clear setup):
         _trades_cache["data"] = response_data
         print(f"💾 Trades cached at {_trades_cache['timestamp'].strftime('%H:%M IST')} — valid until {(_trades_cache['timestamp'] + timedelta(minutes=30)).strftime('%H:%M IST')}")
         
+        # Auto-save to history for validation/backtesting
+        try:
+            ist_now = datetime.utcnow() + timedelta(hours=5, minutes=30)
+            _save_trades_to_history(response_data, ist_now.strftime('%Y-%m-%d'))
+        except Exception as he:
+            print(f"⚠️ History save skipped: {he}")
+        
         return response_data
         
     except json_mod.JSONDecodeError as e:
@@ -4078,6 +4195,180 @@ Based on real-time price of {currency_symbol}{live_data['current_price']:,.2f}:
         import traceback
         print(f"❌ Report generation error: {traceback.format_exc()}")
         raise HTTPException(500, f"Report generation failed: {str(e)}")
+
+
+# ═══ TRADE VALIDATION — Backtest suggested trades against actual market data ═══
+@app.get("/api/validate-trades")
+async def validate_trades(request: Request):
+    """Validate past trade suggestions against actual closing prices"""
+    email = request.query_params.get("email", "").strip().lower()
+    if email not in TRADES_ALLOWED_EMAILS:
+        return {"success": False, "error": "Access restricted"}
+    
+    history = _load_trade_history()
+    if not history:
+        return {"success": True, "message": "No trade history yet. Generate trades first — they'll be saved automatically.", "results": [], "summary": {}}
+    
+    # Index ticker mapping
+    index_tickers = {
+        "NIFTY 50": "^NSEI", "NIFTY": "^NSEI",
+        "BANK NIFTY": "^NSEBANK", "BANKNIFTY": "^NSEBANK",
+        "SENSEX": "^BSESN", "BSE SENSEX": "^BSESN",
+        "NIFTY IT": "^CNXIT", "NIFTY NEXT 50": "^NSMIDCP50",
+        "FINNIFTY": "NIFTY_FIN_SERVICE.NS", "MIDCAP NIFTY": "^NSMIDCP50",
+    }
+    
+    results = []
+    from datetime import timedelta
+    ist_now = datetime.utcnow() + timedelta(hours=5, minutes=30)
+    today_str = ist_now.strftime('%Y-%m-%d')
+    
+    for date_str, day_data in sorted(history.items(), reverse=True):
+        # Skip today (market may still be open)
+        if date_str == today_str:
+            continue
+        
+        day_results = {"date": date_str, "trades": [], "is_expiry": day_data.get("is_expiry_day", False)}
+        
+        for trade in day_data.get("trades", []):
+            try:
+                # Resolve ticker
+                if trade["type"] == "INDEX":
+                    name = (trade.get("index") or "").upper().strip()
+                    ticker = index_tickers.get(name)
+                    if not ticker:
+                        # Try partial match
+                        for k, v in index_tickers.items():
+                            if k in name or name in k:
+                                ticker = v
+                                break
+                    label = name
+                elif trade["type"] == "STOCK":
+                    stock_name = trade.get("stock", "")
+                    ticker = stock_name if '.' in stock_name else stock_name + ".NS"
+                    label = stock_name
+                else:
+                    continue
+                
+                if not ticker:
+                    continue
+                
+                # Parse levels (remove ₹, $, commas)
+                def parse_level(v):
+                    if not v or v == '-':
+                        return 0
+                    s = str(v).replace('₹', '').replace('$', '').replace(',', '').strip()
+                    try:
+                        return float(s)
+                    except:
+                        return 0
+                
+                entry = parse_level(trade.get("entry_level"))
+                target = parse_level(trade.get("target_level"))
+                stop = parse_level(trade.get("stop_level"))
+                
+                if not entry:
+                    continue
+                
+                # Fetch actual intraday data for that date
+                t = yf.Ticker(ticker)
+                trade_date = datetime.strptime(date_str, '%Y-%m-%d')
+                next_day = trade_date + timedelta(days=1)
+                hist = t.history(start=date_str, end=next_day.strftime('%Y-%m-%d'), interval="1h")
+                
+                if hist.empty:
+                    # Try daily
+                    hist = t.history(start=date_str, end=(trade_date + timedelta(days=3)).strftime('%Y-%m-%d'))
+                
+                if hist.empty:
+                    continue
+                
+                day_high = float(hist['High'].max())
+                day_low = float(hist['Low'].min())
+                day_open = float(hist['Open'].iloc[0])
+                day_close = float(hist['Close'].iloc[-1])
+                
+                direction = (trade.get("direction") or "").upper()
+                is_bullish = "BULL" in direction or "BUY CE" in (trade.get("bias") or "").upper()
+                
+                # Score the trade
+                if is_bullish:
+                    # Bullish: target hit if high >= target, stop hit if low <= stop
+                    target_hit = target > 0 and day_high >= target
+                    stop_hit = stop > 0 and day_low <= stop
+                    actual_move_pct = round(((day_close - entry) / entry) * 100, 2) if entry else 0
+                    best_move_pct = round(((day_high - entry) / entry) * 100, 2) if entry else 0
+                else:
+                    # Bearish: target hit if low <= target, stop hit if high >= stop
+                    target_hit = target > 0 and day_low <= target
+                    stop_hit = stop > 0 and day_high >= stop
+                    actual_move_pct = round(((entry - day_close) / entry) * 100, 2) if entry else 0
+                    best_move_pct = round(((entry - day_low) / entry) * 100, 2) if entry else 0
+                
+                # Determine outcome
+                if target_hit and not stop_hit:
+                    outcome = "TARGET HIT"
+                    outcome_score = 1
+                elif stop_hit and not target_hit:
+                    outcome = "STOP HIT"
+                    outcome_score = -1
+                elif target_hit and stop_hit:
+                    outcome = "VOLATILE"  # Both hit — depends on which first (hard to tell from daily)
+                    outcome_score = 0
+                elif actual_move_pct > 0:
+                    outcome = "PARTIAL WIN"
+                    outcome_score = 0.5
+                else:
+                    outcome = "PARTIAL LOSS"
+                    outcome_score = -0.5
+                
+                day_results["trades"].append({
+                    "label": label,
+                    "type": trade["type"],
+                    "direction": "BULL" if is_bullish else "BEAR",
+                    "entry": entry,
+                    "target": target,
+                    "stop": stop,
+                    "probability": trade.get("probability", ""),
+                    "day_open": round(day_open, 2),
+                    "day_high": round(day_high, 2),
+                    "day_low": round(day_low, 2),
+                    "day_close": round(day_close, 2),
+                    "actual_move_pct": actual_move_pct,
+                    "best_move_pct": best_move_pct,
+                    "outcome": outcome,
+                    "score": outcome_score,
+                })
+            except Exception as te:
+                print(f"  Trade validation error for {trade}: {te}")
+                continue
+        
+        if day_results["trades"]:
+            results.append(day_results)
+    
+    # Compute summary
+    all_trades = [t for r in results for t in r["trades"]]
+    total = len(all_trades)
+    wins = sum(1 for t in all_trades if t["score"] >= 0.5)
+    losses = sum(1 for t in all_trades if t["score"] <= -0.5)
+    target_hits = sum(1 for t in all_trades if t["outcome"] == "TARGET HIT")
+    stop_hits = sum(1 for t in all_trades if t["outcome"] == "STOP HIT")
+    avg_move = round(sum(t["actual_move_pct"] for t in all_trades) / max(1, total), 2)
+    avg_best = round(sum(t["best_move_pct"] for t in all_trades) / max(1, total), 2)
+    
+    summary = {
+        "total_trades": total,
+        "wins": wins,
+        "losses": losses,
+        "win_rate": round(wins / max(1, total) * 100, 1),
+        "target_hit_rate": round(target_hits / max(1, total) * 100, 1),
+        "stop_hit_rate": round(stop_hits / max(1, total) * 100, 1),
+        "avg_actual_move": avg_move,
+        "avg_best_move": avg_best,
+        "days_tracked": len(results),
+    }
+    
+    return {"success": True, "results": results, "summary": summary}
 
 
 @app.post("/api/vote")
