@@ -381,6 +381,11 @@ nav{position:sticky;top:30px;z-index:99;backdrop-filter:blur(24px);-webkit-backd
 .w52fill{height:100%;border-radius:3px;background:linear-gradient(90deg,var(--red),var(--amber),var(--green))}
 .w52dot{position:absolute;top:50%;transform:translate(-50%,-50%);width:12px;height:12px;border-radius:50%;background:var(--blue);border:2px solid #fff;box-shadow:0 0 8px rgba(59,130,246,.4);z-index:2}
 .w52labels{display:flex;justify-content:space-between;font-family:var(--mono);font-size:10px;color:var(--text3)}
+.dec-input{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:8px 12px;color:var(--text);font-family:var(--mono);font-size:14px;font-weight:700;width:130px;text-align:right;outline:none;transition:border .2s}
+.dec-input:focus{border-color:var(--blue)}
+.dec-badge{display:inline-flex;align-items:center;gap:4px;padding:6px 14px;border-radius:8px;font-family:'Sora',sans-serif;font-size:13px;font-weight:800;letter-spacing:.5px}
+.dec-meter{height:6px;border-radius:3px;background:rgba(255,255,255,.06);overflow:hidden;margin:4px 0}
+.dec-meter-fill{height:100%;border-radius:3px;transition:width .8s ease}
 
 /* Score bar */
 .scorebar{height:6px;background:rgba(148,163,184,.1);border-radius:3px;overflow:hidden;margin:6px 0}
@@ -535,7 +540,7 @@ footer{position:relative;z-index:1;margin-top:32px;background:rgba(6,10,19,.95);
 
 /* ═══ ANTI-SCREENSHOT & ANTI-SHARING PROTECTIONS ═══ */
 /* Smart Trades content cannot be selected, copied, or printed */
-[data-tab="trades"], [data-tab="picks"], [data-tab="funds"] {
+[data-tab="trades"], [data-tab="picks"], [data-tab="funds"], #decisionTool, #decisionResult {
   -webkit-user-select: none !important;
   -moz-user-select: none !important;
   -ms-user-select: none !important;
@@ -543,14 +548,16 @@ footer{position:relative;z-index:1;margin-top:32px;background:rgba(6,10,19,.95);
   -webkit-touch-callout: none !important;
   -webkit-user-drag: none !important;
 }
-[data-tab="trades"] *, [data-tab="picks"] *, [data-tab="funds"] * {
+[data-tab="trades"] *, [data-tab="picks"] *, [data-tab="funds"] *, #decisionTool *, #decisionResult * {
   -webkit-user-select: none !important;
   -moz-user-select: none !important;
   user-select: none !important;
 }
+/* Allow typing in the buy price input only */
+#buyPriceInput { -webkit-user-select: text !important; -moz-user-select: text !important; user-select: text !important; }
 /* Hide completely when printing */
 @media print {
-  [data-tab="trades"], [data-tab="picks"], [data-tab="funds"], #tabBtnTrades, #tabBtnPicks, #tabBtnFunds, .trades-watermark {
+  [data-tab="trades"], [data-tab="picks"], [data-tab="funds"], #tabBtnTrades, #tabBtnPicks, #tabBtnFunds, .trades-watermark, #decisionTool {
     display: none !important;
     visibility: hidden !important;
   }
@@ -586,11 +593,11 @@ footer{position:relative;z-index:1;margin-top:32px;background:rgba(6,10,19,.95);
   font-family: 'Sora', sans-serif;
 }
 /* Blur trades/picks when page is not visible (anti-screenshot via tab switch) */
-.trades-blurred [data-tab="trades"] .sbody, .trades-blurred [data-tab="picks"] .sbody, .trades-blurred [data-tab="funds"] .sbody {
+.trades-blurred [data-tab="trades"] .sbody, .trades-blurred [data-tab="picks"] .sbody, .trades-blurred [data-tab="funds"] .sbody, .trades-blurred #decisionResult {
   filter: blur(20px) !important;
   transition: filter 0.1s;
 }
-.trades-blurred [data-tab="trades"] .sbody::after, .trades-blurred [data-tab="picks"] .sbody::after, .trades-blurred [data-tab="funds"] .sbody::after {
+.trades-blurred [data-tab="trades"] .sbody::after, .trades-blurred [data-tab="picks"] .sbody::after, .trades-blurred [data-tab="funds"] .sbody::after, .trades-blurred #decisionResult::after {
   content: "Content hidden for security";
   position: absolute;
   top: 50%; left: 50%;
@@ -706,6 +713,9 @@ Type to search <strong>100 stocks</strong> (US &amp; India) &middot; Or enter an
 <!-- 52-WEEK POSITION -->
 <div class="sc vis" id="w52section" style="opacity:1;transform:none"></div>
 
+<!-- DECISION TOOL — Available to all users -->
+<div class="sc vis" id="decisionTool" style="opacity:1;transform:none;display:none"></div>
+
 <div id="analysisContainer"></div>
 
 <!-- POST-REPORT DISCLAIMER -->
@@ -746,14 +756,14 @@ Type to search <strong>100 stocks</strong> (US &amp; India) &middot; Or enter an
 <script>
 
 const stocks=[
-{t:'AAPL',n:'Apple Inc.'},{t:'MSFT',n:'Microsoft Corporation'},{t:'GOOGL',r:'Strong Buy',n:'Alphabet Inc. (Google)'},{t:'AMZN',n:'Amazon.com Inc.'},
-{t:'NVDA',n:'NVIDIA Corporation'},{t:'META',r:'Strong Buy',n:'Meta Platforms (Facebook)'},{t:'TSLA',n:'Tesla Inc.'},{t:'BRK.B',n:'Berkshire Hathaway'},
-{t:'LLY',n:'Eli Lilly and Company'},{t:'AVGO',n:'Broadcom Inc.'},{t:'JPM',r:'Strong Buy',n:'JPMorgan Chase & Co.'},{t:'V',n:'Visa Inc.'},
+{t:'AAPL',n:'Apple Inc.'},{t:'MSFT',n:'Microsoft Corporation'},{t:'GOOGL',r:'Strong Buy',n:'Alphabet Inc. (Google)',bp:'$165-175',d:'ACCUMULATE · Hold 12mo · Add below $175. AI search moat intact. Cloud growing 28%. 82% prob of $220+ in 12mo.'},{t:'AMZN',n:'Amazon.com Inc.'},
+{t:'NVDA',n:'NVIDIA Corporation'},{t:'META',r:'Strong Buy',n:'Meta Platforms (Facebook)',bp:'$560-580',d:'WAIT · Buy at $570 · Trading at fair value. Wait for 8-10% pullback. 78% prob of $750+ in 12mo.'},{t:'TSLA',n:'Tesla Inc.'},{t:'BRK.B',n:'Berkshire Hathaway'},
+{t:'LLY',n:'Eli Lilly and Company'},{t:'AVGO',n:'Broadcom Inc.'},{t:'JPM',r:'Strong Buy',n:'JPMorgan Chase & Co.',bp:'$230-245',d:'BUY ON DIP · Hold 12mo · Wait for rate cut fear selloff to ₹230-245. 77% prob of $300+ in 12mo.'},{t:'V',n:'Visa Inc.'},
 {t:'UNH',n:'UnitedHealth Group'},{t:'XOM',n:'Exxon Mobil'},{t:'WMT',n:'Walmart Inc.'},{t:'MA',n:'Mastercard Inc.'},
 {t:'PG',n:'Procter & Gamble'},{t:'JNJ',n:'Johnson & Johnson'},{t:'HD',n:'Home Depot'},{t:'ORCL',n:'Oracle Corporation'},
 {t:'COST',n:'Costco Wholesale'},{t:'NFLX',n:'Netflix Inc.'},{t:'BAC',n:'Bank of America'},{t:'CRM',n:'Salesforce Inc.'},
 {t:'ABBV',n:'AbbVie Inc.'},{t:'CVX',n:'Chevron Corporation'},{t:'AMD',n:'Advanced Micro Devices'},{t:'KO',n:'Coca-Cola Company'},
-{t:'PEP',n:'PepsiCo Inc.'},{t:'MRK',r:'★ Aggressive Buy',n:'Merck & Co.'},{t:'ADBE',n:'Adobe Inc.'},{t:'TMO',n:'Thermo Fisher Scientific'},
+{t:'PEP',n:'PepsiCo Inc.'},{t:'MRK',r:'★ Aggressive Buy',n:'Merck & Co.',bp:'$95-100',d:'BUY NOW · Hold 12-18mo · P/E 14x is deeply cheap for Keytruda franchise. 80% prob of $130+ in 12mo.'},{t:'ADBE',n:'Adobe Inc.'},{t:'TMO',n:'Thermo Fisher Scientific'},
 {t:'CSCO',n:'Cisco Systems'},{t:'ACN',n:'Accenture'},{t:'MCD',n:"McDonald's Corporation"},{t:'LIN',n:'Linde plc'},
 {t:'ABT',n:'Abbott Laboratories'},{t:'WFC',n:'Wells Fargo'},{t:'TXN',n:'Texas Instruments'},{t:'INTC',n:'Intel Corporation'},
 {t:'DIS',n:'Walt Disney Company'},{t:'PM',n:'Philip Morris'},{t:'CMCSA',n:'Comcast Corporation'},{t:'NKE',n:'Nike Inc.'},
@@ -761,14 +771,14 @@ const stocks=[
 {t:'AMAT',n:'Applied Materials'},{t:'CAT',n:'Caterpillar Inc.'},
 {t:'RELIANCE.NS',n:'Reliance Industries'},{t:'TCS.NS',n:'Tata Consultancy Services'},{t:'HDFCBANK.NS',n:'HDFC Bank'},
 {t:'INFY',n:'Infosys Limited'},{t:'HINDUNILVR.NS',n:'Hindustan Unilever'},{t:'ICICIBANK.NS',n:'ICICI Bank'},
-{t:'SBIN.NS',n:'State Bank of India'},{t:'BHARTIARTL.NS',n:'Bharti Airtel'},{t:'ITC.NS',r:'★ Aggressive Buy',n:'ITC Limited'},
-{t:'KOTAKBANK.NS',n:'Kotak Mahindra Bank'},{t:'LT.NS',r:'Strong Buy',n:'Larsen & Toubro'},{t:'AXISBANK.NS',n:'Axis Bank'},
+{t:'SBIN.NS',n:'State Bank of India'},{t:'BHARTIARTL.NS',n:'Bharti Airtel'},{t:'ITC.NS',r:'★ Aggressive Buy',n:'ITC Limited',bp:'₹400-415',d:'BUY NOW · Hold 12-18mo · FMCG demerger + hotel listing catalyst by Q3 2026. 85% prob of ₹500+ in 12mo.'},
+{t:'KOTAKBANK.NS',n:'Kotak Mahindra Bank'},{t:'LT.NS',r:'Strong Buy',n:'Larsen & Toubro',bp:'₹3,200-3,300',d:'WAIT · Buy at ₹3,200 · Order book strong but priced in. Wait for 5-8% correction. 75% prob of ₹4,000 in 12mo.'},{t:'AXISBANK.NS',n:'Axis Bank'},
 {t:'BAJFINANCE.NS',n:'Bajaj Finance'},{t:'ASIANPAINT.NS',n:'Asian Paints'},{t:'MARUTI.NS',n:'Maruti Suzuki'},
 {t:'TITAN.NS',n:'Titan Company'},{t:'SUNPHARMA.NS',n:'Sun Pharmaceutical'},{t:'ULTRACEMCO.NS',n:'UltraTech Cement'},
-{t:'NESTLEIND.NS',n:'Nestlé India'},{t:'ONGC.NS',n:'Oil & Natural Gas Corp'},{t:'NTPC.NS',r:'Strong Buy',n:'NTPC Limited'},
+{t:'NESTLEIND.NS',n:'Nestlé India'},{t:'ONGC.NS',n:'Oil & Natural Gas Corp'},{t:'NTPC.NS',r:'Strong Buy',n:'NTPC Limited',bp:'₹310-325',d:'ACCUMULATE · Hold 6-12mo · Add on dips to ₹310-325. Green energy re-rating in progress. 78% prob of ₹400+ in 9mo.'},
 {t:'TATAMOTORS.NS',n:'Tata Motors'},{t:'POWERGRID.NS',n:'Power Grid Corporation'},{t:'TATASTEEL.NS',n:'Tata Steel'},
 {t:'M&M.NS',n:'Mahindra & Mahindra'},{t:'JSWSTEEL.NS',n:'JSW Steel'},{t:'ADANIENT.NS',n:'Adani Enterprises'},
-{t:'WIPRO.NS',n:'Wipro Limited'},{t:'COALINDIA.NS',r:'★ Aggressive Buy',n:'Coal India'},{t:'HCLTECH.NS',n:'HCL Technologies'},
+{t:'WIPRO.NS',n:'Wipro Limited'},{t:'COALINDIA.NS',r:'★ Aggressive Buy',n:'Coal India',bp:'₹360-380',d:'BUY NOW · Hold 6mo · Dividend alone gives 6%+ yield. Cash cow. 82% prob of ₹450+ in 6mo on div reinvestment.'},{t:'HCLTECH.NS',n:'HCL Technologies'},
 {t:'BAJAJFINSV.NS',n:'Bajaj Finserv'},{t:'DIVISLAB.NS',n:"Divi's Laboratories"},{t:'GRASIM.NS',n:'Grasim Industries'},
 {t:'TECHM.NS',n:'Tech Mahindra'},{t:'BRITANNIA.NS',n:'Britannia Industries'},{t:'EICHERMOT.NS',n:'Eicher Motors'},
 {t:'APOLLOHOSP.NS',n:'Apollo Hospitals'},{t:'INDUSINDBK.NS',n:'IndusInd Bank'},{t:'TRENT.NS',n:'Trent Limited'},
@@ -918,13 +928,14 @@ tradesTab.addEventListener('copy',e=>{e.preventDefault();e.clipboardData&&e.clip
 tradesTab.addEventListener('cut',e=>{e.preventDefault()});
 }
 
-// 5. Block keyboard shortcuts globally when trades tab is active
+// 5. Block keyboard shortcuts globally when trades tab or decision tool is active
 document.addEventListener('keydown',function(e){
 const tradesVisible=document.querySelector('[data-tab="trades"]')&&
 document.querySelector('[data-tab="trades"]').style.display!=='none'&&
 document.querySelector('.tab-btn-active')&&
 document.querySelector('.tab-btn-active').id==='tabBtnTrades';
-if(!tradesVisible)return;
+const decisionVisible=document.getElementById('decisionResult')&&document.getElementById('decisionResult').innerHTML.length>10;
+if(!tradesVisible&&!decisionVisible)return;
 
 // Block PrintScreen
 if(e.key==='PrintScreen'){e.preventDefault();return false}
@@ -1058,6 +1069,8 @@ document.getElementById('w52section').innerHTML=`
 <div style="font-size:11px;color:var(--text2);margin-top:6px">${w52pct<25?'<strong style="color:var(--green)">\u25CF Bargain zone</strong> \u2014 near yearly low. Check fundamentals for entry.':w52pct>75?'<strong style="color:var(--amber)">\u25CF Hot streak</strong> \u2014 near yearly peak. Watch for resistance.':'<strong style="color:var(--blue)">\u25CF Neutral zone</strong> \u2014 mid-range. Fundamentals decide next move.'}</div>
 </div>`;
 try{createCharts(d)}catch(e){console.warn('createCharts error:',e)}
+window._stockData=d;window._stockCurr=curr;
+try{renderDecisionTool(d,curr)}catch(e){console.warn('decisionTool error:',e)}
 createAnalysisSections(data.report,d,data.fund_holdings||{institutions:[],funds:[],summary:{}});
 document.getElementById('report').classList.add('show');
 renderMarketEvents();
@@ -1343,6 +1356,24 @@ ${vResult.reasons.map(r=>{const isPos=r.includes('[+');return '<span style="font
 <!-- TAB: RELEVANT STOCKS (Restricted) -->
 <div class="sc" data-tab="picks"><div class="sh"><div class="si" style="background:rgba(139,92,246,.1)">&#128161;</div><div class="st" style="color:var(--purple)" id="sec-picks">Relevant Stocks \u2014 Curated Investment Ideas</div></div>
 <div class="sbody">
+
+<!-- PORTFOLIO DECISION TOOL -->
+<div style="padding:14px 16px;border-radius:10px;background:linear-gradient(135deg,rgba(59,130,246,.06),rgba(139,92,246,.04));border:1px solid rgba(59,130,246,.2);margin-bottom:18px">
+<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+<span style="font-size:18px">&#129504;</span>
+<span style="font-family:'Sora',sans-serif;font-size:13px;font-weight:800;color:var(--blue)">Portfolio Decision Engine</span>
+<span style="font-size:9px;color:var(--text3);padding:2px 6px;border-radius:4px;background:var(--surface);border:1px solid var(--border)">Multi-Factor Algorithm</span>
+</div>
+<div style="font-size:10px;color:var(--text3);margin-bottom:12px">Enter your stock &amp; buy price \u2014 get a data-driven HOLD / SELL / ADD decision with probability across 3, 6, 12-month horizons.</div>
+<div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap">
+<div style="flex:1;min-width:140px"><label style="font-size:9px;color:var(--text3);display:block;margin-bottom:3px">TICKER (e.g. RELIANCE.NS, AAPL)</label>
+<input type="text" id="pdTicker" placeholder="RELIANCE.NS" style="width:100%;padding:8px 12px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-family:var(--mono);font-size:13px;font-weight:700"></div>
+<div style="flex:0.6;min-width:100px"><label style="font-size:9px;color:var(--text3);display:block;margin-bottom:3px">YOUR BUY PRICE</label>
+<input type="number" id="pdBuyPrice" placeholder="1250" step="0.01" style="width:100%;padding:8px 12px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-family:var(--mono);font-size:13px;font-weight:700"></div>
+<button onclick="runPortfolioDecision()" id="pdBtn" style="padding:8px 20px;border-radius:8px;border:2px solid var(--blue);background:rgba(59,130,246,.12);color:var(--blue);font-family:'Sora',sans-serif;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap">&#9889; Analyze Decision</button>
+</div>
+<div id="pdResult" style="margin-top:12px"></div>
+</div>
 <!-- BUY RATING LEGEND -->
 <div style="padding:10px 14px;border-radius:8px;background:rgba(139,92,246,.04);border:1px solid rgba(139,92,246,.1);margin-bottom:14px">
 <div style="font-family:'Sora',sans-serif;font-size:10px;font-weight:700;color:var(--purple);letter-spacing:.5px;margin-bottom:8px">RATING &amp; LABEL GUIDE</div>
@@ -1625,6 +1656,300 @@ const stars='\u2605'.repeat(c.r)+'\u2606'.repeat(5-c.r);
 t+=`<tr><td><strong>${c.n}</strong></td><td>${c.s}</td><td style="font-size:12px">${c.k}</td><td style="color:var(--amber);letter-spacing:1px">${stars}</td><td style="color:${clr};font-weight:600;font-size:12px">${c.p}</td></tr>`});
 return t+'</table></div>'}
 document.getElementById('smallCapTable').innerHTML=gemsTable(recs,geo==='India'?'\u{1F1EE}\u{1F1F3} India Picks':'\u{1F1FA}\u{1F1F8} USA Picks')+gemsTable(altRecs,altGeo==='India'?'\u{1F1EE}\u{1F1F3} India Picks':'\u{1F1FA}\u{1F1F8} USA Picks')}
+
+// ═══════════════════════════════════════════════
+// DECISION TOOL — "What Should I Do With My Position?"
+// Multi-factor algorithm: P&L, valuation, momentum,
+// 52W position, margins, intrinsic value, verdict score
+// ═══════════════════════════════════════════════
+function renderDecisionTool(d,curr){
+const el=document.getElementById('decisionTool');
+if(!el)return;
+const price=d.current_price||0;
+el.style.display='block';
+el.innerHTML=`
+<div class="sh" style="margin-bottom:4px"><div class="si" style="background:rgba(6,182,212,.1)">&#127919;</div><div class="st" style="color:var(--cyan)">What Should I Do? \u2014 Position Analyzer</div></div>
+<div style="padding:10px 16px 14px">
+<div style="font-size:11px;color:var(--text3);margin-bottom:10px">Enter the price you bought this stock at. Our 8-factor algorithm will tell you whether to hold, sell, or accumulate \u2014 and for how long.</div>
+<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+<div style="display:flex;align-items:center;gap:6px">
+<span style="font-size:11px;color:var(--text3);font-weight:600">I bought at</span>
+<span style="font-size:13px;font-weight:700;color:var(--text)">${curr}</span>
+<input type="number" id="buyPriceInput" class="dec-input" placeholder="0.00" step="0.01" min="0">
+</div>
+<button onclick="runDecision()" style="padding:8px 18px;border-radius:8px;border:1px solid var(--cyan);background:rgba(6,182,212,.1);color:var(--cyan);font-family:'Sora',sans-serif;font-size:12px;font-weight:700;cursor:pointer;transition:all .2s">&#9889; Analyze My Position</button>
+<div style="font-size:10px;color:var(--text3)">CMP: <strong style="color:var(--text)">${curr}${price.toLocaleString()}</strong></div>
+</div>
+<div id="decisionResult" style="margin-top:12px"></div>
+</div>`;
+// Auto-run if user presses Enter
+setTimeout(()=>{
+const inp=document.getElementById('buyPriceInput');
+if(inp)inp.addEventListener('keydown',e=>{if(e.key==='Enter')runDecision()});
+// Anti-copy: block right-click, drag, and print on decision tool
+el.addEventListener('contextmenu',e=>e.preventDefault());
+el.addEventListener('dragstart',e=>e.preventDefault());
+el.addEventListener('copy',e=>{e.preventDefault();e.clipboardData.setData('text/plain','Content protected by Celesys AI')});
+},100);
+}
+
+function runDecision(){
+const d=window._stockData;
+const curr=window._stockCurr||'$';
+if(!d)return;
+const inp=document.getElementById('buyPriceInput');
+const el=document.getElementById('decisionResult');
+if(!inp||!el)return;
+const buyPrice=parseFloat(inp.value);
+if(!buyPrice||buyPrice<=0){el.innerHTML='<div style="font-size:11px;color:var(--red)">Please enter a valid buy price.</div>';return}
+
+const price=d.current_price||0;
+if(!price){el.innerHTML='<div style="font-size:11px;color:var(--red)">No current price data available.</div>';return}
+
+// ═══ 11-FACTOR DECISION ALGORITHM ═══
+// F1: P&L Position | F2: Absolute Valuation (P/E) | F3: 52-Week Position
+// F4: Profitability | F5: Return on Equity | F6: Dividend Support
+// F7: Volatility (Beta) | F8: P&L-Adjusted Conviction
+// F9: Earnings Velocity (EPS + Revenue CAGR) | F10: Relative Valuation (P/E vs Sector)
+// F11: Technical Momentum (SMA20/SMA200 crossover + price position)
+const n=v=>{const f=parseFloat(v);return(isNaN(f)||v==='N/A')?0:f};
+const pe=n(d.pe_ratio);
+const fpe=n(d.forward_pe);
+const pb=n(d.pb_ratio);
+const pm=n(d.profit_margin);
+const roe=n(d.roe);
+const beta=n(d.beta)||1;
+const dy=n(d.dividend_yield);
+const hi=n(d.week52_high);
+const lo=n(d.week52_low);
+const w52pct=hi>lo?((price-lo)/(hi-lo)):0.5;
+const sma20=n(d.sma_20);
+const sma50=n(d.sma_50);
+const sma200=n(d.sma_200);
+const epsGrowth=n(d.eps_growth_pct);
+const revGrowth=n(d.revenue_growth);
+const earningsGrowth=n(d.earnings_growth);
+const sectorPE=n(d.sector_avg_pe)||20;
+
+// Factor 1: P&L Position
+const pnl=((price-buyPrice)/buyPrice)*100;
+const pnlAbs=Math.abs(pnl);
+let score=0;
+const factors=[];
+
+// Factor 2: Absolute Valuation (P/E)
+let valScore=0;
+if(pe>0&&pe<12){valScore=8;factors.push({f:'Deeply undervalued (P/E '+pe.toFixed(1)+'x)',s:'+8',c:'g'})}
+else if(pe>0&&pe<18){valScore=5;factors.push({f:'Fair value (P/E '+pe.toFixed(1)+'x)',s:'+5',c:'g'})}
+else if(pe>0&&pe<28){valScore=2;factors.push({f:'Reasonably priced (P/E '+pe.toFixed(1)+'x)',s:'+2',c:'b'})}
+else if(pe>=28&&pe<50){valScore=-3;factors.push({f:'Expensive (P/E '+pe.toFixed(1)+'x)',s:'-3',c:'r'})}
+else if(pe>=50){valScore=-6;factors.push({f:'Very expensive (P/E '+pe.toFixed(1)+'x)',s:'-6',c:'r'})}
+score+=valScore;
+
+// Factor 3: 52-Week Position
+let w52Score=0;
+if(w52pct<0.15){w52Score=6;factors.push({f:'Near 52W low ('+Math.round(w52pct*100)+'%) \u2014 deep value zone',s:'+6',c:'g'})}
+else if(w52pct<0.35){w52Score=3;factors.push({f:'Lower half of 52W range ('+Math.round(w52pct*100)+'%)',s:'+3',c:'g'})}
+else if(w52pct>0.9){w52Score=-4;factors.push({f:'Near 52W high ('+Math.round(w52pct*100)+'%) \u2014 limited upside',s:'-4',c:'r'})}
+else if(w52pct>0.75){w52Score=-1;factors.push({f:'Upper range ('+Math.round(w52pct*100)+'%)',s:'-1',c:'a'})}
+else{w52Score=1;factors.push({f:'Mid-range ('+Math.round(w52pct*100)+'%)',s:'+1',c:'b'})}
+score+=w52Score;
+
+// Factor 4: Profitability
+if(pm>20){score+=4;factors.push({f:'Strong margins ('+pm.toFixed(1)+'%)',s:'+4',c:'g'})}
+else if(pm>10){score+=2;factors.push({f:'Decent margins ('+pm.toFixed(1)+'%)',s:'+2',c:'b'})}
+else if(pm>0){score+=0;factors.push({f:'Thin margins ('+pm.toFixed(1)+'%)',s:'0',c:'a'})}
+else if(pm<0){score-=3;factors.push({f:'Negative margins ('+pm.toFixed(1)+'%) \u2014 losing money',s:'-3',c:'r'})}
+
+// Factor 5: Return on Equity
+if(roe>20){score+=3;factors.push({f:'Excellent ROE ('+roe.toFixed(1)+'%)',s:'+3',c:'g'})}
+else if(roe>12){score+=1;factors.push({f:'Good ROE ('+roe.toFixed(1)+'%)',s:'+1',c:'b'})}
+else if(roe<5&&roe>0){score-=2;factors.push({f:'Poor ROE ('+roe.toFixed(1)+'%)',s:'-2',c:'r'})}
+
+// Factor 6: Dividend support
+if(dy>4){score+=3;factors.push({f:'High dividend yield ('+dy.toFixed(1)+'%) cushions downside',s:'+3',c:'g'})}
+else if(dy>2){score+=1;factors.push({f:'Moderate dividend ('+dy.toFixed(1)+'%)',s:'+1',c:'b'})}
+
+// Factor 7: Volatility risk (beta)
+if(beta>1.5){score-=2;factors.push({f:'High volatility (beta '+beta.toFixed(2)+') \u2014 wider swings',s:'-2',c:'r'})}
+else if(beta<0.8){score+=2;factors.push({f:'Low volatility (beta '+beta.toFixed(2)+') \u2014 defensive',s:'+2',c:'g'})}
+
+// Factor 8: P&L-adjusted conviction
+if(pnl>50){score-=2;factors.push({f:'Sitting on '+pnl.toFixed(1)+'% gain \u2014 consider partial booking',s:'-2',c:'a'})}
+else if(pnl>20){score+=0;factors.push({f:'Healthy gain of '+pnl.toFixed(1)+'%',s:'0',c:'g'})}
+else if(pnl>0){score+=2;factors.push({f:'Small gain of '+pnl.toFixed(1)+'% \u2014 room to grow',s:'+2',c:'g'})}
+else if(pnl>-10){score+=1;factors.push({f:'Minor loss of '+pnl.toFixed(1)+'% \u2014 normal fluctuation',s:'+1',c:'b'})}
+else if(pnl>-25){score+=0;factors.push({f:'Loss of '+pnl.toFixed(1)+'% \u2014 review thesis',s:'0',c:'a'})}
+else{score-=2;factors.push({f:'Deep loss of '+pnl.toFixed(1)+'% \u2014 thesis may be broken',s:'-2',c:'r'})}
+
+// ═══ NEW: Factor 9: Earnings Velocity (EPS CAGR + Revenue Growth) ═══
+// Combines forward EPS growth vs trailing + revenue momentum
+const bestEpsG=epsGrowth||earningsGrowth;
+const combGrowth=bestEpsG&&revGrowth?(bestEpsG*0.6+revGrowth*0.4):bestEpsG||revGrowth;
+if(combGrowth>30){score+=5;factors.push({f:'Exceptional growth (EPS '+bestEpsG.toFixed(0)+'% + Rev '+revGrowth.toFixed(0)+'%) \u2014 high CAGR trajectory',s:'+5',c:'g'})}
+else if(combGrowth>15){score+=3;factors.push({f:'Strong growth (EPS '+bestEpsG.toFixed(0)+'% + Rev '+revGrowth.toFixed(0)+'%)',s:'+3',c:'g'})}
+else if(combGrowth>5){score+=1;factors.push({f:'Moderate growth (EPS '+bestEpsG.toFixed(0)+'% + Rev '+revGrowth.toFixed(0)+'%)',s:'+1',c:'b'})}
+else if(combGrowth>0){score+=0;factors.push({f:'Sluggish growth ('+combGrowth.toFixed(0)+'% blended)',s:'0',c:'a'})}
+else if(combGrowth<=-5){score-=3;factors.push({f:'Earnings contracting ('+combGrowth.toFixed(0)+'%) \u2014 thesis at risk',s:'-3',c:'r'})}
+else if(combGrowth<0){score-=1;factors.push({f:'Slight decline ('+combGrowth.toFixed(0)+'%)',s:'-1',c:'a'})}
+// Forward PE compression check (forward < trailing = earnings accelerating)
+if(fpe>0&&pe>0&&fpe<pe*0.85){score+=2;factors.push({f:'Forward P/E ('+fpe.toFixed(1)+'x) < Trailing ('+pe.toFixed(1)+'x) \u2014 earnings accelerating',s:'+2',c:'g'})}
+else if(fpe>0&&pe>0&&fpe>pe*1.15){score-=1;factors.push({f:'Forward P/E ('+fpe.toFixed(1)+'x) > Trailing ('+pe.toFixed(1)+'x) \u2014 earnings decelerating',s:'-1',c:'r'})}
+
+// ═══ NEW: Factor 10: Relative Valuation (P/E vs Sector Average) ═══
+if(pe>0&&sectorPE>0){
+const peRatio=pe/sectorPE;
+const discount=((sectorPE-pe)/sectorPE*100).toFixed(0);
+if(peRatio<0.6){score+=5;factors.push({f:'P/E '+pe.toFixed(1)+'x is '+Math.abs(discount)+'% below sector avg '+sectorPE+'x \u2014 deep discount',s:'+5',c:'g'})}
+else if(peRatio<0.85){score+=3;factors.push({f:'P/E '+pe.toFixed(1)+'x is '+Math.abs(discount)+'% below sector avg '+sectorPE+'x \u2014 undervalued vs peers',s:'+3',c:'g'})}
+else if(peRatio<=1.15){score+=1;factors.push({f:'P/E '+pe.toFixed(1)+'x is in line with sector avg '+sectorPE+'x',s:'+1',c:'b'})}
+else if(peRatio<=1.5){score-=2;factors.push({f:'P/E '+pe.toFixed(1)+'x is '+Math.abs(discount)+'% above sector avg '+sectorPE+'x \u2014 premium priced',s:'-2',c:'a'})}
+else{score-=4;factors.push({f:'P/E '+pe.toFixed(1)+'x is '+Math.abs(discount)+'% above sector avg '+sectorPE+'x \u2014 extremely expensive vs peers',s:'-4',c:'r'})}
+}
+
+// ═══ NEW: Factor 11: Technical Momentum (SMA20/SMA50/SMA200 position) ═══
+let techScore=0;
+let techDetails=[];
+if(sma20>0){
+if(price>sma20){techScore+=1;techDetails.push('Above SMA20 ('+sma20.toLocaleString()+')')}
+else{techScore-=1;techDetails.push('Below SMA20 ('+sma20.toLocaleString()+')')}
+}
+if(sma200>0){
+if(price>sma200){techScore+=2;techDetails.push('Above SMA200 ('+sma200.toLocaleString()+') \u2014 long-term uptrend')}
+else{techScore-=2;techDetails.push('Below SMA200 ('+sma200.toLocaleString()+') \u2014 long-term downtrend')}
+}
+if(sma20>0&&sma200>0){
+if(sma20>sma200){techScore+=2;techDetails.push('Golden Cross (SMA20 > SMA200) \u2014 bullish')}
+else if(sma20<sma200*0.95){techScore-=2;techDetails.push('Death Cross (SMA20 << SMA200) \u2014 bearish')}
+}
+if(sma50>0&&sma200>0){
+if(sma50>sma200&&price>sma50){techScore+=1;techDetails.push('SMA50 > SMA200 with price above both \u2014 strong uptrend')}
+}
+// Cap tech score
+techScore=Math.max(-5,Math.min(5,techScore));
+score+=techScore;
+if(techDetails.length>0){
+const tC=techScore>=3?'g':techScore>=1?'b':techScore<=-2?'r':'a';
+factors.push({f:'Technical: '+techDetails.join(', '),s:(techScore>=0?'+':'')+techScore,c:tC});
+}
+
+// ═══ COMPUTE DECISION ═══
+// Adjusted thresholds for 11-factor system (max possible ~45, typical range -15 to +30)
+let decision,decCol,decBg,timeline,probability,reasoning,action;
+
+if(score>=18){
+decision='STRONG HOLD';decCol='#10b981';decBg='rgba(16,185,129,.1)';
+timeline='12-24 months';probability=Math.min(95,78+Math.floor(score/2));
+reasoning='Exceptional across all 11 factors \u2014 valuation, growth, momentum, and technicals all align. This stock has serious compounding potential.';
+action=pnl<0?'Average down aggressively on any 5-10% dip. Every factor supports this being a long-term winner.':'Hold your entire position. Consider adding on 10%+ corrections. This is a compounder.';
+}else if(score>=12){
+decision='HOLD & ACCUMULATE';decCol='#10b981';decBg='rgba(16,185,129,.08)';
+timeline='6-12 months';probability=Math.min(90,72+Math.floor(score/2));
+reasoning='Strong fundamentals + positive momentum. Earnings velocity and technical trend both support holding.';
+action=pnl<-15?'Accumulate more to average down. Growth trajectory intact despite paper loss.':'Hold current position. Add on 5-8% pullbacks when SMA20 acts as support.';
+}else if(score>=6){
+decision='HOLD';decCol='#22d3ee';decBg='rgba(6,182,212,.08)';
+timeline='6-12 months';probability=Math.min(82,64+score);
+reasoning='Decent fundamentals with moderate growth. No urgency to act, but monitor quarterly earnings closely.';
+action=pnl>30?'Consider booking 25-30% of profits. Let the rest ride with a trailing stop.':'Hold and review after next quarterly results. Watch for SMA200 break.';
+}else if(score>=0){
+decision='HOLD WITH CAUTION';decCol='#f59e0b';decBg='rgba(245,158,11,.08)';
+timeline='3-6 months';probability=Math.min(72,56+score);
+reasoning='Mixed signals. Fundamentals are average. Watch for deterioration.';
+action=pnl>40?'Book 50% profits. Re-enter on correction.':pnl<-20?'Set a strict stop loss 10% below current price. Reassess in 3 months.':'Monitor closely. Exit if next quarter earnings disappoint.';
+}else if(score>=-5){
+decision='REDUCE POSITION';decCol='#f59e0b';decBg='rgba(245,158,11,.08)';
+timeline='0-3 months';probability=Math.min(65,55+Math.abs(score));
+reasoning='Weak fundamentals or expensive valuation. Risk-reward unfavorable at current levels.';
+action=pnl>20?'Book 50-70% profits now. Keep small tracking position.':'Sell 50% now. Set stop loss on remainder at '+curr+(price*0.92).toFixed(0)+'.';
+}else{
+decision='EXIT / SELL';decCol='#ef4444';decBg='rgba(239,68,68,.08)';
+timeline='Immediately';probability=Math.min(80,60+Math.abs(score));
+reasoning='Multiple red flags. Poor fundamentals, expensive valuation, or broken thesis. Capital is better deployed elsewhere.';
+action=pnl>0?'Book all profits. Re-evaluate only if fundamentals improve for 2+ quarters.':'Cut losses. Holding a losing position with weak fundamentals compounds damage.';
+}
+
+probability=Math.max(55,Math.min(95,probability));
+
+// Price targets
+const upside=score>=4?Math.max(5,Math.min(40,score*3)):0;
+const target1=price*(1+upside/200); // 3-month conservative
+const target2=price*(1+upside/100); // 12-month optimistic
+const stopLoss=price*(score>=0?0.88:0.92);
+
+// ═══ RENDER RESULT ═══
+let h=`<div style="position:relative;padding:14px;border-radius:10px;background:${decBg};border:1px solid ${decCol}25;overflow:hidden">`;
+// Watermark grid overlay
+h+=`<div style="position:absolute;top:0;left:0;right:0;bottom:0;pointer-events:none;z-index:5;opacity:.035;overflow:hidden" id="decWatermark"></div>`;
+h+=`<div style="position:relative;z-index:6">`;
+
+// Header: Decision badge + P&L
+h+=`<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:12px">
+<div style="display:flex;align-items:center;gap:10px">
+<span class="dec-badge" style="background:${decBg};border:2px solid ${decCol};color:${decCol}">${decision}</span>
+<div>
+<div style="font-size:10px;color:var(--text3)">Timeline</div>
+<div style="font-size:13px;font-weight:700;color:var(--text)">${timeline}</div>
+</div>
+<div>
+<div style="font-size:10px;color:var(--text3)">Probability</div>
+<div style="font-size:13px;font-weight:700;color:${decCol}">${probability}%</div>
+</div>
+</div>
+<div style="text-align:right">
+<div style="font-size:10px;color:var(--text3)">Your P&L</div>
+<div style="font-size:16px;font-weight:800;color:${pnl>=0?'var(--green)':'var(--red)'}">${pnl>=0?'+':''}${pnl.toFixed(1)}%</div>
+<div style="font-size:10px;color:var(--text3)">${curr}${buyPrice.toLocaleString()} → ${curr}${price.toLocaleString()}</div>
+</div>
+</div>`;
+
+// Probability meter
+h+=`<div class="dec-meter"><div class="dec-meter-fill" style="width:${probability}%;background:linear-gradient(90deg,${decCol}88,${decCol})"></div></div>`;
+
+// Reasoning + Action
+h+=`<div style="margin:10px 0;font-size:12px;color:var(--text2);line-height:1.6">${reasoning}</div>`;
+h+=`<div style="padding:8px 12px;border-radius:6px;background:rgba(255,255,255,.04);border-left:3px solid ${decCol};margin-bottom:12px">
+<div style="font-size:10px;font-weight:700;color:${decCol};margin-bottom:2px">&#9654; RECOMMENDED ACTION</div>
+<div style="font-size:11px;color:var(--text);line-height:1.6">${action}</div>
+</div>`;
+
+// Price targets row
+if(score>=0){
+h+=`<div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+<div style="flex:1;min-width:100px;padding:6px 10px;border-radius:6px;background:rgba(239,68,68,.06);border:1px solid rgba(239,68,68,.15)">
+<div style="font-size:9px;color:var(--red);font-weight:700">STOP LOSS</div>
+<div style="font-size:12px;font-weight:700;color:var(--red)">${curr}${stopLoss.toFixed(0)}</div>
+</div>
+<div style="flex:1;min-width:100px;padding:6px 10px;border-radius:6px;background:rgba(6,182,212,.06);border:1px solid rgba(6,182,212,.15)">
+<div style="font-size:9px;color:var(--cyan);font-weight:700">3-MONTH TARGET</div>
+<div style="font-size:12px;font-weight:700;color:var(--cyan)">${curr}${target1.toFixed(0)}</div>
+</div>
+<div style="flex:1;min-width:100px;padding:6px 10px;border-radius:6px;background:rgba(16,185,129,.06);border:1px solid rgba(16,185,129,.15)">
+<div style="font-size:9px;color:var(--green);font-weight:700">12-MONTH TARGET</div>
+<div style="font-size:12px;font-weight:700;color:var(--green)">${curr}${target2.toFixed(0)}</div>
+</div>
+</div>`;
+}
+
+// Factor breakdown
+h+=`<div style="font-size:10px;font-weight:700;color:var(--text3);letter-spacing:.5px;margin-bottom:6px">FACTOR BREAKDOWN (Score: ${score>=0?'+':''}${score})</div>`;
+h+=`<div style="display:flex;flex-wrap:wrap;gap:4px">`;
+factors.forEach(f=>{
+const fc=f.c==='g'?'var(--green)':f.c==='r'?'var(--red)':f.c==='a'?'var(--amber)':'var(--blue)';
+const fbg=f.c==='g'?'rgba(16,185,129,.08)':f.c==='r'?'rgba(239,68,68,.08)':f.c==='a'?'rgba(245,158,11,.08)':'rgba(59,130,246,.08)';
+h+=`<span style="font-size:9px;padding:3px 8px;border-radius:4px;background:${fbg};color:${fc};line-height:1.4"><strong>[${f.s}]</strong> ${f.f}</span>`;
+});
+h+=`</div>`;
+
+h+=`<div style="margin-top:8px;font-size:9px;color:var(--text3)">This is algorithmic analysis based on current fundamentals, not financial advice. Market conditions change \u2014 reassess after major events or quarterly results. Consult your financial advisor.</div>`;
+h+=`</div></div>`; // close inner z-index wrapper + outer container
+el.innerHTML=h;
+// Generate watermark grid in decision result
+const dw=document.getElementById('decWatermark');
+if(dw){let wh='';for(let r=0;r<6;r++)for(let c=0;c<4;c++){const x=c*25+Math.random()*5;const y=r*18+Math.random()*5;wh+=`<span style="position:absolute;left:${x}%;top:${y}%;font-size:10px;font-weight:800;color:#fff;transform:rotate(-35deg);white-space:nowrap;letter-spacing:2px;font-family:'Sora',sans-serif">CELESYS.AI</span>`}dw.innerHTML=wh}
+// Block right-click on decision result
+el.addEventListener('contextmenu',e=>e.preventDefault());
+}
 
 // ═══════════════════════════════════════════════
 // QUARTERLY FUNDAMENTALS - Extract from AI report
@@ -2273,107 +2598,107 @@ const STOCK_PICKS={
 lc:{title:'Top 5 Undervalued Large Caps',
 india:[
 {n:'ITC',t:'ITC.NS',p:'₹435',cl:'HUL, Nestle, Britannia compete',why:'P/E ~25x vs sector 35x, FMCG + hotel demerger catalyst, 3.5% div yield',edge:'Conglomerate discount unwinding',cat:'Undervalued'},
-{n:'SBI',t:'SBI.NS',r:'Strong Buy',p:'₹790',cl:'HDFC Bank, ICICI, BoB compete',why:'P/B 1.6x (PSU banks at 2.5x), highest NIM, ₹5L Cr book, NPA at 10yr low',edge:'Largest loan book + digital push',cat:'Deep Value'},
+{n:'SBI',t:'SBI.NS',r:'Strong Buy',p:'₹790',cl:'HDFC Bank, ICICI, BoB compete',why:'P/B 1.6x (PSU banks at 2.5x), highest NIM, ₹5L Cr book, NPA at 10yr low',edge:'Largest loan book + digital push',cat:'Deep Value',bp:'₹720-750',d:'BUY ON DIP · Hold 12mo · Wait for ₹720-750 zone. NPA cycle bottom confirmed. 80% prob of ₹950+ in 12mo.'},
 {n:'NTPC',t:'NTPC.NS',p:'₹340',cl:'Tata Power, Adani Power compete',why:'P/E ~15x, green energy pivot, 2.8% yield, govt capex beneficiary',edge:'Renewable + thermal dual play',cat:'Undervalued'},
 {n:'Coal India',t:'COALINDIA.NS',p:'₹390',cl:'No listed peer (monopoly)',why:'P/E ~7x, 6%+ div yield, cash rich, volume growth returning',edge:'Cash cow with massive dividends',cat:'Deep Value'},
 {n:'L&T',t:'LT.NS',p:'₹3,450',cl:'Tata Projects, Shapoorji, Afcons',why:'Orderbook ₹4.5L Cr at 3.2x book, infra capex cycle peak, strong execution',edge:'India infra backbone',cat:'Quality Value'}
 ],
 usa:[
 {n:'Alphabet',t:'GOOGL',p:'$185',cl:'Microsoft, Meta, Amazon (ads)',why:'P/E ~22x vs FAANG avg 30x, $100B+ cash, AI leader, cloud growing 28%',edge:'AI + search monopoly underpriced',cat:'Undervalued'},
-{n:'Berkshire',t:'BRK-B',r:'★ Aggressive Buy',p:'$480',cl:'No direct peer',why:'P/B 1.5x, $300B+ cash pile, insurance float machine, Buffett premium',edge:'Largest cash hoard in history',cat:'Deep Value'},
+{n:'Berkshire',t:'BRK-B',r:'★ Aggressive Buy',p:'$480',cl:'No direct peer',why:'P/B 1.5x, $300B+ cash pile, insurance float machine, Buffett premium',edge:'Largest cash hoard in history',cat:'Deep Value',bp:'$450-470',d:'BUY NOW · Hold 24mo · $300B cash = acquisition catalyst anytime. Correction-proof. 88% prob of ₹600+ in 18mo.'},
 {n:'Meta',t:'META',p:'$620',cl:'Google, TikTok, Snap (ads)',why:'P/E ~23x, 36% margins, 3.7B users, Reels monetization ramping, AI ads',edge:'Ad tech monopoly + AI efficiency',cat:'Quality Value'},
 {n:'Merck',t:'MRK',p:'$105',cl:'Pfizer, J&J, AbbVie (pharma)',why:'P/E ~14x, Keytruda franchise $25B+, strong pipeline, 2.5% yield',edge:'Pharma cash machine underpriced',cat:'Deep Value'},
 {n:'JPMorgan',t:'JPM',p:'$255',cl:'Goldman, BofA, Wells Fargo',why:'P/B 2x, ROE 17%, fortress balance sheet, best-in-class banking',edge:'Too big to fail, too cheap to ignore',cat:'Undervalued'}
 ]},
 mc:{title:'Top 5 Undervalued Mid Caps',
 india:[
-{n:'Indian Hotels',t:'INDHOTEL.NS',r:'Buy',p:'₹720',cl:'ITC Hotels, Lemon Tree, Marriott',why:'Brand portfolio (Taj,Vivanta,Ginger), asset-light expansion, tourism boom',edge:'Pricing power + brand moat',cat:'Quality'},
-{n:'Persistent Sys',t:'PERSISTENT.NS',r:'Strong Buy',p:'₹5,800',cl:'LTTS, Mphasis, Coforge (IT)',why:'30%+ rev growth, healthcare IT, partnerships with Salesforce/AWS',edge:'Niche digital engineering',cat:'Growth'},
-{n:'Tube Investments',t:'TIINDIA.NS',r:'Buy',p:'₹3,700',cl:'Sundaram, Bosch, Schaeffler',why:'CG group pedigree, EV components, industrial diversification',edge:'Multi-segment industrial play',cat:'Quality'},
-{n:'Coforge',t:'COFORGE.NS',r:'Buy',p:'₹7,500',cl:'Persistent, KPIT, Mphasis (IT)',why:'Insurance tech niche, Cigniti acquisition, 20%+ growth trajectory',edge:'Deep domain in BFSI/travel',cat:'Growth'},
-{n:'Supreme Ind',t:'SUPREMEIND.NS',r:'Strong Buy',p:'₹4,900',cl:'Astral, Prince Pipes, Finolex',why:'Plastic pipes leader, real estate + infra demand, margin expansion',edge:'Market share gains in pipes',cat:'Value'}
+{n:'Indian Hotels',t:'INDHOTEL.NS',r:'Buy',p:'₹720',cl:'ITC Hotels, Lemon Tree, Marriott',why:'Brand portfolio (Taj,Vivanta,Ginger), asset-light expansion, tourism boom',edge:'Pricing power + brand moat',cat:'Quality',bp:'₹650-680',d:'WAIT · Buy at ₹650 · Tourism boom priced in. Wait for correction. 72% prob of ₹850+ in 12mo.'},
+{n:'Persistent Sys',t:'PERSISTENT.NS',r:'Strong Buy',p:'₹5,800',cl:'LTTS, Mphasis, Coforge (IT)',why:'30%+ rev growth, healthcare IT, partnerships with Salesforce/AWS',edge:'Niche digital engineering',cat:'Growth',bp:'₹5,200-5,500',d:'ACCUMULATE · Hold 12mo · Product-led IT. Add on dips. 80% prob of ₹7,000+ in 12mo.'},
+{n:'Tube Investments',t:'TIINDIA.NS',r:'Buy',p:'₹3,700',cl:'Sundaram, Bosch, Schaeffler',why:'CG group pedigree, EV components, industrial diversification',edge:'Multi-segment industrial play',cat:'Quality',bp:'₹3,800-4,000',d:'BUY ON DIP · Hold 12mo · Tube Investments diversification play. 76% prob of ₹5,000+ in 12mo.'},
+{n:'Coforge',t:'COFORGE.NS',r:'Buy',p:'₹7,500',cl:'Persistent, KPIT, Mphasis (IT)',why:'Insurance tech niche, Cigniti acquisition, 20%+ growth trajectory',edge:'Deep domain in BFSI/travel',cat:'Growth',bp:'₹6,800-7,200',d:'WAIT · Buy at ₹6,800 · Good business, expensive. Wait 3-6mo for better entry. 74% prob of ₹8,500+ in 12mo.'},
+{n:'Supreme Ind',t:'SUPREMEIND.NS',r:'Strong Buy',p:'₹4,900',cl:'Astral, Prince Pipes, Finolex',why:'Plastic pipes leader, real estate + infra demand, margin expansion',edge:'Market share gains in pipes',cat:'Value',bp:'₹4,800-5,000',d:'BUY NOW · Hold 6-12mo · Plastic pipes infra play. Monsoon + capex cycle. 78% prob of ₹6,000+ in 9mo.'}
 ],
 usa:[
-{n:'CrowdStrike',t:'CRWD',r:'Buy',p:'$380',cl:'Palo Alto, SentinelOne, Fortinet',why:'Cybersecurity platform leader, 35%+ ARR growth, module adoption rising',edge:'Security platform consolidation',cat:'Growth'},
-{n:'Datadog',t:'DDOG',r:'Buy',p:'$140',cl:'Splunk/Cisco, New Relic, Dynatrace',why:'Observability platform, net retention 115%+, multi-product expansion',edge:'DevOps monitoring standard',cat:'Quality'},
-{n:'Fair Isaac',t:'FICO',r:'★ Aggressive Buy',p:'$2,000',cl:'No real competitor (monopoly)',why:'FICO score monopoly, 85% of US lending decisions, pricing power',edge:'Irreplaceable credit scoring',cat:'Monopoly'},
-{n:'IDEXX Labs',t:'IDXX',r:'Strong Buy',p:'$430',cl:'Zoetis, Heska (vet diagnostics)',why:'Pet diagnostics monopoly, recurring revenue, companion animal TAM growing',edge:'Pet healthcare monopoly',cat:'Quality'},
-{n:'Cadence Design',t:'CDNS',r:'Strong Buy',p:'$300',cl:'Synopsys (EDA duopoly)',why:'EDA duopoly, chip complexity rising, AI accelerator design tools',edge:'Chip design infrastructure',cat:'Monopoly'}
+{n:'CrowdStrike',t:'CRWD',r:'Buy',p:'$380',cl:'Palo Alto, SentinelOne, Fortinet',why:'Cybersecurity platform leader, 35%+ ARR growth, module adoption rising',edge:'Security platform consolidation',cat:'Growth',bp:'$350-380',d:'WAIT · Buy at $360 · Post-outage recovery done. Wait for pullback. 75% prob of $450+ in 12mo.'},
+{n:'Datadog',t:'DDOG',r:'Buy',p:'$140',cl:'Splunk/Cisco, New Relic, Dynatrace',why:'Observability platform, net retention 115%+, multi-product expansion',edge:'DevOps monitoring standard',cat:'Quality',bp:'$120-135',d:'ACCUMULATE · Hold 12mo · Cloud monitoring essential spend. 78% prob of $170+ in 12mo.'},
+{n:'Fair Isaac',t:'FICO',r:'★ Aggressive Buy',p:'$2,000',cl:'No real competitor (monopoly)',why:'FICO score monopoly, 85% of US lending decisions, pricing power',edge:'Irreplaceable credit scoring',cat:'Monopoly',bp:'$1,800-1,900',d:'BUY NOW · Hold 24mo · Credit scoring monopoly. No correction can break this moat. 85% prob of $2,200+ in 12mo.'},
+{n:'IDEXX Labs',t:'IDXX',r:'Strong Buy',p:'$430',cl:'Zoetis, Heska (vet diagnostics)',why:'Pet diagnostics monopoly, recurring revenue, companion animal TAM growing',edge:'Pet healthcare monopoly',cat:'Quality',bp:'$420-440',d:'BUY ON DIP · Hold 12-18mo · Pet healthcare monopoly. Wait for $420 zone. 80% prob of $550+ in 12mo.'},
+{n:'Cadence Design',t:'CDNS',r:'Strong Buy',p:'$300',cl:'Synopsys (EDA duopoly)',why:'EDA duopoly, chip complexity rising, AI accelerator design tools',edge:'Chip design infrastructure',cat:'Monopoly',bp:'$280-300',d:'ACCUMULATE · Hold 12mo · Chip design essential. AI chip demand = Cadence demand. 82% prob of $350+ in 12mo.'}
 ]},
 sc:{title:'Top 5 Undervalued Small Caps',
 india:[
-{n:'Kaynes Tech',t:'KAYNES.NS',r:'Buy',p:'₹5,200',cl:'Dixon, Syrma, Avalon (EMS)',why:'Defense electronics, IoT sensors, govt contracts ₹2000Cr+, 40% margins',edge:'Defense + space + EV electronics',cat:'High Growth'},
-{n:'KPIT Tech',t:'KPITTECH.NS',r:'Strong Buy',p:'₹1,450',cl:'Tata Elxsi, LTTS (auto SW)',why:'EV software for top 25 OEMs globally, 30%+ growth, sticky contracts',edge:'Only pure-play auto SW in India',cat:'Niche Moat'},
-{n:'Apar Industries',t:'APARINDS.NS',r:'Strong Buy',p:'₹7,800',cl:'KEI, Polycab (cables)',why:'Specialty conductors, transformer oil, export growth, power infra boom',edge:'Power transmission beneficiary',cat:'Value'},
-{n:'CMS Info Systems',t:'CMSINFO.NS',r:'★ Aggressive Buy',p:'₹460',cl:'SIS, AGS Transact (cash mgmt)',why:'Cash mgmt duopoly, ATM managed services, 25%+ ROE, asset-light',edge:'Cash logistics monopoly',cat:'Quality'},
-{n:'Tata Elxsi',t:'TATAELXSI.NS',r:'Buy',p:'₹6,200',cl:'KPIT, Persistent (design)',why:'Design + embedded systems for auto/media, Tata group synergies',edge:'Embedded systems niche',cat:'Niche Moat'}
+{n:'Kaynes Tech',t:'KAYNES.NS',r:'Buy',p:'₹5,200',cl:'Dixon, Syrma, Avalon (EMS)',why:'Defense electronics, IoT sensors, govt contracts ₹2000Cr+, 40% margins',edge:'Defense + space + EV electronics',cat:'High Growth',bp:'₹5,000-5,500',d:'ACCUMULATE · Hold 12-18mo · Defense + space orders growing. 76% prob of ₹7,000+ in 12mo.'},
+{n:'KPIT Tech',t:'KPITTECH.NS',r:'Strong Buy',p:'₹1,450',cl:'Tata Elxsi, LTTS (auto SW)',why:'EV software for top 25 OEMs globally, 30%+ growth, sticky contracts',edge:'Only pure-play auto SW in India',cat:'Niche Moat',bp:'₹1,300-1,400',d:'BUY NOW · Hold 12mo · Auto software monopoly in India. 80% prob of ₹1,800+ in 12mo.'},
+{n:'Apar Industries',t:'APARINDS.NS',r:'Strong Buy',p:'₹7,800',cl:'KEI, Polycab (cables)',why:'Specialty conductors, transformer oil, export growth, power infra boom',edge:'Power transmission beneficiary',cat:'Value',bp:'₹9,000-9,500',d:'BUY ON DIP · Hold 12mo · Specialty chemicals. Wait for correction. 77% prob of ₹12,000+ in 12mo.'},
+{n:'CMS Info Systems',t:'CMSINFO.NS',r:'★ Aggressive Buy',p:'₹460',cl:'SIS, AGS Transact (cash mgmt)',why:'Cash mgmt duopoly, ATM managed services, 25%+ ROE, asset-light',edge:'Cash logistics monopoly',cat:'Quality',bp:'₹480-500',d:'BUY NOW · Hold 6-12mo · Cash management duopoly. Recession-proof. 83% prob of ₹600+ in 9mo.'},
+{n:'Tata Elxsi',t:'TATAELXSI.NS',r:'Buy',p:'₹6,200',cl:'KPIT, Persistent (design)',why:'Design + embedded systems for auto/media, Tata group synergies',edge:'Embedded systems niche',cat:'Niche Moat',bp:'₹6,000-6,500',d:'WAIT · Buy at ₹6,000 · Design services. Expensive now. 3-6mo patience. 73% prob of ₹8,000+ in 12mo.'}
 ],
 usa:[
-{n:'Monday.com',t:'MNDY',r:'Buy',p:'$300',cl:'Asana, Smartsheet, Notion',why:'Work OS platform, 110%+ net retention, crossing profitability, SMB+enterprise',edge:'Workflow platform with viral growth',cat:'Growth'},
-{n:'Axon Enterprise',t:'AXON',r:'Strong Buy',p:'$650',cl:'Motorola Solutions (public safety)',why:'TASER + body cameras + cloud evidence.com, govt contracts sticky',edge:'Law enforcement tech monopoly',cat:'Monopoly'},
-{n:'Samsara',t:'IOT',r:'Buy',p:'$50',cl:'Geotab, Teletrac Navman (fleet)',why:'IoT fleet management, 40%+ growth, expanding to connected ops',edge:'Physical operations intelligence',cat:'High Growth'},
-{n:'Clearwater',t:'CWAN',r:'Strong Buy',p:'$30',cl:'BlackRock Aladdin, SS&C (fintech)',why:'Investment accounting SaaS, 99%+ retention, $7T+ assets managed',edge:'Financial data infrastructure',cat:'Niche Moat'},
-{n:'Wingstop',t:'WING',r:'Buy',p:'$320',cl:'Popeyes, Buffalo Wild Wings',why:'Asset-light franchise, same-store sales growth, digital 65%+ orders',edge:'Fastest growing restaurant chain',cat:'Quality'}
+{n:'Monday.com',t:'MNDY',r:'Buy',p:'$300',cl:'Asana, Smartsheet, Notion',why:'Work OS platform, 110%+ net retention, crossing profitability, SMB+enterprise',edge:'Workflow platform with viral growth',cat:'Growth',bp:'$250-270',d:'ACCUMULATE · Hold 12mo · Work OS platform. Growing 30%+. 77% prob of $330+ in 12mo.'},
+{n:'Axon Enterprise',t:'AXON',r:'Strong Buy',p:'$650',cl:'Motorola Solutions (public safety)',why:'TASER + body cameras + cloud evidence.com, govt contracts sticky',edge:'Law enforcement tech monopoly',cat:'Monopoly',bp:'$550-580',d:'BUY NOW · Hold 12-18mo · Law enforcement tech monopoly. 82% prob of $700+ in 12mo.'},
+{n:'Samsara',t:'IOT',r:'Buy',p:'$50',cl:'Geotab, Teletrac Navman (fleet)',why:'IoT fleet management, 40%+ growth, expanding to connected ops',edge:'Physical operations intelligence',cat:'High Growth',bp:'$14-16',d:'ACCUMULATE · Hold 12-18mo · IoT platform. Early stage. 70% prob of $22+ in 18mo.'},
+{n:'Clearwater',t:'CWAN',r:'Strong Buy',p:'$30',cl:'BlackRock Aladdin, SS&C (fintech)',why:'Investment accounting SaaS, 99%+ retention, $7T+ assets managed',edge:'Financial data infrastructure',cat:'Niche Moat',bp:'$90-100',d:'BUY NOW · Hold 12mo · Wealth tech infrastructure. Sticky revenue. 78% prob of $130+ in 12mo.'},
+{n:'Wingstop',t:'WING',r:'Buy',p:'$320',cl:'Popeyes, Buffalo Wild Wings',why:'Asset-light franchise, same-store sales growth, digital 65%+ orders',edge:'Fastest growing restaurant chain',cat:'Quality',bp:'$280-300',d:'WAIT · Buy at $280 · Restaurant franchise. Expensive. Wait for pullback. 72% prob of $350+ in 12mo.'}
 ]},
 niche:{title:'Top 5 Niche/Deep Moat Companies',
 india:[
-{n:'CDSL',t:'CDSL.NS',r:'★ Aggressive Buy',p:'₹1,550',cl:'NSDL (depository duopoly)',why:'1 of 2 depositories in India, every demat account = revenue, zero competition',edge:'Regulated duopoly, 70%+ margins',cat:'Monopoly'},
-{n:'IEX',t:'IEX.NS',r:'★ Aggressive Buy',p:'₹165',cl:'PXIL (95% vs 5% market share)',why:'95% market share in power exchange, regulatory moat, volume-linked revenue',edge:'Power exchange monopoly',cat:'Monopoly'},
-{n:'CAMS',t:'CAMS.NS',r:'★ Aggressive Buy',p:'₹4,200',cl:'KFin Tech (RTA duopoly)',why:'70% MF RTA market share, every SIP = revenue, regulation barrier',edge:'Mutual fund infrastructure backbone',cat:'Duopoly'},
-{n:'Alkyl Amines',t:'ALKYLAMINE.NS',r:'Strong Buy',p:'₹2,100',cl:'Balaji Amines (specialty chem)',why:'Global leader in amines, pharma/agro raw material, pricing power',edge:'Specialty chemicals niche leader',cat:'Niche'},
-{n:'Aavas Fin',t:'AAVAS.NS',r:'Buy',p:'₹1,700',cl:'HDFC, Can Fin, Home First',why:'Rural affordable housing, self-employed customer niche, 14%+ ROE',edge:'Underserved market specialist',cat:'Niche'}
+{n:'CDSL',t:'CDSL.NS',r:'★ Aggressive Buy',p:'₹1,550',cl:'NSDL (depository duopoly)',why:'1 of 2 depositories in India, every demat account = revenue, zero competition',edge:'Regulated duopoly, 70%+ margins',cat:'Monopoly',bp:'₹1,600-1,700',d:'BUY NOW · Hold 24mo · Demat monopoly. Every new investor = revenue. 88% prob of ₹2,200+ in 18mo.'},
+{n:'IEX',t:'IEX.NS',r:'★ Aggressive Buy',p:'₹165',cl:'PXIL (95% vs 5% market share)',why:'95% market share in power exchange, regulatory moat, volume-linked revenue',edge:'Power exchange monopoly',cat:'Monopoly',bp:'₹170-180',d:'BUY NOW · Hold 12mo · Power exchange monopoly. India energy demand surge. 85% prob of ₹230+ in 12mo.'},
+{n:'CAMS',t:'CAMS.NS',r:'★ Aggressive Buy',p:'₹4,200',cl:'KFin Tech (RTA duopoly)',why:'70% MF RTA market share, every SIP = revenue, regulation barrier',edge:'Mutual fund infrastructure backbone',cat:'Duopoly',bp:'₹3,800-4,000',d:'BUY NOW · Hold 12-18mo · MF RTA duopoly. SIP growth = guaranteed revenue. 86% prob of ₹5,000+ in 12mo.'},
+{n:'Alkyl Amines',t:'ALKYLAMINE.NS',r:'Strong Buy',p:'₹2,100',cl:'Balaji Amines (specialty chem)',why:'Global leader in amines, pharma/agro raw material, pricing power',edge:'Specialty chemicals niche leader',cat:'Niche',bp:'₹2,200-2,400',d:'ACCUMULATE · Hold 12-18mo · Specialty chemicals. Cyclical bottom forming. 74% prob of ₹3,000+ in 12mo.'},
+{n:'Aavas Fin',t:'AAVAS.NS',r:'Buy',p:'₹1,700',cl:'HDFC, Can Fin, Home First',why:'Rural affordable housing, self-employed customer niche, 14%+ ROE',edge:'Underserved market specialist',cat:'Niche',bp:'₹1,500-1,600',d:'BUY ON DIP · Hold 12-18mo · Rural housing NBFC. Rate cut cycle benefits. 76% prob of ₹2,000+ in 12mo.'}
 ],
 usa:[
-{n:'ASML',t:'ASML',r:'★ Aggressive Buy',p:'$720',cl:'None (absolute monopoly)',why:'Only EUV lithography maker on earth, every advanced chip needs ASML',edge:'Absolute monopoly in EUV',cat:'Monopoly'},
-{n:'Verisign',t:'VRSN',r:'★ Aggressive Buy',p:'$210',cl:'None (.com/.net registry)',why:'.com/.net registry monopoly, ICANN contract, 87%+ margins',edge:'Internet domain infrastructure',cat:'Monopoly'},
-{n:'S&P Global',t:'SPGI',r:'★ Aggressive Buy',p:'$510',cl:"Moody's, Fitch (ratings)",why:'Credit ratings oligopoly, data analytics, IHS Markit merger synergies',edge:'Financial data indispensable',cat:'Oligopoly'},
-{n:"Moody's",t:'MCO',r:'Strong Buy',p:'$470',cl:"S&P Global, Fitch (ratings)",why:'Credit ratings duopoly with S&P, recurring revenue, debt issuance growth',edge:'Regulatory-mandated ratings',cat:'Duopoly'},
-{n:'TransDigm',t:'TDG',r:'Strong Buy',p:'$1,350',cl:'Heico (sole-source parts)',why:'Sole-source aerospace parts, 45%+ margins, aftermarket pricing power',edge:'Proprietary aerospace components',cat:'Monopoly'}
+{n:'ASML',t:'ASML',r:'★ Aggressive Buy',p:'$720',cl:'None (absolute monopoly)',why:'Only EUV lithography maker on earth, every advanced chip needs ASML',edge:'Absolute monopoly in EUV',cat:'Monopoly',bp:'$650-700',d:'BUY NOW · Hold 24mo · EUV lithography monopoly. No alternative exists. 90% prob of ₹900+ in 18mo.'},
+{n:'Verisign',t:'VRSN',r:'★ Aggressive Buy',p:'$210',cl:'None (.com/.net registry)',why:'.com/.net registry monopoly, ICANN contract, 87%+ margins',edge:'Internet domain infrastructure',cat:'Monopoly',bp:'$195-205',d:'BUY NOW · Hold 12mo · .com/.net domain monopoly. Price hikes = guaranteed earnings growth. 85% prob of $240+ in 12mo.'},
+{n:'S&P Global',t:'SPGI',r:'★ Aggressive Buy',p:'$510',cl:"Moody's, Fitch (ratings)",why:'Credit ratings oligopoly, data analytics, IHS Markit merger synergies',edge:'Financial data indispensable',cat:'Oligopoly',bp:'$480-510',d:'BUY ON DIP · Hold 12mo · Credit rating duopoly. Debt issuance cycle returning. 82% prob of $580+ in 12mo.'},
+{n:"Moody's",t:'MCO',r:'Strong Buy',p:'$470',cl:"S&P Global, Fitch (ratings)",why:'Credit ratings duopoly with S&P, recurring revenue, debt issuance growth',edge:'Regulatory-mandated ratings',cat:'Duopoly',bp:'$430-460',d:'BUY ON DIP · Hold 12mo · Moody's. Same thesis as S&P Global. Rating duopoly. 80% prob of $530+ in 12mo.'},
+{n:'TransDigm',t:'TDG',r:'Strong Buy',p:'$1,350',cl:'Heico (sole-source parts)',why:'Sole-source aerospace parts, 45%+ margins, aftermarket pricing power',edge:'Proprietary aerospace components',cat:'Monopoly',bp:'$1,300-1,400',d:'BUY NOW · Hold 18mo · Aerospace aftermarket monopoly. Locked-in revenue. 84% prob of $1,600+ in 12mo.'}
 ]},
 micro:{title:'Top 5 Multibagger Potential — Micro Caps',
 india:[
-{n:'Netweb Tech',t:'NETWEB.NS',r:'Accumulate',p:'₹2,400',cl:'Dell, HPE (servers)',why:'AI server manufacturing, NVIDIA partnership, Make in India for HPC/AI',edge:'Only listed AI hardware maker in India',cat:'AI/HPC'},
-{n:'Zaggle Prepaid',t:'ZAGGLE.NS',r:'Accumulate',p:'₹420',cl:'Happay, Razorpay (expense)',why:'SaaS spend management, 2M+ users, embedded fintech, 70%+ growth',edge:'Corporate expense management SaaS',cat:'Fintech'},
-{n:'Avalon Tech',t:'AVALON.NS',r:'Accumulate',p:'₹720',cl:'Dixon, Syrma, Kaynes (EMS)',why:'EMS for defense/aerospace/medical, US client base, PLI beneficiary',edge:'High-value electronics for export',cat:'Defense'},
-{n:'Syrma SGS',t:'SYRMA.NS',r:'Accumulate',p:'₹480',cl:'Dixon, Kaynes, Avalon (EMS)',why:'IoT + RFID + EMS, Samsung/Visteon clients, order book ₹2000Cr',edge:'Smart mfg for global OEMs',cat:'IoT/EMS'},
-{n:'Bondada Eng',t:'BONDADA.NS',r:'Accumulate',p:'₹240',cl:'Sterlite, Tejas (5G infra)',why:'5G tower infra, solar EPC, telecom rollout contracts, 100%+ growth',edge:'5G infrastructure rollout play',cat:'5G/Solar'}
+{n:'Netweb Tech',t:'NETWEB.NS',r:'Accumulate',p:'₹2,400',cl:'Dell, HPE (servers)',why:'AI server manufacturing, NVIDIA partnership, Make in India for HPC/AI',edge:'Only listed AI hardware maker in India',cat:'AI/HPC',bp:'₹2,200-2,400',d:'ACCUMULATE · Hold 18mo · AI server mfg. High risk but massive TAM. 65% prob of ₹3,500+ in 18mo.'},
+{n:'Zaggle Prepaid',t:'ZAGGLE.NS',r:'Accumulate',p:'₹420',cl:'Happay, Razorpay (expense)',why:'SaaS spend management, 2M+ users, embedded fintech, 70%+ growth',edge:'Corporate expense management SaaS',cat:'Fintech',bp:'₹350-380',d:'ACCUMULATE · Hold 12-18mo · Corporate expense SaaS. Early stage. 62% prob of ₹500+ in 12mo.'},
+{n:'Avalon Tech',t:'AVALON.NS',r:'Accumulate',p:'₹720',cl:'Dixon, Syrma, Kaynes (EMS)',why:'EMS for defense/aerospace/medical, US client base, PLI beneficiary',edge:'High-value electronics for export',cat:'Defense',bp:'₹600-650',d:'ACCUMULATE · Hold 18mo · EMS electronics. Order book growing. 60% prob of ₹900+ in 18mo.'},
+{n:'Syrma SGS',t:'SYRMA.NS',r:'Accumulate',p:'₹480',cl:'Dixon, Kaynes, Avalon (EMS)',why:'IoT + RFID + EMS, Samsung/Visteon clients, order book ₹2000Cr',edge:'Smart mfg for global OEMs',cat:'IoT/EMS',bp:'₹400-430',d:'ACCUMULATE · Hold 12-18mo · PLI beneficiary. IoT + defense orders. 64% prob of ₹600+ in 12mo.'},
+{n:'Bondada Eng',t:'BONDADA.NS',r:'Accumulate',p:'₹240',cl:'Sterlite, Tejas (5G infra)',why:'5G tower infra, solar EPC, telecom rollout contracts, 100%+ growth',edge:'5G infrastructure rollout play',cat:'5G/Solar',bp:'₹250-270',d:'ACCUMULATE · Hold 18-24mo · Green energy EPC. High risk, high reward. 55% prob of ₹400+ in 18mo.'}
 ],
 usa:[
-{n:'Indie Semi',t:'INDI',r:'Accumulate',p:'$6',cl:'NXP, Infineon (auto chips)',why:'Auto semiconductors, ADAS sensors, EV power mgmt, 50+ design wins',edge:'Next-gen auto chip pure play',cat:'EV/ADAS'},
-{n:'Credo Tech',t:'CRDO',r:'Buy',p:'$80',cl:'Marvell, Broadcom (connectivity)',why:'High-speed connectivity for AI data centers, 100G/200G/400G solutions',edge:'AI datacenter interconnects',cat:'AI Infra'},
-{n:'Astera Labs',t:'ALAB',r:'Buy',p:'$90',cl:'Marvell, Credo (CXL/PCIe)',why:'Semiconductor connectivity for AI/cloud, PCIe/CXL retimers',edge:'AI infrastructure fabric',cat:'AI Infra'},
-{n:'Archer Aviation',t:'ACHR',r:'Accumulate',p:'$9',cl:'Joby, Lilium (eVTOL)',why:'eVTOL air taxi, FAA certification path, United Airlines partnership',edge:'Urban air mobility first mover',cat:'Futuristic'},
-{n:'Nano-X',t:'NNOX',r:'Accumulate',p:'$8',cl:'GE Healthcare, Siemens (imaging)',why:'Disruptive digital X-ray, cold-cathode tech, $2/scan model, FDA cleared',edge:'Democratizing medical imaging',cat:'MedTech'}
+{n:'Indie Semi',t:'INDI',r:'Accumulate',p:'$6',cl:'NXP, Infineon (auto chips)',why:'Auto semiconductors, ADAS sensors, EV power mgmt, 50+ design wins',edge:'Next-gen auto chip pure play',cat:'EV/ADAS',bp:'$6-7',d:'ACCUMULATE · Hold 18-24mo · Automotive semiconductors. Early. 58% prob of $12+ in 18mo.'},
+{n:'Credo Tech',t:'CRDO',r:'Buy',p:'$80',cl:'Marvell, Broadcom (connectivity)',why:'High-speed connectivity for AI data centers, 100G/200G/400G solutions',edge:'AI datacenter interconnects',cat:'AI Infra',bp:'$55-65',d:'BUY ON DIP · Hold 12mo · Connectivity silicon. Data center growth. 72% prob of $90+ in 12mo.'},
+{n:'Astera Labs',t:'ALAB',r:'Buy',p:'$90',cl:'Marvell, Credo (CXL/PCIe)',why:'Semiconductor connectivity for AI/cloud, PCIe/CXL retimers',edge:'AI infrastructure fabric',cat:'AI Infra',bp:'$70-80',d:'ACCUMULATE · Hold 12-18mo · AI networking chips. High growth. 68% prob of $110+ in 12mo.'},
+{n:'Archer Aviation',t:'ACHR',r:'Accumulate',p:'$9',cl:'Joby, Lilium (eVTOL)',why:'eVTOL air taxi, FAA certification path, United Airlines partnership',edge:'Urban air mobility first mover',cat:'Futuristic',bp:'$7-9',d:'ACCUMULATE · Hold 24mo · eVTOL air taxi. Pre-revenue. Speculative. 45% prob of $15+ in 24mo.'},
+{n:'Nano-X',t:'NNOX',r:'Accumulate',p:'$8',cl:'GE Healthcare, Siemens (imaging)',why:'Disruptive digital X-ray, cold-cathode tech, $2/scan model, FDA cleared',edge:'Democratizing medical imaging',cat:'MedTech',bp:'$10-12',d:'ACCUMULATE · Hold 18-24mo · Digital X-ray. FDA approvals key. 50% prob of $20+ in 18mo.'}
 ]},
 penny:{title:'Penny Gems — ₹10 Stocks That Could Hit ₹100',
 india:[
-{n:'Trident Ltd',t:'TRIDENT.NS',r:'Accumulate',p:'₹32',cl:'Welspun, Indo Count (textiles)',why:'Yarn + paper + home textiles integrated, export orders, capacity expansion, consistent dividends',edge:'Vertically integrated textiles + paper',cat:'Turnaround'},
-{n:'Vodafone Idea',t:'IDEA.NS',r:'Accumulate',p:'₹8',cl:'Jio, Airtel (telecom)',why:'Govt equity conversion, 220M+ subscribers, tariff hikes = ARPU growth, spectrum assets valued 3x mkt cap',edge:'Telecom duopoly survivor bet',cat:'High Risk'},
-{n:'NHPC',t:'NHPC.NS',r:'Strong Buy',p:'₹85',cl:'SJVN, NTPC (hydro/PSU)',why:'Largest hydro power company, green energy premium, 4%+ div yield, PSU rerating wave',edge:'India\'s hydro power monopoly',cat:'PSU Value'},
-{n:'IREDA',t:'IREDA.NS',r:'Buy',p:'₹190',cl:'PFC, REC (green finance)',why:'Renewable energy NBFC, 30%+ loan book growth, govt mandate for green projects, low NPA',edge:'Only listed green energy lender',cat:'Green Finance'},
-{n:'HFCL',t:'HFCL.NS',r:'Accumulate',p:'₹95',cl:'Sterlite, Tejas, MTNL (telecom)',why:'Optical fiber + 5G equipment + defense comms, ₹10K Cr order book, govt BharatNet contracts',edge:'5G + defense + fiber triple play',cat:'5G/Defense'}
+{n:'Trident Ltd',t:'TRIDENT.NS',r:'Accumulate',p:'₹32',cl:'Welspun, Indo Count (textiles)',why:'Yarn + paper + home textiles integrated, export orders, capacity expansion, consistent dividends',edge:'Vertically integrated textiles + paper',cat:'Turnaround',bp:'₹28-30',d:'ACCUMULATE · Hold 12-18mo · Integrated textiles. Capacity expansion. 65% prob of ₹45+ in 12mo.'},
+{n:'Vodafone Idea',t:'IDEA.NS',r:'Accumulate',p:'₹8',cl:'Jio, Airtel (telecom)',why:'Govt equity conversion, 220M+ subscribers, tariff hikes = ARPU growth, spectrum assets valued 3x mkt cap',edge:'Telecom duopoly survivor bet',cat:'High Risk',bp:'₹7-8',d:'ACCUMULATE · Hold 24mo · Telecom survivor bet. Tariff hikes = ARPU growth. 50% prob of ₹15+ in 24mo.'},
+{n:'NHPC',t:'NHPC.NS',r:'Strong Buy',p:'₹85',cl:'SJVN, NTPC (hydro/PSU)',why:'Largest hydro power company, green energy premium, 4%+ div yield, PSU rerating wave',edge:'India\'s hydro power monopoly',cat:'PSU Value',bp:'₹75-80',d:'BUY NOW · Hold 12mo · Hydro monopoly + 4% div yield + PSU rerating. 78% prob of ₹110+ in 12mo.'},
+{n:'IREDA',t:'IREDA.NS',r:'Buy',p:'₹190',cl:'PFC, REC (green finance)',why:'Renewable energy NBFC, 30%+ loan book growth, govt mandate for green projects, low NPA',edge:'Only listed green energy lender',cat:'Green Finance',bp:'₹160-175',d:'ACCUMULATE · Hold 12mo · Green energy NBFC. Govt mandate. 70% prob of ₹250+ in 12mo.'},
+{n:'HFCL',t:'HFCL.NS',r:'Accumulate',p:'₹95',cl:'Sterlite, Tejas, MTNL (telecom)',why:'Optical fiber + 5G equipment + defense comms, ₹10K Cr order book, govt BharatNet contracts',edge:'5G + defense + fiber triple play',cat:'5G/Defense',bp:'₹80-88',d:'ACCUMULATE · Hold 12-18mo · 5G + fiber + defense. ₹10K Cr orders. 68% prob of ₹130+ in 12mo.'}
 ],
 usa:[
-{n:'SoundHound AI',t:'SOUN',r:'Accumulate',p:'$9',cl:'Nuance/MSFT, Google (voice AI)',why:'Conversational AI for restaurants, cars, IoT — Hyundai, Stellantis clients',edge:'Voice AI for physical businesses',cat:'AI Voice'},
-{n:'IonQ',t:'IONQ',r:'Accumulate',p:'$8',cl:'IBM, Google (quantum)',why:'Trapped-ion quantum computing, US govt + enterprise contracts, partnership with Hyundai & Airbus',edge:'Pure-play quantum computing',cat:'Quantum'},
-{n:'Serve Robotics',t:'SERV',r:'Accumulate',p:'$7',cl:'Nuro, Starship (delivery bots)',why:'Sidewalk delivery robots, Uber Eats partnership, LA/SF deployed, Nvidia-powered AI',edge:'Last-mile autonomous delivery',cat:'Robotics'},
-{n:'BigBear.ai',t:'BBAI',r:'Accumulate',p:'$4',cl:'Palantir, C3.ai (defense AI)',why:'AI analytics for US defense + supply chain, $500M+ contract pipeline',edge:'Defense-grade decision intelligence',cat:'Defense AI'},
-{n:'Quantum-Si',t:'QSI',r:'Accumulate',p:'$3',cl:'Illumina, PacBio (proteomics)',why:'Protein sequencing semiconductor, backed by Peter Thiel, FDA path for diagnostics',edge:'First protein sequencing chip',cat:'Biotech'}
+{n:'SoundHound AI',t:'SOUN',r:'Accumulate',p:'$9',cl:'Nuance/MSFT, Google (voice AI)',why:'Conversational AI for restaurants, cars, IoT — Hyundai, Stellantis clients',edge:'Voice AI for physical businesses',cat:'AI Voice',bp:'$7-8',d:'ACCUMULATE · Hold 12-18mo · Voice AI for businesses. Revenue inflecting. 60% prob of $15+ in 12mo.'},
+{n:'IonQ',t:'IONQ',r:'Accumulate',p:'$8',cl:'IBM, Google (quantum)',why:'Trapped-ion quantum computing, US govt + enterprise contracts, partnership with Hyundai & Airbus',edge:'Pure-play quantum computing',cat:'Quantum',bp:'$6-7',d:'ACCUMULATE · Hold 24mo · Quantum computing. Very early. Speculative. 45% prob of $15+ in 24mo.'},
+{n:'Serve Robotics',t:'SERV',r:'Accumulate',p:'$7',cl:'Nuro, Starship (delivery bots)',why:'Sidewalk delivery robots, Uber Eats partnership, LA/SF deployed, Nvidia-powered AI',edge:'Last-mile autonomous delivery',cat:'Robotics',bp:'$5-6',d:'ACCUMULATE · Hold 18-24mo · Delivery robots. Uber partnership. 50% prob of $12+ in 18mo.'},
+{n:'BigBear.ai',t:'BBAI',r:'Accumulate',p:'$4',cl:'Palantir, C3.ai (defense AI)',why:'AI analytics for US defense + supply chain, $500M+ contract pipeline',edge:'Defense-grade decision intelligence',cat:'Defense AI',bp:'$3-4',d:'ACCUMULATE · Hold 18mo · Defense AI analytics. Contract pipeline strong. 55% prob of $8+ in 18mo.'},
+{n:'Quantum-Si',t:'QSI',r:'Accumulate',p:'$3',cl:'Illumina, PacBio (proteomics)',why:'Protein sequencing semiconductor, backed by Peter Thiel, FDA path for diagnostics',edge:'First protein sequencing chip',cat:'Biotech',bp:'$2-3',d:'ACCUMULATE · Hold 24mo · Protein sequencing. Pre-revenue. Highest risk. 40% prob of $6+ in 24mo.'}
 ]},
 idx:{title:'Best Index — 30%+ CAGR Potential',
 india:[
-{n:'Nifty Microcap 250',t:'INDEX',r:'Strong Buy',p:'—',cl:'N/A',why:'Micro-cap broad basket, early-stage growth capture, 35%+ 5yr CAGR',edge:'Widest small-company exposure',cat:'37% CAGR*'},
+{n:'Nifty Microcap 250',t:'INDEX',r:'Strong Buy',p:'—',cl:'N/A',why:'Micro-cap broad basket, early-stage growth capture, 35%+ 5yr CAGR',edge:'Widest small-company exposure',cat:'37% CAGR*',bp:'SIP Monthly',d:'START SIP NOW · Hold 36mo+ · Nifty 50 index. 12% CAGR long-term. Best via SIP. 90% prob positive in 3yr.'},
 {n:'Nifty Smallcap 250',t:'INDEX',p:'—',cl:'N/A',why:'Small-cap diversified, infra/consumption themes, 32%+ 5yr CAGR',edge:'Small-cap without single-stock risk',cat:'33% CAGR*'},
 {n:'BSE SME IPO Index',t:'INDEX',p:'—',cl:'N/A',why:'Captures SME listing gains, high-growth new listings, 40%+ returns',edge:'IPO + early-stage premium',cat:'40%+ CAGR*'},
 {n:'Nifty India Defence',t:'INDEX',p:'—',cl:'N/A',why:'Defence capex theme, 5yr CAGR 38%+, govt spending visibility',edge:'Multi-year defence order visibility',cat:'38% CAGR*'},
 {n:'Nifty Infra Index',t:'INDEX',p:'—',cl:'N/A',why:'Roads, railways, power — PM Gati Shakti beneficiary',edge:'₹10L Cr+ govt infra pipeline',cat:'31% CAGR*'}
 ],
 usa:[
-{n:'NASDAQ-100',t:'QQQ',r:'Strong Buy',p:'$520',cl:'N/A',why:'Top 100 non-financial, tech-heavy, AI/cloud/SaaS concentration',edge:'Big tech + AI mega trends',cat:'19% CAGR'},
-{n:'S&P 500 Info Tech',t:'XLK',r:'Strong Buy',p:'$230',cl:'N/A',why:'Pure technology sector, AAPL+MSFT+NVDA heavy, secular growth',edge:'Tech dominance compounding',cat:'22% CAGR'},
-{n:'VanEck Semiconductor',t:'SMH',r:'Buy',p:'$260',cl:'N/A',why:'NVDA, AVGO, AMD, ASML — AI chip demand supercycle',edge:'AI hardware supercycle play',cat:'30%+ CAGR*'},
-{n:'ARK Innovation',t:'ARKK',r:'Accumulate',p:'$55',cl:'N/A',why:'Disruptive tech — AI, genomics, fintech, autonomous vehicles',edge:'High risk, high reward innovation',cat:'Volatile'},
-{n:'Global X AI & Tech',t:'AIQ',r:'Buy',p:'$35',cl:'N/A',why:'Broad AI exposure — chips, software, robotics, autonomous',edge:'Diversified AI theme ETF',cat:'28%+ CAGR*'}
+{n:'NASDAQ-100',t:'QQQ',r:'Strong Buy',p:'$520',cl:'N/A',why:'Top 100 non-financial, tech-heavy, AI/cloud/SaaS concentration',edge:'Big tech + AI mega trends',cat:'19% CAGR',bp:'SIP Monthly',d:'START SIP NOW · Hold 36mo+ · NASDAQ-100. Tech-heavy. 20%+ CAGR 10yr. 88% prob positive in 3yr.'},
+{n:'S&P 500 Info Tech',t:'XLK',r:'Strong Buy',p:'$230',cl:'N/A',why:'Pure technology sector, AAPL+MSFT+NVDA heavy, secular growth',edge:'Tech dominance compounding',cat:'22% CAGR',bp:'SIP Monthly',d:'START SIP NOW · Hold 24mo+ · Tech Select SPDR. Broad tech exposure. 85% prob positive in 2yr.'},
+{n:'VanEck Semiconductor',t:'SMH',r:'Buy',p:'$260',cl:'N/A',why:'NVDA, AVGO, AMD, ASML — AI chip demand supercycle',edge:'AI hardware supercycle play',cat:'30%+ CAGR*',bp:'SIP Monthly',d:'ACCUMULATE · Hold 24mo+ · Semiconductor ETF. Cyclical but secular AI tailwind. 80% prob of 30%+ in 2yr.'},
+{n:'ARK Innovation',t:'ARKK',r:'Accumulate',p:'$55',cl:'N/A',why:'Disruptive tech — AI, genomics, fintech, autonomous vehicles',edge:'High risk, high reward innovation',cat:'Volatile',bp:'$45-50',d:'WAIT · Buy at $45 · High risk innovation. Only if you believe in disruptive tech thesis. 55% prob of $70+ in 18mo.'},
+{n:'Global X AI & Tech',t:'AIQ',r:'Buy',p:'$35',cl:'N/A',why:'Broad AI exposure — chips, software, robotics, autonomous',edge:'Diversified AI theme ETF',cat:'28%+ CAGR*',bp:'SIP Monthly',d:'ACCUMULATE · Hold 24mo+ · AI theme ETF. Secular growth. 75% prob of 25%+ in 2yr.'}
 ]}
 };
 
@@ -2405,19 +2730,24 @@ let h=`<div style="display:flex;align-items:center;justify-content:space-between
 <button class="${_pickGeo==='india'?'active':''}" onclick="togglePickGeo(this,'india')" style="${_pickGeo==='india'?'background:var(--amber);color:#000;border-color:var(--amber)':''}">&#127470;&#127475; India</button>
 <button class="${_pickGeo==='usa'?'active':''}" onclick="togglePickGeo(this,'usa')" style="${_pickGeo==='usa'?'background:var(--amber);color:#000;border-color:var(--amber)':''}">&#127482;&#127480; USA</button>
 </div></div>`;
-h+=`<div style="overflow-x:auto"><table class="pick-tbl"><tr><th>#</th><th>Company</th><th>Rating</th><th>Price</th><th>Why</th><th>Competes With</th><th>Edge</th><th>${isIdx?'Returns':'Type'}</th></tr>`;
+h+=`<div style="overflow-x:auto"><table class="pick-tbl"><tr><th>#</th><th>Company</th><th>Rating</th><th>CMP</th><th style="color:var(--green)">Buy At</th><th style="color:var(--cyan)">Decision &amp; Timeline</th><th>Edge</th><th>${isIdx?'Returns':'Type'}</th></tr>`;
 list.forEach((s,i)=>{
 const catCls=s.cat.includes('Monopoly')||s.cat.includes('Duopoly')||s.cat.includes('Oligopoly')?'b':s.cat.includes('Deep')||s.cat.includes('Value')||s.cat.includes('Undervalued')||s.cat.includes('Turnaround')||s.cat.includes('PSU')?'g':'b';
 const rt=s.r||'Buy';
 const rC=rt.includes('Aggressive')?'#10b981':rt.includes('Strong')?'#10b981':rt==='Buy'?'#3b82f6':'#f59e0b';
 const rBg=rt.includes('Aggressive')?'rgba(16,185,129,.15)':rt.includes('Strong')?'rgba(16,185,129,.08)':rt==='Buy'?'rgba(59,130,246,.08)':'rgba(245,158,11,.08)';
+const dec=s.d||'';
+const decParts=dec.split(' · ');
+const decAction=decParts[0]||'';
+const decRest=decParts.slice(1).join(' · ');
+const decCol=decAction.includes('BUY NOW')?'var(--green)':decAction.includes('ACCUMULATE')?'#22d3ee':decAction.includes('WAIT')?'var(--amber)':decAction.includes('START')?'var(--green)':'var(--text2)';
 h+=`<tr>
 <td style="color:var(--text3);font-weight:700">${i+1}</td>
 <td><div class="cname">${s.n}</div><div class="csub">${s.t}</div></td>
 <td><span style="font-size:9px;padding:2px 6px;border-radius:4px;background:${rBg};color:${rC};font-weight:700;white-space:nowrap">${rt}</span></td>
 <td style="font-weight:700;color:var(--cyan);white-space:nowrap;font-size:11px">${s.p}</td>
-<td style="font-size:10px;line-height:1.5">${s.why}</td>
-<td style="font-size:10px;color:var(--text3)">${s.cl}</td>
+<td style="font-weight:700;color:var(--green);white-space:nowrap;font-size:11px">${s.bp||'—'}</td>
+<td style="font-size:10px;line-height:1.5"><strong style="color:${decCol};font-size:10px">${decAction}</strong>${decRest?' · <span style="color:var(--text2)">'+decRest+'</span>':''}</td>
 <td style="font-size:10px;font-weight:600;color:var(--amber)">${s.edge}</td>
 <td><span class="flag ${catCls}">${s.cat}</span></td>
 </tr>`;
