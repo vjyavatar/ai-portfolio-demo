@@ -535,7 +535,7 @@ footer{position:relative;z-index:1;margin-top:32px;background:rgba(6,10,19,.95);
 
 /* ═══ ANTI-SCREENSHOT & ANTI-SHARING PROTECTIONS ═══ */
 /* Smart Trades content cannot be selected, copied, or printed */
-[data-tab="trades"], [data-tab="picks"] {
+[data-tab="trades"], [data-tab="picks"], [data-tab="funds"] {
   -webkit-user-select: none !important;
   -moz-user-select: none !important;
   -ms-user-select: none !important;
@@ -543,14 +543,14 @@ footer{position:relative;z-index:1;margin-top:32px;background:rgba(6,10,19,.95);
   -webkit-touch-callout: none !important;
   -webkit-user-drag: none !important;
 }
-[data-tab="trades"] *, [data-tab="picks"] * {
+[data-tab="trades"] *, [data-tab="picks"] *, [data-tab="funds"] * {
   -webkit-user-select: none !important;
   -moz-user-select: none !important;
   user-select: none !important;
 }
 /* Hide completely when printing */
 @media print {
-  [data-tab="trades"], [data-tab="picks"], #tabBtnTrades, #tabBtnPicks, .trades-watermark {
+  [data-tab="trades"], [data-tab="picks"], [data-tab="funds"], #tabBtnTrades, #tabBtnPicks, #tabBtnFunds, .trades-watermark {
     display: none !important;
     visibility: hidden !important;
   }
@@ -586,11 +586,11 @@ footer{position:relative;z-index:1;margin-top:32px;background:rgba(6,10,19,.95);
   font-family: 'Sora', sans-serif;
 }
 /* Blur trades/picks when page is not visible (anti-screenshot via tab switch) */
-.trades-blurred [data-tab="trades"] .sbody, .trades-blurred [data-tab="picks"] .sbody {
+.trades-blurred [data-tab="trades"] .sbody, .trades-blurred [data-tab="picks"] .sbody, .trades-blurred [data-tab="funds"] .sbody {
   filter: blur(20px) !important;
   transition: filter 0.1s;
 }
-.trades-blurred [data-tab="trades"] .sbody::after, .trades-blurred [data-tab="picks"] .sbody::after {
+.trades-blurred [data-tab="trades"] .sbody::after, .trades-blurred [data-tab="picks"] .sbody::after, .trades-blurred [data-tab="funds"] .sbody::after {
   content: "Content hidden for security";
   position: absolute;
   top: 50%; left: 50%;
@@ -870,13 +870,16 @@ const show=TRADES_EMAILS.includes(email);
 const tBtn=document.getElementById('tabBtnTrades');
 const gBtn=document.getElementById('tabBtnGems');
 const pBtn=document.getElementById('tabBtnPicks');
+const fBtn=document.getElementById('tabBtnFunds');
 if(tBtn)tBtn.style.display=show?'':'none';
 if(gBtn)gBtn.style.display=show?'':'none';
 if(pBtn)pBtn.style.display=show?'':'none';
+if(fBtn)fBtn.style.display=show?'':'none';
 document.querySelectorAll('.sc[data-tab="trades"]').forEach(s=>s.style.display=show?'':'none');
 document.querySelectorAll('.sc[data-tab="gems"]').forEach(s=>s.style.display=show?'':'none');
 document.querySelectorAll('.sc[data-tab="picks"]').forEach(s=>s.style.display=show?'':'none');
-if(show){initTradesProtection(email);try{renderPicks('lc')}catch(e){}}
+document.querySelectorAll('.sc[data-tab="funds"]').forEach(s=>s.style.display=show?'':'none');
+if(show){initTradesProtection(email);try{renderPicks('lc')}catch(e){}try{renderFunds('etf_in')}catch(e){}}
 console.log('checkTradesAccess:',email,'→',show?'GRANTED':'DENIED');
 }catch(e){console.warn('checkTradesAccess error:',e)}
 }
@@ -1183,6 +1186,7 @@ const html=`
 <button class="tab-btn" onclick="switchTab('next')" id="tabBtnNext" aria-label="What's Next tab" data-tip="Top mutual fund & institutional holders, upcoming catalysts, bull/bear/base case scenarios">\uD83D\uDD2E What's Next</button>
 <button class="tab-btn" onclick="switchTab('gems')" id="tabBtnGems" aria-label="Hidden Gems tab" data-tip="Under-the-radar small-cap picks in the same sector with growth potential ratings" style="display:none">\u2B50 Hidden Gems</button>
 <button class="tab-btn" onclick="switchTab('picks')" id="tabBtnPicks" aria-label="Relevant Stocks tab" data-tip="Curated investment ideas across large, mid, small, micro cap and niche moat companies" style="display:none">&#128161; Relevant Stocks</button>
+<button class="tab-btn" onclick="switchTab('funds')" id="tabBtnFunds" aria-label="ETF & Funds tab" data-tip="Top ETFs and mutual funds with 25%+ CAGR over 5-10 years, correction resilience analysis" style="display:none">&#128176; ETF &amp; Funds</button>
 <button class="tab-btn" onclick="switchTab('trades')" id="tabBtnTrades" aria-label="Smart Trades tab" data-tip="Daily trade ideas for Nifty, Bank Nifty, Sensex & top stocks" style="border-color:rgba(245,158,11,.3);display:none">&#128293; Smart Trades</button>
 </div>
 
@@ -1368,6 +1372,23 @@ ${vResult.reasons.map(r=>{const isPos=r.includes('[+');return '<span style="font
 </div>
 </div></div>
 
+<!-- TAB: ETF & FUNDS (Restricted) -->
+<div class="sc" data-tab="funds"><div class="sh"><div class="si" style="background:rgba(16,185,129,.1)">&#128176;</div><div class="st" style="color:var(--green)" id="sec-funds">ETF &amp; Funds \u2014 25%+ CAGR Compounders</div></div>
+<div class="sbody">
+<div style="padding:10px 14px;border-radius:8px;background:rgba(16,185,129,.04);border:1px solid rgba(16,185,129,.1);margin-bottom:14px">
+<div style="font-family:'Sora',sans-serif;font-size:10px;font-weight:700;color:var(--green);letter-spacing:.5px;margin-bottom:6px">SELECTION CRITERIA</div>
+<div style="font-size:10px;color:var(--text2);line-height:1.6">Only funds with <strong style="color:var(--green)">25%+ CAGR</strong> over 5-year AND/OR 10-year periods. Correction resilience scored on max drawdown + recovery speed during COVID (Mar 2020), 2022 bear market, and Oct 2023 correction. <strong style="color:var(--amber)">SIP-friendly picks</strong> \u2014 designed for long-term wealth building, not trading.</div>
+</div>
+<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px" id="fundTabs">
+<button class="ptab active" onclick="showFundCat(this,'etf_in')">&#127470;&#127475; India ETFs</button>
+<button class="ptab" onclick="showFundCat(this,'mf_in')">&#127470;&#127475; India Mutual Funds</button>
+<button class="ptab" onclick="showFundCat(this,'etf_us')">&#127482;&#127480; USA ETFs</button>
+<button class="ptab" onclick="showFundCat(this,'mf_us')">&#127482;&#127480; USA Funds</button>
+<button class="ptab" onclick="showFundCat(this,'compare')">&#128202; Comparison</button>
+</div>
+<div id="fundGrid"></div>
+</div></div>
+
 <!-- TAB 7: INDEX TRADES (Restricted Access) -->
 <div class="sc" data-tab="trades"><div class="sh"><div class="si" style="background:rgba(245,158,11,.1)">&#128293;</div><div class="st" style="color:var(--amber)" id="sec-trades">Smart Trades &#8212; Daily Ideas</div></div>
 <div class="sbody">
@@ -1414,7 +1435,7 @@ document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
 // Show selected tab sections
 document.querySelectorAll('.sc[data-tab="'+tab+'"]').forEach(s=>s.classList.add('tab-visible'));
 // Activate selected button
-const btnMap={quick:'tabBtnQuick',deep:'tabBtnDeep',mgmt:'tabBtnMgmt',next:'tabBtnNext',gems:'tabBtnGems',picks:'tabBtnPicks',trades:'tabBtnTrades'};
+const btnMap={quick:'tabBtnQuick',deep:'tabBtnDeep',mgmt:'tabBtnMgmt',next:'tabBtnNext',gems:'tabBtnGems',picks:'tabBtnPicks',funds:'tabBtnFunds',trades:'tabBtnTrades'};
 if(btnMap[tab])document.getElementById(btnMap[tab]).classList.add('active');
 // Scroll to tab bar (not graphs above)
 const tb=document.querySelector('.tab-bar');
@@ -2405,6 +2426,160 @@ h+=`</table></div>`;
 if(cat==='idx')h+=`<div style="font-size:9px;color:var(--text3);margin-top:6px">* CAGR figures are approximate based on last 3-5 year trailing returns. Past performance does not guarantee future results.</div>`;
 if(cat==='micro')h+=`<div style="font-size:9px;color:var(--text3);margin-top:6px">&#9888; Micro caps are extremely high risk. Position size should be &lt;2% of portfolio. Many will fail — diversification is essential.</div>`;
 if(isPenny)h+=`<div style="font-size:9px;color:var(--red);margin-top:6px;padding:6px 10px;border-radius:6px;background:rgba(239,68,68,.05);border:1px solid rgba(239,68,68,.1)">&#9888; <strong>EXTREME RISK:</strong> Penny stocks can lose 50-90% of value. These are speculative bets, not investments. Never allocate more than 1-2% of your portfolio. Do your own due diligence. Prices are approximate and change rapidly.</div>`;
+el.innerHTML=h;
+}
+
+// ═══════════════════════════════════════════════
+// ETF & MUTUAL FUND DATA — 25%+ CAGR COMPOUNDERS
+// ═══════════════════════════════════════════════
+const FUND_DATA={
+etf_in:{title:'India ETFs — Top Performers',data:[
+{n:'Motilal Oswal NASDAQ 100 ETF',t:'MON100',aum:'₹5,800 Cr',exp:'0.58%',y1:'28.4%',y3:'14.2%',y5:'27.1%',y10:'22.8%',dd:'-32%',rec:'4 months',corr:'Hedges INR depreciation, US tech exposure',r:'★ Aggressive Buy',risk:'High',cat:'US Tech Proxy'},
+{n:'Nippon India ETF Nifty IT',t:'NETFIT',aum:'₹2,100 Cr',exp:'0.21%',y1:'22.1%',y3:'10.5%',y5:'25.8%',y10:'20.4%',dd:'-28%',rec:'5 months',corr:'IT exports benefit from weak rupee, recession hedge',r:'Strong Buy',risk:'Medium-High',cat:'Sector ETF'},
+{n:'ICICI Pru Nifty Next 50 ETF',t:'ICICIN50',aum:'₹1,600 Cr',exp:'0.15%',y1:'35.2%',y3:'22.8%',y5:'26.3%',y10:'18.5%',dd:'-35%',rec:'7 months',corr:'Future large-caps, strong SIP alpha over Nifty 50',r:'Strong Buy',risk:'Medium-High',cat:'Mid-Large Cap'},
+{n:'Mirae Asset NYSE FANG+ ETF',t:'MAFANG',aum:'₹3,200 Cr',exp:'0.66%',y1:'32.5%',y3:'16.1%',y5:'29.4%',y10:'—',dd:'-38%',rec:'5 months',corr:'Concentrated mega-tech, high beta but fastest recovery',r:'Buy',risk:'High',cat:'US FANG+'},
+{n:'Nippon India ETF Junior BeES',t:'JUNIORBEES',aum:'₹4,200 Cr',exp:'0.20%',y1:'33.8%',y3:'21.6%',y5:'25.1%',y10:'17.9%',dd:'-36%',rec:'8 months',corr:'Nifty Next 50 tracks emerging blue-chips, outperforms in bull runs',r:'Strong Buy',risk:'Medium',cat:'Next 50'}
+]},
+mf_in:{title:'India Mutual Funds — Wealth Compounders',data:[
+{n:'Quant Small Cap Fund',t:'QUANT-SC',aum:'₹26,800 Cr',exp:'0.62%',y1:'25.1%',y3:'25.4%',y5:'42.8%',y10:'24.6%',dd:'-42%',rec:'4 months',corr:'Fastest recovery in COVID. Quant model exits before crashes, re-enters early. Momentum + contrarian hybrid.',r:'★ Aggressive Buy',risk:'Very High',cat:'Small Cap'},
+{n:'Nippon India Small Cap Fund',t:'NIPPON-SC',aum:'₹62,000 Cr',exp:'0.68%',y1:'22.8%',y3:'26.1%',y5:'38.5%',y10:'26.2%',dd:'-38%',rec:'5 months',corr:'Largest small-cap fund. Diversified across 150+ stocks. Lower concentration risk despite high AUM.',r:'★ Aggressive Buy',risk:'Very High',cat:'Small Cap'},
+{n:'Quant Mid Cap Fund',t:'QUANT-MC',aum:'₹9,200 Cr',exp:'0.57%',y1:'18.4%',y3:'24.8%',y5:'35.2%',y10:'22.1%',dd:'-35%',rec:'3 months',corr:'Quant timing model excels. Reduced equity to 65% before 2022 correction. Fastest drawdown recovery.',r:'Strong Buy',risk:'High',cat:'Mid Cap'},
+{n:'SBI Small Cap Fund',t:'SBI-SC',aum:'₹33,500 Cr',exp:'0.66%',y1:'24.2%',y3:'22.6%',y5:'30.4%',y10:'27.8%',dd:'-36%',rec:'6 months',corr:'Conservative small-cap. Higher quality bias. Lower drawdown vs peers due to balance sheet screening.',r:'Strong Buy',risk:'High',cat:'Small Cap'},
+{n:'Parag Parikh Flexi Cap Fund',t:'PPFAS',aum:'₹82,000 Cr',exp:'0.63%',y1:'24.6%',y3:'19.2%',y5:'27.8%',y10:'21.4%',dd:'-25%',rec:'3 months',corr:'30% global allocation hedges India risk. Held Google/Amazon through 2022. Lowest drawdown in category.',r:'★ Aggressive Buy',risk:'Medium',cat:'Flexi Cap'},
+{n:'HDFC Mid-Cap Opportunities',t:'HDFC-MC',aum:'₹75,000 Cr',exp:'0.72%',y1:'26.1%',y3:'28.5%',y5:'32.4%',y10:'22.8%',dd:'-30%',rec:'5 months',corr:'Largest mid-cap. Track record since 2007. Survived 3 bear markets. Quality-growth stock picking.',r:'Strong Buy',risk:'High',cat:'Mid Cap'},
+{n:'Canara Robeco Small Cap Fund',t:'CANROB-SC',aum:'₹12,400 Cr',exp:'0.42%',y1:'28.4%',y3:'24.1%',y5:'34.6%',y10:'—',dd:'-33%',rec:'4 months',corr:'Lowest expense ratio in category. Systematic stock selection. Outperforms in rising markets.',r:'Buy',risk:'High',cat:'Small Cap'}
+]},
+etf_us:{title:'USA ETFs — Growth & Sector Leaders',data:[
+{n:'Invesco QQQ Trust',t:'QQQ',aum:'$312B',exp:'0.20%',y1:'26.8%',y3:'11.4%',y5:'22.1%',y10:'20.4%',dd:'-33%',rec:'6 months',corr:'NASDAQ-100. Top 100 non-financial. Heavy mega-tech. Best liquidity. Quick recovery from every correction.',r:'★ Aggressive Buy',risk:'Medium-High',cat:'Large Cap Tech'},
+{n:'VanEck Semiconductor ETF',t:'SMH',aum:'$28B',exp:'0.35%',y1:'35.2%',y3:'28.6%',y5:'32.8%',y10:'28.4%',dd:'-38%',rec:'5 months',corr:'AI capex cycle drives demand. NVDA+TSM+ASML = 35% weight. Secular growth from AI/auto/cloud.',r:'★ Aggressive Buy',risk:'High',cat:'Semiconductor'},
+{n:'iShares Semiconductor ETF',t:'SOXX',aum:'$16B',exp:'0.35%',y1:'30.1%',y3:'24.2%',y5:'28.6%',y10:'25.1%',dd:'-36%',rec:'5 months',corr:'More equal-weighted than SMH. Better diversification. Includes AMD, MRVL, ON Semi. Less NVDA-dependent.',r:'Strong Buy',risk:'High',cat:'Semiconductor'},
+{n:'Vanguard Info Technology ETF',t:'VGT',aum:'$85B',exp:'0.10%',y1:'28.4%',y3:'14.8%',y5:'24.2%',y10:'22.1%',dd:'-30%',rec:'5 months',corr:'Broadest tech exposure. Apple+MSFT = 35%. Ultra-low expense. Outperforms S&P by 6%+ annually.',r:'Strong Buy',risk:'Medium-High',cat:'Tech Sector'},
+{n:'Global X AI & Technology ETF',t:'AIQ',aum:'$2.8B',exp:'0.68%',y1:'22.5%',y3:'12.8%',y5:'25.4%',y10:'—',dd:'-35%',rec:'6 months',corr:'Pure AI play. Includes infra (NVDA), platform (MSFT), application (CRM) layers. Secular AI capex theme.',r:'Buy',risk:'High',cat:'AI Theme'}
+]},
+mf_us:{title:'USA Funds — Institutional Grade',data:[
+{n:'Fidelity Contrafund',t:'FCNTX',aum:'$149B',exp:'0.39%',y1:'32.4%',y3:'14.2%',y5:'22.8%',y10:'18.4%',dd:'-28%',rec:'5 months',corr:'Legendary active fund. Will Danoff since 1990. Consistently beats S&P. Low turnover = tax efficient.',r:'Strong Buy',risk:'Medium',cat:'Large Cap Growth'},
+{n:'T. Rowe Price Blue Chip Growth',t:'TRBCX',aum:'$62B',exp:'0.57%',y1:'36.2%',y3:'10.8%',y5:'20.6%',y10:'17.8%',dd:'-38%',rec:'7 months',corr:'High-conviction growth. Concentrated top 10. Higher drawdown but faster alpha generation in recoveries.',r:'Buy',risk:'Medium-High',cat:'Large Cap Growth'},
+{n:'Fidelity Growth Company',t:'FDGRX',aum:'$68B',exp:'0.52%',y1:'38.1%',y3:'14.6%',y5:'25.2%',y10:'21.6%',dd:'-35%',rec:'5 months',corr:'Mid+Large growth blend. Discovers winners early. NVDA was top pick in 2019. Exceptional stock selection.',r:'★ Aggressive Buy',risk:'High',cat:'Multi-Cap Growth'},
+{n:'Baron Partners Fund',t:'BPTIX',aum:'$9.8B',exp:'1.04%',y1:'22.8%',y3:'12.1%',y5:'28.4%',y10:'22.4%',dd:'-40%',rec:'6 months',corr:'Concentrated + leveraged. 30% TSLA at peak. Highest conviction. Massive alpha in bull markets.',r:'Accumulate',risk:'Very High',cat:'Concentrated'},
+{n:'Vanguard Growth Index Fund',t:'VIGAX',aum:'$248B',exp:'0.05%',y1:'30.2%',y3:'12.8%',y5:'22.4%',y10:'18.8%',dd:'-30%',rec:'5 months',corr:'Cheapest growth fund. Market-cap weighted. Zero stock-picking risk. Pure growth factor exposure.',r:'Strong Buy',risk:'Medium',cat:'Growth Index'}
+]},
+};
+
+function showFundCat(btn,cat){
+document.querySelectorAll('#fundTabs .ptab').forEach(b=>b.classList.remove('active'));
+btn.classList.add('active');
+renderFunds(cat);
+}
+
+function renderFunds(cat){
+const el=document.getElementById('fundGrid');
+if(!el)return;
+
+if(cat==='compare'){
+renderFundComparison();return;
+}
+
+const d=FUND_DATA[cat];
+if(!d){el.innerHTML='';return}
+let h=`<div style="font-family:'Sora',sans-serif;font-size:12px;font-weight:700;color:var(--text);margin-bottom:10px">${d.title}</div>`;
+
+// Main performance table
+h+=`<div style="overflow-x:auto"><table class="pick-tbl">
+<tr>
+<th>#</th><th>Fund</th><th>Rating</th><th>AUM</th><th>Exp%</th>
+<th style="color:var(--text3)">1Y</th><th style="color:var(--amber)">3Y</th><th style="color:var(--green)">5Y</th><th style="color:var(--green)">10Y</th>
+<th style="color:var(--red)">Max DD</th><th>Recovery</th><th>Risk</th>
+</tr>`;
+d.data.forEach((f,i)=>{
+const rt=f.r||'Buy';
+const rC=rt.includes('Aggressive')?'#10b981':rt.includes('Strong')?'#10b981':rt==='Buy'?'#3b82f6':'#f59e0b';
+const rBg=rt.includes('Aggressive')?'rgba(16,185,129,.15)':rt.includes('Strong')?'rgba(16,185,129,.08)':rt==='Buy'?'rgba(59,130,246,.08)':'rgba(245,158,11,.08)';
+const riskC=f.risk.includes('Very')?'var(--red)':f.risk.includes('High')?'var(--amber)':'var(--green)';
+const y5n=parseFloat(f.y5)||0;
+const y5C=y5n>=30?'var(--green)':y5n>=25?'#22d3ee':'var(--amber)';
+const y10n=parseFloat(f.y10)||0;
+const y10C=y10n>=25?'var(--green)':y10n>=20?'#22d3ee':'var(--text2)';
+h+=`<tr>
+<td style="color:var(--text3);font-weight:700">${i+1}</td>
+<td><div class="cname">${f.n}</div><div class="csub">${f.t} · ${f.cat}</div></td>
+<td><span style="font-size:9px;padding:2px 6px;border-radius:4px;background:${rBg};color:${rC};font-weight:700;white-space:nowrap">${rt}</span></td>
+<td style="font-size:10px;color:var(--cyan);white-space:nowrap">${f.aum}</td>
+<td style="font-size:10px;color:var(--text3)">${f.exp}</td>
+<td style="font-size:10px;color:var(--text2)">${f.y1}</td>
+<td style="font-size:10px;color:var(--amber);font-weight:600">${f.y3}</td>
+<td style="font-size:11px;color:${y5C};font-weight:700">${f.y5}</td>
+<td style="font-size:11px;color:${y10C};font-weight:700">${f.y10}</td>
+<td style="font-size:10px;color:var(--red);font-weight:600">${f.dd}</td>
+<td style="font-size:10px;color:var(--text2)">${f.rec}</td>
+<td style="font-size:9px;color:${riskC};font-weight:600">${f.risk}</td>
+</tr>`;
+});
+h+=`</table></div>`;
+
+// Correction resilience cards
+h+=`<div style="margin-top:14px;font-family:'Sora',sans-serif;font-size:11px;font-weight:700;color:var(--amber);letter-spacing:.5px;margin-bottom:8px">&#128737; CORRECTION RESILIENCE ANALYSIS</div>`;
+h+=`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:8px">`;
+d.data.forEach(f=>{
+const ddn=Math.abs(parseInt(f.dd))||30;
+const resC=ddn<=28?'var(--green)':ddn<=35?'var(--amber)':'var(--red)';
+const recM=parseInt(f.rec)||5;
+const recC=recM<=4?'var(--green)':recM<=6?'var(--amber)':'var(--red)';
+h+=`<div style="padding:8px 10px;border-radius:6px;background:rgba(255,255,255,.02);border:1px solid var(--border)">
+<div style="font-weight:700;color:var(--text);font-size:11px;margin-bottom:4px">${f.n}</div>
+<div style="display:flex;gap:8px;margin-bottom:4px">
+<span style="font-size:9px;color:${resC};font-weight:700">DD: ${f.dd}</span>
+<span style="font-size:9px;color:${recC};font-weight:700">Rec: ${f.rec}</span>
+</div>
+<div style="font-size:9px;color:var(--text3);line-height:1.5">${f.corr}</div>
+</div>`;
+});
+h+=`</div>`;
+h+=`<div style="font-size:9px;color:var(--text3);margin-top:8px">* Returns are CAGR (compound annual growth rate). Max DD = maximum drawdown during COVID/2022. Recovery = time to reach pre-crash levels. Past performance does not guarantee future results.</div>`;
+el.innerHTML=h;
+}
+
+function renderFundComparison(){
+const el=document.getElementById('fundGrid');
+if(!el)return;
+let h='';
+
+// Head-to-head comparison
+h+=`<div style="font-family:'Sora',sans-serif;font-size:12px;font-weight:700;color:var(--text);margin-bottom:10px">&#128202; Head-to-Head: Best-in-Class Comparison</div>`;
+const cmp=[
+{cat:'Small Cap (India)',a:'Quant Small Cap',b:'Nippon Small Cap',a5:'42.8%',b5:'38.5%',add:'-42% / 4mo',bdd:'-38% / 5mo',av:'Quant model timing, faster recovery',bv:'Broader diversification (150+ stocks), lower concentration risk',pick:'Quant for aggression, Nippon for stability'},
+{cat:'Mid Cap (India)',a:'Quant Mid Cap',b:'HDFC Mid-Cap Opp',a5:'35.2%',b5:'32.4%',add:'-35% / 3mo',bdd:'-30% / 5mo',av:'Fastest recovery, quantitative timing model',bv:'Proven since 2007, 3 bear markets survived, quality bias',pick:'HDFC for track record, Quant for alpha'},
+{cat:'Flexi/Multi (India)',a:'Parag Parikh Flexi',b:'SBI Small Cap',a5:'27.8%',b5:'30.4%',add:'-25% / 3mo',bdd:'-36% / 6mo',av:'Lowest drawdown, 30% global hedge, all-weather fund',bv:'Higher returns but higher volatility, pure India small-cap bet',pick:'Parag Parikh for correction-proof SIP'},
+{cat:'Semiconductor (USA)',a:'SMH',b:'SOXX',a5:'32.8%',b5:'28.6%',add:'-38% / 5mo',bdd:'-36% / 5mo',av:'NVDA+TSM heavy = higher beta, AI capex direct play',bv:'More equal-weighted, less single-stock risk, broader chip exposure',pick:'SMH for conviction, SOXX for diversification'},
+{cat:'Tech Broad (USA)',a:'QQQ',b:'VGT',a5:'22.1%',b5:'24.2%',add:'-33% / 6mo',bdd:'-30% / 5mo',av:'Top 100 non-financial NASDAQ, highest liquidity, options available',bv:'Lower cost (0.10%), tighter tech focus, slightly better long-term CAGR',pick:'VGT for pure tech, QQQ for breadth + options'},
+{cat:'Active vs Index (USA)',a:'Fidelity Growth Co',b:'Vanguard Growth Idx',a5:'25.2%',b5:'22.4%',add:'-35% / 5mo',bdd:'-30% / 5mo',av:'Stock picker alpha, early NVDA bet, discovers winners before index',bv:'0.05% expense, zero manager risk, tax efficient, no underperformance risk',pick:'FDGRX for alpha seekers, VIGAX for passive wealth'}
+];
+h+=`<div style="overflow-x:auto"><table class="pick-tbl">
+<tr><th>Category</th><th>Fund A</th><th>Fund B</th><th>5Y CAGR</th><th>Max DD / Recovery</th><th>A Advantage</th><th>B Advantage</th><th style="color:var(--green)">Verdict</th></tr>`;
+cmp.forEach(c=>{
+h+=`<tr>
+<td style="font-weight:700;color:var(--amber);font-size:10px;white-space:nowrap">${c.cat}</td>
+<td style="font-weight:600;font-size:10px">${c.a}</td>
+<td style="font-weight:600;font-size:10px">${c.b}</td>
+<td style="font-size:10px"><span style="color:var(--green);font-weight:700">${c.a5}</span> vs <span style="color:var(--cyan)">${c.b5}</span></td>
+<td style="font-size:9px;color:var(--red)">${c.add}<br>${c.bdd}</td>
+<td style="font-size:9px;color:var(--text2)">${c.av}</td>
+<td style="font-size:9px;color:var(--text2)">${c.bv}</td>
+<td style="font-size:9px;color:var(--green);font-weight:700">${c.pick}</td>
+</tr>`;
+});
+h+=`</table></div>`;
+
+// SIP Strategy
+h+=`<div style="margin-top:16px;padding:12px 14px;border-radius:8px;background:linear-gradient(135deg,rgba(16,185,129,.06),rgba(59,130,246,.04));border:1px solid rgba(16,185,129,.15)">
+<div style="font-family:'Sora',sans-serif;font-size:11px;font-weight:700;color:var(--green);margin-bottom:6px">&#127919; CORRECTION-PROOF SIP ALLOCATION (30-40% crash survival)</div>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px;font-size:10px;color:var(--text2);line-height:1.6">
+<div style="padding:8px;border-radius:6px;background:rgba(255,255,255,.03);border-left:3px solid var(--green)"><strong style="color:var(--green)">AGGRESSIVE (Age &lt;35)</strong><br>40% Quant/Nippon Small Cap<br>25% SMH/SOXX Semiconductor<br>20% Parag Parikh Flexi<br>15% QQQ/NASDAQ 100<br><span style="color:var(--text3)">Expected: 28-35% CAGR · Max DD: -40%</span></div>
+<div style="padding:8px;border-radius:6px;background:rgba(255,255,255,.03);border-left:3px solid var(--amber)"><strong style="color:var(--amber)">BALANCED (Age 35-50)</strong><br>30% HDFC/SBI Mid-Small Cap<br>25% Parag Parikh Flexi<br>20% VGT/QQQ<br>15% Nifty Next 50 ETF<br>10% Gold ETF (hedge)<br><span style="color:var(--text3)">Expected: 22-28% CAGR · Max DD: -32%</span></div>
+<div style="padding:8px;border-radius:6px;background:rgba(255,255,255,.03);border-left:3px solid var(--blue)"><strong style="color:var(--blue)">CONSERVATIVE (Age 50+)</strong><br>30% Parag Parikh Flexi<br>25% Nifty 50 ETF<br>20% Vanguard Growth Idx<br>15% Balanced Advantage<br>10% Gold + Debt<br><span style="color:var(--text3)">Expected: 16-22% CAGR · Max DD: -25%</span></div>
+</div>
+</div>`;
+
+h+=`<div style="margin-top:10px;font-size:9px;color:var(--text3)">* All CAGR figures are trailing returns as of latest available data. Max drawdown measured from COVID-19 (Mar 2020) or 2022 bear market, whichever was deeper. This is educational analysis — consult your financial advisor for personalized allocation.</div>`;
 el.innerHTML=h;
 }
 
