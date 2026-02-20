@@ -209,7 +209,7 @@ gtag('js',new Date());gtag('config','G-WW55EQ7ZB8');
 :root{--bg:#f8f9fa;--bg2:#ffffff;--bg3:#f0f2f5;--surface:#ffffff;--glass:rgba(255,255,255,0.95);--border:rgba(0,47,108,0.1);--border2:rgba(0,47,108,0.2);--blue:#002f6c;--blue2:#004a99;--cyan:#0a6ebd;--green:#14a23a;--green2:#0d8a2e;--amber:#d48a00;--red:#d0021b;--purple:#6b21a8;--text:#171717;--text2:#555555;--text3:#888888;--mono:'IBM Plex Mono',monospace}
 *{margin:0;padding:0;box-sizing:border-box}
 html{scroll-behavior:smooth}
-body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden;padding-bottom:90px}
+body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;overflow-x:clip;padding-bottom:90px}
 
 /* Grid background */
 .gridbg{position:fixed;inset:0;z-index:0;pointer-events:none;background-image:linear-gradient(rgba(59,130,246,0.025) 1px,transparent 1px),linear-gradient(90deg,rgba(59,130,246,0.025) 1px,transparent 1px);background-size:48px 48px}
@@ -284,7 +284,7 @@ nav{position:sticky;top:30px;z-index:99;backdrop-filter:blur(24px);-webkit-backd
 .rlbox .rlbf{height:100%;background:linear-gradient(90deg,var(--amber),var(--green));border-radius:2px;transition:width 1s linear}
 
 /* REPORT */
-.rpt{position:relative;z-index:1;max-width:1080px;margin:0 auto;padding:0 20px 64px;display:none}
+.rpt{position:relative;max-width:1080px;margin:0 auto;padding:0 20px 64px;display:none}
 .rpt.show{display:block;animation:fu .6s ease}
 @keyframes fu{from{opacity:0;transform:translateY(30px)}to{opacity:1;transform:translateY(0)}}
 
@@ -323,7 +323,7 @@ nav{position:sticky;top:30px;z-index:99;backdrop-filter:blur(24px);-webkit-backd
 .si{width:34px;height:34px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0}
 .st{font-family:'Sora',sans-serif;font-size:14px;font-weight:700;letter-spacing:-.2px;flex:1}
 .sbody{padding:12px 18px 16px;overflow:visible}
-.tab-bar{display:flex;gap:2px;margin-bottom:0;background:linear-gradient(135deg,#f8fafc 0%,#eef2f7 100%);border:none;border-bottom:2px solid #d1d9e6;border-radius:0;padding:4px 4px 0;position:sticky;top:90px;z-index:10;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;box-shadow:0 4px 20px rgba(0,20,60,.08)}
+.tab-bar{display:flex;gap:2px;margin-bottom:0;background:linear-gradient(135deg,#f8fafc 0%,#eef2f7 100%);border:none;border-bottom:2px solid #d1d9e6;border-radius:0;padding:4px 4px 0;position:sticky;top:90px;z-index:97;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;box-shadow:0 4px 20px rgba(0,20,60,.08)}
 .tab-bar::-webkit-scrollbar{display:none}
 .tab-bar.attention{animation:tabPulse 2s ease 3;border-color:rgba(59,130,246,.5);box-shadow:0 0 20px rgba(59,130,246,.15)}
 @keyframes tabPulse{0%,100%{border-color:rgba(0,120,212,.25);box-shadow:0 0 10px rgba(59,130,246,.05)}50%{border-color:rgba(59,130,246,.6);box-shadow:0 0 25px rgba(0,120,212,.25)}}
@@ -761,6 +761,8 @@ footer{position:relative;z-index:1;margin-top:32px;background:#002f6c;border-top
 
 <!-- STATIC EVENT ALERTS — always right after metrics -->
 <div id="eventAlertArea" style="display:none;margin-bottom:0"></div>
+<!-- Hidden 52W section for JS compatibility -->
+<div id="w52section" style="display:none"></div>
 
 <!-- STATIC TAB BAR — always visible right after metrics -->
 <div class="tab-bar" id="mainTabBar" style="display:none">
@@ -775,14 +777,13 @@ footer{position:relative;z-index:1;margin-top:32px;background:#002f6c;border-top
 </div>
 
 <!-- TAB CONTENT AREA -->
-<div id="tabContentArea">
+<div id="tabContentArea" style="min-height:60vh">
 
-<!-- 52-WEEK + DECISION TOOL (Summary tab) -->
-<div class="sc" data-tab="quick" style="border-left:3px solid var(--blue)">
-<div class="sh"><div class="si" style="background:rgba(0,120,212,.12)">&#128200;</div><div class="st" style="color:var(--blue)">52-Week Position &amp; Decision Tool</div></div>
+<!-- DECISION TOOL (Summary tab — "What Should I Do?") -->
+<div class="sc" data-tab="quick" style="border-left:3px solid var(--cyan);display:none" id="decisionToolCard">
+<div class="sh"><div class="si" style="background:rgba(6,182,212,.1)">&#127919;</div><div class="st" style="color:var(--cyan)">Position Analyzer</div></div>
 <div class="sbody">
-<div id="w52section" style="margin-bottom:14px"></div>
-<div id="decisionTool" style="display:none;margin-bottom:14px"></div>
+<div id="decisionTool" style="display:none"></div>
 </div>
 </div>
 
@@ -1208,8 +1209,11 @@ window._stockData=d;window._stockCurr=curr;
 try{renderDecisionTool(d,curr)}catch(e){console.warn('decisionTool error:',e)}
 createAnalysisSections(data.report,d,data.fund_holdings||{institutions:[],funds:[],summary:{}});
 document.getElementById('report').classList.add('show');
+// Hide sticky tagline — tab bar replaces it
+const _sTag=document.getElementById('stickyTag');if(_sTag)_sTag.style.display='none';
 renderMarketEvents();
-setTimeout(()=>document.getElementById('report').scrollIntoView({behavior:'smooth',block:'start'}),200);
+// Scroll to metrics (above tab bar) so tab bar sticks naturally at 90px
+setTimeout(()=>{const m=document.getElementById('metrics');if(m)m.scrollIntoView({behavior:'smooth',block:'start'})},200);
 setTimeout(animSections,400)}
 
 function animSections(){
@@ -1232,6 +1236,7 @@ ind.style.opacity=atBottom?'0':'1';
 
 function createAnalysisSections(report,d,fundData){
 const curr=d.currency==='INR'?'\u20B9':'$',price=d.current_price,pe=parseFloat(d.pe_ratio)||0;
+const n=v=>{const f=parseFloat(v);return(isNaN(f)||v==='N/A'||v===null||v===undefined)?0:f};
 // ═══ DETERMINISTIC STOCK VERDICT ENGINE (20 factors — comprehensive multi-factor) ═══
 // F1-F8: Original (Valuation, Profitability, Balance Sheet, 52W, P/B, Dividend, Beta, OpEff)
 // F9: Earnings Velocity (EPS + Revenue CAGR)  F10: Relative Valuation (vs Sector PE)
@@ -1423,11 +1428,11 @@ const html=`
 <div class="tab-scroll-area" id="tabScrollArea">
 <!-- TAB 1: QUICK INTEL -->
 <div class="sub-nav" data-tab="quick">
-<a onclick="document.getElementById('sec-verdict').scrollIntoView({behavior:'smooth',block:'center'})">&#9678; Verdict</a>
-<a onclick="document.getElementById('sec-5things').scrollIntoView({behavior:'smooth',block:'center'})">&#9651; Key Points</a>
-<a onclick="document.getElementById('sec-valuation').scrollIntoView({behavior:'smooth',block:'center'})">&#128200; Valuation</a>
-<a onclick="document.getElementById('sec-entry').scrollIntoView({behavior:'smooth',block:'center'})">&#128176; Buy / Sell</a>
-<a onclick="document.getElementById('sec-risk').scrollIntoView({behavior:'smooth',block:'center'})">&#9888; Risk</a>
+<a onclick="document.getElementById('sec-verdict').scrollIntoView({behavior:'smooth',block:'nearest'})">&#9678; Buy/Sell?</a>
+<a onclick="document.getElementById('sec-5things').scrollIntoView({behavior:'smooth',block:'nearest'})">&#128200; Snapshot</a>
+<a onclick="document.getElementById('sec-valuation').scrollIntoView({behavior:'smooth',block:'nearest'})">&#128176; Overpriced?</a>
+<a onclick="document.getElementById('sec-entry').scrollIntoView({behavior:'smooth',block:'nearest'})">&#127919; Entry/Exit</a>
+<a onclick="document.getElementById('sec-risk').scrollIntoView({behavior:'smooth',block:'nearest'})">&#9888; Risks</a>
 </div>
 
 <!-- VERDICT (always open) -->
@@ -1448,15 +1453,44 @@ ${vResult.reasons.map(r=>{const isPos=r.includes('[+');return '<span style="font
 </div></div>
 
 <!-- DECISION POINTS -->
-<div class="sc" data-tab="quick" style="border-left:3px solid var(--amber)"><div class="sh"><div class="si" style="background:rgba(245,158,11,.1)">&#9651;</div><div class="st" style="color:var(--amber)" id="sec-5things">5 Things You Need to Know Right Now</div></div>
+<div class="sc" data-tab="quick" style="border-left:3px solid var(--amber)"><div class="sh"><div class="si" style="background:rgba(245,158,11,.1)">&#9651;</div><div class="st" style="color:var(--amber)" id="sec-5things">Quick Decision Matrix</div></div>
 <div class="sbody">
-<ul class="dl">
-<li><strong>Price Action:</strong> Currently ${curr}${price.toLocaleString()} with ${d.price_change>=0?'positive':'negative'} momentum (${d.price_change_pct.toFixed(2)}%)</li>
-<li><strong>Valuation:</strong> P/E of ${d.pe_ratio} suggests ${pe<15?'undervalued opportunity':pe<25?'fair valuation':'premium pricing'}. Forward P/E: ${d.forward_pe||'N/A'}</li>
-<li><strong>Market Position:</strong> ${formatCap(d.market_cap,curr)} market cap \u2014 ${d.market_cap>100e9?'large-cap':d.market_cap>10e9?'mid-cap':'small-cap'}</li>
-<li><strong>Sector:</strong> ${d.sector} \u00B7 ${d.industry}</li>
-<li><strong>Range:</strong> Trading at ${((price/d.week52_high)*100).toFixed(0)}% of 52-week high (Beta: ${d.beta})</li>
-</ul></div></div>
+<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px">
+<div style="padding:10px;border-radius:8px;text-align:center;background:${pe<18?'rgba(16,185,129,.06)':pe<28?'rgba(245,158,11,.06)':'rgba(239,68,68,.06)'};border:1px solid ${pe<18?'rgba(16,185,129,.15)':pe<28?'rgba(245,158,11,.15)':'rgba(239,68,68,.15)'}">
+<div style="font-size:8px;text-transform:uppercase;letter-spacing:.5px;color:var(--text3);font-weight:700">Valuation</div>
+<div style="font-family:var(--mono);font-size:18px;font-weight:800;color:${pe<18?'var(--green)':pe<28?'var(--amber)':'var(--red)'}">${d.pe_ratio}x</div>
+<div style="font-size:9px;color:var(--text3)">${pe<18?'\\u2705 Cheap':pe<28?'\\u26A0 Fair':'\\u{1F6A8} Expensive'}</div>
+</div>
+<div style="padding:10px;border-radius:8px;text-align:center;background:${parseFloat(d.profit_margin)>15?'rgba(16,185,129,.06)':parseFloat(d.profit_margin)>8?'rgba(245,158,11,.06)':'rgba(239,68,68,.06)'};border:1px solid ${parseFloat(d.profit_margin)>15?'rgba(16,185,129,.15)':parseFloat(d.profit_margin)>8?'rgba(245,158,11,.15)':'rgba(239,68,68,.15)'}">
+<div style="font-size:8px;text-transform:uppercase;letter-spacing:.5px;color:var(--text3);font-weight:700">Profitability</div>
+<div style="font-family:var(--mono);font-size:18px;font-weight:800;color:${parseFloat(d.profit_margin)>15?'var(--green)':parseFloat(d.profit_margin)>8?'var(--amber)':'var(--red)'}">${d.profit_margin}%</div>
+<div style="font-size:9px;color:var(--text3)">${parseFloat(d.profit_margin)>15?'\\u2705 Strong moat':parseFloat(d.profit_margin)>8?'\\u26A0 Moderate':'\\u274C Thin'}</div>
+</div>
+<div style="padding:10px;border-radius:8px;text-align:center;background:${parseFloat(d.debt_to_equity)<0.5?'rgba(16,185,129,.06)':parseFloat(d.debt_to_equity)<1.5?'rgba(245,158,11,.06)':'rgba(239,68,68,.06)'};border:1px solid ${parseFloat(d.debt_to_equity)<0.5?'rgba(16,185,129,.15)':parseFloat(d.debt_to_equity)<1.5?'rgba(245,158,11,.15)':'rgba(239,68,68,.15)'}">
+<div style="font-size:8px;text-transform:uppercase;letter-spacing:.5px;color:var(--text3);font-weight:700">Debt Risk</div>
+<div style="font-family:var(--mono);font-size:18px;font-weight:800;color:${parseFloat(d.debt_to_equity)<0.5?'var(--green)':parseFloat(d.debt_to_equity)<1.5?'var(--amber)':'var(--red)'}">${d.debt_to_equity}x</div>
+<div style="font-size:9px;color:var(--text3)">${parseFloat(d.debt_to_equity)<0.5?'\\u2705 Conservative':parseFloat(d.debt_to_equity)<1.5?'\\u26A0 Moderate':'\\u{1F6A8} High leverage'}</div>
+</div>
+</div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+<div style="padding:8px 12px;border-radius:6px;background:rgba(0,120,212,.03);border:1px solid rgba(0,120,212,.1)">
+<div style="font-size:9px;color:var(--text3);margin-bottom:2px">MARKET CAP</div>
+<div style="font-size:13px;font-weight:700;color:var(--text)">${formatCap(d.market_cap,curr)} <span style="font-size:10px;color:var(--text3)">${d.market_cap>100e9?'Large-cap':d.market_cap>10e9?'Mid-cap':'Small-cap'}</span></div>
+</div>
+<div style="padding:8px 12px;border-radius:6px;background:rgba(0,120,212,.03);border:1px solid rgba(0,120,212,.1)">
+<div style="font-size:9px;color:var(--text3);margin-bottom:2px">52-WEEK POSITION</div>
+<div style="font-size:13px;font-weight:700;color:var(--text)">${((price/d.week52_high)*100).toFixed(0)}% of high <span style="font-size:10px;color:var(--text3)">Beta: ${d.beta}</span></div>
+</div>
+<div style="padding:8px 12px;border-radius:6px;background:rgba(0,120,212,.03);border:1px solid rgba(0,120,212,.1)">
+<div style="font-size:9px;color:var(--text3);margin-bottom:2px">ROE (Return on Equity)</div>
+<div style="font-size:13px;font-weight:700;color:${parseFloat(d.roe)>15?'var(--green)':'var(--text)'}">${d.roe}% <span style="font-size:10px;color:var(--text3)">${parseFloat(d.roe)>15?'Capital efficient':'Average'}</span></div>
+</div>
+<div style="padding:8px 12px;border-radius:6px;background:rgba(0,120,212,.03);border:1px solid rgba(0,120,212,.1)">
+<div style="font-size:9px;color:var(--text3);margin-bottom:2px">DIVIDEND INCOME</div>
+<div style="font-size:13px;font-weight:700;color:${parseFloat(d.dividend_yield)>2?'var(--green)':'var(--text)'}">${d.dividend_yield}% <span style="font-size:10px;color:var(--text3)">${parseFloat(d.dividend_yield)>3?'High income':parseFloat(d.dividend_yield)>1?'Some income':'Growth focus'}</span></div>
+</div>
+</div>
+</div></div>
 
 <!-- VALUATION TABLE -->
 <div class="sc" data-tab="quick" style="border-left:3px solid var(--blue)"><div class="sh"><div class="si" style="background:rgba(0,120,212,.12)">&#9678;</div><div class="st" style="color:var(--blue)" id="sec-valuation">Are You Overpaying? Deep Valuation X-Ray</div></div>
@@ -1486,16 +1520,23 @@ ${vResult.reasons.map(r=>{const isPos=r.includes('[+');return '<span style="font
 <p style="font-size:13px;color:var(--text2);line-height:1.7"><strong style="color:var(--blue)">\u25CF Bottom Line:</strong> ${pe<20?'Fair or discounted. Could be a smart entry.':'Growth premium. Fine IF the company delivers.'}</p></div>
 </div></div>
 
-<!-- ENTRY & EXIT -->
-<div class="sc" data-tab="quick" style="border-left:3px solid var(--purple)"><div class="sh"><div class="si" style="background:rgba(139,92,246,.1)">\u2B21</div><div class="st" style="color:var(--purple)" id="sec-entry">Exact Buy &amp; Sell Prices \u2014 Your Cheat Sheet</div></div>
+<!-- ENTRY & EXIT — SMA-Driven -->
+<div class="sc" data-tab="quick" style="border-left:3px solid var(--purple)"><div class="sh"><div class="si" style="background:rgba(139,92,246,.1)">\u2B21</div><div class="st" style="color:var(--purple)" id="sec-entry">Entry &amp; Exit Levels \u2014 Factor-Driven</div></div>
 <div class="sbody">
-<table class="dt"><tr><th>Level</th><th>Price</th><th>% from Current</th><th>Action</th></tr>
-<tr><td>\u25CF Buy Zone</td><td><span class="ptag buy">Below ${curr}${(price*.95).toFixed(2)}</span></td><td style="color:var(--green)">-5%</td><td style="font-size:12px">Accumulate \u2014 build position</td></tr>
-<tr><td>\u25CF Current</td><td><span class="ptag cur">${curr}${price.toLocaleString()}</span></td><td>\u2014</td><td style="font-size:12px">Monitor for signals</td></tr>
-<tr><td>\u25CF Take Profit 1</td><td><span class="ptag pro">Above ${curr}${(price*1.10).toFixed(2)}</span></td><td style="color:var(--amber)">+10%</td><td style="font-size:12px">Book 30\u201350% profits</td></tr>
-<tr><td>\u25CF Take Profit 2</td><td><span class="ptag pro">Above ${curr}${(price*1.20).toFixed(2)}</span></td><td style="color:var(--amber)">+20%</td><td style="font-size:12px">Exit remaining</td></tr>
-<tr><td>\u25CF Stop Loss</td><td><span class="ptag stp">Below ${curr}${(price*.90).toFixed(2)}</span></td><td style="color:var(--red)">-10%</td><td style="font-size:12px">Strict exit \u2014 limit downside</td></tr>
-</table></div></div>
+<div style="font-size:10px;color:var(--text3);margin-bottom:10px">Levels derived from SMA support/resistance, 52W range, and 20-factor verdict. The AI report below may refine these further.</div>
+<table class="dt"><tr><th>Action</th><th>Price</th><th>Based On</th><th>Decision</th></tr>
+<tr><td style="font-weight:700;color:var(--green)">\u25CF Buy Zone</td><td><span class="ptag buy">${curr}${(n(d.sma_200)?Math.min(n(d.sma_200),price*0.93):price*0.93).toFixed(2)}</span></td><td style="font-size:11px">${n(d.sma_200)?'SMA 200 support':'~7% below CMP'}</td><td style="font-size:12px">${vResult.verdict.includes('BUY')?'Accumulate aggressively':'Build small position'}</td></tr>
+<tr><td style="font-weight:700;color:var(--cyan)">\u25CF Accumulate</td><td><span class="ptag buy">${curr}${(n(d.sma_50)?Math.min(n(d.sma_50),price*0.96):price*0.96).toFixed(2)}</span></td><td style="font-size:11px">${n(d.sma_50)?'SMA 50 support':'~4% below CMP'}</td><td style="font-size:12px">Add on dips to this level</td></tr>
+<tr><td style="font-weight:700">\u25CF Current</td><td><span class="ptag cur">${curr}${price.toLocaleString()}</span></td><td style="font-size:11px">Live price</td><td style="font-size:12px">${vResult.verdict}</td></tr>
+<tr><td style="font-weight:700;color:var(--amber)">\u25CF Target 1</td><td><span class="ptag pro">${curr}${(price*1.10).toFixed(2)}</span></td><td style="font-size:11px">${n(d.sma_20)&&price<n(d.sma_20)?'SMA 20 resistance':'+10% upside'}</td><td style="font-size:12px">Book 30\u201350% of position</td></tr>
+<tr><td style="font-weight:700;color:var(--amber)">\u25CF Target 2</td><td><span class="ptag pro">${curr}${Math.max(d.week52_high*0.95,price*1.18).toFixed(2)}</span></td><td style="font-size:11px">Near 52W high</td><td style="font-size:12px">Exit remaining profits</td></tr>
+<tr><td style="font-weight:700;color:var(--red)">\u25CF Stop Loss</td><td><span class="ptag stp">${curr}${(n(d.sma_200)?Math.min(n(d.sma_200)*0.95,price*0.88):price*0.88).toFixed(2)}</span></td><td style="font-size:11px">${n(d.sma_200)?'5% below SMA 200':'~12% below CMP'}</td><td style="font-size:12px">Strict exit \u2014 protect capital</td></tr>
+</table>
+<div style="margin-top:10px;display:grid;grid-template-columns:1fr 1fr;gap:8px">
+<div style="padding:8px 10px;border-radius:6px;background:rgba(16,185,129,.04);border:1px solid rgba(16,185,129,.1);font-size:10px;color:var(--text2)"><strong style="color:var(--green)">SMA 20:</strong> ${d.sma_20||'N/A'} · <strong style="color:var(--blue)">SMA 50:</strong> ${d.sma_50||'N/A'} · <strong style="color:var(--purple)">SMA 200:</strong> ${d.sma_200||'N/A'}</div>
+<div style="padding:8px 10px;border-radius:6px;background:rgba(0,120,212,.04);border:1px solid rgba(0,120,212,.1);font-size:10px;color:var(--text2)"><strong>52W:</strong> ${curr}${d.week52_low} \u2014 ${curr}${d.week52_high} · <strong>Book Value:</strong> ${curr}${d.book_value||'N/A'}</div>
+</div>
+</div></div>
 
 <!-- RISK ASSESSMENT -->
 <div class="sc" data-tab="quick" style="border-left:3px solid var(--red)"><div class="sh"><div class="si" style="background:rgba(239,68,68,.1)">&#9888;</div><div class="st" style="color:var(--red)" id="sec-risk">What Could Go Wrong \u2014 Risk Reality Check</div></div>
@@ -1534,17 +1575,29 @@ ${vResult.reasons.map(r=>{const isPos=r.includes('[+');return '<span style="font
 </div>
 </div></div>
 
-<!-- AI ANALYSIS -->
-<div class="sc" data-tab="deep" style="border-left:3px solid var(--blue)"><div class="sh"><div class="si" style="background:rgba(0,120,212,.12)">&#9889;</div><div class="st" style="color:var(--blue)" id="sec-ai">The Full Picture \u2014 What Most Sites Hide</div></div>
+<!-- AI DEEP ANALYSIS — Decision-Oriented -->
+<div class="sc" data-tab="deep" style="border-left:3px solid var(--blue)"><div class="sh"><div class="si" style="background:rgba(0,120,212,.12)">&#9889;</div><div class="st" style="color:var(--blue)" id="sec-ai">AI Analyst Report \u2014 Full Depth</div></div>
 <div class="sbody">
-<div class="ic bl"><h5>Market Position</h5><p>${d.company_name||d.ticker} in ${d.sector} (${d.industry}). At ${curr}${price.toLocaleString()}, ${((price/d.week52_high)*100).toFixed(0)}% of 52-week high. Cap: ${formatCap(d.market_cap,curr)} \u2014 ${d.market_cap>100e9?'large-cap':d.market_cap>10e9?'mid-cap':'small-cap'}.</p></div>
-<div class="ic am"><h5>Making Money?</h5><p>Profit: ${d.profit_margin}% \u00B7 Operating: ${d.operating_margin}% \u00B7 ROE: ${d.roe}%. P/E of ${d.pe_ratio} = ${pe<15?'undervalued':pe<25?'fair value':'premium'}. Dividend: ${d.dividend_yield}%.</p></div>
-<div class="ic gr"><h5>Price Direction</h5><p>${d.price_change>=0?'Positive':'Negative'} momentum (${Math.abs(d.price_change_pct).toFixed(2)}%). ${price<d.week52_low*1.1?'Near lows \u2014 value entry':price>d.week52_high*0.9?'Near highs \u2014 watch resistance':'Mid-range \u2014 balanced'}. Beta: ${d.beta}.</p></div>
-<div class="ic rd"><h5>Red Flags</h5><p>D/E: ${d.debt_to_equity} \u2014 ${parseFloat(d.debt_to_equity)>1.5?'elevated':'manageable'}. Current ratio: ${d.current_ratio} \u2014 ${parseFloat(d.current_ratio)>1.5?'strong':'adequate'} liquidity. Monitor earnings &amp; macro.</p></div>
-<div class="ic pu"><h5>What Should You Do?</h5><p style="font-weight:600">${vResult.verdict==='STRONG BUY'?'\u2705 STRONG BUY \u2014 Multiple factors align. Strong fundamentals at attractive price.':vResult.verdict==='BUY'?'\u2705 BUY \u2014 Favorable risk/reward. Fundamentals support current valuation.':vResult.verdict==='SELL'?'\u26A0\uFE0F SELL/REDUCE \u2014 Fundamental concerns outweigh upside potential.':vResult.verdict==='STRONG SELL'?'\u26A0\uFE0F STRONG SELL \u2014 Multiple red flags. Capital preservation is priority.':'\u2194\uFE0F HOLD \u2014 Balanced risk/reward. Wait for a catalyst or better entry point.'}</p></div>
-<div style="margin-top:16px;padding:16px;border-radius:10px;background:var(--bg);border:1px solid var(--border)">
-<span class="aix" onclick="const e=document.getElementById('fullAIraw');e.style.display=e.style.display==='none'?'block':'none';this.innerHTML=e.style.display==='none'?'\u25B8 Read the complete AI report':'\u25BE Close AI report'">\u25B8 Read the complete AI report</span>
-<div id="fullAIraw" class="ait" style="display:none;margin-top:10px;max-height:400px;overflow-y:auto;padding-right:8px">${report}</div>
+<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:16px">
+<div style="padding:10px;border-radius:8px;background:rgba(16,185,129,.06);border:1px solid rgba(16,185,129,.15);text-align:center">
+<div style="font-size:18px">${vResult.emoji}</div>
+<div style="font-size:12px;font-weight:800;color:${vc==='buy'?'var(--green)':vc==='sell'?'var(--red)':'var(--amber)'}">${verdict}</div>
+<div style="font-size:9px;color:var(--text3)">${vResult.conviction} Conviction</div>
+</div>
+<div style="padding:10px;border-radius:8px;background:rgba(0,120,212,.04);border:1px solid rgba(0,120,212,.12);text-align:center">
+<div style="font-family:var(--mono);font-size:18px;font-weight:800;color:var(--text)">${vResult.score>0?'+':''}${vResult.score}</div>
+<div style="font-size:9px;color:var(--text3)">Factor Score</div>
+<div style="font-size:9px;color:var(--green)">${vResult.bullish||0} bullish / <span style="color:var(--red)">${vResult.bearish||0} bearish</span></div>
+</div>
+<div style="padding:10px;border-radius:8px;background:rgba(139,92,246,.04);border:1px solid rgba(139,92,246,.12);text-align:center">
+<div style="font-size:14px;font-weight:800;color:var(--text)">${d.sector}</div>
+<div style="font-size:9px;color:var(--text3)">${formatCap(d.market_cap,curr)} cap</div>
+<div style="font-size:9px;color:var(--text3)">Beta: ${d.beta}</div>
+</div>
+</div>
+<div style="padding:16px;border-radius:10px;background:var(--bg);border:1px solid var(--border)">
+<div style="font-family:'Sora',sans-serif;font-size:12px;font-weight:700;color:var(--text);margin-bottom:8px">&#128196; Complete AI-Generated Research Report</div>
+<div id="fullAIraw" class="ait" style="max-height:500px;overflow-y:auto;padding-right:8px;font-size:12px;line-height:1.8">${report}</div>
 </div></div></div>
 
 
@@ -1570,11 +1623,17 @@ ${vResult.reasons.map(r=>{const isPos=r.includes('[+');return '<span style="font
 
 <!-- TAB 4: HIDDEN GEMS -->
 
-<div class="sc" data-tab="gems" style="border-left:3px solid var(--amber)"><div class="sh"><div class="si" style="background:rgba(245,158,11,.1)">\u2B50</div><div class="st" style="color:var(--amber)" id="sec-gems">Hidden Gems \u2014 Small-Caps That Could 10x</div></div>
+<div class="sc" data-tab="gems" style="border-left:3px solid var(--amber)"><div class="sh"><div class="si" style="background:rgba(245,158,11,.1)">\u2B50</div><div class="st" style="color:var(--amber)" id="sec-gems">Sector Gems \u2014 10x Small-Caps in <span id="gemsSectorName"></span></div></div>
 <div class="sbody">
-<p style="font-size:12px;color:var(--text3);margin-bottom:14px">Under-the-radar picks in <strong id="smallCapSector" style="color:var(--amber)">${d.sector}</strong> — India \u{1F1EE}\u{1F1F3} &amp; USA \u{1F1FA}\u{1F1F8}:</p>
+<div style="padding:10px 14px;border-radius:8px;background:linear-gradient(135deg,rgba(245,158,11,.06),rgba(212,138,0,.03));border:1px solid rgba(245,158,11,.15);margin-bottom:14px">
+<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+<span style="font-size:16px">&#128161;</span>
+<span style="font-family:'Sora',sans-serif;font-size:12px;font-weight:800;color:var(--amber)">WHY THESE PICKS?</span>
+</div>
+<p style="font-size:11px;color:var(--text2);line-height:1.6;margin:0">You searched <strong id="gemsTickerRef" style="color:var(--amber)"></strong>. These are under-the-radar small-caps in the <strong id="smallCapSector" style="color:var(--amber)">${d.sector}</strong> sector that share similar tailwinds but with 10-50x growth potential. We match by sector, geography, and growth thesis.</p>
+</div>
 <div id="smallCapTable"></div>
-<div class="ic am" style="margin-top:14px"><p><strong>Real talk:</strong> Small-caps = high risk, high reward. Same sector as <strong id="smallCapTicker">${d.ticker}</strong>. Only invest what you can lose. Spread across 5\u20138 picks. Think 10+ years.</p></div>
+<div class="ic am" style="margin-top:14px"><p><strong>\u26A0\uFE0F Real talk:</strong> Small-caps = high risk, high reward. Same sector as <strong id="smallCapTicker">${d.ticker}</strong>. Only invest what you can lose. Spread across 5\u20138 picks. Think 10+ years. These are NOT recommendations \u2014 do your own research.</p></div>
 </div></div>
 
 <!-- TAB: RELEVANT STOCKS (Restricted) -->
@@ -1708,25 +1767,17 @@ window.dispatchEvent(new Event('resize'));
 
 function switchTab(tab){
 if(typeof gtag==='function')gtag('event','switch_tab',{tab_name:tab});
-// Trigger chart resize when entering charts tab
-if(tab==='charts')setTimeout(()=>window.dispatchEvent(new Event('resize')),100);
-// Hide all tab sections + sub-navs
+if(tab==='quick')setTimeout(()=>window.dispatchEvent(new Event('resize')),150);
+// Swap content — no scrolling needed since tab-bar is position:sticky
 document.querySelectorAll('.sc[data-tab]').forEach(s=>s.classList.remove('tab-visible'));
 document.querySelectorAll('.sub-nav[data-tab]').forEach(s=>s.classList.remove('tab-visible'));
-// Deactivate all buttons
 document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
-// Show selected tab sections + sub-nav
 document.querySelectorAll('.sc[data-tab="'+tab+'"]').forEach(s=>s.classList.add('tab-visible'));
 document.querySelectorAll('.sub-nav[data-tab="'+tab+'"]').forEach(s=>s.classList.add('tab-visible'));
-// Activate selected button
 const btnMap={quick:'tabBtnQuick',deep:'tabBtnDeep',mgmt:'tabBtnMgmt',next:'tabBtnNext',gems:'tabBtnGems',picks:'tabBtnPicks',funds:'tabBtnFunds',trades:'tabBtnTrades'};
-if(btnMap[tab])document.getElementById(btnMap[tab]).classList.add('active');
-// Scroll to tab bar
-const tb=document.querySelector('.tab-bar');
-if(tb){const y=tb.getBoundingClientRect().top+window.pageYOffset-20;window.scrollTo({top:y,behavior:'smooth'})}
-// Reset scroll inside tab content area
-const sa=document.getElementById('tabScrollArea');
-if(sa)sa.scrollTop=0;}
+if(btnMap[tab]){const btn=document.getElementById(btnMap[tab]);if(btn)btn.classList.add('active')}
+// ZERO SCROLL — tab bar is sticky, always visible. Done.
+}
 
 // ═══════════════════════════════════════════════
 // PARSE AI TEXT → QUARTERLY FUNDAMENTALS
@@ -1878,6 +1929,9 @@ mvI.innerHTML=`<strong style="color:#06b6d4">vs Peers:</strong> ${verdict}. ${pm
 // SMALL CAP DATABASE (ALL sectors)
 function generateSmallCapRecommendations(d){
 const sector=d.sector||'Technology',isIndian=d.ticker&&(d.ticker.includes('.NS')||d.ticker.includes('.BO')||d.currency==='INR');
+// Populate dynamic header
+const gSec=document.getElementById('gemsSectorName');if(gSec)gSec.textContent=sector;
+const gTk=document.getElementById('gemsTickerRef');if(gTk)gTk.textContent=d.ticker||'';
 const db={
 'Technology_US':[{n:'Palantir (PLTR)',s:'AI/Big Data',k:'Gov + enterprise AI platform',p:'Very High',r:5},{n:'CrowdStrike (CRWD)',s:'Cybersecurity',k:'Cloud-native endpoint protection',p:'Very High',r:5},{n:'Datadog (DDOG)',s:'Monitoring',k:'Unified observability platform',p:'Very High',r:4},{n:'MongoDB (MDB)',s:'Database',k:'Modern document DB, dev-first',p:'High',r:4},{n:'Cloudflare (NET)',s:'Edge',k:'CDN, security, serverless',p:'Very High',r:4},{n:'Unity (U)',s:'3D/Gaming',k:'Real-time 3D engine',p:'High',r:3}],
 'Technology_India':[{n:'Kaynes Technology',s:'IoT/Defense',k:'Defense electronics, govt contracts',p:'Exceptional',r:5},{n:'Dixon Technologies',s:'Electronics Mfg',k:'PLI beneficiary, contract mfg',p:'Very High',r:5},{n:'Persistent Systems',s:'Software',k:'Digital engineering, healthcare IT',p:'Very High',r:4},{n:'Coforge',s:'IT Services',k:'Insurance & banking tech',p:'High',r:4},{n:'KPIT Technologies',s:'Auto SW',k:'EV software, T25 auto clients',p:'Very High',r:4},{n:'Happiest Minds',s:'Digital',k:'Cloud, IoT, security',p:'High',r:3}],
@@ -1918,6 +1972,8 @@ document.getElementById('smallCapTable').innerHTML=gemsTable(recs,geo==='India'?
 function renderDecisionTool(d,curr){
 const el=document.getElementById('decisionTool');
 if(!el)return;
+const card=document.getElementById('decisionToolCard');
+if(card)card.style.display='';
 const price=d.current_price||0;
 el.style.display='block';
 el.innerHTML=`

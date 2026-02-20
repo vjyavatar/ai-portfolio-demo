@@ -2366,6 +2366,36 @@ async def market_pulse():
         if 0 < days_until <= 30:
             upcoming.append({"event": "US Fed Rate Decision", "date": fed_date.strftime("%b %d"), "days": days_until, "impact": "HIGH"})
     
+    # ═══ GEOPOLITICAL & MACRO EVENTS ═══
+    # US-China tariff / trade war events (ongoing — add key known dates)
+    geo_events = [
+        # US tariff review deadlines / Supreme Court cases
+        {"event": "US Supreme Court — Tariff Authority Ruling", "month": 3, "day": 15, "year": 2026, "impact": "HIGH"},
+        {"event": "US Reciprocal Tariff Review Deadline", "month": 4, "day": 2, "year": 2026, "impact": "HIGH"},
+        {"event": "US-China Trade Talks Round", "month": 3, "day": 10, "year": 2026, "impact": "HIGH"},
+        # EU-US trade policy
+        {"event": "EU Retaliatory Tariff Decision", "month": 4, "day": 15, "year": 2026, "impact": "MEDIUM"},
+        # India budget session
+        {"event": "India Parliament Budget Session Ends", "month": 3, "day": 21, "year": 2026, "impact": "MEDIUM"},
+        # Global conflict monitoring
+        {"event": "Russia-Ukraine Ceasefire Review", "month": 3, "day": 1, "year": 2026, "impact": "HIGH"},
+        {"event": "Middle East Conflict De-escalation Talks", "month": 3, "day": 20, "year": 2026, "impact": "MEDIUM"},
+        # US economic data
+        {"event": "US CPI Inflation Data", "month": 3, "day": 12, "year": 2026, "impact": "HIGH"},
+        {"event": "US Jobs Report (Non-Farm Payrolls)", "month": 3, "day": 6, "year": 2026, "impact": "HIGH"},
+        {"event": "US GDP Q4 2025 (Final)", "month": 3, "day": 27, "year": 2026, "impact": "MEDIUM"},
+        # India specific
+        {"event": "RBI FX Reserves Review", "month": 3, "day": 14, "year": 2026, "impact": "MEDIUM"},
+    ]
+    for ge in geo_events:
+        try:
+            ge_date = datetime(ge["year"], ge["month"], ge["day"])
+            days_until = (ge_date - now).days
+            if 0 < days_until <= 30:
+                upcoming.append({"event": ge["event"], "date": ge_date.strftime("%b %d"), "days": days_until, "impact": ge["impact"]})
+        except:
+            pass
+    
     # Sort upcoming by days
     upcoming.sort(key=lambda x: x["days"])
     
