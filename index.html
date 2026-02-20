@@ -317,7 +317,7 @@ nav{position:sticky;top:30px;z-index:99;backdrop-filter:blur(24px);-webkit-backd
 .isection{position:relative;z-index:1}
 
 /* SECTIONS - Always open, no accordion */
-.sc{background:#ffffff;border:1px solid rgba(0,47,108,.08);border-radius:8px;padding:0;margin-bottom:10px;box-shadow:0 1px 4px rgba(0,0,0,.03);transition:all .4s;opacity:0;transform:translateY(16px);overflow:visible}
+.sc{background:#ffffff;border:1px solid rgba(0,47,108,.08);border-radius:8px;padding:0;margin-bottom:10px;box-shadow:0 1px 4px rgba(0,0,0,.03);transition:all .4s;opacity:0;transform:translateY(16px);overflow:visible;scroll-margin-top:140px}
 .sc.vis{opacity:1;transform:translateY(0)}.sc:hover{border-color:var(--border2)}
 .sh{display:flex;align-items:center;gap:8px;padding:12px 18px 0}
 .si{width:34px;height:34px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0}
@@ -683,19 +683,6 @@ footer{position:relative;z-index:1;margin-top:32px;background:#002f6c;border-top
 <button class="btn" id="btn" aria-label="Analyze stock" onclick="analyze()">Analyze &#8594;</button>
 </div>
 
-<!-- TRENDING TICKERS — One click analyze -->
-<div style="margin-top:14px;display:flex;align-items:center;gap:6px;flex-wrap:wrap">
-<span style="font-size:10px;color:var(--text3);font-weight:600;letter-spacing:.5px">TRENDING:</span>
-<button class="qpick" onclick="quickAnalyze('AAPL')">&#127822; AAPL</button>
-<button class="qpick" onclick="quickAnalyze('RELIANCE.NS')">&#127463;&#127470; RELIANCE</button>
-<button class="qpick" onclick="quickAnalyze('NVDA')">&#128187; NVDA</button>
-<button class="qpick" onclick="quickAnalyze('TSLA')">&#9889; TSLA</button>
-<button class="qpick" onclick="quickAnalyze('TCS.NS')">&#128188; TCS</button>
-<button class="qpick" onclick="quickAnalyze('HDFCBANK.NS')">&#127974; HDFC BANK</button>
-<button class="qpick" onclick="quickAnalyze('MSFT')">&#128421; MSFT</button>
-<button class="qpick" onclick="quickAnalyze('INFY.NS')">&#128640; INFY</button>
-</div>
-
 <div style="margin-top:10px;font-size:10px;color:var(--text3);display:flex;align-items:center;gap:10px;flex-wrap:wrap">
 <span>&#128293; <strong style="color:var(--text2)">5 free reports</strong>/email/hour</span>
 <span>&middot;</span>
@@ -889,6 +876,7 @@ document.addEventListener('click',e=>{if(e.target!==TI)AC.classList.remove('show
 document.getElementById('email').addEventListener('keypress',e=>{if(e.key==='Enter')TI.focus()});
 // Smart Trades tab: only visible for authorized email
 const TRADES_EMAILS=['vijy.dhulipala@gmail.com','keerthi.yash222@gmail.com'];
+const PICKS_EMAILS=['vijy.dhulipala@gmail.com'];
 let _pulseData=null;
 async function fetchMarketPulse(){
 try{
@@ -969,21 +957,24 @@ try{
 const el=document.getElementById('email');
 if(!el)return;
 const email=(el.dataset.real||el.value).trim().toLowerCase();
-const show=TRADES_EMAILS.includes(email);
+const showTrades=TRADES_EMAILS.includes(email);
+const showPicks=PICKS_EMAILS.includes(email);
 const tBtn=document.getElementById('tabBtnTrades');
 const gBtn=document.getElementById('tabBtnGems');
 const pBtn=document.getElementById('tabBtnPicks');
 const fBtn=document.getElementById('tabBtnFunds');
-if(tBtn)tBtn.style.display=show?'':'none';
-if(gBtn)gBtn.style.display=show?'':'none';
-if(pBtn)pBtn.style.display=show?'':'none';
-if(fBtn)fBtn.style.display=show?'':'none';
-document.querySelectorAll('.sc[data-tab="trades"]').forEach(s=>s.style.display=show?'':'none');
-document.querySelectorAll('.sc[data-tab="gems"]').forEach(s=>s.style.display=show?'':'none');
-document.querySelectorAll('.sc[data-tab="picks"]').forEach(s=>s.style.display=show?'':'none');
-document.querySelectorAll('.sc[data-tab="funds"]').forEach(s=>s.style.display=show?'':'none');
-if(show){initTradesProtection(email);try{renderPicks('lc')}catch(e){}try{renderFunds('etf_in')}catch(e){}}
-console.log('checkTradesAccess:',email,'→',show?'GRANTED':'DENIED');
+if(tBtn)tBtn.style.display=showTrades?'':'none';
+if(gBtn)gBtn.style.display=showTrades?'':'none';
+if(pBtn)pBtn.style.display=showPicks?'':'none';
+if(fBtn)fBtn.style.display=showPicks?'':'none';
+document.querySelectorAll('.sc[data-tab="trades"]').forEach(s=>s.style.display=showTrades?'':'none');
+document.querySelectorAll('.sc[data-tab="gems"]').forEach(s=>s.style.display=showTrades?'':'none');
+document.querySelectorAll('.sc[data-tab="picks"]').forEach(s=>s.style.display=showPicks?'':'none');
+document.querySelectorAll('.sc[data-tab="funds"]').forEach(s=>s.style.display=showPicks?'':'none');
+document.querySelectorAll('.sub-nav[data-tab="picks"]').forEach(s=>s.style.display=showPicks?'':'none');
+if(showTrades){initTradesProtection(email)}
+if(showPicks){try{renderPicks('lc')}catch(e){}try{renderFunds('etf_in')}catch(e){}}
+console.log('checkTradesAccess:',email,'→ trades:',showTrades?'GRANTED':'DENIED','picks:',showPicks?'GRANTED':'DENIED');
 }catch(e){console.warn('checkTradesAccess error:',e)}
 }
 document.getElementById('email').addEventListener('blur',checkTradesAccess);
@@ -1332,14 +1323,19 @@ else if(peR<0.85){score+=4;reasons.push('P/E '+Math.abs(disc)+'% below sector \u
 else if(peR>1.5){score-=5;reasons.push('P/E '+Math.abs(disc)+'% above sector \u2014 expensive vs peers [-5]')}
 else if(peR>1.2){score-=2;reasons.push('P/E premium over sector avg [-2]')}}
 
-// F11: TECHNICAL MOMENTUM — SMA crossovers (±10) *** NEW ***
+// F11: TECHNICAL MOMENTUM — SMA + EMA crossovers (±10)
 let tS=0;const tD=[];
 if(sma20>0){if(price>sma20){tS+=1;tD.push('Above SMA20')}else{tS-=1;tD.push('Below SMA20')}}
 if(sma200>0){if(price>sma200){tS+=2;tD.push('Above SMA200 uptrend')}else{tS-=2;tD.push('Below SMA200 downtrend')}}
 if(sma20>0&&sma200>0){if(sma20>sma200){tS+=2;tD.push('Golden Cross')}
 else if(sma20<sma200*0.95){tS-=2;tD.push('Death Cross')}}
 if(sma50>0&&sma200>0&&price>sma50&&price>sma200){tS+=1;tD.push('All MAs bullish')}
-tS=Math.max(-5,Math.min(5,tS));score+=tS;
+// EMA signals
+const ema9=n(d.ema_9),ema21=n(d.ema_21),ema50=n(d.ema_50);
+if(ema9>0&&ema21>0){if(ema9>ema21){tS+=1;tD.push('EMA9>21 bullish')}else{tS-=1;tD.push('EMA9<21 bearish')}}
+if(ema21>0&&ema50>0){if(ema21>ema50){tS+=1;tD.push('EMA21>50 trend up')}else{tS-=1;tD.push('EMA21<50 trend down')}}
+if(ema9>0&&price>ema9){tD.push('Above EMA9')}
+tS=Math.max(-6,Math.min(6,tS));score+=tS;
 if(tD.length){reasons.push('Technical: '+tD.join(', ')+' ['+(tS>=0?'+':'')+tS+']')}
 
 // F12: PEG RATIO — Growth at Reasonable Price (±6) *** NEW ***
@@ -1428,11 +1424,11 @@ const html=`
 <div class="tab-scroll-area" id="tabScrollArea">
 <!-- TAB 1: QUICK INTEL -->
 <div class="sub-nav" data-tab="quick">
-<a onclick="document.getElementById('sec-verdict').scrollIntoView({behavior:'smooth',block:'nearest'})">&#9678; Buy/Sell?</a>
-<a onclick="document.getElementById('sec-5things').scrollIntoView({behavior:'smooth',block:'nearest'})">&#128200; Snapshot</a>
-<a onclick="document.getElementById('sec-valuation').scrollIntoView({behavior:'smooth',block:'nearest'})">&#128176; Overpriced?</a>
-<a onclick="document.getElementById('sec-entry').scrollIntoView({behavior:'smooth',block:'nearest'})">&#127919; Entry/Exit</a>
-<a onclick="document.getElementById('sec-risk').scrollIntoView({behavior:'smooth',block:'nearest'})">&#9888; Risks</a>
+<a onclick="scrollToSec('sec-verdict')">&#9678; Buy/Sell?</a>
+<a onclick="scrollToSec('sec-5things')">&#128200; Snapshot</a>
+<a onclick="scrollToSec('sec-valuation')">&#128176; Overpriced?</a>
+<a onclick="scrollToSec('sec-entry')">&#127919; Entry/Exit</a>
+<a onclick="scrollToSec('sec-risk')">&#9888; Risks</a>
 </div>
 
 <!-- VERDICT (always open) -->
@@ -1534,8 +1530,9 @@ ${vResult.reasons.map(r=>{const isPos=r.includes('[+');return '<span style="font
 </table>
 <div style="margin-top:10px;display:grid;grid-template-columns:1fr 1fr;gap:8px">
 <div style="padding:8px 10px;border-radius:6px;background:rgba(16,185,129,.04);border:1px solid rgba(16,185,129,.1);font-size:10px;color:var(--text2)"><strong style="color:var(--green)">SMA 20:</strong> ${d.sma_20||'N/A'} · <strong style="color:var(--blue)">SMA 50:</strong> ${d.sma_50||'N/A'} · <strong style="color:var(--purple)">SMA 200:</strong> ${d.sma_200||'N/A'}</div>
-<div style="padding:8px 10px;border-radius:6px;background:rgba(0,120,212,.04);border:1px solid rgba(0,120,212,.1);font-size:10px;color:var(--text2)"><strong>52W:</strong> ${curr}${d.week52_low} \u2014 ${curr}${d.week52_high} · <strong>Book Value:</strong> ${curr}${d.book_value||'N/A'}</div>
+<div style="padding:8px 10px;border-radius:6px;background:rgba(245,158,11,.04);border:1px solid rgba(245,158,11,.1);font-size:10px;color:var(--text2)"><strong style="color:var(--amber)">EMA 9:</strong> ${d.ema_9||'N/A'} · <strong style="color:var(--amber)">EMA 21:</strong> ${d.ema_21||'N/A'} · <strong style="color:var(--amber)">EMA 50:</strong> ${d.ema_50||'N/A'}</div>
 </div>
+${(d.ema_signals&&d.ema_signals.length)?'<div style="margin-top:6px;padding:6px 10px;border-radius:6px;background:rgba(0,47,108,.03);font-size:10px;color:var(--text2)"><strong style="color:var(--text)">EMA Signals:</strong> '+d.ema_signals.join(' · ')+'</div>':''}
 </div></div>
 
 <!-- RISK ASSESSMENT -->
@@ -1555,14 +1552,27 @@ ${vResult.reasons.map(r=>{const isPos=r.includes('[+');return '<span style="font
 </table></div></div>
 
 <!-- EASY AI ANALYSIS (in Tab 1) -->
-<div class="sc" data-tab="deep" style="border-left:3px solid var(--blue)"><div class="sh"><div class="si" style="background:rgba(0,120,212,.12)">\uD83C\uDF93</div><div class="st" style="color:var(--blue)">AI Verdict Breakdown \u2014 Green, Yellow & Red</div></div>
+<!-- SUB-NAV for Deep Dive tab -->
+<div class="sub-nav" data-tab="deep">
+<a data-sub="verdictai" onclick="switchSubTab('deep','verdictai',this)" class="active" style="background:rgba(0,47,108,.08);color:#002f6c;border-color:rgba(0,47,108,.15)">&#127891; Verdict Analysis</a>
+<a data-sub="fullreport" onclick="switchSubTab('deep','fullreport',this)">&#128196; Full AI Report</a>
+</div>
+
+<div class="sc" data-tab="deep" data-sub="verdictai" style="border-left:3px solid var(--blue)"><div class="sh"><div class="si" style="background:rgba(0,120,212,.12)">\uD83C\uDF93</div><div class="st" style="color:var(--blue)">AI Verdict Breakdown \u2014 Green, Yellow & Red</div></div>
 <div class="sbody"><div id="aiAnalysisFormatted"></div></div></div>
 
 
 <!-- TAB 2: DEEP RESEARCH -->
 
 <!-- QUARTERLY FUNDAMENTALS -->
-<div class="sc" data-tab="mgmt" style="border-left:3px solid var(--purple)"><div class="sh"><div class="si" style="background:rgba(16,185,129,.1)">&#128200;</div><div class="st" style="color:var(--green)" id="sec-fund">Latest Quarter &#8212; Are They Actually Growing?</div></div>
+<!-- SUB-NAV for Earnings tab -->
+<div class="sub-nav" data-tab="mgmt">
+<a data-sub="quarter" onclick="switchSubTab('mgmt','quarter',this)" class="active" style="background:rgba(0,47,108,.08);color:#002f6c;border-color:rgba(0,47,108,.15)">&#128200; Quarterly Results</a>
+<a data-sub="mgmttone" onclick="switchSubTab('mgmt','mgmttone',this)">&#127908; Management Read</a>
+<a data-sub="fundhold" onclick="switchSubTab('mgmt','fundhold',this)">&#127974; Fund Holdings</a>
+</div>
+
+<div class="sc" data-tab="mgmt" data-sub="quarter" style="border-left:3px solid var(--purple)"><div class="sh"><div class="si" style="background:rgba(16,185,129,.1)">&#128200;</div><div class="st" style="color:var(--green)" id="sec-fund">Latest Quarter &#8212; Are They Actually Growing?</div></div>
 <div class="sbody">
 <div id="fundContent"><div class="ic bl" style="text-align:center"><p style="color:var(--text3)">&#9203; Analyzing quarterly fundamentals...</p></div></div>
 <!-- QoQ/YoY Charts -->
@@ -1576,7 +1586,7 @@ ${vResult.reasons.map(r=>{const isPos=r.includes('[+');return '<span style="font
 </div></div>
 
 <!-- AI DEEP ANALYSIS — Decision-Oriented -->
-<div class="sc" data-tab="deep" style="border-left:3px solid var(--blue)"><div class="sh"><div class="si" style="background:rgba(0,120,212,.12)">&#9889;</div><div class="st" style="color:var(--blue)" id="sec-ai">AI Analyst Report \u2014 Full Depth</div></div>
+<div class="sc" data-tab="deep" data-sub="fullreport" style="border-left:3px solid var(--blue);display:none"><div class="sh"><div class="si" style="background:rgba(0,120,212,.12)">&#9889;</div><div class="st" style="color:var(--blue)" id="sec-ai">AI Analyst Report \u2014 Full Depth</div></div>
 <div class="sbody">
 <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:16px">
 <div style="padding:10px;border-radius:8px;background:rgba(16,185,129,.06);border:1px solid rgba(16,185,129,.15);text-align:center">
@@ -1603,13 +1613,13 @@ ${vResult.reasons.map(r=>{const isPos=r.includes('[+');return '<span style="font
 
 <!-- TAB 3: MANAGEMENT READ -->
 
-<div class="sc" data-tab="mgmt" style="border-left:3px solid var(--purple)"><div class="sh"><div class="si" style="background:rgba(168,85,247,.1)">&#127908;</div><div class="st" style="color:var(--purple)" id="sec-mgmt">Management Tone \u2014 Read Between the Lines</div></div>
+<div class="sc" data-tab="mgmt" data-sub="mgmttone" style="border-left:3px solid var(--purple);display:none"><div class="sh"><div class="si" style="background:rgba(168,85,247,.1)">&#127908;</div><div class="st" style="color:var(--purple)" id="sec-mgmt">Management Tone \u2014 Read Between the Lines</div></div>
 <div class="sbody">
 <div id="mgmtContent"><div class="ic pu" style="text-align:center"><p style="color:var(--text3)">&#9203; Analyzing management tone...</p></div></div>
 </div></div>
 
 <!-- FUND HOLDINGS -->
-<div class="sc" data-tab="mgmt" style="border-left:3px solid var(--purple)"><div class="sh"><div class="si" style="background:rgba(0,120,212,.12)">&#127974;</div><div class="st" style="color:var(--blue)" id="sec-funds">Top Fund &amp; Institutional Holdings</div></div>
+<div class="sc" data-tab="mgmt" data-sub="fundhold" style="border-left:3px solid var(--purple);display:none"><div class="sh"><div class="si" style="background:rgba(0,120,212,.12)">&#127974;</div><div class="st" style="color:var(--blue)" id="sec-funds">Top Fund &amp; Institutional Holdings</div></div>
 <div class="sbody">
 <div id="fundHoldingsContent"><div class="ic bl" style="text-align:center"><p style="color:var(--text3)">&#9203; Loading fund holdings...</p></div></div>
 </div></div>
@@ -1637,10 +1647,16 @@ ${vResult.reasons.map(r=>{const isPos=r.includes('[+');return '<span style="font
 </div></div>
 
 <!-- TAB: RELEVANT STOCKS (Restricted) -->
-<div class="sc" data-tab="picks" style="border-left:3px solid var(--purple)"><div class="sh"><div class="si" style="background:rgba(139,92,246,.1)">&#128161;</div><div class="st" style="color:var(--purple)" id="sec-picks">Relevant Stocks \u2014 Curated Investment Ideas</div></div>
-<div class="sbody">
+<!-- SUB-NAV for Picks tab -->
+<div class="sub-nav" data-tab="picks">
+<a data-sub="portfolio" onclick="switchSubTab('picks','portfolio',this)" class="active" style="background:rgba(0,47,108,.08);color:#002f6c;border-color:rgba(0,47,108,.15)">&#129504; Portfolio Analyzer</a>
+<a data-sub="conviction" onclick="switchSubTab('picks','conviction',this)">&#127942; Conviction Board</a>
+<a data-sub="stockpicks" onclick="switchSubTab('picks','stockpicks',this)">&#128161; Stock Picks</a>
+</div>
 
-<!-- PORTFOLIO DECISION TOOL -->
+<!-- PICKS SUB-TAB 1: Portfolio Decision Engine -->
+<div class="sc" data-tab="picks" data-sub="portfolio" style="border-left:3px solid var(--blue)"><div class="sh"><div class="si" style="background:rgba(59,130,246,.1)">&#129504;</div><div class="st" style="color:var(--blue)">Portfolio Decision Engine</div></div>
+<div class="sbody">
 <div style="padding:14px 16px;border-radius:10px;background:linear-gradient(135deg,rgba(59,130,246,.06),rgba(139,92,246,.04));border:1px solid rgba(0,120,212,.25);margin-bottom:18px">
 <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
 <span style="font-size:18px">&#129504;</span>
@@ -1657,35 +1673,32 @@ ${vResult.reasons.map(r=>{const isPos=r.includes('[+');return '<span style="font
 </div>
 <div id="pdResult" style="margin-top:12px"></div>
 </div>
-<!-- BUY RATING LEGEND -->
-<div style="padding:10px 14px;border-radius:8px;background:rgba(139,92,246,.04);border:1px solid rgba(139,92,246,.1);margin-bottom:14px">
+<div style="padding:10px 14px;border-radius:8px;background:rgba(139,92,246,.04);border:1px solid rgba(139,92,246,.1)">
 <div style="font-family:'Sora',sans-serif;font-size:10px;font-weight:700;color:var(--purple);letter-spacing:.5px;margin-bottom:8px">RATING &amp; LABEL GUIDE</div>
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 16px;font-size:10px;line-height:1.6">
 <span><span style="font-size:9px;padding:1px 5px;border-radius:3px;background:rgba(16,185,129,.15);color:#10b981;font-weight:800">&#9733; Aggressive Buy</span> Strong fundamentals + survives 30-40% correction</span>
 <span><span style="font-size:9px;padding:1px 5px;border-radius:3px;background:rgba(16,185,129,.1);color:#10b981;font-weight:700">Strong Buy</span> Excellent business, limited correction downside</span>
 <span><span style="font-size:9px;padding:1px 5px;border-radius:3px;background:rgba(0,120,212,.12);color:#3b82f6;font-weight:700">Buy</span> Good value but moderate correction sensitivity</span>
 <span><span style="font-size:9px;padding:1px 5px;border-radius:3px;background:rgba(245,158,11,.1);color:#f59e0b;font-weight:700">Accumulate</span> Build position gradually on dips</span>
-<span><span style="font-size:9px;padding:1px 5px;border-radius:3px;background:rgba(16,185,129,.1);color:var(--green);font-weight:700">Undervalued</span> Trading below fair value on earnings</span>
-<span><span style="font-size:9px;padding:1px 5px;border-radius:3px;background:rgba(16,185,129,.1);color:var(--green);font-weight:700">Deep Value</span> Extremely cheap on fundamentals</span>
-<span><span style="font-size:9px;padding:1px 5px;border-radius:3px;background:rgba(0,120,212,.12);color:var(--blue);font-weight:700">Quality Value</span> Premium business at reasonable price</span>
-<span><span style="font-size:9px;padding:1px 5px;border-radius:3px;background:rgba(0,120,212,.12);color:var(--blue);font-weight:700">Monopoly</span> Sole provider \u2014 pricing power moat</span>
 </div>
 </div>
-<!-- CONVICTION LEADERBOARD — Top 5 by category per country -->
-<div id="convictionLeaderboard" style="margin-bottom:18px">
-<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
-<span style="font-size:18px">&#127942;</span>
-<span style="font-family:'Sora',sans-serif;font-size:14px;font-weight:800;color:var(--text)">Conviction Leaderboard</span>
-<span style="font-size:9px;padding:2px 8px;border-radius:4px;background:rgba(13,148,136,.1);color:#0d9488;font-weight:700;border:1px solid rgba(13,148,136,.2)">20-Factor Scored</span>
-</div>
+</div></div>
+
+<!-- PICKS SUB-TAB 2: Conviction Leaderboard -->
+<div class="sc" data-tab="picks" data-sub="conviction" style="border-left:3px solid var(--teal,#0d9488);display:none"><div class="sh"><div class="si" style="background:rgba(13,148,136,.1)">&#127942;</div><div class="st" style="color:#0d9488">Conviction Leaderboard \u2014 Top 5 by Country</div></div>
+<div class="sbody">
+<div id="convictionLeaderboard">
 <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px" id="convGeoTabs">
 <button class="ptab active" onclick="showConvGeo(this,'india')" style="background:var(--amber);color:#000;border-color:var(--amber)">&#127470;&#127475; India</button>
 <button class="ptab" onclick="showConvGeo(this,'usa')">&#127482;&#127480; USA</button>
 </div>
 <div id="convGrid" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px"></div>
 </div>
+</div></div>
 
-<!-- CURATED STOCK PICKS -->
+<!-- PICKS SUB-TAB 3: Curated Stock Picks -->
+<div class="sc" data-tab="picks" data-sub="stockpicks" style="border-left:3px solid var(--purple);display:none"><div class="sh"><div class="si" style="background:rgba(139,92,246,.1)">&#128161;</div><div class="st" style="color:var(--purple)">Curated Stock Picks \u2014 Sector-Based</div></div>
+<div class="sbody">
 <div id="stockPicksSection">
 <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px" id="pickTabs">
 <button class="ptab active" onclick="showPickCat(this,'lc')">Large Cap</button>
@@ -1767,8 +1780,7 @@ window.dispatchEvent(new Event('resize'));
 
 function switchTab(tab){
 if(typeof gtag==='function')gtag('event','switch_tab',{tab_name:tab});
-if(tab==='quick')setTimeout(()=>window.dispatchEvent(new Event('resize')),150);
-// Swap content — no scrolling needed since tab-bar is position:sticky
+if(tab==='quick')setTimeout(()=>window.dispatchEvent(new Event('resize')),200);
 document.querySelectorAll('.sc[data-tab]').forEach(s=>s.classList.remove('tab-visible'));
 document.querySelectorAll('.sub-nav[data-tab]').forEach(s=>s.classList.remove('tab-visible'));
 document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
@@ -1776,7 +1788,24 @@ document.querySelectorAll('.sc[data-tab="'+tab+'"]').forEach(s=>s.classList.add(
 document.querySelectorAll('.sub-nav[data-tab="'+tab+'"]').forEach(s=>s.classList.add('tab-visible'));
 const btnMap={quick:'tabBtnQuick',deep:'tabBtnDeep',mgmt:'tabBtnMgmt',next:'tabBtnNext',gems:'tabBtnGems',picks:'tabBtnPicks',funds:'tabBtnFunds',trades:'tabBtnTrades'};
 if(btnMap[tab]){const btn=document.getElementById(btnMap[tab]);if(btn)btn.classList.add('active')}
-// ZERO SCROLL — tab bar is sticky, always visible. Done.
+// Auto-activate first sub-tab
+const firstSub=document.querySelector('.sub-nav[data-tab="'+tab+'"] a[data-sub]');
+if(firstSub)switchSubTab(tab,firstSub.getAttribute('data-sub'),firstSub);
+}
+
+// Scroll to section — uses CSS scroll-margin-top for sticky header offset
+function scrollToSec(id){
+const el=document.getElementById(id);if(!el)return;
+el.scrollIntoView({behavior:'smooth',block:'start'});
+}
+
+// Sub-tab switching within a main tab
+function switchSubTab(parentTab,subId,btn){
+document.querySelectorAll('.sc[data-tab="'+parentTab+'"][data-sub]').forEach(s=>{s.style.display='none'});
+document.querySelectorAll('.sc[data-tab="'+parentTab+'"][data-sub="'+subId+'"]').forEach(s=>{s.style.display=''});
+const nav=btn?.closest('.sub-nav');
+if(nav){nav.querySelectorAll('a').forEach(a=>{a.classList.remove('active');a.style.background='';a.style.color='';a.style.borderColor=''});
+if(btn){btn.classList.add('active');btn.style.background='rgba(0,47,108,.08)';btn.style.color='#002f6c';btn.style.borderColor='rgba(0,47,108,.15)'}}
 }
 
 // ═══════════════════════════════════════════════
@@ -2134,8 +2163,18 @@ else if(sma20<sma200*0.95){techScore-=2;techDetails.push('Death Cross (SMA20 << 
 if(sma50>0&&sma200>0){
 if(sma50>sma200&&price>sma50){techScore+=1;techDetails.push('SMA50 > SMA200 with price above both \u2014 strong uptrend')}
 }
+// EMA crossover signals
+const _ema9=n(d.ema_9),_ema21=n(d.ema_21),_ema50=n(d.ema_50);
+if(_ema9>0&&_ema21>0){
+if(_ema9>_ema21){techScore+=1;techDetails.push('EMA9 > EMA21 \u2014 short-term bullish crossover')}
+else{techScore-=1;techDetails.push('EMA9 < EMA21 \u2014 short-term bearish')}
+}
+if(_ema21>0&&_ema50>0){
+if(_ema21>_ema50){techScore+=1;techDetails.push('EMA21 > EMA50 \u2014 medium-term uptrend')}
+else{techScore-=1;techDetails.push('EMA21 < EMA50 \u2014 medium-term downtrend')}
+}
 // Cap tech score
-techScore=Math.max(-5,Math.min(5,techScore));
+techScore=Math.max(-6,Math.min(6,techScore));
 score+=techScore;
 if(techDetails.length>0){
 const tC=techScore>=3?'g':techScore>=1?'b':techScore<=-2?'r':'a';

@@ -1488,16 +1488,54 @@ def get_live_stock_data(company_name: str) -> dict:
                 live_data["sma_20"] = sma20
                 live_data["sma_50"] = sma50
                 live_data["sma_200"] = sma200
+                # EMA calculations using pandas ewm
+                try:
+                    import pandas as pd
+                    close_series = pd.Series(closes)
+                    ema9 = round(float(close_series.ewm(span=9, adjust=False).mean().iloc[-1]), 2) if len(closes) >= 9 else None
+                    ema21 = round(float(close_series.ewm(span=21, adjust=False).mean().iloc[-1]), 2) if len(closes) >= 21 else None
+                    ema50 = round(float(close_series.ewm(span=50, adjust=False).mean().iloc[-1]), 2) if len(closes) >= 50 else None
+                    live_data["ema_9"] = ema9
+                    live_data["ema_21"] = ema21
+                    live_data["ema_50"] = ema50
+                    # Price action signals
+                    price = float(closes[-1])
+                    ema_signals = []
+                    if ema9 and ema21:
+                        if ema9 > ema21: ema_signals.append("EMA9>EMA21 (short-term bullish)")
+                        else: ema_signals.append("EMA9<EMA21 (short-term bearish)")
+                    if ema21 and ema50:
+                        if ema21 > ema50: ema_signals.append("EMA21>EMA50 (medium bullish)")
+                        else: ema_signals.append("EMA21<EMA50 (medium bearish)")
+                    if ema9 and price:
+                        if price > ema9: ema_signals.append("Price above EMA9 (momentum up)")
+                        else: ema_signals.append("Price below EMA9 (momentum fading)")
+                    live_data["ema_signals"] = ema_signals
+                    print(f"📊 EMAs: 9d={ema9}, 21d={ema21}, 50d={ema50} | {', '.join(ema_signals[:2])}")
+                except Exception as ema_err:
+                    print(f"⚠️ EMA calc failed: {ema_err}")
+                    live_data["ema_9"] = None
+                    live_data["ema_21"] = None
+                    live_data["ema_50"] = None
+                    live_data["ema_signals"] = []
                 print(f"📊 SMAs: 20d={sma20}, 50d={sma50}, 200d={sma200}")
             else:
                 live_data["sma_20"] = None
                 live_data["sma_50"] = None
                 live_data["sma_200"] = None
+                live_data["ema_9"] = None
+                live_data["ema_21"] = None
+                live_data["ema_50"] = None
+                live_data["ema_signals"] = []
         except Exception as e:
             print(f"⚠️ SMA calc failed: {e}")
             live_data["sma_20"] = None
             live_data["sma_50"] = None
             live_data["sma_200"] = None
+            live_data["ema_9"] = None
+            live_data["ema_21"] = None
+            live_data["ema_50"] = None
+            live_data["ema_signals"] = []
         
         # EPS growth rate (forward vs trailing)
         try:
@@ -3919,8 +3957,12 @@ TECHNICAL INDICATORS:
 • SMA 20-Day: {live_data.get('sma_20', 'N/A')}
 • SMA 50-Day: {live_data.get('sma_50', 'N/A')}
 • SMA 200-Day: {live_data.get('sma_200', 'N/A')}
+• EMA 9-Day: {live_data.get('ema_9', 'N/A')}
+• EMA 21-Day: {live_data.get('ema_21', 'N/A')}
+• EMA 50-Day: {live_data.get('ema_50', 'N/A')}
 • Price vs SMA20: {'Above' if live_data.get('sma_20') and live_data['current_price'] > live_data['sma_20'] else 'Below' if live_data.get('sma_20') else 'N/A'}
 • Price vs SMA200: {'Above (uptrend)' if live_data.get('sma_200') and live_data['current_price'] > live_data['sma_200'] else 'Below (downtrend)' if live_data.get('sma_200') else 'N/A'}
+• EMA Signals: {', '.join(live_data.get('ema_signals', [])) if live_data.get('ema_signals') else 'N/A'}
 
 RISK & SENTIMENT:
 • Beta: {live_data['beta']}
@@ -4128,7 +4170,17 @@ Industry: {live_data['industry']}
             elif v_sma20 < v_sma200 * 0.95: tS -= 2; tD.append("Death Cross")
         if v_sma50 > 0 and v_sma200 > 0 and v_price > v_sma50 and v_price > v_sma200:
             tS += 2; tD.append("All MAs bullish")
-        tS = max(-6, min(6, tS))
+        # EMA crossover analysis
+        v_ema9 = _n(live_data.get('ema_9', 0))
+        v_ema21 = _n(live_data.get('ema_21', 0))
+        v_ema50 = _n(live_data.get('ema_50', 0))
+        if v_ema9 > 0 and v_ema21 > 0:
+            if v_ema9 > v_ema21: tS += 1; tD.append("EMA9>21 bullish")
+            else: tS -= 1; tD.append("EMA9<21 bearish")
+        if v_ema21 > 0 and v_ema50 > 0:
+            if v_ema21 > v_ema50: tS += 1; tD.append("EMA21>50 uptrend")
+            else: tS -= 1; tD.append("EMA21<50 downtrend")
+        tS = max(-8, min(8, tS))
         if tD: v_score += tS; v_reasons.append(f"Technical: {', '.join(tD[:3])} [{'+' if tS >= 0 else ''}{tS}]")
         
         # F12: PEG RATIO — Growth at Reasonable Price (±8)
@@ -4418,6 +4470,7 @@ Include specific price targets tied to management tone.]
 
 CALCULATE ENTRY/EXIT using ALL these factors:
 1. SMA Support: 20-day ({live_data.get('sma_20','N/A')}), 50-day ({live_data.get('sma_50','N/A')}), 200-day ({live_data.get('sma_200','N/A')}) — Buy near SMA support, sell near SMA resistance
+   EMA Signals: 9-day ({live_data.get('ema_9','N/A')}), 21-day ({live_data.get('ema_21','N/A')}), 50-day ({live_data.get('ema_50','N/A')}) — {', '.join(live_data.get('ema_signals',[])) if live_data.get('ema_signals') else 'N/A'}
 2. 52-Week Range: High {currency_symbol}{live_data['week52_high']:,.2f}, Low {currency_symbol}{live_data['week52_low']:,.2f} — Use for range-based targets
 3. Book Value Floor: {live_data['book_value']} — absolute downside anchor
 4. Intrinsic Value: Use Graham/DCF/Lynch values above as fair value targets
