@@ -1996,22 +1996,33 @@ function switchTab(tab){
 try{
 if(typeof gtag==='function')gtag('event','switch_tab',{tab_name:tab});
 if(tab==='quick')setTimeout(()=>window.dispatchEvent(new Event('resize')),200);
-// 1) Hide ALL tab content
+
+// 1) Hide ALL tab content and sub-navs
 document.querySelectorAll('.sc[data-tab]').forEach(s=>{s.style.display='none'});
 document.querySelectorAll('.sub-nav[data-tab]').forEach(s=>{s.style.display='none'});
 document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
-// 2) Show matching tab content — skip data-conditional sections (shown only when data populates them)
+
+// 2) Show matching tab content
 document.querySelectorAll('.sc[data-tab="'+tab+'"]').forEach(s=>{
 if(!s.dataset.conditional)s.style.display='block';
 });
 document.querySelectorAll('.sub-nav[data-tab="'+tab+'"]').forEach(s=>{s.style.display='flex'});
+
 // 3) Activate button
 const btnMap={quick:'tabBtnQuick',deep:'tabBtnDeep',mgmt:'tabBtnMgmt',next:'tabBtnNext',gems:'tabBtnGems',picks:'tabBtnPicks',funds:'tabBtnFunds',trades:'tabBtnTrades'};
 if(btnMap[tab]){const btn=document.getElementById(btnMap[tab]);if(btn)btn.classList.add('active')}
-console.log('switchTab:',tab,'→',document.querySelectorAll('.sc[data-tab="'+tab+'"]').length,'sections shown');
-// 4) Scroll so tab bar stays visible and content starts from top
+
+// 4) Ensure tab bar is visible — only scroll if tab bar is off-screen
 const _tb=document.getElementById('mainTabBar');
-if(_tb){const _tbTop=_tb.offsetTop;const scrollTarget=_tbTop-90;if(window.scrollY>scrollTarget+50||window.scrollY<scrollTarget-200)window.scrollTo(0,Math.max(0,scrollTarget));}
+if(_tb){
+const rect=_tb.getBoundingClientRect();
+// If tab bar is above viewport or way below, scroll to it
+if(rect.top<-10||rect.top>window.innerHeight){
+_tb.scrollIntoView({block:'nearest'});
+}
+}
+
+console.log('switchTab:',tab,'→ done');
 }catch(e){console.error('switchTab error:',e)}
 }
 
