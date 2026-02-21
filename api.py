@@ -1787,9 +1787,19 @@ async def sitemap():
 # ADSENSE-REQUIRED PAGES
 # ═══════════════════════════════════════════════════════════
 
-def _page_shell(title: str, body: str) -> str:
+def _page_shell(title: str, body: str, slug: str = "", description: str = "") -> str:
+    canonical = f"https://celesys.ai/{slug}" if slug else "https://celesys.ai"
+    meta_desc = description or f"{title} — Celesys AI provides free AI-powered stock analysis for US and Indian markets."
     return f"""<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>{title} — Celesys AI</title>
+<meta name="description" content="{meta_desc}">
+<meta name="robots" content="index, follow">
+<link rel="canonical" href="{canonical}">
+<meta property="og:title" content="{title} — Celesys AI">
+<meta property="og:description" content="{meta_desc}">
+<meta property="og:url" content="{canonical}">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Celesys AI">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;700&family=DM+Sans:wght@400;500;700&display=swap" rel="stylesheet">
 <style>
 *{{margin:0;padding:0;box-sizing:border-box}}body{{background:#0a0e1a;color:#c9d1d9;font-family:'DM Sans',sans-serif;line-height:1.8;padding:40px 20px 120px}}
@@ -1815,9 +1825,21 @@ p,li{{font-size:14px;color:#9ca3af;margin-bottom:12px}}ul{{padding-left:20px}}a{
 </style></head><body>
 <div class="site-wm" id="swm"></div>
 <script>!function(){{var w=document.getElementById('swm');if(!w)return;var h='';for(var r=0;r<30;r++)for(var c=0;c<8;c++){{var t=r*120+Math.random()*40,l=c*250+Math.random()*60;h+='<span style="top:'+t+'px;left:'+l+'px">CELESYS.AI \u2022 CONFIDENTIAL</span>';}}w.innerHTML=h;}}();</script>
-<div class="wrap"><a href="/" class="back">← Back to Celesys AI</a>
+<div class="wrap"><a href="/" class="back">← Back to Celesys AI — Free Stock Analysis</a>
 <h1>{title}</h1><p class="sub">Last updated: February 2026</p>
 {body}
+<div style="margin-top:32px;padding:20px;border-radius:10px;background:#111827;border:1px solid #1e2433">
+<div style="font-family:'Sora',sans-serif;font-size:13px;font-weight:700;color:#e5e7eb;margin-bottom:12px">Explore Celesys AI</div>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px">
+<a href="/" style="color:#3b82f6;text-decoration:none;font-size:12px;padding:8px 12px;border-radius:6px;background:#0d1117;border:1px solid #1e2433">&#9889; Analyze Any Stock Free</a>
+<a href="/about" style="color:#3b82f6;text-decoration:none;font-size:12px;padding:8px 12px;border-radius:6px;background:#0d1117;border:1px solid #1e2433">&#128218; About Celesys AI</a>
+<a href="/faq" style="color:#3b82f6;text-decoration:none;font-size:12px;padding:8px 12px;border-radius:6px;background:#0d1117;border:1px solid #1e2433">&#10067; FAQ</a>
+<a href="/disclaimer" style="color:#3b82f6;text-decoration:none;font-size:12px;padding:8px 12px;border-radius:6px;background:#0d1117;border:1px solid #1e2433">&#9888; Disclaimer</a>
+<a href="/privacy" style="color:#3b82f6;text-decoration:none;font-size:12px;padding:8px 12px;border-radius:6px;background:#0d1117;border:1px solid #1e2433">&#128274; Privacy</a>
+<a href="/terms" style="color:#3b82f6;text-decoration:none;font-size:12px;padding:8px 12px;border-radius:6px;background:#0d1117;border:1px solid #1e2433">&#128196; Terms</a>
+<a href="/contact" style="color:#3b82f6;text-decoration:none;font-size:12px;padding:8px 12px;border-radius:6px;background:#0d1117;border:1px solid #1e2433">&#9993; Contact</a>
+</div>
+</div>
 <div class="foot">
 <div class="foot-top">
 <div><div class="foot-brand">CELESYS <span>AI</span></div><div style="font-size:9px;color:#4b5563;letter-spacing:1px;font-weight:600">RESEARCH PLATFORM</div></div>
@@ -1843,7 +1865,7 @@ p,li{{font-size:14px;color:#9ca3af;margin-bottom:12px}}ul{{padding-left:20px}}a{
 
 @app.get("/privacy", response_class=HTMLResponse)
 async def privacy_page():
-    return _page_shell("Privacy Policy", """
+    return _page_shell("Privacy Policy", slug="privacy", description="Celesys AI privacy policy. How we handle your data, cookies, and email addresses for our free stock analysis platform.", body="""
 <p>Celesys AI ("we", "us", "our") operates the website celesys.ai. This Privacy Policy explains how we collect, use, and protect your information.</p>
 
 <h2>Information We Collect</h2>
@@ -1892,7 +1914,7 @@ async def privacy_page():
 
 @app.get("/terms", response_class=HTMLResponse)
 async def terms_page():
-    return _page_shell("Terms of Service", """
+    return _page_shell("Terms of Service", slug="terms", description="Terms of service for Celesys AI free stock analysis platform. Usage rules, data disclaimers, and intellectual property.", body="""
 <p>By using Celesys AI (celesys.ai), you agree to these Terms of Service. Please read them carefully.</p>
 
 <h2>Service Description</h2>
@@ -1933,7 +1955,7 @@ async def terms_page():
 
 @app.get("/about", response_class=HTMLResponse)
 async def about_page():
-    return _page_shell("About Celesys AI", """
+    return _page_shell("About Celesys AI", slug="about", description="About Celesys AI — free AI-powered stock analysis for US (NYSE, NASDAQ) and Indian (NSE, BSE) markets. Institutional-grade research in 60 seconds.", body="""
 <p style="font-size:16px;line-height:1.8;color:#ccc">Celesys AI turns raw market data into clarity. In under 60 seconds, you get the same depth of stock analysis that hedge funds pay thousands for — and it costs you nothing.</p>
 
 <h2>Why We Built This</h2>
@@ -1957,7 +1979,7 @@ async def about_page():
 
 @app.get("/contact", response_class=HTMLResponse)
 async def contact_page():
-    return _page_shell("Contact Us", """
+    return _page_shell("Contact Us", slug="contact", description="Contact Celesys AI. Send questions, bug reports, or feature requests for our free stock analysis platform.", body="""
 <p>We'd love to hear from you! Whether you have feedback, questions, feature requests, or partnership inquiries, we're here to help.</p>
 
 <h2>Email</h2>
@@ -1986,7 +2008,7 @@ async def contact_page():
 
 @app.get("/disclaimer", response_class=HTMLResponse)
 async def disclaimer_page():
-    return _page_shell("Disclaimer", """
+    return _page_shell("Disclaimer", slug="disclaimer", description="Investment disclaimer for Celesys AI. Not financial advice. All analysis is for educational purposes only.", body="""
 <p>The information provided by Celesys AI is for general educational and informational purposes only.</p>
 
 <h2>No Financial Advice</h2>
@@ -2007,7 +2029,7 @@ async def disclaimer_page():
 
 @app.get("/faq", response_class=HTMLResponse)
 async def faq_page():
-    return _page_shell("Frequently Asked Questions", """
+    return _page_shell("Frequently Asked Questions", slug="faq", description="FAQ for Celesys AI. Learn how our free AI stock analysis works, what markets we cover, and how to use buy/sell verdicts.", body="""
 <h2>What is Celesys AI and how does it work?</h2>
 <p>Celesys AI is a free, AI-powered stock analysis platform that generates institutional-grade research reports in 60 seconds. Enter any US (NYSE, NASDAQ) or Indian (NSE, BSE) stock ticker to receive real-time valuation metrics, intrinsic value estimates using the Graham Number and DCF model, 8-factor buy/sell verdicts, quarterly earnings analysis with QoQ and YoY trends, management tone assessment, and curated small-cap picks. No signup required.</p>
 
@@ -2271,11 +2293,22 @@ async def stock_quick(ticker: str = ""):
         return {"success": False, "error": f"Failed to fetch data for {ticker}: {str(e)[:100]}"}
 
 
+# Module-level cache for market-pulse
+_pulse_cache = None
+_pulse_cache_ts = None
+
 @app.get("/api/market-pulse")
 async def market_pulse():
-    """Lightweight market events — no AI, instant response. Called on every Analyze click."""
+    """Lightweight market events — cached 5min, parallel fetches."""
     import yfinance as yf
     from datetime import datetime, timedelta
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    
+    # ═══ 5-MINUTE CACHE — prevents hammering yfinance/NSE on every page load ═══
+    global _pulse_cache, _pulse_cache_ts
+    now_ts = datetime.utcnow()
+    if _pulse_cache and _pulse_cache_ts and (now_ts - _pulse_cache_ts).total_seconds() < 300:
+        return _pulse_cache
     
     IST_OFFSET = timedelta(hours=5, minutes=30)
     now = datetime.utcnow() + IST_OFFSET
@@ -2308,12 +2341,12 @@ async def market_pulse():
     
     is_expiry = len(expiry_today) > 0
     
-    # Fetch key global data for event detection
+    # ═══ PARALLEL FETCH — all 6 tickers at once instead of sequential ═══
     events = []
     global_snapshot = {}
     quick_tickers = {"CL=F": "Crude Oil", "GC=F": "Gold", "SI=F": "Silver", "DX-Y.NYB": "US Dollar", "^GSPC": "S&P 500", "INR=X": "USD/INR"}
     
-    for ticker, name in quick_tickers.items():
+    def fetch_ticker(ticker, name):
         try:
             t = yf.Ticker(ticker)
             hist = t.history(period="2d")
@@ -2321,59 +2354,49 @@ async def market_pulse():
                 price = round(hist.iloc[-1]['Close'], 2)
                 prev = hist.iloc[-2]['Close'] if len(hist) > 1 else price
                 chg_pct = round(((price - prev) / prev) * 100, 2) if prev else 0
-                global_snapshot[name] = {"price": price, "change_pct": chg_pct}
-                
-                # Auto-detect events from data
-                if name == "Crude Oil" and abs(chg_pct) >= 1.5:
-                    direction = "spikes" if chg_pct > 0 else "crashes"
-                    impact = "BEARISH" if chg_pct > 0 else "BULLISH"
-                    events.append({
-                        "headline": f"Crude Oil {direction} {chg_pct:+.1f}% to ${price}",
-                        "impact": impact, "severity": "HIGH" if abs(chg_pct) >= 3 else "MEDIUM",
-                        "detail": f"{'Higher crude increases input costs for airlines, paint, chemicals, and boosts inflation pressure on RBI.' if chg_pct > 0 else 'Lower crude benefits India as net importer. Positive for current account deficit and inflation outlook.'}",
-                        "action": f"{'Watch ONGC/Oil India for gains. Avoid IndianOil, BPCL on marketing margin pressure. Negative for Nifty if sustained.' if chg_pct > 0 else 'Positive for Indian markets. Airlines, paint stocks benefit. Bank Nifty could see inflows.'}"
-                    })
-                elif name == "Gold" and abs(chg_pct) >= 0.8:
-                    events.append({
-                        "headline": f"Gold {'surges' if chg_pct > 0 else 'drops'} {chg_pct:+.1f}% to ${price}",
-                        "impact": "VOLATILE", "severity": "MEDIUM",
-                        "detail": f"{'Gold rally signals risk-off sentiment globally. Investors moving to safe havens.' if chg_pct > 0 else 'Gold decline suggests risk-on appetite returning. Equities may benefit.'}",
-                        "action": f"{'Consider gold ETF hedge. Watch for FII outflows from equities.' if chg_pct > 0 else 'Positive for equity markets. Growth stocks could benefit.'}"
-                    })
-                elif name == "Silver" and abs(chg_pct) >= 1.2:
-                    events.append({
-                        "headline": f"Silver {'surges' if chg_pct > 0 else 'drops'} {chg_pct:+.1f}% to ${price}",
-                        "impact": "BULLISH" if chg_pct > 0 else "BEARISH",
-                        "severity": "HIGH" if abs(chg_pct) >= 3 else "MEDIUM",
-                        "detail": f"{'Silver rally driven by industrial demand + safe-haven buying. Silver outperforming gold signals economic expansion expectations alongside risk hedging.' if chg_pct > 0 else 'Silver decline signals weakening industrial demand. Often a leading indicator for broader economic slowdown.'}",
-                        "action": f"{'Metals & mining stocks benefit. Watch Hindalco, Vedanta, Hindustan Zinc. Silver ETFs see inflows.' if chg_pct > 0 else 'Mining stocks under pressure. Industrial metals sector may see selling. Watch for broader risk-off sentiment.'}"
-                    })
-                elif name == "S&P 500" and abs(chg_pct) >= 0.5:
-                    events.append({
-                        "headline": f"US Markets {'rally' if chg_pct > 0 else 'sell-off'} {chg_pct:+.1f}%",
-                        "impact": "BULLISH" if chg_pct > 0 else "BEARISH",
-                        "severity": "HIGH" if abs(chg_pct) >= 1.5 else "MEDIUM",
-                        "detail": f"S&P 500 {'gained' if chg_pct > 0 else 'lost'} {abs(chg_pct):.1f}%. Indian markets typically follow with 0.5-0.8x correlation.",
-                        "action": f"{'Expect gap-up opening for Nifty. IT stocks (TCS, Infosys) likely to lead.' if chg_pct > 0 else 'Expect weak opening. Consider hedging with Nifty puts.'}"
-                    })
-                elif name == "US Dollar" and abs(chg_pct) >= 0.3:
-                    events.append({
-                        "headline": f"Dollar Index {'strengthens' if chg_pct > 0 else 'weakens'} {chg_pct:+.1f}%",
-                        "impact": "BEARISH" if chg_pct > 0 else "BULLISH",
-                        "severity": "MEDIUM",
-                        "detail": f"{'Stronger dollar pressures EM currencies and triggers FII outflows from India.' if chg_pct > 0 else 'Weaker dollar supports EM inflows. Positive for FII buying in India.'}",
-                        "action": f"{'Watch for INR weakness. IT exporters benefit, but FII selling risk rises.' if chg_pct > 0 else 'FII inflows likely. Banking and consumption stocks benefit.'}"
-                    })
-                elif name == "USD/INR" and abs(chg_pct) >= 0.15:
-                    events.append({
-                        "headline": f"Rupee {'weakens' if chg_pct > 0 else 'strengthens'} {chg_pct:+.1f}% to ₹{price}",
-                        "impact": "BEARISH" if chg_pct > 0 else "BULLISH",
-                        "severity": "HIGH" if abs(chg_pct) >= 0.5 else "MEDIUM",
-                        "detail": f"{'Rupee depreciation signals capital outflows. RBI may intervene.' if chg_pct > 0 else 'Rupee strength attracts FII flows. Positive for market sentiment.'}",
-                        "action": f"{'IT exporters benefit. Import-heavy sectors (oil, electronics) under pressure.' if chg_pct > 0 else 'Domestic consumption plays benefit. Watch for FII buying.'}"
-                    })
+                return name, {"price": price, "change_pct": chg_pct}
         except:
             pass
+        return name, None
+    
+    with ThreadPoolExecutor(max_workers=6) as executor:
+        futures = {executor.submit(fetch_ticker, t, n): n for t, n in quick_tickers.items()}
+        for f in as_completed(futures, timeout=8):
+            try:
+                name, data = f.result(timeout=3)
+                if data:
+                    global_snapshot[name] = data
+            except:
+                pass
+    
+    # ═══ AUTO-DETECT EVENTS from parallel-fetched snapshot ═══
+    for name, snap in global_snapshot.items():
+        price, chg_pct = snap["price"], snap["change_pct"]
+        if name == "Crude Oil" and abs(chg_pct) >= 1.5:
+            direction = "spikes" if chg_pct > 0 else "crashes"
+            events.append({"headline": f"Crude Oil {direction} {chg_pct:+.1f}% to ${price}", "impact": "BEARISH" if chg_pct > 0 else "BULLISH", "severity": "HIGH" if abs(chg_pct) >= 3 else "MEDIUM",
+                "detail": "Higher crude raises input costs, inflation pressure on RBI." if chg_pct > 0 else "Lower crude benefits India. Positive for CAD and inflation.",
+                "action": "Watch ONGC/Oil India. Negative for Nifty if sustained." if chg_pct > 0 else "Positive for Indian markets. Airlines, paint stocks benefit."})
+        elif name == "Gold" and abs(chg_pct) >= 0.8:
+            events.append({"headline": f"Gold {'surges' if chg_pct > 0 else 'drops'} {chg_pct:+.1f}% to ${price}", "impact": "VOLATILE", "severity": "MEDIUM",
+                "detail": "Gold rally = risk-off sentiment globally." if chg_pct > 0 else "Gold decline = risk-on appetite returning.",
+                "action": "Consider gold ETF hedge." if chg_pct > 0 else "Positive for equity markets."})
+        elif name == "Silver" and abs(chg_pct) >= 1.2:
+            events.append({"headline": f"Silver {'surges' if chg_pct > 0 else 'drops'} {chg_pct:+.1f}% to ${price}", "impact": "BULLISH" if chg_pct > 0 else "BEARISH", "severity": "HIGH" if abs(chg_pct) >= 3 else "MEDIUM",
+                "detail": "Silver rally = industrial demand + safe-haven buying." if chg_pct > 0 else "Silver decline = weakening industrial demand.",
+                "action": "Metals & mining stocks benefit. Watch Hindalco, Vedanta." if chg_pct > 0 else "Mining stocks under pressure."})
+        elif name == "S&P 500" and abs(chg_pct) >= 0.5:
+            events.append({"headline": f"US Markets {'rally' if chg_pct > 0 else 'sell-off'} {chg_pct:+.1f}%", "impact": "BULLISH" if chg_pct > 0 else "BEARISH", "severity": "HIGH" if abs(chg_pct) >= 1.5 else "MEDIUM",
+                "detail": f"S&P 500 moved {abs(chg_pct):.1f}%. Indian markets follow with 0.5-0.8x correlation.",
+                "action": "Expect gap-up for Nifty. IT stocks lead." if chg_pct > 0 else "Expect weak opening. Consider hedging."})
+        elif name == "US Dollar" and abs(chg_pct) >= 0.3:
+            events.append({"headline": f"Dollar {'strengthens' if chg_pct > 0 else 'weakens'} {chg_pct:+.1f}%", "impact": "BEARISH" if chg_pct > 0 else "BULLISH", "severity": "MEDIUM",
+                "detail": "Stronger dollar pressures EM currencies, FII outflows." if chg_pct > 0 else "Weaker dollar supports EM inflows.",
+                "action": "IT exporters benefit from weak INR." if chg_pct > 0 else "FII inflows likely. Banking stocks benefit."})
+        elif name == "USD/INR" and abs(chg_pct) >= 0.15:
+            events.append({"headline": f"Rupee {'weakens' if chg_pct > 0 else 'strengthens'} {chg_pct:+.1f}%", "impact": "BEARISH" if chg_pct > 0 else "BULLISH", "severity": "HIGH" if abs(chg_pct) >= 0.5 else "MEDIUM",
+                "detail": "Rupee depreciation = capital outflows." if chg_pct > 0 else "Rupee strength attracts FII flows.",
+                "action": "IT exporters benefit." if chg_pct > 0 else "Domestic consumption plays benefit."})
     
     # Upcoming scheduled events (static calendar)
     upcoming = []
@@ -2453,54 +2476,46 @@ async def market_pulse():
     # Sort upcoming by days
     upcoming.sort(key=lambda x: x["days"])
     
-    # FII/DII Activity — fetch from NSE India
+    # FII/DII Activity — non-blocking thread with 4s total timeout
     fii_dii = {}
+    def _fetch_fii():
+        _r = {}
+        _evts = []
+        try:
+            import requests as req
+            s = req.Session()
+            hdr = {"User-Agent": "Mozilla/5.0", "Accept": "application/json", "Referer": "https://www.nseindia.com/"}
+            s.get("https://www.nseindia.com/", headers=hdr, timeout=2)
+            resp = s.get("https://www.nseindia.com/api/fiidiiTradeReact", headers=hdr, timeout=2)
+            if resp.status_code == 200:
+                for entry in resp.json():
+                    cat = entry.get("category", "")
+                    buy, sell, net = float(entry.get("buyValue", 0)), float(entry.get("sellValue", 0)), float(entry.get("netValue", 0))
+                    if "FII" in cat or "FPI" in cat:
+                        _r["fii"] = {"buy": round(buy, 2), "sell": round(sell, 2), "net": round(net, 2), "date": entry.get("date", "")}
+                    elif "DII" in cat:
+                        _r["dii"] = {"buy": round(buy, 2), "sell": round(sell, 2), "net": round(net, 2), "date": entry.get("date", "")}
+                fii_net = _r.get("fii", {}).get("net", 0)
+                dii_net = _r.get("dii", {}).get("net", 0)
+                if abs(fii_net) >= 2000:
+                    _evts.append({"headline": f"FII {'buying' if fii_net > 0 else 'selling'} \u20b9{abs(fii_net):,.0f}Cr", "impact": "BULLISH" if fii_net > 0 else "BEARISH", "severity": "HIGH" if abs(fii_net) >= 4000 else "MEDIUM",
+                        "detail": "FII inflows signal global confidence." if fii_net > 0 else "FII outflows create selling pressure.", "action": "Banking, IT stocks benefit." if fii_net > 0 else "Defensive sectors hold better."})
+                if abs(dii_net) >= 2000:
+                    _evts.append({"headline": f"DII {'buying' if dii_net > 0 else 'selling'} \u20b9{abs(dii_net):,.0f}Cr", "impact": "BULLISH" if dii_net > 0 else "BEARISH", "severity": "MEDIUM",
+                        "detail": "DII support limits downside." if dii_net > 0 else "Unusual DII selling.", "action": "Mid/small-cap stocks benefit." if dii_net > 0 else "Watch for correction."})
+        except:
+            pass
+        return _r, _evts
+    
     try:
-        import requests as req
-        nse_headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-            "Accept": "application/json",
-            "Accept-Language": "en-US,en;q=0.9",
-            "Referer": "https://www.nseindia.com/",
-        }
-        session = req.Session()
-        session.get("https://www.nseindia.com/", headers=nse_headers, timeout=5)
-        fii_resp = session.get("https://www.nseindia.com/api/fiidiiTradeReact", headers=nse_headers, timeout=5)
-        if fii_resp.status_code == 200:
-            fii_raw = fii_resp.json()
-            for entry in fii_raw:
-                cat = entry.get("category", "")
-                buy = float(entry.get("buyValue", 0))
-                sell = float(entry.get("sellValue", 0))
-                net = float(entry.get("netValue", 0))
-                if "FII" in cat or "FPI" in cat:
-                    fii_dii["fii"] = {"buy": round(buy, 2), "sell": round(sell, 2), "net": round(net, 2), "date": entry.get("date", "")}
-                elif "DII" in cat:
-                    fii_dii["dii"] = {"buy": round(buy, 2), "sell": round(sell, 2), "net": round(net, 2), "date": entry.get("date", "")}
-            # Detect FII/DII as events if significant
-            fii_net = fii_dii.get("fii", {}).get("net", 0)
-            dii_net = fii_dii.get("dii", {}).get("net", 0)
-            if abs(fii_net) >= 2000:
-                direction = "buying" if fii_net > 0 else "selling"
-                impact = "BULLISH" if fii_net > 0 else "BEARISH"
-                events.append({
-                    "headline": f"FII {direction} ₹{abs(fii_net):,.0f}Cr {'into' if fii_net > 0 else 'out of'} Indian equities",
-                    "impact": impact, "severity": "HIGH" if abs(fii_net) >= 4000 else "MEDIUM",
-                    "detail": f"{'Foreign institutions aggressively buying — signals global confidence in India. Large-cap banking & IT stocks typically lead FII-driven rallies.' if fii_net > 0 else 'Foreign institutions pulling out capital — often driven by strong dollar, global risk-off, or better opportunities elsewhere. Creates selling pressure on Nifty, Bank Nifty.'}",
-                    "action": f"{'Expect broad market strength. Banking, IT, and large-cap stocks benefit most from FII inflows.' if fii_net > 0 else 'Defensive sectors (FMCG, pharma) hold better. Watch for DII counter-buying to absorb selling.'}"
-                })
-            if abs(dii_net) >= 2000:
-                direction = "buying" if dii_net > 0 else "selling"
-                events.append({
-                    "headline": f"DII {direction} ₹{abs(dii_net):,.0f}Cr — {'absorbing FII selling' if dii_net > 0 and fii_net < 0 else 'domestic funds active'}",
-                    "impact": "BULLISH" if dii_net > 0 else "BEARISH", "severity": "MEDIUM",
-                    "detail": f"{'Domestic institutions (mutual funds, insurance, pension) stepping in as buyers. This often provides a floor to the market during FII sell-offs.' if dii_net > 0 else 'Unusual DII selling — may signal profit-booking or redemption pressure from mutual fund investors.'}",
-                    "action": f"{'DII support limits downside. Mid-cap and small-cap stocks with mutual fund holdings benefit.' if dii_net > 0 else 'Watch for further weakness. If both FII and DII sell, markets could see sharp correction.'}"
-                })
-    except Exception as e:
-        print(f"FII/DII fetch error: {e}")
+        with ThreadPoolExecutor(max_workers=1) as ex:
+            fut = ex.submit(_fetch_fii)
+            fii_dii, fii_events = fut.result(timeout=4)
+            events.extend(fii_events)
+    except:
+        pass
 
-    return {
+    result = {
         "success": True,
         "date": date_str,
         "day": day_name,
@@ -2512,6 +2527,12 @@ async def market_pulse():
         "global_snapshot": global_snapshot,
         "fii_dii": fii_dii
     }
+    
+    # Store in cache
+    _pulse_cache = result
+    _pulse_cache_ts = datetime.utcnow()
+    
+    return result
 
 @app.post("/api/index-trades")
 async def index_trades(request: Request):
