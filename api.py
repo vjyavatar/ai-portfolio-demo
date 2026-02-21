@@ -5,7 +5,7 @@ With built-in verification and ChatGPT comparison
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Response, FileResponse
 import os
 import requests
 from datetime import datetime, timedelta
@@ -1461,7 +1461,6 @@ def get_live_stock_data(company_name: str) -> dict:
         
         # Fetch real 6-month price history for Price Trend chart
         try:
-            import yfinance as yf
             hist_ticker = yf.Ticker(ticker_symbol)
             hist = hist_ticker.history(period="6mo", interval="1mo")
             if hist is not None and len(hist) > 1:
@@ -1476,7 +1475,6 @@ def get_live_stock_data(company_name: str) -> dict:
         
         # ═══ TECHNICAL INDICATORS: SMA20, SMA200, EPS Growth, Sector PE ═══
         try:
-            import yfinance as yf
             tk = yf.Ticker(ticker_symbol)
             # Daily history for moving averages
             daily = tk.history(period="1y", interval="1d")
@@ -1679,6 +1677,47 @@ async def health():
 @app.get("/googleb6e1e80f88761fcc.html", response_class=HTMLResponse)
 async def google_verify():
     return "google-site-verification: googleb6e1e80f88761fcc.html"
+
+# ═══ PWA: Manifest, Service Worker & Icons ═══
+import os as _os
+_PWA_DIR = _os.path.dirname(_os.path.abspath(__file__))
+
+@app.get("/manifest.json")
+async def pwa_manifest():
+    fpath = _os.path.join(_PWA_DIR, "manifest.json")
+    if _os.path.exists(fpath):
+        return FileResponse(fpath, media_type="application/manifest+json")
+    raise HTTPException(404)
+
+@app.get("/sw.js")
+async def pwa_sw():
+    fpath = _os.path.join(_PWA_DIR, "sw.js")
+    if _os.path.exists(fpath):
+        return FileResponse(fpath, media_type="application/javascript",
+                          headers={"Service-Worker-Allowed": "/", "Cache-Control": "no-cache"})
+    raise HTTPException(404)
+
+@app.get("/icons/{icon_name}")
+async def pwa_icon(icon_name: str):
+    safe = icon_name.replace("..", "").replace("/", "")
+    fpath = _os.path.join(_PWA_DIR, "icons", safe)
+    if _os.path.exists(fpath) and safe.endswith(".png"):
+        return FileResponse(fpath, media_type="image/png",
+                          headers={"Cache-Control": "public, max-age=604800"})
+    raise HTTPException(404)
+
+@app.get("/.well-known/assetlinks.json")
+async def asset_links():
+    """Digital Asset Links for Android TWA verification.
+    Replace SHA256_CERT_FINGERPRINT with your actual signing key fingerprint."""
+    return JSONResponse([{
+        "relation": ["delegate_permission/common.handle_all_urls"],
+        "target": {
+            "namespace": "android_app",
+            "package_name": "ai.celesys.app",
+            "sha256_cert_fingerprints": ["__SHA256_CERT_FINGERPRINT__"]
+        }
+    }], headers={"Content-Type": "application/json"})
 
 @app.get("/robots.txt", response_class=PlainTextResponse)
 async def robots():

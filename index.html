@@ -49,6 +49,10 @@ gtag('js',new Date());gtag('config','G-WW55EQ7ZB8');
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Celesys AI">
+<link rel="manifest" href="/manifest.json">
+<link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
+<link rel="icon" type="image/png" sizes="512x512" href="/icons/icon-512.png">
 
 <!-- Preconnect for performance (helps Core Web Vitals / SEO ranking) -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -4384,5 +4388,55 @@ obs.observe(heroEl);
 </div>
 </div>
 
+<script>
+// ═══ PWA: Service Worker Registration ═══
+if('serviceWorker' in navigator){
+  window.addEventListener('load',()=>{
+    navigator.serviceWorker.register('/sw.js').then(r=>{
+      console.log('SW registered, scope:',r.scope);
+    }).catch(e=>console.warn('SW registration failed:',e));
+  });
+}
+
+// ═══ PWA: Install Prompt ═══
+let _deferredPrompt=null;
+window.addEventListener('beforeinstallprompt',e=>{
+  e.preventDefault();
+  _deferredPrompt=e;
+  // Show install banner after 30s if user hasn't installed
+  setTimeout(()=>{
+    if(!_deferredPrompt)return;
+    const b=document.createElement('div');
+    b.id='pwaInstallBanner';
+    b.style.cssText='position:fixed;bottom:0;left:0;right:0;z-index:9999;background:linear-gradient(135deg,#002f6c,#003d8f);color:white;padding:14px 20px;display:flex;align-items:center;justify-content:space-between;gap:12px;box-shadow:0 -4px 20px rgba(0,0,0,.3);font-family:Sora,sans-serif';
+    b.innerHTML=`
+      <div style="flex:1;min-width:0">
+        <div style="font-size:13px;font-weight:700">Install Celesys AI</div>
+        <div style="font-size:11px;opacity:.8;margin-top:2px">Get instant access from your home screen</div>
+      </div>
+      <button onclick="pwaInstall()" style="padding:8px 18px;border-radius:8px;border:none;background:#4dabf7;color:#002f6c;font-weight:700;font-size:12px;cursor:pointer;white-space:nowrap;font-family:Sora,sans-serif">Install App</button>
+      <button onclick="this.parentElement.remove()" style="background:none;border:none;color:rgba(255,255,255,.6);font-size:18px;cursor:pointer;padding:4px 8px">&times;</button>`;
+    document.body.appendChild(b);
+  },30000);
+});
+
+function pwaInstall(){
+  if(!_deferredPrompt)return;
+  _deferredPrompt.prompt();
+  _deferredPrompt.userChoice.then(r=>{
+    console.log('PWA install:',r.outcome);
+    _deferredPrompt=null;
+    const ban=document.getElementById('pwaInstallBanner');
+    if(ban)ban.remove();
+  });
+}
+
+window.addEventListener('appinstalled',()=>{
+  console.log('PWA installed');
+  _deferredPrompt=null;
+  const ban=document.getElementById('pwaInstallBanner');
+  if(ban)ban.remove();
+});
+</script>
 </body>
 </html>
