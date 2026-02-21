@@ -4396,19 +4396,57 @@ REAL ANALYST & EARNINGS DATA (use this for management tone analysis):
 
 {intrinsic_section}
 
+═══ THE 20 QUANTITATIVE FACTORS DRIVING THIS VERDICT ═══
+The verdict above ({v_verdict}, score: {v_score:+d}) was computed from these 20 factors.
+Your report MUST analyze and reference ALL of them:
+
+VALUATION FACTORS:
+  F1: P/E Ratio Valuation (±20) — cheap vs expensive vs sector avg
+  F2: P/B Ratio (±8) — book value premium/discount
+  F5: Forward PE vs Trailing PE (±5) — earnings trajectory signal
+  F10: Relative Valuation vs Sector P/E (±10) — peer comparison
+  F12: PEG Ratio (±8) — growth at reasonable price
+  F15: EV/EBITDA (±8) — enterprise value vs cash generation
+
+PROFITABILITY FACTORS:
+  F3: Profit Margin Quality (±15) — net margin strength
+  F8: Operating Efficiency (±5) — ROE & operating margin
+  F16: Gross Margin Power (±7) — pricing power & moat
+  F18: EBITDA Margin Quality (±5) — operational cash generation
+
+FINANCIAL HEALTH FACTORS:
+  F4: Financial Health/Debt (±12) — debt-to-equity & current ratio
+  F13: Free Cash Flow Quality (±10) — FCF yield & health
+  F14: Balance Sheet Verification (±10) — cash vs debt coverage
+  F20: Dividend Sustainability (±5) — payout ratio safety
+
+MOMENTUM & POSITION FACTORS:
+  F6: 52-Week Position (±10) — price range positioning
+  F7: Beta/Risk (±5) — volatility assessment
+  F9: Earnings Velocity (±15) — EPS & revenue CAGR
+  F11: Technical Momentum (±12) — SMA/EMA crossovers
+  F17: Quarterly Earnings Momentum (±8) — surprise & beat trends
+  F19: Short Interest Signal (±5) — bearish bet indicator
+
+You MUST touch on ALL 20 factors across your analysis sections. Group them naturally but ensure EVERY factor gets mentioned.
+═══ END FACTOR LIST ═══
+
 CRITICAL INSTRUCTIONS:
 1. Use ONLY the real-time data provided above
 2. Current price is {currency_symbol}{live_data['current_price']:,.2f} - use THIS number
 3. Base all analysis on current market conditions
 4. Provide actionable, professional insights
 5. Your Recommendation MUST be: {v_verdict} {v_emoji} — this is pre-computed from 20 quantitative factors and is NON-NEGOTIABLE
-5. For Management Tone section, use analyst/earnings data if available, otherwise infer from P/E, margins, price position, beta, and dividend yield
-6. For QoQ and YoY analysis: if quarterly data is provided, calculate actual changes. If NOT provided, use available metrics to INFER trends (e.g., forward PE vs trailing PE shows earnings growth/decline, profit margins indicate operational trends, price vs 52W range shows momentum)
+6. For Management Tone section, use analyst/earnings data if available, otherwise infer from P/E, margins, price position, beta, and dividend yield
+7. For QoQ and YoY analysis: if quarterly data is provided, calculate actual changes. If NOT provided, use available metrics to INFER trends (e.g., forward PE vs trailing PE shows earnings growth/decline, profit margins indicate operational trends, price vs 52W range shows momentum)
 7. Include specific growth predictions based on available data
 8. ALWAYS provide a 12-month price prediction with specific bull/base/bear numbers
 9. ABSOLUTE RULE — NEVER use these phrases in your report: "data corrupted", "HTML fragments", "insufficient data", "data limitation", "incomplete data", "cannot provide", "data unavailable", "technical website code", "UNKNOWN". Instead, ALWAYS analyze using whatever data IS available. Every metric (P/E, margins, price, 52W range) tells a story — use them.
 10. If quarterly earnings numbers are missing, calculate implied growth from: (a) Forward PE vs Trailing PE gap = earnings growth expectation, (b) Price position in 52W range = momentum, (c) Profit margin level = operational health, (d) Dividend yield = cash flow confidence. Present these as "Implied QoQ/YoY Trends" with specific inferences.
 11. The user is paying for a COMPLETE analysis. Every section must have substantive content with specific numbers and actionable insights. No empty sections, no disclaimers about missing data.
+12. CRITICAL — LAYMAN INFERENCE: At the END of EVERY section, add a "💡 What This Means For You" box in plain, jargon-free language. Imagine explaining to a friend who knows nothing about stocks. Use analogies, comparisons to everyday things, and clear "should I worry?" / "is this good?" verdicts. This is the MOST important part of each section — make it crystal clear.
+13. FACTOR COVERAGE: Your analysis must reflect ALL 20 quantitative factors listed above. Reference specific factor numbers (F1, F2, etc.) when discussing metrics. Each section should explicitly mention which factors drive its conclusion.
+14. INFERENCE QUALITY: Every number you cite must have an inference. Don't just say "P/E is 25x" — say "P/E is 25x which means investors are paying ₹25 for every ₹1 of profit — that's a premium price, justified only if growth is strong."
 
 ═══════════════════════════════════════════════════════════════
 📊 COMPREHENSIVE INVESTMENT ANALYSIS: {company.upper()}
@@ -4426,7 +4464,13 @@ CRITICAL INSTRUCTIONS:
 **Conviction:** {v_conviction}  
 **Time Horizon:** [Short/Long-term based on the data]
 
-[Explain WHY this {v_verdict} verdict makes sense. Reference the factor breakdown. Do NOT contradict the verdict.]
+Explain WHY this {v_verdict} verdict makes sense by referencing ALL 20 factors grouped into 4 pillars:
+- **Valuation** (F1, F2, F5, F10, F12, F15): Is price justified?
+- **Profitability** (F3, F8, F16, F18): Is the business healthy?
+- **Financial Strength** (F4, F13, F14, F20): Can it survive stress?
+- **Momentum** (F6, F7, F9, F11, F17, F19): Where is it headed?
+
+Give a clear 2-3 sentence verdict for each pillar, then an overall synthesis. Do NOT contradict the verdict.
 
 ---
 
@@ -4437,18 +4481,48 @@ CRITICAL INSTRUCTIONS:
 │ METRIC               LIVE VALUE     ASSESSMENT       │
 ├──────────────────────────────────────────────────────┤
 │ Current Price        {currency_symbol}{live_data['current_price']:<10,.2f}  [Today's price] │
-│ P/E Ratio            {str(live_data['pe_ratio']):<13}  [vs industry]  │
-│ P/B Ratio            {str(live_data['pb_ratio']):<13}  [vs industry]  │
-│ Price vs 52W High    [Calculate %]     [Position]    │
-│ Price vs 52W Low     [Calculate %]     [Position]    │
+│ P/E Ratio (F1)       {str(live_data['pe_ratio']):<13}  [vs industry]  │
+│ P/B Ratio (F2)       {str(live_data['pb_ratio']):<13}  [vs industry]  │
+│ Forward PE (F5)      {str(live_data.get('forward_pe','N/A')):<13}  [Growth signal] │
+│ PEG Ratio (F12)      {str(live_data.get('peg_ratio','N/A')):<13}  [Value vs growth]│
+│ EV/EBITDA (F15)      {str(live_data.get('enterprise_to_ebitda','N/A')):<13}  [Enterprise val] │
+│ Profit Margin (F3)   {str(live_data['profit_margin'])+"%":<13}  [Profitability]  │
+│ Oper Margin (F8)     {str(live_data['operating_margin'])+"%":<13}  [Efficiency]     │
+│ Gross Margin (F16)   {str(live_data.get('gross_margins','N/A')):<13}  [Pricing power]  │
+│ FCF Yield (F13)      [Calculate]       [Cash quality]  │
+│ Debt/Equity (F4)     {str(live_data['debt_to_equity']):<13}  [Leverage]       │
+│ ROE (F8)             {str(live_data['roe'])+"%":<13}  [Returns]        │
+│ Beta (F7)            {str(live_data['beta']):<13}  [Volatility]     │
+│ Price vs 52W (F6)    [Calculate %]     [Position]     │
+│ Div Yield (F20)      {str(live_data['dividend_yield'])+"%":<13}  [Income]         │
+│ Short Interest (F19) {str(live_data.get('short_percent_of_float','N/A')):<13}  [Bear bets]      │
 └──────────────────────────────────────────────────────┘
 ```
 
+For EACH metric above, provide a 1-sentence layman interpretation. Example: "P/E of 45x means you're paying ₹45 for every ₹1 of earnings — that's expensive unless growth is exceptional."
+
+**💡 Valuation Bottom Line:** [In 2 sentences: "Is this stock a good deal right now? Think of it like buying a house — are you paying a fair price for what you're getting, or are you overpaying because of hype?" Give a clear CHEAP / FAIR / EXPENSIVE verdict.]
+
 ---
 
-## ⚠️ RISK ASSESSMENT
+## ⚠️ RISK ASSESSMENT (Cover ALL risk-related factors)
 
-[Standard 5-category risk analysis using current data]
+Analyze these 8 risk dimensions using the 20-factor data:
+
+1. **Valuation Risk** — Is the stock overpriced? (F1: P/E, F2: P/B, F10: vs sector, F12: PEG, F15: EV/EBITDA)
+2. **Financial Risk** — Can the company survive a downturn? (F4: debt/equity, F13: FCF, F14: cash vs debt, F20: dividend safety)
+3. **Profitability Risk** — Are margins sustainable? (F3: net margin, F8: operating efficiency, F16: gross margin, F18: EBITDA margin)
+4. **Momentum Risk** — Is the stock losing steam? (F6: 52W position, F9: earnings velocity, F11: SMA/EMA, F17: quarterly beats)
+5. **Volatility Risk** — How wild are the price swings? (F7: beta)
+6. **Short Seller Risk** — Are bears betting against this? (F19: short interest)
+7. **Growth Risk** — Can growth sustain the valuation? (F5: forward vs trailing PE, F9: EPS CAGR)
+8. **Sector & Macro Risk** — External headwinds from regulation, competition, economy
+
+For each risk, rate as: 🟢 LOW / 🟡 MODERATE / 🔴 HIGH with specific numbers.
+
+**Overall Risk Grade:** [LOW / MODERATE / ELEVATED / HIGH]
+
+**💡 What This Means For You:** [In 2-3 simple sentences, explain to a regular person: "Should I worry about owning this stock? What's the worst that could happen?" Use plain language, no jargon.]
 
 ---
 
@@ -4484,6 +4558,8 @@ Provide specific projections using available data:
 - Growth Catalyst: [What could drive this stock higher — sector tailwinds, margin expansion, market share]
 - Risk Factor: [What could pull it down — competition, regulation, macro environment]
 
+**💡 What This Means For You:** [In plain English: "Is this company growing or shrinking? If I invest ₹1 lakh today, what might it become in 12 months — best case and worst case?" Use specific numbers.]
+
 ---
 
 ## 🎙️ MANAGEMENT TONE & OUTLOOK
@@ -4518,6 +4594,8 @@ Include specific price targets tied to management tone.]
 **Investment Inference from Management Behavior:**
 [Based on tone, body language of guidance, insider transactions, and communication patterns — is this management team building value or managing decline? Should investors trust the forward narrative? Concrete recommendation tied to management credibility.]
 
+**💡 What This Means For You:** [Simple answer: "Can you trust these people with your money? Are they acting like owners or corporate politicians? What would their behavior tell a friend deciding whether to invest?"]
+
 ---
 
 ## 🏦 TOP FUND & INSTITUTIONAL HOLDINGS
@@ -4527,6 +4605,8 @@ Include specific price targets tied to management tone.]
 **Top Holders:** [List top 5 institutional/mutual fund holders from the data. Format: "1. Vanguard (8.2%) 2. BlackRock (6.1%) etc." If data not available, note that institutional data was not available and skip this.]
 
 **What Smart Money Tells Us:** [High institutional ownership = validation by professional analysts. Rising institutional % = accumulation phase. Declining = distribution/exit. Low institutional = either undiscovered gem or avoided for reasons.]
+
+**💡 What This Means For You:** [Simple: "Are the big professional investors buying this stock or avoiding it? Think of it like a restaurant — if top food critics eat there, it's probably good. If they avoid it, there might be something wrong you can't see yet."]
 
 ---
 
@@ -4543,6 +4623,8 @@ Include specific price targets tied to management tone.]
 **Bull Case Scenario:** [If everything goes right — specific price target with reasoning]
 **Bear Case Scenario:** [If things go wrong — specific downside target with reasoning]
 **Most Likely Scenario:** [Your base case with probability assessment]
+
+**💡 What This Means For You:** [Simple summary: "Over the next year, this stock is most likely to [go up/stay flat/go down] because [one clear reason]. The single thing to watch is [specific trigger]. If you own it, [hold/add/reduce]. If you don't own it, [wait for X price/buy now/avoid]."]
 
 ---
 

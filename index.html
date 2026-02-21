@@ -595,8 +595,8 @@ footer{position:relative;z-index:1;margin-top:32px;background:#002f6c;border-top
 .ipt,input,textarea{-webkit-user-select:text;-moz-user-select:text;user-select:text}
 
 /* ═══ ANTI-SCREENSHOT & ANTI-SHARING PROTECTIONS ═══ */
-/* Smart Trades content cannot be selected, copied, or printed */
-[data-tab="trades"], [data-tab="picks"], [data-tab="funds"], #decisionTool, #decisionResult {
+/* ALL report content cannot be selected, copied, or printed */
+.rpt, .rpt *, .sc, .sc *, [data-tab], [data-tab] *, #decisionTool, #decisionResult {
   -webkit-user-select: none !important;
   -moz-user-select: none !important;
   -ms-user-select: none !important;
@@ -604,21 +604,16 @@ footer{position:relative;z-index:1;margin-top:32px;background:#002f6c;border-top
   -webkit-touch-callout: none !important;
   -webkit-user-drag: none !important;
 }
-[data-tab="trades"] *, [data-tab="picks"] *, [data-tab="funds"] *, #decisionTool *, #decisionResult * {
-  -webkit-user-select: none !important;
-  -moz-user-select: none !important;
-  user-select: none !important;
-}
-/* Allow typing in the buy price input only */
-#buyPriceInput { -webkit-user-select: text !important; -moz-user-select: text !important; user-select: text !important; }
-/* Hide completely when printing */
+/* Allow typing in inputs only */
+#buyPriceInput, .ipt, input, textarea { -webkit-user-select: text !important; -moz-user-select: text !important; user-select: text !important; }
+/* Hide ALL report content when printing */
 @media print {
-  [data-tab="trades"], [data-tab="picks"], [data-tab="funds"], #tabBtnTrades, #tabBtnPicks, #tabBtnFunds, .trades-watermark, #decisionTool {
+  .rpt, #report, .tab-bar, .global-ticker, .site-watermark, .fab, .fpanel {
     display: none !important;
     visibility: hidden !important;
   }
   body::before {
-    content: "Smart Trades content is protected and cannot be printed.";
+    content: "This report is confidential. Content cannot be printed. — celesys.ai";
     display: block;
     text-align: center;
     font-size: 24px;
@@ -627,7 +622,7 @@ footer{position:relative;z-index:1;margin-top:32px;background:#002f6c;border-top
   }
 }
 /* Global site watermark */
-.site-watermark{position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:9998;overflow:hidden;opacity:.035}
+.site-watermark{position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:9998;overflow:hidden;opacity:.06}
 .site-watermark span{position:absolute;font-size:12px;font-weight:800;color:#002f6c;transform:rotate(-35deg);white-space:nowrap;letter-spacing:2px;font-family:'Sora',sans-serif;user-select:none;-webkit-user-select:none}
 /* Watermark overlay for trades */
 .trades-watermark {
@@ -669,7 +664,7 @@ footer{position:relative;z-index:1;margin-top:32px;background:#002f6c;border-top
 <!-- Global Watermark -->
 <div class="site-watermark" id="siteWatermark"></div>
 <script>
-(function(){const w=document.getElementById('siteWatermark');if(!w)return;let h='';for(let row=0;row<30;row++){for(let col=0;col<8;col++){const t=row*120+Math.random()*40;const l=col*250+Math.random()*60;h+=`<span style="top:${t}px;left:${l}px">CELESYS.AI \u2022 CONFIDENTIAL</span>`;}}w.innerHTML=h;})();
+(function(){const w=document.getElementById('siteWatermark');if(!w)return;let h='';for(let row=0;row<40;row++){for(let col=0;col<10;col++){const t=row*100+Math.random()*40;const l=col*200+Math.random()*60;h+=`<span style="top:${t}px;left:${l}px">CELESYS.AI • CONFIDENTIAL</span>`;}}w.innerHTML=h;})();
 </script>
 <!-- Global Indices Ticker — loads on page visit -->
 <div class="global-ticker" id="globalTicker">
@@ -944,39 +939,39 @@ const fBg=fNet>=0?'rgba(16,185,129,.06)':'rgba(239,68,68,.06)';
 const dBg=dNet>=0?'rgba(16,185,129,.06)':'rgba(239,68,68,.06)';
 const cBg=combined>=0?'rgba(16,185,129,.06)':'rgba(239,68,68,.06)';
 let verdict='';
-if(fNet>2000&&dNet>0)verdict='<strong style="color:var(--green)">Both FII + DII buying</strong> \u2014 strong market support. Rally likely to sustain.';
-else if(fNet<-2000&&dNet>2000)verdict='<strong style="color:var(--amber)">FII selling but DII absorbing</strong> \u2014 domestic funds providing floor. Markets may hold range.';
-else if(fNet<-2000&&dNet<0)verdict='<strong style="color:var(--red)">Both FII + DII selling</strong> \u2014 no institutional support. Expect weakness.';
-else if(fNet>1000)verdict='<strong style="color:var(--green)">FII money flowing in</strong> \u2014 positive for large-cap and banking stocks.';
-else if(fNet<-1000)verdict='<strong style="color:var(--red)">FII pulling out</strong> \u2014 caution on market direction. IT exporters may benefit from weaker rupee.';
-else verdict='<strong style="color:var(--text)">Normal institutional activity</strong> \u2014 no strong directional signal today.';
+if(fNet>2000&&dNet>0)verdict='<strong style="color:var(--green)">Both FII + DII buying</strong> — strong market support. Rally likely to sustain.';
+else if(fNet<-2000&&dNet>2000)verdict='<strong style="color:var(--amber)">FII selling but DII absorbing</strong> — domestic funds providing floor. Markets may hold range.';
+else if(fNet<-2000&&dNet<0)verdict='<strong style="color:var(--red)">Both FII + DII selling</strong> — no institutional support. Expect weakness.';
+else if(fNet>1000)verdict='<strong style="color:var(--green)">FII money flowing in</strong> — positive for large-cap and banking stocks.';
+else if(fNet<-1000)verdict='<strong style="color:var(--red)">FII pulling out</strong> — caution on market direction. IT exporters may benefit from weaker rupee.';
+else verdict='<strong style="color:var(--text)">Normal institutional activity</strong> — no strong directional signal today.';
 body.innerHTML=`
 <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:12px">
 <div style="padding:12px;border-radius:10px;background:${fBg};border:1px solid ${fC}22;text-align:center">
 <div style="font-size:9px;text-transform:uppercase;letter-spacing:.5px;color:var(--text3);font-weight:700;margin-bottom:4px">FII / Foreign</div>
-<div style="font-family:var(--mono);font-size:20px;font-weight:800;color:${fC}">${fSign}\u20B9${Math.abs(fNet).toLocaleString('en-IN')}Cr</div>
-<div style="font-size:9px;color:var(--text3);margin-top:2px">${fNet>=0?'Net Buyers \u2191':'Net Sellers \u2193'}</div>
-<div style="margin-top:6px;font-size:9px;color:var(--text2)">Buy: \u20B9${(fii.buy||0).toLocaleString('en-IN')}Cr</div>
-<div style="font-size:9px;color:var(--text2)">Sell: \u20B9${(fii.sell||0).toLocaleString('en-IN')}Cr</div>
+<div style="font-family:var(--mono);font-size:20px;font-weight:800;color:${fC}">${fSign}₹${Math.abs(fNet).toLocaleString('en-IN')}Cr</div>
+<div style="font-size:9px;color:var(--text3);margin-top:2px">${fNet>=0?'Net Buyers ↑':'Net Sellers ↓'}</div>
+<div style="margin-top:6px;font-size:9px;color:var(--text2)">Buy: ₹${(fii.buy||0).toLocaleString('en-IN')}Cr</div>
+<div style="font-size:9px;color:var(--text2)">Sell: ₹${(fii.sell||0).toLocaleString('en-IN')}Cr</div>
 </div>
 <div style="padding:12px;border-radius:10px;background:${dBg};border:1px solid ${dC}22;text-align:center">
 <div style="font-size:9px;text-transform:uppercase;letter-spacing:.5px;color:var(--text3);font-weight:700;margin-bottom:4px">DII / Domestic</div>
-<div style="font-family:var(--mono);font-size:20px;font-weight:800;color:${dC}">${dSign}\u20B9${Math.abs(dNet).toLocaleString('en-IN')}Cr</div>
-<div style="font-size:9px;color:var(--text3);margin-top:2px">${dNet>=0?'Net Buyers \u2191':'Net Sellers \u2193'}</div>
-<div style="margin-top:6px;font-size:9px;color:var(--text2)">Buy: \u20B9${(dii.buy||0).toLocaleString('en-IN')}Cr</div>
-<div style="font-size:9px;color:var(--text2)">Sell: \u20B9${(dii.sell||0).toLocaleString('en-IN')}Cr</div>
+<div style="font-family:var(--mono);font-size:20px;font-weight:800;color:${dC}">${dSign}₹${Math.abs(dNet).toLocaleString('en-IN')}Cr</div>
+<div style="font-size:9px;color:var(--text3);margin-top:2px">${dNet>=0?'Net Buyers ↑':'Net Sellers ↓'}</div>
+<div style="margin-top:6px;font-size:9px;color:var(--text2)">Buy: ₹${(dii.buy||0).toLocaleString('en-IN')}Cr</div>
+<div style="font-size:9px;color:var(--text2)">Sell: ₹${(dii.sell||0).toLocaleString('en-IN')}Cr</div>
 </div>
 <div style="padding:12px;border-radius:10px;background:${cBg};border:1px solid ${cC}22;text-align:center">
 <div style="font-size:9px;text-transform:uppercase;letter-spacing:.5px;color:var(--text3);font-weight:700;margin-bottom:4px">Combined Flow</div>
-<div style="font-family:var(--mono);font-size:20px;font-weight:800;color:${cC}">${cSign}\u20B9${Math.abs(combined).toLocaleString('en-IN')}Cr</div>
-<div style="font-size:9px;color:var(--text3);margin-top:2px">${combined>=0?'Net Inflow \u2191':'Net Outflow \u2193'}</div>
+<div style="font-family:var(--mono);font-size:20px;font-weight:800;color:${cC}">${cSign}₹${Math.abs(combined).toLocaleString('en-IN')}Cr</div>
+<div style="font-size:9px;color:var(--text3);margin-top:2px">${combined>=0?'Net Inflow ↑':'Net Outflow ↓'}</div>
 <div style="margin-top:6px;font-size:9px;color:var(--text2)">${fii.date||'Today'}</div>
 </div>
 </div>
 <div style="padding:10px 14px;border-radius:8px;background:rgba(37,99,235,.04);border:1px solid rgba(37,99,235,.1);font-size:11px;color:var(--text2);line-height:1.7">
 <span style="font-size:13px">&#128161;</span> ${verdict}
 </div>
-<div style="margin-top:8px;font-size:9px;color:var(--text3);text-align:center">FII = Foreign Institutional Investors (global funds) &nbsp;\u00B7&nbsp; DII = Domestic Institutional Investors (mutual funds, insurance, pension)</div>
+<div style="margin-top:8px;font-size:9px;color:var(--text3);text-align:center">FII = Foreign Institutional Investors (global funds) &nbsp;·&nbsp; DII = Domestic Institutional Investors (mutual funds, insurance, pension)</div>
 `;
 card.style.display='block';
 }
@@ -1076,15 +1071,27 @@ if(e.ctrlKey&&(e.key==='a'||e.key==='A')){e.preventDefault();return false}
 if(e.metaKey&&e.shiftKey&&(e.key==='S'||e.key==='s')){e.preventDefault();return false}
 });
 
-// 5b. Block right-click globally on report
+// 5b. Block right-click GLOBALLY on entire page
 document.addEventListener('contextmenu',function(e){
-if(e.target.closest('.rpt')){e.preventDefault();return false}
+// Allow right-click only on inputs
+if(e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA')return;
+e.preventDefault();return false;
 });
 
-// 5c. Block drag on all images/content in report
+// 5c. Block drag on all content
 document.addEventListener('dragstart',function(e){
-if(e.target.closest('.rpt')){e.preventDefault();return false}
+if(e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA')return;
+e.preventDefault();return false;
 });
+
+// 5d. Block copy/paste globally (except inputs)
+document.addEventListener('copy',function(e){
+if(e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA')return;
+e.preventDefault();
+if(e.clipboardData)e.clipboardData.setData('text/plain','Content is protected — celesys.ai');
+return false;
+});
+document.addEventListener('cut',function(e){e.preventDefault();return false});
 
 // 6. Blur content when page loses visibility (anti-screenshot)
 document.addEventListener('visibilitychange',function(){
@@ -1135,13 +1142,13 @@ const wm=document.getElementById('siteWatermark');if(!wm)return;
 const ts=new Date().toLocaleString('en-IN',{timeZone:'Asia/Kolkata'});
 const label=em?em.replace(/(.{3}).+(@.+)/,'$1***$2'):'CELESYS.AI';
 wm.innerHTML='';
-for(let i=0;i<200;i++){
+for(let i=0;i<300;i++){
 const s=document.createElement('span');
-s.textContent=i%3===0?'CELESYS.AI':i%3===1?label:ts.split(',')[0];
-s.style.left=(Math.random()*120-10)+'%';
-s.style.top=(Math.random()*120-10)+'%';
-s.style.fontSize=(9+Math.random()*6)+'px';
-s.style.opacity=0.02+Math.random()*0.02;
+s.textContent=i%4===0?'CELESYS.AI':i%4===1?label:i%4===2?ts.split(',')[0]:'CONFIDENTIAL';
+s.style.left=(Math.random()*130-15)+'%';
+s.style.top=(Math.random()*130-15)+'%';
+s.style.fontSize=(10+Math.random()*5)+'px';
+s.style.opacity=0.04+Math.random()*0.03;
 wm.appendChild(s);}
 }
 
@@ -1167,12 +1174,12 @@ function hideLS(){const b=document.getElementById('lsteps');if(b._iv)clearInterv
 function hideRL(){document.getElementById('rateLimitBox').style.display='none';if(countdownInterval){clearInterval(countdownInterval);countdownInterval=null}}
 function showRL(data){const box=document.getElementById('rateLimitBox'),cd=document.getElementById('rlCountdown'),cb=document.getElementById('rlComeback'),pr=document.getElementById('rlProgress');
 let ts=data.retry_after_seconds||(data.retry_after_minutes||5)*60;const tt=new Date(Date.now()+ts*1000);
-cb.textContent='Come back at '+tt.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})+' \u00B7 '+(data.requests_limit||5)+' fresh reports';box.style.display='block';
+cb.textContent='Come back at '+tt.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})+' · '+(data.requests_limit||5)+' fresh reports';box.style.display='block';
 if(countdownInterval)clearInterval(countdownInterval);const ss=ts;
 function tick(){const r=Math.max(0,Math.floor((tt-Date.now())/1000)),mn=Math.floor(r/60),sc=r%60;
 cd.textContent=String(mn).padStart(2,'0')+':'+String(sc).padStart(2,'0');pr.style.width=Math.min(100,((ss-r)/ss)*100)+'%';
 if(r<=0){clearInterval(countdownInterval);countdownInterval=null;cd.textContent='00:00';cd.style.color='var(--green)';
-cb.textContent='\u2713 Quota refreshed \u2014 generate reports again';pr.style.width='100%';box.style.borderColor='rgba(16,185,129,.3)';box.style.background='rgba(16,185,129,.04)'}}
+cb.textContent='✓ Quota refreshed — generate reports again';pr.style.width='100%';box.style.borderColor='rgba(16,185,129,.3)';box.style.background='rgba(16,185,129,.04)'}}
 tick();countdownInterval=setInterval(tick,1000)}
 
 function quickAnalyze(ticker){
@@ -1206,21 +1213,21 @@ if(res.status===503||res.status===504){const e=await res.json().catch(()=>({}));
 if(!res.ok){const e=await res.json().catch(()=>({}));throw new Error(e.detail||e.message||'Analysis failed')}
 const data=await res.json();if(!data.success||!data.live_data)throw new Error('No data for this ticker');
 let q='';if(data.rate_limit){const r=data.rate_limit.remaining;document.getElementById('navQ').textContent=r+'/hr';
-q=r===0?' \u00B7 Last free report this hour':' \u00B7 '+r+' remaining'}
+q=r===0?' · Last free report this hour':' · '+r+' remaining'}
 if(data.report_number)document.getElementById('navRC').textContent=data.report_number;
 if(data.report_number){document.getElementById('globalRC').textContent=data.report_number.toLocaleString();const hb=document.getElementById('reportBadgeCount');if(hb)hb.textContent=data.report_number.toLocaleString()}
-showStatus('\u2713 Your report is ready. Scroll down \u2014 this is the good stuff.'+q,'success');displayReport(data);TI.value='';
+showStatus('✓ Your report is ready. Scroll down — this is the good stuff.'+q,'success');displayReport(data);TI.value='';
 // GA4: Track report generation
 if(typeof gtag==='function')gtag('event','generate_report',{ticker:data.live_data?.ticker||'',company:data.company_name||''});
 }catch(e){let m=e.message;if(m==='Failed to fetch')m='Cannot connect to server.';
 else if(m.toLowerCase().includes('rate limit')||m.toLowerCase().includes('too many')||m.toLowerCase().includes('temporarily')||m.toLowerCase().includes('all data sources'))m='All data sources busy. Try again in 30 seconds.';
-showStatus(m,'error')}finally{btn.disabled=false;btn.textContent='Analyze \u2192';btn.classList.remove('ld');hideLS()}}
+showStatus(m,'error')}finally{btn.disabled=false;btn.textContent='Analyze →';btn.classList.remove('ld');hideLS()}}
 
-function displayReport(data){const d=data.live_data,curr=d.currency==='INR'?'\u20B9':'$',price=d.current_price;
+function displayReport(data){const d=data.live_data,curr=d.currency==='INR'?'₹':'$',price=d.current_price;
 document.getElementById('tickerTag').textContent=d.ticker;document.getElementById('companyName').textContent=d.company_name||d.ticker;
 const scEl=document.getElementById('stickyCompany');if(scEl){scEl.textContent=(d.company_name||d.ticker)+' · '+curr+price.toLocaleString();scEl.style.display='inline'}
 const srcLabel=d.data_source==='yahoo_chart_only'?' (chart)':d.data_source==='yahoo_scrape'?' (alt)':d.data_source==='stale_cache'?' (cached)':'';
-document.getElementById('timestamp').innerHTML='<div class="ldot"></div> LIVE'+srcLabel+' \u00B7 '+d.data_timestamp;
+document.getElementById('timestamp').innerHTML='<div class="ldot"></div> LIVE'+srcLabel+' · '+d.data_timestamp;
 
 // 8 METRICS (expanded from 4) - skip cards with N/A data entirely
 const peDisplay=d.pe_ratio&&d.pe_ratio!=='N/A'&&d.pe_ratio!==0?d.pe_ratio:null;
@@ -1228,10 +1235,10 @@ const mcapRaw=d.market_cap&&d.market_cap>1e6?d.market_cap:0;
 const mcapDisplay=mcapRaw>0?formatCap(mcapRaw,curr):null;
 const w52valid=d.week52_low&&d.week52_high&&d.week52_low!=='N/A'&&d.week52_high!=='N/A'&&parseFloat(d.week52_high)>0;
 document.getElementById('metrics').innerHTML=`
-<div class="mcard"><div class="ml">Price</div><div class="mv">${curr}${price.toLocaleString()}</div><div class="ms ${d.price_change>=0?'up':'dn'}">${d.price_change>=0?'\u25B2':'\u25BC'} ${Math.abs(d.price_change).toFixed(2)} (${d.price_change_pct.toFixed(2)}%)</div></div>
+<div class="mcard"><div class="ml">Price</div><div class="mv">${curr}${price.toLocaleString()}</div><div class="ms ${d.price_change>=0?'up':'dn'}">${d.price_change>=0?'▲':'▼'} ${Math.abs(d.price_change).toFixed(2)} (${d.price_change_pct.toFixed(2)}%)</div></div>
 ${peDisplay?`<div class="mcard"><div class="ml">P/E Ratio</div><div class="mv">${peDisplay}</div><div class="ms nu">TTM</div></div>`:''}
 ${mcapDisplay?`<div class="mcard"><div class="ml">Market Cap</div><div class="mv">${mcapDisplay}</div><div class="ms nu">${d.currency}</div></div>`:''}
-${w52valid?`<div class="mcard"><div class="ml">52W Range</div><div class="mv" style="font-size:16px">${curr}${d.week52_low}\u2014${curr}${d.week52_high}</div><div class="ms nu">Low / High</div></div>`:''}`;
+${w52valid?`<div class="mcard"><div class="ml">52W Range</div><div class="mv" style="font-size:16px">${curr}${d.week52_low}—${curr}${d.week52_high}</div><div class="ms nu">Low / High</div></div>`:''}`;
 
 // 52-WEEK POSITION BAR — only show if valid data
 if(w52valid){
@@ -1241,7 +1248,7 @@ document.getElementById('w52section').innerHTML=`
 <div style="padding:8px 16px 10px">
 <div class="w52bar"><div class="w52fill" style="width:100%"></div><div class="w52dot" style="left:${w52pct}%"></div></div>
 <div class="w52labels"><span>${curr}${d.week52_low} (Low)</span><span style="color:var(--blue);font-weight:600">${curr}${price} &middot; ${w52pct.toFixed(0)}%</span><span>${curr}${d.week52_high} (High)</span></div>
-<div style="font-size:11px;color:var(--text2);margin-top:6px">${w52pct<25?'<strong style="color:var(--green)">\u25CF Bargain zone</strong> \u2014 near yearly low. Check fundamentals for entry.':w52pct>75?'<strong style="color:var(--amber)">\u25CF Hot streak</strong> \u2014 near yearly peak. Watch for resistance.':'<strong style="color:var(--blue)">\u25CF Neutral zone</strong> \u2014 mid-range. Fundamentals decide next move.'}</div>
+<div style="font-size:11px;color:var(--text2);margin-top:6px">${w52pct<25?'<strong style="color:var(--green)">● Bargain zone</strong> — near yearly low. Check fundamentals for entry.':w52pct>75?'<strong style="color:var(--amber)">● Hot streak</strong> — near yearly peak. Watch for resistance.':'<strong style="color:var(--blue)">● Neutral zone</strong> — mid-range. Fundamentals decide next move.'}</div>
 </div>`;
 }
 try{createAnalysisSections(data.report,d,data.fund_holdings||{institutions:[],funds:[],summary:{}});}catch(e){console.error('CRITICAL: createAnalysisSections failed:',e);document.getElementById('analysisContainer').innerHTML='<div style="padding:40px;text-align:center;color:var(--red)"><h3>Report Rendering Error</h3><p>'+e.message+'</p><p style="font-size:11px;color:var(--text3)">Please try again or contact support.</p></div>';document.getElementById('mainTabBar').style.display='flex';switchTab('quick');}
@@ -1266,7 +1273,7 @@ document.querySelectorAll('.sc').forEach(el=>{
 if(el.scrollHeight>el.clientHeight+20){
 const ind=document.createElement('div');
 ind.className='sind';
-ind.innerHTML='\u2193 scroll for more';
+ind.innerHTML='↓ scroll for more';
 el.appendChild(ind);
 el.addEventListener('scroll',function(){
 const atBottom=this.scrollHeight-this.scrollTop<=this.clientHeight+30;
@@ -1294,7 +1301,7 @@ d.ema_signals=d.ema_signals||[];
 d.quick_ratio=d.quick_ratio||'0';d.ebitda_margins=d.ebitda_margins||'0';
 // Sanitize report for safe HTML insertion
 const safeReport=String(report).replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/`/g,'&#96;');
-const curr=d.currency==='INR'?'\u20B9':'$',price=d.current_price,pe=parseFloat(d.pe_ratio)||0;
+const curr=d.currency==='INR'?'₹':'$',price=d.current_price,pe=parseFloat(d.pe_ratio)||0;
 const n=v=>{const f=parseFloat(v);return(isNaN(f)||v==='N/A'||v===null||v===undefined)?0:f};
 // ═══ DETERMINISTIC STOCK VERDICT ENGINE (20 factors — comprehensive multi-factor) ═══
 // F1-F8: Original (Valuation, Profitability, Balance Sheet, 52W, P/B, Dividend, Beta, OpEff)
@@ -1324,8 +1331,8 @@ else if(pe<15){score+=12;reasons.push('Value zone (P/E '+pe.toFixed(1)+'x) [+12]
 else if(pe<22){score+=4;reasons.push('Fair valuation (P/E '+pe.toFixed(1)+'x) [+4]')}
 else if(pe<35){score-=6;reasons.push('Expensive (P/E '+pe.toFixed(1)+'x) [-6]')}
 else{score-=14;reasons.push('Very expensive (P/E '+pe.toFixed(1)+'x) [-14]')}}
-if(fpe>0&&pe>0&&fpe<pe*0.85){score+=5;reasons.push('Forward P/E discount \u2014 earnings growth ahead [+5]')}
-else if(fpe>0&&pe>0&&fpe>pe*1.1){score-=3;reasons.push('Forward P/E premium \u2014 earnings may decline [-3]')}
+if(fpe>0&&pe>0&&fpe<pe*0.85){score+=5;reasons.push('Forward P/E discount — earnings growth ahead [+5]')}
+else if(fpe>0&&pe>0&&fpe>pe*1.1){score-=3;reasons.push('Forward P/E premium — earnings may decline [-3]')}
 
 // F2: PROFITABILITY — margins + ROE (±15)
 if(pm>20){score+=12;reasons.push('Excellent margins ('+pm.toFixed(1)+'%) [+12]')}
@@ -1345,16 +1352,16 @@ else{score-=10;reasons.push('High leverage risk (D/E '+de.toFixed(0)+') [-10]')}
 if(cr>2){score+=4;reasons.push('Strong liquidity (CR '+cr.toFixed(1)+') [+4]')}
 else if(cr>0&&cr<1){score-=6;reasons.push('Liquidity concern (CR '+cr.toFixed(1)+') [-6]')}
 if(totalCash>0&&totalDebt>0){const cdr=totalCash/totalDebt;
-if(cdr>1){score+=4;reasons.push('Net cash \u2014 cash exceeds debt by '+Math.round((cdr-1)*100)+'% [+4]')}
-else if(cdr>0.5){score+=2;reasons.push('Adequate cash \u2014 '+Math.round(cdr*100)+'% of debt covered [+2]')}
-else if(cdr<0.15){score-=4;reasons.push('Cash crunch \u2014 only '+Math.round(cdr*100)+'% of debt covered [-4]')}}
+if(cdr>1){score+=4;reasons.push('Net cash — cash exceeds debt by '+Math.round((cdr-1)*100)+'% [+4]')}
+else if(cdr>0.5){score+=2;reasons.push('Adequate cash — '+Math.round(cdr*100)+'% of debt covered [+2]')}
+else if(cdr<0.15){score-=4;reasons.push('Cash crunch — only '+Math.round(cdr*100)+'% of debt covered [-4]')}}
 else if(totalCash>0&&totalDebt===0){score+=3;reasons.push('Debt-free with cash on books [+3]')}
 
 // F4: 52-WEEK POSITION (±10)
-if(w52pct<0.2){score+=8;reasons.push('Near 52W low \u2014 potential value ('+((w52pct*100).toFixed(0))+'% of range) [+8]')}
+if(w52pct<0.2){score+=8;reasons.push('Near 52W low — potential value ('+((w52pct*100).toFixed(0))+'% of range) [+8]')}
 else if(w52pct<0.35){score+=4;reasons.push('Lower half of 52W range [+4]')}
-else if(w52pct>0.9){score-=4;reasons.push('Near 52W high \u2014 limited upside ('+(w52pct*100).toFixed(0)+'%) [-4]')}
-else if(w52pct>0.75){score+=2;reasons.push('Upper range \u2014 momentum intact [+2]')}
+else if(w52pct>0.9){score-=4;reasons.push('Near 52W high — limited upside ('+(w52pct*100).toFixed(0)+'%) [-4]')}
+else if(w52pct>0.75){score+=2;reasons.push('Upper range — momentum intact [+2]')}
 
 // F5: P/B VALUE (±8)
 if(pb>0){if(pb<1){score+=8;reasons.push('Below book value (P/B '+pb.toFixed(1)+') [+8]')}
@@ -1377,18 +1384,18 @@ else if(om>0&&om<5){score-=3;reasons.push('Weak operating margins ('+om.toFixed(
 // F9: EARNINGS VELOCITY / CAGR (±12) *** NEW ***
 const bestEG=epsGrowth||earningsGrowth;
 const combG=bestEG&&revGrowth?(bestEG*0.6+revGrowth*0.4):(bestEG||revGrowth);
-if(combG>30){score+=10;reasons.push('Exceptional earnings velocity \u2014 '+combG.toFixed(0)+'% combined growth [+10]')}
-else if(combG>15){score+=6;reasons.push('Strong growth trajectory \u2014 '+combG.toFixed(0)+'% [+6]')}
-else if(combG>5){score+=2;reasons.push('Moderate growth \u2014 '+combG.toFixed(0)+'% [+2]')}
+if(combG>30){score+=10;reasons.push('Exceptional earnings velocity — '+combG.toFixed(0)+'% combined growth [+10]')}
+else if(combG>15){score+=6;reasons.push('Strong growth trajectory — '+combG.toFixed(0)+'% [+6]')}
+else if(combG>5){score+=2;reasons.push('Moderate growth — '+combG.toFixed(0)+'% [+2]')}
 else if(combG<=-10){score-=6;reasons.push('Earnings contracting '+combG.toFixed(0)+'% [-6]')}
 else if(combG<0){score-=2;reasons.push('Mild decline '+combG.toFixed(0)+'% [-2]')}
 if(revGrowth>20&&!combG){score+=5;reasons.push('Revenue surging '+revGrowth.toFixed(0)+'% [+5]')}
 
 // F10: RELATIVE VALUATION vs SECTOR (±8) *** NEW ***
 if(pe>0&&sectorPE>0){const peR=pe/sectorPE;const disc=((sectorPE-pe)/sectorPE*100).toFixed(0);
-if(peR<0.6){score+=8;reasons.push('P/E '+Math.abs(disc)+'% below sector avg ('+sectorPE+'x) \u2014 deep discount [+8]')}
-else if(peR<0.85){score+=4;reasons.push('P/E '+Math.abs(disc)+'% below sector \u2014 undervalued vs peers [+4]')}
-else if(peR>1.5){score-=5;reasons.push('P/E '+Math.abs(disc)+'% above sector \u2014 expensive vs peers [-5]')}
+if(peR<0.6){score+=8;reasons.push('P/E '+Math.abs(disc)+'% below sector avg ('+sectorPE+'x) — deep discount [+8]')}
+else if(peR<0.85){score+=4;reasons.push('P/E '+Math.abs(disc)+'% below sector — undervalued vs peers [+4]')}
+else if(peR>1.5){score-=5;reasons.push('P/E '+Math.abs(disc)+'% above sector — expensive vs peers [-5]')}
 else if(peR>1.2){score-=2;reasons.push('P/E premium over sector avg [-2]')}}
 
 // F11: TECHNICAL MOMENTUM — SMA + EMA crossovers (±10)
@@ -1407,17 +1414,17 @@ tS=Math.max(-6,Math.min(6,tS));score+=tS;
 if(tD.length){reasons.push('Technical: '+tD.join(', ')+' ['+(tS>=0?'+':'')+tS+']')}
 
 // F12: PEG RATIO — Growth at Reasonable Price (±6) *** NEW ***
-if(peg>0){if(peg<0.8){score+=6;reasons.push('PEG bargain ('+peg.toFixed(1)+') \u2014 growth underpriced [+6]')}
+if(peg>0){if(peg<0.8){score+=6;reasons.push('PEG bargain ('+peg.toFixed(1)+') — growth underpriced [+6]')}
 else if(peg<1.2){score+=3;reasons.push('PEG fair ('+peg.toFixed(1)+') [+3]')}
-else if(peg>2.5){score-=4;reasons.push('PEG stretched ('+peg.toFixed(1)+') \u2014 overpaying for growth [-4]')}
+else if(peg>2.5){score-=4;reasons.push('PEG stretched ('+peg.toFixed(1)+') — overpaying for growth [-4]')}
 else if(peg>1.8){score-=1;reasons.push('PEG slightly high ('+peg.toFixed(1)+') [-1]')}}
 
 // F13: CASH FLOW HEALTH (±8) *** NEW ***
 if(fcf>0&&totalRev>0){const fcfM=(fcf/totalRev)*100;
 if(fcfM>15){score+=6;reasons.push('Excellent FCF margin '+fcfM.toFixed(1)+'% [+6]')}
 else if(fcfM>5){score+=3;reasons.push('Healthy FCF '+fcfM.toFixed(1)+'% of revenue [+3]')}}
-else if(fcf<0&&ocf>0){score-=2;reasons.push('Negative FCF despite positive OCF \u2014 heavy capex [-2]')}
-else if(fcf<0&&ocf<=0){score-=6;reasons.push('Negative cash flows \u2014 burning cash [-6]')}
+else if(fcf<0&&ocf>0){score-=2;reasons.push('Negative FCF despite positive OCF — heavy capex [-2]')}
+else if(fcf<0&&ocf<=0){score-=6;reasons.push('Negative cash flows — burning cash [-6]')}
 if(ocf>0&&totalDebt>0){const dc=ocf/totalDebt;
 if(dc>0.5){score+=2;reasons.push('OCF covers '+Math.round(dc*100)+'% of debt [+2]')}
 else if(dc<0.1){score-=2;reasons.push('Cash barely covers debt [-2]')}}
@@ -1430,39 +1437,39 @@ else if(eqg<0){if(eqg<-20){score-=5;reasons.push('Quarterly earnings plunging '+
 else if(eqg<-5){score-=2;reasons.push('Quarterly decline '+eqg.toFixed(0)+'% [-2]')}}
 
 // F15: EV/EBITDA — Enterprise valuation (±8)
-if(evEbitda>0){if(evEbitda<6){score+=7;reasons.push('Cheap EV/EBITDA ('+evEbitda.toFixed(1)+'x) \u2014 takeover value [+7]')}
+if(evEbitda>0){if(evEbitda<6){score+=7;reasons.push('Cheap EV/EBITDA ('+evEbitda.toFixed(1)+'x) — takeover value [+7]')}
 else if(evEbitda<10){score+=4;reasons.push('Reasonable EV/EBITDA ('+evEbitda.toFixed(1)+'x) [+4]')}
 else if(evEbitda<16){score+=1;reasons.push('Fair EV/EBITDA ('+evEbitda.toFixed(1)+'x) [+1]')}
 else if(evEbitda>25){score-=5;reasons.push('Very expensive EV/EBITDA ('+evEbitda.toFixed(1)+'x) [-5]')}
 else if(evEbitda>18){score-=2;reasons.push('Elevated EV/EBITDA ('+evEbitda.toFixed(1)+'x) [-2]')}}
 
 // F16: GROSS MARGIN POWER — Pricing power & moat (±7)
-if(gm>0){if(gm>60){score+=6;reasons.push('Elite gross margins ('+gm.toFixed(0)+'%) \u2014 strong moat & pricing power [+6]')}
+if(gm>0){if(gm>60){score+=6;reasons.push('Elite gross margins ('+gm.toFixed(0)+'%) — strong moat & pricing power [+6]')}
 else if(gm>40){score+=3;reasons.push('Healthy gross margins ('+gm.toFixed(0)+'%) [+3]')}
-else if(gm<20){score-=4;reasons.push('Low gross margins ('+gm.toFixed(0)+'%) \u2014 weak moat [-4]')}}
+else if(gm<20){score-=4;reasons.push('Low gross margins ('+gm.toFixed(0)+'%) — weak moat [-4]')}}
 
 // F17: EBITDA MARGIN QUALITY (±5)
-if(ebitdaM>0){if(ebitdaM>30){score+=4;reasons.push('Strong EBITDA margins ('+ebitdaM.toFixed(0)+'%) \u2014 operational excellence [+4]')}
+if(ebitdaM>0){if(ebitdaM>30){score+=4;reasons.push('Strong EBITDA margins ('+ebitdaM.toFixed(0)+'%) — operational excellence [+4]')}
 else if(ebitdaM>15){score+=2;reasons.push('Healthy EBITDA margins ('+ebitdaM.toFixed(0)+'%) [+2]')}
 else if(ebitdaM<5&&ebitdaM>0){score-=3;reasons.push('Thin EBITDA margins ('+ebitdaM.toFixed(0)+'%) [-3]')}}
 
 // F18: SHORT INTEREST SIGNAL (±5)
 const shortR=n(d.short_ratio);
-if(shortR>0){if(shortR>10){score-=4;reasons.push('Very high short interest ('+shortR.toFixed(1)+' days) \u2014 bearish [-4]')}
+if(shortR>0){if(shortR>10){score-=4;reasons.push('Very high short interest ('+shortR.toFixed(1)+' days) — bearish [-4]')}
 else if(shortR>5){score-=2;reasons.push('Elevated short interest ('+shortR.toFixed(1)+' days) [-2]')}
-else if(shortR<1.5){score+=2;reasons.push('Low short interest ('+shortR.toFixed(1)+' days) \u2014 bullish sentiment [+2]')}}
+else if(shortR<1.5){score+=2;reasons.push('Low short interest ('+shortR.toFixed(1)+' days) — bullish sentiment [+2]')}}
 
 // F19: DIVIDEND SUSTAINABILITY (±5)
 const payoutR=n(d.payout_ratio);
-if(dy>0&&payoutR>0){if(payoutR<40&&dy>2){score+=4;reasons.push('Sustainable dividend \u2014 payout '+payoutR.toFixed(0)+'% with '+dy.toFixed(1)+'% yield [+4]')}
-else if(payoutR>90){score-=3;reasons.push('Unsustainable payout ('+payoutR.toFixed(0)+'%) \u2014 dividend risk [-3]')}
+if(dy>0&&payoutR>0){if(payoutR<40&&dy>2){score+=4;reasons.push('Sustainable dividend — payout '+payoutR.toFixed(0)+'% with '+dy.toFixed(1)+'% yield [+4]')}
+else if(payoutR>90){score-=3;reasons.push('Unsustainable payout ('+payoutR.toFixed(0)+'%) — dividend risk [-3]')}
 else if(payoutR>70){score-=1;reasons.push('High payout ratio ('+payoutR.toFixed(0)+'%) [-1]')}}
 
 // F20: QUALITY COMBOS — Multi-factor convergence (±8)
-if(combG&&combG>15&&pm>15){score+=3;reasons.push('Growth + profitability combo \u2014 rare quality [+3]')}
-if(combG&&combG<0&&pm<5){score-=3;reasons.push('Declining growth + weak margins \u2014 avoid [-3]')}
-if(pb>0&&pb<1.5&&pe>0&&pe<sectorPE&&fcf>0){score+=3;reasons.push('P/B + P/E below sector with positive FCF \u2014 deep value [+3]')}
-if(gm>50&&roe>20&&de<50){score+=3;reasons.push('High margins + high ROE + low debt \u2014 compounding machine [+3]')}
+if(combG&&combG>15&&pm>15){score+=3;reasons.push('Growth + profitability combo — rare quality [+3]')}
+if(combG&&combG<0&&pm<5){score-=3;reasons.push('Declining growth + weak margins — avoid [-3]')}
+if(pb>0&&pb<1.5&&pe>0&&pe<sectorPE&&fcf>0){score+=3;reasons.push('P/B + P/E below sector with positive FCF — deep value [+3]')}
+if(gm>50&&roe>20&&de<50){score+=3;reasons.push('High margins + high ROE + low debt — compounding machine [+3]')}
 // VALUE TRAP detection: cheap valuation + deteriorating fundamentals
 if(pe>0&&pe<15&&combG&&combG<-5&&pm<8){score-=6;reasons.push('VALUE TRAP: cheap P/E but shrinking earnings + thin margins [-6]')}
 // GROWTH TRAP detection: expensive + growth decelerating
@@ -1489,12 +1496,12 @@ else if(bearish>=5){verdict='STRONG SELL';vc='sell';conviction='Very High';emoji
 else{verdict='SELL';vc='sell';conviction='High';emoji='\uD83D\uDD34'}
 
 return {verdict,vc,score,conviction,emoji,reasons,totalFactors,bullish,bearish,
-  explain:verdict==='STRONG BUY'?'This stock checks almost every box \u2014 it\'s priced well, the company is growing, making good money, and the price trend is moving up. '+bullish+' out of '+totalFactors+' signals are positive. This kind of alignment is rare.'
+  explain:verdict==='STRONG BUY'?'This stock checks almost every box — it\'s priced well, the company is growing, making good money, and the price trend is moving up. '+bullish+' out of '+totalFactors+' signals are positive. This kind of alignment is rare.'
   :verdict==='BUY'?'Looks like a solid pick. The company\'s numbers are strong and '+bullish+' positive signals outweigh '+bearish+' concerns. Good time to consider buying.'
-  :verdict==='ACCUMULATE'?'More going for it than against it ('+bullish+' positives vs '+bearish+' negatives). Don\'t go all-in \u2014 buy in small amounts, especially on red days.'
-  :verdict==='SELL'?'Warning signs are adding up \u2014 '+bearish+' concerns flagged. The stock may be overpriced, losing money, or the price trend is weakening. Consider reducing your position.'
-  :verdict==='STRONG SELL'?'Multiple serious problems detected across '+bearish+' areas. This stock is flashing red \u2014 overvalued, weak finances, or price falling. Protect your money.'
-  :'It\'s a coin flip right now \u2014 '+bullish+' positive signals vs '+bearish+' negative ones. No clear direction. Wait for better clarity before making a move.'}
+  :verdict==='ACCUMULATE'?'More going for it than against it ('+bullish+' positives vs '+bearish+' negatives). Don\'t go all-in — buy in small amounts, especially on red days.'
+  :verdict==='SELL'?'Warning signs are adding up — '+bearish+' concerns flagged. The stock may be overpriced, losing money, or the price trend is weakening. Consider reducing your position.'
+  :verdict==='STRONG SELL'?'Multiple serious problems detected across '+bearish+' areas. This stock is flashing red — overvalued, weak finances, or price falling. Protect your money.'
+  :'It\'s a coin flip right now — '+bullish+' positive signals vs '+bearish+' negative ones. No clear direction. Wait for better clarity before making a move.'}
 }
 
 let vResult;
@@ -1548,23 +1555,23 @@ ${vResult.reasons.map(r=>{const isPos=r.includes('[+');return '<span style="font
 ${(d.pe_ratio&&d.pe_ratio!=='N/A'&&pe>0)?`<div style="padding:10px;border-radius:8px;text-align:center;background:${pe<18?'rgba(16,185,129,.06)':pe<28?'rgba(245,158,11,.06)':'rgba(239,68,68,.06)'};border:1px solid ${pe<18?'rgba(16,185,129,.15)':pe<28?'rgba(245,158,11,.15)':'rgba(239,68,68,.15)'}">
 <div style="font-size:8px;text-transform:uppercase;letter-spacing:.5px;color:var(--text3);font-weight:700">Valuation</div>
 <div style="font-family:var(--mono);font-size:18px;font-weight:800;color:${pe<18?'var(--green)':pe<28?'var(--amber)':'var(--red)'}">${d.pe_ratio}x</div>
-<div style="font-size:9px;color:var(--text3)">${pe<18?'\\u2705 Cheap':pe<28?'\\u26A0 Fair':'\\u{1F6A8} Expensive'}</div>
+<div style="font-size:9px;color:var(--text3)">${pe<18?'✅ Cheap':pe<28?'⚠️ Fair':'🚨 Expensive'}</div>
 </div>`:''}
 ${(d.profit_margin&&d.profit_margin!=='N/A'&&parseFloat(d.profit_margin)!==0)?`<div style="padding:10px;border-radius:8px;text-align:center;background:${parseFloat(d.profit_margin)>15?'rgba(16,185,129,.06)':parseFloat(d.profit_margin)>8?'rgba(245,158,11,.06)':'rgba(239,68,68,.06)'};border:1px solid ${parseFloat(d.profit_margin)>15?'rgba(16,185,129,.15)':parseFloat(d.profit_margin)>8?'rgba(245,158,11,.15)':'rgba(239,68,68,.15)'}">
 <div style="font-size:8px;text-transform:uppercase;letter-spacing:.5px;color:var(--text3);font-weight:700">Profitability</div>
 <div style="font-family:var(--mono);font-size:18px;font-weight:800;color:${parseFloat(d.profit_margin)>15?'var(--green)':parseFloat(d.profit_margin)>8?'var(--amber)':'var(--red)'}">${d.profit_margin}%</div>
-<div style="font-size:9px;color:var(--text3)">${parseFloat(d.profit_margin)>15?'\\u2705 Strong moat':parseFloat(d.profit_margin)>8?'\\u26A0 Moderate':'\\u274C Thin'}</div>
+<div style="font-size:9px;color:var(--text3)">${parseFloat(d.profit_margin)>15?'✅ Strong moat':parseFloat(d.profit_margin)>8?'⚠️ Moderate':'❌ Thin'}</div>
 </div>`:''}
 ${(d.debt_to_equity&&d.debt_to_equity!=='N/A'&&parseFloat(d.debt_to_equity)>0)?`<div style="padding:10px;border-radius:8px;text-align:center;background:${parseFloat(d.debt_to_equity)<0.5?'rgba(16,185,129,.06)':parseFloat(d.debt_to_equity)<1.5?'rgba(245,158,11,.06)':'rgba(239,68,68,.06)'};border:1px solid ${parseFloat(d.debt_to_equity)<0.5?'rgba(16,185,129,.15)':parseFloat(d.debt_to_equity)<1.5?'rgba(245,158,11,.15)':'rgba(239,68,68,.15)'}">
 <div style="font-size:8px;text-transform:uppercase;letter-spacing:.5px;color:var(--text3);font-weight:700">Debt Risk</div>
 <div style="font-family:var(--mono);font-size:18px;font-weight:800;color:${parseFloat(d.debt_to_equity)<0.5?'var(--green)':parseFloat(d.debt_to_equity)<1.5?'var(--amber)':'var(--red)'}">${d.debt_to_equity}x</div>
-<div style="font-size:9px;color:var(--text3)">${parseFloat(d.debt_to_equity)<0.5?'\\u2705 Conservative':parseFloat(d.debt_to_equity)<1.5?'\\u26A0 Moderate':'\\u{1F6A8} High leverage'}</div>
+<div style="font-size:9px;color:var(--text3)">${parseFloat(d.debt_to_equity)<0.5?'✅ Conservative':parseFloat(d.debt_to_equity)<1.5?'⚠️ Moderate':'🚨 High leverage'}</div>
 </div>`:''}
 </div>
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
 ${(d.market_cap&&d.market_cap!=='N/A'&&parseFloat(d.market_cap)>0)?`<div style="padding:8px 12px;border-radius:6px;background:rgba(0,120,212,.03);border:1px solid rgba(0,120,212,.1)">
 <div style="font-size:9px;color:var(--text3);margin-bottom:2px">MARKET CAP</div>
-<div style="font-size:13px;font-weight:700;color:var(--text)">${formatCap(d.market_cap,curr)} <span style="font-size:10px;color:var(--text3)">${d.market_cap>100e9?'Large-cap':d.market_cap>10e9?'Mid-cap':'Small-cap'}</span></div>
+<div style="font-size:13px;font-weight:700;color:var(--text)">${formatCap(d.market_cap,curr)} <span style="font-size:10px;color:var(--text3)">${capCategory(d.market_cap,curr)}</span></div>
 </div>`:''}
 ${(d.week52_high&&d.week52_high!=='N/A'&&parseFloat(d.week52_high)>0)?`<div style="padding:8px 12px;border-radius:6px;background:rgba(0,120,212,.03);border:1px solid rgba(0,120,212,.1)">
 <div style="font-size:9px;color:var(--text3);margin-bottom:2px">52-WEEK POSITION</div>
@@ -1579,6 +1586,18 @@ ${(d.dividend_yield&&d.dividend_yield!=='N/A'&&parseFloat(d.dividend_yield)>0)?`
 <div style="font-size:13px;font-weight:700;color:${parseFloat(d.dividend_yield)>2?'var(--green)':'var(--text)'}">${d.dividend_yield}% <span style="font-size:10px;color:var(--text3)">${parseFloat(d.dividend_yield)>3?'High income':parseFloat(d.dividend_yield)>1?'Some income':'Growth focus'}</span></div>
 </div>`:''}
 </div>
+<div style="margin-top:12px;padding:12px 16px;border-radius:10px;background:linear-gradient(135deg,rgba(245,158,11,.05),rgba(59,130,246,.03));border:1px solid rgba(245,158,11,.12)">
+<div style="font-size:12px;font-weight:700;color:var(--amber);margin-bottom:6px">💡 What do these numbers tell you?</div>
+<div style="font-size:11px;color:var(--text2);line-height:1.8">
+${pe<18&&parseFloat(d.profit_margin)>15?'<strong style="color:var(--green)">Great combo</strong> — stock is cheap AND the company makes good money. This is the sweet spot investors look for.'
+:pe>28&&parseFloat(d.profit_margin)<8?'<strong style="color:var(--red)">Warning</strong> — you\'re paying a premium price for a company with thin profits. The stock needs strong growth to justify this.'
+:pe<18?'Stock appears <strong style="color:var(--green)">underpriced</strong> relative to its earnings — could be a bargain if the business is solid.'
+:pe>28?'Stock is <strong style="color:var(--amber)">priced for perfection</strong> — any earnings miss could cause a sharp drop.'
+:'Valuation is <strong>in the fair range</strong> — neither a screaming buy nor overpriced.'}
+${parseFloat(d.debt_to_equity)>1.5?' High debt levels mean the company is borrowing heavily — risky if interest rates rise or business slows.':''}
+${d.market_cap>100e9?' As a large-cap stock, it\'s relatively stable but may grow slower than smaller companies.':d.market_cap<10e9?' As a smaller company, expect bigger price swings — higher reward potential but higher risk.':''}
+</div>
+</div>
 </div></div>
 
 <!-- VALUATION TABLE -->
@@ -1587,39 +1606,51 @@ ${(d.dividend_yield&&d.dividend_yield!=='N/A'&&parseFloat(d.dividend_yield)>0)?`
 <p style="font-size:12px;color:var(--text3);margin-bottom:14px">Every number decoded. No jargon:</p>
 <table class="dt"><tr><th>Metric</th><th>Value</th><th>Signal</th><th>What This Means For You</th></tr>
 ${(d.pe_ratio&&d.pe_ratio!=='N/A'&&pe>0)?`<tr><td><strong>P/E Ratio</strong><br><span style="font-size:10px;color:var(--text3)">Price-to-Earnings</span></td><td style="font-family:var(--mono);font-weight:700;font-size:16px">${d.pe_ratio}</td>
-<td><span class="sig ${pe<15?'g':pe<25?'n':'c'}">${pe<15?'\\u25CF Undervalued':pe<25?'\\u25CF Fair':'\\u25CF Expensive'}</span></td>
+<td><span class="sig ${pe<15?'g':pe<25?'n':'c'}">${pe<15?'● Undervalued':pe<25?'● Fair':'● Expensive'}</span></td>
 <td style="font-size:12px;line-height:1.7">${pe<15?'Below 15x earnings. Bargain zone.':pe<25?'Fair at '+d.pe_ratio+'x earnings.':d.pe_ratio+'x earnings. Growth must justify.'}</td></tr>`:''}
 ${(d.pb_ratio&&d.pb_ratio!=='N/A'&&parseFloat(d.pb_ratio)>0)?`<tr><td><strong>P/B Ratio</strong><br><span style="font-size:10px;color:var(--text3)">Price-to-Book</span></td><td style="font-family:var(--mono);font-weight:700;font-size:16px">${d.pb_ratio}</td>
-<td><span class="sig ${parseFloat(d.pb_ratio)<3?'g':'c'}">${parseFloat(d.pb_ratio)<3?'\\u25CF Reasonable':'\\u25CF Premium'}</span></td>
+<td><span class="sig ${parseFloat(d.pb_ratio)<3?'g':'c'}">${parseFloat(d.pb_ratio)<3?'● Reasonable':'● Premium'}</span></td>
 <td style="font-size:12px;line-height:1.7">${parseFloat(d.pb_ratio)<3?d.pb_ratio+'x book. Asset-backed.':d.pb_ratio+'x book. Paying for intangibles.'}</td></tr>`:''}
 ${(d.profit_margin&&d.profit_margin!=='N/A'&&parseFloat(d.profit_margin)!==0)?`<tr><td><strong>Profit Margin</strong><br><span style="font-size:10px;color:var(--text3)">Profit per $ revenue</span></td><td style="font-family:var(--mono);font-weight:700;font-size:16px">${d.profit_margin}%</td>
-<td><span class="sig ${parseFloat(d.profit_margin)>15?'g':parseFloat(d.profit_margin)>8?'n':'r'}">${parseFloat(d.profit_margin)>15?'\\u25CF Excellent':parseFloat(d.profit_margin)>8?'\\u25CF Moderate':'\\u25CF Thin'}</span></td>
+<td><span class="sig ${parseFloat(d.profit_margin)>15?'g':parseFloat(d.profit_margin)>8?'n':'r'}">${parseFloat(d.profit_margin)>15?'● Excellent':parseFloat(d.profit_margin)>8?'● Moderate':'● Thin'}</span></td>
 <td style="font-size:12px;line-height:1.7">${d.profit_margin}% net margin. ${parseFloat(d.profit_margin)>15?'Strong moat.':parseFloat(d.profit_margin)>8?'Decent.':'Tight.'}</td></tr>`:''}
 ${(d.operating_margin&&d.operating_margin!=='N/A'&&parseFloat(d.operating_margin)!==0)?`<tr><td><strong>Operating Margin</strong><br><span style="font-size:10px;color:var(--text3)">Core profitability</span></td><td style="font-family:var(--mono);font-weight:700;font-size:16px">${d.operating_margin}%</td>
-<td><span class="sig ${parseFloat(d.operating_margin)>20?'g':parseFloat(d.operating_margin)>10?'n':'r'}">${parseFloat(d.operating_margin)>20?'\\u25CF Strong':parseFloat(d.operating_margin)>10?'\\u25CF OK':'\\u25CF Weak'}</span></td>
+<td><span class="sig ${parseFloat(d.operating_margin)>20?'g':parseFloat(d.operating_margin)>10?'n':'r'}">${parseFloat(d.operating_margin)>20?'● Strong':parseFloat(d.operating_margin)>10?'● OK':'● Weak'}</span></td>
 <td style="font-size:12px;line-height:1.7">${d.operating_margin}% ops margin. ${parseFloat(d.operating_margin)>20?'Efficient.':'Room to improve.'}</td></tr>`:''}
 ${(d.roe&&d.roe!=='N/A'&&parseFloat(d.roe)!==0)?`<tr><td><strong>ROE</strong><br><span style="font-size:10px;color:var(--text3)">Return on Equity</span></td><td style="font-family:var(--mono);font-weight:700;font-size:16px">${d.roe}%</td>
-<td><span class="sig ${parseFloat(d.roe)>15?'g':'n'}">${parseFloat(d.roe)>15?'\\u25CF High':'\\u25CF Moderate'}</span></td>
+<td><span class="sig ${parseFloat(d.roe)>15?'g':'n'}">${parseFloat(d.roe)>15?'● High':'● Moderate'}</span></td>
 <td style="font-size:12px;line-height:1.7">${d.roe}% return on equity. ${parseFloat(d.roe)>15?'Capital-efficient.':'Average.'}</td></tr>`:''}
 ${(d.dividend_yield&&d.dividend_yield!=='N/A'&&parseFloat(d.dividend_yield)>=0)?`<tr><td><strong>Dividend Yield</strong><br><span style="font-size:10px;color:var(--text3)">Annual income</span></td><td style="font-family:var(--mono);font-weight:700;font-size:16px">${d.dividend_yield}%</td>
-<td><span class="sig ${parseFloat(d.dividend_yield)>3?'g':parseFloat(d.dividend_yield)>1?'n':'c'}">${parseFloat(d.dividend_yield)>3?'\\u25CF High Income':parseFloat(d.dividend_yield)>1?'\\u25CF Some Income':'\\u25CF Growth Focus'}</span></td>
+<td><span class="sig ${parseFloat(d.dividend_yield)>3?'g':parseFloat(d.dividend_yield)>1?'n':'c'}">${parseFloat(d.dividend_yield)>3?'● High Income':parseFloat(d.dividend_yield)>1?'● Some Income':'● Growth Focus'}</span></td>
 <td style="font-size:12px;line-height:1.7">${parseFloat(d.dividend_yield)>3?d.dividend_yield+'% yield. Solid income.':parseFloat(d.dividend_yield)>1?d.dividend_yield+'% yield + growth.':'Reinvests for growth.'}</td></tr>`:''}
 </table>
-${(d.pe_ratio&&d.pe_ratio!=='N/A'&&pe>0)?`<div style="margin-top:14px;padding:14px;border-radius:8px;background:rgba(59,130,246,.04);border:1px solid rgba(0,120,212,.12)">
-<p style="font-size:13px;color:var(--text2);line-height:1.7"><strong style="color:var(--blue)">\\u25CF Bottom Line:</strong> ${pe<20?'Fair or discounted. Could be a smart entry.':'Growth premium. Fine IF the company delivers.'}</p></div>`:''}
+<div style="margin-top:14px;padding:14px;border-radius:10px;background:linear-gradient(135deg,rgba(59,130,246,.05),rgba(16,185,129,.03));border:1px solid rgba(0,120,212,.12)">
+<div style="font-size:12px;font-weight:700;color:var(--blue);margin-bottom:6px">💡 Valuation Summary</div>
+<div style="font-size:11px;color:var(--text2);line-height:1.8">
+${pe>0&&pe<15?'<strong style="color:var(--green)">Stock looks undervalued.</strong> You\'re paying less per rupee of earnings than most companies. If fundamentals are solid, this could be a steal.'
+:pe>=15&&pe<25?'<strong style="color:var(--blue)">Fairly valued.</strong> The market is pricing this stock reasonably. Not a bargain, but not overpriced either. Good entry if you believe in the company\'s growth story.'
+:pe>=25&&pe<40?'<strong style="color:var(--amber)">Premium pricing.</strong> The market expects strong growth from this company. If earnings disappoint even slightly, the stock could drop fast.'
+:pe>=40?'<strong style="color:var(--red)">Very expensive.</strong> You\'re paying a steep price for future growth that hasn\'t been proven yet. High risk of correction.'
+:'Check the P/E ratio to understand valuation.'}
+${parseFloat(d.profit_margin)>15&&pe<25?' High profitability at a fair price — the best combination.':''}
+${parseFloat(d.roe)>20?' Strong returns on equity suggest efficient management.':''}
+${parseFloat(d.pb_ratio)>0&&parseFloat(d.pb_ratio)<1?' Trading below book value — either a bargain or the market sees problems ahead.':''}
+${parseFloat(d.dividend_yield)>3?' Generous dividend — good for income-seeking investors.':''}
+</div>
+</div>
 </div></div>
 
 <!-- ENTRY & EXIT — Multi-Factor Technical -->
-<div class="sc" data-tab="quick" style="border-left:3px solid var(--purple)"><div class="sh"><div class="si" style="background:rgba(139,92,246,.1)">\u2B21</div><div class="st" style="color:var(--purple)" id="sec-entry">Entry &amp; Exit Levels</div></div>
+<div class="sc" data-tab="quick" style="border-left:3px solid var(--purple)"><div class="sh"><div class="si" style="background:rgba(139,92,246,.1)">⬡</div><div class="st" style="color:var(--purple)" id="sec-entry">Entry &amp; Exit Levels</div></div>
 <div class="sbody">
 <div style="font-size:10px;color:var(--text3);margin-bottom:10px">Levels computed from multiple technical factors including trend, momentum, volatility, and price history. Updated with live data.</div>
 <table class="dt"><tr><th>Action</th><th>Price</th><th>Why This Level</th><th>What To Do</th></tr>
-<tr><td style="font-weight:700;color:var(--green)">\u25CF Buy Zone</td><td><span class="ptag buy">${curr}${(()=>{const e50=n(d.ema_50),s200=n(d.sma_200),fib=d.week52_low+(d.week52_high-d.week52_low)*0.382;const best=e50?Math.min(e50,fib,price*0.93):Math.min(fib,price*0.93);return best.toFixed(2)})()}</span></td><td style="font-size:11px">Strong support zone</td><td style="font-size:12px">${vResult.verdict.includes('BUY')?'Accumulate aggressively at this level':'Start building position here'}</td></tr>
-<tr><td style="font-weight:700;color:var(--cyan)">\u25CF Accumulate</td><td><span class="ptag buy">${curr}${(()=>{const e21=n(d.ema_21),s50=n(d.sma_50),fib=d.week52_low+(d.week52_high-d.week52_low)*0.5;const best=e21?Math.min(e21,price*0.96):Math.min(fib,price*0.96);return best.toFixed(2)})()}</span></td><td style="font-size:11px">Key demand area</td><td style="font-size:12px">Add on dips to this level</td></tr>
-<tr><td style="font-weight:700">\u25CF Current</td><td><span class="ptag cur">${curr}${price.toLocaleString()}</span></td><td style="font-size:11px">Live price</td><td style="font-size:12px">${vResult.verdict}</td></tr>
-<tr><td style="font-weight:700;color:var(--amber)">\u25CF Target 1</td><td><span class="ptag pro">${curr}${(()=>{const e9=n(d.ema_9),fib=d.week52_low+(d.week52_high-d.week52_low)*0.786;const up=n(d.beta)>1.3?price*1.12:price*1.08;const best=e9&&e9>price?Math.max(e9,up):Math.min(fib,up);return Math.max(best,price*1.05).toFixed(2)})()}</span></td><td style="font-size:11px">Near-term resistance</td><td style="font-size:12px">Book 30\u201350% of position</td></tr>
-<tr><td style="font-weight:700;color:var(--amber)">\u25CF Target 2</td><td><span class="ptag pro">${curr}${(()=>{const ext=d.week52_low+(d.week52_high-d.week52_low)*1.272;const alt=Math.max(d.week52_high*0.97,price*1.18);return Math.min(ext,alt).toFixed(2)})()}</span></td><td style="font-size:11px">Potential breakout level</td><td style="font-size:12px">Exit remaining profits</td></tr>
-<tr><td style="font-weight:700;color:var(--red)">\u25CF Stop Loss</td><td><span class="ptag stp">${curr}${(()=>{const e50=n(d.ema_50),s200=n(d.sma_200),fib=d.week52_low+(d.week52_high-d.week52_low)*0.236;const anchor=e50||s200||price;const best=Math.min(anchor*0.95,fib,price*0.88);return Math.max(best,d.week52_low*1.02).toFixed(2)})()}</span></td><td style="font-size:11px">Below key floor</td><td style="font-size:12px">Strict exit \u2014 protect capital</td></tr>
+<tr><td style="font-weight:700;color:var(--green)">● Buy Zone</td><td><span class="ptag buy">${curr}${(()=>{const e50=n(d.ema_50),s200=n(d.sma_200),fib=d.week52_low+(d.week52_high-d.week52_low)*0.382;const best=e50?Math.min(e50,fib,price*0.93):Math.min(fib,price*0.93);return best.toFixed(2)})()}</span></td><td style="font-size:11px">Strong support zone</td><td style="font-size:12px">${vResult.verdict.includes('BUY')?'Accumulate aggressively at this level':'Start building position here'}</td></tr>
+<tr><td style="font-weight:700;color:var(--cyan)">● Accumulate</td><td><span class="ptag buy">${curr}${(()=>{const e21=n(d.ema_21),s50=n(d.sma_50),fib=d.week52_low+(d.week52_high-d.week52_low)*0.5;const best=e21?Math.min(e21,price*0.96):Math.min(fib,price*0.96);return best.toFixed(2)})()}</span></td><td style="font-size:11px">Key demand area</td><td style="font-size:12px">Add on dips to this level</td></tr>
+<tr><td style="font-weight:700">● Current</td><td><span class="ptag cur">${curr}${price.toLocaleString()}</span></td><td style="font-size:11px">Live price</td><td style="font-size:12px">${vResult.verdict}</td></tr>
+<tr><td style="font-weight:700;color:var(--amber)">● Target 1</td><td><span class="ptag pro">${curr}${(()=>{const e9=n(d.ema_9),fib=d.week52_low+(d.week52_high-d.week52_low)*0.786;const up=n(d.beta)>1.3?price*1.12:price*1.08;const best=e9&&e9>price?Math.max(e9,up):Math.min(fib,up);return Math.max(best,price*1.05).toFixed(2)})()}</span></td><td style="font-size:11px">Near-term resistance</td><td style="font-size:12px">Book 30–50% of position</td></tr>
+<tr><td style="font-weight:700;color:var(--amber)">● Target 2</td><td><span class="ptag pro">${curr}${(()=>{const ext=d.week52_low+(d.week52_high-d.week52_low)*1.272;const alt=Math.max(d.week52_high*0.97,price*1.18);return Math.min(ext,alt).toFixed(2)})()}</span></td><td style="font-size:11px">Potential breakout level</td><td style="font-size:12px">Exit remaining profits</td></tr>
+<tr><td style="font-weight:700;color:var(--red)">● Stop Loss</td><td><span class="ptag stp">${curr}${(()=>{const e50=n(d.ema_50),s200=n(d.sma_200),fib=d.week52_low+(d.week52_high-d.week52_low)*0.236;const anchor=e50||s200||price;const best=Math.min(anchor*0.95,fib,price*0.88);return Math.max(best,d.week52_low*1.02).toFixed(2)})()}</span></td><td style="font-size:11px">Below key floor</td><td style="font-size:12px">Strict exit — protect capital</td></tr>
 </table>
 <div style="margin-top:12px;padding:10px 14px;border-radius:8px;background:linear-gradient(135deg,rgba(139,92,246,.04),rgba(59,130,246,.04));border:1px solid rgba(139,92,246,.1)">
 <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
@@ -1629,7 +1660,7 @@ ${(d.pe_ratio&&d.pe_ratio!=='N/A'&&pe>0)?`<div style="margin-top:14px;padding:14
 <div style="font-size:11px;color:var(--text2);line-height:1.7">
 <strong style="color:var(--green)">Buy Zone</strong> = best price to enter a fresh position. <strong style="color:var(--cyan)">Accumulate</strong> = add more if you already hold.
 <strong style="color:var(--amber)">Targets</strong> = where to book profits in stages. <strong style="color:var(--red)">Stop Loss</strong> = exit if price falls here to limit damage.
-${n(d.beta)>1.3?' This stock has higher-than-average volatility \u2014 use wider stops and smaller position sizes.':n(d.beta)<0.7?' This stock is relatively stable \u2014 levels are tighter than usual.':''}
+${n(d.beta)>1.3?' This stock has higher-than-average volatility — use wider stops and smaller position sizes.':n(d.beta)<0.7?' This stock is relatively stable — levels are tighter than usual.':''}
 </div>
 </div>
 </div></div>
@@ -1640,15 +1671,26 @@ ${n(d.beta)>1.3?' This stock has higher-than-average volatility \u2014 use wider
 <table class="dt"><tr><th>Factor</th><th>Metric</th><th>Signal</th><th>Assessment</th></tr>
 ${(d.debt_to_equity&&d.debt_to_equity!=='N/A'&&parseFloat(d.debt_to_equity)>0)?`<tr><td>Debt Level</td><td style="font-family:var(--mono);font-weight:600">${d.debt_to_equity}</td>
 <td><span class="sig ${parseFloat(d.debt_to_equity)>1.5?'r':parseFloat(d.debt_to_equity)>0.8?'c':'g'}">${parseFloat(d.debt_to_equity)>1.5?'High':parseFloat(d.debt_to_equity)>0.8?'Moderate':'Low'}</span></td>
-<td style="font-size:12px">${parseFloat(d.debt_to_equity)>1.5?'High leverage \u2014 watch carefully':parseFloat(d.debt_to_equity)>0.8?'Moderate \u2014 manageable':'Conservative \u2014 low risk'}</td></tr>`:''}
+<td style="font-size:12px">${parseFloat(d.debt_to_equity)>1.5?'High leverage — watch carefully':parseFloat(d.debt_to_equity)>0.8?'Moderate — manageable':'Conservative — low risk'}</td></tr>`:''}
 ${(d.current_ratio&&d.current_ratio!=='N/A'&&parseFloat(d.current_ratio)>0)?`<tr><td>Liquidity</td><td style="font-family:var(--mono);font-weight:600">${d.current_ratio}</td>
 <td><span class="sig ${parseFloat(d.current_ratio)>1.5?'g':parseFloat(d.current_ratio)>1?'c':'r'}">${parseFloat(d.current_ratio)>1.5?'Strong':parseFloat(d.current_ratio)>1?'Adequate':'Weak'}</span></td>
 <td style="font-size:12px">${parseFloat(d.current_ratio)>1.5?'Can meet obligations easily':parseFloat(d.current_ratio)>1?'Tight but OK':'Liquidity concerns'}</td></tr>`:''}
 ${(d.beta&&d.beta!=='N/A'&&parseFloat(d.beta)!==0)?`<tr><td>Volatility</td><td style="font-family:var(--mono);font-weight:600">${d.beta}</td>
 <td><span class="sig ${Math.abs(parseFloat(d.beta))>1.5?'r':Math.abs(parseFloat(d.beta))<0.8?'g':'n'}">${Math.abs(parseFloat(d.beta))>1.5?'High':Math.abs(parseFloat(d.beta))<0.8?'Low':'Average'}</span></td>
-<td style="font-size:12px">${Math.abs(parseFloat(d.beta))>1.5?'Expect bigger price swings':Math.abs(parseFloat(d.beta))<0.8?'Less volatile \u2014 defensive':'Average volatility'}</td></tr>`:''}
+<td style="font-size:12px">${Math.abs(parseFloat(d.beta))>1.5?'Expect bigger price swings':Math.abs(parseFloat(d.beta))<0.8?'Less volatile — defensive':'Average volatility'}</td></tr>`:''}
 ${(d.sector&&d.sector!=='N/A')?`<tr><td>Sector</td><td>${d.sector}</td><td><span class="sig n">Monitor</span></td><td style="font-size:12px">Track trends &amp; regulation</td></tr>`:''}
-</table></div></div>
+</table>
+<div style="margin-top:12px;padding:12px 16px;border-radius:10px;background:linear-gradient(135deg,rgba(239,68,68,.05),rgba(245,158,11,.03));border:1px solid rgba(239,68,68,.1)">
+<div style="font-size:12px;font-weight:700;color:var(--red);margin-bottom:6px">⚠️ Risk Summary</div>
+<div style="font-size:11px;color:var(--text2);line-height:1.8">
+${parseFloat(d.debt_to_equity)>1.5&&parseFloat(d.current_ratio)<1?'<strong style="color:var(--red)">High risk</strong> — heavy debt AND weak cash. One bad quarter could create serious trouble.'
+:parseFloat(d.debt_to_equity)>1.5?'<strong style="color:var(--amber)">Elevated debt</strong> — if interest rates rise or business slows, this stock will feel the pain first.'
+:parseFloat(d.current_ratio)<1?'<strong style="color:var(--amber)">Cash is tight</strong> — the company may struggle to pay short-term bills. Watch quarterly results closely.'
+:'<strong style="color:var(--green)">Manageable risk</strong> — reasonable debt and enough cash to operate. No immediate red flags.'}
+${Math.abs(parseFloat(d.beta))>1.5?' Expect <strong>bigger daily swings</strong> than the overall market.':''}
+</div>
+</div>
+</div></div>
 
 <!-- CHARTS (Summary — hidden until sub-tab click) -->
 <div class="sc" data-tab="quick" style="border-left:3px solid var(--cyan)" id="chartsCard">
@@ -1677,11 +1719,11 @@ ${(d.sector&&d.sector!=='N/A')?`<tr><td>Sector</td><td>${d.sector}</td><td><span
 <a onclick="scrollToSec('sec-ai')">&#128196; Full AI Report</a>
 </div>
 
-<div class="sc" data-tab="deep" style="border-left:3px solid var(--blue)"><div class="sh"><div class="si" style="background:rgba(0,120,212,.12)">\uD83C\uDF93</div><div class="st" style="color:var(--blue)" id="sec-verdictai">AI Verdict Breakdown \u2014 Green, Yellow & Red</div></div>
+<div class="sc" data-tab="deep" style="border-left:3px solid var(--blue)"><div class="sh"><div class="si" style="background:rgba(0,120,212,.12)">🎓</div><div class="st" style="color:var(--blue)" id="sec-verdictai">AI Verdict Breakdown — Green, Yellow & Red</div></div>
 <div class="sbody"><div id="aiAnalysisFormatted"></div></div></div>
 
 <!-- Full AI Report -->
-<div class="sc" data-tab="deep" style="border-left:3px solid var(--blue)"><div class="sh"><div class="si" style="background:rgba(0,120,212,.12)">&#9889;</div><div class="st" style="color:var(--blue)" id="sec-ai">AI Analyst Report \u2014 Full Depth</div></div>
+<div class="sc" data-tab="deep" style="border-left:3px solid var(--blue)"><div class="sh"><div class="si" style="background:rgba(0,120,212,.12)">&#9889;</div><div class="st" style="color:var(--blue)" id="sec-ai">AI Analyst Report — Full Depth</div></div>
 <div class="sbody">
 <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:16px">
 <div style="padding:10px;border-radius:8px;background:rgba(16,185,129,.06);border:1px solid rgba(16,185,129,.15);text-align:center">
@@ -1730,7 +1772,7 @@ ${(d.sector&&d.sector!=='N/A')?`<tr><td>Sector</td><td>${d.sector}</td><td><span
 
 
 <!-- Management Tone -->
-<div class="sc" data-tab="mgmt" style="border-left:3px solid var(--purple)"><div class="sh"><div class="si" style="background:rgba(168,85,247,.1)">&#127908;</div><div class="st" style="color:var(--purple)" id="sec-mgmt">Management Tone \u2014 Read Between the Lines</div></div>
+<div class="sc" data-tab="mgmt" style="border-left:3px solid var(--purple)"><div class="sh"><div class="si" style="background:rgba(168,85,247,.1)">&#127908;</div><div class="st" style="color:var(--purple)" id="sec-mgmt">Management Tone — Read Between the Lines</div></div>
 <div class="sbody">
 <div id="mgmtContent"><div class="ic pu" style="text-align:center"><p style="color:var(--text3)">&#9203; Analyzing management tone...</p></div></div>
 </div></div>
@@ -1742,7 +1784,7 @@ ${(d.sector&&d.sector!=='N/A')?`<tr><td>Sector</td><td>${d.sector}</td><td><span
 </div></div>
 
 <!-- ═══ TAB: FORECAST ═══ -->
-<div class="sc" data-tab="next" style="border-left:3px solid var(--cyan)"><div class="sh"><div class="si" style="background:rgba(6,182,212,.1)">&#128302;</div><div class="st" style="color:var(--cyan)" id="sec-next">What's Next \u2014 Catalysts &amp; Timeline</div></div>
+<div class="sc" data-tab="next" style="border-left:3px solid var(--cyan)"><div class="sh"><div class="si" style="background:rgba(6,182,212,.1)">&#128302;</div><div class="st" style="color:var(--cyan)" id="sec-next">What's Next — Catalysts &amp; Timeline</div></div>
 <div class="sbody">
 <div id="whatsNextContent"><div class="ic bl" style="text-align:center"><p style="color:var(--text3)">&#9203; Analyzing upcoming catalysts...</p></div></div>
 </div></div>
@@ -1750,7 +1792,7 @@ ${(d.sector&&d.sector!=='N/A')?`<tr><td>Sector</td><td>${d.sector}</td><td><span
 
 <!-- ═══ TAB: GEMS ═══ -->
 
-<div class="sc" data-tab="gems" style="border-left:3px solid var(--amber)"><div class="sh"><div class="si" style="background:rgba(245,158,11,.1)">\u2B50</div><div class="st" style="color:var(--amber)" id="sec-gems">Sector Gems \u2014 10x Small-Caps in <span id="gemsSectorName"></span></div></div>
+<div class="sc" data-tab="gems" style="border-left:3px solid var(--amber)"><div class="sh"><div class="si" style="background:rgba(245,158,11,.1)">⭐</div><div class="st" style="color:var(--amber)" id="sec-gems">Sector Gems — 10x Small-Caps in <span id="gemsSectorName"></span></div></div>
 <div class="sbody">
 <div style="padding:10px 14px;border-radius:8px;background:linear-gradient(135deg,rgba(245,158,11,.06),rgba(212,138,0,.03));border:1px solid rgba(245,158,11,.15);margin-bottom:14px">
 <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
@@ -1760,7 +1802,7 @@ ${(d.sector&&d.sector!=='N/A')?`<tr><td>Sector</td><td>${d.sector}</td><td><span
 <p style="font-size:11px;color:var(--text2);line-height:1.6;margin:0">You searched <strong id="gemsTickerRef" style="color:var(--amber)"></strong>. These are under-the-radar small-caps in the <strong id="smallCapSector" style="color:var(--amber)">${d.sector}</strong> sector that share similar tailwinds but with 10-50x growth potential. We match by sector, geography, and growth thesis.</p>
 </div>
 <div id="smallCapTable"></div>
-<div class="ic am" style="margin-top:14px"><p><strong>\u26A0\uFE0F Real talk:</strong> Small-caps = high risk, high reward. Same sector as <strong id="smallCapTicker">${d.ticker}</strong>. Only invest what you can lose. Spread across 5\u20138 picks. Think 10+ years. These are NOT recommendations \u2014 do your own research.</p></div>
+<div class="ic am" style="margin-top:14px"><p><strong>⚠️ Real talk:</strong> Small-caps = high risk, high reward. Same sector as <strong id="smallCapTicker">${d.ticker}</strong>. Only invest what you can lose. Spread across 5–8 picks. Think 10+ years. These are NOT recommendations — do your own research.</p></div>
 </div></div>
 
 <!-- ═══ TAB: PICKS ═══ -->
@@ -1773,7 +1815,7 @@ ${(d.sector&&d.sector!=='N/A')?`<tr><td>Sector</td><td>${d.sector}</td><td><span
 
 <!-- PICKS: Portfolio Decision Engine — toggle panel -->
 <!-- PICKS SUB-TAB 2: Conviction Leaderboard -->
-<div class="sc" data-tab="picks" style="border-left:3px solid var(--teal,#0d9488)"><div class="sh"><div class="si" style="background:rgba(13,148,136,.1)">&#127942;</div><div class="st" style="color:#0d9488" id="sec-conviction">Conviction Leaderboard \u2014 Top 5 by Country</div></div>
+<div class="sc" data-tab="picks" style="border-left:3px solid var(--teal,#0d9488)"><div class="sh"><div class="si" style="background:rgba(13,148,136,.1)">&#127942;</div><div class="st" style="color:#0d9488" id="sec-conviction">Conviction Leaderboard — Top 5 by Country</div></div>
 <div class="sbody">
 <div id="convictionLeaderboard">
 <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px" id="convGeoTabs">
@@ -1785,7 +1827,7 @@ ${(d.sector&&d.sector!=='N/A')?`<tr><td>Sector</td><td>${d.sector}</td><td><span
 </div></div>
 
 <!-- PICKS SUB-TAB 3: Curated Stock Picks -->
-<div class="sc" data-tab="picks" style="border-left:3px solid var(--purple)"><div class="sh"><div class="si" style="background:rgba(139,92,246,.1)">&#128161;</div><div class="st" style="color:var(--purple)" id="sec-stockpicks">Curated Stock Picks \u2014 Sector-Based</div></div>
+<div class="sc" data-tab="picks" style="border-left:3px solid var(--purple)"><div class="sh"><div class="si" style="background:rgba(139,92,246,.1)">&#128161;</div><div class="st" style="color:var(--purple)" id="sec-stockpicks">Curated Stock Picks — Sector-Based</div></div>
 <div class="sbody">
 <div id="stockPicksSection">
 <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px" id="pickTabs">
@@ -1809,7 +1851,7 @@ ${(d.sector&&d.sector!=='N/A')?`<tr><td>Sector</td><td>${d.sector}</td><td><span
 <span style="font-family:'Sora',sans-serif;font-size:13px;font-weight:800;color:var(--blue)">Portfolio Decision Engine</span>
 <span style="font-size:9px;color:var(--text3);padding:2px 6px;border-radius:4px;background:var(--surface);border:1px solid var(--border)">Multi-Factor Algorithm</span>
 </div>
-<div style="font-size:10px;color:var(--text3);margin-bottom:12px">Enter your stock &amp; buy price \u2014 get a data-driven HOLD / SELL / ADD decision with probability across 3, 6, 12-month horizons.</div>
+<div style="font-size:10px;color:var(--text3);margin-bottom:12px">Enter your stock &amp; buy price — get a data-driven HOLD / SELL / ADD decision with probability across 3, 6, 12-month horizons.</div>
 <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap">
 <div style="flex:1;min-width:140px"><label style="font-size:9px;color:var(--text3);display:block;margin-bottom:3px">TICKER (e.g. RELIANCE.NS, AAPL)</label>
 <input type="text" id="pdTicker" placeholder="RELIANCE.NS" style="width:100%;padding:8px 12px;border-radius:6px;border:1px solid var(--border);background:#f0f2f5;color:var(--text);font-family:var(--mono);font-size:13px;font-weight:700"></div>
@@ -1831,11 +1873,11 @@ ${(d.sector&&d.sector!=='N/A')?`<tr><td>Sector</td><td>${d.sector}</td><td><span
 </div></div>
 
 <!-- ═══ TAB: ETF & FUNDS ═══ -->
-<div class="sc" data-tab="funds" style="border-left:3px solid var(--green)"><div class="sh"><div class="si" style="background:rgba(16,185,129,.1)">&#128176;</div><div class="st" style="color:var(--green)" id="sec-etf">ETF &amp; Funds \u2014 25%+ CAGR Compounders</div></div>
+<div class="sc" data-tab="funds" style="border-left:3px solid var(--green)"><div class="sh"><div class="si" style="background:rgba(16,185,129,.1)">&#128176;</div><div class="st" style="color:var(--green)" id="sec-etf">ETF &amp; Funds — 25%+ CAGR Compounders</div></div>
 <div class="sbody">
 <div style="padding:10px 14px;border-radius:8px;background:rgba(16,185,129,.04);border:1px solid rgba(16,185,129,.1);margin-bottom:14px">
 <div style="font-family:'Sora',sans-serif;font-size:10px;font-weight:700;color:var(--green);letter-spacing:.5px;margin-bottom:6px">SELECTION CRITERIA</div>
-<div style="font-size:10px;color:var(--text2);line-height:1.6">Only funds with <strong style="color:var(--green)">25%+ CAGR</strong> over 5-year AND/OR 10-year periods. Correction resilience scored on max drawdown + recovery speed during COVID (Mar 2020), 2022 bear market, and Oct 2023 correction. <strong style="color:var(--amber)">SIP-friendly picks</strong> \u2014 designed for long-term wealth building, not trading.</div>
+<div style="font-size:10px;color:var(--text2);line-height:1.6">Only funds with <strong style="color:var(--green)">25%+ CAGR</strong> over 5-year AND/OR 10-year periods. Correction resilience scored on max drawdown + recovery speed during COVID (Mar 2020), 2022 bear market, and Oct 2023 correction. <strong style="color:var(--amber)">SIP-friendly picks</strong> — designed for long-term wealth building, not trading.</div>
 </div>
 <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px" id="fundTabs">
 <button class="ptab active" onclick="showFundCat(this,'etf_in')">&#127470;&#127475; India ETFs</button>
@@ -1991,8 +2033,8 @@ const realHist=d.price_history&&d.price_history.length>=2?d.price_history:null;
 const trend=realHist||[];
 if(!realHist){for(let i=6;i>=0;i--)trend.push(price*(1+(Math.random()-.5)*.12*i/6))}
 const trendLabels=realHist?trend.map((_,i)=>i===trend.length-1?'Today':i===0?`${trend.length-1}M Ago`:`${trend.length-1-i}M`):['6M Ago','5M','4M','3M','2M','1M','Today'];
-const curr=d.currency==='INR'?'\u20B9':'$';
-trendChart=new Chart(document.getElementById('trendChart').getContext('2d'),{type:'line',data:{labels:trendLabels,datasets:[{data:trend,borderColor:'#3b82f6',backgroundColor:'rgba(59,130,246,.06)',fill:true,tension:.4,borderWidth:2.5,pointBackgroundColor:'#3b82f6',pointBorderColor:'#ffffff',pointBorderWidth:2,pointRadius:4,pointHoverRadius:8,pointHoverBackgroundColor:'#fff',pointHoverBorderColor:'#3b82f6',pointHoverBorderWidth:3}]},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},plugins:{legend:{display:false},tooltip:{...ttBase,callbacks:{title:function(c){return 'Price \u2014 '+c[0].label},label:function(c){const p=c.raw;const diff=p-price;const pct=((p/price-1)*100).toFixed(1);return['Price: '+curr+p.toFixed(2),'vs Today: '+(diff>=0?'+':'')+pct+'%','','Hover each point to track the price journey'].join('\n')}}}},scales:{y:{grid:{color:gc},ticks:{callback:function(v){return curr+v.toFixed(0)}}},x:{grid:{display:false}}}}});
+const curr=d.currency==='INR'?'₹':'$';
+trendChart=new Chart(document.getElementById('trendChart').getContext('2d'),{type:'line',data:{labels:trendLabels,datasets:[{data:trend,borderColor:'#3b82f6',backgroundColor:'rgba(59,130,246,.06)',fill:true,tension:.4,borderWidth:2.5,pointBackgroundColor:'#3b82f6',pointBorderColor:'#ffffff',pointBorderWidth:2,pointRadius:4,pointHoverRadius:8,pointHoverBackgroundColor:'#fff',pointHoverBorderColor:'#3b82f6',pointHoverBorderWidth:3}]},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},plugins:{legend:{display:false},tooltip:{...ttBase,callbacks:{title:function(c){return 'Price — '+c[0].label},label:function(c){const p=c.raw;const diff=p-price;const pct=((p/price-1)*100).toFixed(1);return['Price: '+curr+p.toFixed(2),'vs Today: '+(diff>=0?'+':'')+pct+'%','','Hover each point to track the price journey'].join('\n')}}}},scales:{y:{grid:{color:gc},ticks:{callback:function(v){return curr+v.toFixed(0)}}},x:{grid:{display:false}}}}});
 
 // 5. Margin Comparison
 if(hasHealth){
@@ -2007,7 +2049,7 @@ if(vI&&pe>0){
 const peVerdict=pe<15?'<strong style="color:var(--green)">undervalued</strong> — below 15x earnings':pe<25?'<strong style="color:var(--blue)">fairly valued</strong> — reasonable multiple':'<strong style="color:var(--amber)">premium priced</strong> — market expects high growth';
 const pbVerdict=pb<2?'Book value supports the price.':pb<5?'Moderate premium over book value.':'High premium — mostly intangible value.';
 const dyVerdict=dy>3?'Strong dividend income.':dy>1?'Modest income + growth.':'Growth stock — reinvests profits.';
-const curr=d.currency==='INR'?'\u20B9':'$';
+const curr=d.currency==='INR'?'₹':'$';
 let ivHtml='';
 const iv=d.intrinsic;
 if(iv){
@@ -2105,7 +2147,7 @@ function gemsTable(data,label){
 let t=`<div style="margin-bottom:14px"><div style="font-family:'Sora',sans-serif;font-size:11px;font-weight:700;color:var(--amber);margin-bottom:6px">${label}</div>`;
 t+=`<table class="dt"><tr><th>Company</th><th>Focus</th><th>Strengths</th><th>Rating</th><th>Potential</th></tr>`;
 data.forEach(c=>{const clr=c.p.includes('Exceptional')||c.p.includes('Very High')?'var(--green)':'var(--amber)';
-const stars='\u2605'.repeat(c.r)+'\u2606'.repeat(5-c.r);
+const stars='★'.repeat(c.r)+'☆'.repeat(5-c.r);
 t+=`<tr><td><strong>${c.n}</strong></td><td>${c.s}</td><td style="font-size:12px">${c.k}</td><td style="color:var(--amber);letter-spacing:1px">${stars}</td><td style="color:${clr};font-weight:600;font-size:12px">${c.p}</td></tr>`});
 return t+'</table></div>'}
 document.getElementById('smallCapTable').innerHTML=gemsTable(recs,geo==='India'?'\u{1F1EE}\u{1F1F3} India Picks':'\u{1F1FA}\u{1F1F8} USA Picks')+gemsTable(altRecs,altGeo==='India'?'\u{1F1EE}\u{1F1F3} India Picks':'\u{1F1FA}\u{1F1F8} USA Picks')}
@@ -2123,9 +2165,9 @@ const card=document.getElementById('decisionToolCard');
 const price=d.current_price||0;
 el.style.display='block';
 el.innerHTML=`
-<div class="sh" style="margin-bottom:4px"><div class="si" style="background:rgba(6,182,212,.1)">&#127919;</div><div class="st" style="color:var(--cyan)">What Should I Do? \u2014 Position Analyzer</div></div>
+<div class="sh" style="margin-bottom:4px"><div class="si" style="background:rgba(6,182,212,.1)">&#127919;</div><div class="st" style="color:var(--cyan)">What Should I Do? — Position Analyzer</div></div>
 <div style="padding:10px 16px 14px">
-<div style="font-size:11px;color:var(--text3);margin-bottom:10px">Enter the price you bought this stock at. Our 20-factor algorithm will tell you whether to hold, sell, or accumulate \u2014 and for how long.</div>
+<div style="font-size:11px;color:var(--text3);margin-bottom:10px">Enter the price you bought this stock at. Our 20-factor algorithm will tell you whether to hold, sell, or accumulate — and for how long.</div>
 <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
 <div style="display:flex;align-items:center;gap:6px">
 <span style="font-size:11px;color:var(--text3);font-weight:600">I bought at</span>
@@ -2203,9 +2245,9 @@ score+=valScore;
 
 // Factor 3: 52-Week Position
 let w52Score=0;
-if(w52pct<0.15){w52Score=6;factors.push({f:'Near 52W low ('+Math.round(w52pct*100)+'%) \u2014 deep value zone',s:'+6',c:'g'})}
+if(w52pct<0.15){w52Score=6;factors.push({f:'Near 52W low ('+Math.round(w52pct*100)+'%) — deep value zone',s:'+6',c:'g'})}
 else if(w52pct<0.35){w52Score=3;factors.push({f:'Lower half of 52W range ('+Math.round(w52pct*100)+'%)',s:'+3',c:'g'})}
-else if(w52pct>0.9){w52Score=-4;factors.push({f:'Near 52W high ('+Math.round(w52pct*100)+'%) \u2014 limited upside',s:'-4',c:'r'})}
+else if(w52pct>0.9){w52Score=-4;factors.push({f:'Near 52W high ('+Math.round(w52pct*100)+'%) — limited upside',s:'-4',c:'r'})}
 else if(w52pct>0.75){w52Score=-1;factors.push({f:'Upper range ('+Math.round(w52pct*100)+'%)',s:'-1',c:'a'})}
 else{w52Score=1;factors.push({f:'Mid-range ('+Math.round(w52pct*100)+'%)',s:'+1',c:'b'})}
 score+=w52Score;
@@ -2214,7 +2256,7 @@ score+=w52Score;
 if(pm>20){score+=4;factors.push({f:'Strong margins ('+pm.toFixed(1)+'%)',s:'+4',c:'g'})}
 else if(pm>10){score+=2;factors.push({f:'Decent margins ('+pm.toFixed(1)+'%)',s:'+2',c:'b'})}
 else if(pm>0){score+=0;factors.push({f:'Thin margins ('+pm.toFixed(1)+'%)',s:'0',c:'a'})}
-else if(pm<0){score-=3;factors.push({f:'Negative margins ('+pm.toFixed(1)+'%) \u2014 losing money',s:'-3',c:'r'})}
+else if(pm<0){score-=3;factors.push({f:'Negative margins ('+pm.toFixed(1)+'%) — losing money',s:'-3',c:'r'})}
 
 // Factor 5: Return on Equity
 if(roe>20){score+=3;factors.push({f:'Excellent ROE ('+roe.toFixed(1)+'%)',s:'+3',c:'g'})}
@@ -2226,40 +2268,40 @@ if(dy>4){score+=3;factors.push({f:'High dividend yield ('+dy.toFixed(1)+'%) cush
 else if(dy>2){score+=1;factors.push({f:'Moderate dividend ('+dy.toFixed(1)+'%)',s:'+1',c:'b'})}
 
 // Factor 7: Volatility risk (beta)
-if(beta>1.5){score-=2;factors.push({f:'High volatility (beta '+beta.toFixed(2)+') \u2014 wider swings',s:'-2',c:'r'})}
-else if(beta<0.8){score+=2;factors.push({f:'Low volatility (beta '+beta.toFixed(2)+') \u2014 defensive',s:'+2',c:'g'})}
+if(beta>1.5){score-=2;factors.push({f:'High volatility (beta '+beta.toFixed(2)+') — wider swings',s:'-2',c:'r'})}
+else if(beta<0.8){score+=2;factors.push({f:'Low volatility (beta '+beta.toFixed(2)+') — defensive',s:'+2',c:'g'})}
 
 // Factor 8: P&L-adjusted conviction
-if(pnl>50){score-=2;factors.push({f:'Sitting on '+pnl.toFixed(1)+'% gain \u2014 consider partial booking',s:'-2',c:'a'})}
+if(pnl>50){score-=2;factors.push({f:'Sitting on '+pnl.toFixed(1)+'% gain — consider partial booking',s:'-2',c:'a'})}
 else if(pnl>20){score+=0;factors.push({f:'Healthy gain of '+pnl.toFixed(1)+'%',s:'0',c:'g'})}
-else if(pnl>0){score+=2;factors.push({f:'Small gain of '+pnl.toFixed(1)+'% \u2014 room to grow',s:'+2',c:'g'})}
-else if(pnl>-10){score+=1;factors.push({f:'Minor loss of '+pnl.toFixed(1)+'% \u2014 normal fluctuation',s:'+1',c:'b'})}
-else if(pnl>-25){score+=0;factors.push({f:'Loss of '+pnl.toFixed(1)+'% \u2014 review thesis',s:'0',c:'a'})}
-else{score-=2;factors.push({f:'Deep loss of '+pnl.toFixed(1)+'% \u2014 thesis may be broken',s:'-2',c:'r'})}
+else if(pnl>0){score+=2;factors.push({f:'Small gain of '+pnl.toFixed(1)+'% — room to grow',s:'+2',c:'g'})}
+else if(pnl>-10){score+=1;factors.push({f:'Minor loss of '+pnl.toFixed(1)+'% — normal fluctuation',s:'+1',c:'b'})}
+else if(pnl>-25){score+=0;factors.push({f:'Loss of '+pnl.toFixed(1)+'% — review thesis',s:'0',c:'a'})}
+else{score-=2;factors.push({f:'Deep loss of '+pnl.toFixed(1)+'% — thesis may be broken',s:'-2',c:'r'})}
 
 // ═══ NEW: Factor 9: Earnings Velocity (EPS CAGR + Revenue Growth) ═══
 // Combines forward EPS growth vs trailing + revenue momentum
 const bestEpsG=epsGrowth||earningsGrowth;
 const combGrowth=bestEpsG&&revGrowth?(bestEpsG*0.6+revGrowth*0.4):bestEpsG||revGrowth;
-if(combGrowth>30){score+=5;factors.push({f:'Exceptional growth (EPS '+bestEpsG.toFixed(0)+'% + Rev '+revGrowth.toFixed(0)+'%) \u2014 high CAGR trajectory',s:'+5',c:'g'})}
+if(combGrowth>30){score+=5;factors.push({f:'Exceptional growth (EPS '+bestEpsG.toFixed(0)+'% + Rev '+revGrowth.toFixed(0)+'%) — high CAGR trajectory',s:'+5',c:'g'})}
 else if(combGrowth>15){score+=3;factors.push({f:'Strong growth (EPS '+bestEpsG.toFixed(0)+'% + Rev '+revGrowth.toFixed(0)+'%)',s:'+3',c:'g'})}
 else if(combGrowth>5){score+=1;factors.push({f:'Moderate growth (EPS '+bestEpsG.toFixed(0)+'% + Rev '+revGrowth.toFixed(0)+'%)',s:'+1',c:'b'})}
 else if(combGrowth>0){score+=0;factors.push({f:'Sluggish growth ('+combGrowth.toFixed(0)+'% blended)',s:'0',c:'a'})}
-else if(combGrowth<=-5){score-=3;factors.push({f:'Earnings contracting ('+combGrowth.toFixed(0)+'%) \u2014 thesis at risk',s:'-3',c:'r'})}
+else if(combGrowth<=-5){score-=3;factors.push({f:'Earnings contracting ('+combGrowth.toFixed(0)+'%) — thesis at risk',s:'-3',c:'r'})}
 else if(combGrowth<0){score-=1;factors.push({f:'Slight decline ('+combGrowth.toFixed(0)+'%)',s:'-1',c:'a'})}
 // Forward PE compression check (forward < trailing = earnings accelerating)
-if(fpe>0&&pe>0&&fpe<pe*0.85){score+=2;factors.push({f:'Forward P/E ('+fpe.toFixed(1)+'x) < Trailing ('+pe.toFixed(1)+'x) \u2014 earnings accelerating',s:'+2',c:'g'})}
-else if(fpe>0&&pe>0&&fpe>pe*1.15){score-=1;factors.push({f:'Forward P/E ('+fpe.toFixed(1)+'x) > Trailing ('+pe.toFixed(1)+'x) \u2014 earnings decelerating',s:'-1',c:'r'})}
+if(fpe>0&&pe>0&&fpe<pe*0.85){score+=2;factors.push({f:'Forward P/E ('+fpe.toFixed(1)+'x) < Trailing ('+pe.toFixed(1)+'x) — earnings accelerating',s:'+2',c:'g'})}
+else if(fpe>0&&pe>0&&fpe>pe*1.15){score-=1;factors.push({f:'Forward P/E ('+fpe.toFixed(1)+'x) > Trailing ('+pe.toFixed(1)+'x) — earnings decelerating',s:'-1',c:'r'})}
 
 // ═══ NEW: Factor 10: Relative Valuation (P/E vs Sector Average) ═══
 if(pe>0&&sectorPE>0){
 const peRatio=pe/sectorPE;
 const discount=((sectorPE-pe)/sectorPE*100).toFixed(0);
-if(peRatio<0.6){score+=5;factors.push({f:'P/E '+pe.toFixed(1)+'x is '+Math.abs(discount)+'% below sector avg '+sectorPE+'x \u2014 deep discount',s:'+5',c:'g'})}
-else if(peRatio<0.85){score+=3;factors.push({f:'P/E '+pe.toFixed(1)+'x is '+Math.abs(discount)+'% below sector avg '+sectorPE+'x \u2014 undervalued vs peers',s:'+3',c:'g'})}
+if(peRatio<0.6){score+=5;factors.push({f:'P/E '+pe.toFixed(1)+'x is '+Math.abs(discount)+'% below sector avg '+sectorPE+'x — deep discount',s:'+5',c:'g'})}
+else if(peRatio<0.85){score+=3;factors.push({f:'P/E '+pe.toFixed(1)+'x is '+Math.abs(discount)+'% below sector avg '+sectorPE+'x — undervalued vs peers',s:'+3',c:'g'})}
 else if(peRatio<=1.15){score+=1;factors.push({f:'P/E '+pe.toFixed(1)+'x is in line with sector avg '+sectorPE+'x',s:'+1',c:'b'})}
-else if(peRatio<=1.5){score-=2;factors.push({f:'P/E '+pe.toFixed(1)+'x is '+Math.abs(discount)+'% above sector avg '+sectorPE+'x \u2014 premium priced',s:'-2',c:'a'})}
-else{score-=4;factors.push({f:'P/E '+pe.toFixed(1)+'x is '+Math.abs(discount)+'% above sector avg '+sectorPE+'x \u2014 extremely expensive vs peers',s:'-4',c:'r'})}
+else if(peRatio<=1.5){score-=2;factors.push({f:'P/E '+pe.toFixed(1)+'x is '+Math.abs(discount)+'% above sector avg '+sectorPE+'x — premium priced',s:'-2',c:'a'})}
+else{score-=4;factors.push({f:'P/E '+pe.toFixed(1)+'x is '+Math.abs(discount)+'% above sector avg '+sectorPE+'x — extremely expensive vs peers',s:'-4',c:'r'})}
 }
 
 // ═══ NEW: Factor 11: Technical Momentum (SMA20/SMA50/SMA200 position) ═══
@@ -2270,25 +2312,25 @@ if(price>sma20){techScore+=1;techDetails.push('Above SMA20 ('+sma20.toLocaleStri
 else{techScore-=1;techDetails.push('Below SMA20 ('+sma20.toLocaleString()+')')}
 }
 if(sma200>0){
-if(price>sma200){techScore+=2;techDetails.push('Above SMA200 ('+sma200.toLocaleString()+') \u2014 long-term uptrend')}
-else{techScore-=2;techDetails.push('Below SMA200 ('+sma200.toLocaleString()+') \u2014 long-term downtrend')}
+if(price>sma200){techScore+=2;techDetails.push('Above SMA200 ('+sma200.toLocaleString()+') — long-term uptrend')}
+else{techScore-=2;techDetails.push('Below SMA200 ('+sma200.toLocaleString()+') — long-term downtrend')}
 }
 if(sma20>0&&sma200>0){
-if(sma20>sma200){techScore+=2;techDetails.push('Golden Cross (SMA20 > SMA200) \u2014 bullish')}
-else if(sma20<sma200*0.95){techScore-=2;techDetails.push('Death Cross (SMA20 << SMA200) \u2014 bearish')}
+if(sma20>sma200){techScore+=2;techDetails.push('Golden Cross (SMA20 > SMA200) — bullish')}
+else if(sma20<sma200*0.95){techScore-=2;techDetails.push('Death Cross (SMA20 << SMA200) — bearish')}
 }
 if(sma50>0&&sma200>0){
-if(sma50>sma200&&price>sma50){techScore+=1;techDetails.push('SMA50 > SMA200 with price above both \u2014 strong uptrend')}
+if(sma50>sma200&&price>sma50){techScore+=1;techDetails.push('SMA50 > SMA200 with price above both — strong uptrend')}
 }
 // EMA crossover signals
 const _ema9=n(d.ema_9),_ema21=n(d.ema_21),_ema50=n(d.ema_50);
 if(_ema9>0&&_ema21>0){
-if(_ema9>_ema21){techScore+=1;techDetails.push('EMA9 > EMA21 \u2014 short-term bullish crossover')}
-else{techScore-=1;techDetails.push('EMA9 < EMA21 \u2014 short-term bearish')}
+if(_ema9>_ema21){techScore+=1;techDetails.push('EMA9 > EMA21 — short-term bullish crossover')}
+else{techScore-=1;techDetails.push('EMA9 < EMA21 — short-term bearish')}
 }
 if(_ema21>0&&_ema50>0){
-if(_ema21>_ema50){techScore+=1;techDetails.push('EMA21 > EMA50 \u2014 medium-term uptrend')}
-else{techScore-=1;techDetails.push('EMA21 < EMA50 \u2014 medium-term downtrend')}
+if(_ema21>_ema50){techScore+=1;techDetails.push('EMA21 > EMA50 — medium-term uptrend')}
+else{techScore-=1;techDetails.push('EMA21 < EMA50 — medium-term downtrend')}
 }
 // Cap tech score
 techScore=Math.max(-6,Math.min(6,techScore));
@@ -2305,7 +2347,7 @@ let decision,decCol,decBg,timeline,probability,reasoning,action;
 if(score>=18){
 decision='STRONG HOLD';decCol='#10b981';decBg='rgba(16,185,129,.1)';
 timeline='12-24 months';probability=Math.min(95,78+Math.floor(score/2));
-reasoning='Exceptional across all 11 factors \u2014 valuation, growth, momentum, and technicals all align. This stock has serious compounding potential.';
+reasoning='Exceptional across all 11 factors — valuation, growth, momentum, and technicals all align. This stock has serious compounding potential.';
 action=pnl<0?'Average down aggressively on any 5-10% dip. Every factor supports this being a long-term winner.':'Hold your entire position. Consider adding on 10%+ corrections. This is a compounder.';
 }else if(score>=12){
 decision='HOLD & ACCUMULATE';decCol='#10b981';decBg='rgba(16,185,129,.08)';
@@ -2406,7 +2448,7 @@ h+=`<span style="font-size:9px;padding:3px 8px;border-radius:4px;background:${fb
 });
 h+=`</div>`;
 
-h+=`<div style="margin-top:8px;font-size:9px;color:var(--text3)">This is algorithmic analysis based on current fundamentals, not financial advice. Market conditions change \u2014 reassess after major events or quarterly results. Consult your financial advisor.</div>`;
+h+=`<div style="margin-top:8px;font-size:9px;color:var(--text3)">This is algorithmic analysis based on current fundamentals, not financial advice. Market conditions change — reassess after major events or quarterly results. Consult your financial advisor.</div>`;
 h+=`</div></div>`; // close inner z-index wrapper + outer container
 el.innerHTML=h;
 // Generate watermark grid in decision result
@@ -2870,8 +2912,8 @@ html+=`<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;pa
 });
 html+=`</div>`;
 }
-renderHolders(fundData.institutions,'TOP INSTITUTIONAL HOLDERS','\ud83c\udfe6','var(--blue)');
-renderHolders(fundData.funds,'TOP MUTUAL FUND HOLDERS','\ud83d\udcbc','var(--purple)');
+renderHolders(fundData.institutions,'TOP INSTITUTIONAL HOLDERS','🏦','var(--blue)');
+renderHolders(fundData.funds,'TOP MUTUAL FUND HOLDERS','💼','var(--purple)');
 }
 
 // AI text fallback for smart money analysis
@@ -2884,7 +2926,7 @@ for(let i=1;i<pts.length;i+=2){
 const hd=(pts[i]||'').replace(/[:*]/g,'').trim();
 const ct=(pts[i+1]||'').replace(/^\s*[:]\s*/,'').trim().split('\n').filter(l=>l.trim().length>5).join(' ').trim();
 if(hd&&ct&&ct.length>10&&/smart money|what smart/i.test(hd)){
-html+=`<div style="border-left:4px solid rgba(59,130,246,.3);border-radius:10px;padding:14px 16px;margin-bottom:10px;background:rgba(59,130,246,.04)"><div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><span style="font-size:16px">\ud83e\udde0</span><span style="font-family:'Sora',sans-serif;font-size:13px;font-weight:700;color:var(--blue)">${hd}</span></div><p style="font-size:13px;color:var(--text2);line-height:1.7;margin:0">${colorizeText(ct)}</p></div>`;
+html+=`<div style="border-left:4px solid rgba(59,130,246,.3);border-radius:10px;padding:14px 16px;margin-bottom:10px;background:rgba(59,130,246,.04)"><div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><span style="font-size:16px">🧠</span><span style="font-family:'Sora',sans-serif;font-size:13px;font-weight:700;color:var(--blue)">${hd}</span></div><p style="font-size:13px;color:var(--text2);line-height:1.7;margin:0">${colorizeText(ct)}</p></div>`;
 }}}
 
 if(!html)el.innerHTML='<div class="ic bl"><p style="color:var(--text3)">Fund holdings data not available for this stock.</p></div>';
@@ -2964,17 +3006,17 @@ return text
 // ═══════════════════════════════════════════════
 function formatAIAnalysis(rawText){
 const sections=[
-{title:'\ud83d\udcca Valuation Check \u2014 Is The Price Right?',icon:'\ud83d\udcb0',color:'var(--blue)',data:extractValuationInsights(rawText)},
-{title:'\ud83d\udcc8 Price Momentum \u2014 Where Is It Heading?',icon:'\ud83c\udfaf',color:'var(--green)',data:extractMomentumInsights(rawText)},
-{title:'\u26a0\ufe0f Risk Factors \u2014 What Could Go Wrong?',icon:'\ud83d\udee1\ufe0f',color:'var(--red)',data:extractRiskInsights(rawText)},
-{title:'\ud83d\udca1 Investment Strategy \u2014 Should You Buy?',icon:'\ud83c\udfaf',color:'var(--purple)',data:extractStrategyInsights(rawText)}
+{title:'📊 Valuation Check — Is The Price Right?',icon:'💰',color:'var(--blue)',data:extractValuationInsights(rawText)},
+{title:'📈 Price Momentum — Where Is It Heading?',icon:'🎯',color:'var(--green)',data:extractMomentumInsights(rawText)},
+{title:'⚠️ Risk Factors — What Could Go Wrong?',icon:'🛡️',color:'var(--red)',data:extractRiskInsights(rawText)},
+{title:'💡 Investment Strategy — Should You Buy?',icon:'🎯',color:'var(--purple)',data:extractStrategyInsights(rawText)}
 ];
 let h=`<div style="padding:16px;border-radius:10px;margin-bottom:18px;background:rgba(59,130,246,.04);border:1px solid rgba(59,130,246,.12);text-align:center">
-<div style="font-family:'Sora',sans-serif;font-size:15px;font-weight:700;color:var(--blue);margin-bottom:6px">\ud83c\udf93 EASY-TO-UNDERSTAND AI ANALYSIS</div>
-<div style="font-size:12px;color:var(--text3);line-height:1.7">We've broken down the AI analysis into simple, actionable insights.<br><strong>Look for <span style="color:var(--green)">\ud83d\udfe2 GREEN</span> (good), <span style="color:var(--amber)">\ud83d\udfe1 YELLOW</span> (caution), <span style="color:var(--red)">\ud83d\udd34 RED</span> (warning)</strong></div></div>`;
+<div style="font-family:'Sora',sans-serif;font-size:15px;font-weight:700;color:var(--blue);margin-bottom:6px">🎓 EASY-TO-UNDERSTAND AI ANALYSIS</div>
+<div style="font-size:12px;color:var(--text3);line-height:1.7">We've broken down the AI analysis into simple, actionable insights.<br><strong>Look for <span style="color:var(--green)">🟢 GREEN</span> (good), <span style="color:var(--amber)">🟡 YELLOW</span> (caution), <span style="color:var(--red)">🔴 RED</span> (warning)</strong></div></div>`;
 sections.forEach(s=>{h+=createEducationalSection(s)});
 h+=`<div style="padding:16px;border-radius:10px;margin-top:18px;background:var(--bg);border:1px solid var(--border)">
-<span class="aix" onclick="const e=document.getElementById('fullAIedu');e.style.display=e.style.display==='none'?'block':'none';this.innerHTML=e.style.display==='none'?'\u25b8 View detailed AI breakdown':'\u25be Close AI breakdown'">\u25b8 View detailed AI breakdown</span>
+<span class="aix" onclick="const e=document.getElementById('fullAIedu');e.style.display=e.style.display==='none'?'block':'none';this.innerHTML=e.style.display==='none'?'▸ View detailed AI breakdown':'▾ Close AI breakdown'">▸ View detailed AI breakdown</span>
 <div id="fullAIedu" class="ait" style="display:none;margin-top:10px;max-height:400px;overflow-y:auto;padding-right:8px">${rawText}</div></div>`;
 const el=document.getElementById('aiAnalysisFormatted');if(el)el.innerHTML=h}
 
@@ -2988,7 +3030,7 @@ return`<div style="background:var(--surface);padding:20px;border-radius:12px;mar
 
 function createTableRow(row){
 const sc={'good':'var(--green)','caution':'var(--amber)','concern':'var(--red)','neutral':'var(--text3)'};
-const si={'good':'\ud83d\udfe2','caution':'\ud83d\udfe1','concern':'\ud83d\udd34','neutral':'\u26aa'};
+const si={'good':'🟢','caution':'🟡','concern':'🔴','neutral':'⚪'};
 return`<tr><td style="font-weight:600;font-size:13px">${row.factor}</td>
 <td style="color:${sc[row.signal]};font-weight:700;font-size:13px">${si[row.signal]} ${row.status}</td>
 <td style="font-size:12px;line-height:1.7;color:var(--text2)">${row.explanation}</td></tr>`}
@@ -3044,7 +3086,15 @@ insights.push({factor:'Position Sizing',status:'Diversify',signal:'neutral',expl
 if(tl.includes('dip')||tl.includes('pullback'))insights.push({factor:'Entry',status:'Buy on Dips',signal:'good',explanation:'Build position on pullbacks for better average entry price.'});
 return insights}
 
-function formatCap(c,sym){const s=sym||'$';if(!c)return'N/A';if(c>=1e12)return s+(c/1e12).toFixed(2)+'T';if(c>=1e9)return s+(c/1e9).toFixed(2)+'B';if(c>=1e6)return s+(c/1e6).toFixed(2)+'M';return s+c.toLocaleString()}
+function formatCap(c,sym){const s=sym||'$';if(!c||isNaN(c))return'N/A';c=parseFloat(c);
+// Indian notation for ₹
+if(s==='₹'){
+if(c>=1e12)return '₹'+(c/1e12).toFixed(2)+' Lakh Cr';
+if(c>=1e7){const cr=c/1e7;return '₹'+(cr>=1000?Math.round(cr).toLocaleString('en-IN'):cr.toFixed(cr<100?2:0))+' Cr'}
+if(c>=1e5)return '₹'+(c/1e5).toFixed(2)+' Lakh';
+return '₹'+Math.round(c).toLocaleString('en-IN')}
+if(c>=1e12)return s+(c/1e12).toFixed(2)+'T';if(c>=1e9)return s+(c/1e9).toFixed(2)+'B';if(c>=1e6)return s+(c/1e6).toFixed(2)+'M';return s+c.toLocaleString()}
+function capCategory(mc,sym){if(sym==='₹'){return mc>2e11?'Large-cap':mc>5e10?'Mid-cap':'Small-cap'}return mc>100e9?'Large-cap':mc>10e9?'Mid-cap':'Small-cap'}
 
 // ==========================================
 // FEATURE VOTING SYSTEM
@@ -3117,7 +3167,7 @@ usa:[
 {n:'ASML',t:'ASML',r:'★ Aggressive Buy',p:'$720',cl:'None (absolute monopoly)',why:'Only EUV lithography maker on earth, every advanced chip needs ASML',edge:'Absolute monopoly in EUV',cat:'Monopoly',bp:'$650-700',d:'BUY NOW · Hold 24mo · EUV lithography monopoly. No alternative exists. 90% prob of ₹900+ in 18mo.'},
 {n:'Verisign',t:'VRSN',r:'★ Aggressive Buy',p:'$210',cl:'None (.com/.net registry)',why:'.com/.net registry monopoly, ICANN contract, 87%+ margins',edge:'Internet domain infrastructure',cat:'Monopoly',bp:'$195-205',d:'BUY NOW · Hold 12mo · .com/.net domain monopoly. Price hikes = guaranteed earnings growth. 85% prob of $240+ in 12mo.'},
 {n:'S&P Global',t:'SPGI',r:'★ Aggressive Buy',p:'$510',cl:"Moody's, Fitch (ratings)",why:'Credit ratings oligopoly, data analytics, IHS Markit merger synergies',edge:'Financial data indispensable',cat:'Oligopoly',bp:'$480-510',d:'BUY ON DIP · Hold 12mo · Credit rating duopoly. Debt issuance cycle returning. 82% prob of $580+ in 12mo.'},
-{n:"Moody's",t:'MCO',r:'Strong Buy',p:'$470',cl:"S&P Global, Fitch (ratings)",why:'Credit ratings duopoly with S&P, recurring revenue, debt issuance growth',edge:'Regulatory-mandated ratings',cat:'Duopoly',bp:'$430-460',d:"BUY ON DIP · Hold 12mo · Moody\u2019s. Same thesis as S&P Global. Rating duopoly. 80% prob of $530+ in 12mo."},
+{n:"Moody's",t:'MCO',r:'Strong Buy',p:'$470',cl:"S&P Global, Fitch (ratings)",why:'Credit ratings duopoly with S&P, recurring revenue, debt issuance growth',edge:'Regulatory-mandated ratings',cat:'Duopoly',bp:'$430-460',d:"BUY ON DIP · Hold 12mo · Moody's. Same thesis as S&P Global. Rating duopoly. 80% prob of $530+ in 12mo."},
 {n:'TransDigm',t:'TDG',r:'Strong Buy',p:'$1,350',cl:'Heico (sole-source parts)',why:'Sole-source aerospace parts, 45%+ margins, aftermarket pricing power',edge:'Proprietary aerospace components',cat:'Monopoly',bp:'$1,300-1,400',d:'BUY NOW · Hold 18mo · Aerospace aftermarket monopoly. Locked-in revenue. 84% prob of $1,600+ in 12mo.'}
 ]},
 micro:{title:'Top 5 Multibagger Potential — Micro Caps',
@@ -3488,7 +3538,7 @@ const data=await res.json();
 if(!data.success){resEl.innerHTML=`<div style="font-size:11px;color:var(--red)">${data.error||'Failed to fetch data'}</div>`;return}
 // Run the same multi-factor algorithm
 const d=data;
-const curr=d.currency==='INR'?'\u20B9':'$';
+const curr=d.currency==='INR'?'₹':'$';
 const price=d.current_price;
 const n=v=>{const f=parseFloat(v);return(isNaN(f)||v==='N/A')?0:f};
 const pe=n(d.pe_ratio),fpe=n(d.forward_pe),pb=n(d.pb_ratio),pm=n(d.profit_margin),roe=n(d.roe);
@@ -3524,10 +3574,10 @@ else if(roe<5&&roe>0){score-=2;factors.push({f:'Poor ROE ('+roe.toFixed(1)+'%)',
 if(dy>4){score+=3;factors.push({f:'High yield ('+dy.toFixed(1)+'%)',s:'+3',c:'g'})}
 else if(dy>2){score+=1;factors.push({f:'Moderate yield ('+dy.toFixed(1)+'%)',s:'+1',c:'b'})}
 // F7: Beta
-if(beta>1.5){score-=2;factors.push({f:'High volatility (\u03B2 '+beta.toFixed(2)+')',s:'-2',c:'r'})}
-else if(beta<0.8){score+=2;factors.push({f:'Low volatility (\u03B2 '+beta.toFixed(2)+')',s:'+2',c:'g'})}
+if(beta>1.5){score-=2;factors.push({f:'High volatility (β '+beta.toFixed(2)+')',s:'-2',c:'r'})}
+else if(beta<0.8){score+=2;factors.push({f:'Low volatility (β '+beta.toFixed(2)+')',s:'+2',c:'g'})}
 // F8: P&L
-if(pnl>50){score-=2;factors.push({f:'Large gain '+pnl.toFixed(1)+'% \u2014 partial booking',s:'-2',c:'a'})}
+if(pnl>50){score-=2;factors.push({f:'Large gain '+pnl.toFixed(1)+'% — partial booking',s:'-2',c:'a'})}
 else if(pnl>20){factors.push({f:'Healthy gain '+pnl.toFixed(1)+'%',s:'0',c:'g'})}
 else if(pnl>0){score+=2;factors.push({f:'Small gain '+pnl.toFixed(1)+'%',s:'+2',c:'g'})}
 else if(pnl>-10){score+=1;factors.push({f:'Minor loss '+pnl.toFixed(1)+'%',s:'+1',c:'b'})}
@@ -3541,8 +3591,8 @@ else if(combGrowth>15){score+=3;factors.push({f:'Strong growth ('+combGrowth.toF
 else if(combGrowth>5){score+=1;factors.push({f:'Moderate growth ('+combGrowth.toFixed(0)+'%)',s:'+1',c:'b'})}
 else if(combGrowth<=-5){score-=3;factors.push({f:'Earnings contracting ('+combGrowth.toFixed(0)+'%)',s:'-3',c:'r'})}
 else if(combGrowth<0){score-=1;factors.push({f:'Slight decline ('+combGrowth.toFixed(0)+'%)',s:'-1',c:'a'})}
-if(fpe>0&&pe>0&&fpe<pe*0.85){score+=2;factors.push({f:'Forward PE compression \u2014 accelerating',s:'+2',c:'g'})}
-else if(fpe>0&&pe>0&&fpe>pe*1.15){score-=1;factors.push({f:'Forward PE expansion \u2014 decelerating',s:'-1',c:'r'})}
+if(fpe>0&&pe>0&&fpe<pe*0.85){score+=2;factors.push({f:'Forward PE compression — accelerating',s:'+2',c:'g'})}
+else if(fpe>0&&pe>0&&fpe>pe*1.15){score-=1;factors.push({f:'Forward PE expansion — decelerating',s:'-1',c:'r'})}
 // F10: Relative Valuation
 if(pe>0&&sectorPE>0){const peR=pe/sectorPE;const disc=((sectorPE-pe)/sectorPE*100).toFixed(0);
 if(peR<0.6){score+=5;factors.push({f:'P/E '+Math.abs(disc)+'% below sector',s:'+5',c:'g'})}
@@ -3553,7 +3603,7 @@ else{score-=4;factors.push({f:'P/E '+Math.abs(disc)+'% above sector',s:'-4',c:'r
 // F11: Technical
 let techScore=0;const techD=[];
 if(sma20>0){if(price>sma20){techScore+=1;techD.push('Above SMA20')}else{techScore-=1;techD.push('Below SMA20')}}
-if(sma200>0){if(price>sma200){techScore+=2;techD.push('Above SMA200 \u2014 uptrend')}else{techScore-=2;techD.push('Below SMA200 \u2014 downtrend')}}
+if(sma200>0){if(price>sma200){techScore+=2;techD.push('Above SMA200 — uptrend')}else{techScore-=2;techD.push('Below SMA200 — downtrend')}}
 if(sma20>0&&sma200>0){if(sma20>sma200){techScore+=2;techD.push('Golden Cross')}else if(sma20<sma200*0.95){techScore-=2;techD.push('Death Cross')}}
 techScore=Math.max(-5,Math.min(5,techScore));score+=techScore;
 if(techD.length>0){const tC=techScore>=3?'g':techScore>=1?'b':techScore<=-2?'r':'a';factors.push({f:'Technical: '+techD.join(', '),s:(techScore>=0?'+':'')+techScore,c:tC})}
@@ -3586,12 +3636,12 @@ h+=`<div style="display:flex;align-items:center;justify-content:space-between;fl
 <div style="text-align:right">
 <div style="font-size:10px;color:var(--text3)">P&L on ${d.company_name||ticker}</div>
 <div style="font-size:16px;font-weight:800;color:${pnl>=0?'var(--green)':'var(--red)'}">${pnl>=0?'+':''}${pnl.toFixed(1)}%</div>
-<div style="font-size:10px;color:var(--text3)">${curr}${buyPrice.toLocaleString()} \u2192 ${curr}${price.toLocaleString()}</div>
+<div style="font-size:10px;color:var(--text3)">${curr}${buyPrice.toLocaleString()} → ${curr}${price.toLocaleString()}</div>
 </div></div>`;
 h+=`<div class="dec-meter"><div class="dec-meter-fill" style="width:${probability}%;background:linear-gradient(90deg,${decCol}88,${decCol})"></div></div>`;
 h+=`<div style="margin:8px 0;font-size:12px;color:var(--text2);line-height:1.5">${reasoning}</div>`;
 h+=`<div style="padding:6px 10px;border-radius:6px;background:rgba(0,47,108,.04);border-left:3px solid ${decCol};margin-bottom:10px">
-<div style="font-size:9px;font-weight:700;color:${decCol};margin-bottom:2px">\u25B6 ACTION</div>
+<div style="font-size:9px;font-weight:700;color:${decCol};margin-bottom:2px">▶ ACTION</div>
 <div style="font-size:11px;color:var(--text)">${action}</div></div>`;
 if(score>=0){h+=`<div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap">
 <div style="flex:1;min-width:80px;padding:5px 8px;border-radius:6px;background:rgba(239,68,68,.06);border:1px solid rgba(239,68,68,.15)">
@@ -3611,7 +3661,7 @@ h+=`<div style="margin-top:6px;font-size:8px;color:var(--text3)">Algorithmic ana
 h+=`</div></div>`;
 resEl.innerHTML=h;
 }catch(e){resEl.innerHTML=`<div style="font-size:11px;color:var(--red)">Error: ${e.message}</div>`}
-finally{btn.disabled=false;btn.textContent='\u26A1 Analyze Decision'}
+finally{btn.disabled=false;btn.textContent='⚡ Analyze Decision'}
 }
 
 async function loadTradeScorecard(){
@@ -3635,7 +3685,7 @@ let h='';
 const wr=s.win_rate||0;
 const wrCol=wr>=70?'var(--green)':wr>=50?'var(--amber)':'var(--red)';
 h+=`<div style="padding:16px;border-radius:12px;background:linear-gradient(135deg,rgba(6,182,212,.08),rgba(16,185,129,.05));border:1px solid rgba(6,182,212,.2);margin-bottom:16px">
-<div style="font-family:'Sora',sans-serif;font-size:15px;font-weight:800;color:var(--cyan);margin-bottom:12px">&#128202; TRADE SCORECARD \u2014 ${s.days_tracked} Day${s.days_tracked>1?'s':''} Tracked</div>
+<div style="font-family:'Sora',sans-serif;font-size:15px;font-weight:800;color:var(--cyan);margin-bottom:12px">&#128202; TRADE SCORECARD — ${s.days_tracked} Day${s.days_tracked>1?'s':''} Tracked</div>
 <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:10px;margin-bottom:12px">
 <div style="text-align:center;padding:10px;border-radius:8px;background:rgba(0,47,108,.03)">
 <div style="font-size:24px;font-weight:800;color:${wrCol}">${wr}%</div>
