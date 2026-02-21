@@ -210,7 +210,7 @@ gtag('js',new Date());gtag('config','G-WW55EQ7ZB8');
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=Sora:wght@600;700;800&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <style>
-:root{--bg:#f8f9fa;--bg2:#ffffff;--bg3:#f0f2f5;--surface:#ffffff;--glass:rgba(255,255,255,0.95);--border:rgba(0,47,108,0.1);--border2:rgba(0,47,108,0.2);--blue:#002f6c;--blue2:#004a99;--cyan:#0a6ebd;--green:#14a23a;--green2:#0d8a2e;--amber:#d48a00;--red:#d0021b;--purple:#6b21a8;--text:#171717;--text2:#555555;--text3:#888888;--mono:'IBM Plex Mono',monospace}
+:root{--bg:#f8f9fa;--bg2:#ffffff;--bg3:#f0f2f5;--surface:#ffffff;--glass:rgba(255,255,255,0.95);--border:rgba(0,47,108,0.1);--border2:rgba(0,47,108,0.2);--blue:#002f6c;--blue2:#004a99;--cyan:#0a6ebd;--teal:#0d9488;--green:#14a23a;--green2:#0d8a2e;--amber:#d48a00;--red:#d0021b;--purple:#6b21a8;--text:#171717;--text2:#555555;--text3:#888888;--mono:'IBM Plex Mono',monospace}
 *{margin:0;padding:0;box-sizing:border-box}
 html{scroll-behavior:smooth}
 body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;overflow-x:clip;padding-bottom:90px}
@@ -980,6 +980,7 @@ h+=`</div>`;
 h+=`<div id="evtTipBox" style="display:none;position:fixed;width:300px;padding:10px 12px;border-radius:8px;background:#ffffff;border:1px solid rgba(0,47,108,.15);box-shadow:0 4px 16px rgba(0,0,0,.12);z-index:9999;font-size:10px;color:#555555;line-height:1.5;pointer-events:none"></div>`;
 if(hasContent){div.innerHTML=h;div.style.display='block'}
 }
+
 function renderFiiDii(){
 const body=document.getElementById('fiiDiiBody');
 const card=document.getElementById('fiiDiiCard');
@@ -1242,6 +1243,201 @@ if(r<=0){clearInterval(countdownInterval);countdownInterval=null;cd.textContent=
 cb.textContent='✓ Quota refreshed — generate reports again';pr.style.width='100%';box.style.borderColor='rgba(16,185,129,.3)';box.style.background='rgba(16,185,129,.04)'}}
 tick();countdownInterval=setInterval(tick,1000)}
 
+// ═══ PEER COMPARISON RENDERER ═══
+function renderPeers(d, curr){
+const el=document.getElementById('peerSection');
+if(!el)return;
+const peers=d.peers||[];
+const myPE=(d.pe_ratio&&d.pe_ratio!=='N/A')?parseFloat(d.pe_ratio):0;
+const peerAvgPE=d.peer_avg_pe&&d.peer_avg_pe!=='N/A'?parseFloat(d.peer_avg_pe):0;
+const sectorPE=d.sector_avg_pe||20;
+
+if(!peers.length){el.innerHTML='<p style="font-size:12px;color:var(--text3)">Peer data not available for this stock.</p>';return}
+
+// PE context verdict
+let peVerdict='';
+if(myPE>0&&peerAvgPE>0){
+  const ratio=myPE/peerAvgPE;
+  const disc=Math.abs(((peerAvgPE-myPE)/peerAvgPE)*100).toFixed(0);
+  if(ratio<0.7) peVerdict=`<span class="sig g">● ${disc}% cheaper than peers</span> — Potential value opportunity vs industry competitors.`;
+  else if(ratio<0.9) peVerdict=`<span class="sig g">● ${disc}% below peer avg</span> — Slight discount to peers. Check if deserved.`;
+  else if(ratio<1.1) peVerdict=`<span class="sig n">● In line with peers</span> — Trading at fair value relative to competitors.`;
+  else if(ratio<1.4) peVerdict=`<span class="sig c">● ${disc}% premium</span> — Market prices in growth premium vs peers.`;
+  else peVerdict=`<span class="sig c">● ${disc}% more expensive</span> — Significant premium. Must justify with superior growth.`;
+}
+
+const mcF=(c,s)=>{s=s||'$';if(!c||isNaN(c))return'N/A';c=parseFloat(c);if(c>=1e12)return s+(c/1e12).toFixed(1)+'T';if(c>=1e9)return s+(c/1e9).toFixed(1)+'B';if(c>=1e7)return s+(c/1e7).toFixed(1)+'Cr';return s+(c/1e6).toFixed(1)+'M'};
+
+let rows=peers.map(p=>{
+  const peClass=p.pe==='N/A'?'':p.pe<myPE?'style="color:var(--green)"':p.pe>myPE?'style="color:var(--red)"':'';
+  return `<tr>
+    <td><strong style="cursor:pointer;color:var(--blue)" onclick="quickAnalyze('${p.ticker}')">${p.ticker}</strong><br><span style="font-size:10px;color:var(--text3)">${p.name}</span></td>
+    <td style="font-family:var(--mono);font-weight:600" ${peClass}>${p.pe!=='N/A'?p.pe+'x':'N/A'}</td>
+    <td style="font-family:var(--mono)">${mcF(p.market_cap,curr)}</td>
+    <td style="font-family:var(--mono);color:${p.profit_margin>=0?'var(--green)':'var(--red)'}">${p.profit_margin}%</td>
+    <td style="font-family:var(--mono);color:${p.revenue_growth>=0?'var(--green)':'var(--red)'}">${p.revenue_growth>0?'+':''}${p.revenue_growth}%</td>
+    <td style="font-family:var(--mono)">${p.roe}%</td>
+  </tr>`}).join('');
+
+el.innerHTML=`
+<p style="font-size:12px;color:var(--text3);margin-bottom:10px">How <strong style="color:var(--text)">${d.ticker}</strong> stacks up against ${peers.length} industry competitors in <strong style="color:var(--text)">${d.industry||d.sector||'same sector'}</strong>:</p>
+${peVerdict?`<div style="padding:10px 14px;border-radius:8px;background:rgba(20,184,166,.05);border:1px solid rgba(20,184,166,.15);margin-bottom:14px;font-size:12px;color:var(--text2);line-height:1.7">
+<span style="font-size:13px">📊</span> <strong>${d.ticker} P/E: ${myPE>0?myPE.toFixed(1)+'x':'N/A'}</strong> vs <strong>Peer Avg: ${peerAvgPE>0?peerAvgPE.toFixed(1)+'x':'N/A'}</strong> vs <strong>Sector: ${sectorPE}x</strong><br>${peVerdict}
+</div>`:''}
+<div style="overflow-x:auto">
+<table class="dt"><tr><th>Company</th><th>P/E</th><th>Mkt Cap</th><th>Margin</th><th>Rev Growth</th><th>ROE</th></tr>
+<tr style="background:rgba(20,184,166,.06);font-weight:600">
+  <td><strong>${d.ticker}</strong><br><span style="font-size:10px;color:var(--text3)">${(d.company_name||d.ticker).substring(0,30)}</span></td>
+  <td style="font-family:var(--mono);font-weight:700;color:var(--teal)">${myPE>0?myPE.toFixed(1)+'x':'N/A'}</td>
+  <td style="font-family:var(--mono)">${mcF(d.market_cap,curr)}</td>
+  <td style="font-family:var(--mono)">${parseFloat(d.profit_margin||0).toFixed(1)}%</td>
+  <td style="font-family:var(--mono)">${d.earnings_growth!=='N/A'?(d.earnings_growth>0?'+':'')+d.earnings_growth+'%':'N/A'}</td>
+  <td style="font-family:var(--mono)">${parseFloat(d.roe||0).toFixed(1)}%</td>
+</tr>
+${rows}
+</table></div>
+<div class="ic bl" style="margin-top:10px"><p><strong>&#128161; How to read this:</strong> Green P/E = cheaper than ${d.ticker}. Red = more expensive. Compare margins and growth to see if premium is justified. Click any ticker to analyze it.</p></div>`;
+}
+
+// ═══ UPCOMING EVENTS / CATALYSTS RENDERER ═══
+function renderUpcomingEvents(d){
+const el=document.getElementById('sectorEventsContent');
+if(!el)return;
+const sector=d.sector||'';
+const isIndian=d.ticker&&(d.ticker.includes('.NS')||d.ticker.includes('.BO'));
+
+// Build sector-specific + company-specific upcoming events
+const now=new Date();
+const events=[];
+
+// Company-specific events
+const qMonths=[1,4,7,10]; // Typical earnings months
+let nextQ=null;
+for(let i=0;i<8;i++){
+  const m=new Date(now.getFullYear(),now.getMonth()+i,1);
+  if(qMonths.includes(m.getMonth()+1)&&m>now){nextQ=m;break}
+}
+if(nextQ){
+  const qName=['','Q3','Q3','Q3','Q4','Q4','Q4','Q1','Q1','Q1','Q2','Q2','Q2'][nextQ.getMonth()+1]||'Q?';
+  events.push({date:nextQ.toLocaleDateString('en-US',{month:'short',year:'numeric'}),title:`${d.ticker} ${qName} Earnings Release`,type:'company',impact:'high',desc:'Quarterly results reveal revenue/profit trends. Major price catalyst.'});
+}
+
+// Dividend dates
+if(d.dividend_yield&&parseFloat(d.dividend_yield)>0){
+  events.push({date:'Upcoming',title:`${d.ticker} Dividend Ex-Date`,type:'company',impact:'medium',desc:`Current yield: ${d.dividend_yield}%. Watch for ex-dividend date announcement.`});
+}
+
+// AGM
+events.push({date:'Upcoming',title:`${d.ticker} Annual General Meeting`,type:'company',impact:'medium',desc:'Management guidance, strategic outlook, and shareholder resolutions.'});
+
+// Sector-specific events
+const sectorEvents={
+  'Technology':[
+    {date:'Quarterly',title:'Big Tech Earnings Season',impact:'high',desc:'FAANG+ results set tone for entire tech sector. Watch AI/cloud growth.'},
+    {date:'Ongoing',title:'AI Infrastructure Spending',impact:'high',desc:'Enterprise AI adoption and GPU demand driving sector valuations.'},
+    {date:'Quarterly',title:'Semiconductor Cycle Updates',impact:'medium',desc:'Chip demand and inventory levels signal sector direction.'}
+  ],
+  'Financial Services':[
+    {date:'Every 6 weeks',title:'Fed Interest Rate Decision',impact:'high',desc:'Rate changes directly affect bank margins, lending, and valuations.'},
+    {date:'Quarterly',title:'Bank Stress Test Results',impact:'high',desc:'Capital adequacy determines dividend capacity and buybacks.'},
+    {date:'Monthly',title:'Credit & Loan Growth Data',impact:'medium',desc:'Loan demand signals economic health and bank revenue outlook.'}
+  ],
+  'Healthcare':[
+    {date:'Ongoing',title:'FDA Drug Approvals Pipeline',impact:'high',desc:'New approvals can create 20-50% moves in pharma/biotech stocks.'},
+    {date:'Annual',title:'Healthcare Policy Changes',impact:'high',desc:'Drug pricing legislation and insurance coverage changes.'},
+    {date:'Quarterly',title:'Clinical Trial Results',impact:'high',desc:'Phase 3 readouts are binary events — prepare for volatility.'}
+  ],
+  'Energy':[
+    {date:'Biweekly',title:'OPEC+ Production Decision',impact:'high',desc:'Supply cuts/increases directly move oil prices and energy stocks.'},
+    {date:'Weekly',title:'US Crude Inventory Report',impact:'medium',desc:'EIA data shows supply/demand balance. Moves oil intraday.'},
+    {date:'Ongoing',title:'Clean Energy Transition Policy',impact:'medium',desc:'Government subsidies and mandates shifting capital to renewables.'}
+  ],
+  'Consumer Cyclical':[
+    {date:'Monthly',title:'Retail Sales Data',impact:'high',desc:'Consumer spending strength drives revenue for cyclical names.'},
+    {date:'Quarterly',title:'Consumer Confidence Index',impact:'medium',desc:'Sentiment leading indicator for discretionary spending.'},
+    {date:'Nov-Dec',title:'Holiday Season Sales',impact:'high',desc:'Q4 makes or breaks the year for retail and e-commerce.'}
+  ],
+  'Consumer Defensive':[
+    {date:'Monthly',title:'CPI / Inflation Data',impact:'high',desc:'Input costs and pricing power affected by inflation trends.'},
+    {date:'Quarterly',title:'Volume vs Price Growth',impact:'medium',desc:'Are consumers trading down? Volume trends signal brand strength.'}
+  ],
+  'Industrials':[
+    {date:'Monthly',title:'PMI Manufacturing Index',impact:'high',desc:'Above 50 = expansion. Key leading indicator for industrial demand.'},
+    {date:'Ongoing',title:'Infrastructure Spending Bills',impact:'high',desc:'Government capex programs directly boost industrial orders.'},
+    {date:'Quarterly',title:'Order Backlog Updates',impact:'medium',desc:'Forward visibility on revenue. Growing backlog = bullish signal.'}
+  ],
+  'Basic Materials':[
+    {date:'Monthly',title:'China PMI & Demand Data',impact:'high',desc:'China consumes 50%+ of global commodities. Their growth = your price.'},
+    {date:'Weekly',title:'Commodity Price Movements',impact:'high',desc:'Gold, copper, steel prices directly impact revenue and margins.'}
+  ],
+  'Real Estate':[
+    {date:'Every 6 weeks',title:'Fed Rate Decision',impact:'high',desc:'Interest rates are the single biggest driver of REIT valuations.'},
+    {date:'Monthly',title:'Housing Starts & Permits',impact:'medium',desc:'Construction activity signals demand pipeline.'},
+    {date:'Quarterly',title:'Occupancy & Rent Growth',impact:'medium',desc:'REIT fundamentals depend on rental income trends.'}
+  ],
+  'Communication Services':[
+    {date:'Quarterly',title:'Digital Ad Spending Reports',impact:'high',desc:'Ad revenue growth drives META, GOOGL and media stocks.'},
+    {date:'Ongoing',title:'Streaming Subscriber Counts',impact:'high',desc:'User growth and ARPU determine streaming platform valuations.'}
+  ],
+  'Utilities':[
+    {date:'Every 6 weeks',title:'Fed Interest Rate Decision',impact:'high',desc:'Utilities compete with bonds for yield-seeking investors.'},
+    {date:'Ongoing',title:'Renewable Energy Mandates',impact:'medium',desc:'State/federal clean energy targets drive capex and growth.'}
+  ]
+};
+
+// India-specific sector events
+if(isIndian){
+  events.push({date:'Bi-monthly',title:'RBI Monetary Policy',type:'macro',impact:'high',desc:'Repo rate decisions affect banking, real estate, and overall market sentiment.'});
+  events.push({date:'Monthly',title:'FII/DII Flow Data',type:'macro',impact:'high',desc:'Foreign fund flows are the biggest driver of Indian market direction.'});
+  events.push({date:'Feb',title:'Union Budget',type:'macro',impact:'high',desc:'Tax changes, sector allocations, and fiscal policy reshape markets annually.'});
+  events.push({date:'Monthly',title:'GST Collection Data',type:'macro',impact:'medium',desc:'GST revenue growth signals economic activity and consumer demand.'});
+}else{
+  events.push({date:'Every 6 weeks',title:'FOMC Rate Decision',type:'macro',impact:'high',desc:'Federal Reserve policy is the most important macro driver for US equities.'});
+  events.push({date:'Monthly',title:'CPI Inflation Report',type:'macro',impact:'high',desc:'Inflation data shapes Fed policy expectations and market direction.'});
+  events.push({date:'Monthly',title:'Jobs Report (NFP)',type:'macro',impact:'high',desc:'Employment strength signals economic health. Surprise = volatility.'});
+  events.push({date:'Quarterly',title:'GDP Growth Data',type:'macro',impact:'medium',desc:'Economic growth rate confirms or challenges market valuations.'});
+}
+
+// Add sector-specific events
+const secEvents=sectorEvents[sector]||[];
+secEvents.forEach(e=>events.push({...e,type:'sector'}));
+
+// Sort: high impact first
+events.sort((a,b)=>{const w={high:0,medium:1,low:2};return (w[a.impact]||1)-(w[b.impact]||1)});
+
+const impactBadge=(imp)=>imp==='high'?'<span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:9px;font-weight:700;background:rgba(239,68,68,.1);color:var(--red)">HIGH IMPACT</span>':imp==='medium'?'<span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:9px;font-weight:700;background:rgba(245,158,11,.1);color:var(--amber)">MEDIUM</span>':'<span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:9px;font-weight:700;background:rgba(107,114,128,.1);color:var(--text3)">LOW</span>';
+
+const typeBadge=(t)=>t==='company'?'🏢 Company':t==='sector'?'🏭 Sector':'🌍 Macro';
+
+let html=`<div style="margin-top:4px;padding:14px 16px;border-radius:10px;background:rgba(6,182,212,.04);border:1px solid rgba(6,182,212,.12)">
+<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+<span style="font-size:16px">📅</span>
+<span style="font-family:'Sora',sans-serif;font-size:13px;font-weight:800;color:var(--cyan)">UPCOMING EVENTS — ${d.ticker} & ${sector||'Market'}</span>
+</div>
+<p style="font-size:11px;color:var(--text3);margin-bottom:14px;line-height:1.5">Key events that could move ${d.ticker}'s price in the next 3-6 months. High impact events deserve close attention.</p>
+<div style="display:flex;flex-direction:column;gap:8px">`;
+
+events.forEach(e=>{
+html+=`<div style="padding:10px 14px;border-radius:8px;background:var(--card);border:1px solid var(--border);display:flex;gap:12px;align-items:flex-start">
+<div style="min-width:60px;font-family:var(--mono);font-size:10px;color:var(--text3);font-weight:600;padding-top:2px">${e.date}</div>
+<div style="flex:1">
+<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:4px">
+<span style="font-size:12px;font-weight:700;color:var(--text)">${e.title}</span>
+${impactBadge(e.impact)}
+<span style="font-size:9px;color:var(--text3)">${typeBadge(e.type)}</span>
+</div>
+<div style="font-size:11px;color:var(--text2);line-height:1.6">${e.desc}</div>
+</div>
+</div>`;
+});
+
+html+=`</div>
+<div style="margin-top:10px;font-size:10px;color:var(--text3);text-align:center">Events are indicative. Check company IR page and economic calendar for exact dates.</div>
+</div>`;
+
+el.innerHTML=html;
+}
+
 function quickAnalyze(ticker){
 const tickerEl=document.getElementById('ticker');
 const emailEl=document.getElementById('email');
@@ -1321,6 +1517,8 @@ document.getElementById('report').classList.add('show');
 const _sTag=document.getElementById('stickyTag');if(_sTag)_sTag.style.display='none';
 renderMarketEvents();
 try{renderFiiDii()}catch(e){console.warn('FiiDii render error:',e)}
+try{renderPeers(d,curr)}catch(e){console.warn('renderPeers error:',e)}
+try{renderUpcomingEvents(d)}catch(e){console.warn('renderUpcomingEvents error:',e)}
 // Scroll to metrics (above tab bar) so tab bar sticks naturally at 90px
 setTimeout(()=>{const m=document.getElementById('metrics');if(m)m.scrollIntoView({behavior:'smooth',block:'start'})},200);
 setTimeout(animSections,400)}
@@ -1579,6 +1777,7 @@ html=`
 <a onclick="scrollToSec('sec-verdict')">&#9678; Buy or Sell?</a>
 <a onclick="scrollToSec('sec-5things')">&#128200; Key Numbers</a>
 <a onclick="scrollToSec('sec-valuation')">&#128176; Overpriced?</a>
+<a onclick="scrollToSec('sec-peers')">⚔ Peers</a>
 <a onclick="scrollToSec('sec-entry')">&#127919; When to Buy/Sell</a>
 <a onclick="scrollToSec('sec-risk')">&#9888; Risks</a>
 <a onclick="scrollToSec('sec-charts')">&#128202; Charts</a>
@@ -1699,6 +1898,13 @@ ${parseFloat(d.dividend_yield)>3?' Generous dividend — good for income-seeking
 </div>
 </div>
 </div></div>
+
+<!-- PEER / COMPETITOR COMPARISON -->
+<div class="sc" data-tab="quick" style="border-left:3px solid var(--teal)"><div class="sh"><div class="si" style="background:rgba(20,184,166,.1)">⚔</div><div class="st" style="color:var(--teal)" id="sec-peers">Peer Comparison</div></div>
+<div class="sbody" id="peerSection">
+<p style="font-size:12px;color:var(--text3);margin-bottom:10px">Loading peer data...</p>
+</div>
+</div>
 
 <!-- ENTRY & EXIT — Multi-Factor Technical -->
 <div class="sc" data-tab="quick" style="border-left:3px solid var(--purple)"><div class="sh"><div class="si" style="background:rgba(139,92,246,.1)">⬡</div><div class="st" style="color:var(--purple)" id="sec-entry">Entry &amp; Exit Levels</div></div>
@@ -1844,6 +2050,7 @@ ${(()=>{const bt=parseFloat(d.beta)||1;return bt>1.5?' Expect <strong>bigger dai
 <div class="sc" data-tab="next" style="border-left:3px solid var(--cyan)"><div class="sh"><div class="si" style="background:rgba(6,182,212,.1)">&#128302;</div><div class="st" style="color:var(--cyan)" id="sec-next">What's Next — Catalysts &amp; Timeline</div></div>
 <div class="sbody">
 <div id="whatsNextContent"><div class="ic bl" style="text-align:center"><p style="color:var(--text3)">&#9203; Analyzing upcoming catalysts...</p></div></div>
+<div id="sectorEventsContent" style="margin-top:16px"></div>
 </div></div>
 
 

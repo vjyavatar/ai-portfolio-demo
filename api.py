@@ -1560,6 +1560,115 @@ def get_live_stock_data(company_name: str) -> dict:
         sec = info.get('sector', '')
         live_data["sector_avg_pe"] = sector_pe_map.get(sec, 20)
         
+        # ═══ PEER / COMPETITOR COMPARISON ═══
+        try:
+            _industry = info.get('industry', '')
+            _sector = info.get('sector', '')
+            _ticker_up = ticker_symbol.upper()
+            
+            # Industry-to-peers mapping (top 4-5 competitors per industry)
+            peer_map = {
+                # US Tech
+                'Software—Infrastructure': ['MSFT','ORCL','CRM','NOW','ADBE'],
+                'Software—Application': ['CRM','ADBE','NOW','WDAY','INTU'],
+                'Semiconductors': ['NVDA','AMD','INTC','AVGO','QCOM','TXN'],
+                'Semiconductor Equipment & Materials': ['ASML','AMAT','LRCX','KLAC','TER'],
+                'Consumer Electronics': ['AAPL','SONY','DELL','HPQ','LOGI'],
+                'Internet Content & Information': ['GOOGL','META','SNAP','PINS','BIDU'],
+                'Internet Retail': ['AMZN','BABA','JD','PDD','MELI','EBAY'],
+                'Auto Manufacturers': ['TSLA','TM','F','GM','RIVN','LCID'],
+                'Banks—Diversified': ['JPM','BAC','WFC','C','GS','MS'],
+                'Banks—Regional': ['USB','PNC','TFC','FITB','HBAN'],
+                'Insurance—Diversified': ['BRK-B','AIG','MET','PRU','ALL'],
+                'Drug Manufacturers—General': ['JNJ','PFE','MRK','ABBV','LLY','NVO'],
+                'Biotechnology': ['AMGN','GILD','BIIB','REGN','VRTX','MRNA'],
+                'Oil & Gas Integrated': ['XOM','CVX','COP','EOG','SLB'],
+                'Aerospace & Defense': ['LMT','RTX','BA','NOC','GD'],
+                'Telecom Services': ['T','VZ','TMUS','AMX','BCE'],
+                # Indian
+                'Software—Infrastructure:IN': ['TCS.NS','INFY.NS','WIPRO.NS','HCLTECH.NS','TECHM.NS','LTI.NS'],
+                'Banks—Diversified:IN': ['HDFCBANK.NS','ICICIBANK.NS','SBIN.NS','KOTAKBANK.NS','AXISBANK.NS','INDUSINDBK.NS'],
+                'Oil & Gas Integrated:IN': ['RELIANCE.NS','ONGC.NS','IOC.NS','BPCL.NS','HINDPETRO.NS'],
+                'Telecom Services:IN': ['BHARTIARTL.NS','JIOFIN.NS','IDEA.NS'],
+                'Auto Manufacturers:IN': ['TATAMOTORS.NS','MARUTI.NS','M&M.NS','BAJAJ-AUTO.NS','HEROMOTOCO.NS'],
+                'FMCG:IN': ['HINDUNILVR.NS','ITC.NS','NESTLEIND.NS','BRITANNIA.NS','DABUR.NS','GODREJCP.NS'],
+                'Cement:IN': ['ULTRACEMCO.NS','AMBUJACEM.NS','ACC.NS','SHREECEM.NS','RAMCOCEM.NS'],
+                'Pharmaceuticals:IN': ['SUNPHARMA.NS','DRREDDY.NS','CIPLA.NS','DIVISLAB.NS','LUPIN.NS'],
+                'Power:IN': ['NTPC.NS','POWERGRID.NS','TATAPOWER.NS','ADANIGREEN.NS','NHPC.NS'],
+                'Metals & Mining:IN': ['TATASTEEL.NS','HINDALCO.NS','JSWSTEEL.NS','VEDL.NS','COALINDIA.NS'],
+            }
+            
+            # Determine peer key — try industry first, then with :IN suffix for Indian stocks
+            is_indian = '.NS' in _ticker_up or '.BO' in _ticker_up
+            peer_key = (_industry + ':IN') if is_indian else _industry
+            peer_tickers = peer_map.get(peer_key, peer_map.get(_industry, []))
+            
+            # If no exact match, try sector-level fallback
+            if not peer_tickers:
+                sector_peer_map = {
+                    'Technology': ['AAPL','MSFT','GOOGL','META','NVDA'],
+                    'Financial Services': ['JPM','BAC','GS','V','MA'],
+                    'Healthcare': ['JNJ','UNH','PFE','ABBV','MRK'],
+                    'Consumer Cyclical': ['AMZN','TSLA','HD','NKE','MCD'],
+                    'Consumer Defensive': ['PG','KO','PEP','WMT','COST'],
+                    'Energy': ['XOM','CVX','COP','SLB','EOG'],
+                    'Industrials': ['CAT','HON','UPS','BA','GE'],
+                    'Basic Materials': ['LIN','APD','ECL','NEM','FCX'],
+                    'Communication Services': ['GOOGL','META','DIS','NFLX','CMCSA'],
+                    'Utilities': ['NEE','DUK','SO','D','AEP'],
+                    'Real Estate': ['AMT','PLD','CCI','EQIX','SPG'],
+                }
+                peer_tickers = sector_peer_map.get(_sector, [])
+            
+            # Remove self from peers
+            peer_tickers = [p for p in peer_tickers if p.upper() != _ticker_up][:5]
+            
+            # Fetch peer data in parallel
+            peers = []
+            if peer_tickers:
+                from concurrent.futures import ThreadPoolExecutor, as_completed
+                def _fetch_peer(ptk):
+                    try:
+                        pt = yf.Ticker(ptk)
+                        pi = pt.info
+                        if not pi or not pi.get('currentPrice'): return None
+                        return {
+                            "ticker": ptk,
+                            "name": (pi.get('shortName') or pi.get('longName') or ptk)[:30],
+                            "price": round(float(pi.get('currentPrice', 0)), 2),
+                            "pe": round(float(pi.get('trailingPE', 0)), 1) if pi.get('trailingPE') else 'N/A',
+                            "market_cap": float(pi.get('marketCap', 0)),
+                            "profit_margin": round(float(pi.get('profitMargins', 0) or 0) * 100, 1),
+                            "roe": round(float(pi.get('returnOnEquity', 0) or 0) * 100, 1),
+                            "revenue_growth": round(float(pi.get('revenueGrowth', 0) or 0) * 100, 1),
+                            "debt_to_equity": round(float(pi.get('debtToEquity', 0) or 0), 1),
+                        }
+                    except:
+                        return None
+                
+                with ThreadPoolExecutor(max_workers=5) as ex:
+                    futs = {ex.submit(_fetch_peer, t): t for t in peer_tickers}
+                    for f in as_completed(futs, timeout=8):
+                        try:
+                            r = f.result(timeout=3)
+                            if r: peers.append(r)
+                        except:
+                            pass
+            
+            live_data["peers"] = peers
+            live_data["peer_count"] = len(peers)
+            if peers:
+                valid_pes = [p['pe'] for p in peers if p['pe'] != 'N/A' and p['pe'] > 0]
+                live_data["peer_avg_pe"] = round(sum(valid_pes) / len(valid_pes), 1) if valid_pes else 'N/A'
+                print(f"📊 Peers: {len(peers)} found — avg PE: {live_data['peer_avg_pe']}")
+            else:
+                live_data["peer_avg_pe"] = 'N/A'
+        except Exception as e:
+            print(f"⚠️ Peer fetch error: {e}")
+            live_data["peers"] = []
+            live_data["peer_count"] = 0
+            live_data["peer_avg_pe"] = 'N/A'
+        
         # ═══ INTRINSIC VALUE CALCULATIONS ═══
         try:
             _eps = float(info.get('trailingEps', 0) or 0)
@@ -4091,6 +4200,8 @@ VALUATION METRICS (CURRENT):
 • Dividend Yield: {live_data['dividend_yield']}%
 • Payout Ratio: {live_data.get('payout_ratio', 'N/A')}%
 • Sector Avg P/E: {live_data.get('sector_avg_pe', 'N/A')}x
+• Peer Avg P/E: {live_data.get('peer_avg_pe', 'N/A')}x
+• Peers Analyzed: {', '.join([p['ticker']+' (PE:'+str(p['pe'])+'x)' for p in live_data.get('peers',[])][:5]) or 'N/A'}
 • 52-Week High: {currency_symbol}{live_data['week52_high']:,.2f}
 • 52-Week Low: {currency_symbol}{live_data['week52_low']:,.2f}
 • Market Cap: {currency_symbol}{live_data['market_cap']:,} if available
@@ -4717,6 +4828,10 @@ Include specific price targets tied to management tone.]
 ---
 
 ## 🔮 WHAT'S NEXT — Catalysts & Timeline
+
+**vs Peers / Competitors:** [Compare this stock's valuation (P/E), growth, and margins vs its industry peers listed above. Is it cheaper or more expensive than competitors? Is the premium/discount justified by superior growth, margins, or market position? Which competitor is the biggest threat and why?]
+
+**Upcoming Sector Events (Next 3-6 Months):** [List 3-5 specific upcoming events for THIS sector that could move the stock — include approximate dates where possible. Examples: earnings season, regulatory decisions, commodity price drivers, policy changes, tech launches, industry conferences, seasonal demand shifts. Be specific to the sector, not generic.]
 
 **Next 30 Days:** [What specific events/catalysts are coming? Earnings date, ex-dividend date, product launches, regulatory decisions, macro events]
 
