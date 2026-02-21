@@ -787,33 +787,6 @@ footer{position:relative;z-index:1;margin-top:32px;background:#002f6c;border-top
 <!-- TAB CONTENT AREA -->
 <div id="tabContentArea" style="min-height:60vh">
 
-<!-- DECISION TOOL (Summary tab — "What Should I Do?") -->
-<div class="sc panel" data-tab="quick" style="border-left:3px solid var(--cyan);display:none" id="decisionToolCard">
-<div class="sh"><div class="si" style="background:rgba(6,182,212,.1)">&#127919;</div><div class="st" style="color:var(--cyan)" id="sec-position">Position Analyzer</div></div>
-<div class="sbody">
-<div id="decisionTool" style="display:none"></div>
-</div>
-</div>
-
-<!-- CHARTS (Summary tab — hidden by default, shown via sub-tab toggle) -->
-<div class="sc panel" data-tab="quick" style="border-left:3px solid var(--cyan);display:none" id="chartsCard">
-<div class="sh">
-<div class="si" style="background:rgba(0,120,212,.08)">&#128202;</div>
-<div class="st" style="color:var(--cyan)" id="sec-charts">Visual Charts &amp; Trends</div>
-</div>
-<div class="sbody" id="chartsInner">
-<div class="cgrid">
-<div class="ccard"><div class="cct">&#9678; Valuation Metrics <span style="font-size:10px;color:var(--text3);font-weight:400">&middot; hover bars for details</span></div><div class="cc"><canvas id="valChart"></canvas></div><div id="valInference" class="cinf" style="background:rgba(59,130,246,.04);border-color:rgba(0,120,212,.12)"></div></div>
-<div class="ccard"><div class="cct">&#9678; Financial Health <span style="font-size:10px;color:var(--text3);font-weight:400">&middot; hover dots for details</span></div><div class="cc"><canvas id="healthChart"></canvas></div><div id="healthInference" class="cinf" style="background:rgba(16,185,129,.04);border-color:rgba(16,185,129,.1)"></div></div>
-<div class="ccard"><div class="cct">&#9678; Risk Profile <span style="font-size:10px;color:var(--text3);font-weight:400">&middot; hover dots for details</span></div><div class="cc"><canvas id="riskChart"></canvas></div><div id="riskInference" class="cinf" style="background:rgba(239,68,68,.04);border-color:rgba(239,68,68,.1)"></div></div>
-</div>
-<div class="cgrid2">
-<div class="ccard"><div class="cct">&#9678; Price Trend (6M) <span style="font-size:10px;color:var(--text3);font-weight:400">&middot; hover points to track</span></div><div class="cc2"><canvas id="trendChart"></canvas></div><div id="trendInference" class="cinf" style="background:rgba(59,130,246,.04);border-color:rgba(0,120,212,.12)"></div></div>
-<div class="ccard"><div class="cct">&#9678; Margin vs Industry <span style="font-size:10px;color:var(--text3);font-weight:400">&middot; hover to compare</span></div><div class="cc2"><canvas id="marginChart"></canvas></div><div id="marginVsInference" class="cinf" style="background:rgba(6,182,212,.04);border-color:rgba(6,182,212,.1)"></div></div>
-</div>
-</div>
-</div>
-
 <!-- JS-GENERATED CONTENT GOES HERE -->
 <div id="analysisContainer"></div>
 </div>
@@ -1478,13 +1451,13 @@ html=`
 <div class="tab-scroll-area" id="tabScrollArea">
 <!-- TAB 1: QUICK INTEL -->
 <div class="sub-nav" data-tab="quick">
-<a onclick="scrollToSec('sec-verdict')">&#9678; Buy/Sell?</a>
-<a onclick="scrollToSec('sec-5things')">&#128200; Snapshot</a>
+<a onclick="scrollToSec('sec-verdict')">&#9678; Buy or Sell?</a>
+<a onclick="scrollToSec('sec-5things')">&#128200; Key Numbers</a>
 <a onclick="scrollToSec('sec-valuation')">&#128176; Overpriced?</a>
-<a onclick="scrollToSec('sec-entry')">&#127919; Entry/Exit</a>
+<a onclick="scrollToSec('sec-entry')">&#127919; When to Buy/Sell</a>
 <a onclick="scrollToSec('sec-risk')">&#9888; Risks</a>
-<a onclick="showPanel('chartsCard')">&#128202; Charts</a>
-<a onclick="showPanel('decisionToolCard')">&#127919; Position Analyzer</a>
+<a onclick="scrollToSec('sec-charts')">&#128202; Charts</a>
+<a onclick="scrollToSec('sec-position')">&#127919; My Position</a>
 </div>
 
 <!-- VERDICT (always open) -->
@@ -1505,7 +1478,7 @@ ${vResult.reasons.map(r=>{const isPos=r.includes('[+');return '<span style="font
 </div></div>
 
 <!-- DECISION POINTS -->
-<div class="sc" data-tab="quick" style="border-left:3px solid var(--amber)"><div class="sh"><div class="si" style="background:rgba(245,158,11,.1)">&#9651;</div><div class="st" style="color:var(--amber)" id="sec-5things">Quick Decision Matrix</div></div>
+<div class="sc" data-tab="quick" style="border-left:3px solid var(--amber)"><div class="sh"><div class="si" style="background:rgba(245,158,11,.1)">&#9651;</div><div class="st" style="color:var(--amber)" id="sec-5things">Key Numbers at a Glance</div></div>
 <div class="sbody">
 <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px">
 <div style="padding:10px;border-radius:8px;text-align:center;background:${pe<18?'rgba(16,185,129,.06)':pe<28?'rgba(245,158,11,.06)':'rgba(239,68,68,.06)'};border:1px solid ${pe<18?'rgba(16,185,129,.15)':pe<28?'rgba(245,158,11,.15)':'rgba(239,68,68,.15)'}">
@@ -1545,7 +1518,7 @@ ${vResult.reasons.map(r=>{const isPos=r.includes('[+');return '<span style="font
 </div></div>
 
 <!-- VALUATION TABLE -->
-<div class="sc" data-tab="quick" style="border-left:3px solid var(--blue)"><div class="sh"><div class="si" style="background:rgba(0,120,212,.12)">&#9678;</div><div class="st" style="color:var(--blue)" id="sec-valuation">Are You Overpaying? Deep Valuation X-Ray</div></div>
+<div class="sc" data-tab="quick" style="border-left:3px solid var(--blue)"><div class="sh"><div class="si" style="background:rgba(0,120,212,.12)">&#9678;</div><div class="st" style="color:var(--blue)" id="sec-valuation">Is This Stock Overpriced?</div></div>
 <div class="sbody">
 <p style="font-size:12px;color:var(--text3);margin-bottom:14px">Every number decoded. No jargon:</p>
 <table class="dt"><tr><th>Metric</th><th>Value</th><th>Signal</th><th>What This Means For You</th></tr>
@@ -1598,7 +1571,7 @@ ${n(d.beta)>1.3?' This stock has higher-than-average volatility \u2014 use wider
 </div></div>
 
 <!-- RISK ASSESSMENT -->
-<div class="sc" data-tab="quick" style="border-left:3px solid var(--red)"><div class="sh"><div class="si" style="background:rgba(239,68,68,.1)">&#9888;</div><div class="st" style="color:var(--red)" id="sec-risk">What Could Go Wrong \u2014 Risk Reality Check</div></div>
+<div class="sc" data-tab="quick" style="border-left:3px solid var(--red)"><div class="sh"><div class="si" style="background:rgba(239,68,68,.1)">&#9888;</div><div class="st" style="color:var(--red)" id="sec-risk">What Could Go Wrong?</div></div>
 <div class="sbody">
 <table class="dt"><tr><th>Factor</th><th>Metric</th><th>Signal</th><th>Assessment</th></tr>
 <tr><td>Debt Level</td><td style="font-family:var(--mono);font-weight:600">${d.debt_to_equity}</td>
@@ -1613,9 +1586,30 @@ ${n(d.beta)>1.3?' This stock has higher-than-average volatility \u2014 use wider
 <tr><td>Sector</td><td>${d.sector}</td><td><span class="sig n">Monitor</span></td><td style="font-size:12px">Track trends &amp; regulation</td></tr>
 </table></div></div>
 
+<!-- CHARTS (Summary — hidden until sub-tab click) -->
+<div class="sc" data-tab="quick" style="border-left:3px solid var(--cyan)" id="chartsCard">
+<div class="sh"><div class="si" style="background:rgba(0,120,212,.08)">&#128202;</div><div class="st" style="color:var(--cyan)" id="sec-charts">Visual Charts &amp; Trends</div></div>
+<div class="sbody" id="chartsInner">
+<div class="cgrid">
+<div class="ccard"><div class="cct">How is this stock valued?</div><div class="cc"><canvas id="valChart"></canvas></div><div id="valInference" class="cinf" style="background:rgba(59,130,246,.04);border-color:rgba(0,120,212,.12)"></div></div>
+<div class="ccard"><div class="cct">Is the company financially healthy?</div><div class="cc"><canvas id="healthChart"></canvas></div><div id="healthInference" class="cinf" style="background:rgba(16,185,129,.04);border-color:rgba(16,185,129,.1)"></div></div>
+<div class="ccard"><div class="cct">How risky is this stock?</div><div class="cc"><canvas id="riskChart"></canvas></div><div id="riskInference" class="cinf" style="background:rgba(239,68,68,.04);border-color:rgba(239,68,68,.1)"></div></div>
+</div>
+<div class="cgrid2">
+<div class="ccard"><div class="cct">Price trend over 6 months</div><div class="cc2"><canvas id="trendChart"></canvas></div><div id="trendInference" class="cinf" style="background:rgba(59,130,246,.04);border-color:rgba(0,120,212,.12)"></div></div>
+<div class="ccard"><div class="cct">How do margins compare to the industry?</div><div class="cc2"><canvas id="marginChart"></canvas></div><div id="marginVsInference" class="cinf" style="background:rgba(6,182,212,.04);border-color:rgba(6,182,212,.1)"></div></div>
+</div>
+</div></div>
+
+<!-- POSITION ANALYZER (Summary — hidden until sub-tab click) -->
+<div class="sc" data-tab="quick" style="border-left:3px solid var(--amber)" id="decisionToolCard">
+<div class="sh"><div class="si" style="background:rgba(217,119,6,.1)">&#127919;</div><div class="st" style="color:var(--amber)" id="sec-position">Already holding this stock? Check what to do</div></div>
+<div class="sbody"><div id="decisionTool" style="display:none"></div></div>
+</div>
+
 <!-- ═══ TAB: DEEP DIVE ═══ -->
 <div class="sub-nav" data-tab="deep">
-<a onclick="scrollToSec('sec-verdictai')">&#127891; Verdict Analysis</a>
+<a onclick="scrollToSec('sec-verdictai')">&#127891; Why This Verdict?</a>
 <a onclick="scrollToSec('sec-ai')">&#128196; Full AI Report</a>
 </div>
 
@@ -1652,9 +1646,9 @@ ${n(d.beta)>1.3?' This stock has higher-than-average volatility \u2014 use wider
 
 <!-- ═══ TAB: EARNINGS ═══ -->
 <div class="sub-nav" data-tab="mgmt">
-<a onclick="scrollToSec('sec-fund')">&#128200; Quarterly Results</a>
-<a onclick="scrollToSec('sec-mgmt')">&#127908; Management Read</a>
-<a onclick="scrollToSec('sec-funds')">&#127974; Fund Holdings</a>
+<a onclick="scrollToSec('sec-fund')">&#128200; Latest Earnings</a>
+<a onclick="scrollToSec('sec-mgmt')">&#127908; What Management Says</a>
+<a onclick="scrollToSec('sec-funds')">&#127974; Who's Investing?</a>
 </div>
 
 <div class="sc" data-tab="mgmt" style="border-left:3px solid var(--purple)"><div class="sh"><div class="si" style="background:rgba(16,185,129,.1)">&#128200;</div><div class="st" style="color:var(--green)" id="sec-fund">Latest Quarter &#8212; Are They Actually Growing?</div></div>
@@ -1708,9 +1702,9 @@ ${n(d.beta)>1.3?' This stock has higher-than-average volatility \u2014 use wider
 <!-- ═══ TAB: PICKS ═══ -->
 <!-- SUB-NAV for Picks tab -->
 <div class="sub-nav" data-tab="picks">
-<a onclick="scrollToSec('sec-conviction')">&#127942; Conviction Board</a>
-<a onclick="scrollToSec('sec-stockpicks')">&#128161; Stock Picks</a>
-<a onclick="showPanel('portfolioCard')">&#129504; Portfolio Analyzer</a>
+<a onclick="scrollToSec('sec-conviction')">&#127942; Top Picks</a>
+<a onclick="scrollToSec('sec-stockpicks')">&#128161; Stock Ideas</a>
+<a onclick="scrollToSec('sec-portfolio')">&#129504; My Portfolio</a>
 </div>
 
 <!-- PICKS: Portfolio Decision Engine — toggle panel -->
@@ -1743,7 +1737,7 @@ ${n(d.beta)>1.3?' This stock has higher-than-average volatility \u2014 use wider
 </div>
 </div></div>
 
-<div class="sc panel" data-tab="picks" style="border-left:3px solid var(--blue);display:none" id="portfolioCard"><div class="sh"><div class="si" style="background:rgba(59,130,246,.1)">&#129504;</div><div class="st" style="color:var(--blue)" id="sec-portfolio">Portfolio Decision Engine</div></div>
+<div class="sc" data-tab="picks" style="border-left:3px solid var(--blue)" id="portfolioCard"><div class="sh"><div class="si" style="background:rgba(59,130,246,.1)">&#129504;</div><div class="st" style="color:var(--blue)" id="sec-portfolio">Portfolio Decision Engine</div></div>
 <div class="sbody">
 <div style="padding:14px 16px;border-radius:10px;background:linear-gradient(135deg,rgba(59,130,246,.06),rgba(139,92,246,.04));border:1px solid rgba(0,120,212,.25);margin-bottom:18px">
 <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
@@ -1849,11 +1843,8 @@ if(tab==='quick')setTimeout(()=>window.dispatchEvent(new Event('resize')),200);
 document.querySelectorAll('.sc[data-tab]').forEach(s=>{s.style.display='none'});
 document.querySelectorAll('.sub-nav[data-tab]').forEach(s=>{s.style.display='none'});
 document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
-// 2) Show matching tab content — skip .panel elements (hidden until clicked)
-document.querySelectorAll('.sc[data-tab="'+tab+'"]').forEach(s=>{
-if(!s.classList.contains('panel'))s.style.display='block';
-else s.style.display='none';
-});
+// 2) Show matching tab content
+document.querySelectorAll('.sc[data-tab="'+tab+'"]').forEach(s=>{s.style.display='block'});
 document.querySelectorAll('.sub-nav[data-tab="'+tab+'"]').forEach(s=>{s.style.display='flex'});
 // 3) Activate button
 const btnMap={quick:'tabBtnQuick',deep:'tabBtnDeep',mgmt:'tabBtnMgmt',next:'tabBtnNext',gems:'tabBtnGems',picks:'tabBtnPicks',funds:'tabBtnFunds',trades:'tabBtnTrades'};
@@ -1866,17 +1857,6 @@ console.log('switchTab:',tab,'→',document.querySelectorAll('.sc[data-tab="'+ta
 function scrollToSec(id){
 const el=document.getElementById(id);if(!el)return;
 el.scrollIntoView({behavior:'smooth',block:'start'});
-}
-
-// Show/hide panel sections (Charts, Position Analyzer, Portfolio)
-function showPanel(cardId){
-const card=document.getElementById(cardId);if(!card)return;
-const isHidden=card.style.display==='none';
-card.style.display=isHidden?'block':'none';
-if(isHidden){
-setTimeout(()=>card.scrollIntoView({behavior:'smooth',block:'start'}),80);
-if(cardId==='chartsCard')setTimeout(()=>window.dispatchEvent(new Event('resize')),300);
-}
 }
 
 // ═══════════════════════════════════════════════
