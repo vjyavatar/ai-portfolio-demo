@@ -788,7 +788,7 @@ footer{position:relative;z-index:1;margin-top:32px;background:#002f6c;border-top
 <div id="tabContentArea" style="min-height:60vh">
 
 <!-- DECISION TOOL (Summary tab — "What Should I Do?") -->
-<div class="sc" data-tab="quick" style="border-left:3px solid var(--cyan)" id="decisionToolCard">
+<div class="sc panel" data-tab="quick" style="border-left:3px solid var(--cyan);display:none" id="decisionToolCard">
 <div class="sh"><div class="si" style="background:rgba(6,182,212,.1)">&#127919;</div><div class="st" style="color:var(--cyan)" id="sec-position">Position Analyzer</div></div>
 <div class="sbody">
 <div id="decisionTool" style="display:none"></div>
@@ -796,7 +796,7 @@ footer{position:relative;z-index:1;margin-top:32px;background:#002f6c;border-top
 </div>
 
 <!-- CHARTS (Summary tab — hidden by default, shown via sub-tab toggle) -->
-<div class="sc" data-tab="quick" style="border-left:3px solid var(--cyan)" id="chartsCard">
+<div class="sc panel" data-tab="quick" style="border-left:3px solid var(--cyan);display:none" id="chartsCard">
 <div class="sh">
 <div class="si" style="background:rgba(0,120,212,.08)">&#128202;</div>
 <div class="st" style="color:var(--cyan)" id="sec-charts">Visual Charts &amp; Trends</div>
@@ -1458,12 +1458,12 @@ else if(bearish>=5){verdict='STRONG SELL';vc='sell';conviction='Very High';emoji
 else{verdict='SELL';vc='sell';conviction='High';emoji='\uD83D\uDD34'}
 
 return {verdict,vc,score,conviction,emoji,reasons,totalFactors,bullish,bearish,
-  explain:verdict==='STRONG BUY'?'Exceptional multi-factor conviction: '+bullish+' bullish factors across valuation, growth, cash flow, balance sheet, and technicals all align. Rare setup.'
-  :verdict==='BUY'?'Strong fundamentals with '+bullish+' positive factors outweighing '+bearish+' negatives. High-conviction setup worth a meaningful position.'
-  :verdict==='ACCUMULATE'?'More positives than negatives across 20 factors ('+bullish+' vs '+bearish+'). Build position gradually on dips.'
-  :verdict==='SELL'?'Red flags dominate with '+bearish+' negative factors. Multiple concerns across fundamentals and/or technicals.'
-  :verdict==='STRONG SELL'?'Severe multi-factor deterioration: '+bearish+' bearish signals across valuation, cash flow, balance sheet and technicals. Protect capital immediately.'
-  :'Mixed signals — '+bullish+' bullish vs '+bearish+' bearish across 20 factors. No strong directional edge \u2014 wait for catalyst or clarity.'}
+  explain:verdict==='STRONG BUY'?'This stock checks almost every box \u2014 it\'s priced well, the company is growing, making good money, and the price trend is moving up. '+bullish+' out of '+totalFactors+' signals are positive. This kind of alignment is rare.'
+  :verdict==='BUY'?'Looks like a solid pick. The company\'s numbers are strong and '+bullish+' positive signals outweigh '+bearish+' concerns. Good time to consider buying.'
+  :verdict==='ACCUMULATE'?'More going for it than against it ('+bullish+' positives vs '+bearish+' negatives). Don\'t go all-in \u2014 buy in small amounts, especially on red days.'
+  :verdict==='SELL'?'Warning signs are adding up \u2014 '+bearish+' concerns flagged. The stock may be overpriced, losing money, or the price trend is weakening. Consider reducing your position.'
+  :verdict==='STRONG SELL'?'Multiple serious problems detected across '+bearish+' areas. This stock is flashing red \u2014 overvalued, weak finances, or price falling. Protect your money.'
+  :'It\'s a coin flip right now \u2014 '+bullish+' positive signals vs '+bearish+' negative ones. No clear direction. Wait for better clarity before making a move.'}
 }
 
 let vResult;
@@ -1483,8 +1483,8 @@ html=`
 <a onclick="scrollToSec('sec-valuation')">&#128176; Overpriced?</a>
 <a onclick="scrollToSec('sec-entry')">&#127919; Entry/Exit</a>
 <a onclick="scrollToSec('sec-risk')">&#9888; Risks</a>
-<a onclick="scrollToSec('sec-charts')">&#128202; Charts</a>
-<a onclick="scrollToSec('sec-position')">&#127919; Position Analyzer</a>
+<a onclick="showPanel('chartsCard')">&#128202; Charts</a>
+<a onclick="showPanel('decisionToolCard')">&#127919; Position Analyzer</a>
 </div>
 
 <!-- VERDICT (always open) -->
@@ -1493,7 +1493,7 @@ html=`
 <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
 <div style="flex-shrink:0;text-align:center">
 <div class="vpill ${vc}" style="padding:8px 24px;font-size:16px">${verdict}</div>
-<div style="margin-top:6px;font-size:10px;color:var(--text3)"><strong style="color:var(--text)">${vResult.score>0?'+':''}${vResult.score}</strong> · ${vResult.conviction} · <span style="color:var(--green)">${vResult.bullish||0} bullish</span> / <span style="color:var(--red)">${vResult.bearish||0} bearish</span> across <strong>${vResult.totalFactors||vResult.reasons.length} factors</strong></div>
+<div style="margin-top:6px;font-size:10px;color:var(--text3)">Score: <strong style="color:var(--text)">${vResult.score>0?'+':''}${vResult.score}</strong> · Confidence: <strong>${vResult.conviction}</strong> · <span style="color:var(--green)">${vResult.bullish||0} positive</span> / <span style="color:var(--red)">${vResult.bearish||0} negative</span> signals</div>
 </div>
 <div style="flex:1;min-width:200px">
 <p style="font-size:12px;color:var(--text2);margin-bottom:8px">${vResult.explain}</p>
@@ -1629,17 +1629,17 @@ ${n(d.beta)>1.3?' This stock has higher-than-average volatility \u2014 use wider
 <div style="padding:10px;border-radius:8px;background:rgba(16,185,129,.06);border:1px solid rgba(16,185,129,.15);text-align:center">
 <div style="font-size:18px">${vResult.emoji}</div>
 <div style="font-size:12px;font-weight:800;color:${vc==='buy'?'var(--green)':vc==='sell'?'var(--red)':'var(--amber)'}">${verdict}</div>
-<div style="font-size:9px;color:var(--text3)">${vResult.conviction} Conviction</div>
+<div style="font-size:9px;color:var(--text3)">${vResult.conviction} Confidence</div>
 </div>
 <div style="padding:10px;border-radius:8px;background:rgba(0,120,212,.04);border:1px solid rgba(0,120,212,.12);text-align:center">
 <div style="font-family:var(--mono);font-size:18px;font-weight:800;color:var(--text)">${vResult.score>0?'+':''}${vResult.score}</div>
-<div style="font-size:9px;color:var(--text3)">Factor Score</div>
-<div style="font-size:9px;color:var(--green)">${vResult.bullish||0} bullish / <span style="color:var(--red)">${vResult.bearish||0} bearish</span></div>
+<div style="font-size:9px;color:var(--text3)">Overall Score</div>
+<div style="font-size:9px;color:var(--green)">${vResult.bullish||0} positive / <span style="color:var(--red)">${vResult.bearish||0} negative</span></div>
 </div>
 <div style="padding:10px;border-radius:8px;background:rgba(139,92,246,.04);border:1px solid rgba(139,92,246,.12);text-align:center">
 <div style="font-size:14px;font-weight:800;color:var(--text)">${d.sector}</div>
 <div style="font-size:9px;color:var(--text3)">${formatCap(d.market_cap,curr)} cap</div>
-<div style="font-size:9px;color:var(--text3)">Beta: ${d.beta}</div>
+<div style="font-size:9px;color:var(--text3)">${n(d.beta)>1.3?'High volatility':n(d.beta)<0.7?'Low volatility':'Average volatility'}</div>
 </div>
 </div>
 <div style="padding:16px;border-radius:10px;background:var(--bg);border:1px solid var(--border)">
@@ -1710,39 +1710,10 @@ ${n(d.beta)>1.3?' This stock has higher-than-average volatility \u2014 use wider
 <div class="sub-nav" data-tab="picks">
 <a onclick="scrollToSec('sec-conviction')">&#127942; Conviction Board</a>
 <a onclick="scrollToSec('sec-stockpicks')">&#128161; Stock Picks</a>
-<a onclick="scrollToSec('sec-portfolio')">&#129504; Portfolio Analyzer</a>
+<a onclick="showPanel('portfolioCard')">&#129504; Portfolio Analyzer</a>
 </div>
 
 <!-- PICKS: Portfolio Decision Engine — toggle panel -->
-<div class="sc" data-tab="picks" style="border-left:3px solid var(--blue)" id="portfolioCard"><div class="sh"><div class="si" style="background:rgba(59,130,246,.1)">&#129504;</div><div class="st" style="color:var(--blue)" id="sec-portfolio">Portfolio Decision Engine</div></div>
-<div class="sbody">
-<div style="padding:14px 16px;border-radius:10px;background:linear-gradient(135deg,rgba(59,130,246,.06),rgba(139,92,246,.04));border:1px solid rgba(0,120,212,.25);margin-bottom:18px">
-<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
-<span style="font-size:18px">&#129504;</span>
-<span style="font-family:'Sora',sans-serif;font-size:13px;font-weight:800;color:var(--blue)">Portfolio Decision Engine</span>
-<span style="font-size:9px;color:var(--text3);padding:2px 6px;border-radius:4px;background:var(--surface);border:1px solid var(--border)">Multi-Factor Algorithm</span>
-</div>
-<div style="font-size:10px;color:var(--text3);margin-bottom:12px">Enter your stock &amp; buy price \u2014 get a data-driven HOLD / SELL / ADD decision with probability across 3, 6, 12-month horizons.</div>
-<div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap">
-<div style="flex:1;min-width:140px"><label style="font-size:9px;color:var(--text3);display:block;margin-bottom:3px">TICKER (e.g. RELIANCE.NS, AAPL)</label>
-<input type="text" id="pdTicker" placeholder="RELIANCE.NS" style="width:100%;padding:8px 12px;border-radius:6px;border:1px solid var(--border);background:#f0f2f5;color:var(--text);font-family:var(--mono);font-size:13px;font-weight:700"></div>
-<div style="flex:0.6;min-width:100px"><label style="font-size:9px;color:var(--text3);display:block;margin-bottom:3px">YOUR BUY PRICE</label>
-<input type="number" id="pdBuyPrice" placeholder="1250" step="0.01" style="width:100%;padding:8px 12px;border-radius:6px;border:1px solid var(--border);background:#f0f2f5;color:var(--text);font-family:var(--mono);font-size:13px;font-weight:700"></div>
-<button onclick="runPortfolioDecision()" id="pdBtn" style="padding:8px 20px;border-radius:8px;border:2px solid var(--blue);background:rgba(59,130,246,.12);color:var(--blue);font-family:'Sora',sans-serif;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap">&#9889; Analyze Decision</button>
-</div>
-<div id="pdResult" style="margin-top:12px"></div>
-</div>
-<div style="padding:10px 14px;border-radius:8px;background:rgba(139,92,246,.04);border:1px solid rgba(139,92,246,.1)">
-<div style="font-family:'Sora',sans-serif;font-size:10px;font-weight:700;color:var(--purple);letter-spacing:.5px;margin-bottom:8px">RATING &amp; LABEL GUIDE</div>
-<div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 16px;font-size:10px;line-height:1.6">
-<span><span style="font-size:9px;padding:1px 5px;border-radius:3px;background:rgba(16,185,129,.15);color:#10b981;font-weight:800">&#9733; Aggressive Buy</span> Strong fundamentals + survives 30-40% correction</span>
-<span><span style="font-size:9px;padding:1px 5px;border-radius:3px;background:rgba(16,185,129,.1);color:#10b981;font-weight:700">Strong Buy</span> Excellent business, limited correction downside</span>
-<span><span style="font-size:9px;padding:1px 5px;border-radius:3px;background:rgba(0,120,212,.12);color:#3b82f6;font-weight:700">Buy</span> Good value but moderate correction sensitivity</span>
-<span><span style="font-size:9px;padding:1px 5px;border-radius:3px;background:rgba(245,158,11,.1);color:#f59e0b;font-weight:700">Accumulate</span> Build position gradually on dips</span>
-</div>
-</div>
-</div></div>
-
 <!-- PICKS SUB-TAB 2: Conviction Leaderboard -->
 <div class="sc" data-tab="picks" style="border-left:3px solid var(--teal,#0d9488)"><div class="sh"><div class="si" style="background:rgba(13,148,136,.1)">&#127942;</div><div class="st" style="color:#0d9488" id="sec-conviction">Conviction Leaderboard \u2014 Top 5 by Country</div></div>
 <div class="sbody">
@@ -1769,6 +1740,35 @@ ${n(d.beta)>1.3?' This stock has higher-than-average volatility \u2014 use wider
 <button class="ptab" onclick="showPickCat(this,'idx')">&#128200; Best Index</button>
 </div>
 <div id="pickGrid"></div>
+</div>
+</div></div>
+
+<div class="sc panel" data-tab="picks" style="border-left:3px solid var(--blue);display:none" id="portfolioCard"><div class="sh"><div class="si" style="background:rgba(59,130,246,.1)">&#129504;</div><div class="st" style="color:var(--blue)" id="sec-portfolio">Portfolio Decision Engine</div></div>
+<div class="sbody">
+<div style="padding:14px 16px;border-radius:10px;background:linear-gradient(135deg,rgba(59,130,246,.06),rgba(139,92,246,.04));border:1px solid rgba(0,120,212,.25);margin-bottom:18px">
+<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+<span style="font-size:18px">&#129504;</span>
+<span style="font-family:'Sora',sans-serif;font-size:13px;font-weight:800;color:var(--blue)">Portfolio Decision Engine</span>
+<span style="font-size:9px;color:var(--text3);padding:2px 6px;border-radius:4px;background:var(--surface);border:1px solid var(--border)">Multi-Factor Algorithm</span>
+</div>
+<div style="font-size:10px;color:var(--text3);margin-bottom:12px">Enter your stock &amp; buy price \u2014 get a data-driven HOLD / SELL / ADD decision with probability across 3, 6, 12-month horizons.</div>
+<div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap">
+<div style="flex:1;min-width:140px"><label style="font-size:9px;color:var(--text3);display:block;margin-bottom:3px">TICKER (e.g. RELIANCE.NS, AAPL)</label>
+<input type="text" id="pdTicker" placeholder="RELIANCE.NS" style="width:100%;padding:8px 12px;border-radius:6px;border:1px solid var(--border);background:#f0f2f5;color:var(--text);font-family:var(--mono);font-size:13px;font-weight:700"></div>
+<div style="flex:0.6;min-width:100px"><label style="font-size:9px;color:var(--text3);display:block;margin-bottom:3px">YOUR BUY PRICE</label>
+<input type="number" id="pdBuyPrice" placeholder="1250" step="0.01" style="width:100%;padding:8px 12px;border-radius:6px;border:1px solid var(--border);background:#f0f2f5;color:var(--text);font-family:var(--mono);font-size:13px;font-weight:700"></div>
+<button onclick="runPortfolioDecision()" id="pdBtn" style="padding:8px 20px;border-radius:8px;border:2px solid var(--blue);background:rgba(59,130,246,.12);color:var(--blue);font-family:'Sora',sans-serif;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap">&#9889; Analyze Decision</button>
+</div>
+<div id="pdResult" style="margin-top:12px"></div>
+</div>
+<div style="padding:10px 14px;border-radius:8px;background:rgba(139,92,246,.04);border:1px solid rgba(139,92,246,.1)">
+<div style="font-family:'Sora',sans-serif;font-size:10px;font-weight:700;color:var(--purple);letter-spacing:.5px;margin-bottom:8px">RATING &amp; LABEL GUIDE</div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 16px;font-size:10px;line-height:1.6">
+<span><span style="font-size:9px;padding:1px 5px;border-radius:3px;background:rgba(16,185,129,.15);color:#10b981;font-weight:800">&#9733; Aggressive Buy</span> Strong fundamentals + survives 30-40% correction</span>
+<span><span style="font-size:9px;padding:1px 5px;border-radius:3px;background:rgba(16,185,129,.1);color:#10b981;font-weight:700">Strong Buy</span> Excellent business, limited correction downside</span>
+<span><span style="font-size:9px;padding:1px 5px;border-radius:3px;background:rgba(0,120,212,.12);color:#3b82f6;font-weight:700">Buy</span> Good value but moderate correction sensitivity</span>
+<span><span style="font-size:9px;padding:1px 5px;border-radius:3px;background:rgba(245,158,11,.1);color:#f59e0b;font-weight:700">Accumulate</span> Build position gradually on dips</span>
+</div>
 </div>
 </div></div>
 
@@ -1849,8 +1849,11 @@ if(tab==='quick')setTimeout(()=>window.dispatchEvent(new Event('resize')),200);
 document.querySelectorAll('.sc[data-tab]').forEach(s=>{s.style.display='none'});
 document.querySelectorAll('.sub-nav[data-tab]').forEach(s=>{s.style.display='none'});
 document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
-// 2) Show matching tab content
-document.querySelectorAll('.sc[data-tab="'+tab+'"]').forEach(s=>{s.style.display='block'});
+// 2) Show matching tab content — skip .panel elements (hidden until clicked)
+document.querySelectorAll('.sc[data-tab="'+tab+'"]').forEach(s=>{
+if(!s.classList.contains('panel'))s.style.display='block';
+else s.style.display='none';
+});
 document.querySelectorAll('.sub-nav[data-tab="'+tab+'"]').forEach(s=>{s.style.display='flex'});
 // 3) Activate button
 const btnMap={quick:'tabBtnQuick',deep:'tabBtnDeep',mgmt:'tabBtnMgmt',next:'tabBtnNext',gems:'tabBtnGems',picks:'tabBtnPicks',funds:'tabBtnFunds',trades:'tabBtnTrades'};
@@ -1863,6 +1866,17 @@ console.log('switchTab:',tab,'→',document.querySelectorAll('.sc[data-tab="'+ta
 function scrollToSec(id){
 const el=document.getElementById(id);if(!el)return;
 el.scrollIntoView({behavior:'smooth',block:'start'});
+}
+
+// Show/hide panel sections (Charts, Position Analyzer, Portfolio)
+function showPanel(cardId){
+const card=document.getElementById(cardId);if(!card)return;
+const isHidden=card.style.display==='none';
+card.style.display=isHidden?'block':'none';
+if(isHidden){
+setTimeout(()=>card.scrollIntoView({behavior:'smooth',block:'start'}),80);
+if(cardId==='chartsCard')setTimeout(()=>window.dispatchEvent(new Event('resize')),300);
+}
 }
 
 // ═══════════════════════════════════════════════

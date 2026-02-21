@@ -2311,7 +2311,7 @@ async def market_pulse():
     # Fetch key global data for event detection
     events = []
     global_snapshot = {}
-    quick_tickers = {"CL=F": "Crude Oil", "GC=F": "Gold", "DX-Y.NYB": "US Dollar", "^GSPC": "S&P 500", "INR=X": "USD/INR"}
+    quick_tickers = {"CL=F": "Crude Oil", "GC=F": "Gold", "SI=F": "Silver", "DX-Y.NYB": "US Dollar", "^GSPC": "S&P 500", "INR=X": "USD/INR"}
     
     for ticker, name in quick_tickers.items():
         try:
@@ -2339,6 +2339,14 @@ async def market_pulse():
                         "impact": "VOLATILE", "severity": "MEDIUM",
                         "detail": f"{'Gold rally signals risk-off sentiment globally. Investors moving to safe havens.' if chg_pct > 0 else 'Gold decline suggests risk-on appetite returning. Equities may benefit.'}",
                         "action": f"{'Consider gold ETF hedge. Watch for FII outflows from equities.' if chg_pct > 0 else 'Positive for equity markets. Growth stocks could benefit.'}"
+                    })
+                elif name == "Silver" and abs(chg_pct) >= 1.2:
+                    events.append({
+                        "headline": f"Silver {'surges' if chg_pct > 0 else 'drops'} {chg_pct:+.1f}% to ${price}",
+                        "impact": "BULLISH" if chg_pct > 0 else "BEARISH",
+                        "severity": "HIGH" if abs(chg_pct) >= 3 else "MEDIUM",
+                        "detail": f"{'Silver rally driven by industrial demand + safe-haven buying. Silver outperforming gold signals economic expansion expectations alongside risk hedging.' if chg_pct > 0 else 'Silver decline signals weakening industrial demand. Often a leading indicator for broader economic slowdown.'}",
+                        "action": f"{'Metals & mining stocks benefit. Watch Hindalco, Vedanta, Hindustan Zinc. Silver ETFs see inflows.' if chg_pct > 0 else 'Mining stocks under pressure. Industrial metals sector may see selling. Watch for broader risk-off sentiment.'}"
                     })
                 elif name == "S&P 500" and abs(chg_pct) >= 0.5:
                     events.append({
