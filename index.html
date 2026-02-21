@@ -1963,9 +1963,20 @@ document.querySelectorAll('.sub-nav[data-tab="'+tab+'"]').forEach(s=>{s.style.di
 const btnMap={quick:'tabBtnQuick',deep:'tabBtnDeep',mgmt:'tabBtnMgmt',next:'tabBtnNext',gems:'tabBtnGems',picks:'tabBtnPicks',funds:'tabBtnFunds',trades:'tabBtnTrades'};
 if(btnMap[tab]){const btn=document.getElementById(btnMap[tab]);if(btn)btn.classList.add('active')}
 console.log('switchTab:',tab,'→',document.querySelectorAll('.sc[data-tab="'+tab+'"]').length,'sections shown');
-// 4) Scroll to tab bar so new tab starts from the top
-const tabBar=document.getElementById('mainTabBar');
-if(tabBar)tabBar.scrollIntoView({behavior:'smooth',block:'start'});
+// 4) Scroll so new tab content starts from the top
+// Tab bar is sticky — scroll page so first section of new tab is right below tab bar
+setTimeout(()=>{
+const tb=document.getElementById('mainTabBar');
+if(!tb)return;
+const tbRect=tb.getBoundingClientRect();
+const tbBottom=tbRect.bottom;
+const firstSec=document.querySelector('.sc[data-tab="'+tab+'"]:not([style*="display: none"]):not([style*="display:none"])');
+if(firstSec){
+const secRect=firstSec.getBoundingClientRect();
+const scrollBy=secRect.top-tbBottom;
+if(Math.abs(scrollBy)>10)window.scrollBy({top:scrollBy,behavior:'smooth'});
+}
+},50);
 }catch(e){console.error('switchTab error:',e)}
 }
 
