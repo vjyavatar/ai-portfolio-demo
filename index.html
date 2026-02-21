@@ -2012,15 +2012,9 @@ document.querySelectorAll('.sub-nav[data-tab="'+tab+'"]').forEach(s=>{s.style.di
 const btnMap={quick:'tabBtnQuick',deep:'tabBtnDeep',mgmt:'tabBtnMgmt',next:'tabBtnNext',gems:'tabBtnGems',picks:'tabBtnPicks',funds:'tabBtnFunds',trades:'tabBtnTrades'};
 if(btnMap[tab]){const btn=document.getElementById(btnMap[tab]);if(btn)btn.classList.add('active')}
 
-// 4) Ensure tab bar is visible — only scroll if tab bar is off-screen
-const _tb=document.getElementById('mainTabBar');
-if(_tb){
-const rect=_tb.getBoundingClientRect();
-// If tab bar is above viewport or way below, scroll to it
-if(rect.top<-10||rect.top>window.innerHeight){
-_tb.scrollIntoView({block:'nearest'});
-}
-}
+// 4) Scroll to top of new tab content — scroll-margin-top:140px on .sc handles sticky offset
+const firstSec=document.querySelector('.sc[data-tab="'+tab+'"]');
+if(firstSec) firstSec.scrollIntoView({behavior:'instant',block:'start'});
 
 console.log('switchTab:',tab,'→ done');
 }catch(e){console.error('switchTab error:',e)}
