@@ -694,7 +694,7 @@ footer{position:relative;z-index:1;margin-top:32px;background:#002f6c;border-top
 
 <section class="hero">
 <h1>Stock Intelligence, Instantly.</h1>
-<p class="hero-sub" style="font-size:15px;line-height:1.6;max-width:560px;margin-bottom:20px">Free institutional-grade analysis with buy/sell levels, risk scoring &amp; AI verdicts.</p>
+<p class="hero-sub" style="font-size:15px;line-height:1.6;max-width:560px;margin-bottom:20px">Free institutional-grade analysis with buy/sell levels, risk scoring &amp; AI verdicts. <span style="font-size:12px;color:var(--red);font-weight:600">For educational purposes only.</span></p>
 
 <!-- GLOBAL EVENTS & UPCOMING — visible on page load -->
 <div id="eventAlertArea" style="display:none;margin:0 auto 12px;max-width:680px;width:100%;text-align:left"></div>
@@ -1309,7 +1309,7 @@ try{createAnalysisSections(data.report,d,data.fund_holdings||{institutions:[],fu
 // Charts + DecisionTool MUST run AFTER template is in DOM (canvases live inside template)
 try{createCharts(d)}catch(e){console.warn('createCharts error:',e)}
 window._stockData=d;window._stockCurr=curr;
-try{renderDecisionTool(d,curr)}catch(e){console.warn('decisionTool error:',e)}
+// Position Analyzer disabled for SEBI compliance
 document.getElementById('report').classList.add('show');
 // Hide sticky tagline — tab bar replaces it
 const _sTag=document.getElementById('stickyTag');if(_sTag)_sTag.style.display='none';
@@ -1550,12 +1550,12 @@ else if(bearish>=5){verdict='STRONG SELL';vc='sell';conviction='Very High';emoji
 else{verdict='SELL';vc='sell';conviction='High';emoji='\uD83D\uDD34'}
 
 return {verdict,vc,score,conviction,emoji,reasons,totalFactors,bullish,bearish,
-  explain:verdict==='STRONG BUY'?'This stock checks almost every box — it\'s priced well, the company is growing, making good money, and the price trend is moving up. '+bullish+' out of '+totalFactors+' signals are positive. This kind of alignment is rare.'
-  :verdict==='BUY'?'Looks like a solid pick. The company\'s numbers are strong and '+bullish+' positive signals outweigh '+bearish+' concerns. Good time to consider buying.'
-  :verdict==='ACCUMULATE'?'More going for it than against it ('+bullish+' positives vs '+bearish+' negatives). Don\'t go all-in — buy in small amounts, especially on red days.'
-  :verdict==='SELL'?'Warning signs are adding up — '+bearish+' concerns flagged. The stock may be overpriced, losing money, or the price trend is weakening. Consider reducing your position.'
-  :verdict==='STRONG SELL'?'Multiple serious problems detected across '+bearish+' areas. This stock is flashing red — overvalued, weak finances, or price falling. Protect your money.'
-  :'It\'s a coin flip right now — '+bullish+' positive signals vs '+bearish+' negative ones. No clear direction. Wait for better clarity before making a move.'}
+  explain:verdict==='STRONG BUY'?'This stock checks almost every box — priced well, growing, profitable, and trending up. '+bullish+' out of '+totalFactors+' factors are positive. This kind of alignment is rare. For educational analysis only.'
+  :verdict==='BUY'?'Company fundamentals are strong — '+bullish+' positive factors outweigh '+bearish+' concerns. Valuation and growth metrics look favorable. For educational analysis only.'
+  :verdict==='ACCUMULATE'?'More positive factors ('+bullish+') than negative ('+bearish+'). A mixed but leaning-positive setup that warrants closer study. For educational analysis only.'
+  :verdict==='SELL'?'Warning signs detected — '+bearish+' concerns flagged. The stock may be overvalued, margins weakening, or price trend declining. Study the risk factors carefully.'
+  :verdict==='STRONG SELL'?'Multiple serious red flags across '+bearish+' areas — overvaluation, weak finances, or falling momentum. High risk detected across our 20-factor model.'
+  :'Balanced signals — '+bullish+' positive vs '+bearish+' negative. No clear directional edge in either direction right now. For educational analysis only.'}
 }
 
 let vResult;
@@ -1576,7 +1576,7 @@ html=`
 <a onclick="scrollToSec('sec-entry')">&#127919; When to Buy/Sell</a>
 <a onclick="scrollToSec('sec-risk')">&#9888; Risks</a>
 <a onclick="scrollToSec('sec-charts')">&#128202; Charts</a>
-<a onclick="scrollToSec('sec-position')">&#127919; My Position</a>
+
 </div>
 
 <!-- VERDICT (always open) -->
@@ -1762,11 +1762,7 @@ ${(()=>{const bt=parseFloat(d.beta)||1;return bt>1.5?' Expect <strong>bigger dai
 </div>
 </div></div>
 
-<!-- POSITION ANALYZER (Summary — hidden until sub-tab click) -->
-<div class="sc" data-tab="quick" style="border-left:3px solid var(--amber)" id="decisionToolCard">
-<div class="sh"><div class="si" style="background:rgba(217,119,6,.1)">&#127919;</div><div class="st" style="color:var(--amber)" id="sec-position">Already holding this stock? Check what to do</div></div>
-<div class="sbody"><div id="decisionTool" style="display:none"></div></div>
-</div>
+<!-- POSITION ANALYZER — removed for SEBI compliance -->
 
 <!-- ═══ TAB: DEEP DIVE ═══ -->
 <div class="sub-nav" data-tab="deep">
@@ -2013,9 +2009,9 @@ document.querySelectorAll('.sub-nav[data-tab="'+tab+'"]').forEach(s=>{s.style.di
 const btnMap={quick:'tabBtnQuick',deep:'tabBtnDeep',mgmt:'tabBtnMgmt',next:'tabBtnNext',gems:'tabBtnGems',picks:'tabBtnPicks',funds:'tabBtnFunds',trades:'tabBtnTrades'};
 if(btnMap[tab]){const btn=document.getElementById(btnMap[tab]);if(btn)btn.classList.add('active')}
 console.log('switchTab:',tab,'→',document.querySelectorAll('.sc[data-tab="'+tab+'"]').length,'sections shown');
-// 4) Scroll to top of tab content area
-const _ac=document.getElementById('analysisContainer');
-if(_ac){const _r=_ac.getBoundingClientRect();if(_r.top<0||_r.top>300)window.scrollTo(0,_ac.offsetTop-140);}
+// 4) Scroll so tab bar stays visible and content starts from top
+const _tb=document.getElementById('mainTabBar');
+if(_tb){const _tbTop=_tb.offsetTop;const scrollTarget=_tbTop-90;if(window.scrollY>scrollTarget+50||window.scrollY<scrollTarget-200)window.scrollTo(0,Math.max(0,scrollTarget));}
 }catch(e){console.error('switchTab error:',e)}
 }
 
@@ -3137,7 +3133,7 @@ function extractStrategyInsights(text){
 const insights=[],tu=text.toUpperCase(),tl=text.toLowerCase();
 if(tu.includes('BUY')&&!tu.includes("DON'T BUY"))insights.push({factor:'Recommendation',status:'BUY',signal:'good',explanation:'Appears to be a good opportunity at current levels. Consider building position gradually.'});
 else if(tu.includes('SELL')||tu.includes('AVOID'))insights.push({factor:'Recommendation',status:'SELL / AVOID',signal:'concern',explanation:'Risk factors outweigh potential rewards at current prices. Consider exiting or avoiding.'});
-else if(tu.includes('HOLD'))insights.push({factor:'Recommendation',status:'HOLD',signal:'neutral',explanation:'If you own it, hold. If looking to buy, wait for better entry or more positive catalysts.'});
+else if(tu.includes('HOLD'))insights.push({factor:'Recommendation',status:'HOLD',signal:'neutral',explanation:'Analysis is neutral — no strong directional signal in either direction. Monitor for catalyst changes.'});
 if(tl.includes('long-term')||tl.includes('long term'))insights.push({factor:'Horizon',status:'Long-Term Hold',signal:'good',explanation:'Suitable for 3-5+ year horizon. Expect and tolerate short-term volatility.'});
 else if(tl.includes('short-term')||tl.includes('trading'))insights.push({factor:'Horizon',status:'Short-Term Trade',signal:'caution',explanation:'Better for active traders. Requires close monitoring and quick decisions.'});
 insights.push({factor:'Position Sizing',status:'Diversify',signal:'neutral',explanation:"Should represent no more than 5-10% of total portfolio. Spread risk across multiple investments."});

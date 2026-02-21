@@ -4645,7 +4645,7 @@ Include specific price targets tied to management tone.]
 **Bear Case Scenario:** [If things go wrong — specific downside target with reasoning]
 **Most Likely Scenario:** [Your base case with probability assessment]
 
-**💡 What This Means For You:** [Simple summary: "Over the next year, this stock is most likely to [go up/stay flat/go down] because [one clear reason]. The single thing to watch is [specific trigger]. If you own it, [hold/add/reduce]. If you don't own it, [wait for X price/buy now/avoid]."]
+**💡 What This Means For You:** [Simple summary: "Over the next year, this stock is most likely to [go up/stay flat/go down] because [one clear reason]. The single thing to watch is [specific trigger]." Do NOT give explicit buy/hold/sell advice — only explain the outlook and key risks. End with: "This is for educational analysis only, not investment advice."]
 
 ---
 
