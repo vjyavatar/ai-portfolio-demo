@@ -2375,17 +2375,6 @@ async def market_pulse():
         except:
             pass
     
-    # Expiry event
-    if is_expiry:
-        exp_list = ", ".join(expiry_today)
-        sev = "HIGH" if is_last_tuesday or len(expiry_today) > 1 else "MEDIUM"
-        events.append({
-            "headline": f"Expiry Day — {exp_list}",
-            "impact": "VOLATILE", "severity": sev,
-            "detail": f"{'MEGA EXPIRY: Multiple indices expire today. Expect extreme volatility, heavy institutional activity, and pin risk.' if len(expiry_today) > 2 else 'Weekly expiry for '+exp_list+'. Theta decay accelerates after 1 PM. Max Pain becomes price magnet.'}",
-            "action": f"{'Reduce position sizes. Use straddles/strangles. Gamma scalping opportunities after 2 PM.' if sev == 'HIGH' else 'Watch for gamma moves near max pain after 2 PM. Theta sellers collect premium decay.'}"
-        })
-    
     # Upcoming scheduled events (static calendar)
     upcoming = []
     # Known RBI meeting dates 2026 (approximate — first week of Apr, Jun, Aug, Oct, Dec, Feb)
@@ -2396,14 +2385,6 @@ async def market_pulse():
         if 0 < days_until <= 30:
             upcoming.append({"event": f"RBI Monetary Policy", "date": rbi_date.strftime("%b %d"), "days": days_until, "impact": "HIGH"})
     
-    # Next expiry dates
-    next_tue = now + timedelta(days=(1 - weekday) % 7 or 7)
-    next_thu = now + timedelta(days=(3 - weekday) % 7 or 7)
-    if not (weekday == 1):
-        upcoming.append({"event": "Nifty Weekly Expiry", "date": next_tue.strftime("%b %d (%a)"), "days": (next_tue - now).days, "impact": "MEDIUM"})
-    if not (weekday == 3):
-        upcoming.append({"event": "Sensex Weekly Expiry", "date": next_thu.strftime("%b %d (%a)"), "days": (next_thu - now).days, "impact": "MEDIUM"})
-    
     # US Fed (approx — Jan, Mar, May, Jun, Jul, Sep, Nov, Dec)
     fed_months = [1, 3, 5, 6, 7, 9, 11, 12]
     for fm in fed_months:
@@ -2412,27 +2393,54 @@ async def market_pulse():
         if 0 < days_until <= 30:
             upcoming.append({"event": "US Fed Rate Decision", "date": fed_date.strftime("%b %d"), "days": days_until, "impact": "HIGH"})
     
-    # ═══ GEOPOLITICAL & MACRO EVENTS ═══
-    # US-China tariff / trade war events (ongoing — add key known dates)
+    # ═══ GEOPOLITICAL, TRADE, ECONOMIC & MACRO EVENTS ═══
     geo_events = [
-        # US tariff review deadlines / Supreme Court cases
-        {"event": "US Supreme Court — Tariff Authority Ruling", "month": 3, "day": 15, "year": 2026, "impact": "HIGH"},
+        # ── GEOPOLITICAL & SOVEREIGN SHIFTS ──
+        {"event": "US Supreme Court — Tariff Authority (IEEPA) Ruling", "month": 3, "day": 15, "year": 2026, "impact": "HIGH"},
+        {"event": "Russia-Ukraine Ceasefire Review", "month": 3, "day": 1, "year": 2026, "impact": "HIGH"},
+        {"event": "NATO Hybrid Warfare Summit — Europe Defense Posture", "month": 4, "day": 7, "year": 2026, "impact": "MEDIUM"},
+        {"event": "Middle East De-escalation Talks (US-Iran)", "month": 3, "day": 20, "year": 2026, "impact": "HIGH"},
+        {"event": "US Venezuela Sanctions Review", "month": 4, "day": 1, "year": 2026, "impact": "MEDIUM"},
+        {"event": "Japan PM Takaichi — Corporate Reform Package (Sanaenomics)", "month": 3, "day": 28, "year": 2026, "impact": "MEDIUM"},
+        {"event": "US Strategic Interest in Greenland — NATO Response", "month": 4, "day": 10, "year": 2026, "impact": "MEDIUM"},
+
+        # ── TRADE & REGULATORY POLICY ──
         {"event": "US Reciprocal Tariff Review Deadline", "month": 4, "day": 2, "year": 2026, "impact": "HIGH"},
         {"event": "US-China Trade Talks Round", "month": 3, "day": 10, "year": 2026, "impact": "HIGH"},
-        # EU-US trade policy
-        {"event": "EU Retaliatory Tariff Decision", "month": 4, "day": 15, "year": 2026, "impact": "MEDIUM"},
-        # India budget session
-        {"event": "India Parliament Budget Session Ends", "month": 3, "day": 21, "year": 2026, "impact": "MEDIUM"},
-        # Global conflict monitoring
-        {"event": "Russia-Ukraine Ceasefire Review", "month": 3, "day": 1, "year": 2026, "impact": "HIGH"},
-        {"event": "Middle East Conflict De-escalation Talks", "month": 3, "day": 20, "year": 2026, "impact": "MEDIUM"},
-        # US economic data
+        {"event": "EU Retaliatory Tariff Decision on US Goods", "month": 4, "day": 15, "year": 2026, "impact": "MEDIUM"},
+        {"event": "USMCA Trade Pact Review — Mexico/Canada Manufacturing", "month": 5, "day": 1, "year": 2026, "impact": "MEDIUM"},
+        {"event": "CLARITY Act — Crypto/Stablecoin Regulation Vote", "month": 4, "day": 20, "year": 2026, "impact": "MEDIUM"},
+        {"event": "US-China Rare Earth Export Restrictions Review", "month": 3, "day": 25, "year": 2026, "impact": "HIGH"},
+
+        # ── ECONOMIC & MONETARY DRIVERS ──
         {"event": "US CPI Inflation Data", "month": 3, "day": 12, "year": 2026, "impact": "HIGH"},
         {"event": "US Jobs Report (Non-Farm Payrolls)", "month": 3, "day": 6, "year": 2026, "impact": "HIGH"},
         {"event": "US GDP Q4 2025 (Final)", "month": 3, "day": 27, "year": 2026, "impact": "MEDIUM"},
-        # India specific
+        {"event": "Fed Chair Jerome Powell Term Ends — Warsh Transition", "month": 5, "day": 15, "year": 2026, "impact": "HIGH"},
+        {"event": "One Big Beautiful Bill Act (OBBBA) — Fiscal Package Vote", "month": 4, "day": 30, "year": 2026, "impact": "HIGH"},
+        {"event": "US Midterm Elections — Pre-Election Volatility Window", "month": 9, "day": 1, "year": 2026, "impact": "HIGH"},
+        {"event": "US Midterm Elections", "month": 11, "day": 3, "year": 2026, "impact": "HIGH"},
+
+        # ── INDIA SPECIFIC ──
+        {"event": "India Parliament Budget Session Ends", "month": 3, "day": 21, "year": 2026, "impact": "MEDIUM"},
         {"event": "RBI FX Reserves Review", "month": 3, "day": 14, "year": 2026, "impact": "MEDIUM"},
+        {"event": "India Q4 GDP Data Release", "month": 5, "day": 30, "year": 2026, "impact": "HIGH"},
+        {"event": "India GST Council Meeting", "month": 3, "day": 22, "year": 2026, "impact": "MEDIUM"},
+
+        # ── COMMODITY & TECH TRENDS ──
+        {"event": "Big Tech AI Capex Earnings Review (MSFT/GOOG/META)", "month": 4, "day": 25, "year": 2026, "impact": "HIGH"},
+        {"event": "OPEC+ Production Decision", "month": 3, "day": 3, "year": 2026, "impact": "HIGH"},
+        {"event": "Gold Central Bank Purchases Report (WGC)", "month": 4, "day": 5, "year": 2026, "impact": "MEDIUM"},
+        {"event": "US Strategic Minerals Executive Order Review", "month": 5, "day": 10, "year": 2026, "impact": "MEDIUM"},
+
+        # ── ROLLING MONTHLY US DATA (auto-generate for next 6 months) ──
     ]
+    # Auto-add recurring US CPI + Jobs for upcoming months
+    for offset in range(1, 7):
+        m = (now.month + offset - 1) % 12 + 1
+        y_adj = year if m > now.month else year + 1
+        geo_events.append({"event": "US CPI Inflation Data", "month": m, "day": 12, "year": y_adj, "impact": "HIGH"})
+        geo_events.append({"event": "US Jobs Report (Non-Farm Payrolls)", "month": m, "day": 6, "year": y_adj, "impact": "HIGH"})
     for ge in geo_events:
         try:
             ge_date = datetime(ge["year"], ge["month"], ge["day"])
@@ -2445,6 +2453,53 @@ async def market_pulse():
     # Sort upcoming by days
     upcoming.sort(key=lambda x: x["days"])
     
+    # FII/DII Activity — fetch from NSE India
+    fii_dii = {}
+    try:
+        import requests as req
+        nse_headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            "Accept": "application/json",
+            "Accept-Language": "en-US,en;q=0.9",
+            "Referer": "https://www.nseindia.com/",
+        }
+        session = req.Session()
+        session.get("https://www.nseindia.com/", headers=nse_headers, timeout=5)
+        fii_resp = session.get("https://www.nseindia.com/api/fiidiiTradeReact", headers=nse_headers, timeout=5)
+        if fii_resp.status_code == 200:
+            fii_raw = fii_resp.json()
+            for entry in fii_raw:
+                cat = entry.get("category", "")
+                buy = float(entry.get("buyValue", 0))
+                sell = float(entry.get("sellValue", 0))
+                net = float(entry.get("netValue", 0))
+                if "FII" in cat or "FPI" in cat:
+                    fii_dii["fii"] = {"buy": round(buy, 2), "sell": round(sell, 2), "net": round(net, 2), "date": entry.get("date", "")}
+                elif "DII" in cat:
+                    fii_dii["dii"] = {"buy": round(buy, 2), "sell": round(sell, 2), "net": round(net, 2), "date": entry.get("date", "")}
+            # Detect FII/DII as events if significant
+            fii_net = fii_dii.get("fii", {}).get("net", 0)
+            dii_net = fii_dii.get("dii", {}).get("net", 0)
+            if abs(fii_net) >= 2000:
+                direction = "buying" if fii_net > 0 else "selling"
+                impact = "BULLISH" if fii_net > 0 else "BEARISH"
+                events.append({
+                    "headline": f"FII {direction} ₹{abs(fii_net):,.0f}Cr {'into' if fii_net > 0 else 'out of'} Indian equities",
+                    "impact": impact, "severity": "HIGH" if abs(fii_net) >= 4000 else "MEDIUM",
+                    "detail": f"{'Foreign institutions aggressively buying — signals global confidence in India. Large-cap banking & IT stocks typically lead FII-driven rallies.' if fii_net > 0 else 'Foreign institutions pulling out capital — often driven by strong dollar, global risk-off, or better opportunities elsewhere. Creates selling pressure on Nifty, Bank Nifty.'}",
+                    "action": f"{'Expect broad market strength. Banking, IT, and large-cap stocks benefit most from FII inflows.' if fii_net > 0 else 'Defensive sectors (FMCG, pharma) hold better. Watch for DII counter-buying to absorb selling.'}"
+                })
+            if abs(dii_net) >= 2000:
+                direction = "buying" if dii_net > 0 else "selling"
+                events.append({
+                    "headline": f"DII {direction} ₹{abs(dii_net):,.0f}Cr — {'absorbing FII selling' if dii_net > 0 and fii_net < 0 else 'domestic funds active'}",
+                    "impact": "BULLISH" if dii_net > 0 else "BEARISH", "severity": "MEDIUM",
+                    "detail": f"{'Domestic institutions (mutual funds, insurance, pension) stepping in as buyers. This often provides a floor to the market during FII sell-offs.' if dii_net > 0 else 'Unusual DII selling — may signal profit-booking or redemption pressure from mutual fund investors.'}",
+                    "action": f"{'DII support limits downside. Mid-cap and small-cap stocks with mutual fund holdings benefit.' if dii_net > 0 else 'Watch for further weakness. If both FII and DII sell, markets could see sharp correction.'}"
+                })
+    except Exception as e:
+        print(f"FII/DII fetch error: {e}")
+
     return {
         "success": True,
         "date": date_str,
@@ -2452,9 +2507,10 @@ async def market_pulse():
         "ist_time": now.strftime("%I:%M %p IST"),
         "is_expiry": is_expiry,
         "expiry_today": expiry_today,
-        "events": events[:6],  # Show all detected events
-        "upcoming": upcoming[:5],  # Next 5 upcoming
-        "global_snapshot": global_snapshot
+        "events": events[:8],
+        "upcoming": upcoming[:8],
+        "global_snapshot": global_snapshot,
+        "fii_dii": fii_dii
     }
 
 @app.post("/api/index-trades")

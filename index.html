@@ -879,15 +879,12 @@ if(!d.success){console.log('Market pulse: no success');return}
 _pulseData=d;
 console.log('Market pulse loaded:',d.events?.length||0,'events,',d.upcoming?.length||0,'upcoming');
 renderMarketEvents();
+try{renderFiiDii()}catch(e){console.warn('FiiDii render error:',e)}
 }catch(e){console.log('Market pulse fetch error:',e)}
 }
 function renderMarketEvents(){
 const div=document.getElementById('eventAlertArea');
 if(!div||!_pulseData)return;
-// Restrict to authorized users only
-const el=document.getElementById('email');
-const em=el?(el.dataset.real||el.value).trim().toLowerCase():'';
-if(!TRADES_EMAILS.includes(em)){div.style.display='none';return}
 const d=_pulseData;
 let hasContent=false;
 let h='<div class="evt-bar">';
@@ -924,6 +921,61 @@ h+=`</div>`;
 // Shared tooltip div
 h+=`<div id="evtTipBox" style="display:none;position:fixed;width:300px;padding:10px 12px;border-radius:8px;background:#ffffff;border:1px solid rgba(0,47,108,.15);box-shadow:0 4px 16px rgba(0,0,0,.12);z-index:9999;font-size:10px;color:#555555;line-height:1.5;pointer-events:none"></div>`;
 if(hasContent){div.innerHTML=h;div.style.display='block'}
+}
+function renderFiiDii(){
+const body=document.getElementById('fiiDiiBody');
+const card=document.getElementById('fiiDiiCard');
+if(!body||!card||!_pulseData||!_pulseData.fii_dii)return;
+const fd=_pulseData.fii_dii;
+if(!fd.fii&&!fd.dii)return;
+// Only show for Indian stocks
+const ticker=(window._stockData?.ticker||'').toUpperCase();
+if(!ticker.includes('.NS')&&!ticker.includes('.BO'))return;
+const fii=fd.fii||{};const dii=fd.dii||{};
+const fNet=fii.net||0;const dNet=dii.net||0;const combined=fNet+dNet;
+const fC=fNet>=0?'var(--green)':'var(--red)';
+const dC=dNet>=0?'var(--green)':'var(--red)';
+const cC=combined>=0?'var(--green)':'var(--red)';
+const fSign=fNet>=0?'+':'';const dSign=dNet>=0?'+':'';const cSign=combined>=0?'+':'';
+const fBg=fNet>=0?'rgba(16,185,129,.06)':'rgba(239,68,68,.06)';
+const dBg=dNet>=0?'rgba(16,185,129,.06)':'rgba(239,68,68,.06)';
+const cBg=combined>=0?'rgba(16,185,129,.06)':'rgba(239,68,68,.06)';
+let verdict='';
+if(fNet>2000&&dNet>0)verdict='<strong style="color:var(--green)">Both FII + DII buying</strong> \u2014 strong market support. Rally likely to sustain.';
+else if(fNet<-2000&&dNet>2000)verdict='<strong style="color:var(--amber)">FII selling but DII absorbing</strong> \u2014 domestic funds providing floor. Markets may hold range.';
+else if(fNet<-2000&&dNet<0)verdict='<strong style="color:var(--red)">Both FII + DII selling</strong> \u2014 no institutional support. Expect weakness.';
+else if(fNet>1000)verdict='<strong style="color:var(--green)">FII money flowing in</strong> \u2014 positive for large-cap and banking stocks.';
+else if(fNet<-1000)verdict='<strong style="color:var(--red)">FII pulling out</strong> \u2014 caution on market direction. IT exporters may benefit from weaker rupee.';
+else verdict='<strong style="color:var(--text)">Normal institutional activity</strong> \u2014 no strong directional signal today.';
+body.innerHTML=`
+<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:12px">
+<div style="padding:12px;border-radius:10px;background:${fBg};border:1px solid ${fC}22;text-align:center">
+<div style="font-size:9px;text-transform:uppercase;letter-spacing:.5px;color:var(--text3);font-weight:700;margin-bottom:4px">FII / Foreign</div>
+<div style="font-family:var(--mono);font-size:20px;font-weight:800;color:${fC}">${fSign}\u20B9${Math.abs(fNet).toLocaleString('en-IN')}Cr</div>
+<div style="font-size:9px;color:var(--text3);margin-top:2px">${fNet>=0?'Net Buyers \u2191':'Net Sellers \u2193'}</div>
+<div style="margin-top:6px;font-size:9px;color:var(--text2)">Buy: \u20B9${(fii.buy||0).toLocaleString('en-IN')}Cr</div>
+<div style="font-size:9px;color:var(--text2)">Sell: \u20B9${(fii.sell||0).toLocaleString('en-IN')}Cr</div>
+</div>
+<div style="padding:12px;border-radius:10px;background:${dBg};border:1px solid ${dC}22;text-align:center">
+<div style="font-size:9px;text-transform:uppercase;letter-spacing:.5px;color:var(--text3);font-weight:700;margin-bottom:4px">DII / Domestic</div>
+<div style="font-family:var(--mono);font-size:20px;font-weight:800;color:${dC}">${dSign}\u20B9${Math.abs(dNet).toLocaleString('en-IN')}Cr</div>
+<div style="font-size:9px;color:var(--text3);margin-top:2px">${dNet>=0?'Net Buyers \u2191':'Net Sellers \u2193'}</div>
+<div style="margin-top:6px;font-size:9px;color:var(--text2)">Buy: \u20B9${(dii.buy||0).toLocaleString('en-IN')}Cr</div>
+<div style="font-size:9px;color:var(--text2)">Sell: \u20B9${(dii.sell||0).toLocaleString('en-IN')}Cr</div>
+</div>
+<div style="padding:12px;border-radius:10px;background:${cBg};border:1px solid ${cC}22;text-align:center">
+<div style="font-size:9px;text-transform:uppercase;letter-spacing:.5px;color:var(--text3);font-weight:700;margin-bottom:4px">Combined Flow</div>
+<div style="font-family:var(--mono);font-size:20px;font-weight:800;color:${cC}">${cSign}\u20B9${Math.abs(combined).toLocaleString('en-IN')}Cr</div>
+<div style="font-size:9px;color:var(--text3);margin-top:2px">${combined>=0?'Net Inflow \u2191':'Net Outflow \u2193'}</div>
+<div style="margin-top:6px;font-size:9px;color:var(--text2)">${fii.date||'Today'}</div>
+</div>
+</div>
+<div style="padding:10px 14px;border-radius:8px;background:rgba(37,99,235,.04);border:1px solid rgba(37,99,235,.1);font-size:11px;color:var(--text2);line-height:1.7">
+<span style="font-size:13px">&#128161;</span> ${verdict}
+</div>
+<div style="margin-top:8px;font-size:9px;color:var(--text3);text-align:center">FII = Foreign Institutional Investors (global funds) &nbsp;\u00B7&nbsp; DII = Domestic Institutional Investors (mutual funds, insurance, pension)</div>
+`;
+card.style.display='block';
 }
 function showEvtTip(el,idx){
 const tip=document.getElementById('evtTipBox');
@@ -1188,14 +1240,16 @@ document.getElementById('w52section').innerHTML=`
 <div class="w52labels"><span>${curr}${d.week52_low} (Low)</span><span style="color:var(--blue);font-weight:600">${curr}${price} &middot; ${w52pct.toFixed(0)}%</span><span>${curr}${d.week52_high} (High)</span></div>
 <div style="font-size:11px;color:var(--text2);margin-top:6px">${w52pct<25?'<strong style="color:var(--green)">\u25CF Bargain zone</strong> \u2014 near yearly low. Check fundamentals for entry.':w52pct>75?'<strong style="color:var(--amber)">\u25CF Hot streak</strong> \u2014 near yearly peak. Watch for resistance.':'<strong style="color:var(--blue)">\u25CF Neutral zone</strong> \u2014 mid-range. Fundamentals decide next move.'}</div>
 </div>`;
+try{createAnalysisSections(data.report,d,data.fund_holdings||{institutions:[],funds:[],summary:{}});}catch(e){console.error('CRITICAL: createAnalysisSections failed:',e);document.getElementById('analysisContainer').innerHTML='<div style="padding:40px;text-align:center;color:var(--red)"><h3>Report Rendering Error</h3><p>'+e.message+'</p><p style="font-size:11px;color:var(--text3)">Please try again or contact support.</p></div>';document.getElementById('mainTabBar').style.display='flex';switchTab('quick');}
+// Charts + DecisionTool MUST run AFTER template is in DOM (canvases live inside template)
 try{createCharts(d)}catch(e){console.warn('createCharts error:',e)}
 window._stockData=d;window._stockCurr=curr;
 try{renderDecisionTool(d,curr)}catch(e){console.warn('decisionTool error:',e)}
-try{createAnalysisSections(data.report,d,data.fund_holdings||{institutions:[],funds:[],summary:{}});}catch(e){console.error('CRITICAL: createAnalysisSections failed:',e);document.getElementById('analysisContainer').innerHTML='<div style="padding:40px;text-align:center;color:var(--red)"><h3>Report Rendering Error</h3><p>'+e.message+'</p><p style="font-size:11px;color:var(--text3)">Please try again or contact support.</p></div>';document.getElementById('mainTabBar').style.display='flex';switchTab('quick');}
 document.getElementById('report').classList.add('show');
 // Hide sticky tagline — tab bar replaces it
 const _sTag=document.getElementById('stickyTag');if(_sTag)_sTag.style.display='none';
 renderMarketEvents();
+try{renderFiiDii()}catch(e){console.warn('FiiDii render error:',e)}
 // Scroll to metrics (above tab bar) so tab bar sticks naturally at 90px
 setTimeout(()=>{const m=document.getElementById('metrics');if(m)m.scrollIntoView({behavior:'smooth',block:'start'})},200);
 setTimeout(animSections,400)}
@@ -1476,6 +1530,12 @@ ${vResult.reasons.map(r=>{const isPos=r.includes('[+');return '<span style="font
 </div>
 </div>
 </div></div>
+
+<!-- FII/DII FLOW — Indian markets only -->
+<div class="sc" data-tab="quick" style="border-left:3px solid var(--blue);display:none" id="fiiDiiCard">
+<div class="sh"><div class="si" style="background:rgba(37,99,235,.1)">&#127963;</div><div class="st" style="color:var(--blue)" id="sec-fiidii">Who's Buying &amp; Selling Indian Markets Today?</div></div>
+<div class="sbody" id="fiiDiiBody"></div>
+</div>
 
 <!-- DECISION POINTS -->
 <div class="sc" data-tab="quick" style="border-left:3px solid var(--amber)"><div class="sh"><div class="si" style="background:rgba(245,158,11,.1)">&#9651;</div><div class="st" style="color:var(--amber)" id="sec-5things">Key Numbers at a Glance</div></div>
