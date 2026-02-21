@@ -694,6 +694,9 @@ footer{position:relative;z-index:1;margin-top:32px;background:#002f6c;border-top
 <h1>Stock Intelligence, Instantly.</h1>
 <p class="hero-sub" style="font-size:15px;line-height:1.6;max-width:560px;margin-bottom:20px">Free institutional-grade analysis with buy/sell levels, risk scoring &amp; AI verdicts.</p>
 
+<!-- GLOBAL EVENTS & UPCOMING — visible on page load -->
+<div id="eventAlertArea" style="display:none;margin-bottom:10px;max-width:680px;width:100%"></div>
+
 <!-- SEARCH CARD — The centerpiece -->
 <div class="icard" style="max-width:680px;margin:0 auto 18px;text-align:left">
 <div class="irow">
@@ -765,8 +768,6 @@ footer{position:relative;z-index:1;margin-top:32px;background:#002f6c;border-top
 </div>
 <div class="mgrid" id="metrics"></div>
 
-<!-- STATIC EVENT ALERTS — always right after metrics -->
-<div id="eventAlertArea" style="display:none;margin-bottom:0"></div>
 <!-- Hidden 52W section for JS compatibility -->
 <div id="w52section" style="display:none"></div>
 
@@ -1669,25 +1670,26 @@ ${n(d.beta)>1.3?' This stock has higher-than-average volatility — use wider st
 <div class="sc" data-tab="quick" style="border-left:3px solid var(--red)"><div class="sh"><div class="si" style="background:rgba(239,68,68,.1)">&#9888;</div><div class="st" style="color:var(--red)" id="sec-risk">What Could Go Wrong?</div></div>
 <div class="sbody">
 <table class="dt"><tr><th>Factor</th><th>Metric</th><th>Signal</th><th>Assessment</th></tr>
-${(d.debt_to_equity&&d.debt_to_equity!=='N/A'&&parseFloat(d.debt_to_equity)>0)?`<tr><td>Debt Level</td><td style="font-family:var(--mono);font-weight:600">${d.debt_to_equity}</td>
-<td><span class="sig ${parseFloat(d.debt_to_equity)>1.5?'r':parseFloat(d.debt_to_equity)>0.8?'c':'g'}">${parseFloat(d.debt_to_equity)>1.5?'High':parseFloat(d.debt_to_equity)>0.8?'Moderate':'Low'}</span></td>
-<td style="font-size:12px">${parseFloat(d.debt_to_equity)>1.5?'High leverage — watch carefully':parseFloat(d.debt_to_equity)>0.8?'Moderate — manageable':'Conservative — low risk'}</td></tr>`:''}
-${(d.current_ratio&&d.current_ratio!=='N/A'&&parseFloat(d.current_ratio)>0)?`<tr><td>Liquidity</td><td style="font-family:var(--mono);font-weight:600">${d.current_ratio}</td>
-<td><span class="sig ${parseFloat(d.current_ratio)>1.5?'g':parseFloat(d.current_ratio)>1?'c':'r'}">${parseFloat(d.current_ratio)>1.5?'Strong':parseFloat(d.current_ratio)>1?'Adequate':'Weak'}</span></td>
-<td style="font-size:12px">${parseFloat(d.current_ratio)>1.5?'Can meet obligations easily':parseFloat(d.current_ratio)>1?'Tight but OK':'Liquidity concerns'}</td></tr>`:''}
-${(d.beta&&d.beta!=='N/A'&&parseFloat(d.beta)!==0)?`<tr><td>Volatility</td><td style="font-family:var(--mono);font-weight:600">${d.beta}</td>
-<td><span class="sig ${Math.abs(parseFloat(d.beta))>1.5?'r':Math.abs(parseFloat(d.beta))<0.8?'g':'n'}">${Math.abs(parseFloat(d.beta))>1.5?'High':Math.abs(parseFloat(d.beta))<0.8?'Low':'Average'}</span></td>
-<td style="font-size:12px">${Math.abs(parseFloat(d.beta))>1.5?'Expect bigger price swings':Math.abs(parseFloat(d.beta))<0.8?'Less volatile — defensive':'Average volatility'}</td></tr>`:''}
-${(d.sector&&d.sector!=='N/A')?`<tr><td>Sector</td><td>${d.sector}</td><td><span class="sig n">Monitor</span></td><td style="font-size:12px">Track trends &amp; regulation</td></tr>`:''}
+${(()=>{let rows='';
+const de=parseFloat(d.debt_to_equity)||0,cr=parseFloat(d.current_ratio)||0,bt=parseFloat(d.beta)||1;
+if(de>0)rows+=`<tr><td>Debt Level</td><td style="font-family:var(--mono);font-weight:600">${d.debt_to_equity}</td><td><span class="sig ${de>1.5?'r':de>0.8?'c':'g'}">${de>1.5?'High':de>0.8?'Moderate':'Low'}</span></td><td style="font-size:12px">${de>1.5?'High leverage \u2014 watch carefully':de>0.8?'Moderate \u2014 manageable':'Conservative \u2014 low risk'}</td></tr>`;
+if(cr>0)rows+=`<tr><td>Liquidity</td><td style="font-family:var(--mono);font-weight:600">${d.current_ratio}</td><td><span class="sig ${cr>1.5?'g':cr>1?'c':'r'}">${cr>1.5?'Strong':cr>1?'Adequate':'Weak'}</span></td><td style="font-size:12px">${cr>1.5?'Can meet obligations easily':cr>1?'Tight but OK':'Liquidity concerns'}</td></tr>`;
+rows+=`<tr><td>Volatility</td><td style="font-family:var(--mono);font-weight:600">${bt.toFixed(2)}</td><td><span class="sig ${bt>1.5?'r':bt<0.8?'g':'n'}">${bt>1.5?'High':bt<0.8?'Low':'Average'}</span></td><td style="font-size:12px">${bt>1.5?'Expect bigger price swings':bt<0.8?'Less volatile \u2014 defensive':'Average volatility'}</td></tr>`;
+if(d.sector&&d.sector!=='N/A'&&d.sector!=='Unknown')rows+=`<tr><td>Sector</td><td>${d.sector}</td><td><span class="sig n">Monitor</span></td><td style="font-size:12px">Track trends &amp; regulation</td></tr>`;
+const w52pct=d.week52_high>0?((price/d.week52_high)*100).toFixed(0):0;
+if(Number(w52pct)>90)rows+=`<tr><td>52W Position</td><td style="font-family:var(--mono);font-weight:600">${w52pct}% of high</td><td><span class="sig r">Stretched</span></td><td style="font-size:12px">Near 52-week high \u2014 pullback risk</td></tr>`;
+else if(Number(w52pct)<40)rows+=`<tr><td>52W Position</td><td style="font-family:var(--mono);font-weight:600">${w52pct}% of high</td><td><span class="sig c">Beaten down</span></td><td style="font-size:12px">Far from highs \u2014 could be value or value trap</td></tr>`;
+return rows;})()}
 </table>
 <div style="margin-top:12px;padding:12px 16px;border-radius:10px;background:linear-gradient(135deg,rgba(239,68,68,.05),rgba(245,158,11,.03));border:1px solid rgba(239,68,68,.1)">
-<div style="font-size:12px;font-weight:700;color:var(--red);margin-bottom:6px">⚠️ Risk Summary</div>
+<div style="font-size:12px;font-weight:700;color:var(--red);margin-bottom:6px">&#9888;&#65039; Risk Summary</div>
 <div style="font-size:11px;color:var(--text2);line-height:1.8">
-${parseFloat(d.debt_to_equity)>1.5&&parseFloat(d.current_ratio)<1?'<strong style="color:var(--red)">High risk</strong> — heavy debt AND weak cash. One bad quarter could create serious trouble.'
-:parseFloat(d.debt_to_equity)>1.5?'<strong style="color:var(--amber)">Elevated debt</strong> — if interest rates rise or business slows, this stock will feel the pain first.'
-:parseFloat(d.current_ratio)<1?'<strong style="color:var(--amber)">Cash is tight</strong> — the company may struggle to pay short-term bills. Watch quarterly results closely.'
-:'<strong style="color:var(--green)">Manageable risk</strong> — reasonable debt and enough cash to operate. No immediate red flags.'}
-${Math.abs(parseFloat(d.beta))>1.5?' Expect <strong>bigger daily swings</strong> than the overall market.':''}
+${(()=>{const de=parseFloat(d.debt_to_equity)||0,cr=parseFloat(d.current_ratio)||0,bt=parseFloat(d.beta)||1;
+if(de>1.5&&cr>0&&cr<1)return '<strong style="color:var(--red)">High risk</strong> \u2014 heavy debt AND weak cash. One bad quarter could create serious trouble.';
+if(de>1.5)return '<strong style="color:var(--amber)">Elevated debt</strong> \u2014 if interest rates rise or business slows, this stock will feel the pain first.';
+if(cr>0&&cr<1)return '<strong style="color:var(--amber)">Cash is tight</strong> \u2014 the company may struggle to pay short-term bills. Watch quarterly results closely.';
+return '<strong style="color:var(--green)">Manageable risk</strong> \u2014 reasonable debt and enough cash to operate. No immediate red flags.';})()}
+${(()=>{const bt=parseFloat(d.beta)||1;return bt>1.5?' Expect <strong>bigger daily swings</strong> than the overall market.':'';})()}
 </div>
 </div>
 </div></div>
@@ -1738,8 +1740,8 @@ ${Math.abs(parseFloat(d.beta))>1.5?' Expect <strong>bigger daily swings</strong>
 </div>
 <div style="padding:10px;border-radius:8px;background:rgba(139,92,246,.04);border:1px solid rgba(139,92,246,.12);text-align:center">
 <div style="font-size:14px;font-weight:800;color:var(--text)">${d.sector}</div>
-<div style="font-size:9px;color:var(--text3)">${formatCap(d.market_cap,curr)} cap</div>
-<div style="font-size:9px;color:var(--text3)">${n(d.beta)>1.3?'High volatility':n(d.beta)<0.7?'Low volatility':'Average volatility'}</div>
+<div style="font-size:9px;color:var(--text3)">${d.market_cap&&d.market_cap>0?formatCap(d.market_cap,curr)+' cap':d.sector}</div>
+<div style="font-size:9px;color:var(--text3)">${(d.beta&&d.beta!=='N/A'&&n(d.beta)!==1)?n(d.beta)>1.3?'High volatility':'Low volatility':''}</div>
 </div>
 </div>
 <div style="padding:16px;border-radius:10px;background:var(--bg);border:1px solid var(--border)">
@@ -1958,6 +1960,9 @@ document.querySelectorAll('.sub-nav[data-tab="'+tab+'"]').forEach(s=>{s.style.di
 const btnMap={quick:'tabBtnQuick',deep:'tabBtnDeep',mgmt:'tabBtnMgmt',next:'tabBtnNext',gems:'tabBtnGems',picks:'tabBtnPicks',funds:'tabBtnFunds',trades:'tabBtnTrades'};
 if(btnMap[tab]){const btn=document.getElementById(btnMap[tab]);if(btn)btn.classList.add('active')}
 console.log('switchTab:',tab,'→',document.querySelectorAll('.sc[data-tab="'+tab+'"]').length,'sections shown');
+// 4) Scroll to tab bar so new tab starts from the top
+const tabBar=document.getElementById('mainTabBar');
+if(tabBar)tabBar.scrollIntoView({behavior:'smooth',block:'start'});
 }catch(e){console.error('switchTab error:',e)}
 }
 
@@ -3831,7 +3836,7 @@ ${ma.vix_signal||ma.global_impact?`<div style="font-size:11px;color:var(--text3)
 </div>`;
 }
 
-// Event alert now handled by fetchMarketPulse() on Analyze click — not here
+// Event alert loads on page load via DOMContentLoaded and refreshes on each Analyze click
 
 // Market pulse header
 html+=`<div style="border-radius:12px;background:linear-gradient(135deg,rgba(245,158,11,.08),rgba(239,68,68,.05));border:1px solid rgba(245,158,11,.2);padding:16px 20px;margin-bottom:16px">
@@ -4241,7 +4246,7 @@ track.innerHTML=items+items;
 }catch(e){console.log('Ticker load failed:',e)}
 }
 
-document.addEventListener('DOMContentLoaded',()=>{loadGlobalTicker();initVoteChart();loadVotes();
+document.addEventListener('DOMContentLoaded',()=>{loadGlobalTicker();fetchMarketPulse();initVoteChart();loadVotes();
 fetch('/api/stats').then(r=>r.json()).then(d=>{
 if(d.total_reports){document.getElementById('navRC').textContent=d.total_reports;document.getElementById('globalRC').textContent=d.total_reports.toLocaleString();const hb=document.getElementById('reportBadgeCount');if(hb)hb.textContent=d.total_reports.toLocaleString()}
 }).catch(()=>{})});
