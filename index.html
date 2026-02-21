@@ -574,16 +574,19 @@ footer{position:relative;z-index:1;margin-top:32px;background:#002f6c;border-top
 .pick-geo button{font-size:9px;padding:3px 8px;border-radius:4px;border:1px solid var(--border);background:var(--surface);color:var(--text3);cursor:pointer;font-weight:700;font-family:'DM Sans',sans-serif}
 .pick-geo button.active{background:var(--amber);color:#000;border-color:var(--amber)}
 .event-alert-global{animation:eventSlide .5s ease-out;overflow:hidden;margin-bottom:0;border-radius:12px;position:relative}
-.evt-bar{display:flex;align-items:center;gap:8px;padding:8px 14px;border-radius:10px;background:linear-gradient(135deg,rgba(245,158,11,.04),rgba(239,68,68,.03));border:1px solid rgba(245,158,11,.12);overflow:visible;position:relative;flex-wrap:wrap}
+.evt-bar{display:flex;flex-direction:column;gap:6px;padding:8px 14px;border-radius:10px;background:linear-gradient(135deg,rgba(245,158,11,.04),rgba(239,68,68,.03));border:1px solid rgba(245,158,11,.12);overflow:hidden;position:relative}
+.evt-row{display:flex;align-items:center;gap:8px;width:100%}
 .evt-label{font-family:'Sora',sans-serif;font-size:9px;font-weight:800;color:var(--amber);letter-spacing:.5px;white-space:nowrap;flex-shrink:0}
-.evt-scroll{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;-ms-overflow-style:none;flex:1;padding:2px 0}
+.evt-scroll{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;-ms-overflow-style:none;flex:1;padding:2px 0;min-width:0;mask-image:linear-gradient(90deg,transparent,#000 2%,#000 98%,transparent);-webkit-mask-image:linear-gradient(90deg,transparent,#000 2%,#000 98%,transparent)}
 .evt-scroll::-webkit-scrollbar{display:none}
 .evt-chip{position:relative;flex-shrink:0;display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:6px;cursor:default;transition:all .2s;font-size:10px;font-weight:600;white-space:nowrap;border:1px solid rgba(0,47,108,.06)}
 .evt-chip:hover{transform:translateY(-1px);z-index:10}
 .evt-sev{font-size:7px;font-weight:900;color:#fff;padding:1px 4px;border-radius:3px;flex-shrink:0}
 .evt-arrow{font-size:8px}
-.evt-upcoming{display:flex;gap:4px;flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;padding:2px 0;flex-shrink:0}
-.evt-upcoming::-webkit-scrollbar{display:none}
+.evt-upcoming-wrap{overflow:hidden;flex:1;min-width:0;mask-image:linear-gradient(90deg,transparent,#000 3%,#000 97%,transparent);-webkit-mask-image:linear-gradient(90deg,transparent,#000 3%,#000 97%,transparent)}
+.evt-upcoming{display:flex;gap:8px;animation:evtScroll 30s linear infinite;width:max-content;padding:2px 0}
+.evt-upcoming:hover{animation-play-state:paused}
+@keyframes evtScroll{0%{transform:translateX(0)}100%{transform:translateX(-50%)}}
 .evt-upcoming .evt-up{font-size:9px;padding:3px 8px;border-radius:6px;background:rgba(59,130,246,.06);border:1px solid rgba(0,120,212,.12);color:var(--text2);white-space:nowrap;flex-shrink:0}
 .event-alert-global::before{content:'';position:absolute;inset:-2px;border-radius:14px;background:linear-gradient(90deg,transparent,rgba(245,158,11,.4),transparent,rgba(239,68,68,.3),transparent);background-size:300% 100%;animation:borderShimmer 4s linear infinite;z-index:-1}
 .event-alert-global.high::before{background:linear-gradient(90deg,transparent,rgba(239,68,68,.5),transparent,rgba(245,158,11,.4),transparent);background-size:300% 100%}
@@ -890,7 +893,7 @@ let hasContent=false;
 let h='<div class="evt-bar">';
 if(d.events&&d.events.length>0){
 hasContent=true;
-h+=`<span style="font-size:12px;flex-shrink:0">&#128293;</span><span class="evt-label">LIVE</span><div class="evt-scroll">`;
+h+=`<div class="evt-row"><span style="font-size:12px;flex-shrink:0">&#128293;</span><span class="evt-label">LIVE</span><div class="evt-scroll">`;
 d.events.forEach((evt,idx)=>{
 const isH=evt.severity==='HIGH';
 const isM=evt.severity==='MEDIUM';
@@ -904,18 +907,18 @@ ${evt.headline}
 <span class="evt-arrow" style="color:${iC}">${iA}</span>
 </div>`;
 });
-h+=`</div>`;
+h+=`</div></div>`;
 }
 if(d.upcoming&&d.upcoming.length>0){
 hasContent=true;
-if(!d.events||d.events.length===0)h+=`<span style="font-size:11px;flex-shrink:0">&#128197;</span><span class="evt-label">UPCOMING</span>`;
-else h+=`<span style="font-size:9px;color:var(--text3);flex-shrink:0;padding-left:4px;border-left:1px solid var(--border)">&#128197;</span>`;
-h+=`<div class="evt-upcoming">`;
+h+=`<div class="evt-row"><span style="font-size:11px;flex-shrink:0">&#128197;</span><span class="evt-label">NEXT</span>`;
+let upItems='';
 d.upcoming.forEach(u=>{
 const uC=u.impact==='HIGH'?'var(--red)':'var(--amber)';
-h+=`<span class="evt-up"><strong style="color:${uC}">${u.event}</strong> ${u.date} <span style="color:var(--text3)">(${u.days}d)</span></span>`;
+upItems+=`<span class="evt-up"><strong style="color:${uC}">${u.event}</strong> ${u.date} <span style="color:var(--text3)">(${u.days}d)</span></span>`;
 });
-h+=`</div>`;
+// Duplicate for seamless loop
+h+=`<div class="evt-upcoming-wrap"><div class="evt-upcoming">${upItems}${upItems}</div></div></div>`;
 }
 h+=`</div>`;
 // Shared tooltip div
@@ -1219,19 +1222,19 @@ const scEl=document.getElementById('stickyCompany');if(scEl){scEl.textContent=(d
 const srcLabel=d.data_source==='yahoo_chart_only'?' (chart)':d.data_source==='yahoo_scrape'?' (alt)':d.data_source==='stale_cache'?' (cached)':'';
 document.getElementById('timestamp').innerHTML='<div class="ldot"></div> LIVE'+srcLabel+' \u00B7 '+d.data_timestamp;
 
-// 8 METRICS (expanded from 4) - graceful N/A handling
-const peDisplay=d.pe_ratio&&d.pe_ratio!=='N/A'&&d.pe_ratio!==0?d.pe_ratio:'—';
-const peLabel=peDisplay==='—'?'<span style="font-size:9px;color:var(--text3)">Data pending</span>':'TTM';
-const mcapRaw=d.market_cap&&d.market_cap>1e6?d.market_cap:0; // Sanity: any real company > $1M
-const mcapDisplay=mcapRaw>0?formatCap(mcapRaw,curr):'—';
-const mcapLabel=mcapDisplay==='—'?'<span style="font-size:9px;color:var(--text3)">Data pending</span>':d.currency;
+// 8 METRICS (expanded from 4) - skip cards with N/A data entirely
+const peDisplay=d.pe_ratio&&d.pe_ratio!=='N/A'&&d.pe_ratio!==0?d.pe_ratio:null;
+const mcapRaw=d.market_cap&&d.market_cap>1e6?d.market_cap:0;
+const mcapDisplay=mcapRaw>0?formatCap(mcapRaw,curr):null;
+const w52valid=d.week52_low&&d.week52_high&&d.week52_low!=='N/A'&&d.week52_high!=='N/A'&&parseFloat(d.week52_high)>0;
 document.getElementById('metrics').innerHTML=`
 <div class="mcard"><div class="ml">Price</div><div class="mv">${curr}${price.toLocaleString()}</div><div class="ms ${d.price_change>=0?'up':'dn'}">${d.price_change>=0?'\u25B2':'\u25BC'} ${Math.abs(d.price_change).toFixed(2)} (${d.price_change_pct.toFixed(2)}%)</div></div>
-<div class="mcard"><div class="ml">P/E Ratio</div><div class="mv">${peDisplay}</div><div class="ms nu">${peLabel}</div></div>
-<div class="mcard"><div class="ml">Market Cap</div><div class="mv">${mcapDisplay}</div><div class="ms nu">${mcapLabel}</div></div>
-<div class="mcard"><div class="ml">52W Range</div><div class="mv" style="font-size:16px">${curr}${d.week52_low}\u2014${curr}${d.week52_high}</div><div class="ms nu">Low / High</div></div>`;
+${peDisplay?`<div class="mcard"><div class="ml">P/E Ratio</div><div class="mv">${peDisplay}</div><div class="ms nu">TTM</div></div>`:''}
+${mcapDisplay?`<div class="mcard"><div class="ml">Market Cap</div><div class="mv">${mcapDisplay}</div><div class="ms nu">${d.currency}</div></div>`:''}
+${w52valid?`<div class="mcard"><div class="ml">52W Range</div><div class="mv" style="font-size:16px">${curr}${d.week52_low}\u2014${curr}${d.week52_high}</div><div class="ms nu">Low / High</div></div>`:''}`;
 
-// 52-WEEK POSITION BAR
+// 52-WEEK POSITION BAR — only show if valid data
+if(w52valid){
 const w52pct=Math.min(100,Math.max(0,((price-d.week52_low)/(d.week52_high-d.week52_low))*100));
 document.getElementById('w52section').innerHTML=`
 <div class="sh" style="margin-bottom:2px"><div class="si" style="background:rgba(0,120,212,.12)">&#9678;</div><div class="st" style="color:var(--blue)">52-Week Price Map</div></div>
@@ -1240,6 +1243,7 @@ document.getElementById('w52section').innerHTML=`
 <div class="w52labels"><span>${curr}${d.week52_low} (Low)</span><span style="color:var(--blue);font-weight:600">${curr}${price} &middot; ${w52pct.toFixed(0)}%</span><span>${curr}${d.week52_high} (High)</span></div>
 <div style="font-size:11px;color:var(--text2);margin-top:6px">${w52pct<25?'<strong style="color:var(--green)">\u25CF Bargain zone</strong> \u2014 near yearly low. Check fundamentals for entry.':w52pct>75?'<strong style="color:var(--amber)">\u25CF Hot streak</strong> \u2014 near yearly peak. Watch for resistance.':'<strong style="color:var(--blue)">\u25CF Neutral zone</strong> \u2014 mid-range. Fundamentals decide next move.'}</div>
 </div>`;
+}
 try{createAnalysisSections(data.report,d,data.fund_holdings||{institutions:[],funds:[],summary:{}});}catch(e){console.error('CRITICAL: createAnalysisSections failed:',e);document.getElementById('analysisContainer').innerHTML='<div style="padding:40px;text-align:center;color:var(--red)"><h3>Report Rendering Error</h3><p>'+e.message+'</p><p style="font-size:11px;color:var(--text3)">Please try again or contact support.</p></div>';document.getElementById('mainTabBar').style.display='flex';switchTab('quick');}
 // Charts + DecisionTool MUST run AFTER template is in DOM (canvases live inside template)
 try{createCharts(d)}catch(e){console.warn('createCharts error:',e)}
@@ -1532,7 +1536,7 @@ ${vResult.reasons.map(r=>{const isPos=r.includes('[+');return '<span style="font
 </div></div>
 
 <!-- FII/DII FLOW — Indian markets only -->
-<div class="sc" data-tab="quick" style="border-left:3px solid var(--blue);display:none" id="fiiDiiCard">
+<div class="sc" data-tab="quick" data-conditional="1" style="border-left:3px solid var(--blue);display:none" id="fiiDiiCard">
 <div class="sh"><div class="si" style="background:rgba(37,99,235,.1)">&#127963;</div><div class="st" style="color:var(--blue)" id="sec-fiidii">Who's Buying &amp; Selling Indian Markets Today?</div></div>
 <div class="sbody" id="fiiDiiBody"></div>
 </div>
@@ -1540,40 +1544,40 @@ ${vResult.reasons.map(r=>{const isPos=r.includes('[+');return '<span style="font
 <!-- DECISION POINTS -->
 <div class="sc" data-tab="quick" style="border-left:3px solid var(--amber)"><div class="sh"><div class="si" style="background:rgba(245,158,11,.1)">&#9651;</div><div class="st" style="color:var(--amber)" id="sec-5things">Key Numbers at a Glance</div></div>
 <div class="sbody">
-<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px">
-<div style="padding:10px;border-radius:8px;text-align:center;background:${pe<18?'rgba(16,185,129,.06)':pe<28?'rgba(245,158,11,.06)':'rgba(239,68,68,.06)'};border:1px solid ${pe<18?'rgba(16,185,129,.15)':pe<28?'rgba(245,158,11,.15)':'rgba(239,68,68,.15)'}">
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;margin-bottom:12px">
+${(d.pe_ratio&&d.pe_ratio!=='N/A'&&pe>0)?`<div style="padding:10px;border-radius:8px;text-align:center;background:${pe<18?'rgba(16,185,129,.06)':pe<28?'rgba(245,158,11,.06)':'rgba(239,68,68,.06)'};border:1px solid ${pe<18?'rgba(16,185,129,.15)':pe<28?'rgba(245,158,11,.15)':'rgba(239,68,68,.15)'}">
 <div style="font-size:8px;text-transform:uppercase;letter-spacing:.5px;color:var(--text3);font-weight:700">Valuation</div>
 <div style="font-family:var(--mono);font-size:18px;font-weight:800;color:${pe<18?'var(--green)':pe<28?'var(--amber)':'var(--red)'}">${d.pe_ratio}x</div>
 <div style="font-size:9px;color:var(--text3)">${pe<18?'\\u2705 Cheap':pe<28?'\\u26A0 Fair':'\\u{1F6A8} Expensive'}</div>
-</div>
-<div style="padding:10px;border-radius:8px;text-align:center;background:${parseFloat(d.profit_margin)>15?'rgba(16,185,129,.06)':parseFloat(d.profit_margin)>8?'rgba(245,158,11,.06)':'rgba(239,68,68,.06)'};border:1px solid ${parseFloat(d.profit_margin)>15?'rgba(16,185,129,.15)':parseFloat(d.profit_margin)>8?'rgba(245,158,11,.15)':'rgba(239,68,68,.15)'}">
+</div>`:''}
+${(d.profit_margin&&d.profit_margin!=='N/A'&&parseFloat(d.profit_margin)!==0)?`<div style="padding:10px;border-radius:8px;text-align:center;background:${parseFloat(d.profit_margin)>15?'rgba(16,185,129,.06)':parseFloat(d.profit_margin)>8?'rgba(245,158,11,.06)':'rgba(239,68,68,.06)'};border:1px solid ${parseFloat(d.profit_margin)>15?'rgba(16,185,129,.15)':parseFloat(d.profit_margin)>8?'rgba(245,158,11,.15)':'rgba(239,68,68,.15)'}">
 <div style="font-size:8px;text-transform:uppercase;letter-spacing:.5px;color:var(--text3);font-weight:700">Profitability</div>
 <div style="font-family:var(--mono);font-size:18px;font-weight:800;color:${parseFloat(d.profit_margin)>15?'var(--green)':parseFloat(d.profit_margin)>8?'var(--amber)':'var(--red)'}">${d.profit_margin}%</div>
 <div style="font-size:9px;color:var(--text3)">${parseFloat(d.profit_margin)>15?'\\u2705 Strong moat':parseFloat(d.profit_margin)>8?'\\u26A0 Moderate':'\\u274C Thin'}</div>
-</div>
-<div style="padding:10px;border-radius:8px;text-align:center;background:${parseFloat(d.debt_to_equity)<0.5?'rgba(16,185,129,.06)':parseFloat(d.debt_to_equity)<1.5?'rgba(245,158,11,.06)':'rgba(239,68,68,.06)'};border:1px solid ${parseFloat(d.debt_to_equity)<0.5?'rgba(16,185,129,.15)':parseFloat(d.debt_to_equity)<1.5?'rgba(245,158,11,.15)':'rgba(239,68,68,.15)'}">
+</div>`:''}
+${(d.debt_to_equity&&d.debt_to_equity!=='N/A'&&parseFloat(d.debt_to_equity)>0)?`<div style="padding:10px;border-radius:8px;text-align:center;background:${parseFloat(d.debt_to_equity)<0.5?'rgba(16,185,129,.06)':parseFloat(d.debt_to_equity)<1.5?'rgba(245,158,11,.06)':'rgba(239,68,68,.06)'};border:1px solid ${parseFloat(d.debt_to_equity)<0.5?'rgba(16,185,129,.15)':parseFloat(d.debt_to_equity)<1.5?'rgba(245,158,11,.15)':'rgba(239,68,68,.15)'}">
 <div style="font-size:8px;text-transform:uppercase;letter-spacing:.5px;color:var(--text3);font-weight:700">Debt Risk</div>
 <div style="font-family:var(--mono);font-size:18px;font-weight:800;color:${parseFloat(d.debt_to_equity)<0.5?'var(--green)':parseFloat(d.debt_to_equity)<1.5?'var(--amber)':'var(--red)'}">${d.debt_to_equity}x</div>
 <div style="font-size:9px;color:var(--text3)">${parseFloat(d.debt_to_equity)<0.5?'\\u2705 Conservative':parseFloat(d.debt_to_equity)<1.5?'\\u26A0 Moderate':'\\u{1F6A8} High leverage'}</div>
-</div>
+</div>`:''}
 </div>
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-<div style="padding:8px 12px;border-radius:6px;background:rgba(0,120,212,.03);border:1px solid rgba(0,120,212,.1)">
+${(d.market_cap&&d.market_cap!=='N/A'&&parseFloat(d.market_cap)>0)?`<div style="padding:8px 12px;border-radius:6px;background:rgba(0,120,212,.03);border:1px solid rgba(0,120,212,.1)">
 <div style="font-size:9px;color:var(--text3);margin-bottom:2px">MARKET CAP</div>
 <div style="font-size:13px;font-weight:700;color:var(--text)">${formatCap(d.market_cap,curr)} <span style="font-size:10px;color:var(--text3)">${d.market_cap>100e9?'Large-cap':d.market_cap>10e9?'Mid-cap':'Small-cap'}</span></div>
-</div>
-<div style="padding:8px 12px;border-radius:6px;background:rgba(0,120,212,.03);border:1px solid rgba(0,120,212,.1)">
+</div>`:''}
+${(d.week52_high&&d.week52_high!=='N/A'&&parseFloat(d.week52_high)>0)?`<div style="padding:8px 12px;border-radius:6px;background:rgba(0,120,212,.03);border:1px solid rgba(0,120,212,.1)">
 <div style="font-size:9px;color:var(--text3);margin-bottom:2px">52-WEEK POSITION</div>
-<div style="font-size:13px;font-weight:700;color:var(--text)">${((price/d.week52_high)*100).toFixed(0)}% of high <span style="font-size:10px;color:var(--text3)">Beta: ${d.beta}</span></div>
-</div>
-<div style="padding:8px 12px;border-radius:6px;background:rgba(0,120,212,.03);border:1px solid rgba(0,120,212,.1)">
+<div style="font-size:13px;font-weight:700;color:var(--text)">${((price/d.week52_high)*100).toFixed(0)}% of high ${(d.beta&&d.beta!=='N/A'&&parseFloat(d.beta)>0)?'<span style="font-size:10px;color:var(--text3)">'+(parseFloat(d.beta)>1.3?'High volatility':parseFloat(d.beta)<0.7?'Low volatility':'Avg volatility')+'</span>':''}</div>
+</div>`:''}
+${(d.roe&&d.roe!=='N/A'&&parseFloat(d.roe)!==0)?`<div style="padding:8px 12px;border-radius:6px;background:rgba(0,120,212,.03);border:1px solid rgba(0,120,212,.1)">
 <div style="font-size:9px;color:var(--text3);margin-bottom:2px">ROE (Return on Equity)</div>
 <div style="font-size:13px;font-weight:700;color:${parseFloat(d.roe)>15?'var(--green)':'var(--text)'}">${d.roe}% <span style="font-size:10px;color:var(--text3)">${parseFloat(d.roe)>15?'Capital efficient':'Average'}</span></div>
-</div>
-<div style="padding:8px 12px;border-radius:6px;background:rgba(0,120,212,.03);border:1px solid rgba(0,120,212,.1)">
+</div>`:''}
+${(d.dividend_yield&&d.dividend_yield!=='N/A'&&parseFloat(d.dividend_yield)>0)?`<div style="padding:8px 12px;border-radius:6px;background:rgba(0,120,212,.03);border:1px solid rgba(0,120,212,.1)">
 <div style="font-size:9px;color:var(--text3);margin-bottom:2px">DIVIDEND INCOME</div>
 <div style="font-size:13px;font-weight:700;color:${parseFloat(d.dividend_yield)>2?'var(--green)':'var(--text)'}">${d.dividend_yield}% <span style="font-size:10px;color:var(--text3)">${parseFloat(d.dividend_yield)>3?'High income':parseFloat(d.dividend_yield)>1?'Some income':'Growth focus'}</span></div>
-</div>
+</div>`:''}
 </div>
 </div></div>
 
@@ -1582,27 +1586,27 @@ ${vResult.reasons.map(r=>{const isPos=r.includes('[+');return '<span style="font
 <div class="sbody">
 <p style="font-size:12px;color:var(--text3);margin-bottom:14px">Every number decoded. No jargon:</p>
 <table class="dt"><tr><th>Metric</th><th>Value</th><th>Signal</th><th>What This Means For You</th></tr>
-<tr><td><strong>P/E Ratio</strong><br><span style="font-size:10px;color:var(--text3)">Price-to-Earnings</span></td><td style="font-family:var(--mono);font-weight:700;font-size:16px">${d.pe_ratio}</td>
-<td><span class="sig ${pe<15?'g':pe<25?'n':'c'}">${pe<15?'\u25CF Undervalued':pe<25?'\u25CF Fair':'\u25CF Expensive'}</span></td>
-<td style="font-size:12px;line-height:1.7">${pe<15?'Below 15x earnings. Bargain zone.':pe<25?'Fair at '+d.pe_ratio+'x earnings.':d.pe_ratio+'x earnings. Growth must justify.'}</td></tr>
-<tr><td><strong>P/B Ratio</strong><br><span style="font-size:10px;color:var(--text3)">Price-to-Book</span></td><td style="font-family:var(--mono);font-weight:700;font-size:16px">${d.pb_ratio}</td>
-<td><span class="sig ${parseFloat(d.pb_ratio)<3?'g':'c'}">${parseFloat(d.pb_ratio)<3?'\u25CF Reasonable':'\u25CF Premium'}</span></td>
-<td style="font-size:12px;line-height:1.7">${parseFloat(d.pb_ratio)<3?d.pb_ratio+'x book. Asset-backed.':d.pb_ratio+'x book. Paying for intangibles.'}</td></tr>
-<tr><td><strong>Profit Margin</strong><br><span style="font-size:10px;color:var(--text3)">Profit per $ revenue</span></td><td style="font-family:var(--mono);font-weight:700;font-size:16px">${d.profit_margin}%</td>
-<td><span class="sig ${parseFloat(d.profit_margin)>15?'g':parseFloat(d.profit_margin)>8?'n':'r'}">${parseFloat(d.profit_margin)>15?'\u25CF Excellent':parseFloat(d.profit_margin)>8?'\u25CF Moderate':'\u25CF Thin'}</span></td>
-<td style="font-size:12px;line-height:1.7">${d.profit_margin}% net margin. ${parseFloat(d.profit_margin)>15?'Strong moat.':parseFloat(d.profit_margin)>8?'Decent.':'Tight.'}</td></tr>
-<tr><td><strong>Operating Margin</strong><br><span style="font-size:10px;color:var(--text3)">Core profitability</span></td><td style="font-family:var(--mono);font-weight:700;font-size:16px">${d.operating_margin}%</td>
-<td><span class="sig ${parseFloat(d.operating_margin)>20?'g':parseFloat(d.operating_margin)>10?'n':'r'}">${parseFloat(d.operating_margin)>20?'\u25CF Strong':parseFloat(d.operating_margin)>10?'\u25CF OK':'\u25CF Weak'}</span></td>
-<td style="font-size:12px;line-height:1.7">${d.operating_margin}% ops margin. ${parseFloat(d.operating_margin)>20?'Efficient.':'Room to improve.'}</td></tr>
-<tr><td><strong>ROE</strong><br><span style="font-size:10px;color:var(--text3)">Return on Equity</span></td><td style="font-family:var(--mono);font-weight:700;font-size:16px">${d.roe}%</td>
-<td><span class="sig ${parseFloat(d.roe)>15?'g':'n'}">${parseFloat(d.roe)>15?'\u25CF High':'\u25CF Moderate'}</span></td>
-<td style="font-size:12px;line-height:1.7">${d.roe}% return on equity. ${parseFloat(d.roe)>15?'Capital-efficient.':'Average.'}</td></tr>
-<tr><td><strong>Dividend Yield</strong><br><span style="font-size:10px;color:var(--text3)">Annual income</span></td><td style="font-family:var(--mono);font-weight:700;font-size:16px">${d.dividend_yield}%</td>
-<td><span class="sig ${parseFloat(d.dividend_yield)>3?'g':parseFloat(d.dividend_yield)>1?'n':'c'}">${parseFloat(d.dividend_yield)>3?'\u25CF High Income':parseFloat(d.dividend_yield)>1?'\u25CF Some Income':'\u25CF Growth Focus'}</span></td>
-<td style="font-size:12px;line-height:1.7">${parseFloat(d.dividend_yield)>3?d.dividend_yield+'% yield. Solid income.':parseFloat(d.dividend_yield)>1?d.dividend_yield+'% yield + growth.':'Reinvests for growth.'}</td></tr>
+${(d.pe_ratio&&d.pe_ratio!=='N/A'&&pe>0)?`<tr><td><strong>P/E Ratio</strong><br><span style="font-size:10px;color:var(--text3)">Price-to-Earnings</span></td><td style="font-family:var(--mono);font-weight:700;font-size:16px">${d.pe_ratio}</td>
+<td><span class="sig ${pe<15?'g':pe<25?'n':'c'}">${pe<15?'\\u25CF Undervalued':pe<25?'\\u25CF Fair':'\\u25CF Expensive'}</span></td>
+<td style="font-size:12px;line-height:1.7">${pe<15?'Below 15x earnings. Bargain zone.':pe<25?'Fair at '+d.pe_ratio+'x earnings.':d.pe_ratio+'x earnings. Growth must justify.'}</td></tr>`:''}
+${(d.pb_ratio&&d.pb_ratio!=='N/A'&&parseFloat(d.pb_ratio)>0)?`<tr><td><strong>P/B Ratio</strong><br><span style="font-size:10px;color:var(--text3)">Price-to-Book</span></td><td style="font-family:var(--mono);font-weight:700;font-size:16px">${d.pb_ratio}</td>
+<td><span class="sig ${parseFloat(d.pb_ratio)<3?'g':'c'}">${parseFloat(d.pb_ratio)<3?'\\u25CF Reasonable':'\\u25CF Premium'}</span></td>
+<td style="font-size:12px;line-height:1.7">${parseFloat(d.pb_ratio)<3?d.pb_ratio+'x book. Asset-backed.':d.pb_ratio+'x book. Paying for intangibles.'}</td></tr>`:''}
+${(d.profit_margin&&d.profit_margin!=='N/A'&&parseFloat(d.profit_margin)!==0)?`<tr><td><strong>Profit Margin</strong><br><span style="font-size:10px;color:var(--text3)">Profit per $ revenue</span></td><td style="font-family:var(--mono);font-weight:700;font-size:16px">${d.profit_margin}%</td>
+<td><span class="sig ${parseFloat(d.profit_margin)>15?'g':parseFloat(d.profit_margin)>8?'n':'r'}">${parseFloat(d.profit_margin)>15?'\\u25CF Excellent':parseFloat(d.profit_margin)>8?'\\u25CF Moderate':'\\u25CF Thin'}</span></td>
+<td style="font-size:12px;line-height:1.7">${d.profit_margin}% net margin. ${parseFloat(d.profit_margin)>15?'Strong moat.':parseFloat(d.profit_margin)>8?'Decent.':'Tight.'}</td></tr>`:''}
+${(d.operating_margin&&d.operating_margin!=='N/A'&&parseFloat(d.operating_margin)!==0)?`<tr><td><strong>Operating Margin</strong><br><span style="font-size:10px;color:var(--text3)">Core profitability</span></td><td style="font-family:var(--mono);font-weight:700;font-size:16px">${d.operating_margin}%</td>
+<td><span class="sig ${parseFloat(d.operating_margin)>20?'g':parseFloat(d.operating_margin)>10?'n':'r'}">${parseFloat(d.operating_margin)>20?'\\u25CF Strong':parseFloat(d.operating_margin)>10?'\\u25CF OK':'\\u25CF Weak'}</span></td>
+<td style="font-size:12px;line-height:1.7">${d.operating_margin}% ops margin. ${parseFloat(d.operating_margin)>20?'Efficient.':'Room to improve.'}</td></tr>`:''}
+${(d.roe&&d.roe!=='N/A'&&parseFloat(d.roe)!==0)?`<tr><td><strong>ROE</strong><br><span style="font-size:10px;color:var(--text3)">Return on Equity</span></td><td style="font-family:var(--mono);font-weight:700;font-size:16px">${d.roe}%</td>
+<td><span class="sig ${parseFloat(d.roe)>15?'g':'n'}">${parseFloat(d.roe)>15?'\\u25CF High':'\\u25CF Moderate'}</span></td>
+<td style="font-size:12px;line-height:1.7">${d.roe}% return on equity. ${parseFloat(d.roe)>15?'Capital-efficient.':'Average.'}</td></tr>`:''}
+${(d.dividend_yield&&d.dividend_yield!=='N/A'&&parseFloat(d.dividend_yield)>=0)?`<tr><td><strong>Dividend Yield</strong><br><span style="font-size:10px;color:var(--text3)">Annual income</span></td><td style="font-family:var(--mono);font-weight:700;font-size:16px">${d.dividend_yield}%</td>
+<td><span class="sig ${parseFloat(d.dividend_yield)>3?'g':parseFloat(d.dividend_yield)>1?'n':'c'}">${parseFloat(d.dividend_yield)>3?'\\u25CF High Income':parseFloat(d.dividend_yield)>1?'\\u25CF Some Income':'\\u25CF Growth Focus'}</span></td>
+<td style="font-size:12px;line-height:1.7">${parseFloat(d.dividend_yield)>3?d.dividend_yield+'% yield. Solid income.':parseFloat(d.dividend_yield)>1?d.dividend_yield+'% yield + growth.':'Reinvests for growth.'}</td></tr>`:''}
 </table>
-<div style="margin-top:14px;padding:14px;border-radius:8px;background:rgba(59,130,246,.04);border:1px solid rgba(0,120,212,.12)">
-<p style="font-size:13px;color:var(--text2);line-height:1.7"><strong style="color:var(--blue)">\u25CF Bottom Line:</strong> ${pe<20?'Fair or discounted. Could be a smart entry.':'Growth premium. Fine IF the company delivers.'}</p></div>
+${(d.pe_ratio&&d.pe_ratio!=='N/A'&&pe>0)?`<div style="margin-top:14px;padding:14px;border-radius:8px;background:rgba(59,130,246,.04);border:1px solid rgba(0,120,212,.12)">
+<p style="font-size:13px;color:var(--text2);line-height:1.7"><strong style="color:var(--blue)">\\u25CF Bottom Line:</strong> ${pe<20?'Fair or discounted. Could be a smart entry.':'Growth premium. Fine IF the company delivers.'}</p></div>`:''}
 </div></div>
 
 <!-- ENTRY & EXIT — Multi-Factor Technical -->
@@ -1634,16 +1638,16 @@ ${n(d.beta)>1.3?' This stock has higher-than-average volatility \u2014 use wider
 <div class="sc" data-tab="quick" style="border-left:3px solid var(--red)"><div class="sh"><div class="si" style="background:rgba(239,68,68,.1)">&#9888;</div><div class="st" style="color:var(--red)" id="sec-risk">What Could Go Wrong?</div></div>
 <div class="sbody">
 <table class="dt"><tr><th>Factor</th><th>Metric</th><th>Signal</th><th>Assessment</th></tr>
-<tr><td>Debt Level</td><td style="font-family:var(--mono);font-weight:600">${d.debt_to_equity}</td>
+${(d.debt_to_equity&&d.debt_to_equity!=='N/A'&&parseFloat(d.debt_to_equity)>0)?`<tr><td>Debt Level</td><td style="font-family:var(--mono);font-weight:600">${d.debt_to_equity}</td>
 <td><span class="sig ${parseFloat(d.debt_to_equity)>1.5?'r':parseFloat(d.debt_to_equity)>0.8?'c':'g'}">${parseFloat(d.debt_to_equity)>1.5?'High':parseFloat(d.debt_to_equity)>0.8?'Moderate':'Low'}</span></td>
-<td style="font-size:12px">${parseFloat(d.debt_to_equity)>1.5?'High leverage \u2014 watch carefully':parseFloat(d.debt_to_equity)>0.8?'Moderate \u2014 manageable':'Conservative \u2014 low risk'}</td></tr>
-<tr><td>Liquidity</td><td style="font-family:var(--mono);font-weight:600">${d.current_ratio}</td>
+<td style="font-size:12px">${parseFloat(d.debt_to_equity)>1.5?'High leverage \u2014 watch carefully':parseFloat(d.debt_to_equity)>0.8?'Moderate \u2014 manageable':'Conservative \u2014 low risk'}</td></tr>`:''}
+${(d.current_ratio&&d.current_ratio!=='N/A'&&parseFloat(d.current_ratio)>0)?`<tr><td>Liquidity</td><td style="font-family:var(--mono);font-weight:600">${d.current_ratio}</td>
 <td><span class="sig ${parseFloat(d.current_ratio)>1.5?'g':parseFloat(d.current_ratio)>1?'c':'r'}">${parseFloat(d.current_ratio)>1.5?'Strong':parseFloat(d.current_ratio)>1?'Adequate':'Weak'}</span></td>
-<td style="font-size:12px">${parseFloat(d.current_ratio)>1.5?'Can meet obligations easily':parseFloat(d.current_ratio)>1?'Tight but OK':'Liquidity concerns'}</td></tr>
-<tr><td>Volatility</td><td style="font-family:var(--mono);font-weight:600">${d.beta}</td>
+<td style="font-size:12px">${parseFloat(d.current_ratio)>1.5?'Can meet obligations easily':parseFloat(d.current_ratio)>1?'Tight but OK':'Liquidity concerns'}</td></tr>`:''}
+${(d.beta&&d.beta!=='N/A'&&parseFloat(d.beta)!==0)?`<tr><td>Volatility</td><td style="font-family:var(--mono);font-weight:600">${d.beta}</td>
 <td><span class="sig ${Math.abs(parseFloat(d.beta))>1.5?'r':Math.abs(parseFloat(d.beta))<0.8?'g':'n'}">${Math.abs(parseFloat(d.beta))>1.5?'High':Math.abs(parseFloat(d.beta))<0.8?'Low':'Average'}</span></td>
-<td style="font-size:12px">${Math.abs(parseFloat(d.beta))>1.5?'Expect bigger price swings':Math.abs(parseFloat(d.beta))<0.8?'Less volatile \u2014 defensive':'Average volatility'}</td></tr>
-<tr><td>Sector</td><td>${d.sector}</td><td><span class="sig n">Monitor</span></td><td style="font-size:12px">Track trends &amp; regulation</td></tr>
+<td style="font-size:12px">${Math.abs(parseFloat(d.beta))>1.5?'Expect bigger price swings':Math.abs(parseFloat(d.beta))<0.8?'Less volatile \u2014 defensive':'Average volatility'}</td></tr>`:''}
+${(d.sector&&d.sector!=='N/A')?`<tr><td>Sector</td><td>${d.sector}</td><td><span class="sig n">Monitor</span></td><td style="font-size:12px">Track trends &amp; regulation</td></tr>`:''}
 </table></div></div>
 
 <!-- CHARTS (Summary — hidden until sub-tab click) -->
@@ -1903,8 +1907,10 @@ if(tab==='quick')setTimeout(()=>window.dispatchEvent(new Event('resize')),200);
 document.querySelectorAll('.sc[data-tab]').forEach(s=>{s.style.display='none'});
 document.querySelectorAll('.sub-nav[data-tab]').forEach(s=>{s.style.display='none'});
 document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
-// 2) Show matching tab content
-document.querySelectorAll('.sc[data-tab="'+tab+'"]').forEach(s=>{s.style.display='block'});
+// 2) Show matching tab content — skip data-conditional sections (shown only when data populates them)
+document.querySelectorAll('.sc[data-tab="'+tab+'"]').forEach(s=>{
+if(!s.dataset.conditional)s.style.display='block';
+});
 document.querySelectorAll('.sub-nav[data-tab="'+tab+'"]').forEach(s=>{s.style.display='flex'});
 // 3) Activate button
 const btnMap={quick:'tabBtnQuick',deep:'tabBtnDeep',mgmt:'tabBtnMgmt',next:'tabBtnNext',gems:'tabBtnGems',picks:'tabBtnPicks',funds:'tabBtnFunds',trades:'tabBtnTrades'};
