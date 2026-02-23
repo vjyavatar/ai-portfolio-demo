@@ -1461,23 +1461,37 @@ try{const rl=await fetch('/api/check-rate-limit',{method:'POST',headers:{'Conten
 if(!rld.allowed){showStatus(rld.reason,'error');showRL(rld);return}else hideRL()}catch(e){}
 btn.disabled=true;btn.textContent='Analyzing...';btn.classList.add('ld');rpt.classList.remove('show');hideRL();
 showStatus('Crunching the numbers on '+ticker+'...','info');showLS();
-// Parallel: fetch market events for authorized users
 fetchMarketPulse();
-try{const res=await fetch('/api/generate-report',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({company_name:ticker,email})});
+
+// ═══ AUTO-RETRY: Try up to 2 times ═══
+let lastErr='';
+for(let attempt=1;attempt<=2;attempt++){
+try{
+if(attempt===2){showStatus('⏳ Retrying analysis (attempt 2/2)...','info')}
+const res=await fetch('/api/generate-report',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({company_name:ticker,email})});
 if(res.status===429){const r=await res.json().catch(()=>({}));showStatus(r.reason||r.detail||'Too many requests','error');if(r.retry_after_seconds||r.retry_after_minutes)showRL(r);return}
-if(res.status===503||res.status===504){const e=await res.json().catch(()=>({}));showStatus(e.detail||'Service busy. Try again in 30s.','error');return}
+if(res.status===503||res.status===504){
+  lastErr=(await res.json().catch(()=>({}))).detail||'Service busy';
+  if(attempt<2){console.log('Attempt '+attempt+' got '+res.status+', retrying in 3s...');await new Promise(r=>setTimeout(r,3000));continue}
+  showStatus(lastErr+' — Please try again.','error');return}
 if(!res.ok){const e=await res.json().catch(()=>({}));throw new Error(e.detail||e.message||'Analysis failed')}
 const data=await res.json();if(!data.success||!data.live_data)throw new Error('No data for this ticker');
 let q='';if(data.rate_limit){const r=data.rate_limit.remaining;document.getElementById('navQ').textContent=r+'/hr';
 q=r===0?' · Last free report this hour':' · '+r+' remaining'}
 if(data.report_number)document.getElementById('navRC').textContent=data.report_number;
 if(data.report_number){document.getElementById('globalRC').textContent=data.report_number.toLocaleString();const hb=document.getElementById('reportBadgeCount');if(hb)hb.textContent=data.report_number.toLocaleString()}
-showStatus('✓ Your report is ready. Scroll down — this is the good stuff.'+q,'success');displayReport(data);TI.value='';
-// GA4: Track report generation
-if(typeof gtag==='function')gtag('event','generate_report',{ticker:data.live_data?.ticker||'',company:data.company_name||''});
-}catch(e){let m=e.message;if(m==='Failed to fetch')m='Cannot connect to server.';
-else if(m.toLowerCase().includes('rate limit')||m.toLowerCase().includes('too many')||m.toLowerCase().includes('temporarily')||m.toLowerCase().includes('all data sources'))m='All data sources busy. Try again in 30 seconds.';
-showStatus(m,'error')}finally{btn.disabled=false;btn.textContent='Analyze →';btn.classList.remove('ld');hideLS()}}
+const modelNote=data.ai_model==='template'?' (data-only mode)':data.ai_model==='haiku'?' (fast mode)':'';
+showStatus('✓ Your report is ready'+modelNote+'. Scroll down — this is the good stuff.'+q,'success');displayReport(data);TI.value='';
+if(typeof gtag==='function')gtag('event','generate_report',{ticker:data.live_data?.ticker||'',company:data.company_name||'',ai_model:data.ai_model||''});
+break; // Success — exit retry loop
+}catch(e){
+  lastErr=e.message;
+  if(lastErr==='Failed to fetch'&&attempt<2){console.log('Network error, retrying in 3s...');await new Promise(r=>setTimeout(r,3000));continue}
+  let m=lastErr;if(m==='Failed to fetch')m='Cannot connect to server.';
+  else if(m.toLowerCase().includes('rate limit')||m.toLowerCase().includes('too many')||m.toLowerCase().includes('temporarily')||m.toLowerCase().includes('all data sources'))m='All data sources busy. Try again in 30 seconds.';
+  showStatus(m,'error');break}
+}// end retry loop
+btn.disabled=false;btn.textContent='Analyze →';btn.classList.remove('ld');hideLS()}
 
 function displayReport(data){const d=data.live_data,curr=d.currency==='INR'?'₹':'$',price=d.current_price;
 document.getElementById('tickerTag').textContent=d.ticker;document.getElementById('companyName').textContent=d.company_name||d.ticker;

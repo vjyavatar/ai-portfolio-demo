@@ -4909,47 +4909,162 @@ Based on real-time price of {currency_symbol}{live_data['current_price']:,.2f}:
 ═══════════════════════════════════════════════════════════════
 """
 
-        # CALL CLAUDE API
-        if not ANTHROPIC_API_KEY:
-            raise HTTPException(500, "AI analysis service is not configured. Please contact support at contact@celesys.ai.")
+        # ═══ INTELLIGENT AI FALLBACK CHAIN ═══
+        # Model 1: Claude Sonnet (best quality, 60s)
+        # Model 2: Claude Haiku (faster, 40s)  
+        # Model 3: Template report (instant, no AI needed)
+        # User ALWAYS gets a report — no more timeouts.
         
-        try:
-            response = requests.post(
-                "https://api.anthropic.com/v1/messages",
-                headers={
-                    "x-api-key": ANTHROPIC_API_KEY,
-                    "anthropic-version": "2023-06-01",
-                    "content-type": "application/json"
-                },
-                json={
-                    "model": "claude-sonnet-4-20250514",
-                    "max_tokens": 4096,
-                    "messages": [{"role": "user", "content": prompt}]
-                },
-                timeout=90
-            )
-        except requests.exceptions.Timeout:
-            raise HTTPException(504, "AI analysis timed out. Please try again — the servers may be busy.")
-        except requests.exceptions.ConnectionError:
-            raise HTTPException(502, "Could not connect to AI service. Please try again in a moment.")
+        report = None
+        ai_model_used = "none"
         
-        if response.status_code == 429:
-            raise HTTPException(503, "AI service is temporarily overloaded. Please wait 30 seconds and try again.")
-        elif response.status_code == 401:
-            raise HTTPException(500, "API key is invalid or expired. Please check your ANTHROPIC_API_KEY.")
-        elif response.status_code == 529:
-            raise HTTPException(503, "AI service is temporarily overloaded. Please wait a moment and try again.")
-        elif response.status_code != 200:
-            # Extract useful error info
-            try:
-                err_body = response.json()
-                err_msg = err_body.get("error", {}).get("message", response.text[:200])
-            except:
-                err_msg = response.text[:200]
-            raise HTTPException(500, f"AI service error ({response.status_code}): {err_msg}")
+        _ai_headers = {
+            "x-api-key": ANTHROPIC_API_KEY or "",
+            "anthropic-version": "2023-06-01",
+            "content-type": "application/json"
+        }
         
-        result = response.json()
-        report = result["content"][0]["text"]
+        _ai_models = [
+            ("claude-sonnet-4-20250514", 4096, 45, "sonnet"),
+            ("claude-haiku-4-5-20251001", 4096, 30, "haiku"),
+        ]
+        
+        if ANTHROPIC_API_KEY:
+            for model_name, max_tok, timeout_s, label in _ai_models:
+                try:
+                    print(f"🤖 AI attempt: {label} (timeout={timeout_s}s)...")
+                    _ai_resp = requests.post(
+                        "https://api.anthropic.com/v1/messages",
+                        headers=_ai_headers,
+                        json={
+                            "model": model_name,
+                            "max_tokens": max_tok,
+                            "messages": [{"role": "user", "content": prompt}]
+                        },
+                        timeout=timeout_s
+                    )
+                    if _ai_resp.status_code == 200:
+                        report = _ai_resp.json()["content"][0]["text"]
+                        ai_model_used = label
+                        print(f"✅ AI success: {label} ({len(report)} chars)")
+                        break
+                    elif _ai_resp.status_code in (429, 529, 503):
+                        print(f"⚠️ {label} overloaded ({_ai_resp.status_code}), trying next...")
+                        continue
+                    elif _ai_resp.status_code == 401:
+                        print(f"❌ API key invalid — skipping all AI models")
+                        break
+                    else:
+                        print(f"⚠️ {label} error {_ai_resp.status_code}, trying next...")
+                        continue
+                except requests.exceptions.Timeout:
+                    print(f"⏰ {label} timed out after {timeout_s}s, trying next...")
+                    continue
+                except requests.exceptions.ConnectionError:
+                    print(f"🔌 {label} connection failed, trying next...")
+                    continue
+                except Exception as e:
+                    print(f"⚠️ {label} unexpected error: {e}, trying next...")
+                    continue
+        
+        # ═══ FALLBACK 3: Template report (no AI) — ALWAYS succeeds ═══
+        if not report:
+            print("📝 All AI models failed — generating template report...")
+            ai_model_used = "template"
+            _curr = '₹' if live_data['currency'] == 'INR' else '$'
+            _p = live_data['current_price']
+            _pe = live_data['pe_ratio']
+            _pm = live_data['profit_margin']
+            _roe = live_data['roe']
+            _de = live_data['debt_to_equity']
+            _beta = live_data['beta']
+            _sector = live_data.get('sector', 'Unknown')
+            _industry = live_data.get('industry', 'Unknown')
+            _w52h = live_data.get('week52_high', _p)
+            _w52l = live_data.get('week52_low', _p)
+            _w52pct = round(((_p - _w52l) / (_w52h - _w52l) * 100), 1) if _w52h != _w52l else 50
+            _spe = live_data.get('sector_avg_pe', 20)
+            _pAvgPE = live_data.get('peer_avg_pe', 'N/A')
+            _eg = live_data.get('earnings_growth', 'N/A')
+            _dv = live_data.get('dividend_yield', 0)
+            
+            # Valuation assessment
+            _pe_f = float(_pe) if _pe != 'N/A' else 0
+            if _pe_f > 0:
+                _pe_vs = "undervalued relative to" if _pe_f < _spe * 0.8 else "fairly valued relative to" if _pe_f < _spe * 1.2 else "trading at a premium to"
+            else:
+                _pe_vs = "not comparable (negative earnings) to"
+            
+            # Profitability assessment
+            _pm_f = float(_pm) if _pm else 0
+            _pm_txt = "strong" if _pm_f > 15 else "moderate" if _pm_f > 5 else "thin" if _pm_f > 0 else "negative"
+            
+            # Risk assessment  
+            _de_f = float(_de) if _de else 0
+            _risk_txt = "low debt levels" if _de_f < 50 else "moderate leverage" if _de_f < 150 else "high debt load"
+            _beta_f = float(_beta) if _beta else 1
+            _vol_txt = "less volatile than the market" if _beta_f < 0.8 else "similar volatility to the market" if _beta_f < 1.2 else "more volatile than the market"
+            
+            # Momentum
+            _mom_txt = "near yearly lows — potential value territory" if _w52pct < 25 else "near yearly highs — momentum is strong but watch for resistance" if _w52pct > 75 else "mid-range of its 52-week band — neutral positioning"
+            
+            # Peers
+            _peer_txt = ""
+            if live_data.get('peers'):
+                _peer_names = ", ".join([p['ticker'] for p in live_data['peers'][:3]])
+                _peer_txt = f"\n\n**Peer Comparison:** Key competitors include {_peer_names}. "
+                if _pAvgPE != 'N/A' and _pe_f > 0:
+                    _peer_pe_f = float(_pAvgPE)
+                    if _pe_f < _peer_pe_f * 0.85:
+                        _peer_txt += f"At {_pe_f:.1f}x P/E vs peer average of {_peer_pe_f:.1f}x, the stock appears undervalued relative to industry peers."
+                    elif _pe_f > _peer_pe_f * 1.15:
+                        _peer_txt += f"At {_pe_f:.1f}x P/E vs peer average of {_peer_pe_f:.1f}x, the stock carries a premium. Growth must justify this valuation."
+                    else:
+                        _peer_txt += f"At {_pe_f:.1f}x P/E vs peer average of {_peer_pe_f:.1f}x, the stock is fairly valued relative to peers."
+            
+            report = f"""## 📊 INVESTMENT THESIS
+
+{live_data['company_name']} ({live_data['ticker']}) is currently trading at {_curr}{_p:,.2f} in the {_sector} sector ({_industry}). The stock is {_pe_vs} its sector average P/E of {_spe}x, with a trailing P/E of {_pe}. Profitability is {_pm_txt} at {_pm}% net margin, and the company's return on equity stands at {_roe}%.
+
+The stock is {_mom_txt}, sitting at {_w52pct}% of its 52-week range ({_curr}{_w52l} to {_curr}{_w52h}). The balance sheet shows {_risk_txt} (D/E: {_de}), and the stock is {_vol_txt} (beta: {_beta}).{_peer_txt}
+
+{'Dividend yield of ' + str(_dv) + '% provides income support.' if float(_dv or 0) > 1 else ''} {'Earnings growth of ' + str(_eg) + '% signals improving fundamentals.' if _eg != 'N/A' and float(str(_eg).replace('%','') or 0) > 5 else ''}
+
+**⚠️ Note:** This is an auto-generated summary based on quantitative data. The AI narrative service was temporarily unavailable. All verdict scores, charts, entry/exit levels, risk analysis, and peer comparisons above are fully accurate and computed from live data. For educational purposes only — this is not investment advice.
+
+---
+
+## 📈 QUARTERLY FUNDAMENTALS
+
+Revenue and earnings data is displayed in the charts and metrics above. Check the Key Numbers tab for the most current financial ratios and the Deep Analysis tab for margin trend details.
+
+---
+
+## 👔 MANAGEMENT & INSTITUTIONAL
+
+Management and institutional holding data is available in the tabs above. The quantitative verdict and conviction scores are computed from 20 live data factors and do not depend on AI analysis.
+
+---
+
+## 🔮 WHAT'S NEXT — Catalysts & Timeline
+
+**Next 30 Days:** Monitor upcoming earnings announcements and any sector-specific macro events. Check the Upcoming Events section in the What's Next tab for sector-specific catalysts.
+
+**Next 90 Days:** Key factors to watch include quarterly earnings, sector rotation trends, and any regulatory or policy developments in the {_sector} space.
+
+**Key Trigger:** Next quarterly earnings report will be the most important near-term catalyst.
+
+**Bull Case:** Strong earnings beat + positive guidance could push toward 52-week highs at {_curr}{_w52h}.
+**Bear Case:** Earnings miss or macro headwinds could test support near {_curr}{_w52l}.
+**Most Likely:** Continued trading in current range with direction determined by next earnings.
+
+---
+
+## 🏅 FINAL VERDICT
+
+This is for educational analysis only, not investment advice. The 20-factor quantitative verdict, entry/exit levels, risk scores, and peer comparison above provide comprehensive analysis based on live market data. Always consult a financial advisor before making investment decisions.
+"""
+            print(f"📝 Template report generated ({len(report)} chars)")
         
         report_counter["count"] += 1
         save_counter()
@@ -4965,6 +5080,7 @@ Based on real-time price of {currency_symbol}{live_data['current_price']:,.2f}:
         return {
             "success": True,
             "report": report,
+            "ai_model": ai_model_used,
             "company_name": company,
             "live_data": live_data,
             "fund_holdings": fund_holdings,
