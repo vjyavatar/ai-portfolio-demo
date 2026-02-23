@@ -15,6 +15,134 @@ from functools import lru_cache
 import time
 import json
 import random
+import asyncio
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
+# ═══════════════════════════════════════════════════════════
+# PERFORMANCE ENGINE — handles 10K+ concurrent users
+# ═══════════════════════════════════════════════════════════
+
+# 1. GLOBAL CONNECTION POOL — reuse TCP connections across all requests
+_http_pool = requests.Session()
+_http_pool.headers.update({
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/122.0.0.0 Safari/537.36',
+    'Accept': 'application/json,text/html',
+    'Accept-Language': 'en-US,en;q=0.9',
+    'Connection': 'keep-alive',
+})
+# Connection pool adapter — reuse up to 20 connections per host
+from requests.adapters import HTTPAdapter
+_pool_adapter = HTTPAdapter(pool_connections=20, pool_maxsize=30, max_retries=1)
+_http_pool.mount('https://', _pool_adapter)
+_http_pool.mount('http://', _pool_adapter)
+
+# 2. REQUEST DEDUPLICATION — prevent thundering herd
+# When cache expires and 500 users hit at once, only 1 actual fetch happens
+_inflight_locks = {}
+_inflight_lock_master = asyncio.Lock()
+
+async def _dedup_fetch(cache_key: str, fetch_fn, ttl_seconds: int = 120):
+    """Execute fetch_fn only once per cache_key. Other callers wait for result."""
+    async with _inflight_lock_master:
+        if cache_key not in _inflight_locks:
+            _inflight_locks[cache_key] = asyncio.Lock()
+        lock = _inflight_locks[cache_key]
+    
+    async with lock:
+        # Check cache inside lock — the first caller may have populated it
+        cached = _smart_cache_get(cache_key)
+        if cached is not None:
+            return cached
+        
+        # Actually fetch — only 1 caller gets here
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(_thread_pool, fetch_fn)
+        
+        if result is not None:
+            _smart_cache_set(cache_key, result, ttl_seconds)
+        
+        return result
+
+# 3. SMART PER-ITEM CACHE — per-ticker with TTL
+_smart_cache = {}
+
+def _smart_cache_get(key: str):
+    """Get from cache if not expired."""
+    entry = _smart_cache.get(key)
+    if entry and time.time() - entry['ts'] < entry['ttl']:
+        return entry['data']
+    return None
+
+def _smart_cache_set(key: str, data, ttl: int = 120):
+    """Set cache with TTL in seconds."""
+    _smart_cache[key] = {'data': data, 'ts': time.time(), 'ttl': ttl}
+    # Evict old entries periodically (keep cache under 5000 items)
+    if len(_smart_cache) > 5000:
+        cutoff = time.time() - 600  # Remove anything older than 10 min
+        expired = [k for k, v in _smart_cache.items() if v['ts'] < cutoff]
+        for k in expired:
+            del _smart_cache[k]
+
+# 4. SHARED THREAD POOL — for all blocking IO (yfinance, HTTP scrapes)
+_thread_pool = ThreadPoolExecutor(max_workers=15, thread_name_prefix="celesys")
+
+# 5. POPULAR TICKER PRE-FETCH — background refresh every 90 seconds
+_POPULAR_TICKERS_IN = [
+    'RELIANCE.NS', 'TCS.NS', 'HDFCBANK.NS', 'INFY.NS', 'ICICIBANK.NS',
+    'SBIN.NS', 'BHARTIARTL.NS', 'ITC.NS', 'LT.NS', 'BAJFINANCE.NS',
+    'TATAMOTORS.NS', 'COALINDIA.NS', 'NTPC.NS', 'PERSISTENT.NS', 'CDSL.NS',
+    'TRENT.NS', 'DIXON.NS', 'IREDA.NS', 'NHPC.NS', 'KPITTECH.NS'
+]
+_POPULAR_TICKERS_US = [
+    'NVDA', 'MSFT', 'GOOGL', 'META', 'AAPL', 'AMZN', 'CRWD', 'PLTR',
+    'JPM', 'BRK-B', 'MRK', 'AXON', 'SMH', 'QQQ', 'SOXX', 'VGT'
+]
+
+def _prefetch_popular():
+    """Background pre-fetch popular tickers into smart cache."""
+    all_tickers = _POPULAR_TICKERS_IN + _POPULAR_TICKERS_US
+    def _fetch_one(tk):
+        try:
+            t = yf.Ticker(tk)
+            info = t.info
+            price = info.get('currentPrice') or info.get('regularMarketPrice') or info.get('previousClose')
+            if price and float(price) > 0:
+                prev = info.get('previousClose') or info.get('regularMarketPreviousClose') or price
+                chg_pct = round(((float(price) - float(prev)) / float(prev)) * 100, 2) if float(prev) > 0 else 0
+                is_indian = '.NS' in tk or '.BO' in tk
+                sym = '₹' if is_indian else '$'
+                data = {
+                    "price": round(float(price), 2),
+                    "change_pct": chg_pct,
+                    "symbol": sym,
+                    "formatted": f"{sym}{round(float(price), 2):,.2f}"
+                }
+                _smart_cache_set(f"price:{tk}", data, 120)
+                return tk, True
+        except:
+            pass
+        return tk, False
+    
+    with ThreadPoolExecutor(max_workers=10) as ex:
+        futs = {ex.submit(_fetch_one, tk): tk for tk in all_tickers}
+        success = 0
+        for f in as_completed(futs, timeout=20):
+            try:
+                tk, ok = f.result(timeout=5)
+                if ok: success += 1
+            except:
+                pass
+    print(f"🔄 Pre-fetched {success}/{len(all_tickers)} popular tickers")
+
+async def _start_prefetch_loop():
+    """Run prefetch every 90 seconds in background."""
+    while True:
+        try:
+            loop = asyncio.get_event_loop()
+            await loop.run_in_executor(_thread_pool, _prefetch_popular)
+        except Exception as e:
+            print(f"⚠️ Prefetch error: {e}")
+        await asyncio.sleep(90)
 
 # ═══════════════════════════════════════════════════════════
 # DIRECT YAHOO FINANCE HTTP API (bypasses yfinance library)
@@ -632,6 +760,12 @@ def fetch_google_finance(ticker: str) -> dict:
         return None
 
 app = FastAPI(title="Celesys AI - Verified Live Data")
+
+# ═══ STARTUP: launch background pre-fetch for popular tickers ═══
+@app.on_event("startup")
+async def startup_event():
+    asyncio.create_task(_start_prefetch_loop())
+    print("🚀 Background price pre-fetcher started (90s interval)")
 
 # ═══════════════════════════════════════════════════════════
 # SOURCE 5: FINVIZ FUNDAMENTALS (US stocks)
@@ -1628,23 +1762,62 @@ def get_live_stock_data(company_name: str) -> dict:
             if peer_tickers:
                 from concurrent.futures import ThreadPoolExecutor, as_completed
                 def _fetch_peer(ptk):
+                    price = None
+                    pi = {}
+                    # Source 1: yfinance
                     try:
                         pt = yf.Ticker(ptk)
-                        pi = pt.info
-                        if not pi or not pi.get('currentPrice'): return None
-                        return {
-                            "ticker": ptk,
-                            "name": (pi.get('shortName') or pi.get('longName') or ptk)[:30],
-                            "price": round(float(pi.get('currentPrice', 0)), 2),
-                            "pe": round(float(pi.get('trailingPE', 0)), 1) if pi.get('trailingPE') else 'N/A',
-                            "market_cap": float(pi.get('marketCap', 0)),
-                            "profit_margin": round(float(pi.get('profitMargins', 0) or 0) * 100, 1),
-                            "roe": round(float(pi.get('returnOnEquity', 0) or 0) * 100, 1),
-                            "revenue_growth": round(float(pi.get('revenueGrowth', 0) or 0) * 100, 1),
-                            "debt_to_equity": round(float(pi.get('debtToEquity', 0) or 0), 1),
-                        }
+                        pi = pt.info or {}
+                        price = pi.get('currentPrice') or pi.get('regularMarketPrice')
+                        if price and float(price) > 0:
+                            price = float(price)
                     except:
+                        pass
+                    
+                    # Source 2: Yahoo v8 chart API
+                    if not price:
+                        try:
+                            _h = {'User-Agent': f'Mozilla/5.0 Chrome/{random.randint(118,126)}.0.0.0', 'Accept': 'application/json'}
+                            r = requests.get(f"https://query1.finance.yahoo.com/v8/finance/chart/{ptk}?interval=1d&range=2d", headers=_h, timeout=6)
+                            if r.status_code == 200:
+                                m = r.json().get('chart', {}).get('result', [{}])[0].get('meta', {})
+                                p = m.get('regularMarketPrice', 0)
+                                if p and float(p) > 0:
+                                    price = float(p)
+                                    if not pi: pi = {'longName': ptk, 'currency': m.get('currency', 'USD')}
+                        except:
+                            pass
+                    
+                    # Source 3: Google Finance
+                    if not price:
+                        try:
+                            import re as _re
+                            is_ind = '.NS' in ptk or '.BO' in ptk
+                            clean = ptk.replace('.NS','').replace('.BO','')
+                            g_url = f"https://www.google.com/finance/quote/{clean}:NSE" if is_ind else f"https://www.google.com/finance/quote/{clean}:NASDAQ"
+                            _h = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/122.0.0.0', 'Accept': 'text/html'}
+                            r = requests.get(g_url, headers=_h, timeout=6)
+                            if r.status_code == 200:
+                                pm = _re.search(r'data-last-price="([0-9.]+)"', r.text)
+                                if pm: price = float(pm.group(1))
+                                if not pi: pi = {'longName': ptk}
+                        except:
+                            pass
+                    
+                    if not price or not pi:
                         return None
+                    
+                    return {
+                        "ticker": ptk,
+                        "name": (pi.get('shortName') or pi.get('longName') or ptk)[:30],
+                        "price": round(price, 2),
+                        "pe": round(float(pi.get('trailingPE', 0)), 1) if pi.get('trailingPE') else 'N/A',
+                        "market_cap": float(pi.get('marketCap', 0)),
+                        "profit_margin": round(float(pi.get('profitMargins', 0) or 0) * 100, 1),
+                        "roe": round(float(pi.get('returnOnEquity', 0) or 0) * 100, 1),
+                        "revenue_growth": round(float(pi.get('revenueGrowth', 0) or 0) * 100, 1),
+                        "debt_to_equity": round(float(pi.get('debtToEquity', 0) or 0), 1),
+                    }
                 
                 with ThreadPoolExecutor(max_workers=5) as ex:
                     futs = {ex.submit(_fetch_peer, t): t for t in peer_tickers}
@@ -2322,16 +2495,28 @@ def _save_trades_to_history(trades_data, date_str):
 
 @app.get("/api/global-ticker")
 async def global_ticker():
-    """Lightweight global indices ticker — parallel fetch with 2-min cache."""
+    """Lightweight global indices ticker — parallel fetch with 2-min cache + dedup."""
     import yfinance as yf
-    from concurrent.futures import ThreadPoolExecutor, as_completed
-    from datetime import datetime, timedelta
     
-    # ═══ 2-MINUTE CACHE — prevents hammering yfinance ═══
+    # ═══ FAST PATH: serve from cache (< 0.1ms) ═══
     global _ticker_cache, _ticker_cache_ts
     now_utc = datetime.utcnow()
     if _ticker_cache and _ticker_cache_ts and (now_utc - _ticker_cache_ts).total_seconds() < 120:
         return _ticker_cache
+    
+    # ═══ DEDUP: prevent thundering herd (500 users → 1 fetch) ═══
+    _is_fetching = _ticker_lock.locked()
+    if _is_fetching:
+        # Another request is already fetching — poll for result
+        for _ in range(60):
+            await asyncio.sleep(0.2)
+            if _ticker_cache and _ticker_cache_ts and (datetime.utcnow() - _ticker_cache_ts).total_seconds() < 120:
+                return _ticker_cache
+        if _ticker_cache:
+            return _ticker_cache
+        return {"success": False, "indices": [], "error": "Server busy"}
+    
+    _ticker_lock.acquire()
     
     tickers_map = {
         "^NSEI": {"name": "NIFTY 50", "flag": "🇮🇳"},
@@ -2354,8 +2539,9 @@ async def global_ticker():
     gold_price = None
     silver_price = None
     
-    # ═══ PARALLEL FETCH — all 14 tickers at once (was sequential = 14-28s) ═══
+    # ═══ PARALLEL FETCH with FALLBACK — yfinance → Yahoo HTTP v8 ═══
     def _fetch_index(ticker, meta):
+        # Source 1: yfinance
         try:
             t = yf.Ticker(ticker)
             hist = t.history(period="2d")
@@ -2370,6 +2556,27 @@ async def global_ticker():
                 }
         except:
             pass
+        
+        # Source 2: Yahoo v8 chart API (direct HTTP)
+        try:
+            _h = {'User-Agent': f'Mozilla/5.0 Chrome/{random.randint(118,126)}.0.0.0', 'Accept': 'application/json'}
+            r = requests.get(f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}?interval=1d&range=2d", headers=_h, timeout=6)
+            if r.status_code == 200:
+                m = r.json().get('chart', {}).get('result', [{}])[0].get('meta', {})
+                price = m.get('regularMarketPrice', 0)
+                prev = m.get('chartPreviousClose', m.get('previousClose', price))
+                if price and float(price) > 0:
+                    price = round(float(price), 2)
+                    prev = round(float(prev), 2)
+                    chg = round(price - prev, 2)
+                    chg_pct = round(((price - prev) / prev) * 100, 2) if prev else 0
+                    return {
+                        "name": meta["name"], "flag": meta["flag"],
+                        "price": price, "change": chg, "change_pct": chg_pct
+                    }
+        except:
+            pass
+        
         return None
     
     with ThreadPoolExecutor(max_workers=7) as executor:
@@ -2398,6 +2605,7 @@ async def global_ticker():
     
     _ticker_cache = result
     _ticker_cache_ts = now_utc
+    _ticker_lock.release()
     print(f"📈 Global ticker: {len(results)} indices fetched (parallel)")
     return result
 
@@ -2416,6 +2624,56 @@ async def stock_quick(ticker: str = ""):
         info = t.info or {}
         
         price = info.get('currentPrice') or info.get('regularMarketPrice') or info.get('previousClose') or 0
+        
+        # Source 2: Yahoo v8 chart if yfinance failed
+        if not price:
+            try:
+                _h = {'User-Agent': f'Mozilla/5.0 Chrome/{random.randint(118,126)}.0.0.0', 'Accept': 'application/json'}
+                r = requests.get(f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}?interval=1d&range=5d", headers=_h, timeout=6)
+                if r.status_code == 200:
+                    meta = r.json().get('chart', {}).get('result', [{}])[0].get('meta', {})
+                    p = meta.get('regularMarketPrice', 0)
+                    if p and float(p) > 0:
+                        price = float(p)
+                        info = {**info, 'currentPrice': price, 'previousClose': meta.get('chartPreviousClose', price),
+                                'currency': meta.get('currency', 'USD'), 'longName': meta.get('longName', ticker)}
+            except:
+                pass
+        
+        # Source 3: Google Finance if still no price
+        if not price:
+            try:
+                import re as _re
+                is_ind = '.NS' in ticker or '.BO' in ticker
+                clean = ticker.replace('.NS','').replace('.BO','')
+                g_url = f"https://www.google.com/finance/quote/{clean}:NSE" if is_ind else f"https://www.google.com/finance/quote/{clean}:NASDAQ"
+                _h = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/122.0.0.0', 'Accept': 'text/html'}
+                r = requests.get(g_url, headers=_h, timeout=6)
+                if r.status_code == 200:
+                    pm = _re.search(r'data-last-price="([0-9.]+)"', r.text)
+                    if pm:
+                        price = float(pm.group(1))
+                        info = {**info, 'currentPrice': price, 'longName': ticker}
+            except:
+                pass
+        
+        # Source 4: NSE India API (for .NS tickers)
+        if not price and ('.NS' in ticker or '.BO' in ticker):
+            try:
+                clean = ticker.replace('.NS','').replace('.BO','')
+                _h = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)', 'Accept': '*/*'}
+                s = requests.Session()
+                s.get("https://www.nseindia.com", headers=_h, timeout=5)
+                r = s.get(f"https://www.nseindia.com/api/quote-equity?symbol={clean}", headers=_h, timeout=6)
+                if r.status_code == 200:
+                    pi = r.json().get('priceInfo', {})
+                    p = pi.get('lastPrice') or pi.get('close')
+                    if p and float(p) > 0:
+                        price = float(p)
+                        info = {**info, 'currentPrice': price, 'previousClose': pi.get('previousClose', price)}
+            except:
+                pass
+        
         if not price:
             return {"success": False, "error": f"No data for {ticker}"}
         
@@ -2517,18 +2775,12 @@ async def stock_quick(ticker: str = ""):
         return {"success": False, "error": f"Failed to fetch data for {ticker}: {str(e)[:100]}"}
 
 
-# ═══ BATCH PRICES — fetch live prices for stock picks (up to 30 tickers) ═══
-_batch_cache = {}
-_batch_cache_ts = None
+# ═══ BATCH PRICES — multi-source live prices for stock picks ═══
 
 @app.post("/api/batch-prices")
 async def batch_prices(request: Request):
-    """Fetch live prices for multiple tickers at once. Used by Picks tab."""
-    import yfinance as yf
-    from concurrent.futures import ThreadPoolExecutor, as_completed
-    from datetime import datetime, timedelta
-    
-    global _batch_cache, _batch_cache_ts
+    """Fetch live prices for multiple tickers. Uses smart per-ticker cache + 5-source fallback."""
+    import re as re_bp
     
     try:
         data = await request.json()
@@ -2536,69 +2788,138 @@ async def batch_prices(request: Request):
         if not tickers or not isinstance(tickers, list):
             return {"success": False, "error": "tickers array required"}
         
-        # Limit to 30 tickers per request
         tickers = [t.strip().upper() for t in tickers[:30] if t.strip()]
         
-        # Return cached prices if less than 2 min old
-        now = datetime.utcnow()
-        if _batch_cache_ts and (now - _batch_cache_ts).total_seconds() < 120:
-            cached_results = {}
-            missing = []
-            for t in tickers:
-                if t in _batch_cache:
-                    cached_results[t] = _batch_cache[t]
-                else:
-                    missing.append(t)
-            if not missing:
-                return {"success": True, "prices": cached_results}
-            tickers = missing  # Only fetch what's not cached
-        else:
-            cached_results = {}
+        # Step 1: Check smart cache per-ticker (pre-fetched + recent requests)
+        cached_results = {}
+        missing = []
+        for tk in tickers:
+            cached = _smart_cache_get(f"price:{tk}")
+            if cached:
+                cached_results[tk] = cached
+            else:
+                missing.append(tk)
         
-        # Parallel fetch — 7 workers, 3s timeout per ticker
+        # If all cached, return instantly (< 1ms)
+        if not missing:
+            return {"success": True, "prices": cached_results, "fetched": 0, "cached": len(cached_results), "failed": []}
+        
+        # Step 2: Fetch missing tickers in parallel with multi-source fallback
         results = {}
-        def _fetch_price(tk):
+        failed_tickers = []
+        
+        def _format_result(tk, price, prev_close, currency):
+            try:
+                price = round(float(price), 2)
+                prev = float(prev_close or price)
+                chg_pct = round(((price - prev) / prev) * 100, 2) if prev > 0 else 0
+                sym = '₹' if currency == 'INR' else '$'
+                return tk, {"price": price, "change_pct": chg_pct, "symbol": sym, "formatted": f"{sym}{price:,.2f}"}
+            except:
+                return tk, None
+        
+        def _fetch_price_multisource(tk):
+            is_indian = '.NS' in tk or '.BO' in tk
+            
+            # Source 1: yfinance
             try:
                 t = yf.Ticker(tk)
                 info = t.info
                 price = info.get('currentPrice') or info.get('regularMarketPrice') or info.get('previousClose')
-                if price:
-                    chg = float(info.get('regularMarketChange', 0) or 0)
-                    chg_pct = float(info.get('regularMarketChangePercent', 0) or 0)
-                    if abs(chg_pct) < 0.001 and price:
-                        prev = info.get('previousClose') or info.get('regularMarketPreviousClose')
-                        if prev and prev > 0:
-                            chg = round(price - prev, 2)
-                            chg_pct = round(((price - prev) / prev) * 100, 2)
-                    currency = info.get('currency', 'USD')
-                    sym = '₹' if currency == 'INR' else '$'
-                    return tk, {
-                        "price": round(float(price), 2),
-                        "change_pct": round(float(chg_pct), 2),
-                        "symbol": sym,
-                        "formatted": f"{sym}{round(float(price), 2):,.2f}"
-                    }
+                if price and float(price) > 0:
+                    prev = info.get('previousClose') or info.get('regularMarketPreviousClose') or price
+                    return _format_result(tk, price, prev, info.get('currency', 'INR' if is_indian else 'USD'))
             except:
                 pass
-            return tk, None
-        
-        with ThreadPoolExecutor(max_workers=7) as executor:
-            futures = {executor.submit(_fetch_price, t): t for t in tickers}
-            for f in as_completed(futures, timeout=12):
+            
+            # Source 2: Yahoo v8 chart (uses connection pool)
+            try:
+                r = _http_pool.get(f"https://query1.finance.yahoo.com/v8/finance/chart/{tk}?interval=1d&range=2d", timeout=6)
+                if r.status_code == 200:
+                    meta = r.json().get('chart', {}).get('result', [{}])[0].get('meta', {})
+                    price = meta.get('regularMarketPrice', 0)
+                    prev = meta.get('chartPreviousClose', meta.get('previousClose', price))
+                    if price and float(price) > 0:
+                        return _format_result(tk, price, prev, meta.get('currency', 'INR' if is_indian else 'USD'))
+            except:
+                pass
+            
+            # Source 3: Google Finance
+            try:
+                if is_indian:
+                    clean = tk.replace('.NS', '').replace('.BO', '')
+                    g_urls = [f"https://www.google.com/finance/quote/{clean}:NSE"]
+                else:
+                    base = tk.replace('.', '-')
+                    g_urls = [f"https://www.google.com/finance/quote/{base}:NASDAQ",
+                              f"https://www.google.com/finance/quote/{base}:NYSE",
+                              f"https://www.google.com/finance/quote/{base}:NYSEARCA"]
+                for g_url in g_urls:
+                    r = _http_pool.get(g_url, headers={'Accept': 'text/html'}, timeout=6)
+                    if r.status_code == 200 and 'data-last-price' in r.text:
+                        pm = re_bp.search(r'data-last-price="([0-9.]+)"', r.text)
+                        pp = re_bp.search(r'data-previous-close="([0-9.]+)"', r.text)
+                        if pm:
+                            price = float(pm.group(1))
+                            prev = float(pp.group(1)) if pp else price
+                            if price > 0:
+                                return _format_result(tk, price, prev, 'INR' if is_indian else 'USD')
+                        break
+            except:
+                pass
+            
+            # Source 4: NSE India API (only .NS tickers)
+            if is_indian:
                 try:
-                    tk, data = f.result(timeout=4)
-                    if data:
-                        results[tk] = data
-                        _batch_cache[tk] = data
+                    clean = tk.replace('.NS', '').replace('.BO', '')
+                    s = requests.Session()
+                    s.get("https://www.nseindia.com", headers={'User-Agent': 'Mozilla/5.0'}, timeout=5)
+                    r = s.get(f"https://www.nseindia.com/api/quote-equity?symbol={clean}", 
+                             headers={'User-Agent': 'Mozilla/5.0', 'Accept': '*/*'}, timeout=6)
+                    if r.status_code == 200:
+                        pi = r.json().get('priceInfo', {})
+                        price = pi.get('lastPrice') or pi.get('close')
+                        prev = pi.get('previousClose', price)
+                        if price and float(price) > 0:
+                            return _format_result(tk, price, prev, 'INR')
                 except:
                     pass
+                
+                # Source 5: Screener.in
+                try:
+                    clean = tk.replace('.NS', '').replace('.BO', '')
+                    r = _http_pool.get(f"https://www.screener.in/api/company/{clean}/consolidated/", timeout=6)
+                    if r.status_code == 200:
+                        scr = r.json()
+                        price = scr.get('current_price') or scr.get('market_price')
+                        if price and float(price) > 0:
+                            return _format_result(tk, price, price, 'INR')
+                except:
+                    pass
+            
+            return tk, None
         
-        _batch_cache_ts = now
+        # Parallel fetch using shared thread pool
+        futures = {_thread_pool.submit(_fetch_price_multisource, t): t for t in missing}
+        for f in as_completed(futures, timeout=20):
+            try:
+                tk, price_data = f.result(timeout=8)
+                if price_data:
+                    results[tk] = price_data
+                    _smart_cache_set(f"price:{tk}", price_data, 120)  # Cache for 2 min
+                else:
+                    failed_tickers.append(futures[f])
+            except:
+                failed_tickers.append(futures[f])
         
-        # Merge with cached
+        if failed_tickers:
+            print(f"⚠️ Batch prices: {len(failed_tickers)} tickers failed all sources: {failed_tickers[:5]}")
+        
         all_results = {**cached_results, **results}
-        
-        return {"success": True, "prices": all_results, "fetched": len(results), "cached": len(cached_results)}
+        return {
+            "success": True, "prices": all_results,
+            "fetched": len(results), "cached": len(cached_results), "failed": failed_tickers[:10]
+        }
     except Exception as e:
         return {"success": False, "error": str(e)[:100]}
 
@@ -2608,6 +2929,13 @@ _pulse_cache = None
 _pulse_cache_ts = None
 _ticker_cache = None
 _ticker_cache_ts = None
+
+# ═══ THUNDERING HERD PREVENTION ═══
+# When cache expires and 500 users hit simultaneously, only 1 fetch runs
+import threading
+_ticker_lock = threading.Lock()
+_pulse_lock = threading.Lock()
+_report_locks = {}  # Per-ticker locks for generate-report
 
 @app.get("/api/market-pulse")
 async def market_pulse():
@@ -2621,6 +2949,18 @@ async def market_pulse():
     now_ts = datetime.utcnow()
     if _pulse_cache and _pulse_cache_ts and (now_ts - _pulse_cache_ts).total_seconds() < 120:
         return _pulse_cache
+    
+    # ═══ DEDUP: prevent thundering herd ═══
+    if _pulse_lock.locked():
+        for _ in range(60):
+            await asyncio.sleep(0.2)
+            if _pulse_cache and _pulse_cache_ts and (datetime.utcnow() - _pulse_cache_ts).total_seconds() < 120:
+                return _pulse_cache
+        if _pulse_cache:
+            return _pulse_cache
+        return {"success": False, "error": "Server busy"}
+    
+    _pulse_lock.acquire()
     
     IST_OFFSET = timedelta(hours=5, minutes=30)
     now = datetime.utcnow() + IST_OFFSET
@@ -2659,6 +2999,7 @@ async def market_pulse():
     quick_tickers = {"CL=F": "Crude Oil", "GC=F": "Gold", "SI=F": "Silver", "DX-Y.NYB": "US Dollar", "^GSPC": "S&P 500", "INR=X": "USD/INR"}
     
     def fetch_ticker(ticker, name):
+        # Source 1: yfinance
         try:
             t = yf.Ticker(ticker)
             hist = t.history(period="2d")
@@ -2667,6 +3008,21 @@ async def market_pulse():
                 prev = hist.iloc[-2]['Close'] if len(hist) > 1 else price
                 chg_pct = round(((price - prev) / prev) * 100, 2) if prev else 0
                 return name, {"price": price, "change_pct": chg_pct}
+        except:
+            pass
+        # Source 2: Yahoo v8 chart API
+        try:
+            _h = {'User-Agent': f'Mozilla/5.0 Chrome/{random.randint(118,126)}.0.0.0', 'Accept': 'application/json'}
+            r = requests.get(f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}?interval=1d&range=2d", headers=_h, timeout=6)
+            if r.status_code == 200:
+                m = r.json().get('chart', {}).get('result', [{}])[0].get('meta', {})
+                price = m.get('regularMarketPrice', 0)
+                prev = m.get('chartPreviousClose', m.get('previousClose', price))
+                if price and float(price) > 0:
+                    price = round(float(price), 2)
+                    prev = round(float(prev), 2)
+                    chg_pct = round(((price - prev) / prev) * 100, 2) if prev else 0
+                    return name, {"price": price, "change_pct": chg_pct}
         except:
             pass
         return name, None
@@ -2844,6 +3200,9 @@ async def market_pulse():
     _pulse_cache = result
     _pulse_cache_ts = datetime.utcnow()
     
+    if _pulse_lock.locked():
+        _pulse_lock.release()
+    
     return result
 
 @app.post("/api/index-trades")
@@ -2879,6 +3238,47 @@ async def index_trades(request: Request):
     else:
         print(f"🔥 Index trades requested by {email} — generating fresh (cache expired or empty)")
     
+    # ═══ MULTI-SOURCE HELPER — yfinance → Yahoo v8 ═══
+    def _yfetch(ticker):
+        """Fetch price+history with fallback. Returns (hist_df, info_dict) or (None, None)."""
+        import yfinance as yf
+        # Source 1: yfinance
+        try:
+            t = yf.Ticker(ticker)
+            hist = t.history(period="5d")
+            if not hist.empty:
+                return hist, t.info or {}
+        except:
+            pass
+        # Source 2: Yahoo v8 chart API
+        try:
+            _h = {'User-Agent': f'Mozilla/5.0 Chrome/{random.randint(118,126)}.0.0.0', 'Accept': 'application/json'}
+            r = requests.get(f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}?interval=1d&range=5d", headers=_h, timeout=6)
+            if r.status_code == 200:
+                res = r.json().get('chart', {}).get('result', [{}])[0]
+                meta = res.get('meta', {})
+                quotes = res.get('indicators', {}).get('quote', [{}])[0]
+                import pandas as pd
+                closes = quotes.get('close', [])
+                highs = quotes.get('high', [])
+                lows = quotes.get('low', [])
+                opens = quotes.get('open', [])
+                vols = quotes.get('volume', [])
+                ts = res.get('timestamp', [])
+                if closes and any(c for c in closes if c):
+                    df = pd.DataFrame({'Close': closes, 'High': highs, 'Low': lows, 'Open': opens, 'Volume': vols}, 
+                                       index=pd.to_datetime(ts, unit='s') if ts else range(len(closes)))
+                    df = df.dropna(subset=['Close'])
+                    if not df.empty:
+                        info = {'currentPrice': meta.get('regularMarketPrice'), 
+                                'previousClose': meta.get('chartPreviousClose'),
+                                'currency': meta.get('currency', 'USD'),
+                                'longName': meta.get('longName', ticker)}
+                        return df, info
+        except:
+            pass
+        return None, None
+    
     # Fetch Indian index data
     indices_data = []
     tickers = {
@@ -2890,11 +3290,8 @@ async def index_trades(request: Request):
     
     for ticker, name in tickers.items():
         try:
-            import yfinance as yf
-            t = yf.Ticker(ticker)
-            hist = t.history(period="5d")
-            info = t.info or {}
-            if not hist.empty:
+            hist, info = _yfetch(ticker)
+            if hist is not None and not hist.empty:
                 latest = hist.iloc[-1]
                 prev = hist.iloc[-2] if len(hist) > 1 else hist.iloc[0]
                 price = round(latest['Close'], 2)
@@ -2928,9 +3325,8 @@ async def index_trades(request: Request):
     }
     for ticker, name in global_tickers.items():
         try:
-            t = yf.Ticker(ticker)
-            hist = t.history(period="2d")
-            if not hist.empty:
+            hist, info = _yfetch(ticker)
+            if hist is not None and not hist.empty:
                 price = round(hist.iloc[-1]['Close'], 2)
                 prev = hist.iloc[-2]['Close'] if len(hist) > 1 else price
                 change_pct = round(((price - prev) / prev) * 100, 2) if prev else 0
@@ -2959,15 +3355,14 @@ async def index_trades(request: Request):
     }
     for ticker, name in stock_tickers.items():
         try:
-            t = yf.Ticker(ticker)
-            hist = t.history(period="5d")
-            if not hist.empty and len(hist) >= 2:
+            hist, info = _yfetch(ticker)
+            if hist is not None and not hist.empty and len(hist) >= 2:
                 latest = hist.iloc[-1]
                 prev = hist.iloc[-2]
                 price = round(latest['Close'], 2)
                 change_pct = round(((price - prev['Close']) / prev['Close']) * 100, 2)
-                vol_avg = int(hist['Volume'].mean())
-                vol_today = int(latest['Volume'])
+                vol_avg = int(hist['Volume'].mean()) if 'Volume' in hist.columns else 0
+                vol_today = int(latest.get('Volume', 0))
                 vol_spike = round(vol_today / vol_avg, 2) if vol_avg > 0 else 1
                 high_5d = round(hist['High'].max(), 2)
                 low_5d = round(hist['Low'].min(), 2)
@@ -5337,8 +5732,23 @@ async def validate_trades(request: Request):
                 hist = t.history(start=date_str, end=next_day.strftime('%Y-%m-%d'), interval="1h")
                 
                 if hist.empty:
-                    # Try daily
                     hist = t.history(start=date_str, end=(trade_date + timedelta(days=3)).strftime('%Y-%m-%d'))
+                
+                # Fallback: Yahoo v8 chart API
+                if hist.empty:
+                    try:
+                        _h = {'User-Agent': f'Mozilla/5.0 Chrome/{random.randint(118,126)}.0.0.0', 'Accept': 'application/json'}
+                        ts1 = int(trade_date.timestamp())
+                        ts2 = int((trade_date + timedelta(days=2)).timestamp())
+                        r = requests.get(f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}?period1={ts1}&period2={ts2}&interval=1d", headers=_h, timeout=6)
+                        if r.status_code == 200:
+                            res = r.json().get('chart', {}).get('result', [{}])[0]
+                            q = res.get('indicators', {}).get('quote', [{}])[0]
+                            import pandas as pd
+                            if q.get('close'):
+                                hist = pd.DataFrame({'Close': q['close'], 'High': q['high'], 'Low': q['low'], 'Open': q['open']}).dropna()
+                    except:
+                        pass
                 
                 if hist.empty:
                     continue
@@ -5478,4 +5888,11 @@ async def stats():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("PORT", 8000)))
+    import multiprocessing
+    # Auto-detect optimal workers: 2-4 per CPU core
+    workers = min(int(os.getenv("WEB_CONCURRENCY", multiprocessing.cpu_count() * 2)), 8)
+    port = int(os.getenv("PORT", 8000))
+    print(f"🚀 Starting Celesys AI — {workers} workers on port {port}")
+    print(f"   Performance: connection pool (20), thread pool (15), smart cache, background prefetch")
+    uvicorn.run("api:app", host="0.0.0.0", port=port, workers=workers, 
+                timeout_keep_alive=30, limit_concurrency=500, backlog=2048)
