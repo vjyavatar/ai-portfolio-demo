@@ -1209,6 +1209,7 @@ def get_live_stock_data(company_name: str) -> dict:
         week52_high = None
         week52_low = None
         data_source = 'unknown'
+        stock = None  # Will be set by Source 1, reused later for charts/technicals
         
         # ── SOURCE 1: yfinance library ──
         try:
@@ -1391,7 +1392,7 @@ def get_live_stock_data(company_name: str) -> dict:
             if not has_margins:
                 print(f"⚠️ Margins still missing. Last resort: yfinance .info...")
                 try:
-                    stock_margins = yf.Ticker(ticker_symbol)
+                    stock_margins = stock or yf.Ticker(ticker_symbol)
                     margin_info = stock_margins.info
                     if margin_info:
                         if not info.get('profitMargins') and margin_info.get('profitMargins'):
@@ -1568,7 +1569,7 @@ def get_live_stock_data(company_name: str) -> dict:
         
         # Fetch real 6-month price history for Price Trend chart
         try:
-            hist_ticker = yf.Ticker(ticker_symbol)
+            hist_ticker = stock or yf.Ticker(ticker_symbol)  # Reuse Source 1 Ticker (saves 2-3s)
             hist = hist_ticker.history(period="6mo", interval="1mo")
             if hist is not None and len(hist) > 1:
                 price_history = [round(float(row['Close']), 2) for _, row in hist.iterrows()]
@@ -1582,7 +1583,7 @@ def get_live_stock_data(company_name: str) -> dict:
         
         # ═══ TECHNICAL INDICATORS: SMA20, SMA200, EPS Growth, Sector PE ═══
         try:
-            tk = yf.Ticker(ticker_symbol)
+            tk = stock or yf.Ticker(ticker_symbol)  # Reuse Source 1 Ticker (saves 2-3s)
             # Daily history for moving averages
             daily = tk.history(period="1y", interval="1d")
             if daily is not None and len(daily) > 20:
@@ -2504,7 +2505,7 @@ async def global_ticker():
         # Source 2: Yahoo v8 chart API (direct HTTP)
         try:
             _h = {'User-Agent': f'Mozilla/5.0 Chrome/{random.randint(118,126)}.0.0.0', 'Accept': 'application/json'}
-            r = requests.get(f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}?interval=1d&range=2d", headers=_h, timeout=6)
+            r = _http_pool.get(f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}?interval=1d&range=2d", timeout=4)
             if r.status_code == 200:
                 m = r.json().get('chart', {}).get('result', [{}])[0].get('meta', {})
                 price = m.get('regularMarketPrice', 0)
@@ -2572,7 +2573,7 @@ async def stock_quick(ticker: str = ""):
         if not price:
             try:
                 _h = {'User-Agent': f'Mozilla/5.0 Chrome/{random.randint(118,126)}.0.0.0', 'Accept': 'application/json'}
-                r = requests.get(f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}?interval=1d&range=5d", headers=_h, timeout=6)
+                r = _http_pool.get(f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}?interval=1d&range=5d", timeout=3)
                 if r.status_code == 200:
                     meta = r.json().get('chart', {}).get('result', [{}])[0].get('meta', {})
                     p = meta.get('regularMarketPrice', 0)
@@ -2591,7 +2592,7 @@ async def stock_quick(ticker: str = ""):
                 clean = ticker.replace('.NS','').replace('.BO','')
                 g_url = f"https://www.google.com/finance/quote/{clean}:NSE" if is_ind else f"https://www.google.com/finance/quote/{clean}:NASDAQ"
                 _h = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/122.0.0.0', 'Accept': 'text/html'}
-                r = requests.get(g_url, headers=_h, timeout=6)
+                r = _http_pool.get(g_url, headers={'Accept':'text/html'}, timeout=3)
                 if r.status_code == 200:
                     pm = _re.search(r'data-last-price="([0-9.]+)"', r.text)
                     if pm:
@@ -2600,22 +2601,7 @@ async def stock_quick(ticker: str = ""):
             except:
                 pass
         
-        # Source 4: NSE India API (for .NS tickers)
-        if not price and ('.NS' in ticker or '.BO' in ticker):
-            try:
-                clean = ticker.replace('.NS','').replace('.BO','')
-                _h = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)', 'Accept': '*/*'}
-                s = requests.Session()
-                s.get("https://www.nseindia.com", headers=_h, timeout=5)
-                r = s.get(f"https://www.nseindia.com/api/quote-equity?symbol={clean}", headers=_h, timeout=6)
-                if r.status_code == 200:
-                    pi = r.json().get('priceInfo', {})
-                    p = pi.get('lastPrice') or pi.get('close')
-                    if p and float(p) > 0:
-                        price = float(p)
-                        info = {**info, 'currentPrice': price, 'previousClose': pi.get('previousClose', price)}
-            except:
-                pass
+        # NSE India API skipped in stock_quick for speed (use batch-prices for NSE fallback)
         
         if not price:
             return {"success": False, "error": f"No data for {ticker}"}
@@ -2937,7 +2923,7 @@ async def market_pulse():
         # Source 2: Yahoo v8 chart API
         try:
             _h = {'User-Agent': f'Mozilla/5.0 Chrome/{random.randint(118,126)}.0.0.0', 'Accept': 'application/json'}
-            r = requests.get(f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}?interval=1d&range=2d", headers=_h, timeout=6)
+            r = _http_pool.get(f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}?interval=1d&range=2d", timeout=4)
             if r.status_code == 200:
                 m = r.json().get('chart', {}).get('result', [{}])[0].get('meta', {})
                 price = m.get('regularMarketPrice', 0)
@@ -3174,7 +3160,7 @@ async def index_trades(request: Request):
         # Source 2: Yahoo v8 chart API
         try:
             _h = {'User-Agent': f'Mozilla/5.0 Chrome/{random.randint(118,126)}.0.0.0', 'Accept': 'application/json'}
-            r = requests.get(f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}?interval=1d&range=5d", headers=_h, timeout=6)
+            r = _http_pool.get(f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}?interval=1d&range=5d", timeout=4)
             if r.status_code == 200:
                 res = r.json().get('chart', {}).get('result', [{}])[0]
                 meta = res.get('meta', {})
@@ -4446,7 +4432,7 @@ RULES FOR STOCK OPTIONS (up to 2 trades — 0 if no clear setup):
         if not ANTHROPIC_API_KEY:
             return {"success": False, "error": "AI analysis service is not configured. Please contact support at contact@celesys.ai."}
         
-        response = requests.post(
+        response = _http_pool.post(
             "https://api.anthropic.com/v1/messages",
             headers={
                 "x-api-key": ANTHROPIC_API_KEY,
@@ -4585,6 +4571,8 @@ async def check_rate_limit_endpoint(request: Request):
 
 @app.post("/api/generate-report")
 async def generate_report(request: Request):
+    import time as _time
+    _t0 = _time.time()
     try:
         data = await request.json()
         company = data.get("company_name", "").strip()
@@ -4593,7 +4581,7 @@ async def generate_report(request: Request):
         if not company or not email:
             raise HTTPException(400, "company_name and email required")
         
-        # CHECK RATE LIMIT
+        # CHECK RATE LIMIT (inline — no separate API call needed)
         rate_check = check_rate_limit(email)
         if not rate_check["allowed"]:
             return JSONResponse(
@@ -4601,8 +4589,12 @@ async def generate_report(request: Request):
                 content=rate_check
             )
         
-        # GET LIVE DATA
-        live_data = get_live_stock_data(company)
+        # GET LIVE DATA — run in thread pool so other users aren't blocked
+        _t1 = _time.time()
+        loop = asyncio.get_event_loop()
+        live_data = await loop.run_in_executor(_thread_pool, get_live_stock_data, company)
+        _t2 = _time.time()
+        print(f"⏱️ get_live_stock_data: {_t2-_t1:.1f}s")
         
         # Check if there was an error
         if "error" in live_data or not live_data.get("success"):
@@ -5378,55 +5370,58 @@ Based on real-time price of {_f_price}:
         
         report = None
         ai_model_used = "none"
+        _t3 = _time.time()
+        print(f"⏱️ Prompt built: {_t3-_t2:.1f}s. Starting AI...")
         
-        _ai_headers = {
-            "x-api-key": ANTHROPIC_API_KEY or "",
-            "anthropic-version": "2023-06-01",
-            "content-type": "application/json"
-        }
+        def _run_ai_call(prompt_text, api_key, models_list):
+            """Run AI models in sequence. Returns (report_text, model_label)."""
+            if not api_key:
+                return None, "none"
+            _headers = {
+                "x-api-key": api_key,
+                "anthropic-version": "2023-06-01",
+                "content-type": "application/json"
+            }
+            for model_name, max_tok, timeout_s, label in models_list:
+                try:
+                    print(f"🤖 AI attempt: {label} (timeout={timeout_s}s)...")
+                    resp = _http_pool.post(
+                        "https://api.anthropic.com/v1/messages",
+                        headers=_headers,
+                        json={"model": model_name, "max_tokens": max_tok,
+                              "messages": [{"role": "user", "content": prompt_text}]},
+                        timeout=timeout_s
+                    )
+                    if resp.status_code == 200:
+                        text = resp.json()["content"][0]["text"]
+                        print(f"✅ AI success: {label} ({len(text)} chars)")
+                        return text, label
+                    elif resp.status_code in (429, 529, 503):
+                        print(f"⚠️ {label} overloaded ({resp.status_code}), trying next...")
+                        continue
+                    elif resp.status_code == 401:
+                        print(f"❌ API key invalid")
+                        break
+                    else:
+                        print(f"⚠️ {label} error {resp.status_code}")
+                        continue
+                except requests.exceptions.Timeout:
+                    print(f"⏰ {label} timed out after {timeout_s}s")
+                    continue
+                except Exception as e:
+                    print(f"⚠️ {label} error: {e}")
+                    continue
+            return None, "none"
         
         _ai_models = [
             ("claude-sonnet-4-20250514", 4096, 45, "sonnet"),
             ("claude-haiku-4-5-20251001", 4096, 30, "haiku"),
         ]
         
-        if ANTHROPIC_API_KEY:
-            for model_name, max_tok, timeout_s, label in _ai_models:
-                try:
-                    print(f"🤖 AI attempt: {label} (timeout={timeout_s}s)...")
-                    _ai_resp = requests.post(
-                        "https://api.anthropic.com/v1/messages",
-                        headers=_ai_headers,
-                        json={
-                            "model": model_name,
-                            "max_tokens": max_tok,
-                            "messages": [{"role": "user", "content": prompt}]
-                        },
-                        timeout=timeout_s
-                    )
-                    if _ai_resp.status_code == 200:
-                        report = _ai_resp.json()["content"][0]["text"]
-                        ai_model_used = label
-                        print(f"✅ AI success: {label} ({len(report)} chars)")
-                        break
-                    elif _ai_resp.status_code in (429, 529, 503):
-                        print(f"⚠️ {label} overloaded ({_ai_resp.status_code}), trying next...")
-                        continue
-                    elif _ai_resp.status_code == 401:
-                        print(f"❌ API key invalid — skipping all AI models")
-                        break
-                    else:
-                        print(f"⚠️ {label} error {_ai_resp.status_code}, trying next...")
-                        continue
-                except requests.exceptions.Timeout:
-                    print(f"⏰ {label} timed out after {timeout_s}s, trying next...")
-                    continue
-                except requests.exceptions.ConnectionError:
-                    print(f"🔌 {label} connection failed, trying next...")
-                    continue
-                except Exception as e:
-                    print(f"⚠️ {label} unexpected error: {e}, trying next...")
-                    continue
+        # Run AI in thread pool — doesn't block event loop while waiting 5-45s
+        report, ai_model_used = await loop.run_in_executor(
+            _thread_pool, _run_ai_call, prompt, ANTHROPIC_API_KEY, _ai_models
+        )
         
         # ═══ FALLBACK 3: Template report (no AI) — ALWAYS succeeds ═══
         if not report:
@@ -5548,6 +5543,9 @@ This is for educational analysis only, not investment advice. The 20-factor quan
             if t > datetime.now() - timedelta(minutes=RATE_LIMIT_WINDOW_MINUTES)
         ])
         
+        _t4 = _time.time()
+        print(f"⏱️ TOTAL: {_t4-_t0:.1f}s (data={_t2-_t1:.1f}s + prompt={_t3-_t2:.1f}s + AI={_t4-_t3:.1f}s) model={ai_model_used}")
+        
         return {
             "success": True,
             "report": report,
@@ -5661,7 +5659,7 @@ async def validate_trades(request: Request):
                         _h = {'User-Agent': f'Mozilla/5.0 Chrome/{random.randint(118,126)}.0.0.0', 'Accept': 'application/json'}
                         ts1 = int(trade_date.timestamp())
                         ts2 = int((trade_date + timedelta(days=2)).timestamp())
-                        r = requests.get(f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}?period1={ts1}&period2={ts2}&interval=1d", headers=_h, timeout=6)
+                        r = _http_pool.get(f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}?period1={ts1}&period2={ts2}&interval=1d", timeout=4)
                         if r.status_code == 200:
                             res = r.json().get('chart', {}).get('result', [{}])[0]
                             q = res.get('indicators', {}).get('quote', [{}])[0]
@@ -5809,11 +5807,10 @@ async def stats():
 
 if __name__ == "__main__":
     import uvicorn
-    import multiprocessing
-    # Auto-detect optimal workers: 2-4 per CPU core
-    workers = min(int(os.getenv("WEB_CONCURRENCY", multiprocessing.cpu_count() * 2)), 8)
     port = int(os.getenv("PORT", 8000))
-    print(f"🚀 Starting Celesys AI — {workers} workers on port {port}")
-    print(f"   Performance: connection pool (20), thread pool (15), smart cache, background prefetch")
-    uvicorn.run("api:app", host="0.0.0.0", port=port, workers=workers, 
-                timeout_keep_alive=30, limit_concurrency=500, backlog=2048)
+    print(f"🚀 Starting Celesys AI on port {port}")
+    print(f"   Performance: connection pool, thread pool (15), smart cache, background prefetch")
+    # Single worker + async + thread pool = best for IO-bound app with in-memory cache
+    # Multiple workers would split cache across processes (bad for hit rate)
+    uvicorn.run("api:app", host="0.0.0.0", port=port, 
+                timeout_keep_alive=30, limit_concurrency=1000)

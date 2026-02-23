@@ -1230,7 +1230,7 @@ TI.addEventListener('keypress',e=>{if(e.key==='Enter')analyze()});
 
 function showStatus(m,t){const s=document.getElementById('status');s.innerHTML=m;s.className='sbar show '+t}
 function showLS(){const b=document.getElementById('lsteps');b.classList.add('show');['s1','s2','s3','s4'].forEach(s=>{document.getElementById(s).className='ls'});
-let i=0;const ids=['s1','s2','s3','s4'];b._iv=setInterval(()=>{if(i>0)document.getElementById(ids[i-1]).classList.replace('on','ok');if(i<ids.length){document.getElementById(ids[i]).classList.add('on');i++}else clearInterval(b._iv)},7000);document.getElementById(ids[0]).classList.add('on')}
+let i=0;const ids=['s1','s2','s3','s4'];b._iv=setInterval(()=>{if(i>0)document.getElementById(ids[i-1]).classList.replace('on','ok');if(i<ids.length){document.getElementById(ids[i]).classList.add('on');i++}else clearInterval(b._iv)},3000);document.getElementById(ids[0]).classList.add('on')}
 function hideLS(){const b=document.getElementById('lsteps');if(b._iv)clearInterval(b._iv);b.classList.remove('show')}
 function hideRL(){document.getElementById('rateLimitBox').style.display='none';if(countdownInterval){clearInterval(countdownInterval);countdownInterval=null}}
 function showRL(data){const box=document.getElementById('rateLimitBox'),cd=document.getElementById('rlCountdown'),cb=document.getElementById('rlComeback'),pr=document.getElementById('rlProgress');
@@ -1457,11 +1457,11 @@ analyze();
 async function analyze(){const emailEl=document.getElementById('email');const email=(emailEl.dataset.real||emailEl.value).trim(),ticker=TI.value.trim().toUpperCase(),btn=document.getElementById('btn'),rpt=document.getElementById('report');
 AC.classList.remove('show');if(!email||!ticker){showStatus('Enter both email and ticker','error');return}
 if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){showStatus('Enter a valid email','error');return}
-try{const rl=await fetch('/api/check-rate-limit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email})});const rld=await rl.json();
-if(!rld.allowed){showStatus(rld.reason,'error');showRL(rld);return}else hideRL()}catch(e){}
 btn.disabled=true;btn.textContent='Analyzing...';btn.classList.add('ld');rpt.classList.remove('show');hideRL();
-showStatus('Crunching the numbers on '+ticker+'...','info');showLS();
+showStatus('Fetching live data for '+ticker+'...','info');showLS();
 fetchMarketPulse();
+const _startT=Date.now();
+const _timerIv=setInterval(()=>{const s=Math.floor((Date.now()-_startT)/1000);showStatus('Analyzing '+ticker+'... '+s+'s','info')},2000);
 
 // ═══ AUTO-RETRY: Try up to 2 times ═══
 let lastErr='';
@@ -1469,6 +1469,7 @@ for(let attempt=1;attempt<=2;attempt++){
 try{
 if(attempt===2){showStatus('⏳ Retrying analysis (attempt 2/2)...','info')}
 const res=await fetch('/api/generate-report',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({company_name:ticker,email})});
+clearInterval(_timerIv);
 if(res.status===429){const r=await res.json().catch(()=>({}));showStatus(r.reason||r.detail||'Too many requests','error');if(r.retry_after_seconds||r.retry_after_minutes)showRL(r);return}
 if(res.status===503||res.status===504){
   lastErr=(await res.json().catch(()=>({}))).detail||'Service busy';
@@ -1481,7 +1482,8 @@ q=r===0?' · Last free report this hour':' · '+r+' remaining'}
 if(data.report_number)document.getElementById('navRC').textContent=data.report_number;
 if(data.report_number){document.getElementById('globalRC').textContent=data.report_number.toLocaleString();const hb=document.getElementById('reportBadgeCount');if(hb)hb.textContent=data.report_number.toLocaleString()}
 const modelNote=data.ai_model==='template'?' (data-only mode)':data.ai_model==='haiku'?' (fast mode)':'';
-showStatus('✓ Your report is ready'+modelNote+'. Scroll down — this is the good stuff.'+q,'success');displayReport(data);TI.value='';
+const _elapsed=Math.round((Date.now()-_startT)/1000);
+showStatus('✓ Report ready in '+_elapsed+'s'+modelNote+'. Scroll down — this is the good stuff.'+q,'success');displayReport(data);TI.value='';
 if(typeof gtag==='function')gtag('event','generate_report',{ticker:data.live_data?.ticker||'',company:data.company_name||'',ai_model:data.ai_model||''});
 break; // Success — exit retry loop
 }catch(e){
@@ -1489,9 +1491,9 @@ break; // Success — exit retry loop
   if(lastErr==='Failed to fetch'&&attempt<2){console.log('Network error, retrying in 3s...');await new Promise(r=>setTimeout(r,3000));continue}
   let m=lastErr;if(m==='Failed to fetch')m='Cannot connect to server.';
   else if(m.toLowerCase().includes('rate limit')||m.toLowerCase().includes('too many')||m.toLowerCase().includes('temporarily')||m.toLowerCase().includes('all data sources'))m='All data sources busy. Try again in 30 seconds.';
-  showStatus(m,'error');break}
+  clearInterval(_timerIv);showStatus(m,'error');break}
 }// end retry loop
-btn.disabled=false;btn.textContent='Analyze →';btn.classList.remove('ld');hideLS()}
+clearInterval(_timerIv);btn.disabled=false;btn.textContent='Analyze →';btn.classList.remove('ld');hideLS()}
 
 function displayReport(data){const d=data.live_data,curr=d.currency==='INR'?'₹':'$',price=d.current_price;
 document.getElementById('tickerTag').textContent=d.ticker;document.getElementById('companyName').textContent=d.company_name||d.ticker;
