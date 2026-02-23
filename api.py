@@ -4209,7 +4209,34 @@ async def generate_report(request: Request):
         
         # Format live data section
         currency_symbol = '₹' if live_data['currency'] == 'INR' else '$'
-        price_arrow = '🔴 ↓' if live_data['price_change'] < 0 else '🟢 ↑'
+        price_arrow = '🔴 ↓' if isinstance(live_data.get('price_change'), (int, float)) and live_data['price_change'] < 0 else '🟢 ↑'
+        
+        # ═══ SAFE FORMATTER — prevents 'N/A' from crashing float formats ═══
+        def _fv(val, fmt=",.2f", prefix="", suffix=""):
+            """Format a value safely. Returns formatted string or 'N/A'."""
+            if val is None or val == 'N/A' or val == '':
+                return 'N/A'
+            try:
+                v = float(str(val).replace(',', ''))
+                return f"{prefix}{format(v, fmt)}{suffix}"
+            except (ValueError, TypeError):
+                return str(val)
+        
+        def _safe_div(a, b):
+            """Safe division — handles N/A, None, zero."""
+            try:
+                a, b = float(a if a and a != 'N/A' else 0), float(b if b and b != 'N/A' else 1)
+                return a / b if b != 0 else 0
+            except:
+                return 0
+        
+        # Pre-format all values that use :,.2f or :, formatting
+        _f_price = _fv(live_data.get('current_price', 0), ",.2f", currency_symbol)
+        _f_chg = _fv(abs(live_data.get('price_change', 0)) if isinstance(live_data.get('price_change'), (int, float)) else 0, ".2f", currency_symbol)
+        _f_chg_pct = _fv(live_data.get('price_change_pct', 0), "+.2f", "", "%")
+        _f_w52h = _fv(live_data.get('week52_high'), ",.2f", currency_symbol)
+        _f_w52l = _fv(live_data.get('week52_low'), ",.2f", currency_symbol)
+        _f_mcap = _fv(live_data.get('market_cap'), ",.0f", currency_symbol)
         
         live_data_section = f"""
 ╔═══════════════════════════════════════════════════════════════╗
@@ -4220,8 +4247,8 @@ async def generate_report(request: Request):
 CURRENT MARKET SNAPSHOT:
 • Ticker: {live_data['ticker']}
 • Company: {live_data['company_name']}
-• Current Price: {currency_symbol}{live_data['current_price']:,.2f}
-• Change Today: {price_arrow} {currency_symbol}{abs(live_data['price_change']):.2f} ({live_data['price_change_pct']:+.2f}%)
+• Current Price: {_f_price}
+• Change Today: {price_arrow} {_f_chg} ({_f_chg_pct})
 
 VALUATION METRICS (CURRENT):
 • P/E Ratio (Trailing): {live_data['pe_ratio']}
@@ -4234,9 +4261,9 @@ VALUATION METRICS (CURRENT):
 • Sector Avg P/E: {live_data.get('sector_avg_pe', 'N/A')}x
 • Peer Avg P/E: {live_data.get('peer_avg_pe', 'N/A')}x
 • Peers Analyzed: {', '.join([p['ticker']+' (PE:'+str(p['pe'])+'x)' for p in live_data.get('peers',[])][:5]) or 'N/A'}
-• 52-Week High: {currency_symbol}{live_data['week52_high']:,.2f}
-• 52-Week Low: {currency_symbol}{live_data['week52_low']:,.2f}
-• Market Cap: {currency_symbol}{live_data['market_cap']:,} if available
+• 52-Week High: {_f_w52h}
+• 52-Week Low: {_f_w52l}
+• Market Cap: {_f_mcap}
 
 PROFITABILITY & EFFICIENCY:
 • Gross Margins: {live_data.get('gross_margins', 'N/A')}%
@@ -4309,18 +4336,18 @@ COMPANY INFORMATION:
         # This ensures the AI ALWAYS has numbers to work with, even if Yahoo APIs fail
         computed_context = f"""
 === COMPUTED FINANCIAL METRICS (from live market data) ===
-Current Price: {currency_symbol}{live_data['current_price']:,.2f}
-Price Change Today: {live_data['price_change_pct']:+.2f}%
+Current Price: {_f_price}
+Price Change Today: {_f_chg_pct}
 P/E Ratio: {live_data['pe_ratio']}
 Forward P/E: {live_data.get('forward_pe', 'N/A')}
 P/B Ratio: {live_data['pb_ratio']}
-Market Cap: {currency_symbol}{live_data['market_cap']:,}
+Market Cap: {_f_mcap}
 Dividend Yield: {live_data['dividend_yield']}%
 Beta: {live_data['beta']}
-52-Week High: {currency_symbol}{live_data['week52_high']:,.2f}
-52-Week Low: {currency_symbol}{live_data['week52_low']:,.2f}
-Price vs 52W High: {((live_data['current_price']/live_data['week52_high'])*100) if live_data['week52_high'] > 0 else 0:.1f}%
-Price vs 52W Low: {((live_data['current_price']/live_data['week52_low'])*100) if live_data['week52_low'] > 0 else 0:.1f}%
+52-Week High: {_f_w52h}
+52-Week Low: {_f_w52l}
+Price vs 52W High: {_fv(_safe_div(live_data.get('current_price',0), live_data.get('week52_high',1)) * 100, '.1f', '', '%')}
+Price vs 52W Low: {_fv(_safe_div(live_data.get('current_price',0), live_data.get('week52_low',1)) * 100, '.1f', '', '%')}
 Profit Margin: {live_data['profit_margin']}%
 Operating Margin: {live_data['operating_margin']}%
 ROE: {live_data['roe']}%
@@ -4363,9 +4390,9 @@ Industry: {live_data['industry']}
         v_de = _n(live_data['debt_to_equity'])
         v_cr = _n(live_data['current_ratio'])
         v_beta = _n(live_data['beta'])
-        v_price = live_data['current_price']
-        v_hi = live_data['week52_high']
-        v_lo = live_data['week52_low']
+        v_price = _n(live_data.get('current_price', 0))
+        v_hi = _n(live_data.get('week52_high', 0))
+        v_lo = _n(live_data.get('week52_low', 0))
         v_w52 = (v_price - v_lo) / (v_hi - v_lo) if v_hi > v_lo else 0.5
         
         # F1: VALUATION (±20)
@@ -4682,7 +4709,7 @@ You MUST touch on ALL 20 factors across your analysis sections. Group them natur
 
 CRITICAL INSTRUCTIONS:
 1. Use ONLY the real-time data provided above
-2. Current price is {currency_symbol}{live_data['current_price']:,.2f} - use THIS number
+2. Current price is {_f_price} - use THIS number
 3. Base all analysis on current market conditions
 4. Provide actionable, professional insights
 5. Your Recommendation MUST be: {v_verdict} {v_emoji} — this is pre-computed from 20 quantitative factors and is NON-NEGOTIABLE
@@ -4708,7 +4735,7 @@ CRITICAL INSTRUCTIONS:
 
 ## 🎯 INVESTMENT THESIS
 
-**Current Price:** {currency_symbol}{live_data['current_price']:,.2f} {live_data['currency']}  
+**Current Price:** {_f_price} {live_data['currency']}  
 **Recommendation:** {v_verdict} {v_emoji} (Score: {v_score:+d})  
 **Conviction:** {v_conviction}  
 **Time Horizon:** [Short/Long-term based on the data]
@@ -4883,12 +4910,12 @@ Include specific price targets tied to management tone.]
 
 ## 🎯 ENTRY & EXIT STRATEGY (Multi-Factor Driven)
 
-**Based on LIVE Price: {currency_symbol}{live_data['current_price']:,.2f}**
+**Based on LIVE Price: {_f_price}**
 
 CALCULATE ENTRY/EXIT using ALL these factors:
 1. SMA Support: 20-day ({live_data.get('sma_20','N/A')}), 50-day ({live_data.get('sma_50','N/A')}), 200-day ({live_data.get('sma_200','N/A')}) — Buy near SMA support, sell near SMA resistance
    EMA Signals: 9-day ({live_data.get('ema_9','N/A')}), 21-day ({live_data.get('ema_21','N/A')}), 50-day ({live_data.get('ema_50','N/A')}) — {', '.join(live_data.get('ema_signals',[])) if live_data.get('ema_signals') else 'N/A'}
-2. 52-Week Range: High {currency_symbol}{live_data['week52_high']:,.2f}, Low {currency_symbol}{live_data['week52_low']:,.2f} — Use for range-based targets
+2. 52-Week Range: High {_f_w52h}, Low {_f_w52l} — Use for range-based targets
 3. Book Value Floor: {live_data['book_value']} — absolute downside anchor
 4. Intrinsic Value: Use Graham/DCF/Lynch values above as fair value targets
 5. EV/EBITDA Implied: If EV/EBITDA is cheap (<10x), wider upside target; if expensive (>20x), tighter stop loss
@@ -4899,7 +4926,7 @@ CALCULATE ENTRY/EXIT using ALL these factors:
 ```
 Aggressive Buy:   {currency_symbol}XXX  [SMA200 or 52W range support — for swing traders]
 Accumulate Zone:  {currency_symbol}XXX  [SMA50 support or -5% from CMP — for investors]
-Current Price:    {currency_symbol}{live_data['current_price']:,.2f}  ◄── LIVE PRICE
+Current Price:    {_f_price}  ◄── LIVE PRICE
 Target 1 (3M):   {currency_symbol}XXX  [Nearest SMA resistance or +10% move]
 Target 2 (12M):  {currency_symbol}XXX  [Intrinsic value / sector P/E convergence price]
 Stop Loss:       {currency_symbol}XXX  [Below SMA200 or key support — max loss defined by beta]
@@ -4921,7 +4948,7 @@ Explain the LOGIC behind each level — which factor(s) drive it.
 
 **Verdict: {v_verdict} {v_emoji}** (Conviction: {v_conviction}, Score: {v_score:+d})
 
-Based on real-time price of {currency_symbol}{live_data['current_price']:,.2f}:
+Based on real-time price of {_f_price}:
 [Summarize your analysis. Must align with the {v_verdict} verdict. Give specific entry/exit levels if applicable.]
 
 ═══════════════════════════════════════════════════════════════
@@ -5003,38 +5030,48 @@ Based on real-time price of {currency_symbol}{live_data['current_price']:,.2f}:
         if not report:
             print("📝 All AI models failed — generating template report...")
             ai_model_used = "template"
+            
+            # Safe float helper — handles 'N/A', None, empty strings
+            def _sf(v, default=0):
+                if v is None or v == 'N/A' or v == '' or v == 'N/A%':
+                    return default
+                try:
+                    return float(str(v).replace('%','').replace(',',''))
+                except:
+                    return default
+            
             _curr = '₹' if live_data['currency'] == 'INR' else '$'
-            _p = live_data['current_price']
-            _pe = live_data['pe_ratio']
-            _pm = live_data['profit_margin']
-            _roe = live_data['roe']
-            _de = live_data['debt_to_equity']
-            _beta = live_data['beta']
+            _p = _sf(live_data.get('current_price', 0))
+            _pe = live_data.get('pe_ratio', 'N/A')
+            _pm = live_data.get('profit_margin', 'N/A')
+            _roe = live_data.get('roe', 'N/A')
+            _de = live_data.get('debt_to_equity', 'N/A')
+            _beta = live_data.get('beta', 'N/A')
             _sector = live_data.get('sector', 'Unknown')
             _industry = live_data.get('industry', 'Unknown')
-            _w52h = live_data.get('week52_high', _p)
-            _w52l = live_data.get('week52_low', _p)
+            _w52h = _sf(live_data.get('week52_high', _p), _p)
+            _w52l = _sf(live_data.get('week52_low', _p), _p)
             _w52pct = round(((_p - _w52l) / (_w52h - _w52l) * 100), 1) if _w52h != _w52l else 50
-            _spe = live_data.get('sector_avg_pe', 20)
+            _spe = _sf(live_data.get('sector_avg_pe', 20), 20)
             _pAvgPE = live_data.get('peer_avg_pe', 'N/A')
             _eg = live_data.get('earnings_growth', 'N/A')
-            _dv = live_data.get('dividend_yield', 0)
+            _dv = live_data.get('dividend_yield', 'N/A')
             
             # Valuation assessment
-            _pe_f = float(_pe) if _pe != 'N/A' else 0
+            _pe_f = _sf(_pe)
             if _pe_f > 0:
                 _pe_vs = "undervalued relative to" if _pe_f < _spe * 0.8 else "fairly valued relative to" if _pe_f < _spe * 1.2 else "trading at a premium to"
             else:
                 _pe_vs = "not comparable (negative earnings) to"
             
             # Profitability assessment
-            _pm_f = float(_pm) if _pm else 0
+            _pm_f = _sf(_pm)
             _pm_txt = "strong" if _pm_f > 15 else "moderate" if _pm_f > 5 else "thin" if _pm_f > 0 else "negative"
             
             # Risk assessment  
-            _de_f = float(_de) if _de else 0
+            _de_f = _sf(_de)
             _risk_txt = "low debt levels" if _de_f < 50 else "moderate leverage" if _de_f < 150 else "high debt load"
-            _beta_f = float(_beta) if _beta else 1
+            _beta_f = _sf(_beta, 1)
             _vol_txt = "less volatile than the market" if _beta_f < 0.8 else "similar volatility to the market" if _beta_f < 1.2 else "more volatile than the market"
             
             # Momentum
@@ -5046,7 +5083,7 @@ Based on real-time price of {currency_symbol}{live_data['current_price']:,.2f}:
                 _peer_names = ", ".join([p['ticker'] for p in live_data['peers'][:3]])
                 _peer_txt = f"\n\n**Peer Comparison:** Key competitors include {_peer_names}. "
                 if _pAvgPE != 'N/A' and _pe_f > 0:
-                    _peer_pe_f = float(_pAvgPE)
+                    _peer_pe_f = _sf(_pAvgPE)
                     if _pe_f < _peer_pe_f * 0.85:
                         _peer_txt += f"At {_pe_f:.1f}x P/E vs peer average of {_peer_pe_f:.1f}x, the stock appears undervalued relative to industry peers."
                     elif _pe_f > _peer_pe_f * 1.15:
@@ -5060,7 +5097,7 @@ Based on real-time price of {currency_symbol}{live_data['current_price']:,.2f}:
 
 The stock is {_mom_txt}, sitting at {_w52pct}% of its 52-week range ({_curr}{_w52l} to {_curr}{_w52h}). The balance sheet shows {_risk_txt} (D/E: {_de}), and the stock is {_vol_txt} (beta: {_beta}).{_peer_txt}
 
-{'Dividend yield of ' + str(_dv) + '% provides income support.' if float(_dv or 0) > 1 else ''} {'Earnings growth of ' + str(_eg) + '% signals improving fundamentals.' if _eg != 'N/A' and float(str(_eg).replace('%','') or 0) > 5 else ''}
+{'Dividend yield of ' + str(_dv) + '% provides income support.' if _sf(_dv) > 1 else ''} {'Earnings growth of ' + str(_eg) + '% signals improving fundamentals.' if _eg != 'N/A' and _sf(_eg) > 5 else ''}
 
 **⚠️ Note:** This is an auto-generated summary based on quantitative data. The AI narrative service was temporarily unavailable. All verdict scores, charts, entry/exit levels, risk analysis, and peer comparisons above are fully accurate and computed from live data. For educational purposes only — this is not investment advice.
 
