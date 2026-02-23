@@ -3531,7 +3531,7 @@ let h=`<div style="display:flex;align-items:center;justify-content:space-between
 <button class="${_pickGeo==='india'?'active':''}" onclick="togglePickGeo(this,'india')" style="${_pickGeo==='india'?'background:var(--amber);color:#000;border-color:var(--amber)':''}">&#127470;&#127475; India</button>
 <button class="${_pickGeo==='usa'?'active':''}" onclick="togglePickGeo(this,'usa')" style="${_pickGeo==='usa'?'background:var(--amber);color:#000;border-color:var(--amber)':''}">&#127482;&#127480; USA</button>
 </div></div>`;
-h+=`<div style="overflow-x:auto"><table class="pick-tbl"><tr><th>#</th><th>Company</th><th>Rating</th><th>CMP</th><th style="color:var(--green)">Buy At</th><th style="color:var(--cyan)">Decision &amp; Timeline</th><th>Edge</th><th>${isIdx?'Returns':'Type'}</th></tr>`;
+h+=`<div style="overflow-x:auto"><table class="pick-tbl"><tr><th>#</th><th>Company</th><th>Rating</th><th style="color:var(--cyan)">Live Price</th><th style="color:var(--green)">Entry Zone</th><th style="color:var(--cyan)">Decision &amp; Timeline</th><th>Edge</th><th>${isIdx?'Returns':'Type'}</th></tr>`;
 list.forEach((s,i)=>{
 const catCls=s.cat.includes('Monopoly')||s.cat.includes('Duopoly')||s.cat.includes('Oligopoly')?'b':s.cat.includes('Deep')||s.cat.includes('Value')||s.cat.includes('Undervalued')||s.cat.includes('Turnaround')||s.cat.includes('PSU')?'g':'b';
 const rt=s.r||'Buy';
@@ -3546,7 +3546,7 @@ h+=`<tr>
 <td style="color:var(--text3);font-weight:700">${i+1}</td>
 <td><div class="cname">${s.n}</div><div class="csub">${s.t}</div></td>
 <td><span style="font-size:9px;padding:2px 6px;border-radius:4px;background:${rBg};color:${rC};font-weight:700;white-space:nowrap">${rt}</span></td>
-<td style="font-weight:700;color:var(--cyan);white-space:nowrap;font-size:11px">${s.p}</td>
+<td style="font-weight:700;color:var(--cyan);white-space:nowrap;font-size:11px" data-ticker="${s.t}" data-col="cmp">${s.p} <span style="font-size:8px;color:var(--text3)">⏳</span></td>
 <td style="font-weight:700;color:var(--green);white-space:nowrap;font-size:11px">${s.bp||'—'}</td>
 <td style="font-size:10px;line-height:1.5"><strong style="color:${decCol};font-size:10px">${decAction}</strong>${decRest?' · <span style="color:var(--text2)">'+decRest+'</span>':''}</td>
 <td style="font-size:10px;font-weight:600;color:var(--amber)">${s.edge}</td>
@@ -3558,6 +3558,41 @@ if(cat==='idx')h+=`<div style="font-size:9px;color:var(--text3);margin-top:6px">
 if(cat==='micro')h+=`<div style="font-size:9px;color:var(--text3);margin-top:6px">&#9888; Micro caps are extremely high risk. Position size should be &lt;2% of portfolio. Many will fail — diversification is essential.</div>`;
 if(isPenny)h+=`<div style="font-size:9px;color:var(--red);margin-top:6px;padding:6px 10px;border-radius:6px;background:rgba(239,68,68,.05);border:1px solid rgba(239,68,68,.1)">&#9888; <strong>EXTREME RISK:</strong> Penny stocks can lose 50-90% of value. These are speculative bets, not investments. Never allocate more than 1-2% of your portfolio. Do your own due diligence. Prices are approximate and change rapidly.</div>`;
 el.innerHTML=h;
+// ═══ FETCH LIVE PRICES for displayed stocks ═══
+fetchLivePricesForPicks(el);
+}
+
+let _livePriceCache={};
+async function fetchLivePricesForPicks(container){
+const cells=container.querySelectorAll('td[data-ticker][data-col="cmp"]');
+if(!cells.length)return;
+const tickers=[...new Set([...cells].map(c=>c.dataset.ticker).filter(Boolean))];
+if(!tickers.length)return;
+// Check memory cache first (2 min freshness)
+const now=Date.now();
+const uncached=tickers.filter(t=>!_livePriceCache[t]||now-_livePriceCache[t].ts>120000);
+if(uncached.length>0){
+try{
+const res=await fetch('/api/batch-prices',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({tickers:uncached})});
+const data=await res.json();
+if(data.success&&data.prices){
+Object.entries(data.prices).forEach(([tk,v])=>{_livePriceCache[tk]={...v,ts:now}});
+}
+}catch(e){console.warn('Batch prices failed:',e)}
+}
+// Update all cells
+cells.forEach(cell=>{
+const tk=cell.dataset.ticker;
+const cached=_livePriceCache[tk];
+if(cached){
+const up=cached.change_pct>=0;
+cell.innerHTML=`${cached.formatted} <span style="font-size:8px;color:${up?'var(--green)':'var(--red)'}">LIVE ${up?'▲':'▼'}${Math.abs(cached.change_pct).toFixed(1)}%</span>`;
+cell.style.color=up?'var(--green)':'var(--red)';
+}else{
+// Keep hardcoded price, remove spinner
+cell.innerHTML=cell.textContent.replace('⏳','').trim();
+}
+});
 }
 
 // ═══════════════════════════════════════════════
@@ -3631,8 +3666,10 @@ stocks.forEach((s,i)=>{
 h+=`<div style="padding:8px 12px;border-bottom:1px solid rgba(0,0,0,.04);font-size:11px${i===4?';border-bottom:none':''}">`;
 h+=`<div style="display:flex;align-items:center;gap:6px;margin-bottom:3px">`;
 h+=`<span style="font-size:10px;font-weight:800;color:${color};background:${color}15;width:18px;height:18px;display:inline-flex;align-items:center;justify-content:center;border-radius:50%">${i+1}</span>`;
-h+=`<strong style="font-size:11px;color:var(--text)">${s.n}</strong>`;
-h+=`<span style="font-family:var(--mono);font-size:9px;color:var(--text3)">${s.t}</span></div>`;
+h+=`<strong style="font-size:11px;color:var(--text);cursor:pointer" onclick="quickAnalyze('${s.t}')">${s.n}</strong>`;
+h+=`<span style="font-family:var(--mono);font-size:9px;color:var(--text3)">${s.t}</span>`;
+h+=`<span data-conv-ticker="${s.t}" style="margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--text3)">⏳</span>`;
+h+=`</div>`;
 h+=`<div style="font-size:10px;color:var(--text3);line-height:1.4">${s.why}</div>`;
 h+=`</div>`;
 });
@@ -3642,12 +3679,47 @@ el.innerHTML=
   card('AGGRESSIVE BUY','\u{1F7E2}',d.buy,'#14a23a','rgba(20,162,58,.02)')+
   card('ACCUMULATE','\u{1F7E1}',d.accumulate,'#d48a00','rgba(212,138,0,.02)')+
   card('SELL / AVOID','\u{1F534}',d.sell,'#d0021b','rgba(208,2,27,.02)');
+// Fetch live prices for conviction stocks
+fetchConvictionPrices();
 }
+
+async function fetchConvictionPrices(){
+const cells=document.querySelectorAll('[data-conv-ticker]');
+if(!cells.length)return;
+const tickers=[...new Set([...cells].map(c=>c.dataset.convTicker).filter(Boolean))];
+if(!tickers.length)return;
+const now=Date.now();
+const uncached=tickers.filter(t=>!_livePriceCache[t]||now-_livePriceCache[t].ts>120000);
+if(uncached.length>0){
+try{
+const res=await fetch('/api/batch-prices',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({tickers:uncached})});
+const data=await res.json();
+if(data.success&&data.prices){Object.entries(data.prices).forEach(([tk,v])=>{_livePriceCache[tk]={...v,ts:now}})}
+}catch(e){}
+}
+cells.forEach(cell=>{
+const tk=cell.dataset.convTicker;
+const c=_livePriceCache[tk];
+if(c){
+const up=c.change_pct>=0;
+cell.innerHTML=`${c.formatted} <span style="color:${up?'var(--green)':'var(--red)'}">${up?'▲':'▼'}${Math.abs(c.change_pct).toFixed(1)}%</span>`;
+cell.style.color=up?'var(--green)':'var(--red)';cell.style.fontWeight='700';
+}else{cell.textContent='—'}
+});
+}
+
 // Auto-render on page load
 setTimeout(renderConviction,100);
 
 // ETF & MUTUAL FUND DATA — 25%+ CAGR COMPOUNDERS
 // ═══════════════════════════════════════════════
+// yfinance ticker mapping for live NAV
+const FUND_YF_MAP={
+'QQQ':'QQQ','SMH':'SMH','SOXX':'SOXX','VGT':'VGT','AIQ':'AIQ',
+'FCNTX':'FCNTX','TRBCX':'TRBCX','FDGRX':'FDGRX','BPTIX':'BPTIX','VIGAX':'VIGAX',
+'MON100':'MOTILALOFSP.NS','JUNIORBEES':'JUNIORBEES.NS',
+'NETFIT':'NETFNIFTYIT.NS','ICICIN50':'NIFTYBEES.NS','MAFANG':'MAFANG.NS'
+};
 const FUND_DATA={
 etf_in:{title:'India ETFs — Top Performers',data:[
 {n:'Motilal Oswal NASDAQ 100 ETF',t:'MON100',aum:'₹5,800 Cr',exp:'0.58%',y1:'28.4%',y3:'14.2%',y5:'27.1%',y10:'22.8%',dd:'-32%',rec:'4 months',corr:'Hedges INR depreciation, US tech exposure',r:'★ Aggressive Buy',risk:'High',cat:'US Tech Proxy'},
@@ -3702,7 +3774,7 @@ let h=`<div style="font-family:'Sora',sans-serif;font-size:12px;font-weight:700;
 // Main performance table
 h+=`<div style="overflow-x:auto"><table class="pick-tbl">
 <tr>
-<th>#</th><th>Fund</th><th>Rating</th><th>AUM</th><th>Exp%</th>
+<th>#</th><th>Fund</th><th>Rating</th><th>Live NAV</th><th>AUM</th><th>Exp%</th>
 <th style="color:var(--text3)">1Y</th><th style="color:var(--amber)">3Y</th><th style="color:var(--green)">5Y</th><th style="color:var(--green)">10Y</th>
 <th style="color:var(--red)">Max DD</th><th>Recovery</th><th>Risk</th>
 </tr>`;
@@ -3719,6 +3791,7 @@ h+=`<tr>
 <td style="color:var(--text3);font-weight:700">${i+1}</td>
 <td><div class="cname">${f.n}</div><div class="csub">${f.t} · ${f.cat}</div></td>
 <td><span style="font-size:9px;padding:2px 6px;border-radius:4px;background:${rBg};color:${rC};font-weight:700;white-space:nowrap">${rt}</span></td>
+<td data-fund-ticker="${f.t}" style="font-family:var(--mono);font-size:10px;color:var(--text3);white-space:nowrap">${FUND_YF_MAP[f.t]?'⏳':'—'}</td>
 <td style="font-size:10px;color:var(--cyan);white-space:nowrap">${f.aum}</td>
 <td style="font-size:10px;color:var(--text3)">${f.exp}</td>
 <td style="font-size:10px;color:var(--text2)">${f.y1}</td>
@@ -3752,6 +3825,37 @@ h+=`<div style="padding:8px 10px;border-radius:6px;background:rgba(0,47,108,.02)
 h+=`</div>`;
 h+=`<div style="font-size:9px;color:var(--text3);margin-top:8px">* Returns are CAGR (compound annual growth rate). Max DD = maximum drawdown during COVID/2022. Recovery = time to reach pre-crash levels. Past performance does not guarantee future results.</div>`;
 el.innerHTML=h;
+// Fetch live NAV for funds with yfinance tickers
+fetchFundNAVs(el);
+}
+
+async function fetchFundNAVs(container){
+const cells=container.querySelectorAll('td[data-fund-ticker]');
+if(!cells.length)return;
+const tickerPairs=[];
+cells.forEach(c=>{
+const ft=c.dataset.fundTicker;
+const yft=FUND_YF_MAP[ft];
+if(yft)tickerPairs.push({cell:c,yf:yft,ft:ft});
+});
+if(!tickerPairs.length)return;
+const yfTickers=[...new Set(tickerPairs.map(p=>p.yf))];
+const now=Date.now();
+const uncached=yfTickers.filter(t=>!_livePriceCache[t]||now-_livePriceCache[t].ts>120000);
+if(uncached.length>0){
+try{
+const res=await fetch('/api/batch-prices',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({tickers:uncached})});
+const data=await res.json();
+if(data.success&&data.prices){Object.entries(data.prices).forEach(([tk,v])=>{_livePriceCache[tk]={...v,ts:now}})}
+}catch(e){}
+}
+tickerPairs.forEach(p=>{
+const c=_livePriceCache[p.yf];
+if(c){
+const up=c.change_pct>=0;
+p.cell.innerHTML=`<span style="font-weight:700;color:${up?'var(--green)':'var(--red)'}">${c.formatted}</span> <span style="font-size:8px;color:${up?'var(--green)':'var(--red)'}">${up?'▲':'▼'}${Math.abs(c.change_pct).toFixed(1)}%</span>`;
+}else{p.cell.textContent='—'}
+});
 }
 
 function renderFundComparison(){

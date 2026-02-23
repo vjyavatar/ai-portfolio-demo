@@ -2517,6 +2517,92 @@ async def stock_quick(ticker: str = ""):
         return {"success": False, "error": f"Failed to fetch data for {ticker}: {str(e)[:100]}"}
 
 
+# ═══ BATCH PRICES — fetch live prices for stock picks (up to 30 tickers) ═══
+_batch_cache = {}
+_batch_cache_ts = None
+
+@app.post("/api/batch-prices")
+async def batch_prices(request: Request):
+    """Fetch live prices for multiple tickers at once. Used by Picks tab."""
+    import yfinance as yf
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    from datetime import datetime, timedelta
+    
+    global _batch_cache, _batch_cache_ts
+    
+    try:
+        data = await request.json()
+        tickers = data.get("tickers", [])
+        if not tickers or not isinstance(tickers, list):
+            return {"success": False, "error": "tickers array required"}
+        
+        # Limit to 30 tickers per request
+        tickers = [t.strip().upper() for t in tickers[:30] if t.strip()]
+        
+        # Return cached prices if less than 2 min old
+        now = datetime.utcnow()
+        if _batch_cache_ts and (now - _batch_cache_ts).total_seconds() < 120:
+            cached_results = {}
+            missing = []
+            for t in tickers:
+                if t in _batch_cache:
+                    cached_results[t] = _batch_cache[t]
+                else:
+                    missing.append(t)
+            if not missing:
+                return {"success": True, "prices": cached_results}
+            tickers = missing  # Only fetch what's not cached
+        else:
+            cached_results = {}
+        
+        # Parallel fetch — 7 workers, 3s timeout per ticker
+        results = {}
+        def _fetch_price(tk):
+            try:
+                t = yf.Ticker(tk)
+                info = t.info
+                price = info.get('currentPrice') or info.get('regularMarketPrice') or info.get('previousClose')
+                if price:
+                    chg = float(info.get('regularMarketChange', 0) or 0)
+                    chg_pct = float(info.get('regularMarketChangePercent', 0) or 0)
+                    if abs(chg_pct) < 0.001 and price:
+                        prev = info.get('previousClose') or info.get('regularMarketPreviousClose')
+                        if prev and prev > 0:
+                            chg = round(price - prev, 2)
+                            chg_pct = round(((price - prev) / prev) * 100, 2)
+                    currency = info.get('currency', 'USD')
+                    sym = '₹' if currency == 'INR' else '$'
+                    return tk, {
+                        "price": round(float(price), 2),
+                        "change_pct": round(float(chg_pct), 2),
+                        "symbol": sym,
+                        "formatted": f"{sym}{round(float(price), 2):,.2f}"
+                    }
+            except:
+                pass
+            return tk, None
+        
+        with ThreadPoolExecutor(max_workers=7) as executor:
+            futures = {executor.submit(_fetch_price, t): t for t in tickers}
+            for f in as_completed(futures, timeout=12):
+                try:
+                    tk, data = f.result(timeout=4)
+                    if data:
+                        results[tk] = data
+                        _batch_cache[tk] = data
+                except:
+                    pass
+        
+        _batch_cache_ts = now
+        
+        # Merge with cached
+        all_results = {**cached_results, **results}
+        
+        return {"success": True, "prices": all_results, "fetched": len(results), "cached": len(cached_results)}
+    except Exception as e:
+        return {"success": False, "error": str(e)[:100]}
+
+
 # Module-level cache for market-pulse
 _pulse_cache = None
 _pulse_cache_ts = None
