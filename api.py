@@ -861,10 +861,10 @@ def fetch_screener_fundamentals(ticker: str) -> dict:
         return None
 
 
-# In-memory cache for stock data (expires after 5 minutes - optimized for LinkedIn launch)
+# In-memory cache for stock data
 stock_data_cache = {}
-CACHE_EXPIRY_MINUTES = 15  # 15 min cache to avoid Yahoo Finance rate limits
-CACHE_STALE_OK_MINUTES = 120  # Serve stale cache up to 2 hours if Yahoo is down
+CACHE_EXPIRY_MINUTES = 3    # 3 min fresh cache — feels live
+CACHE_STALE_OK_MINUTES = 15  # 15 min stale max — never serve 2hr old data
 
 # ═══════════════════════════════════════════════════════════
 # EMAIL-BASED RATE LIMITING
@@ -2322,8 +2322,16 @@ def _save_trades_to_history(trades_data, date_str):
 
 @app.get("/api/global-ticker")
 async def global_ticker():
-    """Lightweight global indices ticker — loads on page visit. No auth required."""
+    """Lightweight global indices ticker — parallel fetch with 2-min cache."""
     import yfinance as yf
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    from datetime import datetime, timedelta
+    
+    # ═══ 2-MINUTE CACHE — prevents hammering yfinance ═══
+    global _ticker_cache, _ticker_cache_ts
+    now_utc = datetime.utcnow()
+    if _ticker_cache and _ticker_cache_ts and (now_utc - _ticker_cache_ts).total_seconds() < 120:
+        return _ticker_cache
     
     tickers_map = {
         "^NSEI": {"name": "NIFTY 50", "flag": "🇮🇳"},
@@ -2346,7 +2354,8 @@ async def global_ticker():
     gold_price = None
     silver_price = None
     
-    for ticker, meta in tickers_map.items():
+    # ═══ PARALLEL FETCH — all 14 tickers at once (was sequential = 14-28s) ═══
+    def _fetch_index(ticker, meta):
         try:
             t = yf.Ticker(ticker)
             hist = t.history(period="2d")
@@ -2355,21 +2364,42 @@ async def global_ticker():
                 prev = hist.iloc[-2]['Close'] if len(hist) > 1 else price
                 chg = round(price - prev, 2)
                 chg_pct = round(((price - prev) / prev) * 100, 2) if prev else 0
-                results.append({
+                return {
                     "name": meta["name"], "flag": meta["flag"],
                     "price": price, "change": chg, "change_pct": chg_pct
-                })
-                if meta["name"] == "GOLD/OZ": gold_price = price
-                if meta["name"] == "SILVER/OZ": silver_price = price
+                }
         except:
             pass
+        return None
+    
+    with ThreadPoolExecutor(max_workers=7) as executor:
+        futures = {executor.submit(_fetch_index, tk, meta): meta for tk, meta in tickers_map.items()}
+        for f in as_completed(futures, timeout=10):
+            try:
+                r = f.result(timeout=3)
+                if r:
+                    results.append(r)
+                    if r["name"] == "GOLD/OZ": gold_price = r["price"]
+                    if r["name"] == "SILVER/OZ": silver_price = r["price"]
+            except:
+                pass
+    
+    # Sort in original order
+    name_order = [m["name"] for m in tickers_map.values()]
+    results.sort(key=lambda x: name_order.index(x["name"]) if x["name"] in name_order else 99)
     
     # Calculate GSR (Gold/Silver Ratio)
     if gold_price and silver_price and silver_price > 0:
         gsr = round(gold_price / silver_price, 1)
         results.append({"name": "GSR", "flag": "⚖️", "price": gsr, "change": 0, "change_pct": 0})
     
-    return {"success": True, "indices": results}
+    IST = datetime.utcnow() + timedelta(hours=5, minutes=30)
+    result = {"success": True, "indices": results, "updated_at": IST.strftime("%I:%M %p IST")}
+    
+    _ticker_cache = result
+    _ticker_cache_ts = now_utc
+    print(f"📈 Global ticker: {len(results)} indices fetched (parallel)")
+    return result
 
 @app.get("/api/stock-quick")
 async def stock_quick(ticker: str = ""):
@@ -2490,6 +2520,8 @@ async def stock_quick(ticker: str = ""):
 # Module-level cache for market-pulse
 _pulse_cache = None
 _pulse_cache_ts = None
+_ticker_cache = None
+_ticker_cache_ts = None
 
 @app.get("/api/market-pulse")
 async def market_pulse():
@@ -2501,7 +2533,7 @@ async def market_pulse():
     # ═══ 5-MINUTE CACHE — prevents hammering yfinance/NSE on every page load ═══
     global _pulse_cache, _pulse_cache_ts
     now_ts = datetime.utcnow()
-    if _pulse_cache and _pulse_cache_ts and (now_ts - _pulse_cache_ts).total_seconds() < 300:
+    if _pulse_cache and _pulse_cache_ts and (now_ts - _pulse_cache_ts).total_seconds() < 120:
         return _pulse_cache
     
     IST_OFFSET = timedelta(hours=5, minutes=30)
