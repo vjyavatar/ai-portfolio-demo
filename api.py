@@ -36,34 +36,7 @@ _pool_adapter = HTTPAdapter(pool_connections=20, pool_maxsize=30, max_retries=1)
 _http_pool.mount('https://', _pool_adapter)
 _http_pool.mount('http://', _pool_adapter)
 
-# 2. REQUEST DEDUPLICATION — prevent thundering herd
-# When cache expires and 500 users hit at once, only 1 actual fetch happens
-_inflight_locks = {}
-_inflight_lock_master = asyncio.Lock()
-
-async def _dedup_fetch(cache_key: str, fetch_fn, ttl_seconds: int = 120):
-    """Execute fetch_fn only once per cache_key. Other callers wait for result."""
-    async with _inflight_lock_master:
-        if cache_key not in _inflight_locks:
-            _inflight_locks[cache_key] = asyncio.Lock()
-        lock = _inflight_locks[cache_key]
-    
-    async with lock:
-        # Check cache inside lock — the first caller may have populated it
-        cached = _smart_cache_get(cache_key)
-        if cached is not None:
-            return cached
-        
-        # Actually fetch — only 1 caller gets here
-        loop = asyncio.get_event_loop()
-        result = await loop.run_in_executor(_thread_pool, fetch_fn)
-        
-        if result is not None:
-            _smart_cache_set(cache_key, result, ttl_seconds)
-        
-        return result
-
-# 3. SMART PER-ITEM CACHE — per-ticker with TTL
+# 2. SMART PER-ITEM CACHE — per-ticker with TTL
 _smart_cache = {}
 
 def _smart_cache_get(key: str):
@@ -1764,43 +1737,28 @@ def get_live_stock_data(company_name: str) -> dict:
                 def _fetch_peer(ptk):
                     price = None
                     pi = {}
-                    # Source 1: yfinance
+                    # Source 1: yfinance (fast — 3s max)
                     try:
                         pt = yf.Ticker(ptk)
                         pi = pt.info or {}
                         price = pi.get('currentPrice') or pi.get('regularMarketPrice')
                         if price and float(price) > 0:
                             price = float(price)
+                        else:
+                            price = None
                     except:
                         pass
                     
-                    # Source 2: Yahoo v8 chart API
+                    # Source 2: Yahoo v8 chart (only if Source 1 failed, 3s timeout)
                     if not price:
                         try:
-                            _h = {'User-Agent': f'Mozilla/5.0 Chrome/{random.randint(118,126)}.0.0.0', 'Accept': 'application/json'}
-                            r = requests.get(f"https://query1.finance.yahoo.com/v8/finance/chart/{ptk}?interval=1d&range=2d", headers=_h, timeout=6)
+                            r = _http_pool.get(f"https://query1.finance.yahoo.com/v8/finance/chart/{ptk}?interval=1d&range=2d", timeout=3)
                             if r.status_code == 200:
                                 m = r.json().get('chart', {}).get('result', [{}])[0].get('meta', {})
                                 p = m.get('regularMarketPrice', 0)
                                 if p and float(p) > 0:
                                     price = float(p)
                                     if not pi: pi = {'longName': ptk, 'currency': m.get('currency', 'USD')}
-                        except:
-                            pass
-                    
-                    # Source 3: Google Finance
-                    if not price:
-                        try:
-                            import re as _re
-                            is_ind = '.NS' in ptk or '.BO' in ptk
-                            clean = ptk.replace('.NS','').replace('.BO','')
-                            g_url = f"https://www.google.com/finance/quote/{clean}:NSE" if is_ind else f"https://www.google.com/finance/quote/{clean}:NASDAQ"
-                            _h = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/122.0.0.0', 'Accept': 'text/html'}
-                            r = requests.get(g_url, headers=_h, timeout=6)
-                            if r.status_code == 200:
-                                pm = _re.search(r'data-last-price="([0-9.]+)"', r.text)
-                                if pm: price = float(pm.group(1))
-                                if not pi: pi = {'longName': ptk}
                         except:
                             pass
                     
@@ -2498,25 +2456,11 @@ async def global_ticker():
     """Lightweight global indices ticker — parallel fetch with 2-min cache + dedup."""
     import yfinance as yf
     
-    # ═══ FAST PATH: serve from cache (< 0.1ms) ═══
+    # ═══ FAST PATH: serve from cache ═══
     global _ticker_cache, _ticker_cache_ts
     now_utc = datetime.utcnow()
     if _ticker_cache and _ticker_cache_ts and (now_utc - _ticker_cache_ts).total_seconds() < 120:
         return _ticker_cache
-    
-    # ═══ DEDUP: prevent thundering herd (500 users → 1 fetch) ═══
-    _is_fetching = _ticker_lock.locked()
-    if _is_fetching:
-        # Another request is already fetching — poll for result
-        for _ in range(60):
-            await asyncio.sleep(0.2)
-            if _ticker_cache and _ticker_cache_ts and (datetime.utcnow() - _ticker_cache_ts).total_seconds() < 120:
-                return _ticker_cache
-        if _ticker_cache:
-            return _ticker_cache
-        return {"success": False, "indices": [], "error": "Server busy"}
-    
-    _ticker_lock.acquire()
     
     tickers_map = {
         "^NSEI": {"name": "NIFTY 50", "flag": "🇮🇳"},
@@ -2605,7 +2549,6 @@ async def global_ticker():
     
     _ticker_cache = result
     _ticker_cache_ts = now_utc
-    _ticker_lock.release()
     print(f"📈 Global ticker: {len(results)} indices fetched (parallel)")
     return result
 
@@ -2930,13 +2873,6 @@ _pulse_cache_ts = None
 _ticker_cache = None
 _ticker_cache_ts = None
 
-# ═══ THUNDERING HERD PREVENTION ═══
-# When cache expires and 500 users hit simultaneously, only 1 fetch runs
-import threading
-_ticker_lock = threading.Lock()
-_pulse_lock = threading.Lock()
-_report_locks = {}  # Per-ticker locks for generate-report
-
 @app.get("/api/market-pulse")
 async def market_pulse():
     """Lightweight market events — cached 5min, parallel fetches."""
@@ -2949,18 +2885,6 @@ async def market_pulse():
     now_ts = datetime.utcnow()
     if _pulse_cache and _pulse_cache_ts and (now_ts - _pulse_cache_ts).total_seconds() < 120:
         return _pulse_cache
-    
-    # ═══ DEDUP: prevent thundering herd ═══
-    if _pulse_lock.locked():
-        for _ in range(60):
-            await asyncio.sleep(0.2)
-            if _pulse_cache and _pulse_cache_ts and (datetime.utcnow() - _pulse_cache_ts).total_seconds() < 120:
-                return _pulse_cache
-        if _pulse_cache:
-            return _pulse_cache
-        return {"success": False, "error": "Server busy"}
-    
-    _pulse_lock.acquire()
     
     IST_OFFSET = timedelta(hours=5, minutes=30)
     now = datetime.utcnow() + IST_OFFSET
@@ -3199,9 +3123,6 @@ async def market_pulse():
     # Store in cache
     _pulse_cache = result
     _pulse_cache_ts = datetime.utcnow()
-    
-    if _pulse_lock.locked():
-        _pulse_lock.release()
     
     return result
 
