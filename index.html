@@ -1457,43 +1457,58 @@ analyze();
 async function analyze(){const emailEl=document.getElementById('email');const email=(emailEl.dataset.real||emailEl.value).trim(),ticker=TI.value.trim().toUpperCase(),btn=document.getElementById('btn'),rpt=document.getElementById('report');
 AC.classList.remove('show');if(!email||!ticker){showStatus('Enter both email and ticker','error');return}
 if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){showStatus('Enter a valid email','error');return}
-btn.disabled=true;btn.textContent='Analyzing...';btn.classList.add('ld');rpt.classList.remove('show');hideRL();
+btn.disabled=true;btn.textContent='Loading...';btn.classList.add('ld');rpt.classList.remove('show');hideRL();
 showStatus('Fetching live data for '+ticker+'...','info');showLS();
 fetchMarketPulse();
 const _startT=Date.now();
-const _timerIv=setInterval(()=>{const s=Math.floor((Date.now()-_startT)/1000);showStatus('Analyzing '+ticker+'... '+s+'s','info')},2000);
+const _timerIv=setInterval(()=>{const s=Math.floor((Date.now()-_startT)/1000);
+if(!window._phase1Done)showStatus('Fetching '+ticker+' data... '+s+'s','info');
+else showStatus('✓ Data loaded! AI analysis writing... '+s+'s','info')},1500);
 
-// ═══ AUTO-RETRY: Try up to 2 times ═══
-let lastErr='';
-for(let attempt=1;attempt<=2;attempt++){
+// ═══ PHASE 1: GET DATA INSTANTLY (2-5s) — show metrics, charts, peers ═══
 try{
-if(attempt===2){showStatus('⏳ Retrying analysis (attempt 2/2)...','info')}
-const res=await fetch('/api/generate-report',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({company_name:ticker,email})});
+const dataRes=await fetch('/api/stock-data',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({company_name:ticker,email})});
+if(dataRes.status===429){clearInterval(_timerIv);const r=await dataRes.json().catch(()=>({}));showStatus(r.reason||'Too many requests','error');if(r.retry_after_seconds)showRL(r);btn.disabled=false;btn.textContent='Analyze →';btn.classList.remove('ld');hideLS();return}
+if(!dataRes.ok){clearInterval(_timerIv);const e=await dataRes.json().catch(()=>({}));showStatus(e.detail||'Failed to fetch data','error');btn.disabled=false;btn.textContent='Analyze →';btn.classList.remove('ld');hideLS();return}
+const phase1=await dataRes.json();
+if(!phase1.success||!phase1.live_data){clearInterval(_timerIv);showStatus('No data found for '+ticker,'error');btn.disabled=false;btn.textContent='Analyze →';btn.classList.remove('ld');hideLS();return}
+
+// ═══ SHOW DATA IMMEDIATELY — user sees results in 2-5s ═══
+window._phase1Done=true;
+const _p1elapsed=Math.round((Date.now()-_startT)/1000);
+showStatus('✓ Data loaded in '+_p1elapsed+'s! AI deep analysis loading...','success');
+displayReport({success:true,live_data:phase1.live_data,report:'',ai_model:'loading',company_name:phase1.company_name,fund_holdings:{institutions:[],funds:[],summary:{}}});
+TI.value='';
+btn.textContent='AI loading...';
+
+// ═══ PHASE 2: GET AI REPORT IN BACKGROUND (5-30s) — fills in Deep Analysis ═══
+fetch('/api/generate-report',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({company_name:ticker,email})})
+.then(r=>{if(!r.ok)throw new Error('AI failed');return r.json()})
+.then(data=>{
 clearInterval(_timerIv);
-if(res.status===429){const r=await res.json().catch(()=>({}));showStatus(r.reason||r.detail||'Too many requests','error');if(r.retry_after_seconds||r.retry_after_minutes)showRL(r);return}
-if(res.status===503||res.status===504){
-  lastErr=(await res.json().catch(()=>({}))).detail||'Service busy';
-  if(attempt<2){console.log('Attempt '+attempt+' got '+res.status+', retrying in 3s...');await new Promise(r=>setTimeout(r,3000));continue}
-  showStatus(lastErr+' — Please try again.','error');return}
-if(!res.ok){const e=await res.json().catch(()=>({}));throw new Error(e.detail||e.message||'Analysis failed')}
-const data=await res.json();if(!data.success||!data.live_data)throw new Error('No data for this ticker');
-let q='';if(data.rate_limit){const r=data.rate_limit.remaining;document.getElementById('navQ').textContent=r+'/hr';
-q=r===0?' · Last free report this hour':' · '+r+' remaining'}
-if(data.report_number)document.getElementById('navRC').textContent=data.report_number;
-if(data.report_number){document.getElementById('globalRC').textContent=data.report_number.toLocaleString();const hb=document.getElementById('reportBadgeCount');if(hb)hb.textContent=data.report_number.toLocaleString()}
-const modelNote=data.ai_model==='template'?' (data-only mode)':data.ai_model==='haiku'?' (fast mode)':'';
+if(data.success&&data.report){
+// Update AI sections without re-rendering everything
+try{createAnalysisSections(data.report,data.live_data||phase1.live_data,data.fund_holdings||{institutions:[],funds:[],summary:{}})}catch(e){console.warn('AI section update error:',e)}
 const _elapsed=Math.round((Date.now()-_startT)/1000);
-showStatus('✓ Report ready in '+_elapsed+'s'+modelNote+'. Scroll down — this is the good stuff.'+q,'success');displayReport(data);TI.value='';
-if(typeof gtag==='function')gtag('event','generate_report',{ticker:data.live_data?.ticker||'',company:data.company_name||'',ai_model:data.ai_model||''});
-break; // Success — exit retry loop
+const modelNote=data.ai_model==='template'?' (data-only)':data.ai_model==='haiku'?' (fast)':'';
+let q='';if(data.rate_limit){const r=data.rate_limit.remaining;document.getElementById('navQ').textContent=r+'/hr';q=r===0?' · Last free report':' · '+r+' remaining'}
+if(data.report_number){document.getElementById('navRC').textContent=data.report_number;document.getElementById('globalRC').textContent=data.report_number.toLocaleString();const hb=document.getElementById('reportBadgeCount');if(hb)hb.textContent=data.report_number.toLocaleString()}
+showStatus('✓ Full report ready in '+_elapsed+'s'+modelNote+q,'success');
+}
+btn.disabled=false;btn.textContent='Analyze →';btn.classList.remove('ld');hideLS();window._phase1Done=false;
+if(typeof gtag==='function')gtag('event','generate_report',{ticker:data.live_data?.ticker||ticker,ai_model:data.ai_model||''});
+}).catch(e=>{
+clearInterval(_timerIv);
+console.warn('Phase 2 AI error:',e.message);
+// Phase 1 data is already shown — just note AI failed
+showStatus('✓ Data shown. AI analysis unavailable — try again later.','info');
+btn.disabled=false;btn.textContent='Analyze →';btn.classList.remove('ld');hideLS();window._phase1Done=false;
+});
 }catch(e){
-  lastErr=e.message;
-  if(lastErr==='Failed to fetch'&&attempt<2){console.log('Network error, retrying in 3s...');await new Promise(r=>setTimeout(r,3000));continue}
-  let m=lastErr;if(m==='Failed to fetch')m='Cannot connect to server.';
-  else if(m.toLowerCase().includes('rate limit')||m.toLowerCase().includes('too many')||m.toLowerCase().includes('temporarily')||m.toLowerCase().includes('all data sources'))m='All data sources busy. Try again in 30 seconds.';
-  clearInterval(_timerIv);showStatus(m,'error');break}
-}// end retry loop
-clearInterval(_timerIv);btn.disabled=false;btn.textContent='Analyze →';btn.classList.remove('ld');hideLS()}
+clearInterval(_timerIv);
+showStatus(e.message==='Failed to fetch'?'Cannot connect to server.':'Error: '+e.message,'error');
+btn.disabled=false;btn.textContent='Analyze →';btn.classList.remove('ld');hideLS();window._phase1Done=false;
+}}
 
 function displayReport(data){const d=data.live_data,curr=d.currency==='INR'?'₹':'$',price=d.current_price;
 document.getElementById('tickerTag').textContent=d.ticker;document.getElementById('companyName').textContent=d.company_name||d.ticker;
@@ -1560,6 +1575,9 @@ function createAnalysisSections(report,d,fundData){
 console.log('createAnalysisSections START — d.ticker:',d?.ticker,'d.pe_ratio:',d?.pe_ratio);
 // Safety defaults for all data fields
 report=report||'Analysis not available.';
+// Show loading shimmer in AI sections when report is empty (Phase 1)
+const _aiLoading=(!report||report.length<50);
+if(_aiLoading)report='⏳ AI deep analysis is loading... This section will update automatically in a few seconds.';
 d=d||{};
 fundData=fundData||{institutions:[],funds:[],summary:{}};
 d.currency=d.currency||'USD';d.current_price=d.current_price||0;d.pe_ratio=d.pe_ratio||'N/A';
@@ -2244,6 +2262,21 @@ if(btnMap[tab]){const btn=document.getElementById(btnMap[tab]);if(btn)btn.classL
 // 4) Scroll to top of new tab content — scroll-margin-top:140px on .sc handles sticky offset
 const firstSec=document.querySelector('.sc[data-tab="'+tab+'"]');
 if(firstSec) firstSec.scrollIntoView({behavior:'instant',block:'start'});
+
+// 5) REFRESH LIVE PRICES on tab switch — forces fresh data every tab click
+if(tab==='picks'){
+_livePriceCache={};
+const pg=document.getElementById('pickGrid');
+if(pg)fetchLivePricesForPicks(pg);
+fetchConvictionPrices();
+console.log('🔄 Picks: refreshing live prices');
+}
+if(tab==='funds'){
+_livePriceCache={};
+const fg=document.querySelector('.sc[data-tab="funds"]');
+if(fg)fetchFundNAVs(fg);
+console.log('🔄 Funds: refreshing live NAVs');
+}
 
 console.log('switchTab:',tab,'→ done');
 }catch(e){console.error('switchTab error:',e)}

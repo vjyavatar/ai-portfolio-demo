@@ -4569,6 +4569,48 @@ async def check_rate_limit_endpoint(request: Request):
         return {"allowed": True}  # Fail open - don't block on errors
 
 
+# ═══ PHASE 1: INSTANT STOCK DATA — no AI, returns in 2-5s (cached: <0.1s) ═══
+@app.post("/api/stock-data")
+async def stock_data_only(request: Request):
+    """Return live stock data WITHOUT AI report. For instant display."""
+    import time as _time
+    _t0 = _time.time()
+    try:
+        data = await request.json()
+        company = data.get("company_name", "").strip()
+        email = data.get("email", "").strip()
+        
+        if not company:
+            raise HTTPException(400, "company_name required")
+        
+        # Rate limit check (inline)
+        if email:
+            rate_check = check_rate_limit(email)
+            if not rate_check["allowed"]:
+                return JSONResponse(status_code=429, content=rate_check)
+        
+        # Get live data — uses 3-min cache, so repeat searches are instant
+        loop = asyncio.get_event_loop()
+        live_data = await loop.run_in_executor(_thread_pool, get_live_stock_data, company)
+        
+        if "error" in live_data or not live_data.get("success"):
+            raise HTTPException(400, live_data.get("error", "Could not fetch data"))
+        
+        _elapsed = round(_time.time() - _t0, 1)
+        print(f"⚡ stock-data: {company} → {_elapsed}s")
+        
+        return {
+            "success": True,
+            "live_data": live_data,
+            "company_name": live_data.get("company_name", company),
+            "elapsed": _elapsed
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, f"Data fetch failed: {str(e)[:100]}")
+
+# ═══ PHASE 2: FULL REPORT WITH AI — takes 10-30s, called in background ═══
 @app.post("/api/generate-report")
 async def generate_report(request: Request):
     import time as _time
