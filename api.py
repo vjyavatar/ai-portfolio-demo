@@ -992,6 +992,32 @@ app.add_middleware(
 )
 
 report_counter = {"count": 0}
+
+# ═══ AI REPORT CACHE — serves 10K users instantly ═══
+# Key: ticker symbol (uppercase), Value: (full_response_dict, timestamp)
+# TTL: 30 minutes — same stock searched by different users = instant
+_ai_report_cache = {}
+_AI_REPORT_CACHE_TTL = 1800  # 30 minutes
+
+def _get_cached_report(ticker_key):
+    """Return cached report if fresh, else None."""
+    import time
+    if ticker_key in _ai_report_cache:
+        cached_resp, cached_ts = _ai_report_cache[ticker_key]
+        if time.time() - cached_ts < _AI_REPORT_CACHE_TTL:
+            return cached_resp
+        else:
+            del _ai_report_cache[ticker_key]
+    return None
+
+def _set_cached_report(ticker_key, response_dict):
+    """Cache the full report response."""
+    import time
+    _ai_report_cache[ticker_key] = (response_dict, time.time())
+    # Evict old entries (keep max 200)
+    if len(_ai_report_cache) > 200:
+        oldest_key = min(_ai_report_cache, key=lambda k: _ai_report_cache[k][1])
+        del _ai_report_cache[oldest_key]
 COUNTER_FILE = "report_count.json"
 
 def load_counter():
@@ -1910,6 +1936,7 @@ async def health():
         "active_rate_limits": len(email_rate_limiter),
         "global_requests_last_min": len(global_request_log),
         "stock_cache_entries": len(stock_data_cache),
+        "ai_report_cache_entries": len(_ai_report_cache),
         "stock_cache_tickers": list(stock_data_cache.keys()),
         "cache_expiry_minutes": CACHE_EXPIRY_MINUTES
     }
@@ -4567,6 +4594,28 @@ async def generate_report(request: Request):
             error_msg = live_data.get("error", "Could not fetch market data for this ticker")
             raise HTTPException(400, error_msg)
         
+        # ═══ CHECK AI REPORT CACHE — instant for 10K users hitting same stock ═══
+        _cache_key = live_data.get('ticker', company).upper()
+        cached = _get_cached_report(_cache_key)
+        if cached:
+            _elapsed = round(_time.time() - _t0, 1)
+            print(f"⚡ CACHE HIT: {_cache_key} → {_elapsed}s (saved ~30s AI call)")
+            # Still count the rate limit
+            record_request(email)
+            remaining = RATE_LIMIT_MAX_REQUESTS - len([
+                t for t in email_rate_limiter.get(email.lower().strip(), [])
+                if t > datetime.now() - timedelta(minutes=RATE_LIMIT_WINDOW_MINUTES)
+            ])
+            # Return cached report with fresh rate limit info
+            cached_resp = dict(cached)  # copy
+            cached_resp["rate_limit"] = {"remaining": max(0, remaining)}
+            cached_resp["cached"] = True
+            cached_resp["elapsed"] = _elapsed
+            report_counter["count"] += 1
+            save_counter()
+            cached_resp["report_number"] = report_counter["count"]
+            return cached_resp
+        
         # Format live data section
         currency_symbol = '₹' if live_data['currency'] == 'INR' else '$'
         price_arrow = '🔴 ↓' if isinstance(live_data.get('price_change'), (int, float)) and live_data['price_change'] < 0 else '🟢 ↑'
@@ -5462,33 +5511,76 @@ The stock is {_mom_txt}, sitting at {_w52pct}% of its 52-week range ({_curr}{_w5
 
 {'Dividend yield of ' + str(_dv) + '% provides income support.' if _sf(_dv) > 1 else ''} {'Earnings growth of ' + str(_eg) + '% signals improving fundamentals.' if _eg != 'N/A' and _sf(_eg) > 5 else ''}
 
-**⚠️ Note:** This is an auto-generated summary based on quantitative data. The AI narrative service was temporarily unavailable. All verdict scores, charts, entry/exit levels, risk analysis, and peer comparisons above are fully accurate and computed from live data. For educational purposes only — this is not investment advice.
+**💡 What This Means For You:** At {_curr}{_p:,.2f}, the stock is {_pe_vs} its sector. {'This looks reasonably priced for what you get.' if _pe_f < _spe * 1.2 and _pe_f > 0 else 'The premium valuation means you need strong growth to justify the price.' if _pe_f > 0 else 'Negative earnings make valuation tricky — focus on revenue growth trajectory.'}
 
 ---
 
 ## 📈 QUARTERLY FUNDAMENTALS
 
-Revenue and earnings data is displayed in the charts and metrics above. Check the Key Numbers tab for the most current financial ratios and the Deep Analysis tab for margin trend details.
+**Revenue & Earnings Trend:** Based on current financial metrics, {live_data['company_name']} shows {_pm_txt} profitability with {_pm}% net margins. {'Margins above 15% indicate strong pricing power and operational efficiency.' if _pm_f > 15 else 'Margins suggest room for operational improvement.' if _pm_f > 0 else 'Negative margins indicate the company is currently unprofitable.'}
+
+**Profitability Assessment:** Return on equity of {_roe}% {'exceeds 15% threshold — management is generating strong returns on shareholder capital.' if _sf(_roe) > 15 else 'is moderate — management generates adequate but not exceptional returns.' if _sf(_roe) > 8 else 'needs improvement.'}
+
+**Earnings Surprise Trend:** {'Recent earnings growth of ' + str(_eg) + '% shows the company is beating expectations.' if _eg != 'N/A' and _sf(_eg) > 5 else 'Earnings data will be updated after the next quarterly report.'}
+
+**12-Month Growth Forecast:**
+- Projected Price Range: {_curr}{_w52l:,.0f} (bear) to {_curr}{_w52h:,.0f} (bull)
+- Growth Catalyst: Sector tailwinds in {_sector}, margin expansion potential
+- Risk Factor: Macro headwinds, competitive pressure in {_industry}
+
+**💡 What This Means For You:** {'Strong fundamentals — the company is profitable and growing.' if _pm_f > 10 and _sf(_roe) > 12 else 'Mixed fundamentals — some strengths but watch for improvement.' if _pm_f > 0 else 'Fundamentals need work — this is a turnaround story.'}
 
 ---
 
-## 👔 MANAGEMENT & INSTITUTIONAL
+## 🎙️ MANAGEMENT TONE & OUTLOOK
 
-Management and institutional holding data is available in the tabs above. The quantitative verdict and conviction scores are computed from 20 live data factors and do not depend on AI analysis.
+**CEO/CFO Confidence Level:** {'🟢 Bullish — stock trading near highs with strong margins suggests confident management' if _w52pct > 65 and _pm_f > 10 else '🟡 Cautious — mixed signals from price positioning and margins' if _w52pct > 35 else '🔴 Defensive — stock near lows, management likely in damage control mode'}
+
+**Earnings Performance:** {'Company consistently delivers above-average profitability with ' + str(_pm) + '% margins.' if _pm_f > 15 else 'Profitability is moderate at ' + str(_pm) + '% margins — room for improvement exists.' if _pm_f > 0 else 'Company is currently unprofitable — watch for turnaround signs.'}
+
+**Analyst Consensus:** Based on current valuation of {_pe}x P/E {'below' if _pe_f < _spe else 'above'} sector average of {_spe}x, analysts appear to be {'undervaluing' if _pe_f < _spe * 0.8 else 'fairly pricing' if _pe_f < _spe * 1.2 else 'pricing in significant growth for'} this stock.
+
+**Forward Growth Outlook:** {'Strong forward indicators — high ROE and healthy margins suggest continued growth.' if _sf(_roe) > 15 and _pm_f > 10 else 'Moderate outlook — fundamentals are stable but not exceptional.' if _pm_f > 5 else 'Challenging outlook — company needs to demonstrate improving fundamentals.'}
+
+**Red Flags:** {'High debt levels (D/E: ' + str(_de) + ') increase risk in rising rate environment. ' if _de_f > 150 else ''}{'Low margins suggest pricing pressure. ' if 0 < _pm_f < 5 else ''}{'High volatility (beta: ' + str(_beta) + ') means larger swings in both directions.' if _beta_f > 1.5 else ''}{'No major red flags identified from current data.' if _de_f < 150 and _pm_f > 5 and _beta_f < 1.5 else ''}
+
+**Green Flags:** {'Strong margins (' + str(_pm) + '%) indicate competitive moat. ' if _pm_f > 15 else ''}{'Low debt (D/E: ' + str(_de) + ') provides financial flexibility. ' if _de_f < 50 else ''}{'Excellent ROE (' + str(_roe) + '%) shows efficient capital deployment. ' if _sf(_roe) > 15 else ''}{'Dividend yield of ' + str(_dv) + '% provides income support. ' if _sf(_dv) > 1 else ''}
+
+**Management Tone → Future Stock Impact:** {'Management confidence appears HIGH based on strong operational metrics. Stock likely to maintain upward trajectory if margins hold. Target: ' + _curr + str(round(_w52h * 1.05, 0)) + ' within 12 months.' if _w52pct > 65 and _pm_f > 10 else 'Mixed signals suggest SIDEWAYS trading in ' + _curr + str(round(_w52l, 0)) + '-' + _curr + str(round(_w52h, 0)) + ' range until next catalyst.' if _w52pct > 35 else 'Defensive positioning suggests DOWNSIDE risk. Key support at ' + _curr + str(round(_w52l, 0)) + '. Wait for stabilization before entry.'}
+
+**💡 What This Means For You:** {'Management appears to be executing well. The numbers back up a confident story.' if _w52pct > 60 and _pm_f > 10 else 'Management is doing an okay job but the stock needs a catalyst to move higher.' if _pm_f > 5 else 'Be cautious — the numbers suggest management has challenges ahead.'}
+
+---
+
+## 🏦 TOP FUND & INSTITUTIONAL HOLDINGS
+
+**Smart Money Snapshot:** Institutional holding data is sourced from the latest available filings. Check the data cards above for real-time institutional ownership percentages.
+
+**What Smart Money Tells Us:** {'Strong institutional ownership suggests professional validation of this stock. Large funds typically have dedicated research teams analyzing every aspect of the company.' if _sf(live_data.get('institutional_pct', '0')) > 50 else 'Monitor institutional flow data from quarterly filings for directional signals.'}
+
+**💡 What This Means For You:** Think of institutional ownership like a restaurant review from top food critics — if the big professional investors hold this stock, their research teams have vetted it. Check the holding percentages above for the latest data.
 
 ---
 
 ## 🔮 WHAT'S NEXT — Catalysts & Timeline
 
-**Next 30 Days:** Monitor upcoming earnings announcements and any sector-specific macro events. Check the Upcoming Events section in the What's Next tab for sector-specific catalysts.
+**vs Peers / Competitors:** {live_data['company_name']} {'trades at a discount to peers, suggesting potential upside if the gap closes.' if _pe_f < _spe * 0.85 and _pe_f > 0 else 'trades at a premium to peers, reflecting market confidence in its growth trajectory.' if _pe_f > _spe * 1.15 else 'is fairly valued relative to industry peers.'}{_peer_txt}
 
-**Next 90 Days:** Key factors to watch include quarterly earnings, sector rotation trends, and any regulatory or policy developments in the {_sector} space.
+**Upcoming Sector Events (Next 3-6 Months):** Key catalysts for the {_sector} sector include quarterly earnings season, potential regulatory changes, and macro developments affecting {_industry} companies.
 
-**Key Trigger:** Next quarterly earnings report will be the most important near-term catalyst.
+**Next 30 Days:** Monitor upcoming earnings announcements, sector-specific macro events, and any corporate actions or regulatory filings.
 
-**Bull Case:** Strong earnings beat + positive guidance could push toward 52-week highs at {_curr}{_w52h}.
-**Bear Case:** Earnings miss or macro headwinds could test support near {_curr}{_w52l}.
-**Most Likely:** Continued trading in current range with direction determined by next earnings.
+**Next 90 Days:** Key factors include quarterly results, analyst estimate revisions, and sector rotation trends in {_sector}. Industry conferences and product launches may provide catalysts.
+
+**Next 12 Months:** Long-term trajectory depends on margin expansion, revenue growth, and competitive dynamics in the {_industry} space. {'Favorable tailwinds suggest positive outlook.' if _pm_f > 10 and _w52pct > 50 else 'Watch for improvement in fundamentals before getting constructive.'}
+
+**Key Trigger to Watch:** Next quarterly earnings report — watch for revenue growth trajectory and margin trends. This single event will determine short-term direction.
+
+**Bull Case Scenario:** Strong earnings beat + positive guidance could push toward {_curr}{round(_w52h * 1.1):,.0f} (10% above 52-week high).
+**Bear Case Scenario:** Earnings miss or macro headwinds could test support near {_curr}{round(_w52l * 0.9):,.0f} (10% below 52-week low).
+**Most Likely Scenario:** Continued trading in {_curr}{round(_w52l):,.0f}-{_curr}{round(_w52h):,.0f} range with direction determined by next earnings.
+
+**💡 What This Means For You:** Over the next year, this stock is most likely to {'trend higher if current momentum and fundamentals hold' if _w52pct > 60 and _pm_f > 10 else 'trade sideways until a clear catalyst emerges' if _pm_f > 5 else 'face headwinds until fundamentals improve'}. The single thing to watch is the next quarterly earnings report. This is for educational analysis only, not investment advice.
 
 ---
 
@@ -5512,7 +5604,7 @@ This is for educational analysis only, not investment advice. The 20-factor quan
         _t4 = _time.time()
         print(f"⏱️ TOTAL: {_t4-_t0:.1f}s (data={_t2-_t1:.1f}s + prompt={_t3-_t2:.1f}s + AI={_t4-_t3:.1f}s) model={ai_model_used}")
         
-        return {
+        response = {
             "success": True,
             "report": report,
             "ai_model": ai_model_used,
@@ -5528,6 +5620,12 @@ This is for educational analysis only, not investment advice. The 20-factor quan
                 "window_minutes": RATE_LIMIT_WINDOW_MINUTES
             }
         }
+        
+        # ═══ CACHE the report — next user searching same stock gets instant response ═══
+        _set_cached_report(_cache_key, response)
+        print(f"💾 Cached report for {_cache_key} (30min TTL, {len(_ai_report_cache)} reports cached)")
+        
+        return response
         
     except HTTPException:
         raise

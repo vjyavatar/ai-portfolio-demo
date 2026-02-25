@@ -1473,7 +1473,7 @@ if(!data.success||!data.live_data){showStatus('No data found for '+ticker,'error
 let q='';if(data.rate_limit){const r=data.rate_limit.remaining;document.getElementById('navQ').textContent=r+'/hr';q=r===0?' · Last free report':' · '+r+' remaining'}
 if(data.report_number){document.getElementById('navRC').textContent=data.report_number;document.getElementById('globalRC').textContent=data.report_number.toLocaleString();const hb=document.getElementById('reportBadgeCount');if(hb)hb.textContent=data.report_number.toLocaleString()}
 const _elapsed=Math.round((Date.now()-_startT)/1000);
-const modelNote=data.ai_model==='template'?' (data-only)':data.ai_model==='haiku'?' (fast)':'';
+const modelNote=data.cached?' ⚡ cached':data.ai_model==='template'?' (data-only)':data.ai_model==='haiku'?' (fast)':'';
 showStatus('✓ Report ready in '+_elapsed+'s'+modelNote+q,'success');
 displayReport(data);TI.value='';
 if(typeof gtag==='function')gtag('event','generate_report',{ticker:data.live_data?.ticker||ticker,ai_model:data.ai_model||''});
