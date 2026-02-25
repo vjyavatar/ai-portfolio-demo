@@ -3568,41 +3568,50 @@ fetchLivePricesForPicks(el);
 }
 
 let _livePriceCache={};
-let _fetchDebounce=null;
 async function fetchLivePricesForPicks(container){
-if(!container)return;
+if(!container){console.error('fetchLivePricesForPicks: no container');return}
 const cells=container.querySelectorAll('td[data-ticker][data-col="cmp"]');
-if(!cells.length)return;
+if(!cells.length){console.warn('fetchLivePricesForPicks: 0 cells found');return}
 const tickers=[...new Set([...cells].map(c=>c.dataset.ticker).filter(t=>t&&t!=='INDEX'&&t.length>1&&/^[A-Z0-9.\-]+$/.test(t)))];
-if(!tickers.length){cells.forEach(c=>{if(!c.dataset.ticker||c.dataset.ticker==='INDEX')c.innerHTML='—'});return}
-const now=Date.now();
-const uncached=tickers.filter(t=>!_livePriceCache[t]||now-_livePriceCache[t].ts>120000);
-if(uncached.length>0){
+console.log('📡 fetchLivePricesForPicks:',tickers.length,'tickers from',cells.length,'cells');
+if(!tickers.length)return;
+// Show loading in all cells
+cells.forEach(c=>{if(c.dataset.ticker&&c.dataset.ticker!=='INDEX')c.innerHTML='<span style="color:var(--text3);font-size:9px">⏳</span>'});
 try{
-console.log('📡 Fetching live prices for',uncached.length,'tickers...');
-const res=await fetch('/api/batch-prices',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({tickers:uncached})});
-const data=await res.json();
-if(data.success&&data.prices){
-Object.entries(data.prices).forEach(([tk,v])=>{_livePriceCache[tk]={...v,ts:Date.now()}});
-console.log('✅ Prices loaded:',Object.keys(data.prices).length,'OK,',data.failed?.length||0,'failed');
-}else{console.warn('⚠️ batch-prices returned:',data)}
-}catch(e){console.error('❌ batch-prices failed:',e.message)}
+const res=await fetch('/api/batch-prices',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({tickers:tickers})});
+if(!res.ok){
+console.error('batch-prices HTTP error:',res.status);
+cells.forEach(c=>{c.innerHTML='<span style="color:var(--red);font-size:9px">HTTP '+res.status+'</span>'});
+return;
 }
-// Update all cells
-let loadedCount=0;
+const data=await res.json();
+console.log('📊 batch-prices:',JSON.stringify({success:data.success,fetched:data.fetched,failed:data.failed}));
+if(!data.success){
+cells.forEach(c=>{c.innerHTML='<span style="color:var(--red);font-size:9px">API error</span>'});
+return;
+}
+const prices=data.prices||{};
+let ok=0,fail=0;
 cells.forEach(cell=>{
 const tk=cell.dataset.ticker;
-const cached=_livePriceCache[tk];
-if(cached){
-loadedCount++;
-const up=cached.change_pct>=0;
-cell.innerHTML=`${cached.formatted} <span style="font-size:8px;color:${up?'var(--green)':'var(--red)'}">LIVE ${up?'▲':'▼'}${Math.abs(cached.change_pct).toFixed(1)}%</span>`;
+if(!tk||tk==='INDEX'){cell.innerHTML='—';return}
+const p=prices[tk];
+if(p&&p.formatted){
+ok++;
+_livePriceCache[tk]=p;
+const up=(p.change_pct||0)>=0;
+cell.innerHTML=`<span style="font-weight:700">${p.formatted}</span> <span style="font-size:7px;color:${up?'var(--green)':'var(--red)'}">LIVE ${up?'▲':'▼'}${Math.abs(p.change_pct||0).toFixed(1)}%</span>`;
 cell.style.color=up?'var(--green)':'var(--red)';
 }else{
-cell.innerHTML=`<span style="font-size:9px;color:var(--text3);cursor:pointer" onclick="fetchLivePricesForPicks(this.closest('table').parentElement)">⚠️ tap to retry</span>`;
+fail++;
+cell.innerHTML='<span style="color:var(--text3);font-size:9px">N/A</span>';
 }
 });
-console.log(`Live prices: ${loadedCount}/${cells.length} loaded`);
+console.log('✅ Picks prices:',ok,'loaded,',fail,'failed');
+}catch(e){
+console.error('❌ fetchLivePricesForPicks error:',e);
+cells.forEach(c=>{c.innerHTML='<span style="color:var(--red);font-size:9px;cursor:pointer" onclick="fetchLivePricesForPicks(document.getElementById(\'pickGrid\'))">❌ retry</span>'});
+}
 }
 
 // ═══════════════════════════════════════════════
@@ -3698,24 +3707,25 @@ const cells=document.querySelectorAll('[data-conv-ticker]');
 if(!cells.length)return;
 const tickers=[...new Set([...cells].map(c=>c.dataset.convTicker).filter(Boolean))];
 if(!tickers.length)return;
-const now=Date.now();
-const uncached=tickers.filter(t=>!_livePriceCache[t]||now-_livePriceCache[t].ts>120000);
-if(uncached.length>0){
+console.log('📡 fetchConvictionPrices:',tickers.length,'tickers');
+cells.forEach(c=>{c.innerHTML='<span style="color:var(--text3);font-size:9px">⏳</span>'});
 try{
-const res=await fetch('/api/batch-prices',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({tickers:uncached})});
+const res=await fetch('/api/batch-prices',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({tickers:tickers})});
+if(!res.ok){console.error('Conviction HTTP',res.status);cells.forEach(c=>{c.textContent='—'});return}
 const data=await res.json();
-if(data.success&&data.prices){Object.entries(data.prices).forEach(([tk,v])=>{_livePriceCache[tk]={...v,ts:now}})}
-}catch(e){}
-}
+if(!data.success||!data.prices){cells.forEach(c=>{c.textContent='—'});return}
+let ok=0;
 cells.forEach(cell=>{
 const tk=cell.dataset.convTicker;
-const c=_livePriceCache[tk];
-if(c){
-const up=c.change_pct>=0;
-cell.innerHTML=`${c.formatted} <span style="color:${up?'var(--green)':'var(--red)'}">${up?'▲':'▼'}${Math.abs(c.change_pct).toFixed(1)}%</span>`;
-cell.style.color=up?'var(--green)':'var(--red)';cell.style.fontWeight='700';
+const p=data.prices[tk];
+if(p&&p.formatted){
+ok++;
+const up=(p.change_pct||0)>=0;
+cell.innerHTML=`<span style="font-weight:700;color:${up?'var(--green)':'var(--red)'}">${p.formatted}</span> <span style="font-size:7px;color:${up?'var(--green)':'var(--red)'}">${up?'\u25b2':'\u25bc'}${Math.abs(p.change_pct||0).toFixed(1)}%</span>`;
 }else{cell.textContent='—'}
 });
+console.log('✅ Conviction:',ok+'/'+cells.length);
+}catch(e){console.error('fetchConvictionPrices error:',e);cells.forEach(c=>{c.textContent='—'})}
 }
 
 // Auto-render on page load
@@ -3840,6 +3850,7 @@ fetchFundNAVs(el);
 }
 
 async function fetchFundNAVs(container){
+if(!container)return;
 const cells=container.querySelectorAll('td[data-fund-ticker]');
 if(!cells.length)return;
 const tickerPairs=[];
@@ -3850,22 +3861,24 @@ if(yft)tickerPairs.push({cell:c,yf:yft,ft:ft});
 });
 if(!tickerPairs.length)return;
 const yfTickers=[...new Set(tickerPairs.map(p=>p.yf))];
-const now=Date.now();
-const uncached=yfTickers.filter(t=>!_livePriceCache[t]||now-_livePriceCache[t].ts>120000);
-if(uncached.length>0){
+console.log('📡 fetchFundNAVs:',yfTickers.length,'tickers');
+tickerPairs.forEach(p=>{p.cell.innerHTML='<span style="color:var(--text3);font-size:9px">⏳</span>'});
 try{
-const res=await fetch('/api/batch-prices',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({tickers:uncached})});
+const res=await fetch('/api/batch-prices',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({tickers:yfTickers})});
+if(!res.ok){tickerPairs.forEach(p=>{p.cell.textContent='—'});return}
 const data=await res.json();
-if(data.success&&data.prices){Object.entries(data.prices).forEach(([tk,v])=>{_livePriceCache[tk]={...v,ts:now}})}
-}catch(e){}
-}
+if(!data.success||!data.prices){tickerPairs.forEach(p=>{p.cell.textContent='—'});return}
+let ok=0;
 tickerPairs.forEach(p=>{
-const c=_livePriceCache[p.yf];
-if(c){
-const up=c.change_pct>=0;
-p.cell.innerHTML=`<span style="font-weight:700;color:${up?'var(--green)':'var(--red)'}">${c.formatted}</span> <span style="font-size:8px;color:${up?'var(--green)':'var(--red)'}">${up?'▲':'▼'}${Math.abs(c.change_pct).toFixed(1)}%</span>`;
+const pr=data.prices[p.yf];
+if(pr&&pr.formatted){
+ok++;
+const up=(pr.change_pct||0)>=0;
+p.cell.innerHTML=`<span style="font-weight:700;color:${up?'var(--green)':'var(--red)'}">${pr.formatted}</span> <span style="font-size:7px;color:${up?'var(--green)':'var(--red)'}">${up?'\u25b2':'\u25bc'}${Math.abs(pr.change_pct||0).toFixed(1)}%</span>`;
 }else{p.cell.textContent='—'}
 });
+console.log('✅ Fund NAVs:',ok+'/'+tickerPairs.length);
+}catch(e){console.error('fetchFundNAVs error:',e);tickerPairs.forEach(p=>{p.cell.textContent='—'})}
 }
 
 function renderFundComparison(){

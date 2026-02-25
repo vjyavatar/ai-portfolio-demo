@@ -2706,9 +2706,49 @@ async def stock_quick(ticker: str = ""):
 
 # ═══ BATCH PRICES — multi-source live prices for stock picks ═══
 
+@app.get("/api/test-price/{ticker}")
+async def test_price(ticker: str):
+    """Diagnostic endpoint — test if we can fetch a single ticker price."""
+    import traceback
+    results = {"ticker": ticker, "sources": []}
+    
+    # Source 1: yfinance
+    try:
+        t = yf.Ticker(ticker)
+        info = t.info or {}
+        price = info.get('currentPrice') or info.get('regularMarketPrice') or info.get('previousClose')
+        results["sources"].append({
+            "name": "yfinance",
+            "success": bool(price and float(price) > 0),
+            "price": float(price) if price else None,
+            "keys": list(info.keys())[:20]
+        })
+    except Exception as e:
+        results["sources"].append({"name": "yfinance", "success": False, "error": str(e)[:200]})
+    
+    # Source 2: Yahoo v8 chart
+    try:
+        r = _http_pool.get(f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}?interval=1d&range=2d", timeout=5)
+        if r.status_code == 200:
+            meta = r.json().get('chart', {}).get('result', [{}])[0].get('meta', {})
+            price = meta.get('regularMarketPrice', 0)
+            results["sources"].append({
+                "name": "yahoo_v8",
+                "success": bool(price and float(price) > 0),
+                "price": float(price) if price else None,
+                "status": r.status_code
+            })
+        else:
+            results["sources"].append({"name": "yahoo_v8", "success": False, "status": r.status_code, "body": r.text[:200]})
+    except Exception as e:
+        results["sources"].append({"name": "yahoo_v8", "success": False, "error": str(e)[:200]})
+    
+    results["any_success"] = any(s.get("success") for s in results["sources"])
+    return results
+
 @app.post("/api/batch-prices")
 async def batch_prices(request: Request):
-    """Fetch live prices for multiple tickers. Uses smart per-ticker cache + 5-source fallback."""
+    """Fetch live prices. Always fetches fresh — no stale cache."""
     import re as re_bp
     
     try:
@@ -2718,138 +2758,63 @@ async def batch_prices(request: Request):
             return {"success": False, "error": "tickers array required"}
         
         tickers = [t.strip().upper() for t in tickers[:30] if t.strip()]
+        if not tickers:
+            return {"success": False, "error": "no valid tickers"}
         
-        # Step 1: Check smart cache per-ticker (pre-fetched + recent requests)
-        cached_results = {}
-        missing = []
-        for tk in tickers:
-            cached = _smart_cache_get(f"price:{tk}")
-            if cached:
-                cached_results[tk] = cached
-            else:
-                missing.append(tk)
-        
-        # If all cached, return instantly (< 1ms)
-        if not missing:
-            return {"success": True, "prices": cached_results, "fetched": 0, "cached": len(cached_results), "failed": []}
-        
-        # Step 2: Fetch missing tickers in parallel with multi-source fallback
-        results = {}
-        failed_tickers = []
-        
-        def _format_result(tk, price, prev_close, currency):
-            try:
-                price = round(float(price), 2)
-                prev = float(prev_close or price)
-                chg_pct = round(((price - prev) / prev) * 100, 2) if prev > 0 else 0
-                sym = '₹' if currency == 'INR' else '$'
-                return tk, {"price": price, "change_pct": chg_pct, "symbol": sym, "formatted": f"{sym}{price:,.2f}"}
-            except:
-                return tk, None
-        
-        def _fetch_price_multisource(tk):
+        def _fetch_one(tk):
+            """Fetch single ticker price with 2-source fallback."""
             is_indian = '.NS' in tk or '.BO' in tk
+            sym = '₹' if is_indian else '$'
             
             # Source 1: yfinance
             try:
                 t = yf.Ticker(tk)
-                info = t.info
+                info = t.info or {}
                 price = info.get('currentPrice') or info.get('regularMarketPrice') or info.get('previousClose')
                 if price and float(price) > 0:
-                    prev = info.get('previousClose') or info.get('regularMarketPreviousClose') or price
-                    return _format_result(tk, price, prev, info.get('currency', 'INR' if is_indian else 'USD'))
-            except:
-                pass
+                    price = round(float(price), 2)
+                    prev = float(info.get('previousClose') or info.get('regularMarketPreviousClose') or price)
+                    chg = round(((price - prev) / prev) * 100, 2) if prev > 0 else 0
+                    return tk, {"price": price, "change_pct": chg, "symbol": sym, "formatted": f"{sym}{price:,.2f}"}
+            except Exception as e1:
+                print(f"  yf fail {tk}: {e1}")
             
-            # Source 2: Yahoo v8 chart (uses connection pool)
+            # Source 2: Yahoo v8 chart API
             try:
-                r = _http_pool.get(f"https://query1.finance.yahoo.com/v8/finance/chart/{tk}?interval=1d&range=2d", timeout=6)
+                r = _http_pool.get(f"https://query1.finance.yahoo.com/v8/finance/chart/{tk}?interval=1d&range=2d", timeout=5)
                 if r.status_code == 200:
                     meta = r.json().get('chart', {}).get('result', [{}])[0].get('meta', {})
                     price = meta.get('regularMarketPrice', 0)
                     prev = meta.get('chartPreviousClose', meta.get('previousClose', price))
                     if price and float(price) > 0:
-                        return _format_result(tk, price, prev, meta.get('currency', 'INR' if is_indian else 'USD'))
-            except:
-                pass
-            
-            # Source 3: Google Finance
-            try:
-                if is_indian:
-                    clean = tk.replace('.NS', '').replace('.BO', '')
-                    g_urls = [f"https://www.google.com/finance/quote/{clean}:NSE"]
-                else:
-                    base = tk.replace('.', '-')
-                    g_urls = [f"https://www.google.com/finance/quote/{base}:NASDAQ",
-                              f"https://www.google.com/finance/quote/{base}:NYSE",
-                              f"https://www.google.com/finance/quote/{base}:NYSEARCA"]
-                for g_url in g_urls:
-                    r = _http_pool.get(g_url, headers={'Accept': 'text/html'}, timeout=6)
-                    if r.status_code == 200 and 'data-last-price' in r.text:
-                        pm = re_bp.search(r'data-last-price="([0-9.]+)"', r.text)
-                        pp = re_bp.search(r'data-previous-close="([0-9.]+)"', r.text)
-                        if pm:
-                            price = float(pm.group(1))
-                            prev = float(pp.group(1)) if pp else price
-                            if price > 0:
-                                return _format_result(tk, price, prev, 'INR' if is_indian else 'USD')
-                        break
-            except:
-                pass
-            
-            # Source 4: NSE India API (only .NS tickers)
-            if is_indian:
-                try:
-                    clean = tk.replace('.NS', '').replace('.BO', '')
-                    s = requests.Session()
-                    s.get("https://www.nseindia.com", headers={'User-Agent': 'Mozilla/5.0'}, timeout=5)
-                    r = s.get(f"https://www.nseindia.com/api/quote-equity?symbol={clean}", 
-                             headers={'User-Agent': 'Mozilla/5.0', 'Accept': '*/*'}, timeout=6)
-                    if r.status_code == 200:
-                        pi = r.json().get('priceInfo', {})
-                        price = pi.get('lastPrice') or pi.get('close')
-                        prev = pi.get('previousClose', price)
-                        if price and float(price) > 0:
-                            return _format_result(tk, price, prev, 'INR')
-                except:
-                    pass
-                
-                # Source 5: Screener.in
-                try:
-                    clean = tk.replace('.NS', '').replace('.BO', '')
-                    r = _http_pool.get(f"https://www.screener.in/api/company/{clean}/consolidated/", timeout=6)
-                    if r.status_code == 200:
-                        scr = r.json()
-                        price = scr.get('current_price') or scr.get('market_price')
-                        if price and float(price) > 0:
-                            return _format_result(tk, price, price, 'INR')
-                except:
-                    pass
+                        price = round(float(price), 2)
+                        prev = round(float(prev or price), 2)
+                        chg = round(((price - prev) / prev) * 100, 2) if prev > 0 else 0
+                        return tk, {"price": price, "change_pct": chg, "symbol": sym, "formatted": f"{sym}{price:,.2f}"}
+            except Exception as e2:
+                print(f"  v8 fail {tk}: {e2}")
             
             return tk, None
         
-        # Parallel fetch using shared thread pool
-        futures = {_thread_pool.submit(_fetch_price_multisource, t): t for t in missing}
-        for f in as_completed(futures, timeout=20):
-            try:
-                tk, price_data = f.result(timeout=8)
-                if price_data:
-                    results[tk] = price_data
-                    _smart_cache_set(f"price:{tk}", price_data, 120)  # Cache for 2 min
-                else:
-                    failed_tickers.append(futures[f])
-            except:
-                failed_tickers.append(futures[f])
+        # Fetch ALL tickers in parallel — dedicated pool so we don't block other endpoints
+        results = {}
+        failed = []
+        with ThreadPoolExecutor(max_workers=min(len(tickers), 8)) as pool:
+            futs = {pool.submit(_fetch_one, t): t for t in tickers}
+            for f in as_completed(futs, timeout=15):
+                try:
+                    tk, price_data = f.result(timeout=8)
+                    if price_data:
+                        results[tk] = price_data
+                    else:
+                        failed.append(futs[f])
+                except:
+                    failed.append(futs[f])
         
-        if failed_tickers:
-            print(f"⚠️ Batch prices: {len(failed_tickers)} tickers failed all sources: {failed_tickers[:5]}")
-        
-        all_results = {**cached_results, **results}
-        return {
-            "success": True, "prices": all_results,
-            "fetched": len(results), "cached": len(cached_results), "failed": failed_tickers[:10]
-        }
+        print(f"📊 batch-prices: {len(results)}/{len(tickers)} OK, {len(failed)} failed")
+        return {"success": True, "prices": results, "fetched": len(results), "cached": 0, "failed": failed[:10]}
     except Exception as e:
+        print(f"❌ batch-prices error: {e}")
         return {"success": False, "error": str(e)[:100]}
 
 
@@ -4569,48 +4534,7 @@ async def check_rate_limit_endpoint(request: Request):
         return {"allowed": True}  # Fail open - don't block on errors
 
 
-# ═══ PHASE 1: INSTANT STOCK DATA — no AI, returns in 2-5s (cached: <0.1s) ═══
-@app.post("/api/stock-data")
-async def stock_data_only(request: Request):
-    """Return live stock data WITHOUT AI report. For instant display."""
-    import time as _time
-    _t0 = _time.time()
-    try:
-        data = await request.json()
-        company = data.get("company_name", "").strip()
-        email = data.get("email", "").strip()
-        
-        if not company:
-            raise HTTPException(400, "company_name required")
-        
-        # Rate limit check (inline)
-        if email:
-            rate_check = check_rate_limit(email)
-            if not rate_check["allowed"]:
-                return JSONResponse(status_code=429, content=rate_check)
-        
-        # Get live data — uses 3-min cache, so repeat searches are instant
-        loop = asyncio.get_event_loop()
-        live_data = await loop.run_in_executor(_thread_pool, get_live_stock_data, company)
-        
-        if "error" in live_data or not live_data.get("success"):
-            raise HTTPException(400, live_data.get("error", "Could not fetch data"))
-        
-        _elapsed = round(_time.time() - _t0, 1)
-        print(f"⚡ stock-data: {company} → {_elapsed}s")
-        
-        return {
-            "success": True,
-            "live_data": live_data,
-            "company_name": live_data.get("company_name", company),
-            "elapsed": _elapsed
-        }
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(500, f"Data fetch failed: {str(e)[:100]}")
-
-# ═══ PHASE 2: FULL REPORT WITH AI — takes 10-30s, called in background ═══
+# ═══ FULL REPORT WITH AI ═══
 @app.post("/api/generate-report")
 async def generate_report(request: Request):
     import time as _time
@@ -5456,8 +5380,8 @@ Based on real-time price of {_f_price}:
             return None, "none"
         
         _ai_models = [
-            ("claude-sonnet-4-20250514", 3000, 20, "sonnet"),
-            ("claude-haiku-4-5-20251001", 3000, 12, "haiku"),
+            ("claude-sonnet-4-20250514", 4096, 35, "sonnet"),
+            ("claude-haiku-4-5-20251001", 4096, 25, "haiku"),
         ]
         
         # Run AI in thread pool — doesn't block event loop while waiting 5-45s
