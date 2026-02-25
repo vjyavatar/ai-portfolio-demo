@@ -5456,8 +5456,8 @@ Based on real-time price of {_f_price}:
             return None, "none"
         
         _ai_models = [
-            ("claude-sonnet-4-20250514", 4096, 45, "sonnet"),
-            ("claude-haiku-4-5-20251001", 4096, 30, "haiku"),
+            ("claude-sonnet-4-20250514", 3000, 20, "sonnet"),
+            ("claude-haiku-4-5-20251001", 3000, 12, "haiku"),
         ]
         
         # Run AI in thread pool — doesn't block event loop while waiting 5-45s
