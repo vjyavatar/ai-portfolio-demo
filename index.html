@@ -795,6 +795,8 @@ footer{position:relative;z-index:1;margin-top:32px;background:#002f6c;border-top
 <button class="tab-btn" onclick="switchTab('deep')" id="tabBtnDeep" data-color="navy" data-tip="AI color-coded verdict breakdown, full deep-dive"><span class="tab-icon">&#128270;</span> Deep Dive</button>
 <button class="tab-btn" onclick="switchTab('mgmt')" id="tabBtnMgmt" data-color="purple" data-tip="Quarterly earnings, management tone, fund holdings"><span class="tab-icon">&#128200;</span> Earnings</button>
 <button class="tab-btn" onclick="switchTab('next')" id="tabBtnNext" data-color="cyan" data-tip="Upcoming catalysts, bull/bear/base scenarios"><span class="tab-icon">&#128302;</span> Forecast</button>
+<button class="tab-btn" onclick="switchTab('dcf')" id="tabBtnDCF" data-color="emerald" data-tip="Discounted Cash Flow intrinsic valuation"><span class="tab-icon">&#128178;</span> DCF</button>
+<button class="tab-btn" onclick="switchTab('equity')" id="tabBtnEquity" data-color="gold" data-tip="Professional equity research report"><span class="tab-icon">&#128220;</span> Research</button>
 <button class="tab-btn" onclick="switchTab('gems')" id="tabBtnGems" data-color="amber" data-tip="Sector-specific small-cap picks" style="display:none"><span class="tab-icon">&#11088;</span> Gems</button>
 <button class="tab-btn" onclick="switchTab('picks')" id="tabBtnPicks" data-color="teal" data-tip="Top 5 Buy, Sell, Accumulate stocks by conviction" style="display:none"><span class="tab-icon">&#127942;</span> Picks</button>
 <button class="tab-btn" onclick="switchTab('funds')" id="tabBtnFunds" data-color="blue" data-tip="Top ETFs & mutual funds with 25%+ CAGR" style="display:none"><span class="tab-icon">&#128176;</span> ETF</button>
@@ -2060,6 +2062,18 @@ ${(()=>{const bt=parseFloat(d.beta)||1;return bt>1.5?' Expect <strong>bigger dai
 
 <!-- ═══ TAB: GEMS ═══ -->
 
+<!-- ═══ TAB: DCF VALUATION ═══ -->
+<div class="sc" data-tab="dcf" style="border-left:3px solid #10b981"><div class="sh"><div class="si" style="background:rgba(16,185,129,.1)">&#128178;</div><div class="st" style="color:#10b981" id="sec-dcf">DCF Intrinsic Valuation</div></div>
+<div class="sbody">
+<div id="dcfContent"><div class="ic" style="text-align:center;background:rgba(16,185,129,.04)"><p style="color:var(--text3)">&#9203; Computing DCF model...</p></div></div>
+</div></div>
+
+<!-- ═══ TAB: EQUITY RESEARCH ═══ -->
+<div class="sc" data-tab="equity" style="border-left:3px solid #d97706"><div class="sh"><div class="si" style="background:rgba(217,119,6,.1)">&#128220;</div><div class="st" style="color:#d97706" id="sec-equity">Equity Research Report</div></div>
+<div class="sbody">
+<div id="equityContent"><div class="ic" style="text-align:center;background:rgba(217,119,6,.04)"><p style="color:var(--text3)">&#9203; Generating research report...</p></div></div>
+</div></div>
+
 <div class="sc" data-tab="gems" style="border-left:3px solid var(--amber)"><div class="sh"><div class="si" style="background:rgba(245,158,11,.1)">⭐</div><div class="st" style="color:var(--amber)" id="sec-gems">Sector Gems — 10x Small-Caps in <span id="gemsSectorName"></span></div></div>
 <div class="sbody">
 <div style="padding:10px 14px;border-radius:8px;background:linear-gradient(135deg,rgba(245,158,11,.06),rgba(212,138,0,.03));border:1px solid rgba(245,158,11,.15);margin-bottom:14px">
@@ -2191,6 +2205,8 @@ try{populateFundHoldings(report, fundData)}catch(e){console.warn('populateFundHo
 try{populateWhatsNext(report)}catch(e){console.warn('populateWhatsNext error:',e)}
 try{generateSmallCapRecommendations(d)}catch(e){console.warn('generateSmallCapRecommendations error:',e)}
 try{renderConviction()}catch(e){console.warn('renderConviction error:',e)}
+try{renderDCF(d)}catch(e){console.warn('renderDCF error:',e)}
+try{renderEquityResearch(d,report,fundData)}catch(e){console.warn('renderEquityResearch error:',e)}
 // Auto-open Quick Intel tab
 switchTab('quick');
 // Refresh watermark with user email
@@ -2226,7 +2242,7 @@ if(!s.dataset.conditional)s.style.display='block';
 document.querySelectorAll('.sub-nav[data-tab="'+tab+'"]').forEach(s=>{s.style.display='flex'});
 
 // 3) Activate button
-const btnMap={quick:'tabBtnQuick',deep:'tabBtnDeep',mgmt:'tabBtnMgmt',next:'tabBtnNext',gems:'tabBtnGems',picks:'tabBtnPicks',funds:'tabBtnFunds',trades:'tabBtnTrades'};
+const btnMap={quick:'tabBtnQuick',deep:'tabBtnDeep',mgmt:'tabBtnMgmt',next:'tabBtnNext',dcf:'tabBtnDCF',equity:'tabBtnEquity',gems:'tabBtnGems',picks:'tabBtnPicks',funds:'tabBtnFunds',trades:'tabBtnTrades'};
 if(btnMap[tab]){const btn=document.getElementById(btnMap[tab]);if(btn)btn.classList.add('active')}
 
 // 4) Scroll to top of new tab content — scroll-margin-top:140px on .sc handles sticky offset
@@ -3615,7 +3631,391 @@ cells.forEach(c=>{c.innerHTML='<span style="color:var(--red);font-size:9px;curso
 }
 
 // ═══════════════════════════════════════════════
-// ═══ CONVICTION LEADERBOARD — Top 5 by category per country ═══
+// ═══ DCF INTRINSIC VALUATION MODEL ═══
+// ═══════════════════════════════════════════════
+function renderDCF(d){
+const el=document.getElementById('dcfContent');
+if(!el||!d)return;
+const _sf=(v,def=0)=>{if(v===null||v===undefined||v==='N/A'||v==='')return def;const n=parseFloat(String(v).replace(/[,%]/g,''));return isNaN(n)?def:n};
+const sym=d.currency==='INR'?'₹':'$';
+const price=_sf(d.current_price);
+const mcap=_sf(d.market_cap);
+const pe=_sf(d.pe_ratio);
+const eps=pe>0&&price>0?price/pe:0;
+const beta=_sf(d.beta,1);
+const pm=_sf(d.profit_margin,10);
+const om=_sf(d.operating_margin,12);
+const rev=_sf(d.revenue);
+const roe=_sf(d.roe,12);
+const de=_sf(d.debt_to_equity,50);
+const eg=_sf(d.earnings_growth,10);
+const rg=_sf(d.revenue_growth,8);
+const divY=_sf(d.dividend_yield,0);
+const fcf=_sf(d.free_cashflow);
+const shares=mcap>0&&price>0?Math.round(mcap/price):0;
+const w52h=_sf(d.week52_high,price*1.2);
+const w52l=_sf(d.week52_low,price*0.8);
+
+// ═══ WACC CALCULATION ═══
+const riskFree=0.068; // 10Y govt bond (India ~6.8%, US ~4.2%)
+const mktPremium=0.06; // Equity risk premium
+const costEquity=riskFree+beta*mktPremium;
+const costDebt=riskFree+0.015; // Spread over risk-free
+const taxRate=0.25;
+const debtWeight=Math.min(de/(100+de),0.6);
+const equityWeight=1-debtWeight;
+const wacc=equityWeight*costEquity+debtWeight*costDebt*(1-taxRate);
+
+// ═══ FCF PROJECTION ═══
+const baseFCF=fcf>0?fcf:(rev>0?rev*pm/100*0.7:(mcap>0?mcap*0.04:price*shares*0.04));
+const growthRate=Math.max(Math.min((rg+eg)/2/100,0.30),-0.10)||0.08;
+const terminalGrowth=0.03;
+const projYears=5;
+
+let projections=[];
+let totalPV=0;
+for(let y=1;y<=projYears;y++){
+const projFCF=baseFCF*Math.pow(1+growthRate,y);
+const pv=projFCF/Math.pow(1+wacc,y);
+totalPV+=pv;
+projections.push({year:y,fcf:projFCF,pv:pv,growth:growthRate*100});
+}
+
+// Terminal Value
+const termFCF=baseFCF*Math.pow(1+growthRate,projYears)*(1+terminalGrowth);
+const termValue=termFCF/(wacc-terminalGrowth);
+const termPV=termValue/Math.pow(1+wacc,projYears);
+const enterpriseValue=totalPV+termPV;
+const netDebt=mcap>0?mcap*debtWeight*0.3:0;
+const equityValue=enterpriseValue-netDebt;
+const intrinsicPrice=shares>0?equityValue/shares:0;
+const marginOfSafety=price>0?((intrinsicPrice-price)/price*100):0;
+const upDown=marginOfSafety>=0?'UNDERVALUED':'OVERVALUED';
+const udColor=marginOfSafety>=10?'var(--green)':marginOfSafety>=-10?'var(--amber)':'var(--red)';
+const udIcon=marginOfSafety>=10?'🟢':marginOfSafety>=-10?'🟡':'🔴';
+
+// Format large numbers
+const _fn=(n)=>{if(!n||n===0)return'N/A';const a=Math.abs(n);if(a>=1e12)return sym+(n/1e12).toFixed(2)+'T';if(a>=1e9)return sym+(n/1e9).toFixed(2)+'B';if(a>=1e7)return sym+(n/1e7).toFixed(2)+'Cr';if(a>=1e5)return sym+(n/1e5).toFixed(2)+'L';return sym+n.toLocaleString(undefined,{maximumFractionDigits:0})};
+
+// ═══ SENSITIVITY MATRIX ═══
+const waccRange=[wacc-0.02,wacc-0.01,wacc,wacc+0.01,wacc+0.02];
+const growRange=[terminalGrowth-0.01,terminalGrowth,terminalGrowth+0.01,terminalGrowth+0.02];
+
+let sensRows='';
+growRange.forEach(tg=>{
+let cells=`<td style="font-weight:700;color:var(--text);font-size:10px;white-space:nowrap">${(tg*100).toFixed(1)}%</td>`;
+waccRange.forEach(w=>{
+if(w<=tg){cells+=`<td style="font-size:10px;color:var(--text3)">N/A</td>`;return}
+const tf=baseFCF*Math.pow(1+growthRate,projYears)*(1+tg);
+const tv=tf/(w-tg);
+const tpv=tv/Math.pow(1+w,projYears);
+let sTotalPV=0;
+for(let y=1;y<=projYears;y++){sTotalPV+=baseFCF*Math.pow(1+growthRate,y)/Math.pow(1+w,y)}
+const sEV=sTotalPV+tpv;
+const sPrice=shares>0?(sEV-netDebt)/shares:0;
+const sMOS=price>0?((sPrice-price)/price*100):0;
+const sC=sMOS>=15?'var(--green)':sMOS>=0?'#22d3ee':sMOS>=-15?'var(--amber)':'var(--red)';
+cells+=`<td style="font-size:10px;font-weight:600;color:${sC}">${sym}${sPrice.toFixed(0)}</td>`;
+});
+sensRows+=`<tr>${cells}</tr>`;
+});
+
+let h=`
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:20px">
+
+<!-- Intrinsic Value Card -->
+<div style="padding:20px;border-radius:12px;background:linear-gradient(135deg,rgba(16,185,129,.08),rgba(16,185,129,.02));border:2px solid rgba(16,185,129,.25);text-align:center">
+<div style="font-size:10px;color:var(--text3);letter-spacing:1px;margin-bottom:4px">DCF INTRINSIC VALUE</div>
+<div style="font-size:32px;font-weight:800;color:#10b981;font-family:var(--mono)">${sym}${intrinsicPrice.toFixed(2)}</div>
+<div style="font-size:11px;color:var(--text3);margin-top:2px">per share</div>
+</div>
+
+<!-- Current Price Card -->
+<div style="padding:20px;border-radius:12px;background:rgba(59,130,246,.06);border:1px solid rgba(59,130,246,.2);text-align:center">
+<div style="font-size:10px;color:var(--text3);letter-spacing:1px;margin-bottom:4px">CURRENT MARKET PRICE</div>
+<div style="font-size:32px;font-weight:800;color:var(--blue);font-family:var(--mono)">${sym}${price.toFixed(2)}</div>
+<div style="font-size:11px;color:var(--text3);margin-top:2px">CMP</div>
+</div>
+
+<!-- Margin of Safety Card -->
+<div style="padding:20px;border-radius:12px;background:${marginOfSafety>=0?'rgba(16,185,129,.06)':'rgba(239,68,68,.06)'};border:2px solid ${udColor};text-align:center">
+<div style="font-size:10px;color:var(--text3);letter-spacing:1px;margin-bottom:4px">MARGIN OF SAFETY</div>
+<div style="font-size:32px;font-weight:800;color:${udColor};font-family:var(--mono)">${marginOfSafety>=0?'+':''}${marginOfSafety.toFixed(1)}%</div>
+<div style="font-size:12px;font-weight:700;color:${udColor};margin-top:2px">${udIcon} ${upDown}</div>
+</div>
+
+<!-- Enterprise Value -->
+<div style="padding:20px;border-radius:12px;background:rgba(139,92,246,.06);border:1px solid rgba(139,92,246,.15);text-align:center">
+<div style="font-size:10px;color:var(--text3);letter-spacing:1px;margin-bottom:4px">ENTERPRISE VALUE</div>
+<div style="font-size:24px;font-weight:800;color:var(--purple);font-family:var(--mono)">${_fn(enterpriseValue)}</div>
+<div style="font-size:10px;color:var(--text3);margin-top:2px">Market Cap: ${_fn(mcap)}</div>
+</div>
+</div>
+
+<!-- WACC Breakdown -->
+<div style="margin-bottom:20px;padding:16px;border-radius:10px;background:rgba(0,47,108,.03);border:1px solid var(--border)">
+<div style="font-family:'Sora',sans-serif;font-size:12px;font-weight:700;color:var(--text);margin-bottom:12px">&#9881;&#65039; WACC Breakdown — Weighted Average Cost of Capital</div>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px">
+<div style="text-align:center;padding:8px;border-radius:6px;background:rgba(59,130,246,.04)"><div style="font-size:9px;color:var(--text3)">Risk-Free Rate</div><div style="font-size:16px;font-weight:700;color:var(--blue)">${(riskFree*100).toFixed(1)}%</div></div>
+<div style="text-align:center;padding:8px;border-radius:6px;background:rgba(139,92,246,.04)"><div style="font-size:9px;color:var(--text3)">Beta (β)</div><div style="font-size:16px;font-weight:700;color:var(--purple)">${beta.toFixed(2)}</div></div>
+<div style="text-align:center;padding:8px;border-radius:6px;background:rgba(6,182,212,.04)"><div style="font-size:9px;color:var(--text3)">Cost of Equity</div><div style="font-size:16px;font-weight:700;color:var(--cyan)">${(costEquity*100).toFixed(1)}%</div></div>
+<div style="text-align:center;padding:8px;border-radius:6px;background:rgba(245,158,11,.04)"><div style="font-size:9px;color:var(--text3)">Cost of Debt (AT)</div><div style="font-size:16px;font-weight:700;color:var(--amber)">${(costDebt*(1-taxRate)*100).toFixed(1)}%</div></div>
+<div style="text-align:center;padding:8px;border-radius:6px;background:rgba(16,185,129,.06);border:1px solid rgba(16,185,129,.2)"><div style="font-size:9px;color:var(--text3)">WACC</div><div style="font-size:18px;font-weight:800;color:#10b981">${(wacc*100).toFixed(2)}%</div></div>
+<div style="text-align:center;padding:8px;border-radius:6px;background:rgba(239,68,68,.04)"><div style="font-size:9px;color:var(--text3)">D/E Ratio</div><div style="font-size:16px;font-weight:700;color:var(--red)">${de.toFixed(0)}%</div></div>
+</div>
+</div>
+
+<!-- FCF Projections Table -->
+<div style="margin-bottom:20px">
+<div style="font-family:'Sora',sans-serif;font-size:12px;font-weight:700;color:var(--text);margin-bottom:10px">&#128200; Free Cash Flow Projections (${projYears}-Year Model)</div>
+<div style="overflow-x:auto"><table class="pick-tbl">
+<tr><th>Year</th><th>FCF Growth</th><th>Projected FCF</th><th>Discount Factor</th><th>Present Value</th></tr>
+<tr style="background:rgba(59,130,246,.04)"><td style="font-weight:700;color:var(--text3)">Base</td><td>—</td><td style="font-weight:700;color:var(--text)">${_fn(baseFCF)}</td><td>1.000</td><td style="font-weight:700;color:var(--green)">${_fn(baseFCF)}</td></tr>`;
+
+projections.forEach(p=>{
+h+=`<tr><td style="font-weight:700;color:var(--cyan)">Year ${p.year}</td><td style="color:var(--green)">${p.growth.toFixed(1)}%</td><td style="font-weight:600">${_fn(p.fcf)}</td><td style="color:var(--text3)">${(1/Math.pow(1+wacc,p.year)).toFixed(3)}</td><td style="font-weight:700;color:var(--green)">${_fn(p.pv)}</td></tr>`;
+});
+
+h+=`<tr style="background:rgba(139,92,246,.06);border-top:2px solid var(--purple)"><td style="font-weight:800;color:var(--purple)">Terminal</td><td style="color:var(--text3)">${(terminalGrowth*100).toFixed(1)}% perpetuity</td><td style="font-weight:600">${_fn(termValue)}</td><td style="color:var(--text3)">${(1/Math.pow(1+wacc,projYears)).toFixed(3)}</td><td style="font-weight:800;color:var(--purple)">${_fn(termPV)}</td></tr>
+<tr style="background:rgba(16,185,129,.08);border-top:2px solid #10b981"><td colspan="4" style="font-weight:800;color:#10b981;font-size:12px">TOTAL EQUITY VALUE</td><td style="font-weight:800;color:#10b981;font-size:14px">${_fn(equityValue)}</td></tr>
+</table></div></div>
+
+<!-- Sensitivity Analysis -->
+<div style="margin-bottom:20px">
+<div style="font-family:'Sora',sans-serif;font-size:12px;font-weight:700;color:var(--text);margin-bottom:10px">&#127919; Sensitivity Analysis — Intrinsic Value per Share</div>
+<div style="overflow-x:auto"><table class="pick-tbl">
+<tr><th style="background:rgba(139,92,246,.08)">Growth \\ WACC →</th>${waccRange.map(w=>`<th style="color:${Math.abs(w-wacc)<0.001?'#10b981':'var(--text3)'};font-size:10px">${(w*100).toFixed(1)}%</th>`).join('')}</tr>
+${sensRows}
+</table></div>
+<div style="font-size:9px;color:var(--text3);margin-top:6px">Green = undervalued, Cyan = fair, Amber = slightly overvalued, Red = overvalued. Current WACC: ${(wacc*100).toFixed(2)}%, Terminal growth: ${(terminalGrowth*100).toFixed(1)}%</div>
+</div>
+
+<!-- Valuation Gauge -->
+<div style="padding:16px;border-radius:10px;background:linear-gradient(135deg,rgba(16,185,129,.04),rgba(59,130,246,.04));border:1px solid var(--border);margin-bottom:16px">
+<div style="font-family:'Sora',sans-serif;font-size:12px;font-weight:700;color:var(--text);margin-bottom:12px">&#128208; Price vs Intrinsic Value Range</div>
+<div style="position:relative;height:40px;background:linear-gradient(to right,#10b981 0%,#22d3ee 30%,#f59e0b 60%,#ef4444 100%);border-radius:20px;overflow:hidden">
+<div style="position:absolute;top:0;bottom:0;width:3px;background:#fff;left:${Math.min(95,Math.max(5,price/(intrinsicPrice*1.5||1)*50))}%;box-shadow:0 0 8px rgba(255,255,255,.8)"></div>
+</div>
+<div style="display:flex;justify-content:space-between;margin-top:4px;font-size:9px;color:var(--text3)">
+<span>Deep Value</span><span>Fair Value</span><span>Premium</span><span>Overvalued</span>
+</div>
+</div>
+
+<!-- Assumptions & Disclaimer -->
+<div style="padding:12px;border-radius:8px;background:rgba(245,158,11,.04);border:1px solid rgba(245,158,11,.15)">
+<div style="font-size:10px;font-weight:700;color:var(--amber);margin-bottom:6px">&#9888;&#65039; Model Assumptions & Limitations</div>
+<div style="font-size:9px;color:var(--text3);line-height:1.6">
+Risk-free rate: ${(riskFree*100).toFixed(1)}% (10Y govt bond) · Equity risk premium: ${(mktPremium*100)}% · Growth rate: ${(growthRate*100).toFixed(1)}% (avg of revenue + earnings growth) · Terminal growth: ${(terminalGrowth*100).toFixed(1)}% (GDP proxy) · Tax rate: ${(taxRate*100)}% · Projection period: ${projYears} years<br>
+<strong>DCF models are estimates, not predictions.</strong> Small changes in assumptions significantly impact intrinsic value. Use alongside relative valuation, technical analysis, and qualitative assessment. This is for educational purposes only — not investment advice.
+</div>
+</div>`;
+
+el.innerHTML=h;
+console.log('✅ DCF rendered: intrinsic='+sym+intrinsicPrice.toFixed(2)+', MOS='+marginOfSafety.toFixed(1)+'%');
+}
+
+// ═══════════════════════════════════════════════
+// ═══ EQUITY RESEARCH REPORT ═══
+// ═══════════════════════════════════════════════
+function renderEquityResearch(d,report,fundData){
+const el=document.getElementById('equityContent');
+if(!el||!d)return;
+const _sf=(v,def=0)=>{if(v===null||v===undefined||v==='N/A'||v==='')return def;const n=parseFloat(String(v).replace(/[,%]/g,''));return isNaN(n)?def:n};
+const sym=d.currency==='INR'?'₹':'$';
+const price=_sf(d.current_price);
+const mcap=_sf(d.market_cap);
+const pe=_sf(d.pe_ratio);
+const pb=_sf(d.price_to_book);
+const pm=_sf(d.profit_margin);
+const om=_sf(d.operating_margin);
+const roe=_sf(d.roe);
+const de=_sf(d.debt_to_equity);
+const beta=_sf(d.beta,1);
+const eg=_sf(d.earnings_growth);
+const rg=_sf(d.revenue_growth);
+const divY=_sf(d.dividend_yield);
+const w52h=_sf(d.week52_high,price*1.2);
+const w52l=_sf(d.week52_low,price*0.8);
+const w52pos=w52h!==w52l?((price-w52l)/(w52h-w52l)*100):50;
+const sector=d.sector||'Unknown';
+const industry=d.industry||'Unknown';
+const name=d.company_name||d.ticker||'Company';
+const ticker=d.ticker||'';
+const today=new Date().toLocaleDateString('en-IN',{year:'numeric',month:'long',day:'numeric'});
+const _fn=(n)=>{if(!n||n===0)return'N/A';const a=Math.abs(n);if(a>=1e12)return sym+(n/1e12).toFixed(2)+'T';if(a>=1e9)return sym+(n/1e9).toFixed(2)+'B';if(a>=1e7)return sym+(n/1e7).toFixed(2)+'Cr';if(a>=1e5)return sym+(n/1e5).toFixed(2)+'L';return sym+n.toLocaleString()};
+const sAvgPE=_sf(d.sector_avg_pe,20);
+
+// Rating logic
+let rating='HOLD',ratingColor='var(--amber)',ratingBg='rgba(245,158,11,.1)';
+const score=_sf(d.verdict_score,50);
+if(score>=70){rating='BUY';ratingColor='var(--green)';ratingBg='rgba(16,185,129,.1)'}
+else if(score>=55){rating='ACCUMULATE';ratingColor='#22d3ee';ratingBg='rgba(6,182,212,.08)'}
+else if(score<=30){rating='SELL';ratingColor='var(--red)';ratingBg='rgba(239,68,68,.1)'}
+else if(score<=40){rating='REDUCE';ratingColor='#f97316';ratingBg='rgba(249,115,22,.08)'}
+
+// Target price from verdict
+const targetUp=price*1.15;
+const targetDown=price*0.88;
+const target12m=score>=60?targetUp:score>=45?price*1.05:targetDown;
+
+// Risk level
+const riskScore=Math.round((de>200?30:de>100?20:10)+(beta>1.5?25:beta>1?15:5)+(pm<0?20:pm<5?10:0));
+const riskLevel=riskScore>=50?'HIGH':riskScore>=25?'MODERATE':'LOW';
+const riskColor=riskScore>=50?'var(--red)':riskScore>=25?'var(--amber)':'var(--green)';
+
+// Peers
+let peerRows='';
+if(d.peers&&d.peers.length>0){
+d.peers.forEach((p,i)=>{
+peerRows+=`<tr><td style="font-weight:600;font-size:11px">${p.name||p.ticker}</td><td style="font-family:var(--mono);font-size:11px">${p.ticker}</td><td style="color:var(--cyan);font-weight:700">${p.pe||'N/A'}</td><td>${p.margin||'N/A'}</td><td>${p.growth||'N/A'}</td></tr>`;
+});
+}
+
+let h=`
+<!-- RESEARCH REPORT HEADER -->
+<div style="background:linear-gradient(135deg,#0a0e27 0%,#1a1f3a 50%,#0d1117 100%);border-radius:14px;padding:24px 28px;margin-bottom:20px;position:relative;overflow:hidden">
+<div style="position:absolute;top:0;right:0;width:200px;height:200px;background:radial-gradient(circle,rgba(217,119,6,.15),transparent 70%)"></div>
+<div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:16px;position:relative">
+<div>
+<div style="font-size:9px;letter-spacing:2px;color:rgba(255,255,255,.4);margin-bottom:4px">CELESYS AI · EQUITY RESEARCH</div>
+<div style="font-size:24px;font-weight:800;color:#fff;font-family:'Sora',sans-serif;margin-bottom:2px">${name}</div>
+<div style="font-size:13px;color:rgba(255,255,255,.6)">${ticker} · ${sector} · ${industry}</div>
+<div style="font-size:10px;color:rgba(255,255,255,.35);margin-top:4px">${today}</div>
+</div>
+<div style="text-align:center">
+<div style="font-size:10px;letter-spacing:1px;color:rgba(255,255,255,.4);margin-bottom:4px">RATING</div>
+<div style="display:inline-block;padding:8px 24px;border-radius:8px;background:${ratingBg};border:2px solid ${ratingColor}">
+<div style="font-size:22px;font-weight:800;color:${ratingColor};letter-spacing:2px">${rating}</div>
+</div>
+<div style="font-size:11px;color:rgba(255,255,255,.5);margin-top:6px">Target: ${sym}${target12m.toFixed(0)} (${((target12m-price)/price*100).toFixed(1)}%)</div>
+</div>
+</div>
+<!-- Price Bar -->
+<div style="display:flex;gap:20px;margin-top:16px;flex-wrap:wrap">
+<div style="text-align:center"><div style="font-size:9px;color:rgba(255,255,255,.35)">CMP</div><div style="font-size:20px;font-weight:800;color:#fff;font-family:var(--mono)">${sym}${price.toFixed(2)}</div></div>
+<div style="text-align:center"><div style="font-size:9px;color:rgba(255,255,255,.35)">MARKET CAP</div><div style="font-size:16px;font-weight:700;color:#22d3ee">${_fn(mcap)}</div></div>
+<div style="text-align:center"><div style="font-size:9px;color:rgba(255,255,255,.35)">P/E</div><div style="font-size:16px;font-weight:700;color:#f59e0b">${pe.toFixed(1)}x</div></div>
+<div style="text-align:center"><div style="font-size:9px;color:rgba(255,255,255,.35)">ROE</div><div style="font-size:16px;font-weight:700;color:#10b981">${roe.toFixed(1)}%</div></div>
+<div style="text-align:center"><div style="font-size:9px;color:rgba(255,255,255,.35)">BETA</div><div style="font-size:16px;font-weight:700;color:${beta>1.3?'#ef4444':'#10b981'}">${beta.toFixed(2)}</div></div>
+<div style="text-align:center"><div style="font-size:9px;color:rgba(255,255,255,.35)">RISK</div><div style="font-size:14px;font-weight:700;color:${riskColor};padding:2px 10px;border-radius:4px;background:rgba(255,255,255,.05)">${riskLevel}</div></div>
+</div>
+</div>
+
+<!-- EXECUTIVE SUMMARY -->
+<div style="margin-bottom:20px;padding:18px;border-radius:10px;border-left:4px solid #d97706;background:rgba(217,119,6,.04)">
+<div style="font-family:'Sora',sans-serif;font-size:13px;font-weight:700;color:#d97706;margin-bottom:8px">&#128221; Executive Summary</div>
+<p style="font-size:12px;color:var(--text);line-height:1.8;margin:0">
+${name} (${ticker}) is a ${_fn(mcap)} market cap company in the ${industry} sector, currently trading at ${sym}${price.toFixed(2)}. 
+${pe>0&&pe<sAvgPE*0.85?'The stock appears undervalued at '+pe.toFixed(1)+'x P/E versus the sector average of '+sAvgPE.toFixed(1)+'x, suggesting a potential re-rating opportunity.':pe>sAvgPE*1.15?'Trading at a premium '+pe.toFixed(1)+'x P/E versus sector average '+sAvgPE.toFixed(1)+'x, the stock prices in strong growth expectations.':'At '+pe.toFixed(1)+'x P/E, the stock is fairly valued relative to its sector average of '+sAvgPE.toFixed(1)+'x.'}
+${pm>15?'Strong profitability with '+pm.toFixed(1)+'% net margins provides a competitive moat.':pm>5?'Moderate profitability at '+pm.toFixed(1)+'% net margins with room for expansion.':'Thin margins of '+pm.toFixed(1)+'% suggest competitive pressure or investment phase.'}
+${roe>15?'Return on equity of '+roe.toFixed(1)+'% demonstrates efficient capital allocation.':''}
+${eg>10?'Earnings growth of '+eg.toFixed(1)+'% signals accelerating momentum.':''}
+We rate ${name} <strong style="color:${ratingColor}">${rating}</strong> with a 12-month target of ${sym}${target12m.toFixed(0)} (${((target12m-price)/price*100).toFixed(1)}% ${target12m>price?'upside':'downside'}).
+</p>
+</div>
+
+<!-- FINANCIAL HIGHLIGHTS -->
+<div style="margin-bottom:20px">
+<div style="font-family:'Sora',sans-serif;font-size:13px;font-weight:700;color:var(--text);margin-bottom:12px">&#128202; Financial Snapshot</div>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:8px">
+${[
+{l:'Revenue',v:_fn(_sf(d.revenue)),c:'var(--blue)'},
+{l:'Market Cap',v:_fn(mcap),c:'var(--cyan)'},
+{l:'P/E Ratio',v:pe>0?pe.toFixed(1)+'x':'N/A',c:pe<sAvgPE?'var(--green)':'var(--amber)'},
+{l:'P/B Ratio',v:pb>0?pb.toFixed(2)+'x':'N/A',c:pb<3?'var(--green)':'var(--amber)'},
+{l:'Net Margin',v:pm.toFixed(1)+'%',c:pm>15?'var(--green)':pm>5?'var(--amber)':'var(--red)'},
+{l:'Operating Margin',v:om.toFixed(1)+'%',c:om>20?'var(--green)':'var(--amber)'},
+{l:'ROE',v:roe.toFixed(1)+'%',c:roe>15?'var(--green)':'var(--amber)'},
+{l:'Debt/Equity',v:de.toFixed(0)+'%',c:de<50?'var(--green)':de<150?'var(--amber)':'var(--red)'},
+{l:'Earnings Growth',v:eg!==0?eg.toFixed(1)+'%':'N/A',c:eg>10?'var(--green)':eg>0?'var(--amber)':'var(--red)'},
+{l:'Revenue Growth',v:rg!==0?rg.toFixed(1)+'%':'N/A',c:rg>10?'var(--green)':'var(--amber)'},
+{l:'Dividend Yield',v:divY>0?divY.toFixed(2)+'%':'—',c:divY>2?'var(--green)':'var(--text3)'},
+{l:'Beta',v:beta.toFixed(2),c:beta>1.3?'var(--red)':beta>0.8?'var(--amber)':'var(--green)'}
+].map(m=>`<div style="padding:10px 12px;border-radius:8px;background:rgba(0,47,108,.02);border:1px solid var(--border);display:flex;justify-content:space-between;align-items:center"><span style="font-size:10px;color:var(--text3)">${m.l}</span><span style="font-size:14px;font-weight:700;color:${m.c};font-family:var(--mono)">${m.v}</span></div>`).join('')}
+</div>
+</div>
+
+<!-- 52-WEEK POSITION -->
+<div style="margin-bottom:20px;padding:14px;border-radius:10px;background:rgba(0,47,108,.02);border:1px solid var(--border)">
+<div style="font-family:'Sora',sans-serif;font-size:11px;font-weight:700;color:var(--text);margin-bottom:10px">&#128200; 52-Week Price Position</div>
+<div style="display:flex;align-items:center;gap:12px;margin-bottom:6px">
+<span style="font-size:10px;color:var(--red);font-weight:700;min-width:70px">${sym}${w52l.toFixed(0)}</span>
+<div style="flex:1;height:8px;background:linear-gradient(to right,var(--red),var(--amber),var(--green));border-radius:4px;position:relative">
+<div style="position:absolute;top:-4px;width:16px;height:16px;border-radius:50%;background:#fff;border:3px solid var(--blue);left:${Math.min(95,Math.max(5,w52pos))}%;transform:translateX(-50%)"></div>
+</div>
+<span style="font-size:10px;color:var(--green);font-weight:700;min-width:70px;text-align:right">${sym}${w52h.toFixed(0)}</span>
+</div>
+<div style="text-align:center;font-size:10px;color:var(--text3)">Current: ${sym}${price.toFixed(2)} (${w52pos.toFixed(0)}% of range)</div>
+</div>
+
+<!-- VALUATION COMPARISON -->
+<div style="margin-bottom:20px">
+<div style="font-family:'Sora',sans-serif;font-size:13px;font-weight:700;color:var(--text);margin-bottom:10px">&#128176; Valuation vs Sector</div>
+<div style="overflow-x:auto"><table class="pick-tbl">
+<tr><th>Metric</th><th style="color:var(--cyan)">${name}</th><th>Sector Avg</th><th>Assessment</th></tr>
+<tr><td>P/E Ratio</td><td style="font-weight:700;color:var(--cyan)">${pe>0?pe.toFixed(1)+'x':'N/A'}</td><td>${sAvgPE.toFixed(1)}x</td><td style="color:${pe<sAvgPE*0.85?'var(--green)':pe>sAvgPE*1.15?'var(--red)':'var(--amber)'};font-weight:700">${pe<sAvgPE*0.85?'Undervalued':pe>sAvgPE*1.15?'Premium':'Fair Value'}</td></tr>
+<tr><td>Net Margin</td><td style="font-weight:700;color:var(--cyan)">${pm.toFixed(1)}%</td><td>~10-15%</td><td style="color:${pm>15?'var(--green)':pm>5?'var(--amber)':'var(--red)'};font-weight:700">${pm>15?'Superior':pm>5?'Adequate':'Below Avg'}</td></tr>
+<tr><td>ROE</td><td style="font-weight:700;color:var(--cyan)">${roe.toFixed(1)}%</td><td>~12-15%</td><td style="color:${roe>15?'var(--green)':roe>8?'var(--amber)':'var(--red)'};font-weight:700">${roe>15?'Excellent':roe>8?'Adequate':'Needs Work'}</td></tr>
+<tr><td>Debt/Equity</td><td style="font-weight:700;color:var(--cyan)">${de.toFixed(0)}%</td><td>~50-100%</td><td style="color:${de<50?'var(--green)':de<150?'var(--amber)':'var(--red)'};font-weight:700">${de<50?'Conservative':de<150?'Moderate':'Leveraged'}</td></tr>
+</table></div>
+</div>
+
+${peerRows?`
+<!-- PEER COMPARISON -->
+<div style="margin-bottom:20px">
+<div style="font-family:'Sora',sans-serif;font-size:13px;font-weight:700;color:var(--text);margin-bottom:10px">&#127942; Peer Comparison</div>
+<div style="overflow-x:auto"><table class="pick-tbl">
+<tr><th>Company</th><th>Ticker</th><th>P/E</th><th>Margin</th><th>Growth</th></tr>
+<tr style="background:rgba(6,182,212,.06)"><td style="font-weight:700;color:var(--cyan)">${name}</td><td>${ticker}</td><td style="font-weight:700;color:var(--cyan)">${pe>0?pe.toFixed(1)+'x':'N/A'}</td><td>${pm.toFixed(1)}%</td><td>${eg!==0?eg.toFixed(1)+'%':'N/A'}</td></tr>
+${peerRows}
+</table></div>
+</div>`:''}
+
+<!-- RISK MATRIX -->
+<div style="margin-bottom:20px">
+<div style="font-family:'Sora',sans-serif;font-size:13px;font-weight:700;color:var(--text);margin-bottom:12px">&#9888;&#65039; Risk Assessment Matrix</div>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px">
+${[
+{r:'Market Risk',s:beta>1.3?'HIGH':beta>0.8?'MODERATE':'LOW',d:'Beta of '+beta.toFixed(2)+' — '+(beta>1.3?'significantly more volatile than market':beta>0.8?'moves roughly with market':'less volatile than market'),c:beta>1.3?'var(--red)':beta>0.8?'var(--amber)':'var(--green)'},
+{r:'Leverage Risk',s:de>150?'HIGH':de>50?'MODERATE':'LOW',d:'D/E of '+de.toFixed(0)+'% — '+(de>150?'high debt increases financial risk':de>50?'moderate leverage is manageable':'conservative balance sheet'),c:de>150?'var(--red)':de>50?'var(--amber)':'var(--green)'},
+{r:'Profitability Risk',s:pm<5?'HIGH':pm<15?'MODERATE':'LOW',d:'Net margin of '+pm.toFixed(1)+'% — '+(pm<5?'thin margins leave little room for error':pm<15?'adequate but not exceptional':'strong margins provide buffer'),c:pm<5?'var(--red)':pm<15?'var(--amber)':'var(--green)'},
+{r:'Valuation Risk',s:pe>sAvgPE*1.5?'HIGH':pe>sAvgPE?'MODERATE':'LOW',d:'P/E of '+pe.toFixed(1)+'x vs sector '+sAvgPE.toFixed(1)+'x — '+(pe>sAvgPE*1.5?'expensive — correction risk exists':pe>sAvgPE?'slight premium, needs growth delivery':'attractively priced'),c:pe>sAvgPE*1.5?'var(--red)':pe>sAvgPE?'var(--amber)':'var(--green)'}
+].map(r=>`<div style="padding:12px;border-radius:8px;border-left:3px solid ${r.c};background:rgba(0,47,108,.02)"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px"><span style="font-size:11px;font-weight:700;color:var(--text)">${r.r}</span><span style="font-size:9px;font-weight:700;color:${r.c};padding:2px 8px;border-radius:4px;background:rgba(255,255,255,.03);border:1px solid ${r.c}">${r.s}</span></div><div style="font-size:9px;color:var(--text3);line-height:1.5">${r.d}</div></div>`).join('')}
+</div>
+</div>
+
+<!-- INVESTMENT RECOMMENDATION -->
+<div style="padding:20px;border-radius:12px;background:linear-gradient(135deg,${ratingBg},rgba(0,0,0,0));border:2px solid ${ratingColor};margin-bottom:16px">
+<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:12px">
+<div>
+<div style="font-size:10px;letter-spacing:1px;color:var(--text3)">INVESTMENT RECOMMENDATION</div>
+<div style="font-size:28px;font-weight:800;color:${ratingColor};letter-spacing:2px">${rating}</div>
+</div>
+<div style="text-align:right">
+<div style="font-size:10px;color:var(--text3)">12-Month Target</div>
+<div style="font-size:24px;font-weight:800;color:${ratingColor};font-family:var(--mono)">${sym}${target12m.toFixed(0)}</div>
+<div style="font-size:11px;color:${target12m>price?'var(--green)':'var(--red)'}">${((target12m-price)/price*100).toFixed(1)}% ${target12m>price?'upside ▲':'downside ▼'}</div>
+</div>
+</div>
+<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;text-align:center">
+<div style="padding:8px;border-radius:6px;background:rgba(16,185,129,.06)"><div style="font-size:9px;color:var(--text3)">Bull Case</div><div style="font-size:14px;font-weight:700;color:var(--green)">${sym}${(price*1.25).toFixed(0)}</div></div>
+<div style="padding:8px;border-radius:6px;background:rgba(245,158,11,.06)"><div style="font-size:9px;color:var(--text3)">Base Case</div><div style="font-size:14px;font-weight:700;color:var(--amber)">${sym}${target12m.toFixed(0)}</div></div>
+<div style="padding:8px;border-radius:6px;background:rgba(239,68,68,.06)"><div style="font-size:9px;color:var(--text3)">Bear Case</div><div style="font-size:14px;font-weight:700;color:var(--red)">${sym}${(price*0.82).toFixed(0)}</div></div>
+</div>
+</div>
+
+<!-- DISCLAIMER -->
+<div style="padding:10px 14px;border-radius:8px;background:rgba(245,158,11,.03);border:1px solid rgba(245,158,11,.1)">
+<div style="font-size:9px;color:var(--text3);line-height:1.6">
+<strong style="color:var(--amber)">&#128712; Disclaimer:</strong> This equity research report is generated by Celesys AI for <strong>educational and informational purposes only</strong>. It does not constitute investment advice, a solicitation, or an offer to buy or sell any securities. All data is sourced from public financial APIs and may contain inaccuracies. Past performance does not guarantee future results. Always consult a SEBI-registered investment advisor before making financial decisions. Celesys AI is not registered with SEBI or any regulatory body.
+</div>
+</div>`;
+
+el.innerHTML=h;
+console.log('✅ Equity Research rendered:',name,rating,sym+target12m.toFixed(0));
+}
+
+// ═══════════════════════════════════════════════
 const CONVICTION_DATA={
 india:{
   buy:[
