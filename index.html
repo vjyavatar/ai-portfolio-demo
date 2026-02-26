@@ -4091,6 +4091,10 @@ const today=new Date().toLocaleDateString('en-IN',{year:'numeric',month:'long',d
 const isIndian=d.currency==='INR';
 const _fn=(n)=>{if(!n||n===0)return'N/A';const a=Math.abs(n);const s=n<0?'-':'';if(a>=1e12)return s+sym+(a/1e12).toFixed(2)+'T';if(a>=1e9)return s+sym+(a/1e9).toFixed(2)+'B';if(a>=1e7&&isIndian)return s+sym+(a/1e7).toFixed(2)+'Cr';if(a>=1e5&&isIndian)return s+sym+(a/1e5).toFixed(2)+'L';return s+sym+a.toLocaleString(undefined,{maximumFractionDigits:0})};
 const _pct=(n)=>n!==0&&!isNaN(n)?(n>=0?'+':'')+n.toFixed(1)+'%':'N/A';
+const sma20=_sf(d.sma_20);
+const sma50=_sf(d.sma_50);
+const sma200=_sf(d.sma_200);
+const shares=mcap>0&&price>0?Math.round(mcap/price):0;
 
 // Rating logic
 let rating='HOLD',ratingColor='var(--amber)',ratingBg='rgba(245,158,11,.1)';
