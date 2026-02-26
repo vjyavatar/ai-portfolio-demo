@@ -797,6 +797,7 @@ footer{position:relative;z-index:1;margin-top:32px;background:#002f6c;border-top
 <button class="tab-btn" onclick="switchTab('next')" id="tabBtnNext" data-color="cyan" data-tip="Upcoming catalysts, bull/bear/base scenarios"><span class="tab-icon">&#128302;</span> Forecast</button>
 <button class="tab-btn" onclick="switchTab('dcf')" id="tabBtnDCF" data-color="emerald" data-tip="Discounted Cash Flow intrinsic valuation"><span class="tab-icon">&#128178;</span> DCF</button>
 <button class="tab-btn" onclick="switchTab('equity')" id="tabBtnEquity" data-color="gold" data-tip="Professional equity research report"><span class="tab-icon">&#128220;</span> Research</button>
+<button class="tab-btn" onclick="switchTab('indices')" id="tabBtnIndices" data-color="teal" data-tip="Deep research on major US & India indices"><span class="tab-icon">&#127760;</span> Indices</button>
 <button class="tab-btn" onclick="switchTab('gems')" id="tabBtnGems" data-color="amber" data-tip="Sector-specific small-cap picks" style="display:none"><span class="tab-icon">&#11088;</span> Gems</button>
 <button class="tab-btn" onclick="switchTab('picks')" id="tabBtnPicks" data-color="teal" data-tip="Top 5 Buy, Sell, Accumulate stocks by conviction" style="display:none"><span class="tab-icon">&#127942;</span> Picks</button>
 <button class="tab-btn" onclick="switchTab('funds')" id="tabBtnFunds" data-color="blue" data-tip="Top ETFs & mutual funds with 25%+ CAGR" style="display:none"><span class="tab-icon">&#128176;</span> ETF</button>
@@ -2074,6 +2075,12 @@ ${(()=>{const bt=parseFloat(d.beta)||1;return bt>1.5?' Expect <strong>bigger dai
 <div id="equityContent"><div class="ic" style="text-align:center;background:rgba(217,119,6,.04)"><p style="color:var(--text3)">&#9203; Generating research report...</p></div></div>
 </div></div>
 
+<!-- ═══ TAB: INDEX RESEARCH ═══ -->
+<div class="sc" data-tab="indices" style="border-left:3px solid #06b6d4"><div class="sh"><div class="si" style="background:rgba(6,182,212,.1)">&#127760;</div><div class="st" style="color:#06b6d4" id="sec-indices">Global Index Research — India &amp; USA</div></div>
+<div class="sbody">
+<div id="indicesContent"><div class="ic" style="text-align:center;background:rgba(6,182,212,.04)"><p style="color:var(--text3)">&#9203; Loading index research...</p></div></div>
+</div></div>
+
 <div class="sc" data-tab="gems" style="border-left:3px solid var(--amber)"><div class="sh"><div class="si" style="background:rgba(245,158,11,.1)">⭐</div><div class="st" style="color:var(--amber)" id="sec-gems">Sector Gems — 10x Small-Caps in <span id="gemsSectorName"></span></div></div>
 <div class="sbody">
 <div style="padding:10px 14px;border-radius:8px;background:linear-gradient(135deg,rgba(245,158,11,.06),rgba(212,138,0,.03));border:1px solid rgba(245,158,11,.15);margin-bottom:14px">
@@ -2207,6 +2214,7 @@ try{generateSmallCapRecommendations(d)}catch(e){console.warn('generateSmallCapRe
 try{renderConviction()}catch(e){console.warn('renderConviction error:',e)}
 try{renderDCF(d)}catch(e){console.warn('renderDCF error:',e)}
 try{renderEquityResearch(d,report,fundData)}catch(e){console.warn('renderEquityResearch error:',e)}
+try{renderIndices(d)}catch(e){console.warn('renderIndices error:',e)}
 // Auto-open Quick Intel tab
 switchTab('quick');
 // Refresh watermark with user email
@@ -2242,7 +2250,7 @@ if(!s.dataset.conditional)s.style.display='block';
 document.querySelectorAll('.sub-nav[data-tab="'+tab+'"]').forEach(s=>{s.style.display='flex'});
 
 // 3) Activate button
-const btnMap={quick:'tabBtnQuick',deep:'tabBtnDeep',mgmt:'tabBtnMgmt',next:'tabBtnNext',dcf:'tabBtnDCF',equity:'tabBtnEquity',gems:'tabBtnGems',picks:'tabBtnPicks',funds:'tabBtnFunds',trades:'tabBtnTrades'};
+const btnMap={quick:'tabBtnQuick',deep:'tabBtnDeep',mgmt:'tabBtnMgmt',next:'tabBtnNext',dcf:'tabBtnDCF',equity:'tabBtnEquity',indices:'tabBtnIndices',gems:'tabBtnGems',picks:'tabBtnPicks',funds:'tabBtnFunds',trades:'tabBtnTrades'};
 if(btnMap[tab]){const btn=document.getElementById(btnMap[tab]);if(btn)btn.classList.add('active')}
 
 // 4) Scroll to top of new tab content — scroll-margin-top:140px on .sc handles sticky offset
@@ -2262,6 +2270,12 @@ _livePriceCache={};
 const fg=document.querySelector('.sc[data-tab="funds"]');
 if(fg)fetchFundNAVs(fg);
 console.log('🔄 Funds: refreshing live NAVs');
+}
+if(tab==='indices'){
+const activeGeo=document.querySelector('.idx-geo-btn.active');
+const geo=activeGeo&&activeGeo.textContent.includes('USA')?'usa':'india';
+fetchIndexPrices(geo);
+console.log('🔄 Indices: refreshing prices');
 }
 
 console.log('switchTab:',tab,'→ done');
@@ -3845,6 +3859,10 @@ ${[
 <div style="font-size:24px;font-weight:900;color:#10b981;margin-top:4px">${(wacc*100).toFixed(2)}%</div>
 </div>
 </div>
+<div style="margin-top:12px;padding:12px;border-radius:8px;background:rgba(16,185,129,.04);border-left:3px solid #10b981">
+<div style="font-size:11px;font-weight:700;color:#10b981">💡 In Simple Terms:</div>
+<div style="font-size:10px;color:var(--text2);margin-top:4px;line-height:1.7">${wacc<0.10?'A WACC of '+(wacc*100).toFixed(1)+'% is LOW — the company has cheap access to capital. This means even modest business returns create shareholder value. Think of it like a home loan at a low interest rate — easier to profit from.':wacc<0.14?'A WACC of '+(wacc*100).toFixed(1)+'% is MODERATE — the company needs to earn decent returns to justify its cost of capital. This is typical for most established companies.':'A WACC of '+(wacc*100).toFixed(1)+'% is HIGH — the company must earn exceptional returns to create value for shareholders. High WACC usually means high risk (volatile stock or heavy debt). Like a high-interest credit card — the business needs to work hard just to break even.'}</div>
+</div>
 
 <!-- ═══ SECTION 3: FCF ANALYSIS ═══ -->
 <div style="margin-bottom:20px;padding:18px;border-radius:12px;background:rgba(59,130,246,.03);border:1px solid var(--border)">
@@ -3866,6 +3884,11 @@ ${[
 </div>
 </div>
 
+<div style="padding:12px;border-radius:8px;background:rgba(59,130,246,.04);border-left:3px solid var(--blue);margin-bottom:16px">
+<div style="font-size:11px;font-weight:700;color:var(--blue)">💡 In Simple Terms — What is Free Cash Flow?</div>
+<div style="font-size:10px;color:var(--text2);margin-top:4px;line-height:1.7">${fcfYield>8?'This company converts '+fcfYield.toFixed(1)+'% of its market value into FREE CASH every year. Imagine owning a rental property that gives you '+fcfYield.toFixed(0)+'% of its value in rent annually. Even if the stock price stays flat, the cash generation alone is compelling.':fcfYield>4?'The company generates '+fcfYield.toFixed(1)+'% of its value in free cash. Like a fixed deposit that also has growth potential — the business produces enough surplus cash to fund dividends, buybacks, or expansion.':fcfYield>0?'Free cash flow yield of '+fcfYield.toFixed(1)+'% is thin. The company reinvests most of what it earns. Common in high-growth companies, but means less margin for error if growth slows.':'The company has NEGATIVE free cash flow — spending more than it earns. Not always bad (Amazon did this for years while building infrastructure), but risky if growth does not materialize.'}</div>
+</div>
+
 <!-- ═══ SECTION 4: GROWTH ASSUMPTIONS ═══ -->
 <div style="margin-bottom:20px;padding:18px;border-radius:12px;background:rgba(245,158,11,.03);border:1px solid var(--border)">
 <div style="font-family:'Sora',sans-serif;font-size:13px;font-weight:700;color:var(--text);margin-bottom:6px">📈 Growth Rate Analysis — How Fast Can the Company Grow?</div>
@@ -3875,6 +3898,11 @@ ${[
 <div style="padding:14px;border-radius:10px;background:rgba(139,92,246,.04);border:1px solid rgba(139,92,246,.15)"><div style="font-size:10px;color:var(--text3);margin-bottom:4px">🔄 Sustainable Growth (30% weight)</div><div style="font-size:20px;font-weight:800;color:var(--purple)">${_pct(sustainGrowth*100)}</div><div style="font-size:9px;color:var(--text3);margin-top:4px">ROE × (1 - Payout Ratio) = ${roe.toFixed(1)}% × ${(100-payout).toFixed(0)}%</div></div>
 <div style="padding:14px;border-radius:10px;background:rgba(16,185,129,.06);border:2px solid rgba(16,185,129,.3)"><div style="font-size:10px;color:var(--text3);margin-bottom:4px">🎯 Blended Growth Used in Model</div><div style="font-size:24px;font-weight:900;color:#10b981">${_pct(blendedGrowth*100)}</div><div style="font-size:9px;color:var(--text3);margin-top:4px">Years 1-5 at full rate, then fades to ${(terminalGrowth*100).toFixed(1)}% by Year 10</div></div>
 </div>
+</div>
+
+<div style="padding:12px;border-radius:8px;background:rgba(245,158,11,.04);border-left:3px solid var(--amber);margin-bottom:16px">
+<div style="font-size:11px;font-weight:700;color:var(--amber)">💡 Growth Rate in Plain English:</div>
+<div style="font-size:10px;color:var(--text2);margin-top:4px;line-height:1.8">${blendedGrowth>0.20?'A blended growth rate of '+(blendedGrowth*100).toFixed(0)+'% is VERY HIGH — the company is expected to grow its cash flows aggressively. Think of it like a startup doubling revenue year after year. This is exciting but risky — if growth slows even slightly, the intrinsic value drops significantly. High growth also fades faster in our model (we assume no company can grow faster than the economy forever), so Years 6-10 will show declining growth rates.':blendedGrowth>0.10?'A blended growth rate of '+(blendedGrowth*100).toFixed(0)+'% is SOLID — the company is expected to grow meaningfully above inflation. Like a well-run business that keeps gaining market share. This rate is sustainable for many established companies and gives good confidence in the projections.':blendedGrowth>0.05?'A blended growth rate of '+(blendedGrowth*100).toFixed(0)+'% is MODEST — the company is growing, but slowly. Think of a mature business in a stable industry. Returns will come primarily from current earnings rather than future growth. Good for income investors, less exciting for growth seekers.':'Growth below 5% suggests the company is BARELY GROWING. This could mean a mature industry, competitive pressures, or cyclical downturn. The DCF value will be heavily driven by current cash flows, not future expansion.'}<br><br><strong>Why we blend 3 methods:</strong> Historical growth shows the track record. Sustainable growth (ROE × retention) shows theoretical capacity. We blend them because no single method is reliable alone — a company with 30% historical growth but 12% sustainable growth is likely to slow down.</div>
 </div>
 
 <!-- ═══ SECTION 5: 10-YEAR PROJECTION TABLE ═══ -->
@@ -3897,6 +3925,10 @@ h+=`<tr style="background:rgba(139,92,246,.06);border-top:2px solid var(--purple
 <tr style="background:rgba(16,185,129,.1);border-top:2px solid #10b981"><td colspan="2" style="font-weight:900;color:#10b981;font-size:12px">Enterprise Value</td><td colspan="4" style="font-weight:900;color:#10b981;font-size:14px">${_fn(enterpriseValue)}</td></tr>
 </table></div>
 </div>
+<div style="padding:12px;border-radius:8px;background:rgba(16,185,129,.04);border-left:3px solid #10b981;margin-top:10px">
+<div style="font-size:11px;font-weight:700;color:#10b981">💡 Reading This Table:</div>
+<div style="font-size:10px;color:var(--text2);margin-top:4px;line-height:1.7">Each row shows what the company is expected to earn in that year, then "discounts" it back to today's value (because ₹100 today is worth more than ₹100 in 5 years). The growth rate ${blendedGrowth>0.15?'starts high at '+(blendedGrowth*100).toFixed(0)+'% then fades — because no company can grow faster than the entire economy forever.':'is moderate at '+(blendedGrowth*100).toFixed(0)+'% and fades gradually.'} The Terminal Value (${termPct.toFixed(0)}% of total) represents ALL cash flows beyond Year ${projYears} — ${termPct>75?'this is quite high, meaning most of the value depends on very long-term assumptions. Be skeptical.':'a reasonable split between near-term and long-term value.'}</div>
+</div>
 
 <!-- ═══ SECTION 6: BRIDGE TO EQUITY VALUE ═══ -->
 <div style="margin-bottom:20px;padding:16px;border-radius:12px;background:rgba(0,47,108,.03);border:1px solid var(--border)">
@@ -3910,6 +3942,10 @@ h+=`<tr style="background:rgba(139,92,246,.06);border-top:2px solid var(--purple
 <div style="display:flex;justify-content:space-between;padding:10px 14px;border-radius:6px;background:rgba(16,185,129,.12);border:2px solid #10b981"><span style="font-size:13px;font-weight:800;color:#10b981">= Intrinsic Value per Share</span><span style="font-size:18px;font-weight:900;color:#10b981">${sym}${intrinsicPrice.toFixed(2)}</span></div>
 </div>
 </div>
+<div style="padding:12px;border-radius:8px;background:rgba(16,185,129,.04);border-left:3px solid #10b981;margin-top:10px">
+<div style="font-size:11px;font-weight:700;color:#10b981">💡 In Simple Terms:</div>
+<div style="font-size:10px;color:var(--text2);margin-top:4px;line-height:1.7">Think of Enterprise Value as the total price tag of the entire business. But you don't want the debt — so we subtract it. And the cash on hand is a bonus — so we add it. What's left is the Equity Value — the true worth belonging to shareholders. Divided by the number of shares, that's YOUR fair price per share: <strong style="color:#10b981">${sym}${intrinsicPrice.toFixed(2)}</strong>. ${marginOfSafety>=15?'Since the market is charging only '+sym+price.toFixed(0)+', you\'re getting a bargain.':marginOfSafety>=-5?'The market price of '+sym+price.toFixed(0)+' is close to this — fair deal.':'The market is charging '+sym+price.toFixed(0)+' which is MORE than our calculated value — you\'d be overpaying.'}</div>
+</div>
 
 <!-- ═══ SECTION 7: SENSITIVITY ANALYSIS ═══ -->
 <div style="margin-bottom:20px">
@@ -3920,6 +3956,10 @@ h+=`<tr style="background:rgba(139,92,246,.06);border-top:2px solid var(--purple
 ${sensRows}
 </table></div>
 <div style="font-size:9px;color:var(--text3);margin-top:6px">★ = current base case assumption. CMP: ${sym}${price.toFixed(0)}</div>
+<div style="padding:12px;border-radius:8px;background:rgba(139,92,246,.04);border-left:3px solid var(--purple);margin-top:10px">
+<div style="font-size:11px;font-weight:700;color:var(--purple)">💡 How to Read This:</div>
+<div style="font-size:10px;color:var(--text2);margin-top:4px;line-height:1.7">This table answers: "What if I'm wrong?" Each cell shows the fair value under different assumptions. The ★ cell is our base case. <strong>If most cells are GREEN (above current price)</strong>, the stock looks undervalued even with pessimistic assumptions — that's a strong signal. <strong>If most cells are RED</strong>, you need very optimistic assumptions to justify the price — that's risky. The wider the range of green cells, the higher your margin of safety.</div>
+</div>
 </div>
 
 <!-- ═══ SECTION 8: RELATIVE VALUATION CROSS-CHECK ═══ -->
@@ -3939,6 +3979,10 @@ const vc=vs>10?'#10b981':vs>0?'#22d3ee':vs>-10?'var(--amber)':'var(--red)';
 return`<div style="padding:14px;border-radius:10px;background:rgba(0,47,108,.02);border:1px solid var(--border)"><div style="font-size:10px;color:var(--text3);margin-bottom:4px">${m.method}</div><div style="font-size:22px;font-weight:800;color:${vc};font-family:var(--mono)">${v>0?sym+v.toFixed(0):'N/A'}</div><div style="font-size:9px;color:${vc};margin-top:2px">${v>0?(vs>=0?'+':'')+vs.toFixed(0)+'% vs CMP':'Insufficient data'}</div><div style="font-size:8px;color:var(--text3);margin-top:4px">${m.note}</div></div>`;
 }).join('')}
 </div>
+<div style="margin-top:12px;padding:12px;border-radius:8px;background:rgba(139,92,246,.04);border-left:3px solid var(--purple)">
+<div style="font-size:11px;font-weight:700;color:var(--purple)">💡 Why Multiple Methods Matter:</div>
+<div style="font-size:10px;color:var(--text2);margin-top:4px;line-height:1.7">No single valuation method is perfect — each has blind spots. When 3 out of 4 methods agree the stock is undervalued, that's a much stronger signal than just one method. Think of it like getting a second and third opinion from different doctors — if they all say the same thing, you can be more confident in the diagnosis.</div>
+</div>
 </div>
 
 <!-- ═══ SECTION 9: VALUATION GAUGE ═══ -->
@@ -3956,6 +4000,11 @@ return`<div style="padding:14px;border-radius:10px;background:rgba(0,47,108,.02)
 </div>
 </div>
 
+<div style="padding:12px;border-radius:8px;background:rgba(6,182,212,.04);border-left:3px solid var(--cyan);margin-bottom:16px">
+<div style="font-size:11px;font-weight:700;color:var(--cyan)">💡 Reading the Valuation Gauge:</div>
+<div style="font-size:10px;color:var(--text2);margin-top:4px;line-height:1.8">${marginOfSafety>=25?'The gauge shows DEEP VALUE territory ('+marginOfSafety.toFixed(0)+'% margin of safety). This is like finding a ₹100 note selling for ₹'+Math.round(100-marginOfSafety)+'. Benjamin Graham, the father of value investing, recommended buying with at least a 25% margin of safety — this stock meets that bar. Even if our assumptions are somewhat wrong, you likely won\'t lose money.':marginOfSafety>=10?'The gauge shows MODERATE UNDERVALUATION ('+marginOfSafety.toFixed(0)+'% margin of safety). There\'s a cushion between market price and fair value, but it\'s not huge. A small change in assumptions could make this fairly valued. Decent entry point but not a screaming bargain.':marginOfSafety>=-10?'The gauge shows FAIR VALUE territory. The market price is roughly equal to our calculated intrinsic value. At this level, future returns will depend entirely on the company\'s actual business performance. No valuation tailwind to help you.':'The gauge shows the stock is OVERVALUED by '+Math.abs(marginOfSafety).toFixed(0)+'%. The market is charging more than our model says it\'s worth. This doesn\'t mean the stock will crash — the market may be right about future growth that our model misses — but you\'re buying with no margin of safety. Any negative surprise could mean losses.'}</div>
+</div>
+
 <!-- ═══ SECTION 10: KEY RISKS TO THIS VALUATION ═══ -->
 <div style="margin-bottom:20px;padding:16px;border-radius:12px;border-left:4px solid var(--amber);background:rgba(245,158,11,.03)">
 <div style="font-family:'Sora',sans-serif;font-size:12px;font-weight:700;color:var(--amber);margin-bottom:8px">⚠️ Key Risks to This Valuation</div>
@@ -3964,6 +4013,23 @@ return`<div style="padding:14px;border-radius:10px;background:rgba(0,47,108,.02)
 <div style="padding:8px 10px;border-radius:6px;background:rgba(245,158,11,.03)">🔸 <strong>Growth assumption of ${(blendedGrowth*100).toFixed(1)}%</strong> ${blendedGrowth>0.2?'is aggressive — if growth slows, intrinsic value drops significantly.':'is conservative, providing a buffer.'}</div>
 <div style="padding:8px 10px;border-radius:6px;background:rgba(245,158,11,.03)">🔸 <strong>WACC of ${(wacc*100).toFixed(1)}%</strong> assumes current risk profile persists. If beta increases or rates rise, WACC goes up and value goes down.</div>
 <div style="padding:8px 10px;border-radius:6px;background:rgba(245,158,11,.03)">🔸 <strong>DCF models are NOT price targets.</strong> They show a range of plausible values. Use the sensitivity table to understand how much the value changes under different scenarios.</div>
+</div>
+</div>
+
+<div style="padding:12px;border-radius:8px;background:rgba(239,68,68,.04);border-left:3px solid var(--red);margin-bottom:16px">
+<div style="font-size:11px;font-weight:700;color:var(--red)">💡 What These Risks Mean for You:</div>
+<div style="font-size:10px;color:var(--text2);margin-top:4px;line-height:1.8">Every valuation is based on ASSUMPTIONS, and assumptions can be wrong. The biggest risk in any DCF is the <strong>Terminal Value</strong> — it represents cash flows stretching to infinity, which nobody can predict. ${termPct>70?'In this case, terminal value is '+termPct.toFixed(0)+'% of total value — meaning most of our valuation depends on what happens AFTER Year 10. That\'s inherently unreliable.':'Terminal value is a reasonable '+termPct.toFixed(0)+'% here.'}<br><br><strong>Practical advice:</strong> Use this DCF as ONE input, not the only one. Compare it with P/E valuations, peer comparisons, and your own judgment about the business. If the DCF says "buy" but the business model is deteriorating, trust the business reality over the spreadsheet. Warren Buffett says: "It is better to be approximately right than precisely wrong."</div>
+</div>
+
+<!-- FINAL DCF VERDICT FOR BEGINNERS -->
+<div style="padding:18px;border-radius:12px;background:linear-gradient(135deg,rgba(16,185,129,.06),rgba(59,130,246,.04));border:2px solid rgba(16,185,129,.15);margin-bottom:16px">
+<div style="font-family:'Sora',sans-serif;font-size:14px;font-weight:800;color:#10b981;margin-bottom:10px">📋 Complete DCF Verdict — Everything Summarized</div>
+<div style="font-size:11px;color:var(--text);line-height:2">
+<strong>The Simple Version:</strong> We calculated that ${name} is worth <strong style="color:#10b981">${sym}${intrinsicPrice.toFixed(0)}</strong> per share based on the cash it generates (${_fn(baseFCF)}/year), growing at ${(blendedGrowth*100).toFixed(0)}% annually for the next 10 years. The market is currently selling it at <strong style="color:var(--cyan)">${sym}${price.toFixed(0)}</strong>. ${marginOfSafety>=20?'That\\'s a '+marginOfSafety.toFixed(0)+'% DISCOUNT — like buying a ₹100 note for ₹'+Math.round(100-marginOfSafety)+'. This is a significant margin of safety.':marginOfSafety>=0?'That\\'s roughly FAIR VALUE with a small '+marginOfSafety.toFixed(0)+'% cushion. Not a screaming bargain, but you\\'re not overpaying.':'That\\'s a '+Math.abs(marginOfSafety).toFixed(0)+'% PREMIUM — you\\'re paying more than our model says it\\'s worth. The market may be right about future growth that our model underestimates, or it could be overpriced.'}<br><br>
+<strong>Confidence Level:</strong> ${termPct<65&&blendedGrowth<0.2&&beta<1.5?'🟢 HIGH — The model assumptions are conservative (moderate growth, reasonable terminal value), making this valuation relatively reliable.':termPct<75&&blendedGrowth<0.25?'🟡 MODERATE — Some assumptions are aggressive. The sensitivity table above shows how the value changes under different scenarios. Trust the RANGE more than the single number.':'🔴 LOW — The model relies heavily on long-term assumptions (terminal value = '+termPct.toFixed(0)+'% of total). Small changes in growth or WACC dramatically change the result. Use this as a rough guide only.'}<br><br>
+<strong>What Would Warren Buffett Do?</strong> ${marginOfSafety>=25?'Buffett looks for a 25%+ margin of safety. This stock qualifies. He would examine the business moat (does it have a durable competitive advantage?), management integrity, and predictability of cash flows before buying.':marginOfSafety>=10?'Buffett prefers 25%+ margin of safety. This stock is close but not quite there. He might wait for a better entry price during a market dip.':'Buffett would likely pass at this price. He said: \\"Price is what you pay, value is what you get.\\" At the current price, you\\'re paying close to (or more than) what you\\'re getting.'}<br><br>
+<strong>Action Items:</strong><br>
+${marginOfSafety>=15?'✅ <strong>Consider buying</strong> — Check the Equity Research tab to verify fundamentals are strong. Use SIP to build position gradually. Set stop-loss at '+sym+(intrinsicPrice*0.7).toFixed(0)+' (30% below intrinsic value as margin of error).':marginOfSafety>=0?'⏳ <strong>Watchlist candidate</strong> — The valuation is fair but not compelling. Set a price alert at '+sym+(intrinsicPrice*0.85).toFixed(0)+' (15% margin of safety) and buy if it drops to that level.':'⚠️ <strong>Wait for better entry</strong> — The stock is priced above our intrinsic value. Either the market knows something we don\\'t, or it\\'s overpriced. Wait for a correction to '+sym+(intrinsicPrice*0.9).toFixed(0)+' before considering.'}
 </div>
 </div>
 
@@ -3991,7 +4057,6 @@ const sym=d.currency==='INR'?'₹':'$';
 const price=_sf(d.current_price);
 const mcap=_sf(d.market_cap);
 const pe=_sf(d.pe_ratio);
-const pb=_sf(d.price_to_book);
 const pm=_sf(d.profit_margin);
 const om=_sf(d.operating_margin);
 const roe=_sf(d.roe);
@@ -4002,14 +4067,30 @@ const rg=_sf(d.revenue_growth);
 const divY=_sf(d.dividend_yield);
 const w52h=_sf(d.week52_high,price*1.2);
 const w52l=_sf(d.week52_low,price*0.8);
+const cr=_sf(d.current_ratio,1.5);
+const qr=_sf(d.quick_ratio,1);
+const bv=_sf(d.book_value);
+const eps=_sf(d.eps_ttm);
+const epsF=_sf(d.eps_forward);
+const peg=_sf(d.peg_ratio);
+const rps=_sf(d.revenue_per_share);
+const shortR=_sf(d.short_ratio);
+const payout=_sf(d.payout_ratio);
+const eqg=_sf(d.earnings_quarterly_growth);
+const ebitda=_sf(d.ebitda);
+const totalCash=_sf(d.total_cash);
+const totalDebt=_sf(d.total_debt);
+const sAvgPE=_sf(d.sector_avg_pe,20);
+const pb=_sf(d.pb_ratio||d.price_to_book);
 const w52pos=w52h!==w52l?((price-w52l)/(w52h-w52l)*100):50;
 const sector=d.sector||'Unknown';
 const industry=d.industry||'Unknown';
 const name=d.company_name||d.ticker||'Company';
 const ticker=d.ticker||'';
 const today=new Date().toLocaleDateString('en-IN',{year:'numeric',month:'long',day:'numeric'});
-const _fn=(n)=>{if(!n||n===0)return'N/A';const a=Math.abs(n);if(a>=1e12)return sym+(n/1e12).toFixed(2)+'T';if(a>=1e9)return sym+(n/1e9).toFixed(2)+'B';if(a>=1e7)return sym+(n/1e7).toFixed(2)+'Cr';if(a>=1e5)return sym+(n/1e5).toFixed(2)+'L';return sym+n.toLocaleString()};
-const sAvgPE=_sf(d.sector_avg_pe,20);
+const isIndian=d.currency==='INR';
+const _fn=(n)=>{if(!n||n===0)return'N/A';const a=Math.abs(n);const s=n<0?'-':'';if(a>=1e12)return s+sym+(a/1e12).toFixed(2)+'T';if(a>=1e9)return s+sym+(a/1e9).toFixed(2)+'B';if(a>=1e7&&isIndian)return s+sym+(a/1e7).toFixed(2)+'Cr';if(a>=1e5&&isIndian)return s+sym+(a/1e5).toFixed(2)+'L';return s+sym+a.toLocaleString(undefined,{maximumFractionDigits:0})};
+const _pct=(n)=>n!==0&&!isNaN(n)?(n>=0?'+':'')+n.toFixed(1)+'%':'N/A';
 
 // Rating logic
 let rating='HOLD',ratingColor='var(--amber)',ratingBg='rgba(245,158,11,.1)';
@@ -4080,6 +4161,24 @@ We rate ${name} <strong style="color:${ratingColor}">${rating}</strong> with a 1
 </p>
 </div>
 
+<div style="padding:12px;border-radius:8px;background:rgba(6,182,212,.04);border-left:3px solid var(--cyan);margin:10px 0 16px">
+<div style="font-size:11px;font-weight:700;color:var(--cyan)">💡 How to Read This Report:</div>
+<div style="font-size:10px;color:var(--text2);margin-top:4px;line-height:1.8">This equity research report mimics what professional Wall Street analysts produce. Each section below examines the stock from a different angle — financials, valuation, risk, technicals, cash flow, balance sheet, growth, dividends, and more. <strong>No single section tells the whole story.</strong> A stock can have great growth but terrible debt, or cheap valuation but declining margins. Read ALL sections and look for the overall pattern. The Investment Checklist at the end distills everything into a simple pass/fail score, and the SWOT Analysis ties it all together.</div>
+</div>
+
+<!-- COLOR LEGEND -->
+<div style="padding:14px;border-radius:8px;background:rgba(59,130,246,.03);border:1px solid rgba(59,130,246,.1);margin:8px 0 16px">
+<div style="font-size:10px;font-weight:700;color:var(--blue);margin-bottom:6px">🎨 Reading the Colors & Grades in This Report</div>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:6px;font-size:9px;color:var(--text2);line-height:1.6">
+<div><span style="color:#10b981;font-weight:700">● GREEN numbers</span> = Strong/Positive — the metric is healthy and exceeds typical benchmarks. Think of it like scoring 80%+ on an exam.</div>
+<div><span style="color:#f59e0b;font-weight:700">● AMBER numbers</span> = Average/Caution — the metric is acceptable but not outstanding. Like scoring 50-70% — room for improvement.</div>
+<div><span style="color:#ef4444;font-weight:700">● RED numbers</span> = Weak/Warning — the metric is below acceptable levels. Like scoring below 40% — needs attention before investing.</div>
+<div><span style="color:var(--cyan);font-weight:700">● CYAN numbers</span> = Informational — neutral metrics shown for context, like market cap or current price.</div>
+<div><span style="font-weight:700">Grade A</span> = Excellent (top 20%) · <span style="font-weight:700">B</span> = Good (top 40%) · <span style="font-weight:700">C</span> = Average · <span style="font-weight:700">D</span> = Poor (bottom 30%)</div>
+<div><span style="font-weight:700">✅ = Pass</span> (meets the criteria) · <span style="font-weight:700">❌ = Fail</span> (doesn't meet) — used in the Investment Checklist section</div>
+</div>
+</div>
+
 <!-- FINANCIAL HIGHLIGHTS -->
 <div style="margin-bottom:20px">
 <div style="font-family:'Sora',sans-serif;font-size:13px;font-weight:700;color:var(--text);margin-bottom:12px">&#128202; Financial Snapshot</div>
@@ -4099,6 +4198,24 @@ ${[
 {l:'Beta',v:beta.toFixed(2),c:beta>1.3?'var(--red)':beta>0.8?'var(--amber)':'var(--green)'}
 ].map(m=>`<div style="padding:10px 12px;border-radius:8px;background:rgba(0,47,108,.02);border:1px solid var(--border);display:flex;justify-content:space-between;align-items:center"><span style="font-size:10px;color:var(--text3)">${m.l}</span><span style="font-size:14px;font-weight:700;color:${m.c};font-family:var(--mono)">${m.v}</span></div>`).join('')}
 </div>
+<div style="padding:12px;border-radius:8px;background:rgba(6,182,212,.04);border-left:3px solid var(--cyan);margin-top:12px">
+<div style="font-size:11px;font-weight:700;color:var(--cyan)">💡 Reading These Numbers:</div>
+<div style="font-size:10px;color:var(--text2);margin-top:4px;line-height:1.7">${pe>0&&pe<15?'P/E of '+pe.toFixed(1)+'x is LOW — the market expects slow growth or is ignoring hidden value. Could be a bargain if fundamentals are solid.':pe>0&&pe<25?'P/E of '+pe.toFixed(1)+'x is REASONABLE — you are paying a fair price for the company\'s earnings. Not a screaming deal, not overpriced.':pe>=25?'P/E of '+pe.toFixed(1)+'x is HIGH — you are paying a premium. This is justified ONLY if the company can deliver strong growth. If growth disappoints, the stock could fall significantly.':'P/E not available (negative earnings). Focus on revenue growth and path to profitability.'} ${roe>18?'ROE of '+roe.toFixed(0)+'% is excellent — management turns every ₹100 of shareholder money into ₹'+roe.toFixed(0)+' of profit annually.':roe>10?'ROE of '+roe.toFixed(0)+'% is decent but not exceptional.':'ROE below 10% suggests the company struggles to generate strong returns on capital.'}</div>
+</div>
+</div>
+
+<!-- COMBINED HEALTH INFERENCE -->
+<div style="padding:12px;border-radius:8px;background:linear-gradient(135deg,rgba(16,185,129,.04),rgba(6,182,212,.03));border:1px dashed rgba(16,185,129,.2);margin-top:8px">
+<div style="font-size:10px;font-weight:700;color:#10b981;margin-bottom:4px">📖 What These Numbers Mean Together (The Big Picture):</div>
+<div style="font-size:9px;color:var(--text2);line-height:1.8">
+Think of a company like a restaurant:<br>
+• <strong>Revenue (${_fn(mcap&&pe>0?mcap/pe*pe:0)||'N/A'})</strong> = How many customers walk in (total sales)<br>
+• <strong>Net Margin (${pm.toFixed(1)}%)</strong> = How much profit you keep per ₹100 of sales. ${pm>15?'At '+pm.toFixed(0)+'%, this restaurant keeps ₹'+pm.toFixed(0)+' from every ₹100 bill — that\'s a well-run business with pricing power.':pm>5?'At '+pm.toFixed(0)+'%, the profit per customer is modest. Like a busy restaurant with thin margins — volume matters.':'Very thin margins — like a discount food stall. Lots of sales needed just to break even.'}<br>
+• <strong>ROE (${roe.toFixed(1)}%)</strong> = Return on your investment. ${roe>20?'Investing ₹1L in this business generates ₹'+((roe/100)*100000).toFixed(0)+'/year in profit — that\'s EXCELLENT.':roe>12?'Decent returns, similar to a good rental property yield.':'Below a fixed deposit return — management isn\'t using your money efficiently.'}<br>
+• <strong>Debt/Equity (${de.toFixed(0)}%)</strong> = How much the restaurant is financed by loans vs owner\'s money. ${de<30?'Almost no debt — the business runs on its own profits. Very safe.':de<100?'Manageable debt — like a home loan with comfortable EMIs.':'Heavy debt — like running the restaurant on credit cards. Risky in bad times.'}<br>
+• <strong>Beta (${beta.toFixed(2)})</strong> = How wild the stock swings. ${beta>1.3?'A roller coaster — when the market moves 10%, this stock moves '+(beta*10).toFixed(0)+'%. Not for the faint-hearted.':beta>0.8?'Moves roughly in line with the market — standard risk.':'More stable than the market — defensive choice for conservative investors.'}<br>
+<strong style="color:var(--text)">Overall health score: ${pm>15&&roe>15&&de<80?'⭐⭐⭐⭐⭐ STRONG — The business is profitable, well-managed, and conservatively financed. A quality company.':pm>8&&roe>10&&de<150?'⭐⭐⭐⭐ GOOD — Solid fundamentals with some room for improvement. A reasonable investment candidate.':pm>0&&roe>5?'⭐⭐⭐ AVERAGE — The company works but doesn\'t excel in any area. Invest only if the price is attractive.':'⭐⭐ BELOW AVERAGE — Multiple fundamental weaknesses. Higher risk investment — proceed with caution.'}</strong>
+</div>
 </div>
 
 <!-- 52-WEEK POSITION -->
@@ -4114,6 +4231,11 @@ ${[
 <div style="text-align:center;font-size:10px;color:var(--text3)">Current: ${sym}${price.toFixed(2)} (${w52pos.toFixed(0)}% of range)</div>
 </div>
 
+<div style="padding:12px;border-radius:8px;background:rgba(59,130,246,.04);border-left:3px solid var(--blue);margin:10px 0 16px">
+<div style="font-size:11px;font-weight:700;color:var(--blue)">💡 52-Week Position — What It Tells You:</div>
+<div style="font-size:10px;color:var(--text2);margin-top:4px;line-height:1.8">${w52pos>85?'The stock is near its YEARLY HIGH ('+w52pos.toFixed(0)+'%). Momentum is strong, but buying at the top means limited upside to previous peak. Consider waiting for a 5-10% dip — history shows most stocks pull back after hitting highs. If you must buy, use a trailing stop-loss.':w52pos>50?'The stock sits in the MIDDLE of its range ('+w52pos.toFixed(0)+'%). This is neutral territory — neither a bargain nor expensive by recent standards. Focus on fundamentals rather than price action to make your decision.':w52pos>20?'The stock has FALLEN significantly from its high ('+w52pos.toFixed(0)+'%). If fundamentals are intact, this could be a buying opportunity — you\'re getting the same business at a lower price. But verify WHY it fell — sometimes cheap stocks are cheap for good reasons.':'Near yearly LOWS ('+w52pos.toFixed(0)+'%). This is either deep value or a value trap. Research thoroughly before buying — falling knives can keep falling, but the biggest winners are often stocks bought near their lows.'}</div>
+</div>
+
 <!-- VALUATION COMPARISON -->
 <div style="margin-bottom:20px">
 <div style="font-family:'Sora',sans-serif;font-size:13px;font-weight:700;color:var(--text);margin-bottom:10px">&#128176; Valuation vs Sector</div>
@@ -4124,6 +4246,10 @@ ${[
 <tr><td>ROE</td><td style="font-weight:700;color:var(--cyan)">${roe.toFixed(1)}%</td><td>~12-15%</td><td style="color:${roe>15?'var(--green)':roe>8?'var(--amber)':'var(--red)'};font-weight:700">${roe>15?'Excellent':roe>8?'Adequate':'Needs Work'}</td></tr>
 <tr><td>Debt/Equity</td><td style="font-weight:700;color:var(--cyan)">${de.toFixed(0)}%</td><td>~50-100%</td><td style="color:${de<50?'var(--green)':de<150?'var(--amber)':'var(--red)'};font-weight:700">${de<50?'Conservative':de<150?'Moderate':'Leveraged'}</td></tr>
 </table></div>
+<div style="padding:10px;border-radius:8px;background:rgba(245,158,11,.04);border-left:3px solid var(--amber);margin-top:10px">
+<div style="font-size:11px;font-weight:700;color:var(--amber)">💡 Is the Stock Cheap or Expensive?</div>
+<div style="font-size:10px;color:var(--text2);margin-top:4px;line-height:1.7">${pe>0&&pe<sAvgPE*0.85?'Trading at a DISCOUNT to its sector. This could mean: (a) the market is undervaluing it — opportunity, or (b) there\'s a reason it\'s cheap — investigate before buying. Check if margins and growth justify a re-rating.':pe>sAvgPE*1.15?'Trading at a PREMIUM to its sector. The market believes this company is better than average. You\'re paying extra for perceived quality. The risk: if growth disappoints even slightly, the stock could fall hard as the premium evaporates.':'FAIRLY VALUED relative to its sector. You\'re paying roughly what the market considers appropriate. Returns will come from the company\'s actual business performance, not from a valuation re-rating.'}</div>
+</div>
 </div>
 
 ${peerRows?`
@@ -4137,6 +4263,11 @@ ${peerRows}
 </table></div>
 </div>`:''}
 
+<div style="padding:12px;border-radius:8px;background:rgba(139,92,246,.04);border-left:3px solid var(--purple);margin:10px 0 16px">
+<div style="font-size:11px;font-weight:700;color:var(--purple)">💡 Why Peer Comparison Matters:</div>
+<div style="font-size:10px;color:var(--text2);margin-top:4px;line-height:1.8">Comparing a company to its peers is like comparing athletes in the same sport — you can only judge performance against similar competition. A P/E of 30x might seem expensive, but if every competitor trades at 40x, it could actually be cheap. Look for companies with <strong>higher margins AND lower P/E</strong> than peers — that combination signals the market hasn't recognized their quality yet. Conversely, if a stock has the lowest margins but highest P/E in its peer group, it's likely overvalued.</div>
+</div>
+
 <!-- RISK MATRIX -->
 <div style="margin-bottom:20px">
 <div style="font-family:'Sora',sans-serif;font-size:13px;font-weight:700;color:var(--text);margin-bottom:12px">&#9888;&#65039; Risk Assessment Matrix</div>
@@ -4147,6 +4278,20 @@ ${[
 {r:'Profitability Risk',s:pm<5?'HIGH':pm<15?'MODERATE':'LOW',d:'Net margin of '+pm.toFixed(1)+'% — '+(pm<5?'thin margins leave little room for error':pm<15?'adequate but not exceptional':'strong margins provide buffer'),c:pm<5?'var(--red)':pm<15?'var(--amber)':'var(--green)'},
 {r:'Valuation Risk',s:pe>sAvgPE*1.5?'HIGH':pe>sAvgPE?'MODERATE':'LOW',d:'P/E of '+pe.toFixed(1)+'x vs sector '+sAvgPE.toFixed(1)+'x — '+(pe>sAvgPE*1.5?'expensive — correction risk exists':pe>sAvgPE?'slight premium, needs growth delivery':'attractively priced'),c:pe>sAvgPE*1.5?'var(--red)':pe>sAvgPE?'var(--amber)':'var(--green)'}
 ].map(r=>`<div style="padding:12px;border-radius:8px;border-left:3px solid ${r.c};background:rgba(0,47,108,.02)"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px"><span style="font-size:11px;font-weight:700;color:var(--text)">${r.r}</span><span style="font-size:9px;font-weight:700;color:${r.c};padding:2px 8px;border-radius:4px;background:rgba(255,255,255,.03);border:1px solid ${r.c}">${r.s}</span></div><div style="font-size:9px;color:var(--text3);line-height:1.5">${r.d}</div></div>`).join('')}
+</div>
+<div style="padding:10px;border-radius:8px;background:rgba(239,68,68,.04);border-left:3px solid var(--red);margin-top:12px">
+<div style="font-size:11px;font-weight:700;color:var(--red)">💡 Understanding Your Risk:</div>
+<div style="font-size:10px;color:var(--text2);margin-top:4px;line-height:1.7">Think of risk like weather warnings: LOW = clear skies, you can invest with confidence. MODERATE = some clouds, normal caution. HIGH = storm approaching, smaller position sizes recommended. The most dangerous risks are the ones you don't see — ${de>150?'HIGH DEBT is the biggest concern here. In a recession, heavily indebted companies can go bankrupt while low-debt competitors survive and thrive.':beta>1.5?'HIGH VOLATILITY means this stock swings much more than the market. A 10% market drop could mean 15-20% here. Only invest money you won\'t need for 3+ years.':'the risk profile looks manageable for this stock.'}</div>
+</div>
+
+<!-- RISK SCENARIO BOX -->
+<div style="padding:10px;border-radius:8px;background:rgba(139,92,246,.04);border-left:3px solid var(--purple);margin-top:8px">
+<div style="font-size:10px;font-weight:700;color:var(--purple)">📖 What Could Go Wrong? (Worst-Case Scenario)</div>
+<div style="font-size:9px;color:var(--text2);margin-top:4px;line-height:1.8">If you invest ${sym}${(100000).toLocaleString()} in ${name} today:<br>
+• <strong>In a market crash (-30%):</strong> Your investment drops to ~${sym}${(70000).toLocaleString()}. ${beta>1?'But with beta of '+beta.toFixed(1)+', this stock could fall '+(beta*30).toFixed(0)+'%, making it ~'+sym+(100000*(1-beta*0.3)).toFixed(0)+'.':'With low beta, the fall might be cushioned.'}<br>
+• <strong>In a mild correction (-10%):</strong> Drops to ~${sym}${(100000*(1-beta*0.1)).toFixed(0)} (beta-adjusted).<br>
+• <strong>Company-specific risk:</strong> ${de>100?'If interest rates rise, this company\'s heavy debt burden becomes more expensive, squeezing profits.':pm<5?'Thin margins mean even a small revenue decline could wipe out profits.':'No critical single-point-of-failure identified from the numbers.'}<br>
+<strong style="color:var(--text)">Position sizing tip:</strong> ${riskLevel==='HIGH'?'Maximum 2-3% of your total portfolio. If ₹10L total, invest at most ₹20-30K here.':riskLevel==='MODERATE'?'Comfortable at 3-5% of portfolio. If ₹10L total, invest ₹30-50K.':'Conservative risk profile allows 5-8% of portfolio. If ₹10L total, up to ₹50-80K.'}</div>
 </div>
 </div>
 
@@ -4168,6 +4313,11 @@ ${d.ema_signals&&d.ema_signals.length>0?`<div style="margin-top:10px;padding:10p
 </div>
 </div>
 
+<div style="padding:12px;border-radius:8px;background:rgba(6,182,212,.04);border-left:3px solid var(--cyan);margin:10px 0 16px">
+<div style="font-size:11px;font-weight:700;color:var(--cyan)">💡 Technical Analysis in Plain English:</div>
+<div style="font-size:10px;color:var(--text2);margin-top:4px;line-height:1.8">Moving Averages (SMAs) act like trend compasses. <strong>SMA 200</strong> shows the long-term trend (like checking if it rained more this year vs last year). <strong>SMA 50</strong> shows medium-term direction. <strong>SMA 20</strong> shows recent momentum. When the price is ABOVE all three = strong uptrend (like a rising tide lifting all boats). When BELOW all three = downtrend. The most important one is SMA 200 — stocks above it tend to keep rising, stocks below tend to keep falling. <strong>Golden Cross</strong> (50-day crosses above 200-day) = bullish signal. <strong>Death Cross</strong> (opposite) = bearish signal.</div>
+</div>
+
 <!-- CASH FLOW ANALYSIS -->
 <div style="margin-bottom:20px;padding:18px;border-radius:12px;background:rgba(16,185,129,.03);border:1px solid var(--border)">
 <div style="font-family:'Sora',sans-serif;font-size:13px;font-weight:700;color:var(--text);margin-bottom:6px">💰 Cash Flow Analysis — Follow the Money</div>
@@ -4182,6 +4332,20 @@ ${[
 {l:'EBITDA Margin',v:_sf(d.ebitda_margins)>0?_sf(d.ebitda_margins).toFixed(1)+'%':'N/A',sub:_sf(d.ebitda_margins)>20?'Strong operating efficiency':'Room for improvement',c:_sf(d.ebitda_margins)>20?'#10b981':'var(--amber)'},
 ].map(m=>`<div style="padding:12px;border-radius:8px;background:rgba(0,47,108,.02);border:1px solid var(--border)"><div style="font-size:9px;color:var(--text3)">${m.l}</div><div style="font-size:16px;font-weight:800;color:${m.c};font-family:var(--mono)">${m.v}</div><div style="font-size:8px;color:var(--text3);margin-top:2px">${m.sub}</div></div>`).join('')}
 </div>
+</div>
+
+<div style="padding:12px;border-radius:8px;background:rgba(16,185,129,.04);border-left:3px solid #10b981;margin:10px 0 16px">
+<div style="font-size:11px;font-weight:700;color:#10b981">💡 Cash Flow — The Real Measure of Health:</div>
+<div style="font-size:10px;color:var(--text2);margin-top:4px;line-height:1.8">Profits can be manipulated through accounting tricks, but <strong>cash flow cannot be faked</strong>. Operating Cash Flow (OCF) shows how much actual cash the business generates from selling its products. Free Cash Flow (FCF) is what's left after reinvesting in the business — this is the money available for dividends, buybacks, or debt repayment. <strong>The golden rule:</strong> If a company reports high profits but low/negative cash flow, something is wrong (possibly aggressive accounting). If cash flow is HIGHER than reported profits, that's a quality signal — the business is generating more cash than the income statement shows. FCF Yield above 5% means the company generates 5% of its market value in cash every year — like a dividend you don't have to pay tax on.</div>
+</div>
+<div style="padding:10px;border-radius:8px;background:rgba(59,130,246,.04);border-left:3px solid var(--blue);margin:0 0 16px">
+<div style="font-size:10px;font-weight:700;color:var(--blue)">📖 Salary Analogy — Understanding Cash Flow</div>
+<div style="font-size:9px;color:var(--text2);margin-top:3px;line-height:1.8">Think of a company like your household budget:<br>
+• <strong>Revenue</strong> = Your monthly salary (total money coming in)<br>
+• <strong>Operating Cash Flow (${_fn(_sf(d.operating_cash_flow||d.operating_cashflow))})</strong> = Your salary AFTER taxes and mandatory expenses — the cash actually hitting your bank account<br>
+• <strong>Free Cash Flow (${_fn(_sf(d.free_cash_flow||d.free_cashflow))})</strong> = What's left AFTER paying rent, EMIs, groceries, and saving for emergencies — the money you can spend freely<br>
+• <strong>EBITDA (${_fn(_sf(d.ebitda))})</strong> = Your salary before taxes and loan repayments — shows your raw earning power<br>
+${_sf(d.free_cash_flow||d.free_cashflow)>0?'✅ This company has POSITIVE free cash flow — it earns more than it spends. Like having money left over after all bills.':'⚠️ NEGATIVE free cash flow — the company is spending more than it earns. Like relying on credit cards to cover monthly expenses.'} ${_sf(d.operating_cash_flow||d.operating_cashflow)>_sf(d.ebitda)*0.8?'Cash quality is HIGH — the profits are real, backed by actual cash.':'Cash quality needs monitoring — not all reported profits are converting to cash.'}</div>
 </div>
 
 <!-- BALANCE SHEET HEALTH -->
@@ -4203,6 +4367,20 @@ return`<div style="padding:12px;border-radius:8px;background:rgba(0,47,108,.02);
 </div>
 </div>
 
+<div style="padding:12px;border-radius:8px;background:rgba(59,130,246,.04);border-left:3px solid var(--blue);margin:10px 0 16px">
+<div style="font-size:11px;font-weight:700;color:var(--blue)">💡 Balance Sheet — Can the Company Survive a Storm?</div>
+<div style="font-size:10px;color:var(--text2);margin-top:4px;line-height:1.8">The balance sheet tells you if the company can weather a downturn. <strong>Debt-to-Equity (D/E):</strong> Below 50% = conservative (like a family with small mortgage), 50-100% = moderate, above 150% = aggressive (like being heavily leveraged). High D/E companies fail first in recessions. <strong>Current Ratio:</strong> Above 1.5 means the company can pay all short-term bills 1.5x over — it won't run out of cash. Below 1.0 is a red flag — the company may struggle to pay immediate debts. <strong>Book Value:</strong> Think of it as the "fire sale" price — if you liquidated everything and paid all debts, what's left per share? If stock price is below book value, you're paying less than the assets are worth (potentially a deep value opportunity).</div>
+</div>
+<div style="padding:10px;border-radius:8px;background:rgba(139,92,246,.04);border-left:3px solid var(--purple);margin:0 0 16px">
+<div style="font-size:10px;font-weight:700;color:var(--purple)">📖 Home Loan Analogy — Understanding Debt</div>
+<div style="font-size:9px;color:var(--text2);margin-top:3px;line-height:1.8">Think of the company's balance sheet like buying a house:<br>
+• <strong>Total Assets</strong> = The house's market value<br>
+• <strong>Total Debt (${_fn(totalDebt)})</strong> = The outstanding home loan<br>
+• <strong>Equity (Book Value)</strong> = What you'd pocket if you sold the house and repaid the loan<br>
+• <strong>D/E of ${de.toFixed(0)}%</strong> = ${de<50?'Like owing ₹20L on a ₹60L house — very comfortable. Even if house prices drop 30%, you still have positive equity. This company can survive a recession.':de<100?'Like owing ₹40L on a ₹80L house — manageable. Monthly EMIs are covered, but a major downturn could squeeze finances.':de<200?'Like owing ₹60L on a ₹80L house — risky. A 25% drop in house value would wipe out your equity. This company is vulnerable in downturns.':'Like owing ₹90L on a ₹100L house — one bad year and the loan exceeds the house value. Very risky.'}<br>
+• <strong>Current Ratio (${cr.toFixed(2)})</strong> = ${cr>1.5?'Can pay ALL upcoming bills 1.5x over — like having 1.5 months of salary saved as emergency fund. Comfortable.':cr>1?'Can just barely cover short-term obligations. No emergency buffer.':'Cannot cover short-term bills — like not having enough to pay next month\\'s EMI. Red flag.'}</div>
+</div>
+
 <!-- GROWTH DEEP DIVE -->
 <div style="margin-bottom:20px;padding:18px;border-radius:12px;background:rgba(139,92,246,.03);border:1px solid var(--border)">
 <div style="font-family:'Sora',sans-serif;font-size:13px;font-weight:700;color:var(--text);margin-bottom:6px">🚀 Growth Metrics Deep Dive</div>
@@ -4222,6 +4400,10 @@ const gc={'A':'#10b981','B':'#22d3ee','C':'#f59e0b','D':'#ef4444'}[r.g];
 return`<tr><td style="font-weight:600;font-size:11px">${r.m}</td><td style="font-weight:700;font-family:var(--mono);color:${gc}">${r.v}</td><td style="text-align:center"><span style="font-size:9px;font-weight:700;color:${gc};padding:2px 8px;border-radius:4px;background:rgba(0,0,0,.03)">${r.g}</span></td><td style="font-size:9px;color:var(--text2)">${r.w}</td></tr>`;
 }).join('')}
 </table></div>
+<div style="padding:10px;border-radius:8px;background:rgba(139,92,246,.04);border-left:3px solid var(--purple);margin-top:10px">
+<div style="font-size:11px;font-weight:700;color:var(--purple)">💡 Growth in Plain English:</div>
+<div style="font-size:10px;color:var(--text2);margin-top:4px;line-height:1.7">${rg>15&&eg>15?'This company is firing on all cylinders — BOTH revenue AND earnings are growing fast. This is the best scenario: the company is selling more AND becoming more profitable. Like a restaurant that\'s both getting more customers and increasing prices.':rg>10?'Revenue is growing nicely, which means the company is successfully selling more products or entering new markets. ':eg>10&&rg<5?'Interesting pattern: earnings growing faster than revenue. This means the company is becoming MORE EFFICIENT — extracting more profit from each rupee of sales. Often a sign of good management.':'Growth is modest or mixed. The company is stable but not in hypergrowth mode. '} ${peg>0&&peg<1?'The PEG ratio below 1.0 is Peter Lynch\'s famous signal — you\'re getting growth at a bargain price!':peg>2?'PEG ratio above 2 means you\'re paying a lot for the growth you\'re getting.':''}</div>
+</div>
 </div>
 
 <!-- DIVIDEND ANALYSIS -->
@@ -4234,6 +4416,11 @@ ${divY>0?`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(
 </div>
 <div style="margin-top:10px;padding:10px;border-radius:8px;background:rgba(16,185,129,.04);border-left:3px solid #10b981"><div style="font-size:10px;color:var(--text2);line-height:1.6">💡 <strong>For dividend investors:</strong> ${payout<50?'The low payout ratio means the dividend is very safe and has room to grow. The company retains most of its earnings for reinvestment.':payout<70?'The dividend appears sustainable. The company balances paying shareholders while retaining enough for growth.':'The high payout ratio means most profits go to dividends. While income is attractive, there is limited room for dividend growth.'} ${divY>3?'At '+divY.toFixed(1)+'% yield, this stock generates meaningful income — better than most fixed deposits.':'The yield is modest but supplements capital appreciation.'}</div></div>`
 :`<p style="font-size:11px;color:var(--text2);line-height:1.7;margin:8px 0 0">This company does not currently pay dividends. This is common for growth companies that reinvest all profits back into the business. ${roe>15?'With ROE of '+roe.toFixed(1)+'%, the company earns high returns on reinvested capital — shareholders benefit through stock price appreciation instead.':'If the company is not paying dividends AND returns on equity are modest, question whether management is deploying capital effectively.'}</p>`}
+</div>
+
+<div style="padding:12px;border-radius:8px;background:rgba(245,158,11,.04);border-left:3px solid var(--amber);margin:10px 0 16px">
+<div style="font-size:11px;font-weight:700;color:var(--amber)">💡 Dividends — Free Money or a Trap?</div>
+<div style="font-size:10px;color:var(--text2);margin-top:4px;line-height:1.8">${divY>3?'A dividend yield of '+divY.toFixed(1)+'% is HIGH — you earn this percentage just for holding the stock, paid out regularly. But high yields can be a trap if the company is cutting its dividend or if the stock price dropped sharply (which inflates yield). Check the Payout Ratio: below 60% means dividends are sustainable. Above 80% means the company is paying out almost all its earnings — risky.':divY>1?'A modest dividend of '+divY.toFixed(1)+'% provides some income while you wait for capital appreciation. This is typical for growth-oriented companies that reinvest most profits back into the business. The real return comes from stock price growth, with dividends as a bonus.':'No meaningful dividend — the company reinvests all profits for growth. This isn\'t bad for younger, high-growth companies (Amazon paid no dividends for 25 years). But for mature companies with slow growth, lack of dividends may signal poor capital allocation.'}</div>
 </div>
 
 <!-- INVESTMENT CHECKLIST -->
@@ -4257,6 +4444,10 @@ ${[
 ].map(c=>`<div style="display:flex;align-items:center;gap:8px;padding:8px 12px;border-radius:6px;background:${c.pass?'rgba(16,185,129,.04)':'rgba(239,68,68,.04)'};border:1px solid ${c.pass?'rgba(16,185,129,.15)':'rgba(239,68,68,.15)'}"><span style="font-size:16px;min-width:20px">${c.pass?'✅':'❌'}</span><div><div style="font-size:11px;font-weight:600;color:${c.pass?'#10b981':'#ef4444'}">${c.test}</div><div style="font-size:9px;color:var(--text3)">${c.detail}</div></div></div>`).join('')}
 </div>
 <div style="margin-top:12px;padding:10px 14px;border-radius:8px;background:rgba(139,92,246,.04);text-align:center"><span style="font-size:12px;font-weight:700;color:var(--purple)">Score: ${[pm>0,pm>15,roe>15,de<100,cr>1.5,rg>5,eg>5,pe>0&&pe<25,_sf(d.free_cash_flow||d.free_cashflow)>0,w52pos<90,price>_sf(d.sma_200)&&_sf(d.sma_200)>0,beta<1.5].filter(Boolean).length} / 12 checks passed</span></div>
+<div style="padding:10px;border-radius:8px;background:rgba(16,185,129,.04);border-left:3px solid #10b981;margin-top:10px">
+<div style="font-size:11px;font-weight:700;color:#10b981">💡 How to Use This Checklist:</div>
+<div style="font-size:10px;color:var(--text2);margin-top:4px;line-height:1.7">${[pm>0,pm>15,roe>15,de<100,cr>1.5,rg>5,eg>5,pe>0&&pe<25,_sf(d.free_cash_flow||d.free_cashflow)>0,w52pos<90,price>_sf(d.sma_200)&&_sf(d.sma_200)>0,beta<1.5].filter(Boolean).length>=9?'9+ checks passing is EXCELLENT — this company ticks most boxes of a quality investment. No stock is perfect, but this one scores well on the fundamentals that matter most.':[pm>0,pm>15,roe>15,de<100,cr>1.5,rg>5,eg>5,pe>0&&pe<25,_sf(d.free_cash_flow||d.free_cashflow)>0,w52pos<90,price>_sf(d.sma_200)&&_sf(d.sma_200)>0,beta<1.5].filter(Boolean).length>=6?'6-8 checks passing is DECENT — the company has some strong points but also areas of concern. Focus on the red ❌ items to understand what could go wrong.':'Less than 6 checks passing is a CAUTION SIGNAL. Multiple fundamental weaknesses increase the chance something goes wrong. Consider this a speculative position only, with strict position limits.'}</div>
+</div>
 </div>
 
 <!-- SWOT ANALYSIS -->
@@ -4312,6 +4503,11 @@ ${beta>1.3?'• Market downturns amplified by high beta<br>':''}
 </div>
 </div>
 
+<div style="padding:12px;border-radius:8px;background:rgba(245,158,11,.04);border-left:3px solid var(--amber);margin:10px 0 16px">
+<div style="font-size:11px;font-weight:700;color:var(--amber)">💡 How to Use SWOT Analysis:</div>
+<div style="font-size:10px;color:var(--text2);margin-top:4px;line-height:1.8">SWOT is auto-generated from the company's actual financial data, not generic text. <strong>Strengths</strong> = things the company does BETTER than average (high margins, low debt, strong cash flow). These are your reasons TO buy. <strong>Weaknesses</strong> = where the company lags (thin margins, heavy debt, poor returns). These are your reasons to HESITATE. <strong>Opportunities</strong> = positive trends that could improve the stock (revenue growth, undervaluation, margin expansion room). <strong>Threats</strong> = external risks that could hurt returns. <strong>Decision rule:</strong> If strengths + opportunities significantly outnumber weaknesses + threats, the odds favor buying. If the reverse, wait for improvement.</div>
+</div>
+
 <!-- PRICE TARGET METHODOLOGY -->
 <div style="margin-bottom:20px;padding:18px;border-radius:12px;background:rgba(217,119,6,.04);border:1px solid rgba(217,119,6,.15)">
 <div style="font-family:'Sora',sans-serif;font-size:13px;font-weight:700;color:#d97706;margin-bottom:6px">🎯 Price Target Methodology</div>
@@ -4323,6 +4519,11 @@ ${beta>1.3?'• Market downturns amplified by high beta<br>':''}
 <tr><td style="font-weight:600">Book Value + Premium</td><td style="font-weight:700;color:var(--cyan)">${bv>0?sym+(bv*(roe>15?3:roe>10?2:1.5)).toFixed(0):'N/A'}</td><td style="color:${bv>0&&bv*(roe>15?3:2)>price?'#10b981':'#ef4444'}">${bv>0?_pct(((bv*(roe>15?3:2)-price)/price*100)):'N/A'}</td><td style="font-size:9px;color:var(--text3)">Book value × P/B multiple (based on ROE quality)</td></tr>
 <tr style="background:rgba(217,119,6,.06);border-top:2px solid #d97706"><td style="font-weight:800;color:#d97706">Blended Target (12M)</td><td style="font-weight:800;color:#d97706;font-size:14px">${sym}${target12m.toFixed(0)}</td><td style="font-weight:700;color:${target12m>price?'#10b981':'#ef4444'}">${_pct(((target12m-price)/price*100))}</td><td style="font-size:9px;color:#d97706;font-weight:600">Weighted average of all methods</td></tr>
 </table></div>
+</div>
+
+<div style="padding:12px;border-radius:8px;background:rgba(139,92,246,.04);border-left:3px solid var(--purple);margin:10px 0 16px">
+<div style="font-size:11px;font-weight:700;color:var(--purple)">💡 Understanding Price Targets:</div>
+<div style="font-size:10px;color:var(--text2);margin-top:4px;line-height:1.8">We use THREE different methods to calculate a target price because no single method is reliable alone. <strong>P/E Method</strong> assumes the stock will trade at the sector average P/E — if it's currently below, it should rise. <strong>Mean Reversion</strong> assumes the stock will move toward its 52-week average — extreme highs/lows tend to correct. <strong>Book Value + Premium</strong> estimates value from assets plus a quality premium based on ROE. When all 3 agree on direction, that's a high-confidence signal. When they disagree, treat the range between the lowest and highest as the "uncertainty zone." Never bet everything on one price target — use them as guideposts, not guarantees.</div>
 </div>
 
 <!-- INVESTMENT RECOMMENDATION -->
@@ -4345,18 +4546,403 @@ ${beta>1.3?'• Market downturns amplified by high beta<br>':''}
 </div>
 </div>
 
+<!-- FINAL RECOMMENDATION INFERENCE -->
+<div style="padding:12px;border-radius:8px;background:rgba(16,185,129,.04);border-left:3px solid #10b981;margin:16px 0">
+<div style="font-size:11px;font-weight:700;color:#10b981">💡 What Should You Do Next?</div>
+<div style="font-size:10px;color:var(--text2);margin-top:4px;line-height:1.8">${rating==='BUY'||rating==='ACCUMULATE'?'<strong>The data suggests this is a good opportunity.</strong> Consider building a position through monthly SIP rather than lump sum — this averages your entry price and reduces timing risk. Start small (2-3% of portfolio) and add more if subsequent quarterly results confirm the thesis. Set a stop-loss at 15-20% below your entry to limit downside.':rating==='HOLD'?'<strong>Neutral territory — neither compelling nor concerning.</strong> If you already own it, keep holding. If you don\'t own it, there may be better opportunities elsewhere. Wait for either a meaningful price dip (better entry) or improving fundamentals (stronger thesis) before buying.':'<strong>The data suggests caution.</strong> If you own this stock, consider trimming your position on any rallies rather than panic selling at lows. If you don\'t own it, wait for fundamental improvement before considering. Focus your capital on stocks with stronger scores.'}<br><br><strong>Remember:</strong> This quantitative model cannot capture qualitative factors like management quality, competitive moats, regulatory changes, or industry disruption. Use this report as ONE input alongside your own research and a SEBI-registered advisor\'s guidance.</div>
+</div>
+
+<!-- STEP-BY-STEP DECISION GUIDE -->
+<div style="padding:16px;border-radius:12px;background:linear-gradient(135deg,rgba(139,92,246,.04),rgba(59,130,246,.03));border:1px solid rgba(139,92,246,.12);margin:16px 0">
+<div style="font-family:'Sora',sans-serif;font-size:12px;font-weight:700;color:var(--purple);margin-bottom:10px">🗺️ Step-by-Step Decision Guide — What to Do With This Report</div>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:8px;font-size:9px;color:var(--text2);line-height:1.7">
+<div style="padding:10px;border-radius:8px;background:rgba(16,185,129,.04);border-left:3px solid #10b981">
+<div style="font-weight:700;color:#10b981;margin-bottom:3px">Step 1: Check the Checklist Score</div>
+If the stock passes 8+ out of 12 checks → fundamentals are solid. Below 6 → multiple red flags, proceed with extreme caution regardless of other signals.
+</div>
+<div style="padding:10px;border-radius:8px;background:rgba(59,130,246,.04);border-left:3px solid var(--blue)">
+<div style="font-weight:700;color:var(--blue);margin-bottom:3px">Step 2: Look at Valuation vs Sector</div>
+${pe>0&&pe<sAvgPE*0.85?'This stock is CHEAPER than its sector peers. If Step 1 passed, this could be a genuine bargain — the market may be underpricing it.':pe>sAvgPE*1.15?'Trading at a PREMIUM to peers. Only justified if growth significantly exceeds sector average. Check the Growth Deep Dive section.':'Fairly priced vs peers. The stock won\\'t give you a valuation boost — returns depend entirely on business execution.'}
+</div>
+<div style="padding:10px;border-radius:8px;background:rgba(245,158,11,.04);border-left:3px solid var(--amber)">
+<div style="font-weight:700;color:var(--amber);margin-bottom:3px">Step 3: Read the SWOT</div>
+Count strengths+opportunities vs weaknesses+threats. If S+O significantly outnumber W+T → odds favor you. If reversed → wait for improvement or find a better stock.
+</div>
+<div style="padding:10px;border-radius:8px;background:rgba(6,182,212,.04);border-left:3px solid var(--cyan)">
+<div style="font-weight:700;color:var(--cyan);margin-bottom:3px">Step 4: Check the Technicals</div>
+${sma20>0&&sma50>0&&sma200>0?(price>sma200?'Price is ABOVE the 200-day average → the long-term trend is UP. This supports buying.':'Price is BELOW the 200-day average → the trend is DOWN. Even if fundamentals are good, consider waiting for a trend reversal.'):'Technical data unavailable. Focus on fundamentals.'}
+</div>
+<div style="padding:10px;border-radius:8px;background:rgba(139,92,246,.04);border-left:3px solid var(--purple)">
+<div style="font-weight:700;color:var(--purple);margin-bottom:3px">Step 5: Size Your Position</div>
+${rating==='BUY'?'Strong conviction → Start with 3-5% of your portfolio. Add more on dips if the thesis remains intact. Set a stop-loss at 15% below entry.':rating==='ACCUMULATE'?'Moderate conviction → Start with 2-3% of your portfolio via SIP over 3-6 months. Don\\'t go all-in at once.':rating==='HOLD'?'Low conviction → If you own it, hold. If you don\\'t, allocate capital elsewhere. Watch for fundamental improvement.':'Caution → Avoid new positions. If you own it, look for exit points on rallies. Reallocate to stronger stocks.'}
+</div>
+<div style="padding:10px;border-radius:8px;background:rgba(16,185,129,.04);border-left:3px solid #10b981">
+<div style="font-weight:700;color:#10b981;margin-bottom:3px">Step 6: Set Alerts & Review</div>
+Set a price alert at the target price (${sym}${target12m.toFixed(0)}). Review this analysis again after the next quarterly earnings. If fundamentals deteriorate, don't fall in love with the stock — cut losses early.
+</div>
+</div>
+</div>
+
 <!-- DISCLAIMER -->
 <div style="padding:10px 14px;border-radius:8px;background:rgba(245,158,11,.03);border:1px solid rgba(245,158,11,.1)">
 <div style="font-size:9px;color:var(--text3);line-height:1.6">
 <strong style="color:var(--amber)">&#128712; Disclaimer:</strong> This equity research report is generated by Celesys AI for <strong>educational and informational purposes only</strong>. It does not constitute investment advice, a solicitation, or an offer to buy or sell any securities. All data is sourced from public financial APIs and may contain inaccuracies. Past performance does not guarantee future results. Always consult a SEBI-registered investment advisor before making financial decisions. Celesys AI is not registered with SEBI or any regulatory body.
 </div>
-</div>`;
+</div>\`;
 
 el.innerHTML=h;
 console.log('✅ Equity Research rendered:',name,rating,sym+target12m.toFixed(0));
 }
 
 // ═══════════════════════════════════════════════
+// ═══ INDEX RESEARCH — India & USA ═══
+// ═══════════════════════════════════════════════
+const INDEX_DATA={
+india:[
+{name:'Nifty 50',ticker:'^NSEI',yf:'^NSEI',type:'Large Cap',stocks:50,desc:'Top 50 companies by market cap on NSE. The primary benchmark for Indian equities.',sector:'Broad Market',currency:'₹',inception:'1996',methodology:'Free-float market cap weighted',topHoldings:'HDFC Bank, Reliance, ICICI Bank, Infosys, TCS',rebalance:'Semi-annual (Mar/Sep)',pe_hist:'20-22x',cagr5:'~12-14%',cagr10:'~11-13%',maxDD:'-38% (Mar 2020)',risk:'Medium',sip:'₹500/month in Nifty ETF since 2015 → ~15% CAGR',best:'Broad India exposure, most liquid, lowest cost ETFs available',risk_note:'Concentrated in top 10 stocks (~55% weight). HDFC Bank alone is 12%+.'},
+{name:'Sensex',ticker:'^BSESN',yf:'^BSESN',type:'Large Cap',stocks:30,desc:'Oldest Indian index. 30 largest & most traded companies on BSE.',sector:'Broad Market',currency:'₹',inception:'1986',methodology:'Free-float market cap weighted',topHoldings:'Reliance, HDFC Bank, ICICI Bank, Infosys, TCS',rebalance:'Semi-annual',pe_hist:'22-25x',cagr5:'~13%',cagr10:'~12%',maxDD:'-38% (Mar 2020)',risk:'Medium',sip:'Most tracked by media. Fewer stocks = slightly higher concentration.',best:'Heritage index, widely quoted, good for tracking overall market direction',risk_note:'Only 30 stocks — even more concentrated than Nifty 50.'},
+{name:'Bank Nifty',ticker:'^NSEBANK',yf:'^NSEBANK',type:'Sector',stocks:12,desc:'Top 12 banking stocks. Most traded options index in India — 80%+ of F&O volume.',sector:'Banking & Financial',currency:'₹',inception:'2003',methodology:'Free-float market cap weighted',topHoldings:'HDFC Bank, ICICI Bank, Kotak Bank, Axis Bank, SBI',rebalance:'Semi-annual',pe_hist:'15-18x',cagr5:'~10-12%',cagr10:'~12%',maxDD:'-42% (Mar 2020)',risk:'High',sip:'High beta — rallies harder in bull markets, falls harder in bear markets.',best:'Options trading, directional bets on banking sector, high liquidity',risk_note:'NPA cycles, RBI policy changes, and credit growth directly impact returns.'},
+{name:'Nifty IT',ticker:'NIFTYIT.NS',yf:'^CNXIT',type:'Sector',stocks:10,desc:'Top 10 IT companies. Proxy for USD/INR — benefits from rupee depreciation.',sector:'Information Technology',currency:'₹',inception:'1996',methodology:'Free-float market cap weighted',topHoldings:'TCS, Infosys, HCL Tech, Wipro, Tech Mahindra',rebalance:'Semi-annual',pe_hist:'25-30x',cagr5:'~15-18%',cagr10:'~14%',maxDD:'-30% (2022)',risk:'Medium-High',sip:'Best India IT proxy. USD revenue = natural INR depreciation hedge.',best:'Export earnings, defensive in INR weakness, high margins',risk_note:'US recession directly hits IT budgets. AI disruption risk to services model.'},
+{name:'Nifty Next 50',ticker:'NIFTYNXT50.NS',yf:'^NSMIDCP',type:'Mid-Large Cap',stocks:50,desc:'Stocks ranked 51-100 by market cap. Future Nifty 50 candidates.',sector:'Broad Market',currency:'₹',inception:'1996',methodology:'Free-float market cap weighted',topHoldings:'Adani companies, Avenue Supermarts, Vedanta, IRCTC, Tata Power',rebalance:'Semi-annual',pe_hist:'22-28x',cagr5:'~14-16%',cagr10:'~13-15%',maxDD:'-40% (Mar 2020)',risk:'Medium-High',sip:'Higher growth potential than Nifty 50 — these are the emerging blue-chips.',best:'Growth + quality, future large caps, SIP alpha over Nifty 50',risk_note:'Higher volatility than Nifty 50. Some stocks may never graduate to Nifty 50.'},
+{name:'Nifty Midcap 150',ticker:'',yf:'NIFTY_MID_SELECT.NS',type:'Mid Cap',stocks:150,desc:'Mid-cap companies ranked 101-250 by market cap.',sector:'Broad Market',currency:'₹',inception:'2004',methodology:'Free-float market cap weighted',topHoldings:'Persistent Systems, PI Industries, Max Healthcare, Trent',rebalance:'Semi-annual',pe_hist:'25-35x',cagr5:'~18-22%',cagr10:'~16-18%',maxDD:'-45% (Mar 2020)',risk:'High',sip:'Historically outperforms large caps over 10+ year periods via SIP.',best:'Higher growth, emerging companies, alpha generation',risk_note:'Can underperform for 2-3 year stretches. Liquidity risk in downturns.'},
+{name:'Nifty Smallcap 250',ticker:'',yf:'NIFTY_SMLCAP_250.NS',type:'Small Cap',stocks:250,desc:'Companies ranked 251-500 by market cap. High growth, high risk.',sector:'Broad Market',currency:'₹',inception:'2004',methodology:'Free-float market cap weighted',topHoldings:'Diverse — 250 stocks, no single stock > 2%',rebalance:'Semi-annual',pe_hist:'20-40x',cagr5:'~20-25%',cagr10:'~15-18%',maxDD:'-55% (Mar 2020)',risk:'Very High',sip:'Highest long-term SIP returns historically, but also deepest drawdowns.',best:'Maximum growth potential, multi-bagger hunting ground',risk_note:'50-60% drawdowns in bear markets. Many stocks have low liquidity. 3-5 year horizon minimum.'},
+{name:'Nifty Auto',ticker:'',yf:'^CNXAUTO',type:'Sector',stocks:15,desc:'Top automobile and auto component companies.',sector:'Automotive',currency:'₹',inception:'2004',methodology:'Free-float market cap weighted',topHoldings:'Tata Motors, M&M, Maruti, Bajaj Auto, Eicher Motors',rebalance:'Semi-annual',pe_hist:'20-30x',cagr5:'~15-20%',cagr10:'~12%',maxDD:'-45% (Mar 2020)',risk:'High',sip:'Cyclical — buy during slowdowns for best SIP returns.',best:'EV transition play, rural recovery proxy, export potential',risk_note:'Highly cyclical. Commodity prices, interest rates, and monsoon impact demand.'},
+{name:'Nifty Pharma',ticker:'',yf:'^CNXPHARMA',type:'Sector',stocks:20,desc:'Top pharmaceutical and healthcare companies.',sector:'Healthcare',currency:'₹',inception:'2001',methodology:'Free-float market cap weighted',topHoldings:'Sun Pharma, Dr Reddy, Cipla, Divi Labs, Apollo Hospitals',rebalance:'Semi-annual',pe_hist:'25-35x',cagr5:'~12-15%',cagr10:'~10-12%',maxDD:'-30% (2022)',risk:'Medium',sip:'Defensive sector — outperforms during market stress and recessions.',best:'Defensive, INR depreciation hedge (exports), aging population tailwind',risk_note:'US FDA inspections, generic price erosion, patent cliffs create volatility.'},
+{name:'India VIX',ticker:'',yf:'^INDIAVIX',type:'Volatility',stocks:0,desc:'Fear gauge — measures expected volatility of Nifty 50 over next 30 days.',sector:'Volatility',currency:'',inception:'2008',methodology:'Based on Nifty options order book',topHoldings:'N/A — derived from options prices',rebalance:'Continuous',pe_hist:'N/A',cagr5:'N/A',cagr10:'N/A',maxDD:'N/A',risk:'N/A',sip:'Not investable directly. VIX > 25 = market panic = buying opportunity.',best:'Contrarian signal — spike above 25 historically marks market bottoms',risk_note:'VIX can stay elevated for months. Not a timing tool alone.'},
+],
+usa:[
+{name:'S&P 500',ticker:'^GSPC',yf:'^GSPC',type:'Large Cap',stocks:500,desc:'500 largest US companies. THE benchmark for global equities.',sector:'Broad Market',currency:'$',inception:'1957',methodology:'Float-adjusted market cap weighted',topHoldings:'Apple, Microsoft, NVIDIA, Amazon, Meta, Alphabet',rebalance:'Quarterly',pe_hist:'18-22x',cagr5:'~12-15%',cagr10:'~12-13%',maxDD:'-34% (Mar 2020)',risk:'Medium',sip:'$100/month since 2000 → ~10% CAGR. Most recommended single investment by Warren Buffett.',best:'Broad US exposure, lowest cost, most liquid, gold standard benchmark',risk_note:'Top 7 stocks (Mag 7) are ~30% of index — extreme concentration risk.'},
+{name:'NASDAQ Composite',ticker:'^IXIC',yf:'^IXIC',type:'Tech Heavy',stocks:3000,desc:'All NASDAQ-listed stocks. Heavily tech-weighted (~50% technology).',sector:'Technology',currency:'$',inception:'1971',methodology:'Market cap weighted',topHoldings:'Apple, Microsoft, NVIDIA, Amazon, Meta, Alphabet, Tesla',rebalance:'Continuous',pe_hist:'25-35x',cagr5:'~15-18%',cagr10:'~16-18%',maxDD:'-33% (2022)',risk:'Medium-High',sip:'Outperforms S&P 500 in bull markets, underperforms in downturns.',best:'Tech sector proxy, innovation exposure, AI/cloud/SaaS growth',risk_note:'Tech concentration means rate hikes hit hard. -33% in 2022 when Fed raised rates.'},
+{name:'NASDAQ 100',ticker:'^NDX',yf:'^NDX',type:'Large Cap Tech',stocks:100,desc:'Top 100 non-financial NASDAQ stocks. The "Magnificent 7" index.',sector:'Technology',currency:'$',inception:'1985',methodology:'Modified market cap weighted',topHoldings:'Apple, Microsoft, NVIDIA, Amazon, Broadcom, Meta, Tesla',rebalance:'Quarterly',pe_hist:'28-35x',cagr5:'~18-22%',cagr10:'~18-20%',maxDD:'-33% (2022)',risk:'High',sip:'Best performing major index over last decade. QQQ ETF is the easiest way to invest.',best:'Concentrated tech/innovation, AI/cloud/semiconductor exposure',risk_note:'Magnificent 7 = 50%+ of index. Single stock risk disguised as index investing.'},
+{name:'Dow Jones Industrial',ticker:'^DJI',yf:'^DJI',type:'Blue Chip',stocks:30,desc:'30 blue-chip American companies. Price-weighted — oldest major US index.',sector:'Industrial',currency:'$',inception:'1896',methodology:'Price weighted (unusual — higher priced stocks have more influence)',topHoldings:'UnitedHealth, Goldman Sachs, Microsoft, Caterpillar, Amgen',rebalance:'As needed (committee decision)',pe_hist:'16-20x',cagr5:'~10-12%',cagr10:'~11-12%',maxDD:'-37% (Mar 2020)',risk:'Medium',sip:'Most conservative major US index. Industrial & value tilt.',best:'Blue-chip stability, dividend income, lower volatility than NASDAQ',risk_note:'Price-weighted = archaic methodology. Stock splits randomly change index impact.'},
+{name:'Russell 2000',ticker:'^RUT',yf:'^RUT',type:'Small Cap',stocks:2000,desc:'2000 smallest companies in Russell 3000. US small-cap benchmark.',sector:'Broad Market',currency:'$',inception:'1984',methodology:'Market cap weighted',topHoldings:'Widely diversified — no single stock > 0.5%',rebalance:'Annual (June)',pe_hist:'20-35x',cagr5:'~6-10%',cagr10:'~8-10%',maxDD:'-42% (Mar 2020)',risk:'High',sip:'Historically leads in early bull markets. Underperformed large caps for years.',best:'Domestic US economy proxy, less tech concentration, value hunting ground',risk_note:'Higher interest rates crush small caps (more floating-rate debt). Underperforming since 2020.'},
+{name:'S&P 500 Equal Weight',ticker:'',yf:'RSP',type:'Large Cap',stocks:500,desc:'Same 500 stocks as S&P 500, but each gets 0.2% weight instead of market cap.',sector:'Broad Market',currency:'$',inception:'2003',methodology:'Equal weighted, rebalanced quarterly',topHoldings:'All 500 stocks equally — no single stock dominance',rebalance:'Quarterly',pe_hist:'16-19x',cagr5:'~10-12%',cagr10:'~11-12%',maxDD:'-38% (Mar 2020)',risk:'Medium',sip:'Eliminates Magnificent 7 concentration risk. Outperforms in value/breadth rallies.',best:'Diversification, value tilt, no single-stock risk, mean reversion benefit',risk_note:'Underperforms in momentum/tech-driven markets (like 2023-2024).'},
+{name:'VIX (Fear Index)',ticker:'^VIX',yf:'^VIX',type:'Volatility',stocks:0,desc:'CBOE Volatility Index — measures expected 30-day volatility of S&P 500.',sector:'Volatility',currency:'',inception:'1993',methodology:'Based on S&P 500 options pricing',topHoldings:'N/A — derived from options',rebalance:'Continuous',pe_hist:'N/A',cagr5:'N/A',cagr10:'N/A',maxDD:'N/A',risk:'N/A',sip:'Not investable long-term (VIX ETPs decay). Use as market fear gauge only.',best:'Contrarian buy signal — VIX > 30 historically marks great entry points for S&P 500',risk_note:'VIX can spike to 80+ in extreme panic (Mar 2020 hit 82). Stay calm when others panic.'},
+{name:'SOX (Semiconductor)',ticker:'',yf:'^SOX',type:'Sector',stocks:30,desc:'Philadelphia Semiconductor Index. The AI/chip boom benchmark.',sector:'Semiconductors',currency:'$',inception:'1993',methodology:'Modified market cap weighted',topHoldings:'NVIDIA, Broadcom, AMD, TSMC (ADR), Qualcomm, Intel',rebalance:'Annual',pe_hist:'20-35x',cagr5:'~25-30%',cagr10:'~22-25%',maxDD:'-40% (2022)',risk:'Very High',sip:'Highest CAGR of any major sector index. Riding the AI capex super-cycle.',best:'Direct AI/semiconductor exposure, NVIDIA-led, massive secular tailwinds',risk_note:'Extreme cyclicality — inventory corrections can cause 30-40% drops in months.'},
+{name:'Dow Jones Transportation',ticker:'',yf:'^DJT',type:'Sector',stocks:20,desc:'20 major US transportation companies. Economic leading indicator.',sector:'Transportation',currency:'$',inception:'1884',methodology:'Price weighted',topHoldings:'UPS, FedEx, Union Pacific, Delta Airlines, CSX',rebalance:'As needed',pe_hist:'15-20x',cagr5:'~8-10%',cagr10:'~10-12%',maxDD:'-40% (Mar 2020)',risk:'High',sip:'Dow Theory: when Transports confirm Industrials, bull market is real.',best:'Economic bellwether, leading indicator, Dow Theory confirmation signal',risk_note:'Fuel prices, labor costs, and recession directly hit transportation stocks.'},
+]};
+
+function renderIndices(d){
+const el=document.getElementById('indicesContent');
+if(!el)return;
+
+let _geo='india';
+const buildIndexCards=(geo)=>{
+const data=INDEX_DATA[geo];
+if(!data)return'';
+const sym=geo==='india'?'₹':'$';
+let h='';
+
+// Collect yf tickers for live price fetch
+const yfTickers=data.filter(idx=>idx.yf).map(idx=>idx.yf);
+
+data.forEach((idx,i)=>{
+const isVol=idx.type==='Volatility';
+const riskC=idx.risk==='Very High'?'#ef4444':idx.risk==='High'?'#f97316':idx.risk==='Medium-High'?'#f59e0b':idx.risk==='Medium'?'#22d3ee':idx.risk==='Low'?'#10b981':'var(--text3)';
+const typeC=idx.type.includes('Large')?'var(--blue)':idx.type.includes('Mid')?'var(--purple)':idx.type.includes('Small')?'var(--amber)':idx.type.includes('Sector')?'#10b981':idx.type.includes('Tech')?'#8b5cf6':'var(--cyan)';
+
+h+=`<div style="margin-bottom:16px;border-radius:14px;overflow:hidden;border:1px solid var(--border);background:rgba(0,47,108,.015)">
+<!-- Header -->
+<div style="padding:16px 18px;background:linear-gradient(135deg,rgba(6,182,212,.06),rgba(59,130,246,.04));border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+<div>
+<div style="display:flex;align-items:center;gap:8px;margin-bottom:2px">
+<span style="font-size:16px;font-weight:800;color:var(--text);font-family:'Sora',sans-serif">${idx.name}</span>
+<span style="font-size:9px;padding:2px 8px;border-radius:4px;background:rgba(6,182,212,.1);color:${typeC};font-weight:700;letter-spacing:.5px">${idx.type}</span>
+${!isVol?`<span style="font-size:9px;padding:2px 6px;border-radius:4px;color:${riskC};border:1px solid ${riskC};font-weight:600">${idx.risk} Risk</span>`:''}
+</div>
+<div style="font-size:10px;color:var(--text3)">${idx.yf||'—'} · ${idx.stocks>0?idx.stocks+' stocks':'Derived'} · Since ${idx.inception}</div>
+</div>
+<div style="text-align:right">
+<div data-idx-ticker="${idx.yf}" style="font-size:20px;font-weight:800;color:var(--cyan);font-family:var(--mono)">⏳</div>
+</div>
+</div>
+
+<!-- Body -->
+<div style="padding:14px 18px">
+<p style="font-size:11px;color:var(--text);line-height:1.7;margin:0 0 12px">${idx.desc}</p>
+
+<!-- Key Metrics Grid -->
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:6px;margin-bottom:12px">
+${!isVol?`
+<div style="padding:8px;border-radius:6px;background:rgba(6,182,212,.04);text-align:center"><div style="font-size:8px;color:var(--text3)">5Y CAGR</div><div style="font-size:14px;font-weight:700;color:#10b981">${idx.cagr5}</div></div>
+<div style="padding:8px;border-radius:6px;background:rgba(59,130,246,.04);text-align:center"><div style="font-size:8px;color:var(--text3)">10Y CAGR</div><div style="font-size:14px;font-weight:700;color:var(--blue)">${idx.cagr10}</div></div>
+<div style="padding:8px;border-radius:6px;background:rgba(239,68,68,.04);text-align:center"><div style="font-size:8px;color:var(--text3)">Max Drawdown</div><div style="font-size:14px;font-weight:700;color:var(--red)">${idx.maxDD}</div></div>
+<div style="padding:8px;border-radius:6px;background:rgba(245,158,11,.04);text-align:center"><div style="font-size:8px;color:var(--text3)">Historical P/E</div><div style="font-size:14px;font-weight:700;color:var(--amber)">${idx.pe_hist}</div></div>
+`:`
+<div style="padding:8px;border-radius:6px;background:rgba(245,158,11,.04);text-align:center;grid-column:span 2"><div style="font-size:8px;color:var(--text3)">How to Read</div><div style="font-size:11px;font-weight:600;color:var(--amber)">Below 15 = Calm · 15-25 = Normal · 25-35 = Fear · 35+ = Panic</div></div>
+`}
+</div>
+
+<!-- Details -->
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:10px;margin-bottom:10px">
+<div><span style="color:var(--text3)">Methodology:</span> <span style="color:var(--text2)">${idx.methodology}</span></div>
+<div><span style="color:var(--text3)">Rebalance:</span> <span style="color:var(--text2)">${idx.rebalance}</span></div>
+<div style="grid-column:span 2"><span style="color:var(--text3)">Top Holdings:</span> <span style="color:var(--text)">${idx.topHoldings}</span></div>
+</div>
+
+<!-- SIP/Best/Risk -->
+<div style="display:grid;grid-template-columns:1fr;gap:6px">
+<div style="padding:8px 10px;border-radius:6px;border-left:3px solid #10b981;background:rgba(16,185,129,.03)"><span style="font-size:9px;font-weight:700;color:#10b981">💡 BEST FOR:</span> <span style="font-size:9px;color:var(--text2)">${idx.best}</span></div>
+<div style="padding:8px 10px;border-radius:6px;border-left:3px solid var(--cyan);background:rgba(6,182,212,.03)"><span style="font-size:9px;font-weight:700;color:var(--cyan)">📊 SIP INSIGHT:</span> <span style="font-size:9px;color:var(--text2)">${idx.sip}</span></div>
+<div style="padding:8px 10px;border-radius:6px;border-left:3px solid var(--red);background:rgba(239,68,68,.03)"><span style="font-size:9px;font-weight:700;color:var(--red)">⚠️ KEY RISK:</span> <span style="font-size:9px;color:var(--text2)">${idx.risk_note}</span></div>
+${!isVol?`<div style="padding:8px 10px;border-radius:6px;border-left:3px solid var(--purple);background:rgba(139,92,246,.03)"><span style="font-size:9px;font-weight:700;color:var(--purple)">🕐 WHEN TO BUY:</span> <span style="font-size:9px;color:var(--text2)">${
+idx.risk==='Very High'?'Only via SIP (never lump sum). Best entries when index falls 30%+ from peak. Never invest money you need within 5 years.':
+idx.risk==='High'?'SIP is preferred. Look for entries when index corrects 15-20% from highs. Avoid buying at all-time highs. 3-5 year minimum hold.':
+idx.risk==='Medium-High'?'SIP monthly for best results. Increase SIP amount when index drops 10-15%. Good as a 3-5 year core holding.':
+'Start SIP anytime — do not try to time the market. Broad indices recover from every crash. The best time to start was yesterday. The second best is today.'
+}</span></div>
+<div style="padding:8px 10px;border-radius:6px;border-left:3px solid #10b981;background:rgba(16,185,129,.03)"><span style="font-size:9px;font-weight:700;color:#10b981">💰 SIP ESTIMATE (₹10K/month):</span> <span style="font-size:9px;color:var(--text2)">${
+idx.cagr10.includes('18')||idx.cagr10.includes('20')||idx.cagr10.includes('22')||idx.cagr10.includes('25')?'5Y: ~₹9-10L · 10Y: ~₹30-38L · 20Y: ~₹1.5-2.8Cr — HIGH growth potential with HIGH volatility':
+idx.cagr10.includes('14')||idx.cagr10.includes('15')||idx.cagr10.includes('16')?'5Y: ~₹8.5-9L · 10Y: ~₹25-30L · 20Y: ~₹1.1-1.5Cr — above-average returns with moderate risk':
+idx.cagr10.includes('12')||idx.cagr10.includes('13')?'5Y: ~₹8.2L · 10Y: ~₹23L · 20Y: ~₹99L — solid wealth creation with manageable risk':
+idx.cagr10.includes('10')||idx.cagr10.includes('11')?'5Y: ~₹7.7L · 10Y: ~₹20L · 20Y: ~₹76L — steady compounder, lower volatility':
+'5Y: ~₹7-8L · 10Y: ~₹18-22L · 20Y: ~₹60-90L — historical estimates, actual may vary'
+}</span></div>`:''}
+</div>
+
+<!-- Per-card inference -->
+<div style="margin-top:8px;padding:10px 12px;border-radius:6px;background:rgba(6,182,212,.03);border-left:3px solid var(--cyan)">
+<div style="font-size:9px;font-weight:700;color:var(--cyan)">💡 BOTTOM LINE FOR INVESTORS:</div>
+<div style="font-size:9px;color:var(--text2);margin-top:3px;line-height:1.7">${
+idx.risk==='Very High'?'This is a HIGH-RISK, HIGH-REWARD index. Only allocate money you will not need for 5+ years. Use SIP (systematic investing) to average out the wild swings — never invest a lump sum at market peaks. Limit to 10-15% of your total portfolio.':
+idx.risk==='High'?'Higher risk than broad market indices. Suitable for investors with a 3-5 year horizon who can stomach 30-40% temporary drops. SIP is strongly recommended over lump sum. Position sizing: 15-25% of equity portfolio max.':
+idx.type==='Volatility'?'This is NOT an investment — it is a TOOL. Watch it like a thermometer: when it spikes above '+('${idx.currency}'==='₹'?'25':'30')+', it historically marks excellent long-term buying opportunities for the main indices. The best investors buy when others panic.':
+idx.type==='Sector'?'Sector indices are TACTICAL tools — use them for targeted bets on specific themes (banking, tech, pharma). Do not make them your core holding. Core should be broad market (Nifty 50 or S&P 500), with sector indices as 10-20% satellite positions.':
+'A CORE HOLDING candidate for most portfolios. Broad market indices are the foundation of wealth building. Start a monthly SIP and forget about timing the market — time IN the market beats timing THE market. '+idx.stocks+' stocks provides good diversification.'
+}</div>
+</div>
+
+</div></div>`;
+});
+
+return h;
+};
+
+// Build UI with geo toggle
+let h=`
+<!-- INTRO HERO -->
+<div style="background:linear-gradient(135deg,#0a1628 0%,#0d2137 50%,#0a1628 100%);border-radius:14px;padding:24px;margin-bottom:20px;position:relative;overflow:hidden">
+<div style="position:absolute;top:-50px;right:-50px;width:200px;height:200px;background:radial-gradient(circle,rgba(6,182,212,.2),transparent 70%)"></div>
+<div style="position:relative">
+<div style="font-size:9px;letter-spacing:2px;color:rgba(255,255,255,.3);margin-bottom:6px">CELESYS AI · GLOBAL INDEX RESEARCH</div>
+<div style="font-size:20px;font-weight:800;color:#fff;font-family:'Sora',sans-serif;margin-bottom:4px">Complete Index Research — India & USA</div>
+<div style="font-size:11px;color:rgba(255,255,255,.5)">${INDEX_DATA.india.length} Indian Indices · ${INDEX_DATA.usa.length} US Indices · Live Prices · Deep Analysis</div>
+</div>
+</div>
+
+<!-- WHAT IS AN INDEX? -->
+<div style="padding:16px;border-radius:12px;background:rgba(6,182,212,.04);border:1px solid rgba(6,182,212,.12);margin-bottom:16px">
+<div style="font-family:'Sora',sans-serif;font-size:13px;font-weight:700;color:var(--cyan);margin-bottom:8px">📖 What is a Stock Market Index? (Explained Simply)</div>
+<div style="font-size:10px;color:var(--text2);line-height:1.9">
+An <strong>index</strong> is like a <strong>report card</strong> for a group of stocks. Just like your school report card averages your marks across subjects to give one number, a stock index averages the prices of many companies to give one number that tells you how that market segment is performing.<br><br>
+<strong>Why should you care?</strong> Instead of picking individual stocks (risky — even experts get it wrong 60% of the time), you can invest in an index through an ETF or index fund. This gives you instant diversification — if one company fails, the others cushion the blow. Warren Buffett's advice to most people: <em>"Just buy an S&P 500 index fund."</em><br><br>
+<strong>Key terms explained:</strong><br>
+• <strong>CAGR</strong> = Compound Annual Growth Rate — your average yearly return including compounding. A 12% CAGR means ₹1 lakh becomes ₹3.1 lakh in 10 years.<br>
+• <strong>Drawdown</strong> = The biggest peak-to-trough fall. -38% means if you invested at the peak, you'd temporarily lose 38%. Scary, but markets always recovered.<br>
+• <strong>P/E Ratio</strong> = How expensive the index is. Higher = more expensive = lower expected future returns. Buy when P/E is below historical average.<br>
+• <strong>SIP</strong> = Systematic Investment Plan — investing a fixed amount monthly. The BEST strategy for 90% of people because it averages your entry price automatically.<br>
+• <strong>ETF</strong> = Exchange Traded Fund — a stock that tracks an index. You buy it like a share but get the entire index's returns. Cheapest way to invest in indices.
+</div>
+</div>
+
+<!-- ASSET ALLOCATION BY AGE -->
+<div style="padding:16px;border-radius:12px;background:rgba(139,92,246,.04);border:1px solid rgba(139,92,246,.12);margin-bottom:16px">
+<div style="font-family:'Sora',sans-serif;font-size:13px;font-weight:700;color:var(--purple);margin-bottom:10px">🎯 Recommended Index Allocation by Life Stage</div>
+<div style="overflow-x:auto"><table class="pick-tbl">
+<tr><th>Age Group</th><th>Large Cap</th><th>Mid/Small Cap</th><th>Sector Bets</th><th>US Indices</th><th>Debt/Gold</th><th>Strategy</th></tr>
+<tr><td style="font-weight:700;color:var(--cyan)">20s (Aggressive)</td><td>30%</td><td style="color:#10b981;font-weight:700">35%</td><td>15%</td><td>15%</td><td>5%</td><td style="font-size:9px;color:var(--text3)">Max growth — time heals all drawdowns</td></tr>
+<tr><td style="font-weight:700;color:var(--blue)">30s (Growth)</td><td>40%</td><td style="color:#10b981;font-weight:700">25%</td><td>10%</td><td>15%</td><td>10%</td><td style="font-size:9px;color:var(--text3)">Still growth-focused, start adding stability</td></tr>
+<tr><td style="font-weight:700;color:var(--amber)">40s (Balanced)</td><td style="font-weight:700">45%</td><td>15%</td><td>5%</td><td>15%</td><td>20%</td><td style="font-size:9px;color:var(--text3)">Wealth preservation becomes important</td></tr>
+<tr><td style="font-weight:700;color:#f97316">50s (Conservative)</td><td style="font-weight:700">40%</td><td>10%</td><td>0%</td><td>10%</td><td style="color:var(--amber);font-weight:700">40%</td><td style="font-size:9px;color:var(--text3)">Capital protection, reduce equity risk</td></tr>
+<tr><td style="font-weight:700;color:var(--red)">60s+ (Income)</td><td>30%</td><td>5%</td><td>0%</td><td>5%</td><td style="color:var(--red);font-weight:700">60%</td><td style="font-size:9px;color:var(--text3)">Income generation, minimal risk</td></tr>
+</table></div>
+<div style="font-size:9px;color:var(--text3);margin-top:8px;line-height:1.6">💡 <strong>Rule of thumb:</strong> Equity % = 100 minus your age. A 30-year-old should have ~70% in equities (indices), 30% in debt/gold. Adjust based on your risk appetite and financial goals. SIP into index ETFs is the simplest way to implement this.</div>
+</div>
+
+<!-- SIP POWER TABLE -->
+<div style="padding:16px;border-radius:12px;background:rgba(16,185,129,.04);border:1px solid rgba(16,185,129,.12);margin-bottom:20px">
+<div style="font-family:'Sora',sans-serif;font-size:13px;font-weight:700;color:#10b981;margin-bottom:10px">💰 SIP Calculator — What ₹10,000/Month Grows To</div>
+<div style="overflow-x:auto"><table class="pick-tbl">
+<tr><th>Index</th><th>Expected CAGR</th><th>5 Years</th><th>10 Years</th><th>20 Years</th><th>vs FD (7%)</th></tr>
+<tr><td style="font-weight:700">Nifty 50</td><td>12%</td><td style="color:#10b981;font-weight:700">₹8.2L</td><td style="color:#10b981;font-weight:700">₹23.2L</td><td style="color:#10b981;font-weight:700">₹99.9L</td><td style="color:var(--cyan)">+40% more than FD</td></tr>
+<tr><td style="font-weight:700">Nifty Midcap 150</td><td>16%</td><td style="color:#10b981;font-weight:700">₹9.0L</td><td style="color:#10b981;font-weight:700">₹29.5L</td><td style="color:#10b981;font-weight:700">₹1.56Cr</td><td style="color:var(--cyan)">+120% more than FD</td></tr>
+<tr><td style="font-weight:700">Nifty Smallcap 250</td><td>20%</td><td style="color:#10b981;font-weight:700">₹9.8L</td><td style="color:#10b981;font-weight:700">₹38.0L</td><td style="color:#10b981;font-weight:700">₹2.84Cr</td><td style="color:var(--cyan)">+300% more than FD</td></tr>
+<tr><td style="font-weight:700">S&P 500 (INR)</td><td>14%</td><td style="color:#10b981;font-weight:700">₹8.6L</td><td style="color:#10b981;font-weight:700">₹26.0L</td><td style="color:#10b981;font-weight:700">₹1.21Cr</td><td style="color:var(--cyan)">+70% more than FD</td></tr>
+<tr style="background:rgba(245,158,11,.04)"><td style="font-weight:700;color:var(--amber)">Fixed Deposit (FD)</td><td style="color:var(--text3)">7%</td><td style="color:var(--text3)">₹7.2L</td><td style="color:var(--text3)">₹17.3L</td><td style="color:var(--text3)">₹52.0L</td><td style="color:var(--text3)">Baseline</td></tr>
+</table></div>
+<div style="padding:10px;border-radius:8px;background:rgba(16,185,129,.03);border-left:3px solid #10b981;margin-top:10px">
+<div style="font-size:10px;color:var(--text2);line-height:1.8">💡 <strong>The Power of Compounding:</strong> ₹10,000/month in Nifty 50 for 20 years becomes ~₹1 Crore. The same money in FD becomes only ₹52 Lakh — that's ₹48 Lakh LESS. The catch? You must stay invested through crashes. Those who panic-sold in March 2020 missed the 100% recovery in 18 months. SIP automatically buys more units when prices fall (buying cheap) and fewer when prices rise — it takes emotion out of investing.<br><br><strong>Important:</strong> These are estimates based on historical returns and do not guarantee future performance. Actual returns will vary. Equity investments carry market risk.</div>
+</div>
+</div>
+
+<div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;align-items:center">
+<button class="idx-geo-btn active" onclick="switchIdxGeo(this,'india')" style="padding:8px 20px;border-radius:8px;font-size:12px;font-weight:700;border:2px solid var(--amber);background:var(--amber);color:#000;cursor:pointer;font-family:'Sora',sans-serif">🇮🇳 India (${INDEX_DATA.india.length} Indices)</button>
+<button class="idx-geo-btn" onclick="switchIdxGeo(this,'usa')" style="padding:8px 20px;border-radius:8px;font-size:12px;font-weight:700;border:2px solid var(--border);background:transparent;color:var(--text);cursor:pointer;font-family:'Sora',sans-serif">🇺🇸 USA (${INDEX_DATA.usa.length} Indices)</button>
+<span style="font-size:9px;color:var(--text3);margin-left:8px">Live prices update on tab click</span>
+</div>
+<div id="idxIndiaCards">${buildIndexCards('india')}</div>
+<div id="idxUsaCards" style="display:none">${buildIndexCards('usa')}</div>
+
+<div style="padding:12px;border-radius:8px;background:rgba(245,158,11,.04);border-left:3px solid var(--amber);margin:16px 0">
+<div style="font-size:11px;font-weight:700;color:var(--amber)">💡 Which Indices Should YOU Invest In?</div>
+<div style="font-size:10px;color:var(--text2);margin-top:4px;line-height:1.8"><strong>Beginner investor:</strong> Start with ONE broad market index — Nifty 50 (India) or S&P 500 (USA). Just start a monthly SIP and don't look at it daily. This alone will beat 80% of actively managed mutual funds over 10 years.<br><strong>Intermediate investor:</strong> Core (60-70%) in Nifty 50 + S&P 500. Satellite (20-30%) in mid/small-cap or sector indices for alpha. Keep 10% in debt/gold for stability.<br><strong>Aggressive investor:</strong> Overweight small caps and sector bets (IT, Banking, Semiconductors) for higher returns. Accept 40-50% drawdowns as the price of entry. Must have 5+ year horizon.<br><strong>Income-focused:</strong> Focus on dividend-heavy indices (Nifty Dividend Opportunities, Dow Jones). Reinvest dividends through SIP for compounding.<br><strong>Key principle:</strong> Diversification across geographies (India + US) reduces risk without sacrificing returns. A 70/30 India-US split captures India's growth AND hedges against rupee depreciation.</div>
+</div>
+
+<!-- COMPARISON TABLE -->
+<div style="margin-top:20px;padding:18px;border-radius:12px;background:rgba(6,182,212,.03);border:1px solid var(--border)">
+<div style="font-family:'Sora',sans-serif;font-size:13px;font-weight:700;color:var(--text);margin-bottom:12px">📊 Cross-Market Comparison — India vs USA</div>
+<div style="overflow-x:auto"><table class="pick-tbl">
+<tr><th>Metric</th><th style="color:var(--amber)">🇮🇳 India</th><th style="color:var(--blue)">🇺🇸 USA</th><th>Insight</th></tr>
+<tr><td style="font-weight:600">Primary Index</td><td>Nifty 50 (50 stocks)</td><td>S&P 500 (500 stocks)</td><td style="font-size:9px;color:var(--text3)">US more diversified by constituent count</td></tr>
+<tr><td style="font-weight:600">10Y CAGR</td><td style="color:#10b981;font-weight:700">~12-13%</td><td style="color:#10b981;font-weight:700">~12-13%</td><td style="font-size:9px;color:var(--text3)">Remarkably similar long-term returns</td></tr>
+<tr><td style="font-weight:600">Typical P/E</td><td style="color:var(--amber)">20-22x</td><td style="color:var(--amber)">18-22x</td><td style="font-size:9px;color:var(--text3)">India slight premium for higher growth</td></tr>
+<tr><td style="font-weight:600">Top Sector</td><td>Financials (~35%)</td><td>Technology (~30%)</td><td style="font-size:9px;color:var(--text3)">India = financialization play, US = tech play</td></tr>
+<tr><td style="font-weight:600">Currency Effect (for INR investor)</td><td style="color:#10b981">None</td><td style="color:var(--amber)">+3-5% from INR depreciation</td><td style="font-size:9px;color:var(--text3)">US returns amplified by rupee weakness</td></tr>
+<tr><td style="font-weight:600">Max Drawdown</td><td style="color:var(--red)">-38% (2020)</td><td style="color:var(--red)">-34% (2020)</td><td style="font-size:9px;color:var(--text3)">Both fall ~35% in crashes. Recovery takes 6-18 months.</td></tr>
+<tr><td style="font-weight:600">SIP ₹10K/month (10Y)</td><td style="font-weight:700;color:#10b981">~₹22-25L corpus</td><td style="font-weight:700;color:#10b981">~₹24-28L corpus (INR terms)</td><td style="font-size:9px;color:var(--text3)">US slightly higher due to INR depreciation benefit</td></tr>
+<tr><td style="font-weight:600">Best Small Cap</td><td>Nifty Smallcap 250 (~20% CAGR)</td><td>Russell 2000 (~8% CAGR)</td><td style="font-size:9px;color:#10b981;font-weight:700">India small caps massively outperform US small caps</td></tr>
+<tr><td style="font-weight:600">Volatility (VIX avg)</td><td>~14-18</td><td>~14-20</td><td style="font-size:9px;color:var(--text3)">Similar volatility regimes</td></tr>
+<tr><td style="font-weight:600">Recommendation</td><td colspan="2" style="color:var(--cyan);font-weight:700;text-align:center">70% India + 30% US allocation for Indian investors</td><td style="font-size:9px;color:var(--text3)">Diversification + INR hedge</td></tr>
+</table></div>
+</div>
+
+<div style="padding:12px;border-radius:8px;background:rgba(16,185,129,.04);border-left:3px solid #10b981;margin:16px 0">
+<div style="font-size:11px;font-weight:700;color:#10b981">💡 India vs USA — The Bottom Line:</div>
+<div style="font-size:10px;color:var(--text2);margin-top:4px;line-height:1.8"><strong>Why India?</strong> Fastest-growing major economy, young population (median age 28 vs 38 in US), rising middle class, digital transformation underway. Small/mid caps offer 15-25% CAGR potential — rare anywhere else in the world.<br><strong>Why USA?</strong> Home to the world's greatest companies (Apple, Microsoft, NVIDIA). Technology leadership, deepest capital markets, reserve currency advantage. US investments also serve as an INR depreciation hedge — when the rupee weakens, your US holdings become worth more in rupee terms.<br><strong>The winning formula:</strong> Indian investors should allocate 60-70% to Indian markets (you benefit from local knowledge + no currency risk) and 30-40% to US markets (global diversification + INR hedge). Both markets have delivered ~12% CAGR over 10 years, but the combination provides smoother returns because they don't always move together.</div>
+</div>
+
+<!-- EDUCATIONAL NOTES -->
+<div style="margin-top:16px;padding:14px;border-radius:10px;background:rgba(245,158,11,.04);border:1px solid rgba(245,158,11,.12)">
+<div style="font-size:10px;font-weight:700;color:var(--amber);margin-bottom:6px">📚 How to Use This Research</div>
+<div style="font-size:9px;color:var(--text3);line-height:1.8">
+• <strong>SIP investors:</strong> Pick 1-2 broad market indices (Nifty 50 + S&P 500) for core allocation. Add sector indices only for satellite/tactical positions.<br>
+• <strong>Options traders:</strong> Bank Nifty and Nifty 50 offer the best liquidity. Watch VIX for timing.<br>
+• <strong>Growth seekers:</strong> India small/mid caps have the highest CAGR but also deepest drawdowns. Size your position accordingly.<br>
+• <strong>Income investors:</strong> Dow Jones and Nifty 50 Dividend indices offer higher yields than growth indices.<br>
+• <strong>Contrarian signal:</strong> When VIX spikes above 30 (US) or 25 (India), it historically marks excellent long-term entry points for SIPs.<br>
+⚖️ <strong>Disclaimer:</strong> Index returns shown are historical and do not guarantee future performance. This is for educational purposes only — not investment advice. Always consult a SEBI-registered advisor.
+</div>
+</div>
+
+<!-- COMMON MISTAKES -->
+<div style="margin-top:16px;padding:16px;border-radius:12px;background:rgba(239,68,68,.04);border:1px solid rgba(239,68,68,.12)">
+<div style="font-family:'Sora',sans-serif;font-size:13px;font-weight:700;color:var(--red);margin-bottom:10px">🚫 7 Common Mistakes Index Investors Make</div>
+<div style="font-size:10px;color:var(--text2);line-height:2">
+<strong>1. Stopping SIP during crashes:</strong> This is the WORST thing you can do. Crashes are when SIP works best — you buy more units at lower prices. The investors who continued SIP through March 2020 saw 100%+ returns by 2021.<br>
+<strong>2. Chasing last year's best-performing index:</strong> Small caps returned 50% last year? Everyone piles in. Then they crash 30%. Performance chasing destroys returns. Stick to your asset allocation plan.<br>
+<strong>3. Investing lump sum at market peaks:</strong> If you have a large amount, deploy it over 6-12 months through STP (Systematic Transfer Plan) rather than all at once. This protects against bad timing.<br>
+<strong>4. Ignoring expense ratios:</strong> A Nifty 50 ETF with 0.05% expense ratio will earn ₹15L more over 20 years than one with 0.50% on a ₹10K/month SIP. Always pick the cheapest ETF/index fund for the same index.<br>
+<strong>5. Checking portfolio daily:</strong> Index investing is a long-term game. Checking daily causes emotional decisions. Set up SIP and review quarterly at most.<br>
+<strong>6. No US allocation:</strong> Indian investors miss out on rupee depreciation hedge and global diversification. Even 20-30% in S&P 500 significantly improves risk-adjusted returns.<br>
+<strong>7. Treating sector indices as core holdings:</strong> Sector indices (Bank Nifty, Nifty IT) should be SATELLITE positions (10-20% max), not your core allocation. Core should always be broad market indices.
+</div>
+</div>
+
+<!-- GLOSSARY -->
+<div style="margin-top:16px;padding:16px;border-radius:12px;background:rgba(59,130,246,.04);border:1px solid rgba(59,130,246,.12)">
+<div style="font-family:'Sora',sans-serif;font-size:13px;font-weight:700;color:var(--blue);margin-bottom:10px">📘 Quick Glossary — Terms Used in This Report</div>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:8px;font-size:9px;color:var(--text2);line-height:1.7">
+<div><strong style="color:var(--cyan)">Bull Market:</strong> When indices rise 20%+ from recent lows. Characterized by optimism and rising prices. Can last 2-10 years.</div>
+<div><strong style="color:var(--cyan)">Bear Market:</strong> When indices fall 20%+ from recent highs. Characterized by fear and falling prices. Typically lasts 6-18 months.</div>
+<div><strong style="color:var(--cyan)">Correction:</strong> A 10-20% drop from recent peak. Normal and healthy — happens 1-2 times per year. Not a bear market.</div>
+<div><strong style="color:var(--cyan)">Free-float Market Cap:</strong> Only counts shares available for public trading (excludes promoter holdings). Used for weighting in most indices.</div>
+<div><strong style="color:var(--cyan)">Rebalancing:</strong> When the index committee adds/removes stocks to keep the index representative. Creates buying/selling pressure on affected stocks.</div>
+<div><strong style="color:var(--cyan)">Tracking Error:</strong> How much an ETF/index fund deviates from the actual index. Lower = better. Good ETFs have < 0.5% tracking error.</div>
+<div><strong style="color:var(--cyan)">NAV:</strong> Net Asset Value — the per-unit price of an index fund. When you invest ₹10K, you get ₹10K ÷ NAV = number of units.</div>
+<div><strong style="color:var(--cyan)">AUM:</strong> Assets Under Management — total money invested in a fund. Higher AUM generally means lower costs and tighter tracking.</div>
+</div>
+</div>
+
+<!-- MARKET CYCLES EXPLAINED -->
+<div style="margin-top:16px;padding:16px;border-radius:12px;background:rgba(6,182,212,.04);border:1px solid rgba(6,182,212,.12)">
+<div style="font-family:'Sora',sans-serif;font-size:13px;font-weight:700;color:var(--cyan);margin-bottom:10px">🔄 Understanding Market Cycles — When to Be Brave & When to Be Careful</div>
+<div style="font-size:10px;color:var(--text2);line-height:1.9;margin-bottom:12px">Markets move in CYCLES — just like seasons. Understanding where we are in the cycle helps you make better decisions. Here's what each phase looks like:</div>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px">
+<div style="padding:12px;border-radius:8px;background:rgba(16,185,129,.05);border-left:4px solid #10b981">
+<div style="font-weight:700;color:#10b981;font-size:11px;margin-bottom:4px">🌱 Phase 1: RECOVERY (Best time to invest)</div>
+<div style="font-size:9px;color:var(--text2);line-height:1.7"><strong>Signs:</strong> Markets have fallen 20-40% from peak. News is terrible. Everyone is scared. VIX is above 25-30.<br><strong>What to do:</strong> This is when SIPs work MAGIC. Your monthly ₹10K buys more units at lower prices. Increase SIP amount if possible. The March 2020 crash was a perfect example — those who invested saw 100%+ returns within 18 months.<br><strong>Analogy:</strong> Like shopping at an end-of-season sale — the same jacket, 40% off. The company hasn't changed, just the price tag.</div>
+</div>
+<div style="padding:12px;border-radius:8px;background:rgba(59,130,246,.05);border-left:4px solid var(--blue)">
+<div style="font-weight:700;color:var(--blue);font-size:11px;margin-bottom:4px">📈 Phase 2: BULL MARKET (Ride the wave)</div>
+<div style="font-size:9px;color:var(--text2);line-height:1.7"><strong>Signs:</strong> Markets steadily climbing. Positive economic data. IPOs booming. People talking about stocks at dinner parties.<br><strong>What to do:</strong> Continue SIP — don't stop just because prices are rising. Avoid the temptation to go "all in" with lump sums at highs. This is the time to gradually REDUCE risk — if you were 80% equity, bring it to 70%.<br><strong>Analogy:</strong> Like a river flowing downstream — go with the flow but don't lean too far over the boat.</div>
+</div>
+<div style="padding:12px;border-radius:8px;background:rgba(245,158,11,.05);border-left:4px solid var(--amber)">
+<div style="font-weight:700;color:var(--amber);font-size:11px;margin-bottom:4px">⚡ Phase 3: EUPHORIA (Danger zone)</div>
+<div style="font-size:9px;color:var(--text2);line-height:1.7"><strong>Signs:</strong> Everyone is making money. Your cab driver gives stock tips. SME IPOs are 200% oversubscribed. "This time is different" talk. P/E ratios at historic highs.<br><strong>What to do:</strong> REDUCE exposure. Move some equity gains to debt/gold. Don't add new money to small/mid caps. Continue SIP only in large cap indices. Book partial profits.<br><strong>Analogy:</strong> Like a party at 3 AM — the music is great but the hangover is coming. Smart guests have already left.</div>
+</div>
+<div style="padding:12px;border-radius:8px;background:rgba(239,68,68,.05);border-left:4px solid var(--red)">
+<div style="font-weight:700;color:var(--red);font-size:11px;margin-bottom:4px">📉 Phase 4: CRASH (Stay calm, don't sell)</div>
+<div style="font-size:9px;color:var(--text2);line-height:1.7"><strong>Signs:</strong> Markets falling 5-10% in a week. Panic selling. CNBC shows red everywhere. Your portfolio is down 25%+. You want to sell everything.<br><strong>What to do:</strong> DO NOTHING. Or better — increase your SIP. The WORST thing you can do is sell during a crash. History shows markets ALWAYS recover. Nifty crashed 38% in March 2020 and hit all-time highs 18 months later.<br><strong>Analogy:</strong> Like a thunderstorm — scary while it happens, but the sun always comes out. The flowers that survive the storm grow strongest.</div>
+</div>
+</div>
+<div style="padding:10px;border-radius:6px;background:rgba(16,185,129,.03);border-left:3px solid #10b981;margin-top:10px">
+<div style="font-size:9px;font-weight:700;color:#10b981">💡 The Golden Rule of Market Cycles:</div>
+<div style="font-size:9px;color:var(--text2);line-height:1.7">Be <strong>greedy when others are fearful</strong> (buy during crashes) and <strong>fearful when others are greedy</strong> (reduce exposure during euphoria). This is easy to say and incredibly hard to do — which is why SIP works so well. It forces you to invest consistently regardless of emotions. Since 1996, every single 10-year SIP in Nifty 50 has been profitable. Every. Single. One.</div>
+</div>
+</div>
+
+<!-- YOUR INVESTING PERSONALITY -->
+<div style="margin-top:16px;padding:16px;border-radius:12px;background:rgba(139,92,246,.04);border:1px solid rgba(139,92,246,.12)">
+<div style="font-family:'Sora',sans-serif;font-size:13px;font-weight:700;color:var(--purple);margin-bottom:10px">🧠 Find Your Investing Personality — Which Indices Fit You?</div>
+<div style="overflow-x:auto"><table class="pick-tbl">
+<tr><th>If You Are...</th><th>Your Core Indices</th><th>Satellite (10-20%)</th><th>Monthly SIP Range</th><th>Expected Pain</th></tr>
+<tr><td style="font-weight:600;color:#10b981">🐢 Conservative (I can't lose money)</td><td>70% Nifty 50 + 20% S&P 500</td><td>10% Nifty Next 50</td><td>₹5K-25K</td><td style="font-size:9px;color:var(--text3)">-15 to -25% in bad years, but fastest recovery</td></tr>
+<tr><td style="font-weight:600;color:var(--blue)">🦊 Balanced (I want growth with some safety)</td><td>50% Nifty 50 + 20% S&P 500</td><td>20% Midcap 150 + 10% Bank Nifty</td><td>₹10K-50K</td><td style="font-size:9px;color:var(--text3)">-25 to -35% in bad years, recovers in 1-2 years</td></tr>
+<tr><td style="font-weight:600;color:var(--amber)">🦁 Aggressive (I want max returns, 5+ year horizon)</td><td>30% Nifty 50 + 15% S&P 500</td><td>25% Midcap + 20% Smallcap + 10% NASDAQ 100</td><td>₹15K-1L</td><td style="font-size:9px;color:var(--text3)">-35 to -50% in bad years, takes 2-3 years to recover</td></tr>
+<tr><td style="font-weight:600;color:var(--red)">🦅 Options Trader (I trade, not invest)</td><td>Watch: Bank Nifty + Nifty 50</td><td>Use VIX as timing signal</td><td>N/A (active)</td><td style="font-size:9px;color:var(--text3)">Can lose 100% of premium; only risk what you can afford to lose</td></tr>
+</table></div>
+<div style="font-size:9px;color:var(--text3);margin-top:6px;line-height:1.6">💡 <strong>Key insight:</strong> Most people THINK they are aggressive until their portfolio drops 30%. Be honest with yourself about how much loss you can handle emotionally without selling. If the answer is "not much," be Conservative. You'll sleep better AND still beat FDs.</div>
+</div>
+
+<!-- FINAL DISCLAIMER -->
+<div style="margin-top:16px;padding:12px;border-radius:8px;background:rgba(245,158,11,.04);border:1px solid rgba(245,158,11,.12)">
+<div style="font-size:9px;color:var(--text3);line-height:1.6">
+<strong style="color:var(--amber)">⚖️ Disclaimer:</strong> All index data, CAGRs, SIP estimates, and returns shown are based on HISTORICAL performance and <strong>do not guarantee future results</strong>. Markets are inherently unpredictable. This research is for <strong>educational purposes only</strong> — not investment advice. Always consult a SEBI-registered investment advisor before making any financial decisions. Celesys AI is not registered with SEBI or any regulatory body. Past performance is not indicative of future returns.
+</div>
+</div>`;
+
+el.innerHTML=h;
+
+// Geo toggle function
+window.switchIdxGeo=function(btn,geo){
+document.querySelectorAll('.idx-geo-btn').forEach(b=>{b.style.background='transparent';b.style.color='var(--text)';b.style.borderColor='var(--border)';b.classList.remove('active')});
+btn.style.background='var(--amber)';btn.style.color='#000';btn.style.borderColor='var(--amber)';btn.classList.add('active');
+document.getElementById('idxIndiaCards').style.display=geo==='india'?'':'none';
+document.getElementById('idxUsaCards').style.display=geo==='usa'?'':'none';
+_geo=geo;
+fetchIndexPrices(geo);
+};
+
+// Fetch live prices for visible indices
+fetchIndexPrices('india');
+console.log('✅ Index Research rendered:',INDEX_DATA.india.length+INDEX_DATA.usa.length,'indices');
+}
+
+async function fetchIndexPrices(geo){
+const data=INDEX_DATA[geo];
+if(!data)return;
+const tickers=data.filter(d=>d.yf).map(d=>d.yf);
+if(!tickers.length)return;
+try{
+const res=await fetch('/api/batch-prices',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({tickers:tickers})});
+if(!res.ok)return;
+const result=await res.json();
+if(!result.success||!result.prices)return;
+document.querySelectorAll('[data-idx-ticker]').forEach(cell=>{
+const tk=cell.dataset.idxTicker;
+const p=result.prices[tk];
+if(p&&p.formatted){
+const up=(p.change_pct||0)>=0;
+cell.innerHTML=`${p.formatted} <span style="font-size:11px;color:${up?'#10b981':'#ef4444'}">${up?'▲':'▼'}${Math.abs(p.change_pct||0).toFixed(2)}%</span>`;
+cell.style.color=up?'#10b981':'#ef4444';
+}else{cell.innerHTML='—';cell.style.color='var(--text3)'}
+});
+console.log('✅ Index prices:',Object.keys(result.prices).length,'loaded');
+}catch(e){console.error('Index prices error:',e)}
+}
+
+// ═══════════════════════════════════════════════
+// ═══ CONVICTION LEADERBOARD — Top 5 by category per country ═══
 const CONVICTION_DATA={
 india:{
   buy:[
