@@ -3641,178 +3641,344 @@ const sym=d.currency==='INR'?'₹':'$';
 const price=_sf(d.current_price);
 const mcap=_sf(d.market_cap);
 const pe=_sf(d.pe_ratio);
-const eps=pe>0&&price>0?price/pe:0;
+const fpe=_sf(d.forward_pe);
+const eps=_sf(d.eps_ttm);
+const epsF=_sf(d.eps_forward);
 const beta=_sf(d.beta,1);
 const pm=_sf(d.profit_margin,10);
 const om=_sf(d.operating_margin,12);
-const rev=_sf(d.revenue);
+const gm=_sf(d.gross_margins,30);
+const rev=_sf(d.total_revenue);
 const roe=_sf(d.roe,12);
 const de=_sf(d.debt_to_equity,50);
 const eg=_sf(d.earnings_growth,10);
 const rg=_sf(d.revenue_growth,8);
+const eqg=_sf(d.earnings_quarterly_growth,5);
 const divY=_sf(d.dividend_yield,0);
-const fcf=_sf(d.free_cashflow);
+const payout=_sf(d.payout_ratio,0);
+const fcf=_sf(d.free_cash_flow||d.free_cashflow);
+const ocf=_sf(d.operating_cash_flow||d.operating_cashflow);
+const ebitda=_sf(d.ebitda);
+const ebitdaM=_sf(d.ebitda_margins,15);
+const totalCash=_sf(d.total_cash);
+const totalDebt=_sf(d.total_debt);
+const bv=_sf(d.book_value);
+const cr=_sf(d.current_ratio,1);
+const qr=_sf(d.quick_ratio,0.8);
+const peg=_sf(d.peg_ratio);
+const evEbitda=_sf(d.enterprise_to_ebitda);
+const shortR=_sf(d.short_ratio);
+const rps=_sf(d.revenue_per_share);
 const shares=mcap>0&&price>0?Math.round(mcap/price):0;
 const w52h=_sf(d.week52_high,price*1.2);
 const w52l=_sf(d.week52_low,price*0.8);
+const sma20=_sf(d.sma_20);
+const sma50=_sf(d.sma_50);
+const sma200=_sf(d.sma_200);
+const sector=d.sector||'Unknown';
+const name=d.company_name||d.ticker||'';
+const ticker=d.ticker||'';
+const isIndian=d.currency==='INR';
 
-// ═══ WACC CALCULATION ═══
-const riskFree=0.068; // 10Y govt bond (India ~6.8%, US ~4.2%)
-const mktPremium=0.06; // Equity risk premium
-const costEquity=riskFree+beta*mktPremium;
-const costDebt=riskFree+0.015; // Spread over risk-free
-const taxRate=0.25;
-const debtWeight=Math.min(de/(100+de),0.6);
-const equityWeight=1-debtWeight;
-const wacc=equityWeight*costEquity+debtWeight*costDebt*(1-taxRate);
+// ═══ WACC CALCULATION (CAPM) ═══
+const riskFree=isIndian?0.072:0.043;
+const mktPremium=isIndian?0.065:0.055;
+const countryPremium=isIndian?0.015:0;
+const sizePremium=mcap<5e9?0.02:mcap<2e10?0.01:0;
+const costEquity=riskFree+beta*mktPremium+countryPremium+sizePremium;
+const creditSpread=de>200?0.04:de>100?0.025:de>50?0.015:0.01;
+const costDebt=riskFree+creditSpread;
+const taxRate=isIndian?0.2508:0.21;
+const debtRatio=totalDebt>0&&mcap>0?totalDebt/(totalDebt+mcap):Math.min(de/(100+de),0.5);
+const equityRatio=1-debtRatio;
+const wacc=equityRatio*costEquity+debtRatio*costDebt*(1-taxRate);
 
-// ═══ FCF PROJECTION ═══
-const baseFCF=fcf>0?fcf:(rev>0?rev*pm/100*0.7:(mcap>0?mcap*0.04:price*shares*0.04));
-const growthRate=Math.max(Math.min((rg+eg)/2/100,0.30),-0.10)||0.08;
-const terminalGrowth=0.03;
-const projYears=5;
+// ═══ FCF ESTIMATION ═══
+const reportedFCF=fcf>0?fcf:0;
+const estimatedFCF=ocf>0?ocf*0.75:(rev>0?rev*pm/100*0.6:(ebitda>0?ebitda*0.5:mcap*0.035));
+const baseFCF=reportedFCF||estimatedFCF;
+const fcfPerShare=shares>0?baseFCF/shares:0;
+const fcfYield=mcap>0?(baseFCF/mcap*100):0;
+const fcfMargin=rev>0?(baseFCF/rev*100):0;
 
+// ═══ GROWTH RATE ESTIMATION ═══
+const histGrowth=((rg||0)+(eg||0)+(eqg||0))/3/100;
+const sustainGrowth=roe/100*(1-payout/100);
+const impliedGrowth=pe>0&&costEquity>0?(costEquity-(eps/price||0)):0.08;
+const blendedGrowth=Math.max(Math.min(((histGrowth||0.08)*0.4+(sustainGrowth||0.08)*0.3+(impliedGrowth||0.08)*0.3),0.35),-0.05)||0.08;
+const terminalGrowth=isIndian?0.05:0.025;
+const projYears=10;
+const fadeStart=5;
+
+// ═══ FCF PROJECTIONS WITH GROWTH FADE ═══
 let projections=[];
 let totalPV=0;
 for(let y=1;y<=projYears;y++){
-const projFCF=baseFCF*Math.pow(1+growthRate,y);
+const yr_growth=y<=fadeStart?blendedGrowth:(blendedGrowth-(blendedGrowth-terminalGrowth)*(y-fadeStart)/(projYears-fadeStart));
+const projFCF=y===1?baseFCF*(1+yr_growth):projections[y-2].fcf*(1+yr_growth);
 const pv=projFCF/Math.pow(1+wacc,y);
 totalPV+=pv;
-projections.push({year:y,fcf:projFCF,pv:pv,growth:growthRate*100});
+projections.push({year:y,fcf:projFCF,pv:pv,growth:yr_growth*100,discount:1/Math.pow(1+wacc,y)});
 }
 
-// Terminal Value
-const termFCF=baseFCF*Math.pow(1+growthRate,projYears)*(1+terminalGrowth);
+// Terminal Value (Gordon Growth)
+const termFCF=projections[projYears-1].fcf*(1+terminalGrowth);
 const termValue=termFCF/(wacc-terminalGrowth);
 const termPV=termValue/Math.pow(1+wacc,projYears);
 const enterpriseValue=totalPV+termPV;
-const netDebt=mcap>0?mcap*debtWeight*0.3:0;
-const equityValue=enterpriseValue-netDebt;
+const netDebt=totalDebt>0&&totalCash>0?(totalDebt-totalCash):(totalDebt>0?totalDebt*0.7:0);
+const equityValue=Math.max(enterpriseValue-netDebt,0);
 const intrinsicPrice=shares>0?equityValue/shares:0;
 const marginOfSafety=price>0?((intrinsicPrice-price)/price*100):0;
-const upDown=marginOfSafety>=0?'UNDERVALUED':'OVERVALUED';
-const udColor=marginOfSafety>=10?'var(--green)':marginOfSafety>=-10?'var(--amber)':'var(--red)';
-const udIcon=marginOfSafety>=10?'🟢':marginOfSafety>=-10?'🟡':'🔴';
+const upDown=marginOfSafety>=15?'SIGNIFICANTLY UNDERVALUED':marginOfSafety>=5?'UNDERVALUED':marginOfSafety>=-5?'FAIRLY VALUED':marginOfSafety>=-15?'OVERVALUED':'SIGNIFICANTLY OVERVALUED';
+const udColor=marginOfSafety>=15?'#10b981':marginOfSafety>=5?'#22d3ee':marginOfSafety>=-5?'var(--amber)':marginOfSafety>=-15?'#f97316':'var(--red)';
+const udIcon=marginOfSafety>=15?'🟢':marginOfSafety>=5?'🔵':marginOfSafety>=-5?'🟡':marginOfSafety>=-15?'🟠':'🔴';
+const termPct=enterpriseValue>0?(termPV/enterpriseValue*100):0;
 
-// Format large numbers
-const _fn=(n)=>{if(!n||n===0)return'N/A';const a=Math.abs(n);if(a>=1e12)return sym+(n/1e12).toFixed(2)+'T';if(a>=1e9)return sym+(n/1e9).toFixed(2)+'B';if(a>=1e7)return sym+(n/1e7).toFixed(2)+'Cr';if(a>=1e5)return sym+(n/1e5).toFixed(2)+'L';return sym+n.toLocaleString(undefined,{maximumFractionDigits:0})};
+const _fn=(n)=>{if(!n||n===0)return'N/A';const a=Math.abs(n);const s=n<0?'-':'';if(a>=1e12)return s+sym+(a/1e12).toFixed(2)+'T';if(a>=1e9)return s+sym+(a/1e9).toFixed(2)+'B';if(a>=1e7&&isIndian)return s+sym+(a/1e7).toFixed(2)+'Cr';if(a>=1e5&&isIndian)return s+sym+(a/1e5).toFixed(2)+'L';return s+sym+a.toLocaleString(undefined,{maximumFractionDigits:0})};
+const _pct=(n)=>n!==0&&!isNaN(n)?(n>=0?'+':'')+n.toFixed(1)+'%':'N/A';
 
-// ═══ SENSITIVITY MATRIX ═══
-const waccRange=[wacc-0.02,wacc-0.01,wacc,wacc+0.01,wacc+0.02];
-const growRange=[terminalGrowth-0.01,terminalGrowth,terminalGrowth+0.01,terminalGrowth+0.02];
-
+// ═══ SENSITIVITY TABLE ═══
+const waccSteps=[-0.02,-0.01,0,0.01,0.02];
+const tgSteps=[-0.01,0,0.01,0.02];
 let sensRows='';
-growRange.forEach(tg=>{
-let cells=`<td style="font-weight:700;color:var(--text);font-size:10px;white-space:nowrap">${(tg*100).toFixed(1)}%</td>`;
-waccRange.forEach(w=>{
-if(w<=tg){cells+=`<td style="font-size:10px;color:var(--text3)">N/A</td>`;return}
-const tf=baseFCF*Math.pow(1+growthRate,projYears)*(1+tg);
-const tv=tf/(w-tg);
-const tpv=tv/Math.pow(1+w,projYears);
-let sTotalPV=0;
-for(let y=1;y<=projYears;y++){sTotalPV+=baseFCF*Math.pow(1+growthRate,y)/Math.pow(1+w,y)}
-const sEV=sTotalPV+tpv;
-const sPrice=shares>0?(sEV-netDebt)/shares:0;
+tgSteps.forEach(tgDelta=>{
+const tg=terminalGrowth+tgDelta;
+let cells=`<td style="font-weight:700;color:var(--text);font-size:10px">${(tg*100).toFixed(1)}%</td>`;
+waccSteps.forEach(wDelta=>{
+const w=wacc+wDelta;
+if(w<=tg){cells+=`<td style="font-size:10px;color:var(--text3)">—</td>`;return}
+let sPV=0;
+let sFCF=baseFCF;
+for(let y=1;y<=projYears;y++){
+const yg=y<=fadeStart?blendedGrowth:(blendedGrowth-(blendedGrowth-tg)*(y-fadeStart)/(projYears-fadeStart));
+sFCF*=(1+yg);sPV+=sFCF/Math.pow(1+w,y)}
+const sTF=sFCF*(1+tg);const sTV=sTF/(w-tg);const sTPV=sTV/Math.pow(1+w,projYears);
+const sEV=sPV+sTPV;const sPrice=shares>0?(sEV-netDebt)/shares:0;
 const sMOS=price>0?((sPrice-price)/price*100):0;
-const sC=sMOS>=15?'var(--green)':sMOS>=0?'#22d3ee':sMOS>=-15?'var(--amber)':'var(--red)';
-cells+=`<td style="font-size:10px;font-weight:600;color:${sC}">${sym}${sPrice.toFixed(0)}</td>`;
+const sC=sMOS>=20?'#10b981':sMOS>=5?'#22d3ee':sMOS>=-5?'var(--amber)':sMOS>=-15?'#f97316':'var(--red)';
+const isCurrent=Math.abs(wDelta)<0.001&&Math.abs(tgDelta)<0.001;
+cells+=`<td style="font-size:10px;font-weight:${isCurrent?'800':'600'};color:${sC};${isCurrent?'background:rgba(16,185,129,.08);border:1px solid rgba(16,185,129,.3)':''}">${sym}${sPrice.toFixed(0)}</td>`;
 });
 sensRows+=`<tr>${cells}</tr>`;
 });
 
+// ═══ COMPARABLES VALUATION ═══
+const peValue=pe>0&&epsF>0?_sf(d.sector_avg_pe,20)*epsF:0;
+const pbValue=bv>0?bv*(_sf(d.sector_avg_pe,20)/pe*1.5||2):0;
+const evEbitdaValue=ebitda>0&&shares>0?(_sf(d.sector_avg_pe,20)*0.8*ebitda-netDebt)/shares:0;
+const pegValue=epsF>0&&eg>0?epsF*(eg>0?Math.min(eg,30):15):0;
+
 let h=`
-<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:20px">
+<!-- DCF HERO -->
+<div style="background:linear-gradient(135deg,#0a1628 0%,#0d2137 50%,#0a1628 100%);border-radius:16px;padding:28px;margin-bottom:20px;position:relative;overflow:hidden">
+<div style="position:absolute;top:-50px;right:-50px;width:200px;height:200px;background:radial-gradient(circle,rgba(16,185,129,.2),transparent 70%)"></div>
+<div style="position:absolute;bottom:-30px;left:-30px;width:150px;height:150px;background:radial-gradient(circle,rgba(59,130,246,.15),transparent 70%)"></div>
+<div style="position:relative">
+<div style="font-size:9px;letter-spacing:2px;color:rgba(255,255,255,.3);margin-bottom:8px">CELESYS AI · DISCOUNTED CASH FLOW ANALYSIS</div>
+<div style="font-size:18px;font-weight:800;color:#fff;margin-bottom:16px">${name} (${ticker})</div>
 
-<!-- Intrinsic Value Card -->
-<div style="padding:20px;border-radius:12px;background:linear-gradient(135deg,rgba(16,185,129,.08),rgba(16,185,129,.02));border:2px solid rgba(16,185,129,.25);text-align:center">
-<div style="font-size:10px;color:var(--text3);letter-spacing:1px;margin-bottom:4px">DCF INTRINSIC VALUE</div>
-<div style="font-size:32px;font-weight:800;color:#10b981;font-family:var(--mono)">${sym}${intrinsicPrice.toFixed(2)}</div>
-<div style="font-size:11px;color:var(--text3);margin-top:2px">per share</div>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px">
+<!-- Intrinsic Value -->
+<div style="text-align:center;padding:20px;border-radius:12px;background:rgba(16,185,129,.08);border:2px solid rgba(16,185,129,.4)">
+<div style="font-size:9px;letter-spacing:1px;color:rgba(16,185,129,.7)">INTRINSIC VALUE</div>
+<div style="font-size:36px;font-weight:900;color:#10b981;font-family:var(--mono);line-height:1.1">${sym}${intrinsicPrice.toFixed(2)}</div>
+<div style="font-size:10px;color:rgba(255,255,255,.4)">per share (DCF)</div>
 </div>
-
-<!-- Current Price Card -->
-<div style="padding:20px;border-radius:12px;background:rgba(59,130,246,.06);border:1px solid rgba(59,130,246,.2);text-align:center">
-<div style="font-size:10px;color:var(--text3);letter-spacing:1px;margin-bottom:4px">CURRENT MARKET PRICE</div>
-<div style="font-size:32px;font-weight:800;color:var(--blue);font-family:var(--mono)">${sym}${price.toFixed(2)}</div>
-<div style="font-size:11px;color:var(--text3);margin-top:2px">CMP</div>
+<!-- Current Price -->
+<div style="text-align:center;padding:20px;border-radius:12px;background:rgba(59,130,246,.08);border:1px solid rgba(59,130,246,.3)">
+<div style="font-size:9px;letter-spacing:1px;color:rgba(59,130,246,.7)">MARKET PRICE</div>
+<div style="font-size:36px;font-weight:900;color:#3b82f6;font-family:var(--mono);line-height:1.1">${sym}${price.toFixed(2)}</div>
+<div style="font-size:10px;color:rgba(255,255,255,.4)">CMP</div>
 </div>
-
-<!-- Margin of Safety Card -->
-<div style="padding:20px;border-radius:12px;background:${marginOfSafety>=0?'rgba(16,185,129,.06)':'rgba(239,68,68,.06)'};border:2px solid ${udColor};text-align:center">
-<div style="font-size:10px;color:var(--text3);letter-spacing:1px;margin-bottom:4px">MARGIN OF SAFETY</div>
-<div style="font-size:32px;font-weight:800;color:${udColor};font-family:var(--mono)">${marginOfSafety>=0?'+':''}${marginOfSafety.toFixed(1)}%</div>
-<div style="font-size:12px;font-weight:700;color:${udColor};margin-top:2px">${udIcon} ${upDown}</div>
-</div>
-
-<!-- Enterprise Value -->
-<div style="padding:20px;border-radius:12px;background:rgba(139,92,246,.06);border:1px solid rgba(139,92,246,.15);text-align:center">
-<div style="font-size:10px;color:var(--text3);letter-spacing:1px;margin-bottom:4px">ENTERPRISE VALUE</div>
-<div style="font-size:24px;font-weight:800;color:var(--purple);font-family:var(--mono)">${_fn(enterpriseValue)}</div>
-<div style="font-size:10px;color:var(--text3);margin-top:2px">Market Cap: ${_fn(mcap)}</div>
+<!-- Margin of Safety -->
+<div style="text-align:center;padding:20px;border-radius:12px;background:${marginOfSafety>=0?'rgba(16,185,129,.08)':'rgba(239,68,68,.08)'};border:2px solid ${udColor}">
+<div style="font-size:9px;letter-spacing:1px;color:${udColor}">MARGIN OF SAFETY</div>
+<div style="font-size:36px;font-weight:900;color:${udColor};font-family:var(--mono);line-height:1.1">${marginOfSafety>=0?'+':''}${marginOfSafety.toFixed(1)}%</div>
+<div style="font-size:11px;font-weight:700;color:${udColor}">${udIcon} ${upDown}</div>
 </div>
 </div>
 
-<!-- WACC Breakdown -->
-<div style="margin-bottom:20px;padding:16px;border-radius:10px;background:rgba(0,47,108,.03);border:1px solid var(--border)">
-<div style="font-family:'Sora',sans-serif;font-size:12px;font-weight:700;color:var(--text);margin-bottom:12px">&#9881;&#65039; WACC Breakdown — Weighted Average Cost of Capital</div>
-<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px">
-<div style="text-align:center;padding:8px;border-radius:6px;background:rgba(59,130,246,.04)"><div style="font-size:9px;color:var(--text3)">Risk-Free Rate</div><div style="font-size:16px;font-weight:700;color:var(--blue)">${(riskFree*100).toFixed(1)}%</div></div>
-<div style="text-align:center;padding:8px;border-radius:6px;background:rgba(139,92,246,.04)"><div style="font-size:9px;color:var(--text3)">Beta (β)</div><div style="font-size:16px;font-weight:700;color:var(--purple)">${beta.toFixed(2)}</div></div>
-<div style="text-align:center;padding:8px;border-radius:6px;background:rgba(6,182,212,.04)"><div style="font-size:9px;color:var(--text3)">Cost of Equity</div><div style="font-size:16px;font-weight:700;color:var(--cyan)">${(costEquity*100).toFixed(1)}%</div></div>
-<div style="text-align:center;padding:8px;border-radius:6px;background:rgba(245,158,11,.04)"><div style="font-size:9px;color:var(--text3)">Cost of Debt (AT)</div><div style="font-size:16px;font-weight:700;color:var(--amber)">${(costDebt*(1-taxRate)*100).toFixed(1)}%</div></div>
-<div style="text-align:center;padding:8px;border-radius:6px;background:rgba(16,185,129,.06);border:1px solid rgba(16,185,129,.2)"><div style="font-size:9px;color:var(--text3)">WACC</div><div style="font-size:18px;font-weight:800;color:#10b981">${(wacc*100).toFixed(2)}%</div></div>
-<div style="text-align:center;padding:8px;border-radius:6px;background:rgba(239,68,68,.04)"><div style="font-size:9px;color:var(--text3)">D/E Ratio</div><div style="font-size:16px;font-weight:700;color:var(--red)">${de.toFixed(0)}%</div></div>
+<!-- Quick Stats Bar -->
+<div style="display:flex;gap:16px;margin-top:16px;flex-wrap:wrap;justify-content:center">
+<div style="text-align:center"><div style="font-size:8px;color:rgba(255,255,255,.3)">WACC</div><div style="font-size:14px;font-weight:700;color:#22d3ee">${(wacc*100).toFixed(2)}%</div></div>
+<div style="text-align:center"><div style="font-size:8px;color:rgba(255,255,255,.3)">GROWTH</div><div style="font-size:14px;font-weight:700;color:#10b981">${(blendedGrowth*100).toFixed(1)}%</div></div>
+<div style="text-align:center"><div style="font-size:8px;color:rgba(255,255,255,.3)">TERMINAL</div><div style="font-size:14px;font-weight:700;color:#f59e0b">${(terminalGrowth*100).toFixed(1)}%</div></div>
+<div style="text-align:center"><div style="font-size:8px;color:rgba(255,255,255,.3)">FCF YIELD</div><div style="font-size:14px;font-weight:700;color:${fcfYield>5?'#10b981':'#f59e0b'}">${fcfYield.toFixed(1)}%</div></div>
+<div style="text-align:center"><div style="font-size:8px;color:rgba(255,255,255,.3)">EV</div><div style="font-size:14px;font-weight:700;color:#a78bfa">${_fn(enterpriseValue)}</div></div>
+<div style="text-align:center"><div style="font-size:8px;color:rgba(255,255,255,.3)">TERM %</div><div style="font-size:14px;font-weight:700;color:${termPct>75?'var(--red)':'#f59e0b'}">${termPct.toFixed(0)}%</div></div>
+</div>
+</div></div>
+
+<!-- ═══ SECTION 1: WHAT THIS MEANS (PLAIN ENGLISH) ═══ -->
+<div style="padding:18px;border-radius:12px;background:rgba(16,185,129,.04);border-left:4px solid #10b981;margin-bottom:20px">
+<div style="font-family:'Sora',sans-serif;font-size:13px;font-weight:700;color:#10b981;margin-bottom:8px">💡 What This Means For You (Plain English)</div>
+<p style="font-size:12px;color:var(--text);line-height:1.9;margin:0">
+${marginOfSafety>=15?
+`Our DCF model says ${name} is worth <strong style="color:#10b981">${sym}${intrinsicPrice.toFixed(0)}</strong> per share, but the market is selling it at <strong>${sym}${price.toFixed(0)}</strong> — that's a <strong style="color:#10b981">${marginOfSafety.toFixed(0)}% discount</strong> to fair value. Think of it like buying a ₹100 note for ₹${(100-marginOfSafety).toFixed(0)}. The company generates ${_fn(baseFCF)} in free cash annually, growing at ~${(blendedGrowth*100).toFixed(0)}%. If this growth continues, the stock has significant room to appreciate.`
+:marginOfSafety>=0?
+`${name} appears <strong style="color:#22d3ee">fairly valued to slightly undervalued</strong>. Our model estimates fair value at ${sym}${intrinsicPrice.toFixed(0)} vs current price of ${sym}${price.toFixed(0)}. There's a modest ${marginOfSafety.toFixed(0)}% buffer. The company generates ${_fn(baseFCF)} in free cash flow. Not a screaming bargain, but you're not overpaying either.`
+:marginOfSafety>=-15?
+`At ${sym}${price.toFixed(0)}, the stock is <strong style="color:var(--amber)">slightly above our estimated fair value</strong> of ${sym}${intrinsicPrice.toFixed(0)}. You're paying a ${Math.abs(marginOfSafety).toFixed(0)}% premium. This could be justified if growth accelerates, but there's limited margin of safety at this price.`
+:`The stock appears <strong style="color:var(--red)">significantly overvalued</strong> at ${sym}${price.toFixed(0)} — our model estimates fair value at just ${sym}${intrinsicPrice.toFixed(0)} (${Math.abs(marginOfSafety).toFixed(0)}% premium). Either the market is pricing in growth that hasn't materialized yet, or expectations are too high. Be cautious.`}
+</p>
+</div>
+
+<!-- ═══ SECTION 2: WACC BREAKDOWN ═══ -->
+<div style="margin-bottom:20px;padding:18px;border-radius:12px;background:rgba(0,47,108,.03);border:1px solid var(--border)">
+<div style="font-family:'Sora',sans-serif;font-size:13px;font-weight:700;color:var(--text);margin-bottom:6px">⚙️ Cost of Capital (WACC) — How Much Returns Must the Company Generate?</div>
+<p style="font-size:10px;color:var(--text3);margin:0 0 14px 0;line-height:1.6">WACC is the minimum return a company must earn on its assets. Think of it as the "hurdle rate" — if the company can't beat this number, it's destroying value. Lower WACC = easier to create value.</p>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px">
+${[
+{l:'Risk-Free Rate',v:(riskFree*100).toFixed(1)+'%',tip:'10Y govt bond yield — the "zero risk" baseline',c:'var(--blue)'},
+{l:'Beta (β)',v:beta.toFixed(2),tip:beta>1.2?'Higher than market — more risky':beta<0.8?'Lower than market — defensive':'Close to market average',c:'var(--purple)'},
+{l:'Equity Premium',v:(mktPremium*100).toFixed(1)+'%',tip:'Extra return investors demand for stock market risk',c:'var(--cyan)'},
+{l:'Size Premium',v:(sizePremium*100).toFixed(1)+'%',tip:sizePremium>0?'Small-cap companies carry extra risk':'Large cap — no size premium',c:'var(--amber)'},
+{l:'Cost of Equity',v:(costEquity*100).toFixed(1)+'%',tip:'Shareholders expect at least this return',c:'#10b981'},
+{l:'Cost of Debt (pre-tax)',v:(costDebt*100).toFixed(1)+'%',tip:'Interest rate on borrowings',c:'var(--red)'},
+{l:'Tax Shield',v:(taxRate*100).toFixed(0)+'%',tip:'Tax deduction on interest saves money',c:'var(--text3)'},
+{l:'Debt/Total Capital',v:(debtRatio*100).toFixed(1)+'%',tip:debtRatio>0.4?'High leverage increases risk':'Reasonable capital structure',c:debtRatio>0.4?'var(--red)':'var(--green)'},
+].map(m=>`<div style="text-align:center;padding:10px 8px;border-radius:8px;background:rgba(0,47,108,.02);border:1px solid var(--border)"><div style="font-size:8px;color:var(--text3);letter-spacing:.5px;margin-bottom:2px">${m.l}</div><div style="font-size:18px;font-weight:800;color:${m.c}">${m.v}</div><div style="font-size:8px;color:var(--text3);margin-top:2px">${m.tip}</div></div>`).join('')}
+</div>
+<div style="margin-top:12px;padding:12px;border-radius:8px;background:rgba(16,185,129,.06);border:1px solid rgba(16,185,129,.2);text-align:center">
+<div style="font-size:10px;color:var(--text3)">WACC = ${(equityRatio*100).toFixed(0)}% × ${(costEquity*100).toFixed(1)}% + ${(debtRatio*100).toFixed(0)}% × ${(costDebt*100).toFixed(1)}% × (1 - ${(taxRate*100).toFixed(0)}%)</div>
+<div style="font-size:24px;font-weight:900;color:#10b981;margin-top:4px">${(wacc*100).toFixed(2)}%</div>
 </div>
 </div>
 
-<!-- FCF Projections Table -->
+<!-- ═══ SECTION 3: FCF ANALYSIS ═══ -->
+<div style="margin-bottom:20px;padding:18px;border-radius:12px;background:rgba(59,130,246,.03);border:1px solid var(--border)">
+<div style="font-family:'Sora',sans-serif;font-size:13px;font-weight:700;color:var(--text);margin-bottom:6px">💰 Free Cash Flow Analysis — The Cash the Company Actually Generates</div>
+<p style="font-size:10px;color:var(--text3);margin:0 0 14px 0;line-height:1.6">Free Cash Flow (FCF) is the cash left after all expenses and investments. This is the real money available to pay dividends, buy back shares, reduce debt, or reinvest. FCF is more reliable than reported earnings because it's harder to manipulate.</p>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px">
+${[
+{l:'Free Cash Flow',v:_fn(baseFCF),sub:reportedFCF?'Reported':'Estimated from operations',c:'#10b981'},
+{l:'Operating Cash Flow',v:_fn(ocf),sub:'Cash from core business',c:'var(--blue)'},
+{l:'Revenue',v:_fn(rev),sub:'Total sales',c:'var(--cyan)'},
+{l:'EBITDA',v:_fn(ebitda),sub:'Operating profit before D&A',c:'var(--purple)'},
+{l:'FCF per Share',v:sym+fcfPerShare.toFixed(2),sub:'Available per share you own',c:'#10b981'},
+{l:'FCF Yield',v:fcfYield.toFixed(1)+'%',sub:fcfYield>8?'Excellent — high cash return':fcfYield>4?'Good cash generation':'Low — growth phase or low margins',c:fcfYield>5?'#10b981':'var(--amber)'},
+{l:'FCF Margin',v:fcfMargin.toFixed(1)+'%',sub:'% of revenue converted to cash',c:fcfMargin>15?'#10b981':'var(--amber)'},
+{l:'Total Cash',v:_fn(totalCash),sub:'Cash on balance sheet',c:'var(--cyan)'},
+{l:'Total Debt',v:_fn(totalDebt),sub:'Outstanding borrowings',c:totalDebt>totalCash*3?'var(--red)':'var(--amber)'},
+{l:'Net Debt',v:_fn(netDebt),sub:netDebt<0?'Net cash position!':'Debt minus cash',c:netDebt<=0?'#10b981':'var(--amber)'},
+].map(m=>`<div style="padding:12px;border-radius:8px;background:rgba(0,47,108,.02);border:1px solid var(--border)"><div style="font-size:9px;color:var(--text3);margin-bottom:2px">${m.l}</div><div style="font-size:16px;font-weight:800;color:${m.c};font-family:var(--mono)">${m.v}</div><div style="font-size:8px;color:var(--text3);margin-top:1px">${m.sub}</div></div>`).join('')}
+</div>
+</div>
+
+<!-- ═══ SECTION 4: GROWTH ASSUMPTIONS ═══ -->
+<div style="margin-bottom:20px;padding:18px;border-radius:12px;background:rgba(245,158,11,.03);border:1px solid var(--border)">
+<div style="font-family:'Sora',sans-serif;font-size:13px;font-weight:700;color:var(--text);margin-bottom:6px">📈 Growth Rate Analysis — How Fast Can the Company Grow?</div>
+<p style="font-size:10px;color:var(--text3);margin:0 0 14px 0;line-height:1.6">We blend three different growth estimates to get a balanced projection. Historical growth shows what happened. Sustainable growth shows what's theoretically possible. The final blended rate fades toward GDP growth over 10 years (companies can't grow faster than the economy forever).</p>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px">
+<div style="padding:14px;border-radius:10px;background:rgba(59,130,246,.04);border:1px solid rgba(59,130,246,.15)"><div style="font-size:10px;color:var(--text3);margin-bottom:4px">📊 Historical Growth (40% weight)</div><div style="font-size:20px;font-weight:800;color:var(--blue)">${_pct(histGrowth*100)}</div><div style="font-size:9px;color:var(--text3);margin-top:4px">Revenue: ${_pct(rg)} · Earnings: ${_pct(eg)} · Quarterly: ${_pct(eqg)}</div></div>
+<div style="padding:14px;border-radius:10px;background:rgba(139,92,246,.04);border:1px solid rgba(139,92,246,.15)"><div style="font-size:10px;color:var(--text3);margin-bottom:4px">🔄 Sustainable Growth (30% weight)</div><div style="font-size:20px;font-weight:800;color:var(--purple)">${_pct(sustainGrowth*100)}</div><div style="font-size:9px;color:var(--text3);margin-top:4px">ROE × (1 - Payout Ratio) = ${roe.toFixed(1)}% × ${(100-payout).toFixed(0)}%</div></div>
+<div style="padding:14px;border-radius:10px;background:rgba(16,185,129,.06);border:2px solid rgba(16,185,129,.3)"><div style="font-size:10px;color:var(--text3);margin-bottom:4px">🎯 Blended Growth Used in Model</div><div style="font-size:24px;font-weight:900;color:#10b981">${_pct(blendedGrowth*100)}</div><div style="font-size:9px;color:var(--text3);margin-top:4px">Years 1-5 at full rate, then fades to ${(terminalGrowth*100).toFixed(1)}% by Year 10</div></div>
+</div>
+</div>
+
+<!-- ═══ SECTION 5: 10-YEAR PROJECTION TABLE ═══ -->
 <div style="margin-bottom:20px">
-<div style="font-family:'Sora',sans-serif;font-size:12px;font-weight:700;color:var(--text);margin-bottom:10px">&#128200; Free Cash Flow Projections (${projYears}-Year Model)</div>
+<div style="font-family:'Sora',sans-serif;font-size:13px;font-weight:700;color:var(--text);margin-bottom:6px">📅 ${projYears}-Year FCF Projections</div>
+<p style="font-size:10px;color:var(--text3);margin:0 0 10px 0">Growth rate fades from ${(blendedGrowth*100).toFixed(1)}% to ${(terminalGrowth*100).toFixed(1)}% after Year 5 (companies can't grow faster than GDP forever)</p>
 <div style="overflow-x:auto"><table class="pick-tbl">
-<tr><th>Year</th><th>FCF Growth</th><th>Projected FCF</th><th>Discount Factor</th><th>Present Value</th></tr>
-<tr style="background:rgba(59,130,246,.04)"><td style="font-weight:700;color:var(--text3)">Base</td><td>—</td><td style="font-weight:700;color:var(--text)">${_fn(baseFCF)}</td><td>1.000</td><td style="font-weight:700;color:var(--green)">${_fn(baseFCF)}</td></tr>`;
+<tr><th>Year</th><th>Growth Rate</th><th>Projected FCF</th><th>Discount Factor</th><th>Present Value</th><th>Cumulative PV</th></tr>
+<tr style="background:rgba(59,130,246,.04)"><td style="font-weight:700;color:var(--text3)">Base (Today)</td><td>—</td><td style="font-weight:700">${_fn(baseFCF)}</td><td>1.000</td><td style="font-weight:700;color:#10b981">${_fn(baseFCF)}</td><td>—</td></tr>`;
 
+let cumPV=0;
 projections.forEach(p=>{
-h+=`<tr><td style="font-weight:700;color:var(--cyan)">Year ${p.year}</td><td style="color:var(--green)">${p.growth.toFixed(1)}%</td><td style="font-weight:600">${_fn(p.fcf)}</td><td style="color:var(--text3)">${(1/Math.pow(1+wacc,p.year)).toFixed(3)}</td><td style="font-weight:700;color:var(--green)">${_fn(p.pv)}</td></tr>`;
+cumPV+=p.pv;
+const isFade=p.year>fadeStart;
+h+=`<tr${isFade?' style="opacity:.85"':''}><td style="font-weight:700;color:${isFade?'var(--amber)':'var(--cyan)'}">Year ${p.year}${isFade?' ↓':''}</td><td style="color:${p.growth>15?'#10b981':p.growth>8?'var(--cyan)':'var(--amber)'}">${p.growth.toFixed(1)}%</td><td style="font-weight:600">${_fn(p.fcf)}</td><td style="color:var(--text3)">${p.discount.toFixed(4)}</td><td style="font-weight:700;color:#10b981">${_fn(p.pv)}</td><td style="font-size:10px;color:var(--text3)">${_fn(cumPV)}</td></tr>`;
 });
 
-h+=`<tr style="background:rgba(139,92,246,.06);border-top:2px solid var(--purple)"><td style="font-weight:800;color:var(--purple)">Terminal</td><td style="color:var(--text3)">${(terminalGrowth*100).toFixed(1)}% perpetuity</td><td style="font-weight:600">${_fn(termValue)}</td><td style="color:var(--text3)">${(1/Math.pow(1+wacc,projYears)).toFixed(3)}</td><td style="font-weight:800;color:var(--purple)">${_fn(termPV)}</td></tr>
-<tr style="background:rgba(16,185,129,.08);border-top:2px solid #10b981"><td colspan="4" style="font-weight:800;color:#10b981;font-size:12px">TOTAL EQUITY VALUE</td><td style="font-weight:800;color:#10b981;font-size:14px">${_fn(equityValue)}</td></tr>
-</table></div></div>
+h+=`<tr style="background:rgba(139,92,246,.06);border-top:2px solid var(--purple)"><td style="font-weight:800;color:var(--purple)">Terminal Value</td><td style="color:var(--text3)">${(terminalGrowth*100).toFixed(1)}% perpetuity</td><td style="font-weight:600">${_fn(termValue)}</td><td style="color:var(--text3)">${(1/Math.pow(1+wacc,projYears)).toFixed(4)}</td><td style="font-weight:800;color:var(--purple)">${_fn(termPV)}</td><td style="font-size:9px;color:var(--text3)">${termPct.toFixed(0)}% of total</td></tr>
+<tr style="background:rgba(16,185,129,.06);border-top:2px solid #10b981"><td colspan="2" style="font-weight:800;color:#10b981">Sum of PV (FCF)</td><td colspan="2" style="font-weight:800;color:#10b981">${_fn(totalPV)}</td><td colspan="2" style="font-weight:800;color:#10b981">${(100-termPct).toFixed(0)}% of EV</td></tr>
+<tr style="background:rgba(16,185,129,.1);border-top:2px solid #10b981"><td colspan="2" style="font-weight:900;color:#10b981;font-size:12px">Enterprise Value</td><td colspan="4" style="font-weight:900;color:#10b981;font-size:14px">${_fn(enterpriseValue)}</td></tr>
+</table></div>
+</div>
 
-<!-- Sensitivity Analysis -->
+<!-- ═══ SECTION 6: BRIDGE TO EQUITY VALUE ═══ -->
+<div style="margin-bottom:20px;padding:16px;border-radius:12px;background:rgba(0,47,108,.03);border:1px solid var(--border)">
+<div style="font-family:'Sora',sans-serif;font-size:13px;font-weight:700;color:var(--text);margin-bottom:10px">🔗 Enterprise Value → Equity Value Bridge</div>
+<div style="display:grid;grid-template-columns:1fr;gap:6px;max-width:500px">
+<div style="display:flex;justify-content:space-between;padding:8px 14px;border-radius:6px;background:rgba(16,185,129,.04)"><span style="font-size:11px;color:var(--text)">Enterprise Value (sum of all PVs)</span><span style="font-size:12px;font-weight:700;color:#10b981">${_fn(enterpriseValue)}</span></div>
+<div style="display:flex;justify-content:space-between;padding:8px 14px;border-radius:6px;background:rgba(239,68,68,.04)"><span style="font-size:11px;color:var(--text)">(-) Total Debt</span><span style="font-size:12px;font-weight:700;color:var(--red)">-${_fn(totalDebt)}</span></div>
+<div style="display:flex;justify-content:space-between;padding:8px 14px;border-radius:6px;background:rgba(6,182,212,.04)"><span style="font-size:11px;color:var(--text)">(+) Cash & Equivalents</span><span style="font-size:12px;font-weight:700;color:var(--cyan)">+${_fn(totalCash)}</span></div>
+<div style="display:flex;justify-content:space-between;padding:10px 14px;border-radius:6px;background:rgba(16,185,129,.08);border:2px solid rgba(16,185,129,.3)"><span style="font-size:12px;font-weight:700;color:#10b981">= Equity Value</span><span style="font-size:14px;font-weight:900;color:#10b981">${_fn(equityValue)}</span></div>
+<div style="display:flex;justify-content:space-between;padding:8px 14px;border-radius:6px;background:rgba(0,47,108,.02)"><span style="font-size:11px;color:var(--text)">÷ Shares Outstanding</span><span style="font-size:12px;font-weight:700;color:var(--text)">${(shares/1e6).toFixed(1)}M</span></div>
+<div style="display:flex;justify-content:space-between;padding:10px 14px;border-radius:6px;background:rgba(16,185,129,.12);border:2px solid #10b981"><span style="font-size:13px;font-weight:800;color:#10b981">= Intrinsic Value per Share</span><span style="font-size:18px;font-weight:900;color:#10b981">${sym}${intrinsicPrice.toFixed(2)}</span></div>
+</div>
+</div>
+
+<!-- ═══ SECTION 7: SENSITIVITY ANALYSIS ═══ -->
 <div style="margin-bottom:20px">
-<div style="font-family:'Sora',sans-serif;font-size:12px;font-weight:700;color:var(--text);margin-bottom:10px">&#127919; Sensitivity Analysis — Intrinsic Value per Share</div>
+<div style="font-family:'Sora',sans-serif;font-size:13px;font-weight:700;color:var(--text);margin-bottom:6px">🎯 Sensitivity Analysis — How Assumptions Change the Value</div>
+<p style="font-size:10px;color:var(--text3);margin:0 0 10px 0">The highlighted cell is the base case. Green = undervalued at that scenario. Red = overvalued. Small changes in WACC and terminal growth significantly impact fair value — this is why DCF is a guide, not a precise number.</p>
 <div style="overflow-x:auto"><table class="pick-tbl">
-<tr><th style="background:rgba(139,92,246,.08)">Growth \\ WACC →</th>${waccRange.map(w=>`<th style="color:${Math.abs(w-wacc)<0.001?'#10b981':'var(--text3)'};font-size:10px">${(w*100).toFixed(1)}%</th>`).join('')}</tr>
+<tr><th style="background:rgba(139,92,246,.08)">Terminal Growth ↓ \\ WACC →</th>${waccSteps.map(w=>`<th style="color:${Math.abs(w)<0.001?'#10b981':'var(--text3)'};font-size:10px;${Math.abs(w)<0.001?'background:rgba(16,185,129,.06)':''}">${((wacc+w)*100).toFixed(1)}%${Math.abs(w)<0.001?' ★':''}</th>`).join('')}</tr>
 ${sensRows}
 </table></div>
-<div style="font-size:9px;color:var(--text3);margin-top:6px">Green = undervalued, Cyan = fair, Amber = slightly overvalued, Red = overvalued. Current WACC: ${(wacc*100).toFixed(2)}%, Terminal growth: ${(terminalGrowth*100).toFixed(1)}%</div>
+<div style="font-size:9px;color:var(--text3);margin-top:6px">★ = current base case assumption. CMP: ${sym}${price.toFixed(0)}</div>
 </div>
 
-<!-- Valuation Gauge -->
-<div style="padding:16px;border-radius:10px;background:linear-gradient(135deg,rgba(16,185,129,.04),rgba(59,130,246,.04));border:1px solid var(--border);margin-bottom:16px">
-<div style="font-family:'Sora',sans-serif;font-size:12px;font-weight:700;color:var(--text);margin-bottom:12px">&#128208; Price vs Intrinsic Value Range</div>
-<div style="position:relative;height:40px;background:linear-gradient(to right,#10b981 0%,#22d3ee 30%,#f59e0b 60%,#ef4444 100%);border-radius:20px;overflow:hidden">
-<div style="position:absolute;top:0;bottom:0;width:3px;background:#fff;left:${Math.min(95,Math.max(5,price/(intrinsicPrice*1.5||1)*50))}%;box-shadow:0 0 8px rgba(255,255,255,.8)"></div>
-</div>
-<div style="display:flex;justify-content:space-between;margin-top:4px;font-size:9px;color:var(--text3)">
-<span>Deep Value</span><span>Fair Value</span><span>Premium</span><span>Overvalued</span>
+<!-- ═══ SECTION 8: RELATIVE VALUATION CROSS-CHECK ═══ -->
+<div style="margin-bottom:20px;padding:18px;border-radius:12px;background:rgba(139,92,246,.03);border:1px solid var(--border)">
+<div style="font-family:'Sora',sans-serif;font-size:13px;font-weight:700;color:var(--text);margin-bottom:6px">⚖️ Cross-Check: Relative Valuation Methods</div>
+<p style="font-size:10px;color:var(--text3);margin:0 0 14px 0">DCF gives one perspective. Here's what other valuation methods suggest. When multiple methods agree, the signal is stronger.</p>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px">
+${[
+{method:'DCF (This Model)',val:intrinsicPrice,note:'Present value of future cash flows'},
+{method:'P/E Based (Sector Avg)',val:peValue,note:`Sector P/E (${_sf(d.sector_avg_pe,20).toFixed(1)}x) × Forward EPS`},
+{method:'P/B Based',val:pbValue,note:'Book value × adjusted multiple'},
+{method:'PEG Adjusted',val:pegValue,note:'EPS × growth rate fair multiple'},
+].map(m=>{
+const v=m.val||0;
+const vs=price>0&&v>0?((v-price)/price*100):0;
+const vc=vs>10?'#10b981':vs>0?'#22d3ee':vs>-10?'var(--amber)':'var(--red)';
+return`<div style="padding:14px;border-radius:10px;background:rgba(0,47,108,.02);border:1px solid var(--border)"><div style="font-size:10px;color:var(--text3);margin-bottom:4px">${m.method}</div><div style="font-size:22px;font-weight:800;color:${vc};font-family:var(--mono)">${v>0?sym+v.toFixed(0):'N/A'}</div><div style="font-size:9px;color:${vc};margin-top:2px">${v>0?(vs>=0?'+':'')+vs.toFixed(0)+'% vs CMP':'Insufficient data'}</div><div style="font-size:8px;color:var(--text3);margin-top:4px">${m.note}</div></div>`;
+}).join('')}
 </div>
 </div>
 
-<!-- Assumptions & Disclaimer -->
-<div style="padding:12px;border-radius:8px;background:rgba(245,158,11,.04);border:1px solid rgba(245,158,11,.15)">
-<div style="font-size:10px;font-weight:700;color:var(--amber);margin-bottom:6px">&#9888;&#65039; Model Assumptions & Limitations</div>
+<!-- ═══ SECTION 9: VALUATION GAUGE ═══ -->
+<div style="padding:16px;border-radius:12px;background:linear-gradient(135deg,rgba(16,185,129,.03),rgba(59,130,246,.03));border:1px solid var(--border);margin-bottom:20px">
+<div style="font-family:'Sora',sans-serif;font-size:12px;font-weight:700;color:var(--text);margin-bottom:12px">📊 Where Does the Stock Sit?</div>
+<div style="position:relative;height:36px;background:linear-gradient(to right,#10b981 0%,#22d3ee 25%,#f59e0b 50%,#f97316 75%,#ef4444 100%);border-radius:18px;overflow:visible;margin:0 8px">
+<div style="position:absolute;top:-8px;bottom:-8px;width:4px;background:#fff;left:${Math.min(96,Math.max(4,price/(intrinsicPrice*2||1)*100))}%;border-radius:2px;box-shadow:0 0 12px rgba(255,255,255,.9),0 0 4px rgba(0,0,0,.5)"></div>
+</div>
+<div style="display:flex;justify-content:space-between;margin:6px 8px 0;font-size:8px;color:var(--text3)">
+<span>Deep Value<br>${sym}${(intrinsicPrice*0.5).toFixed(0)}</span>
+<span>Undervalued<br>${sym}${(intrinsicPrice*0.75).toFixed(0)}</span>
+<span>Fair Value<br>${sym}${intrinsicPrice.toFixed(0)}</span>
+<span>Overvalued<br>${sym}${(intrinsicPrice*1.25).toFixed(0)}</span>
+<span>Expensive<br>${sym}${(intrinsicPrice*1.5).toFixed(0)}</span>
+</div>
+</div>
+
+<!-- ═══ SECTION 10: KEY RISKS TO THIS VALUATION ═══ -->
+<div style="margin-bottom:20px;padding:16px;border-radius:12px;border-left:4px solid var(--amber);background:rgba(245,158,11,.03)">
+<div style="font-family:'Sora',sans-serif;font-size:12px;font-weight:700;color:var(--amber);margin-bottom:8px">⚠️ Key Risks to This Valuation</div>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:8px;font-size:10px;color:var(--text2);line-height:1.7">
+<div style="padding:8px 10px;border-radius:6px;background:rgba(245,158,11,.03)">🔸 <strong>Terminal Value = ${termPct.toFixed(0)}%</strong> of enterprise value. ${termPct>70?'This is HIGH — most of the value depends on very long-term assumptions that are inherently uncertain.':'This is reasonable — near-term cash flows contribute meaningfully.'}</div>
+<div style="padding:8px 10px;border-radius:6px;background:rgba(245,158,11,.03)">🔸 <strong>Growth assumption of ${(blendedGrowth*100).toFixed(1)}%</strong> ${blendedGrowth>0.2?'is aggressive — if growth slows, intrinsic value drops significantly.':'is conservative, providing a buffer.'}</div>
+<div style="padding:8px 10px;border-radius:6px;background:rgba(245,158,11,.03)">🔸 <strong>WACC of ${(wacc*100).toFixed(1)}%</strong> assumes current risk profile persists. If beta increases or rates rise, WACC goes up and value goes down.</div>
+<div style="padding:8px 10px;border-radius:6px;background:rgba(245,158,11,.03)">🔸 <strong>DCF models are NOT price targets.</strong> They show a range of plausible values. Use the sensitivity table to understand how much the value changes under different scenarios.</div>
+</div>
+</div>
+
+<!-- ═══ DISCLAIMER ═══ -->
+<div style="padding:12px 14px;border-radius:8px;background:rgba(245,158,11,.04);border:1px solid rgba(245,158,11,.12)">
 <div style="font-size:9px;color:var(--text3);line-height:1.6">
-Risk-free rate: ${(riskFree*100).toFixed(1)}% (10Y govt bond) · Equity risk premium: ${(mktPremium*100)}% · Growth rate: ${(growthRate*100).toFixed(1)}% (avg of revenue + earnings growth) · Terminal growth: ${(terminalGrowth*100).toFixed(1)}% (GDP proxy) · Tax rate: ${(taxRate*100)}% · Projection period: ${projYears} years<br>
-<strong>DCF models are estimates, not predictions.</strong> Small changes in assumptions significantly impact intrinsic value. Use alongside relative valuation, technical analysis, and qualitative assessment. This is for educational purposes only — not investment advice.
+<strong style="color:var(--amber)">📋 Model Assumptions:</strong> Risk-free: ${(riskFree*100).toFixed(1)}% · ERP: ${(mktPremium*100)}% · Beta: ${beta.toFixed(2)} · Growth: ${(blendedGrowth*100).toFixed(1)}% (fading to ${(terminalGrowth*100).toFixed(1)}%) · WACC: ${(wacc*100).toFixed(2)}% · Tax: ${(taxRate*100).toFixed(0)}% · Horizon: ${projYears}Y · ${reportedFCF?'FCF: Reported':'FCF: Estimated'}<br>
+<strong style="color:var(--amber)">⚖️ Disclaimer:</strong> This DCF analysis is auto-generated for <strong>educational purposes only</strong>. Small changes in assumptions significantly impact results. This is NOT investment advice. Always consult a qualified financial advisor. Celesys AI is not registered with SEBI or any regulatory body.
 </div>
 </div>`;
 
 el.innerHTML=h;
-console.log('✅ DCF rendered: intrinsic='+sym+intrinsicPrice.toFixed(2)+', MOS='+marginOfSafety.toFixed(1)+'%');
+console.log('✅ DCF rendered:',sym+intrinsicPrice.toFixed(2),'MOS:'+marginOfSafety.toFixed(1)+'%','WACC:'+((wacc*100).toFixed(2))+'%');
 }
+
 
 // ═══════════════════════════════════════════════
 // ═══ EQUITY RESEARCH REPORT ═══
@@ -3982,6 +4148,181 @@ ${[
 {r:'Valuation Risk',s:pe>sAvgPE*1.5?'HIGH':pe>sAvgPE?'MODERATE':'LOW',d:'P/E of '+pe.toFixed(1)+'x vs sector '+sAvgPE.toFixed(1)+'x — '+(pe>sAvgPE*1.5?'expensive — correction risk exists':pe>sAvgPE?'slight premium, needs growth delivery':'attractively priced'),c:pe>sAvgPE*1.5?'var(--red)':pe>sAvgPE?'var(--amber)':'var(--green)'}
 ].map(r=>`<div style="padding:12px;border-radius:8px;border-left:3px solid ${r.c};background:rgba(0,47,108,.02)"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px"><span style="font-size:11px;font-weight:700;color:var(--text)">${r.r}</span><span style="font-size:9px;font-weight:700;color:${r.c};padding:2px 8px;border-radius:4px;background:rgba(255,255,255,.03);border:1px solid ${r.c}">${r.s}</span></div><div style="font-size:9px;color:var(--text3);line-height:1.5">${r.d}</div></div>`).join('')}
 </div>
+</div>
+
+<!-- TECHNICAL ANALYSIS -->
+<div style="margin-bottom:20px">
+<div style="font-family:'Sora',sans-serif;font-size:13px;font-weight:700;color:var(--text);margin-bottom:12px">📉 Technical Analysis — Moving Average Signals</div>
+<p style="font-size:10px;color:var(--text3);margin:0 0 12px 0;line-height:1.6">Moving averages smooth out daily noise to reveal the true trend. When price is above the average, the stock is in an uptrend. When it crosses below, it may be weakening.</p>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px">
+${[
+{l:'SMA 20 (Short-term)',v:_sf(d.sma_20),tip:'20-day trend — what traders watch',sig:price>_sf(d.sma_20)?'Above ▲':'Below ▼',sigC:price>_sf(d.sma_20)?'#10b981':'#ef4444'},
+{l:'SMA 50 (Medium-term)',v:_sf(d.sma_50),tip:'50-day trend — institutional reference',sig:price>_sf(d.sma_50)?'Above ▲':'Below ▼',sigC:price>_sf(d.sma_50)?'#10b981':'#ef4444'},
+{l:'SMA 200 (Long-term)',v:_sf(d.sma_200),tip:'200-day trend — the "bull/bear" line',sig:price>_sf(d.sma_200)?'BULLISH ▲':'BEARISH ▼',sigC:price>_sf(d.sma_200)?'#10b981':'#ef4444'},
+].map(m=>`<div style="padding:14px;border-radius:10px;background:rgba(0,47,108,.02);border:1px solid var(--border)"><div style="font-size:10px;color:var(--text3);margin-bottom:4px">${m.l}</div><div style="display:flex;justify-content:space-between;align-items:center"><span style="font-size:18px;font-weight:800;color:var(--text);font-family:var(--mono)">${m.v>0?sym+m.v.toFixed(2):'N/A'}</span><span style="font-size:10px;font-weight:700;color:${m.sigC};padding:3px 8px;border-radius:4px;background:${m.sigC==='#10b981'?'rgba(16,185,129,.1)':'rgba(239,68,68,.1)'}">${m.sig}</span></div><div style="font-size:8px;color:var(--text3);margin-top:4px">${m.tip}</div></div>`).join('')}
+</div>
+${d.ema_signals&&d.ema_signals.length>0?`<div style="margin-top:10px;padding:10px 14px;border-radius:8px;background:rgba(139,92,246,.04);border:1px solid rgba(139,92,246,.15)"><div style="font-size:10px;font-weight:700;color:var(--purple);margin-bottom:4px">EMA Signals</div><div style="font-size:10px;color:var(--text2);line-height:1.6">${d.ema_signals.map(s=>'• '+s).join('<br>')}</div></div>`:''}
+<div style="margin-top:10px;padding:10px 14px;border-radius:8px;background:${price>_sf(d.sma_200)&&price>_sf(d.sma_50)?'rgba(16,185,129,.05)':price<_sf(d.sma_200)?'rgba(239,68,68,.05)':'rgba(245,158,11,.05)'};border-left:3px solid ${price>_sf(d.sma_200)&&price>_sf(d.sma_50)?'#10b981':price<_sf(d.sma_200)?'#ef4444':'#f59e0b'}">
+<div style="font-size:11px;font-weight:700;color:var(--text)">💡 What the technicals tell you:</div>
+<div style="font-size:10px;color:var(--text2);margin-top:4px">${price>_sf(d.sma_200)&&price>_sf(d.sma_50)?'Stock is above ALL major moving averages — strong uptrend. Momentum is with buyers. Dips to SMA50 ('+sym+_sf(d.sma_50).toFixed(0)+') are potential buying opportunities.':price<_sf(d.sma_200)?'Stock is BELOW the 200-day average — this is technically a downtrend. Professional investors consider this a warning sign. Wait for a cross back above '+sym+_sf(d.sma_200).toFixed(0)+' before entering.':'Mixed signals — stock is between key averages. This often means the stock is in a consolidation phase. A breakout above '+sym+Math.max(_sf(d.sma_50),_sf(d.sma_200)).toFixed(0)+' would be bullish.'}</div>
+</div>
+</div>
+
+<!-- CASH FLOW ANALYSIS -->
+<div style="margin-bottom:20px;padding:18px;border-radius:12px;background:rgba(16,185,129,.03);border:1px solid var(--border)">
+<div style="font-family:'Sora',sans-serif;font-size:13px;font-weight:700;color:var(--text);margin-bottom:6px">💰 Cash Flow Analysis — Follow the Money</div>
+<p style="font-size:10px;color:var(--text3);margin:0 0 12px 0;line-height:1.6">Earnings can be manipulated with accounting tricks. Cash flow cannot. A company that generates strong cash flow is genuinely profitable. If earnings are high but cash flow is low, be cautious.</p>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px">
+${[
+{l:'Operating Cash Flow',v:_fn(_sf(d.operating_cash_flow||d.operating_cashflow)),sub:'Cash from core operations',c:'var(--blue)'},
+{l:'Free Cash Flow',v:_fn(_sf(d.free_cash_flow||d.free_cashflow)),sub:'Cash after all capex',c:'#10b981'},
+{l:'FCF per Share',v:_sf(d.free_cash_flow||d.free_cashflow)>0&&shares>0?sym+(_sf(d.free_cash_flow||d.free_cashflow)/shares).toFixed(2):'N/A',sub:'Your share of the cash',c:'#10b981'},
+{l:'FCF Yield',v:_sf(d.free_cash_flow||d.free_cashflow)>0&&mcap>0?(_sf(d.free_cash_flow||d.free_cashflow)/mcap*100).toFixed(1)+'%':'N/A',sub:_sf(d.free_cash_flow||d.free_cashflow)/mcap*100>5?'Excellent cash return':'Moderate',c:_sf(d.free_cash_flow||d.free_cashflow)/mcap*100>5?'#10b981':'var(--amber)'},
+{l:'EBITDA',v:_fn(_sf(d.ebitda)),sub:'Operating profit (pre D&A)',c:'var(--purple)'},
+{l:'EBITDA Margin',v:_sf(d.ebitda_margins)>0?_sf(d.ebitda_margins).toFixed(1)+'%':'N/A',sub:_sf(d.ebitda_margins)>20?'Strong operating efficiency':'Room for improvement',c:_sf(d.ebitda_margins)>20?'#10b981':'var(--amber)'},
+].map(m=>`<div style="padding:12px;border-radius:8px;background:rgba(0,47,108,.02);border:1px solid var(--border)"><div style="font-size:9px;color:var(--text3)">${m.l}</div><div style="font-size:16px;font-weight:800;color:${m.c};font-family:var(--mono)">${m.v}</div><div style="font-size:8px;color:var(--text3);margin-top:2px">${m.sub}</div></div>`).join('')}
+</div>
+</div>
+
+<!-- BALANCE SHEET HEALTH -->
+<div style="margin-bottom:20px;padding:18px;border-radius:12px;background:rgba(59,130,246,.03);border:1px solid var(--border)">
+<div style="font-family:'Sora',sans-serif;font-size:13px;font-weight:700;color:var(--text);margin-bottom:6px">🏦 Balance Sheet Health — Can the Company Survive a Downturn?</div>
+<p style="font-size:10px;color:var(--text3);margin:0 0 12px 0;line-height:1.6">A strong balance sheet means the company can survive recessions, invest in growth, and take advantage of competitors' weaknesses. High debt is a risk multiplier — it amplifies both gains and losses.</p>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px">
+${[
+{l:'Total Cash',v:_fn(_sf(d.total_cash)),grade:_sf(d.total_cash)>_sf(d.total_debt)?'A':'C',tip:'Cash reserves'},
+{l:'Total Debt',v:_fn(_sf(d.total_debt)),grade:de<50?'A':de<100?'B':de<200?'C':'D',tip:'Outstanding borrowings'},
+{l:'Debt/Equity',v:de.toFixed(0)+'%',grade:de<50?'A':de<100?'B':de<200?'C':'D',tip:de<50?'Conservative':de<100?'Moderate':de<200?'Elevated':'High risk'},
+{l:'Current Ratio',v:cr.toFixed(2),grade:cr>2?'A':cr>1.5?'B':cr>1?'C':'D',tip:cr>1.5?'Can easily pay short-term bills':cr>1?'Adequate liquidity':'Liquidity concern'},
+{l:'Quick Ratio',v:qr>0?qr.toFixed(2):'N/A',grade:qr>1?'A':qr>0.7?'B':qr>0.5?'C':'D',tip:qr>1?'Strong immediate liquidity':'May struggle with sudden expenses'},
+{l:'Book Value/Share',v:bv>0?sym+bv.toFixed(2):'N/A',grade:price>0&&bv>0&&price/bv<2?'A':price/bv<3?'B':'C',tip:'Net assets per share'},
+].map(m=>{
+const gc={'A':'#10b981','B':'#22d3ee','C':'#f59e0b','D':'#ef4444'}[m.grade]||'var(--text3)';
+return`<div style="padding:12px;border-radius:8px;background:rgba(0,47,108,.02);border:1px solid var(--border)"><div style="display:flex;justify-content:space-between"><span style="font-size:9px;color:var(--text3)">${m.l}</span><span style="font-size:8px;font-weight:700;color:${gc};padding:1px 6px;border-radius:3px;background:rgba(0,0,0,.03)">${m.grade}</span></div><div style="font-size:16px;font-weight:800;color:var(--text);font-family:var(--mono);margin:2px 0">${m.v}</div><div style="font-size:8px;color:var(--text3)">${m.tip}</div></div>`;
+}).join('')}
+</div>
+</div>
+
+<!-- GROWTH DEEP DIVE -->
+<div style="margin-bottom:20px;padding:18px;border-radius:12px;background:rgba(139,92,246,.03);border:1px solid var(--border)">
+<div style="font-family:'Sora',sans-serif;font-size:13px;font-weight:700;color:var(--text);margin-bottom:6px">🚀 Growth Metrics Deep Dive</div>
+<p style="font-size:10px;color:var(--text3);margin:0 0 12px 0;line-height:1.6">Growth is what creates long-term wealth. Revenue growth shows the company is gaining market share. Earnings growth shows it's becoming more profitable. The PEG ratio tells you if you're overpaying for that growth.</p>
+<div style="overflow-x:auto"><table class="pick-tbl">
+<tr><th>Metric</th><th>Value</th><th>Grade</th><th>What It Means</th></tr>
+${[
+{m:'Revenue Growth',v:rg!==0?_pct(rg):'N/A',g:rg>15?'A':rg>8?'B':rg>0?'C':'D',w:rg>15?'Rapid expansion — company is gaining market share fast':rg>8?'Healthy growth — above economy average':rg>0?'Modest growth — stable but not exciting':'Declining revenue — investigate why'},
+{m:'Earnings Growth',v:eg!==0?_pct(eg):'N/A',g:eg>20?'A':eg>10?'B':eg>0?'C':'D',w:eg>20?'Accelerating profits — strong operating leverage':eg>10?'Good profit growth — management executing well':eg>0?'Slow profit growth — margins may be compressing':'Earnings declining — could be temporary or structural'},
+{m:'Quarterly Earnings Growth',v:eqg!==0?_pct(eqg):'N/A',g:eqg>20?'A':eqg>5?'B':eqg>0?'C':'D',w:eqg>20?'Recent quarter was very strong':eqg>0?'Positive recent momentum':'Recent quarter was weak'},
+{m:'EPS (TTM)',v:eps>0?sym+eps.toFixed(2):'N/A',g:eps>0?'B':'D',w:eps>0?'Company is profitable on a per-share basis':'Not currently profitable'},
+{m:'EPS (Forward)',v:epsF>0?sym+epsF.toFixed(2):'N/A',g:epsF>eps?'A':epsF>0?'B':'D',w:epsF>eps?'Analysts expect earnings to grow':'Forward estimates are below trailing — caution'},
+{m:'PEG Ratio',v:peg>0?peg.toFixed(2):'N/A',g:peg>0&&peg<1?'A':peg>0&&peg<2?'B':peg>0&&peg<3?'C':'D',w:peg<1?'Growth at a bargain — stock looks cheap relative to growth rate':peg<2?'Fairly valued for its growth':peg>0?'Expensive relative to growth rate':'Not applicable'},
+{m:'Revenue/Share',v:rps>0?sym+rps.toFixed(2):'N/A',g:rps>price*0.5?'A':rps>0?'B':'C',w:'Revenue generated per share you own'},
+].map(r=>{
+const gc={'A':'#10b981','B':'#22d3ee','C':'#f59e0b','D':'#ef4444'}[r.g];
+return`<tr><td style="font-weight:600;font-size:11px">${r.m}</td><td style="font-weight:700;font-family:var(--mono);color:${gc}">${r.v}</td><td style="text-align:center"><span style="font-size:9px;font-weight:700;color:${gc};padding:2px 8px;border-radius:4px;background:rgba(0,0,0,.03)">${r.g}</span></td><td style="font-size:9px;color:var(--text2)">${r.w}</td></tr>`;
+}).join('')}
+</table></div>
+</div>
+
+<!-- DIVIDEND ANALYSIS -->
+<div style="margin-bottom:20px;padding:18px;border-radius:12px;background:${divY>0?'rgba(16,185,129,.03)':'rgba(245,158,11,.03)'};border:1px solid var(--border)">
+<div style="font-family:'Sora',sans-serif;font-size:13px;font-weight:700;color:var(--text);margin-bottom:6px">💸 Dividend Analysis${divY>0?' — Income Stream':'— No Dividends Currently'}</div>
+${divY>0?`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-top:12px">
+<div style="padding:14px;border-radius:10px;background:rgba(16,185,129,.06);border:1px solid rgba(16,185,129,.2);text-align:center"><div style="font-size:9px;color:var(--text3)">Dividend Yield</div><div style="font-size:24px;font-weight:800;color:#10b981">${divY.toFixed(2)}%</div><div style="font-size:9px;color:var(--text3)">${divY>4?'Very attractive income':'Moderate income'}</div></div>
+<div style="padding:14px;border-radius:10px;background:rgba(59,130,246,.04);text-align:center"><div style="font-size:9px;color:var(--text3)">Payout Ratio</div><div style="font-size:24px;font-weight:800;color:${payout<60?'#10b981':payout<80?'var(--amber)':'var(--red)'}">${payout.toFixed(0)}%</div><div style="font-size:9px;color:var(--text3)">${payout<40?'Very safe — room to increase':payout<60?'Healthy — sustainable':payout<80?'Elevated — watch closely':'Risky — may not be sustainable'}</div></div>
+<div style="padding:14px;border-radius:10px;background:rgba(139,92,246,.04);text-align:center"><div style="font-size:9px;color:var(--text3)">Annual Income per ${sym}1L invested</div><div style="font-size:20px;font-weight:800;color:var(--purple)">${sym}${(divY*1000).toFixed(0)}</div><div style="font-size:9px;color:var(--text3)">Based on current yield</div></div>
+</div>
+<div style="margin-top:10px;padding:10px;border-radius:8px;background:rgba(16,185,129,.04);border-left:3px solid #10b981"><div style="font-size:10px;color:var(--text2);line-height:1.6">💡 <strong>For dividend investors:</strong> ${payout<50?'The low payout ratio means the dividend is very safe and has room to grow. The company retains most of its earnings for reinvestment.':payout<70?'The dividend appears sustainable. The company balances paying shareholders while retaining enough for growth.':'The high payout ratio means most profits go to dividends. While income is attractive, there is limited room for dividend growth.'} ${divY>3?'At '+divY.toFixed(1)+'% yield, this stock generates meaningful income — better than most fixed deposits.':'The yield is modest but supplements capital appreciation.'}</div></div>`
+:`<p style="font-size:11px;color:var(--text2);line-height:1.7;margin:8px 0 0">This company does not currently pay dividends. This is common for growth companies that reinvest all profits back into the business. ${roe>15?'With ROE of '+roe.toFixed(1)+'%, the company earns high returns on reinvested capital — shareholders benefit through stock price appreciation instead.':'If the company is not paying dividends AND returns on equity are modest, question whether management is deploying capital effectively.'}</p>`}
+</div>
+
+<!-- INVESTMENT CHECKLIST -->
+<div style="margin-bottom:20px;padding:18px;border-radius:12px;background:rgba(0,47,108,.03);border:1px solid var(--border)">
+<div style="font-family:'Sora',sans-serif;font-size:13px;font-weight:700;color:var(--text);margin-bottom:10px">✅ Investment Quality Checklist</div>
+<p style="font-size:10px;color:var(--text3);margin:0 0 12px 0">Green = passes, Red = fails. More green checks = higher quality company. This is a systematic way to evaluate fundamentals at a glance.</p>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:6px">
+${[
+{test:'Profitable (Net Margin > 0)',pass:pm>0,detail:pm>0?'Net margin: '+pm.toFixed(1)+'%':'Company is unprofitable'},
+{test:'Strong Margins (> 15%)',pass:pm>15,detail:pm>15?'Well above breakeven':'Thin margins increase risk'},
+{test:'High ROE (> 15%)',pass:roe>15,detail:'ROE: '+roe.toFixed(1)+'% '+(roe>15?'— excellent capital efficiency':'— below ideal')},
+{test:'Low Debt (D/E < 100%)',pass:de<100,detail:'D/E: '+de.toFixed(0)+'% '+(de<100?'— manageable':'— high leverage')},
+{test:'Adequate Liquidity (CR > 1.5)',pass:cr>1.5,detail:'Current Ratio: '+cr.toFixed(2)+(cr>1.5?' — can pay bills easily':' — monitor closely')},
+{test:'Growing Revenue',pass:rg>5,detail:rg>0?'Revenue growth: '+rg.toFixed(1)+'%':'Revenue declining'},
+{test:'Growing Earnings',pass:eg>5,detail:eg>0?'Earnings growth: '+eg.toFixed(1)+'%':'Earnings declining'},
+{test:'Reasonable Valuation (P/E < 25)',pass:pe>0&&pe<25,detail:pe>0?'P/E: '+pe.toFixed(1)+'x '+(pe<25?'— reasonable':'— premium'):'Negative earnings'},
+{test:'Positive Free Cash Flow',pass:_sf(d.free_cash_flow||d.free_cashflow)>0,detail:_sf(d.free_cash_flow||d.free_cashflow)>0?'FCF: '+_fn(_sf(d.free_cash_flow||d.free_cashflow)):'Negative FCF'},
+{test:'Below 52W High (< 90%)',pass:w52pos<90,detail:'At '+w52pos.toFixed(0)+'% of 52-week range'},
+{test:'Above 200-DMA (Uptrend)',pass:price>_sf(d.sma_200)&&_sf(d.sma_200)>0,detail:_sf(d.sma_200)>0?'SMA200: '+sym+_sf(d.sma_200).toFixed(0):'No SMA data'},
+{test:'Beta < 1.5 (Not Too Volatile)',pass:beta<1.5,detail:'Beta: '+beta.toFixed(2)+(beta<1.5?' — manageable risk':' — very volatile')},
+].map(c=>`<div style="display:flex;align-items:center;gap:8px;padding:8px 12px;border-radius:6px;background:${c.pass?'rgba(16,185,129,.04)':'rgba(239,68,68,.04)'};border:1px solid ${c.pass?'rgba(16,185,129,.15)':'rgba(239,68,68,.15)'}"><span style="font-size:16px;min-width:20px">${c.pass?'✅':'❌'}</span><div><div style="font-size:11px;font-weight:600;color:${c.pass?'#10b981':'#ef4444'}">${c.test}</div><div style="font-size:9px;color:var(--text3)">${c.detail}</div></div></div>`).join('')}
+</div>
+<div style="margin-top:12px;padding:10px 14px;border-radius:8px;background:rgba(139,92,246,.04);text-align:center"><span style="font-size:12px;font-weight:700;color:var(--purple)">Score: ${[pm>0,pm>15,roe>15,de<100,cr>1.5,rg>5,eg>5,pe>0&&pe<25,_sf(d.free_cash_flow||d.free_cashflow)>0,w52pos<90,price>_sf(d.sma_200)&&_sf(d.sma_200)>0,beta<1.5].filter(Boolean).length} / 12 checks passed</span></div>
+</div>
+
+<!-- SWOT ANALYSIS -->
+<div style="margin-bottom:20px">
+<div style="font-family:'Sora',sans-serif;font-size:13px;font-weight:700;color:var(--text);margin-bottom:12px">🔄 SWOT Analysis</div>
+<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px">
+<div style="padding:14px;border-radius:10px;background:rgba(16,185,129,.04);border:1px solid rgba(16,185,129,.2)">
+<div style="font-size:11px;font-weight:700;color:#10b981;margin-bottom:8px">💪 STRENGTHS</div>
+<div style="font-size:10px;color:var(--text2);line-height:1.7">
+${pm>15?'• Strong profit margins ('+pm.toFixed(1)+'%) indicate pricing power<br>':''}
+${roe>15?'• High ROE ('+roe.toFixed(1)+'%) shows efficient capital allocation<br>':''}
+${de<50?'• Conservative balance sheet (D/E: '+de.toFixed(0)+'%) provides flexibility<br>':''}
+${_sf(d.free_cash_flow||d.free_cashflow)>0?'• Positive free cash flow generation<br>':''}
+${divY>2?'• Attractive dividend yield ('+divY.toFixed(1)+'%)<br>':''}
+${cr>2?'• Strong liquidity position (CR: '+cr.toFixed(2)+')<br>':''}
+${price>_sf(d.sma_200)?'• Trading in technical uptrend<br>':''}
+${pm<=15&&roe<=15&&de>=50?'• Listed company with access to capital markets<br>':''}
+</div></div>
+<div style="padding:14px;border-radius:10px;background:rgba(239,68,68,.04);border:1px solid rgba(239,68,68,.15)">
+<div style="font-size:11px;font-weight:700;color:#ef4444;margin-bottom:8px">⚠️ WEAKNESSES</div>
+<div style="font-size:10px;color:var(--text2);line-height:1.7">
+${pm<5?'• Low margins ('+pm.toFixed(1)+'%) leave little room for error<br>':''}
+${de>150?'• High leverage (D/E: '+de.toFixed(0)+'%) increases financial risk<br>':''}
+${roe<10?'• Low ROE ('+roe.toFixed(1)+'%) suggests inefficient capital use<br>':''}
+${beta>1.5?'• High volatility (beta: '+beta.toFixed(2)+') increases risk<br>':''}
+${cr<1?'• Liquidity concern (CR: '+cr.toFixed(2)+' below 1.0)<br>':''}
+${eg<0?'• Declining earnings trajectory<br>':''}
+${pe>30?'• High valuation ('+pe.toFixed(1)+'x P/E) limits upside<br>':''}
+${pm>=5&&de<=150&&roe>=10?'• No major weaknesses identified from current data<br>':''}
+</div></div>
+<div style="padding:14px;border-radius:10px;background:rgba(59,130,246,.04);border:1px solid rgba(59,130,246,.15)">
+<div style="font-size:11px;font-weight:700;color:#3b82f6;margin-bottom:8px">🔍 OPPORTUNITIES</div>
+<div style="font-size:10px;color:var(--text2);line-height:1.7">
+${rg>10?'• Revenue growing '+rg.toFixed(1)+'% — expanding addressable market<br>':''}
+${pe<sAvgPE*0.85?'• Valuation discount to sector — re-rating potential<br>':''}
+${w52pos<40?'• Near 52-week lows — potential value entry point<br>':''}
+${peg>0&&peg<1?'• PEG below 1.0 — growth at a bargain price<br>':''}
+• Industry tailwinds in ${sector} sector<br>
+• Potential for margin expansion through operational efficiency<br>
+${divY>0&&payout<50?'• Room to increase dividends (low payout ratio)<br>':''}
+</div></div>
+<div style="padding:14px;border-radius:10px;background:rgba(245,158,11,.04);border:1px solid rgba(245,158,11,.15)">
+<div style="font-size:11px;font-weight:700;color:#f59e0b;margin-bottom:8px">⚡ THREATS</div>
+<div style="font-size:10px;color:var(--text2);line-height:1.7">
+${w52pos>85?'• Near 52-week high — momentum exhaustion risk<br>':''}
+${de>100?'• Interest rate increases would pressure margins<br>':''}
+${shortR>3?'• Elevated short interest (ratio: '+shortR.toFixed(1)+') signals bearish bets<br>':''}
+${beta>1.3?'• Market downturns amplified by high beta<br>':''}
+• Competitive pressure in ${industry}<br>
+• Regulatory changes could impact operations<br>
+• Macroeconomic headwinds (inflation, currency, geopolitics)<br>
+</div></div>
+</div>
+</div>
+
+<!-- PRICE TARGET METHODOLOGY -->
+<div style="margin-bottom:20px;padding:18px;border-radius:12px;background:rgba(217,119,6,.04);border:1px solid rgba(217,119,6,.15)">
+<div style="font-family:'Sora',sans-serif;font-size:13px;font-weight:700;color:#d97706;margin-bottom:6px">🎯 Price Target Methodology</div>
+<p style="font-size:10px;color:var(--text3);margin:0 0 14px 0;line-height:1.6">Our 12-month target blends multiple valuation approaches. No single method is perfect — the more methods that converge on a similar price, the higher our confidence.</p>
+<div style="overflow-x:auto"><table class="pick-tbl">
+<tr><th>Method</th><th>Target Price</th><th>Upside/Downside</th><th>How It Works</th></tr>
+<tr><td style="font-weight:600">P/E × Forward EPS</td><td style="font-weight:700;color:var(--cyan)">${epsF>0?sym+(sAvgPE*epsF).toFixed(0):'N/A'}</td><td style="color:${epsF>0&&sAvgPE*epsF>price?'#10b981':'#ef4444'}">${epsF>0?_pct(((sAvgPE*epsF-price)/price*100)):'N/A'}</td><td style="font-size:9px;color:var(--text3)">Sector avg P/E (${sAvgPE.toFixed(1)}x) × estimated next year EPS</td></tr>
+<tr><td style="font-weight:600">52-Week Mean Reversion</td><td style="font-weight:700;color:var(--cyan)">${sym}${((w52h+w52l)/2).toFixed(0)}</td><td style="color:${(w52h+w52l)/2>price?'#10b981':'#ef4444'}">${_pct((((w52h+w52l)/2-price)/price*100))}</td><td style="font-size:9px;color:var(--text3)">Midpoint of 52-week range as fair value anchor</td></tr>
+<tr><td style="font-weight:600">Book Value + Premium</td><td style="font-weight:700;color:var(--cyan)">${bv>0?sym+(bv*(roe>15?3:roe>10?2:1.5)).toFixed(0):'N/A'}</td><td style="color:${bv>0&&bv*(roe>15?3:2)>price?'#10b981':'#ef4444'}">${bv>0?_pct(((bv*(roe>15?3:2)-price)/price*100)):'N/A'}</td><td style="font-size:9px;color:var(--text3)">Book value × P/B multiple (based on ROE quality)</td></tr>
+<tr style="background:rgba(217,119,6,.06);border-top:2px solid #d97706"><td style="font-weight:800;color:#d97706">Blended Target (12M)</td><td style="font-weight:800;color:#d97706;font-size:14px">${sym}${target12m.toFixed(0)}</td><td style="font-weight:700;color:${target12m>price?'#10b981':'#ef4444'}">${_pct(((target12m-price)/price*100))}</td><td style="font-size:9px;color:#d97706;font-weight:600">Weighted average of all methods</td></tr>
+</table></div>
 </div>
 
 <!-- INVESTMENT RECOMMENDATION -->
