@@ -798,6 +798,7 @@ footer{position:relative;z-index:1;margin-top:32px;background:#002f6c;border-top
 <button class="tab-btn" onclick="switchTab('dcf')" id="tabBtnDCF" data-color="emerald" data-tip="Discounted Cash Flow intrinsic valuation"><span class="tab-icon">&#128178;</span> DCF</button>
 <button class="tab-btn" onclick="switchTab('equity')" id="tabBtnEquity" data-color="gold" data-tip="Professional equity research report"><span class="tab-icon">&#128220;</span> Research</button>
 <button class="tab-btn" onclick="switchTab('indices')" id="tabBtnIndices" data-color="teal" data-tip="Deep research on major US & India indices"><span class="tab-icon">&#127760;</span> Indices</button>
+<button class="tab-btn" onclick="switchTab('finance')" id="tabBtnFinance" data-color="emerald" data-tip="Complete personal finance toolkit"><span class="tab-icon">&#128176;</span> My Finance</button>
 <button class="tab-btn" onclick="switchTab('gems')" id="tabBtnGems" data-color="amber" data-tip="Sector-specific small-cap picks" style="display:none"><span class="tab-icon">&#11088;</span> Gems</button>
 <button class="tab-btn" onclick="switchTab('picks')" id="tabBtnPicks" data-color="teal" data-tip="Top 5 Buy, Sell, Accumulate stocks by conviction" style="display:none"><span class="tab-icon">&#127942;</span> Picks</button>
 <button class="tab-btn" onclick="switchTab('funds')" id="tabBtnFunds" data-color="blue" data-tip="Top ETFs & mutual funds with 25%+ CAGR" style="display:none"><span class="tab-icon">&#128176;</span> ETF</button>
@@ -2077,6 +2078,12 @@ ${(()=>{const bt=parseFloat(d.beta)||1;return bt>1.5?' Expect <strong>bigger dai
 
 <!-- ═══ TAB: INDEX RESEARCH ═══ -->
 <div class="sc" data-tab="indices" style="border-left:3px solid #06b6d4"><div class="sh"><div class="si" style="background:rgba(6,182,212,.1)">&#127760;</div><div class="st" style="color:#06b6d4" id="sec-indices">Global Index Research — India &amp; USA</div></div>
+
+<!-- ═══ TAB: PERSONAL FINANCE ═══ -->
+<div class="sc" data-tab="finance" style="border-left:3px solid #10b981"><div class="sh"><div class="si" style="background:rgba(16,185,129,.1)">&#128176;</div><div class="st" style="color:#10b981" id="sec-finance">Personal Finance Toolkit</div></div>
+<div class="sbody">
+<div id="financeContent"><div class="ic" style="text-align:center;background:rgba(16,185,129,.04)"><p style="color:var(--text3)">&#9203; Loading finance tools...</p></div></div>
+</div></div>
 <div class="sbody">
 <div id="indicesContent"><div class="ic" style="text-align:center;background:rgba(6,182,212,.04)"><p style="color:var(--text3)">&#9203; Loading index research...</p></div></div>
 </div></div>
@@ -2215,6 +2222,7 @@ try{renderConviction()}catch(e){console.warn('renderConviction error:',e)}
 try{renderDCF(d)}catch(e){console.warn('renderDCF error:',e)}
 try{renderEquityResearch(d,report,fundData)}catch(e){console.warn('renderEquityResearch error:',e)}
 try{renderIndices(d)}catch(e){console.warn('renderIndices error:',e)}
+try{renderPersonalFinance()}catch(e){console.warn('renderPersonalFinance error:',e)}
 // Auto-open Quick Intel tab
 switchTab('quick');
 // Refresh watermark with user email
@@ -2250,7 +2258,7 @@ if(!s.dataset.conditional)s.style.display='block';
 document.querySelectorAll('.sub-nav[data-tab="'+tab+'"]').forEach(s=>{s.style.display='flex'});
 
 // 3) Activate button
-const btnMap={quick:'tabBtnQuick',deep:'tabBtnDeep',mgmt:'tabBtnMgmt',next:'tabBtnNext',dcf:'tabBtnDCF',equity:'tabBtnEquity',indices:'tabBtnIndices',gems:'tabBtnGems',picks:'tabBtnPicks',funds:'tabBtnFunds',trades:'tabBtnTrades'};
+const btnMap={quick:'tabBtnQuick',deep:'tabBtnDeep',mgmt:'tabBtnMgmt',next:'tabBtnNext',dcf:'tabBtnDCF',equity:'tabBtnEquity',indices:'tabBtnIndices',finance:'tabBtnFinance',gems:'tabBtnGems',picks:'tabBtnPicks',funds:'tabBtnFunds',trades:'tabBtnTrades'};
 if(btnMap[tab]){const btn=document.getElementById(btnMap[tab]);if(btn)btn.classList.add('active')}
 
 // 4) Scroll to top of new tab content — scroll-margin-top:140px on .sc handles sticky offset
@@ -4946,6 +4954,625 @@ console.log('✅ Index prices:',Object.keys(result.prices).length,'loaded');
 }
 
 // ═══════════════════════════════════════════════
+function renderPersonalFinance(){
+const el=document.getElementById('financeContent');
+if(!el)return;
+
+const _cur='INR';
+const S='&#8377;';
+
+// Sub-tab state
+let _activeFT='budget';
+
+const TOOLS=[
+{id:'budget',icon:'&#128203;',name:'Budget Planner',color:'#10b981',desc:'The 50/30/20 rule that changed millions of lives'},
+{id:'expense',icon:'&#128200;',name:'Expense Analyzer',color:'#3b82f6',desc:'Find where your money secretly disappears'},
+{id:'debt',icon:'&#9939;',name:'Debt Eliminator',color:'#ef4444',desc:'Crush your loans with the avalanche or snowball method'},
+{id:'emergency',icon:'&#128737;',name:'Emergency Fund',color:'#f59e0b',desc:'Your financial airbag for life crashes'},
+{id:'savings',icon:'&#127919;',name:'Savings Architect',color:'#8b5cf6',desc:'Turn dreams into achievable money goals'},
+{id:'tax',icon:'&#128209;',name:'Tax Optimizer',color:'#06b6d4',desc:'Legally keep more of what you earn'},
+{id:'networth',icon:'&#128176;',name:'Net Worth Tracker',color:'#10b981',desc:'Your financial scoreboard — one number that matters'},
+{id:'retire',icon:'&#127958;',name:'Retirement Planner',color:'#d97706',desc:'When can you stop working? Let the math decide'},
+{id:'insurance',icon:'&#128737;',name:'Insurance Audit',color:'#ec4899',desc:'Are you over-insured, under-insured, or just right?'},
+{id:'health',icon:'&#128154;',name:'Financial Health',color:'#14b8a6',desc:'A complete checkup for your money life'}
+];
+
+// Helper: input field
+const _inp=(id,label,placeholder,type)=>`<div style="flex:1;min-width:140px"><label style="font-size:9px;color:var(--text3);display:block;margin-bottom:3px">${label}</label><input id="${id}" type="${type||'number'}" placeholder="${placeholder}" style="width:100%;padding:8px 10px;border-radius:6px;border:1px solid var(--border);background:var(--bg2);color:var(--text);font-family:var(--mono);font-size:12px;outline:none" /></div>`;
+
+// Helper: result card
+const _res=(label,val,color,tip)=>`<div style="padding:10px 12px;border-radius:8px;background:rgba(0,47,108,.02);border:1px solid var(--border);text-align:center"><div style="font-size:8px;color:var(--text3)">${label}</div><div style="font-size:18px;font-weight:800;color:${color||'var(--cyan)'};font-family:var(--mono)">${val}</div>${tip?'<div style="font-size:8px;color:var(--text3);margin-top:2px">'+tip+'</div>':''}</div>`;
+
+// Helper: gauge bar
+const _gauge=(pct,label)=>{
+const c=pct>=80?'#10b981':pct>=50?'#f59e0b':'#ef4444';
+return `<div style="margin:6px 0"><div style="display:flex;justify-content:space-between;font-size:9px;color:var(--text3);margin-bottom:3px"><span>${label}</span><span style="color:${c};font-weight:700">${pct.toFixed(0)}%</span></div><div style="height:8px;background:var(--border);border-radius:4px;overflow:hidden"><div style="height:100%;width:${Math.min(100,pct)}%;background:${c};border-radius:4px;transition:width .5s"></div></div></div>`;
+};
+
+// Helper: format number
+const _f=(n)=>{if(!n||isNaN(n))return '0';n=parseFloat(n);const a=Math.abs(n);const s=n<0?'-':'';if(a>=1e7)return s+S+(a/1e7).toFixed(2)+' Cr';if(a>=1e5)return s+S+(a/1e5).toFixed(2)+' L';return s+S+a.toLocaleString('en-IN');};
+
+const _v=(id)=>parseFloat(document.getElementById(id)?.value)||0;
+
+// ═══════════════════════════════════════════════
+// BUILD EACH TOOL
+// ═══════════════════════════════════════════════
+
+const toolHTML={
+
+// ═══ 1. BUDGET PLANNER ═══
+budget:`
+<div style="padding:14px;border-radius:10px;background:rgba(16,185,129,.04);border-left:4px solid #10b981;margin-bottom:16px">
+<div style="font-size:11px;font-weight:700;color:#10b981;margin-bottom:4px">&#128161; The 50/30/20 Rule — Like a plate of food</div>
+<div style="font-size:10px;color:var(--text2);line-height:1.8">Imagine your salary is a plate of food. <strong>50% goes to needs</strong> (rice/dal — rent, EMIs, groceries, insurance). <strong>30% goes to wants</strong> (dessert — shopping, dining, entertainment). <strong>20% goes to savings</strong> (vitamins — investments, emergency fund, future goals). If your plate is 80% dessert and 5% vitamins, you will feel great now but your future self will be malnourished. This rule ensures balanced financial nutrition.</div>
+</div>
+<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
+${_inp('bf_income','Monthly Income (after tax)','e.g. 80000')}
+${_inp('bf_rent','Rent/Mortgage','e.g. 20000')}
+${_inp('bf_groceries','Groceries & Utilities','e.g. 8000')}
+${_inp('bf_transport','Transport/Fuel','e.g. 5000')}
+${_inp('bf_emi','EMIs (Loan payments)','e.g. 10000')}
+${_inp('bf_insurance','Insurance Premiums','e.g. 3000')}
+</div>
+<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
+${_inp('bf_shopping','Shopping/Lifestyle','e.g. 5000')}
+${_inp('bf_dining','Dining/Entertainment','e.g. 4000')}
+${_inp('bf_subscriptions','Subscriptions/OTT','e.g. 1500')}
+${_inp('bf_invest','Investments/SIP','e.g. 10000')}
+${_inp('bf_emergency','Emergency Fund SIP','e.g. 3000')}
+${_inp('bf_other','Other Savings','e.g. 2000')}
+</div>
+<button onclick="window._calcBudget()" style="padding:10px 24px;border-radius:8px;background:#10b981;color:#fff;border:none;font-weight:700;cursor:pointer;font-family:Sora,sans-serif">Calculate My Budget Score</button>
+<div id="bf_result" style="margin-top:16px"></div>`,
+
+// ═══ 2. EXPENSE ANALYZER ═══
+expense:`
+<div style="padding:14px;border-radius:10px;background:rgba(59,130,246,.04);border-left:4px solid #3b82f6;margin-bottom:16px">
+<div style="font-size:11px;font-weight:700;color:#3b82f6;margin-bottom:4px">&#128161; The Latte Factor — Small leaks sink big ships</div>
+<div style="font-size:10px;color:var(--text2);line-height:1.8">A ${S}200 daily coffee = ${S}6,000/month = ${S}72,000/year. Invested at 12% for 20 years, that coffee habit costs you <strong>${S}59 Lakh!</strong> The Expense Analyzer helps you find these invisible money drains. We are not saying stop drinking coffee — just become AWARE of where every rupee goes. Awareness is the first step to control.</div>
+</div>
+<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
+${_inp('ea_income','Monthly Income','e.g. 80000')}
+${_inp('ea_housing','Housing (Rent+Utilities)','e.g. 25000')}
+${_inp('ea_food','Food (Groceries+Dining)','e.g. 12000')}
+${_inp('ea_transport','Transport','e.g. 5000')}
+${_inp('ea_shopping','Shopping/Lifestyle','e.g. 8000')}
+${_inp('ea_emi','All EMIs','e.g. 15000')}
+${_inp('ea_subscriptions','Subscriptions/Memberships','e.g. 3000')}
+${_inp('ea_misc','Miscellaneous','e.g. 5000')}
+</div>
+<button onclick="window._calcExpense()" style="padding:10px 24px;border-radius:8px;background:#3b82f6;color:#fff;border:none;font-weight:700;cursor:pointer;font-family:Sora,sans-serif">Analyze My Expenses</button>
+<div id="ea_result" style="margin-top:16px"></div>`,
+
+// ═══ 3. DEBT ELIMINATOR ═══
+debt:`
+<div style="padding:14px;border-radius:10px;background:rgba(239,68,68,.04);border-left:4px solid #ef4444;margin-bottom:16px">
+<div style="font-size:11px;font-weight:700;color:#ef4444;margin-bottom:4px">&#128161; Debt is like a hole in a boat — plug it before rowing faster</div>
+<div style="font-size:10px;color:var(--text2);line-height:1.8">Imagine you are on a boat (your financial life). Debt is a hole in the bottom. You can row harder (earn more) or bail water (cut expenses), but until you plug the hole, you will keep sinking. <strong>Avalanche method:</strong> Pay highest-interest debt first — mathematically optimal, saves the most money. <strong>Snowball method:</strong> Pay smallest debt first — psychologically powerful, gives quick wins for motivation. Enter up to 5 loans below.</div>
+</div>
+<div id="debt_inputs">
+<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;align-items:end">
+${_inp('d1_name','Loan 1 Name','e.g. Credit Card','text')}
+${_inp('d1_bal','Balance','e.g. 50000')}
+${_inp('d1_rate','Interest %','e.g. 36')}
+${_inp('d1_emi','Monthly EMI','e.g. 5000')}
+</div>
+<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;align-items:end">
+${_inp('d2_name','Loan 2 Name','e.g. Personal Loan','text')}
+${_inp('d2_bal','Balance','e.g. 200000')}
+${_inp('d2_rate','Interest %','e.g. 14')}
+${_inp('d2_emi','Monthly EMI','e.g. 8000')}
+</div>
+<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;align-items:end">
+${_inp('d3_name','Loan 3 Name','e.g. Car Loan','text')}
+${_inp('d3_bal','Balance','e.g. 500000')}
+${_inp('d3_rate','Interest %','e.g. 9')}
+${_inp('d3_emi','Monthly EMI','e.g. 12000')}
+</div>
+</div>
+<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+${_inp('d_extra','Extra Monthly Payment Available','e.g. 5000')}
+</div>
+<button onclick="window._calcDebt()" style="padding:10px 24px;border-radius:8px;background:#ef4444;color:#fff;border:none;font-weight:700;cursor:pointer;font-family:Sora,sans-serif">Create Debt-Free Plan</button>
+<div id="debt_result" style="margin-top:16px"></div>`,
+
+// ═══ 4. EMERGENCY FUND ═══
+emergency:`
+<div style="padding:14px;border-radius:10px;background:rgba(245,158,11,.04);border-left:4px solid #f59e0b;margin-bottom:16px">
+<div style="font-size:11px;font-weight:700;color:#f59e0b;margin-bottom:4px">&#128161; Your Financial Airbag — You never need it... until you REALLY do</div>
+<div style="font-size:10px;color:var(--text2);line-height:1.8">A car airbag costs money, adds weight, and you hope to never use it. But in a crash, it saves your life. Your emergency fund is exactly the same — it sits idle earning modest returns, feels wasteful in good times, but prevents financial destruction when a job loss, medical emergency, or recession hits. <strong>Rule of thumb:</strong> 6 months of expenses if salaried, 12 months if self-employed/freelancer. Keep it in a liquid fund or FD — NOT in stocks.</div>
+</div>
+<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
+${_inp('ef_expenses','Monthly Essential Expenses','e.g. 45000')}
+${_inp('ef_emis','Monthly EMIs','e.g. 15000')}
+${_inp('ef_dependents','Number of Dependents','e.g. 3')}
+${_inp('ef_current','Current Emergency Savings','e.g. 100000')}
+${_inp('ef_monthly','Monthly Contribution','e.g. 5000')}
+${_inp('ef_type','Employment Type (1=Salaried, 2=Self-employed)','e.g. 1')}
+</div>
+<button onclick="window._calcEmergency()" style="padding:10px 24px;border-radius:8px;background:#f59e0b;color:#000;border:none;font-weight:700;cursor:pointer;font-family:Sora,sans-serif">Calculate Emergency Fund</button>
+<div id="ef_result" style="margin-top:16px"></div>`,
+
+// ═══ 5. SAVINGS ARCHITECT ═══
+savings:`
+<div style="padding:14px;border-radius:10px;background:rgba(139,92,246,.04);border-left:4px solid #8b5cf6;margin-bottom:16px">
+<div style="font-size:11px;font-weight:700;color:#8b5cf6;margin-bottom:4px">&#128161; Dreams without deadlines are just wishes</div>
+<div style="font-size:10px;color:var(--text2);line-height:1.8">Want a ${S}20 Lakh car in 3 years? A ${S}50 Lakh house down payment in 5 years? A ${S}1 Crore retirement corpus in 20 years? The Savings Architect reverse-engineers your dreams into exact monthly SIP amounts. Think of it like Google Maps for money — you tell it the destination and timeline, it calculates the route and speed needed.</div>
+</div>
+<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
+${_inp('sg_name','Goal Name','e.g. Dream Home','text')}
+${_inp('sg_amount','Target Amount','e.g. 5000000')}
+${_inp('sg_years','Time Horizon (Years)','e.g. 5')}
+${_inp('sg_current','Already Saved','e.g. 200000')}
+${_inp('sg_return','Expected Return % (annual)','e.g. 12')}
+${_inp('sg_inflation','Inflation % (annual)','e.g. 6')}
+</div>
+<button onclick="window._calcSavings()" style="padding:10px 24px;border-radius:8px;background:#8b5cf6;color:#fff;border:none;font-weight:700;cursor:pointer;font-family:Sora,sans-serif">Calculate My SIP</button>
+<div id="sg_result" style="margin-top:16px"></div>`,
+
+// ═══ 6. TAX OPTIMIZER ═══
+tax:`
+<div style="padding:14px;border-radius:10px;background:rgba(6,182,212,.04);border-left:4px solid #06b6d4;margin-bottom:16px">
+<div style="font-size:11px;font-weight:700;color:#06b6d4;margin-bottom:4px">&#128161; Tax saved is tax earned — it is the highest-return investment</div>
+<div style="font-size:10px;color:var(--text2);line-height:1.8">If you are in the 30% tax bracket, every ${S}1 saved in tax = ${S}1 earned without any risk. A ${S}1.5L investment under 80C at 30% tax saves ${S}46,800 in tax — that is a guaranteed 31.2% return on Day 1, plus whatever the investment earns. No mutual fund or stock can promise that. This audit checks if you are utilizing all available deductions under Old and New regime.</div>
+</div>
+<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
+${_inp('tx_gross','Gross Annual Income','e.g. 1500000')}
+${_inp('tx_80c','Section 80C (PPF, ELSS, LIC, EPF)','e.g. 150000')}
+${_inp('tx_80d','Section 80D (Health Insurance)','e.g. 25000')}
+${_inp('tx_hra','HRA Exemption','e.g. 120000')}
+${_inp('tx_80ccd','80CCD(1B) NPS Extra','e.g. 50000')}
+${_inp('tx_home_loan','Home Loan Interest (Sec 24)','e.g. 200000')}
+${_inp('tx_standard','Standard Deduction','e.g. 75000')}
+${_inp('tx_other','Other Deductions','e.g. 0')}
+</div>
+<button onclick="window._calcTax()" style="padding:10px 24px;border-radius:8px;background:#06b6d4;color:#000;border:none;font-weight:700;cursor:pointer;font-family:Sora,sans-serif">Compare Old vs New Regime</button>
+<div id="tx_result" style="margin-top:16px"></div>`,
+
+// ═══ 7. NET WORTH TRACKER ═══
+networth:`
+<div style="padding:14px;border-radius:10px;background:rgba(16,185,129,.04);border-left:4px solid #10b981;margin-bottom:16px">
+<div style="font-size:11px;font-weight:700;color:#10b981;margin-bottom:4px">&#128161; Your financial scoreboard — just one number</div>
+<div style="font-size:10px;color:var(--text2);line-height:1.8">Net worth = What you OWN minus what you OWE. Think of it like a cricket score: Assets are your runs scored, Liabilities are wickets fallen. A score of 300/2 (high assets, low debt) is great. A score of 50/8 (low assets, high debt) means trouble. Track this number quarterly — if it goes up, you are winning the financial game regardless of income.</div>
+</div>
+<div style="font-size:11px;font-weight:700;color:var(--text);margin:14px 0 8px">ASSETS (What You Own)</div>
+<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
+${_inp('nw_savings','Bank Savings/FD','e.g. 500000')}
+${_inp('nw_mf','Mutual Funds/Stocks','e.g. 800000')}
+${_inp('nw_pf','PF/PPF/NPS','e.g. 600000')}
+${_inp('nw_property','Property Value','e.g. 5000000')}
+${_inp('nw_gold','Gold/Jewelry','e.g. 300000')}
+${_inp('nw_other_assets','Other Assets','e.g. 100000')}
+</div>
+<div style="font-size:11px;font-weight:700;color:var(--red);margin:14px 0 8px">LIABILITIES (What You Owe)</div>
+<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
+${_inp('nw_home_loan','Home Loan Outstanding','e.g. 3000000')}
+${_inp('nw_car_loan','Car/Personal Loan','e.g. 200000')}
+${_inp('nw_credit','Credit Card Debt','e.g. 50000')}
+${_inp('nw_other_debt','Other Debts','e.g. 0')}
+</div>
+<button onclick="window._calcNetworth()" style="padding:10px 24px;border-radius:8px;background:#10b981;color:#fff;border:none;font-weight:700;cursor:pointer;font-family:Sora,sans-serif">Calculate Net Worth</button>
+<div id="nw_result" style="margin-top:16px"></div>`,
+
+// ═══ 8. RETIREMENT PLANNER ═══
+retire:`
+<div style="padding:14px;border-radius:10px;background:rgba(217,119,6,.04);border-left:4px solid #d97706;margin-bottom:16px">
+<div style="font-size:11px;font-weight:700;color:#d97706;margin-bottom:4px">&#128161; Retirement is like a flight — you need enough fuel to reach the destination</div>
+<div style="font-size:10px;color:var(--text2);line-height:1.8">If a plane takes off without enough fuel, it crashes mid-air. Your retirement corpus is the fuel. This calculator tells you: (1) How much fuel you need for a 25-30 year retirement, (2) How much fuel you have now, (3) How fast you need to fill the tank each month. The biggest enemy? <strong>Inflation</strong> — your ${S}50,000/month lifestyle will cost ${S}1.6 Lakh/month in 20 years at 6% inflation.</div>
+</div>
+<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
+${_inp('rt_age','Current Age','e.g. 30')}
+${_inp('rt_retire_age','Desired Retirement Age','e.g. 55')}
+${_inp('rt_life','Expected Life Span','e.g. 85')}
+${_inp('rt_monthly','Current Monthly Expenses','e.g. 50000')}
+${_inp('rt_current','Current Retirement Savings','e.g. 500000')}
+${_inp('rt_return','Pre-Retirement Return %','e.g. 12')}
+${_inp('rt_post_return','Post-Retirement Return %','e.g. 8')}
+${_inp('rt_inflation','Inflation %','e.g. 6')}
+</div>
+<button onclick="window._calcRetire()" style="padding:10px 24px;border-radius:8px;background:#d97706;color:#fff;border:none;font-weight:700;cursor:pointer;font-family:Sora,sans-serif">Check Retirement Readiness</button>
+<div id="rt_result" style="margin-top:16px"></div>`,
+
+// ═══ 9. INSURANCE AUDIT ═══
+insurance:`
+<div style="padding:14px;border-radius:10px;background:rgba(236,72,153,.04);border-left:4px solid #ec4899;margin-bottom:16px">
+<div style="font-size:11px;font-weight:700;color:#ec4899;margin-bottom:4px">&#128161; Insurance is the umbrella you buy on a sunny day</div>
+<div style="font-size:10px;color:var(--text2);line-height:1.8">Nobody buys an umbrella during a rainstorm — you buy it when the sun is shining. Insurance works the same way. <strong>Term life insurance</strong> = Protection for your family if you die (10-15x annual income). <strong>Health insurance</strong> = Protection against hospital bills that can bankrupt you (min ${S}10L per person). <strong>Critical illness</strong> = Lump sum payment if diagnosed with cancer/heart attack. Do NOT mix insurance with investment (avoid ULIPs/endowment plans).</div>
+</div>
+<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
+${_inp('ins_age','Your Age','e.g. 35')}
+${_inp('ins_income','Annual Income','e.g. 1200000')}
+${_inp('ins_dependents','Number of Dependents','e.g. 3')}
+${_inp('ins_debts','Total Outstanding Debts','e.g. 3000000')}
+${_inp('ins_term_cover','Current Term Life Cover','e.g. 10000000')}
+${_inp('ins_health_cover','Current Health Cover','e.g. 500000')}
+${_inp('ins_term_premium','Annual Term Premium','e.g. 15000')}
+${_inp('ins_health_premium','Annual Health Premium','e.g. 20000')}
+</div>
+<button onclick="window._calcInsurance()" style="padding:10px 24px;border-radius:8px;background:#ec4899;color:#fff;border:none;font-weight:700;cursor:pointer;font-family:Sora,sans-serif">Audit My Insurance</button>
+<div id="ins_result" style="margin-top:16px"></div>`,
+
+// ═══ 10. FINANCIAL HEALTH CHECKUP ═══
+health:`
+<div style="padding:14px;border-radius:10px;background:rgba(20,184,166,.04);border-left:4px solid #14b8a6;margin-bottom:16px">
+<div style="font-size:11px;font-weight:700;color:#14b8a6;margin-bottom:4px">&#128161; A complete body checkup... for your finances</div>
+<div style="font-size:10px;color:var(--text2);line-height:1.8">Just like a doctor checks your blood pressure, sugar, cholesterol, and BMI to give an overall health score, this tool checks your financial vital signs: savings rate (blood pressure), debt ratio (cholesterol), emergency coverage (immunity), insurance adequacy (vaccination), and investment diversification (balanced diet). One comprehensive score tells you if your financial health is excellent, good, or needs urgent care.</div>
+</div>
+<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
+${_inp('fh_income','Monthly Income','e.g. 80000')}
+${_inp('fh_expenses','Monthly Expenses','e.g. 50000')}
+${_inp('fh_invest','Monthly Investments/SIP','e.g. 15000')}
+${_inp('fh_emis','Total Monthly EMIs','e.g. 12000')}
+${_inp('fh_emergency','Emergency Fund Balance','e.g. 200000')}
+${_inp('fh_total_debt','Total Outstanding Debt','e.g. 2000000')}
+${_inp('fh_investments','Total Investment Value','e.g. 1500000')}
+${_inp('fh_insurance','Life Insurance Cover','e.g. 10000000')}
+</div>
+<button onclick="window._calcHealth()" style="padding:10px 24px;border-radius:8px;background:#14b8a6;color:#fff;border:none;font-weight:700;cursor:pointer;font-family:Sora,sans-serif">Get My Financial Health Score</button>
+<div id="fh_result" style="margin-top:16px"></div>`
+};
+
+// ═══ BUILD MAIN UI ═══
+let h=`
+<div style="background:linear-gradient(135deg,#0a1628 0%,#0d2137 50%,#0a1628 100%);border-radius:14px;padding:24px;margin-bottom:16px;position:relative;overflow:hidden">
+<div style="position:absolute;top:-50px;right:-50px;width:200px;height:200px;background:radial-gradient(circle,rgba(16,185,129,.2),transparent 70%)"></div>
+<div style="position:relative">
+<div style="font-size:9px;letter-spacing:2px;color:rgba(255,255,255,.3);margin-bottom:6px">CELESYS AI &middot; PERSONAL FINANCE TOOLKIT</div>
+<div style="font-size:20px;font-weight:800;color:#fff;font-family:Sora,sans-serif;margin-bottom:4px">Your Complete Money Toolkit</div>
+<div style="font-size:11px;color:rgba(255,255,255,.5)">10 interactive calculators &middot; Real-time analysis &middot; Actionable advice</div>
+</div>
+</div>
+
+<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px" id="finSubTabs">
+${TOOLS.map(t=>`<button class="fin-sub-btn${t.id==='budget'?' fin-active':''}" data-ft="${t.id}" onclick="window._switchFT('${t.id}')" style="padding:6px 12px;border-radius:6px;font-size:10px;font-weight:600;border:1px solid ${t.id==='budget'?t.color:'var(--border)'};background:${t.id==='budget'?t.color:'transparent'};color:${t.id==='budget'?'#fff':'var(--text2)'};cursor:pointer;font-family:Sora,sans-serif;transition:all .2s;white-space:nowrap">${t.icon} ${t.name}</button>`).join('')}
+</div>
+
+${TOOLS.map(t=>`<div id="ft_${t.id}" style="display:${t.id==='budget'?'block':'none'}">${toolHTML[t.id]}</div>`).join('')}
+
+<div style="padding:10px;border-radius:8px;background:rgba(245,158,11,.04);border:1px solid rgba(245,158,11,.12);margin-top:16px">
+<div style="font-size:9px;color:var(--text3);line-height:1.5"><strong style="color:var(--amber)">Disclaimer:</strong> These calculators provide estimates for educational purposes only. They are not financial advice. Tax calculations are simplified and may not reflect your exact situation. Always consult a qualified CA/financial planner for personalized guidance.</div>
+</div>`;
+
+el.innerHTML=h;
+
+// ═══ SUB-TAB SWITCHER ═══
+window._switchFT=function(id){
+TOOLS.forEach(t=>{
+const panel=document.getElementById('ft_'+t.id);
+const btn=document.querySelector('[data-ft="'+t.id+'"]');
+if(panel)panel.style.display=t.id===id?'block':'none';
+if(btn){btn.style.background=t.id===id?t.color:'transparent';btn.style.color=t.id===id?'#fff':'var(--text2)';btn.style.borderColor=t.id===id?t.color:'var(--border)';}
+});
+};
+
+// ═══ CALCULATOR FUNCTIONS ═══
+
+// 1. BUDGET
+window._calcBudget=function(){
+const inc=_v('bf_income');if(!inc){document.getElementById('bf_result').innerHTML='<div style="color:var(--red);font-size:11px">Please enter your monthly income.</div>';return}
+const needs=_v('bf_rent')+_v('bf_groceries')+_v('bf_transport')+_v('bf_emi')+_v('bf_insurance');
+const wants=_v('bf_shopping')+_v('bf_dining')+_v('bf_subscriptions');
+const saves=_v('bf_invest')+_v('bf_emergency')+_v('bf_other');
+const total=needs+wants+saves;
+const surplus=inc-total;
+const nPct=inc>0?(needs/inc*100):0;
+const wPct=inc>0?(wants/inc*100):0;
+const sPct=inc>0?(saves/inc*100):0;
+const score=Math.min(100,Math.max(0, (sPct>=20?40:sPct*2) + (nPct<=50?30:Math.max(0,30-(nPct-50)*1.5)) + (wPct<=30?20:Math.max(0,20-(wPct-30)*2)) + (surplus>=0?10:0)));
+const grade=score>=80?'A+':score>=65?'A':score>=50?'B':score>=35?'C':'D';
+const gradeC=score>=80?'#10b981':score>=50?'#f59e0b':'#ef4444';
+document.getElementById('bf_result').innerHTML=`
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin-bottom:12px">
+${_res('NEEDS (Target 50%)',nPct.toFixed(0)+'%',nPct<=55?'#10b981':'#ef4444','Rent+EMI+Groceries+Transport')}
+${_res('WANTS (Target 30%)',wPct.toFixed(0)+'%',wPct<=35?'#10b981':'#ef4444','Shopping+Dining+OTT')}
+${_res('SAVINGS (Target 20%)',sPct.toFixed(0)+'%',sPct>=18?'#10b981':'#ef4444','SIP+Emergency+Other')}
+${_res('SURPLUS/DEFICIT',_f(surplus),surplus>=0?'#10b981':'#ef4444',surplus>=0?'Unallocated':'Overspending!')}
+${_res('BUDGET GRADE',grade,gradeC,score.toFixed(0)+'/100')}
+</div>
+${_gauge(Math.min(100,nPct/50*100),'Needs: '+nPct.toFixed(0)+'% (target: 50%)')}
+${_gauge(Math.min(100,wPct/30*100),'Wants: '+wPct.toFixed(0)+'% (target: 30%)')}
+${_gauge(Math.min(100,sPct/20*100),'Savings: '+sPct.toFixed(0)+'% (target: 20%)')}
+<div style="padding:12px;border-radius:8px;background:rgba(16,185,129,.04);border-left:3px solid #10b981;margin-top:10px">
+<div style="font-size:10px;font-weight:700;color:#10b981">&#128161; Your Budget Prescription:</div>
+<div style="font-size:9px;color:var(--text2);margin-top:4px;line-height:1.8">
+${nPct>55?'&#9888; Your NEEDS consume '+nPct.toFixed(0)+'% of income (should be under 50%). Look for ways to reduce rent (consider a roommate or cheaper area) or refinance high-interest EMIs.<br>':''}
+${wPct>35?'&#9888; Your WANTS are '+wPct.toFixed(0)+'% (should be under 30%). Try the 48-hour rule: wait 48 hours before any non-essential purchase over '+S+'2,000. Most impulse buys fade away.<br>':''}
+${sPct<15?'&#9888; You are saving only '+sPct.toFixed(0)+'% (should be 20%+). Start with just 1% more this month, then increase by 1% every quarter. Small steps compound into life-changing amounts.<br>':''}
+${sPct>=20&&nPct<=55?'&#9989; Excellent budget discipline! You are following the 50/30/20 rule. Consider increasing savings to 25-30% to accelerate wealth building.':''}
+${surplus<0?'&#128680; <strong>CRITICAL:</strong> You are spending '+_f(Math.abs(surplus))+' MORE than you earn every month. This is unsustainable — you are either taking on debt or depleting savings. Immediate action required: cut wants by 30% this month.':''}
+</div></div>`;
+};
+
+// 2. EXPENSE ANALYZER
+window._calcExpense=function(){
+const inc=_v('ea_income');if(!inc){return}
+const cats=[{n:'Housing',v:_v('ea_housing'),c:'#3b82f6',ideal:30},{n:'Food',v:_v('ea_food'),c:'#10b981',ideal:15},{n:'Transport',v:_v('ea_transport'),c:'#f59e0b',ideal:10},{n:'Shopping',v:_v('ea_shopping'),c:'#8b5cf6',ideal:10},{n:'EMIs',v:_v('ea_emi'),c:'#ef4444',ideal:20},{n:'Subscriptions',v:_v('ea_subscriptions'),c:'#ec4899',ideal:5},{n:'Misc',v:_v('ea_misc'),c:'#06b6d4',ideal:10}];
+const total=cats.reduce((s,c)=>s+c.v,0);
+const savings=inc-total;
+const savRate=inc>0?(savings/inc*100):0;
+let r=`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin-bottom:12px">
+${_res('Total Spent',_f(total),'var(--amber)',((total/inc*100).toFixed(0))+'% of income')}
+${_res('Savings',_f(savings),savings>0?'#10b981':'#ef4444',savRate.toFixed(0)+'% savings rate')}
+${_res('Rating',savRate>=30?'Excellent':savRate>=20?'Good':savRate>=10?'Fair':'Poor',savRate>=20?'#10b981':savRate>=10?'#f59e0b':'#ef4444','')}
+</div>`;
+cats.forEach(c=>{if(c.v>0){const pct=inc>0?(c.v/inc*100):0;const over=pct>c.ideal;r+=_gauge(Math.min(100,pct/c.ideal*100),c.n+': '+_f(c.v)+' ('+pct.toFixed(0)+'% vs '+c.ideal+'% ideal)');}});
+const latteAmt=_v('ea_subscriptions')+_v('ea_misc')*0.3;
+if(latteAmt>0){const y20=latteAmt*12*((Math.pow(1+0.12/12,240)-1)/(0.12/12));r+=`<div style="padding:12px;border-radius:8px;background:rgba(239,68,68,.05);border-left:3px solid var(--red);margin-top:10px"><div style="font-size:10px;font-weight:700;color:var(--red)">&#9749; Latte Factor Alert:</div><div style="font-size:9px;color:var(--text2);margin-top:4px;line-height:1.8">Your subscriptions + misc spending of ${_f(latteAmt)}/month could grow to <strong style="color:#10b981">${_f(y20)}</strong> in 20 years if invested at 12% CAGR. That is potentially life-changing money hiding in plain sight.</div></div>`;}
+document.getElementById('ea_result').innerHTML=r;
+};
+
+// 3. DEBT ELIMINATOR
+window._calcDebt=function(){
+const loans=[];
+for(let i=1;i<=3;i++){const b=_v('d'+i+'_bal'),r=_v('d'+i+'_rate'),e=_v('d'+i+'_emi');const nm=document.getElementById('d'+i+'_name')?.value||'Loan '+i;if(b>0&&e>0)loans.push({name:nm,bal:b,rate:r,emi:e});}
+if(!loans.length){document.getElementById('debt_result').innerHTML='<div style="color:var(--red);font-size:11px">Enter at least one loan.</div>';return}
+const extra=_v('d_extra');
+const totalDebt=loans.reduce((s,l)=>s+l.bal,0);
+const totalEmi=loans.reduce((s,l)=>s+l.emi,0);
+const avgRate=loans.reduce((s,l)=>s+l.rate*l.bal,0)/totalDebt;
+const avalanche=[...loans].sort((a,b)=>b.rate-a.rate);
+const snowball=[...loans].sort((a,b)=>a.bal-b.bal);
+let r=`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin-bottom:12px">
+${_res('Total Debt',_f(totalDebt),'#ef4444',loans.length+' loans')}
+${_res('Total EMIs',_f(totalEmi)+'/mo','var(--amber)','EMI/Income ratio matters')}
+${_res('Avg Interest',avgRate.toFixed(1)+'%','#ef4444',avgRate>15?'HIGH - prioritize this':'Manageable')}
+${_res('Extra Available',_f(extra)+'/mo','#10b981','Applied to priority loan')}
+</div>`;
+r+=`<div style="overflow-x:auto;margin-bottom:12px"><table style="width:100%;border-collapse:collapse;font-size:10px">
+<tr style="background:rgba(239,68,68,.06)"><th style="padding:8px;text-align:left;color:var(--text3);border-bottom:1px solid var(--border)">Loan</th><th style="padding:8px;text-align:right;color:var(--text3);border-bottom:1px solid var(--border)">Balance</th><th style="padding:8px;text-align:right;color:var(--text3);border-bottom:1px solid var(--border)">Rate</th><th style="padding:8px;text-align:right;color:var(--text3);border-bottom:1px solid var(--border)">EMI</th><th style="padding:8px;text-align:right;color:var(--text3);border-bottom:1px solid var(--border)">Priority (Avalanche)</th></tr>`;
+avalanche.forEach((l,i)=>{r+=`<tr><td style="padding:6px 8px;color:var(--text);border-bottom:1px solid var(--border)">${l.name}</td><td style="padding:6px 8px;text-align:right;color:var(--red);font-weight:700;border-bottom:1px solid var(--border)">${_f(l.bal)}</td><td style="padding:6px 8px;text-align:right;color:${l.rate>15?'var(--red)':'var(--amber)'};border-bottom:1px solid var(--border)">${l.rate}%</td><td style="padding:6px 8px;text-align:right;border-bottom:1px solid var(--border)">${_f(l.emi)}</td><td style="padding:6px 8px;text-align:right;color:${i===0?'#ef4444':'var(--text3)'};font-weight:${i===0?'800':'400'};border-bottom:1px solid var(--border)">#${i+1}${i===0?' &#11088; PAY FIRST':''}</td></tr>`;});
+r+=`</table></div>`;
+r+=`<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
+<div style="padding:12px;border-radius:8px;border:2px solid #ef4444;background:rgba(239,68,68,.03)"><div style="font-size:10px;font-weight:700;color:#ef4444;margin-bottom:4px">&#9888; Avalanche Method (Saves Money)</div><div style="font-size:9px;color:var(--text2);line-height:1.7">Pay minimum on ALL loans. Put ALL extra (${_f(extra)}/mo) toward <strong>${avalanche[0]?.name}</strong> (highest rate: ${avalanche[0]?.rate}%). Once that is done, roll its EMI + extra into the next highest rate. Mathematically saves the most interest.</div></div>
+<div style="padding:12px;border-radius:8px;border:2px solid #3b82f6;background:rgba(59,130,246,.03)"><div style="font-size:10px;font-weight:700;color:#3b82f6;margin-bottom:4px">&#127947; Snowball Method (Feels Better)</div><div style="font-size:9px;color:var(--text2);line-height:1.7">Pay minimum on ALL loans. Put ALL extra (${_f(extra)}/mo) toward <strong>${snowball[0]?.name}</strong> (smallest balance: ${_f(snowball[0]?.bal)}). Quick wins motivate you to keep going. Psychologically powerful even if slightly more expensive.</div></div>
+</div>`;
+document.getElementById('debt_result').innerHTML=r;
+};
+
+// 4. EMERGENCY FUND
+window._calcEmergency=function(){
+const exp=_v('ef_expenses')+_v('ef_emis');const dep=_v('ef_dependents');const cur=_v('ef_current');const monthly=_v('ef_monthly');const isSelf=_v('ef_type')>=2;
+const months=isSelf?12:(dep>=3?9:6);
+const target=exp*months;
+const pct=target>0?(cur/target*100):0;
+const gap=Math.max(0,target-cur);
+const monthsToFill=monthly>0?Math.ceil(gap/monthly):999;
+document.getElementById('ef_result').innerHTML=`
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin-bottom:12px">
+${_res('Monthly Expenses',_f(exp),'var(--cyan)','Needs + EMIs')}
+${_res('Target Fund',_f(target),'#f59e0b',months+' months coverage')}
+${_res('Current Savings',_f(cur),cur>=target?'#10b981':'#ef4444',pct.toFixed(0)+'% funded')}
+${_res('Gap to Fill',_f(gap),gap<=0?'#10b981':'#ef4444',gap<=0?'Fully funded!':'Needs work')}
+${_res('Months to Goal',monthsToFill>100?'N/A':monthsToFill+' months','var(--cyan)',monthly>0?'At '+_f(monthly)+'/month':'Set a monthly amount')}
+</div>
+${_gauge(Math.min(100,pct),'Emergency Fund Progress: '+pct.toFixed(0)+'%')}
+<div style="padding:12px;border-radius:8px;background:rgba(245,158,11,.04);border-left:3px solid #f59e0b;margin-top:10px">
+<div style="font-size:10px;font-weight:700;color:#f59e0b">&#128161; Where to Park Emergency Fund:</div>
+<div style="font-size:9px;color:var(--text2);margin-top:4px;line-height:1.8">
+${S}${Math.round(target*0.3).toLocaleString('en-IN')} (30%) in <strong>Savings Account</strong> — Instant access for Day 1 emergencies<br>
+${S}${Math.round(target*0.4).toLocaleString('en-IN')} (40%) in <strong>Liquid Mutual Fund</strong> — Available in 24 hours, earns 5-6% vs 3% in savings<br>
+${S}${Math.round(target*0.3).toLocaleString('en-IN')} (30%) in <strong>Short-term FD</strong> — Available in 1-2 days, earns 6-7%, slight lock-in penalty<br>
+<strong>Never</strong> put emergency funds in stocks, equity MFs, or long-term FDs. Liquidity is more important than returns for this money.
+</div></div>`;
+};
+
+// 5. SAVINGS ARCHITECT
+window._calcSavings=function(){
+const name=document.getElementById('sg_name')?.value||'My Goal';
+const target=_v('sg_amount');const years=_v('sg_years');const cur=_v('sg_current');const ret=_v('sg_return')/100;const inf=_v('sg_inflation')/100;
+if(!target||!years){return}
+const inflatedTarget=target*Math.pow(1+inf,years);
+const futureVal=cur*Math.pow(1+ret/12,years*12);
+const gap=Math.max(0,inflatedTarget-futureVal);
+const monthlyRate=ret/12;const n=years*12;
+const sip=monthlyRate>0?gap*monthlyRate/(Math.pow(1+monthlyRate,n)-1):gap/n;
+const totalInvested=sip*n+cur;
+const wealthCreated=inflatedTarget-totalInvested;
+document.getElementById('sg_result').innerHTML=`
+<div style="padding:16px;border-radius:10px;background:linear-gradient(135deg,rgba(139,92,246,.06),rgba(59,130,246,.04));border:2px solid rgba(139,92,246,.2);margin-bottom:12px;text-align:center">
+<div style="font-size:9px;color:var(--text3);letter-spacing:1px">YOUR GOAL: ${name.toUpperCase()}</div>
+<div style="font-size:10px;color:var(--text3);margin-top:4px">Today: ${_f(target)} &#8594; After ${inf>0?inf*100+'% inflation':'0% inflation'}: <strong style="color:#8b5cf6">${_f(inflatedTarget)}</strong></div>
+<div style="font-size:9px;color:var(--text3);margin-top:6px">Required Monthly SIP:</div>
+<div style="font-size:36px;font-weight:900;color:#8b5cf6;font-family:var(--mono)">${_f(sip)}<span style="font-size:12px;color:var(--text3)">/month</span></div>
+<div style="font-size:10px;color:var(--text3)">for ${years} years at ${(ret*100).toFixed(0)}% return</div>
+</div>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin-bottom:12px">
+${_res('Inflation-Adjusted Target',_f(inflatedTarget),'#8b5cf6',inf>0?'Prices rise '+((inf*100).toFixed(0))+'%/year':'No inflation adjustment')}
+${_res('Your Existing Savings',_f(cur),'var(--cyan)','Will grow to '+_f(futureVal))}
+${_res('Total You Invest',_f(totalInvested),'var(--amber)','SIP + existing')}
+${_res('Wealth Created by Market',_f(wealthCreated),'#10b981','Compounding magic!')}
+</div>
+<div style="padding:12px;border-radius:8px;background:rgba(139,92,246,.04);border-left:3px solid #8b5cf6;margin-top:10px">
+<div style="font-size:10px;font-weight:700;color:#8b5cf6">&#128161; The Compounding Secret:</div>
+<div style="font-size:9px;color:var(--text2);margin-top:4px;line-height:1.8">You invest ${_f(totalInvested)} total, but end up with ${_f(inflatedTarget)}. The extra ${_f(wealthCreated)} is created by compounding — your money earning returns on returns. ${years>=10?'Over '+years+' years, compounding does most of the heavy lifting. Time is literally money.':'For a '+years+'-year goal, consider '+((ret*100)>12?'a mix of equity and debt funds':'debt mutual funds or RDs')+' based on the timeline.'}</div>
+</div>`;
+};
+
+// 6. TAX OPTIMIZER
+window._calcTax=function(){
+const gross=_v('tx_gross');if(!gross){return}
+const d80c=Math.min(_v('tx_80c'),150000);const d80d=Math.min(_v('tx_80d'),75000);const hra=_v('tx_hra');
+const nps=Math.min(_v('tx_80ccd'),50000);const homeLoan=Math.min(_v('tx_home_loan'),200000);
+const std=_v('tx_standard')||75000;const other=_v('tx_other');
+const totalDeductions=d80c+d80d+hra+nps+homeLoan+std+other;
+const oldTaxable=Math.max(0,gross-totalDeductions);
+const newStd=75000;const newTaxable=Math.max(0,gross-newStd);
+const calcOldTax=(ti)=>{if(ti<=250000)return 0;let t=0;if(ti>250000)t+=Math.min(ti-250000,250000)*0.05;if(ti>500000)t+=Math.min(ti-500000,500000)*0.2;if(ti>1000000)t+=(ti-1000000)*0.3;return t;};
+const calcNewTax=(ti)=>{if(ti<=400000)return 0;let t=0;if(ti>400000)t+=Math.min(ti-400000,400000)*0.05;if(ti>800000)t+=Math.min(ti-800000,400000)*0.1;if(ti>1200000)t+=Math.min(ti-1200000,400000)*0.15;if(ti>1600000)t+=Math.min(ti-1600000,400000)*0.2;if(ti>2000000)t+=Math.min(ti-2000000,400000)*0.25;if(ti>2400000)t+=(ti-2400000)*0.3;return t;};
+const oldTax=calcOldTax(oldTaxable);const newTax=calcNewTax(newTaxable);
+const oldCess=oldTax*0.04;const newCess=newTax*0.04;
+const oldTotal=oldTax+oldCess;const newTotal=newTax+newCess;
+const better=oldTotal<newTotal?'OLD':'NEW';const saving=Math.abs(oldTotal-newTotal);
+document.getElementById('tx_result').innerHTML=`
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+<div style="padding:14px;border-radius:10px;border:2px solid ${better==='OLD'?'#10b981':'var(--border)'};background:${better==='OLD'?'rgba(16,185,129,.04)':'transparent'}">
+<div style="font-size:12px;font-weight:700;color:${better==='OLD'?'#10b981':'var(--text)'};margin-bottom:8px">Old Regime ${better==='OLD'?'&#9989; BETTER':''}</div>
+<div style="font-size:9px;color:var(--text3);line-height:2">
+Gross Income: ${_f(gross)}<br>
+Total Deductions: <strong style="color:#10b981">-${_f(totalDeductions)}</strong><br>
+Taxable Income: ${_f(oldTaxable)}<br>
+Tax: ${_f(oldTax)}<br>
+Cess (4%): ${_f(oldCess)}<br>
+<strong>Total Tax: <span style="color:#ef4444">${_f(oldTotal)}</span></strong>
+</div></div>
+<div style="padding:14px;border-radius:10px;border:2px solid ${better==='NEW'?'#10b981':'var(--border)'};background:${better==='NEW'?'rgba(16,185,129,.04)':'transparent'}">
+<div style="font-size:12px;font-weight:700;color:${better==='NEW'?'#10b981':'var(--text)'};margin-bottom:8px">New Regime ${better==='NEW'?'&#9989; BETTER':''}</div>
+<div style="font-size:9px;color:var(--text3);line-height:2">
+Gross Income: ${_f(gross)}<br>
+Standard Deduction: <strong style="color:#10b981">-${_f(newStd)}</strong><br>
+Taxable Income: ${_f(newTaxable)}<br>
+Tax: ${_f(newTax)}<br>
+Cess (4%): ${_f(newCess)}<br>
+<strong>Total Tax: <span style="color:#ef4444">${_f(newTotal)}</span></strong>
+</div></div>
+</div>
+<div style="padding:12px;border-radius:8px;background:rgba(6,182,212,.04);border-left:3px solid var(--cyan)">
+<div style="font-size:11px;font-weight:700;color:var(--cyan)">&#128161; Verdict: ${better} Regime saves you ${_f(saving)}/year</div>
+<div style="font-size:9px;color:var(--text2);margin-top:4px;line-height:1.7">${better==='OLD'?'Your deductions ('+_f(totalDeductions)+') make the Old Regime significantly better. Keep maximizing 80C, 80D, HRA, and NPS. Every deduction directly reduces your tax.':'The New Regime works better for you because your deductions ('+_f(totalDeductions)+') are not high enough to offset the lower slab rates. Consider if increasing deductions (80C, NPS, 80D) could tip the balance.'}</div>
+</div>`;
+};
+
+// 7. NET WORTH
+window._calcNetworth=function(){
+const assets=_v('nw_savings')+_v('nw_mf')+_v('nw_pf')+_v('nw_property')+_v('nw_gold')+_v('nw_other_assets');
+const liabilities=_v('nw_home_loan')+_v('nw_car_loan')+_v('nw_credit')+_v('nw_other_debt');
+const nw=assets-liabilities;
+const ratio=liabilities>0?(assets/liabilities):99;
+const liquidAssets=_v('nw_savings')+_v('nw_mf');
+const liquidPct=assets>0?(liquidAssets/assets*100):0;
+document.getElementById('nw_result').innerHTML=`
+<div style="padding:20px;border-radius:12px;background:linear-gradient(135deg,#0a1628,#0d2137);text-align:center;margin-bottom:12px">
+<div style="font-size:9px;letter-spacing:2px;color:rgba(255,255,255,.3)">YOUR NET WORTH</div>
+<div style="font-size:40px;font-weight:900;color:${nw>=0?'#10b981':'#ef4444'};font-family:var(--mono)">${_f(nw)}</div>
+<div style="font-size:10px;color:rgba(255,255,255,.5)">Assets: ${_f(assets)} &minus; Liabilities: ${_f(liabilities)}</div>
+</div>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin-bottom:12px">
+${_res('Asset/Liability Ratio',ratio.toFixed(1)+'x',ratio>=3?'#10b981':ratio>=1.5?'#f59e0b':'#ef4444',ratio>=3?'Strong':ratio>=1.5?'Adequate':'Weak')}
+${_res('Liquid Assets',_f(liquidAssets),'var(--cyan)',liquidPct.toFixed(0)+'% of total')}
+${_res('Property Weight',(assets>0?(_v('nw_property')/assets*100):0).toFixed(0)+'%','var(--amber)',_v('nw_property')/assets*100>60?'Too concentrated':'OK')}
+</div>
+<div style="padding:12px;border-radius:8px;background:rgba(16,185,129,.04);border-left:3px solid #10b981;margin-top:10px">
+<div style="font-size:10px;font-weight:700;color:#10b981">&#128161; Your Financial Scoreboard:</div>
+<div style="font-size:9px;color:var(--text2);margin-top:4px;line-height:1.8">${nw<0?'Your net worth is NEGATIVE. You owe more than you own. Priority #1: Reduce debt aggressively. Stop new borrowing. Every EMI paid increases your net worth.':nw<500000?'Early stage wealth building. Focus on increasing income, maintaining a high savings rate, and avoiding unnecessary debt. Every rupee saved is a soldier working for you.':nw<2500000?'Solid progress! You have crossed the first milestone. Focus on investment diversification and debt reduction to accelerate growth.':'Strong financial position. Consider tax-efficient strategies, estate planning, and ensuring proper insurance coverage to protect this wealth.'} Track this number every quarter — if it consistently goes up, you are winning.</div>
+</div>`;
+};
+
+// 8. RETIREMENT PLANNER
+window._calcRetire=function(){
+const age=_v('rt_age');const retAge=_v('rt_retire_age');const life=_v('rt_life');const monthly=_v('rt_monthly');
+const cur=_v('rt_current');const preRet=_v('rt_return')/100;const postRet=_v('rt_post_return')/100;const inf=_v('rt_inflation')/100;
+if(!age||!retAge){return}
+const yearsToRetire=retAge-age;const retYears=life-retAge;
+const monthlyAtRetire=monthly*Math.pow(1+inf,yearsToRetire);
+const annualAtRetire=monthlyAtRetire*12;
+const realPostReturn=(postRet-inf)/(1+inf);
+const corpus=realPostReturn>0?annualAtRetire*(1-Math.pow(1+realPostReturn,-retYears))/realPostReturn:annualAtRetire*retYears;
+const futureOfCurrent=cur*Math.pow(1+preRet,yearsToRetire);
+const gap=Math.max(0,corpus-futureOfCurrent);
+const monthlyRate=preRet/12;const n=yearsToRetire*12;
+const sipNeeded=monthlyRate>0&&n>0?gap*monthlyRate/(Math.pow(1+monthlyRate,n)-1):gap/Math.max(1,n);
+const readiness=corpus>0?Math.min(100,(futureOfCurrent/corpus*100)):0;
+document.getElementById('rt_result').innerHTML=`
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin-bottom:12px">
+${_res('Years to Retirement',yearsToRetire+' yrs','var(--cyan)','Age '+age+' to '+retAge)}
+${_res('Monthly Expenses at '+retAge,_f(monthlyAtRetire),'#d97706','Today: '+_f(monthly))}
+${_res('Corpus Needed',_f(corpus),'#ef4444','For '+retYears+' years of retirement')}
+${_res('Your Savings Will Grow To',_f(futureOfCurrent),'var(--cyan)','Current '+_f(cur)+' at '+((preRet*100).toFixed(0))+'%')}
+${_res('Gap to Fill',_f(gap),gap<=0?'#10b981':'#ef4444',gap<=0?'Already on track!':'Need to save more')}
+${_res('Monthly SIP Needed',_f(sipNeeded),'#d97706','For '+yearsToRetire+' years')}
+</div>
+${_gauge(readiness,'Retirement Readiness: '+readiness.toFixed(0)+'%')}
+<div style="padding:12px;border-radius:8px;background:rgba(217,119,6,.04);border-left:3px solid #d97706;margin-top:10px">
+<div style="font-size:10px;font-weight:700;color:#d97706">&#128161; Retirement Reality Check:</div>
+<div style="font-size:9px;color:var(--text2);margin-top:4px;line-height:1.8">${readiness>=80?'You are well on track for retirement. Continue your current savings rate and avoid lifestyle inflation. Consider increasing equity allocation for the next '+(yearsToRetire>10?'decade':'few years')+' for maximum growth.':readiness>=40?'You have a foundation but need to accelerate. Consider: (1) Increase SIP by '+_f(sipNeeded*0.3)+'/month, (2) Maximize employer PF match, (3) Add NPS for extra tax benefit + retirement corpus.':'Significant gap exists. The good news: you have '+yearsToRetire+' years of compounding ahead. Start with whatever you can — even '+_f(sipNeeded*0.5)+'/month is better than zero. Increase by 10% every year as income grows.'}</div>
+</div>`;
+};
+
+// 9. INSURANCE AUDIT
+window._calcInsurance=function(){
+const age=_v('ins_age');const income=_v('ins_income');const dep=_v('ins_dependents');const debts=_v('ins_debts');
+const termCover=_v('ins_term_cover');const healthCover=_v('ins_health_cover');
+const idealTerm=Math.max(income*(age<40?15:10)+debts, 10000000);
+const idealHealth=Math.max(dep*500000,1000000);
+const termPct=idealTerm>0?(termCover/idealTerm*100):0;
+const healthPct=idealHealth>0?(healthCover/idealHealth*100):0;
+const termStatus=termPct>=90?'Adequate':termPct>=50?'Under-insured':'Critically Low';
+const healthStatus=healthPct>=90?'Adequate':healthPct>=50?'Under-insured':'Critically Low';
+document.getElementById('ins_result').innerHTML=`
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+<div style="padding:14px;border-radius:10px;border:2px solid ${termPct>=90?'#10b981':termPct>=50?'#f59e0b':'#ef4444'};background:rgba(0,47,108,.02)">
+<div style="font-size:11px;font-weight:700;color:var(--text);margin-bottom:6px">Term Life Insurance</div>
+${_gauge(Math.min(100,termPct),'Coverage: '+termPct.toFixed(0)+'%')}
+<div style="font-size:9px;color:var(--text2);line-height:1.7;margin-top:6px">
+Current: <strong>${_f(termCover)}</strong><br>
+Recommended: <strong style="color:#10b981">${_f(idealTerm)}</strong><br>
+Status: <strong style="color:${termPct>=90?'#10b981':'#ef4444'}">${termStatus}</strong><br>
+${termPct<90?'Gap: <strong style="color:var(--red)">'+_f(idealTerm-termCover)+'</strong>':''}
+</div></div>
+<div style="padding:14px;border-radius:10px;border:2px solid ${healthPct>=90?'#10b981':healthPct>=50?'#f59e0b':'#ef4444'};background:rgba(0,47,108,.02)">
+<div style="font-size:11px;font-weight:700;color:var(--text);margin-bottom:6px">Health Insurance</div>
+${_gauge(Math.min(100,healthPct),'Coverage: '+healthPct.toFixed(0)+'%')}
+<div style="font-size:9px;color:var(--text2);line-height:1.7;margin-top:6px">
+Current: <strong>${_f(healthCover)}</strong><br>
+Recommended: <strong style="color:#10b981">${_f(idealHealth)}</strong> (${dep} dependents)<br>
+Status: <strong style="color:${healthPct>=90?'#10b981':'#ef4444'}">${healthStatus}</strong><br>
+${healthPct<90?'Gap: <strong style="color:var(--red)">'+_f(idealHealth-healthCover)+'</strong>':''}
+</div></div>
+</div>
+<div style="padding:12px;border-radius:8px;background:rgba(236,72,153,.04);border-left:3px solid #ec4899;margin-top:10px">
+<div style="font-size:10px;font-weight:700;color:#ec4899">&#128161; Insurance Checklist:</div>
+<div style="font-size:9px;color:var(--text2);margin-top:4px;line-height:1.8">
+${termPct>=90?'&#9989;':'&#10060;'} Term Life: ${termPct>=90?'Adequate coverage.':'Need '+_f(idealTerm-termCover)+' more cover. Pure term plans cost just '+_f(Math.round((idealTerm-termCover)/1000*0.5))+'/year at age '+age+'.'}<br>
+${healthPct>=90?'&#9989;':'&#10060;'} Health: ${healthPct>=90?'Good coverage for your family.':'Need '+_f(idealHealth-healthCover)+' more. Consider a super top-up plan — very cheap for additional coverage.'}<br>
+${age>30?'&#9888; Consider a Critical Illness plan ('+_f(Math.min(income*3,5000000))+' cover) — covers cancer, heart attack, stroke with lump sum payout.':''}<br>
+&#9888; NEVER mix insurance with investment. Avoid ULIPs, endowment plans, and money-back policies. Buy pure term + pure mutual funds separately.
+</div></div>`;
+};
+
+// 10. FINANCIAL HEALTH
+window._calcHealth=function(){
+const inc=_v('fh_income');if(!inc){return}
+const exp=_v('fh_expenses');const inv=_v('fh_invest');const emi=_v('fh_emis');
+const emFund=_v('fh_emergency');const debt=_v('fh_total_debt');const investments=_v('fh_investments');const insurance=_v('fh_insurance');
+const savRate=inc>0?((inc-exp)/inc*100):0;
+const emiRatio=inc>0?(emi/inc*100):0;
+const emMonths=exp>0?(emFund/exp):0;
+const dtiRatio=inc>0?(debt/(inc*12)*100):0;
+const insMultiple=inc>0?(insurance/(inc*12)):0;
+const invRate=inc>0?(inv/inc*100):0;
+const scores=[];
+scores.push({name:'Savings Rate',val:savRate.toFixed(0)+'%',score:savRate>=30?25:savRate>=20?20:savRate>=10?10:0,max:25,tip:savRate>=20?'Excellent saver!':'Target 20%+ savings rate',icon:'&#128176;'});
+scores.push({name:'EMI Burden',val:emiRatio.toFixed(0)+'%',score:emiRatio<=20?20:emiRatio<=35?12:emiRatio<=50?5:0,max:20,tip:emiRatio<=35?'Manageable debt':'EMIs too high (>35% income)',icon:'&#9939;'});
+scores.push({name:'Emergency Fund',val:emMonths.toFixed(1)+' months',score:emMonths>=6?20:emMonths>=3?12:emMonths>=1?5:0,max:20,tip:emMonths>=6?'Well prepared!':'Need 6+ months of expenses',icon:'&#128737;'});
+scores.push({name:'Insurance Cover',val:insMultiple.toFixed(0)+'x income',score:insMultiple>=10?15:insMultiple>=5?10:insMultiple>=2?5:0,max:15,tip:insMultiple>=10?'Adequate protection':'Need 10-15x annual income',icon:'&#128737;'});
+scores.push({name:'Investment Rate',val:invRate.toFixed(0)+'%',score:invRate>=20?20:invRate>=10?12:invRate>=5?5:0,max:20,tip:invRate>=15?'Strong investor!':'Target 15-20% of income',icon:'&#128200;'});
+const totalScore=scores.reduce((s,v)=>s+v.score,0);
+const grade=totalScore>=85?'A+':totalScore>=70?'A':totalScore>=55?'B':totalScore>=40?'C':'D';
+const gradeC=totalScore>=70?'#10b981':totalScore>=50?'#f59e0b':'#ef4444';
+const verdict=totalScore>=85?'Financially Excellent':totalScore>=70?'Financially Healthy':totalScore>=55?'Needs Attention':totalScore>=40?'At Risk':'Critical';
+let r=`<div style="padding:20px;border-radius:12px;background:linear-gradient(135deg,#0a1628,#0d2137);text-align:center;margin-bottom:16px">
+<div style="font-size:9px;letter-spacing:2px;color:rgba(255,255,255,.3)">FINANCIAL HEALTH SCORE</div>
+<div style="font-size:48px;font-weight:900;color:${gradeC};font-family:var(--mono)">${totalScore}<span style="font-size:16px">/100</span></div>
+<div style="font-size:14px;font-weight:700;color:${gradeC}">${verdict} (Grade ${grade})</div>
+</div>`;
+r+=`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px;margin-bottom:12px">`;
+scores.forEach(s=>{const pct=s.max>0?(s.score/s.max*100):0;const c=pct>=80?'#10b981':pct>=50?'#f59e0b':'#ef4444';r+=`<div style="padding:12px;border-radius:8px;border:1px solid var(--border);background:rgba(0,47,108,.02)"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px"><span style="font-size:10px;color:var(--text)">${s.icon} ${s.name}</span><span style="font-size:12px;font-weight:800;color:${c}">${s.score}/${s.max}</span></div><div style="font-size:14px;font-weight:700;color:${c};margin-bottom:4px">${s.val}</div>${_gauge(pct,s.tip)}</div>`;});
+r+=`</div>`;
+r+=`<div style="padding:12px;border-radius:8px;background:rgba(20,184,166,.04);border-left:3px solid #14b8a6;margin-top:10px">
+<div style="font-size:10px;font-weight:700;color:#14b8a6">&#128161; Your Financial Prescription:</div>
+<div style="font-size:9px;color:var(--text2);margin-top:4px;line-height:1.8">`;
+scores.forEach(s=>{const pct=s.max>0?(s.score/s.max*100):0;if(pct<60){r+=`&#9888; <strong>${s.name}</strong>: ${s.tip}<br>`;}});
+if(totalScore>=85)r+='&#127942; Outstanding financial health! Focus on tax optimization and estate planning to protect and grow your wealth further.';
+else if(totalScore>=70)r+='&#128170; Strong foundation. Address the weak areas above to move from good to excellent.';
+else r+='&#128680; Multiple areas need improvement. Start with the lowest-scoring vital sign and work your way up. Even small improvements compound over time.';
+r+=`</div></div>`;
+document.getElementById('fh_result').innerHTML=r;
+};
+
+console.log('Personal Finance toolkit rendered: 10 tools');
+}
+
+
 // ═══ CONVICTION LEADERBOARD — Top 5 by category per country ═══
 const CONVICTION_DATA={
 india:{
