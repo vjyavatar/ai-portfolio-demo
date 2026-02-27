@@ -213,7 +213,7 @@ gtag('js',new Date());gtag('config','G-WW55EQ7ZB8');
 :root{--bg:#ffffff;--bg2:#f8f9fa;--bg3:#f0f1f2;--surface:#ffffff;--glass:rgba(255,255,255,0.97);--border:#e0e0e0;--border2:#c8c8c8;--blue:#0087d2;--blue2:#006bb3;--cyan:#0087d2;--teal:#0087d2;--green:#0eb24e;--green2:#0a9940;--amber:#fcb711;--red:#cd004b;--purple:#6561ac;--text:#171717;--text2:#424242;--text3:#6b6b6b;--mono:'IBM Plex Mono',monospace}
 [data-theme="dark"]{--bg:#0d1b2a;--bg2:#152238;--bg3:#1b2d45;--surface:#152238;--glass:rgba(13,27,42,0.97);--border:rgba(255,255,255,.1);--border2:rgba(255,255,255,.18);--blue:#4dabf7;--blue2:#74c0fc;--cyan:#4dabf7;--teal:#4dabf7;--green:#51cf66;--green2:#40c057;--amber:#ffd43b;--red:#ff6b6b;--purple:#b197fc;--text:#e9ecef;--text2:#adb5bd;--text3:#868e96}
 [data-theme="dark"] body{background:#0d1b2a;color:#e9ecef}
-[data-theme="dark"] nav{background:#005fa3 !important;border-bottom:none !important}
+[data-theme="dark"] nav{background:#002244 !important;border-bottom:none !important}
 [data-theme="dark"] .hero{background:#0d1b2a !important}
 [data-theme="dark"] .tab-bar{background:#152238 !important;border-bottom-color:rgba(255,255,255,.1) !important}
 [data-theme="dark"] .tab-btn{color:#adb5bd !important;background:transparent !important}
@@ -247,7 +247,7 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min
 .gridbg::after{content:'';position:absolute;inset:0;background:none}
 
 /* NAV */
-nav{position:sticky;top:30px;z-index:99;backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);background:#0087d2;border-bottom:none;height:56px;display:flex;align-items:center;justify-content:space-between;padding:0 32px;box-shadow:0 2px 6px rgba(0,135,210,.2)}
+nav{position:sticky;top:30px;z-index:99;backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);background:#003366;border-bottom:none;height:56px;display:flex;align-items:center;justify-content:space-between;padding:0 32px;box-shadow:0 2px 6px rgba(0,51,102,.3)}
 .nbrand{display:flex;align-items:center;gap:11px}
 .nlogo{width:34px;height:34px;border-radius:6px;background:#ffffff;display:flex;align-items:center;justify-content:center;font-family:'Sora',sans-serif;font-size:16px;font-weight:800;color:#0087d2;box-shadow:none}
 .nname{font-family:'Sora',sans-serif;font-size:15px;font-weight:700;letter-spacing:.3px;color:#ffffff}.nname span{color:rgba(255,255,255,.8)}.ntag{font-size:9px;color:rgba(255,255,255,.6);text-transform:uppercase;letter-spacing:1.2px;font-weight:600;margin-top:-2px;display:block}
@@ -435,7 +435,7 @@ nav{position:sticky;top:30px;z-index:99;backdrop-filter:blur(24px);-webkit-backd
 .scorefill{height:100%;border-radius:3px;transition:width .8s ease}
 
 /* Footer */
-footer{position:relative;z-index:1;margin-top:32px;background:#0087d2;border-top:none}
+footer{position:relative;z-index:1;margin-top:32px;background:#003366;border-top:none}
 .ftop{max-width:1080px;margin:0 auto;padding:48px 28px 32px;display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:40px}
 .ftop h5{font-family:'Sora',sans-serif;font-size:14px;font-weight:700;color:#fff;margin-bottom:14px}
 .ftop p{font-size:12px;color:var(--text3);line-height:1.8;margin-bottom:8px}
@@ -560,7 +560,7 @@ footer{position:relative;z-index:1;margin-top:32px;background:#0087d2;border-top
 @keyframes eventGlowHigh{0%,100%{box-shadow:0 0 15px rgba(239,68,68,.2),inset 0 0 15px rgba(239,68,68,.03)}50%{box-shadow:0 0 35px rgba(239,68,68,.35),inset 0 0 20px rgba(239,68,68,.06)}}
 @keyframes borderShimmer{0%{background-position:0% 50%}50%{background-position:100% 50%}100%{background-position:0% 50%}}
 @keyframes tickerScroll{0%{transform:translateX(0)}100%{transform:translateX(-50%)}}
-.global-ticker{width:100%;overflow:hidden;background:#0087d2;border-bottom:none;padding:8px 0;position:fixed;top:0;left:0;z-index:100}
+.global-ticker{width:100%;overflow:hidden;background:#003366;border-bottom:none;padding:8px 0;position:fixed;top:0;left:0;z-index:100}
 .global-ticker .ticker-track{display:flex;gap:0;animation:tickerScroll 40s linear infinite;width:max-content}
 .global-ticker .ticker-track:hover{animation-play-state:paused}
 .global-ticker .ti{display:flex;align-items:center;gap:6px;font-size:12px;white-space:nowrap;padding:0 16px;border-right:1px solid rgba(255,255,255,.12)}
@@ -7637,7 +7637,7 @@ window.addEventListener('beforeinstallprompt',e=>{
     if(!_deferredPrompt)return;
     const b=document.createElement('div');
     b.id='pwaInstallBanner';
-    b.style.cssText='position:fixed;bottom:0;left:0;right:0;z-index:9999;background:#0087d2;color:white;padding:14px 20px;display:flex;align-items:center;justify-content:space-between;gap:12px;box-shadow:0 -4px 20px rgba(0,0,0,.3);font-family:Sora,sans-serif';
+    b.style.cssText='position:fixed;bottom:0;left:0;right:0;z-index:9999;background:#003366;color:white;padding:14px 20px;display:flex;align-items:center;justify-content:space-between;gap:12px;box-shadow:0 -4px 20px rgba(0,0,0,.3);font-family:Sora,sans-serif';
     b.innerHTML=`
       <div style="flex:1;min-width:0">
         <div style="font-size:13px;font-weight:700">Install Celesys AI</div>
