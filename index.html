@@ -236,7 +236,7 @@ gtag('js',new Date());gtag('config','G-WW55EQ7ZB8');
 [data-theme="dark"] .aci:hover{background:rgba(77,171,247,.1) !important}
 [data-theme="dark"] .ipt{background:#0d1b2a !important;border-color:rgba(255,255,255,.12) !important;color:#e9ecef !important}
 [data-theme="dark"] .sticky-tagline{background:rgba(13,27,42,.98) !important;border-color:rgba(255,255,255,.08) !important}
-[data-theme="dark"] .rphero{background:#1b2d45 !important;border-color:rgba(255,255,255,.08) !important}
+[data-theme="dark"] #reportHeader{background:#152238 !important;border-color:rgba(255,255,255,.08) !important}
 [data-theme="dark"] .gridbg{background:#0d1b2a !important}
 *{margin:0;padding:0;box-sizing:border-box}
 html{scroll-behavior:smooth}
@@ -319,13 +319,11 @@ nav{position:sticky;top:30px;z-index:99;backdrop-filter:blur(24px);-webkit-backd
 .rpt.show{display:block;animation:fu .6s ease}
 @keyframes fu{from{opacity:0;transform:translateY(30px)}to{opacity:1;transform:translateY(0)}}
 
-.rphero{text-align:center;margin-bottom:12px;padding:20px 24px;border-radius:6px;border:1px solid #e0e0e0;background:#f8f9fa;position:relative;overflow:hidden}
-.rphero::before{content:'';position:absolute;top:0;left:0;width:100%;height:3px;background:#002f6c}
+#reportHeader{background:var(--surface);border-bottom:1px solid var(--border)}
 @keyframes spin{to{transform:rotate(360deg)}}
-.rphero>*{position:relative;z-index:1}
-.rptk{display:inline-block;font-family:var(--mono);font-size:13px;font-weight:600;color:#002f6c;background:rgba(0,47,108,.06);padding:5px 16px;border-radius:4px;border:1px solid rgba(0,47,108,.15);margin-bottom:12px;letter-spacing:.8px}
-.rpco{font-family:'Sora',sans-serif;font-size:clamp(20px,3vw,28px);font-weight:800;margin-bottom:4px}
-.rplv{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--green);font-weight:500}
+.rptk{display:inline-block;font-family:var(--mono);font-size:12px;font-weight:700;color:#fff;background:#002f6c;padding:3px 10px;border-radius:4px;letter-spacing:.8px}
+.rpco{font-family:'Sora',sans-serif;font-size:13px;font-weight:700;color:var(--text)}
+.rplv{display:inline-flex;align-items:center;gap:5px;font-size:10px;color:var(--green);font-weight:500}
 
 /* METRICS */
 .mgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:10px}
@@ -788,29 +786,20 @@ footer{position:relative;z-index:1;margin-top:32px;background:#002f6c;border-top
 </div>
 </div>
 </noscript>
-<div class="rphero">
-<div class="rptk" id="tickerTag"></div>
-<div class="rpco" id="companyName"></div>
-<div class="rplv" id="timestamp"><div class="ldot"></div></div>
+<!-- COMPACT TICKER STRIP — slim bar, then straight to tabs -->
+<div id="reportHeader" style="display:flex;align-items:center;justify-content:space-between;padding:6px 16px;background:var(--surface);border-bottom:1px solid var(--border);gap:8px;flex-wrap:wrap">
+<div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0">
+<div class="rptk" id="tickerTag" style="margin:0;font-size:13px;padding:3px 10px"></div>
+<div class="rpco" id="companyName" style="margin:0;font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text)"></div>
+<div class="rplv" id="timestamp" style="margin:0;font-size:10px"><div class="ldot"></div></div>
 </div>
-<div class="mgrid" id="metrics"></div>
-
-<!-- Hidden 52W section for JS compatibility -->
-<div id="w52section" style="display:none"></div>
-<!-- AI Price Prediction -->
-<div id="pricePrediction" style="display:none"></div>
-<div id="techProSection" style="display:none"></div>
-<div id="earningsSection" style="display:none"></div>
-<div id="insiderSection" style="display:none"></div>
-
-<!-- STATIC TAB BAR — always visible right after metrics -->
-<!-- ACTION TOOLBAR -->
-<div style="display:flex;gap:6px;flex-wrap:wrap;padding:6px 8px;justify-content:flex-end;align-items:center;background:#ffffff;border-bottom:1px solid #dcdcdc" id="actionToolbar">
-<button onclick="toggleTheme()" id="themeToggleBtn" style="padding:5px 12px;border-radius:4px;background:#ffffff;border:1px solid #dcdcdc;color:#4a4a4a;font-size:10px;font-weight:600;cursor:pointer;font-family:Sora,sans-serif" title="Toggle Dark/Light Mode">&#127763; Dark</button>
-<button onclick="exportPDF()" id="pdfExportBtn" style="padding:5px 12px;border-radius:4px;background:#ffffff;border:1px solid #dcdcdc;color:#cd004b;font-size:10px;font-weight:600;cursor:pointer;font-family:Sora,sans-serif" title="Export as PDF">&#128196; PDF</button>
-<button onclick="shareReport('whatsapp')" style="padding:5px 12px;border-radius:4px;background:#ffffff;border:1px solid #dcdcdc;color:#0eb24e;font-size:10px;font-weight:600;cursor:pointer;font-family:Sora,sans-serif" title="Share on WhatsApp">&#128172; WhatsApp</button>
-<button onclick="shareReport('email')" style="padding:5px 12px;border-radius:4px;background:#ffffff;border:1px solid #dcdcdc;color:#002f6c;font-size:10px;font-weight:600;cursor:pointer;font-family:Sora,sans-serif" title="Share via Email">&#128231; Email</button>
-<button onclick="shareReport('copy')" id="copyShareBtn" style="padding:5px 12px;border-radius:4px;background:#ffffff;border:1px solid #dcdcdc;color:#4a4a4a;font-size:10px;font-weight:600;cursor:pointer;font-family:Sora,sans-serif" title="Copy Link">&#128279; Copy</button>
+<div style="display:flex;align-items:center;gap:4px" id="actionToolbar">
+<button onclick="toggleTheme()" id="themeToggleBtn" style="padding:3px 8px;border-radius:4px;background:var(--surface);border:1px solid var(--border);color:var(--text2);font-size:10px;font-weight:600;cursor:pointer;font-family:Sora,sans-serif" title="Theme">&#127763;</button>
+<button onclick="exportPDF()" id="pdfExportBtn" style="padding:3px 8px;border-radius:4px;background:var(--surface);border:1px solid var(--border);color:#cd004b;font-size:10px;font-weight:600;cursor:pointer;font-family:Sora,sans-serif" title="PDF">&#128196;</button>
+<button onclick="shareReport('whatsapp')" style="padding:3px 8px;border-radius:4px;background:var(--surface);border:1px solid var(--border);color:#0eb24e;font-size:10px;font-weight:600;cursor:pointer;font-family:Sora,sans-serif" title="WhatsApp">&#128172;</button>
+<button onclick="shareReport('email')" style="padding:3px 8px;border-radius:4px;background:var(--surface);border:1px solid var(--border);color:#002f6c;font-size:10px;font-weight:600;cursor:pointer;font-family:Sora,sans-serif" title="Email">&#128231;</button>
+<button onclick="shareReport('copy')" id="copyShareBtn" style="padding:3px 8px;border-radius:4px;background:var(--surface);border:1px solid var(--border);color:var(--text2);font-size:10px;font-weight:600;cursor:pointer;font-family:Sora,sans-serif" title="Copy">&#128279;</button>
+</div>
 </div>
 
 <div class="tab-bar" id="mainTabBar">
@@ -830,10 +819,18 @@ footer{position:relative;z-index:1;margin-top:32px;background:#002f6c;border-top
 <button class="tab-btn" onclick="switchTab('trades')" id="tabBtnTrades" data-color="red" data-tip="Daily AI trade ideas for indices & stocks" style="display:none"><span class="tab-icon">&#128293;</span> Trades</button>
 </div>
 
-<!-- TAB CONTENT AREA -->
+<!-- TAB CONTENT AREA — ALL content lives inside here -->
 <div id="tabContentArea" style="min-height:60vh">
 
-<!-- JS-GENERATED CONTENT GOES HERE -->
+<!-- METRICS + EXTRAS — inside Summary tab -->
+<div class="mgrid" id="metrics" data-tab="quick" style="display:none"></div>
+<div id="w52section" data-tab="quick" style="display:none"></div>
+<div id="pricePrediction" data-tab="quick" style="display:none"></div>
+<div id="techProSection" data-tab="quick" style="display:none"></div>
+<div id="earningsSection" data-tab="quick" style="display:none"></div>
+<div id="insiderSection" data-tab="quick" style="display:none"></div>
+
+<!-- JS-GENERATED ANALYSIS SECTIONS -->
 <div id="analysisContainer"></div>
 
 <!-- ═══ TAB: INDEX RESEARCH ═══ -->
@@ -1760,8 +1757,10 @@ try{renderTechnicalsPro(d)}catch(e){console.warn('renderTechnicalsPro error:',e)
 try{renderEarningsCountdown(d)}catch(e){console.warn('renderEarningsCountdown error:',e)}
 try{renderInsiderActivity(d)}catch(e){console.warn('renderInsiderActivity error:',e)}
 try{renderUpcomingEvents(d)}catch(e){console.warn('renderUpcomingEvents error:',e)}
-// Scroll to metrics (above tab bar) so tab bar sticks naturally at 90px
-setTimeout(()=>{const m=document.getElementById('metrics');if(m)m.scrollIntoView({behavior:'smooth',block:'start'})},200);
+// Show all Summary tab content now that everything is populated
+switchTab('quick');
+// Scroll to tab bar so everything is cleanly inside tabs
+setTimeout(()=>{const m=document.getElementById('mainTabBar');if(m)m.scrollIntoView({behavior:'smooth',block:'start'})},200);
 setTimeout(animSections,400)}
 
 function animSections(){
@@ -2467,16 +2466,21 @@ try{
 if(typeof gtag==='function')gtag('event','switch_tab',{tab_name:tab});
 if(tab==='quick')setTimeout(()=>window.dispatchEvent(new Event('resize')),200);
 
-// 1) Hide ALL tab content and sub-navs
+// 1) Hide ALL tab content, sub-navs, and data-tab elements
 document.querySelectorAll('.sc[data-tab]').forEach(s=>{s.style.display='none'});
 document.querySelectorAll('.sub-nav[data-tab]').forEach(s=>{s.style.display='none'});
+document.querySelectorAll('#tabContentArea > [data-tab]').forEach(s=>{s.style.display='none'});
 document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
 
-// 2) Show matching tab content
+// 2) Show matching tab content (sections + inline data-tab elements)
 document.querySelectorAll('.sc[data-tab="'+tab+'"]').forEach(s=>{
 if(!s.dataset.conditional)s.style.display='block';
 });
 document.querySelectorAll('.sub-nav[data-tab="'+tab+'"]').forEach(s=>{s.style.display='flex'});
+// Show metrics, predictions, technicals etc. for Summary tab
+document.querySelectorAll('#tabContentArea > [data-tab="'+tab+'"]').forEach(s=>{
+if(s.innerHTML.trim())s.style.display='block';
+});
 
 // 3) Activate button
 const btnMap={quick:'tabBtnQuick',deep:'tabBtnDeep',mgmt:'tabBtnMgmt',next:'tabBtnNext',dcf:'tabBtnDCF',equity:'tabBtnEquity',indices:'tabBtnIndices',finance:'tabBtnFinance',daily:'tabBtnDaily',compare:'tabBtnCompare',gems:'tabBtnGems',picks:'tabBtnPicks',funds:'tabBtnFunds',trades:'tabBtnTrades'};
