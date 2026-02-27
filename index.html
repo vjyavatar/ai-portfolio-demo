@@ -796,6 +796,7 @@ footer{position:relative;z-index:1;margin-top:32px;background:#002f6c;border-top
 <button class="stab" onclick="switchSubTab('risk')" id="stRisk">&#9888; Risk</button>
 </div>
 <div class="mgrid" id="metrics" data-tab="quick" data-subtab="overview" style="display:none"></div>
+<div id="companyAbout" data-tab="quick" data-subtab="overview" style="display:none"></div>
 <div id="w52section" data-tab="quick" data-subtab="technical" style="display:none"></div>
 <div id="pricePrediction" data-tab="quick" data-subtab="valuation" style="display:none"></div>
 <div id="techProSection" data-tab="quick" data-subtab="technical" style="display:none"></div>
@@ -1275,6 +1276,46 @@ tick();countdownInterval=setInterval(tick,1000)}
 
 // ═══ PEER COMPARISON RENDERER ═══
 // ═══ AI PRICE PREDICTION ENGINE ═══
+function renderCompanyAbout(d){
+const el=document.getElementById('companyAbout');
+if(!el)return;
+const name=d.company_name||d.ticker||'';
+const desc=d.company_description||'';
+const sector=d.sector||'';
+const industry=d.industry||'';
+const employees=d.employees;
+const website=d.website||'';
+const exchange=d.exchange||'';
+const mcap=d.market_cap;
+const curr=d.currency==='INR'?'₹':'$';
+if(!name&&!desc){el.style.display='none';return}
+const empStr=employees&&employees!=='N/A'?(employees>=1e6?(employees/1e6).toFixed(1)+'M':employees>=1e3?(employees/1e3).toFixed(0)+'K':employees.toLocaleString()):'';
+const mcapStr=mcap?(mcap>=1e12?curr+(mcap/1e12).toFixed(2)+'T':mcap>=1e9?curr+(mcap/1e9).toFixed(2)+'B':mcap>=1e6?curr+(mcap/1e6).toFixed(0)+'M':curr+mcap.toLocaleString()):'';
+let tags='';
+if(sector&&sector!=='N/A')tags+=`<span style="font-size:10px;padding:3px 10px;border-radius:100px;background:rgba(0,47,108,.06);color:#002f6c;font-weight:600;border:1px solid rgba(0,47,108,.12)">${sector}</span>`;
+if(industry&&industry!=='N/A')tags+=`<span style="font-size:10px;padding:3px 10px;border-radius:100px;background:rgba(13,148,136,.06);color:#0d9488;font-weight:600;border:1px solid rgba(13,148,136,.12)">${industry}</span>`;
+if(exchange&&exchange!=='N/A')tags+=`<span style="font-size:10px;padding:3px 10px;border-radius:100px;background:rgba(139,92,246,.06);color:#7c3aed;font-weight:600;border:1px solid rgba(139,92,246,.12)">${exchange}</span>`;
+let stats='';
+if(mcapStr)stats+=`<div style="text-align:center"><div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">Market Cap</div><div style="font-size:13px;font-weight:700;color:var(--text);font-family:var(--mono)">${mcapStr}</div></div>`;
+if(empStr)stats+=`<div style="text-align:center"><div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">Employees</div><div style="font-size:13px;font-weight:700;color:var(--text);font-family:var(--mono)">${empStr}</div></div>`;
+const price=d.current_price||0;
+const chg=d.price_change||0;
+const chgPct=d.price_change_pct||0;
+const isUp=chg>=0;
+stats+=`<div style="text-align:center"><div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">Price</div><div style="font-size:13px;font-weight:700;color:var(--text);font-family:var(--mono)">${curr}${price.toLocaleString()}</div></div>`;
+stats+=`<div style="text-align:center"><div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">Today</div><div style="font-size:13px;font-weight:700;color:${isUp?'var(--green)':'var(--red)'};font-family:var(--mono)">${isUp?'+':''}${chg.toFixed(2)} (${isUp?'+':''}${chgPct.toFixed(2)}%)</div></div>`;
+el.innerHTML=`
+<div class="sc" data-tab="quick" data-subtab="overview" style="border-left:3px solid #002f6c;margin-top:0">
+<div class="sh"><div class="si" style="background:rgba(0,47,108,.08)">🏢</div><div class="st" style="color:#002f6c">About ${name}</div></div>
+<div class="sbody">
+<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px">${tags}</div>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:10px;padding:12px;border-radius:8px;background:var(--bg2);border:1px solid var(--border);margin-bottom:12px">${stats}</div>
+${desc?`<p style="font-size:12px;color:var(--text2);line-height:1.8;margin:0">${desc.length>500?desc.substring(0,500)+'...':desc}</p>`:''}
+${website?`<div style="margin-top:8px"><a href="${website}" target="_blank" rel="noopener" style="font-size:11px;color:#002f6c;text-decoration:none;font-weight:600">🔗 ${website.replace('https://','').replace('http://','').replace(/\/+$/,'')}</a></div>`:''}
+</div></div>`;
+el.style.display='block';
+}
+
 function renderPricePrediction(d){
 const el=document.getElementById('pricePrediction');
 if(!el)return;
@@ -1725,6 +1766,7 @@ renderMarketEvents();
 try{renderFiiDii()}catch(e){console.warn('FiiDii render error:',e)}
 try{renderPeers(d,curr)}catch(e){console.warn('renderPeers error:',e)}
 try{renderPricePrediction(d)}catch(e){console.warn('renderPricePrediction error:',e)}
+try{renderCompanyAbout(d)}catch(e){console.warn('renderCompanyAbout error:',e)}
 try{renderTechnicalsPro(d)}catch(e){console.warn('renderTechnicalsPro error:',e)}
 try{renderEarningsCountdown(d)}catch(e){console.warn('renderEarningsCountdown error:',e)}
 try{renderInsiderActivity(d)}catch(e){console.warn('renderInsiderActivity error:',e)}

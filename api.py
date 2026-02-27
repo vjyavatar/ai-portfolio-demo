@@ -1617,6 +1617,10 @@ def get_live_stock_data(company_name: str) -> dict:
             "data_timestamp": datetime.now().strftime("%B %d, %Y at %I:%M %p UTC"),
             "data_source": data_source,
             "verification_url": f"https://www.google.com/finance/quote/{ticker_symbol.replace('.NS', ':NSE').replace('.BO', ':BOM')}",
+            "company_description": str(info.get('longBusinessSummary', ''))[:600] if info.get('longBusinessSummary') else '',
+            "employees": info.get('fullTimeEmployees', 'N/A'),
+            "website": info.get('website', ''),
+            "exchange": info.get('exchange', 'N/A'),
         }
         
         # Fetch real 6-month price history for Price Trend chart
