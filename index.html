@@ -356,6 +356,15 @@ nav{position:sticky;top:30px;z-index:99;backdrop-filter:blur(24px);-webkit-backd
 .tab-bar.attention{animation:tabPulse 2s ease 3;border-color:rgba(59,130,246,.5);box-shadow:0 0 20px rgba(59,130,246,.15)}
 @keyframes tabPulse{0%,100%{border-color:rgba(0,120,212,.25);box-shadow:0 0 10px rgba(59,130,246,.05)}50%{border-color:rgba(59,130,246,.6);box-shadow:0 0 25px rgba(0,120,212,.25)}}
 .tab-scroll-area{overflow-y:visible;border:none;border-radius:0;padding:18px 0;background:transparent;scrollbar-width:thin;scrollbar-color:rgba(0,47,108,.15) transparent}
+/* Summary Sub-Tabs */
+#summarySubTabs{display:flex}
+.stab{padding:6px 16px;border-radius:100px;border:1px solid var(--border);background:var(--surface);color:var(--text3);font-size:11px;font-weight:600;cursor:pointer;font-family:'DM Sans',sans-serif;transition:all .2s;white-space:nowrap}
+.stab:hover{border-color:#002f6c;color:#002f6c;background:rgba(0,47,108,.03)}
+.stab.active{background:#002f6c;color:#fff;border-color:#002f6c;box-shadow:0 2px 6px rgba(0,47,108,.2)}
+[data-theme="dark"] .stab{background:var(--surface);border-color:var(--border);color:var(--text3)}
+[data-theme="dark"] .stab:hover{border-color:var(--blue);color:var(--blue)}
+[data-theme="dark"] .stab.active{background:var(--blue);color:#fff;border-color:var(--blue)}
+[data-subtab]{scroll-margin-top:200px}
 .tab-scroll-area::-webkit-scrollbar{width:6px}.tab-scroll-area::-webkit-scrollbar-thumb{background:rgba(59,130,246,.25);border-radius:3px}.tab-scroll-area::-webkit-scrollbar-track{background:transparent}
 .tab-btn{flex:none;padding:12px 16px;border:none;border-radius:0;cursor:pointer;font-family:'Sora',sans-serif;font-size:11px;font-weight:600;transition:all .2s;background:transparent;color:#747474;letter-spacing:.2px;display:flex;align-items:center;justify-content:center;gap:5px;border-bottom:3px solid transparent;white-space:nowrap;position:relative}
 .tab-btn .tab-icon{font-size:14px;display:inline-flex;width:22px;height:22px;align-items:center;justify-content:center;border-radius:4px;transition:all .2s;background:transparent}
@@ -452,7 +461,7 @@ footer{position:relative;z-index:1;margin-top:32px;background:#002f6c;border-top
 .fcopy{font-size:11px;color:var(--text3)}.fcopy strong{color:var(--text2)}
 .flinks{display:flex;gap:16px}.flinks a{font-size:11px;color:var(--text3);text-decoration:none;transition:color .2s}.flinks a:hover{color:var(--blue)}
 
-@media(max-width:768px){.irow{grid-template-columns:1fr}.mgrid{grid-template-columns:1fr 1fr}.cgrid,.cgrid2{grid-template-columns:1fr}.hero{padding:20px 16px 12px}.hero h1{font-size:26px}.ncenter,.nright{display:none}.sc{padding:0}.ftop{grid-template-columns:1fr;gap:24px}.fbot{flex-direction:column;text-align:center}.tab-btn{font-size:10px;padding:8px 10px;gap:3px}.tab-btn .tab-icon{width:18px;height:18px;font-size:11px;border-radius:3px}.tab-bar{position:sticky;top:60px;padding:0 4px}.sub-nav{top:105px}.tab-scroll-area{padding:10px}.edu-bar{padding:10px 12px}.edu-bar .edu-lines{gap:3px 12px}.edu-bar .edu-line{font-size:9px}.feat-card{padding:8px}.icard{padding:16px;border-radius:12px}#convGrid{grid-template-columns:1fr !important}}
+@media(max-width:768px){.irow{grid-template-columns:1fr}.mgrid{grid-template-columns:1fr 1fr}.cgrid,.cgrid2{grid-template-columns:1fr}.hero{padding:20px 16px 12px}.hero h1{font-size:26px}.ncenter,.nright{display:none}.sc{padding:0}.ftop{grid-template-columns:1fr;gap:24px}.fbot{flex-direction:column;text-align:center}.tab-btn{font-size:10px;padding:8px 10px;gap:3px}.tab-btn .tab-icon{width:18px;height:18px;font-size:11px;border-radius:3px}.tab-bar{position:sticky;top:60px;padding:0 4px}.sub-nav{top:105px}#summarySubTabs{top:105px;padding:6px 8px}.stab{font-size:10px;padding:4px 10px}.tab-scroll-area{padding:10px}.edu-bar{padding:10px 12px}.edu-bar .edu-lines{gap:3px 12px}.edu-bar .edu-line{font-size:9px}.feat-card{padding:8px}.icard{padding:16px;border-radius:12px}#convGrid{grid-template-columns:1fr !important}}
 @media(max-width:480px){.mgrid{grid-template-columns:1fr}.hbadges{flex-direction:column;align-items:center}}
 
 /* FLOATING FEEDBACK PANEL */
@@ -778,12 +787,20 @@ footer{position:relative;z-index:1;margin-top:32px;background:#002f6c;border-top
 <div id="tabContentArea" style="min-height:60vh">
 
 <!-- METRICS + EXTRAS — inside Summary tab -->
-<div class="mgrid" id="metrics" data-tab="quick" style="display:none"></div>
-<div id="w52section" data-tab="quick" style="display:none"></div>
-<div id="pricePrediction" data-tab="quick" style="display:none"></div>
-<div id="techProSection" data-tab="quick" style="display:none"></div>
-<div id="earningsSection" data-tab="quick" style="display:none"></div>
-<div id="insiderSection" data-tab="quick" style="display:none"></div>
+<!-- SUMMARY SUB-TAB BAR -->
+<div id="summarySubTabs" data-tab="quick" style="display:none;padding:8px 12px;background:var(--surface);border-bottom:1px solid var(--border);position:sticky;top:140px;z-index:95;gap:4px;flex-wrap:wrap">
+<button class="stab active" onclick="switchSubTab('overview')" id="stOverview">&#128202; Overview</button>
+<button class="stab" onclick="switchSubTab('valuation')" id="stValuation">&#128176; Valuation</button>
+<button class="stab" onclick="switchSubTab('technical')" id="stTechnical">&#128200; Technical</button>
+<button class="stab" onclick="switchSubTab('activity')" id="stActivity">&#127963; Activity</button>
+<button class="stab" onclick="switchSubTab('risk')" id="stRisk">&#9888; Risk</button>
+</div>
+<div class="mgrid" id="metrics" data-tab="quick" data-subtab="overview" style="display:none"></div>
+<div id="w52section" data-tab="quick" data-subtab="technical" style="display:none"></div>
+<div id="pricePrediction" data-tab="quick" data-subtab="valuation" style="display:none"></div>
+<div id="techProSection" data-tab="quick" data-subtab="technical" style="display:none"></div>
+<div id="earningsSection" data-tab="quick" data-subtab="activity" style="display:none"></div>
+<div id="insiderSection" data-tab="quick" data-subtab="activity" style="display:none"></div>
 
 <!-- JS-GENERATED ANALYSIS SECTIONS -->
 <div id="analysisContainer"></div>
@@ -1348,7 +1365,7 @@ const resist2=w52h;
 
 el.style.display='block';
 el.innerHTML=`
-<div class="sc" data-tab="quick" style="border-left:3px solid ${signalC};margin-top:12px">
+<div class="sc" data-tab="quick" data-subtab="valuation" style="border-left:3px solid ${signalC};margin-top:12px">
 <div class="sh"><div class="si" style="background:rgba(16,185,129,.1)">🔮</div><div class="st" style="color:${signalC}">AI Price Prediction — ${d.name||'Stock'}</div></div>
 <div class="sbody">
 
@@ -1971,7 +1988,7 @@ html=`
 
 
 <!-- VERDICT (always open) -->
-<div class="sc" data-tab="quick" style="border-left:3px solid var(--green)"><div class="sh"><div class="si" style="background:rgba(16,185,129,.1)">&#9678;</div><div class="st" style="color:var(--green)" id="sec-verdict">Verdict</div></div>
+<div class="sc" data-tab="quick" data-subtab="overview" style="border-left:3px solid var(--green)"><div class="sh"><div class="si" style="background:rgba(16,185,129,.1)">&#9678;</div><div class="st" style="color:var(--green)" id="sec-verdict">Verdict</div></div>
 <div class="sbody" style="text-align:left">
 <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
 <div style="flex-shrink:0;text-align:center">
@@ -1988,13 +2005,13 @@ ${vResult.reasons.map(r=>{const isPos=r.includes('[+');return '<span style="font
 </div></div>
 
 <!-- FII/DII FLOW — Indian markets only -->
-<div class="sc" data-tab="quick" data-conditional="1" style="border-left:3px solid var(--blue);display:none" id="fiiDiiCard">
+<div class="sc" data-tab="quick" data-subtab="activity" data-conditional="1" style="border-left:3px solid var(--blue);display:none" id="fiiDiiCard">
 <div class="sh"><div class="si" style="background:rgba(37,99,235,.1)">&#127963;</div><div class="st" style="color:var(--blue)" id="sec-fiidii">Who's Buying &amp; Selling Indian Markets Today?</div></div>
 <div class="sbody" id="fiiDiiBody"></div>
 </div>
 
 <!-- DECISION POINTS -->
-<div class="sc" data-tab="quick" style="border-left:3px solid var(--amber)"><div class="sh"><div class="si" style="background:rgba(245,158,11,.1)">&#9651;</div><div class="st" style="color:var(--amber)" id="sec-5things">Key Numbers at a Glance</div></div>
+<div class="sc" data-tab="quick" data-subtab="overview" style="border-left:3px solid var(--amber)"><div class="sh"><div class="si" style="background:rgba(245,158,11,.1)">&#9651;</div><div class="st" style="color:var(--amber)" id="sec-5things">Key Numbers at a Glance</div></div>
 <div class="sbody">
 <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;margin-bottom:12px">
 ${(d.pe_ratio&&d.pe_ratio!=='N/A'&&pe>0)?`<div style="padding:10px;border-radius:8px;text-align:center;background:${pe<18?'rgba(16,185,129,.06)':pe<28?'rgba(245,158,11,.06)':'rgba(239,68,68,.06)'};border:1px solid ${pe<18?'rgba(16,185,129,.15)':pe<28?'rgba(245,158,11,.15)':'rgba(239,68,68,.15)'}">
@@ -2046,7 +2063,7 @@ ${d.market_cap>100e9?' As a large-cap stock, it\'s relatively stable but may gro
 </div></div>
 
 <!-- VALUATION TABLE -->
-<div class="sc" data-tab="quick" style="border-left:3px solid var(--blue)"><div class="sh"><div class="si" style="background:rgba(0,120,212,.12)">&#9678;</div><div class="st" style="color:var(--blue)" id="sec-valuation">Is This Stock Overpriced?</div></div>
+<div class="sc" data-tab="quick" data-subtab="valuation" style="border-left:3px solid var(--blue)"><div class="sh"><div class="si" style="background:rgba(0,120,212,.12)">&#9678;</div><div class="st" style="color:var(--blue)" id="sec-valuation">Is This Stock Overpriced?</div></div>
 <div class="sbody">
 <p style="font-size:12px;color:var(--text3);margin-bottom:14px">Every number decoded. No jargon:</p>
 <table class="dt"><tr><th>Metric</th><th>Value</th><th>Signal</th><th>What This Means For You</th></tr>
@@ -2086,14 +2103,14 @@ ${parseFloat(d.dividend_yield)>3?' Generous dividend — good for income-seeking
 </div></div>
 
 <!-- PEER / COMPETITOR COMPARISON -->
-<div class="sc" data-tab="quick" style="border-left:3px solid var(--teal)"><div class="sh"><div class="si" style="background:rgba(20,184,166,.1)">⚔</div><div class="st" style="color:var(--teal)" id="sec-peers">Peer Comparison</div></div>
+<div class="sc" data-tab="quick" data-subtab="valuation" style="border-left:3px solid var(--teal)"><div class="sh"><div class="si" style="background:rgba(20,184,166,.1)">⚔</div><div class="st" style="color:var(--teal)" id="sec-peers">Peer Comparison</div></div>
 <div class="sbody" id="peerSection">
 <p style="font-size:12px;color:var(--text3);margin-bottom:10px">Loading peer data...</p>
 </div>
 </div>
 
 <!-- ENTRY & EXIT — Multi-Factor Technical -->
-<div class="sc" data-tab="quick" style="border-left:3px solid var(--purple)"><div class="sh"><div class="si" style="background:rgba(139,92,246,.1)">⬡</div><div class="st" style="color:var(--purple)" id="sec-entry">Entry &amp; Exit Levels</div></div>
+<div class="sc" data-tab="quick" data-subtab="technical" style="border-left:3px solid var(--purple)"><div class="sh"><div class="si" style="background:rgba(139,92,246,.1)">⬡</div><div class="st" style="color:var(--purple)" id="sec-entry">Entry &amp; Exit Levels</div></div>
 <div class="sbody">
 <div style="font-size:10px;color:var(--text3);margin-bottom:10px">Levels computed from multiple technical factors including trend, momentum, volatility, and price history. Updated with live data.</div>
 <table class="dt"><tr><th>Action</th><th>Price</th><th>Why This Level</th><th>What To Do</th></tr>
@@ -2118,7 +2135,7 @@ ${n(d.beta)>1.3?' This stock has higher-than-average volatility — use wider st
 </div></div>
 
 <!-- RISK ASSESSMENT -->
-<div class="sc" data-tab="quick" style="border-left:3px solid var(--red)"><div class="sh"><div class="si" style="background:rgba(239,68,68,.1)">&#9888;</div><div class="st" style="color:var(--red)" id="sec-risk">What Could Go Wrong?</div></div>
+<div class="sc" data-tab="quick" data-subtab="risk" style="border-left:3px solid var(--red)"><div class="sh"><div class="si" style="background:rgba(239,68,68,.1)">&#9888;</div><div class="st" style="color:var(--red)" id="sec-risk">What Could Go Wrong?</div></div>
 <div class="sbody">
 <table class="dt"><tr><th>Factor</th><th>Metric</th><th>Signal</th><th>Assessment</th></tr>
 ${(()=>{let rows='';
@@ -2146,7 +2163,7 @@ ${(()=>{const bt=parseFloat(d.beta)||1;return bt>1.5?' Expect <strong>bigger dai
 </div></div>
 
 <!-- CHARTS (Summary — hidden until sub-tab click) -->
-<div class="sc" data-tab="quick" style="border-left:3px solid var(--cyan)" id="chartsCard">
+<div class="sc" data-tab="quick" data-subtab="technical" style="border-left:3px solid var(--cyan)" id="chartsCard">
 <div class="sh"><div class="si" style="background:rgba(0,120,212,.08)">&#128202;</div><div class="st" style="color:var(--cyan)" id="sec-charts">Visual Charts &amp; Trends</div></div>
 <div class="sbody" id="chartsInner">
 <div class="cgrid">
@@ -2406,6 +2423,35 @@ function toggleChartsSection(){
 window.dispatchEvent(new Event('resize'));
 }
 
+// ═══ SUMMARY SUB-TAB SYSTEM ═══
+window._activeSubTab='overview';
+function switchSubTab(sub){
+window._activeSubTab=sub;
+// Hide all quick sections that have a subtab
+document.querySelectorAll('[data-tab="quick"][data-subtab]').forEach(el=>{
+  el.style.display='none';
+});
+// Show sections matching this subtab
+document.querySelectorAll('[data-tab="quick"][data-subtab="'+sub+'"]').forEach(el=>{
+  if(el.dataset.conditional==='1'){
+    // FII/DII — only show if it has content
+    if(el.querySelector('#fiiDiiBody')&&el.querySelector('#fiiDiiBody').innerHTML.trim())el.style.display='block';
+  } else {
+    if(el.innerHTML.trim()||el.id==='metrics')el.style.display=el.classList.contains('mgrid')?'grid':'block';
+  }
+});
+// Update active button
+document.querySelectorAll('.stab').forEach(b=>b.classList.remove('active'));
+const btnMap={overview:'stOverview',valuation:'stValuation',technical:'stTechnical',activity:'stActivity',risk:'stRisk'};
+const btn=document.getElementById(btnMap[sub]);
+if(btn)btn.classList.add('active');
+// Scroll to top of content
+const firstVisible=document.querySelector('[data-tab="quick"][data-subtab="'+sub+'"]:not([style*="display:none"]):not([style*="display: none"])');
+if(firstVisible)firstVisible.scrollIntoView({behavior:'instant',block:'start'});
+// Charts need resize after becoming visible
+if(sub==='technical')setTimeout(()=>window.dispatchEvent(new Event('resize')),200);
+}
+
 function switchTab(tab){
 try{
 if(typeof gtag==='function')gtag('event','switch_tab',{tab_name:tab});
@@ -2419,21 +2465,32 @@ document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
 
 // 2) Show matching tab content (sections + inline data-tab elements)
 document.querySelectorAll('.sc[data-tab="'+tab+'"]').forEach(s=>{
+// For quick tab, sections with subtab are handled by switchSubTab
+if(tab==='quick' && s.dataset.subtab) return;
 if(!s.dataset.conditional)s.style.display='block';
 });
 document.querySelectorAll('.sub-nav[data-tab="'+tab+'"]').forEach(s=>{s.style.display='flex'});
-// Show metrics, predictions, technicals etc. for Summary tab
+// Show non-subtab data-tab elements
 document.querySelectorAll('#tabContentArea > [data-tab="'+tab+'"]').forEach(s=>{
-if(s.innerHTML.trim())s.style.display='block';
+if(tab==='quick' && s.dataset.subtab) return; // handled by switchSubTab
+if(s.innerHTML.trim())s.style.display=s.classList.contains('mgrid')?'grid':'block';
 });
+// For quick tab, activate sub-tab system
+if(tab==='quick'){
+var subBar=document.getElementById('summarySubTabs');
+if(subBar)subBar.style.display='flex';
+switchSubTab(window._activeSubTab||'overview');
+}
 
 // 3) Activate button
 const btnMap={quick:'tabBtnQuick',deep:'tabBtnDeep',mgmt:'tabBtnMgmt',next:'tabBtnNext',dcf:'tabBtnDCF',equity:'tabBtnEquity',indices:'tabBtnIndices',finance:'tabBtnFinance',daily:'tabBtnDaily',compare:'tabBtnCompare',gems:'tabBtnGems',picks:'tabBtnPicks',funds:'tabBtnFunds',trades:'tabBtnTrades'};
 if(btnMap[tab]){const btn=document.getElementById(btnMap[tab]);if(btn)btn.classList.add('active')}
 
-// 4) Scroll to top of new tab content — scroll-margin-top:140px on .sc handles sticky offset
+// 4) Scroll to top of new tab content
+if(tab!=='quick'){
 const firstSec=document.querySelector('.sc[data-tab="'+tab+'"]');
 if(firstSec) firstSec.scrollIntoView({behavior:'instant',block:'start'});
+}
 
 // 5) REFRESH LIVE PRICES on tab switch — forces fresh data every tab click
 if(tab==='picks'){
