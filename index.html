@@ -231,8 +231,7 @@ gtag('js',new Date());gtag('config','G-WW55EQ7ZB8');
 [data-theme="dark"] .ic{background:rgba(21,34,56,.6) !important}
 [data-theme="dark"] .qpick{background:#1b2d45 !important;border-color:rgba(255,255,255,.1) !important;color:#adb5bd !important}
 [data-theme="dark"] .hb{background:#1b2d45 !important;border-color:rgba(255,255,255,.1) !important;color:#adb5bd !important}
-[data-theme="dark"] .pfcard{background:#152238 !important;border-color:rgba(255,255,255,.08) !important}
-[data-theme="dark"] .ac{background:#152238 !important;border-color:rgba(255,255,255,.1) !important}
+[data-theme="dark"] [data-theme="dark"] .ac{background:#152238 !important;border-color:rgba(255,255,255,.1) !important}
 [data-theme="dark"] .aci:hover{background:rgba(77,171,247,.1) !important}
 [data-theme="dark"] .ipt{background:#0d1b2a !important;border-color:rgba(255,255,255,.12) !important;color:#e9ecef !important}
 [data-theme="dark"] .sticky-tagline{background:rgba(13,27,42,.98) !important;border-color:rgba(255,255,255,.08) !important}
@@ -453,74 +452,37 @@ footer{position:relative;z-index:1;margin-top:32px;background:#002f6c;border-top
 .fcopy{font-size:11px;color:var(--text3)}.fcopy strong{color:var(--text2)}
 .flinks{display:flex;gap:16px}.flinks a{font-size:11px;color:var(--text3);text-decoration:none;transition:color .2s}.flinks a:hover{color:var(--blue)}
 
-@media(max-width:768px){.irow{grid-template-columns:1fr}.mgrid{grid-template-columns:1fr 1fr}.cgrid,.cgrid2{grid-template-columns:1fr}.hero{padding:20px 16px 12px}.hero h1{font-size:26px}.ncenter,.nright{display:none}.sc{padding:0}.ftop{grid-template-columns:1fr;gap:24px}.fbot{flex-direction:column;text-align:center}.tab-btn{font-size:10px;padding:8px 10px;gap:3px}.tab-btn .tab-icon{width:18px;height:18px;font-size:11px;border-radius:3px}.tab-bar{position:sticky;top:60px;padding:0 4px}.sub-nav{top:105px}.tab-scroll-area{padding:10px}.fab{bottom:96px;right:16px;padding:8px 16px;font-size:12px}.edu-bar{padding:10px 12px}.edu-bar .edu-lines{gap:3px 12px}.edu-bar .edu-line{font-size:9px}.feat-card{padding:8px}.icard{padding:16px;border-radius:12px}#convGrid{grid-template-columns:1fr !important}}
+@media(max-width:768px){.irow{grid-template-columns:1fr}.mgrid{grid-template-columns:1fr 1fr}.cgrid,.cgrid2{grid-template-columns:1fr}.hero{padding:20px 16px 12px}.hero h1{font-size:26px}.ncenter,.nright{display:none}.sc{padding:0}.ftop{grid-template-columns:1fr;gap:24px}.fbot{flex-direction:column;text-align:center}.tab-btn{font-size:10px;padding:8px 10px;gap:3px}.tab-btn .tab-icon{width:18px;height:18px;font-size:11px;border-radius:3px}.tab-bar{position:sticky;top:60px;padding:0 4px}.sub-nav{top:105px}.tab-scroll-area{padding:10px}.edu-bar{padding:10px 12px}.edu-bar .edu-lines{gap:3px 12px}.edu-bar .edu-line{font-size:9px}.feat-card{padding:8px}.icard{padding:16px;border-radius:12px}#convGrid{grid-template-columns:1fr !important}}
 @media(max-width:480px){.mgrid{grid-template-columns:1fr}.hbadges{flex-direction:column;align-items:center}}
 
 /* FLOATING FEEDBACK PANEL */
-.fab{position:fixed;bottom:100px;right:24px;z-index:200;display:flex;align-items:center;gap:6px;padding:10px 20px;border-radius:100px;font-size:13px;font-weight:700;color:#fff;background:#002f6c;cursor:pointer;box-shadow:0 4px 16px rgba(0,47,108,.25);transition:all .3s;border:none;font-family:'DM Sans',sans-serif;letter-spacing:.2px;animation:fabBounce 3s ease-in-out infinite}
 .edu-bar{position:fixed;bottom:0;left:0;width:100%;z-index:199;padding:14px 24px;background:rgba(255,255,255,0.98);border-top:1px solid rgba(208,2,27,.15);backdrop-filter:blur(12px)}
 .edu-bar .edu-title{font-family:'Sora',sans-serif;font-size:12px;font-weight:800;color:var(--red);letter-spacing:.5px;margin-bottom:6px;display:flex;align-items:center;gap:6px}
 .edu-bar .edu-lines{display:flex;flex-wrap:wrap;gap:4px 20px}
 .edu-bar .edu-line{font-size:10px;color:var(--text3);line-height:1.5;padding-left:10px;border-left:2px solid rgba(239,68,68,.3)}
 .edu-bar .edu-line strong{color:var(--red);font-weight:700;font-size:10px;letter-spacing:.3px}
-.fab:hover{transform:translateY(-3px) scale(1.03);box-shadow:0 8px 30px rgba(59,130,246,.4);animation:none}
-.fab .pulse{width:8px;height:8px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green);animation:pdot 2s infinite}
-@keyframes fabBounce{0%,100%{transform:translateY(0);box-shadow:0 4px 20px rgba(59,130,246,.3)}25%{transform:translateY(-8px);box-shadow:0 12px 30px rgba(139,92,246,.4)}50%{transform:translateY(0);box-shadow:0 4px 20px rgba(59,130,246,.3)}75%{transform:translateY(-4px);box-shadow:0 8px 25px rgba(139,92,246,.35)}}
-@keyframes notifPop{0%,100%{transform:scale(1)}50%{transform:scale(1.25)}}
+25%{transform:translateY(-8px);box-shadow:0 12px 30px rgba(139,92,246,.4)}50%{transform:translateY(0);box-shadow:0 4px 20px rgba(59,130,246,.3)}75%{transform:translateY(-4px);box-shadow:0 8px 25px rgba(139,92,246,.35)}}
+50%{transform:scale(1.25)}}
 
 /* Slide panel */
-.fpanel{position:fixed;top:0;right:-480px;width:460px;max-width:92vw;height:100vh;z-index:300;background:#f0f2f5;border-left:1px solid var(--border2);overflow-y:auto;transition:right .4s cubic-bezier(.16,1,.3,1);box-shadow:-8px 0 40px rgba(0,0,0,.5)}
-.fpanel.open{right:0}
-.fpanel::-webkit-scrollbar{width:5px}.fpanel::-webkit-scrollbar-thumb{background:rgba(0,120,212,.25);border-radius:3px}
-.fphdr{position:sticky;top:0;z-index:1;padding:20px 24px;background:rgba(255,255,255,.98);backdrop-filter:blur(16px);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
-.fphdr h3{font-family:'Sora',sans-serif;font-size:16px;font-weight:800;background:linear-gradient(135deg,var(--amber),var(--purple));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
-.fpclose{width:32px;height:32px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--text3);font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .2s}
-.fpclose:hover{background:rgba(239,68,68,.1);color:var(--red);border-color:rgba(239,68,68,.2)}
-.fpbody{padding:20px 24px 32px}
-.fpbody .sub{font-size:13px;color:var(--text2);line-height:1.7;margin-bottom:24px}
 
-/* Feature cards (panel version) */
-.pfcard{background:#ffffff;border:1px solid #dcdcdc;border-radius:4px;padding:16px;margin-bottom:10px;transition:all .2s}
-.pfcard:hover{border-color:#002f6c}
-.pfcard .pfrow{display:flex;align-items:flex-start;gap:12px}
-.pfcard .pficon{font-size:24px;flex-shrink:0;width:40px;height:40px;border-radius:10px;display:flex;align-items:center;justify-content:center;background:rgba(59,130,246,.05)}
-.pfcard .pfinfo{flex:1;min-width:0}
-.pfcard .pfname{font-family:'Sora',sans-serif;font-size:13px;font-weight:700;color:var(--text);margin-bottom:3px;display:flex;align-items:center;gap:6px}
-.pfcard .pfdesc{font-size:11px;color:var(--text3);line-height:1.6}
-.pfcard .ftag{display:inline-block;font-size:8px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;padding:2px 7px;border-radius:100px}
 .ftag.hot{background:rgba(205,0,75,.06);color:#cd004b;border:1px solid rgba(205,0,75,.15)}
 .ftag.new{background:rgba(0,47,108,.06);color:#002f6c;border:1px solid rgba(0,47,108,.15)}
 .ftag.pro{background:rgba(101,97,172,.06);color:#6561ac;border:1px solid rgba(101,97,172,.15)}
 .ftag.live{background:rgba(14,178,78,.08);color:#0eb24e;border:1px solid rgba(14,178,78,.2);animation:pulse 2s infinite}
 
-/* Vote buttons */
-.pvbtns{display:flex;gap:6px;margin-top:10px}
-.pvbtn{display:flex;align-items:center;gap:4px;padding:5px 12px;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;transition:all .2s;border:1px solid var(--border);background:transparent;color:var(--text3);font-family:'DM Sans',sans-serif}
-.pvbtn:hover{transform:scale(1.05)}
-.pvbtn.up:hover,.pvbtn.up.voted{background:rgba(16,185,129,.1);border-color:rgba(16,185,129,.3);color:var(--green)}
-.pvbtn.dn:hover,.pvbtn.dn.voted{background:rgba(239,68,68,.1);border-color:rgba(239,68,68,.3);color:var(--red)}
-.pvbtn .cnt{font-family:var(--mono);font-size:10px}
-.pvbar{margin-top:6px;height:3px;border-radius:2px;background:rgba(148,163,184,.08);overflow:hidden}
-.pvbar .vfill{height:100%;border-radius:2px;background:linear-gradient(90deg,var(--green),var(--blue));transition:width .5s ease}
 
-/* Vote chart in panel */
-.vgp{margin-top:20px;padding:16px;background:var(--surface);border:1px solid var(--border);border-radius:12px}
-.vgp h4{font-family:'Sora',sans-serif;font-size:13px;font-weight:700;color:var(--text);margin-bottom:4px;text-align:center}
-.vgp .vsub{font-size:10px;color:var(--text3);text-align:center;margin-bottom:12px}
-.vgp .cc{height:200px}
 
 .sendbox{text-align:center;margin-top:16px}
 .sendbtn{display:inline-flex;align-items:center;gap:6px;padding:9px 20px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;border:1.5px solid rgba(59,130,246,.3);background:rgba(59,130,246,.06);color:var(--blue);transition:all .3s;font-family:'DM Sans',sans-serif;width:100%}
 .sendbtn:hover{background:rgba(59,130,246,.12)}
 
 /* Backdrop */
-.fpbk{position:fixed;inset:0;z-index:250;background:rgba(0,0,0,.5);backdrop-filter:blur(4px);opacity:0;pointer-events:none;transition:opacity .3s}
-.fpbk.open{opacity:1;pointer-events:auto}
 
-@media(max-width:768px){.fab{bottom:96px;right:16px;padding:8px 16px;font-size:12px}}
+@media(max-width:768px){}
 
 /* Allow users to copy prices, data, and analysis text */
-.hbadges,.tab-bar,.fab,.nav,.sh{-webkit-user-select:none;-moz-user-select:none;user-select:none}
+.hbadges,.tab-bar,.nav,.sh{-webkit-user-select:none;-moz-user-select:none;user-select:none}
 
 /* Back to top button */
 .btt{position:fixed;bottom:100px;left:24px;z-index:200;padding:8px 16px;border-radius:100px;font-size:12px;font-weight:700;color:var(--text3);background:var(--surface);border:1px solid var(--border);cursor:pointer;opacity:0;transform:translateY(20px);transition:all .3s;font-family:'DM Sans',sans-serif}
@@ -531,13 +493,6 @@ footer{position:relative;z-index:1;margin-top:32px;background:#002f6c;border-top
 .sub-nav{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;padding:10px 14px;position:sticky;top:140px;z-index:96;background:rgba(255,255,255,.97);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-bottom:1px solid rgba(0,47,108,.08);margin-left:-18px;margin-right:-18px}
 .sub-nav a{font-size:11px;font-weight:700;padding:6px 14px;border-radius:100px;text-decoration:none;transition:all .25s;cursor:pointer;white-space:nowrap;letter-spacing:.2px}
 /* Summary sub-tab colors */
-.sub-nav[data-tab="quick"] a:nth-child(1){color:#14a23a;background:rgba(20,162,58,.08);border:1.5px solid rgba(20,162,58,.2)}
-.sub-nav[data-tab="quick"] a:nth-child(2){color:#2563eb;background:rgba(37,99,235,.08);border:1.5px solid rgba(37,99,235,.2)}
-.sub-nav[data-tab="quick"] a:nth-child(3){color:#7c3aed;background:rgba(124,58,237,.08);border:1.5px solid rgba(124,58,237,.2)}
-.sub-nav[data-tab="quick"] a:nth-child(4){color:#0891b2;background:rgba(8,145,178,.08);border:1.5px solid rgba(8,145,178,.2)}
-.sub-nav[data-tab="quick"] a:nth-child(5){color:#dc2626;background:rgba(220,38,38,.08);border:1.5px solid rgba(220,38,38,.2)}
-.sub-nav[data-tab="quick"] a:nth-child(6){color:#0d9488;background:rgba(13,148,136,.08);border:1.5px solid rgba(13,148,136,.2)}
-.sub-nav[data-tab="quick"] a:nth-child(7){color:#d97706;background:rgba(217,119,6,.08);border:1.5px solid rgba(217,119,6,.2)}
 /* Deep Dive sub-tab colors */
 .sub-nav[data-tab="deep"] a:nth-child(1){color:#1a5fb4;background:rgba(26,95,180,.08);border:1.5px solid rgba(26,95,180,.2)}
 .sub-nav[data-tab="deep"] a:nth-child(2){color:#7c3aed;background:rgba(124,58,237,.08);border:1.5px solid rgba(124,58,237,.2)}
@@ -621,7 +576,7 @@ footer{position:relative;z-index:1;margin-top:32px;background:#002f6c;border-top
 #buyPriceInput, .ipt, input, textarea { -webkit-user-select: text !important; -moz-user-select: text !important; user-select: text !important; }
 /* Hide ALL report content when printing */
 @media print {
-  .rpt, #report, .tab-bar, .global-ticker, .site-watermark, .fab, .fpanel {
+  .rpt, #report, .tab-bar, .global-ticker, .site-watermark {
     display: none !important;
     visibility: hidden !important;
   }
@@ -2013,16 +1968,7 @@ console.log('Building template literal...');
 html=`
 <div class="tab-scroll-area" id="tabScrollArea">
 <!-- TAB 1: QUICK INTEL -->
-<div class="sub-nav" data-tab="quick">
-<a onclick="scrollToSec('sec-verdict')">&#9678; Buy or Sell?</a>
-<a onclick="scrollToSec('sec-5things')">&#128200; Key Numbers</a>
-<a onclick="scrollToSec('sec-valuation')">&#128176; Overpriced?</a>
-<a onclick="scrollToSec('sec-peers')">⚔ Peers</a>
-<a onclick="scrollToSec('sec-entry')">&#127919; When to Buy/Sell</a>
-<a onclick="scrollToSec('sec-risk')">&#9888; Risks</a>
-<a onclick="scrollToSec('sec-charts')">&#128202; Charts</a>
 
-</div>
 
 <!-- VERDICT (always open) -->
 <div class="sc" data-tab="quick" style="border-left:3px solid var(--green)"><div class="sh"><div class="si" style="background:rgba(16,185,129,.1)">&#9678;</div><div class="st" style="color:var(--green)" id="sec-verdict">Verdict</div></div>
@@ -2447,8 +2393,7 @@ try{renderPersonalFinance()}catch(e){console.warn('renderPersonalFinance error:'
 switchTab('quick');
 // Refresh watermark with user email
 try{refreshWatermark()}catch(e){}
-// Draw attention to vote button after report loads
-setTimeout(()=>{const fab=document.querySelector('.fab');if(fab){fab.style.transform='scale(1.15)';fab.style.boxShadow='0 0 40px rgba(139,92,246,.6)';setTimeout(()=>{fab.style.transform='';fab.style.boxShadow=''},1500)}},4000);
+
 // Draw attention to tab bar with pulse animation
 const tbar=document.querySelector('.tab-bar');
 if(tbar){tbar.classList.add('attention');setTimeout(()=>tbar.classList.remove('attention'),6500)}}
@@ -3666,14 +3611,6 @@ function capCategory(mc,sym){if(sym==='₹'){return mc>2e11?'Large-cap':mc>5e10?
 
 // ==========================================
 // FEATURE VOTING SYSTEM
-// ==========================================
-const featureKeys=['pdf','cmp','share','tech','peer','earn','insider','theme'];
-const featureNames=['PDF Export','Compare Stocks','Share (WhatsApp/Email)','Technical Indicators','Peer Comparison','Earnings Countdown','Insider Activity','Dark/Light Theme'];
-const votes={};
-featureKeys.forEach(k=>{votes[k]={up:0,dn:0}});
-let voteChart=null;
-let userVotes={};
-
 // ═══════════════════════════════════════════════
 // CURATED STOCK PICKS — Research-backed lists
 // ═══════════════════════════════════════════════
@@ -7406,111 +7343,8 @@ errEl.textContent='Service busy. Please try again in a moment.';errEl.style.disp
 btn.disabled=false;btn.textContent='⚡ Generate Today\'s Trades';
 }}
 
-function vote(feature,dir,btn){
-if(typeof gtag==='function')gtag('event','feature_vote',{feature_name:feature,vote_direction:dir>0?'up':'down'});
-// Prevent double-voting same direction on same feature
-const voteKey=feature+(dir>0?'up':'dn');
-const oppKey=feature+(dir>0?'dn':'up');
-if(userVotes[voteKey])return;
 
-// If they voted opposite before, undo it
-if(userVotes[oppKey]){
-const oppDir=dir>0?-1:1;
-votes[feature][oppDir>0?'up':'dn']--;
-const oppBtn=btn.parentElement.querySelector(dir>0?'.dn':'.up');
-oppBtn.classList.remove('voted');
-delete userVotes[oppKey];
-}
 
-// Record vote
-if(dir>0)votes[feature].up++;
-else votes[feature].dn++;
-userVotes[voteKey]=true;
-btn.classList.add('voted');
-
-// Update counters
-document.getElementById(feature+'-up').textContent=votes[feature].up;
-document.getElementById(feature+'-dn').textContent=votes[feature].dn;
-
-// Update bar
-const total=votes[feature].up+votes[feature].dn;
-const pct=total>0?Math.round((votes[feature].up/total)*100):0;
-document.getElementById(feature+'-bar').style.width=pct+'%';
-
-// Update chart
-updateVoteChart();
-
-// Send to backend
-fetch('/api/vote',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({feature:feature,direction:dir})}).catch(()=>{});
-}
-
-function updateVoteChart(){
-if(!voteChart)return;
-voteChart.data.datasets[0].data=featureKeys.map(k=>votes[k].up);
-voteChart.data.datasets[1].data=featureKeys.map(k=>-votes[k].dn);
-voteChart.update('none');
-}
-
-function initVoteChart(){
-const ctx=document.getElementById('voteChart');
-if(!ctx)return;
-voteChart=new Chart(ctx,{
-type:'bar',
-data:{
-labels:featureNames,
-datasets:[
-{label:'Want It',data:featureKeys.map(k=>votes[k].up),backgroundColor:'rgba(16,185,129,0.7)',borderRadius:4,barPercentage:.6},
-{label:'Not Needed',data:featureKeys.map(k=>-votes[k].dn),backgroundColor:'rgba(239,68,68,0.5)',borderRadius:4,barPercentage:.6}
-]
-},
-options:{
-indexAxis:'y',
-responsive:true,
-maintainAspectRatio:false,
-scales:{
-x:{stacked:true,grid:{color:'rgba(148,163,184,0.06)'},ticks:{color:'#64748b',font:{size:10},callback:v=>Math.abs(v)},border:{display:false}},
-y:{stacked:true,grid:{display:false},ticks:{color:'#e2e8f0',font:{family:"'DM Sans',sans-serif",size:11,weight:'600'}},border:{display:false}}
-},
-plugins:{
-legend:{labels:{color:'#94a3b8',font:{size:10},usePointStyle:true,pointStyle:'rectRounded'}},
-tooltip:{callbacks:{label:ctx=>ctx.dataset.label+': '+Math.abs(ctx.raw)}}
-}
-}
-});
-}
-
-function loadVotes(){
-fetch('/api/votes').then(r=>r.json()).then(data=>{
-if(data&&data.votes){
-featureKeys.forEach(k=>{
-if(data.votes[k]){
-votes[k].up=data.votes[k].up||0;
-votes[k].dn=data.votes[k].dn||0;
-document.getElementById(k+'-up').textContent=votes[k].up;
-document.getElementById(k+'-dn').textContent=votes[k].dn;
-const total=votes[k].up+votes[k].dn;
-const pct=total>0?Math.round((votes[k].up/total)*100):0;
-document.getElementById(k+'-bar').style.width=pct+'%';
-}
-});
-updateVoteChart();
-}
-}).catch(()=>{});
-}
-
-function sendVoteResults(){
-let body='CELESYS AI - Feature Vote Results\n\n';
-const sorted=featureKeys.map((k,i)=>({key:k,name:featureNames[i],up:votes[k].up,dn:votes[k].dn,net:votes[k].up-votes[k].dn})).sort((a,b)=>b.net-a.net);
-sorted.forEach((f,i)=>{
-body+=(i+1)+'. '+f.name+' | Upvotes: '+f.up+' | Downvotes: '+f.dn+' | Net: '+f.net+'\n';
-});
-body+='\nTotal votes cast: '+featureKeys.reduce((s,k)=>s+votes[k].up+votes[k].dn,0);
-body+='\nTimestamp: '+new Date().toISOString();
-const mailto='mailto:contact@celesys.ai?subject='+encodeURIComponent('Feature Vote Results - '+new Date().toLocaleDateString())+'&body='+encodeURIComponent(body);
-window.open(mailto);
-}
-
-// Initialize vote chart on page load
 async function loadGlobalTicker(){
 try{
 const r=await fetch('/api/global-ticker');
@@ -7539,7 +7373,7 @@ track.innerHTML=items+items;
 setInterval(()=>{loadGlobalTicker()},120000);
 setInterval(()=>{fetchMarketPulse()},120000);
 
-document.addEventListener('DOMContentLoaded',()=>{loadGlobalTicker();setTimeout(()=>fetchMarketPulse(),3000);initVoteChart();loadVotes();
+document.addEventListener('DOMContentLoaded',()=>{loadGlobalTicker();setTimeout(()=>fetchMarketPulse(),3000);
 fetch('/api/stats').then(r=>r.json()).then(d=>{
 if(d.total_reports){document.getElementById('navRC').textContent=d.total_reports;document.getElementById('globalRC').textContent=d.total_reports.toLocaleString();const hb=document.getElementById('reportBadgeCount');if(hb)hb.textContent=d.total_reports.toLocaleString()}
 }).catch(()=>{})});
@@ -7561,55 +7395,7 @@ obs.observe(heroEl);
 }
 </script>
 
-<!-- FLOATING FEEDBACK BUTTON -->
-<button class="fab" onclick="document.getElementById('fpanel').classList.add('open');document.getElementById('fpbk').classList.add('open')">
-<div class="pulse"></div> &#128227; Shape Our Roadmap! <span style="background:#ef4444;color:#fff;font-size:10px;padding:2px 6px;border-radius:10px;margin-left:4px;font-weight:800;animation:notifPop 2s ease-in-out infinite">NEW</span>
-</button>
 
-<!-- BACKDROP -->
-<div class="fpbk" id="fpbk" onclick="document.getElementById('fpanel').classList.remove('open');this.classList.remove('open')"></div>
-
-<!-- SLIDE PANEL -->
-<div class="fpanel" id="fpanel">
-<div class="fphdr">
-<h3>&#128640; What Should We Build Next?</h3>
-<button class="fpclose" onclick="document.getElementById('fpanel').classList.remove('open');document.getElementById('fpbk').classList.remove('open')">&times;</button>
-</div>
-<div class="fpbody">
-<p class="sub">You just got a free analysis worth $50+. Now imagine what happens when we add <em>these</em>. Your vote decides what ships first.</p>
-
-<div class="pfcard"><div class="pfrow"><div class="pficon">&#128196;</div><div class="pfinfo"><div class="pfname">PDF Export <span class="ftag live">&#9989; LIVE</span></div><div class="pfdesc">Download your full report as a branded PDF. Save it, print it, share it.</div></div></div>
-<div class="pvbtns"><button class="pvbtn up" onclick="vote('pdf',1,this)">&#9650; Want it <span class="cnt" id="pdf-up">0</span></button><button class="pvbtn dn" onclick="vote('pdf',-1,this)">&#9660; Skip <span class="cnt" id="pdf-dn">0</span></button></div><div class="pvbar"><div class="vfill" id="pdf-bar" style="width:0%"></div></div></div>
-
-<div class="pfcard"><div class="pfrow"><div class="pficon">&#9878;&#65039;</div><div class="pfinfo"><div class="pfname">Compare 2 Stocks <span class="ftag live">&#9989; LIVE</span></div><div class="pfdesc">Side-by-side showdown. Which stock wins on every single metric?</div></div></div>
-<div class="pvbtns"><button class="pvbtn up" onclick="vote('cmp',1,this)">&#9650; Want it <span class="cnt" id="cmp-up">0</span></button><button class="pvbtn dn" onclick="vote('cmp',-1,this)">&#9660; Skip <span class="cnt" id="cmp-dn">0</span></button></div><div class="pvbar"><div class="vfill" id="cmp-bar" style="width:0%"></div></div></div>
-
-<div class="pfcard"><div class="pfrow"><div class="pficon">&#128172;</div><div class="pfinfo"><div class="pfname">WhatsApp &amp; Email Share <span class="ftag live">&#9989; LIVE</span></div><div class="pfdesc">One tap to share your analysis with friends, family, or your broker.</div></div></div>
-<div class="pvbtns"><button class="pvbtn up" onclick="vote('share',1,this)">&#9650; Want it <span class="cnt" id="share-up">0</span></button><button class="pvbtn dn" onclick="vote('share',-1,this)">&#9660; Skip <span class="cnt" id="share-dn">0</span></button></div><div class="pvbar"><div class="vfill" id="share-bar" style="width:0%"></div></div></div>
-
-<div class="pfcard"><div class="pfrow"><div class="pficon">&#128200;</div><div class="pfinfo"><div class="pfname">Technical Indicators <span class="ftag live">&#9989; LIVE</span></div><div class="pfdesc">RSI, MACD, Moving Averages &mdash; the tools serious traders use daily.</div></div></div>
-<div class="pvbtns"><button class="pvbtn up" onclick="vote('tech',1,this)">&#9650; Want it <span class="cnt" id="tech-up">0</span></button><button class="pvbtn dn" onclick="vote('tech',-1,this)">&#9660; Skip <span class="cnt" id="tech-dn">0</span></button></div><div class="pvbar"><div class="vfill" id="tech-bar" style="width:0%"></div></div></div>
-
-<div class="pfcard"><div class="pfrow"><div class="pficon">&#127919;</div><div class="pfinfo"><div class="pfname">Peer Comparison <span class="ftag live">&#9989; LIVE</span></div><div class="pfdesc">Auto-compare vs top 3 competitors in the same sector. Who really wins?</div></div></div>
-<div class="pvbtns"><button class="pvbtn up" onclick="vote('peer',1,this)">&#9650; Want it <span class="cnt" id="peer-up">0</span></button><button class="pvbtn dn" onclick="vote('peer',-1,this)">&#9660; Skip <span class="cnt" id="peer-dn">0</span></button></div><div class="pvbar"><div class="vfill" id="peer-bar" style="width:0%"></div></div></div>
-
-<div class="pfcard"><div class="pfrow"><div class="pficon">&#128197;</div><div class="pfinfo"><div class="pfname">Earnings Countdown <span class="ftag live">&#9989; LIVE</span></div><div class="pfdesc">Next earnings date + analyst expectations. Never get blindsided again.</div></div></div>
-<div class="pvbtns"><button class="pvbtn up" onclick="vote('earn',1,this)">&#9650; Want it <span class="cnt" id="earn-up">0</span></button><button class="pvbtn dn" onclick="vote('earn',-1,this)">&#9660; Skip <span class="cnt" id="earn-dn">0</span></button></div><div class="pvbar"><div class="vfill" id="earn-bar" style="width:0%"></div></div></div>
-
-<div class="pfcard"><div class="pfrow"><div class="pficon">&#128100;</div><div class="pfinfo"><div class="pfname">Insider Activity <span class="ftag live">&#9989; LIVE</span></div><div class="pfdesc">Are executives buying or selling their own stock? Follow the smart money.</div></div></div>
-<div class="pvbtns"><button class="pvbtn up" onclick="vote('insider',1,this)">&#9650; Want it <span class="cnt" id="insider-up">0</span></button><button class="pvbtn dn" onclick="vote('insider',-1,this)">&#9660; Skip <span class="cnt" id="insider-dn">0</span></button></div><div class="pvbar"><div class="vfill" id="insider-bar" style="width:0%"></div></div></div>
-
-<div class="pfcard"><div class="pfrow"><div class="pficon">&#127763;</div><div class="pfinfo"><div class="pfname">Dark / Light Theme <span class="ftag live">&#9989; LIVE</span></div><div class="pfdesc">Switch between dark terminal mode and clean light mode instantly.</div></div></div>
-<div class="pvbtns"><button class="pvbtn up" onclick="vote('theme',1,this)">&#9650; Want it <span class="cnt" id="theme-up">0</span></button><button class="pvbtn dn" onclick="vote('theme',-1,this)">&#9660; Skip <span class="cnt" id="theme-dn">0</span></button></div><div class="pvbar"><div class="vfill" id="theme-bar" style="width:0%"></div></div></div>
-
-<!-- LIVE VOTE CHART -->
-<div class="vgp">
-<h4>&#128202; Live Community Votes</h4>
-<div class="vsub">Real-time ranking &mdash; updated as you vote</div>
-<div class="cc"><canvas id="voteChart"></canvas></div></div>
-
-</div><!-- end fpbody -->
-</div><!-- end fpanel -->
 
 <!-- STICKY EDUCATION DISCLAIMER BAR — visible site-wide -->
 <div class="edu-bar">
