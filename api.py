@@ -200,7 +200,7 @@ def fetch_yahoo_direct(ticker: str) -> dict:
         
         # ── v10 quoteSummary (fuller data — margins, ROE, sector) ──
         try:
-            modules = 'summaryProfile,financialData,defaultKeyStatistics,summaryDetail,price'
+            modules = 'summaryProfile,assetProfile,financialData,defaultKeyStatistics,summaryDetail,price'
             sr = requests.get(f"https://query2.finance.yahoo.com/v10/finance/quoteSummary/{ticker}?modules={modules}", headers=headers, timeout=8)
             sr_ct = sr.headers.get('content-type', '')
             if sr.status_code == 200 and 'json' in sr_ct and '<html' not in sr.text[:200].lower():
@@ -211,6 +211,12 @@ def fetch_yahoo_direct(ticker: str) -> dict:
                     stats = r.get('defaultKeyStatistics', {})
                     detail = r.get('summaryDetail', {})
                     profile = r.get('summaryProfile', {})
+                    asset_profile = r.get('assetProfile', {})
+                    # Merge: assetProfile often has longBusinessSummary when summaryProfile doesn't
+                    if asset_profile:
+                        for _ak in ['longBusinessSummary', 'fullTimeEmployees', 'website', 'sector', 'industry']:
+                            if not profile.get(_ak) and asset_profile.get(_ak):
+                                profile[_ak] = asset_profile[_ak]
                     price_d = r.get('price', {})
                     
                     def raw(d, key, default=0):
@@ -221,6 +227,9 @@ def fetch_yahoo_direct(ticker: str) -> dict:
                     updates = {
                         'sector': profile.get('sector', info.get('sector', 'N/A')),
                         'industry': profile.get('industry', info.get('industry', 'N/A')),
+                        'longBusinessSummary': profile.get('longBusinessSummary', info.get('longBusinessSummary', '')),
+                        'fullTimeEmployees': profile.get('fullTimeEmployees', info.get('fullTimeEmployees', 'N/A')),
+                        'website': profile.get('website', info.get('website', '')),
                         'profitMargins': raw(fin, 'profitMargins') or info.get('profitMargins', 0),
                         'operatingMargins': raw(fin, 'operatingMargins') or info.get('operatingMargins', 0),
                         'returnOnEquity': raw(fin, 'returnOnEquity') or info.get('returnOnEquity', 0),
@@ -1622,6 +1631,10 @@ def get_live_stock_data(company_name: str) -> dict:
             "website": info.get('website', ''),
             "exchange": info.get('exchange', 'N/A'),
         }
+        
+        # Debug: log company description availability
+        print(f"📝 Company desc: {'YES ('+str(len(str(info.get('longBusinessSummary',''))))+'ch)' if info.get('longBusinessSummary') else 'NO'}")
+        print(f"📝 Employees: {info.get('fullTimeEmployees', 'N/A')}, Website: {info.get('website', 'N/A')}")
         
         # Fetch real 6-month price history for Price Trend chart
         try:
