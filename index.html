@@ -796,7 +796,6 @@ footer{position:relative;z-index:1;margin-top:32px;background:#002f6c;border-top
 <button class="stab" onclick="switchSubTab('risk')" id="stRisk">&#9888; Risk</button>
 </div>
 <div class="mgrid" id="metrics" data-tab="quick" data-subtab="overview" style="display:none"></div>
-<div id="companyAbout" data-tab="quick" data-subtab="overview" style="display:none"></div>
 <div id="w52section" data-tab="quick" data-subtab="technical" style="display:none"></div>
 <div id="pricePrediction" data-tab="quick" data-subtab="valuation" style="display:none"></div>
 <div id="techProSection" data-tab="quick" data-subtab="technical" style="display:none"></div>
@@ -848,37 +847,55 @@ footer{position:relative;z-index:1;margin-top:32px;background:#002f6c;border-top
 
 
 <!-- SEO CONTENT — Substantial static HTML for Google crawling -->
-<article style="max-width:720px;margin:0 auto;padding:24px 20px 8px;font-size:12px;color:var(--text3);line-height:1.7" aria-label="About Celesys AI Stock Analysis Platform">
+<article style="max-width:900px;margin:0 auto;padding:32px 24px 16px;font-size:14px;color:var(--text2);line-height:1.9" aria-label="About Celesys AI Stock Analysis Platform">
 
-<h2 style="font-family:'Sora',sans-serif;font-size:16px;color:var(--text);margin-bottom:12px">Free AI-Powered Stock Analysis for Every Investor</h2>
-<p>Celesys AI is a free stock research platform that generates institutional-grade analysis reports in under 60 seconds. Whether you invest in US markets (NYSE, NASDAQ, S&amp;P 500) or Indian markets (NSE, BSE, Nifty 50, Sensex), Celesys delivers the same depth of research that hedge funds pay thousands for — completely free, no signup required.</p>
+<div style="text-align:center;margin-bottom:24px">
+<h2 style="font-family:'Sora',sans-serif;font-size:22px;color:var(--text);margin-bottom:8px">Free AI-Powered Stock Analysis for Every Investor</h2>
+<p style="font-size:13px;color:var(--text3);max-width:600px;margin:0 auto">Trusted by thousands of investors across India &amp; USA for real-time, institutional-grade research — completely free.</p>
+</div>
 
-<h3 style="font-family:'Sora',sans-serif;font-size:13px;color:var(--text2);margin:16px 0 8px">How It Works</h3>
-<p>Enter any stock ticker — like AAPL, MSFT, RELIANCE.NS, or HDFCBANK.NS — and Celesys AI pulls live market data from multiple sources including Yahoo Finance, Google Finance, and NSE India. The platform then runs a 20-factor quantitative scoring model that evaluates the stock across valuation (P/E ratio, P/B ratio, PEG ratio, EV/EBITDA), profitability (profit margin, ROE, operating margin, gross margin, EBITDA margin), financial health (debt-to-equity, current ratio, free cash flow, cash vs debt), and momentum (52-week position, SMA/EMA crossovers, earnings velocity, short interest). The result is a deterministic buy/sell verdict — Strong Buy, Buy, Hold, Sell, or Strong Sell — with a conviction score and full explanation.</p>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:20px;margin-bottom:24px">
 
-<h3 style="font-family:'Sora',sans-serif;font-size:13px;color:var(--text2);margin:16px 0 8px">What You Get in Every Report</h3>
-<p>Each Celesys AI report includes: real-time stock price and live market indicators, intrinsic value calculations using the Benjamin Graham Number, Discounted Cash Flow (DCF) growth model, Peter Lynch fair value (PEG-based), and earnings yield vs 10-year Treasury bond comparison. You also receive AI-generated entry and exit price levels with specific buy zones, accumulate levels, profit targets, and stop-loss prices — all computed from EMA crossovers, Fibonacci retracements, and 52-week range analysis. The risk assessment covers debt risk, liquidity risk, volatility (beta), sector risk, and 52-week positioning. Visual charts show valuation comparison, financial health radar, risk profile, 6-month price trend, and margin vs industry benchmarks.</p>
+<div style="padding:20px;border-radius:10px;background:var(--bg2);border:1px solid var(--border)">
+<h3 style="font-family:'Sora',sans-serif;font-size:14px;color:#002f6c;margin:0 0 10px;display:flex;align-items:center;gap:8px">&#128200; How It Works</h3>
+<p style="margin:0;font-size:13px">Enter any stock ticker — like AAPL, MSFT, RELIANCE.NS, or HDFCBANK.NS — and Celesys AI pulls live market data from multiple sources including Yahoo Finance, Google Finance, and NSE India. The platform runs a 20-factor quantitative scoring model evaluating valuation (P/E, P/B, PEG, EV/EBITDA), profitability (ROE, margins), financial health (debt-to-equity, current ratio, free cash flow), and momentum (52-week position, SMA/EMA crossovers). The result is a deterministic buy/sell verdict with a conviction score and full explanation.</p>
+</div>
 
-<h3 style="font-family:'Sora',sans-serif;font-size:13px;color:var(--text2);margin:16px 0 8px">Deep AI Analysis &amp; Earnings Intelligence</h3>
-<p>Beyond numbers, Celesys AI generates a comprehensive written research report powered by advanced AI. This includes an investment thesis, quarterly fundamentals analysis with quarter-over-quarter (QoQ) and year-over-year (YoY) growth trends, management tone assessment with CEO/CFO confidence scoring, institutional and mutual fund holdings analysis, upcoming catalysts and timeline forecasts, and bull/bear/base case price predictions for the next 12 months. Every section ends with a plain-English inference explaining what the data means for a regular investor — no jargon, no confusion.</p>
+<div style="padding:20px;border-radius:10px;background:var(--bg2);border:1px solid var(--border)">
+<h3 style="font-family:'Sora',sans-serif;font-size:14px;color:#002f6c;margin:0 0 10px;display:flex;align-items:center;gap:8px">&#128203; What You Get in Every Report</h3>
+<p style="margin:0;font-size:13px">Each report includes real-time stock price, intrinsic value calculations using the Benjamin Graham Number, DCF growth model, Peter Lynch fair value (PEG-based), and earnings yield vs Treasury bond comparison. You also receive AI-generated entry and exit price levels with buy zones, accumulate levels, profit targets, and stop-loss prices computed from EMA crossovers, Fibonacci retracements, and 52-week range analysis. Visual charts cover valuation, financial health, risk profile, 6-month price trends, and margin benchmarks.</p>
+</div>
 
-<h3 style="font-family:'Sora',sans-serif;font-size:13px;color:var(--text2);margin:16px 0 8px">Markets &amp; Stocks Covered</h3>
-<p>Celesys AI covers over 10,000 stocks across major global exchanges. US stocks include Apple (AAPL), Microsoft (MSFT), NVIDIA (NVDA), Alphabet/Google (GOOGL), Amazon (AMZN), Tesla (TSLA), Meta (META), JPMorgan (JPM), and all NYSE/NASDAQ-listed equities. Indian stocks include Reliance Industries (RELIANCE.NS), TCS (TCS.NS), HDFC Bank (HDFCBANK.NS), Infosys (INFY), ICICI Bank (ICICIBANK.NS), SBI (SBIN.NS), Bharti Airtel (BHARTIARTL.NS), ITC (ITC.NS), and all NSE/BSE-listed companies. The platform also tracks global market indices live: S&amp;P 500, NASDAQ Composite, Dow Jones, Nifty 50, Sensex, FTSE 100, DAX, Nikkei 225, and Hang Seng.</p>
+<div style="padding:20px;border-radius:10px;background:var(--bg2);border:1px solid var(--border)">
+<h3 style="font-family:'Sora',sans-serif;font-size:14px;color:#002f6c;margin:0 0 10px;display:flex;align-items:center;gap:8px">&#129302; Deep AI Analysis &amp; Earnings Intelligence</h3>
+<p style="margin:0;font-size:13px">Beyond numbers, Celesys AI generates comprehensive research powered by advanced AI — including investment thesis, quarterly fundamentals with QoQ and YoY growth trends, management tone assessment with CEO/CFO confidence scoring, institutional and mutual fund holdings, upcoming catalysts and timeline forecasts, and bull/bear/base case price predictions for 12 months. Every section ends with a plain-English inference explaining what the data means for a regular investor.</p>
+</div>
 
-<h3 style="font-family:'Sora',sans-serif;font-size:13px;color:var(--text2);margin:16px 0 8px">Additional Features</h3>
-<p>Celesys AI offers curated small-cap stock picks with 10x growth potential ratings, daily AI-generated trade ideas for indices and stocks using option chain analysis (PCR, Max Pain, OI walls), FII/DII institutional flow tracking for Indian markets, a comprehensive geopolitical and economic event calendar covering Fed decisions, RBI policy, US CPI data, trade wars, and global macro events, and a position analyzer tool that calculates optimal position sizes based on your risk tolerance. The platform also provides top-performing ETF and mutual fund recommendations with historical CAGR analysis.</p>
+<div style="padding:20px;border-radius:10px;background:var(--bg2);border:1px solid var(--border)">
+<h3 style="font-family:'Sora',sans-serif;font-size:14px;color:#002f6c;margin:0 0 10px;display:flex;align-items:center;gap:8px">&#127758; Markets &amp; Stocks Covered</h3>
+<p style="margin:0;font-size:13px">Celesys AI covers 10,000+ stocks across major global exchanges. US stocks: Apple (AAPL), Microsoft (MSFT), NVIDIA (NVDA), Alphabet (GOOGL), Amazon (AMZN), Tesla (TSLA), Meta (META), JPMorgan (JPM), and all NYSE/NASDAQ equities. Indian stocks: Reliance (RELIANCE.NS), TCS, HDFC Bank, Infosys, ICICI Bank, SBI, Bharti Airtel, ITC, and all NSE/BSE companies. Live index tracking: S&amp;P 500, NASDAQ, Dow Jones, Nifty 50, Sensex, FTSE 100, DAX, Nikkei 225.</p>
+</div>
 
-<h3 style="font-family:'Sora',sans-serif;font-size:13px;color:var(--text2);margin:16px 0 8px">Why Celesys AI?</h3>
-<p>Traditional stock research tools are either too expensive (Bloomberg Terminal costs $25,000/year), too complex (requires CFA-level knowledge), or too shallow (basic screeners with no analysis). Celesys AI bridges this gap by providing professional-grade research in simple, plain-English language that any investor can understand — whether you are a first-time investor learning about P/E ratios or an experienced trader looking for technical entry levels. The platform is completely free, requires no account creation, and delivers results in under 60 seconds.</p>
+<div style="padding:20px;border-radius:10px;background:var(--bg2);border:1px solid var(--border)">
+<h3 style="font-family:'Sora',sans-serif;font-size:14px;color:#002f6c;margin:0 0 10px;display:flex;align-items:center;gap:8px">&#11088; Additional Features</h3>
+<p style="margin:0;font-size:13px">Curated small-cap stock picks with 10x growth potential, daily AI trade ideas using option chain analysis (PCR, Max Pain, OI walls), FII/DII institutional flow tracking for Indian markets, a 32-event geopolitical and economic calendar covering Fed decisions, RBI policy, US CPI, and global macro events. Also includes top-performing ETF and mutual fund recommendations with historical CAGR analysis, stock comparison tool, insider activity tracking, and dark/light theme.</p>
+</div>
 
-<div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--border);display:flex;flex-wrap:wrap;gap:12px;font-size:11px">
+<div style="padding:20px;border-radius:10px;background:var(--bg2);border:1px solid var(--border)">
+<h3 style="font-family:'Sora',sans-serif;font-size:14px;color:#002f6c;margin:0 0 10px;display:flex;align-items:center;gap:8px">&#128161; Why Celesys AI?</h3>
+<p style="margin:0;font-size:13px">Traditional stock research tools are either too expensive (Bloomberg Terminal: $25,000/year), too complex (requires CFA-level knowledge), or too shallow (basic screeners with no analysis). Celesys AI bridges this gap — professional-grade research in plain English that any investor can understand. Whether you are a first-time investor learning about P/E ratios or an experienced trader looking for technical entry levels, the platform is completely free, requires no signup, and delivers results in under 60 seconds.</p>
+</div>
+
+</div>
+
+<div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--border);display:flex;flex-wrap:wrap;gap:12px;font-size:11px;justify-content:center">
 <span style="font-weight:600;color:var(--text2)">Learn more:</span>
-<a href="/about" style="color:var(--blue);text-decoration:none">About Celesys AI</a>
-<a href="/faq" style="color:var(--blue);text-decoration:none">Frequently Asked Questions</a>
-<a href="/disclaimer" style="color:var(--blue);text-decoration:none">Investment Disclaimer</a>
-<a href="/privacy" style="color:var(--blue);text-decoration:none">Privacy Policy</a>
-<a href="/terms" style="color:var(--blue);text-decoration:none">Terms of Service</a>
-<a href="/contact" style="color:var(--blue);text-decoration:none">Contact Us</a>
+<a href="/about" style="color:#002f6c;text-decoration:none">About Celesys AI</a>
+<a href="/faq" style="color:#002f6c;text-decoration:none">Frequently Asked Questions</a>
+<a href="/disclaimer" style="color:#002f6c;text-decoration:none">Investment Disclaimer</a>
+<a href="/privacy" style="color:#002f6c;text-decoration:none">Privacy Policy</a>
+<a href="/terms" style="color:#002f6c;text-decoration:none">Terms of Service</a>
+<a href="/contact" style="color:#002f6c;text-decoration:none">Contact Us</a>
 </div>
 </article>
 
@@ -1276,49 +1293,6 @@ tick();countdownInterval=setInterval(tick,1000)}
 
 // ═══ PEER COMPARISON RENDERER ═══
 // ═══ AI PRICE PREDICTION ENGINE ═══
-function renderCompanyAbout(d){
-const el=document.getElementById('companyAbout');
-if(!el){console.warn('companyAbout element not found');return}
-const name=d.company_name||d.ticker||'Company';
-const desc=d.company_description||'';
-const sector=d.sector||'';
-const industry=d.industry||'';
-const employees=d.employees;
-const website=d.website||'';
-const exchange=d.exchange||'';
-const mcap=d.market_cap;
-const curr=d.currency==='INR'?'₹':'$';
-console.log('renderCompanyAbout:',{name,desc:desc.substring(0,50),sector,industry,employees,website,exchange,mcap});
-const empStr=employees&&employees!=='N/A'&&employees!==0?(typeof employees==='number'?(employees>=1e6?(employees/1e6).toFixed(1)+'M':employees>=1e3?(employees/1e3).toFixed(0)+'K':employees.toLocaleString()):String(employees)):'';
-const mcapStr=mcap&&mcap>0?(mcap>=1e12?curr+(mcap/1e12).toFixed(2)+'T':mcap>=1e9?curr+(mcap/1e9).toFixed(2)+'B':mcap>=1e6?curr+(mcap/1e6).toFixed(0)+'M':curr+mcap.toLocaleString()):'';
-let tags='';
-if(sector&&sector!=='N/A'&&sector!=='Unknown')tags+=`<span style="font-size:10px;padding:3px 10px;border-radius:100px;background:rgba(0,47,108,.06);color:#002f6c;font-weight:600;border:1px solid rgba(0,47,108,.12)">${sector}</span>`;
-if(industry&&industry!=='N/A'&&industry!=='Unknown')tags+=`<span style="font-size:10px;padding:3px 10px;border-radius:100px;background:rgba(13,148,136,.06);color:#0d9488;font-weight:600;border:1px solid rgba(13,148,136,.12)">${industry}</span>`;
-if(exchange&&exchange!=='N/A')tags+=`<span style="font-size:10px;padding:3px 10px;border-radius:100px;background:rgba(139,92,246,.06);color:#7c3aed;font-weight:600;border:1px solid rgba(139,92,246,.12)">${exchange}</span>`;
-let stats='';
-const price=d.current_price||0;
-const chg=d.price_change||0;
-const chgPct=d.price_change_pct||0;
-const isUp=chg>=0;
-stats+=`<div style="text-align:center"><div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">Price</div><div style="font-size:14px;font-weight:700;color:var(--text);font-family:var(--mono)">${curr}${price.toLocaleString()}</div></div>`;
-stats+=`<div style="text-align:center"><div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">Change</div><div style="font-size:13px;font-weight:700;color:${isUp?'var(--green)':'var(--red)'};font-family:var(--mono)">${isUp?'+':''}${chg.toFixed(2)} (${isUp?'+':''}${chgPct.toFixed(2)}%)</div></div>`;
-if(mcapStr)stats+=`<div style="text-align:center"><div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">Market Cap</div><div style="font-size:13px;font-weight:700;color:var(--text);font-family:var(--mono)">${mcapStr}</div></div>`;
-if(empStr)stats+=`<div style="text-align:center"><div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">Employees</div><div style="font-size:13px;font-weight:700;color:var(--text);font-family:var(--mono)">${empStr}</div></div>`;
-const w52h=d.week52_high||0;const w52l=d.week52_low||0;
-if(w52h>0&&w52l>0)stats+=`<div style="text-align:center"><div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">52W Range</div><div style="font-size:12px;font-weight:700;color:var(--text);font-family:var(--mono)">${curr}${w52l}—${curr}${w52h}</div></div>`;
-el.innerHTML=`
-<div class="sc" data-tab="quick" data-subtab="overview" style="border-left:3px solid #002f6c;margin-top:0">
-<div class="sh"><div class="si" style="background:rgba(0,47,108,.08)">🏢</div><div class="st" style="color:#002f6c">About ${name}</div></div>
-<div class="sbody">
-${tags?`<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px">${tags}</div>`:''}
-<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:10px;padding:12px;border-radius:8px;background:var(--bg2);border:1px solid var(--border);margin-bottom:12px">${stats}</div>
-${desc?`<p style="font-size:12px;color:var(--text2);line-height:1.8;margin:0">${desc.length>500?desc.substring(0,500)+'...':desc}</p>`:`<p style="font-size:11px;color:var(--text3);font-style:italic;margin:0">Company description not available for this ticker.</p>`}
-${website?`<div style="margin-top:8px"><a href="${website}" target="_blank" rel="noopener" style="font-size:11px;color:#002f6c;text-decoration:none;font-weight:600">🔗 ${website.replace('https://','').replace('http://','').replace(/\/+$/,'')}</a></div>`:''}
-</div></div>`;
-el.style.display='block';
-console.log('renderCompanyAbout: rendered OK, innerHTML length:',el.innerHTML.length);
-}
-
 function renderPricePrediction(d){
 const el=document.getElementById('pricePrediction');
 if(!el)return;
@@ -1409,7 +1383,7 @@ const resist2=w52h;
 
 el.style.display='block';
 el.innerHTML=`
-<div class="sc" data-tab="quick" data-subtab="valuation" style="border-left:3px solid ${signalC};margin-top:12px">
+<div class="sc" style="border-left:3px solid ${signalC};margin-top:12px">
 <div class="sh"><div class="si" style="background:rgba(16,185,129,.1)">🔮</div><div class="st" style="color:${signalC}">AI Price Prediction — ${d.name||'Stock'}</div></div>
 <div class="sbody">
 
@@ -1769,7 +1743,6 @@ renderMarketEvents();
 try{renderFiiDii()}catch(e){console.warn('FiiDii render error:',e)}
 try{renderPeers(d,curr)}catch(e){console.warn('renderPeers error:',e)}
 try{renderPricePrediction(d)}catch(e){console.warn('renderPricePrediction error:',e)}
-try{renderCompanyAbout(d)}catch(e){console.warn('renderCompanyAbout error:',e)}
 try{renderTechnicalsPro(d)}catch(e){console.warn('renderTechnicalsPro error:',e)}
 try{renderEarningsCountdown(d)}catch(e){console.warn('renderEarningsCountdown error:',e)}
 try{renderInsiderActivity(d)}catch(e){console.warn('renderInsiderActivity error:',e)}
@@ -2031,6 +2004,38 @@ html=`
 <div class="tab-scroll-area" id="tabScrollArea">
 <!-- TAB 1: QUICK INTEL -->
 
+<!-- ABOUT COMPANY — SEO-rich content -->
+<div class="sc" data-tab="quick" data-subtab="overview" style="border-left:3px solid #002f6c">
+<div class="sh"><div class="si" style="background:rgba(0,47,108,.08)">🏢</div><div class="st" style="color:#002f6c">About ${d.company_name||d.ticker}</div></div>
+<div class="sbody">
+<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px">
+${d.sector&&d.sector!=='N/A'&&d.sector!=='Unknown'?'<span style="font-size:10px;padding:3px 10px;border-radius:100px;background:rgba(0,47,108,.06);color:#002f6c;font-weight:600;border:1px solid rgba(0,47,108,.12)">'+d.sector+'</span>':''}
+${d.industry&&d.industry!=='N/A'&&d.industry!=='Unknown'?'<span style="font-size:10px;padding:3px 10px;border-radius:100px;background:rgba(13,148,136,.06);color:#0d9488;font-weight:600;border:1px solid rgba(13,148,136,.12)">'+d.industry+'</span>':''}
+${d.exchange&&d.exchange!=='N/A'?'<span style="font-size:10px;padding:3px 10px;border-radius:100px;background:rgba(139,92,246,.06);color:#7c3aed;font-weight:600;border:1px solid rgba(139,92,246,.12)">'+d.exchange+'</span>':''}
+</div>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:10px;padding:12px;border-radius:8px;background:var(--bg2);border:1px solid var(--border);margin-bottom:12px">
+<div style="text-align:center"><div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">Price</div><div style="font-size:14px;font-weight:700;color:var(--text);font-family:var(--mono)">${curr}${price.toLocaleString()}</div></div>
+<div style="text-align:center"><div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">Change</div><div style="font-size:13px;font-weight:700;color:${d.price_change>=0?'var(--green)':'var(--red)'};font-family:var(--mono)">${d.price_change>=0?'+':''}${(d.price_change||0).toFixed(2)} (${(d.price_change_pct||0).toFixed(2)}%)</div></div>
+${d.market_cap&&d.market_cap>1e6?'<div style="text-align:center"><div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">Market Cap</div><div style="font-size:13px;font-weight:700;color:var(--text);font-family:var(--mono)">'+(d.market_cap>=1e12?curr+(d.market_cap/1e12).toFixed(2)+'T':d.market_cap>=1e9?curr+(d.market_cap/1e9).toFixed(2)+'B':curr+(d.market_cap/1e6).toFixed(0)+'M')+'</div></div>':''}
+${d.employees&&d.employees!=='N/A'&&d.employees>0?'<div style="text-align:center"><div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">Employees</div><div style="font-size:13px;font-weight:700;color:var(--text);font-family:var(--mono)">'+(d.employees>=1e3?(d.employees/1e3).toFixed(0)+'K':d.employees.toLocaleString())+'</div></div>':''}
+${d.week52_high&&d.week52_low?'<div style="text-align:center"><div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">52W Range</div><div style="font-size:12px;font-weight:700;color:var(--text);font-family:var(--mono)">'+curr+d.week52_low+'—'+curr+d.week52_high+'</div></div>':''}
+</div>
+<p style="font-size:12px;color:var(--text2);line-height:1.8;margin:0">${(()=>{
+const desc=d.company_description||'';
+if(desc)return desc.length>500?desc.substring(0,500)+'...':desc;
+const parts=[];
+parts.push((d.company_name||d.ticker)+(d.sector&&d.sector!=='N/A'&&d.sector!=='Unknown'?' is a '+d.sector+' company':' is a publicly traded company'));
+if(d.industry&&d.industry!=='N/A'&&d.industry!=='Unknown')parts[0]+=' operating in the '+d.industry+' industry';
+parts[0]+='.';
+if(d.market_cap&&d.market_cap>0){const ms=d.market_cap>=1e12?curr+(d.market_cap/1e12).toFixed(1)+' trillion':d.market_cap>=1e9?curr+(d.market_cap/1e9).toFixed(1)+' billion':curr+(d.market_cap/1e6).toFixed(0)+' million';parts.push('The company has a market capitalization of approximately '+ms+'.')}
+if(d.employees&&d.employees!=='N/A'&&d.employees>0)parts.push('It employs approximately '+(d.employees>=1e3?(d.employees/1e3).toFixed(0)+',000+':d.employees.toLocaleString())+' people.');
+if(pe>0)parts.push('The stock currently trades at a P/E ratio of '+pe.toFixed(1)+(pe<15?', suggesting attractive valuation.':pe<25?'.':', reflecting growth expectations.'));
+const dy=parseFloat(d.dividend_yield)||0;
+if(dy>0)parts.push('It offers a dividend yield of '+dy.toFixed(2)+'%.');
+return parts.join(' ');
+})()}</p>
+${d.website?'<div style="margin-top:8px"><a href="'+d.website+'" target="_blank" rel="noopener" style="font-size:11px;color:#002f6c;text-decoration:none;font-weight:600">&#128279; '+d.website.replace('https://','').replace('http://','').replace(/\/+$/,'')+'</a></div>':''}
+</div></div>
 
 <!-- VERDICT (always open) -->
 <div class="sc" data-tab="quick" data-subtab="overview" style="border-left:3px solid var(--green)"><div class="sh"><div class="si" style="background:rgba(16,185,129,.1)">&#9678;</div><div class="st" style="color:var(--green)" id="sec-verdict">Verdict</div></div>
