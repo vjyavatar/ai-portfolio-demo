@@ -365,6 +365,7 @@ nav{position:sticky;top:30px;z-index:99;backdrop-filter:blur(24px);-webkit-backd
 [data-theme="dark"] .stab:hover{border-color:var(--blue);color:var(--blue)}
 [data-theme="dark"] .stab.active{background:var(--blue);color:#fff;border-color:var(--blue)}
 [data-subtab]{scroll-margin-top:200px}
+[data-asub]{scroll-margin-top:200px}
 .tab-scroll-area::-webkit-scrollbar{width:6px}.tab-scroll-area::-webkit-scrollbar-thumb{background:rgba(59,130,246,.25);border-radius:3px}.tab-scroll-area::-webkit-scrollbar-track{background:transparent}
 .tab-btn{flex:none;padding:12px 16px;border:none;border-radius:0;cursor:pointer;font-family:'Sora',sans-serif;font-size:11px;font-weight:600;transition:all .2s;background:transparent;color:#747474;letter-spacing:.2px;display:flex;align-items:center;justify-content:center;gap:5px;border-bottom:3px solid transparent;white-space:nowrap;position:relative}
 .tab-btn .tab-icon{font-size:14px;display:inline-flex;width:22px;height:22px;align-items:center;justify-content:center;border-radius:4px;transition:all .2s;background:transparent}
@@ -461,7 +462,7 @@ footer{position:relative;z-index:1;margin-top:32px;background:#002f6c;border-top
 .fcopy{font-size:11px;color:var(--text3)}.fcopy strong{color:var(--text2)}
 .flinks{display:flex;gap:16px}.flinks a{font-size:11px;color:var(--text3);text-decoration:none;transition:color .2s}.flinks a:hover{color:var(--blue)}
 
-@media(max-width:768px){.irow{grid-template-columns:1fr}.mgrid{grid-template-columns:1fr 1fr}.cgrid,.cgrid2{grid-template-columns:1fr}.hero{padding:20px 16px 12px}.hero h1{font-size:26px}.ncenter,.nright{display:none}.sc{padding:0}.ftop{grid-template-columns:1fr;gap:24px}.fbot{flex-direction:column;text-align:center}.tab-btn{font-size:10px;padding:8px 10px;gap:3px}.tab-btn .tab-icon{width:18px;height:18px;font-size:11px;border-radius:3px}.tab-bar{position:sticky;top:60px;padding:0 4px}.sub-nav{top:105px}#summarySubTabs{top:105px;padding:6px 8px}.stab{font-size:10px;padding:4px 10px}.tab-scroll-area{padding:10px}.edu-bar{padding:10px 12px}.edu-bar .edu-lines{gap:3px 12px}.edu-bar .edu-line{font-size:9px}.feat-card{padding:8px}.icard{padding:16px;border-radius:12px}#convGrid{grid-template-columns:1fr !important}}
+@media(max-width:768px){.irow{grid-template-columns:1fr}.mgrid{grid-template-columns:1fr 1fr}.cgrid,.cgrid2{grid-template-columns:1fr}.hero{padding:20px 16px 12px}.hero h1{font-size:26px}.ncenter,.nright{display:none}.sc{padding:0}.ftop{grid-template-columns:1fr;gap:24px}.fbot{flex-direction:column;text-align:center}.tab-btn{font-size:10px;padding:8px 10px;gap:3px}.tab-btn .tab-icon{width:18px;height:18px;font-size:11px;border-radius:3px}.tab-bar{position:sticky;top:60px;padding:0 4px}.sub-nav{top:105px}#summarySubTabs{top:105px;padding:6px 8px}#analysisSubTabs{top:105px;padding:6px 8px}.stab{font-size:10px;padding:4px 10px}.tab-scroll-area{padding:10px}.edu-bar{padding:10px 12px}.edu-bar .edu-lines{gap:3px 12px}.edu-bar .edu-line{font-size:9px}.feat-card{padding:8px}.icard{padding:16px;border-radius:12px}#convGrid{grid-template-columns:1fr !important}}
 @media(max-width:480px){.mgrid{grid-template-columns:1fr}.hbadges{flex-direction:column;align-items:center}}
 
 /* FLOATING FEEDBACK PANEL */
@@ -503,12 +504,12 @@ footer{position:relative;z-index:1;margin-top:32px;background:#002f6c;border-top
 .sub-nav a{font-size:11px;font-weight:700;padding:6px 14px;border-radius:100px;text-decoration:none;transition:all .25s;cursor:pointer;white-space:nowrap;letter-spacing:.2px}
 /* Summary sub-tab colors */
 /* Deep Dive sub-tab colors */
-.sub-nav[data-tab="deep"] a:nth-child(1){color:#1a5fb4;background:rgba(26,95,180,.08);border:1.5px solid rgba(26,95,180,.2)}
-.sub-nav[data-tab="deep"] a:nth-child(2){color:#7c3aed;background:rgba(124,58,237,.08);border:1.5px solid rgba(124,58,237,.2)}
+.sub-nav[data-tab="analysis"] a:nth-child(1){color:#1a5fb4;background:rgba(26,95,180,.08);border:1.5px solid rgba(26,95,180,.2)}
+.sub-nav[data-tab="analysis"] a:nth-child(2){color:#7c3aed;background:rgba(124,58,237,.08);border:1.5px solid rgba(124,58,237,.2)}
 /* Earnings sub-tab colors */
-.sub-nav[data-tab="mgmt"] a:nth-child(1){color:#14a23a;background:rgba(20,162,58,.08);border:1.5px solid rgba(20,162,58,.2)}
-.sub-nav[data-tab="mgmt"] a:nth-child(2){color:#7c3aed;background:rgba(124,58,237,.08);border:1.5px solid rgba(124,58,237,.2)}
-.sub-nav[data-tab="mgmt"] a:nth-child(3){color:#2563eb;background:rgba(37,99,235,.08);border:1.5px solid rgba(37,99,235,.2)}
+.sub-nav[data-tab="analysis"] a:nth-child(1){color:#14a23a;background:rgba(20,162,58,.08);border:1.5px solid rgba(20,162,58,.2)}
+.sub-nav[data-tab="analysis"] a:nth-child(2){color:#7c3aed;background:rgba(124,58,237,.08);border:1.5px solid rgba(124,58,237,.2)}
+.sub-nav[data-tab="analysis"] a:nth-child(3){color:#2563eb;background:rgba(37,99,235,.08);border:1.5px solid rgba(37,99,235,.2)}
 /* Picks sub-tab colors */
 .sub-nav[data-tab="picks"] a:nth-child(1){color:#0d9488;background:rgba(13,148,136,.08);border:1.5px solid rgba(13,148,136,.2)}
 .sub-nav[data-tab="picks"] a:nth-child(2){color:#d97706;background:rgba(217,119,6,.08);border:1.5px solid rgba(217,119,6,.2)}
@@ -757,8 +758,8 @@ footer{position:relative;z-index:1;margin-top:32px;background:#002f6c;border-top
 <div style="font-size:10px;color:var(--text2);line-height:1.6"><strong>What could go wrong?</strong> Debt levels, liquidity, volatility (beta), sector risk. Risk summary with plain-English explanation.</div>
 </div>
 <div style="padding:10px 12px;border-radius:8px;background:var(--surface);border-left:3px solid #0891b2">
-<div style="font-size:11px;font-weight:700;color:#0891b2;margin-bottom:3px">&#127891; Deep Dive Tab</div>
-<div style="font-size:10px;color:var(--text2);line-height:1.6"><strong>AI-written research.</strong> Investment thesis, quarterly earnings breakdown, management confidence score, bull/bear/base price scenarios.</div>
+<div style="font-size:11px;font-weight:700;color:#0891b2;margin-bottom:3px">&#129302; AI Analysis Tab</div>
+<div style="font-size:10px;color:var(--text2);line-height:1.6"><strong>Your research hub.</strong> AI verdict breakdown (green/yellow/red), quarterly earnings with QoQ &amp; YoY charts, management confidence score, fund holdings, and future catalysts — all in one tab with sub-tabs.</div>
 </div>
 <div style="padding:10px 12px;border-radius:8px;background:var(--surface);border-left:3px solid #d97706">
 <div style="font-size:11px;font-weight:700;color:#d97706;margin-bottom:3px">&#128184; DCF &amp; Equity Research</div>
@@ -888,9 +889,7 @@ footer{position:relative;z-index:1;margin-top:32px;background:#002f6c;border-top
 
 <div class="tab-bar" id="mainTabBar">
 <button class="tab-btn active" onclick="switchTab('quick')" id="tabBtnQuick" data-color="green" data-tip="Verdict, charts, valuation, buy/sell levels, risk"><span class="tab-icon">&#9889;</span> Summary</button>
-<button class="tab-btn" onclick="switchTab('deep')" id="tabBtnDeep" data-color="navy" data-tip="AI color-coded verdict breakdown, full deep-dive"><span class="tab-icon">&#128270;</span> Deep Dive</button>
-<button class="tab-btn" onclick="switchTab('mgmt')" id="tabBtnMgmt" data-color="purple" data-tip="Quarterly earnings, management tone, fund holdings"><span class="tab-icon">&#128200;</span> Earnings</button>
-<button class="tab-btn" onclick="switchTab('next')" id="tabBtnNext" data-color="cyan" data-tip="Upcoming catalysts, bull/bear/base scenarios"><span class="tab-icon">&#128302;</span> Forecast</button>
+<button class="tab-btn" onclick="switchTab('analysis')" id="tabBtnAnalysis" data-color="navy" data-tip="AI report, quarterly earnings, management tone, future outlook"><span class="tab-icon">&#129302;</span> AI Analysis</button>
 <button class="tab-btn" onclick="switchTab('dcf')" id="tabBtnDCF" data-color="emerald" data-tip="Discounted Cash Flow intrinsic valuation"><span class="tab-icon">&#128178;</span> DCF</button>
 <button class="tab-btn" onclick="switchTab('equity')" id="tabBtnEquity" data-color="gold" data-tip="Professional equity research report"><span class="tab-icon">&#128220;</span> Research</button>
 <button class="tab-btn" onclick="switchTab('indices')" id="tabBtnIndices" data-color="teal" data-tip="Deep research on major US & India indices"><span class="tab-icon">&#127760;</span> Indices</button>
@@ -915,7 +914,7 @@ footer{position:relative;z-index:1;margin-top:32px;background:#002f6c;border-top
 <button class="stab" onclick="switchSubTab('activity')" id="stActivity">&#127963; Activity</button>
 <button class="stab" onclick="switchSubTab('risk')" id="stRisk">&#9888; Risk</button>
 </div>
-<div class="mgrid" id="metrics" data-tab="quick" data-subtab="overview" style="display:none"></div>
+
 <div id="w52section" data-tab="quick" data-subtab="technical" style="display:none"></div>
 <div id="pricePrediction" data-tab="quick" data-subtab="valuation" style="display:none"></div>
 <div id="techProSection" data-tab="quick" data-subtab="technical" style="display:none"></div>
@@ -1841,16 +1840,8 @@ const scEl=document.getElementById('stickyCompany');if(scEl){scEl.textContent=(d
 const srcLabel=d.data_source==='yahoo_chart_only'?' (chart)':d.data_source==='yahoo_scrape'?' (alt)':d.data_source==='stale_cache'?' (cached)':'';
 document.getElementById('timestamp').innerHTML='<div class="ldot"></div> LIVE'+srcLabel+' · '+d.data_timestamp;
 
-// 8 METRICS (expanded from 4) - skip cards with N/A data entirely
-const peDisplay=d.pe_ratio&&d.pe_ratio!=='N/A'&&d.pe_ratio!==0?d.pe_ratio:null;
-const mcapRaw=d.market_cap&&d.market_cap>1e6?d.market_cap:0;
-const mcapDisplay=mcapRaw>0?formatCap(mcapRaw,curr):null;
-const w52valid=d.week52_low&&d.week52_high&&d.week52_low!=='N/A'&&d.week52_high!=='N/A'&&parseFloat(d.week52_high)>0;
-document.getElementById('metrics').innerHTML=`
-<div class="mcard"><div class="ml">Price</div><div class="mv">${curr}${price.toLocaleString()}</div><div class="ms ${d.price_change>=0?'up':'dn'}">${d.price_change>=0?'▲':'▼'} ${Math.abs(d.price_change).toFixed(2)} (${d.price_change_pct.toFixed(2)}%)</div></div>
-${peDisplay?`<div class="mcard"><div class="ml">P/E Ratio</div><div class="mv">${peDisplay}</div><div class="ms nu">TTM</div></div>`:''}
-${mcapDisplay?`<div class="mcard"><div class="ml">Market Cap</div><div class="mv">${mcapDisplay}</div><div class="ms nu">${d.currency}</div></div>`:''}
-${w52valid?`<div class="mcard"><div class="ml">52W Range</div><div class="mv" style="font-size:16px">${curr}${d.week52_low}—${curr}${d.week52_high}</div><div class="ms nu">Low / High</div></div>`:''}`;
+// Metrics removed — data in About Company + Key Numbers
+
 
 // 52-WEEK POSITION BAR — only show if valid data
 if(w52valid){
@@ -2138,6 +2129,38 @@ html=`
 <div class="tab-scroll-area" id="tabScrollArea">
 <!-- TAB 1: QUICK INTEL -->
 
+<!-- QUICK DECISION DASHBOARD -->
+<div class="sc" data-tab="quick" data-subtab="overview" style="border-left:3px solid #002f6c;background:linear-gradient(135deg,rgba(0,47,108,.02),rgba(101,97,172,.02));padding:0">
+<div style="padding:14px 16px">
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;text-align:center">
+<div style="padding:10px;border-radius:8px;background:var(--surface);border:1px solid var(--border);cursor:pointer" onclick="switchSubTab('overview')">
+<div style="font-size:16px;margin-bottom:2px">&#9889;</div>
+<div style="font-size:10px;font-weight:700;color:var(--green)">Should I Buy?</div>
+<div style="font-size:8px;color:var(--text3)">Verdict + Key Numbers</div>
+</div>
+<div style="padding:10px;border-radius:8px;background:var(--surface);border:1px solid var(--border);cursor:pointer" onclick="switchSubTab('valuation')">
+<div style="font-size:16px;margin-bottom:2px">&#128176;</div>
+<div style="font-size:10px;font-weight:700;color:#002f6c">Is It Overpriced?</div>
+<div style="font-size:8px;color:var(--text3)">Fair Value + Peers</div>
+</div>
+<div style="padding:10px;border-radius:8px;background:var(--surface);border:1px solid var(--border);cursor:pointer" onclick="switchSubTab('technical')">
+<div style="font-size:16px;margin-bottom:2px">&#127919;</div>
+<div style="font-size:10px;font-weight:700;color:#6561ac">When to Buy/Sell?</div>
+<div style="font-size:8px;color:var(--text3)">Entry/Exit + Charts</div>
+</div>
+<div style="padding:10px;border-radius:8px;background:var(--surface);border:1px solid var(--border);cursor:pointer" onclick="switchSubTab('activity')">
+<div style="font-size:16px;margin-bottom:2px">&#128100;</div>
+<div style="font-size:10px;font-weight:700;color:var(--blue)">Who is Trading?</div>
+<div style="font-size:8px;color:var(--text3)">Insider + FII/DII</div>
+</div>
+<div style="padding:10px;border-radius:8px;background:var(--surface);border:1px solid var(--border);cursor:pointer" onclick="switchSubTab('risk')">
+<div style="font-size:16px;margin-bottom:2px">&#9888;</div>
+<div style="font-size:10px;font-weight:700;color:#cd004b">What Could Go Wrong?</div>
+<div style="font-size:8px;color:var(--text3)">Debt + Volatility</div>
+</div>
+</div>
+</div></div>
+
 <!-- ABOUT COMPANY — SEO-rich content -->
 <div class="sc" data-tab="quick" data-subtab="overview" style="border-left:3px solid #002f6c">
 <div class="sh"><div class="si" style="background:rgba(0,47,108,.08)">🏢</div><div class="st" style="color:#002f6c">About ${d.company_name||d.ticker}</div></div>
@@ -2147,12 +2170,10 @@ ${d.sector&&d.sector!=='N/A'&&d.sector!=='Unknown'?'<span style="font-size:10px;
 ${d.industry&&d.industry!=='N/A'&&d.industry!=='Unknown'?'<span style="font-size:10px;padding:3px 10px;border-radius:100px;background:rgba(13,148,136,.06);color:#0d9488;font-weight:600;border:1px solid rgba(13,148,136,.12)">'+d.industry+'</span>':''}
 ${d.exchange&&d.exchange!=='N/A'?'<span style="font-size:10px;padding:3px 10px;border-radius:100px;background:rgba(139,92,246,.06);color:#7c3aed;font-weight:600;border:1px solid rgba(139,92,246,.12)">'+d.exchange+'</span>':''}
 </div>
-<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:10px;padding:12px;border-radius:8px;background:var(--bg2);border:1px solid var(--border);margin-bottom:12px">
-<div style="text-align:center"><div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">Price</div><div style="font-size:14px;font-weight:700;color:var(--text);font-family:var(--mono)">${curr}${price.toLocaleString()}</div></div>
-<div style="text-align:center"><div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">Change</div><div style="font-size:13px;font-weight:700;color:${d.price_change>=0?'var(--green)':'var(--red)'};font-family:var(--mono)">${d.price_change>=0?'+':''}${(d.price_change||0).toFixed(2)} (${(d.price_change_pct||0).toFixed(2)}%)</div></div>
-${d.market_cap&&d.market_cap>1e6?'<div style="text-align:center"><div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">Market Cap</div><div style="font-size:13px;font-weight:700;color:var(--text);font-family:var(--mono)">'+(d.market_cap>=1e12?curr+(d.market_cap/1e12).toFixed(2)+'T':d.market_cap>=1e9?curr+(d.market_cap/1e9).toFixed(2)+'B':curr+(d.market_cap/1e6).toFixed(0)+'M')+'</div></div>':''}
-${d.employees&&d.employees!=='N/A'&&d.employees>0?'<div style="text-align:center"><div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">Employees</div><div style="font-size:13px;font-weight:700;color:var(--text);font-family:var(--mono)">'+(d.employees>=1e3?(d.employees/1e3).toFixed(0)+'K':d.employees.toLocaleString())+'</div></div>':''}
-${d.week52_high&&d.week52_low?'<div style="text-align:center"><div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">52W Range</div><div style="font-size:12px;font-weight:700;color:var(--text);font-family:var(--mono)">'+curr+d.week52_low+'—'+curr+d.week52_high+'</div></div>':''}
+<div style="display:flex;align-items:center;gap:12px;padding:10px 14px;border-radius:8px;background:var(--bg2);border:1px solid var(--border);margin-bottom:12px;flex-wrap:wrap">
+<div style="font-family:var(--mono);font-size:20px;font-weight:800;color:var(--text)">${curr}${price.toLocaleString()}</div>
+<div style="font-size:13px;font-weight:700;color:${d.price_change>=0?'var(--green)':'var(--red)'};font-family:var(--mono)">${d.price_change>=0?'▲':'▼'} ${Math.abs(d.price_change||0).toFixed(2)} (${(d.price_change_pct||0).toFixed(2)}%)</div>
+${d.employees&&d.employees!=='N/A'&&d.employees>0?'<span style="font-size:10px;color:var(--text3)">👥 '+(d.employees>=1e3?(d.employees/1e3).toFixed(0)+'K':d.employees.toLocaleString())+' employees</span>':''}
 </div>
 <p style="font-size:12px;color:var(--text2);line-height:1.8;margin:0">${(()=>{
 const desc=d.company_description||'';
@@ -2198,6 +2219,13 @@ ${vResult.reasons.map(r=>{const isPos=r.includes('[+');return '<span style="font
 <div class="sc" data-tab="quick" data-subtab="overview" style="border-left:3px solid var(--amber)"><div class="sh"><div class="si" style="background:rgba(245,158,11,.1)">&#9651;</div><div class="st" style="color:var(--amber)" id="sec-5things">Key Numbers at a Glance</div></div>
 <div class="sbody">
 <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;margin-bottom:12px">
+<div style="padding:10px;border-radius:8px;text-align:center;background:rgba(0,47,108,.04);border:1px solid rgba(0,47,108,.12)">
+<div style="font-size:8px;text-transform:uppercase;letter-spacing:.5px;color:var(--text3);font-weight:700">Live Price</div>
+<div style="font-family:var(--mono);font-size:18px;font-weight:800;color:var(--text)">${curr}${price.toLocaleString()}</div>
+<div style="font-size:9px;font-weight:700;color:${d.price_change>=0?'var(--green)':'var(--red)'}"> ${d.price_change>=0?'▲ +':'▼ '}${Math.abs(d.price_change_pct||0).toFixed(2)}%</div>
+</div>
+${d.market_cap&&d.market_cap>1e6?'<div style="padding:10px;border-radius:8px;text-align:center;background:rgba(0,47,108,.04);border:1px solid rgba(0,47,108,.12)"><div style="font-size:8px;text-transform:uppercase;letter-spacing:.5px;color:var(--text3);font-weight:700">Market Cap</div><div style="font-family:var(--mono);font-size:18px;font-weight:800;color:var(--text)">'+(d.market_cap>=1e12?curr+(d.market_cap/1e12).toFixed(2)+'T':d.market_cap>=1e9?curr+(d.market_cap/1e9).toFixed(2)+'B':curr+(d.market_cap/1e6).toFixed(0)+'M')+'</div><div style="font-size:9px;color:var(--text3)">'+d.currency+'</div></div>':''}
+${d.week52_high&&d.week52_low&&parseFloat(d.week52_high)>0?'<div style="padding:10px;border-radius:8px;text-align:center;background:rgba(0,47,108,.04);border:1px solid rgba(0,47,108,.12)"><div style="font-size:8px;text-transform:uppercase;letter-spacing:.5px;color:var(--text3);font-weight:700">52W Range</div><div style="font-family:var(--mono);font-size:14px;font-weight:800;color:var(--text)">'+curr+d.week52_low+' — '+curr+d.week52_high+'</div><div style="font-size:9px;color:var(--text3)">Position: '+((price/parseFloat(d.week52_high))*100).toFixed(0)+'% of high</div></div>':''}
 ${(d.pe_ratio&&d.pe_ratio!=='N/A'&&pe>0)?`<div style="padding:10px;border-radius:8px;text-align:center;background:${pe<18?'rgba(16,185,129,.06)':pe<28?'rgba(245,158,11,.06)':'rgba(239,68,68,.06)'};border:1px solid ${pe<18?'rgba(16,185,129,.15)':pe<28?'rgba(245,158,11,.15)':'rgba(239,68,68,.15)'}">
 <div style="font-size:8px;text-transform:uppercase;letter-spacing:.5px;color:var(--text3);font-weight:700">Valuation</div>
 <div style="font-family:var(--mono);font-size:18px;font-weight:800;color:${pe<18?'var(--green)':pe<28?'var(--amber)':'var(--red)'}">${d.pe_ratio}x</div>
@@ -2215,13 +2243,20 @@ ${(d.debt_to_equity&&d.debt_to_equity!=='N/A'&&parseFloat(d.debt_to_equity)>0)?`
 </div>`:''}
 </div>
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-${(d.market_cap&&d.market_cap!=='N/A'&&parseFloat(d.market_cap)>0)?`<div style="padding:8px 12px;border-radius:6px;background:rgba(0,120,212,.03);border:1px solid rgba(0,120,212,.1)">
-<div style="font-size:9px;color:var(--text3);margin-bottom:2px">MARKET CAP</div>
-<div style="font-size:13px;font-weight:700;color:var(--text)">${formatCap(d.market_cap,curr)} <span style="font-size:10px;color:var(--text3)">${capCategory(d.market_cap,curr)}</span></div>
+${(d.beta&&d.beta!=='N/A'&&parseFloat(d.beta)>0)?`<div style="padding:8px 12px;border-radius:6px;background:rgba(0,120,212,.03);border:1px solid rgba(0,120,212,.1)">
+<div style="font-size:9px;color:var(--text3);margin-bottom:2px">VOLATILITY (Beta)</div>
+<div style="font-size:13px;font-weight:700;color:${parseFloat(d.beta)>1.3?'var(--red)':parseFloat(d.beta)<0.8?'var(--green)':'var(--text)'}">${parseFloat(d.beta).toFixed(2)} <span style="font-size:10px;color:var(--text3)">${parseFloat(d.beta)>1.5?'Very volatile':parseFloat(d.beta)>1.2?'Above average':parseFloat(d.beta)<0.7?'Defensive':'Normal'}</span></div>
 </div>`:''}
 ${(d.week52_high&&d.week52_high!=='N/A'&&parseFloat(d.week52_high)>0)?`<div style="padding:8px 12px;border-radius:6px;background:rgba(0,120,212,.03);border:1px solid rgba(0,120,212,.1)">
-<div style="font-size:9px;color:var(--text3);margin-bottom:2px">52-WEEK POSITION</div>
-<div style="font-size:13px;font-weight:700;color:var(--text)">${((price/d.week52_high)*100).toFixed(0)}% of high ${(d.beta&&d.beta!=='N/A'&&parseFloat(d.beta)>0)?'<span style="font-size:10px;color:var(--text3)">'+(parseFloat(d.beta)>1.3?'High volatility':parseFloat(d.beta)<0.7?'Low volatility':'Avg volatility')+'</span>':''}</div>
+<div style="font-size:9px;color:var(--text3);margin-bottom:4px">52W PRICE POSITION</div>
+<div style="display:flex;align-items:center;gap:8px">
+<span style="font-size:9px;color:var(--red);font-family:var(--mono)">${curr}${d.week52_low}</span>
+<div style="flex:1;height:8px;border-radius:4px;background:linear-gradient(90deg,var(--red),var(--amber),var(--green));position:relative">
+<div style="position:absolute;top:-3px;left:${Math.min(95,Math.max(5,((price-parseFloat(d.week52_low))/(parseFloat(d.week52_high)-parseFloat(d.week52_low)))*100))}%;width:14px;height:14px;border-radius:50%;background:#fff;border:2px solid var(--text);box-shadow:0 1px 4px rgba(0,0,0,.2);transform:translateX(-50%)"></div>
+</div>
+<span style="font-size:9px;color:var(--green);font-family:var(--mono)">${curr}${d.week52_high}</span>
+</div>
+<div style="font-size:9px;color:var(--text3);text-align:center;margin-top:2px">${((price/parseFloat(d.week52_high))*100).toFixed(0)}% of 52W high ${(d.beta&&d.beta!=='N/A')?'· Beta: '+parseFloat(d.beta).toFixed(2):''}</div>
 </div>`:''}
 ${(d.roe&&d.roe!=='N/A'&&parseFloat(d.roe)!==0)?`<div style="padding:8px 12px;border-radius:6px;background:rgba(0,120,212,.03);border:1px solid rgba(0,120,212,.1)">
 <div style="font-size:9px;color:var(--text3);margin-bottom:2px">ROE (Return on Equity)</div>
@@ -2250,13 +2285,13 @@ ${d.market_cap>100e9?' As a large-cap stock, it\'s relatively stable but may gro
 <div class="sc" data-tab="quick" data-subtab="valuation" style="border-left:3px solid var(--blue)"><div class="sh"><div class="si" style="background:rgba(0,120,212,.12)">&#9678;</div><div class="st" style="color:var(--blue)" id="sec-valuation">Is This Stock Overpriced?</div></div>
 <div class="sbody">
 <p style="font-size:12px;color:var(--text3);margin-bottom:14px">Every number decoded. No jargon:</p>
-<table class="dt"><tr><th>Metric</th><th>Value</th><th>Signal</th><th>What This Means For You</th></tr>
+<table class="dt"><tr><th>Metric</th><th>Value</th><th>Signal</th><th>Verdict</th></tr>
 ${(d.pe_ratio&&d.pe_ratio!=='N/A'&&pe>0)?`<tr><td><strong>P/E Ratio</strong><br><span style="font-size:10px;color:var(--text3)">Price-to-Earnings</span></td><td style="font-family:var(--mono);font-weight:700;font-size:16px">${d.pe_ratio}</td>
 <td><span class="sig ${pe<15?'g':pe<25?'n':'c'}">${pe<15?'● Undervalued':pe<25?'● Fair':'● Expensive'}</span></td>
-<td style="font-size:12px;line-height:1.7">${pe<15?'Below 15x earnings. Bargain zone.':pe<25?'Fair at '+d.pe_ratio+'x earnings.':d.pe_ratio+'x earnings. Growth must justify.'}</td></tr>`:''}
+<td style="font-size:12px;line-height:1.7">${pe<15?'Bargain. ✅ Buy zone.':pe<25?'Fair price.':d.pe_ratio+'x. Pricey. Needs growth.'}</td></tr>`:''}
 ${(d.pb_ratio&&d.pb_ratio!=='N/A'&&parseFloat(d.pb_ratio)>0)?`<tr><td><strong>P/B Ratio</strong><br><span style="font-size:10px;color:var(--text3)">Price-to-Book</span></td><td style="font-family:var(--mono);font-weight:700;font-size:16px">${d.pb_ratio}</td>
 <td><span class="sig ${parseFloat(d.pb_ratio)<3?'g':'c'}">${parseFloat(d.pb_ratio)<3?'● Reasonable':'● Premium'}</span></td>
-<td style="font-size:12px;line-height:1.7">${parseFloat(d.pb_ratio)<3?d.pb_ratio+'x book. Asset-backed.':d.pb_ratio+'x book. Paying for intangibles.'}</td></tr>`:''}
+<td style="font-size:12px;line-height:1.7">${parseFloat(d.pb_ratio)<3?d.pb_ratio+'x book. Fair.':d.pb_ratio+'x book. Premium.'}</td></tr>`:''}
 ${(d.profit_margin&&d.profit_margin!=='N/A'&&parseFloat(d.profit_margin)!==0)?`<tr><td><strong>Profit Margin</strong><br><span style="font-size:10px;color:var(--text3)">Profit per $ revenue</span></td><td style="font-family:var(--mono);font-weight:700;font-size:16px">${d.profit_margin}%</td>
 <td><span class="sig ${parseFloat(d.profit_margin)>15?'g':parseFloat(d.profit_margin)>8?'n':'r'}">${parseFloat(d.profit_margin)>15?'● Excellent':parseFloat(d.profit_margin)>8?'● Moderate':'● Thin'}</span></td>
 <td style="font-size:12px;line-height:1.7">${d.profit_margin}% net margin. ${parseFloat(d.profit_margin)>15?'Strong moat.':parseFloat(d.profit_margin)>8?'Decent.':'Tight.'}</td></tr>`:''}
@@ -2268,15 +2303,15 @@ ${(d.roe&&d.roe!=='N/A'&&parseFloat(d.roe)!==0)?`<tr><td><strong>ROE</strong><br
 <td style="font-size:12px;line-height:1.7">${d.roe}% return on equity. ${parseFloat(d.roe)>15?'Capital-efficient.':'Average.'}</td></tr>`:''}
 ${(d.dividend_yield&&d.dividend_yield!=='N/A'&&parseFloat(d.dividend_yield)>=0)?`<tr><td><strong>Dividend Yield</strong><br><span style="font-size:10px;color:var(--text3)">Annual income</span></td><td style="font-family:var(--mono);font-weight:700;font-size:16px">${d.dividend_yield}%</td>
 <td><span class="sig ${parseFloat(d.dividend_yield)>3?'g':parseFloat(d.dividend_yield)>1?'n':'c'}">${parseFloat(d.dividend_yield)>3?'● High Income':parseFloat(d.dividend_yield)>1?'● Some Income':'● Growth Focus'}</span></td>
-<td style="font-size:12px;line-height:1.7">${parseFloat(d.dividend_yield)>3?d.dividend_yield+'% yield. Solid income.':parseFloat(d.dividend_yield)>1?d.dividend_yield+'% yield + growth.':'Reinvests for growth.'}</td></tr>`:''}
+<td style="font-size:12px;line-height:1.7">${parseFloat(d.dividend_yield)>3?'Good income ✅':parseFloat(d.dividend_yield)>1?'Modest income':'Growth-focused'}</td></tr>`:''}
 </table>
 <div style="margin-top:14px;padding:14px;border-radius:10px;background:linear-gradient(135deg,rgba(59,130,246,.05),rgba(16,185,129,.03));border:1px solid rgba(0,120,212,.12)">
 <div style="font-size:12px;font-weight:700;color:var(--blue);margin-bottom:6px">💡 Valuation Summary</div>
 <div style="font-size:11px;color:var(--text2);line-height:1.8">
-${pe>0&&pe<15?'<strong style="color:var(--green)">Stock looks undervalued.</strong> You\'re paying less per rupee of earnings than most companies. If fundamentals are solid, this could be a steal.'
-:pe>=15&&pe<25?'<strong style="color:var(--blue)">Fairly valued.</strong> The market is pricing this stock reasonably. Not a bargain, but not overpriced either. Good entry if you believe in the company\'s growth story.'
-:pe>=25&&pe<40?'<strong style="color:var(--amber)">Premium pricing.</strong> The market expects strong growth from this company. If earnings disappoint even slightly, the stock could drop fast.'
-:pe>=40?'<strong style="color:var(--red)">Very expensive.</strong> You\'re paying a steep price for future growth that hasn\'t been proven yet. High risk of correction.'
+${pe>0&&pe<15?'<strong style="color:var(--green)">🟢 UNDERVALUED.</strong> Cheap relative to earnings. Potential buying opportunity.'
+:pe>=15&&pe<25?'<strong style="color:var(--blue)">🟡 FAIRLY VALUED.</strong> Reasonable price. Good entry if you believe in the story.'
+:pe>=25&&pe<40?'<strong style="color:var(--amber)">🟠 PREMIUM.</strong> Market expects high growth. If earnings miss, price drops fast.'
+:pe>=40?'<strong style="color:var(--red)">🔴 EXPENSIVE.</strong> High risk of correction. Only for aggressive growth investors.'
 :'Check the P/E ratio to understand valuation.'}
 ${parseFloat(d.profit_margin)>15&&pe<25?' High profitability at a fair price — the best combination.':''}
 ${parseFloat(d.roe)>20?' Strong returns on equity suggest efficient management.':''}
@@ -2324,9 +2359,9 @@ ${n(d.beta)>1.3?' This stock has higher-than-average volatility — use wider st
 <table class="dt"><tr><th>Factor</th><th>Metric</th><th>Signal</th><th>Assessment</th></tr>
 ${(()=>{let rows='';
 const de=parseFloat(d.debt_to_equity)||0,cr=parseFloat(d.current_ratio)||0,bt=parseFloat(d.beta)||1;
-if(de>0)rows+=`<tr><td>Debt Level</td><td style="font-family:var(--mono);font-weight:600">${d.debt_to_equity}</td><td><span class="sig ${de>1.5?'r':de>0.8?'c':'g'}">${de>1.5?'High':de>0.8?'Moderate':'Low'}</span></td><td style="font-size:12px">${de>1.5?'High leverage \u2014 watch carefully':de>0.8?'Moderate \u2014 manageable':'Conservative \u2014 low risk'}</td></tr>`;
-if(cr>0)rows+=`<tr><td>Liquidity</td><td style="font-family:var(--mono);font-weight:600">${d.current_ratio}</td><td><span class="sig ${cr>1.5?'g':cr>1?'c':'r'}">${cr>1.5?'Strong':cr>1?'Adequate':'Weak'}</span></td><td style="font-size:12px">${cr>1.5?'Can meet obligations easily':cr>1?'Tight but OK':'Liquidity concerns'}</td></tr>`;
-rows+=`<tr><td>Volatility</td><td style="font-family:var(--mono);font-weight:600">${bt.toFixed(2)}</td><td><span class="sig ${bt>1.5?'r':bt<0.8?'g':'n'}">${bt>1.5?'High':bt<0.8?'Low':'Average'}</span></td><td style="font-size:12px">${bt>1.5?'Expect bigger price swings':bt<0.8?'Less volatile \u2014 defensive':'Average volatility'}</td></tr>`;
+if(de>0)rows+=`<tr><td>Debt Level</td><td style="font-family:var(--mono);font-weight:600">${d.debt_to_equity}</td><td><span class="sig ${de>1.5?'r':de>0.8?'c':'g'}">${de>1.5?'High':de>0.8?'Moderate':'Low'}</span></td><td style="font-size:12px">${de>1.5?'High debt ⚠':de>0.8?'OK':'Low debt ✅'}</td></tr>`;
+if(cr>0)rows+=`<tr><td>Liquidity</td><td style="font-family:var(--mono);font-weight:600">${d.current_ratio}</td><td><span class="sig ${cr>1.5?'g':cr>1?'c':'r'}">${cr>1.5?'Strong':cr>1?'Adequate':'Weak'}</span></td><td style="font-size:12px">${cr>1.5?'Strong cash ✅':cr>1?'Tight':'Weak cash ⚠'}</td></tr>`;
+rows+=`<tr><td>Volatility</td><td style="font-family:var(--mono);font-weight:600">${bt.toFixed(2)}</td><td><span class="sig ${bt>1.5?'r':bt<0.8?'g':'n'}">${bt>1.5?'High':bt<0.8?'Low':'Average'}</span></td><td style="font-size:12px">${bt>1.5?'Wild swings ⚠':bt<0.8?'Stable ✅':'Normal'}</td></tr>`;
 if(d.sector&&d.sector!=='N/A'&&d.sector!=='Unknown')rows+=`<tr><td>Sector</td><td>${d.sector}</td><td><span class="sig n">Monitor</span></td><td style="font-size:12px">Track trends &amp; regulation</td></tr>`;
 const w52pct=d.week52_high>0?((price/d.week52_high)*100).toFixed(0):0;
 if(Number(w52pct)>90)rows+=`<tr><td>52W Position</td><td style="font-family:var(--mono);font-weight:600">${w52pct}% of high</td><td><span class="sig r">Stretched</span></td><td style="font-size:12px">Near 52-week high \u2014 pullback risk</td></tr>`;
@@ -2337,11 +2372,11 @@ return rows;})()}
 <div style="font-size:12px;font-weight:700;color:var(--red);margin-bottom:6px">&#9888;&#65039; Risk Summary</div>
 <div style="font-size:11px;color:var(--text2);line-height:1.8">
 ${(()=>{const de=parseFloat(d.debt_to_equity)||0,cr=parseFloat(d.current_ratio)||0,bt=parseFloat(d.beta)||1;
-if(de>1.5&&cr>0&&cr<1)return '<strong style="color:var(--red)">High risk</strong> \u2014 heavy debt AND weak cash. One bad quarter could create serious trouble.';
-if(de>1.5)return '<strong style="color:var(--amber)">Elevated debt</strong> \u2014 if interest rates rise or business slows, this stock will feel the pain first.';
-if(cr>0&&cr<1)return '<strong style="color:var(--amber)">Cash is tight</strong> \u2014 the company may struggle to pay short-term bills. Watch quarterly results closely.';
-return '<strong style="color:var(--green)">Manageable risk</strong> \u2014 reasonable debt and enough cash to operate. No immediate red flags.';})()}
-${(()=>{const bt=parseFloat(d.beta)||1;return bt>1.5?' Expect <strong>bigger daily swings</strong> than the overall market.':'';})()}
+if(de>1.5&&cr>0&&cr<1)return '<strong style="color:var(--red)">🔴 HIGH RISK</strong> — heavy debt + weak cash. One bad quarter = serious trouble.';
+if(de>1.5)return '<strong style="color:var(--amber)">🟠 ELEVATED DEBT</strong> — vulnerable if rates rise or business slows.';
+if(cr>0&&cr<1)return '<strong style="color:var(--amber)">🟡 TIGHT CASH</strong> — may struggle with short-term bills. Watch quarterly results.';
+return '<strong style="color:var(--green)">🟢 MANAGEABLE</strong> — reasonable debt, enough cash. No red flags.';})()}
+${(()=>{const bt=parseFloat(d.beta)||1;return bt>1.5?' Expect bigger swings than market.':'';})()}
 </div>
 </div>
 </div></div>
@@ -2364,16 +2399,36 @@ ${(()=>{const bt=parseFloat(d.beta)||1;return bt>1.5?' Expect <strong>bigger dai
 <!-- POSITION ANALYZER — removed for SEBI compliance -->
 
 <!-- ═══ TAB: DEEP DIVE ═══ -->
-<div class="sub-nav" data-tab="deep">
-<a onclick="scrollToSec('sec-verdictai')">&#127891; Why This Verdict?</a>
-<a onclick="scrollToSec('sec-ai')">&#128196; Full AI Report</a>
+
+
+<!-- ANALYSIS SUB-TAB BAR -->
+<div id="analysisSubTabs" data-tab="analysis" style="display:none;padding:8px 12px;background:var(--surface);border-bottom:1px solid var(--border);position:sticky;top:140px;z-index:95;gap:4px;flex-wrap:wrap">
+<button class="stab active" onclick="switchAnalysisSubTab('report')">&#129302; AI Report</button>
+<button class="stab" onclick="switchAnalysisSubTab('earnings')">&#128200; Quarterly Earnings</button>
+<button class="stab" onclick="switchAnalysisSubTab('management')">&#127908; Management &amp; Holdings</button>
+<button class="stab" onclick="switchAnalysisSubTab('outlook')">&#128302; Outlook &amp; Catalysts</button>
 </div>
 
-<div class="sc" data-tab="deep" style="border-left:3px solid var(--blue)"><div class="sh"><div class="si" style="background:rgba(0,120,212,.12)">🎓</div><div class="st" style="color:var(--blue)" id="sec-verdictai">AI Verdict Breakdown — Green, Yellow & Red</div></div>
+<!-- ANALYSIS ORIENTATION -->
+<div class="sc" data-tab="analysis" data-asub="report" style="border-left:3px solid #002f6c;background:linear-gradient(135deg,rgba(0,47,108,.02),rgba(101,97,172,.02))">
+<div class="sbody" style="padding:12px 16px">
+<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+<span style="font-size:14px">&#129302;</span>
+<span style="font-family:'Sora',sans-serif;font-size:12px;font-weight:700;color:#002f6c">AI Analysis — Your Complete Research Suite</span>
+</div>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:6px;font-size:10px;color:var(--text2);line-height:1.5">
+<div><strong style="color:#002f6c">&#129302; AI Report</strong> — Color-coded verdict breakdown + full research report</div>
+<div><strong style="color:var(--green)">&#128200; Quarterly</strong> — Latest earnings, QoQ &amp; YoY growth, margin trends</div>
+<div><strong style="color:var(--purple)">&#127908; Management</strong> — CEO/CFO confidence score, fund holdings, insider flow</div>
+<div><strong style="color:var(--cyan)">&#128302; Outlook</strong> — Next quarter catalysts, bull/bear scenarios, price targets</div>
+</div>
+</div></div>
+
+<div class="sc" data-tab="analysis" data-asub="report" style="border-left:3px solid var(--blue)"><div class="sh"><div class="si" style="background:rgba(0,120,212,.12)">🎓</div><div class="st" style="color:var(--blue)" id="sec-verdictai" data-asub="report">AI Verdict Breakdown — Green, Yellow & Red</div></div>
 <div class="sbody"><div id="aiAnalysisFormatted"></div></div></div>
 
 <!-- Full AI Report -->
-<div class="sc" data-tab="deep" style="border-left:3px solid var(--blue)"><div class="sh"><div class="si" style="background:rgba(0,120,212,.12)">&#9889;</div><div class="st" style="color:var(--blue)" id="sec-ai">AI Analyst Report — Full Depth</div></div>
+<div class="sc" data-tab="analysis" data-asub="report" style="border-left:3px solid var(--blue)"><div class="sh"><div class="si" style="background:rgba(0,120,212,.12)">&#9889;</div><div class="st" style="color:var(--blue)" id="sec-ai" data-asub="report">AI Analyst Report — Full Depth</div></div>
 <div class="sbody">
 <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:16px">
 <div style="padding:10px;border-radius:8px;background:rgba(16,185,129,.06);border:1px solid rgba(16,185,129,.15);text-align:center">
@@ -2401,13 +2456,9 @@ ${(()=>{const bt=parseFloat(d.beta)||1;return bt>1.5?' Expect <strong>bigger dai
 
 
 <!-- ═══ TAB: EARNINGS ═══ -->
-<div class="sub-nav" data-tab="mgmt">
-<a onclick="scrollToSec('sec-fund')">&#128200; Latest Earnings</a>
-<a onclick="scrollToSec('sec-mgmt')">&#127908; What Management Says</a>
-<a onclick="scrollToSec('sec-funds')">&#127974; Who's Investing?</a>
-</div>
 
-<div class="sc" data-tab="mgmt" style="border-left:3px solid var(--purple)"><div class="sh"><div class="si" style="background:rgba(16,185,129,.1)">&#128200;</div><div class="st" style="color:var(--green)" id="sec-fund">Latest Quarter &#8212; Are They Actually Growing?</div></div>
+
+<div class="sc" data-tab="analysis" data-asub="earnings" style="border-left:3px solid var(--purple)"><div class="sh"><div class="si" style="background:rgba(16,185,129,.1)">&#128200;</div><div class="st" style="color:var(--green)" id="sec-fund">Latest Quarter &#8212; Are They Actually Growing?</div></div>
 <div class="sbody">
 <div id="fundContent"><div class="ic bl" style="text-align:center"><p style="color:var(--text3)">&#9203; Analyzing quarterly fundamentals...</p></div></div>
 <!-- QoQ/YoY Charts -->
@@ -2422,19 +2473,19 @@ ${(()=>{const bt=parseFloat(d.beta)||1;return bt>1.5?' Expect <strong>bigger dai
 
 
 <!-- Management Tone -->
-<div class="sc" data-tab="mgmt" style="border-left:3px solid var(--purple)"><div class="sh"><div class="si" style="background:rgba(168,85,247,.1)">&#127908;</div><div class="st" style="color:var(--purple)" id="sec-mgmt">Management Tone — Read Between the Lines</div></div>
+<div class="sc" data-tab="analysis" data-asub="management" style="border-left:3px solid var(--purple)"><div class="sh"><div class="si" style="background:rgba(168,85,247,.1)">&#127908;</div><div class="st" style="color:var(--purple)" id="sec-mgmt">Management Tone — Read Between the Lines</div></div>
 <div class="sbody">
 <div id="mgmtContent"><div class="ic pu" style="text-align:center"><p style="color:var(--text3)">&#9203; Analyzing management tone...</p></div></div>
 </div></div>
 
 <!-- FUND HOLDINGS -->
-<div class="sc" data-tab="mgmt" style="border-left:3px solid var(--purple)"><div class="sh"><div class="si" style="background:rgba(0,120,212,.12)">&#127974;</div><div class="st" style="color:var(--blue)" id="sec-funds">Top Fund &amp; Institutional Holdings</div></div>
+<div class="sc" data-tab="analysis" data-asub="management" style="border-left:3px solid var(--purple)"><div class="sh"><div class="si" style="background:rgba(0,120,212,.12)">&#127974;</div><div class="st" style="color:var(--blue)" id="sec-funds">Top Fund &amp; Institutional Holdings</div></div>
 <div class="sbody">
 <div id="fundHoldingsContent"><div class="ic bl" style="text-align:center"><p style="color:var(--text3)">&#9203; Loading fund holdings...</p></div></div>
 </div></div>
 
 <!-- ═══ TAB: FORECAST ═══ -->
-<div class="sc" data-tab="next" style="border-left:3px solid var(--cyan)"><div class="sh"><div class="si" style="background:rgba(6,182,212,.1)">&#128302;</div><div class="st" style="color:var(--cyan)" id="sec-next">What's Next — Catalysts &amp; Timeline</div></div>
+<div class="sc" data-tab="analysis" data-asub="outlook" style="border-left:3px solid var(--cyan)"><div class="sh"><div class="si" style="background:rgba(6,182,212,.1)">&#128302;</div><div class="st" style="color:var(--cyan)" id="sec-next">What's Next — Catalysts &amp; Timeline</div></div>
 <div class="sbody">
 <div id="whatsNextContent"><div class="ic bl" style="text-align:center"><p style="color:var(--text3)">&#9203; Analyzing upcoming catalysts...</p></div></div>
 <div id="sectorEventsContent" style="margin-top:16px"></div>
@@ -2607,6 +2658,21 @@ function toggleChartsSection(){
 window.dispatchEvent(new Event('resize'));
 }
 
+
+// ═══ ANALYSIS SUB-TAB SYSTEM ═══
+window._activeAnalysisSubTab='report';
+function switchAnalysisSubTab(sub){
+window._activeAnalysisSubTab=sub;
+document.querySelectorAll('[data-tab="analysis"][data-asub]').forEach(el=>{el.style.display='none'});
+document.querySelectorAll('[data-tab="analysis"][data-asub="'+sub+'"]').forEach(el=>{el.style.display='block'});
+document.querySelectorAll('#analysisSubTabs .stab').forEach(b=>b.classList.remove('active'));
+var btns=document.querySelectorAll('#analysisSubTabs .stab');
+const map={report:0,earnings:1,management:2,outlook:3};
+if(btns[map[sub]])btns[map[sub]].classList.add('active');
+const first=document.querySelector('[data-tab="analysis"][data-asub="'+sub+'"]:not([style*="display:none"])');
+if(first)first.scrollIntoView({behavior:'instant',block:'start'});
+}
+
 // ═══ SUMMARY SUB-TAB SYSTEM ═══
 window._activeSubTab='overview';
 function switchSubTab(sub){
@@ -2621,11 +2687,11 @@ document.querySelectorAll('[data-tab="quick"][data-subtab="'+sub+'"]').forEach(e
     // FII/DII — only show if it has content
     if(el.querySelector('#fiiDiiBody')&&el.querySelector('#fiiDiiBody').innerHTML.trim())el.style.display='block';
   } else {
-    if(el.innerHTML.trim()||el.id==='metrics')el.style.display=el.classList.contains('mgrid')?'grid':'block';
+    if(el.innerHTML.trim())el.style.display='block';
   }
 });
 // Update active button
-document.querySelectorAll('.stab').forEach(b=>b.classList.remove('active'));
+document.querySelectorAll('#summarySubTabs .stab').forEach(b=>b.classList.remove('active'));
 const btnMap={overview:'stOverview',valuation:'stValuation',technical:'stTechnical',activity:'stActivity',risk:'stRisk'};
 const btn=document.getElementById(btnMap[sub]);
 if(btn)btn.classList.add('active');
@@ -2645,12 +2711,15 @@ if(tab==='quick')setTimeout(()=>window.dispatchEvent(new Event('resize')),200);
 document.querySelectorAll('.sc[data-tab]').forEach(s=>{s.style.display='none'});
 document.querySelectorAll('.sub-nav[data-tab]').forEach(s=>{s.style.display='none'});
 document.querySelectorAll('#tabContentArea > [data-tab]').forEach(s=>{s.style.display='none'});
+var _asb=document.getElementById('analysisSubTabs');if(_asb)_asb.style.display='none';
 document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
 
 // 2) Show matching tab content (sections + inline data-tab elements)
 document.querySelectorAll('.sc[data-tab="'+tab+'"]').forEach(s=>{
 // For quick tab, sections with subtab are handled by switchSubTab
 if(tab==='quick' && s.dataset.subtab) return;
+// For analysis tab, sections with asub are handled by switchAnalysisSubTab
+if(tab==='analysis' && s.dataset.asub) return;
 if(!s.dataset.conditional)s.style.display='block';
 });
 document.querySelectorAll('.sub-nav[data-tab="'+tab+'"]').forEach(s=>{s.style.display='flex'});
@@ -2665,13 +2734,18 @@ var subBar=document.getElementById('summarySubTabs');
 if(subBar)subBar.style.display='flex';
 switchSubTab(window._activeSubTab||'overview');
 }
+if(tab==='analysis'){
+var aBar=document.getElementById('analysisSubTabs');
+if(aBar)aBar.style.display='flex';
+switchAnalysisSubTab(window._activeAnalysisSubTab||'report');
+}
 
 // 3) Activate button
-const btnMap={quick:'tabBtnQuick',deep:'tabBtnDeep',mgmt:'tabBtnMgmt',next:'tabBtnNext',dcf:'tabBtnDCF',equity:'tabBtnEquity',indices:'tabBtnIndices',finance:'tabBtnFinance',daily:'tabBtnDaily',compare:'tabBtnCompare',gems:'tabBtnGems',picks:'tabBtnPicks',funds:'tabBtnFunds',trades:'tabBtnTrades'};
+const btnMap={quick:'tabBtnQuick',analysis:'tabBtnAnalysis',dcf:'tabBtnDCF',equity:'tabBtnEquity',indices:'tabBtnIndices',finance:'tabBtnFinance',daily:'tabBtnDaily',compare:'tabBtnCompare',gems:'tabBtnGems',picks:'tabBtnPicks',funds:'tabBtnFunds',trades:'tabBtnTrades'};
 if(btnMap[tab]){const btn=document.getElementById(btnMap[tab]);if(btn)btn.classList.add('active')}
 
 // 4) Scroll to top of new tab content
-if(tab!=='quick'){
+if(tab!=='quick'&&tab!=='analysis'){
 const firstSec=document.querySelector('.sc[data-tab="'+tab+'"]');
 if(firstSec) firstSec.scrollIntoView({behavior:'instant',block:'start'});
 }
@@ -3779,7 +3853,7 @@ if(!section.data||!section.data.length)return'';
 return`<div style="background:var(--surface);padding:20px;border-radius:12px;margin-bottom:14px;border-left:4px solid ${section.color};border:1px solid var(--border)">
 <div style="color:${section.color};font-family:'Sora',sans-serif;font-size:15px;font-weight:700;margin-bottom:14px;display:flex;align-items:center;gap:8px">
 <span style="font-size:22px">${section.icon}</span>${section.title}</div>
-<table class="dt"><thead><tr><th style="width:25%">Factor</th><th style="width:22%">Status</th><th>What This Means For You</th></tr></thead>
+<table class="dt"><thead><tr><th style="width:25%">Factor</th><th style="width:22%">Status</th><th>Verdict</th></tr></thead>
 <tbody>${section.data.map(r=>createTableRow(r)).join('')}</tbody></table></div>`}
 
 function createTableRow(row){
@@ -5124,79 +5198,62 @@ data.forEach((idx,i)=>{
 const isVol=idx.type==='Volatility';
 const riskC=idx.risk==='Very High'?'#ef4444':idx.risk==='High'?'#f97316':idx.risk==='Medium-High'?'#f59e0b':idx.risk==='Medium'?'#22d3ee':idx.risk==='Low'?'#10b981':'var(--text3)';
 const typeC=idx.type.includes('Large')?'var(--blue)':idx.type.includes('Mid')?'var(--purple)':idx.type.includes('Small')?'var(--amber)':idx.type.includes('Sector')?'#10b981':idx.type.includes('Tech')?'#8b5cf6':'var(--cyan)';
+const riskPct=idx.risk==='Very High'?95:idx.risk==='High'?75:idx.risk==='Medium-High'?55:idx.risk==='Medium'?40:20;
 
-h+=`<div style="margin-bottom:16px;border-radius:14px;overflow:hidden;border:1px solid var(--border);background:rgba(0,47,108,.015)">
-<!-- Header -->
-<div style="padding:16px 18px;background:linear-gradient(135deg,rgba(6,182,212,.06),rgba(59,130,246,.04));border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
-<div>
-<div style="display:flex;align-items:center;gap:8px;margin-bottom:2px">
-<span style="font-size:16px;font-weight:800;color:var(--text);font-family:'Sora',sans-serif">${idx.name}</span>
-<span style="font-size:9px;padding:2px 8px;border-radius:4px;background:rgba(6,182,212,.1);color:${typeC};font-weight:700;letter-spacing:.5px">${idx.type}</span>
-${!isVol?`<span style="font-size:9px;padding:2px 6px;border-radius:4px;color:${riskC};border:1px solid ${riskC};font-weight:600">${idx.risk} Risk</span>`:''}
+h+=`<div style="margin-bottom:12px;border-radius:10px;border:1px solid var(--border);overflow:hidden;background:var(--surface);transition:box-shadow .2s" onmouseenter="this.style.boxShadow='0 4px 20px rgba(0,47,108,.08)'" onmouseleave="this.style.boxShadow='none'">
+<!-- Compact Header -->
+<div style="padding:12px 16px;display:flex;justify-content:space-between;align-items:center;gap:8px;border-bottom:1px solid var(--border);background:linear-gradient(135deg,rgba(0,47,108,.02),transparent)">
+<div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0">
+<div style="width:36px;height:36px;border-radius:8px;background:${typeC}12;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">${isVol?'📊':idx.type.includes('Small')?'🚀':idx.type.includes('Mid')?'⚡':idx.type.includes('Sector')?'🎯':'🏛'}</div>
+<div style="min-width:0">
+<div style="font-size:14px;font-weight:800;color:var(--text);font-family:'Sora',sans-serif;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${idx.name}</div>
+<div style="font-size:9px;color:var(--text3);display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+<span style="padding:1px 6px;border-radius:3px;background:${typeC}15;color:${typeC};font-weight:700">${idx.type}</span>
+<span>${idx.stocks>0?idx.stocks+' stocks':'Derived'}</span>
+<span>${idx.yf||''}</span>
 </div>
-<div style="font-size:10px;color:var(--text3)">${idx.yf||'—'} · ${idx.stocks>0?idx.stocks+' stocks':'Derived'} · Since ${idx.inception}</div>
 </div>
-<div style="text-align:right">
-<div data-idx-ticker="${idx.yf}" style="font-size:20px;font-weight:800;color:var(--cyan);font-family:var(--mono)">⏳</div>
+</div>
+<div style="text-align:right;flex-shrink:0">
+<div data-idx-ticker="${idx.yf}" style="font-size:18px;font-weight:800;color:var(--text);font-family:var(--mono)">⏳</div>
 </div>
 </div>
 
-<!-- Body -->
-<div style="padding:14px 18px">
-<p style="font-size:11px;color:var(--text);line-height:1.7;margin:0 0 12px">${idx.desc}</p>
-
-<!-- Key Metrics Grid -->
-<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:6px;margin-bottom:12px">
+<!-- Metrics Strip -->
+<div style="padding:10px 16px;display:flex;gap:12px;flex-wrap:wrap;align-items:center">
 ${!isVol?`
-<div style="padding:8px;border-radius:6px;background:rgba(6,182,212,.04);text-align:center"><div style="font-size:8px;color:var(--text3)">5Y CAGR</div><div style="font-size:14px;font-weight:700;color:#10b981">${idx.cagr5}</div></div>
-<div style="padding:8px;border-radius:6px;background:rgba(59,130,246,.04);text-align:center"><div style="font-size:8px;color:var(--text3)">10Y CAGR</div><div style="font-size:14px;font-weight:700;color:var(--blue)">${idx.cagr10}</div></div>
-<div style="padding:8px;border-radius:6px;background:rgba(239,68,68,.04);text-align:center"><div style="font-size:8px;color:var(--text3)">Max Drawdown</div><div style="font-size:14px;font-weight:700;color:var(--red)">${idx.maxDD}</div></div>
-<div style="padding:8px;border-radius:6px;background:rgba(245,158,11,.04);text-align:center"><div style="font-size:8px;color:var(--text3)">Historical P/E</div><div style="font-size:14px;font-weight:700;color:var(--amber)">${idx.pe_hist}</div></div>
-`:`
-<div style="padding:8px;border-radius:6px;background:rgba(245,158,11,.04);text-align:center;grid-column:span 2"><div style="font-size:8px;color:var(--text3)">How to Read</div><div style="font-size:11px;font-weight:600;color:var(--amber)">Below 15 = Calm · 15-25 = Normal · 25-35 = Fear · 35+ = Panic</div></div>
-`}
+<div style="display:flex;gap:3px;align-items:baseline"><span style="font-size:9px;color:var(--text3)">5Y</span><span style="font-size:15px;font-weight:800;color:#10b981;font-family:var(--mono)">${idx.cagr5}</span></div>
+<div style="display:flex;gap:3px;align-items:baseline"><span style="font-size:9px;color:var(--text3)">10Y</span><span style="font-size:15px;font-weight:800;color:var(--blue);font-family:var(--mono)">${idx.cagr10}</span></div>
+<div style="display:flex;gap:3px;align-items:baseline"><span style="font-size:9px;color:var(--text3)">MaxDD</span><span style="font-size:13px;font-weight:700;color:var(--red);font-family:var(--mono)">${idx.maxDD}</span></div>
+<div style="display:flex;gap:3px;align-items:baseline"><span style="font-size:9px;color:var(--text3)">P/E</span><span style="font-size:13px;font-weight:700;color:var(--amber);font-family:var(--mono)">${idx.pe_hist}</span></div>
+`:`<div style="font-size:11px;color:var(--amber);font-weight:600">📏 Below 15 = Calm · 15-25 = Normal · 25-35 = Fear · 35+ = Panic</div>`}
+<div style="margin-left:auto;display:flex;align-items:center;gap:4px">
+<span style="font-size:9px;color:var(--text3)">Risk</span>
+<div style="width:60px;height:6px;border-radius:3px;background:var(--bg3);overflow:hidden"><div style="width:${riskPct}%;height:100%;border-radius:3px;background:${riskC}"></div></div>
+<span style="font-size:9px;font-weight:700;color:${riskC}">${idx.risk}</span>
+</div>
 </div>
 
-<!-- Details -->
-<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:10px;margin-bottom:10px">
-<div><span style="color:var(--text3)">Methodology:</span> <span style="color:var(--text2)">${idx.methodology}</span></div>
-<div><span style="color:var(--text3)">Rebalance:</span> <span style="color:var(--text2)">${idx.rebalance}</span></div>
-<div style="grid-column:span 2"><span style="color:var(--text3)">Top Holdings:</span> <span style="color:var(--text)">${idx.topHoldings}</span></div>
+<!-- Expandable Details -->
+<div style="padding:0 16px 12px">
+<div style="font-size:10px;color:var(--text2);line-height:1.6;margin-bottom:8px">${idx.desc.length>150?idx.desc.substring(0,150)+'...':idx.desc}</div>
+<div style="display:flex;gap:6px;flex-wrap:wrap;font-size:9px">
+<span style="padding:3px 8px;border-radius:4px;background:rgba(16,185,129,.06);color:#10b981;border:1px solid rgba(16,185,129,.12)">💡 ${idx.best}</span>
+<span style="padding:3px 8px;border-radius:4px;background:rgba(239,68,68,.06);color:var(--red);border:1px solid rgba(239,68,68,.12)">⚠ ${idx.risk_note.length>60?idx.risk_note.substring(0,60)+'...':idx.risk_note}</span>
 </div>
-
-<!-- SIP/Best/Risk -->
-<div style="display:grid;grid-template-columns:1fr;gap:6px">
-<div style="padding:8px 10px;border-radius:6px;border-left:3px solid #10b981;background:rgba(16,185,129,.03)"><span style="font-size:9px;font-weight:700;color:#10b981">💡 BEST FOR:</span> <span style="font-size:9px;color:var(--text2)">${idx.best}</span></div>
-<div style="padding:8px 10px;border-radius:6px;border-left:3px solid var(--cyan);background:rgba(6,182,212,.03)"><span style="font-size:9px;font-weight:700;color:var(--cyan)">📊 SIP INSIGHT:</span> <span style="font-size:9px;color:var(--text2)">${idx.sip}</span></div>
-<div style="padding:8px 10px;border-radius:6px;border-left:3px solid var(--red);background:rgba(239,68,68,.03)"><span style="font-size:9px;font-weight:700;color:var(--red)">⚠️ KEY RISK:</span> <span style="font-size:9px;color:var(--text2)">${idx.risk_note}</span></div>
-${!isVol?`<div style="padding:8px 10px;border-radius:6px;border-left:3px solid var(--purple);background:rgba(139,92,246,.03)"><span style="font-size:9px;font-weight:700;color:var(--purple)">🕐 WHEN TO BUY:</span> <span style="font-size:9px;color:var(--text2)">${
-idx.risk==='Very High'?'Only via SIP (never lump sum). Best entries when index falls 30%+ from peak. Never invest money you need within 5 years.':
-idx.risk==='High'?'SIP is preferred. Look for entries when index corrects 15-20% from highs. Avoid buying at all-time highs. 3-5 year minimum hold.':
-idx.risk==='Medium-High'?'SIP monthly for best results. Increase SIP amount when index drops 10-15%. Good as a 3-5 year core holding.':
-'Start SIP anytime — do not try to time the market. Broad indices recover from every crash. The best time to start was yesterday. The second best is today.'
-}</span></div>
-<div style="padding:8px 10px;border-radius:6px;border-left:3px solid #10b981;background:rgba(16,185,129,.03)"><span style="font-size:9px;font-weight:700;color:#10b981">💰 SIP ESTIMATE (₹10K/month):</span> <span style="font-size:9px;color:var(--text2)">${
-idx.cagr10.includes('18')||idx.cagr10.includes('20')||idx.cagr10.includes('22')||idx.cagr10.includes('25')?'5Y: ~₹9-10L · 10Y: ~₹30-38L · 20Y: ~₹1.5-2.8Cr — HIGH growth potential with HIGH volatility':
-idx.cagr10.includes('14')||idx.cagr10.includes('15')||idx.cagr10.includes('16')?'5Y: ~₹8.5-9L · 10Y: ~₹25-30L · 20Y: ~₹1.1-1.5Cr — above-average returns with moderate risk':
-idx.cagr10.includes('12')||idx.cagr10.includes('13')?'5Y: ~₹8.2L · 10Y: ~₹23L · 20Y: ~₹99L — solid wealth creation with manageable risk':
-idx.cagr10.includes('10')||idx.cagr10.includes('11')?'5Y: ~₹7.7L · 10Y: ~₹20L · 20Y: ~₹76L — steady compounder, lower volatility':
-'5Y: ~₹7-8L · 10Y: ~₹18-22L · 20Y: ~₹60-90L — historical estimates, actual may vary'
-}</span></div>`:''}
+<details style="margin-top:8px"><summary style="font-size:10px;font-weight:700;color:var(--cyan);cursor:pointer;padding:4px 0">▸ Full Details · Holdings · SIP · When to Buy</summary>
+<div style="margin-top:8px;padding:10px;border-radius:8px;background:var(--bg2);font-size:10px;color:var(--text2);line-height:1.8">
+<div><strong>Top Holdings:</strong> ${idx.topHoldings}</div>
+<div><strong>Methodology:</strong> ${idx.methodology} · Rebalance: ${idx.rebalance}</div>
+<div><strong>SIP Insight:</strong> ${idx.sip}</div>
+${!isVol?`<div><strong>When to Buy:</strong> ${
+idx.risk==='Very High'?'Only via SIP. Best entries when index falls 30%+ from peak. Never invest money needed within 5 years.':
+idx.risk==='High'?'SIP preferred. Look for entries when index corrects 15-20%. 3-5 year minimum hold.':
+'Start SIP anytime. Broad indices recover from every crash. Time in market > timing the market.'
+}</div>`:''}
+</div></details>
 </div>
-
-<!-- Per-card inference -->
-<div style="margin-top:8px;padding:10px 12px;border-radius:6px;background:rgba(6,182,212,.03);border-left:3px solid var(--cyan)">
-<div style="font-size:9px;font-weight:700;color:var(--cyan)">💡 BOTTOM LINE FOR INVESTORS:</div>
-<div style="font-size:9px;color:var(--text2);margin-top:3px;line-height:1.7">${
-idx.risk==='Very High'?'This is a HIGH-RISK, HIGH-REWARD index. Only allocate money you will not need for 5+ years. Use SIP (systematic investing) to average out the wild swings — never invest a lump sum at market peaks. Limit to 10-15% of your total portfolio.':
-idx.risk==='High'?'Higher risk than broad market indices. Suitable for investors with a 3-5 year horizon who can stomach 30-40% temporary drops. SIP is strongly recommended over lump sum. Position sizing: 15-25% of equity portfolio max.':
-idx.type==='Volatility'?'This is NOT an investment — it is a TOOL. Watch it like a thermometer: when it spikes above '+('${idx.currency}'==='₹'?'25':'30')+', it historically marks excellent long-term buying opportunities for the main indices. The best investors buy when others panic.':
-idx.type==='Sector'?'Sector indices are TACTICAL tools — use them for targeted bets on specific themes (banking, tech, pharma). Do not make them your core holding. Core should be broad market (Nifty 50 or S&P 500), with sector indices as 10-20% satellite positions.':
-'A CORE HOLDING candidate for most portfolios. Broad market indices are the foundation of wealth building. Start a monthly SIP and forget about timing the market — time IN the market beats timing THE market. '+idx.stocks+' stocks provides good diversification.'
-}</div>
-</div>
-
-</div></div>`;
+</div>`;
 });
 
 return h;
@@ -5204,60 +5261,48 @@ return h;
 
 // Build UI with geo toggle
 let h=`
-<!-- INTRO HERO -->
-<div style="background:linear-gradient(135deg,#0a1628 0%,#0d2137 50%,#0a1628 100%);border-radius:14px;padding:24px;margin-bottom:20px;position:relative;overflow:hidden">
-<div style="position:absolute;top:-50px;right:-50px;width:200px;height:200px;background:radial-gradient(circle,rgba(6,182,212,.2),transparent 70%)"></div>
-<div style="position:relative">
-<div style="font-size:9px;letter-spacing:2px;color:rgba(255,255,255,.3);margin-bottom:6px">CELESYS AI · GLOBAL INDEX RESEARCH</div>
-<div style="font-size:20px;font-weight:800;color:#fff;font-family:'Sora',sans-serif;margin-bottom:4px">Complete Index Research — India & USA</div>
-<div style="font-size:11px;color:rgba(255,255,255,.5)">${INDEX_DATA.india.length} Indian Indices · ${INDEX_DATA.usa.length} US Indices · Live Prices · Deep Analysis</div>
+<!-- COMPACT INTRO -->
+<div style="background:linear-gradient(135deg,#0a1628,#0d2137);border-radius:12px;padding:20px;margin-bottom:16px;text-align:center">
+<div style="font-size:9px;letter-spacing:2px;color:rgba(255,255,255,.3);margin-bottom:4px">CELESYS AI · GLOBAL INDEX RESEARCH</div>
+<div style="font-size:18px;font-weight:800;color:#fff;font-family:'Sora',sans-serif;margin-bottom:4px">Complete Index Research — India & USA</div>
+<div style="font-size:11px;color:rgba(255,255,255,.5)">${INDEX_DATA.india.length} Indian · ${INDEX_DATA.usa.length} US Indices · Live Prices · Deep Analysis</div>
+</div>
+
+<!-- Quick Stats Row -->
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;margin-bottom:16px">
+<div style="padding:12px;border-radius:8px;background:rgba(16,185,129,.04);border:1px solid rgba(16,185,129,.12);text-align:center">
+<div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px">Nifty 50 (10Y CAGR)</div>
+<div style="font-size:20px;font-weight:800;color:#10b981;font-family:var(--mono)">~12%</div>
+</div>
+<div style="padding:12px;border-radius:8px;background:rgba(59,130,246,.04);border:1px solid rgba(59,130,246,.12);text-align:center">
+<div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px">S&P 500 (10Y CAGR)</div>
+<div style="font-size:20px;font-weight:800;color:var(--blue);font-family:var(--mono)">~12%</div>
+</div>
+<div style="padding:12px;border-radius:8px;background:rgba(245,158,11,.04);border:1px solid rgba(245,158,11,.12);text-align:center">
+<div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px">₹10K SIP · Nifty · 20Y</div>
+<div style="font-size:20px;font-weight:800;color:var(--amber);font-family:var(--mono)">~₹1Cr</div>
+</div>
+<div style="padding:12px;border-radius:8px;background:rgba(239,68,68,.04);border:1px solid rgba(239,68,68,.12);text-align:center">
+<div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px">Same SIP in FD · 20Y</div>
+<div style="font-size:20px;font-weight:800;color:var(--red);font-family:var(--mono)">~₹52L</div>
 </div>
 </div>
 
-<!-- WHAT IS AN INDEX? -->
-<div style="padding:16px;border-radius:12px;background:rgba(6,182,212,.04);border:1px solid rgba(6,182,212,.12);margin-bottom:16px">
-<div style="font-family:'Sora',sans-serif;font-size:13px;font-weight:700;color:var(--cyan);margin-bottom:8px">📖 What is a Stock Market Index? (Explained Simply)</div>
-<div style="font-size:10px;color:var(--text2);line-height:1.9">
-An <strong>index</strong> is like a <strong>report card</strong> for a group of stocks. Just like your school report card averages your marks across subjects to give one number, a stock index averages the prices of many companies to give one number that tells you how that market segment is performing.<br><br>
-<strong>Why should you care?</strong> Instead of picking individual stocks (risky — even experts get it wrong 60% of the time), you can invest in an index through an ETF or index fund. This gives you instant diversification — if one company fails, the others cushion the blow. Warren Buffett's advice to most people: <em>"Just buy an S&P 500 index fund."</em><br><br>
-<strong>Key terms explained:</strong><br>
-• <strong>CAGR</strong> = Compound Annual Growth Rate — your average yearly return including compounding. A 12% CAGR means ₹1 lakh becomes ₹3.1 lakh in 10 years.<br>
-• <strong>Drawdown</strong> = The biggest peak-to-trough fall. -38% means if you invested at the peak, you'd temporarily lose 38%. Scary, but markets always recovered.<br>
-• <strong>P/E Ratio</strong> = How expensive the index is. Higher = more expensive = lower expected future returns. Buy when P/E is below historical average.<br>
-• <strong>SIP</strong> = Systematic Investment Plan — investing a fixed amount monthly. The BEST strategy for 90% of people because it averages your entry price automatically.<br>
-• <strong>ETF</strong> = Exchange Traded Fund — a stock that tracks an index. You buy it like a share but get the entire index's returns. Cheapest way to invest in indices.
+<!-- Collapsible Education -->
+<details style="margin-bottom:16px;border:1px solid var(--border);border-radius:10px;overflow:hidden">
+<summary style="padding:12px 16px;background:var(--bg2);cursor:pointer;font-size:12px;font-weight:700;color:var(--text);display:flex;align-items:center;gap:8px">
+📖 New to Indices? Learn the basics (What is Index, SIP, CAGR, Asset Allocation)
+</summary>
+<div style="padding:14px 16px;font-size:11px;color:var(--text2);line-height:1.8">
+<strong>What is an Index?</strong> Like a report card for stocks — averages many companies into one number. Instead of picking stocks, invest in the whole index via ETFs.<br>
+<strong>CAGR</strong> = average yearly return with compounding. 12% CAGR means ₹1L becomes ₹3.1L in 10 years.<br>
+<strong>Drawdown</strong> = biggest fall from peak. -38% means temporary 38% loss (markets always recovered).<br>
+<strong>SIP</strong> = fixed monthly investment. Averages your price automatically. Best for 90% of people.<br>
+<strong>ETF</strong> = stock that tracks an index. Cheapest way to invest. Buy like a share, get entire index returns.<br><br>
+<strong>Age-based allocation:</strong> 20s→70% equity / 30s→65% / 40s→50% / 50s→40% / 60s+→30% equity. Rest in debt/gold.<br>
+<strong>Warren Buffett's advice:</strong> <em>"Just buy an S&P 500 index fund."</em> The simplest strategy that beats 80% of fund managers over 10 years.
 </div>
-</div>
-
-<!-- ASSET ALLOCATION BY AGE -->
-<div style="padding:16px;border-radius:12px;background:rgba(139,92,246,.04);border:1px solid rgba(139,92,246,.12);margin-bottom:16px">
-<div style="font-family:'Sora',sans-serif;font-size:13px;font-weight:700;color:var(--purple);margin-bottom:10px">🎯 Recommended Index Allocation by Life Stage</div>
-<div style="overflow-x:auto"><table class="pick-tbl">
-<tr><th>Age Group</th><th>Large Cap</th><th>Mid/Small Cap</th><th>Sector Bets</th><th>US Indices</th><th>Debt/Gold</th><th>Strategy</th></tr>
-<tr><td style="font-weight:700;color:var(--cyan)">20s (Aggressive)</td><td>30%</td><td style="color:#10b981;font-weight:700">35%</td><td>15%</td><td>15%</td><td>5%</td><td style="font-size:9px;color:var(--text3)">Max growth — time heals all drawdowns</td></tr>
-<tr><td style="font-weight:700;color:var(--blue)">30s (Growth)</td><td>40%</td><td style="color:#10b981;font-weight:700">25%</td><td>10%</td><td>15%</td><td>10%</td><td style="font-size:9px;color:var(--text3)">Still growth-focused, start adding stability</td></tr>
-<tr><td style="font-weight:700;color:var(--amber)">40s (Balanced)</td><td style="font-weight:700">45%</td><td>15%</td><td>5%</td><td>15%</td><td>20%</td><td style="font-size:9px;color:var(--text3)">Wealth preservation becomes important</td></tr>
-<tr><td style="font-weight:700;color:#f97316">50s (Conservative)</td><td style="font-weight:700">40%</td><td>10%</td><td>0%</td><td>10%</td><td style="color:var(--amber);font-weight:700">40%</td><td style="font-size:9px;color:var(--text3)">Capital protection, reduce equity risk</td></tr>
-<tr><td style="font-weight:700;color:var(--red)">60s+ (Income)</td><td>30%</td><td>5%</td><td>0%</td><td>5%</td><td style="color:var(--red);font-weight:700">60%</td><td style="font-size:9px;color:var(--text3)">Income generation, minimal risk</td></tr>
-</table></div>
-<div style="font-size:9px;color:var(--text3);margin-top:8px;line-height:1.6">💡 <strong>Rule of thumb:</strong> Equity % = 100 minus your age. A 30-year-old should have ~70% in equities (indices), 30% in debt/gold. Adjust based on your risk appetite and financial goals. SIP into index ETFs is the simplest way to implement this.</div>
-</div>
-
-<!-- SIP POWER TABLE -->
-<div style="padding:16px;border-radius:12px;background:rgba(16,185,129,.04);border:1px solid rgba(16,185,129,.12);margin-bottom:20px">
-<div style="font-family:'Sora',sans-serif;font-size:13px;font-weight:700;color:#10b981;margin-bottom:10px">💰 SIP Calculator — What ₹10,000/Month Grows To</div>
-<div style="overflow-x:auto"><table class="pick-tbl">
-<tr><th>Index</th><th>Expected CAGR</th><th>5 Years</th><th>10 Years</th><th>20 Years</th><th>vs FD (7%)</th></tr>
-<tr><td style="font-weight:700">Nifty 50</td><td>12%</td><td style="color:#10b981;font-weight:700">₹8.2L</td><td style="color:#10b981;font-weight:700">₹23.2L</td><td style="color:#10b981;font-weight:700">₹99.9L</td><td style="color:var(--cyan)">+40% more than FD</td></tr>
-<tr><td style="font-weight:700">Nifty Midcap 150</td><td>16%</td><td style="color:#10b981;font-weight:700">₹9.0L</td><td style="color:#10b981;font-weight:700">₹29.5L</td><td style="color:#10b981;font-weight:700">₹1.56Cr</td><td style="color:var(--cyan)">+120% more than FD</td></tr>
-<tr><td style="font-weight:700">Nifty Smallcap 250</td><td>20%</td><td style="color:#10b981;font-weight:700">₹9.8L</td><td style="color:#10b981;font-weight:700">₹38.0L</td><td style="color:#10b981;font-weight:700">₹2.84Cr</td><td style="color:var(--cyan)">+300% more than FD</td></tr>
-<tr><td style="font-weight:700">S&P 500 (INR)</td><td>14%</td><td style="color:#10b981;font-weight:700">₹8.6L</td><td style="color:#10b981;font-weight:700">₹26.0L</td><td style="color:#10b981;font-weight:700">₹1.21Cr</td><td style="color:var(--cyan)">+70% more than FD</td></tr>
-<tr style="background:rgba(245,158,11,.04)"><td style="font-weight:700;color:var(--amber)">Fixed Deposit (FD)</td><td style="color:var(--text3)">7%</td><td style="color:var(--text3)">₹7.2L</td><td style="color:var(--text3)">₹17.3L</td><td style="color:var(--text3)">₹52.0L</td><td style="color:var(--text3)">Baseline</td></tr>
-</table></div>
-<div style="padding:10px;border-radius:8px;background:rgba(16,185,129,.03);border-left:3px solid #10b981;margin-top:10px">
-<div style="font-size:10px;color:var(--text2);line-height:1.8">💡 <strong>The Power of Compounding:</strong> ₹10,000/month in Nifty 50 for 20 years becomes ~₹1 Crore. The same money in FD becomes only ₹52 Lakh — that's ₹48 Lakh LESS. The catch? You must stay invested through crashes. Those who panic-sold in March 2020 missed the 100% recovery in 18 months. SIP automatically buys more units when prices fall (buying cheap) and fewer when prices rise — it takes emotion out of investing.<br><br><strong>Important:</strong> These are estimates based on historical returns and do not guarantee future performance. Actual returns will vary. Equity investments carry market risk.</div>
-</div>
-</div>
+</details>
 
 <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;align-items:center">
 <button class="idx-geo-btn active" onclick="switchIdxGeo(this,'india')" style="padding:8px 20px;border-radius:8px;font-size:12px;font-weight:700;border:2px solid var(--amber);background:var(--amber);color:#000;cursor:pointer;font-family:'Sora',sans-serif">🇮🇳 India (${INDEX_DATA.india.length} Indices)</button>
@@ -5267,10 +5312,11 @@ An <strong>index</strong> is like a <strong>report card</strong> for a group of 
 <div id="idxIndiaCards">${buildIndexCards('india')}</div>
 <div id="idxUsaCards" style="display:none">${buildIndexCards('usa')}</div>
 
-<div style="padding:12px;border-radius:8px;background:rgba(245,158,11,.04);border-left:3px solid var(--amber);margin:16px 0">
+<details style="margin:12px 0;border:1px solid var(--border);border-radius:10px;overflow:hidden"><summary style="padding:12px 16px;background:rgba(245,158,11,.04);cursor:pointer;font-size:12px;font-weight:700;color:var(--amber)">💡 Which Indices Should YOU Invest In? (click to expand)</summary><div style="padding:14px;font-size:10px;color:var(--text2);line-height:1.8"><div style="padding:12px;border-radius:8px;background:rgba(245,158,11,.04);border-left:3px solid var(--amber);margin:16px 0">
 <div style="font-size:11px;font-weight:700;color:var(--amber)">💡 Which Indices Should YOU Invest In?</div>
 <div style="font-size:10px;color:var(--text2);margin-top:4px;line-height:1.8"><strong>Beginner investor:</strong> Start with ONE broad market index — Nifty 50 (India) or S&P 500 (USA). Just start a monthly SIP and don't look at it daily. This alone will beat 80% of actively managed mutual funds over 10 years.<br><strong>Intermediate investor:</strong> Core (60-70%) in Nifty 50 + S&P 500. Satellite (20-30%) in mid/small-cap or sector indices for alpha. Keep 10% in debt/gold for stability.<br><strong>Aggressive investor:</strong> Overweight small caps and sector bets (IT, Banking, Semiconductors) for higher returns. Accept 40-50% drawdowns as the price of entry. Must have 5+ year horizon.<br><strong>Income-focused:</strong> Focus on dividend-heavy indices (Nifty Dividend Opportunities, Dow Jones). Reinvest dividends through SIP for compounding.<br><strong>Key principle:</strong> Diversification across geographies (India + US) reduces risk without sacrificing returns. A 70/30 India-US split captures India's growth AND hedges against rupee depreciation.</div>
 </div>
+</div></details>
 
 <!-- COMPARISON TABLE -->
 <div style="margin-top:20px;padding:18px;border-radius:12px;background:rgba(6,182,212,.03);border:1px solid var(--border)">
@@ -5590,7 +5636,9 @@ const signal=d.insider_signal||'N/A';
 const S=d.currency==='INR'?'&#8377;':'$';
 const _f=(v)=>{if(!v||v==='N/A')return 'N/A';const n=parseFloat(v);if(isNaN(n))return String(v);const a=Math.abs(n);if(a>=1e7)return S+(a/1e7).toFixed(2)+'Cr';if(a>=1e5)return S+(a/1e5).toFixed(2)+'L';return S+a.toLocaleString('en-IN');};
 
-if(!trades.length&&signal==='N/A'){el.style.display='none';return;}
+if(!trades.length&&signal==='N/A'){
+el.innerHTML='<div style="padding:14px;border-radius:8px;background:rgba(139,92,246,.04);border:1px solid rgba(139,92,246,.12);text-align:center"><div style="font-size:12px;font-weight:700;color:var(--purple);margin-bottom:4px">&#128100; Insider Activity</div><div style="font-size:11px;color:var(--text2)">No recent insider transactions found. This could mean insiders are holding steady — neither buying nor selling. Check SEC/NSE filings for latest updates.</div></div>';
+el.style.display='block';return;}
 el.style.display='block';
 
 const sigC=signal==='BULLISH'?'#10b981':signal==='BEARISH'?'#ef4444':'#f59e0b';
@@ -5625,7 +5673,9 @@ function renderEarningsCountdown(d){
 const el=document.getElementById('earningsSection');
 if(!el)return;
 const nextE=d.next_earnings;
-if(!nextE||nextE==='N/A'){el.style.display='none';return;}
+if(!nextE||nextE==='N/A'){
+el.innerHTML='<div style="padding:14px;border-radius:8px;background:rgba(245,158,11,.04);border:1px solid rgba(245,158,11,.12);text-align:center"><div style="font-size:12px;font-weight:700;color:var(--amber);margin-bottom:4px">&#128197; Next Earnings Date</div><div style="font-size:11px;color:var(--text2)">Earnings date not yet announced. Check the company\'s investor relations page for updates.</div></div>';
+el.style.display='block';return;}
 el.style.display='block';
 
 const S=d.currency==='INR'?'&#8377;':'$';
