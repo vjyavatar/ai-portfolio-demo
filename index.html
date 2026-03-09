@@ -1841,7 +1841,7 @@ const srcLabel=d.data_source==='yahoo_chart_only'?' (chart)':d.data_source==='ya
 document.getElementById('timestamp').innerHTML='<div class="ldot"></div> LIVE'+srcLabel+' · '+d.data_timestamp;
 
 // Metrics removed — data in About Company + Key Numbers
-
+const w52valid=d.week52_low&&d.week52_high&&d.week52_low!=='N/A'&&d.week52_high!=='N/A'&&parseFloat(d.week52_high)>0;
 
 // 52-WEEK POSITION BAR — only show if valid data
 if(w52valid){
