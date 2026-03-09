@@ -3146,10 +3146,15 @@ async def market_pulse():
                 events.append({"headline": f"Gold ${price} ({chg_pct:+.1f}%)", "impact": "VOLATILE", "severity": "LOW",
                     "detail": f"Gold stable near ${price}. Safe-haven demand steady amid geopolitical tensions.",
                     "action": "Watch for breakout above $3,000 or breakdown below $2,800."})
-        elif name == "Silver" and abs(chg_pct) >= 0.8:
-            events.append({"headline": f"Silver {'surges' if chg_pct > 0 else 'drops'} {chg_pct:+.1f}% to ${price}", "impact": "BULLISH" if chg_pct > 0 else "BEARISH", "severity": "HIGH" if abs(chg_pct) >= 2 else "MEDIUM",
-                "detail": "Silver rally = industrial demand + safe-haven buying." if chg_pct > 0 else "Silver decline = weakening industrial demand.",
-                "action": "Metals & mining stocks benefit. Watch Hindalco, Vedanta." if chg_pct > 0 else "Mining stocks under pressure."})
+        elif name == "Silver":
+            if abs(chg_pct) >= 0.5:
+                events.append({"headline": f"Silver {'surges' if chg_pct > 0 else 'drops'} {chg_pct:+.1f}% to ${price}", "impact": "BULLISH" if chg_pct > 0 else "BEARISH", "severity": "HIGH" if abs(chg_pct) >= 1.5 else "MEDIUM",
+                    "detail": "Silver rally = industrial demand + safe-haven buying." if chg_pct > 0 else "Silver decline = weakening industrial demand.",
+                    "action": "Metals & mining stocks benefit. Watch Hindalco, Vedanta." if chg_pct > 0 else "Mining stocks under pressure."})
+            else:
+                events.append({"headline": f"Silver ${price} ({chg_pct:+.1f}%)", "impact": "VOLATILE", "severity": "LOW",
+                    "detail": f"Silver stable at ${price}. Industrial + monetary demand supporting prices. Gold/Silver ratio signals {'silver undervalued' if price < 28 else 'fair value'}.",
+                    "action": "Watch solar panel demand (key industrial driver) and Fed rate path."})
         elif name == "S&P 500":
             if abs(chg_pct) >= 0.3:
                 events.append({"headline": f"US Markets {'rally' if chg_pct > 0 else 'sell-off'} {chg_pct:+.1f}%", "impact": "BULLISH" if chg_pct > 0 else "BEARISH", "severity": "HIGH" if abs(chg_pct) >= 1 else "MEDIUM",
@@ -3159,14 +3164,24 @@ async def market_pulse():
                 events.append({"headline": f"S&P 500 flat ({chg_pct:+.1f}%)", "impact": "VOLATILE", "severity": "LOW",
                     "detail": "US markets quiet. Awaiting catalysts — Fed commentary, earnings, or macro data.",
                     "action": "Range-bound trading expected. Watch for breakout triggers."})
-        elif name == "US Dollar" and abs(chg_pct) >= 0.2:
-            events.append({"headline": f"Dollar {'strengthens' if chg_pct > 0 else 'weakens'} {chg_pct:+.1f}%", "impact": "BEARISH" if chg_pct > 0 else "BULLISH", "severity": "MEDIUM",
-                "detail": "Stronger dollar pressures EM currencies, FII outflows." if chg_pct > 0 else "Weaker dollar supports EM inflows.",
-                "action": "IT exporters benefit from weak INR." if chg_pct > 0 else "FII inflows likely. Banking stocks benefit."})
-        elif name == "USD/INR" and abs(chg_pct) >= 0.1:
-            events.append({"headline": f"Rupee {'weakens' if chg_pct > 0 else 'strengthens'} {chg_pct:+.1f}%", "impact": "BEARISH" if chg_pct > 0 else "BULLISH", "severity": "HIGH" if abs(chg_pct) >= 0.3 else "MEDIUM",
-                "detail": "Rupee depreciation = capital outflows." if chg_pct > 0 else "Rupee strength attracts FII flows.",
-                "action": "IT exporters benefit." if chg_pct > 0 else "Domestic consumption plays benefit."})
+        elif name == "US Dollar":
+            if abs(chg_pct) >= 0.2:
+                events.append({"headline": f"Dollar {'strengthens' if chg_pct > 0 else 'weakens'} {chg_pct:+.1f}%", "impact": "BEARISH" if chg_pct > 0 else "BULLISH", "severity": "MEDIUM",
+                    "detail": "Stronger dollar pressures EM currencies, FII outflows." if chg_pct > 0 else "Weaker dollar supports EM inflows.",
+                    "action": "IT exporters benefit from weak INR." if chg_pct > 0 else "FII inflows likely. Banking stocks benefit."})
+            else:
+                events.append({"headline": f"Dollar Index stable ({chg_pct:+.1f}%)", "impact": "VOLATILE", "severity": "LOW",
+                    "detail": "Dollar steady. No major FX pressure on emerging markets today.",
+                    "action": "Watch Fed commentary for directional clues."})
+        elif name == "USD/INR":
+            if abs(chg_pct) >= 0.1:
+                events.append({"headline": f"Rupee {'weakens' if chg_pct > 0 else 'strengthens'} {chg_pct:+.1f}%", "impact": "BEARISH" if chg_pct > 0 else "BULLISH", "severity": "HIGH" if abs(chg_pct) >= 0.3 else "MEDIUM",
+                    "detail": "Rupee depreciation = capital outflows." if chg_pct > 0 else "Rupee strength attracts FII flows.",
+                    "action": "IT exporters benefit." if chg_pct > 0 else "Domestic consumption plays benefit."})
+            else:
+                events.append({"headline": f"USD/INR ₹{price} ({chg_pct:+.1f}%)", "impact": "VOLATILE", "severity": "LOW",
+                    "detail": f"Rupee stable at ₹{price}. RBI intervention keeping range-bound.",
+                    "action": "No major FX risk today. Watch RBI reserves data."})
     
     # ═══ ALWAYS-ON GEOPOLITICAL CONTEXT (shows even on quiet days) ═══
     context_events = [

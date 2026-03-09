@@ -667,9 +667,13 @@ footer{position:relative;z-index:1;margin-top:32px;background:#002f6c;border-top
 </nav>
 <div class="sticky-tagline" id="stickyTag"><span>Stock Intelligence, Instantly</span><span id="stickyCompany" style="display:none;margin-left:12px;font-family:'Sora',sans-serif;font-size:12px;font-weight:600;color:var(--text2);-webkit-text-fill-color:var(--text2);padding-left:12px;border-left:1px solid rgba(0,47,108,.1)"></span></div>
 
-<section class="hero">
-<h1>Stock Intelligence, Instantly.</h1>
-<p class="hero-sub" style="font-size:15px;line-height:1.6;max-width:560px;margin-bottom:20px">Free institutional-grade analysis with buy/sell levels, risk scoring &amp; AI verdicts. <span style="font-size:12px;color:var(--red);font-weight:600">For educational purposes only.</span></p>
+<section class="hero" itemscope itemtype="https://schema.org/WebApplication">
+<meta itemprop="name" content="Celesys AI — Free Stock Analysis Platform">
+<meta itemprop="applicationCategory" content="Finance">
+<meta itemprop="operatingSystem" content="Web">
+<h1 itemprop="description">Stock Intelligence, Instantly.</h1>
+<p class="hero-sub" style="font-size:15px;line-height:1.6;max-width:620px;margin-bottom:6px">Free AI-powered stock analysis for <strong>10,000+ US &amp; Indian stocks</strong> — 20-factor verdicts, DCF valuation, entry/exit levels, risk scoring &amp; institutional-grade research in 60 seconds.</p>
+<p style="font-size:12px;color:var(--text3);max-width:560px;margin:0 auto 16px;line-height:1.6">Analyze <strong>AAPL, MSFT, NVDA, TSLA, RELIANCE.NS, TCS.NS, HDFCBANK.NS</strong> &amp; more. Compare with peers, track insider activity, read AI earnings breakdowns, get price predictions — all free, no signup. <span style="font-size:11px;color:var(--red);font-weight:600">For educational purposes only.</span></p>
 
 <!-- GLOBAL EVENTS & UPCOMING — visible on page load -->
 <div id="eventAlertArea" style="display:none;margin:0 auto 12px;max-width:680px;width:100%;text-align:left"></div>
@@ -727,6 +731,51 @@ footer{position:relative;z-index:1;margin-top:32px;background:#002f6c;border-top
 </div>
 </div>
 
+
+<!-- FIRST-USER NAVIGATION GUIDE — helps new users find what they need -->
+<div style="max-width:900px;margin:20px auto 0;text-align:left">
+<div style="padding:20px;border-radius:12px;background:linear-gradient(135deg,rgba(0,47,108,.03),rgba(101,97,172,.03));border:1px solid var(--border)">
+<div style="text-align:center;margin-bottom:14px">
+<h3 style="font-family:'Sora',sans-serif;font-size:15px;color:var(--text);margin:0 0 4px">&#128640; Your Report, Explained — Where to Find Everything</h3>
+<p style="font-size:11px;color:var(--text3);margin:0">After clicking Analyze, your report opens in organized tabs. Here is what each section gives you:</p>
+</div>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:10px">
+<div style="padding:10px 12px;border-radius:8px;background:var(--surface);border-left:3px solid #0eb24e">
+<div style="font-size:11px;font-weight:700;color:#0eb24e;margin-bottom:3px">&#128202; Summary Tab → Overview</div>
+<div style="font-size:10px;color:var(--text2);line-height:1.6">Company profile, live price, market cap, sector tags. <strong>Buy/Sell verdict</strong> with 20-factor score. Key metrics at a glance.</div>
+</div>
+<div style="padding:10px 12px;border-radius:8px;background:var(--surface);border-left:3px solid #002f6c">
+<div style="font-size:11px;font-weight:700;color:#002f6c;margin-bottom:3px">&#128176; Summary Tab → Valuation</div>
+<div style="font-size:10px;color:var(--text2);line-height:1.6"><strong>Is it overpriced?</strong> Graham Number, DCF, PEG fair values. AI price prediction with targets. Peer comparison table.</div>
+</div>
+<div style="padding:10px 12px;border-radius:8px;background:var(--surface);border-left:3px solid #6561ac">
+<div style="font-size:11px;font-weight:700;color:#6561ac;margin-bottom:3px">&#128200; Summary Tab → Technical</div>
+<div style="font-size:10px;color:var(--text2);line-height:1.6"><strong>When to buy/sell?</strong> Entry, exit &amp; stop-loss levels. RSI, MACD, moving averages. 6-month price charts with trend analysis.</div>
+</div>
+<div style="padding:10px 12px;border-radius:8px;background:var(--surface);border-left:3px solid #cd004b">
+<div style="font-size:11px;font-weight:700;color:#cd004b;margin-bottom:3px">&#9888; Summary Tab → Risk</div>
+<div style="font-size:10px;color:var(--text2);line-height:1.6"><strong>What could go wrong?</strong> Debt levels, liquidity, volatility (beta), sector risk. Risk summary with plain-English explanation.</div>
+</div>
+<div style="padding:10px 12px;border-radius:8px;background:var(--surface);border-left:3px solid #0891b2">
+<div style="font-size:11px;font-weight:700;color:#0891b2;margin-bottom:3px">&#127891; Deep Dive Tab</div>
+<div style="font-size:10px;color:var(--text2);line-height:1.6"><strong>AI-written research.</strong> Investment thesis, quarterly earnings breakdown, management confidence score, bull/bear/base price scenarios.</div>
+</div>
+<div style="padding:10px 12px;border-radius:8px;background:var(--surface);border-left:3px solid #d97706">
+<div style="font-size:11px;font-weight:700;color:#d97706;margin-bottom:3px">&#128184; DCF &amp; Equity Research</div>
+<div style="font-size:10px;color:var(--text2);line-height:1.6"><strong>Is the stock worth it?</strong> Full DCF model, balance sheet analysis, cash flow scoring, step-by-step decision guide with analogies.</div>
+</div>
+<div style="padding:10px 12px;border-radius:8px;background:var(--surface);border-left:3px solid #7c3aed">
+<div style="font-size:11px;font-weight:700;color:#7c3aed;margin-bottom:3px">&#9878; Compare &amp; Market Daily</div>
+<div style="font-size:10px;color:var(--text2);line-height:1.6"><strong>Head-to-head.</strong> Compare 2 stocks on 17 metrics. Daily Nifty/Sensex analysis with option chain data (PCR, max pain).</div>
+</div>
+<div style="padding:10px 12px;border-radius:8px;background:var(--surface);border-left:3px solid #0d9488">
+<div style="font-size:11px;font-weight:700;color:#0d9488;margin-bottom:3px">&#128176; Personal Finance</div>
+<div style="font-size:10px;color:var(--text2);line-height:1.6"><strong>Beyond stocks.</strong> 10 calculators — budget planner, debt eliminator, SIP, tax optimizer, retirement readiness, insurance audit.</div>
+</div>
+</div>
+<div style="text-align:center;margin-top:12px;font-size:10px;color:var(--text3)">&#128161; <strong>Tip:</strong> Use the sub-tabs inside Summary (Overview → Valuation → Technical → Activity → Risk) for organized navigation. Every section has layman analogies to help you understand.</div>
+</div>
+</div>
 
 
 <!-- LIVE MACRO INTELLIGENCE — auto-updates from market-pulse -->
