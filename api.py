@@ -3124,33 +3124,70 @@ async def market_pulse():
                 pass
     
     # ═══ AUTO-DETECT EVENTS from parallel-fetched snapshot ═══
+    # Always show key commodity/market data as context
     for name, snap in global_snapshot.items():
         price, chg_pct = snap["price"], snap["change_pct"]
-        if name == "Crude Oil" and abs(chg_pct) >= 1.5:
-            direction = "spikes" if chg_pct > 0 else "crashes"
-            events.append({"headline": f"Crude Oil {direction} {chg_pct:+.1f}% to ${price}", "impact": "BEARISH" if chg_pct > 0 else "BULLISH", "severity": "HIGH" if abs(chg_pct) >= 3 else "MEDIUM",
-                "detail": "Higher crude raises input costs, inflation pressure on RBI." if chg_pct > 0 else "Lower crude benefits India. Positive for CAD and inflation.",
-                "action": "Watch ONGC/Oil India. Negative for Nifty if sustained." if chg_pct > 0 else "Positive for Indian markets. Airlines, paint stocks benefit."})
-        elif name == "Gold" and abs(chg_pct) >= 0.8:
-            events.append({"headline": f"Gold {'surges' if chg_pct > 0 else 'drops'} {chg_pct:+.1f}% to ${price}", "impact": "VOLATILE", "severity": "MEDIUM",
-                "detail": "Gold rally = risk-off sentiment globally." if chg_pct > 0 else "Gold decline = risk-on appetite returning.",
-                "action": "Consider gold ETF hedge." if chg_pct > 0 else "Positive for equity markets."})
-        elif name == "Silver" and abs(chg_pct) >= 1.2:
-            events.append({"headline": f"Silver {'surges' if chg_pct > 0 else 'drops'} {chg_pct:+.1f}% to ${price}", "impact": "BULLISH" if chg_pct > 0 else "BEARISH", "severity": "HIGH" if abs(chg_pct) >= 3 else "MEDIUM",
+        if name == "Crude Oil":
+            if abs(chg_pct) >= 0.8:
+                direction = "spikes" if chg_pct > 0 else "drops"
+                events.append({"headline": f"Crude Oil {direction} {chg_pct:+.1f}% to ${price}", "impact": "BEARISH" if chg_pct > 0 else "BULLISH", "severity": "HIGH" if abs(chg_pct) >= 2 else "MEDIUM",
+                    "detail": "Higher crude raises input costs, inflation pressure on RBI." if chg_pct > 0 else "Lower crude benefits India. Positive for CAD and inflation.",
+                    "action": "Watch ONGC/Oil India. Negative for Nifty if sustained." if chg_pct > 0 else "Positive for Indian markets. Airlines, paint stocks benefit."})
+            else:
+                events.append({"headline": f"Crude Oil ${price} ({chg_pct:+.1f}%)", "impact": "VOLATILE", "severity": "LOW",
+                    "detail": f"Oil stable at ${price}. India imports 85% of crude — stable oil = positive for current account.",
+                    "action": "No immediate impact. Monitor OPEC decisions."})
+        elif name == "Gold":
+            if abs(chg_pct) >= 0.5:
+                events.append({"headline": f"Gold {'surges' if chg_pct > 0 else 'drops'} {chg_pct:+.1f}% to ${price}", "impact": "VOLATILE", "severity": "HIGH" if abs(chg_pct) >= 1.5 else "MEDIUM",
+                    "detail": "Gold rally = risk-off sentiment globally." if chg_pct > 0 else "Gold decline = risk-on appetite returning.",
+                    "action": "Consider gold ETF hedge." if chg_pct > 0 else "Positive for equity markets."})
+            else:
+                events.append({"headline": f"Gold ${price} ({chg_pct:+.1f}%)", "impact": "VOLATILE", "severity": "LOW",
+                    "detail": f"Gold stable near ${price}. Safe-haven demand steady amid geopolitical tensions.",
+                    "action": "Watch for breakout above $3,000 or breakdown below $2,800."})
+        elif name == "Silver" and abs(chg_pct) >= 0.8:
+            events.append({"headline": f"Silver {'surges' if chg_pct > 0 else 'drops'} {chg_pct:+.1f}% to ${price}", "impact": "BULLISH" if chg_pct > 0 else "BEARISH", "severity": "HIGH" if abs(chg_pct) >= 2 else "MEDIUM",
                 "detail": "Silver rally = industrial demand + safe-haven buying." if chg_pct > 0 else "Silver decline = weakening industrial demand.",
                 "action": "Metals & mining stocks benefit. Watch Hindalco, Vedanta." if chg_pct > 0 else "Mining stocks under pressure."})
-        elif name == "S&P 500" and abs(chg_pct) >= 0.5:
-            events.append({"headline": f"US Markets {'rally' if chg_pct > 0 else 'sell-off'} {chg_pct:+.1f}%", "impact": "BULLISH" if chg_pct > 0 else "BEARISH", "severity": "HIGH" if abs(chg_pct) >= 1.5 else "MEDIUM",
-                "detail": f"S&P 500 moved {abs(chg_pct):.1f}%. Indian markets follow with 0.5-0.8x correlation.",
-                "action": "Expect gap-up for Nifty. IT stocks lead." if chg_pct > 0 else "Expect weak opening. Consider hedging."})
-        elif name == "US Dollar" and abs(chg_pct) >= 0.3:
+        elif name == "S&P 500":
+            if abs(chg_pct) >= 0.3:
+                events.append({"headline": f"US Markets {'rally' if chg_pct > 0 else 'sell-off'} {chg_pct:+.1f}%", "impact": "BULLISH" if chg_pct > 0 else "BEARISH", "severity": "HIGH" if abs(chg_pct) >= 1 else "MEDIUM",
+                    "detail": f"S&P 500 moved {abs(chg_pct):.1f}%. Indian markets follow with 0.5-0.8x correlation.",
+                    "action": "Expect gap-up for Nifty. IT stocks lead." if chg_pct > 0 else "Expect weak opening. Consider hedging."})
+            else:
+                events.append({"headline": f"S&P 500 flat ({chg_pct:+.1f}%)", "impact": "VOLATILE", "severity": "LOW",
+                    "detail": "US markets quiet. Awaiting catalysts — Fed commentary, earnings, or macro data.",
+                    "action": "Range-bound trading expected. Watch for breakout triggers."})
+        elif name == "US Dollar" and abs(chg_pct) >= 0.2:
             events.append({"headline": f"Dollar {'strengthens' if chg_pct > 0 else 'weakens'} {chg_pct:+.1f}%", "impact": "BEARISH" if chg_pct > 0 else "BULLISH", "severity": "MEDIUM",
                 "detail": "Stronger dollar pressures EM currencies, FII outflows." if chg_pct > 0 else "Weaker dollar supports EM inflows.",
                 "action": "IT exporters benefit from weak INR." if chg_pct > 0 else "FII inflows likely. Banking stocks benefit."})
-        elif name == "USD/INR" and abs(chg_pct) >= 0.15:
-            events.append({"headline": f"Rupee {'weakens' if chg_pct > 0 else 'strengthens'} {chg_pct:+.1f}%", "impact": "BEARISH" if chg_pct > 0 else "BULLISH", "severity": "HIGH" if abs(chg_pct) >= 0.5 else "MEDIUM",
+        elif name == "USD/INR" and abs(chg_pct) >= 0.1:
+            events.append({"headline": f"Rupee {'weakens' if chg_pct > 0 else 'strengthens'} {chg_pct:+.1f}%", "impact": "BEARISH" if chg_pct > 0 else "BULLISH", "severity": "HIGH" if abs(chg_pct) >= 0.3 else "MEDIUM",
                 "detail": "Rupee depreciation = capital outflows." if chg_pct > 0 else "Rupee strength attracts FII flows.",
                 "action": "IT exporters benefit." if chg_pct > 0 else "Domestic consumption plays benefit."})
+    
+    # ═══ ALWAYS-ON GEOPOLITICAL CONTEXT (shows even on quiet days) ═══
+    context_events = [
+        {"headline": "US-China Trade War — tariffs up to 145% on Chinese goods", "impact": "BEARISH", "severity": "HIGH",
+         "detail": "Ongoing trade tensions affecting global supply chains, semiconductor stocks, and emerging market sentiment.",
+         "action": "Watch tech hardware, EV, and semiconductor supply chain stocks."},
+        {"headline": "Russia-Ukraine conflict — energy & grain markets volatile", "impact": "VOLATILE", "severity": "HIGH",
+         "detail": "War continues to impact European energy prices, global food supply, and defense spending.",
+         "action": "Defense stocks, energy exporters benefit. European industrials at risk."},
+        {"headline": "Middle East tensions — Red Sea shipping disruptions", "impact": "BEARISH", "severity": "MEDIUM",
+         "detail": "Houthi attacks on shipping routes raising freight costs and oil price risk premium.",
+         "action": "Shipping, logistics stocks impacted. Oil prices carry risk premium."},
+        {"headline": "US tariffs on India — reciprocal tariff review pending", "impact": "BEARISH", "severity": "HIGH",
+         "detail": "India faces potential 26% reciprocal tariffs on exports to US. Pharma, IT, textiles at risk.",
+         "action": "Watch pharma exporters, IT services, and auto component makers."},
+    ]
+    # Add 2 context events that rotate based on day
+    day_of_year = now.timetuple().tm_yday
+    for i in range(min(2, len(context_events))):
+        idx = (day_of_year + i) % len(context_events)
+        events.append(context_events[idx])
     
     # Upcoming scheduled events (static calendar)
     upcoming = []
@@ -3170,47 +3207,62 @@ async def market_pulse():
         if 0 < days_until <= 30:
             upcoming.append({"event": "US Fed Rate Decision", "date": fed_date.strftime("%b %d"), "days": days_until, "impact": "HIGH"})
     
-    # ═══ GEOPOLITICAL, TRADE, ECONOMIC & MACRO EVENTS ═══
+    # ═══ GEOPOLITICAL, TRADE, ECONOMIC & MACRO EVENTS — 2026 ═══
     geo_events = [
-        # ── GEOPOLITICAL & SOVEREIGN SHIFTS ──
+        # ── MARCH 2026 ──
+        {"event": "US CPI Inflation Data (Feb)", "month": 3, "day": 12, "year": 2026, "impact": "HIGH"},
         {"event": "US Supreme Court — Tariff Authority (IEEPA) Ruling", "month": 3, "day": 15, "year": 2026, "impact": "HIGH"},
-        {"event": "Russia-Ukraine Ceasefire Review", "month": 3, "day": 1, "year": 2026, "impact": "HIGH"},
-        {"event": "NATO Hybrid Warfare Summit — Europe Defense Posture", "month": 4, "day": 7, "year": 2026, "impact": "MEDIUM"},
-        {"event": "Middle East De-escalation Talks (US-Iran)", "month": 3, "day": 20, "year": 2026, "impact": "HIGH"},
-        {"event": "US Venezuela Sanctions Review", "month": 4, "day": 1, "year": 2026, "impact": "MEDIUM"},
-        {"event": "Japan PM Takaichi — Corporate Reform Package (Sanaenomics)", "month": 3, "day": 28, "year": 2026, "impact": "MEDIUM"},
-        {"event": "US Strategic Interest in Greenland — NATO Response", "month": 4, "day": 10, "year": 2026, "impact": "MEDIUM"},
-
-        # ── TRADE & REGULATORY POLICY ──
-        {"event": "US Reciprocal Tariff Review Deadline", "month": 4, "day": 2, "year": 2026, "impact": "HIGH"},
-        {"event": "US-China Trade Talks Round", "month": 3, "day": 10, "year": 2026, "impact": "HIGH"},
-        {"event": "EU Retaliatory Tariff Decision on US Goods", "month": 4, "day": 15, "year": 2026, "impact": "MEDIUM"},
-        {"event": "USMCA Trade Pact Review — Mexico/Canada Manufacturing", "month": 5, "day": 1, "year": 2026, "impact": "MEDIUM"},
-        {"event": "CLARITY Act — Crypto/Stablecoin Regulation Vote", "month": 4, "day": 20, "year": 2026, "impact": "MEDIUM"},
-        {"event": "US-China Rare Earth Export Restrictions Review", "month": 3, "day": 25, "year": 2026, "impact": "HIGH"},
-
-        # ── ECONOMIC & MONETARY DRIVERS ──
-        {"event": "US CPI Inflation Data", "month": 3, "day": 12, "year": 2026, "impact": "HIGH"},
-        {"event": "US Jobs Report (Non-Farm Payrolls)", "month": 3, "day": 6, "year": 2026, "impact": "HIGH"},
-        {"event": "US GDP Q4 2025 (Final)", "month": 3, "day": 27, "year": 2026, "impact": "MEDIUM"},
-        {"event": "Fed Chair Jerome Powell Term Ends — Warsh Transition", "month": 5, "day": 15, "year": 2026, "impact": "HIGH"},
-        {"event": "One Big Beautiful Bill Act (OBBBA) — Fiscal Package Vote", "month": 4, "day": 30, "year": 2026, "impact": "HIGH"},
-        {"event": "US Midterm Elections — Pre-Election Volatility Window", "month": 9, "day": 1, "year": 2026, "impact": "HIGH"},
-        {"event": "US Midterm Elections", "month": 11, "day": 3, "year": 2026, "impact": "HIGH"},
-
-        # ── INDIA SPECIFIC ──
-        {"event": "India Parliament Budget Session Ends", "month": 3, "day": 21, "year": 2026, "impact": "MEDIUM"},
+        {"event": "US PPI Data Release", "month": 3, "day": 13, "year": 2026, "impact": "MEDIUM"},
         {"event": "RBI FX Reserves Review", "month": 3, "day": 14, "year": 2026, "impact": "MEDIUM"},
-        {"event": "India Q4 GDP Data Release", "month": 5, "day": 30, "year": 2026, "impact": "HIGH"},
+        {"event": "US Fed FOMC Meeting + Rate Decision", "month": 3, "day": 19, "year": 2026, "impact": "HIGH"},
+        {"event": "Middle East De-escalation Talks (US-Iran)", "month": 3, "day": 20, "year": 2026, "impact": "HIGH"},
+        {"event": "India Parliament Budget Session Ends", "month": 3, "day": 21, "year": 2026, "impact": "MEDIUM"},
         {"event": "India GST Council Meeting", "month": 3, "day": 22, "year": 2026, "impact": "MEDIUM"},
-
-        # ── COMMODITY & TECH TRENDS ──
-        {"event": "Big Tech AI Capex Earnings Review (MSFT/GOOG/META)", "month": 4, "day": 25, "year": 2026, "impact": "HIGH"},
-        {"event": "OPEC+ Production Decision", "month": 3, "day": 3, "year": 2026, "impact": "HIGH"},
+        {"event": "US-China Rare Earth Export Restrictions Review", "month": 3, "day": 25, "year": 2026, "impact": "HIGH"},
+        {"event": "US GDP Q4 2025 (Final Revision)", "month": 3, "day": 27, "year": 2026, "impact": "MEDIUM"},
+        {"event": "Japan PM Takaichi — Corporate Reform Package", "month": 3, "day": 28, "year": 2026, "impact": "MEDIUM"},
+        {"event": "US PCE Inflation (Fed's preferred gauge)", "month": 3, "day": 28, "year": 2026, "impact": "HIGH"},
+        {"event": "India FY26 Financial Year End", "month": 3, "day": 31, "year": 2026, "impact": "MEDIUM"},
+        
+        # ── APRIL 2026 ──
+        {"event": "US Reciprocal Tariff Review Deadline", "month": 4, "day": 2, "year": 2026, "impact": "HIGH"},
+        {"event": "US Jobs Report (Mar NFP)", "month": 4, "day": 3, "year": 2026, "impact": "HIGH"},
+        {"event": "US Venezuela Sanctions Review", "month": 4, "day": 1, "year": 2026, "impact": "MEDIUM"},
         {"event": "Gold Central Bank Purchases Report (WGC)", "month": 4, "day": 5, "year": 2026, "impact": "MEDIUM"},
+        {"event": "NATO Hybrid Warfare Summit", "month": 4, "day": 7, "year": 2026, "impact": "MEDIUM"},
+        {"event": "RBI Monetary Policy (Apr)", "month": 4, "day": 9, "year": 2026, "impact": "HIGH"},
+        {"event": "US CPI Inflation Data (Mar)", "month": 4, "day": 10, "year": 2026, "impact": "HIGH"},
+        {"event": "EU Retaliatory Tariff Decision on US Goods", "month": 4, "day": 15, "year": 2026, "impact": "MEDIUM"},
+        {"event": "India Q4 FY26 Earnings Season Begins", "month": 4, "day": 15, "year": 2026, "impact": "HIGH"},
+        {"event": "CLARITY Act — Crypto Regulation Vote", "month": 4, "day": 20, "year": 2026, "impact": "MEDIUM"},
+        {"event": "Big Tech Earnings (MSFT/GOOG/META/AMZN)", "month": 4, "day": 25, "year": 2026, "impact": "HIGH"},
+        {"event": "OBBBA Fiscal Package Vote", "month": 4, "day": 30, "year": 2026, "impact": "HIGH"},
+        
+        # ── MAY 2026 ──
+        {"event": "US Jobs Report (Apr NFP)", "month": 5, "day": 1, "year": 2026, "impact": "HIGH"},
+        {"event": "USMCA Trade Pact Review", "month": 5, "day": 1, "year": 2026, "impact": "MEDIUM"},
+        {"event": "US Fed FOMC Meeting + Rate Decision", "month": 5, "day": 6, "year": 2026, "impact": "HIGH"},
         {"event": "US Strategic Minerals Executive Order Review", "month": 5, "day": 10, "year": 2026, "impact": "MEDIUM"},
-
-        # ── ROLLING MONTHLY US DATA (auto-generate for next 6 months) ──
+        {"event": "US CPI Inflation Data (Apr)", "month": 5, "day": 13, "year": 2026, "impact": "HIGH"},
+        {"event": "Fed Chair Powell Term Ends — Warsh Transition", "month": 5, "day": 15, "year": 2026, "impact": "HIGH"},
+        {"event": "India Q4 GDP Data Release", "month": 5, "day": 30, "year": 2026, "impact": "HIGH"},
+        
+        # ── JUNE-DECEMBER 2026 ──
+        {"event": "RBI Monetary Policy (Jun)", "month": 6, "day": 6, "year": 2026, "impact": "HIGH"},
+        {"event": "US Fed FOMC Meeting", "month": 6, "day": 17, "year": 2026, "impact": "HIGH"},
+        {"event": "OPEC+ Mid-Year Production Review", "month": 6, "day": 5, "year": 2026, "impact": "HIGH"},
+        {"event": "US Fed FOMC Meeting", "month": 7, "day": 29, "year": 2026, "impact": "HIGH"},
+        {"event": "RBI Monetary Policy (Aug)", "month": 8, "day": 7, "year": 2026, "impact": "HIGH"},
+        {"event": "Jackson Hole Economic Symposium", "month": 8, "day": 27, "year": 2026, "impact": "HIGH"},
+        {"event": "US Midterm Pre-Election Volatility Window Opens", "month": 9, "day": 1, "year": 2026, "impact": "HIGH"},
+        {"event": "US Fed FOMC Meeting", "month": 9, "day": 17, "year": 2026, "impact": "HIGH"},
+        {"event": "China Golden Week Holiday — Market Closure", "month": 10, "day": 1, "year": 2026, "impact": "MEDIUM"},
+        {"event": "RBI Monetary Policy (Oct)", "month": 10, "day": 8, "year": 2026, "impact": "HIGH"},
+        {"event": "US Midterm Elections", "month": 11, "day": 3, "year": 2026, "impact": "HIGH"},
+        {"event": "US Fed FOMC Meeting (Nov)", "month": 11, "day": 4, "year": 2026, "impact": "HIGH"},
+        {"event": "India Diwali — Muhurat Trading", "month": 11, "day": 8, "year": 2026, "impact": "MEDIUM"},
+        {"event": "RBI Monetary Policy (Dec)", "month": 12, "day": 5, "year": 2026, "impact": "HIGH"},
+        {"event": "US Fed FOMC Meeting (Dec) + 2027 Dot Plot", "month": 12, "day": 16, "year": 2026, "impact": "HIGH"},
     ]
     # Auto-add recurring US CPI + Jobs for upcoming months
     for offset in range(1, 7):
@@ -3222,7 +3274,7 @@ async def market_pulse():
         try:
             ge_date = datetime(ge["year"], ge["month"], ge["day"])
             days_until = (ge_date - now).days
-            if 0 < days_until <= 30:
+            if 0 <= days_until <= 45:
                 upcoming.append({"event": ge["event"], "date": ge_date.strftime("%b %d"), "days": days_until, "impact": ge["impact"]})
         except:
             pass
@@ -3276,8 +3328,8 @@ async def market_pulse():
         "ist_time": now.strftime("%I:%M %p IST"),
         "is_expiry": is_expiry,
         "expiry_today": expiry_today,
-        "events": events[:8],
-        "upcoming": upcoming[:8],
+        "events": events[:12],
+        "upcoming": upcoming[:15],
         "global_snapshot": global_snapshot,
         "fii_dii": fii_dii
     }
