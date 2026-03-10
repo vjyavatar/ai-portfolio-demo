@@ -6,6 +6,7 @@ With built-in verification and ChatGPT comparison
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Response, FileResponse
+from fastapi.staticfiles import StaticFiles
 import os
 import requests
 from datetime import datetime, timedelta
@@ -1026,6 +1027,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Serve static JS/CSS files
+os.makedirs("static", exist_ok=True)
+try:
+    app.mount("/static", StaticFiles(directory="static"), name="static")
+except:
+    pass
+
 report_counter = {"count": 0}
 
 # ═══ AI REPORT CACHE — serves 10K users instantly ═══
@@ -1125,6 +1133,26 @@ def save_votes():
         print(f"⚠️ Vote save failed: {e}")
 
 load_votes()
+
+# Clean up FII/DII history file on startup (remove duplicates)
+try:
+    _fii_file = "fii_dii_history.json"
+    if os.path.exists(_fii_file):
+        with open(_fii_file, "r") as _f:
+            _raw = json.load(_f)
+        _seen = set()
+        _clean = []
+        for _h in _raw:
+            _d = str(_h.get("date", "")).strip()
+            if _d and _d not in _seen:
+                _seen.add(_d)
+                _clean.append(_h)
+        _clean = _clean[-5:]
+        with open(_fii_file, "w") as _f:
+            json.dump(_clean, _f)
+        print(f"📊 FII history cleanup: {len(_raw)} → {len(_clean)} entries")
+except Exception as _e:
+    print(f"FII history cleanup skipped: {_e}")
 
 
 def check_rate_limit(email: str) -> dict:
@@ -3338,7 +3366,16 @@ async def market_pulse():
     def _load_fii_history():
         try:
             with open(FII_HISTORY_FILE, "r") as f:
-                return json.load(f)
+                raw = json.load(f)
+                # Dedup by date on load
+                seen = set()
+                clean = []
+                for h in raw:
+                    d = str(h.get("date", "")).strip()
+                    if d and d not in seen:
+                        seen.add(d)
+                        clean.append(h)
+                return clean[-5:]  # keep last 5
         except:
             return []
     
@@ -3369,11 +3406,11 @@ async def market_pulse():
                 
                 # Save to rolling history
                 if _r.get("fii") and _r.get("dii"):
-                    today_date = _r["fii"].get("date", "")
-                    if today_date:
+                    today_date = str(_r["fii"].get("date", "")).strip()
+                    if today_date and len(today_date) > 3:
                         history = _load_fii_history()
-                        # Only add if this date isn't already stored
-                        existing_dates = [h.get("date", "") for h in history]
+                        # Strict dedup: normalize dates and check
+                        existing_dates = set(str(h.get("date", "")).strip() for h in history)
                         if today_date not in existing_dates:
                             history.append({
                                 "date": today_date,
@@ -3385,8 +3422,11 @@ async def market_pulse():
                                 "dii_net": _r["dii"]["net"],
                                 "combined": round(_r["fii"]["net"] + _r["dii"]["net"], 2)
                             })
-                            _save_fii_history(history)
-                            print(f"📊 FII/DII history: saved {today_date}, total {len(history)} days")
+                            # Keep only last 5 unique dates
+                            _save_fii_history(history[-5:])
+                            print(f"📊 FII/DII history: saved {today_date}, total {min(len(history),5)} days")
+                        else:
+                            print(f"📊 FII/DII history: {today_date} already exists, skipping")
                 
                 fii_net = _r.get("fii", {}).get("net", 0)
                 dii_net = _r.get("dii", {}).get("net", 0)
