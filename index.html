@@ -1100,6 +1100,30 @@ uh+='</div></div>';
 upcoming.innerHTML=uh;
 }
 
+// FII/DII 5-day history on homepage
+if(data.fii_dii&&data.fii_dii.history&&data.fii_dii.history.length>0){
+const hist=data.fii_dii.history;
+const fiiDiv=document.createElement('div');
+fiiDiv.style.cssText='margin-top:10px';
+const fmt=(v)=>{const a=Math.abs(v);return (v>=0?'+':'-')+'₹'+(a>=10000?(a/1000).toFixed(0)+'K':a.toLocaleString('en-IN'))+'Cr';};
+let ft='<div style="padding:12px 16px;border-radius:8px;background:var(--bg2);border:1px solid var(--border)">';
+ft+='<div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:8px;display:flex;align-items:center;gap:6px">&#127470;&#127475; FII/DII Activity — Last '+hist.length+' Trading Days</div>';
+ft+='<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:10px;font-family:var(--mono)">';
+ft+='<tr style="background:rgba(0,47,108,.04)"><th style="padding:5px 6px;text-align:left;color:var(--text3);border-bottom:2px solid var(--border)">Date</th><th style="padding:5px 6px;text-align:right;color:#002f6c;border-bottom:2px solid var(--border)">FII Net</th><th style="padding:5px 6px;text-align:right;color:#6561ac;border-bottom:2px solid var(--border)">DII Net</th><th style="padding:5px 6px;text-align:right;border-bottom:2px solid var(--border)">Combined</th></tr>';
+hist.slice().reverse().forEach((day,i)=>{
+const bg=i%2===0?'transparent':'rgba(0,47,108,.015)';
+ft+='<tr style="background:'+bg+';border-bottom:1px solid var(--border)">';
+ft+='<td style="padding:4px 6px;font-weight:600;color:var(--text)">'+day.date+'</td>';
+ft+='<td style="padding:4px 6px;text-align:right;font-weight:700;color:'+(day.fii_net>=0?'var(--green)':'var(--red)')+'">'+fmt(day.fii_net)+'</td>';
+ft+='<td style="padding:4px 6px;text-align:right;font-weight:700;color:'+(day.dii_net>=0?'var(--green)':'var(--red)')+'">'+fmt(day.dii_net)+'</td>';
+ft+='<td style="padding:4px 6px;text-align:right;font-weight:800;color:'+(day.combined>=0?'var(--green)':'var(--red)')+'">'+fmt(day.combined)+'</td>';
+ft+='</tr>';
+});
+ft+='</table></div></div>';
+fiiDiv.innerHTML=ft;
+cards.parentElement.appendChild(fiiDiv);
+}
+
 wrap.style.display='block';
 }
 
@@ -1212,6 +1236,54 @@ body.innerHTML=`
 <span style="font-size:13px">&#128161;</span> ${verdict}
 </div>
 <div style="margin-top:8px;font-size:9px;color:var(--text3);text-align:center">FII = Foreign Institutional Investors (global funds) &nbsp;·&nbsp; DII = Domestic Institutional Investors (mutual funds, insurance, pension)</div>
+${(()=>{
+const hist=fd.history||[];
+if(!hist.length)return '<div style="margin-top:10px;padding:10px;border-radius:6px;background:var(--bg2);text-align:center;font-size:10px;color:var(--text3)">5-day history will build up automatically over the next few trading days.</div>';
+let t='<div style="margin-top:12px"><div style="font-size:11px;font-weight:700;color:var(--text);margin-bottom:6px;display:flex;align-items:center;gap:6px">&#128197; FII/DII — Last '+hist.length+' Trading Days</div>';
+t+='<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:10px;font-family:var(--mono)">';
+t+='<tr style="background:rgba(0,47,108,.04)"><th style="padding:6px 8px;text-align:left;color:var(--text3);font-weight:700;border-bottom:2px solid var(--border)">Date</th><th style="padding:6px 8px;text-align:right;color:#002f6c;border-bottom:2px solid var(--border)">FII Buy</th><th style="padding:6px 8px;text-align:right;color:#002f6c;border-bottom:2px solid var(--border)">FII Sell</th><th style="padding:6px 8px;text-align:right;color:#002f6c;font-weight:800;border-bottom:2px solid var(--border)">FII Net</th><th style="padding:6px 8px;text-align:right;color:var(--purple);border-bottom:2px solid var(--border)">DII Buy</th><th style="padding:6px 8px;text-align:right;color:var(--purple);border-bottom:2px solid var(--border)">DII Sell</th><th style="padding:6px 8px;text-align:right;color:var(--purple);font-weight:800;border-bottom:2px solid var(--border)">DII Net</th><th style="padding:6px 8px;text-align:right;font-weight:800;border-bottom:2px solid var(--border)">Combined</th></tr>';
+const fmt=(v)=>{const a=Math.abs(v);return (v>=0?'+':'-')+'₹'+(a>=10000?(a/1000).toFixed(0)+'K':a.toLocaleString('en-IN'))+'Cr';};
+hist.slice().reverse().forEach((day,i)=>{
+const fC=day.fii_net>=0?'var(--green)':'var(--red)';
+const dC=day.dii_net>=0?'var(--green)':'var(--red)';
+const cC=day.combined>=0?'var(--green)':'var(--red)';
+const bg=i%2===0?'transparent':'rgba(0,47,108,.015)';
+t+='<tr style="background:'+bg+';border-bottom:1px solid var(--border)">';
+t+='<td style="padding:5px 8px;font-weight:600;color:var(--text)">'+(day.date||'')+'</td>';
+t+='<td style="padding:5px 8px;text-align:right;color:var(--text2)">₹'+(day.fii_buy||0).toLocaleString('en-IN')+'</td>';
+t+='<td style="padding:5px 8px;text-align:right;color:var(--text2)">₹'+(day.fii_sell||0).toLocaleString('en-IN')+'</td>';
+t+='<td style="padding:5px 8px;text-align:right;font-weight:800;color:'+fC+'">'+fmt(day.fii_net)+'</td>';
+t+='<td style="padding:5px 8px;text-align:right;color:var(--text2)">₹'+(day.dii_buy||0).toLocaleString('en-IN')+'</td>';
+t+='<td style="padding:5px 8px;text-align:right;color:var(--text2)">₹'+(day.dii_sell||0).toLocaleString('en-IN')+'</td>';
+t+='<td style="padding:5px 8px;text-align:right;font-weight:800;color:'+dC+'">'+fmt(day.dii_net)+'</td>';
+t+='<td style="padding:5px 8px;text-align:right;font-weight:800;color:'+cC+'">'+fmt(day.combined)+'</td>';
+t+='</tr>';
+});
+// Totals row
+if(hist.length>1){
+const totFii=hist.reduce((s,d)=>s+(d.fii_net||0),0);
+const totDii=hist.reduce((s,d)=>s+(d.dii_net||0),0);
+const totComb=totFii+totDii;
+t+='<tr style="background:rgba(0,47,108,.06);border-top:2px solid var(--border)">';
+t+='<td style="padding:6px 8px;font-weight:800;color:var(--text)">'+hist.length+'-Day Total</td>';
+t+='<td colspan="2"></td>';
+t+='<td style="padding:6px 8px;text-align:right;font-weight:800;font-size:11px;color:'+(totFii>=0?'var(--green)':'var(--red)')+'">'+fmt(totFii)+'</td>';
+t+='<td colspan="2"></td>';
+t+='<td style="padding:6px 8px;text-align:right;font-weight:800;font-size:11px;color:'+(totDii>=0?'var(--green)':'var(--red)')+'">'+fmt(totDii)+'</td>';
+t+='<td style="padding:6px 8px;text-align:right;font-weight:800;font-size:11px;color:'+(totComb>=0?'var(--green)':'var(--red)')+'">'+fmt(totComb)+'</td>';
+t+='</tr>';
+}
+t+='</table></div>';
+// Trend insight
+if(hist.length>=3){
+const last3Fii=hist.slice(-3).reduce((s,d)=>s+(d.fii_net||0),0);
+const last3Dii=hist.slice(-3).reduce((s,d)=>s+(d.dii_net||0),0);
+const trend=last3Fii>3000&&last3Dii>0?'🟢 Strong institutional support — both FII and DII net buyers over 3 days. Bullish for markets.':last3Fii<-3000&&last3Dii>3000?'🟡 FII selling absorbed by DII — markets may range-bound. Watch for FII reversal.':last3Fii<-3000&&last3Dii<0?'🔴 Both FII and DII selling — weak institutional support. Caution advised.':last3Fii>1000?'🟢 FII buying trend — positive for large-caps and banking.':last3Fii<-1000?'🟡 FII outflow trend — IT exporters may benefit from weaker rupee.':'⚪ Mixed signals — no clear institutional trend.';
+t+='<div style="margin-top:8px;padding:8px 12px;border-radius:6px;background:rgba(37,99,235,.03);border-left:3px solid var(--blue);font-size:10px;color:var(--text2)"><strong>3-Day Trend:</strong> '+trend+'</div>';
+}
+t+='</div>';
+return t;
+})()}
 `;
 card.style.display='block';
 }
@@ -2279,6 +2351,51 @@ ${parseFloat(d.debt_to_equity)>1.5?' High debt levels mean the company is borrow
 ${d.market_cap>100e9?' As a large-cap stock, it\'s relatively stable but may grow slower than smaller companies.':d.market_cap<10e9?' As a smaller company, expect bigger price swings — higher reward potential but higher risk.':''}
 </div>
 </div>
+</div></div>
+
+<!-- STOCK YTD + YEARLY PERFORMANCE -->
+<div class="sc" data-tab="quick" data-subtab="overview" style="border-left:3px solid var(--cyan)">
+<div class="sh"><div class="si" style="background:rgba(6,182,212,.1)">&#128200;</div><div class="st" style="color:var(--cyan)">Historical Performance — YTD &amp; Yearly Returns</div></div>
+<div class="sbody">
+<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+<!-- YTD Card -->
+<div style="flex:1;min-width:120px;padding:14px;border-radius:10px;text-align:center;background:${d.ytd_return!==undefined&&d.ytd_return!==null?(d.ytd_return>=0?'rgba(14,178,78,.06)':'rgba(205,0,75,.06)'):'var(--bg2)'};border:1px solid ${d.ytd_return!==undefined&&d.ytd_return!==null?(d.ytd_return>=0?'rgba(14,178,78,.15)':'rgba(205,0,75,.15)'):'var(--border)'}">
+<div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">YTD ${new Date().getFullYear()}</div>
+<div style="font-size:24px;font-weight:800;color:${d.ytd_return>=0?'var(--green)':'var(--red)'};font-family:var(--mono)">${d.ytd_return!==undefined&&d.ytd_return!==null?(d.ytd_return>=0?'+':'')+d.ytd_return+'%':'N/A'}</div>
+<div style="font-size:9px;color:var(--text3);margin-top:2px">${d.ytd_return>20?'Outstanding year so far &#128293;':d.ytd_return>10?'Strong performance &#128170;':d.ytd_return>0?'Positive but moderate':d.ytd_return>-10?'Minor decline':d.ytd_return<=-10?'Significant drop &#9888;':'Year-to-date return'}</div>
+</div>
+${(()=>{
+const yr=d.yearly_returns||{};
+const keys=Object.keys(yr).sort().reverse();
+if(!keys.length)return '<div style="flex:1;min-width:200px;padding:14px;text-align:center;color:var(--text3);font-size:11px">Yearly data not available</div>';
+let cards='';
+keys.forEach(y=>{
+const v=yr[y];
+const up=v>=0;
+cards+='<div style="flex:1;min-width:80px;padding:10px;border-radius:8px;text-align:center;background:'+(up?'rgba(14,178,78,.04)':'rgba(205,0,75,.04)')+';border:1px solid '+(up?'rgba(14,178,78,.1)':'rgba(205,0,75,.1)') +'">';
+cards+='<div style="font-size:9px;color:var(--text3)">'+y+'</div>';
+cards+='<div style="font-size:16px;font-weight:800;color:'+(up?'var(--green)':'var(--red)')+';font-family:var(--mono)">'+(up?'+':'')+v+'%</div>';
+cards+='</div>';
+});
+return cards;
+})()}
+</div>
+${(()=>{
+const yr=d.yearly_returns||{};
+const keys=Object.keys(yr).sort().reverse();
+if(keys.length<2)return '';
+const vals=keys.map(k=>yr[k]);
+const avg=(vals.reduce((a,b)=>a+b,0)/vals.length).toFixed(1);
+const best=Math.max(...vals);const worst=Math.min(...vals);
+const bestYr=keys[vals.indexOf(best)];const worstYr=keys[vals.indexOf(worst)];
+return '<div style="padding:10px 14px;border-radius:8px;background:rgba(6,182,212,.03);border-left:3px solid var(--cyan);font-size:10px;color:var(--text2);line-height:1.7">'
++'<strong style="color:var(--cyan)">5-Year Summary:</strong> '
++'Avg annual return <strong>'+avg+'%</strong> · '
++'Best year <strong style="color:var(--green)">'+bestYr+' ('+best+'%)</strong> · '
++'Worst year <strong style="color:var(--red)">'+worstYr+' ('+worst+'%)</strong> · '
++(parseFloat(avg)>15?'Outperforming market — strong compounder &#128293;':parseFloat(avg)>8?'Solid performer — above FD returns':'Below average — check fundamentals')
++'</div>';
+})()}
 </div></div>
 
 <!-- VALUATION TABLE -->
@@ -5428,10 +5545,16 @@ let h=`
 <div style="margin-top:16px;padding:12px;border-radius:8px;background:rgba(245,158,11,.04);border:1px solid rgba(245,158,11,.12)">
 <div style="font-size:9px;color:var(--text3);line-height:1.6">
 <strong style="color:var(--amber)">⚖️ Disclaimer:</strong> All index data, CAGRs, SIP estimates, and returns shown are based on HISTORICAL performance and <strong>do not guarantee future results</strong>. Markets are inherently unpredictable. This research is for <strong>educational purposes only</strong> — not investment advice. Always consult a SEBI-registered investment advisor before making any financial decisions. Celesys AI is not registered with SEBI or any regulatory body. Past performance is not indicative of future returns.
-</div>
-</div>`;
+</div></div>
+
+<!-- PERFORMANCE LEADERBOARD -->
+<div id="perfLeaderboard" style="margin-top:16px"><div style="padding:20px;text-align:center;color:var(--text3);font-size:11px">&#9203; Loading YTD &amp; yearly performance leaderboard...</div></div>
+`;
 
 el.innerHTML=h;
+
+// ═══ FETCH & RENDER PERFORMANCE LEADERBOARD ═══
+fetchPerformanceLeaderboard();
 
 // Geo toggle function
 window.switchIdxGeo=function(btn,geo){
@@ -5680,6 +5803,129 @@ el.innerHTML=h;
 }
 
 // ═══ 5. RENDER INSIDER ACTIVITY ═══
+// ═══ PERFORMANCE LEADERBOARD ═══
+async function fetchPerformanceLeaderboard(){
+const el=document.getElementById('perfLeaderboard');
+if(!el)return;
+try{
+const r=await fetch('/api/performance-leaderboard');
+const data=await r.json();
+if(!data.success){el.innerHTML='<div style="text-align:center;color:var(--text3);font-size:11px">Performance data unavailable</div>';return}
+renderPerfLeaderboard(el,data);
+}catch(e){el.innerHTML='<div style="text-align:center;color:var(--text3);font-size:11px">Could not load performance data</div>';}
+}
+
+function renderPerfLeaderboard(el,data){
+const C=(v)=>v>=0?'var(--green)':'var(--red)';
+const F=(v)=>v!==null&&v!==undefined?(v>=0?'+':'')+v.toFixed(1)+'%':'N/A';
+
+const rankTbl=(title,icon,best,worst)=>{
+if(!best||!best.length)return '';
+let t='<div style="margin-bottom:10px"><div style="font-size:11px;font-weight:700;color:var(--text);margin-bottom:4px">'+icon+' '+title+'</div>';
+t+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">';
+t+='<div style="border-radius:6px;border:1px solid rgba(14,178,78,.12);overflow:hidden"><div style="padding:5px 8px;background:rgba(14,178,78,.06);font-size:9px;font-weight:700;color:var(--green)">&#128293; Best</div>';
+best.forEach((s,i)=>{t+='<div style="padding:3px 8px;font-size:10px;display:flex;justify-content:space-between;border-bottom:1px solid var(--border)"><span>'+s.name+'</span><span style="font-weight:700;color:var(--green);font-family:var(--mono)">'+F(s.return)+'</span></div>'});
+t+='</div>';
+t+='<div style="border-radius:6px;border:1px solid rgba(205,0,75,.12);overflow:hidden"><div style="padding:5px 8px;background:rgba(205,0,75,.06);font-size:9px;font-weight:700;color:var(--red)">&#128308; Worst</div>';
+(worst||[]).forEach((s,i)=>{t+='<div style="padding:3px 8px;font-size:10px;display:flex;justify-content:space-between;border-bottom:1px solid var(--border)"><span>'+s.name+'</span><span style="font-weight:700;color:var(--red);font-family:var(--mono)">'+F(s.return)+'</span></div>'});
+t+='</div></div></div>';
+return t;
+};
+
+const barChart=(items,yearKey)=>{
+let b='';
+const sorted=[...items].sort((a,b)=>{
+const av=yearKey==='ytd'?(a.ytd||0):(a.yearly[yearKey]||0);
+const bv=yearKey==='ytd'?(b.ytd||0):(b.yearly[yearKey]||0);
+return bv-av;
+});
+sorted.forEach(idx=>{
+const v=yearKey==='ytd'?(idx.ytd||0):(idx.yearly[yearKey]||0);
+const w=Math.min(100,Math.abs(v)*2);
+b+='<div style="display:flex;align-items:center;gap:6px;margin-bottom:3px">';
+b+='<div style="width:90px;font-size:9px;font-weight:600;color:var(--text);text-align:right;flex-shrink:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis">'+idx.name+'</div>';
+b+='<div style="flex:1;height:16px;background:var(--bg3);border-radius:3px;overflow:hidden"><div style="width:'+w+'%;height:100%;background:'+C(v)+';border-radius:3px;opacity:.7"></div></div>';
+b+='<div style="width:50px;font-size:10px;font-weight:700;color:'+C(v)+';font-family:var(--mono);text-align:right">'+F(v)+'</div></div>';
+});
+return b;
+};
+
+// ═══ BUILD COUNTRY SECTION ═══
+const buildCountry=(country,flag,sym,label)=>{
+if(!country)return '';
+let h='';
+
+// YTD
+h+='<div style="padding:14px;border-radius:10px;background:linear-gradient(135deg,rgba(0,47,108,.02),rgba(6,182,212,.01));border:1px solid var(--border);margin-bottom:12px">';
+h+='<div style="font-size:13px;font-weight:800;color:var(--text);margin-bottom:10px">'+flag+' '+label+' — YTD '+data.current_year+'</div>';
+
+if(country.indices.length)h+='<div style="margin-bottom:10px"><div style="font-size:10px;font-weight:700;color:var(--text3);margin-bottom:4px">INDICES</div>'+barChart(country.indices,'ytd')+'</div>';
+if(country.ytd){
+h+=rankTbl('Top & Bottom ETFs YTD','&#128230;',country.ytd.etfs?.best,country.ytd.etfs?.worst);
+h+=rankTbl('Top & Bottom Stocks YTD','&#128202;',country.ytd.stocks?.best,country.ytd.stocks?.worst);
+}
+h+='</div>';
+
+// Yearly
+h+='<div style="padding:14px;border-radius:10px;background:var(--bg2);border:1px solid var(--border)">';
+h+='<div style="font-size:13px;font-weight:800;color:var(--text);margin-bottom:8px">'+flag+' '+label+' — Year-by-Year (5Y)</div>';
+
+const years=data.years||[];
+const geoKey=label.includes('India')?'in':'us';
+h+='<div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:10px">';
+years.forEach((yr,i)=>{
+h+='<button class="stab'+(i===0?' active':'')+'" onclick="showYearPerf'+geoKey+'(this,\''+yr+'\')" style="padding:3px 12px;font-size:10px">'+yr+'</button>';
+});
+h+='</div>';
+
+years.forEach((yr,i)=>{
+const yrData=country.yearly[yr]||{};
+h+='<div class="yr-panel-'+geoKey+'" data-yr="'+yr+'" style="'+(i>0?'display:none':'')+'">';
+if(country.indices.length)h+='<div style="margin-bottom:8px"><div style="font-size:10px;font-weight:700;color:var(--text3);margin-bottom:4px">INDICES IN '+yr+'</div>'+barChart(country.indices,yr)+'</div>';
+if(yrData.stocks)h+=rankTbl('Stocks in '+yr,'&#128202;',yrData.stocks.best,yrData.stocks.worst);
+if(yrData.etfs)h+=rankTbl('ETFs in '+yr,'&#128230;',yrData.etfs.best,yrData.etfs.worst);
+h+='</div>';
+});
+h+='</div>';
+
+return h;
+};
+
+// ═══ RENDER WITH COUNTRY TABS ═══
+let h='';
+h+='<div style="display:flex;gap:6px;margin-bottom:12px">';
+h+='<button class="stab active" onclick="switchPerfGeo(this,\'india\')" style="padding:6px 18px;font-size:11px">&#127470;&#127475; India</button>';
+h+='<button class="stab" onclick="switchPerfGeo(this,\'usa\')" style="padding:6px 18px;font-size:11px">&#127482;&#127480; USA</button>';
+h+='</div>';
+
+h+='<div id="perfIndia">'+buildCountry(data.india,'&#127470;&#127475;','₹','India')+'</div>';
+h+='<div id="perfUsa" style="display:none">'+buildCountry(data.usa,'&#127482;&#127480;','$','USA')+'</div>';
+
+el.innerHTML=h;
+}
+
+// Country + Year switchers
+window.switchPerfGeo=function(btn,geo){
+document.getElementById('perfIndia').style.display=geo==='india'?'':'none';
+document.getElementById('perfUsa').style.display=geo==='usa'?'':'none';
+btn.parentElement.querySelectorAll('.stab').forEach(b=>b.classList.remove('active'));
+btn.classList.add('active');
+};
+window.showYearPerfin=function(btn,yr){
+document.querySelectorAll('.yr-panel-in').forEach(p=>p.style.display='none');
+var panel=document.querySelector('.yr-panel-in[data-yr="'+yr+'"]');
+if(panel)panel.style.display='block';
+btn.parentElement.querySelectorAll('.stab').forEach(b=>b.classList.remove('active'));
+btn.classList.add('active');
+};
+window.showYearPerfus=function(btn,yr){
+document.querySelectorAll('.yr-panel-us').forEach(p=>p.style.display='none');
+var panel=document.querySelector('.yr-panel-us[data-yr="'+yr+'"]');
+if(panel)panel.style.display='block';
+btn.parentElement.querySelectorAll('.stab').forEach(b=>b.classList.remove('active'));
+btn.classList.add('active');
+};
+
 function renderInsiderActivity(d){
 const el=document.getElementById('insiderSection');
 if(!el)return;

@@ -1650,7 +1650,40 @@ def get_live_stock_data(company_name: str) -> dict:
             print(f"⚠️ Price history fetch failed: {e}")
             live_data["price_history"] = None
         
+        # ═══ STOCK YTD + 5-YEAR YEARLY RETURNS ═══
+        try:
+            _yr_tk = stock or yf.Ticker(ticker_symbol)
+            _yr_hist = _yr_tk.history(period="5y", interval="1mo")
+            if _yr_hist is not None and len(_yr_hist) > 12:
+                from datetime import datetime as _dt
+                _cur_yr = _dt.utcnow().year
+                _yearly = {}
+                # YTD
+                try:
+                    _ytd_rows = _yr_hist[_yr_hist.index.year == _cur_yr]
+                    if len(_ytd_rows) > 0:
+                        _ytd_open = float(_ytd_rows['Close'].iloc[0])
+                        _ytd_close = float(_yr_hist['Close'].iloc[-1])
+                        live_data["ytd_return"] = round(((_ytd_close - _ytd_open) / _ytd_open) * 100, 2)
+                except:
+                    pass
+                # Each year
+                for _y in range(_cur_yr - 5, _cur_yr):
+                    try:
+                        _yd = _yr_hist[_yr_hist.index.year == _y]
+                        if len(_yd) >= 2:
+                            _yo = float(_yd['Close'].iloc[0])
+                            _yc = float(_yd['Close'].iloc[-1])
+                            _yearly[str(_y)] = round(((_yc - _yo) / _yo) * 100, 2)
+                    except:
+                        pass
+                live_data["yearly_returns"] = _yearly
+                print(f"📊 YTD: {live_data.get('ytd_return', 'N/A')}%, Yearly: {_yearly}")
+        except Exception as e:
+            print(f"⚠️ Yearly returns failed: {e}")
+        
         # ═══ TECHNICAL INDICATORS: SMA20, SMA200, EPS Growth, Sector PE ═══
+        # Also compute YTD + yearly returns from daily history
         try:
             tk = stock or yf.Ticker(ticker_symbol)  # Reuse Source 1 Ticker (saves 2-3s)
             # Daily history for moving averages
@@ -3298,7 +3331,24 @@ async def market_pulse():
     upcoming.sort(key=lambda x: x["days"])
     
     # FII/DII Activity — non-blocking thread with 4s total timeout
+    # Also maintains 5-day rolling history in a local file
     fii_dii = {}
+    FII_HISTORY_FILE = "fii_dii_history.json"
+    
+    def _load_fii_history():
+        try:
+            with open(FII_HISTORY_FILE, "r") as f:
+                return json.load(f)
+        except:
+            return []
+    
+    def _save_fii_history(history):
+        try:
+            with open(FII_HISTORY_FILE, "w") as f:
+                json.dump(history[-10:], f)  # keep last 10 entries
+        except:
+            pass
+    
     def _fetch_fii():
         _r = {}
         _evts = []
@@ -3316,6 +3366,28 @@ async def market_pulse():
                         _r["fii"] = {"buy": round(buy, 2), "sell": round(sell, 2), "net": round(net, 2), "date": entry.get("date", "")}
                     elif "DII" in cat:
                         _r["dii"] = {"buy": round(buy, 2), "sell": round(sell, 2), "net": round(net, 2), "date": entry.get("date", "")}
+                
+                # Save to rolling history
+                if _r.get("fii") and _r.get("dii"):
+                    today_date = _r["fii"].get("date", "")
+                    if today_date:
+                        history = _load_fii_history()
+                        # Only add if this date isn't already stored
+                        existing_dates = [h.get("date", "") for h in history]
+                        if today_date not in existing_dates:
+                            history.append({
+                                "date": today_date,
+                                "fii_buy": _r["fii"]["buy"],
+                                "fii_sell": _r["fii"]["sell"],
+                                "fii_net": _r["fii"]["net"],
+                                "dii_buy": _r["dii"]["buy"],
+                                "dii_sell": _r["dii"]["sell"],
+                                "dii_net": _r["dii"]["net"],
+                                "combined": round(_r["fii"]["net"] + _r["dii"]["net"], 2)
+                            })
+                            _save_fii_history(history)
+                            print(f"📊 FII/DII history: saved {today_date}, total {len(history)} days")
+                
                 fii_net = _r.get("fii", {}).get("net", 0)
                 dii_net = _r.get("dii", {}).get("net", 0)
                 if abs(fii_net) >= 2000:
@@ -3335,6 +3407,9 @@ async def market_pulse():
             events.extend(fii_events)
     except:
         pass
+    
+    # Load 5-day history
+    fii_dii["history"] = _load_fii_history()[-5:]
 
     result = {
         "success": True,
@@ -3354,6 +3429,177 @@ async def market_pulse():
     _pulse_cache_ts = datetime.utcnow()
     
     return result
+
+_perf_cache = None
+_perf_cache_ts = None
+
+@app.get("/api/performance-leaderboard")
+async def performance_leaderboard():
+    """YTD + 5-year yearly returns for indices, ETFs, mutual funds, and top stocks."""
+    import yfinance as yf
+    from datetime import datetime, timedelta
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    
+    global _perf_cache, _perf_cache_ts
+    now = datetime.utcnow()
+    if _perf_cache and _perf_cache_ts and (now - _perf_cache_ts).total_seconds() < 1800:
+        return _perf_cache
+    
+    current_year = now.year
+    years = list(range(current_year - 5, current_year + 1))  # last 5 years + current
+    
+    # ═══ TICKERS TO TRACK ═══
+    indices = {
+        "^NSEI": "Nifty 50", "^NSEBANK": "Bank Nifty", "^BSESN": "Sensex",
+        "NIFTYMIDCAP150.NS": "Nifty Midcap 150", "NIFTYSMALLCAP250.NS": "Nifty Smallcap 250",
+        "^GSPC": "S&P 500", "^IXIC": "NASDAQ", "^DJI": "Dow Jones",
+        "^RUT": "Russell 2000", "^FTSE": "FTSE 100"
+    }
+    etfs = {
+        "NIFTYBEES.NS": "Nifty BeES", "BANKBEES.NS": "Bank BeES",
+        "GOLDBEES.NS": "Gold BeES", "MIDCPNIFTY.NS": "Midcap Nifty ETF",
+        "MON100.NS": "Motilal Oswal NASDAQ 100",
+        "SPY": "SPDR S&P 500", "QQQ": "Invesco NASDAQ 100",
+        "IWM": "iShares Russell 2000", "VTI": "Vanguard Total Market",
+        "ARKK": "ARK Innovation"
+    }
+    top_stocks = {
+        "RELIANCE.NS": "Reliance", "TCS.NS": "TCS", "HDFCBANK.NS": "HDFC Bank",
+        "INFY.NS": "Infosys", "ICICIBANK.NS": "ICICI Bank",
+        "BHARTIARTL.NS": "Bharti Airtel", "ITC.NS": "ITC", "SBIN.NS": "SBI",
+        "LT.NS": "L&T", "BAJFINANCE.NS": "Bajaj Finance",
+        "ADANIENT.NS": "Adani Enterprises", "TATAPOWER.NS": "Tata Power",
+        "ZOMATO.NS": "Zomato", "JIOFIN.NS": "Jio Financial",
+        "AAPL": "Apple", "MSFT": "Microsoft", "NVDA": "NVIDIA",
+        "GOOGL": "Alphabet", "AMZN": "Amazon", "TSLA": "Tesla",
+        "META": "Meta", "AVGO": "Broadcom", "JPM": "JPMorgan",
+        "V": "Visa"
+    }
+    
+    all_tickers = {**indices, **etfs, **top_stocks}
+    
+    def fetch_yearly(ticker, name):
+        """Fetch 6-year history, compute YTD + yearly returns."""
+        try:
+            t = yf.Ticker(ticker)
+            hist = t.history(period="6y", interval="1mo")
+            if hist.empty or len(hist) < 12:
+                return None
+            
+            results = {"ticker": ticker, "name": name, "yearly": {}, "ytd": None, "current_price": None}
+            
+            # Current price
+            latest = hist['Close'].iloc[-1]
+            results["current_price"] = round(float(latest), 2)
+            
+            # YTD
+            try:
+                yr_start_rows = hist[hist.index.year == current_year]
+                if len(yr_start_rows) > 0:
+                    yr_open = float(yr_start_rows['Close'].iloc[0])
+                    results["ytd"] = round(((latest - yr_open) / yr_open) * 100, 2)
+            except:
+                pass
+            
+            # Yearly returns
+            for yr in years[:-1]:  # skip current year (that's YTD)
+                try:
+                    yr_data = hist[hist.index.year == yr]
+                    if len(yr_data) >= 2:
+                        yr_open = float(yr_data['Close'].iloc[0])
+                        yr_close = float(yr_data['Close'].iloc[-1])
+                        results["yearly"][str(yr)] = round(((yr_close - yr_open) / yr_open) * 100, 2)
+                except:
+                    pass
+            
+            return results
+        except Exception as e:
+            return None
+    
+    # Parallel fetch all tickers
+    all_results = {}
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        futures = {executor.submit(fetch_yearly, tk, nm): (tk, nm) for tk, nm in all_tickers.items()}
+        for f in as_completed(futures, timeout=30):
+            try:
+                r = f.result(timeout=5)
+                if r:
+                    all_results[r["ticker"]] = r
+            except:
+                pass
+    
+    # ═══ BUILD RESPONSE — COUNTRY-WISE ═══
+    def categorize(tickers_map):
+        items = []
+        for tk in tickers_map:
+            if tk in all_results:
+                items.append(all_results[tk])
+        return items
+    
+    def rank_by_year(items, year_str, top_n=5):
+        valid = [(it, it["yearly"].get(year_str)) for it in items if it["yearly"].get(year_str) is not None]
+        valid.sort(key=lambda x: x[1], reverse=True)
+        best = [{"name": it["name"], "ticker": it["ticker"], "return": ret} for it, ret in valid[:top_n]]
+        worst = [{"name": it["name"], "ticker": it["ticker"], "return": ret} for it, ret in valid[-top_n:]]
+        worst.reverse()
+        return {"best": best, "worst": worst}
+    
+    def rank_by_ytd(items, top_n=5):
+        valid = [(it, it["ytd"]) for it in items if it["ytd"] is not None]
+        valid.sort(key=lambda x: x[1], reverse=True)
+        best = [{"name": it["name"], "ticker": it["ticker"], "return": ret, "price": it["current_price"]} for it, ret in valid[:top_n]]
+        worst = [{"name": it["name"], "ticker": it["ticker"], "return": ret, "price": it["current_price"]} for it, ret in valid[-top_n:]]
+        worst.reverse()
+        return {"best": best, "worst": worst}
+    
+    # Split by country
+    india_indices = {k: v for k, v in indices.items() if ".NS" in k or "^NSEI" in k or "^NSEBANK" in k or "^BSESN" in k or "NIFTY" in k.upper()}
+    usa_indices = {k: v for k, v in indices.items() if k not in india_indices}
+    india_etfs = {k: v for k, v in etfs.items() if ".NS" in k}
+    usa_etfs = {k: v for k, v in etfs.items() if k not in india_etfs}
+    india_stocks = {k: v for k, v in top_stocks.items() if ".NS" in k}
+    usa_stocks = {k: v for k, v in top_stocks.items() if k not in india_stocks}
+    
+    def build_country(c_indices, c_etfs, c_stocks):
+        idx = categorize(c_indices)
+        etf = categorize(c_etfs)
+        stk = categorize(c_stocks)
+        all_c = idx + etf + stk
+        
+        yr_rankings = {}
+        for yr in years[:-1]:
+            yr_str = str(yr)
+            yr_rankings[yr_str] = {
+                "indices": rank_by_year(idx, yr_str),
+                "etfs": rank_by_year(etf, yr_str),
+                "stocks": rank_by_year(stk, yr_str, 5),
+            }
+        
+        return {
+            "indices": idx,
+            "etfs": etf,
+            "stocks": stk,
+            "ytd": {
+                "indices": rank_by_ytd(idx),
+                "etfs": rank_by_ytd(etf),
+                "stocks": rank_by_ytd(stk, 5),
+            },
+            "yearly": yr_rankings
+        }
+    
+    result = {
+        "success": True,
+        "current_year": current_year,
+        "years": [str(y) for y in years[:-1]],
+        "india": build_country(india_indices, india_etfs, india_stocks),
+        "usa": build_country(usa_indices, usa_etfs, usa_stocks),
+        "timestamp": datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
+    }
+    
+    _perf_cache = result
+    _perf_cache_ts = now
+    return result
+
 
 @app.post("/api/index-trades")
 async def index_trades(request: Request):
