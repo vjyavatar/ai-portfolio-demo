@@ -1508,7 +1508,7 @@ ${(()=>{const bt=parseFloat(d.beta)||1;return bt>1.5?' Expect bigger swings than
 
 
 <!-- ANALYSIS SUB-TAB BAR -->
-<div id="analysisSubTabs" data-tab="analysis" style="display:none;padding:8px 12px;background:var(--surface);border-bottom:1px solid var(--border);position:sticky;top:140px;z-index:95;gap:4px;flex-wrap:wrap">
+<div id="analysisSubTabs" data-tab="analysis" style="display:none;padding:8px 12px;background:var(--surface);border-bottom:1px solid var(--border);position:sticky;top:192px;z-index:95;gap:4px;flex-wrap:wrap">
 <button class="stab active" onclick="switchAnalysisSubTab('report')">&#129302; AI Report</button>
 <button class="stab" onclick="switchAnalysisSubTab('earnings')">&#128200; Quarterly Earnings</button>
 <button class="stab" onclick="switchAnalysisSubTab('management')">&#127908; Management &amp; Holdings</button>
@@ -6939,16 +6939,15 @@ var wrap=document.getElementById('tvChartWrap');
 if(!wrap)return;
 _tvCurrentSymbol=symbol||'NSE:NIFTY';
 var theme=document.documentElement.getAttribute('data-theme')==='dark'?'dark':'light';
-var uid='tv_'+Date.now();
-var url='https://s.tradingview.com/widgetembed/?frameElementId='+uid
-+'&symbol='+encodeURIComponent(_tvCurrentSymbol)
-+'&interval=5&symboledit=1&saveimage=1&toolbarbg=f1f3f6'
-+'&studies=%5B%22RSI%40tv-basicstudies%22%2C%22MACD%40tv-basicstudies%22%5D'
-+'&theme='+theme+'&style=1&timezone=Asia%2FKolkata'
-+'&withdateranges=1&showpopupbutton=1&studies_overrides=%7B%7D'
-+'&overrides=%7B%7D&enabled_features=%5B%5D&disabled_features=%5B%5D&locale=en'
-+'&utm_source=celesys.ai&utm_medium=widget&utm_campaign=chart';
-wrap.innerHTML='<iframe id="'+uid+'" src="'+url+'" style="width:100%;height:480px;border:none" allowtransparency="true" frameborder="0" allowfullscreen></iframe>';
+// Clear old widget
+wrap.innerHTML='<div class="tradingview-widget-container" style="height:480px;width:100%"><div class="tradingview-widget-container__widget" style="height:480px;width:100%"></div></div>';
+var container=wrap.querySelector('.tradingview-widget-container');
+var s=document.createElement('script');
+s.type='text/javascript';
+s.src='https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js';
+s.async=true;
+s.textContent=JSON.stringify({"autosize":true,"symbol":_tvCurrentSymbol,"interval":"5","timezone":"Asia/Kolkata","theme":theme,"style":"1","locale":"en","allow_symbol_change":true,"calendar":false,"hide_top_toolbar":false,"hide_legend":false,"save_image":true,"withdateranges":true,"details":true,"hotlist":true,"show_popup_button":true,"popup_width":"1000","popup_height":"650","studies":["RSI@tv-basicstudies","MACD@tv-basicstudies"],"support_host":"https://www.tradingview.com"});
+container.appendChild(s);
 }
 
 function switchLiveChart(symbol,btn){
@@ -6963,21 +6962,20 @@ if(inp)inp.value='';
 }
 
 function addStockChart(ticker){
-var el=document.getElementById('w52section');
+var el=document.getElementById('stockChartSection');
 if(!el)return;
 var tvSymbol=ticker;
 if(ticker.endsWith('.NS'))tvSymbol='NSE:'+ticker.replace('.NS','');
 else if(ticker.endsWith('.BO'))tvSymbol='BSE:'+ticker.replace('.BO','');
 var theme=document.documentElement.getAttribute('data-theme')==='dark'?'dark':'light';
-var uid='tvs_'+Date.now();
-var url='https://s.tradingview.com/widgetembed/?frameElementId='+uid
-+'&symbol='+encodeURIComponent(tvSymbol)
-+'&interval=D&symboledit=1&saveimage=1&toolbarbg=f1f3f6'
-+'&studies=%5B%22RSI%40tv-basicstudies%22%2C%22MACD%40tv-basicstudies%22%5D'
-+'&theme='+theme+'&style=1&timezone=Asia%2FKolkata'
-+'&withdateranges=1&studies_overrides=%7B%7D'
-+'&overrides=%7B%7D&enabled_features=%5B%5D&disabled_features=%5B%5D&locale=en';
-el.innerHTML='<div style="border-radius:10px;overflow:hidden;border:1px solid var(--border);height:420px"><iframe id="'+uid+'" src="'+url+'" style="width:100%;height:420px;border:none" allowtransparency="true" frameborder="0" allowfullscreen></iframe></div>';
+el.innerHTML='<div class="sh" style="margin-bottom:4px"><div class="si" style="background:rgba(0,120,212,.12)">&#128200;</div><div class="st" style="color:var(--blue)">Live Chart \u2014 '+tvSymbol+'</div></div><div style="border-radius:10px;overflow:hidden;border:1px solid var(--border);height:480px"><div class="tradingview-widget-container" style="height:480px;width:100%"><div class="tradingview-widget-container__widget" style="height:480px;width:100%"></div></div></div>';
+var container=el.querySelector('.tradingview-widget-container');
+var s=document.createElement('script');
+s.type='text/javascript';
+s.src='https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js';
+s.async=true;
+s.textContent=JSON.stringify({"autosize":true,"symbol":tvSymbol,"interval":"D","timezone":"Asia/Kolkata","theme":theme,"style":"1","locale":"en","allow_symbol_change":true,"calendar":false,"save_image":true,"withdateranges":true,"details":true,"studies":["RSI@tv-basicstudies","MACD@tv-basicstudies"],"support_host":"https://www.tradingview.com"});
+container.appendChild(s);
 el.style.display='block';
 }
 
