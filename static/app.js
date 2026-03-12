@@ -6938,6 +6938,20 @@ const updTime=d.updated_at||new Date().toLocaleTimeString([],{hour:'2-digit',min
 items+=`<div class="ti" style="opacity:.5"><span style="font-size:10px">🔄</span><span class="tn" style="color:var(--text3)">Updated</span><span class="tp" style="font-size:10px;color:var(--text3)">${updTime}</span></div>`;
 // Duplicate for seamless infinite scroll
 track.innerHTML=items+items;
+
+// ═══ NEWS TICKER ROW ═══
+if(d.news&&d.news.length>0){
+const newsRow=document.getElementById('newsRow');
+const newsTrack=document.getElementById('newsTrack');
+if(newsRow&&newsTrack){
+let ni='<span class="ni" style="font-weight:700;color:rgba(255,255,255,.4);letter-spacing:1px;font-size:9px;padding:0 12px">📰 LIVE NEWS</span>';
+d.news.forEach(n=>{
+ni+=`<span class="ni"><span class="nd ${n.type}"></span>${n.text}</span>`;
+});
+newsTrack.innerHTML=ni+ni;
+newsRow.style.display='block';
+}
+}
 }catch(e){console.log('Ticker load failed:',e)}
 }
 
