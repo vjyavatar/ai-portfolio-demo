@@ -348,7 +348,7 @@ tradesTab.addEventListener('cut',e=>{e.preventDefault()});
 
 // 5. Block keyboard shortcuts GLOBALLY on any report content
 document.addEventListener('keydown',function(e){
-const reportVisible=document.querySelector('.rpt.show');
+const reportVisible=document.querySelector('#report.show');
 if(!reportVisible)return;
 if(e.key==='PrintScreen'){e.preventDefault();return false}
 if(e.ctrlKey&&e.key==='p'){e.preventDefault();return false}
@@ -911,8 +911,12 @@ try{createCharts(d)}catch(e){console.warn('createCharts error:',e)}
 window._stockData=d;window._stockCurr=curr;
 // Position Analyzer disabled for SEBI compliance
 document.getElementById('report').classList.add('show');
-var _seo=document.getElementById('seoHome');if(_seo)_seo.style.display='none';
-var _mac=document.getElementById('macroIntel');if(_mac)_mac.style.display='none';
+// Collapse hero to just search bar — report appears directly below
+var _hi=document.getElementById('heroIntro');if(_hi)_hi.style.display='none';
+var _he=document.getElementById('heroExtras');if(_he)_he.style.display='none';
+var _hero=document.querySelector('.hero');if(_hero){_hero.style.padding='8px 20px 0';_hero.style.textAlign='left';_hero.style.maxWidth='1080px';_hero.style.margin='0 auto';}
+// Make search card full-width to match report
+var _ic=document.querySelector('.hero .icard');if(_ic){_ic.style.maxWidth='100%';_ic.style.margin='0 0 0';}
 // Hide sticky tagline — tab bar replaces it
 const _sTag=document.getElementById('stickyTag');if(_sTag)_sTag.style.display='none';
 renderMarketEvents();
@@ -926,7 +930,7 @@ try{renderUpcomingEvents(d)}catch(e){console.warn('renderUpcomingEvents error:',
 // Show all Summary tab content now that everything is populated
 switchTab('quick');
 // Scroll to tab bar so everything is cleanly inside tabs
-setTimeout(()=>{const m=document.getElementById('mainTabBar');if(m)m.scrollIntoView({behavior:'smooth',block:'start'})},200);
+setTimeout(()=>{const m=document.getElementById('reportHeader');if(m)m.scrollIntoView({behavior:'smooth',block:'start'})},200);
 setTimeout(animSections,400)}
 
 function animSections(){
