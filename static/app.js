@@ -897,11 +897,8 @@ document.getElementById('timestamp').innerHTML='<div class="ldot"></div> LIVE'+s
 // FORCE SHOW REPORT IMMEDIATELY — even before template renders
 var rpt=document.getElementById('report');
 if(rpt){rpt.style.display='block';rpt.classList.add('show');}
-// Collapse hero
-var _hi=document.getElementById('heroIntro');if(_hi)_hi.style.display='none';
-var _he=document.getElementById('heroExtras');if(_he)_he.style.display='none';
-var _hero=document.querySelector('.hero');if(_hero){_hero.style.padding='8px 20px 0';_hero.style.textAlign='left';_hero.style.maxWidth='1080px';_hero.style.margin='0 auto';}
-var _ic=document.querySelector('.hero .icard');if(_ic){_ic.style.maxWidth='100%';_ic.style.margin='0 0 0';}
+// Collapse hero to just search bar via CSS class
+var _hero=document.querySelector('.hero');if(_hero)_hero.classList.add('collapsed');
 console.log('displayReport: hero collapsed, report visible');
 
 // Metrics
