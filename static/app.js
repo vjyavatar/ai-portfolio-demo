@@ -4606,8 +4606,8 @@ window._currentTheme=next;
 localStorage.setItem('celesys-theme',next);
 const btn=document.getElementById('themeToggleBtn');
 if(btn)btn.innerHTML=next==='dark'?'&#127763; Dark':'&#9728; Light';
-// Refresh TradingView charts for new theme
-if(_tvCurrentSymbol)setTimeout(function(){initLiveChart(_tvCurrentSymbol)},300);
+// Refresh charts for new theme
+try{initLiveChart(_tvCurrentSymbol)}catch(e){}
 }
 
 // ═══ 2. PDF EXPORT ═══
@@ -6921,45 +6921,25 @@ btn.disabled=false;btn.textContent='⚡ Generate Today\'s Trades';
 
 
 
+// ═══ NEW SEARCH — un-collapse hero, show search bar ═══
+function newSearch(){
+var hero=document.querySelector('.hero');
+if(hero)hero.classList.remove('collapsed');
+var rpt=document.getElementById('report');
+if(rpt){rpt.classList.remove('show');rpt.style.display='none';}
+window.scrollTo({top:0,behavior:'smooth'});
+setTimeout(function(){var ti=document.getElementById('ticker');if(ti){ti.value='';ti.focus();}},400);
+}
+
 // ═══ LIVE TRADINGVIEW CHART ═══
-var _tvWidget=null;
 var _tvCurrentSymbol='NSE:NIFTY';
 
 function initLiveChart(symbol){
-var container=document.getElementById('tvChart');
-if(!container||typeof TradingView==='undefined')return;
-container.innerHTML='';
+var container=document.getElementById('tvChartWrap');
+if(!container)return;
 _tvCurrentSymbol=symbol||'NSE:NIFTY';
-try{
-_tvWidget=new TradingView.widget({
-"autosize":true,
-"symbol":_tvCurrentSymbol,
-"interval":"5",
-"timezone":"Asia/Kolkata",
-"theme":document.documentElement.getAttribute('data-theme')==='dark'?'dark':'light',
-"style":"1",
-"locale":"en",
-"toolbar_bg":"#f1f3f6",
-"enable_publishing":false,
-"allow_symbol_change":true,
-"details":true,
-"hotlist":true,
-"calendar":false,
-"studies":["RSI@tv-basicstudies","MACD@tv-basicstudies","BB@tv-basicstudies"],
-"container_id":"tvChart",
-"hide_side_toolbar":false,
-"withdateranges":true,
-"hide_legend":false,
-"save_image":true,
-"show_popup_button":true,
-"popup_width":"1000",
-"popup_height":"650",
-"width":"100%",
-"height":"480"
-});
-}catch(e){
-container.innerHTML='<div style="padding:40px;text-align:center;color:#999"><p>Chart loading... If it does not appear, <a href="https://www.tradingview.com/chart/?symbol='+encodeURIComponent(_tvCurrentSymbol)+'" target="_blank" style="color:#002f6c">open on TradingView</a></p></div>';
-}
+var theme=document.documentElement.getAttribute('data-theme')==='dark'?'dark':'light';
+container.innerHTML='<iframe src="https://s.tradingview.com/widgetembed/?hideideas=1&overrides=%7B%7D&enabled_features=%5B%5D&disabled_features=%5B%5D&locale=en#%7B%22symbol%22%3A%22'+encodeURIComponent(_tvCurrentSymbol)+'%22%2C%22frameElementId%22%3A%22tvframe%22%2C%22interval%22%3A%225%22%2C%22allow_symbol_change%22%3A%221%22%2C%22save_image%22%3A%221%22%2C%22details%22%3A%221%22%2C%22hotlist%22%3A%221%22%2C%22calendar%22%3A%220%22%2C%22studies%22%3A%5B%22RSI%40tv-basicstudies%22%2C%22MACD%40tv-basicstudies%22%5D%2C%22theme%22%3A%22'+theme+'%22%2C%22style%22%3A%221%22%2C%22timezone%22%3A%22Asia%2FKolkata%22%2C%22withdateranges%22%3A%221%22%2C%22show_popup_button%22%3A%221%22%2C%22popup_width%22%3A%221000%22%2C%22popup_height%22%3A%22650%22%7D" style="width:100%;height:480px;border:none" allowtransparency="true" frameborder="0"></iframe>';
 }
 
 function switchLiveChart(symbol,btn){
@@ -6973,37 +6953,15 @@ var inp=document.getElementById('customChartTicker');
 if(inp)inp.value='';
 }
 
-// Also add chart to analyzed stock's Technical sub-tab
 function addStockChart(ticker){
 var el=document.getElementById('w52section');
-if(!el||typeof TradingView==='undefined')return;
+if(!el)return;
 var tvSymbol=ticker;
 if(ticker.endsWith('.NS'))tvSymbol='NSE:'+ticker.replace('.NS','');
 else if(ticker.endsWith('.BO'))tvSymbol='BSE:'+ticker.replace('.BO','');
-var chartDiv='<div style="margin-top:12px;border-radius:10px;overflow:hidden;border:1px solid var(--border);height:400px;background:#131722"><div id="stockTvChart"></div></div>';
-el.innerHTML=chartDiv;
-setTimeout(function(){
-try{
-new TradingView.widget({
-"autosize":true,
-"symbol":tvSymbol,
-"interval":"D",
-"timezone":"Asia/Kolkata",
-"theme":document.documentElement.getAttribute('data-theme')==='dark'?'dark':'light',
-"style":"1",
-"locale":"en",
-"enable_publishing":false,
-"allow_symbol_change":true,
-"studies":["RSI@tv-basicstudies","MACD@tv-basicstudies"],
-"container_id":"stockTvChart",
-"hide_side_toolbar":false,
-"withdateranges":true,
-"save_image":true,
-"width":"100%",
-"height":"400"
-});
-}catch(e){}
-},100);
+var theme=document.documentElement.getAttribute('data-theme')==='dark'?'dark':'light';
+el.innerHTML='<div style="margin-top:8px;border-radius:10px;overflow:hidden;border:1px solid var(--border);height:400px"><iframe src="https://s.tradingview.com/widgetembed/?hideideas=1&overrides=%7B%7D&enabled_features=%5B%5D&disabled_features=%5B%5D&locale=en#%7B%22symbol%22%3A%22'+encodeURIComponent(tvSymbol)+'%22%2C%22frameElementId%22%3A%22tvstock%22%2C%22interval%22%3A%22D%22%2C%22allow_symbol_change%22%3A%221%22%2C%22save_image%22%3A%221%22%2C%22details%22%3A%221%22%2C%22studies%22%3A%5B%22RSI%40tv-basicstudies%22%2C%22MACD%40tv-basicstudies%22%5D%2C%22theme%22%3A%22'+theme+'%22%2C%22style%22%3A%221%22%2C%22timezone%22%3A%22Asia%2FKolkata%22%2C%22withdateranges%22%3A%221%22%7D" style="width:100%;height:400px;border:none" allowtransparency="true" frameborder="0"></iframe></div>';
+el.style.display='block';
 }
 
 async function loadGlobalTicker(){

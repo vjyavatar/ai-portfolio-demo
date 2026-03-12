@@ -210,7 +210,6 @@ gtag('js',new Date());gtag('config','G-WW55EQ7ZB8');
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=Sora:wght@600;700;800&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js" defer></script>
-<script src="https://s3.tradingview.com/tv.js" defer></script>
 <style>
 :root{--bg:#ffffff;--bg2:#f8f9fa;--bg3:#f0f1f2;--surface:#ffffff;--glass:rgba(255,255,255,0.97);--border:#e0e0e0;--border2:#c8c8c8;--blue:#002f6c;--blue2:#001d44;--cyan:#002f6c;--teal:#002f6c;--green:#0eb24e;--green2:#0a9940;--amber:#fcb711;--red:#cd004b;--purple:#6561ac;--text:#171717;--text2:#424242;--text3:#6b6b6b;--mono:'IBM Plex Mono',monospace}
 [data-theme="dark"]{--bg:#0d1b2a;--bg2:#152238;--bg3:#1b2d45;--surface:#152238;--glass:rgba(13,27,42,0.97);--border:rgba(255,255,255,.1);--border2:rgba(255,255,255,.18);--blue:#5b9bd5;--blue2:#7db8e8;--cyan:#5b9bd5;--teal:#5b9bd5;--green:#51cf66;--green2:#40c057;--amber:#ffd43b;--red:#ff6b6b;--purple:#b197fc;--text:#e9ecef;--text2:#adb5bd;--text3:#868e96}
@@ -317,9 +316,8 @@ nav{position:sticky;top:52px;z-index:99;backdrop-filter:blur(24px);-webkit-backd
 
 /* REPORT */
 #report{position:relative;max-width:1080px;margin:0 auto;padding:0 20px 32px;display:none;text-align:left}
-.hero.collapsed{padding:8px 20px 0 !important}
-.hero.collapsed .icard{max-width:1080px !important;margin:0 auto !important}
-.hero.collapsed #heroIntro,.hero.collapsed #heroExtras,.hero.collapsed #liveCharts{display:none !important}
+.hero.collapsed{padding:0 !important;background:transparent !important}
+.hero.collapsed .icard,.hero.collapsed #heroIntro,.hero.collapsed #heroExtras,.hero.collapsed #liveCharts,.hero.collapsed #seoHome,.hero.collapsed #eventAlertArea{display:none !important}
 #report.show{display:block;animation:fu .6s ease}
 @keyframes fu{from{opacity:0;transform:translateY(30px)}to{opacity:1;transform:translateY(0)}}
 
@@ -703,7 +701,7 @@ footer{position:relative;z-index:1;margin-top:32px;background:#002f6c;border-top
 <button class="btn" id="btn" aria-label="Analyze stock" onclick="analyze()">Analyze &#8594;</button>
 </div>
 
-<div style="margin-top:10px;font-size:10px;color:var(--text3);display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+<div class="search-help" style="margin-top:10px;font-size:10px;color:var(--text3);display:flex;align-items:center;gap:10px;flex-wrap:wrap">
 <span>&#128293; <strong style="color:var(--text2)">5 free reports</strong>/email/hour</span>
 <span>&middot;</span>
 <span>&#128270; <a href="https://finance.yahoo.com/lookup" target="_blank" rel="noopener" style="color:var(--blue);text-decoration:none">Can't find ticker? Search Yahoo Finance</a></span>
@@ -753,6 +751,7 @@ footer{position:relative;z-index:1;margin-top:32px;background:#002f6c;border-top
 <div class="rplv" id="timestamp" style="margin:0;font-size:10px"><div class="ldot"></div></div>
 </div>
 <div style="display:flex;align-items:center;gap:4px" id="actionToolbar">
+<button onclick="newSearch()" style="padding:3px 8px;border-radius:4px;background:#002f6c;border:1px solid #002f6c;color:#fff;font-size:10px;font-weight:700;cursor:pointer;font-family:Sora,sans-serif" title="Analyze another stock">&#128270; New</button>
 <button onclick="toggleTheme()" id="themeToggleBtn" style="padding:3px 8px;border-radius:4px;background:var(--surface);border:1px solid var(--border);color:var(--text2);font-size:10px;font-weight:600;cursor:pointer;font-family:Sora,sans-serif" title="Theme">&#127763;</button>
 <button onclick="exportPDF()" id="pdfExportBtn" style="padding:3px 8px;border-radius:4px;background:var(--surface);border:1px solid var(--border);color:#cd004b;font-size:10px;font-weight:600;cursor:pointer;font-family:Sora,sans-serif" title="PDF">&#128196;</button>
 <button onclick="shareReport('whatsapp')" style="padding:3px 8px;border-radius:4px;background:var(--surface);border:1px solid var(--border);color:#0eb24e;font-size:10px;font-weight:600;cursor:pointer;font-family:Sora,sans-serif" title="WhatsApp">&#128172;</button>
@@ -1048,7 +1047,7 @@ footer{position:relative;z-index:1;margin-top:32px;background:#002f6c;border-top
 </footer>
 
 <!-- BACK TO TOP -->
-<button class="btt" id="bttBtn" onclick="window.scrollTo({top:0,behavior:'smooth'})" aria-label="Back to top">&#8593; Top</button>
+<button class="btt" id="bttBtn" onclick="var r=document.getElementById('report');if(r&&r.classList.contains('show')){var h=document.getElementById('reportHeader');if(h)h.scrollIntoView({behavior:'smooth',block:'start'})}else{window.scrollTo({top:0,behavior:'smooth'})}" aria-label="Back to top">&#8593; Top</button>
 
 <script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script src="/static/app.js" defer></script>
 
