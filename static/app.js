@@ -6935,11 +6935,20 @@ setTimeout(function(){var ti=document.getElementById('ticker');if(ti){ti.value='
 var _tvCurrentSymbol='NSE:NIFTY';
 
 function initLiveChart(symbol){
-var container=document.getElementById('tvChartWrap');
-if(!container)return;
+var wrap=document.getElementById('tvChartWrap');
+if(!wrap)return;
 _tvCurrentSymbol=symbol||'NSE:NIFTY';
 var theme=document.documentElement.getAttribute('data-theme')==='dark'?'dark':'light';
-container.innerHTML='<iframe src="https://s.tradingview.com/widgetembed/?hideideas=1&overrides=%7B%7D&enabled_features=%5B%5D&disabled_features=%5B%5D&locale=en#%7B%22symbol%22%3A%22'+encodeURIComponent(_tvCurrentSymbol)+'%22%2C%22frameElementId%22%3A%22tvframe%22%2C%22interval%22%3A%225%22%2C%22allow_symbol_change%22%3A%221%22%2C%22save_image%22%3A%221%22%2C%22details%22%3A%221%22%2C%22hotlist%22%3A%221%22%2C%22calendar%22%3A%220%22%2C%22studies%22%3A%5B%22RSI%40tv-basicstudies%22%2C%22MACD%40tv-basicstudies%22%5D%2C%22theme%22%3A%22'+theme+'%22%2C%22style%22%3A%221%22%2C%22timezone%22%3A%22Asia%2FKolkata%22%2C%22withdateranges%22%3A%221%22%2C%22show_popup_button%22%3A%221%22%2C%22popup_width%22%3A%221000%22%2C%22popup_height%22%3A%22650%22%7D" style="width:100%;height:480px;border:none" allowtransparency="true" frameborder="0"></iframe>';
+var uid='tv_'+Date.now();
+var url='https://s.tradingview.com/widgetembed/?frameElementId='+uid
++'&symbol='+encodeURIComponent(_tvCurrentSymbol)
++'&interval=5&symboledit=1&saveimage=1&toolbarbg=f1f3f6'
++'&studies=%5B%22RSI%40tv-basicstudies%22%2C%22MACD%40tv-basicstudies%22%5D'
++'&theme='+theme+'&style=1&timezone=Asia%2FKolkata'
++'&withdateranges=1&showpopupbutton=1&studies_overrides=%7B%7D'
++'&overrides=%7B%7D&enabled_features=%5B%5D&disabled_features=%5B%5D&locale=en'
++'&utm_source=celesys.ai&utm_medium=widget&utm_campaign=chart';
+wrap.innerHTML='<iframe id="'+uid+'" src="'+url+'" style="width:100%;height:480px;border:none" allowtransparency="true" frameborder="0" allowfullscreen></iframe>';
 }
 
 function switchLiveChart(symbol,btn){
@@ -6960,7 +6969,15 @@ var tvSymbol=ticker;
 if(ticker.endsWith('.NS'))tvSymbol='NSE:'+ticker.replace('.NS','');
 else if(ticker.endsWith('.BO'))tvSymbol='BSE:'+ticker.replace('.BO','');
 var theme=document.documentElement.getAttribute('data-theme')==='dark'?'dark':'light';
-el.innerHTML='<div style="margin-top:8px;border-radius:10px;overflow:hidden;border:1px solid var(--border);height:400px"><iframe src="https://s.tradingview.com/widgetembed/?hideideas=1&overrides=%7B%7D&enabled_features=%5B%5D&disabled_features=%5B%5D&locale=en#%7B%22symbol%22%3A%22'+encodeURIComponent(tvSymbol)+'%22%2C%22frameElementId%22%3A%22tvstock%22%2C%22interval%22%3A%22D%22%2C%22allow_symbol_change%22%3A%221%22%2C%22save_image%22%3A%221%22%2C%22details%22%3A%221%22%2C%22studies%22%3A%5B%22RSI%40tv-basicstudies%22%2C%22MACD%40tv-basicstudies%22%5D%2C%22theme%22%3A%22'+theme+'%22%2C%22style%22%3A%221%22%2C%22timezone%22%3A%22Asia%2FKolkata%22%2C%22withdateranges%22%3A%221%22%7D" style="width:100%;height:400px;border:none" allowtransparency="true" frameborder="0"></iframe></div>';
+var uid='tvs_'+Date.now();
+var url='https://s.tradingview.com/widgetembed/?frameElementId='+uid
++'&symbol='+encodeURIComponent(tvSymbol)
++'&interval=D&symboledit=1&saveimage=1&toolbarbg=f1f3f6'
++'&studies=%5B%22RSI%40tv-basicstudies%22%2C%22MACD%40tv-basicstudies%22%5D'
++'&theme='+theme+'&style=1&timezone=Asia%2FKolkata'
++'&withdateranges=1&studies_overrides=%7B%7D'
++'&overrides=%7B%7D&enabled_features=%5B%5D&disabled_features=%5B%5D&locale=en';
+el.innerHTML='<div style="border-radius:10px;overflow:hidden;border:1px solid var(--border);height:420px"><iframe id="'+uid+'" src="'+url+'" style="width:100%;height:420px;border:none" allowtransparency="true" frameborder="0" allowfullscreen></iframe></div>';
 el.style.display='block';
 }
 

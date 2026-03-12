@@ -316,8 +316,12 @@ nav{position:sticky;top:52px;z-index:99;backdrop-filter:blur(24px);-webkit-backd
 
 /* REPORT */
 #report{position:relative;max-width:1080px;margin:0 auto;padding:0 20px 32px;display:none;text-align:left}
-.hero.collapsed{padding:0 !important;background:transparent !important}
-.hero.collapsed .icard,.hero.collapsed #heroIntro,.hero.collapsed #heroExtras,.hero.collapsed #liveCharts,.hero.collapsed #seoHome,.hero.collapsed #eventAlertArea{display:none !important}
+.hero.collapsed{padding:0 !important;background:var(--surface) !important;border-bottom:1px solid var(--border)}
+.hero.collapsed #heroIntro,.hero.collapsed #heroExtras,.hero.collapsed #liveCharts,.hero.collapsed #seoHome,.hero.collapsed #eventAlertArea,.hero.collapsed .search-help,.hero.collapsed .lsteps,.hero.collapsed .sbar,.hero.collapsed .rlbox{display:none !important}
+.hero.collapsed .icard{max-width:100% !important;margin:0 !important;padding:6px 20px !important;border:none !important;box-shadow:none !important;border-radius:0 !important;background:var(--surface) !important}
+.hero.collapsed .icard .irow{gap:6px}
+.hero.collapsed .icard .ipt{padding:6px 10px;font-size:11px}
+.hero.collapsed .icard .btn{padding:6px 14px;font-size:11px}
 #report.show{display:block;animation:fu .6s ease}
 @keyframes fu{from{opacity:0;transform:translateY(30px)}to{opacity:1;transform:translateY(0)}}
 
@@ -940,7 +944,7 @@ footer{position:relative;z-index:1;margin-top:32px;background:#002f6c;border-top
 </div>
 </div>
 <div id="tvChartWrap" style="border-radius:10px;overflow:hidden;border:1px solid var(--border);height:480px;background:#131722">
-<div id="tvChart"></div>
+<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#666;font-size:12px">Loading chart...</div>
 </div>
 <div style="display:flex;justify-content:space-between;align-items:center;margin-top:4px;font-size:9px;color:var(--text3)">
 <span>Powered by TradingView &middot; Real-time data</span>
