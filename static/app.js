@@ -885,13 +885,26 @@ showStatus(e.message==='Failed to fetch'?'Cannot connect to server.':e.message,'
 }
 btn.disabled=false;btn.textContent='Analyze →';btn.classList.remove('ld');hideLS()}
 
-function displayReport(data){const d=data.live_data,curr=d.currency==='INR'?'₹':'$',price=d.current_price;
+function displayReport(data){
+console.log('displayReport START',data?.live_data?.ticker);
+try{
+const d=data.live_data,curr=d.currency==='INR'?'₹':'$',price=d.current_price;
 document.getElementById('tickerTag').textContent=d.ticker;document.getElementById('companyName').textContent=d.company_name||d.ticker;
 const scEl=document.getElementById('stickyCompany');if(scEl){scEl.textContent=(d.company_name||d.ticker)+' · '+curr+price.toLocaleString();scEl.style.display='inline'}
 const srcLabel=d.data_source==='yahoo_chart_only'?' (chart)':d.data_source==='yahoo_scrape'?' (alt)':d.data_source==='stale_cache'?' (cached)':'';
 document.getElementById('timestamp').innerHTML='<div class="ldot"></div> LIVE'+srcLabel+' · '+d.data_timestamp;
 
-// Metrics removed — data in About Company + Key Numbers
+// FORCE SHOW REPORT IMMEDIATELY — even before template renders
+var rpt=document.getElementById('report');
+if(rpt){rpt.style.display='block';rpt.classList.add('show');}
+// Collapse hero
+var _hi=document.getElementById('heroIntro');if(_hi)_hi.style.display='none';
+var _he=document.getElementById('heroExtras');if(_he)_he.style.display='none';
+var _hero=document.querySelector('.hero');if(_hero){_hero.style.padding='8px 20px 0';_hero.style.textAlign='left';_hero.style.maxWidth='1080px';_hero.style.margin='0 auto';}
+var _ic=document.querySelector('.hero .icard');if(_ic){_ic.style.maxWidth='100%';_ic.style.margin='0 0 0';}
+console.log('displayReport: hero collapsed, report visible');
+
+// Metrics
 const w52valid=d.week52_low&&d.week52_high&&d.week52_low!=='N/A'&&d.week52_high!=='N/A'&&parseFloat(d.week52_high)>0;
 
 // 52-WEEK POSITION BAR — only show if valid data
@@ -909,14 +922,6 @@ try{createAnalysisSections(data.report,d,data.fund_holdings||{institutions:[],fu
 // Charts + DecisionTool MUST run AFTER template is in DOM (canvases live inside template)
 try{createCharts(d)}catch(e){console.warn('createCharts error:',e)}
 window._stockData=d;window._stockCurr=curr;
-// Position Analyzer disabled for SEBI compliance
-document.getElementById('report').classList.add('show');
-// Collapse hero to just search bar — report appears directly below
-var _hi=document.getElementById('heroIntro');if(_hi)_hi.style.display='none';
-var _he=document.getElementById('heroExtras');if(_he)_he.style.display='none';
-var _hero=document.querySelector('.hero');if(_hero){_hero.style.padding='8px 20px 0';_hero.style.textAlign='left';_hero.style.maxWidth='1080px';_hero.style.margin='0 auto';}
-// Make search card full-width to match report
-var _ic=document.querySelector('.hero .icard');if(_ic){_ic.style.maxWidth='100%';_ic.style.margin='0 0 0';}
 // Hide sticky tagline — tab bar replaces it
 const _sTag=document.getElementById('stickyTag');if(_sTag)_sTag.style.display='none';
 renderMarketEvents();
@@ -931,7 +936,9 @@ try{renderUpcomingEvents(d)}catch(e){console.warn('renderUpcomingEvents error:',
 switchTab('quick');
 // Scroll to tab bar so everything is cleanly inside tabs
 setTimeout(()=>{const m=document.getElementById('reportHeader');if(m)m.scrollIntoView({behavior:'smooth',block:'start'})},200);
-setTimeout(animSections,400)}
+setTimeout(animSections,400)
+}catch(e){console.error('displayReport FATAL:',e);var rpt=document.getElementById('report');if(rpt){rpt.style.display='block';rpt.classList.add('show');}
+}}
 
 function animSections(){
 // Sections are now visible immediately via inline styles from switchTab
