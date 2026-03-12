@@ -931,6 +931,8 @@ try{renderInsiderActivity(d)}catch(e){console.warn('renderInsiderActivity error:
 try{renderUpcomingEvents(d)}catch(e){console.warn('renderUpcomingEvents error:',e)}
 // Show all Summary tab content now that everything is populated
 switchTab('quick');
+// Add live TradingView chart for this stock in Technical sub-tab
+try{addStockChart(d.ticker)}catch(e){console.warn('Stock chart error:',e)}
 // Scroll to tab bar so everything is cleanly inside tabs
 setTimeout(()=>{const m=document.getElementById('reportHeader');if(m)m.scrollIntoView({behavior:'smooth',block:'start'})},200);
 setTimeout(animSections,400)
@@ -4604,6 +4606,8 @@ window._currentTheme=next;
 localStorage.setItem('celesys-theme',next);
 const btn=document.getElementById('themeToggleBtn');
 if(btn)btn.innerHTML=next==='dark'?'&#127763; Dark':'&#9728; Light';
+// Refresh TradingView charts for new theme
+if(_tvCurrentSymbol)setTimeout(function(){initLiveChart(_tvCurrentSymbol)},300);
 }
 
 // ═══ 2. PDF EXPORT ═══
@@ -6917,6 +6921,91 @@ btn.disabled=false;btn.textContent='⚡ Generate Today\'s Trades';
 
 
 
+// ═══ LIVE TRADINGVIEW CHART ═══
+var _tvWidget=null;
+var _tvCurrentSymbol='NSE:NIFTY';
+
+function initLiveChart(symbol){
+var container=document.getElementById('tvChart');
+if(!container||typeof TradingView==='undefined')return;
+container.innerHTML='';
+_tvCurrentSymbol=symbol||'NSE:NIFTY';
+try{
+_tvWidget=new TradingView.widget({
+"autosize":true,
+"symbol":_tvCurrentSymbol,
+"interval":"5",
+"timezone":"Asia/Kolkata",
+"theme":document.documentElement.getAttribute('data-theme')==='dark'?'dark':'light',
+"style":"1",
+"locale":"en",
+"toolbar_bg":"#f1f3f6",
+"enable_publishing":false,
+"allow_symbol_change":true,
+"details":true,
+"hotlist":true,
+"calendar":false,
+"studies":["RSI@tv-basicstudies","MACD@tv-basicstudies","BB@tv-basicstudies"],
+"container_id":"tvChart",
+"hide_side_toolbar":false,
+"withdateranges":true,
+"hide_legend":false,
+"save_image":true,
+"show_popup_button":true,
+"popup_width":"1000",
+"popup_height":"650",
+"width":"100%",
+"height":"480"
+});
+}catch(e){
+container.innerHTML='<div style="padding:40px;text-align:center;color:#999"><p>Chart loading... If it does not appear, <a href="https://www.tradingview.com/chart/?symbol='+encodeURIComponent(_tvCurrentSymbol)+'" target="_blank" style="color:#002f6c">open on TradingView</a></p></div>';
+}
+}
+
+function switchLiveChart(symbol,btn){
+_tvCurrentSymbol=symbol;
+initLiveChart(symbol);
+if(btn){
+document.querySelectorAll('#chartBtns .stab').forEach(function(b){b.classList.remove('active')});
+btn.classList.add('active');
+}
+var inp=document.getElementById('customChartTicker');
+if(inp)inp.value='';
+}
+
+// Also add chart to analyzed stock's Technical sub-tab
+function addStockChart(ticker){
+var el=document.getElementById('w52section');
+if(!el||typeof TradingView==='undefined')return;
+var tvSymbol=ticker;
+if(ticker.endsWith('.NS'))tvSymbol='NSE:'+ticker.replace('.NS','');
+else if(ticker.endsWith('.BO'))tvSymbol='BSE:'+ticker.replace('.BO','');
+var chartDiv='<div style="margin-top:12px;border-radius:10px;overflow:hidden;border:1px solid var(--border);height:400px;background:#131722"><div id="stockTvChart"></div></div>';
+el.innerHTML=chartDiv;
+setTimeout(function(){
+try{
+new TradingView.widget({
+"autosize":true,
+"symbol":tvSymbol,
+"interval":"D",
+"timezone":"Asia/Kolkata",
+"theme":document.documentElement.getAttribute('data-theme')==='dark'?'dark':'light',
+"style":"1",
+"locale":"en",
+"enable_publishing":false,
+"allow_symbol_change":true,
+"studies":["RSI@tv-basicstudies","MACD@tv-basicstudies"],
+"container_id":"stockTvChart",
+"hide_side_toolbar":false,
+"withdateranges":true,
+"save_image":true,
+"width":"100%",
+"height":"400"
+});
+}catch(e){}
+},100);
+}
+
 async function loadGlobalTicker(){
 try{
 const r=await fetch('/api/global-ticker');
@@ -6959,7 +7048,7 @@ newsRow.style.display='block';
 setInterval(()=>{loadGlobalTicker()},120000);
 setInterval(()=>{fetchMarketPulse()},120000);
 
-document.addEventListener('DOMContentLoaded',()=>{loadGlobalTicker();setTimeout(()=>fetchMarketPulse(),3000);
+document.addEventListener('DOMContentLoaded',()=>{loadGlobalTicker();setTimeout(()=>fetchMarketPulse(),3000);setTimeout(()=>initLiveChart('NSE:NIFTY'),2000);
 fetch('/api/stats').then(r=>r.json()).then(d=>{
 if(d.total_reports){document.getElementById('navRC').textContent=d.total_reports;document.getElementById('globalRC').textContent=d.total_reports.toLocaleString();const hb=document.getElementById('reportBadgeCount');if(hb)hb.textContent=d.total_reports.toLocaleString()}
 }).catch(()=>{})});

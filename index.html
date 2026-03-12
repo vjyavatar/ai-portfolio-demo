@@ -210,6 +210,7 @@ gtag('js',new Date());gtag('config','G-WW55EQ7ZB8');
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=Sora:wght@600;700;800&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js" defer></script>
+<script src="https://s3.tradingview.com/tv.js" defer></script>
 <style>
 :root{--bg:#ffffff;--bg2:#f8f9fa;--bg3:#f0f1f2;--surface:#ffffff;--glass:rgba(255,255,255,0.97);--border:#e0e0e0;--border2:#c8c8c8;--blue:#002f6c;--blue2:#001d44;--cyan:#002f6c;--teal:#002f6c;--green:#0eb24e;--green2:#0a9940;--amber:#fcb711;--red:#cd004b;--purple:#6561ac;--text:#171717;--text2:#424242;--text3:#6b6b6b;--mono:'IBM Plex Mono',monospace}
 [data-theme="dark"]{--bg:#0d1b2a;--bg2:#152238;--bg3:#1b2d45;--surface:#152238;--glass:rgba(13,27,42,0.97);--border:rgba(255,255,255,.1);--border2:rgba(255,255,255,.18);--blue:#5b9bd5;--blue2:#7db8e8;--cyan:#5b9bd5;--teal:#5b9bd5;--green:#51cf66;--green2:#40c057;--amber:#ffd43b;--red:#ff6b6b;--purple:#b197fc;--text:#e9ecef;--text2:#adb5bd;--text3:#868e96}
@@ -318,7 +319,7 @@ nav{position:sticky;top:52px;z-index:99;backdrop-filter:blur(24px);-webkit-backd
 #report{position:relative;max-width:1080px;margin:0 auto;padding:0 20px 32px;display:none;text-align:left}
 .hero.collapsed{padding:8px 20px 0 !important}
 .hero.collapsed .icard{max-width:1080px !important;margin:0 auto !important}
-.hero.collapsed #heroIntro,.hero.collapsed #heroExtras{display:none !important}
+.hero.collapsed #heroIntro,.hero.collapsed #heroExtras,.hero.collapsed #liveCharts{display:none !important}
 #report.show{display:block;animation:fu .6s ease}
 @keyframes fu{from{opacity:0;transform:translateY(30px)}to{opacity:1;transform:translateY(0)}}
 
@@ -918,6 +919,34 @@ footer{position:relative;z-index:1;margin-top:32px;background:#002f6c;border-top
 </div>
 <div id="macroCards" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px"></div>
 <div id="macroUpcoming" style="margin-top:10px"></div>
+</div>
+
+<!-- LIVE CHARTS — TradingView Real-Time -->
+<div id="liveCharts" style="max-width:1080px;margin:16px auto 0;text-align:left">
+<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;flex-wrap:wrap">
+<div style="display:flex;align-items:center;gap:8px">
+<span style="font-size:16px">&#128200;</span>
+<h3 style="font-family:'Sora',sans-serif;font-size:14px;color:var(--text);margin:0">Live Charts</h3>
+<span style="font-size:8px;padding:2px 8px;border-radius:100px;background:#0eb24e;color:#fff;font-weight:700;letter-spacing:.5px">REAL-TIME</span>
+</div>
+<div style="display:flex;gap:4px;flex-wrap:wrap" id="chartBtns">
+<button onclick="switchLiveChart('NSE:NIFTY',this)" class="stab active" style="padding:4px 12px;font-size:10px">Nifty 50</button>
+<button onclick="switchLiveChart('NSE:BANKNIFTY',this)" class="stab" style="padding:4px 12px;font-size:10px">Bank Nifty</button>
+<button onclick="switchLiveChart('BSE:SENSEX',this)" class="stab" style="padding:4px 12px;font-size:10px">Sensex</button>
+<button onclick="switchLiveChart('NASDAQ:NDX',this)" class="stab" style="padding:4px 12px;font-size:10px">NASDAQ</button>
+<button onclick="switchLiveChart('SP:SPX',this)" class="stab" style="padding:4px 12px;font-size:10px">S&amp;P 500</button>
+<button onclick="switchLiveChart('TVC:GOLD',this)" class="stab" style="padding:4px 12px;font-size:10px">Gold</button>
+<button onclick="switchLiveChart('BITSTAMP:BTCUSD',this)" class="stab" style="padding:4px 12px;font-size:10px">Bitcoin</button>
+<input id="customChartTicker" type="text" placeholder="Any stock... e.g. NSE:RELIANCE" style="padding:4px 10px;border-radius:100px;border:1px solid var(--border);font-size:10px;width:160px;font-family:'DM Sans',sans-serif;background:var(--surface);color:var(--text)" onkeydown="if(event.key==='Enter'){var v=this.value.trim();if(v)switchLiveChart(v,null)}">
+</div>
+</div>
+<div id="tvChartWrap" style="border-radius:10px;overflow:hidden;border:1px solid var(--border);height:480px;background:#131722">
+<div id="tvChart"></div>
+</div>
+<div style="display:flex;justify-content:space-between;align-items:center;margin-top:4px;font-size:9px;color:var(--text3)">
+<span>Powered by TradingView &middot; Real-time data</span>
+<span>Click chart for indicators: RSI, MACD, Bollinger Bands, Volume</span>
+</div>
 </div>
 
 <div id="seoHome">
