@@ -931,10 +931,8 @@ try{renderInsiderActivity(d)}catch(e){console.warn('renderInsiderActivity error:
 try{renderUpcomingEvents(d)}catch(e){console.warn('renderUpcomingEvents error:',e)}
 // Show all Summary tab content now that everything is populated
 switchTab('quick');
-// Add live TradingView chart for this stock in Technical sub-tab
-try{addStockChart(d.ticker)}catch(e){console.warn('Stock chart error:',e)}
 // Scroll to tab bar so everything is cleanly inside tabs
-setTimeout(()=>{const m=document.getElementById('reportHeader');if(m)m.scrollIntoView({behavior:'smooth',block:'start'})},200);
+setTimeout(()=>{window.scrollTo({top:0,behavior:'smooth'})},200);
 setTimeout(animSections,400)
 }catch(e){console.error('displayReport FATAL:',e);var rpt=document.getElementById('report');if(rpt){rpt.style.display='block';rpt.classList.add('show');}
 }}
@@ -4606,8 +4604,6 @@ window._currentTheme=next;
 localStorage.setItem('celesys-theme',next);
 const btn=document.getElementById('themeToggleBtn');
 if(btn)btn.innerHTML=next==='dark'?'&#127763; Dark':'&#9728; Light';
-// Refresh charts for new theme
-try{initLiveChart(_tvCurrentSymbol)}catch(e){}
 }
 
 // ═══ 2. PDF EXPORT ═══
@@ -6931,53 +6927,6 @@ window.scrollTo({top:0,behavior:'smooth'});
 setTimeout(function(){var ti=document.getElementById('ticker');if(ti){ti.value='';ti.focus();}},400);
 }
 
-// ═══ LIVE TRADINGVIEW CHART ═══
-var _tvCurrentSymbol='NSE:NIFTY';
-
-function initLiveChart(symbol){
-var wrap=document.getElementById('tvChartWrap');
-if(!wrap)return;
-_tvCurrentSymbol=symbol||'NSE:NIFTY';
-var theme=document.documentElement.getAttribute('data-theme')==='dark'?'dark':'light';
-// Clear old widget
-wrap.innerHTML='<div class="tradingview-widget-container" style="height:480px;width:100%"><div class="tradingview-widget-container__widget" style="height:480px;width:100%"></div></div>';
-var container=wrap.querySelector('.tradingview-widget-container');
-var s=document.createElement('script');
-s.type='text/javascript';
-s.src='https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js';
-s.async=true;
-s.textContent=JSON.stringify({"autosize":true,"symbol":_tvCurrentSymbol,"interval":"5","timezone":"Asia/Kolkata","theme":theme,"style":"1","locale":"en","allow_symbol_change":true,"calendar":false,"hide_top_toolbar":false,"hide_legend":false,"save_image":true,"withdateranges":true,"details":true,"hotlist":true,"show_popup_button":true,"popup_width":"1000","popup_height":"650","studies":["RSI@tv-basicstudies","MACD@tv-basicstudies"],"support_host":"https://www.tradingview.com"});
-container.appendChild(s);
-}
-
-function switchLiveChart(symbol,btn){
-_tvCurrentSymbol=symbol;
-initLiveChart(symbol);
-if(btn){
-document.querySelectorAll('#chartBtns .stab').forEach(function(b){b.classList.remove('active')});
-btn.classList.add('active');
-}
-var inp=document.getElementById('customChartTicker');
-if(inp)inp.value='';
-}
-
-function addStockChart(ticker){
-var el=document.getElementById('stockChartSection');
-if(!el)return;
-var tvSymbol=ticker;
-if(ticker.endsWith('.NS'))tvSymbol='NSE:'+ticker.replace('.NS','');
-else if(ticker.endsWith('.BO'))tvSymbol='BSE:'+ticker.replace('.BO','');
-var theme=document.documentElement.getAttribute('data-theme')==='dark'?'dark':'light';
-el.innerHTML='<div class="sh" style="margin-bottom:4px"><div class="si" style="background:rgba(0,120,212,.12)">&#128200;</div><div class="st" style="color:var(--blue)">Live Chart \u2014 '+tvSymbol+'</div></div><div style="border-radius:10px;overflow:hidden;border:1px solid var(--border);height:480px"><div class="tradingview-widget-container" style="height:480px;width:100%"><div class="tradingview-widget-container__widget" style="height:480px;width:100%"></div></div></div>';
-var container=el.querySelector('.tradingview-widget-container');
-var s=document.createElement('script');
-s.type='text/javascript';
-s.src='https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js';
-s.async=true;
-s.textContent=JSON.stringify({"autosize":true,"symbol":tvSymbol,"interval":"D","timezone":"Asia/Kolkata","theme":theme,"style":"1","locale":"en","allow_symbol_change":true,"calendar":false,"save_image":true,"withdateranges":true,"details":true,"studies":["RSI@tv-basicstudies","MACD@tv-basicstudies"],"support_host":"https://www.tradingview.com"});
-container.appendChild(s);
-el.style.display='block';
-}
 
 async function loadGlobalTicker(){
 try{
@@ -7021,7 +6970,7 @@ newsRow.style.display='block';
 setInterval(()=>{loadGlobalTicker()},120000);
 setInterval(()=>{fetchMarketPulse()},120000);
 
-document.addEventListener('DOMContentLoaded',()=>{loadGlobalTicker();setTimeout(()=>fetchMarketPulse(),3000);setTimeout(()=>initLiveChart('NSE:NIFTY'),2000);
+document.addEventListener('DOMContentLoaded',()=>{loadGlobalTicker();setTimeout(()=>fetchMarketPulse(),3000);
 fetch('/api/stats').then(r=>r.json()).then(d=>{
 if(d.total_reports){document.getElementById('navRC').textContent=d.total_reports;document.getElementById('globalRC').textContent=d.total_reports.toLocaleString();const hb=document.getElementById('reportBadgeCount');if(hb)hb.textContent=d.total_reports.toLocaleString()}
 }).catch(()=>{})});

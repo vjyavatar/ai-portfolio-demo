@@ -261,7 +261,7 @@ nav{position:sticky;top:52px;z-index:99;backdrop-filter:blur(24px);-webkit-backd
 
 /* HERO */
 .hero{position:relative;z-index:1;padding:28px 28px 16px;text-align:center;background:#ffffff}
-.sticky-tagline{position:fixed;top:148px;left:0;width:100%;z-index:98;text-align:center;padding:6px 0;background:rgba(255,255,255,.98);border-bottom:1px solid #e0e0e0;transform:translateY(-100%);opacity:0;transition:all .4s cubic-bezier(.4,0,.2,1);pointer-events:none;box-shadow:0 1px 2px rgba(0,0,0,.04)}
+.sticky-tagline{position:fixed;top:108px;left:0;width:100%;z-index:98;text-align:center;padding:6px 0;background:rgba(255,255,255,.98);border-bottom:1px solid #e0e0e0;transform:translateY(-100%);opacity:0;transition:all .4s cubic-bezier(.4,0,.2,1);pointer-events:none;box-shadow:0 1px 2px rgba(0,0,0,.04)}
 .sticky-tagline.vis{transform:translateY(0);opacity:1;pointer-events:auto}
 .sticky-tagline span{font-family:'Sora',sans-serif;font-size:13px;font-weight:700;color:#002f6c;letter-spacing:.3px}
 .hero-eye{display:inline-flex;align-items:center;gap:6px;background:rgba(0,47,108,0.06);border:1px solid rgba(0,47,108,0.15);padding:7px 18px;border-radius:100px;font-size:12px;font-weight:600;color:#002f6c;margin-bottom:24px;letter-spacing:.3px}
@@ -317,12 +317,12 @@ nav{position:sticky;top:52px;z-index:99;backdrop-filter:blur(24px);-webkit-backd
 /* REPORT */
 #report{position:relative;max-width:1080px;margin:0 auto;padding:0 20px 32px;display:none;text-align:left;scroll-margin-top:110px}
 .hero.collapsed{padding:0 !important;margin:0 !important;background:transparent !important;border:none !important}
-.hero.collapsed #heroIntro,.hero.collapsed #heroExtras,.hero.collapsed #liveCharts,.hero.collapsed #seoHome,.hero.collapsed #eventAlertArea,.hero.collapsed .icard{display:none !important}
+.hero.collapsed #heroIntro,.hero.collapsed #heroExtras,.hero.collapsed #seoHome,.hero.collapsed #eventAlertArea,.hero.collapsed .icard{display:none !important}
 
 #report.show{display:block;animation:fu .6s ease}
 @keyframes fu{from{opacity:0;transform:translateY(30px)}to{opacity:1;transform:translateY(0)}}
 
-#reportHeader{background:var(--surface);border-bottom:1px solid var(--border);position:sticky;top:108px;z-index:98;scroll-margin-top:112px}
+#reportHeader{background:var(--surface);border-bottom:1px solid var(--border)}
 @keyframes spin{to{transform:rotate(360deg)}}
 .rptk{display:inline-block;font-family:var(--mono);font-size:12px;font-weight:700;color:#fff;background:#002f6c;padding:3px 10px;border-radius:4px;letter-spacing:.8px}
 .rpco{font-family:'Sora',sans-serif;font-size:13px;font-weight:700;color:var(--text)}
@@ -353,9 +353,9 @@ nav{position:sticky;top:52px;z-index:99;backdrop-filter:blur(24px);-webkit-backd
 .sc:hover{border-color:#002f6c}
 .sh{display:flex;align-items:center;gap:8px;padding:12px 18px 0}
 .si{width:34px;height:34px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0}
-.st{font-family:'Sora',sans-serif;font-size:14px;font-weight:700;letter-spacing:-.2px;flex:1;scroll-margin-top:200px}
+.st{font-family:'Sora',sans-serif;font-size:14px;font-weight:700;letter-spacing:-.2px;flex:1;scroll-margin-top:160px}
 .sbody{padding:12px 18px 16px;overflow:visible}
-.tab-bar{display:flex;gap:0;margin-bottom:0;background:#ffffff;border:none;border-bottom:2px solid #dcdcdc;border-radius:0;padding:0 8px;position:sticky;top:148px;z-index:97;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;box-shadow:none}
+.tab-bar{display:flex;gap:0;margin-bottom:0;background:#ffffff;border:none;border-bottom:2px solid #dcdcdc;border-radius:0;padding:0 8px;position:sticky;top:108px;z-index:97;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;box-shadow:none}
 .tab-bar::-webkit-scrollbar{display:none}
 .tab-bar.attention{animation:tabPulse 2s ease 3;border-color:rgba(59,130,246,.5);box-shadow:0 0 20px rgba(59,130,246,.15)}
 @keyframes tabPulse{0%,100%{border-color:rgba(0,120,212,.25);box-shadow:0 0 10px rgba(59,130,246,.05)}50%{border-color:rgba(59,130,246,.6);box-shadow:0 0 25px rgba(0,120,212,.25)}}
@@ -368,8 +368,8 @@ nav{position:sticky;top:52px;z-index:99;backdrop-filter:blur(24px);-webkit-backd
 [data-theme="dark"] .stab{background:var(--surface);border-color:var(--border);color:var(--text3)}
 [data-theme="dark"] .stab:hover{border-color:var(--blue);color:var(--blue)}
 [data-theme="dark"] .stab.active{background:var(--blue);color:#fff;border-color:var(--blue)}
-[data-subtab]{scroll-margin-top:200px}
-[data-asub]{scroll-margin-top:200px}
+[data-subtab]{scroll-margin-top:160px}
+[data-asub]{scroll-margin-top:160px}
 .tab-scroll-area::-webkit-scrollbar{width:6px}.tab-scroll-area::-webkit-scrollbar-thumb{background:rgba(59,130,246,.25);border-radius:3px}.tab-scroll-area::-webkit-scrollbar-track{background:transparent}
 .tab-btn{flex:none;padding:12px 16px;border:none;border-radius:0;cursor:pointer;font-family:'Sora',sans-serif;font-size:11px;font-weight:600;transition:all .2s;background:transparent;color:#747474;letter-spacing:.2px;display:flex;align-items:center;justify-content:center;gap:5px;border-bottom:3px solid transparent;white-space:nowrap;position:relative}
 .tab-btn .tab-icon{font-size:14px;display:inline-flex;width:22px;height:22px;align-items:center;justify-content:center;border-radius:4px;transition:all .2s;background:transparent}
@@ -466,7 +466,7 @@ footer{position:relative;z-index:1;margin-top:32px;background:#002f6c;border-top
 .fcopy{font-size:11px;color:var(--text3)}.fcopy strong{color:var(--text2)}
 .flinks{display:flex;gap:16px}.flinks a{font-size:11px;color:var(--text3);text-decoration:none;transition:color .2s}.flinks a:hover{color:var(--blue)}
 
-@media(max-width:768px){.irow{grid-template-columns:1fr}.mgrid{grid-template-columns:1fr 1fr}.cgrid,.cgrid2{grid-template-columns:1fr}.hero{padding:20px 16px 12px}.hero h1{font-size:26px}.ncenter,.nright{display:none}.sc{padding:0}.ftop{grid-template-columns:1fr;gap:24px}.fbot{flex-direction:column;text-align:center}.tab-btn{font-size:10px;padding:8px 10px;gap:3px}.tab-btn .tab-icon{width:18px;height:18px;font-size:11px;border-radius:3px}.tab-bar{position:sticky;top:118px;padding:0 4px}.sub-nav{top:167px}#summarySubTabs{top:167px;padding:6px 8px}#analysisSubTabs{top:167px;padding:6px 8px}.stab{font-size:10px;padding:4px 10px}.tab-scroll-area{padding:10px}.edu-bar{padding:10px 12px}.edu-bar .edu-lines{gap:3px 12px}.edu-bar .edu-line{font-size:9px}.feat-card{padding:8px}.icard{padding:16px;border-radius:12px}#convGrid{grid-template-columns:1fr !important}}
+@media(max-width:768px){.irow{grid-template-columns:1fr}.mgrid{grid-template-columns:1fr 1fr}.cgrid,.cgrid2{grid-template-columns:1fr}.hero{padding:20px 16px 12px}.hero h1{font-size:26px}.ncenter,.nright{display:none}.sc{padding:0}.ftop{grid-template-columns:1fr;gap:24px}.fbot{flex-direction:column;text-align:center}.tab-btn{font-size:10px;padding:8px 10px;gap:3px}.tab-btn .tab-icon{width:18px;height:18px;font-size:11px;border-radius:3px}.tab-bar{position:sticky;top:78px;padding:0 4px}.sub-nav{top:118px}#summarySubTabs{top:118px;padding:6px 8px}#analysisSubTabs{top:118px;padding:6px 8px}.stab{font-size:10px;padding:4px 10px}.tab-scroll-area{padding:10px}.edu-bar{padding:10px 12px}.edu-bar .edu-lines{gap:3px 12px}.edu-bar .edu-line{font-size:9px}.feat-card{padding:8px}.icard{padding:16px;border-radius:12px}#convGrid{grid-template-columns:1fr !important}}
 @media(max-width:480px){.mgrid{grid-template-columns:1fr}.hbadges{flex-direction:column;align-items:center}}
 
 /* FLOATING FEEDBACK PANEL */
@@ -504,7 +504,7 @@ footer{position:relative;z-index:1;margin-top:32px;background:#002f6c;border-top
 .btt:hover{color:var(--blue);border-color:var(--blue);background:rgba(59,130,246,.06)}
 
 /* Scroll down hint between charts and tabs */
-.sub-nav{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;padding:10px 14px;position:sticky;top:192px;z-index:96;background:rgba(255,255,255,.97);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-bottom:1px solid rgba(0,47,108,.08);margin-left:-18px;margin-right:-18px}
+.sub-nav{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;padding:10px 14px;position:sticky;top:148px;z-index:96;background:rgba(255,255,255,.97);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-bottom:1px solid rgba(0,47,108,.08);margin-left:-18px;margin-right:-18px}
 .sub-nav a{font-size:11px;font-weight:700;padding:6px 14px;border-radius:100px;text-decoration:none;transition:all .25s;cursor:pointer;white-space:nowrap;letter-spacing:.2px}
 /* Summary sub-tab colors */
 /* Deep Dive sub-tab colors */
@@ -781,7 +781,7 @@ footer{position:relative;z-index:1;margin-top:32px;background:#002f6c;border-top
 
 <!-- METRICS + EXTRAS — inside Summary tab -->
 <!-- SUMMARY SUB-TAB BAR -->
-<div id="summarySubTabs" data-tab="quick" style="display:none;padding:8px 12px;background:var(--surface);border-bottom:1px solid var(--border);position:sticky;top:192px;z-index:95;gap:4px;flex-wrap:wrap">
+<div id="summarySubTabs" data-tab="quick" style="display:none;padding:8px 12px;background:var(--surface);border-bottom:1px solid var(--border);position:sticky;top:148px;z-index:95;gap:4px;flex-wrap:wrap">
 <button class="stab active" onclick="switchSubTab('overview')" id="stOverview">&#128202; Overview</button>
 <button class="stab" onclick="switchSubTab('valuation')" id="stValuation">&#128176; Valuation</button>
 <button class="stab" onclick="switchSubTab('technical')" id="stTechnical">&#128200; Technical</button>
@@ -790,7 +790,6 @@ footer{position:relative;z-index:1;margin-top:32px;background:#002f6c;border-top
 </div>
 
 <div id="w52section" data-tab="quick" data-subtab="technical" style="display:none"></div>
-<div id="stockChartSection" data-tab="quick" data-subtab="technical" style="display:none"></div>
 <div id="pricePrediction" data-tab="quick" data-subtab="valuation" style="display:none"></div>
 <div id="techProSection" data-tab="quick" data-subtab="technical" style="display:none"></div>
 <div id="earningsSection" data-tab="quick" data-subtab="activity" style="display:none"></div>
@@ -922,33 +921,6 @@ footer{position:relative;z-index:1;margin-top:32px;background:#002f6c;border-top
 <div id="macroUpcoming" style="margin-top:10px"></div>
 </div>
 
-<!-- LIVE CHARTS — TradingView Real-Time -->
-<div id="liveCharts" style="max-width:1080px;margin:16px auto 0;text-align:left">
-<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;flex-wrap:wrap">
-<div style="display:flex;align-items:center;gap:8px">
-<span style="font-size:16px">&#128200;</span>
-<h3 style="font-family:'Sora',sans-serif;font-size:14px;color:var(--text);margin:0">Live Charts</h3>
-<span style="font-size:8px;padding:2px 8px;border-radius:100px;background:#0eb24e;color:#fff;font-weight:700;letter-spacing:.5px">REAL-TIME</span>
-</div>
-<div style="display:flex;gap:4px;flex-wrap:wrap" id="chartBtns">
-<button onclick="switchLiveChart('NSE:NIFTY',this)" class="stab active" style="padding:4px 12px;font-size:10px">Nifty 50</button>
-<button onclick="switchLiveChart('NSE:BANKNIFTY',this)" class="stab" style="padding:4px 12px;font-size:10px">Bank Nifty</button>
-<button onclick="switchLiveChart('BSE:SENSEX',this)" class="stab" style="padding:4px 12px;font-size:10px">Sensex</button>
-<button onclick="switchLiveChart('NASDAQ:NDX',this)" class="stab" style="padding:4px 12px;font-size:10px">NASDAQ</button>
-<button onclick="switchLiveChart('SP:SPX',this)" class="stab" style="padding:4px 12px;font-size:10px">S&amp;P 500</button>
-<button onclick="switchLiveChart('TVC:GOLD',this)" class="stab" style="padding:4px 12px;font-size:10px">Gold</button>
-<button onclick="switchLiveChart('BITSTAMP:BTCUSD',this)" class="stab" style="padding:4px 12px;font-size:10px">Bitcoin</button>
-<input id="customChartTicker" type="text" placeholder="Any stock... e.g. NSE:RELIANCE" style="padding:4px 10px;border-radius:100px;border:1px solid var(--border);font-size:10px;width:160px;font-family:'DM Sans',sans-serif;background:var(--surface);color:var(--text)" onkeydown="if(event.key==='Enter'){var v=this.value.trim();if(v)switchLiveChart(v,null)}">
-</div>
-</div>
-<div id="tvChartWrap" style="border-radius:10px;overflow:hidden;border:1px solid var(--border);height:480px;background:#131722">
-<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#666;font-size:12px">Loading chart...</div>
-</div>
-<div style="display:flex;justify-content:space-between;align-items:center;margin-top:4px;font-size:9px;color:var(--text3)">
-<span>Powered by TradingView &middot; Real-time data</span>
-<span>Click chart for indicators: RSI, MACD, Bollinger Bands, Volume</span>
-</div>
-</div>
 
 <div id="seoHome">
 <!-- SEO CONTENT — Substantial static HTML for Google crawling -->
@@ -1049,7 +1021,7 @@ footer{position:relative;z-index:1;margin-top:32px;background:#002f6c;border-top
 </footer>
 
 <!-- BACK TO TOP -->
-<button class="btt" id="bttBtn" onclick="var r=document.getElementById('report');if(r&&r.classList.contains('show')){document.getElementById('report').scrollIntoView({behavior:'smooth',block:'start'})}else{window.scrollTo({top:0,behavior:'smooth'})}" aria-label="Back to top">&#8593; Top</button>
+<button class="btt" id="bttBtn" onclick="window.scrollTo({top:0,behavior:'smooth'})" aria-label="Back to top">&#8593; Top</button>
 
 <script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script src="/static/app.js" defer></script>
 
