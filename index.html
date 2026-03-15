@@ -773,7 +773,7 @@ footer{position:relative;z-index:1;margin-top:32px;background:#002f6c;border-top
 <button class="tab-btn" onclick="switchTab('gems')" id="tabBtnGems" data-color="amber" data-tip="Sector-specific small-cap picks" style="display:none"><span class="tab-icon">&#11088;</span> Gems</button>
 <button class="tab-btn" onclick="switchTab('picks')" id="tabBtnPicks" data-color="teal" data-tip="Top 5 Buy, Sell, Accumulate stocks by conviction" style="display:none"><span class="tab-icon">&#127942;</span> Picks</button>
 <button class="tab-btn" onclick="switchTab('funds')" id="tabBtnFunds" data-color="blue" data-tip="Top ETFs & mutual funds with 25%+ CAGR" style="display:none"><span class="tab-icon">&#128176;</span> ETF</button>
-<button class="tab-btn" onclick="switchTab('trades')" id="tabBtnTrades" data-color="red" data-tip="Daily AI trade ideas for indices & stocks" style="display:none"><span class="tab-icon">&#128293;</span> Trades</button>
+<button class="tab-btn" onclick="switchTab('trades')" id="tabBtnTrades" data-color="red" data-tip="Live algo signals + backtest for indices & F&O stocks"><span class="tab-icon">&#127919;</span> Algo Trades</button>
 </div>
 
 <!-- TAB CONTENT AREA — ALL content lives inside here -->
@@ -790,8 +790,57 @@ footer{position:relative;z-index:1;margin-top:32px;background:#002f6c;border-top
 </div>
 
 <div id="w52section" data-tab="quick" data-subtab="technical" style="display:none"></div>
-<div id="confluenceSection" data-tab="trades" style="display:none"></div>
-<div id="backtestSection" data-tab="trades" style="display:none"></div>
+<!-- ALGO TRADES — Permanent Instrument Selector + Algo Results + Backtest -->
+<div class="sc" data-tab="trades" style="border-left:3px solid #002f6c;padding:0">
+<div style="padding:14px 18px;border-bottom:1px solid var(--border);background:linear-gradient(135deg,rgba(0,47,108,.03),rgba(101,97,172,.02))">
+<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+<span style="font-size:18px">&#127919;</span>
+<span style="font-family:Sora,sans-serif;font-size:16px;font-weight:800;color:var(--text)">Algo Trade Scanner</span>
+<span style="font-size:8px;padding:2px 10px;border-radius:100px;background:#0eb24e;color:#fff;font-weight:700;letter-spacing:.5px">LIVE NSE DATA</span>
+</div>
+<div style="font-size:11px;color:var(--text3);margin-bottom:12px;line-height:1.6">Select any index or F&amp;O stock below. The algorithm fetches <strong>real-time data</strong> from NSE + yfinance, computes 20+ factors across 5 layers (Price Action, Indicators, Options, Fundamentals, Risk), and delivers a confluence-based trade signal with entry, SL, 3 targets, and position sizing.</div>
+
+<!-- INSTRUMENT SELECTOR -->
+<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
+<div style="font-size:10px;font-weight:700;color:var(--text3);letter-spacing:1px">INDICES:</div>
+<button onclick="algoSelect('NIFTY',this)" class="stab algo-sel active" style="padding:5px 14px;font-size:11px;font-weight:700">&#127470;&#127475; Nifty 50</button>
+<button onclick="algoSelect('BANKNIFTY',this)" class="stab algo-sel" style="padding:5px 14px;font-size:11px;font-weight:700">&#127470;&#127475; Bank Nifty</button>
+<button onclick="algoSelect('SENSEX',this)" class="stab algo-sel" style="padding:5px 14px;font-size:11px;font-weight:700">&#127470;&#127475; Sensex</button>
+</div>
+<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
+<div style="font-size:10px;font-weight:700;color:var(--text3);letter-spacing:1px">F&amp;O STOCKS:</div>
+<button onclick="algoSelect('RELIANCE',this)" class="stab algo-sel" style="padding:4px 10px;font-size:10px">RELIANCE</button>
+<button onclick="algoSelect('TCS',this)" class="stab algo-sel" style="padding:4px 10px;font-size:10px">TCS</button>
+<button onclick="algoSelect('HDFCBANK',this)" class="stab algo-sel" style="padding:4px 10px;font-size:10px">HDFC BANK</button>
+<button onclick="algoSelect('INFY',this)" class="stab algo-sel" style="padding:4px 10px;font-size:10px">INFOSYS</button>
+<button onclick="algoSelect('ICICIBANK',this)" class="stab algo-sel" style="padding:4px 10px;font-size:10px">ICICI BANK</button>
+<button onclick="algoSelect('SBIN',this)" class="stab algo-sel" style="padding:4px 10px;font-size:10px">SBI</button>
+<button onclick="algoSelect('TATAMOTORS',this)" class="stab algo-sel" style="padding:4px 10px;font-size:10px">TATA MOTORS</button>
+<button onclick="algoSelect('BHARTIARTL',this)" class="stab algo-sel" style="padding:4px 10px;font-size:10px">AIRTEL</button>
+<button onclick="algoSelect('LT',this)" class="stab algo-sel" style="padding:4px 10px;font-size:10px">L&amp;T</button>
+<button onclick="algoSelect('BAJFINANCE',this)" class="stab algo-sel" style="padding:4px 10px;font-size:10px">BAJAJ FIN</button>
+<button onclick="algoSelect('ITC',this)" class="stab algo-sel" style="padding:4px 10px;font-size:10px">ITC</button>
+<button onclick="algoSelect('MARUTI',this)" class="stab algo-sel" style="padding:4px 10px;font-size:10px">MARUTI</button>
+</div>
+<div style="display:flex;gap:6px;align-items:center">
+<div style="font-size:10px;font-weight:700;color:var(--text3);letter-spacing:1px">CUSTOM:</div>
+<input id="algoCustomTicker" type="text" placeholder="Any stock... e.g. TATASTEEL" style="padding:5px 12px;border-radius:6px;border:1px solid var(--border);font-size:11px;width:180px;font-family:DM Sans,sans-serif;background:var(--surface);color:var(--text)" onkeydown="if(event.key==='Enter'){var v=this.value.trim().toUpperCase();if(v)algoSelect(v,null)}">
+<button onclick="var v=document.getElementById('algoCustomTicker').value.trim().toUpperCase();if(v)algoSelect(v,null)" style="padding:5px 14px;border-radius:6px;background:#002f6c;color:#fff;border:none;font-size:11px;font-weight:700;cursor:pointer;font-family:Sora,sans-serif">&#9889; Analyze</button>
+</div>
+</div>
+
+<!-- ALGO RESULT -->
+<div id="algoResult" style="padding:16px 18px">
+<div style="text-align:center;padding:30px;color:var(--text3)">
+<div style="font-size:36px;margin-bottom:8px">&#127919;</div>
+<div style="font-size:13px;font-weight:600">Click any instrument above to run the 5-layer algorithm</div>
+<div style="font-size:11px;color:var(--text3);margin-top:4px">CPR + ORB + VWAP + EMA Stack + RSI + MACD + Supertrend + Volume + VIX + PCR + OI + Max Pain + Delta + Gamma + Theta + Fundamentals + Risk</div>
+</div>
+</div>
+
+<!-- BACKTEST -->
+<div id="backtestSection" style="padding:0 18px 18px"></div>
+</div>
 <div id="pricePrediction" data-tab="quick" data-subtab="valuation" style="display:none"></div>
 <div id="techProSection" data-tab="quick" data-subtab="technical" style="display:none"></div>
 <div id="earningsSection" data-tab="quick" data-subtab="activity" style="display:none"></div>

@@ -1707,22 +1707,6 @@ ${(()=>{const bt=parseFloat(d.beta)||1;return bt>1.5?' Expect bigger swings than
 <div id="fundGrid"></div>
 </div></div>
 
-<!-- TAB 7: INDEX TRADES (Restricted Access) -->
-<div class="sc" data-tab="trades" style="border-left:3px solid var(--red)"><div class="sh"><div class="si" style="background:rgba(245,158,11,.1)">&#128293;</div><div class="st" style="color:var(--amber)" id="sec-trades">Smart Trades &#8212; Daily Ideas</div></div>
-<div class="sbody">
-<div id="tradesContent">
-<div style="text-align:center;padding:30px 20px">
-<div style="font-size:40px;margin-bottom:12px">&#128274;</div>
-<div style="font-family:'Sora',sans-serif;font-size:16px;font-weight:700;color:var(--amber);margin-bottom:8px">Premium Trading Intelligence</div>
-<p style="font-size:13px;color:var(--text3);max-width:450px;margin:0 auto 20px;line-height:1.7">Top 5 index + 2 stock option trade ideas daily. Nifty, Bank Nifty, Sensex &amp; high-momentum stocks.</p>
-<button id="tradesLoadBtn" onclick="loadIndexTrades()" style="padding:12px 28px;border-radius:10px;border:2px solid var(--amber);background:rgba(245,158,11,.1);color:var(--amber);font-family:'Sora',sans-serif;font-size:14px;font-weight:700;cursor:pointer;transition:all .3s">&#9889; Generate Today's Trades</button>
-<button id="scorecardBtn" onclick="loadTradeScorecard()" style="padding:12px 20px;border-radius:10px;border:2px solid var(--cyan);background:rgba(6,182,212,.08);color:var(--cyan);font-family:'Sora',sans-serif;font-size:12px;font-weight:700;cursor:pointer;margin-left:8px">&#128202; Trade Scorecard</button>
-<div id="tradesError" style="margin-top:12px;font-size:12px;color:var(--red);display:none"></div>
-<div id="scorecardArea" style="display:none;margin-top:16px"></div>
-</div>
-</div>
-</div></div>
-
 </div><!-- end tab-scroll-area -->
 `;
 }catch(te){console.error('Template error:',te);html='<div style="padding:40px;text-align:center;color:var(--red)"><h3>Rendering Error</h3><p>'+te.message+'</p></div>';}
@@ -1889,23 +1873,12 @@ fetchMarketDaily();
 }
 }
 if(tab==='trades'){
-// Auto-load trades if button exists and content is default
-var _tBtn=document.getElementById('tradesLoadBtn');
-if(_tBtn&&!window._tradesLoaded){window._tradesLoaded=true;setTimeout(function(){loadIndexTrades()},300);}
-// Auto-render algo signals
-var _aEl=document.getElementById('confluenceSection');
-if(_aEl&&!_aEl.innerHTML.trim()){
-var _sd=window._stockData;
-if(_sd){try{renderTradeConfluence(_sd)}catch(e){}}
-else{
-// No stock analyzed yet — run NIFTY by default
-_aEl.style.display='block';
-_aEl.innerHTML='<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap"><div style="display:flex;align-items:center;gap:6px"><span style="font-size:16px">&#127919;</span><span style="font-family:Sora,sans-serif;font-size:14px;font-weight:800;color:var(--text)">Algo Signals</span><span style="font-size:8px;padding:2px 8px;border-radius:100px;background:#0eb24e;color:#fff;font-weight:700">LIVE DATA</span></div><select id="algoSymSel" style="padding:5px 12px;border-radius:6px;border:1px solid var(--border);font-size:11px;font-family:DM Sans,sans-serif;background:var(--surface);color:var(--text)"><option value="NIFTY" selected>NIFTY</option><option value="BANKNIFTY">BANKNIFTY</option><option value="SENSEX">SENSEX</option><option value="RELIANCE">RELIANCE</option><option value="TCS">TCS</option><option value="HDFCBANK">HDFCBANK</option><option value="INFY">INFY</option><option value="ICICIBANK">ICICIBANK</option><option value="SBIN">SBIN</option><option value="TATAMOTORS">TATAMOTORS</option><option value="BHARTIARTL">BHARTIARTL</option><option value="LT">LT</option><option value="BAJFINANCE">BAJFINANCE</option><option value="ITC">ITC</option><option value="MARUTI">MARUTI</option><option value="CUSTOM">Custom...</option></select><input id="algoCustom" type="text" placeholder="e.g. TATASTEEL" style="display:none;padding:5px 10px;border-radius:6px;border:1px solid var(--border);font-size:11px;width:110px;font-family:DM Sans,sans-serif;background:var(--surface);color:var(--text)"><button id="algoRunBtn" onclick="runAlgoSignal()" style="padding:5px 16px;border-radius:6px;background:#002f6c;color:#fff;border:none;font-size:11px;font-weight:700;cursor:pointer;font-family:Sora,sans-serif">&#9889; Run Algorithm</button></div><div id="algoResult"><div style="padding:20px;text-align:center;color:var(--text3);font-size:11px">&#9203; Running 5-layer analysis for NIFTY...</div></div>';
-document.getElementById('algoSymSel').onchange=function(){document.getElementById('algoCustom').style.display=this.value==='CUSTOM'?'inline-block':'none';};
-_fetchAlgoSignal('NIFTY');
+// Auto-run NIFTY on first open
+if(!window._algoFirstRun){
+window._algoFirstRun=true;
+setTimeout(function(){algoSelect('NIFTY',document.querySelector('.algo-sel.active'))},300);
 }
-}
-// Init backtest engine
+// Init backtest
 try{initBacktest()}catch(e){}
 }
 
@@ -5025,43 +4998,36 @@ el.innerHTML=h;
 
 // 5-LAYER TRADE CONFLUENCE ENGINE — REAL NSE DATA
 // ═══ ALGO SIGNALS — 5-LAYER CONFLUENCE WITH LIVE NSE DATA ═══
+// ═══ ALGO TRADE SCANNER — SELECT & AUTO-RUN ═══
+function algoSelect(sym,btn){
+// Highlight button
+document.querySelectorAll('.algo-sel').forEach(function(b){b.classList.remove('active')});
+if(btn)btn.classList.add('active');
+// Clear custom input
+var ci=document.getElementById('algoCustomTicker');
+if(ci&&btn)ci.value='';
+// Show loading
+var res=document.getElementById('algoResult');
+if(res)res.innerHTML='<div style="text-align:center;padding:30px;color:var(--text3)"><div style="font-size:24px;margin-bottom:8px">&#9203;</div><div style="font-size:12px;font-weight:600">Running 5-layer algorithm for <strong>'+sym+'</strong>...</div><div style="font-size:10px;color:var(--text3);margin-top:4px">Fetching live NSE options + yfinance data + computing CPR, ORB, VWAP, EMA, RSI, MACD, Supertrend, VIX, PCR, OI, Max Pain, Black-Scholes Greeks...</div></div>';
+// Fetch
+fetch('/api/algo-signal?symbol='+encodeURIComponent(sym)).then(function(r){return r.json();}).then(function(data){
+if(!res)return;
+if(!data.success){res.innerHTML='<div style="padding:20px;text-align:center"><div style="font-size:24px;margin-bottom:8px">&#9888;</div><div style="color:var(--red);font-size:12px;font-weight:600">'+(data.error||'Failed to fetch data for '+sym)+'</div><div style="font-size:10px;color:var(--text3);margin-top:4px">Try another instrument or check if market is open.</div></div>';return;}
+_renderAlgoCard(res,data);
+}).catch(function(e){
+if(res)res.innerHTML='<div style="padding:20px;text-align:center;color:var(--red);font-size:12px">&#9888; Network error: '+e.message+'</div>';
+});
+}
+
+// Legacy compatibility
 function renderTradeConfluence(d){
-var el=document.getElementById('confluenceSection');
-if(!el)return;
 var ticker=d.ticker||'';
 var sym=ticker.replace('.NS','').replace('.BO','');
 if(sym==='^NSEI')sym='NIFTY';if(sym==='^NSEBANK')sym='BANKNIFTY';if(sym==='^BSESN')sym='SENSEX';
-// Show dropdown + auto-run for current stock
-var presets=['NIFTY','BANKNIFTY','SENSEX','RELIANCE','TCS','HDFCBANK','INFY','ICICIBANK','SBIN','TATAMOTORS','BHARTIARTL','LT','BAJFINANCE','ITC','MARUTI'];
-var opts=presets.map(function(p){return '<option value="'+p+'"'+(p===sym?' selected':'')+'>'+p+'</option>';}).join('');
-el.innerHTML='<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap"><div style="display:flex;align-items:center;gap:6px"><span style="font-size:16px">&#127919;</span><span style="font-family:Sora,sans-serif;font-size:14px;font-weight:800;color:var(--text)">Algo Signals</span><span style="font-size:8px;padding:2px 8px;border-radius:100px;background:#0eb24e;color:#fff;font-weight:700">LIVE DATA</span></div><select id="algoSymSel" style="padding:5px 12px;border-radius:6px;border:1px solid var(--border);font-size:11px;font-family:DM Sans,sans-serif;background:var(--surface);color:var(--text)">'+opts+'<option value="CUSTOM">Custom...</option></select><input id="algoCustom" type="text" placeholder="e.g. TATASTEEL" style="display:none;padding:5px 10px;border-radius:6px;border:1px solid var(--border);font-size:11px;width:110px;font-family:DM Sans,sans-serif;background:var(--surface);color:var(--text)"><button id="algoRunBtn" onclick="runAlgoSignal()" style="padding:5px 16px;border-radius:6px;background:#002f6c;color:#fff;border:none;font-size:11px;font-weight:700;cursor:pointer;font-family:Sora,sans-serif">&#9889; Run Algorithm</button></div><div id="algoResult"><div style="padding:20px;text-align:center;color:var(--text3);font-size:11px">&#9203; Running 5-layer analysis for '+sym+'...</div></div>';
-el.style.display='block';
-// Toggle custom input
-document.getElementById('algoSymSel').onchange=function(){document.getElementById('algoCustom').style.display=this.value==='CUSTOM'?'inline-block':'none';};
-// Auto-run for current stock
-_fetchAlgoSignal(sym);
+algoSelect(sym,null);
 }
-
-function runAlgoSignal(){
-var sel=document.getElementById('algoSymSel');
-var sym=sel.value==='CUSTOM'?(document.getElementById('algoCustom').value.trim().toUpperCase()):sel.value;
-if(!sym)return;
-var res=document.getElementById('algoResult');
-if(res)res.innerHTML='<div style="padding:20px;text-align:center;color:var(--text3);font-size:11px">&#9203; Running 5-layer analysis for '+sym+'...</div>';
-_fetchAlgoSignal(sym);
-}
-
-function _fetchAlgoSignal(sym){
-fetch('/api/algo-signal?symbol='+encodeURIComponent(sym)).then(function(r){return r.json();}).then(function(data){
-var res=document.getElementById('algoResult');
-if(!res)return;
-if(!data.success){res.innerHTML='<div style="padding:16px;color:var(--red);font-size:11px">&#9888; '+( data.error||'Failed')+'</div>';return;}
-_renderAlgoCard(res,data);
-}).catch(function(e){
-var res=document.getElementById('algoResult');
-if(res)res.innerHTML='<div style="padding:16px;color:var(--red);font-size:11px">&#9888; Network error: '+e.message+'</div>';
-});
-}
+function runAlgoSignal(){algoSelect(document.getElementById('algoSymSel')?.value||'NIFTY',null);}
+function _fetchAlgoSignal(sym){algoSelect(sym,null);}
 
 function _renderAlgoCard(el,d){
 var S='&#8377;';
@@ -5086,77 +5052,42 @@ if(d.isExpiry)h+='<div style="margin-top:6px"><span style="font-size:9px;font-we
 h+='</div></div>';
 
 // Confluence Meter
-h+='<div style="padding:16px;border-radius:12px;background:var(--bg2);border:1px solid var(--border);margin-bottom:14px">';
-h+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><div style="font-size:12px;font-weight:800;color:var(--text)">CONFLUENCE SCORE</div><div style="font-size:28px;font-weight:900;color:'+sC+'">'+sup+'/'+tot+'</div></div>';
-h+='<div style="height:10px;background:var(--bg3);border-radius:5px;overflow:hidden;margin-bottom:10px"><div style="height:100%;width:'+pct+'%;border-radius:5px;background:linear-gradient(90deg,'+sC+','+sC+'aa);transition:width .6s ease"></div></div>';
-h+='<div style="display:flex;gap:14px"><div style="display:flex;align-items:center;gap:5px"><div style="width:10px;height:10px;border-radius:50%;background:#0a7c42"></div><span style="font-size:11px;font-weight:700;color:#0a7c42">'+sup+' Supports</span></div><div style="display:flex;align-items:center;gap:5px"><div style="width:10px;height:10px;border-radius:50%;background:#ef4444"></div><span style="font-size:11px;font-weight:700;color:#ef4444">'+opp+' Opposes</span></div><div style="display:flex;align-items:center;gap:5px"><div style="width:10px;height:10px;border-radius:50%;background:#f59e0b"></div><span style="font-size:11px;font-weight:700;color:#f59e0b">'+neu+' Neutral</span></div></div></div>';
+h+='<div style="padding:16px;border-radius:12px;background:var(--bg2);border:1px solid var(--border);margin-bottom:14px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><div style="font-size:12px;font-weight:800;color:var(--text)">CONFLUENCE SCORE</div><div style="font-size:28px;font-weight:900;color:'+sC+'">'+sup+'/'+tot+'</div></div><div style="height:10px;background:var(--bg3);border-radius:5px;overflow:hidden;margin-bottom:10px"><div style="height:100%;width:'+pct+'%;border-radius:5px;background:linear-gradient(90deg,'+sC+','+sC+'aa);transition:width .6s ease"></div></div><div style="display:flex;gap:14px"><div style="display:flex;align-items:center;gap:5px"><div style="width:10px;height:10px;border-radius:50%;background:#0a7c42"></div><span style="font-size:11px;font-weight:700;color:#0a7c42">'+sup+' Supports</span></div><div style="display:flex;align-items:center;gap:5px"><div style="width:10px;height:10px;border-radius:50%;background:#ef4444"></div><span style="font-size:11px;font-weight:700;color:#ef4444">'+opp+' Opposes</span></div><div style="display:flex;align-items:center;gap:5px"><div style="width:10px;height:10px;border-radius:50%;background:#f59e0b"></div><span style="font-size:11px;font-weight:700;color:#f59e0b">'+neu+' Neutral</span></div></div></div>';
 
 // Factor Grid by Layer
 var cats=['PRICE_ACTION','INDICATOR','OPTION','FUNDAMENTAL','RISK'];
-var cL={'PRICE_ACTION':'&#128200; LAYER 1 — PRICE ACTION','INDICATOR':'&#128202; LAYER 2 — INDICATORS','OPTION':'&#128178; LAYER 3 — OPTIONS (NSE LIVE)','FUNDAMENTAL':'&#127970; LAYER 4 — FUNDAMENTALS','RISK':'&#128737; LAYER 5 — RISK'};
-(d.factors||[]).forEach(function(){});// verify
-cats.forEach(function(cat){
-var fs=(d.factors||[]).filter(function(f){return f.category===cat;});
-if(!fs.length)return;
-h+='<div style="margin-bottom:10px"><div style="font-size:9px;font-weight:700;color:var(--blue);letter-spacing:2px;margin-bottom:6px">'+(cL[cat]||cat)+'</div>';
-h+='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:6px">';
-fs.forEach(function(f){
-var fc=f.status==='SUPPORTS'?'#0a7c42':f.status==='OPPOSES'?'#ef4444':'#f59e0b';
-var bg=f.status==='SUPPORTS'?'rgba(10,124,66,.04)':f.status==='OPPOSES'?'rgba(239,68,68,.04)':'rgba(245,158,11,.04)';
-h+='<div style="background:'+bg+';border-radius:8px;padding:8px 10px;border:1px solid '+fc+'18;display:flex;gap:8px;align-items:flex-start">';
-h+='<div style="width:8px;height:8px;border-radius:50%;background:'+fc+';margin-top:4px;flex-shrink:0"></div>';
-h+='<div><div style="font-size:10px;font-weight:700;color:'+fc+';letter-spacing:.3px">'+f.name+'</div>';
-h+='<div style="font-size:9px;color:var(--text2);line-height:1.5;margin-top:2px">'+f.detail+'</div></div></div>';
-});
-h+='</div></div>';
-});
+var cL={'PRICE_ACTION':'&#128200; LAYER 1 \u2014 PRICE ACTION','INDICATOR':'&#128202; LAYER 2 \u2014 INDICATORS','OPTION':'&#128178; LAYER 3 \u2014 OPTIONS (NSE LIVE)','FUNDAMENTAL':'&#127970; LAYER 4 \u2014 FUNDAMENTALS','RISK':'&#128737; LAYER 5 \u2014 RISK'};
+cats.forEach(function(cat){var fs=(d.factors||[]).filter(function(f){return f.category===cat;});if(!fs.length)return;h+='<div style="margin-bottom:10px"><div style="font-size:9px;font-weight:700;color:var(--blue);letter-spacing:2px;margin-bottom:6px">'+(cL[cat]||cat)+'</div><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:6px">';fs.forEach(function(f){var fc=f.status==='SUPPORTS'?'#0a7c42':f.status==='OPPOSES'?'#ef4444':'#f59e0b';var bg=f.status==='SUPPORTS'?'rgba(10,124,66,.04)':f.status==='OPPOSES'?'rgba(239,68,68,.04)':'rgba(245,158,11,.04)';h+='<div style="background:'+bg+';border-radius:8px;padding:8px 10px;border:1px solid '+fc+'18;display:flex;gap:8px;align-items:flex-start"><div style="width:8px;height:8px;border-radius:50%;background:'+fc+';margin-top:4px;flex-shrink:0"></div><div><div style="font-size:10px;font-weight:700;color:'+fc+';letter-spacing:.3px">'+f.name+'</div><div style="font-size:9px;color:var(--text2);line-height:1.5;margin-top:2px">'+f.detail+'</div></div></div>';});h+='</div></div>';});
 
 // Trade Plan
 var tr=d.trade;
 if(tr){
 h+='<div style="padding:16px;border-radius:12px;background:'+(dir==='BULLISH'?dC:sC)+'08;border:1px solid '+(dir==='BULLISH'?dC:sC)+'22;margin-bottom:12px">';
-h+='<div style="font-weight:800;color:'+(dir==='BULLISH'?dC:sC)+';font-size:16px;margin-bottom:12px">'+tr.action+'</div>';
+h+='<div style="font-weight:800;color:'+(dir==='BULLISH'?dC:sC)+';font-size:16px;margin-bottom:12px">'+tr.action+(tr.delta?' &middot; \u0394 '+tr.delta.toFixed(2):'')+(tr.premium?' &middot; Premium \u20b9'+tr.premium:'')+'</div>';
 
-// R:R Visual Bar
+// R:R Bar
 if(tr.sl&&tr.t2){
-h+='<div style="margin-bottom:14px"><div style="font-size:9px;color:var(--text3);letter-spacing:1px;margin-bottom:4px;font-weight:700">RISK / REWARD VISUAL</div>';
-h+='<div style="display:flex;height:28px;border-radius:6px;overflow:hidden;font-size:9px;font-weight:700">';
-h+='<div style="background:rgba(192,57,43,.85);color:#fff;width:20%;display:flex;align-items:center;justify-content:center;min-width:50px">SL '+S+tr.sl.toLocaleString('en-IN')+'</div>';
-h+='<div style="background:rgba(184,134,11,.7);color:#fff;flex:1;display:flex;align-items:center;justify-content:center">Entry '+S+p.toLocaleString('en-IN')+'</div>';
-h+='<div style="background:rgba(10,124,66,.55);color:#fff;width:18%;display:flex;align-items:center;justify-content:center;min-width:50px">T1 '+S+tr.t1.toLocaleString('en-IN')+'</div>';
-h+='<div style="background:rgba(10,124,66,.75);color:#fff;width:18%;display:flex;align-items:center;justify-content:center;min-width:50px">T2 '+S+tr.t2.toLocaleString('en-IN')+'</div>';
-h+='<div style="background:#0a7c42;color:#fff;width:14%;display:flex;align-items:center;justify-content:center;min-width:50px">T3 '+S+tr.t3.toLocaleString('en-IN')+'</div>';
-h+='</div></div>';
+h+='<div style="margin-bottom:14px"><div style="font-size:9px;color:var(--text3);letter-spacing:1px;margin-bottom:4px;font-weight:700">RISK / REWARD VISUAL</div><div style="display:flex;height:28px;border-radius:6px;overflow:hidden;font-size:9px;font-weight:700"><div style="background:rgba(192,57,43,.85);color:#fff;width:20%;display:flex;align-items:center;justify-content:center;min-width:50px">SL '+S+tr.sl.toLocaleString('en-IN')+'</div><div style="background:rgba(184,134,11,.7);color:#fff;flex:1;display:flex;align-items:center;justify-content:center">Entry '+S+p.toLocaleString('en-IN')+'</div><div style="background:rgba(10,124,66,.55);color:#fff;width:18%;display:flex;align-items:center;justify-content:center;min-width:50px">T1 '+S+tr.t1.toLocaleString('en-IN')+'</div><div style="background:rgba(10,124,66,.75);color:#fff;width:18%;display:flex;align-items:center;justify-content:center;min-width:50px">T2 '+S+tr.t2.toLocaleString('en-IN')+'</div><div style="background:#0a7c42;color:#fff;width:14%;display:flex;align-items:center;justify-content:center;min-width:50px">T3 '+S+tr.t3.toLocaleString('en-IN')+'</div></div></div>';
 }
 
 // Trade details
 var keys=['entry','exit','slReason','t1Action','t2Action','t3Action','riskPerLot','rewardT2PerLot','rrRatio','capitalPerLot','lot'];
-keys.forEach(function(k){
-if(!tr[k])return;
-var isRisk=k.indexOf('sl')>=0||k.indexOf('risk')>=0||k.indexOf('Risk')>=0;
-var isGreen=k.indexOf('t1')>=0||k.indexOf('t2')>=0||k.indexOf('t3')>=0||k.indexOf('reward')>=0;
-h+='<div style="display:flex;justify-content:space-between;font-size:11px;line-height:1.7;border-bottom:1px solid var(--border);padding:3px 0">';
-h+='<span style="color:var(--text3);font-weight:600;min-width:110px">'+k+'</span>';
-h+='<span style="color:'+(isRisk?'#c0392b':isGreen?'#0a7c42':'var(--text)')+';font-weight:600;text-align:right">'+(typeof tr[k]==='number'?tr[k].toLocaleString('en-IN'):tr[k])+'</span></div>';
-});
+keys.forEach(function(k){if(!tr[k])return;var isR=k.indexOf('sl')>=0||k.indexOf('risk')>=0||k.indexOf('Risk')>=0;var isG=k.indexOf('t1')>=0||k.indexOf('t2')>=0||k.indexOf('t3')>=0||k.indexOf('reward')>=0;h+='<div style="display:flex;justify-content:space-between;font-size:11px;line-height:1.7;border-bottom:1px solid var(--border);padding:3px 0"><span style="color:var(--text3);font-weight:600;min-width:110px">'+k+'</span><span style="color:'+(isR?'#c0392b':isG?'#0a7c42':'var(--text)')+';font-weight:600;text-align:right">'+(typeof tr[k]==='number'?tr[k].toLocaleString('en-IN'):tr[k])+'</span></div>';});
 h+='</div>';
 }else{
-// WAIT/AVOID
-h+='<div style="text-align:center;padding:16px;font-size:13px;font-weight:700;color:#f59e0b;background:rgba(245,158,11,.05);border-radius:10px;margin-bottom:12px;border:1px solid rgba(245,158,11,.2)">&#9208; '+sig+' — Confluence only '+sup+'/'+tot+'. '+(d.reasoning||'')+'</div>';
+h+='<div style="text-align:center;padding:16px;font-size:13px;font-weight:700;color:#f59e0b;background:rgba(245,158,11,.05);border-radius:10px;margin-bottom:12px;border:1px solid rgba(245,158,11,.2)">&#9208; '+sig+' \u2014 Confluence only '+sup+'/'+tot+'. '+(d.reasoning||'')+'</div>';
 }
 
 // Reasoning
-h+='<details style="margin-bottom:10px"><summary style="cursor:pointer;font-size:11px;font-weight:700;color:var(--blue);padding:8px 0">&#129504; Full Reasoning + Risk Rules</summary>';
-h+='<div style="background:var(--bg2);border-radius:10px;padding:14px;margin-top:6px;border:1px solid var(--border);font-size:11px;color:var(--text2);line-height:1.9">'+(d.reasoning||'')+'</div>';
+h+='<details style="margin-bottom:10px"><summary style="cursor:pointer;font-size:11px;font-weight:700;color:var(--blue);padding:8px 0">&#129504; Full Reasoning + Risk Rules</summary><div style="background:var(--bg2);border-radius:10px;padding:14px;margin-top:6px;border:1px solid var(--border);font-size:11px;color:var(--text2);line-height:1.9">'+(d.reasoning||'')+'</div>';
 if(d.expiryNote)h+='<div style="margin-top:6px;font-size:11px;color:var(--text2);padding:8px 12px;background:var(--bg2);border-radius:6px;border:1px solid var(--border)">&#128197; '+d.expiryNote+'</div>';
 h+='</details>';
 
 // Disclaimer
-h+='<div style="padding:8px 12px;border-radius:6px;background:rgba(245,158,11,.04);border:1px solid rgba(245,158,11,.1);font-size:8px;color:var(--text3);line-height:1.6"><strong style="color:var(--amber)">&#9888;</strong> All data is LIVE from NSE + yfinance. Not AI-hallucinated. '+tot+' factors computed server-side. Always use SL. Max 2% risk per trade. Verify on your charting platform. <strong>Educational only — not SEBI-registered.</strong></div>';
+h+='<div style="padding:8px 12px;border-radius:6px;background:rgba(245,158,11,.04);border:1px solid rgba(245,158,11,.1);font-size:8px;color:var(--text3);line-height:1.6"><strong style="color:var(--amber)">&#9888;</strong> All data LIVE from NSE + yfinance. '+tot+' factors computed server-side. Zero AI hallucination. Always use SL. Max 2% risk/trade. Verify on your platform. <strong>Educational only.</strong></div>';
 
 el.innerHTML=h;
 }
-
 
 // ═══ BACKTESTING ENGINE — UI ═══
 function initBacktest(){

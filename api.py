@@ -4055,6 +4055,148 @@ async def algo_signal(symbol: str = "NIFTY"):
     
     result["options"] = nse
     
+    # 3. Opening Range Breakout (ORB) — intraday 15m candles
+    orb = {}
+    try:
+        intra = tk.history(period="1d", interval="15m")
+        if intra is not None and len(intra) >= 2:
+            # First 15-min candle = Opening Range
+            first_candle = intra.iloc[0]
+            orb_high = round(float(first_candle['High']), 2)
+            orb_low = round(float(first_candle['Low']), 2)
+            orb_range = round(orb_high - orb_low, 2)
+            orb_pct = round((orb_range / orb_low) * 100, 3) if orb_low > 0 else 0
+            
+            # Current price vs ORB
+            latest_intra = intra.iloc[-1]
+            intra_price = round(float(latest_intra['Close']), 2)
+            intra_high = round(float(intra['High'].max()), 2)
+            intra_low = round(float(intra['Low'].min()), 2)
+            
+            # Volume of first candle vs average
+            if len(intra) >= 3:
+                first_vol = float(intra.iloc[0]['Volume'])
+                avg_vol_15m = float(intra['Volume'].mean())
+                orb_vol_ratio = round(first_vol / avg_vol_15m, 2) if avg_vol_15m > 0 else 1
+            else:
+                orb_vol_ratio = 1
+            
+            orb_breakout = "ABOVE" if intra_price > orb_high else "BELOW" if intra_price < orb_low else "INSIDE"
+            
+            # Intraday VWAP approximation: sum(price*volume)/sum(volume) from intraday data
+            try:
+                typical_prices = (intra['High'] + intra['Low'] + intra['Close']) / 3
+                vwap_val = round(float((typical_prices * intra['Volume']).cumsum().iloc[-1] / intra['Volume'].cumsum().iloc[-1]), 2)
+            except:
+                vwap_val = 0
+            
+            orb = {
+                "orb_high": orb_high, "orb_low": orb_low, "orb_range": orb_range,
+                "orb_pct": orb_pct, "breakout": orb_breakout,
+                "intra_price": intra_price, "intra_high": intra_high, "intra_low": intra_low,
+                "orb_vol_ratio": orb_vol_ratio, "vwap": vwap_val,
+                "candles": len(intra),
+            }
+            result["orb"] = orb
+            print(f"📊 ORB: {symbol} H={orb_high} L={orb_low} Range={orb_range} Break={orb_breakout} VWAP={vwap_val}")
+    except Exception as e:
+        print(f"⚠️ ORB fetch failed: {e}")
+    
+    # 4. Black-Scholes Delta Calculation
+    bs_data = {}
+    try:
+        if nse.get("success") and nse.get("atm_iv", 0) > 0:
+            from math import log, sqrt, exp, erf
+            
+            def norm_cdf(x):
+                return 0.5 * (1 + erf(x / sqrt(2)))
+            
+            def black_scholes_greeks(S, K, T, r, sigma, option_type="CE"):
+                """Full Black-Scholes with Greeks."""
+                if T <= 0 or sigma <= 0 or S <= 0 or K <= 0:
+                    return {"delta": 0, "gamma": 0, "theta": 0, "premium": 0}
+                d1 = (log(S / K) + (r + sigma**2 / 2) * T) / (sigma * sqrt(T))
+                d2 = d1 - sigma * sqrt(T)
+                nd1 = norm_cdf(d1)
+                nd2 = norm_cdf(d2)
+                # PDF of standard normal
+                npd1 = exp(-d1**2 / 2) / sqrt(2 * 3.14159265)
+                
+                if option_type == "CE":
+                    delta = round(nd1, 3)
+                    premium = round(S * nd1 - K * exp(-r * T) * nd2, 2)
+                else:
+                    delta = round(nd1 - 1, 3)
+                    premium = round(K * exp(-r * T) * (1 - nd2) - S * (1 - nd1), 2)
+                
+                gamma = round(npd1 / (S * sigma * sqrt(T)), 6)
+                theta = round((-S * npd1 * sigma / (2 * sqrt(T)) - r * K * exp(-r * T) * nd2) / 365, 2) if option_type == "CE" else round((-S * npd1 * sigma / (2 * sqrt(T)) + r * K * exp(-r * T) * (1 - nd2)) / 365, 2)
+                
+                return {"delta": delta, "gamma": gamma, "theta": theta, "premium": max(premium, 0)}
+            
+            spot = nse.get("spot", price)
+            atm_iv_dec = nse["atm_iv"] / 100  # Convert from % to decimal
+            risk_free = 0.065  # India 10Y bond
+            
+            # Expiry: find days to expiry
+            try:
+                exp_date = datetime.strptime(nse.get("expiry", ""), "%d-%b-%Y")
+                dte = max((exp_date - datetime.utcnow() - timedelta(hours=-5, minutes=-30)).days, 1)
+            except:
+                dte = 7  # default 1 week
+            T = dte / 365
+            
+            gap_size = inst["gap"]
+            atm_strike = round(spot / gap_size) * gap_size
+            
+            # Calculate Greeks for ATM, ITM-1, OTM-1 strikes (CE and PE)
+            strikes_to_calc = {
+                "ATM": atm_strike,
+                "ITM1": atm_strike - gap_size,
+                "OTM1": atm_strike + gap_size,
+                "OTM2": atm_strike + gap_size * 2,
+            }
+            
+            greeks = {}
+            for label, K in strikes_to_calc.items():
+                ce = black_scholes_greeks(spot, K, T, risk_free, atm_iv_dec, "CE")
+                pe = black_scholes_greeks(spot, K, T, risk_free, atm_iv_dec, "PE")
+                greeks[label] = {"strike": K, "CE": ce, "PE": pe}
+            
+            # Find best strike by delta (0.50-0.55 for aggressive, 0.40-0.45 for conservative)
+            best_ce_strike = atm_strike
+            best_ce_delta = 0
+            best_pe_strike = atm_strike
+            best_pe_delta = 0
+            
+            for label, K in strikes_to_calc.items():
+                ce_d = abs(greeks[label]["CE"]["delta"])
+                pe_d = abs(greeks[label]["PE"]["delta"])
+                if 0.40 <= ce_d <= 0.55:
+                    if ce_d > best_ce_delta:
+                        best_ce_delta = ce_d
+                        best_ce_strike = K
+                if 0.40 <= pe_d <= 0.55:
+                    if pe_d > best_pe_delta:
+                        best_pe_delta = pe_d
+                        best_pe_strike = K
+            
+            bs_data = {
+                "dte": dte,
+                "T": round(T, 4),
+                "risk_free": risk_free,
+                "iv": nse["atm_iv"],
+                "greeks": greeks,
+                "best_ce": {"strike": best_ce_strike, "delta": best_ce_delta, "premium": greeks.get("ATM", {}).get("CE", {}).get("premium", 0)},
+                "best_pe": {"strike": best_pe_strike, "delta": abs(best_pe_delta), "premium": greeks.get("ATM", {}).get("PE", {}).get("premium", 0)},
+                "atm_gamma": greeks.get("ATM", {}).get("CE", {}).get("gamma", 0),
+                "atm_theta": greeks.get("ATM", {}).get("CE", {}).get("theta", 0),
+            }
+            result["black_scholes"] = bs_data
+            print(f"📊 B-S: {symbol} ATM={atm_strike} CE_delta={greeks.get('ATM',{}).get('CE',{}).get('delta',0)} Premium={greeks.get('ATM',{}).get('CE',{}).get('premium',0)} DTE={dte}")
+    except Exception as e:
+        print(f"⚠️ Black-Scholes failed: {e}")
+    
     # ═══ 5-LAYER CONFLUENCE COMPUTATION ═══
     t = result["technicals"]
     
@@ -4071,6 +4213,14 @@ async def algo_signal(symbol: str = "NIFTY"):
     add("Gap Analysis", "SUPPORTS" if gap_pct > 0.3 else "OPPOSES" if gap_pct < -0.3 else "NEUTRAL",
         f"{gap_type} ({gap_pct:+.2f}%). {'Gap up = bullish continuation.' if gap_pct > 0.5 else 'Gap down = selling pressure.' if gap_pct < -0.5 else 'Flat/minor gap.'}", "PRICE_ACTION")
     
+    # ORB (Opening Range Breakout) — from real intraday 15m data
+    if orb.get("orb_high"):
+        orb_status = "SUPPORTS" if orb["breakout"] == "ABOVE" else "OPPOSES" if orb["breakout"] == "BELOW" else "NEUTRAL"
+        add("Opening Range (ORB)", orb_status,
+            f"ORB: ₹{orb['orb_high']:,.0f}–₹{orb['orb_low']:,.0f} (range {orb['orb_pct']:.2f}%). "
+            f"{'Price ABOVE ORB high — bullish breakout confirmed.' if orb['breakout'] == 'ABOVE' else 'Price BELOW ORB low — bearish breakdown.' if orb['breakout'] == 'BELOW' else 'Inside range — no breakout yet.'}"
+            f"{' Vol ' + str(orb['orb_vol_ratio']) + '× on ORB candle.' if orb.get('orb_vol_ratio', 1) > 1.3 else ''}", "PRICE_ACTION")
+    
     add("Market Structure", "SUPPORTS" if hh_hl else "OPPOSES" if lh_ll else "NEUTRAL",
         f"{'HH + HL on daily — uptrend intact.' if hh_hl else 'LH + LL — downtrend.' if lh_ll else 'Mixed structure — no clear trend.'}", "PRICE_ACTION")
     
@@ -4081,7 +4231,13 @@ async def algo_signal(symbol: str = "NIFTY"):
         f"{'Above SMA20 + EMA21 demand zone.' if price > sma20 and price > ema21 else 'Below supply zone.' if price < sma20 and price < ema21 else 'Between zones.'}", "PRICE_ACTION")
     
     # ─── LAYER 2: INDICATORS ───
-    add("VWAP/EMA Stack", "SUPPORTS" if ema9 > ema21 > ema50 else "OPPOSES" if ema9 < ema21 < ema50 else "NEUTRAL",
+    # VWAP — from real intraday data
+    if orb.get("vwap") and orb["vwap"] > 0:
+        vwap_val = orb["vwap"]
+        add("VWAP", "SUPPORTS" if price > vwap_val else "OPPOSES",
+            f"VWAP ₹{vwap_val:,.0f}. Price {'above — institutional bias bullish. Buyers in control.' if price > vwap_val else 'below — institutional selling. Bears dominating.'}", "INDICATOR")
+    
+    add("EMA Stack (9/21/50)", "SUPPORTS" if ema9 > ema21 > ema50 else "OPPOSES" if ema9 < ema21 < ema50 else "NEUTRAL",
         f"EMA 9/21/50: {'Full bullish stack ✓' if ema9 > ema21 > ema50 else 'Full bearish stack' if ema9 < ema21 < ema50 else 'Mixed — choppy'}. 9={ema9:,.0f} 21={ema21:,.0f} 50={ema50:,.0f}", "INDICATOR")
     
     add("RSI(14)", "SUPPORTS" if 35 < rsi < 65 else "OPPOSES" if rsi > 75 else "SUPPORTS" if rsi < 25 else "NEUTRAL",
@@ -4129,6 +4285,26 @@ async def algo_signal(symbol: str = "NIFTY"):
         if atm_iv > 0:
             add("ATM IV", "SUPPORTS" if atm_iv < 18 else "NEUTRAL" if atm_iv < 30 else "OPPOSES",
                 f"IV {atm_iv:.1f}%. {'Low — options cheap. BUY.' if atm_iv < 15 else 'Normal.' if atm_iv < 25 else 'Elevated. SELL preferred.' if atm_iv < 35 else 'Very high.'}", "OPTION")
+        
+        # Black-Scholes Greeks
+        if bs_data.get("greeks"):
+            atm_g = bs_data["greeks"].get("ATM", {})
+            ce_delta = atm_g.get("CE", {}).get("delta", 0)
+            ce_gamma = atm_g.get("CE", {}).get("gamma", 0)
+            ce_theta = atm_g.get("CE", {}).get("theta", 0)
+            ce_prem = atm_g.get("CE", {}).get("premium", 0)
+            dte_val = bs_data.get("dte", 7)
+            
+            add("Delta (B-S)", "SUPPORTS" if 0.45 <= ce_delta <= 0.60 else "NEUTRAL" if 0.35 <= ce_delta <= 0.65 else "OPPOSES",
+                f"ATM CE delta {ce_delta:.2f}. {'Sweet spot (0.45-0.55) — best risk/reward for directional trades.' if 0.45 <= ce_delta <= 0.55 else 'Deep ITM — expensive, less leverage.' if ce_delta > 0.65 else 'Far OTM — cheap but low probability.' if ce_delta < 0.30 else 'Acceptable range.'} Premium ₹{ce_prem:,.0f}.", "OPTION")
+            
+            if ce_gamma > 0 and dte_val <= 2:
+                add("Gamma Risk", "OPPOSES" if ce_gamma > 0.005 else "NEUTRAL",
+                    f"Gamma {ce_gamma:.5f}. {'HIGH gamma near expiry — premium swings wildly. Tighter SL needed.' if ce_gamma > 0.005 else 'Moderate gamma.'} DTE={dte_val}.", "OPTION")
+            
+            if ce_theta != 0:
+                add("Theta Decay", "OPPOSES" if dte_val <= 2 and ce_theta < -5 else "NEUTRAL" if ce_theta < -3 else "SUPPORTS",
+                    f"Theta ₹{ce_theta:,.1f}/day. {'Heavy decay — time working against BUY positions.' if ce_theta < -5 else 'Moderate decay.' if ce_theta < -2 else 'Low decay — time not a major factor.'} DTE={dte_val}.", "OPTION")
     
     # ─── LAYER 4: FUNDAMENTALS (stocks only) ───
     is_index = yf_sym.startswith("^")
@@ -4187,20 +4363,43 @@ async def algo_signal(symbol: str = "NIFTY"):
     rr_ratio = f"1:{round((t2_price - price) / (price - sl_price), 1)}" if price > sl_price else "N/A"
     capital_per_lot = round(price * inst["lot"], 0)
     
-    # Option strike suggestion
+    # Option strike suggestion — delta-based when B-S available, else ATM
     atm_strike = round(price / inst["gap"]) * inst["gap"]
+    selected_strike = atm_strike
+    selected_delta = 0.50
+    bs_premium = 0
+    
+    if bs_data.get("best_ce") and direction != "BEARISH":
+        selected_strike = bs_data["best_ce"]["strike"]
+        selected_delta = bs_data["best_ce"]["delta"]
+        bs_premium = bs_data["best_ce"]["premium"]
+    elif bs_data.get("best_pe") and direction == "BEARISH":
+        selected_strike = bs_data["best_pe"]["strike"]
+        selected_delta = bs_data["best_pe"]["delta"]
+        bs_premium = bs_data["best_pe"]["premium"]
+    
+    # ORB-enhanced entry condition
+    entry_condition = f"Enter when price holds above ₹{sma20:,.0f} (SMA20) with volume > 1.2×."
+    if orb.get("breakout") == "ABOVE":
+        entry_condition = f"ORB BREAKOUT confirmed. Buy when 5m candle closes above ORB high ₹{orb['orb_high']:,.0f} with volume > 1.5×. Price must be above VWAP ₹{orb.get('vwap', 0):,.0f}."
+    elif orb.get("breakout") == "BELOW":
+        entry_condition = f"ORB BREAKDOWN. Sell when 5m candle closes below ₹{orb['orb_low']:,.0f}. Wait for pullback to VWAP ₹{orb.get('vwap', 0):,.0f} for better entry."
+    elif orb.get("orb_high"):
+        entry_condition = f"Inside ORB ₹{orb['orb_low']:,.0f}–₹{orb['orb_high']:,.0f}. Wait for breakout above/below with volume confirmation."
     
     trade = {
-        "action": f"BUY {atm_strike} CE" if direction != "BEARISH" else f"BUY {atm_strike} PE",
-        "strike": atm_strike,
+        "action": f"BUY {selected_strike} CE" if direction != "BEARISH" else f"BUY {selected_strike} PE",
+        "strike": selected_strike,
         "type": "CE" if direction != "BEARISH" else "PE",
+        "delta": selected_delta,
+        "premium": bs_premium if bs_premium > 0 else None,
         "sl": sl_price,
-        "slReason": f"Below {sma20}-SMA20 support. 1.5×ATR = ₹{round(atr14*1.5):,.0f}.",
-        "t1": t1_price, "t1Action": "Book 50% qty. Move SL to cost.",
-        "t2": t2_price, "t2Action": "Book 30% qty. Trail SL below last swing low.",
-        "t3": t3_price, "t3Action": "Let 20% ride. Trail with structure. Exit 3:00 PM.",
-        "entry": f"Enter when price holds above ₹{sma20:,.0f} (SMA20) with volume > 1.2×.",
-        "exit": "3:00 PM hard exit. Expiry day: 2:30 PM.",
+        "slReason": f"Below {sma20}-SMA20 support. 1.5×ATR = ₹{round(atr14*1.5):,.0f}." + (f" If 5m closes below ORB low ₹{orb.get('orb_low',0):,.0f} → exit." if orb.get("orb_low") else ""),
+        "t1": t1_price, "t1Action": "Book 50% qty. Move SL to ₹cost (entry).",
+        "t2": t2_price, "t2Action": "Book 30% qty. Trail SL below last 5m swing low.",
+        "t3": t3_price, "t3Action": "Let 20% ride. Trail with 15m structure. Exit 3:00 PM.",
+        "entry": entry_condition,
+        "exit": "3:00 PM hard exit. Expiry day: 2:30 PM." + (f" Gamma risk HIGH — tighter SL." if bs_data.get("dte", 99) <= 2 else ""),
         "riskPerLot": risk_per_lot,
         "rewardT2PerLot": reward_t2,
         "rrRatio": rr_ratio,
@@ -4211,6 +4410,9 @@ async def algo_signal(symbol: str = "NIFTY"):
     # Reasoning
     reasoning = f"{supports} of {total} factors support this trade. "
     if cpr_type == "NARROW": reasoning += "Narrow CPR signals trending day. "
+    if orb.get("breakout") == "ABOVE": reasoning += f"ORB breakout confirmed above ₹{orb['orb_high']:,.0f}. "
+    elif orb.get("breakout") == "BELOW": reasoning += f"ORB breakdown below ₹{orb['orb_low']:,.0f}. "
+    if orb.get("vwap") and orb["vwap"] > 0: reasoning += f"{'Above' if price > orb['vwap'] else 'Below'} VWAP ₹{orb['vwap']:,.0f}. "
     if ema9 > ema21 > ema50: reasoning += "Full EMA bullish stack. "
     if macd_bullish: reasoning += f"MACD bullish (histogram {macd_hist:+.1f}). "
     if supertrend_buy: reasoning += "Supertrend BUY active. "
@@ -4218,6 +4420,9 @@ async def algo_signal(symbol: str = "NIFTY"):
     if nse.get("success"):
         if pcr > 1: reasoning += f"PCR {pcr:.2f} = PE writing (bullish floor). "
         if vix and vix < 16: reasoning += f"VIX {vix:.1f} = fair premiums. "
+    if bs_data.get("best_ce"):
+        reasoning += f"B-S delta {selected_delta:.2f} at ₹{selected_strike} strike. "
+        if bs_data.get("dte", 99) <= 2: reasoning += "⚠️ Near expiry — gamma risk elevated. "
     if opposes > 0: reasoning += f"{opposes} factors oppose. "
     if neutrals > 0: reasoning += f"{neutrals} neutral. "
     reasoning += f"{confidence} confidence."
