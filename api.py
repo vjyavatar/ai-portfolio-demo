@@ -4440,6 +4440,56 @@ async def algo_signal(symbol: str = "NIFTY"):
     result["isExpiry"] = is_expiry
     result["expiryNote"] = expiry_note
     result["trade"] = trade if signal not in ["HOLD / WAIT", "AVOID"] else None
+    
+    # ═══ GAMMA BLAST SETUP — Expiry day straddle/strangle ═══
+    blast_setup = None
+    if is_expiry and bs_data.get("greeks") and nse.get("success"):
+        try:
+            atm_g = bs_data["greeks"].get("ATM", {})
+            ce_prem = atm_g.get("CE", {}).get("premium", 0)
+            pe_prem = atm_g.get("PE", {}).get("premium", 0)
+            combined_cost = round(ce_prem + pe_prem, 2)
+            atm_k = bs_data["greeks"]["ATM"]["strike"] if "ATM" in bs_data["greeks"] else atm_strike
+            
+            # Morning range check (today's high - low vs previous day range)
+            morning_range_pct = 0
+            if orb.get("intra_high") and orb.get("intra_low") and orb["intra_low"] > 0:
+                morning_range_pct = round((orb["intra_high"] - orb["intra_low"]) / orb["intra_low"] * 100, 2)
+            
+            # Gamma blast is viable when morning range is tight (compression before expansion)
+            is_viable = morning_range_pct < 1.0 and combined_cost > 0
+            
+            # SL = 30% of combined cost, Target = 2-3× on breakout
+            blast_sl = round(combined_cost * 0.30, 2)
+            blast_t1 = round(combined_cost * 2, 2)
+            blast_t2 = round(combined_cost * 3, 2)
+            
+            # Risk per lot
+            blast_risk_per_lot = round(blast_sl * inst["lot"], 0)
+            blast_reward_per_lot = round((blast_t1 - combined_cost) * inst["lot"], 0)
+            
+            blast_setup = {
+                "active": is_viable,
+                "strike": atm_k,
+                "cePrem": ce_prem,
+                "pePrem": pe_prem,
+                "cost": combined_cost,
+                "morningRange": f"{morning_range_pct:.2f}%",
+                "condition": f"Morning range <1% (currently {morning_range_pct:.2f}%). Low VIX ({nse.get('vix', 0):.1f}) = cheap premiums.",
+                "entry": "After 1:45 PM IST. Wait for range compression to complete.",
+                "sl": f"₹{blast_sl:,.0f} ({30}% of cost). Exit if both legs decay.",
+                "target": f"2× = ₹{blast_t1:,.0f}, 3× = ₹{blast_t2:,.0f} on directional breakout.",
+                "riskPerLot": blast_risk_per_lot,
+                "rewardPerLot": blast_reward_per_lot,
+                "maxPain": nse.get("max_pain", 0),
+                "prob": 65 if morning_range_pct < 0.5 else 55 if morning_range_pct < 0.8 else 40,
+                "note": f"Expiry pin to ₹{nse.get('max_pain', 0):,.0f} max pain likely until 2PM. After that, gamma explosion can move {inst['gap']*3}+ points in minutes."
+            }
+            print(f"🔥 Gamma Blast: {symbol} ATM={atm_k} Cost={combined_cost} Morning={morning_range_pct}% Viable={is_viable}")
+        except Exception as e:
+            print(f"⚠️ Gamma Blast calc error: {e}")
+    
+    result["blastSetup"] = blast_setup
     result["reasoning"] = reasoning
     result["timestamp"] = IST.strftime("%I:%M %p IST")
     
