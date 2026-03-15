@@ -926,7 +926,6 @@ try{renderFiiDii()}catch(e){console.warn('FiiDii render error:',e)}
 try{renderPeers(d,curr)}catch(e){console.warn('renderPeers error:',e)}
 try{renderPricePrediction(d)}catch(e){console.warn('renderPricePrediction error:',e)}
 try{renderTechnicalsPro(d)}catch(e){console.warn('renderTechnicalsPro error:',e)}
-try{renderTradeConfluence(d)}catch(e){console.warn('renderTradeConfluence error:',e)}
 try{renderEarningsCountdown(d)}catch(e){console.warn('renderEarningsCountdown error:',e)}
 try{renderInsiderActivity(d)}catch(e){console.warn('renderInsiderActivity error:',e)}
 try{renderUpcomingEvents(d)}catch(e){console.warn('renderUpcomingEvents error:',e)}
@@ -1888,6 +1887,26 @@ if(!window._dailyLoading&&!window._dailyRendered){
 window._dailyLoading=true;
 fetchMarketDaily();
 }
+}
+if(tab==='trades'){
+// Auto-load trades if button exists and content is default
+var _tBtn=document.getElementById('tradesLoadBtn');
+if(_tBtn&&!window._tradesLoaded){window._tradesLoaded=true;setTimeout(function(){loadIndexTrades()},300);}
+// Auto-render algo signals
+var _aEl=document.getElementById('confluenceSection');
+if(_aEl&&!_aEl.innerHTML.trim()){
+var _sd=window._stockData;
+if(_sd){try{renderTradeConfluence(_sd)}catch(e){}}
+else{
+// No stock analyzed yet — run NIFTY by default
+_aEl.style.display='block';
+_aEl.innerHTML='<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap"><div style="display:flex;align-items:center;gap:6px"><span style="font-size:16px">&#127919;</span><span style="font-family:Sora,sans-serif;font-size:14px;font-weight:800;color:var(--text)">Algo Signals</span><span style="font-size:8px;padding:2px 8px;border-radius:100px;background:#0eb24e;color:#fff;font-weight:700">LIVE DATA</span></div><select id="algoSymSel" style="padding:5px 12px;border-radius:6px;border:1px solid var(--border);font-size:11px;font-family:DM Sans,sans-serif;background:var(--surface);color:var(--text)"><option value="NIFTY" selected>NIFTY</option><option value="BANKNIFTY">BANKNIFTY</option><option value="SENSEX">SENSEX</option><option value="RELIANCE">RELIANCE</option><option value="TCS">TCS</option><option value="HDFCBANK">HDFCBANK</option><option value="INFY">INFY</option><option value="ICICIBANK">ICICIBANK</option><option value="SBIN">SBIN</option><option value="TATAMOTORS">TATAMOTORS</option><option value="BHARTIARTL">BHARTIARTL</option><option value="LT">LT</option><option value="BAJFINANCE">BAJFINANCE</option><option value="ITC">ITC</option><option value="MARUTI">MARUTI</option><option value="CUSTOM">Custom...</option></select><input id="algoCustom" type="text" placeholder="e.g. TATASTEEL" style="display:none;padding:5px 10px;border-radius:6px;border:1px solid var(--border);font-size:11px;width:110px;font-family:DM Sans,sans-serif;background:var(--surface);color:var(--text)"><button id="algoRunBtn" onclick="runAlgoSignal()" style="padding:5px 16px;border-radius:6px;background:#002f6c;color:#fff;border:none;font-size:11px;font-weight:700;cursor:pointer;font-family:Sora,sans-serif">&#9889; Run Algorithm</button></div><div id="algoResult"><div style="padding:20px;text-align:center;color:var(--text3);font-size:11px">&#9203; Running 5-layer analysis for NIFTY...</div></div>';
+document.getElementById('algoSymSel').onchange=function(){document.getElementById('algoCustom').style.display=this.value==='CUSTOM'?'inline-block':'none';};
+_fetchAlgoSignal('NIFTY');
+}
+}
+// Init backtest engine
+try{initBacktest()}catch(e){}
 }
 
 console.log('switchTab:',tab,'→ done');
@@ -3311,19 +3330,29 @@ const debtRatio=totalDebt>0&&mcap>0?totalDebt/(totalDebt+mcap):Math.min(de/(100+
 const equityRatio=1-debtRatio;
 const wacc=equityRatio*costEquity+debtRatio*costDebt*(1-taxRate);
 
-// ═══ FCF ESTIMATION ═══
+// ═══ FCF ESTIMATION (STABILIZED) ═══
+// Use multiple methods and average to prevent single-source volatility
 const reportedFCF=fcf>0?fcf:0;
-const estimatedFCF=ocf>0?ocf*0.75:(rev>0?rev*pm/100*0.6:(ebitda>0?ebitda*0.5:mcap*0.035));
-const baseFCF=reportedFCF||estimatedFCF;
+const ocfBased=ocf>0?ocf*0.75:0;
+const revBased=rev>0?rev*Math.max(pm,5)/100*0.6:0;
+const ebitdaBased=ebitda>0?ebitda*0.5:0;
+const mcapBased=mcap>0?mcap*0.035:0;
+// Average all available methods for stability
+const fcfMethods=[reportedFCF,ocfBased,revBased,ebitdaBased].filter(v=>v>0);
+const baseFCF=fcfMethods.length>0?(fcfMethods.reduce((a,b)=>a+b,0)/fcfMethods.length):(mcapBased||1);
 const fcfPerShare=shares>0?baseFCF/shares:0;
 const fcfYield=mcap>0?(baseFCF/mcap*100):0;
 const fcfMargin=rev>0?(baseFCF/rev*100):0;
 
-// ═══ GROWTH RATE ESTIMATION ═══
-const histGrowth=((rg||0)+(eg||0)+(eqg||0))/3/100;
-const sustainGrowth=roe/100*(1-payout/100);
-const impliedGrowth=pe>0&&costEquity>0?(costEquity-(eps/price||0)):0.08;
-const blendedGrowth=Math.max(Math.min(((histGrowth||0.08)*0.4+(sustainGrowth||0.08)*0.3+(impliedGrowth||0.08)*0.3),0.35),-0.05)||0.08;
+// ═══ GROWTH RATE ESTIMATION (STABILIZED) ═══
+const histGrowth=Math.max(Math.min(((rg||0)+(eg||0)+(eqg||0))/3/100,0.4),-0.1);
+const sustainGrowth=Math.max(Math.min(roe/100*(1-payout/100),0.3),0);
+const analystGrowth=fpe>0&&eps>0?Math.max(Math.min((epsF/eps-1),0.3),-0.1):null;
+const impliedGrowth=Math.max(Math.min(pe>5&&costEquity>0?(1/pe):0.08,0.2),0.02);
+// Weighted blend — analyst estimate gets highest weight if available
+const weights=analystGrowth!==null?[0.25,0.2,0.35,0.2]:[0.4,0.3,0,0.3];
+const growthInputs=[histGrowth||0.05,sustainGrowth||0.05,analystGrowth||0,impliedGrowth||0.05];
+const blendedGrowth=Math.max(Math.min(growthInputs.reduce((s,v,i)=>s+v*weights[i],0),0.3),-0.03)||0.06;
 const terminalGrowth=isIndian?0.05:0.025;
 const projYears=10;
 const fadeStart=5;
@@ -4995,114 +5024,304 @@ el.innerHTML=h;
 // ═══ HIGH-CONVICTION TRADE CONFLUENCE ENGINE ═══
 
 // 5-LAYER TRADE CONFLUENCE ENGINE — REAL NSE DATA
+// ═══ ALGO SIGNALS — 5-LAYER CONFLUENCE WITH LIVE NSE DATA ═══
 function renderTradeConfluence(d){
 var el=document.getElementById('confluenceSection');
 if(!el)return;
-var _n=function(k,def){var v=d[k];if(!v||v==='N/A')return def===undefined?null:def;return parseFloat(String(v).replace(/[,%]/g,''))||def||0;};
-var price=_n('current_price',0);
-if(!price){el.style.display='none';return;}
-var S=d.currency==='INR'?'&#8377;':'$';
 var ticker=d.ticker||'';
-var isIndian=ticker.indexOf('.NS')>=0||ticker.indexOf('.BO')>=0;
-el.innerHTML='<div style="padding:20px;text-align:center;color:var(--text3)"><div style="font-size:11px">&#9203; Running 5-layer confluence'+(isIndian?' + NSE options data':'')+'...</div></div>';
+var sym=ticker.replace('.NS','').replace('.BO','');
+if(sym==='^NSEI')sym='NIFTY';if(sym==='^NSEBANK')sym='BANKNIFTY';if(sym==='^BSESN')sym='SENSEX';
+// Show dropdown + auto-run for current stock
+var presets=['NIFTY','BANKNIFTY','SENSEX','RELIANCE','TCS','HDFCBANK','INFY','ICICIBANK','SBIN','TATAMOTORS','BHARTIARTL','LT','BAJFINANCE','ITC','MARUTI'];
+var opts=presets.map(function(p){return '<option value="'+p+'"'+(p===sym?' selected':'')+'>'+p+'</option>';}).join('');
+el.innerHTML='<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap"><div style="display:flex;align-items:center;gap:6px"><span style="font-size:16px">&#127919;</span><span style="font-family:Sora,sans-serif;font-size:14px;font-weight:800;color:var(--text)">Algo Signals</span><span style="font-size:8px;padding:2px 8px;border-radius:100px;background:#0eb24e;color:#fff;font-weight:700">LIVE DATA</span></div><select id="algoSymSel" style="padding:5px 12px;border-radius:6px;border:1px solid var(--border);font-size:11px;font-family:DM Sans,sans-serif;background:var(--surface);color:var(--text)">'+opts+'<option value="CUSTOM">Custom...</option></select><input id="algoCustom" type="text" placeholder="e.g. TATASTEEL" style="display:none;padding:5px 10px;border-radius:6px;border:1px solid var(--border);font-size:11px;width:110px;font-family:DM Sans,sans-serif;background:var(--surface);color:var(--text)"><button id="algoRunBtn" onclick="runAlgoSignal()" style="padding:5px 16px;border-radius:6px;background:#002f6c;color:#fff;border:none;font-size:11px;font-weight:700;cursor:pointer;font-family:Sora,sans-serif">&#9889; Run Algorithm</button></div><div id="algoResult"><div style="padding:20px;text-align:center;color:var(--text3);font-size:11px">&#9203; Running 5-layer analysis for '+sym+'...</div></div>';
 el.style.display='block';
-var nseSymbol=ticker.replace('.NS','').replace('.BO','');
-if(nseSymbol==='^NSEI')nseSymbol='NIFTY';
-if(nseSymbol==='^NSEBANK')nseSymbol='BANKNIFTY';
-var optP=isIndian?fetch('/api/nse-options?symbol='+encodeURIComponent(nseSymbol)).then(function(r){return r.json();}).catch(function(){return{success:false};}):Promise.resolve({success:false});
-optP.then(function(nse){_buildConf(el,d,nse,price,S,isIndian);});
+// Toggle custom input
+document.getElementById('algoSymSel').onchange=function(){document.getElementById('algoCustom').style.display=this.value==='CUSTOM'?'inline-block':'none';};
+// Auto-run for current stock
+_fetchAlgoSignal(sym);
 }
 
-function _buildConf(el,d,nse,price,S,isIndian){
-var _n=function(k,def){var v=d[k];if(!v||v==='N/A')return def===undefined?null:def;return parseFloat(String(v).replace(/[,%]/g,''))||def||0;};
-var sma20=_n('sma_20',price),sma50=_n('sma_50',price),sma200=_n('sma_200',price);
-var ema9=_n('ema_9',price),ema21=_n('ema_21',price),ema50=_n('ema_50',price);
-var pe=_n('pe_ratio',0),roe=_n('roe',0),margin=_n('profit_margin',0);
-var de=_n('debt_to_equity',0),beta=_n('beta',1);
-var w52h=_n('week52_high',price*1.2),w52l=_n('week52_low',price*0.8);
-var w52pos=w52h>w52l?((price-w52l)/(w52h-w52l))*100:50;
-var revG=_n('revenue_growth',0),earnG=_n('earnings_growth',0);
-var ytdRet=_n('ytd_return',null);
-var yearlyR=d.yearly_returns||{};var yKeys=Object.keys(yearlyR).sort().reverse();
-var rsi=50,hist=d.price_history||[];
-if(hist.length>2){var g=0,l=0;for(var i=1;i<hist.length;i++){var df=hist[i]-hist[i-1];if(df>0)g+=df;else l+=Math.abs(df);}var ag=g/(hist.length-1),al=l/(hist.length-1);rsi=al===0?100:Math.round(100-(100/(1+ag/al)));}
-var pcr=nse.pcr||0,maxPain=nse.max_pain||0,vix=nse.vix||0,atmIv=nse.atm_iv||0;
-var cprType=nse.cpr_type||'',pdh=nse.pdh||0,pdl=nse.pdl||0,gapType=nse.gap_type||'',gapPct=nse.gap_pct||0;
-var ceResist=nse.ce_resistance||[],peSupport=nse.pe_support||[];
-var F=[];
-function add(n,s,dt,c){F.push({name:n,status:s,detail:dt,category:c});}
-// L1 PRICE ACTION
-add('52W Position',w52pos>20&&w52pos<80?'SUPPORTS':'OPPOSES',w52pos<20?'Near 52W low ('+w52pos.toFixed(0)+'%). Falling knife risk.':w52pos>80?'Near 52W high ('+w52pos.toFixed(0)+'%). Pullback risk.':'Mid-range ('+w52pos.toFixed(0)+'%). Healthy.','PRICE_ACTION');
-add('SMA 200 Trend',price>sma200?'SUPPORTS':'OPPOSES',price>sma200?'Above 200-DMA. Long-term uptrend.':'Below 200-DMA. Downtrend.','PRICE_ACTION');
-add('SMA 50 Trend',price>sma50?'SUPPORTS':'OPPOSES',price>sma50?'Above 50-DMA. Medium bullish.':'Below 50-DMA. Weakness.','PRICE_ACTION');
-add('Support/Resistance',price>sma20&&price>ema21?'SUPPORTS':price<sma20&&price<ema21?'OPPOSES':'NEUTRAL',price>sma20&&price>ema21?'Above SMA20+EMA21 demand zone.':price<sma20&&price<ema21?'Below supply zone.':'Between zones.','PRICE_ACTION');
-if(pdh>0)add('PDH/PDL',price>pdh?'SUPPORTS':price<pdl?'OPPOSES':'NEUTRAL',price>pdh?'Broken above PDH '+S+pdh+'. Bullish breakout.':price<pdl?'Below PDL '+S+pdl+'. Breakdown.':'Within prev day range.','PRICE_ACTION');
-if(cprType)add('CPR',cprType==='NARROW'?'SUPPORTS':cprType==='WIDE'?'OPPOSES':'NEUTRAL',cprType==='NARROW'?'Narrow CPR ('+nse.cpr_pct+'%). Trending day — directional trades favored.':cprType==='WIDE'?'Wide CPR. Range-bound. Sell strategies better.':'Medium CPR.','PRICE_ACTION');
-if(gapType&&gapType!=='FLAT OPEN')add('Gap',gapPct>0.3?'SUPPORTS':gapPct<-0.3?'OPPOSES':'NEUTRAL',gapType+' ('+gapPct.toFixed(2)+'%). '+(gapPct>0.5?'Bullish continuation.':gapPct<-0.5?'Selling pressure.':'May fill.'),'PRICE_ACTION');
-var cUp=yKeys.length>=3&&yKeys.slice(0,3).every(function(k){return yearlyR[k]>0;});
-add('Multi-Year',cUp?'SUPPORTS':yKeys.length>=3&&yKeys.slice(0,3).every(function(k){return yearlyR[k]<0;})?'OPPOSES':'NEUTRAL',cUp?'3yr positive. High-probability.':'Inconsistent annual.','PRICE_ACTION');
-// L2 INDICATORS
-add('EMA Stack',ema9>ema21&&ema21>ema50?'SUPPORTS':ema9<ema21&&ema21<ema50?'OPPOSES':'NEUTRAL',ema9>ema21&&ema21>ema50?'Bullish: 9>21>50.':ema9<ema21?'Bearish stack.':'Tangled.','INDICATOR');
-add('RSI(14)',rsi>35&&rsi<70?'SUPPORTS':rsi<=30?'SUPPORTS':'OPPOSES',rsi<=30?'RSI '+rsi+' oversold. Bounce likely.':rsi>=70?'RSI '+rsi+' overbought.':'RSI '+rsi+' healthy.','INDICATOR');
-add('Golden Cross',sma50>sma200?'SUPPORTS':'OPPOSES',sma50>sma200?'Active. Strongest bullish signal.':'Death Cross. Selling pressure.','INDICATOR');
-add('EMA9/21 Momentum',ema9>ema21?'SUPPORTS':'OPPOSES',ema9>ema21?'Bullish crossover.':'Bearish crossover.','INDICATOR');
-add('YTD',ytdRet!==null&&ytdRet>0?'SUPPORTS':ytdRet!==null&&ytdRet<-10?'OPPOSES':'NEUTRAL',ytdRet!==null?'YTD '+(ytdRet>0?'+':'')+ytdRet.toFixed(1)+'%.':'N/A.','INDICATOR');
-// L3 OPTIONS (NSE)
-if(nse.success&&isIndian){
-add('India VIX',vix>0&&vix<18?'SUPPORTS':vix>=18&&vix<25?'NEUTRAL':'OPPOSES',vix<13?'VIX '+vix+'. Low fear. Options cheap.':vix<18?'VIX '+vix+'. Fair premiums.':vix<25?'VIX '+vix+'. Elevated. Sell better.':'VIX '+vix+'. High fear.','OPTION');
-add('PCR',pcr>0.8&&pcr<1.3?'SUPPORTS':pcr>=1.3?'NEUTRAL':'OPPOSES',pcr>1.2?'PCR '+pcr+'. PE writing = bullish.':pcr>0.8?'PCR '+pcr+'. Balanced.':'PCR '+pcr+'. CE heavy = bearish.','OPTION');
-add('Max Pain',maxPain>0?(Math.abs(price-maxPain)/price*100<1.5?'SUPPORTS':'NEUTRAL'):'NEUTRAL',maxPain>0?'Max Pain '+S+maxPain.toLocaleString('en-IN')+'. '+(Math.abs(price-maxPain)/price*100<1?'Near — expiry pin effect.':'Price may drift toward it.'):'N/A.','OPTION');
-if(ceResist.length>0&&peSupport.length>0){var topCe=ceResist[0].strike,topPe=peSupport[0].strike;add('OI Buildup',price>topPe&&price<topCe?'SUPPORTS':'NEUTRAL','Resist: '+S+topCe.toLocaleString('en-IN')+' (CE OI:'+ceResist[0].oi.toLocaleString('en-IN')+'). Support: '+S+topPe.toLocaleString('en-IN')+' (PE OI:'+peSupport[0].oi.toLocaleString('en-IN')+').','OPTION');}
-if(atmIv>0)add('ATM IV',atmIv<20?'SUPPORTS':atmIv<35?'NEUTRAL':'OPPOSES','IV '+atmIv+'%. '+(atmIv<15?'Cheap. Buy.':atmIv<25?'Normal.':atmIv<35?'Elevated. Sell preferred.':'Very high.'),'OPTION');
+function runAlgoSignal(){
+var sel=document.getElementById('algoSymSel');
+var sym=sel.value==='CUSTOM'?(document.getElementById('algoCustom').value.trim().toUpperCase()):sel.value;
+if(!sym)return;
+var res=document.getElementById('algoResult');
+if(res)res.innerHTML='<div style="padding:20px;text-align:center;color:var(--text3);font-size:11px">&#9203; Running 5-layer analysis for '+sym+'...</div>';
+_fetchAlgoSignal(sym);
 }
-// L4 FUNDAMENTALS
-add('P/E',pe>0&&pe<25?'SUPPORTS':pe>=25&&pe<50?'NEUTRAL':'OPPOSES',pe>0?'P/E '+pe.toFixed(1)+'x.':'N/A.','FUNDAMENTAL');
-add('ROE',roe>15?'SUPPORTS':roe>8?'NEUTRAL':'OPPOSES','ROE '+roe.toFixed(1)+'%.','FUNDAMENTAL');
-add('Margin',margin>12?'SUPPORTS':margin>5?'NEUTRAL':'OPPOSES','Net '+margin.toFixed(1)+'%.','FUNDAMENTAL');
-add('Earnings Growth',earnG>8?'SUPPORTS':earnG>0?'NEUTRAL':'OPPOSES',earnG.toFixed(1)+'%.','FUNDAMENTAL');
-// L5 RISK
-add('Balance Sheet',de>=0&&de<1?'SUPPORTS':de<2?'NEUTRAL':'OPPOSES','D/E '+de.toFixed(2)+'.','RISK');
-add('Beta',beta>=0.7&&beta<=1.5?'SUPPORTS':beta>1.5?'OPPOSES':'NEUTRAL','Beta '+beta.toFixed(2)+'.','RISK');
-// SCORES
-var sup=F.filter(function(f){return f.status==='SUPPORTS';}).length;
-var opp=F.filter(function(f){return f.status==='OPPOSES';}).length;
-var neu=F.filter(function(f){return f.status==='NEUTRAL';}).length;
-var tot=F.length,pct=Math.round((sup/tot)*100);
-var sig,conf,sC,sBg;
-if(pct>=78){sig='STRONG BUY';conf='HIGH';sC='#0a7c42';sBg='rgba(10,124,66,.06)';}
-else if(pct>=62){sig='BUY';conf='HIGH';sC='#10b981';sBg='rgba(16,185,129,.05)';}
-else if(pct>=50){sig='LEAN BUY';conf='MEDIUM';sC='#3b82f6';sBg='rgba(59,130,246,.04)';}
-else if(pct>=38){sig='HOLD / WAIT';conf='LOW';sC='#f59e0b';sBg='rgba(245,158,11,.04)';}
-else{sig='AVOID';conf='LOW';sC='#ef4444';sBg='rgba(239,68,68,.04)';}
-var dir=sup>opp?'BULLISH':opp>sup?'BEARISH':'NEUTRAL';
+
+function _fetchAlgoSignal(sym){
+fetch('/api/algo-signal?symbol='+encodeURIComponent(sym)).then(function(r){return r.json();}).then(function(data){
+var res=document.getElementById('algoResult');
+if(!res)return;
+if(!data.success){res.innerHTML='<div style="padding:16px;color:var(--red);font-size:11px">&#9888; '+( data.error||'Failed')+'</div>';return;}
+_renderAlgoCard(res,data);
+}).catch(function(e){
+var res=document.getElementById('algoResult');
+if(res)res.innerHTML='<div style="padding:16px;color:var(--red);font-size:11px">&#9888; Network error: '+e.message+'</div>';
+});
+}
+
+function _renderAlgoCard(el,d){
+var S='&#8377;';
+var p=d.spot||0;
+var sup=d.supports,opp=d.opposes,neu=d.neutrals,tot=d.totalFactors,pct=d.pct;
+var sig=d.signal,conf=d.confidence,dir=d.direction;
+var sC=sig==='STRONG BUY'?'#0a7c42':sig==='BUY'?'#10b981':sig==='LEAN BUY'?'#3b82f6':sig==='AVOID'?'#ef4444':'#f59e0b';
+var sBg=sC+'0a';
 var dC=dir==='BULLISH'?'#0a7c42':dir==='BEARISH'?'#ef4444':'#f59e0b';
-var atr=Math.abs(w52h-w52l)/10;
-var entL=Math.max(price*0.97,sma20>0?sma20:price*0.97);
-var sl=Math.min(sma50>0?sma50*0.98:price*0.92,price-atr*1.5);
-var t1=price+(price-sl),t2=price+(price-sl)*2,t3=price+(price-sl)*3;
-var rkP=((price-sl)/price*100).toFixed(1),rwP=((t2-price)/price*100).toFixed(1);
-var rr=sl>0?((t2-price)/(price-sl)).toFixed(1):'N/A';
-// RENDER
-var h='<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px;flex-wrap:wrap;gap:8px"><div><div style="font-size:9px;color:var(--text3);font-weight:700;letter-spacing:1.5px">5-LAYER CONFLUENCE &middot; '+tot+' FACTORS'+(nse.success?' &middot; LIVE NSE DATA':'')+'</div><div style="font-size:16px;font-weight:900;color:var(--text);margin-top:4px">&#127919; Trade Scanner</div></div><div style="text-align:right"><span style="font-size:11px;font-weight:800;padding:5px 14px;border-radius:6px;background:'+sBg+';color:'+sC+';border:1px solid '+sC+'22">'+sig+'</span><div style="margin-top:4px"><span style="font-size:9px;font-weight:700;padding:3px 10px;border-radius:4px;background:'+dC+'12;color:'+dC+'">'+dir+'</span> <span style="font-size:9px;font-weight:700;padding:3px 10px;border-radius:4px;background:rgba(59,130,246,.1);color:#3b82f6">'+conf+'</span></div></div></div>';
-// Meter
-h+='<div style="padding:16px;border-radius:12px;background:var(--bg2);border:1px solid var(--border);margin-bottom:14px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><div style="font-size:12px;font-weight:800;color:var(--text)">CONFLUENCE SCORE</div><div style="font-size:28px;font-weight:900;color:'+sC+'">'+sup+'/'+tot+'</div></div><div style="height:10px;background:var(--bg3);border-radius:5px;overflow:hidden;margin-bottom:10px"><div style="height:100%;width:'+pct+'%;border-radius:5px;background:linear-gradient(90deg,'+sC+','+sC+'aa)"></div></div><div style="display:flex;gap:12px"><div style="display:flex;align-items:center;gap:5px"><div style="width:10px;height:10px;border-radius:50%;background:#0a7c42"></div><span style="font-size:11px;font-weight:700;color:#0a7c42">'+sup+' Supports</span></div><div style="display:flex;align-items:center;gap:5px"><div style="width:10px;height:10px;border-radius:50%;background:#ef4444"></div><span style="font-size:11px;font-weight:700;color:#ef4444">'+opp+' Opposes</span></div><div style="display:flex;align-items:center;gap:5px"><div style="width:10px;height:10px;border-radius:50%;background:#f59e0b"></div><span style="font-size:11px;font-weight:700;color:#f59e0b">'+neu+' Neutral</span></div></div></div>';
-// Factor grid
+var isWait=sig==='HOLD / WAIT'||sig==='AVOID';
+var h='';
+
+// Header
+h+='<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px;flex-wrap:wrap;gap:8px;border-top:4px solid '+(isWait?'#f59e0b':dC)+';padding-top:12px">';
+h+='<div><div style="font-size:10px;color:var(--text3);font-weight:600;letter-spacing:1.2px">'+(d.instrument?.ex||'NFO')+' &middot; Lot '+(d.instrument?.lot||'')+' &middot; Gap '+(d.instrument?.gap||'')+' &middot; '+d.timestamp+'</div>';
+h+='<div style="font-weight:800;font-size:20px;color:var(--text);margin-top:2px">'+d.symbol+'</div>';
+h+='<div style="font-weight:900;font-size:28px;color:var(--text);letter-spacing:-1px">'+S+p.toLocaleString('en-IN')+'</div></div>';
+h+='<div style="text-align:right"><span style="font-size:12px;font-weight:800;padding:6px 16px;border-radius:6px;background:'+sBg+';color:'+sC+';border:1px solid '+sC+'30">'+sig+'</span>';
+h+='<div style="margin-top:6px"><span style="font-size:9px;font-weight:700;padding:3px 10px;border-radius:4px;background:'+dC+'14;color:'+dC+'">'+dir+'</span>';
+h+=' <span style="font-size:9px;font-weight:700;padding:3px 10px;border-radius:4px;background:'+(conf==='HIGH'?'#0a7c42':conf==='MEDIUM'?'#f59e0b':'#ef4444')+'14;color:'+(conf==='HIGH'?'#0a7c42':conf==='MEDIUM'?'#f59e0b':'#ef4444')+'">'+conf+'</span></div>';
+if(d.isExpiry)h+='<div style="margin-top:6px"><span style="font-size:9px;font-weight:700;padding:3px 10px;border-radius:4px;background:rgba(230,126,34,.15);color:#e67e22">&#128293; EXPIRY DAY</span></div>';
+h+='</div></div>';
+
+// Confluence Meter
+h+='<div style="padding:16px;border-radius:12px;background:var(--bg2);border:1px solid var(--border);margin-bottom:14px">';
+h+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><div style="font-size:12px;font-weight:800;color:var(--text)">CONFLUENCE SCORE</div><div style="font-size:28px;font-weight:900;color:'+sC+'">'+sup+'/'+tot+'</div></div>';
+h+='<div style="height:10px;background:var(--bg3);border-radius:5px;overflow:hidden;margin-bottom:10px"><div style="height:100%;width:'+pct+'%;border-radius:5px;background:linear-gradient(90deg,'+sC+','+sC+'aa);transition:width .6s ease"></div></div>';
+h+='<div style="display:flex;gap:14px"><div style="display:flex;align-items:center;gap:5px"><div style="width:10px;height:10px;border-radius:50%;background:#0a7c42"></div><span style="font-size:11px;font-weight:700;color:#0a7c42">'+sup+' Supports</span></div><div style="display:flex;align-items:center;gap:5px"><div style="width:10px;height:10px;border-radius:50%;background:#ef4444"></div><span style="font-size:11px;font-weight:700;color:#ef4444">'+opp+' Opposes</span></div><div style="display:flex;align-items:center;gap:5px"><div style="width:10px;height:10px;border-radius:50%;background:#f59e0b"></div><span style="font-size:11px;font-weight:700;color:#f59e0b">'+neu+' Neutral</span></div></div></div>';
+
+// Factor Grid by Layer
 var cats=['PRICE_ACTION','INDICATOR','OPTION','FUNDAMENTAL','RISK'];
 var cL={'PRICE_ACTION':'&#128200; LAYER 1 — PRICE ACTION','INDICATOR':'&#128202; LAYER 2 — INDICATORS','OPTION':'&#128178; LAYER 3 — OPTIONS (NSE LIVE)','FUNDAMENTAL':'&#127970; LAYER 4 — FUNDAMENTALS','RISK':'&#128737; LAYER 5 — RISK'};
-cats.forEach(function(cat){var fs=F.filter(function(f){return f.category===cat;});if(!fs.length)return;h+='<div style="margin-bottom:10px"><div style="font-size:9px;font-weight:700;color:var(--blue);letter-spacing:2px;margin-bottom:6px">'+(cL[cat]||cat)+'</div><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:6px">';fs.forEach(function(f){var fc=f.status==='SUPPORTS'?'#0a7c42':f.status==='OPPOSES'?'#ef4444':'#f59e0b';var bg=f.status==='SUPPORTS'?'rgba(10,124,66,.04)':f.status==='OPPOSES'?'rgba(239,68,68,.04)':'rgba(245,158,11,.04)';h+='<div style="background:'+bg+';border-radius:8px;padding:8px 10px;border:1px solid '+fc+'18;display:flex;gap:8px;align-items:flex-start"><div style="width:8px;height:8px;border-radius:50%;background:'+fc+';margin-top:4px;flex-shrink:0"></div><div><div style="font-size:10px;font-weight:700;color:'+fc+'">'+f.name+'</div><div style="font-size:9px;color:var(--text2);line-height:1.5;margin-top:2px">'+f.detail+'</div></div></div>';});h+='</div></div>';});
+(d.factors||[]).forEach(function(){});// verify
+cats.forEach(function(cat){
+var fs=(d.factors||[]).filter(function(f){return f.category===cat;});
+if(!fs.length)return;
+h+='<div style="margin-bottom:10px"><div style="font-size:9px;font-weight:700;color:var(--blue);letter-spacing:2px;margin-bottom:6px">'+(cL[cat]||cat)+'</div>';
+h+='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:6px">';
+fs.forEach(function(f){
+var fc=f.status==='SUPPORTS'?'#0a7c42':f.status==='OPPOSES'?'#ef4444':'#f59e0b';
+var bg=f.status==='SUPPORTS'?'rgba(10,124,66,.04)':f.status==='OPPOSES'?'rgba(239,68,68,.04)':'rgba(245,158,11,.04)';
+h+='<div style="background:'+bg+';border-radius:8px;padding:8px 10px;border:1px solid '+fc+'18;display:flex;gap:8px;align-items:flex-start">';
+h+='<div style="width:8px;height:8px;border-radius:50%;background:'+fc+';margin-top:4px;flex-shrink:0"></div>';
+h+='<div><div style="font-size:10px;font-weight:700;color:'+fc+';letter-spacing:.3px">'+f.name+'</div>';
+h+='<div style="font-size:9px;color:var(--text2);line-height:1.5;margin-top:2px">'+f.detail+'</div></div></div>';
+});
+h+='</div></div>';
+});
+
 // Trade Plan
-if(sup>=Math.ceil(tot*0.5)){
-h+='<div style="padding:16px;border-radius:12px;background:'+sBg+';border:1px solid '+sC+'22;margin-bottom:12px"><div style="font-weight:800;color:'+sC+';font-size:14px;margin-bottom:12px">&#128203; Trade Plan — '+sig+'</div>';
-h+='<div style="margin-bottom:14px"><div style="font-size:9px;color:var(--text3);letter-spacing:1px;margin-bottom:4px;font-weight:700">RISK / REWARD VISUAL</div><div style="display:flex;height:28px;border-radius:6px;overflow:hidden;font-size:9px;font-weight:700"><div style="background:rgba(239,68,68,.8);color:#fff;width:20%;display:flex;align-items:center;justify-content:center;min-width:50px">SL '+S+sl.toFixed(0)+'</div><div style="background:rgba(245,158,11,.7);color:#fff;flex:1;display:flex;align-items:center;justify-content:center">Entry '+S+price.toFixed(0)+'</div><div style="background:rgba(16,185,129,.6);color:#fff;width:18%;display:flex;align-items:center;justify-content:center;min-width:50px">T1 '+S+t1.toFixed(0)+'</div><div style="background:rgba(16,185,129,.8);color:#fff;width:18%;display:flex;align-items:center;justify-content:center;min-width:50px">T2 '+S+t2.toFixed(0)+'</div><div style="background:#0a7c42;color:#fff;width:14%;display:flex;align-items:center;justify-content:center;min-width:50px">T3 '+S+t3.toFixed(0)+'</div></div></div>';
-h+='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin-bottom:12px"><div style="padding:10px;border-radius:8px;background:rgba(16,185,129,.06);border:1px solid rgba(16,185,129,.15);text-align:center"><div style="font-size:8px;color:var(--text3)">ENTRY ZONE</div><div style="font-size:14px;font-weight:900;color:#10b981;font-family:var(--mono)">'+S+entL.toFixed(0)+' — '+S+price.toFixed(0)+'</div></div><div style="padding:10px;border-radius:8px;background:rgba(239,68,68,.06);border:1px solid rgba(239,68,68,.15);text-align:center"><div style="font-size:8px;color:var(--text3)">STOP LOSS</div><div style="font-size:14px;font-weight:900;color:#ef4444;font-family:var(--mono)">'+S+sl.toFixed(0)+'</div><div style="font-size:8px;color:var(--text3)">'+rkP+'% below</div></div><div style="padding:10px;border-radius:8px;background:rgba(59,130,246,.06);border:1px solid rgba(59,130,246,.15);text-align:center"><div style="font-size:8px;color:var(--text3)">TARGET 2</div><div style="font-size:14px;font-weight:900;color:#3b82f6;font-family:var(--mono)">'+S+t2.toFixed(0)+'</div><div style="font-size:8px;color:var(--text3)">'+rwP+'% upside</div></div><div style="padding:10px;border-radius:8px;background:rgba(139,92,246,.06);border:1px solid rgba(139,92,246,.15);text-align:center"><div style="font-size:8px;color:var(--text3)">RISK:REWARD</div><div style="font-size:14px;font-weight:900;color:var(--purple);font-family:var(--mono)">1:'+rr+'</div><div style="font-size:8px;color:var(--text3)">'+(parseFloat(rr)>=2?'Favorable &#10004;':'Below 2:1 &#9888;')+'</div></div></div>';
-h+='<div style="font-size:10px;font-weight:800;color:var(--text);margin-bottom:6px">3-TARGET PARTIAL EXIT</div><div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:10px"><div style="padding:8px;border-radius:6px;background:rgba(16,185,129,.04);border:1px solid rgba(16,185,129,.1);font-size:9px;line-height:1.6"><strong style="color:#10b981">T1: '+S+t1.toFixed(0)+'</strong><br>Book 50%. SL to cost.</div><div style="padding:8px;border-radius:6px;background:rgba(16,185,129,.06);border:1px solid rgba(16,185,129,.12);font-size:9px;line-height:1.6"><strong style="color:#10b981">T2: '+S+t2.toFixed(0)+'</strong><br>Book 30%. Trail SL.</div><div style="padding:8px;border-radius:6px;background:rgba(10,124,66,.08);border:1px solid rgba(10,124,66,.15);font-size:9px;line-height:1.6"><strong style="color:#0a7c42">T3: '+S+t3.toFixed(0)+'</strong><br>20% ride. Exit 3PM.</div></div>';
-var mLP=Math.abs(price-sl)/price;var shF=mLP>0?Math.floor(10000/(price*mLP)):0;
-h+='<div style="padding:10px 14px;border-radius:8px;background:rgba(0,47,108,.03);border-left:3px solid var(--blue);font-size:9px;color:var(--text2);line-height:1.7"><strong style="color:var(--blue)">&#128176; Position Sizing (2% Rule):</strong> SL '+rkP+'% away. Risk '+S+'10K &#8594; <strong>~'+shF+' shares</strong> ('+S+(shF*price).toLocaleString('en-IN')+'). Scale: 50% now, 25% at '+S+(price*0.98).toFixed(0)+', 25% at '+S+(price*0.96).toFixed(0)+'.</div></div>';
-}else{
-h+='<div style="text-align:center;padding:14px;font-size:12px;font-weight:700;color:'+sC+';background:'+sBg+';border-radius:10px;margin-bottom:12px;border:1px solid '+sC+'22">&#9208; '+sig+' — '+sup+'/'+tot+' factors. '+(sup<Math.ceil(tot*0.38)?'Too weak. Skip.':'Wait for better setup.')+'</div>';
+var tr=d.trade;
+if(tr){
+h+='<div style="padding:16px;border-radius:12px;background:'+(dir==='BULLISH'?dC:sC)+'08;border:1px solid '+(dir==='BULLISH'?dC:sC)+'22;margin-bottom:12px">';
+h+='<div style="font-weight:800;color:'+(dir==='BULLISH'?dC:sC)+';font-size:16px;margin-bottom:12px">'+tr.action+'</div>';
+
+// R:R Visual Bar
+if(tr.sl&&tr.t2){
+h+='<div style="margin-bottom:14px"><div style="font-size:9px;color:var(--text3);letter-spacing:1px;margin-bottom:4px;font-weight:700">RISK / REWARD VISUAL</div>';
+h+='<div style="display:flex;height:28px;border-radius:6px;overflow:hidden;font-size:9px;font-weight:700">';
+h+='<div style="background:rgba(192,57,43,.85);color:#fff;width:20%;display:flex;align-items:center;justify-content:center;min-width:50px">SL '+S+tr.sl.toLocaleString('en-IN')+'</div>';
+h+='<div style="background:rgba(184,134,11,.7);color:#fff;flex:1;display:flex;align-items:center;justify-content:center">Entry '+S+p.toLocaleString('en-IN')+'</div>';
+h+='<div style="background:rgba(10,124,66,.55);color:#fff;width:18%;display:flex;align-items:center;justify-content:center;min-width:50px">T1 '+S+tr.t1.toLocaleString('en-IN')+'</div>';
+h+='<div style="background:rgba(10,124,66,.75);color:#fff;width:18%;display:flex;align-items:center;justify-content:center;min-width:50px">T2 '+S+tr.t2.toLocaleString('en-IN')+'</div>';
+h+='<div style="background:#0a7c42;color:#fff;width:14%;display:flex;align-items:center;justify-content:center;min-width:50px">T3 '+S+tr.t3.toLocaleString('en-IN')+'</div>';
+h+='</div></div>';
 }
-h+='<div style="padding:8px 12px;border-radius:6px;background:rgba(245,158,11,.04);border:1px solid rgba(245,158,11,.1);font-size:8px;color:var(--text3);line-height:1.6"><strong style="color:var(--amber)">&#9888;</strong> '+tot+'-factor confluence'+(nse.success?' with <strong>live NSE options data</strong>':'')+'. Always use SL. Max 2% risk. Verify on charts. <strong>Educational only.</strong></div>';
-el.innerHTML=h;el.style.display='block';
+
+// Trade details
+var keys=['entry','exit','slReason','t1Action','t2Action','t3Action','riskPerLot','rewardT2PerLot','rrRatio','capitalPerLot','lot'];
+keys.forEach(function(k){
+if(!tr[k])return;
+var isRisk=k.indexOf('sl')>=0||k.indexOf('risk')>=0||k.indexOf('Risk')>=0;
+var isGreen=k.indexOf('t1')>=0||k.indexOf('t2')>=0||k.indexOf('t3')>=0||k.indexOf('reward')>=0;
+h+='<div style="display:flex;justify-content:space-between;font-size:11px;line-height:1.7;border-bottom:1px solid var(--border);padding:3px 0">';
+h+='<span style="color:var(--text3);font-weight:600;min-width:110px">'+k+'</span>';
+h+='<span style="color:'+(isRisk?'#c0392b':isGreen?'#0a7c42':'var(--text)')+';font-weight:600;text-align:right">'+(typeof tr[k]==='number'?tr[k].toLocaleString('en-IN'):tr[k])+'</span></div>';
+});
+h+='</div>';
+}else{
+// WAIT/AVOID
+h+='<div style="text-align:center;padding:16px;font-size:13px;font-weight:700;color:#f59e0b;background:rgba(245,158,11,.05);border-radius:10px;margin-bottom:12px;border:1px solid rgba(245,158,11,.2)">&#9208; '+sig+' — Confluence only '+sup+'/'+tot+'. '+(d.reasoning||'')+'</div>';
+}
+
+// Reasoning
+h+='<details style="margin-bottom:10px"><summary style="cursor:pointer;font-size:11px;font-weight:700;color:var(--blue);padding:8px 0">&#129504; Full Reasoning + Risk Rules</summary>';
+h+='<div style="background:var(--bg2);border-radius:10px;padding:14px;margin-top:6px;border:1px solid var(--border);font-size:11px;color:var(--text2);line-height:1.9">'+(d.reasoning||'')+'</div>';
+if(d.expiryNote)h+='<div style="margin-top:6px;font-size:11px;color:var(--text2);padding:8px 12px;background:var(--bg2);border-radius:6px;border:1px solid var(--border)">&#128197; '+d.expiryNote+'</div>';
+h+='</details>';
+
+// Disclaimer
+h+='<div style="padding:8px 12px;border-radius:6px;background:rgba(245,158,11,.04);border:1px solid rgba(245,158,11,.1);font-size:8px;color:var(--text3);line-height:1.6"><strong style="color:var(--amber)">&#9888;</strong> All data is LIVE from NSE + yfinance. Not AI-hallucinated. '+tot+' factors computed server-side. Always use SL. Max 2% risk per trade. Verify on your charting platform. <strong>Educational only — not SEBI-registered.</strong></div>';
+
+el.innerHTML=h;
+}
+
+
+// ═══ BACKTESTING ENGINE — UI ═══
+function initBacktest(){
+var el=document.getElementById('backtestSection');
+if(!el)return;
+var presets=['NIFTY','BANKNIFTY','SENSEX','RELIANCE','TCS','HDFCBANK','INFY','ICICIBANK','SBIN','TATAMOTORS','BHARTIARTL','LT','BAJFINANCE','ITC','MARUTI'];
+var opts=presets.map(function(p){return '<option value="'+p+'">'+p+'</option>';}).join('');
+el.innerHTML='<div style="border-left:3px solid var(--purple);padding:0;margin-bottom:12px"><div style="padding:12px 16px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px"><div style="display:flex;align-items:center;gap:8px"><span style="font-size:16px">&#128202;</span><span style="font-family:Sora,sans-serif;font-size:14px;font-weight:800;color:var(--text)">Backtest Engine</span><span style="font-size:8px;padding:2px 8px;border-radius:100px;background:var(--purple);color:#fff;font-weight:700">HISTORICAL PROOF</span></div><div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap"><select id="btSym" style="padding:5px 10px;border-radius:6px;border:1px solid var(--border);font-size:11px;font-family:DM Sans,sans-serif;background:var(--surface);color:var(--text)">'+opts+'</select><select id="btYears" style="padding:5px 10px;border-radius:6px;border:1px solid var(--border);font-size:11px;font-family:DM Sans,sans-serif;background:var(--surface);color:var(--text)"><option value="1">1 Year</option><option value="2">2 Years</option><option value="3" selected>3 Years</option><option value="5">5 Years</option></select><button id="btRunBtn" onclick="runBacktest()" style="padding:5px 16px;border-radius:6px;background:var(--purple);color:#fff;border:none;font-size:11px;font-weight:700;cursor:pointer;font-family:Sora,sans-serif">&#9889; Run Backtest</button></div></div></div><div id="btResult" style="padding:0 16px 16px"><div style="font-size:11px;color:var(--text3);text-align:center;padding:16px">Select instrument and click Run Backtest to validate the algo on historical data.</div></div>';
+el.style.display='block';
+}
+
+function runBacktest(){
+var sym=document.getElementById('btSym').value;
+var years=document.getElementById('btYears').value;
+var btn=document.getElementById('btRunBtn');
+var res=document.getElementById('btResult');
+btn.disabled=true;btn.textContent='⏳ Computing '+sym+' ('+years+'Y)...';
+res.innerHTML='<div style="text-align:center;padding:30px;color:var(--text3);font-size:11px">&#9203; Running backtest... Simulating '+years+' years of trades with 15-factor confluence, ATR stops, 3-target exits. This may take 10-20 seconds.</div>';
+fetch('/api/algo-backtest?symbol='+encodeURIComponent(sym)+'&years='+years).then(function(r){return r.json();}).then(function(d){
+btn.disabled=false;btn.textContent='⚡ Run Backtest';
+if(!d.success){res.innerHTML='<div style="color:var(--red);padding:16px;font-size:12px">&#9888; '+( d.error||d.message||'Failed')+'</div>';return;}
+renderBacktestResults(res,d);
+}).catch(function(e){
+btn.disabled=false;btn.textContent='⚡ Run Backtest';
+res.innerHTML='<div style="color:var(--red);padding:16px;font-size:12px">&#9888; Error: '+e.message+'</div>';
+});
+}
+
+function renderBacktestResults(el,d){
+var s=d.stats;
+var S='&#8377;';
+var wrC=s.win_rate>=60?'#0a7c42':s.win_rate>=50?'#f59e0b':'#ef4444';
+var pfC=s.profit_factor>=1.5?'#0a7c42':s.profit_factor>=1?'#f59e0b':'#ef4444';
+var shC=s.sharpe_ratio>=1.5?'#0a7c42':s.sharpe_ratio>=0.5?'#f59e0b':'#ef4444';
+var netC=s.net_pnl>=0?'#0a7c42':'#ef4444';
+
+var h='';
+
+// Header
+h+='<div style="margin-bottom:14px"><div style="font-size:9px;color:var(--text3);font-weight:600;letter-spacing:1.5px">'+d.symbol+' &middot; '+d.period+' &middot; '+d.total_bars+' BARS &middot; CONFLUENCE ≥'+d.confluence_threshold+'</div>';
+h+='<div style="font-size:14px;font-weight:800;color:var(--text);margin-top:4px">Backtest Results — '+s.total_trades+' Trades Over '+d.years+' Year'+(d.years>1?'s':'')+'</div></div>';
+
+// Big stat cards
+h+='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:8px;margin-bottom:14px">';
+var cards=[
+{l:'WIN RATE',v:s.win_rate+'%',c:wrC,sub:s.wins+'W / '+s.losses+'L'},
+{l:'PROFIT FACTOR',v:s.profit_factor===Infinity?'∞':s.profit_factor.toFixed(2),c:pfC,sub:'Profit/Loss ratio'},
+{l:'SHARPE RATIO',v:s.sharpe_ratio.toFixed(2),c:shC,sub:'Risk-adjusted return'},
+{l:'NET P&L',v:(s.net_pnl>=0?'+':'')+S+Math.abs(s.net_pnl).toLocaleString('en-IN'),c:netC,sub:'Per lot'},
+{l:'EXPECTANCY',v:(s.expectancy>=0?'+':'')+S+Math.abs(s.expectancy).toLocaleString('en-IN'),c:s.expectancy>=0?'#0a7c42':'#ef4444',sub:'Per trade avg'},
+{l:'MAX DRAWDOWN',v:S+s.max_drawdown.toLocaleString('en-IN'),c:'#ef4444',sub:'Worst peak-to-trough'},
+{l:'AVG WIN',v:'+'+S+s.avg_win.toLocaleString('en-IN'),c:'#0a7c42',sub:s.wins+' winning trades'},
+{l:'AVG LOSS',v:S+Math.abs(s.avg_loss).toLocaleString('en-IN'),c:'#ef4444',sub:s.losses+' losing trades'},
+];
+cards.forEach(function(c){
+h+='<div style="padding:10px;border-radius:8px;background:'+c.c+'08;border:1px solid '+c.c+'20;text-align:center">';
+h+='<div style="font-size:7px;color:var(--text3);letter-spacing:1px;font-weight:700">'+c.l+'</div>';
+h+='<div style="font-size:18px;font-weight:900;color:'+c.c+';font-family:var(--mono);margin:2px 0">'+c.v+'</div>';
+h+='<div style="font-size:8px;color:var(--text3)">'+c.sub+'</div></div>';
+});
+h+='</div>';
+
+// Win rate visual bar
+h+='<div style="margin-bottom:14px"><div style="font-size:10px;font-weight:700;color:var(--text);margin-bottom:4px">Win/Loss Distribution</div>';
+h+='<div style="display:flex;height:24px;border-radius:6px;overflow:hidden;font-size:9px;font-weight:700">';
+var wPct=s.total_trades>0?(s.wins/s.total_trades*100):0;
+var lPct=s.total_trades>0?(s.losses/s.total_trades*100):0;
+var bPct=100-wPct-lPct;
+if(wPct>0)h+='<div style="background:#0a7c42;color:#fff;width:'+wPct+'%;display:flex;align-items:center;justify-content:center;min-width:30px">'+s.wins+'W</div>';
+if(bPct>0&&s.breakevens>0)h+='<div style="background:#f59e0b;color:#fff;width:'+bPct+'%;display:flex;align-items:center;justify-content:center;min-width:20px">'+s.breakevens+'B</div>';
+if(lPct>0)h+='<div style="background:#ef4444;color:#fff;width:'+lPct+'%;display:flex;align-items:center;justify-content:center;min-width:30px">'+s.losses+'L</div>';
+h+='</div></div>';
+
+// Equity curve
+if(d.equity_curve&&d.equity_curve.length>10){
+h+='<div style="margin-bottom:14px"><div style="font-size:10px;font-weight:700;color:var(--text);margin-bottom:6px">Equity Curve (cumulative P&L per lot)</div>';
+h+='<div style="height:120px;background:var(--bg2);border-radius:8px;border:1px solid var(--border);padding:8px;position:relative;overflow:hidden">';
+var eq=d.equity_curve;
+var eqMin=Math.min.apply(null,eq);
+var eqMax=Math.max.apply(null,eq);
+var eqRange=eqMax-eqMin||1;
+var pts=[];
+for(var i=0;i<eq.length;i++){
+var x=(i/(eq.length-1))*100;
+var y=100-((eq[i]-eqMin)/eqRange)*100;
+pts.push(x.toFixed(1)+','+y.toFixed(1));
+}
+h+='<svg viewBox="0 0 100 100" preserveAspectRatio="none" style="width:100%;height:100%">';
+// Zero line
+var zeroY=100-((0-eqMin)/eqRange)*100;
+h+='<line x1="0" y1="'+zeroY.toFixed(1)+'" x2="100" y2="'+zeroY.toFixed(1)+'" stroke="var(--text3)" stroke-width="0.3" stroke-dasharray="1,1"/>';
+h+='<polyline points="'+pts.join(' ')+'" fill="none" stroke="'+(s.net_pnl>=0?'#0a7c42':'#ef4444')+'" stroke-width="0.8"/>';
+// Fill
+h+='<polygon points="0,'+zeroY.toFixed(1)+' '+pts.join(' ')+' 100,'+zeroY.toFixed(1)+'" fill="'+(s.net_pnl>=0?'rgba(10,124,66,.1)':'rgba(239,68,68,.1)')+'"/>';
+h+='</svg>';
+h+='<div style="position:absolute;top:4px;left:8px;font-size:8px;color:var(--text3)">'+S+eqMax.toLocaleString('en-IN')+'</div>';
+h+='<div style="position:absolute;bottom:4px;left:8px;font-size:8px;color:var(--text3)">'+S+eqMin.toLocaleString('en-IN')+'</div>';
+h+='</div></div>';
+}
+
+// Result breakdown
+if(d.result_breakdown){
+h+='<div style="margin-bottom:14px"><div style="font-size:10px;font-weight:700;color:var(--text);margin-bottom:6px">Exit Type Breakdown</div>';
+h+='<div style="display:flex;gap:6px;flex-wrap:wrap">';
+var rb=d.result_breakdown;
+var rbColors={'T3 HIT (FULL TARGET)':'#0a7c42','SL AT COST (partial profit)':'#22d3ee','TIME EXIT (5D)':'#f59e0b','SL HIT':'#ef4444','BREAKEVEN':'#94a3b8','OPEN → FORCED CLOSE':'#8b5cf6'};
+Object.keys(rb).forEach(function(k){
+var c=rbColors[k]||'var(--text3)';
+h+='<div style="padding:6px 12px;border-radius:6px;background:'+c+'10;border:1px solid '+c+'25;font-size:10px"><span style="font-weight:800;color:'+c+'">'+rb[k]+'</span> <span style="color:var(--text2)">'+k+'</span></div>';
+});
+h+='</div></div>';
+}
+
+// Monthly P&L heatmap
+if(d.monthly&&Object.keys(d.monthly).length>0){
+h+='<details style="margin-bottom:14px"><summary style="cursor:pointer;font-size:10px;font-weight:700;color:var(--blue);padding:6px 0">&#128197; Monthly Breakdown ('+Object.keys(d.monthly).length+' months)</summary>';
+h+='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:4px;margin-top:8px">';
+Object.keys(d.monthly).forEach(function(m){
+var md=d.monthly[m];
+var mc=md.pnl>=0?'#0a7c42':'#ef4444';
+var wr=md.trades>0?Math.round(md.wins/md.trades*100):0;
+h+='<div style="padding:6px 8px;border-radius:6px;background:'+mc+'08;border:1px solid '+mc+'15;font-size:9px">';
+h+='<div style="font-weight:700;color:var(--text)">'+m+'</div>';
+h+='<div style="font-weight:800;color:'+mc+'">'+( md.pnl>=0?'+':'')+S+Math.abs(Math.round(md.pnl)).toLocaleString('en-IN')+'</div>';
+h+='<div style="color:var(--text3)">'+md.trades+' trades &middot; '+wr+'% WR</div></div>';
+});
+h+='</div></details>';
+}
+
+// Best/worst trades
+h+='<details style="margin-bottom:14px"><summary style="cursor:pointer;font-size:10px;font-weight:700;color:var(--blue);padding:6px 0">&#127942; Top 5 Best & Worst Trades</summary>';
+h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:8px">';
+h+='<div><div style="font-size:9px;font-weight:700;color:#0a7c42;margin-bottom:4px">BEST TRADES</div>';
+(d.best_trades||[]).forEach(function(t){
+h+='<div style="padding:4px 8px;font-size:9px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between"><span>'+t.date+' ('+t.confluence+')</span><span style="font-weight:700;color:#0a7c42">+'+S+Math.abs(Math.round(t.pnl)).toLocaleString('en-IN')+'</span></div>';
+});
+h+='</div><div><div style="font-size:9px;font-weight:700;color:#ef4444;margin-bottom:4px">WORST TRADES</div>';
+(d.worst_trades||[]).forEach(function(t){
+h+='<div style="padding:4px 8px;font-size:9px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between"><span>'+t.date+' ('+t.confluence+')</span><span style="font-weight:700;color:#ef4444">'+S+Math.abs(Math.round(t.pnl)).toLocaleString('en-IN')+'</span></div>';
+});
+h+='</div></div></details>';
+
+// Algo config
+h+='<div style="padding:10px 14px;border-radius:8px;background:var(--bg2);border:1px solid var(--border);font-size:9px;color:var(--text3);line-height:1.7;margin-bottom:10px">';
+h+='<strong style="color:var(--text)">Algo Config:</strong> Confluence ≥'+d.confluence_threshold+' &middot; SL: '+d.sl_method+' &middot; Targets: '+d.targets+' &middot; Exit: '+d.exit_strategy+' &middot; Lot: '+d.lot;
+h+='</div>';
+
+// Verdict
+var grade=s.win_rate>=60&&s.profit_factor>=1.5&&s.sharpe_ratio>=1?'A':s.win_rate>=50&&s.profit_factor>=1.2?'B':s.win_rate>=45&&s.profit_factor>=1?'C':'D';
+var gradeC=grade==='A'?'#0a7c42':grade==='B'?'#3b82f6':grade==='C'?'#f59e0b':'#ef4444';
+h+='<div style="padding:14px;border-radius:10px;background:'+gradeC+'08;border:2px solid '+gradeC+'30;text-align:center">';
+h+='<div style="font-size:36px;font-weight:900;color:'+gradeC+'">Grade: '+grade+'</div>';
+h+='<div style="font-size:11px;color:var(--text2);margin-top:4px">';
+if(grade==='A')h+='Strong algo. '+s.win_rate+'% WR with '+s.profit_factor+'× profit factor. The confluence approach works on this instrument.';
+else if(grade==='B')h+='Decent performance. Profitable but could benefit from tighter entry criteria or different ATR multiplier.';
+else if(grade==='C')h+='Marginal. Barely profitable. Consider raising the confluence threshold or adding intraday filters.';
+else h+='Algo underperforms on this instrument. The confluence approach may not suit '+d.symbol+'. Try different parameters or skip.';
+h+='</div></div>';
+
+// Disclaimer
+h+='<div style="margin-top:10px;padding:8px 12px;border-radius:6px;background:rgba(245,158,11,.04);border:1px solid rgba(245,158,11,.1);font-size:8px;color:var(--text3);line-height:1.6">';
+h+='<strong style="color:var(--amber)">&#9888;</strong> Past performance does not guarantee future results. Backtest uses daily OHLCV data (not intraday). Real slippage, commissions, and liquidity impact are not modeled. Use paper trading before risking real capital.';
+h+='</div>';
+
+el.innerHTML=h;
 }
 
 

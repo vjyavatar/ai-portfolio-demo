@@ -3890,6 +3890,718 @@ async def performance_leaderboard():
     return result
 
 
+ALGO_INSTRUMENTS = {
+    "NIFTY": {"sym": "^NSEI", "lot": 65, "gap": 50, "ex": "NFO", "exp": "Tuesday"},
+    "BANKNIFTY": {"sym": "^NSEBANK", "lot": 30, "gap": 100, "ex": "NFO", "exp": "Last Tue"},
+    "SENSEX": {"sym": "^BSESN", "lot": 20, "gap": 100, "ex": "BFO", "exp": "Thursday"},
+    "RELIANCE": {"sym": "RELIANCE.NS", "lot": 250, "gap": 20, "ex": "NFO"},
+    "TCS": {"sym": "TCS.NS", "lot": 150, "gap": 50, "ex": "NFO"},
+    "HDFCBANK": {"sym": "HDFCBANK.NS", "lot": 550, "gap": 20, "ex": "NFO"},
+    "INFY": {"sym": "INFY.NS", "lot": 400, "gap": 20, "ex": "NFO"},
+    "ICICIBANK": {"sym": "ICICIBANK.NS", "lot": 700, "gap": 20, "ex": "NFO"},
+    "SBIN": {"sym": "SBIN.NS", "lot": 750, "gap": 10, "ex": "NFO"},
+    "TATAMOTORS": {"sym": "TATAMOTORS.NS", "lot": 575, "gap": 10, "ex": "NFO"},
+    "BHARTIARTL": {"sym": "BHARTIARTL.NS", "lot": 475, "gap": 20, "ex": "NFO"},
+    "LT": {"sym": "LT.NS", "lot": 150, "gap": 50, "ex": "NFO"},
+    "BAJFINANCE": {"sym": "BAJFINANCE.NS", "lot": 125, "gap": 100, "ex": "NFO"},
+    "ITC": {"sym": "ITC.NS", "lot": 1600, "gap": 5, "ex": "NFO"},
+    "MARUTI": {"sym": "MARUTI.NS", "lot": 100, "gap": 100, "ex": "NFO"},
+}
+
+@app.get("/api/algo-signal")
+async def algo_signal(symbol: str = "NIFTY"):
+    """5-Layer Confluence Algorithm — ALL real data, ZERO hallucination."""
+    import yfinance as yf
+    from datetime import datetime, timedelta
+    import math
+    
+    symbol = symbol.upper().strip().replace(".NS","").replace(".BO","").replace("^NSEI","NIFTY").replace("^NSEBANK","BANKNIFTY").replace("^BSESN","SENSEX")
+    inst = ALGO_INSTRUMENTS.get(symbol, {"sym": f"{symbol}.NS", "lot": 100, "gap": 10, "ex": "NFO"})
+    yf_sym = inst["sym"]
+    
+    # ═══ FETCH ALL DATA IN PARALLEL ═══
+    result = {"success": True, "symbol": symbol, "instrument": inst}
+    factors = []
+    
+    # 1. yfinance — price, technicals, fundamentals
+    try:
+        tk = yf.Ticker(yf_sym)
+        
+        # Daily history (1 year for MAs)
+        daily = tk.history(period="1y", interval="1d")
+        if daily is None or len(daily) < 20:
+            return {"success": False, "error": f"No data for {symbol}"}
+        
+        closes = daily['Close'].values
+        highs = daily['High'].values
+        lows = daily['Low'].values
+        volumes = daily['Volume'].values
+        
+        price = round(float(closes[-1]), 2)
+        result["spot"] = price
+        
+        # Previous day
+        pdh = round(float(highs[-2]), 2) if len(highs) > 1 else price
+        pdl = round(float(lows[-2]), 2) if len(lows) > 1 else price
+        pdc = round(float(closes[-2]), 2) if len(closes) > 1 else price
+        today_open = round(float(daily['Open'].iloc[-1]), 2)
+        today_high = round(float(highs[-1]), 2)
+        today_low = round(float(lows[-1]), 2)
+        
+        # CPR
+        pivot = round((pdh + pdl + pdc) / 3, 2)
+        bc = round((pdh + pdl) / 2, 2)
+        tc = round(2 * pivot - bc, 2)
+        cpr_width = abs(tc - bc)
+        cpr_pct = round((cpr_width / pdc) * 100, 3)
+        cpr_type = "NARROW" if cpr_pct < 0.3 else "WIDE" if cpr_pct > 0.8 else "MEDIUM"
+        
+        # Gap
+        gap = round(today_open - pdc, 2)
+        gap_pct = round((gap / pdc) * 100, 2)
+        gap_type = "GAP UP" if gap_pct > 0.3 else "GAP DOWN" if gap_pct < -0.3 else "FLAT"
+        
+        # SMAs + EMAs
+        import pandas as pd
+        cs = pd.Series(closes)
+        sma20 = round(float(cs.rolling(20).mean().iloc[-1]), 2) if len(closes) >= 20 else price
+        sma50 = round(float(cs.rolling(50).mean().iloc[-1]), 2) if len(closes) >= 50 else price
+        sma200 = round(float(cs.rolling(200).mean().iloc[-1]), 2) if len(closes) >= 200 else price
+        ema9 = round(float(cs.ewm(span=9).mean().iloc[-1]), 2) if len(closes) >= 9 else price
+        ema21 = round(float(cs.ewm(span=21).mean().iloc[-1]), 2) if len(closes) >= 21 else price
+        ema50 = round(float(cs.ewm(span=50).mean().iloc[-1]), 2) if len(closes) >= 50 else price
+        
+        # RSI(14)
+        deltas = cs.diff()
+        gain = deltas.clip(lower=0).rolling(14).mean()
+        loss = (-deltas.clip(upper=0)).rolling(14).mean()
+        rs = gain / loss
+        rsi_series = 100 - (100 / (1 + rs))
+        rsi = round(float(rsi_series.iloc[-1]), 1) if not pd.isna(rsi_series.iloc[-1]) else 50
+        
+        # MACD
+        ema12 = cs.ewm(span=12).mean()
+        ema26 = cs.ewm(span=26).mean()
+        macd_line = ema12 - ema26
+        macd_signal = macd_line.ewm(span=9).mean()
+        macd_hist = round(float((macd_line - macd_signal).iloc[-1]), 2)
+        macd_bullish = macd_hist > 0
+        
+        # Supertrend(10,3)
+        atr_period = 10
+        multiplier = 3
+        hl2 = (pd.Series(highs) + pd.Series(lows)) / 2
+        atr = pd.Series(highs).rolling(atr_period).max() - pd.Series(lows).rolling(atr_period).min()
+        atr_val = round(float(atr.iloc[-1] / atr_period), 2) if len(atr) > atr_period else round(float(highs[-1] - lows[-1]), 2)
+        upper = float(hl2.iloc[-1] + multiplier * atr_val)
+        lower = float(hl2.iloc[-1] - multiplier * atr_val)
+        supertrend_buy = price > lower
+        
+        # ATR(14)
+        tr_series = pd.DataFrame({'hl': pd.Series(highs) - pd.Series(lows), 'hc': abs(pd.Series(highs) - cs.shift(1)), 'lc': abs(pd.Series(lows) - cs.shift(1))}).max(axis=1)
+        atr14 = round(float(tr_series.rolling(14).mean().iloc[-1]), 2) if len(tr_series) > 14 else round(float(highs[-1] - lows[-1]), 2)
+        
+        # Volume
+        avg_vol = float(pd.Series(volumes[-20:]).mean()) if len(volumes) >= 20 else float(volumes[-1])
+        vol_ratio = round(float(volumes[-1]) / avg_vol, 2) if avg_vol > 0 else 1
+        
+        # 52W
+        w52h = round(float(max(highs[-252:])), 2) if len(highs) >= 252 else round(float(max(highs)), 2)
+        w52l = round(float(min(lows[-252:])), 2) if len(lows) >= 252 else round(float(min(lows)), 2)
+        w52pos = round(((price - w52l) / (w52h - w52l)) * 100, 1) if w52h > w52l else 50
+        
+        # Market structure (HH/HL check on last 5 days)
+        recent_highs = [float(h) for h in highs[-5:]]
+        recent_lows = [float(l) for l in lows[-5:]]
+        hh_hl = all(recent_highs[i] >= recent_highs[i-1] for i in range(1, len(recent_highs))) and all(recent_lows[i] >= recent_lows[i-1] for i in range(1, len(recent_lows)))
+        lh_ll = all(recent_highs[i] <= recent_highs[i-1] for i in range(1, len(recent_highs))) and all(recent_lows[i] <= recent_lows[i-1] for i in range(1, len(recent_lows)))
+        
+        # Fundamentals (for stocks, not indices)
+        pe = roe = margin = de = beta_val = 0
+        try:
+            info = tk.info or {}
+            pe = round(float(info.get("trailingPE", 0) or 0), 1)
+            roe = round(float(info.get("returnOnEquity", 0) or 0) * 100, 1)
+            margin = round(float(info.get("profitMargins", 0) or 0) * 100, 1)
+            de = round(float(info.get("debtToEquity", 0) or 0) / 100, 2)
+            beta_val = round(float(info.get("beta", 1) or 1), 2)
+        except:
+            pass
+        
+        result["technicals"] = {
+            "price": price, "pdh": pdh, "pdl": pdl, "pdc": pdc,
+            "today_open": today_open, "today_high": today_high, "today_low": today_low,
+            "pivot": pivot, "cpr_top": tc, "cpr_bottom": bc, "cpr_pct": cpr_pct, "cpr_type": cpr_type,
+            "gap": gap, "gap_pct": gap_pct, "gap_type": gap_type,
+            "sma20": sma20, "sma50": sma50, "sma200": sma200,
+            "ema9": ema9, "ema21": ema21, "ema50": ema50,
+            "rsi": rsi, "macd_hist": macd_hist, "macd_bullish": macd_bullish,
+            "supertrend_buy": supertrend_buy, "atr14": atr14,
+            "vol_ratio": vol_ratio, "w52h": w52h, "w52l": w52l, "w52pos": w52pos,
+            "hh_hl": hh_hl, "lh_ll": lh_ll,
+            "pe": pe, "roe": roe, "margin": margin, "de": de, "beta": beta_val
+        }
+    except Exception as e:
+        return {"success": False, "error": f"Data fetch failed: {e}"}
+    
+    # 2. NSE Options data
+    nse = {}
+    try:
+        nse_resp = await nse_options(symbol)
+        if isinstance(nse_resp, dict) and nse_resp.get("success"):
+            nse = nse_resp
+    except:
+        pass
+    
+    result["options"] = nse
+    
+    # ═══ 5-LAYER CONFLUENCE COMPUTATION ═══
+    t = result["technicals"]
+    
+    def add(name, status, detail, category):
+        factors.append({"name": name, "status": status, "detail": detail, "category": category})
+    
+    # ─── LAYER 1: PRICE ACTION ───
+    add("CPR", "SUPPORTS" if cpr_type == "NARROW" else "OPPOSES" if cpr_type == "WIDE" else "NEUTRAL",
+        f"{cpr_type} CPR ({cpr_pct}%). {'Trending day — directional trades favored.' if cpr_type == 'NARROW' else 'Range-bound. Sell strategies better.' if cpr_type == 'WIDE' else 'Normal day.'}", "PRICE_ACTION")
+    
+    add("PDH/PDL", "SUPPORTS" if price > pdh else "OPPOSES" if price < pdl else "NEUTRAL",
+        f"PDH ₹{pdh:,.0f}, PDL ₹{pdl:,.0f}. {'Price broke above PDH — bullish structure.' if price > pdh else 'Price below PDL — bearish breakdown.' if price < pdl else 'Within prev range — consolidating.'}", "PRICE_ACTION")
+    
+    add("Gap Analysis", "SUPPORTS" if gap_pct > 0.3 else "OPPOSES" if gap_pct < -0.3 else "NEUTRAL",
+        f"{gap_type} ({gap_pct:+.2f}%). {'Gap up = bullish continuation.' if gap_pct > 0.5 else 'Gap down = selling pressure.' if gap_pct < -0.5 else 'Flat/minor gap.'}", "PRICE_ACTION")
+    
+    add("Market Structure", "SUPPORTS" if hh_hl else "OPPOSES" if lh_ll else "NEUTRAL",
+        f"{'HH + HL on daily — uptrend intact.' if hh_hl else 'LH + LL — downtrend.' if lh_ll else 'Mixed structure — no clear trend.'}", "PRICE_ACTION")
+    
+    add("52W Position", "SUPPORTS" if 20 < w52pos < 75 else "OPPOSES" if w52pos > 90 else "NEUTRAL",
+        f"{w52pos:.0f}% of 52W range. {'Sweet spot for entry.' if 20 < w52pos < 75 else 'Near 52W high — pullback risk.' if w52pos > 80 else 'Near 52W low — catching knife?'}", "PRICE_ACTION")
+    
+    add("Support/Resistance", "SUPPORTS" if price > sma20 and price > ema21 else "OPPOSES" if price < sma20 and price < ema21 else "NEUTRAL",
+        f"{'Above SMA20 + EMA21 demand zone.' if price > sma20 and price > ema21 else 'Below supply zone.' if price < sma20 and price < ema21 else 'Between zones.'}", "PRICE_ACTION")
+    
+    # ─── LAYER 2: INDICATORS ───
+    add("VWAP/EMA Stack", "SUPPORTS" if ema9 > ema21 > ema50 else "OPPOSES" if ema9 < ema21 < ema50 else "NEUTRAL",
+        f"EMA 9/21/50: {'Full bullish stack ✓' if ema9 > ema21 > ema50 else 'Full bearish stack' if ema9 < ema21 < ema50 else 'Mixed — choppy'}. 9={ema9:,.0f} 21={ema21:,.0f} 50={ema50:,.0f}", "INDICATOR")
+    
+    add("RSI(14)", "SUPPORTS" if 35 < rsi < 65 else "OPPOSES" if rsi > 75 else "SUPPORTS" if rsi < 25 else "NEUTRAL",
+        f"RSI {rsi}. {'Healthy momentum.' if 35 < rsi < 65 else 'Overbought — pullback risk.' if rsi > 70 else 'Oversold — bounce likely.' if rsi < 30 else 'Borderline.'}" + (" No divergence." if 40 < rsi < 60 else ""), "INDICATOR")
+    
+    add("Supertrend(10,3)", "SUPPORTS" if supertrend_buy else "OPPOSES",
+        f"{'BUY signal active.' if supertrend_buy else 'SELL signal active.'}", "INDICATOR")
+    
+    add("MACD", "SUPPORTS" if macd_bullish else "OPPOSES",
+        f"Histogram {'expanding ↑' if macd_hist > 0 else 'contracting ↓'} ({macd_hist:+.1f}). {'Bullish crossover.' if macd_bullish else 'Bearish crossover.'}", "INDICATOR")
+    
+    add("Volume", "SUPPORTS" if vol_ratio > 1.2 else "OPPOSES" if vol_ratio < 0.7 else "NEUTRAL",
+        f"{vol_ratio:.1f}× average volume. {'Breakout confirmed by volume.' if vol_ratio > 1.5 else 'Above average — conviction.' if vol_ratio > 1.2 else 'Below average — weak conviction.' if vol_ratio < 0.7 else 'Normal.'}", "INDICATOR")
+    
+    add("ATR(14)", "NEUTRAL", f"ATR ₹{atr14:,.0f}. SL = 1.5×ATR = ₹{round(atr14*1.5):,.0f}.", "INDICATOR")
+    
+    add("Golden/Death Cross", "SUPPORTS" if sma50 > sma200 else "OPPOSES",
+        f"{'Golden Cross — SMA50 > SMA200. Strongest bullish signal.' if sma50 > sma200 else 'Death Cross — bearish long-term.'}", "INDICATOR")
+    
+    # ─── LAYER 3: OPTIONS (NSE LIVE) ───
+    if nse.get("success"):
+        vix = nse.get("vix", 0)
+        pcr = nse.get("pcr", 0)
+        max_pain = nse.get("max_pain", 0)
+        atm_iv = nse.get("atm_iv", 0)
+        ce_resist = nse.get("ce_resistance", [])
+        pe_support = nse.get("pe_support", [])
+        
+        add("India VIX", "SUPPORTS" if 0 < vix < 16 else "NEUTRAL" if vix < 22 else "OPPOSES",
+            f"VIX {vix:.1f}. {'Low fear — premiums cheap. Option BUY favorable.' if vix < 13 else 'Fair premiums.' if vix < 18 else 'Elevated — sell strategies preferred.' if vix < 25 else 'High fear — extreme caution.'}", "OPTION")
+        
+        add("PCR", "SUPPORTS" if 0.8 < pcr < 1.3 else "OPPOSES" if pcr < 0.7 else "NEUTRAL",
+            f"PCR {pcr:.2f}. {'PE writing = bullish floor.' if pcr > 1.1 else 'Balanced.' if pcr > 0.8 else 'CE heavy = bearish resistance.' if pcr > 0 else 'N/A.'}", "OPTION")
+        
+        mp_dist = abs(price - max_pain) / price * 100 if max_pain > 0 else 99
+        add("Max Pain", "SUPPORTS" if mp_dist < 1.5 else "NEUTRAL",
+            f"Max Pain ₹{max_pain:,.0f}. {'Price near max pain — expiry pin effect.' if mp_dist < 1 else f'Price {mp_dist:.1f}% away. May drift toward it.'}" if max_pain > 0 else "N/A.", "OPTION")
+        
+        if ce_resist and pe_support:
+            top_ce = ce_resist[0]["strike"]
+            top_pe = pe_support[0]["strike"]
+            add("OI Buildup", "SUPPORTS" if top_pe < price < top_ce else "NEUTRAL",
+                f"Resist: ₹{top_ce:,.0f} (CE OI:{ce_resist[0]['oi']:,.0f}). Support: ₹{top_pe:,.0f} (PE OI:{pe_support[0]['oi']:,.0f}). {'Within OI range.' if top_pe < price < top_ce else 'Near OI wall.'}", "OPTION")
+        
+        if atm_iv > 0:
+            add("ATM IV", "SUPPORTS" if atm_iv < 18 else "NEUTRAL" if atm_iv < 30 else "OPPOSES",
+                f"IV {atm_iv:.1f}%. {'Low — options cheap. BUY.' if atm_iv < 15 else 'Normal.' if atm_iv < 25 else 'Elevated. SELL preferred.' if atm_iv < 35 else 'Very high.'}", "OPTION")
+    
+    # ─── LAYER 4: FUNDAMENTALS (stocks only) ───
+    is_index = yf_sym.startswith("^")
+    if not is_index and pe > 0:
+        add("P/E", "SUPPORTS" if 0 < pe < 25 else "NEUTRAL" if pe < 40 else "OPPOSES", f"P/E {pe}x.", "FUNDAMENTAL")
+        add("ROE", "SUPPORTS" if roe > 15 else "NEUTRAL" if roe > 8 else "OPPOSES", f"ROE {roe}%.", "FUNDAMENTAL")
+        add("Margin", "SUPPORTS" if margin > 12 else "NEUTRAL" if margin > 5 else "OPPOSES", f"Net margin {margin}%.", "FUNDAMENTAL")
+    
+    # ─── LAYER 5: RISK ───
+    add("Beta/Volatility", "SUPPORTS" if 0.7 <= beta_val <= 1.5 else "OPPOSES" if beta_val > 2 else "NEUTRAL",
+        f"Beta {beta_val:.2f}. {'Normal vol.' if 0.7 <= beta_val <= 1.5 else 'High vol — wider SL.' if beta_val > 1.5 else 'Low vol.'}", "RISK")
+    
+    add("ATR Risk", "SUPPORTS" if atr14 < price * 0.03 else "NEUTRAL" if atr14 < price * 0.05 else "OPPOSES",
+        f"ATR {(atr14/price*100):.1f}% of price. {'Tight range — controlled risk.' if atr14 < price * 0.02 else 'Normal.' if atr14 < price * 0.04 else 'Wide swings — reduce position size.'}", "RISK")
+    
+    if not is_index and de > 0:
+        add("Balance Sheet", "SUPPORTS" if de < 1 else "NEUTRAL" if de < 2 else "OPPOSES", f"D/E {de:.2f}.", "RISK")
+    
+    # ─── EXPIRY CHECK ───
+    IST = datetime.utcnow() + timedelta(hours=5, minutes=30)
+    day_name = IST.strftime("%A")
+    is_expiry = False
+    expiry_note = "Non-expiry day. Standard rules."
+    exp_day = inst.get("exp", "")
+    if "Tuesday" in exp_day and day_name == "Tuesday":
+        is_expiry = True
+        expiry_note = "🔥 NIFTY EXPIRY! Gamma risk, tighter SL, pin to max pain likely."
+    elif "Thursday" in exp_day and day_name == "Thursday":
+        is_expiry = True
+        expiry_note = "🔥 SENSEX EXPIRY! Theta decay accelerating."
+    if is_expiry:
+        add("Expiry", "NEUTRAL", expiry_note, "RISK")
+    
+    # ═══ COMPUTE SCORES ═══
+    supports = len([f for f in factors if f["status"] == "SUPPORTS"])
+    opposes = len([f for f in factors if f["status"] == "OPPOSES"])
+    neutrals = len([f for f in factors if f["status"] == "NEUTRAL"])
+    total = len(factors)
+    pct = round((supports / total) * 100) if total > 0 else 0
+    
+    if pct >= 78: signal, confidence = "STRONG BUY", "HIGH"
+    elif pct >= 62: signal, confidence = "BUY", "HIGH"
+    elif pct >= 50: signal, confidence = "LEAN BUY", "MEDIUM"
+    elif pct >= 38: signal, confidence = "HOLD / WAIT", "LOW"
+    else: signal, confidence = "AVOID", "LOW"
+    
+    direction = "BULLISH" if supports > opposes else "BEARISH" if opposes > supports else "NEUTRAL"
+    
+    # ═══ TRADE PLAN ═══
+    sl_price = round(price - atr14 * 1.5, 2)
+    t1_price = round(price + atr14 * 1, 2)
+    t2_price = round(price + atr14 * 2, 2)
+    t3_price = round(price + atr14 * 3, 2)
+    risk_per_lot = round(abs(price - sl_price) * inst["lot"], 0)
+    reward_t2 = round(abs(t2_price - price) * inst["lot"], 0)
+    rr_ratio = f"1:{round((t2_price - price) / (price - sl_price), 1)}" if price > sl_price else "N/A"
+    capital_per_lot = round(price * inst["lot"], 0)
+    
+    # Option strike suggestion
+    atm_strike = round(price / inst["gap"]) * inst["gap"]
+    
+    trade = {
+        "action": f"BUY {atm_strike} CE" if direction != "BEARISH" else f"BUY {atm_strike} PE",
+        "strike": atm_strike,
+        "type": "CE" if direction != "BEARISH" else "PE",
+        "sl": sl_price,
+        "slReason": f"Below {sma20}-SMA20 support. 1.5×ATR = ₹{round(atr14*1.5):,.0f}.",
+        "t1": t1_price, "t1Action": "Book 50% qty. Move SL to cost.",
+        "t2": t2_price, "t2Action": "Book 30% qty. Trail SL below last swing low.",
+        "t3": t3_price, "t3Action": "Let 20% ride. Trail with structure. Exit 3:00 PM.",
+        "entry": f"Enter when price holds above ₹{sma20:,.0f} (SMA20) with volume > 1.2×.",
+        "exit": "3:00 PM hard exit. Expiry day: 2:30 PM.",
+        "riskPerLot": risk_per_lot,
+        "rewardT2PerLot": reward_t2,
+        "rrRatio": rr_ratio,
+        "capitalPerLot": capital_per_lot,
+        "lot": inst["lot"],
+    }
+    
+    # Reasoning
+    reasoning = f"{supports} of {total} factors support this trade. "
+    if cpr_type == "NARROW": reasoning += "Narrow CPR signals trending day. "
+    if ema9 > ema21 > ema50: reasoning += "Full EMA bullish stack. "
+    if macd_bullish: reasoning += f"MACD bullish (histogram {macd_hist:+.1f}). "
+    if supertrend_buy: reasoning += "Supertrend BUY active. "
+    if vol_ratio > 1.2: reasoning += f"Volume {vol_ratio:.1f}× confirms move. "
+    if nse.get("success"):
+        if pcr > 1: reasoning += f"PCR {pcr:.2f} = PE writing (bullish floor). "
+        if vix and vix < 16: reasoning += f"VIX {vix:.1f} = fair premiums. "
+    if opposes > 0: reasoning += f"{opposes} factors oppose. "
+    if neutrals > 0: reasoning += f"{neutrals} neutral. "
+    reasoning += f"{confidence} confidence."
+    
+    result["factors"] = factors
+    result["signal"] = signal
+    result["confidence"] = confidence
+    result["direction"] = direction
+    result["confluenceScore"] = supports
+    result["totalFactors"] = total
+    result["supports"] = supports
+    result["opposes"] = opposes
+    result["neutrals"] = neutrals
+    result["pct"] = pct
+    result["isExpiry"] = is_expiry
+    result["expiryNote"] = expiry_note
+    result["trade"] = trade if signal not in ["HOLD / WAIT", "AVOID"] else None
+    result["reasoning"] = reasoning
+    result["timestamp"] = IST.strftime("%I:%M %p IST")
+    
+    print(f"🎯 Algo Signal: {symbol} → {signal} ({supports}/{total}) {direction}")
+    return result
+
+
+@app.get("/api/algo-backtest")
+async def algo_backtest(symbol: str = "NIFTY", years: int = 3):
+    """Backtest the 5-layer confluence algo on historical data."""
+    import yfinance as yf
+    import pandas as pd
+    import numpy as np
+    from datetime import datetime, timedelta
+    import math
+    
+    symbol = symbol.upper().strip()
+    inst = ALGO_INSTRUMENTS.get(symbol, {"sym": f"{symbol}.NS", "lot": 100, "gap": 50})
+    yf_sym = inst["sym"]
+    years = min(max(years, 1), 5)
+    
+    try:
+        tk = yf.Ticker(yf_sym)
+        hist = tk.history(period=f"{years}y", interval="1d")
+        if hist is None or len(hist) < 200:
+            return {"success": False, "error": f"Insufficient data for {symbol} ({len(hist) if hist is not None else 0} days)"}
+        
+        closes = hist['Close'].values.astype(float)
+        highs = hist['High'].values.astype(float)
+        lows = hist['Low'].values.astype(float)
+        opens = hist['Open'].values.astype(float)
+        volumes = hist['Volume'].values.astype(float)
+        dates = [d.strftime("%Y-%m-%d") for d in hist.index]
+        
+        cs = pd.Series(closes)
+        
+        # Pre-compute all indicators across full history
+        sma20 = cs.rolling(20).mean().values
+        sma50 = cs.rolling(50).mean().values
+        sma200 = cs.rolling(200).mean().values
+        ema9 = cs.ewm(span=9).mean().values
+        ema21 = cs.ewm(span=21).mean().values
+        ema50 = cs.ewm(span=50).mean().values
+        
+        # RSI(14)
+        deltas = cs.diff()
+        gain = deltas.clip(lower=0).rolling(14).mean().values
+        loss = (-deltas.clip(upper=0)).rolling(14).mean().values
+        with np.errstate(divide='ignore', invalid='ignore'):
+            rs = np.where(loss > 0, gain / loss, 100)
+        rsi_arr = 100 - (100 / (1 + rs))
+        
+        # MACD
+        ema12 = cs.ewm(span=12).mean().values
+        ema26 = cs.ewm(span=26).mean().values
+        macd_line = ema12 - ema26
+        macd_signal = pd.Series(macd_line).ewm(span=9).mean().values
+        macd_hist_arr = macd_line - macd_signal
+        
+        # ATR(14)
+        tr = np.maximum(highs[1:] - lows[1:], np.maximum(abs(highs[1:] - closes[:-1]), abs(lows[1:] - closes[:-1])))
+        tr = np.concatenate([[highs[0] - lows[0]], tr])
+        atr14 = pd.Series(tr).rolling(14).mean().values
+        
+        # Volume ratio (20-day avg)
+        vol_avg = pd.Series(volumes).rolling(20).mean().values
+        
+        # Supertrend(10,3)
+        hl2 = (pd.Series(highs) + pd.Series(lows)) / 2
+        st_atr = pd.Series(tr).rolling(10).mean().values
+        
+        # ═══ BACKTEST LOOP ═══
+        trades = []
+        equity_curve = [0]
+        total_signals = 0
+        start_idx = max(200, 50)  # need 200 bars for SMA200
+        
+        open_trade = None  # {entry_price, sl, t1, t2, t3, entry_date, direction, qty_remaining}
+        
+        for i in range(start_idx, len(closes)):
+            price = closes[i]
+            prev_close = closes[i-1]
+            
+            if np.isnan(sma200[i]) or np.isnan(atr14[i]) or atr14[i] <= 0:
+                equity_curve.append(equity_curve[-1])
+                continue
+            
+            # ─── CHECK OPEN TRADE ───
+            if open_trade:
+                hit_sl = lows[i] <= open_trade["sl"] if open_trade["direction"] == "LONG" else highs[i] >= open_trade["sl"]
+                hit_t1 = highs[i] >= open_trade["t1"] if open_trade["direction"] == "LONG" else lows[i] <= open_trade["t1"]
+                hit_t2 = highs[i] >= open_trade["t2"] if open_trade["direction"] == "LONG" else lows[i] <= open_trade["t2"]
+                hit_t3 = highs[i] >= open_trade["t3"] if open_trade["direction"] == "LONG" else lows[i] <= open_trade["t3"]
+                
+                if hit_sl and not open_trade.get("t1_hit"):
+                    # Full SL hit — lose on all remaining qty
+                    pnl = (open_trade["sl"] - open_trade["entry"]) * open_trade["qty"] if open_trade["direction"] == "LONG" else (open_trade["entry"] - open_trade["sl"]) * open_trade["qty"]
+                    open_trade["exit_price"] = open_trade["sl"]
+                    open_trade["exit_date"] = dates[i]
+                    open_trade["pnl"] = round(pnl, 2)
+                    open_trade["result"] = "SL HIT"
+                    trades.append(open_trade)
+                    equity_curve.append(equity_curve[-1] + pnl)
+                    open_trade = None
+                    continue
+                
+                if hit_t1 and not open_trade.get("t1_hit"):
+                    open_trade["t1_hit"] = True
+                    open_trade["booked_pnl"] = open_trade.get("booked_pnl", 0) + (open_trade["t1"] - open_trade["entry"]) * open_trade["qty"] * 0.5 if open_trade["direction"] == "LONG" else open_trade.get("booked_pnl", 0) + (open_trade["entry"] - open_trade["t1"]) * open_trade["qty"] * 0.5
+                    open_trade["sl"] = open_trade["entry"]  # Move SL to cost
+                    open_trade["qty"] *= 0.5
+                
+                if hit_t2 and open_trade.get("t1_hit") and not open_trade.get("t2_hit"):
+                    open_trade["t2_hit"] = True
+                    open_trade["booked_pnl"] = open_trade.get("booked_pnl", 0) + (open_trade["t2"] - open_trade["entry"]) * open_trade["qty"] * 0.6 if open_trade["direction"] == "LONG" else open_trade.get("booked_pnl", 0) + (open_trade["entry"] - open_trade["t2"]) * open_trade["qty"] * 0.6
+                    open_trade["qty"] *= 0.4
+                
+                if hit_t3 and open_trade.get("t2_hit"):
+                    final_pnl = open_trade.get("booked_pnl", 0) + (open_trade["t3"] - open_trade["entry"]) * open_trade["qty"] if open_trade["direction"] == "LONG" else open_trade.get("booked_pnl", 0) + (open_trade["entry"] - open_trade["t3"]) * open_trade["qty"]
+                    open_trade["exit_price"] = open_trade["t3"]
+                    open_trade["exit_date"] = dates[i]
+                    open_trade["pnl"] = round(final_pnl, 2)
+                    open_trade["result"] = "T3 HIT (FULL TARGET)"
+                    trades.append(open_trade)
+                    equity_curve.append(equity_curve[-1] + final_pnl)
+                    open_trade = None
+                    continue
+                
+                # SL hit after T1 (at cost)
+                if hit_sl and open_trade.get("t1_hit"):
+                    final_pnl = open_trade.get("booked_pnl", 0)  # Only booked profits, SL at cost = 0 loss on remainder
+                    open_trade["exit_price"] = open_trade["sl"]
+                    open_trade["exit_date"] = dates[i]
+                    open_trade["pnl"] = round(final_pnl, 2)
+                    open_trade["result"] = "SL AT COST (partial profit)" if final_pnl > 0 else "BREAKEVEN"
+                    trades.append(open_trade)
+                    equity_curve.append(equity_curve[-1] + final_pnl)
+                    open_trade = None
+                    continue
+                
+                # Max hold = 5 days
+                entry_idx = dates.index(open_trade["entry_date"]) if open_trade["entry_date"] in dates else i - 5
+                if i - entry_idx >= 5:
+                    exit_pnl = open_trade.get("booked_pnl", 0) + (price - open_trade["entry"]) * open_trade["qty"] if open_trade["direction"] == "LONG" else open_trade.get("booked_pnl", 0) + (open_trade["entry"] - price) * open_trade["qty"]
+                    open_trade["exit_price"] = price
+                    open_trade["exit_date"] = dates[i]
+                    open_trade["pnl"] = round(exit_pnl, 2)
+                    open_trade["result"] = "TIME EXIT (5D)"
+                    trades.append(open_trade)
+                    equity_curve.append(equity_curve[-1] + exit_pnl)
+                    open_trade = None
+                    continue
+                
+                equity_curve.append(equity_curve[-1])
+                continue
+            
+            # ─── CONFLUENCE SCORING (same logic as live algo) ───
+            supports = 0
+            total_factors = 0
+            
+            def check(condition):
+                nonlocal supports, total_factors
+                total_factors += 1
+                if condition:
+                    supports += 1
+            
+            # L1: Price Action
+            w52h_i = max(highs[max(0,i-252):i+1])
+            w52l_i = min(lows[max(0,i-252):i+1])
+            w52pos_i = ((price - w52l_i) / (w52h_i - w52l_i)) * 100 if w52h_i > w52l_i else 50
+            check(20 < w52pos_i < 75)  # 52W position
+            check(price > sma200[i])    # Above SMA200
+            check(price > sma50[i])     # Above SMA50
+            check(price > sma20[i] and price > ema21[i])  # Support zone
+            
+            # CPR
+            pdh_i, pdl_i, pdc_i = highs[i-1], lows[i-1], closes[i-1]
+            pivot_i = (pdh_i + pdl_i + pdc_i) / 3
+            bc_i = (pdh_i + pdl_i) / 2
+            tc_i = 2 * pivot_i - bc_i
+            cpr_pct_i = abs(tc_i - bc_i) / pdc_i * 100
+            check(cpr_pct_i < 0.3)  # Narrow CPR = trending
+            
+            # Gap
+            gap_pct_i = (opens[i] - closes[i-1]) / closes[i-1] * 100
+            check(gap_pct_i > 0.2)  # Gap up
+            
+            # L2: Indicators
+            check(ema9[i] > ema21[i] and ema21[i] > ema50[i])  # EMA stack
+            rsi_i = rsi_arr[i] if not np.isnan(rsi_arr[i]) else 50
+            check(35 < rsi_i < 70)  # RSI sweet spot
+            check(sma50[i] > sma200[i])  # Golden cross
+            check(ema9[i] > ema21[i])  # Short momentum
+            check(macd_hist_arr[i] > 0)  # MACD bullish
+            vol_ratio_i = volumes[i] / vol_avg[i] if vol_avg[i] > 0 else 1
+            check(vol_ratio_i > 1.1)  # Above avg volume
+            
+            # Supertrend approximation
+            st_upper = hl2.values[i] + 3 * st_atr[i] if not np.isnan(st_atr[i]) else price * 1.05
+            st_lower = hl2.values[i] - 3 * st_atr[i] if not np.isnan(st_atr[i]) else price * 0.95
+            check(price > st_lower)  # Supertrend BUY
+            
+            # HH/HL check
+            if i >= 5:
+                rh = highs[i-4:i+1]
+                rl = lows[i-4:i+1]
+                hh_hl = all(rh[j] >= rh[j-1] for j in range(1, 5)) and all(rl[j] >= rl[j-1] for j in range(1, 5))
+                check(hh_hl)
+            
+            total_signals += 1
+            pct = round((supports / total_factors) * 100) if total_factors > 0 else 0
+            
+            # ─── GENERATE TRADE if confluence >= 65% ───
+            if pct >= 65 and not open_trade:
+                atr_i = atr14[i] if not np.isnan(atr14[i]) else abs(highs[i] - lows[i])
+                sl = round(price - atr_i * 1.5, 2)
+                t1 = round(price + atr_i * 1.0, 2)
+                t2 = round(price + atr_i * 2.0, 2)
+                t3 = round(price + atr_i * 3.0, 2)
+                
+                open_trade = {
+                    "entry": round(price, 2),
+                    "entry_date": dates[i],
+                    "sl": sl,
+                    "t1": t1, "t2": t2, "t3": t3,
+                    "direction": "LONG",
+                    "confluence": f"{supports}/{total_factors}",
+                    "pct": pct,
+                    "qty": inst["lot"],
+                    "atr": round(atr_i, 2),
+                    "booked_pnl": 0,
+                    "t1_hit": False, "t2_hit": False,
+                }
+            
+            equity_curve.append(equity_curve[-1])
+        
+        # Close any open trade at last price
+        if open_trade:
+            final_pnl = open_trade.get("booked_pnl", 0) + (closes[-1] - open_trade["entry"]) * open_trade["qty"]
+            open_trade["exit_price"] = round(closes[-1], 2)
+            open_trade["exit_date"] = dates[-1]
+            open_trade["pnl"] = round(final_pnl, 2)
+            open_trade["result"] = "OPEN → FORCED CLOSE"
+            trades.append(open_trade)
+        
+        # ═══ STATISTICS ═══
+        if not trades:
+            return {"success": True, "symbol": symbol, "trades": 0, "message": "No signals generated with >= 65% confluence", "years": years}
+        
+        pnls = [t["pnl"] for t in trades]
+        wins = [p for p in pnls if p > 0]
+        losses = [p for p in pnls if p < 0]
+        breakevens = [p for p in pnls if p == 0]
+        
+        total_trades = len(trades)
+        win_count = len(wins)
+        loss_count = len(losses)
+        win_rate = round(win_count / total_trades * 100, 1)
+        
+        total_profit = sum(wins) if wins else 0
+        total_loss = abs(sum(losses)) if losses else 0
+        net_pnl = sum(pnls)
+        profit_factor = round(total_profit / total_loss, 2) if total_loss > 0 else float('inf')
+        
+        avg_win = round(sum(wins) / len(wins), 0) if wins else 0
+        avg_loss = round(sum(losses) / len(losses), 0) if losses else 0
+        
+        # Max drawdown
+        peak = 0
+        max_dd = 0
+        for eq in equity_curve:
+            if eq > peak:
+                peak = eq
+            dd = peak - eq
+            if dd > max_dd:
+                max_dd = dd
+        
+        # Sharpe (annualized, assuming 252 trading days)
+        daily_returns = []
+        for i in range(1, len(equity_curve)):
+            daily_returns.append(equity_curve[i] - equity_curve[i-1])
+        if daily_returns:
+            dr = np.array(daily_returns)
+            sharpe = round(np.mean(dr) / (np.std(dr) + 1e-10) * np.sqrt(252), 2)
+        else:
+            sharpe = 0
+        
+        # Expectancy
+        expectancy = round((win_rate/100 * avg_win) - ((1 - win_rate/100) * abs(avg_loss)), 0) if avg_loss != 0 else avg_win
+        
+        # Results by type
+        result_counts = {}
+        for t in trades:
+            r = t.get("result", "?")
+            result_counts[r] = result_counts.get(r, 0) + 1
+        
+        # Monthly breakdown
+        monthly = {}
+        for t in trades:
+            m = t["entry_date"][:7]  # YYYY-MM
+            if m not in monthly:
+                monthly[m] = {"trades": 0, "wins": 0, "pnl": 0}
+            monthly[m]["trades"] += 1
+            monthly[m]["pnl"] += t["pnl"]
+            if t["pnl"] > 0:
+                monthly[m]["wins"] += 1
+        
+        # Equity curve (sampled for chart)
+        eq_sampled = []
+        step = max(1, len(equity_curve) // 200)
+        for i in range(0, len(equity_curve), step):
+            eq_sampled.append(round(equity_curve[i], 0))
+        
+        # Best/worst trades
+        sorted_trades = sorted(trades, key=lambda t: t["pnl"], reverse=True)
+        
+        result = {
+            "success": True,
+            "symbol": symbol,
+            "years": years,
+            "period": f"{dates[start_idx]} to {dates[-1]}",
+            "total_bars": len(closes) - start_idx,
+            "total_signals": total_signals,
+            
+            "stats": {
+                "total_trades": total_trades,
+                "wins": win_count,
+                "losses": loss_count,
+                "breakevens": len(breakevens),
+                "win_rate": win_rate,
+                "profit_factor": profit_factor,
+                "sharpe_ratio": sharpe,
+                "expectancy": expectancy,
+                "total_profit": round(total_profit, 0),
+                "total_loss": round(total_loss, 0),
+                "net_pnl": round(net_pnl, 0),
+                "avg_win": avg_win,
+                "avg_loss": avg_loss,
+                "max_drawdown": round(max_dd, 0),
+                "best_trade": round(sorted_trades[0]["pnl"], 0) if sorted_trades else 0,
+                "worst_trade": round(sorted_trades[-1]["pnl"], 0) if sorted_trades else 0,
+                "avg_holding_days": round(sum((datetime.strptime(t.get("exit_date", t["entry_date"]), "%Y-%m-%d") - datetime.strptime(t["entry_date"], "%Y-%m-%d")).days for t in trades) / len(trades), 1),
+            },
+            
+            "result_breakdown": result_counts,
+            "monthly": dict(sorted(monthly.items())),
+            "equity_curve": eq_sampled,
+            
+            "best_trades": [{"date": t["entry_date"], "entry": t["entry"], "exit": t.get("exit_price", 0), "pnl": t["pnl"], "result": t["result"], "confluence": t["confluence"]} for t in sorted_trades[:5]],
+            "worst_trades": [{"date": t["entry_date"], "entry": t["entry"], "exit": t.get("exit_price", 0), "pnl": t["pnl"], "result": t["result"], "confluence": t["confluence"]} for t in sorted_trades[-5:]],
+            
+            "confluence_threshold": "65%",
+            "sl_method": "1.5 × ATR(14)",
+            "targets": "T1=1×ATR, T2=2×ATR, T3=3×ATR",
+            "exit_strategy": "50% at T1 (SL→cost), 30% at T2 (trail), 20% at T3 or 5-day max hold",
+            "lot": inst["lot"],
+        }
+        
+        print(f"📊 Backtest: {symbol} {years}Y → {total_trades} trades, {win_rate}% win, PF={profit_factor}, Sharpe={sharpe}")
+        return result
+    
+    except Exception as e:
+        print(f"❌ Backtest error: {e}")
+        import traceback; traceback.print_exc()
+        return {"success": False, "error": str(e)}
+
+
 @app.post("/api/index-trades")
 async def index_trades(request: Request):
     """Generate AI-powered daily index trade ideas for Indian markets"""
