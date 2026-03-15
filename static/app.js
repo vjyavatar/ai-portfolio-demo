@@ -293,22 +293,21 @@ if(!el)return;
 const email=(el.dataset.real||el.value).trim().toLowerCase();
 const showTrades=TRADES_EMAILS.includes(email);
 const showPicks=PICKS_EMAILS.includes(email);
-const tBtn=document.getElementById('tabBtnTrades');
+// Algo Trades tab is ALWAYS visible — no email gate
 const gBtn=document.getElementById('tabBtnGems');
 const pBtn=document.getElementById('tabBtnPicks');
 const fBtn=document.getElementById('tabBtnFunds');
-if(tBtn)tBtn.style.display=showTrades?'':'none';
 if(gBtn)gBtn.style.display=showTrades?'':'none';
 if(pBtn)pBtn.style.display=showPicks?'':'none';
 if(fBtn)fBtn.style.display=showPicks?'':'none';
-document.querySelectorAll('.sc[data-tab="trades"]').forEach(s=>s.style.display=showTrades?'':'none');
+// Do NOT hide .sc[data-tab="trades"] — algo scanner is there for everyone
 document.querySelectorAll('.sc[data-tab="gems"]').forEach(s=>s.style.display=showTrades?'':'none');
 document.querySelectorAll('.sc[data-tab="picks"]').forEach(s=>s.style.display=showPicks?'':'none');
 document.querySelectorAll('.sc[data-tab="funds"]').forEach(s=>s.style.display=showPicks?'':'none');
 document.querySelectorAll('.sub-nav[data-tab="picks"]').forEach(s=>s.style.display=showPicks?'':'none');
 if(showTrades){initTradesProtection(email)}
 if(showPicks){try{renderPicks('lc')}catch(e){}try{renderFunds('etf_in')}catch(e){}}
-console.log('checkTradesAccess:',email,'→ trades:',showTrades?'GRANTED':'DENIED','picks:',showPicks?'GRANTED':'DENIED');
+console.log('checkTradesAccess:',email,'→ trades:ALWAYS','picks:',showPicks?'GRANTED':'DENIED');
 }catch(e){console.warn('checkTradesAccess error:',e)}
 }
 document.getElementById('email').addEventListener('blur',checkTradesAccess);
@@ -1876,7 +1875,7 @@ if(tab==='trades'){
 // Auto-run NIFTY on first open
 if(!window._algoFirstRun){
 window._algoFirstRun=true;
-setTimeout(function(){algoSelect('NIFTY',document.querySelector('.algo-sel.active'))},300);
+setTimeout(function(){algoSelect('NIFTY',document.querySelector('.algo-btn.active'))},300);
 }
 // Init backtest
 try{initBacktest()}catch(e){}
@@ -5001,7 +5000,7 @@ el.innerHTML=h;
 // ═══ ALGO TRADE SCANNER — SELECT & AUTO-RUN ═══
 function algoSelect(sym,btn){
 // Highlight button
-document.querySelectorAll('.algo-sel').forEach(function(b){b.classList.remove('active')});
+document.querySelectorAll('.algo-btn').forEach(function(b){b.classList.remove('active')});
 if(btn)btn.classList.add('active');
 // Clear custom input
 var ci=document.getElementById('algoCustomTicker');
