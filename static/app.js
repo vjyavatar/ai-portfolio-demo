@@ -40,8 +40,8 @@ m.forEach(s=>{const d=document.createElement('div');d.className='aci';d.innerHTM
 document.addEventListener('click',e=>{if(e.target!==TI)AC.classList.remove('show')});
 document.getElementById('email').addEventListener('keypress',e=>{if(e.key==='Enter')TI.focus()});
 // Smart Trades tab: only visible for authorized email
-const TRADES_EMAILS=['vijy.dhulipala@gmail.com'];
-const PICKS_EMAILS=['vijy.dhulipala@gmail.com'];
+const TRADES_EMAILS=['vjyavatar@gmail.com'];
+const PICKS_EMAILS=['vjyavatar@gmail.com'];
 let _pulseData=null;
 let _pulseFetching=false,_pulseLoaded=false;
 
@@ -926,6 +926,7 @@ try{renderFiiDii()}catch(e){console.warn('FiiDii render error:',e)}
 try{renderPeers(d,curr)}catch(e){console.warn('renderPeers error:',e)}
 try{renderPricePrediction(d)}catch(e){console.warn('renderPricePrediction error:',e)}
 try{renderTechnicalsPro(d)}catch(e){console.warn('renderTechnicalsPro error:',e)}
+try{renderTradeConfluence(d)}catch(e){console.warn('renderTradeConfluence error:',e)}
 try{renderEarningsCountdown(d)}catch(e){console.warn('renderEarningsCountdown error:',e)}
 try{renderInsiderActivity(d)}catch(e){console.warn('renderInsiderActivity error:',e)}
 try{renderUpcomingEvents(d)}catch(e){console.warn('renderUpcomingEvents error:',e)}
@@ -4991,6 +4992,120 @@ el.innerHTML=h;
 }
 
 // ═══ 7. ENHANCED TECHNICAL INDICATORS (rendered in Quick tab) ═══
+// ═══ HIGH-CONVICTION TRADE CONFLUENCE ENGINE ═══
+
+// 5-LAYER TRADE CONFLUENCE ENGINE — REAL NSE DATA
+function renderTradeConfluence(d){
+var el=document.getElementById('confluenceSection');
+if(!el)return;
+var _n=function(k,def){var v=d[k];if(!v||v==='N/A')return def===undefined?null:def;return parseFloat(String(v).replace(/[,%]/g,''))||def||0;};
+var price=_n('current_price',0);
+if(!price){el.style.display='none';return;}
+var S=d.currency==='INR'?'&#8377;':'$';
+var ticker=d.ticker||'';
+var isIndian=ticker.indexOf('.NS')>=0||ticker.indexOf('.BO')>=0;
+el.innerHTML='<div style="padding:20px;text-align:center;color:var(--text3)"><div style="font-size:11px">&#9203; Running 5-layer confluence'+(isIndian?' + NSE options data':'')+'...</div></div>';
+el.style.display='block';
+var nseSymbol=ticker.replace('.NS','').replace('.BO','');
+if(nseSymbol==='^NSEI')nseSymbol='NIFTY';
+if(nseSymbol==='^NSEBANK')nseSymbol='BANKNIFTY';
+var optP=isIndian?fetch('/api/nse-options?symbol='+encodeURIComponent(nseSymbol)).then(function(r){return r.json();}).catch(function(){return{success:false};}):Promise.resolve({success:false});
+optP.then(function(nse){_buildConf(el,d,nse,price,S,isIndian);});
+}
+
+function _buildConf(el,d,nse,price,S,isIndian){
+var _n=function(k,def){var v=d[k];if(!v||v==='N/A')return def===undefined?null:def;return parseFloat(String(v).replace(/[,%]/g,''))||def||0;};
+var sma20=_n('sma_20',price),sma50=_n('sma_50',price),sma200=_n('sma_200',price);
+var ema9=_n('ema_9',price),ema21=_n('ema_21',price),ema50=_n('ema_50',price);
+var pe=_n('pe_ratio',0),roe=_n('roe',0),margin=_n('profit_margin',0);
+var de=_n('debt_to_equity',0),beta=_n('beta',1);
+var w52h=_n('week52_high',price*1.2),w52l=_n('week52_low',price*0.8);
+var w52pos=w52h>w52l?((price-w52l)/(w52h-w52l))*100:50;
+var revG=_n('revenue_growth',0),earnG=_n('earnings_growth',0);
+var ytdRet=_n('ytd_return',null);
+var yearlyR=d.yearly_returns||{};var yKeys=Object.keys(yearlyR).sort().reverse();
+var rsi=50,hist=d.price_history||[];
+if(hist.length>2){var g=0,l=0;for(var i=1;i<hist.length;i++){var df=hist[i]-hist[i-1];if(df>0)g+=df;else l+=Math.abs(df);}var ag=g/(hist.length-1),al=l/(hist.length-1);rsi=al===0?100:Math.round(100-(100/(1+ag/al)));}
+var pcr=nse.pcr||0,maxPain=nse.max_pain||0,vix=nse.vix||0,atmIv=nse.atm_iv||0;
+var cprType=nse.cpr_type||'',pdh=nse.pdh||0,pdl=nse.pdl||0,gapType=nse.gap_type||'',gapPct=nse.gap_pct||0;
+var ceResist=nse.ce_resistance||[],peSupport=nse.pe_support||[];
+var F=[];
+function add(n,s,dt,c){F.push({name:n,status:s,detail:dt,category:c});}
+// L1 PRICE ACTION
+add('52W Position',w52pos>20&&w52pos<80?'SUPPORTS':'OPPOSES',w52pos<20?'Near 52W low ('+w52pos.toFixed(0)+'%). Falling knife risk.':w52pos>80?'Near 52W high ('+w52pos.toFixed(0)+'%). Pullback risk.':'Mid-range ('+w52pos.toFixed(0)+'%). Healthy.','PRICE_ACTION');
+add('SMA 200 Trend',price>sma200?'SUPPORTS':'OPPOSES',price>sma200?'Above 200-DMA. Long-term uptrend.':'Below 200-DMA. Downtrend.','PRICE_ACTION');
+add('SMA 50 Trend',price>sma50?'SUPPORTS':'OPPOSES',price>sma50?'Above 50-DMA. Medium bullish.':'Below 50-DMA. Weakness.','PRICE_ACTION');
+add('Support/Resistance',price>sma20&&price>ema21?'SUPPORTS':price<sma20&&price<ema21?'OPPOSES':'NEUTRAL',price>sma20&&price>ema21?'Above SMA20+EMA21 demand zone.':price<sma20&&price<ema21?'Below supply zone.':'Between zones.','PRICE_ACTION');
+if(pdh>0)add('PDH/PDL',price>pdh?'SUPPORTS':price<pdl?'OPPOSES':'NEUTRAL',price>pdh?'Broken above PDH '+S+pdh+'. Bullish breakout.':price<pdl?'Below PDL '+S+pdl+'. Breakdown.':'Within prev day range.','PRICE_ACTION');
+if(cprType)add('CPR',cprType==='NARROW'?'SUPPORTS':cprType==='WIDE'?'OPPOSES':'NEUTRAL',cprType==='NARROW'?'Narrow CPR ('+nse.cpr_pct+'%). Trending day — directional trades favored.':cprType==='WIDE'?'Wide CPR. Range-bound. Sell strategies better.':'Medium CPR.','PRICE_ACTION');
+if(gapType&&gapType!=='FLAT OPEN')add('Gap',gapPct>0.3?'SUPPORTS':gapPct<-0.3?'OPPOSES':'NEUTRAL',gapType+' ('+gapPct.toFixed(2)+'%). '+(gapPct>0.5?'Bullish continuation.':gapPct<-0.5?'Selling pressure.':'May fill.'),'PRICE_ACTION');
+var cUp=yKeys.length>=3&&yKeys.slice(0,3).every(function(k){return yearlyR[k]>0;});
+add('Multi-Year',cUp?'SUPPORTS':yKeys.length>=3&&yKeys.slice(0,3).every(function(k){return yearlyR[k]<0;})?'OPPOSES':'NEUTRAL',cUp?'3yr positive. High-probability.':'Inconsistent annual.','PRICE_ACTION');
+// L2 INDICATORS
+add('EMA Stack',ema9>ema21&&ema21>ema50?'SUPPORTS':ema9<ema21&&ema21<ema50?'OPPOSES':'NEUTRAL',ema9>ema21&&ema21>ema50?'Bullish: 9>21>50.':ema9<ema21?'Bearish stack.':'Tangled.','INDICATOR');
+add('RSI(14)',rsi>35&&rsi<70?'SUPPORTS':rsi<=30?'SUPPORTS':'OPPOSES',rsi<=30?'RSI '+rsi+' oversold. Bounce likely.':rsi>=70?'RSI '+rsi+' overbought.':'RSI '+rsi+' healthy.','INDICATOR');
+add('Golden Cross',sma50>sma200?'SUPPORTS':'OPPOSES',sma50>sma200?'Active. Strongest bullish signal.':'Death Cross. Selling pressure.','INDICATOR');
+add('EMA9/21 Momentum',ema9>ema21?'SUPPORTS':'OPPOSES',ema9>ema21?'Bullish crossover.':'Bearish crossover.','INDICATOR');
+add('YTD',ytdRet!==null&&ytdRet>0?'SUPPORTS':ytdRet!==null&&ytdRet<-10?'OPPOSES':'NEUTRAL',ytdRet!==null?'YTD '+(ytdRet>0?'+':'')+ytdRet.toFixed(1)+'%.':'N/A.','INDICATOR');
+// L3 OPTIONS (NSE)
+if(nse.success&&isIndian){
+add('India VIX',vix>0&&vix<18?'SUPPORTS':vix>=18&&vix<25?'NEUTRAL':'OPPOSES',vix<13?'VIX '+vix+'. Low fear. Options cheap.':vix<18?'VIX '+vix+'. Fair premiums.':vix<25?'VIX '+vix+'. Elevated. Sell better.':'VIX '+vix+'. High fear.','OPTION');
+add('PCR',pcr>0.8&&pcr<1.3?'SUPPORTS':pcr>=1.3?'NEUTRAL':'OPPOSES',pcr>1.2?'PCR '+pcr+'. PE writing = bullish.':pcr>0.8?'PCR '+pcr+'. Balanced.':'PCR '+pcr+'. CE heavy = bearish.','OPTION');
+add('Max Pain',maxPain>0?(Math.abs(price-maxPain)/price*100<1.5?'SUPPORTS':'NEUTRAL'):'NEUTRAL',maxPain>0?'Max Pain '+S+maxPain.toLocaleString('en-IN')+'. '+(Math.abs(price-maxPain)/price*100<1?'Near — expiry pin effect.':'Price may drift toward it.'):'N/A.','OPTION');
+if(ceResist.length>0&&peSupport.length>0){var topCe=ceResist[0].strike,topPe=peSupport[0].strike;add('OI Buildup',price>topPe&&price<topCe?'SUPPORTS':'NEUTRAL','Resist: '+S+topCe.toLocaleString('en-IN')+' (CE OI:'+ceResist[0].oi.toLocaleString('en-IN')+'). Support: '+S+topPe.toLocaleString('en-IN')+' (PE OI:'+peSupport[0].oi.toLocaleString('en-IN')+').','OPTION');}
+if(atmIv>0)add('ATM IV',atmIv<20?'SUPPORTS':atmIv<35?'NEUTRAL':'OPPOSES','IV '+atmIv+'%. '+(atmIv<15?'Cheap. Buy.':atmIv<25?'Normal.':atmIv<35?'Elevated. Sell preferred.':'Very high.'),'OPTION');
+}
+// L4 FUNDAMENTALS
+add('P/E',pe>0&&pe<25?'SUPPORTS':pe>=25&&pe<50?'NEUTRAL':'OPPOSES',pe>0?'P/E '+pe.toFixed(1)+'x.':'N/A.','FUNDAMENTAL');
+add('ROE',roe>15?'SUPPORTS':roe>8?'NEUTRAL':'OPPOSES','ROE '+roe.toFixed(1)+'%.','FUNDAMENTAL');
+add('Margin',margin>12?'SUPPORTS':margin>5?'NEUTRAL':'OPPOSES','Net '+margin.toFixed(1)+'%.','FUNDAMENTAL');
+add('Earnings Growth',earnG>8?'SUPPORTS':earnG>0?'NEUTRAL':'OPPOSES',earnG.toFixed(1)+'%.','FUNDAMENTAL');
+// L5 RISK
+add('Balance Sheet',de>=0&&de<1?'SUPPORTS':de<2?'NEUTRAL':'OPPOSES','D/E '+de.toFixed(2)+'.','RISK');
+add('Beta',beta>=0.7&&beta<=1.5?'SUPPORTS':beta>1.5?'OPPOSES':'NEUTRAL','Beta '+beta.toFixed(2)+'.','RISK');
+// SCORES
+var sup=F.filter(function(f){return f.status==='SUPPORTS';}).length;
+var opp=F.filter(function(f){return f.status==='OPPOSES';}).length;
+var neu=F.filter(function(f){return f.status==='NEUTRAL';}).length;
+var tot=F.length,pct=Math.round((sup/tot)*100);
+var sig,conf,sC,sBg;
+if(pct>=78){sig='STRONG BUY';conf='HIGH';sC='#0a7c42';sBg='rgba(10,124,66,.06)';}
+else if(pct>=62){sig='BUY';conf='HIGH';sC='#10b981';sBg='rgba(16,185,129,.05)';}
+else if(pct>=50){sig='LEAN BUY';conf='MEDIUM';sC='#3b82f6';sBg='rgba(59,130,246,.04)';}
+else if(pct>=38){sig='HOLD / WAIT';conf='LOW';sC='#f59e0b';sBg='rgba(245,158,11,.04)';}
+else{sig='AVOID';conf='LOW';sC='#ef4444';sBg='rgba(239,68,68,.04)';}
+var dir=sup>opp?'BULLISH':opp>sup?'BEARISH':'NEUTRAL';
+var dC=dir==='BULLISH'?'#0a7c42':dir==='BEARISH'?'#ef4444':'#f59e0b';
+var atr=Math.abs(w52h-w52l)/10;
+var entL=Math.max(price*0.97,sma20>0?sma20:price*0.97);
+var sl=Math.min(sma50>0?sma50*0.98:price*0.92,price-atr*1.5);
+var t1=price+(price-sl),t2=price+(price-sl)*2,t3=price+(price-sl)*3;
+var rkP=((price-sl)/price*100).toFixed(1),rwP=((t2-price)/price*100).toFixed(1);
+var rr=sl>0?((t2-price)/(price-sl)).toFixed(1):'N/A';
+// RENDER
+var h='<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px;flex-wrap:wrap;gap:8px"><div><div style="font-size:9px;color:var(--text3);font-weight:700;letter-spacing:1.5px">5-LAYER CONFLUENCE &middot; '+tot+' FACTORS'+(nse.success?' &middot; LIVE NSE DATA':'')+'</div><div style="font-size:16px;font-weight:900;color:var(--text);margin-top:4px">&#127919; Trade Scanner</div></div><div style="text-align:right"><span style="font-size:11px;font-weight:800;padding:5px 14px;border-radius:6px;background:'+sBg+';color:'+sC+';border:1px solid '+sC+'22">'+sig+'</span><div style="margin-top:4px"><span style="font-size:9px;font-weight:700;padding:3px 10px;border-radius:4px;background:'+dC+'12;color:'+dC+'">'+dir+'</span> <span style="font-size:9px;font-weight:700;padding:3px 10px;border-radius:4px;background:rgba(59,130,246,.1);color:#3b82f6">'+conf+'</span></div></div></div>';
+// Meter
+h+='<div style="padding:16px;border-radius:12px;background:var(--bg2);border:1px solid var(--border);margin-bottom:14px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><div style="font-size:12px;font-weight:800;color:var(--text)">CONFLUENCE SCORE</div><div style="font-size:28px;font-weight:900;color:'+sC+'">'+sup+'/'+tot+'</div></div><div style="height:10px;background:var(--bg3);border-radius:5px;overflow:hidden;margin-bottom:10px"><div style="height:100%;width:'+pct+'%;border-radius:5px;background:linear-gradient(90deg,'+sC+','+sC+'aa)"></div></div><div style="display:flex;gap:12px"><div style="display:flex;align-items:center;gap:5px"><div style="width:10px;height:10px;border-radius:50%;background:#0a7c42"></div><span style="font-size:11px;font-weight:700;color:#0a7c42">'+sup+' Supports</span></div><div style="display:flex;align-items:center;gap:5px"><div style="width:10px;height:10px;border-radius:50%;background:#ef4444"></div><span style="font-size:11px;font-weight:700;color:#ef4444">'+opp+' Opposes</span></div><div style="display:flex;align-items:center;gap:5px"><div style="width:10px;height:10px;border-radius:50%;background:#f59e0b"></div><span style="font-size:11px;font-weight:700;color:#f59e0b">'+neu+' Neutral</span></div></div></div>';
+// Factor grid
+var cats=['PRICE_ACTION','INDICATOR','OPTION','FUNDAMENTAL','RISK'];
+var cL={'PRICE_ACTION':'&#128200; LAYER 1 — PRICE ACTION','INDICATOR':'&#128202; LAYER 2 — INDICATORS','OPTION':'&#128178; LAYER 3 — OPTIONS (NSE LIVE)','FUNDAMENTAL':'&#127970; LAYER 4 — FUNDAMENTALS','RISK':'&#128737; LAYER 5 — RISK'};
+cats.forEach(function(cat){var fs=F.filter(function(f){return f.category===cat;});if(!fs.length)return;h+='<div style="margin-bottom:10px"><div style="font-size:9px;font-weight:700;color:var(--blue);letter-spacing:2px;margin-bottom:6px">'+(cL[cat]||cat)+'</div><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:6px">';fs.forEach(function(f){var fc=f.status==='SUPPORTS'?'#0a7c42':f.status==='OPPOSES'?'#ef4444':'#f59e0b';var bg=f.status==='SUPPORTS'?'rgba(10,124,66,.04)':f.status==='OPPOSES'?'rgba(239,68,68,.04)':'rgba(245,158,11,.04)';h+='<div style="background:'+bg+';border-radius:8px;padding:8px 10px;border:1px solid '+fc+'18;display:flex;gap:8px;align-items:flex-start"><div style="width:8px;height:8px;border-radius:50%;background:'+fc+';margin-top:4px;flex-shrink:0"></div><div><div style="font-size:10px;font-weight:700;color:'+fc+'">'+f.name+'</div><div style="font-size:9px;color:var(--text2);line-height:1.5;margin-top:2px">'+f.detail+'</div></div></div>';});h+='</div></div>';});
+// Trade Plan
+if(sup>=Math.ceil(tot*0.5)){
+h+='<div style="padding:16px;border-radius:12px;background:'+sBg+';border:1px solid '+sC+'22;margin-bottom:12px"><div style="font-weight:800;color:'+sC+';font-size:14px;margin-bottom:12px">&#128203; Trade Plan — '+sig+'</div>';
+h+='<div style="margin-bottom:14px"><div style="font-size:9px;color:var(--text3);letter-spacing:1px;margin-bottom:4px;font-weight:700">RISK / REWARD VISUAL</div><div style="display:flex;height:28px;border-radius:6px;overflow:hidden;font-size:9px;font-weight:700"><div style="background:rgba(239,68,68,.8);color:#fff;width:20%;display:flex;align-items:center;justify-content:center;min-width:50px">SL '+S+sl.toFixed(0)+'</div><div style="background:rgba(245,158,11,.7);color:#fff;flex:1;display:flex;align-items:center;justify-content:center">Entry '+S+price.toFixed(0)+'</div><div style="background:rgba(16,185,129,.6);color:#fff;width:18%;display:flex;align-items:center;justify-content:center;min-width:50px">T1 '+S+t1.toFixed(0)+'</div><div style="background:rgba(16,185,129,.8);color:#fff;width:18%;display:flex;align-items:center;justify-content:center;min-width:50px">T2 '+S+t2.toFixed(0)+'</div><div style="background:#0a7c42;color:#fff;width:14%;display:flex;align-items:center;justify-content:center;min-width:50px">T3 '+S+t3.toFixed(0)+'</div></div></div>';
+h+='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin-bottom:12px"><div style="padding:10px;border-radius:8px;background:rgba(16,185,129,.06);border:1px solid rgba(16,185,129,.15);text-align:center"><div style="font-size:8px;color:var(--text3)">ENTRY ZONE</div><div style="font-size:14px;font-weight:900;color:#10b981;font-family:var(--mono)">'+S+entL.toFixed(0)+' — '+S+price.toFixed(0)+'</div></div><div style="padding:10px;border-radius:8px;background:rgba(239,68,68,.06);border:1px solid rgba(239,68,68,.15);text-align:center"><div style="font-size:8px;color:var(--text3)">STOP LOSS</div><div style="font-size:14px;font-weight:900;color:#ef4444;font-family:var(--mono)">'+S+sl.toFixed(0)+'</div><div style="font-size:8px;color:var(--text3)">'+rkP+'% below</div></div><div style="padding:10px;border-radius:8px;background:rgba(59,130,246,.06);border:1px solid rgba(59,130,246,.15);text-align:center"><div style="font-size:8px;color:var(--text3)">TARGET 2</div><div style="font-size:14px;font-weight:900;color:#3b82f6;font-family:var(--mono)">'+S+t2.toFixed(0)+'</div><div style="font-size:8px;color:var(--text3)">'+rwP+'% upside</div></div><div style="padding:10px;border-radius:8px;background:rgba(139,92,246,.06);border:1px solid rgba(139,92,246,.15);text-align:center"><div style="font-size:8px;color:var(--text3)">RISK:REWARD</div><div style="font-size:14px;font-weight:900;color:var(--purple);font-family:var(--mono)">1:'+rr+'</div><div style="font-size:8px;color:var(--text3)">'+(parseFloat(rr)>=2?'Favorable &#10004;':'Below 2:1 &#9888;')+'</div></div></div>';
+h+='<div style="font-size:10px;font-weight:800;color:var(--text);margin-bottom:6px">3-TARGET PARTIAL EXIT</div><div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:10px"><div style="padding:8px;border-radius:6px;background:rgba(16,185,129,.04);border:1px solid rgba(16,185,129,.1);font-size:9px;line-height:1.6"><strong style="color:#10b981">T1: '+S+t1.toFixed(0)+'</strong><br>Book 50%. SL to cost.</div><div style="padding:8px;border-radius:6px;background:rgba(16,185,129,.06);border:1px solid rgba(16,185,129,.12);font-size:9px;line-height:1.6"><strong style="color:#10b981">T2: '+S+t2.toFixed(0)+'</strong><br>Book 30%. Trail SL.</div><div style="padding:8px;border-radius:6px;background:rgba(10,124,66,.08);border:1px solid rgba(10,124,66,.15);font-size:9px;line-height:1.6"><strong style="color:#0a7c42">T3: '+S+t3.toFixed(0)+'</strong><br>20% ride. Exit 3PM.</div></div>';
+var mLP=Math.abs(price-sl)/price;var shF=mLP>0?Math.floor(10000/(price*mLP)):0;
+h+='<div style="padding:10px 14px;border-radius:8px;background:rgba(0,47,108,.03);border-left:3px solid var(--blue);font-size:9px;color:var(--text2);line-height:1.7"><strong style="color:var(--blue)">&#128176; Position Sizing (2% Rule):</strong> SL '+rkP+'% away. Risk '+S+'10K &#8594; <strong>~'+shF+' shares</strong> ('+S+(shF*price).toLocaleString('en-IN')+'). Scale: 50% now, 25% at '+S+(price*0.98).toFixed(0)+', 25% at '+S+(price*0.96).toFixed(0)+'.</div></div>';
+}else{
+h+='<div style="text-align:center;padding:14px;font-size:12px;font-weight:700;color:'+sC+';background:'+sBg+';border-radius:10px;margin-bottom:12px;border:1px solid '+sC+'22">&#9208; '+sig+' — '+sup+'/'+tot+' factors. '+(sup<Math.ceil(tot*0.38)?'Too weak. Skip.':'Wait for better setup.')+'</div>';
+}
+h+='<div style="padding:8px 12px;border-radius:6px;background:rgba(245,158,11,.04);border:1px solid rgba(245,158,11,.1);font-size:8px;color:var(--text3);line-height:1.6"><strong style="color:var(--amber)">&#9888;</strong> '+tot+'-factor confluence'+(nse.success?' with <strong>live NSE options data</strong>':'')+'. Always use SL. Max 2% risk. Verify on charts. <strong>Educational only.</strong></div>';
+el.innerHTML=h;el.style.display='block';
+}
+
+
 function renderTechnicalsPro(d){
 const el=document.getElementById('techProSection');
 if(!el)return;

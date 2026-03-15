@@ -2644,7 +2644,7 @@ async def ads_txt():
 # ═══════════════════════════════════════════════════════════
 # INDEX TRADES — AI Daily Trade Ideas (Restricted Access)
 # ═══════════════════════════════════════════════════════════
-TRADES_ALLOWED_EMAILS = ["vijy.dhulipala@gmail.com"]
+TRADES_ALLOWED_EMAILS = ["vjyavatar@gmail.com"]
 _trades_cache = {"timestamp": None, "data": None}  # 30-min cache — live enough for trading, stable enough to not flip-flop
 
 # ═══ TRADE HISTORY — Auto-save for backtesting validation ═══
@@ -2706,6 +2706,199 @@ def _save_trades_to_history(trades_data, date_str):
             print(f"💾 Saved {len(saved)} trades for {date_str}")
     except Exception as e:
         print(f"⚠️ Trade history save error: {e}")
+
+_nse_cache = {}
+_nse_cache_ts = {}
+
+@app.get("/api/nse-options")
+async def nse_options(symbol: str = "NIFTY"):
+    """Fetch real NSE options chain, VIX, PCR, OI, Max Pain for confluence engine."""
+    import requests as req
+    from datetime import datetime, timedelta
+    
+    symbol = symbol.upper().strip()
+    cache_key = symbol
+    now = datetime.utcnow()
+    
+    # 3-min cache
+    if cache_key in _nse_cache and cache_key in _nse_cache_ts:
+        if (now - _nse_cache_ts[cache_key]).total_seconds() < 180:
+            return _nse_cache[cache_key]
+    
+    hdr = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/125.0.0.0 Safari/537.36",
+        "Accept": "application/json, text/javascript, */*",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Referer": "https://www.nseindia.com/option-chain",
+    }
+    
+    result = {"success": False, "symbol": symbol}
+    
+    try:
+        s = req.Session()
+        # Step 1: Get cookies
+        s.get("https://www.nseindia.com/", headers=hdr, timeout=3)
+        
+        # Step 2: Fetch options chain
+        oc_url = f"https://www.nseindia.com/api/option-chain-indices?symbol={symbol}" if symbol in ["NIFTY", "BANKNIFTY", "NIFTY BANK", "FINNIFTY", "MIDCPNIFTY"] else f"https://www.nseindia.com/api/option-chain-equities?symbol={symbol}"
+        
+        oc_resp = s.get(oc_url, headers=hdr, timeout=4)
+        if oc_resp.status_code == 200:
+            oc_data = oc_resp.json()
+            records = oc_data.get("records", {})
+            data = records.get("data", [])
+            spot = records.get("underlyingValue", 0)
+            expiry_dates = records.get("expiryDates", [])
+            current_expiry = expiry_dates[0] if expiry_dates else ""
+            
+            # Calculate PCR, Max Pain, OI analysis
+            total_ce_oi = 0
+            total_pe_oi = 0
+            total_ce_vol = 0
+            total_pe_vol = 0
+            strike_oi = {}  # {strike: {ce_oi, pe_oi, ce_chg, pe_chg}}
+            
+            for row in data:
+                strike = row.get("strikePrice", 0)
+                ce = row.get("CE", {})
+                pe = row.get("PE", {})
+                
+                if ce and ce.get("expiryDate") == current_expiry:
+                    ce_oi = ce.get("openInterest", 0)
+                    ce_vol = ce.get("totalTradedVolume", 0)
+                    ce_chg = ce.get("changeinOpenInterest", 0)
+                    ce_iv = ce.get("impliedVolatility", 0)
+                    total_ce_oi += ce_oi
+                    total_ce_vol += ce_vol
+                else:
+                    ce_oi = ce_chg = ce_iv = 0
+                
+                if pe and pe.get("expiryDate") == current_expiry:
+                    pe_oi = pe.get("openInterest", 0)
+                    pe_vol = pe.get("totalTradedVolume", 0)
+                    pe_chg = pe.get("changeinOpenInterest", 0)
+                    pe_iv = pe.get("impliedVolatility", 0)
+                    total_pe_oi += pe_oi
+                    total_pe_vol += pe_vol
+                else:
+                    pe_oi = pe_chg = pe_iv = 0
+                
+                if strike > 0:
+                    strike_oi[strike] = {
+                        "ce_oi": ce_oi, "pe_oi": pe_oi,
+                        "ce_chg": ce_chg, "pe_chg": pe_chg,
+                        "ce_iv": ce_iv, "pe_iv": pe_iv
+                    }
+            
+            # PCR
+            pcr = round(total_pe_oi / total_ce_oi, 2) if total_ce_oi > 0 else 0
+            
+            # Max Pain calculation
+            max_pain_strike = 0
+            min_pain = float('inf')
+            for strike in strike_oi:
+                pain = 0
+                for s2 in strike_oi:
+                    if s2 < strike:
+                        pain += (strike - s2) * strike_oi[s2].get("ce_oi", 0)
+                    elif s2 > strike:
+                        pain += (s2 - strike) * strike_oi[s2].get("pe_oi", 0)
+                if pain < min_pain:
+                    min_pain = pain
+                    max_pain_strike = strike
+            
+            # Top OI strikes (support/resistance)
+            sorted_ce = sorted(strike_oi.items(), key=lambda x: x[1]["ce_oi"], reverse=True)[:5]
+            sorted_pe = sorted(strike_oi.items(), key=lambda x: x[1]["pe_oi"], reverse=True)[:5]
+            
+            # OI buildup (change in OI)
+            top_ce_buildup = sorted(strike_oi.items(), key=lambda x: x[1]["ce_chg"], reverse=True)[:3]
+            top_pe_buildup = sorted(strike_oi.items(), key=lambda x: x[1]["pe_chg"], reverse=True)[:3]
+            
+            # ATM IV
+            atm_strike = min(strike_oi.keys(), key=lambda x: abs(x - spot)) if strike_oi else 0
+            atm_iv = (strike_oi.get(atm_strike, {}).get("ce_iv", 0) + strike_oi.get(atm_strike, {}).get("pe_iv", 0)) / 2 if atm_strike else 0
+            
+            result.update({
+                "success": True,
+                "spot": spot,
+                "expiry": current_expiry,
+                "expiry_dates": expiry_dates[:4],
+                "pcr": pcr,
+                "max_pain": max_pain_strike,
+                "atm_strike": atm_strike,
+                "atm_iv": round(atm_iv, 1),
+                "total_ce_oi": total_ce_oi,
+                "total_pe_oi": total_pe_oi,
+                "ce_resistance": [{"strike": s, "oi": d["ce_oi"], "chg": d["ce_chg"]} for s, d in sorted_ce],
+                "pe_support": [{"strike": s, "oi": d["pe_oi"], "chg": d["pe_chg"]} for s, d in sorted_pe],
+                "ce_buildup": [{"strike": s, "chg": d["ce_chg"]} for s, d in top_ce_buildup if d["ce_chg"] > 0],
+                "pe_buildup": [{"strike": s, "chg": d["pe_chg"]} for s, d in top_pe_buildup if d["pe_chg"] > 0],
+            })
+        
+        # Step 3: Fetch India VIX
+        try:
+            vix_resp = s.get("https://www.nseindia.com/api/allIndices", headers=hdr, timeout=3)
+            if vix_resp.status_code == 200:
+                for idx in vix_resp.json().get("data", []):
+                    if "VIX" in idx.get("index", "").upper():
+                        result["vix"] = round(idx.get("last", 0), 2)
+                        result["vix_change"] = round(idx.get("percentChange", 0), 2)
+                        break
+        except:
+            pass
+        
+        # Step 4: Previous day data for CPR
+        try:
+            if symbol in ["NIFTY", "BANKNIFTY", "NIFTY BANK"]:
+                import yfinance as yf
+                tk_map = {"NIFTY": "^NSEI", "BANKNIFTY": "^NSEBANK", "NIFTY BANK": "^NSEBANK"}
+                tk = yf.Ticker(tk_map.get(symbol, f"{symbol}.NS"))
+                hist = tk.history(period="5d", interval="1d")
+                if len(hist) >= 2:
+                    prev = hist.iloc[-2]
+                    today = hist.iloc[-1]
+                    pdh = round(float(prev["High"]), 2)
+                    pdl = round(float(prev["Low"]), 2)
+                    pdc = round(float(prev["Close"]), 2)
+                    pivot = round((pdh + pdl + pdc) / 3, 2)
+                    bc = round((pdh + pdl) / 2, 2)
+                    tc = round(2 * pivot - bc, 2)
+                    cpr_width = round(abs(tc - bc), 2)
+                    cpr_pct = round((cpr_width / pdc) * 100, 3)
+                    
+                    result["pdh"] = pdh
+                    result["pdl"] = pdl
+                    result["pdc"] = pdc
+                    result["pivot"] = pivot
+                    result["cpr_top"] = tc
+                    result["cpr_bottom"] = bc
+                    result["cpr_width"] = cpr_width
+                    result["cpr_pct"] = cpr_pct
+                    result["cpr_type"] = "NARROW" if cpr_pct < 0.3 else "WIDE" if cpr_pct > 0.8 else "MEDIUM"
+                    result["today_high"] = round(float(today["High"]), 2)
+                    result["today_low"] = round(float(today["Low"]), 2)
+                    result["today_open"] = round(float(today["Open"]), 2)
+                    
+                    # Gap analysis
+                    gap = round(float(today["Open"]) - pdc, 2)
+                    gap_pct = round((gap / pdc) * 100, 2)
+                    result["gap"] = gap
+                    result["gap_pct"] = gap_pct
+                    result["gap_type"] = "GAP UP" if gap_pct > 0.3 else "GAP DOWN" if gap_pct < -0.3 else "FLAT OPEN"
+        except Exception as e:
+            print(f"CPR calc error: {e}")
+        
+        print(f"📊 NSE Options: {symbol} spot={result.get('spot')} pcr={result.get('pcr')} maxpain={result.get('max_pain')} vix={result.get('vix')}")
+    
+    except Exception as e:
+        print(f"❌ NSE Options error: {e}")
+        result["error"] = str(e)
+    
+    _nse_cache[cache_key] = result
+    _nse_cache_ts[cache_key] = now
+    return result
+
 
 @app.get("/api/global-ticker")
 async def global_ticker():
