@@ -3909,7 +3909,16 @@ ALGO_INSTRUMENTS = {
 }
 
 @app.get("/api/algo-signal")
-async def algo_signal(symbol: str = "NIFTY"):
+async def algo_signal_safe(symbol: str = "NIFTY"):
+    """Wrapper that guarantees JSON response even on crash."""
+    try:
+        return await _algo_signal_impl(symbol)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return {"success": False, "error": f"Algo computation error: {str(e)}", "symbol": symbol}
+
+async def _algo_signal_impl(symbol: str = "NIFTY"):
     """5-Layer Confluence Algorithm — ALL real data, ZERO hallucination."""
     import yfinance as yf
     from datetime import datetime, timedelta
@@ -4417,7 +4426,7 @@ async def algo_signal(symbol: str = "NIFTY"):
     prem_capital = round(prem_entry * inst["lot"], 0)
     
     # ORB-enhanced entry condition
-    entry_condition = f"Enter when {d.symbol} holds above ₹{sma20:,.0f} (SMA20) with volume > 1.2×."
+    entry_condition = f"Enter when {symbol} holds above ₹{sma20:,.0f} (SMA20) with volume > 1.2×."
     if orb.get("breakout") == "ABOVE":
         entry_condition = f"ORB BREAKOUT ✓. Buy {selected_strike} {opt_type} when 5m candle closes above ORB ₹{orb['orb_high']:,.0f} with vol > 1.5×. Must be above VWAP ₹{orb.get('vwap', 0):,.0f}."
     elif orb.get("breakout") == "BELOW":
@@ -4546,153 +4555,180 @@ async def algo_signal(symbol: str = "NIFTY"):
     result["reasoning"] = reasoning
     result["timestamp"] = IST.strftime("%I:%M %p IST")
     
+    try:
     # ═══ TREND ANALYSIS + CHANGE DETECTION ═══
-    # Score each indicator for trend direction: +1 bullish, -1 bearish, 0 neutral
-    trend_scores = []
-    trend_details = []
-    
-    # EMA Stack
-    if ema9 > ema21 > ema50:
-        trend_scores.append(2); trend_details.append({"ind": "EMA Stack", "dir": "BULL", "val": "9>21>50"})
-    elif ema9 < ema21 < ema50:
-        trend_scores.append(-2); trend_details.append({"ind": "EMA Stack", "dir": "BEAR", "val": "9<21<50"})
-    else:
-        trend_scores.append(0); trend_details.append({"ind": "EMA Stack", "dir": "FLAT", "val": "Mixed"})
-    
-    # Price vs SMA200
-    if price > sma200 * 1.02:
-        trend_scores.append(2); trend_details.append({"ind": "SMA200", "dir": "BULL", "val": f"Price {((price/sma200-1)*100):.1f}% above"})
-    elif price < sma200 * 0.98:
-        trend_scores.append(-2); trend_details.append({"ind": "SMA200", "dir": "BEAR", "val": f"Price {((1-price/sma200)*100):.1f}% below"})
-    else:
-        trend_scores.append(0); trend_details.append({"ind": "SMA200", "dir": "FLAT", "val": "Near 200-DMA"})
-    
-    # Price vs SMA50
-    if price > sma50:
-        trend_scores.append(1); trend_details.append({"ind": "SMA50", "dir": "BULL", "val": f"Above"})
-    else:
-        trend_scores.append(-1); trend_details.append({"ind": "SMA50", "dir": "BEAR", "val": f"Below"})
-    
-    # Golden/Death Cross
-    if sma50 > sma200:
-        trend_scores.append(2); trend_details.append({"ind": "Cross", "dir": "BULL", "val": "Golden"})
-    else:
-        trend_scores.append(-2); trend_details.append({"ind": "Cross", "dir": "BEAR", "val": "Death"})
-    
-    # RSI trend
-    if rsi > 60:
-        trend_scores.append(1); trend_details.append({"ind": "RSI", "dir": "BULL", "val": f"{rsi}"})
-    elif rsi < 40:
-        trend_scores.append(-1); trend_details.append({"ind": "RSI", "dir": "BEAR", "val": f"{rsi}"})
-    else:
-        trend_scores.append(0); trend_details.append({"ind": "RSI", "dir": "FLAT", "val": f"{rsi}"})
-    
-    # MACD
-    if macd_bullish and macd_hist > 0:
-        trend_scores.append(1); trend_details.append({"ind": "MACD", "dir": "BULL", "val": f"+{macd_hist:.1f}"})
-    elif not macd_bullish:
-        trend_scores.append(-1); trend_details.append({"ind": "MACD", "dir": "BEAR", "val": f"{macd_hist:.1f}"})
-    else:
-        trend_scores.append(0); trend_details.append({"ind": "MACD", "dir": "FLAT", "val": f"{macd_hist:.1f}"})
-    
-    # Supertrend
-    if supertrend_buy:
-        trend_scores.append(1); trend_details.append({"ind": "Supertrend", "dir": "BULL", "val": "BUY"})
-    else:
-        trend_scores.append(-1); trend_details.append({"ind": "Supertrend", "dir": "BEAR", "val": "SELL"})
-    
-    # HH/HL structure
-    if hh_hl:
-        trend_scores.append(2); trend_details.append({"ind": "Structure", "dir": "BULL", "val": "HH+HL"})
-    elif lh_ll:
-        trend_scores.append(-2); trend_details.append({"ind": "Structure", "dir": "BEAR", "val": "LH+LL"})
-    else:
-        trend_scores.append(0); trend_details.append({"ind": "Structure", "dir": "FLAT", "val": "Mixed"})
-    
-    # Volume confirmation
-    if vol_ratio > 1.3:
-        trend_scores.append(1 if price > closes[-2] else -1)
-        trend_details.append({"ind": "Volume", "dir": "BULL" if price > closes[-2] else "BEAR", "val": f"{vol_ratio:.1f}×"})
-    else:
-        trend_scores.append(0); trend_details.append({"ind": "Volume", "dir": "FLAT", "val": f"{vol_ratio:.1f}×"})
-    
-    # VWAP (if available)
-    if orb.get("vwap") and orb["vwap"] > 0:
-        if price > orb["vwap"] * 1.002:
-            trend_scores.append(1); trend_details.append({"ind": "VWAP", "dir": "BULL", "val": f"Above"})
-        elif price < orb["vwap"] * 0.998:
-            trend_scores.append(-1); trend_details.append({"ind": "VWAP", "dir": "BEAR", "val": f"Below"})
+        # Score each indicator for trend direction: +1 bullish, -1 bearish, 0 neutral
+        trend_scores = []
+        trend_details = []
+        
+        # EMA Stack
+        if ema9 > ema21 > ema50:
+            trend_scores.append(2); trend_details.append({"ind": "EMA Stack", "dir": "BULL", "val": "9>21>50"})
+        elif ema9 < ema21 < ema50:
+            trend_scores.append(-2); trend_details.append({"ind": "EMA Stack", "dir": "BEAR", "val": "9<21<50"})
         else:
-            trend_scores.append(0); trend_details.append({"ind": "VWAP", "dir": "FLAT", "val": f"At VWAP"})
+            trend_scores.append(0); trend_details.append({"ind": "EMA Stack", "dir": "FLAT", "val": "Mixed"})
+        
+        # Price vs SMA200
+        if price > sma200 * 1.02:
+            trend_scores.append(2); trend_details.append({"ind": "SMA200", "dir": "BULL", "val": f"Price {((price/sma200-1)*100):.1f}% above"})
+        elif price < sma200 * 0.98:
+            trend_scores.append(-2); trend_details.append({"ind": "SMA200", "dir": "BEAR", "val": f"Price {((1-price/sma200)*100):.1f}% below"})
+        else:
+            trend_scores.append(0); trend_details.append({"ind": "SMA200", "dir": "FLAT", "val": "Near 200-DMA"})
+        
+        # Price vs SMA50
+        if price > sma50:
+            trend_scores.append(1); trend_details.append({"ind": "SMA50", "dir": "BULL", "val": f"Above"})
+        else:
+            trend_scores.append(-1); trend_details.append({"ind": "SMA50", "dir": "BEAR", "val": f"Below"})
+        
+        # Golden/Death Cross
+        if sma50 > sma200:
+            trend_scores.append(2); trend_details.append({"ind": "Cross", "dir": "BULL", "val": "Golden"})
+        else:
+            trend_scores.append(-2); trend_details.append({"ind": "Cross", "dir": "BEAR", "val": "Death"})
+        
+        # RSI trend
+        if rsi > 60:
+            trend_scores.append(1); trend_details.append({"ind": "RSI", "dir": "BULL", "val": f"{rsi}"})
+        elif rsi < 40:
+            trend_scores.append(-1); trend_details.append({"ind": "RSI", "dir": "BEAR", "val": f"{rsi}"})
+        else:
+            trend_scores.append(0); trend_details.append({"ind": "RSI", "dir": "FLAT", "val": f"{rsi}"})
+        
+        # MACD
+        if macd_bullish and macd_hist > 0:
+            trend_scores.append(1); trend_details.append({"ind": "MACD", "dir": "BULL", "val": f"+{macd_hist:.1f}"})
+        elif not macd_bullish:
+            trend_scores.append(-1); trend_details.append({"ind": "MACD", "dir": "BEAR", "val": f"{macd_hist:.1f}"})
+        else:
+            trend_scores.append(0); trend_details.append({"ind": "MACD", "dir": "FLAT", "val": f"{macd_hist:.1f}"})
+        
+        # Supertrend
+        if supertrend_buy:
+            trend_scores.append(1); trend_details.append({"ind": "Supertrend", "dir": "BULL", "val": "BUY"})
+        else:
+            trend_scores.append(-1); trend_details.append({"ind": "Supertrend", "dir": "BEAR", "val": "SELL"})
+        
+        # HH/HL structure
+        if hh_hl:
+            trend_scores.append(2); trend_details.append({"ind": "Structure", "dir": "BULL", "val": "HH+HL"})
+        elif lh_ll:
+            trend_scores.append(-2); trend_details.append({"ind": "Structure", "dir": "BEAR", "val": "LH+LL"})
+        else:
+            trend_scores.append(0); trend_details.append({"ind": "Structure", "dir": "FLAT", "val": "Mixed"})
+        
+        # Volume confirmation
+        if vol_ratio > 1.3:
+            trend_scores.append(1 if price > closes[-2] else -1)
+            trend_details.append({"ind": "Volume", "dir": "BULL" if price > closes[-2] else "BEAR", "val": f"{vol_ratio:.1f}×"})
+        else:
+            trend_scores.append(0); trend_details.append({"ind": "Volume", "dir": "FLAT", "val": f"{vol_ratio:.1f}×"})
+        
+        # VWAP (if available)
+        if orb.get("vwap") and orb["vwap"] > 0:
+            if price > orb["vwap"] * 1.002:
+                trend_scores.append(1); trend_details.append({"ind": "VWAP", "dir": "BULL", "val": f"Above"})
+            elif price < orb["vwap"] * 0.998:
+                trend_scores.append(-1); trend_details.append({"ind": "VWAP", "dir": "BEAR", "val": f"Below"})
+            else:
+                trend_scores.append(0); trend_details.append({"ind": "VWAP", "dir": "FLAT", "val": f"At VWAP"})
+        
+        total_trend_score = sum(trend_scores)
+        max_possible = len(trend_scores) * 2
+        trend_pct = round((total_trend_score / max_possible) * 100) if max_possible > 0 else 0
+        
+        if trend_pct >= 60: trend_label = "STRONG UPTREND"
+        elif trend_pct >= 25: trend_label = "UPTREND"
+        elif trend_pct >= -25: trend_label = "SIDEWAYS"
+        elif trend_pct >= -60: trend_label = "DOWNTREND"
+        else: trend_label = "STRONG DOWNTREND"
+        
+        # Trend change alerts — compare short-term vs medium-term
+        alerts = []
+        # EMA crossover imminent
+        ema9_dist = abs(ema9 - ema21) / ema21 * 100 if ema21 > 0 else 99
+        if ema9_dist < 0.15:
+            alerts.append({"type": "WARNING", "msg": f"EMA 9/21 crossover imminent ({ema9_dist:.2f}% apart). Trend reversal possible.", "severity": "HIGH"})
+        
+        # RSI divergence from extreme
+        if rsi > 75:
+            alerts.append({"type": "BEARISH", "msg": f"RSI {rsi} — overbought. Expect pullback.", "severity": "MEDIUM"})
+        elif rsi < 25:
+            alerts.append({"type": "BULLISH", "msg": f"RSI {rsi} — oversold. Expect bounce.", "severity": "MEDIUM"})
+        
+        # MACD histogram weakening
+        if len(closes) >= 3:
+            try:
+                prev_macd = float((macd_line - macd_signal).iloc[-2]) if len(macd_signal) >= 2 else 0
+            except:
+                prev_macd = 0
+            if macd_hist > 0 and prev_macd > macd_hist:
+                alerts.append({"type": "WARNING", "msg": f"MACD histogram shrinking ({prev_macd:.1f}→{macd_hist:.1f}). Bullish momentum fading.", "severity": "MEDIUM"})
+            elif macd_hist < 0 and prev_macd < macd_hist:
+                alerts.append({"type": "WARNING", "msg": f"MACD histogram recovering ({prev_macd:.1f}→{macd_hist:.1f}). Bearish momentum weakening.", "severity": "MEDIUM"})
+        
+        # Price near key level
+        if pdh > 0 and abs(price - pdh) / pdh * 100 < 0.3:
+            alerts.append({"type": "WARNING", "msg": f"Price near PDH ₹{pdh:,.0f} ({abs(price-pdh):.0f} away). Breakout or rejection imminent.", "severity": "HIGH"})
+        if pdl > 0 and abs(price - pdl) / pdl * 100 < 0.3:
+            alerts.append({"type": "WARNING", "msg": f"Price near PDL ₹{pdl:,.0f} ({abs(price-pdl):.0f} away). Breakdown or bounce imminent.", "severity": "HIGH"})
+        
+        # SMA200 test
+        if abs(price - sma200) / sma200 * 100 < 0.5:
+            alerts.append({"type": "CRITICAL", "msg": f"Price testing 200-DMA ₹{sma200:,.0f}. Major support/resistance. Big move likely.", "severity": "HIGH"})
+        
+        # Volume spike
+        if vol_ratio > 2.0:
+            alerts.append({"type": "BULLISH" if price > closes[-2] else "BEARISH", "msg": f"Volume spike {vol_ratio:.1f}× average. Smart money active. {'Accumulation' if price > closes[-2] else 'Distribution'} likely.", "severity": "HIGH"})
+        
+        # VIX spike (if available)
+        if nse.get("vix_change") and abs(nse["vix_change"]) > 5:
+            alerts.append({"type": "CRITICAL", "msg": f"VIX moved {nse['vix_change']:+.1f}% today. {'Fear rising — hedge positions.' if nse['vix_change'] > 0 else 'Fear dropping — risk-on.'}", "severity": "HIGH"})
+        
+        # OI-based alerts
+        if nse.get("ce_resistance") and len(nse["ce_resistance"]) > 0:
+            top_resist = nse["ce_resistance"][0]["strike"]
+            if abs(price - top_resist) / price * 100 < 0.5:
+                alerts.append({"type": "WARNING", "msg": f"Price approaching major OI resistance ₹{top_resist:,.0f} (CE OI: {nse['ce_resistance'][0]['oi']:,.0f}). Breakout above = massive short covering rally.", "severity": "HIGH"})
+        
+        result["trend"] = {
+            "label": trend_label,
+            "score": total_trend_score,
+            "maxScore": max_possible,
+            "pct": trend_pct,
+            "details": trend_details,
+            "bullCount": len([s for s in trend_scores if s > 0]),
+            "bearCount": len([s for s in trend_scores if s < 0]),
+            "flatCount": len([s for s in trend_scores if s == 0]),
+        }
+        result["alerts"] = alerts
+    except Exception as _te:
+        print(f"⚠️ Trend error: {_te}")
+        result["trend"] = {"label":"N/A","score":0,"maxScore":1,"pct":0,"details":[],"bullCount":0,"bearCount":0,"flatCount":0}
+        result["alerts"] = []
     
-    total_trend_score = sum(trend_scores)
-    max_possible = len(trend_scores) * 2
-    trend_pct = round((total_trend_score / max_possible) * 100) if max_possible > 0 else 0
+    # Ensure all numpy types are converted to native Python for JSON serialization
+    import numpy as np
+    def _json_safe(obj):
+        if isinstance(obj, dict):
+            return {k: _json_safe(v) for k, v in obj.items()}
+        elif isinstance(obj, list):
+            return [_json_safe(v) for v in obj]
+        elif isinstance(obj, (np.integer,)):
+            return int(obj)
+        elif isinstance(obj, (np.floating,)):
+            return float(obj)
+        elif isinstance(obj, np.ndarray):
+            return obj.tolist()
+        elif isinstance(obj, (np.bool_,)):
+            return bool(obj)
+        return obj
     
-    if trend_pct >= 60: trend_label = "STRONG UPTREND"
-    elif trend_pct >= 25: trend_label = "UPTREND"
-    elif trend_pct >= -25: trend_label = "SIDEWAYS"
-    elif trend_pct >= -60: trend_label = "DOWNTREND"
-    else: trend_label = "STRONG DOWNTREND"
+    result = _json_safe(result)
     
-    # Trend change alerts — compare short-term vs medium-term
-    alerts = []
-    # EMA crossover imminent
-    ema9_dist = abs(ema9 - ema21) / ema21 * 100 if ema21 > 0 else 99
-    if ema9_dist < 0.15:
-        alerts.append({"type": "WARNING", "msg": f"EMA 9/21 crossover imminent ({ema9_dist:.2f}% apart). Trend reversal possible.", "severity": "HIGH"})
-    
-    # RSI divergence from extreme
-    if rsi > 75:
-        alerts.append({"type": "BEARISH", "msg": f"RSI {rsi} — overbought. Expect pullback.", "severity": "MEDIUM"})
-    elif rsi < 25:
-        alerts.append({"type": "BULLISH", "msg": f"RSI {rsi} — oversold. Expect bounce.", "severity": "MEDIUM"})
-    
-    # MACD histogram weakening
-    if len(closes) >= 3:
-        prev_macd = float((ema12 - ema26).iloc[-2] - macd_signal[-2]) if len(macd_signal) >= 2 else 0
-        if macd_hist > 0 and prev_macd > macd_hist:
-            alerts.append({"type": "WARNING", "msg": f"MACD histogram shrinking ({prev_macd:.1f}→{macd_hist:.1f}). Bullish momentum fading.", "severity": "MEDIUM"})
-        elif macd_hist < 0 and prev_macd < macd_hist:
-            alerts.append({"type": "WARNING", "msg": f"MACD histogram recovering ({prev_macd:.1f}→{macd_hist:.1f}). Bearish momentum weakening.", "severity": "MEDIUM"})
-    
-    # Price near key level
-    if pdh > 0 and abs(price - pdh) / pdh * 100 < 0.3:
-        alerts.append({"type": "WARNING", "msg": f"Price near PDH ₹{pdh:,.0f} ({abs(price-pdh):.0f} away). Breakout or rejection imminent.", "severity": "HIGH"})
-    if pdl > 0 and abs(price - pdl) / pdl * 100 < 0.3:
-        alerts.append({"type": "WARNING", "msg": f"Price near PDL ₹{pdl:,.0f} ({abs(price-pdl):.0f} away). Breakdown or bounce imminent.", "severity": "HIGH"})
-    
-    # SMA200 test
-    if abs(price - sma200) / sma200 * 100 < 0.5:
-        alerts.append({"type": "CRITICAL", "msg": f"Price testing 200-DMA ₹{sma200:,.0f}. Major support/resistance. Big move likely.", "severity": "HIGH"})
-    
-    # Volume spike
-    if vol_ratio > 2.0:
-        alerts.append({"type": "BULLISH" if price > closes[-2] else "BEARISH", "msg": f"Volume spike {vol_ratio:.1f}× average. Smart money active. {'Accumulation' if price > closes[-2] else 'Distribution'} likely.", "severity": "HIGH"})
-    
-    # VIX spike (if available)
-    if nse.get("vix_change") and abs(nse["vix_change"]) > 5:
-        alerts.append({"type": "CRITICAL", "msg": f"VIX moved {nse['vix_change']:+.1f}% today. {'Fear rising — hedge positions.' if nse['vix_change'] > 0 else 'Fear dropping — risk-on.'}", "severity": "HIGH"})
-    
-    # OI-based alerts
-    if nse.get("ce_resistance") and len(nse["ce_resistance"]) > 0:
-        top_resist = nse["ce_resistance"][0]["strike"]
-        if abs(price - top_resist) / price * 100 < 0.5:
-            alerts.append({"type": "WARNING", "msg": f"Price approaching major OI resistance ₹{top_resist:,.0f} (CE OI: {nse['ce_resistance'][0]['oi']:,.0f}). Breakout above = massive short covering rally.", "severity": "HIGH"})
-    
-    result["trend"] = {
-        "label": trend_label,
-        "score": total_trend_score,
-        "maxScore": max_possible,
-        "pct": trend_pct,
-        "details": trend_details,
-        "bullCount": len([s for s in trend_scores if s > 0]),
-        "bearCount": len([s for s in trend_scores if s < 0]),
-        "flatCount": len([s for s in trend_scores if s == 0]),
-    }
-    result["alerts"] = alerts
-    
-    print(f"🎯 Algo Signal: {symbol} → {signal} ({supports}/{total}) {direction}")
+    print(f"🎯 Algo Signal: {symbol} → {result.get('signal','')} ({result.get('supports',0)}/{result.get('totalFactors',0)}) {result.get('direction','')}")
     return result
 
 
