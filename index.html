@@ -833,12 +833,19 @@ footer{position:relative;z-index:1;margin-top:32px;background:#002f6c;border-top
 </div>
 </div>
 
-<!-- ALGO RESULT -->
-<div id="algoResult" style="padding:16px 18px">
-<div style="text-align:center;padding:30px;color:var(--text3)">
-<div style="font-size:36px;margin-bottom:8px">&#127919;</div>
-<div style="font-size:13px;font-weight:600">Click any instrument above to run the 5-layer algorithm</div>
-<div style="font-size:11px;color:var(--text3);margin-top:4px">CPR + ORB + VWAP + EMA Stack + RSI + MACD + Supertrend + Volume + VIX + PCR + OI + Max Pain + Delta + Gamma + Theta + Fundamentals + Risk</div>
+<!-- TOP TRADES — Auto-fetches all 3 indices -->
+<div id="topTradesSection" style="padding:14px 18px;border-bottom:1px solid var(--border)">
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+<div style="display:flex;align-items:center;gap:8px"><span style="font-size:16px">&#128293;</span><span style="font-family:Sora,sans-serif;font-size:14px;font-weight:800;color:var(--text)">Today's Top Trades</span><span style="font-size:8px;padding:2px 8px;border-radius:100px;background:#ef4444;color:#fff;font-weight:700">LIVE</span></div>
+<button onclick="loadTopTrades()" style="padding:4px 14px;border-radius:6px;background:var(--blue);color:#fff;border:none;font-size:10px;font-weight:700;cursor:pointer;font-family:DM Sans,sans-serif">&#8635; Refresh All</button>
+</div>
+<div id="topTradesTable"><div style="text-align:center;padding:20px;color:var(--text3);font-size:11px">&#9203; Loading NIFTY, BANKNIFTY, SENSEX signals...</div></div>
+</div>
+
+<!-- ALGO RESULT (individual deep-dive) -->
+<div id="algoResult" style="padding:16px 18px;border-bottom:1px solid var(--border)">
+<div style="text-align:center;padding:20px;color:var(--text3)">
+<div style="font-size:11px">&#8593; Select an instrument above for detailed 5-layer analysis</div>
 </div>
 </div>
 

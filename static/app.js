@@ -1872,10 +1872,14 @@ fetchMarketDaily();
 }
 }
 if(tab==='trades'){
-// Auto-run NIFTY on first open
+// Auto-load top trades table on first open
+if(!window._topTradesLoaded){
+setTimeout(function(){loadTopTrades()},100);
+}
+// Auto-run NIFTY deep-dive on first open
 if(!window._algoFirstRun){
 window._algoFirstRun=true;
-setTimeout(function(){algoSelect('NIFTY',document.querySelector('.algo-btn.active'))},300);
+setTimeout(function(){algoSelect('NIFTY',document.querySelector('.algo-btn.active'))},500);
 }
 // Init backtest
 try{initBacktest()}catch(e){}
@@ -5031,6 +5035,86 @@ setTimeout(function(){alertDiv.style.opacity='0';alertDiv.style.transition='opac
 try{var a=new AudioContext();var o=a.createOscillator();var g=a.createGain();o.connect(g);g.connect(a.destination);o.frequency.value=d.trend.pct>=0?880:440;g.gain.value=0.1;o.start();o.stop(a.currentTime+0.15)}catch(e){}
 }
 window._algoLastTrend=newTrend;
+}
+
+// ═══ TOP TRADES TABLE — All 3 indices + top stocks ═══
+function loadTopTrades(){
+var el=document.getElementById('topTradesTable');
+if(!el)return;
+el.innerHTML='<div style="text-align:center;padding:20px;color:var(--text3);font-size:11px">&#9203; Fetching live signals for NIFTY, BANKNIFTY, SENSEX...</div>';
+var symbols=['NIFTY','BANKNIFTY','SENSEX','RELIANCE','HDFCBANK'];
+var promises=symbols.map(function(s){return fetch('/api/algo-signal?symbol='+s).then(function(r){return r.json()}).catch(function(){return{success:false,symbol:s}})});
+Promise.all(promises).then(function(results){
+var h='';
+// Summary table
+h+='<table style="width:100%;border-collapse:collapse;font-size:11px">';
+h+='<thead><tr style="background:var(--bg2);border-bottom:2px solid var(--border)">';
+h+='<th style="padding:8px 10px;text-align:left;font-weight:800;color:var(--text);font-size:10px">INSTRUMENT</th>';
+h+='<th style="padding:8px 6px;text-align:center;font-size:10px">SIGNAL</th>';
+h+='<th style="padding:8px 6px;text-align:center;font-size:10px">TREND</th>';
+h+='<th style="padding:8px 6px;text-align:right;font-size:10px">SPOT</th>';
+h+='<th style="padding:8px 6px;text-align:left;font-size:10px;color:#0a7c42">&#128994; TRADE</th>';
+h+='<th style="padding:8px 6px;text-align:right;font-size:10px">ENTRY &#8377;</th>';
+h+='<th style="padding:8px 6px;text-align:right;font-size:10px;color:#ef4444">SL &#8377;</th>';
+h+='<th style="padding:8px 6px;text-align:right;font-size:10px;color:#0a7c42">TGT &#8377;</th>';
+h+='<th style="padding:8px 6px;text-align:center;font-size:10px">R:R</th>';
+h+='<th style="padding:8px 6px;text-align:center;font-size:10px">SCORE</th>';
+h+='</tr></thead><tbody>';
+var hasAnyTrade=false;
+results.forEach(function(d,i){
+if(!d.success)return;
+var tr=d.trade;
+var sig=d.signal||'N/A';
+var trend=(d.trend||{}).label||'N/A';
+var sC=sig==='STRONG BUY'?'#0a7c42':sig==='BUY'?'#10b981':sig==='LEAN BUY'?'#3b82f6':sig==='AVOID'?'#ef4444':'#f59e0b';
+var tC=trend.indexOf('UP')>=0?'#0a7c42':trend.indexOf('DOWN')>=0?'#ef4444':'#f59e0b';
+var isWait=sig==='HOLD / WAIT'||sig==='AVOID';
+h+='<tr style="border-bottom:1px solid var(--border);cursor:pointer;transition:background .15s'+(isWait?';opacity:.6':'')+'" onclick="algoSelect(\''+d.symbol+'\',null)" onmouseover="this.style.background=\'var(--bg2)\'" onmouseout="this.style.background=\'transparent\'">';
+// Instrument
+h+='<td style="padding:8px 10px"><div style="font-weight:800;color:var(--text)">'+d.symbol+'</div><div style="font-size:8px;color:var(--text3)">'+(d.instrument?.ex||'NFO')+' Lot:'+(d.instrument?.lot||'')+'</div></td>';
+// Signal
+h+='<td style="padding:8px 6px;text-align:center"><span style="font-size:9px;font-weight:800;padding:3px 8px;border-radius:4px;background:'+sC+'12;color:'+sC+'">'+sig+'</span></td>';
+// Trend
+h+='<td style="padding:8px 6px;text-align:center"><span style="font-size:9px;font-weight:700;color:'+tC+'">'+trend.replace('STRONG ','&#128293; ')+'</span></td>';
+// Spot
+h+='<td style="padding:8px 6px;text-align:right;font-family:var(--mono);font-weight:700">&#8377;'+(d.spot||0).toLocaleString('en-IN')+'</td>';
+if(tr&&!isWait){
+hasAnyTrade=true;
+// Trade action
+h+='<td style="padding:8px 6px;font-weight:800;color:'+(tr.type==='CE'?'#0a7c42':'#ef4444')+'">'+tr.action+'</td>';
+// Premium entry
+h+='<td style="padding:8px 6px;text-align:right;font-family:var(--mono);font-weight:800;color:#0a7c42">&#8377;'+(tr.premEntry||0).toFixed(1)+'</td>';
+// SL
+h+='<td style="padding:8px 6px;text-align:right;font-family:var(--mono);font-weight:700;color:#ef4444">&#8377;'+(tr.premSL||0).toFixed(1)+'</td>';
+// Target
+h+='<td style="padding:8px 6px;text-align:right;font-family:var(--mono);font-weight:700;color:#0a7c42">&#8377;'+(tr.premT2||0).toFixed(1)+'</td>';
+// R:R
+var rrC=(tr.rrRatio||'').indexOf('1:2')>=0||(tr.rrRatio||'').indexOf('1:3')>=0?'#0a7c42':'var(--text)';
+h+='<td style="padding:8px 6px;text-align:center;font-weight:800;color:'+rrC+'">'+(tr.rrRatio||'N/A')+'</td>';
+}else{
+h+='<td colspan="5" style="padding:8px 6px;text-align:center;color:#f59e0b;font-weight:600;font-size:10px">&#9208; NO TRADE — Low confluence</td>';
+}
+// Score
+h+='<td style="padding:8px 6px;text-align:center"><span style="font-size:10px;font-weight:900;color:'+sC+'">'+(d.supports||0)+'/'+(d.totalFactors||0)+'</span></td>';
+h+='</tr>';
+});
+h+='</tbody></table>';
+// Alerts summary
+var allAlerts=[];
+results.forEach(function(d){if(d.alerts)d.alerts.forEach(function(a){a._sym=d.symbol;allAlerts.push(a)})});
+var highAlerts=allAlerts.filter(function(a){return a.severity==='HIGH'});
+if(highAlerts.length>0){
+h+='<div style="margin-top:10px">';
+highAlerts.slice(0,5).forEach(function(a){
+var ac=a.type==='BULLISH'?'#0a7c42':a.type==='BEARISH'?'#ef4444':a.type==='CRITICAL'?'#991b1b':'#f59e0b';
+h+='<div style="padding:5px 10px;border-radius:6px;background:'+ac+'08;border-left:3px solid '+ac+';margin-bottom:3px;font-size:9px"><strong style="color:'+ac+'">'+a._sym+' '+a.type+':</strong> <span style="color:var(--text2)">'+a.msg+'</span></div>';
+});
+h+='</div>';
+}
+h+='<div style="text-align:right;font-size:8px;color:var(--text3);margin-top:6px">'+((results[0]||{}).timestamp||'')+' &middot; Click any row for full analysis</div>';
+el.innerHTML=h;
+window._topTradesLoaded=true;
+});
 }
 
 function algoSelect(sym,btn){
