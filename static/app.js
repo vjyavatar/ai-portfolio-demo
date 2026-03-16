@@ -294,20 +294,23 @@ const email=(el.dataset.real||el.value).trim().toLowerCase();
 const showTrades=TRADES_EMAILS.includes(email);
 const showPicks=PICKS_EMAILS.includes(email);
 // Algo Trades tab is ALWAYS visible — no email gate
+// Smart Trades tab is email-gated
+const stBtn=document.getElementById('tabBtnSmartTrades');
 const gBtn=document.getElementById('tabBtnGems');
 const pBtn=document.getElementById('tabBtnPicks');
 const fBtn=document.getElementById('tabBtnFunds');
+if(stBtn)stBtn.style.display=showTrades?'':'none';
 if(gBtn)gBtn.style.display=showTrades?'':'none';
 if(pBtn)pBtn.style.display=showPicks?'':'none';
 if(fBtn)fBtn.style.display=showPicks?'':'none';
-// Do NOT hide .sc[data-tab="trades"] — algo scanner is there for everyone
+document.querySelectorAll('.sc[data-tab="smarttrades"]').forEach(s=>s.style.display=showTrades?'':'none');
 document.querySelectorAll('.sc[data-tab="gems"]').forEach(s=>s.style.display=showTrades?'':'none');
 document.querySelectorAll('.sc[data-tab="picks"]').forEach(s=>s.style.display=showPicks?'':'none');
 document.querySelectorAll('.sc[data-tab="funds"]').forEach(s=>s.style.display=showPicks?'':'none');
 document.querySelectorAll('.sub-nav[data-tab="picks"]').forEach(s=>s.style.display=showPicks?'':'none');
 if(showTrades){initTradesProtection(email)}
 if(showPicks){try{renderPicks('lc')}catch(e){}try{renderFunds('etf_in')}catch(e){}}
-console.log('checkTradesAccess:',email,'→ trades:ALWAYS','picks:',showPicks?'GRANTED':'DENIED');
+console.log('checkTradesAccess:',email,'→ smarttrades:',showTrades?'GRANTED':'DENIED','picks:',showPicks?'GRANTED':'DENIED');
 }catch(e){console.warn('checkTradesAccess error:',e)}
 }
 document.getElementById('email').addEventListener('blur',checkTradesAccess);
@@ -1828,7 +1831,7 @@ switchAnalysisSubTab(window._activeAnalysisSubTab||'report');
 }
 
 // 3) Activate button
-const btnMap={quick:'tabBtnQuick',analysis:'tabBtnAnalysis',dcf:'tabBtnDCF',equity:'tabBtnEquity',indices:'tabBtnIndices',finance:'tabBtnFinance',daily:'tabBtnDaily',compare:'tabBtnCompare',gems:'tabBtnGems',picks:'tabBtnPicks',funds:'tabBtnFunds',trades:'tabBtnTrades'};
+const btnMap={quick:'tabBtnQuick',analysis:'tabBtnAnalysis',dcf:'tabBtnDCF',equity:'tabBtnEquity',indices:'tabBtnIndices',finance:'tabBtnFinance',daily:'tabBtnDaily',compare:'tabBtnCompare',gems:'tabBtnGems',picks:'tabBtnPicks',funds:'tabBtnFunds',trades:'tabBtnTrades',smarttrades:'tabBtnSmartTrades'};
 if(btnMap[tab]){const btn=document.getElementById(btnMap[tab]);if(btn)btn.classList.add('active')}
 
 // 4) Scroll to top of new tab content
@@ -1883,6 +1886,14 @@ setTimeout(function(){algoSelect('NIFTY',document.querySelector('.algo-btn.activ
 }
 // Init backtest
 try{initBacktest()}catch(e){}
+}
+if(tab==='smarttrades'){
+// Auto-generate trades on first open
+var _stBtn=document.getElementById('tradesLoadBtn');
+if(_stBtn&&!window._smartTradesLoaded){
+window._smartTradesLoaded=true;
+setTimeout(function(){loadIndexTrades()},300);
+}
 }
 
 console.log('switchTab:',tab,'→ done');

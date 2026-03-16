@@ -778,6 +778,7 @@ footer{position:relative;z-index:1;margin-top:32px;background:#002f6c;border-top
 <button class="tab-btn" onclick="switchTab('picks')" id="tabBtnPicks" data-color="teal" data-tip="Top 5 Buy, Sell, Accumulate stocks by conviction" style="display:none"><span class="tab-icon">&#127942;</span> Picks</button>
 <button class="tab-btn" onclick="switchTab('funds')" id="tabBtnFunds" data-color="blue" data-tip="Top ETFs & mutual funds with 25%+ CAGR" style="display:none"><span class="tab-icon">&#128176;</span> ETF</button>
 <button class="tab-btn" onclick="switchTab('trades')" id="tabBtnTrades" data-color="red" data-tip="Live algo signals + backtest for indices & F&O stocks"><span class="tab-icon">&#127919;</span> Algo Trades</button>
+<button class="tab-btn" onclick="switchTab('smarttrades')" id="tabBtnSmartTrades" data-color="amber" data-tip="AI-powered daily trade ideas for indices & stocks"><span class="tab-icon">&#128293;</span> Smart Trades</button>
 </div>
 
 <!-- TAB CONTENT AREA — ALL content lives inside here -->
@@ -852,6 +853,26 @@ footer{position:relative;z-index:1;margin-top:32px;background:#002f6c;border-top
 <!-- BACKTEST -->
 <div id="backtestSection" style="padding:0 18px 18px"></div>
 </div>
+
+<!-- SMART TRADES — AI-Powered Daily Ideas (separate tab) -->
+<div class="sc" data-tab="smarttrades" style="border-left:3px solid var(--amber);display:none">
+<div class="sh"><div class="si" style="background:rgba(245,158,11,.1)">&#128293;</div><div class="st" style="color:var(--amber)">Smart Trades — AI Daily Ideas</div></div>
+<div class="sbody">
+<div id="tradesContent">
+<div style="text-align:center;padding:30px 20px">
+<div style="font-size:40px;margin-bottom:12px">&#128293;</div>
+<div style="font-family:Sora,sans-serif;font-size:16px;font-weight:700;color:var(--amber);margin-bottom:8px">AI-Powered Trading Intelligence</div>
+<p style="font-size:13px;color:var(--text3);max-width:500px;margin:0 auto 20px;line-height:1.7">Top 5 index + 2 stock option trade ideas generated daily by AI. Covers Nifty, Bank Nifty, Sensex &amp; high-momentum F&amp;O stocks with entry, SL, targets.</p>
+<button id="tradesLoadBtn" onclick="loadIndexTrades()" style="padding:12px 28px;border-radius:10px;border:2px solid var(--amber);background:rgba(245,158,11,.1);color:var(--amber);font-family:Sora,sans-serif;font-size:14px;font-weight:700;cursor:pointer;transition:all .3s">&#9889; Generate Today's Trades</button>
+<button onclick="loadIndexTrades(true)" style="padding:12px 20px;border-radius:10px;border:2px solid var(--cyan);background:rgba(6,182,212,.08);color:var(--cyan);font-family:Sora,sans-serif;font-size:12px;font-weight:700;cursor:pointer;margin-left:8px">&#8635; Force Refresh</button>
+<button id="scorecardBtn" onclick="loadTradeScorecard()" style="padding:12px 20px;border-radius:10px;border:2px solid var(--purple);background:rgba(139,92,246,.08);color:var(--purple);font-family:Sora,sans-serif;font-size:12px;font-weight:700;cursor:pointer;margin-left:8px">&#128202; Trade Scorecard</button>
+<div id="tradesError" style="margin-top:12px;font-size:12px;color:var(--red);display:none"></div>
+<div id="scorecardArea" style="display:none;margin-top:16px"></div>
+</div>
+</div>
+</div>
+</div>
+
 <div id="pricePrediction" data-tab="quick" data-subtab="valuation" style="display:none"></div>
 <div id="techProSection" data-tab="quick" data-subtab="technical" style="display:none"></div>
 <div id="earningsSection" data-tab="quick" data-subtab="activity" style="display:none"></div>
