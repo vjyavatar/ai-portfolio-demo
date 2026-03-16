@@ -6738,9 +6738,9 @@ h+=`<tr>
 <td data-fund-ticker="${f.t}" style="font-family:var(--mono);font-size:10px;color:var(--text3);white-space:nowrap">${FUND_YF_MAP[f.t]?'⏳':'—'}</td>
 <td style="font-size:10px;color:var(--cyan);white-space:nowrap">${f.aum}</td>
 <td style="font-size:10px;color:var(--text3)">${f.exp}</td>
-<td style="font-size:10px;color:var(--text2)">${f.y1}</td>
-<td style="font-size:10px;color:var(--amber);font-weight:600">${f.y3}</td>
-<td style="font-size:11px;color:${y5C};font-weight:700">${f.y5}</td>
+<td data-fund-y1="${f.t}" style="font-size:10px;color:var(--text2)">${f.y1}</td>
+<td data-fund-y3="${f.t}" style="font-size:10px;color:var(--amber);font-weight:600">${f.y3}</td>
+<td data-fund-y5="${f.t}" style="font-size:11px;color:${y5C};font-weight:700">${f.y5}</td>
 <td style="font-size:11px;color:${y10C};font-weight:700">${f.y10}</td>
 <td style="font-size:10px;color:var(--red);font-weight:600">${f.dd}</td>
 <td style="font-size:10px;color:var(--text2)">${f.rec}</td>
@@ -6771,6 +6771,8 @@ h+=`<div style="font-size:9px;color:var(--text3);margin-top:8px">* Returns are C
 el.innerHTML=h;
 // Fetch live NAV for funds with yfinance tickers
 fetchFundNAVs(el);
+// Overlay live returns (Y1/Y3/Y5) from /api/fund-live
+if(!window._fundLiveLoaded){window._fundLiveLoaded=true;setTimeout(fetchFundLiveReturns,800);}
 }
 
 async function fetchFundNAVs(container){
@@ -6803,6 +6805,27 @@ p.cell.innerHTML=`<span style="font-weight:700;color:${up?'var(--green)':'var(--
 });
 console.log('✅ Fund NAVs:',ok+'/'+tickerPairs.length);
 }catch(e){console.error('fetchFundNAVs error:',e);tickerPairs.forEach(p=>{p.cell.textContent='—'})}
+}
+
+// Fetch live returns and overlay on existing table
+async function fetchFundLiveReturns(){
+try{
+var res=await fetch('/api/fund-live');
+if(!res.ok)return;
+var data=await res.json();
+if(!data.success||!data.funds)return;
+var funds=data.funds;
+Object.keys(funds).forEach(function(tk){
+var f=funds[tk];
+var y1=document.querySelector('td[data-fund-y1="'+tk+'"]');
+if(y1&&f.y1&&f.y1!=='N/A'){var n=f.y1_num||0;y1.innerHTML='<span style="font-weight:700;color:'+(n>=0?'var(--green)':'var(--red)')+'">'+f.y1+'</span> <span style="font-size:7px;color:var(--text3)">LIVE</span>';}
+var y3=document.querySelector('td[data-fund-y3="'+tk+'"]');
+if(y3&&f.y3&&f.y3!=='N/A'){var n3=f.y3_num||0;y3.innerHTML='<span style="font-weight:700;color:'+(n3>=20?'var(--green)':n3>=10?'var(--amber)':'var(--red)')+'">'+f.y3+'</span> <span style="font-size:7px;color:var(--text3)">LIVE</span>';}
+var y5=document.querySelector('td[data-fund-y5="'+tk+'"]');
+if(y5&&f.y5&&f.y5!=='N/A'){var n5=f.y5_num||0;y5.innerHTML='<span style="font-weight:700;color:'+(n5>=25?'var(--green)':n5>=15?'#22d3ee':'var(--amber)')+'">'+f.y5+'</span> <span style="font-size:7px;color:var(--text3)">LIVE</span>';}
+});
+console.log('✅ Fund live returns overlaid:',Object.keys(funds).length);
+}catch(e){console.warn('fetchFundLiveReturns error:',e)}
 }
 
 function renderFundComparison(){

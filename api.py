@@ -2900,6 +2900,125 @@ async def nse_options(symbol: str = "NIFTY"):
     return result
 
 
+_fund_cache = {}
+_fund_cache_ts = None
+
+@app.get("/api/fund-live")
+async def fund_live():
+    """Fetch live NAV, returns, AUM for all ETFs and funds. 30-min cache."""
+    from datetime import datetime, timedelta
+    import numpy as np
+    
+    now = datetime.utcnow()
+    if _fund_cache and _fund_cache_ts and (now - _fund_cache_ts).total_seconds() < 1800:
+        return _fund_cache
+    
+    # Map display names to yfinance tickers
+    TICKERS = {
+        # India ETFs
+        "MON100": "MAFANG.NS", "NETFIT": "NETFIT.NS", "ICICIN50": "ICICNIFTY.NS",
+        "MAFANG": "MAFANG.NS", "JUNIORBEES": "JUNIORBEES.NS",
+        # India MFs (use NAV proxy ETFs where available)
+        "QUANT-SC": "0P0001BAU5.BO", "NIPPON-SC": "0P0000XVMZ.BO", "QUANT-MC": "0P0001BAU3.BO",
+        "SBI-SC": "0P0000XVRN.BO", "PPFAS": "0P0001BHEJ.BO", "HDFC-MC": "0P0000XVS2.BO",
+        "CANROB-SC": "0P00019SQX.BO",
+        # USA ETFs
+        "QQQ": "QQQ", "SMH": "SMH", "SOXX": "SOXX", "VGT": "VGT", "AIQ": "AIQ",
+        # USA MFs
+        "FCNTX": "FCNTX", "TRBCX": "TRBCX", "FDGRX": "FDGRX", "BPTIX": "BPTIX", "VIGAX": "VIGAX",
+    }
+    
+    def _fetch_fund(display_name, yf_ticker):
+        try:
+            tk = yf.Ticker(yf_ticker)
+            hist = tk.history(period="5y", interval="1mo")
+            if hist is None or len(hist) < 3:
+                return display_name, None
+            
+            closes = hist['Close'].values.astype(float)
+            nav = round(float(closes[-1]), 2)
+            
+            # Returns
+            def _ret(months):
+                if len(closes) > months:
+                    old = float(closes[-(months+1)])
+                    if old > 0:
+                        return round(((nav - old) / old) * 100, 1)
+                return None
+            
+            # Annualized returns
+            def _cagr(years):
+                months = years * 12
+                if len(closes) > months:
+                    old = float(closes[-(months+1)])
+                    if old > 0:
+                        return round((((nav / old) ** (1/years)) - 1) * 100, 1)
+                return None
+            
+            y1 = _ret(12)
+            y3 = _cagr(3)
+            y5 = _cagr(5)
+            
+            # Max drawdown
+            peak = closes[0]
+            max_dd = 0
+            for c in closes:
+                if c > peak: peak = c
+                dd = (peak - c) / peak * 100
+                if dd > max_dd: max_dd = dd
+            
+            # AUM from info
+            info = tk.info or {}
+            aum = info.get('totalAssets', 0) or info.get('netAssets', 0) or 0
+            aum_fmt = ""
+            if aum > 0:
+                if aum >= 1e12: aum_fmt = f"${aum/1e12:.1f}T"
+                elif aum >= 1e9: aum_fmt = f"${aum/1e9:.1f}B"
+                elif aum >= 1e7: aum_fmt = f"₹{aum/1e7:.0f} Cr"
+                elif aum >= 1e6: aum_fmt = f"${aum/1e6:.1f}M"
+            
+            exp = info.get('annualReportExpenseRatio', 0) or info.get('totalExpenseRatio', 0) or 0
+            exp_fmt = f"{exp*100:.2f}%" if exp > 0 else ""
+            
+            is_indian = '.NS' in yf_ticker or '.BO' in yf_ticker
+            sym = "₹" if is_indian else "$"
+            
+            return display_name, {
+                "nav": nav,
+                "nav_fmt": f"{sym}{nav:,.2f}",
+                "y1": f"{y1:+.1f}%" if y1 is not None else "N/A",
+                "y3": f"{y3:+.1f}%" if y3 is not None else "N/A",
+                "y5": f"{y5:+.1f}%" if y5 is not None else "N/A",
+                "y1_num": y1,
+                "y3_num": y3,
+                "y5_num": y5,
+                "max_dd": f"-{max_dd:.0f}%",
+                "aum": aum_fmt,
+                "exp": exp_fmt,
+            }
+        except Exception as e:
+            print(f"  fund fetch fail {display_name}: {e}")
+            return display_name, None
+    
+    results = {}
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        futs = {pool.submit(_fetch_fund, name, ticker): name for name, ticker in TICKERS.items()}
+        for f in as_completed(futs, timeout=30):
+            try:
+                name, data = f.result(timeout=10)
+                if data:
+                    results[name] = data
+            except:
+                pass
+    
+    global _fund_cache, _fund_cache_ts
+    resp = {"success": True, "funds": results, "count": len(results), "cached": False}
+    _fund_cache = resp
+    _fund_cache_ts = now
+    print(f"📊 Fund-live: {len(results)}/{len(TICKERS)} fetched")
+    return resp
+
+
 @app.get("/api/global-ticker")
 async def global_ticker():
     """Lightweight global indices ticker — parallel fetch with 2-min cache + dedup."""
