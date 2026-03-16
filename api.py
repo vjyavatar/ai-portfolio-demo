@@ -2906,6 +2906,7 @@ _fund_cache_ts = None
 @app.get("/api/fund-live")
 async def fund_live():
     """Fetch live NAV, returns, AUM for all ETFs and funds. 30-min cache."""
+    global _fund_cache, _fund_cache_ts
     from datetime import datetime, timedelta
     import numpy as np
     
@@ -3011,7 +3012,6 @@ async def fund_live():
             except:
                 pass
     
-    global _fund_cache, _fund_cache_ts
     resp = {"success": True, "funds": results, "count": len(results), "cached": False}
     _fund_cache = resp
     _fund_cache_ts = now
