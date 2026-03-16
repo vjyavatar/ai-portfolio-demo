@@ -3908,15 +3908,41 @@ ALGO_INSTRUMENTS = {
     "MARUTI": {"sym": "MARUTI.NS", "lot": 100, "gap": 100, "ex": "NFO"},
 }
 
+_algo_cache = {}
+_algo_cache_ts = {}
+
 @app.get("/api/algo-signal")
 async def algo_signal_safe(symbol: str = "NIFTY"):
-    """Wrapper that guarantees JSON response even on crash."""
+    """Wrapper that guarantees JSON response even on crash. 3-min cache."""
+    from datetime import datetime, timedelta
+    symbol = symbol.upper().strip().replace(".NS","").replace(".BO","").replace("^NSEI","NIFTY").replace("^NSEBANK","BANKNIFTY").replace("^BSESN","SENSEX")
+    now = datetime.utcnow()
+    # 3-min cache
+    if symbol in _algo_cache and symbol in _algo_cache_ts:
+        if (now - _algo_cache_ts[symbol]).total_seconds() < 180:
+            return _algo_cache[symbol]
     try:
-        return await _algo_signal_impl(symbol)
+        result = await _algo_signal_impl(symbol)
+        _algo_cache[symbol] = result
+        _algo_cache_ts[symbol] = now
+        return result
     except Exception as e:
         import traceback
         traceback.print_exc()
-        return {"success": False, "error": f"Algo computation error: {str(e)}", "symbol": symbol}
+        return {"success": False, "error": f"Algo error: {str(e)}", "symbol": symbol}
+
+@app.get("/api/algo-batch")
+async def algo_batch():
+    """Batch: 3 indices sequentially with 3-min cache. First call ~15s, cached calls instant."""
+    symbols = ["NIFTY", "BANKNIFTY", "SENSEX"]
+    out = []
+    for s in symbols:
+        try:
+            r = await algo_signal_safe(s)  # Uses 3-min cache internally
+            out.append(r)
+        except Exception as e:
+            out.append({"success": False, "symbol": s, "error": str(e)})
+    return {"success": True, "signals": out, "count": len(out)}
 
 async def _algo_signal_impl(symbol: str = "NIFTY"):
     """5-Layer Confluence Algorithm — ALL real data, ZERO hallucination."""

@@ -5037,84 +5037,57 @@ try{var a=new AudioContext();var o=a.createOscillator();var g=a.createGain();o.c
 window._algoLastTrend=newTrend;
 }
 
-// ═══ TOP TRADES TABLE — All 3 indices + top stocks ═══
+// ═══ TOP TRADES TABLE — Progressive loading ═══
 function loadTopTrades(){
 var el=document.getElementById('topTradesTable');
 if(!el)return;
-el.innerHTML='<div style="text-align:center;padding:20px;color:var(--text3);font-size:11px">&#9203; Fetching live signals for NIFTY, BANKNIFTY, SENSEX...</div>';
-var symbols=['NIFTY','BANKNIFTY','SENSEX','RELIANCE','HDFCBANK'];
-var promises=symbols.map(function(s){return fetch('/api/algo-signal?symbol='+s).then(function(r){return r.json()}).catch(function(){return{success:false,symbol:s}})});
-Promise.all(promises).then(function(results){
-var h='';
-// Summary table
-h+='<table style="width:100%;border-collapse:collapse;font-size:11px">';
-h+='<thead><tr style="background:var(--bg2);border-bottom:2px solid var(--border)">';
-h+='<th style="padding:8px 10px;text-align:left;font-weight:800;color:var(--text);font-size:10px">INSTRUMENT</th>';
-h+='<th style="padding:8px 6px;text-align:center;font-size:10px">SIGNAL</th>';
-h+='<th style="padding:8px 6px;text-align:center;font-size:10px">TREND</th>';
-h+='<th style="padding:8px 6px;text-align:right;font-size:10px">SPOT</th>';
-h+='<th style="padding:8px 6px;text-align:left;font-size:10px;color:#0a7c42">&#128994; TRADE</th>';
-h+='<th style="padding:8px 6px;text-align:right;font-size:10px">ENTRY &#8377;</th>';
-h+='<th style="padding:8px 6px;text-align:right;font-size:10px;color:#ef4444">SL &#8377;</th>';
-h+='<th style="padding:8px 6px;text-align:right;font-size:10px;color:#0a7c42">TGT &#8377;</th>';
-h+='<th style="padding:8px 6px;text-align:center;font-size:10px">R:R</th>';
-h+='<th style="padding:8px 6px;text-align:center;font-size:10px">SCORE</th>';
-h+='</tr></thead><tbody>';
-var hasAnyTrade=false;
-results.forEach(function(d,i){
-if(!d.success)return;
+var symbols=['NIFTY','BANKNIFTY','SENSEX'];
+// Show skeleton table immediately
+var h='<table style="width:100%;border-collapse:collapse;font-size:11px"><thead><tr style="background:var(--bg2);border-bottom:2px solid var(--border)"><th style="padding:8px 10px;text-align:left;font-size:10px;font-weight:800">INSTRUMENT</th><th style="padding:8px;text-align:center;font-size:10px">SIGNAL</th><th style="padding:8px;text-align:center;font-size:10px">TREND</th><th style="padding:8px;text-align:right;font-size:10px">SPOT</th><th style="padding:8px;text-align:left;font-size:10px;color:#0a7c42">TRADE</th><th style="padding:8px;text-align:right;font-size:10px">ENTRY</th><th style="padding:8px;text-align:right;font-size:10px;color:#ef4444">SL</th><th style="padding:8px;text-align:right;font-size:10px;color:#0a7c42">TGT</th><th style="padding:8px;text-align:center;font-size:10px">R:R</th></tr></thead><tbody>';
+symbols.forEach(function(s){h+='<tr id="ttRow_'+s+'" style="border-bottom:1px solid var(--border)"><td style="padding:8px 10px;font-weight:800">'+s+'</td><td colspan="8" style="padding:8px;color:var(--text3);font-size:10px"><div style="display:inline-block;width:12px;height:12px;border:2px solid var(--blue);border-top-color:transparent;border-radius:50%;animation:spin .5s linear infinite;vertical-align:middle;margin-right:4px"></div>Loading...</td></tr>'});
+h+='</tbody></table>';
+el.innerHTML=h;
+// Fetch each symbol and render row as it arrives
+symbols.forEach(function(s){
+fetch('/api/algo-signal?symbol='+s).then(function(r){return r.json()}).then(function(d){
+var row=document.getElementById('ttRow_'+s);
+if(!row||!d.success)return;
+row.innerHTML=_buildTradeRow(d);
+row.style.cursor='pointer';
+row.onclick=function(){algoSelect(d.symbol,null)};
+row.onmouseover=function(){this.style.background='var(--bg2)'};
+row.onmouseout=function(){this.style.background='transparent'};
+}).catch(function(e){
+var row=document.getElementById('ttRow_'+s);
+if(row)row.innerHTML='<td style="padding:8px 10px;font-weight:800">'+s+'</td><td colspan="8" style="padding:8px;color:var(--red);font-size:10px">&#9888; Failed</td>';
+});
+});
+window._topTradesLoaded=true;
+}
+
+function _buildTradeRow(d){
+var S='&#8377;';
 var tr=d.trade;
 var sig=d.signal||'N/A';
 var trend=(d.trend||{}).label||'N/A';
 var sC=sig==='STRONG BUY'?'#0a7c42':sig==='BUY'?'#10b981':sig==='LEAN BUY'?'#3b82f6':sig==='AVOID'?'#ef4444':'#f59e0b';
 var tC=trend.indexOf('UP')>=0?'#0a7c42':trend.indexOf('DOWN')>=0?'#ef4444':'#f59e0b';
 var isWait=sig==='HOLD / WAIT'||sig==='AVOID';
-h+='<tr style="border-bottom:1px solid var(--border);cursor:pointer;transition:background .15s'+(isWait?';opacity:.6':'')+'" onclick="algoSelect(\''+d.symbol+'\',null)" onmouseover="this.style.background=\'var(--bg2)\'" onmouseout="this.style.background=\'transparent\'">';
-// Instrument
+var h='';
 h+='<td style="padding:8px 10px"><div style="font-weight:800;color:var(--text)">'+d.symbol+'</div><div style="font-size:8px;color:var(--text3)">'+(d.instrument?.ex||'NFO')+' Lot:'+(d.instrument?.lot||'')+'</div></td>';
-// Signal
-h+='<td style="padding:8px 6px;text-align:center"><span style="font-size:9px;font-weight:800;padding:3px 8px;border-radius:4px;background:'+sC+'12;color:'+sC+'">'+sig+'</span></td>';
-// Trend
-h+='<td style="padding:8px 6px;text-align:center"><span style="font-size:9px;font-weight:700;color:'+tC+'">'+trend.replace('STRONG ','&#128293; ')+'</span></td>';
-// Spot
-h+='<td style="padding:8px 6px;text-align:right;font-family:var(--mono);font-weight:700">&#8377;'+(d.spot||0).toLocaleString('en-IN')+'</td>';
+h+='<td style="padding:8px;text-align:center"><span style="font-size:9px;font-weight:800;padding:3px 8px;border-radius:4px;background:'+sC+'12;color:'+sC+'">'+sig+'</span></td>';
+h+='<td style="padding:8px;text-align:center"><span style="font-size:9px;font-weight:700;color:'+tC+'">'+trend.replace('STRONG ','')+'</span></td>';
+h+='<td style="padding:8px;text-align:right;font-family:var(--mono);font-weight:700">'+S+(d.spot||0).toLocaleString("en-IN")+'</td>';
 if(tr&&!isWait){
-hasAnyTrade=true;
-// Trade action
-h+='<td style="padding:8px 6px;font-weight:800;color:'+(tr.type==='CE'?'#0a7c42':'#ef4444')+'">'+tr.action+'</td>';
-// Premium entry
-h+='<td style="padding:8px 6px;text-align:right;font-family:var(--mono);font-weight:800;color:#0a7c42">&#8377;'+(tr.premEntry||0).toFixed(1)+'</td>';
-// SL
-h+='<td style="padding:8px 6px;text-align:right;font-family:var(--mono);font-weight:700;color:#ef4444">&#8377;'+(tr.premSL||0).toFixed(1)+'</td>';
-// Target
-h+='<td style="padding:8px 6px;text-align:right;font-family:var(--mono);font-weight:700;color:#0a7c42">&#8377;'+(tr.premT2||0).toFixed(1)+'</td>';
-// R:R
-var rrC=(tr.rrRatio||'').indexOf('1:2')>=0||(tr.rrRatio||'').indexOf('1:3')>=0?'#0a7c42':'var(--text)';
-h+='<td style="padding:8px 6px;text-align:center;font-weight:800;color:'+rrC+'">'+(tr.rrRatio||'N/A')+'</td>';
+h+='<td style="padding:8px;font-weight:800;font-size:10px;color:'+(tr.type==='CE'?'#0a7c42':'#ef4444')+'">'+tr.action+'</td>';
+h+='<td style="padding:8px;text-align:right;font-family:var(--mono);font-weight:800;color:#0a7c42">'+S+(tr.premEntry||0).toFixed(1)+'</td>';
+h+='<td style="padding:8px;text-align:right;font-family:var(--mono);font-weight:700;color:#ef4444">'+S+(tr.premSL||0).toFixed(1)+'</td>';
+h+='<td style="padding:8px;text-align:right;font-family:var(--mono);font-weight:700;color:#0a7c42">'+S+(tr.premT2||0).toFixed(1)+'</td>';
+h+='<td style="padding:8px;text-align:center;font-weight:800">'+(tr.rrRatio||'N/A')+'</td>';
 }else{
-h+='<td colspan="5" style="padding:8px 6px;text-align:center;color:#f59e0b;font-weight:600;font-size:10px">&#9208; NO TRADE — Low confluence</td>';
+h+='<td colspan="5" style="padding:8px;text-align:center;color:#f59e0b;font-weight:600;font-size:10px">&#9208; NO TRADE</td>';
 }
-// Score
-h+='<td style="padding:8px 6px;text-align:center"><span style="font-size:10px;font-weight:900;color:'+sC+'">'+(d.supports||0)+'/'+(d.totalFactors||0)+'</span></td>';
-h+='</tr>';
-});
-h+='</tbody></table>';
-// Alerts summary
-var allAlerts=[];
-results.forEach(function(d){if(d.alerts)d.alerts.forEach(function(a){a._sym=d.symbol;allAlerts.push(a)})});
-var highAlerts=allAlerts.filter(function(a){return a.severity==='HIGH'});
-if(highAlerts.length>0){
-h+='<div style="margin-top:10px">';
-highAlerts.slice(0,5).forEach(function(a){
-var ac=a.type==='BULLISH'?'#0a7c42':a.type==='BEARISH'?'#ef4444':a.type==='CRITICAL'?'#991b1b':'#f59e0b';
-h+='<div style="padding:5px 10px;border-radius:6px;background:'+ac+'08;border-left:3px solid '+ac+';margin-bottom:3px;font-size:9px"><strong style="color:'+ac+'">'+a._sym+' '+a.type+':</strong> <span style="color:var(--text2)">'+a.msg+'</span></div>';
-});
-h+='</div>';
-}
-h+='<div style="text-align:right;font-size:8px;color:var(--text3);margin-top:6px">'+((results[0]||{}).timestamp||'')+' &middot; Click any row for full analysis</div>';
-el.innerHTML=h;
-window._topTradesLoaded=true;
-});
+return h;
 }
 
 function algoSelect(sym,btn){
