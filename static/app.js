@@ -5155,227 +5155,171 @@ function _fetchAlgoSignal(sym){algoSelect(sym,null);}
 function _renderAlgoCard(el,d){
 var S='&#8377;',p=d.spot||0;
 var sup=d.supports,opp=d.opposes,neu=d.neutrals,tot=d.totalFactors,pct=d.pct;
+var wS=d.weightedSupport||0,wO=d.weightedOppose||0,wN=d.weightedNeutral||0,wT=d.totalWeight||1;
 var sig=d.signal,conf=d.confidence,dir=d.direction;
 var sC=sig==='STRONG BUY'?'#0a7c42':sig==='BUY'?'#10b981':sig==='LEAN BUY'?'#3b82f6':sig==='AVOID'?'#ef4444':'#f59e0b';
 var dC=dir==='BULLISH'?'#0a7c42':dir==='BEARISH'?'#ef4444':'#f59e0b';
 var isWait=sig==='HOLD / WAIT'||sig==='AVOID';
-var tr=d.trade;
-var t=d.technicals||{};
-var orb=d.orb||{};
-var bs=d.black_scholes||{};
-var nse=d.options||{};
+var tr=d.trade;var t=d.technicals||{};var orb=d.orb||{};var nse=d.options||{};var bs=d.black_scholes||{};
 var h='';
 
-// ═══════════════════════════════════════════════════
-// SECTION 1: THE EXACT OPTION TRADE — PREMIUM-BASED
-// ═══════════════════════════════════════════════════
+// ═══ SMART DECISION SUMMARY — ONE LINE ANSWER ═══
+h+='<div style="padding:16px 18px;border-radius:12px;margin-bottom:14px;background:'+(isWait?'rgba(245,158,11,.06)':'linear-gradient(135deg,'+dC+'08,'+dC+'03)')+';border:2px solid '+(isWait?'#f59e0b30':dC+'30')+'">';
+h+='<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px">';
+h+='<div style="display:flex;align-items:center;gap:10px"><span style="font-size:24px">'+(isWait?'&#9208;':dir==='BULLISH'?'&#128994;':'&#128308;')+'</span>';
+h+='<div><div style="font-size:20px;font-weight:900;color:'+(isWait?'#f59e0b':dC)+'">'+sig+'</div>';
+h+='<div style="font-size:11px;color:var(--text3)">'+d.symbol+' '+S+p.toLocaleString("en-IN")+' &middot; '+d.timestamp+'</div></div></div>';
+h+='<div style="text-align:right"><div style="font-size:28px;font-weight:900;color:'+sC+';font-family:var(--mono)">'+wS.toFixed(1)+'/'+wT.toFixed(1)+'</div>';
+h+='<div style="font-size:9px;color:var(--text3)">Weighted Score &middot; '+conf+'</div></div></div>';
+// One-line verdict
+if(tr&&!isWait){
+h+='<div style="font-size:13px;font-weight:700;color:'+dC+';line-height:1.6">&#9654; <strong>'+tr.action+'</strong> at '+S+(tr.premEntry||0).toFixed(1)+' &middot; SL '+S+(tr.premSL||0).toFixed(1)+' &middot; Target '+S+(tr.premT2||0).toFixed(1)+' &middot; R:R '+(tr.rrRatio||'N/A')+'</div>';
+}else{
+h+='<div style="font-size:13px;font-weight:700;color:#f59e0b;line-height:1.6">&#9208; DO NOT TRADE — Only '+sup+'/'+tot+' factors support (weighted '+wS.toFixed(1)+'/'+wT.toFixed(1)+'). Wait for better setup.</div>';
+}
+h+='</div>';
+
+// ═══ WEIGHTED FACTOR TABLE — ALL FACTORS VISIBLE ═══
+h+='<div style="margin-bottom:14px;border:1px solid var(--border);border-radius:10px;overflow:hidden">';
+h+='<div style="padding:10px 14px;background:var(--bg2);display:flex;justify-content:space-between;align-items:center">';
+h+='<div style="font-size:11px;font-weight:800;color:var(--text)">ALL '+tot+' FACTORS — Weighted Analysis</div>';
+h+='<div style="display:flex;gap:8px"><span style="font-size:10px;font-weight:700;color:#0a7c42">&#11044; '+sup+' ('+wS.toFixed(1)+'pt)</span><span style="font-size:10px;font-weight:700;color:#ef4444">&#11044; '+opp+' ('+wO.toFixed(1)+'pt)</span><span style="font-size:10px;font-weight:700;color:#f59e0b">&#11044; '+neu+' ('+wN.toFixed(1)+'pt)</span></div></div>';
+// Weighted progress bar
+h+='<div style="height:8px;display:flex"><div style="height:100%;width:'+(wT>0?(wS/wT*100):0)+'%;background:#0a7c42"></div><div style="height:100%;width:'+(wT>0?(wN/wT*100):0)+'%;background:#f59e0b"></div><div style="height:100%;width:'+(wT>0?(wO/wT*100):0)+'%;background:#ef4444"></div></div>';
+// Table
+h+='<table style="width:100%;border-collapse:collapse;font-size:10px">';
+h+='<tr style="background:var(--bg2)"><th style="padding:6px 10px;text-align:left;font-size:9px;color:var(--text3)">FACTOR</th><th style="padding:6px;text-align:center;font-size:9px;width:50px">WT</th><th style="padding:6px;text-align:center;font-size:9px;width:60px">STATUS</th><th style="padding:6px 10px;text-align:left;font-size:9px;color:var(--text3)">DETAIL</th></tr>';
+var cats=['PRICE_ACTION','INDICATOR','OPTION','FUNDAMENTAL','RISK'];
+var catNames={'PRICE_ACTION':'PRICE ACTION','INDICATOR':'INDICATORS','OPTION':'OPTIONS (NSE)','FUNDAMENTAL':'FUNDAMENTALS','RISK':'RISK'};
+cats.forEach(function(cat){
+var fs=(d.factors||[]).filter(function(f){return f.category===cat;});
+if(!fs.length)return;
+h+='<tr><td colspan="4" style="padding:4px 10px;font-size:8px;font-weight:800;color:var(--blue);letter-spacing:1.5px;background:var(--bg2);border-top:1px solid var(--border)">'+( catNames[cat]||cat)+'</td></tr>';
+fs.forEach(function(f){
+var fc=f.status==='SUPPORTS'?'#0a7c42':f.status==='OPPOSES'?'#ef4444':'#f59e0b';
+var icon=f.status==='SUPPORTS'?'&#9989;':f.status==='OPPOSES'?'&#10060;':'&#11036;';
+var wt=f.weight||1;
+var barW=Math.round(wt/2*100);
+h+='<tr style="border-bottom:1px solid var(--border)">';
+h+='<td style="padding:5px 10px;font-weight:700;color:'+fc+'">'+icon+' '+f.name+'</td>';
+h+='<td style="padding:5px;text-align:center"><div style="display:flex;align-items:center;gap:3px;justify-content:center"><div style="width:30px;height:4px;background:var(--bg3);border-radius:2px;overflow:hidden"><div style="height:100%;width:'+barW+'%;background:'+fc+';border-radius:2px"></div></div><span style="font-size:8px;font-weight:700;color:var(--text3)">'+wt.toFixed(1)+'</span></div></td>';
+h+='<td style="padding:5px;text-align:center"><span style="font-size:8px;font-weight:800;padding:2px 6px;border-radius:3px;background:'+fc+'12;color:'+fc+'">'+f.status+'</span></td>';
+h+='<td style="padding:5px 10px;font-size:9px;color:var(--text2);line-height:1.4">'+f.detail+'</td>';
+h+='</tr>';
+});
+});
+h+='</table></div>';
+
+// ═══ TRADE TICKET (if signal is actionable) ═══
 if(tr&&!isWait){
 var pe=tr.premEntry||0,ps=tr.premSL||0,p1=tr.premT1||0,p2=tr.premT2||0,p3=tr.premT3||0;
-h+='<div style="border:2px solid '+dC+'40;border-radius:14px;overflow:hidden;margin-bottom:16px;background:'+dC+'06">';
-// Top strip — THE ACTION
-h+='<div style="background:'+dC+';padding:14px 18px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">';
-h+='<div style="display:flex;align-items:center;gap:10px"><span style="font-size:22px">'+(dir==='BULLISH'?'&#128994;':'&#128308;')+'</span><div><div style="color:#fff;font-size:22px;font-weight:900;letter-spacing:.5px">'+tr.action+'</div><div style="color:rgba(255,255,255,.7);font-size:11px;font-weight:600">'+d.symbol+' Spot '+S+p.toLocaleString("en-IN")+' &middot; &#916;'+( tr.delta?tr.delta.toFixed(2):'0.50')+'</div></div></div>';
-h+='<div style="display:flex;gap:6px;flex-wrap:wrap"><span style="background:rgba(255,255,255,.2);color:#fff;font-size:12px;font-weight:700;padding:5px 14px;border-radius:4px">'+sig+'</span><span style="background:rgba(255,255,255,.15);color:#fff;font-size:12px;font-weight:700;padding:5px 14px;border-radius:4px">'+conf+'</span>';
-if(d.isExpiry)h+='<span style="background:rgba(255,200,0,.3);color:#fff;font-size:11px;font-weight:700;padding:5px 12px;border-radius:4px;animation:pulse 1.5s infinite">&#128293; EXPIRY</span>';
+h+='<div style="border:2px solid '+dC+'40;border-radius:14px;overflow:hidden;margin-bottom:14px;background:'+dC+'06">';
+// Header
+h+='<div style="background:'+dC+';padding:12px 18px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">';
+h+='<div style="display:flex;align-items:center;gap:10px"><span style="font-size:20px">'+(dir==='BULLISH'?'&#128994;':'&#128308;')+'</span><div><div style="color:#fff;font-size:18px;font-weight:900">'+tr.action+'</div><div style="color:rgba(255,255,255,.7);font-size:10px">&#916;'+(tr.delta?tr.delta.toFixed(2):'0.50')+' &middot; '+(d.instrument?.ex||'NFO')+' Lot '+(d.instrument?.lot||'')+'</div></div></div>';
+h+='<div style="display:flex;gap:6px"><span style="background:rgba(255,255,255,.2);color:#fff;font-size:11px;font-weight:700;padding:4px 12px;border-radius:4px">'+sig+'</span>';
+if(d.isExpiry)h+='<span style="background:rgba(255,200,0,.3);color:#fff;font-size:11px;font-weight:700;padding:4px 12px;border-radius:4px;animation:pulse 1.5s infinite">&#128293; EXPIRY</span>';
 h+='</div></div>';
-
-// Premium price — HUGE, UNMISSABLE
-h+='<div style="padding:18px;text-align:center;border-bottom:1px solid '+dC+'20;background:'+dC+'04">';
-h+='<div style="font-size:10px;color:var(--text3);font-weight:700;letter-spacing:1.5px;margin-bottom:4px">BUY AT PREMIUM</div>';
-h+='<div style="font-size:42px;font-weight:900;color:'+dC+';font-family:var(--mono);letter-spacing:-1px">'+S+pe.toFixed(1)+'</div>';
-h+='<div style="font-size:10px;color:var(--text3);margin-top:2px">per lot ('+tr.lot+') = '+S+(tr.capitalPerLot||0).toLocaleString("en-IN")+' capital</div>';
-h+='</div>';
-
-// R:R bar — PREMIUM BASED
-h+='<div style="padding:12px 18px;border-bottom:1px solid '+dC+'15"><div style="font-size:9px;color:var(--text3);letter-spacing:1px;margin-bottom:6px;font-weight:700">OPTION PREMIUM LEVELS</div>';
-h+='<div style="display:flex;height:32px;border-radius:8px;overflow:hidden;font-size:10px;font-weight:800">';
-h+='<div style="background:rgba(239,68,68,.85);color:#fff;width:20%;display:flex;align-items:center;justify-content:center;min-width:55px;flex-direction:column;line-height:1.2"><span>SL</span><span>'+S+ps.toFixed(1)+'</span></div>';
-h+='<div style="background:rgba(184,134,11,.7);color:#fff;flex:1;display:flex;align-items:center;justify-content:center;flex-direction:column;line-height:1.2"><span>ENTRY</span><span>'+S+pe.toFixed(1)+'</span></div>';
-h+='<div style="background:rgba(16,185,129,.6);color:#fff;width:18%;display:flex;align-items:center;justify-content:center;min-width:55px;flex-direction:column;line-height:1.2"><span>T1</span><span>'+S+p1.toFixed(1)+'</span></div>';
-h+='<div style="background:rgba(10,124,66,.75);color:#fff;width:18%;display:flex;align-items:center;justify-content:center;min-width:55px;flex-direction:column;line-height:1.2"><span>T2</span><span>'+S+p2.toFixed(1)+'</span></div>';
-h+='<div style="background:#065f46;color:#fff;width:14%;display:flex;align-items:center;justify-content:center;min-width:55px;flex-direction:column;line-height:1.2"><span>T3</span><span>'+S+p3.toFixed(1)+'</span></div>';
+// Premium entry — big
+h+='<div style="padding:14px;text-align:center;border-bottom:1px solid '+dC+'15"><div style="font-size:9px;color:var(--text3);font-weight:700;letter-spacing:1.5px">BUY AT PREMIUM</div><div style="font-size:38px;font-weight:900;color:'+dC+';font-family:var(--mono)">'+S+pe.toFixed(1)+'</div></div>';
+// R:R bar
+h+='<div style="padding:10px 16px;border-bottom:1px solid '+dC+'15"><div style="display:flex;height:28px;border-radius:6px;overflow:hidden;font-size:9px;font-weight:800">';
+h+='<div style="background:rgba(239,68,68,.85);color:#fff;width:20%;display:flex;align-items:center;justify-content:center;min-width:50px;flex-direction:column;line-height:1.1"><span>SL</span><span>'+S+ps.toFixed(1)+'</span></div>';
+h+='<div style="background:rgba(184,134,11,.7);color:#fff;flex:1;display:flex;align-items:center;justify-content:center;flex-direction:column;line-height:1.1"><span>ENTRY</span><span>'+S+pe.toFixed(1)+'</span></div>';
+h+='<div style="background:rgba(16,185,129,.6);color:#fff;width:16%;display:flex;align-items:center;justify-content:center;min-width:45px;flex-direction:column;line-height:1.1"><span>T1</span><span>'+S+p1.toFixed(1)+'</span></div>';
+h+='<div style="background:rgba(10,124,66,.75);color:#fff;width:16%;display:flex;align-items:center;justify-content:center;min-width:45px;flex-direction:column;line-height:1.1"><span>T2</span><span>'+S+p2.toFixed(1)+'</span></div>';
+h+='<div style="background:#065f46;color:#fff;width:14%;display:flex;align-items:center;justify-content:center;min-width:45px;flex-direction:column;line-height:1.1"><span>T3</span><span>'+S+p3.toFixed(1)+'</span></div>';
 h+='</div></div>';
-
-// 4-box: Premium SL, Target, Risk/Lot, R:R
-h+='<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:0;border-bottom:1px solid '+dC+'20">';
-h+='<div style="padding:12px;text-align:center;border-right:1px solid '+dC+'12;background:rgba(239,68,68,.03)"><div style="font-size:8px;font-weight:700;color:#ef4444;letter-spacing:1px">&#9888; EXIT IF PREMIUM</div><div style="font-size:18px;font-weight:900;color:#ef4444;font-family:var(--mono)">&#8804; '+S+ps.toFixed(1)+'</div><div style="font-size:8px;color:#ef4444">Loss: '+S+tr.premRisk+'/qty</div></div>';
-h+='<div style="padding:12px;text-align:center;border-right:1px solid '+dC+'12;background:rgba(10,124,66,.03)"><div style="font-size:8px;font-weight:700;color:#0a7c42;letter-spacing:1px">&#127919; TARGET PREMIUM</div><div style="font-size:18px;font-weight:900;color:#0a7c42;font-family:var(--mono)">'+S+p2.toFixed(1)+'</div><div style="font-size:8px;color:#0a7c42">Profit: '+S+tr.premReward+'/qty</div></div>';
-h+='<div style="padding:12px;text-align:center;border-right:1px solid '+dC+'12"><div style="font-size:8px;font-weight:700;color:var(--text3);letter-spacing:1px">RISK PER LOT</div><div style="font-size:18px;font-weight:900;color:#ef4444;font-family:var(--mono)">'+S+(tr.riskPerLot||0).toLocaleString("en-IN")+'</div><div style="font-size:8px;color:var(--text3)">'+tr.lot+' qty × '+S+tr.premRisk+'</div></div>';
-h+='<div style="padding:12px;text-align:center"><div style="font-size:8px;font-weight:700;color:var(--purple);letter-spacing:1px">RISK : REWARD</div><div style="font-size:18px;font-weight:900;color:var(--purple);font-family:var(--mono)">'+(tr.rrRatio||'N/A')+'</div><div style="font-size:8px;color:var(--text3)">Reward '+S+(tr.rewardPerLot||0).toLocaleString("en-IN")+'/lot</div></div>';
+// 4-box
+h+='<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:0;border-bottom:1px solid '+dC+'15">';
+h+='<div style="padding:10px;text-align:center;border-right:1px solid '+dC+'12;background:rgba(239,68,68,.03)"><div style="font-size:8px;font-weight:700;color:#ef4444">EXIT IF PREMIUM</div><div style="font-size:16px;font-weight:900;color:#ef4444;font-family:var(--mono)">&#8804; '+S+ps.toFixed(1)+'</div><div style="font-size:8px;color:var(--text3)">Loss '+S+(tr.premRisk||0)+'/qty</div></div>';
+h+='<div style="padding:10px;text-align:center;border-right:1px solid '+dC+'12;background:rgba(10,124,66,.03)"><div style="font-size:8px;font-weight:700;color:#0a7c42">TARGET PREMIUM</div><div style="font-size:16px;font-weight:900;color:#0a7c42;font-family:var(--mono)">'+S+p2.toFixed(1)+'</div><div style="font-size:8px;color:var(--text3)">Profit '+S+(tr.premReward||0)+'/qty</div></div>';
+h+='<div style="padding:10px;text-align:center;border-right:1px solid '+dC+'12"><div style="font-size:8px;font-weight:700;color:var(--text3)">RISK/LOT</div><div style="font-size:16px;font-weight:900;color:#ef4444;font-family:var(--mono)">'+S+(tr.riskPerLot||0).toLocaleString("en-IN")+'</div></div>';
+h+='<div style="padding:10px;text-align:center"><div style="font-size:8px;font-weight:700;color:var(--purple)">R:R</div><div style="font-size:16px;font-weight:900;color:var(--purple);font-family:var(--mono)">'+(tr.rrRatio||'N/A')+'</div></div>';
 h+='</div>';
-
-// 3-Target exit — PREMIUM BASED
-h+='<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0;border-bottom:1px solid '+dC+'15">';
-h+='<div style="padding:10px 14px;border-right:1px solid '+dC+'12"><div style="font-size:9px;font-weight:800;color:#10b981">T1: Premium &#8805; '+S+p1.toFixed(1)+'</div><div style="font-size:8px;color:var(--text3)">'+tr.t1Action+'</div><div style="font-size:8px;color:var(--text3);margin-top:2px">Spot ~'+S+(tr.spotT1||0).toLocaleString("en-IN")+'</div></div>';
-h+='<div style="padding:10px 14px;border-right:1px solid '+dC+'12"><div style="font-size:9px;font-weight:800;color:#0a7c42">T2: Premium &#8805; '+S+p2.toFixed(1)+'</div><div style="font-size:8px;color:var(--text3)">'+tr.t2Action+'</div><div style="font-size:8px;color:var(--text3);margin-top:2px">Spot ~'+S+(tr.spotT2||0).toLocaleString("en-IN")+'</div></div>';
-h+='<div style="padding:10px 14px"><div style="font-size:9px;font-weight:800;color:#065f46">T3: Premium &#8805; '+S+p3.toFixed(1)+'</div><div style="font-size:8px;color:var(--text3)">'+tr.t3Action+'</div><div style="font-size:8px;color:var(--text3);margin-top:2px">Spot ~'+S+(tr.spotT3||0).toLocaleString("en-IN")+'</div></div>';
+// 3-target strip
+h+='<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0;border-bottom:1px solid '+dC+'15;font-size:9px">';
+h+='<div style="padding:8px 12px;border-right:1px solid '+dC+'12"><strong style="color:#10b981">T1 '+S+p1.toFixed(1)+'</strong><br><span style="color:var(--text3)">'+tr.t1Action+'</span></div>';
+h+='<div style="padding:8px 12px;border-right:1px solid '+dC+'12"><strong style="color:#0a7c42">T2 '+S+p2.toFixed(1)+'</strong><br><span style="color:var(--text3)">'+tr.t2Action+'</span></div>';
+h+='<div style="padding:8px 12px"><strong style="color:#065f46">T3 '+S+p3.toFixed(1)+'</strong><br><span style="color:var(--text3)">'+tr.t3Action+'</span></div>';
 h+='</div>';
-
-// Entry/Exit conditions
-h+='<div style="padding:12px 18px;background:rgba(0,47,108,.03)">';
-h+='<div style="font-size:10px;line-height:1.7"><strong style="color:var(--blue)">&#9654; WHEN TO ENTER:</strong> <span style="color:var(--text2)">'+tr.entry+'</span></div>';
-h+='<div style="font-size:10px;line-height:1.7;margin-top:2px"><strong style="color:var(--red)">&#9632; WHEN TO EXIT:</strong> <span style="color:var(--text2)">'+tr.exit+'</span></div>';
-h+='<div style="font-size:10px;line-height:1.7;margin-top:2px"><strong style="color:var(--amber)">&#9888; SL TRIGGER:</strong> <span style="color:var(--text2)">'+tr.slReason+'</span></div>';
-h+='</div>';
-h+='</div>';
-
-}else{
-// WAIT/AVOID
-h+='<div style="border:2px solid #f59e0b40;border-radius:14px;padding:24px;margin-bottom:16px;background:rgba(245,158,11,.03);text-align:center">';
-h+='<div style="font-size:36px;margin-bottom:8px">&#9208;</div>';
-h+='<div style="font-size:18px;font-weight:800;color:#f59e0b">'+sig+' — DO NOT TRADE '+d.symbol+'</div>';
-h+='<div style="font-size:12px;color:var(--text2);margin-top:8px;max-width:500px;margin-left:auto;margin-right:auto;line-height:1.8">Only '+sup+'/'+tot+' factors support. '+(d.reasoning||'')+'</div>';
-h+='</div>';
+// Entry/Exit
+h+='<div style="padding:10px 16px;font-size:10px;line-height:1.8">';
+h+='<div><strong style="color:var(--blue)">&#9654; ENTER:</strong> <span style="color:var(--text2)">'+tr.entry+'</span></div>';
+h+='<div><strong style="color:#ef4444">&#9632; EXIT:</strong> <span style="color:var(--text2)">'+tr.exit+'</span></div>';
+h+='</div></div>';
 }
 
-// ═══════════════════════════════════════════════════
-// ═══════════════════════════════════════════════════
-// TREND METER + LIVE ALERTS
-// ═══════════════════════════════════════════════════
-var tr_d=d.trend||{};
-var alerts=d.alerts||[];
+// ═══ KEY LEVELS + OI MAP (collapsible) ═══
+var hasLevels=orb.vwap>0||t.pivot>0||nse.vix>0||nse.pcr>0;
+if(hasLevels){
+h+='<details style="margin-bottom:12px"><summary style="cursor:pointer;padding:8px 14px;border-radius:8px;background:var(--bg2);border:1px solid var(--border);font-size:11px;font-weight:700;color:var(--text)">&#128200; Key Levels + OI Map</summary><div style="padding:10px 0">';
+// Levels grid
+h+='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:6px;margin-bottom:10px">';
+if(orb.vwap>0)h+='<div style="padding:8px;border-radius:6px;background:'+(p>orb.vwap?'rgba(10,124,66,.04)':'rgba(239,68,68,.04)')+';text-align:center;border:1px solid var(--border)"><div style="font-size:7px;color:var(--text3);font-weight:700">VWAP</div><div style="font-size:13px;font-weight:900;color:'+(p>orb.vwap?'#0a7c42':'#ef4444')+';font-family:var(--mono)">'+S+orb.vwap.toLocaleString("en-IN")+'</div></div>';
+if(t.pivot>0)h+='<div style="padding:8px;border-radius:6px;background:var(--bg2);text-align:center;border:1px solid var(--border)"><div style="font-size:7px;color:var(--text3);font-weight:700">CPR '+t.cpr_type+'</div><div style="font-size:13px;font-weight:900;font-family:var(--mono);color:var(--text)">'+S+t.pivot.toLocaleString("en-IN")+'</div></div>';
+if(nse.vix>0)h+='<div style="padding:8px;border-radius:6px;background:var(--bg2);text-align:center;border:1px solid var(--border)"><div style="font-size:7px;color:var(--text3);font-weight:700">VIX</div><div style="font-size:13px;font-weight:900;font-family:var(--mono);color:'+(nse.vix<16?'#0a7c42':'#ef4444')+'">'+nse.vix.toFixed(1)+'</div></div>';
+if(nse.pcr>0)h+='<div style="padding:8px;border-radius:6px;background:var(--bg2);text-align:center;border:1px solid var(--border)"><div style="font-size:7px;color:var(--text3);font-weight:700">PCR</div><div style="font-size:13px;font-weight:900;font-family:var(--mono);color:'+(nse.pcr>1?'#0a7c42':'#ef4444')+'">'+nse.pcr.toFixed(2)+'</div></div>';
+if(nse.max_pain>0)h+='<div style="padding:8px;border-radius:6px;background:var(--bg2);text-align:center;border:1px solid var(--border)"><div style="font-size:7px;color:var(--text3);font-weight:700">MAX PAIN</div><div style="font-size:13px;font-weight:900;font-family:var(--mono);color:var(--text)">'+S+nse.max_pain.toLocaleString("en-IN")+'</div></div>';
+if(t.pdh>0)h+='<div style="padding:8px;border-radius:6px;background:var(--bg2);text-align:center;border:1px solid var(--border)"><div style="font-size:7px;color:var(--text3);font-weight:700">PDH/PDL</div><div style="font-size:11px;font-weight:800;font-family:var(--mono);color:#0a7c42">'+S+t.pdh.toLocaleString("en-IN")+'</div><div style="font-size:11px;font-weight:800;font-family:var(--mono);color:#ef4444">'+S+t.pdl.toLocaleString("en-IN")+'</div></div>';
+h+='</div>';
+// OI table
+if(nse.ce_resistance&&nse.ce_resistance.length>0){
+h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:0;border:1px solid var(--border);border-radius:8px;overflow:hidden">';
+h+='<div style="padding:8px 12px;border-right:1px solid var(--border)"><div style="font-size:8px;font-weight:700;color:#ef4444;margin-bottom:4px">RESISTANCE (CE OI)</div>';
+(nse.ce_resistance||[]).slice(0,3).forEach(function(r){h+='<div style="display:flex;justify-content:space-between;font-size:9px;padding:1px 0"><span style="font-family:var(--mono);font-weight:700">'+S+r.strike.toLocaleString("en-IN")+'</span><span style="color:var(--text3)">'+(r.oi>100000?(r.oi/100000).toFixed(1)+'L':r.oi.toLocaleString("en-IN"))+'</span></div>';});
+h+='</div><div style="padding:8px 12px"><div style="font-size:8px;font-weight:700;color:#0a7c42;margin-bottom:4px">SUPPORT (PE OI)</div>';
+(nse.pe_support||[]).slice(0,3).forEach(function(r){h+='<div style="display:flex;justify-content:space-between;font-size:9px;padding:1px 0"><span style="font-family:var(--mono);font-weight:700">'+S+r.strike.toLocaleString("en-IN")+'</span><span style="color:var(--text3)">'+(r.oi>100000?(r.oi/100000).toFixed(1)+'L':r.oi.toLocaleString("en-IN"))+'</span></div>';});
+h+='</div></div>';
+}
+h+='</div></details>';
+}
+
+// ═══ TREND + ALERTS ═══
+var tr_d=d.trend||{};var alerts=d.alerts||[];
 if(tr_d.label){
-var tL=tr_d.label;
-var tPct=tr_d.pct||0;
-var tC=tPct>=60?'#0a7c42':tPct>=25?'#10b981':tPct>=-25?'#f59e0b':tPct>=-60?'#ef4444':'#991b1b';
-var tIcon=tPct>=60?'&#128640;':tPct>=25?'&#128200;':tPct>=-25?'&#8596;':tPct>=-60?'&#128201;':'&#128680;';
-// Trend gauge
-h+='<div style="margin-bottom:14px;border-radius:12px;border:1px solid '+tC+'30;overflow:hidden;background:'+tC+'06">';
-h+='<div style="padding:12px 16px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">';
-h+='<div style="display:flex;align-items:center;gap:10px"><span style="font-size:22px">'+tIcon+'</span><div><div style="font-size:16px;font-weight:900;color:'+tC+'">'+tL+'</div><div style="font-size:9px;color:var(--text3)">'+tr_d.bullCount+' bullish &middot; '+tr_d.bearCount+' bearish &middot; '+tr_d.flatCount+' neutral indicators</div></div></div>';
-// Gauge bar
-h+='<div style="width:180px"><div style="display:flex;justify-content:space-between;font-size:7px;color:var(--text3);margin-bottom:2px"><span>STRONG &#128308;</span><span>SIDEWAYS</span><span>STRONG &#128994;</span></div>';
-h+='<div style="height:10px;background:linear-gradient(90deg,#991b1b,#ef4444,#f59e0b,#10b981,#0a7c42);border-radius:5px;position:relative">';
-var needlePos=Math.max(2,Math.min(98,50+(tPct/2)));
-h+='<div style="position:absolute;top:-3px;left:'+needlePos+'%;transform:translateX(-50%);width:4px;height:16px;background:#fff;border-radius:2px;border:1.5px solid '+tC+';box-shadow:0 1px 4px rgba(0,0,0,.3)"></div>';
-h+='</div></div></div>';
-// Indicator strip
-h+='<div style="padding:6px 16px 10px;display:flex;gap:4px;flex-wrap:wrap">';
-(tr_d.details||[]).forEach(function(td){
-var ic=td.dir==='BULL'?'#0a7c42':td.dir==='BEAR'?'#ef4444':'#94a3b8';
-h+='<span style="font-size:8px;font-weight:700;padding:2px 8px;border-radius:4px;background:'+ic+'12;color:'+ic+';border:1px solid '+ic+'20">'+td.ind+': '+td.val+'</span>';
-});
-h+='</div></div>';
+var tPct=tr_d.pct||0;var tC2=tPct>=60?'#0a7c42':tPct>=25?'#10b981':tPct>=-25?'#f59e0b':'#ef4444';
+h+='<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;padding:8px 14px;border-radius:8px;background:'+tC2+'08;border:1px solid '+tC2+'20">';
+h+='<div style="font-size:11px;font-weight:800;color:'+tC2+'">TREND: '+tr_d.label+'</div>';
+h+='<div style="flex:1;height:6px;background:linear-gradient(90deg,#ef4444,#f59e0b,#10b981,#0a7c42);border-radius:3px;position:relative">';
+var np2=Math.max(2,Math.min(98,50+(tPct/2)));
+h+='<div style="position:absolute;top:-2px;left:'+np2+'%;width:3px;height:10px;background:#fff;border:1px solid '+tC2+';border-radius:2px;transform:translateX(-50%)"></div></div>';
+(tr_d.details||[]).slice(0,5).forEach(function(td){var ic2=td.dir==='BULL'?'#0a7c42':td.dir==='BEAR'?'#ef4444':'#94a3b8';h+='<span style="font-size:7px;font-weight:700;padding:1px 5px;border-radius:3px;background:'+ic2+'12;color:'+ic2+'">'+td.ind+'</span>';});
+h+='</div>';
 }
-
-// Alerts
 if(alerts.length>0){
-h+='<div style="margin-bottom:14px">';
-alerts.forEach(function(a){
-var ac=a.type==='BULLISH'?'#0a7c42':a.type==='BEARISH'?'#ef4444':a.type==='CRITICAL'?'#991b1b':'#f59e0b';
-var aIcon=a.type==='BULLISH'?'&#128994;':a.type==='BEARISH'?'&#128308;':a.type==='CRITICAL'?'&#128680;':'&#9888;';
-var aBg=a.severity==='HIGH'?ac+'10':ac+'06';
-h+='<div style="padding:8px 14px;border-radius:8px;background:'+aBg+';border-left:3px solid '+ac+';margin-bottom:4px;display:flex;gap:8px;align-items:flex-start">';
-h+='<span style="font-size:12px;flex-shrink:0">'+aIcon+'</span>';
-h+='<div><span style="font-size:10px;font-weight:700;color:'+ac+'">'+a.type+'</span> <span style="font-size:10px;color:var(--text2)">'+a.msg+'</span></div></div>';
-});
+h+='<div style="margin-bottom:10px">';
+alerts.slice(0,4).forEach(function(a){var ac2=a.type==='BULLISH'?'#0a7c42':a.type==='BEARISH'?'#ef4444':a.type==='CRITICAL'?'#991b1b':'#f59e0b';h+='<div style="padding:5px 10px;border-radius:6px;background:'+ac2+'08;border-left:3px solid '+ac2+';margin-bottom:3px;font-size:9px"><strong style="color:'+ac2+'">'+a.type+':</strong> <span style="color:var(--text2)">'+a.msg+'</span></div>';});
 h+='</div>';
 }
 
-// Auto-refresh tracker
-h+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;padding:8px 14px;border-radius:8px;background:var(--bg2);border:1px solid var(--border)">';
-h+='<div style="display:flex;align-items:center;gap:8px"><div id="algoLiveDot" style="width:8px;height:8px;border-radius:50%;background:#0eb24e;animation:pulse 2s infinite"></div><span style="font-size:10px;font-weight:700;color:var(--text)">LIVE TRACKER</span><span id="algoLiveTime" style="font-size:9px;color:var(--text3)">'+d.timestamp+'</span></div>';
-h+='<div style="display:flex;gap:6px"><button onclick="algoSelect(\''+d.symbol+'\',null)" style="padding:3px 12px;border-radius:5px;background:var(--blue);color:#fff;border:none;font-size:9px;font-weight:700;cursor:pointer;font-family:DM Sans,sans-serif">&#8635; Refresh Now</button>';
-h+='<button id="algoAutoBtn" onclick="toggleAlgoAuto(\''+d.symbol+'\')" style="padding:3px 12px;border-radius:5px;background:rgba(14,178,78,.1);color:#0eb24e;border:1px solid rgba(14,178,78,.3);font-size:9px;font-weight:700;cursor:pointer;font-family:DM Sans,sans-serif">'+(window._algoAutoInterval?'&#9209; Stop Auto':'&#9654; Auto 2min')+'</button></div></div>';
-
-// SECTION 2: KEY LEVELS — what the trader watches
-// ═══════════════════════════════════════════════════
-h+='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;margin-bottom:14px">';
-
-// Spot
-h+='<div style="padding:10px;border-radius:8px;background:var(--bg2);border:1px solid var(--border);text-align:center"><div style="font-size:8px;color:var(--text3);font-weight:700">SPOT</div><div style="font-size:16px;font-weight:900;font-family:var(--mono);color:var(--text)">'+S+p.toLocaleString("en-IN")+'</div></div>';
-
-// VWAP
-if(orb.vwap>0)h+='<div style="padding:10px;border-radius:8px;background:'+(p>orb.vwap?'rgba(10,124,66,.04)':'rgba(239,68,68,.04)')+';border:1px solid '+(p>orb.vwap?'#0a7c4220':'#ef444420')+';text-align:center"><div style="font-size:8px;color:var(--text3);font-weight:700">VWAP</div><div style="font-size:16px;font-weight:900;font-family:var(--mono);color:'+(p>orb.vwap?'#0a7c42':'#ef4444')+'">'+S+orb.vwap.toLocaleString("en-IN")+'</div><div style="font-size:8px;color:var(--text3)">Price '+(p>orb.vwap?'ABOVE &#x2714;':'BELOW &#x2718;')+'</div></div>';
-
-// ORB
-if(orb.orb_high>0)h+='<div style="padding:10px;border-radius:8px;background:var(--bg2);border:1px solid var(--border);text-align:center"><div style="font-size:8px;color:var(--text3);font-weight:700">ORB RANGE</div><div style="font-size:12px;font-weight:800;font-family:var(--mono);color:var(--text)">'+S+orb.orb_high+'</div><div style="font-size:10px;color:var(--text3)">to '+S+orb.orb_low+'</div><div style="font-size:8px;font-weight:700;color:'+(orb.breakout==="ABOVE"?"#0a7c42":orb.breakout==="BELOW"?"#ef4444":"#f59e0b")+'">'+orb.breakout+'</div></div>';
-
-// CPR Pivot
-if(t.pivot>0)h+='<div style="padding:10px;border-radius:8px;background:var(--bg2);border:1px solid var(--border);text-align:center"><div style="font-size:8px;color:var(--text3);font-weight:700">CPR PIVOT</div><div style="font-size:14px;font-weight:900;font-family:var(--mono);color:var(--text)">'+S+t.pivot.toLocaleString("en-IN")+'</div><div style="font-size:8px;color:var(--text3)">'+t.cpr_type+' ('+t.cpr_pct+'%)</div></div>';
-
-// PDH/PDL
-if(t.pdh>0)h+='<div style="padding:10px;border-radius:8px;background:var(--bg2);border:1px solid var(--border);text-align:center"><div style="font-size:8px;color:var(--text3);font-weight:700">PDH / PDL</div><div style="font-size:12px;font-weight:800;font-family:var(--mono);color:#0a7c42">'+S+t.pdh.toLocaleString("en-IN")+'</div><div style="font-size:12px;font-weight:800;font-family:var(--mono);color:#ef4444">'+S+t.pdl.toLocaleString("en-IN")+'</div></div>';
-
-// VIX
-if(nse.vix>0)h+='<div style="padding:10px;border-radius:8px;background:'+(nse.vix<16?'rgba(10,124,66,.04)':nse.vix<22?'rgba(245,158,11,.04)':'rgba(239,68,68,.04)')+';border:1px solid var(--border);text-align:center"><div style="font-size:8px;color:var(--text3);font-weight:700">INDIA VIX</div><div style="font-size:16px;font-weight:900;font-family:var(--mono);color:'+(nse.vix<16?'#0a7c42':nse.vix<22?'#f59e0b':'#ef4444')+'">'+nse.vix.toFixed(1)+'</div><div style="font-size:8px;color:var(--text3)">'+(nse.vix<13?'Low fear':nse.vix<18?'Fair':nse.vix<22?'Elevated':'High fear')+'</div></div>';
-
-// PCR
-if(nse.pcr>0)h+='<div style="padding:10px;border-radius:8px;background:var(--bg2);border:1px solid var(--border);text-align:center"><div style="font-size:8px;color:var(--text3);font-weight:700">PCR</div><div style="font-size:16px;font-weight:900;font-family:var(--mono);color:'+(nse.pcr>1?'#0a7c42':nse.pcr>0.7?'#f59e0b':'#ef4444')+'">'+nse.pcr.toFixed(2)+'</div><div style="font-size:8px;color:var(--text3)">'+(nse.pcr>1.1?'Bullish':nse.pcr>0.8?'Neutral':'Bearish')+'</div></div>';
-
-// Max Pain
-if(nse.max_pain>0)h+='<div style="padding:10px;border-radius:8px;background:var(--bg2);border:1px solid var(--border);text-align:center"><div style="font-size:8px;color:var(--text3);font-weight:700">MAX PAIN</div><div style="font-size:14px;font-weight:900;font-family:var(--mono);color:var(--text)">'+S+nse.max_pain.toLocaleString("en-IN")+'</div></div>';
-
-h+='</div>';
-
-// ═══════════════════════════════════════════════════
-// SECTION 3: OI MAP — Support/Resistance from options
-// ═══════════════════════════════════════════════════
-if(nse.ce_resistance&&nse.ce_resistance.length>0&&nse.pe_support&&nse.pe_support.length>0){
-h+='<div style="margin-bottom:14px;border-radius:10px;border:1px solid var(--border);overflow:hidden">';
-h+='<div style="padding:8px 14px;background:var(--bg2);font-size:10px;font-weight:700;color:var(--text);display:flex;justify-content:space-between"><span>&#128202; OI-Based Levels (Live NSE)</span><span style="color:var(--text3)">'+d.timestamp+'</span></div>';
-h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:0">';
-// Resistance
-h+='<div style="padding:10px 14px;border-right:1px solid var(--border)"><div style="font-size:9px;font-weight:700;color:#ef4444;margin-bottom:6px">&#128308; RESISTANCE (CE OI)</div>';
-nse.ce_resistance.slice(0,4).forEach(function(r){
-h+='<div style="display:flex;justify-content:space-between;font-size:10px;padding:2px 0;border-bottom:1px solid var(--border)"><span style="font-family:var(--mono);font-weight:700">'+S+r.strike.toLocaleString("en-IN")+'</span><span style="color:var(--text3)">'+( r.oi>100000?(r.oi/100000).toFixed(1)+'L':r.oi.toLocaleString("en-IN"))+'</span></div>';
-});
-h+='</div>';
-// Support
-h+='<div style="padding:10px 14px"><div style="font-size:9px;font-weight:700;color:#0a7c42;margin-bottom:6px">&#128994; SUPPORT (PE OI)</div>';
-nse.pe_support.slice(0,4).forEach(function(r){
-h+='<div style="display:flex;justify-content:space-between;font-size:10px;padding:2px 0;border-bottom:1px solid var(--border)"><span style="font-family:var(--mono);font-weight:700">'+S+r.strike.toLocaleString("en-IN")+'</span><span style="color:var(--text3)">'+(r.oi>100000?(r.oi/100000).toFixed(1)+'L':r.oi.toLocaleString("en-IN"))+'</span></div>';
-});
-h+='</div></div></div>';
-}
-
-// ═══════════════════════════════════════════════════
-// SECTION 4: CONFLUENCE METER + FACTOR GRID (collapsible)
-// ═══════════════════════════════════════════════════
-h+='<details style="margin-bottom:12px"'+(isWait?' open':'')+'><summary style="cursor:pointer;padding:10px 14px;border-radius:10px;background:var(--bg2);border:1px solid var(--border);display:flex;justify-content:space-between;align-items:center"><div style="display:flex;align-items:center;gap:8px"><span style="font-size:10px;font-weight:800;color:var(--text)">CONFLUENCE: '+sup+'/'+tot+'</span>';
-h+='<span style="font-size:9px;font-weight:700;color:#0a7c42">&#11044; '+sup+'</span><span style="font-size:9px;font-weight:700;color:#ef4444">&#11044; '+opp+'</span><span style="font-size:9px;font-weight:700;color:#f59e0b">&#11044; '+neu+'</span></div>';
-h+='<div style="width:100px;height:6px;background:var(--bg3);border-radius:3px;overflow:hidden"><div style="height:100%;width:'+pct+'%;border-radius:3px;background:'+sC+'"></div></div></summary>';
-// Factor grid inside details
-var cats=['PRICE_ACTION','INDICATOR','OPTION','FUNDAMENTAL','RISK'];
-var cL={'PRICE_ACTION':'&#128200; PRICE ACTION','INDICATOR':'&#128202; INDICATORS','OPTION':'&#128178; OPTIONS','FUNDAMENTAL':'&#127970; FUNDAMENTALS','RISK':'&#128737; RISK'};
-cats.forEach(function(cat){var fs=(d.factors||[]).filter(function(f){return f.category===cat;});if(!fs.length)return;h+='<div style="margin:8px 0 4px"><div style="font-size:9px;font-weight:700;color:var(--blue);letter-spacing:1.5px;margin-bottom:4px">'+(cL[cat]||cat)+'</div><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:4px">';fs.forEach(function(f){var fc=f.status==='SUPPORTS'?'#0a7c42':f.status==='OPPOSES'?'#ef4444':'#f59e0b';var bg=f.status==='SUPPORTS'?'rgba(10,124,66,.04)':f.status==='OPPOSES'?'rgba(239,68,68,.04)':'rgba(245,158,11,.04)';h+='<div style="background:'+bg+';border-radius:6px;padding:6px 8px;border:1px solid '+fc+'15;display:flex;gap:6px;align-items:flex-start"><div style="width:7px;height:7px;border-radius:50%;background:'+fc+';margin-top:3px;flex-shrink:0"></div><div><div style="font-size:9px;font-weight:700;color:'+fc+'">'+f.name+'</div><div style="font-size:8px;color:var(--text3);line-height:1.4;margin-top:1px">'+f.detail+'</div></div></div>';});h+='</div></div>';});
-h+='</details>';
-
-// Reasoning
-// Gamma Blast Setup (expiry days only)
+// Gamma Blast (expiry only)
 var blast=d.blastSetup;
 if(blast&&blast.active){
-h+='<div style="margin-bottom:14px;border-radius:12px;border:2px solid rgba(230,126,34,.3);overflow:hidden;background:rgba(230,126,34,.03)">';
-h+='<div style="padding:10px 16px;background:rgba(230,126,34,.1);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px">';
-h+='<div style="display:flex;align-items:center;gap:8px"><span style="font-size:16px">&#128293;</span><span style="font-size:13px;font-weight:800;color:#e67e22">GAMMA BLAST — Expiry Straddle</span></div>';
-h+='<span style="font-size:10px;font-weight:700;padding:3px 10px;border-radius:4px;background:rgba(230,126,34,.15);color:#e67e22">Prob: '+blast.prob+'%</span></div>';
-// Straddle grid
-h+='<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:0;border-bottom:1px solid rgba(230,126,34,.15)">';
-h+='<div style="padding:10px;text-align:center;border-right:1px solid rgba(230,126,34,.1)"><div style="font-size:8px;color:var(--text3);font-weight:700">STRIKE</div><div style="font-size:16px;font-weight:900;color:var(--text);font-family:var(--mono)">'+S+blast.strike.toLocaleString("en-IN")+'</div></div>';
-h+='<div style="padding:10px;text-align:center;border-right:1px solid rgba(230,126,34,.1)"><div style="font-size:8px;color:var(--text3);font-weight:700">CE + PE COST</div><div style="font-size:14px;font-weight:900;color:#e67e22;font-family:var(--mono)">'+S+blast.cost+'</div><div style="font-size:8px;color:var(--text3)">CE '+S+blast.cePrem+' + PE '+S+blast.pePrem+'</div></div>';
-h+='<div style="padding:10px;text-align:center;border-right:1px solid rgba(230,126,34,.1)"><div style="font-size:8px;color:#ef4444;font-weight:700">SL (30%)</div><div style="font-size:14px;font-weight:900;color:#ef4444;font-family:var(--mono)">'+blast.sl+'</div><div style="font-size:8px;color:var(--text3)">'+S+blast.riskPerLot.toLocaleString("en-IN")+'/lot</div></div>';
-h+='<div style="padding:10px;text-align:center"><div style="font-size:8px;color:#0a7c42;font-weight:700">TARGET (2-3&#215;)</div><div style="font-size:14px;font-weight:900;color:#0a7c42;font-family:var(--mono)">'+blast.target.split(",")[0].trim()+'</div><div style="font-size:8px;color:var(--text3)">'+S+blast.rewardPerLot.toLocaleString("en-IN")+'/lot</div></div>';
+h+='<div style="margin-bottom:12px;border-radius:10px;border:2px solid rgba(230,126,34,.3);overflow:hidden;background:rgba(230,126,34,.03)">';
+h+='<div style="padding:8px 14px;background:rgba(230,126,34,.1);display:flex;justify-content:space-between;align-items:center"><div style="font-size:12px;font-weight:800;color:#e67e22">&#128293; GAMMA BLAST — Straddle</div><span style="font-size:9px;font-weight:700;padding:2px 8px;border-radius:4px;background:rgba(230,126,34,.15);color:#e67e22">Prob:'+blast.prob+'%</span></div>';
+h+='<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:0;font-size:10px;text-align:center">';
+h+='<div style="padding:8px;border-right:1px solid rgba(230,126,34,.1)"><div style="font-size:7px;color:var(--text3)">STRIKE</div><div style="font-weight:900;font-family:var(--mono)">'+S+blast.strike.toLocaleString("en-IN")+'</div></div>';
+h+='<div style="padding:8px;border-right:1px solid rgba(230,126,34,.1)"><div style="font-size:7px;color:var(--text3)">COST</div><div style="font-weight:900;color:#e67e22;font-family:var(--mono)">'+S+blast.cost+'</div></div>';
+h+='<div style="padding:8px;border-right:1px solid rgba(230,126,34,.1)"><div style="font-size:7px;color:#ef4444">SL 30%</div><div style="font-weight:900;color:#ef4444;font-family:var(--mono)">'+blast.sl+'</div></div>';
+h+='<div style="padding:8px"><div style="font-size:7px;color:#0a7c42">TGT 2-3×</div><div style="font-weight:900;color:#0a7c42;font-family:var(--mono)">'+blast.target.split(",")[0]+'</div></div>';
 h+='</div>';
-// Conditions
-h+='<div style="padding:10px 16px;font-size:10px;line-height:1.8">';
-h+='<div><strong style="color:#e67e22">&#9200; ENTRY:</strong> <span style="color:var(--text2)">'+blast.entry+'</span></div>';
-h+='<div><strong style="color:#e67e22">&#9989; CONDITION:</strong> <span style="color:var(--text2)">'+blast.condition+'</span></div>';
-h+='<div><strong style="color:#e67e22">&#128204; MAX PAIN PIN:</strong> <span style="color:var(--text2)">'+blast.note+'</span></div>';
-h+='</div></div>';
-}else if(blast&&!blast.active){
-h+='<div style="margin-bottom:12px;padding:10px 14px;border-radius:10px;background:rgba(245,158,11,.04);border:1px solid rgba(245,158,11,.15);font-size:10px;color:var(--text2)">&#128293; <strong style="color:#e67e22">Gamma Blast:</strong> NOT viable today. Morning range '+blast.morningRange+' is too wide (need &lt;1%). Standard directional trade preferred.</div>';
+h+='<div style="padding:6px 14px;font-size:9px;color:var(--text2);line-height:1.7"><strong style="color:#e67e22">Entry:</strong> '+blast.entry+' &middot; <strong style="color:#e67e22">Condition:</strong> '+blast.condition+'</div>';
+h+='</div>';
 }
+if(d.isExpiry&&d.expiryNote)h+='<div style="padding:6px 12px;border-radius:6px;background:rgba(230,126,34,.06);border:1px solid rgba(230,126,34,.15);font-size:9px;font-weight:600;color:#e67e22;margin-bottom:10px">&#128197; '+d.expiryNote+'</div>';
 
-// Expiry note
-if(d.isExpiry&&d.expiryNote){
-h+='<div style="margin-bottom:10px;padding:8px 14px;border-radius:8px;background:rgba(230,126,34,.06);border:1px solid rgba(230,126,34,.15);font-size:10px;font-weight:600;color:#e67e22">&#128197; '+d.expiryNote+'</div>';
-}
+// Live tracker
+h+='<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 12px;border-radius:6px;background:var(--bg2);border:1px solid var(--border);margin-bottom:8px">';
+h+='<div style="display:flex;align-items:center;gap:6px"><div id="algoLiveDot" style="width:6px;height:6px;border-radius:50%;background:#0eb24e;animation:pulse 2s infinite"></div><span style="font-size:9px;font-weight:700;color:var(--text)">LIVE</span><span style="font-size:8px;color:var(--text3)">'+d.timestamp+'</span></div>';
+h+='<div style="display:flex;gap:4px"><button onclick="algoSelect(\''+d.symbol+'\',null)" style="padding:2px 10px;border-radius:4px;background:var(--blue);color:#fff;border:none;font-size:8px;font-weight:700;cursor:pointer">&#8635; Refresh</button>';
+h+='<button id="algoAutoBtn" onclick="toggleAlgoAuto(\''+d.symbol+'\')" style="padding:2px 10px;border-radius:4px;background:rgba(14,178,78,.1);color:#0eb24e;border:1px solid rgba(14,178,78,.3);font-size:8px;font-weight:700;cursor:pointer">'+(window._algoAutoInterval?'&#9209; Stop':'&#9654; Auto 2m')+'</button></div></div>';
 
-h+='<details style="margin-bottom:10px"><summary style="cursor:pointer;font-size:10px;font-weight:700;color:var(--blue);padding:6px 0">&#129504; AI Reasoning</summary><div style="padding:10px 14px;background:var(--bg2);border-radius:8px;border:1px solid var(--border);font-size:10px;color:var(--text2);line-height:1.8;margin-top:4px">'+(d.reasoning||'')+'</div></details>';
+// Reasoning
+h+='<details style="margin-bottom:8px"><summary style="cursor:pointer;font-size:9px;font-weight:700;color:var(--blue);padding:4px 0">&#129504; AI Reasoning</summary><div style="padding:8px 12px;background:var(--bg2);border-radius:6px;border:1px solid var(--border);font-size:9px;color:var(--text2);line-height:1.8;margin-top:4px">'+(d.reasoning||'')+'</div></details>';
 
 // Disclaimer
-h+='<div style="padding:6px 10px;border-radius:6px;background:rgba(245,158,11,.04);border:1px solid rgba(245,158,11,.1);font-size:7px;color:var(--text3);line-height:1.5"><strong style="color:var(--amber)">&#9888;</strong> Live data from NSE + yfinance. '+tot+' factors computed server-side. Not SEBI-registered. Educational only. Always use SL.</div>';
-h+='<div style="font-size:8px;color:var(--text3);text-align:right;margin-top:4px">'+d.timestamp+' &middot; '+d.instrument?.ex+' &middot; Lot '+d.instrument?.lot+'</div>';
+h+='<div style="padding:4px 10px;border-radius:4px;background:rgba(245,158,11,.04);font-size:7px;color:var(--text3);line-height:1.5"><strong style="color:var(--amber)">&#9888;</strong> Live NSE+yfinance data. Weighted '+tot+'-factor analysis. Educational only. Always use SL.</div>';
 
 el.innerHTML=h;
 }

@@ -4377,18 +4377,18 @@ async def _algo_signal_impl(symbol: str = "NIFTY"):
     # ═══ 5-LAYER CONFLUENCE COMPUTATION ═══
     t = result["technicals"]
     
-    def add(name, status, detail, category):
-        factors.append({"name": name, "status": status, "detail": detail, "category": category})
+    def add(name, status, detail, category, weight=1.0):
+        factors.append({"name": name, "status": status, "detail": detail, "category": category, "weight": weight})
     
     # ─── LAYER 1: PRICE ACTION ───
     add("CPR", "SUPPORTS" if cpr_type == "NARROW" else "OPPOSES" if cpr_type == "WIDE" else "NEUTRAL",
-        f"{cpr_type} CPR ({cpr_pct}%). {'Trending day — directional trades favored.' if cpr_type == 'NARROW' else 'Range-bound. Sell strategies better.' if cpr_type == 'WIDE' else 'Normal day.'}", "PRICE_ACTION")
+        f"{cpr_type} CPR ({cpr_pct}%). {'Trending day — directional trades favored.' if cpr_type == 'NARROW' else 'Range-bound. Sell strategies better.' if cpr_type == 'WIDE' else 'Normal day.'}", "PRICE_ACTION", 1.5)
     
     add("PDH/PDL", "SUPPORTS" if price > pdh else "OPPOSES" if price < pdl else "NEUTRAL",
-        f"PDH ₹{pdh:,.0f}, PDL ₹{pdl:,.0f}. {'Price broke above PDH — bullish structure.' if price > pdh else 'Price below PDL — bearish breakdown.' if price < pdl else 'Within prev range — consolidating.'}", "PRICE_ACTION")
+        f"PDH ₹{pdh:,.0f}, PDL ₹{pdl:,.0f}. {'Price broke above PDH — bullish structure.' if price > pdh else 'Price below PDL — bearish breakdown.' if price < pdl else 'Within prev range — consolidating.'}", "PRICE_ACTION", 1.0)
     
     add("Gap Analysis", "SUPPORTS" if gap_pct > 0.3 else "OPPOSES" if gap_pct < -0.3 else "NEUTRAL",
-        f"{gap_type} ({gap_pct:+.2f}%). {'Gap up = bullish continuation.' if gap_pct > 0.5 else 'Gap down = selling pressure.' if gap_pct < -0.5 else 'Flat/minor gap.'}", "PRICE_ACTION")
+        f"{gap_type} ({gap_pct:+.2f}%). {'Gap up = bullish continuation.' if gap_pct > 0.5 else 'Gap down = selling pressure.' if gap_pct < -0.5 else 'Flat/minor gap.'}", "PRICE_ACTION", 0.8)
     
     # ORB (Opening Range Breakout) — from real intraday 15m data
     if orb.get("orb_high"):
@@ -4396,43 +4396,43 @@ async def _algo_signal_impl(symbol: str = "NIFTY"):
         add("Opening Range (ORB)", orb_status,
             f"ORB: ₹{orb['orb_high']:,.0f}–₹{orb['orb_low']:,.0f} (range {orb['orb_pct']:.2f}%). "
             f"{'Price ABOVE ORB high — bullish breakout confirmed.' if orb['breakout'] == 'ABOVE' else 'Price BELOW ORB low — bearish breakdown.' if orb['breakout'] == 'BELOW' else 'Inside range — no breakout yet.'}"
-            f"{' Vol ' + str(orb['orb_vol_ratio']) + '× on ORB candle.' if orb.get('orb_vol_ratio', 1) > 1.3 else ''}", "PRICE_ACTION")
+            f"{' Vol ' + str(orb['orb_vol_ratio']) + '× on ORB candle.' if orb.get('orb_vol_ratio', 1) > 1.3 else ''}", "PRICE_ACTION", 2.0)
     
     add("Market Structure", "SUPPORTS" if hh_hl else "OPPOSES" if lh_ll else "NEUTRAL",
-        f"{'HH + HL on daily — uptrend intact.' if hh_hl else 'LH + LL — downtrend.' if lh_ll else 'Mixed structure — no clear trend.'}", "PRICE_ACTION")
+        f"{'HH + HL on daily — uptrend intact.' if hh_hl else 'LH + LL — downtrend.' if lh_ll else 'Mixed structure — no clear trend.'}", "PRICE_ACTION", 2.0)
     
     add("52W Position", "SUPPORTS" if 20 < w52pos < 75 else "OPPOSES" if w52pos > 90 else "NEUTRAL",
-        f"{w52pos:.0f}% of 52W range. {'Sweet spot for entry.' if 20 < w52pos < 75 else 'Near 52W high — pullback risk.' if w52pos > 80 else 'Near 52W low — catching knife?'}", "PRICE_ACTION")
+        f"{w52pos:.0f}% of 52W range. {'Sweet spot for entry.' if 20 < w52pos < 75 else 'Near 52W high — pullback risk.' if w52pos > 80 else 'Near 52W low — catching knife?'}", "PRICE_ACTION", 0.8)
     
     add("Support/Resistance", "SUPPORTS" if price > sma20 and price > ema21 else "OPPOSES" if price < sma20 and price < ema21 else "NEUTRAL",
-        f"{'Above SMA20 + EMA21 demand zone.' if price > sma20 and price > ema21 else 'Below supply zone.' if price < sma20 and price < ema21 else 'Between zones.'}", "PRICE_ACTION")
+        f"{'Above SMA20 + EMA21 demand zone.' if price > sma20 and price > ema21 else 'Below supply zone.' if price < sma20 and price < ema21 else 'Between zones.'}", "PRICE_ACTION", 1.5)
     
     # ─── LAYER 2: INDICATORS ───
     # VWAP — from real intraday data
     if orb.get("vwap") and orb["vwap"] > 0:
         vwap_val = orb["vwap"]
         add("VWAP", "SUPPORTS" if price > vwap_val else "OPPOSES",
-            f"VWAP ₹{vwap_val:,.0f}. Price {'above — institutional bias bullish. Buyers in control.' if price > vwap_val else 'below — institutional selling. Bears dominating.'}", "INDICATOR")
+            f"VWAP ₹{vwap_val:,.0f}. Price {'above — institutional bias bullish. Buyers in control.' if price > vwap_val else 'below — institutional selling. Bears dominating.'}", "INDICATOR", 2.0)
     
     add("EMA Stack (9/21/50)", "SUPPORTS" if ema9 > ema21 > ema50 else "OPPOSES" if ema9 < ema21 < ema50 else "NEUTRAL",
-        f"EMA 9/21/50: {'Full bullish stack ✓' if ema9 > ema21 > ema50 else 'Full bearish stack' if ema9 < ema21 < ema50 else 'Mixed — choppy'}. 9={ema9:,.0f} 21={ema21:,.0f} 50={ema50:,.0f}", "INDICATOR")
+        f"EMA 9/21/50: {'Full bullish stack ✓' if ema9 > ema21 > ema50 else 'Full bearish stack' if ema9 < ema21 < ema50 else 'Mixed — choppy'}. 9={ema9:,.0f} 21={ema21:,.0f} 50={ema50:,.0f}", "INDICATOR", 2.0)
     
     add("RSI(14)", "SUPPORTS" if 35 < rsi < 65 else "OPPOSES" if rsi > 75 else "SUPPORTS" if rsi < 25 else "NEUTRAL",
-        f"RSI {rsi}. {'Healthy momentum.' if 35 < rsi < 65 else 'Overbought — pullback risk.' if rsi > 70 else 'Oversold — bounce likely.' if rsi < 30 else 'Borderline.'}" + (" No divergence." if 40 < rsi < 60 else ""), "INDICATOR")
+        f"RSI {rsi}. {'Healthy momentum.' if 35 < rsi < 65 else 'Overbought — pullback risk.' if rsi > 70 else 'Oversold — bounce likely.' if rsi < 30 else 'Borderline.'}" + (" No divergence." if 40 < rsi < 60 else ""), "INDICATOR", 1.5)
     
     add("Supertrend(10,3)", "SUPPORTS" if supertrend_buy else "OPPOSES",
-        f"{'BUY signal active.' if supertrend_buy else 'SELL signal active.'}", "INDICATOR")
+        f"{'BUY signal active.' if supertrend_buy else 'SELL signal active.'}", "INDICATOR", 1.5)
     
     add("MACD", "SUPPORTS" if macd_bullish else "OPPOSES",
-        f"Histogram {'expanding ↑' if macd_hist > 0 else 'contracting ↓'} ({macd_hist:+.1f}). {'Bullish crossover.' if macd_bullish else 'Bearish crossover.'}", "INDICATOR")
+        f"Histogram {'expanding ↑' if macd_hist > 0 else 'contracting ↓'} ({macd_hist:+.1f}). {'Bullish crossover.' if macd_bullish else 'Bearish crossover.'}", "INDICATOR", 1.5)
     
     add("Volume", "SUPPORTS" if vol_ratio > 1.2 else "OPPOSES" if vol_ratio < 0.7 else "NEUTRAL",
-        f"{vol_ratio:.1f}× average volume. {'Breakout confirmed by volume.' if vol_ratio > 1.5 else 'Above average — conviction.' if vol_ratio > 1.2 else 'Below average — weak conviction.' if vol_ratio < 0.7 else 'Normal.'}", "INDICATOR")
+        f"{vol_ratio:.1f}× average volume. {'Breakout confirmed by volume.' if vol_ratio > 1.5 else 'Above average — conviction.' if vol_ratio > 1.2 else 'Below average — weak conviction.' if vol_ratio < 0.7 else 'Normal.'}", "INDICATOR", 1.0)
     
-    add("ATR(14)", "NEUTRAL", f"ATR ₹{atr14:,.0f}. SL = 1.5×ATR = ₹{round(atr14*1.5):,.0f}.", "INDICATOR")
+    add("ATR(14)", "NEUTRAL", f"ATR ₹{atr14:,.0f}. SL = 1.5×ATR = ₹{round(atr14*1.5):,.0f}.", "INDICATOR", 0.5)
     
     add("Golden/Death Cross", "SUPPORTS" if sma50 > sma200 else "OPPOSES",
-        f"{'Golden Cross — SMA50 > SMA200. Strongest bullish signal.' if sma50 > sma200 else 'Death Cross — bearish long-term.'}", "INDICATOR")
+        f"{'Golden Cross — SMA50 > SMA200. Strongest bullish signal.' if sma50 > sma200 else 'Death Cross — bearish long-term.'}", "INDICATOR", 2.0)
     
     # ─── LAYER 3: OPTIONS (NSE LIVE) ───
     if nse.get("success"):
@@ -4444,24 +4444,24 @@ async def _algo_signal_impl(symbol: str = "NIFTY"):
         pe_support = nse.get("pe_support", [])
         
         add("India VIX", "SUPPORTS" if 0 < vix < 16 else "NEUTRAL" if vix < 22 else "OPPOSES",
-            f"VIX {vix:.1f}. {'Low fear — premiums cheap. Option BUY favorable.' if vix < 13 else 'Fair premiums.' if vix < 18 else 'Elevated — sell strategies preferred.' if vix < 25 else 'High fear — extreme caution.'}", "OPTION")
+            f"VIX {vix:.1f}. {'Low fear — premiums cheap. Option BUY favorable.' if vix < 13 else 'Fair premiums.' if vix < 18 else 'Elevated — sell strategies preferred.' if vix < 25 else 'High fear — extreme caution.'}", "OPTION", 1.5)
         
         add("PCR", "SUPPORTS" if 0.8 < pcr < 1.3 else "OPPOSES" if pcr < 0.7 else "NEUTRAL",
-            f"PCR {pcr:.2f}. {'PE writing = bullish floor.' if pcr > 1.1 else 'Balanced.' if pcr > 0.8 else 'CE heavy = bearish resistance.' if pcr > 0 else 'N/A.'}", "OPTION")
+            f"PCR {pcr:.2f}. {'PE writing = bullish floor.' if pcr > 1.1 else 'Balanced.' if pcr > 0.8 else 'CE heavy = bearish resistance.' if pcr > 0 else 'N/A.'}", "OPTION", 1.5)
         
         mp_dist = abs(price - max_pain) / price * 100 if max_pain > 0 else 99
         add("Max Pain", "SUPPORTS" if mp_dist < 1.5 else "NEUTRAL",
-            f"Max Pain ₹{max_pain:,.0f}. {'Price near max pain — expiry pin effect.' if mp_dist < 1 else f'Price {mp_dist:.1f}% away. May drift toward it.'}" if max_pain > 0 else "N/A.", "OPTION")
+            f"Max Pain ₹{max_pain:,.0f}. {'Price near max pain — expiry pin effect.' if mp_dist < 1 else f'Price {mp_dist:.1f}% away. May drift toward it.'}" if max_pain > 0 else "N/A.", "OPTION", 1.0)
         
         if ce_resist and pe_support:
             top_ce = ce_resist[0]["strike"]
             top_pe = pe_support[0]["strike"]
             add("OI Buildup", "SUPPORTS" if top_pe < price < top_ce else "NEUTRAL",
-                f"Resist: ₹{top_ce:,.0f} (CE OI:{ce_resist[0]['oi']:,.0f}). Support: ₹{top_pe:,.0f} (PE OI:{pe_support[0]['oi']:,.0f}). {'Within OI range.' if top_pe < price < top_ce else 'Near OI wall.'}", "OPTION")
+                f"Resist: ₹{top_ce:,.0f} (CE OI:{ce_resist[0]['oi']:,.0f}). Support: ₹{top_pe:,.0f} (PE OI:{pe_support[0]['oi']:,.0f}). {'Within OI range.' if top_pe < price < top_ce else 'Near OI wall.'}", "OPTION", 1.5)
         
         if atm_iv > 0:
             add("ATM IV", "SUPPORTS" if atm_iv < 18 else "NEUTRAL" if atm_iv < 30 else "OPPOSES",
-                f"IV {atm_iv:.1f}%. {'Low — options cheap. BUY.' if atm_iv < 15 else 'Normal.' if atm_iv < 25 else 'Elevated. SELL preferred.' if atm_iv < 35 else 'Very high.'}", "OPTION")
+                f"IV {atm_iv:.1f}%. {'Low — options cheap. BUY.' if atm_iv < 15 else 'Normal.' if atm_iv < 25 else 'Elevated. SELL preferred.' if atm_iv < 35 else 'Very high.'}", "OPTION", 1.0)
         
         # Black-Scholes Greeks
         if bs_data.get("greeks"):
@@ -4473,32 +4473,32 @@ async def _algo_signal_impl(symbol: str = "NIFTY"):
             dte_val = bs_data.get("dte", 7)
             
             add("Delta (B-S)", "SUPPORTS" if 0.45 <= ce_delta <= 0.60 else "NEUTRAL" if 0.35 <= ce_delta <= 0.65 else "OPPOSES",
-                f"ATM CE delta {ce_delta:.2f}. {'Sweet spot (0.45-0.55) — best risk/reward for directional trades.' if 0.45 <= ce_delta <= 0.55 else 'Deep ITM — expensive, less leverage.' if ce_delta > 0.65 else 'Far OTM — cheap but low probability.' if ce_delta < 0.30 else 'Acceptable range.'} Premium ₹{ce_prem:,.0f}.", "OPTION")
+                f"ATM CE delta {ce_delta:.2f}. {'Sweet spot (0.45-0.55) — best risk/reward for directional trades.' if 0.45 <= ce_delta <= 0.55 else 'Deep ITM — expensive, less leverage.' if ce_delta > 0.65 else 'Far OTM — cheap but low probability.' if ce_delta < 0.30 else 'Acceptable range.'} Premium ₹{ce_prem:,.0f}.", "OPTION", 1.0)
             
             if ce_gamma > 0 and dte_val <= 2:
                 add("Gamma Risk", "OPPOSES" if ce_gamma > 0.005 else "NEUTRAL",
-                    f"Gamma {ce_gamma:.5f}. {'HIGH gamma near expiry — premium swings wildly. Tighter SL needed.' if ce_gamma > 0.005 else 'Moderate gamma.'} DTE={dte_val}.", "OPTION")
+                    f"Gamma {ce_gamma:.5f}. {'HIGH gamma near expiry — premium swings wildly. Tighter SL needed.' if ce_gamma > 0.005 else 'Moderate gamma.'} DTE={dte_val}.", "OPTION", 1.5)
             
             if ce_theta != 0:
                 add("Theta Decay", "OPPOSES" if dte_val <= 2 and ce_theta < -5 else "NEUTRAL" if ce_theta < -3 else "SUPPORTS",
-                    f"Theta ₹{ce_theta:,.1f}/day. {'Heavy decay — time working against BUY positions.' if ce_theta < -5 else 'Moderate decay.' if ce_theta < -2 else 'Low decay — time not a major factor.'} DTE={dte_val}.", "OPTION")
+                    f"Theta ₹{ce_theta:,.1f}/day. {'Heavy decay — time working against BUY positions.' if ce_theta < -5 else 'Moderate decay.' if ce_theta < -2 else 'Low decay — time not a major factor.'} DTE={dte_val}.", "OPTION", 1.0)
     
     # ─── LAYER 4: FUNDAMENTALS (stocks only) ───
     is_index = yf_sym.startswith("^")
     if not is_index and pe > 0:
-        add("P/E", "SUPPORTS" if 0 < pe < 25 else "NEUTRAL" if pe < 40 else "OPPOSES", f"P/E {pe}x.", "FUNDAMENTAL")
-        add("ROE", "SUPPORTS" if roe > 15 else "NEUTRAL" if roe > 8 else "OPPOSES", f"ROE {roe}%.", "FUNDAMENTAL")
-        add("Margin", "SUPPORTS" if margin > 12 else "NEUTRAL" if margin > 5 else "OPPOSES", f"Net margin {margin}%.", "FUNDAMENTAL")
+        add("P/E", "SUPPORTS" if 0 < pe < 25 else "NEUTRAL" if pe < 40 else "OPPOSES", f"P/E {pe}x.", "FUNDAMENTAL", 0.8)
+        add("ROE", "SUPPORTS" if roe > 15 else "NEUTRAL" if roe > 8 else "OPPOSES", f"ROE {roe}%.", "FUNDAMENTAL", 0.8)
+        add("Margin", "SUPPORTS" if margin > 12 else "NEUTRAL" if margin > 5 else "OPPOSES", f"Net margin {margin}%.", "FUNDAMENTAL", 0.8)
     
     # ─── LAYER 5: RISK ───
     add("Beta/Volatility", "SUPPORTS" if 0.7 <= beta_val <= 1.5 else "OPPOSES" if beta_val > 2 else "NEUTRAL",
-        f"Beta {beta_val:.2f}. {'Normal vol.' if 0.7 <= beta_val <= 1.5 else 'High vol — wider SL.' if beta_val > 1.5 else 'Low vol.'}", "RISK")
+        f"Beta {beta_val:.2f}. {'Normal vol.' if 0.7 <= beta_val <= 1.5 else 'High vol — wider SL.' if beta_val > 1.5 else 'Low vol.'}", "RISK", 0.5)
     
     add("ATR Risk", "SUPPORTS" if atr14 < price * 0.03 else "NEUTRAL" if atr14 < price * 0.05 else "OPPOSES",
-        f"ATR {(atr14/price*100):.1f}% of price. {'Tight range — controlled risk.' if atr14 < price * 0.02 else 'Normal.' if atr14 < price * 0.04 else 'Wide swings — reduce position size.'}", "RISK")
+        f"ATR {(atr14/price*100):.1f}% of price. {'Tight range — controlled risk.' if atr14 < price * 0.02 else 'Normal.' if atr14 < price * 0.04 else 'Wide swings — reduce position size.'}", "RISK", 0.5)
     
     if not is_index and de > 0:
-        add("Balance Sheet", "SUPPORTS" if de < 1 else "NEUTRAL" if de < 2 else "OPPOSES", f"D/E {de:.2f}.", "RISK")
+        add("Balance Sheet", "SUPPORTS" if de < 1 else "NEUTRAL" if de < 2 else "OPPOSES", f"D/E {de:.2f}.", "RISK", 0.5)
     
     # ─── EXPIRY CHECK — Uses REAL NSE expiry dates ───
     IST = datetime.utcnow() + timedelta(hours=5, minutes=30)
@@ -4560,11 +4560,11 @@ async def _algo_signal_impl(symbol: str = "NIFTY"):
     
     if is_expiry:
         expiry_note = f"🔥 {symbol} EXPIRY TODAY! Gamma risk HIGH. Theta decay accelerates after 1 PM. Pin to max pain ₹{nse.get('max_pain', 0):,.0f} likely until 2 PM. Tighter SL mandatory. Exit by 2:30 PM."
-        add("Expiry", "NEUTRAL", expiry_note, "RISK")
-        add("Theta Crush", "OPPOSES", f"EXPIRY — option premiums decay 3-5× faster today. BUY positions face severe time decay after 1 PM. Consider selling or hedging.", "RISK")
+        add("Expiry", "NEUTRAL", expiry_note, "RISK", 1.5)
+        add("Theta Crush", "OPPOSES", f"EXPIRY — option premiums decay 3-5× faster today. BUY positions face severe time decay after 1 PM. Consider selling or hedging.", "RISK", 1.5)
     elif dte_to_expiry <= 2:
         expiry_note = f"⚠️ {dte_to_expiry} day{'s' if dte_to_expiry > 1 else ''} to {symbol} expiry ({next_expiry}). Theta accelerating. Consider shorter targets."
-        add("Near Expiry", "NEUTRAL", expiry_note, "RISK")
+        add("Near Expiry", "NEUTRAL", expiry_note, "RISK", 1.0)
     
     # Expiry-specific SL adjustment: tighter on expiry day
     if is_expiry:
@@ -4574,11 +4574,16 @@ async def _algo_signal_impl(symbol: str = "NIFTY"):
         t3_price = round(price + atr14 * 2.5, 2)
     
     # ═══ COMPUTE SCORES ═══
+    # Weighted scoring
+    weighted_support = sum(f["weight"] for f in factors if f["status"] == "SUPPORTS")
+    weighted_oppose = sum(f["weight"] for f in factors if f["status"] == "OPPOSES")
+    weighted_neutral = sum(f["weight"] for f in factors if f["status"] == "NEUTRAL")
+    total_weight = sum(f["weight"] for f in factors)
     supports = len([f for f in factors if f["status"] == "SUPPORTS"])
     opposes = len([f for f in factors if f["status"] == "OPPOSES"])
     neutrals = len([f for f in factors if f["status"] == "NEUTRAL"])
     total = len(factors)
-    pct = round((supports / total) * 100) if total > 0 else 0
+    pct = round((weighted_support / total_weight) * 100) if total_weight > 0 else 0
     
     if pct >= 78: signal, confidence = "STRONG BUY", "HIGH"
     elif pct >= 62: signal, confidence = "BUY", "HIGH"
@@ -4724,6 +4729,10 @@ async def _algo_signal_impl(symbol: str = "NIFTY"):
     result["confluenceScore"] = supports
     result["totalFactors"] = total
     result["supports"] = supports
+    result["weightedSupport"] = round(weighted_support, 1)
+    result["weightedOppose"] = round(weighted_oppose, 1)
+    result["weightedNeutral"] = round(weighted_neutral, 1)
+    result["totalWeight"] = round(total_weight, 1)
     result["opposes"] = opposes
     result["neutrals"] = neutrals
     result["pct"] = pct
