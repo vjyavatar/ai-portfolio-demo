@@ -4011,7 +4011,7 @@ async def performance_leaderboard():
 
 ALGO_INSTRUMENTS = {
     "NIFTY": {"sym": "^NSEI", "lot": 65, "gap": 50, "ex": "NFO", "exp": "Tuesday"},
-    "BANKNIFTY": {"sym": "^NSEBANK", "lot": 30, "gap": 100, "ex": "NFO", "exp": "Last Tue"},
+    "BANKNIFTY": {"sym": "^NSEBANK", "lot": 30, "gap": 100, "ex": "NFO", "exp": "Monthly-Tue"},
     "SENSEX": {"sym": "^BSESN", "lot": 20, "gap": 100, "ex": "BFO", "exp": "Thursday"},
     "RELIANCE": {"sym": "RELIANCE.NS", "lot": 250, "gap": 20, "ex": "NFO"},
     "TCS": {"sym": "TCS.NS", "lot": 150, "gap": 50, "ex": "NFO"},
@@ -4052,16 +4052,39 @@ async def algo_signal_safe(symbol: str = "NIFTY"):
 
 @app.get("/api/algo-batch")
 async def algo_batch():
-    """Batch: 3 indices sequentially with 3-min cache. First call ~15s, cached calls instant."""
-    symbols = ["NIFTY", "BANKNIFTY", "SENSEX"]
+    """Batch: 3 indices sequentially with 3-min cache. Prioritizes expiry index."""
+    from datetime import datetime, timedelta
+    IST = datetime.utcnow() + timedelta(hours=5, minutes=30)
+    day_name = IST.strftime("%A")
+    
+    # Determine which index expires today for priority ordering
+    # NIFTY weekly=Tuesday, SENSEX weekly=Thursday
+    EXPIRY_MAP = {"Tuesday": "NIFTY", "Thursday": "SENSEX"}
+    expiry_index = EXPIRY_MAP.get(day_name, "")
+    
+    # Order: expiry index first, then others
+    base = ["NIFTY", "BANKNIFTY", "SENSEX"]
+    if expiry_index in base:
+        base.remove(expiry_index)
+        symbols = [expiry_index] + base
+    else:
+        symbols = base
+    
     out = []
     for s in symbols:
         try:
-            r = await algo_signal_safe(s)  # Uses 3-min cache internally
+            r = await algo_signal_safe(s)
             out.append(r)
         except Exception as e:
             out.append({"success": False, "symbol": s, "error": str(e)})
-    return {"success": True, "signals": out, "count": len(out)}
+    
+    return {
+        "success": True,
+        "signals": out,
+        "count": len(out),
+        "expiryToday": expiry_index,
+        "dayName": day_name,
+    }
 
 async def _algo_signal_impl(symbol: str = "NIFTY"):
     """5-Layer Confluence Algorithm — ALL real data, ZERO hallucination."""
@@ -4477,20 +4500,78 @@ async def _algo_signal_impl(symbol: str = "NIFTY"):
     if not is_index and de > 0:
         add("Balance Sheet", "SUPPORTS" if de < 1 else "NEUTRAL" if de < 2 else "OPPOSES", f"D/E {de:.2f}.", "RISK")
     
-    # ─── EXPIRY CHECK ───
+    # ─── EXPIRY CHECK — Uses REAL NSE expiry dates ───
     IST = datetime.utcnow() + timedelta(hours=5, minutes=30)
+    today_str = IST.strftime("%d-%b-%Y")  # e.g. "17-Mar-2026" — same format as NSE
+    today_date = IST.strftime("%Y-%m-%d")
     day_name = IST.strftime("%A")
     is_expiry = False
     expiry_note = "Non-expiry day. Standard rules."
-    exp_day = inst.get("exp", "")
-    if "Tuesday" in exp_day and day_name == "Tuesday":
-        is_expiry = True
-        expiry_note = "🔥 NIFTY EXPIRY! Gamma risk, tighter SL, pin to max pain likely."
-    elif "Thursday" in exp_day and day_name == "Thursday":
-        is_expiry = True
-        expiry_note = "🔥 SENSEX EXPIRY! Theta decay accelerating."
+    expiry_instrument = ""  # which index expires today
+    next_expiry = ""
+    dte_to_expiry = 99
+    
+    # Method 1: Check NSE expiry_dates from options chain (REAL data)
+    nse_expiry_dates = nse.get("expiry_dates", [])
+    if nse_expiry_dates:
+        next_expiry = nse_expiry_dates[0] if nse_expiry_dates else ""
+        # Compare today with nearest expiry
+        try:
+            exp_dt = datetime.strptime(next_expiry, "%d-%b-%Y")
+            today_dt = IST.replace(hour=0, minute=0, second=0, microsecond=0)
+            dte_to_expiry = (exp_dt - today_dt).days
+            if dte_to_expiry == 0:
+                is_expiry = True
+                expiry_instrument = symbol
+        except:
+            pass
+    
+    # Method 2: Fallback — check known weekly expiry schedule
+    # NSE 2024-2026 schedule: NIFTY=Thursday, BANKNIFTY=Wednesday, SENSEX=Friday
+    # (Changed from Tue/Thu in Nov 2024)
+    if not is_expiry:
+        # NSE/BSE expiry schedule (post Sep 2025 SEBI revision):
+        # NIFTY weekly = Tuesday (NSE), SENSEX weekly = Thursday (BSE)
+        # BANKNIFTY = NO weekly (monthly only = last Tuesday)
+        EXPIRY_SCHEDULE = {
+            "NIFTY": "Tuesday",
+            "SENSEX": "Thursday",
+        }
+        exp_day = EXPIRY_SCHEDULE.get(symbol, "")
+        if exp_day and day_name == exp_day:
+            is_expiry = True
+            expiry_instrument = symbol
+    
+    # Also check if ANY index expires today (for top trades priority)
+    # Which indices expire today? (NIFTY=Tue, SENSEX=Thu)
+    all_expiry_today = []
+    WEEKLY_EXPIRY_MAP = {"Tuesday": ["NIFTY"], "Thursday": ["SENSEX"]}
+    if day_name in WEEKLY_EXPIRY_MAP:
+        all_expiry_today = WEEKLY_EXPIRY_MAP[day_name]
+    # Also check BANKNIFTY monthly (last Tuesday — compare with NSE expiry_dates)
+    if symbol == "BANKNIFTY" and nse_expiry_dates:
+        try:
+            bn_exp = datetime.strptime(nse_expiry_dates[0], "%d-%b-%Y")
+            if bn_exp.strftime("%Y-%m-%d") == IST.strftime("%Y-%m-%d"):
+                is_expiry = True
+                all_expiry_today.append("BANKNIFTY")
+        except:
+            pass
+    
     if is_expiry:
+        expiry_note = f"🔥 {symbol} EXPIRY TODAY! Gamma risk HIGH. Theta decay accelerates after 1 PM. Pin to max pain ₹{nse.get('max_pain', 0):,.0f} likely until 2 PM. Tighter SL mandatory. Exit by 2:30 PM."
         add("Expiry", "NEUTRAL", expiry_note, "RISK")
+        add("Theta Crush", "OPPOSES", f"EXPIRY — option premiums decay 3-5× faster today. BUY positions face severe time decay after 1 PM. Consider selling or hedging.", "RISK")
+    elif dte_to_expiry <= 2:
+        expiry_note = f"⚠️ {dte_to_expiry} day{'s' if dte_to_expiry > 1 else ''} to {symbol} expiry ({next_expiry}). Theta accelerating. Consider shorter targets."
+        add("Near Expiry", "NEUTRAL", expiry_note, "RISK")
+    
+    # Expiry-specific SL adjustment: tighter on expiry day
+    if is_expiry:
+        sl_price = round(price - atr14 * 1.0, 2)  # 1.0× ATR instead of 1.5×
+        t1_price = round(price + atr14 * 0.8, 2)   # Closer targets
+        t2_price = round(price + atr14 * 1.5, 2)
+        t3_price = round(price + atr14 * 2.5, 2)
     
     # ═══ COMPUTE SCORES ═══
     supports = len([f for f in factors if f["status"] == "SUPPORTS"])
@@ -4508,10 +4589,12 @@ async def _algo_signal_impl(symbol: str = "NIFTY"):
     direction = "BULLISH" if supports > opposes else "BEARISH" if opposes > supports else "NEUTRAL"
     
     # ═══ TRADE PLAN ═══
-    sl_price = round(price - atr14 * 1.5, 2)
-    t1_price = round(price + atr14 * 1, 2)
-    t2_price = round(price + atr14 * 2, 2)
-    t3_price = round(price + atr14 * 3, 2)
+    if not is_expiry:
+        sl_price = round(price - atr14 * 1.5, 2)
+        t1_price = round(price + atr14 * 1, 2)
+        t2_price = round(price + atr14 * 2, 2)
+        t3_price = round(price + atr14 * 3, 2)
+    # (expiry values already set above if is_expiry=True)
     risk_per_lot = round(abs(price - sl_price) * inst["lot"], 0)
     reward_t2 = round(abs(t2_price - price) * inst["lot"], 0)
     rr_ratio = f"1:{round((t2_price - price) / (price - sl_price), 1)}" if price > sl_price else "N/A"
@@ -4646,6 +4729,10 @@ async def _algo_signal_impl(symbol: str = "NIFTY"):
     result["pct"] = pct
     result["isExpiry"] = is_expiry
     result["expiryNote"] = expiry_note
+    result["expiryInstrument"] = expiry_instrument
+    result["allExpiryToday"] = all_expiry_today
+    result["nextExpiry"] = next_expiry
+    result["dteToExpiry"] = dte_to_expiry
     result["trade"] = trade if signal not in ["HOLD / WAIT", "AVOID"] else None
     
     # ═══ GAMMA BLAST SETUP — Expiry day straddle/strangle ═══

@@ -5053,25 +5053,45 @@ function loadTopTrades(){
 var el=document.getElementById('topTradesTable');
 if(!el)return;
 var symbols=['NIFTY','BANKNIFTY','SENSEX'];
-// Show skeleton table immediately
+// Show skeleton
 var h='<table style="width:100%;border-collapse:collapse;font-size:11px"><thead><tr style="background:var(--bg2);border-bottom:2px solid var(--border)"><th style="padding:8px 10px;text-align:left;font-size:10px;font-weight:800">INSTRUMENT</th><th style="padding:8px;text-align:center;font-size:10px">SIGNAL</th><th style="padding:8px;text-align:center;font-size:10px">TREND</th><th style="padding:8px;text-align:right;font-size:10px">SPOT</th><th style="padding:8px;text-align:left;font-size:10px;color:#0a7c42">TRADE</th><th style="padding:8px;text-align:right;font-size:10px">ENTRY</th><th style="padding:8px;text-align:right;font-size:10px;color:#ef4444">SL</th><th style="padding:8px;text-align:right;font-size:10px;color:#0a7c42">TGT</th><th style="padding:8px;text-align:center;font-size:10px">R:R</th></tr></thead><tbody>';
 symbols.forEach(function(s){h+='<tr id="ttRow_'+s+'" style="border-bottom:1px solid var(--border)"><td style="padding:8px 10px;font-weight:800">'+s+'</td><td colspan="8" style="padding:8px;color:var(--text3);font-size:10px"><div style="display:inline-block;width:12px;height:12px;border:2px solid var(--blue);border-top-color:transparent;border-radius:50%;animation:spin .5s linear infinite;vertical-align:middle;margin-right:4px"></div>Loading...</td></tr>'});
 h+='</tbody></table>';
-el.innerHTML=h;
-// Fetch each symbol and render row as it arrives
+// Expiry banner placeholder
+el.innerHTML='<div id="expiryBanner"></div>'+h;
+// Fetch each symbol progressively
+var allResults=[];
 symbols.forEach(function(s){
 fetch('/api/algo-signal?symbol='+s).then(function(r){return r.json()}).then(function(d){
+allResults.push(d);
 var row=document.getElementById('ttRow_'+s);
 if(!row||!d.success)return;
 row.innerHTML=_buildTradeRow(d);
 row.style.cursor='pointer';
 row.onclick=function(){algoSelect(d.symbol,null)};
 row.onmouseover=function(){this.style.background='var(--bg2)'};
-row.onmouseout=function(){this.style.background='transparent'};
-}).catch(function(e){
-var row=document.getElementById('ttRow_'+s);
-if(row)row.innerHTML='<td style="padding:8px 10px;font-weight:800">'+s+'</td><td colspan="8" style="padding:8px;color:var(--red);font-size:10px">&#9888; Failed</td>';
-});
+row.onmouseout=function(){this.style.background=d.isExpiry?'rgba(239,68,68,.04)':'transparent'};
+// Highlight expiry row
+if(d.isExpiry){
+row.style.background='rgba(239,68,68,.04)';
+row.style.borderLeft='3px solid #ef4444';
+}
+// Update expiry banner when first result with expiry info arrives
+if(d.allExpiryToday&&d.allExpiryToday.length>0){
+var ban=document.getElementById('expiryBanner');
+if(ban&&!ban.dataset.set){
+ban.dataset.set='1';
+var exList=d.allExpiryToday.join(', ');
+ban.innerHTML='<div style="padding:10px 16px;border-radius:10px;background:linear-gradient(135deg,rgba(239,68,68,.1),rgba(245,158,11,.06));border:2px solid rgba(239,68,68,.25);margin-bottom:12px;display:flex;align-items:center;gap:10px"><span style="font-size:24px;animation:pulse 1.5s infinite">&#128293;</span><div><div style="font-size:13px;font-weight:800;color:#ef4444;letter-spacing:.5px">EXPIRY DAY — '+exList+'</div><div style="font-size:10px;color:var(--text2);margin-top:2px">Weekly options expiry today. Gamma risk elevated after 1 PM. Pin to max pain likely. Tighter SL mandatory. Exit by 2:30 PM. Theta crushes BUY positions.</div></div></div>';
+}
+}else if(d.dteToExpiry&&d.dteToExpiry<=2&&d.dteToExpiry>0){
+var ban=document.getElementById('expiryBanner');
+if(ban&&!ban.dataset.set){
+ban.dataset.set='1';
+ban.innerHTML='<div style="padding:8px 14px;border-radius:8px;background:rgba(245,158,11,.06);border:1px solid rgba(245,158,11,.2);margin-bottom:10px;font-size:10px;color:var(--amber)"><strong>&#9888; '+d.symbol+' expiry in '+d.dteToExpiry+' day'+(d.dteToExpiry>1?'s':'')+' ('+d.nextExpiry+')</strong> — Theta accelerating. Consider shorter targets or sell strategies.</div>';
+}
+}
+}).catch(function(){});
 });
 window._topTradesLoaded=true;
 }
@@ -5085,7 +5105,7 @@ var sC=sig==='STRONG BUY'?'#0a7c42':sig==='BUY'?'#10b981':sig==='LEAN BUY'?'#3b8
 var tC=trend.indexOf('UP')>=0?'#0a7c42':trend.indexOf('DOWN')>=0?'#ef4444':'#f59e0b';
 var isWait=sig==='HOLD / WAIT'||sig==='AVOID';
 var h='';
-h+='<td style="padding:8px 10px"><div style="font-weight:800;color:var(--text)">'+d.symbol+'</div><div style="font-size:8px;color:var(--text3)">'+(d.instrument?.ex||'NFO')+' Lot:'+(d.instrument?.lot||'')+'</div></td>';
+h+='<td style="padding:8px 10px"><div style="font-weight:800;color:var(--text)">'+d.symbol+(d.isExpiry?' <span style="font-size:7px;padding:1px 5px;border-radius:3px;background:rgba(239,68,68,.15);color:#ef4444;font-weight:800;animation:pulse 1.5s infinite;vertical-align:middle">EXPIRY</span>':'')+'</div><div style="font-size:8px;color:var(--text3)">'+(d.instrument?.ex||'NFO')+' Lot:'+(d.instrument?.lot||'')+(d.dteToExpiry<=2&&d.dteToExpiry>0?' &middot; DTE:'+d.dteToExpiry:'')+'</div></td>';
 h+='<td style="padding:8px;text-align:center"><span style="font-size:9px;font-weight:800;padding:3px 8px;border-radius:4px;background:'+sC+'12;color:'+sC+'">'+sig+'</span></td>';
 h+='<td style="padding:8px;text-align:center"><span style="font-size:9px;font-weight:700;color:'+tC+'">'+trend.replace('STRONG ','')+'</span></td>';
 h+='<td style="padding:8px;text-align:right;font-family:var(--mono);font-weight:700">'+S+(d.spot||0).toLocaleString("en-IN")+'</td>';
