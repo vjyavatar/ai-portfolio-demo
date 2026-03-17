@@ -7000,16 +7000,16 @@ h+=`<div style="margin-top:6px;font-size:8px;color:var(--text3)">Algorithmic ana
 h+=`</div></div>`;
 resEl.innerHTML=h;
 }catch(e){resEl.innerHTML=`<div style="font-size:11px;color:var(--red)">Error: ${e.message}</div>`}
-finally{btn.disabled=false;btn.textContent='⚡ Analyze Decision'}
+finally{if(btn){btn.disabled=false;btn.textContent='⚡ Analyze Decision'}}
 }
 
 async function loadTradeScorecard(){
 const el=document.getElementById('scorecardArea');
-const btn=document.getElementById('scorecardBtn');
+var btn=document.getElementById('scorecardBtn');
 if(!el)return;
 const emailEl=document.getElementById('email');
 const em=emailEl?(emailEl.dataset.real||emailEl.value).trim().toLowerCase():'';
-btn.disabled=true;btn.textContent='Loading...';
+if(btn){btn.disabled=true;btn.textContent='Loading...';}
 el.style.display='block';
 el.innerHTML='<div style="text-align:center;padding:20px;color:var(--text3)"><div class="spinner" style="width:20px;height:20px;border:2px solid var(--cyan);border-top-color:transparent;border-radius:50%;animation:spin 1s linear infinite;margin:0 auto 8px"></div>Fetching actual market data and validating trades...</div>';
 try{
@@ -7124,7 +7124,7 @@ el.innerHTML=h;
 }catch(e){
 el.innerHTML=`<div style="color:var(--red);font-size:12px">Error: ${e.message}</div>`;
 }finally{
-btn.disabled=false;btn.textContent='&#128202; Trade Scorecard';
+if(btn){btn.disabled=false;btn.textContent='&#128202; Trade Scorecard';}
 }
 }
 
@@ -7134,17 +7134,18 @@ btn.disabled=false;btn.textContent='&#128202; Trade Scorecard';
 async function loadIndexTrades(forceRefresh){
 const el=document.getElementById('tradesContent');
 const errEl=document.getElementById('tradesError');
-const btn=document.getElementById('tradesLoadBtn');
+var btn=document.getElementById('tradesLoadBtn');
 // Get current email from the input
 const emailInput=document.getElementById('email');
 const email=emailInput?(emailInput.dataset.real||emailInput.value).trim():'';
-if(!email){errEl.textContent='Please enter your email in the search bar above first.';errEl.style.display='block';return}
+if(!email){if(errEl){errEl.textContent='Please enter your email in the search bar above first.';errEl.style.display='block';}return}
 // Access check
-btn.disabled=true;btn.textContent=forceRefresh?'⏳ Refreshing with live data...':'⏳ Analyzing markets...';errEl.style.display='none';
+if(btn){btn.disabled=true;btn.textContent=forceRefresh?'⏳ Refreshing with live data...':'⏳ Analyzing markets...';}
+if(errEl)errEl.style.display='none';
 try{
 const r=await fetch('/api/index-trades',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:email,force_refresh:!!forceRefresh})});
 const data=await r.json();
-if(!data.success){errEl.textContent=data.error||'Service busy. Please try again in a moment.';errEl.style.display='block';btn.disabled=false;btn.textContent='⚡ Generate Today\'s Trades';return}
+if(!data.success){if(errEl){errEl.textContent=data.error||'Service busy. Please try again in a moment.';errEl.style.display='block';}if(btn){btn.disabled=false;btn.textContent='⚡ Generate Today\'s Trades';}return}
 
 // Render the trades
 let html='';
@@ -7457,11 +7458,11 @@ _bh+='<button onclick="loadIndexTrades()" style="padding:10px 24px;border-radius
 _bh+='<button onclick="loadTradeScorecard()" style="padding:10px 20px;border-radius:10px;border:2px solid var(--purple);background:rgba(139,92,246,.08);color:var(--purple);font-family:Sora,sans-serif;font-size:12px;font-weight:700;cursor:pointer">&#128202; Trade Scorecard</button>';
 _bh+='</div>';
 el.insertAdjacentHTML('beforeend',_bh);
-btn.disabled=false;btn.textContent='\u26A1 Generate Today\'s Trades';
+if(btn){btn.disabled=false;btn.textContent='\u26A1 Generate Today\'s Trades';}
 
 }catch(e){
-errEl.textContent='Service busy. Please try again in a moment.';errEl.style.display='block';
-btn.disabled=false;btn.textContent='\u26A1 Generate Today\'s Trades';
+if(errEl){errEl.textContent='Service busy. Please try again in a moment.';errEl.style.display='block';}
+if(btn){btn.disabled=false;btn.textContent='\u26A1 Generate Today\'s Trades';}
 }}
 
 

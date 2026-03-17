@@ -4111,6 +4111,7 @@ async def _algo_signal_impl(symbol: str = "NIFTY"):
     inst = ALGO_INSTRUMENTS.get(symbol, {"sym": f"{symbol}.NS" if symbol not in ["SPY","QQQ","IWM","AAPL","MSFT","NVDA","TSLA","AMZN","GOOGL","META","AMD","JPM","AVGO"] else symbol, "lot": 100, "gap": 10, "ex": "NFO", "region": "IN" if ".NS" in symbol or ".BO" in symbol else "US", "currency": "INR" if ".NS" in symbol or ".BO" in symbol else "USD"})
     yf_sym = inst["sym"]
     is_us = inst.get("region") == "US"
+    csym = "$" if is_us else "₹"
     
     # ═══ FETCH ALL DATA IN PARALLEL ═══
     result = {"success": True, "symbol": symbol, "instrument": inst, "region": inst.get("region", "IN"), "currSym": "₹" if inst.get("region") != "US" else "$"}
