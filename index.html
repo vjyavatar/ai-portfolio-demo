@@ -801,16 +801,23 @@ footer{position:relative;z-index:1;margin-top:32px;background:#002f6c;border-top
 <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
 <span style="font-size:18px">&#127919;</span>
 <span style="font-family:Sora,sans-serif;font-size:16px;font-weight:800;color:var(--text)">Algo Trade Scanner</span>
-<span style="font-size:8px;padding:2px 10px;border-radius:100px;background:#0eb24e;color:#fff;font-weight:700;letter-spacing:.5px">LIVE NSE DATA</span>
+<span style="font-size:8px;padding:2px 10px;border-radius:100px;background:#0eb24e;color:#fff;font-weight:700;letter-spacing:.5px">LIVE DATA</span>
 </div>
-<div style="font-size:11px;color:var(--text3);margin-bottom:12px;line-height:1.6">Select any index or F&amp;O stock below. The algorithm fetches <strong>real-time data</strong> from NSE + yfinance, computes 20+ factors across 5 layers (Price Action, Indicators, Options, Fundamentals, Risk), and delivers a confluence-based trade signal with entry, SL, 3 targets, and position sizing.</div>
+<div style="font-size:11px;color:var(--text3);margin-bottom:12px;line-height:1.6">20+ factor confluence engine across 5 layers (Price Action, Indicators, Options, Fundamentals, Risk). Entry, SL, 3 targets with exact option premiums.</div>
 
-<!-- INSTRUMENT SELECTOR -->
+<!-- INDIA / USA REGION TOGGLE -->
+<div style="display:flex;gap:0;margin-bottom:12px;border:1px solid var(--border);border-radius:8px;overflow:hidden;width:fit-content">
+<button id="algoRegIN" onclick="switchAlgoRegion('IN')" style="padding:8px 20px;font-size:12px;font-weight:800;border:none;cursor:pointer;font-family:Sora,sans-serif;background:#002f6c;color:#fff;transition:all .2s">&#127470;&#127475; India</button>
+<button id="algoRegUS" onclick="switchAlgoRegion('US')" style="padding:8px 20px;font-size:12px;font-weight:800;border:none;cursor:pointer;font-family:Sora,sans-serif;background:var(--bg2);color:var(--text3);transition:all .2s">&#127482;&#127480; USA</button>
+</div>
+
+<!-- INDIA INSTRUMENTS -->
+<div id="algoIN" style="">
 <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
 <div style="font-size:10px;font-weight:700;color:var(--text3);letter-spacing:1px">INDICES:</div>
-<button onclick="algoSelect('NIFTY',this)" class="algo-btn active" style="padding:5px 14px;font-size:11px;font-weight:700">&#127470;&#127475; Nifty 50</button>
-<button onclick="algoSelect('BANKNIFTY',this)" class="algo-btn" style="padding:5px 14px;font-size:11px;font-weight:700">&#127470;&#127475; Bank Nifty</button>
-<button onclick="algoSelect('SENSEX',this)" class="algo-btn" style="padding:5px 14px;font-size:11px;font-weight:700">&#127470;&#127475; Sensex</button>
+<button onclick="algoSelect('NIFTY',this)" class="algo-btn active" style="padding:5px 14px;font-size:11px;font-weight:700">Nifty 50</button>
+<button onclick="algoSelect('BANKNIFTY',this)" class="algo-btn" style="padding:5px 14px;font-size:11px;font-weight:700">Bank Nifty</button>
+<button onclick="algoSelect('SENSEX',this)" class="algo-btn" style="padding:5px 14px;font-size:11px;font-weight:700">Sensex</button>
 </div>
 <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
 <div style="font-size:10px;font-weight:700;color:var(--text3);letter-spacing:1px">F&amp;O STOCKS:</div>
@@ -827,20 +834,45 @@ footer{position:relative;z-index:1;margin-top:32px;background:#002f6c;border-top
 <button onclick="algoSelect('ITC',this)" class="algo-btn" style="padding:4px 10px;font-size:10px">ITC</button>
 <button onclick="algoSelect('MARUTI',this)" class="algo-btn" style="padding:4px 10px;font-size:10px">MARUTI</button>
 </div>
+</div>
+
+<!-- USA INSTRUMENTS -->
+<div id="algoUS" style="display:none">
+<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
+<div style="font-size:10px;font-weight:700;color:var(--text3);letter-spacing:1px">INDICES:</div>
+<button onclick="algoSelect('SPY',this)" class="algo-btn" style="padding:5px 14px;font-size:11px;font-weight:700">SPY (S&amp;P 500)</button>
+<button onclick="algoSelect('QQQ',this)" class="algo-btn" style="padding:5px 14px;font-size:11px;font-weight:700">QQQ (Nasdaq)</button>
+<button onclick="algoSelect('IWM',this)" class="algo-btn" style="padding:5px 14px;font-size:11px;font-weight:700">IWM (Russell)</button>
+</div>
+<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
+<div style="font-size:10px;font-weight:700;color:var(--text3);letter-spacing:1px">MEGA CAPS:</div>
+<button onclick="algoSelect('AAPL',this)" class="algo-btn" style="padding:4px 10px;font-size:10px">AAPL</button>
+<button onclick="algoSelect('MSFT',this)" class="algo-btn" style="padding:4px 10px;font-size:10px">MSFT</button>
+<button onclick="algoSelect('NVDA',this)" class="algo-btn" style="padding:4px 10px;font-size:10px">NVDA</button>
+<button onclick="algoSelect('TSLA',this)" class="algo-btn" style="padding:4px 10px;font-size:10px">TSLA</button>
+<button onclick="algoSelect('AMZN',this)" class="algo-btn" style="padding:4px 10px;font-size:10px">AMZN</button>
+<button onclick="algoSelect('GOOGL',this)" class="algo-btn" style="padding:4px 10px;font-size:10px">GOOGL</button>
+<button onclick="algoSelect('META',this)" class="algo-btn" style="padding:4px 10px;font-size:10px">META</button>
+<button onclick="algoSelect('AMD',this)" class="algo-btn" style="padding:4px 10px;font-size:10px">AMD</button>
+<button onclick="algoSelect('JPM',this)" class="algo-btn" style="padding:4px 10px;font-size:10px">JPM</button>
+<button onclick="algoSelect('AVGO',this)" class="algo-btn" style="padding:4px 10px;font-size:10px">AVGO</button>
+</div>
+</div>
+
 <div style="display:flex;gap:6px;align-items:center">
 <div style="font-size:10px;font-weight:700;color:var(--text3);letter-spacing:1px">CUSTOM:</div>
-<input id="algoCustomTicker" type="text" placeholder="Any stock... e.g. TATASTEEL" style="padding:5px 12px;border-radius:6px;border:1px solid var(--border);font-size:11px;width:180px;font-family:DM Sans,sans-serif;background:var(--surface);color:var(--text)" onkeydown="if(event.key==='Enter'){var v=this.value.trim().toUpperCase();if(v)algoSelect(v,null)}">
+<input id="algoCustomTicker" type="text" placeholder="Any stock... e.g. TATASTEEL or AAPL" style="padding:5px 12px;border-radius:6px;border:1px solid var(--border);font-size:11px;width:220px;font-family:DM Sans,sans-serif;background:var(--surface);color:var(--text)" onkeydown="if(event.key==='Enter'){var v=this.value.trim().toUpperCase();if(v)algoSelect(v,null)}">
 <button onclick="var v=document.getElementById('algoCustomTicker').value.trim().toUpperCase();if(v)algoSelect(v,null)" style="padding:5px 14px;border-radius:6px;background:#002f6c;color:#fff;border:none;font-size:11px;font-weight:700;cursor:pointer;font-family:Sora,sans-serif">&#9889; Analyze</button>
 </div>
 </div>
 
-<!-- TOP TRADES — Auto-fetches all 3 indices -->
+<!-- TOP TRADES — Region-aware -->
 <div id="topTradesSection" style="padding:14px 18px;border-bottom:1px solid var(--border)">
 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
 <div style="display:flex;align-items:center;gap:8px"><span style="font-size:16px">&#128293;</span><span style="font-family:Sora,sans-serif;font-size:14px;font-weight:800;color:var(--text)">Today's Top Trades</span><span style="font-size:8px;padding:2px 8px;border-radius:100px;background:#ef4444;color:#fff;font-weight:700">LIVE</span></div>
 <button onclick="loadTopTrades()" style="padding:4px 14px;border-radius:6px;background:var(--blue);color:#fff;border:none;font-size:10px;font-weight:700;cursor:pointer;font-family:DM Sans,sans-serif">&#8635; Refresh All</button>
 </div>
-<div id="topTradesTable"><div style="text-align:center;padding:20px;color:var(--text3);font-size:11px">&#9203; Loading NIFTY, BANKNIFTY, SENSEX signals...</div></div>
+<div id="topTradesTable"><div style="text-align:center;padding:20px;color:var(--text3);font-size:11px">&#9203; Loading signals...</div></div>
 </div>
 
 <!-- ALGO RESULT (individual deep-dive) -->

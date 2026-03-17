@@ -4010,21 +4010,36 @@ async def performance_leaderboard():
 
 
 ALGO_INSTRUMENTS = {
-    "NIFTY": {"sym": "^NSEI", "lot": 65, "gap": 50, "ex": "NFO", "exp": "Tuesday"},
-    "BANKNIFTY": {"sym": "^NSEBANK", "lot": 30, "gap": 100, "ex": "NFO", "exp": "Monthly-Tue"},
-    "SENSEX": {"sym": "^BSESN", "lot": 20, "gap": 100, "ex": "BFO", "exp": "Thursday"},
-    "RELIANCE": {"sym": "RELIANCE.NS", "lot": 250, "gap": 20, "ex": "NFO"},
-    "TCS": {"sym": "TCS.NS", "lot": 150, "gap": 50, "ex": "NFO"},
-    "HDFCBANK": {"sym": "HDFCBANK.NS", "lot": 550, "gap": 20, "ex": "NFO"},
-    "INFY": {"sym": "INFY.NS", "lot": 400, "gap": 20, "ex": "NFO"},
-    "ICICIBANK": {"sym": "ICICIBANK.NS", "lot": 700, "gap": 20, "ex": "NFO"},
-    "SBIN": {"sym": "SBIN.NS", "lot": 750, "gap": 10, "ex": "NFO"},
-    "TATAMOTORS": {"sym": "TATAMOTORS.NS", "lot": 575, "gap": 10, "ex": "NFO"},
-    "BHARTIARTL": {"sym": "BHARTIARTL.NS", "lot": 475, "gap": 20, "ex": "NFO"},
-    "LT": {"sym": "LT.NS", "lot": 150, "gap": 50, "ex": "NFO"},
-    "BAJFINANCE": {"sym": "BAJFINANCE.NS", "lot": 125, "gap": 100, "ex": "NFO"},
-    "ITC": {"sym": "ITC.NS", "lot": 1600, "gap": 5, "ex": "NFO"},
-    "MARUTI": {"sym": "MARUTI.NS", "lot": 100, "gap": 100, "ex": "NFO"},
+    # ═══ INDIA ═══
+    "NIFTY": {"sym": "^NSEI", "lot": 65, "gap": 50, "ex": "NFO", "exp": "Tuesday", "region": "IN", "currency": "INR"},
+    "BANKNIFTY": {"sym": "^NSEBANK", "lot": 30, "gap": 100, "ex": "NFO", "exp": "Monthly-Tue", "region": "IN", "currency": "INR"},
+    "SENSEX": {"sym": "^BSESN", "lot": 20, "gap": 100, "ex": "BFO", "exp": "Thursday", "region": "IN", "currency": "INR"},
+    "RELIANCE": {"sym": "RELIANCE.NS", "lot": 250, "gap": 20, "ex": "NFO", "region": "IN", "currency": "INR"},
+    "TCS": {"sym": "TCS.NS", "lot": 150, "gap": 50, "ex": "NFO", "region": "IN", "currency": "INR"},
+    "HDFCBANK": {"sym": "HDFCBANK.NS", "lot": 550, "gap": 20, "ex": "NFO", "region": "IN", "currency": "INR"},
+    "INFY": {"sym": "INFY.NS", "lot": 400, "gap": 20, "ex": "NFO", "region": "IN", "currency": "INR"},
+    "ICICIBANK": {"sym": "ICICIBANK.NS", "lot": 700, "gap": 20, "ex": "NFO", "region": "IN", "currency": "INR"},
+    "SBIN": {"sym": "SBIN.NS", "lot": 750, "gap": 10, "ex": "NFO", "region": "IN", "currency": "INR"},
+    "TATAMOTORS": {"sym": "TATAMOTORS.NS", "lot": 575, "gap": 10, "ex": "NFO", "region": "IN", "currency": "INR"},
+    "BHARTIARTL": {"sym": "BHARTIARTL.NS", "lot": 475, "gap": 20, "ex": "NFO", "region": "IN", "currency": "INR"},
+    "LT": {"sym": "LT.NS", "lot": 150, "gap": 50, "ex": "NFO", "region": "IN", "currency": "INR"},
+    "BAJFINANCE": {"sym": "BAJFINANCE.NS", "lot": 125, "gap": 100, "ex": "NFO", "region": "IN", "currency": "INR"},
+    "ITC": {"sym": "ITC.NS", "lot": 1600, "gap": 5, "ex": "NFO", "region": "IN", "currency": "INR"},
+    "MARUTI": {"sym": "MARUTI.NS", "lot": 100, "gap": 100, "ex": "NFO", "region": "IN", "currency": "INR"},
+    # ═══ USA ═══
+    "SPY": {"sym": "SPY", "lot": 100, "gap": 1, "ex": "CBOE", "exp": "Mon/Wed/Fri", "region": "US", "currency": "USD"},
+    "QQQ": {"sym": "QQQ", "lot": 100, "gap": 1, "ex": "CBOE", "exp": "Mon/Wed/Fri", "region": "US", "currency": "USD"},
+    "IWM": {"sym": "IWM", "lot": 100, "gap": 1, "ex": "CBOE", "exp": "Fri", "region": "US", "currency": "USD"},
+    "AAPL": {"sym": "AAPL", "lot": 100, "gap": 1, "ex": "NASDAQ", "exp": "Fri", "region": "US", "currency": "USD"},
+    "MSFT": {"sym": "MSFT", "lot": 100, "gap": 1, "ex": "NASDAQ", "exp": "Fri", "region": "US", "currency": "USD"},
+    "NVDA": {"sym": "NVDA", "lot": 100, "gap": 1, "ex": "NASDAQ", "exp": "Fri", "region": "US", "currency": "USD"},
+    "TSLA": {"sym": "TSLA", "lot": 100, "gap": 1, "ex": "NASDAQ", "exp": "Fri", "region": "US", "currency": "USD"},
+    "AMZN": {"sym": "AMZN", "lot": 100, "gap": 1, "ex": "NASDAQ", "exp": "Fri", "region": "US", "currency": "USD"},
+    "GOOGL": {"sym": "GOOGL", "lot": 100, "gap": 1, "ex": "NASDAQ", "exp": "Fri", "region": "US", "currency": "USD"},
+    "META": {"sym": "META", "lot": 100, "gap": 1, "ex": "NASDAQ", "exp": "Fri", "region": "US", "currency": "USD"},
+    "AMD": {"sym": "AMD", "lot": 100, "gap": 1, "ex": "NASDAQ", "exp": "Fri", "region": "US", "currency": "USD"},
+    "JPM": {"sym": "JPM", "lot": 100, "gap": 1, "ex": "NYSE", "exp": "Fri", "region": "US", "currency": "USD"},
+    "AVGO": {"sym": "AVGO", "lot": 100, "gap": 1, "ex": "NASDAQ", "exp": "Fri", "region": "US", "currency": "USD"},
 }
 
 _algo_cache = {}
@@ -4051,24 +4066,27 @@ async def algo_signal_safe(symbol: str = "NIFTY"):
         return {"success": False, "error": f"Algo error: {str(e)}", "symbol": symbol}
 
 @app.get("/api/algo-batch")
-async def algo_batch():
-    """Batch: 3 indices sequentially with 3-min cache. Prioritizes expiry index."""
+async def algo_batch(region: str = "IN"):
+    """Batch: 3 top instruments by region. Uses cache."""
     from datetime import datetime, timedelta
     IST = datetime.utcnow() + timedelta(hours=5, minutes=30)
     day_name = IST.strftime("%A")
     
-    # Determine which index expires today for priority ordering
-    # NIFTY weekly=Tuesday, SENSEX weekly=Thursday
-    EXPIRY_MAP = {"Tuesday": "NIFTY", "Thursday": "SENSEX"}
-    expiry_index = EXPIRY_MAP.get(day_name, "")
-    
-    # Order: expiry index first, then others
-    base = ["NIFTY", "BANKNIFTY", "SENSEX"]
-    if expiry_index in base:
-        base.remove(expiry_index)
-        symbols = [expiry_index] + base
+    region = region.upper()
+    if region == "US":
+        symbols = ["SPY", "QQQ", "IWM"]
+        expiry_index = ""  # SPY/QQQ have Mon/Wed/Fri expiry
+        if day_name in ["Monday", "Wednesday", "Friday"]:
+            expiry_index = "SPY"  # SPY 0DTE
     else:
-        symbols = base
+        symbols = ["NIFTY", "BANKNIFTY", "SENSEX"]
+        EXPIRY_MAP = {"Tuesday": "NIFTY", "Thursday": "SENSEX"}
+        expiry_index = EXPIRY_MAP.get(day_name, "")
+    
+    # Priority: expiry index first
+    if expiry_index in symbols:
+        symbols.remove(expiry_index)
+        symbols = [expiry_index] + symbols
     
     out = []
     for s in symbols:
@@ -4079,11 +4097,8 @@ async def algo_batch():
             out.append({"success": False, "symbol": s, "error": str(e)})
     
     return {
-        "success": True,
-        "signals": out,
-        "count": len(out),
-        "expiryToday": expiry_index,
-        "dayName": day_name,
+        "success": True, "signals": out, "count": len(out),
+        "expiryToday": expiry_index, "dayName": day_name, "region": region,
     }
 
 async def _algo_signal_impl(symbol: str = "NIFTY"):
@@ -4093,11 +4108,12 @@ async def _algo_signal_impl(symbol: str = "NIFTY"):
     import math
     
     symbol = symbol.upper().strip().replace(".NS","").replace(".BO","").replace("^NSEI","NIFTY").replace("^NSEBANK","BANKNIFTY").replace("^BSESN","SENSEX")
-    inst = ALGO_INSTRUMENTS.get(symbol, {"sym": f"{symbol}.NS", "lot": 100, "gap": 10, "ex": "NFO"})
+    inst = ALGO_INSTRUMENTS.get(symbol, {"sym": f"{symbol}.NS" if symbol not in ["SPY","QQQ","IWM","AAPL","MSFT","NVDA","TSLA","AMZN","GOOGL","META","AMD","JPM","AVGO"] else symbol, "lot": 100, "gap": 10, "ex": "NFO", "region": "IN" if ".NS" in symbol or ".BO" in symbol else "US", "currency": "INR" if ".NS" in symbol or ".BO" in symbol else "USD"})
     yf_sym = inst["sym"]
+    is_us = inst.get("region") == "US"
     
     # ═══ FETCH ALL DATA IN PARALLEL ═══
-    result = {"success": True, "symbol": symbol, "instrument": inst}
+    result = {"success": True, "symbol": symbol, "instrument": inst, "region": inst.get("region", "IN"), "currSym": "₹" if inst.get("region") != "US" else "$"}
     factors = []
     
     # 1. yfinance — price, technicals, fundamentals
@@ -4221,14 +4237,16 @@ async def _algo_signal_impl(symbol: str = "NIFTY"):
     except Exception as e:
         return {"success": False, "error": f"Data fetch failed: {e}"}
     
-    # 2. NSE Options data
+    # 2. NSE Options data (India only — US stocks use yfinance options)
     nse = {}
-    try:
-        nse_resp = await nse_options(symbol)
-        if isinstance(nse_resp, dict) and nse_resp.get("success"):
-            nse = nse_resp
-    except:
-        pass
+    is_us = inst.get("region") == "US"
+    if not is_us:
+        try:
+            nse_resp = await nse_options(symbol)
+            if isinstance(nse_resp, dict) and nse_resp.get("success"):
+                nse = nse_resp
+        except:
+            pass
     
     result["options"] = nse
     
@@ -4796,6 +4814,49 @@ async def _algo_signal_impl(symbol: str = "NIFTY"):
     result["blastSetup"] = blast_setup
     result["reasoning"] = reasoning
     result["timestamp"] = IST.strftime("%I:%M %p IST")
+    result["region"] = inst.get("region", "IN")
+    result["currency"] = inst.get("currency", "INR")
+    
+    # ═══ TRADING COACH — Smart improvement tips ═══
+    coach = []
+    # Correlation warning
+    if symbol in ["BANKNIFTY", "NIFTY"] and direction == "BULLISH":
+        coach.append({"tip": "NIFTY and BANKNIFTY are 85% correlated. Don't take the same direction on both — you're doubling risk, not diversifying.", "type": "RISK"})
+    # R:R filter
+    if trade.get("rrRatio") and ":" in str(trade["rrRatio"]):
+        try:
+            rr_val = float(str(trade["rrRatio"]).split(":")[1])
+            if rr_val < 1.5:
+                coach.append({"tip": f"R:R is only {trade['rrRatio']} — below 1.5. Skip this or wait for a better entry closer to support.", "type": "RISK"})
+            elif rr_val >= 2.5:
+                coach.append({"tip": f"R:R is excellent at {trade['rrRatio']}. This is an A-grade setup — consider 1.5× normal position.", "type": "OPPORTUNITY"})
+        except: pass
+    # Session timing
+    import datetime as _dt
+    ist_hour = IST.hour
+    if 9 <= ist_hour <= 9:
+        coach.append({"tip": "First 15 minutes — volatile. Wait for ORB to form before entering.", "type": "TIMING"})
+    elif 14 <= ist_hour <= 15:
+        coach.append({"tip": "Last hour. Theta decay accelerates. BUY positions lose value faster. Consider closing or trailing tight.", "type": "TIMING"})
+    elif 12 <= ist_hour <= 13:
+        coach.append({"tip": "Lunch session — low volume. Spreads widen. Avoid new entries. Best time: 9:30-11:30 AM or 2:00-2:30 PM.", "type": "TIMING"})
+    # Weighted score insight
+    if pct >= 78:
+        coach.append({"tip": "HIGH confluence (78%+). Top-tier setup. Execute with full conviction. These setups historically have 65%+ win rate.", "type": "CONFIDENCE"})
+    elif pct < 40:
+        coach.append({"tip": "WEAK confluence (<40%). Most losses come from forcing trades on weak setups. Patience = profitability.", "type": "WARNING"})
+    # Volume insight
+    if vol_ratio < 0.7:
+        coach.append({"tip": "Volume is below average. Move may not sustain. Reduce position size by 50% or skip entirely.", "type": "WARNING"})
+    elif vol_ratio > 2:
+        coach.append({"tip": f"Volume spike ({vol_ratio:.1f}×). Smart money is active. This confirms the directional move. High-conviction entry.", "type": "OPPORTUNITY"})
+    # US market hours check
+    if is_us:
+        us_hour = (IST - _dt.timedelta(hours=10, minutes=30)).hour  # IST - 10:30 = ET
+        if us_hour < 9 or us_hour >= 16:
+            coach.append({"tip": "US market is CLOSED. Prices are from last close. Real-time signals available during US market hours (7:00 PM - 1:30 AM IST).", "type": "TIMING"})
+    
+    result["coach"] = coach
     
     try:
     # ═══ TREND ANALYSIS + CHANGE DETECTION ═══

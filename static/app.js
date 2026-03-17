@@ -5048,22 +5048,39 @@ try{var a=new AudioContext();var o=a.createOscillator();var g=a.createGain();o.c
 window._algoLastTrend=newTrend;
 }
 
-// ═══ TOP TRADES TABLE — Progressive loading ═══
+// ═══ INDIA / USA REGION TOGGLE ═══
+window._algoRegion='IN';
+function switchAlgoRegion(reg){
+window._algoRegion=reg;
+document.getElementById('algoIN').style.display=reg==='IN'?'':'none';
+document.getElementById('algoUS').style.display=reg==='US'?'':'none';
+document.getElementById('algoRegIN').style.background=reg==='IN'?'#002f6c':'var(--bg2)';
+document.getElementById('algoRegIN').style.color=reg==='IN'?'#fff':'var(--text3)';
+document.getElementById('algoRegUS').style.background=reg==='US'?'#002f6c':'var(--bg2)';
+document.getElementById('algoRegUS').style.color=reg==='US'?'#fff':'var(--text3)';
+// Clear active buttons
+document.querySelectorAll('.algo-btn').forEach(function(b){b.classList.remove('active')});
+// Reload top trades for this region
+window._topTradesLoaded=false;
+loadTopTrades();
+// Auto-select first instrument
+var first=reg==='US'?'SPY':'NIFTY';
+setTimeout(function(){algoSelect(first,document.querySelector('#algo'+reg+' .algo-btn'))},300);
+}
+
+// ═══ TOP TRADES TABLE — Region-aware progressive loading ═══
 function loadTopTrades(){
 var el=document.getElementById('topTradesTable');
 if(!el)return;
-var symbols=['NIFTY','BANKNIFTY','SENSEX'];
-// Show skeleton
+var reg=window._algoRegion||'IN';
+var S=reg==='US'?'$':'&#8377;';
+var symbols=reg==='US'?['SPY','QQQ','IWM']:['NIFTY','BANKNIFTY','SENSEX'];
 var h='<table style="width:100%;border-collapse:collapse;font-size:11px"><thead><tr style="background:var(--bg2);border-bottom:2px solid var(--border)"><th style="padding:8px 10px;text-align:left;font-size:10px;font-weight:800">INSTRUMENT</th><th style="padding:8px;text-align:center;font-size:10px">SIGNAL</th><th style="padding:8px;text-align:center;font-size:10px">TREND</th><th style="padding:8px;text-align:right;font-size:10px">SPOT</th><th style="padding:8px;text-align:left;font-size:10px;color:#0a7c42">TRADE</th><th style="padding:8px;text-align:right;font-size:10px">ENTRY</th><th style="padding:8px;text-align:right;font-size:10px;color:#ef4444">SL</th><th style="padding:8px;text-align:right;font-size:10px;color:#0a7c42">TGT</th><th style="padding:8px;text-align:center;font-size:10px">R:R</th></tr></thead><tbody>';
 symbols.forEach(function(s){h+='<tr id="ttRow_'+s+'" style="border-bottom:1px solid var(--border)"><td style="padding:8px 10px;font-weight:800">'+s+'</td><td colspan="8" style="padding:8px;color:var(--text3);font-size:10px"><div style="display:inline-block;width:12px;height:12px;border:2px solid var(--blue);border-top-color:transparent;border-radius:50%;animation:spin .5s linear infinite;vertical-align:middle;margin-right:4px"></div>Loading...</td></tr>'});
 h+='</tbody></table>';
-// Expiry banner placeholder
 el.innerHTML='<div id="expiryBanner"></div>'+h;
-// Fetch each symbol progressively
-var allResults=[];
 symbols.forEach(function(s){
 fetch('/api/algo-signal?symbol='+s).then(function(r){return r.json()}).then(function(d){
-allResults.push(d);
 var row=document.getElementById('ttRow_'+s);
 if(!row||!d.success)return;
 row.innerHTML=_buildTradeRow(d);
@@ -5071,25 +5088,15 @@ row.style.cursor='pointer';
 row.onclick=function(){algoSelect(d.symbol,null)};
 row.onmouseover=function(){this.style.background='var(--bg2)'};
 row.onmouseout=function(){this.style.background=d.isExpiry?'rgba(239,68,68,.04)':'transparent'};
-// Highlight expiry row
-if(d.isExpiry){
-row.style.background='rgba(239,68,68,.04)';
-row.style.borderLeft='3px solid #ef4444';
-}
-// Update expiry banner when first result with expiry info arrives
+if(d.isExpiry){row.style.background='rgba(239,68,68,.04)';row.style.borderLeft='3px solid #ef4444';}
 if(d.allExpiryToday&&d.allExpiryToday.length>0){
 var ban=document.getElementById('expiryBanner');
-if(ban&&!ban.dataset.set){
-ban.dataset.set='1';
-var exList=d.allExpiryToday.join(', ');
-ban.innerHTML='<div style="padding:10px 16px;border-radius:10px;background:linear-gradient(135deg,rgba(239,68,68,.1),rgba(245,158,11,.06));border:2px solid rgba(239,68,68,.25);margin-bottom:12px;display:flex;align-items:center;gap:10px"><span style="font-size:24px;animation:pulse 1.5s infinite">&#128293;</span><div><div style="font-size:13px;font-weight:800;color:#ef4444;letter-spacing:.5px">EXPIRY DAY — '+exList+'</div><div style="font-size:10px;color:var(--text2);margin-top:2px">Weekly options expiry today. Gamma risk elevated after 1 PM. Pin to max pain likely. Tighter SL mandatory. Exit by 2:30 PM. Theta crushes BUY positions.</div></div></div>';
-}
+if(ban&&!ban.dataset.set){ban.dataset.set='1';
+ban.innerHTML='<div style="padding:10px 16px;border-radius:10px;background:linear-gradient(135deg,rgba(239,68,68,.1),rgba(245,158,11,.06));border:2px solid rgba(239,68,68,.25);margin-bottom:12px;display:flex;align-items:center;gap:10px"><span style="font-size:24px;animation:pulse 1.5s infinite">&#128293;</span><div><div style="font-size:13px;font-weight:800;color:#ef4444">EXPIRY DAY — '+d.allExpiryToday.join(', ')+'</div><div style="font-size:10px;color:var(--text2);margin-top:2px">Gamma risk elevated. Tighter SL mandatory. Exit by 2:30 PM.</div></div></div>';}
 }else if(d.dteToExpiry&&d.dteToExpiry<=2&&d.dteToExpiry>0){
 var ban=document.getElementById('expiryBanner');
-if(ban&&!ban.dataset.set){
-ban.dataset.set='1';
-ban.innerHTML='<div style="padding:8px 14px;border-radius:8px;background:rgba(245,158,11,.06);border:1px solid rgba(245,158,11,.2);margin-bottom:10px;font-size:10px;color:var(--amber)"><strong>&#9888; '+d.symbol+' expiry in '+d.dteToExpiry+' day'+(d.dteToExpiry>1?'s':'')+' ('+d.nextExpiry+')</strong> — Theta accelerating. Consider shorter targets or sell strategies.</div>';
-}
+if(ban&&!ban.dataset.set){ban.dataset.set='1';
+ban.innerHTML='<div style="padding:8px 14px;border-radius:8px;background:rgba(245,158,11,.06);border:1px solid rgba(245,158,11,.2);margin-bottom:10px;font-size:10px;color:var(--amber)"><strong>&#9888; '+d.symbol+' expiry in '+d.dteToExpiry+' day'+(d.dteToExpiry>1?'s':'')+'</strong></div>';}
 }
 }).catch(function(){});
 });
@@ -5097,7 +5104,8 @@ window._topTradesLoaded=true;
 }
 
 function _buildTradeRow(d){
-var S='&#8377;';
+var isUS=(d.instrument?.region||'')=='US';
+var S=isUS?'$':'&#8377;';var loc=isUS?'en-US':'en-IN';
 var tr=d.trade;
 var sig=d.signal||'N/A';
 var trend=(d.trend||{}).label||'N/A';
@@ -5153,7 +5161,8 @@ function runAlgoSignal(){algoSelect(document.getElementById('algoSymSel')?.value
 function _fetchAlgoSignal(sym){algoSelect(sym,null);}
 
 function _renderAlgoCard(el,d){
-var S='&#8377;',p=d.spot||0;
+var isUS=(d.region||d.instrument?.region||'IN')==='US';
+var S=isUS?'$':'&#8377;';var p=d.spot||0;var loc=isUS?'en-US':'en-IN';
 var sup=d.supports,opp=d.opposes,neu=d.neutrals,tot=d.totalFactors,pct=d.pct;
 var wS=d.weightedSupport||0,wO=d.weightedOppose||0,wN=d.weightedNeutral||0,wT=d.totalWeight||1;
 var sig=d.signal,conf=d.confidence,dir=d.direction;
