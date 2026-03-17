@@ -5080,7 +5080,7 @@ symbols.forEach(function(s){h+='<tr id="ttRow_'+s+'" style="border-bottom:1px so
 h+='</tbody></table>';
 el.innerHTML='<div id="expiryBanner"></div>'+h;
 symbols.forEach(function(s){
-fetch('/api/algo-signal?symbol='+s).then(function(r){return r.json()}).then(function(d){
+fetch('/api/algo-signal?symbol='+s+'&region='+reg).then(function(r){return r.json()}).then(function(d){
 var row=document.getElementById('ttRow_'+s);
 if(!row||!d.success)return;
 row.innerHTML=_buildTradeRow(d);
@@ -5140,7 +5140,7 @@ if(ci&&btn)ci.value='';
 var res=document.getElementById('algoResult');
 if(res)res.innerHTML='<div style="text-align:center;padding:30px;color:var(--text3)"><div style="font-size:24px;margin-bottom:8px">&#9203;</div><div style="font-size:12px;font-weight:600">Running 5-layer algorithm for <strong>'+sym+'</strong>...</div><div style="font-size:10px;color:var(--text3);margin-top:4px">Fetching live NSE options + yfinance data + computing CPR, ORB, VWAP, EMA, RSI, MACD, Supertrend, VIX, PCR, OI, Max Pain, Black-Scholes Greeks...</div></div>';
 // Fetch
-fetch('/api/algo-signal?symbol='+encodeURIComponent(sym)).then(function(r){return r.json();}).then(function(data){
+fetch('/api/algo-signal?symbol='+encodeURIComponent(sym)+'&region='+(window._algoRegion||'IN')).then(function(r){return r.json();}).then(function(data){
 if(!res)return;
 if(!data.success){res.innerHTML='<div style="padding:20px;text-align:center"><div style="font-size:24px;margin-bottom:8px">&#9888;</div><div style="color:var(--red);font-size:12px;font-weight:600">'+(data.error||'Failed to fetch data for '+sym)+'</div><div style="font-size:10px;color:var(--text3);margin-top:4px">Try another instrument or check if market is open.</div></div>';return;}
 _checkTrendChange(data);

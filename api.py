@@ -4046,19 +4046,19 @@ _algo_cache = {}
 _algo_cache_ts = {}
 
 @app.get("/api/algo-signal")
-async def algo_signal_safe(symbol: str = "NIFTY"):
+async def algo_signal_safe(symbol: str = "NIFTY", region: str = ""):
     """Wrapper that guarantees JSON response even on crash. 3-min cache."""
     from datetime import datetime, timedelta
     symbol = symbol.upper().strip().replace(".NS","").replace(".BO","").replace("^NSEI","NIFTY").replace("^NSEBANK","BANKNIFTY").replace("^BSESN","SENSEX")
     now = datetime.utcnow()
-    # 3-min cache
-    if symbol in _algo_cache and symbol in _algo_cache_ts:
-        if (now - _algo_cache_ts[symbol]).total_seconds() < 180:
-            return _algo_cache[symbol]
+    cache_key = f"{symbol}_{region}"
+    if cache_key in _algo_cache and cache_key in _algo_cache_ts:
+        if (now - _algo_cache_ts[cache_key]).total_seconds() < 180:
+            return _algo_cache[cache_key]
     try:
-        result = await _algo_signal_impl(symbol)
-        _algo_cache[symbol] = result
-        _algo_cache_ts[symbol] = now
+        result = await _algo_signal_impl(symbol, region)
+        _algo_cache[cache_key] = result
+        _algo_cache_ts[cache_key] = now
         return result
     except Exception as e:
         import traceback
@@ -4091,7 +4091,7 @@ async def algo_batch(region: str = "IN"):
     out = []
     for s in symbols:
         try:
-            r = await algo_signal_safe(s)
+            r = await algo_signal_safe(s, region)
             out.append(r)
         except Exception as e:
             out.append({"success": False, "symbol": s, "error": str(e)})
@@ -4101,14 +4101,47 @@ async def algo_batch(region: str = "IN"):
         "expiryToday": expiry_index, "dayName": day_name, "region": region,
     }
 
-async def _algo_signal_impl(symbol: str = "NIFTY"):
+async def _algo_signal_impl(symbol: str = "NIFTY", region: str = ""):
     """5-Layer Confluence Algorithm — ALL real data, ZERO hallucination."""
     import yfinance as yf
     from datetime import datetime, timedelta
     import math
     
     symbol = symbol.upper().strip().replace(".NS","").replace(".BO","").replace("^NSEI","NIFTY").replace("^NSEBANK","BANKNIFTY").replace("^BSESN","SENSEX")
-    inst = ALGO_INSTRUMENTS.get(symbol, {"sym": f"{symbol}.NS" if symbol not in ["SPY","QQQ","IWM","AAPL","MSFT","NVDA","TSLA","AMZN","GOOGL","META","AMD","JPM","AVGO"] else symbol, "lot": 100, "gap": 10, "ex": "NFO", "region": "IN" if ".NS" in symbol or ".BO" in symbol else "US", "currency": "INR" if ".NS" in symbol or ".BO" in symbol else "USD"})
+    
+    # Smart region detection
+    known_us = {"SPY","QQQ","IWM","AAPL","MSFT","NVDA","TSLA","AMZN","GOOGL","META","AMD","JPM","AVGO","NFLX","CRM","ORCL","INTC","BA","DIS","V","MA","WMT","COST","HD","PG","KO","PEP","MRK","LLY","UNH","JNJ","ABBV","BMY","SNDK","WDC","PLTR","CRWD","DDOG","SNOW","NET","UBER","LYFT","SQ","PYPL","COIN","HOOD","SOFI","RIVN","LCID","NIO","BABA","TSM","ASML","ARM"}
+    known_in = {"NIFTY","BANKNIFTY","SENSEX","RELIANCE","TCS","HDFCBANK","INFY","ICICIBANK","SBIN","TATAMOTORS","BHARTIARTL","LT","BAJFINANCE","ITC","MARUTI","WIPRO","KOTAKBANK","ADANIENT","ADANIPORTS","HINDALCO","JSWSTEEL","TATASTEEL","ONGC","NTPC","POWERGRID","BPCL","HCLTECH","TECHM","DRREDDY","CIPLA","SUNPHARMA","HINDUNILVR","ASIANPAINT","ULTRACEMCO","GRASIM","TITAN","BAJAJFINSV","AXISBANK","INDUSINDBK"}
+    
+    if not region:
+        if symbol in known_us or (symbol in ALGO_INSTRUMENTS and ALGO_INSTRUMENTS[symbol].get("region") == "US"):
+            region = "US"
+        elif symbol in known_in or (symbol in ALGO_INSTRUMENTS and ALGO_INSTRUMENTS[symbol].get("region") == "IN"):
+            region = "IN"
+        else:
+            # Try yfinance to detect
+            try:
+                test_tk = yf.Ticker(symbol)
+                test_info = test_tk.info or {}
+                exch = (test_info.get("exchange", "") or "").upper()
+                if any(x in exch for x in ["NSE", "BSE", "BOM"]):
+                    region = "IN"
+                else:
+                    region = "US"
+            except:
+                region = "IN"  # Default India
+    
+    region = region.upper()
+    is_us_region = region == "US"
+    
+    # Build instrument config
+    if symbol in ALGO_INSTRUMENTS:
+        inst = ALGO_INSTRUMENTS[symbol]
+    elif is_us_region:
+        inst = {"sym": symbol, "lot": 100, "gap": 1, "ex": "US", "region": "US", "currency": "USD"}
+    else:
+        inst = {"sym": f"{symbol}.NS", "lot": 100, "gap": 10, "ex": "NFO", "region": "IN", "currency": "INR"}
+    
     yf_sym = inst["sym"]
     is_us = inst.get("region") == "US"
     csym = "$" if is_us else "₹"
@@ -4331,8 +4364,8 @@ async def _algo_signal_impl(symbol: str = "NIFTY"):
                 return {"delta": delta, "gamma": gamma, "theta": theta, "premium": max(premium, 0)}
             
             spot = nse.get("spot", price)
-            atm_iv_dec = nse["atm_iv"] / 100  # Convert from % to decimal
-            risk_free = 0.065  # India 10Y bond
+            atm_iv_dec = nse.get("atm_iv", 20) / 100  # Convert from % to decimal
+            risk_free = 0.0525 if is_us else 0.065  # US Fed rate vs India 10Y
             
             # Expiry: find days to expiry
             try:
@@ -4381,7 +4414,7 @@ async def _algo_signal_impl(symbol: str = "NIFTY"):
                 "dte": dte,
                 "T": round(T, 4),
                 "risk_free": risk_free,
-                "iv": nse["atm_iv"],
+                "iv": nse.get("atm_iv", 20),
                 "greeks": greeks,
                 "best_ce": {"strike": best_ce_strike, "delta": best_ce_delta, "premium": greeks.get("ATM", {}).get("CE", {}).get("premium", 0)},
                 "best_pe": {"strike": best_pe_strike, "delta": abs(best_pe_delta), "premium": greeks.get("ATM", {}).get("PE", {}).get("premium", 0)},
@@ -4511,6 +4544,8 @@ async def _algo_signal_impl(symbol: str = "NIFTY"):
                     nse["max_pain"] = max_pain
                     nse["atm_iv"] = atm_iv
                     nse["vix"] = vix
+                    nse["success"] = True
+                    nse["spot"] = price
         except Exception as e:
             print(f"  US options error for {symbol}: {e}")
     
@@ -4717,7 +4752,8 @@ async def _algo_signal_impl(symbol: str = "NIFTY"):
         selected_delta = bs_data["best_pe"]["delta"]
         bs_premium = bs_data["best_pe"]["premium"]
     
-    opt_type = "CE" if direction != "BEARISH" else "PE"
+    opt_type_raw = "CE" if direction != "BEARISH" else "PE"
+    opt_type = ("CALL" if opt_type_raw == "CE" else "PUT") if is_us else opt_type_raw
     csym = "$" if is_us else "₹"
     bs_r_rate = 0.0525 if is_us else 0.065  # US Fed rate vs India 10Y
     
@@ -4743,11 +4779,11 @@ async def _algo_signal_impl(symbol: str = "NIFTY"):
     bs_r = bs_data.get("risk_free", bs_r_rate)
     bs_iv = (nse.get("atm_iv", 20)) / 100  # decimal
     
-    prem_entry = bs_premium if bs_premium > 0 else _bs_premium_at(price, selected_strike, bs_T, bs_r, bs_iv, opt_type)
-    prem_sl = _bs_premium_at(sl_price, selected_strike, bs_T, bs_r, bs_iv, opt_type) if prem_entry > 0 else 0
-    prem_t1 = _bs_premium_at(t1_price, selected_strike, bs_T, bs_r, bs_iv, opt_type) if prem_entry > 0 else 0
-    prem_t2 = _bs_premium_at(t2_price, selected_strike, bs_T, bs_r, bs_iv, opt_type) if prem_entry > 0 else 0
-    prem_t3 = _bs_premium_at(t3_price, selected_strike, bs_T, bs_r, bs_iv, opt_type) if prem_entry > 0 else 0
+    prem_entry = bs_premium if bs_premium > 0 else _bs_premium_at(price, selected_strike, bs_T, bs_r, bs_iv, opt_type_raw)
+    prem_sl = _bs_premium_at(sl_price, selected_strike, bs_T, bs_r, bs_iv, opt_type_raw) if prem_entry > 0 else 0
+    prem_t1 = _bs_premium_at(t1_price, selected_strike, bs_T, bs_r, bs_iv, opt_type_raw) if prem_entry > 0 else 0
+    prem_t2 = _bs_premium_at(t2_price, selected_strike, bs_T, bs_r, bs_iv, opt_type_raw) if prem_entry > 0 else 0
+    prem_t3 = _bs_premium_at(t3_price, selected_strike, bs_T, bs_r, bs_iv, opt_type_raw) if prem_entry > 0 else 0
     
     # Premium-based risk/reward
     prem_risk = round(prem_entry - prem_sl, 2) if prem_entry > prem_sl else round(prem_entry * 0.3, 2)
