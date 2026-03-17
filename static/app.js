@@ -7450,14 +7450,6 @@ html+=`<div style="margin-top:12px;padding:12px 16px;border-radius:8px;backgroun
 }
 
 el.innerHTML=html;
-
-// Re-add action buttons at the bottom after trades render
-var _bh='<div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center;padding:16px 0;margin-top:12px;border-top:1px solid var(--border)">';
-_bh+='<button onclick="loadIndexTrades(true)" style="padding:10px 24px;border-radius:10px;border:2px solid var(--amber);background:rgba(245,158,11,.1);color:var(--amber);font-family:Sora,sans-serif;font-size:13px;font-weight:700;cursor:pointer">&#8635; Refresh Trades (Live Data)</button>';
-_bh+='<button onclick="loadIndexTrades()" style="padding:10px 24px;border-radius:10px;border:2px solid var(--blue);background:rgba(59,130,246,.08);color:var(--blue);font-family:Sora,sans-serif;font-size:13px;font-weight:700;cursor:pointer">&#9889; Regenerate All</button>';
-_bh+='<button onclick="loadTradeScorecard()" style="padding:10px 20px;border-radius:10px;border:2px solid var(--purple);background:rgba(139,92,246,.08);color:var(--purple);font-family:Sora,sans-serif;font-size:12px;font-weight:700;cursor:pointer">&#128202; Trade Scorecard</button>';
-_bh+='</div>';
-el.insertAdjacentHTML('beforeend',_bh);
 if(btn){btn.disabled=false;btn.textContent='\u26A1 Generate Today\'s Trades';}
 
 }catch(e){

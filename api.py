@@ -4453,37 +4453,93 @@ async def _algo_signal_impl(symbol: str = "NIFTY"):
     add("Golden/Death Cross", "SUPPORTS" if sma50 > sma200 else "OPPOSES",
         f"{'Golden Cross — SMA50 > SMA200. Strongest bullish signal.' if sma50 > sma200 else 'Death Cross — bearish long-term.'}", "INDICATOR", 2.0)
     
-    # ─── LAYER 3: OPTIONS (NSE LIVE) ───
+    # ─── LAYER 3: OPTIONS (NSE LIVE for India, yfinance for US) ───
+    vix = 0; pcr = 0; max_pain = 0; atm_iv = 0
+    ce_resist = []; pe_support = []
+    
     if nse.get("success"):
+        # India — use NSE data
         vix = nse.get("vix", 0)
         pcr = nse.get("pcr", 0)
         max_pain = nse.get("max_pain", 0)
         atm_iv = nse.get("atm_iv", 0)
         ce_resist = nse.get("ce_resistance", [])
         pe_support = nse.get("pe_support", [])
-        
-        add("India VIX", "SUPPORTS" if 0 < vix < 16 else "NEUTRAL" if vix < 22 else "OPPOSES",
+    elif is_us:
+        # USA — fetch VIX and basic options from yfinance
+        try:
+            vix_tk = yf.Ticker("^VIX")
+            vix_info = vix_tk.info or {}
+            vix = round(float(vix_info.get("regularMarketPrice", 0) or vix_info.get("previousClose", 0)), 1)
+        except:
+            pass
+        # Try yfinance options chain for US stocks
+        try:
+            opts = tk.options
+            if opts:
+                chain = tk.option_chain(opts[0])
+                calls = chain.calls
+                puts = chain.puts
+                if len(calls) > 0 and len(puts) > 0:
+                    # PCR from OI
+                    total_call_oi = calls['openInterest'].sum()
+                    total_put_oi = puts['openInterest'].sum()
+                    if total_call_oi > 0:
+                        pcr = round(total_put_oi / total_call_oi, 2)
+                    # ATM IV
+                    atm_idx = (calls['strike'] - price).abs().idxmin()
+                    atm_iv = round(float(calls.loc[atm_idx, 'impliedVolatility']) * 100, 1) if atm_idx is not None else 0
+                    # Max pain approximation
+                    max_pain_strike = 0
+                    min_pain = float('inf')
+                    for s in calls['strike'].values:
+                        call_pain = ((s - calls['strike']).clip(lower=0) * calls['openInterest']).sum()
+                        put_pain = ((puts['strike'] - s).clip(lower=0) * puts['openInterest']).sum()
+                        total_pain = call_pain + put_pain
+                        if total_pain < min_pain:
+                            min_pain = total_pain
+                            max_pain_strike = s
+                    max_pain = round(float(max_pain_strike), 2)
+                    # Top OI strikes
+                    top_calls = calls.nlargest(3, 'openInterest')[['strike','openInterest']].to_dict('records')
+                    top_puts = puts.nlargest(3, 'openInterest')[['strike','openInterest']].to_dict('records')
+                    ce_resist = [{"strike": int(r['strike']), "oi": int(r['openInterest'])} for r in top_calls]
+                    pe_support = [{"strike": int(r['strike']), "oi": int(r['openInterest'])} for r in top_puts]
+                    nse["ce_resistance"] = ce_resist
+                    nse["pe_support"] = pe_support
+                    nse["pcr"] = pcr
+                    nse["max_pain"] = max_pain
+                    nse["atm_iv"] = atm_iv
+                    nse["vix"] = vix
+        except Exception as e:
+            print(f"  US options error for {symbol}: {e}")
+    
+    if vix > 0:
+        vix_label = "CBOE VIX" if is_us else "India VIX"
+        add(vix_label, "SUPPORTS" if 0 < vix < 16 else "NEUTRAL" if vix < 22 else "OPPOSES",
             f"VIX {vix:.1f}. {'Low fear — premiums cheap. Option BUY favorable.' if vix < 13 else 'Fair premiums.' if vix < 18 else 'Elevated — sell strategies preferred.' if vix < 25 else 'High fear — extreme caution.'}", "OPTION", 1.5)
-        
+    
+    if pcr > 0:
         add("PCR", "SUPPORTS" if 0.8 < pcr < 1.3 else "OPPOSES" if pcr < 0.7 else "NEUTRAL",
             f"PCR {pcr:.2f}. {'PE writing = bullish floor.' if pcr > 1.1 else 'Balanced.' if pcr > 0.8 else 'CE heavy = bearish resistance.' if pcr > 0 else 'N/A.'}", "OPTION", 1.5)
-        
-        mp_dist = abs(price - max_pain) / price * 100 if max_pain > 0 else 99
+    
+    if max_pain > 0:
+        mp_dist = abs(price - max_pain) / price * 100
         add("Max Pain", "SUPPORTS" if mp_dist < 1.5 else "NEUTRAL",
-            f"Max Pain {csym}{max_pain:,.0f}. {'Price near max pain — expiry pin effect.' if mp_dist < 1 else f'Price {mp_dist:.1f}% away. May drift toward it.'}" if max_pain > 0 else "N/A.", "OPTION", 1.0)
-        
-        if ce_resist and pe_support:
-            top_ce = ce_resist[0]["strike"]
-            top_pe = pe_support[0]["strike"]
-            add("OI Buildup", "SUPPORTS" if top_pe < price < top_ce else "NEUTRAL",
-                f"Resist: {csym}{top_ce:,.0f} (CE OI:{ce_resist[0]['oi']:,.0f}). Support: {csym}{top_pe:,.0f} (PE OI:{pe_support[0]['oi']:,.0f}). {'Within OI range.' if top_pe < price < top_ce else 'Near OI wall.'}", "OPTION", 1.5)
-        
-        if atm_iv > 0:
-            add("ATM IV", "SUPPORTS" if atm_iv < 18 else "NEUTRAL" if atm_iv < 30 else "OPPOSES",
-                f"IV {atm_iv:.1f}%. {'Low — options cheap. BUY.' if atm_iv < 15 else 'Normal.' if atm_iv < 25 else 'Elevated. SELL preferred.' if atm_iv < 35 else 'Very high.'}", "OPTION", 1.0)
-        
-        # Black-Scholes Greeks
-        if bs_data.get("greeks"):
+            f"Max Pain {csym}{max_pain:,.0f}. {'Price near max pain — expiry pin effect.' if mp_dist < 1 else f'Price {mp_dist:.1f}% away. May drift toward it.'}", "OPTION", 1.0)
+    
+    if ce_resist and pe_support:
+        top_ce = ce_resist[0]["strike"]
+        top_pe = pe_support[0]["strike"]
+        add("OI Buildup", "SUPPORTS" if top_pe < price < top_ce else "NEUTRAL",
+            f"Resist: {csym}{top_ce:,.0f} (CE OI:{ce_resist[0]['oi']:,.0f}). Support: {csym}{top_pe:,.0f} (PE OI:{pe_support[0]['oi']:,.0f}). {'Within OI range.' if top_pe < price < top_ce else 'Near OI wall.'}", "OPTION", 1.5)
+    
+    if atm_iv > 0:
+        add("ATM IV", "SUPPORTS" if atm_iv < 18 else "NEUTRAL" if atm_iv < 30 else "OPPOSES",
+            f"IV {atm_iv:.1f}%. {'Low — options cheap. BUY.' if atm_iv < 15 else 'Normal.' if atm_iv < 25 else 'Elevated. SELL preferred.' if atm_iv < 35 else 'Very high.'}", "OPTION", 1.0)
+    
+    # Black-Scholes Greeks
+    if bs_data.get("greeks"):
             atm_g = bs_data["greeks"].get("ATM", {})
             ce_delta = atm_g.get("CE", {}).get("delta", 0)
             ce_gamma = atm_g.get("CE", {}).get("gamma", 0)
