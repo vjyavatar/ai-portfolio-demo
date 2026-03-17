@@ -4403,7 +4403,7 @@ async def _algo_signal_impl(symbol: str = "NIFTY"):
         f"{cpr_type} CPR ({cpr_pct}%). {'Trending day — directional trades favored.' if cpr_type == 'NARROW' else 'Range-bound. Sell strategies better.' if cpr_type == 'WIDE' else 'Normal day.'}", "PRICE_ACTION", 1.5)
     
     add("PDH/PDL", "SUPPORTS" if price > pdh else "OPPOSES" if price < pdl else "NEUTRAL",
-        f"PDH ₹{pdh:,.0f}, PDL ₹{pdl:,.0f}. {'Price broke above PDH — bullish structure.' if price > pdh else 'Price below PDL — bearish breakdown.' if price < pdl else 'Within prev range — consolidating.'}", "PRICE_ACTION", 1.0)
+        f"PDH {csym}{pdh:,.0f}, PDL {csym}{pdl:,.0f}. {'Price broke above PDH — bullish structure.' if price > pdh else 'Price below PDL — bearish breakdown.' if price < pdl else 'Within prev range — consolidating.'}", "PRICE_ACTION", 1.0)
     
     add("Gap Analysis", "SUPPORTS" if gap_pct > 0.3 else "OPPOSES" if gap_pct < -0.3 else "NEUTRAL",
         f"{gap_type} ({gap_pct:+.2f}%). {'Gap up = bullish continuation.' if gap_pct > 0.5 else 'Gap down = selling pressure.' if gap_pct < -0.5 else 'Flat/minor gap.'}", "PRICE_ACTION", 0.8)
@@ -4412,7 +4412,7 @@ async def _algo_signal_impl(symbol: str = "NIFTY"):
     if orb.get("orb_high"):
         orb_status = "SUPPORTS" if orb["breakout"] == "ABOVE" else "OPPOSES" if orb["breakout"] == "BELOW" else "NEUTRAL"
         add("Opening Range (ORB)", orb_status,
-            f"ORB: ₹{orb['orb_high']:,.0f}–₹{orb['orb_low']:,.0f} (range {orb['orb_pct']:.2f}%). "
+            f"ORB: {csym}{orb['orb_high']:,.0f}–{csym}{orb['orb_low']:,.0f} (range {orb['orb_pct']:.2f}%). "
             f"{'Price ABOVE ORB high — bullish breakout confirmed.' if orb['breakout'] == 'ABOVE' else 'Price BELOW ORB low — bearish breakdown.' if orb['breakout'] == 'BELOW' else 'Inside range — no breakout yet.'}"
             f"{' Vol ' + str(orb['orb_vol_ratio']) + '× on ORB candle.' if orb.get('orb_vol_ratio', 1) > 1.3 else ''}", "PRICE_ACTION", 2.0)
     
@@ -4430,7 +4430,7 @@ async def _algo_signal_impl(symbol: str = "NIFTY"):
     if orb.get("vwap") and orb["vwap"] > 0:
         vwap_val = orb["vwap"]
         add("VWAP", "SUPPORTS" if price > vwap_val else "OPPOSES",
-            f"VWAP ₹{vwap_val:,.0f}. Price {'above — institutional bias bullish. Buyers in control.' if price > vwap_val else 'below — institutional selling. Bears dominating.'}", "INDICATOR", 2.0)
+            f"VWAP {csym}{vwap_val:,.0f}. Price {'above — institutional bias bullish. Buyers in control.' if price > vwap_val else 'below — institutional selling. Bears dominating.'}", "INDICATOR", 2.0)
     
     add("EMA Stack (9/21/50)", "SUPPORTS" if ema9 > ema21 > ema50 else "OPPOSES" if ema9 < ema21 < ema50 else "NEUTRAL",
         f"EMA 9/21/50: {'Full bullish stack ✓' if ema9 > ema21 > ema50 else 'Full bearish stack' if ema9 < ema21 < ema50 else 'Mixed — choppy'}. 9={ema9:,.0f} 21={ema21:,.0f} 50={ema50:,.0f}", "INDICATOR", 2.0)
@@ -4447,7 +4447,7 @@ async def _algo_signal_impl(symbol: str = "NIFTY"):
     add("Volume", "SUPPORTS" if vol_ratio > 1.2 else "OPPOSES" if vol_ratio < 0.7 else "NEUTRAL",
         f"{vol_ratio:.1f}× average volume. {'Breakout confirmed by volume.' if vol_ratio > 1.5 else 'Above average — conviction.' if vol_ratio > 1.2 else 'Below average — weak conviction.' if vol_ratio < 0.7 else 'Normal.'}", "INDICATOR", 1.0)
     
-    add("ATR(14)", "NEUTRAL", f"ATR ₹{atr14:,.0f}. SL = 1.5×ATR = ₹{round(atr14*1.5):,.0f}.", "INDICATOR", 0.5)
+    add("ATR(14)", "NEUTRAL", f"ATR {csym}{atr14:,.0f}. SL = 1.5×ATR = {csym}{round(atr14*1.5):,.0f}.", "INDICATOR", 0.5)
     
     add("Golden/Death Cross", "SUPPORTS" if sma50 > sma200 else "OPPOSES",
         f"{'Golden Cross — SMA50 > SMA200. Strongest bullish signal.' if sma50 > sma200 else 'Death Cross — bearish long-term.'}", "INDICATOR", 2.0)
@@ -4469,13 +4469,13 @@ async def _algo_signal_impl(symbol: str = "NIFTY"):
         
         mp_dist = abs(price - max_pain) / price * 100 if max_pain > 0 else 99
         add("Max Pain", "SUPPORTS" if mp_dist < 1.5 else "NEUTRAL",
-            f"Max Pain ₹{max_pain:,.0f}. {'Price near max pain — expiry pin effect.' if mp_dist < 1 else f'Price {mp_dist:.1f}% away. May drift toward it.'}" if max_pain > 0 else "N/A.", "OPTION", 1.0)
+            f"Max Pain {csym}{max_pain:,.0f}. {'Price near max pain — expiry pin effect.' if mp_dist < 1 else f'Price {mp_dist:.1f}% away. May drift toward it.'}" if max_pain > 0 else "N/A.", "OPTION", 1.0)
         
         if ce_resist and pe_support:
             top_ce = ce_resist[0]["strike"]
             top_pe = pe_support[0]["strike"]
             add("OI Buildup", "SUPPORTS" if top_pe < price < top_ce else "NEUTRAL",
-                f"Resist: ₹{top_ce:,.0f} (CE OI:{ce_resist[0]['oi']:,.0f}). Support: ₹{top_pe:,.0f} (PE OI:{pe_support[0]['oi']:,.0f}). {'Within OI range.' if top_pe < price < top_ce else 'Near OI wall.'}", "OPTION", 1.5)
+                f"Resist: {csym}{top_ce:,.0f} (CE OI:{ce_resist[0]['oi']:,.0f}). Support: {csym}{top_pe:,.0f} (PE OI:{pe_support[0]['oi']:,.0f}). {'Within OI range.' if top_pe < price < top_ce else 'Near OI wall.'}", "OPTION", 1.5)
         
         if atm_iv > 0:
             add("ATM IV", "SUPPORTS" if atm_iv < 18 else "NEUTRAL" if atm_iv < 30 else "OPPOSES",
@@ -4491,7 +4491,7 @@ async def _algo_signal_impl(symbol: str = "NIFTY"):
             dte_val = bs_data.get("dte", 7)
             
             add("Delta (B-S)", "SUPPORTS" if 0.45 <= ce_delta <= 0.60 else "NEUTRAL" if 0.35 <= ce_delta <= 0.65 else "OPPOSES",
-                f"ATM CE delta {ce_delta:.2f}. {'Sweet spot (0.45-0.55) — best risk/reward for directional trades.' if 0.45 <= ce_delta <= 0.55 else 'Deep ITM — expensive, less leverage.' if ce_delta > 0.65 else 'Far OTM — cheap but low probability.' if ce_delta < 0.30 else 'Acceptable range.'} Premium ₹{ce_prem:,.0f}.", "OPTION", 1.0)
+                f"ATM CE delta {ce_delta:.2f}. {'Sweet spot (0.45-0.55) — best risk/reward for directional trades.' if 0.45 <= ce_delta <= 0.55 else 'Deep ITM — expensive, less leverage.' if ce_delta > 0.65 else 'Far OTM — cheap but low probability.' if ce_delta < 0.30 else 'Acceptable range.'} Premium {csym}{ce_prem:,.0f}.", "OPTION", 1.0)
             
             if ce_gamma > 0 and dte_val <= 2:
                 add("Gamma Risk", "OPPOSES" if ce_gamma > 0.005 else "NEUTRAL",
@@ -4499,7 +4499,7 @@ async def _algo_signal_impl(symbol: str = "NIFTY"):
             
             if ce_theta != 0:
                 add("Theta Decay", "OPPOSES" if dte_val <= 2 and ce_theta < -5 else "NEUTRAL" if ce_theta < -3 else "SUPPORTS",
-                    f"Theta ₹{ce_theta:,.1f}/day. {'Heavy decay — time working against BUY positions.' if ce_theta < -5 else 'Moderate decay.' if ce_theta < -2 else 'Low decay — time not a major factor.'} DTE={dte_val}.", "OPTION", 1.0)
+                    f"Theta {csym}{ce_theta:,.1f}/day. {'Heavy decay — time working against BUY positions.' if ce_theta < -5 else 'Moderate decay.' if ce_theta < -2 else 'Low decay — time not a major factor.'} DTE={dte_val}.", "OPTION", 1.0)
     
     # ─── LAYER 4: FUNDAMENTALS (stocks only) ───
     is_index = yf_sym.startswith("^")
@@ -4563,7 +4563,7 @@ async def _algo_signal_impl(symbol: str = "NIFTY"):
     # Also check if ANY index expires today (for top trades priority)
     # Which indices expire today? (NIFTY=Tue, SENSEX=Thu)
     all_expiry_today = []
-    WEEKLY_EXPIRY_MAP = {"Tuesday": ["NIFTY"], "Thursday": ["SENSEX"]}
+    WEEKLY_EXPIRY_MAP = {"Tuesday": ["NIFTY"], "Thursday": ["SENSEX"], "Monday": ["SPY_0DTE"], "Wednesday": ["SPY_0DTE"], "Friday": ["SPY_0DTE", "IWM"]}
     if day_name in WEEKLY_EXPIRY_MAP:
         all_expiry_today = WEEKLY_EXPIRY_MAP[day_name]
     # Also check BANKNIFTY monthly (last Tuesday — compare with NSE expiry_dates)
@@ -4577,7 +4577,7 @@ async def _algo_signal_impl(symbol: str = "NIFTY"):
             pass
     
     if is_expiry:
-        expiry_note = f"🔥 {symbol} EXPIRY TODAY! Gamma risk HIGH. Theta decay accelerates after 1 PM. Pin to max pain ₹{nse.get('max_pain', 0):,.0f} likely until 2 PM. Tighter SL mandatory. Exit by 2:30 PM."
+        expiry_note = f"🔥 {symbol} EXPIRY TODAY! Gamma risk HIGH. Theta decay accelerates after 1 PM. Pin to max pain {csym}{nse.get('max_pain', 0):,.0f} likely until 2 PM. Tighter SL mandatory. Exit by 2:30 PM."
         add("Expiry", "NEUTRAL", expiry_note, "RISK", 1.5)
         add("Theta Crush", "OPPOSES", f"EXPIRY — option premiums decay 3-5× faster today. BUY positions face severe time decay after 1 PM. Consider selling or hedging.", "RISK", 1.5)
     elif dte_to_expiry <= 2:
@@ -4639,6 +4639,8 @@ async def _algo_signal_impl(symbol: str = "NIFTY"):
         bs_premium = bs_data["best_pe"]["premium"]
     
     opt_type = "CE" if direction != "BEARISH" else "PE"
+    csym = "$" if is_us else "₹"
+    bs_r_rate = 0.0525 if is_us else 0.065  # US Fed rate vs India 10Y
     
     # ═══ PREMIUM-BASED TRADE PLAN ═══
     # Compute option premium at entry, SL, T1, T2, T3 underlying levels
@@ -4659,7 +4661,7 @@ async def _algo_signal_impl(symbol: str = "NIFTY"):
     
     # Use B-S params if available
     bs_T = bs_data.get("T", 7/365)
-    bs_r = bs_data.get("risk_free", 0.065)
+    bs_r = bs_data.get("risk_free", bs_r_rate)
     bs_iv = (nse.get("atm_iv", 20)) / 100  # decimal
     
     prem_entry = bs_premium if bs_premium > 0 else _bs_premium_at(price, selected_strike, bs_T, bs_r, bs_iv, opt_type)
@@ -4677,13 +4679,13 @@ async def _algo_signal_impl(symbol: str = "NIFTY"):
     prem_capital = round(prem_entry * inst["lot"], 0)
     
     # ORB-enhanced entry condition
-    entry_condition = f"Enter when {symbol} holds above ₹{sma20:,.0f} (SMA20) with volume > 1.2×."
+    entry_condition = f"Enter when {symbol} holds above {csym}{sma20:,.0f} (SMA20) with volume > 1.2×."
     if orb.get("breakout") == "ABOVE":
-        entry_condition = f"ORB BREAKOUT ✓. Buy {selected_strike} {opt_type} when 5m candle closes above ORB ₹{orb['orb_high']:,.0f} with vol > 1.5×. Must be above VWAP ₹{orb.get('vwap', 0):,.0f}."
+        entry_condition = f"ORB BREAKOUT ✓. Buy {selected_strike} {opt_type} when 5m candle closes above ORB {csym}{orb['orb_high']:,.0f} with vol > 1.5×. Must be above VWAP {csym}{orb.get('vwap', 0):,.0f}."
     elif orb.get("breakout") == "BELOW":
-        entry_condition = f"ORB BREAKDOWN ✓. Buy {selected_strike} {opt_type} when 5m candle closes below ₹{orb['orb_low']:,.0f}. VWAP ₹{orb.get('vwap', 0):,.0f}."
+        entry_condition = f"ORB BREAKDOWN ✓. Buy {selected_strike} {opt_type} when 5m candle closes below {csym}{orb['orb_low']:,.0f}. VWAP {csym}{orb.get('vwap', 0):,.0f}."
     elif orb.get("orb_high"):
-        entry_condition = f"Inside ORB ₹{orb['orb_low']:,.0f}–₹{orb['orb_high']:,.0f}. Wait for breakout, then buy {selected_strike} {opt_type}."
+        entry_condition = f"Inside ORB {csym}{orb['orb_low']:,.0f}–{csym}{orb['orb_high']:,.0f}. Wait for breakout, then buy {selected_strike} {opt_type}."
     
     trade = {
         "action": f"BUY {selected_strike} {opt_type}",
@@ -4712,20 +4714,20 @@ async def _algo_signal_impl(symbol: str = "NIFTY"):
         "lot": inst["lot"],
         "rrRatio": prem_rr,
         # Actions
-        "t1Action": f"Book 50%. Move SL to ₹{round(prem_entry, 1)} (cost).",
+        "t1Action": f"Book 50%. Move SL to {csym}{round(prem_entry, 1)} (cost).",
         "t2Action": "Book 30%. Trail SL below last 5m swing.",
         "t3Action": "Let 20% ride. Hard exit at close.",
-        "slReason": f"If {symbol} breaks below ₹{sl_price:,.0f} (SMA20 / 1.5×ATR). Premium drops to ~₹{round(prem_sl, 1) if prem_sl > 0 else round(prem_entry*0.7, 1)}.",
+        "slReason": f"If {symbol} breaks below {csym}{sl_price:,.0f} (SMA20 / 1.5×ATR). Premium drops to ~{csym}{round(prem_sl, 1) if prem_sl > 0 else round(prem_entry*0.7, 1)}.",
         "entry": entry_condition,
-        "exit": ("2:30 PM hard exit. EXPIRY — gamma risk HIGH. Tighter SL." if bs_data.get("dte", 99) <= 2 else "3:00 PM hard exit.") + f" If premium hits ₹{round(prem_sl, 1) if prem_sl > 0 else round(prem_entry*0.7, 1)} → exit immediately.",
+        "exit": ("2:30 PM hard exit. EXPIRY — gamma risk HIGH. Tighter SL." if bs_data.get("dte", 99) <= 2 else ("3:55 PM ET hard exit." if is_us else "3:00 PM hard exit.")) + f" If premium hits {csym}{round(prem_sl, 1) if prem_sl > 0 else round(prem_entry*0.7, 1)} → exit immediately.",
     }
     
     # Reasoning
     reasoning = f"{supports} of {total} factors support this trade. "
     if cpr_type == "NARROW": reasoning += "Narrow CPR signals trending day. "
-    if orb.get("breakout") == "ABOVE": reasoning += f"ORB breakout confirmed above ₹{orb['orb_high']:,.0f}. "
-    elif orb.get("breakout") == "BELOW": reasoning += f"ORB breakdown below ₹{orb['orb_low']:,.0f}. "
-    if orb.get("vwap") and orb["vwap"] > 0: reasoning += f"{'Above' if price > orb['vwap'] else 'Below'} VWAP ₹{orb['vwap']:,.0f}. "
+    if orb.get("breakout") == "ABOVE": reasoning += f"ORB breakout confirmed above {csym}{orb['orb_high']:,.0f}. "
+    elif orb.get("breakout") == "BELOW": reasoning += f"ORB breakdown below {csym}{orb['orb_low']:,.0f}. "
+    if orb.get("vwap") and orb["vwap"] > 0: reasoning += f"{'Above' if price > orb['vwap'] else 'Below'} VWAP {csym}{orb['vwap']:,.0f}. "
     if ema9 > ema21 > ema50: reasoning += "Full EMA bullish stack. "
     if macd_bullish: reasoning += f"MACD bullish (histogram {macd_hist:+.1f}). "
     if supertrend_buy: reasoning += "Supertrend BUY active. "
@@ -4734,7 +4736,7 @@ async def _algo_signal_impl(symbol: str = "NIFTY"):
         if pcr > 1: reasoning += f"PCR {pcr:.2f} = PE writing (bullish floor). "
         if vix and vix < 16: reasoning += f"VIX {vix:.1f} = fair premiums. "
     if bs_data.get("best_ce"):
-        reasoning += f"B-S delta {selected_delta:.2f} at ₹{selected_strike} strike. "
+        reasoning += f"B-S delta {selected_delta:.2f} at {csym}{selected_strike} strike. "
         if bs_data.get("dte", 99) <= 2: reasoning += "⚠️ Near expiry — gamma risk elevated. "
     if opposes > 0: reasoning += f"{opposes} factors oppose. "
     if neutrals > 0: reasoning += f"{neutrals} neutral. "
@@ -4799,13 +4801,13 @@ async def _algo_signal_impl(symbol: str = "NIFTY"):
                 "morningRange": f"{morning_range_pct:.2f}%",
                 "condition": f"Morning range <1% (currently {morning_range_pct:.2f}%). Low VIX ({nse.get('vix', 0):.1f}) = cheap premiums.",
                 "entry": "After 1:45 PM IST. Wait for range compression to complete.",
-                "sl": f"₹{blast_sl:,.0f} ({30}% of cost). Exit if both legs decay.",
-                "target": f"2× = ₹{blast_t1:,.0f}, 3× = ₹{blast_t2:,.0f} on directional breakout.",
+                "sl": f"{csym}{blast_sl:,.0f} ({30}% of cost). Exit if both legs decay.",
+                "target": f"2× = {csym}{blast_t1:,.0f}, 3× = {csym}{blast_t2:,.0f} on directional breakout.",
                 "riskPerLot": blast_risk_per_lot,
                 "rewardPerLot": blast_reward_per_lot,
                 "maxPain": nse.get("max_pain", 0),
                 "prob": 65 if morning_range_pct < 0.5 else 55 if morning_range_pct < 0.8 else 40,
-                "note": f"Expiry pin to ₹{nse.get('max_pain', 0):,.0f} max pain likely until 2PM. After that, gamma explosion can move {inst['gap']*3}+ points in minutes."
+                "note": f"Expiry pin to {csym}{nse.get('max_pain', 0):,.0f} max pain likely until 2PM. After that, gamma explosion can move {inst['gap']*3}+ points in minutes."
             }
             print(f"🔥 Gamma Blast: {symbol} ATM={atm_k} Cost={combined_cost} Morning={morning_range_pct}% Viable={is_viable}")
         except Exception as e:
@@ -4974,13 +4976,13 @@ async def _algo_signal_impl(symbol: str = "NIFTY"):
         
         # Price near key level
         if pdh > 0 and abs(price - pdh) / pdh * 100 < 0.3:
-            alerts.append({"type": "WARNING", "msg": f"Price near PDH ₹{pdh:,.0f} ({abs(price-pdh):.0f} away). Breakout or rejection imminent.", "severity": "HIGH"})
+            alerts.append({"type": "WARNING", "msg": f"Price near PDH {csym}{pdh:,.0f} ({abs(price-pdh):.0f} away). Breakout or rejection imminent.", "severity": "HIGH"})
         if pdl > 0 and abs(price - pdl) / pdl * 100 < 0.3:
-            alerts.append({"type": "WARNING", "msg": f"Price near PDL ₹{pdl:,.0f} ({abs(price-pdl):.0f} away). Breakdown or bounce imminent.", "severity": "HIGH"})
+            alerts.append({"type": "WARNING", "msg": f"Price near PDL {csym}{pdl:,.0f} ({abs(price-pdl):.0f} away). Breakdown or bounce imminent.", "severity": "HIGH"})
         
         # SMA200 test
         if abs(price - sma200) / sma200 * 100 < 0.5:
-            alerts.append({"type": "CRITICAL", "msg": f"Price testing 200-DMA ₹{sma200:,.0f}. Major support/resistance. Big move likely.", "severity": "HIGH"})
+            alerts.append({"type": "CRITICAL", "msg": f"Price testing 200-DMA {csym}{sma200:,.0f}. Major support/resistance. Big move likely.", "severity": "HIGH"})
         
         # Volume spike
         if vol_ratio > 2.0:
@@ -4994,7 +4996,7 @@ async def _algo_signal_impl(symbol: str = "NIFTY"):
         if nse.get("ce_resistance") and len(nse["ce_resistance"]) > 0:
             top_resist = nse["ce_resistance"][0]["strike"]
             if abs(price - top_resist) / price * 100 < 0.5:
-                alerts.append({"type": "WARNING", "msg": f"Price approaching major OI resistance ₹{top_resist:,.0f} (CE OI: {nse['ce_resistance'][0]['oi']:,.0f}). Breakout above = massive short covering rally.", "severity": "HIGH"})
+                alerts.append({"type": "WARNING", "msg": f"Price approaching major OI resistance {csym}{top_resist:,.0f} (CE OI: {nse['ce_resistance'][0]['oi']:,.0f}). Breakout above = massive short covering rally.", "severity": "HIGH"})
         
         result["trend"] = {
             "label": trend_label,

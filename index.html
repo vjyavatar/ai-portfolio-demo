@@ -898,10 +898,11 @@ footer{position:relative;z-index:1;margin-top:32px;background:#002f6c;border-top
 <button id="tradesLoadBtn" onclick="loadIndexTrades()" style="padding:12px 28px;border-radius:10px;border:2px solid var(--amber);background:rgba(245,158,11,.1);color:var(--amber);font-family:Sora,sans-serif;font-size:14px;font-weight:700;cursor:pointer;transition:all .3s">&#9889; Generate Today's Trades</button>
 <button onclick="loadIndexTrades(true)" style="padding:12px 20px;border-radius:10px;border:2px solid var(--cyan);background:rgba(6,182,212,.08);color:var(--cyan);font-family:Sora,sans-serif;font-size:12px;font-weight:700;cursor:pointer;margin-left:8px">&#8635; Force Refresh</button>
 <button id="scorecardBtn" onclick="loadTradeScorecard()" style="padding:12px 20px;border-radius:10px;border:2px solid var(--purple);background:rgba(139,92,246,.08);color:var(--purple);font-family:Sora,sans-serif;font-size:12px;font-weight:700;cursor:pointer;margin-left:8px">&#128202; Trade Scorecard</button>
-<div id="tradesError" style="margin-top:12px;font-size:12px;color:var(--red);display:none"></div>
-<div id="scorecardArea" style="display:none;margin-top:16px"></div>
 </div>
 </div>
+<!-- These live OUTSIDE tradesContent so innerHTML replacement doesn't destroy them -->
+<div id="tradesError" style="padding:0 20px;font-size:12px;color:var(--red);display:none"></div>
+<div id="scorecardArea" style="display:none;padding:0 20px;margin-top:8px"></div>
 </div>
 </div>
 
