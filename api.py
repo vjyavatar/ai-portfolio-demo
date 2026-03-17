@@ -4605,33 +4605,55 @@ async def _algo_signal_impl(symbol: str = "NIFTY"):
     # NSE 2024-2026 schedule: NIFTY=Thursday, BANKNIFTY=Wednesday, SENSEX=Friday
     # (Changed from Tue/Thu in Nov 2024)
     if not is_expiry:
-        # NSE/BSE expiry schedule (post Sep 2025 SEBI revision):
-        # NIFTY weekly = Tuesday (NSE), SENSEX weekly = Thursday (BSE)
-        # BANKNIFTY = NO weekly (monthly only = last Tuesday)
-        EXPIRY_SCHEDULE = {
-            "NIFTY": "Tuesday",
-            "SENSEX": "Thursday",
-        }
-        exp_day = EXPIRY_SCHEDULE.get(symbol, "")
-        if exp_day and day_name == exp_day:
-            is_expiry = True
-            expiry_instrument = symbol
+        if is_us:
+            # SPY/QQQ: 0DTE on Mon/Wed/Fri
+            if day_name in ["Monday", "Wednesday", "Friday"] and symbol in ["SPY", "QQQ"]:
+                is_expiry = True
+                expiry_instrument = symbol
+            # All US stocks: weekly Friday
+            elif day_name == "Friday":
+                is_expiry = True
+                expiry_instrument = symbol
+        else:
+            # NSE/BSE expiry schedule (post Sep 2025 SEBI revision):
+            # NIFTY weekly = Tuesday (NSE), SENSEX weekly = Thursday (BSE)
+            # BANKNIFTY = NO weekly (monthly only = last Tuesday)
+            EXPIRY_SCHEDULE = {
+                "NIFTY": "Tuesday",
+                "SENSEX": "Thursday",
+            }
+            exp_day = EXPIRY_SCHEDULE.get(symbol, "")
+            if exp_day and day_name == exp_day:
+                is_expiry = True
+                expiry_instrument = symbol
     
     # Also check if ANY index expires today (for top trades priority)
-    # Which indices expire today? (NIFTY=Tue, SENSEX=Thu)
+    # Which indices expire today? Region-aware — no cross-contamination
     all_expiry_today = []
-    WEEKLY_EXPIRY_MAP = {"Tuesday": ["NIFTY"], "Thursday": ["SENSEX"], "Monday": ["SPY_0DTE"], "Wednesday": ["SPY_0DTE"], "Friday": ["SPY_0DTE", "IWM"]}
-    if day_name in WEEKLY_EXPIRY_MAP:
-        all_expiry_today = WEEKLY_EXPIRY_MAP[day_name]
-    # Also check BANKNIFTY monthly (last Tuesday — compare with NSE expiry_dates)
-    if symbol == "BANKNIFTY" and nse_expiry_dates:
-        try:
-            bn_exp = datetime.strptime(nse_expiry_dates[0], "%d-%b-%Y")
-            if bn_exp.strftime("%Y-%m-%d") == IST.strftime("%Y-%m-%d"):
-                is_expiry = True
-                all_expiry_today.append("BANKNIFTY")
-        except:
-            pass
+    if is_us:
+        # US: SPY/QQQ have 0DTE on Mon/Wed/Fri
+        if day_name in ["Monday", "Wednesday", "Friday"]:
+            is_expiry = True
+            expiry_instrument = symbol
+            all_expiry_today = ["SPY 0DTE", "QQQ 0DTE"]
+        # Regular weekly on Friday
+        if day_name == "Friday":
+            all_expiry_today = ["SPY", "QQQ", "IWM", "AAPL", "MSFT", "NVDA", "TSLA"]
+    else:
+        # India: NIFTY=Tuesday, SENSEX=Thursday
+        IN_EXPIRY_MAP = {"Tuesday": ["NIFTY"], "Thursday": ["SENSEX"]}
+        if day_name in IN_EXPIRY_MAP:
+            all_expiry_today = IN_EXPIRY_MAP[day_name]
+        # BANKNIFTY monthly (last Tuesday — compare with NSE expiry_dates)
+        if symbol == "BANKNIFTY" and nse_expiry_dates:
+            try:
+                bn_exp = datetime.strptime(nse_expiry_dates[0], "%d-%b-%Y")
+                if bn_exp.strftime("%Y-%m-%d") == IST.strftime("%Y-%m-%d"):
+                    is_expiry = True
+                    if "BANKNIFTY" not in all_expiry_today:
+                        all_expiry_today.append("BANKNIFTY")
+            except:
+                pass
     
     if is_expiry:
         expiry_note = f"🔥 {symbol} EXPIRY TODAY! Gamma risk HIGH. Theta decay accelerates after 1 PM. Pin to max pain {csym}{nse.get('max_pain', 0):,.0f} likely until 2 PM. Tighter SL mandatory. Exit by 2:30 PM."
