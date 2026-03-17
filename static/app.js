@@ -5171,11 +5171,12 @@ h+='<div><div style="font-size:20px;font-weight:900;color:'+(isWait?'#f59e0b':dC
 h+='<div style="font-size:11px;color:var(--text3)">'+d.symbol+' '+S+p.toLocaleString("en-IN")+' &middot; '+d.timestamp+'</div></div></div>';
 h+='<div style="text-align:right"><div style="font-size:28px;font-weight:900;color:'+sC+';font-family:var(--mono)">'+wS.toFixed(1)+'/'+wT.toFixed(1)+'</div>';
 h+='<div style="font-size:9px;color:var(--text3)">Weighted Score &middot; '+conf+'</div></div></div>';
-// One-line verdict
-if(tr&&!isWait){
-h+='<div style="font-size:13px;font-weight:700;color:'+dC+';line-height:1.6">&#9654; <strong>'+tr.action+'</strong> at '+S+(tr.premEntry||0).toFixed(1)+' &middot; SL '+S+(tr.premSL||0).toFixed(1)+' &middot; Target '+S+(tr.premT2||0).toFixed(1)+' &middot; R:R '+(tr.rrRatio||'N/A')+'</div>';
-}else{
-h+='<div style="font-size:13px;font-weight:700;color:#f59e0b;line-height:1.6">&#9208; DO NOT TRADE — Only '+sup+'/'+tot+' factors support (weighted '+wS.toFixed(1)+'/'+wT.toFixed(1)+'). Wait for better setup.</div>';
+// One-line verdict — always show trade details
+if(tr){
+if(isWait){
+h+='<div style="font-size:13px;font-weight:700;color:#f59e0b;line-height:1.6;margin-bottom:4px">&#9888; LOW CONFLUENCE — '+sup+'/'+tot+' factors ('+wS.toFixed(1)+'/'+wT.toFixed(1)+' weighted). Trade at your own risk.</div>';
+}
+h+='<div style="font-size:13px;font-weight:700;color:'+(isWait?'var(--text3)':dC)+';line-height:1.6'+(isWait?';opacity:.7':'')+'">&#9654; <strong>'+tr.action+'</strong> at '+S+(tr.premEntry||0).toFixed(1)+' &middot; SL '+S+(tr.premSL||0).toFixed(1)+' &middot; Target '+S+(tr.premT2||0).toFixed(1)+' &middot; R:R '+(tr.rrRatio||'N/A')+'</div>';
 }
 h+='</div>';
 
@@ -5210,10 +5211,15 @@ h+='</tr>';
 });
 h+='</table></div>';
 
-// ═══ TRADE TICKET (if signal is actionable) ═══
-if(tr&&!isWait){
+// ═══ TRADE TICKET — ALWAYS SHOWN (with warning for AVOID) ═══
+if(tr){
 var pe=tr.premEntry||0,ps=tr.premSL||0,p1=tr.premT1||0,p2=tr.premT2||0,p3=tr.premT3||0;
-h+='<div style="border:2px solid '+dC+'40;border-radius:14px;overflow:hidden;margin-bottom:14px;background:'+dC+'06">';
+if(isWait){
+h+='<div style="padding:10px 16px;border-radius:10px 10px 0 0;background:linear-gradient(135deg,rgba(245,158,11,.12),rgba(239,68,68,.08));border:2px solid rgba(245,158,11,.3);border-bottom:none;display:flex;align-items:center;gap:8px">';
+h+='<span style="font-size:18px">&#9888;</span><div><div style="font-size:12px;font-weight:800;color:#f59e0b">LOW CONFLUENCE — TRADE NOT RECOMMENDED</div>';
+h+='<div style="font-size:10px;color:var(--text2)">Only '+sup+'/'+tot+' factors support ('+wS.toFixed(1)+'/'+wT.toFixed(1)+' weighted). If you still want to trade, use 50% position size with strict SL.</div></div></div>';
+}
+h+='<div style="border:2px solid '+(isWait?'#f59e0b40':dC+'40')+';border-radius:'+(isWait?'0 0 14px 14px':'14px')+';overflow:hidden;margin-bottom:14px;background:'+(isWait?'rgba(245,158,11,.02)':dC+'06')+';'+(isWait?'opacity:.85':'')+'">';
 // Header
 h+='<div style="background:'+dC+';padding:12px 18px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">';
 h+='<div style="display:flex;align-items:center;gap:10px"><span style="font-size:20px">'+(dir==='BULLISH'?'&#128994;':'&#128308;')+'</span><div><div style="color:#fff;font-size:18px;font-weight:900">'+tr.action+'</div><div style="color:rgba(255,255,255,.7);font-size:10px">&#916;'+(tr.delta?tr.delta.toFixed(2):'0.50')+' &middot; '+(d.instrument?.ex||'NFO')+' Lot '+(d.instrument?.lot||'')+'</div></div></div>';

@@ -4742,7 +4742,8 @@ async def _algo_signal_impl(symbol: str = "NIFTY"):
     result["allExpiryToday"] = all_expiry_today
     result["nextExpiry"] = next_expiry
     result["dteToExpiry"] = dte_to_expiry
-    result["trade"] = trade if signal not in ["HOLD / WAIT", "AVOID"] else None
+    trade["tradeable"] = signal not in ["HOLD / WAIT", "AVOID"]
+    result["trade"] = trade
     
     # ═══ GAMMA BLAST SETUP — Expiry day straddle/strangle ═══
     blast_setup = None
