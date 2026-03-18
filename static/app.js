@@ -5052,15 +5052,14 @@ window._algoLastTrend=newTrend;
 }
 
 // ═══ INDIA / USA REGION TOGGLE ═══
-window._algoRegion='IN';
+window._globalRegion='IN';
 function switchAlgoRegion(reg){
-window._algoRegion=reg;
+window._globalRegion=reg;
 document.getElementById('algoIN').style.display=reg==='IN'?'':'none';
 document.getElementById('algoUS').style.display=reg==='US'?'':'none';
-document.getElementById('algoRegIN').style.background=reg==='IN'?'#002f6c':'var(--bg2)';
-document.getElementById('algoRegIN').style.color=reg==='IN'?'#fff':'var(--text3)';
-document.getElementById('algoRegUS').style.background=reg==='US'?'#002f6c':'var(--bg2)';
-document.getElementById('algoRegUS').style.color=reg==='US'?'#fff':'var(--text3)';
+// Sync ALL region buttons across both tabs
+['algoRegIN','scanRegIN'].forEach(function(id){var b=document.getElementById(id);if(b){b.style.background=reg==='IN'?'#002f6c':'var(--bg2)';b.style.color=reg==='IN'?'#fff':'var(--text3)'}});
+['algoRegUS','scanRegUS'].forEach(function(id){var b=document.getElementById(id);if(b){b.style.background=reg==='US'?'#002f6c':'var(--bg2)';b.style.color=reg==='US'?'#fff':'var(--text3)'}});
 // Clear active buttons
 document.querySelectorAll('.algo-btn').forEach(function(b){b.classList.remove('active')});
 // Reload top trades for this region
@@ -5075,7 +5074,7 @@ setTimeout(function(){algoSelect(first,document.querySelector('#algo'+reg+' .alg
 function loadTopTrades(){
 var el=document.getElementById('topTradesTable');
 if(!el)return;
-var reg=window._algoRegion||'IN';
+var reg=window._globalRegion||'IN';
 var S=reg==='US'?'$':'&#8377;';
 var symbols=reg==='US'?['SPY','QQQ','IWM']:['NIFTY','BANKNIFTY','SENSEX'];
 var h='<table style="width:100%;border-collapse:collapse;font-size:11px"><thead><tr style="background:var(--bg2);border-bottom:2px solid var(--border)"><th style="padding:8px 10px;text-align:left;font-size:10px;font-weight:800">INSTRUMENT</th><th style="padding:8px;text-align:center;font-size:10px">SIGNAL</th><th style="padding:8px;text-align:center;font-size:10px">TREND</th><th style="padding:8px;text-align:right;font-size:10px">SPOT</th><th style="padding:8px;text-align:left;font-size:10px;color:#0a7c42">TRADE</th><th style="padding:8px;text-align:right;font-size:10px">ENTRY</th><th style="padding:8px;text-align:right;font-size:10px;color:#ef4444">SL</th><th style="padding:8px;text-align:right;font-size:10px;color:#0a7c42">TGT</th><th style="padding:8px;text-align:center;font-size:10px">R:R</th></tr></thead><tbody>';
@@ -5134,9 +5133,9 @@ return h;
 }
 
 // ═══ SCANNER TAB — Heatmap, Screener, Options Flow ═══
-window._scanRegion='IN';
+// _scanRegion merged into _globalRegion
 function switchScanRegion(reg){
-window._scanRegion=reg;
+window._globalRegion=reg;
 document.getElementById('scanRegIN').style.background=reg==='IN'?'#002f6c':'var(--bg2)';
 document.getElementById('scanRegIN').style.color=reg==='IN'?'#fff':'var(--text3)';
 document.getElementById('scanRegUS').style.background=reg==='US'?'#002f6c':'var(--bg2)';
@@ -5161,7 +5160,7 @@ btn.classList.add('active');
 // HEATMAP
 function loadHeatmap(){
 var el=document.getElementById('heatmapGrid');if(!el)return;
-var reg=window._scanRegion||'IN';
+var reg=window._globalRegion||'IN';
 var S=reg==='US'?'$':'₹';
 el.innerHTML='<div style="text-align:center;padding:30px;color:var(--text3);font-size:11px"><div style="display:inline-block;width:16px;height:16px;border:2px solid var(--cyan);border-top-color:transparent;border-radius:50%;animation:spin .5s linear infinite;vertical-align:middle;margin-right:6px"></div>Loading heatmap...</div>';
 fetch('/api/heatmap?region='+reg).then(function(r){return r.json()}).then(function(data){
@@ -5189,53 +5188,66 @@ function runScreener(preset){
 var el=document.getElementById('screenerResult');if(!el)return;
 var reg=window._scanRegion||'IN';
 var S=reg==='US'?'$':'₹';
-// Presets
-if(preset==='oversold'){document.getElementById('scrRsiBelow').value='30';document.getElementById('scrVolAbove').value='';document.getElementById('scrPeBelow').value='';document.getElementById('scrAboveSma200').checked=false;document.getElementById('scrRsiAbove').value='';}
-if(preset==='momentum'){document.getElementById('scrRsiAbove').value='60';document.getElementById('scrVolAbove').value='1.5';document.getElementById('scrAboveSma200').checked=true;document.getElementById('scrRsiBelow').value='';document.getElementById('scrPeBelow').value='';}
-if(preset==='value'){document.getElementById('scrPeBelow').value='15';document.getElementById('scrAboveSma200').checked=true;document.getElementById('scrRsiBelow').value='';document.getElementById('scrRsiAbove').value='';document.getElementById('scrVolAbove').value='';}
+// Build params
 var params='region='+reg;
+if(preset){
+params+='&preset='+preset;
+}else{
 var rb=document.getElementById('scrRsiBelow').value;if(rb)params+='&rsi_below='+rb;
 var ra=document.getElementById('scrRsiAbove').value;if(ra)params+='&rsi_above='+ra;
 var va=document.getElementById('scrVolAbove').value;if(va)params+='&vol_above='+va;
 var pb=document.getElementById('scrPeBelow').value;if(pb)params+='&pe_below='+pb;
 if(document.getElementById('scrAboveSma200').checked)params+='&above_sma200=true';
-el.innerHTML='<div style="text-align:center;padding:20px;color:var(--text3);font-size:11px"><div style="display:inline-block;width:14px;height:14px;border:2px solid var(--cyan);border-top-color:transparent;border-radius:50%;animation:spin .5s linear infinite;vertical-align:middle;margin-right:6px"></div>Scanning 30+ stocks...</div>';
+}
+el.innerHTML='<div style="text-align:center;padding:20px;color:var(--text3);font-size:11px"><div style="display:inline-block;width:14px;height:14px;border:2px solid var(--cyan);border-top-color:transparent;border-radius:50%;animation:spin .5s linear infinite;vertical-align:middle;margin-right:6px"></div>Scanning 100+ stocks with live data... (takes 15-30s)</div>';
 fetch('/api/screener?'+params).then(function(r){return r.json()}).then(function(data){
 if(!data.success){el.innerHTML='<div style="color:var(--red);padding:12px;font-size:11px">Error scanning.</div>';return}
-var res=data.results;
-var h='<div style="font-size:10px;color:var(--text3);margin-bottom:8px">'+data.matched+' of '+data.total_scanned+' stocks matched</div>';
-if(!res.length){h+='<div style="padding:20px;text-align:center;color:var(--amber);font-size:12px">No stocks match your filters. Try relaxing criteria.</div>';el.innerHTML=h;return}
+var res=data.results||[];
+var h='<div style="font-size:10px;color:var(--text3);margin-bottom:8px">'+data.matched+' of '+data.total_scanned+' stocks matched'+(data.preset?' · Preset: <strong style="color:var(--cyan)">'+data.preset.toUpperCase()+'</strong>':'')+'</div>';
+if(!res.length){h+='<div style="padding:20px;text-align:center;color:var(--amber);font-size:12px">No stocks match. Try relaxing filters or a different preset.</div>';el.innerHTML=h;return}
 h+='<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:10px"><thead><tr style="background:var(--bg2);border-bottom:2px solid var(--border)">';
-h+='<th style="padding:6px 8px;text-align:left">Stock</th><th style="padding:6px;text-align:right">Price</th><th style="padding:6px;text-align:right">Chg%</th><th style="padding:6px;text-align:center">RSI</th><th style="padding:6px;text-align:center">Vol×</th><th style="padding:6px;text-align:right">SMA200</th><th style="padding:6px;text-align:center">EMA</th><th style="padding:6px;text-align:right">MACD</th><th style="padding:6px;text-align:right">PE</th><th style="padding:6px;text-align:center">Signal</th>';
+h+='<th style="padding:6px 8px;text-align:left">#</th><th style="padding:6px 8px;text-align:left">Stock</th><th style="padding:6px;text-align:right">Price</th>';
+h+='<th style="padding:6px;text-align:right;color:var(--cyan)">YTD%</th>';
+h+='<th style="padding:6px;text-align:right">1M%</th>';
+h+='<th style="padding:6px;text-align:right">1W%</th>';
+h+='<th style="padding:6px;text-align:center">RSI</th><th style="padding:6px;text-align:center">Vol×</th>';
+h+='<th style="padding:6px;text-align:center">EMA</th><th style="padding:6px;text-align:right">MACD</th>';
+h+='<th style="padding:6px;text-align:right">PE</th><th style="padding:6px;text-align:right;color:var(--text3)">52W%</th>';
+h+='<th style="padding:6px;text-align:center">Signal</th>';
 h+='</tr></thead><tbody>';
-res.forEach(function(s){
+res.forEach(function(s,i){
 var rsiC=s.rsi<30?'#10b981':s.rsi>70?'#ef4444':'var(--text)';
 var chgC=s.chg>=0?'#10b981':'#ef4444';
-var emaC=s.ema_bull?'#10b981':'#ef4444';
-var sig=s.rsi<30&&s.above_sma200?'OVERSOLD BUY':s.rsi>70?'OVERBOUGHT':s.ema_bull&&s.above_sma200&&s.vol_ratio>1.2?'MOMENTUM':'—';
-var sigC=sig.includes('BUY')?'#10b981':sig.includes('OVER')?'#ef4444':sig==='MOMENTUM'?'var(--blue)':'var(--text3)';
+var ytdC=s.ytd>=50?'#0a7c42':s.ytd>=20?'#10b981':s.ytd>=0?'var(--text)':s.ytd>=-20?'#ef4444':'#991b1b';
+var m1C=s.m1>=0?'#10b981':'#ef4444';
+var w1C=s.w1>=0?'#10b981':'#ef4444';
+var sig=s.rsi<30&&s.above_sma200?'OVERSOLD BUY':s.rsi>70?'OVERBOUGHT':s.ema_bull&&s.above_sma200&&s.vol_ratio>1.2?'MOMENTUM':s.ytd>50?'★ TOP GAINER':'—';
+var sigC=sig.includes('BUY')?'#10b981':sig.includes('OVER')?'#ef4444':sig==='MOMENTUM'?'var(--blue)':sig.includes('GAINER')?'#0a7c42':'var(--text3)';
 h+='<tr style="border-bottom:1px solid var(--border);cursor:pointer" onclick="algoSelect(\''+s.sym+'\',null)" onmouseover="this.style.background=\'var(--bg2)\'" onmouseout="this.style.background=\'transparent\'">';
-h+='<td style="padding:5px 8px;font-weight:700">'+s.sym+'</td>';
-h+='<td style="padding:5px;text-align:right;font-family:var(--mono)">'+S+s.price.toLocaleString()+'</td>';
-h+='<td style="padding:5px;text-align:right;font-weight:700;color:'+chgC+'">'+(s.chg>=0?'+':'')+s.chg+'%</td>';
+h+='<td style="padding:5px 8px;color:var(--text3);font-weight:700">'+(i+1)+'</td>';
+h+='<td style="padding:5px 8px"><div style="font-weight:700;color:var(--text)">'+s.sym+'</div><div style="font-size:8px;color:var(--text3)">'+s.name+(s.sector?' · '+s.sector:'')+'</div></td>';
+h+='<td style="padding:5px;text-align:right;font-family:var(--mono);font-weight:600">'+S+s.price.toLocaleString()+'</td>';
+h+='<td style="padding:5px;text-align:right;font-weight:900;font-size:11px;color:'+ytdC+'">'+(s.ytd>=0?'+':'')+s.ytd+'%</td>';
+h+='<td style="padding:5px;text-align:right;font-weight:700;color:'+m1C+'">'+(s.m1>=0?'+':'')+s.m1+'%</td>';
+h+='<td style="padding:5px;text-align:right;color:'+w1C+'">'+(s.w1>=0?'+':'')+s.w1+'%</td>';
 h+='<td style="padding:5px;text-align:center;font-weight:800;color:'+rsiC+'">'+s.rsi+'</td>';
-h+='<td style="padding:5px;text-align:center;font-weight:700;color:'+(s.vol_ratio>1.5?'var(--cyan)':'var(--text3)')+'">'+s.vol_ratio+'×</td>';
-h+='<td style="padding:5px;text-align:right;color:'+(s.above_sma200?'#10b981':'#ef4444')+'">'+S+s.sma200.toLocaleString()+(s.above_sma200?' ✓':' ✗')+'</td>';
-h+='<td style="padding:5px;text-align:center;color:'+emaC+'">'+(s.ema_bull?'9>21 ▲':'9<21 ▼')+'</td>';
+h+='<td style="padding:5px;text-align:center;color:'+(s.vol_ratio>1.5?'var(--cyan)':'var(--text3)')+'">'+s.vol_ratio+'×</td>';
+h+='<td style="padding:5px;text-align:center;color:'+(s.ema_bull?'#10b981':'#ef4444')+'">'+(s.ema_bull?'▲':'▼')+'</td>';
 h+='<td style="padding:5px;text-align:right;font-family:var(--mono);color:'+(s.macd>0?'#10b981':'#ef4444')+'">'+s.macd+'</td>';
 h+='<td style="padding:5px;text-align:right;color:var(--text3)">'+(s.pe>0?s.pe:'—')+'</td>';
+h+='<td style="padding:5px;text-align:right;color:var(--text3)">'+s.from_52h+'%</td>';
 h+='<td style="padding:5px;text-align:center"><span style="font-size:8px;font-weight:800;padding:2px 6px;border-radius:3px;background:'+sigC+'15;color:'+sigC+'">'+sig+'</span></td>';
 h+='</tr>';
 });
 h+='</tbody></table></div>';
+h+='<div style="font-size:8px;color:var(--text3);margin-top:6px">Click any row for full algo analysis. Scanned '+data.total_scanned+' stocks.</div>';
 el.innerHTML=h;
-}).catch(function(e){el.innerHTML='<div style="color:var(--red);padding:12px;font-size:11px">Error: '+e.message+'</div>'});
+}).catch(function(e){el.innerHTML='<div style="color:var(--red);padding:12px;font-size:11px">Error: '+e.message+'. <button onclick="runScreener(\''+preset+'\')" style="color:var(--blue);background:none;border:none;cursor:pointer;text-decoration:underline;font-size:11px">Retry</button></div>'});
 }
 
-// OPTIONS FLOW
 function loadOptionsFlow(){
 var el=document.getElementById('flowResult');if(!el)return;
-var reg=window._scanRegion||'IN';
+var reg=window._globalRegion||'IN';
 var S=reg==='US'?'$':'₹';
 el.innerHTML='<div style="text-align:center;padding:20px;color:var(--text3);font-size:11px"><div style="display:inline-block;width:14px;height:14px;border:2px solid var(--cyan);border-top-color:transparent;border-radius:50%;animation:spin .5s linear infinite;vertical-align:middle;margin-right:6px"></div>Scanning options chains for unusual activity...</div>';
 fetch('/api/options-flow?region='+reg).then(function(r){return r.json()}).then(function(data){
@@ -5286,7 +5298,7 @@ if(ci&&btn)ci.value='';
 var res=document.getElementById('algoResult');
 if(res)res.innerHTML='<div style="text-align:center;padding:30px;color:var(--text3)"><div style="font-size:24px;margin-bottom:8px">&#9203;</div><div style="font-size:12px;font-weight:600">Running 5-layer algorithm for <strong>'+sym+'</strong>...</div><div style="font-size:10px;color:var(--text3);margin-top:4px">Fetching live NSE options + yfinance data + computing CPR, ORB, VWAP, EMA, RSI, MACD, Supertrend, VIX, PCR, OI, Max Pain, Black-Scholes Greeks...</div></div>';
 // Fetch
-fetch('/api/algo-signal?symbol='+encodeURIComponent(sym)+'&region='+(window._algoRegion||'IN')).then(function(r){return r.json();}).then(function(data){
+fetch('/api/algo-signal?symbol='+encodeURIComponent(sym)+'&region='+(window._globalRegion||'IN')).then(function(r){return r.json();}).then(function(data){
 if(!res)return;
 if(!data.success){res.innerHTML='<div style="padding:20px;text-align:center"><div style="font-size:24px;margin-bottom:8px">&#9888;</div><div style="color:var(--red);font-size:12px;font-weight:600">'+(data.error||'Failed to fetch data for '+sym)+'</div><div style="font-size:10px;color:var(--text3);margin-top:4px">Try another instrument or check if market is open.</div></div>';return;}
 _checkTrendChange(data);

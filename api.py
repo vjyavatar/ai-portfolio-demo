@@ -5326,43 +5326,109 @@ async def heatmap(region: str = "IN"):
 # SCREENER — Multi-filter stock scanner
 # ═══════════════════════════════════════════════════
 @app.get("/api/screener")
-async def screener(region: str = "IN", rsi_below: float = 0, rsi_above: float = 0,
-                   vol_above: float = 0, above_sma200: bool = False, pe_below: float = 0):
-    """Screen stocks by technical/fundamental filters."""
+async def screener(region: str = "IN", preset: str = "", rsi_below: float = 0, rsi_above: float = 0,
+                   vol_above: float = 0, above_sma200: bool = False, pe_below: float = 0,
+                   sort_by: str = "mcap"):
+    """Scan 100+ stocks with technical/fundamental filters + YTD performance."""
     
+    # ═══ LARGE UNIVERSE — 100+ stocks per region ═══
     if region.upper() == "US":
-        syms = ["AAPL","MSFT","NVDA","GOOGL","META","AMD","AVGO","AMZN","TSLA","JPM",
-                "V","MA","UNH","JNJ","LLY","XOM","HD","PG","MRK","ABBV","CRM","NFLX",
-                "COST","ORCL","BAC","WMT","DIS","INTC","BA","GS","NKE","PYPL","SQ","COIN"]
+        syms = [
+            # Mega Cap Tech
+            "AAPL","MSFT","NVDA","GOOGL","META","AMZN","TSLA","AVGO","ORCL","CRM",
+            # Semiconductors
+            "AMD","INTC","MU","WDC","MRVL","AMAT","LRCX","KLAC","QCOM","ARM","TSM","ASML","ON","SNDK","STX",
+            # Software/Cloud
+            "NFLX","ADBE","NOW","PANW","CRWD","DDOG","SNOW","PLTR","NET","ZS","FTNT","HUBS",
+            # Internet/Social
+            "UBER","ABNB","DASH","SNAP","PINS","RBLX","COIN","HOOD","SQ","PYPL",
+            # Finance
+            "JPM","V","MA","BAC","GS","MS","BRK-B","AXP","C","WFC","SCHW","BLK",
+            # Healthcare
+            "UNH","JNJ","LLY","PFE","ABBV","MRK","TMO","ABT","BMY","AMGN","ISRG","DXCM",
+            # Consumer
+            "HD","MCD","NKE","SBUX","TGT","COST","WMT","DIS","LULU","DECK",
+            # Energy
+            "XOM","CVX","COP","SLB","EOG","MPC","VLO","OXY","HAL","DVN",
+            # Industrial/EV
+            "CAT","BA","GE","RTX","HON","LMT","RIVN","LCID","NIO","LI",
+            # Other
+            "PG","KO","PEP","PM","MO","T","VZ","CMCSA",
+        ]
     else:
-        syms = ["RELIANCE.NS","TCS.NS","HDFCBANK.NS","INFY.NS","ICICIBANK.NS","SBIN.NS",
-                "TATAMOTORS.NS","BHARTIARTL.NS","LT.NS","BAJFINANCE.NS","ITC.NS","MARUTI.NS",
-                "HCLTECH.NS","WIPRO.NS","SUNPHARMA.NS","DRREDDY.NS","KOTAKBANK.NS","AXISBANK.NS",
-                "TATASTEEL.NS","JSWSTEEL.NS","HINDALCO.NS","NTPC.NS","ONGC.NS","POWERGRID.NS",
-                "ADANIENT.NS","M&M.NS","CIPLA.NS","DIVISLAB.NS","NESTLEIND.NS","HINDUNILVR.NS"]
+        syms = [
+            # Nifty 50 core
+            "RELIANCE.NS","TCS.NS","HDFCBANK.NS","INFY.NS","ICICIBANK.NS","SBIN.NS","BHARTIARTL.NS",
+            "LT.NS","BAJFINANCE.NS","ITC.NS","MARUTI.NS","HCLTECH.NS","WIPRO.NS","KOTAKBANK.NS",
+            "AXISBANK.NS","INDUSINDBK.NS","HINDUNILVR.NS","ASIANPAINT.NS","ULTRACEMCO.NS","TITAN.NS",
+            "SUNPHARMA.NS","DRREDDY.NS","CIPLA.NS","DIVISLAB.NS","APOLLOHOSP.NS",
+            "TATAMOTORS.NS","M&M.NS","BAJAJ-AUTO.NS","HEROMOTOCO.NS","EICHERMOT.NS",
+            # Banking & Finance
+            "BAJAJFINSV.NS","PNB.NS","BANKBARODA.NS","CANBK.NS","UNIONBANK.NS","IDFCFIRSTB.NS",
+            "CHOLAFIN.NS","MUTHOOTFIN.NS","MANAPPURAM.NS","SBICARD.NS",
+            # IT Mid-cap
+            "TECHM.NS","COFORGE.NS","PERSISTENT.NS","LTTS.NS","MPHASIS.NS","KPITTECH.NS",
+            # Metals & Mining
+            "TATASTEEL.NS","JSWSTEEL.NS","HINDALCO.NS","COALINDIA.NS","VEDL.NS","NMDC.NS","SAIL.NS",
+            # Energy & Power
+            "ONGC.NS","NTPC.NS","POWERGRID.NS","ADANIENT.NS","ADANIPORTS.NS","BPCL.NS","IOC.NS",
+            "TATAPOWER.NS","NHPC.NS","SJVN.NS","IREDA.NS",
+            # FMCG
+            "NESTLEIND.NS","BRITANNIA.NS","DABUR.NS","GODREJCP.NS","MARICO.NS","TATACONSUM.NS",
+            # Pharma
+            "BIOCON.NS","GLENMARK.NS","LAURUSLABS.NS","AUROPHARMA.NS","ALKEM.NS",
+            # Auto Ancillary
+            "BALKRISIND.NS","MOTHERSON.NS","BOSCHLTD.NS","MRF.NS",
+            # Real Estate & Infra
+            "DLF.NS","LODHA.NS","OBEROIRLTY.NS","IRCTC.NS","HAL.NS","BEL.NS",
+            # New Age / PSU
+            "ZOMATO.NS","PAYTM.NS","POLICYBZR.NS","DELHIVERY.NS","NYKAA.NS",
+            "DIXON.NS","KAYNES.NS","POLYCAB.NS","KEI.NS","TRENT.NS",
+        ]
     
     def _scan(sym):
         try:
             t = yf.Ticker(sym)
             hist = t.history(period="1y", interval="1d")
-            if hist is None or len(hist) < 50:
+            if hist is None or len(hist) < 20:
                 return None
             
             closes = hist["Close"].values.astype(float)
             volumes = hist["Volume"].values.astype(float)
             price = round(float(closes[-1]), 2)
+            if price <= 0:
+                return None
             
-            # RSI
-            deltas = [closes[i] - closes[i-1] for i in range(1, len(closes))]
-            gains = [d if d > 0 else 0 for d in deltas[-14:]]
-            losses = [-d if d < 0 else 0 for d in deltas[-14:]]
+            # YTD return
+            ytd_start = None
+            for i, dt in enumerate(hist.index):
+                if dt.month == 1 and dt.day <= 5:
+                    ytd_start = float(closes[i])
+                    break
+            if not ytd_start and len(closes) > 200:
+                ytd_start = float(closes[-252]) if len(closes) >= 252 else float(closes[0])
+            ytd_ret = round(((price - ytd_start) / ytd_start) * 100, 1) if ytd_start and ytd_start > 0 else 0
+            
+            # 1-month return
+            m1_ret = round(((price - float(closes[-22])) / float(closes[-22])) * 100, 1) if len(closes) >= 22 else 0
+            
+            # 1-week return
+            w1_ret = round(((price - float(closes[-5])) / float(closes[-5])) * 100, 1) if len(closes) >= 5 else 0
+            
+            # Daily change
+            prev = float(closes[-2]) if len(closes) >= 2 else price
+            chg = round(((price - prev) / prev) * 100, 2) if prev > 0 else 0
+            
+            # RSI(14)
+            deltas_arr = [closes[i] - closes[i-1] for i in range(1, len(closes))]
+            gains = [d if d > 0 else 0 for d in deltas_arr[-14:]]
+            losses = [-d if d < 0 else 0 for d in deltas_arr[-14:]]
             avg_gain = sum(gains) / 14 if gains else 0
             avg_loss = sum(losses) / 14 if losses else 0.01
             rs = avg_gain / avg_loss if avg_loss > 0 else 100
             rsi = round(100 - (100 / (1 + rs)), 1)
             
             # SMA
-            sma20 = round(float(closes[-20:].mean()), 2) if len(closes) >= 20 else 0
             sma50 = round(float(closes[-50:].mean()), 2) if len(closes) >= 50 else 0
             sma200 = round(float(closes[-200:].mean()), 2) if len(closes) >= 200 else 0
             
@@ -5370,49 +5436,68 @@ async def screener(region: str = "IN", rsi_below: float = 0, rsi_above: float = 
             avg_vol = float(volumes[-20:].mean()) if len(volumes) >= 20 else 1
             vol_ratio = round(float(volumes[-1]) / avg_vol, 1) if avg_vol > 0 else 0
             
-            # Change
-            prev = float(closes[-2]) if len(closes) >= 2 else price
-            chg = round(((price - prev) / prev) * 100, 2) if prev > 0 else 0
+            # EMA
+            ema9 = round(float(hist["Close"].ewm(span=9).mean().iloc[-1]), 2)
+            ema21 = round(float(hist["Close"].ewm(span=21).mean().iloc[-1]), 2)
+            
+            # MACD hist
+            ema12 = hist["Close"].ewm(span=12).mean()
+            ema26 = hist["Close"].ewm(span=26).mean()
+            macd_hist = round(float((ema12 - ema26).iloc[-1] - (ema12 - ema26).ewm(span=9).mean().iloc[-1]), 2)
             
             # PE
             info = t.info or {}
             pe = round(float(info.get("trailingPE", 0) or 0), 1)
             mcap = info.get("marketCap", 0)
-            name = info.get("shortName", sym.replace(".NS",""))
+            name = info.get("shortName", sym.replace(".NS",""))[:25]
+            sector = info.get("sector", "")[:20]
             
-            # EMA
-            ema9 = round(float(hist["Close"].ewm(span=9).mean().iloc[-1]), 2)
-            ema21 = round(float(hist["Close"].ewm(span=21).mean().iloc[-1]), 2)
-            
-            # MACD
-            ema12 = hist["Close"].ewm(span=12).mean()
-            ema26 = hist["Close"].ewm(span=26).mean()
-            macd_hist = round(float((ema12 - ema26).iloc[-1] - (ema12 - ema26).ewm(span=9).mean().iloc[-1]), 2)
-            
-            # Supertrend direction (simple)
-            atr = round(float((hist["High"] - hist["Low"]).rolling(14).mean().iloc[-1]), 2)
+            # 52W high/low
+            w52_high = round(float(closes.max()), 2)
+            w52_low = round(float(closes.min()), 2)
+            from_52h = round(((price - w52_high) / w52_high) * 100, 1) if w52_high > 0 else 0
             
             return {
-                "sym": sym.replace(".NS",""), "name": name[:25], "price": price, "chg": chg,
-                "rsi": rsi, "sma20": sma20, "sma50": sma50, "sma200": sma200,
+                "sym": sym.replace(".NS",""), "name": name, "price": price, "chg": chg,
+                "ytd": ytd_ret, "m1": m1_ret, "w1": w1_ret,
+                "rsi": rsi, "sma50": sma50, "sma200": sma200,
                 "vol_ratio": vol_ratio, "pe": pe, "mcap": mcap, "macd": macd_hist,
-                "ema9": ema9, "ema21": ema21, "atr": atr,
+                "ema9": ema9, "ema21": ema21, "ema_bull": ema9 > ema21,
                 "above_sma200": price > sma200 if sma200 > 0 else False,
-                "ema_bull": ema9 > ema21,
+                "sector": sector, "from_52h": from_52h,
+                "w52_high": w52_high, "w52_low": w52_low,
             }
         except:
             return None
     
     results = []
-    with ThreadPoolExecutor(max_workers=8) as pool:
+    with ThreadPoolExecutor(max_workers=12) as pool:
         futs = {pool.submit(_scan, s): s for s in syms}
-        for f in as_completed(futs, timeout=25):
+        for f in as_completed(futs, timeout=45):
             try:
-                r = f.result(timeout=10)
+                r = f.result(timeout=12)
                 if r:
                     results.append(r)
             except:
                 pass
+    
+    # Apply presets
+    if preset == "top_ytd":
+        sort_by = "ytd"
+    elif preset == "worst_ytd":
+        sort_by = "ytd_asc"
+    elif preset == "top_monthly":
+        sort_by = "m1"
+    elif preset == "oversold":
+        rsi_below = 30
+    elif preset == "momentum":
+        rsi_above = 60; vol_above = 1.2; above_sma200 = True
+    elif preset == "value":
+        pe_below = 15; above_sma200 = True
+    elif preset == "near_52h":
+        sort_by = "from_52h"
+    elif preset == "volume_spike":
+        vol_above = 2.0
     
     # Apply filters
     filtered = results
@@ -5427,10 +5512,20 @@ async def screener(region: str = "IN", rsi_below: float = 0, rsi_above: float = 
     if pe_below > 0:
         filtered = [s for s in filtered if 0 < s["pe"] <= pe_below]
     
-    filtered.sort(key=lambda x: x["mcap"], reverse=True)
+    # Sort
+    if sort_by == "ytd":
+        filtered.sort(key=lambda x: x["ytd"], reverse=True)
+    elif sort_by == "ytd_asc":
+        filtered.sort(key=lambda x: x["ytd"])
+    elif sort_by == "m1":
+        filtered.sort(key=lambda x: x["m1"], reverse=True)
+    elif sort_by == "from_52h":
+        filtered.sort(key=lambda x: x["from_52h"], reverse=True)
+    else:
+        filtered.sort(key=lambda x: x["mcap"], reverse=True)
     
-    return {"success": True, "results": filtered, "total_scanned": len(results),
-            "matched": len(filtered), "region": region.upper()}
+    return {"success": True, "results": filtered[:50], "total_scanned": len(results),
+            "matched": len(filtered), "region": region.upper(), "preset": preset or "custom"}
 
 
 # ═══════════════════════════════════════════════════
