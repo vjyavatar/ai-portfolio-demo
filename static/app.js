@@ -1831,7 +1831,7 @@ switchAnalysisSubTab(window._activeAnalysisSubTab||'report');
 }
 
 // 3) Activate button
-const btnMap={quick:'tabBtnQuick',analysis:'tabBtnAnalysis',dcf:'tabBtnDCF',equity:'tabBtnEquity',indices:'tabBtnIndices',finance:'tabBtnFinance',daily:'tabBtnDaily',compare:'tabBtnCompare',gems:'tabBtnGems',picks:'tabBtnPicks',funds:'tabBtnFunds',trades:'tabBtnTrades',smarttrades:'tabBtnSmartTrades'};
+const btnMap={quick:'tabBtnQuick',analysis:'tabBtnAnalysis',dcf:'tabBtnDCF',equity:'tabBtnEquity',indices:'tabBtnIndices',finance:'tabBtnFinance',daily:'tabBtnDaily',compare:'tabBtnCompare',gems:'tabBtnGems',picks:'tabBtnPicks',funds:'tabBtnFunds',trades:'tabBtnTrades',scanner:'tabBtnScanner',smarttrades:'tabBtnSmartTrades'};
 if(btnMap[tab]){const btn=document.getElementById(btnMap[tab]);if(btn)btn.classList.add('active')}
 
 // 4) Scroll to top of new tab content
@@ -1886,6 +1886,9 @@ setTimeout(function(){algoSelect('NIFTY',document.querySelector('.algo-btn.activ
 }
 // Init backtest
 try{initBacktest()}catch(e){}
+}
+if(tab==='scanner'){
+if(!window._scannerLoaded){window._scannerLoaded=true;setTimeout(loadHeatmap,300);}
 }
 if(tab==='smarttrades'){
 // Auto-generate trades on first open
@@ -5129,6 +5132,140 @@ h+='<td colspan="5" style="padding:8px;text-align:center;color:#f59e0b;font-weig
 return h;
 }
 
+// ═══ SCANNER TAB — Heatmap, Screener, Options Flow ═══
+window._scanRegion='IN';
+function switchScanRegion(reg){
+window._scanRegion=reg;
+document.getElementById('scanRegIN').style.background=reg==='IN'?'#002f6c':'var(--bg2)';
+document.getElementById('scanRegIN').style.color=reg==='IN'?'#fff':'var(--text3)';
+document.getElementById('scanRegUS').style.background=reg==='US'?'#002f6c':'var(--bg2)';
+document.getElementById('scanRegUS').style.color=reg==='US'?'#fff':'var(--text3)';
+}
+function showScanSub(sub,btn){
+document.getElementById('scanHeatmap').style.display=sub==='heatmap'?'':'none';
+document.getElementById('scanScreener').style.display=sub==='screener'?'':'none';
+document.getElementById('scanFlow').style.display=sub==='flow'?'':'none';
+btn.parentElement.querySelectorAll('.algo-btn').forEach(function(b){b.classList.remove('active')});
+btn.classList.add('active');
+}
+
+// HEATMAP
+function loadHeatmap(){
+var el=document.getElementById('heatmapGrid');if(!el)return;
+var reg=window._scanRegion||'IN';
+var S=reg==='US'?'$':'₹';
+el.innerHTML='<div style="text-align:center;padding:30px;color:var(--text3);font-size:11px"><div style="display:inline-block;width:16px;height:16px;border:2px solid var(--cyan);border-top-color:transparent;border-radius:50%;animation:spin .5s linear infinite;vertical-align:middle;margin-right:6px"></div>Loading heatmap...</div>';
+fetch('/api/heatmap?region='+reg).then(function(r){return r.json()}).then(function(data){
+if(!data.success||!data.stocks||!data.stocks.length){el.innerHTML='<div style="color:var(--red);padding:12px;font-size:11px">Failed to load. Try again.</div>';return}
+var stocks=data.stocks;
+var maxMcap=stocks[0].mcap||1;
+var h='<div style="display:flex;flex-wrap:wrap;gap:3px">';
+stocks.forEach(function(s){
+var size=Math.max(60,Math.min(140,60+Math.sqrt(s.mcap/maxMcap)*80));
+var bg=s.chg>=2?'#0a7c42':s.chg>=0.5?'#10b981':s.chg>=-0.5?'#6b7280':s.chg>=-2?'#ef4444':'#991b1b';
+h+='<div onclick="algoSelect(\''+s.sym+'\',null)" style="width:'+size+'px;height:'+Math.max(50,size*0.65)+'px;background:'+bg+';border-radius:6px;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;transition:transform .15s;overflow:hidden;padding:2px" onmouseover="this.style.transform=\'scale(1.08)\'" onmouseout="this.style.transform=\'scale(1)\'">';
+h+='<div style="font-size:'+(size>100?'11':'9')+'px;font-weight:900;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.5)">'+s.sym+'</div>';
+h+='<div style="font-size:'+(size>100?'13':'10')+'px;font-weight:900;color:#fff">'+(s.chg>=0?'+':'')+s.chg+'%</div>';
+h+='<div style="font-size:7px;color:rgba(255,255,255,.7)">'+S+s.price.toLocaleString()+'</div>';
+h+='</div>';
+});
+h+='</div>';
+h+='<div style="display:flex;gap:6px;margin-top:8px;align-items:center;font-size:8px;color:var(--text3)"><span style="width:12px;height:12px;background:#991b1b;border-radius:2px"></span>&lt;-2%<span style="width:12px;height:12px;background:#ef4444;border-radius:2px;margin-left:4px"></span>-2 to -0.5%<span style="width:12px;height:12px;background:#6b7280;border-radius:2px;margin-left:4px"></span>Flat<span style="width:12px;height:12px;background:#10b981;border-radius:2px;margin-left:4px"></span>+0.5 to +2%<span style="width:12px;height:12px;background:#0a7c42;border-radius:2px;margin-left:4px"></span>&gt;+2%</div>';
+el.innerHTML=h;
+}).catch(function(e){el.innerHTML='<div style="color:var(--red);padding:12px;font-size:11px">Error: '+e.message+'</div>'});
+}
+
+// SCREENER
+function runScreener(preset){
+var el=document.getElementById('screenerResult');if(!el)return;
+var reg=window._scanRegion||'IN';
+var S=reg==='US'?'$':'₹';
+// Presets
+if(preset==='oversold'){document.getElementById('scrRsiBelow').value='30';document.getElementById('scrVolAbove').value='';document.getElementById('scrPeBelow').value='';document.getElementById('scrAboveSma200').checked=false;document.getElementById('scrRsiAbove').value='';}
+if(preset==='momentum'){document.getElementById('scrRsiAbove').value='60';document.getElementById('scrVolAbove').value='1.5';document.getElementById('scrAboveSma200').checked=true;document.getElementById('scrRsiBelow').value='';document.getElementById('scrPeBelow').value='';}
+if(preset==='value'){document.getElementById('scrPeBelow').value='15';document.getElementById('scrAboveSma200').checked=true;document.getElementById('scrRsiBelow').value='';document.getElementById('scrRsiAbove').value='';document.getElementById('scrVolAbove').value='';}
+var params='region='+reg;
+var rb=document.getElementById('scrRsiBelow').value;if(rb)params+='&rsi_below='+rb;
+var ra=document.getElementById('scrRsiAbove').value;if(ra)params+='&rsi_above='+ra;
+var va=document.getElementById('scrVolAbove').value;if(va)params+='&vol_above='+va;
+var pb=document.getElementById('scrPeBelow').value;if(pb)params+='&pe_below='+pb;
+if(document.getElementById('scrAboveSma200').checked)params+='&above_sma200=true';
+el.innerHTML='<div style="text-align:center;padding:20px;color:var(--text3);font-size:11px"><div style="display:inline-block;width:14px;height:14px;border:2px solid var(--cyan);border-top-color:transparent;border-radius:50%;animation:spin .5s linear infinite;vertical-align:middle;margin-right:6px"></div>Scanning 30+ stocks...</div>';
+fetch('/api/screener?'+params).then(function(r){return r.json()}).then(function(data){
+if(!data.success){el.innerHTML='<div style="color:var(--red);padding:12px;font-size:11px">Error scanning.</div>';return}
+var res=data.results;
+var h='<div style="font-size:10px;color:var(--text3);margin-bottom:8px">'+data.matched+' of '+data.total_scanned+' stocks matched</div>';
+if(!res.length){h+='<div style="padding:20px;text-align:center;color:var(--amber);font-size:12px">No stocks match your filters. Try relaxing criteria.</div>';el.innerHTML=h;return}
+h+='<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:10px"><thead><tr style="background:var(--bg2);border-bottom:2px solid var(--border)">';
+h+='<th style="padding:6px 8px;text-align:left">Stock</th><th style="padding:6px;text-align:right">Price</th><th style="padding:6px;text-align:right">Chg%</th><th style="padding:6px;text-align:center">RSI</th><th style="padding:6px;text-align:center">Vol×</th><th style="padding:6px;text-align:right">SMA200</th><th style="padding:6px;text-align:center">EMA</th><th style="padding:6px;text-align:right">MACD</th><th style="padding:6px;text-align:right">PE</th><th style="padding:6px;text-align:center">Signal</th>';
+h+='</tr></thead><tbody>';
+res.forEach(function(s){
+var rsiC=s.rsi<30?'#10b981':s.rsi>70?'#ef4444':'var(--text)';
+var chgC=s.chg>=0?'#10b981':'#ef4444';
+var emaC=s.ema_bull?'#10b981':'#ef4444';
+var sig=s.rsi<30&&s.above_sma200?'OVERSOLD BUY':s.rsi>70?'OVERBOUGHT':s.ema_bull&&s.above_sma200&&s.vol_ratio>1.2?'MOMENTUM':'—';
+var sigC=sig.includes('BUY')?'#10b981':sig.includes('OVER')?'#ef4444':sig==='MOMENTUM'?'var(--blue)':'var(--text3)';
+h+='<tr style="border-bottom:1px solid var(--border);cursor:pointer" onclick="algoSelect(\''+s.sym+'\',null)" onmouseover="this.style.background=\'var(--bg2)\'" onmouseout="this.style.background=\'transparent\'">';
+h+='<td style="padding:5px 8px;font-weight:700">'+s.sym+'</td>';
+h+='<td style="padding:5px;text-align:right;font-family:var(--mono)">'+S+s.price.toLocaleString()+'</td>';
+h+='<td style="padding:5px;text-align:right;font-weight:700;color:'+chgC+'">'+(s.chg>=0?'+':'')+s.chg+'%</td>';
+h+='<td style="padding:5px;text-align:center;font-weight:800;color:'+rsiC+'">'+s.rsi+'</td>';
+h+='<td style="padding:5px;text-align:center;font-weight:700;color:'+(s.vol_ratio>1.5?'var(--cyan)':'var(--text3)')+'">'+s.vol_ratio+'×</td>';
+h+='<td style="padding:5px;text-align:right;color:'+(s.above_sma200?'#10b981':'#ef4444')+'">'+S+s.sma200.toLocaleString()+(s.above_sma200?' ✓':' ✗')+'</td>';
+h+='<td style="padding:5px;text-align:center;color:'+emaC+'">'+(s.ema_bull?'9>21 ▲':'9<21 ▼')+'</td>';
+h+='<td style="padding:5px;text-align:right;font-family:var(--mono);color:'+(s.macd>0?'#10b981':'#ef4444')+'">'+s.macd+'</td>';
+h+='<td style="padding:5px;text-align:right;color:var(--text3)">'+(s.pe>0?s.pe:'—')+'</td>';
+h+='<td style="padding:5px;text-align:center"><span style="font-size:8px;font-weight:800;padding:2px 6px;border-radius:3px;background:'+sigC+'15;color:'+sigC+'">'+sig+'</span></td>';
+h+='</tr>';
+});
+h+='</tbody></table></div>';
+el.innerHTML=h;
+}).catch(function(e){el.innerHTML='<div style="color:var(--red);padding:12px;font-size:11px">Error: '+e.message+'</div>'});
+}
+
+// OPTIONS FLOW
+function loadOptionsFlow(){
+var el=document.getElementById('flowResult');if(!el)return;
+var reg=window._scanRegion||'IN';
+var S=reg==='US'?'$':'₹';
+el.innerHTML='<div style="text-align:center;padding:20px;color:var(--text3);font-size:11px"><div style="display:inline-block;width:14px;height:14px;border:2px solid var(--cyan);border-top-color:transparent;border-radius:50%;animation:spin .5s linear infinite;vertical-align:middle;margin-right:6px"></div>Scanning options chains for unusual activity...</div>';
+fetch('/api/options-flow?region='+reg).then(function(r){return r.json()}).then(function(data){
+if(!data.success){el.innerHTML='<div style="color:var(--red);padding:12px;font-size:11px">Error scanning options.</div>';return}
+var h='';
+// Top alerts banner
+if(data.top_alerts&&data.top_alerts.length>0){
+h+='<div style="margin-bottom:12px"><div style="font-size:11px;font-weight:800;color:var(--amber);margin-bottom:6px">&#128680; '+data.total_unusual+' Unusual Activity Alerts</div>';
+data.top_alerts.slice(0,8).forEach(function(a){
+var ac=a.signal==='BULLISH'?'#10b981':'#ef4444';
+var icon=a.type==='CALL'?'&#128994;':'&#128308;';
+h+='<div style="padding:6px 12px;border-radius:6px;background:'+ac+'08;border-left:3px solid '+ac+';margin-bottom:4px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:4px">';
+h+='<div style="font-size:10px"><strong style="color:'+ac+'">'+icon+' '+a.sym+'</strong> <span style="color:var(--text2)">'+a.type+' '+S+a.strike.toLocaleString()+' — Vol '+a.volume.toLocaleString()+' vs OI '+a.oi.toLocaleString()+' (<strong>'+a.ratio+'×</strong>)</span></div>';
+h+='<div style="font-size:9px;font-weight:700;color:'+ac+'">'+a.signal+'</div>';
+h+='</div>';
+});
+h+='</div>';
+}else{
+h+='<div style="padding:20px;text-align:center;color:var(--text3);font-size:12px">No unusual activity detected right now. Markets may be closed or activity is normal.</div>';
+}
+// Per-stock OI summary
+if(data.stocks&&data.stocks.length>0){
+h+='<div style="font-size:11px;font-weight:800;color:var(--text);margin-bottom:6px">OI Summary by Stock</div>';
+h+='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px">';
+data.stocks.forEach(function(s){
+var pcrC=s.pcr>1.1?'#10b981':s.pcr<0.7?'#ef4444':'var(--text)';
+h+='<div style="padding:10px;border-radius:8px;border:1px solid var(--border);background:var(--bg2)">';
+h+='<div style="display:flex;justify-content:space-between;margin-bottom:4px"><strong style="font-size:11px;color:var(--text)">'+s.sym+'</strong><span style="font-size:10px;font-weight:700;color:'+pcrC+'">PCR '+s.pcr+'</span></div>';
+h+='<div style="font-size:9px;color:var(--text3)">'+S+s.price.toLocaleString()+(s.total_alerts>0?' · <span style="color:#ef4444;font-weight:700">'+s.total_alerts+' alerts</span>':'')+'</div>';
+if(s.top_call_oi.length>0){h+='<div style="margin-top:4px;font-size:8px;color:#ef4444;font-weight:700">Resistance:</div>';s.top_call_oi.forEach(function(c){h+='<div style="font-size:8px;display:flex;justify-content:space-between"><span>'+S+c.strike.toLocaleString()+'</span><span style="color:var(--text3)">OI:'+c.oi.toLocaleString()+'</span></div>'});}
+if(s.top_put_oi.length>0){h+='<div style="margin-top:2px;font-size:8px;color:#10b981;font-weight:700">Support:</div>';s.top_put_oi.forEach(function(c){h+='<div style="font-size:8px;display:flex;justify-content:space-between"><span>'+S+c.strike.toLocaleString()+'</span><span style="color:var(--text3)">OI:'+c.oi.toLocaleString()+'</span></div>'});}
+h+='</div>';
+});
+h+='</div>';
+}
+el.innerHTML=h;
+}).catch(function(e){el.innerHTML='<div style="color:var(--red);padding:12px;font-size:11px">Error: '+e.message+'</div>'});
+}
+
 function algoSelect(sym,btn){
 // Highlight button
 document.querySelectorAll('.algo-btn').forEach(function(b){b.classList.remove('active')});
@@ -5337,6 +5474,233 @@ h+='<details style="margin-bottom:8px"><summary style="cursor:pointer;font-size:
 h+='<div style="padding:4px 10px;border-radius:4px;background:rgba(245,158,11,.04);font-size:7px;color:var(--text3);line-height:1.5"><strong style="color:var(--amber)">&#9888;</strong> Live NSE+yfinance data. Weighted '+tot+'-factor analysis. Educational only. Always use SL.</div>';
 
 el.innerHTML=h;
+}
+
+
+// ═══════════════════════════════════════════════
+// SCANNER — Heatmap + Screener + Options Flow + Alerts
+// ═══════════════════════════════════════════════
+window._scanRegion='IN';
+
+function setScanRegion(r){
+window._scanRegion=r;
+document.getElementById('scanRegIN').style.background=r==='IN'?'#002f6c':'var(--bg2)';
+document.getElementById('scanRegIN').style.color=r==='IN'?'#fff':'var(--text3)';
+document.getElementById('scanRegUS').style.background=r==='US'?'#002f6c':'var(--bg2)';
+document.getElementById('scanRegUS').style.color=r==='US'?'#fff':'var(--text3)';
+}
+
+function showScannerSub(sub,btn){
+['scanHeatmap','scanScreener','scanFlow','scanAlerts'].forEach(function(id){
+var el=document.getElementById(id);if(el)el.style.display='none';
+});
+var target=document.getElementById('scan'+sub.charAt(0).toUpperCase()+sub.slice(1));
+if(!target){
+if(sub==='heatmap')target=document.getElementById('scanHeatmap');
+if(sub==='screener')target=document.getElementById('scanScreener');
+if(sub==='flow')target=document.getElementById('scanFlow');
+if(sub==='alerts')target=document.getElementById('scanAlerts');
+}
+if(target)target.style.display='';
+document.querySelectorAll('.scan-tab').forEach(function(b){b.style.background='var(--bg2)';b.style.color='var(--text3)';});
+if(btn){btn.style.background='var(--blue)';btn.style.color='#fff';}
+}
+
+// ═══ HEATMAP ═══
+function loadHeatmap(){
+var el=document.getElementById('scanHeatmap');
+if(!el)return;
+el.innerHTML='<div style="text-align:center;padding:30px;color:var(--text3);font-size:11px"><div style="display:inline-block;width:16px;height:16px;border:2px solid var(--blue);border-top-color:transparent;border-radius:50%;animation:spin .5s linear infinite;vertical-align:middle;margin-right:6px"></div> Loading heatmap...</div>';
+fetch('/api/heatmap?region='+window._scanRegion).then(function(r){return r.json()}).then(function(data){
+if(!data.success||!data.stocks){el.innerHTML='<div style="color:var(--red);padding:12px">Failed to load heatmap</div>';return;}
+var stocks=data.stocks;
+var maxMcap=Math.max.apply(null,stocks.map(function(s){return s.mcap}));
+var S=window._scanRegion==='US'?'$':'&#8377;';
+var h='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><div style="font-size:12px;font-weight:800;color:var(--text)">&#128293; Market Heatmap — '+(window._scanRegion==='US'?'USA':'India')+' ('+stocks.length+' stocks)</div><button onclick="loadHeatmap()" style="padding:3px 12px;border-radius:5px;background:var(--blue);color:#fff;border:none;font-size:9px;font-weight:700;cursor:pointer">&#8635; Refresh</button></div>';
+// Sector summary
+var sectors={};
+stocks.forEach(function(s){if(!sectors[s.sector])sectors[s.sector]={count:0,totalChg:0};sectors[s.sector].count++;sectors[s.sector].totalChg+=s.change_pct;});
+h+='<div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:10px">';
+Object.keys(sectors).forEach(function(sec){var avg=sectors[sec].totalChg/sectors[sec].count;var c=avg>=1?'#0a7c42':avg>=-1?'#f59e0b':'#ef4444';h+='<span style="font-size:8px;font-weight:700;padding:2px 8px;border-radius:4px;background:'+c+'15;color:'+c+'">'+sec+' '+avg.toFixed(1)+'%</span>';});
+h+='</div>';
+// Treemap grid
+h+='<div style="display:flex;flex-wrap:wrap;gap:2px;border-radius:8px;overflow:hidden">';
+stocks.forEach(function(s){
+var pct=s.change_pct;
+var bg=pct>2?'#065f46':pct>1?'#0a7c42':pct>0.3?'#10b981':pct>-0.3?'#6b7280':pct>-1?'#ef4444':pct>-2?'#dc2626':'#991b1b';
+var size=Math.max(60,Math.min(120,Math.round((s.mcap/maxMcap)*120+60)));
+h+='<div onclick="switchTab(\'trades\');setTimeout(function(){algoSelect(\''+s.symbol+'\',null)},200)" style="width:'+size+'px;height:'+size+'px;background:'+bg+';display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;transition:transform .15s;border-radius:3px" onmouseover="this.style.transform=\'scale(1.05)\'" onmouseout="this.style.transform=\'scale(1)\'">';
+h+='<div style="font-size:'+(size>80?'11':'9')+'px;font-weight:900;color:#fff">'+s.symbol+'</div>';
+h+='<div style="font-size:'+(size>80?'13':'10')+'px;font-weight:900;color:rgba(255,255,255,.9)">'+(pct>=0?'+':'')+pct.toFixed(1)+'%</div>';
+h+='<div style="font-size:7px;color:rgba(255,255,255,.6)">'+s.sector+'</div>';
+h+='</div>';
+});
+h+='</div>';
+h+='<div style="display:flex;gap:2px;margin-top:8px;font-size:7px;color:var(--text3);align-items:center">Color: <span style="display:inline-block;width:60px;height:8px;background:linear-gradient(90deg,#991b1b,#ef4444,#6b7280,#10b981,#065f46);border-radius:3px"></span> -2%+ to +2%+ &middot; Size = Market Cap &middot; Click tile for algo analysis</div>';
+el.innerHTML=h;
+}).catch(function(e){el.innerHTML='<div style="color:var(--red);padding:12px;font-size:11px">Error: '+e.message+'</div>';});
+}
+
+// ═══ SCREENER ═══
+function loadScreener(preset){
+document.querySelectorAll('.scr-preset').forEach(function(b){b.style.background='var(--bg2)';b.style.color='var(--text3)';b.style.borderColor='var(--border)';});
+event.target.style.background='rgba(59,130,246,.1)';event.target.style.color='var(--blue)';event.target.style.borderColor='var(--blue)';
+var el=document.getElementById('screenerResults');
+if(!el)return;
+el.innerHTML='<div style="text-align:center;padding:20px;color:var(--text3);font-size:11px"><div style="display:inline-block;width:12px;height:12px;border:2px solid var(--blue);border-top-color:transparent;border-radius:50%;animation:spin .5s linear infinite;vertical-align:middle;margin-right:4px"></div> Scanning stocks...</div>';
+fetch('/api/screener?region='+window._scanRegion+'&preset='+preset).then(function(r){return r.json()}).then(function(data){
+if(!data.success){el.innerHTML='<div style="color:var(--red);padding:12px">Failed</div>';return;}
+var S=window._scanRegion==='US'?'$':'&#8377;';
+var h='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><div><span style="font-size:13px;font-weight:800;color:var(--text)">'+data.label+'</span> <span style="font-size:10px;color:var(--text3)">'+data.desc+'</span></div><span style="font-size:10px;font-weight:700;color:var(--blue)">'+data.count+'/'+data.scanned+' match</span></div>';
+if(data.matches.length===0){
+h+='<div style="text-align:center;padding:20px;color:var(--text3);font-size:12px">&#128064; No stocks match this filter right now. Try a different preset.</div>';
+}else{
+h+='<table style="width:100%;border-collapse:collapse;font-size:10px"><thead><tr style="background:var(--bg2)"><th style="padding:6px 10px;text-align:left">SYMBOL</th><th style="padding:6px;text-align:right">PRICE</th><th style="padding:6px;text-align:right">CHG%</th><th style="padding:6px;text-align:center">RSI</th><th style="padding:6px;text-align:center">MACD</th><th style="padding:6px;text-align:center">VOL</th><th style="padding:6px;text-align:center">EMA</th><th style="padding:6px"></th></tr></thead><tbody>';
+data.matches.forEach(function(m){
+var rC=m.rsi<35?'#0a7c42':m.rsi>65?'#ef4444':'var(--text)';
+var cC=m.change_pct>=0?'#0a7c42':'#ef4444';
+h+='<tr style="border-bottom:1px solid var(--border)">';
+h+='<td style="padding:6px 10px;font-weight:800;color:var(--text)">'+m.symbol+'</td>';
+h+='<td style="padding:6px;text-align:right;font-family:var(--mono)">'+S+m.price.toLocaleString(window._scanRegion==='US'?'en-US':'en-IN')+'</td>';
+h+='<td style="padding:6px;text-align:right;font-weight:700;color:'+cC+'">'+(m.change_pct>=0?'+':'')+m.change_pct+'%</td>';
+h+='<td style="padding:6px;text-align:center;font-weight:700;color:'+rC+'">'+m.rsi+'</td>';
+h+='<td style="padding:6px;text-align:center"><span style="font-size:8px;font-weight:700;padding:1px 6px;border-radius:3px;background:'+(m.macd_bull?'rgba(10,124,66,.1)':'rgba(239,68,68,.1)')+';color:'+(m.macd_bull?'#0a7c42':'#ef4444')+'">'+(m.macd_bull?'BULL':'BEAR')+'</span></td>';
+h+='<td style="padding:6px;text-align:center;font-weight:700;color:'+(m.vol_ratio>1.5?'#0a7c42':'var(--text3)')+'">'+m.vol_ratio+'×</td>';
+h+='<td style="padding:6px;text-align:center"><span style="font-size:8px;font-weight:700;color:'+(m.ema_stack?'#0a7c42':'#ef4444')+'">'+(m.ema_stack?'9>21':'9<21')+'</span></td>';
+h+='<td style="padding:6px"><button onclick="switchTab(\'trades\');setTimeout(function(){algoSelect(\''+m.symbol+'\',null)},200)" style="padding:2px 8px;border-radius:4px;background:var(--blue);color:#fff;border:none;font-size:8px;font-weight:700;cursor:pointer">Analyze</button></td>';
+h+='</tr>';
+});
+h+='</tbody></table>';
+}
+el.innerHTML=h;
+}).catch(function(e){el.innerHTML='<div style="color:var(--red);padding:12px;font-size:11px">Error: '+e.message+'</div>';});
+}
+
+// ═══ OPTIONS FLOW ═══
+function loadOptionsFlow(sym){
+document.querySelectorAll('.flow-btn').forEach(function(b){b.style.background='var(--bg2)';b.style.color='var(--text3)';b.style.borderColor='var(--border)';});
+if(event&&event.target){event.target.style.background='rgba(59,130,246,.1)';event.target.style.color='var(--blue)';event.target.style.borderColor='var(--blue)';}
+var el=document.getElementById('flowResults');
+if(!el)return;
+el.innerHTML='<div style="text-align:center;padding:20px;color:var(--text3);font-size:11px"><div style="display:inline-block;width:12px;height:12px;border:2px solid var(--blue);border-top-color:transparent;border-radius:50%;animation:spin .5s linear infinite;vertical-align:middle;margin-right:4px"></div> Scanning options chain for '+sym+'...</div>';
+fetch('/api/options-flow?symbol='+sym).then(function(r){return r.json()}).then(function(data){
+if(!data.success){el.innerHTML='<div style="color:var(--red);padding:12px">'+( data.error||'Failed')+'</div>';return;}
+var h='';
+// Bias header
+var biasC=data.bias==='BULLISH'?'#0a7c42':data.bias==='BEARISH'?'#ef4444':'#f59e0b';
+h+='<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;border-radius:8px;background:'+biasC+'08;border:1px solid '+biasC+'20;margin-bottom:10px">';
+h+='<div><div style="font-size:14px;font-weight:900;color:'+biasC+'">'+data.bias+' FLOW</div><div style="font-size:10px;color:var(--text3)">'+sym+' Spot &#8377;'+(data.spot||0).toLocaleString('en-IN')+' &middot; PCR '+data.pcr+' &middot; Max Pain &#8377;'+(data.max_pain||0).toLocaleString('en-IN')+'</div></div>';
+h+='<div style="text-align:right"><div style="font-size:10px;color:var(--text3)">CE OI: '+(data.ce_total_oi>100000?(data.ce_total_oi/100000).toFixed(1)+'L':data.ce_total_oi?.toLocaleString('en-IN'))+'</div><div style="font-size:10px;color:var(--text3)">PE OI: '+(data.pe_total_oi>100000?(data.pe_total_oi/100000).toFixed(1)+'L':data.pe_total_oi?.toLocaleString('en-IN'))+'</div></div></div>';
+// Flow table
+if(data.flows.length===0){
+h+='<div style="text-align:center;padding:16px;color:var(--text3);font-size:11px">No unusual activity detected. Market is calm.</div>';
+}else{
+h+='<table style="width:100%;border-collapse:collapse;font-size:10px"><thead><tr style="background:var(--bg2)"><th style="padding:6px 10px;text-align:left">TYPE</th><th style="padding:6px;text-align:right">STRIKE</th><th style="padding:6px;text-align:right">OI</th><th style="padding:6px;text-align:center">RATIO</th><th style="padding:6px;text-align:center">SIGNAL</th><th style="padding:6px;text-align:center">SMART MONEY</th><th style="padding:6px 10px;text-align:left">INTERPRETATION</th></tr></thead><tbody>';
+data.flows.forEach(function(f){
+var tC=f.type==='CE'?'#ef4444':'#0a7c42';
+var sC=f.signal==='RESISTANCE'?'#ef4444':f.signal==='SUPPORT'?'#0a7c42':'#f59e0b';
+var smC=f.smart_money==='BUY'?'#0a7c42':f.smart_money==='SELL'?'#ef4444':'#6b7280';
+h+='<tr style="border-bottom:1px solid var(--border)">';
+h+='<td style="padding:6px 10px;font-weight:800;color:'+tC+'">'+f.type+'</td>';
+h+='<td style="padding:6px;text-align:right;font-family:var(--mono);font-weight:700">&#8377;'+f.strike.toLocaleString('en-IN')+'</td>';
+h+='<td style="padding:6px;text-align:right;font-family:var(--mono)">'+(f.oi>100000?(f.oi/100000).toFixed(1)+'L':f.oi.toLocaleString('en-IN'))+'</td>';
+h+='<td style="padding:6px;text-align:center;font-weight:800;color:var(--text)">'+f.ratio+'×</td>';
+h+='<td style="padding:6px;text-align:center"><span style="font-size:8px;font-weight:700;padding:2px 6px;border-radius:3px;background:'+sC+'12;color:'+sC+'">'+f.signal+'</span></td>';
+h+='<td style="padding:6px;text-align:center"><span style="font-size:8px;font-weight:800;padding:2px 6px;border-radius:3px;background:'+smC+'12;color:'+smC+'">'+f.smart_money+'</span></td>';
+h+='<td style="padding:6px 10px;font-size:9px;color:var(--text2)">'+f.interpretation+'</td>';
+h+='</tr>';
+});
+h+='</tbody></table>';
+}
+el.innerHTML=h;
+}).catch(function(e){el.innerHTML='<div style="color:var(--red);padding:12px;font-size:11px">Error: '+e.message+'</div>';});
+}
+
+// ═══ PRICE ALERTS ═══
+window._priceAlerts=[];
+function addPriceAlert(){
+var sym=(document.getElementById('alertSym').value||'').trim().toUpperCase();
+var cond=document.getElementById('alertCond').value;
+var val=parseFloat(document.getElementById('alertVal').value);
+if(!sym||!val){return;}
+var id='alert_'+Date.now();
+window._priceAlerts.push({id:id,symbol:sym,condition:cond,value:val,triggered:false,created:new Date().toLocaleTimeString()});
+document.getElementById('alertSym').value='';
+document.getElementById('alertVal').value='';
+renderAlerts();
+// Start checking if not already running
+if(!window._alertInterval){
+window._alertInterval=setInterval(checkAlerts,60000);
+checkAlerts();
+}
+}
+
+function removeAlert(id){
+window._priceAlerts=window._priceAlerts.filter(function(a){return a.id!==id;});
+renderAlerts();
+}
+
+function renderAlerts(){
+var el=document.getElementById('alertsList');
+if(!el)return;
+if(window._priceAlerts.length===0){
+el.innerHTML='<div style="text-align:center;padding:12px;color:var(--text3);font-size:11px">No alerts set. Add one above.</div>';
+return;
+}
+var h='<table style="width:100%;border-collapse:collapse;font-size:10px"><thead><tr style="background:var(--bg2)"><th style="padding:6px 10px;text-align:left">SYMBOL</th><th style="padding:6px;text-align:left">CONDITION</th><th style="padding:6px;text-align:right">VALUE</th><th style="padding:6px;text-align:center">STATUS</th><th style="padding:6px"></th></tr></thead><tbody>';
+window._priceAlerts.forEach(function(a){
+var condLabel={'price_above':'Price >','price_below':'Price <','change_above':'Change >','change_below':'Change <'}[a.condition]||a.condition;
+var stC=a.triggered?'#0a7c42':'var(--text3)';
+h+='<tr style="border-bottom:1px solid var(--border);'+(a.triggered?'background:rgba(10,124,66,.05)':'')+'">';
+h+='<td style="padding:6px 10px;font-weight:800">'+a.symbol+'</td>';
+h+='<td style="padding:6px">'+condLabel+'</td>';
+h+='<td style="padding:6px;text-align:right;font-family:var(--mono);font-weight:700">'+a.value+'</td>';
+h+='<td style="padding:6px;text-align:center"><span style="font-size:8px;font-weight:700;padding:2px 6px;border-radius:3px;background:'+stC+'12;color:'+stC+'">'+(a.triggered?'&#128276; TRIGGERED':'&#9203; WATCHING')+'</span></td>';
+h+='<td style="padding:6px"><button onclick="removeAlert(\''+a.id+'\')" style="padding:2px 8px;border-radius:4px;background:rgba(239,68,68,.1);color:#ef4444;border:none;font-size:8px;font-weight:700;cursor:pointer">&#10005;</button></td>';
+h+='</tr>';
+});
+h+='</tbody></table>';
+h+='<div style="font-size:8px;color:var(--text3);margin-top:4px">Checks every 60 seconds. Browser must be open. Sound plays on trigger.</div>';
+el.innerHTML=h;
+}
+
+function checkAlerts(){
+var pending=window._priceAlerts.filter(function(a){return!a.triggered;});
+if(!pending.length)return;
+var symbols=[...new Set(pending.map(function(a){return a.symbol;}))];
+var tickers=symbols.map(function(s){
+if(['NIFTY','BANKNIFTY','SENSEX'].indexOf(s)>=0)return{sym:s,yf:s==='NIFTY'?'^NSEI':s==='BANKNIFTY'?'^NSEBANK':'^BSESN'};
+return{sym:s,yf:s.match(/^[A-Z]+$/)?s+'.NS':s};
+});
+var yfList=tickers.map(function(t){return t.yf;});
+fetch('/api/batch-prices',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({tickers:yfList})}).then(function(r){return r.json()}).then(function(data){
+if(!data.success||!data.prices)return;
+pending.forEach(function(a){
+var tk=tickers.find(function(t){return t.sym===a.symbol;});
+if(!tk)return;
+var pd=data.prices[tk.yf];
+if(!pd)return;
+var price=pd.price;var chg=pd.change_pct||0;
+var triggered=false;
+if(a.condition==='price_above'&&price>a.value)triggered=true;
+if(a.condition==='price_below'&&price<a.value)triggered=true;
+if(a.condition==='change_above'&&chg>a.value)triggered=true;
+if(a.condition==='change_below'&&chg<a.value)triggered=true;
+if(triggered){
+a.triggered=true;
+// Sound + notification
+try{var ac=new AudioContext();var o=ac.createOscillator();var g=ac.createGain();o.connect(g);g.connect(ac.destination);o.frequency.value=880;g.gain.value=0.15;o.start();o.stop(ac.currentTime+0.3);setTimeout(function(){var o2=ac.createOscillator();var g2=ac.createGain();o2.connect(g2);g2.connect(ac.destination);o2.frequency.value=1100;g2.gain.value=0.15;o2.start();o2.stop(ac.currentTime+0.3)},350)}catch(e){}
+// Popup
+var div=document.createElement('div');
+div.style.cssText='position:fixed;top:60px;right:20px;z-index:9999;padding:14px 20px;border-radius:10px;background:#002f6c;color:#fff;font-family:Sora,sans-serif;font-size:12px;font-weight:700;box-shadow:0 8px 32px rgba(0,0,0,.3);animation:fi .3s ease;max-width:320px';
+var condLabel={'price_above':'above','price_below':'below','change_above':'change >','change_below':'change <'}[a.condition]||'';
+div.innerHTML='<div style="font-size:15px;margin-bottom:4px">&#128276; ALERT TRIGGERED</div><div>'+a.symbol+' is now '+condLabel+' '+a.value+'</div><div style="font-size:10px;opacity:.7;margin-top:4px">Price: '+pd.formatted+'</div>';
+document.body.appendChild(div);
+setTimeout(function(){div.style.opacity='0';div.style.transition='opacity .5s';setTimeout(function(){div.remove()},600)},8000);
+}
+});
+renderAlerts();
+}).catch(function(){});
 }
 
 

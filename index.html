@@ -778,6 +778,8 @@ footer{position:relative;z-index:1;margin-top:32px;background:#002f6c;border-top
 <button class="tab-btn" onclick="switchTab('picks')" id="tabBtnPicks" data-color="teal" data-tip="Top 5 Buy, Sell, Accumulate stocks by conviction" style="display:none"><span class="tab-icon">&#127942;</span> Picks</button>
 <button class="tab-btn" onclick="switchTab('funds')" id="tabBtnFunds" data-color="blue" data-tip="Top ETFs & mutual funds with 25%+ CAGR" style="display:none"><span class="tab-icon">&#128176;</span> ETF</button>
 <button class="tab-btn" onclick="switchTab('trades')" id="tabBtnTrades" data-color="red" data-tip="Live algo signals + backtest for indices & F&O stocks"><span class="tab-icon">&#127919;</span> Algo Trades</button>
+<button class="tab-btn" onclick="switchTab('scanner')" id="tabBtnScanner" data-color="cyan" data-tip="Heatmap, screener & options flow"><span class="tab-icon">&#128200;</span> Scanner</button>
+<button class="tab-btn" onclick="switchTab('scanner')" id="tabBtnScanner" data-color="cyan" data-tip="Heatmap, Screener, Options Flow & Price Alerts"><span class="tab-icon">&#128301;</span> Scanner</button>
 <button class="tab-btn" onclick="switchTab('smarttrades')" id="tabBtnSmartTrades" data-color="amber" data-tip="AI-powered daily trade ideas for indices & stocks"><span class="tab-icon">&#128293;</span> Smart Trades</button>
 </div>
 
@@ -887,6 +889,119 @@ footer{position:relative;z-index:1;margin-top:32px;background:#002f6c;border-top
 </div>
 
 <!-- SMART TRADES — AI-Powered Daily Ideas (separate tab) -->
+<!-- ═══ SCANNER TAB — Heatmap + Screener + Options Flow + Alerts ═══ -->
+<div class="sc" data-tab="scanner" style="border-left:3px solid var(--cyan);display:none">
+<div class="sh"><div class="si" style="background:rgba(6,182,212,.1)">&#128301;</div><div class="st" style="color:var(--cyan)">Market Scanner</div></div>
+<div class="sbody">
+
+<!-- Sub-nav -->
+<div style="display:flex;gap:0;margin-bottom:14px;border:1px solid var(--border);border-radius:8px;overflow:hidden;width:fit-content">
+<button onclick="showScannerSub('heatmap',this)" class="scan-tab active" style="padding:8px 16px;font-size:11px;font-weight:700;border:none;cursor:pointer;font-family:DM Sans,sans-serif;background:var(--blue);color:#fff;transition:all .2s">&#128293; Heatmap</button>
+<button onclick="showScannerSub('screener',this)" class="scan-tab" style="padding:8px 16px;font-size:11px;font-weight:700;border:none;cursor:pointer;font-family:DM Sans,sans-serif;background:var(--bg2);color:var(--text3);transition:all .2s">&#9889; Screener</button>
+<button onclick="showScannerSub('flow',this)" class="scan-tab" style="padding:8px 16px;font-size:11px;font-weight:700;border:none;cursor:pointer;font-family:DM Sans,sans-serif;background:var(--bg2);color:var(--text3);transition:all .2s">&#128202; Options Flow</button>
+<button onclick="showScannerSub('alerts',this)" class="scan-tab" style="padding:8px 16px;font-size:11px;font-weight:700;border:none;cursor:pointer;font-family:DM Sans,sans-serif;background:var(--bg2);color:var(--text3);transition:all .2s">&#128276; Alerts</button>
+</div>
+
+<!-- Region toggle for scanner -->
+<div style="display:flex;gap:0;margin-bottom:12px;border:1px solid var(--border);border-radius:6px;overflow:hidden;width:fit-content">
+<button id="scanRegIN" onclick="setScanRegion('IN')" style="padding:5px 16px;font-size:10px;font-weight:700;border:none;cursor:pointer;background:#002f6c;color:#fff">&#127470;&#127475; India</button>
+<button id="scanRegUS" onclick="setScanRegion('US')" style="padding:5px 16px;font-size:10px;font-weight:700;border:none;cursor:pointer;background:var(--bg2);color:var(--text3)">&#127482;&#127480; USA</button>
+</div>
+
+<!-- HEATMAP -->
+<div id="scanHeatmap"><div style="text-align:center;padding:30px;color:var(--text3)"><div style="font-size:11px">Click &#8635; to load live heatmap</div><button onclick="loadHeatmap()" style="margin-top:8px;padding:8px 20px;border-radius:8px;background:var(--blue);color:#fff;border:none;font-size:12px;font-weight:700;cursor:pointer">&#128293; Load Heatmap</button></div></div>
+
+<!-- SCREENER -->
+<div id="scanScreener" style="display:none">
+<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">
+<button onclick="loadScreener('oversold')" class="scr-preset active" style="padding:5px 12px;border-radius:6px;font-size:10px;font-weight:700;border:1px solid var(--blue);background:rgba(59,130,246,.1);color:var(--blue);cursor:pointer">&#128994; Oversold Bounce</button>
+<button onclick="loadScreener('breakout')" class="scr-preset" style="padding:5px 12px;border-radius:6px;font-size:10px;font-weight:700;border:1px solid var(--border);background:var(--bg2);color:var(--text3);cursor:pointer">&#128640; Breakout</button>
+<button onclick="loadScreener('momentum')" class="scr-preset" style="padding:5px 12px;border-radius:6px;font-size:10px;font-weight:700;border:1px solid var(--border);background:var(--bg2);color:var(--text3);cursor:pointer">&#9889; Momentum</button>
+<button onclick="loadScreener('volume_spike')" class="scr-preset" style="padding:5px 12px;border-radius:6px;font-size:10px;font-weight:700;border:1px solid var(--border);background:var(--bg2);color:var(--text3);cursor:pointer">&#128200; Volume Spike</button>
+<button onclick="loadScreener('golden_cross')" class="scr-preset" style="padding:5px 12px;border-radius:6px;font-size:10px;font-weight:700;border:1px solid var(--border);background:var(--bg2);color:var(--text3);cursor:pointer">&#10010; Golden Cross</button>
+<button onclick="loadScreener('overbought')" class="scr-preset" style="padding:5px 12px;border-radius:6px;font-size:10px;font-weight:700;border:1px solid var(--border);background:var(--bg2);color:var(--text3);cursor:pointer">&#128308; Overbought</button>
+</div>
+<div id="screenerResults"><div style="text-align:center;padding:20px;color:var(--text3);font-size:11px">Select a preset above to scan stocks</div></div>
+</div>
+
+<!-- OPTIONS FLOW -->
+<div id="scanFlow" style="display:none">
+<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">
+<button onclick="loadOptionsFlow('NIFTY')" class="flow-btn" style="padding:5px 12px;border-radius:6px;font-size:10px;font-weight:700;border:1px solid var(--blue);background:rgba(59,130,246,.1);color:var(--blue);cursor:pointer">NIFTY</button>
+<button onclick="loadOptionsFlow('BANKNIFTY')" class="flow-btn" style="padding:5px 12px;border-radius:6px;font-size:10px;font-weight:700;border:1px solid var(--border);background:var(--bg2);color:var(--text3);cursor:pointer">BANKNIFTY</button>
+<button onclick="loadOptionsFlow('SENSEX')" class="flow-btn" style="padding:5px 12px;border-radius:6px;font-size:10px;font-weight:700;border:1px solid var(--border);background:var(--bg2);color:var(--text3);cursor:pointer">SENSEX</button>
+</div>
+<div id="flowResults"><div style="text-align:center;padding:20px;color:var(--text3);font-size:11px">Select an index to detect smart money flow</div></div>
+</div>
+
+<!-- PRICE ALERTS -->
+<div id="scanAlerts" style="display:none">
+<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:end;margin-bottom:12px;padding:12px;border-radius:8px;background:var(--bg2);border:1px solid var(--border)">
+<div><div style="font-size:8px;font-weight:700;color:var(--text3);margin-bottom:2px">SYMBOL</div><input id="alertSym" type="text" placeholder="NIFTY" style="padding:5px 10px;border-radius:6px;border:1px solid var(--border);font-size:11px;width:100px;background:var(--surface);color:var(--text);font-family:var(--mono)"></div>
+<div><div style="font-size:8px;font-weight:700;color:var(--text3);margin-bottom:2px">CONDITION</div><select id="alertCond" style="padding:5px 8px;border-radius:6px;border:1px solid var(--border);font-size:11px;background:var(--surface);color:var(--text)"><option value="price_above">Price Above</option><option value="price_below">Price Below</option><option value="change_above">Day Change > %</option><option value="change_below">Day Change < %</option></select></div>
+<div><div style="font-size:8px;font-weight:700;color:var(--text3);margin-bottom:2px">VALUE</div><input id="alertVal" type="number" placeholder="25000" style="padding:5px 10px;border-radius:6px;border:1px solid var(--border);font-size:11px;width:100px;background:var(--surface);color:var(--text);font-family:var(--mono)"></div>
+<button onclick="addPriceAlert()" style="padding:5px 16px;border-radius:6px;background:var(--blue);color:#fff;border:none;font-size:11px;font-weight:700;cursor:pointer;height:30px">&#128276; Add Alert</button>
+</div>
+<div id="alertsList"><div style="text-align:center;padding:12px;color:var(--text3);font-size:11px">No alerts set. Add one above.</div></div>
+</div>
+
+</div>
+</div>
+
+<!-- ═══ TAB: SCANNER — Heatmap + Screener + Options Flow ═══ -->
+<div class="sc" data-tab="scanner" style="border-left:3px solid var(--cyan);display:none">
+<div class="sh"><div class="si" style="background:rgba(6,182,212,.1)">&#128200;</div><div class="st" style="color:var(--cyan)">Market Scanner — Heatmap, Screener &amp; Options Flow</div></div>
+<div class="sbody">
+<!-- Region toggle -->
+<div style="display:flex;gap:0;margin-bottom:12px;border:1px solid var(--border);border-radius:8px;overflow:hidden;width:fit-content">
+<button id="scanRegIN" onclick="switchScanRegion('IN')" style="padding:6px 18px;font-size:11px;font-weight:800;border:none;cursor:pointer;font-family:Sora,sans-serif;background:#002f6c;color:#fff">&#127470;&#127475; India</button>
+<button id="scanRegUS" onclick="switchScanRegion('US')" style="padding:6px 18px;font-size:11px;font-weight:800;border:none;cursor:pointer;font-family:Sora,sans-serif;background:var(--bg2);color:var(--text3)">&#127482;&#127480; USA</button>
+</div>
+
+<!-- Sub-tabs -->
+<div style="display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap">
+<button onclick="showScanSub('heatmap',this)" class="algo-btn active" style="padding:6px 16px;font-size:11px;font-weight:700">&#128293; Heatmap</button>
+<button onclick="showScanSub('screener',this)" class="algo-btn" style="padding:6px 16px;font-size:11px;font-weight:700">&#9889; Screener</button>
+<button onclick="showScanSub('flow',this)" class="algo-btn" style="padding:6px 16px;font-size:11px;font-weight:700">&#128202; Options Flow</button>
+</div>
+
+<!-- HEATMAP -->
+<div id="scanHeatmap" style="">
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+<div style="font-size:13px;font-weight:800;color:var(--text)">&#128293; Live Market Heatmap</div>
+<button onclick="loadHeatmap()" style="padding:4px 14px;border-radius:6px;background:var(--cyan);color:#fff;border:none;font-size:10px;font-weight:700;cursor:pointer">&#8635; Refresh</button>
+</div>
+<div id="heatmapGrid" style="min-height:200px"><div style="text-align:center;padding:40px;color:var(--text3);font-size:11px">Click Refresh to load live heatmap</div></div>
+</div>
+
+<!-- SCREENER -->
+<div id="scanScreener" style="display:none">
+<div style="font-size:13px;font-weight:800;color:var(--text);margin-bottom:10px">&#9889; Stock Screener</div>
+<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:end;margin-bottom:12px;padding:12px;border-radius:8px;background:var(--bg2);border:1px solid var(--border)">
+<div><label style="font-size:9px;font-weight:700;color:var(--text3);display:block;margin-bottom:2px">RSI Below</label><input id="scrRsiBelow" type="number" placeholder="30" style="width:60px;padding:4px 8px;border-radius:4px;border:1px solid var(--border);font-size:11px;background:var(--surface);color:var(--text)"></div>
+<div><label style="font-size:9px;font-weight:700;color:var(--text3);display:block;margin-bottom:2px">RSI Above</label><input id="scrRsiAbove" type="number" placeholder="70" style="width:60px;padding:4px 8px;border-radius:4px;border:1px solid var(--border);font-size:11px;background:var(--surface);color:var(--text)"></div>
+<div><label style="font-size:9px;font-weight:700;color:var(--text3);display:block;margin-bottom:2px">Vol &gt; X&times;</label><input id="scrVolAbove" type="number" placeholder="2" step="0.5" style="width:60px;padding:4px 8px;border-radius:4px;border:1px solid var(--border);font-size:11px;background:var(--surface);color:var(--text)"></div>
+<div><label style="font-size:9px;font-weight:700;color:var(--text3);display:block;margin-bottom:2px">PE Below</label><input id="scrPeBelow" type="number" placeholder="20" style="width:60px;padding:4px 8px;border-radius:4px;border:1px solid var(--border);font-size:11px;background:var(--surface);color:var(--text)"></div>
+<div><label style="font-size:9px;font-weight:700;color:var(--text3);display:block;margin-bottom:2px">&nbsp;</label><label style="font-size:10px;color:var(--text);display:flex;align-items:center;gap:4px"><input id="scrAboveSma200" type="checkbox"> Above SMA200</label></div>
+<button onclick="runScreener()" style="padding:6px 18px;border-radius:6px;background:var(--cyan);color:#fff;border:none;font-size:11px;font-weight:700;cursor:pointer;font-family:Sora,sans-serif">&#128270; Scan</button>
+<button onclick="runScreener('oversold')" style="padding:6px 12px;border-radius:6px;background:rgba(16,185,129,.1);color:#10b981;border:1px solid rgba(16,185,129,.3);font-size:9px;font-weight:700;cursor:pointer">Oversold</button>
+<button onclick="runScreener('momentum')" style="padding:6px 12px;border-radius:6px;background:rgba(59,130,246,.1);color:var(--blue);border:1px solid rgba(59,130,246,.3);font-size:9px;font-weight:700;cursor:pointer">Momentum</button>
+<button onclick="runScreener('value')" style="padding:6px 12px;border-radius:6px;background:rgba(245,158,11,.1);color:var(--amber);border:1px solid rgba(245,158,11,.3);font-size:9px;font-weight:700;cursor:pointer">Value</button>
+</div>
+<div id="screenerResult" style="min-height:100px"><div style="text-align:center;padding:20px;color:var(--text3);font-size:11px">Set filters above and click Scan</div></div>
+</div>
+
+<!-- OPTIONS FLOW -->
+<div id="scanFlow" style="display:none">
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+<div style="font-size:13px;font-weight:800;color:var(--text)">&#128202; Unusual Options Activity</div>
+<button onclick="loadOptionsFlow()" style="padding:4px 14px;border-radius:6px;background:var(--cyan);color:#fff;border:none;font-size:10px;font-weight:700;cursor:pointer">&#8635; Scan Flow</button>
+</div>
+<div id="flowResult" style="min-height:100px"><div style="text-align:center;padding:20px;color:var(--text3);font-size:11px">Click "Scan Flow" to detect unusual options activity</div></div>
+</div>
+</div>
+</div>
+
 <div class="sc" data-tab="smarttrades" style="border-left:3px solid var(--amber);display:none">
 <div class="sh"><div class="si" style="background:rgba(245,158,11,.1)">&#128293;</div><div class="st" style="color:var(--amber)">Smart Trades — AI Daily Ideas</div></div>
 <div class="sbody">
