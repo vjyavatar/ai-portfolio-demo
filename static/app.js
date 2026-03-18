@@ -4330,7 +4330,7 @@ h+='<th style="padding:5px;text-align:right">1M%</th><th style="padding:5px;text
 h+='<th style="padding:5px;text-align:center">RSI</th><th style="padding:5px;text-align:right">52W%</th>';
 h+='</tr></thead><tbody>';
 res.slice(0,25).forEach(function(s,i){
-var ytdC=s.ytd>=50?'#0a7c42':s.ytd>=20?'#10b981':s.ytd>=0?'var(--text)':s.ytd>=-20?'#ef4444':'#991b1b';
+var ytdC=s.ytd>20?'#0a7c42':s.ytd>0?'#10b981':s.ytd===0?'var(--text3)':s.ytd>-20?'#ef4444':'#991b1b';
 var m1C=s.m1>=0?'#10b981':'#ef4444';
 var w1C=s.w1>=0?'#10b981':'#ef4444';
 var rsiC=s.rsi<30?'#10b981':s.rsi>70?'#ef4444':'var(--text3)';
@@ -5265,7 +5265,7 @@ h+='</tr></thead><tbody>';
 res.forEach(function(s,i){
 var rsiC=s.rsi<30?'#10b981':s.rsi>70?'#ef4444':'var(--text)';
 var chgC=s.chg>=0?'#10b981':'#ef4444';
-var ytdC=s.ytd>=50?'#0a7c42':s.ytd>=20?'#10b981':s.ytd>=0?'var(--text)':s.ytd>=-20?'#ef4444':'#991b1b';
+var ytdC=s.ytd>20?'#0a7c42':s.ytd>0?'#10b981':s.ytd===0?'var(--text3)':s.ytd>-20?'#ef4444':'#991b1b';
 var m1C=s.m1>=0?'#10b981':'#ef4444';
 var w1C=s.w1>=0?'#10b981':'#ef4444';
 var sig=s.rsi<30&&s.above_sma200?'OVERSOLD BUY':s.rsi>70?'OVERBOUGHT':s.ema_bull&&s.above_sma200&&s.vol_ratio>1.2?'MOMENTUM':s.ytd>50?'★ TOP GAINER':'—';

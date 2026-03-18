@@ -5399,15 +5399,27 @@ async def screener(region: str = "IN", preset: str = "", rsi_below: float = 0, r
             if price <= 0:
                 return None
             
-            # YTD return
-            ytd_start = None
-            for i, dt in enumerate(hist.index):
-                if dt.month == 1 and dt.day <= 5:
-                    ytd_start = float(closes[i])
-                    break
-            if not ytd_start and len(closes) > 200:
-                ytd_start = float(closes[-252]) if len(closes) >= 252 else float(closes[0])
-            ytd_ret = round(((price - ytd_start) / ytd_start) * 100, 1) if ytd_start and ytd_start > 0 else 0
+            # YTD return — use Dec 31 / Jan 1 close price
+            ytd_ret = 0
+            from datetime import datetime as _dt
+            _now = _dt.utcnow()
+            try:
+                # Method 1: Get last close of previous year
+                ytd_hist = t.history(start=f"{_now.year - 1}-12-25", end=f"{_now.year}-01-05")
+                if ytd_hist is not None and len(ytd_hist) > 0:
+                    ytd_start = float(ytd_hist["Close"].iloc[-1])  # Last trading day of prev year
+                    ytd_ret = round(((price - ytd_start) / ytd_start) * 100, 1) if ytd_start > 0 else 0
+            except:
+                pass
+            if ytd_ret == 0:
+                try:
+                    # Method 2: Fallback — first close in Jan of current year
+                    jan_hist = t.history(start=f"{_now.year}-01-01", end=f"{_now.year}-01-10")
+                    if jan_hist is not None and len(jan_hist) > 0:
+                        ytd_start = float(jan_hist["Close"].iloc[0])
+                        ytd_ret = round(((price - ytd_start) / ytd_start) * 100, 1) if ytd_start > 0 else 0
+                except:
+                    pass
             
             # 1-month return
             m1_ret = round(((price - float(closes[-22])) / float(closes[-22])) * 100, 1) if len(closes) >= 22 else 0
