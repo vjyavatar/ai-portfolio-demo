@@ -5141,6 +5141,14 @@ document.getElementById('scanRegIN').style.background=reg==='IN'?'#002f6c':'var(
 document.getElementById('scanRegIN').style.color=reg==='IN'?'#fff':'var(--text3)';
 document.getElementById('scanRegUS').style.background=reg==='US'?'#002f6c':'var(--bg2)';
 document.getElementById('scanRegUS').style.color=reg==='US'?'#fff':'var(--text3)';
+// Clear all stale results from previous region
+var flag=reg==='US'?'🇺🇸 USA':'🇮🇳 India';
+var hg=document.getElementById('heatmapGrid');
+if(hg)hg.innerHTML='<div style="text-align:center;padding:30px;color:var(--text3);font-size:11px">Switched to '+flag+'. Click <strong>Refresh</strong> to load heatmap.</div>';
+var sr=document.getElementById('screenerResult');
+if(sr)sr.innerHTML='<div style="text-align:center;padding:20px;color:var(--text3);font-size:11px">Switched to '+flag+'. Click <strong>Scan</strong> or a preset to screen stocks.</div>';
+var fr=document.getElementById('flowResult');
+if(fr)fr.innerHTML='<div style="text-align:center;padding:20px;color:var(--text3);font-size:11px">Switched to '+flag+'. Click <strong>Scan Flow</strong> to detect unusual activity.</div>';
 }
 function showScanSub(sub,btn){
 document.getElementById('scanHeatmap').style.display=sub==='heatmap'?'':'none';
@@ -5157,9 +5165,9 @@ var reg=window._scanRegion||'IN';
 var S=reg==='US'?'$':'₹';
 el.innerHTML='<div style="text-align:center;padding:30px;color:var(--text3);font-size:11px"><div style="display:inline-block;width:16px;height:16px;border:2px solid var(--cyan);border-top-color:transparent;border-radius:50%;animation:spin .5s linear infinite;vertical-align:middle;margin-right:6px"></div>Loading heatmap...</div>';
 fetch('/api/heatmap?region='+reg).then(function(r){return r.json()}).then(function(data){
-if(!data.success||!data.stocks||!data.stocks.length){el.innerHTML='<div style="color:var(--red);padding:12px;font-size:11px">Failed to load. Try again.</div>';return}
+if(!data.success||!data.stocks||!data.stocks.length){el.innerHTML='<div style="color:var(--red);padding:12px;font-size:11px">No data returned. Market may be closed. <button onclick="loadHeatmap()" style="color:var(--blue);background:none;border:none;cursor:pointer;text-decoration:underline;font-size:11px">Retry</button></div>';return}
 var stocks=data.stocks;
-var maxMcap=stocks[0].mcap||1;
+var maxMcap=(stocks[0]&&stocks[0].mcap)||1;
 var h='<div style="display:flex;flex-wrap:wrap;gap:3px">';
 stocks.forEach(function(s){
 var size=Math.max(60,Math.min(140,60+Math.sqrt(s.mcap/maxMcap)*80));

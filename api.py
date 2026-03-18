@@ -4807,9 +4807,9 @@ async def _algo_signal_impl(symbol: str = "NIFTY", region: str = ""):
     option_expiry_fmt = ""
     option_ltp = 0  # Real last traded price from chain
     
-    # India: from NSE expiry_dates
+    # Method 1: India — from NSE expiry_dates
     if nse_expiry_dates and not is_us:
-        option_expiry = nse_expiry_dates[0]  # e.g. "25-Mar-2026"
+        option_expiry = nse_expiry_dates[0]
         try:
             option_expiry_fmt = datetime.strptime(option_expiry, "%d-%b-%Y").strftime("%d %b %Y")
         except:
@@ -4826,12 +4826,12 @@ async def _algo_signal_impl(symbol: str = "NIFTY", region: str = ""):
         except:
             pass
     
-    # USA: from yfinance options
+    # Method 2: USA — from yfinance options
     if is_us:
         try:
             us_opts = tk.options
             if us_opts:
-                option_expiry = us_opts[0]  # e.g. "2026-03-27"
+                option_expiry = us_opts[0]
                 try:
                     option_expiry_fmt = datetime.strptime(option_expiry, "%Y-%m-%d").strftime("%b %d, %Y")
                 except:
@@ -4845,6 +4845,35 @@ async def _algo_signal_impl(symbol: str = "NIFTY", region: str = ""):
                     selected_strike = round(float(strike_match["strike"]), 2)
         except Exception as e:
             print(f"  US option chain error: {e}")
+    
+    # Method 3: FALLBACK — compute next expiry from schedule if nothing found
+    if not option_expiry_fmt:
+        try:
+            today = IST
+            if is_us:
+                # US: next Friday (standard weekly) or next 0DTE day
+                days_to_fri = (4 - today.weekday()) % 7
+                if days_to_fri == 0 and today.hour >= 16: days_to_fri = 7
+                next_exp = today + timedelta(days=days_to_fri if days_to_fri > 0 else 7)
+                option_expiry_fmt = next_exp.strftime("%b %d, %Y")
+            else:
+                # India: NIFTY=Tuesday, SENSEX=Thursday, BANKNIFTY=last Tue of month
+                exp_weekday = {"NIFTY": 1, "SENSEX": 3}.get(symbol, 1)  # 0=Mon, 1=Tue, 3=Thu
+                days_ahead = (exp_weekday - today.weekday()) % 7
+                if days_ahead == 0 and today.hour >= 15: days_ahead = 7
+                next_exp = today + timedelta(days=days_ahead if days_ahead > 0 else 7)
+                option_expiry_fmt = next_exp.strftime("%d %b %Y")
+            option_expiry = option_expiry_fmt
+        except:
+            pass
+    
+    # Also use next_expiry from expiry check if available and we still don't have it
+    if not option_expiry_fmt and next_expiry:
+        try:
+            option_expiry_fmt = datetime.strptime(next_expiry, "%d-%b-%Y").strftime("%d %b %Y")
+            option_expiry = next_expiry
+        except:
+            option_expiry_fmt = next_expiry
     
     # Build full contract name
     if option_expiry_fmt:
@@ -5411,100 +5440,123 @@ async def screener(region: str = "IN", rsi_below: float = 0, rsi_above: float = 
 async def options_flow(region: str = "IN"):
     """Detect unusual options activity — big money tracking."""
     
-    if region.upper() == "US":
+    is_us = region.upper() == "US"
+    
+    if is_us:
+        # USA: yfinance has real options chains
         syms = ["SPY","QQQ","AAPL","MSFT","NVDA","TSLA","AMZN","META","AMD","GOOGL"]
-    else:
-        syms = ["NIFTY","BANKNIFTY","RELIANCE","TCS","HDFCBANK","INFY","ICICIBANK","SBIN","TATAMOTORS","BAJFINANCE"]
-    
-    def _scan_flow(sym):
-        try:
-            is_idx = sym in ["NIFTY","BANKNIFTY","SENSEX","SPY","QQQ","IWM"]
-            yf_sym = ALGO_INSTRUMENTS.get(sym, {}).get("sym", f"{sym}.NS" if region.upper() != "US" else sym)
-            t = yf.Ticker(yf_sym)
-            
-            info = t.info or {}
-            price = float(info.get("currentPrice") or info.get("regularMarketPrice") or 0)
-            if price <= 0:
-                return None
-            
-            # Get options chain
-            opts = t.options
-            if not opts:
-                return None
-            
-            chain = t.option_chain(opts[0])
-            calls = chain.calls
-            puts = chain.puts
-            
-            if len(calls) == 0:
-                return None
-            
-            alerts = []
-            csym_local = "$" if region.upper() == "US" else "₹"
-            
-            # Detect unusual volume (volume > 3× open interest)
-            for _, row in calls.iterrows():
-                vol = int(row.get("volume", 0) or 0)
-                oi = int(row.get("openInterest", 0) or 0)
-                strike = float(row["strike"])
-                if vol > 0 and oi > 0 and vol > 3 * oi:
-                    premium = float(row.get("lastPrice", 0) or 0)
-                    value = vol * premium * (ALGO_INSTRUMENTS.get(sym, {}).get("lot", 100))
-                    alerts.append({
-                        "sym": sym, "type": "CALL", "strike": strike,
-                        "volume": vol, "oi": oi, "ratio": round(vol / oi, 1),
-                        "premium": round(premium, 2), "value": round(value),
-                        "signal": "BULLISH", "csym": csym_local,
-                        "msg": f"CALL {csym_local}{strike:,.0f} — Vol {vol:,} vs OI {oi:,} ({round(vol/oi, 1)}×). Smart money buying calls."
-                    })
-            
-            for _, row in puts.iterrows():
-                vol = int(row.get("volume", 0) or 0)
-                oi = int(row.get("openInterest", 0) or 0)
-                strike = float(row["strike"])
-                if vol > 0 and oi > 0 and vol > 3 * oi:
-                    premium = float(row.get("lastPrice", 0) or 0)
-                    value = vol * premium * (ALGO_INSTRUMENTS.get(sym, {}).get("lot", 100))
-                    alerts.append({
-                        "sym": sym, "type": "PUT", "strike": strike,
-                        "volume": vol, "oi": oi, "ratio": round(vol / oi, 1),
-                        "premium": round(premium, 2), "value": round(value),
-                        "signal": "BEARISH", "csym": csym_local,
-                        "msg": f"PUT {csym_local}{strike:,.0f} — Vol {vol:,} vs OI {oi:,} ({round(vol/oi, 1)}×). Hedging or bearish bet."
-                    })
-            
-            # Top OI changes (highest absolute OI)
-            top_call_oi = calls.nlargest(3, "openInterest")[["strike","openInterest","volume"]].to_dict("records") if len(calls) > 0 else []
-            top_put_oi = puts.nlargest(3, "openInterest")[["strike","openInterest","volume"]].to_dict("records") if len(puts) > 0 else []
-            
-            # PCR
-            total_call_oi = calls["openInterest"].sum()
-            total_put_oi = puts["openInterest"].sum()
-            pcr = round(total_put_oi / total_call_oi, 2) if total_call_oi > 0 else 0
-            
-            return {
-                "sym": sym, "price": round(price, 2), "pcr": pcr,
-                "alerts": sorted(alerts, key=lambda x: x["ratio"], reverse=True)[:5],
-                "top_call_oi": [{"strike": int(r["strike"]), "oi": int(r["openInterest"]), "vol": int(r.get("volume",0) or 0)} for r in top_call_oi],
-                "top_put_oi": [{"strike": int(r["strike"]), "oi": int(r["openInterest"]), "vol": int(r.get("volume",0) or 0)} for r in top_put_oi],
-                "total_alerts": len(alerts),
-            }
-        except Exception as e:
-            print(f"  Options flow error {sym}: {e}")
-            return None
-    
-    results = []
-    with ThreadPoolExecutor(max_workers=6) as pool:
-        futs = {pool.submit(_scan_flow, s): s for s in syms}
-        for f in as_completed(futs, timeout=25):
+        
+        def _scan_us(sym):
             try:
-                r = f.result(timeout=12)
-                if r:
-                    results.append(r)
-            except:
-                pass
+                t = yf.Ticker(sym)
+                info = t.info or {}
+                price = float(info.get("currentPrice") or info.get("regularMarketPrice") or 0)
+                if price <= 0: return None
+                
+                opts = t.options
+                if not opts: return None
+                
+                chain = t.option_chain(opts[0])
+                calls, puts = chain.calls, chain.puts
+                if len(calls) == 0: return None
+                
+                alerts = []
+                for _, row in calls.iterrows():
+                    vol = int(row.get("volume", 0) or 0)
+                    oi = int(row.get("openInterest", 0) or 0)
+                    strike = float(row["strike"])
+                    if vol > 0 and oi > 0 and vol > 3 * oi:
+                        premium = float(row.get("lastPrice", 0) or 0)
+                        alerts.append({"sym": sym, "type": "CALL", "strike": round(strike, 1), "volume": vol, "oi": oi,
+                                       "ratio": round(vol/oi, 1), "premium": round(premium, 2),
+                                       "signal": "BULLISH", "csym": "$",
+                                       "msg": f"CALL ${strike:,.0f} — Vol {vol:,} vs OI {oi:,} ({round(vol/oi,1)}×)"})
+                
+                for _, row in puts.iterrows():
+                    vol = int(row.get("volume", 0) or 0)
+                    oi = int(row.get("openInterest", 0) or 0)
+                    strike = float(row["strike"])
+                    if vol > 0 and oi > 0 and vol > 3 * oi:
+                        premium = float(row.get("lastPrice", 0) or 0)
+                        alerts.append({"sym": sym, "type": "PUT", "strike": round(strike, 1), "volume": vol, "oi": oi,
+                                       "ratio": round(vol/oi, 1), "premium": round(premium, 2),
+                                       "signal": "BEARISH", "csym": "$",
+                                       "msg": f"PUT ${strike:,.0f} — Vol {vol:,} vs OI {oi:,} ({round(vol/oi,1)}×)"})
+                
+                total_call_oi = int(calls["openInterest"].sum())
+                total_put_oi = int(puts["openInterest"].sum())
+                pcr = round(total_put_oi / total_call_oi, 2) if total_call_oi > 0 else 0
+                top_calls = [{"strike": int(r["strike"]), "oi": int(r["openInterest"])} for r in calls.nlargest(3, "openInterest")[["strike","openInterest"]].to_dict("records")]
+                top_puts = [{"strike": int(r["strike"]), "oi": int(r["openInterest"])} for r in puts.nlargest(3, "openInterest")[["strike","openInterest"]].to_dict("records")]
+                
+                return {"sym": sym, "price": round(price, 2), "pcr": pcr,
+                        "alerts": sorted(alerts, key=lambda x: x["ratio"], reverse=True)[:5],
+                        "top_call_oi": top_calls, "top_put_oi": top_puts,
+                        "total_alerts": len(alerts)}
+            except Exception as e:
+                print(f"  US flow error {sym}: {e}")
+                return None
+        
+        results = []
+        with ThreadPoolExecutor(max_workers=6) as pool:
+            futs = {pool.submit(_scan_us, s): s for s in syms}
+            for f in as_completed(futs, timeout=25):
+                try:
+                    r = f.result(timeout=12)
+                    if r: results.append(r)
+                except: pass
     
-    # Sort by most alerts
+    else:
+        # INDIA: Use our NSE options API (yfinance has NO Indian options chains)
+        results = []
+        nse_syms = ["NIFTY", "BANKNIFTY", "SENSEX"]
+        
+        for sym in nse_syms:
+            try:
+                nse_data = await nse_options(sym)
+                if not nse_data.get("success"): continue
+                
+                price = float(nse_data.get("spot", 0))
+                pcr = float(nse_data.get("pcr", 0))
+                ce_resist = nse_data.get("ce_resistance", [])
+                pe_support = nse_data.get("pe_support", [])
+                vix = float(nse_data.get("vix", 0))
+                max_pain = float(nse_data.get("max_pain", 0))
+                
+                alerts = []
+                # Flag high OI strikes as unusual if OI > 10 lakh
+                for ce in ce_resist:
+                    if ce.get("oi", 0) > 1000000:
+                        alerts.append({"sym": sym, "type": "CE", "strike": ce["strike"],
+                                       "volume": 0, "oi": ce["oi"], "ratio": 0,
+                                       "signal": "RESISTANCE", "csym": "₹",
+                                       "msg": f"CE {ce['strike']:,} — OI {ce['oi']:,}. Heavy CE writing = resistance wall."})
+                for pe in pe_support:
+                    if pe.get("oi", 0) > 1000000:
+                        alerts.append({"sym": sym, "type": "PE", "strike": pe["strike"],
+                                       "volume": 0, "oi": pe["oi"], "ratio": 0,
+                                       "signal": "SUPPORT", "csym": "₹",
+                                       "msg": f"PE {pe['strike']:,} — OI {pe['oi']:,}. Heavy PE writing = strong support."})
+                
+                # PCR-based signal
+                if pcr > 1.3:
+                    alerts.append({"sym": sym, "type": "PCR", "strike": 0, "volume": 0, "oi": 0,
+                                   "ratio": pcr, "signal": "BULLISH", "csym": "₹",
+                                   "msg": f"PCR {pcr:.2f} — Extreme PE writing. Bullish floor. Smart money expects move up."})
+                elif pcr < 0.6:
+                    alerts.append({"sym": sym, "type": "PCR", "strike": 0, "volume": 0, "oi": 0,
+                                   "ratio": pcr, "signal": "BEARISH", "csym": "₹",
+                                   "msg": f"PCR {pcr:.2f} — Heavy CE writing. Bearish resistance. Downside risk."})
+                
+                top_calls = [{"strike": c["strike"], "oi": c["oi"]} for c in ce_resist[:3]]
+                top_puts = [{"strike": p["strike"], "oi": p["oi"]} for p in pe_support[:3]]
+                
+                results.append({"sym": sym, "price": round(price, 2), "pcr": pcr,
+                                "alerts": alerts, "top_call_oi": top_calls, "top_put_oi": top_puts,
+                                "total_alerts": len(alerts), "vix": vix, "max_pain": round(max_pain, 0)})
+            except Exception as e:
+                print(f"  India flow error {sym}: {e}")
+    
     results.sort(key=lambda x: x["total_alerts"], reverse=True)
     all_alerts = []
     for r in results:
