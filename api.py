@@ -4802,11 +4802,76 @@ async def _algo_signal_impl(symbol: str = "NIFTY", region: str = ""):
     elif orb.get("orb_high"):
         entry_condition = f"Inside ORB {csym}{orb['orb_low']:,.0f}–{csym}{orb['orb_high']:,.0f}. Wait for breakout, then buy {selected_strike} {opt_type}."
     
+    # ═══ GET EXACT OPTION EXPIRY DATE + REAL LTP ═══
+    option_expiry = ""
+    option_expiry_fmt = ""
+    option_ltp = 0  # Real last traded price from chain
+    
+    # India: from NSE expiry_dates
+    if nse_expiry_dates and not is_us:
+        option_expiry = nse_expiry_dates[0]  # e.g. "25-Mar-2026"
+        try:
+            option_expiry_fmt = datetime.strptime(option_expiry, "%d-%b-%Y").strftime("%d %b %Y")
+        except:
+            option_expiry_fmt = option_expiry
+        # Get real LTP from NSE chain data
+        try:
+            chain_data = nse.get("raw_chain", {})
+            if chain_data:
+                for rec in chain_data:
+                    if rec.get("strikePrice") == selected_strike:
+                        opt_key = "CE" if opt_type_raw == "CE" else "PE"
+                        option_ltp = round(float(rec.get(opt_key, {}).get("lastPrice", 0)), 2)
+                        break
+        except:
+            pass
+    
+    # USA: from yfinance options
+    if is_us:
+        try:
+            us_opts = tk.options
+            if us_opts:
+                option_expiry = us_opts[0]  # e.g. "2026-03-27"
+                try:
+                    option_expiry_fmt = datetime.strptime(option_expiry, "%Y-%m-%d").strftime("%b %d, %Y")
+                except:
+                    option_expiry_fmt = option_expiry
+                # Get real LTP from chain
+                chain = tk.option_chain(us_opts[0])
+                opt_df = chain.calls if opt_type_raw == "CE" else chain.puts
+                if len(opt_df) > 0:
+                    strike_match = opt_df.loc[(opt_df["strike"] - selected_strike).abs().idxmin()]
+                    option_ltp = round(float(strike_match.get("lastPrice", 0) or 0), 2)
+                    selected_strike = round(float(strike_match["strike"]), 2)
+        except Exception as e:
+            print(f"  US option chain error: {e}")
+    
+    # Build full contract name
+    if option_expiry_fmt:
+        contract_name = f"{symbol} {selected_strike} {opt_type} {option_expiry_fmt}"
+    else:
+        contract_name = f"{symbol} {selected_strike} {opt_type}"
+    
+    # Use real LTP if available, otherwise B-S computed premium
+    if option_ltp > 0:
+        prem_entry = option_ltp
+        # Recalculate risk/reward with real LTP
+        prem_risk = round(prem_entry - prem_sl, 2) if prem_entry > prem_sl else round(prem_entry * 0.3, 2)
+        prem_reward_t2 = round(prem_t2 - prem_entry, 2) if prem_t2 > prem_entry else round(prem_entry * 0.5, 2)
+        prem_rr = f"1:{round(prem_reward_t2 / prem_risk, 1)}" if prem_risk > 0 else "N/A"
+        prem_risk_per_lot = round(prem_risk * inst["lot"], 0)
+        prem_reward_per_lot = round(prem_reward_t2 * inst["lot"], 0)
+        prem_capital = round(prem_entry * inst["lot"], 0)
+    
     trade = {
-        "action": f"BUY {selected_strike} {opt_type}",
+        "action": f"BUY {contract_name}",
+        "contractName": contract_name,
+        "expiry": option_expiry_fmt,
+        "expiryRaw": option_expiry,
         "strike": selected_strike,
         "type": opt_type,
         "delta": selected_delta,
+        "optionLTP": option_ltp,
         # Premium-based (what trader actually pays/watches)
         "premEntry": round(prem_entry, 1),
         "premSL": round(prem_sl, 1) if prem_sl > 0 else round(prem_entry * 0.7, 1),
@@ -5156,275 +5221,6 @@ async def _algo_signal_impl(symbol: str = "NIFTY", region: str = ""):
 # ═══════════════════════════════════════════════
 # HEATMAP — Live sector/stock color map
 # ═══════════════════════════════════════════════
-_heatmap_cache = {}
-_heatmap_cache_ts = None
-
-@app.get("/api/heatmap")
-async def heatmap(region: str = "IN"):
-    """Live heatmap: top stocks with % change + market cap. 5-min cache."""
-    from datetime import datetime, timedelta
-    global _heatmap_cache, _heatmap_cache_ts
-    
-    now = datetime.utcnow()
-    cache_key = region.upper()
-    if cache_key in _heatmap_cache and _heatmap_cache_ts and (now - _heatmap_cache_ts).total_seconds() < 300:
-        return _heatmap_cache[cache_key]
-    
-    if region.upper() == "US":
-        tickers = {"AAPL":"Tech","MSFT":"Tech","NVDA":"Tech","GOOGL":"Tech","AMZN":"Consumer",
-                   "META":"Tech","TSLA":"Consumer","AMD":"Tech","AVGO":"Tech","JPM":"Finance",
-                   "V":"Finance","MA":"Finance","WMT":"Consumer","HD":"Consumer","UNH":"Health",
-                   "JNJ":"Health","PG":"Consumer","KO":"Consumer","PEP":"Consumer","MRK":"Health",
-                   "LLY":"Health","NFLX":"Tech","CRM":"Tech","ORCL":"Tech","INTC":"Tech",
-                   "BA":"Industrial","DIS":"Consumer","PYPL":"Finance","SQ":"Finance","COIN":"Finance"}
-    else:
-        tickers = {"RELIANCE":"Energy","TCS":"IT","HDFCBANK":"Bank","INFY":"IT","ICICIBANK":"Bank",
-                   "SBIN":"Bank","BHARTIARTL":"Telecom","ITC":"FMCG","LT":"Infra","BAJFINANCE":"NBFC",
-                   "KOTAKBANK":"Bank","AXISBANK":"Bank","MARUTI":"Auto","TATAMOTORS":"Auto",
-                   "HCLTECH":"IT","WIPRO":"IT","ADANIENT":"Infra","HINDUNILVR":"FMCG",
-                   "SUNPHARMA":"Pharma","DRREDDY":"Pharma","TITAN":"Consumer","NTPC":"Power",
-                   "POWERGRID":"Power","ONGC":"Energy","JSWSTEEL":"Metal","TATASTEEL":"Metal",
-                   "HINDALCO":"Metal","CIPLA":"Pharma","TECHM":"IT","ASIANPAINT":"Consumer"}
-    
-    def _fetch_stock(sym, sector):
-        try:
-            suffix = ".NS" if region.upper() != "US" else ""
-            tk = yf.Ticker(f"{sym}{suffix}")
-            info = tk.info or {}
-            price = float(info.get("currentPrice") or info.get("regularMarketPrice") or 0)
-            prev = float(info.get("previousClose") or price)
-            chg_pct = round(((price - prev) / prev) * 100, 2) if prev > 0 else 0
-            mcap = float(info.get("marketCap") or 0)
-            vol = float(info.get("volume") or 0)
-            avg_vol = float(info.get("averageVolume") or 1)
-            return {"symbol": sym, "sector": sector, "price": price, "change_pct": chg_pct,
-                    "mcap": mcap, "volume": vol, "vol_ratio": round(vol/avg_vol, 1) if avg_vol > 0 else 1,
-                    "name": info.get("shortName", sym)}
-        except:
-            return None
-    
-    results = []
-    with ThreadPoolExecutor(max_workers=8) as pool:
-        futs = {pool.submit(_fetch_stock, sym, sector): sym for sym, sector in tickers.items()}
-        for f in as_completed(futs, timeout=20):
-            try:
-                r = f.result(timeout=8)
-                if r and r["price"] > 0:
-                    results.append(r)
-            except:
-                pass
-    
-    results.sort(key=lambda x: x["mcap"], reverse=True)
-    resp = {"success": True, "stocks": results, "count": len(results), "region": cache_key}
-    _heatmap_cache[cache_key] = resp
-    _heatmap_cache_ts = now
-    return resp
-
-
-# ═══════════════════════════════════════════════
-# OPTIONS FLOW — Unusual activity detector
-# ═══════════════════════════════════════════════
-@app.get("/api/options-flow")
-async def options_flow(symbol: str = "NIFTY"):
-    """Detect unusual options activity from NSE chain."""
-    try:
-        nse_data = await nse_options(symbol)
-        if not nse_data.get("success"):
-            return {"success": False, "error": "No options data"}
-        
-        flows = []
-        ce_data = nse_data.get("ce_resistance", [])
-        pe_data = nse_data.get("pe_support", [])
-        spot = nse_data.get("spot", 0)
-        
-        # Detect unusual OI concentration
-        all_strikes = ce_data + pe_data
-        if not all_strikes:
-            return {"success": True, "flows": [], "symbol": symbol}
-        
-        avg_oi = sum(s["oi"] for s in all_strikes) / len(all_strikes) if all_strikes else 1
-        
-        for s in ce_data:
-            ratio = s["oi"] / avg_oi if avg_oi > 0 else 0
-            if ratio > 1.5:
-                dist = round((s["strike"] - spot) / spot * 100, 2) if spot > 0 else 0
-                flows.append({
-                    "type": "CE", "strike": s["strike"], "oi": s["oi"],
-                    "ratio": round(ratio, 1), "dist_pct": dist,
-                    "signal": "RESISTANCE" if ratio > 2.5 else "WATCH",
-                    "interpretation": f"Heavy CE writing at ₹{s['strike']:,.0f} ({ratio:.1f}× avg). {'Major wall — sellers confident price stays below.' if ratio > 2.5 else 'Moderate resistance building.'}",
-                    "smart_money": "SELL" if ratio > 2 else "NEUTRAL"
-                })
-        
-        for s in pe_data:
-            ratio = s["oi"] / avg_oi if avg_oi > 0 else 0
-            if ratio > 1.5:
-                dist = round((spot - s["strike"]) / spot * 100, 2) if spot > 0 else 0
-                flows.append({
-                    "type": "PE", "strike": s["strike"], "oi": s["oi"],
-                    "ratio": round(ratio, 1), "dist_pct": dist,
-                    "signal": "SUPPORT" if ratio > 2.5 else "WATCH",
-                    "interpretation": f"Heavy PE writing at ₹{s['strike']:,.0f} ({ratio:.1f}× avg). {'Strong floor — sellers confident price stays above.' if ratio > 2.5 else 'Moderate support building.'}",
-                    "smart_money": "BUY" if ratio > 2 else "NEUTRAL"
-                })
-        
-        flows.sort(key=lambda x: x["ratio"], reverse=True)
-        
-        # Overall bias
-        ce_total = sum(s["oi"] for s in ce_data)
-        pe_total = sum(s["oi"] for s in pe_data)
-        pcr = round(pe_total / ce_total, 2) if ce_total > 0 else 0
-        bias = "BULLISH" if pcr > 1.1 else "BEARISH" if pcr < 0.8 else "NEUTRAL"
-        
-        return {
-            "success": True, "symbol": symbol, "spot": spot,
-            "flows": flows[:10], "pcr": pcr, "bias": bias,
-            "ce_total_oi": ce_total, "pe_total_oi": pe_total,
-            "max_pain": nse_data.get("max_pain", 0),
-            "vix": nse_data.get("vix", 0),
-        }
-    except Exception as e:
-        return {"success": False, "error": str(e)}
-
-
-# ═══════════════════════════════════════════════
-# SCREENER — Multi-filter stock scanner
-# ═══════════════════════════════════════════════
-_screener_cache = {}
-_screener_cache_ts = None
-
-@app.get("/api/screener")
-async def screener(region: str = "IN", preset: str = "oversold"):
-    """Scan F&O stocks with technical filters. 10-min cache."""
-    from datetime import datetime, timedelta
-    global _screener_cache, _screener_cache_ts
-    import numpy as np
-    
-    now = datetime.utcnow()
-    cache_key = f"{region}_{preset}"
-    if cache_key in _screener_cache and _screener_cache_ts and (now - _screener_cache_ts).total_seconds() < 600:
-        return _screener_cache[cache_key]
-    
-    # Presets define filters
-    PRESETS = {
-        "oversold": {"label": "Oversold Bounce", "desc": "RSI<35 + Price>SMA200 (dip buy)", "filters": {"rsi_max": 35, "above_sma200": True}},
-        "breakout": {"label": "Breakout", "desc": "Price>SMA50 + Volume>1.5× + MACD bullish", "filters": {"above_sma50": True, "vol_min": 1.5, "macd_bull": True}},
-        "momentum": {"label": "Momentum", "desc": "RSI>55 + EMA9>EMA21 + Volume>1.2×", "filters": {"rsi_min": 55, "ema_stack": True, "vol_min": 1.2}},
-        "overbought": {"label": "Overbought Short", "desc": "RSI>75 + Below SMA20 (mean reversion)", "filters": {"rsi_min": 75, "below_sma20": True}},
-        "volume_spike": {"label": "Volume Explosion", "desc": "Volume>2.5× average + price moved >1%", "filters": {"vol_min": 2.5, "move_min": 1.0}},
-        "golden_cross": {"label": "Golden Cross", "desc": "SMA50 just crossed above SMA200", "filters": {"golden_cross": True}},
-    }
-    
-    if preset not in PRESETS:
-        preset = "oversold"
-    
-    p = PRESETS[preset]
-    flt = p["filters"]
-    
-    if region.upper() == "US":
-        scan_list = ["AAPL","MSFT","NVDA","GOOGL","AMZN","META","TSLA","AMD","AVGO","JPM",
-                     "NFLX","CRM","ORCL","V","MA","WMT","UNH","JNJ","PG","HD"]
-    else:
-        scan_list = ["RELIANCE","TCS","HDFCBANK","INFY","ICICIBANK","SBIN","BHARTIARTL","ITC",
-                     "LT","BAJFINANCE","KOTAKBANK","MARUTI","TATAMOTORS","HCLTECH","WIPRO",
-                     "SUNPHARMA","DRREDDY","TITAN","NTPC","TATASTEEL","JSWSTEEL","HINDALCO"]
-    
-    def _scan_one(sym):
-        try:
-            suffix = ".NS" if region.upper() != "US" else ""
-            tk = yf.Ticker(f"{sym}{suffix}")
-            hist = tk.history(period="1y", interval="1d")
-            if hist is None or len(hist) < 50:
-                return None
-            
-            cs = hist['Close']
-            vs = hist['Volume']
-            price = float(cs.iloc[-1])
-            
-            sma20 = float(cs.rolling(20).mean().iloc[-1])
-            sma50 = float(cs.rolling(50).mean().iloc[-1])
-            sma200 = float(cs.rolling(200).mean().iloc[-1]) if len(cs) >= 200 else 0
-            ema9 = float(cs.ewm(span=9).mean().iloc[-1])
-            ema21 = float(cs.ewm(span=21).mean().iloc[-1])
-            
-            # RSI
-            delta = cs.diff()
-            gain = delta.clip(lower=0).rolling(14).mean().iloc[-1]
-            loss = (-delta.clip(upper=0)).rolling(14).mean().iloc[-1]
-            rsi = round(100 - (100 / (1 + gain/loss)), 1) if loss > 0 else 50
-            
-            # MACD
-            macd_line = cs.ewm(span=12).mean() - cs.ewm(span=26).mean()
-            macd_signal = macd_line.ewm(span=9).mean()
-            macd_hist = float((macd_line - macd_signal).iloc[-1])
-            macd_bull = macd_hist > 0
-            
-            # Volume
-            vol = float(vs.iloc[-1])
-            avg_vol = float(vs.rolling(20).mean().iloc[-1])
-            vol_ratio = round(vol / avg_vol, 1) if avg_vol > 0 else 1
-            
-            # Day change
-            prev = float(cs.iloc[-2]) if len(cs) > 1 else price
-            chg_pct = round(((price - prev) / prev) * 100, 2) if prev > 0 else 0
-            
-            # Golden cross check
-            sma50_prev = float(cs.rolling(50).mean().iloc[-2]) if len(cs) > 50 else 0
-            sma200_prev = float(cs.rolling(200).mean().iloc[-2]) if len(cs) > 200 else 0
-            is_golden = sma50 > sma200 and sma50_prev <= sma200_prev
-            
-            # Apply filters
-            match = True
-            if flt.get("rsi_max") and rsi > flt["rsi_max"]: match = False
-            if flt.get("rsi_min") and rsi < flt["rsi_min"]: match = False
-            if flt.get("above_sma200") and (sma200 <= 0 or price < sma200): match = False
-            if flt.get("above_sma50") and price < sma50: match = False
-            if flt.get("below_sma20") and price > sma20: match = False
-            if flt.get("vol_min") and vol_ratio < flt["vol_min"]: match = False
-            if flt.get("macd_bull") and not macd_bull: match = False
-            if flt.get("ema_stack") and not (ema9 > ema21): match = False
-            if flt.get("move_min") and abs(chg_pct) < flt["move_min"]: match = False
-            if flt.get("golden_cross") and not is_golden: match = False
-            
-            if not match:
-                return None
-            
-            csym = "$" if region.upper() == "US" else "₹"
-            return {
-                "symbol": sym, "price": price, "change_pct": chg_pct,
-                "rsi": rsi, "macd_hist": round(macd_hist, 2), "macd_bull": macd_bull,
-                "vol_ratio": vol_ratio, "sma20": round(sma20, 2), "sma50": round(sma50, 2),
-                "sma200": round(sma200, 2) if sma200 > 0 else None,
-                "ema9": round(ema9, 2), "ema21": round(ema21, 2),
-                "ema_stack": ema9 > ema21, "golden_cross": is_golden,
-                "csym": csym, "name": sym,
-            }
-        except:
-            return None
-    
-    results = []
-    with ThreadPoolExecutor(max_workers=6) as pool:
-        futs = {pool.submit(_scan_one, s): s for s in scan_list}
-        for f in as_completed(futs, timeout=25):
-            try:
-                r = f.result(timeout=10)
-                if r:
-                    results.append(r)
-            except:
-                pass
-    
-    results.sort(key=lambda x: abs(x.get("rsi", 50) - 50), reverse=True)
-    
-    resp = {"success": True, "preset": preset, "label": p["label"], "desc": p["desc"],
-            "matches": results, "scanned": len(scan_list), "count": len(results), "region": region.upper()}
-    _screener_cache[cache_key] = resp
-    _screener_cache_ts = now
-    return resp
-
-
-# ═══════════════════════════════════════════════════
-# HEATMAP — Live sector/stock performance
-# ═══════════════════════════════════════════════════
 _heatmap_cache = {}
 _heatmap_ts = None
 
