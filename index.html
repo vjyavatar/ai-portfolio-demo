@@ -981,6 +981,20 @@ footer{position:relative;z-index:1;margin-top:32px;background:#002f6c;border-top
 <!-- ═══ TAB: INDEX RESEARCH ═══ -->
 <div class="sc" data-tab="indices" style="border-left:3px solid #06b6d4;display:none"><div class="sh"><div class="si" style="background:rgba(6,182,212,.1)">&#127760;</div><div class="st" style="color:#06b6d4" id="sec-indices">Global Index Research — India &amp; USA</div></div>
 <div class="sbody">
+<!-- YTD PERFORMERS — Fetches live from screener -->
+<div style="margin-bottom:16px">
+<div style="display:flex;gap:0;margin-bottom:12px;border:1px solid var(--border);border-radius:8px;overflow:hidden;width:fit-content">
+<button id="idxRegIN" onclick="switchIdxRegion('IN')" style="padding:6px 18px;font-size:11px;font-weight:800;border:none;cursor:pointer;font-family:Sora,sans-serif;background:#002f6c;color:#fff">&#127470;&#127475; India</button>
+<button id="idxRegUS" onclick="switchIdxRegion('US')" style="padding:6px 18px;font-size:11px;font-weight:800;border:none;cursor:pointer;font-family:Sora,sans-serif;background:var(--bg2);color:var(--text3)">&#127482;&#127480; USA</button>
+</div>
+<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
+<button onclick="loadIdxYTD('top_ytd')" class="algo-btn active" style="padding:5px 14px;font-size:10px;font-weight:700">&#128640; Top YTD Stocks</button>
+<button onclick="loadIdxYTD('worst_ytd')" class="algo-btn" style="padding:5px 14px;font-size:10px;font-weight:700">&#128308; Worst YTD</button>
+<button onclick="loadIdxYTD('top_monthly')" class="algo-btn" style="padding:5px 14px;font-size:10px;font-weight:700">&#128200; Top Monthly</button>
+<button onclick="loadIdxYTD('near_52h')" class="algo-btn" style="padding:5px 14px;font-size:10px;font-weight:700">&#127942; Near 52W High</button>
+</div>
+<div id="idxYTDResult" style="min-height:80px"><div style="text-align:center;padding:20px;color:var(--text3);font-size:11px">Click a preset above to load live YTD data for 100+ stocks</div></div>
+</div>
 <div id="indicesContent"><div class="ic" style="text-align:center;background:rgba(6,182,212,.04)"><p style="color:var(--text3)">&#9203; Loading index research...</p></div></div>
 </div></div>
 

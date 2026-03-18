@@ -4304,6 +4304,53 @@ usa:[
 {name:'Dow Jones Transportation',ticker:'',yf:'^DJT',type:'Sector',stocks:20,desc:'20 major US transportation companies. Economic leading indicator.',sector:'Transportation',currency:'$',inception:'1884',methodology:'Price weighted',topHoldings:'UPS, FedEx, Union Pacific, Delta Airlines, CSX',rebalance:'As needed',pe_hist:'15-20x',cagr5:'~8-10%',cagr10:'~10-12%',maxDD:'-40% (Mar 2020)',risk:'High',sip:'Dow Theory: when Transports confirm Industrials, bull market is real.',best:'Economic bellwether, leading indicator, Dow Theory confirmation signal',risk_note:'Fuel prices, labor costs, and recession directly hit transportation stocks.'},
 ]};
 
+// ═══ INDICES YTD PERFORMERS ═══
+window._idxRegion='IN';
+function switchIdxRegion(reg){
+window._idxRegion=reg;
+document.getElementById('idxRegIN').style.background=reg==='IN'?'#002f6c':'var(--bg2)';
+document.getElementById('idxRegIN').style.color=reg==='IN'?'#fff':'var(--text3)';
+document.getElementById('idxRegUS').style.background=reg==='US'?'#002f6c':'var(--bg2)';
+document.getElementById('idxRegUS').style.color=reg==='US'?'#fff':'var(--text3)';
+}
+function loadIdxYTD(preset){
+var el=document.getElementById('idxYTDResult');if(!el)return;
+var reg=window._idxRegion||'IN';
+var S=reg==='US'?'$':'&#8377;';
+el.innerHTML='<div style="text-align:center;padding:20px;color:var(--text3);font-size:11px"><div style="display:inline-block;width:14px;height:14px;border:2px solid var(--cyan);border-top-color:transparent;border-radius:50%;animation:spin .5s linear infinite;vertical-align:middle;margin-right:6px"></div>Scanning 100+ stocks... (15-30s)</div>';
+fetch('/api/screener?region='+reg+'&preset='+preset).then(function(r){return r.json()}).then(function(data){
+if(!data.success||!data.results){el.innerHTML='<div style="color:var(--red);padding:12px;font-size:11px">Failed. <button onclick="loadIdxYTD(\''+preset+'\')" style="color:var(--blue);background:none;border:none;cursor:pointer;text-decoration:underline">Retry</button></div>';return}
+var res=data.results;
+if(!res.length){el.innerHTML='<div style="padding:12px;color:var(--amber);font-size:11px">No results.</div>';return}
+var h='<div style="font-size:10px;color:var(--text3);margin-bottom:6px">'+data.matched+' of '+data.total_scanned+' stocks &middot; <strong>'+preset.replace(/_/g,' ').toUpperCase()+'</strong></div>';
+h+='<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:10px"><thead><tr style="background:var(--bg2);border-bottom:2px solid var(--border)">';
+h+='<th style="padding:5px 8px;text-align:left">#</th><th style="padding:5px;text-align:left">Stock</th><th style="padding:5px;text-align:right">Price</th>';
+h+='<th style="padding:5px;text-align:right;color:var(--cyan);font-weight:800">YTD%</th>';
+h+='<th style="padding:5px;text-align:right">1M%</th><th style="padding:5px;text-align:right">1W%</th>';
+h+='<th style="padding:5px;text-align:center">RSI</th><th style="padding:5px;text-align:right">52W%</th>';
+h+='</tr></thead><tbody>';
+res.slice(0,25).forEach(function(s,i){
+var ytdC=s.ytd>=50?'#0a7c42':s.ytd>=20?'#10b981':s.ytd>=0?'var(--text)':s.ytd>=-20?'#ef4444':'#991b1b';
+var m1C=s.m1>=0?'#10b981':'#ef4444';
+var w1C=s.w1>=0?'#10b981':'#ef4444';
+var rsiC=s.rsi<30?'#10b981':s.rsi>70?'#ef4444':'var(--text3)';
+h+='<tr style="border-bottom:1px solid var(--border);cursor:pointer" onclick="algoSelect(\''+s.sym+'\',null)" onmouseover="this.style.background=\'var(--bg2)\'" onmouseout="this.style.background=\'transparent\'">';
+h+='<td style="padding:4px 8px;color:var(--text3);font-weight:700">'+(i+1)+'</td>';
+h+='<td style="padding:4px 8px"><strong style="color:var(--text)">'+s.sym+'</strong> <span style="font-size:8px;color:var(--text3)">'+s.name+'</span></td>';
+h+='<td style="padding:4px;text-align:right;font-family:var(--mono)">'+S+s.price.toLocaleString()+'</td>';
+h+='<td style="padding:4px;text-align:right;font-weight:900;font-size:11px;color:'+ytdC+'">'+(s.ytd>=0?'+':'')+s.ytd+'%</td>';
+h+='<td style="padding:4px;text-align:right;color:'+m1C+'">'+(s.m1>=0?'+':'')+s.m1+'%</td>';
+h+='<td style="padding:4px;text-align:right;color:'+w1C+'">'+(s.w1>=0?'+':'')+s.w1+'%</td>';
+h+='<td style="padding:4px;text-align:center;font-weight:700;color:'+rsiC+'">'+s.rsi+'</td>';
+h+='<td style="padding:4px;text-align:right;color:var(--text3)">'+s.from_52h+'%</td>';
+h+='</tr>';
+});
+h+='</tbody></table></div>';
+h+='<div style="font-size:8px;color:var(--text3);margin-top:4px">Click any row for full algo analysis. Data from 100+ stocks via yfinance.</div>';
+el.innerHTML=h;
+}).catch(function(e){el.innerHTML='<div style="color:var(--red);font-size:11px">Error: '+e.message+'</div>'});
+}
+
 function renderIndices(d){
 const el=document.getElementById('indicesContent');
 if(!el)return;
@@ -5186,7 +5233,7 @@ el.innerHTML=h;
 // SCREENER
 function runScreener(preset){
 var el=document.getElementById('screenerResult');if(!el)return;
-var reg=window._scanRegion||'IN';
+var reg=window._globalRegion||'IN';
 var S=reg==='US'?'$':'₹';
 // Build params
 var params='region='+reg;
