@@ -766,21 +766,14 @@ footer{position:relative;z-index:1;margin-top:32px;background:#002f6c;border-top
 </div>
 
 <div class="tab-bar" id="mainTabBar">
-<button class="tab-btn active" onclick="switchTab('quick')" id="tabBtnQuick" data-color="green" data-tip="Verdict, charts, valuation, buy/sell levels, risk"><span class="tab-icon">&#9889;</span> Summary</button>
-<button class="tab-btn" onclick="switchTab('analysis')" id="tabBtnAnalysis" data-color="navy" data-tip="AI report, quarterly earnings, management tone, future outlook"><span class="tab-icon">&#129302;</span> AI Analysis</button>
-<button class="tab-btn" onclick="switchTab('dcf')" id="tabBtnDCF" data-color="emerald" data-tip="Discounted Cash Flow intrinsic valuation"><span class="tab-icon">&#128178;</span> DCF</button>
-<button class="tab-btn" onclick="switchTab('equity')" id="tabBtnEquity" data-color="gold" data-tip="Professional equity research report"><span class="tab-icon">&#128220;</span> Research</button>
-<button class="tab-btn" onclick="switchTab('indices')" id="tabBtnIndices" data-color="teal" data-tip="Deep research on major US & India indices"><span class="tab-icon">&#127760;</span> Indices</button>
-<button class="tab-btn" onclick="switchTab('finance')" id="tabBtnFinance" data-color="emerald" data-tip="Complete personal finance toolkit"><span class="tab-icon">&#128176;</span> My Finance</button>
-<button class="tab-btn" onclick="switchTab('daily')" id="tabBtnDaily" data-color="navy" data-tip="Daily Nifty/BankNifty/Sensex analysis with options chain"><span class="tab-icon">&#128202;</span> Market Daily</button>
-<button class="tab-btn" onclick="switchTab('compare')" id="tabBtnCompare" data-color="purple" data-tip="Compare 2 stocks side by side"><span class="tab-icon">&#9878;</span> Compare</button>
-<button class="tab-btn" onclick="switchTab('gems')" id="tabBtnGems" data-color="amber" data-tip="Sector-specific small-cap picks" style="display:none"><span class="tab-icon">&#11088;</span> Gems</button>
-<button class="tab-btn" onclick="switchTab('picks')" id="tabBtnPicks" data-color="teal" data-tip="Top 5 Buy, Sell, Accumulate stocks by conviction" style="display:none"><span class="tab-icon">&#127942;</span> Picks</button>
-<button class="tab-btn" onclick="switchTab('funds')" id="tabBtnFunds" data-color="blue" data-tip="Top ETFs & mutual funds with 25%+ CAGR" style="display:none"><span class="tab-icon">&#128176;</span> ETF</button>
-<button class="tab-btn" onclick="switchTab('trades')" id="tabBtnTrades" data-color="red" data-tip="Live algo signals + backtest for indices & F&O stocks"><span class="tab-icon">&#127919;</span> Algo Trades</button>
-<button class="tab-btn" onclick="switchTab('scanner')" id="tabBtnScanner" data-color="cyan" data-tip="Heatmap, Screener & Options Flow"><span class="tab-icon">&#128200;</span> Scanner</button>
-<button class="tab-btn" onclick="switchTab('smarttrades')" id="tabBtnSmartTrades" data-color="amber" data-tip="AI-powered daily trade ideas for indices & stocks"><span class="tab-icon">&#128293;</span> Smart Trades</button>
+<button class="tab-btn active" onclick="switchTabGroup('overview')" id="tabBtnOverview" data-color="green" data-tip="Stock summary, verdict, charts"><span class="tab-icon">&#9889;</span> Overview</button>
+<button class="tab-btn" onclick="switchTabGroup('research')" id="tabBtnResearch" data-color="navy" data-tip="AI Analysis, DCF, Compare"><span class="tab-icon">&#129302;</span> Research</button>
+<button class="tab-btn" onclick="switchTabGroup('trading')" id="tabBtnTrading" data-color="red" data-tip="Algo Signals, Scanner, Smart Trades"><span class="tab-icon">&#127919;</span> Trading</button>
+<button class="tab-btn" onclick="switchTabGroup('markets')" id="tabBtnMarkets" data-color="cyan" data-tip="Market Intelligence, Daily Analysis"><span class="tab-icon">&#128200;</span> Markets</button>
+<button class="tab-btn" onclick="switchTabGroup('tools')" id="tabBtnTools" data-color="emerald" data-tip="Finance tools, Compare stocks"><span class="tab-icon">&#128176;</span> Tools</button>
 </div>
+<!-- GROUP SUB-NAV -->
+<div id="groupSubNav" style="display:none;padding:6px 12px;background:var(--surface);border-bottom:1px solid var(--border);position:sticky;top:192px;z-index:95;gap:4px;flex-wrap:wrap"></div>
 
 <!-- TAB CONTENT AREA — ALL content lives inside here -->
 <div id="tabContentArea" style="min-height:60vh">
@@ -979,23 +972,23 @@ footer{position:relative;z-index:1;margin-top:32px;background:#002f6c;border-top
 <div id="analysisContainer"></div>
 
 <!-- ═══ TAB: INDEX RESEARCH ═══ -->
-<div class="sc" data-tab="indices" style="border-left:3px solid #06b6d4;display:none"><div class="sh"><div class="si" style="background:rgba(6,182,212,.1)">&#127760;</div><div class="st" style="color:#06b6d4" id="sec-indices">Global Index Research — India &amp; USA</div></div>
+<div class="sc" data-tab="indices" style="border-left:3px solid #06b6d4;display:none"><div class="sh"><div class="si" style="background:rgba(6,182,212,.1)">&#128200;</div><div class="st" style="color:#06b6d4" id="sec-indices">Market Intelligence — Live Data</div></div>
 <div class="sbody">
-<!-- YTD PERFORMERS — Fetches live from screener -->
-<div style="margin-bottom:16px">
-<div style="display:flex;gap:0;margin-bottom:12px;border:1px solid var(--border);border-radius:8px;overflow:hidden;width:fit-content">
+<!-- Region toggle -->
+<div style="display:flex;gap:0;margin-bottom:14px;border:1px solid var(--border);border-radius:8px;overflow:hidden;width:fit-content">
 <button id="idxRegIN" onclick="switchIdxRegion('IN')" style="padding:6px 18px;font-size:11px;font-weight:800;border:none;cursor:pointer;font-family:Sora,sans-serif;background:#002f6c;color:#fff">&#127470;&#127475; India</button>
 <button id="idxRegUS" onclick="switchIdxRegion('US')" style="padding:6px 18px;font-size:11px;font-weight:800;border:none;cursor:pointer;font-family:Sora,sans-serif;background:var(--bg2);color:var(--text3)">&#127482;&#127480; USA</button>
 </div>
-<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
-<button onclick="loadIdxYTD('top_ytd')" class="algo-btn active" style="padding:5px 14px;font-size:10px;font-weight:700">&#128640; Top YTD Stocks</button>
-<button onclick="loadIdxYTD('worst_ytd')" class="algo-btn" style="padding:5px 14px;font-size:10px;font-weight:700">&#128308; Worst YTD</button>
-<button onclick="loadIdxYTD('top_monthly')" class="algo-btn" style="padding:5px 14px;font-size:10px;font-weight:700">&#128200; Top Monthly</button>
-<button onclick="loadIdxYTD('near_52h')" class="algo-btn" style="padding:5px 14px;font-size:10px;font-weight:700">&#127942; Near 52W High</button>
+<!-- Presets -->
+<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px">
+<button onclick="loadIdxYTD('top_ytd',this)" class="algo-btn active" style="padding:6px 16px;font-size:10px;font-weight:700">&#128640; Top YTD</button>
+<button onclick="loadIdxYTD('worst_ytd',this)" class="algo-btn" style="padding:6px 16px;font-size:10px;font-weight:700">&#128308; Worst YTD</button>
+<button onclick="loadIdxYTD('top_monthly',this)" class="algo-btn" style="padding:6px 16px;font-size:10px;font-weight:700">&#128200; Top Monthly</button>
+<button onclick="loadIdxYTD('near_52h',this)" class="algo-btn" style="padding:6px 16px;font-size:10px;font-weight:700">&#127942; Near 52W High</button>
+<button onclick="loadIdxYTD('oversold',this)" class="algo-btn" style="padding:6px 16px;font-size:10px;font-weight:700">&#128994; Oversold</button>
+<button onclick="loadIdxYTD('volume_spike',this)" class="algo-btn" style="padding:6px 16px;font-size:10px;font-weight:700">&#128202; Volume Spike</button>
 </div>
-<div id="idxYTDResult" style="min-height:80px"><div style="text-align:center;padding:20px;color:var(--text3);font-size:11px">Click a preset above to load live YTD data for 100+ stocks</div></div>
-</div>
-<div id="indicesContent"><div class="ic" style="text-align:center;background:rgba(6,182,212,.04)"><p style="color:var(--text3)">&#9203; Loading index research...</p></div></div>
+<div id="idxYTDResult" style="min-height:200px"><div style="text-align:center;padding:40px;color:var(--text3);font-size:11px">Loading top performers...</div></div>
 </div></div>
 
 <!-- ═══ TAB: PERSONAL FINANCE ═══ -->

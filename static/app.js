@@ -1729,7 +1729,7 @@ try{generateSmallCapRecommendations(d)}catch(e){console.warn('generateSmallCapRe
 try{renderConviction()}catch(e){console.warn('renderConviction error:',e)}
 try{renderDCF(d)}catch(e){console.warn('renderDCF error:',e)}
 try{renderEquityResearch(d,report,fundData)}catch(e){console.warn('renderEquityResearch error:',e)}
-try{renderIndices(d)}catch(e){console.warn('renderIndices error:',e)}
+
 try{renderPersonalFinance()}catch(e){console.warn('renderPersonalFinance error:',e)}
 // Auto-open Quick Intel tab
 switchTab('quick');
@@ -1792,6 +1792,46 @@ if(firstVisible)firstVisible.scrollIntoView({behavior:'instant',block:'start'});
 if(sub==='technical')setTimeout(()=>window.dispatchEvent(new Event('resize')),200);
 }
 
+// ═══ TAB GROUP SYSTEM — 5 main groups with sub-tabs ═══
+var TAB_GROUPS = {
+  overview: {tabs: ['quick'], labels: ['Summary'], default: 'quick'},
+  research: {tabs: ['analysis','dcf','equity','compare'], labels: ['AI Analysis','DCF Valuation','Research','Compare'], default: 'analysis'},
+  trading:  {tabs: ['trades','scanner','smarttrades'], labels: ['Algo Trades','Scanner','Smart Trades'], default: 'trades'},
+  markets:  {tabs: ['indices','daily'], labels: ['Top Performers','Market Daily'], default: 'indices'},
+  tools:    {tabs: ['finance','compare'], labels: ['Finance Tools','Compare Stocks'], default: 'finance'},
+};
+window._activeGroup = 'overview';
+
+function switchTabGroup(group) {
+  var g = TAB_GROUPS[group];
+  if (!g) return;
+  window._activeGroup = group;
+  
+  // Highlight main tab button
+  document.querySelectorAll('.tab-btn').forEach(function(b){b.classList.remove('active')});
+  var mainBtn = document.getElementById('tabBtn' + group.charAt(0).toUpperCase() + group.slice(1));
+  if (mainBtn) mainBtn.classList.add('active');
+  
+  // Build sub-nav
+  var subNav = document.getElementById('groupSubNav');
+  if (subNav) {
+    if (g.tabs.length <= 1) {
+      subNav.style.display = 'none';
+    } else {
+      subNav.style.display = 'flex';
+      var h = '';
+      g.tabs.forEach(function(tab, i) {
+        var isActive = tab === g.default;
+        h += '<button onclick="switchTab(\''+tab+'\')" class="sub-tab-btn'+(isActive?' active':'')+'" style="padding:5px 14px;border-radius:6px;font-size:10px;font-weight:700;border:1px solid '+(isActive?'var(--blue)':'var(--border)')+';background:'+(isActive?'var(--blue)':'var(--bg2)')+';color:'+(isActive?'#fff':'var(--text3)')+';cursor:pointer;font-family:Sora,sans-serif;transition:all .2s">'+g.labels[i]+'</button>';
+      });
+      subNav.innerHTML = h;
+    }
+  }
+  
+  // Activate default sub-tab
+  switchTab(g.default);
+}
+
 function switchTab(tab){
 try{
 if(typeof gtag==='function')gtag('event','switch_tab',{tab_name:tab});
@@ -1803,6 +1843,21 @@ document.querySelectorAll('.sub-nav[data-tab]').forEach(s=>{s.style.display='non
 document.querySelectorAll('#tabContentArea > [data-tab]').forEach(s=>{s.style.display='none'});
 var _asb=document.getElementById('analysisSubTabs');if(_asb)_asb.style.display='none';
 document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+
+// Highlight correct main group button + sub-nav button
+var _grpBtn=document.getElementById(btnMap[tab]);
+if(_grpBtn)_grpBtn.classList.add('active');
+// Update sub-nav highlighting
+document.querySelectorAll('.sub-tab-btn').forEach(function(b){
+b.classList.remove('active');
+b.style.background='var(--bg2)';b.style.color='var(--text3)';b.style.borderColor='var(--border)';
+});
+document.querySelectorAll('.sub-tab-btn').forEach(function(b){
+if(b.getAttribute('onclick')&&b.getAttribute('onclick').indexOf("'"+tab+"'")>=0){
+b.classList.add('active');
+b.style.background='var(--blue)';b.style.color='#fff';b.style.borderColor='var(--blue)';
+}
+});
 
 // 2) Show matching tab content (sections + inline data-tab elements)
 document.querySelectorAll('.sc[data-tab="'+tab+'"]').forEach(s=>{
@@ -1831,7 +1886,7 @@ switchAnalysisSubTab(window._activeAnalysisSubTab||'report');
 }
 
 // 3) Activate button
-const btnMap={quick:'tabBtnQuick',analysis:'tabBtnAnalysis',dcf:'tabBtnDCF',equity:'tabBtnEquity',indices:'tabBtnIndices',finance:'tabBtnFinance',daily:'tabBtnDaily',compare:'tabBtnCompare',gems:'tabBtnGems',picks:'tabBtnPicks',funds:'tabBtnFunds',trades:'tabBtnTrades',scanner:'tabBtnScanner',smarttrades:'tabBtnSmartTrades'};
+const btnMap={quick:'tabBtnOverview',analysis:'tabBtnResearch',dcf:'tabBtnResearch',equity:'tabBtnResearch',compare:'tabBtnTools',indices:'tabBtnMarkets',finance:'tabBtnTools',daily:'tabBtnMarkets',trades:'tabBtnTrading',scanner:'tabBtnTrading',smarttrades:'tabBtnTrading',gems:'tabBtnOverview',picks:'tabBtnOverview',funds:'tabBtnTools'};
 if(btnMap[tab]){const btn=document.getElementById(btnMap[tab]);if(btn)btn.classList.add('active')}
 
 // 4) Scroll to top of new tab content
@@ -1856,12 +1911,10 @@ console.log('🔄 Funds: refreshing live NAVs');
 }
 if(tab==='indices'){
 if(!window._indicesRendered){
-try{renderIndices();window._indicesRendered=true}catch(e){console.error('Indices render error:',e)}
+window._indicesRendered=true;
 }
-const activeGeo=document.querySelector('.idx-geo-btn.active');
-const geo=activeGeo&&activeGeo.textContent.includes('USA')?'usa':'india';
-fetchIndexPrices(geo);
-console.log('🔄 Indices: refreshing prices');
+// Auto-load top YTD on first indices visit
+if(!window._idxAutoLoaded){window._idxAutoLoaded=true;loadIdxYTD('top_ytd',null);}
 }
 if(tab==='finance'){
 if(!window._financeRendered){
@@ -4279,374 +4332,90 @@ console.log('✅ Equity Research rendered:',name,rating,sym+target12m.toFixed(0)
 // ═══════════════════════════════════════════════
 // ═══ INDEX RESEARCH — India & USA ═══
 // ═══════════════════════════════════════════════
-const INDEX_DATA={
-india:[
-{name:'Nifty 50',ticker:'^NSEI',yf:'^NSEI',type:'Large Cap',stocks:50,desc:'Top 50 companies by market cap on NSE. The primary benchmark for Indian equities.',sector:'Broad Market',currency:'₹',inception:'1996',methodology:'Free-float market cap weighted',topHoldings:'HDFC Bank, Reliance, ICICI Bank, Infosys, TCS',rebalance:'Semi-annual (Mar/Sep)',pe_hist:'20-22x',cagr5:'~12-14%',cagr10:'~11-13%',maxDD:'-38% (Mar 2020)',risk:'Medium',sip:'₹500/month in Nifty ETF since 2015 → ~15% CAGR',best:'Broad India exposure, most liquid, lowest cost ETFs available',risk_note:'Concentrated in top 10 stocks (~55% weight). HDFC Bank alone is 12%+.'},
-{name:'Sensex',ticker:'^BSESN',yf:'^BSESN',type:'Large Cap',stocks:30,desc:'Oldest Indian index. 30 largest & most traded companies on BSE.',sector:'Broad Market',currency:'₹',inception:'1986',methodology:'Free-float market cap weighted',topHoldings:'Reliance, HDFC Bank, ICICI Bank, Infosys, TCS',rebalance:'Semi-annual',pe_hist:'22-25x',cagr5:'~13%',cagr10:'~12%',maxDD:'-38% (Mar 2020)',risk:'Medium',sip:'Most tracked by media. Fewer stocks = slightly higher concentration.',best:'Heritage index, widely quoted, good for tracking overall market direction',risk_note:'Only 30 stocks — even more concentrated than Nifty 50.'},
-{name:'Bank Nifty',ticker:'^NSEBANK',yf:'^NSEBANK',type:'Sector',stocks:12,desc:'Top 12 banking stocks. Most traded options index in India — 80%+ of F&O volume.',sector:'Banking & Financial',currency:'₹',inception:'2003',methodology:'Free-float market cap weighted',topHoldings:'HDFC Bank, ICICI Bank, Kotak Bank, Axis Bank, SBI',rebalance:'Semi-annual',pe_hist:'15-18x',cagr5:'~10-12%',cagr10:'~12%',maxDD:'-42% (Mar 2020)',risk:'High',sip:'High beta — rallies harder in bull markets, falls harder in bear markets.',best:'Options trading, directional bets on banking sector, high liquidity',risk_note:'NPA cycles, RBI policy changes, and credit growth directly impact returns.'},
-{name:'Nifty IT',ticker:'NIFTYIT.NS',yf:'^CNXIT',type:'Sector',stocks:10,desc:'Top 10 IT companies. Proxy for USD/INR — benefits from rupee depreciation.',sector:'Information Technology',currency:'₹',inception:'1996',methodology:'Free-float market cap weighted',topHoldings:'TCS, Infosys, HCL Tech, Wipro, Tech Mahindra',rebalance:'Semi-annual',pe_hist:'25-30x',cagr5:'~15-18%',cagr10:'~14%',maxDD:'-30% (2022)',risk:'Medium-High',sip:'Best India IT proxy. USD revenue = natural INR depreciation hedge.',best:'Export earnings, defensive in INR weakness, high margins',risk_note:'US recession directly hits IT budgets. AI disruption risk to services model.'},
-{name:'Nifty Next 50',ticker:'NIFTYNXT50.NS',yf:'^NSMIDCP',type:'Mid-Large Cap',stocks:50,desc:'Stocks ranked 51-100 by market cap. Future Nifty 50 candidates.',sector:'Broad Market',currency:'₹',inception:'1996',methodology:'Free-float market cap weighted',topHoldings:'Adani companies, Avenue Supermarts, Vedanta, IRCTC, Tata Power',rebalance:'Semi-annual',pe_hist:'22-28x',cagr5:'~14-16%',cagr10:'~13-15%',maxDD:'-40% (Mar 2020)',risk:'Medium-High',sip:'Higher growth potential than Nifty 50 — these are the emerging blue-chips.',best:'Growth + quality, future large caps, SIP alpha over Nifty 50',risk_note:'Higher volatility than Nifty 50. Some stocks may never graduate to Nifty 50.'},
-{name:'Nifty Midcap 150',ticker:'',yf:'NIFTY_MID_SELECT.NS',type:'Mid Cap',stocks:150,desc:'Mid-cap companies ranked 101-250 by market cap.',sector:'Broad Market',currency:'₹',inception:'2004',methodology:'Free-float market cap weighted',topHoldings:'Persistent Systems, PI Industries, Max Healthcare, Trent',rebalance:'Semi-annual',pe_hist:'25-35x',cagr5:'~18-22%',cagr10:'~16-18%',maxDD:'-45% (Mar 2020)',risk:'High',sip:'Historically outperforms large caps over 10+ year periods via SIP.',best:'Higher growth, emerging companies, alpha generation',risk_note:'Can underperform for 2-3 year stretches. Liquidity risk in downturns.'},
-{name:'Nifty Smallcap 250',ticker:'',yf:'NIFTY_SMLCAP_250.NS',type:'Small Cap',stocks:250,desc:'Companies ranked 251-500 by market cap. High growth, high risk.',sector:'Broad Market',currency:'₹',inception:'2004',methodology:'Free-float market cap weighted',topHoldings:'Diverse — 250 stocks, no single stock > 2%',rebalance:'Semi-annual',pe_hist:'20-40x',cagr5:'~20-25%',cagr10:'~15-18%',maxDD:'-55% (Mar 2020)',risk:'Very High',sip:'Highest long-term SIP returns historically, but also deepest drawdowns.',best:'Maximum growth potential, multi-bagger hunting ground',risk_note:'50-60% drawdowns in bear markets. Many stocks have low liquidity. 3-5 year horizon minimum.'},
-{name:'Nifty Auto',ticker:'',yf:'^CNXAUTO',type:'Sector',stocks:15,desc:'Top automobile and auto component companies.',sector:'Automotive',currency:'₹',inception:'2004',methodology:'Free-float market cap weighted',topHoldings:'Tata Motors, M&M, Maruti, Bajaj Auto, Eicher Motors',rebalance:'Semi-annual',pe_hist:'20-30x',cagr5:'~15-20%',cagr10:'~12%',maxDD:'-45% (Mar 2020)',risk:'High',sip:'Cyclical — buy during slowdowns for best SIP returns.',best:'EV transition play, rural recovery proxy, export potential',risk_note:'Highly cyclical. Commodity prices, interest rates, and monsoon impact demand.'},
-{name:'Nifty Pharma',ticker:'',yf:'^CNXPHARMA',type:'Sector',stocks:20,desc:'Top pharmaceutical and healthcare companies.',sector:'Healthcare',currency:'₹',inception:'2001',methodology:'Free-float market cap weighted',topHoldings:'Sun Pharma, Dr Reddy, Cipla, Divi Labs, Apollo Hospitals',rebalance:'Semi-annual',pe_hist:'25-35x',cagr5:'~12-15%',cagr10:'~10-12%',maxDD:'-30% (2022)',risk:'Medium',sip:'Defensive sector — outperforms during market stress and recessions.',best:'Defensive, INR depreciation hedge (exports), aging population tailwind',risk_note:'US FDA inspections, generic price erosion, patent cliffs create volatility.'},
-{name:'India VIX',ticker:'',yf:'^INDIAVIX',type:'Volatility',stocks:0,desc:'Fear gauge — measures expected volatility of Nifty 50 over next 30 days.',sector:'Volatility',currency:'',inception:'2008',methodology:'Based on Nifty options order book',topHoldings:'N/A — derived from options prices',rebalance:'Continuous',pe_hist:'N/A',cagr5:'N/A',cagr10:'N/A',maxDD:'N/A',risk:'N/A',sip:'Not investable directly. VIX > 25 = market panic = buying opportunity.',best:'Contrarian signal — spike above 25 historically marks market bottoms',risk_note:'VIX can stay elevated for months. Not a timing tool alone.'},
-],
-usa:[
-{name:'S&P 500',ticker:'^GSPC',yf:'^GSPC',type:'Large Cap',stocks:500,desc:'500 largest US companies. THE benchmark for global equities.',sector:'Broad Market',currency:'$',inception:'1957',methodology:'Float-adjusted market cap weighted',topHoldings:'Apple, Microsoft, NVIDIA, Amazon, Meta, Alphabet',rebalance:'Quarterly',pe_hist:'18-22x',cagr5:'~12-15%',cagr10:'~12-13%',maxDD:'-34% (Mar 2020)',risk:'Medium',sip:'$100/month since 2000 → ~10% CAGR. Most recommended single investment by Warren Buffett.',best:'Broad US exposure, lowest cost, most liquid, gold standard benchmark',risk_note:'Top 7 stocks (Mag 7) are ~30% of index — extreme concentration risk.'},
-{name:'NASDAQ Composite',ticker:'^IXIC',yf:'^IXIC',type:'Tech Heavy',stocks:3000,desc:'All NASDAQ-listed stocks. Heavily tech-weighted (~50% technology).',sector:'Technology',currency:'$',inception:'1971',methodology:'Market cap weighted',topHoldings:'Apple, Microsoft, NVIDIA, Amazon, Meta, Alphabet, Tesla',rebalance:'Continuous',pe_hist:'25-35x',cagr5:'~15-18%',cagr10:'~16-18%',maxDD:'-33% (2022)',risk:'Medium-High',sip:'Outperforms S&P 500 in bull markets, underperforms in downturns.',best:'Tech sector proxy, innovation exposure, AI/cloud/SaaS growth',risk_note:'Tech concentration means rate hikes hit hard. -33% in 2022 when Fed raised rates.'},
-{name:'NASDAQ 100',ticker:'^NDX',yf:'^NDX',type:'Large Cap Tech',stocks:100,desc:'Top 100 non-financial NASDAQ stocks. The "Magnificent 7" index.',sector:'Technology',currency:'$',inception:'1985',methodology:'Modified market cap weighted',topHoldings:'Apple, Microsoft, NVIDIA, Amazon, Broadcom, Meta, Tesla',rebalance:'Quarterly',pe_hist:'28-35x',cagr5:'~18-22%',cagr10:'~18-20%',maxDD:'-33% (2022)',risk:'High',sip:'Best performing major index over last decade. QQQ ETF is the easiest way to invest.',best:'Concentrated tech/innovation, AI/cloud/semiconductor exposure',risk_note:'Magnificent 7 = 50%+ of index. Single stock risk disguised as index investing.'},
-{name:'Dow Jones Industrial',ticker:'^DJI',yf:'^DJI',type:'Blue Chip',stocks:30,desc:'30 blue-chip American companies. Price-weighted — oldest major US index.',sector:'Industrial',currency:'$',inception:'1896',methodology:'Price weighted (unusual — higher priced stocks have more influence)',topHoldings:'UnitedHealth, Goldman Sachs, Microsoft, Caterpillar, Amgen',rebalance:'As needed (committee decision)',pe_hist:'16-20x',cagr5:'~10-12%',cagr10:'~11-12%',maxDD:'-37% (Mar 2020)',risk:'Medium',sip:'Most conservative major US index. Industrial & value tilt.',best:'Blue-chip stability, dividend income, lower volatility than NASDAQ',risk_note:'Price-weighted = archaic methodology. Stock splits randomly change index impact.'},
-{name:'Russell 2000',ticker:'^RUT',yf:'^RUT',type:'Small Cap',stocks:2000,desc:'2000 smallest companies in Russell 3000. US small-cap benchmark.',sector:'Broad Market',currency:'$',inception:'1984',methodology:'Market cap weighted',topHoldings:'Widely diversified — no single stock > 0.5%',rebalance:'Annual (June)',pe_hist:'20-35x',cagr5:'~6-10%',cagr10:'~8-10%',maxDD:'-42% (Mar 2020)',risk:'High',sip:'Historically leads in early bull markets. Underperformed large caps for years.',best:'Domestic US economy proxy, less tech concentration, value hunting ground',risk_note:'Higher interest rates crush small caps (more floating-rate debt). Underperforming since 2020.'},
-{name:'S&P 500 Equal Weight',ticker:'',yf:'RSP',type:'Large Cap',stocks:500,desc:'Same 500 stocks as S&P 500, but each gets 0.2% weight instead of market cap.',sector:'Broad Market',currency:'$',inception:'2003',methodology:'Equal weighted, rebalanced quarterly',topHoldings:'All 500 stocks equally — no single stock dominance',rebalance:'Quarterly',pe_hist:'16-19x',cagr5:'~10-12%',cagr10:'~11-12%',maxDD:'-38% (Mar 2020)',risk:'Medium',sip:'Eliminates Magnificent 7 concentration risk. Outperforms in value/breadth rallies.',best:'Diversification, value tilt, no single-stock risk, mean reversion benefit',risk_note:'Underperforms in momentum/tech-driven markets (like 2023-2024).'},
-{name:'VIX (Fear Index)',ticker:'^VIX',yf:'^VIX',type:'Volatility',stocks:0,desc:'CBOE Volatility Index — measures expected 30-day volatility of S&P 500.',sector:'Volatility',currency:'',inception:'1993',methodology:'Based on S&P 500 options pricing',topHoldings:'N/A — derived from options',rebalance:'Continuous',pe_hist:'N/A',cagr5:'N/A',cagr10:'N/A',maxDD:'N/A',risk:'N/A',sip:'Not investable long-term (VIX ETPs decay). Use as market fear gauge only.',best:'Contrarian buy signal — VIX > 30 historically marks great entry points for S&P 500',risk_note:'VIX can spike to 80+ in extreme panic (Mar 2020 hit 82). Stay calm when others panic.'},
-{name:'SOX (Semiconductor)',ticker:'',yf:'^SOX',type:'Sector',stocks:30,desc:'Philadelphia Semiconductor Index. The AI/chip boom benchmark.',sector:'Semiconductors',currency:'$',inception:'1993',methodology:'Modified market cap weighted',topHoldings:'NVIDIA, Broadcom, AMD, TSMC (ADR), Qualcomm, Intel',rebalance:'Annual',pe_hist:'20-35x',cagr5:'~25-30%',cagr10:'~22-25%',maxDD:'-40% (2022)',risk:'Very High',sip:'Highest CAGR of any major sector index. Riding the AI capex super-cycle.',best:'Direct AI/semiconductor exposure, NVIDIA-led, massive secular tailwinds',risk_note:'Extreme cyclicality — inventory corrections can cause 30-40% drops in months.'},
-{name:'Dow Jones Transportation',ticker:'',yf:'^DJT',type:'Sector',stocks:20,desc:'20 major US transportation companies. Economic leading indicator.',sector:'Transportation',currency:'$',inception:'1884',methodology:'Price weighted',topHoldings:'UPS, FedEx, Union Pacific, Delta Airlines, CSX',rebalance:'As needed',pe_hist:'15-20x',cagr5:'~8-10%',cagr10:'~10-12%',maxDD:'-40% (Mar 2020)',risk:'High',sip:'Dow Theory: when Transports confirm Industrials, bull market is real.',best:'Economic bellwether, leading indicator, Dow Theory confirmation signal',risk_note:'Fuel prices, labor costs, and recession directly hit transportation stocks.'},
-]};
-
-// ═══ INDICES YTD PERFORMERS ═══
+// ═══ INDICES — Market Intelligence ═══
 window._idxRegion='IN';
+window._idxAutoLoaded=false;
 function switchIdxRegion(reg){
 window._idxRegion=reg;
-document.getElementById('idxRegIN').style.background=reg==='IN'?'#002f6c':'var(--bg2)';
-document.getElementById('idxRegIN').style.color=reg==='IN'?'#fff':'var(--text3)';
-document.getElementById('idxRegUS').style.background=reg==='US'?'#002f6c':'var(--bg2)';
-document.getElementById('idxRegUS').style.color=reg==='US'?'#fff':'var(--text3)';
+var inBtn=document.getElementById('idxRegIN');
+var usBtn=document.getElementById('idxRegUS');
+if(inBtn){inBtn.style.background=reg==='IN'?'#002f6c':'var(--bg2)';inBtn.style.color=reg==='IN'?'#fff':'var(--text3)';}
+if(usBtn){usBtn.style.background=reg==='US'?'#002f6c':'var(--bg2)';usBtn.style.color=reg==='US'?'#fff':'var(--text3)';}
 }
-function loadIdxYTD(preset){
+function loadIdxYTD(preset,btn){
 var el=document.getElementById('idxYTDResult');if(!el)return;
 var reg=window._idxRegion||'IN';
-var S=reg==='US'?'$':'&#8377;';
-el.innerHTML='<div style="text-align:center;padding:20px;color:var(--text3);font-size:11px"><div style="display:inline-block;width:14px;height:14px;border:2px solid var(--cyan);border-top-color:transparent;border-radius:50%;animation:spin .5s linear infinite;vertical-align:middle;margin-right:6px"></div>Scanning 200+ S&P 500 stocks... (~30-60s first, then cached)</div>';
+var S=reg==='US'?'$':'\u20b9';
+if(btn){btn.parentElement.querySelectorAll('.algo-btn').forEach(function(b){b.classList.remove('active')});btn.classList.add('active');}
+el.innerHTML='<div style="text-align:center;padding:30px;color:var(--text3);font-size:11px"><div style="display:inline-block;width:14px;height:14px;border:2px solid var(--cyan);border-top-color:transparent;border-radius:50%;animation:spin .5s linear infinite;vertical-align:middle;margin-right:6px"></div>Scanning 200+ stocks with live data...</div>';
 fetch('/api/screener?region='+reg+'&preset='+preset).then(function(r){return r.json()}).then(function(data){
-if(!data.success||!data.results){el.innerHTML='<div style="color:var(--red);padding:12px;font-size:11px">Failed. <button onclick="loadIdxYTD(\''+preset+'\')" style="color:var(--blue);background:none;border:none;cursor:pointer;text-decoration:underline">Retry</button></div>';return}
-var res=data.results;
-if(!res.length){el.innerHTML='<div style="padding:12px;color:var(--amber);font-size:11px">No results.</div>';return}
-var h='<div style="font-size:10px;color:var(--text3);margin-bottom:6px">'+data.matched+' of '+data.total_scanned+' stocks &middot; <strong>'+preset.replace(/_/g,' ').toUpperCase()+'</strong></div>';
+if(!data.success||!data.results){el.innerHTML='<div style="color:var(--red);padding:12px;font-size:11px">Failed to load data. <button onclick="loadIdxYTD(\''+preset+'\',null)" style="color:var(--blue);background:none;border:none;cursor:pointer;text-decoration:underline">Retry</button></div>';return}
+var res=data.results||[];
+var presetLabel={'top_ytd':'Top YTD Performers','worst_ytd':'Worst YTD Performers','top_monthly':'Top Monthly Movers','near_52h':'Near 52-Week High','oversold':'Oversold (RSI<30)','volume_spike':'Volume Spikes (>2x)','momentum':'Momentum Stocks'};
+var h='';
+// Header
+h+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">';
+h+='<div><span style="font-size:14px;font-weight:900;color:var(--text)">'+(presetLabel[preset]||preset)+'</span>';
+h+=' <span style="font-size:10px;color:var(--text3)">'+data.matched+' of '+data.total_scanned+' stocks</span></div>';
+h+='<span style="font-size:9px;color:var(--text3)">'+reg+' Market &middot; Live Data</span>';
+h+='</div>';
+if(!res.length){h+='<div style="padding:30px;text-align:center;color:var(--amber);font-size:12px">No stocks match this filter right now.</div>';el.innerHTML=h;return}
+// Cards view for top results
+var isYTD=preset==='top_ytd'||preset==='worst_ytd';
+if(isYTD){
+// Top 5 hero cards
+h+='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:14px">';
+res.slice(0,5).forEach(function(s,i){
+var ytdC=s.ytd>0?'#10b981':'#ef4444';
+var rank=i+1;
+var medal=rank===1?'\ud83e\udd47':rank===2?'\ud83e\udd48':rank===3?'\ud83e\udd49':'#'+(i+1);
+h+='<div onclick="algoSelect(\''+s.sym+'\',null)" style="padding:12px;border-radius:10px;border:1px solid '+ytdC+'30;background:'+ytdC+'08;cursor:pointer;transition:transform .15s" onmouseover="this.style.transform=\'scale(1.03)\'" onmouseout="this.style.transform=\'scale(1)\'">';
+h+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px"><span style="font-size:16px">'+medal+'</span><span style="font-size:18px;font-weight:900;color:'+ytdC+';font-family:var(--mono)">'+(s.ytd>=0?'+':'')+s.ytd+'%</span></div>';
+h+='<div style="font-size:13px;font-weight:800;color:var(--text)">'+s.sym+'</div>';
+h+='<div style="font-size:9px;color:var(--text3)">'+s.name+'</div>';
+h+='<div style="margin-top:4px;font-size:10px;font-family:var(--mono);color:var(--text)">'+S+s.price.toLocaleString()+'</div>';
+h+='<div style="display:flex;gap:6px;margin-top:4px;font-size:8px"><span style="color:'+(s.m1>=0?'#10b981':'#ef4444')+'">1M:'+(s.m1>=0?'+':'')+s.m1+'%</span><span style="color:'+(s.w1>=0?'#10b981':'#ef4444')+'">1W:'+(s.w1>=0?'+':'')+s.w1+'%</span></div>';
+h+='</div>';
+});
+h+='</div>';
+}
+// Full table
 h+='<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:10px"><thead><tr style="background:var(--bg2);border-bottom:2px solid var(--border)">';
-h+='<th style="padding:5px 8px;text-align:left">#</th><th style="padding:5px;text-align:left">Stock</th><th style="padding:5px;text-align:right">Price</th>';
-h+='<th style="padding:5px;text-align:right;color:var(--cyan);font-weight:800">YTD%</th>';
-h+='<th style="padding:5px;text-align:right">1M%</th><th style="padding:5px;text-align:right">1W%</th>';
-h+='<th style="padding:5px;text-align:center">RSI</th><th style="padding:5px;text-align:right">52W%</th>';
+h+='<th style="padding:6px 8px;text-align:left">#</th><th style="padding:6px 8px;text-align:left">Stock</th><th style="padding:6px;text-align:right">Price</th>';
+h+='<th style="padding:6px;text-align:right;font-weight:800;color:var(--cyan)">YTD%</th>';
+h+='<th style="padding:6px;text-align:right">1M%</th><th style="padding:6px;text-align:right">1W%</th>';
+h+='<th style="padding:6px;text-align:center">RSI</th><th style="padding:6px;text-align:center">Vol\u00d7</th>';
+h+='<th style="padding:6px;text-align:center">EMA</th><th style="padding:6px;text-align:right">52W%</th>';
+h+='<th style="padding:6px;text-align:center">Action</th>';
 h+='</tr></thead><tbody>';
-res.slice(0,25).forEach(function(s,i){
+res.forEach(function(s,i){
 var ytdC=s.ytd>20?'#0a7c42':s.ytd>0?'#10b981':s.ytd===0?'var(--text3)':s.ytd>-20?'#ef4444':'#991b1b';
 var m1C=s.m1>=0?'#10b981':'#ef4444';
 var w1C=s.w1>=0?'#10b981':'#ef4444';
 var rsiC=s.rsi<30?'#10b981':s.rsi>70?'#ef4444':'var(--text3)';
-h+='<tr style="border-bottom:1px solid var(--border);cursor:pointer" onclick="algoSelect(\''+s.sym+'\',null)" onmouseover="this.style.background=\'var(--bg2)\'" onmouseout="this.style.background=\'transparent\'">';
-h+='<td style="padding:4px 8px;color:var(--text3);font-weight:700">'+(i+1)+'</td>';
-h+='<td style="padding:4px 8px"><strong style="color:var(--text)">'+s.sym+'</strong> <span style="font-size:8px;color:var(--text3)">'+s.name+'</span></td>';
-h+='<td style="padding:4px;text-align:right;font-family:var(--mono)">'+S+s.price.toLocaleString()+'</td>';
-h+='<td style="padding:4px;text-align:right;font-weight:900;font-size:11px;color:'+ytdC+'">'+(s.ytd>=0?'+':'')+s.ytd+'%</td>';
-h+='<td style="padding:4px;text-align:right;color:'+m1C+'">'+(s.m1>=0?'+':'')+s.m1+'%</td>';
-h+='<td style="padding:4px;text-align:right;color:'+w1C+'">'+(s.w1>=0?'+':'')+s.w1+'%</td>';
-h+='<td style="padding:4px;text-align:center;font-weight:700;color:'+rsiC+'">'+s.rsi+'</td>';
-h+='<td style="padding:4px;text-align:right;color:var(--text3)">'+s.from_52h+'%</td>';
+h+='<tr style="border-bottom:1px solid var(--border)" onmouseover="this.style.background=\'var(--bg2)\'" onmouseout="this.style.background=\'transparent\'">';
+h+='<td style="padding:5px 8px;color:var(--text3);font-weight:700">'+(i+1)+'</td>';
+h+='<td style="padding:5px 8px"><div style="font-weight:800;color:var(--text)">'+s.sym+'</div><div style="font-size:8px;color:var(--text3)">'+s.name+'</div></td>';
+h+='<td style="padding:5px;text-align:right;font-family:var(--mono)">'+S+s.price.toLocaleString()+'</td>';
+h+='<td style="padding:5px;text-align:right;font-weight:900;font-size:11px;color:'+ytdC+'">'+(s.ytd>=0?'+':'')+s.ytd+'%</td>';
+h+='<td style="padding:5px;text-align:right;color:'+m1C+'">'+(s.m1>=0?'+':'')+s.m1+'%</td>';
+h+='<td style="padding:5px;text-align:right;color:'+w1C+'">'+(s.w1>=0?'+':'')+s.w1+'%</td>';
+h+='<td style="padding:5px;text-align:center;font-weight:700;color:'+rsiC+'">'+s.rsi+'</td>';
+h+='<td style="padding:5px;text-align:center;color:'+(s.vol_ratio>1.5?'var(--cyan)':'var(--text3)')+'">'+s.vol_ratio+'\u00d7</td>';
+h+='<td style="padding:5px;text-align:center;color:'+(s.ema_bull?'#10b981':'#ef4444')+'">'+(s.ema_bull?'\u25b2':'\u25bc')+'</td>';
+h+='<td style="padding:5px;text-align:right;color:var(--text3)">'+s.from_52h+'%</td>';
+h+='<td style="padding:5px;text-align:center"><button onclick="algoSelect(\''+s.sym+'\',null);event.stopPropagation();" style="padding:3px 10px;border-radius:4px;background:var(--blue);color:#fff;border:none;font-size:8px;font-weight:700;cursor:pointer">Analyze</button></td>';
 h+='</tr>';
 });
 h+='</tbody></table></div>';
-h+='<div style="font-size:8px;color:var(--text3);margin-top:4px">Click any row for full algo analysis. Data from 100+ stocks via yfinance.</div>';
+h+='<div style="font-size:8px;color:var(--text3);margin-top:6px">Scanned '+data.total_scanned+' stocks. Click Analyze for full algo signal with CE/PE recommendation.</div>';
 el.innerHTML=h;
-}).catch(function(e){el.innerHTML='<div style="color:var(--red);font-size:11px">Error: '+e.message+'</div>'});
+}).catch(function(e){el.innerHTML='<div style="color:var(--red);font-size:11px;padding:12px">Error: '+e.message+'. <button onclick="loadIdxYTD(\''+preset+'\',null)" style="color:var(--blue);background:none;border:none;cursor:pointer;text-decoration:underline">Retry</button></div>'});
 }
 
-function renderIndices(d){
-const el=document.getElementById('indicesContent');
-if(!el)return;
 
-let _geo='india';
-const buildIndexCards=(geo)=>{
-const data=INDEX_DATA[geo];
-if(!data)return'';
-const sym=geo==='india'?'₹':'$';
-let h='';
 
-// Collect yf tickers for live price fetch
-const yfTickers=data.filter(idx=>idx.yf).map(idx=>idx.yf);
 
-data.forEach((idx,i)=>{
-const isVol=idx.type==='Volatility';
-const riskC=idx.risk==='Very High'?'#ef4444':idx.risk==='High'?'#f97316':idx.risk==='Medium-High'?'#f59e0b':idx.risk==='Medium'?'#22d3ee':idx.risk==='Low'?'#10b981':'var(--text3)';
-const typeC=idx.type.includes('Large')?'var(--blue)':idx.type.includes('Mid')?'var(--purple)':idx.type.includes('Small')?'var(--amber)':idx.type.includes('Sector')?'#10b981':idx.type.includes('Tech')?'#8b5cf6':'var(--cyan)';
-const riskPct=idx.risk==='Very High'?95:idx.risk==='High'?75:idx.risk==='Medium-High'?55:idx.risk==='Medium'?40:20;
-
-h+=`<div style="margin-bottom:12px;border-radius:10px;border:1px solid var(--border);overflow:hidden;background:var(--surface);transition:box-shadow .2s" onmouseenter="this.style.boxShadow='0 4px 20px rgba(0,47,108,.08)'" onmouseleave="this.style.boxShadow='none'">
-<!-- Compact Header -->
-<div style="padding:12px 16px;display:flex;justify-content:space-between;align-items:center;gap:8px;border-bottom:1px solid var(--border);background:linear-gradient(135deg,rgba(0,47,108,.02),transparent)">
-<div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0">
-<div style="width:36px;height:36px;border-radius:8px;background:${typeC}12;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">${isVol?'📊':idx.type.includes('Small')?'🚀':idx.type.includes('Mid')?'⚡':idx.type.includes('Sector')?'🎯':'🏛'}</div>
-<div style="min-width:0">
-<div style="font-size:14px;font-weight:800;color:var(--text);font-family:'Sora',sans-serif;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${idx.name}</div>
-<div style="font-size:9px;color:var(--text3);display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-<span style="padding:1px 6px;border-radius:3px;background:${typeC}15;color:${typeC};font-weight:700">${idx.type}</span>
-<span>${idx.stocks>0?idx.stocks+' stocks':'Derived'}</span>
-<span>${idx.yf||''}</span>
-</div>
-</div>
-</div>
-<div style="text-align:right;flex-shrink:0">
-<div data-idx-ticker="${idx.yf}" style="font-size:18px;font-weight:800;color:var(--text);font-family:var(--mono)">⏳</div>
-</div>
-</div>
-
-<!-- Metrics Strip -->
-<div style="padding:10px 16px;display:flex;gap:12px;flex-wrap:wrap;align-items:center">
-${!isVol?`
-<div style="display:flex;gap:3px;align-items:baseline"><span style="font-size:9px;color:var(--text3)">5Y</span><span style="font-size:15px;font-weight:800;color:#10b981;font-family:var(--mono)">${idx.cagr5}</span></div>
-<div style="display:flex;gap:3px;align-items:baseline"><span style="font-size:9px;color:var(--text3)">10Y</span><span style="font-size:15px;font-weight:800;color:var(--blue);font-family:var(--mono)">${idx.cagr10}</span></div>
-<div style="display:flex;gap:3px;align-items:baseline"><span style="font-size:9px;color:var(--text3)">MaxDD</span><span style="font-size:13px;font-weight:700;color:var(--red);font-family:var(--mono)">${idx.maxDD}</span></div>
-<div style="display:flex;gap:3px;align-items:baseline"><span style="font-size:9px;color:var(--text3)">P/E</span><span style="font-size:13px;font-weight:700;color:var(--amber);font-family:var(--mono)">${idx.pe_hist}</span></div>
-`:`<div style="font-size:11px;color:var(--amber);font-weight:600">📏 Below 15 = Calm · 15-25 = Normal · 25-35 = Fear · 35+ = Panic</div>`}
-<div style="margin-left:auto;display:flex;align-items:center;gap:4px">
-<span style="font-size:9px;color:var(--text3)">Risk</span>
-<div style="width:60px;height:6px;border-radius:3px;background:var(--bg3);overflow:hidden"><div style="width:${riskPct}%;height:100%;border-radius:3px;background:${riskC}"></div></div>
-<span style="font-size:9px;font-weight:700;color:${riskC}">${idx.risk}</span>
-</div>
-</div>
-
-<!-- Expandable Details -->
-<div style="padding:0 16px 12px">
-<div style="font-size:10px;color:var(--text2);line-height:1.6;margin-bottom:8px">${idx.desc.length>150?idx.desc.substring(0,150)+'...':idx.desc}</div>
-<div style="display:flex;gap:6px;flex-wrap:wrap;font-size:9px">
-<span style="padding:3px 8px;border-radius:4px;background:rgba(16,185,129,.06);color:#10b981;border:1px solid rgba(16,185,129,.12)">💡 ${idx.best}</span>
-<span style="padding:3px 8px;border-radius:4px;background:rgba(239,68,68,.06);color:var(--red);border:1px solid rgba(239,68,68,.12)">⚠ ${idx.risk_note.length>60?idx.risk_note.substring(0,60)+'...':idx.risk_note}</span>
-</div>
-<details style="margin-top:8px"><summary style="font-size:10px;font-weight:700;color:var(--cyan);cursor:pointer;padding:4px 0">▸ Full Details · Holdings · SIP · When to Buy</summary>
-<div style="margin-top:8px;padding:10px;border-radius:8px;background:var(--bg2);font-size:10px;color:var(--text2);line-height:1.8">
-<div><strong>Top Holdings:</strong> ${idx.topHoldings}</div>
-<div><strong>Methodology:</strong> ${idx.methodology} · Rebalance: ${idx.rebalance}</div>
-<div><strong>SIP Insight:</strong> ${idx.sip}</div>
-${!isVol?`<div><strong>When to Buy:</strong> ${
-idx.risk==='Very High'?'Only via SIP. Best entries when index falls 30%+ from peak. Never invest money needed within 5 years.':
-idx.risk==='High'?'SIP preferred. Look for entries when index corrects 15-20%. 3-5 year minimum hold.':
-'Start SIP anytime. Broad indices recover from every crash. Time in market > timing the market.'
-}</div>`:''}
-</div></details>
-</div>
-</div>`;
-});
-
-return h;
-};
-
-// Build UI with geo toggle
-let h=`
-<!-- COMPACT INTRO -->
-<div style="background:linear-gradient(135deg,#0a1628,#0d2137);border-radius:12px;padding:20px;margin-bottom:16px;text-align:center">
-<div style="font-size:9px;letter-spacing:2px;color:rgba(255,255,255,.3);margin-bottom:4px">CELESYS AI · GLOBAL INDEX RESEARCH</div>
-<div style="font-size:18px;font-weight:800;color:#fff;font-family:'Sora',sans-serif;margin-bottom:4px">Complete Index Research — India & USA</div>
-<div style="font-size:11px;color:rgba(255,255,255,.5)">${INDEX_DATA.india.length} Indian · ${INDEX_DATA.usa.length} US Indices · Live Prices · Deep Analysis</div>
-</div>
-
-<!-- Quick Stats Row -->
-<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;margin-bottom:16px">
-<div style="padding:12px;border-radius:8px;background:rgba(16,185,129,.04);border:1px solid rgba(16,185,129,.12);text-align:center">
-<div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px">Nifty 50 (10Y CAGR)</div>
-<div style="font-size:20px;font-weight:800;color:#10b981;font-family:var(--mono)">~12%</div>
-</div>
-<div style="padding:12px;border-radius:8px;background:rgba(59,130,246,.04);border:1px solid rgba(59,130,246,.12);text-align:center">
-<div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px">S&P 500 (10Y CAGR)</div>
-<div style="font-size:20px;font-weight:800;color:var(--blue);font-family:var(--mono)">~12%</div>
-</div>
-<div style="padding:12px;border-radius:8px;background:rgba(245,158,11,.04);border:1px solid rgba(245,158,11,.12);text-align:center">
-<div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px">₹10K SIP · Nifty · 20Y</div>
-<div style="font-size:20px;font-weight:800;color:var(--amber);font-family:var(--mono)">~₹1Cr</div>
-</div>
-<div style="padding:12px;border-radius:8px;background:rgba(239,68,68,.04);border:1px solid rgba(239,68,68,.12);text-align:center">
-<div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px">Same SIP in FD · 20Y</div>
-<div style="font-size:20px;font-weight:800;color:var(--red);font-family:var(--mono)">~₹52L</div>
-</div>
-</div>
-
-<!-- Collapsible Education -->
-<details style="margin-bottom:16px;border:1px solid var(--border);border-radius:10px;overflow:hidden">
-<summary style="padding:12px 16px;background:var(--bg2);cursor:pointer;font-size:12px;font-weight:700;color:var(--text);display:flex;align-items:center;gap:8px">
-📖 New to Indices? Learn the basics (What is Index, SIP, CAGR, Asset Allocation)
-</summary>
-<div style="padding:14px 16px;font-size:11px;color:var(--text2);line-height:1.8">
-<strong>What is an Index?</strong> Like a report card for stocks — averages many companies into one number. Instead of picking stocks, invest in the whole index via ETFs.<br>
-<strong>CAGR</strong> = average yearly return with compounding. 12% CAGR means ₹1L becomes ₹3.1L in 10 years.<br>
-<strong>Drawdown</strong> = biggest fall from peak. -38% means temporary 38% loss (markets always recovered).<br>
-<strong>SIP</strong> = fixed monthly investment. Averages your price automatically. Best for 90% of people.<br>
-<strong>ETF</strong> = stock that tracks an index. Cheapest way to invest. Buy like a share, get entire index returns.<br><br>
-<strong>Age-based allocation:</strong> 20s→70% equity / 30s→65% / 40s→50% / 50s→40% / 60s+→30% equity. Rest in debt/gold.<br>
-<strong>Warren Buffett's advice:</strong> <em>"Just buy an S&P 500 index fund."</em> The simplest strategy that beats 80% of fund managers over 10 years.
-</div>
-</details>
-
-<div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;align-items:center">
-<button class="idx-geo-btn active" onclick="switchIdxGeo(this,'india')" style="padding:8px 20px;border-radius:8px;font-size:12px;font-weight:700;border:2px solid var(--amber);background:var(--amber);color:#000;cursor:pointer;font-family:'Sora',sans-serif">🇮🇳 India (${INDEX_DATA.india.length} Indices)</button>
-<button class="idx-geo-btn" onclick="switchIdxGeo(this,'usa')" style="padding:8px 20px;border-radius:8px;font-size:12px;font-weight:700;border:2px solid var(--border);background:transparent;color:var(--text);cursor:pointer;font-family:'Sora',sans-serif">🇺🇸 USA (${INDEX_DATA.usa.length} Indices)</button>
-<span style="font-size:9px;color:var(--text3);margin-left:8px">Live prices update on tab click</span>
-</div>
-<div id="idxIndiaCards">${buildIndexCards('india')}</div>
-<div id="idxUsaCards" style="display:none">${buildIndexCards('usa')}</div>
-
-<details style="margin:12px 0;border:1px solid var(--border);border-radius:10px;overflow:hidden"><summary style="padding:12px 16px;background:rgba(245,158,11,.04);cursor:pointer;font-size:12px;font-weight:700;color:var(--amber)">💡 Which Indices Should YOU Invest In? (click to expand)</summary><div style="padding:14px;font-size:10px;color:var(--text2);line-height:1.8"><div style="padding:12px;border-radius:8px;background:rgba(245,158,11,.04);border-left:3px solid var(--amber);margin:16px 0">
-<div style="font-size:11px;font-weight:700;color:var(--amber)">💡 Which Indices Should YOU Invest In?</div>
-<div style="font-size:10px;color:var(--text2);margin-top:4px;line-height:1.8"><strong>Beginner investor:</strong> Start with ONE broad market index — Nifty 50 (India) or S&P 500 (USA). Just start a monthly SIP and don't look at it daily. This alone will beat 80% of actively managed mutual funds over 10 years.<br><strong>Intermediate investor:</strong> Core (60-70%) in Nifty 50 + S&P 500. Satellite (20-30%) in mid/small-cap or sector indices for alpha. Keep 10% in debt/gold for stability.<br><strong>Aggressive investor:</strong> Overweight small caps and sector bets (IT, Banking, Semiconductors) for higher returns. Accept 40-50% drawdowns as the price of entry. Must have 5+ year horizon.<br><strong>Income-focused:</strong> Focus on dividend-heavy indices (Nifty Dividend Opportunities, Dow Jones). Reinvest dividends through SIP for compounding.<br><strong>Key principle:</strong> Diversification across geographies (India + US) reduces risk without sacrificing returns. A 70/30 India-US split captures India's growth AND hedges against rupee depreciation.</div>
-</div>
-</div></details>
-
-<!-- COMPARISON TABLE -->
-<div style="margin-top:20px;padding:18px;border-radius:12px;background:rgba(6,182,212,.03);border:1px solid var(--border)">
-<div style="font-family:'Sora',sans-serif;font-size:13px;font-weight:700;color:var(--text);margin-bottom:12px">📊 Cross-Market Comparison — India vs USA</div>
-<div style="overflow-x:auto"><table class="pick-tbl">
-<tr><th>Metric</th><th style="color:var(--amber)">🇮🇳 India</th><th style="color:var(--blue)">🇺🇸 USA</th><th>Insight</th></tr>
-<tr><td style="font-weight:600">Primary Index</td><td>Nifty 50 (50 stocks)</td><td>S&P 500 (500 stocks)</td><td style="font-size:9px;color:var(--text3)">US more diversified by constituent count</td></tr>
-<tr><td style="font-weight:600">10Y CAGR</td><td style="color:#10b981;font-weight:700">~12-13%</td><td style="color:#10b981;font-weight:700">~12-13%</td><td style="font-size:9px;color:var(--text3)">Remarkably similar long-term returns</td></tr>
-<tr><td style="font-weight:600">Typical P/E</td><td style="color:var(--amber)">20-22x</td><td style="color:var(--amber)">18-22x</td><td style="font-size:9px;color:var(--text3)">India slight premium for higher growth</td></tr>
-<tr><td style="font-weight:600">Top Sector</td><td>Financials (~35%)</td><td>Technology (~30%)</td><td style="font-size:9px;color:var(--text3)">India = financialization play, US = tech play</td></tr>
-<tr><td style="font-weight:600">Currency Effect (for INR investor)</td><td style="color:#10b981">None</td><td style="color:var(--amber)">+3-5% from INR depreciation</td><td style="font-size:9px;color:var(--text3)">US returns amplified by rupee weakness</td></tr>
-<tr><td style="font-weight:600">Max Drawdown</td><td style="color:var(--red)">-38% (2020)</td><td style="color:var(--red)">-34% (2020)</td><td style="font-size:9px;color:var(--text3)">Both fall ~35% in crashes. Recovery takes 6-18 months.</td></tr>
-<tr><td style="font-weight:600">SIP ₹10K/month (10Y)</td><td style="font-weight:700;color:#10b981">~₹22-25L corpus</td><td style="font-weight:700;color:#10b981">~₹24-28L corpus (INR terms)</td><td style="font-size:9px;color:var(--text3)">US slightly higher due to INR depreciation benefit</td></tr>
-<tr><td style="font-weight:600">Best Small Cap</td><td>Nifty Smallcap 250 (~20% CAGR)</td><td>Russell 2000 (~8% CAGR)</td><td style="font-size:9px;color:#10b981;font-weight:700">India small caps massively outperform US small caps</td></tr>
-<tr><td style="font-weight:600">Volatility (VIX avg)</td><td>~14-18</td><td>~14-20</td><td style="font-size:9px;color:var(--text3)">Similar volatility regimes</td></tr>
-<tr><td style="font-weight:600">Recommendation</td><td colspan="2" style="color:var(--cyan);font-weight:700;text-align:center">70% India + 30% US allocation for Indian investors</td><td style="font-size:9px;color:var(--text3)">Diversification + INR hedge</td></tr>
-</table></div>
-</div>
-
-<div style="padding:12px;border-radius:8px;background:rgba(16,185,129,.04);border-left:3px solid #10b981;margin:16px 0">
-<div style="font-size:11px;font-weight:700;color:#10b981">💡 India vs USA — The Bottom Line:</div>
-<div style="font-size:10px;color:var(--text2);margin-top:4px;line-height:1.8"><strong>Why India?</strong> Fastest-growing major economy, young population (median age 28 vs 38 in US), rising middle class, digital transformation underway. Small/mid caps offer 15-25% CAGR potential — rare anywhere else in the world.<br><strong>Why USA?</strong> Home to the world's greatest companies (Apple, Microsoft, NVIDIA). Technology leadership, deepest capital markets, reserve currency advantage. US investments also serve as an INR depreciation hedge — when the rupee weakens, your US holdings become worth more in rupee terms.<br><strong>The winning formula:</strong> Indian investors should allocate 60-70% to Indian markets (you benefit from local knowledge + no currency risk) and 30-40% to US markets (global diversification + INR hedge). Both markets have delivered ~12% CAGR over 10 years, but the combination provides smoother returns because they don't always move together.</div>
-</div>
-
-<!-- EDUCATIONAL NOTES -->
-<div style="margin-top:16px;padding:14px;border-radius:10px;background:rgba(245,158,11,.04);border:1px solid rgba(245,158,11,.12)">
-<div style="font-size:10px;font-weight:700;color:var(--amber);margin-bottom:6px">📚 How to Use This Research</div>
-<div style="font-size:9px;color:var(--text3);line-height:1.8">
-• <strong>SIP investors:</strong> Pick 1-2 broad market indices (Nifty 50 + S&P 500) for core allocation. Add sector indices only for satellite/tactical positions.<br>
-• <strong>Options traders:</strong> Bank Nifty and Nifty 50 offer the best liquidity. Watch VIX for timing.<br>
-• <strong>Growth seekers:</strong> India small/mid caps have the highest CAGR but also deepest drawdowns. Size your position accordingly.<br>
-• <strong>Income investors:</strong> Dow Jones and Nifty 50 Dividend indices offer higher yields than growth indices.<br>
-• <strong>Contrarian signal:</strong> When VIX spikes above 30 (US) or 25 (India), it historically marks excellent long-term entry points for SIPs.<br>
-⚖️ <strong>Disclaimer:</strong> Index returns shown are historical and do not guarantee future performance. This is for educational purposes only — not investment advice. Always consult a SEBI-registered advisor.
-</div>
-</div>
-
-<!-- COMMON MISTAKES -->
-<div style="margin-top:16px;padding:16px;border-radius:12px;background:rgba(239,68,68,.04);border:1px solid rgba(239,68,68,.12)">
-<div style="font-family:'Sora',sans-serif;font-size:13px;font-weight:700;color:var(--red);margin-bottom:10px">🚫 7 Common Mistakes Index Investors Make</div>
-<div style="font-size:10px;color:var(--text2);line-height:2">
-<strong>1. Stopping SIP during crashes:</strong> This is the WORST thing you can do. Crashes are when SIP works best — you buy more units at lower prices. The investors who continued SIP through March 2020 saw 100%+ returns by 2021.<br>
-<strong>2. Chasing last year's best-performing index:</strong> Small caps returned 50% last year? Everyone piles in. Then they crash 30%. Performance chasing destroys returns. Stick to your asset allocation plan.<br>
-<strong>3. Investing lump sum at market peaks:</strong> If you have a large amount, deploy it over 6-12 months through STP (Systematic Transfer Plan) rather than all at once. This protects against bad timing.<br>
-<strong>4. Ignoring expense ratios:</strong> A Nifty 50 ETF with 0.05% expense ratio will earn ₹15L more over 20 years than one with 0.50% on a ₹10K/month SIP. Always pick the cheapest ETF/index fund for the same index.<br>
-<strong>5. Checking portfolio daily:</strong> Index investing is a long-term game. Checking daily causes emotional decisions. Set up SIP and review quarterly at most.<br>
-<strong>6. No US allocation:</strong> Indian investors miss out on rupee depreciation hedge and global diversification. Even 20-30% in S&P 500 significantly improves risk-adjusted returns.<br>
-<strong>7. Treating sector indices as core holdings:</strong> Sector indices (Bank Nifty, Nifty IT) should be SATELLITE positions (10-20% max), not your core allocation. Core should always be broad market indices.
-</div>
-</div>
-
-<!-- GLOSSARY -->
-<div style="margin-top:16px;padding:16px;border-radius:12px;background:rgba(59,130,246,.04);border:1px solid rgba(59,130,246,.12)">
-<div style="font-family:'Sora',sans-serif;font-size:13px;font-weight:700;color:var(--blue);margin-bottom:10px">📘 Quick Glossary — Terms Used in This Report</div>
-<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:8px;font-size:9px;color:var(--text2);line-height:1.7">
-<div><strong style="color:var(--cyan)">Bull Market:</strong> When indices rise 20%+ from recent lows. Characterized by optimism and rising prices. Can last 2-10 years.</div>
-<div><strong style="color:var(--cyan)">Bear Market:</strong> When indices fall 20%+ from recent highs. Characterized by fear and falling prices. Typically lasts 6-18 months.</div>
-<div><strong style="color:var(--cyan)">Correction:</strong> A 10-20% drop from recent peak. Normal and healthy — happens 1-2 times per year. Not a bear market.</div>
-<div><strong style="color:var(--cyan)">Free-float Market Cap:</strong> Only counts shares available for public trading (excludes promoter holdings). Used for weighting in most indices.</div>
-<div><strong style="color:var(--cyan)">Rebalancing:</strong> When the index committee adds/removes stocks to keep the index representative. Creates buying/selling pressure on affected stocks.</div>
-<div><strong style="color:var(--cyan)">Tracking Error:</strong> How much an ETF/index fund deviates from the actual index. Lower = better. Good ETFs have < 0.5% tracking error.</div>
-<div><strong style="color:var(--cyan)">NAV:</strong> Net Asset Value — the per-unit price of an index fund. When you invest ₹10K, you get ₹10K ÷ NAV = number of units.</div>
-<div><strong style="color:var(--cyan)">AUM:</strong> Assets Under Management — total money invested in a fund. Higher AUM generally means lower costs and tighter tracking.</div>
-</div>
-</div>
-
-<!-- MARKET CYCLES EXPLAINED -->
-<div style="margin-top:16px;padding:16px;border-radius:12px;background:rgba(6,182,212,.04);border:1px solid rgba(6,182,212,.12)">
-<div style="font-family:'Sora',sans-serif;font-size:13px;font-weight:700;color:var(--cyan);margin-bottom:10px">🔄 Understanding Market Cycles — When to Be Brave & When to Be Careful</div>
-<div style="font-size:10px;color:var(--text2);line-height:1.9;margin-bottom:12px">Markets move in CYCLES — just like seasons. Understanding where we are in the cycle helps you make better decisions. Here's what each phase looks like:</div>
-<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px">
-<div style="padding:12px;border-radius:8px;background:rgba(16,185,129,.05);border-left:4px solid #10b981">
-<div style="font-weight:700;color:#10b981;font-size:11px;margin-bottom:4px">🌱 Phase 1: RECOVERY (Best time to invest)</div>
-<div style="font-size:9px;color:var(--text2);line-height:1.7"><strong>Signs:</strong> Markets have fallen 20-40% from peak. News is terrible. Everyone is scared. VIX is above 25-30.<br><strong>What to do:</strong> This is when SIPs work MAGIC. Your monthly ₹10K buys more units at lower prices. Increase SIP amount if possible. The March 2020 crash was a perfect example — those who invested saw 100%+ returns within 18 months.<br><strong>Analogy:</strong> Like shopping at an end-of-season sale — the same jacket, 40% off. The company hasn't changed, just the price tag.</div>
-</div>
-<div style="padding:12px;border-radius:8px;background:rgba(59,130,246,.05);border-left:4px solid var(--blue)">
-<div style="font-weight:700;color:var(--blue);font-size:11px;margin-bottom:4px">📈 Phase 2: BULL MARKET (Ride the wave)</div>
-<div style="font-size:9px;color:var(--text2);line-height:1.7"><strong>Signs:</strong> Markets steadily climbing. Positive economic data. IPOs booming. People talking about stocks at dinner parties.<br><strong>What to do:</strong> Continue SIP — don't stop just because prices are rising. Avoid the temptation to go "all in" with lump sums at highs. This is the time to gradually REDUCE risk — if you were 80% equity, bring it to 70%.<br><strong>Analogy:</strong> Like a river flowing downstream — go with the flow but don't lean too far over the boat.</div>
-</div>
-<div style="padding:12px;border-radius:8px;background:rgba(245,158,11,.05);border-left:4px solid var(--amber)">
-<div style="font-weight:700;color:var(--amber);font-size:11px;margin-bottom:4px">⚡ Phase 3: EUPHORIA (Danger zone)</div>
-<div style="font-size:9px;color:var(--text2);line-height:1.7"><strong>Signs:</strong> Everyone is making money. Your cab driver gives stock tips. SME IPOs are 200% oversubscribed. "This time is different" talk. P/E ratios at historic highs.<br><strong>What to do:</strong> REDUCE exposure. Move some equity gains to debt/gold. Don't add new money to small/mid caps. Continue SIP only in large cap indices. Book partial profits.<br><strong>Analogy:</strong> Like a party at 3 AM — the music is great but the hangover is coming. Smart guests have already left.</div>
-</div>
-<div style="padding:12px;border-radius:8px;background:rgba(239,68,68,.05);border-left:4px solid var(--red)">
-<div style="font-weight:700;color:var(--red);font-size:11px;margin-bottom:4px">📉 Phase 4: CRASH (Stay calm, don't sell)</div>
-<div style="font-size:9px;color:var(--text2);line-height:1.7"><strong>Signs:</strong> Markets falling 5-10% in a week. Panic selling. CNBC shows red everywhere. Your portfolio is down 25%+. You want to sell everything.<br><strong>What to do:</strong> DO NOTHING. Or better — increase your SIP. The WORST thing you can do is sell during a crash. History shows markets ALWAYS recover. Nifty crashed 38% in March 2020 and hit all-time highs 18 months later.<br><strong>Analogy:</strong> Like a thunderstorm — scary while it happens, but the sun always comes out. The flowers that survive the storm grow strongest.</div>
-</div>
-</div>
-<div style="padding:10px;border-radius:6px;background:rgba(16,185,129,.03);border-left:3px solid #10b981;margin-top:10px">
-<div style="font-size:9px;font-weight:700;color:#10b981">💡 The Golden Rule of Market Cycles:</div>
-<div style="font-size:9px;color:var(--text2);line-height:1.7">Be <strong>greedy when others are fearful</strong> (buy during crashes) and <strong>fearful when others are greedy</strong> (reduce exposure during euphoria). This is easy to say and incredibly hard to do — which is why SIP works so well. It forces you to invest consistently regardless of emotions. Since 1996, every single 10-year SIP in Nifty 50 has been profitable. Every. Single. One.</div>
-</div>
-</div>
-
-<!-- YOUR INVESTING PERSONALITY -->
-<div style="margin-top:16px;padding:16px;border-radius:12px;background:rgba(139,92,246,.04);border:1px solid rgba(139,92,246,.12)">
-<div style="font-family:'Sora',sans-serif;font-size:13px;font-weight:700;color:var(--purple);margin-bottom:10px">🧠 Find Your Investing Personality — Which Indices Fit You?</div>
-<div style="overflow-x:auto"><table class="pick-tbl">
-<tr><th>If You Are...</th><th>Your Core Indices</th><th>Satellite (10-20%)</th><th>Monthly SIP Range</th><th>Expected Pain</th></tr>
-<tr><td style="font-weight:600;color:#10b981">🐢 Conservative (I can't lose money)</td><td>70% Nifty 50 + 20% S&P 500</td><td>10% Nifty Next 50</td><td>₹5K-25K</td><td style="font-size:9px;color:var(--text3)">-15 to -25% in bad years, but fastest recovery</td></tr>
-<tr><td style="font-weight:600;color:var(--blue)">🦊 Balanced (I want growth with some safety)</td><td>50% Nifty 50 + 20% S&P 500</td><td>20% Midcap 150 + 10% Bank Nifty</td><td>₹10K-50K</td><td style="font-size:9px;color:var(--text3)">-25 to -35% in bad years, recovers in 1-2 years</td></tr>
-<tr><td style="font-weight:600;color:var(--amber)">🦁 Aggressive (I want max returns, 5+ year horizon)</td><td>30% Nifty 50 + 15% S&P 500</td><td>25% Midcap + 20% Smallcap + 10% NASDAQ 100</td><td>₹15K-1L</td><td style="font-size:9px;color:var(--text3)">-35 to -50% in bad years, takes 2-3 years to recover</td></tr>
-<tr><td style="font-weight:600;color:var(--red)">🦅 Options Trader (I trade, not invest)</td><td>Watch: Bank Nifty + Nifty 50</td><td>Use VIX as timing signal</td><td>N/A (active)</td><td style="font-size:9px;color:var(--text3)">Can lose 100% of premium; only risk what you can afford to lose</td></tr>
-</table></div>
-<div style="font-size:9px;color:var(--text3);margin-top:6px;line-height:1.6">💡 <strong>Key insight:</strong> Most people THINK they are aggressive until their portfolio drops 30%. Be honest with yourself about how much loss you can handle emotionally without selling. If the answer is "not much," be Conservative. You'll sleep better AND still beat FDs.</div>
-</div>
-
-<!-- FINAL DISCLAIMER -->
-<div style="margin-top:16px;padding:12px;border-radius:8px;background:rgba(245,158,11,.04);border:1px solid rgba(245,158,11,.12)">
-<div style="font-size:9px;color:var(--text3);line-height:1.6">
-<strong style="color:var(--amber)">⚖️ Disclaimer:</strong> All index data, CAGRs, SIP estimates, and returns shown are based on HISTORICAL performance and <strong>do not guarantee future results</strong>. Markets are inherently unpredictable. This research is for <strong>educational purposes only</strong> — not investment advice. Always consult a SEBI-registered investment advisor before making any financial decisions. Celesys AI is not registered with SEBI or any regulatory body. Past performance is not indicative of future returns.
-</div></div>
-
-<!-- PERFORMANCE LEADERBOARD -->
-<div id="perfLeaderboard" style="margin-top:16px"><div style="padding:20px;text-align:center;color:var(--text3);font-size:11px">&#9203; Loading YTD &amp; yearly performance leaderboard...</div></div>
-`;
-
-el.innerHTML=h;
-
-// ═══ FETCH & RENDER PERFORMANCE LEADERBOARD ═══
-fetchPerformanceLeaderboard();
-
-// Geo toggle function
-window.switchIdxGeo=function(btn,geo){
-document.querySelectorAll('.idx-geo-btn').forEach(b=>{b.style.background='transparent';b.style.color='var(--text)';b.style.borderColor='var(--border)';b.classList.remove('active')});
-btn.style.background='var(--amber)';btn.style.color='#000';btn.style.borderColor='var(--amber)';btn.classList.add('active');
-document.getElementById('idxIndiaCards').style.display=geo==='india'?'':'none';
-document.getElementById('idxUsaCards').style.display=geo==='usa'?'':'none';
-_geo=geo;
-fetchIndexPrices(geo);
-};
-
-// Fetch live prices for visible indices
-fetchIndexPrices('india');
-console.log('✅ Index Research rendered:',INDEX_DATA.india.length+INDEX_DATA.usa.length,'indices');
-}
-
-async function fetchIndexPrices(geo){
-const data=INDEX_DATA[geo];
-if(!data)return;
-const tickers=data.filter(d=>d.yf).map(d=>d.yf);
-if(!tickers.length)return;
-try{
-const res=await fetch('/api/batch-prices',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({tickers:tickers})});
-if(!res.ok)return;
-const result=await res.json();
-if(!result.success||!result.prices)return;
-document.querySelectorAll('[data-idx-ticker]').forEach(cell=>{
-const tk=cell.dataset.idxTicker;
-const p=result.prices[tk];
-if(p&&p.formatted){
-const up=(p.change_pct||0)>=0;
-cell.innerHTML=`${p.formatted} <span style="font-size:11px;color:${up?'#10b981':'#ef4444'}">${up?'▲':'▼'}${Math.abs(p.change_pct||0).toFixed(2)}%</span>`;
-cell.style.color=up?'#10b981':'#ef4444';
-}else{cell.innerHTML='—';cell.style.color='var(--text3)'}
-});
-console.log('✅ Index prices:',Object.keys(result.prices).length,'loaded');
-}catch(e){console.error('Index prices error:',e)}
-}
 
 // ═══════════════════════════════════════════════
 // ═══════════════════════════════════════════════
