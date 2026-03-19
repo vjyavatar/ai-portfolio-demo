@@ -4317,7 +4317,7 @@ function loadIdxYTD(preset){
 var el=document.getElementById('idxYTDResult');if(!el)return;
 var reg=window._idxRegion||'IN';
 var S=reg==='US'?'$':'&#8377;';
-el.innerHTML='<div style="text-align:center;padding:20px;color:var(--text3);font-size:11px"><div style="display:inline-block;width:14px;height:14px;border:2px solid var(--cyan);border-top-color:transparent;border-radius:50%;animation:spin .5s linear infinite;vertical-align:middle;margin-right:6px"></div>Scanning 100+ stocks... (15-30s)</div>';
+el.innerHTML='<div style="text-align:center;padding:20px;color:var(--text3);font-size:11px"><div style="display:inline-block;width:14px;height:14px;border:2px solid var(--cyan);border-top-color:transparent;border-radius:50%;animation:spin .5s linear infinite;vertical-align:middle;margin-right:6px"></div>Scanning 200+ S&P 500 stocks... (~30-60s first, then cached)</div>';
 fetch('/api/screener?region='+reg+'&preset='+preset).then(function(r){return r.json()}).then(function(data){
 if(!data.success||!data.results){el.innerHTML='<div style="color:var(--red);padding:12px;font-size:11px">Failed. <button onclick="loadIdxYTD(\''+preset+'\')" style="color:var(--blue);background:none;border:none;cursor:pointer;text-decoration:underline">Retry</button></div>';return}
 var res=data.results;
@@ -5246,7 +5246,7 @@ var va=document.getElementById('scrVolAbove').value;if(va)params+='&vol_above='+
 var pb=document.getElementById('scrPeBelow').value;if(pb)params+='&pe_below='+pb;
 if(document.getElementById('scrAboveSma200').checked)params+='&above_sma200=true';
 }
-el.innerHTML='<div style="text-align:center;padding:20px;color:var(--text3);font-size:11px"><div style="display:inline-block;width:14px;height:14px;border:2px solid var(--cyan);border-top-color:transparent;border-radius:50%;animation:spin .5s linear infinite;vertical-align:middle;margin-right:6px"></div>Scanning 100+ stocks with live data... (takes 15-30s)</div>';
+el.innerHTML='<div style="text-align:center;padding:20px;color:var(--text3);font-size:11px"><div style="display:inline-block;width:14px;height:14px;border:2px solid var(--cyan);border-top-color:transparent;border-radius:50%;animation:spin .5s linear infinite;vertical-align:middle;margin-right:6px"></div>Scanning 200+ S&P 500 stocks... (first load ~30-60s, then cached)</div>';
 fetch('/api/screener?'+params).then(function(r){return r.json()}).then(function(data){
 if(!data.success){el.innerHTML='<div style="color:var(--red);padding:12px;font-size:11px">Error scanning.</div>';return}
 var res=data.results||[];

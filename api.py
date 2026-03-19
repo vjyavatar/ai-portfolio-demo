@@ -5325,35 +5325,58 @@ async def heatmap(region: str = "IN"):
 # ═══════════════════════════════════════════════════
 # SCREENER — Multi-filter stock scanner
 # ═══════════════════════════════════════════════════
+_screener_raw_cache = {}
+_screener_raw_ts = {}
+
 @app.get("/api/screener")
 async def screener(region: str = "IN", preset: str = "", rsi_below: float = 0, rsi_above: float = 0,
                    vol_above: float = 0, above_sma200: bool = False, pe_below: float = 0,
                    sort_by: str = "mcap"):
-    """Scan 100+ stocks with technical/fundamental filters + YTD performance."""
+    """Scan 200+ stocks with technical/fundamental filters + YTD performance. 10-min cache on raw data."""
+    from datetime import datetime, timedelta
+    
+    # Cache raw scan results per region (10 min) — filters applied AFTER
+    cache_key = region.upper()
+    now = datetime.utcnow()
+    if cache_key in _screener_raw_cache and cache_key in _screener_raw_ts:
+        if (now - _screener_raw_ts[cache_key]).total_seconds() < 600:
+            results = _screener_raw_cache[cache_key]
+            # Jump to filter/sort
+            return _apply_screener_filters(results, preset, rsi_below, rsi_above, vol_above, above_sma200, pe_below, sort_by, region)
     
     # ═══ LARGE UNIVERSE — 100+ stocks per region ═══
     if region.upper() == "US":
         syms = [
-            # Mega Cap Tech
+            # Mega Cap Tech (10)
             "AAPL","MSFT","NVDA","GOOGL","META","AMZN","TSLA","AVGO","ORCL","CRM",
-            # Semiconductors
-            "AMD","INTC","MU","WDC","MRVL","AMAT","LRCX","KLAC","QCOM","ARM","TSM","ASML","ON","SNDK","STX",
-            # Software/Cloud
-            "NFLX","ADBE","NOW","PANW","CRWD","DDOG","SNOW","PLTR","NET","ZS","FTNT","HUBS",
-            # Internet/Social
-            "UBER","ABNB","DASH","SNAP","PINS","RBLX","COIN","HOOD","SQ","PYPL",
-            # Finance
-            "JPM","V","MA","BAC","GS","MS","BRK-B","AXP","C","WFC","SCHW","BLK",
-            # Healthcare
-            "UNH","JNJ","LLY","PFE","ABBV","MRK","TMO","ABT","BMY","AMGN","ISRG","DXCM",
-            # Consumer
-            "HD","MCD","NKE","SBUX","TGT","COST","WMT","DIS","LULU","DECK",
-            # Energy
-            "XOM","CVX","COP","SLB","EOG","MPC","VLO","OXY","HAL","DVN",
-            # Industrial/EV
-            "CAT","BA","GE","RTX","HON","LMT","RIVN","LCID","NIO","LI",
-            # Other
-            "PG","KO","PEP","PM","MO","T","VZ","CMCSA",
+            # Semiconductors (18)
+            "AMD","INTC","MU","WDC","MRVL","AMAT","LRCX","KLAC","QCOM","ARM","TSM","ASML","ON","SNDK","STX","NXPI","SWKS","MPWR",
+            # Software/Cloud/Cyber (20)
+            "NFLX","ADBE","NOW","PANW","CRWD","DDOG","SNOW","PLTR","NET","ZS","FTNT","HUBS","WDAY","INTU","APP","TTD","TEAM","VEEV","ANSS","CDNS",
+            # Internet/Fintech (12)
+            "UBER","ABNB","DASH","SNAP","PINS","RBLX","COIN","HOOD","SQ","PYPL","SHOP","MELI",
+            # Finance (18)
+            "JPM","V","MA","BAC","GS","MS","BRK-B","AXP","C","WFC","SCHW","BLK","ICE","CME","SPGI","MCO","CB","TFC",
+            # Healthcare/Pharma/Biotech (20)
+            "UNH","JNJ","LLY","PFE","ABBV","MRK","TMO","ABT","BMY","AMGN","ISRG","DXCM","MRNA","REGN","VRTX","GILD","BIIB","HCA","CI","ELV",
+            # Consumer Discretionary (18)
+            "HD","MCD","NKE","SBUX","TGT","COST","WMT","DIS","LULU","DECK","CMG","DLTR","DG","ROST","TJX","BKNG","MAR","YUM",
+            # Consumer Staples (10)
+            "PG","KO","PEP","PM","MO","CL","KMB","GIS","HSY","MNST",
+            # Energy (14)
+            "XOM","CVX","COP","SLB","EOG","MPC","VLO","OXY","HAL","DVN","PSX","TPL","FANG","WMB",
+            # Industrials (20)
+            "CAT","BA","GE","RTX","HON","LMT","UNP","UPS","FDX","DE","MMM","GD","NOC","WM","RSG","EMR","ETN","GNRC","IR","PH",
+            # Materials/Chemicals (8)
+            "LIN","APD","SHW","ECL","FCX","NEM","NUE","LYB",
+            # Telecom/Media (8)
+            "T","VZ","CMCSA","CHTR","TMUS","PARA","WBD","FOX",
+            # REITs/Real Estate (6)
+            "PLD","AMT","CCI","EQIX","SPG","O",
+            # Utilities (6)
+            "NEE","SO","DUK","AEP","D","NRG",
+            # Other notable S&P 500 (16)
+            "GLW","WSM","AKAM","CVNA","IT","ANET","FICO","AXON","GDDY","LPLA","SMCI","VST","DELL","HPE","RIVN","LI",
         ]
     else:
         syms = [
@@ -5399,27 +5422,30 @@ async def screener(region: str = "IN", preset: str = "", rsi_below: float = 0, r
             if price <= 0:
                 return None
             
-            # YTD return — use Dec 31 / Jan 1 close price
+            # YTD return — from EXISTING 1Y history (no extra API call)
             ytd_ret = 0
             from datetime import datetime as _dt
             _now = _dt.utcnow()
             try:
-                # Method 1: Get last close of previous year
-                ytd_hist = t.history(start=f"{_now.year - 1}-12-25", end=f"{_now.year}-01-05")
-                if ytd_hist is not None and len(ytd_hist) > 0:
-                    ytd_start = float(ytd_hist["Close"].iloc[-1])  # Last trading day of prev year
-                    ytd_ret = round(((price - ytd_start) / ytd_start) * 100, 1) if ytd_start > 0 else 0
+                # The 1Y hist (Mar 2025→Mar 2026) already contains Jan 2026
+                # Find last close of previous year OR first close of current year
+                ytd_start_price = None
+                last_prev_year = None
+                first_curr_year = None
+                for i, dt in enumerate(hist.index):
+                    yr = dt.year if hasattr(dt, 'year') else dt.to_pydatetime().year
+                    mo = dt.month if hasattr(dt, 'month') else dt.to_pydatetime().month
+                    if yr == _now.year - 1:
+                        last_prev_year = float(closes[i])  # keeps updating to last day of prev year
+                    elif yr == _now.year and first_curr_year is None:
+                        first_curr_year = float(closes[i])  # first trading day of current year
+                
+                # Prefer Dec 31 close, fallback to Jan first close
+                ytd_start_price = last_prev_year or first_curr_year
+                if ytd_start_price and ytd_start_price > 0:
+                    ytd_ret = round(((price - ytd_start_price) / ytd_start_price) * 100, 1)
             except:
                 pass
-            if ytd_ret == 0:
-                try:
-                    # Method 2: Fallback — first close in Jan of current year
-                    jan_hist = t.history(start=f"{_now.year}-01-01", end=f"{_now.year}-01-10")
-                    if jan_hist is not None and len(jan_hist) > 0:
-                        ytd_start = float(jan_hist["Close"].iloc[0])
-                        ytd_ret = round(((price - ytd_start) / ytd_start) * 100, 1) if ytd_start > 0 else 0
-                except:
-                    pass
             
             # 1-month return
             m1_ret = round(((price - float(closes[-22])) / float(closes[-22])) * 100, 1) if len(closes) >= 22 else 0
@@ -5483,16 +5509,24 @@ async def screener(region: str = "IN", preset: str = "", rsi_below: float = 0, r
             return None
     
     results = []
-    with ThreadPoolExecutor(max_workers=12) as pool:
+    with ThreadPoolExecutor(max_workers=20) as pool:
         futs = {pool.submit(_scan, s): s for s in syms}
-        for f in as_completed(futs, timeout=45):
+        for f in as_completed(futs, timeout=60):
             try:
-                r = f.result(timeout=12)
+                r = f.result(timeout=15)
                 if r:
                     results.append(r)
             except:
                 pass
     
+    # Cache raw results
+    _screener_raw_cache[cache_key] = results
+    _screener_raw_ts[cache_key] = now
+    
+    return _apply_screener_filters(results, preset, rsi_below, rsi_above, vol_above, above_sma200, pe_below, sort_by, region)
+
+def _apply_screener_filters(results, preset, rsi_below, rsi_above, vol_above, above_sma200, pe_below, sort_by, region):
+    """Apply presets, filters, and sorting to raw screener results."""
     # Apply presets
     if preset == "top_ytd":
         sort_by = "ytd"
@@ -5512,7 +5546,7 @@ async def screener(region: str = "IN", preset: str = "", rsi_below: float = 0, r
         vol_above = 2.0
     
     # Apply filters
-    filtered = results
+    filtered = list(results)
     if rsi_below > 0:
         filtered = [s for s in filtered if s["rsi"] <= rsi_below]
     if rsi_above > 0:
