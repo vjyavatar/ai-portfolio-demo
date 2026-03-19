@@ -3148,26 +3148,75 @@ async def global_ticker():
             if abs(pct) > 2: news.append({"text": f"Bitcoin {'rallies' if pct>0 else 'crashes'} {pct:+.1f}% to ${r['price']:,.0f} — crypto markets {'euphoric' if pct>0 else 'in fear'}", "type": "bullish" if pct>0 else "bearish"})
             elif r["price"] > 80000: news.append({"text": f"Bitcoin holds above $80K at ${r['price']:,.0f} — institutional adoption growing", "type": "bullish"})
     
-    # Always-on macro context headlines (rotate by hour)
+    # Dynamic macro headlines — date-aware and market-responsive
     hour = IST.hour
-    context_news = [
-        {"text": "US-China trade tensions: 145% tariffs impacting global supply chains", "type": "bearish"},
-        {"text": "Fed rate path uncertain — markets pricing in 2 cuts in 2026", "type": "neutral"},
-        {"text": "India GDP growing at 6.5%+ — fastest major economy globally", "type": "bullish"},
-        {"text": "Russia-Ukraine conflict: energy markets volatile, defense stocks rally", "type": "neutral"},
-        {"text": "AI spending boom: Big Tech capex at $200B+ for 2026", "type": "bullish"},
-        {"text": "Red Sea shipping disruptions raising global freight costs 40%", "type": "bearish"},
-        {"text": "RBI holds rates steady — focus shifts to liquidity management", "type": "neutral"},
-        {"text": "OPEC+ production cuts keeping crude oil above $65/bbl", "type": "neutral"},
-        {"text": "India reciprocal tariff review: pharma, IT services face 26% duty risk", "type": "bearish"},
-        {"text": "Global central banks accumulating gold at record pace — 3rd year running", "type": "bullish"},
-        {"text": "US debt ceiling debate looms — potential government shutdown risk", "type": "bearish"},
-        {"text": "Semiconductor demand surges: TSMC, NVIDIA capacity at 100%", "type": "bullish"},
+    day = IST.day
+    month_name = IST.strftime("%B")
+    
+    context_news = []
+    
+    # Generate LIVE headlines from actual data
+    nifty_r = next((r for r in results if r["name"] == "NIFTY 50"), None)
+    sp_r = next((r for r in results if r["name"] == "S&P 500"), None)
+    gold_r = next((r for r in results if r["name"] == "GOLD/OZ"), None)
+    btc_r = next((r for r in results if r["name"] == "BITCOIN"), None)
+    oil_r = next((r for r in results if r["name"] == "CRUDE OIL"), None)
+    inr_r = next((r for r in results if r["name"] == "USD/INR"), None)
+    
+    # Market breadth summary
+    gainers = sum(1 for r in results if r.get("change_pct", 0) > 0)
+    losers = sum(1 for r in results if r.get("change_pct", 0) < 0)
+    if gainers > losers + 3:
+        context_news.append({"text": f"Global risk-on: {gainers} of {len(results)} indices in green — broad-based buying across markets", "type": "bullish"})
+    elif losers > gainers + 3:
+        context_news.append({"text": f"Global risk-off: {losers} of {len(results)} indices in red — defensive positioning recommended", "type": "bearish"})
+    
+    # Cross-market signals
+    if gold_r and sp_r:
+        if gold_r["change_pct"] > 0.5 and sp_r["change_pct"] < -0.3:
+            context_news.append({"text": "Flight to safety: Gold up while equities fall — institutional hedging underway", "type": "bearish"})
+        elif gold_r["change_pct"] < -0.5 and sp_r["change_pct"] > 0.3:
+            context_news.append({"text": "Risk appetite returns: Equities up, gold down — rotational buying into stocks", "type": "bullish"})
+    
+    if oil_r and oil_r["price"] > 0:
+        if oil_r["price"] > 75:
+            context_news.append({"text": f"Crude at ${oil_r['price']:.0f}/bbl — above $75 raises India inflation concerns, RBI watching closely", "type": "bearish"})
+        elif oil_r["price"] < 65:
+            context_news.append({"text": f"Crude at ${oil_r['price']:.0f}/bbl — sub-$65 boosts India's current account, positive for markets", "type": "bullish"})
+    
+    if inr_r and inr_r["price"] > 0:
+        if inr_r["price"] > 86:
+            context_news.append({"text": f"Rupee at {inr_r['price']:.2f} — weak INR boosts IT exports but pressures import-heavy sectors", "type": "neutral"})
+    
+    if btc_r and btc_r["price"] > 0:
+        if btc_r["price"] > 85000:
+            context_news.append({"text": f"Bitcoin ${btc_r['price']:,.0f} — crypto rally signals strong global liquidity and risk appetite", "type": "bullish"})
+    
+    # Time-of-day context
+    if 9 <= hour <= 10:
+        context_news.append({"text": f"Market opening: Gap analysis active — ORB strategy window 9:15-9:30 AM", "type": "neutral"})
+    elif 14 <= hour <= 15:
+        context_news.append({"text": "Final hour trading: Institutional positioning for close — watch for trend reversals", "type": "neutral"})
+    elif hour >= 20:
+        context_news.append({"text": "After hours: US market live — watch S&P 500 futures for tomorrow's Nifty opening cue", "type": "neutral"})
+    
+    # Geopolitical (updated for 2026)
+    geo_events = [
+        {"text": f"{month_name} 2026: US tariff review on India pending — pharma, IT, textiles at risk of 26% duty", "type": "bearish"},
+        {"text": "AI infrastructure spend: Global capex at $300B+ for data centers — NVDA, AVGO, power stocks benefit", "type": "bullish"},
+        {"text": "Fed policy: Markets pricing 1-2 rate cuts in H2 2026 — bond yields stabilizing", "type": "neutral"},
+        {"text": "India inclusion in JP Morgan Bond Index — steady FII debt inflows supporting INR", "type": "bullish"},
+        {"text": "SEBI F&O reforms: Weekly expiry restricted to 1 per exchange — option premium stability improving", "type": "neutral"},
+        {"text": "Global supply chains: China+1 strategy accelerating — India PLI beneficiaries in electronics, pharma", "type": "bullish"},
     ]
-    # Pick 3 context headlines based on hour rotation
-    for i in range(3):
-        idx = (hour + i) % len(context_news)
-        news.append(context_news[idx])
+    # Pick 2 based on day rotation
+    for i in range(2):
+        idx = (day + i) % len(geo_events)
+        context_news.append(geo_events[idx])
+    
+    # Add to main news
+    for cn in context_news[:4]:
+        news.append(cn)
     
     result = {"success": True, "indices": results, "news": news[:8], "updated_at": IST.strftime("%I:%M %p IST")}
     
@@ -5216,6 +5265,15 @@ async def _algo_signal_impl(symbol: str = "NIFTY", region: str = ""):
         }
     except Exception as e:
         print(f"⚠️ Trade confidence calc failed: {e}")
+        import traceback; traceback.print_exc()
+        # Provide default confidence even on error
+        result["tradeConfidence"] = {
+            "estimatedWin": 50, "signalStrength": 50, "grade": "B",
+            "baseWin": 50, "adjustments": 0, "notes": ["Confidence calculation encountered an error"],
+            "sizeRecommendation": "Standard size (1-2%). Use caution.",
+            "riskReward": prem_rr if 'prem_rr' in dir() else "N/A",
+            "rrValue": 0, "factorScore": round(pct, 1) if 'pct' in dir() else 50,
+        }
     
     # ═══ GAMMA BLAST SETUP — Expiry day straddle/strangle ═══
     blast_setup = None

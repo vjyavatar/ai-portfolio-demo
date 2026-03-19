@@ -1822,6 +1822,8 @@ function switchTabGroup(group) {
       subNav.style.display = 'none';
     } else {
       subNav.style.display = 'flex';
+      subNav.style.gap = '6px';
+      subNav.style.alignItems = 'center';
       var h = '';
       tabs.forEach(function(tab, i) {
         var isActive = (i === 0);
