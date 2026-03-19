@@ -4807,8 +4807,9 @@ async def _algo_signal_impl(symbol: str = "NIFTY", region: str = ""):
     
     # Expiry-specific SL adjustment: tighter on expiry day
     if is_expiry:
-        sl_price = round(price - atr14 * 1.0, 2)  # 1.0× ATR instead of 1.5×
-        t1_price = round(price + atr14 * 0.8, 2)   # Closer targets
+        # Will be overridden after direction is computed (below)
+        sl_price = round(price - atr14 * 1.0, 2)
+        t1_price = round(price + atr14 * 0.8, 2)
         t2_price = round(price + atr14 * 1.5, 2)
         t3_price = round(price + atr14 * 2.5, 2)
     
@@ -4832,16 +4833,37 @@ async def _algo_signal_impl(symbol: str = "NIFTY", region: str = ""):
     
     direction = "BULLISH" if supports > opposes else "BEARISH" if opposes > supports else "NEUTRAL"
     
-    # ═══ TRADE PLAN ═══
-    if not is_expiry:
-        sl_price = round(price - atr14 * 1.5, 2)
-        t1_price = round(price + atr14 * 1, 2)
-        t2_price = round(price + atr14 * 2, 2)
-        t3_price = round(price + atr14 * 3, 2)
-    # (expiry values already set above if is_expiry=True)
+    # ═══ TRADE PLAN — Direction-aware SL & Targets ═══
+    if direction == "BEARISH":
+        # BEARISH: SL above price, targets below price
+        if is_expiry:
+            sl_price = round(price + atr14 * 1.0, 2)
+            t1_price = round(price - atr14 * 0.8, 2)
+            t2_price = round(price - atr14 * 1.5, 2)
+            t3_price = round(price - atr14 * 2.5, 2)
+        else:
+            sl_price = round(price + atr14 * 1.5, 2)
+            t1_price = round(price - atr14 * 1, 2)
+            t2_price = round(price - atr14 * 2, 2)
+            t3_price = round(price - atr14 * 3, 2)
+    else:
+        # BULLISH / NEUTRAL: SL below price, targets above price
+        if is_expiry:
+            sl_price = round(price - atr14 * 1.0, 2)
+            t1_price = round(price + atr14 * 0.8, 2)
+            t2_price = round(price + atr14 * 1.5, 2)
+            t3_price = round(price + atr14 * 2.5, 2)
+        else:
+            sl_price = round(price - atr14 * 1.5, 2)
+            t1_price = round(price + atr14 * 1, 2)
+            t2_price = round(price + atr14 * 2, 2)
+            t3_price = round(price + atr14 * 3, 2)
+    
     risk_per_lot = round(abs(price - sl_price) * inst["lot"], 0)
     reward_t2 = round(abs(t2_price - price) * inst["lot"], 0)
-    rr_ratio = f"1:{round((t2_price - price) / (price - sl_price), 1)}" if price > sl_price else "N/A"
+    risk_pts = abs(price - sl_price)
+    reward_pts = abs(t2_price - price)
+    rr_ratio = f"1:{round(reward_pts / risk_pts, 1)}" if risk_pts > 0 else "N/A"
     capital_per_lot = round(price * inst["lot"], 0)
     
     # Option strike suggestion — delta-based when B-S available, else ATM
@@ -4901,11 +4923,14 @@ async def _algo_signal_impl(symbol: str = "NIFTY", region: str = ""):
     prem_capital = round(prem_entry * inst["lot"], 0)
     
     # ORB-enhanced entry condition
-    entry_condition = f"Enter when {symbol} holds above {csym}{sma20:,.0f} (SMA20) with volume > 1.2×."
-    if orb.get("breakout") == "ABOVE":
+    if direction == "BEARISH":
+        entry_condition = f"Enter when {symbol} breaks below {csym}{sma20:,.0f} (SMA20) with volume > 1.2×."
+    else:
+        entry_condition = f"Enter when {symbol} holds above {csym}{sma20:,.0f} (SMA20) with volume > 1.2×."
+    if orb.get("breakout") == "ABOVE" and direction != "BEARISH":
         entry_condition = f"ORB BREAKOUT ✓. Buy {selected_strike} {opt_type} when 5m candle closes above ORB {csym}{orb['orb_high']:,.0f} with vol > 1.5×. Must be above VWAP {csym}{orb.get('vwap', 0):,.0f}."
-    elif orb.get("breakout") == "BELOW":
-        entry_condition = f"ORB BREAKDOWN ✓. Buy {selected_strike} {opt_type} when 5m candle closes below {csym}{orb['orb_low']:,.0f}. VWAP {csym}{orb.get('vwap', 0):,.0f}."
+    elif orb.get("breakout") == "BELOW" or direction == "BEARISH":
+        entry_condition = f"ORB BREAKDOWN ✓. Buy {selected_strike} {opt_type} when 5m candle closes below {csym}{orb.get('orb_low', price):,.0f}. VWAP {csym}{orb.get('vwap', 0):,.0f}."
     elif orb.get("orb_high"):
         entry_condition = f"Inside ORB {csym}{orb['orb_low']:,.0f}–{csym}{orb['orb_high']:,.0f}. Wait for breakout, then buy {selected_strike} {opt_type}."
     
@@ -5031,9 +5056,9 @@ async def _algo_signal_impl(symbol: str = "NIFTY", region: str = ""):
         "rrRatio": prem_rr,
         # Actions
         "t1Action": f"Book 50%. Move SL to {csym}{round(prem_entry, 1)} (cost).",
-        "t2Action": "Book 30%. Trail SL below last 5m swing.",
+        "t2Action": "Book 30%. Trail SL below last 5m swing." if direction != "BEARISH" else "Book 30%. Trail SL above last 5m swing.",
         "t3Action": "Let 20% ride. Hard exit at close.",
-        "slReason": f"If {symbol} breaks below {csym}{sl_price:,.0f} (SMA20 / 1.5×ATR). Premium drops to ~{csym}{round(prem_sl, 1) if prem_sl > 0 else round(prem_entry*0.7, 1)}.",
+        "slReason": f"If {symbol} breaks {'above' if direction=='BEARISH' else 'below'} {csym}{sl_price:,.0f} ({'above SMA20' if direction=='BEARISH' else 'SMA20'} / 1.5×ATR). Premium drops to ~{csym}{round(prem_sl, 1) if prem_sl > 0 else round(prem_entry*0.7, 1)}.",
         "entry": entry_condition,
         "exit": ("2:30 PM hard exit. EXPIRY — gamma risk HIGH. Tighter SL." if bs_data.get("dte", 99) <= 2 else ("3:55 PM ET hard exit." if is_us else "3:00 PM hard exit.")) + f" If premium hits {csym}{round(prem_sl, 1) if prem_sl > 0 else round(prem_entry*0.7, 1)} → exit immediately.",
     }
