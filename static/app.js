@@ -5395,8 +5395,8 @@ h+='<div style="font-size:13px;font-weight:700;color:'+(isWait?'var(--text3)':dC
 h+='</div>';
 
 // ═══ OPTIONS INTELLIGENCE — IV Rank, Expected Move, Max Pain ═══
-var oi=d.options_intel||{};
-if(oi.iv_current>0||oi.expected_move_pts>0||oi.max_pain>0){
+var oi=d.options_intel||null;
+if(oi){
 h+='<div style="margin-bottom:14px;border:1px solid var(--border);border-radius:10px;overflow:hidden">';
 h+='<div style="padding:10px 14px;background:var(--bg2);border-bottom:1px solid var(--border)"><div style="font-size:11px;font-weight:800;color:var(--cyan)">&#128202; OPTIONS INTELLIGENCE</div></div>';
 h+='<div style="padding:12px 14px;display:grid;grid-template-columns:1fr 1fr;gap:12px">';
