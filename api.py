@@ -4426,6 +4426,110 @@ async def _algo_signal_impl(symbol: str = "NIFTY", region: str = ""):
     except Exception as e:
         print(f"⚠️ Black-Scholes failed: {e}")
     
+    # ═══ OPTIONS INTELLIGENCE — IV Rank, Expected Move, Max Pain OI ═══
+    try:
+        import numpy as np
+        daily_returns = [(closes[i] - closes[i-1]) / closes[i-1] for i in range(1, len(closes)) if closes[i-1] > 0]
+        
+        # 1. IV RANK / PERCENTILE
+        # Historical Volatility over rolling 21-day windows for past year
+        hv_values = []
+        for w in range(0, len(daily_returns) - 21, 5):  # every 5 days
+            window = daily_returns[w:w+21]
+            hv_val = float(np.std(window) * (252 ** 0.5) * 100)
+            hv_values.append(hv_val)
+        
+        current_iv = nse.get("atm_iv", 0)
+        # If no live IV, use most recent 21-day HV as proxy
+        if current_iv <= 0 and daily_returns:
+            current_iv = round(float(np.std(daily_returns[-21:]) * (252 ** 0.5) * 100), 1)
+        
+        iv_rank = 50  # default
+        iv_percentile = 50
+        iv_high = 0
+        iv_low = 0
+        if hv_values and current_iv > 0:
+            iv_high = round(max(hv_values), 1)
+            iv_low = round(min(hv_values), 1)
+            iv_range = iv_high - iv_low
+            iv_rank = round(((current_iv - iv_low) / iv_range) * 100, 0) if iv_range > 0 else 50
+            iv_rank = max(0, min(100, iv_rank))
+            # Percentile: what % of historical readings are below current
+            below = sum(1 for hv in hv_values if hv < current_iv)
+            iv_percentile = round((below / len(hv_values)) * 100, 0)
+        
+        # IV recommendation
+        if iv_rank >= 70:
+            iv_signal = "HIGH — Premiums expensive. Consider SELLING options (iron condors, credit spreads)."
+        elif iv_rank <= 30:
+            iv_signal = "LOW — Premiums cheap. Good time to BUY options (long calls/puts, debit spreads)."
+        else:
+            iv_signal = "NORMAL — No extreme. Directional trades OK."
+        
+        # 2. EXPECTED MOVE
+        dte_val = bs_data.get("dte", 7) if bs_data else 7
+        iv_decimal = current_iv / 100 if current_iv > 0 else 0.20
+        expected_move_pct = round(iv_decimal * ((dte_val / 365) ** 0.5) * 100, 2)
+        expected_move_pts = round(price * expected_move_pct / 100, 1)
+        em_upper = round(price + expected_move_pts, 1)
+        em_lower = round(price - expected_move_pts, 1)
+        
+        # 3. MAX PAIN with OI DISTRIBUTION
+        oi_distribution = []
+        max_pain_val = nse.get("max_pain", 0)
+        
+        # Build OI per strike for chart
+        if is_us:
+            try:
+                us_opts = tk.options
+                if us_opts:
+                    chain = tk.option_chain(us_opts[0])
+                    calls_oi = chain.calls[["strike","openInterest"]].head(20)
+                    puts_oi = chain.puts[["strike","openInterest"]].head(20)
+                    all_strikes = sorted(set(calls_oi["strike"].tolist() + puts_oi["strike"].tolist()))
+                    # Filter to strikes near ATM (±10 strikes)
+                    atm_approx = round(price / inst.get("gap", 1)) * inst.get("gap", 1)
+                    near_strikes = [s for s in all_strikes if abs(s - price) < price * 0.10][:15]
+                    for s in near_strikes:
+                        c_oi = int(calls_oi.loc[calls_oi["strike"]==s, "openInterest"].sum()) if s in calls_oi["strike"].values else 0
+                        p_oi = int(puts_oi.loc[puts_oi["strike"]==s, "openInterest"].sum()) if s in puts_oi["strike"].values else 0
+                        oi_distribution.append({"strike": round(s, 1), "call_oi": c_oi, "put_oi": p_oi})
+            except:
+                pass
+        else:
+            # India: from nse data
+            ce_resist = nse.get("ce_resistance", [])
+            pe_support = nse.get("pe_support", [])
+            # Merge into unified OI dist
+            strike_map = {}
+            for c in ce_resist:
+                strike_map[c["strike"]] = {"strike": c["strike"], "call_oi": c["oi"], "put_oi": 0}
+            for p in pe_support:
+                if p["strike"] in strike_map:
+                    strike_map[p["strike"]]["put_oi"] = p["oi"]
+                else:
+                    strike_map[p["strike"]] = {"strike": p["strike"], "call_oi": 0, "put_oi": p["oi"]}
+            oi_distribution = sorted(strike_map.values(), key=lambda x: x["strike"])
+        
+        result["options_intel"] = {
+            "iv_current": round(current_iv, 1),
+            "iv_rank": int(iv_rank),
+            "iv_percentile": int(iv_percentile),
+            "iv_high_1y": iv_high,
+            "iv_low_1y": iv_low,
+            "iv_signal": iv_signal,
+            "expected_move_pct": expected_move_pct,
+            "expected_move_pts": expected_move_pts,
+            "em_upper": em_upper,
+            "em_lower": em_lower,
+            "dte": dte_val,
+            "max_pain": max_pain_val,
+            "oi_distribution": oi_distribution[:15],
+        }
+        print(f"📊 Options Intel: {symbol} IV={current_iv:.1f} Rank={iv_rank:.0f}% EM=±{expected_move_pts:.1f} MaxPain={max_pain_val}")
+    except Exception as e:
+        print(f"⚠️ Options Intelligence failed: {e}")
+    
     # ═══ 5-LAYER CONFLUENCE COMPUTATION ═══
     t = result["technicals"]
     

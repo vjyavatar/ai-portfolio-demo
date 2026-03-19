@@ -144,11 +144,11 @@ ${evt.headline}
 </div>`;
 });
 // Duplicate for seamless loop
-h+=`<div class="evt-row"><span style="font-size:12px;flex-shrink:0">&#128293;</span><span class="evt-label">LIVE</span><div class="evt-scroll-wrap"><div class="evt-scroll">${liveChips}${liveChips}</div></div></div>`;
+h+=`<div class="evt-row"><span style="font-size:12px;flex-shrink:0">&#128293;</span><div class="evt-scroll-wrap"><div class="evt-scroll">${liveChips}${liveChips}</div></div></div>`;
 }
 if(d.upcoming&&d.upcoming.length>0){
 hasContent=true;
-h+=`<div class="evt-row"><span style="font-size:11px;flex-shrink:0">&#128197;</span><span class="evt-label">NEXT</span>`;
+h+=`<div class="evt-row"><span style="font-size:11px;flex-shrink:0">&#128197;</span>`;
 let upItems='';
 d.upcoming.forEach(u=>{
 const uC=u.impact==='HIGH'?'var(--red)':'var(--amber)';
@@ -5393,6 +5393,78 @@ h+='<div style="font-size:13px;font-weight:700;color:#f59e0b;line-height:1.6;mar
 h+='<div style="font-size:13px;font-weight:700;color:'+(isWait?'var(--text3)':dC)+';line-height:1.6'+(isWait?';opacity:.7':'')+'">&#9654; <strong>'+tr.action+'</strong> at '+S+(tr.premEntry||0).toFixed(1)+(tr.optionLTP?' <span style="font-size:9px;color:var(--cyan)">(LTP '+S+tr.optionLTP+')</span>':'')+' &middot; SL '+S+(tr.premSL||0).toFixed(1)+' &middot; Target '+S+(tr.premT2||0).toFixed(1)+' &middot; R:R '+(tr.rrRatio||'N/A')+'</div>';
 }
 h+='</div>';
+
+// ═══ OPTIONS INTELLIGENCE — IV Rank, Expected Move, Max Pain ═══
+var oi=d.options_intel||{};
+if(oi.iv_current>0||oi.expected_move_pts>0||oi.max_pain>0){
+h+='<div style="margin-bottom:14px;border:1px solid var(--border);border-radius:10px;overflow:hidden">';
+h+='<div style="padding:10px 14px;background:var(--bg2);border-bottom:1px solid var(--border)"><div style="font-size:11px;font-weight:800;color:var(--cyan)">&#128202; OPTIONS INTELLIGENCE</div></div>';
+h+='<div style="padding:12px 14px;display:grid;grid-template-columns:1fr 1fr;gap:12px">';
+
+// IV Rank
+var ivR=oi.iv_rank||50;
+var ivC=ivR>=70?'#ef4444':ivR<=30?'#10b981':'var(--amber)';
+var ivLabel=ivR>=70?'HIGH':ivR<=30?'LOW':'NORMAL';
+h+='<div style="border:1px solid var(--border);border-radius:8px;padding:10px">';
+h+='<div style="font-size:9px;font-weight:700;color:var(--text3);letter-spacing:1px;margin-bottom:6px">IV RANK</div>';
+h+='<div style="display:flex;align-items:baseline;gap:6px"><span style="font-size:28px;font-weight:900;color:'+ivC+';font-family:var(--mono)">'+ivR+'%</span><span style="font-size:9px;font-weight:700;color:'+ivC+';background:'+ivC+'15;padding:2px 6px;border-radius:3px">'+ivLabel+'</span></div>';
+h+='<div style="height:6px;border-radius:3px;background:var(--bg2);margin:6px 0;overflow:hidden"><div style="height:100%;width:'+ivR+'%;border-radius:3px;background:linear-gradient(90deg,#10b981,#f59e0b,#ef4444)"></div></div>';
+h+='<div style="font-size:8px;color:var(--text3)">Current IV: '+oi.iv_current+'% · 1Y Range: '+oi.iv_low_1y+'%–'+oi.iv_high_1y+'%</div>';
+h+='<div style="font-size:8px;color:'+ivC+';margin-top:3px;line-height:1.3">'+oi.iv_signal+'</div>';
+h+='</div>';
+
+// Expected Move
+h+='<div style="border:1px solid var(--border);border-radius:8px;padding:10px">';
+h+='<div style="font-size:9px;font-weight:700;color:var(--text3);letter-spacing:1px;margin-bottom:6px">EXPECTED MOVE <span style="color:var(--text3);font-weight:400">('+oi.dte+' DTE)</span></div>';
+h+='<div style="display:flex;align-items:baseline;gap:4px"><span style="font-size:28px;font-weight:900;color:var(--text);font-family:var(--mono)">&plusmn;'+S+oi.expected_move_pts+'</span><span style="font-size:11px;color:var(--text3)">('+oi.expected_move_pct+'%)</span></div>';
+h+='<div style="margin:8px 0;padding:6px 8px;border-radius:6px;background:var(--bg2);display:flex;justify-content:space-between;align-items:center">';
+h+='<div style="text-align:center"><div style="font-size:7px;color:#ef4444;font-weight:700">LOW</div><div style="font-size:12px;font-weight:800;font-family:var(--mono);color:#ef4444">'+S+oi.em_lower+'</div></div>';
+h+='<div style="flex:1;margin:0 8px;height:4px;background:linear-gradient(90deg,#ef4444,var(--text3),#10b981);border-radius:2px;position:relative"><div style="position:absolute;top:-5px;left:50%;transform:translateX(-50%);width:3px;height:14px;background:var(--text);border-radius:1px"></div></div>';
+h+='<div style="text-align:center"><div style="font-size:7px;color:#10b981;font-weight:700">HIGH</div><div style="font-size:12px;font-weight:800;font-family:var(--mono);color:#10b981">'+S+oi.em_upper+'</div></div>';
+h+='</div>';
+h+='<div style="font-size:8px;color:var(--text3)">Market expects '+d.symbol+' to stay between '+S+oi.em_lower+' – '+S+oi.em_upper+' by expiry.</div>';
+h+='</div>';
+
+h+='</div>';
+
+// Max Pain + OI Distribution Chart
+if(oi.max_pain>0||oi.oi_distribution&&oi.oi_distribution.length>0){
+h+='<div style="padding:0 14px 14px">';
+h+='<div style="border:1px solid var(--border);border-radius:8px;padding:10px">';
+h+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">';
+h+='<div style="font-size:9px;font-weight:700;color:var(--text3);letter-spacing:1px">MAX PAIN &amp; OI DISTRIBUTION</div>';
+if(oi.max_pain>0)h+='<div style="font-size:11px;font-weight:800;color:var(--amber)">Max Pain: '+S+oi.max_pain.toLocaleString()+'</div>';
+h+='</div>';
+// OI Bar chart
+if(oi.oi_distribution&&oi.oi_distribution.length>0){
+var maxOI=0;
+oi.oi_distribution.forEach(function(s){maxOI=Math.max(maxOI,s.call_oi||0,s.put_oi||0);});
+if(maxOI>0){
+h+='<div style="display:flex;flex-direction:column;gap:2px">';
+oi.oi_distribution.forEach(function(s){
+var cW=Math.round((s.call_oi||0)/maxOI*100);
+var pW=Math.round((s.put_oi||0)/maxOI*100);
+var isMP=oi.max_pain>0&&Math.abs(s.strike-oi.max_pain)<(inst.gap||50);
+var isATM=Math.abs(s.strike-p)<(inst.gap||50);
+var lbl=isMP?'&#9733; MP':isATM?'&#9654; ATM':'';
+h+='<div style="display:flex;align-items:center;gap:4px;height:16px">';
+h+='<div style="width:50px;text-align:right;font-size:8px;font-family:var(--mono);color:var(--text3);flex-shrink:0">'+s.strike+'</div>';
+// Put bar (left, red)
+h+='<div style="flex:1;display:flex;justify-content:flex-end"><div style="height:10px;width:'+pW+'%;background:#ef4444;border-radius:2px 0 0 2px;min-width:'+(pW>0?'2':'0')+'px"></div></div>';
+// Divider
+h+='<div style="width:1px;height:12px;background:var(--border)"></div>';
+// Call bar (right, green)
+h+='<div style="flex:1;display:flex;justify-content:flex-start"><div style="height:10px;width:'+cW+'%;background:#10b981;border-radius:0 2px 2px 0;min-width:'+(cW>0?'2':'0')+'px"></div></div>';
+h+='<div style="width:40px;font-size:7px;color:'+(isMP?'var(--amber)':isATM?'var(--cyan)':'var(--text3)')+';font-weight:'+(isMP||isATM?'800':'400')+'">'+lbl+'</div>';
+h+='</div>';
+});
+h+='</div>';
+h+='<div style="display:flex;justify-content:center;gap:12px;margin-top:4px"><span style="font-size:8px;color:#ef4444">&#9632; PUT OI</span><span style="font-size:8px;color:#10b981">&#9632; CALL OI</span></div>';
+}}
+h+='</div></div>';
+}
+h+='</div>';
+}
 
 // ═══ WEIGHTED FACTOR TABLE — ALL FACTORS VISIBLE ═══
 h+='<div style="margin-bottom:14px;border:1px solid var(--border);border-radius:10px;overflow:hidden">';
