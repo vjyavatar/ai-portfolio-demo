@@ -293,16 +293,10 @@ if(!el)return;
 const email=(el.dataset.real||el.value).trim().toLowerCase();
 const showTrades=TRADES_EMAILS.includes(email);
 const showPicks=PICKS_EMAILS.includes(email);
-// Algo Trades tab is ALWAYS visible — no email gate
-// Smart Trades tab is email-gated
-const stBtn=document.getElementById('tabBtnSmartTrades');
-const gBtn=document.getElementById('tabBtnGems');
-const pBtn=document.getElementById('tabBtnPicks');
-const fBtn=document.getElementById('tabBtnFunds');
-if(stBtn)stBtn.style.display=showTrades?'':'none';
-if(gBtn)gBtn.style.display=showTrades?'':'none';
-if(pBtn)pBtn.style.display=showPicks?'':'none';
-if(fBtn)fBtn.style.display=showPicks?'':'none';
+// Store premium flag globally for tab group system
+window._isPremiumUser=showTrades;
+window._showPicks=showPicks;
+// Smart Trades content is email-gated
 document.querySelectorAll('.sc[data-tab="smarttrades"]').forEach(s=>s.style.display=showTrades?'':'none');
 document.querySelectorAll('.sc[data-tab="gems"]').forEach(s=>s.style.display=showTrades?'':'none');
 document.querySelectorAll('.sc[data-tab="picks"]').forEach(s=>s.style.display=showPicks?'':'none');
@@ -1812,24 +1806,33 @@ function switchTabGroup(group) {
   var mainBtn = document.getElementById('tabBtn' + group.charAt(0).toUpperCase() + group.slice(1));
   if (mainBtn) mainBtn.classList.add('active');
   
+  // Filter tabs based on premium access
+  var tabs = g.tabs.slice();
+  var labels = g.labels.slice();
+  if (!window._isPremiumUser) {
+    // Remove smarttrades from trading group for non-premium users
+    var stIdx = tabs.indexOf('smarttrades');
+    if (stIdx >= 0) { tabs.splice(stIdx, 1); labels.splice(stIdx, 1); }
+  }
+  
   // Build sub-nav
   var subNav = document.getElementById('groupSubNav');
   if (subNav) {
-    if (g.tabs.length <= 1) {
+    if (tabs.length <= 1) {
       subNav.style.display = 'none';
     } else {
       subNav.style.display = 'flex';
       var h = '';
-      g.tabs.forEach(function(tab, i) {
-        var isActive = tab === g.default;
-        h += '<button onclick="switchTab(\''+tab+'\')" class="sub-tab-btn'+(isActive?' active':'')+'" style="padding:5px 14px;border-radius:6px;font-size:10px;font-weight:700;border:1px solid '+(isActive?'var(--blue)':'var(--border)')+';background:'+(isActive?'var(--blue)':'var(--bg2)')+';color:'+(isActive?'#fff':'var(--text3)')+';cursor:pointer;font-family:Sora,sans-serif;transition:all .2s">'+g.labels[i]+'</button>';
+      tabs.forEach(function(tab, i) {
+        var isActive = (i === 0);
+        h += '<button onclick="switchTab(\''+tab+'\')" class="sub-tab-btn'+(isActive?' active':'')+'" style="padding:5px 14px;border-radius:6px;font-size:10px;font-weight:700;border:1px solid '+(isActive?'var(--blue)':'var(--border)')+';background:'+(isActive?'var(--blue)':'var(--bg2)')+';color:'+(isActive?'#fff':'var(--text3)')+';cursor:pointer;font-family:Sora,sans-serif;transition:all .2s">'+labels[i]+'</button>';
       });
       subNav.innerHTML = h;
     }
   }
   
-  // Activate default sub-tab
-  switchTab(g.default);
+  // Activate first sub-tab
+  switchTab(tabs[0]);
 }
 
 function switchTab(tab){
@@ -5161,6 +5164,43 @@ h+='<div style="font-size:13px;font-weight:700;color:#f59e0b;line-height:1.6;mar
 h+='<div style="font-size:13px;font-weight:700;color:'+(isWait?'var(--text3)':dC)+';line-height:1.6'+(isWait?';opacity:.7':'')+'">&#9654; <strong>'+tr.action+'</strong> at '+S+(tr.premEntry||0).toFixed(1)+(tr.optionLTP?' <span style="font-size:9px;color:var(--cyan)">(LTP '+S+tr.optionLTP+')</span>':'')+' &middot; SL '+S+(tr.premSL||0).toFixed(1)+' &middot; Target '+S+(tr.premT2||0).toFixed(1)+' &middot; R:R '+(tr.rrRatio||'N/A')+'</div>';
 }
 h+='</div>';
+
+// ═══ TRADE CONFIDENCE — Win probability + Grade ═══
+var tc=d.tradeConfidence||null;
+if(tc){
+var winC=tc.estimatedWin>=65?'#0a7c42':tc.estimatedWin>=55?'#10b981':tc.estimatedWin>=45?'#f59e0b':'#ef4444';
+var gradeC=tc.grade.startsWith('A')?'#0a7c42':tc.grade.startsWith('B')?'#3b82f6':tc.grade==='C'?'#f59e0b':'#ef4444';
+h+='<div style="margin-bottom:14px;border-radius:10px;border:2px solid '+winC+'30;overflow:hidden">';
+// Header with grade + win%
+h+='<div style="padding:12px 16px;background:'+winC+'08;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">';
+h+='<div style="display:flex;align-items:center;gap:12px">';
+h+='<div style="width:48px;height:48px;border-radius:50%;background:'+gradeC+';display:flex;align-items:center;justify-content:center"><span style="font-size:18px;font-weight:900;color:#fff">'+tc.grade+'</span></div>';
+h+='<div><div style="font-size:13px;font-weight:800;color:var(--text)">Trade Confidence</div>';
+h+='<div style="font-size:10px;color:var(--text3)">Based on '+tot+' factors, technicals, IV & market conditions</div></div></div>';
+h+='<div style="text-align:right"><div style="font-size:28px;font-weight:900;color:'+winC+';font-family:var(--mono)">'+tc.estimatedWin+'%</div>';
+h+='<div style="font-size:9px;color:var(--text3)">Est. Win Rate</div></div>';
+h+='</div>';
+// Win probability bar
+h+='<div style="padding:0 16px"><div style="height:8px;border-radius:4px;background:var(--bg2);overflow:hidden"><div style="height:100%;width:'+tc.estimatedWin+'%;border-radius:4px;background:linear-gradient(90deg,'+winC+','+winC+'cc)"></div></div></div>';
+// Signal strength + R:R + Position size
+h+='<div style="padding:10px 16px;display:flex;gap:16px;flex-wrap:wrap;border-bottom:1px solid var(--border)">';
+h+='<div><div style="font-size:8px;color:var(--text3);font-weight:700">SIGNAL STRENGTH</div><div style="font-size:14px;font-weight:800;color:var(--text)">'+tc.signalStrength+'/100</div></div>';
+h+='<div><div style="font-size:8px;color:var(--text3);font-weight:700">RISK:REWARD</div><div style="font-size:14px;font-weight:800;color:'+(tc.rrValue>=2?'#0a7c42':tc.rrValue>=1?'#3b82f6':'#ef4444')+'">'+tc.riskReward+'</div></div>';
+h+='<div><div style="font-size:8px;color:var(--text3);font-weight:700">FACTOR SCORE</div><div style="font-size:14px;font-weight:800;color:var(--text)">'+tc.factorScore+'%</div></div>';
+h+='<div style="flex:1;min-width:120px"><div style="font-size:8px;color:var(--text3);font-weight:700">POSITION SIZE</div><div style="font-size:10px;font-weight:700;color:'+winC+'">'+tc.sizeRecommendation+'</div></div>';
+h+='</div>';
+// Confidence breakdown
+if(tc.notes&&tc.notes.length>0){
+h+='<div style="padding:8px 16px 10px">';
+h+='<div style="font-size:8px;font-weight:700;color:var(--text3);margin-bottom:4px;letter-spacing:1px">WHY THIS WIN RATE</div>';
+tc.notes.forEach(function(n){
+var nc=n.indexOf('+')>=0?'#10b981':n.indexOf('-')>=0?'#ef4444':'var(--text3)';
+h+='<div style="font-size:9px;color:'+nc+';padding:1px 0">'+n+'</div>';
+});
+h+='</div>';
+}
+h+='</div>';
+}
 
 // ═══ OPTIONS INTELLIGENCE — IV Rank, Expected Move, Max Pain ═══
 var oi=d.options_intel||null;

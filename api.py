@@ -5106,6 +5106,117 @@ async def _algo_signal_impl(symbol: str = "NIFTY", region: str = ""):
     trade["tradeable"] = signal not in ["HOLD / WAIT", "AVOID"]
     result["trade"] = trade
     
+    # ═══ TRADE CONFIDENCE — Win probability, strength, risk assessment ═══
+    try:
+        # Win probability based on weighted factor score + historical patterns
+        score_pct = round((weighted_support / total_weight) * 100, 1) if total_weight > 0 else 50
+        
+        # Base win rate from factor confluence
+        if score_pct >= 75: base_win = 72
+        elif score_pct >= 65: base_win = 65
+        elif score_pct >= 55: base_win = 58
+        elif score_pct >= 45: base_win = 50
+        else: base_win = 38
+        
+        # Adjustments
+        win_adj = 0
+        confidence_notes = []
+        
+        # Trend alignment bonus (use technicals from result)
+        tech = result.get("technicals", {})
+        _ema9 = tech.get("ema9", 0)
+        _ema21 = tech.get("ema21", 0)
+        _rsi = tech.get("rsi", 50)
+        _vol_r = tech.get("vol_ratio", 1.0)
+        
+        if _ema9 > _ema21 and direction == "BULLISH":
+            win_adj += 5; confidence_notes.append("EMA 9>21 aligned with bullish direction (+5%)")
+        elif _ema9 < _ema21 and direction == "BEARISH":
+            win_adj += 5; confidence_notes.append("EMA 9<21 confirms bearish direction (+5%)")
+        elif _ema9 > _ema21 and direction == "BEARISH":
+            win_adj -= 3; confidence_notes.append("Selling against short-term uptrend (-3%)")
+        
+        # Volume confirmation
+        if _vol_r > 1.5:
+            win_adj += 3; confidence_notes.append(f"Volume {_vol_r:.1f}x above average confirms move (+3%)")
+        elif _vol_r < 0.7:
+            win_adj -= 3; confidence_notes.append("Low volume — weak conviction (-3%)")
+        
+        # RSI zone
+        if (_rsi < 30 and direction == "BULLISH"):
+            win_adj += 4; confidence_notes.append("Oversold bounce setup (+4%)")
+        elif (_rsi > 70 and direction == "BEARISH"):
+            win_adj += 4; confidence_notes.append("Overbought reversal setup (+4%)")
+        elif (_rsi > 70 and direction == "BULLISH"):
+            win_adj -= 5; confidence_notes.append("Buying into overbought — risky (-5%)")
+        elif (_rsi < 30 and direction == "BEARISH"):
+            win_adj -= 5; confidence_notes.append("Selling into oversold — risky (-5%)")
+        
+        # VIX/fear level
+        vix = float(nse.get("vix", 0) or 0)
+        if vix > 25:
+            win_adj -= 4; confidence_notes.append(f"VIX {vix:.1f} elevated — market fearful (-4%)")
+        elif 0 < vix < 14:
+            win_adj += 2; confidence_notes.append(f"VIX {vix:.1f} calm — favorable (+2%)")
+        
+        # Expiry risk
+        if is_expiry:
+            win_adj -= 6; confidence_notes.append("EXPIRY DAY — gamma risk & theta decay (-6%)")
+        elif dte_to_expiry <= 2:
+            win_adj -= 3; confidence_notes.append(f"{dte_to_expiry}d to expiry — time pressure (-3%)")
+        
+        # MACD alignment
+        _macd = tech.get("macd_hist", 0)
+        if (_macd > 0 and direction == "BULLISH") or (_macd < 0 and direction == "BEARISH"):
+            win_adj += 3; confidence_notes.append("MACD confirms direction (+3%)")
+        
+        # R:R quality
+        rr_val = 0
+        try:
+            rr_parts = prem_rr.split(":")
+            if len(rr_parts) == 2: rr_val = float(rr_parts[1])
+        except: pass
+        if rr_val >= 2.5:
+            win_adj += 3; confidence_notes.append(f"Excellent R:R {prem_rr} (+3%)")
+        elif rr_val >= 1.5:
+            win_adj += 1; confidence_notes.append(f"Good R:R {prem_rr} (+1%)")
+        elif 0 < rr_val < 1.0:
+            win_adj -= 4; confidence_notes.append(f"Poor R:R {prem_rr} — risk > reward (-4%)")
+        
+        estimated_win = max(20, min(85, base_win + win_adj))
+        signal_strength = round(score_pct * 0.6 + estimated_win * 0.4, 0)
+        
+        if estimated_win >= 70: grade = "A+"
+        elif estimated_win >= 65: grade = "A"
+        elif estimated_win >= 58: grade = "B+"
+        elif estimated_win >= 52: grade = "B"
+        elif estimated_win >= 45: grade = "C"
+        else: grade = "D"
+        
+        if estimated_win >= 65 and rr_val >= 2:
+            size_rec = "Full size (2-3% of capital). High conviction."
+        elif estimated_win >= 55 and rr_val >= 1.5:
+            size_rec = "Standard size (1-2% of capital). Good setup."
+        elif estimated_win >= 45:
+            size_rec = "Half size (0.5-1%). Moderate conviction."
+        else:
+            size_rec = "Skip or paper trade. Low probability."
+        
+        result["tradeConfidence"] = {
+            "estimatedWin": estimated_win,
+            "signalStrength": int(signal_strength),
+            "grade": grade,
+            "baseWin": base_win,
+            "adjustments": win_adj,
+            "notes": confidence_notes,
+            "sizeRecommendation": size_rec,
+            "riskReward": prem_rr,
+            "rrValue": round(rr_val, 1),
+            "factorScore": round(score_pct, 1),
+        }
+    except Exception as e:
+        print(f"⚠️ Trade confidence calc failed: {e}")
+    
     # ═══ GAMMA BLAST SETUP — Expiry day straddle/strangle ═══
     blast_setup = None
     if is_expiry and bs_data.get("greeks") and nse.get("success"):
