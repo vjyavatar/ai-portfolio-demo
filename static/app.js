@@ -1837,6 +1837,9 @@ try{
 if(typeof gtag==='function')gtag('event','switch_tab',{tab_name:tab});
 if(tab==='quick')setTimeout(()=>window.dispatchEvent(new Event('resize')),200);
 
+// btnMap: which group button to highlight for each tab
+const btnMap={quick:'tabBtnOverview',analysis:'tabBtnResearch',dcf:'tabBtnResearch',equity:'tabBtnResearch',compare:'tabBtnTools',indices:'tabBtnMarkets',finance:'tabBtnTools',daily:'tabBtnMarkets',trades:'tabBtnTrading',scanner:'tabBtnTrading',smarttrades:'tabBtnTrading',gems:'tabBtnOverview',picks:'tabBtnOverview',funds:'tabBtnTools'};
+
 // 1) Hide ALL tab content, sub-navs, and data-tab elements
 document.querySelectorAll('.sc[data-tab]').forEach(s=>{s.style.display='none'});
 document.querySelectorAll('.sub-nav[data-tab]').forEach(s=>{s.style.display='none'});
@@ -1884,10 +1887,6 @@ var aBar=document.getElementById('analysisSubTabs');
 if(aBar)aBar.style.display='flex';
 switchAnalysisSubTab(window._activeAnalysisSubTab||'report');
 }
-
-// 3) Activate button
-const btnMap={quick:'tabBtnOverview',analysis:'tabBtnResearch',dcf:'tabBtnResearch',equity:'tabBtnResearch',compare:'tabBtnTools',indices:'tabBtnMarkets',finance:'tabBtnTools',daily:'tabBtnMarkets',trades:'tabBtnTrading',scanner:'tabBtnTrading',smarttrades:'tabBtnTrading',gems:'tabBtnOverview',picks:'tabBtnOverview',funds:'tabBtnTools'};
-if(btnMap[tab]){const btn=document.getElementById(btnMap[tab]);if(btn)btn.classList.add('active')}
 
 // 4) Scroll to top of new tab content
 if(tab!=='quick'&&tab!=='analysis'){
