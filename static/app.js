@@ -5630,6 +5630,38 @@ var _canScalp=_sc2&&_sc2.direction&&_sc2.direction!=='NEUTRAL'&&_sc2.confidence>
 var _lightC=_win>=65?'#10b981':_win>=50?'#f59e0b':'#ef4444';
 var _trd=d.trend||{};var _vix=Number((d.options||{}).vix||0);
 var _tPct=_trd.pct||0;var _tC=_tPct>=60?'#0a7c42':_tPct>=25?'#10b981':_tPct>=-25?'#f59e0b':'#ef4444';
+var _vxC=_vix<14?'#10b981':_vix<20?'#3b82f6':_vix<25?'#f59e0b':'#ef4444';
+
+// ── TOP BANNER: Trend + VIX — instant market read ──
+h+='<div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">';
+// Trend card
+h+='<div style="flex:1;min-width:200px;padding:10px 14px;border-radius:12px;background:'+_tC+'08;border:2px solid '+_tC+'25;display:flex;align-items:center;gap:10px">';
+h+='<div style="width:44px;height:44px;border-radius:12px;background:'+_tC+';display:flex;align-items:center;justify-content:center;flex-shrink:0"><span style="font-size:22px;color:#fff">'+((_tPct>=25)?'📈':((_tPct<=-25)?'📉':'➡️'))+'</span></div>';
+h+='<div style="flex:1"><div style="display:flex;justify-content:space-between;align-items:center"><span style="font-size:13px;font-weight:900;color:'+_tC+'">'+((_trd.label||'ANALYZING...'))+'</span>';
+if(_trd.pct!==undefined){h+='<span style="font-size:8px;padding:2px 6px;border-radius:3px;background:var(--bg2);color:var(--text3);font-weight:700">ADX '+(d.engines&&d.engines.regime?d.engines.regime.adx:'—')+'</span>';}
+h+='</div>';
+h+='<div style="height:6px;border-radius:3px;background:linear-gradient(90deg,#ef4444,#f59e0b 35%,#10b981 65%,#0a7c42);position:relative;margin-top:4px">';
+var _np0=Math.max(3,Math.min(97,50+(_tPct/2)));
+h+='<div style="position:absolute;top:-3px;left:'+_np0+'%;width:5px;height:12px;background:#fff;border:2px solid '+_tC+';border-radius:2px;transform:translateX(-50%);box-shadow:0 1px 4px rgba(0,0,0,.2)"></div></div>';
+h+='<div style="display:flex;justify-content:space-between;margin-top:2px;font-size:6px;color:var(--text3)"><span>Bearish</span><span>Neutral</span><span>Bullish</span></div>';
+// Indicator pills
+h+='<div style="display:flex;gap:3px;margin-top:3px;flex-wrap:wrap">';
+(_trd.details||[]).slice(0,4).forEach(function(td){var _ic=td.dir==='BULL'?'#0a7c42':td.dir==='BEAR'?'#ef4444':'#94a3b8';h+='<span style="font-size:6px;font-weight:700;padding:1px 4px;border-radius:2px;background:'+_ic+'12;color:'+_ic+'">'+td.ind+'</span>';});
+h+='</div>';
+h+='</div></div>';
+// VIX card
+if(_vix>0){
+var _vxLabel=_vix<14?'CALM — Low fear, smooth markets':_vix<20?'NORMAL — Steady, no panic':_vix<25?'ANXIOUS — Elevated fear, be cautious':'FEARFUL — High panic, expect big swings';
+h+='<div style="min-width:140px;padding:10px 14px;border-radius:12px;background:'+_vxC+'08;border:2px solid '+_vxC+'25;text-align:center">';
+h+='<div style="font-size:7px;color:var(--text3);font-weight:800;letter-spacing:1px">FEAR INDEX (VIX)</div>';
+h+='<div style="font-size:32px;font-weight:900;font-family:var(--mono);color:'+_vxC+';line-height:1">'+_vix.toFixed(1)+'</div>';
+h+='<div style="height:5px;border-radius:3px;background:linear-gradient(90deg,#10b981,#3b82f6 35%,#f59e0b 60%,#ef4444);position:relative;margin:4px 0">';
+var _vxPct=Math.min(100,(_vix/40)*100);
+h+='<div style="position:absolute;top:-3px;left:'+_vxPct+'%;width:4px;height:11px;background:#fff;border:2px solid '+_vxC+';border-radius:2px;transform:translateX(-50%)"></div></div>';
+h+='<div style="font-size:8px;font-weight:700;color:'+_vxC+'">'+_vxLabel+'</div>';
+h+='</div>';
+}
+h+='</div>';
 
 h+='<div style="margin-bottom:16px;border-radius:16px;overflow:hidden;border:2px solid '+dC+'30;box-shadow:0 8px 32px '+dC+'12">';
 
@@ -5733,7 +5765,7 @@ var _factors=[
 {name:'Momentum',weight:25,score:(_eng.momentum||{}).score||50,color:'#10b981'}
 ];
 // Use engine final score if available
-if(_cs.composite)_win=_cs.composite;
+if(_eng&&_eng.finalScore)_win=Math.round(_eng.finalScore);
 _factors.forEach(function(f){
 var fC=f.score>=60?'#10b981':f.score>=40?'#f59e0b':'#ef4444';
 h+='<div style="display:flex;align-items:center;gap:6px;margin-bottom:3px">';
