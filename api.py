@@ -5421,6 +5421,170 @@ async def _algo_signal_impl(symbol: str = "NIFTY", region: str = ""):
     except Exception as e:
         print(f"⚠️ Scalp analysis failed: {e}")
     
+    # ═══ VALUATION INTELLIGENCE — PE, Forward PE, Crash Scenarios ═══
+    try:
+        tech_d = result.get("technicals", {})
+        pe_val = float(tech_d.get("pe", 0) or 0)
+        w52h = float(tech_d.get("w52h", 0) or 0)
+        w52l = float(tech_d.get("w52l", 0) or 0)
+        
+        # Get forward PE + PEG from yfinance
+        fwd_pe = 0; peg = 0; div_yield = 0; mkt_cap = 0; sector = ""
+        try:
+            info = tk.info
+            fwd_pe = round(float(info.get("forwardPE", 0) or 0), 1)
+            peg = round(float(info.get("pegRatio", 0) or 0), 2)
+            div_yield = round(float(info.get("dividendYield", 0) or 0) * 100, 2)
+            mkt_cap = float(info.get("marketCap", 0) or 0)
+            sector = info.get("sector", "")
+            if pe_val == 0: pe_val = round(float(info.get("trailingPE", 0) or 0), 1)
+        except: pass
+        
+        # Historical PE benchmarks
+        pe_benchmarks = {
+            "NIFTY": {"avg": 22, "low": 16, "high": 30, "fair_pe": 21, "name": "Nifty 50"},
+            "BANKNIFTY": {"avg": 17, "low": 12, "high": 24, "fair_pe": 16, "name": "Bank Nifty"},
+            "SENSEX": {"avg": 23, "low": 17, "high": 32, "fair_pe": 22, "name": "Sensex"},
+            "SPY": {"avg": 20, "low": 14, "high": 30, "fair_pe": 19, "name": "S&P 500"},
+            "QQQ": {"avg": 28, "low": 18, "high": 40, "fair_pe": 26, "name": "NASDAQ 100"},
+            "IWM": {"avg": 22, "low": 14, "high": 35, "fair_pe": 20, "name": "Russell 2000"},
+        }
+        sector_pe = {
+            "Technology": {"avg": 30, "low": 18, "high": 50},
+            "Financial Services": {"avg": 15, "low": 8, "high": 22},
+            "Healthcare": {"avg": 25, "low": 15, "high": 40},
+            "Consumer Cyclical": {"avg": 35, "low": 20, "high": 60},
+            "Consumer Defensive": {"avg": 28, "low": 18, "high": 45},
+            "Energy": {"avg": 12, "low": 6, "high": 20},
+            "Industrials": {"avg": 20, "low": 10, "high": 30},
+            "Basic Materials": {"avg": 15, "low": 8, "high": 25},
+            "Communication Services": {"avg": 22, "low": 12, "high": 35},
+            "Real Estate": {"avg": 18, "low": 10, "high": 30},
+        }
+        
+        bench = pe_benchmarks.get(symbol, None)
+        if not bench and sector:
+            sp = sector_pe.get(sector, {"avg": 22, "low": 12, "high": 35})
+            bench = {"avg": sp["avg"], "low": sp["low"], "high": sp["high"], "fair_pe": sp["avg"] - 2, "name": symbol}
+        if not bench:
+            bench = {"avg": 22, "low": 12, "high": 35, "fair_pe": 20, "name": symbol}
+        
+        # Valuation zone
+        val_zone = "FAIR"
+        val_explanation = ""
+        if pe_val > 0:
+            ratio = pe_val / bench["avg"]
+            if ratio > 1.3:
+                val_zone = "EXPENSIVE"
+                val_explanation = f"PE {pe_val:.1f}x is {(ratio-1)*100:.0f}% above historical average ({bench['avg']}x). Market expects high growth. Risk of sharp correction if earnings disappoint."
+            elif ratio > 1.1:
+                val_zone = "SLIGHTLY EXPENSIVE"
+                val_explanation = f"PE {pe_val:.1f}x is slightly above average ({bench['avg']}x). Moderate risk — growth needs to sustain to justify current prices."
+            elif ratio > 0.9:
+                val_zone = "FAIR VALUE"
+                val_explanation = f"PE {pe_val:.1f}x is near historical average ({bench['avg']}x). Neither cheap nor expensive. Good for gradual accumulation."
+            elif ratio > 0.7:
+                val_zone = "UNDERVALUED"
+                val_explanation = f"PE {pe_val:.1f}x is below average ({bench['avg']}x). Historically a good entry zone. Market may be pricing in temporary headwinds."
+            else:
+                val_zone = "DEEPLY UNDERVALUED"
+                val_explanation = f"PE {pe_val:.1f}x is significantly below average ({bench['avg']}x). Either a crisis bargain or structural problems. Investigate before buying."
+        else:
+            val_explanation = "PE data not available for this instrument."
+        
+        # Fair value calculation
+        fair_value = 0
+        if pe_val > 0 and bench["fair_pe"] > 0:
+            eps = price / pe_val if pe_val > 0 else 0
+            fair_value = round(eps * bench["fair_pe"], 2)
+        
+        # Forward PE analysis
+        fwd_analysis = ""
+        if fwd_pe > 0 and pe_val > 0:
+            if fwd_pe < pe_val * 0.85:
+                fwd_analysis = f"Forward PE ({fwd_pe}x) is {round((1-fwd_pe/pe_val)*100)}% lower than trailing — strong earnings growth expected. Valuation improving."
+            elif fwd_pe < pe_val:
+                fwd_analysis = f"Forward PE ({fwd_pe}x) slightly lower than trailing — modest growth ahead."
+            else:
+                fwd_analysis = f"Forward PE ({fwd_pe}x) higher than trailing — earnings expected to decline. Caution."
+        
+        # Crash scenario analysis
+        crash_scenarios = []
+        for pct in [10, 20, 30]:
+            crash_price = round(price * (1 - pct/100), 2)
+            crash_pe = round(crash_price / (price/pe_val), 1) if pe_val > 0 else 0
+            recovery_needed = round((price / crash_price - 1) * 100, 1)
+            is_buy_zone = crash_pe < bench["avg"] if crash_pe > 0 else False
+            
+            if pct == 10:
+                scenario = "Normal correction. Happens 1-2x per year. Usually recovers in 1-3 months."
+            elif pct == 20:
+                scenario = "Bear market territory. Happens every 3-5 years. Recovery takes 6-18 months. Good SIP accumulation zone."
+            else:
+                scenario = "Severe crash (COVID/2008 level). Rare — once per decade. Recovery takes 1-3 years. Generational buying opportunity."
+            
+            crash_scenarios.append({
+                "correction": pct,
+                "price": crash_price,
+                "pe": crash_pe,
+                "recovery": recovery_needed,
+                "isBuyZone": is_buy_zone,
+                "scenario": scenario,
+            })
+        
+        # Geopolitical risk factors
+        geo_risks = []
+        if is_us:
+            geo_risks = [
+                {"risk": "US-China Trade War", "impact": "HIGH", "sectors": "Tech, Semis, Manufacturing", "action": "Avoid pure-China supply chain stocks. Favor onshoring beneficiaries (AVGO, AMAT)."},
+                {"risk": "Fed Rate Policy", "impact": "HIGH", "sectors": "REITs, Growth, Banks", "action": "Rate cuts = bullish growth. Rate holds = value outperforms. Watch 10Y yield."},
+                {"risk": "US Debt/Deficit", "impact": "MEDIUM", "sectors": "Bonds, USD, Gold", "action": "Rising debt → weaker USD → Gold/BTC benefit. TLT as hedge."},
+                {"risk": "AI Capex Bubble Risk", "impact": "MEDIUM", "sectors": "NVDA, Cloud, Data Centers", "action": "AI spending $300B+ in 2026. If ROI disappoints → 30-40% correction in AI names."},
+                {"risk": "US Midterm Elections (Nov 2026)", "impact": "MEDIUM", "sectors": "Defense, Healthcare, Energy", "action": "Volatility rises Sep-Nov. Historically markets rally post-election."},
+            ]
+        else:
+            geo_risks = [
+                {"risk": "US Reciprocal Tariffs on India", "impact": "HIGH", "sectors": "Pharma, IT, Textiles, Auto Parts", "action": "26% tariff risk. Diversify from US-dependent exporters. Favor domestic consumption."},
+                {"risk": "FII Outflows / Dollar Strength", "impact": "HIGH", "sectors": "Banking, Large Cap", "action": "Strong USD pulls FII money out. DII buying provides floor. Watch INR > 87 as danger zone."},
+                {"risk": "China+1 / PLI Beneficiaries", "impact": "BULLISH", "sectors": "Electronics, Pharma, Auto", "action": "India gaining manufacturing share. Dixon, Tata Electronics, Cipla benefit."},
+                {"risk": "RBI Rate Cycle", "impact": "MEDIUM", "sectors": "Banks, NBFCs, Real Estate", "action": "Rate cuts ahead → banks' NIMs compress but credit growth rises. Favor retail banks."},
+                {"risk": "Crude Oil > $80", "impact": "HIGH", "sectors": "OMCs, Airlines, Paints", "action": "India imports 85% crude. Above $80 = inflation + CAD pressure. Hedge with ONGC."},
+                {"risk": "SEBI F&O Reforms", "impact": "MEDIUM", "sectors": "Brokers, Options Traders", "action": "Weekly expiry restricted. Premium stability improving. Adjust strategies."},
+            ]
+        
+        # Investment recommendations by scenario
+        safe_havens = []
+        if is_us:
+            safe_havens = [
+                {"category": "Recession-Proof", "picks": "JNJ, PG, KO, WMT, COST", "reason": "Consumer staples — people buy toothpaste in recessions too."},
+                {"category": "Dividend Aristocrats", "picks": "SCHD ETF, VYM, O, ABBV", "reason": "25+ years of rising dividends. Income even in crashes."},
+                {"category": "Gold/Hedge", "picks": "GLD, SLV, TLT, BRK.B", "reason": "Gold up 25% in 2025. Bonds rally when stocks crash."},
+                {"category": "AI/Growth (for dips)", "picks": "NVDA, MSFT, GOOGL, AVGO", "reason": "Buy these ONLY on 20%+ corrections. Don't chase at highs."},
+            ]
+        else:
+            safe_havens = [
+                {"category": "Defensive (crash-proof)", "picks": "NESTLEIND, HUL, ITC, BRITANNIA", "reason": "FMCG — people buy daily essentials even in recessions."},
+                {"category": "SIP Accumulation", "picks": "NIFTYBEES, JUNIORBEES, BANKBEES", "reason": "Index ETFs via SIP. Buy more units when market falls = rupee cost averaging."},
+                {"category": "Gold/Hedge", "picks": "GOLDBEES, SGB (Sovereign Gold Bond)", "reason": "Gold hedge + 2.5% interest on SGB. Up 20%+ in 2025."},
+                {"category": "High Conviction (buy on dips)", "picks": "RELIANCE, TCS, HDFCBANK, ICICIBANK", "reason": "India's bluest chips. Buy only on 15-20% corrections from highs."},
+                {"category": "PLI/China+1", "picks": "DIXON, HAL, BEL, KAYNES, TRENT", "reason": "Structural growth stories. India manufacturing boom beneficiaries."},
+            ]
+        
+        result["valuation"] = {
+            "pe": pe_val, "fwdPE": fwd_pe, "peg": peg, "divYield": div_yield,
+            "histPE": bench, "sector": sector,
+            "zone": val_zone, "explanation": val_explanation,
+            "fairValue": fair_value, "fwdAnalysis": fwd_analysis,
+            "crashScenarios": crash_scenarios,
+            "geoRisks": geo_risks,
+            "safeHavens": safe_havens,
+            "w52h": w52h, "w52l": w52l, "w52pos": round(float(tech_d.get("w52pos", 50) or 50), 1),
+        }
+        print(f"📊 Valuation: {symbol} PE={pe_val} zone={val_zone} fair={fair_value}")
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        print(f"⚠️ Valuation Intelligence failed: {e}")
+    
     # ═══ PREMIUM TRADING INTELLIGENCE ═══
     try:
         from math import log, sqrt, exp, erf
