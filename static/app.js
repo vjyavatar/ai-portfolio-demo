@@ -4914,7 +4914,11 @@ var row=document.getElementById('ttRow_'+s);
 if(!row||!d.success)return;
 row.innerHTML=_buildTradeRow(d);
 row.style.cursor='pointer';
-row.onclick=function(){algoSelect(d.symbol,null)};
+row.onclick=function(){
+var det=document.querySelector('.tt-detail-'+d.symbol);
+if(det){det.style.display=det.style.display==='none'?'table-row':'none'}
+};
+row.title='Click to see full analysis + scalp trade';
 row.onmouseover=function(){this.style.background='var(--bg2)'};
 row.onmouseout=function(){this.style.background=d.isExpiry?'rgba(239,68,68,.04)':'transparent'};
 if(d.isExpiry){row.style.background='rgba(239,68,68,.04)';row.style.borderLeft='3px solid #ef4444';}
@@ -4934,17 +4938,19 @@ window._topTradesLoaded=true;
 
 function _buildTradeRow(d){
 var isUS=(d.instrument?.region||'')=='US';
-var S=isUS?'$':'&#8377;';var loc=isUS?'en-US':'en-IN';
-var tr=d.trade;
+var S=isUS?'$':'&#8377;';
+var tr=d.trade;var tc=d.tradeConfidence||{};var sc=d.scalp||{};var vi=d.volIntelligence||{};
 var sig=d.signal||'N/A';
-var trend=(d.trend||{}).label||'N/A';
 var sC=sig==='STRONG BUY'?'#0a7c42':sig==='BUY'?'#10b981':sig==='LEAN BUY'?'#3b82f6':sig==='AVOID'?'#ef4444':'#f59e0b';
-var tC=trend.indexOf('UP')>=0?'#0a7c42':trend.indexOf('DOWN')>=0?'#ef4444':'#f59e0b';
+var dir=d.direction||'NEUTRAL';var dC=dir==='BULLISH'?'#0a7c42':dir==='BEARISH'?'#ef4444':'#f59e0b';
 var isWait=sig==='HOLD / WAIT'||sig==='AVOID';
+var win=tc.estimatedWin||50;var grade=tc.grade||'B';
+var gradeC=grade.startsWith('A')?'#0a7c42':grade.startsWith('B')?'#3b82f6':'#f59e0b';
 var h='';
-h+='<td style="padding:8px 10px"><div style="font-weight:800;color:var(--text)">'+d.symbol+(d.isExpiry?' <span style="font-size:7px;padding:1px 5px;border-radius:3px;background:rgba(239,68,68,.15);color:#ef4444;font-weight:800;animation:pulse 1.5s infinite;vertical-align:middle">EXPIRY</span>':'')+'</div><div style="font-size:8px;color:var(--text3)">'+(d.instrument?.ex||'NFO')+' Lot:'+(d.instrument?.lot||'')+(d.dteToExpiry<=2&&d.dteToExpiry>0?' &middot; DTE:'+d.dteToExpiry:'')+'</div></td>';
+// Row 1: Main trade info
+h+='<td style="padding:8px 10px"><div style="display:flex;align-items:center;gap:6px"><span style="width:28px;height:28px;border-radius:50%;background:'+gradeC+';display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:900;color:#fff;flex-shrink:0">'+grade+'</span><div><div style="font-weight:800;color:var(--text)">'+d.symbol+(d.isExpiry?' <span style="font-size:7px;padding:1px 5px;border-radius:3px;background:#ef444420;color:#ef4444;font-weight:800">EXPIRY</span>':'')+'</div><div style="font-size:8px;color:var(--text3)">'+(d.instrument?.ex||'NFO')+' &middot; Win:'+win+'%'+(vi.regime?' &middot; '+vi.regime.replace(/_/g,' '):'')+'</div></div></div></td>';
 h+='<td style="padding:8px;text-align:center"><span style="font-size:9px;font-weight:800;padding:3px 8px;border-radius:4px;background:'+sC+'12;color:'+sC+'">'+sig+'</span></td>';
-h+='<td style="padding:8px;text-align:center"><span style="font-size:9px;font-weight:700;color:'+tC+'">'+trend.replace('STRONG ','')+'</span></td>';
+h+='<td style="padding:8px;text-align:center"><span style="font-size:9px;font-weight:700;color:'+dC+'">'+dir+'</span></td>';
 h+='<td style="padding:8px;text-align:right;font-family:var(--mono);font-weight:700">'+S+(d.spot||0).toLocaleString("en-IN")+'</td>';
 if(tr&&!isWait){
 var shortAction=tr.strike+' '+tr.type+(tr.expiry?' <span style="font-size:7px;color:var(--text3)">'+tr.expiry+'</span>':'');
@@ -4954,8 +4960,41 @@ h+='<td style="padding:8px;text-align:right;font-family:var(--mono);font-weight:
 h+='<td style="padding:8px;text-align:right;font-family:var(--mono);font-weight:700;color:#0a7c42">'+S+(tr.premT2||0).toFixed(1)+'</td>';
 h+='<td style="padding:8px;text-align:center;font-weight:800">'+(tr.rrRatio||'N/A')+'</td>';
 }else{
-h+='<td colspan="5" style="padding:8px;text-align:center;color:#f59e0b;font-weight:600;font-size:10px">&#9208; NO TRADE</td>';
+h+='<td colspan="5" style="padding:8px;text-align:center;color:#f59e0b;font-weight:600;font-size:10px">&#9208; WAIT — low confidence</td>';
 }
+// Row 2: Expandable detail with layman explanation + scalp + confidence
+h+='</tr><tr class="tt-detail-'+d.symbol+'" style="display:none;background:var(--bg2)"><td colspan="9" style="padding:10px 14px">';
+// Traffic light system
+var lightColor=win>=65?'#10b981':win>=50?'#f59e0b':'#ef4444';
+var lightIcon=win>=65?'\ud83d\udfe2':win>=50?'\ud83d\udfe1':'\ud83d\udd34';
+var lightText=win>=65?'STRONG SETUP — Like a clear sunny day for driving. Conditions favor this trade.':win>=50?'DECENT SETUP — Partly cloudy. Trade is okay but watch closely. Use smaller size.':'WEAK SETUP — Storm warning. Most signals disagree. Wait or use scalp instead.';
+h+='<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:8px">';
+h+='<div style="flex:1;min-width:200px;padding:8px;border-radius:6px;background:'+lightColor+'08;border:1px solid '+lightColor+'30">';
+h+='<div style="font-size:16px;margin-bottom:2px">'+lightIcon+' <span style="font-size:11px;font-weight:800;color:'+lightColor+'">'+win+'% Win Rate</span></div>';
+h+='<div style="font-size:9px;color:var(--text2);line-height:1.5">'+lightText+'</div>';
+if(tc.notes){tc.notes.slice(0,3).forEach(function(n){var nc=n.indexOf("+")>=0?"#10b981":n.indexOf("-")>=0?"#ef4444":"var(--text3)";h+="<div style=\"font-size:8px;color:"+nc+"\">"+n+"</div>";});}
+h+='</div>';
+// Scalp alternative
+if(sc&&sc.direction&&sc.direction!=='NEUTRAL'){
+var scC2=sc.direction==='BULLISH'?'#10b981':'#ef4444';
+h+='<div style="flex:1;min-width:200px;padding:8px;border-radius:6px;background:'+scC2+'08;border:1px solid '+scC2+'30">';
+h+='<div style="font-size:11px;font-weight:800;color:'+scC2+'">\u26a1 SCALP: '+sc.action+'</div>';
+h+='<div style="font-size:9px;color:var(--text2)">Quick 5-30 min trade. '+sc.confidence+'% conf.</div>';
+h+='<div style="font-size:9px;margin-top:2px"><span style="color:'+scC2+'">Entry: '+S+sc.entry+'</span> &middot; <span style="color:#ef4444">SL: '+S+sc.sl+'</span> &middot; <span style="color:#10b981">Tgt: '+S+sc.t1+'</span></div>';
+h+='<div style="font-size:8px;color:var(--text3);margin-top:2px">5m: '+sc.trend_5m+' | 15m: '+sc.trend_15m+' | VWAP: '+(sc.above_vwap?'ABOVE':'BELOW')+'</div>';
+h+='</div>';
+}
+h+='</div>';
+// Layman summary
+if(tr&&!isWait){
+h+='<div style="font-size:9px;color:var(--text2);line-height:1.6;padding:6px 8px;border-radius:4px;background:var(--surface);border:1px solid var(--border)">';
+h+='\ud83c\udf93 <strong>In simple words:</strong> We '+( dir==='BULLISH'?'expect '+d.symbol+' to go UP, so we buy a '+(isUS?'CALL':'CE')+' option':'expect '+d.symbol+' to go DOWN, so we buy a '+(isUS?'PUT':'PE')+' option')+'. ';
+h+='Pay '+S+(tr.premEntry||0).toFixed(0)+' as entry. If wrong, exit at '+S+(tr.premSL||0).toFixed(0)+' (max loss). If right, book profit at '+S+(tr.premT2||0).toFixed(0)+'. ';
+h+='R:R '+(tr.rrRatio||'N/A')+' means for every \u20b91 you risk, you can make \u20b9'+(tr.rrRatio?tr.rrRatio.split(':')[1]:'?')+'. ';
+h+=tc.sizeRecommendation||'';
+h+='</div>';
+}
+h+='</td>';
 return h;
 }
 
@@ -5209,26 +5248,53 @@ tl.innerHTML=h2;
 }
 
 // ═══ AI ASSISTANT ═══
+window._aiRegion='IN';
+function switchAIRegion(reg){
+window._aiRegion=reg;
+var inBtn=document.getElementById('aiRegIN');var usBtn=document.getElementById('aiRegUS');
+var inStocks=document.getElementById('aiStocksIN');var usStocks=document.getElementById('aiStocksUS');
+if(inBtn){inBtn.style.background=reg==='IN'?'#002f6c':'var(--bg2)';inBtn.style.color=reg==='IN'?'#fff':'var(--text3)';}
+if(usBtn){usBtn.style.background=reg==='US'?'#002f6c':'var(--bg2)';usBtn.style.color=reg==='US'?'#fff':'var(--text3)';}
+if(inStocks)inStocks.style.display=reg==='IN'?'flex':'none';
+if(usStocks)usStocks.style.display=reg==='US'?'flex':'none';
+var sym=document.getElementById('aiSymbol');
+if(sym)sym.value=reg==='US'?'SPY':'NIFTY';
+}
+function setAISym(s){
+var el=document.getElementById('aiSymbol');if(el)el.value=s;
+}
+function askAIQuick(q){
+document.getElementById('aiQuestion').value=q;
+askAI();
+}
 function askAI(){
 var sym=(document.getElementById('aiSymbol').value||'NIFTY').trim().toUpperCase();
 var q=(document.getElementById('aiQuestion').value||'').trim();
 if(!q)return;
+var reg=window._aiRegion||'IN';
 var el=document.getElementById('aiChatArea');
 if(!el)return;
-el.innerHTML+='<div style="text-align:right;margin-bottom:8px"><span style="display:inline-block;padding:6px 12px;border-radius:12px 12px 2px 12px;background:var(--blue);color:#fff;font-size:10px;max-width:70%">'+q+'</span></div>';
-el.innerHTML+='<div style="margin-bottom:8px"><span style="display:inline-block;padding:6px 12px;border-radius:2px 12px 12px 12px;background:var(--bg2);color:var(--text3);font-size:10px">Thinking...</span></div>';
+// Clear screen for fresh answer
+el.innerHTML='';
+// Show question
+el.innerHTML+='<div style="text-align:right;margin-bottom:10px"><span style="display:inline-block;padding:8px 14px;border-radius:12px 12px 2px 12px;background:var(--blue);color:#fff;font-size:11px;font-weight:600;max-width:70%">'+sym+': '+q+'</span></div>';
+// Loading
+el.innerHTML+='<div id="aiLoading" style="margin-bottom:10px"><div style="display:inline-flex;align-items:center;gap:8px;padding:10px 14px;border-radius:2px 12px 12px 12px;background:var(--bg2);color:var(--text3);font-size:10px"><div style="width:14px;height:14px;border:2px solid var(--blue);border-top-color:transparent;border-radius:50%;animation:spin .5s linear infinite"></div>Analyzing '+sym+' with live data...</div></div>';
 el.scrollTop=el.scrollHeight;
 document.getElementById('aiQuestion').value='';
-fetch('/api/ai-assist',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({symbol:sym,question:q,region:window._globalRegion||'IN'})}).then(function(r){return r.json()}).then(function(data){
-// Remove "Thinking..."
-var msgs=el.querySelectorAll('div');if(msgs.length>0)msgs[msgs.length-1].remove();
-var answer=data.answer||'Sorry, I could not process that question.';
-var sigBadge=data.signal?'<span style="font-size:7px;padding:2px 6px;border-radius:3px;background:'+(data.signal.includes('BUY')?'#10b98120':'#f59e0b20')+';color:'+(data.signal.includes('BUY')?'#10b981':'#f59e0b')+'">'+data.signal+'</span> ':'';
-el.innerHTML+='<div style="margin-bottom:10px"><div style="display:inline-block;padding:8px 12px;border-radius:2px 12px 12px 12px;background:var(--bg2);color:var(--text);font-size:10px;max-width:85%;line-height:1.6;white-space:pre-wrap">'+sigBadge+answer+'</div></div>';
+fetch('/api/ai-assist',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({symbol:sym,question:q,region:reg})}).then(function(r){return r.json()}).then(function(data){
+var ld=document.getElementById('aiLoading');if(ld)ld.remove();
+var answer=data.answer||'Could not process that question.';
+var sigBadge='';
+if(data.signal&&data.signal!=='N/A'){
+var sCl=data.signal.includes('BUY')?'#10b981':data.signal==='AVOID'?'#ef4444':'#f59e0b';
+sigBadge='<div style="margin-bottom:6px"><span style="font-size:8px;padding:3px 8px;border-radius:4px;background:'+sCl+'15;color:'+sCl+';font-weight:800">'+data.signal+'</span> <span style="font-size:8px;padding:3px 8px;border-radius:4px;background:'+(data.direction==='BULLISH'?'#10b98115':'#ef444415')+';color:'+(data.direction==='BULLISH'?'#10b981':'#ef4444')+';font-weight:800">'+data.direction+'</span></div>';
+}
+el.innerHTML+='<div style="margin-bottom:10px"><div style="display:inline-block;padding:12px 16px;border-radius:2px 14px 14px 14px;background:var(--bg2);color:var(--text);font-size:11px;max-width:90%;line-height:1.7;border:1px solid var(--border)">'+sigBadge+'<div style="white-space:pre-wrap">'+answer+'</div></div></div>';
 el.scrollTop=el.scrollHeight;
 }).catch(function(e){
-var msgs=el.querySelectorAll('div');if(msgs.length>0)msgs[msgs.length-1].remove();
-el.innerHTML+='<div style="margin-bottom:8px"><span style="display:inline-block;padding:6px 12px;border-radius:2px 12px 12px 12px;background:#ef444410;color:#ef4444;font-size:10px">Error: '+e.message+'</span></div>';
+var ld=document.getElementById('aiLoading');if(ld)ld.remove();
+el.innerHTML+='<div style="margin-bottom:10px"><span style="display:inline-block;padding:10px 14px;border-radius:2px 12px 12px 12px;background:#ef444410;color:#ef4444;font-size:10px;border:1px solid #ef444430">Error: '+e.message+'</span></div>';
 });
 }
 
@@ -5264,6 +5330,8 @@ navigator.clipboard.writeText(text).then(function(){alert('Order copied to clipb
 
 function _renderAlgoCard(el,d){
 try{
+// Layman explanation helper
+function tip(text){return '<div style="font-size:8px;color:var(--text3);margin-top:3px;padding:4px 8px;border-radius:4px;background:var(--bg2);line-height:1.5;border-left:2px solid var(--cyan)">\U0001f4a1 '+text+'</div>';}
 var isUS=(d.region||d.instrument?.region||'IN')==='US';
 var S=isUS?'$':'&#8377;';var p=d.spot||0;var loc=isUS?'en-US':'en-IN';
 var sup=d.supports,opp=d.opposes,neu=d.neutrals,tot=d.totalFactors,pct=d.pct;
@@ -5275,6 +5343,52 @@ var isWait=sig==='HOLD / WAIT'||sig==='AVOID';
 var tr=d.trade;var t=d.technicals||{};var orb=d.orb||{};var nse=d.options||{};var bs=d.black_scholes||{};
 var h='';
 
+// ═══ 3-STEP TRADE DECISION — Layman's Traffic Light ═══
+var _tc2=d.tradeConfidence||{};
+var _sc2=d.scalp||{};
+var _win=_tc2.estimatedWin||50;
+var _grade=_tc2.grade||'C';
+var _light=_win>=65?'green':_win>=50?'amber':'red';
+var _lightEmoji=_light==='green'?'\\ud83d\\udfe2':_light==='amber'?'\\ud83d\\udfe1':'\\ud83d\\udd34';
+var _canScalp=_sc2&&_sc2.direction&&_sc2.direction!=='NEUTRAL'&&_sc2.confidence>=40;
+h+='<div style="margin-bottom:14px;border-radius:12px;overflow:hidden;border:2px solid '+(_light==='green'?'#10b98140':_light==='amber'?'#f59e0b40':'#ef444440')+'">';
+h+='<div style="padding:12px 16px;background:'+(_light==='green'?'#10b98108':_light==='amber'?'#f59e0b08':'#ef444408')+'">';
+h+='<div style="font-size:12px;font-weight:900;color:var(--text);margin-bottom:10px">'+_lightEmoji+' SHOULD I TRADE '+d.symbol+' RIGHT NOW?</div>';
+// 3 Steps
+h+='<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">';
+// Step 1: Signal
+var s1C=_light==='green'?'#10b981':_light==='amber'?'#f59e0b':'#ef4444';
+h+='<div style="padding:10px;border-radius:8px;background:var(--surface);border:1px solid '+s1C+'30;text-align:center">';
+h+='<div style="font-size:22px;margin-bottom:2px">'+(_win>=65?'\\u2705':_win>=50?'\\u26a0\\ufe0f':'\\u274c')+'</div>';
+h+='<div style="font-size:8px;color:var(--text3);font-weight:700">STEP 1: QUALITY</div>';
+h+='<div style="font-size:12px;font-weight:800;color:'+s1C+'">'+_grade+' ('+_win+'%)</div>';
+h+='<div style="font-size:8px;color:var(--text2)">'+(_win>=65?'Good setup — take it':'Skip or reduce size')+'</div>';
+h+='</div>';
+// Step 2: Direction
+h+='<div style="padding:10px;border-radius:8px;background:var(--surface);border:1px solid '+dC+'30;text-align:center">';
+h+='<div style="font-size:22px;margin-bottom:2px">'+(dir==='BULLISH'?'\\ud83d\\udcc8':'\\ud83d\\udcc9')+'</div>';
+h+='<div style="font-size:8px;color:var(--text3);font-weight:700">STEP 2: DIRECTION</div>';
+h+='<div style="font-size:12px;font-weight:800;color:'+dC+'">'+dir+'</div>';
+h+='<div style="font-size:8px;color:var(--text2)">'+(dir==='BULLISH'?'Buy '+(isUS?'CALL':'CE')+' — profit if UP':'Buy '+(isUS?'PUT':'PE')+' — profit if DOWN')+'</div>';
+h+='</div>';
+// Step 3: What to do
+h+='<div style="padding:10px;border-radius:8px;background:var(--surface);border:1px solid var(--border);text-align:center">';
+h+='<div style="font-size:22px;margin-bottom:2px">'+(tr&&!isWait?'\\ud83c\\udfaf':'\\u23f8\\ufe0f')+'</div>';
+h+='<div style="font-size:8px;color:var(--text3);font-weight:700">STEP 3: ACTION</div>';
+if(tr&&!isWait){
+h+='<div style="font-size:10px;font-weight:800;color:'+dC+'">'+tr.strike+' '+tr.type+'</div>';
+h+='<div style="font-size:8px;color:var(--text2)">Entry: '+S+(tr.premEntry||0).toFixed(0)+' &middot; SL: '+S+(tr.premSL||0).toFixed(0)+'</div>';
+}else{
+h+='<div style="font-size:10px;font-weight:800;color:#f59e0b">WAIT</div>';
+h+='<div style="font-size:8px;color:var(--text2)">'+((_canScalp)?'Try scalp instead \\u26a1':'No trade today')+'</div>';
+}
+h+='</div></div>';
+// Quick tip
+if(_canScalp&&isWait){
+h+='<div style="margin-top:8px;padding:6px 10px;border-radius:6px;background:rgba(6,182,212,.06);border:1px solid rgba(6,182,212,.2);font-size:9px;color:var(--cyan)">\\u26a1 Regular trade is weak, but <strong>SCALP opportunity</strong> exists: '+_sc2.action+' ('+_sc2.confidence+'% confidence) based on 5min price action. Quick in-and-out trade.</div>';
+}
+h+='</div></div>';
+
 // ═══ SMART DECISION SUMMARY — ONE LINE ANSWER ═══
 h+='<div style="padding:16px 18px;border-radius:12px;margin-bottom:14px;background:'+(isWait?'rgba(245,158,11,.06)':'linear-gradient(135deg,'+dC+'08,'+dC+'03)')+';border:2px solid '+(isWait?'#f59e0b30':dC+'30')+'">';
 h+='<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px">';
@@ -5283,6 +5397,9 @@ h+='<div><div style="font-size:20px;font-weight:900;color:'+(isWait?'#f59e0b':dC
 h+='<div style="font-size:11px;color:var(--text3)">'+d.symbol+' '+S+p.toLocaleString("en-IN")+' &middot; '+d.timestamp+'</div></div></div>';
 h+='<div style="text-align:right"><div style="font-size:28px;font-weight:900;color:'+sC+';font-family:var(--mono)">'+wS.toFixed(1)+'/'+wT.toFixed(1)+'</div>';
 h+='<div style="font-size:9px;color:var(--text3)">Weighted Score &middot; '+conf+'</div></div></div>';
+// Layman verdict
+var layVerdict=sig==='STRONG BUY'?'Like getting a green signal at every traffic light — multiple indicators all saying GO.':sig==='BUY'?'More indicators support buying than opposing. Like 7 out of 10 experts agreeing.':sig==='LEAN BUY'?'Slightly more evidence to buy. Small edge — use smaller position.':sig==='HOLD / WAIT'?'Mixed signals — like 50% rain forecast. Wait for clearer setup.':'Red flags outnumber green. Stay parked until conditions improve.';
+h+=tip(layVerdict);
 // One-line verdict — always show trade details
 if(tr){
 if(isWait){
@@ -5560,6 +5677,7 @@ h+='</div></div>';
 h+='<div style="margin-bottom:14px;border:1px solid var(--border);border-radius:10px;overflow:hidden">';
 h+='<div style="padding:10px 14px;background:var(--bg2);display:flex;justify-content:space-between;align-items:center">';
 h+='<div style="font-size:11px;font-weight:800;color:var(--text)">ALL '+tot+' FACTORS — Weighted Analysis</div>';
+h+='<div style="font-size:8px;color:var(--text3);padding:0 14px 4px">Think of each factor as a vote. Green votes say BUY, red votes say SELL. More green = stronger signal. Each vote has a weight — important factors count more.</div>';
 h+='<div style="display:flex;gap:8px"><span style="font-size:10px;font-weight:700;color:#0a7c42">&#11044; '+sup+' ('+wS.toFixed(1)+'pt)</span><span style="font-size:10px;font-weight:700;color:#ef4444">&#11044; '+opp+' ('+wO.toFixed(1)+'pt)</span><span style="font-size:10px;font-weight:700;color:#f59e0b">&#11044; '+neu+' ('+wN.toFixed(1)+'pt)</span></div></div>';
 // Weighted progress bar
 h+='<div style="height:8px;display:flex"><div style="height:100%;width:'+(wT>0?(wS/wT*100):0)+'%;background:#0a7c42"></div><div style="height:100%;width:'+(wT>0?(wN/wT*100):0)+'%;background:#f59e0b"></div><div style="height:100%;width:'+(wT>0?(wO/wT*100):0)+'%;background:#ef4444"></div></div>';
@@ -5646,12 +5764,22 @@ if(nse.pcr>0)h+='<div style="padding:8px;border-radius:6px;background:var(--bg2)
 if(nse.max_pain>0)h+='<div style="padding:8px;border-radius:6px;background:var(--bg2);text-align:center;border:1px solid var(--border)"><div style="font-size:7px;color:var(--text3);font-weight:700">MAX PAIN</div><div style="font-size:13px;font-weight:900;font-family:var(--mono);color:var(--text)">'+S+nse.max_pain.toLocaleString("en-IN")+'</div></div>';
 if(t.pdh>0)h+='<div style="padding:8px;border-radius:6px;background:var(--bg2);text-align:center;border:1px solid var(--border)"><div style="font-size:7px;color:var(--text3);font-weight:700">PDH/PDL</div><div style="font-size:11px;font-weight:800;font-family:var(--mono);color:#0a7c42">'+S+t.pdh.toLocaleString("en-IN")+'</div><div style="font-size:11px;font-weight:800;font-family:var(--mono);color:#ef4444">'+S+t.pdl.toLocaleString("en-IN")+'</div></div>';
 h+='</div>';
+// Layman explanation of technical metrics
+h+='<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;font-size:8px;line-height:1.4">';
+if(orb.vwap>0)h+='<span style="padding:3px 6px;border-radius:4px;background:var(--bg2);color:var(--text3)"><strong>VWAP</strong> = Average price big players paid today. '+(p>orb.vwap?'Price ABOVE = buyers winning \\u2705':'Price BELOW = sellers winning \\u274c')+'</span>';
+if(t.pivot>0)h+='<span style="padding:3px 6px;border-radius:4px;background:var(--bg2);color:var(--text3)"><strong>CPR</strong> = Todays balance zone. '+t.cpr_type+' = '+(t.cpr_type==='NARROW'?'big move expected today':'range-bound day likely')+'</span>';
+if(nse.vix>0)h+='<span style="padding:3px 6px;border-radius:4px;background:var(--bg2);color:var(--text3)"><strong>VIX</strong> = Fear meter. '+(nse.vix<16?'Low fear = calm market \\ud83d\\ude0c':nse.vix>25?'High fear = volatile! \\u26a0\\ufe0f':'Moderate anxiety')+'</span>';
+if(nse.pcr>0)h+='<span style="padding:3px 6px;border-radius:4px;background:var(--bg2);color:var(--text3)"><strong>PCR</strong> = Put/Call ratio. '+(nse.pcr>1.2?'Lots of puts = contrarian bullish signal':'Lots of calls = crowd is bullish, be cautious')+'</span>';
+if(nse.max_pain>0)h+='<span style="padding:3px 6px;border-radius:4px;background:var(--bg2);color:var(--text3)"><strong>Max Pain</strong> '+S+nse.max_pain.toLocaleString("en-IN")+' = Price where most options expire worthless. Market gravitates here on expiry.</span>';
+h+='</div>';
 // OI table
 if(nse.ce_resistance&&nse.ce_resistance.length>0){
 h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:0;border:1px solid var(--border);border-radius:8px;overflow:hidden">';
-h+='<div style="padding:8px 12px;border-right:1px solid var(--border)"><div style="font-size:8px;font-weight:700;color:#ef4444;margin-bottom:4px">RESISTANCE (CE OI)</div>';
+h+='<div style="padding:8px 12px;border-right:1px solid var(--border)"><div style="font-size:8px;font-weight:700;color:#ef4444;margin-bottom:4px">RESISTANCE (CE OI)</div>'
+h+='<div style="font-size:7px;color:var(--text3);margin-bottom:2px">\u2191 Price ceiling — hard to go above</div>';
 (nse.ce_resistance||[]).slice(0,3).forEach(function(r){h+='<div style="display:flex;justify-content:space-between;font-size:9px;padding:1px 0"><span style="font-family:var(--mono);font-weight:700">'+S+r.strike.toLocaleString("en-IN")+'</span><span style="color:var(--text3)">'+(r.oi>100000?(r.oi/100000).toFixed(1)+'L':r.oi.toLocaleString("en-IN"))+'</span></div>';});
-h+='</div><div style="padding:8px 12px"><div style="font-size:8px;font-weight:700;color:#0a7c42;margin-bottom:4px">SUPPORT (PE OI)</div>';
+h+='</div><div style="padding:8px 12px"><div style="font-size:8px;font-weight:700;color:#0a7c42;margin-bottom:4px">SUPPORT (PE OI)</div>'
+h+='<div style="font-size:7px;color:var(--text3);margin-bottom:2px">\u2193 Price floor — hard to fall below</div>';
 (nse.pe_support||[]).slice(0,3).forEach(function(r){h+='<div style="display:flex;justify-content:space-between;font-size:9px;padding:1px 0"><span style="font-family:var(--mono);font-weight:700">'+S+r.strike.toLocaleString("en-IN")+'</span><span style="color:var(--text3)">'+(r.oi>100000?(r.oi/100000).toFixed(1)+'L':r.oi.toLocaleString("en-IN"))+'</span></div>';});
 h+='</div></div>';
 }
@@ -5703,6 +5831,21 @@ h+='<details style="margin-bottom:8px"><summary style="cursor:pointer;font-size:
 
 // Disclaimer
 h+='<div style="padding:4px 10px;border-radius:4px;background:rgba(245,158,11,.04);font-size:7px;color:var(--text3);line-height:1.5"><strong style="color:var(--amber)">&#9888;</strong> Live NSE+yfinance data. Weighted '+tot+'-factor analysis. Educational only. Always use SL.</div>';
+// Beginner summary
+var bDir=dir==='BULLISH'?'expects price to GO UP \u2191':'expects price to GO DOWN \u2193';
+var bOpt=dir==='BULLISH'?(isUS?'CALL':'CE'):(isUS?'PUT':'PE');
+var bExplain=dir==='BULLISH'?'We buy a '+bOpt+' option — like placing a bet that '+d.symbol+' will rise. If it goes up, our option becomes more valuable. If wrong, we lose only the premium ('+S+(tr?tr.premEntry:0)+').':'We buy a '+bOpt+' option — like buying insurance against a fall. If '+d.symbol+' drops, our option gains value. Max loss = premium paid ('+S+(tr?tr.premEntry:0)+').';
+h+='<div style="margin-top:10px;padding:12px;border-radius:8px;background:rgba(59,130,246,.04);border:1px solid rgba(59,130,246,.15)">';
+h+='<div style="font-size:10px;font-weight:800;color:var(--blue);margin-bottom:6px">\ud83c\udf93 BEGINNER\'S SUMMARY</div>';
+h+='<div style="font-size:10px;color:var(--text);line-height:1.7">';
+h+='<strong>Direction:</strong> This stock '+bDir+'<br>';
+h+='<strong>What we do:</strong> '+bExplain+'<br>';
+if(tr){h+='<strong>Entry:</strong> Buy the option at '+S+(tr.premEntry||0)+' (this is your ticket cost)<br>';
+h+='<strong>Stop Loss:</strong> Exit at '+S+(tr.premSL||0)+' if trade goes wrong (limit your loss)<br>';
+h+='<strong>Target:</strong> Book profit at '+S+(tr.premT2||0)+' (your payday)<br>';
+h+='<strong>Max Loss:</strong> '+S+(tr.premEntry||0)+' per unit (you can never lose more than this)<br>';}
+h+='<strong>Key Rule:</strong> Never risk more than 2% of your total capital on one trade. If you have '+S+'5,00,000 — max loss per trade = '+S+'10,000.';
+h+='</div></div>';
 
 el.innerHTML=h;
 }catch(e){

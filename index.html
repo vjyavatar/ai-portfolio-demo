@@ -1026,23 +1026,52 @@ footer{position:relative;z-index:1;margin-top:32px;background:#002f6c;border-top
 
 <!-- ═══ TAB: AI ASSISTANT ═══ -->
 <div class="sc" data-tab="aiassist" style="border-left:3px solid #3b82f6;display:none">
-<div class="sh"><div class="si" style="background:rgba(59,130,246,.1)">&#129302;</div><div class="st" style="color:var(--blue)">AI Trading Assistant</div></div>
+<div class="sh"><div class="si" style="background:rgba(59,130,246,.1)">&#129302;</div><div class="st" style="color:var(--blue)">AI Trading Assistant — Ask Anything</div></div>
 <div class="sbody">
-<div style="margin-bottom:10px;font-size:11px;color:var(--text2);line-height:1.6">Ask anything about a stock or trade. Examples: "Should I buy NIFTY?", "Best strategy for BANKNIFTY?", "What's the risk?", "Scalp setup?"</div>
-<div style="display:flex;gap:8px;margin-bottom:12px">
-<input id="aiSymbol" type="text" placeholder="NIFTY" value="NIFTY" style="width:100px;padding:6px 10px;border-radius:6px;border:1px solid var(--border);font-size:11px;background:var(--surface);color:var(--text)">
+<!-- India / USA toggle -->
+<div style="display:flex;gap:0;margin-bottom:10px;border:1px solid var(--border);border-radius:8px;overflow:hidden;width:fit-content">
+<button id="aiRegIN" onclick="switchAIRegion('IN')" style="padding:5px 16px;font-size:10px;font-weight:800;border:none;cursor:pointer;font-family:Sora,sans-serif;background:#002f6c;color:#fff">&#127470;&#127475; India</button>
+<button id="aiRegUS" onclick="switchAIRegion('US')" style="padding:5px 16px;font-size:10px;font-weight:800;border:none;cursor:pointer;font-family:Sora,sans-serif;background:var(--bg2);color:var(--text3)">&#127482;&#127480; USA</button>
+</div>
+<!-- Quick stock buttons — India -->
+<div id="aiStocksIN" style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:8px">
+<button onclick="setAISym('NIFTY')" class="algo-btn active" style="padding:3px 10px;font-size:9px;font-weight:700">NIFTY</button>
+<button onclick="setAISym('BANKNIFTY')" class="algo-btn" style="padding:3px 10px;font-size:9px;font-weight:700">BANKNIFTY</button>
+<button onclick="setAISym('SENSEX')" class="algo-btn" style="padding:3px 10px;font-size:9px;font-weight:700">SENSEX</button>
+<button onclick="setAISym('RELIANCE')" class="algo-btn" style="padding:3px 10px;font-size:9px;font-weight:700">RELIANCE</button>
+<button onclick="setAISym('TCS')" class="algo-btn" style="padding:3px 10px;font-size:9px;font-weight:700">TCS</button>
+<button onclick="setAISym('HDFCBANK')" class="algo-btn" style="padding:3px 10px;font-size:9px;font-weight:700">HDFC BANK</button>
+<button onclick="setAISym('TATAMOTORS')" class="algo-btn" style="padding:3px 10px;font-size:9px;font-weight:700">TATA MOTORS</button>
+</div>
+<!-- Quick stock buttons — USA -->
+<div id="aiStocksUS" style="display:none;gap:4px;flex-wrap:wrap;margin-bottom:8px">
+<button onclick="setAISym('SPY')" class="algo-btn active" style="padding:3px 10px;font-size:9px;font-weight:700">SPY</button>
+<button onclick="setAISym('QQQ')" class="algo-btn" style="padding:3px 10px;font-size:9px;font-weight:700">QQQ</button>
+<button onclick="setAISym('AAPL')" class="algo-btn" style="padding:3px 10px;font-size:9px;font-weight:700">AAPL</button>
+<button onclick="setAISym('MSFT')" class="algo-btn" style="padding:3px 10px;font-size:9px;font-weight:700">MSFT</button>
+<button onclick="setAISym('NVDA')" class="algo-btn" style="padding:3px 10px;font-size:9px;font-weight:700">NVDA</button>
+<button onclick="setAISym('TSLA')" class="algo-btn" style="padding:3px 10px;font-size:9px;font-weight:700">TSLA</button>
+<button onclick="setAISym('AMZN')" class="algo-btn" style="padding:3px 10px;font-size:9px;font-weight:700">AMZN</button>
+<button onclick="setAISym('META')" class="algo-btn" style="padding:3px 10px;font-size:9px;font-weight:700">META</button>
+</div>
+<!-- Input -->
+<div style="display:flex;gap:8px;margin-bottom:8px">
+<input id="aiSymbol" type="text" placeholder="NIFTY" value="NIFTY" style="width:90px;padding:6px 10px;border-radius:6px;border:1px solid var(--border);font-size:11px;background:var(--surface);color:var(--text);font-weight:700">
 <input id="aiQuestion" type="text" placeholder="Should I buy NIFTY today?" style="flex:1;padding:6px 10px;border-radius:6px;border:1px solid var(--border);font-size:11px;background:var(--surface);color:var(--text)" onkeypress="if(event.key==='Enter')askAI()">
 <button onclick="askAI()" style="padding:6px 16px;border-radius:6px;background:var(--blue);color:#fff;border:none;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap">&#129302; Ask</button>
 </div>
+<!-- Quick action buttons -->
 <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:10px">
-<button onclick="document.getElementById('aiQuestion').value='Should I buy today?';askAI()" style="padding:3px 10px;border-radius:4px;background:var(--bg2);border:1px solid var(--border);color:var(--text3);font-size:8px;cursor:pointer">Should I buy?</button>
-<button onclick="document.getElementById('aiQuestion').value='Best strategy?';askAI()" style="padding:3px 10px;border-radius:4px;background:var(--bg2);border:1px solid var(--border);color:var(--text3);font-size:8px;cursor:pointer">Best strategy?</button>
-<button onclick="document.getElementById('aiQuestion').value='Quick scalp setup';askAI()" style="padding:3px 10px;border-radius:4px;background:var(--bg2);border:1px solid var(--border);color:var(--text3);font-size:8px;cursor:pointer">Scalp setup</button>
-<button onclick="document.getElementById('aiQuestion').value='What is the risk?';askAI()" style="padding:3px 10px;border-radius:4px;background:var(--bg2);border:1px solid var(--border);color:var(--text3);font-size:8px;cursor:pointer">Risk?</button>
-<button onclick="document.getElementById('aiQuestion').value='IV and volatility analysis';askAI()" style="padding:3px 10px;border-radius:4px;background:var(--bg2);border:1px solid var(--border);color:var(--text3);font-size:8px;cursor:pointer">Volatility?</button>
-<button onclick="document.getElementById('aiQuestion').value='Why this signal?';askAI()" style="padding:3px 10px;border-radius:4px;background:var(--bg2);border:1px solid var(--border);color:var(--text3);font-size:8px;cursor:pointer">Why?</button>
+<button onclick="askAIQuick('Should I buy today?')" style="padding:4px 10px;border-radius:20px;background:var(--bg2);border:1px solid var(--border);color:var(--text3);font-size:8px;cursor:pointer;font-weight:600">Should I buy?</button>
+<button onclick="askAIQuick('Give me Call/CE buy trade with full details')" style="padding:4px 10px;border-radius:20px;background:rgba(16,185,129,.08);border:1px solid #10b98130;color:#10b981;font-size:8px;cursor:pointer;font-weight:700">&#128994; CALL/CE Buy</button>
+<button onclick="askAIQuick('Give me Put/PE buy trade with full details')" style="padding:4px 10px;border-radius:20px;background:rgba(239,68,68,.08);border:1px solid #ef444430;color:#ef4444;font-size:8px;cursor:pointer;font-weight:700">&#128308; PUT/PE Buy</button>
+<button onclick="askAIQuick('Best strategy?')" style="padding:4px 10px;border-radius:20px;background:var(--bg2);border:1px solid var(--border);color:var(--text3);font-size:8px;cursor:pointer;font-weight:600">Best strategy?</button>
+<button onclick="askAIQuick('Quick scalp setup')" style="padding:4px 10px;border-radius:20px;background:var(--bg2);border:1px solid var(--border);color:var(--text3);font-size:8px;cursor:pointer;font-weight:600">&#9889; Scalp</button>
+<button onclick="askAIQuick('What is the risk?')" style="padding:4px 10px;border-radius:20px;background:var(--bg2);border:1px solid var(--border);color:var(--text3);font-size:8px;cursor:pointer;font-weight:600">Risk?</button>
+<button onclick="askAIQuick('IV and volatility analysis')" style="padding:4px 10px;border-radius:20px;background:var(--bg2);border:1px solid var(--border);color:var(--text3);font-size:8px;cursor:pointer;font-weight:600">IV?</button>
+<button onclick="askAIQuick('Why this signal?')" style="padding:4px 10px;border-radius:20px;background:var(--bg2);border:1px solid var(--border);color:var(--text3);font-size:8px;cursor:pointer;font-weight:600">Why?</button>
 </div>
-<div id="aiChatArea" style="min-height:200px;max-height:500px;overflow-y:auto"></div>
+<div id="aiChatArea" style="min-height:200px;max-height:600px;overflow-y:auto"></div>
 </div></div>
 
 <!-- ═══ TAB: EDUCATION ═══ -->

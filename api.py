@@ -9983,13 +9983,124 @@ async def ai_assist(request: Request):
     sc = algo.get("scalp", {})
     sig = algo.get("signal", "HOLD / WAIT")
     direction = algo.get("direction", "NEUTRAL")
-    csym = "$" if algo.get("region") == "US" else "₹"
+    is_us = algo.get("region") == "US"
+    csym = "$" if is_us else "₹"
     price = algo.get("spot", 0)
+    inst = algo.get("instrument", {"gap": 50, "lot": 50})
+    nse = algo.get("options", {})
+    bs_data = algo.get("black_scholes", {})
     
     answer = ""
     
     # Pattern matching for common questions
-    if any(w in question for w in ["should i buy", "should i enter", "can i trade", "is it good"]):
+    # CALL/CE BUY — Full trade details
+    if any(w in question for w in ["call buy", "ce buy", "call trade", "ce trade", "bullish trade"]):
+        win = tc.get("estimatedWin", 50)
+        grade = tc.get("grade", "B")
+        # Build CE/CALL trade regardless of algo direction
+        ce_type = "CALL" if is_us else "CE"
+        atm = round(price / inst.get("gap", 50)) * inst.get("gap", 50)
+        ce_prem = 0
+        try:
+            from math import log, sqrt, exp, erf
+            _iv = (nse.get("atm_iv", 20) or 20) / 100
+            _T = max(bs_data.get("dte", 7), 1) / 365 if bs_data else 7/365
+            _r = 0.0525 if is_us else 0.065
+            d1 = (log(price/atm) + (_r + _iv**2/2)*_T) / (_iv*sqrt(_T)) if _iv > 0 and _T > 0 else 0
+            d2 = d1 - _iv*sqrt(_T) if _iv > 0 and _T > 0 else 0
+            nd1 = 0.5*(1+erf(d1/sqrt(2))); nd2 = 0.5*(1+erf(d2/sqrt(2)))
+            ce_prem = round(max(price*nd1 - atm*exp(-_r*_T)*nd2, 0), 1)
+        except: ce_prem = round(price * 0.015, 1)
+        
+        atr_val = algo.get("technicals", {}).get("atr14", price * 0.015)
+        ce_sl_spot = round(price - atr_val * 1.5, 2)
+        ce_t1_spot = round(price + atr_val * 1.0, 2)
+        ce_t2_spot = round(price + atr_val * 2.0, 2)
+        
+        oi_data = algo.get("options_intel", {})
+        answer = f"""📈 {ce_type} BUY TRADE — {symbol}
+
+🎯 TRADE SETUP:
+• Action: BUY {atm} {ce_type}
+• Entry Premium: ~{csym}{ce_prem}
+• Spot Price: {csym}{price:,.2f}
+
+📊 LEVELS (on underlying):
+• Entry Zone: {csym}{price:,.0f}
+• Stop Loss: {csym}{ce_sl_spot:,.0f} (if breaks below this, exit)
+• Target 1: {csym}{ce_t1_spot:,.0f} (book 50% here)
+• Target 2: {csym}{ce_t2_spot:,.0f} (book remaining)
+
+📋 TRADE RULES:
+• When T1 is hit → move SL to entry (free trade!)
+• Max risk: {csym}{ce_prem} per unit (you can never lose more)
+• Exit by 3:00 PM if no target hit
+
+📊 CONFIDENCE:
+• Win Rate: {win}% (Grade {grade})
+• Signal: {sig} | Direction: {direction}
+• IV Rank: {oi_data.get('iv_rank', 50)}%
+
+💡 IN SIMPLE WORDS:
+We're betting {symbol} will go UP. Buy {ce_type} at {csym}{ce_prem}. 
+If stock rises → your option becomes more valuable → profit!
+If stock falls → exit at SL → lose only the premium paid.
+Think of it as buying a lottery ticket where you know the odds."""
+    
+    # PUT/PE BUY — Full trade details
+    elif any(w in question for w in ["put buy", "pe buy", "put trade", "pe trade", "bearish trade"]):
+        win = tc.get("estimatedWin", 50)
+        grade = tc.get("grade", "B")
+        pe_type = "PUT" if is_us else "PE"
+        atm = round(price / inst.get("gap", 50)) * inst.get("gap", 50)
+        pe_prem = 0
+        try:
+            from math import log, sqrt, exp, erf
+            _iv = (nse.get("atm_iv", 20) or 20) / 100
+            _T = max(bs_data.get("dte", 7), 1) / 365 if bs_data else 7/365
+            _r = 0.0525 if is_us else 0.065
+            d1 = (log(price/atm) + (_r + _iv**2/2)*_T) / (_iv*sqrt(_T)) if _iv > 0 and _T > 0 else 0
+            d2 = d1 - _iv*sqrt(_T) if _iv > 0 and _T > 0 else 0
+            nd1 = 0.5*(1+erf(d1/sqrt(2))); nd2 = 0.5*(1+erf(d2/sqrt(2)))
+            pe_prem = round(max(atm*exp(-_r*_T)*(1-nd2) - price*(1-nd1), 0), 1)
+        except: pe_prem = round(price * 0.015, 1)
+        
+        atr_val = algo.get("technicals", {}).get("atr14", price * 0.015)
+        pe_sl_spot = round(price + atr_val * 1.5, 2)
+        pe_t1_spot = round(price - atr_val * 1.0, 2)
+        pe_t2_spot = round(price - atr_val * 2.0, 2)
+        
+        oi_data = algo.get("options_intel", {})
+        answer = f"""📉 {pe_type} BUY TRADE — {symbol}
+
+🎯 TRADE SETUP:
+• Action: BUY {atm} {pe_type}
+• Entry Premium: ~{csym}{pe_prem}
+• Spot Price: {csym}{price:,.2f}
+
+📊 LEVELS (on underlying):
+• Entry Zone: {csym}{price:,.0f}
+• Stop Loss: {csym}{pe_sl_spot:,.0f} (if breaks above this, exit)
+• Target 1: {csym}{pe_t1_spot:,.0f} (book 50% here)
+• Target 2: {csym}{pe_t2_spot:,.0f} (book remaining)
+
+📋 TRADE RULES:
+• When T1 is hit → move SL to entry (free trade!)
+• Max risk: {csym}{pe_prem} per unit
+• Exit by 3:00 PM if no target hit
+
+📊 CONFIDENCE:
+• Win Rate: {win}% (Grade {grade})
+• Signal: {sig} | Direction: {direction}
+• IV Rank: {oi_data.get('iv_rank', 50)}%
+
+💡 IN SIMPLE WORDS:
+We're betting {symbol} will go DOWN. Buy {pe_type} at {csym}{pe_prem}.
+If stock falls → your option becomes more valuable → profit!
+If stock rises → exit at SL → lose only the premium paid.
+Think of it as buying insurance — small cost, big payout if things drop."""
+    
+    elif any(w in question for w in ["should i buy", "should i enter", "can i trade", "is it good"]):
         win = tc.get("estimatedWin", 50)
         grade = tc.get("grade", "B")
         if win >= 65:
