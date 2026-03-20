@@ -1793,7 +1793,7 @@ if(sub==='technical')setTimeout(()=>window.dispatchEvent(new Event('resize')),20
 var TAB_GROUPS = {
   overview: {tabs: ['quick'], labels: ['Summary'], default: 'quick'},
   research: {tabs: ['analysis','dcf','equity','compare'], labels: ['AI Analysis','DCF Valuation','Research','Compare'], default: 'analysis'},
-  trading:  {tabs: ['trades','scanner','valreport','smarttrades','journal','aiassist'], labels: ['Algo Trades','Scanner','Valuation','Smart Trades','Trade Journal','AI Assistant'], default: 'trades'},
+  trading:  {tabs: ['trades','scanner','valreport','backtest','smarttrades','journal','aiassist'], labels: ['Algo Trades','Scanner','Valuation','Backtest','Smart Trades','Journal','AI Assistant'], default: 'trades'},
   markets:  {tabs: ['indices','daily'], labels: ['Top Performers','Market Daily'], default: 'indices'},
   tools:    {tabs: ['finance','education','compare'], labels: ['Finance Tools','Education','Compare Stocks'], default: 'finance'},
 };
@@ -1814,7 +1814,7 @@ function switchTabGroup(group) {
   var labels = g.labels.slice();
   if (!window._isPremiumUser) {
     // Remove smarttrades, journal, aiassist from trading group for non-premium users
-    ['smarttrades','journal','aiassist','valreport'].forEach(function(t){
+    ['smarttrades','journal','aiassist','valreport','backtest'].forEach(function(t){
       var idx = tabs.indexOf(t);
       if (idx >= 0) { tabs.splice(idx, 1); labels.splice(idx, 1); }
     });
@@ -1848,7 +1848,7 @@ if(typeof gtag==='function')gtag('event','switch_tab',{tab_name:tab});
 if(tab==='quick')setTimeout(()=>window.dispatchEvent(new Event('resize')),200);
 
 // btnMap: which group button to highlight for each tab
-const btnMap={quick:'tabBtnOverview',analysis:'tabBtnResearch',dcf:'tabBtnResearch',equity:'tabBtnResearch',compare:'tabBtnTools',indices:'tabBtnMarkets',finance:'tabBtnTools',daily:'tabBtnMarkets',trades:'tabBtnTrading',scanner:'tabBtnTrading',valreport:'tabBtnTrading',smarttrades:'tabBtnTrading',journal:'tabBtnTrading',aiassist:'tabBtnTrading',education:'tabBtnTools',gems:'tabBtnOverview',picks:'tabBtnOverview',funds:'tabBtnTools'};
+const btnMap={quick:'tabBtnOverview',analysis:'tabBtnResearch',dcf:'tabBtnResearch',equity:'tabBtnResearch',compare:'tabBtnTools',indices:'tabBtnMarkets',finance:'tabBtnTools',daily:'tabBtnMarkets',trades:'tabBtnTrading',scanner:'tabBtnTrading',valreport:'tabBtnTrading',backtest:'tabBtnTrading',smarttrades:'tabBtnTrading',journal:'tabBtnTrading',aiassist:'tabBtnTrading',education:'tabBtnTools',gems:'tabBtnOverview',picks:'tabBtnOverview',funds:'tabBtnTools'};
 
 // 1) Hide ALL tab content, sub-navs, and data-tab elements
 document.querySelectorAll('.sc[data-tab]').forEach(s=>{s.style.display='none'});
@@ -5083,9 +5083,19 @@ h+='<div style="font-size:8px;color:var(--text3)">'+(d.instrument&&d.instrument.
 
 // Middle: Signal + Direction + Win% gauge
 h+='<div style="flex:1;padding:10px 14px;display:flex;align-items:center;gap:14px;border-right:1px solid var(--border)">';
-// Signal badge
+// Signal badge + Trend + VIX
+var _trd2=d.trend||{};var _vix2=Number((d.options||{}).vix||0);
 h+='<div style="text-align:center"><span style="display:block;font-size:9px;font-weight:800;padding:4px 10px;border-radius:6px;background:'+sC+'12;color:'+sC+';white-space:nowrap">'+sig+'</span>';
 h+='<span style="font-size:8px;color:'+dC+';font-weight:700;display:block;margin-top:2px">'+dir+'</span></div>';
+// Mini trend bar
+if(_trd2.label){var _tP2=_trd2.pct||0;var _tC3=_tP2>=25?'#10b981':_tP2>=-25?'#f59e0b':'#ef4444';
+h+='<div style="min-width:50px"><div style="font-size:7px;color:'+_tC3+';font-weight:700;white-space:nowrap">'+_trd2.label.replace('STRONG ','')+'</div>';
+h+='<div style="height:4px;width:50px;border-radius:2px;background:linear-gradient(90deg,#ef4444,#f59e0b 40%,#10b981);position:relative">';
+var _np3=Math.max(3,Math.min(97,50+(_tP2/2)));
+h+='<div style="position:absolute;top:-2px;left:'+_np3+'%;width:3px;height:8px;background:#fff;border:1px solid '+_tC3+';border-radius:1px;transform:translateX(-50%)"></div></div></div>';}
+// Mini VIX
+if(_vix2>0){var _vC2=_vix2<16?'#10b981':_vix2<25?'#f59e0b':'#ef4444';
+h+='<div style="text-align:center;min-width:30px"><div style="font-size:6px;color:var(--text3);font-weight:700">VIX</div><div style="font-size:10px;font-weight:800;color:'+_vC2+';font-family:var(--mono)">'+_vix2.toFixed(0)+'</div></div>';}
 // Win% mini gauge
 h+='<div style="flex:1;max-width:120px">';
 h+='<div style="display:flex;justify-content:space-between;font-size:8px;margin-bottom:2px"><span style="color:var(--text3)">Win Rate</span><span style="font-weight:800;color:'+(win>=65?'#10b981':win>=50?'#f59e0b':'#ef4444')+'">'+win+'%</span></div>';
@@ -5672,9 +5682,39 @@ h+='<div style="font-size:9px;font-weight:700;color:#f59e0b">WAIT</div>';
 }
 h+='</div></div>';
 
+// Trend + VIX strip inside hero card
+var _trd=d.trend||{};var _vix=Number((d.options||{}).vix||0);
+h+='<div style="padding:8px 18px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;border-top:1px solid '+dC+'12">';
+// Trend gauge
+if(_trd.label){
+var _tPct=_trd.pct||0;var _tC=_tPct>=60?'#0a7c42':_tPct>=25?'#10b981':_tPct>=-25?'#f59e0b':'#ef4444';
+h+='<div style="display:flex;align-items:center;gap:6px;flex:1;min-width:180px">';
+h+='<span style="font-size:8px;font-weight:800;color:'+_tC+';white-space:nowrap">TREND: '+_trd.label+'</span>';
+h+='<div style="flex:1;height:6px;border-radius:3px;background:linear-gradient(90deg,#ef4444,#f59e0b 40%,#10b981 70%,#0a7c42);position:relative;max-width:120px">';
+var _np=Math.max(3,Math.min(97,50+(_tPct/2)));
+h+='<div style="position:absolute;top:-3px;left:'+_np+'%;width:4px;height:12px;background:#fff;border:2px solid '+_tC+';border-radius:2px;transform:translateX(-50%)"></div></div>';
+(_trd.details||[]).slice(0,3).forEach(function(td){var _ic=td.dir==='BULL'?'#0a7c42':td.dir==='BEAR'?'#ef4444':'#94a3b8';h+='<span style="font-size:6px;font-weight:700;padding:1px 4px;border-radius:2px;background:'+_ic+'12;color:'+_ic+'">'+td.ind+'</span>';});
+h+='</div>';
+}
+// VIX gauge
+if(_vix>0){
+var _vixC=_vix<14?'#10b981':_vix<20?'#3b82f6':_vix<25?'#f59e0b':'#ef4444';
+var _vixLabel=_vix<14?'CALM':_vix<20?'NORMAL':_vix<25?'ANXIOUS':'FEARFUL';
+var _vixPct=Math.min(100,(_vix/40)*100);
+h+='<div style="display:flex;align-items:center;gap:6px;min-width:140px">';
+h+='<div style="text-align:center"><div style="font-size:7px;color:var(--text3);font-weight:700">VIX</div>';
+h+='<div style="font-size:16px;font-weight:900;font-family:var(--mono);color:'+_vixC+'">'+_vix.toFixed(1)+'</div></div>';
+h+='<div style="flex:1">';
+h+='<div style="height:6px;border-radius:3px;background:linear-gradient(90deg,#10b981,#3b82f6 35%,#f59e0b 60%,#ef4444);position:relative;max-width:80px">';
+h+='<div style="position:absolute;top:-3px;left:'+_vixPct+'%;width:4px;height:12px;background:#fff;border:2px solid '+_vixC+';border-radius:2px;transform:translateX(-50%)"></div></div>';
+h+='<div style="font-size:7px;font-weight:700;color:'+_vixC+';margin-top:1px">'+_vixLabel+'</div>';
+h+='</div></div>';
+}
+h+='</div>';
+
 // Layman one-liner
 var _layV=_win>=65?'Strong setup — like a clear sunny day for driving. Multiple signals agree.':_win>=50?'Decent setup — partly cloudy. Smaller position recommended.':'Weak setup — storm warning. Consider waiting or try the scalp trade below.';
-h+='<div style="padding:8px 18px 12px;font-size:10px;color:var(--text2);line-height:1.5"><span style="color:'+_lightC+';font-weight:700">'+(_win>=65?'&#9989;':_win>=50?'&#9888;&#65039;':'&#10060;')+'</span> '+_layV;
+h+='<div style="padding:6px 18px 12px;font-size:10px;color:var(--text2);line-height:1.5"><span style="color:'+_lightC+';font-weight:700">'+(_win>=65?'&#9989;':_win>=50?'&#9888;&#65039;':'&#10060;')+'</span> '+_layV;
 if(_canScalp&&_win<60){h+=' <span style="color:var(--cyan);font-weight:700">&#9889; Scalp available ('+_sc2.confidence+'% conf)</span>';}
 h+='</div></div>';
 
@@ -6134,6 +6174,21 @@ h+='<strong>Key Rule:</strong> Never risk more than 2% of your total capital on 
 h+='</div></div>';
 
 el.innerHTML=h;
+// Floating sticky trade bar — shows when scrolling past the hero card
+if(tr&&!isWait){
+var _stBar=document.getElementById('stickyTradeBar');
+if(_stBar)_stBar.remove();
+var _bar=document.createElement('div');
+_bar.id='stickyTradeBar';
+_bar.style.cssText='position:fixed;bottom:0;left:0;right:0;z-index:198;padding:8px 16px;background:'+dC+';color:#fff;display:none;align-items:center;justify-content:space-between;gap:8px;box-shadow:0 -4px 20px rgba(0,0,0,.25);font-family:Sora,sans-serif;flex-wrap:wrap';
+_bar.innerHTML='<div style="display:flex;align-items:center;gap:8px"><span style="font-size:14px">'+(dir==='BULLISH'?'&#9650;':'&#9660;')+'</span><span style="font-size:12px;font-weight:800">'+d.symbol+' '+tr.action+'</span></div><div style="display:flex;gap:10px;font-size:10px;font-family:var(--mono);font-weight:700"><span style="color:rgba(255,255,255,.7)">Entry:'+S+(tr.premEntry||0).toFixed(0)+'</span><span style="color:#ff6b6b">SL:'+S+(tr.premSL||0).toFixed(0)+'</span><span style="color:#4ade80">Tgt:'+S+(tr.premT2||0).toFixed(0)+'</span><span style="color:rgba(255,255,255,.5)">R:R '+(tr.rrRatio||'')+'</span></div><button onclick="this.parentElement.style.display=\'none\'" style="background:rgba(255,255,255,.2);border:none;color:#fff;padding:4px 10px;border-radius:4px;font-size:9px;cursor:pointer;font-weight:700">&#10005;</button>';
+document.body.appendChild(_bar);
+var _algoEl=document.getElementById('algoResult');
+function _chkBar(){if(!_algoEl)return;_bar.style.display=(_algoEl.getBoundingClientRect().top<-250)?'flex':'none'}
+if(window._stickyCheck)window.removeEventListener('scroll',window._stickyCheck);
+window._stickyCheck=_chkBar;
+window.addEventListener('scroll',_chkBar,{passive:true});
+}
 }catch(e){
 console.error('_renderAlgoCard crash:',e);
 el.innerHTML='<div style="padding:20px;text-align:center"><div style="font-size:24px;margin-bottom:8px">&#9888;</div><div style="color:var(--red);font-size:12px;font-weight:600">Render error: '+e.message+'</div><div style="font-size:10px;color:var(--text3);margin-top:4px">Check console for details. Data loaded but display failed.</div></div>';
@@ -6237,18 +6292,15 @@ el.style.display='block';
 }
 
 function runBacktest(){
-var sym=document.getElementById('btSym').value;
-var years=document.getElementById('btYears').value;
-var btn=document.getElementById('btRunBtn');
-var res=document.getElementById('btResult');
-btn.disabled=true;btn.textContent='⏳ Computing '+sym+' ('+years+'Y)...';
-res.innerHTML='<div style="text-align:center;padding:30px;color:var(--text3);font-size:11px">&#9203; Running backtest... Simulating '+years+' years of trades with 15-factor confluence, ATR stops, 3-target exits. This may take 10-20 seconds.</div>';
+var sym=(document.getElementById('btSymbol')||document.getElementById('btSym')||{}).value||'NIFTY';
+var years=(document.getElementById('btYears')||{}).value||'2';
+var res=document.getElementById('backtestSection');
+if(!res)return;
+res.innerHTML='<div style="text-align:center;padding:30px;color:var(--text3);font-size:11px"><div style="display:inline-block;width:14px;height:14px;border:2px solid #e67e22;border-top-color:transparent;border-radius:50%;animation:spin .5s linear infinite;vertical-align:middle;margin-right:6px"></div>Backtesting '+sym+' over '+years+' years... This may take 10-20 seconds.</div>';
 fetch('/api/algo-backtest?symbol='+encodeURIComponent(sym)+'&years='+years).then(function(r){return r.json();}).then(function(d){
-btn.disabled=false;btn.textContent='⚡ Run Backtest';
-if(!d.success){res.innerHTML='<div style="color:var(--red);padding:16px;font-size:12px">&#9888; '+( d.error||d.message||'Failed')+'</div>';return;}
+if(!d.success){res.innerHTML='<div style="color:var(--red);padding:16px;font-size:12px">&#9888; '+(d.error||d.message||'Failed')+'</div>';return;}
 renderBacktestResults(res,d);
 }).catch(function(e){
-btn.disabled=false;btn.textContent='⚡ Run Backtest';
 res.innerHTML='<div style="color:var(--red);padding:16px;font-size:12px">&#9888; Error: '+e.message+'</div>';
 });
 }
