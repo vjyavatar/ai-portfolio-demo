@@ -5275,6 +5275,152 @@ async def _algo_signal_impl(symbol: str = "NIFTY", region: str = ""):
             "rrValue": 0, "factorScore": round(pct, 1) if 'pct' in dir() else 50,
         }
     
+    # ═══ SCALP / QUICK TRADE — 5min & 15min Price Action ═══
+    try:
+        scalp = {}
+        # Use intraday data already fetched (15m candles from ORB section)
+        # Also fetch 5m candles for scalp
+        intra_5m = tk.history(period="1d", interval="5m")
+        intra_15m = tk.history(period="2d", interval="15m")
+        
+        if intra_5m is not None and len(intra_5m) >= 5 and intra_15m is not None and len(intra_15m) >= 5:
+            c5 = intra_5m["Close"].values.astype(float)
+            h5 = intra_5m["High"].values.astype(float)
+            l5 = intra_5m["Low"].values.astype(float)
+            v5 = intra_5m["Volume"].values.astype(float)
+            c15 = intra_15m["Close"].values.astype(float)
+            h15 = intra_15m["High"].values.astype(float)
+            l15 = intra_15m["Low"].values.astype(float)
+            
+            # 5min EMA 9 & 21
+            import pandas as pd
+            ema9_5m = float(pd.Series(c5).ewm(span=9).mean().iloc[-1])
+            ema21_5m = float(pd.Series(c5).ewm(span=21).mean().iloc[-1])
+            
+            # 15min EMA 9 & 21
+            ema9_15m = float(pd.Series(c15).ewm(span=9).mean().iloc[-1])
+            ema21_15m = float(pd.Series(c15).ewm(span=21).mean().iloc[-1])
+            
+            # VWAP (from 5m data)
+            vwap = 0
+            if len(v5) > 0:
+                tp = (h5 + l5 + c5) / 3
+                cum_tpv = (tp * v5).cumsum()
+                cum_vol = v5.cumsum()
+                vwap = round(float(cum_tpv[-1] / cum_vol[-1]), 2) if cum_vol[-1] > 0 else 0
+            
+            # Recent 5min momentum (last 3 candles)
+            last3_dir = "UP" if c5[-1] > c5[-3] else "DOWN"
+            last3_strength = abs(round(((c5[-1] - c5[-3]) / c5[-3]) * 100, 3))
+            
+            # 15min trend
+            trend_15m = "BULLISH" if ema9_15m > ema21_15m else "BEARISH"
+            trend_5m = "BULLISH" if ema9_5m > ema21_5m else "BEARISH"
+            
+            # Price vs VWAP
+            above_vwap = price > vwap if vwap > 0 else True
+            
+            # Scalp direction — alignment of 5m + 15m + VWAP
+            scalp_dir = "NEUTRAL"
+            scalp_confidence = 0
+            scalp_reasons = []
+            
+            if trend_5m == "BULLISH" and trend_15m == "BULLISH":
+                scalp_dir = "BULLISH"
+                scalp_confidence += 30
+                scalp_reasons.append("5m & 15m EMA aligned bullish (+30)")
+            elif trend_5m == "BEARISH" and trend_15m == "BEARISH":
+                scalp_dir = "BEARISH"
+                scalp_confidence += 30
+                scalp_reasons.append("5m & 15m EMA aligned bearish (+30)")
+            else:
+                scalp_reasons.append("Mixed: 5m=" + trend_5m + ", 15m=" + trend_15m + " (conflicting)")
+            
+            if above_vwap and scalp_dir == "BULLISH":
+                scalp_confidence += 20; scalp_reasons.append(f"Price above VWAP {csym}{vwap:,.1f} (+20)")
+            elif not above_vwap and scalp_dir == "BEARISH":
+                scalp_confidence += 20; scalp_reasons.append(f"Price below VWAP {csym}{vwap:,.1f} (+20)")
+            elif above_vwap and scalp_dir == "BEARISH":
+                scalp_confidence -= 10; scalp_reasons.append(f"Selling above VWAP — risky (-10)")
+            
+            if last3_dir == "UP" and scalp_dir == "BULLISH":
+                scalp_confidence += 15; scalp_reasons.append(f"Last 3 candles moving up (+15)")
+            elif last3_dir == "DOWN" and scalp_dir == "BEARISH":
+                scalp_confidence += 15; scalp_reasons.append(f"Last 3 candles moving down (+15)")
+            
+            # Volume surge in last candle
+            avg_vol_5m = float(v5[-10:].mean()) if len(v5) >= 10 else float(v5.mean())
+            last_vol = float(v5[-1])
+            vol_surge = round(last_vol / avg_vol_5m, 1) if avg_vol_5m > 0 else 1
+            if vol_surge > 1.5:
+                scalp_confidence += 10; scalp_reasons.append(f"Volume surge {vol_surge}x on last candle (+10)")
+            
+            scalp_confidence = max(0, min(85, scalp_confidence))
+            
+            # Scalp levels
+            atr_5m = round(float((h5[-10:] - l5[-10:]).mean()), 2) if len(h5) >= 10 else round(float((h5 - l5).mean()), 2)
+            
+            if scalp_dir == "BULLISH":
+                s_entry = round(price, 2)
+                s_sl = round(price - atr_5m * 2, 2)
+                s_t1 = round(price + atr_5m * 1.5, 2)
+                s_t2 = round(price + atr_5m * 3, 2)
+                s_opt = opt_type  # same as main trade direction (CE/CALL)
+                s_opt_raw = "CE"
+            elif scalp_dir == "BEARISH":
+                s_entry = round(price, 2)
+                s_sl = round(price + atr_5m * 2, 2)
+                s_t1 = round(price - atr_5m * 1.5, 2)
+                s_t2 = round(price - atr_5m * 3, 2)
+                s_opt = ("PUT" if is_us else "PE")
+                s_opt_raw = "PE"
+            else:
+                s_entry = round(price, 2)
+                s_sl = round(price - atr_5m * 1.5, 2)
+                s_t1 = round(price + atr_5m * 1, 2)
+                s_t2 = round(price + atr_5m * 2, 2)
+                s_opt = opt_type
+                s_opt_raw = opt_type_raw
+            
+            # Compute scalp premiums
+            s_prem_entry = _bs_premium_at(s_entry, selected_strike, bs_T, bs_r, bs_iv, s_opt_raw) if bs_T > 0 and bs_iv > 0 else 0
+            s_prem_sl = _bs_premium_at(s_sl, selected_strike, bs_T, bs_r, bs_iv, s_opt_raw) if s_prem_entry > 0 else 0
+            s_prem_t1 = _bs_premium_at(s_t1, selected_strike, bs_T, bs_r, bs_iv, s_opt_raw) if s_prem_entry > 0 else 0
+            s_prem_t2 = _bs_premium_at(s_t2, selected_strike, bs_T, bs_r, bs_iv, s_opt_raw) if s_prem_entry > 0 else 0
+            
+            scalp = {
+                "direction": scalp_dir,
+                "confidence": scalp_confidence,
+                "reasons": scalp_reasons,
+                "trend_5m": trend_5m,
+                "trend_15m": trend_15m,
+                "ema9_5m": round(ema9_5m, 2),
+                "ema21_5m": round(ema21_5m, 2),
+                "ema9_15m": round(ema9_15m, 2),
+                "ema21_15m": round(ema21_15m, 2),
+                "vwap": vwap,
+                "above_vwap": above_vwap,
+                "vol_surge": vol_surge,
+                "atr_5m": atr_5m,
+                "entry": s_entry,
+                "sl": s_sl,
+                "t1": s_t1,
+                "t2": s_t2,
+                "optType": s_opt,
+                "strike": selected_strike,
+                "premEntry": round(s_prem_entry, 1),
+                "premSL": round(s_prem_sl, 1),
+                "premT1": round(s_prem_t1, 1),
+                "premT2": round(s_prem_t2, 1),
+                "action": f"SCALP {'BUY' if scalp_dir!='NEUTRAL' else 'WAIT'} {selected_strike} {s_opt}",
+            }
+        
+        if scalp:
+            result["scalp"] = scalp
+            print(f"⚡ Scalp: {symbol} {scalp['direction']} conf={scalp['confidence']}% 5m={scalp['trend_5m']} 15m={scalp['trend_15m']}")
+    except Exception as e:
+        print(f"⚠️ Scalp analysis failed: {e}")
+    
     # ═══ GAMMA BLAST SETUP — Expiry day straddle/strangle ═══
     blast_setup = None
     if is_expiry and bs_data.get("greeks") and nse.get("success"):

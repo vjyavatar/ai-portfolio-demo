@@ -5204,6 +5204,48 @@ h+='</div>';
 h+='</div>';
 }
 
+// ═══ SCALP / QUICK TRADE — 5min + 15min Price Action ═══
+var sc=d.scalp||null;
+if(sc&&sc.direction!=='NEUTRAL'){
+var scC=sc.direction==='BULLISH'?'#0a7c42':'#ef4444';
+var scIcon=sc.direction==='BULLISH'?'&#128994;':'&#128308;';
+h+='<div style="margin-bottom:14px;border-radius:10px;border:2px solid '+scC+'40;overflow:hidden;background:'+scC+'04">';
+h+='<div style="padding:10px 14px;background:'+scC+'10;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">';
+h+='<div style="display:flex;align-items:center;gap:8px"><span style="font-size:16px">&#9889;</span><div><div style="font-size:12px;font-weight:800;color:var(--text)">QUICK TRADE / SCALP</div><div style="font-size:9px;color:var(--text3)">Based on 5min + 15min price action · VWAP · Volume</div></div></div>';
+h+='<div style="display:flex;align-items:center;gap:8px"><div style="font-size:9px;font-weight:700;padding:3px 10px;border-radius:4px;background:'+scC+';color:#fff">'+sc.direction+'</div>';
+h+='<div style="font-size:20px;font-weight:900;font-family:var(--mono);color:'+scC+'">'+sc.confidence+'%</div></div>';
+h+='</div>';
+// Trade details
+h+='<div style="padding:12px 14px">';
+h+='<div style="font-size:12px;font-weight:800;color:'+scC+';margin-bottom:8px">'+scIcon+' '+sc.action+'</div>';
+// Entry, SL, Targets grid
+h+='<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:10px">';
+var scS=isUS?'$':'&#8377;';
+h+='<div style="text-align:center;padding:6px;border-radius:6px;background:var(--bg2)"><div style="font-size:7px;color:var(--text3);font-weight:700">ENTRY</div><div style="font-size:12px;font-weight:800;font-family:var(--mono);color:var(--text)">'+scS+sc.entry.toLocaleString()+'</div>'+(sc.premEntry?'<div style="font-size:8px;color:var(--cyan)">Prem: '+scS+sc.premEntry+'</div>':'')+'</div>';
+h+='<div style="text-align:center;padding:6px;border-radius:6px;background:rgba(239,68,68,.06)"><div style="font-size:7px;color:#ef4444;font-weight:700">STOP LOSS</div><div style="font-size:12px;font-weight:800;font-family:var(--mono);color:#ef4444">'+scS+sc.sl.toLocaleString()+'</div>'+(sc.premSL?'<div style="font-size:8px;color:var(--text3)">Prem: '+scS+sc.premSL+'</div>':'')+'</div>';
+h+='<div style="text-align:center;padding:6px;border-radius:6px;background:rgba(16,185,129,.06)"><div style="font-size:7px;color:#10b981;font-weight:700">TARGET 1</div><div style="font-size:12px;font-weight:800;font-family:var(--mono);color:#10b981">'+scS+sc.t1.toLocaleString()+'</div>'+(sc.premT1?'<div style="font-size:8px;color:var(--text3)">Prem: '+scS+sc.premT1+'</div>':'')+'</div>';
+h+='<div style="text-align:center;padding:6px;border-radius:6px;background:rgba(10,124,66,.06)"><div style="font-size:7px;color:#0a7c42;font-weight:700">TARGET 2</div><div style="font-size:12px;font-weight:800;font-family:var(--mono);color:#0a7c42">'+scS+sc.t2.toLocaleString()+'</div>'+(sc.premT2?'<div style="font-size:8px;color:var(--text3)">Prem: '+scS+sc.premT2+'</div>':'')+'</div>';
+h+='</div>';
+// Price action context
+h+='<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">';
+h+='<div style="font-size:9px;padding:3px 8px;border-radius:4px;background:var(--bg2);color:var(--text)">5m: <strong style="color:'+(sc.trend_5m==='BULLISH'?'#10b981':'#ef4444')+'">'+sc.trend_5m+'</strong></div>';
+h+='<div style="font-size:9px;padding:3px 8px;border-radius:4px;background:var(--bg2);color:var(--text)">15m: <strong style="color:'+(sc.trend_15m==='BULLISH'?'#10b981':'#ef4444')+'">'+sc.trend_15m+'</strong></div>';
+h+='<div style="font-size:9px;padding:3px 8px;border-radius:4px;background:var(--bg2);color:var(--text)">VWAP: '+scS+sc.vwap+' <strong style="color:'+(sc.above_vwap?'#10b981':'#ef4444')+'">'+(sc.above_vwap?'ABOVE':'BELOW')+'</strong></div>';
+if(sc.vol_surge>1.3)h+='<div style="font-size:9px;padding:3px 8px;border-radius:4px;background:rgba(6,182,212,.1);color:var(--cyan);font-weight:700">Vol '+sc.vol_surge+'x &#128640;</div>';
+h+='</div>';
+// Reasons
+if(sc.reasons&&sc.reasons.length>0){
+h+='<div style="font-size:8px;color:var(--text3);line-height:1.5">';
+sc.reasons.forEach(function(r){
+var rc=r.indexOf('+')>=0?'#10b981':r.indexOf('-')>=0?'#ef4444':'var(--text3)';
+h+='<div style="color:'+rc+'">'+r+'</div>';
+});
+h+='</div>';
+}
+h+='<div style="margin-top:6px;padding:5px 8px;border-radius:4px;background:var(--bg2);font-size:8px;color:var(--text3);line-height:1.4">&#128161; <strong>Scalp trade</strong> = quick in-and-out (5-30 min hold). Enter when 5m candle closes in your direction with volume. Book at T1, trail to T2. Hard stop at SL — no hoping.</div>';
+h+='</div></div>';
+}
+
 // ═══ OPTIONS INTELLIGENCE — IV Rank, Expected Move, Max Pain ═══
 var oi=d.options_intel||null;
 if(oi){
@@ -5216,23 +5258,26 @@ var ivR=oi.iv_rank||50;
 var ivC=ivR>=70?'#ef4444':ivR<=30?'#10b981':'var(--amber)';
 var ivLabel=ivR>=70?'HIGH':ivR<=30?'LOW':'NORMAL';
 h+='<div style="border:1px solid var(--border);border-radius:8px;padding:10px">';
-h+='<div style="font-size:9px;font-weight:700;color:var(--text3);letter-spacing:1px;margin-bottom:6px">IV RANK</div>';
+h+='<div style="font-size:9px;font-weight:700;color:var(--text3);letter-spacing:1px;margin-bottom:6px">IV RANK <span style="font-weight:400;letter-spacing:0;color:var(--text3)">(Are options cheap or expensive right now?)</span></div>';
 h+='<div style="display:flex;align-items:baseline;gap:6px"><span style="font-size:28px;font-weight:900;color:'+ivC+';font-family:var(--mono)">'+ivR+'%</span><span style="font-size:9px;font-weight:700;color:'+ivC+';background:'+ivC+'15;padding:2px 6px;border-radius:3px">'+ivLabel+'</span></div>';
 h+='<div style="height:6px;border-radius:3px;background:var(--bg2);margin:6px 0;overflow:hidden"><div style="height:100%;width:'+ivR+'%;border-radius:3px;background:linear-gradient(90deg,#10b981,#f59e0b,#ef4444)"></div></div>';
 h+='<div style="font-size:8px;color:var(--text3)">Current IV: '+oi.iv_current+'% · 1Y Range: '+oi.iv_low_1y+'%–'+oi.iv_high_1y+'%</div>';
 h+='<div style="font-size:8px;color:'+ivC+';margin-top:3px;line-height:1.3">'+oi.iv_signal+'</div>';
+var ivExplain=oi.iv_rank>=70?'Think of it like buying a flight ticket during peak holiday — premiums are inflated. Better to SELL options now (collect premium) than buy.':oi.iv_rank<=30?'Like getting a discount flight — option premiums are cheap. Good time to BUY options. Your cost is low, potential upside is high.':'Premiums are fair-priced. Neither cheap nor expensive. Go with your directional view.';
+h+='<div style="font-size:8px;color:var(--text3);margin-top:4px;padding:4px 6px;border-radius:4px;background:var(--bg2);line-height:1.4">💡 '+ivExplain+'</div>';
 h+='</div>';
 
 // Expected Move
 h+='<div style="border:1px solid var(--border);border-radius:8px;padding:10px">';
-h+='<div style="font-size:9px;font-weight:700;color:var(--text3);letter-spacing:1px;margin-bottom:6px">EXPECTED MOVE <span style="color:var(--text3);font-weight:400">('+oi.dte+' DTE)</span></div>';
+h+='<div style="font-size:9px;font-weight:700;color:var(--text3);letter-spacing:1px;margin-bottom:6px">EXPECTED MOVE <span style="font-weight:400;letter-spacing:0">(How far can it go by expiry?)</span></div>';
 h+='<div style="display:flex;align-items:baseline;gap:4px"><span style="font-size:28px;font-weight:900;color:var(--text);font-family:var(--mono)">&plusmn;'+S+oi.expected_move_pts+'</span><span style="font-size:11px;color:var(--text3)">('+oi.expected_move_pct+'%)</span></div>';
 h+='<div style="margin:8px 0;padding:6px 8px;border-radius:6px;background:var(--bg2);display:flex;justify-content:space-between;align-items:center">';
 h+='<div style="text-align:center"><div style="font-size:7px;color:#ef4444;font-weight:700">LOW</div><div style="font-size:12px;font-weight:800;font-family:var(--mono);color:#ef4444">'+S+oi.em_lower+'</div></div>';
 h+='<div style="flex:1;margin:0 8px;height:4px;background:linear-gradient(90deg,#ef4444,var(--text3),#10b981);border-radius:2px;position:relative"><div style="position:absolute;top:-5px;left:50%;transform:translateX(-50%);width:3px;height:14px;background:var(--text);border-radius:1px"></div></div>';
 h+='<div style="text-align:center"><div style="font-size:7px;color:#10b981;font-weight:700">HIGH</div><div style="font-size:12px;font-weight:800;font-family:var(--mono);color:#10b981">'+S+oi.em_upper+'</div></div>';
 h+='</div>';
-h+='<div style="font-size:8px;color:var(--text3)">Market expects '+d.symbol+' to stay between '+S+oi.em_lower+' – '+S+oi.em_upper+' by expiry.</div>';
+h+='<div style="font-size:8px;color:var(--text3)">'+oi.dte+' days to expiry. Market expects '+d.symbol+' to stay between '+S+oi.em_lower+' – '+S+oi.em_upper+'.</div>';
+h+='<div style="font-size:8px;color:var(--text3);margin-top:4px;padding:4px 6px;border-radius:4px;background:var(--bg2);line-height:1.4">💡 If your target is INSIDE this range, high probability. If OUTSIDE, you need a strong trend. Think of it as the "speed limit" the market expects.</div>';
 h+='</div>';
 
 h+='</div>';
@@ -5242,7 +5287,7 @@ if(oi.max_pain>0||oi.oi_distribution&&oi.oi_distribution.length>0){
 h+='<div style="padding:0 14px 14px">';
 h+='<div style="border:1px solid var(--border);border-radius:8px;padding:10px">';
 h+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">';
-h+='<div style="font-size:9px;font-weight:700;color:var(--text3);letter-spacing:1px">MAX PAIN &amp; OI DISTRIBUTION</div>';
+h+='<div style="font-size:9px;font-weight:700;color:var(--text3);letter-spacing:1px">MAX PAIN &amp; OI WALLS <span style="font-weight:400;letter-spacing:0">(Where big players are positioned)</span></div>';
 if(oi.max_pain>0)h+='<div style="font-size:11px;font-weight:800;color:var(--amber)">Max Pain: '+S+oi.max_pain.toLocaleString()+'</div>';
 h+='</div>';
 // OI Bar chart
@@ -5270,6 +5315,7 @@ h+='</div>';
 });
 h+='</div>';
 h+='<div style="display:flex;justify-content:center;gap:12px;margin-top:4px"><span style="font-size:8px;color:#ef4444">&#9632; PUT OI</span><span style="font-size:8px;color:#10b981">&#9632; CALL OI</span></div>';
+h+='<div style="font-size:8px;color:var(--text3);margin-top:6px;padding:4px 6px;border-radius:4px;background:var(--bg2);line-height:1.4">💡 <strong>Max Pain</strong> = price where most option buyers lose money. Market tends to "gravitate" here on expiry day. <strong>Heavy CALL OI</strong> at a strike = ceiling/resistance. <strong>Heavy PUT OI</strong> = floor/support. Trade between the walls.</div>';
 }}
 h+='</div></div>';
 }
