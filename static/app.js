@@ -5263,6 +5263,7 @@ navigator.clipboard.writeText(text).then(function(){alert('Order copied to clipb
 }
 
 function _renderAlgoCard(el,d){
+try{
 var isUS=(d.region||d.instrument?.region||'IN')==='US';
 var S=isUS?'$':'&#8377;';var p=d.spot||0;var loc=isUS?'en-US':'en-IN';
 var sup=d.supports,opp=d.opposes,neu=d.neutrals,tot=d.totalFactors,pct=d.pct;
@@ -5423,8 +5424,8 @@ h+='<div style="display:flex;flex-direction:column;gap:2px">';
 oi.oi_distribution.forEach(function(s){
 var cW=Math.round((s.call_oi||0)/maxOI*100);
 var pW=Math.round((s.put_oi||0)/maxOI*100);
-var isMP=oi.max_pain>0&&Math.abs(s.strike-oi.max_pain)<(inst.gap||50);
-var isATM=Math.abs(s.strike-p)<(inst.gap||50);
+var isMP=oi.max_pain>0&&Math.abs(s.strike-oi.max_pain)<(d.instrument&&d.instrument.gap||50);
+var isATM=Math.abs(s.strike-p)<(d.instrument&&d.instrument.gap||50);
 var lbl=isMP?'&#9733; MP':isATM?'&#9654; ATM':'';
 h+='<div style="display:flex;align-items:center;gap:4px;height:16px">';
 h+='<div style="width:50px;text-align:right;font-size:8px;font-family:var(--mono);color:var(--text3);flex-shrink:0">'+s.strike+'</div>';
@@ -5640,8 +5641,8 @@ h+='<details style="margin-bottom:12px"><summary style="cursor:pointer;padding:8
 h+='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:6px;margin-bottom:10px">';
 if(orb.vwap>0)h+='<div style="padding:8px;border-radius:6px;background:'+(p>orb.vwap?'rgba(10,124,66,.04)':'rgba(239,68,68,.04)')+';text-align:center;border:1px solid var(--border)"><div style="font-size:7px;color:var(--text3);font-weight:700">VWAP</div><div style="font-size:13px;font-weight:900;color:'+(p>orb.vwap?'#0a7c42':'#ef4444')+';font-family:var(--mono)">'+S+orb.vwap.toLocaleString("en-IN")+'</div></div>';
 if(t.pivot>0)h+='<div style="padding:8px;border-radius:6px;background:var(--bg2);text-align:center;border:1px solid var(--border)"><div style="font-size:7px;color:var(--text3);font-weight:700">CPR '+t.cpr_type+'</div><div style="font-size:13px;font-weight:900;font-family:var(--mono);color:var(--text)">'+S+t.pivot.toLocaleString("en-IN")+'</div></div>';
-if(nse.vix>0)h+='<div style="padding:8px;border-radius:6px;background:var(--bg2);text-align:center;border:1px solid var(--border)"><div style="font-size:7px;color:var(--text3);font-weight:700">VIX</div><div style="font-size:13px;font-weight:900;font-family:var(--mono);color:'+(nse.vix<16?'#0a7c42':'#ef4444')+'">'+nse.vix.toFixed(1)+'</div></div>';
-if(nse.pcr>0)h+='<div style="padding:8px;border-radius:6px;background:var(--bg2);text-align:center;border:1px solid var(--border)"><div style="font-size:7px;color:var(--text3);font-weight:700">PCR</div><div style="font-size:13px;font-weight:900;font-family:var(--mono);color:'+(nse.pcr>1?'#0a7c42':'#ef4444')+'">'+nse.pcr.toFixed(2)+'</div></div>';
+if(nse.vix>0)h+='<div style="padding:8px;border-radius:6px;background:var(--bg2);text-align:center;border:1px solid var(--border)"><div style="font-size:7px;color:var(--text3);font-weight:700">VIX</div><div style="font-size:13px;font-weight:900;font-family:var(--mono);color:'+(nse.vix<16?'#0a7c42':'#ef4444')+'">'+Number(nse.vix||0).toFixed(1)+'</div></div>';
+if(nse.pcr>0)h+='<div style="padding:8px;border-radius:6px;background:var(--bg2);text-align:center;border:1px solid var(--border)"><div style="font-size:7px;color:var(--text3);font-weight:700">PCR</div><div style="font-size:13px;font-weight:900;font-family:var(--mono);color:'+(nse.pcr>1?'#0a7c42':'#ef4444')+'">'+Number(nse.pcr||0).toFixed(2)+'</div></div>';
 if(nse.max_pain>0)h+='<div style="padding:8px;border-radius:6px;background:var(--bg2);text-align:center;border:1px solid var(--border)"><div style="font-size:7px;color:var(--text3);font-weight:700">MAX PAIN</div><div style="font-size:13px;font-weight:900;font-family:var(--mono);color:var(--text)">'+S+nse.max_pain.toLocaleString("en-IN")+'</div></div>';
 if(t.pdh>0)h+='<div style="padding:8px;border-radius:6px;background:var(--bg2);text-align:center;border:1px solid var(--border)"><div style="font-size:7px;color:var(--text3);font-weight:700">PDH/PDL</div><div style="font-size:11px;font-weight:800;font-family:var(--mono);color:#0a7c42">'+S+t.pdh.toLocaleString("en-IN")+'</div><div style="font-size:11px;font-weight:800;font-family:var(--mono);color:#ef4444">'+S+t.pdl.toLocaleString("en-IN")+'</div></div>';
 h+='</div>';
@@ -5704,11 +5705,11 @@ h+='<details style="margin-bottom:8px"><summary style="cursor:pointer;font-size:
 h+='<div style="padding:4px 10px;border-radius:4px;background:rgba(245,158,11,.04);font-size:7px;color:var(--text3);line-height:1.5"><strong style="color:var(--amber)">&#9888;</strong> Live NSE+yfinance data. Weighted '+tot+'-factor analysis. Educational only. Always use SL.</div>';
 
 el.innerHTML=h;
+}catch(e){
+console.error('_renderAlgoCard crash:',e);
+el.innerHTML='<div style="padding:20px;text-align:center"><div style="font-size:24px;margin-bottom:8px">&#9888;</div><div style="color:var(--red);font-size:12px;font-weight:600">Render error: '+e.message+'</div><div style="font-size:10px;color:var(--text3);margin-top:4px">Check console for details. Data loaded but display failed.</div></div>';
 }
-
-
-
-// ═══ PRICE ALERTS ═══
+}
 window._priceAlerts=[];
 function addPriceAlert(){
 var sym=(document.getElementById('alertSym').value||'').trim().toUpperCase();
