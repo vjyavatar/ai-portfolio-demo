@@ -1827,7 +1827,7 @@ function switchTabGroup(group) {
       var h = '';
       tabs.forEach(function(tab, i) {
         var isActive = (i === 0);
-        h += '<button onclick="switchTab(\''+tab+'\')" class="sub-tab-btn'+(isActive?' active':'')+'" style="padding:5px 14px;border-radius:6px;font-size:10px;font-weight:700;border:1px solid '+(isActive?'var(--blue)':'var(--border)')+';background:'+(isActive?'var(--blue)':'var(--bg2)')+';color:'+(isActive?'#fff':'var(--text3)')+';cursor:pointer;font-family:Sora,sans-serif;transition:all .2s">'+labels[i]+'</button>';
+        h += '<button onclick="switchTab(\''+tab+'\')" class="sub-tab-btn'+(isActive?' active':'')+'" style="padding:4px 12px;border-radius:20px;font-size:9px;font-weight:700;border:1px solid '+(isActive?'var(--blue)':'var(--border)')+';background:'+(isActive?'var(--blue)':'transparent')+';color:'+(isActive?'#fff':'var(--text3)')+';cursor:pointer;font-family:Sora,sans-serif;transition:all .2s;white-space:nowrap">'+labels[i]+'</button>';
       });
       subNav.innerHTML = h;
     }
@@ -1858,7 +1858,7 @@ if(_grpBtn)_grpBtn.classList.add('active');
 // Update sub-nav highlighting
 document.querySelectorAll('.sub-tab-btn').forEach(function(b){
 b.classList.remove('active');
-b.style.background='var(--bg2)';b.style.color='var(--text3)';b.style.borderColor='var(--border)';
+b.style.background='transparent';b.style.color='var(--text3)';b.style.borderColor='var(--border)';
 });
 document.querySelectorAll('.sub-tab-btn').forEach(function(b){
 if(b.getAttribute('onclick')&&b.getAttribute('onclick').indexOf("'"+tab+"'")>=0){
