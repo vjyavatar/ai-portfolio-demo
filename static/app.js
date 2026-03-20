@@ -5062,105 +5062,97 @@ return h;
 function _buildTradeRow(d){
 var isUS=(d.instrument&&d.instrument.region||'')==='US';
 var S=isUS?'$':'&#8377;';
-var tr=d.trade;var tc=d.tradeConfidence||{};var sc=d.scalp||{};var vi=d.volIntelligence||{};
+var tr=d.trade;var tc=d.tradeConfidence||{};var sc=d.scalp||{};
 var sig=d.signal||'N/A';var dir=d.direction||'NEUTRAL';
 var dC=dir==='BULLISH'?'#0a7c42':dir==='BEARISH'?'#ef4444':'#f59e0b';
 var sC=sig==='STRONG BUY'?'#0a7c42':sig==='BUY'?'#10b981':sig==='LEAN BUY'?'#3b82f6':sig==='AVOID'?'#ef4444':'#f59e0b';
 var isWait=sig==='HOLD / WAIT'||sig==='AVOID';
 var win=tc.estimatedWin||50;var grade=tc.grade||'C';
 var gradeC=grade.startsWith('A')?'#10b981':grade.startsWith('B')?'#3b82f6':'#f59e0b';
+var winC=win>=65?'#10b981':win>=50?'#f59e0b':'#ef4444';
+var trd=d.trend||{};var vix=Number((d.options||{}).vix||0);
 var h='';
 
-// Single visual card row (replaces table cells)
 h+='<td colspan="9" style="padding:0">';
-h+='<div style="display:flex;align-items:stretch;gap:0;border-bottom:2px solid var(--border);transition:all .2s">';
+h+='<div style="padding:10px 14px;border-bottom:2px solid var(--border);display:grid;grid-template-columns:1fr 1.2fr 1fr;gap:10px;align-items:center;transition:background .2s" onmouseover="this.style.background=\'var(--bg2)\'" onmouseout="this.style.background=\'transparent\'">';
 
-// Left: Grade circle + Symbol
-h+='<div style="padding:12px 14px;display:flex;align-items:center;gap:10px;min-width:160px;border-right:1px solid var(--border)">';
-h+='<div style="width:40px;height:40px;border-radius:12px;background:'+gradeC+';display:flex;align-items:center;justify-content:center;flex-shrink:0;box-shadow:0 2px 8px '+gradeC+'40"><span style="font-size:16px;font-weight:900;color:#fff">'+grade+'</span></div>';
-h+='<div><div style="font-size:13px;font-weight:800;color:var(--text)">'+d.symbol+(d.isExpiry?' <span style="font-size:7px;padding:1px 5px;border-radius:3px;background:#ef444420;color:#ef4444;font-weight:800">EXP</span>':'')+'</div>';
-h+='<div style="font-size:8px;color:var(--text3)">'+(d.instrument&&d.instrument.ex||'NFO')+'</div></div></div>';
-
-// Middle: Signal + Direction + Win% gauge
-h+='<div style="flex:1;padding:10px 14px;display:flex;align-items:center;gap:14px;border-right:1px solid var(--border)">';
-// Signal badge + Trend + VIX
-var _trd2=d.trend||{};var _vix2=Number((d.options||{}).vix||0);
-h+='<div style="text-align:center"><span style="display:block;font-size:9px;font-weight:800;padding:4px 10px;border-radius:6px;background:'+sC+'12;color:'+sC+';white-space:nowrap">'+sig+'</span>';
-h+='<span style="font-size:8px;color:'+dC+';font-weight:700;display:block;margin-top:2px">'+dir+'</span></div>';
+// ── Column 1: What's happening? ──
+h+='<div>';
+h+='<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">';
+h+='<div style="width:36px;height:36px;border-radius:10px;background:'+gradeC+';display:flex;align-items:center;justify-content:center;flex-shrink:0"><span style="font-size:14px;font-weight:900;color:#fff">'+grade+'</span></div>';
+h+='<div><div style="font-size:13px;font-weight:800;color:var(--text)">'+d.symbol+(d.isExpiry?' <span style="font-size:7px;padding:1px 4px;border-radius:3px;background:#ef444420;color:#ef4444;font-weight:800">EXP</span>':'')+'</div>';
+h+='<div style="font-size:9px;color:var(--text3)">'+S+(d.spot||0).toLocaleString("en-IN")+'</div></div></div>';
 // Mini trend bar
-if(_trd2.label){var _tP2=_trd2.pct||0;var _tC3=_tP2>=25?'#10b981':_tP2>=-25?'#f59e0b':'#ef4444';
-h+='<div style="min-width:50px"><div style="font-size:7px;color:'+_tC3+';font-weight:700;white-space:nowrap">'+_trd2.label.replace('STRONG ','')+'</div>';
-h+='<div style="height:4px;width:50px;border-radius:2px;background:linear-gradient(90deg,#ef4444,#f59e0b 40%,#10b981);position:relative">';
-var _np3=Math.max(3,Math.min(97,50+(_tP2/2)));
-h+='<div style="position:absolute;top:-2px;left:'+_np3+'%;width:3px;height:8px;background:#fff;border:1px solid '+_tC3+';border-radius:1px;transform:translateX(-50%)"></div></div></div>';}
-// Mini VIX
-if(_vix2>0){var _vC2=_vix2<16?'#10b981':_vix2<25?'#f59e0b':'#ef4444';
-h+='<div style="text-align:center;min-width:30px"><div style="font-size:6px;color:var(--text3);font-weight:700">VIX</div><div style="font-size:10px;font-weight:800;color:'+_vC2+';font-family:var(--mono)">'+_vix2.toFixed(0)+'</div></div>';}
-// Win% mini gauge
-h+='<div style="flex:1;max-width:120px">';
-h+='<div style="display:flex;justify-content:space-between;font-size:8px;margin-bottom:2px"><span style="color:var(--text3)">Win Rate</span><span style="font-weight:800;color:'+(win>=65?'#10b981':win>=50?'#f59e0b':'#ef4444')+'">'+win+'%</span></div>';
-h+='<div style="height:6px;border-radius:3px;background:var(--bg2);overflow:hidden"><div style="height:100%;width:'+win+'%;border-radius:3px;background:'+(win>=65?'linear-gradient(90deg,#10b981,#0a7c42)':win>=50?'linear-gradient(90deg,#f59e0b,#d97706)':'linear-gradient(90deg,#ef4444,#dc2626)')+'"></div></div>';
-h+='</div></div>';
-
-// Right: Trade details OR wait
-if(tr&&!isWait){
-h+='<div style="padding:10px 14px;display:flex;align-items:center;gap:12px;min-width:280px">';
-// Action
-h+='<div style="text-align:center;min-width:80px"><div style="font-size:8px;color:var(--text3);font-weight:700">ACTION</div>';
-h+='<div style="font-size:11px;font-weight:800;color:'+(tr.type==='CE'||tr.type==='CALL'?'#0a7c42':'#ef4444')+'">BUY '+tr.strike+'</div>';
-h+='<div style="font-size:9px;font-weight:700;color:'+dC+'">'+tr.type+(tr.expiry?' <span style="font-size:7px;color:var(--text3)">'+tr.expiry+'</span>':'')+'</div></div>';
-// Entry/SL/Target visual
-h+='<div style="display:flex;gap:6px;align-items:center">';
-h+='<div style="text-align:center"><div style="font-size:7px;color:#0a7c42;font-weight:700">ENTRY</div><div style="font-size:12px;font-weight:800;font-family:var(--mono);color:#0a7c42">'+S+(tr.premEntry||0).toFixed(0)+'</div></div>';
-h+='<span style="color:var(--text3);font-size:8px">&#8594;</span>';
-h+='<div style="text-align:center"><div style="font-size:7px;color:#ef4444;font-weight:700">SL</div><div style="font-size:12px;font-weight:800;font-family:var(--mono);color:#ef4444">'+S+(tr.premSL||0).toFixed(0)+'</div></div>';
-h+='<span style="color:var(--text3);font-size:8px">&#8594;</span>';
-h+='<div style="text-align:center"><div style="font-size:7px;color:#10b981;font-weight:700">TARGET</div><div style="font-size:12px;font-weight:800;font-family:var(--mono);color:#10b981">'+S+(tr.premT2||0).toFixed(0)+'</div></div>';
+if(trd.label){var tP=trd.pct||0;var tC2=tP>=25?'#10b981':tP>=-25?'#f59e0b':'#ef4444';
+h+='<div style="display:flex;align-items:center;gap:4px"><span style="font-size:7px;font-weight:700;color:'+tC2+'">'+trd.label.replace("STRONG ","")+'</span>';
+h+='<div style="flex:1;height:4px;border-radius:2px;background:linear-gradient(90deg,#ef4444,#f59e0b 40%,#10b981);position:relative;max-width:60px">';
+var np3=Math.max(3,Math.min(97,50+(tP/2)));
+h+='<div style="position:absolute;top:-2px;left:'+np3+'%;width:3px;height:8px;background:#fff;border:1px solid '+tC2+';border-radius:1px;transform:translateX(-50%)"></div></div>';
+if(vix>0){h+='<span style="font-size:8px;font-weight:800;font-family:var(--mono);color:'+(vix<20?'#3b82f6':'#ef4444')+'">VIX '+vix.toFixed(0)+'</span>';}
+h+='</div>';}
 h+='</div>';
-// R:R
-h+='<div style="text-align:center;padding-left:8px"><div style="font-size:7px;color:var(--purple);font-weight:700">R:R</div><div style="font-size:14px;font-weight:900;font-family:var(--mono);color:var(--purple)">'+(tr.rrRatio||'—')+'</div></div>';
+
+// ── Column 2: What to do? ──
+h+='<div style="text-align:center">';
+if(tr&&!isWait){
+h+='<div style="display:inline-flex;align-items:center;gap:6px;padding:6px 14px;border-radius:8px;background:'+dC+'10;border:1px solid '+dC+'25">';
+h+='<span style="font-size:16px;color:'+dC+'">'+(dir==='BULLISH'?'▲':'▼')+'</span>';
+h+='<div style="text-align:left"><div style="font-size:11px;font-weight:800;color:'+dC+'">BUY '+tr.strike+' '+tr.type+'</div>';
+h+='<div style="font-size:8px;color:var(--text3)">'+S+(tr.premEntry||0).toFixed(0)+' → SL '+S+(tr.premSL||0).toFixed(0)+' → Tgt '+S+(tr.premT2||0).toFixed(0)+'</div></div>';
+h+='<span style="font-size:12px;font-weight:900;font-family:var(--mono);color:var(--purple);padding-left:4px">'+(tr.rrRatio||'')+'</span>';
 h+='</div>';
 }else{
-h+='<div style="padding:12px 14px;display:flex;align-items:center;gap:8px;min-width:200px">';
-h+='<span style="font-size:20px">&#9208;&#65039;</span>';
-h+='<div><div style="font-size:10px;font-weight:700;color:#f59e0b">NO TRADE — Low Confidence</div>';
-if(sc&&sc.direction&&sc.direction!=='NEUTRAL'){
-h+='<div style="font-size:9px;color:var(--cyan);margin-top:2px">&#9889; Scalp: '+sc.direction+' ('+sc.confidence+'%)</div>';
+h+='<span style="font-size:10px;font-weight:700;color:#f59e0b;padding:6px 14px;border-radius:8px;background:rgba(245,158,11,.06);border:1px solid rgba(245,158,11,.2);display:inline-block">⏸️ WAIT</span>';
 }
-h+='</div></div>';
-}
+h+='</div>';
+
+// ── Column 3: How confident? ──
+h+='<div style="display:flex;align-items:center;gap:8px;justify-content:flex-end">';
+// Win% bar
+h+='<div style="flex:1;max-width:100px">';
+h+='<div style="display:flex;justify-content:space-between;font-size:7px;margin-bottom:2px"><span style="color:var(--text3)">Confidence</span><span style="font-weight:800;color:'+winC+'">'+win+'%</span></div>';
+h+='<div style="height:6px;border-radius:3px;background:var(--bg2);overflow:hidden"><div style="height:100%;width:'+win+'%;border-radius:3px;background:'+winC+'"></div></div>';
+h+='</div>';
+// Signal badge
+h+='<span style="font-size:8px;font-weight:800;padding:3px 8px;border-radius:4px;background:'+sC+'12;color:'+sC+'">'+sig+'</span>';
+h+='</div>';
+
 h+='</div></td>';
 
-// Expandable detail row
-h+='</tr><tr class="tt-detail-'+d.symbol+'" style="display:none"><td colspan="9" style="padding:12px 18px;background:var(--bg2);border-bottom:2px solid var(--border)">';
-// Layman summary + scalp
-var _lightC2=win>=65?'#10b981':win>=50?'#f59e0b':'#ef4444';
-h+='<div style="display:flex;gap:12px;flex-wrap:wrap">';
+// Expandable detail
+h+='</tr><tr class="tt-detail-'+d.symbol+'" style="display:none"><td colspan="9" style="padding:10px 18px;background:var(--bg2);border-bottom:2px solid var(--border)">';
+h+='<div style="display:flex;gap:10px;flex-wrap:wrap">';
 // Confidence breakdown
-h+='<div style="flex:1;min-width:200px;padding:10px;border-radius:8px;background:var(--surface);border:1px solid var(--border)">';
-h+='<div style="font-size:10px;font-weight:800;color:'+_lightC2+';margin-bottom:6px">'+(win>=65?'&#9989; Strong Setup':'&#9888;&#65039; Moderate Setup')+'</div>';
-if(tc.notes){tc.notes.slice(0,4).forEach(function(n){var nc=n.indexOf('+')>=0?'#10b981':n.indexOf('-')>=0?'#ef4444':'var(--text3)';h+='<div style="font-size:8px;color:'+nc+';line-height:1.5">'+n+'</div>';});}
+if(tc.notes){
+h+='<div style="flex:1;min-width:180px;padding:8px;border-radius:8px;background:var(--surface);border:1px solid var(--border)">';
+h+='<div style="font-size:9px;font-weight:700;color:var(--text);margin-bottom:4px">Why this score:</div>';
+tc.notes.slice(0,4).forEach(function(n){var nc=n.indexOf('+')>=0?'#10b981':n.indexOf('-')>=0?'#ef4444':'var(--text3)';h+='<div style="font-size:8px;color:'+nc+'">'+n+'</div>';});
 h+='</div>';
-// Scalp card
+}
+// Scalp alternative
 if(sc&&sc.direction&&sc.direction!=='NEUTRAL'){
-var scC3=sc.direction==='BULLISH'?'#10b981':'#ef4444';
-h+='<div style="flex:1;min-width:200px;padding:10px;border-radius:8px;background:'+scC3+'06;border:1px solid '+scC3+'20">';
-h+='<div style="font-size:10px;font-weight:800;color:'+scC3+'">&#9889; SCALP: '+sc.action+'</div>';
-h+='<div style="font-size:9px;color:var(--text2);margin-top:2px">'+sc.confidence+'% conf &middot; 5m: '+sc.trend_5m+' &middot; 15m: '+sc.trend_15m+'</div>';
-h+='<div style="display:flex;gap:8px;margin-top:4px;font-size:9px">';
-h+='<span style="color:'+scC3+'">Entry: '+S+sc.entry+'</span>';
-h+='<span style="color:#ef4444">SL: '+S+sc.sl+'</span>';
-h+='<span style="color:#10b981">Tgt: '+S+sc.t1+'</span>';
-h+='</div></div>';
+var scC=sc.direction==='BULLISH'?'#10b981':'#ef4444';
+h+='<div style="flex:1;min-width:180px;padding:8px;border-radius:8px;background:'+scC+'04;border:1px solid '+scC+'20">';
+h+='<div style="font-size:9px;font-weight:800;color:'+scC+'">⚡ SCALP: '+sc.action+'</div>';
+h+='<div style="font-size:8px;color:var(--text2)">'+sc.confidence+'% · Entry:'+S+sc.entry+' SL:'+S+sc.sl+' Tgt:'+S+sc.t1+'</div>';
+h+='</div>';
 }
 h+='</div>';
-// Layman
-if(tr&&!isWait){
-h+='<div style="margin-top:8px;font-size:9px;color:var(--text2);line-height:1.6;padding:6px 10px;border-radius:6px;background:var(--surface);border:1px solid var(--border)">';
-h+='&#127891; <strong>In simple words:</strong> We '+(dir==='BULLISH'?'expect '+d.symbol+' to go UP, so we buy '+(isUS?'CALL':'CE'):'expect '+d.symbol+' to go DOWN, so we buy '+(isUS?'PUT':'PE'))+'. ';
-h+='Pay '+S+(tr.premEntry||0).toFixed(0)+' entry. If wrong, exit at '+S+(tr.premSL||0).toFixed(0)+'. If right, profit at '+S+(tr.premT2||0).toFixed(0)+'. ';
-h+=(tc.sizeRecommendation||'');
+// Compact plans in row
+var _pls=d.plans||[];
+if(_pls.length>0){
+h+='<div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">';
+_pls.forEach(function(pl){
+h+='<div style="flex:1;min-width:140px;padding:6px 8px;border-radius:6px;background:'+pl.color+'06;border:1px solid '+pl.color+'20">';
+h+='<div style="display:flex;align-items:center;gap:4px;margin-bottom:2px"><span style="width:18px;height:18px;border-radius:50%;background:'+pl.color+';display:inline-flex;align-items:center;justify-content:center;font-size:8px;font-weight:900;color:#fff">'+pl.plan+'</span><span style="font-size:8px;font-weight:800;color:'+pl.color+'">'+pl.name+'</span></div>';
+h+='<div style="font-size:8px;font-weight:700;color:var(--text)">'+pl.strategy+'</div>';
+h+='<div style="font-size:7px;color:var(--text3);margin-top:1px">'+S+(pl.entry>=0?pl.entry:Math.abs(pl.entry))+' → '+S+pl.t2+' | Max loss: '+S+(typeof pl.maxLoss==="number"?pl.maxLoss.toLocaleString("en-IN"):pl.maxLoss)+'</div>';
 h+='</div>';
+});
+h+='</div>';
+}
+if(tr&&!isWait){
+h+='<div style="margin-top:6px;font-size:8px;color:var(--text3);line-height:1.5">🎓 '+(dir==='BULLISH'?'We expect '+d.symbol+' UP → buy '+(isUS?'CALL':'CE'):'We expect '+d.symbol+' DOWN → buy '+(isUS?'PUT':'PE'))+'. Pay '+S+(tr.premEntry||0).toFixed(0)+'. Wrong? Exit '+S+(tr.premSL||0).toFixed(0)+'. Right? Profit '+S+(tr.premT2||0).toFixed(0)+'.</div>';
 }
 h+='</td>';
 return h;
@@ -5631,128 +5623,290 @@ var isWait=sig==='HOLD / WAIT'||sig==='AVOID';
 var tr=d.trade;var t=d.technicals||{};var orb=d.orb||{};var nse=d.options||{};var bs=d.black_scholes||{};
 var h='';
 
-// ═══ VISUAL TRADE DASHBOARD ═══
+// ═══ 3-QUESTION TRADE DASHBOARD ═══
 var _tc2=d.tradeConfidence||{};var _sc2=d.scalp||{};
 var _win=_tc2.estimatedWin||50;var _grade=_tc2.grade||'C';
 var _canScalp=_sc2&&_sc2.direction&&_sc2.direction!=='NEUTRAL'&&_sc2.confidence>=40;
 var _lightC=_win>=65?'#10b981':_win>=50?'#f59e0b':'#ef4444';
-
-// ── HERO VERDICT CARD ──
-h+='<div style="margin-bottom:14px;border-radius:16px;overflow:hidden;background:linear-gradient(135deg,'+dC+'12,'+dC+'04);border:1px solid '+dC+'25;box-shadow:0 4px 20px '+dC+'10">';
-
-// Top bar — Signal + Price
-h+='<div style="padding:14px 18px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">';
-h+='<div style="display:flex;align-items:center;gap:12px">';
-h+='<div style="width:52px;height:52px;border-radius:14px;background:'+dC+';display:flex;align-items:center;justify-content:center;box-shadow:0 4px 12px '+dC+'40"><span style="font-size:26px;color:#fff">'+(dir==='BULLISH'?'&#9650;':'&#9660;')+'</span></div>';
-h+='<div><div style="font-size:22px;font-weight:900;color:var(--text);letter-spacing:-0.5px">'+sig+'</div>';
-h+='<div style="font-size:11px;color:var(--text3)">'+d.symbol+' &middot; '+S+p.toLocaleString("en-IN")+'</div></div></div>';
-h+='<div style="text-align:right"><div style="font-size:32px;font-weight:900;color:'+_lightC+';font-family:var(--mono);letter-spacing:-1px">'+_win+'<span style="font-size:14px">%</span></div>';
-h+='<div style="font-size:9px;color:var(--text3)">Win Probability</div></div></div>';
-
-// Visual gauge bar
-h+='<div style="padding:0 18px"><div style="height:8px;border-radius:4px;background:var(--bg2);overflow:hidden;position:relative">';
-h+='<div style="height:100%;width:'+_win+'%;border-radius:4px;background:linear-gradient(90deg,'+_lightC+','+_lightC+'cc);transition:width 1s ease"></div></div>';
-h+='<div style="display:flex;justify-content:space-between;margin-top:3px;font-size:7px;color:var(--text3)"><span>0% Skip</span><span>50% Maybe</span><span>100% Strong</span></div></div>';
-
-// 4-metric strip
-h+='<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:0;margin-top:12px;border-top:1px solid '+dC+'15">';
-// Grade
-var _gradeC=_grade.startsWith('A')?'#10b981':_grade.startsWith('B')?'#3b82f6':'#f59e0b';
-h+='<div style="padding:12px;text-align:center;border-right:1px solid '+dC+'12">';
-h+='<div style="width:36px;height:36px;border-radius:50%;background:'+_gradeC+';display:inline-flex;align-items:center;justify-content:center;margin-bottom:4px"><span style="font-size:14px;font-weight:900;color:#fff">'+_grade+'</span></div>';
-h+='<div style="font-size:7px;color:var(--text3);font-weight:700">GRADE</div></div>';
-// Direction
-h+='<div style="padding:12px;text-align:center;border-right:1px solid '+dC+'12">';
-h+='<div style="font-size:24px;margin-bottom:2px">'+(dir==='BULLISH'?'&#128994;':'&#128308;')+'</div>';
-h+='<div style="font-size:9px;font-weight:800;color:'+dC+'">'+dir+'</div>';
-h+='<div style="font-size:7px;color:var(--text3)">'+(dir==='BULLISH'?'Expects UP':'Expects DOWN')+'</div></div>';
-// R:R
-var _rr=tr?tr.rrRatio:'N/A';
-h+='<div style="padding:12px;text-align:center;border-right:1px solid '+dC+'12">';
-h+='<div style="font-size:18px;font-weight:900;font-family:var(--mono);color:var(--purple)">'+_rr+'</div>';
-h+='<div style="font-size:7px;color:var(--text3);font-weight:700">RISK : REWARD</div></div>';
-// Action
-h+='<div style="padding:12px;text-align:center">';
-if(tr&&!isWait){
-h+='<div style="font-size:11px;font-weight:800;color:'+dC+'">'+tr.strike+' '+(tr.type||'')+'</div>';
-h+='<div style="font-size:7px;color:var(--text3)">'+S+(tr.premEntry||0).toFixed(0)+' entry</div>';
-}else{
-h+='<div style="font-size:16px">&#9208;&#65039;</div>';
-h+='<div style="font-size:9px;font-weight:700;color:#f59e0b">WAIT</div>';
-}
-h+='</div></div>';
-
-// Trend + VIX strip inside hero card
 var _trd=d.trend||{};var _vix=Number((d.options||{}).vix||0);
-h+='<div style="padding:8px 18px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;border-top:1px solid '+dC+'12">';
-// Trend gauge
-if(_trd.label){
 var _tPct=_trd.pct||0;var _tC=_tPct>=60?'#0a7c42':_tPct>=25?'#10b981':_tPct>=-25?'#f59e0b':'#ef4444';
-h+='<div style="display:flex;align-items:center;gap:6px;flex:1;min-width:180px">';
-h+='<span style="font-size:8px;font-weight:800;color:'+_tC+';white-space:nowrap">TREND: '+_trd.label+'</span>';
-h+='<div style="flex:1;height:6px;border-radius:3px;background:linear-gradient(90deg,#ef4444,#f59e0b 40%,#10b981 70%,#0a7c42);position:relative;max-width:120px">';
+
+h+='<div style="margin-bottom:16px;border-radius:16px;overflow:hidden;border:2px solid '+dC+'30;box-shadow:0 8px 32px '+dC+'12">';
+
+// ── Q1: WHAT IS THE MARKET DOING? ──
+h+='<div style="padding:14px 18px;background:linear-gradient(135deg,rgba(0,47,108,.06),rgba(0,47,108,.02));border-bottom:1px solid var(--border)">';
+h+='<div style="font-size:8px;font-weight:800;color:var(--blue);letter-spacing:1.5px;margin-bottom:8px">❶ WHAT IS '+d.symbol+' DOING RIGHT NOW?</div>';
+h+='<div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center">';
+
+// Price + Change
+h+='<div style="min-width:120px"><div style="font-size:24px;font-weight:900;color:var(--text);font-family:var(--mono);letter-spacing:-1px">'+S+p.toLocaleString("en-IN")+'</div>';
+h+='<div style="font-size:9px;color:var(--text3)">'+d.timestamp+'</div></div>';
+
+// Trend gauge - visual thermometer style
+h+='<div style="flex:1;min-width:160px;padding:8px 12px;border-radius:10px;background:'+_tC+'08;border:1px solid '+_tC+'20">';
+h+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">';
+h+='<span style="font-size:9px;font-weight:800;color:'+_tC+'">'+((_trd.label||'NEUTRAL'))+'</span>';
+h+='<span style="font-size:8px;color:var(--text3)">Trend Strength</span></div>';
+h+='<div style="height:8px;border-radius:4px;background:linear-gradient(90deg,#ef4444 0%,#f59e0b 35%,#10b981 65%,#0a7c42 100%);position:relative">';
 var _np=Math.max(3,Math.min(97,50+(_tPct/2)));
-h+='<div style="position:absolute;top:-3px;left:'+_np+'%;width:4px;height:12px;background:#fff;border:2px solid '+_tC+';border-radius:2px;transform:translateX(-50%)"></div></div>';
-(_trd.details||[]).slice(0,3).forEach(function(td){var _ic=td.dir==='BULL'?'#0a7c42':td.dir==='BEAR'?'#ef4444':'#94a3b8';h+='<span style="font-size:6px;font-weight:700;padding:1px 4px;border-radius:2px;background:'+_ic+'12;color:'+_ic+'">'+td.ind+'</span>';});
+h+='<div style="position:absolute;top:-4px;left:'+_np+'%;width:6px;height:16px;background:#fff;border:2px solid '+_tC+';border-radius:3px;transform:translateX(-50%);box-shadow:0 2px 6px rgba(0,0,0,.2)"></div></div>';
+h+='<div style="display:flex;justify-content:space-between;margin-top:2px;font-size:6px;color:var(--text3)"><span>Bearish</span><span>Neutral</span><span>Bullish</span></div>';
 h+='</div>';
-}
-// VIX gauge
+
+// VIX meter
 if(_vix>0){
-var _vixC=_vix<14?'#10b981':_vix<20?'#3b82f6':_vix<25?'#f59e0b':'#ef4444';
-var _vixLabel=_vix<14?'CALM':_vix<20?'NORMAL':_vix<25?'ANXIOUS':'FEARFUL';
-var _vixPct=Math.min(100,(_vix/40)*100);
-h+='<div style="display:flex;align-items:center;gap:6px;min-width:140px">';
-h+='<div style="text-align:center"><div style="font-size:7px;color:var(--text3);font-weight:700">VIX</div>';
-h+='<div style="font-size:16px;font-weight:900;font-family:var(--mono);color:'+_vixC+'">'+_vix.toFixed(1)+'</div></div>';
-h+='<div style="flex:1">';
-h+='<div style="height:6px;border-radius:3px;background:linear-gradient(90deg,#10b981,#3b82f6 35%,#f59e0b 60%,#ef4444);position:relative;max-width:80px">';
-h+='<div style="position:absolute;top:-3px;left:'+_vixPct+'%;width:4px;height:12px;background:#fff;border:2px solid '+_vixC+';border-radius:2px;transform:translateX(-50%)"></div></div>';
-h+='<div style="font-size:7px;font-weight:700;color:'+_vixC+';margin-top:1px">'+_vixLabel+'</div>';
+var _vxC=_vix<14?'#10b981':_vix<20?'#3b82f6':_vix<25?'#f59e0b':'#ef4444';
+var _vxL=_vix<14?'CALM 😌':_vix<20?'NORMAL':'ANXIOUS ⚠️';
+if(_vix>=25)_vxL='FEAR 🔴';
+h+='<div style="min-width:80px;padding:8px 10px;border-radius:10px;background:'+_vxC+'08;border:1px solid '+_vxC+'20;text-align:center">';
+h+='<div style="font-size:7px;color:var(--text3);font-weight:700">FEAR INDEX</div>';
+h+='<div style="font-size:22px;font-weight:900;font-family:var(--mono);color:'+_vxC+'">'+_vix.toFixed(1)+'</div>';
+h+='<div style="font-size:7px;font-weight:700;color:'+_vxC+'">'+_vxL+'</div>';
+h+='</div>';
+}
+
+// Key indicator pills
+h+='<div style="display:flex;gap:4px;flex-wrap:wrap">';
+(_trd.details||[]).slice(0,5).forEach(function(td){var _ic=td.dir==='BULL'?'#0a7c42':td.dir==='BEAR'?'#ef4444':'#94a3b8';h+='<span style="font-size:7px;font-weight:700;padding:2px 6px;border-radius:10px;background:'+_ic+'12;color:'+_ic+'">'+td.ind+'</span>';});
+h+='</div>';
+h+='</div></div>';
+
+// ── Q2: WHAT SHOULD I DO? ──
+h+='<div style="padding:14px 18px;background:'+dC+'06;border-bottom:1px solid var(--border)">';
+h+='<div style="font-size:8px;font-weight:800;color:'+dC+';letter-spacing:1.5px;margin-bottom:10px">❷ WHAT SHOULD I DO?</div>';
+
+if(tr&&!isWait){
+h+='<div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">';
+// Big direction arrow
+h+='<div style="width:56px;height:56px;border-radius:14px;background:'+dC+';display:flex;align-items:center;justify-content:center;box-shadow:0 4px 16px '+dC+'40;flex-shrink:0"><span style="font-size:28px;color:#fff">'+(dir==='BULLISH'?'▲':'▼')+'</span></div>';
+// Action text
+h+='<div style="flex:1;min-width:140px"><div style="font-size:18px;font-weight:900;color:'+dC+'">BUY '+tr.strike+' '+(tr.type||'')+'</div>';
+h+='<div style="font-size:10px;color:var(--text3)">'+(dir==='BULLISH'?'Expects price to go UP — profit when stock rises':'Expects price to go DOWN — profit when stock falls')+'</div>';
+if(tr.expiry){h+='<div style="font-size:9px;color:var(--text3);margin-top:2px">Expiry: <strong style="color:var(--text)">'+tr.expiry+'</strong></div>';}
+h+='</div>';
+// Premium flow: Entry → SL → Target
+h+='<div style="display:flex;align-items:center;gap:0">';
+h+='<div style="padding:8px 10px;border-radius:8px 0 0 8px;background:#0a7c42;text-align:center;min-width:60px"><div style="font-size:6px;color:rgba(255,255,255,.7);font-weight:700">ENTER</div><div style="font-size:16px;font-weight:900;color:#fff;font-family:var(--mono)">'+S+(tr.premEntry||0).toFixed(0)+'</div></div>';
+h+='<div style="width:0;height:0;border-top:18px solid transparent;border-bottom:18px solid transparent;border-left:8px solid #0a7c42"></div>';
+h+='<div style="padding:8px 10px;background:#ef4444;text-align:center;min-width:55px"><div style="font-size:6px;color:rgba(255,255,255,.7);font-weight:700">SL</div><div style="font-size:16px;font-weight:900;color:#fff;font-family:var(--mono)">'+S+(tr.premSL||0).toFixed(0)+'</div></div>';
+h+='<div style="width:0;height:0;border-top:18px solid transparent;border-bottom:18px solid transparent;border-left:8px solid #ef4444"></div>';
+h+='<div style="padding:8px 10px;border-radius:0 8px 8px 0;background:#10b981;text-align:center;min-width:60px"><div style="font-size:6px;color:rgba(255,255,255,.7);font-weight:700">TARGET</div><div style="font-size:16px;font-weight:900;color:#fff;font-family:var(--mono)">'+S+(tr.premT2||0).toFixed(0)+'</div></div>';
+h+='</div>';
+h+='</div>';
+// Copy order button
+h+='<div style="margin-top:8px;display:flex;gap:8px;align-items:center">';
+window._lastTradeForCopy=tr;
+h+='<button onclick="copyBrokerOrder(window._lastTradeForCopy)" style="padding:5px 14px;border-radius:6px;background:var(--bg2);border:1px solid var(--border);color:var(--text);font-size:9px;font-weight:700;cursor:pointer">📋 Copy Order</button>';
+h+='<span style="font-size:9px;color:var(--text3)">R:R <strong style="color:var(--purple);font-size:12px">'+(tr.rrRatio||'—')+'</strong></span>';
+h+='</div>';
+}else{
+h+='<div style="display:flex;align-items:center;gap:12px;padding:12px;border-radius:10px;background:rgba(245,158,11,.06);border:1px solid rgba(245,158,11,.2)">';
+h+='<span style="font-size:32px">⏸️</span>';
+h+='<div><div style="font-size:16px;font-weight:800;color:#f59e0b">WAIT — Do Not Trade</div>';
+h+='<div style="font-size:10px;color:var(--text3)">Only '+sup+'/'+tot+' factors support. Mixed signals like 50% rain forecast — wait for clearer setup.</div>';
+if(_canScalp){h+='<div style="font-size:10px;color:var(--cyan);margin-top:4px;font-weight:700">⚡ But SCALP opportunity exists: '+_sc2.direction+' ('+_sc2.confidence+'% conf)</div>';}
 h+='</div></div>';
 }
 h+='</div>';
 
-// Layman one-liner
-var _layV=_win>=65?'Strong setup — like a clear sunny day for driving. Multiple signals agree.':_win>=50?'Decent setup — partly cloudy. Smaller position recommended.':'Weak setup — storm warning. Consider waiting or try the scalp trade below.';
-h+='<div style="padding:6px 18px 12px;font-size:10px;color:var(--text2);line-height:1.5"><span style="color:'+_lightC+';font-weight:700">'+(_win>=65?'&#9989;':_win>=50?'&#9888;&#65039;':'&#10060;')+'</span> '+_layV;
-if(_canScalp&&_win<60){h+=' <span style="color:var(--cyan);font-weight:700">&#9889; Scalp available ('+_sc2.confidence+'% conf)</span>';}
-h+='</div></div>';
+// ── Q3: HOW CONFIDENT IS THIS? ──
+h+='<div style="padding:14px 18px">';
+h+='<div style="font-size:8px;font-weight:800;color:'+_lightC+';letter-spacing:1.5px;margin-bottom:10px">❸ HOW CONFIDENT IS THIS?</div>';
 
-// ═══ ③ CONFIDENCE — Win Probability + Grade ═══
-var tc=d.tradeConfidence||null;
-if(tc){
-var winC=tc.estimatedWin>=65?'#0a7c42':tc.estimatedWin>=55?'#10b981':tc.estimatedWin>=45?'#f59e0b':'#ef4444';
-var gradeC=tc.grade.startsWith('A')?'#0a7c42':tc.grade.startsWith('B')?'#3b82f6':tc.grade==='C'?'#f59e0b':'#ef4444';
-h+='<div style="margin-bottom:14px;border-radius:10px;border:2px solid '+winC+'30;overflow:hidden">';
-// Header with grade + win%
-h+='<div style="padding:12px 16px;background:'+winC+'08;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">';
-h+='<div style="display:flex;align-items:center;gap:12px">';
-h+='<div style="width:48px;height:48px;border-radius:50%;background:'+gradeC+';display:flex;align-items:center;justify-content:center"><span style="font-size:18px;font-weight:900;color:#fff">'+tc.grade+'</span></div>';
-h+='<div><div style="font-size:13px;font-weight:800;color:var(--text)">Trade Confidence</div>';
-h+='<div style="font-size:10px;color:var(--text3)">Based on '+tot+' factors, technicals, IV & market conditions</div></div></div>';
-h+='<div style="text-align:right"><div style="font-size:28px;font-weight:900;color:'+winC+';font-family:var(--mono)">'+tc.estimatedWin+'%</div>';
-h+='<div style="font-size:9px;color:var(--text3)">Est. Win Rate</div></div>';
+// Confidence score — weighted visual bars
+h+='<div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:10px">';
+// Big win% circle
+h+='<div style="position:relative;width:72px;height:72px;flex-shrink:0">';
+h+='<svg width="72" height="72" viewBox="0 0 72 72"><circle cx="36" cy="36" r="30" fill="none" stroke="var(--bg2)" stroke-width="6"/>';
+var _circ=2*3.14159*30;var _offset=_circ*(1-_win/100);
+h+='<circle cx="36" cy="36" r="30" fill="none" stroke="'+_lightC+'" stroke-width="6" stroke-linecap="round" stroke-dasharray="'+_circ+'" stroke-dashoffset="'+_offset+'" transform="rotate(-90 36 36)"/>';
+h+='<text x="36" y="33" text-anchor="middle" font-size="18" font-weight="900" fill="'+_lightC+'" font-family="var(--mono)">'+_win+'</text>';
+h+='<text x="36" y="44" text-anchor="middle" font-size="8" fill="var(--text3)">% WIN</text></svg></div>';
+
+// Weighted factor bars
+h+='<div style="flex:1;min-width:200px">';
+var _eng=d.engines||{};
+var _factors=[
+{name:'Trend',weight:30,score:(_eng.regime||{}).score||Math.max(0,Math.min(100,50+(_tPct/2))),color:'#3b82f6'},
+{name:'OI Bias',weight:25,score:(_eng.oi||{}).score||50,color:'#8b5cf6'},
+{name:'Volatility',weight:20,score:(_eng.volatility||{}).score||50,color:'#f59e0b'},
+{name:'Momentum',weight:25,score:(_eng.momentum||{}).score||50,color:'#10b981'}
+];
+// Use engine final score if available
+if(_cs.composite)_win=_cs.composite;
+_factors.forEach(function(f){
+var fC=f.score>=60?'#10b981':f.score>=40?'#f59e0b':'#ef4444';
+h+='<div style="display:flex;align-items:center;gap:6px;margin-bottom:3px">';
+h+='<span style="font-size:8px;font-weight:700;color:var(--text3);width:65px">'+f.name+' <span style="color:var(--text3);font-weight:400">('+f.weight+'%)</span></span>';
+h+='<div style="flex:1;height:6px;border-radius:3px;background:var(--bg2);overflow:hidden"><div style="height:100%;width:'+f.score+'%;border-radius:3px;background:'+fC+'"></div></div>';
+h+='<span style="font-size:8px;font-weight:800;color:'+fC+';width:28px;text-align:right">'+Math.round(f.score)+'</span>';
 h+='</div>';
-// Win probability bar
-h+='<div style="padding:0 16px"><div style="height:8px;border-radius:4px;background:var(--bg2);overflow:hidden"><div style="height:100%;width:'+tc.estimatedWin+'%;border-radius:4px;background:linear-gradient(90deg,'+winC+','+winC+'cc)"></div></div></div>';
-// Signal strength + R:R + Position size
-h+='<div style="padding:10px 16px;display:flex;gap:16px;flex-wrap:wrap;border-bottom:1px solid var(--border)">';
-h+='<div><div style="font-size:8px;color:var(--text3);font-weight:700">SIGNAL STRENGTH</div><div style="font-size:14px;font-weight:800;color:var(--text)">'+tc.signalStrength+'/100</div></div>';
-h+='<div><div style="font-size:8px;color:var(--text3);font-weight:700">RISK:REWARD</div><div style="font-size:14px;font-weight:800;color:'+(tc.rrValue>=2?'#0a7c42':tc.rrValue>=1?'#3b82f6':'#ef4444')+'">'+tc.riskReward+'</div></div>';
-h+='<div><div style="font-size:8px;color:var(--text3);font-weight:700">FACTOR SCORE</div><div style="font-size:14px;font-weight:800;color:var(--text)">'+tc.factorScore+'%</div></div>';
-h+='<div style="flex:1;min-width:120px"><div style="font-size:8px;color:var(--text3);font-weight:700">POSITION SIZE</div><div style="font-size:10px;font-weight:700;color:'+winC+'">'+tc.sizeRecommendation+'</div></div>';
-h+='</div>';
-// Confidence breakdown
-if(tc.notes&&tc.notes.length>0){
-h+='<div style="padding:8px 16px 10px">';
-h+='<div style="font-size:8px;font-weight:700;color:var(--text3);margin-bottom:4px;letter-spacing:1px">WHY THIS WIN RATE</div>';
-tc.notes.forEach(function(n){
-var nc=n.indexOf('+')>=0?'#10b981':n.indexOf('-')>=0?'#ef4444':'var(--text3)';
-h+='<div style="font-size:9px;color:'+nc+';padding:1px 0">'+n+'</div>';
 });
 h+='</div>';
-}
+
+// Grade + position size
+var _gradeC=_grade.startsWith('A')?'#10b981':_grade.startsWith('B')?'#3b82f6':'#f59e0b';
+h+='<div style="text-align:center;min-width:70px">';
+h+='<div style="width:44px;height:44px;border-radius:50%;background:'+_gradeC+';display:inline-flex;align-items:center;justify-content:center;box-shadow:0 2px 10px '+_gradeC+'40;margin-bottom:4px"><span style="font-size:18px;font-weight:900;color:#fff">'+_grade+'</span></div>';
+h+='<div style="font-size:7px;color:var(--text3);font-weight:700">GRADE</div>';
+h+='<div style="font-size:8px;color:'+_lightC+';font-weight:700;margin-top:2px">'+(_tc2.sizeRecommendation||'').split('.')[0]+'</div>';
+h+='</div></div>';
+
+// Layman summary
+h+='<div style="font-size:9px;color:var(--text2);line-height:1.5;padding:6px 10px;border-radius:6px;background:var(--bg2)">';
+h+=(_win>=65?'✅ Like getting green lights at every intersection — conditions strongly favor this trade.':_win>=50?'⚠️ Some green, some red lights — proceed with caution. Use smaller position.':'❌ More red lights than green — park the car. Wait for a better setup.');
+if(_tc2.notes&&_tc2.notes.length>0){h+='<br><span style="font-size:8px;color:var(--text3)">';_tc2.notes.slice(0,3).forEach(function(n){var nc=n.indexOf('+')>=0?'#10b981':n.indexOf('-')>=0?'#ef4444':'var(--text3)';h+='<span style="color:'+nc+'">'+n+'</span> · ';});h+='</span>';}
 h+='</div>';
+h+='</div></div>';
+
+// ═══ 5-ENGINE DASHBOARD — Visual Intelligence ═══
+var eng=d.engines||null;
+var tc=d.tradeConfidence||{};
+if(eng){
+var fScore=eng.finalScore||50;
+var fC=fScore>=70?'#0a7c42':fScore>=55?'#10b981':fScore>=40?'#f59e0b':'#ef4444';
+
+h+='<div style="margin-bottom:14px;border-radius:14px;overflow:hidden;border:1px solid var(--border);box-shadow:0 4px 16px rgba(0,0,0,.04)">';
+
+// Header: Final Score + Decision
+h+='<div style="padding:12px 18px;background:linear-gradient(135deg,'+fC+'08,'+fC+'03);border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">';
+h+='<div style="display:flex;align-items:center;gap:12px">';
+h+='<div style="font-size:9px;font-weight:800;color:var(--text3);letter-spacing:1px">ENGINE ANALYSIS</div>';
+h+='<span style="font-size:9px;padding:3px 10px;border-radius:4px;background:'+fC+'15;color:'+fC+';font-weight:800">'+eng.decision.replace(/_/g,' ')+'</span></div>';
+// Final score circle
+h+='<div style="display:flex;align-items:center;gap:8px">';
+h+='<svg width="52" height="52" viewBox="0 0 52 52"><circle cx="26" cy="26" r="22" fill="none" stroke="var(--bg2)" stroke-width="4"/>';
+var _cLen=2*3.14159*22;var _cOff=_cLen*(1-fScore/100);
+h+='<circle cx="26" cy="26" r="22" fill="none" stroke="'+fC+'" stroke-width="4" stroke-linecap="round" stroke-dasharray="'+_cLen+'" stroke-dashoffset="'+_cOff+'" transform="rotate(-90 26 26)"/>';
+h+='<text x="26" y="24" text-anchor="middle" font-size="14" font-weight="900" fill="'+fC+'" font-family="var(--mono)">'+Math.round(fScore)+'</text>';
+h+='<text x="26" y="33" text-anchor="middle" font-size="6" fill="var(--text3)">SCORE</text></svg>';
+h+='<div style="text-align:right"><div style="font-size:8px;color:var(--text3)">'+eng.decisionReason+'</div></div>';
+h+='</div></div>';
+
+// 5 Engine bars
+h+='<div style="padding:12px 18px">';
+var _engines=[
+{name:eng.regime.name,icon:eng.regime.icon,score:eng.regime.score,weight:eng.weights.trend,detail:eng.regime.trend+' / '+eng.regime.strength+' (ADX '+eng.regime.adx+')'},
+{name:eng.oi.name,icon:eng.oi.icon,score:eng.oi.score,weight:eng.weights.oi,detail:eng.oi.bias+' (PCR '+eng.oi.pcr+')'},
+{name:eng.volatility.name,icon:eng.volatility.icon,score:eng.volatility.score,weight:eng.weights.volatility,detail:eng.volatility.state+' → '+eng.volatility.action.replace(/_/g,' ')},
+{name:eng.momentum.name,icon:eng.momentum.icon,score:eng.momentum.score,weight:eng.weights.momentum,detail:'RSI '+eng.momentum.rsi+' | Vol '+eng.momentum.volRatio+'x | '+eng.momentum.signal.replace(/_/g,' ')},
+];
+_engines.forEach(function(en){
+var eC=en.score>=65?'#10b981':en.score>=45?'#f59e0b':'#ef4444';
+h+='<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">';
+// Icon + Name
+h+='<div style="width:95px;display:flex;align-items:center;gap:4px"><span style="font-size:12px">'+en.icon+'</span><span style="font-size:9px;font-weight:700;color:var(--text)">'+en.name+'</span></div>';
+// Weight badge
+h+='<span style="font-size:7px;font-weight:700;color:var(--text3);width:24px;text-align:center">'+en.weight+'%</span>';
+// Score bar
+h+='<div style="flex:1;height:10px;border-radius:5px;background:var(--bg2);overflow:hidden;position:relative">';
+h+='<div style="height:100%;width:'+en.score+'%;border-radius:5px;background:linear-gradient(90deg,'+eC+','+eC+'cc);transition:width .5s ease"></div></div>';
+// Score number
+h+='<span style="font-size:11px;font-weight:900;font-family:var(--mono);color:'+eC+';width:28px;text-align:right">'+en.score+'</span>';
+h+='</div>';
+// Detail line
+h+='<div style="margin-left:127px;margin-top:-4px;margin-bottom:6px;font-size:8px;color:var(--text3)">'+en.detail+'</div>';
+});
+h+='</div>';
+
+// Expected Move visual range
+var em=eng.expectedMove;
+if(em&&em.points>0){
+h+='<div style="padding:8px 18px;border-top:1px solid var(--border)">';
+h+='<div style="font-size:8px;font-weight:700;color:var(--text3);margin-bottom:4px">📐 EXPECTED RANGE by expiry ('+em.dte+' DTE)</div>';
+h+='<div style="display:flex;align-items:center;gap:4px;font-size:9px">';
+h+='<span style="font-weight:700;color:#ef4444">'+S+em.low.toLocaleString("en-IN")+'</span>';
+h+='<div style="flex:1;height:12px;border-radius:6px;background:linear-gradient(90deg,#ef4444 0%,#f59e0b 30%,#10b981 50%,#f59e0b 70%,#ef4444 100%);position:relative">';
+// Current price marker
+var emRange=em.high-em.low;var emPct=emRange>0?((p-em.low)/emRange)*100:50;
+emPct=Math.max(2,Math.min(98,emPct));
+h+='<div style="position:absolute;top:-4px;left:'+emPct+'%;width:4px;height:20px;background:#fff;border:2px solid var(--text);border-radius:2px;transform:translateX(-50%);box-shadow:0 1px 4px rgba(0,0,0,.3)"></div>';
+h+='</div>';
+h+='<span style="font-weight:700;color:#10b981">'+S+em.high.toLocaleString("en-IN")+'</span>';
+h+='</div>';
+h+='<div style="text-align:center;font-size:7px;color:var(--text3);margin-top:2px">Current '+S+p.toLocaleString("en-IN")+' | Move ±'+S+em.points.toLocaleString("en-IN")+'</div>';
+h+='</div>';
+}
+
+// GEX zones
+var gex=eng.gexZones||[];
+if(gex.length>0){
+h+='<div style="padding:8px 18px;border-top:1px solid var(--border)">';
+h+='<div style="font-size:8px;font-weight:700;color:var(--text3);margin-bottom:4px">⚡ GAMMA ZONES — Where Price Gets Pushed</div>';
+h+='<div style="display:flex;gap:6px;flex-wrap:wrap">';
+gex.forEach(function(g){
+var gC=g.type==='SUPPORT'?'#10b981':'#ef4444';
+h+='<span style="font-size:8px;padding:3px 8px;border-radius:4px;background:'+gC+'10;border:1px solid '+gC+'25;color:'+gC+';font-weight:700">'+g.type+' '+S+g.strike.toLocaleString("en-IN")+'</span>';
+});
+h+='</div>';
+h+='<div style="font-size:7px;color:var(--text3);margin-top:2px">Support zones pull price down (floor). Resistance zones push price away (ceiling).</div>';
+h+='</div>';
+}
+
+h+='</div>';
+}else if(tc){
+// Fallback: old confidence display if engines not available
+var winC=tc.estimatedWin>=65?'#0a7c42':tc.estimatedWin>=55?'#10b981':tc.estimatedWin>=45?'#f59e0b':'#ef4444';
+h+='<div style="margin-bottom:14px;padding:12px;border-radius:10px;background:'+winC+'06;border:1px solid '+winC+'25">';
+h+='<div style="font-size:12px;font-weight:800;color:'+winC+'">Confidence: '+tc.estimatedWin+'% ('+tc.grade+')</div>';
+h+='<div style="font-size:9px;color:var(--text3)">'+tc.sizeRecommendation+'</div>';
+h+='</div>';
+}
+
+// ═══ 3-PLAN DECISION — Pick Your Path ═══
+var _plans=d.plans||[];
+if(_plans.length>0){
+h+='<div style="margin-bottom:14px;border-radius:14px;overflow:hidden;border:1px solid var(--border)">';
+h+='<div style="padding:10px 18px;background:var(--bg2);border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">';
+h+='<div style="font-size:11px;font-weight:800;color:var(--text)">🎯 PICK YOUR PLAN — 3 Ways to Trade '+d.symbol+'</div>';
+h+='<div style="font-size:8px;color:var(--text3)">Choose based on your risk appetite</div></div>';
+h+='<div style="display:grid;grid-template-columns:repeat('+_plans.length+',1fr);gap:0">';
+_plans.forEach(function(pl,idx){
+var bdr=idx<_plans.length-1?';border-right:1px solid var(--border)':'';
+h+='<div style="padding:14px'+bdr+';transition:all .2s;cursor:pointer" onmouseover="this.style.background=\''+pl.color+'08\'" onmouseout="this.style.background=\'transparent\'">';
+// Plan header
+h+='<div style="display:flex;align-items:center;gap:6px;margin-bottom:8px">';
+h+='<div style="width:28px;height:28px;border-radius:50%;background:'+pl.color+';display:flex;align-items:center;justify-content:center"><span style="font-size:12px;font-weight:900;color:#fff">'+pl.plan+'</span></div>';
+h+='<div><div style="font-size:11px;font-weight:800;color:'+pl.color+'">'+pl.name+'</div>';
+h+='<div style="font-size:7px;color:var(--text3)">'+pl.tagline+'</div></div></div>';
+// Strategy name
+h+='<div style="font-size:10px;font-weight:800;color:var(--text);padding:6px 8px;border-radius:6px;background:'+pl.color+'08;border:1px solid '+pl.color+'20;margin-bottom:8px">'+pl.strategy+'</div>';
+// Risk badge
+h+='<div style="display:flex;gap:4px;margin-bottom:8px;flex-wrap:wrap">';
+h+='<span style="font-size:7px;padding:2px 6px;border-radius:3px;background:var(--bg2);color:var(--text3);font-weight:700">'+pl.type+'</span>';
+var rskC=pl.risk==='HIGH'?'#ef4444':pl.risk==='MEDIUM'?'#f59e0b':'#10b981';
+h+='<span style="font-size:7px;padding:2px 6px;border-radius:3px;background:'+rskC+'15;color:'+rskC+';font-weight:700">RISK: '+pl.risk+'</span>';
+if(pl.pop){h+='<span style="font-size:7px;padding:2px 6px;border-radius:3px;background:#3b82f615;color:#3b82f6;font-weight:700">POP: '+pl.pop+'%</span>';}
+h+='</div>';
+// Entry/SL/Target flow
+h+='<div style="display:flex;gap:4px;align-items:center;margin-bottom:6px;font-size:9px">';
+if(pl.entry>=0){
+h+='<div style="text-align:center;padding:4px 6px;border-radius:4px;background:#0a7c4210"><div style="font-size:6px;color:#0a7c42;font-weight:700">ENTRY</div><div style="font-weight:800;color:#0a7c42;font-family:var(--mono)">'+S+pl.entry+'</div></div>';
+}else{
+h+='<div style="text-align:center;padding:4px 6px;border-radius:4px;background:#10b98110"><div style="font-size:6px;color:#10b981;font-weight:700">CREDIT</div><div style="font-weight:800;color:#10b981;font-family:var(--mono)">'+S+Math.abs(pl.entry)+'</div></div>';
+}
+h+='<span style="color:var(--text3)">→</span>';
+if(pl.sl>0){h+='<div style="text-align:center;padding:4px 6px;border-radius:4px;background:#ef444410"><div style="font-size:6px;color:#ef4444;font-weight:700">SL</div><div style="font-weight:800;color:#ef4444;font-family:var(--mono)">'+S+pl.sl+'</div></div>';
+h+='<span style="color:var(--text3)">→</span>';}
+h+='<div style="text-align:center;padding:4px 6px;border-radius:4px;background:#10b98110"><div style="font-size:6px;color:#10b981;font-weight:700">TARGET</div><div style="font-weight:800;color:#10b981;font-family:var(--mono)">'+S+pl.t2+'</div></div>';
+h+='</div>';
+// Capital + R:R
+h+='<div style="display:flex;gap:8px;margin-bottom:6px;font-size:8px">';
+h+='<span style="color:var(--text3)">Capital: <strong style="color:var(--text)">'+S+pl.capital.toLocaleString("en-IN")+'</strong></span>';
+h+='<span style="color:var(--text3)">R:R: <strong style="color:var(--purple)">'+pl.rr+'</strong></span>';
+h+='</div>';
+// Max loss / profit
+h+='<div style="display:flex;gap:6px;margin-bottom:8px">';
+h+='<div style="flex:1;padding:4px 6px;border-radius:4px;background:#ef444406;text-align:center"><div style="font-size:6px;color:#ef4444;font-weight:700">MAX LOSS</div><div style="font-size:10px;font-weight:800;color:#ef4444;font-family:var(--mono)">'+S+(typeof pl.maxLoss==="number"?pl.maxLoss.toLocaleString("en-IN"):pl.maxLoss)+'</div></div>';
+h+='<div style="flex:1;padding:4px 6px;border-radius:4px;background:#10b98106;text-align:center"><div style="font-size:6px;color:#10b981;font-weight:700">MAX PROFIT</div><div style="font-size:10px;font-weight:800;color:#10b981;font-family:var(--mono)">'+pl.maxProfit+'</div></div>';
+h+='</div>';
+// When to use
+h+='<div style="font-size:8px;color:var(--text3);line-height:1.4;margin-bottom:4px"><strong>When:</strong> '+pl.when+'</div>';
+// Analogy
+h+='<div style="font-size:8px;color:var(--cyan);line-height:1.4;padding:4px 6px;border-radius:4px;background:var(--bg2)">💡 '+pl.analogy+'</div>';
+h+='</div>';
+});
+h+='</div></div>';
 }
 
 // Valuation moved to separate tab — show compact link

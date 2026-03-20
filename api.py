@@ -5155,6 +5155,397 @@ async def _algo_signal_impl(symbol: str = "NIFTY", region: str = ""):
     trade["tradeable"] = signal not in ["HOLD / WAIT", "AVOID"]
     result["trade"] = trade
     
+    # ═══ 5-ENGINE ARCHITECTURE ═══
+    try:
+        tech = result.get("technicals", {})
+        _ema9 = float(tech.get("ema9", 0) or 0)
+        _ema21 = float(tech.get("ema21", 0) or 0)
+        _ema50 = float(tech.get("ema50", 0) or 0)
+        _sma200 = float(tech.get("sma200", 0) or 0)
+        _rsi = float(tech.get("rsi", 50) or 50)
+        _macd_h = float(tech.get("macd_hist", 0) or 0)
+        _vol_r = float(tech.get("vol_ratio", 1.0) or 1.0)
+        _atr = float(tech.get("atr14", 0) or 0)
+        _iv = float(nse.get("atm_iv", 20) or 20)
+        _pcr = float(nse.get("pcr", 1.0) or 1.0)
+        _vix = float(nse.get("vix", 0) or 0)
+        _oi_data = result.get("options_intel", {})
+        _dte = bs_data.get("dte", 7) if bs_data else 7
+        
+        # ── ENGINE A: Market Regime (Trend + Structure) ──
+        # EMA stack alignment
+        ema_bull = _ema9 > _ema21 > _ema50 if _ema9 > 0 and _ema21 > 0 and _ema50 > 0 else False
+        ema_bear = _ema9 < _ema21 < _ema50 if _ema9 > 0 and _ema21 > 0 and _ema50 > 0 else False
+        above_200 = price > _sma200 if _sma200 > 0 else True
+        
+        # ADX calculation (trend strength)
+        adx_val = 0
+        try:
+            closes_arr = df_daily["Close"].values.astype(float)
+            highs_arr = df_daily["High"].values.astype(float)
+            lows_arr = df_daily["Low"].values.astype(float)
+            if len(closes_arr) >= 20:
+                import numpy as np
+                tr_arr = np.maximum(highs_arr[1:] - lows_arr[1:], np.maximum(abs(highs_arr[1:] - closes_arr[:-1]), abs(lows_arr[1:] - closes_arr[:-1])))
+                dm_plus = np.where((highs_arr[1:] - highs_arr[:-1]) > (lows_arr[:-1] - lows_arr[1:]), np.maximum(highs_arr[1:] - highs_arr[:-1], 0), 0)
+                dm_minus = np.where((lows_arr[:-1] - lows_arr[1:]) > (highs_arr[1:] - highs_arr[:-1]), np.maximum(lows_arr[:-1] - lows_arr[1:], 0), 0)
+                atr_14 = pd.Series(tr_arr).ewm(span=14).mean().iloc[-1]
+                di_plus = 100 * pd.Series(dm_plus).ewm(span=14).mean().iloc[-1] / atr_14 if atr_14 > 0 else 0
+                di_minus = 100 * pd.Series(dm_minus).ewm(span=14).mean().iloc[-1] / atr_14 if atr_14 > 0 else 0
+                dx = abs(di_plus - di_minus) / (di_plus + di_minus) * 100 if (di_plus + di_minus) > 0 else 0
+                adx_val = round(float(dx), 1)
+        except: pass
+        
+        trend_dir = "BULLISH" if ema_bull else ("BEARISH" if ema_bear else "SIDEWAYS")
+        trend_strength = "STRONG" if adx_val > 25 else "WEAK"
+        trend_score = 0
+        if ema_bull: trend_score += 40
+        elif ema_bear: trend_score += 40
+        if above_200 and trend_dir == "BULLISH": trend_score += 20
+        elif not above_200 and trend_dir == "BEARISH": trend_score += 20
+        if adx_val > 25: trend_score += 20
+        elif adx_val > 20: trend_score += 10
+        if _macd_h > 0 and trend_dir == "BULLISH": trend_score += 20
+        elif _macd_h < 0 and trend_dir == "BEARISH": trend_score += 20
+        trend_score = min(100, trend_score)
+        
+        engine_a = {
+            "name": "Market Regime", "icon": "📊",
+            "trend": trend_dir, "strength": trend_strength, "adx": adx_val,
+            "emaStack": "BULL" if ema_bull else ("BEAR" if ema_bear else "MIXED"),
+            "above200": above_200, "score": trend_score,
+            "detail": f"EMA {'9>21>50 ✅' if ema_bull else ('9<21<50 ✅' if ema_bear else 'mixed ⚠️')} | ADX {adx_val} {'Strong' if adx_val>25 else 'Weak'} | {'Above' if above_200 else 'Below'} SMA200",
+        }
+        
+        # ── ENGINE B: OI + Liquidity (Smart Money) ──
+        ce_res = nse.get("ce_resistance", [])
+        pe_sup = nse.get("pe_support", [])
+        max_pain = float(nse.get("max_pain", 0) or 0)
+        
+        oi_bias = "NEUTRAL"
+        oi_score = 50
+        support_zone = pe_sup[0]["strike"] if pe_sup else 0
+        resistance_zone = ce_res[0]["strike"] if ce_res else 0
+        
+        if _pcr > 1.2:
+            oi_bias = "BULLISH"
+            oi_score = 70
+        elif _pcr < 0.8:
+            oi_bias = "BEARISH"
+            oi_score = 30
+        elif _pcr > 1.0:
+            oi_score = 60
+            oi_bias = "MILDLY BULLISH"
+        else:
+            oi_score = 40
+            oi_bias = "MILDLY BEARISH"
+        
+        # OI shift detection
+        if resistance_zone > 0 and price > 0:
+            if price > resistance_zone * 0.98: oi_score += 10  # Near breakout
+            if max_pain > price: oi_score += 5  # Max pain above = bullish pull
+        if support_zone > 0 and price > 0:
+            if price < support_zone * 1.02: oi_score -= 10
+        
+        oi_score = max(0, min(100, oi_score))
+        
+        engine_b = {
+            "name": "OI & Smart Money", "icon": "🏦",
+            "bias": oi_bias, "pcr": round(_pcr, 2),
+            "support": support_zone, "resistance": resistance_zone,
+            "maxPain": max_pain, "score": oi_score,
+            "detail": f"PCR {_pcr:.2f} ({oi_bias}) | Support {csym}{support_zone:,.0f} | Resistance {csym}{resistance_zone:,.0f} | Max Pain {csym}{max_pain:,.0f}",
+        }
+        
+        # ── ENGINE C: Volatility (Buy vs Sell Premium) ──
+        iv_rank = float(_oi_data.get("iv_rank", 50) or 50)
+        hv_20 = 0
+        try:
+            dr = [(closes_arr[i]-closes_arr[i-1])/closes_arr[i-1] for i in range(max(1,len(closes_arr)-21), len(closes_arr)) if closes_arr[i-1]>0]
+            hv_20 = round(float(np.std(dr) * (252**0.5) * 100), 1) if dr else 0
+        except: pass
+        
+        iv_hv_spread = round(_iv - hv_20, 1) if hv_20 > 0 else 0
+        
+        if iv_rank >= 70:
+            vol_state = "HIGH"
+            vol_action = "SELL_PREMIUM"
+            vol_score = 30 if direction == "BULLISH" else 70  # Selling is favorable
+        elif iv_rank <= 30:
+            vol_state = "LOW"
+            vol_action = "BUY_PREMIUM"
+            vol_score = 75  # Buying cheap premium
+        else:
+            vol_state = "NORMAL"
+            vol_action = "DIRECTIONAL"
+            vol_score = 55
+        
+        if _vix > 25: vol_score -= 15
+        elif _vix < 14: vol_score += 10
+        vol_score = max(0, min(100, vol_score))
+        
+        engine_c = {
+            "name": "Volatility", "icon": "🌡️",
+            "state": vol_state, "action": vol_action,
+            "iv": round(_iv, 1), "hv": hv_20, "ivRank": round(iv_rank, 0),
+            "ivHvSpread": iv_hv_spread, "vix": round(_vix, 1), "score": vol_score,
+            "detail": f"IV {_iv:.1f}% (Rank {iv_rank:.0f}%) | HV {hv_20}% | Spread {iv_hv_spread:+.1f}% | VIX {_vix:.1f} | {vol_action.replace('_',' ')}",
+        }
+        
+        # ── ENGINE D: Expected Move ──
+        em_pts = round(price * (_iv/100) * (max(_dte, 1)/365)**0.5, 1) if _iv > 0 else 0
+        em_low = round(price - em_pts, 0)
+        em_high = round(price + em_pts, 0)
+        
+        engine_d = {
+            "name": "Expected Move", "icon": "📐",
+            "points": em_pts, "low": em_low, "high": em_high,
+            "dte": _dte, "iv": round(_iv, 1),
+            "detail": f"Market expects {csym}{em_low:,.0f} – {csym}{em_high:,.0f} by expiry (±{csym}{em_pts:,.0f})",
+        }
+        
+        # ── ENGINE E: Momentum (Entry Timing) ──
+        orb_data = result.get("orb", {})
+        vwap_val = float(orb_data.get("vwap", 0) or 0)
+        above_vwap = price > vwap_val if vwap_val > 0 else True
+        
+        mom_signal = "NONE"
+        mom_score = 50
+        
+        # RSI momentum
+        if _rsi > 60 and _rsi < 80: mom_score += 15  # Bullish momentum
+        elif _rsi < 40 and _rsi > 20: mom_score += 15  # Bearish momentum (for puts)
+        elif _rsi > 80: mom_score -= 10  # Overbought
+        elif _rsi < 20: mom_score -= 10  # Oversold extreme
+        
+        # VWAP
+        if above_vwap and direction == "BULLISH": mom_score += 10
+        elif not above_vwap and direction == "BEARISH": mom_score += 10
+        
+        # Volume surge
+        if _vol_r > 1.5: mom_score += 15
+        elif _vol_r > 1.2: mom_score += 5
+        elif _vol_r < 0.7: mom_score -= 10
+        
+        # MACD confirmation
+        if (_macd_h > 0 and direction == "BULLISH") or (_macd_h < 0 and direction == "BEARISH"):
+            mom_score += 10
+        
+        mom_score = max(0, min(100, mom_score))
+        
+        if mom_score >= 65:
+            mom_signal = "BUY_CALL" if direction == "BULLISH" else "BUY_PUT"
+        elif mom_score <= 35:
+            mom_signal = "BUY_PUT" if direction == "BULLISH" else "BUY_CALL"
+        
+        engine_e = {
+            "name": "Momentum", "icon": "🚀",
+            "signal": mom_signal, "rsi": round(_rsi, 1),
+            "vwap": round(vwap_val, 2), "aboveVwap": above_vwap,
+            "volRatio": round(_vol_r, 1), "macdBull": _macd_h > 0,
+            "score": mom_score,
+            "detail": f"RSI {_rsi:.0f} | VWAP {'Above ✅' if above_vwap else 'Below ❌'} | Vol {_vol_r:.1f}x | MACD {'Bull' if _macd_h>0 else 'Bear'} → {mom_signal.replace('_',' ')}",
+        }
+        
+        # ── DECISION ENGINE: Weighted Score ──
+        final_score = round(
+            engine_a["score"] * 0.30 +
+            engine_b["score"] * 0.25 +
+            engine_c["score"] * 0.20 +
+            engine_e["score"] * 0.25
+        , 1)
+        
+        # Decision matrix
+        if trend_dir != "SIDEWAYS" and trend_strength == "STRONG" and vol_state != "HIGH" and final_score >= 65:
+            decision = "BUY_CALL" if trend_dir == "BULLISH" else "BUY_PUT"
+            dec_reason = "Trending market + strong momentum + favorable volatility"
+        elif trend_dir == "SIDEWAYS" and vol_state == "HIGH" and final_score >= 50:
+            decision = "SELL_STRANGLE"
+            dec_reason = "Range-bound + high IV = premium selling opportunity"
+        elif mom_score < 40 and oi_score < 40:
+            decision = "AVOID"
+            dec_reason = "Mixed signals + low momentum + unclear OI = no edge"
+        elif final_score >= 55:
+            decision = "BUY_CALL" if direction == "BULLISH" else "BUY_PUT"
+            dec_reason = "Moderate setup with directional bias"
+        else:
+            decision = "AVOID"
+            dec_reason = "Insufficient confluence across engines"
+        
+        # GEX (Gamma Exposure) approximation
+        gex_zones = []
+        try:
+            if ce_res and pe_sup:
+                for r in ce_res[:3]:
+                    gex_zones.append({"strike": r["strike"], "type": "RESISTANCE", "oi": r["oi"], "gamma": "NEGATIVE", "effect": "Price repelled — acts as ceiling"})
+                for s in pe_sup[:3]:
+                    gex_zones.append({"strike": s["strike"], "type": "SUPPORT", "oi": s["oi"], "gamma": "POSITIVE", "effect": "Price attracted — acts as floor"})
+        except: pass
+        
+        result["engines"] = {
+            "regime": engine_a,
+            "oi": engine_b,
+            "volatility": engine_c,
+            "expectedMove": engine_d,
+            "momentum": engine_e,
+            "finalScore": final_score,
+            "decision": decision,
+            "decisionReason": dec_reason,
+            "gexZones": gex_zones,
+            "weights": {"trend": 30, "oi": 25, "volatility": 20, "momentum": 25},
+        }
+        
+        # ═══ 3-PLAN DECISION SYSTEM ═══
+        plans = []
+        _atm_s = round(price / inst.get("gap", 50)) * inst.get("gap", 50)
+        _gap_s = inst.get("gap", 50)
+        _lot_s = inst.get("lot", 50)
+        _dte_s = bs_data.get("dte", 7) if bs_data else 7
+        
+        # Helper for B-S premium
+        def _quick_prem(S, K, T, sigma, otype):
+            try:
+                from math import log, sqrt, exp, erf
+                if T <= 0 or sigma <= 0: return 0
+                r = 0.0525 if is_us else 0.065
+                d1 = (log(S/K) + (r + sigma**2/2)*T) / (sigma*sqrt(T))
+                d2 = d1 - sigma*sqrt(T)
+                nd1 = 0.5*(1+erf(d1/sqrt(2))); nd2 = 0.5*(1+erf(d2/sqrt(2)))
+                if otype == "CE": return round(max(S*nd1 - K*exp(-r*T)*nd2, 0), 1)
+                return round(max(K*exp(-r*T)*(1-nd2) - S*(1-nd1), 0), 1)
+            except: return 0
+        _T_s = max(_dte_s, 1) / 365
+        _iv_dec_s = (_iv / 100) if _iv > 0 else 0.20
+        
+        # ── PLAN A: AGGRESSIVE — High conviction directional ──
+        if final_score >= 55 and decision != "AVOID":
+            pa_type = "CE" if direction == "BULLISH" else "PE"
+            pa_display = ("CALL" if is_us else "CE") if direction == "BULLISH" else ("PUT" if is_us else "PE")
+            pa_prem = _quick_prem(price, _atm_s, _T_s, _iv_dec_s, pa_type)
+            pa_sl = round(pa_prem * 0.65, 1)  # 35% SL
+            pa_t1 = round(pa_prem * 1.5, 1)
+            pa_t2 = round(pa_prem * 2.2, 1)
+            pa_rr = round((pa_t2 - pa_prem) / (pa_prem - pa_sl), 1) if pa_prem > pa_sl else 0
+            
+            plans.append({
+                "plan": "A", "name": "AGGRESSIVE", "color": "#0a7c42",
+                "emoji": "🎯", "tagline": "Maximum profit potential — for confident traders",
+                "strategy": f"BUY {_atm_s} {pa_display}",
+                "type": "DIRECTIONAL",
+                "risk": "HIGH",
+                "entry": pa_prem, "sl": pa_sl, "t1": pa_t1, "t2": pa_t2,
+                "rr": f"1:{pa_rr}",
+                "capital": round(pa_prem * _lot_s, 0),
+                "maxLoss": round((pa_prem - pa_sl) * _lot_s, 0),
+                "maxProfit": f"Unlimited ({csym}{round((pa_t2 - pa_prem) * _lot_s, 0):,} at T2)",
+                "when": "You're confident in direction. Engines show strong alignment. You can handle 35% premium loss.",
+                "exit": f"Book 50% at {csym}{pa_t1}, trail rest. Hard SL at {csym}{pa_sl}.",
+                "analogy": "Like betting on the favorite horse — higher chance of winning, still need the race to go your way.",
+            })
+        
+        # ── PLAN B: BALANCED — Spread strategy (defined risk) ──
+        if direction == "BULLISH":
+            pb_buy = _quick_prem(price, _atm_s, _T_s, _iv_dec_s, "CE")
+            pb_sell = _quick_prem(price, _atm_s + _gap_s, _T_s, _iv_dec_s, "CE")
+            pb_cost = round(pb_buy - pb_sell, 1)
+            pb_profit = round(_gap_s - pb_cost, 1) if pb_cost > 0 else 0
+            pb_rr = round(pb_profit / pb_cost, 1) if pb_cost > 0 else 0
+            pb_display = "CALL" if is_us else "CE"
+            plans.append({
+                "plan": "B", "name": "BALANCED", "color": "#3b82f6",
+                "emoji": "⚖️", "tagline": "Defined risk, defined reward — for smart traders",
+                "strategy": f"BULL {pb_display} SPREAD: BUY {_atm_s} / SELL {_atm_s + _gap_s}",
+                "type": "SPREAD",
+                "risk": "MEDIUM",
+                "entry": pb_cost, "sl": 0, "t1": round(pb_cost + pb_profit * 0.5, 1), "t2": round(pb_cost + pb_profit, 1),
+                "rr": f"1:{pb_rr}",
+                "capital": round(pb_cost * _lot_s, 0),
+                "maxLoss": round(pb_cost * _lot_s, 0),
+                "maxProfit": f"{csym}{round(pb_profit * _lot_s, 0):,}",
+                "when": "Moderately confident. Want to limit max loss. Engines show 55-70% score.",
+                "exit": f"Max profit if {d.get('symbol', '')} above {csym}{_atm_s + _gap_s:,.0f} at expiry. Max loss = entry cost.",
+                "analogy": "Like buying a lottery ticket with a cap — you know exactly what you can lose AND win before you start.",
+            })
+        else:
+            pb_buy = _quick_prem(price, _atm_s, _T_s, _iv_dec_s, "PE")
+            pb_sell = _quick_prem(price, _atm_s - _gap_s, _T_s, _iv_dec_s, "PE")
+            pb_cost = round(pb_buy - pb_sell, 1)
+            pb_profit = round(_gap_s - pb_cost, 1) if pb_cost > 0 else 0
+            pb_rr = round(pb_profit / pb_cost, 1) if pb_cost > 0 else 0
+            pb_display = "PUT" if is_us else "PE"
+            plans.append({
+                "plan": "B", "name": "BALANCED", "color": "#3b82f6",
+                "emoji": "⚖️", "tagline": "Defined risk, defined reward — for smart traders",
+                "strategy": f"BEAR {pb_display} SPREAD: BUY {_atm_s} / SELL {_atm_s - _gap_s}",
+                "type": "SPREAD",
+                "risk": "MEDIUM",
+                "entry": pb_cost, "sl": 0, "t1": round(pb_cost + pb_profit * 0.5, 1), "t2": round(pb_cost + pb_profit, 1),
+                "rr": f"1:{pb_rr}",
+                "capital": round(pb_cost * _lot_s, 0),
+                "maxLoss": round(pb_cost * _lot_s, 0),
+                "maxProfit": f"{csym}{round(pb_profit * _lot_s, 0):,}",
+                "when": "Moderately confident. Want to limit max loss.",
+                "exit": f"Max profit if below {csym}{_atm_s - _gap_s:,.0f} at expiry.",
+                "analogy": "Like buying insurance with a deductible — you know your max loss upfront.",
+            })
+        
+        # ── PLAN C: CONSERVATIVE — Non-directional or wait ──
+        if vol_state == "HIGH" or iv_rank >= 50:
+            # Iron Condor — sell premium
+            pc_ce_sell = _quick_prem(price, _atm_s + _gap_s, _T_s, _iv_dec_s, "CE")
+            pc_pe_sell = _quick_prem(price, _atm_s - _gap_s, _T_s, _iv_dec_s, "PE")
+            pc_ce_buy = _quick_prem(price, _atm_s + _gap_s * 2, _T_s, _iv_dec_s, "CE")
+            pc_pe_buy = _quick_prem(price, _atm_s - _gap_s * 2, _T_s, _iv_dec_s, "PE")
+            pc_credit = round(pc_ce_sell + pc_pe_sell - pc_ce_buy - pc_pe_buy, 1)
+            pc_max_loss = round(_gap_s - pc_credit, 1)
+            pc_pop = round(max(45, min(80, 50 + (pc_credit / _gap_s * 40))), 0) if _gap_s > 0 else 50
+            
+            plans.append({
+                "plan": "C", "name": "CONSERVATIVE", "color": "#8b5cf6",
+                "emoji": "🛡️", "tagline": "Collect premium — profit from time decay",
+                "strategy": f"IRON CONDOR: Sell {_atm_s - _gap_s}/{_atm_s + _gap_s}, Buy wings",
+                "type": "NON-DIRECTIONAL",
+                "risk": "LOW-MEDIUM",
+                "entry": -pc_credit, "sl": round(pc_credit * 2, 1), "t1": round(pc_credit * 0.5, 1), "t2": pc_credit,
+                "rr": f"Credit {csym}{pc_credit}",
+                "capital": round(pc_max_loss * _lot_s, 0),
+                "maxLoss": round(pc_max_loss * _lot_s, 0),
+                "maxProfit": f"{csym}{round(pc_credit * _lot_s, 0):,} (keep full credit)",
+                "pop": pc_pop,
+                "when": "Unsure about direction. IV is high. Want to profit from time passing. Market is range-bound.",
+                "exit": f"Keep credit if price stays between {csym}{_atm_s - _gap_s:,.0f} and {csym}{_atm_s + _gap_s:,.0f}.",
+                "analogy": "Like being the house in a casino — you collect the premium and win if nothing dramatic happens. ~{0}% probability of profit.".format(pc_pop),
+            })
+        else:
+            # Low IV — straddle for breakout
+            pc_ce = _quick_prem(price, _atm_s, _T_s, _iv_dec_s, "CE")
+            pc_pe = _quick_prem(price, _atm_s, _T_s, _iv_dec_s, "PE")
+            pc_cost = round(pc_ce + pc_pe, 1)
+            
+            plans.append({
+                "plan": "C", "name": "HEDGE / BREAKOUT", "color": "#8b5cf6",
+                "emoji": "🛡️", "tagline": "Profit from big move in either direction",
+                "strategy": f"LONG STRADDLE: BUY {_atm_s} CE + {_atm_s} PE",
+                "type": "NON-DIRECTIONAL",
+                "risk": "MEDIUM",
+                "entry": pc_cost, "sl": round(pc_cost * 0.6, 1), "t1": round(pc_cost * 1.5, 1), "t2": round(pc_cost * 2.5, 1),
+                "rr": f"Cost {csym}{pc_cost}",
+                "capital": round(pc_cost * _lot_s, 0),
+                "maxLoss": round(pc_cost * _lot_s, 0),
+                "maxProfit": "Unlimited (either direction)",
+                "when": "Before big events. IV is low (cheap options). Expect big move but unsure which way.",
+                "exit": f"Need {csym}{pc_cost:,.0f}+ move from {csym}{_atm_s:,.0f} to profit.",
+                "analogy": "Like betting on BOTH teams — you win as long as the match isn't a boring draw.",
+            })
+        
+        result["plans"] = plans
+        print(f"📋 Plans: {len(plans)} generated for {symbol}")
+        
+        print(f"🧠 Engines: {symbol} trend={trend_dir}/{trend_strength} oi={oi_bias} vol={vol_state} mom={mom_signal} final={final_score} → {decision}")
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        print(f"⚠️ Engine computation failed: {e}")
+    
     # ═══ TRADE CONFIDENCE — Win probability, strength, risk assessment ═══
     try:
         # Win probability based on weighted factor score + historical patterns
@@ -5274,6 +5665,270 @@ async def _algo_signal_impl(symbol: str = "NIFTY", region: str = ""):
             "riskReward": prem_rr if 'prem_rr' in dir() else "N/A",
             "rrValue": 0, "factorScore": round(pct, 1) if 'pct' in dir() else 50,
         }
+    
+    # ═══ ADVANCED EDGE — GEX, Liquidity Voids, ML Patterns, Weighted Score ═══
+    try:
+        from math import log, sqrt, exp, erf
+        adv = {}
+        _iv_d = (nse.get("atm_iv", 20) or 20) / 100
+        _gap_v = inst.get("gap", 50)
+        _atm_v = round(price / _gap_v) * _gap_v
+        _T_v = max(bs_data.get("dte", 7) if bs_data else 7, 1) / 365
+        _r_v = 0.0525 if is_us else 0.065
+        
+        # ─── 1. GAMMA EXPOSURE (GEX) — Squeeze Zone Detection ───
+        gex_data = []
+        gex_flip = 0
+        gex_total = 0
+        try:
+            oi_strikes = nse.get("oi_data", []) or []
+            if not oi_strikes and nse.get("ce_resistance"):
+                # Build from resistance/support data
+                for r in (nse.get("ce_resistance", []) or []):
+                    oi_strikes.append({"strike": r["strike"], "ce_oi": r.get("oi", 0), "pe_oi": 0})
+                for r in (nse.get("pe_support", []) or []):
+                    for s in oi_strikes:
+                        if s["strike"] == r["strike"]: s["pe_oi"] = r.get("oi", 0); break
+                    else:
+                        oi_strikes.append({"strike": r["strike"], "ce_oi": 0, "pe_oi": r.get("oi", 0)})
+            
+            for s in oi_strikes:
+                K = s.get("strike", 0)
+                if K <= 0: continue
+                ce_oi = s.get("ce_oi", 0) or 0
+                pe_oi = s.get("pe_oi", 0) or 0
+                
+                # Gamma at this strike
+                if _iv_d > 0 and _T_v > 0 and K > 0:
+                    d1 = (log(price/K) + (_r_v + _iv_d**2/2)*_T_v) / (_iv_d*sqrt(_T_v))
+                    npd1 = exp(-d1**2/2) / sqrt(2*3.14159)
+                    gamma = npd1 / (price * _iv_d * sqrt(_T_v))
+                else:
+                    gamma = 0
+                
+                # GEX = (CE_OI - PE_OI) × Gamma × Spot × 100
+                gex_at_strike = round((ce_oi - pe_oi) * gamma * price * 100 / 1e6, 2)  # in millions
+                gex_data.append({"strike": K, "gex": gex_at_strike, "ce_oi": ce_oi, "pe_oi": pe_oi})
+                gex_total += gex_at_strike
+            
+            # GEX flip point — where GEX changes sign (negative → positive)
+            gex_sorted = sorted(gex_data, key=lambda x: x["strike"])
+            for i in range(1, len(gex_sorted)):
+                if gex_sorted[i-1]["gex"] < 0 and gex_sorted[i]["gex"] >= 0:
+                    gex_flip = gex_sorted[i]["strike"]
+                    break
+            if not gex_flip and gex_sorted:
+                gex_flip = _atm_v
+        except Exception as ge:
+            print(f"GEX calc error: {ge}")
+        
+        # GEX interpretation
+        gex_regime = "NEUTRAL"
+        gex_msg = ""
+        if gex_total > 0:
+            gex_regime = "POSITIVE"
+            gex_msg = "Dealers are LONG gamma. They sell rallies & buy dips = market stays range-bound. Low volatility expected. Sell premium strategies work well."
+        elif gex_total < 0:
+            gex_regime = "NEGATIVE"
+            gex_msg = "Dealers are SHORT gamma. They buy rallies & sell dips = AMPLIFIED moves. High volatility. Breakouts are real. Ride the momentum."
+        else:
+            gex_msg = "Balanced gamma. No strong dealer positioning bias."
+        
+        adv["gex"] = {
+            "total": round(gex_total, 2),
+            "regime": gex_regime,
+            "flipPoint": gex_flip,
+            "msg": gex_msg,
+            "topStrikes": sorted(gex_data, key=lambda x: abs(x["gex"]), reverse=True)[:5] if gex_data else [],
+        }
+        
+        # ─── 2. LIQUIDITY VOIDS — Fast Move Zones ───
+        voids = []
+        try:
+            closes_arr = df_daily["Close"].values.astype(float) if 'df_daily' in dir() else []
+            highs_arr = df_daily["High"].values.astype(float) if 'df_daily' in dir() else []
+            lows_arr = df_daily["Low"].values.astype(float) if 'df_daily' in dir() else []
+            
+            if len(closes_arr) >= 20:
+                avg_range = float((highs_arr[-20:] - lows_arr[-20:]).mean())
+                
+                for i in range(-min(20, len(closes_arr)-1), 0):
+                    gap_size = abs(float(lows_arr[i] - highs_arr[i-1]))
+                    if gap_size > avg_range * 1.5:
+                        void_top = max(float(lows_arr[i]), float(highs_arr[i-1]))
+                        void_bot = min(float(lows_arr[i]), float(highs_arr[i-1]))
+                        dist_pct = round(abs(price - (void_top+void_bot)/2) / price * 100, 1)
+                        filled = price >= void_bot and price <= void_top
+                        voids.append({
+                            "top": round(void_top, 2),
+                            "bottom": round(void_bot, 2),
+                            "size": round(gap_size, 2),
+                            "sizePct": round(gap_size/price*100, 2),
+                            "distFromPrice": dist_pct,
+                            "direction": "ABOVE" if (void_top+void_bot)/2 > price else "BELOW",
+                            "filled": filled,
+                        })
+                
+                voids.sort(key=lambda x: x["distFromPrice"])
+        except Exception as ve:
+            print(f"Void calc error: {ve}")
+        
+        adv["liquidityVoids"] = {
+            "voids": voids[:4],
+            "count": len(voids),
+            "msg": f"{len(voids)} liquidity void(s) detected nearby." if voids else "No significant liquidity voids. Price action is smooth.",
+            "interpretation": "Liquidity voids are price zones where trading was thin — price 'jumped' through. These zones act as magnets. Price often revisits to fill the gap." if voids else "Clean price action. No gap-fill risk.",
+        }
+        
+        # ─── 3. ML PATTERN SCORING — Learn from Historical Setups ───
+        ml_score = 50
+        ml_patterns = []
+        try:
+            if len(closes_arr) >= 60:
+                # Pattern 1: EMA crossover success rate
+                ema9_h = pd.Series(closes_arr).ewm(span=9).mean().values
+                ema21_h = pd.Series(closes_arr).ewm(span=21).mean().values
+                cross_wins = 0; cross_total = 0
+                for i in range(-50, -5):
+                    if ema9_h[i-1] < ema21_h[i-1] and ema9_h[i] > ema21_h[i]:  # Bullish cross
+                        cross_total += 1
+                        if closes_arr[i+5] > closes_arr[i]: cross_wins += 1
+                    elif ema9_h[i-1] > ema21_h[i-1] and ema9_h[i] < ema21_h[i]:  # Bearish cross
+                        cross_total += 1
+                        if closes_arr[i+5] < closes_arr[i]: cross_wins += 1
+                
+                cross_rate = round(cross_wins/cross_total*100) if cross_total > 3 else 50
+                ml_patterns.append({"pattern": "EMA 9/21 Crossover", "winRate": cross_rate, "samples": cross_total, "msg": f"EMA crosses predicted correctly {cross_rate}% of the time ({cross_total} samples)"})
+                
+                # Pattern 2: RSI oversold/overbought bounce rate
+                rsi_series = []
+                delta = pd.Series(closes_arr).diff()
+                gain = delta.clip(lower=0).rolling(14).mean()
+                loss = (-delta.clip(upper=0)).rolling(14).mean()
+                rs = gain / loss
+                rsi_arr = (100 - 100/(1+rs)).values
+                
+                ob_wins = 0; ob_total = 0; os_wins = 0; os_total = 0
+                for i in range(-50, -5):
+                    if not pd.isna(rsi_arr[i]):
+                        if rsi_arr[i] < 30:
+                            os_total += 1
+                            if closes_arr[i+5] > closes_arr[i]: os_wins += 1
+                        elif rsi_arr[i] > 70:
+                            ob_total += 1
+                            if closes_arr[i+5] < closes_arr[i]: ob_wins += 1
+                
+                if os_total >= 2:
+                    os_rate = round(os_wins/os_total*100)
+                    ml_patterns.append({"pattern": "RSI Oversold Bounce", "winRate": os_rate, "samples": os_total, "msg": f"Oversold bounces worked {os_rate}% ({os_total} times)"})
+                if ob_total >= 2:
+                    ob_rate = round(ob_wins/ob_total*100)
+                    ml_patterns.append({"pattern": "RSI Overbought Reversal", "winRate": ob_rate, "samples": ob_total, "msg": f"Overbought reversals worked {ob_rate}% ({ob_total} times)"})
+                
+                # Pattern 3: Volume spike continuation
+                vol_arr = df_daily["Volume"].values.astype(float)
+                vol_mean = float(vol_arr[-20:].mean()) if len(vol_arr) >= 20 else float(vol_arr.mean())
+                vs_wins = 0; vs_total = 0
+                for i in range(-40, -3):
+                    if vol_arr[i] > vol_mean * 1.8:
+                        vs_total += 1
+                        # Did price continue in same direction?
+                        day_dir = closes_arr[i] > closes_arr[i-1]
+                        next_dir = closes_arr[i+3] > closes_arr[i]
+                        if day_dir == next_dir: vs_wins += 1
+                
+                if vs_total >= 3:
+                    vs_rate = round(vs_wins/vs_total*100)
+                    ml_patterns.append({"pattern": "Volume Spike Continuation", "winRate": vs_rate, "samples": vs_total, "msg": f"High volume days continued {vs_rate}% of the time ({vs_total} spikes)"})
+                
+                # Composite ML score
+                if ml_patterns:
+                    ml_score = round(sum(p["winRate"] * p["samples"] for p in ml_patterns) / max(1, sum(p["samples"] for p in ml_patterns)))
+        except Exception as me:
+            print(f"ML pattern error: {me}")
+        
+        adv["mlPatterns"] = {
+            "score": ml_score,
+            "patterns": ml_patterns,
+            "msg": f"Historical pattern analysis suggests {ml_score}% probability based on {sum(p['samples'] for p in ml_patterns)} past setups." if ml_patterns else "Insufficient historical data for pattern analysis.",
+        }
+        
+        # ─── 4. FORMAL WEIGHTED CONFIDENCE SCORE ───
+        tech_d = result.get("technicals", {})
+        _rsi_v = float(tech_d.get("rsi", 50) or 50)
+        _ema9_v = float(tech_d.get("ema9", 0) or 0)
+        _ema21_v = float(tech_d.get("ema21", 0) or 0)
+        _macd_h = float(tech_d.get("macd_hist", 0) or 0)
+        _vol_r = float(tech_d.get("vol_ratio", 1) or 1)
+        _pcr = float(nse.get("pcr", 1) or 1)
+        _iv_rank = float(result.get("options_intel", {}).get("iv_rank", 50) or 50)
+        
+        # Trend Score (30%)
+        trend_score = 50
+        if _ema9_v > _ema21_v and direction == "BULLISH": trend_score = 80
+        elif _ema9_v < _ema21_v and direction == "BEARISH": trend_score = 80
+        elif _ema9_v > _ema21_v and direction == "BEARISH": trend_score = 25
+        elif _ema9_v < _ema21_v and direction == "BULLISH": trend_score = 25
+        if _trd.get("pct", 0) and abs(_trd["pct"]) > 40: trend_score += 10
+        trend_score = min(100, max(0, trend_score))
+        
+        # OI Bias Score (25%)
+        oi_score = 50
+        if _pcr > 1.2 and direction == "BULLISH": oi_score = 75  # Contrarian bullish
+        elif _pcr < 0.8 and direction == "BEARISH": oi_score = 75
+        elif _pcr > 1.2 and direction == "BEARISH": oi_score = 30
+        elif _pcr < 0.8 and direction == "BULLISH": oi_score = 30
+        if gex_regime == "NEGATIVE" and direction != "NEUTRAL": oi_score += 10  # Momentum amplified
+        oi_score = min(100, max(0, oi_score))
+        
+        # Volatility Score (20%)
+        vol_score = 50
+        if _iv_rank < 30: vol_score = 70  # Cheap options = good for buyers
+        elif _iv_rank > 70: vol_score = 30  # Expensive = bad for buyers
+        if _vix > 0:
+            if _vix < 16: vol_score += 10
+            elif _vix > 25: vol_score -= 15
+        vol_score = min(100, max(0, vol_score))
+        
+        # Momentum Score (25%)
+        mom_score = 50
+        if _rsi_v > 50 and _rsi_v < 70 and direction == "BULLISH": mom_score = 75
+        elif _rsi_v < 50 and _rsi_v > 30 and direction == "BEARISH": mom_score = 75
+        elif _rsi_v > 70 and direction == "BULLISH": mom_score = 35  # Overbought
+        elif _rsi_v < 30 and direction == "BEARISH": mom_score = 35  # Oversold
+        if _macd_h > 0 and direction == "BULLISH": mom_score += 10
+        elif _macd_h < 0 and direction == "BEARISH": mom_score += 10
+        if _vol_r > 1.5: mom_score += 8
+        mom_score = min(100, max(0, mom_score))
+        
+        # Weighted composite
+        composite = round(
+            trend_score * 0.30 +
+            oi_score * 0.25 +
+            vol_score * 0.20 +
+            mom_score * 0.25
+        )
+        
+        # ML adjustment
+        if ml_patterns:
+            composite = round(composite * 0.85 + ml_score * 0.15)
+        
+        composite = max(15, min(92, composite))
+        
+        adv["confidenceScore"] = {
+            "composite": composite,
+            "trend": {"score": trend_score, "weight": 30},
+            "oiBias": {"score": oi_score, "weight": 25},
+            "volatility": {"score": vol_score, "weight": 20},
+            "momentum": {"score": mom_score, "weight": 25},
+            "mlAdjustment": ml_score if ml_patterns else None,
+        }
+        
+        result["advancedEdge"] = adv
+        print(f"🔬 Advanced Edge: {symbol} GEX={gex_regime} voids={len(voids)} ML={ml_score} composite={composite}")
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        print(f"⚠️ Advanced Edge failed: {e}")
     
     # ═══ SCALP / QUICK TRADE — 5min & 15min Price Action ═══
     try:
