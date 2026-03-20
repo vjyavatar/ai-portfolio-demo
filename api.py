@@ -5546,6 +5546,157 @@ async def _algo_signal_impl(symbol: str = "NIFTY", region: str = ""):
         import traceback; traceback.print_exc()
         print(f"⚠️ Engine computation failed: {e}")
     
+    # ═══ 3-PLAN FALLBACK — Generate plans even if engines failed ═══
+    if "plans" not in result or not result.get("plans"):
+        try:
+            _dir = result.get("direction", "BULLISH")
+            _sig = result.get("signal", "HOLD / WAIT")
+            _is_wait = _sig in ["HOLD / WAIT", "AVOID"]
+            _iv_f = float(nse.get("atm_iv", 20) or 20)
+            _iv_rank_f = 50
+            try: _iv_rank_f = float(result.get("options_intel", {}).get("iv_rank", 50) or 50)
+            except: pass
+            _dte_f = bs_data.get("dte", 7) if bs_data else 7
+            _T_f = max(_dte_f, 1) / 365
+            _iv_dec_f = (_iv_f / 100) if _iv_f > 0 else 0.20
+            _atm_f = round(price / inst.get("gap", 50)) * inst.get("gap", 50)
+            if _atm_f == 0: _atm_f = round(price)
+            _gap_f = inst.get("gap", 50)
+            if _gap_f == 0: _gap_f = max(1, round(price * 0.01))
+            _lot_f = inst.get("lot", 100)
+            
+            def _qp(S, K, T, sigma, otype):
+                try:
+                    from math import log, sqrt, exp, erf
+                    if T <= 0 or sigma <= 0 or K <= 0 or S <= 0: return max(1, round(S * 0.02))
+                    r = 0.0525 if is_us else 0.065
+                    d1 = (log(S/K) + (r + sigma**2/2)*T) / (sigma*sqrt(T))
+                    d2 = d1 - sigma*sqrt(T)
+                    nd1 = 0.5*(1+erf(d1/sqrt(2))); nd2 = 0.5*(1+erf(d2/sqrt(2)))
+                    if otype == "CE": return round(max(S*nd1 - K*exp(-r*T)*nd2, 0.5), 1)
+                    return round(max(K*exp(-r*T)*(1-nd2) - S*(1-nd1), 0.5), 1)
+                except: return max(1, round(S * 0.02))
+            
+            plans_f = []
+            
+            # Plan A: Aggressive
+            if not _is_wait:
+                pa_t = "CE" if _dir == "BULLISH" else "PE"
+                pa_d = ("CALL" if is_us else "CE") if _dir == "BULLISH" else ("PUT" if is_us else "PE")
+                pa_p = _qp(price, _atm_f, _T_f, _iv_dec_f, pa_t)
+                pa_sl = round(pa_p * 0.65, 1)
+                pa_t1 = round(pa_p * 1.5, 1)
+                pa_t2 = round(pa_p * 2.2, 1)
+                pa_rr = round((pa_t2 - pa_p) / max(pa_p - pa_sl, 0.1), 1)
+                plans_f.append({
+                    "plan": "A", "name": "AGGRESSIVE", "color": "#047857",
+                    "emoji": "🎯", "tagline": "Maximum profit potential — for confident traders",
+                    "strategy": f"BUY {_atm_f} {pa_d}",
+                    "type": "DIRECTIONAL", "risk": "HIGH",
+                    "entry": pa_p, "sl": pa_sl, "t1": pa_t1, "t2": pa_t2,
+                    "rr": f"1:{pa_rr}",
+                    "capital": round(pa_p * _lot_f, 0),
+                    "maxLoss": round((pa_p - pa_sl) * _lot_f, 0),
+                    "maxProfit": f"Unlimited ({csym}{round((pa_t2 - pa_p) * _lot_f, 0):,} at T2)",
+                    "when": "Confident in direction. Use when trend and momentum align.",
+                    "exit": f"Book 50% at {csym}{pa_t1}, trail rest. Hard SL at {csym}{pa_sl}.",
+                    "analogy": "Like betting on the favorite horse — higher chance of winning, but the race still needs to go your way.",
+                })
+            
+            # Plan B: Balanced (Spread)
+            if _dir == "BULLISH":
+                pb_b = _qp(price, _atm_f, _T_f, _iv_dec_f, "CE")
+                pb_s = _qp(price, _atm_f + _gap_f, _T_f, _iv_dec_f, "CE")
+                pb_c = round(max(pb_b - pb_s, 0.5), 1)
+                pb_pr = round(max(_gap_f - pb_c, 0), 1)
+                pb_rr = round(pb_pr / max(pb_c, 0.1), 1)
+                pb_d = "CALL" if is_us else "CE"
+                plans_f.append({
+                    "plan": "B", "name": "BALANCED", "color": "#1a56db",
+                    "emoji": "⚖️", "tagline": "Defined risk, defined reward — for smart traders",
+                    "strategy": f"BULL {pb_d} SPREAD: BUY {_atm_f} / SELL {_atm_f + _gap_f}",
+                    "type": "SPREAD", "risk": "MEDIUM",
+                    "entry": pb_c, "sl": 0, "t1": round(pb_c + pb_pr * 0.5, 1), "t2": round(pb_c + pb_pr, 1),
+                    "rr": f"1:{pb_rr}",
+                    "capital": round(pb_c * _lot_f, 0),
+                    "maxLoss": round(pb_c * _lot_f, 0),
+                    "maxProfit": f"{csym}{round(pb_pr * _lot_f, 0):,}",
+                    "when": "Moderately confident. Want to cap your max loss upfront.",
+                    "exit": f"Max profit if above {csym}{_atm_f + _gap_f:,.0f} at expiry.",
+                    "analogy": "Like buying a lottery ticket with a cap — you know exactly what you can lose AND win before you start.",
+                })
+            else:
+                pb_b = _qp(price, _atm_f, _T_f, _iv_dec_f, "PE")
+                pb_s = _qp(price, _atm_f - _gap_f, _T_f, _iv_dec_f, "PE")
+                pb_c = round(max(pb_b - pb_s, 0.5), 1)
+                pb_pr = round(max(_gap_f - pb_c, 0), 1)
+                pb_rr = round(pb_pr / max(pb_c, 0.1), 1)
+                pb_d = "PUT" if is_us else "PE"
+                plans_f.append({
+                    "plan": "B", "name": "BALANCED", "color": "#1a56db",
+                    "emoji": "⚖️", "tagline": "Defined risk, defined reward — for smart traders",
+                    "strategy": f"BEAR {pb_d} SPREAD: BUY {_atm_f} / SELL {_atm_f - _gap_f}",
+                    "type": "SPREAD", "risk": "MEDIUM",
+                    "entry": pb_c, "sl": 0, "t1": round(pb_c + pb_pr * 0.5, 1), "t2": round(pb_c + pb_pr, 1),
+                    "rr": f"1:{pb_rr}",
+                    "capital": round(pb_c * _lot_f, 0),
+                    "maxLoss": round(pb_c * _lot_f, 0),
+                    "maxProfit": f"{csym}{round(pb_pr * _lot_f, 0):,}",
+                    "when": "Moderately confident bearish. Want defined risk.",
+                    "exit": f"Max profit if below {csym}{_atm_f - _gap_f:,.0f} at expiry.",
+                    "analogy": "Like buying insurance with a deductible — you know your max loss upfront.",
+                })
+            
+            # Plan C: Conservative
+            if _iv_rank_f >= 50:
+                pc_cs = _qp(price, _atm_f + _gap_f, _T_f, _iv_dec_f, "CE")
+                pc_ps = _qp(price, _atm_f - _gap_f, _T_f, _iv_dec_f, "PE")
+                pc_cb = _qp(price, _atm_f + _gap_f * 2, _T_f, _iv_dec_f, "CE")
+                pc_pb = _qp(price, _atm_f - _gap_f * 2, _T_f, _iv_dec_f, "PE")
+                pc_cr = round(max(pc_cs + pc_ps - pc_cb - pc_pb, 0.5), 1)
+                pc_ml = round(max(_gap_f - pc_cr, 0), 1)
+                pc_pop = round(max(45, min(80, 50 + (pc_cr / max(_gap_f, 1) * 40))), 0)
+                plans_f.append({
+                    "plan": "C", "name": "CONSERVATIVE", "color": "#7c3aed",
+                    "emoji": "🛡️", "tagline": "Collect premium — profit from time decay",
+                    "strategy": f"IRON CONDOR: Sell {_atm_f - _gap_f}/{_atm_f + _gap_f}, Buy wings",
+                    "type": "NON-DIRECTIONAL", "risk": "LOW-MEDIUM",
+                    "entry": -pc_cr, "sl": round(pc_cr * 2, 1), "t1": round(pc_cr * 0.5, 1), "t2": pc_cr,
+                    "rr": f"Credit {csym}{pc_cr}",
+                    "capital": round(pc_ml * _lot_f, 0),
+                    "maxLoss": round(pc_ml * _lot_f, 0),
+                    "maxProfit": f"{csym}{round(pc_cr * _lot_f, 0):,}",
+                    "pop": pc_pop,
+                    "when": "Unsure about direction. IV is elevated. Market is range-bound.",
+                    "exit": f"Keep credit if price stays between {csym}{_atm_f - _gap_f:,.0f} and {csym}{_atm_f + _gap_f:,.0f}.",
+                    "analogy": f"Like being the house in a casino — collect premium, win if nothing dramatic happens. ~{pc_pop}% probability.",
+                })
+            else:
+                pc_ce = _qp(price, _atm_f, _T_f, _iv_dec_f, "CE")
+                pc_pe = _qp(price, _atm_f, _T_f, _iv_dec_f, "PE")
+                pc_cost = round(pc_ce + pc_pe, 1)
+                plans_f.append({
+                    "plan": "C", "name": "HEDGE / BREAKOUT", "color": "#7c3aed",
+                    "emoji": "🛡️", "tagline": "Profit from big move in either direction",
+                    "strategy": f"LONG STRADDLE: BUY {_atm_f} CE + PE",
+                    "type": "NON-DIRECTIONAL", "risk": "MEDIUM",
+                    "entry": pc_cost, "sl": round(pc_cost * 0.6, 1), "t1": round(pc_cost * 1.5, 1), "t2": round(pc_cost * 2.5, 1),
+                    "rr": f"Cost {csym}{pc_cost}",
+                    "capital": round(pc_cost * _lot_f, 0),
+                    "maxLoss": round(pc_cost * _lot_f, 0),
+                    "maxProfit": "Unlimited (either direction)",
+                    "when": "Before big events. IV is low. Expect big move but unsure which way.",
+                    "exit": f"Need {csym}{pc_cost:,.0f}+ move from {csym}{_atm_f:,.0f} to profit.",
+                    "analogy": "Like betting on BOTH teams — you win as long as the match isn't a boring draw.",
+                })
+            
+            result["plans"] = plans_f
+            print(f"📋 Plans (fallback): {len(plans_f)} generated for {symbol}")
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            print(f"⚠️ Plans fallback failed: {e}")
+            result["plans"] = []
+    
     # ═══ TRADE CONFIDENCE — Win probability, strength, risk assessment ═══
     try:
         # Win probability based on weighted factor score + historical patterns
