@@ -5421,6 +5421,260 @@ async def _algo_signal_impl(symbol: str = "NIFTY", region: str = ""):
     except Exception as e:
         print(f"⚠️ Scalp analysis failed: {e}")
     
+    # ═══ PREMIUM TRADING INTELLIGENCE ═══
+    try:
+        from math import log, sqrt, exp, erf
+        _bs_iv = bs_data.get("T", 7/365) if bs_data else 7/365
+        _bs_r = 0.0525 if is_us else 0.065
+        _iv_dec = (nse.get("atm_iv", 20) or 20) / 100
+        _dte = bs_data.get("dte", 7) if bs_data else 7
+        _T = max(_dte, 1) / 365
+        _gap = inst.get("gap", 50)
+        _lot = inst.get("lot", 50)
+        _atm = round(price / _gap) * _gap
+        
+        def _bsp(S, K, T, r, sigma, otype):
+            if T <= 0 or sigma <= 0 or S <= 0 or K <= 0: return 0
+            d1 = (log(S/K) + (r + sigma**2/2)*T) / (sigma*sqrt(T))
+            d2 = d1 - sigma*sqrt(T)
+            nd1 = 0.5*(1+erf(d1/sqrt(2))); nd2 = 0.5*(1+erf(d2/sqrt(2)))
+            if otype == "CE": return max(round(S*nd1 - K*exp(-r*T)*nd2, 2), 0)
+            return max(round(K*exp(-r*T)*(1-nd2) - S*(1-nd1), 2), 0)
+        
+        def _bsg(S, K, T, r, sigma, otype):
+            if T <= 0 or sigma <= 0 or S <= 0 or K <= 0: return {"delta":0,"gamma":0,"theta":0,"vega":0}
+            d1 = (log(S/K) + (r + sigma**2/2)*T) / (sigma*sqrt(T))
+            d2 = d1 - sigma*sqrt(T)
+            nd1 = 0.5*(1+erf(d1/sqrt(2))); nd2 = 0.5*(1+erf(d2/sqrt(2)))
+            npd1 = exp(-d1**2/2) / sqrt(2*3.14159)
+            delta = round(nd1,3) if otype=="CE" else round(nd1-1,3)
+            gamma = round(npd1/(S*sigma*sqrt(T)),6)
+            theta_ce = (-S*npd1*sigma/(2*sqrt(T)) - r*K*exp(-r*T)*nd2)/365
+            theta_pe = (-S*npd1*sigma/(2*sqrt(T)) + r*K*exp(-r*T)*(1-nd2))/365
+            theta = round(theta_ce if otype=="CE" else theta_pe, 2)
+            vega = round(S*npd1*sqrt(T)/100, 2)
+            return {"delta":delta,"gamma":gamma,"theta":theta,"vega":vega}
+        
+        # ─── 1. MULTI-LEG STRATEGIES ───
+        strategies = []
+        ce_atm = _bsp(price, _atm, _T, _bs_r, _iv_dec, "CE")
+        pe_atm = _bsp(price, _atm, _T, _bs_r, _iv_dec, "PE")
+        ce_otm1 = _bsp(price, _atm+_gap, _T, _bs_r, _iv_dec, "CE")
+        pe_otm1 = _bsp(price, _atm-_gap, _T, _bs_r, _iv_dec, "PE")
+        ce_otm2 = _bsp(price, _atm+_gap*2, _T, _bs_r, _iv_dec, "CE")
+        pe_otm2 = _bsp(price, _atm-_gap*2, _T, _bs_r, _iv_dec, "PE")
+        
+        straddle_cost = round(ce_atm + pe_atm, 2)
+        straddle_be_up = round(_atm + straddle_cost, 2)
+        straddle_be_dn = round(_atm - straddle_cost, 2)
+        em_pts = round(price * _iv_dec * sqrt(_T), 1)
+        pop_straddle = round(max(20, min(80, 100 - (straddle_cost / em_pts * 50))), 0) if em_pts > 0 else 40
+        
+        strategies.append({
+            "name": "Long Straddle", "type": "NON-DIRECTIONAL", "bias": "Expects big move either side",
+            "legs": [
+                {"action":"BUY","strike":_atm,"type":"CE" if not is_us else "CALL","premium":ce_atm},
+                {"action":"BUY","strike":_atm,"type":"PE" if not is_us else "PUT","premium":pe_atm},
+            ],
+            "cost": straddle_cost, "costPerLot": round(straddle_cost*_lot,0),
+            "maxLoss": straddle_cost, "maxProfit": "Unlimited",
+            "breakeven": f"{csym}{straddle_be_dn:,.0f} / {csym}{straddle_be_up:,.0f}",
+            "pop": pop_straddle,
+            "when": "Before events (earnings, Fed, RBI). When IV is LOW (buy cheap). When you expect >" + f"{csym}{straddle_cost:,.0f} move.",
+            "interpretation": f"You pay {csym}{straddle_cost} total. Stock must move more than {csym}{straddle_cost:,.0f} from {csym}{_atm:,.0f} for profit. Works best when IV Rank < 30.",
+        })
+        
+        strangle_cost = round(ce_otm1 + pe_otm1, 2)
+        strangle_be_up = round(_atm+_gap+strangle_cost, 2)
+        strangle_be_dn = round(_atm-_gap-strangle_cost, 2)
+        pop_strangle = round(max(15, min(75, 100 - (strangle_cost / em_pts * 45))), 0) if em_pts > 0 else 35
+        
+        strategies.append({
+            "name": "Long Strangle", "type": "NON-DIRECTIONAL", "bias": "Cheaper than straddle, needs bigger move",
+            "legs": [
+                {"action":"BUY","strike":_atm+_gap,"type":"CE" if not is_us else "CALL","premium":ce_otm1},
+                {"action":"BUY","strike":_atm-_gap,"type":"PE" if not is_us else "PUT","premium":pe_otm1},
+            ],
+            "cost": strangle_cost, "costPerLot": round(strangle_cost*_lot,0),
+            "maxLoss": strangle_cost, "maxProfit": "Unlimited",
+            "breakeven": f"{csym}{strangle_be_dn:,.0f} / {csym}{strangle_be_up:,.0f}",
+            "pop": pop_strangle,
+            "when": "Before big events. Cheaper entry than straddle but needs a bigger move to profit.",
+            "interpretation": f"Pay {csym}{strangle_cost} (cheaper than straddle). But stock must move past {csym}{strangle_be_dn:,.0f} or {csym}{strangle_be_up:,.0f}.",
+        })
+        
+        ic_credit = round(ce_otm1 + pe_otm1 - ce_otm2 - pe_otm2, 2)
+        ic_max_loss = round(_gap - ic_credit, 2)
+        ic_pop = round(max(40, min(85, 50 + (ic_credit / _gap * 50))), 0)
+        
+        strategies.append({
+            "name": "Iron Condor (Short)", "type": "NON-DIRECTIONAL", "bias": "Range-bound, collect premium",
+            "legs": [
+                {"action":"SELL","strike":_atm-_gap,"type":"PE" if not is_us else "PUT","premium":pe_otm1},
+                {"action":"BUY","strike":_atm-_gap*2,"type":"PE" if not is_us else "PUT","premium":pe_otm2},
+                {"action":"SELL","strike":_atm+_gap,"type":"CE" if not is_us else "CALL","premium":ce_otm1},
+                {"action":"BUY","strike":_atm+_gap*2,"type":"CE" if not is_us else "CALL","premium":ce_otm2},
+            ],
+            "cost": -ic_credit, "costPerLot": round(ic_credit*_lot,0),
+            "maxLoss": round(ic_max_loss*_lot,0), "maxProfit": round(ic_credit*_lot,0),
+            "breakeven": f"{csym}{_atm-_gap-ic_credit:,.0f} / {csym}{_atm+_gap+ic_credit:,.0f}",
+            "pop": ic_pop,
+            "when": "When IV Rank > 50 (sell expensive premium). Sideways market. After events (IV crush).",
+            "interpretation": f"Collect {csym}{ic_credit} credit. Keep it if stock stays between {csym}{_atm-_gap:,.0f}–{csym}{_atm+_gap:,.0f}. Max risk {csym}{ic_max_loss} per lot.",
+        })
+        
+        # Bull/Bear spread based on direction
+        if direction == "BULLISH":
+            spread_cost = round(ce_atm - ce_otm1, 2)
+            spread_profit = round(_gap - spread_cost, 2)
+            strategies.append({
+                "name": "Bull Call Spread", "type": "DIRECTIONAL", "bias": "Moderately bullish",
+                "legs": [
+                    {"action":"BUY","strike":_atm,"type":"CE" if not is_us else "CALL","premium":ce_atm},
+                    {"action":"SELL","strike":_atm+_gap,"type":"CE" if not is_us else "CALL","premium":ce_otm1},
+                ],
+                "cost": spread_cost, "costPerLot": round(spread_cost*_lot,0),
+                "maxLoss": round(spread_cost*_lot,0), "maxProfit": round(spread_profit*_lot,0),
+                "breakeven": f"{csym}{_atm+spread_cost:,.0f}",
+                "pop": round(max(30,min(70, 50 + (spread_profit/spread_cost*10) if spread_cost>0 else 50)),0),
+                "when": "Mildly bullish. Cheaper than naked call. Defined risk.",
+                "interpretation": f"Pay {csym}{spread_cost}, max profit {csym}{spread_profit} if stock above {csym}{_atm+_gap:,.0f} at expiry.",
+            })
+        else:
+            spread_cost = round(pe_atm - pe_otm1, 2)
+            spread_profit = round(_gap - spread_cost, 2)
+            strategies.append({
+                "name": "Bear Put Spread", "type": "DIRECTIONAL", "bias": "Moderately bearish",
+                "legs": [
+                    {"action":"BUY","strike":_atm,"type":"PE" if not is_us else "PUT","premium":pe_atm},
+                    {"action":"SELL","strike":_atm-_gap,"type":"PE" if not is_us else "PUT","premium":pe_otm1},
+                ],
+                "cost": spread_cost, "costPerLot": round(spread_cost*_lot,0),
+                "maxLoss": round(spread_cost*_lot,0), "maxProfit": round(spread_profit*_lot,0),
+                "breakeven": f"{csym}{_atm-spread_cost:,.0f}",
+                "pop": round(max(30,min(70, 50 + (spread_profit/spread_cost*10) if spread_cost>0 else 50)),0),
+                "when": "Mildly bearish. Defined risk. Cheaper than naked put.",
+                "interpretation": f"Pay {csym}{spread_cost}, max profit {csym}{spread_profit} if stock below {csym}{_atm-_gap:,.0f} at expiry.",
+            })
+        
+        result["strategies"] = strategies
+        
+        # ─── 2. GREEKS DASHBOARD + INTERPRETATION ───
+        atm_ce_g = _bsg(price, _atm, _T, _bs_r, _iv_dec, "CE")
+        atm_pe_g = _bsg(price, _atm, _T, _bs_r, _iv_dec, "PE")
+        
+        greeks_interpretation = []
+        # Delta
+        if abs(atm_ce_g["delta"]) > 0.6:
+            greeks_interpretation.append({"greek":"Delta","value":atm_ce_g["delta"],"msg":"Deep ITM — moves almost 1:1 with stock. High premium but low leverage.","severity":"INFO"})
+        elif abs(atm_ce_g["delta"]) > 0.45:
+            greeks_interpretation.append({"greek":"Delta","value":atm_ce_g["delta"],"msg":"ATM sweet spot. Best balance of cost vs probability.","severity":"GOOD"})
+        else:
+            greeks_interpretation.append({"greek":"Delta","value":atm_ce_g["delta"],"msg":"OTM — cheap but low probability. Needs strong move to profit.","severity":"WARN"})
+        
+        # Gamma
+        if atm_ce_g["gamma"] > 0.005 and _dte <= 3:
+            greeks_interpretation.append({"greek":"Gamma","value":atm_ce_g["gamma"],"msg":"⚡ GAMMA SPIKE — near expiry, small moves cause big premium swings. Scalp opportunity but dangerous if wrong.","severity":"ALERT"})
+        elif atm_ce_g["gamma"] > 0.003:
+            greeks_interpretation.append({"greek":"Gamma","value":atm_ce_g["gamma"],"msg":"Elevated gamma — option is sensitive to small price changes. Good for quick trades.","severity":"INFO"})
+        else:
+            greeks_interpretation.append({"greek":"Gamma","value":atm_ce_g["gamma"],"msg":"Low gamma — option moves slowly. Better for swing trades.","severity":"INFO"})
+        
+        # Theta
+        daily_decay = abs(atm_ce_g["theta"])
+        if _dte <= 2:
+            greeks_interpretation.append({"greek":"Theta","value":atm_ce_g["theta"],"msg":f"🔥 EXTREME DECAY — losing {csym}{daily_decay:.1f}/day. Buyers: exit before EOD. Sellers: this is your edge.","severity":"ALERT"})
+        elif _dte <= 5:
+            greeks_interpretation.append({"greek":"Theta","value":atm_ce_g["theta"],"msg":f"Accelerating decay at {csym}{daily_decay:.1f}/day. Time is against buyers. Consider booking profits.","severity":"WARN"})
+        else:
+            greeks_interpretation.append({"greek":"Theta","value":atm_ce_g["theta"],"msg":f"Moderate decay at {csym}{daily_decay:.1f}/day. Safe to hold for a few days.","severity":"INFO"})
+        
+        # Vega
+        if atm_ce_g["vega"] > 0:
+            greeks_interpretation.append({"greek":"Vega","value":atm_ce_g["vega"],"msg":f"1% IV change = {csym}{atm_ce_g['vega']:.1f} premium change. " + ("IV is HIGH — expect crush after events. Sellers benefit." if (nse.get("atm_iv",20) or 20) > 25 else "IV is LOW — buyers get cheap options, vega works in your favor if IV expands."),"severity":"INFO"})
+        
+        result["greeksDashboard"] = {
+            "ce": atm_ce_g, "pe": atm_pe_g,
+            "strike": _atm, "dte": _dte,
+            "interpretation": greeks_interpretation,
+            "netDelta": round(atm_ce_g["delta"] + atm_pe_g["delta"], 3),
+            "dailyDecay": round(daily_decay, 2),
+        }
+        
+        # ─── 3. VOLATILITY INTELLIGENCE ───
+        # Already computed in options_intel, enhance with regime
+        oi_data = result.get("options_intel", {})
+        iv_current = oi_data.get("iv_current", 20)
+        iv_rank = oi_data.get("iv_rank", 50)
+        
+        # HV (20-day) from daily returns
+        tech_data = result.get("technicals", {})
+        hv_20 = 0
+        try:
+            dr = [(closes[i]-closes[i-1])/closes[i-1] for i in range(max(1,len(closes)-21), len(closes)) if closes[i-1]>0]
+            hv_20 = round(float(np.std(dr) * (252**0.5) * 100), 1) if dr else 0
+        except: pass
+        
+        iv_hv_spread = round(iv_current - hv_20, 1) if hv_20 > 0 else 0
+        
+        if iv_rank >= 70 and iv_hv_spread > 5:
+            vol_regime = "HIGH_IV_SELL"
+            vol_action = "SELL premium. IV is expensive vs history. Iron condors, credit spreads, covered calls work best."
+        elif iv_rank <= 30 and iv_hv_spread < -3:
+            vol_regime = "LOW_IV_BUY"
+            vol_action = "BUY options cheap. IV below historical. Straddles, long calls/puts before catalysts."
+        elif iv_rank >= 50 and iv_hv_spread > 3:
+            vol_regime = "ELEVATED"
+            vol_action = "Slightly favor selling. IV above HV — premium is rich. Spread strategies reduce risk."
+        elif iv_rank <= 40 and abs(iv_hv_spread) < 3:
+            vol_regime = "NORMAL_LOW"
+            vol_action = "Normal volatility. Go directional based on your view. Both buying and selling OK."
+        else:
+            vol_regime = "NORMAL"
+            vol_action = "Fair volatility. Use directional trades based on trend analysis."
+        
+        result["volIntelligence"] = {
+            "iv": iv_current, "hv20": hv_20, "ivHvSpread": iv_hv_spread,
+            "regime": vol_regime, "action": vol_action, "ivRank": iv_rank,
+        }
+        
+        # ─── 4. RISK MANAGEMENT ───
+        account_sizes = [100000, 300000, 500000, 1000000] if not is_us else [5000, 10000, 25000, 50000]
+        risk_pcts = [1, 2, 3]
+        position_sizing = []
+        for acct in account_sizes:
+            for rpct in risk_pcts:
+                risk_amt = round(acct * rpct / 100, 0)
+                max_lots = int(risk_amt / (abs(price - sl_price) * _lot)) if abs(price - sl_price) > 0 else 0
+                max_lots = max(0, max_lots)
+                position_sizing.append({
+                    "account": acct, "riskPct": rpct, "riskAmt": risk_amt,
+                    "maxLots": max_lots, "capitalNeeded": round(prem_entry * _lot * max(max_lots,1), 0),
+                })
+        
+        # Exposure alerts
+        exposure_alerts = []
+        if _dte <= 2:
+            exposure_alerts.append({"type":"CRITICAL","msg":f"Expiry in {_dte} day(s). Theta decay is 3-5x faster. Reduce position size or hedge with spread."})
+        if iv_rank >= 70:
+            exposure_alerts.append({"type":"WARNING","msg":"IV Rank high. You're overexposed to Vega if buying. IV crush after events will destroy premium."})
+        if abs(atm_ce_g["gamma"]) > 0.005:
+            exposure_alerts.append({"type":"WARNING","msg":"Gamma squeeze zone. Small moves = big P&L swings. Use tight stops."})
+        if prem_entry > 0 and prem_risk > 0 and prem_risk / prem_entry > 0.5:
+            exposure_alerts.append({"type":"WARNING","msg":f"Risk is {round(prem_risk/prem_entry*100)}% of premium. High risk-to-cost ratio. Consider reducing size."})
+        
+        result["riskManagement"] = {
+            "positionSizing": position_sizing[:9],
+            "exposureAlerts": exposure_alerts,
+            "lot": _lot, "slPoints": round(abs(price-sl_price),2),
+            "premiumAtRisk": round(prem_risk*_lot, 0),
+        }
+        
+        print(f"🎯 Premium Trading Intel: {symbol} strategies={len(strategies)} regime={vol_regime} alerts={len(exposure_alerts)}")
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        print(f"⚠️ Premium Trading Intelligence failed: {e}")
+    
     # ═══ GAMMA BLAST SETUP — Expiry day straddle/strangle ═══
     blast_setup = None
     if is_expiry and bs_data.get("greeks") and nse.get("success"):

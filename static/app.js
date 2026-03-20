@@ -296,6 +296,9 @@ const showPicks=PICKS_EMAILS.includes(email);
 // Store premium flag globally for tab group system
 window._isPremiumUser=showTrades;
 window._showPicks=showPicks;
+// Gate TRADING tab — hide button for non-premium users
+var tradingBtn=document.getElementById('tabBtnTrading');
+if(tradingBtn)tradingBtn.style.display=showTrades?'':'none';
 // Smart Trades content is email-gated
 document.querySelectorAll('.sc[data-tab="smarttrades"]').forEach(s=>s.style.display=showTrades?'':'none');
 document.querySelectorAll('.sc[data-tab="gems"]').forEach(s=>s.style.display=showTrades?'':'none');
@@ -5320,6 +5323,115 @@ h+='<div style="font-size:8px;color:var(--text3);margin-top:6px;padding:4px 6px;
 h+='</div></div>';
 }
 h+='</div>';
+}
+
+// ═══ MULTI-LEG STRATEGIES ═══
+var strats=d.strategies||[];
+if(strats.length>0){
+h+='<div style="margin-bottom:14px;border:1px solid var(--border);border-radius:10px;overflow:hidden">';
+h+='<div style="padding:10px 14px;background:var(--bg2);border-bottom:1px solid var(--border)"><div style="font-size:11px;font-weight:800;color:var(--purple)">&#9853; MULTI-LEG STRATEGIES — Directional + Non-Directional</div></div>';
+strats.forEach(function(st){
+var stC=st.type==='DIRECTIONAL'?(dir==='BULLISH'?'#0a7c42':'#ef4444'):'#7c3aed';
+h+='<div style="padding:10px 14px;border-bottom:1px solid var(--border)">';
+h+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;flex-wrap:wrap;gap:4px">';
+h+='<div><span style="font-size:11px;font-weight:800;color:var(--text)">'+st.name+'</span> <span style="font-size:8px;padding:2px 6px;border-radius:3px;background:'+stC+'15;color:'+stC+';font-weight:700">'+st.type+'</span></div>';
+h+='<div style="font-size:9px;font-weight:700;color:var(--cyan)">POP: '+st.pop+'%</div></div>';
+// Legs
+h+='<div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:6px">';
+st.legs.forEach(function(l){
+var lC=l.action==='BUY'?'#10b981':'#ef4444';
+h+='<span style="font-size:8px;padding:3px 8px;border-radius:4px;background:'+lC+'10;border:1px solid '+lC+'30;color:'+lC+';font-weight:700">'+l.action+' '+l.strike+' '+l.type+' @ '+S+l.premium+'</span>';
+});
+h+='</div>';
+// Metrics
+h+='<div style="display:flex;gap:12px;flex-wrap:wrap;font-size:9px;margin-bottom:4px">';
+h+='<span><strong style="color:var(--text3)">Cost:</strong> '+S+(typeof st.cost==="number"?st.cost:'0')+' ('+S+st.costPerLot+'/lot)</span>';
+h+='<span><strong style="color:#ef4444">Max Loss:</strong> '+(typeof st.maxLoss==="number"?S+st.maxLoss:st.maxLoss)+'</span>';
+h+='<span><strong style="color:#10b981">Max Profit:</strong> '+(typeof st.maxProfit==="number"?S+st.maxProfit:st.maxProfit)+'</span>';
+h+='<span><strong style="color:var(--text3)">Breakeven:</strong> '+st.breakeven+'</span>';
+h+='</div>';
+h+='<div style="font-size:8px;color:var(--text3);line-height:1.4;padding:4px 6px;border-radius:4px;background:var(--bg2)">💡 <strong>When:</strong> '+st.when+'<br>'+st.interpretation+'</div>';
+h+='</div>';
+});
+h+='</div>';
+}
+
+// ═══ GREEKS DASHBOARD ═══
+var gd=d.greeksDashboard||null;
+if(gd){
+h+='<div style="margin-bottom:14px;border:1px solid var(--border);border-radius:10px;overflow:hidden">';
+h+='<div style="padding:10px 14px;background:var(--bg2);border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">';
+h+='<div style="font-size:11px;font-weight:800;color:var(--amber)">&#916;&#915;&#920;V GREEKS DASHBOARD — What Your Option Is Doing Right Now</div>';
+h+='<div style="font-size:9px;color:var(--text3)">Strike: '+S+gd.strike+' · DTE: '+gd.dte+'</div></div>';
+// Greeks values
+h+='<div style="padding:10px 14px;display:grid;grid-template-columns:repeat(4,1fr);gap:8px;border-bottom:1px solid var(--border)">';
+var greekItems=[
+{label:'DELTA (Δ)',val:gd.ce.delta,color:gd.ce.delta>0?'#10b981':'#ef4444',sub:'Price sensitivity'},
+{label:'GAMMA (Γ)',val:gd.ce.gamma,color:gd.ce.gamma>0.003?'#ef4444':'var(--text)',sub:'Acceleration'},
+{label:'THETA (Θ)',val:gd.ce.theta,color:'#ef4444',sub:S+Math.abs(gd.dailyDecay)+'/day lost'},
+{label:'VEGA (V)',val:gd.ce.vega,color:'#3b82f6',sub:'IV sensitivity'},
+];
+greekItems.forEach(function(gi){
+h+='<div style="text-align:center;padding:6px;border-radius:6px;background:var(--bg2)">';
+h+='<div style="font-size:7px;color:var(--text3);font-weight:700;letter-spacing:0.5px">'+gi.label+'</div>';
+h+='<div style="font-size:18px;font-weight:900;font-family:var(--mono);color:'+gi.color+'">'+gi.val+'</div>';
+h+='<div style="font-size:7px;color:var(--text3)">'+gi.sub+'</div></div>';
+});
+h+='</div>';
+// Interpretations
+h+='<div style="padding:8px 14px">';
+(gd.interpretation||[]).forEach(function(gi){
+var ic=gi.severity==='ALERT'?'#ef4444':gi.severity==='WARN'?'#f59e0b':gi.severity==='GOOD'?'#10b981':'var(--text3)';
+h+='<div style="font-size:9px;color:'+ic+';padding:2px 0;line-height:1.4"><strong>'+gi.greek+':</strong> '+gi.msg+'</div>';
+});
+h+='</div></div>';
+}
+
+// ═══ VOLATILITY INTELLIGENCE ═══
+var vi=d.volIntelligence||null;
+if(vi){
+var viC=vi.regime.includes('SELL')?'#ef4444':vi.regime.includes('BUY')?'#10b981':vi.regime.includes('ELEV')?'#f59e0b':'var(--text)';
+h+='<div style="margin-bottom:14px;border:1px solid var(--border);border-radius:10px;overflow:hidden">';
+h+='<div style="padding:10px 14px;background:var(--bg2);border-bottom:1px solid var(--border)"><div style="font-size:11px;font-weight:800;color:#8b5cf6">&#127777;&#65039; VOLATILITY REGIME — '+vi.regime.replace(/_/g,' ')+'</div></div>';
+h+='<div style="padding:10px 14px;display:flex;gap:16px;flex-wrap:wrap;align-items:center">';
+h+='<div><div style="font-size:8px;color:var(--text3);font-weight:700">IV (Implied)</div><div style="font-size:22px;font-weight:900;font-family:var(--mono);color:'+viC+'">'+vi.iv+'%</div></div>';
+h+='<div><div style="font-size:8px;color:var(--text3);font-weight:700">HV (Historical)</div><div style="font-size:22px;font-weight:900;font-family:var(--mono);color:var(--text)">'+vi.hv20+'%</div></div>';
+h+='<div><div style="font-size:8px;color:var(--text3);font-weight:700">IV-HV Spread</div><div style="font-size:22px;font-weight:900;font-family:var(--mono);color:'+(vi.ivHvSpread>3?'#ef4444':vi.ivHvSpread<-3?'#10b981':'var(--text)')+'">'+vi.ivHvSpread+'%</div></div>';
+h+='<div style="flex:1;min-width:150px"><div style="font-size:8px;color:var(--text3);font-weight:700;margin-bottom:2px">WHAT TO DO</div><div style="font-size:10px;font-weight:700;color:'+viC+';line-height:1.4">'+vi.action+'</div></div>';
+h+='</div>';
+h+='<div style="padding:6px 14px 10px;font-size:8px;color:var(--text3);line-height:1.4;background:var(--bg2)">💡 <strong>IV > HV</strong> = options are expensive (sellers win). <strong>HV > IV</strong> = options are cheap (buyers win). Spread > 5% = strong signal.</div>';
+h+='</div>';
+}
+
+// ═══ RISK MANAGEMENT ═══
+var rm=d.riskManagement||null;
+if(rm){
+h+='<div style="margin-bottom:14px;border:1px solid var(--border);border-radius:10px;overflow:hidden">';
+h+='<div style="padding:10px 14px;background:var(--bg2);border-bottom:1px solid var(--border)"><div style="font-size:11px;font-weight:800;color:#ef4444">&#128737; RISK MANAGEMENT — Position Sizing</div></div>';
+// Exposure alerts
+if(rm.exposureAlerts&&rm.exposureAlerts.length>0){
+h+='<div style="padding:8px 14px;border-bottom:1px solid var(--border)">';
+rm.exposureAlerts.forEach(function(a){
+var ac=a.type==='CRITICAL'?'#991b1b':'#f59e0b';
+h+='<div style="font-size:9px;padding:4px 8px;border-radius:4px;background:'+ac+'10;border-left:3px solid '+ac+';margin-bottom:3px;color:'+ac+';font-weight:600">'+a.msg+'</div>';
+});
+h+='</div>';
+}
+// Position sizing table
+h+='<div style="padding:8px 14px"><div style="font-size:9px;color:var(--text3);margin-bottom:4px">How many lots based on your account size & risk tolerance:</div>';
+h+='<table style="width:100%;border-collapse:collapse;font-size:9px"><tr style="background:var(--bg2)"><th style="padding:4px 6px;text-align:left">Account</th><th style="padding:4px;text-align:center">1% Risk</th><th style="padding:4px;text-align:center">2% Risk</th><th style="padding:4px;text-align:center">3% Risk</th></tr>';
+var accts={};
+(rm.positionSizing||[]).forEach(function(ps){if(!accts[ps.account])accts[ps.account]={};accts[ps.account][ps.riskPct]=ps;});
+Object.keys(accts).forEach(function(a){
+var r1=accts[a][1]||{};var r2=accts[a][2]||{};var r3=accts[a][3]||{};
+h+='<tr style="border-bottom:1px solid var(--border)"><td style="padding:4px 6px;font-weight:700">'+S+parseInt(a).toLocaleString()+'</td>';
+h+='<td style="padding:4px;text-align:center">'+(r1.maxLots||0)+' lots</td>';
+h+='<td style="padding:4px;text-align:center;font-weight:700;color:var(--blue)">'+(r2.maxLots||0)+' lots</td>';
+h+='<td style="padding:4px;text-align:center">'+(r3.maxLots||0)+' lots</td></tr>';
+});
+h+='</table>';
+h+='<div style="font-size:8px;color:var(--text3);margin-top:4px">💡 <strong>2% rule:</strong> Never risk more than 2% of capital on a single trade. This keeps you in the game even after 5 consecutive losses.</div>';
+h+='</div></div>';
 }
 
 // ═══ WEIGHTED FACTOR TABLE — ALL FACTORS VISIBLE ═══
