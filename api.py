@@ -9854,6 +9854,247 @@ async def market_daily():
     return response
 
 
+# ═══════════════════════════════════════════════════
+# TRADE JOURNAL — Log trades, track P&L, analytics
+# ═══════════════════════════════════════════════════
+_journal_file = "trade_journal.json"
+def _load_journal():
+    try:
+        with open(_journal_file, 'r') as f: return json.load(f)
+    except: return []
+def _save_journal(trades):
+    with open(_journal_file, 'w') as f: json.dump(trades, f)
+
+@app.post("/api/journal")
+async def journal_add(request: Request):
+    """Add a trade to journal."""
+    data = await request.json()
+    trades = _load_journal()
+    trade = {
+        "id": f"T{len(trades)+1:04d}",
+        "timestamp": datetime.utcnow().isoformat(),
+        "symbol": data.get("symbol", ""),
+        "direction": data.get("direction", "BUY"),
+        "optType": data.get("optType", "CE"),
+        "strike": data.get("strike", 0),
+        "entryPrem": data.get("entryPrem", 0),
+        "exitPrem": data.get("exitPrem", 0),
+        "qty": data.get("qty", 1),
+        "lot": data.get("lot", 50),
+        "strategy": data.get("strategy", "Directional"),
+        "notes": data.get("notes", ""),
+        "status": "OPEN",
+        "pnl": 0,
+        "tags": data.get("tags", []),
+    }
+    trades.append(trade)
+    _save_journal(trades)
+    return {"success": True, "trade": trade, "total": len(trades)}
+
+@app.get("/api/journal")
+async def journal_list():
+    """Get all journal trades + analytics."""
+    trades = _load_journal()
+    closed = [t for t in trades if t.get("status") == "CLOSED"]
+    wins = [t for t in closed if t.get("pnl", 0) > 0]
+    losses = [t for t in closed if t.get("pnl", 0) < 0]
+    total_pnl = sum(t.get("pnl", 0) for t in closed)
+    
+    # Analytics by strategy
+    strat_stats = {}
+    for t in closed:
+        s = t.get("strategy", "Other")
+        if s not in strat_stats: strat_stats[s] = {"wins": 0, "losses": 0, "pnl": 0}
+        if t.get("pnl", 0) > 0: strat_stats[s]["wins"] += 1
+        else: strat_stats[s]["losses"] += 1
+        strat_stats[s]["pnl"] += t.get("pnl", 0)
+    
+    # Behavioral insights
+    insights = []
+    if len(closed) >= 5:
+        win_rate = len(wins) / len(closed) * 100
+        if win_rate < 40: insights.append({"type": "WARNING", "msg": f"Win rate {win_rate:.0f}% is below 40%. Review your entry criteria."})
+        if len(closed) >= 3:
+            last3 = closed[-3:]
+            if all(t.get("pnl", 0) < 0 for t in last3):
+                insights.append({"type": "CRITICAL", "msg": "3 consecutive losses detected. Take a break — avoid revenge trading."})
+        avg_win = sum(t["pnl"] for t in wins) / len(wins) if wins else 0
+        avg_loss = abs(sum(t["pnl"] for t in losses) / len(losses)) if losses else 1
+        if avg_loss > 0:
+            expectancy = round((win_rate/100 * avg_win) - ((100-win_rate)/100 * avg_loss), 0)
+            insights.append({"type": "INFO", "msg": f"Expectancy: ₹{expectancy:,.0f}/trade. {'Positive edge ✅' if expectancy > 0 else 'Negative edge ❌ — fix risk management.'}"})
+    
+    return {
+        "success": True, "trades": trades, "total": len(trades),
+        "analytics": {
+            "totalTrades": len(closed), "wins": len(wins), "losses": len(losses),
+            "winRate": round(len(wins)/len(closed)*100, 1) if closed else 0,
+            "totalPnl": round(total_pnl, 0),
+            "avgWin": round(sum(t["pnl"] for t in wins)/len(wins), 0) if wins else 0,
+            "avgLoss": round(sum(t["pnl"] for t in losses)/len(losses), 0) if losses else 0,
+            "strategyStats": strat_stats,
+            "insights": insights,
+        }
+    }
+
+@app.put("/api/journal/{trade_id}")
+async def journal_update(trade_id: str, request: Request):
+    """Close a trade — set exit premium and compute P&L."""
+    data = await request.json()
+    trades = _load_journal()
+    for t in trades:
+        if t["id"] == trade_id:
+            t["exitPrem"] = data.get("exitPrem", t.get("exitPrem", 0))
+            t["status"] = "CLOSED"
+            t["closedAt"] = datetime.utcnow().isoformat()
+            t["notes"] = data.get("notes", t.get("notes", ""))
+            pnl_per_unit = t["exitPrem"] - t["entryPrem"]
+            if t.get("direction") == "SELL": pnl_per_unit = -pnl_per_unit
+            t["pnl"] = round(pnl_per_unit * t.get("qty", 1) * t.get("lot", 50), 0)
+            break
+    _save_journal(trades)
+    return {"success": True, "trades": trades}
+
+
+# ═══════════════════════════════════════════════════
+# AI TRADING ASSISTANT — Rule-based + context-aware
+# ═══════════════════════════════════════════════════
+@app.post("/api/ai-assist")
+async def ai_assist(request: Request):
+    """AI assistant that answers trading questions using live data."""
+    data = await request.json()
+    question = (data.get("question", "")).strip().lower()
+    symbol = data.get("symbol", "NIFTY")
+    
+    if not question:
+        return {"success": False, "error": "No question provided"}
+    
+    # Get fresh algo data
+    try:
+        algo = await algo_signal_safe(symbol, data.get("region", "IN"))
+    except:
+        algo = {}
+    
+    tr = algo.get("trade", {})
+    tc = algo.get("tradeConfidence", {})
+    oi = algo.get("options_intel", {})
+    vi = algo.get("volIntelligence", {})
+    strats = algo.get("strategies", [])
+    sc = algo.get("scalp", {})
+    sig = algo.get("signal", "HOLD / WAIT")
+    direction = algo.get("direction", "NEUTRAL")
+    csym = "$" if algo.get("region") == "US" else "₹"
+    price = algo.get("spot", 0)
+    
+    answer = ""
+    
+    # Pattern matching for common questions
+    if any(w in question for w in ["should i buy", "should i enter", "can i trade", "is it good"]):
+        win = tc.get("estimatedWin", 50)
+        grade = tc.get("grade", "B")
+        if win >= 65:
+            answer = f"✅ YES — {symbol} shows a {sig} signal with {win}% estimated win rate (Grade {grade}). {tr.get('action', '')} at {csym}{tr.get('premEntry', 0)}. R:R = {tr.get('rrRatio', 'N/A')}. Position size: {tc.get('sizeRecommendation', 'Standard')}."
+        elif win >= 50:
+            answer = f"⚠️ MAYBE — {symbol} is {sig} with {win}% win rate (Grade {grade}). Setup is decent but not high conviction. Use smaller size. {tr.get('action', '')} if {direction.lower()} factors strengthen."
+        else:
+            answer = f"❌ NO — {symbol} shows weak setup ({win}% win rate, Grade {grade}). {len(algo.get('factors', []))} factors analyzed, confluence is low. Wait for better setup or consider scalp: {sc.get('direction', 'NEUTRAL')} on 5m chart."
+    
+    elif any(w in question for w in ["best strategy", "which strategy", "what strategy", "how to trade"]):
+        if strats:
+            best = max(strats, key=lambda s: s.get("pop", 0))
+            answer = f"📊 Best strategy for {symbol}: **{best['name']}** (POP: {best['pop']}%). {best['interpretation']}. Volatility regime: {vi.get('regime', 'NORMAL')} — {vi.get('action', '')}."
+        else:
+            answer = f"Directional trade: {tr.get('action', 'N/A')} with Grade {tc.get('grade', 'B')}. Use {tc.get('sizeRecommendation', 'standard size')}."
+    
+    elif any(w in question for w in ["sell", "exit", "book profit", "close"]):
+        if tr.get("premEntry", 0) > 0:
+            answer = f"📈 Exit plan for {tr.get('action', '')}:\n• T1: {csym}{tr.get('premT1', 0)} — book 50%, move SL to entry.\n• T2: {csym}{tr.get('premT2', 0)} — book 30%, trail stop.\n• T3: {csym}{tr.get('premT3', 0)} — let 20% ride.\n• Hard SL: {csym}{tr.get('premSL', 0)}.\n• Time exit: {'2:30 PM' if algo.get('isExpiry') else '3:00 PM'}."
+        else:
+            answer = f"No active position data for {symbol}. Analyze the stock first."
+    
+    elif any(w in question for w in ["risk", "how much", "position size", "capital"]):
+        rm = algo.get("riskManagement", {})
+        answer = f"🛡️ Risk for {symbol}:\n• SL: {csym}{tr.get('premSL', 0)} (max loss per lot: {csym}{rm.get('premiumAtRisk', 0):,.0f})\n• {tc.get('sizeRecommendation', 'Use 1-2% of capital')}.\n• {len(rm.get('exposureAlerts', []))} risk alerts active."
+        for a in rm.get("exposureAlerts", [])[:3]:
+            answer += f"\n⚠️ {a['msg']}"
+    
+    elif any(w in question for w in ["scalp", "quick trade", "intraday", "short term"]):
+        if sc:
+            answer = f"⚡ Scalp for {symbol}: {sc.get('direction', 'NEUTRAL')} ({sc.get('confidence', 0)}% conf).\n{sc.get('action', '')} — Entry: {csym}{sc.get('entry', 0)}, SL: {csym}{sc.get('sl', 0)}, T1: {csym}{sc.get('t1', 0)}, T2: {csym}{sc.get('t2', 0)}.\n5m: {sc.get('trend_5m', '?')}, 15m: {sc.get('trend_15m', '?')}, VWAP: {'ABOVE' if sc.get('above_vwap') else 'BELOW'}."
+        else:
+            answer = f"No scalp data for {symbol}. Market may be closed."
+    
+    elif any(w in question for w in ["iv", "volatility", "expensive", "cheap"]):
+        answer = f"🌡️ {symbol} Volatility:\nIV: {oi.get('iv_current', 0)}% (Rank: {oi.get('iv_rank', 50)}%)\nHV: {vi.get('hv20', 0)}%\nSpread: {vi.get('ivHvSpread', 0)}%\nRegime: {vi.get('regime', 'NORMAL')}\n{vi.get('action', '')}"
+    
+    elif any(w in question for w in ["why", "explain", "reason"]):
+        notes = tc.get("notes", [])
+        answer = f"📋 {symbol} analysis breakdown:\nSignal: {sig} ({direction}), Win Rate: {tc.get('estimatedWin', 50)}%\n"
+        for n in notes[:6]: answer += f"  • {n}\n"
+        answer += f"Factor score: {tc.get('factorScore', 50)}% ({algo.get('supports', 0)} supporting, {algo.get('opposes', 0)} opposing)"
+    
+    else:
+        answer = f"📊 {symbol} Quick Summary:\n• Signal: {sig} ({direction})\n• Price: {csym}{price:,.2f}\n• Win Rate: {tc.get('estimatedWin', 50)}% (Grade {tc.get('grade', 'B')})\n• Trade: {tr.get('action', 'N/A')} at {csym}{tr.get('premEntry', 0)}\n• IV Rank: {oi.get('iv_rank', 50)}%\n• Scalp: {sc.get('direction', 'N/A')} ({sc.get('confidence', 0)}%)\n\nTry asking: 'Should I buy?', 'Best strategy?', 'Risk?', 'Scalp?', 'IV?'"
+    
+    return {"success": True, "answer": answer, "symbol": symbol, "signal": sig, "direction": direction}
+
+
+# ═══════════════════════════════════════════════════
+# EDUCATION — Live case studies from real algo data
+# ═══════════════════════════════════════════════════
+@app.get("/api/education")
+async def education_module(topic: str = "basics"):
+    """Generate educational content from real market data."""
+    
+    lessons = {
+        "basics": {
+            "title": "Options Trading Fundamentals",
+            "sections": [
+                {"heading": "What is an Option?", "content": "An option gives you the RIGHT (not obligation) to buy or sell a stock at a specific price before a specific date. Think of it as paying a small deposit to reserve a house — if the price goes up, you exercise; if not, you lose only the deposit (premium)."},
+                {"heading": "Call (CE) vs Put (PE)", "content": "CALL = You expect price to GO UP. Like betting the team will win. PUT = You expect price to GO DOWN. Like buying insurance on your car. In India: CE = Call, PE = Put. In US: CALL/PUT."},
+                {"heading": "Strike Price", "content": "The price at which you can buy/sell the stock. ATM (At The Money) = strike near current price. ITM (In The Money) = already profitable. OTM (Out of The Money) = needs to move more."},
+                {"heading": "Premium", "content": "What you PAY for the option. Like rent — you pay to hold the right. Premium = Intrinsic Value + Time Value. Time value decays every day (Theta)."},
+                {"heading": "Expiry", "content": "Options have a death date. In India: NIFTY expires every Tuesday, SENSEX every Thursday. After expiry, your option is worthless if OTM. Never hold till last minute."},
+            ]
+        },
+        "greeks": {
+            "title": "Greeks Made Simple",
+            "sections": [
+                {"heading": "Delta (Δ) — Speed", "content": "How much your option moves when stock moves ₹1. Delta 0.5 means option moves ₹0.50 for every ₹1 stock move. ATM options have ~0.5 delta. Higher delta = more expensive but higher probability."},
+                {"heading": "Gamma (Γ) — Acceleration", "content": "How fast Delta changes. Near expiry, Gamma EXPLODES — small moves cause huge premium changes. This is why expiry-day trading is like driving at 200 km/h. Exciting but dangerous."},
+                {"heading": "Theta (Θ) — Time Decay", "content": "How much you LOSE every day just by holding. Options are like ice cream in summer — they melt. Theta kills buyers and rewards sellers. Last 3 days = fastest melt."},
+                {"heading": "Vega (V) — Volatility Sensitivity", "content": "How much premium changes when IV changes 1%. Before events (earnings, Fed), IV rises → premiums inflate. After events, IV crushes → premiums collapse. Sellers love this."},
+                {"heading": "Pro Tip", "content": "Don't memorize Greeks. Understand: Delta = direction, Gamma = speed of direction change, Theta = time cost, Vega = volatility cost. Use our Greeks Dashboard to see what YOUR option is doing RIGHT NOW."},
+            ]
+        },
+        "strategies": {
+            "title": "Strategy Selection Guide",
+            "sections": [
+                {"heading": "Market is Trending UP", "content": "Use: Bull Call Spread (defined risk) or Naked Long Call (unlimited profit). Avoid: Selling naked calls. Check: EMA 9>21>50, RSI 50-70, above VWAP."},
+                {"heading": "Market is Trending DOWN", "content": "Use: Bear Put Spread or Long Put. Avoid: Buying calls hoping for reversal. Check: EMA 9<21<50, RSI 30-50, below VWAP."},
+                {"heading": "Market is SIDEWAYS", "content": "Use: Iron Condor or Short Strangle (sell premium). This is where most money is made. 70% of the time markets are range-bound. Check: Low ATR, narrow Bollinger Bands, IV Rank > 50."},
+                {"heading": "Before a BIG EVENT", "content": "Use: Long Straddle/Strangle (buy both CE+PE). You profit from the MOVE, not the direction. Check: IV Rank < 30 (buy cheap), event within 3-5 days."},
+                {"heading": "After an EVENT (IV Crush)", "content": "Use: Iron Condor or Credit Spreads. After events, IV drops 30-50% in hours. Sellers collect this premium drop. Check: IV Rank just dropped from >70, event over."},
+                {"heading": "Golden Rule", "content": "HIGH IV → SELL premium (Iron Condors, Credit Spreads). LOW IV → BUY premium (Straddles, Long Calls/Puts). Check IV Rank on our dashboard before every trade."},
+            ]
+        },
+        "risk": {
+            "title": "Risk Management — The REAL Edge",
+            "sections": [
+                {"heading": "The 2% Rule", "content": "Never risk more than 2% of your account on a single trade. Account ₹5L → max loss per trade = ₹10,000. This ensures you survive 10 consecutive losses and still have 80% capital left."},
+                {"heading": "Position Sizing Formula", "content": "Lots = (Account × Risk%) / (Premium × Lot Size). Example: ₹5L account, 2% risk, premium ₹200, lot 50. Max lots = (500000 × 0.02) / (200 × 50) = 1 lot. NEVER exceed this."},
+                {"heading": "Stop Loss is NON-NEGOTIABLE", "content": "Place SL BEFORE entering. Not in your head — in the system. If premium drops 30% from entry, EXIT. No hoping, no averaging down. The market doesn't care about your feelings."},
+                {"heading": "Trailing Stop Loss", "content": "When T1 is hit, move SL to entry (cost). Now it's a free trade — worst case you exit at breakeven. Let winners run, cut losers fast. This alone transforms your P&L."},
+                {"heading": "Weekly Risk Limit", "content": "Set a weekly loss limit (e.g., 5% of account). If you hit it, STOP trading for the week. No exceptions. This prevents revenge trading — the #1 account killer."},
+                {"heading": "Revenge Trading Detection", "content": "Signs: Trading immediately after a loss. Doubling position size. Ignoring your strategy. Taking random trades. If you notice any of these — close the terminal and walk away."},
+            ]
+        },
+    }
+    
+    topic_data = lessons.get(topic, lessons["basics"])
+    return {"success": True, "topic": topic, "lesson": topic_data, "available_topics": list(lessons.keys())}
+
+
 if __name__ == "__main__":
     import uvicorn
     port = int(os.getenv("PORT", 8000))

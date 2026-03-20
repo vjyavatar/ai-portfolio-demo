@@ -1003,6 +1003,61 @@ footer{position:relative;z-index:1;margin-top:32px;background:#002f6c;border-top
 </div></div>
 
 <!-- ═══ TAB: COMPARE STOCKS ═══ -->
+<!-- ═══ TAB: TRADE JOURNAL ═══ -->
+<div class="sc" data-tab="journal" style="border-left:3px solid #f59e0b;display:none">
+<div class="sh"><div class="si" style="background:rgba(245,158,11,.1)">&#128221;</div><div class="st" style="color:var(--amber)">Trade Journal — Track, Analyze, Improve</div></div>
+<div class="sbody">
+<!-- Add Trade Form -->
+<div style="padding:12px;border-radius:8px;background:var(--bg2);border:1px solid var(--border);margin-bottom:14px">
+<div style="font-size:11px;font-weight:800;color:var(--text);margin-bottom:8px">Log New Trade</div>
+<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:end">
+<div><label style="font-size:8px;color:var(--text3);display:block;margin-bottom:2px">Symbol</label><input id="jSym" type="text" placeholder="NIFTY" style="width:80px;padding:4px 8px;border-radius:4px;border:1px solid var(--border);font-size:11px;background:var(--surface);color:var(--text)"></div>
+<div><label style="font-size:8px;color:var(--text3);display:block;margin-bottom:2px">Strike</label><input id="jStrike" type="number" placeholder="24200" style="width:80px;padding:4px 8px;border-radius:4px;border:1px solid var(--border);font-size:11px;background:var(--surface);color:var(--text)"></div>
+<div><label style="font-size:8px;color:var(--text3);display:block;margin-bottom:2px">Type</label><select id="jType" style="padding:4px 8px;border-radius:4px;border:1px solid var(--border);font-size:11px;background:var(--surface);color:var(--text)"><option>CE</option><option>PE</option><option>CALL</option><option>PUT</option></select></div>
+<div><label style="font-size:8px;color:var(--text3);display:block;margin-bottom:2px">Entry &#8377;</label><input id="jEntry" type="number" step="0.1" placeholder="185" style="width:70px;padding:4px 8px;border-radius:4px;border:1px solid var(--border);font-size:11px;background:var(--surface);color:var(--text)"></div>
+<div><label style="font-size:8px;color:var(--text3);display:block;margin-bottom:2px">Qty (lots)</label><input id="jQty" type="number" value="1" style="width:50px;padding:4px 8px;border-radius:4px;border:1px solid var(--border);font-size:11px;background:var(--surface);color:var(--text)"></div>
+<div><label style="font-size:8px;color:var(--text3);display:block;margin-bottom:2px">Strategy</label><select id="jStrat" style="padding:4px 8px;border-radius:4px;border:1px solid var(--border);font-size:11px;background:var(--surface);color:var(--text)"><option>Directional</option><option>Scalp</option><option>Straddle</option><option>Strangle</option><option>Iron Condor</option><option>Spread</option></select></div>
+<button onclick="addJournalTrade()" style="padding:5px 14px;border-radius:6px;background:var(--blue);color:#fff;border:none;font-size:10px;font-weight:700;cursor:pointer">+ Add Trade</button>
+</div>
+</div>
+<div id="journalAnalytics" style="margin-bottom:14px"></div>
+<div id="journalList"><div style="text-align:center;padding:20px;color:var(--text3);font-size:11px">No trades logged yet. Add your first trade above.</div></div>
+</div></div>
+
+<!-- ═══ TAB: AI ASSISTANT ═══ -->
+<div class="sc" data-tab="aiassist" style="border-left:3px solid #3b82f6;display:none">
+<div class="sh"><div class="si" style="background:rgba(59,130,246,.1)">&#129302;</div><div class="st" style="color:var(--blue)">AI Trading Assistant</div></div>
+<div class="sbody">
+<div style="margin-bottom:10px;font-size:11px;color:var(--text2);line-height:1.6">Ask anything about a stock or trade. Examples: "Should I buy NIFTY?", "Best strategy for BANKNIFTY?", "What's the risk?", "Scalp setup?"</div>
+<div style="display:flex;gap:8px;margin-bottom:12px">
+<input id="aiSymbol" type="text" placeholder="NIFTY" value="NIFTY" style="width:100px;padding:6px 10px;border-radius:6px;border:1px solid var(--border);font-size:11px;background:var(--surface);color:var(--text)">
+<input id="aiQuestion" type="text" placeholder="Should I buy NIFTY today?" style="flex:1;padding:6px 10px;border-radius:6px;border:1px solid var(--border);font-size:11px;background:var(--surface);color:var(--text)" onkeypress="if(event.key==='Enter')askAI()">
+<button onclick="askAI()" style="padding:6px 16px;border-radius:6px;background:var(--blue);color:#fff;border:none;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap">&#129302; Ask</button>
+</div>
+<div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:10px">
+<button onclick="document.getElementById('aiQuestion').value='Should I buy today?';askAI()" style="padding:3px 10px;border-radius:4px;background:var(--bg2);border:1px solid var(--border);color:var(--text3);font-size:8px;cursor:pointer">Should I buy?</button>
+<button onclick="document.getElementById('aiQuestion').value='Best strategy?';askAI()" style="padding:3px 10px;border-radius:4px;background:var(--bg2);border:1px solid var(--border);color:var(--text3);font-size:8px;cursor:pointer">Best strategy?</button>
+<button onclick="document.getElementById('aiQuestion').value='Quick scalp setup';askAI()" style="padding:3px 10px;border-radius:4px;background:var(--bg2);border:1px solid var(--border);color:var(--text3);font-size:8px;cursor:pointer">Scalp setup</button>
+<button onclick="document.getElementById('aiQuestion').value='What is the risk?';askAI()" style="padding:3px 10px;border-radius:4px;background:var(--bg2);border:1px solid var(--border);color:var(--text3);font-size:8px;cursor:pointer">Risk?</button>
+<button onclick="document.getElementById('aiQuestion').value='IV and volatility analysis';askAI()" style="padding:3px 10px;border-radius:4px;background:var(--bg2);border:1px solid var(--border);color:var(--text3);font-size:8px;cursor:pointer">Volatility?</button>
+<button onclick="document.getElementById('aiQuestion').value='Why this signal?';askAI()" style="padding:3px 10px;border-radius:4px;background:var(--bg2);border:1px solid var(--border);color:var(--text3);font-size:8px;cursor:pointer">Why?</button>
+</div>
+<div id="aiChatArea" style="min-height:200px;max-height:500px;overflow-y:auto"></div>
+</div></div>
+
+<!-- ═══ TAB: EDUCATION ═══ -->
+<div class="sc" data-tab="education" style="border-left:3px solid #10b981;display:none">
+<div class="sh"><div class="si" style="background:rgba(16,185,129,.1)">&#127891;</div><div class="st" style="color:#10b981">Options Education — Learn by Doing</div></div>
+<div class="sbody">
+<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px">
+<button onclick="loadEducation('basics')" class="algo-btn active" style="padding:5px 14px;font-size:10px;font-weight:700">&#128218; Options Basics</button>
+<button onclick="loadEducation('greeks')" class="algo-btn" style="padding:5px 14px;font-size:10px;font-weight:700">&#916; Greeks Explained</button>
+<button onclick="loadEducation('strategies')" class="algo-btn" style="padding:5px 14px;font-size:10px;font-weight:700">&#9853; Strategy Guide</button>
+<button onclick="loadEducation('risk')" class="algo-btn" style="padding:5px 14px;font-size:10px;font-weight:700">&#128737; Risk Management</button>
+</div>
+<div id="educationContent" style="min-height:200px"><div style="text-align:center;padding:30px;color:var(--text3);font-size:11px">Select a topic above</div></div>
+</div></div>
+
 <div class="sc" data-tab="compare" style="border-left:3px solid #7c3aed;display:none"><div class="sh"><div class="si" style="background:rgba(124,58,237,.1)">&#9878;</div><div class="st" style="color:#7c3aed" id="sec-compare">Compare 2 Stocks — Head to Head</div></div>
 <div class="sbody">
 <div style="padding:14px;border-radius:10px;background:rgba(124,58,237,.04);border-left:4px solid #7c3aed;margin-bottom:14px">

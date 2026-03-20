@@ -1793,9 +1793,9 @@ if(sub==='technical')setTimeout(()=>window.dispatchEvent(new Event('resize')),20
 var TAB_GROUPS = {
   overview: {tabs: ['quick'], labels: ['Summary'], default: 'quick'},
   research: {tabs: ['analysis','dcf','equity','compare'], labels: ['AI Analysis','DCF Valuation','Research','Compare'], default: 'analysis'},
-  trading:  {tabs: ['trades','scanner','smarttrades'], labels: ['Algo Trades','Scanner','Smart Trades'], default: 'trades'},
+  trading:  {tabs: ['trades','scanner','smarttrades','journal','aiassist'], labels: ['Algo Trades','Scanner','Smart Trades','Trade Journal','AI Assistant'], default: 'trades'},
   markets:  {tabs: ['indices','daily'], labels: ['Top Performers','Market Daily'], default: 'indices'},
-  tools:    {tabs: ['finance','compare'], labels: ['Finance Tools','Compare Stocks'], default: 'finance'},
+  tools:    {tabs: ['finance','education','compare'], labels: ['Finance Tools','Education','Compare Stocks'], default: 'finance'},
 };
 window._activeGroup = 'overview';
 
@@ -1813,9 +1813,11 @@ function switchTabGroup(group) {
   var tabs = g.tabs.slice();
   var labels = g.labels.slice();
   if (!window._isPremiumUser) {
-    // Remove smarttrades from trading group for non-premium users
-    var stIdx = tabs.indexOf('smarttrades');
-    if (stIdx >= 0) { tabs.splice(stIdx, 1); labels.splice(stIdx, 1); }
+    // Remove smarttrades, journal, aiassist from trading group for non-premium users
+    ['smarttrades','journal','aiassist'].forEach(function(t){
+      var idx = tabs.indexOf(t);
+      if (idx >= 0) { tabs.splice(idx, 1); labels.splice(idx, 1); }
+    });
   }
   
   // Build sub-nav
@@ -1846,7 +1848,7 @@ if(typeof gtag==='function')gtag('event','switch_tab',{tab_name:tab});
 if(tab==='quick')setTimeout(()=>window.dispatchEvent(new Event('resize')),200);
 
 // btnMap: which group button to highlight for each tab
-const btnMap={quick:'tabBtnOverview',analysis:'tabBtnResearch',dcf:'tabBtnResearch',equity:'tabBtnResearch',compare:'tabBtnTools',indices:'tabBtnMarkets',finance:'tabBtnTools',daily:'tabBtnMarkets',trades:'tabBtnTrading',scanner:'tabBtnTrading',smarttrades:'tabBtnTrading',gems:'tabBtnOverview',picks:'tabBtnOverview',funds:'tabBtnTools'};
+const btnMap={quick:'tabBtnOverview',analysis:'tabBtnResearch',dcf:'tabBtnResearch',equity:'tabBtnResearch',compare:'tabBtnTools',indices:'tabBtnMarkets',finance:'tabBtnTools',daily:'tabBtnMarkets',trades:'tabBtnTrading',scanner:'tabBtnTrading',smarttrades:'tabBtnTrading',journal:'tabBtnTrading',aiassist:'tabBtnTrading',education:'tabBtnTools',gems:'tabBtnOverview',picks:'tabBtnOverview',funds:'tabBtnTools'};
 
 // 1) Hide ALL tab content, sub-navs, and data-tab elements
 document.querySelectorAll('.sc[data-tab]').forEach(s=>{s.style.display='none'});
@@ -1923,6 +1925,8 @@ window._indicesRendered=true;
 // Auto-load top YTD on first indices visit
 if(!window._idxAutoLoaded){window._idxAutoLoaded=true;loadIdxYTD('top_ytd',null);}
 }
+if(tab==='journal'){loadJournal()}
+if(tab==='education'&&!window._eduLoaded){window._eduLoaded=true;loadEducation('basics')}
 if(tab==='finance'){
 if(!window._financeRendered){
 try{renderPersonalFinance();window._financeRendered=true;console.log('🔄 Finance: rendered')}catch(e){console.error('Finance render error:',e)}
@@ -5141,6 +5145,123 @@ algoSelect(sym,null);
 function runAlgoSignal(){algoSelect(document.getElementById('algoSymSel')?.value||'NIFTY',null);}
 function _fetchAlgoSignal(sym){algoSelect(sym,null);}
 
+// ═══ TRADE JOURNAL ═══
+function addJournalTrade(){
+var sym=(document.getElementById('jSym').value||'').trim().toUpperCase();
+var strike=parseFloat(document.getElementById('jStrike').value)||0;
+var optType=document.getElementById('jType').value;
+var entry=parseFloat(document.getElementById('jEntry').value)||0;
+var qty=parseInt(document.getElementById('jQty').value)||1;
+var strat=document.getElementById('jStrat').value;
+if(!sym||!entry){alert('Fill symbol and entry premium');return}
+fetch('/api/journal',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({symbol:sym,strike:strike,optType:optType,entryPrem:entry,qty:qty,strategy:strat,lot:50})}).then(function(r){return r.json()}).then(function(d){
+if(d.success){document.getElementById('jSym').value='';document.getElementById('jEntry').value='';loadJournal()}
+}).catch(function(e){console.error('Journal add error:',e)});
+}
+function closeJournalTrade(id){
+var exitPrem=prompt('Enter exit premium:');
+if(!exitPrem)return;
+fetch('/api/journal/'+id,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({exitPrem:parseFloat(exitPrem)})}).then(function(r){return r.json()}).then(function(){loadJournal()});
+}
+function loadJournal(){
+fetch('/api/journal').then(function(r){return r.json()}).then(function(data){
+if(!data.success)return;
+var a=data.analytics||{};
+var el=document.getElementById('journalAnalytics');
+if(el&&a.totalTrades>0){
+var wC=a.winRate>=50?'#10b981':'#ef4444';
+var pC=a.totalPnl>=0?'#10b981':'#ef4444';
+var h='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:8px;margin-bottom:10px">';
+h+='<div style="text-align:center;padding:8px;border-radius:6px;background:var(--bg2)"><div style="font-size:7px;color:var(--text3);font-weight:700">TOTAL TRADES</div><div style="font-size:18px;font-weight:900;color:var(--text)">'+a.totalTrades+'</div></div>';
+h+='<div style="text-align:center;padding:8px;border-radius:6px;background:var(--bg2)"><div style="font-size:7px;color:var(--text3);font-weight:700">WIN RATE</div><div style="font-size:18px;font-weight:900;color:'+wC+'">'+a.winRate+'%</div></div>';
+h+='<div style="text-align:center;padding:8px;border-radius:6px;background:var(--bg2)"><div style="font-size:7px;color:var(--text3);font-weight:700">TOTAL P&L</div><div style="font-size:18px;font-weight:900;color:'+pC+'">&#8377;'+a.totalPnl.toLocaleString()+'</div></div>';
+h+='<div style="text-align:center;padding:8px;border-radius:6px;background:var(--bg2)"><div style="font-size:7px;color:var(--text3);font-weight:700">AVG WIN</div><div style="font-size:14px;font-weight:800;color:#10b981">&#8377;'+a.avgWin.toLocaleString()+'</div></div>';
+h+='<div style="text-align:center;padding:8px;border-radius:6px;background:var(--bg2)"><div style="font-size:7px;color:var(--text3);font-weight:700">AVG LOSS</div><div style="font-size:14px;font-weight:800;color:#ef4444">&#8377;'+a.avgLoss.toLocaleString()+'</div></div>';
+h+='</div>';
+if(a.insights&&a.insights.length>0){a.insights.forEach(function(ins){
+var ic=ins.type==='CRITICAL'?'#ef4444':ins.type==='WARNING'?'#f59e0b':'var(--cyan)';
+h+='<div style="font-size:9px;padding:5px 10px;border-radius:4px;background:'+ic+'10;border-left:3px solid '+ic+';margin-bottom:3px;color:'+ic+'">'+ins.msg+'</div>';
+})}
+el.innerHTML=h;
+}
+// Trade list
+var tl=document.getElementById('journalList');
+if(tl){
+var trades=data.trades||[];
+if(!trades.length){tl.innerHTML='<div style="text-align:center;padding:20px;color:var(--text3);font-size:11px">No trades yet.</div>';return}
+var h2='<table style="width:100%;border-collapse:collapse;font-size:9px"><thead><tr style="background:var(--bg2)"><th style="padding:5px">ID</th><th style="padding:5px">Symbol</th><th style="padding:5px">Strike</th><th style="padding:5px">Type</th><th style="padding:5px">Entry</th><th style="padding:5px">Exit</th><th style="padding:5px">P&L</th><th style="padding:5px">Status</th><th style="padding:5px">Action</th></tr></thead><tbody>';
+trades.slice().reverse().forEach(function(t){
+var pC=t.pnl>0?'#10b981':t.pnl<0?'#ef4444':'var(--text3)';
+h2+='<tr style="border-bottom:1px solid var(--border)"><td style="padding:4px;color:var(--text3)">'+t.id+'</td>';
+h2+='<td style="padding:4px;font-weight:700">'+t.symbol+'</td>';
+h2+='<td style="padding:4px">'+t.strike+'</td>';
+h2+='<td style="padding:4px;color:'+(t.optType==='CE'||t.optType==='CALL'?'#10b981':'#ef4444')+'">'+t.optType+'</td>';
+h2+='<td style="padding:4px;font-family:var(--mono)">&#8377;'+t.entryPrem+'</td>';
+h2+='<td style="padding:4px;font-family:var(--mono)">'+(t.exitPrem?'&#8377;'+t.exitPrem:'—')+'</td>';
+h2+='<td style="padding:4px;font-weight:800;color:'+pC+'">'+(t.pnl?'&#8377;'+t.pnl.toLocaleString():'—')+'</td>';
+h2+='<td style="padding:4px"><span style="font-size:7px;padding:2px 6px;border-radius:3px;background:'+(t.status==='OPEN'?'#3b82f6':'#10b981')+'20;color:'+(t.status==='OPEN'?'#3b82f6':'#10b981')+';font-weight:700">'+t.status+'</span></td>';
+h2+='<td style="padding:4px">'+(t.status==='OPEN'?'<button onclick="closeJournalTrade(\''+t.id+'\')" style="padding:2px 8px;border-radius:3px;background:#ef4444;color:#fff;border:none;font-size:7px;cursor:pointer;font-weight:700">Close</button>':'')+'</td></tr>';
+});
+h2+='</tbody></table>';
+tl.innerHTML=h2;
+}
+});
+}
+
+// ═══ AI ASSISTANT ═══
+function askAI(){
+var sym=(document.getElementById('aiSymbol').value||'NIFTY').trim().toUpperCase();
+var q=(document.getElementById('aiQuestion').value||'').trim();
+if(!q)return;
+var el=document.getElementById('aiChatArea');
+if(!el)return;
+el.innerHTML+='<div style="text-align:right;margin-bottom:8px"><span style="display:inline-block;padding:6px 12px;border-radius:12px 12px 2px 12px;background:var(--blue);color:#fff;font-size:10px;max-width:70%">'+q+'</span></div>';
+el.innerHTML+='<div style="margin-bottom:8px"><span style="display:inline-block;padding:6px 12px;border-radius:2px 12px 12px 12px;background:var(--bg2);color:var(--text3);font-size:10px">Thinking...</span></div>';
+el.scrollTop=el.scrollHeight;
+document.getElementById('aiQuestion').value='';
+fetch('/api/ai-assist',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({symbol:sym,question:q,region:window._globalRegion||'IN'})}).then(function(r){return r.json()}).then(function(data){
+// Remove "Thinking..."
+var msgs=el.querySelectorAll('div');if(msgs.length>0)msgs[msgs.length-1].remove();
+var answer=data.answer||'Sorry, I could not process that question.';
+var sigBadge=data.signal?'<span style="font-size:7px;padding:2px 6px;border-radius:3px;background:'+(data.signal.includes('BUY')?'#10b98120':'#f59e0b20')+';color:'+(data.signal.includes('BUY')?'#10b981':'#f59e0b')+'">'+data.signal+'</span> ':'';
+el.innerHTML+='<div style="margin-bottom:10px"><div style="display:inline-block;padding:8px 12px;border-radius:2px 12px 12px 12px;background:var(--bg2);color:var(--text);font-size:10px;max-width:85%;line-height:1.6;white-space:pre-wrap">'+sigBadge+answer+'</div></div>';
+el.scrollTop=el.scrollHeight;
+}).catch(function(e){
+var msgs=el.querySelectorAll('div');if(msgs.length>0)msgs[msgs.length-1].remove();
+el.innerHTML+='<div style="margin-bottom:8px"><span style="display:inline-block;padding:6px 12px;border-radius:2px 12px 12px 12px;background:#ef444410;color:#ef4444;font-size:10px">Error: '+e.message+'</span></div>';
+});
+}
+
+// ═══ EDUCATION ═══
+function loadEducation(topic){
+var el=document.getElementById('educationContent');if(!el)return;
+el.innerHTML='<div style="text-align:center;padding:20px;color:var(--text3);font-size:11px">Loading...</div>';
+fetch('/api/education?topic='+topic).then(function(r){return r.json()}).then(function(data){
+if(!data.success){el.innerHTML='<div style="color:var(--red)">Failed to load.</div>';return}
+var l=data.lesson;
+var h='<div style="font-size:16px;font-weight:900;color:var(--text);margin-bottom:12px">'+l.title+'</div>';
+l.sections.forEach(function(s){
+h+='<div style="margin-bottom:14px;padding:12px;border-radius:8px;border:1px solid var(--border);background:var(--surface)">';
+h+='<div style="font-size:12px;font-weight:800;color:var(--cyan);margin-bottom:6px">'+s.heading+'</div>';
+h+='<div style="font-size:11px;color:var(--text2);line-height:1.7">'+s.content+'</div>';
+h+='</div>';
+});
+h+='<div style="display:flex;gap:4px;margin-top:8px">';
+(data.available_topics||[]).forEach(function(t){
+h+='<button onclick="loadEducation(\''+t+'\')" style="padding:4px 12px;border-radius:4px;background:'+(t===topic?'var(--blue)':'var(--bg2)')+';color:'+(t===topic?'#fff':'var(--text3)')+';border:1px solid var(--border);font-size:8px;cursor:pointer;font-weight:700">'+t.toUpperCase()+'</button>';
+});
+h+='</div>';
+el.innerHTML=h;
+}).catch(function(e){el.innerHTML='<div style="color:var(--red)">Error: '+e.message+'</div>'});
+}
+
+// ═══ BROKER COPY — One-click order format ═══
+function copyBrokerOrder(tradeData){
+if(!tradeData)return;
+var text='ORDER: '+tradeData.action+'\nStrike: '+tradeData.strike+'\nType: '+tradeData.type+'\nEntry Premium: '+tradeData.premEntry+'\nStop Loss: '+tradeData.premSL+'\nTarget 1: '+tradeData.premT1+'\nTarget 2: '+tradeData.premT2+'\nLot Size: '+tradeData.lot+'\nExpiry: '+(tradeData.expiry||'N/A');
+navigator.clipboard.writeText(text).then(function(){alert('Order copied to clipboard! Paste in your broker terminal.')}).catch(function(){prompt('Copy this order:',text)});
+}
+
 function _renderAlgoCard(el,d){
 var isUS=(d.region||d.instrument?.region||'IN')==='US';
 var S=isUS?'$':'&#8377;';var p=d.spot||0;var loc=isUS?'en-US':'en-IN';
@@ -5476,7 +5597,8 @@ h+='<div style="font-size:10px;color:var(--text2)">Only '+sup+'/'+tot+' factors 
 h+='<div style="border:2px solid '+(isWait?'#f59e0b40':dC+'40')+';border-radius:'+(isWait?'0 0 14px 14px':'14px')+';overflow:hidden;margin-bottom:14px;background:'+(isWait?'rgba(245,158,11,.02)':dC+'06')+';'+(isWait?'opacity:.85':'')+'">';
 // Header
 h+='<div style="background:'+dC+';padding:12px 18px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">';
-h+='<div style="display:flex;align-items:center;gap:10px"><span style="font-size:20px">'+(dir==='BULLISH'?'&#128994;':'&#128308;')+'</span><div><div style="color:#fff;font-size:18px;font-weight:900">'+tr.action+'</div><div style="color:rgba(255,255,255,.7);font-size:10px">&#916;'+(tr.delta?tr.delta.toFixed(2):'0.50')+' &middot; '+(d.instrument?.ex||'NFO')+' Lot '+(d.instrument?.lot||'')+(tr.expiry?' &middot; Exp: '+tr.expiry:'')+'</div></div></div>';
+window._lastTradeForCopy=tr;
+h+='<div style="display:flex;align-items:center;gap:10px"><span style="font-size:20px">'+(dir==='BULLISH'?'&#128994;':'&#128308;')+'</span><div><div style="color:#fff;font-size:18px;font-weight:900">'+tr.action+'</div><div style="color:rgba(255,255,255,.7);font-size:10px">&#916;'+(tr.delta?tr.delta.toFixed(2):'0.50')+' &middot; '+(d.instrument?.ex||'NFO')+' Lot '+(d.instrument?.lot||'')+(tr.expiry?' &middot; Exp: '+tr.expiry:'')+'</div></div><button onclick="copyBrokerOrder(window._lastTradeForCopy)" style="margin-left:auto;padding:4px 12px;border-radius:4px;background:rgba(255,255,255,.15);color:#fff;border:1px solid rgba(255,255,255,.3);font-size:8px;font-weight:700;cursor:pointer">&#128203; Copy Order</button></div>';
 h+='<div style="display:flex;gap:6px"><span style="background:rgba(255,255,255,.2);color:#fff;font-size:11px;font-weight:700;padding:4px 12px;border-radius:4px">'+sig+'</span>';
 if(d.isExpiry)h+='<span style="background:rgba(255,200,0,.3);color:#fff;font-size:11px;font-weight:700;padding:4px 12px;border-radius:4px;animation:pulse 1.5s infinite">&#128293; EXPIRY</span>';
 h+='</div></div>';
