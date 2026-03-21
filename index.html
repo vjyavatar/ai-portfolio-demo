@@ -310,7 +310,7 @@ nav{position:sticky;top:52px;z-index:99;backdrop-filter:blur(20px);-webkit-backd
 @keyframes ripple{0%{box-shadow:0 0 0 0 rgba(26,86,219,.3)}100%{box-shadow:0 0 0 12px rgba(26,86,219,0)}}
 /* Global smooth transitions */
 *{box-sizing:border-box}
-.sc{transition:box-shadow .3s,transform .2s}.sc:hover{box-shadow:var(--shadow)}
+/* sc hover handled globally */
 details{transition:all .3s}details[open]{animation:fadeIn .3s ease}
 details summary{transition:background .2s,color .2s}
 button{transition:all .2s ease}
@@ -358,7 +358,7 @@ button:active{transform:scale(.97)}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
 @keyframes successPop{0%{transform:scale(0.8);opacity:0}50%{transform:scale(1.05)}100%{transform:scale(1);opacity:1}}
 /* ═══ PREMIUM FEEL — Global Polish ═══ */
-.sc{transition:box-shadow .3s,transform .2s}.sc:hover{box-shadow:var(--shadow)}
+/* sc hover handled globally */
 details{transition:all .2s}details[open]{animation:fadeSlideUp .25s ease}
 details summary{transition:background .15s,color .15s}
 details summary:hover{filter:brightness(.97)}
@@ -411,14 +411,47 @@ input:focus,button:focus-visible{outline:2px solid var(--blue);outline-offset:2p
 .isection{position:relative;z-index:1}
 
 /* SECTIONS - Always open, no accordion */
-.sc{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:0;margin-bottom:12px;box-shadow:var(--shadow-sm);overflow:visible;scroll-margin-top:192px;transition:box-shadow .2s}
-.sc:hover{border-color:#1a56db}
-.sh{display:flex;align-items:center;gap:10px;padding:14px 18px 0}
-.si{width:34px;height:34px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;box-shadow:0 2px 8px rgba(0,0,0,.06);transition:transform .2s}
-.sh:hover .si{transform:scale(1.08)}
-.st{font-family:'Sora',sans-serif;font-size:14px;font-weight:700;letter-spacing:-.2px;flex:1;scroll-margin-top:160px;color:var(--text)}
-.sbody{padding:14px 18px 16px;overflow:visible;animation:fadeIn .3s ease}
-.sh{display:flex;align-items:center;gap:10px;padding:14px 18px 0;transition:opacity .2s}
+.sc{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:0;margin-bottom:14px;box-shadow:0 1px 3px rgba(0,0,0,.04),0 1px 2px rgba(0,0,0,.06);overflow:visible;scroll-margin-top:192px;transition:box-shadow .3s,transform .25s}
+.sc:hover{box-shadow:0 4px 16px rgba(0,0,0,.08),0 2px 4px rgba(0,0,0,.04);transform:translateY(-1px)}
+/* Section headers — bigger, bolder */
+.sh{display:flex;align-items:center;gap:12px;padding:16px 20px 0;transition:opacity .2s}
+.st{font-family:'Sora',sans-serif;font-size:15px;font-weight:800;letter-spacing:-.2px;line-height:1.3}
+.si{width:38px;height:38px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;box-shadow:0 2px 8px rgba(0,0,0,.06);transition:transform .2s}
+.sh:hover .si{transform:scale(1.06)}
+.sbody{padding:16px 20px 18px;overflow:visible;animation:fadeIn .3s ease}
+/* Premium button styling */
+button{transition:all .2s ease;font-family:inherit}
+button:active{transform:scale(.96)}
+.algo-btn{border-radius:8px;transition:all .2s;box-shadow:0 1px 2px rgba(0,0,0,.04)}
+.algo-btn:hover{box-shadow:0 2px 8px rgba(0,0,0,.08)}
+.algo-btn.active{box-shadow:0 2px 12px rgba(26,86,219,.2)}
+/* Sub-tab pills */
+.sub-tab-btn{transition:all .25s ease;letter-spacing:.2px}
+.sub-tab-btn:hover{transform:translateY(-1px)}
+.sub-tab-btn.active{box-shadow:0 2px 10px rgba(26,86,219,.25)}
+/* Input focus glow */
+input:focus,select:focus,textarea:focus{outline:none;border-color:rgba(26,86,219,.5);box-shadow:0 0 0 3px rgba(26,86,219,.08)}
+/* Details/accordion premium */
+details{transition:all .3s;border-radius:10px}
+details[open]{animation:fadeIn .25s ease}
+details summary{transition:background .2s,color .2s;border-radius:10px}
+details[open] summary{border-radius:10px 10px 0 0}
+/* Tab content fade */
+[data-tab]{will-change:opacity,transform}
+/* Scrollbar */
+::-webkit-scrollbar{width:5px;height:5px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:rgba(26,86,219,.12);border-radius:3px}::-webkit-scrollbar-thumb:hover{background:rgba(26,86,219,.25)}
+/* Feature cards */
+.feat-card{transition:transform .25s,box-shadow .25s;border-radius:12px}
+.feat-card:hover{transform:translateY(-3px);box-shadow:0 8px 24px rgba(0,0,0,.08)}
+/* Loading skeleton */
+.shimmer{background:linear-gradient(90deg,var(--bg2) 25%,rgba(26,86,219,.04) 50%,var(--bg2) 75%);background-size:200% 100%;animation:shimmer 1.5s infinite}
+/* Table rows */
+table tr{transition:background .15s}
+/* Premium grid metrics — used in Key Numbers, Stock Intel, etc */
+[style*="grid-template-columns"] > div{transition:transform .2s,box-shadow .2s}
+[style*="grid-template-columns"] > div:hover{transform:translateY(-1px);box-shadow:0 4px 12px rgba(0,0,0,.06)}
+.sc:hover{border-color:rgba(26,86,219,.2)}
+/* .sh/.si/.st/.sbody defined in premium overhaul above */
 /* Stagger animation handled by JS */
 /* Accent border gradient for sections */
 .sc[style*="border-left"]{border-left-width:3px;border-left-style:solid;border-radius:var(--radius)}
@@ -1124,17 +1157,21 @@ footer{position:relative;z-index:1;margin-top:32px;background:linear-gradient(13
 <button onclick="runStockIntel('GOOGL')" class="algo-btn" style="padding:4px 12px;font-size:10px">Google</button>
 <button onclick="runStockIntel('AMZN')" class="algo-btn" style="padding:4px 12px;font-size:10px">Amazon</button>
 </div>
-<div style="display:flex;gap:6px;align-items:center;margin-bottom:12px">
+<div style="display:flex;gap:6px;align-items:center;margin-bottom:0">
 <input id="siCustom" type="text" placeholder="Any stock... e.g. SBIN or META" style="padding:5px 12px;border-radius:8px;border:1px solid var(--border);font-size:11px;width:220px;background:var(--bg);color:var(--text)" onkeydown="if(event.key==='Enter'){runStockIntel(this.value.trim().toUpperCase())}">
 <button onclick="runStockIntel(document.getElementById('siCustom').value.trim().toUpperCase())" style="padding:6px 18px;border-radius:8px;background:linear-gradient(135deg,#0891b2,#0e7490);color:#fff;border:none;font-size:11px;font-weight:700;cursor:pointer">&#128300; Analyze</button>
 </div>
-<div id="siResult" style="min-height:200px"><div style="text-align:center;padding:40px">
+</div></div>
+<!-- Stock Intel results — OUTSIDE the .sc card so nothing clips -->
+<div data-tab="stockintel" style="display:none;padding:0 4px">
+<div id="siResult"><div style="text-align:center;padding:40px">
 <div style="font-size:40px;margin-bottom:8px;opacity:.3">🔬</div>
 <div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:4px">Complete Stock Intelligence</div>
 <div style="font-size:11px;color:var(--text3);max-width:420px;margin:0 auto">Select any stock above. Get a 13-section BUY/SELL/HOLD report covering fundamentals, valuation, price action, smart money, risk factors &amp; exact entry/exit levels.</div>
 </div></div>
-<!-- Top Picks Section -->
-<div style="padding:0 18px 16px">
+</div>
+<!-- Top Picks — also OUTSIDE to avoid clipping -->
+<div data-tab="stockintel" style="display:none;padding:0 4px">
 <div style="border-top:1px solid var(--border);padding-top:12px;margin-top:4px">
 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
 <div style="font-size:13px;font-weight:800;color:var(--text)">🏆 TOP 5 PICKS — Where to Invest Now</div>
@@ -1143,7 +1180,6 @@ footer{position:relative;z-index:1;margin-top:32px;background:linear-gradient(13
 <div id="topPicksResult"><div style="text-align:center;padding:20px;color:var(--text3);font-size:10px">Click Generate to scan <strong>all major stocks</strong> (NIFTY 50 / S&amp;P 100) through the Stock Intel engine and find the top 5 to invest in right now</div></div>
 </div>
 </div>
-</div></div>
 
 <!-- ═══ TAB: VALUATION REPORT ═══ -->
 <div class="sc" data-tab="valreport" style="border-left:3px solid #7c3aed;display:none">
