@@ -2646,6 +2646,7 @@ async def ads_txt():
 # ═══════════════════════════════════════════════════════════
 TRADES_ALLOWED_EMAILS = ["vjyavatar@gmail.com"]
 _trades_cache = {"timestamp": None, "data": None}  # 30-min cache — live enough for trading, stable enough to not flip-flop
+_trades_cache_us = {"timestamp": None, "data": None}  # Separate cache for US
 
 # ═══ TRADE HISTORY — Auto-save for backtesting validation ═══
 TRADES_HISTORY_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "trades_history.json")
@@ -7886,6 +7887,8 @@ async def index_trades(request: Request):
     body = await request.json()
     email = body.get("email", "").strip().lower()
     force_refresh = body.get("force_refresh", False)
+    region = body.get("region", "IN").upper()
+    is_us_trades = region == "US"
     
     if email not in TRADES_ALLOWED_EMAILS:
         return {"success": False, "error": "Access restricted. This feature is exclusively available to authorized users."}
@@ -7893,18 +7896,19 @@ async def index_trades(request: Request):
     # 30-minute cache — fresh enough for live trading, stable enough to avoid flip-flopping
     from datetime import timedelta
     IST_NOW = datetime.utcnow() + timedelta(hours=5, minutes=30)
+    _rc = _trades_cache_us if is_us_trades else _trades_cache
     
     cache_valid = (
         not force_refresh
-        and _trades_cache["timestamp"] is not None 
-        and _trades_cache["data"] is not None
-        and (IST_NOW - _trades_cache["timestamp"]).total_seconds() < 1800  # 30 minutes
+        and _rc["timestamp"] is not None 
+        and _rc["data"] is not None
+        and (IST_NOW - _rc["timestamp"]).total_seconds() < 1800  # 30 minutes
     )
     
     if cache_valid:
-        age_min = int((IST_NOW - _trades_cache["timestamp"]).total_seconds() / 60)
-        print(f"📋 Returning cached trades ({age_min}min old, refreshes at 30min)")
-        return _trades_cache["data"]
+        age_min = int((IST_NOW - _rc["timestamp"]).total_seconds() / 60)
+        print(f"📋 Returning cached {region} trades ({age_min}min old)")
+        return _rc["data"]
     
     if force_refresh:
         print(f"🔄 Force refresh requested by {email} — generating with latest market data")
@@ -7952,14 +7956,22 @@ async def index_trades(request: Request):
             pass
         return None, None
     
-    # Fetch Indian index data
+    # Fetch index data based on region
     indices_data = []
-    tickers = {
-        "^NSEI": "NIFTY 50",
-        "^NSEBANK": "BANK NIFTY",
-        "^BSESN": "SENSEX",
-        "^INDIAVIX": "INDIA VIX"
-    }
+    if is_us_trades:
+        tickers = {
+            "SPY": "S&P 500",
+            "QQQ": "NASDAQ 100",
+            "IWM": "Russell 2000",
+            "^VIX": "CBOE VIX"
+        }
+    else:
+        tickers = {
+            "^NSEI": "NIFTY 50",
+            "^NSEBANK": "BANK NIFTY",
+            "^BSESN": "SENSEX",
+            "^INDIAVIX": "INDIA VIX"
+        }
     
     for ticker, name in tickers.items():
         try:
@@ -8007,25 +8019,33 @@ async def index_trades(request: Request):
         except:
             pass
     
-    # Fetch top Indian stock movers for stock option picks
+    # Fetch top stock movers for option picks
     stock_data = []
-    stock_tickers = {
-        "RELIANCE.NS": "Reliance Industries",
-        "TCS.NS": "TCS",
-        "HDFCBANK.NS": "HDFC Bank",
-        "INFY.NS": "Infosys",
-        "ICICIBANK.NS": "ICICI Bank",
-        "SBIN.NS": "SBI",
-        "BHARTIARTL.NS": "Bharti Airtel",
-        "TATAMOTORS.NS": "Tata Motors",
-        "ITC.NS": "ITC",
-        "LT.NS": "L&T",
-        "AXISBANK.NS": "Axis Bank",
-        "BAJFINANCE.NS": "Bajaj Finance",
-        "MARUTI.NS": "Maruti Suzuki",
-        "TATASTEEL.NS": "Tata Steel",
-        "ADANIENT.NS": "Adani Enterprises"
-    }
+    if is_us_trades:
+        stock_tickers = {
+            "AAPL": "Apple", "MSFT": "Microsoft", "NVDA": "NVIDIA",
+            "TSLA": "Tesla", "AMZN": "Amazon", "GOOGL": "Alphabet",
+            "META": "Meta", "AMD": "AMD", "JPM": "JPMorgan",
+            "AVGO": "Broadcom", "NFLX": "Netflix", "CRM": "Salesforce"
+        }
+    else:
+        stock_tickers = {
+            "RELIANCE.NS": "Reliance Industries",
+            "TCS.NS": "TCS",
+            "HDFCBANK.NS": "HDFC Bank",
+            "INFY.NS": "Infosys",
+            "ICICIBANK.NS": "ICICI Bank",
+            "SBIN.NS": "SBI",
+            "BHARTIARTL.NS": "Bharti Airtel",
+            "TATAMOTORS.NS": "Tata Motors",
+            "ITC.NS": "ITC",
+            "LT.NS": "L&T",
+            "AXISBANK.NS": "Axis Bank",
+            "BAJFINANCE.NS": "Bajaj Finance",
+            "MARUTI.NS": "Maruti Suzuki",
+            "TATASTEEL.NS": "Tata Steel",
+            "ADANIENT.NS": "Adani Enterprises"
+        }
     for ticker, name in stock_tickers.items():
         try:
             hist, info = _yfetch(ticker)
@@ -8206,9 +8226,11 @@ async def index_trades(request: Request):
             print(f"  ⚠️ NSE option chain {symbol} failed: {e}")
             return None
     
-    # Fetch option chains for tradeable indices
-    oc_nifty = fetch_nse_option_chain("NIFTY")
-    oc_banknifty = fetch_nse_option_chain("BANKNIFTY")
+    # Fetch option chains (India only — NSE doesn't have US data)
+    oc_nifty = None; oc_banknifty = None
+    if not is_us_trades:
+        oc_nifty = fetch_nse_option_chain("NIFTY")
+        oc_banknifty = fetch_nse_option_chain("BANKNIFTY")
     
     # Build option chain text for prompt
     oc_text_parts = []
@@ -9250,8 +9272,9 @@ RULES FOR STOCK OPTIONS (up to 2 trades — 0 if no clear setup):
         }
         
         # Cache for 30 minutes — next click within window returns same trades
-        _trades_cache["timestamp"] = datetime.utcnow() + timedelta(hours=5, minutes=30)
-        _trades_cache["data"] = response_data
+        _rc2 = _trades_cache_us if is_us_trades else _trades_cache
+        _rc2["timestamp"] = datetime.utcnow() + timedelta(hours=5, minutes=30)
+        _rc2["data"] = response_data
         print(f"💾 Trades cached at {_trades_cache['timestamp'].strftime('%H:%M IST')} — valid until {(_trades_cache['timestamp'] + timedelta(minutes=30)).strftime('%H:%M IST')}")
         
         # Auto-save to history for validation/backtesting
@@ -11315,9 +11338,19 @@ async def education_module(topic: str = "basics"):
     return {"success": True, "topic": topic, "lesson": topic_data, "available_topics": list(lessons.keys())}
 
 
+_si_cache = {}  # {symbol_region: {ts, data}}
+
 @app.get("/api/stock-intel")
 async def stock_intel(symbol: str, region: str = "IN"):
     """Complete Stock Intelligence — 13-section decision engine"""
+    cache_key = f"{symbol}_{region}"
+    now = datetime.utcnow()
+    if cache_key in _si_cache:
+        age = (now - _si_cache[cache_key]["ts"]).total_seconds()
+        if age < 900:  # 15 min cache
+            print(f"📋 Stock Intel cache hit: {cache_key} ({int(age/60)}min old)")
+            return _si_cache[cache_key]["data"]
+    
     try:
         import yfinance as yf, math
         import pandas as pd
@@ -11556,6 +11589,13 @@ async def stock_intel(symbol: str, region: str = "IN"):
             "risks": risks,
             "invalidation": invalidation,
         }
+        _si_cache[cache_key] = {"ts": datetime.utcnow(), "data": _si_result}
+        # Keep cache size bounded
+        if len(_si_cache) > 50:
+            oldest = min(_si_cache, key=lambda k: _si_cache[k]["ts"])
+            del _si_cache[oldest]
+        print(f"📊 Stock Intel: {symbol} → {decision} ({confidence}%) cached")
+        return _si_result
     except Exception as e:
         import traceback; traceback.print_exc()
         return {"success": False, "error": str(e)}
