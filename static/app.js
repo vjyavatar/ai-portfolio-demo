@@ -2083,7 +2083,7 @@ window._indicesRendered=true;
 if(!window._idxAutoLoaded){window._idxAutoLoaded=true;loadIdxYTD('top_ytd',null);}
 }
 if(tab==='valreport'&&!window._valLoaded){window._valLoaded=true;loadValuation(window._valRegion==='US'?'SPY':'NIFTY')}
-if(tab==='journal'){loadJournal()}
+if(tab==='journal'){loadJournal();loadJournalReview()}
 if(tab==='education'&&!window._eduLoaded){window._eduLoaded=true;if(typeof loadEducation==='function')loadEducation('basics')}
 if(tab==='daily'&&!window._dailyLoaded){window._dailyLoaded=true;if(typeof fetchMarketDaily==='function')fetchMarketDaily()}
 if(tab==='education'&&!window._eduLoaded){window._eduLoaded=true;loadEducation('basics')}
@@ -5533,6 +5533,124 @@ algoSelect(sym,null);
 function runAlgoSignal(){algoSelect(document.getElementById('algoSymSel')?.value||'NIFTY',null);}
 function _fetchAlgoSignal(sym){algoSelect(sym,null);}
 
+// ═══ "WHAT SHOULD I DO NOW?" — One-tap decision engine ═══
+function whatNow(){
+var el=document.getElementById('whatNowResult');if(!el)return;
+el.style.display='block';
+var reg=window._globalRegion||'IN';
+var sym=reg==='US'?'SPY':'NIFTY';
+el.innerHTML='<div style="padding:12px;border-radius:12px;background:var(--surface);border:1px solid var(--border);box-shadow:var(--shadow)"><div style="display:flex;align-items:center;gap:8px"><div style="width:14px;height:14px;border:2px solid #059669;border-top-color:transparent;border-radius:50%;animation:spin .5s linear infinite"></div><span style="font-size:11px;color:var(--text3)">Reading market pulse for '+sym+'...</span></div></div>';
+fetch('/api/algo-signal?symbol='+sym+'&region='+reg).then(function(r){if(!r.ok)throw new Error('API error');return r.json()}).then(function(d){
+if(!d.success){el.innerHTML='<div style="color:var(--red);padding:8px">'+d.error+'</div>';return}
+var sig=d.signal||'HOLD / WAIT';var dir=d.direction||'NEUTRAL';var tr=d.trade||{};
+var _tc=d.tradeConfidence||{};var _win=_tc.estimatedWin||50;var _grade=_tc.grade||'C';
+var _eng=d.engines||{};var _vix=Number((d.options||{}).vix||0);
+var sC=sig.includes('BUY')?'#059669':sig==='AVOID'?'#dc2626':'#d97706';
+var dC=dir==='BULLISH'?'#059669':dir==='BEARISH'?'#dc2626':'#d97706';
+var S=reg==='US'?'$':'₹';
+var h='<div style="padding:16px;border-radius:14px;background:var(--surface);border:2px solid '+sC+'30;box-shadow:0 8px 32px '+sC+'10">';
+// Decision
+h+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">';
+h+='<div><div style="font-size:24px;font-weight:900;color:'+sC+';font-family:Sora,sans-serif">'+sig+'</div>';
+h+='<div style="font-size:11px;color:var(--text2)">'+sym+' · '+dir+' · Win: '+_win+'% · Grade: '+_grade+'</div></div>';
+h+='<div style="width:48px;height:48px;border-radius:50%;background:'+sC+'12;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:900;color:'+sC+';font-family:var(--mono)">'+_win+'</div>';
+h+='</div>';
+// Trade action
+if(tr.action&&sig!=='HOLD / WAIT'&&sig!=='AVOID'){
+h+='<div style="padding:10px;border-radius:8px;background:'+dC+'06;border:1px solid '+dC+'15;margin-bottom:8px">';
+h+='<div style="font-size:11px;font-weight:800;color:'+dC+'">'+tr.action+'</div>';
+h+='<div style="display:flex;gap:12px;font-size:10px;margin-top:4px;font-family:var(--mono)">';
+h+='<span>Entry: <strong>'+S+(tr.premEntry||0).toFixed(0)+'</strong></span>';
+h+='<span style="color:#dc2626">SL: <strong>'+S+(tr.premSL||0).toFixed(0)+'</strong></span>';
+h+='<span style="color:#059669">Target: <strong>'+S+(tr.premT2||0).toFixed(0)+'</strong></span>';
+h+='<span style="color:var(--purple)">R:R: <strong>'+(tr.rrRatio||'—')+'</strong></span>';
+h+='</div></div>';
+}else{
+h+='<div style="padding:10px;border-radius:8px;background:#d9770606;border:1px solid #d9770615;font-size:11px;color:#d97706;font-weight:700;margin-bottom:8px">⏸️ No clear setup — WAIT for better opportunity</div>';
+}
+// VIX + Reason
+h+='<div style="display:flex;gap:8px;font-size:9px;flex-wrap:wrap">';
+if(_vix>0){var vxC=_vix<14?'#059669':_vix<20?'#1a56db':_vix<25?'#d97706':'#dc2626';h+='<span style="padding:2px 8px;border-radius:4px;background:'+vxC+'08;color:'+vxC+';font-weight:700">Fear: '+_vix.toFixed(1)+' '+(_vix<14?'Calm':_vix<20?'OK':_vix<25?'Nervous':'High')+'</span>';}
+if(d.reasoning)h+='<span style="color:var(--text3);flex:1;min-width:200px">'+d.reasoning.substring(0,150)+'...</span>';
+h+='</div>';
+// Deep dive link
+h+='<div style="margin-top:8px;text-align:center"><button onclick="switchTabGroup(\'trading\');setTimeout(function(){switchTab(\'trades\');algoSelect(\''+sym+'\',null)},200)" style="padding:4px 16px;border-radius:6px;background:var(--blue);color:#fff;border:none;font-size:9px;font-weight:700;cursor:pointer">📊 Full Analysis →</button></div>';
+h+='</div>';
+el.innerHTML=h;
+}).catch(function(e){el.innerHTML='<div style="color:var(--red);padding:8px;font-size:10px">'+e.message+'</div>'});
+}
+
+// ═══ VOICE INPUT for AI Assistant ═══
+function startVoiceInput(){
+if(!('webkitSpeechRecognition' in window)&&!('SpeechRecognition' in window)){
+alert('Voice input not supported in this browser. Try Chrome or Edge.');return;
+}
+var SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+var recognition=new SR();
+recognition.lang='en-IN';recognition.continuous=false;recognition.interimResults=false;
+var btn=document.getElementById('voiceBtn');
+if(btn){btn.style.background='#dc2626';btn.textContent='🎙️ Listening...';}
+recognition.onresult=function(e){
+var text=e.results[0][0].transcript;
+var input=document.getElementById('aiQuestion');
+if(input)input.value=text;
+if(btn){btn.style.background='var(--bg2)';btn.textContent='🎙️';}
+askAI();
+};
+recognition.onerror=function(){if(btn){btn.style.background='var(--bg2)';btn.textContent='🎙️';}};
+recognition.onend=function(){if(btn){btn.style.background='var(--bg2)';btn.textContent='🎙️';}};
+recognition.start();
+}
+
+// ═══ EXPLAIN MY LOSS — Post-trade analysis ═══
+function explainLoss(tradeId){
+var el=document.getElementById('lossExplain_'+tradeId);
+if(el&&el.style.display==='block'){el.style.display='none';return}
+if(!el){
+var row=document.querySelector('[data-tradeid="'+tradeId+'"]');
+if(!row)return;
+el=document.createElement('div');el.id='lossExplain_'+tradeId;
+el.style.cssText='padding:10px;background:var(--bg2);border-radius:8px;margin:6px 0';
+row.after(el);
+}
+el.style.display='block';
+el.innerHTML='<div style="font-size:9px;color:var(--text3)">Analyzing what went wrong...</div>';
+// Get the trade data
+var trades=window._journalTrades||[];
+var trade=trades.find(function(t){return t.id===tradeId});
+if(!trade){el.innerHTML='<div style="color:var(--red);font-size:9px">Trade not found</div>';return}
+var entry=trade.entryPrem||0;var exit=trade.exitPrem||0;var pnl=trade.pnl||0;
+var sym=trade.symbol||'';
+// Analyze
+var h='<div style="font-size:10px;font-weight:800;color:#dc2626;margin-bottom:6px">🔍 Loss Analysis — '+sym+' '+trade.optType+' '+trade.strike+'</div>';
+h+='<div style="font-size:9px;color:var(--text2);line-height:1.7">';
+if(exit>0&&entry>0){
+var lossPct=((exit-entry)/entry*100).toFixed(1);
+h+='<strong>Entry:</strong> ₹'+entry+' → <strong>Exit:</strong> ₹'+exit+' (<span style="color:#dc2626">'+lossPct+'%</span>)<br>';
+if(Math.abs(parseFloat(lossPct))>30){
+h+='⚠️ <strong>Large loss ('+lossPct+'%).</strong> Your SL was either too wide or not respected.<br>';
+h+='💡 <strong>Fix:</strong> Set SL at entry and NEVER move it against you. Maximum 20% premium loss per trade.<br>';
+}else if(Math.abs(parseFloat(lossPct))>15){
+h+='⚠️ <strong>Moderate loss.</strong> This is within acceptable range if your winners are bigger.<br>';
+}else{
+h+='✅ <strong>Small loss — well managed.</strong> This is healthy risk control.<br>';
+}
+}
+// Check if direction was wrong
+h+='<strong>Possible causes:</strong><br>';
+h+='• Direction wrong — market moved against your bias<br>';
+h+='• Timing wrong — entered too early/late<br>';
+h+='• IV crush — options lost value even though stock moved right<br>';
+h+='• Theta decay — held too long near expiry<br>';
+h+='<br><strong>Questions to ask yourself:</strong><br>';
+h+='• Did I follow my SL? If not, that\'s a discipline issue.<br>';
+h+='• Was the setup confluent (3+ factors aligned)?<br>';
+h+='• Did I check IV before entry? High IV = expensive options.<br>';
+h+='• Was I revenge trading after a previous loss?<br>';
+h+='</div>';
+el.innerHTML=h;
+}
+
 // ═══ STOCK INTELLIGENCE TAB ═══
 window._siRegion='IN';
 function switchSIRegion(reg){
@@ -5768,6 +5886,120 @@ el.innerHTML=h;
 }).catch(function(e){_topPicksLoading=false;el.innerHTML='<div style="color:var(--red);padding:12px;font-size:10px">Error: '+e.message+'</div>'});
 }
 
+// ═══ P&L PAYOFF CURVE VIEWER ═══
+function showPayoffCurve(sym){
+var el=document.getElementById('payoffCurveArea');
+if(!el){el=document.createElement('div');el.id='payoffCurveArea';el.style.cssText='position:fixed;top:0;left:0;right:0;bottom:0;z-index:999;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;padding:20px';document.body.appendChild(el)}
+el.style.display='flex';
+el.innerHTML='<div style="width:90%;max-width:700px;max-height:90vh;overflow-y:auto;background:var(--surface);border-radius:16px;padding:24px;box-shadow:0 20px 60px rgba(0,0,0,.3);position:relative"><button onclick="document.getElementById(\'payoffCurveArea\').style.display=\'none\'" style="position:absolute;top:12px;right:16px;background:none;border:none;font-size:18px;cursor:pointer;color:var(--text3)">✕</button><div style="text-align:center;padding:20px;color:var(--text3)"><div style="display:inline-block;width:14px;height:14px;border:2px solid var(--blue);border-top-color:transparent;border-radius:50%;animation:spin .5s linear infinite;vertical-align:middle;margin-right:6px"></div>Generating P&L curves for '+sym+'...</div></div>';
+var reg=window._globalRegion||'IN';
+fetch('/api/payoff-curve?symbol='+encodeURIComponent(sym)+'&region='+reg).then(function(r){if(!r.ok)throw new Error('API error');return r.json()}).then(function(d){
+if(!d.success){el.querySelector('div>div').innerHTML='<div style="color:var(--red)">'+d.error+'</div>';return}
+var S=d.csym;var spot=d.spot;
+var h='<div style="font-size:16px;font-weight:900;color:var(--text);margin-bottom:4px">📊 Strategy P&L Simulator — '+d.symbol+'</div>';
+h+='<div style="font-size:10px;color:var(--text3);margin-bottom:16px">Spot: '+S+spot.toLocaleString()+'</div>';
+d.curves.forEach(function(curve){
+var pts=curve.dataPoints;
+var maxP=Math.max.apply(null,pts.map(function(p){return p.pnl}));
+var minP=Math.min.apply(null,pts.map(function(p){return p.pnl}));
+var range=Math.max(Math.abs(maxP),Math.abs(minP),1);
+var w=600;var ht=160;var pad=40;
+h+='<div style="margin-bottom:16px;padding:12px;border:1px solid var(--border);border-radius:10px">';
+h+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">';
+h+='<div style="font-size:12px;font-weight:800;color:var(--text)">'+curve.name+'</div>';
+h+='<div style="display:flex;gap:8px;font-size:8px"><span style="color:#059669;font-weight:700">Max: '+S+curve.maxProfit.toLocaleString()+'</span><span style="color:#dc2626;font-weight:700">Risk: '+S+Math.abs(curve.maxLoss).toLocaleString()+'</span><span style="color:var(--text3)">POP: '+curve.pop+'%</span></div></div>';
+// SVG chart
+var svgW=w;var svgH=ht;
+h+='<svg width="100%" viewBox="0 0 '+svgW+' '+svgH+'" style="display:block">';
+// Zero line
+var zeroY=pad+(ht-2*pad)/2;
+h+='<line x1="'+pad+'" y1="'+zeroY+'" x2="'+(svgW-pad)+'" y2="'+zeroY+'" stroke="var(--text3)" stroke-width="0.5" stroke-dasharray="4"/>';
+// Build path
+var path='';
+pts.forEach(function(p,i){
+var x=pad+((p.price-pts[0].price)/(pts[pts.length-1].price-pts[0].price))*(svgW-2*pad);
+var y=zeroY-((p.pnl/range)*(ht-2*pad)/2);
+path+=(i===0?'M':'L')+x.toFixed(1)+' '+y.toFixed(1);
+});
+// Fill area
+var fillAbove='M'+pad+' '+zeroY;var fillBelow='M'+pad+' '+zeroY;
+pts.forEach(function(p,i){
+var x=pad+((p.price-pts[0].price)/(pts[pts.length-1].price-pts[0].price))*(svgW-2*pad);
+var y=zeroY-((p.pnl/range)*(ht-2*pad)/2);
+if(p.pnl>=0)fillAbove+=' L'+x.toFixed(1)+' '+y.toFixed(1);
+else fillAbove+=' L'+x.toFixed(1)+' '+zeroY;
+if(p.pnl<0)fillBelow+=' L'+x.toFixed(1)+' '+y.toFixed(1);
+else fillBelow+=' L'+x.toFixed(1)+' '+zeroY;
+});
+h+='<path d="'+fillAbove+' L'+(svgW-pad)+' '+zeroY+' Z" fill="rgba(5,150,105,.12)"/>';
+h+='<path d="'+fillBelow+' L'+(svgW-pad)+' '+zeroY+' Z" fill="rgba(220,38,38,.12)"/>';
+h+='<path d="'+path+'" fill="none" stroke="var(--text)" stroke-width="2"/>';
+// Spot marker
+var spotX=pad+((spot-pts[0].price)/(pts[pts.length-1].price-pts[0].price))*(svgW-2*pad);
+h+='<line x1="'+spotX+'" y1="'+pad+'" x2="'+spotX+'" y2="'+(svgH-pad)+'" stroke="#3b82f6" stroke-width="1" stroke-dasharray="3"/>';
+h+='<text x="'+spotX+'" y="'+(pad-4)+'" text-anchor="middle" font-size="8" fill="#3b82f6">SPOT</text>';
+// Labels
+h+='<text x="'+pad+'" y="'+(svgH-5)+'" font-size="8" fill="var(--text3)">'+S+pts[0].price.toLocaleString()+'</text>';
+h+='<text x="'+(svgW-pad)+'" y="'+(svgH-5)+'" text-anchor="end" font-size="8" fill="var(--text3)">'+S+pts[pts.length-1].price.toLocaleString()+'</text>';
+h+='<text x="5" y="'+(pad+4)+'" font-size="8" fill="#059669">+'+S+Math.abs(range).toLocaleString()+'</text>';
+h+='<text x="5" y="'+(svgH-pad-2)+'" font-size="8" fill="#dc2626">-'+S+Math.abs(range).toLocaleString()+'</text>';
+h+='</svg>';
+// Legs table
+h+='<div style="display:flex;gap:4px;margin-top:6px;flex-wrap:wrap">';
+curve.legs.forEach(function(l){
+var lC=l.action==='BUY'?'#059669':'#dc2626';
+h+='<span style="font-size:7px;padding:2px 6px;border-radius:4px;background:'+lC+'10;color:'+lC+';font-weight:700">'+l.action+' '+l.strike+' '+l.type+' @'+S+l.premium+'</span>';
+});
+if(curve.breakevens.length)h+='<span style="font-size:7px;padding:2px 6px;border-radius:4px;background:var(--bg2);color:var(--text3)">BE: '+curve.breakevens.map(function(b){return S+b.toLocaleString()}).join(' / ')+'</span>';
+h+='</div></div>';
+});
+el.querySelector('div').innerHTML=h+'<div style="text-align:center;margin-top:8px;font-size:8px;color:var(--text3)">P&L at expiry · Not including brokerage/taxes · Click outside to close</div>';
+}).catch(function(e){el.querySelector('div>div').innerHTML='<div style="color:var(--red)">Error: '+e.message+'</div>'});
+}
+
+// ═══ JOURNAL REVIEW — Daily behavioral insights ═══
+function loadJournalReview(){
+var el=document.getElementById('journalReview');if(!el)return;
+el.innerHTML='<div style="text-align:center;padding:12px;color:var(--text3);font-size:10px">Loading review...</div>';
+fetch('/api/journal-review').then(function(r){if(!r.ok)throw new Error('API error');return r.json()}).then(function(d){
+if(!d.success){el.innerHTML='';return}
+var h='';
+// Today's summary
+var t=d.today;
+if(t.trades>0){
+var pC=t.pnl>=0?'#059669':'#dc2626';
+h+='<div style="padding:12px;border-radius:10px;background:linear-gradient(135deg,'+pC+'06,transparent);border:1px solid '+pC+'15;margin-bottom:10px">';
+h+='<div style="font-size:11px;font-weight:800;color:var(--text);margin-bottom:6px">📅 Today\'s Summary</div>';
+h+='<div style="display:flex;gap:12px;font-size:10px;flex-wrap:wrap">';
+h+='<span>Trades: <strong>'+t.trades+'</strong></span>';
+h+='<span style="color:#059669">Wins: <strong>'+t.wins+'</strong></span>';
+h+='<span style="color:#dc2626">Losses: <strong>'+t.losses+'</strong></span>';
+if(t.open>0)h+='<span style="color:#3b82f6">Open: <strong>'+t.open+'</strong></span>';
+h+='<span style="color:'+pC+';font-weight:800">P&L: ₹'+t.pnl.toLocaleString()+'</span>';
+h+='</div></div>';
+}
+// Streak
+if(d.streak.count>=2){
+var sC=d.streak.type==='WIN'?'#059669':'#dc2626';
+h+='<div style="padding:8px 12px;border-radius:8px;background:'+sC+'06;border:1px solid '+sC+'15;margin-bottom:10px;font-size:10px;color:'+sC+';font-weight:700">'+(d.streak.type==='WIN'?'🔥':'❄️')+' '+d.streak.count+'-trade '+d.streak.type.toLowerCase()+' streak</div>';
+}
+// Behavioral insights
+if(d.behaviors&&d.behaviors.length>0){
+h+='<div style="font-size:11px;font-weight:800;color:var(--text);margin-bottom:6px">🧠 Behavioral Insights</div>';
+d.behaviors.forEach(function(b){
+var bC=b.type==='CRITICAL'?'#dc2626':b.type==='WARNING'?'#d97706':'#0891b2';
+h+='<div style="padding:10px 12px;border-radius:8px;background:'+bC+'06;border-left:3px solid '+bC+';margin-bottom:6px">';
+h+='<div style="font-size:10px;font-weight:700;color:'+bC+';margin-bottom:3px">'+b.habit+'</div>';
+h+='<div style="font-size:9px;color:var(--text2);line-height:1.5">'+b.msg+'</div>';
+h+='<div style="font-size:8px;color:'+bC+';margin-top:4px;font-weight:600">💡 Fix: '+b.fix+'</div>';
+h+='</div>';
+});
+}
+if(!h)h='<div style="text-align:center;padding:12px;color:var(--text3);font-size:10px">Start logging trades to see behavioral insights</div>';
+el.innerHTML=h;
+}).catch(function(){el.innerHTML=''});
+}
+
 // ═══ VALUATION REPORT TAB ═══
 window._valRegion='IN';
 function switchValRegion(reg){
@@ -5943,7 +6175,8 @@ h2+='<td style="padding:4px;font-family:var(--mono)">&#8377;'+t.entryPrem+'</td>
 h2+='<td style="padding:4px;font-family:var(--mono)">'+(t.exitPrem?'&#8377;'+t.exitPrem:'—')+'</td>';
 h2+='<td style="padding:4px;font-weight:800;color:'+pC+'">'+(t.pnl?'&#8377;'+t.pnl.toLocaleString():'—')+'</td>';
 h2+='<td style="padding:4px"><span style="font-size:7px;padding:2px 6px;border-radius:3px;background:'+(t.status==='OPEN'?'#3b82f6':'#10b981')+'20;color:'+(t.status==='OPEN'?'#3b82f6':'#10b981')+';font-weight:700">'+t.status+'</span></td>';
-h2+='<td style="padding:4px">'+(t.status==='OPEN'?'<button onclick="closeJournalTrade(\''+t.id+'\')" style="padding:2px 8px;border-radius:3px;background:#ef4444;color:#fff;border:none;font-size:7px;cursor:pointer;font-weight:700">Close</button>':'')+'</td></tr>';
+h2+='<td style="padding:4px">'+(t.status==='OPEN'?'<button onclick="closeJournalTrade(\''+t.id+'\')" style="padding:2px 8px;border-radius:3px;background:#ef4444;color:#fff;border:none;font-size:7px;cursor:pointer;font-weight:700">Close</button>':(t.pnl<0?'<button onclick="explainLoss(\''+t.id+'\')" style="padding:2px 8px;border-radius:3px;background:#d97706;color:#fff;border:none;font-size:7px;cursor:pointer;font-weight:700">Why?</button>':''))+'</td></tr>';
+window._journalTrades=trades;
 });
 h2+='</tbody></table>';
 tl.innerHTML=h2;
@@ -6119,8 +6352,9 @@ h+='</div>';
 }else{
 h+='<div style="padding:12px 24px 16px;display:flex;align-items:center;gap:10px">';
 h+='<span style="font-size:24px">⏸️</span>';
-h+='<div><div style="font-size:12px;font-weight:700;color:#d97706">No Trade — Wait for Better Setup</div>';
-h+='<div style="font-size:9px;color:var(--text3)">'+sup+'/'+tot+' factors support. Like a yellow traffic light — slow down.</div></div></div>';
+h+='<div><div style="font-size:12px;font-weight:700;color:#d97706">⛔ LOW PROBABILITY — Skip This Trade</div>';
+h+='<div style="font-size:9px;color:var(--text3)">Only '+sup+'/'+tot+' factors support. The edge isn\'t strong enough. Like a yellow traffic light — wait for green.</div>';
+h+='<div style="font-size:9px;color:#d97706;margin-top:4px;font-weight:600">💡 The best traders make money by AVOIDING bad trades, not finding more trades.</div></div></div>';
 }
 
 h+='</div>';
@@ -6231,6 +6465,11 @@ h+='</details>';
 // ════════════════════════════════════════════════════════════════
 // SECTION 5+: DEEP DIVE — All collapsed
 // ════════════════════════════════════════════════════════════════
+
+// P&L Payoff button
+if(_plans.length>0 || (d.strategies&&d.strategies.length>0)){
+h+='<div style="margin-bottom:8px;text-align:center"><button onclick="showPayoffCurve(\''+d.symbol+'\')" style="padding:6px 18px;border-radius:8px;background:linear-gradient(135deg,#7c3aed,#6d28d9);color:#fff;border:none;font-size:10px;font-weight:700;cursor:pointer;box-shadow:0 2px 8px rgba(124,58,237,.2)">📊 View P&L Payoff Curves</button></div>';
+}
 
 // GEX zones
 var gex=(_eng.gexZones||[]);

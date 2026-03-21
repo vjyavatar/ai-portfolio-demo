@@ -804,6 +804,12 @@ footer{position:relative;z-index:1;margin-top:32px;background:linear-gradient(13
 <h1 itemprop="description">Stock Intelligence, Instantly.</h1>
 <p class="hero-sub" style="font-size:15px;line-height:1.6;max-width:620px;margin-bottom:6px">Free AI-powered stock analysis for <strong>10,000+ US &amp; Indian stocks</strong> — 20-factor verdicts, DCF valuation, entry/exit levels, risk scoring &amp; institutional-grade research in 60 seconds.</p>
 <p style="font-size:12px;color:var(--text3);max-width:560px;margin:0 auto 16px;line-height:1.6">Analyze <strong>AAPL, MSFT, NVDA, TSLA, RELIANCE.NS, TCS.NS, HDFCBANK.NS</strong> &amp; more. Compare with peers, track insider activity, read AI earnings breakdowns, get price predictions — all free, no signup. <span style="font-size:11px;color:var(--red);font-weight:600">For educational purposes only.</span></p>
+<!-- WHAT SHOULD I DO NOW? — One-tap decision -->
+<div id="whatNowArea" style="max-width:560px;margin:0 auto 16px;text-align:center">
+<button onclick="whatNow()" style="padding:12px 32px;border-radius:12px;background:linear-gradient(135deg,#059669,#047857);color:#fff;border:none;font-size:14px;font-weight:800;cursor:pointer;font-family:Sora,sans-serif;box-shadow:0 4px 16px rgba(5,150,105,.3);transition:all .2s;letter-spacing:-.3px" onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 8px 24px rgba(5,150,105,.4)'" onmouseout="this.style.transform='none';this.style.boxShadow='0 4px 16px rgba(5,150,105,.3)'">⚡ What Should I Do Now?</button>
+<div style="font-size:9px;color:var(--text3);margin-top:6px">One tap → Market state + Best trade + Confidence</div>
+<div id="whatNowResult" style="display:none;margin-top:12px;text-align:left"></div>
+</div>
 </div>
 
 <!-- Event area removed — content in global ticker now -->
@@ -1237,6 +1243,7 @@ footer{position:relative;z-index:1;margin-top:32px;background:linear-gradient(13
 <button onclick="addJournalTrade()" style="padding:5px 14px;border-radius:6px;background:var(--blue);color:#fff;border:none;font-size:10px;font-weight:700;cursor:pointer">+ Add Trade</button>
 </div>
 </div>
+<div id="journalReview" style="margin-bottom:14px"></div>
 <div id="journalAnalytics" style="margin-bottom:14px"></div>
 <div id="journalList"><div style="text-align:center;padding:20px;color:var(--text3);font-size:11px">No trades logged yet. Add your first trade above.</div></div>
 </div></div>
@@ -1274,8 +1281,9 @@ footer{position:relative;z-index:1;margin-top:32px;background:linear-gradient(13
 <!-- Input -->
 <div style="display:flex;gap:8px;margin-bottom:8px">
 <input id="aiSymbol" type="text" placeholder="NIFTY" value="NIFTY" style="width:90px;padding:6px 10px;border-radius:6px;border:1px solid var(--border);font-size:11px;background:var(--surface);color:var(--text);font-weight:700">
-<input id="aiQuestion" type="text" placeholder="Should I buy NIFTY today?" style="flex:1;padding:6px 10px;border-radius:6px;border:1px solid var(--border);font-size:11px;background:var(--surface);color:var(--text)" onkeypress="if(event.key==='Enter')askAI()">
+<input id="aiQuestion" type="text" placeholder="Ask anything... 'Should I buy NIFTY?' or 'Explain iron condor'" style="flex:1;padding:6px 10px;border-radius:6px;border:1px solid var(--border);font-size:11px;background:var(--surface);color:var(--text)" onkeypress="if(event.key==='Enter')askAI()">
 <button onclick="askAI()" style="padding:6px 16px;border-radius:6px;background:var(--blue);color:#fff;border:none;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap">&#129302; Ask</button>
+<button id="voiceBtn" onclick="startVoiceInput()" style="padding:6px 10px;border-radius:6px;background:var(--bg2);border:1px solid var(--border);color:var(--text);font-size:14px;cursor:pointer" title="Voice input — speak your question">&#127908;</button>
 </div>
 <!-- Quick action buttons -->
 <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:10px">

@@ -11418,6 +11418,165 @@ async def top_picks(region: str = "IN"):
         import traceback; traceback.print_exc()
         return {"success": False, "error": str(e)}
 
+@app.get("/api/payoff-curve")
+async def payoff_curve(symbol: str, region: str = "IN"):
+    """Generate P&L payoff curves for all strategies on a given stock"""
+    try:
+        algo = await algo_signal_safe(symbol, region)
+        strats = algo.get("strategies", [])
+        spot = algo.get("spot", 0)
+        inst = algo.get("instrument", {"gap": 50, "lot": 50})
+        gap = inst.get("gap", 50)
+        lot = inst.get("lot", 50)
+        csym = "$" if region.upper() == "US" else "₹"
+        
+        if not strats or spot == 0:
+            return {"success": False, "error": "No strategies available"}
+        
+        # Generate price range (±10% from spot)
+        low = round(spot * 0.9, 0)
+        high = round(spot * 1.1, 0)
+        step = max(1, round((high - low) / 50))
+        prices = [low + i * step for i in range(51)]
+        
+        curves = []
+        for strat in strats:
+            legs = strat.get("legs", [])
+            if not legs: continue
+            
+            data_points = []
+            for p in prices:
+                pnl = 0
+                for leg in legs:
+                    strike = leg.get("strike", 0)
+                    prem = leg.get("premium", 0)
+                    is_buy = leg.get("action") == "BUY"
+                    is_ce = leg.get("type") in ["CE", "CALL"]
+                    
+                    if is_ce:
+                        intrinsic = max(0, p - strike)
+                    else:
+                        intrinsic = max(0, strike - p)
+                    
+                    if is_buy:
+                        pnl += (intrinsic - prem) * lot
+                    else:
+                        pnl += (prem - intrinsic) * lot
+                
+                data_points.append({"price": round(p, 0), "pnl": round(pnl, 0)})
+            
+            max_profit = max(dp["pnl"] for dp in data_points)
+            max_loss = min(dp["pnl"] for dp in data_points)
+            breakevens = []
+            for i in range(1, len(data_points)):
+                if (data_points[i-1]["pnl"] < 0 and data_points[i]["pnl"] >= 0) or \
+                   (data_points[i-1]["pnl"] >= 0 and data_points[i]["pnl"] < 0):
+                    breakevens.append(data_points[i]["price"])
+            
+            curves.append({
+                "name": strat.get("name", ""),
+                "type": strat.get("type", ""),
+                "legs": legs,
+                "dataPoints": data_points,
+                "maxProfit": max_profit,
+                "maxLoss": max_loss,
+                "breakevens": breakevens,
+                "pop": strat.get("pop", 50),
+            })
+        
+        return {"success": True, "symbol": symbol, "spot": spot, "csym": csym, "curves": curves}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+@app.get("/api/journal-review")
+async def journal_review():
+    """Today's trade review with behavioral insights"""
+    trades = _load_journal()
+    today = datetime.utcnow().strftime("%Y-%m-%d")
+    
+    today_trades = [t for t in trades if t.get("timestamp", "").startswith(today)]
+    all_closed = [t for t in trades if t.get("status") == "CLOSED"]
+    
+    # Behavioral analysis
+    behaviors = []
+    if len(all_closed) >= 3:
+        # Early exits
+        early_exits = 0
+        for t in all_closed[-10:]:
+            entry = t.get("entryPrem", 0)
+            exit_p = t.get("exitPrem", 0)
+            if exit_p > 0 and exit_p > entry:
+                gain_pct = (exit_p - entry) / entry * 100 if entry > 0 else 0
+                if gain_pct < 10 and gain_pct > 0:
+                    early_exits += 1
+        if early_exits >= 2:
+            behaviors.append({"type": "WARNING", "habit": "Early Profit Booking", 
+                "msg": f"You booked profits too early on {early_exits} of last 10 trades (<10% gain). Let winners run — set trailing SL instead.",
+                "fix": "Try booking 50% at T1, trail rest with 15-min candle SL"})
+        
+        # Revenge trading
+        consecutive_losses = 0
+        for t in reversed(all_closed[-10:]):
+            if t.get("pnl", 0) < 0:
+                consecutive_losses += 1
+            else:
+                break
+        if consecutive_losses >= 3:
+            behaviors.append({"type": "CRITICAL", "habit": "Revenge Trading Risk",
+                "msg": f"{consecutive_losses} consecutive losses. STOP trading today. Your judgment is clouded.",
+                "fix": "Take a 24-hour break. Review what went wrong before next trade."})
+        
+        # Overtrading
+        recent_dates = set()
+        for t in all_closed[-20:]:
+            d = t.get("timestamp", "")[:10]
+            recent_dates.add(d)
+        avg_per_day = len(all_closed[-20:]) / max(len(recent_dates), 1)
+        if avg_per_day > 5:
+            behaviors.append({"type": "WARNING", "habit": "Overtrading",
+                "msg": f"Averaging {avg_per_day:.0f} trades/day. Quality > quantity.",
+                "fix": "Limit to 3 high-conviction trades per day. Wait for A+ setups."})
+        
+        # Win/loss asymmetry
+        wins = [t for t in all_closed if t.get("pnl", 0) > 0]
+        losses = [t for t in all_closed if t.get("pnl", 0) < 0]
+        if wins and losses:
+            avg_win = sum(t["pnl"] for t in wins) / len(wins)
+            avg_loss = abs(sum(t["pnl"] for t in losses) / len(losses))
+            if avg_loss > avg_win * 1.5:
+                behaviors.append({"type": "CRITICAL", "habit": "Letting Losses Run",
+                    "msg": f"Average loss (₹{avg_loss:,.0f}) is {avg_loss/max(avg_win,1):.1f}x your average win (₹{avg_win:,.0f}). You hold losers too long.",
+                    "fix": "Strict SL — exit the MOMENT SL hits. No hoping, no averaging down."})
+    
+    # Today's summary
+    today_pnl = sum(t.get("pnl", 0) for t in today_trades if t.get("status") == "CLOSED")
+    today_wins = len([t for t in today_trades if t.get("pnl", 0) > 0 and t.get("status") == "CLOSED"])
+    today_losses = len([t for t in today_trades if t.get("pnl", 0) < 0 and t.get("status") == "CLOSED"])
+    today_open = len([t for t in today_trades if t.get("status") == "OPEN"])
+    
+    # Streak
+    streak = 0; streak_type = "NONE"
+    for t in reversed(all_closed):
+        if t.get("pnl", 0) > 0:
+            if streak_type == "WIN" or streak_type == "NONE": streak += 1; streak_type = "WIN"
+            else: break
+        elif t.get("pnl", 0) < 0:
+            if streak_type == "LOSS" or streak_type == "NONE": streak += 1; streak_type = "LOSS"
+            else: break
+    
+    return {
+        "success": True,
+        "today": {
+            "trades": len(today_trades), "wins": today_wins, "losses": today_losses,
+            "open": today_open, "pnl": round(today_pnl, 0),
+        },
+        "streak": {"count": streak, "type": streak_type},
+        "behaviors": behaviors,
+        "totalClosed": len(all_closed),
+    }
+
+
 @app.post("/api/ai-assist")
 async def ai_assist(request: Request):
     """AI assistant that answers trading questions using live data."""
