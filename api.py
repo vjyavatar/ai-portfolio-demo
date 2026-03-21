@@ -8717,10 +8717,11 @@ async def index_trades(request: Request):
     print(f"📊 Scoring complete: {len(index_scores)} indices, {len(stock_scores)} stocks scored")
     
     # Build AI prompt
+    _csym = "$" if is_us_trades else "₹"
     indices_text = "\n".join([
-        f"- {d['name']}: ₹{d['price']:,.2f} (Change: {d['change']:+.2f}, {d['change_pct']:+.2f}%) | "
-        f"Day Range: ₹{d['day_low']}-₹{d['day_high']} | 5D Range: ₹{d['low_5d']}-₹{d['high_5d']} | "
-        f"Open: ₹{d['open']} | Volume: {d['volume']:,}"
+        f"- {d['name']}: {_csym}{d['price']:,.2f} (Change: {d['change']:+.2f}, {d['change_pct']:+.2f}%) | "
+        f"Day Range: {_csym}{d['day_low']}-{_csym}{d['day_high']} | 5D Range: {_csym}{d['low_5d']}-{_csym}{d['high_5d']} | "
+        f"Open: {_csym}{d['open']} | Volume: {d['volume']:,}"
         for d in indices_data
     ])
     
@@ -8822,7 +8823,12 @@ RULES FOR HERO ZERO (1-2 trades — TODAY IS EXPIRY DAY for {expiry_list}):
 HERO ZERO: Return empty array "hero_zero": [] because today is NOT an expiry day.
 Do NOT generate any hero_zero trades on non-expiry days."""
     
-    prompt = f"""You are a cold, ruthless, data-obsessed derivatives trader with 20 years of Indian market experience. You have ZERO tolerance for:
+    _mkt_region = "US equity and options market" if is_us_trades else "Indian market (NSE/BSE)"
+    _mkt_hours = "9:30 AM - 4:00 PM ET" if is_us_trades else "9:15 AM - 3:30 PM IST"
+    _mkt_currency = "USD ($)" if is_us_trades else "INR (₹)"
+    _mkt_indices = "S&P 500, NASDAQ, Russell 2000" if is_us_trades else "NIFTY, BANKNIFTY, SENSEX"
+    
+    prompt = f"""You are a cold, ruthless, data-obsessed derivatives trader with 20 years of {_mkt_region} experience. You have ZERO tolerance for:
 - PANDERING: Never tell the user what they want to hear. If the market is unclear, say "NO CLEAR EDGE TODAY" for that trade.
 - BIAS: You have no bullish or bearish bias. You follow DATA ONLY. If data says sell, you sell. If data says buy, you buy. You don't care about narratives.
 - BOTH-SIDING: Never hedge your opinion with "on the other hand" or "however". Pick a direction and commit. If you can't commit, DON'T SUGGEST THE TRADE.
@@ -8931,7 +8937,7 @@ DEEP ANALYSIS CHECKLIST — Work through each BEFORE generating trades:
 5. GLOBAL SETUP (Facts, not stories):
    - US markets close direction and magnitude (>1% move = significant)
    - Dollar Index direction (DXY up = emerging markets negative)
-   - Crude oil (>2% move impacts Indian market, especially if India imports)
+   - Crude oil (>2% move impacts markets)
    - Asian markets (Nikkei, Hang Seng) — correlation or divergence?
    - US bond yields — rising yields = risk-off for emerging markets
 
@@ -8953,7 +8959,7 @@ RESPOND IN STRICT JSON FORMAT (no markdown, no backticks, no explanation outside
     "regime": "TRENDING | RANGE-BOUND | EXPIRY-DRIVEN",
     "edge_clarity": "CLEAR | MODERATE | WEAK",
     "vix_signal": "brief VIX interpretation",
-    "global_impact": "brief global cues impact on Indian market today"
+    "global_impact": "brief global cues impact on the market today"
   }},
   "market_context": "2-3 sentence HONEST summary. If market is unclear, SAY SO. No forced bullishness or bearishness.",
   "trades": [
@@ -9041,7 +9047,7 @@ RESPOND IN STRICT JSON FORMAT (no markdown, no backticks, no explanation outside
   "event_alert": {{
     "has_event": true,
     "headline": "Short headline e.g. 'RBI Rate Decision Today' or 'US CPI Data Above Estimates' or 'FII Sell-Off ₹5000Cr' or 'Crude Spikes +4%'",
-    "impact": "BULLISH | BEARISH | VOLATILE — how it impacts Indian markets",
+    "impact": "BULLISH | BEARISH | VOLATILE — how it impacts the market",
     "severity": "HIGH | MEDIUM | LOW",
     "detail": "2-3 sentence explanation of what happened, why it matters for today's trading, and which sectors/indices are most affected.",
     "action": "What traders should do: e.g. 'Avoid fresh longs until dust settles' or 'Banking stocks will benefit, add to Bank Nifty CE positions' or 'Hedge existing positions with protective puts'"
@@ -9085,14 +9091,20 @@ IMPORTANT EXPIRY DAY BEHAVIORS:
 - Thursday: Sensex weekly expiry on BSE. Typically lower volumes than Nifty but can see sharp moves.
 - Monday/Wednesday/Friday: No expiry — focus on positional/swing trades, carry trades for next expiry.
 
-TIMING GUIDELINES (Indian market hours 9:15 AM - 3:30 PM IST):
-- 9:15-9:30 AM: Opening volatility — avoid entries, observe gap direction
+TIMING GUIDELINES (Market hours: {_mkt_hours}):
+""" + ("""- 9:30-10:00 AM ET: Opening volatility — observe gap direction
+- 10:00-11:30 AM ET: Trend development — best for directional trades
+- 11:30 AM-1:00 PM ET: Midday consolidation — range-bound setups
+- 1:00-3:00 PM ET: Afternoon momentum — strongest moves
+- 3:00-4:00 PM ET: Power hour — high volatility, avoid new entries unless scalping
+""" if is_us_trades else """- 9:15-9:30 AM: Opening volatility — avoid entries, observe gap direction
 - 9:30-10:00 AM: Opening range establishment — good for momentum entries if gap sustains
 - 10:00-11:30 AM: Trend development phase — best for directional trades
 - 11:30 AM-1:00 PM: Consolidation/lunch lull — good for range-bound or mean-reversion setups
 - 1:00-2:00 PM: Afternoon session starts — watch for breakout from consolidation
 - 2:00-3:00 PM: Power hour — strongest moves, expiry-day gamma spikes here
 - 3:00-3:30 PM: Final 30 min — high volatility, avoid new entries unless scalping
+""") + f"""
 - EVERY trade MUST have a specific IST time window in the "timing" field
 
 HARD RULES — VIOLATING THESE MAKES YOU A BAD TRADER:

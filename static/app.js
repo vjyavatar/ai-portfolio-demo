@@ -8032,6 +8032,10 @@ window._stRegion=reg;
 var inBtn=document.getElementById('stRegIN');var usBtn=document.getElementById('stRegUS');
 if(inBtn){inBtn.style.background=reg==='IN'?'#1a56db':'var(--bg2)';inBtn.style.color=reg==='IN'?'#fff':'var(--text3)';}
 if(usBtn){usBtn.style.background=reg==='US'?'#1a56db':'var(--bg2)';usBtn.style.color=reg==='US'?'#fff':'var(--text3)';}
+// Clear current content and reload with new region
+var el=document.getElementById('tradesContent');
+if(el)el.innerHTML='<div style="text-align:center;padding:30px;color:var(--text3);font-size:11px"><div style="display:inline-block;width:14px;height:14px;border:2px solid var(--blue);border-top-color:transparent;border-radius:50%;animation:spin .5s linear infinite;vertical-align:middle;margin-right:6px"></div>Switching to '+(reg==='US'?'US':'India')+' markets...</div>';
+loadIndexTrades(true);
 }
 
 async function loadIndexTrades(forceRefresh){
