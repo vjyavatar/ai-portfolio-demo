@@ -5249,11 +5249,19 @@ async def _algo_signal_impl(symbol: str = "NIFTY", region: str = ""):
         
         oi_score = max(0, min(100, oi_score))
         
+        # Breakout / Breakdown levels
+        breakout_level = resistance_zone if resistance_zone > 0 else 0
+        breakdown_level = support_zone if support_zone > 0 else 0
+        near_breakout = price > breakout_level * 0.98 if breakout_level > 0 else False
+        near_breakdown = price < breakdown_level * 1.02 if breakdown_level > 0 else False
+        
         engine_b = {
             "name": "OI & Smart Money", "icon": "🏦",
             "bias": oi_bias, "pcr": round(_pcr, 2),
             "support": support_zone, "resistance": resistance_zone,
             "maxPain": max_pain, "score": oi_score,
+            "breakout": breakout_level, "breakdown": breakdown_level,
+            "nearBreakout": near_breakout, "nearBreakdown": near_breakdown,
             "detail": f"PCR {_pcr:.2f} ({oi_bias}) | Support {csym}{support_zone:,.0f} | Resistance {csym}{resistance_zone:,.0f} | Max Pain {csym}{max_pain:,.0f}",
         }
         
@@ -5441,6 +5449,16 @@ async def _algo_signal_impl(symbol: str = "NIFTY", region: str = ""):
                 "when": "You're confident in direction. Engines show strong alignment. You can handle 35% premium loss.",
                 "exit": f"Book 50% at {csym}{pa_t1}, trail rest. Hard SL at {csym}{pa_sl}.",
                 "analogy": "Like betting on the favorite horse — higher chance of winning, still need the race to go your way.",
+                "steps": [
+                    f"Open your broker app (Zerodha/Angel/IBKR)",
+                    f"Search for {symbol} {_atm_s} {pa_display} expiry {next_expiry if next_expiry else 'this week'}",
+                    f"Buy 1 lot ({_lot_s} qty) at market price around {csym}{pa_prem}",
+                    f"IMMEDIATELY set Stop Loss at {csym}{pa_sl} (35% below entry)",
+                    f"When premium hits {csym}{pa_t1}, sell HALF your position — lock profit",
+                    f"Move SL to entry price {csym}{pa_prem} — now it is a FREE trade",
+                    f"Let remaining ride to target {csym}{pa_t2} or trail SL",
+                ],
+                "kidsExplain": f"Imagine {symbol} is a race car. You are betting it will {'speed UP' if direction=='BULLISH' else 'slow DOWN'}. You pay {csym}{pa_prem} for the ticket. If the car {'speeds up' if direction=='BULLISH' else 'slows down'}, your ticket becomes worth {csym}{pa_t2} — you make money! If the car goes the wrong way, you lose max {csym}{round(pa_prem - pa_sl, 1)} per ticket.",
             })
         
         # ── PLAN B: BALANCED — Spread strategy (defined risk) ──
@@ -5465,6 +5483,15 @@ async def _algo_signal_impl(symbol: str = "NIFTY", region: str = ""):
                 "when": "Moderately confident. Want to limit max loss. Engines show 55-70% score.",
                 "exit": f"Max profit if {d.get('symbol', '')} above {csym}{_atm_s + _gap_s:,.0f} at expiry. Max loss = entry cost.",
                 "analogy": "Like buying a lottery ticket with a cap — you know exactly what you can lose AND win before you start.",
+                "steps": [
+                    f"Open broker → search {symbol} options for this week expiry",
+                    f"BUY {_atm_s} {pb_display} — this costs around {csym}{pb_buy}",
+                    f"SELL {_atm_s + _gap_s} {pb_display} — this gives you back {csym}{pb_sell}",
+                    f"Your net cost = {csym}{pb_cost} per qty (this is your MAX loss, period)",
+                    f"If {symbol} goes above {csym}{_atm_s + _gap_s:,.0f} at expiry, you keep {csym}{pb_profit} profit",
+                    f"No stop loss needed — max loss is already capped at entry cost",
+                ],
+                "kidsExplain": f"You buy one toy for {csym}{pb_buy} and sell a similar toy for {csym}{pb_sell}. Net cost = {csym}{pb_cost}. If {symbol} goes UP past {csym}{_atm_s + _gap_s:,.0f}, you earn {csym}{pb_profit}. If it doesn't, you only lose {csym}{pb_cost}. Simple — you KNOW your max loss before starting!",
             })
         else:
             pb_buy = _quick_prem(price, _atm_s, _T_s, _iv_dec_s, "PE")
@@ -5487,6 +5514,15 @@ async def _algo_signal_impl(symbol: str = "NIFTY", region: str = ""):
                 "when": "Moderately confident. Want to limit max loss.",
                 "exit": f"Max profit if below {csym}{_atm_s - _gap_s:,.0f} at expiry.",
                 "analogy": "Like buying insurance with a deductible — you know your max loss upfront.",
+                "steps": [
+                    f"Open broker → search {symbol} options for this week expiry",
+                    f"BUY {_atm_s} {pb_display} — this costs around {csym}{pb_buy}",
+                    f"SELL {_atm_s - _gap_s} {pb_display} — this gives back {csym}{pb_sell}",
+                    f"Net cost = {csym}{pb_cost} per qty (MAX loss, guaranteed)",
+                    f"If {symbol} drops below {csym}{_atm_s - _gap_s:,.0f} at expiry, profit = {csym}{pb_profit}",
+                    f"No stop loss needed — loss capped at {csym}{pb_cost}",
+                ],
+                "kidsExplain": f"You buy umbrella insurance for {csym}{pb_cost}. If it rains ({symbol} falls), you get {csym}{pb_profit}. If sunny (price stays up), you lose just {csym}{pb_cost}. You KNOW the worst case before you start.",
             })
         
         # ── PLAN C: CONSERVATIVE — Non-directional or wait ──
@@ -5515,6 +5551,17 @@ async def _algo_signal_impl(symbol: str = "NIFTY", region: str = ""):
                 "when": "Unsure about direction. IV is high. Want to profit from time passing. Market is range-bound.",
                 "exit": f"Keep credit if price stays between {csym}{_atm_s - _gap_s:,.0f} and {csym}{_atm_s + _gap_s:,.0f}.",
                 "analogy": "Like being the house in a casino — you collect the premium and win if nothing dramatic happens. ~{0}% probability of profit.".format(pc_pop),
+                "steps": [
+                    f"Open broker → search {symbol} options for this week expiry",
+                    f"SELL {_atm_s + _gap_s} CE/CALL — collect premium {csym}{pc_ce_sell:.0f}",
+                    f"BUY {_atm_s + _gap_s*2} CE/CALL — pay {csym}{pc_ce_buy:.0f} (protection)",
+                    f"SELL {_atm_s - _gap_s} PE/PUT — collect premium {csym}{pc_pe_sell:.0f}",
+                    f"BUY {_atm_s - _gap_s*2} PE/PUT — pay {csym}{pc_pe_buy:.0f} (protection)",
+                    f"Total credit received = {csym}{pc_credit} (this is your MAX profit)",
+                    f"If {symbol} stays between {csym}{_atm_s - _gap_s:,.0f} and {csym}{_atm_s + _gap_s:,.0f}, you KEEP the full {csym}{pc_credit}",
+                    f"Max loss = {csym}{pc_max_loss} only if price moves way outside this range",
+                ],
+                "kidsExplain": f"You open a lemonade stand with {csym}{pc_credit} cash. As long as the weather ({symbol}) stays normal (between {csym}{_atm_s - _gap_s:,.0f} and {csym}{_atm_s + _gap_s:,.0f}), you keep ALL the money. Only if there is a hurricane (huge move) do you lose. Chance of keeping money: ~{pc_pop}%.",
             })
         else:
             # Low IV — straddle for breakout
@@ -5536,6 +5583,16 @@ async def _algo_signal_impl(symbol: str = "NIFTY", region: str = ""):
                 "when": "Before big events. IV is low (cheap options). Expect big move but unsure which way.",
                 "exit": f"Need {csym}{pc_cost:,.0f}+ move from {csym}{_atm_s:,.0f} to profit.",
                 "analogy": "Like betting on BOTH teams — you win as long as the match isn't a boring draw.",
+                "steps": [
+                    f"Open broker → search {symbol} {_atm_s} options for this week",
+                    f"BUY {_atm_s} CE/CALL — pay {csym}{pc_ce:.0f}",
+                    f"BUY {_atm_s} PE/PUT — pay {csym}{pc_pe:.0f}",
+                    f"Total cost = {csym}{pc_cost} (this is max you can lose)",
+                    f"If {symbol} moves UP past {csym}{_atm_s + pc_cost:,.0f} — you profit from the CE",
+                    f"If {symbol} moves DOWN past {csym}{_atm_s - pc_cost:,.0f} — you profit from the PE",
+                    f"You need a BIG move in EITHER direction to profit",
+                ],
+                "kidsExplain": f"You bet {csym}{pc_cost} that SOMETHING exciting will happen — you don't care which direction. If {symbol} moves a LOT up or down, you win. Only if nothing happens (price stays at {csym}{_atm_s:,.0f}) do you lose your {csym}{pc_cost}.",
             })
         
         result["plans"] = plans
@@ -6226,6 +6283,88 @@ async def _algo_signal_impl(symbol: str = "NIFTY", region: str = ""):
             print(f"⚡ Scalp: {symbol} {scalp['direction']} conf={scalp['confidence']}% 5m={scalp['trend_5m']} 15m={scalp['trend_15m']}")
     except Exception as e:
         print(f"⚠️ Scalp analysis failed: {e}")
+    
+    # ═══ FUNDAMENTAL ANALYSIS — Revenue, Margins, Debt, Returns ═══
+    try:
+        info = tk.info if hasattr(tk, 'info') else {}
+        fa = {}
+        
+        # Revenue & profit growth
+        rev_growth = round(float(info.get("revenueGrowth", 0) or 0) * 100, 1)
+        earn_growth = round(float(info.get("earningsGrowth", 0) or 0) * 100, 1)
+        
+        # Margins
+        gross_margin = round(float(info.get("grossMargins", 0) or 0) * 100, 1)
+        op_margin = round(float(info.get("operatingMargins", 0) or 0) * 100, 1)
+        profit_margin = round(float(info.get("profitMargins", 0) or 0) * 100, 1)
+        
+        # Debt & health
+        de_ratio = round(float(info.get("debtToEquity", 0) or 0), 1)
+        current_ratio = round(float(info.get("currentRatio", 0) or 0), 1)
+        free_cf = float(info.get("freeCashflow", 0) or 0)
+        
+        # Return ratios
+        roe = round(float(info.get("returnOnEquity", 0) or 0) * 100, 1)
+        roa = round(float(info.get("returnOnAssets", 0) or 0) * 100, 1)
+        
+        # Red flags & strengths
+        red_flags = []
+        strengths = []
+        
+        if de_ratio > 150: red_flags.append(f"High debt (D/E {de_ratio}%) — company is heavily leveraged")
+        elif de_ratio > 0 and de_ratio < 50: strengths.append(f"Low debt (D/E {de_ratio}%) — financially healthy")
+        
+        if profit_margin < 5 and profit_margin > 0: red_flags.append(f"Thin margins ({profit_margin}%) — vulnerable to cost pressure")
+        elif profit_margin > 20: strengths.append(f"Strong margins ({profit_margin}%) — pricing power")
+        
+        if rev_growth < -5: red_flags.append(f"Revenue shrinking ({rev_growth}%) — business declining")
+        elif rev_growth > 15: strengths.append(f"Strong revenue growth ({rev_growth}%) — business expanding")
+        
+        if roe > 20: strengths.append(f"High ROE ({roe}%) — efficient use of equity")
+        elif roe < 5 and roe > 0: red_flags.append(f"Low ROE ({roe}%) — poor returns for shareholders")
+        
+        if earn_growth < -10: red_flags.append(f"Earnings declining ({earn_growth}%)")
+        elif earn_growth > 20: strengths.append(f"Earnings surging ({earn_growth}%)")
+        
+        if free_cf < 0: red_flags.append("Negative free cash flow — burning cash")
+        elif free_cf > 0: strengths.append("Positive free cash flow — generating cash")
+        
+        if current_ratio > 0 and current_ratio < 1: red_flags.append(f"Current ratio {current_ratio} — may struggle to pay short-term debts")
+        
+        # Fundamental Grade
+        fund_score = 50
+        if rev_growth > 10: fund_score += 10
+        elif rev_growth < 0: fund_score -= 10
+        if profit_margin > 15: fund_score += 10
+        elif profit_margin < 5: fund_score -= 10
+        if de_ratio < 80: fund_score += 10
+        elif de_ratio > 150: fund_score -= 15
+        if roe > 15: fund_score += 10
+        elif roe < 5: fund_score -= 10
+        if earn_growth > 10: fund_score += 10
+        elif earn_growth < -5: fund_score -= 10
+        fund_score = max(0, min(100, fund_score))
+        
+        fund_grade = "STRONG" if fund_score >= 70 else ("AVERAGE" if fund_score >= 45 else "WEAK")
+        fund_color = "#059669" if fund_score >= 70 else ("#d97706" if fund_score >= 45 else "#dc2626")
+        
+        fa = {
+            "revGrowth": rev_growth, "earnGrowth": earn_growth,
+            "grossMargin": gross_margin, "opMargin": op_margin, "profitMargin": profit_margin,
+            "deRatio": de_ratio, "currentRatio": current_ratio,
+            "roe": roe, "roa": roa,
+            "redFlags": red_flags, "strengths": strengths,
+            "score": fund_score, "grade": fund_grade, "color": fund_color,
+            "coachSummary": f"Fundamentals are {fund_grade.lower()}. " + (
+                "This company is growing revenue, has healthy margins and low debt. A solid business." if fund_grade == "STRONG"
+                else "Decent business but some areas need watching. Not a red flag but not exceptional either." if fund_grade == "AVERAGE"
+                else "Weak fundamentals — declining growth, thin margins or high debt. Be cautious."
+            ),
+        }
+        result["fundamentals"] = fa
+        print(f"📊 Fundamentals: {symbol} grade={fund_grade} score={fund_score} roe={roe} de={de_ratio}")
+    except Exception as e:
+        print(f"⚠️ Fundamental analysis failed: {e}")
     
     # ═══ VALUATION INTELLIGENCE — PE, Forward PE, Crash Scenarios ═══
     try:
@@ -11174,6 +11313,250 @@ async def education_module(topic: str = "basics"):
     
     topic_data = lessons.get(topic, lessons["basics"])
     return {"success": True, "topic": topic, "lesson": topic_data, "available_topics": list(lessons.keys())}
+
+
+@app.get("/api/stock-intel")
+async def stock_intel(symbol: str, region: str = "IN"):
+    """Complete Stock Intelligence — 13-section decision engine"""
+    try:
+        import yfinance as yf, math
+        is_us = region.upper() == "US"
+        yf_sym = symbol if is_us else f"{symbol}.NS"
+        csym = "$" if is_us else "₹"
+        tk = yf.Ticker(yf_sym)
+        info = tk.info or {}
+        
+        price = float(info.get("currentPrice", 0) or info.get("regularMarketPrice", 0) or 0)
+        if price == 0:
+            hist = tk.history(period="5d")
+            if len(hist) > 0: price = round(float(hist["Close"].iloc[-1]), 2)
+        
+        # ═══ 1. FUNDAMENTAL ANALYSIS ═══
+        rev_growth = float(info.get("revenueGrowth", 0) or 0) * 100
+        earn_growth = float(info.get("earningsGrowth", 0) or 0) * 100
+        profit_margin = float(info.get("profitMargins", 0) or 0) * 100
+        gross_margin = float(info.get("grossMargins", 0) or 0) * 100
+        debt_equity = float(info.get("debtToEquity", 0) or 0)
+        roe = float(info.get("returnOnEquity", 0) or 0) * 100
+        roce = float(info.get("returnOnAssets", 0) or 0) * 100 * 1.5  # Approximate ROCE
+        free_cf = float(info.get("freeCashflow", 0) or 0)
+        
+        fund_score = 50
+        fund_flags = []
+        if rev_growth > 15: fund_score += 15; fund_flags.append(f"+Revenue growing {rev_growth:.0f}% — business expanding")
+        elif rev_growth > 5: fund_score += 5; fund_flags.append(f"+Moderate revenue growth {rev_growth:.0f}%")
+        elif rev_growth < 0: fund_score -= 10; fund_flags.append(f"-Revenue DECLINING {rev_growth:.0f}% — red flag")
+        
+        if earn_growth > 20: fund_score += 15; fund_flags.append(f"+Strong earnings growth {earn_growth:.0f}%")
+        elif earn_growth < 0: fund_score -= 10; fund_flags.append(f"-Earnings declining {earn_growth:.0f}%")
+        
+        if profit_margin > 15: fund_score += 10; fund_flags.append(f"+Healthy profit margin {profit_margin:.0f}%")
+        elif profit_margin < 5: fund_score -= 10; fund_flags.append(f"-Thin margins {profit_margin:.0f}% — vulnerable to costs")
+        
+        if debt_equity < 50: fund_score += 5; fund_flags.append(f"+Low debt ({debt_equity:.0f}%) — financially strong")
+        elif debt_equity > 150: fund_score -= 10; fund_flags.append(f"-Heavy debt ({debt_equity:.0f}%) — risk if rates rise")
+        
+        if roe > 15: fund_score += 5; fund_flags.append(f"+Good ROE {roe:.0f}% — efficient with shareholders' money")
+        
+        fund_score = max(0, min(100, fund_score))
+        fund_verdict = "STRONG" if fund_score >= 70 else ("AVERAGE" if fund_score >= 45 else "WEAK")
+        
+        # ═══ 2. VALUATION ANALYSIS ═══
+        pe = float(info.get("trailingPE", 0) or 0)
+        fwd_pe = float(info.get("forwardPE", 0) or 0)
+        peg = float(info.get("pegRatio", 0) or 0)
+        pb = float(info.get("priceToBook", 0) or 0)
+        sector = info.get("sector", "")
+        industry_pe = float(info.get("industryPE", pe * 0.9) or pe * 0.9)  # Fallback
+        
+        val_score = 50
+        val_flags = []
+        if pe > 0:
+            if pe < industry_pe * 0.8: val_score += 20; val_flags.append(f"+Trading at PE {pe:.1f}x — cheaper than peers")
+            elif pe > industry_pe * 1.3: val_score -= 15; val_flags.append(f"-PE {pe:.1f}x — expensive vs peers")
+            else: val_flags.append(f"PE {pe:.1f}x — in line with sector")
+        if fwd_pe > 0 and pe > 0:
+            if fwd_pe < pe * 0.85: val_score += 10; val_flags.append(f"+Forward PE {fwd_pe:.1f}x dropping — earnings growing into valuation")
+            elif fwd_pe > pe: val_score -= 5; val_flags.append(f"-Forward PE {fwd_pe:.1f}x rising — earnings expected to shrink")
+        if peg > 0:
+            if peg < 1: val_score += 15; val_flags.append(f"+PEG {peg:.1f} — undervalued for its growth rate (sweet spot!)")
+            elif peg > 2: val_score -= 10; val_flags.append(f"-PEG {peg:.1f} — overpriced for the growth you're getting")
+        
+        val_score = max(0, min(100, val_score))
+        val_verdict = "CHEAP" if val_score >= 65 else ("FAIR" if val_score >= 40 else "EXPENSIVE")
+        
+        # ═══ 3. PRICE ACTION ANALYSIS ═══
+        hist = tk.history(period="1y")
+        closes = hist["Close"].values.astype(float) if len(hist) > 0 else []
+        volumes = hist["Volume"].values.astype(float) if len(hist) > 0 else []
+        
+        trend = "SIDEWAYS"; trend_detail = ""
+        support = 0; resistance = 0; vol_confirm = "WEAK"
+        breakout_level = 0; breakdown_level = 0
+        
+        if len(closes) >= 50:
+            import numpy as np
+            ema20 = float(pd.Series(closes).ewm(span=20).mean().iloc[-1])
+            ema50 = float(pd.Series(closes).ewm(span=50).mean().iloc[-1])
+            sma200 = float(np.mean(closes[-200:])) if len(closes) >= 200 else float(np.mean(closes[-50:]))
+            
+            if ema20 > ema50 > sma200: trend = "BULLISH"; trend_detail = "All moving averages stacked up — clear uptrend"
+            elif ema20 < ema50 < sma200: trend = "BEARISH"; trend_detail = "All moving averages stacked down — clear downtrend"
+            else: trend = "SIDEWAYS"; trend_detail = "Mixed signals — no clear direction yet"
+            
+            w52h = float(max(closes[-252:])) if len(closes) >= 252 else float(max(closes))
+            w52l = float(min(closes[-252:])) if len(closes) >= 252 else float(min(closes))
+            resistance = round(w52h, 2)
+            support = round(w52l + (w52h - w52l) * 0.236, 2)  # Fib 23.6%
+            breakout_level = round(w52h * 1.02, 2)
+            breakdown_level = round(support * 0.98, 2)
+            
+            avg_vol = float(np.mean(volumes[-20:])) if len(volumes) >= 20 else 0
+            recent_vol = float(np.mean(volumes[-5:])) if len(volumes) >= 5 else 0
+            vol_ratio = round(recent_vol / avg_vol, 1) if avg_vol > 0 else 1.0
+            vol_confirm = "STRONG" if vol_ratio > 1.3 else ("MODERATE" if vol_ratio > 0.8 else "WEAK")
+        
+        pa_score = 50
+        if trend == "BULLISH": pa_score += 20
+        elif trend == "BEARISH": pa_score -= 10
+        if vol_confirm == "STRONG": pa_score += 10
+        if price > 0 and resistance > 0 and price > resistance * 0.95: pa_score += 10  # Near breakout
+        pa_score = max(0, min(100, pa_score))
+        
+        # ═══ 4. CONFLUENCE ANALYSIS ═══
+        conf_score = round(fund_score * 0.30 + val_score * 0.25 + pa_score * 0.45, 0)
+        alignment = []
+        if fund_verdict == "STRONG" and val_verdict != "EXPENSIVE" and trend == "BULLISH":
+            alignment.append("✅ TRIPLE ALIGNMENT — Fundamentals + Valuation + Trend all agree. High probability setup!")
+        elif fund_verdict == "STRONG" and trend != "BULLISH":
+            alignment.append("⚠️ Good company but wrong timing — wait for uptrend to confirm")
+        elif val_verdict == "CHEAP" and trend == "BULLISH":
+            alignment.append("✅ Value + Momentum combo — stock is cheap AND trending up")
+        elif val_verdict == "EXPENSIVE" and trend == "BEARISH":
+            alignment.append("🔴 Expensive AND falling — avoid until valuation improves")
+        else:
+            alignment.append("⚠️ Mixed signals — no strong alignment. Consider waiting for clarity.")
+        
+        # ═══ 5. TRADE PLAN ═══
+        if conf_score >= 65 and trend == "BULLISH":
+            decision = "BUY"
+            dec_color = "#059669"
+        elif conf_score >= 55 and trend != "BEARISH":
+            decision = "HOLD / ACCUMULATE"
+            dec_color = "#d97706"
+        elif trend == "BEARISH" or conf_score < 35:
+            decision = "SELL / AVOID"
+            dec_color = "#dc2626"
+        else:
+            decision = "WAIT"
+            dec_color = "#d97706"
+        
+        atr = 0
+        if len(closes) >= 15:
+            highs = hist["High"].values.astype(float)[-14:]
+            lows = hist["Low"].values.astype(float)[-14:]
+            cls = closes[-15:-1]
+            trs = [max(highs[i]-lows[i], abs(highs[i]-cls[i]), abs(lows[i]-cls[i])) for i in range(min(len(highs),len(cls)))]
+            atr = round(float(np.mean(trs)), 2) if trs else 0
+        
+        entry_low = round(price * 0.98, 2)
+        entry_high = round(price * 1.01, 2)
+        sl = round(price - atr * 2, 2) if atr > 0 else round(price * 0.93, 2)
+        t1 = round(price + atr * 3, 2) if atr > 0 else round(price * 1.08, 2)
+        t2 = round(price + atr * 5, 2) if atr > 0 else round(price * 1.15, 2)
+        rr = round((t1 - price) / (price - sl), 1) if price > sl else 0
+        
+        # ═══ 6. CONFIDENCE SCORE ═══
+        confidence = int(conf_score)
+        
+        # ═══ 7. SIMPLE EXPLANATION ═══
+        simple_why = ""
+        simple_risk = ""
+        if decision == "BUY":
+            simple_why = f"{symbol} has strong earnings, reasonable valuation, and the price is trending up. Like a train leaving the station — better to be on it than chasing it."
+            simple_risk = "Market-wide crash could drag it down temporarily. Set your stop loss and don't panic sell."
+        elif decision == "SELL / AVOID":
+            simple_why = f"{symbol} is either expensive, losing money, or in a downtrend. Like buying a car at peak price — wait for a better deal."
+            simple_risk = "If you already own it, consider cutting losses or waiting for trend reversal."
+        else:
+            simple_why = f"{symbol} shows mixed signals. Some things look good, others don't. Like a restaurant with great food but bad reviews — worth watching but not committing yet."
+            simple_risk = "Could go either way. Set price alerts and wait for a clearer picture."
+        
+        # ═══ 8. MARKET CONTEXT ═══
+        mkt_context = {
+            "indexTrend": "Check NIFTY/S&P 500 trend separately",
+            "sectorStrength": sector or "Unknown",
+            "aligned": trend == "BULLISH",
+        }
+        
+        # ═══ 9. ENTRY TIMING ═══
+        if price > 0 and resistance > 0:
+            if price >= resistance * 0.98:
+                entry_timing = {"signal": "BREAKOUT IMMINENT", "condition": f"Wait for price to close above {csym}{breakout_level:,.0f} with volume > average", "type": "BREAKOUT"}
+            elif price <= support * 1.05:
+                entry_timing = {"signal": "NEAR SUPPORT", "condition": f"Enter if price bounces from {csym}{support:,.0f} with green candle", "type": "PULLBACK"}
+            else:
+                entry_timing = {"signal": "MID-RANGE", "condition": f"Wait for pullback to {csym}{round(price*0.97,0):,.0f} OR breakout above {csym}{resistance:,.0f}", "type": "WAIT"}
+        else:
+            entry_timing = {"signal": "ANALYZING", "condition": "Insufficient data for timing", "type": "WAIT"}
+        
+        # ═══ 10. POSITION SIZING ═══
+        sizing = "MODERATE"
+        sizing_detail = ""
+        if confidence >= 75: sizing = "AGGRESSIVE"; sizing_detail = "High conviction — can allocate 3-5% of portfolio"
+        elif confidence >= 55: sizing = "MODERATE"; sizing_detail = "Decent setup — allocate 1-3% of portfolio"
+        else: sizing = "CONSERVATIVE"; sizing_detail = "Weak setup — max 1% or skip entirely"
+        
+        # ═══ 11. SMART MONEY ═══
+        smart_money = []
+        if len(volumes) >= 20:
+            avg_v = float(np.mean(volumes[-20:]))
+            recent_v = float(np.mean(volumes[-3:]))
+            if recent_v > avg_v * 2: smart_money.append("🔥 Volume 2x above average — institutions may be accumulating")
+            elif recent_v > avg_v * 1.5: smart_money.append("📊 Above-average volume — increased interest")
+            if price > 0 and len(closes) >= 5:
+                if closes[-1] > closes[-5] and recent_v > avg_v: smart_money.append("📈 Price up + volume up = genuine buying (not retail FOMO)")
+                if closes[-1] < closes[-5] and recent_v < avg_v * 0.7: smart_money.append("😴 Price down on LOW volume — likely a pullback, not distribution")
+        if not smart_money: smart_money.append("No unusual activity detected — normal trading pattern")
+        
+        # ═══ 12. RISK FACTORS ═══
+        risks = []
+        if debt_equity > 100: risks.append("High debt — vulnerable to interest rate hikes")
+        if pe > 50: risks.append("Expensive valuation — any earnings miss could trigger sharp fall")
+        if vol_confirm == "WEAK": risks.append("Low volume — breakouts may fail without institutional support")
+        risks.append("Earnings season can create sudden 5-10% moves")
+        risks.append("Global macro risks (Fed/RBI policy, geopolitics, oil prices)")
+        
+        # ═══ 13. INVALIDATION LOGIC ═══
+        invalidation = f"This trade idea FAILS if price closes below {csym}{sl:,.0f} (our stop loss). At that point, the trend structure breaks and we exit — no exceptions, no hoping."
+        
+        return {
+            "success": True, "symbol": symbol, "price": price, "csym": csym, "region": region,
+            "companyName": info.get("shortName", symbol),
+            "sector": sector, "industry": info.get("industry", ""),
+            "decision": decision, "decColor": dec_color, "confidence": confidence,
+            "fundamental": {"score": fund_score, "verdict": fund_verdict, "flags": fund_flags,
+                           "revGrowth": round(rev_growth,1), "earnGrowth": round(earn_growth,1),
+                           "profitMargin": round(profit_margin,1), "grossMargin": round(gross_margin,1),
+                           "debtEquity": round(debt_equity,1), "roe": round(roe,1), "roce": round(roce,1)},
+            "valuation": {"score": val_score, "verdict": val_verdict, "flags": val_flags,
+                         "pe": round(pe,1), "fwdPE": round(fwd_pe,1), "peg": round(peg,2), "pb": round(pb,1)},
+            "priceAction": {"score": pa_score, "trend": trend, "trendDetail": trend_detail,
+                           "support": support, "resistance": resistance, "volConfirm": vol_confirm,
+                           "breakout": breakout_level, "breakdown": breakdown_level},
+            "confluence": {"score": conf_score, "alignment": alignment},
+            "tradePlan": {"entry": [entry_low, entry_high], "sl": sl, "t1": t1, "t2": t2, "rr": rr},
+            "simple": {"why": simple_why, "risk": simple_risk},
+            "marketContext": mkt_context,
+            "entryTiming": entry_timing,
+            "sizing": {"level": sizing, "detail": sizing_detail},
+            "smartMoney": smart_money,
+            "risks": risks,
+            "invalidation": invalidation,
+        }
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        return {"success": False, "error": str(e)}
 
 
 if __name__ == "__main__":

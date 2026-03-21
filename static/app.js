@@ -1793,7 +1793,7 @@ if(sub==='technical')setTimeout(()=>window.dispatchEvent(new Event('resize')),20
 var TAB_GROUPS = {
   overview: {tabs: ['quick'], labels: ['Summary'], default: 'quick'},
   research: {tabs: ['analysis','dcf','equity','compare'], labels: ['AI Analysis','DCF Valuation','Research','Compare'], default: 'analysis'},
-  trading:  {tabs: ['trades','scanner','valreport','backtest','smarttrades','journal','aiassist'], labels: ['Algo Trades','Scanner','Valuation','Backtest','Smart Trades','Journal','AI Assistant'], default: 'trades'},
+  trading:  {tabs: ['trades','stockintel','scanner','valreport','backtest','smarttrades','journal','aiassist'], labels: ['Algo Trades','Stock Intel','Scanner','Valuation','Backtest','Smart Trades','Journal','AI Assistant'], default: 'trades'},
   markets:  {tabs: ['indices','daily'], labels: ['Top Performers','Market Daily'], default: 'indices'},
   tools:    {tabs: ['finance','education','compare'], labels: ['Finance Tools','Education','Compare Stocks'], default: 'finance'},
 };
@@ -1814,7 +1814,7 @@ function switchTabGroup(group) {
   var labels = g.labels.slice();
   if (!window._isPremiumUser) {
     // Remove smarttrades, journal, aiassist from trading group for non-premium users
-    ['smarttrades','journal','aiassist','valreport','backtest'].forEach(function(t){
+    ['smarttrades','journal','aiassist','valreport','backtest','stockintel'].forEach(function(t){
       var idx = tabs.indexOf(t);
       if (idx >= 0) { tabs.splice(idx, 1); labels.splice(idx, 1); }
     });
@@ -1848,7 +1848,7 @@ if(typeof gtag==='function')gtag('event','switch_tab',{tab_name:tab});
 if(tab==='quick')setTimeout(()=>window.dispatchEvent(new Event('resize')),200);
 
 // btnMap: which group button to highlight for each tab
-const btnMap={quick:'tabBtnOverview',analysis:'tabBtnResearch',dcf:'tabBtnResearch',equity:'tabBtnResearch',compare:'tabBtnTools',indices:'tabBtnMarkets',finance:'tabBtnTools',daily:'tabBtnMarkets',trades:'tabBtnTrading',scanner:'tabBtnTrading',valreport:'tabBtnTrading',backtest:'tabBtnTrading',smarttrades:'tabBtnTrading',journal:'tabBtnTrading',aiassist:'tabBtnTrading',education:'tabBtnTools',gems:'tabBtnOverview',picks:'tabBtnOverview',funds:'tabBtnTools'};
+const btnMap={quick:'tabBtnOverview',analysis:'tabBtnResearch',dcf:'tabBtnResearch',equity:'tabBtnResearch',compare:'tabBtnTools',indices:'tabBtnMarkets',finance:'tabBtnTools',daily:'tabBtnMarkets',trades:'tabBtnTrading',stockintel:'tabBtnTrading',scanner:'tabBtnTrading',valreport:'tabBtnTrading',backtest:'tabBtnTrading',smarttrades:'tabBtnTrading',journal:'tabBtnTrading',aiassist:'tabBtnTrading',education:'tabBtnTools',gems:'tabBtnOverview',picks:'tabBtnOverview',funds:'tabBtnTools'};
 
 // 1) Hide ALL tab content, sub-navs, and data-tab elements
 document.querySelectorAll('.sc[data-tab]').forEach(s=>{s.style.display='none'});
@@ -5341,6 +5341,147 @@ algoSelect(sym,null);
 function runAlgoSignal(){algoSelect(document.getElementById('algoSymSel')?.value||'NIFTY',null);}
 function _fetchAlgoSignal(sym){algoSelect(sym,null);}
 
+// ═══ STOCK INTELLIGENCE TAB ═══
+window._siRegion='IN';
+function switchSIRegion(reg){
+window._siRegion=reg;
+document.getElementById('siRegIN').style.background=reg==='IN'?'#1a56db':'var(--bg2)';
+document.getElementById('siRegIN').style.color=reg==='IN'?'#fff':'var(--text3)';
+document.getElementById('siRegUS').style.background=reg==='US'?'#1a56db':'var(--bg2)';
+document.getElementById('siRegUS').style.color=reg==='US'?'#fff':'var(--text3)';
+document.getElementById('siStocksIN').style.display=reg==='IN'?'flex':'none';
+document.getElementById('siStocksUS').style.display=reg==='US'?'flex':'none';
+}
+function runStockIntel(sym){
+if(!sym)return;
+var el=document.getElementById('siResult');if(!el)return;
+var reg=window._siRegion||'IN';
+var S=reg==='US'?'$':'₹';
+el.innerHTML='<div style="text-align:center;padding:40px"><div style="display:inline-block;width:16px;height:16px;border:2px solid #0891b2;border-top-color:transparent;border-radius:50%;animation:spin .5s linear infinite;vertical-align:middle;margin-right:8px"></div>Analyzing '+sym+' across fundamentals, valuation, price action & smart money...</div>';
+fetch('/api/stock-intel?symbol='+encodeURIComponent(sym)+'&region='+reg).then(function(r){return r.json()}).then(function(d){
+if(!d.success){el.innerHTML='<div style="color:var(--red);padding:16px">'+d.error+'</div>';return}
+var h='';
+// ── HERO DECISION CARD ──
+h+='<div style="border-radius:16px;overflow:hidden;border:2px solid '+d.decColor+'30;box-shadow:0 8px 32px '+d.decColor+'10;margin-bottom:16px">';
+h+='<div style="padding:20px 24px;background:linear-gradient(135deg,'+d.decColor+'10,'+d.decColor+'04)">';
+h+='<div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px">';
+// Left: Decision
+h+='<div><div style="font-size:10px;color:var(--text3);font-weight:700;letter-spacing:1px;margin-bottom:4px">'+d.companyName+' · '+d.sector+'</div>';
+h+='<div style="font-size:36px;font-weight:900;color:'+d.decColor+';font-family:Sora,sans-serif;letter-spacing:-1px">'+d.decision+'</div>';
+h+='<div style="font-size:14px;font-weight:700;color:var(--text);margin-top:4px">'+d.symbol+' · '+d.csym+d.price.toLocaleString("en-IN")+'</div></div>';
+// Right: Score circle
+h+='<div style="text-align:center"><svg width="80" height="80" viewBox="0 0 80 80"><circle cx="40" cy="40" r="34" fill="none" stroke="var(--bg2)" stroke-width="5"/>';
+var _cl=2*3.14159*34;var _co=_cl*(1-d.confidence/100);
+h+='<circle cx="40" cy="40" r="34" fill="none" stroke="'+d.decColor+'" stroke-width="5" stroke-linecap="round" stroke-dasharray="'+_cl+'" stroke-dashoffset="'+_co+'" transform="rotate(-90 40 40)"/>';
+h+='<text x="40" y="36" text-anchor="middle" font-size="20" font-weight="900" fill="'+d.decColor+'" font-family="var(--mono)">'+d.confidence+'</text>';
+h+='<text x="40" y="50" text-anchor="middle" font-size="8" fill="var(--text3)">CONFIDENCE</text></svg></div>';
+h+='</div>';
+// Trade plan strip
+if(d.tradePlan){var tp=d.tradePlan;
+h+='<div style="display:flex;gap:0;margin-top:12px;border-radius:10px;overflow:hidden;font-size:10px;text-align:center">';
+h+='<div style="flex:1;padding:8px;background:#05966910"><div style="font-size:7px;color:#059669;font-weight:700">ENTRY ZONE</div><div style="font-weight:800;color:#059669;font-family:var(--mono)">'+d.csym+tp.entry[0]+' – '+d.csym+tp.entry[1]+'</div></div>';
+h+='<div style="flex:1;padding:8px;background:#dc262610"><div style="font-size:7px;color:#dc2626;font-weight:700">STOP LOSS</div><div style="font-weight:800;color:#dc2626;font-family:var(--mono)">'+d.csym+tp.sl+'</div></div>';
+h+='<div style="flex:1;padding:8px;background:#05966910"><div style="font-size:7px;color:#059669;font-weight:700">TARGET 1</div><div style="font-weight:800;color:#059669;font-family:var(--mono)">'+d.csym+tp.t1+'</div></div>';
+h+='<div style="flex:1;padding:8px;background:#04785710"><div style="font-size:7px;color:#047857;font-weight:700">TARGET 2</div><div style="font-weight:800;color:#047857;font-family:var(--mono)">'+d.csym+tp.t2+'</div></div>';
+h+='<div style="flex:0.6;padding:8px;background:#7c3aed10"><div style="font-size:7px;color:#7c3aed;font-weight:700">R:R</div><div style="font-weight:800;color:#7c3aed;font-family:var(--mono)">1:'+tp.rr+'</div></div>';
+h+='</div>';}
+h+='</div></div>';
+
+// ── 3-SCORE GAUGE ROW ──
+var sections=[d.fundamental,d.valuation,d.priceAction];
+var secNames=['Fundamentals','Valuation','Price Action'];
+var secVerdicts=[d.fundamental.verdict,d.valuation.verdict,d.priceAction.trend];
+var secColors=sections.map(function(s){return s.score>=65?'#059669':s.score>=40?'#d97706':'#dc2626'});
+h+='<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px">';
+sections.forEach(function(sec,i){
+h+='<div style="padding:14px;border-radius:12px;background:var(--surface);border:1px solid var(--border);text-align:center;box-shadow:var(--shadow-sm)">';
+h+='<div style="font-size:9px;color:var(--text3);font-weight:700;margin-bottom:6px">'+secNames[i]+'</div>';
+// Mini gauge
+h+='<div style="position:relative;width:50px;height:50px;margin:0 auto 6px"><svg width="50" height="50" viewBox="0 0 50 50"><circle cx="25" cy="25" r="20" fill="none" stroke="var(--bg2)" stroke-width="4"/>';
+var _mcl=2*3.14159*20;var _mco=_mcl*(1-sec.score/100);
+h+='<circle cx="25" cy="25" r="20" fill="none" stroke="'+secColors[i]+'" stroke-width="4" stroke-linecap="round" stroke-dasharray="'+_mcl+'" stroke-dashoffset="'+_mco+'" transform="rotate(-90 25 25)"/>';
+h+='<text x="25" y="28" text-anchor="middle" font-size="14" font-weight="900" fill="'+secColors[i]+'" font-family="var(--mono)">'+sec.score+'</text></svg></div>';
+h+='<div style="font-size:10px;font-weight:800;color:'+secColors[i]+'">'+secVerdicts[i]+'</div>';
+h+='</div>';
+});
+h+='</div>';
+
+// ── DETAIL SECTIONS (Progressive Disclosure) ──
+function siSection(title,emoji,content){
+return '<details style="margin-bottom:8px;border:1px solid var(--border);border-radius:10px;overflow:hidden"><summary style="padding:10px 14px;background:var(--bg2);cursor:pointer;list-style:none;display:flex;justify-content:space-between;align-items:center"><span style="font-size:11px;font-weight:800;color:var(--text)">'+emoji+' '+title+'</span><span style="font-size:8px;color:var(--text3)">tap ▾</span></summary><div style="padding:12px 14px">'+content+'</div></details>';
+}
+
+// 1. Fundamentals detail
+var fc='';
+d.fundamental.flags.forEach(function(f){var c=f.startsWith('+')?'#059669':f.startsWith('-')?'#dc2626':'var(--text2)';fc+='<div style="font-size:9px;color:'+c+';line-height:1.6;padding:2px 0">'+f+'</div>';});
+fc+='<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:8px;font-size:9px;text-align:center">';
+fc+='<div style="padding:6px;border-radius:6px;background:var(--bg2)"><div style="font-size:7px;color:var(--text3)">Revenue Growth</div><div style="font-weight:800">'+d.fundamental.revGrowth+'%</div></div>';
+fc+='<div style="padding:6px;border-radius:6px;background:var(--bg2)"><div style="font-size:7px;color:var(--text3)">Profit Margin</div><div style="font-weight:800">'+d.fundamental.profitMargin+'%</div></div>';
+fc+='<div style="padding:6px;border-radius:6px;background:var(--bg2)"><div style="font-size:7px;color:var(--text3)">Debt/Equity</div><div style="font-weight:800">'+d.fundamental.debtEquity+'%</div></div>';
+fc+='<div style="padding:6px;border-radius:6px;background:var(--bg2)"><div style="font-size:7px;color:var(--text3)">ROE</div><div style="font-weight:800">'+d.fundamental.roe+'%</div></div>';
+fc+='<div style="padding:6px;border-radius:6px;background:var(--bg2)"><div style="font-size:7px;color:var(--text3)">Earnings Growth</div><div style="font-weight:800">'+d.fundamental.earnGrowth+'%</div></div>';
+fc+='<div style="padding:6px;border-radius:6px;background:var(--bg2)"><div style="font-size:7px;color:var(--text3)">ROCE (approx)</div><div style="font-weight:800">'+d.fundamental.roce+'%</div></div>';
+fc+='</div>';
+h+=siSection('Fundamental Analysis — Is the business good?','📊',fc);
+
+// 2. Valuation detail
+var vc='';
+d.valuation.flags.forEach(function(f){var c=f.startsWith('+')?'#059669':f.startsWith('-')?'#dc2626':'var(--text2)';vc+='<div style="font-size:9px;color:'+c+';line-height:1.6;padding:2px 0">'+f+'</div>';});
+vc+='<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:8px;font-size:9px;text-align:center">';
+vc+='<div style="padding:6px;border-radius:6px;background:var(--bg2)"><div style="font-size:7px;color:var(--text3)">PE</div><div style="font-weight:800">'+d.valuation.pe+'x</div></div>';
+vc+='<div style="padding:6px;border-radius:6px;background:var(--bg2)"><div style="font-size:7px;color:var(--text3)">Forward PE</div><div style="font-weight:800">'+d.valuation.fwdPE+'x</div></div>';
+vc+='<div style="padding:6px;border-radius:6px;background:var(--bg2)"><div style="font-size:7px;color:var(--text3)">PEG</div><div style="font-weight:800">'+d.valuation.peg+'</div></div>';
+vc+='<div style="padding:6px;border-radius:6px;background:var(--bg2)"><div style="font-size:7px;color:var(--text3)">P/B</div><div style="font-weight:800">'+d.valuation.pb+'x</div></div>';
+vc+='</div>';
+h+=siSection('Valuation — Am I paying a fair price?','💰',vc);
+
+// 3. Price Action
+var pac='<div style="font-size:10px;color:var(--text);margin-bottom:6px"><strong>Trend:</strong> <span style="color:'+(d.priceAction.trend==='BULLISH'?'#059669':d.priceAction.trend==='BEARISH'?'#dc2626':'#d97706')+'">'+d.priceAction.trend+'</span> — '+d.priceAction.trendDetail+'</div>';
+pac+='<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:6px;font-size:9px">';
+pac+='<div style="padding:6px;border-radius:6px;background:#05966906;border-left:3px solid #059669"><strong>Floor (Support)</strong><br>'+d.csym+d.priceAction.support.toLocaleString("en-IN")+'</div>';
+pac+='<div style="padding:6px;border-radius:6px;background:#dc262606;border-left:3px solid #dc2626"><strong>Ceiling (Resistance)</strong><br>'+d.csym+d.priceAction.resistance.toLocaleString("en-IN")+'</div>';
+pac+='<div style="padding:6px;border-radius:6px;background:var(--bg2)"><strong>Volume</strong>: '+d.priceAction.volConfirm+'</div>';
+pac+='<div style="padding:6px;border-radius:6px;background:var(--bg2)"><strong>Breakout above</strong>: '+d.csym+d.priceAction.breakout.toLocaleString("en-IN")+'</div>';
+pac+='</div>';
+h+=siSection('Price Action — What is the chart saying?','📈',pac);
+
+// 4. Confluence
+h+=siSection('Confluence — Do all signals agree?','🎯','<div style="font-size:10px;line-height:1.6">'+d.confluence.alignment.join('<br>')+'</div><div style="margin-top:6px;font-size:9px;color:var(--text3)">Confluence score: <strong style="color:var(--text)">'+d.confluence.score+'/100</strong> (Fundamentals 30% + Valuation 25% + Price 45%)</div>');
+
+// 8. Market Context
+h+=siSection('Market Context — Is the tide with us?','🌊','<div style="font-size:10px"><strong>Sector:</strong> '+d.sector+' / '+d.industry+'<br><strong>Aligned with market?</strong> '+(d.marketContext.aligned?'Yes — stock moving with broader trend ✅':'No — swimming against the current ⚠️')+'</div>');
+
+// 9. Entry Timing
+var et=d.entryTiming;
+var etC=et.type==='BREAKOUT'?'#059669':et.type==='PULLBACK'?'#1a56db':'#d97706';
+h+=siSection('Entry Timing — When to pull the trigger?','⏱️','<div style="padding:8px;border-radius:8px;background:'+etC+'08;border:1px solid '+etC+'20"><div style="font-size:11px;font-weight:800;color:'+etC+'">'+et.signal+'</div><div style="font-size:9px;color:var(--text2);margin-top:2px">'+et.condition+'</div></div>');
+
+// 10. Position Sizing
+var szC=d.sizing.level==='AGGRESSIVE'?'#059669':d.sizing.level==='MODERATE'?'#d97706':'#6b7280';
+h+=siSection('Position Sizing — How much to bet?','📐','<div style="font-size:12px;font-weight:800;color:'+szC+'">'+d.sizing.level+'</div><div style="font-size:9px;color:var(--text2)">'+d.sizing.detail+'</div>');
+
+// 11. Smart Money
+var smc='';d.smartMoney.forEach(function(s){smc+='<div style="font-size:9px;color:var(--text2);line-height:1.6;padding:2px 0">'+s+'</div>';});
+h+=siSection('Smart Money — What are institutions doing?','🏦',smc);
+
+// 12. Risk Factors
+var rfc='';d.risks.forEach(function(r){rfc+='<div style="font-size:9px;color:#dc2626;line-height:1.6;padding:2px 0">⚠️ '+r+'</div>';});
+h+=siSection('Risk Factors — What could go wrong?','🛑',rfc);
+
+// 13. Invalidation
+h+=siSection('Invalidation — When to abandon this idea','❌','<div style="font-size:10px;color:var(--text);line-height:1.6;padding:8px;border-radius:8px;background:#dc262606;border:1px solid #dc262612">'+d.invalidation+'</div>');
+
+// 7. Simple Explanation (always visible at bottom)
+h+='<div style="padding:14px;border-radius:12px;background:linear-gradient(135deg,rgba(8,145,178,.06),rgba(8,145,178,.02));border:1px solid rgba(8,145,178,.15);margin-top:8px">';
+h+='<div style="font-size:10px;font-weight:800;color:#0891b2;margin-bottom:6px">🎓 In Simple Words</div>';
+h+='<div style="font-size:10px;color:var(--text);line-height:1.6;margin-bottom:6px"><strong>Why:</strong> '+d.simple.why+'</div>';
+h+='<div style="font-size:10px;color:#dc2626;line-height:1.6"><strong>Risk:</strong> '+d.simple.risk+'</div>';
+h+='</div>';
+
+el.innerHTML=h;
+}).catch(function(e){el.innerHTML='<div style="color:var(--red);padding:16px">Error: '+e.message+'</div>'});
+}
+
 // ═══ VALUATION REPORT TAB ═══
 window._valRegion='IN';
 function switchValRegion(reg){
@@ -5788,42 +5929,182 @@ h+='</div></details>';
 
 h+='</div></div>';
 
-// ── 3-PLAN DECISION — Pick Your Path ──
-var _plans=d.plans||[];
-if(_plans.length>0){
-h+='<div style="margin-top:12px;border-radius:14px;overflow:hidden;border:1px solid var(--border);box-shadow:0 2px 12px rgba(0,0,0,.04)">';
-h+='<div style="padding:10px 18px;background:var(--bg2);border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">';
-h+='<div style="font-size:11px;font-weight:800;color:var(--text)">🎯 3 Ways to Trade '+d.symbol+'</div>';
-h+='<div style="font-size:8px;color:var(--text3)">Pick based on your risk appetite</div></div>';
-h+='<div style="display:grid;grid-template-columns:repeat('+_plans.length+',1fr);gap:0">';
-_plans.forEach(function(pl,idx){
-var bdr=idx<_plans.length-1?';border-right:1px solid var(--border)':'';
-h+='<div style="padding:14px'+bdr+';transition:all .2s" onmouseover="this.style.background=\''+pl.color+'06\'" onmouseout="this.style.background=\'transparent\'">';
-// Plan badge + name
-h+='<div style="display:flex;align-items:center;gap:6px;margin-bottom:8px">';
-h+='<div style="width:26px;height:26px;border-radius:50%;background:linear-gradient(135deg,'+pl.color+','+pl.color+'cc);display:flex;align-items:center;justify-content:center"><span style="font-size:11px;font-weight:900;color:#fff">'+pl.plan+'</span></div>';
-h+='<div><div style="font-size:10px;font-weight:800;color:'+pl.color+'">'+pl.name+'</div>';
-h+='<div style="font-size:7px;color:var(--text3)">'+pl.tagline+'</div></div></div>';
-// Strategy
-h+='<div style="font-size:9px;font-weight:700;color:var(--text);padding:5px 8px;border-radius:6px;background:'+pl.color+'06;border:1px solid '+pl.color+'15;margin-bottom:6px">'+pl.strategy+'</div>';
-// Risk + flow
-var rskC=pl.risk==='HIGH'?'#dc2626':pl.risk==='MEDIUM'?'#d97706':'#059669';
-h+='<div style="display:flex;gap:3px;margin-bottom:6px"><span style="font-size:7px;padding:2px 5px;border-radius:3px;background:'+rskC+'10;color:'+rskC+';font-weight:700">'+pl.risk+'</span>';
-if(pl.pop){h+='<span style="font-size:7px;padding:2px 5px;border-radius:3px;background:#1a56db10;color:#1a56db;font-weight:700">POP '+pl.pop+'%</span>';}
-h+='</div>';
-// Loss/Profit
-h+='<div style="display:flex;gap:4px;margin-bottom:6px">';
-h+='<div style="flex:1;padding:3px 5px;border-radius:4px;background:#dc262606;text-align:center"><div style="font-size:6px;color:#dc2626;font-weight:700">MAX LOSS</div><div style="font-size:9px;font-weight:800;color:#dc2626;font-family:var(--mono)">'+S+(typeof pl.maxLoss==="number"?pl.maxLoss.toLocaleString("en-IN"):pl.maxLoss)+'</div></div>';
-h+='<div style="flex:1;padding:3px 5px;border-radius:4px;background:#05966906;text-align:center"><div style="font-size:6px;color:#059669;font-weight:700">PROFIT</div><div style="font-size:9px;font-weight:800;color:#059669;font-family:var(--mono)">'+pl.maxProfit.substring(0,20)+'</div></div>';
-h+='</div>';
-// Coach tip
-h+='<div style="font-size:7px;color:var(--text3);line-height:1.4">💡 '+pl.analogy+'</div>';
-h+='</div>';
+// ═══ FUNDAMENTALS — Company Health Report ═══
+var _fa=d.fundamentals||null;
+if(_fa&&(_fa.roe>0||_fa.revGrowth)){
+h+='<details style="margin-bottom:14px;border:1px solid var(--border);border-radius:12px;overflow:hidden">';
+h+='<summary style="padding:12px 16px;background:var(--bg2);cursor:pointer;list-style:none;display:flex;justify-content:space-between;align-items:center">';
+h+='<span style="font-size:11px;font-weight:800;color:var(--text)">📊 COMPANY HEALTH — Is This a Good Business?</span>';
+h+='<span style="font-size:9px;padding:3px 10px;border-radius:4px;background:'+_fa.color+'12;color:'+_fa.color+';font-weight:800">'+_fa.grade+'</span></summary>';
+h+='<div style="padding:14px 16px">';
+// Score bar
+h+='<div style="margin-bottom:10px"><div style="display:flex;justify-content:space-between;font-size:8px;margin-bottom:3px"><span style="color:var(--text3)">Fundamental Score</span><span style="font-weight:800;color:'+_fa.color+'">'+_fa.score+'/100</span></div>';
+h+='<div style="height:8px;border-radius:4px;background:var(--bg3);overflow:hidden"><div style="height:100%;width:'+_fa.score+'%;border-radius:4px;background:'+_fa.color+'"></div></div></div>';
+// Metrics grid
+h+='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(90px,1fr));gap:6px;margin-bottom:10px">';
+var _faMetrics=[
+{l:'Revenue Growth',v:_fa.revGrowth+'%',c:_fa.revGrowth>10?'#059669':_fa.revGrowth<0?'#dc2626':'#d97706'},
+{l:'Earnings Growth',v:_fa.earnGrowth+'%',c:_fa.earnGrowth>10?'#059669':_fa.earnGrowth<0?'#dc2626':'#d97706'},
+{l:'Profit Margin',v:_fa.profitMargin+'%',c:_fa.profitMargin>15?'#059669':_fa.profitMargin<5?'#dc2626':'#d97706'},
+{l:'Debt/Equity',v:_fa.deRatio+'%',c:_fa.deRatio<80?'#059669':_fa.deRatio>150?'#dc2626':'#d97706'},
+{l:'ROE',v:_fa.roe+'%',c:_fa.roe>15?'#059669':_fa.roe<5?'#dc2626':'#d97706'},
+{l:'ROA',v:_fa.roa+'%',c:_fa.roa>5?'#059669':'#d97706'},
+];
+_faMetrics.forEach(function(m){
+h+='<div style="padding:6px 8px;border-radius:8px;background:'+m.c+'06;border:1px solid '+m.c+'15;text-align:center">';
+h+='<div style="font-size:7px;color:var(--text3);font-weight:700">'+m.l+'</div>';
+h+='<div style="font-size:14px;font-weight:900;font-family:var(--mono);color:'+m.c+'">'+m.v+'</div></div>';
 });
-h+='</div></div>';
+h+='</div>';
+// Red flags & strengths
+if(_fa.strengths&&_fa.strengths.length>0){h+='<div style="margin-bottom:6px">';_fa.strengths.forEach(function(s){h+='<div style="font-size:8px;color:#059669;padding:2px 0">✅ '+s+'</div>';});h+='</div>';}
+if(_fa.redFlags&&_fa.redFlags.length>0){h+='<div style="margin-bottom:6px">';_fa.redFlags.forEach(function(r){h+='<div style="font-size:8px;color:#dc2626;padding:2px 0">⚠️ '+r+'</div>';});h+='</div>';}
+// Coach summary
+h+='<div style="font-size:9px;color:var(--text2);padding:8px 10px;border-radius:6px;background:var(--bg2);line-height:1.5">💡 '+_fa.coachSummary+'</div>';
+h+='</div></details>';
 }
 
+// ═══ BREAKOUT / BREAKDOWN ALERT ═══
+if(eng&&eng.oi){
+var _bo=eng.oi;
+if(_bo.nearBreakout){
+h+='<div style="margin-bottom:10px;padding:10px 14px;border-radius:10px;background:rgba(5,150,105,.06);border:2px solid rgba(5,150,105,.2);display:flex;align-items:center;gap:10px">';
+h+='<span style="font-size:24px">🚀</span>';
+h+='<div><div style="font-size:12px;font-weight:800;color:#059669">NEAR BREAKOUT — Price approaching ceiling at '+S+_bo.resistance.toLocaleString("en-IN")+'</div>';
+h+='<div style="font-size:9px;color:var(--text3)">If price crosses above with volume → expect strong upward move. Watch for a close above this level.</div></div></div>';
+}
+if(_bo.nearBreakdown){
+h+='<div style="margin-bottom:10px;padding:10px 14px;border-radius:10px;background:rgba(220,38,38,.06);border:2px solid rgba(220,38,38,.2);display:flex;align-items:center;gap:10px">';
+h+='<span style="font-size:24px">⚠️</span>';
+h+='<div><div style="font-size:12px;font-weight:800;color:#dc2626">NEAR BREAKDOWN — Price approaching floor at '+S+_bo.support.toLocaleString("en-IN")+'</div>';
+h+='<div style="font-size:9px;color:var(--text3)">If price falls below with volume → expect sharp drop. Consider puts or exiting longs.</div></div></div>';
+}
+}
+
+// ═══ 3-PLAN DECISION — Visual Trade Picker ═══
+var _plans=d.plans||[];
+if(_plans.length>0){
+h+='<div style="margin-bottom:14px;border-radius:16px;overflow:hidden;border:1px solid var(--border);box-shadow:var(--shadow)">';
+h+='<div style="padding:14px 18px;background:linear-gradient(135deg,rgba(26,86,219,.06),rgba(124,58,237,.04));border-bottom:1px solid var(--border)">';
+h+='<div style="font-size:13px;font-weight:800;color:var(--text)">🎯 3 WAYS TO TRADE '+d.symbol+'</div>';
+h+='<div style="font-size:9px;color:var(--text3);margin-top:2px">Each plan is a complete recipe — follow step by step like a cooking instruction</div></div>';
+
+_plans.forEach(function(pl,idx){
+var isOpen=idx===0;
+h+='<div style="border-bottom:1px solid var(--border)">';
+// Plan header — clickable accordion
+h+='<div onclick="var c=this.nextElementSibling;c.style.display=c.style.display===\'none\'?\'block\':\'none\';this.querySelector(\'.plarr\').textContent=c.style.display===\'none\'?\'▶\':\'▼\'" style="padding:12px 18px;cursor:pointer;display:flex;align-items:center;gap:10px;transition:background .2s" onmouseover="this.style.background=\''+pl.color+'06\'" onmouseout="this.style.background=\'transparent\'">';
+h+='<div style="width:36px;height:36px;border-radius:10px;background:linear-gradient(135deg,'+pl.color+','+pl.color+'bb);display:flex;align-items:center;justify-content:center;flex-shrink:0;box-shadow:0 3px 10px '+pl.color+'30"><span style="font-size:15px;font-weight:900;color:#fff">'+pl.plan+'</span></div>';
+h+='<div style="flex:1"><div style="font-size:12px;font-weight:800;color:'+pl.color+'">'+pl.name+'</div>';
+h+='<div style="font-size:9px;color:var(--text3)">'+pl.tagline+'</div></div>';
+// Risk badge + arrow
+var rskC2=pl.risk==='HIGH'?'#dc2626':pl.risk==='MEDIUM'?'#d97706':'#059669';
+h+='<span style="font-size:7px;padding:3px 8px;border-radius:4px;background:'+rskC2+'12;color:'+rskC2+';font-weight:700">'+pl.risk+' RISK</span>';
+h+='<span class="plarr" style="font-size:10px;color:var(--text3)">'+(isOpen?'▼':'▶')+'</span>';
 h+='</div>';
+
+// Plan body — expandable
+h+='<div style="display:'+(isOpen?'block':'none')+';padding:0 18px 16px">';
+
+// Strategy name in highlight box
+h+='<div style="padding:10px 14px;border-radius:10px;background:'+pl.color+'08;border:1px solid '+pl.color+'20;margin-bottom:12px">';
+h+='<div style="font-size:11px;font-weight:800;color:'+pl.color+'">'+pl.strategy+'</div>';
+h+='</div>';
+
+// ★ STEP-BY-STEP TRADE INSTRUCTIONS — like a recipe
+h+='<div style="margin-bottom:12px">';
+h+='<div style="font-size:9px;font-weight:800;color:var(--text);margin-bottom:8px;letter-spacing:.5px">📋 STEP-BY-STEP — How to Place This Trade:</div>';
+
+if(pl.type==='DIRECTIONAL'){
+// Plan A: Simple buy
+h+='<div style="display:flex;flex-direction:column;gap:6px">';
+h+='<div style="display:flex;align-items:flex-start;gap:8px;padding:8px 12px;border-radius:8px;background:var(--bg2);border-left:3px solid #1a56db">';
+h+='<span style="width:22px;height:22px;border-radius:50%;background:#1a56db;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:900;color:#fff;flex-shrink:0">1</span>';
+h+='<div style="font-size:10px;color:var(--text);line-height:1.6"><strong>Open your broker app</strong> (Zerodha/Angel/IBKR) and search for <strong style="color:'+pl.color+'">'+pl.strategy.replace("BUY ","")+'</strong></div></div>';
+h+='<div style="display:flex;align-items:flex-start;gap:8px;padding:8px 12px;border-radius:8px;background:var(--bg2);border-left:3px solid #059669">';
+h+='<span style="width:22px;height:22px;border-radius:50%;background:#059669;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:900;color:#fff;flex-shrink:0">2</span>';
+h+='<div style="font-size:10px;color:var(--text);line-height:1.6"><strong>Click BUY</strong> and enter quantity. Premium should be around <strong style="color:#059669">'+S+pl.entry+'</strong>. This is your cost per share/unit.</div></div>';
+h+='<div style="display:flex;align-items:flex-start;gap:8px;padding:8px 12px;border-radius:8px;background:var(--bg2);border-left:3px solid #dc2626">';
+h+='<span style="width:22px;height:22px;border-radius:50%;background:#dc2626;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:900;color:#fff;flex-shrink:0">3</span>';
+h+='<div style="font-size:10px;color:var(--text);line-height:1.6"><strong>Set Stop Loss at '+S+pl.sl+'</strong> — if the premium drops to this price, your broker will auto-sell to limit your loss. <em style="color:var(--text3)">This is your safety net.</em></div></div>';
+h+='<div style="display:flex;align-items:flex-start;gap:8px;padding:8px 12px;border-radius:8px;background:var(--bg2);border-left:3px solid #059669">';
+h+='<span style="width:22px;height:22px;border-radius:50%;background:#059669;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:900;color:#fff;flex-shrink:0">4</span>';
+h+='<div style="font-size:10px;color:var(--text);line-height:1.6"><strong>When premium reaches '+S+pl.t1+'</strong> → sell HALF your position (book partial profit). Move stop loss to entry price — <strong style="color:#059669">now it is a FREE trade!</strong></div></div>';
+h+='<div style="display:flex;align-items:flex-start;gap:8px;padding:8px 12px;border-radius:8px;background:#05966908;border-left:3px solid #047857">';
+h+='<span style="width:22px;height:22px;border-radius:50%;background:#047857;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:900;color:#fff;flex-shrink:0">5</span>';
+h+='<div style="font-size:10px;color:var(--text);line-height:1.6"><strong>Let remaining ride to '+S+pl.t2+'</strong> — this is your big profit target. Trail your stop loss up as price moves in your favor.</div></div>';
+h+='</div>';
+
+}else if(pl.type==='SPREAD'){
+// Plan B: 2-leg spread
+var parts=pl.strategy.split('/');
+var leg1=parts[0]||pl.strategy;
+var leg2=parts[1]||'';
+h+='<div style="display:flex;flex-direction:column;gap:6px">';
+h+='<div style="display:flex;align-items:flex-start;gap:8px;padding:8px 12px;border-radius:8px;background:var(--bg2);border-left:3px solid #1a56db">';
+h+='<span style="width:22px;height:22px;border-radius:50%;background:#1a56db;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:900;color:#fff;flex-shrink:0">1</span>';
+h+='<div style="font-size:10px;color:var(--text);line-height:1.6"><strong>LEG 1 — BUY:</strong> In your broker, search for the <strong style="color:#059669">LOWER strike</strong> option and click <strong>BUY</strong>. You PAY premium for this leg.</div></div>';
+h+='<div style="display:flex;align-items:flex-start;gap:8px;padding:8px 12px;border-radius:8px;background:var(--bg2);border-left:3px solid #dc2626">';
+h+='<span style="width:22px;height:22px;border-radius:50%;background:#dc2626;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:900;color:#fff;flex-shrink:0">2</span>';
+h+='<div style="font-size:10px;color:var(--text);line-height:1.6"><strong>LEG 2 — SELL:</strong> Search for the <strong style="color:#dc2626">HIGHER strike</strong> option and click <strong>SELL</strong>. You RECEIVE premium for this leg. <em style="color:var(--text3)">This reduces your cost.</em></div></div>';
+h+='<div style="display:flex;align-items:flex-start;gap:8px;padding:8px 12px;border-radius:8px;background:var(--bg2);border-left:3px solid #7c3aed">';
+h+='<span style="width:22px;height:22px;border-radius:50%;background:#7c3aed;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:900;color:#fff;flex-shrink:0">3</span>';
+h+='<div style="font-size:10px;color:var(--text);line-height:1.6"><strong>Your net cost = '+S+pl.entry+'</strong> (what you paid MINUS what you received). This is your MAXIMUM possible loss. No surprises.</div></div>';
+h+='<div style="display:flex;align-items:flex-start;gap:8px;padding:8px 12px;border-radius:8px;background:#05966908;border-left:3px solid #059669">';
+h+='<span style="width:22px;height:22px;border-radius:50%;background:#059669;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:900;color:#fff;flex-shrink:0">4</span>';
+h+='<div style="font-size:10px;color:var(--text);line-height:1.6"><strong>Just wait until expiry.</strong> Max profit = '+pl.maxProfit+'. No stop loss needed — your max loss is already locked at '+S+pl.capital.toLocaleString("en-IN")+'.</div></div>';
+h+='</div>';
+
+}else{
+// Plan C: Non-directional (Iron Condor or Straddle)
+var isIC=pl.strategy.indexOf('IRON')>=0;
+if(isIC){
+h+='<div style="display:flex;flex-direction:column;gap:6px">';
+h+='<div style="display:flex;align-items:flex-start;gap:8px;padding:8px 12px;border-radius:8px;background:var(--bg2);border-left:3px solid #dc2626">';
+h+='<span style="width:22px;height:22px;border-radius:50%;background:#dc2626;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:900;color:#fff;flex-shrink:0">1</span>';
+h+='<div style="font-size:10px;color:var(--text);line-height:1.6"><strong>SELL a CE (Call)</strong> above current price — you COLLECT money for this. You are betting price WON\'T go above this level.</div></div>';
+h+='<div style="display:flex;align-items:flex-start;gap:8px;padding:8px 12px;border-radius:8px;background:var(--bg2);border-left:3px solid #dc2626">';
+h+='<span style="width:22px;height:22px;border-radius:50%;background:#dc2626;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:900;color:#fff;flex-shrink:0">2</span>';
+h+='<div style="font-size:10px;color:var(--text);line-height:1.6"><strong>SELL a PE (Put)</strong> below current price — you COLLECT more money. You are betting price WON\'T go below this level.</div></div>';
+h+='<div style="display:flex;align-items:flex-start;gap:8px;padding:8px 12px;border-radius:8px;background:var(--bg2);border-left:3px solid #059669">';
+h+='<span style="width:22px;height:22px;border-radius:50%;background:#059669;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:900;color:#fff;flex-shrink:0">3</span>';
+h+='<div style="font-size:10px;color:var(--text);line-height:1.6"><strong>BUY protection wings</strong> (1 CE higher + 1 PE lower) — cheap insurance in case of extreme moves. This makes it an IRON CONDOR.</div></div>';
+h+='<div style="display:flex;align-items:flex-start;gap:8px;padding:8px 12px;border-radius:8px;background:#7c3aed08;border-left:3px solid #7c3aed">';
+h+='<span style="width:22px;height:22px;border-radius:50%;background:#7c3aed;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:900;color:#fff;flex-shrink:0">4</span>';
+h+='<div style="font-size:10px;color:var(--text);line-height:1.6"><strong>Collect your credit of '+S+Math.abs(pl.entry)+'</strong> and WAIT. If price stays in the range by expiry, you keep ALL the money.'+(pl.pop?' <strong style="color:#1a56db">~'+pl.pop+'% chance of winning.</strong>':'')+'</div></div>';
+h+='</div>';
+}else{
+// Straddle
+h+='<div style="display:flex;flex-direction:column;gap:6px">';
+h+='<div style="display:flex;align-items:flex-start;gap:8px;padding:8px 12px;border-radius:8px;background:var(--bg2);border-left:3px solid #059669">';
+h+='<span style="width:22px;height:22px;border-radius:50%;background:#059669;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:900;color:#fff;flex-shrink:0">1</span>';
+h+='<div style="font-size:10px;color:var(--text);line-height:1.6"><strong>BUY one CE (Call)</strong> at the strike nearest current price. You PAY premium.</div></div>';
+h+='<div style="display:flex;align-items:flex-start;gap:8px;padding:8px 12px;border-radius:8px;background:var(--bg2);border-left:3px solid #059669">';
+h+='<span style="width:22px;height:22px;border-radius:50%;background:#059669;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:900;color:#fff;flex-shrink:0">2</span>';
+h+='<div style="font-size:10px;color:var(--text);line-height:1.6"><strong>BUY one PE (Put)</strong> at the SAME strike. You PAY more premium. Total cost = '+S+pl.entry+'</div></div>';
+h+='<div style="display:flex;align-items:flex-start;gap:8px;padding:8px 12px;border-radius:8px;background:#7c3aed08;border-left:3px solid #7c3aed">';
+h+='<span style="width:22px;height:22px;border-radius:50%;background:#7c3aed;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:900;color:#fff;flex-shrink:0">3</span>';
+h+='<div style="font-size:10px;color:var(--text);line-height:1.6"><strong>Now you WIN whichever way price moves</strong> — big up or big down. You just need it to move MORE than '+S+pl.entry+' from current price. Only lose if market is flat.</div></div>';
+h+='</div>';
+}
+}
+h+='</div>';
+
+// Capital + Risk summary row
+h+='<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:8px">';
+h+='<div style="padding:8px;border-radius:8px;background:#dc262606;text-align:center;border:1px solid #dc262612"><div style="font-size:7px;color:#dc2626;font-weight:700">MAX YOU CAN LOSE</div><div style="font-size:14px;font-weight:900;color:#dc2626;font-family:var(--mono)">'+S+(typeof pl.maxLoss==="number"?pl.maxLoss.toLocaleString("en-IN"):pl.maxLoss)+'</div></div>';
+h+='<div style="padding:8px;border-radius:8px;background:#05966906;text-align:center;border:1px solid #05966912"><div style="font-size:7px;color:#059669;font-weight:700">MAX YOU CAN MAKE</div><div style="font-size:14px;font-weight:900;color:#059669;font-family:var(--mono)">'+pl.maxProfit+'</div></div>';
+h+='<div style="padding:8px;border-radius:8px;background:var(--bg2);text-align:center;border:1px solid var(--border)"><div style="font-size:7px;color:var(--text3);font-weight:700">CAPITAL NEEDED</div><div style="font-size:14px;font-weight:900;color:var(--text);font-family:var(--mono)">'+S+pl.capital.toLocaleString("en-IN")+'</div></div>';
+h+='</div>';
+
+// Analogy
+h+='<div style="padding:8px 12px;border-radius:8px;background:rgba(26,86,219,.04);border:1px solid rgba(26,86,219,.1);font-size:9px;color:var(--text2);line-height:1.6">💡 '+pl.analogy+'</div>';
+
+h+='</div>';
+h+='</div>';
+});
+h+='</div>';
+}
 
 // Valuation moved to separate tab — show compact link
 var vl=d.valuation||null;
@@ -5880,8 +6161,7 @@ h+='</div></div>';
 // ═══ ⑥ OPTIONS INTELLIGENCE — IV Rank, Expected Move, Max Pain ═══
 var oi=d.options_intel||null;
 if(oi){
-h+='<div style="margin-bottom:14px;border:1px solid var(--border);border-radius:10px;overflow:hidden">';
-h+='<div style="padding:10px 14px;background:var(--bg2);border-bottom:1px solid var(--border)"><div style="font-size:11px;font-weight:800;color:var(--cyan)">&#128202; OPTIONS INTELLIGENCE</div></div>';
+h+='<details style="margin-bottom:14px;border:1px solid var(--border);border-radius:10px;overflow:hidden"><summary style="padding:10px 14px;background:var(--bg2);cursor:pointer;list-style:none;display:flex;justify-content:space-between;align-items:center"><span style="font-size:11px;font-weight:800;color:var(--cyan)">&#128202; OPTIONS — How Expensive Are They?</span><span style="font-size:8px;color:var(--text3)">tap to expand ▾</span></summary>';
 h+='<div style="padding:12px 14px;display:grid;grid-template-columns:1fr 1fr;gap:12px">';
 
 // IV Rank
@@ -5950,14 +6230,13 @@ h+='<div style="font-size:8px;color:var(--text3);margin-top:6px;padding:4px 6px;
 }}
 h+='</div></div>';
 }
-h+='</div>';
+h+='</details>';
 }
 
 // ═══ MULTI-LEG STRATEGIES ═══
 var strats=d.strategies||[];
 if(strats.length>0){
-h+='<div style="margin-bottom:14px;border:1px solid var(--border);border-radius:10px;overflow:hidden">';
-h+='<div style="padding:10px 14px;background:var(--bg2);border-bottom:1px solid var(--border)"><div style="font-size:11px;font-weight:800;color:var(--purple)">&#9853; ⑥ STRATEGY OPTIONS — Different Ways to Play This Trade</div></div>';
+h+='<details style="margin-bottom:14px;border:1px solid var(--border);border-radius:10px;overflow:hidden"><summary style="padding:10px 14px;background:var(--bg2);cursor:pointer;list-style:none;display:flex;justify-content:space-between;align-items:center"><span style="font-size:11px;font-weight:800;color:var(--purple)">&#9853; MORE STRATEGIES — Other Ways to Play</span><span style="font-size:8px;color:var(--text3)">tap to expand ▾</span></summary>';
 strats.forEach(function(st){
 var stC=st.type==='DIRECTIONAL'?(dir==='BULLISH'?'#047857':'#ef4444'):'#7c3aed';
 h+='<div style="padding:10px 14px;border-bottom:1px solid var(--border)">';
@@ -5981,16 +6260,17 @@ h+='</div>';
 h+='<div style="font-size:8px;color:var(--text3);line-height:1.4;padding:4px 6px;border-radius:4px;background:var(--bg2)">💡 <strong>When:</strong> '+st.when+'<br>'+st.interpretation+'</div>';
 h+='</div>';
 });
-h+='</div>';
+h+='</details>';
 }
 
 // ═══ GREEKS DASHBOARD ═══
 var gd=d.greeksDashboard||null;
 if(gd){
-h+='<div style="margin-bottom:14px;border:1px solid var(--border);border-radius:10px;overflow:hidden">';
-h+='<div style="padding:10px 14px;background:var(--bg2);border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">';
-h+='<div style="font-size:11px;font-weight:800;color:var(--amber)">&#916;&#915;&#920;V ⑥ OPTION HEALTH CHECK — What Your Option Is Doing</div>';
-h+='<div style="font-size:9px;color:var(--text3)">Strike: '+S+gd.strike+' · DTE: '+gd.dte+'</div></div>';
+h+='<details style="margin-bottom:14px;border:1px solid var(--border);border-radius:10px;overflow:hidden">';
+h+='<summary style="padding:10px 14px;background:var(--bg2);cursor:pointer;list-style:none;display:flex;justify-content:space-between;align-items:center">';
+h+='<span style="font-size:11px;font-weight:800;color:var(--amber)">&#916;&#915;&#920;V OPTION HEALTH CHECK — How Your Option Behaves</span>';
+h+='<span style="font-size:8px;color:var(--text3)">tap to expand ▾</span></summary>';
+h+='<div style="padding:4px 14px;font-size:9px;color:var(--text3)">Strike: '+S+gd.strike+' · DTE: '+gd.dte+'</div>';
 // Greeks values
 h+='<div style="padding:10px 14px;display:grid;grid-template-columns:repeat(4,1fr);gap:8px;border-bottom:1px solid var(--border)">';
 var greekItems=[
@@ -6012,15 +6292,14 @@ h+='<div style="padding:8px 14px">';
 var ic=gi.severity==='ALERT'?'#ef4444':gi.severity==='WARN'?'#f59e0b':gi.severity==='GOOD'?'#10b981':'var(--text3)';
 h+='<div style="font-size:9px;color:'+ic+';padding:2px 0;line-height:1.4"><strong>'+gi.greek+':</strong> '+gi.msg+'</div>';
 });
-h+='</div></div>';
+h+='</div></details>';
 }
 
 // ═══ VOLATILITY INTELLIGENCE ═══
 var vi=d.volIntelligence||null;
 if(vi){
 var viC=vi.regime.includes('SELL')?'#ef4444':vi.regime.includes('BUY')?'#10b981':vi.regime.includes('ELEV')?'#f59e0b':'var(--text)';
-h+='<div style="margin-bottom:14px;border:1px solid var(--border);border-radius:10px;overflow:hidden">';
-h+='<div style="padding:10px 14px;background:var(--bg2);border-bottom:1px solid var(--border)"><div style="font-size:11px;font-weight:800;color:#8b5cf6">&#127777;&#65039; ⑥ VOLATILITY — Are Options Cheap or Expensive? — '+vi.regime.replace(/_/g,' ')+'</div></div>';
+h+='<details style="margin-bottom:14px;border:1px solid var(--border);border-radius:10px;overflow:hidden"><summary style="padding:10px 14px;background:var(--bg2);cursor:pointer;list-style:none;display:flex;justify-content:space-between;align-items:center"><span style="font-size:11px;font-weight:800;color:#8b5cf6">&#127777;&#65039; VOLATILITY — Are Options Cheap or Expensive? — '+vi.regime.replace(/_/g,' ')+'</div></div>';
 h+='<div style="padding:10px 14px;display:flex;gap:16px;flex-wrap:wrap;align-items:center">';
 h+='<div><div style="font-size:8px;color:var(--text3);font-weight:700">IV (Implied)</div><div style="font-size:22px;font-weight:900;font-family:var(--mono);color:'+viC+'">'+vi.iv+'%</div></div>';
 h+='<div><div style="font-size:8px;color:var(--text3);font-weight:700">HV (Historical)</div><div style="font-size:22px;font-weight:900;font-family:var(--mono);color:var(--text)">'+vi.hv20+'%</div></div>';
@@ -6028,14 +6307,13 @@ h+='<div><div style="font-size:8px;color:var(--text3);font-weight:700">IV-HV Spr
 h+='<div style="flex:1;min-width:150px"><div style="font-size:8px;color:var(--text3);font-weight:700;margin-bottom:2px">WHAT TO DO</div><div style="font-size:10px;font-weight:700;color:'+viC+';line-height:1.4">'+vi.action+'</div></div>';
 h+='</div>';
 h+='<div style="padding:6px 14px 10px;font-size:8px;color:var(--text3);line-height:1.4;background:var(--bg2)">💡 <strong>IV > HV</strong> = options are expensive (sellers win). <strong>HV > IV</strong> = options are cheap (buyers win). Spread > 5% = strong signal.</div>';
-h+='</div>';
+h+='</details>';
 }
 
 // ═══ RISK MANAGEMENT ═══
 var rm=d.riskManagement||null;
 if(rm){
-h+='<div style="margin-bottom:14px;border:1px solid var(--border);border-radius:10px;overflow:hidden">';
-h+='<div style="padding:10px 14px;background:var(--bg2);border-bottom:1px solid var(--border)"><div style="font-size:11px;font-weight:800;color:#ef4444">&#128737; ⑦ HOW MUCH TO BET — Position Sizing Calculator</div></div>';
+h+='<details style="margin-bottom:14px;border:1px solid var(--border);border-radius:10px;overflow:hidden"><summary style="padding:10px 14px;background:var(--bg2);cursor:pointer;list-style:none;display:flex;justify-content:space-between;align-items:center"><span style="font-size:11px;font-weight:800;color:#ef4444">&#128737; HOW MUCH SHOULD I BET?</span><span style="font-size:8px;color:var(--text3)">tap to expand ▾</span></summary>';
 // Exposure alerts
 if(rm.exposureAlerts&&rm.exposureAlerts.length>0){
 h+='<div style="padding:8px 14px;border-bottom:1px solid var(--border)">';
@@ -6059,14 +6337,15 @@ h+='<td style="padding:4px;text-align:center">'+(r3.maxLots||0)+' lots</td></tr>
 });
 h+='</table>';
 h+='<div style="font-size:8px;color:var(--text3);margin-top:4px">💡 <strong>2% rule:</strong> Never risk more than 2% of capital on a single trade. This keeps you in the game even after 5 consecutive losses.</div>';
-h+='</div></div>';
+h+='</div></details>';
 }
 
-// ═══ EVIDENCE TABLE — ALL FACTORS VISIBLE ═══
-h+='<div style="margin-bottom:14px;border:1px solid var(--border);border-radius:10px;overflow:hidden">';
-h+='<div style="padding:10px 14px;background:var(--bg2);display:flex;justify-content:space-between;align-items:center">';
-h+='<div style="font-size:11px;font-weight:800;color:var(--text)">&#128220; ⑧ EVIDENCE — All '+tot+' Factors That Voted</div>';
-h+='<div style="font-size:8px;color:var(--text3);padding:0 14px 4px">Each row is like an expert opinion. Green = says BUY, Red = says SELL, Grey = no opinion. More green + heavier weight = stronger signal.</div>';
+// ═══ EVIDENCE TABLE — COLLAPSED BY DEFAULT ═══
+h+='<details style="margin-bottom:14px;border:1px solid var(--border);border-radius:10px;overflow:hidden">';
+h+='<summary style="padding:10px 14px;background:var(--bg2);cursor:pointer;list-style:none;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px">';
+h+='<span style="font-size:11px;font-weight:800;color:var(--text)">&#128220; EVIDENCE — '+tot+' Expert Opinions</span>';
+h+='<div style="display:flex;gap:6px;align-items:center"><span style="font-size:9px;font-weight:700;color:#047857">&#11044; '+sup+' for</span><span style="font-size:9px;font-weight:700;color:#ef4444">&#11044; '+opp+' against</span><span style="font-size:8px;color:var(--text3)">tap to see all ▾</span></div></summary>';
+h+='<div style="font-size:8px;color:var(--text3);padding:6px 14px">Each row is like an expert opinion. Green = says BUY, Red = says SELL. More green + heavier weight = stronger signal.</div>';
 h+='<div style="display:flex;gap:8px"><span style="font-size:10px;font-weight:700;color:#047857">&#11044; '+sup+' ('+wS.toFixed(1)+'pt)</span><span style="font-size:10px;font-weight:700;color:#ef4444">&#11044; '+opp+' ('+wO.toFixed(1)+'pt)</span><span style="font-size:10px;font-weight:700;color:#f59e0b">&#11044; '+neu+' ('+wN.toFixed(1)+'pt)</span></div></div>';
 // Weighted progress bar
 h+='<div style="height:8px;display:flex"><div style="height:100%;width:'+(wT>0?(wS/wT*100):0)+'%;background:#047857"></div><div style="height:100%;width:'+(wT>0?(wN/wT*100):0)+'%;background:#f59e0b"></div><div style="height:100%;width:'+(wT>0?(wO/wT*100):0)+'%;background:#ef4444"></div></div>';
@@ -6092,7 +6371,7 @@ h+='<td style="padding:5px 10px;font-size:9px;color:var(--text2);line-height:1.4
 h+='</tr>';
 });
 });
-h+='</table></div>';
+h+='</table></details>';
 
 // ═══ ② YOUR TRADE — Entry, Stop Loss, Targets SHOWN (with warning for AVOID) ═══
 if(tr){
@@ -6169,10 +6448,10 @@ h+='<div style="font-size:9px;font-weight:700;color:var(--text3);padding:4px 0;l
 // OI table
 if(nse.ce_resistance&&nse.ce_resistance.length>0){
 h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:0;border:1px solid var(--border);border-radius:8px;overflow:hidden">';
-h+='<div style="padding:8px 12px;border-right:1px solid var(--border)"><div style="font-size:8px;font-weight:700;color:#ef4444;margin-bottom:4px">RESISTANCE (CE OI)</div>'
+h+='<div style="padding:8px 12px;border-right:1px solid var(--border)"><div style="font-size:8px;font-weight:700;color:#ef4444;margin-bottom:4px">CEILING — Sellers Active Here ↑</div>'
 h+='<div style="font-size:7px;color:var(--text3);margin-bottom:2px">\u2191 Price ceiling — hard to go above</div>';
 (nse.ce_resistance||[]).slice(0,3).forEach(function(r){h+='<div style="display:flex;justify-content:space-between;font-size:9px;padding:1px 0"><span style="font-family:var(--mono);font-weight:700">'+S+r.strike.toLocaleString("en-IN")+'</span><span style="color:var(--text3)">'+(r.oi>100000?(r.oi/100000).toFixed(1)+'L':r.oi.toLocaleString("en-IN"))+'</span></div>';});
-h+='</div><div style="padding:8px 12px"><div style="font-size:8px;font-weight:700;color:#047857;margin-bottom:4px">SUPPORT (PE OI)</div>'
+h+='</div><div style="padding:8px 12px"><div style="font-size:8px;font-weight:700;color:#047857;margin-bottom:4px">FLOOR — Buyers Defending Here ↓</div>'
 h+='<div style="font-size:7px;color:var(--text3);margin-bottom:2px">\u2193 Price floor — hard to fall below</div>';
 (nse.pe_support||[]).slice(0,3).forEach(function(r){h+='<div style="display:flex;justify-content:space-between;font-size:9px;padding:1px 0"><span style="font-family:var(--mono);font-weight:700">'+S+r.strike.toLocaleString("en-IN")+'</span><span style="color:var(--text3)">'+(r.oi>100000?(r.oi/100000).toFixed(1)+'L':r.oi.toLocaleString("en-IN"))+'</span></div>';});
 h+='</div></div>';
@@ -8139,7 +8418,17 @@ if(btn){btn.disabled=false;btn.textContent='&#128202; Trade Scorecard';}
 // ═══════════════════════════════════════════════
 // INDEX TRADES — AI-Powered Daily Ideas
 // ═══════════════════════════════════════════════
+// ═══ SMART TRADES REGION TOGGLE ═══
+window._stRegion='IN';
+function switchSTRegion(reg){
+window._stRegion=reg;
+var inBtn=document.getElementById('stRegIN');var usBtn=document.getElementById('stRegUS');
+if(inBtn){inBtn.style.background=reg==='IN'?'#1a56db':'var(--bg2)';inBtn.style.color=reg==='IN'?'#fff':'var(--text3)';}
+if(usBtn){usBtn.style.background=reg==='US'?'#1a56db':'var(--bg2)';usBtn.style.color=reg==='US'?'#fff':'var(--text3)';}
+}
+
 async function loadIndexTrades(forceRefresh){
+var stReg=window._stRegion||'IN';
 const el=document.getElementById('tradesContent');
 const errEl=document.getElementById('tradesError');
 var btn=document.getElementById('tradesLoadBtn');
@@ -8151,7 +8440,7 @@ if(!email){if(errEl){errEl.textContent='Please enter your email in the search ba
 if(btn){btn.disabled=true;btn.textContent=forceRefresh?'⏳ Refreshing with live data...':'⏳ Analyzing markets...';}
 if(errEl)errEl.style.display='none';
 try{
-const r=await fetch('/api/index-trades',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:email,force_refresh:!!forceRefresh})});
+const r=await fetch('/api/index-trades',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:email,force_refresh:!!forceRefresh,region:stReg})});
 const data=await r.json();
 if(!data.success){if(errEl){errEl.textContent=data.error||'Service busy. Please try again in a moment.';errEl.style.display='block';}if(btn){btn.disabled=false;btn.textContent='⚡ Generate Today\'s Trades';}return}
 

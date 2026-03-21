@@ -214,7 +214,7 @@ gtag('js',new Date());gtag('config','G-WW55EQ7ZB8');
 :root{--bg:#fafbfc;--bg2:#f1f3f5;--bg3:#e9ecef;--surface:#ffffff;--glass:rgba(255,255,255,0.97);--border:#e2e5ea;--border2:#ced4da;--blue:#1a56db;--blue2:#1e40af;--cyan:#0891b2;--teal:#0d9488;--green:#059669;--green2:#047857;--amber:#d97706;--red:#dc2626;--purple:#7c3aed;--text:#111827;--text2:#374151;--text3:#6b7280;--mono:'IBM Plex Mono',monospace;--shadow-sm:0 1px 2px rgba(0,0,0,.05);--shadow:0 4px 6px -1px rgba(0,0,0,.07),0 2px 4px -2px rgba(0,0,0,.05);--shadow-lg:0 10px 25px -3px rgba(0,0,0,.08),0 4px 6px -4px rgba(0,0,0,.04);--shadow-xl:0 20px 50px -5px rgba(0,0,0,.1);--radius:12px;--radius-lg:16px}
 [data-theme="dark"]{--bg:#0c1222;--bg2:#131d32;--bg3:#1a2742;--surface:#131d32;--glass:rgba(12,18,34,0.97);--border:rgba(255,255,255,.08);--border2:rgba(255,255,255,.14);--blue:#60a5fa;--blue2:#93c5fd;--cyan:#22d3ee;--teal:#2dd4bf;--green:#34d399;--green2:#6ee7b7;--amber:#fbbf24;--red:#f87171;--purple:#a78bfa;--text:#f1f5f9;--text2:#cbd5e1;--text3:#64748b}
 [data-theme="dark"] body{background:#0d1b2a;color:#e9ecef}
-[data-theme="dark"] nav{background:#001a3a !important;border-bottom:none !important}
+[data-theme="dark"] nav{background:linear-gradient(135deg,#1a56db,#1e40af) !important;border-bottom:none !important}
 [data-theme="dark"] .hero{background:#0d1b2a !important}
 [data-theme="dark"] .tab-bar{background:#152238 !important;border-bottom-color:rgba(255,255,255,.1) !important}
 [data-theme="dark"] .tab-btn{color:#adb5bd !important;background:transparent !important}
@@ -247,7 +247,7 @@ body{font-family:'Plus Jakarta Sans','DM Sans',sans-serif;background:var(--bg);c
 .gridbg::after{content:'';position:absolute;inset:0;background:none}
 
 /* NAV */
-nav{position:sticky;top:52px;z-index:99;backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);background:linear-gradient(135deg,#0f172a,#1e293b);border-bottom:1px solid rgba(255,255,255,.06);height:56px;display:flex;align-items:center;justify-content:space-between;padding:0 32px;box-shadow:0 4px 20px rgba(0,0,0,.15)}
+nav{position:sticky;top:52px;z-index:99;backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);background:linear-gradient(135deg,#1447c8,#1a56db);border-bottom:none;height:56px;display:flex;align-items:center;justify-content:space-between;padding:0 32px;box-shadow:0 4px 16px rgba(20,71,200,.35)}
 .nbrand{display:flex;align-items:center;gap:11px}
 .nlogo{width:34px;height:34px;border-radius:6px;background:#ffffff;display:flex;align-items:center;justify-content:center;font-family:'Sora',sans-serif;font-size:16px;font-weight:800;color:#1a56db;box-shadow:none}
 .nname{font-family:'Sora',sans-serif;font-size:15px;font-weight:700;letter-spacing:.3px;color:#ffffff}.nname span{color:rgba(255,255,255,.8)}.ntag{font-size:9px;color:rgba(255,255,255,.6);text-transform:uppercase;letter-spacing:1.2px;font-weight:600;margin-top:-2px;display:block}
@@ -374,6 +374,7 @@ nav{position:sticky;top:52px;z-index:99;backdrop-filter:blur(20px);-webkit-backd
 [data-subtab]{scroll-margin-top:160px}
 [data-asub]{scroll-margin-top:160px}
 .tab-scroll-area::-webkit-scrollbar{width:6px}.tab-scroll-area::-webkit-scrollbar-thumb{background:rgba(59,130,246,.25);border-radius:3px}.tab-scroll-area::-webkit-scrollbar-track{background:transparent}
+details summary::-webkit-details-marker{display:none}details summary::marker{display:none}details[open] summary .plarr{transform:rotate(90deg)}details summary{transition:background .2s}details summary:hover{filter:brightness(0.97)}
 .tab-btn{flex:none;padding:12px 18px;border:none;border-radius:0;cursor:pointer;font-family:'Sora',sans-serif;font-size:11px;font-weight:600;transition:all .2s;background:transparent;color:var(--text3);letter-spacing:.2px;display:flex;align-items:center;justify-content:center;gap:6px;border-bottom:3px solid transparent;white-space:nowrap;position:relative}
 .tab-btn .tab-icon{font-size:14px;display:inline-flex;width:24px;height:24px;align-items:center;justify-content:center;border-radius:6px;transition:all .2s;background:transparent}
 /* All inactive tabs */
@@ -449,10 +450,10 @@ nav{position:sticky;top:52px;z-index:99;backdrop-filter:blur(20px);-webkit-backd
 .scorefill{height:100%;border-radius:3px;transition:width .8s ease}
 
 /* Footer */
-footer{position:relative;z-index:1;margin-top:32px;background:#1a56db;border-top:none}
+footer{position:relative;z-index:1;margin-top:32px;background:linear-gradient(135deg,#0f2557,#1a3a7a);border-top:none}
 .ftop{max-width:1080px;margin:0 auto;padding:48px 28px 32px;display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:40px}
 .ftop h5{font-family:'Sora',sans-serif;font-size:14px;font-weight:700;color:#fff;margin-bottom:14px}
-.ftop p{font-size:12px;color:var(--text3);line-height:1.8;margin-bottom:8px}
+.ftop p{font-size:12px;color:rgba(255,255,255,.6);line-height:1.8;margin-bottom:8px}
 .fbrand{display:flex;align-items:center;gap:10px;margin-bottom:14px}
 .fblogo{width:30px;height:30px;border-radius:8px;background:linear-gradient(135deg,#ffffff,#e0e7f0);display:flex;align-items:center;justify-content:center;font-family:'Sora',sans-serif;font-size:14px;font-weight:800;color:#1a56db}
 .fbname{font-family:'Sora',sans-serif;font-size:14px;font-weight:700;color:#fff}.fbname span{color:var(--blue)}
@@ -530,7 +531,7 @@ footer{position:relative;z-index:1;margin-top:32px;background:#1a56db;border-top
 @keyframes eventGlowHigh{0%,100%{box-shadow:0 0 15px rgba(239,68,68,.2),inset 0 0 15px rgba(239,68,68,.03)}50%{box-shadow:0 0 35px rgba(239,68,68,.35),inset 0 0 20px rgba(239,68,68,.06)}}
 @keyframes borderShimmer{0%{background-position:0% 50%}50%{background-position:100% 50%}100%{background-position:0% 50%}}
 @keyframes tickerScroll{0%{transform:translateX(0)}100%{transform:translateX(-50%)}}
-.global-ticker{width:100%;overflow:hidden;background:linear-gradient(90deg,#0f172a,#1e293b);border-bottom:1px solid rgba(255,255,255,.06);padding:8px 0;position:fixed;top:0;left:0;z-index:100}
+.global-ticker{width:100%;overflow:hidden;background:linear-gradient(90deg,#1447c8,#1a56db);border-bottom:none;padding:8px 0;position:fixed;top:0;left:0;z-index:100}
 .global-ticker .ticker-track{display:flex;gap:0;animation:tickerScroll 40s linear infinite;width:max-content}
 .global-ticker .ticker-track:hover{animation-play-state:paused}
 .global-ticker .ti{display:flex;align-items:center;gap:6px;font-size:12px;white-space:nowrap;padding:0 16px;border-right:1px solid rgba(255,255,255,.12)}
@@ -755,7 +756,7 @@ footer{position:relative;z-index:1;margin-top:32px;background:#1a56db;border-top
 <div id="reportHeader" style="display:flex;align-items:center;justify-content:space-between;padding:6px 16px;background:var(--surface);border-bottom:1px solid var(--border);gap:8px;flex-wrap:wrap">
 <div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0">
 <div class="rptk" id="tickerTag" style="margin:0;font-size:13px;padding:3px 10px"></div>
-<div class="rpco" id="companyName" style="margin:0;font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text)"></div>
+<div class="rpco" id="companyName" style="margin:0;font-size:13px;font-weight:600;color:var(--text)"></div>
 <div class="rplv" id="timestamp" style="margin:0;font-size:10px"><div class="ldot"></div></div>
 </div>
 <div style="display:flex;align-items:center;gap:4px" id="actionToolbar">
@@ -958,7 +959,12 @@ footer{position:relative;z-index:1;margin-top:32px;background:#1a56db;border-top
 <div class="sc" data-tab="smarttrades" style="border-left:3px solid var(--amber);display:none">
 <div class="sh"><div class="si" style="background:rgba(245,158,11,.1)">&#128293;</div><div class="st" style="color:var(--amber)">Smart Trades — AI Daily Ideas</div></div>
 <div class="sbody">
-<!-- PERMANENT BUTTONS — never destroyed by innerHTML -->
+<!-- Region toggle for Smart Trades -->
+<div style="display:flex;gap:0;margin-bottom:10px;border:1px solid var(--border);border-radius:8px;overflow:hidden;width:fit-content">
+<button id="stRegIN" onclick="switchSTRegion('IN')" style="padding:6px 18px;font-size:11px;font-weight:800;border:none;cursor:pointer;font-family:Sora,sans-serif;background:#1a56db;color:#fff">&#127470;&#127475; India</button>
+<button id="stRegUS" onclick="switchSTRegion('US')" style="padding:6px 18px;font-size:11px;font-weight:800;border:none;cursor:pointer;font-family:Sora,sans-serif;background:var(--bg2);color:var(--text3)">&#127482;&#127480; USA</button>
+</div>
+<!-- PERMANENT BUTTONS -->
 <div id="smartTradesBtnBar" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:12px 0;margin-bottom:8px">
 <button id="tradesLoadBtn" onclick="loadIndexTrades()" style="padding:10px 24px;border-radius:10px;border:2px solid var(--amber);background:rgba(245,158,11,.1);color:var(--amber);font-family:Sora,sans-serif;font-size:13px;font-weight:700;cursor:pointer">&#9889; Generate Today's Trades</button>
 <button onclick="loadIndexTrades(true)" style="padding:10px 20px;border-radius:10px;border:2px solid var(--cyan);background:rgba(6,182,212,.08);color:var(--cyan);font-family:Sora,sans-serif;font-size:12px;font-weight:700;cursor:pointer">&#8635; Force Refresh</button>
@@ -1018,6 +1024,38 @@ footer{position:relative;z-index:1;margin-top:32px;background:#1a56db;border-top
 </div></div>
 
 <!-- ═══ TAB: COMPARE STOCKS ═══ -->
+<!-- ═══ TAB: STOCK INTELLIGENCE — Deep Analysis ═══ -->
+<div class="sc" data-tab="stockintel" style="border-left:3px solid #0891b2;display:none">
+<div class="sh"><div class="si" style="background:rgba(8,145,178,.1)">&#128300;</div><div class="st" style="color:#0891b2">Stock Intelligence — Complete Decision Engine</div></div>
+<div class="sbody">
+<div style="font-size:11px;color:var(--text3);margin-bottom:12px;line-height:1.6">Enter any stock. Get a complete BUY / SELL / HOLD decision backed by fundamentals, valuation, price action, and smart money — all in one place.</div>
+<div style="display:flex;gap:0;margin-bottom:10px;border:1px solid var(--border);border-radius:8px;overflow:hidden;width:fit-content">
+<button id="siRegIN" onclick="switchSIRegion('IN')" style="padding:6px 18px;font-size:11px;font-weight:800;border:none;cursor:pointer;font-family:Sora,sans-serif;background:#1a56db;color:#fff">&#127470;&#127475; India</button>
+<button id="siRegUS" onclick="switchSIRegion('US')" style="padding:6px 18px;font-size:11px;font-weight:800;border:none;cursor:pointer;font-family:Sora,sans-serif;background:var(--bg2);color:var(--text3)">&#127482;&#127480; USA</button>
+</div>
+<div id="siStocksIN" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
+<button onclick="runStockIntel('RELIANCE')" class="algo-btn" style="padding:4px 12px;font-size:10px">Reliance</button>
+<button onclick="runStockIntel('TCS')" class="algo-btn" style="padding:4px 12px;font-size:10px">TCS</button>
+<button onclick="runStockIntel('HDFCBANK')" class="algo-btn" style="padding:4px 12px;font-size:10px">HDFC Bank</button>
+<button onclick="runStockIntel('INFY')" class="algo-btn" style="padding:4px 12px;font-size:10px">Infosys</button>
+<button onclick="runStockIntel('ITC')" class="algo-btn" style="padding:4px 12px;font-size:10px">ITC</button>
+<button onclick="runStockIntel('TATAMOTORS')" class="algo-btn" style="padding:4px 12px;font-size:10px">Tata Motors</button>
+</div>
+<div id="siStocksUS" style="display:none;gap:6px;flex-wrap:wrap;margin-bottom:10px">
+<button onclick="runStockIntel('AAPL')" class="algo-btn" style="padding:4px 12px;font-size:10px">Apple</button>
+<button onclick="runStockIntel('MSFT')" class="algo-btn" style="padding:4px 12px;font-size:10px">Microsoft</button>
+<button onclick="runStockIntel('NVDA')" class="algo-btn" style="padding:4px 12px;font-size:10px">NVIDIA</button>
+<button onclick="runStockIntel('TSLA')" class="algo-btn" style="padding:4px 12px;font-size:10px">Tesla</button>
+<button onclick="runStockIntel('GOOGL')" class="algo-btn" style="padding:4px 12px;font-size:10px">Google</button>
+<button onclick="runStockIntel('AMZN')" class="algo-btn" style="padding:4px 12px;font-size:10px">Amazon</button>
+</div>
+<div style="display:flex;gap:6px;align-items:center;margin-bottom:12px">
+<input id="siCustom" type="text" placeholder="Any stock... e.g. SBIN or META" style="padding:5px 12px;border-radius:8px;border:1px solid var(--border);font-size:11px;width:220px;background:var(--bg);color:var(--text)" onkeydown="if(event.key==='Enter'){runStockIntel(this.value.trim().toUpperCase())}">
+<button onclick="runStockIntel(document.getElementById('siCustom').value.trim().toUpperCase())" style="padding:6px 18px;border-radius:8px;background:linear-gradient(135deg,#0891b2,#0e7490);color:#fff;border:none;font-size:11px;font-weight:700;cursor:pointer">&#128300; Analyze</button>
+</div>
+<div id="siResult" style="min-height:200px"><div style="text-align:center;padding:30px;color:var(--text3);font-size:11px">Select a stock above for complete intelligence report</div></div>
+</div></div>
+
 <!-- ═══ TAB: VALUATION REPORT ═══ -->
 <div class="sc" data-tab="valreport" style="border-left:3px solid #7c3aed;display:none">
 <div class="sh"><div class="si" style="background:rgba(124,58,237,.1)">&#128200;</div><div class="st" style="color:#7c3aed">Valuation Intelligence — Is It Cheap or Expensive?</div></div>
