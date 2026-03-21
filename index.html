@@ -322,7 +322,7 @@ button:active{transform:scale(.97)}
 /* Loading skeleton shimmer */
 .shimmer{background:linear-gradient(90deg,var(--bg2) 25%,var(--bg3) 50%,var(--bg2) 75%);background-size:200% 100%;animation:shimmer 1.5s infinite}
 /* Smooth page transitions for tabs */
-[data-tab]{animation:fadeIn .25s ease}
+/* Tab content animations handled by JS switchTab */
 /* Premium card hover */
 .feat-card:hover,.icard:hover{transform:translateY(-2px);box-shadow:var(--shadow-lg)}
 /* Sub-tab active glow */
@@ -368,7 +368,7 @@ button{cursor:pointer;-webkit-tap-highlight-color:transparent}
 /* Loading skeleton shimmer */
 .skel{background:linear-gradient(90deg,var(--bg2) 25%,var(--bg3) 50%,var(--bg2) 75%);background-size:200% 100%;animation:shimmer 1.5s infinite;border-radius:6px}
 /* Smooth tab transitions */
-.sc[data-tab]{animation:fadeSlideUp .3s ease}
+/* .sc animation handled by JS switchTab */
 /* Card hover lift */
 [onclick]{transition:transform .2s,box-shadow .2s}
 /* Toast/notification animation */
@@ -419,8 +419,7 @@ input:focus,button:focus-visible{outline:2px solid var(--blue);outline-offset:2p
 .st{font-family:'Sora',sans-serif;font-size:14px;font-weight:700;letter-spacing:-.2px;flex:1;scroll-margin-top:160px;color:var(--text)}
 .sbody{padding:14px 18px 16px;overflow:visible;animation:fadeIn .3s ease}
 .sh{display:flex;align-items:center;gap:10px;padding:14px 18px 0;transition:opacity .2s}
-/* Stagger animation for multiple sections */
-.sc:nth-child(2){animation-delay:.05s}.sc:nth-child(3){animation-delay:.1s}.sc:nth-child(4){animation-delay:.15s}.sc:nth-child(5){animation-delay:.2s}
+/* Stagger animation handled by JS */
 /* Accent border gradient for sections */
 .sc[style*="border-left"]{border-left-width:3px;border-left-style:solid;border-radius:var(--radius)}
 /* Premium loading state for buttons */
@@ -733,7 +732,7 @@ footer{position:relative;z-index:1;margin-top:32px;background:linear-gradient(13
 <!-- Global Indices Ticker — loads on page visit -->
 <div class="global-ticker" id="globalTicker">
 <div class="ticker-track" id="tickerTrack">
-<span style="font-size:10px;color:var(--text3);padding:0 8px">Loading global markets...</span>
+<span style="font-size:10px;color:rgba(255,255,255,.4);padding:0 8px">Connecting to live markets...</span>
 </div>
 <!-- News row restored -->
 <div class="news-row" id="newsRow" style="display:none">
@@ -937,13 +936,17 @@ footer{position:relative;z-index:1;margin-top:32px;background:linear-gradient(13
 <div style="display:flex;align-items:center;gap:8px"><span style="font-size:16px">&#128293;</span><span style="font-family:Sora,sans-serif;font-size:14px;font-weight:800;color:var(--text)">Today's Top Trades</span><span style="font-size:8px;padding:2px 8px;border-radius:100px;background:#ef4444;color:#fff;font-weight:700">LIVE</span></div>
 <button onclick="loadTopTrades()" style="padding:4px 14px;border-radius:6px;background:var(--blue);color:#fff;border:none;font-size:10px;font-weight:700;cursor:pointer;font-family:DM Sans,sans-serif">&#8635; Refresh All</button>
 </div>
-<div id="topTradesTable"><div style="text-align:center;padding:20px;color:var(--text3);font-size:11px">&#9203; Loading signals...</div></div>
+<div id="topTradesTable"><div style="text-align:center;padding:20px;color:var(--text3);font-size:11px"><div style="display:inline-block;width:14px;height:14px;border:2px solid var(--blue);border-top-color:transparent;border-radius:50%;animation:spin .5s linear infinite;vertical-align:middle;margin-right:6px"></div>Loading live trade signals...</div></div>
 </div>
 
 <!-- ALGO RESULT (individual deep-dive) -->
 <div id="algoResult" style="padding:16px 18px;border-bottom:1px solid var(--border)">
 <div style="text-align:center;padding:20px;color:var(--text3)">
-<div style="font-size:11px">&#8593; Select an instrument above for detailed 5-layer analysis</div>
+<div style="text-align:center;padding:30px">
+<div style="font-size:36px;margin-bottom:8px;opacity:.3">📊</div>
+<div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:4px">Select Any Stock or Index</div>
+<div style="font-size:11px;color:var(--text3);max-width:400px;margin:0 auto">Click a button above or type any ticker. You'll get a complete 5-engine analysis with entry, stop loss, targets &amp; confidence score — all from live data.</div>
+</div>
 </div>
 </div>
 
@@ -960,7 +963,11 @@ footer{position:relative;z-index:1;margin-top:32px;background:linear-gradient(13
 <div><label style="font-size:8px;color:var(--text3);display:block;margin-bottom:2px">Years</label><select id="btYears" style="padding:5px 10px;border-radius:6px;border:1px solid var(--border);font-size:11px;background:var(--surface);color:var(--text)"><option>1</option><option selected>2</option><option>3</option><option>5</option></select></div>
 <button onclick="runBacktest()" style="padding:6px 18px;border-radius:6px;background:#e67e22;color:#fff;border:none;font-size:11px;font-weight:700;cursor:pointer">&#9889; Run Backtest</button>
 </div>
-<div id="backtestSection" style="min-height:100px"><div style="text-align:center;padding:20px;color:var(--text3);font-size:11px">Select a symbol and click Run Backtest</div></div>
+<div id="backtestSection" style="min-height:100px"><div style="text-align:center;padding:30px">
+<div style="font-size:36px;margin-bottom:8px;opacity:.25">📈</div>
+<div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:4px">Historical Proof</div>
+<div style="font-size:11px;color:var(--text3);max-width:400px;margin:0 auto">Enter a symbol, select years, and run. See win rate, max drawdown, and Sharpe ratio — proof that the algorithm works before risking real money.</div>
+</div></div>
 </div></div>
 
 <!-- SMART TRADES — AI-Powered Daily Ideas (separate tab) -->
@@ -1043,9 +1050,9 @@ footer{position:relative;z-index:1;margin-top:32px;background:linear-gradient(13
 <!-- TRADES OUTPUT — this gets replaced by innerHTML -->
 <div id="tradesContent">
 <div style="text-align:center;padding:30px 20px">
-<div style="font-size:40px;margin-bottom:12px">&#128293;</div>
-<div style="font-family:Sora,sans-serif;font-size:16px;font-weight:700;color:var(--amber);margin-bottom:8px">AI-Powered Trading Intelligence</div>
-<p style="font-size:13px;color:var(--text3);max-width:500px;margin:0 auto 20px;line-height:1.7">Top 5 index + 2 stock option trade ideas generated daily by AI. Click "Generate" above to start.</p>
+<div style="font-size:44px;margin-bottom:12px;opacity:.25">⚡</div>
+<div style="font-family:Sora,sans-serif;font-size:16px;font-weight:700;color:var(--text);margin-bottom:8px">AI-Powered Trading Intelligence</div>
+<p style="font-size:12px;color:var(--text3);max-width:460px;margin:0 auto 20px;line-height:1.7">Generates top trade ideas for indices &amp; stocks daily. Includes confidence score, entry/SL/targets, and Plan A/B/C options. Click "Generate" above to start.</p>
 </div>
 </div>
 </div>
@@ -1121,7 +1128,21 @@ footer{position:relative;z-index:1;margin-top:32px;background:linear-gradient(13
 <input id="siCustom" type="text" placeholder="Any stock... e.g. SBIN or META" style="padding:5px 12px;border-radius:8px;border:1px solid var(--border);font-size:11px;width:220px;background:var(--bg);color:var(--text)" onkeydown="if(event.key==='Enter'){runStockIntel(this.value.trim().toUpperCase())}">
 <button onclick="runStockIntel(document.getElementById('siCustom').value.trim().toUpperCase())" style="padding:6px 18px;border-radius:8px;background:linear-gradient(135deg,#0891b2,#0e7490);color:#fff;border:none;font-size:11px;font-weight:700;cursor:pointer">&#128300; Analyze</button>
 </div>
-<div id="siResult" style="min-height:200px"><div style="text-align:center;padding:30px;color:var(--text3);font-size:11px">Select a stock above for complete intelligence report</div></div>
+<div id="siResult" style="min-height:200px"><div style="text-align:center;padding:40px">
+<div style="font-size:40px;margin-bottom:8px;opacity:.3">🔬</div>
+<div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:4px">Complete Stock Intelligence</div>
+<div style="font-size:11px;color:var(--text3);max-width:420px;margin:0 auto">Select any stock above. Get a 13-section BUY/SELL/HOLD report covering fundamentals, valuation, price action, smart money, risk factors &amp; exact entry/exit levels.</div>
+</div></div>
+<!-- Top Picks Section -->
+<div style="padding:0 18px 16px">
+<div style="border-top:1px solid var(--border);padding-top:12px;margin-top:4px">
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+<div style="font-size:13px;font-weight:800;color:var(--text)">🏆 TOP 5 PICKS — Where to Invest Now</div>
+<button onclick="loadTopPicks()" style="padding:5px 16px;border-radius:8px;background:linear-gradient(135deg,#0891b2,#0e7490);color:#fff;border:none;font-size:10px;font-weight:700;cursor:pointer">⚡ Generate</button>
+</div>
+<div id="topPicksResult"><div style="text-align:center;padding:20px;color:var(--text3);font-size:10px">Click Generate to find the best stocks &amp; ETFs to invest right now — ranked by fundamentals + valuation + momentum</div></div>
+</div>
+</div>
 </div></div>
 
 <!-- ═══ TAB: VALUATION REPORT ═══ -->
@@ -1150,7 +1171,11 @@ footer{position:relative;z-index:1;margin-top:32px;background:linear-gradient(13
 <button onclick="loadValuation('TSLA')" class="algo-btn" style="padding:4px 12px;font-size:10px;font-weight:700">Tesla</button>
 <button onclick="loadValuation('GOOGL')" class="algo-btn" style="padding:4px 12px;font-size:10px;font-weight:700">Google</button>
 </div>
-<div id="valResult" style="min-height:200px"><div style="text-align:center;padding:30px;color:var(--text3);font-size:11px">Select a stock or index above</div></div>
+<div id="valResult" style="min-height:200px"><div style="text-align:center;padding:40px">
+<div style="font-size:40px;margin-bottom:8px;opacity:.25">💰</div>
+<div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:4px">Valuation Intelligence</div>
+<div style="font-size:11px;color:var(--text3);max-width:420px;margin:0 auto">Select any stock or index. See PE analysis, crash scenarios (-10%/-20%/-30%), geopolitical risks, and where to invest in worst-case situations.</div>
+</div></div>
 </div></div>
 
 <!-- ═══ TAB: TRADE JOURNAL ═══ -->
@@ -1220,7 +1245,12 @@ footer{position:relative;z-index:1;margin-top:32px;background:linear-gradient(13
 <button onclick="askAIQuick('What is the risk?')" style="padding:4px 10px;border-radius:20px;background:var(--bg2);border:1px solid var(--border);color:var(--text3);font-size:8px;cursor:pointer;font-weight:600">Risk?</button>
 <button onclick="askAIQuick('IV and volatility analysis')" style="padding:4px 10px;border-radius:20px;background:var(--bg2);border:1px solid var(--border);color:var(--text3);font-size:8px;cursor:pointer;font-weight:600">IV?</button>
 <button onclick="askAIQuick('Why this signal?')" style="padding:4px 10px;border-radius:20px;background:var(--bg2);border:1px solid var(--border);color:var(--text3);font-size:8px;cursor:pointer;font-weight:600">Why?</button>
+<button onclick="askAIQuick('Compare NIFTY vs BANKNIFTY')" style="padding:4px 10px;border-radius:20px;background:var(--bg2);border:1px solid var(--border);color:var(--text3);font-size:8px;cursor:pointer;font-weight:600">Compare</button>
+<button onclick="askAIQuick('What is delta theta gamma?')" style="padding:4px 10px;border-radius:20px;background:var(--bg2);border:1px solid var(--border);color:var(--text3);font-size:8px;cursor:pointer;font-weight:600">&#127891; Learn Greeks</button>
+<button onclick="askAIQuick('What is IV and how to use it?')" style="padding:4px 10px;border-radius:20px;background:var(--bg2);border:1px solid var(--border);color:var(--text3);font-size:8px;cursor:pointer;font-weight:600">&#127891; Learn IV</button>
+<button onclick="askAIQuick('How to exit and book profit?')" style="padding:4px 10px;border-radius:20px;background:var(--bg2);border:1px solid var(--border);color:var(--text3);font-size:8px;cursor:pointer;font-weight:600">Exit plan</button>
 </div>
+<div style="font-size:8px;color:var(--text3);margin-bottom:10px;line-height:1.5">&#128161; <strong>Ask anything:</strong> "Is RELIANCE bullish?", "Explain iron condor", "Risk for TSLA", "Compare TCS vs INFY", or just type whatever you're thinking — I'll figure it out.</div>
 <div id="aiChatArea" style="min-height:200px;max-height:600px;overflow-y:auto"></div>
 </div></div>
 

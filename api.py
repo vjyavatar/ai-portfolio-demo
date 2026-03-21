@@ -11091,6 +11091,86 @@ async def journal_update(trade_id: str, request: Request):
 # ═══════════════════════════════════════════════════
 # AI TRADING ASSISTANT — Rule-based + context-aware
 # ═══════════════════════════════════════════════════
+@app.get("/api/top-picks")
+async def top_picks(region: str = "IN"):
+    """Generate top 5 stock/ETF picks ranked by confluence score"""
+    try:
+        is_us = region.upper() == "US"
+        if is_us:
+            candidates = ["AAPL","MSFT","NVDA","GOOGL","AMZN","META","TSLA","AVGO","JPM","V","UNH","LLY"]
+            etfs = ["VOO","QQQ","SCHD","VTI","ARKK"]
+        else:
+            candidates = ["RELIANCE","TCS","HDFCBANK","INFY","ICICIBANK","BHARTIARTL","ITC","LT","SBIN","TATAMOTORS","BAJFINANCE","MARUTI"]
+            etfs = ["NIFTYBEES","JUNIORBEES","BANKBEES","GOLDBEES","CPSE"]
+        
+        results = []
+        for sym in candidates + etfs:
+            try:
+                # Use cached stock-intel if available
+                cache_key = f"{sym}_{region}"
+                if cache_key in _si_cache:
+                    age = (datetime.utcnow() - _si_cache[cache_key]["ts"]).total_seconds()
+                    if age < 3600:  # 1hr for top picks
+                        d = _si_cache[cache_key]["data"]
+                        if d.get("success"):
+                            results.append(d)
+                            continue
+                
+                # Quick analysis using yfinance
+                import yfinance as yf
+                import numpy as np
+                yf_sym = sym if is_us else f"{sym}.NS"
+                tk = yf.Ticker(yf_sym)
+                info = tk.info or {}
+                hist = tk.history(period="6mo")
+                if len(hist) < 20: continue
+                
+                closes = hist["Close"].values.astype(float)
+                price = round(float(closes[-1]), 2)
+                if price == 0: continue
+                
+                # Quick scores
+                pe = float(info.get("trailingPE", 0) or 0)
+                fwd_pe = float(info.get("forwardPE", 0) or 0)
+                rev_g = float(info.get("revenueGrowth", 0) or 0) * 100
+                roe_v = float(info.get("returnOnEquity", 0) or 0) * 100
+                import pandas as pd
+                ema20 = float(pd.Series(closes).ewm(span=20).mean().iloc[-1])
+                ema50 = float(pd.Series(closes).ewm(span=50).mean().iloc[-1])
+                trend_up = ema20 > ema50
+                
+                fund_s = 50 + (15 if rev_g > 10 else (-10 if rev_g < -5 else 0)) + (10 if roe_v > 15 else 0)
+                val_s = 50 + (15 if 0 < pe < 20 else (-10 if pe > 40 else 0)) + (10 if fwd_pe > 0 and fwd_pe < pe else 0)
+                pa_s = 50 + (25 if trend_up else -10)
+                conf = round(fund_s * 0.30 + val_s * 0.25 + pa_s * 0.45)
+                
+                decision = "BUY" if conf >= 60 and trend_up else ("HOLD" if conf >= 45 else "AVOID")
+                
+                results.append({
+                    "success": True, "symbol": sym, "price": price,
+                    "companyName": info.get("shortName", sym),
+                    "sector": info.get("sector", "ETF" if sym in etfs else ""),
+                    "decision": decision, "confidence": min(conf, 95),
+                    "fundamental": {"score": min(fund_s, 100), "verdict": "STRONG" if fund_s >= 65 else "AVERAGE", "revGrowth": round(rev_g, 1), "roe": round(roe_v, 1)},
+                    "valuation": {"score": min(val_s, 100), "verdict": "CHEAP" if val_s >= 60 else "FAIR", "pe": round(pe, 1), "fwdPE": round(fwd_pe, 1)},
+                    "priceAction": {"score": min(pa_s, 100), "trend": "BULLISH" if trend_up else "BEARISH"},
+                    "isETF": sym in etfs,
+                })
+            except Exception as ex:
+                print(f"  ⚠️ Top picks skip {sym}: {ex}")
+                continue
+        
+        # Sort by confidence, take top 5
+        results.sort(key=lambda x: x.get("confidence", 0), reverse=True)
+        top5 = results[:5]
+        
+        csym = "$" if is_us else "₹"
+        return {"success": True, "picks": top5, "region": region, "csym": csym, "total_scanned": len(candidates) + len(etfs)}
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        return {"success": False, "error": str(e)}
+
+
 @app.post("/api/ai-assist")
 async def ai_assist(request: Request):
     """AI assistant that answers trading questions using live data."""
@@ -11277,7 +11357,137 @@ Think of it as buying insurance — small cost, big payout if things drop."""
         answer += f"Factor score: {tc.get('factorScore', 50)}% ({algo.get('supports', 0)} supporting, {algo.get('opposes', 0)} opposing)"
     
     else:
-        answer = f"📊 {symbol} Quick Summary:\n• Signal: {sig} ({direction})\n• Price: {csym}{price:,.2f}\n• Win Rate: {tc.get('estimatedWin', 50)}% (Grade {tc.get('grade', 'B')})\n• Trade: {tr.get('action', 'N/A')} at {csym}{tr.get('premEntry', 0)}\n• IV Rank: {oi.get('iv_rank', 50)}%\n• Scalp: {sc.get('direction', 'N/A')} ({sc.get('confidence', 0)}%)\n\nTry asking: 'Should I buy?', 'Best strategy?', 'Risk?', 'Scalp?', 'IV?'"
+        # ═══ SMART INFERENCE — handle ANY text ═══
+        # Try to extract a stock ticker from the question
+        import re
+        known_stocks = ["NIFTY","BANKNIFTY","SENSEX","RELIANCE","TCS","HDFCBANK","INFY","ICICIBANK","SBIN","ITC","LT","TATAMOTORS","BAJFINANCE","BHARTIARTL","MARUTI",
+                       "SPY","QQQ","IWM","AAPL","MSFT","NVDA","TSLA","AMZN","GOOGL","META","AMD","JPM","AVGO","NFLX"]
+        mentioned = [s for s in known_stocks if s.lower() in question]
+        
+        # Detect sentiment/intent from keywords
+        bullish_words = ["buy","long","bullish","up","call","ce","invest","good","strong","growth","undervalued","cheap"]
+        bearish_words = ["sell","short","bearish","down","put","pe","overvalued","expensive","weak","crash","fall"]
+        risk_words = ["risk","safe","loss","stop","protect","hedge","insurance","danger"]
+        learn_words = ["what is","explain","how does","teach","learn","mean","definition","basics","beginner"]
+        compare_words = ["vs","versus","compare","better","which one","or"]
+        
+        bull_count = sum(1 for w in bullish_words if w in question)
+        bear_count = sum(1 for w in bearish_words if w in question)
+        is_risk_q = any(w in question for w in risk_words)
+        is_learn_q = any(w in question for w in learn_words)
+        is_compare = any(w in question for w in compare_words)
+        
+        # Smart response based on detected intent
+        if mentioned and len(mentioned) >= 2 and is_compare:
+            # Compare two stocks
+            s1, s2 = mentioned[0], mentioned[1]
+            answer = f"📊 {s1} vs {s2} — Quick Comparison:\n\n"
+            answer += f"Use the Stock Intel tab to analyze each one separately. Look at:\n"
+            answer += f"• Fundamentals: Which has better revenue growth?\n"
+            answer += f"• Valuation: Which is cheaper (lower PE/PEG)?\n"
+            answer += f"• Trend: Which is in an uptrend?\n\n"
+            answer += f"The one scoring higher on ALL THREE is the better pick. If mixed, diversify — buy both.\n\n"
+            answer += f"💡 Tip: Click Stock Intel tab → Analyze {s1} → then {s2} → compare scores."
+            
+        elif mentioned and is_risk_q:
+            s1 = mentioned[0]
+            rm = algo.get("riskManagement", {})
+            answer = f"🛡️ Risk Analysis for {s1}:\n\n"
+            answer += f"• Signal: {sig} ({direction})\n"
+            answer += f"• Win Rate: {tc.get('estimatedWin', 50)}% (Grade {tc.get('grade', 'B')})\n"
+            if tr: answer += f"• Stop Loss: {csym}{tr.get('premSL', 0)} (max loss per lot: {csym}{rm.get('premiumAtRisk', 0):,.0f})\n"
+            answer += f"• Position sizing: {tc.get('sizeRecommendation', 'Use 1-2% of capital')}\n\n"
+            answer += f"Risk factors:\n"
+            for alert in (rm.get("exposureAlerts", []))[:3]:
+                answer += f"  ⚠️ {alert.get('msg', '')}\n"
+            answer += f"\n💡 Golden rule: Never risk more than 2% of your total capital on one trade."
+            
+        elif is_learn_q:
+            # Educational response
+            topic = question
+            if "greek" in topic or "delta" in topic or "theta" in topic:
+                answer = "📚 Greeks Explained Simply:\n\n"
+                answer += "• DELTA = Speed. How much your option moves when stock moves ₹1. Delta 0.5 = option moves 50 paise per ₹1.\n"
+                answer += "• THETA = Time decay. Your option loses this much value EVERY DAY. Like ice cream melting.\n"
+                answer += "• GAMMA = Acceleration. How fast Delta changes. High near expiry = wild swings.\n"
+                answer += "• VEGA = Fear sensitivity. When VIX rises, your option price jumps.\n\n"
+                answer += "💡 Remember: Theta works AGAINST buyers and FOR sellers. Near expiry, Theta accelerates — that's why options lose value fast in the last week."
+            elif "iv" in topic or "volatil" in topic:
+                answer = "📚 Volatility Explained:\n\n"
+                answer += "IV (Implied Volatility) = how expensive options are right now.\n"
+                answer += "Think of it like flight ticket prices:\n"
+                answer += "• High IV = peak season = expensive tickets = sell options\n"
+                answer += "• Low IV = off-season = cheap tickets = buy options\n\n"
+                answer += "IV Rank tells you WHERE current IV is vs last year:\n"
+                answer += "• Rank > 70% = expensive (sell premium)\n"
+                answer += "• Rank < 30% = cheap (buy premium)\n\n"
+                answer += "💡 Biggest retail mistake: Buying options when IV is high, then watching them lose value even when stock moves in their direction (IV crush)."
+            elif "spread" in topic or "iron" in topic or "straddle" in topic or "strateg" in topic:
+                answer = "📚 Strategy Guide:\n\n"
+                answer += "• BUY CALL/CE = You think stock goes UP. Risk = premium paid.\n"
+                answer += "• BUY PUT/PE = You think stock goes DOWN. Risk = premium paid.\n"
+                answer += "• BULL SPREAD = Buy + Sell calls. Capped profit but lower cost.\n"
+                answer += "• IRON CONDOR = Sell calls + puts. Profit if stock stays in range.\n"
+                answer += "• STRADDLE = Buy call + put same strike. Profit from BIG move either way.\n\n"
+                answer += "When to use what:\n"
+                answer += "• Confident direction + low IV → Buy Call/Put\n"
+                answer += "• Moderate confidence → Spread\n"
+                answer += "• No direction + high IV → Iron Condor\n"
+                answer += "• Event coming + low IV → Straddle"
+            else:
+                answer = "📚 Options Trading Basics:\n\n"
+                answer += "An OPTION = right to buy/sell a stock at a fixed price before a fixed date.\n"
+                answer += "• CALL (CE) = Bet stock goes UP\n"
+                answer += "• PUT (PE) = Bet stock goes DOWN\n"
+                answer += "• PREMIUM = What you pay for this right (like a movie ticket)\n"
+                answer += "• STRIKE = The price you're betting on\n"
+                answer += "• EXPIRY = When your bet expires\n\n"
+                answer += "💡 Start with: 'Should I buy NIFTY?' or 'Best strategy for RELIANCE?'"
+                
+        elif bull_count > bear_count and mentioned:
+            # Bullish sentiment detected
+            s1 = mentioned[0]
+            answer = f"📈 Bullish View on {s1}:\n\n"
+            answer += f"Current signal: {sig} ({direction}), Win Rate: {tc.get('estimatedWin', 50)}%\n\n"
+            if direction == "BULLISH":
+                answer += f"✅ Our engines AGREE with your bullish view!\n"
+                if tr: answer += f"Trade: {tr.get('action', '')} at {csym}{tr.get('premEntry', 0)}, SL: {csym}{tr.get('premSL', 0)}, Target: {csym}{tr.get('premT2', 0)}\n"
+            else:
+                answer += f"⚠️ Our engines show {direction} — your bullish view may face headwinds.\n"
+                answer += f"Consider waiting for trend confirmation before entering.\n"
+            answer += f"\n💡 Always check: Is the TREND with you? Is IV low (options cheap)? Do engines agree?"
+            
+        elif bear_count > bull_count and mentioned:
+            s1 = mentioned[0]
+            answer = f"📉 Bearish View on {s1}:\n\n"
+            answer += f"Current signal: {sig} ({direction})\n\n"
+            if direction == "BEARISH":
+                answer += f"✅ Engines confirm bearish bias. {sig}.\n"
+                if tr: answer += f"Trade: {tr.get('action', '')} at {csym}{tr.get('premEntry', 0)}\n"
+            else:
+                answer += f"⚠️ Engines show {direction} — bearish trade goes AGAINST the trend.\n"
+                answer += f"Contrarian trades work sometimes but have lower win rate.\n"
+            answer += f"\n💡 For bearish bets: Buy PUT/PE, or use Bear Put Spread to limit risk."
+        
+        else:
+            # Generic — give full summary
+            answer = f"📊 {symbol} Complete Summary:\n\n"
+            answer += f"🎯 SIGNAL: {sig} ({direction}) — Win Rate: {tc.get('estimatedWin', 50)}% (Grade {tc.get('grade', 'B')})\n"
+            answer += f"💰 PRICE: {csym}{price:,.2f}\n"
+            if tr and not isWait:
+                answer += f"\n📋 TRADE:\n"
+                answer += f"  {tr.get('action', 'N/A')}\n"
+                answer += f"  Entry: {csym}{tr.get('premEntry', 0)} → SL: {csym}{tr.get('premSL', 0)} → Target: {csym}{tr.get('premT2', 0)}\n"
+                answer += f"  R:R: {tr.get('rrRatio', 'N/A')}\n"
+            answer += f"\n📊 ENGINES:\n"
+            eng = algo.get("engines", {})
+            if eng.get("regime"): answer += f"  Trend: {eng['regime'].get('trend', '—')} ({eng['regime'].get('strength', '—')})\n"
+            if eng.get("oi"): answer += f"  Smart Money: {eng['oi'].get('bias', '—')}\n"
+            if eng.get("volatility"): answer += f"  Volatility: {eng['volatility'].get('action', '—').replace('_', ' ')}\n"
+            if eng.get("momentum"): answer += f"  Momentum: {eng['momentum'].get('signal', '—').replace('_', ' ')}\n"
+            answer += f"\n⚡ SCALP: {sc.get('direction', 'N/A')} ({sc.get('confidence', 0)}%)\n"
+            answer += f"📊 IV Rank: {oi.get('iv_rank', '—')}%\n\n"
+            answer += f"💡 Try asking:\n• 'Should I buy {symbol}?'\n• 'CE/CALL buy'\n• 'Best strategy'\n• 'What is IV?'\n• 'Compare NIFTY vs BANKNIFTY'"
     
     return {"success": True, "answer": answer, "symbol": symbol, "signal": sig, "direction": direction}
 
