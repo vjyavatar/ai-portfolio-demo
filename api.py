@@ -11320,6 +11320,8 @@ async def stock_intel(symbol: str, region: str = "IN"):
     """Complete Stock Intelligence — 13-section decision engine"""
     try:
         import yfinance as yf, math
+        import pandas as pd
+        import numpy as np
         is_us = region.upper() == "US"
         yf_sym = symbol if is_us else f"{symbol}.NS"
         csym = "$" if is_us else "₹"

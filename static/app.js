@@ -1793,7 +1793,7 @@ if(sub==='technical')setTimeout(()=>window.dispatchEvent(new Event('resize')),20
 var TAB_GROUPS = {
   overview: {tabs: ['quick'], labels: ['Summary'], default: 'quick'},
   research: {tabs: ['analysis','dcf','equity','compare'], labels: ['AI Analysis','DCF Valuation','Research','Compare'], default: 'analysis'},
-  trading:  {tabs: ['trades','stockintel','scanner','valreport','backtest','smarttrades','journal','aiassist'], labels: ['Algo Trades','Stock Intel','Scanner','Valuation','Backtest','Smart Trades','Journal','AI Assistant'], default: 'trades'},
+  trading:  {tabs: ['trades','smarttrades','stockintel','scanner','valreport','backtest','journal','aiassist'], labels: ['Algo Trades','Smart Trades','Stock Intel','Scanner','Valuation','Backtest','Journal','AI Assistant'], default: 'trades'},
   markets:  {tabs: ['indices','daily'], labels: ['Top Performers','Market Daily'], default: 'indices'},
   tools:    {tabs: ['finance','education','compare'], labels: ['Finance Tools','Education','Compare Stocks'], default: 'finance'},
 };
@@ -5314,6 +5314,12 @@ function algoSelect(sym,btn){
 // Highlight button
 document.querySelectorAll('.algo-btn').forEach(function(b){b.classList.remove('active')});
 if(btn)btn.classList.add('active');
+// Highlight trade card in top trades grid
+document.querySelectorAll('[id^="tc_"]').forEach(function(c){c.style.border='1px solid var(--border)';c.style.boxShadow='none'});
+var tc=document.getElementById('tc_'+sym);
+if(tc){tc.style.border='2px solid #1a56db';tc.style.boxShadow='0 0 20px rgba(26,86,219,.15)';tc.scrollIntoView({behavior:'smooth',block:'nearest'})}
+// Store active symbol for reference
+window._activeAlgoSym=sym;
 // Clear custom input
 var ci=document.getElementById('algoCustomTicker');
 if(ci&&btn)ci.value='';
@@ -5965,8 +5971,8 @@ h+='</div></details>';
 }
 
 // ═══ BREAKOUT / BREAKDOWN ALERT ═══
-if(eng&&eng.oi){
-var _bo=eng.oi;
+if(_eng&&_eng.oi){
+var _bo=_eng.oi;
 if(_bo.nearBreakout){
 h+='<div style="margin-bottom:10px;padding:10px 14px;border-radius:10px;background:rgba(5,150,105,.06);border:2px solid rgba(5,150,105,.2);display:flex;align-items:center;gap:10px">';
 h+='<span style="font-size:24px">🚀</span>';
