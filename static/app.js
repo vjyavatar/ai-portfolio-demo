@@ -5527,8 +5527,9 @@ var reg=window._siRegion||'IN';
 var S=reg==='US'?'$':'₹';
 var el=document.getElementById('topPicksResult');
 if(!el)return;
-el.innerHTML='<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px">'+[1,2,3,4,5].map(function(){return '<div style="height:100px;border-radius:10px;background:var(--bg2);animation:shimmer 1.5s infinite;background-size:200% 100%;background-image:linear-gradient(90deg,var(--bg2) 25%,var(--bg3) 50%,var(--bg2) 75%)"></div>'}).join('')+'</div><div style="text-align:center;font-size:10px;color:var(--text3);margin-top:8px"><div style="display:inline-block;width:12px;height:12px;border:2px solid #0891b2;border-top-color:transparent;border-radius:50%;animation:spin .5s linear infinite;vertical-align:middle;margin-right:6px"></div>Scanning '+(reg==='US'?'17':'17')+' stocks & ETFs...</div>';
-fetch('/api/top-picks?region='+reg).then(function(r){return r.json()}).then(function(d){
+el.innerHTML='<div style="padding:20px"><div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:12px">'+[1,2,3,4,5].map(function(){return '<div style="height:100px;border-radius:10px;background:var(--bg2);animation:shimmer 1.5s infinite;background-size:200% 100%;background-image:linear-gradient(90deg,var(--bg2) 25%,var(--bg3) 50%,var(--bg2) 75%)"></div>'}).join('')+'</div><div style="text-align:center;font-size:10px;color:var(--text3)"><div style="display:inline-block;width:12px;height:12px;border:2px solid #0891b2;border-top-color:transparent;border-radius:50%;animation:spin .5s linear infinite;vertical-align:middle;margin-right:6px"></div>Scanning '+(reg==='US'?'60 US stocks + ETFs (S&P 500 top 50 + major ETFs)':'52 Indian stocks + ETFs (NIFTY 50 + large caps)')+' through the Stock Intel engine...<br><span style="font-size:8px;opacity:.7">Analyzing fundamentals, valuation &amp; price action for EVERY stock. May take 1-2 min on first run.</span></div></div>';
+var _tpController=new AbortController();setTimeout(function(){_tpController.abort()},180000);
+fetch('/api/top-picks?region='+reg,{signal:_tpController.signal}).then(function(r){return r.json()}).then(function(d){
 _topPicksLoading=false;
 if(!d.success){el.innerHTML='<div style="color:var(--red);padding:12px;font-size:10px">'+d.error+'</div>';return}
 var h='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px">';
@@ -5561,7 +5562,7 @@ h+='</div>';
 h+='</div>';
 });
 h+='</div>';
-h+='<div style="text-align:center;margin-top:8px;font-size:8px;color:var(--text3)">Scanned '+d.total_scanned+' stocks & ETFs · Ranked by Fundamentals(30%) + Valuation(25%) + Trend(45%) · Click any card for full report</div>';
+h+='<div style="text-align:center;margin-top:8px;font-size:8px;color:var(--text3)">'+(d.note||('Scanned '+d.total_scanned+' stocks'))+(d.total_scored?' · '+d.total_scored+' successfully analyzed':'')+'<br>Click any card for full 13-section report</div>';
 el.innerHTML=h;
 }).catch(function(e){_topPicksLoading=false;el.innerHTML='<div style="color:var(--red);padding:12px;font-size:10px">Error: '+e.message+'</div>'});
 }
@@ -5792,34 +5793,15 @@ if(data.signal&&data.signal!=='N/A'){
 var sCl=data.signal.includes('BUY')?'#059669':data.signal==='AVOID'?'#dc2626':'#d97706';
 sigBadge='<div style="margin-bottom:8px;display:flex;gap:4px;flex-wrap:wrap"><span style="font-size:8px;padding:3px 10px;border-radius:6px;background:'+sCl+'12;color:'+sCl+';font-weight:800">'+data.signal+'</span> <span style="font-size:8px;padding:3px 10px;border-radius:6px;background:'+(data.direction==='BULLISH'?'#05966912':'#dc262612')+';color:'+(data.direction==='BULLISH'?'#059669':'#dc2626')+';font-weight:800">'+data.direction+'</span></div>';
 }
-// Format the answer text into rich HTML
-var fmtAnswer=answer
-  .replace(/\n\n/g,'<div style="height:8px"></div>')
-  .replace(/\n• /g,'<div style="display:flex;gap:6px;padding:2px 0"><span style="color:var(--cyan);flex-shrink:0">•</span><span>')
-  .replace(/\n  • /g,'</span></div><div style="display:flex;gap:6px;padding:2px 0;margin-left:12px"><span style="color:var(--text3);flex-shrink:0">◦</span><span>')
-  .replace(/\n  /g,'</span></div><div style="display:flex;gap:6px;padding:2px 0;margin-left:12px"><span style="color:var(--text3);flex-shrink:0">·</span><span>')
+// Format answer — safe, no complex regex chains
+var fmtAnswer=answer.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
   .replace(/\n/g,'<br>')
+  .replace(/•/g,'<span style="color:var(--cyan)">•</span>')
   .replace(/✅/g,'<span style="color:#059669">✅</span>')
   .replace(/❌/g,'<span style="color:#dc2626">❌</span>')
   .replace(/⚠️/g,'<span style="color:#d97706">⚠️</span>')
-  .replace(/💡/g,'<span style="color:#0891b2">💡</span>')
-  .replace(/Entry: ([₹$][\d,.]+)/g,'Entry: <strong style="color:var(--text)">$1</strong>')
-  .replace(/SL: ([₹$][\d,.]+)/g,'SL: <strong style="color:#dc2626">$1</strong>')
-  .replace(/Target: ([₹$][\d,.]+)/g,'Target: <strong style="color:#059669">$1</strong>')
-  .replace(/T1: ([₹$][\d,.]+)/g,'T1: <strong style="color:#059669">$1</strong>')
-  .replace(/T2: ([₹$][\d,.]+)/g,'T2: <strong style="color:#047857">$1</strong>')
-  .replace(/R:R[: ]+([0-9.]+)/g,'R:R: <strong style="color:var(--purple)">$1</strong>')
-  .replace(/Grade ([A-F][+-]?)/g,'Grade <strong style="color:var(--blue)">$1</strong>')
-  .replace(/(\d+)% win/gi,'<strong style="color:var(--cyan)">$1%</strong> win')
-  .replace(/STRONG BUY/g,'<strong style="color:#059669">STRONG BUY</strong>')
-  .replace(/BUY/g,'<strong style="color:#059669">BUY</strong>')
-  .replace(/SELL/g,'<strong style="color:#dc2626">SELL</strong>')
-  .replace(/AVOID/g,'<strong style="color:#dc2626">AVOID</strong>')
-  .replace(/HOLD/g,'<strong style="color:#d97706">HOLD</strong>')
-  .replace(/BULLISH/g,'<strong style="color:#059669">BULLISH</strong>')
-  .replace(/BEARISH/g,'<strong style="color:#dc2626">BEARISH</strong>')
-  .replace(/NEUTRAL/g,'<strong style="color:#d97706">NEUTRAL</strong>');
-el.innerHTML+='<div style="margin-bottom:12px"><div style="display:inline-block;padding:14px 18px;border-radius:4px 16px 16px 16px;background:var(--surface);color:var(--text);font-size:11px;max-width:90%;line-height:1.7;border:1px solid var(--border);box-shadow:var(--shadow-sm)">'+sigBadge+'<div>'+fmtAnswer+'</div></div></div>';
+  .replace(/💡/g,'<span style="color:#0891b2">💡</span>');
+el.innerHTML+='<div style="margin-bottom:12px"><div style="display:inline-block;padding:14px 18px;border-radius:4px 16px 16px 16px;background:var(--surface);color:var(--text);font-size:11px;max-width:90%;line-height:1.7;border:1px solid var(--border);box-shadow:var(--shadow-sm)">'+sigBadge+'<div style="white-space:pre-line">'+fmtAnswer+'</div></div></div>';
 el.scrollTop=el.scrollHeight;
 }).catch(function(e){
 var ld=document.getElementById('aiLoading');if(ld)ld.remove();
@@ -6109,8 +6091,9 @@ h+='<div style="height:6px;display:flex"><div style="width:'+(wT>0?(wS/wT*100):0
 var cats=['PRICE_ACTION','INDICATOR','OPTION','FUNDAMENTAL','RISK'];
 var catNames={'PRICE_ACTION':'Price','INDICATOR':'Indicator','OPTION':'Options','FUNDAMENTAL':'Fundamental','RISK':'Risk'};
 (d.factors||[]).forEach(function(f){
-var fc=f.signal==='BUY'?'#059669':f.signal==='SELL'?'#dc2626':'#6b7280';
-h+='<div style="display:flex;align-items:center;gap:4px;padding:2px 12px;font-size:8px;border-bottom:1px solid var(--border)"><span style="width:8px;height:8px;border-radius:50%;background:'+fc+';flex-shrink:0"></span><span style="flex:1;color:var(--text)">'+f.name+'</span><span style="font-size:7px;color:var(--text3)">'+f.weight+'w</span><span style="font-size:7px;font-weight:700;color:'+fc+'">'+f.signal+'</span></div>';
+var fc=f.status==='SUPPORTS'?'#059669':f.status==='OPPOSES'?'#dc2626':'#6b7280';
+var fl=f.status==='SUPPORTS'?'FOR':f.status==='OPPOSES'?'AGAINST':'NEUTRAL';
+h+='<div style="display:flex;align-items:center;gap:4px;padding:2px 12px;font-size:8px;border-bottom:1px solid var(--border)"><span style="width:8px;height:8px;border-radius:50%;background:'+fc+';flex-shrink:0"></span><span style="flex:1;color:var(--text)">'+(f.name||'')+'</span><span style="font-size:7px;color:var(--text3)">'+(f.weight||1)+'w</span><span style="font-size:7px;font-weight:700;color:'+fc+'">'+fl+'</span></div>';
 });
 h+='</details>';
 }

@@ -370,6 +370,25 @@ def fetch_management_context(ticker: str, company_name: str) -> tuple:
                         date = q.get('date', '')
                         parts.append(f"{date}: Revenue ${rev_val:,.0f} | Earnings ${earn_val:,.0f}")
                 
+                # LIVE earnings dates — shows actual reported dates + EPS
+                try:
+                    ed_df = tk_ins.earnings_dates
+                    if ed_df is not None and len(ed_df) > 0:
+                        parts.append("\n--- RECENT EARNINGS REPORTS (LIVE FROM EXCHANGE) ---")
+                        for idx_row in range(min(4, len(ed_df))):
+                            row = ed_df.iloc[idx_row]
+                            date_str = str(ed_df.index[idx_row])[:10]
+                            eps_est = row.get('EPS Estimate', 'N/A')
+                            eps_act = row.get('Reported EPS', 'N/A')
+                            surprise = row.get('Surprise(%)', 'N/A')
+                            if eps_act != 'N/A' and eps_act is not None:
+                                parts.append(f"{date_str}: EPS Reported ${float(eps_act):.2f} (Est: ${float(eps_est):.2f}, Surprise: {surprise}%)")
+                            else:
+                                parts.append(f"{date_str}: UPCOMING — EPS Est ${float(eps_est):.2f}" if eps_est != 'N/A' and eps_est is not None else f"{date_str}: UPCOMING")
+                        print(f"✅ Got live earnings dates for {ticker}")
+                except Exception as ed_ex:
+                    print(f"⚠️ earnings_dates failed for {ticker}: {ed_ex}")
+                
                 if parts:
                     context_parts.append("=== EARNINGS & QUARTERLY DATA (REAL) ===\n" + "\n".join(parts))
                     print(f"✅ Got earnings history for {ticker}")
@@ -1855,6 +1874,32 @@ def get_live_stock_data(company_name: str) -> dict:
                             live_data["next_earnings"] = str(ed)[:10]
                         else:
                             live_data["next_earnings"] = "N/A"
+                        # Override with earnings_dates if available (more accurate)
+                        try:
+                            ed_df = tk_ins.earnings_dates
+                            if ed_df is not None and len(ed_df) > 0:
+                                from datetime import datetime as _dt
+                                now = _dt.utcnow()
+                                for idx_r in range(len(ed_df)):
+                                    date_val = ed_df.index[idx_r]
+                                    if hasattr(date_val, 'to_pydatetime'):
+                                        date_val = date_val.to_pydatetime().replace(tzinfo=None)
+                                    if date_val > now:
+                                        live_data["next_earnings"] = str(ed_df.index[idx_r])[:10]
+                                        break
+                                # Also find most recent reported
+                                for idx_r in range(len(ed_df)):
+                                    date_val = ed_df.index[idx_r]
+                                    if hasattr(date_val, 'to_pydatetime'):
+                                        date_val = date_val.to_pydatetime().replace(tzinfo=None)
+                                    row = ed_df.iloc[idx_r]
+                                    if date_val <= now and row.get('Reported EPS') is not None:
+                                        live_data["last_earnings"] = str(ed_df.index[idx_r])[:10]
+                                        live_data["last_eps_reported"] = float(row.get('Reported EPS', 0))
+                                        live_data["last_eps_surprise"] = row.get('Surprise(%)', 'N/A')
+                                        break
+                        except:
+                            pass
                         import math as _m
                         def _safe_cal(v):
                             if v is None: return "N/A"
@@ -11105,83 +11150,190 @@ async def journal_update(trade_id: str, request: Request):
 # ═══════════════════════════════════════════════════
 @app.get("/api/top-picks")
 async def top_picks(region: str = "IN"):
-    """Generate top 5 stock/ETF picks ranked by confluence score"""
+    """Scan ALL major stocks using batch download, rank by Stock Intel engine, return top 5"""
     try:
-        is_us = region.upper() == "US"
-        if is_us:
-            candidates = ["AAPL","MSFT","NVDA","GOOGL","AMZN","META","TSLA","AVGO","JPM","V","UNH","LLY"]
-            etfs = ["VOO","QQQ","SCHD","VTI","ARKK"]
-        else:
-            candidates = ["RELIANCE","TCS","HDFCBANK","INFY","ICICIBANK","BHARTIARTL","ITC","LT","SBIN","TATAMOTORS","BAJFINANCE","MARUTI"]
-            etfs = ["NIFTYBEES","JUNIORBEES","BANKBEES","GOLDBEES","CPSE"]
+        import yfinance as yf
+        import pandas as pd
+        import numpy as np
         
+        is_us = region.upper() == "US"
+        csym = "$" if is_us else "₹"
+        
+        # ═══ FULL UNIVERSE — Not a shortcut. Every major stock. ═══
+        if is_us:
+            # S&P 500 top 50 by market cap + major ETFs
+            universe = [
+                "AAPL","MSFT","NVDA","GOOGL","AMZN","META","TSLA","AVGO","BRK-B","LLY",
+                "JPM","V","UNH","XOM","MA","JNJ","PG","COST","HD","ABBV",
+                "MRK","AMD","CRM","NFLX","ADBE","PEP","KO","TMO","ORCL","BAC",
+                "MU","WMT","CSCO","ACN","LIN","DHR","ABT","PM","TXN","QCOM",
+                "NEE","LOW","ISRG","GE","CAT","AMAT","INTU","BKNG","GS","BLK",
+                # ETFs
+                "VOO","QQQ","SCHD","VTI","SMH","XLF","XLK","XLV","ARKK","IWM"
+            ]
+        else:
+            # NIFTY 50 + NIFTY Next 50 top picks + ETFs
+            universe_raw = [
+                "RELIANCE","TCS","HDFCBANK","INFY","ICICIBANK","BHARTIARTL","ITC","LT",
+                "SBIN","AXISBANK","KOTAKBANK","BAJFINANCE","MARUTI","TATAMOTORS","SUNPHARMA",
+                "TATASTEEL","HCLTECH","WIPRO","NTPC","POWERGRID","ONGC","COALINDIA",
+                "ADANIENT","ADANIPORTS","BAJAJ-AUTO","HDFCLIFE","SBILIFE","DIVISLAB",
+                "DRREDDY","CIPLA","TITAN","NESTLEIND","ULTRACEMCO","GRASIM","JSWSTEEL",
+                "INDUSINDBK","M&M","TECHM","HEROMOTOCO","BPCL","HINDALCO","TATACONSUM",
+                "APOLLOHOSP","EICHERMOT","BRITANNIA","LTIM","HINDUNILVR",
+                # ETFs
+                "NIFTYBEES","JUNIORBEES","BANKBEES","GOLDBEES","CPSE"
+            ]
+            universe = [s + ".NS" for s in universe_raw if s not in ["NIFTYBEES","JUNIORBEES","BANKBEES","GOLDBEES","CPSE"]]
+            universe += [s + ".NS" for s in ["NIFTYBEES","JUNIORBEES","BANKBEES","GOLDBEES","CPSE"]]
+            etf_set = {"NIFTYBEES.NS","JUNIORBEES.NS","BANKBEES.NS","GOLDBEES.NS","CPSE.NS"}
+        
+        if is_us:
+            etf_set = {"VOO","QQQ","SCHD","VTI","SMH","XLF","XLK","XLV","ARKK","IWM"}
+        
+        print(f"🔍 Top Picks: Scanning {len(universe)} stocks for {region}...")
+        
+        # ═══ BATCH DOWNLOAD — One API call for ALL stocks ═══
+        hist_data = yf.download(universe, period="6mo", group_by="ticker", progress=False, threads=True)
+        
+        # Also get fundamental info in batches
         results = []
-        for sym in candidates + etfs:
+        for sym in universe:
             try:
-                # Use cached stock-intel if available
-                cache_key = f"{sym}_{region}"
+                clean_sym = sym.replace(".NS", "") if not is_us else sym
+                
+                # Check stock_intel cache first
+                cache_key = f"{clean_sym}_{region}"
                 if cache_key in _si_cache:
                     age = (datetime.utcnow() - _si_cache[cache_key]["ts"]).total_seconds()
-                    if age < 3600:  # 1hr for top picks
+                    if age < 1800:
                         d = _si_cache[cache_key]["data"]
                         if d.get("success"):
+                            d["isETF"] = sym in etf_set
                             results.append(d)
                             continue
                 
-                # Quick analysis using yfinance
-                import yfinance as yf
-                import numpy as np
-                yf_sym = sym if is_us else f"{sym}.NS"
-                tk = yf.Ticker(yf_sym)
-                info = tk.info or {}
-                hist = tk.history(period="6mo")
-                if len(hist) < 20: continue
+                # Extract price history from batch data
+                if len(universe) > 1:
+                    try:
+                        closes = hist_data[sym]["Close"].dropna().values.astype(float)
+                    except:
+                        closes = np.array([])
+                else:
+                    closes = hist_data["Close"].dropna().values.astype(float)
                 
-                closes = hist["Close"].values.astype(float)
+                if len(closes) < 20:
+                    continue
+                
                 price = round(float(closes[-1]), 2)
-                if price == 0: continue
+                if price <= 0:
+                    continue
                 
-                # Quick scores
+                # Get fundamentals (individual call — cached by yfinance internally)
+                try:
+                    tk = yf.Ticker(sym)
+                    info = tk.info or {}
+                except:
+                    info = {}
+                
+                # ═══ SAME SCORING AS STOCK INTEL ENGINE ═══
+                # Fundamental score
+                rev_growth = float(info.get("revenueGrowth", 0) or 0) * 100
+                earn_growth = float(info.get("earningsGrowth", 0) or 0) * 100
+                profit_margin = float(info.get("profitMargins", 0) or 0) * 100
+                debt_equity = float(info.get("debtToEquity", 0) or 0)
+                roe = float(info.get("returnOnEquity", 0) or 0) * 100
+                
+                fund_score = 50
+                fund_flags = []
+                if rev_growth > 15: fund_score += 15; fund_flags.append(f"+Revenue {rev_growth:.0f}%")
+                elif rev_growth > 5: fund_score += 5
+                elif rev_growth < -5: fund_score -= 10; fund_flags.append(f"-Revenue declining {rev_growth:.0f}%")
+                if earn_growth > 20: fund_score += 15; fund_flags.append(f"+Earnings {earn_growth:.0f}%")
+                elif earn_growth < -5: fund_score -= 10
+                if profit_margin > 15: fund_score += 10
+                elif profit_margin < 5 and profit_margin != 0: fund_score -= 10
+                if 0 < debt_equity < 50: fund_score += 5
+                elif debt_equity > 150: fund_score -= 10
+                if roe > 15: fund_score += 5
+                fund_score = max(0, min(100, fund_score))
+                fund_verdict = "STRONG" if fund_score >= 70 else ("AVERAGE" if fund_score >= 45 else "WEAK")
+                
+                # Valuation score
                 pe = float(info.get("trailingPE", 0) or 0)
                 fwd_pe = float(info.get("forwardPE", 0) or 0)
-                rev_g = float(info.get("revenueGrowth", 0) or 0) * 100
-                roe_v = float(info.get("returnOnEquity", 0) or 0) * 100
-                import pandas as pd
+                peg = float(info.get("pegRatio", 0) or 0)
+                
+                val_score = 50
+                if pe > 0:
+                    if pe < 15: val_score += 20
+                    elif pe < 25: val_score += 5
+                    elif pe > 40: val_score -= 15
+                if fwd_pe > 0 and pe > 0 and fwd_pe < pe * 0.85: val_score += 10
+                if peg > 0 and peg < 1: val_score += 15
+                elif peg > 2: val_score -= 10
+                val_score = max(0, min(100, val_score))
+                val_verdict = "CHEAP" if val_score >= 65 else ("FAIR" if val_score >= 40 else "EXPENSIVE")
+                
+                # Price Action score
                 ema20 = float(pd.Series(closes).ewm(span=20).mean().iloc[-1])
                 ema50 = float(pd.Series(closes).ewm(span=50).mean().iloc[-1])
-                trend_up = ema20 > ema50
+                sma200 = float(np.mean(closes[-200:])) if len(closes) >= 200 else float(np.mean(closes[-50:]))
+                trend_up = ema20 > ema50 and price > sma200
+                trend = "BULLISH" if trend_up else ("BEARISH" if ema20 < ema50 and price < sma200 else "SIDEWAYS")
                 
-                fund_s = 50 + (15 if rev_g > 10 else (-10 if rev_g < -5 else 0)) + (10 if roe_v > 15 else 0)
-                val_s = 50 + (15 if 0 < pe < 20 else (-10 if pe > 40 else 0)) + (10 if fwd_pe > 0 and fwd_pe < pe else 0)
-                pa_s = 50 + (25 if trend_up else -10)
-                conf = round(fund_s * 0.30 + val_s * 0.25 + pa_s * 0.45)
+                pa_score = 50
+                if trend == "BULLISH": pa_score += 20
+                elif trend == "BEARISH": pa_score -= 10
+                # Volume check
+                if "Volume" in hist_data.columns.get_level_values(1) if len(universe) > 1 else "Volume" in hist_data.columns:
+                    try:
+                        vols = hist_data[sym]["Volume"].dropna().values.astype(float) if len(universe) > 1 else hist_data["Volume"].dropna().values.astype(float)
+                        if len(vols) >= 20:
+                            avg_v = float(np.mean(vols[-20:]))
+                            recent_v = float(np.mean(vols[-5:]))
+                            if avg_v > 0 and recent_v > avg_v * 1.3: pa_score += 10
+                    except:
+                        pass
+                pa_score = max(0, min(100, pa_score))
                 
-                decision = "BUY" if conf >= 60 and trend_up else ("HOLD" if conf >= 45 else "AVOID")
+                # Confluence — SAME WEIGHTS as stock_intel
+                confidence = int(round(fund_score * 0.30 + val_score * 0.25 + pa_score * 0.45))
+                confidence = max(0, min(95, confidence))
+                
+                decision = "BUY" if confidence >= 65 and trend == "BULLISH" else (
+                    "HOLD" if confidence >= 50 else "AVOID"
+                )
+                dec_color = "#059669" if decision == "BUY" else ("#d97706" if decision == "HOLD" else "#dc2626")
                 
                 results.append({
-                    "success": True, "symbol": sym, "price": price,
-                    "companyName": info.get("shortName", sym),
-                    "sector": info.get("sector", "ETF" if sym in etfs else ""),
-                    "decision": decision, "confidence": min(conf, 95),
-                    "fundamental": {"score": min(fund_s, 100), "verdict": "STRONG" if fund_s >= 65 else "AVERAGE", "revGrowth": round(rev_g, 1), "roe": round(roe_v, 1)},
-                    "valuation": {"score": min(val_s, 100), "verdict": "CHEAP" if val_s >= 60 else "FAIR", "pe": round(pe, 1), "fwdPE": round(fwd_pe, 1)},
-                    "priceAction": {"score": min(pa_s, 100), "trend": "BULLISH" if trend_up else "BEARISH"},
-                    "isETF": sym in etfs,
+                    "success": True, "symbol": clean_sym, "price": price,
+                    "companyName": info.get("shortName", clean_sym),
+                    "sector": info.get("sector", "ETF" if sym in etf_set else ""),
+                    "decision": decision, "decColor": dec_color, "confidence": confidence,
+                    "fundamental": {"score": fund_score, "verdict": fund_verdict,
+                                   "revGrowth": round(rev_growth, 1), "roe": round(roe, 1)},
+                    "valuation": {"score": val_score, "verdict": val_verdict,
+                                 "pe": round(pe, 1), "fwdPE": round(fwd_pe, 1)},
+                    "priceAction": {"score": pa_score, "trend": trend},
+                    "isETF": sym in etf_set,
                 })
             except Exception as ex:
-                print(f"  ⚠️ Top picks skip {sym}: {ex}")
                 continue
         
-        # Sort by confidence, take top 5
         results.sort(key=lambda x: x.get("confidence", 0), reverse=True)
         top5 = results[:5]
         
-        csym = "$" if is_us else "₹"
-        return {"success": True, "picks": top5, "region": region, "csym": csym, "total_scanned": len(candidates) + len(etfs)}
+        print(f"✅ Top Picks: Scanned {len(universe)}, scored {len(results)}, top5: {[r['symbol'] for r in top5]}")
+        
+        return {
+            "success": True, "picks": top5, "region": region, "csym": csym,
+            "total_scanned": len(universe), "total_scored": len(results),
+            "note": f"Scanned {len(universe)} stocks. Ranked by Fundamentals(30%) + Valuation(25%) + Price Action(45%) — same engine as Stock Intel."
+        }
     except Exception as e:
         import traceback; traceback.print_exc()
         return {"success": False, "error": str(e)}
-
 
 @app.post("/api/ai-assist")
 async def ai_assist(request: Request):
