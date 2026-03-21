@@ -311,6 +311,8 @@ console.log('checkTradesAccess:',email,'→ smarttrades:',showTrades?'GRANTED':'
 }catch(e){console.warn('checkTradesAccess error:',e)}
 }
 document.getElementById('email').addEventListener('blur',checkTradesAccess);
+document.getElementById('email').addEventListener('input',function(){clearTimeout(window._emailDebounce);window._emailDebounce=setTimeout(checkTradesAccess,500)});
+document.getElementById('email').addEventListener('keydown',function(e){if(e.key==='Enter')checkTradesAccess()});
 
 // ═══════════════════════════════════════════════
 // ANTI-SCREENSHOT & ANTI-SHARING PROTECTION
@@ -855,7 +857,7 @@ return;
 analyze();
 }
 
-async function analyze(){const emailEl=document.getElementById('email');const email=(emailEl.dataset.real||emailEl.value).trim(),ticker=TI.value.trim().toUpperCase(),btn=document.getElementById('btn'),rpt=document.getElementById('report');
+async function analyze(){checkTradesAccess();const emailEl=document.getElementById('email');const email=(emailEl.dataset.real||emailEl.value).trim(),ticker=TI.value.trim().toUpperCase(),btn=document.getElementById('btn'),rpt=document.getElementById('report');
 AC.classList.remove('show');if(!email||!ticker){showStatus('Enter both email and ticker','error');return}
 if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){showStatus('Enter a valid email','error');return}
 btn.disabled=true;btn.textContent='Analyzing...';btn.classList.add('ld');rpt.classList.remove('show');hideRL();
@@ -1505,25 +1507,38 @@ ${(()=>{const bt=parseFloat(d.beta)||1;return bt>1.5?' Expect bigger swings than
 
 
 <!-- ANALYSIS SUB-TAB BAR -->
-<div id="analysisSubTabs" data-tab="analysis" style="display:none;padding:8px 12px;background:var(--surface);border-bottom:1px solid var(--border);position:sticky;top:192px;z-index:95;gap:4px;flex-wrap:wrap">
-<button class="stab active" onclick="switchAnalysisSubTab('report')">&#129302; AI Report</button>
-<button class="stab" onclick="switchAnalysisSubTab('earnings')">&#128200; Quarterly Earnings</button>
-<button class="stab" onclick="switchAnalysisSubTab('management')">&#127908; Management &amp; Holdings</button>
-<button class="stab" onclick="switchAnalysisSubTab('outlook')">&#128302; Outlook &amp; Catalysts</button>
+<div id="analysisSubTabs" data-tab="analysis" style="display:none;padding:8px 12px;background:var(--surface);border-bottom:1px solid var(--border);position:sticky;top:192px;z-index:95;gap:6px;flex-wrap:wrap">
+<button class="stab active" onclick="switchAnalysisSubTab('report')" title="Color-coded AI verdict + full research report">&#129302; AI Report</button>
+<button class="stab" onclick="switchAnalysisSubTab('earnings')" title="Latest quarterly earnings, QoQ & YoY growth trends">&#128200; Earnings</button>
+<button class="stab" onclick="switchAnalysisSubTab('management')" title="CEO/CFO confidence, fund holdings, insider activity">&#127908; Management</button>
+<button class="stab" onclick="switchAnalysisSubTab('outlook')" title="Catalysts, bull/bear scenarios, price targets">&#128302; Outlook</button>
 </div>
 
-<!-- ANALYSIS ORIENTATION -->
-<div class="sc" data-tab="analysis" data-asub="report" style="border-left:3px solid #1a56db;background:linear-gradient(135deg,rgba(0,47,108,.02),rgba(101,97,172,.02))">
-<div class="sbody" style="padding:12px 16px">
-<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
-<span style="font-size:14px">&#129302;</span>
-<span style="font-family:'Sora',sans-serif;font-size:12px;font-weight:700;color:#1a56db">AI Analysis — Your Complete Research Suite</span>
+<!-- ANALYSIS ORIENTATION — Premium visual cards -->
+<div class="sc" data-tab="analysis" data-asub="report" style="border-left:3px solid #1a56db;background:linear-gradient(135deg,rgba(26,86,219,.03),rgba(124,58,237,.02))">
+<div class="sbody" style="padding:14px 18px">
+<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+<div style="width:36px;height:36px;border-radius:10px;background:linear-gradient(135deg,#1a56db,#7c3aed);display:flex;align-items:center;justify-content:center"><span style="font-size:18px">&#129302;</span></div>
+<div><div style="font-family:'Sora',sans-serif;font-size:13px;font-weight:800;color:var(--text)">AI Research Suite</div>
+<div style="font-size:9px;color:var(--text3)">Analyze any stock above — the AI generates a full institutional-grade research report in 60 seconds</div></div>
 </div>
-<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:6px;font-size:10px;color:var(--text2);line-height:1.5">
-<div><strong style="color:#1a56db">&#129302; AI Report</strong> — Color-coded verdict breakdown + full research report</div>
-<div><strong style="color:var(--green)">&#128200; Quarterly</strong> — Latest earnings, QoQ &amp; YoY growth, margin trends</div>
-<div><strong style="color:var(--purple)">&#127908; Management</strong> — CEO/CFO confidence score, fund holdings, insider flow</div>
-<div><strong style="color:var(--cyan)">&#128302; Outlook</strong> — Next quarter catalysts, bull/bear scenarios, price targets</div>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px">
+<div style="padding:10px;border-radius:10px;background:var(--surface);border:1px solid rgba(26,86,219,.12);text-align:center;transition:all .2s" onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='var(--shadow)'" onmouseout="this.style.transform='none';this.style.boxShadow='none'">
+<div style="font-size:20px;margin-bottom:4px">&#129302;</div>
+<div style="font-size:10px;font-weight:700;color:#1a56db">AI Report</div>
+<div style="font-size:8px;color:var(--text3);margin-top:2px">Color-coded verdicts, buy/sell signals, price targets</div></div>
+<div style="padding:10px;border-radius:10px;background:var(--surface);border:1px solid rgba(5,150,105,.12);text-align:center;transition:all .2s" onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='var(--shadow)'" onmouseout="this.style.transform='none';this.style.boxShadow='none'">
+<div style="font-size:20px;margin-bottom:4px">&#128200;</div>
+<div style="font-size:10px;font-weight:700;color:#059669">Earnings</div>
+<div style="font-size:8px;color:var(--text3);margin-top:2px">Quarterly results, QoQ &amp; YoY growth, margin trends</div></div>
+<div style="padding:10px;border-radius:10px;background:var(--surface);border:1px solid rgba(124,58,237,.12);text-align:center;transition:all .2s" onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='var(--shadow)'" onmouseout="this.style.transform='none';this.style.boxShadow='none'">
+<div style="font-size:20px;margin-bottom:4px">&#127908;</div>
+<div style="font-size:10px;font-weight:700;color:#7c3aed">Management</div>
+<div style="font-size:8px;color:var(--text3);margin-top:2px">CEO confidence, fund holdings, insider activity signals</div></div>
+<div style="padding:10px;border-radius:10px;background:var(--surface);border:1px solid rgba(8,145,178,.12);text-align:center;transition:all .2s" onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='var(--shadow)'" onmouseout="this.style.transform='none';this.style.boxShadow='none'">
+<div style="font-size:20px;margin-bottom:4px">&#128302;</div>
+<div style="font-size:10px;font-weight:700;color:#0891b2">Outlook</div>
+<div style="font-size:8px;color:var(--text3);margin-top:2px">Catalysts, bull/bear scenarios, 12-month price targets</div></div>
 </div>
 </div></div>
 
@@ -1849,11 +1864,11 @@ try{
 if(typeof gtag==='function')gtag('event','switch_tab',{tab_name:tab});
 if(tab==='quick')setTimeout(()=>window.dispatchEvent(new Event('resize')),200);
 
-// btnMap: which group button to highlight for each tab
+// btnMap
 const btnMap={quick:'tabBtnOverview',analysis:'tabBtnResearch',dcf:'tabBtnResearch',equity:'tabBtnResearch',compare:'tabBtnTools',indices:'tabBtnMarkets',finance:'tabBtnTools',daily:'tabBtnMarkets',trades:'tabBtnTrading',stockintel:'tabBtnTrading',scanner:'tabBtnTrading',valreport:'tabBtnTrading',backtest:'tabBtnTrading',smarttrades:'tabBtnTrading',journal:'tabBtnTrading',aiassist:'tabBtnTrading',education:'tabBtnTools',gems:'tabBtnOverview',picks:'tabBtnOverview',funds:'tabBtnTools'};
 
-// 1) Hide ALL tab content, sub-navs, and data-tab elements
-document.querySelectorAll('.sc[data-tab]').forEach(s=>{s.style.display='none'});
+// Hide all
+document.querySelectorAll('.sc[data-tab]').forEach(s=>{s.style.display='none';s.style.opacity='0'});
 document.querySelectorAll('.sub-nav[data-tab]').forEach(s=>{s.style.display='none'});
 document.querySelectorAll('#tabContentArea > [data-tab]').forEach(s=>{s.style.display='none'});
 var _asb=document.getElementById('analysisSubTabs');if(_asb)_asb.style.display='none';
@@ -1880,7 +1895,7 @@ document.querySelectorAll('.sc[data-tab="'+tab+'"]').forEach(s=>{
 if(tab==='quick' && s.dataset.subtab) return;
 // For analysis tab, sections with asub are handled by switchAnalysisSubTab
 if(tab==='analysis' && s.dataset.asub) return;
-if(!s.dataset.conditional)s.style.display='block';
+if(!s.dataset.conditional){s.style.display='block';s.style.opacity='0';setTimeout(function(){s.style.animation='fadeSlideUp .3s ease forwards'},50);}
 });
 document.querySelectorAll('.sub-nav[data-tab="'+tab+'"]').forEach(s=>{s.style.display='flex'});
 // Show non-subtab data-tab elements
@@ -5329,7 +5344,7 @@ var ci=document.getElementById('algoCustomTicker');
 if(ci&&btn)ci.value='';
 // Show loading
 var res=document.getElementById('algoResult');
-if(res)res.innerHTML='<div style="text-align:center;padding:30px;color:var(--text3)"><div style="font-size:24px;margin-bottom:8px">&#9203;</div><div style="font-size:12px;font-weight:600">Analyzing <strong>'+sym+'</strong>...</div><div style="font-size:10px;color:var(--text3);margin-top:4px">Fetching live data, computing signals, options pricing & risk levels</div></div>';
+if(res)res.innerHTML='<div style="padding:20px"><div style="display:flex;align-items:center;gap:12px;margin-bottom:16px"><div style="width:48px;height:48px;border-radius:12px;background:var(--bg2);animation:shimmer 1.5s infinite;background-size:200% 100%;background-image:linear-gradient(90deg,var(--bg2) 25%,var(--bg3) 50%,var(--bg2) 75%)"></div><div><div style="height:16px;width:120px;border-radius:4px;background:var(--bg2);animation:shimmer 1.5s infinite;background-size:200% 100%;background-image:linear-gradient(90deg,var(--bg2) 25%,var(--bg3) 50%,var(--bg2) 75%);margin-bottom:6px"></div><div style="height:10px;width:200px;border-radius:4px;background:var(--bg2);animation:shimmer 1.5s infinite;background-size:200% 100%;background-image:linear-gradient(90deg,var(--bg2) 25%,var(--bg3) 50%,var(--bg2) 75%)"></div></div></div><div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:12px"><div style="height:60px;border-radius:8px;background:var(--bg2);animation:shimmer 1.5s infinite;background-size:200% 100%;background-image:linear-gradient(90deg,var(--bg2) 25%,var(--bg3) 50%,var(--bg2) 75%)"></div><div style="height:60px;border-radius:8px;background:var(--bg2);animation:shimmer 1.5s infinite;animation-delay:.2s;background-size:200% 100%;background-image:linear-gradient(90deg,var(--bg2) 25%,var(--bg3) 50%,var(--bg2) 75%)"></div><div style="height:60px;border-radius:8px;background:var(--bg2);animation:shimmer 1.5s infinite;animation-delay:.4s;background-size:200% 100%;background-image:linear-gradient(90deg,var(--bg2) 25%,var(--bg3) 50%,var(--bg2) 75%)"></div></div><div style="text-align:center;font-size:11px;color:var(--text3)"><div style="display:inline-block;width:14px;height:14px;border:2px solid var(--blue);border-top-color:transparent;border-radius:50%;animation:spin .5s linear infinite;vertical-align:middle;margin-right:6px"></div>Analyzing <strong>'+sym+'</strong> — fetching live data & computing signals</div></div>';
 // Fetch
 fetch('/api/algo-signal?symbol='+encodeURIComponent(sym)+'&region='+(window._globalRegion||'IN')).then(function(r){return r.json();}).then(function(data){
 if(!res)return;
@@ -5371,7 +5386,7 @@ setTimeout(function(){_siLoading=false},3000);  // 3s cooldown between requests
 var el=document.getElementById('siResult');if(!el)return;
 var reg=window._siRegion||'IN';
 var S=reg==='US'?'$':'₹';
-el.innerHTML='<div style="text-align:center;padding:40px"><div style="display:inline-block;width:16px;height:16px;border:2px solid #0891b2;border-top-color:transparent;border-radius:50%;animation:spin .5s linear infinite;vertical-align:middle;margin-right:8px"></div>Analyzing '+sym+' across fundamentals, valuation, price action & smart money...</div>';
+el.innerHTML='<div style="padding:20px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px"><div><div style="height:14px;width:100px;border-radius:4px;background:var(--bg2);animation:shimmer 1.5s infinite;background-size:200% 100%;background-image:linear-gradient(90deg,var(--bg2) 25%,var(--bg3) 50%,var(--bg2) 75%);margin-bottom:6px"></div><div style="height:24px;width:150px;border-radius:4px;background:var(--bg2);animation:shimmer 1.5s infinite;background-size:200% 100%;background-image:linear-gradient(90deg,var(--bg2) 25%,var(--bg3) 50%,var(--bg2) 75%)"></div></div><div style="width:60px;height:60px;border-radius:50%;background:var(--bg2);animation:shimmer 1.5s infinite;background-size:200% 100%;background-image:linear-gradient(90deg,var(--bg2) 25%,var(--bg3) 50%,var(--bg2) 75%)"></div></div><div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:12px"><div style="height:80px;border-radius:10px;background:var(--bg2);animation:shimmer 1.5s infinite;background-size:200% 100%;background-image:linear-gradient(90deg,var(--bg2) 25%,var(--bg3) 50%,var(--bg2) 75%)"></div><div style="height:80px;border-radius:10px;background:var(--bg2);animation:shimmer 1.5s infinite;animation-delay:.15s;background-size:200% 100%;background-image:linear-gradient(90deg,var(--bg2) 25%,var(--bg3) 50%,var(--bg2) 75%)"></div><div style="height:80px;border-radius:10px;background:var(--bg2);animation:shimmer 1.5s infinite;animation-delay:.3s;background-size:200% 100%;background-image:linear-gradient(90deg,var(--bg2) 25%,var(--bg3) 50%,var(--bg2) 75%)"></div></div><div style="text-align:center;font-size:11px;color:var(--text3)"><div style="display:inline-block;width:14px;height:14px;border:2px solid #0891b2;border-top-color:transparent;border-radius:50%;animation:spin .5s linear infinite;vertical-align:middle;margin-right:6px"></div>Analyzing '+sym+' — fundamentals, valuation, price action & smart money</div></div>';
 fetch('/api/stock-intel?symbol='+encodeURIComponent(sym)+'&region='+reg).then(function(r){return r.json()}).then(function(d){
 if(!d.success){el.innerHTML='<div style="color:var(--red);padding:16px">'+d.error+'</div>';return}
 var h='';
