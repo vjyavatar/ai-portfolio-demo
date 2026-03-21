@@ -346,10 +346,11 @@ button:active{transform:scale(.97)}
 
 /* REPORT */
 #report{position:relative;max-width:1080px;margin:0 auto;padding:0 20px 32px;display:none;text-align:left;scroll-margin-top:110px}
-.hero.collapsed{padding:0 !important;margin:0 !important;background:transparent !important;border:none !important}
-.hero.collapsed #heroIntro,.hero.collapsed #heroExtras,.hero.collapsed #seoHome,.hero.collapsed #eventAlertArea,.hero.collapsed .icard{display:none !important}
+.hero.collapsed{padding:12px 0 !important;margin:0 !important;background:transparent !important;border:none !important}
+.hero.collapsed #heroIntro,.hero.collapsed #heroExtras,.hero.collapsed #seoHome,.hero.collapsed #eventAlertArea{display:none !important}
+.hero.collapsed .icard{margin:0 auto;box-shadow:var(--shadow-sm);border-radius:12px}
 
-#report.show{display:block;animation:fu .6s ease}
+#report.show{display:block}
 @keyframes fu{from{opacity:0;transform:translateY(30px)}to{opacity:1;transform:translateY(0)}}
 @keyframes fadeSlideUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
 @keyframes fadeIn{from{opacity:0}to{opacity:1}}

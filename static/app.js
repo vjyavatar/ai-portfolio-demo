@@ -1948,6 +1948,13 @@ function switchTabGroup(group) {
   if (!g) return;
   window._activeGroup = group;
   
+  // CRITICAL: Ensure report container is visible for ALL tab groups
+  var rpt=document.getElementById('report');
+  if(rpt){rpt.style.display='block';rpt.classList.add('show');}
+  // Also show tab bar
+  var mainTabBar=document.getElementById('mainTabBar');
+  if(mainTabBar)mainTabBar.style.display='flex';
+  
   // Highlight main tab button
   document.querySelectorAll('.tab-btn').forEach(function(b){b.classList.remove('active')});
   var mainBtn = document.getElementById('tabBtn' + group.charAt(0).toUpperCase() + group.slice(1));
