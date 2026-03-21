@@ -5679,7 +5679,7 @@ _siLoading=false;
 }).catch(function(e){_siLoading=false;el.innerHTML='<div style="color:var(--red);padding:16px">Error: '+e.message+'</div>'});
 }
 
-// ═══ TOP PICKS — AI Recommendations ═══
+// ═══ TOP PICKS — Comprehensive Intelligence Reports ═══
 var _topPicksLoading=false;
 function loadTopPicks(){
 if(_topPicksLoading)return;
@@ -5688,42 +5688,82 @@ var reg=window._siRegion||'IN';
 var S=reg==='US'?'$':'₹';
 var el=document.getElementById('topPicksResult');
 if(!el)return;
-el.innerHTML='<div style="padding:20px"><div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:12px">'+[1,2,3,4,5].map(function(){return '<div style="height:100px;border-radius:10px;background:var(--bg2);animation:shimmer 1.5s infinite;background-size:200% 100%;background-image:linear-gradient(90deg,var(--bg2) 25%,var(--bg3) 50%,var(--bg2) 75%)"></div>'}).join('')+'</div><div style="text-align:center;font-size:10px;color:var(--text3)"><div style="display:inline-block;width:12px;height:12px;border:2px solid #0891b2;border-top-color:transparent;border-radius:50%;animation:spin .5s linear infinite;vertical-align:middle;margin-right:6px"></div>Scanning '+(reg==='US'?'60 US stocks + ETFs (S&P 500 top 50 + major ETFs)':'52 Indian stocks + ETFs (NIFTY 50 + large caps)')+' through the Stock Intel engine...<br><span style="font-size:8px;opacity:.7">Analyzing fundamentals, valuation &amp; price action for EVERY stock. May take 1-2 min on first run.</span></div></div>';
-var _tpController=new AbortController();setTimeout(function(){_tpController.abort()},180000);
-fetch('/api/top-picks?region='+reg,{signal:_tpController.signal}).then(function(r){if(!r.ok)throw new Error('API error '+r.status);return r.json()}).then(function(d){
+el.innerHTML='<div style="padding:16px"><div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px">'+[1,2,3,4].map(function(i){return '<div style="height:90px;border-radius:10px;background:var(--bg2);animation:shimmer 1.5s infinite;animation-delay:'+(i*0.1)+'s;background-size:200% 100%;background-image:linear-gradient(90deg,var(--bg2) 25%,var(--bg3) 50%,var(--bg2) 75%)"></div>'}).join('')+'</div><div style="text-align:center;font-size:10px;color:var(--text3)"><div style="display:inline-block;width:14px;height:14px;border:2px solid #0891b2;border-top-color:transparent;border-radius:50%;animation:spin .5s linear infinite;vertical-align:middle;margin-right:6px"></div>Scanning '+(reg==='US'?'70+ US':'200+ NSE India')+' stocks, ETFs &amp; niche picks... First run ~2-3 min.</div></div>';
+fetch('/api/top-picks?region='+reg).then(function(r){if(!r.ok)throw new Error('API error '+r.status);return r.json()}).then(function(d){
 _topPicksLoading=false;
 if(!d.success){el.innerHTML='<div style="color:var(--red);padding:12px;font-size:10px">'+d.error+'</div>';return}
-var h='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px">';
-(d.picks||[]).forEach(function(pk,i){
-var decC=pk.decision==='BUY'?'#059669':pk.decision==='HOLD'?'#d97706':'#dc2626';
-var isETF=pk.isETF;
-var _cl2=2*3.14159*18;var _co2=_cl2*(1-(pk.confidence||50)/100);
-h+='<div style="padding:12px;border-radius:12px;background:var(--surface);border:1px solid '+decC+'25;box-shadow:0 2px 8px '+decC+'08;cursor:pointer;transition:all .2s" onclick="runStockIntel(\''+pk.symbol+'\')" onmouseover="this.style.transform=\'translateY(-2px)\';this.style.boxShadow=\'0 6px 20px '+decC+'15\'" onmouseout="this.style.transform=\'none\';this.style.boxShadow=\'0 2px 8px '+decC+'08\'">';
-// Rank badge
-h+='<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">';
-h+='<div><div style="font-size:7px;color:var(--text3);font-weight:700">#'+(i+1)+(isETF?' · ETF':'')+'</div>';
-h+='<div style="font-size:13px;font-weight:900;color:var(--text);font-family:Sora,sans-serif">'+pk.symbol+'</div>';
-h+='<div style="font-size:7px;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:90px">'+(pk.companyName||pk.symbol)+'</div></div>';
-// Score circle
-h+='<svg width="40" height="40" viewBox="0 0 40 40"><circle cx="20" cy="20" r="18" fill="none" stroke="var(--bg2)" stroke-width="3"/>';
-h+='<circle cx="20" cy="20" r="18" fill="none" stroke="'+decC+'" stroke-width="3" stroke-linecap="round" stroke-dasharray="'+_cl2+'" stroke-dashoffset="'+_co2+'" transform="rotate(-90 20 20)"/>';
-h+='<text x="20" y="23" text-anchor="middle" font-size="11" font-weight="900" fill="'+decC+'" font-family="var(--mono)">'+(pk.confidence||50)+'</text></svg>';
-h+='</div>';
-// Decision
-h+='<div style="font-size:10px;font-weight:800;color:'+decC+';margin-bottom:4px">'+pk.decision+'</div>';
-// Price
-h+='<div style="font-size:11px;font-weight:800;font-family:var(--mono);color:var(--text)">'+S+pk.price.toLocaleString("en-IN")+'</div>';
-// Mini scores
-h+='<div style="display:flex;gap:3px;margin-top:6px">';
-var fs=pk.fundamental||{};var vs=pk.valuation||{};var pa=pk.priceAction||{};
-h+='<span style="font-size:6px;padding:1px 4px;border-radius:3px;background:'+(fs.score>=65?'#05966910':'#d9770610')+';color:'+(fs.score>=65?'#059669':'#d97706')+'">F:'+fs.score+'</span>';
-h+='<span style="font-size:6px;padding:1px 4px;border-radius:3px;background:'+(vs.score>=60?'#05966910':'#d9770610')+';color:'+(vs.score>=60?'#059669':'#d97706')+'">V:'+vs.score+'</span>';
-h+='<span style="font-size:6px;padding:1px 4px;border-radius:3px;background:'+(pa.trend==='BULLISH'?'#05966910':'#dc262610')+';color:'+(pa.trend==='BULLISH'?'#059669':'#dc2626')+'">'+pa.trend+'</span>';
-h+='</div>';
-h+='</div>';
+
+function renderRow(pk,i){
+var c=pk.decision==='BUY'?'#059669':pk.decision==='HOLD'?'#d97706':'#dc2626';
+var r='<div style="display:grid;grid-template-columns:24px 1fr 70px 60px 50px 50px 50px 60px;gap:4px;align-items:center;padding:6px 8px;border-bottom:1px solid var(--border);font-size:9px;cursor:pointer;transition:background .15s" onclick="runStockIntel(\''+pk.symbol+'\')" onmouseover="this.style.background=\'var(--bg2)\'" onmouseout="this.style.background=\'transparent\'">';
+r+='<span style="font-weight:800;color:var(--text3)">'+(i+1)+'</span>';
+r+='<div><div style="font-weight:800;color:var(--text)">'+pk.symbol+'</div><div style="font-size:7px;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100px">'+(pk.companyName||'')+'</div></div>';
+r+='<span style="font-weight:800;color:var(--text);font-family:var(--mono);text-align:right">'+S+pk.price.toLocaleString("en-IN")+'</span>';
+r+='<span style="font-weight:800;color:'+c+';text-align:center">'+pk.confidence+'%</span>';
+r+='<span style="font-size:8px;color:'+(pk.cagr3M>=0?'#059669':'#dc2626')+';text-align:right;font-family:var(--mono)">'+(pk.cagr3M>=0?'+':'')+pk.cagr3M+'%</span>';
+r+='<span style="font-size:8px;color:'+(pk.cagr1Y>=0?'#059669':'#dc2626')+';text-align:right;font-family:var(--mono)">'+(pk.cagr1Y>=0?'+':'')+pk.cagr1Y+'%</span>';
+r+='<span style="font-size:8px;color:var(--text3);text-align:right;font-family:var(--mono)">'+(pk.pe>0?pk.pe+'x':'—')+'</span>';
+r+='<span style="font-size:8px;font-weight:800;color:'+c+';text-align:center;padding:2px 4px;border-radius:3px;background:'+c+'10">'+pk.decision+'</span>';
+r+='</div>';
+return r;
+}
+
+function renderSection(title,emoji,color,picks,extra){
+if(!picks||!picks.length)return '';
+var s='<div style="margin-bottom:14px;border:1px solid '+color+'20;border-radius:12px;overflow:hidden">';
+s+='<div style="padding:8px 12px;background:'+color+'08;display:flex;justify-content:space-between;align-items:center">';
+s+='<span style="font-size:12px;font-weight:800;color:'+color+'">'+emoji+' '+title+'</span>';
+if(extra)s+='<span style="font-size:8px;color:var(--text3)">'+extra+'</span>';
+s+='</div>';
+// Table header
+s+='<div style="display:grid;grid-template-columns:24px 1fr 70px 60px 50px 50px 50px 60px;gap:4px;padding:4px 8px;font-size:7px;color:var(--text3);font-weight:700;border-bottom:1px solid var(--border)">';
+s+='<span>#</span><span>Stock</span><span style="text-align:right">Price</span><span style="text-align:center">Score</span><span style="text-align:right">3M</span><span style="text-align:right">1Y</span><span style="text-align:right">PE</span><span style="text-align:center">Verdict</span></div>';
+picks.forEach(function(pk,i){s+=renderRow(pk,i)});
+s+='</div>';
+return s;
+}
+
+var h='';
+// Overall Top 5
+h+=renderSection('Overall Top 5 — Best Stocks Right Now','🏆','#0891b2',d.top5,'Ranked by F(30%)+V(25%)+PA(45%)');
+// Large Cap
+h+=renderSection('Large Cap — Safe & Steady','🏦','#1a56db',d.largecap,'Market leaders');
+// Mid Cap
+h+=renderSection('Mid Cap — Growth Sweet Spot','🚀','#7c3aed',d.midcap,'High growth potential');
+// Small Cap
+h+=renderSection('Small Cap — High Risk, High Reward','💎','#d97706',d.smallcap,'Multibagger potential');
+// ETFs
+if(d.etfs&&d.etfs.length){
+var ef='<div style="margin-bottom:14px;border:1px solid #05966920;border-radius:12px;overflow:hidden">';
+ef+='<div style="padding:8px 12px;background:#05966908;display:flex;justify-content:space-between;align-items:center"><span style="font-size:12px;font-weight:800;color:#059669">📊 ETFs & Index Funds — Passive Wealth</span><span style="font-size:8px;color:var(--text3)">Diversified exposure</span></div>';
+ef+='<div style="display:grid;grid-template-columns:24px 1fr 70px 60px 50px 50px 50px 60px;gap:4px;padding:4px 8px;font-size:7px;color:var(--text3);font-weight:700;border-bottom:1px solid var(--border)">';
+ef+='<span>#</span><span>ETF</span><span style="text-align:right">Price</span><span style="text-align:center">Score</span><span style="text-align:right">3M</span><span style="text-align:right">1Y CAGR</span><span style="text-align:right">Div%</span><span style="text-align:center">Verdict</span></div>';
+d.etfs.forEach(function(pk,i){
+var c=pk.decision==='BUY'?'#059669':pk.decision==='HOLD'?'#d97706':'#dc2626';
+ef+='<div style="display:grid;grid-template-columns:24px 1fr 70px 60px 50px 50px 50px 60px;gap:4px;align-items:center;padding:6px 8px;border-bottom:1px solid var(--border);font-size:9px;cursor:pointer;transition:background .15s" onclick="runStockIntel(\''+pk.symbol+'\')" onmouseover="this.style.background=\'var(--bg2)\'" onmouseout="this.style.background=\'transparent\'">';
+ef+='<span style="font-weight:800;color:var(--text3)">'+(i+1)+'</span>';
+ef+='<div><div style="font-weight:800;color:var(--text)">'+pk.symbol+'</div><div style="font-size:7px;color:var(--text3)">'+(pk.etfName||pk.sector||'')+'</div></div>';
+ef+='<span style="font-weight:800;color:var(--text);font-family:var(--mono);text-align:right">'+S+pk.price.toLocaleString("en-IN")+'</span>';
+ef+='<span style="font-weight:800;color:'+c+';text-align:center">'+pk.confidence+'%</span>';
+ef+='<span style="font-size:8px;color:'+(pk.cagr3M>=0?'#059669':'#dc2626')+';text-align:right;font-family:var(--mono)">'+(pk.cagr3M>=0?'+':'')+pk.cagr3M+'%</span>';
+ef+='<span style="font-size:8px;color:'+(pk.cagr1Y>=0?'#059669':'#dc2626')+';text-align:right;font-family:var(--mono);font-weight:700">'+(pk.cagr1Y>=0?'+':'')+pk.cagr1Y+'%</span>';
+ef+='<span style="font-size:8px;color:#059669;text-align:right;font-family:var(--mono)">'+(pk.divYield>0?pk.divYield+'%':'—')+'</span>';
+ef+='<span style="font-size:8px;font-weight:800;color:'+c+';text-align:center;padding:2px 4px;border-radius:3px;background:'+c+'10">'+pk.decision+'</span>';
+ef+='</div>';
 });
-h+='</div>';
-h+='<div style="text-align:center;margin-top:8px;font-size:8px;color:var(--text3)">'+(d.note||('Scanned '+d.total_scanned+' stocks'))+(d.total_scored?' · '+d.total_scored+' successfully analyzed':'')+'<br>Click any card for full 13-section report</div>';
+ef+='</div>';
+h+=ef;
+}
+// Niche
+h+=renderSection('Niche & Thematic — Emerging Trends','🔮','#dc2626',d.niche,'AI, Crypto, Defence, Green');
+// Dividend
+h+=renderSection('Top Dividend Payers — Passive Income','💰','#047857',d.dividend,'Sorted by yield');
+// Momentum
+h+=renderSection('Momentum Leaders — Hot Right Now','🔥','#ea580c',d.momentum,'Best 3-month returns');
+// Value
+h+=renderSection('Value Picks — Cheap + Growing','🎯','#1a56db',d.value,'Low PE + positive growth');
+
+h+='<div style="text-align:center;margin-top:10px;padding:10px;border-radius:8px;background:var(--bg2);font-size:9px;color:var(--text3);line-height:1.6">Scanned <strong style="color:var(--text)">'+d.totalScanned+'</strong> securities · <strong style="color:var(--text)">'+d.totalScored+'</strong> analyzed · Ranked by Fundamentals(30%) + Valuation(25%) + Price Action(45%)<br>Click any stock for full 13-section report · CAGR = Compound Annual Growth Rate · Not financial advice</div>';
 el.innerHTML=h;
 }).catch(function(e){_topPicksLoading=false;el.innerHTML='<div style="color:var(--red);padding:12px;font-size:10px">Error: '+e.message+'</div>'});
 }

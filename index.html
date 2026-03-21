@@ -240,7 +240,7 @@ gtag('js',new Date());gtag('config','G-WW55EQ7ZB8');
 [data-theme="dark"] .gridbg{background:#0d1b2a !important}
 *{margin:0;padding:0;box-sizing:border-box}
 html{scroll-behavior:smooth}
-body{font-family:'Plus Jakarta Sans','DM Sans',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;overflow-x:clip;padding-bottom:40px;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}
+body{font-family:'Plus Jakarta Sans','DM Sans',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden;padding-bottom:40px;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}
 
 /* Grid background */
 .gridbg{position:fixed;inset:0;z-index:0;pointer-events:none;background:var(--bg);background-image:radial-gradient(circle at 1px 1px,rgba(0,0,0,.03) 1px,transparent 0);background-size:32px 32px}
@@ -412,7 +412,12 @@ input:focus,button:focus-visible{outline:2px solid var(--blue);outline-offset:2p
 .isection{position:relative;z-index:1}
 
 /* SECTIONS - Always open, no accordion */
-.sc{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:0;margin-bottom:14px;box-shadow:0 1px 3px rgba(0,0,0,.04),0 1px 2px rgba(0,0,0,.06);overflow:visible;scroll-margin-top:192px;transition:box-shadow .3s,transform .25s}
+.sc{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:0;margin-bottom:14px;box-shadow:0 1px 3px rgba(0,0,0,.04),0 1px 2px rgba(0,0,0,.06);overflow:visible !important;scroll-margin-top:192px;transition:box-shadow .3s,transform .25s}
+/* Edge/Chromium fix: border-radius + overflow bug */
+#siResult,#siResult *{overflow:visible !important}
+#siResult details{overflow:hidden !important}
+#tabContentArea{overflow:visible !important}
+#report{overflow:visible !important}
 .sc:hover{box-shadow:0 4px 16px rgba(0,0,0,.08),0 2px 4px rgba(0,0,0,.04);transform:translateY(-1px)}
 /* Section headers — bigger, bolder */
 .sh{display:flex;align-items:center;gap:12px;padding:16px 20px 0;transition:opacity .2s}
@@ -1175,10 +1180,10 @@ footer{position:relative;z-index:1;margin-top:32px;background:linear-gradient(13
 <div data-tab="stockintel" style="display:none;padding:0 4px">
 <div style="border-top:1px solid var(--border);padding-top:12px;margin-top:4px">
 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-<div style="font-size:13px;font-weight:800;color:var(--text)">🏆 TOP 5 PICKS — Where to Invest Now</div>
-<button onclick="loadTopPicks()" style="padding:5px 16px;border-radius:8px;background:linear-gradient(135deg,#0891b2,#0e7490);color:#fff;border:none;font-size:10px;font-weight:700;cursor:pointer">⚡ Generate</button>
+<div style="font-size:13px;font-weight:800;color:var(--text)">🏆 INVESTMENT INTELLIGENCE — Complete Market Scan</div>
+<button onclick="loadTopPicks()" style="padding:5px 16px;border-radius:8px;background:linear-gradient(135deg,#0891b2,#0e7490);color:#fff;border:none;font-size:10px;font-weight:700;cursor:pointer">⚡ Scan All Stocks</button>
 </div>
-<div id="topPicksResult"><div style="text-align:center;padding:20px;color:var(--text3);font-size:10px">Click Generate to scan <strong>all major stocks</strong> (NIFTY 50 / S&amp;P 100) through the Stock Intel engine and find the top 5 to invest in right now</div></div>
+<div id="topPicksResult"><div style="text-align:center;padding:20px;color:var(--text3);font-size:10px">Click <strong>Scan All Stocks</strong> to analyze <strong>200+ NSE stocks</strong> (or 70+ US) — Large Cap, Mid Cap, Small Cap, ETFs, Niche Picks, Dividend, Momentum &amp; Value — all ranked by the Stock Intel engine with CAGR returns</div></div>
 </div>
 </div>
 

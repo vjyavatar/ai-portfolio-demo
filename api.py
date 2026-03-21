@@ -11161,7 +11161,7 @@ async def journal_update(trade_id: str, request: Request):
 # ═══════════════════════════════════════════════════
 @app.get("/api/top-picks")
 async def top_picks(region: str = "IN"):
-    """Scan ALL major stocks using batch download, rank by Stock Intel engine, return top 5"""
+    """Comprehensive Investment Intelligence — scan ALL stocks, categorize, rank, return reports"""
     try:
         import yfinance as yf
         import pandas as pd
@@ -11170,177 +11170,249 @@ async def top_picks(region: str = "IN"):
         is_us = region.upper() == "US"
         csym = "$" if is_us else "₹"
         
-        # ═══ FULL UNIVERSE — Not a shortcut. Every major stock. ═══
         if is_us:
-            # S&P 500 top 50 by market cap + major ETFs
-            universe = [
-                "AAPL","MSFT","NVDA","GOOGL","AMZN","META","TSLA","AVGO","BRK-B","LLY",
-                "JPM","V","UNH","XOM","MA","JNJ","PG","COST","HD","ABBV",
-                "MRK","AMD","CRM","NFLX","ADBE","PEP","KO","TMO","ORCL","BAC",
-                "MU","WMT","CSCO","ACN","LIN","DHR","ABT","PM","TXN","QCOM",
-                "NEE","LOW","ISRG","GE","CAT","AMAT","INTU","BKNG","GS","BLK",
-                # ETFs
-                "VOO","QQQ","SCHD","VTI","SMH","XLF","XLK","XLV","ARKK","IWM"
-            ]
+            largecap = ["AAPL","MSFT","NVDA","GOOGL","AMZN","META","TSLA","AVGO","BRK-B","LLY","JPM","V","UNH","XOM","MA","JNJ","PG","COST","HD","ABBV","MRK","AMD","CRM","NFLX"]
+            midcap = ["PANW","CRWD","SNOW","DDOG","ZS","NET","MELI","SHOP","SQ","COIN","RIVN","PLTR","SOFI","HOOD","RBLX","U"]
+            smallcap = ["UPST","AFRM","IONQ","SOUN","RKLB","JOBY","LUNR","DNA","SMCI","ARQQ"]
+            etfs = {"VOO":"S&P 500","QQQ":"Nasdaq 100","SCHD":"Dividend","VTI":"Total Market","SMH":"Semiconductors","XLF":"Financials","XLK":"Tech","XLV":"Healthcare","ARKK":"Innovation","IWM":"Small Cap","GLD":"Gold","TLT":"Bonds"}
+            niche = ["MU","MARA","RIOT","MSTR","PATH","AI","BBAI","ASTS"]
         else:
-            # NIFTY 50 + NIFTY Next 50 top picks + ETFs
-            universe_raw = [
-                "RELIANCE","TCS","HDFCBANK","INFY","ICICIBANK","BHARTIARTL","ITC","LT",
-                "SBIN","AXISBANK","KOTAKBANK","BAJFINANCE","MARUTI","TATAMOTORS","SUNPHARMA",
-                "TATASTEEL","HCLTECH","WIPRO","NTPC","POWERGRID","ONGC","COALINDIA",
-                "ADANIENT","ADANIPORTS","BAJAJ-AUTO","HDFCLIFE","SBILIFE","DIVISLAB",
-                "DRREDDY","CIPLA","TITAN","NESTLEIND","ULTRACEMCO","GRASIM","JSWSTEEL",
-                "INDUSINDBK","M&M","TECHM","HEROMOTOCO","BPCL","HINDALCO","TATACONSUM",
-                "APOLLOHOSP","EICHERMOT","BRITANNIA","LTIM","HINDUNILVR",
-                # ETFs
-                "NIFTYBEES","JUNIORBEES","BANKBEES","GOLDBEES","CPSE"
+            # ═══ FULL NSE UNIVERSE — 200 stocks covering NIFTY 500 ═══
+            largecap_raw = [
+                "RELIANCE","TCS","HDFCBANK","INFY","ICICIBANK","BHARTIARTL","ITC","LT","SBIN","AXISBANK",
+                "KOTAKBANK","BAJFINANCE","MARUTI","TATAMOTORS","SUNPHARMA","HCLTECH","WIPRO","NTPC","POWERGRID","ONGC",
+                "BAJAJ-AUTO","HDFCLIFE","SBILIFE","DIVISLAB","DRREDDY","CIPLA","TITAN","NESTLEIND","ULTRACEMCO","GRASIM",
+                "JSWSTEEL","INDUSINDBK","M&M","TECHM","HEROMOTOCO","BPCL","HINDALCO","TATACONSUM","APOLLOHOSP","EICHERMOT",
+                "BRITANNIA","LTIM","HINDUNILVR","COALINDIA","TATASTEEL","IOC","VEDL","GAIL","LICI","PIDILITIND"
             ]
-            universe = [s + ".NS" for s in universe_raw if s not in ["NIFTYBEES","JUNIORBEES","BANKBEES","GOLDBEES","CPSE"]]
-            universe += [s + ".NS" for s in ["NIFTYBEES","JUNIORBEES","BANKBEES","GOLDBEES","CPSE"]]
-            etf_set = {"NIFTYBEES.NS","JUNIORBEES.NS","BANKBEES.NS","GOLDBEES.NS","CPSE.NS"}
+            midcap_raw = [
+                "TRENT","ZOMATO","PAYTM","POLYCAB","PERSISTENT","COFORGE","MPHASIS","INDIGO","PIIND","BALKRISIND",
+                "ASTRAL","DEEPAKNTR","VOLTAS","AUROPHARMA","TORNTPHARM","LUPIN","BIOCON","ALKEM","IPCALAB","ABBOTINDIA",
+                "HAVELLS","CROMPTON","TATAPOWER","ADANIGREEN","NHPC","SUZLON","IREDA","IRFC","BEL","HAL",
+                "CDSL","BSE","ANGELONE","JIOFIN","BAJAJFINSV","CHOLAFIN","MUTHOOTFIN","MANAPPURAM","PNB","BANKBARODA",
+                "CANBK","UNIONBANK","FEDERALBNK","IDFCFIRSTB","DMART","TATAELXSI","DIXON","DLF","LODHA","OBEROIRLTY",
+                "BERGEPAINT","ASIANPAINT","NAUKRI","ZYDUSLIFE","CONCOR","IRCTC","SIEMENS","ABB","CUMMINSIND","BOSCHLTD",
+                "MOTHERSON","GODREJCP","MARICO","DABUR","COLPAL","UPL","PI","SRF","AARTI","COROMANDEL"
+            ]
+            smallcap_raw = [
+                "OLECTRA","NETWEB","TTML","DATAMATICS","HAPPSTMNDS","RATEGAIN","RVNL","KPITTECH","SONACOMS","KAYNES",
+                "LATENTVIEW","COCHINSHIP","MAZAGON","BDL","SOLARINDS","CAMS","MCX","POONAWALLA","RBLBANK","YESBANK",
+                "GODREJPROP","PRESTIGE","PHOENIXLTD","SBICARD","ICICIPRULI","HDFCAMC","RAILTEL","TIINDIA","THERMAX","GRINDWELL",
+                "SCHAEFFLER","EXIDEIND","AMARARAJA","GRANULES","AJANTPHARM","NATCOPHARM","LALPATHLAB","METROPOLIS","MAXHEALTH","FORTIS",
+                "STARHEALTH","SUNTV","JUBLFOOD","VBL","RADICO","UBL","TATACOMM","INDUSTOWER","EMAMILTD","CLEAN",
+                "FLUOROCHEM","SUMICHEM","CHAMBLFERT","GNFC","FACT","GSFC","ADANIPORTS","ADANIENT","ADANIPOWER","MEDANTA"
+            ]
+            etfs_raw = {"NIFTYBEES":"Nifty 50","JUNIORBEES":"Next 50","BANKBEES":"Bank Nifty","GOLDBEES":"Gold","CPSE":"PSU","MAFANG":"Global Tech","SILVERBEES":"Silver","ICICIB22":"Bharat Bond","ITBEES":"IT Sector"}
+            niche_raw = ["PVRINOX","DEVYANI","SAPPHIRE","BLUESTARLT","WHIRLPOOL","RAJESHEXPO","GICRE","NIACL","MARKSANS","ATUL","DEEPAKNITRIT","FACT"]
+            largecap = [s+".NS" for s in largecap_raw]
+            midcap = [s+".NS" for s in midcap_raw]
+            smallcap = [s+".NS" for s in smallcap_raw]
+            etfs = {s+".NS":v for s,v in etfs_raw.items()}
+            niche = [s+".NS" for s in niche_raw]
         
-        if is_us:
-            etf_set = {"VOO","QQQ","SCHD","VTI","SMH","XLF","XLK","XLV","ARKK","IWM"}
+        all_syms = largecap + midcap + smallcap + list(etfs.keys()) + niche
         
-        print(f"🔍 Top Picks: Scanning {len(universe)} stocks for {region}...")
+        # Include cached stock intel results
+        for ck, cv in _si_cache.items():
+            if ck.endswith(f"_{region}"):
+                sym = ck.replace(f"_{region}", "")
+                yfSym = sym if is_us else f"{sym}.NS"
+                if yfSym not in all_syms:
+                    d = cv.get("data", {})
+                    if d.get("success") and d.get("confidence", 0) >= 50:
+                        all_syms.append(yfSym)
         
-        # ═══ BATCH DOWNLOAD — One API call for ALL stocks ═══
-        hist_data = yf.download(universe, period="6mo", group_by="ticker", progress=False, threads=True)
+        print(f"🔍 Intelligence Report: Scanning {len(all_syms)} securities for {region}...")
         
-        # Also get fundamental info in batches
-        results = []
-        for sym in universe:
+        # Batch download price history — ONE call for ALL stocks
+        try:
+            hist_data = yf.download(all_syms, period="1y", group_by="ticker", progress=False, threads=True)
+            print(f"✅ Batch download complete: {len(hist_data)} rows")
+        except Exception as bd_err:
+            print(f"⚠️ Batch download failed: {bd_err}")
+            hist_data = pd.DataFrame()
+        
+        # ═══ PASS 1: Price-only screening (no API calls — instant) ═══
+        pass1_results = []
+        for sym in all_syms:
+            clean = sym.replace(".NS", "") if not is_us else sym
+            
+            # Check cache first
+            ck = f"{clean}_{region}"
+            if ck in _si_cache:
+                age = (datetime.utcnow() - _si_cache[ck]["ts"]).total_seconds()
+                if age < 3600:
+                    d = _si_cache[ck]["data"]
+                    if d.get("success"):
+                        # Determine category
+                        cat = "niche"
+                        if sym in largecap: cat = "largecap"
+                        elif sym in midcap: cat = "midcap"
+                        elif sym in smallcap: cat = "smallcap"
+                        elif sym in etfs: cat = "etf"
+                        d["category"] = cat
+                        d["etfName"] = etfs.get(sym, "")
+                        d["_cached"] = True
+                        pass1_results.append(d)
+                        continue
+            
             try:
-                clean_sym = sym.replace(".NS", "") if not is_us else sym
-                
-                # Check stock_intel cache first
-                cache_key = f"{clean_sym}_{region}"
-                if cache_key in _si_cache:
-                    age = (datetime.utcnow() - _si_cache[cache_key]["ts"]).total_seconds()
-                    if age < 1800:
-                        d = _si_cache[cache_key]["data"]
-                        if d.get("success"):
-                            d["isETF"] = sym in etf_set
-                            results.append(d)
-                            continue
-                
-                # Extract price history from batch data
-                if len(universe) > 1:
-                    try:
-                        closes = hist_data[sym]["Close"].dropna().values.astype(float)
-                    except:
-                        closes = np.array([])
+                if len(all_syms) > 1 and sym in hist_data.columns.get_level_values(0):
+                    closes = hist_data[sym]["Close"].dropna().values.astype(float)
                 else:
-                    closes = hist_data["Close"].dropna().values.astype(float)
-                
-                if len(closes) < 20:
                     continue
-                
+                if len(closes) < 20: continue
                 price = round(float(closes[-1]), 2)
-                if price <= 0:
-                    continue
+                if price <= 0: continue
                 
-                # Get fundamentals (individual call — cached by yfinance internally)
-                try:
-                    tk = yf.Ticker(sym)
-                    info = tk.info or {}
-                except:
-                    info = {}
+                ema20 = float(pd.Series(closes).ewm(span=20).mean().iloc[-1])
+                ema50 = float(pd.Series(closes).ewm(span=50).mean().iloc[-1])
+                trend = "BULLISH" if ema20 > ema50 else "BEARISH"
+                pa_score = 70 if trend == "BULLISH" else 40
                 
-                # ═══ SAME SCORING AS STOCK INTEL ENGINE ═══
-                # Fundamental score
-                rev_growth = float(info.get("revenueGrowth", 0) or 0) * 100
-                earn_growth = float(info.get("earningsGrowth", 0) or 0) * 100
-                profit_margin = float(info.get("profitMargins", 0) or 0) * 100
-                debt_equity = float(info.get("debtToEquity", 0) or 0)
-                roe = float(info.get("returnOnEquity", 0) or 0) * 100
+                cagr_1y = round(((closes[-1] / closes[0]) - 1) * 100, 1)
+                cagr_6m = round(((closes[-1] / closes[len(closes)//2]) - 1) * 100, 1) if len(closes) > 60 else 0
+                cagr_3m = round(((closes[-1] / closes[-min(63, len(closes))]) - 1) * 100, 1) if len(closes) > 30 else 0
                 
-                fund_score = 50
-                fund_flags = []
-                if rev_growth > 15: fund_score += 15; fund_flags.append(f"+Revenue {rev_growth:.0f}%")
-                elif rev_growth > 5: fund_score += 5
-                elif rev_growth < -5: fund_score -= 10; fund_flags.append(f"-Revenue declining {rev_growth:.0f}%")
-                if earn_growth > 20: fund_score += 15; fund_flags.append(f"+Earnings {earn_growth:.0f}%")
-                elif earn_growth < -5: fund_score -= 10
-                if profit_margin > 15: fund_score += 10
-                elif profit_margin < 5 and profit_margin != 0: fund_score -= 10
-                if 0 < debt_equity < 50: fund_score += 5
-                elif debt_equity > 150: fund_score -= 10
-                if roe > 15: fund_score += 5
-                fund_score = max(0, min(100, fund_score))
-                fund_verdict = "STRONG" if fund_score >= 70 else ("AVERAGE" if fund_score >= 45 else "WEAK")
+                cat = "niche"
+                if sym in largecap: cat = "largecap"
+                elif sym in midcap: cat = "midcap"
+                elif sym in smallcap: cat = "smallcap"
+                elif sym in etfs: cat = "etf"
                 
-                # Valuation score
+                pass1_results.append({
+                    "_sym": sym, "symbol": clean, "price": price, "trend": trend,
+                    "paScore": pa_score, "cagr1Y": cagr_1y, "cagr6M": cagr_6m, "cagr3M": cagr_3m,
+                    "category": cat, "etfName": etfs.get(sym, ""),
+                    "_needsInfo": True
+                })
+            except:
+                continue
+        
+        print(f"  Pass 1: {len(pass1_results)} stocks passed price screen")
+        
+        # ═══ PASS 2: Fetch fundamentals only for top candidates ═══
+        # Sort by price action, take top 80 for info calls
+        needs_info = [r for r in pass1_results if r.get("_needsInfo")]
+        needs_info.sort(key=lambda x: x.get("paScore", 0) + x.get("cagr3M", 0), reverse=True)
+        top_candidates = needs_info[:80]  # Only fetch info for top 80
+        
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        import time
+        
+        def fetch_info(item):
+            sym = item["_sym"]
+            try:
+                tk = yf.Ticker(sym)
+                info = tk.info or {}
+                mcap = float(info.get("marketCap", 0) or 0)
                 pe = float(info.get("trailingPE", 0) or 0)
                 fwd_pe = float(info.get("forwardPE", 0) or 0)
                 peg = float(info.get("pegRatio", 0) or 0)
+                rev_g = float(info.get("revenueGrowth", 0) or 0) * 100
+                roe = float(info.get("returnOnEquity", 0) or 0) * 100
+                div_yield = float(info.get("dividendYield", 0) or 0) * 100
+                
+                fund_score = 50
+                if rev_g > 15: fund_score += 15
+                elif rev_g > 5: fund_score += 5
+                elif rev_g < -5: fund_score -= 10
+                if roe > 15: fund_score += 10
+                fund_score = max(0, min(100, fund_score))
                 
                 val_score = 50
-                if pe > 0:
-                    if pe < 15: val_score += 20
-                    elif pe < 25: val_score += 5
-                    elif pe > 40: val_score -= 15
-                if fwd_pe > 0 and pe > 0 and fwd_pe < pe * 0.85: val_score += 10
+                if 0 < pe < 20: val_score += 20
+                elif pe > 40: val_score -= 15
                 if peg > 0 and peg < 1: val_score += 15
-                elif peg > 2: val_score -= 10
                 val_score = max(0, min(100, val_score))
-                val_verdict = "CHEAP" if val_score >= 65 else ("FAIR" if val_score >= 40 else "EXPENSIVE")
                 
-                # Price Action score
-                ema20 = float(pd.Series(closes).ewm(span=20).mean().iloc[-1])
-                ema50 = float(pd.Series(closes).ewm(span=50).mean().iloc[-1])
-                sma200 = float(np.mean(closes[-200:])) if len(closes) >= 200 else float(np.mean(closes[-50:]))
-                trend_up = ema20 > ema50 and price > sma200
-                trend = "BULLISH" if trend_up else ("BEARISH" if ema20 < ema50 and price < sma200 else "SIDEWAYS")
+                confidence = int(round(fund_score * 0.30 + val_score * 0.25 + item["paScore"] * 0.45))
+                decision = "BUY" if confidence >= 65 and item["trend"] == "BULLISH" else ("HOLD" if confidence >= 50 else "AVOID")
                 
-                pa_score = 50
-                if trend == "BULLISH": pa_score += 20
-                elif trend == "BEARISH": pa_score -= 10
-                # Volume check
-                if "Volume" in hist_data.columns.get_level_values(1) if len(universe) > 1 else "Volume" in hist_data.columns:
-                    try:
-                        vols = hist_data[sym]["Volume"].dropna().values.astype(float) if len(universe) > 1 else hist_data["Volume"].dropna().values.astype(float)
-                        if len(vols) >= 20:
-                            avg_v = float(np.mean(vols[-20:]))
-                            recent_v = float(np.mean(vols[-5:]))
-                            if avg_v > 0 and recent_v > avg_v * 1.3: pa_score += 10
-                    except:
-                        pass
-                pa_score = max(0, min(100, pa_score))
-                
-                # Confluence — SAME WEIGHTS as stock_intel
-                confidence = int(round(fund_score * 0.30 + val_score * 0.25 + pa_score * 0.45))
-                confidence = max(0, min(95, confidence))
-                
-                decision = "BUY" if confidence >= 65 and trend == "BULLISH" else (
-                    "HOLD" if confidence >= 50 else "AVOID"
-                )
-                dec_color = "#059669" if decision == "BUY" else ("#d97706" if decision == "HOLD" else "#dc2626")
-                
-                results.append({
-                    "success": True, "symbol": clean_sym, "price": price,
-                    "companyName": info.get("shortName", clean_sym),
-                    "sector": info.get("sector", "ETF" if sym in etf_set else ""),
-                    "decision": decision, "decColor": dec_color, "confidence": confidence,
-                    "fundamental": {"score": fund_score, "verdict": fund_verdict,
-                                   "revGrowth": round(rev_growth, 1), "roe": round(roe, 1)},
-                    "valuation": {"score": val_score, "verdict": val_verdict,
-                                 "pe": round(pe, 1), "fwdPE": round(fwd_pe, 1)},
-                    "priceAction": {"score": pa_score, "trend": trend},
-                    "isETF": sym in etf_set,
+                item.update({
+                    "companyName": info.get("shortName", item["symbol"]),
+                    "sector": info.get("sector", item.get("etfName", "")),
+                    "decision": decision, "confidence": min(confidence, 95),
+                    "mcap": mcap, "pe": round(pe, 1), "fwdPE": round(fwd_pe, 1),
+                    "peg": round(peg, 2), "roe": round(roe, 1),
+                    "revGrowth": round(rev_g, 1), "divYield": round(div_yield, 2),
+                    "fundScore": fund_score, "valScore": val_score,
+                    "_needsInfo": False
                 })
-            except Exception as ex:
-                continue
+                return item
+            except:
+                # Fallback — use price action only
+                item.update({
+                    "companyName": item["symbol"], "sector": "",
+                    "decision": "HOLD" if item["trend"] == "BULLISH" else "AVOID",
+                    "confidence": item["paScore"],
+                    "mcap": 0, "pe": 0, "fwdPE": 0, "peg": 0, "roe": 0,
+                    "revGrowth": 0, "divYield": 0,
+                    "fundScore": 50, "valScore": 50,
+                    "_needsInfo": False
+                })
+                return item
         
+        # Concurrent info fetching — 10 threads
+        with ThreadPoolExecutor(max_workers=10) as executor:
+            futures = {executor.submit(fetch_info, item): item for item in top_candidates}
+            for future in as_completed(futures):
+                try:
+                    future.result()
+                except:
+                    pass
+        
+        # For stocks that didn't get info (outside top 80), use price-only scoring
+        for item in needs_info:
+            if item.get("_needsInfo"):
+                item.update({
+                    "companyName": item["symbol"], "sector": "",
+                    "decision": "HOLD" if item["trend"] == "BULLISH" else "AVOID",
+                    "confidence": max(30, item.get("paScore", 40)),
+                    "mcap": 0, "pe": 0, "fwdPE": 0, "peg": 0, "roe": 0,
+                    "revGrowth": 0, "divYield": 0,
+                    "fundScore": 50, "valScore": 50,
+                })
+        
+        # Combine cached + scored
+        results = [r for r in pass1_results if not r.get("_needsInfo")]
+        
+        print(f"  Pass 2: {len(results)} stocks fully scored")
+        
+        # Categorize and rank
+        cats = {}
+        for cat in ["largecap", "midcap", "smallcap", "etf", "niche"]:
+            cat_results = [r for r in results if r.get("category") == cat]
+            cat_results.sort(key=lambda x: x.get("confidence", 0), reverse=True)
+            cats[cat] = cat_results[:5]
+        
+        # Overall top 5
         results.sort(key=lambda x: x.get("confidence", 0), reverse=True)
         top5 = results[:5]
         
-        print(f"✅ Top Picks: Scanned {len(universe)}, scored {len(results)}, top5: {[r['symbol'] for r in top5]}")
+        # Top dividend
+        div_sorted = sorted([r for r in results if r.get("divYield", 0) > 1], key=lambda x: x["divYield"], reverse=True)[:5]
+        
+        # Top momentum (best 3M CAGR)
+        mom_sorted = sorted([r for r in results if r.get("cagr3M", 0) > 5], key=lambda x: x["cagr3M"], reverse=True)[:5]
+        
+        # Value picks (low PE + decent growth)
+        value_sorted = sorted([r for r in results if 0 < r.get("pe", 0) < 18 and r.get("revGrowth", 0) > 0], key=lambda x: x["confidence"], reverse=True)[:5]
+        
+        print(f"✅ Intelligence: Scanned {len(all_syms)}, scored {len(results)} | LC:{len(cats.get('largecap',[]))} MC:{len(cats.get('midcap',[]))} SC:{len(cats.get('smallcap',[]))} ETF:{len(cats.get('etf',[]))} Niche:{len(cats.get('niche',[]))}")
         
         return {
-            "success": True, "picks": top5, "region": region, "csym": csym,
-            "total_scanned": len(universe), "total_scored": len(results),
-            "note": f"Scanned {len(universe)} stocks. Ranked by Fundamentals(30%) + Valuation(25%) + Price Action(45%) — same engine as Stock Intel."
+            "success": True, "region": region, "csym": csym,
+            "totalScanned": len(all_syms), "totalScored": len(results),
+            "top5": top5,
+            "largecap": cats.get("largecap", []),
+            "midcap": cats.get("midcap", []),
+            "smallcap": cats.get("smallcap", []),
+            "etfs": cats.get("etf", []),
+            "niche": cats.get("niche", []),
+            "dividend": div_sorted,
+            "momentum": mom_sorted,
+            "value": value_sorted,
         }
     except Exception as e:
         import traceback; traceback.print_exc()
