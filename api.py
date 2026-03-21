@@ -2644,7 +2644,7 @@ async def ads_txt():
 # ═══════════════════════════════════════════════════════════
 # INDEX TRADES — AI Daily Trade Ideas (Restricted Access)
 # ═══════════════════════════════════════════════════════════
-TRADES_ALLOWED_EMAILS = ["vjyavatar@gmail.com"]
+TRADES_ALLOWED_EMAILS = ["x@yp.com"]
 _trades_cache = {"timestamp": None, "data": None}  # 30-min cache — live enough for trading, stable enough to not flip-flop
 _trades_cache_us = {"timestamp": None, "data": None}  # Separate cache for US
 
@@ -11339,32 +11339,102 @@ async def education_module(topic: str = "basics"):
 
 
 _si_cache = {}  # {symbol_region: {ts, data}}
+_si_lock = None  # Semaphore to limit concurrent yfinance calls
 
 @app.get("/api/stock-intel")
 async def stock_intel(symbol: str, region: str = "IN"):
-    """Complete Stock Intelligence — 13-section decision engine"""
+    """Complete Stock Intelligence — single yfinance call, 30-min cache, rate-limit safe"""
+    import asyncio
+    global _si_lock
+    if _si_lock is None:
+        _si_lock = asyncio.Semaphore(2)  # Max 2 concurrent yfinance calls
+    
     cache_key = f"{symbol}_{region}"
     now = datetime.utcnow()
+    
+    # 30-min cache — prevents rate limiting on repeated clicks
     if cache_key in _si_cache:
         age = (now - _si_cache[cache_key]["ts"]).total_seconds()
-        if age < 900:  # 15 min cache
+        if age < 1800:
             print(f"📋 Stock Intel cache hit: {cache_key} ({int(age/60)}min old)")
             return _si_cache[cache_key]["data"]
     
+    # Rate limit guard
+    if not _si_lock.locked() or _si_lock._value > 0:
+        pass  # OK to proceed
+    else:
+        # Already 2 concurrent calls — return cached even if stale, or wait
+        if cache_key in _si_cache:
+            return _si_cache[cache_key]["data"]
+        # Brief wait
+        await asyncio.sleep(2)
+    
+    async with _si_lock:
+        return await _run_stock_intel(symbol, region, cache_key)
+
+async def _run_stock_intel(symbol, region, cache_key):
+    """Actual stock intel computation — runs under semaphore"""
     try:
-        import yfinance as yf, math
+        import yfinance as yf, math, time
         import pandas as pd
         import numpy as np
+        
         is_us = region.upper() == "US"
         yf_sym = symbol if is_us else f"{symbol}.NS"
         csym = "$" if is_us else "₹"
-        tk = yf.Ticker(yf_sym)
-        info = tk.info or {}
         
-        price = float(info.get("currentPrice", 0) or info.get("regularMarketPrice", 0) or 0)
-        if price == 0:
-            hist = tk.history(period="5d")
-            if len(hist) > 0: price = round(float(hist["Close"].iloc[-1]), 2)
+        # ═══ SINGLE yfinance call with retry ═══
+        info = {}; hist = pd.DataFrame()
+        for attempt in range(3):
+            try:
+                tk = yf.Ticker(yf_sym)
+                # Get history FIRST (less likely to fail than info)
+                hist = tk.history(period="1y")
+                if len(hist) == 0:
+                    raise Exception("Empty history")
+                # Then try info (may fail with rate limit)
+                try:
+                    info = tk.info or {}
+                except Exception as ie:
+                    print(f"⚠️ Stock Intel info failed for {yf_sym}: {ie}")
+                    info = {}
+                break
+            except Exception as ex:
+                print(f"⚠️ Stock Intel attempt {attempt+1}/3 for {yf_sym}: {ex}")
+                if attempt < 2:
+                    time.sleep(1.5 * (attempt + 1))  # Back-off: 1.5s, 3s
+                continue
+        
+        # Fallback: Yahoo v8 direct API if yfinance fails
+        if len(hist) == 0:
+            try:
+                import requests as req
+                url = f"https://query1.finance.yahoo.com/v8/finance/chart/{yf_sym}?range=1y&interval=1d"
+                r = req.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=5)
+                data = r.json()
+                result_data = data.get("chart", {}).get("result", [{}])[0]
+                ts = result_data.get("timestamp", [])
+                quotes = result_data.get("indicators", {}).get("quote", [{}])[0]
+                if ts and quotes:
+                    hist = pd.DataFrame({
+                        "Close": quotes.get("close", []),
+                        "Open": quotes.get("open", []),
+                        "High": quotes.get("high", []),
+                        "Low": quotes.get("low", []),
+                        "Volume": quotes.get("volume", [])
+                    }).dropna()
+                    print(f"✅ Stock Intel fallback v8 worked for {yf_sym}: {len(hist)} rows")
+            except Exception as v8e:
+                print(f"⚠️ v8 fallback also failed: {v8e}")
+        
+        if len(hist) == 0:
+            return {"success": False, "error": f"Could not fetch data for {symbol}. Yahoo Finance may be rate limiting — please try again in 2 minutes."}
+        
+        closes = hist["Close"].values.astype(float)
+        volumes = hist["Volume"].values.astype(float) if "Volume" in hist else []
+        highs = hist["High"].values.astype(float) if "High" in hist else closes
+        lows = hist["Low"].values.astype(float) if "Low" in hist else closes
+        price = round(float(closes[-1]), 2)
         
         # ═══ 1. FUNDAMENTAL ANALYSIS ═══
         rev_growth = float(info.get("revenueGrowth", 0) or 0) * 100
@@ -11373,26 +11443,20 @@ async def stock_intel(symbol: str, region: str = "IN"):
         gross_margin = float(info.get("grossMargins", 0) or 0) * 100
         debt_equity = float(info.get("debtToEquity", 0) or 0)
         roe = float(info.get("returnOnEquity", 0) or 0) * 100
-        roce = float(info.get("returnOnAssets", 0) or 0) * 100 * 1.5  # Approximate ROCE
-        free_cf = float(info.get("freeCashflow", 0) or 0)
+        roce = float(info.get("returnOnAssets", 0) or 0) * 100 * 1.5
         
-        fund_score = 50
-        fund_flags = []
+        fund_score = 50; fund_flags = []
         if rev_growth > 15: fund_score += 15; fund_flags.append(f"+Revenue growing {rev_growth:.0f}% — business expanding")
         elif rev_growth > 5: fund_score += 5; fund_flags.append(f"+Moderate revenue growth {rev_growth:.0f}%")
-        elif rev_growth < 0: fund_score -= 10; fund_flags.append(f"-Revenue DECLINING {rev_growth:.0f}% — red flag")
-        
+        elif rev_growth < -5: fund_score -= 10; fund_flags.append(f"-Revenue DECLINING {rev_growth:.0f}% — red flag")
         if earn_growth > 20: fund_score += 15; fund_flags.append(f"+Strong earnings growth {earn_growth:.0f}%")
-        elif earn_growth < 0: fund_score -= 10; fund_flags.append(f"-Earnings declining {earn_growth:.0f}%")
-        
+        elif earn_growth < -5: fund_score -= 10; fund_flags.append(f"-Earnings declining {earn_growth:.0f}%")
         if profit_margin > 15: fund_score += 10; fund_flags.append(f"+Healthy profit margin {profit_margin:.0f}%")
-        elif profit_margin < 5: fund_score -= 10; fund_flags.append(f"-Thin margins {profit_margin:.0f}% — vulnerable to costs")
-        
-        if debt_equity < 50: fund_score += 5; fund_flags.append(f"+Low debt ({debt_equity:.0f}%) — financially strong")
+        elif profit_margin < 5 and profit_margin != 0: fund_score -= 10; fund_flags.append(f"-Thin margins {profit_margin:.0f}%")
+        if 0 < debt_equity < 50: fund_score += 5; fund_flags.append(f"+Low debt ({debt_equity:.0f}%) — strong balance sheet")
         elif debt_equity > 150: fund_score -= 10; fund_flags.append(f"-Heavy debt ({debt_equity:.0f}%) — risk if rates rise")
-        
-        if roe > 15: fund_score += 5; fund_flags.append(f"+Good ROE {roe:.0f}% — efficient with shareholders' money")
-        
+        if roe > 15: fund_score += 5; fund_flags.append(f"+Good ROE {roe:.0f}%")
+        if not fund_flags: fund_flags.append("Fundamental data limited — using price action instead")
         fund_score = max(0, min(100, fund_score))
         fund_verdict = "STRONG" if fund_score >= 70 else ("AVERAGE" if fund_score >= 45 else "WEAK")
         
@@ -11402,96 +11466,86 @@ async def stock_intel(symbol: str, region: str = "IN"):
         peg = float(info.get("pegRatio", 0) or 0)
         pb = float(info.get("priceToBook", 0) or 0)
         sector = info.get("sector", "")
-        industry_pe = float(info.get("industryPE", pe * 0.9) or pe * 0.9)  # Fallback
         
-        val_score = 50
-        val_flags = []
+        val_score = 50; val_flags = []
         if pe > 0:
-            if pe < industry_pe * 0.8: val_score += 20; val_flags.append(f"+Trading at PE {pe:.1f}x — cheaper than peers")
-            elif pe > industry_pe * 1.3: val_score -= 15; val_flags.append(f"-PE {pe:.1f}x — expensive vs peers")
-            else: val_flags.append(f"PE {pe:.1f}x — in line with sector")
+            if pe < 15: val_score += 20; val_flags.append(f"+PE {pe:.1f}x — attractively valued")
+            elif pe < 25: val_score += 5; val_flags.append(f"PE {pe:.1f}x — reasonable valuation")
+            elif pe > 40: val_score -= 15; val_flags.append(f"-PE {pe:.1f}x — expensive, needs high growth to justify")
         if fwd_pe > 0 and pe > 0:
             if fwd_pe < pe * 0.85: val_score += 10; val_flags.append(f"+Forward PE {fwd_pe:.1f}x dropping — earnings growing into valuation")
-            elif fwd_pe > pe: val_score -= 5; val_flags.append(f"-Forward PE {fwd_pe:.1f}x rising — earnings expected to shrink")
+            elif fwd_pe > pe: val_score -= 5; val_flags.append(f"-Forward PE {fwd_pe:.1f}x rising — earnings may shrink")
         if peg > 0:
-            if peg < 1: val_score += 15; val_flags.append(f"+PEG {peg:.1f} — undervalued for its growth rate (sweet spot!)")
-            elif peg > 2: val_score -= 10; val_flags.append(f"-PEG {peg:.1f} — overpriced for the growth you're getting")
-        
+            if peg < 1: val_score += 15; val_flags.append(f"+PEG {peg:.1f} — undervalued for growth (sweet spot!)")
+            elif peg > 2: val_score -= 10; val_flags.append(f"-PEG {peg:.1f} — overpriced for growth")
+        if not val_flags: val_flags.append("Valuation data limited — rely on price action signals")
         val_score = max(0, min(100, val_score))
         val_verdict = "CHEAP" if val_score >= 65 else ("FAIR" if val_score >= 40 else "EXPENSIVE")
         
         # ═══ 3. PRICE ACTION ANALYSIS ═══
-        hist = tk.history(period="1y")
-        closes = hist["Close"].values.astype(float) if len(hist) > 0 else []
-        volumes = hist["Volume"].values.astype(float) if len(hist) > 0 else []
-        
-        trend = "SIDEWAYS"; trend_detail = ""
+        trend = "SIDEWAYS"; trend_detail = "Insufficient data"
         support = 0; resistance = 0; vol_confirm = "WEAK"
         breakout_level = 0; breakdown_level = 0
         
         if len(closes) >= 50:
-            import numpy as np
             ema20 = float(pd.Series(closes).ewm(span=20).mean().iloc[-1])
             ema50 = float(pd.Series(closes).ewm(span=50).mean().iloc[-1])
             sma200 = float(np.mean(closes[-200:])) if len(closes) >= 200 else float(np.mean(closes[-50:]))
             
-            if ema20 > ema50 > sma200: trend = "BULLISH"; trend_detail = "All moving averages stacked up — clear uptrend"
-            elif ema20 < ema50 < sma200: trend = "BEARISH"; trend_detail = "All moving averages stacked down — clear downtrend"
-            else: trend = "SIDEWAYS"; trend_detail = "Mixed signals — no clear direction yet"
+            if ema20 > ema50 and price > sma200: trend = "BULLISH"; trend_detail = "Moving averages stacked up — clear uptrend"
+            elif ema20 < ema50 and price < sma200: trend = "BEARISH"; trend_detail = "Moving averages stacked down — downtrend"
+            else: trend_detail = "Mixed signals — no clear direction yet"
             
-            w52h = float(max(closes[-252:])) if len(closes) >= 252 else float(max(closes))
-            w52l = float(min(closes[-252:])) if len(closes) >= 252 else float(min(closes))
+            w52h = float(max(closes[-min(252,len(closes)):]))
+            w52l = float(min(closes[-min(252,len(closes)):]))
             resistance = round(w52h, 2)
-            support = round(w52l + (w52h - w52l) * 0.236, 2)  # Fib 23.6%
+            support = round(w52l + (w52h - w52l) * 0.236, 2)
             breakout_level = round(w52h * 1.02, 2)
             breakdown_level = round(support * 0.98, 2)
             
-            avg_vol = float(np.mean(volumes[-20:])) if len(volumes) >= 20 else 0
-            recent_vol = float(np.mean(volumes[-5:])) if len(volumes) >= 5 else 0
-            vol_ratio = round(recent_vol / avg_vol, 1) if avg_vol > 0 else 1.0
-            vol_confirm = "STRONG" if vol_ratio > 1.3 else ("MODERATE" if vol_ratio > 0.8 else "WEAK")
+            if len(volumes) >= 20:
+                avg_vol = float(np.mean(volumes[-20:]))
+                recent_vol = float(np.mean(volumes[-5:]))
+                vol_ratio = round(recent_vol / avg_vol, 1) if avg_vol > 0 else 1.0
+                vol_confirm = "STRONG" if vol_ratio > 1.3 else ("MODERATE" if vol_ratio > 0.8 else "WEAK")
         
         pa_score = 50
         if trend == "BULLISH": pa_score += 20
         elif trend == "BEARISH": pa_score -= 10
         if vol_confirm == "STRONG": pa_score += 10
-        if price > 0 and resistance > 0 and price > resistance * 0.95: pa_score += 10  # Near breakout
+        if price > 0 and resistance > 0 and price > resistance * 0.95: pa_score += 10
         pa_score = max(0, min(100, pa_score))
         
-        # ═══ 4. CONFLUENCE ANALYSIS ═══
+        # ═══ 4. CONFLUENCE ═══
         conf_score = round(fund_score * 0.30 + val_score * 0.25 + pa_score * 0.45, 0)
         alignment = []
         if fund_verdict == "STRONG" and val_verdict != "EXPENSIVE" and trend == "BULLISH":
-            alignment.append("✅ TRIPLE ALIGNMENT — Fundamentals + Valuation + Trend all agree. High probability setup!")
+            alignment.append("✅ TRIPLE ALIGNMENT — Fundamentals + Valuation + Trend all agree")
         elif fund_verdict == "STRONG" and trend != "BULLISH":
-            alignment.append("⚠️ Good company but wrong timing — wait for uptrend to confirm")
+            alignment.append("⚠️ Good company but wrong timing — wait for uptrend")
         elif val_verdict == "CHEAP" and trend == "BULLISH":
-            alignment.append("✅ Value + Momentum combo — stock is cheap AND trending up")
+            alignment.append("✅ Value + Momentum — cheap AND trending up")
         elif val_verdict == "EXPENSIVE" and trend == "BEARISH":
-            alignment.append("🔴 Expensive AND falling — avoid until valuation improves")
+            alignment.append("🔴 Expensive AND falling — avoid")
         else:
-            alignment.append("⚠️ Mixed signals — no strong alignment. Consider waiting for clarity.")
+            alignment.append("⚠️ Mixed signals — wait for clarity")
         
         # ═══ 5. TRADE PLAN ═══
         if conf_score >= 65 and trend == "BULLISH":
-            decision = "BUY"
-            dec_color = "#059669"
+            decision = "BUY"; dec_color = "#059669"
         elif conf_score >= 55 and trend != "BEARISH":
-            decision = "HOLD / ACCUMULATE"
-            dec_color = "#d97706"
+            decision = "HOLD / ACCUMULATE"; dec_color = "#d97706"
         elif trend == "BEARISH" or conf_score < 35:
-            decision = "SELL / AVOID"
-            dec_color = "#dc2626"
+            decision = "SELL / AVOID"; dec_color = "#dc2626"
         else:
-            decision = "WAIT"
-            dec_color = "#d97706"
+            decision = "WAIT"; dec_color = "#d97706"
         
         atr = 0
-        if len(closes) >= 15:
-            highs = hist["High"].values.astype(float)[-14:]
-            lows = hist["Low"].values.astype(float)[-14:]
-            cls = closes[-15:-1]
-            trs = [max(highs[i]-lows[i], abs(highs[i]-cls[i]), abs(lows[i]-cls[i])) for i in range(min(len(highs),len(cls)))]
+        if len(closes) >= 15 and len(highs) >= 14 and len(lows) >= 14:
+            trs = []
+            for i in range(1, min(15, len(closes))):
+                tr_val = max(highs[-i]-lows[-i], abs(highs[-i]-closes[-i-1]), abs(lows[-i]-closes[-i-1]))
+                trs.append(tr_val)
             atr = round(float(np.mean(trs)), 2) if trs else 0
         
         entry_low = round(price * 0.98, 2)
@@ -11499,76 +11553,61 @@ async def stock_intel(symbol: str, region: str = "IN"):
         sl = round(price - atr * 2, 2) if atr > 0 else round(price * 0.93, 2)
         t1 = round(price + atr * 3, 2) if atr > 0 else round(price * 1.08, 2)
         t2 = round(price + atr * 5, 2) if atr > 0 else round(price * 1.15, 2)
-        rr = round((t1 - price) / (price - sl), 1) if price > sl else 0
+        rr = round((t1 - price) / max(price - sl, 0.01), 1)
         
-        # ═══ 6. CONFIDENCE SCORE ═══
         confidence = int(conf_score)
         
         # ═══ 7. SIMPLE EXPLANATION ═══
-        simple_why = ""
-        simple_risk = ""
         if decision == "BUY":
-            simple_why = f"{symbol} has strong earnings, reasonable valuation, and the price is trending up. Like a train leaving the station — better to be on it than chasing it."
-            simple_risk = "Market-wide crash could drag it down temporarily. Set your stop loss and don't panic sell."
-        elif decision == "SELL / AVOID":
-            simple_why = f"{symbol} is either expensive, losing money, or in a downtrend. Like buying a car at peak price — wait for a better deal."
-            simple_risk = "If you already own it, consider cutting losses or waiting for trend reversal."
+            simple_why = f"{symbol} has solid fundamentals, reasonable valuation, and price is trending up. Like a train leaving the station — better to be on it."
+            simple_risk = "Market-wide crash could drag it down. Set stop loss and don't panic sell."
+        elif "SELL" in decision:
+            simple_why = f"{symbol} is either expensive, fundamentals weakening, or in downtrend. Like buying at peak price — wait for better deal."
+            simple_risk = "If you own it, consider cutting losses or wait for reversal."
         else:
-            simple_why = f"{symbol} shows mixed signals. Some things look good, others don't. Like a restaurant with great food but bad reviews — worth watching but not committing yet."
-            simple_risk = "Could go either way. Set price alerts and wait for a clearer picture."
+            simple_why = f"{symbol} shows mixed signals. Like a restaurant with great food but bad reviews — worth watching, not committing yet."
+            simple_risk = "Could go either way. Set alerts and wait for clearer picture."
         
-        # ═══ 8. MARKET CONTEXT ═══
-        mkt_context = {
-            "indexTrend": "Check NIFTY/S&P 500 trend separately",
-            "sectorStrength": sector or "Unknown",
-            "aligned": trend == "BULLISH",
-        }
-        
-        # ═══ 9. ENTRY TIMING ═══
-        if price > 0 and resistance > 0:
-            if price >= resistance * 0.98:
-                entry_timing = {"signal": "BREAKOUT IMMINENT", "condition": f"Wait for price to close above {csym}{breakout_level:,.0f} with volume > average", "type": "BREAKOUT"}
-            elif price <= support * 1.05:
-                entry_timing = {"signal": "NEAR SUPPORT", "condition": f"Enter if price bounces from {csym}{support:,.0f} with green candle", "type": "PULLBACK"}
-            else:
-                entry_timing = {"signal": "MID-RANGE", "condition": f"Wait for pullback to {csym}{round(price*0.97,0):,.0f} OR breakout above {csym}{resistance:,.0f}", "type": "WAIT"}
+        # ═══ 8-13: Context, Timing, Sizing, Smart Money, Risk, Invalidation ═══
+        # Entry Timing
+        if price > 0 and resistance > 0 and price >= resistance * 0.98:
+            entry_timing = {"signal": "BREAKOUT IMMINENT", "condition": f"Wait for close above {csym}{breakout_level:,.0f} with volume", "type": "BREAKOUT"}
+        elif price > 0 and support > 0 and price <= support * 1.05:
+            entry_timing = {"signal": "NEAR SUPPORT", "condition": f"Enter if bounces from {csym}{support:,.0f}", "type": "PULLBACK"}
         else:
-            entry_timing = {"signal": "ANALYZING", "condition": "Insufficient data for timing", "type": "WAIT"}
+            entry_timing = {"signal": "MID-RANGE", "condition": f"Wait for pullback to {csym}{round(price*0.97,0):,.0f} or breakout above {csym}{resistance:,.0f}", "type": "WAIT"}
         
-        # ═══ 10. POSITION SIZING ═══
-        sizing = "MODERATE"
-        sizing_detail = ""
-        if confidence >= 75: sizing = "AGGRESSIVE"; sizing_detail = "High conviction — can allocate 3-5% of portfolio"
-        elif confidence >= 55: sizing = "MODERATE"; sizing_detail = "Decent setup — allocate 1-3% of portfolio"
-        else: sizing = "CONSERVATIVE"; sizing_detail = "Weak setup — max 1% or skip entirely"
+        # Sizing
+        if confidence >= 75: sizing = "AGGRESSIVE"; sizing_detail = "High conviction — allocate 3-5% of portfolio"
+        elif confidence >= 55: sizing = "MODERATE"; sizing_detail = "Decent setup — allocate 1-3%"
+        else: sizing = "CONSERVATIVE"; sizing_detail = "Weak setup — max 1% or skip"
         
-        # ═══ 11. SMART MONEY ═══
+        # Smart Money
         smart_money = []
         if len(volumes) >= 20:
             avg_v = float(np.mean(volumes[-20:]))
-            recent_v = float(np.mean(volumes[-3:]))
+            recent_v = float(np.mean(volumes[-3:])) if len(volumes) >= 3 else avg_v
             if recent_v > avg_v * 2: smart_money.append("🔥 Volume 2x above average — institutions may be accumulating")
             elif recent_v > avg_v * 1.5: smart_money.append("📊 Above-average volume — increased interest")
-            if price > 0 and len(closes) >= 5:
-                if closes[-1] > closes[-5] and recent_v > avg_v: smart_money.append("📈 Price up + volume up = genuine buying (not retail FOMO)")
-                if closes[-1] < closes[-5] and recent_v < avg_v * 0.7: smart_money.append("😴 Price down on LOW volume — likely a pullback, not distribution")
-        if not smart_money: smart_money.append("No unusual activity detected — normal trading pattern")
+            if len(closes) >= 5:
+                if closes[-1] > closes[-5] and recent_v > avg_v: smart_money.append("📈 Price up + volume up = genuine buying")
+                if closes[-1] < closes[-5] and recent_v < avg_v * 0.7: smart_money.append("😴 Price down on LOW volume — pullback, not distribution")
+        if not smart_money: smart_money.append("No unusual activity — normal trading")
         
-        # ═══ 12. RISK FACTORS ═══
+        # Risks
         risks = []
-        if debt_equity > 100: risks.append("High debt — vulnerable to interest rate hikes")
-        if pe > 50: risks.append("Expensive valuation — any earnings miss could trigger sharp fall")
-        if vol_confirm == "WEAK": risks.append("Low volume — breakouts may fail without institutional support")
+        if debt_equity > 100: risks.append("High debt — vulnerable to rate hikes")
+        if pe > 50: risks.append("Expensive valuation — earnings miss = sharp fall")
+        if vol_confirm == "WEAK": risks.append("Low volume — breakouts may fail")
         risks.append("Earnings season can create sudden 5-10% moves")
-        risks.append("Global macro risks (Fed/RBI policy, geopolitics, oil prices)")
+        risks.append("Global macro risks (Fed/RBI, geopolitics, oil)")
         
-        # ═══ 13. INVALIDATION LOGIC ═══
-        invalidation = f"This trade idea FAILS if price closes below {csym}{sl:,.0f} (our stop loss). At that point, the trend structure breaks and we exit — no exceptions, no hoping."
+        invalidation = f"This idea FAILS if price closes below {csym}{sl:,.0f}. At that point, exit — no exceptions."
         
-        return {
+        _si_result = {
             "success": True, "symbol": symbol, "price": price, "csym": csym, "region": region,
-            "companyName": info.get("shortName", symbol),
-            "sector": sector, "industry": info.get("industry", ""),
+            "companyName": info.get("shortName", symbol), "sector": sector,
+            "industry": info.get("industry", ""),
             "decision": decision, "decColor": dec_color, "confidence": confidence,
             "fundamental": {"score": fund_score, "verdict": fund_verdict, "flags": fund_flags,
                            "revGrowth": round(rev_growth,1), "earnGrowth": round(earn_growth,1),
@@ -11582,7 +11621,7 @@ async def stock_intel(symbol: str, region: str = "IN"):
             "confluence": {"score": conf_score, "alignment": alignment},
             "tradePlan": {"entry": [entry_low, entry_high], "sl": sl, "t1": t1, "t2": t2, "rr": rr},
             "simple": {"why": simple_why, "risk": simple_risk},
-            "marketContext": mkt_context,
+            "marketContext": {"sectorStrength": sector or "Unknown", "aligned": trend == "BULLISH"},
             "entryTiming": entry_timing,
             "sizing": {"level": sizing, "detail": sizing_detail},
             "smartMoney": smart_money,
@@ -11590,15 +11629,18 @@ async def stock_intel(symbol: str, region: str = "IN"):
             "invalidation": invalidation,
         }
         _si_cache[cache_key] = {"ts": datetime.utcnow(), "data": _si_result}
-        # Keep cache size bounded
         if len(_si_cache) > 50:
             oldest = min(_si_cache, key=lambda k: _si_cache[k]["ts"])
             del _si_cache[oldest]
-        print(f"📊 Stock Intel: {symbol} → {decision} ({confidence}%) cached")
+        print(f"📊 Stock Intel: {symbol} → {decision} ({confidence}%) cached 30min")
         return _si_result
     except Exception as e:
         import traceback; traceback.print_exc()
-        return {"success": False, "error": str(e)}
+        # Return stale cache if available
+        if cache_key in _si_cache:
+            print(f"⚠️ Stock Intel error, returning stale cache for {symbol}")
+            return _si_cache[cache_key]["data"]
+        return {"success": False, "error": f"Rate limited by Yahoo Finance. Please wait 2 minutes and try again. ({str(e)[:80]})"}
 
 
 if __name__ == "__main__":

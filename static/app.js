@@ -40,8 +40,8 @@ m.forEach(s=>{const d=document.createElement('div');d.className='aci';d.innerHTM
 document.addEventListener('click',e=>{if(e.target!==TI)AC.classList.remove('show')});
 document.getElementById('email').addEventListener('keypress',e=>{if(e.key==='Enter')TI.focus()});
 // Smart Trades tab: only visible for authorized email
-const TRADES_EMAILS=['vjyavatar@gmail.com'];
-const PICKS_EMAILS=['vjyavatar@gmail.com'];
+const TRADES_EMAILS=['x@yp.com'];
+const PICKS_EMAILS=['x@yp.com'];
 let _pulseData=null;
 let _pulseFetching=false,_pulseLoaded=false;
 
@@ -1830,9 +1830,11 @@ function switchTabGroup(group) {
       subNav.style.gap = '6px';
       subNav.style.alignItems = 'center';
       var h = '';
+      var _tips={trades:'Live 5-engine algo signals with entry, SL, targets',smarttrades:'AI daily trade ideas for indices & stocks',stockintel:'Complete 13-section BUY/SELL/HOLD decision engine',scanner:'Heatmap, screener & options flow',valreport:'PE valuation, crash scenarios & geo risks',backtest:'Test strategies on historical data',journal:'Log trades, track P&L & behavior',aiassist:'Ask about any stock in plain English',analysis:'AI deep research report',dcf:'Intrinsic value calculator',equity:'Equity research with peers',compare:'Side-by-side stock comparison',quick:'Summary, charts & key metrics',indices:'Top performers & YTD rankings',daily:'Daily market analysis',finance:'SIP calculator & tax tools',education:'Learn options, Greeks & strategies'};
       tabs.forEach(function(tab, i) {
         var isActive = (i === 0);
-        h += '<button onclick="switchTab(\''+tab+'\')" class="sub-tab-btn'+(isActive?' active':'')+'" style="padding:4px 12px;border-radius:20px;font-size:9px;font-weight:700;border:1px solid '+(isActive?'var(--blue)':'var(--border)')+';background:'+(isActive?'var(--blue)':'transparent')+';color:'+(isActive?'#fff':'var(--text3)')+';cursor:pointer;font-family:Sora,sans-serif;transition:all .2s;white-space:nowrap">'+labels[i]+'</button>';
+        var tip=_tips[tab]||labels[i];
+        h += '<button onclick="switchTab(\''+tab+'\')" class="sub-tab-btn'+(isActive?' active':'')+'" title="'+tip+'" style="padding:4px 12px;border-radius:20px;font-size:9px;font-weight:700;border:1px solid '+(isActive?'var(--blue)':'var(--border)')+';background:'+(isActive?'var(--blue)':'transparent')+';color:'+(isActive?'#fff':'var(--text3)')+';cursor:pointer;font-family:Sora,sans-serif;transition:all .2s;white-space:nowrap">'+labels[i]+'</button>';
       });
       subNav.innerHTML = h;
     }
@@ -4942,6 +4944,8 @@ if(!d.success)return;
 if(!firstData)firstData=d;
 var card=document.getElementById('tc_'+s);
 if(card)card.outerHTML=_buildTradeCard(d,S,reg);
+// Re-highlight if this was the active card
+if(window._activeAlgoSym===s){var rc=document.getElementById('tc_'+s);if(rc){rc.style.border='2px solid #1a56db';rc.style.boxShadow='0 0 24px rgba(26,86,219,.2),inset 0 0 0 1px rgba(26,86,219,.1)';rc.style.background='rgba(26,86,219,.04)';rc.style.transform='scale(1.02)'}}
 // Update game plan from first result
 if(idx===0)_updateGamePlan(d,S);
 // Expiry banner
@@ -5314,11 +5318,11 @@ function algoSelect(sym,btn){
 // Highlight button
 document.querySelectorAll('.algo-btn').forEach(function(b){b.classList.remove('active')});
 if(btn)btn.classList.add('active');
-// Highlight trade card in top trades grid
-document.querySelectorAll('[id^="tc_"]').forEach(function(c){c.style.border='1px solid var(--border)';c.style.boxShadow='none'});
+// Highlight trade card in top trades grid — VERY visible
+document.querySelectorAll('[id^="tc_"]').forEach(function(c){c.style.border='1px solid var(--border)';c.style.boxShadow='none';c.style.background='var(--surface)';c.style.transform='none'});
 var tc=document.getElementById('tc_'+sym);
-if(tc){tc.style.border='2px solid #1a56db';tc.style.boxShadow='0 0 20px rgba(26,86,219,.15)';tc.scrollIntoView({behavior:'smooth',block:'nearest'})}
-// Store active symbol for reference
+if(tc){tc.style.border='2px solid #1a56db';tc.style.boxShadow='0 0 24px rgba(26,86,219,.2),inset 0 0 0 1px rgba(26,86,219,.1)';tc.style.background='rgba(26,86,219,.04)';tc.style.transform='scale(1.02)';tc.scrollIntoView({behavior:'smooth',block:'nearest'})}
+// Store active symbol
 window._activeAlgoSym=sym;
 // Clear custom input
 var ci=document.getElementById('algoCustomTicker');
@@ -5358,8 +5362,12 @@ document.getElementById('siRegUS').style.color=reg==='US'?'#fff':'var(--text3)';
 document.getElementById('siStocksIN').style.display=reg==='IN'?'flex':'none';
 document.getElementById('siStocksUS').style.display=reg==='US'?'flex':'none';
 }
+var _siLoading=false;
 function runStockIntel(sym){
 if(!sym)return;
+if(_siLoading){return}  // Prevent rapid clicks
+_siLoading=true;
+setTimeout(function(){_siLoading=false},3000);  // 3s cooldown between requests
 var el=document.getElementById('siResult');if(!el)return;
 var reg=window._siRegion||'IN';
 var S=reg==='US'?'$':'₹';
@@ -5485,7 +5493,8 @@ h+='<div style="font-size:10px;color:#dc2626;line-height:1.6"><strong>Risk:</str
 h+='</div>';
 
 el.innerHTML=h;
-}).catch(function(e){el.innerHTML='<div style="color:var(--red);padding:16px">Error: '+e.message+'</div>'});
+_siLoading=false;
+}).catch(function(e){_siLoading=false;el.innerHTML='<div style="color:var(--red);padding:16px">Error: '+e.message+'</div>'});
 }
 
 // ═══ VALUATION REPORT TAB ═══
@@ -5505,7 +5514,7 @@ var reg=window._valRegion||'IN';
 var S=reg==='US'?'$':'&#8377;';
 el.innerHTML='<div style="text-align:center;padding:30px;color:var(--text3);font-size:11px"><div style="display:inline-block;width:14px;height:14px;border:2px solid var(--blue);border-top-color:transparent;border-radius:50%;animation:spin .5s linear infinite;vertical-align:middle;margin-right:6px"></div>Analyzing valuation for '+sym+'...</div>';
 fetch('/api/algo-signal?symbol='+encodeURIComponent(sym)+'&region='+reg).then(function(r){return r.json()}).then(function(d){
-if(!d.success){el.innerHTML='<div style="color:var(--red);padding:12px">Failed: '+(d.error||'Unknown error')+'</div>';return}
+if(!d.success){_siLoading=false;el.innerHTML='<div style="color:var(--red);padding:12px">Failed: '+(d.error||'Unknown error')+'</div>';return}
 var vl=d.valuation||{};
 var p=d.spot||0;
 var h='';
@@ -6122,46 +6131,107 @@ h+='<button onclick="switchTabGroup(\'trading\');setTimeout(function(){switchTab
 h+='</div>';
 }
 
-// ═══ ④ QUICK ALTERNATIVE — Scalp Trade (5min + 15min) + 15min Price Action ═══
+// ═══ SIDE-BY-SIDE: SCALP (Quick) vs INTRADAY (Swing) ═══
 var sc=d.scalp||null;
-if(sc&&sc.direction!=='NEUTRAL'){
-var scC=sc.direction==='BULLISH'?'#047857':'#ef4444';
-var scIcon=sc.direction==='BULLISH'?'&#128994;':'&#128308;';
-h+='<div style="margin-bottom:14px;border-radius:10px;border:2px solid '+scC+'40;overflow:hidden;background:'+scC+'04">';
-h+='<div style="padding:10px 14px;background:'+scC+'10;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">';
-h+='<div style="display:flex;align-items:center;gap:8px"><span style="font-size:16px">&#9889;</span><div><div style="font-size:12px;font-weight:800;color:var(--text)">QUICK TRADE / SCALP</div><div style="font-size:9px;color:var(--text3)">Based on 5min + 15min price action · VWAP · Volume</div></div></div>';
-h+='<div style="display:flex;align-items:center;gap:8px"><div style="font-size:9px;font-weight:700;padding:3px 10px;border-radius:4px;background:'+scC+';color:#fff">'+sc.direction+'</div>';
-h+='<div style="font-size:20px;font-weight:900;font-family:var(--mono);color:'+scC+'">'+sc.confidence+'%</div></div>';
-h+='</div>';
-// Trade details
-h+='<div style="padding:12px 14px">';
-h+='<div style="font-size:12px;font-weight:800;color:'+scC+';margin-bottom:8px">'+scIcon+' '+sc.action+'</div>';
-// Entry, SL, Targets grid
-h+='<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:10px">';
+if(tr||sc){
+var hasScalp=sc&&sc.direction!=='NEUTRAL'&&sc.confidence>=40;
+var hasTrade=tr&&!isWait;
+var scC=hasScalp?(sc.direction==='BULLISH'?'#059669':'#dc2626'):'#6b7280';
 var scS=isUS?'$':'&#8377;';
-h+='<div style="text-align:center;padding:6px;border-radius:6px;background:var(--bg2)"><div style="font-size:7px;color:var(--text3);font-weight:700">ENTRY</div><div style="font-size:12px;font-weight:800;font-family:var(--mono);color:var(--text)">'+scS+sc.entry.toLocaleString()+'</div>'+(sc.premEntry?'<div style="font-size:8px;color:var(--cyan)">Prem: '+scS+sc.premEntry+'</div>':'')+'</div>';
-h+='<div style="text-align:center;padding:6px;border-radius:6px;background:rgba(239,68,68,.06)"><div style="font-size:7px;color:#ef4444;font-weight:700">STOP LOSS</div><div style="font-size:12px;font-weight:800;font-family:var(--mono);color:#ef4444">'+scS+sc.sl.toLocaleString()+'</div>'+(sc.premSL?'<div style="font-size:8px;color:var(--text3)">Prem: '+scS+sc.premSL+'</div>':'')+'</div>';
-h+='<div style="text-align:center;padding:6px;border-radius:6px;background:rgba(16,185,129,.06)"><div style="font-size:7px;color:#10b981;font-weight:700">TARGET 1</div><div style="font-size:12px;font-weight:800;font-family:var(--mono);color:#10b981">'+scS+sc.t1.toLocaleString()+'</div>'+(sc.premT1?'<div style="font-size:8px;color:var(--text3)">Prem: '+scS+sc.premT1+'</div>':'')+'</div>';
-h+='<div style="text-align:center;padding:6px;border-radius:6px;background:rgba(10,124,66,.06)"><div style="font-size:7px;color:#047857;font-weight:700">TARGET 2</div><div style="font-size:12px;font-weight:800;font-family:var(--mono);color:#047857">'+scS+sc.t2.toLocaleString()+'</div>'+(sc.premT2?'<div style="font-size:8px;color:var(--text3)">Prem: '+scS+sc.premT2+'</div>':'')+'</div>';
+
+h+='<div style="margin-bottom:14px;border-radius:14px;overflow:hidden;border:1px solid var(--border);box-shadow:var(--shadow)">';
+h+='<div style="padding:10px 18px;background:var(--bg2);border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">';
+h+='<div style="font-size:12px;font-weight:800;color:var(--text)">⚡ TRADE COMPARISON — Pick Your Style</div>';
+h+='<div style="font-size:8px;color:var(--text3)">Same stock, two approaches</div></div>';
+
+h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:0">';
+
+// ── LEFT: SCALP (Quick Trade) ──
+h+='<div style="padding:14px;border-right:1px solid var(--border);'+(hasScalp?'':'opacity:.4')+'">';
+h+='<div style="display:flex;align-items:center;gap:6px;margin-bottom:10px">';
+h+='<div style="width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,#f59e0b,#d97706);display:flex;align-items:center;justify-content:center"><span style="font-size:14px;color:#fff">⚡</span></div>';
+h+='<div><div style="font-size:11px;font-weight:800;color:#d97706">SCALP — Quick Trade</div>';
+h+='<div style="font-size:7px;color:var(--text3)">Hold: 5–30 minutes</div></div></div>';
+
+if(hasScalp){
+// Direction badge
+h+='<div style="display:flex;gap:6px;align-items:center;margin-bottom:8px">';
+h+='<span style="font-size:9px;font-weight:800;padding:3px 10px;border-radius:6px;background:'+scC+'12;color:'+scC+'">'+sc.direction+'</span>';
+h+='<span style="font-size:14px;font-weight:900;font-family:var(--mono);color:'+scC+'">'+sc.confidence+'%</span>';
 h+='</div>';
-// Price action context
-h+='<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">';
-h+='<div style="font-size:9px;padding:3px 8px;border-radius:4px;background:var(--bg2);color:var(--text)">5m: <strong style="color:'+(sc.trend_5m==='BULLISH'?'#10b981':'#ef4444')+'">'+sc.trend_5m+'</strong></div>';
-h+='<div style="font-size:9px;padding:3px 8px;border-radius:4px;background:var(--bg2);color:var(--text)">15m: <strong style="color:'+(sc.trend_15m==='BULLISH'?'#10b981':'#ef4444')+'">'+sc.trend_15m+'</strong></div>';
-h+='<div style="font-size:9px;padding:3px 8px;border-radius:4px;background:var(--bg2);color:var(--text)">VWAP: '+scS+sc.vwap+' <strong style="color:'+(sc.above_vwap?'#10b981':'#ef4444')+'">'+(sc.above_vwap?'ABOVE':'BELOW')+'</strong></div>';
-if(sc.vol_surge>1.3)h+='<div style="font-size:9px;padding:3px 8px;border-radius:4px;background:rgba(6,182,212,.1);color:var(--cyan);font-weight:700">Vol '+sc.vol_surge+'x &#128640;</div>';
+
+// Action
+h+='<div style="font-size:10px;font-weight:800;color:'+scC+';margin-bottom:8px">'+sc.action+'</div>';
+
+// Compact table
+h+='<table style="width:100%;border-collapse:collapse;font-size:9px;margin-bottom:8px">';
+h+='<tr><td style="padding:4px 6px;color:var(--text3);font-weight:700;width:55px">Entry</td><td style="padding:4px 6px;font-weight:800;color:var(--text);font-family:var(--mono)">'+scS+sc.entry.toLocaleString()+(sc.premEntry?' <span style="color:var(--cyan);font-size:8px">(₹'+sc.premEntry+')</span>':'')+'</td></tr>';
+h+='<tr style="background:var(--bg2)"><td style="padding:4px 6px;color:#dc2626;font-weight:700">SL</td><td style="padding:4px 6px;font-weight:800;color:#dc2626;font-family:var(--mono)">'+scS+sc.sl.toLocaleString()+(sc.premSL?' <span style="color:var(--text3);font-size:8px">(₹'+sc.premSL+')</span>':'')+'</td></tr>';
+h+='<tr><td style="padding:4px 6px;color:#059669;font-weight:700">Target 1</td><td style="padding:4px 6px;font-weight:800;color:#059669;font-family:var(--mono)">'+scS+sc.t1.toLocaleString()+(sc.premT1?' <span style="color:var(--text3);font-size:8px">(₹'+sc.premT1+')</span>':'')+'</td></tr>';
+h+='<tr style="background:var(--bg2)"><td style="padding:4px 6px;color:#047857;font-weight:700">Target 2</td><td style="padding:4px 6px;font-weight:800;color:#047857;font-family:var(--mono)">'+scS+sc.t2.toLocaleString()+(sc.premT2?' <span style="color:var(--text3);font-size:8px">(₹'+sc.premT2+')</span>':'')+'</td></tr>';
+h+='</table>';
+
+// Context pills
+h+='<div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:6px">';
+h+='<span style="font-size:7px;padding:2px 6px;border-radius:4px;background:var(--bg2);color:'+(sc.trend_5m==='BULLISH'?'#059669':'#dc2626')+';font-weight:700">5m: '+sc.trend_5m+'</span>';
+h+='<span style="font-size:7px;padding:2px 6px;border-radius:4px;background:var(--bg2);color:'+(sc.trend_15m==='BULLISH'?'#059669':'#dc2626')+';font-weight:700">15m: '+sc.trend_15m+'</span>';
+h+='<span style="font-size:7px;padding:2px 6px;border-radius:4px;background:var(--bg2);color:'+(sc.above_vwap?'#059669':'#dc2626')+';font-weight:700">VWAP: '+(sc.above_vwap?'Above ✓':'Below ✗')+'</span>';
+if(sc.vol_surge>1.3)h+='<span style="font-size:7px;padding:2px 6px;border-radius:4px;background:rgba(6,182,212,.1);color:var(--cyan);font-weight:700">Vol '+sc.vol_surge+'x 🚀</span>';
 h+='</div>';
-// Reasons
-if(sc.reasons&&sc.reasons.length>0){
-h+='<div style="font-size:8px;color:var(--text3);line-height:1.5">';
-sc.reasons.forEach(function(r){
-var rc=r.indexOf('+')>=0?'#10b981':r.indexOf('-')>=0?'#ef4444':'var(--text3)';
-h+='<div style="color:'+rc+'">'+r+'</div>';
-});
-h+='</div>';
+
+h+='<div style="font-size:7px;color:var(--text3);line-height:1.4;padding:4px 6px;border-radius:4px;background:var(--bg2)">💡 Quick in-out (5-30 min). Enter on 5m candle close with volume. Book at T1, trail to T2.</div>';
+}else{
+h+='<div style="text-align:center;padding:20px;color:var(--text3);font-size:9px">⏸️ No scalp setup right now.<br>5m + 15m trends not aligned.</div>';
 }
-h+='<div style="margin-top:6px;padding:5px 8px;border-radius:4px;background:var(--bg2);font-size:8px;color:var(--text3);line-height:1.4">&#128161; <strong>Scalp trade</strong> = quick in-and-out (5-30 min hold). Enter when 5m candle closes in your direction with volume. Book at T1, trail to T2. Hard stop at SL — no hoping.</div>';
-h+='</div></div>';
+h+='</div>';
+
+// ── RIGHT: INTRADAY (Full Trade) ──
+h+='<div style="padding:14px;'+(hasTrade?'':'opacity:.4')+'">';
+h+='<div style="display:flex;align-items:center;gap:6px;margin-bottom:10px">';
+h+='<div style="width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,'+dC+','+dC+'cc);display:flex;align-items:center;justify-content:center"><span style="font-size:14px;color:#fff">'+(dir==='BULLISH'?'▲':'▼')+'</span></div>';
+h+='<div><div style="font-size:11px;font-weight:800;color:'+dC+'">INTRADAY — Full Trade</div>';
+h+='<div style="font-size:7px;color:var(--text3)">Hold: 1 hour – full day</div></div></div>';
+
+if(hasTrade){
+// Direction + signal
+h+='<div style="display:flex;gap:6px;align-items:center;margin-bottom:8px">';
+h+='<span style="font-size:9px;font-weight:800;padding:3px 10px;border-radius:6px;background:'+sC+'12;color:'+sC+'">'+sig+'</span>';
+h+='<span style="font-size:14px;font-weight:900;font-family:var(--mono);color:'+dC+'">'+(d.tradeConfidence?d.tradeConfidence.estimatedWin:50)+'%</span>';
+h+='</div>';
+
+// Action
+h+='<div style="font-size:10px;font-weight:800;color:'+dC+';margin-bottom:8px">'+tr.action+'</div>';
+
+// Compact table
+var pe2=tr.premEntry||0,ps2=tr.premSL||0,p12=tr.premT1||0,p22=tr.premT2||0;
+h+='<table style="width:100%;border-collapse:collapse;font-size:9px;margin-bottom:8px">';
+h+='<tr><td style="padding:4px 6px;color:var(--text3);font-weight:700;width:55px">Entry</td><td style="padding:4px 6px;font-weight:800;color:var(--text);font-family:var(--mono)">'+S+pe2.toFixed(1)+' <span style="color:var(--text3);font-size:8px">premium</span></td></tr>';
+h+='<tr style="background:var(--bg2)"><td style="padding:4px 6px;color:#dc2626;font-weight:700">SL</td><td style="padding:4px 6px;font-weight:800;color:#dc2626;font-family:var(--mono)">'+S+ps2.toFixed(1)+' <span style="color:var(--text3);font-size:8px">(-'+S+(pe2-ps2).toFixed(0)+' loss)</span></td></tr>';
+h+='<tr><td style="padding:4px 6px;color:#059669;font-weight:700">Target 1</td><td style="padding:4px 6px;font-weight:800;color:#059669;font-family:var(--mono)">'+S+p12.toFixed(1)+' <span style="color:var(--text3);font-size:8px">(+'+S+(p12-pe2).toFixed(0)+' profit)</span></td></tr>';
+h+='<tr style="background:var(--bg2)"><td style="padding:4px 6px;color:#047857;font-weight:700">Target 2</td><td style="padding:4px 6px;font-weight:800;color:#047857;font-family:var(--mono)">'+S+p22.toFixed(1)+' <span style="color:var(--text3);font-size:8px">(+'+S+(p22-pe2).toFixed(0)+' profit)</span></td></tr>';
+h+='<tr><td style="padding:4px 6px;color:var(--purple);font-weight:700">R:R</td><td style="padding:4px 6px;font-weight:900;color:var(--purple);font-family:var(--mono)">'+(tr.rrRatio||'—')+'</td></tr>';
+h+='</table>';
+
+// Contract info
+h+='<div style="font-size:8px;color:var(--text3);margin-bottom:6px">'+tr.contractName+(tr.expiry?' · Exp: <strong style="color:var(--text)">'+tr.expiry+'</strong>':'')+'</div>';
+
+window._lastTradeForCopy=tr;
+h+='<div style="display:flex;gap:6px">';
+h+='<button onclick="copyBrokerOrder(window._lastTradeForCopy)" style="padding:3px 10px;border-radius:6px;background:var(--bg2);border:1px solid var(--border);color:var(--text);font-size:8px;font-weight:700;cursor:pointer">📋 Copy Order</button>';
+h+='</div>';
+}else{
+h+='<div style="text-align:center;padding:20px;color:var(--text3);font-size:9px">⏸️ Low confluence — no trade.<br>Only '+sup+'/'+tot+' factors support.</div>';
+}
+h+='</div>';
+
+h+='</div>';
+
+// Bottom comparison row
+h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:0;border-top:1px solid var(--border);font-size:8px;text-align:center">';
+h+='<div style="padding:6px;border-right:1px solid var(--border);background:rgba(217,119,6,.03)"><strong style="color:#d97706">SCALP</strong>: Fast in-out, smaller profit, tight SL. Like grabbing a taxi — quick ride to next corner.</div>';
+h+='<div style="padding:6px;background:'+dC+'03"><strong style="color:'+dC+'">INTRADAY</strong>: Hold longer, bigger targets, wider SL. Like booking a ride across the city — takes time but goes further.</div>';
+h+='</div>';
+h+='</div>';
 }
 
 // ═══ ⑥ OPTIONS INTELLIGENCE — IV Rank, Expected Move, Max Pain ═══
@@ -6274,22 +6344,24 @@ var gd=d.greeksDashboard||null;
 if(gd){
 h+='<details style="margin-bottom:14px;border:1px solid var(--border);border-radius:10px;overflow:hidden">';
 h+='<summary style="padding:10px 14px;background:var(--bg2);cursor:pointer;list-style:none;display:flex;justify-content:space-between;align-items:center">';
-h+='<span style="font-size:11px;font-weight:800;color:var(--amber)">&#916;&#915;&#920;V OPTION HEALTH CHECK — How Your Option Behaves</span>';
-h+='<span style="font-size:8px;color:var(--text3)">tap to expand ▾</span></summary>';
-h+='<div style="padding:4px 14px;font-size:9px;color:var(--text3)">Strike: '+S+gd.strike+' · DTE: '+gd.dte+'</div>';
+h+='<span style="font-size:11px;font-weight:800;color:var(--amber)">🏥 OPTION HEALTH — Is Your Option Fit or Sick?</span>';
+h+='<span style="font-size:8px;color:var(--text3)">tap ▾</span></summary>';
+h+='<div style="padding:6px 14px;font-size:9px;color:var(--text2);line-height:1.5;background:var(--bg2);border-bottom:1px solid var(--border)">Think of Greeks as your option\'s health report: <strong>Delta</strong> = how fast it moves, <strong>Theta</strong> = how fast it\'s aging, <strong>Gamma</strong> = how unpredictable it is, <strong>Vega</strong> = how sensitive to market fear.</div>';
+h+='<div style="font-size:9px;color:var(--text3);padding:4px 14px">Strike: '+S+gd.strike+' · DTE: '+gd.dte+'</div>';
 // Greeks values
 h+='<div style="padding:10px 14px;display:grid;grid-template-columns:repeat(4,1fr);gap:8px;border-bottom:1px solid var(--border)">';
 var greekItems=[
-{label:'DELTA (Δ)',val:gd.ce.delta,color:gd.ce.delta>0?'#10b981':'#ef4444',sub:'Price sensitivity'},
-{label:'GAMMA (Γ)',val:gd.ce.gamma,color:gd.ce.gamma>0.003?'#ef4444':'var(--text)',sub:'Acceleration'},
-{label:'THETA (Θ)',val:gd.ce.theta,color:'#ef4444',sub:S+Math.abs(gd.dailyDecay)+'/day lost'},
-{label:'VEGA (V)',val:gd.ce.vega,color:'#3b82f6',sub:'IV sensitivity'},
+{label:'DELTA (Δ)',val:gd.ce.delta,color:gd.ce.delta>0?'#10b981':'#ef4444',sub:gd.ce.delta>0.6?'Moves fast with stock':'Moves slowly with stock',tip:'Speed — how much your option price moves when stock moves ₹1'},
+{label:'GAMMA (Γ)',val:gd.ce.gamma,color:gd.ce.gamma>0.003?'#ef4444':'var(--text)',sub:gd.ce.gamma>0.003?'⚠️ Accelerating fast':'Steady speed',tip:'Acceleration — how fast Delta itself is changing. High near expiry.'},
+{label:'THETA (Θ)',val:gd.ce.theta,color:'#ef4444',sub:'Losing '+S+Math.abs(gd.dailyDecay)+' per day',tip:'Time tax — your option loses this much value every day just by existing. Like ice cream melting.'},
+{label:'VEGA (V)',val:gd.ce.vega,color:'#3b82f6',sub:gd.ce.vega>0.15?'Sensitive to fear changes':'Stable',tip:'Fear sensitivity — when market panic (VIX) rises, your option price jumps by this much.'},
 ];
 greekItems.forEach(function(gi){
 h+='<div style="text-align:center;padding:6px;border-radius:6px;background:var(--bg2)">';
 h+='<div style="font-size:7px;color:var(--text3);font-weight:700;letter-spacing:0.5px">'+gi.label+'</div>';
 h+='<div style="font-size:18px;font-weight:900;font-family:var(--mono);color:'+gi.color+'">'+gi.val+'</div>';
-h+='<div style="font-size:7px;color:var(--text3)">'+gi.sub+'</div></div>';
+h+='<div style="font-size:7px;color:'+gi.color+';font-weight:600">'+gi.sub+'</div>';
+h+='<div style="font-size:6px;color:var(--text3);margin-top:2px;line-height:1.3">'+gi.tip+'</div></div>';
 });
 h+='</div>';
 // Interpretations
@@ -6304,15 +6376,19 @@ h+='</div></details>';
 // ═══ VOLATILITY INTELLIGENCE ═══
 var vi=d.volIntelligence||null;
 if(vi){
-var viC=vi.regime.includes('SELL')?'#ef4444':vi.regime.includes('BUY')?'#10b981':vi.regime.includes('ELEV')?'#f59e0b':'var(--text)';
-h+='<details style="margin-bottom:14px;border:1px solid var(--border);border-radius:10px;overflow:hidden"><summary style="padding:10px 14px;background:var(--bg2);cursor:pointer;list-style:none;display:flex;justify-content:space-between;align-items:center"><span style="font-size:11px;font-weight:800;color:#8b5cf6">&#127777;&#65039; VOLATILITY — Are Options Cheap or Expensive? — '+vi.regime.replace(/_/g,' ')+'</div></div>';
-h+='<div style="padding:10px 14px;display:flex;gap:16px;flex-wrap:wrap;align-items:center">';
-h+='<div><div style="font-size:8px;color:var(--text3);font-weight:700">IV (Implied)</div><div style="font-size:22px;font-weight:900;font-family:var(--mono);color:'+viC+'">'+vi.iv+'%</div></div>';
-h+='<div><div style="font-size:8px;color:var(--text3);font-weight:700">HV (Historical)</div><div style="font-size:22px;font-weight:900;font-family:var(--mono);color:var(--text)">'+vi.hv20+'%</div></div>';
-h+='<div><div style="font-size:8px;color:var(--text3);font-weight:700">IV-HV Spread</div><div style="font-size:22px;font-weight:900;font-family:var(--mono);color:'+(vi.ivHvSpread>3?'#ef4444':vi.ivHvSpread<-3?'#10b981':'var(--text)')+'">'+vi.ivHvSpread+'%</div></div>';
-h+='<div style="flex:1;min-width:150px"><div style="font-size:8px;color:var(--text3);font-weight:700;margin-bottom:2px">WHAT TO DO</div><div style="font-size:10px;font-weight:700;color:'+viC+';line-height:1.4">'+vi.action+'</div></div>';
+var viC=vi.regime.includes('SELL')?'#dc2626':vi.regime.includes('BUY')?'#059669':vi.regime.includes('ELEV')?'#d97706':'var(--text)';
+var viCoach=vi.regime.includes('SELL')?'Options are EXPENSIVE right now — like buying flight tickets during peak holiday. Sellers have the edge. Consider selling premium or spreads.':vi.regime.includes('BUY')?'Options are CHEAP — like getting a hotel room off-season. Great time to buy calls/puts. Premium buyers have the edge.':vi.regime.includes('ELEV')?'Options are slightly pricey. Not the worst time to buy, but consider spreads to reduce cost.':'Options are normally priced. Standard strategies work fine.';
+h+='<details style="margin-bottom:14px;border:1px solid var(--border);border-radius:10px;overflow:hidden"><summary style="padding:10px 14px;background:var(--bg2);cursor:pointer;list-style:none;display:flex;justify-content:space-between;align-items:center"><span style="font-size:11px;font-weight:800;color:#8b5cf6">🌡️ OPTIONS PRICE CHECK — Should You Buy or Sell Options?</span><span style="font-size:8px;color:var(--text3)">tap ▾</span></summary>';
+// Coach summary at top
+h+='<div style="padding:10px 14px;background:'+viC+'06;border-bottom:1px solid var(--border);font-size:10px;color:var(--text);line-height:1.6">'+viCoach+'</div>';
+// Metrics
+h+='<div style="padding:10px 14px;display:grid;grid-template-columns:repeat(4,1fr);gap:8px">';
+h+='<div style="text-align:center;padding:8px;border-radius:8px;background:var(--bg2)"><div style="font-size:7px;color:var(--text3);font-weight:700">OPTIONS PRICE</div><div style="font-size:20px;font-weight:900;font-family:var(--mono);color:'+viC+'">'+vi.iv+'%</div><div style="font-size:7px;color:var(--text3)">Currently '+(vi.iv>25?'expensive':'normal')+'</div></div>';
+h+='<div style="text-align:center;padding:8px;border-radius:8px;background:var(--bg2)"><div style="font-size:7px;color:var(--text3);font-weight:700">NORMAL PRICE</div><div style="font-size:20px;font-weight:900;font-family:var(--mono);color:var(--text)">'+vi.hv20+'%</div><div style="font-size:7px;color:var(--text3)">Based on last 20 days</div></div>';
+h+='<div style="text-align:center;padding:8px;border-radius:8px;background:var(--bg2)"><div style="font-size:7px;color:var(--text3);font-weight:700">MARKUP</div><div style="font-size:20px;font-weight:900;font-family:var(--mono);color:'+(vi.ivHvSpread>3?'#dc2626':vi.ivHvSpread<-3?'#059669':'var(--text)')+'">'+vi.ivHvSpread+'%</div><div style="font-size:7px;color:var(--text3)">'+(vi.ivHvSpread>3?'Overpriced ⚠️':vi.ivHvSpread<-3?'Underpriced ✅':'Fair')+'</div></div>';
+h+='<div style="text-align:center;padding:8px;border-radius:8px;background:'+viC+'08;border:1px solid '+viC+'20"><div style="font-size:7px;color:'+viC+';font-weight:700">VERDICT</div><div style="font-size:11px;font-weight:800;color:'+viC+';margin-top:4px">'+vi.action+'</div></div>';
 h+='</div>';
-h+='<div style="padding:6px 14px 10px;font-size:8px;color:var(--text3);line-height:1.4;background:var(--bg2)">💡 <strong>IV > HV</strong> = options are expensive (sellers win). <strong>HV > IV</strong> = options are cheap (buyers win). Spread > 5% = strong signal.</div>';
+h+='<div style="padding:6px 14px 10px;font-size:8px;color:var(--text3);line-height:1.4;background:var(--bg2)">💡 Think of IV like a hotel room price. <strong>High IV</strong> = peak season (expensive rooms). <strong>Low IV</strong> = off-season (cheap rooms). The markup shows how much extra you are paying vs normal. Negative markup = bargain.</div>';
 h+='</details>';
 }
 
