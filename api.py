@@ -11430,8 +11430,11 @@ async def payoff_curve(symbol: str, region: str = "IN"):
         lot = inst.get("lot", 50)
         csym = "$" if region.upper() == "US" else "₹"
         
-        if not strats or spot == 0:
+        if not strats and spot == 0:
             return {"success": False, "error": "No strategies available"}
+        
+        if spot == 0:
+            return {"success": False, "error": "Could not get spot price"}
         
         # Generate price range (±10% from spot)
         low = round(spot * 0.9, 0)
@@ -11439,32 +11442,25 @@ async def payoff_curve(symbol: str, region: str = "IN"):
         step = max(1, round((high - low) / 50))
         prices = [low + i * step for i in range(51)]
         
-        curves = []
-        for strat in strats:
-            legs = strat.get("legs", [])
-            if not legs: continue
-            
+        # Helper to compute one curve
+        def compute_curve(legs_data, name, strat_type, pop_val=50):
             data_points = []
             for p in prices:
                 pnl = 0
-                for leg in legs:
+                for leg in legs_data:
                     strike = leg.get("strike", 0)
                     prem = leg.get("premium", 0)
                     is_buy = leg.get("action") == "BUY"
                     is_ce = leg.get("type") in ["CE", "CALL"]
-                    
                     if is_ce:
                         intrinsic = max(0, p - strike)
                     else:
                         intrinsic = max(0, strike - p)
-                    
                     if is_buy:
                         pnl += (intrinsic - prem) * lot
                     else:
                         pnl += (prem - intrinsic) * lot
-                
                 data_points.append({"price": round(p, 0), "pnl": round(pnl, 0)})
-            
             max_profit = max(dp["pnl"] for dp in data_points)
             max_loss = min(dp["pnl"] for dp in data_points)
             breakevens = []
@@ -11472,17 +11468,55 @@ async def payoff_curve(symbol: str, region: str = "IN"):
                 if (data_points[i-1]["pnl"] < 0 and data_points[i]["pnl"] >= 0) or \
                    (data_points[i-1]["pnl"] >= 0 and data_points[i]["pnl"] < 0):
                     breakevens.append(data_points[i]["price"])
-            
-            curves.append({
-                "name": strat.get("name", ""),
-                "type": strat.get("type", ""),
-                "legs": legs,
-                "dataPoints": data_points,
-                "maxProfit": max_profit,
-                "maxLoss": max_loss,
-                "breakevens": breakevens,
-                "pop": strat.get("pop", 50),
-            })
+            return {
+                "name": name, "type": strat_type, "legs": legs_data,
+                "dataPoints": data_points, "maxProfit": max_profit,
+                "maxLoss": max_loss, "breakevens": breakevens, "pop": pop_val,
+            }
+        
+        curves = []
+        
+        # Get ATM info for naked strategies
+        _atm = algo.get("atm", round(spot / gap) * gap if gap > 0 else spot)
+        is_us = region.upper() == "US"
+        ce_type = "CALL" if is_us else "CE"
+        pe_type = "PUT" if is_us else "PE"
+        
+        # Find ATM premiums from existing strategies or estimate
+        ce_prem = 0; pe_prem = 0
+        for s in strats:
+            for leg in s.get("legs", []):
+                if leg.get("strike") == _atm and leg.get("action") == "BUY":
+                    if leg.get("type") in ["CE", "CALL"]: ce_prem = leg.get("premium", 0)
+                    if leg.get("type") in ["PE", "PUT"]: pe_prem = leg.get("premium", 0)
+        # Fallback: estimate from expected move
+        if ce_prem == 0:
+            em = algo.get("expectedMove", {})
+            em_pts = em.get("em_pts", spot * 0.02)
+            ce_prem = round(em_pts * 0.5, 2)
+            pe_prem = round(em_pts * 0.5, 2)
+        
+        # 1. Naked Call Buy (ATM)
+        if ce_prem > 0:
+            curves.append(compute_curve(
+                [{"action": "BUY", "strike": _atm, "type": ce_type, "premium": ce_prem}],
+                "Buy Call (ATM)", "DIRECTIONAL — BULLISH", 45
+            ))
+        
+        # 2. Naked Put Buy (ATM)
+        if pe_prem > 0:
+            curves.append(compute_curve(
+                [{"action": "BUY", "strike": _atm, "type": pe_type, "premium": pe_prem}],
+                "Buy Put (ATM)", "DIRECTIONAL — BEARISH", 45
+            ))
+        
+        # 3-7. Existing multi-leg strategies
+        for strat in strats:
+            legs = strat.get("legs", [])
+            if not legs: continue
+            curves.append(compute_curve(
+                legs, strat.get("name", ""), strat.get("type", ""), strat.get("pop", 50)
+            ))
         
         return {"success": True, "symbol": symbol, "spot": spot, "csym": csym, "curves": curves}
     except Exception as e:

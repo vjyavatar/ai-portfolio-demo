@@ -5537,11 +5537,17 @@ function _fetchAlgoSignal(sym){algoSelect(sym,null);}
 function whatNow(){
 var el=document.getElementById('whatNowResult');if(!el)return;
 el.style.display='block';
-var reg=window._globalRegion||'IN';
+var reg=window._wnRegion||'IN';
 var sym=reg==='US'?'SPY':'NIFTY';
-el.innerHTML='<div style="padding:12px;border-radius:12px;background:var(--surface);border:1px solid var(--border);box-shadow:var(--shadow)"><div style="display:flex;align-items:center;gap:8px"><div style="width:14px;height:14px;border:2px solid #059669;border-top-color:transparent;border-radius:50%;animation:spin .5s linear infinite"></div><span style="font-size:11px;color:var(--text3)">Reading market pulse for '+sym+'...</span></div></div>';
-fetch('/api/algo-signal?symbol='+sym+'&region='+reg).then(function(r){if(!r.ok)throw new Error('API error');return r.json()}).then(function(d){
-if(!d.success){el.innerHTML='<div style="color:var(--red);padding:8px">'+d.error+'</div>';return}
+var sym2=reg==='US'?'QQQ':'BANKNIFTY';
+el.innerHTML='<div style="padding:12px;border-radius:12px;background:var(--surface);border:1px solid var(--border);box-shadow:var(--shadow)"><div style="display:flex;align-items:center;gap:8px"><div style="width:14px;height:14px;border:2px solid #059669;border-top-color:transparent;border-radius:50%;animation:spin .5s linear infinite"></div><span style="font-size:11px;color:var(--text3)">Reading '+(reg==='US'?'US':'Indian')+' market pulse — '+sym+' + '+sym2+'...</span></div></div>';
+// Fetch both indices
+Promise.all([
+fetch('/api/algo-signal?symbol='+sym+'&region='+reg).then(function(r){if(!r.ok)throw new Error('API error');return r.json()}),
+fetch('/api/algo-signal?symbol='+sym2+'&region='+reg).then(function(r){if(!r.ok)throw new Error('API error');return r.json()}).catch(function(){return null})
+]).then(function(results){
+var d=results[0];var d2=results[1];
+if(!d||!d.success){el.innerHTML='<div style="color:var(--red);padding:8px">Failed to read market</div>';return}
 var sig=d.signal||'HOLD / WAIT';var dir=d.direction||'NEUTRAL';var tr=d.trade||{};
 var _tc=d.tradeConfidence||{};var _win=_tc.estimatedWin||50;var _grade=_tc.grade||'C';
 var _eng=d.engines||{};var _vix=Number((d.options||{}).vix||0);
@@ -5574,8 +5580,21 @@ if(_vix>0){var vxC=_vix<14?'#059669':_vix<20?'#1a56db':_vix<25?'#d97706':'#dc262
 if(d.reasoning)h+='<span style="color:var(--text3);flex:1;min-width:200px">'+d.reasoning.substring(0,150)+'...</span>';
 h+='</div>';
 // Deep dive link
-h+='<div style="margin-top:8px;text-align:center"><button onclick="switchTabGroup(\'trading\');setTimeout(function(){switchTab(\'trades\');algoSelect(\''+sym+'\',null)},200)" style="padding:4px 16px;border-radius:6px;background:var(--blue);color:#fff;border:none;font-size:9px;font-weight:700;cursor:pointer">📊 Full Analysis →</button></div>';
+h+='<div style="margin-top:8px;text-align:center"><button onclick="switchTabGroup(\'trading\');setTimeout(function(){switchTab(\'trades\');algoSelect(\''+sym+'\',null)},200)" style="padding:4px 16px;border-radius:6px;background:var(--blue);color:#fff;border:none;font-size:9px;font-weight:700;cursor:pointer">📊 Full '+sym+' Analysis →</button></div>';
 h+='</div>';
+// Second index summary
+if(d2&&d2.success){
+var sig2=d2.signal||'HOLD';var dir2=d2.direction||'NEUTRAL';
+var sC2=sig2.includes('BUY')?'#059669':sig2==='AVOID'?'#dc2626':'#d97706';
+h+='<div style="padding:10px;border-radius:10px;border:1px solid '+sC2+'20;background:'+sC2+'04;margin-top:8px;display:flex;justify-content:space-between;align-items:center">';
+h+='<div><div style="font-size:8px;color:var(--text3);font-weight:700">'+sym2+'</div><div style="font-size:16px;font-weight:900;color:'+sC2+'">'+sig2+'</div><div style="font-size:8px;color:var(--text3)">'+dir2+'</div></div>';
+var tr2=d2.trade||{};
+if(tr2.action){h+='<div style="text-align:right;font-size:8px;font-family:var(--mono)"><div style="color:var(--text3)">'+tr2.action+'</div><div>Entry: '+S+(tr2.premEntry||0).toFixed(0)+' · SL: '+S+(tr2.premSL||0).toFixed(0)+'</div></div>';}
+h+='<button onclick="switchTabGroup(\'trading\');setTimeout(function(){switchTab(\'trades\');algoSelect(\''+sym2+'\',null)},200)" style="padding:3px 10px;border-radius:5px;background:'+sC2+';color:#fff;border:none;font-size:8px;font-weight:700;cursor:pointer">→</button>';
+h+='</div>';
+}
+// Close button
+h+='<div style="text-align:center;margin-top:6px"><button onclick="document.getElementById(\'whatNowResult\').style.display=\'none\'" style="padding:3px 12px;border-radius:4px;background:var(--bg2);border:1px solid var(--border);color:var(--text3);font-size:8px;cursor:pointer">✕ Close</button></div>';
 el.innerHTML=h;
 }).catch(function(e){el.innerHTML='<div style="color:var(--red);padding:8px;font-size:10px">'+e.message+'</div>'});
 }
@@ -5661,6 +5680,13 @@ document.getElementById('siRegUS').style.background=reg==='US'?'#1a56db':'var(--
 document.getElementById('siRegUS').style.color=reg==='US'?'#fff':'var(--text3)';
 document.getElementById('siStocksIN').style.display=reg==='IN'?'flex':'none';
 document.getElementById('siStocksUS').style.display=reg==='US'?'flex':'none';
+// Clear results on region switch
+var siR=document.getElementById('siResult');
+if(siR)siR.innerHTML='<div style="text-align:center;padding:40px"><div style="font-size:40px;margin-bottom:8px;opacity:.3">🔬</div><div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:4px">Select a '+(reg==='US'?'US':'Indian')+' stock above</div><div style="font-size:11px;color:var(--text3);max-width:420px;margin:0 auto">Region switched to <strong>'+(reg==='US'?'🇺🇸 USA':'🇮🇳 India')+'</strong>. Pick a stock or type any ticker to get the full 13-section report.</div></div>';
+var tpR=document.getElementById('topPicksResult');
+if(tpR)tpR.innerHTML='<div style="text-align:center;padding:20px;color:var(--text3);font-size:10px">Click <strong>Scan All Stocks</strong> to analyze <strong>'+(reg==='US'?'70+ US':'200+ NSE')+'</strong> stocks for '+(reg==='US'?'🇺🇸 USA':'🇮🇳 India')+'</div>';
+// Reset loading flags
+_topPicksLoading=false;
 }
 var _siLoading=false;
 function runStockIntel(sym){
@@ -5891,6 +5917,7 @@ function showPayoffCurve(sym){
 var el=document.getElementById('payoffCurveArea');
 if(!el){el=document.createElement('div');el.id='payoffCurveArea';el.style.cssText='position:fixed;top:0;left:0;right:0;bottom:0;z-index:999;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;padding:20px';document.body.appendChild(el)}
 el.style.display='flex';
+el.onclick=function(ev){if(ev.target===el)el.style.display='none';};
 el.innerHTML='<div style="width:90%;max-width:700px;max-height:90vh;overflow-y:auto;background:var(--surface);border-radius:16px;padding:24px;box-shadow:0 20px 60px rgba(0,0,0,.3);position:relative"><button onclick="document.getElementById(\'payoffCurveArea\').style.display=\'none\'" style="position:absolute;top:12px;right:16px;background:none;border:none;font-size:18px;cursor:pointer;color:var(--text3)">✕</button><div style="text-align:center;padding:20px;color:var(--text3)"><div style="display:inline-block;width:14px;height:14px;border:2px solid var(--blue);border-top-color:transparent;border-radius:50%;animation:spin .5s linear infinite;vertical-align:middle;margin-right:6px"></div>Generating P&L curves for '+sym+'...</div></div>';
 var reg=window._globalRegion||'IN';
 fetch('/api/payoff-curve?symbol='+encodeURIComponent(sym)+'&region='+reg).then(function(r){if(!r.ok)throw new Error('API error');return r.json()}).then(function(d){
@@ -5953,7 +5980,7 @@ h+='<span style="font-size:7px;padding:2px 6px;border-radius:4px;background:'+lC
 if(curve.breakevens.length)h+='<span style="font-size:7px;padding:2px 6px;border-radius:4px;background:var(--bg2);color:var(--text3)">BE: '+curve.breakevens.map(function(b){return S+b.toLocaleString()}).join(' / ')+'</span>';
 h+='</div></div>';
 });
-el.querySelector('div').innerHTML=h+'<div style="text-align:center;margin-top:8px;font-size:8px;color:var(--text3)">P&L at expiry · Not including brokerage/taxes · Click outside to close</div>';
+el.querySelector('div').innerHTML=h+'<div style="text-align:center;margin-top:10px"><button onclick="document.getElementById(\'payoffCurveArea\').style.display=\'none\'" style="padding:6px 24px;border-radius:8px;background:var(--bg2);border:1px solid var(--border);color:var(--text);font-size:10px;font-weight:700;cursor:pointer">✕ Close</button></div><div style="text-align:center;margin-top:4px;font-size:8px;color:var(--text3)">P&L at expiry · Not including brokerage/taxes</div>';
 }).catch(function(e){el.querySelector('div>div').innerHTML='<div style="color:var(--red)">Error: '+e.message+'</div>'});
 }
 
