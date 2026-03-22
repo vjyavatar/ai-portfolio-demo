@@ -973,8 +973,8 @@ footer{position:relative;z-index:1;margin-top:32px;background:linear-gradient(13
 </div>
 
 <div style="display:flex;gap:6px;align-items:center">
-<div style="font-size:10px;font-weight:700;color:var(--text3);letter-spacing:1px">CUSTOM:</div>
-<input id="algoCustomTicker" type="text" placeholder="Any stock... e.g. TATASTEEL or AAPL" style="padding:5px 12px;border-radius:6px;border:1px solid var(--border);font-size:11px;width:220px;font-family:DM Sans,sans-serif;background:var(--surface);color:var(--text)" onkeydown="if(event.key==='Enter'){var v=this.value.trim().toUpperCase();if(v)algoSelect(v,null)}">
+<div style="font-size:11px;font-weight:900;color:var(--text);letter-spacing:.5px;font-family:Sora,sans-serif">Custom <span style="font-weight:600;color:var(--text3);font-size:9px">(All Stocks &amp; Indices)</span></div>
+<input id="algoCustomTicker" type="text" placeholder="TATASTEEL, NIFTY, AAPL, SPY..." style="padding:5px 12px;border-radius:6px;border:1px solid var(--border);font-size:11px;width:220px;font-family:DM Sans,sans-serif;background:var(--surface);color:var(--text)" onkeydown="if(event.key==='Enter'){var v=this.value.trim().toUpperCase();if(v)algoSelect(v,null)}">
 <button onclick="var v=document.getElementById('algoCustomTicker').value.trim().toUpperCase();if(v)algoSelect(v,null)" style="padding:5px 14px;border-radius:6px;background:#1a56db;color:#fff;border:none;font-size:11px;font-weight:700;cursor:pointer;font-family:Sora,sans-serif">&#9889; Analyze</button>
 </div>
 </div>
@@ -1222,6 +1222,11 @@ footer{position:relative;z-index:1;margin-top:32px;background:linear-gradient(13
 <button onclick="loadValuation('NVDA')" class="algo-btn" style="padding:4px 12px;font-size:10px;font-weight:700">NVIDIA</button>
 <button onclick="loadValuation('TSLA')" class="algo-btn" style="padding:4px 12px;font-size:10px;font-weight:700">Tesla</button>
 <button onclick="loadValuation('GOOGL')" class="algo-btn" style="padding:4px 12px;font-size:10px;font-weight:700">Google</button>
+</div>
+<div style="display:flex;gap:6px;align-items:center;margin-bottom:10px">
+<div style="font-size:11px;font-weight:900;color:var(--text);letter-spacing:.5px;font-family:Sora,sans-serif">Custom <span style="font-weight:600;color:var(--text3);font-size:9px">(Any Stock or Index)</span></div>
+<input id="valCustom" type="text" placeholder="SBIN, TATAMOTORS, META..." style="padding:5px 12px;border-radius:6px;border:1px solid var(--border);font-size:11px;width:200px;background:var(--surface);color:var(--text)" onkeydown="if(event.key==='Enter'){var v=this.value.trim().toUpperCase();if(v)loadValuation(v)}">
+<button onclick="var v=document.getElementById('valCustom').value.trim().toUpperCase();if(v)loadValuation(v)" style="padding:5px 14px;border-radius:6px;background:linear-gradient(135deg,#7c3aed,#6d28d9);color:#fff;border:none;font-size:11px;font-weight:700;cursor:pointer;font-family:Sora,sans-serif">&#128200; Analyze</button>
 </div>
 <div id="valResult" style="min-height:200px"><div style="text-align:center;padding:40px">
 <div style="font-size:40px;margin-bottom:8px;opacity:.25">💰</div>

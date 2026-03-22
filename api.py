@@ -12291,6 +12291,7 @@ Think of it as buying insurance — small cost, big payout if things drop."""
         
         else:
             # Generic — give full summary
+            isWait = sig in ["HOLD / WAIT", "AVOID"]
             answer = f"📊 {symbol} Complete Summary:\n\n"
             answer += f"🎯 SIGNAL: {sig} ({direction}) — Win Rate: {tc.get('estimatedWin', 50)}% (Grade {tc.get('grade', 'B')})\n"
             answer += f"💰 PRICE: {csym}{price:,.2f}\n"

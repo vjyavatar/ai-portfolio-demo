@@ -5080,6 +5080,8 @@ loadTopTrades();
 // Auto-select first instrument
 var first=reg==='US'?'SPY':'NIFTY';
 setTimeout(function(){algoSelect(first,document.querySelector('#algo'+reg+' .algo-btn'))},300);
+// Clear algo card
+var ac=document.getElementById('algoCard');if(ac)ac.innerHTML='<div style="text-align:center;padding:30px;color:var(--text3);font-size:11px">Switching to '+(reg==='US'?'🇺🇸 USA':'🇮🇳 India')+'...</div>';
 }
 
 // ═══ TOP TRADES TABLE — Region-aware progressive loading ═══
@@ -6144,6 +6146,9 @@ if(usBtn){usBtn.style.background=reg==='US'?'#1a56db':'var(--bg2)';usBtn.style.c
 var ins=document.getElementById('valStocksIN');var uss=document.getElementById('valStocksUS');
 if(ins)ins.style.display=reg==='IN'?'flex':'none';
 if(uss)uss.style.display=reg==='US'?'flex':'none';
+// Clear valuation result on region switch
+var vr=document.getElementById('valResult');
+if(vr)vr.innerHTML='<div style="text-align:center;padding:40px"><div style="font-size:40px;margin-bottom:8px;opacity:.25">💰</div><div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:4px">Valuation Intelligence</div><div style="font-size:11px;color:var(--text3)">Region switched to <strong>'+(reg==='US'?'🇺🇸 USA':'🇮🇳 India')+'</strong>. Select a stock above or enter any custom ticker.</div></div>';
 }
 function loadValuation(sym){
 var el=document.getElementById('valResult');if(!el)return;
