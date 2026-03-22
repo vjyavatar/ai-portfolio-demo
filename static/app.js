@@ -5689,6 +5689,9 @@ var tpR=document.getElementById('topPicksResult');
 if(tpR)tpR.innerHTML='<div style="text-align:center;padding:20px;color:var(--text3);font-size:10px">Click <strong>Scan All Stocks</strong> to analyze <strong>'+(reg==='US'?'70+ US':'200+ NSE')+'</strong> stocks for '+(reg==='US'?'🇺🇸 USA':'🇮🇳 India')+'</div>';
 // Reset loading flags
 _topPicksLoading=false;
+_sectorLoading=false;
+var secR=document.getElementById('sectorIntelResult');
+if(secR)secR.innerHTML='<div style="text-align:center;padding:20px;color:var(--text3);font-size:10px">Click <strong>Scan Sectors</strong> to find top 5 stocks per sector for '+(reg==='US'?'🇺🇸 USA':'🇮🇳 India')+'</div>';
 }
 var _siLoading=false;
 function runStockIntel(sym){
@@ -6134,6 +6137,109 @@ h+='</div>';
 if(!h)h='<div style="text-align:center;padding:12px;color:var(--text3);font-size:10px">Start logging trades to see behavioral insights</div>';
 el.innerHTML=h;
 }).catch(function(){el.innerHTML=''});
+}
+
+// ═══ SECTOR INTELLIGENCE ═══
+var _sectorLoading=false;
+function loadSectorIntel(){
+if(_sectorLoading)return;
+_sectorLoading=true;
+var reg=window._siRegion||'IN';
+var el=document.getElementById('sectorIntelResult');if(!el)return;
+el.innerHTML='<div style="padding:16px"><div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px">'+[1,2,3].map(function(i){return '<div style="height:80px;border-radius:10px;background:var(--bg2);animation:shimmer 1.5s infinite;animation-delay:'+(i*0.1)+'s;background-size:200% 100%;background-image:linear-gradient(90deg,var(--bg2) 25%,var(--bg3) 50%,var(--bg2) 75%)"></div>'}).join('')+'</div><div style="text-align:center;font-size:10px;color:var(--text3)"><div style="display:inline-block;width:14px;height:14px;border:2px solid #7c3aed;border-top-color:transparent;border-radius:50%;animation:spin .5s linear infinite;vertical-align:middle;margin-right:6px"></div>Scanning '+(reg==='US'?'6':'10')+' sectors with '+(reg==='US'?'60':'100')+'+ stocks... ~1-2 min</div></div>';
+fetch('/api/sector-intel?region='+reg).then(function(r){if(!r.ok)throw new Error('API error '+r.status);return r.json()}).then(function(d){
+_sectorLoading=false;
+if(!d.success){el.innerHTML='<div style="color:var(--red);padding:12px;font-size:10px">'+d.error+'</div>';return}
+var S=d.csym;
+var h='';
+
+// ═══ SECTION 1: SECTOR PERFORMANCE HEATMAP ═══
+h+='<div style="margin-bottom:16px">';
+h+='<div style="font-size:12px;font-weight:900;color:var(--text);margin-bottom:8px;font-family:Sora,sans-serif">📊 Sector Performance Rankings — Which Sector is Winning?</div>';
+h+='<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:9px">';
+h+='<thead><tr style="background:var(--bg2);border-bottom:2px solid var(--border)">';
+h+='<th style="padding:6px 8px;text-align:left;font-size:8px;color:var(--text3)">#</th>';
+h+='<th style="padding:6px 8px;text-align:left;font-size:8px;color:var(--text3)">SECTOR</th>';
+h+='<th style="padding:6px;text-align:center;font-size:8px;color:var(--text3)">Score</th>';
+h+='<th style="padding:6px;text-align:right;font-size:8px;color:var(--text3)">Today</th>';
+h+='<th style="padding:6px;text-align:right;font-size:8px;color:var(--text3)">1 Week</th>';
+h+='<th style="padding:6px;text-align:right;font-size:8px;color:var(--text3)">1 Month</th>';
+h+='<th style="padding:6px;text-align:right;font-size:8px;color:var(--text3)">3 Months</th>';
+h+='<th style="padding:6px;text-align:right;font-size:8px;color:var(--text3)">6 Months</th>';
+h+='<th style="padding:6px;text-align:right;font-size:8px;color:var(--text3);font-weight:800">1 Year</th>';
+h+='<th style="padding:6px;text-align:center;font-size:8px;color:var(--text3)">Bull/Bear</th>';
+h+='</tr></thead><tbody>';
+var sp=d.sectorPerformance;var idx=0;
+function _rc(v){return v>=0?'#059669':'#dc2626'}
+function _rv(v){return '<span style="color:'+_rc(v)+';font-weight:700;font-family:var(--mono)">'+(v>=0?'+':'')+v.toFixed(1)+'%</span>'}
+for(var sec in sp){
+var p=sp[sec];idx++;
+var isBest=idx===1;var isWorst=idx===Object.keys(sp).length;
+var rowBg=isBest?'#05966906':isWorst?'#dc262606':'transparent';
+h+='<tr style="border-bottom:1px solid var(--border);background:'+rowBg+'">';
+h+='<td style="padding:5px 8px;font-weight:800;color:'+(isBest?'#059669':isWorst?'#dc2626':'var(--text3)')+'">'+idx+(isBest?' 🏆':'')+(isWorst?' ⚠️':'')+'</td>';
+h+='<td style="padding:5px 8px;font-weight:800;color:var(--text)">'+sec+'</td>';
+h+='<td style="padding:5px;text-align:center"><span style="padding:2px 6px;border-radius:4px;background:'+(p.avgScore>=60?'#05966910':p.avgScore>=45?'#d9770610':'#dc262610')+';color:'+(p.avgScore>=60?'#059669':p.avgScore>=45?'#d97706':'#dc2626')+';font-weight:800;font-size:10px">'+p.avgScore+'</span></td>';
+h+='<td style="padding:5px;text-align:right">'+_rv(p.today)+'</td>';
+h+='<td style="padding:5px;text-align:right">'+_rv(p.thisWeek)+'</td>';
+h+='<td style="padding:5px;text-align:right">'+_rv(p.lastMonth)+'</td>';
+h+='<td style="padding:5px;text-align:right;font-weight:800">'+_rv(p.last3M)+'</td>';
+h+='<td style="padding:5px;text-align:right">'+_rv(p.last6M)+'</td>';
+h+='<td style="padding:5px;text-align:right;font-weight:800;font-size:10px">'+_rv(p.lastYear)+'</td>';
+h+='<td style="padding:5px;text-align:center;font-size:8px"><span style="color:#059669">'+p.bullish+'</span>/<span style="color:#dc2626">'+p.bearish+'</span></td>';
+h+='</tr>';
+}
+h+='</tbody></table></div>';
+// Best/Worst callout
+h+='<div style="display:flex;gap:8px;margin-top:8px;font-size:9px">';
+if(d.bestSector)h+='<div style="flex:1;padding:8px 12px;border-radius:8px;background:#05966906;border:1px solid #05966915;color:#059669;font-weight:700">🏆 Best Sector: <strong>'+d.bestSector+'</strong> — strongest 3-month returns</div>';
+if(d.worstSector)h+='<div style="flex:1;padding:8px 12px;border-radius:8px;background:#dc262606;border:1px solid #dc262615;color:#dc2626;font-weight:700">⚠️ Weakest: <strong>'+d.worstSector+'</strong> — lagging behind</div>';
+h+='</div></div>';
+
+// ═══ SECTION 2: TOP 5 PER SECTOR ═══
+h+='<div style="font-size:12px;font-weight:900;color:var(--text);margin-bottom:10px;margin-top:16px;font-family:Sora,sans-serif">🎯 Top 5 Stocks Per Sector — Where to Invest</div>';
+var sr=d.sectorRankings;
+for(var sec in sr){
+var stocks=sr[sec];if(!stocks.length)continue;
+var secPerf=sp[sec]||{};
+var secC=(secPerf.avgScore||50)>=60?'#059669':(secPerf.avgScore||50)>=45?'#d97706':'#dc2626';
+h+='<details style="margin-bottom:8px;border:1px solid '+secC+'20;border-radius:10px;overflow:hidden">';
+h+='<summary style="padding:8px 12px;background:'+secC+'05;cursor:pointer;list-style:none;display:flex;justify-content:space-between;align-items:center">';
+h+='<span style="font-size:11px;font-weight:800;color:var(--text)">'+sec+' <span style="font-size:8px;color:'+secC+';font-weight:700">(Score: '+(secPerf.avgScore||'—')+')</span></span>';
+h+='<span style="font-size:8px;color:var(--text3)">'+stocks.length+' stocks ▾</span>';
+h+='</summary>';
+h+='<div style="padding:8px">';
+h+='<table style="width:100%;border-collapse:collapse;font-size:9px"><thead><tr style="border-bottom:1px solid var(--border)">';
+h+='<th style="padding:4px 6px;text-align:left;font-size:7px;color:var(--text3)">#</th>';
+h+='<th style="padding:4px 6px;text-align:left;font-size:7px;color:var(--text3)">Stock</th>';
+h+='<th style="padding:4px 6px;text-align:right;font-size:7px;color:var(--text3)">Price</th>';
+h+='<th style="padding:4px 6px;text-align:center;font-size:7px;color:var(--text3)">Score</th>';
+h+='<th style="padding:4px 6px;text-align:right;font-size:7px;color:var(--text3)">1M</th>';
+h+='<th style="padding:4px 6px;text-align:right;font-size:7px;color:var(--text3)">3M</th>';
+h+='<th style="padding:4px 6px;text-align:right;font-size:7px;color:var(--text3)">1Y</th>';
+h+='<th style="padding:4px 6px;text-align:center;font-size:7px;color:var(--text3)">Verdict</th>';
+h+='<th style="padding:4px 6px;text-align:left;font-size:7px;color:var(--text3)">Reason</th>';
+h+='</tr></thead><tbody>';
+stocks.forEach(function(s,i){
+var c=s.decision==='BUY'?'#059669':s.decision==='HOLD'?'#d97706':'#dc2626';
+h+='<tr style="border-bottom:1px solid var(--border);cursor:pointer;transition:background .15s" onclick="runStockIntel(\''+s.symbol+'\')" onmouseover="this.style.background=\'var(--bg2)\'" onmouseout="this.style.background=\'transparent\'">';
+h+='<td style="padding:4px 6px;font-weight:800;color:var(--text3)">'+(i+1)+'</td>';
+h+='<td style="padding:4px 6px;font-weight:800;color:var(--text)">'+s.symbol+'</td>';
+h+='<td style="padding:4px 6px;text-align:right;font-family:var(--mono)">'+S+s.price.toLocaleString()+'</td>';
+h+='<td style="padding:4px 6px;text-align:center;font-weight:800;color:'+c+'">'+s.score+'</td>';
+h+='<td style="padding:4px 6px;text-align:right;font-family:var(--mono);color:'+_rc(s.ret1m)+'">'+(s.ret1m>=0?'+':'')+s.ret1m+'%</td>';
+h+='<td style="padding:4px 6px;text-align:right;font-family:var(--mono);font-weight:700;color:'+_rc(s.ret3m)+'">'+(s.ret3m>=0?'+':'')+s.ret3m+'%</td>';
+h+='<td style="padding:4px 6px;text-align:right;font-family:var(--mono);color:'+_rc(s.ret1y)+'">'+(s.ret1y>=0?'+':'')+s.ret1y+'%</td>';
+h+='<td style="padding:4px 6px;text-align:center"><span style="font-size:8px;padding:2px 6px;border-radius:3px;background:'+c+'10;color:'+c+';font-weight:700">'+s.decision+'</span></td>';
+h+='<td style="padding:4px 6px;font-size:8px;color:var(--text3)">'+s.reason+'</td>';
+h+='</tr>';
+});
+h+='</tbody></table></div></details>';
+}
+
+h+='<div style="text-align:center;margin-top:10px;padding:8px;border-radius:8px;background:var(--bg2);font-size:8px;color:var(--text3);line-height:1.5">Scanned <strong>'+d.totalStocks+'</strong> stocks across <strong>'+d.totalSectors+'</strong> sectors · Score = trend(45%) + momentum(55%) · Click any stock for full 13-section report</div>';
+el.innerHTML=h;
+}).catch(function(e){_sectorLoading=false;el.innerHTML='<div style="color:var(--red);padding:12px;font-size:10px">Error: '+e.message+'</div>'});
 }
 
 // ═══ VALUATION REPORT TAB ═══

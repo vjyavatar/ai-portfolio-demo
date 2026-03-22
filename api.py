@@ -11798,6 +11798,169 @@ async def top_picks(region: str = "IN"):
         import traceback; traceback.print_exc()
         return {"success": False, "error": str(e)}
 
+@app.get("/api/sector-intel")
+async def sector_intel(region: str = "IN"):
+    """Sector-wise stock rankings + sector performance across timeframes"""
+    try:
+        import yfinance as yf
+        import pandas as pd
+        import numpy as np
+        
+        is_us = region.upper() == "US"
+        csym = "$" if is_us else "₹"
+        
+        # ═══ SECTOR → STOCKS MAPPING ═══
+        if is_us:
+            sector_map = {
+                "Technology": ["AAPL","MSFT","NVDA","GOOGL","META","AVGO","AMD","CRM","ORCL","ADBE"],
+                "Financials": ["JPM","V","MA","BAC","GS","MS","BLK","SCHW","AXP","C"],
+                "Healthcare": ["UNH","LLY","JNJ","ABBV","MRK","PFE","TMO","ABT","AMGN","ISRG"],
+                "Consumer": ["AMZN","TSLA","HD","COST","NKE","MCD","SBUX","TGT","LOW","TJX"],
+                "Energy": ["XOM","CVX","COP","SLB","EOG","MPC","PSX","OXY","VLO","HAL"],
+                "Industrials": ["CAT","GE","RTX","HON","UNP","BA","LMT","DE","UPS","MMM"],
+            }
+        else:
+            sector_map = {
+                "IT & Technology": ["TCS","INFY","WIPRO","HCLTECH","TECHM","LTIM","PERSISTENT","COFORGE","MPHASIS","KPITTECH"],
+                "Banking & Finance": ["HDFCBANK","ICICIBANK","SBIN","KOTAKBANK","AXISBANK","BAJFINANCE","BAJAJFINSV","PNB","BANKBARODA","CHOLAFIN"],
+                "Auto & Ancillary": ["TATAMOTORS","MARUTI","M&M","BAJAJ-AUTO","HEROMOTOCO","EICHERMOT","MOTHERSON","EXIDEIND","BALKRISIND","BOSCHLTD"],
+                "Pharma & Healthcare": ["SUNPHARMA","DRREDDY","CIPLA","DIVISLAB","LUPIN","BIOCON","AUROPHARMA","TORNTPHARM","APOLLOHOSP","FORTIS"],
+                "Energy & Power": ["RELIANCE","NTPC","POWERGRID","ONGC","BPCL","IOC","GAIL","TATAPOWER","ADANIGREEN","COALINDIA"],
+                "FMCG & Consumer": ["HINDUNILVR","ITC","NESTLEIND","BRITANNIA","DABUR","MARICO","COLPAL","GODREJCP","TATACONSUM","EMAMILTD"],
+                "Metals & Mining": ["TATASTEEL","JSWSTEEL","HINDALCO","VEDL","COALINDIA","NMDC","SAIL","NATIONALUM","MOIL","WELCORP"],
+                "Infra & Capital Goods": ["LT","SIEMENS","ABB","CUMMINSIND","THERMAX","BEL","HAL","IRCON","RVNL","RAILTEL"],
+                "Realty": ["DLF","GODREJPROP","OBEROIRLTY","PRESTIGE","LODHA","PHOENIXLTD","BRIGADE","SOBHA","SUNTECK","MAHLIFE"],
+                "Defence & PSU": ["HAL","BEL","BDL","MAZAGON","COCHINSHIP","IREDA","IRFC","RVNL","NHPC","CONCOR"],
+            }
+        
+        # Flatten all symbols
+        all_syms_raw = []
+        sym_to_sector = {}
+        for sector, stocks in sector_map.items():
+            for s in stocks:
+                yfSym = s if is_us else f"{s}.NS"
+                all_syms_raw.append(yfSym)
+                sym_to_sector[yfSym] = sector
+        
+        all_syms = list(set(all_syms_raw))
+        print(f"🏭 Sector Intel: Scanning {len(all_syms)} stocks across {len(sector_map)} sectors for {region}")
+        
+        # Batch download
+        try:
+            hist = yf.download(all_syms, period="1y", group_by="ticker", progress=False, threads=True)
+        except:
+            hist = pd.DataFrame()
+        
+        if hist.empty:
+            return {"success": False, "error": "Could not download price data"}
+        
+        # Score each stock
+        stock_results = []
+        for yfSym in all_syms:
+            try:
+                clean = yfSym.replace(".NS", "") if not is_us else yfSym
+                sector = sym_to_sector.get(yfSym, "Unknown")
+                
+                if len(all_syms) > 1 and yfSym in hist.columns.get_level_values(0):
+                    closes = hist[yfSym]["Close"].dropna().values.astype(float)
+                else:
+                    continue
+                if len(closes) < 20: continue
+                price = round(float(closes[-1]), 2)
+                if price <= 0: continue
+                
+                # Returns across timeframes
+                ret_1d = round(((closes[-1] / closes[-2]) - 1) * 100, 2) if len(closes) >= 2 else 0
+                ret_1w = round(((closes[-1] / closes[-min(5, len(closes))]) - 1) * 100, 2) if len(closes) >= 5 else 0
+                ret_1m = round(((closes[-1] / closes[-min(22, len(closes))]) - 1) * 100, 2) if len(closes) >= 22 else 0
+                ret_3m = round(((closes[-1] / closes[-min(63, len(closes))]) - 1) * 100, 2) if len(closes) >= 30 else 0
+                ret_6m = round(((closes[-1] / closes[len(closes)//2]) - 1) * 100, 2) if len(closes) >= 60 else 0
+                ret_1y = round(((closes[-1] / closes[0]) - 1) * 100, 2)
+                
+                # EMA trend
+                ema20 = float(pd.Series(closes).ewm(span=20).mean().iloc[-1])
+                ema50 = float(pd.Series(closes).ewm(span=50).mean().iloc[-1])
+                trend = "BULLISH" if ema20 > ema50 else "BEARISH"
+                
+                # Simple score
+                score = 50
+                if trend == "BULLISH": score += 15
+                if ret_1m > 5: score += 10
+                elif ret_1m < -5: score -= 10
+                if ret_3m > 10: score += 10
+                elif ret_3m < -10: score -= 10
+                score = max(10, min(95, score))
+                
+                decision = "BUY" if score >= 65 and trend == "BULLISH" else ("HOLD" if score >= 45 else "AVOID")
+                
+                # Reason
+                reasons = []
+                if trend == "BULLISH": reasons.append("Uptrend")
+                else: reasons.append("Downtrend")
+                if ret_1m > 5: reasons.append(f"+{ret_1m:.0f}% monthly")
+                elif ret_1m < -5: reasons.append(f"{ret_1m:.0f}% monthly")
+                if ret_3m > 15: reasons.append("Strong momentum")
+                elif ret_3m < -15: reasons.append("Weak momentum")
+                
+                stock_results.append({
+                    "symbol": clean, "sector": sector, "price": price,
+                    "score": score, "decision": decision, "trend": trend,
+                    "reason": " · ".join(reasons[:3]),
+                    "ret1d": ret_1d, "ret1w": ret_1w, "ret1m": ret_1m,
+                    "ret3m": ret_3m, "ret6m": ret_6m, "ret1y": ret_1y,
+                })
+            except:
+                continue
+        
+        # ═══ GROUP BY SECTOR — Top 5 per sector ═══
+        sector_groups = {}
+        for sr in stock_results:
+            sec = sr["sector"]
+            if sec not in sector_groups: sector_groups[sec] = []
+            sector_groups[sec].append(sr)
+        
+        sector_rankings = {}
+        for sec, stocks in sector_groups.items():
+            stocks.sort(key=lambda x: x["score"], reverse=True)
+            sector_rankings[sec] = stocks[:5]
+        
+        # ═══ SECTOR PERFORMANCE — avg return per timeframe ═══
+        sector_perf = {}
+        for sec, stocks in sector_groups.items():
+            n = len(stocks)
+            if n == 0: continue
+            sector_perf[sec] = {
+                "count": n,
+                "today": round(sum(s["ret1d"] for s in stocks) / n, 2),
+                "thisWeek": round(sum(s["ret1w"] for s in stocks) / n, 2),
+                "lastMonth": round(sum(s["ret1m"] for s in stocks) / n, 2),
+                "last3M": round(sum(s["ret3m"] for s in stocks) / n, 2),
+                "last6M": round(sum(s["ret6m"] for s in stocks) / n, 2),
+                "lastYear": round(sum(s["ret1y"] for s in stocks) / n, 2),
+                "bullish": len([s for s in stocks if s["trend"] == "BULLISH"]),
+                "bearish": len([s for s in stocks if s["trend"] == "BEARISH"]),
+                "avgScore": round(sum(s["score"] for s in stocks) / n, 0),
+            }
+        
+        # Sort sectors by 3-month return for "best sector" ranking
+        sorted_sectors = sorted(sector_perf.items(), key=lambda x: x[1]["last3M"], reverse=True)
+        
+        print(f"✅ Sector Intel: {len(stock_results)} stocks scored across {len(sector_groups)} sectors")
+        
+        return {
+            "success": True, "region": region, "csym": csym,
+            "totalStocks": len(stock_results),
+            "totalSectors": len(sector_groups),
+            "sectorRankings": sector_rankings,
+            "sectorPerformance": {k: v for k, v in sorted_sectors},
+            "bestSector": sorted_sectors[0][0] if sorted_sectors else "",
+            "worstSector": sorted_sectors[-1][0] if sorted_sectors else "",
+        }
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        return {"success": False, "error": str(e)}
+
+
 @app.get("/api/payoff-curve")
 async def payoff_curve(symbol: str, region: str = "IN"):
     """Generate P&L payoff curves for all strategies on a given stock"""
