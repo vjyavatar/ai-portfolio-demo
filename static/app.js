@@ -5754,25 +5754,47 @@ return '<details style="margin-bottom:8px;border:1px solid var(--border);border-
 // 1. Fundamentals detail
 var fc='';
 d.fundamental.flags.forEach(function(f){var c=f.startsWith('+')?'#059669':f.startsWith('-')?'#dc2626':'var(--text2)';fc+='<div style="font-size:9px;color:'+c+';line-height:1.6;padding:2px 0">'+f+'</div>';});
-fc+='<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:8px;font-size:9px;text-align:center">';
-fc+='<div style="padding:6px;border-radius:6px;background:var(--bg2)"><div style="font-size:7px;color:var(--text3)">Revenue Growth</div><div style="font-weight:800">'+d.fundamental.revGrowth+'%</div></div>';
-fc+='<div style="padding:6px;border-radius:6px;background:var(--bg2)"><div style="font-size:7px;color:var(--text3)">Profit Margin</div><div style="font-weight:800">'+d.fundamental.profitMargin+'%</div></div>';
-fc+='<div style="padding:6px;border-radius:6px;background:var(--bg2)"><div style="font-size:7px;color:var(--text3)">Debt/Equity</div><div style="font-weight:800">'+d.fundamental.debtEquity+'%</div></div>';
-fc+='<div style="padding:6px;border-radius:6px;background:var(--bg2)"><div style="font-size:7px;color:var(--text3)">ROE</div><div style="font-weight:800">'+d.fundamental.roe+'%</div></div>';
-fc+='<div style="padding:6px;border-radius:6px;background:var(--bg2)"><div style="font-size:7px;color:var(--text3)">Earnings Growth</div><div style="font-weight:800">'+d.fundamental.earnGrowth+'%</div></div>';
-fc+='<div style="padding:6px;border-radius:6px;background:var(--bg2)"><div style="font-size:7px;color:var(--text3)">ROCE (approx)</div><div style="font-weight:800">'+d.fundamental.roce+'%</div></div>';
+function _mc(label,val,unit,goodFn,badFn,tip){
+if(!val&&val!==0)return '';
+var v=parseFloat(val);if(isNaN(v))return '';
+var c=goodFn(v)?'#059669':badFn(v)?'#dc2626':'#d97706';
+return '<div style="padding:8px;border-radius:8px;background:'+c+'06;border:1px solid '+c+'12"><div style="font-size:7px;color:var(--text3);font-weight:700">'+label+'</div><div style="font-size:14px;font-weight:900;color:'+c+';font-family:var(--mono)">'+v+(unit||'')+'</div><div style="font-size:7px;color:'+c+'">'+tip(v)+'</div></div>';
+}
+fc+='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(90px,1fr));gap:6px;margin-top:8px;font-size:9px;text-align:center">';
+fc+=_mc('Revenue Growth',d.fundamental.revGrowth,'%',function(v){return v>10},function(v){return v<0},function(v){return v>20?'🚀 Excellent':v>5?'✅ Good':v<0?'⚠️ Declining':'Slow'});
+fc+=_mc('Earnings Growth',d.fundamental.earnGrowth,'%',function(v){return v>15},function(v){return v<-5},function(v){return v>20?'🚀 Surging':v>0?'✅ Growing':'⚠️ Shrinking'});
+fc+=_mc('Profit Margin',d.fundamental.profitMargin,'%',function(v){return v>12},function(v){return v<3},function(v){return v>20?'💪 Very strong':v>10?'✅ Healthy':'⚠️ Thin'});
+fc+=_mc('Gross Margin',d.fundamental.grossMargin,'%',function(v){return v>35},function(v){return v<15},function(v){return v>40?'🏰 Wide moat':v>25?'✅ Good':'Competitive pressure'});
+fc+=_mc('ROE',d.fundamental.roe,'%',function(v){return v>15},function(v){return v<5},function(v){return v>20?'🏆 Excellent — great capital use':v>10?'✅ Good':'Weak capital use'});
+fc+=_mc('ROCE',d.fundamental.roce,'%',function(v){return v>12},function(v){return v<5},function(v){return v>15?'Efficient operations':v>8?'Decent':'Low return on capital'});
+fc+=_mc('Debt/Equity',d.fundamental.debtEquity,'%',function(v){return v<50},function(v){return v>150},function(v){return v<30?'💚 Low debt':v<100?'OK':'🚨 Heavy debt — risky'});
 fc+='</div>';
+if(d.fundamental.revGrowth===0&&d.fundamental.roe===0&&d.fundamental.profitMargin===0){
+fc+='<div style="padding:8px;border-radius:6px;background:#d9770608;border:1px solid #d9770615;margin-top:6px;font-size:9px;color:#d97706">⚠️ Limited fundamental data from Yahoo Finance for this stock. The scoring relies more on price action (45% weight). Try the Overview tab after analyzing this stock for more data.</div>';
+}
 h+=siSection('Fundamental Analysis — Is the business good?','📊',fc);
 
 // 2. Valuation detail
 var vc='';
 d.valuation.flags.forEach(function(f){var c=f.startsWith('+')?'#059669':f.startsWith('-')?'#dc2626':'var(--text2)';vc+='<div style="font-size:9px;color:'+c+';line-height:1.6;padding:2px 0">'+f+'</div>';});
-vc+='<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:8px;font-size:9px;text-align:center">';
-vc+='<div style="padding:6px;border-radius:6px;background:var(--bg2)"><div style="font-size:7px;color:var(--text3)">PE</div><div style="font-weight:800">'+d.valuation.pe+'x</div></div>';
-vc+='<div style="padding:6px;border-radius:6px;background:var(--bg2)"><div style="font-size:7px;color:var(--text3)">Forward PE</div><div style="font-weight:800">'+d.valuation.fwdPE+'x</div></div>';
-vc+='<div style="padding:6px;border-radius:6px;background:var(--bg2)"><div style="font-size:7px;color:var(--text3)">PEG</div><div style="font-weight:800">'+d.valuation.peg+'</div></div>';
-vc+='<div style="padding:6px;border-radius:6px;background:var(--bg2)"><div style="font-size:7px;color:var(--text3)">P/B</div><div style="font-weight:800">'+d.valuation.pb+'x</div></div>';
+vc+='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(90px,1fr));gap:6px;margin-top:8px;font-size:9px;text-align:center">';
+vc+=_mc('PE Ratio',d.valuation.pe,'x',function(v){return v>0&&v<20},function(v){return v>40},function(v){return v===0?'N/A':v<15?'💎 Cheap':v<25?'Fair':v<40?'Pricey':'🚨 Expensive'});
+vc+=_mc('Forward PE',d.valuation.fwdPE,'x',function(v){return v>0&&v<d.valuation.pe},function(v){return v>d.valuation.pe},function(v){return v===0?'N/A':v<d.valuation.pe?'🟢 Earnings growing':'🔴 May shrink'});
+vc+=_mc('PEG',d.valuation.peg,'',function(v){return v>0&&v<1},function(v){return v>2},function(v){return v===0?'N/A':v<1?'💎 Growth at discount':v<2?'Fair':'🚨 Overpriced for growth'});
+vc+=_mc('P/B',d.valuation.pb,'x',function(v){return v>0&&v<3},function(v){return v>8},function(v){return v===0?'N/A':v<1?'Below book!':v<3?'Reasonable':'Premium valuation'});
 vc+='</div>';
+// Analyst target price
+if(d.valuation.targetPrice>0){
+var _up=((d.valuation.targetPrice-d.price)/d.price*100).toFixed(1);
+var _uC=parseFloat(_up)>0?'#059669':'#dc2626';
+vc+='<div style="padding:8px 12px;border-radius:8px;background:'+_uC+'06;border:1px solid '+_uC+'15;margin-top:8px;display:flex;justify-content:space-between;align-items:center">';
+vc+='<div><div style="font-size:8px;color:var(--text3);font-weight:700">ANALYST TARGET PRICE</div><div style="font-size:14px;font-weight:900;color:'+_uC+';font-family:var(--mono)">'+d.csym+d.valuation.targetPrice.toLocaleString()+'</div></div>';
+vc+='<div style="text-align:right"><div style="font-size:16px;font-weight:900;color:'+_uC+'">'+_up+'%</div><div style="font-size:8px;color:var(--text3)">'+(d.valuation.analystCount||0)+' analysts</div></div>';
+vc+='</div>';
+}
+if(d.valuation.pe===0&&d.valuation.fwdPE===0){
+vc+='<div style="padding:8px;border-radius:6px;background:#d9770608;border:1px solid #d9770615;margin-top:6px;font-size:9px;color:#d97706">⚠️ Valuation data not available — likely an index or ETF, or Yahoo Finance didn\'t return PE data for this stock.</div>';
+}
 h+=siSection('Valuation — Am I paying a fair price?','💰',vc);
 
 // 3. Price Action
@@ -5788,8 +5810,35 @@ h+=siSection('Price Action — What is the chart saying?','📈',pac);
 // 4. Confluence
 h+=siSection('Confluence — Do all signals agree?','🎯','<div style="font-size:10px;line-height:1.6">'+d.confluence.alignment.join('<br>')+'</div><div style="margin-top:6px;font-size:9px;color:var(--text3)">Confluence score: <strong style="color:var(--text)">'+d.confluence.score+'/100</strong> (Fundamentals 30% + Valuation 25% + Price 45%)</div>');
 
-// 8. Market Context
-h+=siSection('Market Context — Is the tide with us?','🌊','<div style="font-size:10px"><strong>Sector:</strong> '+d.sector+' / '+d.industry+'<br><strong>Aligned with market?</strong> '+(d.marketContext.aligned?'Yes — stock moving with broader trend ✅':'No — swimming against the current ⚠️')+'</div>');
+// 8. Market Context + India-specific data
+var mctx='<div style="font-size:10px"><strong>Sector:</strong> '+d.sector+' / '+d.industry+'<br><strong>Aligned with market?</strong> '+(d.marketContext.aligned?'Yes — stock moving with broader trend ✅':'No — swimming against the current ⚠️')+'</div>';
+var nse=d.nseExtra||{};
+if(nse.dataSource){
+mctx+='<div style="font-size:8px;color:var(--text3);margin-top:6px">📡 Data source: <strong>'+nse.dataSource+'</strong></div>';
+}
+// India-specific: Delivery %, Promoter, FII/DII, Sector PE
+if(nse.deliveryPct>0||nse.promoterHolding>0||nse.sectorPE>0){
+mctx+='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(90px,1fr));gap:6px;margin-top:8px;font-size:9px;text-align:center">';
+if(nse.deliveryPct>0){var dC=nse.deliveryPct>50?'#059669':nse.deliveryPct>30?'#d97706':'#dc2626';mctx+='<div style="padding:6px;border-radius:6px;background:'+dC+'06;border:1px solid '+dC+'12"><div style="font-size:7px;color:var(--text3)">Delivery %</div><div style="font-weight:800;color:'+dC+'">'+nse.deliveryPct.toFixed(1)+'%</div><div style="font-size:6px;color:'+dC+'">'+(nse.deliveryPct>50?'Genuine buying':'Speculative')+'</div></div>';}
+if(nse.promoterHolding>0){mctx+='<div style="padding:6px;border-radius:6px;background:var(--bg2)"><div style="font-size:7px;color:var(--text3)">Promoter</div><div style="font-weight:800">'+nse.promoterHolding.toFixed(1)+'%</div></div>';}
+if(nse.fiiHolding>0){mctx+='<div style="padding:6px;border-radius:6px;background:var(--bg2)"><div style="font-size:7px;color:var(--text3)">FII</div><div style="font-weight:800">'+nse.fiiHolding.toFixed(1)+'%</div></div>';}
+if(nse.diiHolding>0){mctx+='<div style="padding:6px;border-radius:6px;background:var(--bg2)"><div style="font-size:7px;color:var(--text3)">DII</div><div style="font-weight:800">'+nse.diiHolding.toFixed(1)+'%</div></div>';}
+if(nse.sectorPE>0){mctx+='<div style="padding:6px;border-radius:6px;background:var(--bg2)"><div style="font-size:7px;color:var(--text3)">Sector PE</div><div style="font-weight:800">'+nse.sectorPE.toFixed(1)+'x</div></div>';}
+if(nse.eps>0){mctx+='<div style="padding:6px;border-radius:6px;background:var(--bg2)"><div style="font-size:7px;color:var(--text3)">EPS</div><div style="font-weight:800">₹'+nse.eps.toFixed(1)+'</div></div>';}
+if(nse.bookValue>0){mctx+='<div style="padding:6px;border-radius:6px;background:var(--bg2)"><div style="font-size:7px;color:var(--text3)">Book Value</div><div style="font-weight:800">₹'+nse.bookValue.toFixed(0)+'</div></div>';}
+mctx+='</div>';
+}
+// Quarterly results table
+if(nse.quarterlyResults&&nse.quarterlyResults.length>0){
+mctx+='<div style="margin-top:8px;font-size:10px;font-weight:700;color:var(--text);margin-bottom:4px">📊 Quarterly Results</div>';
+mctx+='<table style="width:100%;border-collapse:collapse;font-size:8px"><thead><tr style="background:var(--bg2)"><th style="padding:4px">Quarter</th><th style="padding:4px;text-align:right">Revenue (Cr)</th><th style="padding:4px;text-align:right">Net Profit (Cr)</th><th style="padding:4px;text-align:right">EPS</th></tr></thead><tbody>';
+nse.quarterlyResults.forEach(function(qr){
+var npC=qr.netProfit>0?'#059669':'#dc2626';
+mctx+='<tr style="border-bottom:1px solid var(--border)"><td style="padding:3px">'+qr.period+'</td><td style="padding:3px;text-align:right;font-family:var(--mono)">₹'+(qr.revenue/10000000).toFixed(0)+'</td><td style="padding:3px;text-align:right;color:'+npC+';font-weight:700;font-family:var(--mono)">₹'+(qr.netProfit/10000000).toFixed(0)+'</td><td style="padding:3px;text-align:right;font-family:var(--mono)">₹'+qr.eps.toFixed(1)+'</td></tr>';
+});
+mctx+='</tbody></table>';
+}
+h+=siSection('Market Context — Is the tide with us?','🌊',mctx);
 
 // 9. Entry Timing
 var et=d.entryTiming;
@@ -5803,6 +5852,64 @@ h+=siSection('Position Sizing — How much to bet?','📐','<div style="font-siz
 // 11. Smart Money
 var smc='';d.smartMoney.forEach(function(s){smc+='<div style="font-size:9px;color:var(--text2);line-height:1.6;padding:2px 0">'+s+'</div>';});
 h+=siSection('Smart Money — What are institutions doing?','🏦',smc);
+
+// India-only: Shareholding + Delivery + Quarterly Results
+if(d.nseExtra&&(d.nseExtra.promoterHolding>0||d.nseExtra.deliveryPct>0)){
+var nseC='';
+// Shareholding pie
+if(d.nseExtra.promoterHolding>0||d.nseExtra.fiiHolding>0){
+nseC+='<div style="font-size:10px;font-weight:800;color:var(--text);margin-bottom:6px">📊 Shareholding Pattern</div>';
+nseC+='<div style="display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap">';
+var _hp=function(label,val,c){return val>0?'<div style="flex:1;min-width:70px;padding:6px 8px;border-radius:8px;background:'+c+'08;border:1px solid '+c+'15;text-align:center"><div style="font-size:7px;color:var(--text3);font-weight:700">'+label+'</div><div style="font-size:16px;font-weight:900;color:'+c+';font-family:var(--mono)">'+val.toFixed(1)+'%</div></div>':'';};
+nseC+=_hp('Promoters',d.nseExtra.promoterHolding,'#7c3aed');
+nseC+=_hp('FII',d.nseExtra.fiiHolding,'#1a56db');
+nseC+=_hp('DII',d.nseExtra.diiHolding,'#059669');
+var pub=100-d.nseExtra.promoterHolding-d.nseExtra.fiiHolding-d.nseExtra.diiHolding;
+if(pub>0)nseC+=_hp('Public',pub,'#d97706');
+nseC+='</div>';
+// Insights
+if(d.nseExtra.promoterHolding>60)nseC+='<div style="font-size:8px;color:#059669;margin-bottom:2px">✅ Strong promoter conviction (>60%) — aligned with shareholders</div>';
+if(d.nseExtra.promoterHolding<30&&d.nseExtra.promoterHolding>0)nseC+='<div style="font-size:8px;color:#dc2626;margin-bottom:2px">⚠️ Low promoter holding (<30%) — weak ownership signal</div>';
+if(d.nseExtra.fiiHolding>25)nseC+='<div style="font-size:8px;color:#1a56db;margin-bottom:2px">🌍 High FII interest ('+d.nseExtra.fiiHolding.toFixed(0)+'%) — global investors like this</div>';
+}
+// Delivery %
+if(d.nseExtra.deliveryPct>0){
+var delC=d.nseExtra.deliveryPct>50?'#059669':d.nseExtra.deliveryPct>30?'#d97706':'#dc2626';
+nseC+='<div style="margin-top:6px;padding:8px;border-radius:8px;background:'+delC+'06;border:1px solid '+delC+'15">';
+nseC+='<div style="font-size:9px"><span style="font-weight:800;color:'+delC+'">Delivery: '+d.nseExtra.deliveryPct.toFixed(1)+'%</span> — ';
+nseC+=d.nseExtra.deliveryPct>50?'Genuine buying — investors taking delivery':'Mostly speculative/intraday trading';
+nseC+='</div></div>';
+}
+// Sector PE comparison
+if(d.nseExtra.sectorPE>0&&d.valuation.pe>0){
+var speC=d.valuation.pe<d.nseExtra.sectorPE?'#059669':'#dc2626';
+nseC+='<div style="margin-top:6px;padding:8px;border-radius:8px;background:'+speC+'06;border:1px solid '+speC+'15;font-size:9px">';
+nseC+='Stock PE <strong>'+d.valuation.pe+'x</strong> vs Sector PE <strong>'+d.nseExtra.sectorPE.toFixed(0)+'x</strong> — ';
+nseC+=d.valuation.pe<d.nseExtra.sectorPE?'<span style="color:#059669;font-weight:700">Trading at discount to sector ✅</span>':'<span style="color:#dc2626;font-weight:700">Premium to sector</span>';
+nseC+='</div>';
+}
+// Quarterly Results
+if(d.nseExtra.quarterlyResults&&d.nseExtra.quarterlyResults.length>0){
+nseC+='<div style="margin-top:8px;font-size:10px;font-weight:800;color:var(--text)">📈 Quarterly Results (Last '+d.nseExtra.quarterlyResults.length+'Q)</div>';
+nseC+='<div style="overflow-x:auto;margin-top:4px"><table style="width:100%;border-collapse:collapse;font-size:8px"><thead><tr style="background:var(--bg2)"><th style="padding:4px 6px;text-align:left">Period</th><th style="padding:4px 6px;text-align:right">Revenue (Cr)</th><th style="padding:4px 6px;text-align:right">Net Profit (Cr)</th><th style="padding:4px 6px;text-align:right">EPS</th></tr></thead><tbody>';
+d.nseExtra.quarterlyResults.forEach(function(qr){
+var pC=qr.netProfit>0?'#059669':'#dc2626';
+nseC+='<tr style="border-bottom:1px solid var(--border)"><td style="padding:3px 6px">'+qr.period+'</td>';
+nseC+='<td style="padding:3px 6px;text-align:right;font-family:var(--mono)">₹'+(qr.revenue/10000000).toFixed(0)+'</td>';
+nseC+='<td style="padding:3px 6px;text-align:right;font-family:var(--mono);color:'+pC+'">₹'+(qr.netProfit/10000000).toFixed(0)+'</td>';
+nseC+='<td style="padding:3px 6px;text-align:right;font-family:var(--mono)">₹'+qr.eps.toFixed(1)+'</td></tr>';
+});
+nseC+='</tbody></table></div>';
+}
+// EPS + Book Value
+if(d.nseExtra.eps>0||d.nseExtra.bookValue>0){
+nseC+='<div style="display:flex;gap:6px;margin-top:6px">';
+if(d.nseExtra.eps>0)nseC+='<div style="flex:1;padding:6px;border-radius:6px;background:var(--bg2);text-align:center"><div style="font-size:7px;color:var(--text3);font-weight:700">EPS</div><div style="font-size:12px;font-weight:800;font-family:var(--mono)">₹'+d.nseExtra.eps.toFixed(1)+'</div></div>';
+if(d.nseExtra.bookValue>0)nseC+='<div style="flex:1;padding:6px;border-radius:6px;background:var(--bg2);text-align:center"><div style="font-size:7px;color:var(--text3);font-weight:700">Book Value</div><div style="font-size:12px;font-weight:800;font-family:var(--mono)">₹'+d.nseExtra.bookValue.toFixed(0)+'</div></div>';
+nseC+='</div>';
+}
+h+=siSection('NSE Data — Shareholding, Delivery & Quarterly Results','🇮🇳',nseC);
+}
 
 // 12. Risk Factors
 var rfc='';d.risks.forEach(function(r){rfc+='<div style="font-size:9px;color:#dc2626;line-height:1.6;padding:2px 0">⚠️ '+r+'</div>';});

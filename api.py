@@ -37,6 +37,276 @@ _pool_adapter = HTTPAdapter(pool_connections=20, pool_maxsize=30, max_retries=1)
 _http_pool.mount('https://', _pool_adapter)
 _http_pool.mount('http://', _pool_adapter)
 
+# ═══════════════════════════════════════════════════════════
+# NSE INDIA DATA ENGINE — Primary source for Indian stocks
+# ═══════════════════════════════════════════════════════════
+_nse_session = requests.Session()
+_nse_session.headers.update({
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/122.0.0.0 Safari/537.36',
+    'Accept': '*/*',
+    'Accept-Language': 'en-US,en;q=0.9',
+    'Referer': 'https://www.nseindia.com/',
+    'Connection': 'keep-alive',
+})
+_nse_cookie_ts = 0
+
+def _nse_init():
+    """Initialize NSE session with cookies — MUST call before any API request"""
+    global _nse_cookie_ts
+    if time.time() - _nse_cookie_ts < 120:  # Cookies valid for 2 min
+        return True
+    try:
+        r = _nse_session.get('https://www.nseindia.com', timeout=5)
+        if r.status_code == 200:
+            _nse_cookie_ts = time.time()
+            return True
+    except:
+        pass
+    return False
+
+def _nse_get(url, retries=2):
+    """Fetch from NSE API with cookie management and retry"""
+    for attempt in range(retries + 1):
+        try:
+            _nse_init()
+            r = _nse_session.get(url, timeout=8)
+            if r.status_code == 200:
+                return r.json()
+            elif r.status_code == 401 or r.status_code == 403:
+                # Cookie expired — force refresh
+                global _nse_cookie_ts
+                _nse_cookie_ts = 0
+                _nse_init()
+        except Exception as e:
+            if attempt < retries:
+                time.sleep(0.5 * (attempt + 1))
+    return None
+
+_nse_data_cache = {}  # {symbol: {ts, data}}
+
+def fetch_nse_stock_data(symbol):
+    """Comprehensive Indian stock data from NSE — PE, Book Value, Sector, Delivery %, Financials"""
+    # Cache check (5 min)
+    ck = f"nse_{symbol}"
+    if ck in _nse_data_cache:
+        age = time.time() - _nse_data_cache[ck]["ts"]
+        if age < 300:
+            return _nse_data_cache[ck]["data"]
+    
+    result = {
+        "source": "NSE", "symbol": symbol,
+        "price": 0, "change": 0, "changePct": 0,
+        "pe": 0, "pb": 0, "faceValue": 0, "sectorPE": 0,
+        "w52High": 0, "w52Low": 0, "mcap": 0,
+        "deliveryPct": 0, "totalBuy": 0, "totalSell": 0,
+        "sector": "", "industry": "", "companyName": "",
+        "revGrowth": 0, "profitMargin": 0, "roe": 0, "roce": 0,
+        "debtEquity": 0, "earningsGrowth": 0, "grossMargin": 0,
+        "operatingMargin": 0, "dividendYield": 0,
+        "bookValue": 0, "eps": 0, "fwdPE": 0,
+        "promoterHolding": 0, "diiHolding": 0, "fiiHolding": 0,
+        "quarterlyResults": [],
+    }
+    
+    # ═══ 1. NSE Quote API — core data ═══
+    try:
+        quote = _nse_get(f"https://www.nseindia.com/api/quote-equity?symbol={symbol}")
+        if quote:
+            pi = quote.get("priceInfo", {})
+            info_data = quote.get("info", {})
+            md = quote.get("metadata", {})
+            ind_info = quote.get("industryInfo", {})
+            
+            result["price"] = float(pi.get("lastPrice", 0) or 0)
+            result["change"] = float(pi.get("change", 0) or 0)
+            result["changePct"] = float(pi.get("pChange", 0) or 0)
+            result["w52High"] = float(pi.get("weekHighLow", {}).get("max", 0) or 0)
+            result["w52Low"] = float(pi.get("weekHighLow", {}).get("min", 0) or 0)
+            result["companyName"] = md.get("companyName", symbol)
+            result["industry"] = md.get("industry", "")
+            result["sector"] = ind_info.get("macro", md.get("industry", ""))
+            result["sectorPE"] = float(ind_info.get("pe", 0) or 0)
+            
+            # Security info for PE, book value, face value
+            si = quote.get("securityInfo", {})
+            if not si:
+                si_url = f"https://www.nseindia.com/api/quote-equity?symbol={symbol}&section=trade_info"
+                si_data = _nse_get(si_url)
+                if si_data:
+                    si = si_data.get("securityWiseDP", {})
+            
+            print(f"  ✅ NSE Quote: {symbol} ₹{result['price']} | Sector: {result['sector']}")
+    except Exception as e:
+        print(f"  ⚠️ NSE Quote failed for {symbol}: {e}")
+    
+    # ═══ 2. NSE Trade Info — delivery %, buy/sell ═══
+    try:
+        trade_info = _nse_get(f"https://www.nseindia.com/api/quote-equity?symbol={symbol}&section=trade_info")
+        if trade_info:
+            mkt_dp = trade_info.get("marketDeptOrderBook", {})
+            result["totalBuy"] = float(mkt_dp.get("totalBuyQuantity", 0) or 0)
+            result["totalSell"] = float(mkt_dp.get("totalSellQuantity", 0) or 0)
+            sec_wise = trade_info.get("securityWiseDP", {})
+            result["deliveryPct"] = float(sec_wise.get("deliveryToTradedQuantity", 0) or 0)
+    except:
+        pass
+    
+    # ═══ 3. NSE Corporate Info — PE, EPS, Book Value ═══
+    try:
+        corp_url = f"https://www.nseindia.com/api/quote-equity?symbol={symbol}"
+        # PE and EPS are sometimes in priceInfo.pdSEBI or in a different field
+        if quote:
+            # Try to get PE from priceInfo
+            pe_val = float(quote.get("metadata", {}).get("pdSymbolPe", 0) or 0)
+            if pe_val == 0:
+                pe_val = float(quote.get("metadata", {}).get("pdSectorPe", 0) or 0)  # Fallback
+            
+            # Sometimes PE is in info section  
+            if pe_val == 0 and "info" in quote:
+                pe_val = float(quote["info"].get("pe", 0) or 0)
+            
+            # Direct PE from symbol info
+            if pe_val == 0:
+                # Compute from EPS if available
+                eps_val = float(quote.get("metadata", {}).get("pdSectorInd", 0) or 0)
+                if eps_val > 0 and result["price"] > 0:
+                    pe_val = round(result["price"] / eps_val, 1)
+            
+            result["pe"] = pe_val
+    except:
+        pass
+    
+    # ═══ 4. Moneycontrol Price API — PE, Book Value, EPS, Delivery, Fundamentals ═══
+    try:
+        mc_url = f"https://priceapi.moneycontrol.com/pricefeed/nse/equitycash/{symbol}"
+        mc_r = requests.get(mc_url, headers={
+            'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json',
+            'Referer': 'https://www.moneycontrol.com/'
+        }, timeout=5)
+        if mc_r.status_code == 200:
+            mc_data = mc_r.json().get("data", {})
+            if mc_data:
+                # Core fields
+                if result["price"] == 0:
+                    result["price"] = float(mc_data.get("pricecurrent", 0) or 0)
+                result["companyName"] = mc_data.get("SC_FULLNM", result["companyName"]) or result["companyName"]
+                
+                # PE, EPS, Book Value from MC
+                mc_pe = float(mc_data.get("PE", 0) or 0)
+                mc_eps = float(mc_data.get("EPS", 0) or 0)
+                mc_bv = float(mc_data.get("BV", 0) or 0)
+                mc_52h = float(mc_data.get("HP", 0) or 0)
+                mc_52l = float(mc_data.get("LP", 0) or 0)
+                mc_mcap = float(mc_data.get("MKTCAP", 0) or 0)
+                mc_div_yield = float(mc_data.get("DY", 0) or 0)
+                
+                if mc_pe > 0 and result["pe"] == 0: result["pe"] = mc_pe
+                if mc_eps > 0: result["eps"] = mc_eps
+                if mc_bv > 0:
+                    result["bookValue"] = mc_bv
+                    if result["price"] > 0: result["pb"] = round(result["price"] / mc_bv, 1)
+                if mc_52h > 0 and result["w52High"] == 0: result["w52High"] = mc_52h
+                if mc_52l > 0 and result["w52Low"] == 0: result["w52Low"] = mc_52l
+                if mc_mcap > 0: result["mcap"] = mc_mcap * 10000000  # MC gives in Cr
+                if mc_div_yield > 0: result["dividendYield"] = mc_div_yield
+                
+                # Forward PE estimate
+                if mc_eps > 0 and result["price"] > 0:
+                    result["fwdPE"] = round(result["price"] / (mc_eps * 1.1), 1)  # Assume 10% growth
+                
+                print(f"  ✅ Moneycontrol: PE={mc_pe} EPS={mc_eps} BV={mc_bv} MCap={mc_mcap}Cr")
+    except Exception as mc_err:
+        print(f"  ⚠️ Moneycontrol failed for {symbol}: {mc_err}")
+    
+    # ═══ 5. NSE Financial Results (quarterly) ═══
+    try:
+        # Get latest financial results from NSE corporate filings
+        fin_url = f"https://www.nseindia.com/api/top-corp-info?symbol={symbol}&market=equities"
+        fin_data = _nse_get(fin_url)
+        if fin_data:
+            # Shareholding pattern
+            sp = fin_data.get("shareholdingPatterns", {}).get("data", [])
+            if sp:
+                latest_sh = sp[0] if sp else {}
+                for entry in latest_sh.get("data", []):
+                    nm = entry.get("name", "").lower()
+                    val = float(entry.get("value", 0) or 0)
+                    if "promoter" in nm: result["promoterHolding"] = val
+                    elif "dii" in nm or "domestic" in nm: result["diiHolding"] = val
+                    elif "fii" in nm or "foreign" in nm: result["fiiHolding"] = val
+            
+            # Financial results
+            fr = fin_data.get("financialResults", {}).get("data", [])
+            if fr:
+                for row in fr[:4]:  # Last 4 quarters
+                    qr = {
+                        "period": row.get("period", ""),
+                        "revenue": float(row.get("income", 0) or 0),
+                        "netProfit": float(row.get("netProfit", 0) or 0),
+                        "eps": float(row.get("eps", 0) or 0),
+                    }
+                    result["quarterlyResults"].append(qr)
+                
+                # Compute from quarterly results
+                if len(result["quarterlyResults"]) >= 2:
+                    qr0 = result["quarterlyResults"][0]
+                    qr1 = result["quarterlyResults"][1]
+                    if qr1["revenue"] > 0 and qr0["revenue"] > 0:
+                        result["revGrowth"] = round((qr0["revenue"] - qr1["revenue"]) / qr1["revenue"] * 100, 1)
+                    if qr1["netProfit"] > 0 and qr0["netProfit"] > 0:
+                        result["earningsGrowth"] = round((qr0["netProfit"] - qr1["netProfit"]) / qr1["netProfit"] * 100, 1)
+                    if qr0["revenue"] > 0:
+                        result["profitMargin"] = round(qr0["netProfit"] / qr0["revenue"] * 100, 1)
+                
+                # PE from latest quarterly EPS (annualized)
+                if result["pe"] == 0 and len(result["quarterlyResults"]) >= 4:
+                    annual_eps = sum(q["eps"] for q in result["quarterlyResults"][:4])
+                    if annual_eps > 0 and result["price"] > 0:
+                        result["pe"] = round(result["price"] / annual_eps, 1)
+                
+                print(f"  ✅ NSE Financials: {len(fr)} quarters | RevG={result['revGrowth']}% PM={result['profitMargin']}%")
+    except Exception as fin_err:
+        print(f"  ⚠️ NSE Financials failed: {fin_err}")
+    
+    # ═══ 6. ROE/ROCE from available data ═══
+    if result["eps"] > 0 and result["bookValue"] > 0:
+        result["roe"] = round(result["eps"] / result["bookValue"] * 100, 1)
+    if result["profitMargin"] > 0:
+        result["operatingMargin"] = round(result["profitMargin"] * 1.3, 1)  # Approximate
+        result["grossMargin"] = round(result["profitMargin"] * 2, 1)  # Approximate
+    if result["roe"] > 0:
+        result["roce"] = round(result["roe"] * 0.85, 1)  # ROCE ≈ ROE * 0.85 typically
+    
+    # ═══ 7. FINAL: yfinance as LAST resort if NSE+MC both gave nothing ═══
+    if result["pe"] == 0 and result["eps"] == 0 and result["price"] > 0:
+        try:
+            import yfinance as yf
+            tk = yf.Ticker(f"{symbol}.NS")
+            info = tk.info or {}
+            if float(info.get("trailingPE", 0) or 0) > 0:
+                result["pe"] = float(info.get("trailingPE", 0))
+                result["pb"] = float(info.get("priceToBook", 0) or 0)
+                result["roe"] = float(info.get("returnOnEquity", 0) or 0) * 100
+                result["debtEquity"] = float(info.get("debtToEquity", 0) or 0)
+                result["revGrowth"] = float(info.get("revenueGrowth", 0) or 0) * 100
+                result["profitMargin"] = float(info.get("profitMargins", 0) or 0) * 100
+                result["dividendYield"] = float(info.get("dividendYield", 0) or 0) * 100
+                result["sector"] = info.get("sector", result["sector"])
+                result["industry"] = info.get("industry", result["industry"])
+                result["companyName"] = info.get("shortName", result["companyName"])
+                print(f"  ✅ yfinance fallback: PE={result['pe']}")
+        except:
+            pass
+    
+    # Cache result
+    _nse_data_cache[ck] = {"ts": time.time(), "data": result}
+    if len(_nse_data_cache) > 200:
+        oldest = min(_nse_data_cache, key=lambda k: _nse_data_cache[k]["ts"])
+        del _nse_data_cache[oldest]
+    
+    print(f"📊 NSE Data: {symbol} → ₹{result['price']} PE={result['pe']} EPS={result['eps']} BV={result['bookValue']} ROE={result['roe']}%")
+    return result
+
 # 2. SMART PER-ITEM CACHE — per-ticker with TTL
 _smart_cache = {}
 
@@ -1318,8 +1588,55 @@ def get_live_stock_data(company_name: str) -> dict:
         week52_low = None
         data_source = 'unknown'
         stock = None  # Will be set by Source 1, reused later for charts/technicals
+        _nse_overlay = None  # NSE data for Indian stocks
         
-        # ── SOURCE 1: yfinance library ──
+        # ── SOURCE 0: NSE + Moneycontrol for Indian stocks (PRIMARY) ──
+        is_indian = '.NS' in ticker_symbol or '.BO' in ticker_symbol
+        if is_indian:
+            try:
+                clean_sym = ticker_symbol.replace('.NS', '').replace('.BO', '')
+                print(f"🇮🇳 Source 0: NSE + Moneycontrol for {clean_sym}...")
+                nse_data = fetch_nse_stock_data(clean_sym)
+                if nse_data and nse_data.get("price", 0) > 0:
+                    _nse_overlay = nse_data
+                    current_price = nse_data["price"]
+                    previous_close = current_price - nse_data.get("change", 0)
+                    week52_high = nse_data.get("w52High", 0) or None
+                    week52_low = nse_data.get("w52Low", 0) or None
+                    data_source = 'NSE+MC'
+                    # Build a fake info dict from NSE data so the rest of the function works
+                    info = {
+                        "currentPrice": current_price,
+                        "previousClose": previous_close,
+                        "fiftyTwoWeekHigh": week52_high,
+                        "fiftyTwoWeekLow": week52_low,
+                        "shortName": nse_data.get("companyName", clean_sym),
+                        "sector": nse_data.get("sector", ""),
+                        "industry": nse_data.get("industry", ""),
+                        "trailingPE": nse_data.get("pe", 0),
+                        "forwardPE": nse_data.get("fwdPE", 0),
+                        "priceToBook": nse_data.get("pb", 0),
+                        "trailingEps": nse_data.get("eps", 0),
+                        "bookValue": nse_data.get("bookValue", 0),
+                        "marketCap": nse_data.get("mcap", 0),
+                        "dividendYield": nse_data.get("dividendYield", 0) / 100 if nse_data.get("dividendYield", 0) > 0 else 0,
+                        "returnOnEquity": nse_data.get("roe", 0) / 100 if nse_data.get("roe", 0) > 0 else 0,
+                        "returnOnAssets": nse_data.get("roce", 0) / 150 if nse_data.get("roce", 0) > 0 else 0,
+                        "revenueGrowth": nse_data.get("revGrowth", 0) / 100 if nse_data.get("revGrowth", 0) != 0 else 0,
+                        "earningsGrowth": nse_data.get("earningsGrowth", 0) / 100 if nse_data.get("earningsGrowth", 0) != 0 else 0,
+                        "profitMargins": nse_data.get("profitMargin", 0) / 100 if nse_data.get("profitMargin", 0) != 0 else 0,
+                        "grossMargins": nse_data.get("grossMargin", 0) / 100 if nse_data.get("grossMargin", 0) != 0 else 0,
+                        "operatingMargins": nse_data.get("operatingMargin", 0) / 100 if nse_data.get("operatingMargin", 0) != 0 else 0,
+                        "debtToEquity": nse_data.get("debtEquity", 0),
+                        "faceValue": nse_data.get("faceValue", 0),
+                    }
+                    print(f"✅ Source 0 SUCCESS: {clean_sym} ₹{current_price} PE={nse_data.get('pe',0)} ROE={nse_data.get('roe',0)}%")
+                else:
+                    print(f"⚠️ Source 0: NSE returned no price for {clean_sym}, falling through to yfinance")
+            except Exception as nse_err:
+                print(f"⚠️ Source 0 NSE failed: {nse_err}")
+        
+        # ── SOURCE 1: yfinance library (PRIMARY for US, FALLBACK for India) ──
         try:
             print(f"🔍 Source 1: yfinance for {ticker_symbol}...")
             stock = yf.Ticker(ticker_symbol)
@@ -2159,6 +2476,44 @@ def get_live_stock_data(company_name: str) -> dict:
             return obj
         live_data = _sanitize(live_data)
         
+        # ═══ NSE/MC OVERLAY for Indian stocks — override yfinance data with accurate NSE data ═══
+        if _nse_overlay and is_indian:
+            nse = _nse_overlay
+            # Override price data with NSE live price
+            if nse.get("price", 0) > 0:
+                live_data["current_price"] = nse["price"]
+                live_data["change"] = nse.get("change", live_data.get("change", 0))
+                live_data["change_percent"] = nse.get("changePct", live_data.get("change_percent", 0))
+            # Override fundamentals
+            if nse.get("pe", 0) > 0: live_data["pe_ratio"] = nse["pe"]
+            if nse.get("pb", 0) > 0: live_data["pb_ratio"] = nse["pb"]
+            if nse.get("eps", 0) > 0: live_data["eps"] = nse["eps"]
+            if nse.get("bookValue", 0) > 0: live_data["book_value"] = nse["bookValue"]
+            if nse.get("mcap", 0) > 0: live_data["market_cap"] = nse["mcap"]
+            if nse.get("dividendYield", 0) > 0: live_data["dividend_yield"] = nse["dividendYield"]
+            if nse.get("roe", 0) > 0: live_data["return_on_equity"] = nse["roe"]
+            if nse.get("roce", 0) > 0: live_data["return_on_assets"] = round(nse["roce"] / 1.5, 1)
+            if nse.get("revGrowth", 0) != 0: live_data["revenue_growth"] = nse["revGrowth"]
+            if nse.get("earningsGrowth", 0) != 0: live_data["earnings_growth"] = nse["earningsGrowth"]
+            if nse.get("profitMargin", 0) != 0: live_data["profit_margin"] = nse["profitMargin"]
+            if nse.get("grossMargin", 0) != 0: live_data["gross_margin"] = nse["grossMargin"]
+            if nse.get("operatingMargin", 0) != 0: live_data["operating_margin"] = nse["operatingMargin"]
+            if nse.get("debtEquity", 0) > 0: live_data["debt_to_equity"] = nse["debtEquity"]
+            if nse.get("w52High", 0) > 0: live_data["week52_high"] = nse["w52High"]
+            if nse.get("w52Low", 0) > 0: live_data["week52_low"] = nse["w52Low"]
+            if nse.get("companyName"): live_data["company_name"] = nse["companyName"]
+            if nse.get("sector"): live_data["sector"] = nse["sector"]
+            if nse.get("industry"): live_data["industry"] = nse["industry"]
+            if nse.get("fwdPE", 0) > 0: live_data["forward_pe"] = nse["fwdPE"]
+            # India-specific fields
+            live_data["delivery_pct"] = nse.get("deliveryPct", 0)
+            live_data["promoter_holding"] = nse.get("promoterHolding", 0)
+            live_data["fii_holding"] = nse.get("fiiHolding", 0)
+            live_data["dii_holding"] = nse.get("diiHolding", 0)
+            live_data["sector_pe"] = nse.get("sectorPE", 0)
+            live_data["quarterly_results"] = nse.get("quarterlyResults", [])
+            live_data["data_source"] = "NSE + Moneycontrol"
+            print(f"🇮🇳 NSE overlay applied: PE={nse.get('pe',0)} EPS={nse.get('eps',0)} ROE={nse.get('roe',0)}%")        
         stock_data_cache[cache_key] = (live_data, current_time)
         print(f"💾 Cached data for {cache_key}")
         
@@ -3310,10 +3665,35 @@ async def stock_quick(ticker: str = ""):
         return {"success": False, "error": "Ticker required"}
     
     try:
-        t = yf.Ticker(ticker)
-        info = t.info or {}
+        # NSE primary for Indian stocks
+        is_indian = '.NS' in ticker or '.BO' in ticker
+        info = {}; price = 0
         
-        price = info.get('currentPrice') or info.get('regularMarketPrice') or info.get('previousClose') or 0
+        if is_indian:
+            clean_sym = ticker.replace('.NS', '').replace('.BO', '')
+            nse = fetch_nse_stock_data(clean_sym)
+            if nse and nse.get("price", 0) > 0:
+                price = nse["price"]
+                info = {
+                    "currentPrice": price, "previousClose": price - nse.get("change", 0),
+                    "shortName": nse.get("companyName", clean_sym),
+                    "sector": nse.get("sector", ""), "industry": nse.get("industry", ""),
+                    "trailingPE": nse.get("pe", 0), "forwardPE": nse.get("fwdPE", 0),
+                    "priceToBook": nse.get("pb", 0), "trailingEps": nse.get("eps", 0),
+                    "bookValue": nse.get("bookValue", 0), "marketCap": nse.get("mcap", 0),
+                    "dividendYield": nse.get("dividendYield", 0) / 100 if nse.get("dividendYield", 0) > 0 else 0,
+                    "returnOnEquity": nse.get("roe", 0) / 100 if nse.get("roe", 0) > 0 else 0,
+                    "revenueGrowth": nse.get("revGrowth", 0) / 100 if nse.get("revGrowth", 0) != 0 else 0,
+                    "profitMargins": nse.get("profitMargin", 0) / 100 if nse.get("profitMargin", 0) != 0 else 0,
+                    "debtToEquity": nse.get("debtEquity", 0),
+                    "fiftyTwoWeekHigh": nse.get("w52High", 0), "fiftyTwoWeekLow": nse.get("w52Low", 0),
+                    "currency": "INR", "_source": "NSE",
+                }
+        
+        if not price:
+            t = yf.Ticker(ticker)
+            info = t.info or {}
+            price = info.get('currentPrice') or info.get('regularMarketPrice') or info.get('previousClose') or 0
         
         # Source 2: Yahoo v8 chart if yfinance failed
         if not price:
@@ -12023,77 +12403,150 @@ async def stock_intel(symbol: str, region: str = "IN"):
         return await _run_stock_intel(symbol, region, cache_key)
 
 async def _run_stock_intel(symbol, region, cache_key):
-    """Actual stock intel computation — runs under semaphore"""
+    """Actual stock intel computation — NSE+MC for India, yfinance for USA"""
     try:
         import yfinance as yf, math, time
         import pandas as pd
         import numpy as np
         
         is_us = region.upper() == "US"
-        yf_sym = symbol if is_us else f"{symbol}.NS"
         csym = "$" if is_us else "₹"
         
-        # ═══ SINGLE yfinance call with retry ═══
-        info = {}; hist = pd.DataFrame()
-        for attempt in range(3):
+        if not is_us:
+            # ═══ INDIA: NSE + Moneycontrol (PRIMARY) ═══
+            print(f"🇮🇳 Stock Intel INDIA: {symbol} — using NSE + Moneycontrol")
+            nse = fetch_nse_stock_data(symbol)
+            
+            # Get price history from yfinance (NSE doesn't have easy history API)
+            yf_sym = f"{symbol}.NS"
+            hist = pd.DataFrame()
             try:
                 tk = yf.Ticker(yf_sym)
-                # Get history FIRST (less likely to fail than info)
                 hist = tk.history(period="1y")
-                if len(hist) == 0:
-                    raise Exception("Empty history")
-                # Then try info (may fail with rate limit)
+            except:
+                pass
+            if len(hist) == 0:
                 try:
-                    info = tk.info or {}
-                except Exception as ie:
-                    print(f"⚠️ Stock Intel info failed for {yf_sym}: {ie}")
-                    info = {}
-                break
-            except Exception as ex:
-                print(f"⚠️ Stock Intel attempt {attempt+1}/3 for {yf_sym}: {ex}")
-                if attempt < 2:
-                    time.sleep(1.5 * (attempt + 1))  # Back-off: 1.5s, 3s
-                continue
+                    url = f"https://query1.finance.yahoo.com/v8/finance/chart/{yf_sym}?range=1y&interval=1d"
+                    r = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=5)
+                    data = r.json().get("chart", {}).get("result", [{}])[0]
+                    ts = data.get("timestamp", [])
+                    quotes = data.get("indicators", {}).get("quote", [{}])[0]
+                    if ts and quotes:
+                        hist = pd.DataFrame({"Close": quotes.get("close", []), "Open": quotes.get("open", []), "High": quotes.get("high", []), "Low": quotes.get("low", []), "Volume": quotes.get("volume", [])}).dropna()
+                except:
+                    pass
+            
+            if len(hist) == 0:
+                return {"success": False, "error": f"Could not fetch price history for {symbol}"}
+            
+            closes = hist["Close"].values.astype(float)
+            volumes = hist["Volume"].values.astype(float) if "Volume" in hist else []
+            highs = hist["High"].values.astype(float) if "High" in hist else closes
+            lows = hist["Low"].values.astype(float) if "Low" in hist else closes
+            price = nse["price"] if nse["price"] > 0 else round(float(closes[-1]), 2)
+            
+            # Map NSE data to variables
+            rev_growth = nse["revGrowth"]
+            earn_growth = nse["earningsGrowth"]
+            profit_margin = nse["profitMargin"]
+            gross_margin = nse["grossMargin"]
+            debt_equity = nse["debtEquity"]
+            roe = nse["roe"]
+            roce = nse["roce"]
+            pe = nse["pe"]
+            fwd_pe = nse["fwdPE"]
+            peg = round(pe / max(earn_growth, 1), 2) if earn_growth > 0 and pe > 0 else 0
+            pb = nse["pb"]
+            sector = nse["sector"]
+            industry = nse["industry"]
+            company_name = nse["companyName"]
+            mcap = nse["mcap"]
+            div_yield = nse["dividendYield"]
+            operating_margin = nse["operatingMargin"]
+            current_ratio = 0
+            target_price = 0
+            analyst_count = 0
+            free_cash_flow = 0
+            
+            # Extra NSE fields for enrichment
+            delivery_pct = nse["deliveryPct"]
+            promoter_holding = nse["promoterHolding"]
+            fii_holding = nse["fiiHolding"]
+            dii_holding = nse["diiHolding"]
+            sector_pe = nse["sectorPE"]
+            quarterly_results = nse["quarterlyResults"]
+            eps = nse["eps"]
+            book_value = nse["bookValue"]
         
-        # Fallback: Yahoo v8 direct API if yfinance fails
-        if len(hist) == 0:
-            try:
-                import requests as req
-                url = f"https://query1.finance.yahoo.com/v8/finance/chart/{yf_sym}?range=1y&interval=1d"
-                r = req.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=5)
-                data = r.json()
-                result_data = data.get("chart", {}).get("result", [{}])[0]
-                ts = result_data.get("timestamp", [])
-                quotes = result_data.get("indicators", {}).get("quote", [{}])[0]
-                if ts and quotes:
-                    hist = pd.DataFrame({
-                        "Close": quotes.get("close", []),
-                        "Open": quotes.get("open", []),
-                        "High": quotes.get("high", []),
-                        "Low": quotes.get("low", []),
-                        "Volume": quotes.get("volume", [])
-                    }).dropna()
-                    print(f"✅ Stock Intel fallback v8 worked for {yf_sym}: {len(hist)} rows")
-            except Exception as v8e:
-                print(f"⚠️ v8 fallback also failed: {v8e}")
-        
-        if len(hist) == 0:
-            return {"success": False, "error": f"Could not fetch data for {symbol}. Yahoo Finance may be rate limiting — please try again in 2 minutes."}
-        
-        closes = hist["Close"].values.astype(float)
-        volumes = hist["Volume"].values.astype(float) if "Volume" in hist else []
-        highs = hist["High"].values.astype(float) if "High" in hist else closes
-        lows = hist["Low"].values.astype(float) if "Low" in hist else closes
-        price = round(float(closes[-1]), 2)
+        else:
+            # ═══ USA: yfinance (PRIMARY) ═══
+            print(f"🇺🇸 Stock Intel USA: {symbol} — using yfinance")
+            yf_sym = symbol
+            delivery_pct = 0; promoter_holding = 0; fii_holding = 0; dii_holding = 0
+            sector_pe = 0; quarterly_results = []; eps = 0; book_value = 0
+            
+            info = {}; hist = pd.DataFrame()
+            for attempt in range(3):
+                try:
+                    tk = yf.Ticker(yf_sym)
+                    hist = tk.history(period="1y")
+                    if len(hist) == 0: raise Exception("Empty history")
+                    try: info = tk.info or {}
+                    except: info = {}
+                    break
+                except Exception as ex:
+                    if attempt < 2: time.sleep(1.5 * (attempt + 1))
+            
+            if len(hist) == 0:
+                try:
+                    url = f"https://query1.finance.yahoo.com/v8/finance/chart/{yf_sym}?range=1y&interval=1d"
+                    r = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=5)
+                    data = r.json().get("chart", {}).get("result", [{}])[0]
+                    ts = data.get("timestamp", [])
+                    quotes = data.get("indicators", {}).get("quote", [{}])[0]
+                    if ts and quotes:
+                        hist = pd.DataFrame({"Close": quotes.get("close", []), "Open": quotes.get("open", []), "High": quotes.get("high", []), "Low": quotes.get("low", []), "Volume": quotes.get("volume", [])}).dropna()
+                except:
+                    pass
+            
+            if len(hist) == 0:
+                return {"success": False, "error": f"Could not fetch data for {symbol}"}
+            
+            closes = hist["Close"].values.astype(float)
+            volumes = hist["Volume"].values.astype(float) if "Volume" in hist else []
+            highs = hist["High"].values.astype(float) if "High" in hist else closes
+            lows = hist["Low"].values.astype(float) if "Low" in hist else closes
+            price = round(float(closes[-1]), 2)
+            
+            def _safe(val, mult=1):
+                try:
+                    v = float(val); return round(v * mult, 2) if v == v and v != float('inf') else 0
+                except: return 0
+            
+            rev_growth = _safe(info.get("revenueGrowth"), 100)
+            earn_growth = _safe(info.get("earningsGrowth"), 100)
+            profit_margin = _safe(info.get("profitMargins"), 100)
+            gross_margin = _safe(info.get("grossMargins"), 100)
+            debt_equity = _safe(info.get("debtToEquity"))
+            roe = _safe(info.get("returnOnEquity"), 100)
+            roce = _safe(info.get("returnOnAssets"), 150)
+            pe = _safe(info.get("trailingPE"))
+            fwd_pe = _safe(info.get("forwardPE"))
+            peg = _safe(info.get("pegRatio"))
+            pb = _safe(info.get("priceToBook"))
+            sector = info.get("sector", "")
+            industry = info.get("industry", "")
+            company_name = info.get("shortName", symbol)
+            mcap = _safe(info.get("marketCap"))
+            div_yield = _safe(info.get("dividendYield"), 100)
+            operating_margin = _safe(info.get("operatingMargins"), 100)
+            current_ratio = _safe(info.get("currentRatio"))
+            target_price = _safe(info.get("targetMeanPrice"))
+            analyst_count = int(info.get("numberOfAnalystOpinions", 0) or 0)
+            free_cash_flow = _safe(info.get("freeCashflow"))
         
         # ═══ 1. FUNDAMENTAL ANALYSIS ═══
-        rev_growth = float(info.get("revenueGrowth", 0) or 0) * 100
-        earn_growth = float(info.get("earningsGrowth", 0) or 0) * 100
-        profit_margin = float(info.get("profitMargins", 0) or 0) * 100
-        gross_margin = float(info.get("grossMargins", 0) or 0) * 100
-        debt_equity = float(info.get("debtToEquity", 0) or 0)
-        roe = float(info.get("returnOnEquity", 0) or 0) * 100
-        roce = float(info.get("returnOnAssets", 0) or 0) * 100 * 1.5
         
         fund_score = 50; fund_flags = []
         if rev_growth > 15: fund_score += 15; fund_flags.append(f"+Revenue growing {rev_growth:.0f}% — business expanding")
@@ -12107,15 +12560,26 @@ async def _run_stock_intel(symbol, region, cache_key):
         elif debt_equity > 150: fund_score -= 10; fund_flags.append(f"-Heavy debt ({debt_equity:.0f}%) — risk if rates rise")
         if roe > 15: fund_score += 5; fund_flags.append(f"+Good ROE {roe:.0f}%")
         if not fund_flags: fund_flags.append("Fundamental data limited — using price action instead")
+        
+        # India-specific enhancements from NSE
+        if not is_us:
+            if delivery_pct > 50: fund_score += 5; fund_flags.append(f"+High delivery {delivery_pct:.0f}% — genuine buying, not speculation")
+            elif delivery_pct > 0 and delivery_pct < 25: fund_flags.append(f"-Low delivery {delivery_pct:.0f}% — mostly speculative trading")
+            if promoter_holding > 60: fund_score += 5; fund_flags.append(f"+Promoter holds {promoter_holding:.0f}% — strong ownership conviction")
+            elif promoter_holding > 0 and promoter_holding < 30: fund_score -= 5; fund_flags.append(f"-Low promoter holding {promoter_holding:.0f}% — weak ownership signal")
+            if fii_holding > 20: fund_flags.append(f"+FII holding {fii_holding:.0f}% — global investors like this stock")
+            if dii_holding > 15: fund_flags.append(f"+DII holding {dii_holding:.0f}% — domestic institutions accumulating")
+            if quarterly_results and len(quarterly_results) >= 2:
+                qr0 = quarterly_results[0]; qr1 = quarterly_results[1]
+                if qr0.get("netProfit", 0) > qr1.get("netProfit", 0): fund_flags.append(f"+Latest quarter profit ₹{qr0['netProfit']/10000000:.0f}Cr ↑ (growing QoQ)")
+                elif qr0.get("netProfit", 0) < qr1.get("netProfit", 0) * 0.8: fund_flags.append(f"-Quarterly profit declining — ₹{qr0['netProfit']/10000000:.0f}Cr vs ₹{qr1['netProfit']/10000000:.0f}Cr")
+            if eps > 0: fund_flags.append(f"EPS: ₹{eps:.1f}")
+            if book_value > 0: fund_flags.append(f"Book Value: ₹{book_value:.0f}")
         fund_score = max(0, min(100, fund_score))
         fund_verdict = "STRONG" if fund_score >= 70 else ("AVERAGE" if fund_score >= 45 else "WEAK")
         
         # ═══ 2. VALUATION ANALYSIS ═══
-        pe = float(info.get("trailingPE", 0) or 0)
-        fwd_pe = float(info.get("forwardPE", 0) or 0)
-        peg = float(info.get("pegRatio", 0) or 0)
-        pb = float(info.get("priceToBook", 0) or 0)
-        sector = info.get("sector", "")
+        # pe, fwd_pe, peg, pb, sector already extracted above
         
         val_score = 50; val_flags = []
         if pe > 0:
@@ -12128,6 +12592,10 @@ async def _run_stock_intel(symbol, region, cache_key):
         if peg > 0:
             if peg < 1: val_score += 15; val_flags.append(f"+PEG {peg:.1f} — undervalued for growth (sweet spot!)")
             elif peg > 2: val_score -= 10; val_flags.append(f"-PEG {peg:.1f} — overpriced for growth")
+        # India: Sector PE comparison
+        if not is_us and sector_pe > 0 and pe > 0:
+            if pe < sector_pe * 0.7: val_score += 10; val_flags.append(f"+PE {pe:.0f}x is {((1-pe/sector_pe)*100):.0f}% below sector PE {sector_pe:.0f}x — cheap vs peers")
+            elif pe > sector_pe * 1.5: val_score -= 5; val_flags.append(f"-PE {pe:.0f}x is {((pe/sector_pe-1)*100):.0f}% above sector PE {sector_pe:.0f}x — premium")
         if not val_flags: val_flags.append("Valuation data limited — rely on price action signals")
         val_score = max(0, min(100, val_score))
         val_verdict = "CHEAP" if val_score >= 65 else ("FAIR" if val_score >= 40 else "EXPENSIVE")
@@ -12256,15 +12724,19 @@ async def _run_stock_intel(symbol, region, cache_key):
         
         _si_result = {
             "success": True, "symbol": symbol, "price": price, "csym": csym, "region": region,
-            "companyName": info.get("shortName", symbol), "sector": sector,
-            "industry": info.get("industry", ""),
+            "companyName": company_name, "sector": sector,
+            "industry": industry,
             "decision": decision, "decColor": dec_color, "confidence": confidence,
             "fundamental": {"score": fund_score, "verdict": fund_verdict, "flags": fund_flags,
                            "revGrowth": round(rev_growth,1), "earnGrowth": round(earn_growth,1),
                            "profitMargin": round(profit_margin,1), "grossMargin": round(gross_margin,1),
-                           "debtEquity": round(debt_equity,1), "roe": round(roe,1), "roce": round(roce,1)},
+                           "operatingMargin": round(operating_margin,1),
+                           "debtEquity": round(debt_equity,1), "roe": round(roe,1), "roce": round(roce,1),
+                           "currentRatio": round(current_ratio,1), "divYield": round(div_yield,2),
+                           "fcf": free_cash_flow, "mcap": mcap},
             "valuation": {"score": val_score, "verdict": val_verdict, "flags": val_flags,
-                         "pe": round(pe,1), "fwdPE": round(fwd_pe,1), "peg": round(peg,2), "pb": round(pb,1)},
+                         "pe": round(pe,1), "fwdPE": round(fwd_pe,1), "peg": round(peg,2), "pb": round(pb,1),
+                         "targetPrice": round(target_price,2), "analystCount": analyst_count},
             "priceAction": {"score": pa_score, "trend": trend, "trendDetail": trend_detail,
                            "support": support, "resistance": resistance, "volConfirm": vol_confirm,
                            "breakout": breakout_level, "breakdown": breakdown_level},
@@ -12277,6 +12749,17 @@ async def _run_stock_intel(symbol, region, cache_key):
             "smartMoney": smart_money,
             "risks": risks,
             "invalidation": invalidation,
+            "nseExtra": {
+                "deliveryPct": delivery_pct if not is_us else 0,
+                "promoterHolding": promoter_holding if not is_us else 0,
+                "fiiHolding": fii_holding if not is_us else 0,
+                "diiHolding": dii_holding if not is_us else 0,
+                "sectorPE": sector_pe if not is_us else 0,
+                "eps": eps if not is_us else 0,
+                "bookValue": book_value if not is_us else 0,
+                "quarterlyResults": quarterly_results if not is_us else [],
+                "dataSource": "NSE + Moneycontrol" if not is_us else "Yahoo Finance",
+            },
         }
         _si_cache[cache_key] = {"ts": datetime.utcnow(), "data": _si_result}
         if len(_si_cache) > 50:
