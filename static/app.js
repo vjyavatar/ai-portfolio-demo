@@ -1938,7 +1938,7 @@ var TAB_GROUPS = {
   overview: {tabs: ['quick'], labels: ['Summary'], default: 'quick'},
   research: {tabs: ['analysis','dcf','equity','compare'], labels: ['AI Analysis','DCF Valuation','Research','Compare'], default: 'analysis'},
   trading:  {tabs: ['trades','smarttrades','stockintel','scanner','valreport','backtest','journal','aiassist'], labels: ['Algo Trades','Smart Trades','Stock Intel','Scanner','Valuation','Backtest','Journal','AI Assistant'], default: 'trades'},
-  markets:  {tabs: ['indices','daily'], labels: ['Top Performers','Market Daily'], default: 'indices'},
+  markets:  {tabs: ['indices','daily','assets'], labels: ['Top Performers','Market Daily','Global Assets'], default: 'indices'},
   tools:    {tabs: ['finance','education','compare'], labels: ['Finance Tools','Education','Compare Stocks'], default: 'finance'},
 };
 window._activeGroup = 'overview';
@@ -6137,6 +6137,344 @@ h+='</div>';
 if(!h)h='<div style="text-align:center;padding:12px;color:var(--text3);font-size:10px">Start logging trades to see behavioral insights</div>';
 el.innerHTML=h;
 }).catch(function(){el.innerHTML=''});
+}
+
+// ═══ GLOBAL ASSET INTELLIGENCE ═══
+function loadAssetIntel(){
+var el=document.getElementById('assetIntelResult');if(!el)return;
+el.innerHTML='<div style="padding:20px;text-align:center"><div style="display:inline-block;width:16px;height:16px;border:2px solid #0891b2;border-top-color:transparent;border-radius:50%;animation:spin .5s linear infinite;vertical-align:middle;margin-right:8px"></div><span style="font-size:11px;color:var(--text3)">Fetching 13 global assets — crude, gold, dollar, bonds, crypto, indices...</span></div>';
+fetch('/api/asset-intelligence').then(function(r){if(!r.ok)throw new Error('API error '+r.status);return r.json()}).then(function(d){
+if(!d.success){el.innerHTML='<div style="color:var(--red);padding:12px;font-size:10px">'+d.error+'</div>';return}
+function _rv(v){var c=v>=0?'#059669':'#dc2626';return '<span style="color:'+c+';font-weight:700;font-family:var(--mono)">'+(v>=0?'+':'')+v.toFixed(1)+'%</span>'}
+function _sev(s){return s==='HIGH'?'#dc2626':s==='MEDIUM'?'#d97706':'#059669'}
+var h='';
+
+// ═══ 0. ADVANCED NETWORK GRAPH — D3 Force-Directed ═══
+h+='<div style="margin-bottom:16px">';
+h+='<div style="font-size:14px;font-weight:900;color:var(--text);margin-bottom:10px;font-family:Sora,sans-serif">🌐 Global Asset Connection Map — Interactive</div>';
+h+='<div id="assetNetworkGraph" style="width:100%;height:480px;border-radius:14px;background:linear-gradient(135deg,rgba(8,145,178,.03),rgba(124,58,237,.02));border:1px solid var(--border);position:relative;overflow:hidden"></div>';
+h+='<div style="display:flex;gap:12px;margin-top:6px;font-size:8px;color:var(--text3);justify-content:center;flex-wrap:wrap">';
+h+='<span>🟢 Solid line = move together</span>';
+h+='<span>🔴 Dashed = move opposite</span>';
+h+='<span>➡️ Thick arrows = active impact</span>';
+h+='<span>Ring color = weekly return</span>';
+h+='<span>Drag nodes to explore</span>';
+h+='</div></div>';
+
+// After rendering, build D3 graph
+setTimeout(function(){
+var container=document.getElementById('assetNetworkGraph');
+if(!container)return;
+var W=container.offsetWidth||680;
+var H=480;
+// Build nodes and links
+var catColors={"Commodity":"#d97706","Currency":"#7c3aed","Index":"#1a56db","Bond":"#059669","Volatility":"#dc2626","Crypto":"#ea580c"};
+var gNodes=d.assets.map(function(a,i){return {id:a.name,emoji:a.emoji,ticker:a.ticker,cat:a.category,ret:a.ret1w,price:a.price,unit:a.unit,color:catColors[a.category]||'#6b7280'}});
+var gLinks=[];
+d.correlations.forEach(function(c){
+if(Math.abs(c.corr)<0.3)return;
+var s=gNodes.find(function(n){return c.asset1.indexOf(n.id.split(' ')[0])>=0||n.id.indexOf(c.asset1.split(' ')[0])>=0});
+var t=gNodes.find(function(n){return c.asset2.indexOf(n.id.split(' ')[0])>=0||n.id.indexOf(c.asset2.split(' ')[0])>=0});
+if(s&&t)gLinks.push({source:s.id,target:t.id,corr:c.corr,type:c.type});
+});
+// Impact arrows as special links
+d.impacts.forEach(function(imp){
+var fromN=gNodes.find(function(n){return imp.from.indexOf(n.emoji)>=0});
+imp.to.split('/').forEach(function(tn){
+var toN=gNodes.find(function(n){return tn.indexOf(n.emoji)>=0});
+if(fromN&&toN&&fromN.id!==toN.id){
+gLinks.push({source:fromN.id,target:toN.id,corr:0,impact:true,impType:imp.type,severity:imp.severity});
+}
+});
+});
+
+// Canvas-based rendering for performance
+var canvas=document.createElement('canvas');
+canvas.width=W*2;canvas.height=H*2;
+canvas.style.cssText='width:100%;height:100%';
+container.appendChild(canvas);
+var ctx=canvas.getContext('2d');
+ctx.scale(2,2);
+
+// Tooltip
+var tip=document.createElement('div');
+tip.style.cssText='position:absolute;display:none;padding:8px 12px;border-radius:8px;background:var(--surface);border:1px solid var(--border);box-shadow:0 4px 16px rgba(0,0,0,.15);font-size:10px;color:var(--text);pointer-events:none;z-index:10;max-width:220px';
+container.appendChild(tip);
+
+// Simple force simulation
+var simNodes=gNodes.map(function(n,i){
+var angle=(i/gNodes.length)*2*Math.PI-Math.PI/2;
+return {id:n.id,x:W/2+W*0.35*Math.cos(angle),y:H/2+H*0.35*Math.sin(angle),vx:0,vy:0,emoji:n.emoji,cat:n.cat,ret:n.ret,price:n.price,unit:n.unit,color:n.color,ticker:n.ticker};
+});
+var nodeMap={};simNodes.forEach(function(n){nodeMap[n.id]=n});
+var simLinks=gLinks.map(function(l){return {source:nodeMap[l.source],target:nodeMap[l.target],corr:l.corr,impact:l.impact,impType:l.impType,severity:l.severity,type:l.type}}).filter(function(l){return l.source&&l.target});
+
+function tick(){
+// Center force
+simNodes.forEach(function(n){
+n.vx+=(W/2-n.x)*0.005;
+n.vy+=(H/2-n.y)*0.005;
+});
+// Repulsion
+for(var i=0;i<simNodes.length;i++){
+for(var j=i+1;j<simNodes.length;j++){
+var dx=simNodes[j].x-simNodes[i].x;
+var dy=simNodes[j].y-simNodes[i].y;
+var dist=Math.sqrt(dx*dx+dy*dy)||1;
+if(dist<120){
+var force=800/(dist*dist);
+simNodes[i].vx-=dx/dist*force;simNodes[i].vy-=dy/dist*force;
+simNodes[j].vx+=dx/dist*force;simNodes[j].vy+=dy/dist*force;
+}}}
+// Link spring
+simLinks.forEach(function(l){
+if(!l.source||!l.target)return;
+var dx=l.target.x-l.source.x;
+var dy=l.target.y-l.source.y;
+var dist=Math.sqrt(dx*dx+dy*dy)||1;
+var ideal=l.impact?140:180;
+var force=(dist-ideal)*0.003;
+l.source.vx+=dx/dist*force;l.source.vy+=dy/dist*force;
+l.target.vx-=dx/dist*force;l.target.vy-=dy/dist*force;
+});
+// Apply velocity with damping
+simNodes.forEach(function(n){
+if(n._dragging)return;
+n.vx*=0.85;n.vy*=0.85;
+n.x+=n.vx;n.y+=n.vy;
+n.x=Math.max(40,Math.min(W-40,n.x));
+n.y=Math.max(40,Math.min(H-40,n.y));
+});
+}
+
+function draw(){
+ctx.clearRect(0,0,W,H);
+// Draw links
+simLinks.forEach(function(l){
+if(!l.source||!l.target)return;
+ctx.beginPath();
+ctx.moveTo(l.source.x,l.source.y);
+ctx.lineTo(l.target.x,l.target.y);
+if(l.impact){
+ctx.strokeStyle=l.impType==='POSITIVE'?'rgba(5,150,105,.7)':l.impType==='NEGATIVE'?'rgba(220,38,38,.7)':'rgba(217,119,6,.7)';
+ctx.lineWidth=3;ctx.setLineDash([]);
+// Arrowhead
+var dx=l.target.x-l.source.x,dy=l.target.y-l.source.y;
+var len=Math.sqrt(dx*dx+dy*dy);
+var ux=dx/len,uy=dy/len;
+var ax=l.target.x-ux*28,ay=l.target.y-uy*28;
+ctx.stroke();
+ctx.beginPath();ctx.moveTo(ax,ay);
+ctx.lineTo(ax-ux*10+uy*5,ay-uy*10-ux*5);
+ctx.lineTo(ax-ux*10-uy*5,ay-uy*10+ux*5);
+ctx.closePath();ctx.fillStyle=ctx.strokeStyle;ctx.fill();
+}else{
+var strength=Math.abs(l.corr);
+ctx.strokeStyle=l.corr>0?'rgba(5,150,105,'+Math.max(0.15,strength*0.5)+')':'rgba(220,38,38,'+Math.max(0.15,strength*0.5)+')';
+ctx.lineWidth=Math.max(1,strength*3.5);
+if(l.corr<0)ctx.setLineDash([6,4]);else ctx.setLineDash([]);
+ctx.stroke();
+// Correlation label
+if(strength>0.5){
+var mx=(l.source.x+l.target.x)/2,my=(l.source.y+l.target.y)/2;
+ctx.font='bold 9px var(--mono,monospace)';ctx.textAlign='center';
+ctx.fillStyle=l.corr>0?'rgba(5,150,105,.7)':'rgba(220,38,38,.7)';
+ctx.fillText((l.corr>0?'+':'')+l.corr.toFixed(2),mx,my-5);
+}
+}
+ctx.setLineDash([]);
+});
+// Draw nodes
+simNodes.forEach(function(n){
+var retC=n.ret>=2?'#059669':n.ret<=-2?'#dc2626':n.ret>=0?'#1a56db':'#d97706';
+// Glow
+ctx.beginPath();ctx.arc(n.x,n.y,30,0,Math.PI*2);
+ctx.fillStyle=n.color+'18';ctx.fill();
+// Ring
+ctx.beginPath();ctx.arc(n.x,n.y,24,0,Math.PI*2);
+var isDark=document.documentElement.getAttribute('data-theme')==='dark';
+ctx.fillStyle=isDark?'#1a2744':'#ffffff';ctx.fill();
+ctx.strokeStyle=retC;ctx.lineWidth=2.5;ctx.stroke();
+// Emoji
+ctx.font='18px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';
+ctx.fillText(n.emoji,n.x,n.y-3);
+// Name
+ctx.font='bold 7px sans-serif';ctx.fillStyle=isDark?'#ccc':'#333';
+ctx.fillText(n.id.split('(')[0].substring(0,14),n.x,n.y+14);
+// Return badge
+var badgeW=32,badgeH=13;
+ctx.fillStyle=retC;
+ctx.beginPath();
+var bx=n.x-badgeW/2,by=n.y+19;
+ctx.roundRect?ctx.roundRect(bx,by,badgeW,badgeH,3):ctx.rect(bx,by,badgeW,badgeH);
+ctx.fill();
+ctx.font='bold 8px monospace';ctx.fillStyle='#fff';ctx.textBaseline='top';
+ctx.fillText((n.ret>=0?'+':'')+n.ret.toFixed(1)+'%',n.x,by+2);
+ctx.textBaseline='middle';
+});
+}
+
+// Animation loop
+var _animFrame=0;
+function animate(){
+tick();draw();
+_animFrame++;
+if(_animFrame<150)requestAnimationFrame(animate);
+}
+animate();
+
+// Drag interaction
+var dragNode=null;
+canvas.addEventListener('mousedown',function(e){
+var rect=canvas.getBoundingClientRect();
+var mx=(e.clientX-rect.left)*(W/rect.width);
+var my=(e.clientY-rect.top)*(H/rect.height);
+simNodes.forEach(function(n){
+if(Math.sqrt((n.x-mx)*(n.x-mx)+(n.y-my)*(n.y-my))<28){dragNode=n;n._dragging=true;}
+});
+});
+canvas.addEventListener('mousemove',function(e){
+var rect=canvas.getBoundingClientRect();
+var mx=(e.clientX-rect.left)*(W/rect.width);
+var my=(e.clientY-rect.top)*(H/rect.height);
+if(dragNode){
+dragNode.x=mx;dragNode.y=my;
+_animFrame=0;animate();
+}
+// Tooltip
+var hovered=null;
+simNodes.forEach(function(n){if(Math.sqrt((n.x-mx)*(n.x-mx)+(n.y-my)*(n.y-my))<28)hovered=n;});
+if(hovered){
+var connections=simLinks.filter(function(l){return l.source===hovered||l.target===hovered}).length;
+tip.innerHTML='<div style="font-weight:800;margin-bottom:2px">'+hovered.emoji+' '+hovered.id+'</div><div style="font-family:var(--mono)">'+hovered.unit+hovered.price.toLocaleString()+'</div><div style="color:'+(hovered.ret>=0?'#059669':'#dc2626')+'">Week: '+(hovered.ret>=0?'+':'')+hovered.ret.toFixed(1)+'%</div><div style="color:var(--text3)">'+connections+' connections</div>';
+tip.style.display='block';
+tip.style.left=Math.min(e.clientX-rect.left+10,W-160)+'px';
+tip.style.top=(e.clientY-rect.top-60)+'px';
+canvas.style.cursor='pointer';
+}else{
+tip.style.display='none';
+canvas.style.cursor=dragNode?'grabbing':'default';
+}
+});
+canvas.addEventListener('mouseup',function(){if(dragNode){dragNode._dragging=false;dragNode=null;_animFrame=0;animate();}});
+canvas.addEventListener('mouseleave',function(){tip.style.display='none';if(dragNode){dragNode._dragging=false;dragNode=null;}});
+// Touch support
+canvas.addEventListener('touchstart',function(e){
+var rect=canvas.getBoundingClientRect();
+var t=e.touches[0];
+var mx=(t.clientX-rect.left)*(W/rect.width);
+var my=(t.clientY-rect.top)*(H/rect.height);
+simNodes.forEach(function(n){if(Math.sqrt((n.x-mx)*(n.x-mx)+(n.y-my)*(n.y-my))<35){dragNode=n;n._dragging=true;}});
+},{passive:true});
+canvas.addEventListener('touchmove',function(e){
+if(!dragNode)return;
+var rect=canvas.getBoundingClientRect();
+var t=e.touches[0];
+dragNode.x=(t.clientX-rect.left)*(W/rect.width);
+dragNode.y=(t.clientY-rect.top)*(H/rect.height);
+_animFrame=0;animate();
+},{passive:true});
+canvas.addEventListener('touchend',function(){if(dragNode){dragNode._dragging=false;dragNode=null;_animFrame=0;animate();}});
+},200);
+
+// ═══ 1. IMPACT CHAIN — detailed cards ═══
+h+='<div style="margin-bottom:16px">';
+h+='<div style="font-size:14px;font-weight:900;color:var(--text);margin-bottom:10px;font-family:Sora,sans-serif">⚡ What\'s Impacting What — Right Now</div>';
+if(d.impacts.length===0){
+h+='<div style="padding:16px;border-radius:10px;background:var(--bg2);text-align:center;color:var(--text3);font-size:11px">No major cross-asset moves detected. Markets in equilibrium.</div>';
+}else{
+d.impacts.forEach(function(imp){
+var bC=imp.type==='POSITIVE'?'#059669':imp.type==='NEGATIVE'?'#dc2626':'#d97706';
+var sevC=_sev(imp.severity);
+h+='<div style="margin-bottom:8px;border-radius:10px;border:1px solid '+bC+'20;overflow:hidden">';
+// Header: FROM → TO
+h+='<div style="padding:10px 14px;background:'+bC+'06;display:flex;align-items:center;gap:8px;flex-wrap:wrap">';
+h+='<span style="font-size:12px;font-weight:800;color:var(--text)">'+imp.from+'</span>';
+h+='<span style="font-size:14px;color:'+bC+'">'+(imp.type==='POSITIVE'?'→ ✅':imp.type==='NEGATIVE'?'→ ❌':'→ ⚠️')+'</span>';
+h+='<span style="font-size:12px;font-weight:800;color:var(--text)">'+imp.to+'</span>';
+h+='<span style="margin-left:auto;font-size:7px;padding:2px 8px;border-radius:4px;background:'+sevC+'15;color:'+sevC+';font-weight:800">'+imp.severity+'</span>';
+h+='</div>';
+// Reason
+h+='<div style="padding:8px 14px;font-size:10px;color:var(--text2);line-height:1.6">'+imp.reason+'</div>';
+h+='</div>';
+});
+}
+h+='</div>';
+
+// ═══ 2. MARKET REGIME — Historical timeline ═══
+h+='<div style="margin-bottom:16px">';
+h+='<div style="font-size:14px;font-weight:900;color:var(--text);margin-bottom:10px;font-family:Sora,sans-serif">🌡️ Market Regime — Where Are We?</div>';
+h+='<div style="display:flex;gap:6px;flex-wrap:wrap">';
+var tfLabels={"1W":"This Week","15D":"Last 15 Days","1M":"Last Month","3M":"Last Quarter","1Y":"Last Year"};
+for(var tf in d.timeframes){
+var r=d.timeframes[tf];
+h+='<div style="flex:1;min-width:100px;padding:10px;border-radius:10px;background:'+r.color+'08;border:2px solid '+r.color+'25;text-align:center">';
+h+='<div style="font-size:7px;color:var(--text3);font-weight:700;margin-bottom:4px">'+(tfLabels[tf]||tf)+'</div>';
+h+='<div style="font-size:20px;margin-bottom:2px">'+r.emoji+'</div>';
+h+='<div style="font-size:10px;font-weight:800;color:'+r.color+'">'+r.regime+'</div>';
+h+='<div style="font-size:7px;color:var(--text3);margin-top:4px;line-height:1.4">'+r.advice+'</div>';
+h+='</div>';
+}
+h+='</div></div>';
+
+// ═══ 3. ASSET DASHBOARD — All assets with returns ═══
+h+='<div style="margin-bottom:16px">';
+h+='<div style="font-size:14px;font-weight:900;color:var(--text);margin-bottom:10px;font-family:Sora,sans-serif">📊 Global Asset Dashboard — All Timeframes</div>';
+h+='<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:9px">';
+h+='<thead><tr style="background:var(--bg2);border-bottom:2px solid var(--border)">';
+h+='<th style="padding:6px 8px;text-align:left;font-size:8px">Asset</th>';
+h+='<th style="padding:6px;text-align:right;font-size:8px">Price</th>';
+h+='<th style="padding:6px;text-align:right;font-size:8px">Today</th>';
+h+='<th style="padding:6px;text-align:right;font-size:8px">1 Week</th>';
+h+='<th style="padding:6px;text-align:right;font-size:8px">15 Days</th>';
+h+='<th style="padding:6px;text-align:right;font-size:8px">1 Month</th>';
+h+='<th style="padding:6px;text-align:right;font-size:8px;font-weight:800">3 Months</th>';
+h+='<th style="padding:6px;text-align:right;font-size:8px">6 Months</th>';
+h+='<th style="padding:6px;text-align:right;font-size:8px;font-weight:800">1 Year</th>';
+h+='</tr></thead><tbody>';
+d.assets.forEach(function(a){
+var catC=a.category==='Commodity'?'#d97706':a.category==='Currency'?'#7c3aed':a.category==='Index'?'#1a56db':a.category==='Bond'?'#059669':a.category==='Crypto'?'#ea580c':'#6b7280';
+h+='<tr style="border-bottom:1px solid var(--border)">';
+h+='<td style="padding:5px 8px"><div style="display:flex;align-items:center;gap:6px"><span style="font-size:14px">'+a.emoji+'</span><div><div style="font-weight:800;color:var(--text)">'+a.name+'</div><div style="font-size:7px;color:'+catC+'">'+a.category+'</div></div></div></td>';
+h+='<td style="padding:5px;text-align:right;font-family:var(--mono);font-weight:700">'+a.unit+a.price.toLocaleString()+'</td>';
+h+='<td style="padding:5px;text-align:right">'+_rv(a.ret1d)+'</td>';
+h+='<td style="padding:5px;text-align:right">'+_rv(a.ret1w)+'</td>';
+h+='<td style="padding:5px;text-align:right">'+_rv(a.ret15d)+'</td>';
+h+='<td style="padding:5px;text-align:right">'+_rv(a.ret1m)+'</td>';
+h+='<td style="padding:5px;text-align:right;font-weight:800">'+_rv(a.ret3m)+'</td>';
+h+='<td style="padding:5px;text-align:right">'+_rv(a.ret6m)+'</td>';
+h+='<td style="padding:5px;text-align:right;font-weight:800;font-size:10px">'+_rv(a.ret1y)+'</td>';
+h+='</tr>';
+});
+h+='</tbody></table></div></div>';
+
+// ═══ 4. CORRELATION MAP — What moves together/opposite ═══
+h+='<div style="margin-bottom:16px">';
+h+='<div style="font-size:14px;font-weight:900;color:var(--text);margin-bottom:10px;font-family:Sora,sans-serif">🔗 Key Correlations — What Moves Together & Opposite</div>';
+h+='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:6px">';
+d.correlations.forEach(function(c){
+var cC=c.corr>0?'#059669':'#dc2626';
+var w=Math.abs(c.corr);
+var barW=Math.round(w*100);
+h+='<div style="padding:8px 10px;border-radius:8px;background:'+cC+'04;border:1px solid '+cC+'12">';
+h+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">';
+h+='<span style="font-size:8px;font-weight:700;color:var(--text)">'+c.asset1+'</span>';
+h+='<span style="font-size:7px;color:'+cC+';font-weight:700">'+c.type+'</span>';
+h+='</div>';
+h+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">';
+h+='<span style="font-size:8px;font-weight:700;color:var(--text)">'+c.asset2+'</span>';
+h+='<span style="font-size:12px;font-weight:900;color:'+cC+';font-family:var(--mono)">'+c.corr.toFixed(2)+'</span>';
+h+='</div>';
+// Bar
+h+='<div style="height:4px;border-radius:2px;background:var(--bg2)"><div style="height:4px;border-radius:2px;background:'+cC+';width:'+barW+'%"></div></div>';
+h+='</div>';
+});
+h+='</div></div>';
+
+// Footer
+h+='<div style="text-align:center;padding:8px;border-radius:8px;background:var(--bg2);font-size:8px;color:var(--text3);line-height:1.5">13 global assets analyzed · 60-day rolling correlations · Regime classification based on crude, gold, dollar, VIX + NIFTY<br>Correlation: +1.0 = perfect together, -1.0 = perfect opposite, 0 = no relation · Not financial advice</div>';
+el.innerHTML=h;
+}).catch(function(e){el.innerHTML='<div style="color:var(--red);padding:12px;font-size:10px">Error: '+e.message+'</div>'});
 }
 
 // ═══ SECTOR INTELLIGENCE ═══

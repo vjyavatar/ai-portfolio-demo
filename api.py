@@ -135,6 +135,7 @@ def fetch_nse_stock_data(symbol):
                 if si_data:
                     si = si_data.get("securityWiseDP", {})
             
+            result["_nse_hit"] = True
             print(f"  ✅ NSE Quote: {symbol} ₹{result['price']} | Sector: {result['sector']}")
     except Exception as e:
         print(f"  ⚠️ NSE Quote failed for {symbol}: {e}")
@@ -214,6 +215,7 @@ def fetch_nse_stock_data(symbol):
                 if mc_eps > 0 and result["price"] > 0:
                     result["fwdPE"] = round(result["price"] / (mc_eps * 1.1), 1)  # Assume 10% growth
                 
+                result["_mc_hit"] = True
                 print(f"  ✅ Moneycontrol: PE={mc_pe} EPS={mc_eps} BV={mc_bv} MCap={mc_mcap}Cr")
     except Exception as mc_err:
         print(f"  ⚠️ Moneycontrol failed for {symbol}: {mc_err}")
@@ -282,21 +284,106 @@ def fetch_nse_stock_data(symbol):
         try:
             import yfinance as yf
             tk = yf.Ticker(f"{symbol}.NS")
-            info = tk.info or {}
-            if float(info.get("trailingPE", 0) or 0) > 0:
-                result["pe"] = float(info.get("trailingPE", 0))
-                result["pb"] = float(info.get("priceToBook", 0) or 0)
-                result["roe"] = float(info.get("returnOnEquity", 0) or 0) * 100
-                result["debtEquity"] = float(info.get("debtToEquity", 0) or 0)
-                result["revGrowth"] = float(info.get("revenueGrowth", 0) or 0) * 100
-                result["profitMargin"] = float(info.get("profitMargins", 0) or 0) * 100
-                result["dividendYield"] = float(info.get("dividendYield", 0) or 0) * 100
-                result["sector"] = info.get("sector", result["sector"])
-                result["industry"] = info.get("industry", result["industry"])
-                result["companyName"] = info.get("shortName", result["companyName"])
-                print(f"  ✅ yfinance fallback: PE={result['pe']}")
+            # Try .info first
+            try:
+                info = tk.info or {}
+                if float(info.get("trailingPE", 0) or 0) > 0:
+                    result["pe"] = float(info.get("trailingPE", 0))
+                    result["pb"] = float(info.get("priceToBook", 0) or 0)
+                    result["roe"] = float(info.get("returnOnEquity", 0) or 0) * 100
+                    result["debtEquity"] = float(info.get("debtToEquity", 0) or 0)
+                    result["revGrowth"] = float(info.get("revenueGrowth", 0) or 0) * 100
+                    result["profitMargin"] = float(info.get("profitMargins", 0) or 0) * 100
+                    result["dividendYield"] = float(info.get("dividendYield", 0) or 0) * 100
+                    result["sector"] = info.get("sector", result["sector"]) or result["sector"]
+                    result["industry"] = info.get("industry", result["industry"]) or result["industry"]
+                    result["companyName"] = info.get("shortName", result["companyName"]) or result["companyName"]
+                    print(f"  ✅ yfinance .info fallback: PE={result['pe']}")
+            except:
+                pass
+            
+            # If still no PE, try quarterly financials
+            if result["pe"] == 0:
+                try:
+                    qf = tk.quarterly_financials
+                    if qf is not None and len(qf.columns) >= 2:
+                        for label in ["Total Revenue", "Revenue", "Operating Revenue"]:
+                            if label in qf.index:
+                                rev0 = float(qf[qf.columns[0]].get(label, 0) or 0)
+                                rev1 = float(qf[qf.columns[1]].get(label, 0) or 0)
+                                if rev1 > 0 and rev0 > 0 and result["revGrowth"] == 0:
+                                    result["revGrowth"] = round((rev0 - rev1) / rev1 * 100, 1)
+                                break
+                        for label in ["Net Income", "Net Income Common Stockholders"]:
+                            if label in qf.index:
+                                ni0 = float(qf[qf.columns[0]].get(label, 0) or 0)
+                                ni1 = float(qf[qf.columns[1]].get(label, 0) or 0)
+                                if ni1 > 0 and ni0 > 0 and result["earningsGrowth"] == 0:
+                                    result["earningsGrowth"] = round((ni0 - ni1) / ni1 * 100, 1)
+                                if label in qf.index and "Total Revenue" in qf.index and result["profitMargin"] == 0:
+                                    rev = float(qf[qf.columns[0]].get("Total Revenue", 0) or 0)
+                                    if rev > 0: result["profitMargin"] = round(ni0 / rev * 100, 1)
+                                break
+                        for label in ["Basic EPS", "Diluted EPS"]:
+                            if label in qf.index:
+                                eps_q = float(qf[qf.columns[0]].get(label, 0) or 0)
+                                if eps_q > 0:
+                                    eps_annual = eps_q * 4
+                                    result["eps"] = round(eps_annual, 1)
+                                    if result["price"] > 0: result["pe"] = round(result["price"] / eps_annual, 1)
+                                break
+                    print(f"  ✅ yfinance financials: PE={result['pe']} RevG={result['revGrowth']}%")
+                except Exception as qfe:
+                    print(f"  ⚠️ yfinance financials failed: {qfe}")
+            
+            # Balance sheet for P/B and debt
+            if result["pb"] == 0:
+                try:
+                    bs = tk.quarterly_balance_sheet
+                    if bs is not None and len(bs.columns) >= 1:
+                        for label in ["Total Equity Gross Minority Interest", "Stockholders Equity"]:
+                            if label in bs.index:
+                                equity = float(bs[bs.columns[0]].get(label, 0) or 0)
+                                shares = float((tk.info or {}).get("sharesOutstanding", 0) or 0)
+                                if equity > 0 and shares > 0:
+                                    bvps = equity / shares
+                                    result["bookValue"] = round(bvps, 1)
+                                    if result["price"] > 0: result["pb"] = round(result["price"] / bvps, 1)
+                                if equity > 0 and result["eps"] > 0 and result["roe"] == 0:
+                                    result["roe"] = round(result["eps"] / max(bvps, 0.01) * 100, 1)
+                                break
+                        for label in ["Total Debt", "Long Term Debt"]:
+                            if label in bs.index:
+                                debt = float(bs[bs.columns[0]].get(label, 0) or 0)
+                                equity = float(bs[bs.columns[0]].get("Total Equity Gross Minority Interest", 0) or 0)
+                                if equity > 0 and result["debtEquity"] == 0:
+                                    result["debtEquity"] = round(debt / equity * 100, 1)
+                                break
+                except:
+                    pass
+        except Exception as yf_err:
+            print(f"  ⚠️ yfinance fallback failed: {yf_err}")
+    
+    # ═══ 8. Google Finance fallback for price + PE ═══
+    if result["price"] == 0:
+        try:
+            import re as _re
+            g_url = f"https://www.google.com/finance/quote/{symbol}:NSE"
+            g_r = requests.get(g_url, headers={'User-Agent': 'Mozilla/5.0', 'Accept': 'text/html'}, timeout=5)
+            if g_r.status_code == 200:
+                pm = _re.search(r'data-last-price="([0-9.]+)"', g_r.text)
+                if pm: result["price"] = float(pm.group(1))
+                pe_m = _re.search(r'P/E ratio.*?([0-9.]+)', g_r.text)
+                if pe_m and result["pe"] == 0: result["pe"] = float(pe_m.group(1))
+                print(f"  ✅ Google Finance: ₹{result['price']} PE={result['pe']}")
         except:
             pass
+    
+    # Tag data source for frontend display
+    sources_used = []
+    if result["pe"] > 0 or result["eps"] > 0: sources_used.append("NSE" if result.get("_nse_hit") else "yfinance")
+    if result.get("_mc_hit"): sources_used.append("Moneycontrol")
+    result["dataSource"] = " + ".join(sources_used) if sources_used else "Limited data"
     
     # Cache result
     _nse_data_cache[ck] = {"ts": time.time(), "data": result}
@@ -11955,6 +12042,227 @@ async def sector_intel(region: str = "IN"):
             "sectorPerformance": {k: v for k, v in sorted_sectors},
             "bestSector": sorted_sectors[0][0] if sorted_sectors else "",
             "worstSector": sorted_sectors[-1][0] if sorted_sectors else "",
+        }
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        return {"success": False, "error": str(e)}
+
+
+@app.get("/api/asset-intelligence")
+async def asset_intelligence():
+    """Global Asset Correlation & Impact Engine — how assets affect each other"""
+    try:
+        import yfinance as yf
+        import pandas as pd
+        import numpy as np
+        
+        # ═══ GLOBAL ASSETS ═══
+        assets = {
+            "CL=F": {"name": "Crude Oil (WTI)", "emoji": "🛢️", "category": "Commodity", "unit": "$"},
+            "BZ=F": {"name": "Brent Crude", "emoji": "🛢️", "category": "Commodity", "unit": "$"},
+            "GC=F": {"name": "Gold", "emoji": "🥇", "category": "Commodity", "unit": "$"},
+            "SI=F": {"name": "Silver", "emoji": "🥈", "category": "Commodity", "unit": "$"},
+            "DX-Y.NYB": {"name": "US Dollar Index", "emoji": "💵", "category": "Currency", "unit": ""},
+            "^TNX": {"name": "US 10Y Yield", "emoji": "📊", "category": "Bond", "unit": "%"},
+            "^NSEI": {"name": "NIFTY 50", "emoji": "🇮🇳", "category": "Index", "unit": ""},
+            "^NSEBANK": {"name": "Bank NIFTY", "emoji": "🏦", "category": "Index", "unit": ""},
+            "^GSPC": {"name": "S&P 500", "emoji": "🇺🇸", "category": "Index", "unit": ""},
+            "^IXIC": {"name": "NASDAQ", "emoji": "💻", "category": "Index", "unit": ""},
+            "^VIX": {"name": "VIX (Fear)", "emoji": "😱", "category": "Volatility", "unit": ""},
+            "USDINR=X": {"name": "USD/INR", "emoji": "💱", "category": "Currency", "unit": "₹"},
+            "BTC-USD": {"name": "Bitcoin", "emoji": "₿", "category": "Crypto", "unit": "$"},
+        }
+        
+        tickers = list(assets.keys())
+        
+        # Batch download
+        hist = yf.download(tickers, period="1y", group_by="ticker", progress=False, threads=True)
+        
+        if hist.empty:
+            return {"success": False, "error": "Could not download asset data"}
+        
+        # Extract closes for each asset
+        asset_data = {}
+        for ticker in tickers:
+            try:
+                if len(tickers) > 1 and ticker in hist.columns.get_level_values(0):
+                    closes = hist[ticker]["Close"].dropna()
+                else:
+                    continue
+                if len(closes) < 20: continue
+                
+                vals = closes.values.astype(float)
+                price = round(float(vals[-1]), 2)
+                
+                # Returns across timeframes
+                def _ret(n):
+                    if len(vals) >= n+1:
+                        return round(((vals[-1] / vals[-min(n, len(vals)-1)]) - 1) * 100, 2)
+                    return 0
+                
+                asset_data[ticker] = {
+                    **assets[ticker],
+                    "ticker": ticker, "price": price, "closes": vals,
+                    "ret1d": _ret(1), "ret1w": _ret(5), "ret15d": _ret(11),
+                    "ret1m": _ret(22), "ret3m": _ret(63), "ret6m": _ret(126), "ret1y": _ret(252),
+                }
+            except:
+                continue
+        
+        # ═══ CORRELATION MATRIX ═══
+        # Build DataFrame of returns
+        returns_df = pd.DataFrame()
+        asset_names = {}
+        for ticker, ad in asset_data.items():
+            if len(ad["closes"]) >= 60:
+                returns_df[ticker] = pd.Series(ad["closes"]).pct_change().dropna().values[-60:]
+                asset_names[ticker] = ad["name"]
+        
+        corr_matrix = {}
+        if len(returns_df.columns) >= 2:
+            corr = returns_df.corr()
+            for t1 in corr.columns:
+                corr_matrix[t1] = {}
+                for t2 in corr.columns:
+                    corr_matrix[t1][t2] = round(float(corr.loc[t1, t2]), 2)
+        
+        # ═══ IMPACT ANALYSIS — What's driving what TODAY ═══
+        impacts = []
+        
+        # Crude Oil impact chain
+        oil = asset_data.get("CL=F", {})
+        brent = asset_data.get("BZ=F", {})
+        gold = asset_data.get("GC=F", {})
+        dxy = asset_data.get("DX-Y.NYB", {})
+        nifty = asset_data.get("^NSEI", {})
+        bnifty = asset_data.get("^NSEBANK", {})
+        sp500 = asset_data.get("^GSPC", {})
+        vix = asset_data.get("^VIX", {})
+        usdinr = asset_data.get("USDINR=X", {})
+        yields_10y = asset_data.get("^TNX", {})
+        btc = asset_data.get("BTC-USD", {})
+        
+        if oil.get("ret1w", 0) > 3:
+            impacts.append({"from": "🛢️ Crude Oil", "to": "🇮🇳 NIFTY / 🏦 Banks", "type": "NEGATIVE",
+                "reason": f"Crude up {oil['ret1w']:.1f}% this week → import bill rises → INR weakens → inflation fear → RBI may stay hawkish → banks & market under pressure",
+                "severity": "HIGH" if oil["ret1w"] > 5 else "MEDIUM"})
+            impacts.append({"from": "🛢️ Crude Oil", "to": "⛽ Oil Marketing (BPCL, IOC)", "type": "NEGATIVE",
+                "reason": "Higher crude = squeezed margins for OMCs unless they raise fuel prices", "severity": "MEDIUM"})
+            impacts.append({"from": "🛢️ Crude Oil", "to": "💱 USD/INR", "type": "NEGATIVE",
+                "reason": "India imports 85% of its oil → higher crude = more dollar outflow → INR depreciates", "severity": "HIGH"})
+        elif oil.get("ret1w", 0) < -3:
+            impacts.append({"from": "🛢️ Crude Oil", "to": "🇮🇳 NIFTY / Economy", "type": "POSITIVE",
+                "reason": f"Crude down {oil['ret1w']:.1f}% → lower import bill → INR stabilizes → inflation eases → bullish for India",
+                "severity": "HIGH" if oil["ret1w"] < -5 else "MEDIUM"})
+        
+        if dxy.get("ret1w", 0) > 1:
+            impacts.append({"from": "💵 Dollar Index", "to": "🥇 Gold / 🇮🇳 NIFTY", "type": "NEGATIVE",
+                "reason": f"Dollar strengthening ({dxy['ret1w']:.1f}% this week) → gold falls (inverse) → FII sell emerging markets → pressure on NIFTY",
+                "severity": "HIGH" if dxy["ret1w"] > 2 else "MEDIUM"})
+            impacts.append({"from": "💵 Dollar Index", "to": "💱 USD/INR", "type": "NEGATIVE",
+                "reason": "Strong dollar → INR weakens → imported inflation rises", "severity": "MEDIUM"})
+        elif dxy.get("ret1w", 0) < -1:
+            impacts.append({"from": "💵 Dollar Index", "to": "🇮🇳 Emerging Markets", "type": "POSITIVE",
+                "reason": f"Dollar weakening ({dxy['ret1w']:.1f}%) → FII money flows into India → bullish for NIFTY & midcaps",
+                "severity": "HIGH"})
+        
+        if gold.get("ret1w", 0) > 2:
+            impacts.append({"from": "🥇 Gold", "to": "📊 Risk Sentiment", "type": "WARNING",
+                "reason": f"Gold surging {gold['ret1w']:.1f}% → investors seeking safety → risk-off mode → equity may face selling",
+                "severity": "MEDIUM"})
+        
+        if vix.get("price", 0) > 25:
+            impacts.append({"from": "😱 VIX (Fear Index)", "to": "📉 All Equities", "type": "NEGATIVE",
+                "reason": f"VIX at {vix['price']:.1f} (elevated fear) → options expensive → big moves expected → hedge your positions",
+                "severity": "HIGH" if vix["price"] > 30 else "MEDIUM"})
+        elif vix.get("price", 0) < 15:
+            impacts.append({"from": "😱 VIX (Fear Index)", "to": "📈 Equities", "type": "POSITIVE",
+                "reason": f"VIX at {vix['price']:.1f} (very low fear) → calm markets → good for option sellers → steady uptrend likely",
+                "severity": "LOW"})
+        
+        if yields_10y.get("ret1w", 0) > 3:
+            impacts.append({"from": "📊 US 10Y Yield", "to": "💻 Tech / Growth Stocks", "type": "NEGATIVE",
+                "reason": f"Bond yields jumping {yields_10y['ret1w']:.1f}% → higher discount rate → growth/tech stocks fall → NASDAQ pressure",
+                "severity": "HIGH"})
+        
+        if btc.get("ret1w", 0) > 8:
+            impacts.append({"from": "₿ Bitcoin", "to": "🎰 Risk Appetite", "type": "POSITIVE",
+                "reason": f"Bitcoin rallying {btc['ret1w']:.1f}% → risk-on sentiment → generally positive for equities",
+                "severity": "LOW"})
+        elif btc.get("ret1w", 0) < -8:
+            impacts.append({"from": "₿ Bitcoin", "to": "🎰 Risk Appetite", "type": "NEGATIVE",
+                "reason": f"Bitcoin crashing {btc['ret1w']:.1f}% → risk-off → could spill into equity markets",
+                "severity": "MEDIUM"})
+        
+        # NIFTY-specific
+        if nifty.get("ret1w", 0) and sp500.get("ret1w", 0):
+            if sp500["ret1w"] < -2 and nifty["ret1w"] > 0:
+                impacts.append({"from": "🇺🇸 S&P 500", "to": "🇮🇳 NIFTY", "type": "WARNING",
+                    "reason": f"US down {sp500['ret1w']:.1f}% but India up {nifty['ret1w']:.1f}% — decoupling may not last. Watch for catch-up selling.",
+                    "severity": "MEDIUM"})
+            elif sp500["ret1w"] > 2:
+                impacts.append({"from": "🇺🇸 S&P 500", "to": "🇮🇳 NIFTY", "type": "POSITIVE",
+                    "reason": f"US rallying {sp500['ret1w']:.1f}% → global risk-on → FII inflows → NIFTY support",
+                    "severity": "MEDIUM"})
+        
+        # If no impacts found, add default
+        if not impacts:
+            impacts.append({"from": "🌍 Global Markets", "to": "All Assets", "type": "NEUTRAL",
+                "reason": "No major cross-asset moves this week. Markets in equilibrium — good for range-bound strategies.",
+                "severity": "LOW"})
+        
+        # ═══ HISTORICAL REGIME — classify each timeframe ═══
+        def _regime(oil_r, gold_r, dxy_r, vix_p, nifty_r):
+            if vix_p > 25 and nifty_r < -3: return {"regime": "RISK-OFF", "color": "#dc2626", "emoji": "🔴", "advice": "Reduce exposure. Hedge with puts. Cash is king."}
+            if oil_r > 5 and dxy_r > 1: return {"regime": "INFLATION FEAR", "color": "#d97706", "emoji": "🟠", "advice": "Avoid rate-sensitive stocks. Favor commodities, energy, value."}
+            if gold_r > 3 and dxy_r < -1: return {"regime": "SAFE HAVEN", "color": "#d97706", "emoji": "🟡", "advice": "Defensive mode — gold, FMCG, pharma outperform."}
+            if nifty_r > 3 and vix_p < 18: return {"regime": "BULL RUN", "color": "#059669", "emoji": "🟢", "advice": "Buy dips. Stay long. Momentum strategies work."}
+            return {"regime": "NEUTRAL", "color": "#6b7280", "emoji": "⚪", "advice": "Range-bound. Iron condors and strangles work best."}
+        
+        timeframes = {}
+        for tf_key, tf_days in [("1W", 5), ("15D", 11), ("1M", 22), ("3M", 63), ("1Y", 252)]:
+            tf_ret = lambda ad, n=tf_days: ad.get(f"ret{tf_key.lower().replace('d','d').replace('w','w').replace('m','m').replace('y','y')}", 0)
+            oil_r = oil.get({5:"ret1w",11:"ret15d",22:"ret1m",63:"ret3m",252:"ret1y"}[tf_days], 0)
+            gold_r = gold.get({5:"ret1w",11:"ret15d",22:"ret1m",63:"ret3m",252:"ret1y"}[tf_days], 0)
+            dxy_r = dxy.get({5:"ret1w",11:"ret15d",22:"ret1m",63:"ret3m",252:"ret1y"}[tf_days], 0)
+            nifty_r = nifty.get({5:"ret1w",11:"ret15d",22:"ret1m",63:"ret3m",252:"ret1y"}[tf_days], 0)
+            vix_p = vix.get("price", 15)
+            timeframes[tf_key] = _regime(oil_r, gold_r, dxy_r, vix_p, nifty_r)
+        
+        # Build asset table (without closes array)
+        asset_table = []
+        for ticker, ad in asset_data.items():
+            asset_table.append({
+                "ticker": ticker, "name": ad["name"], "emoji": ad["emoji"],
+                "category": ad["category"], "unit": ad["unit"], "price": ad["price"],
+                "ret1d": ad["ret1d"], "ret1w": ad["ret1w"], "ret15d": ad["ret15d"],
+                "ret1m": ad["ret1m"], "ret3m": ad["ret3m"], "ret6m": ad["ret6m"], "ret1y": ad["ret1y"],
+            })
+        asset_table.sort(key=lambda x: x["ret1w"], reverse=True)
+        
+        # Top correlations
+        top_corrs = []
+        seen = set()
+        for t1 in corr_matrix:
+            for t2 in corr_matrix[t1]:
+                if t1 == t2: continue
+                pair = tuple(sorted([t1, t2]))
+                if pair in seen: continue
+                seen.add(pair)
+                c = corr_matrix[t1][t2]
+                if abs(c) > 0.4:
+                    n1 = asset_names.get(t1, t1); n2 = asset_names.get(t2, t2)
+                    top_corrs.append({"asset1": n1, "asset2": n2, "corr": c,
+                        "type": "MOVES TOGETHER" if c > 0 else "MOVES OPPOSITE"})
+        top_corrs.sort(key=lambda x: abs(x["corr"]), reverse=True)
+        
+        return {
+            "success": True,
+            "assets": asset_table,
+            "impacts": impacts,
+            "correlations": top_corrs[:15],
+            "timeframes": timeframes,
+            "timestamp": datetime.utcnow().isoformat(),
         }
     except Exception as e:
         import traceback; traceback.print_exc()
