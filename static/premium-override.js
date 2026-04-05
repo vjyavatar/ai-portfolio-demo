@@ -6376,17 +6376,6 @@ window._topStocksReport=function(region,category){
         });
       });
       window._scanResults=results;
-          bucket:r.bucket, bucketIcon:r.bucketIcon, bucketReason:'',
-          ret1m:r.ret1m, ret3m:r.ret3m, ret1y:r.ret1y,
-          volatility:r.volatility, avgVolume:r.avgVolume, regime:r.regime,
-          kelly:r.kelly, name:r.name, sector:r.sector,
-          layers:r.layers, weights:r.weights,
-          aboveSMA200:r.aboveSMA200, aboveSMA50:r.aboveSMA50,
-          from52Hi:r.from52Hi, marketCap:r.marketCap, divYield:r.divYield,
-          _batchMode:true
-        });
-      });
-      window._scanResults=results;
       renderResults();
     })
     .catch(function(e){
@@ -7965,7 +7954,7 @@ window._runL0Scan=function(region,mode,theme){
     
     // Back buttons + Export
     h+='<div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap;align-items:center">';
-    h+='<div onclick="window._exportScanCSV('+JSON.stringify(d.results).replace(/"/g,'&quot;')+',\'L0_'+mode+'\')" style="padding:8px 14px;border-radius:8px;background:#1A3A7810;border:1px solid #1A3A7820;cursor:pointer;font-size:9px;font-weight:700;color:#1A3A78">📥 Export CSV</div>';
+    h+='<div onclick="window._exportScanCSV(window._l0ScanResults||[],\'L0_'+mode+'\')" style="padding:8px 14px;border-radius:8px;background:#1A3A7810;border:1px solid #1A3A7820;cursor:pointer;font-size:9px;font-weight:700;color:#1A3A78">📥 Export CSV</div>';
     h+='<div onclick="window._showWatchlist()" style="padding:8px 14px;border-radius:8px;background:#d9770610;border:1px solid #d9770620;cursor:pointer;font-size:9px;font-weight:700;color:#d97706">★ My Watchlist</div>';
     h+='<div style="flex:1"></div>';
     h+='<div onclick="window._runL0Scan(\''+reg+'\',\'quality\')" style="padding:8px 14px;border-radius:8px;background:#05966910;border:1px solid #05966920;cursor:pointer;font-size:9px;font-weight:700;color:#059669">🏆 Quality</div>';
@@ -7980,8 +7969,9 @@ window._runL0Scan=function(region,mode,theme){
     h+='</div>';
     h+='</div>';
     
-    // Store stock list for modal navigation
+    // Store stock list for modal navigation and export
     window._l0ModalList=d.results.map(function(r){return r.symbol});
+    window._l0ScanResults=d.results;
     el.innerHTML=h;
   }).catch(function(e){
     el.innerHTML='<div style="color:#dc2626;padding:16px;font-size:11px">Error: '+e.message+'<br><button onclick="window._runL0Scan(\''+reg+'\',\''+mode+'\',\''+(theme||'')+'\')" style="margin-top:8px;padding:6px 16px;border-radius:6px;background:#1A3A78;color:#fff;border:none;cursor:pointer;font-size:10px">Retry</button></div>';
