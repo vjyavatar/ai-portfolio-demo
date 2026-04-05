@@ -17942,13 +17942,13 @@ async def investor_decide(symbol: str = "RELIANCE", region: str = "IN", nocache:
             "hist_vol": round(hist_vol, 2) if "hist_vol" in dir() else 0,
             "chartData": {
                 # Implied Expectations — real sector PE comparison
-                "impliedGrowth": round(((pa.get("pe", 15) / max(pa.get("sectorPE", pa.get("pe", 15)), 5)) - 1) * 100) if pa.get("pe") else 0,
-                "actualGrowth": round(pa.get("revGrowth", 0)),
-                "sectorPE": round(pa.get("sectorPE", 0), 1),
+                "impliedGrowth": round(((pe / max(val.get("sectorPE", pe), 5)) - 1) * 100) if pe else 0,
+                "actualGrowth": round(rev_g),
+                "sectorPE": round(val.get("sectorPE", 0), 1),
                 # Earnings Cone — real EPS quarterly std dev
-                "epsStd": round(eps_consistency.get("std", abs(pa.get("eps", 1) * 0.15) if pa.get("eps") else 0.5), 2) if isinstance(eps_consistency, dict) else 0.5,
-                "epsGrowthRate": round(pa.get("earnGrowth", pa.get("revGrowth", 5)) / 400, 4),
-                "epsBase": round(pa.get("eps", 0), 2),
+                "epsStd": round(eps_consistency.get("std", abs(fund.get("eps", 1) * 0.15) if fund.get("eps") else 0.5), 2) if isinstance(eps_consistency, dict) else 0.5,
+                "epsGrowthRate": round(max(-0.1, min(0.3, (earn_g or rev_g or 5) / 400)), 4),
+                "epsBase": round(fund.get("eps", 0), 2),
                 # Time to Value — real Monte Carlo based probabilities
                 "mcProbabilities": {
                     "3mo": round(monte_carlo.get("prob_3mo", min(95, max(5, 20 + (monte_carlo.get("probUndervalued", 50)) * 0.3)))) if isinstance(monte_carlo, dict) else 30,
@@ -17958,10 +17958,10 @@ async def investor_decide(symbol: str = "RELIANCE", region: str = "IN", nocache:
                     "24mo": round(min(95, (monte_carlo.get("probUndervalued", 50)) * 1.25)) if isinstance(monte_carlo, dict) else 60,
                     "36mo": round(min(95, (monte_carlo.get("probUndervalued", 50)) * 1.35)) if isinstance(monte_carlo, dict) else 65,
                 } if isinstance(monte_carlo, dict) else {},
-                "yearsToFV": round(abs(math.log(max(fair_value, 1) / max(price, 1)) / math.log(1 + max(pa.get("revGrowth", 10), 3) / 100)), 1) if fair_value > 0 and price > 0 and fair_value > price else 0,
+                "yearsToFV": round(abs(math.log(max(fair_value, 1) / max(price, 1)) / math.log(1 + max(rev_g or 10, 3) / 100)), 1) if fair_value > 0 and price > 0 and fair_value > price else 0,
                 # Valuation Regime — real PE percentile from sector
-                "pePercentile": round(min(100, max(0, (pa.get("pe", 15) - 5) / 40 * 100))),
-                "peRegime": "CHEAP" if pa.get("pe", 15) < 12 else ("FAIR" if pa.get("pe", 15) < 20 else ("EXPENSIVE" if pa.get("pe", 15) < 30 else "VERY EXPENSIVE")),
+                "pePercentile": round(min(100, max(0, (pe - 5) / 40 * 100))) if pe else 50,
+                "peRegime": "CHEAP" if pe < 12 else ("FAIR" if pe < 20 else ("EXPENSIVE" if pe < 30 else "VERY EXPENSIVE")) if pe else "UNKNOWN",
                 # Factor Crowding — real from institutional count + beta + volume
                 "crowdingScore": min(100, max(0, round(
                     (min(30, (fund_holdings.get("summary", {}).get("inst_count", 0) or 0) / 30 * 30) if isinstance(fund_holdings, dict) else 0)

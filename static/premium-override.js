@@ -7196,7 +7196,7 @@ window._groupSummary=function(emoji,title,question,answer,ansC){
 window._impliedExpectationsChart=function(d,S){
   if(!d||!d.price)return'';S=S||'$';
   var p=d.price,pe=d.valuation?(d.valuation.pe||0):0,fund=d.fundamental||{};
-  var revG=fund.revGrowth||0,earnG=fund.earnGrowth||revG;
+  var revG=fund.revenueGrowth||fund.revGrowth||0,earnG=fund.earningsGrowth||fund.earnGrowth||revG;
   var fv=d.intrinsicValue?(d.intrinsicValue.average||0):0;
   if(!pe||pe<=0)return'';
   // What growth rate does current price imply?
@@ -7212,7 +7212,9 @@ window._impliedExpectationsChart=function(d,S){
   h+='<div style="display:flex;gap:10px;margin-bottom:10px">';
   h+='<div style="flex:1;padding:10px;border-radius:10px;background:#eff6ff;border:1.5px solid #bfdbfe;text-align:center"><div style="font-size:8px;color:#3b82f6;font-weight:700">MARKET EXPECTS</div><div style="font-size:22px;font-weight:900;color:#2563eb;font-family:JetBrains Mono">'+impliedGrowth+'%</div><div style="font-size:8px;color:#94a3b8">implied by PE '+pe.toFixed(1)+'x</div></div>';
   h+='<div style="flex:1;padding:10px;border-radius:10px;background:#f0fdf4;border:1.5px solid #bbf7d0;text-align:center"><div style="font-size:8px;color:#059669;font-weight:700">ACTUAL GROWTH</div><div style="font-size:22px;font-weight:900;color:#059669;font-family:JetBrains Mono">'+actualGrowth+'%</div><div style="font-size:8px;color:#94a3b8">revenue growth YoY</div></div></div>';
-  h+='<div style="padding:6px 10px;border-radius:6px;background:#F8FAFC;font-size:9px;color:#374151"><strong style="color:'+gapC+'">📋 DECISION:</strong> '+verdict+'</div></div>';
+  h+='<div style="padding:6px 10px;border-radius:6px;background:#F8FAFC;font-size:9px;color:#374151"><strong style="color:'+gapC+'">📋 DECISION:</strong> '+verdict+'</div>';
+  h+='<div style="margin-top:8px;padding:8px 12px;border-radius:8px;background:#FFFBEB;border:1px solid #FDE68A;font-size:9px;color:#92400E;line-height:1.7">💡 <strong>What This Means For You:</strong> Think of PE like a price tag per ₹1 of profit. If the market charges a higher PE than the sector average, it means investors expect faster growth. The "Market Expects" box shows what growth rate the current stock price implies. The "Actual Growth" box shows what the company is really delivering. If actual > expected, the stock is a bargain. If actual < expected, you may be overpaying for hope.</div>';
+  h+='</div>';
   return h;
 };
 

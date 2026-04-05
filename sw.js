@@ -1,4 +1,4 @@
-const CACHE_NAME = 'celesys-v33';
+const CACHE_NAME = 'celesys-v34';
 const ASSETS = ['/'];
 
 self.addEventListener('install', e => {
