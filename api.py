@@ -16423,15 +16423,39 @@ async def investor_decide(symbol: str = "RELIANCE", region: str = "IN", nocache:
                     try:
                         p_yf = peer_sym + (".NS" if not is_us else "")
                         p_info = yf.Ticker(p_yf).info
+                        p_price = float(p_info.get("currentPrice") or p_info.get("regularMarketPrice") or 0)
+                        p_eps = float(p_info.get("trailingEps") or p_info.get("epsTrailingTwelveMonths") or 0)
+                        p_bvps = float(p_info.get("bookValue") or 0)
+                        p_roe = float(p_info.get("returnOnEquity") or 0)
+                        p_pe = float(p_info.get("trailingPE") or 0)
+                        # Simple Graham-style fair value for peer
+                        p_upside = 0
+                        if p_price > 0 and p_eps > 0:
+                            # Use sector avg PE as fair PE proxy (current stock's PE as anchor)
+                            fair_pe = min(pe * 1.1, 30) if pe > 0 else 20
+                            p_fv_pe = p_eps * fair_pe
+                            if p_bvps > 0 and p_roe > 0:
+                                # Graham number
+                                p_fv_graham = (22.5 * p_eps * p_bvps) ** 0.5 if p_eps > 0 and p_bvps > 0 else p_fv_pe
+                                p_fv = (p_fv_pe + p_fv_graham) / 2
+                            else:
+                                p_fv = p_fv_pe
+                            p_upside = round((p_fv - p_price) / p_price * 100, 1) if p_price > 0 else 0
+                            # Cap at reasonable bounds
+                            p_upside = max(-80, min(200, p_upside))
                         peer_data.append({
                             "symbol": peer_sym,
-                            "pe": round(p_info.get("trailingPE", 0) or 0, 1),
-                            "pb": round(p_info.get("priceToBook", 0) or 0, 1),
-                            "roe": round((p_info.get("returnOnEquity", 0) or 0) * 100, 1),
-                            "margin": round((p_info.get("profitMargins", 0) or 0) * 100, 1),
-                            "mcap": round((p_info.get("marketCap", 0) or 0) / 1e9, 1),
+                            "pe": round(p_pe, 1),
+                            "pb": round(float(p_info.get("priceToBook", 0) or 0), 1),
+                            "roe": round(p_roe * 100, 1),
+                            "margin": round((float(p_info.get("profitMargins", 0) or 0)) * 100, 1),
+                            "mcap": round((float(p_info.get("marketCap", 0) or 0)) / 1e9, 1),
+                            "upside": p_upside,
+                            "price": round(p_price, 2),
                         })
-                    except:
+                        print(f"  👥 Peer {peer_sym}: PE={p_pe:.1f}x ROE={p_roe*100:.1f}% Upside={p_upside:.1f}%")
+                    except Exception as peer_err:
+                        print(f"  ⚠️ Peer {peer_sym} failed: {peer_err}")
                         pass
         except Exception as pe_err:
             print(f"⚠️ Peer data: {pe_err}")

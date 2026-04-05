@@ -11996,15 +11996,32 @@ h+=card('🧮','DCF Intrinsic Value',(_hasDCF?'10Y institutional DCF':iv.methods
 var mc=d.monteCarlo||{};
 if(mc.p50){
 var mcBody='';
+// ⚠️ Methodology banner — critical for user understanding
+mcBody+='<div style="padding:8px 12px;border-radius:8px;background:#f59e0b08;border:1px solid #f59e0b30;margin-bottom:12px;font-size:9px;color:#92400e;line-height:1.6">';
+mcBody+='<strong style="color:#d97706">📐 What this shows:</strong> This chart shows the <strong>range of fair value estimates</strong> across '+( mc.simulations||5000 )+' simulations of different valuation models (DCF, Graham, PE multiples). ';
+mcBody+='<strong>It is NOT a price forecast</strong> — the bear/base/bull values reflect how uncertain the intrinsic value calculation is, not how much the stock price can fall. ';
+mcBody+='For worst-case price scenarios, see the <strong>Stress Test</strong> section below.';
+mcBody+='</div>';
 mcBody+=_bellCurve(N(mc.p10),N(mc.p50),N(mc.p90),d.price,S);
+// Corrected labels — "Pessimistic FV / Central FV / Optimistic FV" instead of Bear/Bull
+var _mcVsPrice=d.price>0?Math.round((N(mc.p50)-d.price)/d.price*100):0;
+var _mcUpC=_mcVsPrice>0?'#059669':'#DC2626';
 mcBody+=grid(3,[
-  _metricBox('Bear Case (P10)',S+N(mc.p10).toLocaleString(),'10th percentile','#DC2626'),
-  _metricBox('Base Case (P50)',S+N(mc.p50).toLocaleString(),'Median outcome','#1A3A78'),
-  _metricBox('Bull Case (P90)',S+N(mc.p90).toLocaleString(),'90th percentile','#059669')
+  _metricBox('Pessimistic FV (P10)',S+N(mc.p10).toLocaleString(),'Low valuation estimate','#DC2626'),
+  _metricBox('Central FV (P50)',S+N(mc.p50).toLocaleString(),(_mcVsPrice>=0?'+':'')+_mcVsPrice+'% vs current price',_mcUpC),
+  _metricBox('Optimistic FV (P90)',S+N(mc.p90).toLocaleString(),'High valuation estimate','#059669')
 ]);
+// Probability undervalued
+if(mc.probUndervalued){
+  var _puvC=N(mc.probUndervalued)>65?'#059669':N(mc.probUndervalued)>40?'#d97706':'#dc2626';
+  mcBody+='<div style="display:flex;align-items:center;gap:12px;padding:10px 14px;border-radius:10px;background:'+_puvC+'08;border:1px solid '+_puvC+'25;margin:10px 0">';
+  mcBody+='<div style="font-family:JetBrains Mono,monospace;font-size:26px;font-weight:900;color:'+_puvC+'">'+N(mc.probUndervalued).toFixed(0)+'%</div>';
+  mcBody+='<div><div style="font-size:10px;font-weight:800;color:'+_puvC+'">Probability stock is undervalued</div>';
+  mcBody+='<div style="font-size:9px;color:#5E6F8E;margin-top:2px">In '+N(mc.probUndervalued).toFixed(0)+'% of simulations, Central FV > current price of '+S+N(d.price).toLocaleString()+'</div></div></div>';
+}
 mcBody+=_insightAction(
-  'Monte Carlo ran '+(mc.simulations||5000)+' random simulations. Median outcome: '+S+N(mc.p50).toLocaleString()+'. '+(mc.probUndervalued?mc.probUndervalued+'% chance of being undervalued.':''),
-  mc.p50>d.price?'Simulations favor upside. Position accordingly.':'Simulations show limited upside. Size conservatively.'
+  (mc.simulations||5000)+' valuation simulations. Central fair value: '+S+N(mc.p50).toLocaleString()+' ('+((_mcVsPrice>=0?'+':'')+_mcVsPrice)+'% vs current). Probability undervalued: '+(mc.probUndervalued||0)+'%.',
+  mc.p50>d.price?'Fair value estimates skew above current price — fundamental upside is supported.':'Current price exceeds central fair value estimate. Proceed cautiously — wait for better entry.'
 );
 // INTERACTIVE MC CHART
 try{if(typeof _monteCarloChart==='function'&&mc){
@@ -12012,7 +12029,7 @@ var _mcDiv=document.createElement('div');_mcDiv.id='mcChartArea';
 setTimeout(function(){var mcArea=document.getElementById('mcChartArea');if(mcArea)_monteCarloChart(mcArea,mc,S)},500);
 mcBody+='<div id="mcChartArea"></div>';
 }}catch(e){console.warn('MC chart:',e)}
-h+=card('🎲','Monte Carlo — '+(mc.simulations||'5,000')+' Simulations','Probability distribution · Price scenarios','P50: '+S+N(mc.p50).toLocaleString(),mc.p50>d.price?'#059669':'#DC2626',mcBody);
+h+=card('🎲','Monte Carlo — '+(mc.simulations||'5,000')+' Valuation Simulations','Fair value distribution across models · NOT a price forecast','P50 FV: '+S+N(mc.p50).toLocaleString(),mc.p50>d.price?'#059669':'#DC2626',mcBody);
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -12027,16 +12044,36 @@ if(roi.sharpeEstimate) retItems.push(_metricBox('Sharpe',F(roi.sharpeEstimate,2)
 if(roi.sortinoEstimate) retItems.push(_metricBox('Sortino',F(roi.sortinoEstimate,2),'downside-adjusted',N(roi.sortinoEstimate)>1.5?'#059669':'#D97706'));
 if(retItems.length>0) retBody+=grid(Math.min(retItems.length,4),retItems);
 if(alloc.pct){
+  // Normalize alloc.pct — API returns strings like "10.0%", "0% now", "1-2% via SIP"
+  var _allocRaw=String(alloc.pct||'0');
+  var _allocNum=parseFloat(_allocRaw.replace(/[^0-9.]/g,''))||0;
+  var _isWait=_allocRaw.toLowerCase().indexOf('now')<0&&_allocNum===0&&(alloc.tier||'').toLowerCase().indexOf('wait')>=0;
+  var _allocLabel=_allocNum>0?_allocNum.toFixed(1)+'%':(_isWait?'0% — Wait':'0%');
+  // Half-Kelly recommended size = kellyFull * kellyFrac/100
+  var _kellyFull=N(alloc.kellyFull);
+  var _kellyFracPct=N(alloc.kellyFrac); // e.g. 50 means use 50% of full kelly
+  var _kellyRec=_kellyFull>0&&_kellyFracPct>0?(_kellyFull*_kellyFracPct/100).toFixed(1):_allocNum.toFixed(1);
+  var _allocC=_allocNum>=8?'#059669':_allocNum>=3?'#d97706':'#dc2626';
   retBody+='<div style="display:flex;gap:12px;margin-bottom:14px;flex-wrap:wrap">';
-  retBody+='<div style="flex:1;min-width:120px;padding:16px;border-radius:14px;background:linear-gradient(135deg,#1A3A7808,#1A3A7803);border:1px solid #1A3A7820;text-align:center"><div style="font-size:8px;color:#5B8FE8;font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">PORTFOLIO ALLOCATION</div><div style="font-family:JetBrains Mono,monospace;font-size:28px;font-weight:900;color:#1A3A78">'+F(alloc.pct,1)+'%</div><div style="font-size:9px;color:#5E6F8E;margin-top:4px">'+(alloc.tier||'')+'</div></div>';
-  if(alloc.kellyFrac) retBody+='<div style="flex:1;min-width:120px;padding:16px;border-radius:14px;background:#F8FAFC;border:1px solid #E2E8F0;text-align:center"><div style="font-size:8px;color:#5B8FE8;font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">KELLY CRITERION</div><div style="font-family:JetBrains Mono,monospace;font-size:28px;font-weight:900;color:#059669">'+F(alloc.kellyFrac,1)+'%</div><div style="font-size:9px;color:#5E6F8E;margin-top:4px">Half-Kelly recommended</div></div>';
+  // Box 1: Recommended allocation (THE single source of truth)
+  retBody+='<div style="flex:1;min-width:120px;padding:16px;border-radius:14px;background:linear-gradient(135deg,'+_allocC+'10,'+_allocC+'05);border:1.5px solid '+_allocC+'30;text-align:center">';
+  retBody+='<div style="font-size:8px;color:'+_allocC+';font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">RECOMMENDED SIZE</div>';
+  retBody+='<div style="font-family:JetBrains Mono,monospace;font-size:28px;font-weight:900;color:'+_allocC+'">'+_kellyRec+'%</div>';
+  retBody+='<div style="font-size:9px;color:#5E6F8E;margin-top:4px">'+(alloc.tier||'Half-Kelly')+'</div></div>';
+  // Box 2: Full Kelly (for reference, clearly labeled as theoretical max)
+  if(_kellyFull>0) retBody+='<div style="flex:1;min-width:120px;padding:16px;border-radius:14px;background:#F8FAFC;border:1px solid #E2E8F0;text-align:center"><div style="font-size:8px;color:#94a3b8;font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">FULL KELLY (max)</div><div style="font-family:JetBrains Mono,monospace;font-size:28px;font-weight:900;color:#94a3b8">'+_kellyFull.toFixed(1)+'%</div><div style="font-size:9px;color:#94a3b8;margin-top:4px">Theoretical — too aggressive</div></div>';
+  retBody+='</div>';
+  // Clarity note explaining the two numbers
+  retBody+='<div style="padding:8px 12px;border-radius:8px;background:#1A3A7808;border-left:3px solid #1A3A78;font-size:9px;color:#374151;line-height:1.7;margin-bottom:10px">';
+  retBody+='<strong style="color:#1A3A78">📐 Position sizing:</strong> Recommended = <strong>'+_kellyRec+'%</strong> of portfolio (Half-Kelly, safer). Full Kelly = <strong>'+(_kellyFull>0?_kellyFull.toFixed(1)+'%':'N/A')+'</strong> (mathematical max — too aggressive for most investors). Always use the lower number.';
   retBody+='</div>';
 }
 retBody+=_insightAction(
-  'Expected 1Y return: '+Pct(roi.expectedReturn1Y||0)+'. Kelly suggests '+F(alloc.kellyFrac||alloc.pct||0,1)+'% allocation.',
-  'Size position at '+F(alloc.pct||0,0)+'% of portfolio. Use half-Kelly for safety.'
+  'Expected 1Y return: '+Pct(roi.expectedReturn1Y||0)+'. Recommended position: '+( (function(){var r=String(alloc.pct||'0');var n=parseFloat(r.replace(/[^0-9.]/g,''))||0;var kf=N(alloc.kellyFull),kp=N(alloc.kellyFrac);return kf>0&&kp>0?(kf*kp/100).toFixed(1):n.toFixed(1)})() )+'% (Half-Kelly).',
+  'Use the RECOMMENDED SIZE box above. Full Kelly is shown for reference only — do not use it directly.'
 );
-h+=card('💰','Returns & Capital Deployment','Expected returns · Kelly sizing · Allocation',F(alloc.pct||0,0)+'% ALLOCATION','#1A3A78',retBody);
+var _allocBadgeNum=(function(){var r=String(alloc.pct||'0');var n=parseFloat(r.replace(/[^0-9.]/g,''))||0;var kf=N(alloc.kellyFull),kp=N(alloc.kellyFrac);return kf>0&&kp>0?(kf*kp/100).toFixed(1):n.toFixed(1)})();
+h+=card('💰','Returns & Capital Deployment','Expected returns · Kelly sizing · Allocation',_allocBadgeNum+'% ALLOCATION','#1A3A78',retBody);
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -12145,7 +12182,12 @@ var _scenario=(_fundBull&&_techBull)?'ALIGNED_BULL':(_fundBull&&_techBear)?'QUAL
 // Scenario-based guidance
 var _holdAdvice='',_noHoldAdvice='',_scenarioLabel='',_scenarioColor='',_scenarioIcon='';
 var _mdoResult=window._calcInstitutionalMDO?window._calcInstitutionalMDO(d,S):null;
-var _cdsAlloc=(_mdoResult&&_mdoResult.posSize)?_mdoResult.posSize:5;
+// Single source of truth for allocation — Half-Kelly, same as allocation card
+var _allocObj=d.allocation||{};
+var _kFull=parseFloat(_allocObj.kellyFull)||0;
+var _kFracPct=parseFloat(_allocObj.kellyFrac)||50;
+var _cdsAlloc=_kFull>0?Math.round(_kFull*_kFracPct/100):(_mdoResult&&_mdoResult.posSize)?_mdoResult.posSize:5;
+_cdsAlloc=Math.min(20,Math.max(1,_cdsAlloc));
 var _targetPrice=Math.round(lv.target1||_sumFV*0.95||_sumPrice*1.15);
 if(_scenario==='ALIGNED_BULL'){
   _scenarioLabel='All Systems Go';_scenarioColor='#059669';_scenarioIcon='\u{1F7E2}';
@@ -12218,6 +12260,13 @@ h+='Stop: <strong>'+S+Math.round(lv.sl||_sumPrice*0.92).toLocaleString()+'</stro
 h+='Target: <strong>'+S+Math.round(lv.target1||_sumFV*0.95).toLocaleString()+'</strong> · ';
 h+='Fair Value: <strong>'+S+Math.round(_sumFV).toLocaleString()+'</strong>';
 h+='</div>';
+// ── ALLOCATION RECONCILIATION — one clear number, no confusion ──
+var _arC=_cdsAlloc>=8?'#059669':_cdsAlloc>=3?'#d97706':'#dc2626';
+h+='<div style="margin-top:8px;padding:10px 14px;border-radius:8px;background:'+_arC+'08;border:1.5px solid '+_arC+'30;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">';
+h+='<div><div style="font-size:8px;font-weight:800;color:'+_arC+';letter-spacing:1px">POSITION SIZE (Half-Kelly)</div>';
+h+='<div style="font-size:8px;color:#5E6F8E;margin-top:1px">All 3 systems → one number. Use this. Ignore other allocation figures in sections above.</div></div>';
+h+='<div style="font-family:JetBrains Mono,monospace;font-size:28px;font-weight:900;color:'+_arC+'">'+_cdsAlloc+'%</div>';
+h+='</div>';
 h+='</div></div>';
 // ═══ END DECISION SUMMARY ═══
 
@@ -12241,7 +12290,7 @@ setTimeout(function(){
     // Conviction Heatmap — 9 signals at a glance
     if(typeof _convictionHeatmap==='function')ch+=_convictionHeatmap(cd,cS);
     // ════════════════════════════════════════════════════════════════
-    // GROUPED INSTITUTIONAL CHARTS — BlackRock/Bloomberg Structure
+    // GROUPED INSTITUTIONAL CHARTS — Collapsible + Jump Nav
     // ════════════════════════════════════════════════════════════════
     var _gs=typeof _groupSummary==='function'?_groupSummary:function(){return''};
     var _fS=cd.fScore||(cd.business?cd.business.fScore:0)||0;
@@ -12251,97 +12300,167 @@ setTimeout(function(){
     var _betaV=cd.beta||1;
     console.log('[CHARTS] Rendering grouped institutional charts for',cd.symbol);
 
+    // ── JUMP NAV BAR ──
+    var _navGroups=[
+      {id:'grp-val',e:'🔵',s:'Valuation'},
+      {id:'grp-tech',e:'🟡',s:'Technical'},
+      {id:'grp-flow',e:'🔴',s:'Flows'},
+      {id:'grp-alpha',e:'🟣',s:'Alpha'},
+      {id:'grp-risk',e:'🟠',s:'Risk'},
+      {id:'grp-macro',e:'⚫',s:'Macro'},
+      {id:'grp-scen',e:'🟤',s:'Scenarios'},
+      {id:'grp-port',e:'⚪',s:'Portfolio'},
+      {id:'grp-dec',e:'🧩',s:'Decision'},
+      {id:'grp-sent',e:'🧠',s:'Sentiment'}
+    ];
+    ch+='<div id="celesys-group-nav" style="position:sticky;top:0;z-index:100;background:rgba(255,255,255,0.97);backdrop-filter:blur(8px);border-bottom:1px solid #e2e8f0;padding:6px 10px;margin:0 0 16px;overflow-x:auto;display:flex;gap:4px;scrollbar-width:none">';
+    _navGroups.forEach(function(g){
+      ch+='<button onclick="(function(){var el=document.getElementById(\''+g.id+'\');if(el)el.scrollIntoView({behavior:\'smooth\',block:\'start\'});})()" style="flex-shrink:0;padding:4px 10px;border-radius:20px;border:1px solid #e2e8f0;background:#f8fafc;font-size:9px;font-weight:700;color:#374151;cursor:pointer;white-space:nowrap;font-family:Sora,sans-serif;transition:all .15s" onmouseover="this.style.background=\'#1A3A78\';this.style.color=\'#fff\'" onmouseout="this.style.background=\'#f8fafc\';this.style.color=\'#374151\'">'+g.e+' '+g.s+'</button>';
+    });
+    ch+='</div>';
+
+    // ── COLLAPSIBLE GROUP WRAPPER ──
+    function _groupWrap(id,emoji,color,label,question,answer,ansC,innerFn){
+      var _inner=innerFn();
+      if(!_inner)return'';
+      var _uid='cg'+Math.random().toString(36).substr(2,5);
+      var out='<div id="'+id+'" style="margin:20px 0 0;scroll-margin-top:52px">';
+      out+='<div onclick="(function(){var b=document.getElementById(\'b_'+_uid+'\');var a=document.getElementById(\'a_'+_uid+'\');if(b){var op=b.style.display!==\'none\';b.style.display=op?\'none\':\'block\';a.textContent=op?\'▸\':\'▾\';}})()" style="cursor:pointer;position:sticky;top:40px;z-index:90;padding:10px 16px;border-radius:12px;background:linear-gradient(135deg,'+color+'18,'+color+'06);border:1.5px solid '+color+'35;display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;user-select:none;-webkit-user-select:none">';
+      out+='<div style="display:flex;align-items:center;gap:10px">';
+      out+='<span style="font-size:18px">'+emoji+'</span>';
+      out+='<div><div style="font-size:11px;font-weight:900;color:#0A1628;font-family:Sora,sans-serif;letter-spacing:.2px">'+label+'</div>';
+      out+='<div style="font-size:9px;color:#5E6F8E;font-style:italic;margin-top:1px">"'+question+'"</div></div></div>';
+      out+='<div style="display:flex;align-items:center;gap:8px">';
+      out+='<div style="font-size:10px;font-weight:800;color:'+(ansC||color)+';background:'+(ansC||color)+'18;padding:3px 12px;border-radius:20px;max-width:200px;text-align:right;line-height:1.3">'+answer+'</div>';
+      out+='<span id="a_'+_uid+'" style="font-size:14px;color:'+(ansC||color)+';font-weight:900;transition:all .2s;width:16px;text-align:center">▾</span>';
+      out+='</div></div>';
+      out+='<div id="b_'+_uid+'">'+_inner+'</div>';
+      out+='</div>';
+      return out;
+    }
+
     // ── GROUP 2: VALUATION INTELLIGENCE ──
-    var _valAns=_upside>20?'Deeply undervalued — significant upside':_upside>5?'Moderately undervalued':_upside>-5?'Fairly priced':'Overvalued — limited upside';
-    ch+=_gs('🔵','VALUATION INTELLIGENCE','What is priced in, and what is the upside/downside?',_valAns,_upside>10?'#059669':_upside>-5?'#d97706':'#dc2626');
-    console.log('[CHARTS] 🔵 Group 2: Valuation Intelligence');
-    if(typeof _valuationGrowthMatrix==='function')ch+=_valuationGrowthMatrix(cd,cS);
-    if(typeof _scenarioTree==='function')ch+=_scenarioTree(cd,cS);
-    if(typeof _valRegimeBands==='function')ch+=_valRegimeBands(cd,cS);
-    if(typeof _impliedExpectationsChart==='function')ch+=_impliedExpectationsChart(cd,cS);
-    if(typeof _timeToValue==='function')ch+=_timeToValue(cd,cS);
-    if(typeof _peerMap==='function')ch+=_peerMap(cd,cS);
+    var _valAns=_upside>20?'Deeply undervalued — '+Math.round(_upside)+'% upside':_upside>5?'Moderately undervalued — '+Math.round(_upside)+'% upside':_upside>-5?'Fairly priced':'Overvalued by '+Math.abs(Math.round(_upside))+'%';
+    ch+=_groupWrap('grp-val','🔵','#3b82f6','VALUATION INTELLIGENCE','What is priced in, and what is the upside/downside?',_valAns,_upside>10?'#059669':_upside>-5?'#d97706':'#dc2626',function(){
+      var _b='';
+      if(typeof _valuationGrowthMatrix==='function')_b+=_valuationGrowthMatrix(cd,cS);
+      if(typeof _scenarioTree==='function')_b+=_scenarioTree(cd,cS);
+      if(typeof _valRegimeBands==='function')_b+=_valRegimeBands(cd,cS);
+      if(typeof _impliedExpectationsChart==='function')_b+=_impliedExpectationsChart(cd,cS);
+      if(typeof _timeToValue==='function')_b+=_timeToValue(cd,cS);
+      if(typeof _peerMap==='function')_b+=_peerMap(cd,cS);
+      return _b;
+    });
+    console.log('[CHARTS] 🔵 Group 2: Valuation');
 
     // ── GROUP 3: TECHNICAL & MARKET STRUCTURE ──
     var _techBull=cd.price>_sma200V&&_rsiV>45;
     var _techAns=_techBull?'Timing favorable — trend supports entry':'Timing risky — wait for trend confirmation';
-    ch+=_gs('🟡','TECHNICAL & MARKET STRUCTURE','Is timing favorable or risky?',_techAns,_techBull?'#059669':'#dc2626');
-    console.log('[CHARTS] 🟡 Group 3: Technical & Market Structure');
-    if(typeof _multiTimeframeTrend==='function')ch+=_multiTimeframeTrend(cd);
-    if(typeof _drawdownCurve==='function')ch+=_drawdownCurve(cd,cS);
-    if(typeof _drawdownHistory==='function')ch+=_drawdownHistory(cd,cS);
-    if(typeof _volatilityRegimeChart==='function')ch+=_volatilityRegimeChart(cd,cS);
-    if(typeof _trendPersistence==='function')ch+=_trendPersistence(cd,cS);
-    if(typeof _accumDistPhase==='function')ch+=_accumDistPhase(cd,cS);
+    ch+=_groupWrap('grp-tech','🟡','#d97706','TECHNICAL & MARKET STRUCTURE','Is timing favorable or risky?',_techAns,_techBull?'#059669':'#dc2626',function(){
+      var _b='';
+      if(typeof _multiTimeframeTrend==='function')_b+=_multiTimeframeTrend(cd);
+      if(typeof _drawdownCurve==='function')_b+=_drawdownCurve(cd,cS);
+      if(typeof _drawdownHistory==='function')_b+=_drawdownHistory(cd,cS);
+      if(typeof _volatilityRegimeChart==='function')_b+=_volatilityRegimeChart(cd,cS);
+      if(typeof _trendPersistence==='function')_b+=_trendPersistence(cd,cS);
+      if(typeof _accumDistPhase==='function')_b+=_accumDistPhase(cd,cS);
+      return _b;
+    });
+    console.log('[CHARTS] 🟡 Group 3: Technical');
 
     // ── GROUP 4: INSTITUTIONAL FLOWS ──
     var _adSig=(cd.advCharts&&cd.advCharts.accumDist)?cd.advCharts.accumDist.signal:'UNKNOWN';
-    var _flowAns=_adSig==='ACCUMULATION'?'Institutions accumulating — bullish':_adSig==='DISTRIBUTION'?'Institutions exiting — bearish':'No clear institutional direction';
-    ch+=_gs('🔴','INSTITUTIONAL FLOWS & POSITIONING','Are institutions accumulating or exiting?',_flowAns,_adSig==='ACCUMULATION'?'#059669':_adSig==='DISTRIBUTION'?'#dc2626':'#d97706');
-    console.log('[CHARTS] 🔴 Group 4: Institutional Flows');
-    if(typeof _accumDistChart==='function')ch+=_accumDistChart(cd,cS);
-    if(typeof _factorCrowding==='function')ch+=_factorCrowding(cd,cS);
-    if(typeof _instOwnershipTrend==='function')ch+=_instOwnershipTrend(cd,cS);
-    if(typeof _smartRetailDivergence==='function')ch+=_smartRetailDivergence(cd,cS);
-    if(typeof _etfFlowDep==='function')ch+=_etfFlowDep(cd,cS);
-    if(typeof _sectorStrengthMap==='function')ch+=_sectorStrengthMap(cd,cS);
+    var _flowAns=_adSig==='ACCUMULATION'?'Accumulating — bullish signal':_adSig==='DISTRIBUTION'?'Distributing — bearish signal':'No clear institutional direction';
+    ch+=_groupWrap('grp-flow','🔴','#dc2626','INSTITUTIONAL FLOWS & POSITIONING','Are institutions accumulating or exiting?',_flowAns,_adSig==='ACCUMULATION'?'#059669':_adSig==='DISTRIBUTION'?'#dc2626':'#d97706',function(){
+      var _b='';
+      if(typeof _accumDistChart==='function')_b+=_accumDistChart(cd,cS);
+      if(typeof _factorCrowding==='function')_b+=_factorCrowding(cd,cS);
+      if(typeof _instOwnershipTrend==='function')_b+=_instOwnershipTrend(cd,cS);
+      if(typeof _smartRetailDivergence==='function')_b+=_smartRetailDivergence(cd,cS);
+      if(typeof _etfFlowDep==='function')_b+=_etfFlowDep(cd,cS);
+      if(typeof _sectorStrengthMap==='function')_b+=_sectorStrengthMap(cd,cS);
+      return _b;
+    });
+    console.log('[CHARTS] 🔴 Group 4: Flows');
 
     // ── GROUP 5: FACTOR & ALPHA ──
-    ch+=_gs('🟣','FACTOR & ALPHA ENGINE','Where is performance coming from?','Alpha decomposition + factor attribution below','#6d28d9');
-    console.log('[CHARTS] 🟣 Group 5: Factor & Alpha');
-    if(typeof _alphaDecomposition==='function')ch+=_alphaDecomposition(cd,cS);
-    if(typeof _etfFactorAnalysis==='function')ch+=_etfFactorAnalysis(cd,cS);
-    if(typeof _earningsDistCone==='function')ch+=_earningsDistCone(cd,cS);
+    ch+=_groupWrap('grp-alpha','🟣','#7c3aed','FACTOR & ALPHA ENGINE','Where is performance coming from?','Alpha decomposition + factor attribution below','#7c3aed',function(){
+      var _b='';
+      if(typeof _alphaDecomposition==='function')_b+=_alphaDecomposition(cd,cS);
+      if(typeof _etfFactorAnalysis==='function')_b+=_etfFactorAnalysis(cd,cS);
+      if(typeof _earningsDistCone==='function')_b+=_earningsDistCone(cd,cS);
+      if(typeof _factorContributionTimeline==='function')_b+=_factorContributionTimeline(cd,cS);
+      return _b;
+    });
+    console.log('[CHARTS] 🟣 Group 5: Alpha');
 
     // ── GROUP 6: RISK ENGINE ──
-    var _riskAns=_betaV<1.2?'Low risk — defensive positioning':_betaV<1.8?'Moderate risk — standard sizing':'High risk — reduce exposure';
-    ch+=_gs('🟠','RISK ENGINE','What can go wrong, and how severe?',_riskAns,_betaV<1.3?'#059669':_betaV<1.8?'#d97706':'#dc2626');
-    console.log('[CHARTS] 🟠 Group 6: Risk Engine');
-    if(typeof _riskHeatmap==='function')ch+=_riskHeatmap(cd);
-    if(typeof _downsideCapture==='function')ch+=_downsideCapture(cd,cS);
-    if(typeof _upsideParticipation==='function')ch+=_upsideParticipation(cd,cS);
-    if(typeof _stressTestChart==='function')ch+=_stressTestChart(cd,cS);
+    var _riskAns=_betaV<1.2?'Low risk — defensive positioning':_betaV<1.8?'Moderate risk (Beta '+_betaV.toFixed(2)+') — standard sizing':'High risk (Beta '+_betaV.toFixed(2)+') — reduce exposure';
+    ch+=_groupWrap('grp-risk','🟠','#ea580c','RISK ENGINE','What can go wrong, and how severe?',_riskAns,_betaV<1.3?'#059669':_betaV<1.8?'#d97706':'#dc2626',function(){
+      var _b='';
+      if(typeof _riskHeatmap==='function')_b+=_riskHeatmap(cd);
+      if(typeof _downsideCapture==='function')_b+=_downsideCapture(cd,cS);
+      if(typeof _upsideParticipation==='function')_b+=_upsideParticipation(cd,cS);
+      if(typeof _stressTestChart==='function')_b+=_stressTestChart(cd,cS);
+      return _b;
+    });
+    console.log('[CHARTS] 🟠 Group 6: Risk');
 
     // ── GROUP 7: MACRO & REGIME ──
     var _regimeOn=cd.price>_sma200V&&_rsiV>45;
-    ch+=_gs('⚫','MACRO & REGIME INTELLIGENCE','Is macro supporting or hurting?',_regimeOn?'Risk-ON — macro tailwind':'Risk-OFF — macro headwind',_regimeOn?'#059669':'#dc2626');
-    console.log('[CHARTS] ⚫ Group 7: Macro & Regime');
-    if(typeof _marketRegimeMap==='function')ch+=_marketRegimeMap(cd,cS);
-    if(typeof _liquidityCycle==='function')ch+=_liquidityCycle(cd,cS);
-    if(typeof _macroSensitivityMap==='function')ch+=_macroSensitivityMap(cd,cS);
+    ch+=_groupWrap('grp-macro','⚫','#374151','MACRO & REGIME INTELLIGENCE','Is macro supporting or hurting?',_regimeOn?'Risk-ON — macro tailwind':'Risk-OFF — macro headwind',_regimeOn?'#059669':'#dc2626',function(){
+      var _b='';
+      if(typeof _marketRegimeMap==='function')_b+=_marketRegimeMap(cd,cS);
+      if(typeof _liquidityCycle==='function')_b+=_liquidityCycle(cd,cS);
+      if(typeof _macroSensitivityMap==='function')_b+=_macroSensitivityMap(cd,cS);
+      return _b;
+    });
+    console.log('[CHARTS] ⚫ Group 7: Macro');
 
     // ── GROUP 8: SCENARIO & PROBABILITY ──
     var _mcProb=(cd.monteCarlo?cd.monteCarlo.probUndervalued:50)||50;
-    ch+=_gs('🟤','SCENARIO & PROBABILITY ENGINE','What are the most likely outcomes?',_mcProb+'% probability of undervaluation — '+(Number(_mcProb)>65?'favorable':'neutral'),Number(_mcProb)>65?'#059669':'#d97706');
-    console.log('[CHARTS] 🟤 Group 8: Scenario & Probability');
-    if(typeof _probWeightedReturn==='function')ch+=_probWeightedReturn(cd,cS);
-    if(typeof _roicWaccGauge==='function')ch+=_roicWaccGauge(cd,cS);
-    if(typeof _compoundingViz==='function')ch+=_compoundingViz(cd,cS);
+    ch+=_groupWrap('grp-scen','🟤','#92400e','SCENARIO & PROBABILITY ENGINE','What are the most likely outcomes?',_mcProb+'% probability stock is undervalued',Number(_mcProb)>65?'#059669':'#d97706',function(){
+      var _b='';
+      if(typeof _probWeightedReturn==='function')_b+=_probWeightedReturn(cd,cS);
+      if(typeof _roicWaccGauge==='function')_b+=_roicWaccGauge(cd,cS);
+      if(typeof _compoundingViz==='function')_b+=_compoundingViz(cd,cS);
+      return _b;
+    });
+    console.log('[CHARTS] 🟤 Group 8: Scenarios');
 
     // ── GROUP 9: PORTFOLIO & CAPITAL ──
-    ch+=_gs('⚪','PORTFOLIO & CAPITAL ALLOCATION','How much capital should be deployed?','See allocation and portfolio impact below','#374151');
-    console.log('[CHARTS] ⚪ Group 9: Portfolio & Capital');
-    if(typeof _portfolioImpact==='function')ch+=_portfolioImpact(cd,cS);
-    if(typeof _riskContribution==='function')ch+=_riskContribution(cd,cS);
-    if(typeof _allocGauge==='function')ch+=_allocGauge(cd,cS);
+    ch+=_groupWrap('grp-port','⚪','#6b7280','PORTFOLIO & CAPITAL ALLOCATION','How much capital should be deployed?','See allocation gauge + portfolio impact below','#374151',function(){
+      var _b='';
+      if(typeof _portfolioImpact==='function')_b+=_portfolioImpact(cd,cS);
+      if(typeof _correlationClusterMap==='function')_b+=_correlationClusterMap(cd,cS);
+      if(typeof _riskContribution==='function')_b+=_riskContribution(cd,cS);
+      if(typeof _allocGauge==='function')_b+=_allocGauge(cd,cS);
+      return _b;
+    });
+    console.log('[CHARTS] ⚪ Group 9: Portfolio');
 
-    // ── GROUP 10: DECISION INTELLIGENCE ──
-    ch+=_gs('🧩','DECISION INTELLIGENCE','What is the final decision, and how reliable is it?','All signals synthesized below — look for agreement across systems','#1A3A78');
-    console.log('[CHARTS] 🧩 Group 10: Decision Intelligence');
-    if(typeof _whatChanged==='function')ch+=_whatChanged(cd,cS);
-    if(typeof _signalTracker==='function')ch+=_signalTracker(cd,cS);
-    if(typeof _signalConflictMap==='function')ch+=_signalConflictMap(cd,cS);
-    if(typeof _tradeInvestSplit==='function')ch+=_tradeInvestSplit(cd,cS);
-    if(typeof _decisionConfidence==='function')ch+=_decisionConfidence(cd,cS);
+    // ── GROUP 10+11: DECISION INTELLIGENCE ──
+    ch+=_groupWrap('grp-dec','🧩','#1A3A78','DECISION INTELLIGENCE','What is the final decision, and how reliable is it?','All signals synthesized — look for agreement across systems','#1A3A78',function(){
+      var _b='';
+      if(typeof _whatChanged==='function')_b+=_whatChanged(cd,cS);
+      if(typeof _signalTracker==='function')_b+=_signalTracker(cd,cS);
+      if(typeof _signalConflictMap==='function')_b+=_signalConflictMap(cd,cS);
+      if(typeof _tradeInvestSplit==='function')_b+=_tradeInvestSplit(cd,cS);
+      if(typeof _decisionConfidence==='function')_b+=_decisionConfidence(cd,cS);
+      return _b;
+    });
+    console.log('[CHARTS] 🧩 Group 10: Decision');
 
-    console.log('[CHARTS] All groups rendered for',cd.symbol);
-    // ── GROUP 11: CHANGE / DELTA ──
-    // (What Changed + Signal Tracker already rendered in Group 10 above)
     // ── GROUP 12: NARRATIVE & SENTIMENT ──
-    ch+=_gs('🧠','NARRATIVE & SENTIMENT','What story is driving this stock?',(cd.newsSentiment?cd.newsSentiment.label:'No sentiment data')||'NEUTRAL',(cd.newsSentiment&&cd.newsSentiment.score>60)?'#059669':(cd.newsSentiment&&cd.newsSentiment.score<40)?'#dc2626':'#d97706');
-    console.log('[CHARTS] 🧠 Group 12: Narrative & Sentiment');
-    if(typeof _sentimentTimeline==='function')ch+=_sentimentTimeline(cd,cS);
-    if(typeof _themeExposure==='function')ch+=_themeExposure(cd,cS);
+    var _sentLabel=(cd.newsSentiment?cd.newsSentiment.label:'No data')||'NEUTRAL';
+    ch+=_groupWrap('grp-sent','🧠','#0891b2','NARRATIVE & SENTIMENT','What story is driving this stock?',_sentLabel,(cd.newsSentiment&&cd.newsSentiment.score>60)?'#059669':(cd.newsSentiment&&cd.newsSentiment.score<40)?'#dc2626':'#d97706',function(){
+      var _b='';
+      if(typeof _sentimentTimeline==='function')_b+=_sentimentTimeline(cd,cS);
+      if(typeof _themeExposure==='function')_b+=_themeExposure(cd,cS);
+      return _b;
+    });
+    console.log('[CHARTS] 🧠 Group 12: Sentiment');
+
     // INSTITUTIONAL CONSENSUS SUMMARY — aggregates ALL chart decisions
     if(typeof _institutionalSummary==='function')ch+=_institutionalSummary(cd,cS);
     chartEl.innerHTML=ch;
