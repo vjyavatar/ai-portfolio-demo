@@ -12228,7 +12228,7 @@ h+='<div style="margin:22px 0;border-radius:18px;overflow:hidden;border:2.5px so
 // Header
 h+='<div style="padding:20px 24px;background:linear-gradient(135deg,'+_scenarioColor+'12,'+_scenarioColor+'04);border-bottom:2px solid '+_scenarioColor+'18">';
 h+='<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">';
-h+='<div><div style="font-size:9px;font-weight:800;color:#94a3b8;letter-spacing:2px">DECISION SUMMARY — ALL SYSTEMS</div>';
+h+='<div><div style="font-size:9px;font-weight:800;color:#94a3b8;letter-spacing:2px">DECISION SUMMARY — '+d.symbol+' · '+(d.companyName||d.symbol)+'</div>';
 h+='<div style="font-size:20px;font-weight:900;color:'+_scenarioColor+';font-family:Sora,sans-serif;margin-top:4px">'+_scenarioIcon+' '+_scenarioLabel+'</div></div>';
 h+='<div style="display:flex;gap:8px;flex-wrap:wrap">';
 // Three pills showing each system's verdict

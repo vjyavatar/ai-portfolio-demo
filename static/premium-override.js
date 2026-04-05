@@ -25,7 +25,9 @@
   var _oldVerdict=_oldMDO>=7.5?'STRONG BUY':_oldMDO>=6?'BUY':_oldMDO>=4.5?'HOLD':_oldMDO>=3?'EXIT':'STRONG SELL';
   var _oldVC=_oldMDO>=6?'#059669':_oldMDO>=4.5?'#d97706':'#dc2626';
 
-  h+='<div style="border-radius:16px;border:1px dashed #94a3b850;overflow:hidden;margin:14px 0;opacity:.85">';
+  h+='<div style="border-radius:18px;border:2px solid #6b728030;border-left:6px solid #6b7280;overflow:hidden;margin:20px 0;background:#f8fafc;box-shadow:0 2px 12px rgba(107,114,128,.08)">';
+  // Group label banner
+  h+='<div style="padding:8px 20px;background:linear-gradient(135deg,#6b7280,#6b7280cc);font-size:10px;font-weight:900;color:#fff;font-family:Sora,sans-serif;letter-spacing:1.5px">SCORING SYSTEM 1: LEGACY MATRIX (Sanity Check)</div>';
   // Explainer
   h+='<div style="padding:8px 16px;font-size:9px;color:#5E6F8E;line-height:1.5;background:#F1F5F9;border-bottom:1px solid #94a3b830">';
   h+='📊 <strong style="color:#374151">Legacy Scoring Matrix</strong> — This is the <strong>baseline reference score</strong> using fixed equal weights across 6 layers (Liquidity, Flow, Volatility, Fundamentals, Quant, Probability). Unlike CDS v2.0 below which adapts weights to market regime and stock segment, this matrix treats all stocks the same. Use it as a <strong>sanity check</strong> — if both Legacy and CDS agree, confidence is higher. If they disagree, CDS v2.0 is more reliable as it is context-aware.</div>';
@@ -140,7 +142,9 @@
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // SECTION 2: CELESYS DECISION SYSTEM (CDS) v2.0
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  h+='<div style="border-radius:16px;border:2px solid #1A3A7830;overflow:hidden;margin:14px 0">';
+  h+='<div style="border-radius:18px;border:2px solid #1A3A7830;border-left:6px solid #1A3A78;overflow:hidden;margin:24px 0;background:#f0f4ff;box-shadow:0 4px 16px rgba(26,58,120,.1)">';
+  // Group label banner
+  h+='<div style="padding:8px 20px;background:linear-gradient(135deg,#1A3A78,#1A3A78cc);font-size:10px;font-weight:900;color:#fff;font-family:Sora,sans-serif;letter-spacing:1.5px">SCORING SYSTEM 2: CDS v2.0 (Final Decision Engine)</div>';
 
   // CDS Header
   h+='<div style="padding:8px 20px;font-size:9px;color:#94a3b8;line-height:1.5;background:#0A162810;border-bottom:1px solid #1A3A7815">';
@@ -344,7 +348,7 @@
   // Theme buttons
   h+='<div style="font-size:8px;font-weight:800;color:#5E6F8E;letter-spacing:1px;margin-bottom:6px">MEGATREND THEMES — Sector-focused scans</div>';
   h+='<div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:12px">';
-  var _themes=_reg==="US"?["AI","Semiconductor","EV & Clean Energy","Cybersecurity","Defense","Fintech","Space","Healthcare"]:["AI & IT","Defence","EV & Green Energy","Banking & NBFC","Pharma","Infra"];
+  var _themes=_reg==="US"?["AI","Semiconductor","EV & Clean Energy","Cybersecurity","Defense","Fintech","Space","Healthcare"]:["AI & IT","Defence","EV & Green Energy","Banking & NBFC","Pharma & Healthcare","Infra & Capital Goods","FMCG & Consumer","Metals & Mining","Realty","PSU & Railways"];
   _themes.forEach(function(th){
     h+="<div onclick=\"window._runL0Scan('"+_reg+"','theme','"+th+"')\" style=\"padding:6px 12px;border-radius:8px;background:#0891b208;border:1px solid #0891b220;cursor:pointer;font-size:9px;font-weight:700;color:#0891b2;transition:all .15s\" onmouseover=\"this.style.background='#0891b2';this.style.color='#fff'\" onmouseout=\"this.style.background='#0891b208';this.style.color='#0891b2'\">🎯 "+th+"</div>";
   });
@@ -6287,10 +6291,10 @@ window._topStocksReport=function(region,category){
     };
   }else{
     allCats={
-      'Large Cap (Nifty 50 + Next 50)':['RELIANCE','TCS','HDFCBANK','INFY','ICICIBANK','BHARTIARTL','SBIN','LT','BAJFINANCE','TATAMOTORS','ITC','MARUTI','SUNPHARMA','WIPRO','HCLTECH','AXISBANK','TITAN','KOTAKBANK','ONGC','NTPC','POWERGRID','ADANIENT','ADANIPORTS','COALINDIA','NESTLEIND','ULTRACEMCO','ASIANPAINT','TECHM','HAL','BEL','DLF','TRENT','ZOMATO','JIOFIN','TATASTEEL','HINDALCO','JSWSTEEL','GRASIM','DRREDDY','CIPLA','APOLLOHOSP','DIVISLAB','SBILIFE','HDFCLIFE','BAJAJFINSV','INDUSINDBK','EICHERMOT','SHRIRAMFIN','BRITANNIA','HEROMOTOCO','ABB','SIEMENS','PIDILITIND','GODREJCP','DABUR','MARICO','COLPAL','MUTHOOTFIN','CHOLAFIN','BAJAJHLDNG','DMART','MAXHEALTH','NAUKRI','TATAPOWER','TATACOMM','CANBK','BANKBARODA','PNB','IDFCFIRSTB','FEDERALBNK','BANDHANBNK','SBICARD','IRCTC','PFC','RECLTD','NHPC','CONCOR','IRFC','GAIL','IOC','BPCL','HINDPETRO','VEDL','JINDALSTEL','SAIL','NMDC','PAGEIND','VOLTAS','HAVELLS','POLYCAB','AUROPHARMA','TORNTPHARM','ZYDUSLIFE','ALKEM','BIOCON','LALPATHLAB','METROPOLIS','FORTIS','IPCALAB','GLENMARK','LUPIN','PERSISTENT','LTIM','MPHASIS','COFORGE','TATAELXSI','KPITTECH','KAYNES','DIXON','PIIND','SRF','NAVINFLUOR'],
-      'Mid Cap (Nifty Midcap 150)':['DEEPAKNTR','ASTRAL','ATUL','BALKRISIND','BERGEPAINT','RELAXO','VARUNBEV','UNOMINDA','MAZDOCK','TATATECH','HAPPSTMNDS','NETWEB','DATAPATTNS','AMBER','HLEGLAS','PRINCEPIPE','APLAPOLLO','FINEORG','ROSSARI','LXCHEM','ALKYLAMINE','VINATIORGA','CLEAN','AARTI','LAURUSLABS','AJANTPHARM','NATCOPHARM','SYNGENE','GMMPFAUDLR','GRINDWELL','CUMMINSIND','THERMAX','ELGIEQUIP','TIMKEN','SCHAEFFLER','SKFINDIA','HONAUT','BSOFT','LTFOODS','CCL','CENTURYTEX','RAJESHEXPO','JKCEMENT','DALBHARAT','RAMCOCEM','OBEROIRLTY','BRIGADE','PRESTIGE','PHOENIXLTD','GODREJPROP','SOBHA','SUNTV','PVRINOX','FLUOROCHEM','MANAPPURAM','CREDITACC','UJJIVANSFB','LICHSGFIN','CANFINHOME','IEX','MCX','BSE','CDSL','CAMS','KFINTECH','ANGELONE','MOTILALOFS','ICICIGI','ICICIPRULI','STARHEALTH','KALPATPOWR','KEC','RVNL','IRCON','RAILTEL','OLECTRA','INOXWIND','SUZLON','ROUTE','EXCELINDUS','PRECWIRE','HBLENGINE','MTARTECH','COCHINSHIP','GRSE','MAZAGON','BEML','BDL','RADICO','UBL','INDHOTEL','JUBLFOOD','DEVYANI','WESTLIFE'],
-      'Small Cap (Nifty Smallcap 250)':['HDFCAMC','WHIRLPOOL','BATAINDIA','TTKPRESTIG','VGUARD','BLUESTARCO','CROMPTON','ORIENTELEC','CENTURYPLY','GREENPANEL','ASTERDM','SUPRAJIT','GRANULES','CAPLIPOINT','ERIS','TATACHEM','TATACONSUM','MAPMYINDIA','DELHIVERY','NYKAA','PAYTM','MASTEK','BIRLASOFT','ZENSAR','INTELLECT','NEWGEN','ECLERX','TANLA','LATENTVIEW','SAKSOFT','RATEGAIN','ZAGGLE','EASEMYTRIP','JSWENERGY','TORNTPOWER','CESC','SJVN','KPRMILL','RAYMOND','TRIDENT','PNCINFRA','KRBL','GODREJAGRO','BAYER','BASF','EIDPARRY','DCMSHRIRAM','GNFC','GSFC','NOCIL','PFIZER','ABBOTINDIA','GLAXO','SANOFI','NUVOCO','HEIDELBERG','TEAMLEASE','ESAFSFB','SBFC'],
-      'Micro Cap (₹50-550Cr)':['FCSSOFT','BLACKROSE','SALASAR','RTNPOWER','REFEX','VERTOZ','GANDHAR','TATVA','GAYAHWS','SHRENIK','ORTEL','PANAFIC','SYNCOMF','SWASTIVI','VIKASECO','VIKASLIFE','VIYASH','ANURAS','BALAXI','BCG','HLVLTD','KWIL','SCTL','SGRL','SHRJAGP','UMESLTD','HAVISHA','HNDFDS','VALIANTORG','ZENTEC','ZENITHHE','SHYAMCENT','SURANASOL','HINDMOTORS','HDIL','SPICEJET','YESBANK','ZEEMEDIA','MOREPENLAB','IOLCP','IFCI','NATIONALUM','ACE','AZAD','ADFFOODS','AARTIIND','AARTIPHARM','AAVAS']
+      'Large Cap (Nifty 50 + Next 50)':['RELIANCE','TCS','HDFCBANK','INFY','ICICIBANK','BHARTIARTL','SBIN','LT','BAJFINANCE','TATAMOTORS','ITC','MARUTI','SUNPHARMA','WIPRO','HCLTECH','AXISBANK','TITAN','KOTAKBANK','ONGC','NTPC','POWERGRID','ADANIENT','ADANIPORTS','COALINDIA','NESTLEIND','ULTRACEMCO','ASIANPAINT','TECHM','HAL','BEL','DLF','TRENT','ZOMATO','JIOFIN','TATASTEEL','HINDALCO','JSWSTEEL','GRASIM','DRREDDY','CIPLA','APOLLOHOSP','DIVISLAB','SBILIFE','HDFCLIFE','BAJAJFINSV','INDUSINDBK','EICHERMOT','SHRIRAMFIN','BRITANNIA','HEROMOTOCO','ABB','SIEMENS','PIDILITIND','GODREJCP','DABUR','MARICO','COLPAL','MUTHOOTFIN','CHOLAFIN','BAJAJHLDNG','DMART','MAXHEALTH','NAUKRI','TATAPOWER','TATACOMM','CANBK','BANKBARODA','PNB','IDFCFIRSTB','FEDERALBNK','BANDHANBNK','SBICARD','IRCTC','PFC','RECLTD','NHPC','CONCOR','IRFC','GAIL','IOC','BPCL','HINDPETRO','VEDL','JINDALSTEL','SAIL','NMDC','PAGEIND','VOLTAS','HAVELLS','POLYCAB','AUROPHARMA','TORNTPHARM','ZYDUSLIFE','ALKEM','BIOCON','LALPATHLAB','METROPOLIS','FORTIS','IPCALAB','GLENMARK','LUPIN','PERSISTENT','LTIM','MPHASIS','COFORGE','TATAELXSI','KPITTECH','KAYNES','DIXON','PIIND','SRF','NAVINFLUOR','M&M','BAJAJ-AUTO','MOTHERSON','BOSCHLTD','EXIDEIND','AMBUJACEM','SHREECEM','BERGEPAINT','HINDUNILVR','TATACONSUM','PETRONET','LODHA','PAYTM','JSWINFRA','IREDA','CUMMINSIND','THERMAX','SUPREMEIND','CROMPTON','NYKAA','DELHIVERY'],
+      'Mid Cap (Nifty Midcap 150)':['DEEPAKNTR','ASTRAL','ATUL','BALKRISIND','RELAXO','VARUNBEV','UNOMINDA','MAZDOCK','TATATECH','HAPPSTMNDS','NETWEB','DATAPATTNS','AMBER','HLEGLAS','PRINCEPIPE','APLAPOLLO','FINEORG','ROSSARI','LXCHEM','ALKYLAMINE','VINATIORGA','CLEAN','AARTI','LAURUSLABS','AJANTPHARM','NATCOPHARM','SYNGENE','GMMPFAUDLR','GRINDWELL','ELGIEQUIP','TIMKEN','SCHAEFFLER','SKFINDIA','HONAUT','BSOFT','LTFOODS','CCL','CENTURYTEX','RAJESHEXPO','JKCEMENT','DALBHARAT','RAMCOCEM','OBEROIRLTY','BRIGADE','PRESTIGE','PHOENIXLTD','GODREJPROP','SOBHA','SUNTV','PVRINOX','FLUOROCHEM','MANAPPURAM','CREDITACC','UJJIVANSFB','LICHSGFIN','CANFINHOME','IEX','MCX','BSE','CDSL','CAMS','KFINTECH','ANGELONE','MOTILALOFS','ICICIGI','ICICIPRULI','STARHEALTH','KALPATPOWR','KEC','RVNL','IRCON','RAILTEL','OLECTRA','INOXWIND','SUZLON','ROUTE','EXCELINDUS','PRECWIRE','HBLENGINE','MTARTECH','COCHINSHIP','GRSE','MAZAGON','BEML','BDL','RADICO','UBL','INDHOTEL','JUBLFOOD','DEVYANI','WESTLIFE','CERA','SOLARINDS','AIAENG','CARBORUNIV','JKLAKSHMI','GSPL','KAJARIACER','CGPOWER','POONAWALLA','LLOYDSME','AFFLE','LICI','PGHH','TATACOMM','SUNDARMFIN','MGL','BATAINDIA','HINDCOPPER','MAPMYINDIA','ZEEL','JBCHEPHARM','SONACOMS','TATATECH','KAYNES','KEI','FIVESTAR','KALYANKJIL','NUVAMA','ELECON','REDINGTON','CHALET','CRISIL','JBMA','FSL','ABSLAMC','PNBHOUSING','THERMAX','WHIRLPOOL','BLUESTARCO','VGUARD','TTKPRESTIG','BHEL','NBCC','HUDCO','SJVN','NCC','ENGINERSIN','JSWENERGY','TORNTPOWER','CESC','CUB','TVSMOTOR','TIINDIA','SUNDRMFAST','ENDURANCE','SUPRAJIT','MFSL','GRINFRA','JIOFIN','NIACL','POLICYBZR','DELHIVERY','PAYTM','NYKAA'],
+      'Small Cap (Nifty Smallcap 250)':['HDFCAMC','TATACHEM','MAPMYINDIA','MASTEK','BIRLASOFT','ZENSAR','INTELLECT','NEWGEN','ECLERX','TANLA','LATENTVIEW','SAKSOFT','RATEGAIN','ZAGGLE','EASEMYTRIP','KPRMILL','RAYMOND','TRIDENT','PNCINFRA','KRBL','GODREJAGRO','BAYER','BASF','EIDPARRY','DCMSHRIRAM','GNFC','GSFC','NOCIL','PFIZER','ABBOTINDIA','GLAXO','SANOFI','NUVOCO','HEIDELBERG','TEAMLEASE','ESAFSFB','SBFC','ORIENTELEC','CENTURYPLY','GREENPANEL','ASTERDM','GRANULES','CAPLIPOINT','ERIS','ACE','AARTIDRUGS','APARINDS','ANANTRAJ','ASHIANA','BECTORFOOD','BIKAJI','CAMPUS','CARTRADE','CASTROLIND','CEATLTD','CENTRALBK','COCHINSHIP','DATAMATICS','DBCORP','DCBBANK','DOMS','EMAMILTD','EPIGRAL','EQUITASBNK','FIEMIND','FLAIR','GHCL','GLAND','GMRAIRPORT','GOODYEAR','HATSUN','HERITGFOOD','HIKAL','HINDWAREAP','IGPL','INDIGOPNTS','INDIACEM','INDIAMART','INOXGREEN','ISGEC','ITDC','JAMNAAUTO','JYOTHYLAB','KARURVYSYA','KIMS','KOLTEPATIL','LAXMIMACH','LXCHEM','MAHINDCIE','MAHLOG','MANINFRA','MHRIL','MIDHANI','MINDACORP','MMTC','MOIL','MOREPENLAB','MRPL','NLCINDIA','OLECTRA','ORIENTCEM','POWERMECH','PRSMJOHNSN','QUESS','RATNAMANI','RELCHEMQ','RITES','RVNL','SARDAEN','SHILPAMED','SPARC','SUNFLAG','SWSOLAR','TITAGARH','TVSSCS','VIJAYA','WELCORP','ZENSARTECH','ADFFOODS','AARTIIND','AAVAS','AMRUTANJAN','ANANDRATHI','ARCHIDPLY','ARVINDFASN','AUTOAXLES','AVANTIFEED','BALRAMCHIN','CANFINHOME','CESC','CHALET','CHOLAHLDNG','CYIENT','DABUR','DEEPAKFERT','DHANI','EIDPARRY','ELECTCAST','GALAXYSURF','GARFIBRES','GRINDWELL','GUJALKALI','GULFOILLUB','HAPPSTMNDS','HCG','HFCL','HUDCO','INDIGRID','IONEXCHANG','JKLAKSHMI','JUBLPHARMA','KANSAINER','KENNAMET','KNRCON','KRSNAA','LEMONTREE','LUXIND','MASFIN','MAXIND','METALFORGE','NAVNETEDUL','NAZARA','NESCO','NIITLTD','ORIENTHOT','PCBL','PGHH','POLYMED','POWERMECH','PRINCEPIPE','PRIVISCL','RAINBOW','RAYMOND','REDINGTON','RHIM','RITES','ROSSARI','RPSGVENT','SANOFI','SAREGAMA','SHARDACROP','SHOPERSTOP','SHRIRAMCIT','SOUTHBANK','STLTECH','SUDARSCHEM','SUVENPHAR','TARSONS','TECHM','THYROCARE','TIRUPATIND','TTML','TVSELECT','UCOBANK','UTIAMC','VAIBHAVGBL','VIPIND','VSTIND','WABAG','WELSPUNLIV','WHIRLPOOL','YESBANK'],
+      'Micro Cap (₹50-2000Cr)':['FCSSOFT','BLACKROSE','SALASAR','RTNPOWER','REFEX','VERTOZ','GANDHAR','TATVA','ACE','AZAD','ADFFOODS','IFCI','NATIONALUM','SPICEJET','ZEEMEDIA','MOREPENLAB','IOLCP','AARTIIND','AARTIPHARM','AAVAS','MMTC','MOIL','MIDHANI','MRPL','NLCINDIA','NBCC','HUDCO','IREDA','HFCL','STLTECH','RATEGAIN','LATENTVIEW','ZAGGLE','SAKSOFT','NAZARA','BIKAJI','CAMPUS','DOMS','FLAIR','CARTRADE','EPIGRAL','POWERMECH','TITAGARH','SARDAEN','SWSOLAR','ISGEC','LEMONTREE','ORIENTHOT','ITDC','NESCO','SAREGAMA','PCBL','WELSPUNLIV','HATSUN','HERITGFOOD','BECTORFOOD','HIKAL','IGPL','KARURVYSYA','CENTRALBK','DCBBANK','EQUITASBNK','UCOBANK','SOUTHBANK','IOB','INDIANB','JAMNAAUTO','TVSMOTOR','ELGIEQUIP','LUXIND','VIPIND','VSTIND','ORIENTELEC','APARINDS','GHCL','GUJALKALI','GULFOILLUB','DEEPAKFERT','BALRAMCHIN','AVANTIFEED','AMRUTANJAN','GALAXYSURF','GARFIBRES','SHARDACROP','KNRCON','SUDARSCHEM','RALLIS','SUMICHEM','COROMANDEL','CHAMBAL','MAPMYINDIA','DELHIVERY','NYKAA','PAYTM']
     };
   }
 
@@ -8314,3 +8318,262 @@ window._runL0WatchlistScan=function(){
       el.innerHTML=h;
     }).catch(function(e){el.innerHTML='<div style="color:#dc2626;padding:16px">'+e.message+'</div>'});
 };
+
+// ═══════════════════════════════════════════════════════════════
+// TWO-MODE PDF EXPORT
+// Mode 1: Summary PDF — clean text, no charts (for sharing)
+// Mode 2: Full HTML — complete report (for internal use)
+// ═══════════════════════════════════════════════════════════════
+
+window._exportSummaryPDF=function(){
+  var d=window._lastInvestorData;
+  if(!d){alert('Analyze a stock first');return}
+  var S=d.csym||'$';var lv=d.levels||{};var biz=d.business||{};var moat=d.moat||{};
+  
+  var h='<!DOCTYPE html><html><head><meta charset="UTF-8"><title>'+d.symbol+' — Summary Report</title>';
+  h+='<style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:"Segoe UI",system-ui,sans-serif;padding:30px 40px;color:#1f2937;max-width:800px;margin:0 auto;font-size:11px;line-height:1.6}';
+  h+='h1{font-size:20px;color:#1A3A78;border-bottom:3px solid #1A3A78;padding-bottom:8px;margin-bottom:4px}';
+  h+='.sub{font-size:10px;color:#6b7280;margin-bottom:20px}';
+  h+='h2{font-size:13px;margin:18px 0 6px;padding:6px 12px;border-radius:6px;color:#fff;background:#1A3A78}';
+  h+='h3{font-size:11px;margin:10px 0 4px;color:#374151;border-bottom:1px solid #e5e7eb;padding-bottom:3px}';
+  h+='table{width:100%;border-collapse:collapse;margin:6px 0 14px}';
+  h+='th{background:#f1f5f9;padding:5px 8px;text-align:left;font-size:9px;color:#6b7280;border-bottom:2px solid #e5e7eb}';
+  h+='td{padding:4px 8px;border-bottom:1px solid #f1f5f9}';
+  h+='.g{color:#059669}.r{color:#dc2626}.y{color:#d97706}';
+  h+='.box{padding:8px 12px;border-radius:6px;margin:6px 0;border:1px solid #e5e7eb;background:#fafbfc}';
+  h+='.kpi{display:flex;gap:8px;margin:8px 0}.kpi>div{flex:1;text-align:center;padding:8px;border:1px solid #e5e7eb;border-radius:6px}';
+  h+='.kpi .v{font-size:16px;font-weight:900;font-family:Consolas,monospace}.kpi .l{font-size:8px;color:#6b7280;text-transform:uppercase}';
+  h+='@media print{body{padding:15px 20px}@page{margin:8mm;size:A4}}';
+  h+='</style></head><body>';
+  
+  // Header
+  h+='<h1>'+d.symbol+' — '+(d.companyName||d.symbol)+'</h1>';
+  h+='<div class="sub">Celesys AI Summary Report · '+new Date().toLocaleString()+' · For discussion purposes only — not financial advice</div>';
+  
+  // Verdict
+  var dC=d.upside>=0?'g':'r';
+  h+='<div style="text-align:center;padding:16px;border:2px solid '+(d.decColor||'#1A3A78')+';border-radius:10px;margin-bottom:14px">';
+  h+='<div style="font-size:24px;font-weight:900;color:'+(d.decColor||'#1A3A78')+'">'+d.decision+'</div>';
+  h+='<div style="font-size:10px;color:#374151;margin-top:6px">'+(d.explain||'')+'</div>';
+  h+='<div style="margin-top:8px;font-size:10px">Confidence: <strong>'+d.confidence+'%</strong> · F-Score: <strong>'+(d.fScore||0)+'/9</strong> · Moat: <strong>'+(d.moatScore||moat.score||0)+'/100</strong></div>';
+  h+='</div>';
+  
+  // KPIs
+  h+='<div class="kpi">';
+  h+='<div><div class="l">Price</div><div class="v">'+S+(d.price||0).toLocaleString()+'</div></div>';
+  h+='<div><div class="l">PE</div><div class="v">'+(d.pe?d.pe.toFixed(1)+'x':'N/A')+'</div></div>';
+  h+='<div><div class="l">Fair Value</div><div class="v">'+S+(lv.fairValue||0).toLocaleString()+'</div></div>';
+  h+='<div><div class="l">Upside</div><div class="v '+(d.upside>=0?'g':'r')+'">'+(d.upside>=0?'+':'')+d.upside.toFixed(1)+'%</div></div>';
+  h+='<div><div class="l">Beta</div><div class="v">'+(d.beta||0).toFixed(2)+'</div></div>';
+  h+='<div><div class="l">RSI</div><div class="v">'+Math.round(d.rsi||0)+'</div></div>';
+  h+='</div>';
+  
+  // Key Levels
+  h+='<h2>📍 Key Levels</h2>';
+  h+='<table><tr><th>Level</th><th>Price</th><th>Action</th></tr>';
+  if(lv.buy)h+='<tr><td>Buy Zone</td><td>'+S+(lv.buy||0).toLocaleString()+'</td><td>Limit order near support</td></tr>';
+  if(lv.sl)h+='<tr><td>Stop Loss</td><td class="r">'+S+(lv.sl||0).toLocaleString()+'</td><td>Hard stop — exit if hit</td></tr>';
+  if(lv.target1)h+='<tr><td>Target 1</td><td class="g">'+S+(lv.target1||0).toLocaleString()+'</td><td>Book 50% profits</td></tr>';
+  if(lv.target2)h+='<tr><td>Target 2</td><td class="g">'+S+(lv.target2||0).toLocaleString()+'</td><td>Close position</td></tr>';
+  h+='</table>';
+  
+  // Business Quality
+  h+='<h2>💚 Business Quality</h2>';
+  h+='<table><tr><th>Metric</th><th>Value</th><th>Rating</th></tr>';
+  h+='<tr><td>F-Score (Piotroski)</td><td>'+(d.fScore||0)+'/9</td><td class="'+((d.fScore||0)>=7?'g':'y')+'">'+(d.fScore>=7?'STRONG':d.fScore>=5?'AVERAGE':'WEAK')+'</td></tr>';
+  h+='<tr><td>Moat</td><td>'+(d.moatScore||moat.score||0)+'/100</td><td>'+(moat.verdict||'')+'</td></tr>';
+  h+='<tr><td>ROE</td><td>'+(d.roe||0).toFixed(1)+'%</td><td class="'+((d.roe||0)>15?'g':'y')+'">'+(d.roe>15?'STRONG':'AVERAGE')+'</td></tr>';
+  h+='<tr><td>Debt/Equity</td><td>'+(biz.debtEquity||0).toFixed(1)+'</td><td class="'+((biz.debtEquity||0)<1?'g':'r')+'">'+(biz.debtEquity<1?'LOW':'HIGH')+'</td></tr>';
+  h+='</table>';
+  
+  // DCF
+  if(d.intrinsicValue){
+    var iv=d.intrinsicValue;
+    h+='<h2>🧮 Intrinsic Value</h2>';
+    h+='<div class="box">Primary DCF: <strong>'+S+(iv.primary||iv.average||0).toLocaleString()+'</strong> · Margin of Safety: <strong>'+(iv.marginOfSafety||0)+'%</strong></div>';
+  }
+  
+  // Monte Carlo
+  if(d.monteCarlo){
+    var mc=d.monteCarlo;
+    h+='<h2>🎲 Monte Carlo ('+mc.simulations+' simulations)</h2>';
+    h+='<div class="kpi">';
+    h+='<div><div class="l">Pessimistic (P10)</div><div class="v">'+S+(mc.p10||0).toLocaleString()+'</div></div>';
+    h+='<div><div class="l">Central (P50)</div><div class="v">'+S+(mc.p50||0).toLocaleString()+'</div></div>';
+    h+='<div><div class="l">Optimistic (P90)</div><div class="v">'+S+(mc.p90||0).toLocaleString()+'</div></div>';
+    h+='</div>';
+    h+='<div class="box">Probability undervalued: <strong>'+mc.probUndervalued+'%</strong></div>';
+  }
+  
+  // CDS Score
+  var eng=window._calcInstitutionalMDO?window._calcInstitutionalMDO(d,S):null;
+  if(eng){
+    h+='<h2>🏛️ CDS v2.0 Score</h2>';
+    h+='<div class="kpi">';
+    h+='<div><div class="l">CDS Score</div><div class="v">'+eng.score.toFixed(0)+'/100</div></div>';
+    h+='<div><div class="l">Verdict</div><div class="v">'+eng.verdict+'</div></div>';
+    h+='<div><div class="l">Bucket</div><div class="v">'+eng.bucketLabel+'</div></div>';
+    h+='<div><div class="l">Allocation</div><div class="v">'+eng.posSize+'%</div></div>';
+    h+='</div>';
+    h+='<h3>6-Layer Breakdown</h3>';
+    h+='<table><tr><th>Layer</th><th>Score</th><th>Weight</th></tr>';
+    h+='<tr><td>L1: Liquidity</td><td>'+Math.round(eng.L1/10)+'/10</td><td>'+eng.weights.L1+'%</td></tr>';
+    h+='<tr><td>L2: Flow</td><td>'+Math.round(eng.L2/10)+'/10</td><td>'+eng.weights.L2+'%</td></tr>';
+    h+='<tr><td>L3: Volatility</td><td>'+Math.round(eng.L3/10)+'/10</td><td>'+eng.weights.L3+'%</td></tr>';
+    h+='<tr><td>L4: Fundamentals</td><td>'+Math.round(eng.L4/10)+'/10</td><td>'+eng.weights.L4+'%</td></tr>';
+    h+='<tr><td>L5: Quant</td><td>'+Math.round(eng.L5/10)+'/10</td><td>'+eng.weights.L5+'%</td></tr>';
+    h+='<tr><td>L6: Probability</td><td>'+Math.round(eng.L6/10)+'/10</td><td>'+eng.weights.L6+'%</td></tr>';
+    h+='</table>';
+  }
+  
+  // Decision Summary
+  h+='<h2>📋 Decision Summary — '+d.symbol+'</h2>';
+  h+='<div class="box"><strong>Quality:</strong> '+d.decision+' · <strong>Timing:</strong> '+(eng?eng.verdict:'—')+' · <strong>Regime:</strong> '+(eng?eng.regime:'—')+'</div>';
+  
+  // Action advice
+  h+='<h3>If You Already Hold</h3>';
+  h+='<div class="box">'+(d.decision.indexOf('BUY')>=0?'HOLD & ADD on dips toward '+S+Math.round(d.sma50||d.price*0.95).toLocaleString()+'. Stop at '+S+Math.round(lv.sl||d.price*0.92).toLocaleString()+'.':'HOLD — do not add. Set alert at SMA50.')+'</div>';
+  h+='<h3>If You Don\'t Hold</h3>';
+  h+='<div class="box">'+(d.decision.indexOf('BUY')>=0&&eng&&eng.score>=60?'ENTER — Limit buy near '+S+Math.round(lv.buy||d.price*0.97).toLocaleString()+'. Allocate '+(eng?eng.posSize:5)+'% of portfolio. Stop: '+S+Math.round(lv.sl||d.price*0.92).toLocaleString()+'.':'WAIT for better entry or improving momentum.')+'</div>';
+  
+  // Footer
+  h+='<div style="margin-top:20px;padding:10px;border-top:2px solid #1A3A78;text-align:center;font-size:8px;color:#94a3b8">';
+  h+='Celesys AI · Summary Report · '+new Date().toLocaleDateString()+' · Educational only — Not financial advice</div>';
+  h+='<script>setTimeout(function(){window.print()},500)<\/script>';
+  h+='</body></html>';
+  
+  var w=window.open('','_blank','width=800,height=600');
+  if(w){w.document.write(h);w.document.close()}
+  else{
+    var blob=new Blob([h],{type:'text/html'});
+    var a=document.createElement('a');a.href=URL.createObjectURL(blob);
+    a.download=d.symbol+'_Summary_Report.html';a.click();
+  }
+};
+
+window._exportFullHTML=function(){
+  var d=window._lastInvestorData;
+  if(!d){alert('Analyze a stock first');return}
+  
+  // Clone the full report from DOM
+  var srcEl=document.getElementById('deResult');
+  if(!srcEl||srcEl.innerHTML.length<500){alert('No report to export');return}
+  
+  var clone=srcEl.cloneNode(true);
+  
+  // Open all details/collapsible sections
+  clone.querySelectorAll('details').forEach(function(det){det.setAttribute('open','')});
+  // Expand all collapsed group bodies
+  clone.querySelectorAll('[id^="b_cg"]').forEach(function(el){el.style.display='block'});
+  // Make sure all display:none sections are visible
+  clone.querySelectorAll('[style*="display:none"],[style*="display: none"]').forEach(function(el){
+    // Don't show hidden nav/tabs, only content sections
+    if(!el.id||el.id.indexOf('Tab')<0){
+      el.style.display='block';
+    }
+  });
+  
+  // Convert Canvas elements to images for PDF
+  var canvases=document.getElementById('deResult').querySelectorAll('canvas');
+  var cloneCanvases=clone.querySelectorAll('canvas');
+  canvases.forEach(function(c,i){
+    try{
+      var img=document.createElement('img');
+      img.src=c.toDataURL('image/png');
+      img.style.cssText='width:'+c.width+'px;max-width:100%;height:auto';
+      if(cloneCanvases[i]){
+        cloneCanvases[i].replaceWith(img);
+      }
+    }catch(e){console.warn('Canvas export failed:',e)}
+  });
+  
+  // Remove interactive buttons but keep informational content
+  clone.querySelectorAll('button,input,select,textarea').forEach(function(el){
+    if(el.tagName==='BUTTON'&&el.textContent.length>30){
+      var sp=document.createElement('span');sp.textContent=el.textContent;sp.style.cssText='font-size:9px;color:#6b7280';el.replaceWith(sp);
+    }else if(el.tagName!=='INPUT'||el.type==='text'){el.remove()}
+  });
+  clone.querySelectorAll('[onclick*="loadInvestorDE"],[onclick*="switchTab"],[onclick*="_topStocksReport"],[onclick*="_runL0Scan"],[onclick*="_openCDSModal"]').forEach(function(el){el.remove()});
+  // Remove export buttons themselves
+  var expBtns=clone.querySelector('#celesysExportBtns');if(expBtns)expBtns.remove();
+  
+  // Get styles
+  var styles='';
+  document.querySelectorAll('link[rel="stylesheet"],style').forEach(function(s){
+    if(s.tagName==='STYLE')styles+=s.outerHTML;
+    else if(s.href)styles+='<link rel="stylesheet" href="'+s.href+'">';
+  });
+  var rootStyles=getComputedStyle(document.documentElement);
+  var cssVars='';
+  ['--bg','--bg2','--bg3','--surface','--glass','--border','--border2','--blue','--blue2','--cyan','--teal','--green','--green2','--amber','--red','--purple','--text','--text2','--text3','--mono'].forEach(function(v){
+    try{cssVars+=v+':'+rootStyles.getPropertyValue(v)+';'}catch(e){}
+  });
+  
+  var h='<!DOCTYPE html><html><head><meta charset="UTF-8"><title>'+d.symbol+' — Full Report (Internal)</title>';
+  h+=styles;
+  h+='<style>:root{'+cssVars+'}body{font-family:"DM Sans","Segoe UI",system-ui,sans-serif;padding:20px 30px;color:#1f2937;background:#fff;max-width:1000px;margin:0 auto}';
+  h+='@media print{body{padding:10px 15px;max-width:100%}button,input,select,.no-print{display:none!important}details{display:block!important}details>summary{list-style:none}details>*:not(summary){display:block!important}[style*="display:none"]{display:block!important}}';
+  h+='@page{margin:8mm;size:A4}';
+  h+='canvas{max-width:100%!important}img{max-width:100%!important}';
+  h+='</style></head><body>';
+  
+  // Confidential header
+  h+='<div style="text-align:center;padding:10px;background:#FEF3C7;border:1px solid #F59E0B;border-radius:8px;margin-bottom:14px;font-size:10px;color:#92400E"><strong>CONFIDENTIAL — INTERNAL USE ONLY</strong> — Complete analysis report with all 36 charts. Content cannot be printed. — celesys.ai</div>';
+  
+  // Header
+  h+='<div style="text-align:center;padding-bottom:14px;border-bottom:3px solid #1A3A78;margin-bottom:14px">';
+  h+='<div style="font-size:24px;font-weight:900;color:#1A3A78;font-family:Sora,sans-serif">'+d.symbol+' — '+(d.companyName||d.symbol)+'</div>';
+  h+='<div style="font-size:11px;color:#6b7280">Celesys AI Full Report · INTERNAL · '+new Date().toLocaleString()+'</div></div>';
+  
+  h+=clone.outerHTML;
+  
+  h+='<div style="margin-top:20px;padding:12px;border-top:2px solid #1A3A78;text-align:center;font-size:9px;color:#94a3b8">Celesys AI · Internal Full Report · '+new Date().toLocaleDateString()+' · Educational only</div>';
+  h+='</body></html>';
+  
+  // Download as HTML file
+  var blob=new Blob([h],{type:'text/html;charset=utf-8'});
+  var a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download=d.symbol+'_Full_Report_INTERNAL.html';
+  document.body.appendChild(a);a.click();
+  setTimeout(function(){document.body.removeChild(a);URL.revokeObjectURL(a.href)},1000);
+  alert(d.symbol+' full report downloaded as HTML.\\n\\nTo save as PDF:\\n1. Open the downloaded HTML file in Chrome\\n2. Press Ctrl+P (or Cmd+P)\\n3. Set Destination to \\"Save as PDF\\"\\n4. Enable \\"Background graphics\\"\\n5. Set margins to \\"Minimum\\"');
+};
+
+// ═══ Add export buttons to the report header ═══
+window._addExportButtons=function(){
+  var el=document.getElementById('deResult');
+  if(!el)return;
+  var existing=document.getElementById('celesysExportBtns');
+  if(existing)return;
+  
+  var d=window._lastInvestorData;
+  if(!d)return;
+  
+  var btns=document.createElement('div');
+  btns.id='celesysExportBtns';
+  btns.style.cssText='display:flex;gap:8px;justify-content:center;margin:10px 0;flex-wrap:wrap';
+  btns.innerHTML='<button onclick="window._exportSummaryPDF()" style="padding:8px 16px;border-radius:8px;background:#059669;color:#fff;border:none;font-size:10px;font-weight:800;cursor:pointer;font-family:Sora,sans-serif">📄 Summary PDF (for sharing)</button>'
+    +'<button onclick="window._exportFullHTML()" style="padding:8px 16px;border-radius:8px;background:#1A3A78;color:#fff;border:none;font-size:10px;font-weight:800;cursor:pointer;font-family:Sora,sans-serif">📊 Full HTML Report (internal)</button>'
+    +'<button onclick="if(typeof _investorExportPDF===\'function\')_investorExportPDF()" style="padding:8px 16px;border-radius:8px;background:#6b7280;color:#fff;border:none;font-size:10px;font-weight:800;cursor:pointer;font-family:Sora,sans-serif">🖨️ Print Report</button>';
+  
+  // Insert after the hero section
+  var hero=el.querySelector('[style*="text-align:center"]');
+  if(hero&&hero.parentElement===el){
+    hero.parentElement.insertBefore(btns,hero.nextSibling);
+  }else{
+    el.insertBefore(btns,el.firstChild);
+  }
+};
+
+// Auto-add export buttons when report loads
+var _origLoadInvestorDE=window.loadInvestorDE;
+if(typeof _origLoadInvestorDE==='function'){
+  // Will be injected via setTimeout after report renders
+}
+// Hook into the render completion
+setInterval(function(){
+  if(window._lastInvestorData&&document.getElementById('deResult')&&document.getElementById('deResult').innerHTML.length>1000&&!document.getElementById('celesysExportBtns')){
+    window._addExportButtons();
+  }
+},2000);
