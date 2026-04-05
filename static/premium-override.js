@@ -5374,9 +5374,9 @@ window._institutionalSummary=function(d,S){
   console.log('[CONSENSUS] Verdicts: '+verdicts.map(function(v){return v.chart+'='+(v.bullish?'✅':'❌')+v.v+'(w:'+v.w+')'}).join(' | '));
   console.log('[CONSENSUS] Result: '+finalV+' ('+bullPct+'% bull, '+bullCount+'/'+bearCount+' B/Bear)');
 
-  var h='<div style="margin:16px 0;border-radius:16px;overflow:hidden;border:2px solid '+finalC+'25;background:linear-gradient(135deg,'+finalC+'04,#fff)">';
+  var h='<div style="margin:22px 0;border-radius:18px;overflow:hidden;border:2.5px solid '+finalC+'35;background:linear-gradient(135deg,'+finalC+'06,#fff);box-shadow:0 4px 20px '+finalC+'12">';
   // Educational context
-  h+='<div style="padding:10px 18px;font-size:9px;color:#5E6F8E;line-height:1.6;background:#FFFBEB;border-bottom:1px solid '+finalC+'15">';
+  h+='<div style="padding:12px 18px;font-size:9px;color:#5E6F8E;line-height:1.6;background:#FFFBEB;border-bottom:1.5px solid '+finalC+'15">';
   h+='⚡ <strong style="color:#92400E">Technical Timing Score</strong> — This section aggregates 9 chart-based signals (trend, momentum, risk, valuation vs DCF, beta) to answer: <em>"Should I enter NOW?"</em> ';
   h+='It may differ from the headline verdict above, which scores business quality. A stock can be a STRONG BUY on fundamentals but a SELL on timing if price is below moving averages or momentum is weak. <strong>Read both together</strong> — quality tells you WHAT to buy, this tells you WHEN.</div>';
   // Header
@@ -7183,11 +7183,12 @@ console.log('[CDS] Phase 2 charts loaded: VolRegime, AccumDist, StressTest, Tren
 // ── Helper: Group Summary Banner ──
 window._groupSummary=function(emoji,title,question,answer,ansC){
   var c=ansC||'#1A3A78';
-  return '<div style="margin:20px 0 6px;padding:12px 16px;border-radius:12px;background:linear-gradient(135deg,'+c+'12,'+c+'05);border-left:4px solid '+c+';border:1.5px solid '+c+'30">'
-    +'<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">'
-    +'<div><div style="font-size:12px;font-weight:900;color:#0A1628;font-family:Sora,sans-serif;letter-spacing:.2px">'+emoji+' '+title+'</div>'
-    +'<div style="font-size:9px;color:#5E6F8E;margin-top:3px;font-style:italic">"'+question+'"</div></div>'
-    +'<div style="font-size:10px;font-weight:800;color:'+c+';background:'+c+'15;padding:4px 12px;border-radius:20px;white-space:nowrap;flex-shrink:0;margin-top:2px">'+answer+'</div>'
+  return '<div style="margin:20px 0 6px;padding:14px 18px;border-radius:14px;background:linear-gradient(135deg,'+c+'15,'+c+'06);border-left:5px solid '+c+';border:1.5px solid '+c+'30;box-shadow:0 2px 8px '+c+'08">'
+    +'<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px">'
+    +'<div style="display:flex;align-items:center;gap:10px"><div style="width:34px;height:34px;border-radius:8px;background:'+c+'18;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">'+emoji+'</div>'
+    +'<div><div style="font-size:12px;font-weight:900;color:'+c+';font-family:Sora,sans-serif;letter-spacing:.3px;text-transform:uppercase">'+title+'</div>'
+    +'<div style="font-size:9px;color:#5E6F8E;margin-top:3px;font-style:italic">"'+question+'"</div></div></div>'
+    +'<div style="font-size:10px;font-weight:800;color:#fff;background:'+c+';padding:5px 14px;border-radius:20px;white-space:nowrap;flex-shrink:0;margin-top:2px;box-shadow:0 2px 6px '+c+'30">'+answer+'</div>'
     +'</div></div>';
 };
 

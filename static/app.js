@@ -11866,11 +11866,13 @@ if(lv.hi52>0&&lv.lo52>0) h+=_52weekBar(lv.lo52,lv.hi52,d.price,lv.sl,lv.target1,
 // ═══════════════════════════════════════════════════════════════
 // SECTION 1: Valuation & Price Levels
 // ═══════════════════════════════════════════════════════════════
-h+='<div style="margin:14px 0 10px;padding:14px 20px;border-radius:12px;background:linear-gradient(135deg,#059669,#10b981);text-align:center">';
-h+='<div style="font-size:9px;font-weight:800;color:rgba(255,255,255,.5);letter-spacing:2px;margin-bottom:4px">PART 1</div>';
-h+='<div style="font-size:14px;font-weight:900;color:#fff;font-family:Sora,sans-serif">Fundamental Analysis & Valuation</div>';
-h+='<div style="font-size:9px;color:rgba(255,255,255,.5);margin-top:4px">Business quality, intrinsic value, earnings, risk metrics, and investment thesis</div>';
-h+='</div>';
+h+='<div style="margin:18px 0 14px;border-radius:16px;overflow:hidden;box-shadow:0 4px 16px rgba(5,150,105,.2)">';
+h+='<div style="padding:8px 24px;background:linear-gradient(135deg,#059669,#059669cc);font-size:10px;font-weight:900;color:#fff;font-family:Sora,sans-serif;letter-spacing:1.5px">GROUP 1: FUNDAMENTALS & BUSINESS QUALITY</div>';
+h+='<div style="padding:14px 24px;background:linear-gradient(135deg,#10b981,#059669);text-align:center;border-left:6px solid #047857">';
+h+='<div style="font-size:10px;font-weight:800;color:rgba(255,255,255,.6);letter-spacing:3px;margin-bottom:6px">PART 1</div>';
+h+='<div style="font-size:16px;font-weight:900;color:#fff;font-family:Sora,sans-serif">Fundamental Analysis & Valuation</div>';
+h+='<div style="font-size:10px;color:rgba(255,255,255,.6);margin-top:6px">Business quality, intrinsic value, earnings, risk metrics, and investment thesis</div>';
+h+='</div></div>';
 var valBody='';
 valBody+=grid(3,[
   _metricBox('PE Ratio',d.pe?F(d.pe,1)+'x':'N/A',val.verdict||'',d.pe>25?'#D97706':'#059669'),
@@ -12149,11 +12151,18 @@ h+='</div>';
 
 // ═══ INSTITUTIONAL CHARTS — inside Investor DE ═══
 // Section divider — separates fundamental analysis from institutional/technical analysis
-h+='<div style="margin:24px 0 14px;padding:14px 20px;border-radius:12px;background:linear-gradient(135deg,#0A1628,#1A3A78);text-align:center">';
-h+='<div style="font-size:9px;font-weight:800;color:rgba(255,255,255,.5);letter-spacing:2px;margin-bottom:4px">PART 2</div>';
-h+='<div style="font-size:14px;font-weight:900;color:#fff;font-family:Sora,sans-serif">Institutional Analysis & Timing</div>';
-h+='<div style="font-size:9px;color:rgba(255,255,255,.5);margin-top:4px">Technical signals, risk structure, momentum, and portfolio-level decision scoring</div>';
+h+='<div style="margin:28px 0 14px;border-radius:16px;overflow:hidden;box-shadow:0 4px 16px rgba(26,58,120,.25)">';
+h+='<div style="padding:8px 24px;background:linear-gradient(135deg,#0A1628,#0A1628cc);font-size:10px;font-weight:900;color:#fff;font-family:Sora,sans-serif;letter-spacing:1.5px">GROUPS 2–12: INSTITUTIONAL ANALYSIS & TIMING</div>';
+h+='<div style="padding:14px 24px;background:linear-gradient(135deg,#1A3A78,#0A1628);text-align:center;border-left:6px solid #1e40af">';
+h+='<div style="font-size:10px;font-weight:800;color:rgba(255,255,255,.6);letter-spacing:3px;margin-bottom:6px">PART 2</div>';
+h+='<div style="font-size:16px;font-weight:900;color:#fff;font-family:Sora,sans-serif">Institutional Analysis & Timing</div>';
+h+='<div style="font-size:10px;color:rgba(255,255,255,.6);margin-top:6px">Technical signals, risk structure, momentum, and portfolio-level decision scoring</div>';
+h+='<div style="display:flex;justify-content:center;gap:6px;margin-top:10px;flex-wrap:wrap">';
+h+='<span style="padding:3px 10px;border-radius:12px;font-size:8px;font-weight:700;background:rgba(255,255,255,.12);color:rgba(255,255,255,.7)">10 Analysis Groups</span>';
+h+='<span style="padding:3px 10px;border-radius:12px;font-size:8px;font-weight:700;background:rgba(255,255,255,.12);color:rgba(255,255,255,.7)">36 Charts</span>';
+h+='<span style="padding:3px 10px;border-radius:12px;font-size:8px;font-weight:700;background:rgba(255,255,255,.12);color:rgba(255,255,255,.7)">Color-coded by group</span>';
 h+='</div>';
+h+='</div></div>';
 // 1. Institutional Analysis Stack (charts) — FIRST
 h+='<details open style="margin:14px 0;border-radius:16px;border:2px solid #1A3A7830;background:#fff;overflow:hidden"><summary style="padding:16px 20px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;font-size:14px;font-weight:900;color:#fff;font-family:Sora,sans-serif;list-style:none;background:linear-gradient(135deg,#0A1628,#1A3A78);border-radius:14px 14px 0 0"><span>📊 Institutional Analysis Stack — 8 Decision Charts</span><span style="font-size:9px;color:rgba(255,255,255,.6);font-weight:500">▾</span></summary><div style="padding:10px 18px 0;font-size:9px;color:#5E6F8E;line-height:1.6;background:#F0F4FF;border-bottom:1px solid #E2E8F0">🏛️ <strong>What this section does:</strong> The MDO (Master Decision Orchestration) score is a <strong>technical + risk timing engine</strong>. It uses 6 layers — Liquidity, Flow, Volatility, Fundamentals, Quant, and Probability — to answer: <em>"Is NOW the right time to enter?"</em> A strong business (STRONG BUY above) can still score NEUTRAL or AVOID here if the timing, momentum, or risk profile is unfavorable. <strong>Use the verdict above for WHAT to buy. Use this section for WHEN to buy.</strong></div><div id="investorInstCharts" style="padding:4px 16px 16px"><div style="text-align:center;padding:20px;color:#94a3b8;font-size:10px">Loading institutional charts...</div></div></details>';
 
@@ -12215,12 +12224,12 @@ if(_scenario==='ALIGNED_BULL'){
   _noHoldAdvice='<strong>\u23F3 WAIT for clarity.</strong><br>\u2022 <strong>Watchlist</strong> \u2014 don\'t commit capital yet.<br>\u2022 <strong>Entry trigger</strong>: 2 of 3 systems agree.<br>\u2022 <strong>If impatient</strong>: 1% tracking position with stop at '+S+Math.round(lv.sl||_sumPrice*0.90).toLocaleString()+'.';
 }
 
-h+='<div style="margin:14px 0;border-radius:18px;overflow:hidden;border:2px solid '+_scenarioColor+'30;background:#fff;box-shadow:0 4px 20px rgba(10,22,40,.06)">';
+h+='<div style="margin:22px 0;border-radius:18px;overflow:hidden;border:2.5px solid '+_scenarioColor+'35;background:#fff;box-shadow:0 6px 24px rgba(10,22,40,.08);border-left:6px solid '+_scenarioColor+'">';
 // Header
-h+='<div style="padding:18px 24px;background:linear-gradient(135deg,'+_scenarioColor+'08,'+_scenarioColor+'03);border-bottom:2px solid '+_scenarioColor+'15">';
+h+='<div style="padding:20px 24px;background:linear-gradient(135deg,'+_scenarioColor+'12,'+_scenarioColor+'04);border-bottom:2px solid '+_scenarioColor+'18">';
 h+='<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">';
-h+='<div><div style="font-size:8px;font-weight:800;color:#94a3b8;letter-spacing:2px">DECISION SUMMARY — ALL SYSTEMS</div>';
-h+='<div style="font-size:18px;font-weight:900;color:'+_scenarioColor+';font-family:Sora,sans-serif;margin-top:4px">'+_scenarioIcon+' '+_scenarioLabel+'</div></div>';
+h+='<div><div style="font-size:9px;font-weight:800;color:#94a3b8;letter-spacing:2px">DECISION SUMMARY — ALL SYSTEMS</div>';
+h+='<div style="font-size:20px;font-weight:900;color:'+_scenarioColor+';font-family:Sora,sans-serif;margin-top:4px">'+_scenarioIcon+' '+_scenarioLabel+'</div></div>';
 h+='<div style="display:flex;gap:8px;flex-wrap:wrap">';
 // Three pills showing each system's verdict
 h+='<div style="padding:5px 12px;border-radius:100px;font-size:8px;font-weight:800;background:'+dC+'12;color:'+dC+';border:1px solid '+dC+'20">Quality: '+_sumDecision+'</div>';
@@ -12300,41 +12309,53 @@ setTimeout(function(){
     var _betaV=cd.beta||1;
     console.log('[CHARTS] Rendering grouped institutional charts for',cd.symbol);
 
-    // ── JUMP NAV BAR ──
+    // ── JUMP NAV BAR — Color-coded to match group themes ──
     var _navGroups=[
-      {id:'grp-val',e:'🔵',s:'Valuation'},
-      {id:'grp-tech',e:'🟡',s:'Technical'},
-      {id:'grp-flow',e:'🔴',s:'Flows'},
-      {id:'grp-alpha',e:'🟣',s:'Alpha'},
-      {id:'grp-risk',e:'🟠',s:'Risk'},
-      {id:'grp-macro',e:'⚫',s:'Macro'},
-      {id:'grp-scen',e:'🟤',s:'Scenarios'},
-      {id:'grp-port',e:'⚪',s:'Portfolio'},
-      {id:'grp-dec',e:'🧩',s:'Decision'},
-      {id:'grp-sent',e:'🧠',s:'Sentiment'}
+      {id:'grp-val',e:'🔵',s:'2 · Valuation',c:'#3b82f6'},
+      {id:'grp-tech',e:'🟡',s:'3 · Technical',c:'#d97706'},
+      {id:'grp-flow',e:'🔴',s:'4 · Flows',c:'#dc2626'},
+      {id:'grp-alpha',e:'🟣',s:'5 · Alpha',c:'#7c3aed'},
+      {id:'grp-risk',e:'🟠',s:'6 · Risk',c:'#ea580c'},
+      {id:'grp-macro',e:'⚫',s:'7 · Macro',c:'#374151'},
+      {id:'grp-scen',e:'🟤',s:'8 · Scenarios',c:'#92400e'},
+      {id:'grp-port',e:'⚪',s:'9 · Portfolio',c:'#6b7280'},
+      {id:'grp-dec',e:'🧩',s:'10 · Decision',c:'#1A3A78'},
+      {id:'grp-sent',e:'🧠',s:'12 · Sentiment',c:'#0891b2'}
     ];
-    ch+='<div id="celesys-group-nav" style="position:sticky;top:0;z-index:100;background:rgba(255,255,255,0.97);backdrop-filter:blur(8px);border-bottom:1px solid #e2e8f0;padding:6px 10px;margin:0 0 16px;overflow-x:auto;display:flex;gap:4px;scrollbar-width:none">';
+    ch+='<div id="celesys-group-nav" style="position:sticky;top:0;z-index:100;background:rgba(255,255,255,0.97);backdrop-filter:blur(8px);border-bottom:1px solid #e2e8f0;padding:8px 10px;margin:0 0 16px;overflow-x:auto;display:flex;gap:5px;scrollbar-width:none">';
     _navGroups.forEach(function(g){
-      ch+='<button onclick="(function(){var el=document.getElementById(\''+g.id+'\');if(el)el.scrollIntoView({behavior:\'smooth\',block:\'start\'});})()" style="flex-shrink:0;padding:4px 10px;border-radius:20px;border:1px solid #e2e8f0;background:#f8fafc;font-size:9px;font-weight:700;color:#374151;cursor:pointer;white-space:nowrap;font-family:Sora,sans-serif;transition:all .15s" onmouseover="this.style.background=\'#1A3A78\';this.style.color=\'#fff\'" onmouseout="this.style.background=\'#f8fafc\';this.style.color=\'#374151\'">'+g.e+' '+g.s+'</button>';
+      ch+='<button onclick="(function(){var el=document.getElementById(\''+g.id+'\');if(el)el.scrollIntoView({behavior:\'smooth\',block:\'start\'});})()" style="flex-shrink:0;padding:5px 12px;border-radius:20px;border:1.5px solid '+g.c+'40;background:'+g.c+'10;font-size:9px;font-weight:800;color:'+g.c+';cursor:pointer;white-space:nowrap;font-family:Sora,sans-serif;transition:all .2s;letter-spacing:.3px" onmouseover="this.style.background=\''+g.c+'\';this.style.color=\'#fff\';this.style.borderColor=\''+g.c+'\';this.style.boxShadow=\'0 2px 8px '+g.c+'40\'" onmouseout="this.style.background=\''+g.c+'10\';this.style.color=\''+g.c+'\';this.style.borderColor=\''+g.c+'40\';this.style.boxShadow=\'none\'">'+g.e+' '+g.s+'</button>';
     });
     ch+='</div>';
 
-    // ── COLLAPSIBLE GROUP WRAPPER ──
-    function _groupWrap(id,emoji,color,label,question,answer,ansC,innerFn){
+    // ── COLLAPSIBLE GROUP WRAPPER — Distinct color-coded boxes with GROUP # heading ──
+    function _groupWrap(id,emoji,color,label,question,answer,ansC,innerFn,grpNum){
       var _inner=innerFn();
       if(!_inner)return'';
       var _uid='cg'+Math.random().toString(36).substr(2,5);
-      var out='<div id="'+id+'" style="margin:20px 0 0;scroll-margin-top:52px">';
-      out+='<div onclick="(function(){var b=document.getElementById(\'b_'+_uid+'\');var a=document.getElementById(\'a_'+_uid+'\');if(b){var op=b.style.display!==\'none\';b.style.display=op?\'none\':\'block\';a.textContent=op?\'▸\':\'▾\';}})()" style="cursor:pointer;position:sticky;top:40px;z-index:90;padding:10px 16px;border-radius:12px;background:linear-gradient(135deg,'+color+'18,'+color+'06);border:1.5px solid '+color+'35;display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;user-select:none;-webkit-user-select:none">';
+      var _gn=grpNum||'';
+      // Outer container: colored left border + tinted background so each group is visually distinct
+      var out='<div id="'+id+'" style="margin:22px 0 0;scroll-margin-top:52px;border-radius:16px;overflow:hidden;border:1.5px solid '+color+'30;border-left:5px solid '+color+';background:'+color+'05;box-shadow:0 2px 12px '+color+'08">';
+      // Group number banner — full-width colored strip at top
+      if(_gn){
+        out+='<div style="padding:6px 18px;background:linear-gradient(135deg,'+color+','+color+'cc);display:flex;align-items:center;justify-content:space-between">';
+        out+='<div style="font-size:10px;font-weight:900;color:#fff;font-family:Sora,sans-serif;letter-spacing:1.5px;text-transform:uppercase">GROUP '+_gn+': '+label+'</div>';
+        out+='<div style="font-size:8px;font-weight:700;color:rgba(255,255,255,.7);letter-spacing:1px">'+emoji+'</div>';
+        out+='</div>';
+      }
+      // Header bar: gradient background, clickable to toggle
+      out+='<div onclick="(function(){var b=document.getElementById(\'b_'+_uid+'\');var a=document.getElementById(\'a_'+_uid+'\');if(b){var op=b.style.display!==\'none\';b.style.display=op?\'none\':\'block\';a.textContent=op?\'▸\':\'▾\';}})()" style="cursor:pointer;position:sticky;top:40px;z-index:90;padding:12px 18px;background:linear-gradient(135deg,'+color+'15,'+color+'06);border-bottom:1.5px solid '+color+'20;display:flex;align-items:center;justify-content:space-between;user-select:none;-webkit-user-select:none">';
+      // Left side: question
       out+='<div style="display:flex;align-items:center;gap:10px">';
-      out+='<span style="font-size:18px">'+emoji+'</span>';
-      out+='<div><div style="font-size:11px;font-weight:900;color:#0A1628;font-family:Sora,sans-serif;letter-spacing:.2px">'+label+'</div>';
-      out+='<div style="font-size:9px;color:#5E6F8E;font-style:italic;margin-top:1px">"'+question+'"</div></div></div>';
+      out+='<div style="width:34px;height:34px;border-radius:8px;background:'+color+'18;border:1.5px solid '+color+'30;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">'+emoji+'</div>';
+      out+='<div style="font-size:10px;color:#5E6F8E;font-style:italic">"'+question+'"</div></div>';
+      // Right side: answer pill + toggle
       out+='<div style="display:flex;align-items:center;gap:8px">';
-      out+='<div style="font-size:10px;font-weight:800;color:'+(ansC||color)+';background:'+(ansC||color)+'18;padding:3px 12px;border-radius:20px;max-width:200px;text-align:right;line-height:1.3">'+answer+'</div>';
-      out+='<span id="a_'+_uid+'" style="font-size:14px;color:'+(ansC||color)+';font-weight:900;transition:all .2s;width:16px;text-align:center">▾</span>';
+      out+='<div style="font-size:10px;font-weight:800;color:#fff;background:'+(ansC||color)+';padding:5px 14px;border-radius:20px;max-width:220px;text-align:right;line-height:1.3;box-shadow:0 2px 6px '+(ansC||color)+'30">'+answer+'</div>';
+      out+='<span id="a_'+_uid+'" style="font-size:16px;color:'+color+';font-weight:900;transition:all .2s;width:18px;text-align:center">▾</span>';
       out+='</div></div>';
-      out+='<div id="b_'+_uid+'">'+_inner+'</div>';
+      // Content area
+      out+='<div id="b_'+_uid+'" style="padding:8px 12px 14px;background:linear-gradient(180deg,'+color+'03,#ffffff)">'+_inner+'</div>';
       out+='</div>';
       return out;
     }
@@ -12350,7 +12371,7 @@ setTimeout(function(){
       if(typeof _timeToValue==='function')_b+=_timeToValue(cd,cS);
       if(typeof _peerMap==='function')_b+=_peerMap(cd,cS);
       return _b;
-    });
+    },"2");
     console.log('[CHARTS] 🔵 Group 2: Valuation');
 
     // ── GROUP 3: TECHNICAL & MARKET STRUCTURE ──
@@ -12365,7 +12386,7 @@ setTimeout(function(){
       if(typeof _trendPersistence==='function')_b+=_trendPersistence(cd,cS);
       if(typeof _accumDistPhase==='function')_b+=_accumDistPhase(cd,cS);
       return _b;
-    });
+    },"3");
     console.log('[CHARTS] 🟡 Group 3: Technical');
 
     // ── GROUP 4: INSTITUTIONAL FLOWS ──
@@ -12380,7 +12401,7 @@ setTimeout(function(){
       if(typeof _etfFlowDep==='function')_b+=_etfFlowDep(cd,cS);
       if(typeof _sectorStrengthMap==='function')_b+=_sectorStrengthMap(cd,cS);
       return _b;
-    });
+    },"4");
     console.log('[CHARTS] 🔴 Group 4: Flows');
 
     // ── GROUP 5: FACTOR & ALPHA ──
@@ -12391,7 +12412,7 @@ setTimeout(function(){
       if(typeof _earningsDistCone==='function')_b+=_earningsDistCone(cd,cS);
       if(typeof _factorContributionTimeline==='function')_b+=_factorContributionTimeline(cd,cS);
       return _b;
-    });
+    },"5");
     console.log('[CHARTS] 🟣 Group 5: Alpha');
 
     // ── GROUP 6: RISK ENGINE ──
@@ -12403,7 +12424,7 @@ setTimeout(function(){
       if(typeof _upsideParticipation==='function')_b+=_upsideParticipation(cd,cS);
       if(typeof _stressTestChart==='function')_b+=_stressTestChart(cd,cS);
       return _b;
-    });
+    },"6");
     console.log('[CHARTS] 🟠 Group 6: Risk');
 
     // ── GROUP 7: MACRO & REGIME ──
@@ -12414,7 +12435,7 @@ setTimeout(function(){
       if(typeof _liquidityCycle==='function')_b+=_liquidityCycle(cd,cS);
       if(typeof _macroSensitivityMap==='function')_b+=_macroSensitivityMap(cd,cS);
       return _b;
-    });
+    },"7");
     console.log('[CHARTS] ⚫ Group 7: Macro');
 
     // ── GROUP 8: SCENARIO & PROBABILITY ──
@@ -12425,7 +12446,7 @@ setTimeout(function(){
       if(typeof _roicWaccGauge==='function')_b+=_roicWaccGauge(cd,cS);
       if(typeof _compoundingViz==='function')_b+=_compoundingViz(cd,cS);
       return _b;
-    });
+    },"8");
     console.log('[CHARTS] 🟤 Group 8: Scenarios');
 
     // ── GROUP 9: PORTFOLIO & CAPITAL ──
@@ -12436,7 +12457,7 @@ setTimeout(function(){
       if(typeof _riskContribution==='function')_b+=_riskContribution(cd,cS);
       if(typeof _allocGauge==='function')_b+=_allocGauge(cd,cS);
       return _b;
-    });
+    },"9");
     console.log('[CHARTS] ⚪ Group 9: Portfolio');
 
     // ── GROUP 10+11: DECISION INTELLIGENCE ──
@@ -12448,7 +12469,7 @@ setTimeout(function(){
       if(typeof _tradeInvestSplit==='function')_b+=_tradeInvestSplit(cd,cS);
       if(typeof _decisionConfidence==='function')_b+=_decisionConfidence(cd,cS);
       return _b;
-    });
+    },"10");
     console.log('[CHARTS] 🧩 Group 10: Decision');
 
     // ── GROUP 12: NARRATIVE & SENTIMENT ──
@@ -12458,7 +12479,7 @@ setTimeout(function(){
       if(typeof _sentimentTimeline==='function')_b+=_sentimentTimeline(cd,cS);
       if(typeof _themeExposure==='function')_b+=_themeExposure(cd,cS);
       return _b;
-    });
+    },"12");
     console.log('[CHARTS] 🧠 Group 12: Sentiment');
 
     // INSTITUTIONAL CONSENSUS SUMMARY — aggregates ALL chart decisions
