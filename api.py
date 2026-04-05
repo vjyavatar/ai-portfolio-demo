@@ -21907,6 +21907,285 @@ async def l0_scan(region: str = "US", mode: str = "quality", theme: str = "", li
         return {"success": False, "error": str(e)}
 
 
+# ═══════════════════════════════════════════════════════════════════
+# CDS BATCH SCANNER — Single batch download + server-side CDS scoring
+# 10-50x faster than individual investor-decide calls
+# ═══════════════════════════════════════════════════════════════════
+@app.get("/api/cds-batch")
+async def cds_batch(symbols: str = "", region: str = "US", segment: str = "LARGE"):
+    """Batch CDS scan — downloads all stocks in ONE yfinance call, computes CDS scores server-side.
+    symbols: comma-separated list e.g. AAPL,MSFT,NVDA
+    """
+    import pandas as pd
+    import numpy as np
+    import time as _t
+    t0 = _t.time()
+    
+    try:
+        sym_list = [s.strip() for s in symbols.split(",") if s.strip()]
+        if not sym_list:
+            return {"success": False, "error": "No symbols provided"}
+        
+        is_us = region.upper() == "US"
+        csym = "$" if is_us else "₹"
+        
+        # Add .NS for India
+        yf_syms = sym_list if is_us else [s+".NS" if not s.endswith(".NS") else s for s in sym_list]
+        
+        print(f"⚡ CDS Batch: {len(yf_syms)} stocks | {region} | {segment}")
+        
+        # ═══ SINGLE BATCH DOWNLOAD ═══
+        loop = asyncio.get_event_loop()
+        def _dl():
+            try:
+                return yf.download(yf_syms, period="1y", group_by="ticker", progress=False, threads=True)
+            except:
+                return pd.DataFrame()
+        hist = await loop.run_in_executor(None, _dl)
+        
+        if hist.empty:
+            return {"success": False, "error": "Failed to download market data"}
+        
+        # ═══ BATCH FUNDAMENTALS — one Ticker call per stock but parallelized ═══
+        def _get_info(sym):
+            try:
+                t = yf.Ticker(sym)
+                info = t.info or {}
+                return sym, info
+            except:
+                return sym, {}
+        
+        import concurrent.futures
+        fund_data = {}
+        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+            futures = {executor.submit(_get_info, s): s for s in yf_syms}
+            for f in concurrent.futures.as_completed(futures):
+                sym, info = f.result()
+                fund_data[sym] = info
+        
+        # ═══ SCORE EACH STOCK ═══
+        results = []
+        for sym in yf_syms:
+            try:
+                if len(yf_syms) == 1:
+                    closes = hist["Close"].dropna()
+                    volumes = hist["Volume"].dropna()
+                elif sym in hist.columns.get_level_values(0):
+                    closes = hist[sym]["Close"].dropna()
+                    volumes = hist[sym]["Volume"].dropna()
+                else:
+                    continue
+                
+                if len(closes) < 30: continue
+                price = float(closes.iloc[-1])
+                if price <= 0: continue
+                
+                info = fund_data.get(sym, {})
+                
+                # ── PRICE ACTION METRICS ──
+                sma50 = float(closes.iloc[-50:].mean()) if len(closes) >= 50 else float(closes.mean())
+                sma200 = float(closes.iloc[-200:].mean()) if len(closes) >= 200 else float(closes.mean())
+                
+                delta = closes.diff()
+                gain = delta.where(delta > 0, 0).rolling(14).mean()
+                loss = (-delta.where(delta < 0, 0)).rolling(14).mean()
+                rs = gain.iloc[-1] / loss.iloc[-1] if loss.iloc[-1] > 0 else 100
+                rsi = float(100 - (100 / (1 + rs)))
+                
+                daily_ret = closes.pct_change().dropna()
+                volatility = float(daily_ret.std() * np.sqrt(252) * 100)
+                beta_proxy = volatility / 16  # Rough beta estimate from vol
+                
+                avg_vol = float(volumes.iloc[-20:].mean()) if len(volumes) >= 20 else 0
+                vol_trend = float(volumes.iloc[-5:].mean() / max(volumes.iloc[-20:].mean(), 1)) if len(volumes) >= 20 else 1
+                
+                hi52 = float(closes.max())
+                lo52 = float(closes.min())
+                
+                ret_1m = float((closes.iloc[-1] / closes.iloc[-22] - 1) * 100) if len(closes) >= 22 else 0
+                ret_3m = float((closes.iloc[-1] / closes.iloc[-66] - 1) * 100) if len(closes) >= 66 else 0
+                ret_1y = float((closes.iloc[-1] / closes.iloc[0] - 1) * 100)
+                
+                # ── FUNDAMENTAL METRICS ──
+                pe = float(info.get("trailingPE", 0) or info.get("forwardPE", 0) or 0)
+                pb = float(info.get("priceToBook", 0) or 0)
+                roe = float(info.get("returnOnEquity", 0) or 0) * 100 if info.get("returnOnEquity") and abs(info.get("returnOnEquity", 0)) < 5 else float(info.get("returnOnEquity", 0) or 0)
+                de = float(info.get("debtToEquity", 0) or 0)
+                gm = float(info.get("grossMargins", 0) or 0) * 100 if info.get("grossMargins") and abs(info.get("grossMargins", 0)) < 5 else 0
+                npm = float(info.get("profitMargins", 0) or 0) * 100 if info.get("profitMargins") and abs(info.get("profitMargins", 0)) < 5 else 0
+                rev_g = float(info.get("revenueGrowth", 0) or 0) * 100 if info.get("revenueGrowth") and abs(info.get("revenueGrowth", 0)) < 5 else 0
+                earn_g = float(info.get("earningsGrowth", 0) or 0) * 100 if info.get("earningsGrowth") and abs(info.get("earningsGrowth", 0)) < 5 else 0
+                div_y = float(info.get("dividendYield", 0) or 0) * 100 if info.get("dividendYield") else 0
+                beta = float(info.get("beta", beta_proxy) or beta_proxy)
+                mc = float(info.get("marketCap", 0) or 0)
+                name = info.get("shortName", "") or info.get("longName", sym)
+                sector = info.get("sector", "")
+                
+                # ── PIOTROSKI F-SCORE (simplified) ──
+                f_score = 0
+                if npm > 0: f_score += 1  # Positive net income
+                if roe > 0: f_score += 1  # Positive ROA proxy
+                if rev_g > 0: f_score += 1  # Revenue growing
+                if earn_g > 0: f_score += 1  # Earnings growing
+                if gm > 30: f_score += 1  # Good margins
+                if de < 100: f_score += 1  # Manageable debt
+                if npm > 5: f_score += 1  # Quality earnings
+                if ret_1y > 0: f_score += 1  # Positive returns
+                if price > sma200: f_score += 1  # Above long-term trend
+                
+                # ── FAIR VALUE ESTIMATE ──
+                eps = float(info.get("trailingEps", 0) or 0)
+                fv_graham = (eps * (8.5 + 2 * max(0, min(rev_g, 20)))) if eps > 0 else 0
+                fv_pe = eps * 15 if eps > 0 else 0
+                fair_value = max(fv_graham, fv_pe) if eps > 0 else price
+                upside = round((fair_value - price) / price * 100, 1) if price > 0 else 0
+                
+                # ── MOAT SCORE ──
+                moat = 0
+                if gm > 40: moat += 25
+                elif gm > 25: moat += 15
+                if roe > 20: moat += 25
+                elif roe > 12: moat += 15
+                if rev_g > 15: moat += 25
+                elif rev_g > 5: moat += 15
+                if de < 50: moat += 25
+                elif de < 100: moat += 15
+                
+                # ── CDS 6-LAYER SCORING ──
+                # L1: Liquidity
+                l1 = min(100, int(min(avg_vol, 5000000) / 50000))
+                if vol_trend > 1.3: l1 = min(100, l1 + 15)
+                
+                # L2: Flow (Smart Money proxy)
+                l2 = 50  # Base
+                if vol_trend > 1.5: l2 += 20
+                elif vol_trend > 1.2: l2 += 10
+                if price > sma50 and rsi > 50: l2 += 15
+                elif price < sma50 and rsi < 40: l2 -= 15
+                l2 = max(0, min(100, l2))
+                
+                # L3: Volatility/Risk
+                l3 = max(0, min(100, int(100 - volatility * 1.5)))
+                if beta > 1.8: l3 = max(0, l3 - 15)
+                
+                # L4: Fundamentals
+                l4 = min(100, f_score * 11)
+                if upside > 20: l4 = min(100, l4 + 15)
+                elif upside < -20: l4 = max(0, l4 - 15)
+                
+                # L5: Quant/Factor
+                l5 = 0
+                if price > sma200: l5 += 25
+                if price > sma50: l5 += 20
+                if 40 < rsi < 70: l5 += 25
+                if f_score >= 7: l5 += 15
+                if beta < 1.5: l5 += 15
+                l5 = min(100, l5)
+                
+                # L6: Probability
+                mc_prob = 50
+                if upside > 30 and f_score >= 6: mc_prob = 80
+                elif upside > 10 and f_score >= 5: mc_prob = 65
+                elif upside < -10: mc_prob = 30
+                l6 = mc_prob
+                
+                # ── REGIME ──
+                regime = "BULL" if price > sma200 and rsi > 50 else ("BEAR" if price < sma200 and rsi < 45 else "SIDEWAYS")
+                
+                # ── WEIGHTED CDS SCORE ──
+                if regime == "BULL":
+                    w = {"L1": 15, "L2": 20, "L3": 15, "L4": 22, "L5": 18, "L6": 10}
+                elif regime == "BEAR":
+                    w = {"L1": 25, "L2": 15, "L3": 25, "L4": 15, "L5": 10, "L6": 10}
+                else:
+                    w = {"L1": 20, "L2": 18, "L3": 20, "L4": 18, "L5": 14, "L6": 10}
+                
+                cds_score = round((l1 * w["L1"] + l2 * w["L2"] + l3 * w["L3"] + l4 * w["L4"] + l5 * w["L5"] + l6 * w["L6"]) / 100)
+                
+                # ── VERDICT ──
+                if cds_score >= 75: verdict, vC = "STRONG BUY", "#059669"
+                elif cds_score >= 60: verdict, vC = "BUY", "#1A3A78"
+                elif cds_score >= 45: verdict, vC = "HOLD", "#d97706"
+                elif cds_score >= 30: verdict, vC = "EXIT", "#dc2626"
+                else: verdict, vC = "STRONG SELL", "#dc2626"
+                
+                # ── BUCKET ──
+                if cds_score >= 70 and l1 >= 40 and l2 >= 30:
+                    bucket, bIcon = "DEPLOY", "🟢"
+                elif cds_score >= 55:
+                    bucket, bIcon = "WATCH", "🟡"
+                else:
+                    bucket, bIcon = "AVOID", "🔴"
+                
+                # ── POSITION SIZE ──
+                kelly = max(1, min(20, round(cds_score * 0.25)))
+                
+                clean = sym.replace(".NS", "")
+                
+                results.append({
+                    "symbol": clean,
+                    "name": name[:30] if name else clean,
+                    "sector": sector,
+                    "price": round(price, 2),
+                    "cdsScore": cds_score,
+                    "verdict": verdict,
+                    "verdictColor": vC,
+                    "bucket": bucket,
+                    "bucketIcon": bIcon,
+                    "fScore": f_score,
+                    "moat": moat,
+                    "pe": round(pe, 1),
+                    "roe": round(roe, 1),
+                    "beta": round(beta, 2),
+                    "rsi": round(rsi, 1),
+                    "upside": upside,
+                    "fairValue": round(fair_value, 2),
+                    "ret1m": round(ret_1m, 1),
+                    "ret3m": round(ret_3m, 1),
+                    "ret1y": round(ret_1y, 1),
+                    "volatility": round(volatility, 1),
+                    "avgVolume": round(avg_vol),
+                    "regime": regime,
+                    "segment": segment,
+                    "layers": {"L1": l1, "L2": l2, "L3": l3, "L4": l4, "L5": l5, "L6": l6},
+                    "weights": w,
+                    "kelly": kelly,
+                    "aboveSMA200": price > sma200,
+                    "aboveSMA50": price > sma50,
+                    "from52Hi": round(((price - hi52) / hi52) * 100, 1),
+                    "marketCap": mc,
+                    "divYield": round(div_y, 2),
+                })
+            except Exception as ex:
+                continue
+        
+        results.sort(key=lambda x: x["cdsScore"], reverse=True)
+        elapsed = round(_t.time() - t0, 1)
+        
+        deploy = [r for r in results if r["bucket"] == "DEPLOY"]
+        watch = [r for r in results if r["bucket"] == "WATCH"]
+        avoid = [r for r in results if r["bucket"] == "AVOID"]
+        
+        print(f"✅ CDS Batch: {len(results)} scored in {elapsed}s | Deploy:{len(deploy)} Watch:{len(watch)} Avoid:{len(avoid)}")
+        
+        return {
+            "success": True,
+            "region": region,
+            "csym": csym,
+            "segment": segment,
+            "totalScanned": len(yf_syms),
+            "totalScored": len(results),
+            "elapsed": elapsed,
+            "deployCount": len(deploy),
+            "watchCount": len(watch),
+            "avoidCount": len(avoid),
+            "results": results,
+        }
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        return {"success": False, "error": str(e)}
+
+
 @app.get("/api/asset-intelligence")
 async def asset_intelligence():
     """Global Asset Correlation & Impact Engine — how assets affect each other"""
