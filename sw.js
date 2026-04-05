@@ -1,29 +1,25 @@
-"""
-Celesys AI Startup Wrapper
-"""
-import sys
-print(f"[START] Python {sys.version}", flush=True)
-print(f"[START] Importing api module...", flush=True)
+const CACHE_NAME = 'celesys-v33';
+const ASSETS = ['/'];
 
-_import_error = None
+self.addEventListener('install', e => {
+  self.skipWaiting();
+  e.waitUntil(caches.open(CACHE_NAME).then(c => c.addAll(ASSETS)));
+});
 
-try:
-    from api import app
-    print("[START] app imported OK", flush=True)
-except Exception as ex:
-    _import_error = str(ex)[:500]
-    print(f"[START] IMPORT FAILED: {_import_error}", flush=True)
-    import traceback
-    traceback.print_exc()
-    from fastapi import FastAPI
-    app = FastAPI()
+self.addEventListener('activate', e => {
+  e.waitUntil(
+    caches.keys().then(keys => 
+      Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k)))
+    ).then(() => self.clients.claim())
+  );
+});
 
-    _err_msg = _import_error
-
-    @app.get("/")
-    def error_page():
-        return {"error": _err_msg, "python": sys.version, "fix": "Check Render logs"}
-
-    @app.get("/health")
-    def health():
-        return {"status": "error", "detail": _err_msg}
+self.addEventListener('fetch', e => {
+  if (e.request.url.includes('app.min.js') || e.request.url.includes('app.js')) {
+    e.respondWith(fetch(e.request));
+    return;
+  }
+  e.respondWith(
+    caches.match(e.request).then(r => r || fetch(e.request))
+  );
+});

@@ -3,6 +3,7 @@ Celesys AI Startup Wrapper
 """
 import sys
 print(f"[START] Python {sys.version}", flush=True)
+print(f"[START] Importing api module...", flush=True)
 
 _import_error = None
 
@@ -16,8 +17,13 @@ except Exception as ex:
     traceback.print_exc()
     from fastapi import FastAPI
     app = FastAPI()
+
     _err_msg = _import_error
 
     @app.get("/")
     def error_page():
-        return {"error": _err_msg, "python": sys.version}
+        return {"error": _err_msg, "python": sys.version, "fix": "Check Render logs"}
+
+    @app.get("/health")
+    def health():
+        return {"status": "error", "detail": _err_msg}
