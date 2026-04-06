@@ -2521,9 +2521,14 @@ console.log('[GEX+BACKTEST] ✅ Heatmap + Backtest + BP Calibration loaded');
 // Shows: BIAS → WAIT FOR → ACTION → EXIT → STATUS. Nothing else.
 // ═══════════════════════════════════════════════════════════════════════════════
 
+window._quickRefreshTimer=null;
 window._loadQuickTrade=function(symbol){
   var el=document.getElementById('deResult');if(!el)return;
   var sym=(symbol||'NIFTY').toUpperCase();
+  
+  // Clear previous refresh timer
+  if(window._quickRefreshTimer){clearInterval(window._quickRefreshTimer);window._quickRefreshTimer=null}
+  if(window._ultraRefreshTimer){clearInterval(window._ultraRefreshTimer);window._ultraRefreshTimer=null}
   
   el.innerHTML='<div style="padding:40px;text-align:center;background:linear-gradient(135deg,#0A0F1C,#0f1a2e);border-radius:16px">'
     +'<div style="display:inline-block;width:20px;height:20px;border:3px solid #059669;border-top-color:transparent;border-radius:50%;animation:spin .5s linear infinite"></div>'
@@ -2537,6 +2542,15 @@ window._loadQuickTrade=function(symbol){
         return;
       }
       _renderQuickTrade(d,sym);
+      // Auto-refresh every 30 seconds
+      window._quickRefreshTimer=setInterval(function(){
+        if(document.getElementById('deResult')&&window._deMode==='options'){
+          fetch('/api/nse-options?symbol='+encodeURIComponent(sym))
+            .then(function(r2){return r2.json()})
+            .then(function(d2){if(d2&&d2.success)_renderQuickTrade(d2,sym)})
+            .catch(function(){});
+        }else{clearInterval(window._quickRefreshTimer);window._quickRefreshTimer=null}
+      },30000);
     }).catch(function(e){
       el.innerHTML='<div style="color:#ef4444;padding:20px;background:#0A0F1C;border-radius:16px;text-align:center">Error: '+e.message+'</div>';
     });
@@ -2594,6 +2608,18 @@ function _renderQuickTrade(d,sym){
   var targetLow=Math.round(entryPrem7*1.25);
   var targetHigh=Math.round(entryPrem7*1.40);
   
+  // Expiry detection + Gamma Blast
+  var qtExpiryIdx7=window._getTodayExpiryIndex?window._getTodayExpiryIndex():'BANKNIFTY';
+  var qtIsExpiry7=sym===qtExpiryIdx7;
+  var gex7=d.gex||{};
+  var qtGammaBlast=false;
+  if(qtIsExpiry7){
+    var gexNeg7=gex7.regime==='NEGATIVE';
+    var highVol7=bars.length>2&&bars[bars.length-1].v>(totalVol7/Math.max(bars.length,1))*1.5;
+    qtGammaBlast=gexNeg7||highVol7;
+  }
+  var qtLots=qtGammaBlast?'2–3':qtIsExpiry7?'1–2':'1';
+  
   // Status
   var isBreaking=finalBias==='BULLISH'?spot>=dayHigh:spot<=dayLow;
   var buyVol7=0,totalVol7=0;
@@ -2612,8 +2638,8 @@ function _renderQuickTrade(d,sym){
   var h='';
   
   // Detect today's expiry
-  var qtExpiryIdx=window._getTodayExpiryIndex?window._getTodayExpiryIndex():'BANKNIFTY';
-  var qtIsExpiry=sym===qtExpiryIdx;
+  var qtExpiryIdx=qtExpiryIdx7;
+  var qtIsExpiry=qtIsExpiry7;
   var qtExpiryNames={NIFTY:'Tuesday',BANKNIFTY:'Wednesday',SENSEX:'Thursday'};
   
   // Expiry banner
@@ -2641,8 +2667,9 @@ function _renderQuickTrade(d,sym){
   
   // Header
   h+='<div style="text-align:center;margin-bottom:20px">';
-  h+='<div style="font-size:8px;color:#64748b;font-weight:800;letter-spacing:3px;margin-bottom:4px">EXPIRY QUICK TRADE</div>';
-  h+='<div style="font-size:10px;color:#94a3b8">'+sym+' · '+S+spot.toLocaleString('en-IN')+' · VIX '+vix.toFixed(1)+'</div>';
+  h+='<div style="font-size:8px;color:#64748b;font-weight:800;letter-spacing:3px;margin-bottom:4px">'+(qtIsExpiry?sym+' EXPIRY MODE'+(qtGammaBlast?' ⚡':''):'EXPIRY QUICK TRADE')+'</div>';
+  h+='<div style="font-size:10px;color:#94a3b8">'+sym+' · '+S+spot.toLocaleString('en-IN')+' · VIX '+vix.toFixed(1)+(qtIsExpiry?' · 🔥 EXPIRY DAY':'')+'</div>';
+  if(qtGammaBlast)h+='<div style="margin-top:4px;padding:3px 12px;border-radius:10px;background:#f59e0b15;display:inline-block;font-size:9px;color:#f59e0b;font-weight:800">⚡ Gamma Blast Active — Take Bigger Position</div>';
   h+='</div>';
   
   // Should you trade?
@@ -2679,16 +2706,24 @@ function _renderQuickTrade(d,sym){
     h+='<div style="font-size:8px;color:'+biasColor+';font-weight:700;letter-spacing:2px;margin-bottom:8px">ACTION</div>';
     h+='<div style="font-size:11px;color:#94a3b8;margin-bottom:4px">👉</div>';
     h+='<div style="font-size:22px;font-weight:900;color:'+biasColor+';font-family:Sora">BUY '+S+entryStrike7.toLocaleString('en-IN')+' '+entryType7+'</div>';
-    h+='<div style="font-size:11px;color:#94a3b8;margin-top:4px">Premium: ~'+S+entryPrem7.toFixed(0)+' · Lot: '+c7.lot+' · Qty: 1-2 lots</div>';
+    h+='<div style="font-size:11px;color:#94a3b8;margin-top:4px">Premium: ~'+S+entryPrem7.toFixed(0)+' · Lot: '+c7.lot+' · Qty: '+qtLots+' lot'+(qtLots!=='1'?'s':'')+(qtGammaBlast?' ⚡':'')+'</div>';
+    if(qtGammaBlast)h+='<div style="font-size:9px;color:#f59e0b;margin-top:4px;font-weight:700">⚡ Gamma Blast → Premium can jump 30-50% in minutes</div>';
     h+='</div>';
     
     // EXIT
+    var sl7=Math.round(entryPrem7*0.80);var maxRisk7=Math.round((entryPrem7-sl7)*c7.lot);var maxProf7=Math.round((targetHigh-entryPrem7)*c7.lot);
     h+='<div style="text-align:center;margin-bottom:20px;padding:16px;border-radius:14px;background:#1e293b">';
     h+='<div style="font-size:8px;color:#64748b;font-weight:700;letter-spacing:2px;margin-bottom:8px">EXIT</div>';
-    h+='<div style="display:flex;justify-content:center;gap:20px">';
-    h+='<div><div style="font-size:8px;color:#059669;font-weight:700">TARGET</div><div style="font-size:20px;font-weight:900;color:#059669;font-family:JetBrains Mono">'+S+targetLow+' – '+S+targetHigh+'</div><div style="font-size:8px;color:#64748b">+25% to +40%</div></div>';
+    h+='<div style="display:flex;justify-content:center;gap:12px;flex-wrap:wrap">';
+    h+='<div><div style="font-size:8px;color:#059669;font-weight:700">TARGET</div><div style="font-size:18px;font-weight:900;color:#059669;font-family:JetBrains Mono">'+S+targetLow+' – '+S+targetHigh+'</div><div style="font-size:8px;color:#64748b">+25% to +40%</div></div>';
     h+='<div style="width:1px;background:#334155"></div>';
-    h+='<div><div style="font-size:8px;color:#ef4444;font-weight:700">MAX HOLD</div><div style="font-size:20px;font-weight:900;color:#ef4444">10 min</div><div style="font-size:8px;color:#64748b">Exit if move slows</div></div>';
+    h+='<div><div style="font-size:8px;color:#ef4444;font-weight:700">STOP LOSS</div><div style="font-size:18px;font-weight:900;color:#ef4444;font-family:JetBrains Mono">'+S+sl7+'</div><div style="font-size:8px;color:#64748b">-20%</div></div>';
+    h+='<div style="width:1px;background:#334155"></div>';
+    h+='<div><div style="font-size:8px;color:#ef4444;font-weight:700">MAX HOLD</div><div style="font-size:18px;font-weight:900;color:#ef4444">10 min</div><div style="font-size:8px;color:#64748b">Exit if slow</div></div>';
+    h+='</div>';
+    h+='<div style="display:flex;gap:12px;justify-content:center;margin-top:8px">';
+    h+='<div style="font-size:8px"><span style="color:#ef4444;font-weight:700">Max Risk:</span> <span style="color:#ef4444;font-family:JetBrains Mono">'+S+maxRisk7.toLocaleString('en-IN')+'</span></div>';
+    h+='<div style="font-size:8px"><span style="color:#059669;font-weight:700">Max Profit:</span> <span style="color:#059669;font-family:JetBrains Mono">'+S+maxProf7.toLocaleString('en-IN')+'</span></div>';
     h+='</div></div>';
     
     // STATUS
@@ -2697,6 +2732,20 @@ function _renderQuickTrade(d,sym){
     h+='<div style="font-size:22px;font-weight:900;color:'+statusColor+';font-family:Sora">'+status+'</div>';
     if(status==='🟢 ENTER NOW')h+='<div style="font-size:9px;color:#94a3b8;margin-top:4px">All conditions met — execute trade in your broker NOW</div>';
     h+='</div>';
+    
+    // Expiry-specific: Theta warning + Exit alerts
+    if(qtIsExpiry){
+      h+='<div style="text-align:center;margin-top:8px;padding:8px 14px;border-radius:10px;background:#d9770608;border:1px solid #d9770620">';
+      h+='<div style="font-size:9px;color:#d97706;font-weight:800">⏱ EXPIRY DAY — Theta decay is fast. Max hold: 10 minutes.</div></div>';
+    }
+    if(status==='🟢 ENTER NOW'){
+      h+='<div style="margin-top:8px;display:flex;gap:4px;flex-wrap:wrap;justify-content:center">';
+      h+='<div style="padding:4px 10px;border-radius:6px;background:#05966410;font-size:8px;color:#059669;font-weight:700">✅ Target hit → Close</div>';
+      h+='<div style="padding:4px 10px;border-radius:6px;background:#ef444410;font-size:8px;color:#ef4444;font-weight:700">❌ Stop hit → Cut Loss</div>';
+      if(qtGammaBlast)h+='<div style="padding:4px 10px;border-radius:6px;background:#f59e0b10;font-size:8px;color:#f59e0b;font-weight:700">⚡ Gamma fading → Close</div>';
+      if(qtIsExpiry)h+='<div style="padding:4px 10px;border-radius:6px;background:#d9770610;font-size:8px;color:#d97706;font-weight:700">⏱ Theta spike → Exit early</div>';
+      h+='</div>';
+    }
   }
   
   h+='</div>'; // close main card
@@ -2765,21 +2814,28 @@ window._speak=function(text,urgent){
   window.speechSynthesis.speak(u);
 };
 
-window._voiceAlert=function(type,detail){
+window._voiceAlert=function(type,detail,strike,prem,isBlast){
   var msg='';
-  if(type==='ENTRY_CE')msg=(detail||'NIFTY')+' breakout — Buy Call Now';
-  else if(type==='ENTRY_PE')msg=(detail||'NIFTY')+' breakdown — Buy Put Now';
-  else if(type==='WAIT')msg='No trade. Wait.';
-  else if(type==='PROFIT')msg='Book profit now';
-  else if(type==='PARTIAL')msg='Partial profit booked';
-  else if(type==='EXIT')msg='Exit trade now';
-  else if(type==='STOP')msg='Loss limit hit. Stop trading for today';
+  var isExpDay=detail&&window._getTodayExpiryIndex&&detail===window._getTodayExpiryIndex();
+  var expiryTag=isExpDay?' Expiry day.':'';
+  
+  if(type==='ENTRY_CE')msg=(detail||'NIFTY')+expiryTag+' Breakout — Buy '+(strike?strike+' ':'')+'Call Now'+(prem?' at '+prem:'')+(isBlast?' — Gamma Blast! Take 2 to 3 lots.':'.'  );
+  else if(type==='ENTRY_PE')msg=(detail||'NIFTY')+expiryTag+' Breakdown — Buy '+(strike?strike+' ':'')+'Put Now'+(prem?' at '+prem:'')+(isBlast?' — Gamma Blast! Take 2 to 3 lots.':'.');
+  else if(type==='WAIT')msg='No trade right now. Wait for breakout.';
+  else if(type==='PROFIT')msg='Target hit! Book profit now.';
+  else if(type==='PARTIAL')msg='Book 50 percent profit. Trail the rest.';
+  else if(type==='EXIT')msg='Exit trade immediately!';
+  else if(type==='STOP')msg='Loss limit hit. Stop trading for today.';
+  else if(type==='GAMMA_FADING')msg='Gamma fading! Momentum dying. Close trade now.';
+  else if(type==='THETA_EXIT')msg='Theta accelerating! Premium decaying fast. Exit early.';
+  else if(type==='TARGET_HIT')msg='Target reached! Close trade and book profit.';
+  else if(type==='STOP_HIT')msg='Stop loss hit! Cut loss now. Do not hold.';
   else msg=type;
   
-  window._speak(msg,type==='ENTRY_CE'||type==='ENTRY_PE'||type==='EXIT');
+  window._speak(msg,type==='ENTRY_CE'||type==='ENTRY_PE'||type==='EXIT'||type==='GAMMA_FADING'||type==='STOP_HIT');
   
-  // Repeat logic: entry/exit alerts repeat 3 times, 5 sec apart
-  if(type==='ENTRY_CE'||type==='ENTRY_PE'||type==='EXIT'){
+  // Repeat logic: critical alerts repeat 3 times, 5 sec apart
+  if(type==='ENTRY_CE'||type==='ENTRY_PE'||type==='EXIT'||type==='GAMMA_FADING'||type==='STOP_HIT'||type==='TARGET_HIT'){
     window._voiceRepeatCount=0;
     if(window._voiceRepeatTimer)clearInterval(window._voiceRepeatTimer);
     window._voiceRepeatTimer=setInterval(function(){
@@ -2980,8 +3036,8 @@ _renderQuickTrade=function(d,sym){
   // Only voice if signal actually changed from last render
   if(currentSignal!==window._lastQuickSignal){
     window._lastQuickSignal=currentSignal;
-    if(currentSignal==='ENTRY_CE')window._voiceAlert('ENTRY_CE',sym);
-    else if(currentSignal==='ENTRY_PE')window._voiceAlert('ENTRY_PE',sym);
+    if(currentSignal==='ENTRY_CE')window._voiceAlert('ENTRY_CE',sym,entryStrike7,Math.round(entryPrem7),qtGammaBlast);
+    else if(currentSignal==='ENTRY_PE')window._voiceAlert('ENTRY_PE',sym,entryStrike7,Math.round(entryPrem7),qtGammaBlast);
     else if(currentSignal==='NO_TRADE')window._voiceAlert('WAIT');
   }
 };
@@ -3345,7 +3401,14 @@ function _renderUltraSimple(d,sym){
   var sigBg=signal==='BUY_CE'?'#059669':signal==='BUY_PE'?'#ef4444':signal==='NO_TRADE'?'#1e293b':'#1e293b';
   var sigIcon=signal==='BUY_CE'?'🟢':signal==='BUY_PE'?'🔴':signal==='NO_TRADE'?'⛔':'⚪';
   var sigText=signal==='BUY_CE'?'BUY CALL NOW':signal==='BUY_PE'?'BUY PUT NOW':signal==='NO_TRADE'?'NO TRADE TODAY':'WAIT';
-  var sigSub=signal==='BUY_CE'?'Strike: '+S+atmStrike8.toLocaleString('en-IN')+' CE':signal==='BUY_PE'?'Strike: '+S+atmStrike8.toLocaleString('en-IN')+' PE':signal==='NO_TRADE'?(spot===0?'Market data unavailable':'Conditions not met — protect capital'):'Scanning for breakout...';
+  var entryPrem8=signal==='BUY_CE'?atmCE8:signal==='BUY_PE'?atmPE8:0;
+  var normalLots=1;
+  var gammaLots=gammaBlast?3:1;
+  var gammaLotsLabel=gammaBlast?'2–3':'1';
+  var target25=Math.round(entryPrem8*1.25);
+  var target40=Math.round(entryPrem8*1.40);
+  var stopLoss8=Math.round(entryPrem8*0.80);
+  var sigSub=signal==='BUY_CE'?'Strike: '+S+atmStrike8.toLocaleString('en-IN')+' CE @ '+S+entryPrem8.toFixed(0)+' · Qty: '+gammaLotsLabel+' Lot'+(gammaBlast?'s ⚡':''):signal==='BUY_PE'?'Strike: '+S+atmStrike8.toLocaleString('en-IN')+' PE @ '+S+entryPrem8.toFixed(0)+' · Qty: '+gammaLotsLabel+' Lot'+(gammaBlast?'s ⚡':''):signal==='NO_TRADE'?(spot===0?'Market data unavailable':'Conditions not met — protect capital'):'Scanning for breakout...';
   
   // Coaching (max 3 reasons, plain English)
   var reasons=[];
@@ -3368,9 +3431,9 @@ function _renderUltraSimple(d,sym){
   });
   var bestIdx=Object.keys(scores8).sort(function(a,b){return scores8[b]-scores8[a]})[0];
   
-  // Voice
-  if(signal==='BUY_CE'&&window._lastUltraSignal!=='BUY_CE'){window._voiceAlert('ENTRY_CE',sym);window._lastUltraSignal='BUY_CE'}
-  else if(signal==='BUY_PE'&&window._lastUltraSignal!=='BUY_PE'){window._voiceAlert('ENTRY_PE',sym);window._lastUltraSignal='BUY_PE'}
+  // Voice (with strike + premium + gamma blast)
+  if(signal==='BUY_CE'&&window._lastUltraSignal!=='BUY_CE'){window._voiceAlert('ENTRY_CE',sym,atmStrike8,Math.round(entryPrem8),gammaBlast);window._lastUltraSignal='BUY_CE'}
+  else if(signal==='BUY_PE'&&window._lastUltraSignal!=='BUY_PE'){window._voiceAlert('ENTRY_PE',sym,atmStrike8,Math.round(entryPrem8),gammaBlast);window._lastUltraSignal='BUY_PE'}
   else if(signal!==window._lastUltraSignal){window._lastUltraSignal=signal}
   
   // ═══ RENDER — 3 BLOCKS ONLY ═══
@@ -3421,6 +3484,7 @@ function _renderUltraSimple(d,sym){
       h+='<div style="font-size:11px;color:'+(isGood?'#059669':'#d97706')+';padding:2px 0;font-weight:600">'+(isGood?'✔':'⏳')+' '+r+'</div>';
     });
     if(gammaBlast)h+='<div style="font-size:11px;color:#f59e0b;padding:2px 0;font-weight:600">⚡ Gamma Blast → Momentum spike</div>';
+    if(isExpiryDay)h+='<div style="font-size:11px;color:#d97706;padding:2px 0;font-weight:600">⏱ Theta Decay accelerating → Monitor exit closely</div>';
     h+='</div>';
   }else if(signal==='WAIT'){
     h+='<div style="background:#1e293b;border-radius:12px;padding:12px 20px;max-width:300px;width:100%">';
@@ -3434,8 +3498,46 @@ function _renderUltraSimple(d,sym){
   
   // Action button (with gamma qty hint)
   if(signal==='BUY_CE'||signal==='BUY_PE'){
-    var btnLabel=gammaBlast?'EXECUTE TRADE – INCREASE QTY ⚡':'EXECUTE TRADE';
-    h+='<button onclick="window._voiceAlert(\'PROFIT\');alert(\'Trade signal: '+sigText+(gammaBlast?' (Gamma Blast — increase qty)':'')+' — Execute in your broker\')" style="margin-top:8px;padding:16px 48px;border-radius:16px;background:linear-gradient(135deg,'+sigColor+','+sigColor+'cc);color:#fff;border:none;font-size:16px;font-weight:900;cursor:pointer;font-family:Sora;box-shadow:0 8px 32px '+sigColor+'40">'+btnLabel+'</button>';
+    // ─── TRADE DETAIL CARD (what exactly to do in broker) ───
+    h+='<div style="background:#0F172A;border-radius:12px;padding:14px 20px;margin-bottom:12px;max-width:320px;width:100%;text-align:left">';
+    h+='<div style="font-size:9px;color:#3b82f6;font-weight:800;margin-bottom:8px;text-align:center">📋 EXACT TRADE DETAILS</div>';
+    h+='<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">';
+    h+='<div style="flex:1;min-width:70px;padding:6px;border-radius:6px;background:'+sigColor+'12;text-align:center"><div style="font-size:7px;color:'+sigColor+'">STRIKE</div><div style="font-size:14px;font-weight:900;color:'+sigColor+';font-family:JetBrains Mono">'+S+atmStrike8.toLocaleString('en-IN')+'</div><div style="font-size:8px;color:#94a3b8">'+(signal==='BUY_CE'?'CE (Call)':'PE (Put)')+'</div></div>';
+    h+='<div style="flex:1;min-width:70px;padding:6px;border-radius:6px;background:#1e293b;text-align:center"><div style="font-size:7px;color:#94a3b8">PREMIUM</div><div style="font-size:14px;font-weight:900;color:#e2e8f0;font-family:JetBrains Mono">'+S+entryPrem8.toFixed(0)+'</div><div style="font-size:8px;color:#64748b">per unit</div></div>';
+    h+='<div style="flex:1;min-width:70px;padding:6px;border-radius:6px;background:'+(gammaBlast?'#f59e0b15':'#1e293b')+';text-align:center;border:'+(gammaBlast?'1px solid #f59e0b30':'none')+'"><div style="font-size:7px;color:'+(gammaBlast?'#f59e0b':'#94a3b8')+'">'+(gammaBlast?'⚡ GAMMA QTY':'QUANTITY')+'</div><div style="font-size:14px;font-weight:900;color:'+(gammaBlast?'#f59e0b':'#e2e8f0')+';font-family:JetBrains Mono">'+gammaLotsLabel+' lots'+'</div><div style="font-size:8px;color:#64748b">'+c8.lot+' × '+gammaLots+' = '+(c8.lot*gammaLots)+' qty</div></div>';
+    h+='</div>';
+    // Target + Stop Loss
+    h+='<div style="display:flex;gap:8px;margin-bottom:6px">';
+    h+='<div style="flex:1;padding:6px;border-radius:6px;background:#05966410;text-align:center"><div style="font-size:7px;color:#059669">TARGET (+25%)</div><div style="font-size:12px;font-weight:900;color:#059669;font-family:JetBrains Mono">'+S+target25+'</div></div>';
+    h+='<div style="flex:1;padding:6px;border-radius:6px;background:#05966418;text-align:center"><div style="font-size:7px;color:#059669">TARGET (+40%)</div><div style="font-size:12px;font-weight:900;color:#059669;font-family:JetBrains Mono">'+S+target40+'</div></div>';
+    h+='<div style="flex:1;padding:6px;border-radius:6px;background:#ef444410;text-align:center"><div style="font-size:7px;color:#ef4444">STOP LOSS</div><div style="font-size:12px;font-weight:900;color:#ef4444;font-family:JetBrains Mono">'+S+stopLoss8+'</div></div>';
+    h+='</div>';
+    // Max risk
+    var maxRisk8=Math.round((entryPrem8-stopLoss8)*c8.lot*gammaLots);
+    var maxProfit8=Math.round((target40-entryPrem8)*c8.lot*gammaLots);
+    h+='<div style="display:flex;gap:8px">';
+    h+='<div style="flex:1;padding:4px;border-radius:4px;background:#ef444408;text-align:center"><div style="font-size:7px;color:#ef4444">MAX RISK</div><div style="font-size:11px;font-weight:800;color:#ef4444;font-family:JetBrains Mono">'+S+maxRisk8.toLocaleString('en-IN')+'</div></div>';
+    h+='<div style="flex:1;padding:4px;border-radius:4px;background:#05966408;text-align:center"><div style="font-size:7px;color:#059669">MAX PROFIT</div><div style="font-size:11px;font-weight:800;color:#059669;font-family:JetBrains Mono">'+S+maxProfit8.toLocaleString('en-IN')+'</div></div>';
+    h+='</div>';
+    if(gammaBlast){
+      h+='<div style="margin-top:6px;padding:5px 8px;border-radius:6px;background:#f59e0b08;border-left:2px solid #f59e0b;font-size:8px;color:#f59e0b">';
+      h+='⚡ <strong>Gamma Blast:</strong> Expiry day + negative GEX = explosive moves. Take '+gammaLotsLabel+' lots instead of '+normalLots+'. Premium can jump 30-50% in minutes.</div>';
+    }
+    h+='<div style="margin-top:4px;font-size:7px;color:#475569;text-align:center">Hold max 10 min · Book 50% at T1 · Exit fully at T2 or SL</div>';
+    h+='</div>';
+    
+    var btnLabel=gammaBlast?'EXECUTE TRADE – '+gammaLotsLabel+' LOTS ⚡':'EXECUTE TRADE – '+normalLots+' LOT';
+    h+='<button onclick="window._voiceAlert(\'PROFIT\');alert(\'Trade signal: '+sigText+(gammaBlast?' (Gamma Blast — '+gammaLotsLabel+' lots)':'')+' — Execute in your broker\')" style="margin-top:8px;padding:16px 48px;border-radius:16px;background:linear-gradient(135deg,'+sigColor+','+sigColor+'cc);color:#fff;border:none;font-size:16px;font-weight:900;cursor:pointer;font-family:Sora;box-shadow:0 8px 32px '+sigColor+'40">'+btnLabel+'</button>';
+    
+    // EXIT ALERTS section
+    h+='<div style="margin-top:12px;max-width:320px;width:100%;text-align:left">';
+    h+='<div style="font-size:9px;color:#64748b;font-weight:800;text-align:center;margin-bottom:4px">EXIT ALERTS (Auto-monitored)</div>';
+    h+='<div style="display:flex;gap:4px;flex-wrap:wrap;justify-content:center">';
+    h+='<div style="padding:4px 10px;border-radius:6px;background:#05966410;font-size:8px;color:#059669;font-weight:700">✅ Target hit → Close Trade</div>';
+    h+='<div style="padding:4px 10px;border-radius:6px;background:#ef444410;font-size:8px;color:#ef4444;font-weight:700">❌ Stop hit → Cut Loss</div>';
+    if(gammaBlast)h+='<div style="padding:4px 10px;border-radius:6px;background:#f59e0b10;font-size:8px;color:#f59e0b;font-weight:700">⚡ Gamma fading → Close Trade</div>';
+    if(isExpiryDay)h+='<div style="padding:4px 10px;border-radius:6px;background:#d9770610;font-size:8px;color:#d97706;font-weight:700">⏱ Theta spike → Exit early</div>';
+    h+='</div></div>';
   }else if(signal==='WAIT'){
     h+='<div style="margin-top:8px;padding:12px 32px;border-radius:12px;background:#1e293b;color:#475569;font-size:12px;font-weight:700">⏳ WAIT — No action needed</div>';
   }
@@ -3472,6 +3574,15 @@ function _renderUltraSimple(d,sym){
     h+='<div style="text-align:center;font-size:9px;color:#f59e0b;padding:4px">⭐ '+bestIdx+' may be better today (score '+scores8[bestIdx]+' vs '+scores8[sym]+')</div>';
   }
   
+  // Auto Mode panel
+  var curStatus9=signal==='BUY_CE'||signal==='BUY_PE'?'🟢 ENTER NOW':signal==='NO_TRADE'?'🚫 NO TRADE':'⏳ WAITING';
+  h+=window._renderAutoPanel(sym,bias8,curStatus9);
+  
+  // Gamification (collapsible to keep view clean)
+  h+='<details style="margin-bottom:6px"><summary style="font-size:9px;color:#f59e0b;cursor:pointer;text-align:center;padding:4px">🎮 Trading Score & Badges ▾</summary>';
+  h+=window._renderGamification();
+  h+='</details>';
+  
   // Tiny disclaimer
   h+='<div style="text-align:center;font-size:7px;color:#334155;padding:4px">Not financial advice. Options carry risk of total loss.</div>';
   
@@ -3480,3 +3591,300 @@ function _renderUltraSimple(d,sym){
 window._lastUltraSignal='';
 
 console.log('[ULTRA-SIMPLE] ✅ 3-block gamma view loaded');
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 📖 LAYMAN USER GUIDE — "How This Site Helps You Make Money"
+// Shows on first visit + accessible via "How to Use" button
+// ═══════════════════════════════════════════════════════════════════════════════
+
+window._renderUserGuide=function(){
+  var todayIdx=window._getTodayExpiryIndex?window._getTodayExpiryIndex():'BANKNIFTY';
+  var dayName=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][new Date().getDay()];
+  var isExpiry=['NIFTY','SENSEX'].indexOf(todayIdx)>=0;
+  
+  var h='<div style="max-width:520px;margin:0 auto;padding:20px">';
+  
+  // Header
+  h+='<div style="text-align:center;margin-bottom:20px">';
+  h+='<div style="font-size:28px;margin-bottom:8px">🎯</div>';
+  h+='<div style="font-size:18px;font-weight:900;color:#e2e8f0;font-family:Sora">How to Use Celesys Options Trader</div>';
+  h+='<div style="font-size:11px;color:#94a3b8;margin-top:4px">A complete guide for beginners — read once, trade confidently</div>';
+  h+='</div>';
+  
+  // Today's status
+  h+='<div style="padding:14px 20px;border-radius:14px;background:linear-gradient(135deg,#0A0F1C,#0f1a2e);border:1px solid #f59e0b30;margin-bottom:16px">';
+  h+='<div style="font-size:10px;color:#f59e0b;font-weight:800;margin-bottom:6px">📅 TODAY IS '+dayName.toUpperCase()+'</div>';
+  h+='<div style="font-size:13px;color:#e2e8f0;font-weight:700">'+(isExpiry?'🔥 <strong style="color:#f59e0b">'+todayIdx+' EXPIRY DAY!</strong> — Best day for options trading on '+todayIdx:'Today is not an expiry day. Default: <strong style="color:#3b82f6">BANKNIFTY</strong>')+'</div>';
+  h+='<div style="margin-top:8px;font-size:9px;color:#64748b">Expiry schedule: <span style="color:#3b82f6">Tuesday = NIFTY</span> · <span style="color:#059669">Wednesday = BANKNIFTY</span> · <span style="color:#f59e0b">Thursday = SENSEX</span></div>';
+  h+='</div>';
+  
+  // Step-by-step guide
+  var steps=[
+    {icon:'1️⃣',title:'Click "Options" tab above',desc:'The purple 🎯 Options button in the top bar. This opens the trading view. The system <strong>automatically picks today\'s best index</strong> — you don\'t need to choose.',color:'#a855f7'},
+    {icon:'2️⃣',title:'You see ONE big signal',desc:'The screen shows a giant colored signal:<br>🟢 <strong style="color:#059669">BUY CALL NOW</strong> = Price going UP, buy Call option<br>🔴 <strong style="color:#ef4444">BUY PUT NOW</strong> = Price going DOWN, buy Put option<br>⚪ <strong style="color:#94a3b8">WAIT</strong> = Don\'t trade yet, system is scanning<br>⛔ <strong style="color:#64748b">NO TRADE</strong> = Skip today, conditions not safe',color:'#059669'},
+    {icon:'3️⃣',title:'Read the WHY section (3 lines)',desc:'Below the signal, you\'ll see 3 simple reasons like "Breakout happened", "Strong volume", "Trend support". <strong>No jargon</strong> — just plain English. If all 3 are green ✔, the trade is strong.',color:'#3b82f6'},
+    {icon:'4️⃣',title:'Check the Trade Details card',desc:'Shows you <strong>exactly what to do in your broker</strong>:<br>• <strong>Strike</strong> = which option to buy (e.g., 22,300 CE)<br>• <strong>Premium</strong> = price you\'ll pay (e.g., ₹110)<br>• <strong>Quantity</strong> = how many lots (1 lot normally, 2-3 on Gamma Blast)<br>• <strong>Target</strong> = when to book profit (+25% and +40%)<br>• <strong>Stop Loss</strong> = when to exit if wrong (-20%)',color:'#f59e0b'},
+    {icon:'5️⃣',title:'Click EXECUTE TRADE',desc:'Open your broker app (Zerodha, Angel One, Groww), go to the index shown, find the strike, and place the order. The button text tells you exactly how many lots.',color:'#059669'},
+    {icon:'6️⃣',title:'Turn on Voice Alerts 🔊',desc:'Click "🔊 Voice ON" at the bottom. The system will <strong>speak out loud</strong> when a trade signal appears — even if you\'re not looking at the screen. It says the strike and premium too!',color:'#a855f7'},
+    {icon:'7️⃣',title:'Watch the Exit Alerts',desc:'After entering, the system monitors your trade and shows:<br>✅ "Target hit → Close Trade" = Book your profit<br>❌ "Stop hit → Cut Loss" = Exit immediately<br>⚡ "Gamma fading → Close Trade" = Momentum dying, exit<br><strong>Never hold more than 10 minutes</strong> on expiry day.',color:'#ef4444'},
+    {icon:'8️⃣',title:'Check your Performance',desc:'At the bottom, you\'ll see today\'s P&L, win rate, trade count, and streak. If you lose 2 trades in a row, the system says <strong>STOP FOR TODAY</strong>. Listen to it.',color:'#d97706'},
+  ];
+  
+  steps.forEach(function(s){
+    h+='<div style="display:flex;gap:12px;margin-bottom:12px;padding:12px 16px;border-radius:12px;background:#0F172A;border-left:3px solid '+s.color+'">';
+    h+='<div style="font-size:20px;flex-shrink:0">'+s.icon+'</div>';
+    h+='<div><div style="font-size:11px;font-weight:800;color:#e2e8f0;margin-bottom:3px">'+s.title+'</div>';
+    h+='<div style="font-size:9px;color:#94a3b8;line-height:1.6">'+s.desc+'</div></div></div>';
+  });
+  
+  // 3 Modes explained
+  h+='<div style="padding:14px 20px;border-radius:14px;background:#0A0F1C;border:1px solid #1e293b;margin-bottom:16px">';
+  h+='<div style="font-size:11px;font-weight:800;color:#64748b;margin-bottom:8px">🔄 THREE TRADING MODES (you can switch anytime)</div>';
+  h+='<div style="display:flex;gap:8px;flex-wrap:wrap">';
+  h+='<div style="flex:1;min-width:140px;padding:10px;border-radius:10px;background:#1e293b;border-top:3px solid #059669"><div style="font-size:10px;font-weight:800;color:#059669">📊 Quick Trade</div><div style="font-size:8px;color:#94a3b8;margin-top:4px">Simplest view. BIAS → ACTION → EXIT. Best for beginners. <strong>Default mode.</strong></div></div>';
+  h+='<div style="flex:1;min-width:140px;padding:10px;border-radius:10px;background:#1e293b;border-top:3px solid #f59e0b"><div style="font-size:10px;font-weight:800;color:#f59e0b">⚡ Gamma Mode</div><div style="font-size:8px;color:#94a3b8;margin-top:4px">Ultra-simple expiry view. ONE big signal. Auto-picks best index. Gamma Blast detection. <strong>Best for expiry days.</strong></div></div>';
+  h+='<div style="flex:1;min-width:140px;padding:10px;border-radius:10px;background:#1e293b;border-top:3px solid #a855f7"><div style="font-size:10px;font-weight:800;color:#a855f7">🔬 Advanced</div><div style="font-size:8px;color:#94a3b8;margin-top:4px">Full 11-step institutional engine. GEX, OI, Greeks, Backtest. <strong>For experienced traders only.</strong></div></div>';
+  h+='</div></div>';
+  
+  // Normal day vs Expiry day
+  h+='<div style="padding:14px 20px;border-radius:14px;background:#0A0F1C;border:1px solid #1e293b;margin-bottom:16px">';
+  h+='<div style="font-size:11px;font-weight:800;color:#64748b;margin-bottom:8px">📅 NORMAL DAY vs EXPIRY DAY — What\'s Different?</div>';
+  h+='<div style="display:flex;gap:8px;flex-wrap:wrap">';
+  h+='<div style="flex:1;min-width:180px;padding:10px;border-radius:10px;background:#1e293b"><div style="font-size:10px;font-weight:800;color:#3b82f6;margin-bottom:6px">Normal Day (Mon/Wed/Fri/Sat/Sun)</div>';
+  h+='<div style="font-size:8px;color:#94a3b8;line-height:1.6">• Use <strong>Quick Trade</strong> mode<br>• System shows BIAS + breakout level<br>• Take 1 lot only<br>• Hold up to 10 minutes<br>• Target: +25% to +40%</div></div>';
+  h+='<div style="flex:1;min-width:180px;padding:10px;border-radius:10px;background:#f59e0b08;border:1px solid #f59e0b20"><div style="font-size:10px;font-weight:800;color:#f59e0b;margin-bottom:6px">🔥 Expiry Day (Tue=NIFTY, Thu=SENSEX)</div>';
+  h+='<div style="font-size:8px;color:#94a3b8;line-height:1.6">• Use <strong>⚡ Gamma Mode</strong><br>• Premiums move FAST (can double in minutes)<br>• ⚡ Gamma Blast = take 2-3 lots<br>• Hold max 8-10 minutes (theta kills)<br>• Bigger profits BUT bigger risk<br>• System auto-selects expiry index</div></div>';
+  h+='</div></div>';
+  
+  // Golden rules
+  h+='<div style="padding:14px 20px;border-radius:14px;background:#ef444408;border:1px solid #ef444420;margin-bottom:16px">';
+  h+='<div style="font-size:11px;font-weight:800;color:#ef4444;margin-bottom:6px">🚫 RULES THAT WILL SAVE YOUR MONEY</div>';
+  var rules2=[
+    'If the system says WAIT or NO TRADE — do NOT trade. The best traders make money by NOT trading bad setups.',
+    'Never risk more than 1% of your capital on a single trade. If you have ₹1 lakh, max loss = ₹1,000.',
+    'When stop loss hits, exit IMMEDIATELY. No hoping, no praying, no averaging down.',
+    'Stop after 2 consecutive losses. Come back tomorrow with a clear head.',
+    'Start with 1 lot only until you\'re consistently profitable for 2 weeks.',
+    'On expiry day, never hold more than 10 minutes. Theta (time decay) eats your premium.',
+    'Book profits at +25%. Greed kills more traders than bad analysis.'
+  ];
+  rules2.forEach(function(r,i){
+    h+='<div style="font-size:9px;color:#94a3b8;padding:3px 0;line-height:1.5"><span style="color:#ef4444;font-weight:800">'+(i+1)+'.</span> '+r+'</div>';
+  });
+  h+='</div>';
+  
+  // Start button
+  h+='<div style="text-align:center;margin-top:16px">';
+  h+='<button onclick="localStorage.setItem(\'celesys_guideSeen\',\'1\');window._loadQuickTrade(window._getTodayExpiryIndex?window._getTodayExpiryIndex():\'BANKNIFTY\')" style="padding:16px 48px;border-radius:16px;background:linear-gradient(135deg,#a855f7,#7c3aed);color:#fff;border:none;font-size:16px;font-weight:900;cursor:pointer;font-family:Sora;box-shadow:0 8px 32px rgba(168,85,247,.3)">🚀 START TRADING</button>';
+  h+='<div style="font-size:8px;color:#475569;margin-top:8px">This guide is always available via the "📖 How to Use" button</div>';
+  h+='</div>';
+  
+  h+='</div>';
+  return h;
+};
+
+// Show guide on first visit (or via button)
+window._showUserGuide=function(){
+  var el=document.getElementById('deResult');if(!el)return;
+  el.innerHTML=window._renderUserGuide();
+};
+
+// Patch switchDEMode: show guide on first-ever options visit
+var _origSwitchDE2=window.switchDEMode;
+window.switchDEMode=function(mode){
+  if(typeof _origSwitchDE2==='function')_origSwitchDE2(mode);
+  if(mode==='options'&&!localStorage.getItem('celesys_guideSeen')){
+    setTimeout(function(){window._showUserGuide()},150);
+  }
+};
+
+// Add "How to Use" button to Quick Trade + Ultra-Simple
+var _origQT3=_renderQuickTrade;
+_renderQuickTrade=function(d,sym){
+  _origQT3(d,sym);
+  var el=document.getElementById('deResult');if(!el)return;
+  var btn=document.createElement('div');
+  btn.style.cssText='text-align:center;margin:8px auto;max-width:480px';
+  btn.innerHTML='<div onclick="window._showUserGuide()" style="padding:6px 14px;border-radius:8px;background:#1e293b;color:#a855f7;border:1px solid #a855f725;font-size:9px;font-weight:700;cursor:pointer;display:inline-block">📖 How to Use This App</div>';
+  el.appendChild(btn);
+};
+
+var _origUltra2=_renderUltraSimple;
+_renderUltraSimple=function(d,sym){
+  _origUltra2(d,sym);
+  var el=document.getElementById('deResult');if(!el)return;
+  var btn2=document.createElement('div');
+  btn2.style.cssText='text-align:center;margin:6px auto';
+  btn2.innerHTML='<div onclick="window._showUserGuide()" style="padding:6px 14px;border-radius:8px;background:#1e293b;color:#a855f7;border:1px solid #a855f725;font-size:9px;font-weight:700;cursor:pointer;display:inline-block">📖 How to Use This App</div>';
+  el.appendChild(btn2);
+};
+
+console.log('[USER GUIDE] ✅ Onboarding + How-to-Use loaded');
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 🎯 SMART STRIKE SELECTOR + MULTI-TRADE ENGINE
+// Picks best strike (ATM/OTM) based on conditions, tracks trades for re-entry
+// ═══════════════════════════════════════════════════════════════════════════════
+
+window._selectBestStrike=function(d,sym,bias,isExpiry,gammaBlast){
+  var spot=d.spot||0;var chain=d.chain_near_atm||[];var gex=d.gex||{};
+  var cfg9={NIFTY:{step:50,lot:75},BANKNIFTY:{step:100,lot:30},SENSEX:{step:100,lot:20}};
+  var c9=cfg9[sym]||cfg9.NIFTY;
+  var atm=Math.round(spot/c9.step)*c9.step;
+  
+  // Find premiums for ATM, 1-OTM, 2-OTM
+  var strikes=[];
+  if(bias==='BULLISH'){
+    [atm,atm+c9.step,atm+c9.step*2].forEach(function(k){
+      var match=null;
+      chain.forEach(function(ch){if(Math.abs(ch.strike-k)<c9.step*0.5)match=ch});
+      if(match)strikes.push({strike:k,type:'CE',prem:match.ce_ltp||0,oi:match.ce_oi||0,iv:match.ce_iv||0,label:k===atm?'ATM':k===atm+c9.step?'1-OTM':'2-OTM'});
+    });
+  }else if(bias==='BEARISH'){
+    [atm,atm-c9.step,atm-c9.step*2].forEach(function(k){
+      var match=null;
+      chain.forEach(function(ch){if(Math.abs(ch.strike-k)<c9.step*0.5)match=ch});
+      if(match)strikes.push({strike:k,type:'PE',prem:match.pe_ltp||0,oi:match.pe_oi||0,iv:match.pe_iv||0,label:k===atm?'ATM':k===atm-c9.step?'1-OTM':'2-OTM'});
+    });
+  }
+  
+  // Score each strike
+  strikes.forEach(function(s){
+    s.score=0;
+    // Premium sweet spot: 60-200 for NIFTY, 100-400 for BN
+    var minP=sym==='BANKNIFTY'?100:60;var maxP=sym==='BANKNIFTY'?400:200;
+    if(s.prem>=minP&&s.prem<=maxP)s.score+=30;else if(s.prem>0)s.score+=10;
+    // Higher OI = more liquid
+    if(s.oi>100000)s.score+=20;else if(s.oi>50000)s.score+=10;
+    // ATM gets base bonus (most liquid)
+    if(s.label==='ATM')s.score+=15;
+    // On expiry: slightly OTM can give better R:R (gamma explosion)
+    if(isExpiry&&s.label==='1-OTM')s.score+=20;
+    // Gamma blast: ATM preferred (highest gamma)
+    if(gammaBlast&&s.label==='ATM')s.score+=25;
+    // GEX: avoid strikes near call/put walls
+    if(gex.callWall&&bias==='BULLISH'&&Math.abs(s.strike-gex.callWall)<c9.step)s.score-=15;
+    if(gex.putWall&&bias==='BEARISH'&&Math.abs(s.strike-gex.putWall)<c9.step)s.score-=15;
+  });
+  
+  strikes.sort(function(a,b){return b.score-a.score});
+  return strikes;
+};
+
+// ─── TRADE SESSION TRACKER (multiple trades per day) ───
+window._tradeSession=JSON.parse(localStorage.getItem('celesys_tradeSession')||'null')||{trades:[],maxTrades:4,activeStrike:0};
+var _tsDate=localStorage.getItem('celesys_tsDate')||'';
+if(_tsDate!==(new Date().toISOString().split('T')[0])){
+  window._tradeSession={trades:[],maxTrades:4,activeStrike:0};
+  localStorage.setItem('celesys_tsDate',new Date().toISOString().split('T')[0]);
+}
+window._saveTradeSession=function(){localStorage.setItem('celesys_tradeSession',JSON.stringify(window._tradeSession))};
+
+// ─── RENDER STRIKE SELECTOR CARD ───
+window._renderStrikeSelector=function(strikes,bias,sym,isExpiry,gammaBlast,S){
+  if(!strikes||strikes.length<1)return'';
+  var best=strikes[0];
+  var ts=window._tradeSession;
+  var tradeNum=ts.trades.length+1;
+  var canTrade=tradeNum<=ts.maxTrades;
+  
+  var h='<div style="background:#0F172A;border-radius:14px;padding:14px 18px;margin-bottom:10px;border:1px solid #3b82f625;max-width:480px;margin-left:auto;margin-right:auto">';
+  h+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">';
+  h+='<div style="font-size:10px;font-weight:800;color:#3b82f6">🎯 TRADE '+tradeNum+' OF '+ts.maxTrades+(canTrade?'':' — LIMIT REACHED')+''+'</div>';
+  if(ts.trades.length>0)h+='<div style="font-size:8px;color:#64748b">Prev: '+ts.trades[ts.trades.length-1].strike+' '+ts.trades[ts.trades.length-1].type+'</div>';
+  h+='</div>';
+  
+  if(!canTrade){
+    h+='<div style="text-align:center;padding:10px;font-size:10px;color:#d97706;font-weight:700">⚠️ Max trades reached for today. Stop and protect capital.</div>';
+    h+='</div>';
+    return h;
+  }
+  
+  // Strike comparison table
+  h+='<div style="font-size:8px;color:#94a3b8;font-weight:700;margin-bottom:4px">STRIKE COMPARISON (AI-ranked)</div>';
+  strikes.forEach(function(s,i){
+    var isBest=i===0;
+    var barW=Math.max(10,Math.round(s.score/Math.max(strikes[0].score,1)*100));
+    h+='<div style="display:flex;align-items:center;gap:6px;padding:5px 8px;border-radius:6px;margin-bottom:3px;'+(isBest?'background:#3b82f610;border:1px solid #3b82f625':'background:#1e293b')+';cursor:pointer" onclick="window._tradeSession.activeStrike='+s.strike+';window._saveTradeSession()">';
+    h+='<div style="min-width:14px;font-size:10px">'+(isBest?'⭐':'')+'</div>';
+    h+='<div style="min-width:55px;font-size:10px;font-weight:800;color:'+(isBest?'#3b82f6':'#94a3b8')+';font-family:JetBrains Mono">'+S+s.strike.toLocaleString('en-IN')+'</div>';
+    h+='<div style="min-width:35px;font-size:8px;color:#64748b">'+s.label+'</div>';
+    h+='<div style="min-width:45px;font-size:9px;color:#e2e8f0;font-family:JetBrains Mono">'+S+s.prem.toFixed(0)+'</div>';
+    h+='<div style="flex:1;height:6px;background:#1e293b;border-radius:3px;overflow:hidden"><div style="width:'+barW+'%;height:100%;background:'+(isBest?'#3b82f6':'#475569')+';border-radius:3px"></div></div>';
+    h+='<div style="min-width:30px;font-size:8px;color:'+(isBest?'#3b82f6':'#475569')+';text-align:right;font-family:JetBrains Mono">'+s.score+'</div>';
+    h+='</div>';
+  });
+  
+  // Why this strike
+  h+='<div style="margin-top:6px;padding:6px 10px;border-radius:6px;background:#1e293b;font-size:8px;color:#94a3b8">';
+  h+='<strong style="color:#3b82f6">⭐ Best: '+S+best.strike.toLocaleString('en-IN')+' '+best.type+' ('+best.label+')</strong> — ';
+  if(best.label==='ATM')h+='Most liquid, highest gamma, tightest spread';
+  else if(best.label==='1-OTM')h+=isExpiry?'Expiry day OTM = cheaper entry, explosive gamma':'Slightly OTM = lower premium, decent gamma';
+  else h+='Deep OTM = cheapest but risky, only if strong conviction';
+  h+='</div>';
+  
+  // Trade history for today
+  if(ts.trades.length>0){
+    h+='<div style="margin-top:6px;font-size:8px;color:#64748b;font-weight:700">TODAY\'S TRADES</div>';
+    ts.trades.forEach(function(t,i){
+      h+='<div style="font-size:8px;color:#94a3b8;padding:1px 0">'+(i+1)+'. '+S+t.strike+' '+t.type+' @ '+S+t.prem+' → '+(t.result||'pending')+'</div>';
+    });
+  }
+  
+  h+='</div>';
+  return h;
+};
+
+// ─── WIRE INTO QUICK TRADE ───
+var _origQT4=_renderQuickTrade;
+_renderQuickTrade=function(d,sym){
+  _origQT4(d,sym);
+  var el=document.getElementById('deResult');if(!el)return;
+  var S='₹';
+  var ceRes=d.ce_resistance||[],peSupp=d.pe_support||[];
+  var oiBias9=(peSupp.length>0?peSupp[0].oi:0)>(ceRes.length>0?ceRes[0].oi:0)?'BULLISH':'BEARISH';
+  var priceBias9=(d.spot||0)>(d.vwap||0)?'BULLISH':'BEARISH';
+  var bias9=oiBias9===priceBias9?oiBias9:'NEUTRAL';
+  if(bias9==='NEUTRAL'||!d.spot)return;
+  
+  var qtExp9=window._getTodayExpiryIndex?window._getTodayExpiryIndex():'BANKNIFTY';
+  var isExp9=sym===qtExp9;
+  var gex9=d.gex||{};
+  var gBlast9=isExp9&&(gex9.regime==='NEGATIVE');
+  
+  var strikes9=window._selectBestStrike(d,sym,bias9,isExp9,gBlast9);
+  if(strikes9.length>0){
+    var card=window._renderStrikeSelector(strikes9,bias9,sym,isExp9,gBlast9,S);
+    var div9=document.createElement('div');div9.style.cssText='max-width:480px;margin:0 auto';
+    div9.innerHTML='<details style="margin-bottom:6px"><summary style="font-size:9px;color:#3b82f6;cursor:pointer;text-align:center;padding:4px">🎯 See alternative strikes (advanced) ▾</summary>'+card+'</details>';
+    el.appendChild(div9);
+  }
+};
+
+// ─── WIRE INTO ULTRA-SIMPLE ───
+var _origUltra3=_renderUltraSimple;
+_renderUltraSimple=function(d,sym){
+  _origUltra3(d,sym);
+  var el=document.getElementById('deResult');if(!el)return;
+  var S='₹';
+  var ceRes2=d.ce_resistance||[],peSupp2=d.pe_support||[];
+  var oiBias10=(peSupp2.length>0?peSupp2[0].oi:0)>(ceRes2.length>0?ceRes2[0].oi:0)?'BULLISH':'BEARISH';
+  var priceBias10=(d.spot||0)>(d.vwap||0)?'BULLISH':'BEARISH';
+  var bias10=oiBias10===priceBias10?oiBias10:'NEUTRAL';
+  if(bias10==='NEUTRAL'||!d.spot)return;
+  
+  var todayExp10=window._getTodayExpiryIndex?window._getTodayExpiryIndex():'BANKNIFTY';
+  var isExp10=sym===todayExp10;
+  var gex10=d.gex||{};
+  var gBlast10=isExp10&&(gex10.regime==='NEGATIVE');
+  
+  var strikes10=window._selectBestStrike(d,sym,bias10,isExp10,gBlast10);
+  if(strikes10.length>0){
+    var card2=window._renderStrikeSelector(strikes10,bias10,sym,isExp10,gBlast10,S);
+    var div10=document.createElement('div');
+    div10.innerHTML='<details style="margin-bottom:6px"><summary style="font-size:9px;color:#3b82f6;cursor:pointer;text-align:center;padding:4px">🎯 See alternative strikes (advanced) ▾</summary>'+card2+'</details>';
+    el.appendChild(div10);
+  }
+};
+
+console.log('[MULTI-TRADE] ✅ Smart strike + multi-trade session loaded');
