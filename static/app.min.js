@@ -7262,31 +7262,33 @@ if(pb){pb.style.background=mode==='portfolio'?'linear-gradient(135deg,#1A3A78,#1
 
 // Hide/show index quick-buttons
 var inIdx=document.getElementById('deStocksIN');var usIdx=document.getElementById('deStocksUS');
-if(mode==='investor'||mode==='portfolio'){
+var deRegRow=document.getElementById('deRegIN');
+if(deRegRow)deRegRow=deRegRow.parentElement; // get the row containing region buttons
+
+if(mode==='options'){
+  // HIDE everything: INDICES row, region buttons, stock dropdown, custom input
+  if(inIdx)inIdx.style.display='none';
+  if(usIdx)usIdx.style.display='none';
+  if(deRegRow)deRegRow.style.display='none';
+}else if(mode==='investor'||mode==='portfolio'){
   if(inIdx)inIdx.style.display='none';if(usIdx)usIdx.style.display='none';
 }else{
   if(inIdx)inIdx.style.display='flex';
-  if(usIdx)usIdx.style.display='none'; // US not relevant for options mode
+  if(usIdx)usIdx.style.display='none';
 }
 
-// Hide stock dropdown/region/analyze in Options mode (only index pills needed)
+// Hide stock dropdown/region/analyze in Options mode
 var deCtrl=document.getElementById('deControls');
 if(deCtrl){
-  // Find the stock dropdown row and region buttons
-  var stockRow=deCtrl.querySelector('select,#deCustom');
-  var regionBtns=document.getElementById('deRegIN');
   if(mode==='options'){
-    // Hide everything below the mode+index rows
+    // Hide ALL children except the mode buttons row
     var allChildren=deCtrl.children;
     for(var ci=0;ci<allChildren.length;ci++){
       var child=allChildren[ci];
-      // Keep the mode buttons row (has deModeTrader) and index pills row (has deStocksIN)
-      var hasModeBtn=child.querySelector&&(child.querySelector('#deModeTrader')||child.querySelector('#deStocksIN'));
-      if(!hasModeBtn&&child.id!=='deStocksIN'){
-        // Hide dropdown row, region row, custom input row
-        if(child.querySelector&&(child.querySelector('select')||child.querySelector('#deCustom')||child.querySelector('#deRegIN'))){
-          child.style.display='none';
-        }
+      // Keep only the row that has mode buttons (deModeTrader)
+      var hasModeBtn=child.querySelector&&child.querySelector('#deModeTrader');
+      if(!hasModeBtn){
+        child.style.display='none';
       }
     }
   }else{
@@ -7295,6 +7297,8 @@ if(deCtrl){
     for(var ci2=0;ci2<allChildren2.length;ci2++){
       allChildren2[ci2].style.display='';
     }
+    // Re-show region row
+    if(deRegRow)deRegRow.style.display='';
   }
 }
 
