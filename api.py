@@ -3834,6 +3834,23 @@ async def nse_options(symbol: str = "NIFTY"):
             _gex_regime = "POSITIVE" if _gex_total > 0 else "NEGATIVE"
             _gex_implication = "Market PINNED — dealers hedge by selling rallies and buying dips. Range-bound." if _gex_total > 0 else "Market VOLATILE — dealers amplify moves. Trending day likely."
             
+            # GEX Flip Level — where net_gex changes sign
+            _gex_flip = atm_strike
+            _sorted_gex = sorted(_gex_by_strike, key=lambda x: x["strike"]) if _gex_by_strike else []
+            for _gi in range(1, len(_sorted_gex)):
+                if _sorted_gex[_gi]["gex"] * _sorted_gex[_gi-1]["gex"] < 0:
+                    _gex_flip = _sorted_gex[_gi]["strike"]
+                    break
+            
+            # GEX Walls (highest |gex| strikes)
+            _call_wall = 0
+            _put_wall = 0
+            for _gs in _gex_by_strike[:5]:
+                if _gs.get("ceOI", 0) > _gs.get("peOI", 0) and not _call_wall:
+                    _call_wall = _gs["strike"]
+                elif _gs.get("peOI", 0) > _gs.get("ceOI", 0) and not _put_wall:
+                    _put_wall = _gs["strike"]
+            
             # ═══ IV Term Structure (per expiry) ═══
             iv_term = []
             for exp_d in expiry_dates[:4]:
@@ -3881,7 +3898,9 @@ async def nse_options(symbol: str = "NIFTY"):
                     "regime": _gex_regime,
                     "implication": _gex_implication,
                     "topStrikes": _gex_by_strike[:8],
-                    "flipPoint": atm_strike,  # Where GEX flips sign
+                    "flipPoint": _gex_flip,
+                    "callWall": _call_wall,
+                    "putWall": _put_wall,
                 },
             })
         

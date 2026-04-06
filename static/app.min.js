@@ -7259,27 +7259,50 @@ if(tb){tb.style.background=mode==='trader'?'linear-gradient(135deg,#1A3A78,#1e40
 if(ib){ib.style.background=mode==='investor'?'linear-gradient(135deg,#1A3A78,#1e40af)':'#f1f5f9';ib.style.color=mode==='investor'?'#fff':'#374151';ib.style.border=mode==='investor'?'none':'1px solid #e2e5ea'}
 if(ob){ob.style.background=mode==='options'?'linear-gradient(135deg,#7c3aed,#a855f7)':'#f1f5f9';ob.style.color=mode==='options'?'#fff':'#374151';ob.style.border=mode==='options'?'none':'1px solid #e2e5ea'}
 if(pb){pb.style.background=mode==='portfolio'?'linear-gradient(135deg,#1A3A78,#1e40af)':'#f1f5f9';pb.style.color=mode==='portfolio'?'#fff':'#374151'}
-// Show index quick-buttons in options mode (indices only)
+
+// Hide/show index quick-buttons
 var inIdx=document.getElementById('deStocksIN');var usIdx=document.getElementById('deStocksUS');
 if(mode==='investor'||mode==='portfolio'){
-if(inIdx)inIdx.style.display='none';if(usIdx)usIdx.style.display='none';
+  if(inIdx)inIdx.style.display='none';if(usIdx)usIdx.style.display='none';
 }else{
-var reg=window._deRegion||'IN';
-if(inIdx)inIdx.style.display=reg==='IN'?'flex':'none';
-if(usIdx)usIdx.style.display=reg==='US'?'flex':'none';
+  if(inIdx)inIdx.style.display='flex';
+  if(usIdx)usIdx.style.display='none'; // US not relevant for options mode
 }
+
+// Hide stock dropdown/region/analyze in Options mode (only index pills needed)
+var deCtrl=document.getElementById('deControls');
+if(deCtrl){
+  // Find the stock dropdown row and region buttons
+  var stockRow=deCtrl.querySelector('select,#deCustom');
+  var regionBtns=document.getElementById('deRegIN');
+  if(mode==='options'){
+    // Hide everything below the mode+index rows
+    var allChildren=deCtrl.children;
+    for(var ci=0;ci<allChildren.length;ci++){
+      var child=allChildren[ci];
+      // Keep the mode buttons row (has deModeTrader) and index pills row (has deStocksIN)
+      var hasModeBtn=child.querySelector&&(child.querySelector('#deModeTrader')||child.querySelector('#deStocksIN'));
+      if(!hasModeBtn&&child.id!=='deStocksIN'){
+        // Hide dropdown row, region row, custom input row
+        if(child.querySelector&&(child.querySelector('select')||child.querySelector('#deCustom')||child.querySelector('#deRegIN'))){
+          child.style.display='none';
+        }
+      }
+    }
+  }else{
+    // Restore visibility for other modes
+    var allChildren2=deCtrl.children;
+    for(var ci2=0;ci2<allChildren2.length;ci2++){
+      allChildren2[ci2].style.display='';
+    }
+  }
+}
+
 var r=document.getElementById('deResult');
 if(mode==='options'){
-  if(r)r.innerHTML='<div style="text-align:center;padding:30px;background:#0A0F1C;border-radius:16px">'
-    +'<div style="font-size:28px;margin-bottom:8px">🎯</div>'
-    +'<div style="font-size:14px;font-weight:900;color:#a855f7;font-family:Sora,sans-serif;margin-bottom:6px">Options Trading Engine</div>'
-    +'<div style="font-size:10px;color:#64748b;max-width:500px;margin:0 auto 16px;line-height:1.6">6-Layer institutional decision system. Market Regime → Institutional Positioning → Price Action → Strategy + Strike Selection → Risk Engine → Expiry Intelligence</div>'
-    +'<div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">'
-    +'<button onclick="window._loadOptionsDecide(\'NIFTY\')" style="padding:10px 24px;border-radius:10px;background:linear-gradient(135deg,#7c3aed,#a855f7);color:#fff;border:none;font-size:12px;font-weight:800;cursor:pointer;font-family:Sora">NIFTY</button>'
-    +'<button onclick="window._loadOptionsDecide(\'BANKNIFTY\')" style="padding:10px 24px;border-radius:10px;background:linear-gradient(135deg,#059669,#10b981);color:#fff;border:none;font-size:12px;font-weight:800;cursor:pointer;font-family:Sora">BANKNIFTY</button>'
-    +'<button onclick="window._loadOptionsDecide(\'SENSEX\')" style="padding:10px 24px;border-radius:10px;background:linear-gradient(135deg,#d97706,#f59e0b);color:#fff;border:none;font-size:12px;font-weight:800;cursor:pointer;font-family:Sora">SENSEX</button>'
-    +'<button onclick="window._loadOptionsDecide(\'FINNIFTY\')" style="padding:10px 24px;border-radius:10px;background:linear-gradient(135deg,#3b82f6,#60a5fa);color:#fff;border:none;font-size:12px;font-weight:800;cursor:pointer;font-family:Sora">FINNIFTY</button>'
-    +'</div></div>';
+  // Auto-load NIFTY immediately
+  // Quick Trade loads via options-engine.js switchDEMode patch — no action needed here
+  if(r)r.innerHTML='<div style="text-align:center;padding:20px;color:var(--text3);font-size:10px">🎯 Loading Options...</div>';
 }else{
 if(r)r.innerHTML='<div style="text-align:center;padding:30px;color:var(--text3);font-size:10px">Switched to <strong>'+(mode==='investor'?'📊 Investor':mode==='portfolio'?'🧠 Portfolio':'⚡ Trader')+' mode</strong>. '+(mode==='investor'?'Select a stock (not index) from dropdown or type custom.':mode==='portfolio'?'Portfolio-level analysis.':'Select any stock or index.')+'</div>';
 }
