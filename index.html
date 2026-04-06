@@ -1676,6 +1676,7 @@ window._fillAlgoSelect=fillSelect;
 <div style="display:flex;gap:0;border:2px solid var(--border);border-radius:10px;overflow:hidden">
 <button id="deModeTrader" onclick="switchDEMode('trader')" style="padding:8px 20px;font-size:11px;font-weight:800;border:none;cursor:pointer;font-family:Sora,sans-serif;background:#f1f5f9;color:#374151;transition:all .2s">⚡ Trader</button>
 <button id="deModeInvestor" onclick="switchDEMode('investor')" style="padding:8px 20px;font-size:11px;font-weight:800;border:none;cursor:pointer;font-family:Sora,sans-serif;background:linear-gradient(135deg,#1A3A78,#1e40af);color:#fff;transition:all .2s">📊 Investor</button>
+<button id="deModeOptions" onclick="switchDEMode('options')" style="padding:8px 20px;font-size:11px;font-weight:800;border:none;cursor:pointer;font-family:Sora,sans-serif;background:#f1f5f9;color:#374151;transition:all .2s">🎯 Options</button>
 </div>
 <div style="display:flex;gap:0;border:1px solid var(--border);border-radius:8px;overflow:hidden">
 <button id="deRegIN" onclick="switchDERegion('IN')" style="padding:6px 14px;font-size:10px;font-weight:800;border:none;cursor:pointer;font-family:Sora,sans-serif;background:linear-gradient(135deg,#1A3A78,#1e40af);color:#fff;box-shadow:0 2px 8px rgba(26,58,120,.2)">IN India</button>
@@ -2074,10 +2075,10 @@ Think of this as your <strong>daily briefing from a fund manager's desk</strong>
 <div style="font-size:11px;font-weight:700;color:var(--text);margin-bottom:3px">Buffett Analysis</div>
 <div style="font-size:9px;color:var(--text3);line-height:1.4">Moat types, F-Score, DCF, Monte Carlo, Kelly sizing</div>
 </div>
-<div class="feat-card" style="border-top:3px solid #3b82f6">
-<div style="font-size:20px;margin-bottom:6px">&#128200;</div>
-<div style="font-size:11px;font-weight:700;color:var(--text);margin-bottom:3px">Options Intelligence</div>
-<div style="font-size:9px;color:var(--text3);line-height:1.4">Greeks, IV curve, OI flow, PCR, strike selection</div>
+<div class="feat-card" style="border-top:3px solid #a855f7;cursor:pointer" onclick="if(typeof switchTabGroup==='function')switchTabGroup('decide');setTimeout(function(){switchDEMode('options')},300)">
+<div style="font-size:20px;margin-bottom:6px">&#127919;</div>
+<div style="font-size:11px;font-weight:700;color:var(--text);margin-bottom:3px">Options Trader</div>
+<div style="font-size:9px;color:var(--text3);line-height:1.4">6-Layer engine: OI walls, strike selection, expiry logic, TRADE/WAIT/AVOID</div>
 </div>
 <div class="feat-card" style="border-top:3px solid #1A3A78">
 <div style="font-size:20px;margin-bottom:6px">&#128640;</div>
@@ -2329,9 +2330,9 @@ Think of this as your <strong>daily briefing from a fund manager's desk</strong>
 <!-- BACK TO TOP -->
 <button class="btt" id="bttBtn" onclick="window.scrollTo({top:0,behavior:'smooth'})" aria-label="Back to top">&#8593; Top</button>
 
-<script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.9/purify.min.js" defer></script><script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script><script src="/static/app.min.js?v=1775441879"></script>
-<script src="/static/premium-override.js?v=1775441879" defer></script>
-<script src="/static/options-engine.js?v=1775441879" defer></script>
+<script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.9/purify.min.js" defer></script><script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script><script src="/static/app.min.js?v=1775442371"></script>
+<script src="/static/premium-override.js?v=1775442371" defer></script>
+<script src="/static/options-engine.js?v=1775442371" defer></script>
 
 
 

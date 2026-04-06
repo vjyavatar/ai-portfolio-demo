@@ -7254,11 +7254,12 @@ var r=document.getElementById('deResult');if(r)r.innerHTML='<div style="text-ali
 window._deMode='investor';
 function switchDEMode(mode){
 window._deMode=mode;
-var tb=document.getElementById('deModeTrader');var ib=document.getElementById('deModeInvestor');var pb=document.getElementById('deModePortfolio');
+var tb=document.getElementById('deModeTrader');var ib=document.getElementById('deModeInvestor');var pb=document.getElementById('deModePortfolio');var ob=document.getElementById('deModeOptions');
 if(tb){tb.style.background=mode==='trader'?'linear-gradient(135deg,#1A3A78,#1e40af)':'#f1f5f9';tb.style.color=mode==='trader'?'#fff':'#374151';tb.style.border=mode==='trader'?'none':'1px solid #e2e5ea'}
 if(ib){ib.style.background=mode==='investor'?'linear-gradient(135deg,#1A3A78,#1e40af)':'#f1f5f9';ib.style.color=mode==='investor'?'#fff':'#374151';ib.style.border=mode==='investor'?'none':'1px solid #e2e5ea'}
+if(ob){ob.style.background=mode==='options'?'linear-gradient(135deg,#7c3aed,#a855f7)':'#f1f5f9';ob.style.color=mode==='options'?'#fff':'#374151';ob.style.border=mode==='options'?'none':'1px solid #e2e5ea'}
 if(pb){pb.style.background=mode==='portfolio'?'linear-gradient(135deg,#1A3A78,#1e40af)':'#f1f5f9';pb.style.color=mode==='portfolio'?'#fff':'#374151'}
-// Hide index quick-buttons in investor/portfolio mode
+// Show index quick-buttons in options mode (indices only)
 var inIdx=document.getElementById('deStocksIN');var usIdx=document.getElementById('deStocksUS');
 if(mode==='investor'||mode==='portfolio'){
 if(inIdx)inIdx.style.display='none';if(usIdx)usIdx.style.display='none';
@@ -7267,9 +7268,21 @@ var reg=window._deRegion||'IN';
 if(inIdx)inIdx.style.display=reg==='IN'?'flex':'none';
 if(usIdx)usIdx.style.display=reg==='US'?'flex':'none';
 }
-// PMS is now its own tab — no scan row to toggle
 var r=document.getElementById('deResult');
-if(r)r.innerHTML='<div style="text-align:center;padding:30px;color:var(--text3);font-size:10px">Switched to <strong>'+(mode==='investor'?'📊 Investor':mode==='portfolio'?'🧠 Portfolio':'⚡ Trader')+' mode</strong>. '+(mode==='investor'?'Select a stock (not index) from dropdown or type custom.':mode==='portfolio'?'Portfolio-level analysis. MDO weights: Trader 10% / Investor 30% / PMS 60%.':'Select any stock or index.')+'</div>';
+if(mode==='options'){
+  if(r)r.innerHTML='<div style="text-align:center;padding:30px;background:#0A0F1C;border-radius:16px">'
+    +'<div style="font-size:28px;margin-bottom:8px">🎯</div>'
+    +'<div style="font-size:14px;font-weight:900;color:#a855f7;font-family:Sora,sans-serif;margin-bottom:6px">Options Trading Engine</div>'
+    +'<div style="font-size:10px;color:#64748b;max-width:500px;margin:0 auto 16px;line-height:1.6">6-Layer institutional decision system. Market Regime → Institutional Positioning → Price Action → Strategy + Strike Selection → Risk Engine → Expiry Intelligence</div>'
+    +'<div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">'
+    +'<button onclick="window._loadOptionsDecide(\'NIFTY\')" style="padding:10px 24px;border-radius:10px;background:linear-gradient(135deg,#7c3aed,#a855f7);color:#fff;border:none;font-size:12px;font-weight:800;cursor:pointer;font-family:Sora">NIFTY</button>'
+    +'<button onclick="window._loadOptionsDecide(\'BANKNIFTY\')" style="padding:10px 24px;border-radius:10px;background:linear-gradient(135deg,#059669,#10b981);color:#fff;border:none;font-size:12px;font-weight:800;cursor:pointer;font-family:Sora">BANKNIFTY</button>'
+    +'<button onclick="window._loadOptionsDecide(\'SENSEX\')" style="padding:10px 24px;border-radius:10px;background:linear-gradient(135deg,#d97706,#f59e0b);color:#fff;border:none;font-size:12px;font-weight:800;cursor:pointer;font-family:Sora">SENSEX</button>'
+    +'<button onclick="window._loadOptionsDecide(\'FINNIFTY\')" style="padding:10px 24px;border-radius:10px;background:linear-gradient(135deg,#3b82f6,#60a5fa);color:#fff;border:none;font-size:12px;font-weight:800;cursor:pointer;font-family:Sora">FINNIFTY</button>'
+    +'</div></div>';
+}else{
+if(r)r.innerHTML='<div style="text-align:center;padding:30px;color:var(--text3);font-size:10px">Switched to <strong>'+(mode==='investor'?'📊 Investor':mode==='portfolio'?'🧠 Portfolio':'⚡ Trader')+' mode</strong>. '+(mode==='investor'?'Select a stock (not index) from dropdown or type custom.':mode==='portfolio'?'Portfolio-level analysis.':'Select any stock or index.')+'</div>';
+}
 }
 // ═══ FEATURE 2: AUTO-REFRESH for live index trading ═══
 var _autoRefreshTimer=null;var _autoRefreshSym=null;var _autoRefreshCount=0;
@@ -7565,6 +7578,14 @@ if(autoTab==='analysis'){var ab=document.querySelector('[data-subtab="analysis"]
 return;
 }
 if(window._deMode==='investor'){loadInvestorDE(sym);return}
+if(window._deMode==='options'){
+  var _optIdx=['NIFTY','BANKNIFTY','SENSEX','FINNIFTY','MIDCPNIFTY'];
+  if(_optIdx.indexOf(sym.toUpperCase())>=0){window._loadOptionsDecide(sym.toUpperCase());return}
+  // If not an index, show message
+  var r=document.getElementById('deResult');
+  if(r)r.innerHTML='<div style="text-align:center;padding:30px;background:#0A0F1C;border-radius:16px"><div style="font-size:14px;font-weight:900;color:#ef4444;font-family:Sora">'+sym+' is a stock — Options Engine is for indices only</div><div style="font-size:10px;color:#64748b;margin-top:8px">Use NIFTY, BANKNIFTY, SENSEX, or FINNIFTY for options analysis.<br>Switch to 📊 Investor mode for stock analysis.</div></div>';
+  return;
+}
 var el=document.getElementById('deResult');if(!el)return;
 var reg=window._deRegion||'IN';
 el.innerHTML='<div style="padding:24px;text-align:center"><div style="display:inline-block;width:16px;height:16px;border:2px solid #ea580c;border-top-color:transparent;border-radius:50%;animation:spin .5s linear infinite;vertical-align:middle;margin-right:8px"></div><span style="font-size:11px;color:#374151">Building decision graph for <strong>'+sym+'</strong>...</span></div>';
