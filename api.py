@@ -15699,6 +15699,15 @@ async def investor_decide(symbol: str = "RELIANCE", region: str = "IN", nocache:
         target_p = val.get("targetPrice", 0) or 0
         analyst_n = val.get("analystCount", 0) or 0
         sector_pe = nse.get("sectorPE", 0) or 0
+        # For US stocks, NSE sectorPE will be 0 — use sector average map
+        if is_us and sector_pe == 0:
+            _us_sector_pe_map = {'Technology': 30, 'Communication Services': 22, 'Consumer Cyclical': 25,
+                'Consumer Defensive': 28, 'Financial Services': 15, 'Healthcare': 25,
+                'Industrials': 22, 'Basic Materials': 18, 'Energy': 12,
+                'Utilities': 18, 'Real Estate': 35}
+            _stock_sector = si.get("sector", "") or fund.get("sector", "")
+            sector_pe = _us_sector_pe_map.get(_stock_sector, 20)
+            print(f"  📊 US sector PE for {_stock_sector}: {sector_pe}x")
         promoter = nse.get("promoterHolding", 0) or 0
         fii_hold = nse.get("fiiHolding", 0) or 0
         
@@ -15736,6 +15745,11 @@ async def investor_decide(symbol: str = "RELIANCE", region: str = "IN", nocache:
                     if _rs("debtToEquity") > 0: de = _rs("debtToEquity")
                     if _rs("revenueGrowth", 100) != 0: rev_g = _rs("revenueGrowth", 100)
                     if _rs("earningsGrowth", 100) != 0: earn_g = _rs("earningsGrowth", 100)
+                    # Prefer quarterly YoY growth if available (more accurate for fast-growers)
+                    _rqg = _rs("revenueQuarterlyGrowth", 100)
+                    if _rqg and abs(_rqg) > abs(rev_g): rev_g = _rqg
+                    _eqg = _rs("earningsQuarterlyGrowth", 100)
+                    if _eqg and abs(_eqg) > abs(earn_g): earn_g = _eqg
                     if _rs("returnOnAssets", 150) > 0: roce = _rs("returnOnAssets", 150)
                     if roce == 0 and roe > 0 and de >= 0:
                         _eq_mult = 1 + de / 100 if de > 0 else 1
@@ -15896,6 +15910,22 @@ async def investor_decide(symbol: str = "RELIANCE", region: str = "IN", nocache:
                             _ni_prev = float(_us_inc.at["Net Income", _us_inc.columns[1]]) if "Net Income" in _us_inc.index else 0
                             if _ni_prev > 0: earn_g = round((_ni - _ni_prev) / _ni_prev * 100, 1)
                         print(f"  ✅ yfinance income_stmt: NPM={npm:.1f}% GM={gm:.1f}% RevG={rev_g:.1f}%")
+                    
+                    # Also try quarterly_financials for YoY quarterly growth (more accurate for fast growers like MU)
+                    try:
+                        _us_q = _us_tk.quarterly_financials
+                        if _us_q is not None and len(_us_q.columns) >= 5 and "Total Revenue" in _us_q.index:
+                            _qrev_latest = float(_us_q.at["Total Revenue", _us_q.columns[0]])
+                            _qrev_yoy = float(_us_q.at["Total Revenue", _us_q.columns[4]])  # 4 quarters ago
+                            if _qrev_yoy > 0 and _qrev_latest > 0:
+                                _yoy_qg = round((_qrev_latest / _qrev_yoy - 1) * 100, 1)
+                                print(f"  📊 Quarterly YoY revenue growth: {_yoy_qg:.1f}% (latest={_qrev_latest/1e9:.2f}B vs yoy={_qrev_yoy/1e9:.2f}B)")
+                                # Use quarterly YoY if it's significantly different from TTM (fast grower detection)
+                                if abs(_yoy_qg) > abs(rev_g) * 1.5:
+                                    rev_g = _yoy_qg
+                                    print(f"  ✅ Using quarterly YoY growth: {rev_g:.1f}% (more representative)")
+                    except Exception as _qe:
+                        print(f"  ⚠️ Quarterly financials: {_qe}")
                     if _us_bs is not None and len(_us_bs.columns) >= 1:
                         _bcol = _us_bs.columns[0]
                         _eq = float(_us_bs.at["Stockholders Equity", _bcol]) if "Stockholders Equity" in _us_bs.index else 0
