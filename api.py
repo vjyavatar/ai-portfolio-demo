@@ -3725,26 +3725,35 @@ async def nse_options(symbol: str = "NIFTY"):
                     ce_vol = ce.get("totalTradedVolume", 0)
                     ce_chg = ce.get("changeinOpenInterest", 0)
                     ce_iv = ce.get("impliedVolatility", 0)
+                    ce_ltp = ce.get("lastPrice", 0)
+                    ce_bid = ce.get("bidprice", 0) or ce.get("bidPrice", 0) or 0
+                    ce_ask = ce.get("askprice", 0) or ce.get("askPrice", 0) or 0
                     total_ce_oi += ce_oi
                     total_ce_vol += ce_vol
                 else:
-                    ce_oi = ce_chg = ce_iv = 0
+                    ce_oi = ce_chg = ce_iv = ce_ltp = ce_bid = ce_ask = 0
                 
                 if pe and pe.get("expiryDate") == current_expiry:
                     pe_oi = pe.get("openInterest", 0)
                     pe_vol = pe.get("totalTradedVolume", 0)
                     pe_chg = pe.get("changeinOpenInterest", 0)
                     pe_iv = pe.get("impliedVolatility", 0)
+                    pe_ltp = pe.get("lastPrice", 0)
+                    pe_bid = pe.get("bidprice", 0) or pe.get("bidPrice", 0) or 0
+                    pe_ask = pe.get("askprice", 0) or pe.get("askPrice", 0) or 0
                     total_pe_oi += pe_oi
                     total_pe_vol += pe_vol
                 else:
-                    pe_oi = pe_chg = pe_iv = 0
+                    pe_oi = pe_chg = pe_iv = pe_ltp = pe_bid = pe_ask = 0
                 
                 if strike > 0:
                     strike_oi[strike] = {
                         "ce_oi": ce_oi, "pe_oi": pe_oi,
                         "ce_chg": ce_chg, "pe_chg": pe_chg,
-                        "ce_iv": ce_iv, "pe_iv": pe_iv
+                        "ce_iv": ce_iv, "pe_iv": pe_iv,
+                        "ce_ltp": ce_ltp, "pe_ltp": pe_ltp,
+                        "ce_bid": ce_bid, "pe_bid": pe_bid,
+                        "ce_ask": ce_ask, "pe_ask": pe_ask
                     }
             
             # PCR
@@ -3825,6 +3834,30 @@ async def nse_options(symbol: str = "NIFTY"):
             _gex_regime = "POSITIVE" if _gex_total > 0 else "NEGATIVE"
             _gex_implication = "Market PINNED — dealers hedge by selling rallies and buying dips. Range-bound." if _gex_total > 0 else "Market VOLATILE — dealers amplify moves. Trending day likely."
             
+            # ═══ IV Term Structure (per expiry) ═══
+            iv_term = []
+            for exp_d in expiry_dates[:4]:
+                exp_iv_sum = 0
+                exp_iv_count = 0
+                for row in data:
+                    ce = row.get("CE", {})
+                    if ce and ce.get("expiryDate") == exp_d:
+                        s_iv = ce.get("impliedVolatility", 0)
+                        if s_iv > 0 and abs(row.get("strikePrice", 0) - spot) < spot * 0.03:
+                            exp_iv_sum += s_iv
+                            exp_iv_count += 1
+                avg_iv_exp = round(exp_iv_sum / max(exp_iv_count, 1), 1)
+                iv_term.append({"expiry": exp_d, "avgIV": avg_iv_exp})
+            
+            # ═══ IV Smile (strike-wise near ATM) ═══
+            iv_smile = []
+            for sk in sorted(strike_oi.keys()):
+                if abs(sk - spot) < spot * 0.04:
+                    sd = strike_oi[sk]
+                    avg_iv_s = (sd.get("ce_iv", 0) + sd.get("pe_iv", 0)) / 2
+                    if avg_iv_s > 0:
+                        iv_smile.append({"strike": sk, "iv": round(avg_iv_s, 1), "ceIV": round(sd.get("ce_iv", 0), 1), "peIV": round(sd.get("pe_iv", 0), 1)})
+            
             result.update({
                 "success": True,
                 "spot": spot,
@@ -3839,6 +3872,9 @@ async def nse_options(symbol: str = "NIFTY"):
                 "ce_resistance": [{"strike": s, "oi": d["ce_oi"], "chg": d["ce_chg"]} for s, d in sorted_ce],
                 "pe_support": [{"strike": s, "oi": d["pe_oi"], "chg": d["pe_chg"]} for s, d in sorted_pe],
                 "ce_buildup": [{"strike": s, "chg": d["ce_chg"]} for s, d in top_ce_buildup if d["ce_chg"] > 0],
+                "iv_term_structure": iv_term,
+                "iv_smile": iv_smile,
+                "chain_near_atm": [{"strike": sk, "ce_oi": sd["ce_oi"], "pe_oi": sd["pe_oi"], "ce_iv": sd["ce_iv"], "pe_iv": sd["pe_iv"], "ce_ltp": sd.get("ce_ltp",0), "pe_ltp": sd.get("pe_ltp",0), "ce_bid": sd.get("ce_bid",0), "pe_bid": sd.get("pe_bid",0), "ce_ask": sd.get("ce_ask",0), "pe_ask": sd.get("pe_ask",0), "ce_chg": sd["ce_chg"], "pe_chg": sd["pe_chg"]} for sk, sd in sorted(strike_oi.items()) if abs(sk - spot) < spot * 0.05],
                 "pe_buildup": [{"strike": s, "chg": d["pe_chg"]} for s, d in top_pe_buildup if d["pe_chg"] > 0],
                 "gex": {
                     "total": round(_gex_total, 0),
@@ -3901,6 +3937,36 @@ async def nse_options(symbol: str = "NIFTY"):
                     result["gap"] = gap
                     result["gap_pct"] = gap_pct
                     result["gap_type"] = "GAP UP" if gap_pct > 0.3 else "GAP DOWN" if gap_pct < -0.3 else "FLAT OPEN"
+                    
+                    # Intraday OHLC for candlestick chart
+                    try:
+                        _yahoo_rate_wait()
+                        intra = tk.history(period="5d", interval="15m")
+                        if intra is not None and len(intra) > 10:
+                            ohlc_bars = []
+                            # Get last 30 bars
+                            for idx_r in range(max(0, len(intra)-30), len(intra)):
+                                bar = intra.iloc[idx_r]
+                                ts = str(intra.index[idx_r])
+                                ohlc_bars.append({
+                                    "t": ts[-8:-3] if len(ts) > 8 else ts,
+                                    "o": round(float(bar["Open"]), 2),
+                                    "h": round(float(bar["High"]), 2),
+                                    "l": round(float(bar["Low"]), 2),
+                                    "c": round(float(bar["Close"]), 2),
+                                    "v": int(bar.get("Volume", 0)),
+                                })
+                            # Calculate VWAP
+                            vwap_num = 0
+                            vwap_den = 0
+                            for b in ohlc_bars:
+                                tp = (b["h"] + b["l"] + b["c"]) / 3
+                                vwap_num += tp * b["v"]
+                                vwap_den += b["v"]
+                            result["vwap"] = round(vwap_num / max(vwap_den, 1), 2)
+                            result["ohlc_bars"] = ohlc_bars
+                    except Exception as _ie:
+                        print(f"Intraday OHLC: {_ie}")
         except Exception as e:
             print(f"CPR calc error: {e}")
         
