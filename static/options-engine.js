@@ -2726,16 +2726,18 @@ function _renderQuickTrade(d,sym){
   
   // ─── STEP 1: AUTO DETECT MODE ───
   var hasChain=chain.length>0&&!isFallback;
-  var hasOI=callWriting>0||putWriting>0;
+  var hasOI=!isFallback&&(callWriting>0||putWriting>0);
   var qtExpiryIdx7=window._getTodayExpiryIndex?window._getTodayExpiryIndex():'BANKNIFTY';
   var qtIsExpiry7=false;
   if(!isUS){qtIsExpiry7=sym===qtExpiryIdx7}
   else{var us0DTE7=['SPY','QQQ','IWM','SPX','XSP'];var dow7=new Date().getDay();if(us0DTE7.indexOf(sym)>=0&&dow7>=1&&dow7<=5)qtIsExpiry7=true;else if(dow7===5)qtIsExpiry7=true}
   
   var tradeMode='STOCK'; // Default
-  if(hasChain&&hasOI&&qtIsExpiry7)tradeMode='OPTIONS';
-  else if(hasChain&&hasOI)tradeMode='INDEX_HYBRID';
-  else tradeMode='STOCK';
+  if(hasChain&&hasOI)tradeMode='OPTIONS'; // Real chain + OI = options mode
+  else if(hasChain||hasOI)tradeMode='INDEX_HYBRID'; // Partial data
+  else tradeMode='STOCK'; // No chain at all
+  
+  // Expiry adjusts gamma weight but doesn't change mode
   
   // ─── STEP 2: COMPUTE ALL SIGNALS (0-100 each) ───
   
@@ -2746,17 +2748,20 @@ function _renderQuickTrade(d,sym){
   var isBreakDn=spot<=dayLow*1.002&&spot<vwapLevel;
   var priceActionScore=0;
   if(isBreakUp||isBreakDn)priceActionScore=85;
-  else if(rangePct>0.5)priceActionScore=50+rangePct*5;
+  else if(rangePct>0.5)priceActionScore=Math.min(100,50+rangePct*5);
   else priceActionScore=20;
   priceActionScore=Math.min(100,Math.max(0,priceActionScore));
   
   // Signal 2: Volume
   var totalVol8=bars.reduce(function(s,b){return s+b.v},0);
-  var avgVol8=bars.length>3?totalVol8/bars.length:50000;
+  var avgVol8=bars.length>3?totalVol8/bars.length:0;
   var lastBars8=bars.slice(-3);
   var recentVol8=lastBars8.length>0?lastBars8.reduce(function(s,b){return s+b.v},0)/lastBars8.length:0;
-  var volRatio8=recentVol8/Math.max(avgVol8,1);
-  var volumeScore=Math.min(100,Math.max(0,volRatio8*60));
+  var hasVolData=totalVol8>0&&avgVol8>0;
+  var volRatio8=hasVolData?(recentVol8/avgVol8):0;
+  var volumeScore=50; // Neutral default when no data
+  if(hasVolData)volumeScore=Math.min(100,Math.max(0,volRatio8*60));
+  else volumeScore=50; // No volume data = neutral, don't penalize
   
   // Signal 3: VWAP
   var vwapDist=Math.abs(spot-vwapLevel)/Math.max(spot,1)*100;
@@ -2771,7 +2776,7 @@ function _renderQuickTrade(d,sym){
   var momBars=bars.slice(-5);
   var momUp=0,momDn=0;
   momBars.forEach(function(b){if(b.c>b.o)momUp++;else momDn++});
-  var momentumScore=0;
+  var momentumScore=momBars.length>0?0:50; // Neutral when no bars
   if(momUp>=4)momentumScore=80;
   else if(momDn>=4)momentumScore=80;
   else if(momUp>=3)momentumScore=60;
@@ -2837,9 +2842,12 @@ function _renderQuickTrade(d,sym){
   // ─── STEP 3: GAMMA BONUS ───
   if(qtGammaBlast&&(isBreakUp||isBreakDn))confidence=Math.min(100,confidence+10);
   
+  // ─── STEP 4b: CLAMP confidence to 0-100 ───
+  confidence=Math.min(100,Math.max(0,confidence));
+  
   // ─── STEP 5: NORMALIZATION CAPS ───
-  if(volumeScore<40)confidence=Math.min(confidence,60);
-  if(momentumScore<40)confidence=Math.min(confidence,65);
+  if(hasVolData&&volumeScore<40)confidence=Math.min(confidence,60);
+  if(momBars.length>0&&momentumScore<40)confidence=Math.min(confidence,65);
   
   // Direction
   var leanDir=spot>vwapLevel?'BULLISH':'BEARISH';
@@ -2856,7 +2864,7 @@ function _renderQuickTrade(d,sym){
   var hardBlock=false;var blockReason='';
   if(!allPass){hardBlock=true;blockReason='VIX or premium conditions not met'}
   if(vix>35||vix<8){hardBlock=true;blockReason='VIX '+vix.toFixed(1)+' — outside safe range'}
-  if(volumeScore<20&&priceActionScore>70){hardBlock=true;blockReason='Fake breakout — no volume'}
+  if(hasVolData&&volumeScore<20&&priceActionScore>70){hardBlock=true;blockReason='Fake breakout — no volume'}
   if(direction==='NONE'&&confidence<50){hardBlock=true;blockReason='No clear direction'}
   
   // ─── STEP 7: TRADE GRADING ───
@@ -2869,7 +2877,7 @@ function _renderQuickTrade(d,sym){
   
   // Trap risk
   var trapRisk='LOW';
-  if(volumeScore<40&&priceActionScore>60)trapRisk='HIGH';
+  if(hasVolData&&volumeScore<40&&priceActionScore>60)trapRisk='HIGH';
   else if(!oiConfirms&&hasOI)trapRisk='MEDIUM';
   else if(vix>30)trapRisk='MEDIUM';
   
@@ -2956,26 +2964,30 @@ function _renderQuickTrade(d,sym){
   
   // WHY reasons (detailed institutional breakdown)
   var whyReasons=[];
-  if(priceActionScore>=70)whyReasons.push({pass:true,label:isBreakUp?'Breakout above Day High':'Breakdown below Day Low',score:priceActionScore});
-  else if(priceActionScore>=50)whyReasons.push({pass:false,label:'Approaching key level but no breakout',score:priceActionScore});
-  else whyReasons.push({pass:false,label:'No clear breakout yet',score:priceActionScore});
+  if(priceActionScore>=70)whyReasons.push({pass:true,label:isBreakUp?'Price broke above today\'s high — buyers are in control':'Price broke below today\'s low — sellers are pushing down',score:priceActionScore});
+  else if(priceActionScore>=50)whyReasons.push({pass:false,label:'Price approaching key level but hasn\'t broken through yet',score:priceActionScore});
+  else whyReasons.push({pass:false,label:'Price is in the middle of the range — no clear breakout',score:priceActionScore});
   
-  if(volumeScore>=60)whyReasons.push({pass:true,label:'Strong volume ('+volRatio8.toFixed(1)+'x average) — institutional follow-through',score:volumeScore});
-  else if(volumeScore>=40)whyReasons.push({pass:false,label:'Low volume ('+volRatio8.toFixed(1)+'x average) — no institutional commitment',score:volumeScore});
-  else whyReasons.push({pass:false,label:'Very low volume ('+volRatio8.toFixed(1)+'x) — potential fake move',score:volumeScore});
+  if(!hasVolData)whyReasons.push({pass:false,label:'No volume data yet — market may not have opened or data delayed',score:50});
+  else if(volumeScore>=60)whyReasons.push({pass:true,label:'High trading activity ('+volRatio8.toFixed(1)+'x normal) — big players are participating',score:volumeScore});
+  else if(volumeScore>=40)whyReasons.push({pass:false,label:'Low trading activity ('+volRatio8.toFixed(1)+'x normal) — big players are sitting out',score:volumeScore});
+  else whyReasons.push({pass:false,label:'Very low activity ('+volRatio8.toFixed(1)+'x normal) — this move may not be real',score:volumeScore});
   
   if(isOptions){
-    if(gammaScore>=70)whyReasons.push({pass:true,label:'Gamma support'+(qtGammaBlast?' — BLAST: dealers hedging creates momentum':''),score:gammaScore});
-    else whyReasons.push({pass:false,label:'No gamma catalyst — options market not driving price',score:gammaScore});
+    if(gammaScore>=70)whyReasons.push({pass:true,label:'Options market supporting the move'+(qtGammaBlast?' — STRONG: dealers forced to buy/sell, creating a fast move':''),score:gammaScore});
+    else whyReasons.push({pass:false,label:'Options market is quiet — no extra push from derivatives',score:gammaScore});
   }
   
   if(hasOI){
-    if(oiConfirms)whyReasons.push({pass:true,label:'OI confirms '+(direction==='BULLISH'?'bullish':'bearish')+' (PCR '+pcr8.toFixed(2)+') — smart money aligned',score:optionsScore});
-    else whyReasons.push({pass:false,label:'OI conflicting (PCR '+pcr8.toFixed(2)+') — mixed institutional positioning',score:optionsScore});
+    if(oiConfirms)whyReasons.push({pass:true,label:'Big money agrees — '+(direction==='BULLISH'?'more put selling (support below)':'more call selling (resistance above)')+' (PCR '+pcr8.toFixed(2)+')',score:optionsScore});
+    else whyReasons.push({pass:false,label:'Big money is split — no clear direction from options market (PCR '+pcr8.toFixed(2)+')',score:optionsScore});
   }
   
-  if(momentumScore>=60)whyReasons.push({pass:true,label:'Momentum '+(momUp>momDn?'bullish':'bearish')+' ('+Math.max(momUp,momDn)+'/5 bars) — price has conviction',score:momentumScore});
-  else whyReasons.push({pass:false,label:'Weak momentum ('+Math.max(momUp,momDn)+'/5 bars) — price lacks conviction',score:momentumScore});
+  if(momentumScore>=60)whyReasons.push({pass:true,label:'Price moving with conviction — '+(momUp>momDn?Math.max(momUp,momDn)+' of last 5 candles are green':Math.max(momUp,momDn)+' of last 5 candles are red'),score:momentumScore});
+  else{
+    if(momBars.length===0)whyReasons.push({pass:false,label:'No price action data yet — waiting for market to open',score:50});
+    else whyReasons.push({pass:false,label:'Weak momentum ('+Math.max(momUp,momDn)+'/5 bars agree) — price moving without conviction',score:momentumScore});
+  }
   
   // Institutional insight line
   var passCount=whyReasons.filter(function(r){return r.pass}).length;
@@ -3015,7 +3027,7 @@ function _renderQuickTrade(d,sym){
   var accumulating=volRatio8>1.2&&momUp>momDn;
   var smartMoney='';
   if(qtGammaBlast)smartMoney='Gamma exposure negative — dealer hedging creates momentum. Ride the move.';
-  else if(trapRisk==='HIGH')smartMoney='⚠️ Volume not confirming — potential trap. Institutional desks would flag this before execution.';
+  else if(trapRisk==='HIGH')smartMoney='Smart money waits for volume confirmation before committing. No volume = no conviction.';
   else if(accumulating&&direction==='BULLISH')smartMoney='Volume rising with price — institutional accumulation detected. Smart money is buying.';
   else if(oiConfirms&&pcr8>1.2)smartMoney='PCR '+pcr8.toFixed(2)+' = put sellers confident. Market supported below by institutional positioning.';
   else if(oiConfirms&&pcr8<0.8)smartMoney='PCR '+pcr8.toFixed(2)+' = call sellers confident. Resistance above from institutional hedging.';
@@ -3048,12 +3060,12 @@ function _renderQuickTrade(d,sym){
     h+='<div style="font-size:28px;font-weight:900;color:#64748b;font-family:Sora;margin-bottom:4px">NO TRADE</div>';
     h+='<div style="font-size:16px;font-weight:900;color:'+directionColor+';font-family:Sora;margin-bottom:4px">'+directionLabel+'</div>';
     if(hardBlock)h+='<div style="font-size:10px;color:#ef4444;margin-bottom:12px">⚠️ '+blockReason+'</div>';
-    h+='<div style="font-size:11px;color:#64748b;margin-bottom:12px">Confidence: '+confidence+'% · Grade: '+grade+'</div>';
+    h+='<div style="font-size:12px;color:#94a3b8;margin-bottom:12px">Confidence: '+confidence+'% · Grade: '+grade+'</div>';
     h+='<div style="text-align:left;max-width:280px;margin:0 auto">';
-    whyReasons.forEach(function(r){h+='<div style="font-size:11px;padding:3px 0;color:'+(r.pass?'#059669':'#94a3b8')+'">'+(r.pass?'✔':'✗')+' '+r.label+'</div>'});
+    whyReasons.forEach(function(r){h+='<div style="font-size:13px;padding:4px 0;color:'+(r.pass?'#059669':'#94a3b8')+'">'+(r.pass?'✔':'✗')+' '+r.label+'</div>'});
     h+='</div>';
-    h+='<div style="margin-top:8px;padding:8px;border-radius:8px;background:#3b82f608;border:1px solid #3b82f615;font-size:9px;color:#3b82f6;font-weight:600">📊 '+insightLine+'</div>';
-    h+='<div style="margin-top:4px;padding:8px;border-radius:8px;background:#1e293b;font-size:9px;color:#64748b">🧠 '+smartMoney+'</div>';
+    h+='<div style="margin-top:8px;padding:8px;border-radius:8px;background:#3b82f608;border:1px solid #3b82f615;font-size:11px;color:#3b82f6;font-weight:600">📊 '+insightLine+'</div>';
+    h+='<div style="margin-top:4px;padding:8px;border-radius:8px;background:#1e293b;font-size:11px;color:#94a3b8">🧠 '+smartMoney+'</div>';
     h+='</div>';
     
   // ─── ⏳ WATCHING / 🟡 ALMOST ───
@@ -3061,10 +3073,10 @@ function _renderQuickTrade(d,sym){
     h+='<div style="text-align:center;padding:16px;border-radius:16px;background:'+statusColor+'10;border:2px solid '+statusColor+'25;margin-bottom:12px">';
     h+='<div style="font-size:24px;font-weight:900;color:'+statusColor+';font-family:Sora">'+status+'</div>';
     h+='<div style="font-size:18px;font-weight:900;color:'+directionColor+';font-family:Sora;margin-top:4px">'+directionLabel+'</div>';
-    h+='<div style="font-size:10px;color:#94a3b8;margin-top:4px">Confidence: '+confidence+'% · Grade: '+grade+' · Trap: '+trapRisk+'</div>';
+    h+='<div style="font-size:12px;color:#94a3b8;margin-top:6px">Confidence: '+confidence+'% · Grade: '+grade+' · Trap: '+trapRisk+'</div>';
     h+='</div>';
     h+='<div style="text-align:left;max-width:280px;margin:0 auto 12px">';
-    whyReasons.forEach(function(r){h+='<div style="font-size:11px;padding:3px 0;color:'+(r.pass?'#059669':'#94a3b8')+'">'+(r.pass?'✔':'✗')+' '+r.label+'</div>'});
+    whyReasons.forEach(function(r){h+='<div style="font-size:13px;padding:4px 0;color:'+(r.pass?'#059669':'#94a3b8')+'">'+(r.pass?'✔':'✗')+' '+r.label+'</div>'});
     h+='</div>';
     // Scenario
     h+='<div style="padding:10px;border-radius:10px;background:#1e293b;margin-bottom:8px;font-size:9px;color:#94a3b8">';
@@ -3072,7 +3084,7 @@ function _renderQuickTrade(d,sym){
     h+='IF breakout above <strong style="color:#059669">'+S+(isUS?dayHigh.toLocaleString('en-US'):dayHigh.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN'))+'</strong> → '+(isOptions?'BUY CALL':'BUY')+'<br>';
     h+='IF breakdown below <strong style="color:#ef4444">'+S+(isUS?dayLow.toLocaleString('en-US'):dayLow.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN'))+'</strong> → '+(isOptions?'BUY PUT':'SELL')+'<br>';
     h+='ELSE → WAIT</div>';
-    h+='<div style="padding:8px;border-radius:8px;background:#3b82f608;border:1px solid #3b82f615;font-size:9px;color:#3b82f6;font-weight:600;margin-top:4px">📊 '+insightLine+'</div>';
+    h+='<div style="padding:8px;border-radius:8px;background:#3b82f608;border:1px solid #3b82f615;font-size:11px;color:#3b82f6;font-weight:600;margin-top:4px">📊 '+insightLine+'</div>';
     h+='<div style="padding:8px;border-radius:8px;background:#1e293b50;font-size:9px;color:#64748b;margin-top:4px">🧠 '+smartMoney+'</div>';
     
   // ─── 🟢 ENTER NOW ───
@@ -3085,14 +3097,14 @@ function _renderQuickTrade(d,sym){
       h+='<div style="font-size:14px;color:#e2e8f0;font-weight:800;margin-top:8px"><span style="padding:2px 6px;border-radius:4px;background:#3b82f620;color:#3b82f6;font-size:9px;font-weight:800">'+strikeLabel+'</span> '+S+entryStrike7+' '+entryType7+' @ '+S+entryPrem7.toFixed(isUS&&entryPrem7<10?2:0)+'</div>';
       h+='<div style="font-size:8px;color:#64748b;margin-top:2px">'+strikeReason+'</div>';
     }
-    h+='<div style="font-size:10px;color:#94a3b8;margin-top:4px">Confidence: <strong style="color:'+(confidence>=70?'#059669':'#d97706')+'">'+confidence+'%</strong> · Grade: <strong>'+grade+'</strong> ('+gradeLabel+') · Trap: '+trapRisk+'</div>';
+    h+='<div style="font-size:12px;color:#94a3b8;margin-top:6px">Confidence: <strong style="color:'+(confidence>=70?'#059669':'#d97706')+'">'+confidence+'%</strong> · Grade: <strong>'+grade+'</strong> ('+gradeLabel+') · Trap: '+trapRisk+'</div>';
     if(isOptions)h+='<div style="font-size:10px;color:#94a3b8;margin-top:2px">Lot: '+c7.lot+' · Qty: '+qtLots+(qtLots!=='1'?' lots':' lot')+'</div>';
     if(qtGammaBlast)h+='<div style="margin-top:6px;padding:4px 14px;border-radius:8px;background:#f59e0b15;display:inline-block;font-size:10px;color:#f59e0b;font-weight:800">⚡ GAMMA BLAST — Bigger position!</div>';
     h+='</div>';
     
     // WHY
     h+='<div style="text-align:center;margin-bottom:10px"><div style="font-size:9px;color:#64748b;font-weight:700;margin-bottom:4px">WHY?</div>';
-    whyReasons.forEach(function(r){if(r.pass)h+='<div style="font-size:11px;color:#059669;padding:2px 0;font-weight:600">✔ '+r.label+'</div>'});
+    whyReasons.forEach(function(r){if(r.pass)h+='<div style="font-size:13px;color:#059669;padding:3px 0;font-weight:600">✔ '+r.label+'</div>'});
     h+='</div>';
     
     // Entry + Target + SL
@@ -3134,7 +3146,7 @@ function _renderQuickTrade(d,sym){
       });
       h+='</div></div>';
     }
-    h+='<div style="padding:8px;border-radius:8px;background:#1e293b;font-size:9px;color:#64748b">🧠 '+smartMoney+'</div>';
+    h+='<div style="padding:8px;border-radius:8px;background:#1e293b;font-size:11px;color:#94a3b8">🧠 '+smartMoney+'</div>';
     if(qtIsExpiry)h+='<div style="text-align:center;margin-top:6px;padding:5px;border-radius:6px;background:#d9770608;font-size:9px;color:#d97706;font-weight:700">⏱ EXPIRY — Exit within 10 min</div>';
   }
   
@@ -4938,7 +4950,7 @@ window._renderSwingCard=function(d,sym){
     h+='<div style="font-size:18px;font-weight:900;color:'+biasColor+';font-family:Sora;margin-top:6px">'+dirLabel+'</div>';
     h+='</div>';
     h+='<div style="text-align:left;max-width:280px;margin:0 auto 12px">';
-    why.forEach(function(r){h+='<div style="font-size:11px;padding:3px 0;color:'+(r.pass?'#059669':'#94a3b8')+'">'+(r.pass?'✔':'✗')+' '+r.label+'</div>'});
+    why.forEach(function(r){h+='<div style="font-size:13px;padding:4px 0;color:'+(r.pass?'#059669':'#94a3b8')+'">'+(r.pass?'✔':'✗')+' '+r.label+'</div>'});
     h+='</div>';
     h+='<div style="text-align:center;padding:12px;border-radius:10px;background:#1e293b"><div style="font-size:9px;color:#64748b;margin-bottom:4px">WATCHING FOR</div><div style="font-size:24px;font-weight:900;color:#f59e0b;font-family:JetBrains Mono">'+S+L(d.entry_level)+'</div><div style="font-size:8px;color:#64748b;margin-top:4px">'+d.trend+' + Volume confirmation</div></div>';
     
