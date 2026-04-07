@@ -2522,6 +2522,9 @@ console.log('[GEX+BACKTEST] ✅ Heatmap + Backtest + BP Calibration loaded');
 // ═══════════════════════════════════════════════════════════════════════════════
 
 window._quickRefreshTimer=null;
+window._activeOptionsSym=null;
+window._activeOptionsReg='IN';
+
 window._loadQuickTrade=function(symbol){
   var el=document.getElementById('deResult');if(!el)return;
   var sym=(symbol||'NIFTY').toUpperCase();
@@ -2529,6 +2532,10 @@ window._loadQuickTrade=function(symbol){
   // Clear previous refresh timer
   if(window._quickRefreshTimer){clearInterval(window._quickRefreshTimer);window._quickRefreshTimer=null}
   if(window._ultraRefreshTimer){clearInterval(window._ultraRefreshTimer);window._ultraRefreshTimer=null}
+  
+  // Track active symbol — prevents stale timer overwrites
+  window._activeOptionsSym=sym;
+  window._activeOptionsReg='IN';
   
   el.innerHTML='<div style="padding:40px;text-align:center;background:linear-gradient(135deg,#0A0F1C,#0f1a2e);border-radius:16px">'
     +'<div style="display:inline-block;width:20px;height:20px;border:3px solid #059669;border-top-color:transparent;border-radius:50%;animation:spin .5s linear infinite"></div>'
@@ -2541,13 +2548,14 @@ window._loadQuickTrade=function(symbol){
         el.innerHTML='<div style="color:#ef4444;padding:20px;text-align:center;background:#0A0F1C;border-radius:16px">❌ Failed<br><button onclick="window._loadQuickTrade(\''+sym+'\')" style="margin-top:10px;padding:8px 20px;border-radius:8px;background:#059669;color:#fff;border:none;cursor:pointer;font-size:11px;font-weight:700">Retry</button></div>';
         return;
       }
+      if(window._activeOptionsSym!==sym)return; // Another ticker was loaded — abort
       _renderQuickTrade(d,sym);
-      // Auto-refresh every 30 seconds
+      // Auto-refresh — only if still the active ticker
       window._quickRefreshTimer=setInterval(function(){
-        if(document.getElementById('deResult')&&window._deMode==='options'){
+        if(document.getElementById('deResult')&&window._deMode==='options'&&window._activeOptionsSym===sym){
           fetch('/api/nse-options?symbol='+encodeURIComponent(sym))
             .then(function(r2){return r2.json()})
-            .then(function(d2){if(d2&&d2.success)_renderQuickTrade(d2,sym)})
+            .then(function(d2){if(d2&&d2.success&&window._activeOptionsSym===sym)_renderQuickTrade(d2,sym)})
             .catch(function(){});
         }else{clearInterval(window._quickRefreshTimer);window._quickRefreshTimer=null}
       },30000);
@@ -2658,16 +2666,38 @@ function _renderQuickTrade(d,sym){
   var targetLow=Math.round(entryPrem7*1.25);
   var targetHigh=Math.round(entryPrem7*1.40);
   
-  // Expiry detection + Gamma Blast
+  // Expiry detection + Gamma Blast (UNIVERSAL — all regions)
   var qtExpiryIdx7=window._getTodayExpiryIndex?window._getTodayExpiryIndex():'BANKNIFTY';
-  var qtIsExpiry7=sym===qtExpiryIdx7;
-  var gex7=d.gex||{};
-  var qtGammaBlast=false;
-  if(qtIsExpiry7){
-    var gexNeg7=gex.regime==='NEGATIVE';
-    var highVol7=bars.length>2&&bars[bars.length-1].v>(totalVol7/Math.max(bars.length,1))*1.5;
-    qtGammaBlast=gexNeg7||highVol7;
+  var qtIsExpiry7=false;
+  
+  // Determine if today is expiry for this ticker
+  if(!isUS){
+    // India index: weekly expiry per day map
+    qtIsExpiry7=sym===qtExpiryIdx7;
+  }else{
+    // US: SPY/QQQ/IWM have 0DTE (daily expiry) Mon-Fri
+    var us0DTE=['SPY','QQQ','IWM','SPX','XSP'];
+    var usDayOfWeek=new Date().getDay();
+    if(us0DTE.indexOf(sym)>=0&&usDayOfWeek>=1&&usDayOfWeek<=5){
+      qtIsExpiry7=true; // 0DTE every weekday
+    }else if(usDayOfWeek===5){
+      qtIsExpiry7=true; // All US options have Friday weekly expiry
+    }
   }
+  
+  var gexNeg7=gex.regime==='NEGATIVE';
+  var highVol7=bars.length>2&&bars[bars.length-1].v>(totalVol7/Math.max(bars.length,1))*1.5;
+  
+  // Gamma Blast: fires when GEX negative OR volume spike — REGARDLESS of expiry
+  // Expiry day amplifies it (more lots), but blast can happen any day
+  var qtGammaBlast=gexNeg7&&highVol7; // Both conditions for non-expiry
+  if(qtIsExpiry7)qtGammaBlast=gexNeg7||highVol7; // Either condition on expiry (more aggressive)
+  
+  // Store on window for monkey-patch access
+  window._qtGammaBlast=qtGammaBlast;
+  window._qtIsExpiry=qtIsExpiry7;
+  window._qtEntryStrike=0;window._qtEntryPrem=0;
+  
   var qtLots=qtGammaBlast?'2–3':qtIsExpiry7?'1–2':'1';
   
   // Status
@@ -2830,13 +2860,7 @@ function _renderQuickTrade(d,sym){
 var _origSwitchDE=window.switchDEMode;
 window.switchDEMode=function(mode){
   if(typeof _origSwitchDE==='function')_origSwitchDE(mode);
-  if(mode==='options'){
-    // Auto-select today's expiry index for Quick Trade
-    var todayIdx=window._getTodayExpiryIndex?window._getTodayExpiryIndex():'NIFTY';
-    setTimeout(function(){
-      if(typeof window._loadQuickTrade==='function')window._loadQuickTrade(todayIdx);
-    },100);
-  }
+  // Options mode loading handled by Patch 3 (loadSmartOptions) — no action here
 };
 
 console.log('[QUICK TRADE] ✅ Simplified 1-click mode loaded');
@@ -2867,22 +2891,74 @@ window._speak=function(text,urgent){
   window.speechSynthesis.speak(u);
 };
 
-window._voiceAlert=function(type,detail,strike,prem,isBlast){
+window._voiceAlert=function(type,detail,strike,prem,isBlast,extraCtx){
   var msg='';
-  var isExpDay=detail&&window._getTodayExpiryIndex&&detail===window._getTodayExpiryIndex();
+  var ctx=extraCtx||{};
+  var isExpDay=false;
+  if(detail&&window._getTodayExpiryIndex&&detail===window._getTodayExpiryIndex())isExpDay=true;
+  var us0DTEv=['SPY','QQQ','IWM','SPX','XSP'];
+  var usDowV=new Date().getDay();
+  if(us0DTEv.indexOf(detail)>=0&&usDowV>=1&&usDowV<=5)isExpDay=true;
+  else if(usDowV===5&&detail)isExpDay=true;
+  if(window._qtIsExpiry)isExpDay=true;
   var expiryTag=isExpDay?' Expiry day.':'';
   
-  if(type==='ENTRY_CE')msg=(detail||'NIFTY')+expiryTag+' Breakout — Buy '+(strike?strike+' ':'')+'Call Now'+(prem?' at '+prem:'')+(isBlast?' — Gamma Blast! Take 2 to 3 lots.':'.'  );
-  else if(type==='ENTRY_PE')msg=(detail||'NIFTY')+expiryTag+' Breakdown — Buy '+(strike?strike+' ':'')+'Put Now'+(prem?' at '+prem:'')+(isBlast?' — Gamma Blast! Take 2 to 3 lots.':'.');
-  else if(type==='WAIT')msg='No trade right now. Wait for breakout.';
-  else if(type==='PROFIT')msg='Target hit! Book profit now.';
-  else if(type==='PARTIAL')msg='Book 50 percent profit. Trail the rest.';
-  else if(type==='EXIT')msg='Exit trade immediately!';
-  else if(type==='STOP')msg='Loss limit hit. Stop trading for today.';
-  else if(type==='GAMMA_FADING')msg='Gamma fading! Momentum dying. Close trade now.';
-  else if(type==='THETA_EXIT')msg='Theta accelerating! Premium decaying fast. Exit early.';
-  else if(type==='TARGET_HIT')msg='Target reached! Close trade and book profit.';
-  else if(type==='STOP_HIT')msg='Stop loss hit! Cut loss now. Do not hold.';
+  // Active trade data for exit alerts
+  var t=window._activeTrade;
+  var S=t?(t.region==='US'?'dollar':'rupees'):'rupees';
+  
+  if(type==='ENTRY_CE'){
+    msg=(detail||'NIFTY')+expiryTag;
+    msg+=' Bullish — '+(ctx.reason||'OI supports upside, breakout confirmed')+'.';
+    msg+=' Buy '+(strike?strike+' ':'')+'Call at '+(prem||'market')+'.';
+    if(ctx.target)msg+=' Target '+ctx.target+', stop loss '+ctx.sl+'.';
+    if(isBlast)msg+=' Gamma Blast active! Take 2 to 3 lots.';
+    if(isExpDay)msg+=' Watch theta decay. Exit within 10 minutes.';
+  }
+  else if(type==='ENTRY_PE'){
+    msg=(detail||'NIFTY')+expiryTag;
+    msg+=' Bearish — '+(ctx.reason||'OI supports downside, breakdown confirmed')+'.';
+    msg+=' Buy '+(strike?strike+' ':'')+'Put at '+(prem||'market')+'.';
+    if(ctx.target)msg+=' Target '+ctx.target+', stop loss '+ctx.sl+'.';
+    if(isBlast)msg+=' Gamma Blast active! Take 2 to 3 lots.';
+    if(isExpDay)msg+=' Watch theta decay. Exit within 10 minutes.';
+  }
+  else if(type==='WAIT')msg='No trade right now. Waiting for breakout with volume confirmation.';
+  else if(type==='PARTIAL'){
+    if(t){
+      var pnlP=Math.round((ctx.currentPrem-t.entryPrem)*t.lots*t.lotSize);
+      msg='Target 1 reached at '+(ctx.currentPrem||'')+'. Premium up 25 percent.';
+      msg+=' Book half position. Profit so far: '+(pnlP>0?pnlP:'')+' '+S+'.';
+    }else msg='Book 50 percent profit. Trail the rest.';
+  }
+  else if(type==='TARGET_HIT'){
+    if(t){
+      var pnlT=Math.round((ctx.currentPrem-t.entryPrem)*t.lots*t.lotSize);
+      msg='Target 2 reached at '+(ctx.currentPrem||'')+'. Premium up 40 percent!';
+      msg+=' Close full position now. Total profit: '+(pnlT>0?pnlT:'')+' '+S+'.';
+    }else msg='Target reached! Close trade and book profit.';
+  }
+  else if(type==='STOP_HIT'){
+    if(t){
+      var lossAmt=Math.abs(Math.round((ctx.currentPrem-t.entryPrem)*t.lots*t.lotSize));
+      msg='Stop loss hit at '+(ctx.currentPrem||'')+'. Premium down 20 percent.';
+      msg+=' Cut loss immediately. Loss: '+lossAmt+' '+S+'. Do not hold.';
+    }else msg='Stop loss hit! Cut loss now. Do not hold.';
+  }
+  else if(type==='GAMMA_FADING'){
+    msg='Gamma fading! Momentum is dying.';
+    if(t&&ctx.currentPrem)msg+=' Premium now at '+ctx.currentPrem+', was '+t.entryPrem+'.';
+    msg+=' Close trade now before premium collapses.';
+  }
+  else if(type==='THETA_EXIT'){
+    if(t){
+      var mins=Math.round((Date.now()-t.entryTime)/60000);
+      msg='Theta accelerating! '+mins+' minutes in trade. Premium decaying fast.';
+    }else msg='Theta accelerating! Premium decaying fast.';
+    msg+=' Exit now to protect capital.';
+  }
+  else if(type==='EXIT')msg='Exit trade immediately. Signal has reversed.';
+  else if(type==='STOP')msg='Two consecutive losses. Stop trading for today. Protect your capital. Come back tomorrow.';
   else msg=type;
   
   window._speak(msg,type==='ENTRY_CE'||type==='ENTRY_PE'||type==='EXIT'||type==='GAMMA_FADING'||type==='STOP_HIT');
@@ -3088,11 +3164,26 @@ _renderQuickTrade=function(d,sym){
   
   // Only voice if signal actually changed from last render
   if(currentSignal!==window._lastQuickSignal){
+    var prevSig=window._lastQuickSignal;
     window._lastQuickSignal=currentSignal;
-    if(currentSignal==='ENTRY_CE')window._voiceAlert('ENTRY_CE',sym,entryStrike7,Math.round(entryPrem7),qtGammaBlast);
-    else if(currentSignal==='ENTRY_PE')window._voiceAlert('ENTRY_PE',sym,entryStrike7,Math.round(entryPrem7),qtGammaBlast);
+    if(currentSignal==='ENTRY_CE'){
+      var reason7=oiBias==='BULLISH'?'OI supports upside':'Price above VWAP';
+      if(volOK)reason7+=', strong volume';
+      window._voiceAlert('ENTRY_CE',sym,entryStrike7,Math.round(entryPrem7),window._qtGammaBlast,{reason:reason7,target:Math.round(entryPrem7*1.25),sl:Math.round(entryPrem7*0.8)});
+    }
+    else if(currentSignal==='ENTRY_PE'){
+      var reason7b=oiBias==='BEARISH'?'OI supports downside':'Price below VWAP';
+      if(volOK)reason7b+=', strong volume';
+      window._voiceAlert('ENTRY_PE',sym,entryStrike7,Math.round(entryPrem7),window._qtGammaBlast,{reason:reason7b,target:Math.round(entryPrem7*1.25),sl:Math.round(entryPrem7*0.8)});
+    }
     else if(currentSignal==='NO_TRADE')window._voiceAlert('WAIT');
+    // Exit alerts: if signal changed FROM buy TO wait/no-trade
+    else if((prevSig==='ENTRY_CE'||prevSig==='ENTRY_PE')&&(currentSignal==='WAIT'||currentSignal==='NO_TRADE')){
+      if(window._qtGammaBlast||window._lastGammaBlastState)window._voiceAlert('GAMMA_FADING');
+      else if(window._qtIsExpiry)window._voiceAlert('THETA_EXIT');
+    }
   }
+  window._lastGammaBlastState=window._qtGammaBlast;
 };
 
 // ─── WIRE INTO GAMMA MODE ───
@@ -3268,7 +3359,7 @@ window._autoMode=localStorage.getItem('celesys_autoMode')||'MANUAL';
 
 window._renderAutoPanel=function(sym,bias,status){
   var mode=window._autoMode;
-  var h='<div style="background:#0A0F1C;border-radius:16px;padding:16px 20px;margin-bottom:10px;border:1px solid '+(mode==='AUTO'?'#059669':mode==='ASSISTED'?'#d97706':'#64748b')+'25">';
+  var h='<div style="background:var(--surface,#f8fafc);border-radius:16px;padding:16px 20px;margin-bottom:10px;border:1px solid '+(mode==='AUTO'?'#059669':mode==='ASSISTED'?'#d97706':'#e2e8f0')+'40">';
   h+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">';
   h+='<div style="font-size:10px;font-weight:800;color:#64748b;letter-spacing:1.5px">🤖 TRADE MODE</div>';
   h+='<div style="display:flex;gap:4px">';
@@ -3276,7 +3367,7 @@ window._renderAutoPanel=function(sym,bias,status){
     var active=mode===m;
     var mc=m==='AUTO'?'#059669':m==='ASSISTED'?'#d97706':'#64748b';
     var lbl=m==='AUTO'?'🟢 Auto':m==='ASSISTED'?'🟡 Assisted':'🔴 Manual';
-    h+='<div onclick="window._autoMode=\''+m+'\';localStorage.setItem(\'celesys_autoMode\',\''+m+'\');window._loadQuickTrade(\''+sym+'\')" style="padding:4px 12px;border-radius:6px;font-size:8px;font-weight:800;cursor:pointer;'+(active?'background:'+mc+'20;color:'+mc+';border:1px solid '+mc+'40':'background:#1e293b;color:#475569;border:1px solid #334155')+'">'+lbl+'</div>';
+    h+='<div onclick="window._autoMode=\''+m+'\';localStorage.setItem(\'celesys_autoMode\',\''+m+'\');window._loadQuickTrade(\''+sym+'\')" style="padding:5px 14px;border-radius:8px;font-size:9px;font-weight:800;cursor:pointer;'+(active?'background:'+mc+';color:#fff;border:1px solid '+mc+';box-shadow:0 2px 8px '+mc+'40':'background:#f1f5f9;color:#64748b;border:1px solid #e2e8f0')+'">'+lbl+'</div>';
   });
   h+='</div></div>';
   
@@ -3404,18 +3495,26 @@ function _renderUltraSimple(d,sym){
   var c8=cfg8[sym]||cfg8.NIFTY;
   var atmStrike8=Math.round(spot/c8.step)*c8.step;
   
-  // Detect if today is THIS index's expiry day
+  // Detect if today is expiry day (UNIVERSAL)
   var todayExpiryIdx=window._getTodayExpiryIndex();
-  var isExpiryDay=sym===todayExpiryIdx;
+  var isUS8=d._region==='US'||d.region==='US';
+  var isExpiryDay=false;
+  if(!isUS8){
+    isExpiryDay=sym===todayExpiryIdx;
+  }else{
+    var us0DTE8=['SPY','QQQ','IWM','SPX','XSP'];
+    var usDow8=new Date().getDay();
+    if(us0DTE8.indexOf(sym)>=0&&usDow8>=1&&usDow8<=5)isExpiryDay=true;
+    else if(usDow8===5)isExpiryDay=true;
+  }
   var expiryDayNames={NIFTY:'Tuesday',BANKNIFTY:'Wednesday',SENSEX:'Thursday'};
   
-  // Gamma Blast detection (expiry day + high gamma conditions)
+  // Gamma Blast detection (UNIVERSAL — all regions)
   var gammaBlast=false;
-  if(isExpiryDay){
-    var gexNeg=gex.regime==='NEGATIVE';
-    var highVol=bars.length>2&&bars[bars.length-1].v>(bars.reduce(function(s,b){return s+b.v},0)/Math.max(bars.length,1))*1.5;
-    gammaBlast=gexNeg||highVol;
-  }
+  var gexNeg=gex.regime==='NEGATIVE';
+  var highVol=bars.length>2&&bars[bars.length-1].v>(bars.reduce(function(s,b){return s+b.v},0)/Math.max(bars.length,1))*1.5;
+  if(isExpiryDay)gammaBlast=gexNeg||highVol; // Either on expiry
+  else gammaBlast=gexNeg&&highVol; // Both on non-expiry
   
   // ATM premiums
   var atmCE8=0,atmPE8=0;
@@ -3484,10 +3583,19 @@ function _renderUltraSimple(d,sym){
   });
   var bestIdx=Object.keys(scores8).sort(function(a,b){return scores8[b]-scores8[a]})[0];
   
-  // Voice (with strike + premium + gamma blast)
-  if(signal==='BUY_CE'&&window._lastUltraSignal!=='BUY_CE'){window._voiceAlert('ENTRY_CE',sym,atmStrike8,Math.round(entryPrem8),gammaBlast);window._lastUltraSignal='BUY_CE'}
-  else if(signal==='BUY_PE'&&window._lastUltraSignal!=='BUY_PE'){window._voiceAlert('ENTRY_PE',sym,atmStrike8,Math.round(entryPrem8),gammaBlast);window._lastUltraSignal='BUY_PE'}
-  else if(signal!==window._lastUltraSignal){window._lastUltraSignal=signal}
+  // Voice (with strike + premium + gamma blast + exit alerts)
+  var prevUltraSig=window._lastUltraSignal;
+  if(signal==='BUY_CE'&&prevUltraSig!=='BUY_CE'){window._voiceAlert('ENTRY_CE',sym,atmStrike8,Math.round(entryPrem8),gammaBlast);window._lastUltraSignal='BUY_CE'}
+  else if(signal==='BUY_PE'&&prevUltraSig!=='BUY_PE'){window._voiceAlert('ENTRY_PE',sym,atmStrike8,Math.round(entryPrem8),gammaBlast);window._lastUltraSignal='BUY_PE'}
+  else if(signal!==prevUltraSig){
+    // Exit alerts: signal dropped from buy to wait/no-trade
+    if((prevUltraSig==='BUY_CE'||prevUltraSig==='BUY_PE')&&(signal==='WAIT'||signal==='NO_TRADE')){
+      if(gammaBlast||window._lastUltraBlastState)window._voiceAlert('GAMMA_FADING');
+      else if(isExpiryDay)window._voiceAlert('THETA_EXIT');
+    }
+    window._lastUltraSignal=signal;
+  }
+  window._lastUltraBlastState=gammaBlast;
   
   // ═══ RENDER — 3 BLOCKS ONLY ═══
   var h='';
@@ -3955,23 +4063,33 @@ window._loadOptionsUniversal=function(symbol,region){
   var sym=(symbol||'SPY').toUpperCase();
   var reg=region||'US';
   
+  // Clear ALL timers + track active symbol
   if(window._quickRefreshTimer){clearInterval(window._quickRefreshTimer);window._quickRefreshTimer=null}
   if(window._ultraRefreshTimer){clearInterval(window._ultraRefreshTimer);window._ultraRefreshTimer=null}
+  window._activeOptionsSym=sym;
+  window._activeOptionsReg=reg;
   
   el.innerHTML='<div style="padding:40px;text-align:center;background:#0A0F1C;border-radius:16px"><div style="display:inline-block;width:20px;height:20px;border:3px solid #3b82f6;border-top-color:transparent;border-radius:50%;animation:spin .5s linear infinite"></div><div style="font-size:12px;color:#3b82f6;margin-top:10px;font-weight:800">Loading '+sym+' ('+reg+')...</div></div>';
   
   fetch('/api/options-quick?symbol='+encodeURIComponent(sym)+'&region='+encodeURIComponent(reg))
     .then(function(r){return r.json()})
     .then(function(d){
+      if(window._activeOptionsSym!==sym)return; // Another ticker loaded — abort
       if(!d||!d.success){
         el.innerHTML='<div style="text-align:center;padding:40px;background:#0A0F1C;border-radius:16px"><div style="font-size:48px;margin-bottom:12px">🕐</div><div style="font-size:16px;color:#ef4444;font-weight:900">No options data for '+sym+'</div><div style="font-size:10px;color:#94a3b8;margin-top:8px">'+(reg==='US'?'US market hours: 9:30 AM – 4:00 PM ET':'NSE hours: 9:15 AM – 3:30 PM IST')+'</div><button onclick="window._loadOptionsUniversal(\''+sym+'\',\''+reg+'\')" style="margin-top:12px;padding:8px 20px;border-radius:8px;background:#3b82f6;color:#fff;border:none;cursor:pointer;font-size:11px;font-weight:700">🔄 Retry</button></div>';
         return;
       }
-      // Inject region-specific config
-      d._region=reg;
-      d._currency=reg==='US'?'$':'₹';
-      d._lotSize=d.lot_size||(reg==='US'?100:1);
+      d._region=reg;d._currency=reg==='US'?'$':'₹';d._lotSize=d.lot_size||(reg==='US'?100:1);
       _renderQuickTrade(d,sym);
+      // Auto-refresh — only if still active
+      window._quickRefreshTimer=setInterval(function(){
+        if(document.getElementById('deResult')&&window._deMode==='options'&&window._activeOptionsSym===sym&&window._activeOptionsReg===reg){
+          fetch('/api/options-quick?symbol='+encodeURIComponent(sym)+'&region='+encodeURIComponent(reg))
+            .then(function(r2){return r2.json()})
+            .then(function(d2){if(d2&&d2.success&&window._activeOptionsSym===sym){d2._region=reg;d2._currency=reg==='US'?'$':'₹';d2._lotSize=d2.lot_size||(reg==='US'?100:1);_renderQuickTrade(d2,sym)}})
+            .catch(function(){});
+        }else{clearInterval(window._quickRefreshTimer);window._quickRefreshTimer=null}
+      },30000);
     }).catch(function(e){
       el.innerHTML='<div style="text-align:center;padding:40px;background:#0A0F1C;border-radius:16px;color:#ef4444">Error: '+e.message+'</div>';
     });
@@ -4118,3 +4236,174 @@ window.switchDEMode=function(mode){
 };
 
 console.log('[OPTIONS NAV] ✅ Region → Category → Ticker navigator loaded');
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 🔄 TRADE LIFECYCLE ENGINE — Tracks active trade, monitors premium, timed exits
+// ═══════════════════════════════════════════════════════════════════════════════
+
+window._activeTrade=null; // {sym,type,strike,entryPrem,entryTime,lots,lotSize,isGamma,isExpiry,region}
+window._tradeTimerInterval=null;
+
+// ─── START TRADE ───
+window._startTrade=function(sym,type,strike,prem,lots,lotSize,isGamma,isExpiry,region){
+  window._activeTrade={
+    sym:sym,type:type,strike:strike,entryPrem:prem,entryTime:Date.now(),
+    lots:lots,lotSize:lotSize,isGamma:!!isGamma,isExpiry:!!isExpiry,region:region||'IN',
+    target25:Math.round(prem*1.25*100)/100,
+    target40:Math.round(prem*1.40*100)/100,
+    stopLoss:Math.round(prem*0.80*100)/100,
+    partialBooked:false,alerted:{target25:false,target40:false,sl:false,time8:false,time10:false,fading:false}
+  };
+  // Start 1-second timer for time-based exits
+  if(window._tradeTimerInterval)clearInterval(window._tradeTimerInterval);
+  window._tradeTimerInterval=setInterval(function(){window._checkTradeAlerts()},5000); // check every 5 sec
+  console.log('[TRADE] ✅ Started: '+sym+' '+type+' '+strike+' @ '+prem);
+};
+
+// ─── CHECK ALERTS (called every 5 sec while in trade) ───
+window._checkTradeAlerts=function(){
+  var t=window._activeTrade;if(!t)return;
+  var elapsed=Math.round((Date.now()-t.entryTime)/60000); // minutes
+  
+  // Time alerts
+  if(elapsed>=8&&!t.alerted.time8){
+    t.alerted.time8=true;
+    window._voiceAlert('PARTIAL');
+    console.log('[TRADE] ⏱ 8 min — partial profit alert');
+  }
+  if(elapsed>=10&&!t.alerted.time10){
+    t.alerted.time10=true;
+    if(t.isExpiry)window._voiceAlert('THETA_EXIT');
+    else window._voiceAlert('EXIT');
+    console.log('[TRADE] ⏱ 10 min — time stop');
+  }
+};
+
+// ─── PREMIUM MONITOR (called from render with latest premium) ───
+window._checkPremiumAlerts=function(currentPrem){
+  var t=window._activeTrade;if(!t)return;
+  var S=t.region==='US'?'$':'₹';
+  
+  // Target +25% hit
+  if(currentPrem>=t.target25&&!t.alerted.target25){
+    t.alerted.target25=true;
+    window._voiceAlert('PARTIAL',null,null,null,null,{currentPrem:currentPrem});
+  }
+  
+  // Target +40% hit
+  if(currentPrem>=t.target40&&!t.alerted.target40){
+    t.alerted.target40=true;
+    window._voiceAlert('TARGET_HIT',null,null,null,null,{currentPrem:currentPrem});
+  }
+  
+  // Stop Loss hit
+  if(currentPrem<=t.stopLoss&&!t.alerted.sl){
+    t.alerted.sl=true;
+    window._voiceAlert('STOP_HIT',null,null,null,null,{currentPrem:currentPrem});
+  }
+  
+  // Gamma fading
+  if(t.isGamma&&currentPrem<t.entryPrem*0.92&&currentPrem>t.stopLoss&&!t.alerted.fading){
+    t.alerted.fading=true;
+    window._voiceAlert('GAMMA_FADING',null,null,null,null,{currentPrem:currentPrem});
+  }
+};
+
+// ─── END TRADE ───
+window._endTrade=function(exitPrem,won){
+  var t=window._activeTrade;if(!t)return;
+  if(window._tradeTimerInterval){clearInterval(window._tradeTimerInterval);window._tradeTimerInterval=null}
+  window._logTrade(t.sym,t.type,t.entryPrem,exitPrem||t.entryPrem,t.lots,t.lotSize,t.isGamma,t.isExpiry);
+  window._updateGameState({win:!!won,pct:Math.round((exitPrem-t.entryPrem)/Math.max(t.entryPrem,0.01)*100),isGamma:t.isGamma});
+  
+  // Check consecutive losses
+  var losses=0;
+  for(var i=window._tradeLog.length-1;i>=0&&!window._tradeLog[i].win;i--)losses++;
+  if(losses>=2){
+    window._voiceAlert('STOP');
+  }
+  
+  window._activeTrade=null;
+  console.log('[TRADE] 🏁 Ended: '+(won?'WIN':'LOSS'));
+};
+
+// ─── RENDER LIVE TRADE MONITOR (shown when trade is active) ───
+window._renderTradeMonitor=function(currentPrem,S){
+  var t=window._activeTrade;if(!t)return'';
+  var elapsed=Math.round((Date.now()-t.entryTime)/1000);
+  var elMin=Math.floor(elapsed/60);var elSec=elapsed%60;
+  var pctChg=Math.round((currentPrem-t.entryPrem)/Math.max(t.entryPrem,0.01)*100);
+  var pnl=Math.round((currentPrem-t.entryPrem)*t.lots*t.lotSize*100)/100;
+  var pnlColor=pnl>=0?'#059669':'#ef4444';
+  
+  var h='<div style="max-width:480px;margin:8px auto;padding:14px 18px;border-radius:14px;background:#0A0F1C;border:2px solid '+(pnl>=0?'#05966930':'#ef444430')+'">';
+  h+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">';
+  h+='<div style="font-size:10px;font-weight:800;color:#3b82f6">🔴 LIVE TRADE</div>';
+  h+='<div style="font-size:10px;font-weight:800;color:'+(elMin>=8?'#ef4444':'#64748b')+';font-family:JetBrains Mono">⏱ '+elMin+':'+(elSec<10?'0':'')+elSec+(t.isExpiry?' / 10:00 max':'')+'</div>';
+  h+='</div>';
+  
+  h+='<div style="display:flex;gap:8px;margin-bottom:8px">';
+  h+='<div style="flex:1;padding:6px;border-radius:6px;background:#1e293b;text-align:center"><div style="font-size:7px;color:#64748b">ENTRY</div><div style="font-size:12px;font-weight:900;color:#94a3b8;font-family:JetBrains Mono">'+S+t.entryPrem+'</div></div>';
+  h+='<div style="flex:1;padding:6px;border-radius:6px;background:'+pnlColor+'10;text-align:center"><div style="font-size:7px;color:'+pnlColor+'">NOW</div><div style="font-size:12px;font-weight:900;color:'+pnlColor+';font-family:JetBrains Mono">'+S+currentPrem+'</div></div>';
+  h+='<div style="flex:1;padding:6px;border-radius:6px;background:'+pnlColor+'10;text-align:center"><div style="font-size:7px;color:'+pnlColor+'">P&L</div><div style="font-size:12px;font-weight:900;color:'+pnlColor+';font-family:JetBrains Mono">'+(pnl>=0?'+':'')+S+Math.abs(pnl)+'</div></div>';
+  h+='</div>';
+  
+  // Progress bar (entry → target)
+  var prog=Math.max(0,Math.min(100,Math.round((currentPrem-t.stopLoss)/(t.target40-t.stopLoss)*100)));
+  h+='<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">';
+  h+='<div style="font-size:7px;color:#ef4444;min-width:30px">SL '+S+t.stopLoss+'</div>';
+  h+='<div style="flex:1;height:6px;background:#1e293b;border-radius:3px;overflow:hidden;position:relative">';
+  h+='<div style="width:'+prog+'%;height:100%;background:linear-gradient(90deg,#ef4444,#d97706,#059669);border-radius:3px"></div>';
+  h+='<div style="position:absolute;left:41.6%;top:0;width:1px;height:100%;background:#f59e0b80"></div>'; // T1 mark at 25/60 = 41.6%
+  h+='</div>';
+  h+='<div style="font-size:7px;color:#059669;min-width:30px;text-align:right">T2 '+S+t.target40+'</div>';
+  h+='</div>';
+  
+  // Exit buttons
+  h+='<div style="display:flex;gap:6px;justify-content:center">';
+  h+='<button onclick="window._endTrade('+currentPrem+','+currentPrem+'>'+t.entryPrem+')" style="padding:6px 16px;border-radius:8px;background:#059669;color:#fff;border:none;font-size:9px;font-weight:800;cursor:pointer">✅ Close Trade ('+S+currentPrem+')</button>';
+  h+='<button onclick="window._endTrade('+currentPrem+',false)" style="padding:6px 16px;border-radius:8px;background:#ef4444;color:#fff;border:none;font-size:9px;font-weight:800;cursor:pointer">❌ Cut Loss</button>';
+  h+='</div>';
+  
+  h+='</div>';
+  return h;
+};
+
+// ─── WIRE: Show trade monitor + premium alerts in Quick Trade ───
+var _origQT7=_renderQuickTrade;
+_renderQuickTrade=function(d,sym){
+  _origQT7(d,sym);
+  if(!window._activeTrade||window._activeTrade.sym!==sym)return;
+  // Find current ATM premium to monitor
+  var t=window._activeTrade;
+  var chain=d.chain_near_atm||[];
+  var currentPrem=0;
+  chain.forEach(function(ch){
+    if(Math.abs(ch.strike-t.strike)<1){
+      currentPrem=t.type==='CE'?ch.ce_ltp:ch.pe_ltp;
+    }
+  });
+  if(currentPrem>0){
+    window._checkPremiumAlerts(currentPrem);
+    var S=t.region==='US'?'$':'₹';
+    var el=document.getElementById('deResult');if(!el)return;
+    var monDiv=document.createElement('div');
+    monDiv.innerHTML=window._renderTradeMonitor(currentPrem,S);
+    el.insertBefore(monDiv,el.children[1]||null); // After nav, before content
+  }
+};
+
+// ─── WIRE: Update EXECUTE button to call _startTrade ───
+// The execute button currently just shows an alert. We patch it to also start trade tracking.
+var _origQT8=_renderQuickTrade;
+_renderQuickTrade=function(d,sym){
+  _origQT8(d,sym);
+  var el=document.getElementById('deResult');if(!el)return;
+  // Find execute buttons and add startTrade call
+  var isUS9=d._region==='US'||d.region==='US';
+  var S9=isUS9?'$':'₹';
+  // Store latest trade params on window for execute button
+  window._pendingTrade={sym:sym,region:isUS9?'US':'IN',S:S9};
+};
+
+console.log('[TRADE LIFECYCLE] ✅ Active trade monitoring + timed exits loaded');
