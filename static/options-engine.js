@@ -2697,9 +2697,12 @@ function _renderQuickTrade(d,sym){
   var putWriting=(peSupp.length>0?peSupp[0].oi:0);
   var oiBias=putWriting>callWriting?'BULLISH':'BEARISH';
   var priceBias=spot>vwapLevel?'BULLISH':'BEARISH';
-  var biasMatch=oiBias===priceBias;
-  var finalBias=biasMatch?oiBias:'NO TRADE';
-  var biasStrength=biasMatch?'STRONG':'CONFLICTING';
+  
+  // If data is fallback (synthetic OI), trust price bias only
+  var isFallback=d._fallback||false;
+  var biasMatch=isFallback?true:(oiBias===priceBias);
+  var finalBias=isFallback?priceBias:(biasMatch?oiBias:'NO TRADE');
+  var biasStrength=isFallback?'PRICE-BASED':(biasMatch?'STRONG':'CONFLICTING');
   var biasColor=finalBias==='BULLISH'?'#059669':finalBias==='BEARISH'?'#ef4444':'#64748b';
   
   // ─── STEP 4: Entry level ───
@@ -2772,31 +2775,11 @@ function _renderQuickTrade(d,sym){
   var qtIsExpiry=qtIsExpiry7;
   var qtExpiryNames={NIFTY:'Tuesday',BANKNIFTY:'Wednesday',SENSEX:'Thursday'};
   
-  // Expiry banner + index pills — ONLY for India indices
+  // Navigator handles pills — just show Advanced button for India
   if(!isUS){
-    if(qtIsExpiry){
-      h+='<div style="text-align:center;padding:6px 16px;border-radius:10px;background:#f59e0b10;border:1px solid #f59e0b25;margin-bottom:8px">';
-      h+='<span style="font-size:10px;font-weight:900;color:#f59e0b">🔥 '+sym+' EXPIRY DAY ('+(qtExpiryNames[sym]||'')+') — Best for trading today</span></div>';
-    }else if(['NIFTY','BANKNIFTY','SENSEX'].indexOf(sym)>=0){
-      h+='<div style="text-align:center;padding:4px;margin-bottom:8px"><span style="font-size:9px;color:#475569">Today\'s expiry: <strong style="color:#f59e0b">'+qtExpiryIdx+'</strong> — </span>';
-      h+='<span onclick="window._loadQuickTrade(\''+qtExpiryIdx+'\')" style="font-size:9px;color:#f59e0b;cursor:pointer;text-decoration:underline">Switch to '+qtExpiryIdx+'</span></div>';
-    }
-  
-    // India index mode switcher
-    h+='<div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap;align-items:center">';
-    ['NIFTY','BANKNIFTY','SENSEX'].forEach(function(idx){
-      var isAct=idx===sym;var isExp=idx===qtExpiryIdx;
-      h+='<div onclick="window._loadQuickTrade(\''+idx+'\')" style="padding:8px 18px;border-radius:10px;font-size:11px;font-weight:800;cursor:pointer;font-family:Sora;'+(isAct?'background:linear-gradient(135deg,#059669,#10b981);color:#fff;box-shadow:0 4px 12px rgba(5,150,105,.3)':'background:#1e293b;color:#94a3b8;border:1px solid #334155')+'">'+(isExp?'🔥 ':'')+idx+(isExp?' <span style="font-size:7px">(EXP)</span>':'')+'</div>';
-    });
-    h+='<div style="flex:1"></div>';
-    h+='<div onclick="window._loadOptionsDecide(\''+sym+'\')" style="padding:8px 14px;border-radius:10px;font-size:9px;font-weight:700;cursor:pointer;background:#1e293b;color:#64748b;border:1px solid #33415540">🔬 Advanced (experts)</div>';
+    h+='<div style="text-align:right;margin-bottom:8px">';
+    h+='<div onclick="window._loadOptionsDecide(\''+sym+'\')" style="padding:6px 14px;border-radius:8px;font-size:9px;font-weight:700;cursor:pointer;display:inline-block;background:#f1f5f9;color:#64748b;border:1px solid #e2e8f0">🔬 Advanced (experts)</div>';
     h+='</div>';
-  }else{
-    // US: show expiry badge inline if 0DTE
-    if(qtIsExpiry7){
-      h+='<div style="text-align:center;padding:4px 12px;border-radius:8px;background:#f59e0b10;border:1px solid #f59e0b20;margin-bottom:8px;display:inline-block">';
-      h+='<span style="font-size:9px;font-weight:800;color:#f59e0b">🔥 0DTE — Expiry Day</span></div>';
-    }
   }
   
   // ─── MAIN CARD ───
