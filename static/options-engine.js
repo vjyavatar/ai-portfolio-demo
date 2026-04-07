@@ -30,7 +30,7 @@ window._loadOptionsDecide=function(symbol){
       _renderOptionsEngine(d,sym);
     })
     .catch(function(e){
-      el.innerHTML='<div style="text-align:center;padding:30px;background:#0A0F1C;border-radius:16px"><div style="font-size:14px;color:#ef4444;font-weight:800;margin-bottom:8px">Connection Error</div><div style="font-size:10px;color:#94a3b8;margin-bottom:12px">'+e.message+'</div><button onclick="location.reload()" style="padding:8px 20px;border-radius:8px;background:#3b82f6;color:#fff;border:none;cursor:pointer;font-size:11px;font-weight:700">🔄 Retry</button></div>';
+      el.innerHTML='<div style="text-align:center;padding:30px;background:#0A0F1C;border-radius:16px"><div style="font-size:14px;color:#ef4444;font-weight:800;margin-bottom:8px">Cannot connect to server</div><div style="font-size:10px;color:#94a3b8;margin-bottom:12px">'+e.message+'</div><button onclick="window._retryLast()" style="padding:8px 20px;border-radius:8px;background:#3b82f6;color:#fff;border:none;cursor:pointer;font-size:11px;font-weight:700">🔄 Retry</button></div>';
     });
 };
 
@@ -1554,7 +1554,7 @@ window._loadGammaMode=function(symbol){
       }
       _renderGammaEngine(d,sym);
     }).catch(function(e){
-      el.innerHTML='<div style="text-align:center;padding:30px;background:#0A0F1C;border-radius:16px"><div style="font-size:14px;color:#ef4444;font-weight:800;margin-bottom:8px">Connection Error</div><div style="font-size:10px;color:#94a3b8;margin-bottom:12px">'+e.message+'</div><button onclick="location.reload()" style="padding:8px 20px;border-radius:8px;background:#059669;color:#fff;border:none;cursor:pointer;font-size:11px;font-weight:700">🔄 Retry</button></div>';
+      el.innerHTML='<div style="text-align:center;padding:30px;background:#0A0F1C;border-radius:16px"><div style="font-size:14px;color:#ef4444;font-weight:800;margin-bottom:8px">Cannot connect to server</div><div style="font-size:10px;color:#94a3b8;margin-bottom:12px">'+e.message+'</div><button onclick="window._retryLast()" style="padding:8px 20px;border-radius:8px;background:#059669;color:#fff;border:none;cursor:pointer;font-size:11px;font-weight:700">🔄 Retry</button></div>';
     });
 };
 
@@ -2554,13 +2554,13 @@ window._loadQuickTrade=function(symbol){
         if(shouldOpen3){
           window._apiRetryCount=(window._apiRetryCount||0)+1;
           if(window._apiRetryCount<=3){
-            el.innerHTML='<div style="max-width:480px;margin:0 auto;padding:40px 20px;text-align:center;background:#0A0F1C;border-radius:20px"><div style="display:inline-block;width:30px;height:30px;border:3px solid #f59e0b;border-top-color:transparent;border-radius:50%;animation:spin 1s linear infinite;margin-bottom:12px"></div><div style="font-size:16px;font-weight:900;color:#e2e8f0">Fetching '+sym+' data...</div><div style="font-size:10px;color:#94a3b8;margin-top:8px">Attempt '+window._apiRetryCount+' of 3. Auto-retrying in 15 sec...</div><button onclick="window._loadQuickTrade(\''+sym+'\')" style="margin-top:12px;padding:8px 20px;border-radius:8px;background:#f59e0b;color:#000;border:none;cursor:pointer;font-size:11px;font-weight:800">🔄 Retry Now</button></div>';
+            el.innerHTML='<div style="max-width:480px;margin:0 auto;padding:40px 20px;text-align:center;background:#0A0F1C;border-radius:20px"><div style="display:inline-block;width:30px;height:30px;border:3px solid #f59e0b;border-top-color:transparent;border-radius:50%;animation:spin 1s linear infinite;margin-bottom:12px"></div><div style="font-size:16px;font-weight:900;color:#e2e8f0">Fetching '+sym+' data...</div><div style="font-size:10px;color:#94a3b8;margin-top:8px">Attempt '+window._apiRetryCount+' of 3. Auto-retrying in 15 sec...</div><button onclick="window._retryLast()" style="margin-top:12px;padding:8px 20px;border-radius:8px;background:#f59e0b;color:#000;border:none;cursor:pointer;font-size:11px;font-weight:800">🔄 Retry Now</button></div>';
             window._apiRetryTimer=setTimeout(function(){if(window._activeOptionsSym===sym)window._loadQuickTrade(sym)},15000);
           }else{
-            el.innerHTML='<div style="max-width:480px;margin:0 auto;padding:40px 20px;text-align:center;background:#0A0F1C;border-radius:20px"><div style="font-size:48px;margin-bottom:12px">⚠️</div><div style="font-size:16px;font-weight:900;color:#d97706">Data Temporarily Unavailable</div><div style="font-size:10px;color:#94a3b8;margin-top:8px">'+(d&&d.error?d.error:'NSE API not responding')+'<br>Try again in 1-2 minutes.</div><button onclick="window._apiRetryCount=0;window._loadQuickTrade(\''+sym+'\')" style="margin-top:12px;padding:10px 24px;border-radius:8px;background:#f59e0b;color:#000;border:none;cursor:pointer;font-size:12px;font-weight:800">🔄 Try Again</button></div>';
+            el.innerHTML='<div style="max-width:480px;margin:0 auto;padding:40px 20px;text-align:center;background:#0A0F1C;border-radius:20px"><div style="font-size:48px;margin-bottom:12px">⚠️</div><div style="font-size:16px;font-weight:900;color:#d97706">Data Temporarily Unavailable</div><div style="font-size:10px;color:#94a3b8;margin-top:8px">'+(d&&d.error?d.error:'NSE API not responding')+'<br>Try again in 1-2 minutes.</div><button onclick="window._retryLast()" style="margin-top:12px;padding:10px 24px;border-radius:8px;background:#f59e0b;color:#000;border:none;cursor:pointer;font-size:12px;font-weight:800">🔄 Try Again</button></div>';
           }
         }else{
-          el.innerHTML='<div style="max-width:480px;margin:0 auto;padding:40px 20px;text-align:center;background:#0A0F1C;border-radius:20px"><div style="font-size:48px;margin-bottom:12px">🕐</div><div style="font-size:18px;font-weight:900;color:#e2e8f0">Market Closed</div><div style="font-size:10px;color:#94a3b8;margin-top:8px">NSE: 9:15 AM – 3:30 PM IST</div><button onclick="window._loadQuickTrade(\''+sym+'\')" style="margin-top:12px;padding:8px 20px;border-radius:8px;background:#1e293b;color:#64748b;border:1px solid #334155;cursor:pointer;font-size:11px;font-weight:700">🔄 Refresh</button></div>';
+          el.innerHTML='<div style="max-width:480px;margin:0 auto;padding:40px 20px;text-align:center;background:#0A0F1C;border-radius:20px"><div style="font-size:48px;margin-bottom:12px">🕐</div><div style="font-size:18px;font-weight:900;color:#e2e8f0">Market Closed</div><div style="font-size:10px;color:#94a3b8;margin-top:8px">NSE: 9:15 AM – 3:30 PM IST</div><button onclick="window._retryLast()" style="margin-top:12px;padding:8px 20px;border-radius:8px;background:#1e293b;color:#64748b;border:1px solid #334155;cursor:pointer;font-size:11px;font-weight:700">🔄 Refresh</button></div>';
         }
         return;
       }
@@ -2585,7 +2585,7 @@ window._loadQuickTrade=function(symbol){
         }else{console.log('[REFRESH] Stopped for '+sym);clearInterval(window._quickRefreshTimer);window._quickRefreshTimer=null}
       },30000);
     }).catch(function(e){
-      el.innerHTML='<div style="text-align:center;padding:30px;background:#0A0F1C;border-radius:16px"><div style="font-size:14px;color:#ef4444;font-weight:800;margin-bottom:8px">Connection Error</div><div style="font-size:10px;color:#94a3b8;margin-bottom:12px">'+e.message+'</div><button onclick="location.reload()" style="padding:8px 20px;border-radius:8px;background:#059669;color:#fff;border:none;cursor:pointer;font-size:11px;font-weight:700">🔄 Retry</button></div>';
+      el.innerHTML='<div style="text-align:center;padding:30px;background:#0A0F1C;border-radius:16px"><div style="font-size:14px;color:#ef4444;font-weight:800;margin-bottom:8px">Cannot connect to server</div><div style="font-size:10px;color:#94a3b8;margin-bottom:12px">'+e.message+'</div><button onclick="window._retryLast()" style="padding:8px 20px;border-radius:8px;background:#059669;color:#fff;border:none;cursor:pointer;font-size:11px;font-weight:700">🔄 Retry</button></div>';
     });
 };
 
@@ -2627,7 +2627,7 @@ function _renderQuickTrade(d,sym){
         h0r+='<div style="font-size:18px;font-weight:900;color:#e2e8f0;font-family:Sora;margin-bottom:8px">Fetching Live Data...</div>';
         h0r+='<div style="font-size:11px;color:#94a3b8;margin-bottom:4px">Market is open. NSE API may take a moment. Attempt '+window._apiRetryCount+' of 3.</div>';
         h0r+='<div style="font-size:10px;color:#64748b;margin-bottom:16px">Auto-retrying in 15 seconds...</div>';
-        h0r+='<button onclick="window._loadQuickTrade(\''+sym+'\')" style="padding:10px 24px;border-radius:10px;background:#f59e0b;color:#000;border:none;font-size:12px;font-weight:800;cursor:pointer">🔄 Retry Now</button>';
+        h0r+='<button onclick="window._retryLast()" style="padding:10px 24px;border-radius:10px;background:#f59e0b;color:#000;border:none;font-size:12px;font-weight:800;cursor:pointer">🔄 Retry Now</button>';
         h0r+='</div>';
         el.innerHTML=h0r;
         // Single retry after 15 sec (not 10 — avoid rapid flickering)
@@ -2643,7 +2643,7 @@ function _renderQuickTrade(d,sym){
         h0f+='<div style="font-size:48px;margin-bottom:12px">⚠️</div>';
         h0f+='<div style="font-size:18px;font-weight:900;color:#d97706;font-family:Sora;margin-bottom:8px">Data Temporarily Unavailable</div>';
         h0f+='<div style="font-size:11px;color:#94a3b8;margin-bottom:16px">NSE API is not responding. This is common during the first few minutes after market open.<br>Try again in 1-2 minutes.</div>';
-        h0f+='<button onclick="window._apiRetryCount=0;window._loadQuickTrade(\''+sym+'\')" style="padding:12px 28px;border-radius:10px;background:#f59e0b;color:#000;border:none;font-size:13px;font-weight:800;cursor:pointer">🔄 Try Again</button>';
+        h0f+='<button onclick="window._retryLast()" style="padding:12px 28px;border-radius:10px;background:#f59e0b;color:#000;border:none;font-size:13px;font-weight:800;cursor:pointer">🔄 Try Again</button>';
         h0f+='</div>';
         el.innerHTML=h0f;
       }
@@ -2662,10 +2662,10 @@ function _renderQuickTrade(d,sym){
     h0+='🟢 BUY CALL / 🔴 BUY PUT / ⚪ WAIT</div></div>';
     h0+='<div style="display:flex;gap:8px;justify-content:center">';
     ['NIFTY','BANKNIFTY','SENSEX'].forEach(function(idx){
-      h0+='<div onclick="window._loadQuickTrade(\''+idx+'\')" style="padding:8px 16px;border-radius:10px;font-size:10px;font-weight:800;cursor:pointer;font-family:Sora;'+(idx===sym?'background:#1e293b;color:#3b82f6;border:1px solid #3b82f630':'background:#0F172A;color:#475569;border:1px solid #1e293b')+'">'+idx+'</div>';
+      h0+='<div onclick="window._retryLast()" style="padding:8px 16px;border-radius:10px;font-size:10px;font-weight:800;cursor:pointer;font-family:Sora;'+(idx===sym?'background:#1e293b;color:#3b82f6;border:1px solid #3b82f630':'background:#0F172A;color:#475569;border:1px solid #1e293b')+'">'+idx+'</div>';
     });
     h0+='</div>';
-    h0+='<button onclick="window._loadQuickTrade(\''+sym+'\')" style="margin-top:16px;padding:10px 24px;border-radius:10px;background:#1e293b;color:#64748b;border:1px solid #334155;font-size:11px;font-weight:700;cursor:pointer">🔄 Refresh</button>';
+    h0+='<button onclick="window._retryLast()" style="margin-top:16px;padding:10px 24px;border-radius:10px;background:#1e293b;color:#64748b;border:1px solid #334155;font-size:11px;font-weight:700;cursor:pointer">🔄 Refresh</button>';
     h0+='</div>';
     el.innerHTML=h0;
     return;
@@ -2863,7 +2863,7 @@ function _renderQuickTrade(d,sym){
   var timeStr=nowTs.getHours().toString().padStart(2,'0')+':'+nowTs.getMinutes().toString().padStart(2,'0')+':'+nowTs.getSeconds().toString().padStart(2,'0');
   h+='<div style="max-width:480px;margin:8px auto;display:flex;justify-content:space-between;align-items:center">';
   h+='<div style="font-size:9px;color:#475569">Updated: '+timeStr+' · Auto-refresh 30s</div>';
-  h+='<button onclick="window._loadQuickTrade(\''+sym+'\')" style="padding:6px 16px;border-radius:8px;background:#1e293b;color:#94a3b8;border:1px solid #334155;font-size:10px;font-weight:700;cursor:pointer">🔄 Refresh</button>';
+  h+='<button onclick="window._retryLast()" style="padding:6px 16px;border-radius:8px;background:#1e293b;color:#94a3b8;border:1px solid #334155;font-size:10px;font-weight:700;cursor:pointer">🔄 Refresh</button>';
   h+='</div>';
   
   // 3 GOLDEN RULES
@@ -2903,6 +2903,8 @@ console.log('[QUICK TRADE] ✅ Simplified 1-click mode loaded');
 // ═══════════════════════════════════════════════════════════════════════════════
 
 // ─── 1) VOICE ALERT ENGINE ───
+
+window._retryLast=function(){var s=window._activeOptionsSym||'NIFTY';var r=window._activeOptionsReg||'IN';if(r==='US')window._loadOptionsUniversal(s,r);else window._loadQuickTrade(s)};
 window._voiceEnabled=true;
 window._voiceRepeatCount=0;
 window._voiceRepeatTimer=null;
@@ -3485,7 +3487,7 @@ window._renderAutoPanel=function(sym,bias,status){
     var active=mode===m;
     var mc=m==='AUTO'?'#059669':m==='ASSISTED'?'#d97706':'#64748b';
     var lbl=m==='AUTO'?'🟢 Auto':m==='ASSISTED'?'🟡 Assisted':'🔴 Manual';
-    h+='<div onclick="window._autoMode=\''+m+'\';localStorage.setItem(\'celesys_autoMode\',\''+m+'\');window._loadQuickTrade(\''+sym+'\')" style="padding:5px 14px;border-radius:8px;font-size:9px;font-weight:800;cursor:pointer;'+(active?'background:'+mc+';color:#fff;border:1px solid '+mc+';box-shadow:0 2px 8px '+mc+'40':'background:#f1f5f9;color:#64748b;border:1px solid #e2e8f0')+'">'+lbl+'</div>';
+    h+='<div onclick="window._retryLast()" style="padding:5px 14px;border-radius:8px;font-size:9px;font-weight:800;cursor:pointer;'+(active?'background:'+mc+';color:#fff;border:1px solid '+mc+';box-shadow:0 2px 8px '+mc+'40':'background:#f1f5f9;color:#64748b;border:1px solid #e2e8f0')+'">'+lbl+'</div>';
   });
   h+='</div></div>';
   
@@ -3601,7 +3603,7 @@ window._loadGammaMode=function(symbol){
             .catch(function(){});
         }else{clearInterval(window._ultraRefreshTimer);window._ultraRefreshTimer=null}
       },30000);
-    }).catch(function(e){el.innerHTML='<div style="text-align:center;padding:30px;background:#0A0F1C;border-radius:16px"><div style="font-size:14px;color:#ef4444;margin-bottom:8px">Connection Error</div><div style="font-size:10px;color:#94a3b8;margin-bottom:12px">'+e.message+'</div><button onclick="location.reload()" style="padding:8px 20px;border-radius:8px;background:#059669;color:#fff;border:none;cursor:pointer;font-size:11px;font-weight:700">🔄 Retry</button></div>'});
+    }).catch(function(e){el.innerHTML='<div style="text-align:center;padding:30px;background:#0A0F1C;border-radius:16px"><div style="font-size:14px;color:#ef4444;margin-bottom:8px">Cannot connect to server</div><div style="font-size:10px;color:#94a3b8;margin-bottom:12px">'+(e.message||'Network error')+'</div><button onclick="window._retryLast()" style="padding:8px 20px;border-radius:8px;background:#059669;color:#fff;border:none;cursor:pointer;font-size:11px;font-weight:700">🔄 Retry</button></div>'});
 };
 
 function _renderUltraSimple(d,sym){
@@ -3861,7 +3863,7 @@ function _renderUltraSimple(d,sym){
   // Voice + Quick Trade toggle
   h+='<div style="display:flex;gap:6px;justify-content:center;margin-bottom:6px">';
   h+='<button onclick="window._voiceEnabled=!window._voiceEnabled;this.textContent=window._voiceEnabled?\'🔊 Voice ON\':\'🔇 Voice OFF\'" style="padding:6px 14px;border-radius:8px;background:#1e293b;color:'+(window._voiceEnabled?'#059669':'#64748b')+';border:1px solid #334155;font-size:9px;font-weight:700;cursor:pointer">'+(window._voiceEnabled?'🔊 Voice ON':'🔇 Voice OFF')+'</button>';
-  h+='<button onclick="window._loadQuickTrade(\''+sym+'\')" style="padding:6px 14px;border-radius:8px;background:#1e293b;color:#3b82f6;border:1px solid #3b82f625;font-size:9px;font-weight:700;cursor:pointer">📊 Quick Trade</button>';
+  h+='<button onclick="window._retryLast()" style="padding:6px 14px;border-radius:8px;background:#1e293b;color:#3b82f6;border:1px solid #3b82f625;font-size:9px;font-weight:700;cursor:pointer">📊 Quick Trade</button>';
   h+='<button onclick="window._loadOptionsDecide(\''+sym+'\')" style="padding:6px 14px;border-radius:8px;background:#1e293b;color:#a855f7;border:1px solid #a855f725;font-size:9px;font-weight:700;cursor:pointer">🔬 Full Analysis</button>';
   h+='</div>';
   
@@ -3971,7 +3973,7 @@ window._renderUserGuide=function(){
   
   // Start button
   h+='<div style="text-align:center;margin-top:16px">';
-  h+='<button onclick="localStorage.setItem(\'celesys_guideSeen\',\'1\');window._loadQuickTrade(window._getTodayExpiryIndex?window._getTodayExpiryIndex():\'BANKNIFTY\')" style="padding:16px 48px;border-radius:16px;background:linear-gradient(135deg,#a855f7,#7c3aed);color:#fff;border:none;font-size:16px;font-weight:900;cursor:pointer;font-family:Sora;box-shadow:0 8px 32px rgba(168,85,247,.3)">🚀 START TRADING</button>';
+  h+='<button onclick="window._retryLast()" style="padding:16px 48px;border-radius:16px;background:linear-gradient(135deg,#a855f7,#7c3aed);color:#fff;border:none;font-size:16px;font-weight:900;cursor:pointer;font-family:Sora;box-shadow:0 8px 32px rgba(168,85,247,.3)">🚀 START TRADING</button>';
   h+='<div style="font-size:8px;color:#475569;margin-top:8px">This guide is always available via the "📖 How to Use" button</div>';
   h+='</div>';
   
@@ -4245,7 +4247,7 @@ window._loadOptionsUniversal=function(symbol,region){
         }else{console.log('[REFRESH] Universal stopped for '+sym);clearInterval(window._quickRefreshTimer);window._quickRefreshTimer=null}
       },30000);
     }).catch(function(e){
-      el.innerHTML='<div style="text-align:center;padding:30px;background:#0A0F1C;border-radius:16px"><div style="font-size:14px;color:#ef4444;margin-bottom:8px">Connection Error</div><div style="font-size:10px;color:#94a3b8;margin-bottom:12px">'+e.message+'</div><button onclick="location.reload()" style="padding:8px 20px;border-radius:8px;background:#3b82f6;color:#fff;border:none;cursor:pointer;font-size:11px;font-weight:700">🔄 Retry</button></div>';
+      el.innerHTML='<div style="text-align:center;padding:30px;background:#0A0F1C;border-radius:16px"><div style="font-size:14px;color:#ef4444;margin-bottom:8px">Cannot connect to server</div><div style="font-size:10px;color:#94a3b8;margin-bottom:12px">'+e.message+'</div><button onclick="window._retryLast()" style="padding:8px 20px;border-radius:8px;background:#3b82f6;color:#fff;border:none;cursor:pointer;font-size:11px;font-weight:700">🔄 Retry</button></div>';
     });
 };
 
