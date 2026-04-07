@@ -30,7 +30,7 @@ window._loadOptionsDecide=function(symbol){
       _renderOptionsEngine(d,sym);
     })
     .catch(function(e){
-      el.innerHTML='<div style="color:#ef4444;padding:20px;font-size:12px;background:#0A0F1C;border-radius:16px;text-align:center">Error: '+e.message+'</div>';
+      el.innerHTML='<div style="text-align:center;padding:30px;background:#0A0F1C;border-radius:16px"><div style="font-size:14px;color:#ef4444;font-weight:800;margin-bottom:8px">Connection Error</div><div style="font-size:10px;color:#94a3b8;margin-bottom:12px">'+e.message+'</div><button onclick="location.reload()" style="padding:8px 20px;border-radius:8px;background:#3b82f6;color:#fff;border:none;cursor:pointer;font-size:11px;font-weight:700">🔄 Retry</button></div>';
     });
 };
 
@@ -1554,7 +1554,7 @@ window._loadGammaMode=function(symbol){
       }
       _renderGammaEngine(d,sym);
     }).catch(function(e){
-      el.innerHTML='<div style="color:#ef4444;padding:20px;background:#0A0F1C;border-radius:16px;text-align:center">Error: '+e.message+'</div>';
+      el.innerHTML='<div style="text-align:center;padding:30px;background:#0A0F1C;border-radius:16px"><div style="font-size:14px;color:#ef4444;font-weight:800;margin-bottom:8px">Connection Error</div><div style="font-size:10px;color:#94a3b8;margin-bottom:12px">'+e.message+'</div><button onclick="location.reload()" style="padding:8px 20px;border-radius:8px;background:#059669;color:#fff;border:none;cursor:pointer;font-size:11px;font-weight:700">🔄 Retry</button></div>';
     });
 };
 
@@ -2585,7 +2585,7 @@ window._loadQuickTrade=function(symbol){
         }else{console.log('[REFRESH] Stopped for '+sym);clearInterval(window._quickRefreshTimer);window._quickRefreshTimer=null}
       },30000);
     }).catch(function(e){
-      el.innerHTML='<div style="color:#ef4444;padding:20px;background:#0A0F1C;border-radius:16px;text-align:center">Error: '+e.message+'</div>';
+      el.innerHTML='<div style="text-align:center;padding:30px;background:#0A0F1C;border-radius:16px"><div style="font-size:14px;color:#ef4444;font-weight:800;margin-bottom:8px">Connection Error</div><div style="font-size:10px;color:#94a3b8;margin-bottom:12px">'+e.message+'</div><button onclick="location.reload()" style="padding:8px 20px;border-radius:8px;background:#059669;color:#fff;border:none;cursor:pointer;font-size:11px;font-weight:700">🔄 Retry</button></div>';
     });
 };
 
@@ -3601,7 +3601,7 @@ window._loadGammaMode=function(symbol){
             .catch(function(){});
         }else{clearInterval(window._ultraRefreshTimer);window._ultraRefreshTimer=null}
       },30000);
-    }).catch(function(e){el.innerHTML='<div style="text-align:center;padding:40px;background:#0A0F1C;border-radius:20px;color:#ef4444">Error: '+e.message+'</div>'});
+    }).catch(function(e){el.innerHTML='<div style="text-align:center;padding:30px;background:#0A0F1C;border-radius:16px"><div style="font-size:14px;color:#ef4444;margin-bottom:8px">Connection Error</div><div style="font-size:10px;color:#94a3b8;margin-bottom:12px">'+e.message+'</div><button onclick="location.reload()" style="padding:8px 20px;border-radius:8px;background:#059669;color:#fff;border:none;cursor:pointer;font-size:11px;font-weight:700">🔄 Retry</button></div>'});
 };
 
 function _renderUltraSimple(d,sym){
@@ -4245,7 +4245,7 @@ window._loadOptionsUniversal=function(symbol,region){
         }else{console.log('[REFRESH] Universal stopped for '+sym);clearInterval(window._quickRefreshTimer);window._quickRefreshTimer=null}
       },30000);
     }).catch(function(e){
-      el.innerHTML='<div style="text-align:center;padding:40px;background:#0A0F1C;border-radius:16px;color:#ef4444">Error: '+e.message+'</div>';
+      el.innerHTML='<div style="text-align:center;padding:30px;background:#0A0F1C;border-radius:16px"><div style="font-size:14px;color:#ef4444;margin-bottom:8px">Connection Error</div><div style="font-size:10px;color:#94a3b8;margin-bottom:12px">'+e.message+'</div><button onclick="location.reload()" style="padding:8px 20px;border-radius:8px;background:#3b82f6;color:#fff;border:none;cursor:pointer;font-size:11px;font-weight:700">🔄 Retry</button></div>';
     });
 };
 
