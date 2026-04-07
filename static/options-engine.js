@@ -2547,7 +2547,21 @@ window._loadQuickTrade=function(symbol){
     .then(function(r){return r.json()})
     .then(function(d){
       if(!d||!d.success){
-        el.innerHTML='<div style="color:#ef4444;padding:20px;text-align:center;background:#0A0F1C;border-radius:16px">❌ Failed<br><button onclick="window._loadQuickTrade(\''+sym+'\')" style="margin-top:10px;padding:8px 20px;border-radius:8px;background:#059669;color:#fff;border:none;cursor:pointer;font-size:11px;font-weight:700">Retry</button></div>';
+        // Smart failure handling — check if market should be open
+        var now3=new Date();var istH3=now3.getUTCHours()+5+(now3.getUTCMinutes()+30>=60?1:0);
+        var shouldOpen3=(istH3>=9&&(istH3<15||(istH3===15&&(now3.getUTCMinutes()+30)%60<=30))&&now3.getUTCDay()>=1&&now3.getUTCDay()<=5);
+        
+        if(shouldOpen3){
+          window._apiRetryCount=(window._apiRetryCount||0)+1;
+          if(window._apiRetryCount<=3){
+            el.innerHTML='<div style="max-width:480px;margin:0 auto;padding:40px 20px;text-align:center;background:#0A0F1C;border-radius:20px"><div style="display:inline-block;width:30px;height:30px;border:3px solid #f59e0b;border-top-color:transparent;border-radius:50%;animation:spin 1s linear infinite;margin-bottom:12px"></div><div style="font-size:16px;font-weight:900;color:#e2e8f0">Fetching '+sym+' data...</div><div style="font-size:10px;color:#94a3b8;margin-top:8px">Attempt '+window._apiRetryCount+' of 3. Auto-retrying in 15 sec...</div><button onclick="window._loadQuickTrade(\''+sym+'\')" style="margin-top:12px;padding:8px 20px;border-radius:8px;background:#f59e0b;color:#000;border:none;cursor:pointer;font-size:11px;font-weight:800">🔄 Retry Now</button></div>';
+            window._apiRetryTimer=setTimeout(function(){if(window._activeOptionsSym===sym)window._loadQuickTrade(sym)},15000);
+          }else{
+            el.innerHTML='<div style="max-width:480px;margin:0 auto;padding:40px 20px;text-align:center;background:#0A0F1C;border-radius:20px"><div style="font-size:48px;margin-bottom:12px">⚠️</div><div style="font-size:16px;font-weight:900;color:#d97706">Data Temporarily Unavailable</div><div style="font-size:10px;color:#94a3b8;margin-top:8px">'+(d&&d.error?d.error:'NSE API not responding')+'<br>Try again in 1-2 minutes.</div><button onclick="window._apiRetryCount=0;window._loadQuickTrade(\''+sym+'\')" style="margin-top:12px;padding:10px 24px;border-radius:8px;background:#f59e0b;color:#000;border:none;cursor:pointer;font-size:12px;font-weight:800">🔄 Try Again</button></div>';
+          }
+        }else{
+          el.innerHTML='<div style="max-width:480px;margin:0 auto;padding:40px 20px;text-align:center;background:#0A0F1C;border-radius:20px"><div style="font-size:48px;margin-bottom:12px">🕐</div><div style="font-size:18px;font-weight:900;color:#e2e8f0">Market Closed</div><div style="font-size:10px;color:#94a3b8;margin-top:8px">NSE: 9:15 AM – 3:30 PM IST</div><button onclick="window._loadQuickTrade(\''+sym+'\')" style="margin-top:12px;padding:8px 20px;border-radius:8px;background:#1e293b;color:#64748b;border:1px solid #334155;cursor:pointer;font-size:11px;font-weight:700">🔄 Refresh</button></div>';
+        }
         return;
       }
       if(window._activeOptionsSym!==sym)return; // Another ticker was loaded — abort
@@ -2699,198 +2713,150 @@ function _renderQuickTrade(d,sym){
   var dayHigh=todayHigh>0?Math.round(todayHigh):spot+c7.step;
   var dayLow=todayLow>0?Math.round(todayLow):spot-c7.step;
   
-  // ─── STEP 3: Bias ───
+  // ══════════════════════════════════════════════════════════════════
+  // INSTITUTIONAL DECISION ENGINE → 3 Simple Rules for Retail
+  // BlackRock-style logic, one-click UI
+  // ══════════════════════════════════════════════════════════════════
+  
+  var isFallback=d._fallback||false;
   var callWriting=(ceRes.length>0?ceRes[0].oi:0);
   var putWriting=(peSupp.length>0?peSupp[0].oi:0);
-  var oiBias=putWriting>callWriting?'BULLISH':'BEARISH';
-  var priceBias=spot>vwapLevel?'BULLISH':'BEARISH';
   
-  // If data is fallback (synthetic OI), trust price bias only
-  var isFallback=d._fallback||false;
-  var biasMatch=isFallback?true:(oiBias===priceBias);
-  var finalBias=isFallback?priceBias:(biasMatch?oiBias:'NO TRADE');
-  var biasStrength=isFallback?'PRICE-BASED':(biasMatch?'STRONG':'CONFLICTING');
-  var biasColor=finalBias==='BULLISH'?'#059669':finalBias==='BEARISH'?'#ef4444':'#64748b';
+  // ─── RULE 1: Is market moving strongly? (Momentum/Breakout) ───
+  var isBreakUp=spot>=dayHigh&&spot>vwapLevel;
+  var isBreakDn=spot<=dayLow&&spot<vwapLevel;
+  var lastB3=bars.slice(-3);var avgV3=bars.length>3?(bars.reduce(function(s,b){return s+b.v},0)/bars.length):50000;
+  var recentV3=lastB3.length>0?(lastB3.reduce(function(s,b){return s+b.v},0)/lastB3.length):0;
+  var volStrong=recentV3>avgV3*1.2;
+  var priceMoving=Math.abs(dayHigh-dayLow)>spot*0.003;
+  var rule1=priceMoving&&(isBreakUp||isBreakDn);
+  var direction=isBreakUp?'BULLISH':(isBreakDn?'BEARISH':'NONE');
   
-  // ─── STEP 4: Entry level ───
-  var entryLevel=finalBias==='BULLISH'?dayHigh:dayLow;
-  var entryType7=finalBias==='BULLISH'?'CE':'PE';
-  var entryStrike7=atmStrike7;
-  var entryPrem7=finalBias==='BULLISH'?atmCE7:atmPE7;
+  // ─── RULE 2: Is big money supporting it? (Volume+Positioning) ───
+  var oiBull=isFallback?true:(putWriting>callWriting);
+  var oiBear=isFallback?true:(callWriting>putWriting);
+  var rule2=false;
+  if(direction==='BULLISH')rule2=volStrong&&(oiBull||isFallback);
+  else if(direction==='BEARISH')rule2=volStrong&&(oiBear||isFallback);
   
-  // Store on window for voice patch
-  window._qtEntryStrike=entryStrike7;
-  window._qtEntryPrem=entryPrem7;
-  window._qtFinalBias=finalBias;
+  // ─── RULE 3: Is it fast enough? (Gamma speed/Premium expansion) ───
+  var totalVol7b=bars.reduce(function(s,b){return s+b.v},0);
+  var gexNeg7=gex.regime==='NEGATIVE';
+  var highVol7=bars.length>2&&bars[bars.length-1].v>(totalVol7b/Math.max(bars.length,1))*1.5;
+  var premOK=(atmCE7>c7.minPrem||atmPE7>c7.minPrem);
+  var rule3=premOK;
   
-  // ─── STEP 5: Exit ───
-  var targetLow=Math.round(entryPrem7*1.25);
-  var targetHigh=Math.round(entryPrem7*1.40);
-  
-  // Expiry detection + Gamma Blast (UNIVERSAL — all regions)
+  // Expiry detection
   var qtExpiryIdx7=window._getTodayExpiryIndex?window._getTodayExpiryIndex():'BANKNIFTY';
   var qtIsExpiry7=false;
+  if(!isUS){qtIsExpiry7=sym===qtExpiryIdx7}
+  else{var us0DTE=['SPY','QQQ','IWM','SPX','XSP'];var dow7=new Date().getDay();if(us0DTE.indexOf(sym)>=0&&dow7>=1&&dow7<=5)qtIsExpiry7=true;else if(dow7===5)qtIsExpiry7=true}
   
-  // Determine if today is expiry for this ticker
-  if(!isUS){
-    // India index: weekly expiry per day map
-    qtIsExpiry7=sym===qtExpiryIdx7;
-  }else{
-    // US: SPY/QQQ/IWM have 0DTE (daily expiry) Mon-Fri
-    var us0DTE=['SPY','QQQ','IWM','SPX','XSP'];
-    var usDayOfWeek=new Date().getDay();
-    if(us0DTE.indexOf(sym)>=0&&usDayOfWeek>=1&&usDayOfWeek<=5){
-      qtIsExpiry7=true; // 0DTE every weekday
-    }else if(usDayOfWeek===5){
-      qtIsExpiry7=true; // All US options have Friday weekly expiry
-    }
-  }
+  // Gamma Blast
+  var qtGammaBlast=gexNeg7&&highVol7;
+  if(qtIsExpiry7)qtGammaBlast=gexNeg7||highVol7;
+  if(qtGammaBlast)rule3=true;
   
-  var gexNeg7=gex.regime==='NEGATIVE';
-  var highVol7=bars.length>2&&bars[bars.length-1].v>(totalVol7/Math.max(bars.length,1))*1.5;
+  // ─── FINAL DECISION ───
+  var rulesPass=(rule1?1:0)+(rule2?1:0)+(rule3?1:0);
+  var finalBias='NO TRADE';
+  if(rule1&&rule2&&rule3){finalBias=direction}
+  else if(rule1&&rule3){finalBias=direction} // 2 of 3 OK, positioning unclear
   
-  // Gamma Blast: fires when GEX negative OR volume spike — REGARDLESS of expiry
-  // Expiry day amplifies it (more lots), but blast can happen any day
-  var qtGammaBlast=gexNeg7&&highVol7; // Both conditions for non-expiry
-  if(qtIsExpiry7)qtGammaBlast=gexNeg7||highVol7; // Either condition on expiry (more aggressive)
+  // WHY reasons (user sees simple ✔/✗)
+  var whyReasons=[];
+  if(rule1)whyReasons.push({pass:true,label:direction==='BULLISH'?'Breakout':'Breakdown'});
+  else if(priceMoving)whyReasons.push({pass:false,label:'No clear breakout yet'});
+  else whyReasons.push({pass:false,label:'No clear move'});
+  if(rule2)whyReasons.push({pass:true,label:'Strong '+(direction==='BULLISH'?'buying':'selling')});
+  else if(volStrong)whyReasons.push({pass:false,label:'Volume OK but positioning unclear'});
+  else whyReasons.push({pass:false,label:'Low momentum'});
+  if(rule3)whyReasons.push({pass:true,label:'Fast move'+(qtGammaBlast?' ⚡':'')});
+  else if(qtIsExpiry7)whyReasons.push({pass:false,label:'Time decay high — avoid'});
+  else whyReasons.push({pass:false,label:'Move too slow'});
   
-  // Store on window for monkey-patch access
-  window._qtGammaBlast=qtGammaBlast;
-  window._qtIsExpiry=qtIsExpiry7;
-  window._qtEntryStrike=0;window._qtEntryPrem=0;
-  window._qtFinalBias='';window._qtFallback=isFallback;
-  
+  var biasColor=finalBias==='BULLISH'?'#059669':finalBias==='BEARISH'?'#ef4444':'#64748b';
+  var entryLevel=finalBias==='BULLISH'?dayHigh:(finalBias==='BEARISH'?dayLow:dayHigh);
+  var entryType7=finalBias==='BULLISH'?'CE':'PE';
+  var entryStrike7=atmStrike7;
+  var entryPrem7=finalBias==='BULLISH'?atmCE7:(finalBias==='BEARISH'?atmPE7:Math.max(atmCE7,atmPE7));
+  var targetLow=Math.round(entryPrem7*1.25);var targetHigh=Math.round(entryPrem7*1.40);
   var qtLots=qtGammaBlast?'2–3':qtIsExpiry7?'1–2':'1';
   
-  // Status
-  var isBreaking=finalBias==='BULLISH'?spot>=dayHigh:spot<=dayLow;
-  var buyVol7=0,totalVol7=0;
-  bars.forEach(function(b){totalVol7+=b.v;if(b.c>=b.o)buyVol7+=b.v});
-  var volOK=bars.length>=3&&bars[bars.length-1].v>(totalVol7/Math.max(bars.length,1))*1.3;
-  var vwapOK=finalBias==='BULLISH'?spot>vwapLevel:spot<vwapLevel;
+  // Store on window
+  window._qtEntryStrike=entryStrike7;window._qtEntryPrem=entryPrem7;
+  window._qtFinalBias=finalBias;window._qtConfidence=rulesPass;window._qtWhyReasons=whyReasons;
+  window._qtGammaBlast=qtGammaBlast;window._qtIsExpiry=qtIsExpiry7;window._qtFallback=isFallback;
   
-  // GEX clear zone check (from gamma engine)
-  var gexClear7=(gex.regime==='NEGATIVE')||(finalBias==='BULLISH'&&spot<(gex.callWall||99999))||(finalBias==='BEARISH'&&spot>(gex.putWall||0));
-  
-  var status='WAITING';
-  var statusColor='#64748b';
-  if(!allPass||finalBias==='NO TRADE'){status='NO TRADE TODAY';statusColor='#ef4444'}
-  else if(isBreaking&&volOK&&vwapOK){status='🟢 ENTER NOW';statusColor='#059669'}
-  else if(isBreaking&&!gexClear7){status='⚠️ NEAR RESISTANCE — Risky entry';statusColor='#d97706'}
-  else if(isBreaking){status='⏳ ALMOST — Wait for volume';statusColor='#d97706'}
-  else{status='⏳ WAITING FOR BREAKOUT';statusColor='#64748b'}
+  // STATUS
+  var status='⏳ WAITING';var statusColor='#64748b';
+  if(!allPass||finalBias==='NO TRADE'){
+    status=!priceMoving&&qtIsExpiry7?'⚪ NO TRADE — Theta trap':'⚪ NO TRADE';statusColor='#64748b';
+  }else if(rule1&&rule2&&rule3){status='🟢 ENTER NOW';statusColor='#059669'}
+  else if(rule1&&rule3){status='🟡 ALMOST — Wait for volume';statusColor='#d97706'}
+  else if(priceMoving){status='⏳ WATCHING...';statusColor='#64748b'}
+  else{status='⚪ NO TRADE';statusColor='#64748b'}
   
   // ═══ RENDER ═══
   var h='';
-  
-  // Detect today's expiry
-  var qtExpiryIdx=qtExpiryIdx7;
   var qtIsExpiry=qtIsExpiry7;
-  var qtExpiryNames={NIFTY:'Tuesday',BANKNIFTY:'Wednesday',SENSEX:'Thursday'};
   
-  // Navigator handles pills — just show Advanced button for India
-  if(!isUS){
-    h+='<div style="text-align:right;margin-bottom:8px">';
-    h+='<div onclick="window._loadOptionsDecide(\''+sym+'\')" style="padding:6px 14px;border-radius:8px;font-size:9px;font-weight:700;cursor:pointer;display:inline-block;background:#f1f5f9;color:#64748b;border:1px solid #e2e8f0">🔬 Advanced (experts)</div>';
-    h+='</div>';
-  }
+  if(!isUS){h+='<div style="text-align:right;margin-bottom:8px"><div onclick="window._loadOptionsDecide(\''+sym+'\')" style="padding:6px 14px;border-radius:8px;font-size:9px;font-weight:700;cursor:pointer;display:inline-block;background:#f1f5f9;color:#64748b;border:1px solid #e2e8f0">🔬 Advanced</div></div>'}
   
-  // ─── MAIN CARD ───
   h+='<div style="background:linear-gradient(135deg,#0A0F1C,#0f1a2e);border-radius:20px;padding:28px;border:2px solid '+biasColor+'30;max-width:480px;margin:0 auto">';
+  h+='<div style="text-align:center;margin-bottom:16px"><div style="font-size:10px;color:#94a3b8">'+sym+' · '+S+(isUS?spot.toLocaleString('en-US'):spot.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN'))+' · VIX '+vix.toFixed(1)+(qtIsExpiry?' · 🔥 EXPIRY':'')+'</div></div>';
   
-  // Header
-  h+='<div style="text-align:center;margin-bottom:20px">';
-  h+='<div style="font-size:8px;color:#64748b;font-weight:800;letter-spacing:3px;margin-bottom:4px">'+(qtIsExpiry?sym+' EXPIRY MODE'+(qtGammaBlast?' ⚡':''):'EXPIRY QUICK TRADE')+'</div>';
-  h+='<div style="font-size:10px;color:#94a3b8">'+sym+' · '+S+(isUS?spot.toLocaleString('en-US'):spot.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN'))+' · VIX '+vix.toFixed(1)+(qtIsExpiry?' · 🔥 EXPIRY DAY':'')+'</div>';
-  if(qtGammaBlast)h+='<div style="margin-top:4px;padding:3px 12px;border-radius:10px;background:#f59e0b15;display:inline-block;font-size:9px;color:#f59e0b;font-weight:800">⚡ Strong Momentum — Take Bigger Position (prices moving fast)</div>';
-  h+='</div>';
-  
-  // Should you trade?
-  if(!allPass||finalBias==='NO TRADE'){
+  // ─── ⚪ NO TRADE ───
+  if(status.indexOf('NO TRADE')>=0){
     h+='<div style="text-align:center;padding:30px 20px">';
-    h+='<div style="font-size:48px;margin-bottom:12px">🚫</div>';
-    h+='<div style="font-size:22px;font-weight:900;color:#ef4444;font-family:Sora;margin-bottom:8px">DON\'T TRADE TODAY</div>';
-    h+='<div style="font-size:11px;color:#94a3b8;margin-bottom:16px">'+(finalBias==='NO TRADE'?'OI says '+oiBias+' but price says '+priceBias+' — signals conflict':'Conditions not met')+'</div>';
-    checks.forEach(function(ck){
-      h+='<div style="font-size:10px;color:'+(ck.ok?'#059669':'#ef4444')+';padding:3px 0">'+(ck.ok?'✅':'❌')+' '+ck.label+'</div>';
-    });
-    h+='<div style="margin-top:16px;padding:10px;border-radius:10px;background:#1e293b;font-size:9px;color:#94a3b8;line-height:1.6">';
-    h+='💡 <strong style="color:#e2e8f0">That\'s okay!</strong> The best traders make money by NOT trading bad setups. Check back later or try another index.</div>';
+    h+='<div style="font-size:60px;margin-bottom:16px">⚪</div>';
+    h+='<div style="font-size:28px;font-weight:900;color:#64748b;font-family:Sora;margin-bottom:16px">NO TRADE</div>';
+    h+='<div style="text-align:left;max-width:260px;margin:0 auto">';
+    whyReasons.forEach(function(r){h+='<div style="font-size:12px;padding:4px 0;color:'+(r.pass?'#059669':'#94a3b8')+'">'+(r.pass?'✔':'✗')+' '+r.label+'</div>'});
     h+='</div>';
+    if(!priceMoving&&qtIsExpiry)h+='<div style="margin-top:16px;padding:10px;border-radius:10px;background:#d9770610;font-size:10px;color:#d97706;font-weight:700">⏱ Sideways on expiry = theta trap. Smart money avoids this.</div>';
+    h+='<div style="margin-top:16px;font-size:9px;color:#475569">💡 Best traders profit by NOT trading bad setups.</div>';
+    h+='</div>';
+    
+  // ─── ⏳ WAITING / 🟡 ALMOST ───
+  }else if(status.indexOf('WAITING')>=0||status.indexOf('ALMOST')>=0||status.indexOf('WATCHING')>=0){
+    h+='<div style="text-align:center;padding:20px;border-radius:16px;background:'+statusColor+'10;border:2px solid '+statusColor+'25;margin-bottom:16px">';
+    h+='<div style="font-size:28px;font-weight:900;color:'+statusColor+';font-family:Sora">'+status+'</div></div>';
+    if(finalBias!=='NO TRADE'){h+='<div style="text-align:center;margin-bottom:12px"><div style="display:inline-block;padding:6px 20px;border-radius:10px;background:'+biasColor+'10;border:1px solid '+biasColor+'20"><span style="font-size:13px;font-weight:800;color:'+biasColor+'">'+finalBias+'</span></div></div>'}
+    h+='<div style="text-align:center;margin-bottom:12px;padding:12px;border-radius:10px;background:#1e293b"><div style="font-size:9px;color:#64748b;margin-bottom:4px">WATCHING FOR</div><div style="font-size:26px;font-weight:900;color:#f59e0b;font-family:JetBrains Mono">'+S+(isUS?entryLevel.toLocaleString('en-US'):entryLevel.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN'))+'</div><div style="font-size:8px;color:#64748b;margin-top:4px">+ Volume + VWAP</div></div>';
+    h+='<div style="text-align:center;padding:8px;border-radius:8px;background:#1e293b50;font-size:9px;color:#64748b">When breakout → <strong style="color:'+biasColor+'">BUY '+S+entryStrike7+' '+entryType7+'</strong> @ ~'+S+entryPrem7.toFixed(0)+'</div>';
+    if(qtIsExpiry){h+='<div style="text-align:center;margin-top:8px;padding:6px 12px;border-radius:8px;background:#d9770608;border:1px solid #d9770615;font-size:9px;color:#d97706;font-weight:700">⏱ Expiry day — options lose value fast. Max hold 10 min.</div>'}
+    
+  // ─── 🟢 ENTER NOW ───
   }else{
-    // STATUS FIRST (always visible, most important)
-    h+='<div style="text-align:center;padding:16px;border-radius:14px;background:'+statusColor+'15;border:2px solid '+statusColor+'30;margin-bottom:16px">';
-    h+='<div style="font-size:8px;color:'+statusColor+';font-weight:700;letter-spacing:2px;margin-bottom:4px">STATUS</div>';
-    h+='<div style="font-size:22px;font-weight:900;color:'+statusColor+';font-family:Sora">'+status+'</div>';
-    if(status==='🟢 ENTER NOW')h+='<div style="font-size:9px;color:#94a3b8;margin-top:4px">All conditions met — execute trade in your broker NOW</div>';
+    h+='<div style="text-align:center;padding:24px;border-radius:16px;background:#05966915;border:3px solid #05966940;margin-bottom:16px">';
+    h+='<div style="font-size:36px;font-weight:900;color:#059669;font-family:Sora">'+(finalBias==='BULLISH'?'🟢 BUY CALL NOW':'🔴 BUY PUT NOW')+'</div>';
+    h+='<div style="font-size:16px;color:#e2e8f0;font-weight:800;margin-top:8px">'+S+entryStrike7+' '+entryType7+' @ '+S+entryPrem7.toFixed(0)+'</div>';
+    h+='<div style="font-size:11px;color:#94a3b8;margin-top:4px">Lot: '+c7.lot+' · Qty: '+qtLots+(qtLots!=='1'?' lots':' lot')+'</div>';
+    if(qtGammaBlast)h+='<div style="margin-top:8px;padding:4px 14px;border-radius:8px;background:#f59e0b15;display:inline-block;font-size:10px;color:#f59e0b;font-weight:800">⚡ GAMMA BLAST — Bigger position!</div>';
     h+='</div>';
     
-    // BIAS
-    h+='<div style="text-align:center;margin-bottom:16px">';
-    h+='<div style="font-size:8px;color:#64748b;font-weight:700;letter-spacing:2px;margin-bottom:8px">BIAS</div>';
-    h+='<div style="display:inline-block;padding:10px 32px;border-radius:16px;background:'+biasColor+'15;border:2px solid '+biasColor+'30">';
-    h+='<div style="font-size:28px;font-weight:900;color:'+biasColor+';font-family:Sora">'+finalBias+'</div>';
-    h+='<div style="font-size:8px;color:'+biasColor+'99">'+biasStrength+' — OI '+oiBias+' + Price '+priceBias+'</div>';
-    h+='</div></div>';
-    
-    // WAIT FOR (always shown — tells user what level to watch)
-    h+='<div style="text-align:center;margin-bottom:16px;padding:16px;border-radius:14px;background:#1e293b">';
-    h+='<div style="font-size:8px;color:#64748b;font-weight:700;letter-spacing:2px;margin-bottom:8px">WAIT FOR</div>';
-    h+='<div style="font-size:11px;color:#94a3b8;margin-bottom:6px">'+(finalBias==='BULLISH'?'Price breaks above Day High':'Price breaks below Day Low')+'</div>';
-    h+='<div style="font-size:32px;font-weight:900;color:#f59e0b;font-family:JetBrains Mono">'+S+(isUS?entryLevel.toLocaleString('en-US'):entryLevel.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN'))+'</div>';
-    h+='<div style="font-size:8px;color:#64748b;margin-top:4px">+ Volume increase + '+(finalBias==='BULLISH'?'Above VWAP':'Below VWAP')+'</div>';
+    h+='<div style="text-align:center;margin-bottom:12px"><div style="font-size:9px;color:#64748b;font-weight:700;margin-bottom:4px">WHY?</div>';
+    whyReasons.forEach(function(r){if(r.pass)h+='<div style="font-size:12px;color:#059669;padding:2px 0;font-weight:600">✔ '+r.label+'</div>'});
     h+='</div>';
     
-    // ACTION + EXIT — ONLY when ENTER NOW (not during WAITING)
-    if(status==='🟢 ENTER NOW'){
-      // ACTION
-      h+='<div style="text-align:center;margin-bottom:16px;padding:16px;border-radius:14px;background:'+biasColor+'12;border:1px solid '+biasColor+'25">';
-      h+='<div style="font-size:8px;color:'+biasColor+';font-weight:700;letter-spacing:2px;margin-bottom:8px">ACTION</div>';
-      h+='<div style="font-size:11px;color:#94a3b8;margin-bottom:4px">👉</div>';
-      h+='<div style="font-size:22px;font-weight:900;color:'+biasColor+';font-family:Sora">BUY '+S+entryStrike7.toLocaleString(isUS?'en-US':'en-IN')+' '+entryType7+'</div>';
-      h+='<div style="font-size:11px;color:#94a3b8;margin-top:4px">Premium: ~'+S+entryPrem7.toFixed(0)+' · Lot: '+c7.lot+' · Qty: '+qtLots+' lot'+(qtLots!=='1'?'s':'')+(qtGammaBlast?' ⚡':'')+'</div>';
-      if(qtGammaBlast)h+='<div style="font-size:9px;color:#f59e0b;margin-top:4px;font-weight:700">⚡ Fast move happening — premium can jump 30-50% in minutes</div>';
-      h+='</div>';
-      
-      // EXIT
-      var sl7=Math.round(entryPrem7*0.80);var maxRisk7=Math.round((entryPrem7-sl7)*c7.lot);var maxProf7=Math.round((targetHigh-entryPrem7)*c7.lot);
-      h+='<div style="text-align:center;margin-bottom:16px;padding:16px;border-radius:14px;background:#1e293b">';
-      h+='<div style="font-size:8px;color:#64748b;font-weight:700;letter-spacing:2px;margin-bottom:8px">EXIT</div>';
-      h+='<div style="display:flex;justify-content:center;gap:12px;flex-wrap:wrap">';
-      h+='<div><div style="font-size:8px;color:#059669;font-weight:700">TARGET</div><div style="font-size:18px;font-weight:900;color:#059669;font-family:JetBrains Mono">'+S+targetLow+' – '+S+targetHigh+'</div><div style="font-size:8px;color:#64748b">+25% to +40%</div></div>';
-      h+='<div style="width:1px;background:#334155"></div>';
-      h+='<div><div style="font-size:8px;color:#ef4444;font-weight:700">STOP LOSS</div><div style="font-size:18px;font-weight:900;color:#ef4444;font-family:JetBrains Mono">'+S+sl7+'</div><div style="font-size:8px;color:#64748b">-20%</div></div>';
-      h+='<div style="width:1px;background:#334155"></div>';
-      h+='<div><div style="font-size:8px;color:#ef4444;font-weight:700">MAX HOLD</div><div style="font-size:18px;font-weight:900;color:#ef4444">10 min</div><div style="font-size:8px;color:#64748b">Exit if slow</div></div>';
-      h+='</div>';
-      h+='<div style="display:flex;gap:12px;justify-content:center;margin-top:8px">';
-      h+='<div style="font-size:8px"><span style="color:#ef4444;font-weight:700">Max Risk:</span> <span style="color:#ef4444;font-family:JetBrains Mono">'+S+maxRisk7.toLocaleString(isUS?'en-US':'en-IN')+'</span></div>';
-      h+='<div style="font-size:8px"><span style="color:#059669;font-weight:700">Max Profit:</span> <span style="color:#059669;font-family:JetBrains Mono">'+S+maxProf7.toLocaleString(isUS?'en-US':'en-IN')+'</span></div>';
-      h+='</div></div>';
-      
-      // Exit alerts
-      h+='<div style="margin-top:8px;display:flex;gap:4px;flex-wrap:wrap;justify-content:center">';
-      h+='<div style="padding:4px 10px;border-radius:6px;background:#05966410;font-size:8px;color:#059669;font-weight:700">✅ Target hit → Close</div>';
-      h+='<div style="padding:4px 10px;border-radius:6px;background:#ef444410;font-size:8px;color:#ef4444;font-weight:700">❌ Stop hit → Cut Loss</div>';
-      if(qtGammaBlast)h+='<div style="padding:4px 10px;border-radius:6px;background:#f59e0b10;font-size:8px;color:#f59e0b;font-weight:700">⚡ Momentum dying → Close</div>';
-      if(qtIsExpiry)h+='<div style="padding:4px 10px;border-radius:6px;background:#d9770610;font-size:8px;color:#d97706;font-weight:700">⏱ Premium losing value → Exit early</div>';
-      h+='</div>';
-    }else{
-      // WAITING — show what will happen when breakout occurs
-      h+='<div style="text-align:center;padding:12px;border-radius:12px;background:#1e293b;margin-bottom:8px">';
-      h+='<div style="font-size:9px;color:#64748b">When '+S+(isUS?entryLevel.toLocaleString('en-US'):entryLevel.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN'))+' breaks with volume:</div>';
-      h+='<div style="font-size:11px;color:#94a3b8;margin-top:4px">→ BUY <strong style="color:'+biasColor+'">'+S+entryStrike7.toLocaleString(isUS?'en-US':'en-IN')+' '+entryType7+'</strong> @ ~'+S+entryPrem7.toFixed(0)+'</div>';
-      h+='</div>';
-    }
+    var sl7=Math.round(entryPrem7*0.80);var maxRisk7=Math.round((entryPrem7-sl7)*c7.lot);var maxProf7=Math.round((targetHigh-entryPrem7)*c7.lot);
+    h+='<div style="text-align:center;padding:12px;border-radius:10px;background:#1e293b;margin-bottom:10px"><div style="display:flex;justify-content:center;gap:14px;flex-wrap:wrap">';
+    h+='<div><div style="font-size:7px;color:#059669;font-weight:700">TARGET</div><div style="font-size:15px;font-weight:900;color:#059669;font-family:JetBrains Mono">'+S+targetLow+' – '+S+targetHigh+'</div></div>';
+    h+='<div style="width:1px;background:#334155"></div>';
+    h+='<div><div style="font-size:7px;color:#ef4444;font-weight:700">STOP LOSS</div><div style="font-size:15px;font-weight:900;color:#ef4444;font-family:JetBrains Mono">'+S+sl7+'</div></div>';
+    h+='<div style="width:1px;background:#334155"></div>';
+    h+='<div><div style="font-size:7px;color:#d97706;font-weight:700">MAX HOLD</div><div style="font-size:15px;font-weight:900;color:#d97706">10 min</div></div>';
+    h+='</div><div style="font-size:7px;color:#64748b;margin-top:4px">Risk: '+S+maxRisk7.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+' · Profit: '+S+maxProf7.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div></div>';
     
-    // Expiry theta warning
-    if(qtIsExpiry){
-      h+='<div style="text-align:center;margin-top:8px;padding:8px 14px;border-radius:10px;background:#d9770608;border:1px solid #d9770620">';
-      h+='<div style="font-size:9px;color:#d97706;font-weight:800">⏱ EXPIRY DAY — Options lose value fast today. Exit within 10 minutes.</div></div>';
-    }
+    h+='<div style="display:flex;gap:4px;flex-wrap:wrap;justify-content:center">';
+    h+='<div style="padding:4px 8px;border-radius:6px;background:#05966410;font-size:8px;color:#059669;font-weight:700">✅ Target → Close</div>';
+    h+='<div style="padding:4px 8px;border-radius:6px;background:#ef444410;font-size:8px;color:#ef4444;font-weight:700">❌ Stop → Exit</div>';
+    h+='<div style="padding:4px 8px;border-radius:6px;background:#d9770610;font-size:8px;color:#d97706;font-weight:700">⏱ 10 min → Exit</div>';
+    if(qtGammaBlast)h+='<div style="padding:4px 8px;border-radius:6px;background:#f59e0b10;font-size:8px;color:#f59e0b;font-weight:700">⚡ Momentum slows → Close</div>';
+    h+='</div>';
+    if(qtIsExpiry){h+='<div style="text-align:center;margin-top:8px;padding:6px;border-radius:8px;background:#d9770608;font-size:9px;color:#d97706;font-weight:700">⏱ EXPIRY — Exit within 10 min.</div>'}
   }
-  
-  h+='</div>'; // close main card
   
   // Refresh button + Last Updated
   var nowTs=new Date();
@@ -3269,11 +3235,11 @@ _renderQuickTrade=function(d,sym){
     var prevSig=window._lastQuickSignal;
     window._lastQuickSignal=currentSignal;
     if(currentSignal==='ENTRY_CE'){
-      var reason7=vBias==='BULLISH'&&!window._qtFallback?'OI and price confirm upside':'Price above VWAP, breakout confirmed';
+      var reason7=(window._qtConfidence||0)>=3?'All signals confirm — breakout with strong buying':'Price above VWAP with volume';
       window._voiceAlert('ENTRY_CE',sym,vStrike,Math.round(vPrem),vBlast,{reason:reason7,target:vTarget,sl:vSL});
     }
     else if(currentSignal==='ENTRY_PE'){
-      var reason7b=vBias==='BEARISH'&&!window._qtFallback?'OI and price confirm downside':'Price below VWAP, breakdown confirmed';
+      var reason7b=(window._qtConfidence||0)>=3?'All signals confirm — breakdown with strong selling':'Price below VWAP with selling pressure';
       window._voiceAlert('ENTRY_PE',sym,vStrike,Math.round(vPrem),vBlast,{reason:reason7b,target:vTarget,sl:vSL});
     }
     else if(currentSignal==='NO_TRADE')window._voiceAlert('WAIT');
