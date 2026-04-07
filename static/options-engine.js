@@ -2558,7 +2558,10 @@ window._loadQuickTrade=function(symbol){
 
 function _renderQuickTrade(d,sym){
   var el=document.getElementById('deResult');if(!el)return;
-  var S='₹';
+  
+  // Auto-detect region + currency from API response
+  var isUS=d._region==='US'||d.region==='US';
+  var S=isUS?'$':'₹';
   var spot=d.spot||0,vix=d.vix||0,atmIV=d.atm_iv||0,pcr=d.pcr||0;
   var vwap=d.vwap||0,maxPain=d.max_pain||0;
   var ceRes=d.ce_resistance||[],peSupp=d.pe_support||[];
@@ -2567,14 +2570,15 @@ function _renderQuickTrade(d,sym){
   var gex=d.gex||{};
   var todayHigh=d.today_high||spot,todayLow=d.today_low||spot;
   
-  // MARKET CLOSED GUARD — if spot=0 or no chain data, show clean message
+  // MARKET CLOSED GUARD
   if(spot<=0||chain.length===0){
     var qtExp0=window._getTodayExpiryIndex?window._getTodayExpiryIndex():'BANKNIFTY';
     var qtExpNames0={NIFTY:'Tuesday',BANKNIFTY:'Wednesday',SENSEX:'Thursday'};
+    var marketMsg=isUS?'US market hours: <strong>9:30 AM – 4:00 PM ET</strong> (Mon–Fri)':'NSE trading hours: <strong>9:15 AM – 3:30 PM IST</strong> (Mon–Fri)';
     var h0='<div style="max-width:480px;margin:0 auto;padding:40px 20px;text-align:center;background:#0A0F1C;border-radius:20px">';
     h0+='<div style="font-size:48px;margin-bottom:12px">🕐</div>';
     h0+='<div style="font-size:22px;font-weight:900;color:#e2e8f0;font-family:Sora;margin-bottom:8px">Market Closed</div>';
-    h0+='<div style="font-size:12px;color:#94a3b8;margin-bottom:16px">NSE trading hours: <strong>9:15 AM – 3:30 PM IST</strong> (Mon–Fri)</div>';
+    h0+='<div style="font-size:12px;color:#94a3b8;margin-bottom:16px">'+marketMsg+'</div>';
     h0+='<div style="padding:12px 16px;border-radius:12px;background:#1e293b;margin-bottom:16px;text-align:left">';
     h0+='<div style="font-size:10px;color:#f59e0b;font-weight:800;margin-bottom:6px">📅 NEXT TRADING SESSION</div>';
     h0+='<div style="font-size:9px;color:#94a3b8;line-height:1.6">Today\'s expiry index: <strong style="color:#f59e0b">'+qtExp0+'</strong> ('+(qtExpNames0[qtExp0]||'')+')<br>';
@@ -2593,7 +2597,28 @@ function _renderQuickTrade(d,sym){
   }
   
   var cfg7={NIFTY:{lot:75,step:50,minPrem:80},BANKNIFTY:{lot:30,step:100,minPrem:150},SENSEX:{lot:20,step:100,minPrem:100},FINNIFTY:{lot:40,step:50,minPrem:60}};
-  var c7=cfg7[sym]||cfg7.NIFTY;
+  var c7=cfg7[sym];
+  
+  // Auto-detect for unknown tickers (US stocks, India stocks, ETFs)
+  if(!c7){
+    // Detect step from chain data
+    var autoStep=1;
+    if(chain.length>=2){
+      var sortedStrikes=chain.map(function(c){return c.strike}).sort(function(a,b){return a-b});
+      var diffs=[];
+      for(var si=1;si<Math.min(sortedStrikes.length,5);si++){diffs.push(Math.round((sortedStrikes[si]-sortedStrikes[si-1])*100)/100)}
+      if(diffs.length>0)autoStep=Math.min.apply(null,diffs);
+      if(autoStep<=0)autoStep=1;
+    }else if(spot>1000)autoStep=10;
+    else if(spot>100)autoStep=5;
+    else if(spot>50)autoStep=1;
+    else autoStep=0.5;
+    
+    var autoLot=isUS?100:(d._lotSize||d.lot_size||1);
+    var autoMinPrem=isUS?0.50:(spot>5000?80:spot>1000?20:5);
+    c7={lot:autoLot,step:autoStep,minPrem:autoMinPrem};
+  }
+  
   var atmStrike7=Math.round(spot/c7.step)*c7.step;
   
   // ATM premiums
@@ -3916,3 +3941,180 @@ _renderUltraSimple=function(d,sym){
 };
 
 console.log('[MULTI-TRADE] ✅ Smart strike + multi-trade session loaded');
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 🌍 UNIVERSAL OPTIONS — US Stocks/ETFs + India Stocks
+// Same Quick Trade logic, different data source
+// ═══════════════════════════════════════════════════════════════════════════════
+
+window._usPopular=['SPY','QQQ','AAPL','TSLA','NVDA','AMZN','MSFT','META','GOOGL','AMD','IWM','GLD','TLT'];
+window._inStockOptions=['RELIANCE','TCS','INFY','HDFCBANK','ICICIBANK','SBIN','BAJFINANCE','TATAMOTORS','LT','MARUTI'];
+
+window._loadOptionsUniversal=function(symbol,region){
+  var el=document.getElementById('deResult');if(!el)return;
+  var sym=(symbol||'SPY').toUpperCase();
+  var reg=region||'US';
+  
+  if(window._quickRefreshTimer){clearInterval(window._quickRefreshTimer);window._quickRefreshTimer=null}
+  if(window._ultraRefreshTimer){clearInterval(window._ultraRefreshTimer);window._ultraRefreshTimer=null}
+  
+  el.innerHTML='<div style="padding:40px;text-align:center;background:#0A0F1C;border-radius:16px"><div style="display:inline-block;width:20px;height:20px;border:3px solid #3b82f6;border-top-color:transparent;border-radius:50%;animation:spin .5s linear infinite"></div><div style="font-size:12px;color:#3b82f6;margin-top:10px;font-weight:800">Loading '+sym+' ('+reg+')...</div></div>';
+  
+  fetch('/api/options-quick?symbol='+encodeURIComponent(sym)+'&region='+encodeURIComponent(reg))
+    .then(function(r){return r.json()})
+    .then(function(d){
+      if(!d||!d.success){
+        el.innerHTML='<div style="text-align:center;padding:40px;background:#0A0F1C;border-radius:16px"><div style="font-size:48px;margin-bottom:12px">🕐</div><div style="font-size:16px;color:#ef4444;font-weight:900">No options data for '+sym+'</div><div style="font-size:10px;color:#94a3b8;margin-top:8px">'+(reg==='US'?'US market hours: 9:30 AM – 4:00 PM ET':'NSE hours: 9:15 AM – 3:30 PM IST')+'</div><button onclick="window._loadOptionsUniversal(\''+sym+'\',\''+reg+'\')" style="margin-top:12px;padding:8px 20px;border-radius:8px;background:#3b82f6;color:#fff;border:none;cursor:pointer;font-size:11px;font-weight:700">🔄 Retry</button></div>';
+        return;
+      }
+      // Inject region-specific config
+      d._region=reg;
+      d._currency=reg==='US'?'$':'₹';
+      d._lotSize=d.lot_size||(reg==='US'?100:1);
+      _renderQuickTrade(d,sym);
+    }).catch(function(e){
+      el.innerHTML='<div style="text-align:center;padding:40px;background:#0A0F1C;border-radius:16px;color:#ef4444">Error: '+e.message+'</div>';
+    });
+};
+
+// ─── Patch Quick Trade to handle US currency + lot size ───
+var _origQT5=_renderQuickTrade;
+_renderQuickTrade=function(d,sym){
+  // Override S (currency) and lot if region data present
+  if(d._region==='US'){
+    // Patch the cfg to use US lot size
+    window._qtRegion='US';
+    window._qtCurrency='$';
+    window._qtLotSize=d._lotSize||100;
+  }else{
+    window._qtRegion='IN';
+    window._qtCurrency='₹';
+    window._qtLotSize=0; // Use default from cfg
+  }
+  _origQT5(d,sym);
+};
+
+console.log('[UNIVERSAL OPTIONS] ✅ US + India stock/ETF options loaded');
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 🌍 REGION → CATEGORY → TICKER NAVIGATOR
+// Replaces the hardcoded NIFTY/BANKNIFTY/SENSEX tabs
+// ═══════════════════════════════════════════════════════════════════════════════
+
+window._optionsNav={
+  IN:{
+    label:'🇮🇳 INDIA',
+    categories:{
+      index:{label:'📊 Index',tickers:['NIFTY','BANKNIFTY','SENSEX'],api:'nse'},
+      stock:{label:'📈 F&O Stocks',tickers:['RELIANCE','TCS','INFY','HDFCBANK','ICICIBANK','SBIN','BAJFINANCE','TATAMOTORS','LT','MARUTI'],api:'yahoo'}
+    }
+  },
+  US:{
+    label:'🇺🇸 USA',
+    categories:{
+      index:{label:'📊 Index ETF',tickers:['SPY','QQQ','IWM','DIA'],api:'yahoo'},
+      etf:{label:'📈 Sector ETF',tickers:['GLD','TLT','XLF','XLE','ARKK'],api:'yahoo'},
+      stock:{label:'📈 Mega Stocks',tickers:['AAPL','TSLA','NVDA','AMZN','MSFT','META','GOOGL','AMD','NFLX'],api:'yahoo'}
+    }
+  }
+};
+
+window._optionsRegion=window._optionsRegion||'IN';
+window._optionsCategory=window._optionsCategory||'index';
+
+window._renderOptionsNav=function(activeSym){
+  var nav=window._optionsNav;
+  var reg=window._optionsRegion;
+  var cat=window._optionsCategory;
+  var regionData=nav[reg]||nav.IN;
+  var catData=regionData.categories[cat]||regionData.categories.index;
+  
+  var h='';
+  
+  // Region selector
+  h+='<div style="display:flex;gap:6px;margin-bottom:6px;justify-content:center">';
+  ['IN','US'].forEach(function(r){
+    var isAct=r===reg;
+    h+='<div onclick="window._optionsRegion=\''+r+'\';window._optionsCategory=\'index\';window._loadSmartOptions()" style="padding:6px 18px;border-radius:8px;font-size:10px;font-weight:800;cursor:pointer;font-family:Sora;'+(isAct?'background:linear-gradient(135deg,#3b82f6,#1d4ed8);color:#fff':'background:#1e293b;color:#64748b;border:1px solid #334155')+'">'+nav[r].label+'</div>';
+  });
+  h+='</div>';
+  
+  // Category selector
+  h+='<div style="display:flex;gap:4px;margin-bottom:8px;justify-content:center;flex-wrap:wrap">';
+  Object.keys(regionData.categories).forEach(function(c){
+    var isAct=c===cat;
+    var cd=regionData.categories[c];
+    h+='<div onclick="window._optionsCategory=\''+c+'\';window._loadSmartOptions()" style="padding:4px 12px;border-radius:6px;font-size:9px;font-weight:700;cursor:pointer;'+(isAct?'background:#3b82f620;color:#3b82f6;border:1px solid #3b82f630':'background:#0F172A;color:#475569;border:1px solid #1e293b')+'">'+cd.label+'</div>';
+  });
+  h+='</div>';
+  
+  // Ticker pills
+  h+='<div style="display:flex;gap:4px;flex-wrap:wrap;justify-content:center;margin-bottom:10px">';
+  
+  // Expiry badge for India indices
+  var todayExp=window._getTodayExpiryIndex?window._getTodayExpiryIndex():'BANKNIFTY';
+  
+  catData.tickers.forEach(function(t){
+    var isAct=t===activeSym;
+    var isExp=(reg==='IN'&&cat==='index'&&t===todayExp);
+    var loadFn=reg==='IN'&&cat==='index'?'window._loadQuickTrade(\''+t+'\')':'window._loadOptionsUniversal(\''+t+'\',\''+reg+'\')';
+    h+='<div onclick="'+loadFn+'" style="padding:6px 14px;border-radius:8px;font-size:10px;font-weight:800;cursor:pointer;font-family:Sora;'+(isAct?'background:linear-gradient(135deg,#059669,#10b981);color:#fff;box-shadow:0 2px 8px rgba(5,150,105,.2)':'background:#1e293b;color:#94a3b8;border:1px solid #334155')+'">'+(isExp?'🔥 ':'')+t+(isExp?' <span style="font-size:7px;color:#f59e0b">(EXP)</span>':'')+'</div>';
+  });
+  
+  // Custom ticker input
+  h+='<div style="display:flex;gap:4px;align-items:center">';
+  h+='<input id="optCustomTicker" type="text" placeholder="Type ticker..." style="padding:5px 10px;border-radius:8px;border:1px solid #334155;background:#0F172A;color:#e2e8f0;font-size:9px;width:90px;font-family:JetBrains Mono" onkeydown="if(event.key===\'Enter\'){var v=this.value.trim().toUpperCase();if(v)window._loadOptionsUniversal(v,window._optionsRegion)}">';
+  h+='<div onclick="var v=document.getElementById(\'optCustomTicker\').value.trim().toUpperCase();if(v)window._loadOptionsUniversal(v,window._optionsRegion)" style="padding:5px 10px;border-radius:8px;background:#3b82f6;color:#fff;font-size:9px;font-weight:700;cursor:pointer">Go</div>';
+  h+='</div>';
+  
+  h+='</div>';
+  
+  return h;
+};
+
+// Smart loader — uses nav state
+window._loadSmartOptions=function(ticker){
+  var reg=window._optionsRegion;
+  var cat=window._optionsCategory;
+  var nav=window._optionsNav;
+  var regionData=nav[reg]||nav.IN;
+  var catData=regionData.categories[cat]||regionData.categories.index;
+  
+  var sym=ticker||catData.tickers[0];
+  
+  // India index → use Quick Trade (NSE real-time)
+  if(reg==='IN'&&cat==='index'){
+    // Auto-select expiry index
+    if(!ticker){
+      var todayExp2=window._getTodayExpiryIndex?window._getTodayExpiryIndex():'BANKNIFTY';
+      sym=todayExp2;
+    }
+    window._loadQuickTrade(sym);
+  }else{
+    // Everything else → universal endpoint
+    window._loadOptionsUniversal(sym,reg);
+  }
+};
+
+// ─── PATCH: Inject nav into Quick Trade render ───
+var _origQT6=_renderQuickTrade;
+_renderQuickTrade=function(d,sym){
+  _origQT6(d,sym);
+  var el=document.getElementById('deResult');if(!el)return;
+  // Prepend the navigator
+  var navHtml=window._renderOptionsNav(sym);
+  var navDiv=document.createElement('div');
+  navDiv.innerHTML=navHtml;
+  el.insertBefore(navDiv,el.firstChild);
+};
+
+// ─── PATCH: switchDEMode uses smart loader ───
+var _origSwitchDE3=window.switchDEMode;
+window.switchDEMode=function(mode){
+  if(typeof _origSwitchDE3==='function')_origSwitchDE3(mode);
+  if(mode==='options'){
+    setTimeout(function(){window._loadSmartOptions()},120);
+  }
+};
+
+console.log('[OPTIONS NAV] ✅ Region → Category → Ticker navigator loaded');

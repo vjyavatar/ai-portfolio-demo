@@ -24395,3 +24395,186 @@ async def _start_cds_auto_scan():
     asyncio.create_task(_cds_daily_auto_scan())
     print("🤖 CDS v2.0 Auto-scan task registered")
 
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# UNIVERSAL OPTIONS QUICK TRADE — Works for ANY ticker (India/US/ETF)
+# Returns: spot, chain, bias, breakout levels in unified format
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@app.get("/api/options-quick")
+async def options_quick(symbol: str = "NIFTY", region: str = "IN"):
+    """Universal options quick trade data — works for India indices, US stocks, ETFs."""
+    try:
+        sym = symbol.upper().replace('.NS', '').replace('.BO', '')
+        
+        # Detect market type
+        india_indices = ['NIFTY', 'BANKNIFTY', 'SENSEX', 'FINNIFTY', 'MIDCPNIFTY']
+        is_india_index = sym in india_indices
+        
+        if is_india_index:
+            # Use existing NSE endpoint
+            from starlette.testclient import TestClient
+            # Redirect to nse-options internally
+            print(f"[OPTIONS-QUICK] Redirecting {sym} to NSE endpoint")
+            # Just call nse_options directly
+            result = await nse_options(sym)
+            return result
+        
+        # ═══ US / INDIA STOCK / ETF OPTIONS (via Yahoo Finance) ═══
+        yf_sym = sym
+        if region == 'IN' and not sym.endswith('.NS'):
+            yf_sym = sym + '.NS'
+        
+        print(f"[OPTIONS-QUICK] Fetching {yf_sym} via Yahoo Finance")
+        _yahoo_rate_wait()
+        
+        import yfinance as yf
+        tk = yf.Ticker(yf_sym)
+        
+        # Get stock info
+        info = {}
+        try:
+            info = tk.info or {}
+        except:
+            pass
+        
+        spot = info.get('currentPrice', 0) or info.get('regularMarketPrice', 0) or 0
+        prev_close = info.get('previousClose', spot) or spot
+        day_high = info.get('dayHigh', spot) or spot
+        day_low = info.get('dayLow', spot) or spot
+        day_open = info.get('open', spot) or spot
+        volume = info.get('volume', 0) or 0
+        
+        # Get VIX (CBOE for US, India VIX for IN)
+        vix = 0
+        try:
+            vix_sym = '^VIX' if region == 'US' else '^INDIAVIX'
+            vix_tk = yf.Ticker(vix_sym)
+            vix_hist = vix_tk.history(period='1d')
+            if len(vix_hist) > 0:
+                vix = float(vix_hist['Close'].iloc[-1])
+        except Exception as e:
+            print(f"[OPTIONS-QUICK] VIX fetch error: {e}")
+            vix = 18.0  # fallback
+        
+        # Get options chain
+        chain_data = []
+        ce_resistance = []
+        pe_support = []
+        atm_iv = 0
+        pcr = 0
+        max_pain = 0
+        expiry_dates = []
+        
+        try:
+            opts = tk.options
+            if opts and len(opts) > 0:
+                expiry_dates = list(opts[:4])  # First 4 expiries
+                chain = tk.option_chain(opts[0])  # Nearest expiry
+                calls = chain.calls
+                puts = chain.puts
+                
+                if spot <= 0 and len(calls) > 0:
+                    # Estimate spot from chain midpoint
+                    spot = float(calls['strike'].median())
+                
+                # Determine step size
+                strikes_sorted = sorted(calls['strike'].unique())
+                step = 1
+                if len(strikes_sorted) >= 2:
+                    diffs = [strikes_sorted[i+1] - strikes_sorted[i] for i in range(min(5, len(strikes_sorted)-1))]
+                    step = round(min(diffs)) if diffs else 1
+                if step <= 0:
+                    step = 1
+                
+                atm_strike = round(spot / step) * step if step > 0 else spot
+                
+                # Build chain_near_atm (±5 strikes)
+                for _, c in calls.iterrows():
+                    if abs(c['strike'] - atm_strike) <= step * 5:
+                        put_match = puts[puts['strike'] == c['strike']]
+                        pe_oi = int(put_match['openInterest'].iloc[0]) if len(put_match) > 0 and 'openInterest' in put_match.columns else 0
+                        pe_iv = float(put_match['impliedVolatility'].iloc[0] * 100) if len(put_match) > 0 and 'impliedVolatility' in put_match.columns else 0
+                        pe_ltp = float(put_match['lastPrice'].iloc[0]) if len(put_match) > 0 else 0
+                        pe_bid = float(put_match['bid'].iloc[0]) if len(put_match) > 0 and 'bid' in put_match.columns else 0
+                        pe_ask = float(put_match['ask'].iloc[0]) if len(put_match) > 0 and 'ask' in put_match.columns else 0
+                        
+                        ce_oi = int(c.get('openInterest', 0) or 0)
+                        ce_iv = float(c.get('impliedVolatility', 0) or 0) * 100
+                        ce_ltp = float(c.get('lastPrice', 0) or 0)
+                        ce_bid = float(c.get('bid', 0) or 0)
+                        ce_ask = float(c.get('ask', 0) or 0)
+                        
+                        chain_data.append({
+                            "strike": float(c['strike']),
+                            "ce_oi": ce_oi, "pe_oi": pe_oi,
+                            "ce_iv": round(ce_iv, 1), "pe_iv": round(pe_iv, 1),
+                            "ce_ltp": round(ce_ltp, 2), "pe_ltp": round(pe_ltp, 2),
+                            "ce_bid": round(ce_bid, 2), "pe_bid": round(pe_bid, 2),
+                            "ce_ask": round(ce_ask, 2), "pe_ask": round(pe_ask, 2),
+                            "ce_chg": 0, "pe_chg": 0
+                        })
+                        
+                        if abs(c['strike'] - atm_strike) < step:
+                            atm_iv = round(ce_iv, 1)
+                
+                # OI-based resistance/support
+                call_oi_sorted = sorted(chain_data, key=lambda x: x['ce_oi'], reverse=True)
+                put_oi_sorted = sorted(chain_data, key=lambda x: x['pe_oi'], reverse=True)
+                ce_resistance = [{"strike": c['strike'], "oi": c['ce_oi'], "chg": 0} for c in call_oi_sorted[:3] if c['ce_oi'] > 0]
+                pe_support = [{"strike": p['strike'], "oi": p['pe_oi'], "chg": 0} for p in put_oi_sorted[:3] if p['pe_oi'] > 0]
+                
+                # PCR
+                total_ce_oi = sum(c['ce_oi'] for c in chain_data)
+                total_pe_oi = sum(c['pe_oi'] for c in chain_data)
+                pcr = round(total_pe_oi / max(total_ce_oi, 1), 2)
+                
+                # Max Pain (simplified)
+                max_pain = atm_strike
+                
+        except Exception as e:
+            print(f"[OPTIONS-QUICK] Chain fetch error for {yf_sym}: {e}")
+        
+        # VWAP estimate
+        vwap = round((day_high + day_low + spot) / 3, 2) if spot > 0 else 0
+        
+        # Currency
+        currency = '$' if region == 'US' else '₹'
+        lot_size = 100 if region == 'US' else 1  # US = 100 shares per contract
+        
+        result = {
+            "success": True if spot > 0 and len(chain_data) > 0 else False,
+            "symbol": sym,
+            "region": region,
+            "currency": currency,
+            "lot_size": lot_size,
+            "spot": round(spot, 2),
+            "vix": round(vix, 1),
+            "pcr": pcr,
+            "max_pain": max_pain,
+            "atm_iv": atm_iv,
+            "vwap": vwap,
+            "today_high": round(day_high, 2),
+            "today_low": round(day_low, 2),
+            "today_open": round(day_open, 2),
+            "expiry": expiry_dates[0] if expiry_dates else "",
+            "expiry_dates": expiry_dates,
+            "chain_near_atm": chain_data,
+            "ce_resistance": ce_resistance,
+            "pe_support": pe_support,
+            "total_ce_oi": sum(c['ce_oi'] for c in chain_data),
+            "total_pe_oi": sum(c['pe_oi'] for c in chain_data),
+            "ohlc_bars": [],  # Yahoo doesn't give intraday easily
+            "gex": {"total": 0, "regime": "NEUTRAL", "topStrikes": [], "flipPoint": max_pain, "callWall": ce_resistance[0]['strike'] if ce_resistance else 0, "putWall": pe_support[0]['strike'] if pe_support else 0},
+            "pivot": vwap,
+            "cpr_top": round(day_high * 0.998, 2),
+            "cpr_bottom": round(day_low * 1.002, 2),
+        }
+        
+        print(f"[OPTIONS-QUICK] ✅ {sym} ({region}): spot={spot}, chain={len(chain_data)} strikes, pcr={pcr}")
+        return result
+        
+    except Exception as e:
+        print(f"[OPTIONS-QUICK] ❌ Error for {symbol}: {e}")
+        import traceback; traceback.print_exc()
+        return {"success": False, "error": str(e), "spot": 0, "chain_near_atm": [], "ce_resistance": [], "pe_support": [], "gex": {"total": 0, "regime": "NEUTRAL", "topStrikes": [], "flipPoint": 0, "callWall": 0, "putWall": 0}}
