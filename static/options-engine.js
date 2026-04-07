@@ -2850,6 +2850,10 @@ function _renderQuickTrade(d,sym){
     h+='<div style="font-size:24px;font-weight:900;color:'+statusColor+';font-family:Sora">'+status+'</div>';
     h+='<div style="font-size:18px;font-weight:900;color:'+directionColor+';font-family:Sora;margin-top:6px">'+directionLabel+'</div>';
     h+='</div>';
+    // WHY reasons
+    h+='<div style="text-align:left;max-width:260px;margin:0 auto 12px">';
+    whyReasons.forEach(function(r){h+='<div style="font-size:11px;padding:3px 0;color:'+(r.pass?'#059669':'#94a3b8')+'">'+(r.pass?'✔':'✗')+' '+r.label+'</div>'});
+    h+='</div>';
     h+='<div style="text-align:center;margin-bottom:12px;padding:12px;border-radius:10px;background:#1e293b"><div style="font-size:9px;color:#64748b;margin-bottom:4px">WATCHING FOR</div><div style="font-size:26px;font-weight:900;color:#f59e0b;font-family:JetBrains Mono">'+S+(isUS?entryLevel.toLocaleString('en-US'):entryLevel.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN'))+'</div><div style="font-size:8px;color:#64748b;margin-top:4px">+ Volume + VWAP</div></div>';
     h+='<div style="text-align:center;padding:8px;border-radius:8px;background:#1e293b50;font-size:9px;color:#64748b">When breakout → <strong style="color:'+biasColor+'">BUY '+S+entryStrike7+' '+entryType7+'</strong> @ ~'+S+entryPrem7.toFixed(0)+'</div>';
     if(qtIsExpiry){h+='<div style="text-align:center;margin-top:8px;padding:6px 12px;border-radius:8px;background:#d9770608;border:1px solid #d9770615;font-size:9px;color:#d97706;font-weight:700">⏱ Expiry day — options lose value fast. Max hold 10 min.</div>'}
@@ -2958,24 +2962,29 @@ window._speak=function(text,urgent){
 };
 // Load voices async (many browsers load them lazily)
 if(typeof window!=='undefined'&&window.speechSynthesis){
-  window.speechSynthesis.getVoices(); // trigger load
+  window.speechSynthesis.getVoices();
   if(window.speechSynthesis.onvoiceschanged!==undefined){
-    window.speechSynthesis.onvoiceschanged=function(){window.speechSynthesis.getVoices()};
+    window.speechSynthesis.onvoiceschanged=function(){
+      window.speechSynthesis.getVoices();
+      console.log('[VOICE] Voices loaded: '+window.speechSynthesis.getVoices().length);
+    };
   }
 }
-// Browser requires user interaction before voice works — warmup on first click
-if(typeof document!=='undefined'&&document.body){
-  document.body.addEventListener('click',function _warmVoice(){
-    if(window.speechSynthesis&&!window._voiceWarmedUp){
-      window._voiceWarmedUp=true;
-      try{
-        var w=new SpeechSynthesisUtterance('');w.volume=0;
-        window.speechSynthesis.speak(w);
-        window.speechSynthesis.cancel();
-        console.log('[VOICE] Warmed up on click');
-      }catch(e){}
-    }
-  });
+// Browser requires user interaction before voice works — warmup on first click/touch
+function _warmupVoice(){
+  if(window.speechSynthesis&&!window._voiceWarmedUp){
+    window._voiceWarmedUp=true;
+    try{
+      var w=new SpeechSynthesisUtterance('');w.volume=0;
+      window.speechSynthesis.speak(w);
+      setTimeout(function(){try{window.speechSynthesis.cancel()}catch(e){}},100);
+      console.log('[VOICE] Warmed up on user gesture');
+    }catch(e){console.log('[VOICE] Warmup failed:',e)}
+  }
+}
+if(typeof document!=='undefined'){
+  document.addEventListener('click',_warmupVoice);
+  document.addEventListener('touchstart',_warmupVoice);
 }
 
 window._voiceAlert=function(type,detail,strike,prem,isBlast,extraCtx){
