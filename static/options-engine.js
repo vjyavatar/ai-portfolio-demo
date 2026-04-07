@@ -448,16 +448,16 @@ function _renderOptionsEngine(d,sym){
   var vwap2=d.vwap||0;
   if(vwap2>0){
     entry.total++;
-    if(regime.trend==='BULLISH'&&spot>vwap2){entry.triggers.push({label:'Price above VWAP ('+S+vwap2.toLocaleString('en-IN')+')',pass:true,icon:'✔'});entry.pass++}
-    else if(regime.trend==='BEARISH'&&spot<vwap2){entry.triggers.push({label:'Price below VWAP ('+S+vwap2.toLocaleString('en-IN')+')',pass:true,icon:'✔'});entry.pass++}
+    if(regime.trend==='BULLISH'&&spot>vwap2){entry.triggers.push({label:'Price above VWAP ('+S+vwap2.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+')',pass:true,icon:'✔'});entry.pass++}
+    else if(regime.trend==='BEARISH'&&spot<vwap2){entry.triggers.push({label:'Price below VWAP ('+S+vwap2.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+')',pass:true,icon:'✔'});entry.pass++}
     else if(regime.trend==='RANGE-BOUND'){entry.triggers.push({label:'Price near VWAP — range confirmed',pass:true,icon:'✔'});entry.pass++}
     else{entry.triggers.push({label:'VWAP not supporting (price '+(spot>vwap2?'above':'below')+' VWAP)',pass:false,icon:'✘'})}
   }
   // T2: Break of key level
   entry.total++;
-  if(regime.trend==='BEARISH'&&spot<inst.support){entry.triggers.push({label:'Break below support '+S+inst.support.toLocaleString('en-IN'),pass:true,icon:'✔'});entry.pass++}
-  else if(regime.trend==='BULLISH'&&spot>inst.midpoint){entry.triggers.push({label:'Price above OI midpoint '+S+inst.midpoint.toLocaleString('en-IN'),pass:true,icon:'✔'});entry.pass++}
-  else if(regime.trend==='RANGE-BOUND'&&spot>inst.support&&spot<inst.resistance){entry.triggers.push({label:'Price within OI walls ('+S+inst.support.toLocaleString('en-IN')+' - '+S+inst.resistance.toLocaleString('en-IN')+')',pass:true,icon:'✔'});entry.pass++}
+  if(regime.trend==='BEARISH'&&spot<inst.support){entry.triggers.push({label:'Break below support '+S+inst.support.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN'),pass:true,icon:'✔'});entry.pass++}
+  else if(regime.trend==='BULLISH'&&spot>inst.midpoint){entry.triggers.push({label:'Price above OI midpoint '+S+inst.midpoint.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN'),pass:true,icon:'✔'});entry.pass++}
+  else if(regime.trend==='RANGE-BOUND'&&spot>inst.support&&spot<inst.resistance){entry.triggers.push({label:'Price within OI walls ('+S+inst.support.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+' - '+S+inst.resistance.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+')',pass:true,icon:'✔'});entry.pass++}
   else{entry.triggers.push({label:'No key level break yet',pass:false,icon:'✘'})}
   // T3: Volume confirmation
   entry.total++;
@@ -715,15 +715,15 @@ function _renderOptionsEngine(d,sym){
   h+='<div style="display:flex;gap:10px;margin-bottom:10px;flex-wrap:wrap">';
   h+='<div style="flex:1;min-width:140px;padding:10px;border-radius:10px;background:#1e293b">';
   h+='<div style="font-size:8px;color:#ef4444;font-weight:700">🔴 MAX CALL OI (Resistance)</div>';
-  h+='<div style="font-size:20px;font-weight:900;color:#ef4444;font-family:JetBrains Mono">'+S+inst.resistance.toLocaleString('en-IN')+'</div>';
-  h+='<div style="font-size:8px;color:#64748b">OI: '+(inst.maxCallOI.oi||0).toLocaleString('en-IN')+'</div></div>';
+  h+='<div style="font-size:20px;font-weight:900;color:#ef4444;font-family:JetBrains Mono">'+S+inst.resistance.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div>';
+  h+='<div style="font-size:8px;color:#64748b">OI: '+(inst.maxCallOI.oi||0).toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div></div>';
   h+='<div style="flex:1;min-width:140px;padding:10px;border-radius:10px;background:#1e293b">';
   h+='<div style="font-size:8px;color:#059669;font-weight:700">🟢 MAX PUT OI (Support)</div>';
-  h+='<div style="font-size:20px;font-weight:900;color:#059669;font-family:JetBrains Mono">'+S+inst.support.toLocaleString('en-IN')+'</div>';
-  h+='<div style="font-size:8px;color:#64748b">OI: '+(inst.maxPutOI.oi||0).toLocaleString('en-IN')+'</div></div>';
+  h+='<div style="font-size:20px;font-weight:900;color:#059669;font-family:JetBrains Mono">'+S+inst.support.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div>';
+  h+='<div style="font-size:8px;color:#64748b">OI: '+(inst.maxPutOI.oi||0).toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div></div>';
   h+='<div style="flex:1;min-width:140px;padding:10px;border-radius:10px;background:#1e293b">';
   h+='<div style="font-size:8px;color:#3b82f6;font-weight:700">📍 MAX PAIN</div>';
-  h+='<div style="font-size:20px;font-weight:900;color:#3b82f6;font-family:JetBrains Mono">'+S+maxPain.toLocaleString('en-IN')+'</div>';
+  h+='<div style="font-size:20px;font-weight:900;color:#3b82f6;font-family:JetBrains Mono">'+S+maxPain.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div>';
   h+='<div style="font-size:8px;color:#64748b">'+pa.maxPainBias+'</div></div>';
   h+='<div style="flex:1;min-width:140px;padding:10px;border-radius:10px;background:#1e293b">';
   h+='<div style="font-size:8px;color:#a855f7;font-weight:700">📊 ATM IV</div>';
@@ -764,16 +764,16 @@ function _renderOptionsEngine(d,sym){
   });
   h+='</div></div>';
   // Spot indicator
-  h+='<div style="text-align:center;margin-top:8px;font-size:10px;color:#f59e0b;font-weight:700">📍 SPOT: '+S+spot.toLocaleString('en-IN')+' · '+inst.spotVsMid+'</div>';
+  h+='<div style="text-align:center;margin-top:8px;font-size:10px;color:#f59e0b;font-weight:700">📍 SPOT: '+S+spot.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+' · '+inst.spotVsMid+'</div>';
   h+='</div>';
   
   // ─── L3: PRICE ACTION ───
   h+='<div style="background:#0F172A;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:1px solid #1e293b">';
   h+='<div style="font-size:10px;font-weight:800;color:#64748b;letter-spacing:1.5px;margin-bottom:10px">L3 · PRICE ACTION</div>';
   h+='<div style="display:flex;gap:8px;flex-wrap:wrap">';
-  h+='<div style="flex:1;min-width:100px;padding:8px;border-radius:8px;background:#1e293b;text-align:center"><div style="font-size:7px;color:#64748b">PIVOT</div><div style="font-size:14px;font-weight:900;color:#3b82f6;font-family:JetBrains Mono">'+S+pivot.toLocaleString('en-IN')+'</div></div>';
-  h+='<div style="flex:1;min-width:100px;padding:8px;border-radius:8px;background:#1e293b;text-align:center"><div style="font-size:7px;color:#64748b">CPR TOP</div><div style="font-size:14px;font-weight:900;color:#059669;font-family:JetBrains Mono">'+S+cprTop.toLocaleString('en-IN')+'</div></div>';
-  h+='<div style="flex:1;min-width:100px;padding:8px;border-radius:8px;background:#1e293b;text-align:center"><div style="font-size:7px;color:#64748b">CPR BOTTOM</div><div style="font-size:14px;font-weight:900;color:#ef4444;font-family:JetBrains Mono">'+S+cprBot.toLocaleString('en-IN')+'</div></div>';
+  h+='<div style="flex:1;min-width:100px;padding:8px;border-radius:8px;background:#1e293b;text-align:center"><div style="font-size:7px;color:#64748b">PIVOT</div><div style="font-size:14px;font-weight:900;color:#3b82f6;font-family:JetBrains Mono">'+S+pivot.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div></div>';
+  h+='<div style="flex:1;min-width:100px;padding:8px;border-radius:8px;background:#1e293b;text-align:center"><div style="font-size:7px;color:#64748b">CPR TOP</div><div style="font-size:14px;font-weight:900;color:#059669;font-family:JetBrains Mono">'+S+cprTop.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div></div>';
+  h+='<div style="flex:1;min-width:100px;padding:8px;border-radius:8px;background:#1e293b;text-align:center"><div style="font-size:7px;color:#64748b">CPR BOTTOM</div><div style="font-size:14px;font-weight:900;color:#ef4444;font-family:JetBrains Mono">'+S+cprBot.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div></div>';
   h+='<div style="flex:1;min-width:100px;padding:8px;border-radius:8px;background:#1e293b;text-align:center"><div style="font-size:7px;color:#64748b">CPR TYPE</div><div style="font-size:14px;font-weight:900;color:#f59e0b">'+cprType+'</div><div style="font-size:7px;color:#64748b">'+pa.cprBias+'</div></div>';
   h+='</div></div>';
   
@@ -800,20 +800,20 @@ function _renderOptionsEngine(d,sym){
   
   var legs=[];
   if(strat.callBuy)legs.push({action:'BUY',strike:strat.callBuy,type:'CE',prem:strat.callBuyPrem||0,oi:'',color:'#059669'});
-  if(strat.callSell)legs.push({action:'SELL',strike:strat.callSell,type:'CE',prem:strat.callSellPrem||0,oi:strat.callSellOI?strat.callSellOI.toLocaleString('en-IN'):'',color:'#ef4444'});
+  if(strat.callSell)legs.push({action:'SELL',strike:strat.callSell,type:'CE',prem:strat.callSellPrem||0,oi:strat.callSellOI?strat.callSellOI.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN'):'',color:'#ef4444'});
   if(strat.putBuy)legs.push({action:'BUY',strike:strat.putBuy,type:'PE',prem:strat.putBuyPrem||0,oi:'',color:'#059669'});
-  if(strat.putSell)legs.push({action:'SELL',strike:strat.putSell,type:'PE',prem:strat.putSellPrem||0,oi:strat.putSellOI?strat.putSellOI.toLocaleString('en-IN'):'',color:'#ef4444'});
+  if(strat.putSell)legs.push({action:'SELL',strike:strat.putSell,type:'PE',prem:strat.putSellPrem||0,oi:strat.putSellOI?strat.putSellOI.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN'):'',color:'#ef4444'});
   
   legs.forEach(function(leg){
     var cost=Math.round(leg.prem*lot2);
     var sign=leg.action==='SELL'?'+':'-';
     h+='<tr style="border-bottom:1px solid #1e293b">';
     h+='<td style="padding:8px 10px"><span style="padding:2px 8px;border-radius:4px;background:'+leg.color+'20;color:'+leg.color+';font-weight:800;font-size:8px">'+leg.action+'</span></td>';
-    h+='<td style="text-align:center;font-weight:900;color:#e2e8f0;font-family:JetBrains Mono;font-size:13px">'+S+leg.strike.toLocaleString('en-IN')+'</td>';
+    h+='<td style="text-align:center;font-weight:900;color:#e2e8f0;font-family:JetBrains Mono;font-size:13px">'+S+leg.strike.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</td>';
     h+='<td style="text-align:center;color:'+(leg.type==='CE'?'#3b82f6':'#ef4444')+';font-weight:700">'+leg.type+'</td>';
     h+='<td style="text-align:center;color:#f59e0b;font-weight:800;font-family:JetBrains Mono">'+S+leg.prem.toFixed(1)+'</td>';
     h+='<td style="text-align:center;color:#64748b;font-size:8px">'+(leg.oi||'—')+'</td>';
-    h+='<td style="text-align:right;padding-right:10px;color:'+leg.color+';font-weight:800;font-family:JetBrains Mono">'+sign+S+Math.abs(cost).toLocaleString('en-IN')+'</td>';
+    h+='<td style="text-align:right;padding-right:10px;color:'+leg.color+';font-weight:800;font-family:JetBrains Mono">'+sign+S+Math.abs(cost).toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</td>';
     h+='</tr>';
   });
   
@@ -821,16 +821,16 @@ function _renderOptionsEngine(d,sym){
   var netPrem=strat.netCredit||strat.netDebit||0;
   var isCredit=!!strat.netCredit;
   h+='<tr style="background:#0F172A"><td colspan="5" style="padding:8px 10px;font-weight:800;color:#e2e8f0">NET '+(isCredit?'CREDIT':'DEBIT')+'</td>';
-  h+='<td style="text-align:right;padding-right:10px;font-weight:900;font-family:JetBrains Mono;font-size:14px;color:'+(isCredit?'#059669':'#ef4444')+'">'+(isCredit?'+':'-')+S+Math.abs(netPrem).toLocaleString('en-IN')+'</td></tr>';
+  h+='<td style="text-align:right;padding-right:10px;font-weight:900;font-family:JetBrains Mono;font-size:14px;color:'+(isCredit?'#059669':'#ef4444')+'">'+(isCredit?'+':'-')+S+Math.abs(netPrem).toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</td></tr>';
   h+='</table></div>';
   
   // Payoff summary
   h+='<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">';
-  h+='<div style="flex:1;min-width:100px;padding:8px;border-radius:8px;background:#05966415;border:1px solid #05966425;text-align:center"><div style="font-size:7px;color:#059669;font-weight:700">MAX PROFIT</div><div style="font-size:16px;font-weight:900;color:#059669;font-family:JetBrains Mono">'+S+(risk.maxProfit||0).toLocaleString('en-IN')+'</div></div>';
-  h+='<div style="flex:1;min-width:100px;padding:8px;border-radius:8px;background:#ef444415;border:1px solid #ef444425;text-align:center"><div style="font-size:7px;color:#ef4444;font-weight:700">MAX LOSS</div><div style="font-size:16px;font-weight:900;color:#ef4444;font-family:JetBrains Mono">'+S+(risk.maxLoss||0).toLocaleString('en-IN')+'</div></div>';
+  h+='<div style="flex:1;min-width:100px;padding:8px;border-radius:8px;background:#05966415;border:1px solid #05966425;text-align:center"><div style="font-size:7px;color:#059669;font-weight:700">MAX PROFIT</div><div style="font-size:16px;font-weight:900;color:#059669;font-family:JetBrains Mono">'+S+(risk.maxProfit||0).toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div></div>';
+  h+='<div style="flex:1;min-width:100px;padding:8px;border-radius:8px;background:#ef444415;border:1px solid #ef444425;text-align:center"><div style="font-size:7px;color:#ef4444;font-weight:700">MAX LOSS</div><div style="font-size:16px;font-weight:900;color:#ef4444;font-family:JetBrains Mono">'+S+(risk.maxLoss||0).toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div></div>';
   h+='<div style="flex:1;min-width:100px;padding:8px;border-radius:8px;background:#3b82f615;border:1px solid #3b82f625;text-align:center"><div style="font-size:7px;color:#3b82f6;font-weight:700">RISK:REWARD</div><div style="font-size:16px;font-weight:900;color:#3b82f6;font-family:JetBrains Mono">'+risk.riskReward+'</div></div>';
-  if(risk.breakEvenUp)h+='<div style="flex:1;min-width:100px;padding:8px;border-radius:8px;background:#1e293b;text-align:center"><div style="font-size:7px;color:#64748b;font-weight:700">B/E UP</div><div style="font-size:13px;font-weight:900;color:#94a3b8;font-family:JetBrains Mono">'+S+(risk.breakEvenUp||0).toLocaleString('en-IN')+'</div></div>';
-  if(risk.breakEvenDn)h+='<div style="flex:1;min-width:100px;padding:8px;border-radius:8px;background:#1e293b;text-align:center"><div style="font-size:7px;color:#64748b;font-weight:700">B/E DOWN</div><div style="font-size:13px;font-weight:900;color:#94a3b8;font-family:JetBrains Mono">'+S+(risk.breakEvenDn||0).toLocaleString('en-IN')+'</div></div>';
+  if(risk.breakEvenUp)h+='<div style="flex:1;min-width:100px;padding:8px;border-radius:8px;background:#1e293b;text-align:center"><div style="font-size:7px;color:#64748b;font-weight:700">B/E UP</div><div style="font-size:13px;font-weight:900;color:#94a3b8;font-family:JetBrains Mono">'+S+(risk.breakEvenUp||0).toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div></div>';
+  if(risk.breakEvenDn)h+='<div style="flex:1;min-width:100px;padding:8px;border-radius:8px;background:#1e293b;text-align:center"><div style="font-size:7px;color:#64748b;font-weight:700">B/E DOWN</div><div style="font-size:13px;font-weight:900;color:#94a3b8;font-family:JetBrains Mono">'+S+(risk.breakEvenDn||0).toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div></div>';
   h+='</div>';
   
   // Strategy flow: Market → Strategy → Risk → Expiry
@@ -849,10 +849,10 @@ function _renderOptionsEngine(d,sym){
   h+='<div style="font-size:8px;color:#94a3b8;line-height:1.7">';
   h+='<strong style="color:#e2e8f0">1.</strong> Open your broker → '+sym+' Options → Expiry: <strong style="color:#a855f7">'+expEng.recommended+'</strong><br>';
   var _stepN=2;
-  if(strat.callBuy){h+='<strong style="color:#e2e8f0">'+_stepN+'.</strong> Strike <strong style="color:#059669">'+S+strat.callBuy.toLocaleString('en-IN')+'</strong> → <strong style="color:#059669">BUY CE</strong> → Qty: '+lot+' (1 lot)<br>';_stepN++}
-  if(strat.callSell){h+='<strong style="color:#e2e8f0">'+_stepN+'.</strong> Strike <strong style="color:#ef4444">'+S+strat.callSell.toLocaleString('en-IN')+'</strong> → <strong style="color:#ef4444">SELL CE</strong> → Qty: '+lot+'<br>';_stepN++}
-  if(strat.putBuy){h+='<strong style="color:#e2e8f0">'+_stepN+'.</strong> Strike <strong style="color:#059669">'+S+strat.putBuy.toLocaleString('en-IN')+'</strong> → <strong style="color:#059669">BUY PE</strong> → Qty: '+lot+'<br>';_stepN++}
-  if(strat.putSell){h+='<strong style="color:#e2e8f0">'+_stepN+'.</strong> Strike <strong style="color:#ef4444">'+S+strat.putSell.toLocaleString('en-IN')+'</strong> → <strong style="color:#ef4444">SELL PE</strong> → Qty: '+lot+'<br>';_stepN++}
+  if(strat.callBuy){h+='<strong style="color:#e2e8f0">'+_stepN+'.</strong> Strike <strong style="color:#059669">'+S+strat.callBuy.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</strong> → <strong style="color:#059669">BUY CE</strong> → Qty: '+lot+' (1 lot)<br>';_stepN++}
+  if(strat.callSell){h+='<strong style="color:#e2e8f0">'+_stepN+'.</strong> Strike <strong style="color:#ef4444">'+S+strat.callSell.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</strong> → <strong style="color:#ef4444">SELL CE</strong> → Qty: '+lot+'<br>';_stepN++}
+  if(strat.putBuy){h+='<strong style="color:#e2e8f0">'+_stepN+'.</strong> Strike <strong style="color:#059669">'+S+strat.putBuy.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</strong> → <strong style="color:#059669">BUY PE</strong> → Qty: '+lot+'<br>';_stepN++}
+  if(strat.putSell){h+='<strong style="color:#e2e8f0">'+_stepN+'.</strong> Strike <strong style="color:#ef4444">'+S+strat.putSell.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</strong> → <strong style="color:#ef4444">SELL PE</strong> → Qty: '+lot+'<br>';_stepN++}
   h+='<strong style="color:#e2e8f0">'+_stepN+'.</strong> Set stop loss + target alerts from Steps below. <strong>Done!</strong></div></div>';
   h+='</div>';
   
@@ -860,14 +860,14 @@ function _renderOptionsEngine(d,sym){
   h+='<div style="background:#0F172A;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:1px solid #1e293b">';
   h+='<div style="font-size:10px;font-weight:800;color:#64748b;letter-spacing:1.5px;margin-bottom:10px">L5 · RISK ENGINE (Live Premiums)</div>';
   h+='<div style="display:flex;gap:8px;flex-wrap:wrap">';
-  h+='<div style="flex:1;min-width:100px;padding:10px;border-radius:10px;background:#ef444415;border:1px solid #ef444430;text-align:center"><div style="font-size:7px;color:#ef4444;font-weight:700">MAX LOSS</div><div style="font-size:18px;font-weight:900;color:#ef4444;font-family:JetBrains Mono">'+S+(risk.maxLoss||0).toLocaleString('en-IN')+'</div><div style="font-size:7px;color:#64748b">per lot of '+lot+'</div></div>';
-  h+='<div style="flex:1;min-width:100px;padding:10px;border-radius:10px;background:#05966415;border:1px solid #05966430;text-align:center"><div style="font-size:7px;color:#059669;font-weight:700">MAX PROFIT</div><div style="font-size:18px;font-weight:900;color:#059669;font-family:JetBrains Mono">'+S+(risk.maxProfit||0).toLocaleString('en-IN')+'</div><div style="font-size:7px;color:#64748b">'+risk.premiumType+': '+S+Math.abs(risk.netPremium).toLocaleString('en-IN')+'</div></div>';
+  h+='<div style="flex:1;min-width:100px;padding:10px;border-radius:10px;background:#ef444415;border:1px solid #ef444430;text-align:center"><div style="font-size:7px;color:#ef4444;font-weight:700">MAX LOSS</div><div style="font-size:18px;font-weight:900;color:#ef4444;font-family:JetBrains Mono">'+S+(risk.maxLoss||0).toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div><div style="font-size:7px;color:#64748b">per lot of '+lot+'</div></div>';
+  h+='<div style="flex:1;min-width:100px;padding:10px;border-radius:10px;background:#05966415;border:1px solid #05966430;text-align:center"><div style="font-size:7px;color:#059669;font-weight:700">MAX PROFIT</div><div style="font-size:18px;font-weight:900;color:#059669;font-family:JetBrains Mono">'+S+(risk.maxProfit||0).toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div><div style="font-size:7px;color:#64748b">'+risk.premiumType+': '+S+Math.abs(risk.netPremium).toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div></div>';
   h+='<div style="flex:1;min-width:100px;padding:10px;border-radius:10px;background:#3b82f615;border:1px solid #3b82f630;text-align:center"><div style="font-size:7px;color:#3b82f6;font-weight:700">PROB OF PROFIT</div>';
   // Gauge
   h+='<div style="width:60px;height:60px;border-radius:50%;border:4px solid #1e293b;background:conic-gradient('+risk.riskColor+' '+(risk.probProfit*3.6)+'deg, #1e293b 0deg);display:flex;align-items:center;justify-content:center;margin:4px auto">';
   h+='<div style="width:44px;height:44px;border-radius:50%;background:#0F172A;display:flex;align-items:center;justify-content:center"><div style="font-size:14px;font-weight:900;color:'+risk.riskColor+';font-family:JetBrains Mono">'+risk.probProfit+'%</div></div></div></div>';
-  if(risk.breakEvenUp)h+='<div style="flex:1;min-width:100px;padding:10px;border-radius:10px;background:#1e293b;text-align:center"><div style="font-size:7px;color:#64748b;font-weight:700">BREAKEVEN ↑</div><div style="font-size:14px;font-weight:900;color:#94a3b8;font-family:JetBrains Mono">'+S+(risk.breakEvenUp||0).toLocaleString('en-IN')+'</div><div style="font-size:7px;color:#64748b">'+((risk.breakEvenUp-spot)/spot*100).toFixed(1)+'% away</div></div>';
-  if(risk.breakEvenDn)h+='<div style="flex:1;min-width:100px;padding:10px;border-radius:10px;background:#1e293b;text-align:center"><div style="font-size:7px;color:#64748b;font-weight:700">BREAKEVEN ↓</div><div style="font-size:14px;font-weight:900;color:#94a3b8;font-family:JetBrains Mono">'+S+(risk.breakEvenDn||0).toLocaleString('en-IN')+'</div><div style="font-size:7px;color:#64748b">'+((spot-risk.breakEvenDn)/spot*100).toFixed(1)+'% away</div></div>';
+  if(risk.breakEvenUp)h+='<div style="flex:1;min-width:100px;padding:10px;border-radius:10px;background:#1e293b;text-align:center"><div style="font-size:7px;color:#64748b;font-weight:700">BREAKEVEN ↑</div><div style="font-size:14px;font-weight:900;color:#94a3b8;font-family:JetBrains Mono">'+S+(risk.breakEvenUp||0).toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div><div style="font-size:7px;color:#64748b">'+((risk.breakEvenUp-spot)/spot*100).toFixed(1)+'% away</div></div>';
+  if(risk.breakEvenDn)h+='<div style="flex:1;min-width:100px;padding:10px;border-radius:10px;background:#1e293b;text-align:center"><div style="font-size:7px;color:#64748b;font-weight:700">BREAKEVEN ↓</div><div style="font-size:14px;font-weight:900;color:#94a3b8;font-family:JetBrains Mono">'+S+(risk.breakEvenDn||0).toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div><div style="font-size:7px;color:#64748b">'+((spot-risk.breakEvenDn)/spot*100).toFixed(1)+'% away</div></div>';
   h+='</div></div>';
   
   // ─── L6: EXPIRY SELECTION ENGINE ───
@@ -926,9 +926,9 @@ function _renderOptionsEngine(d,sym){
   h+='<div style="font-size:10px;font-weight:800;color:#64748b;letter-spacing:1.5px;margin-bottom:10px">📊 SCENARIO SIMULATION — What if '+sym+' moves ±1%?</div>';
   var up1=Math.round(spot*1.01),dn1=Math.round(spot*0.99);
   h+='<div style="display:flex;gap:8px;flex-wrap:wrap">';
-  h+='<div style="flex:1;padding:10px;border-radius:10px;background:#05966415;text-align:center"><div style="font-size:7px;color:#059669;font-weight:700">+1% ('+S+up1.toLocaleString('en-IN')+')</div><div style="font-size:14px;font-weight:900;color:#059669;font-family:JetBrains Mono">'+(strat.type==='BUY'&&strat.name.indexOf('Bull')>=0?'+'+S+Math.round(risk.maxProfit*0.4).toLocaleString('en-IN'):strat.type==='SELL'?'-'+S+Math.round(risk.maxLoss*0.15).toLocaleString('en-IN'):'+'+S+Math.round(risk.maxProfit*0.2).toLocaleString('en-IN'))+'</div></div>';
-  h+='<div style="flex:1;padding:10px;border-radius:10px;background:#1e293b;text-align:center"><div style="font-size:7px;color:#64748b;font-weight:700">FLAT</div><div style="font-size:14px;font-weight:900;color:#64748b;font-family:JetBrains Mono">'+(strat.type==='SELL'?'+'+S+Math.round(risk.maxProfit*0.3).toLocaleString('en-IN'):'0')+'</div></div>';
-  h+='<div style="flex:1;padding:10px;border-radius:10px;background:#ef444415;text-align:center"><div style="font-size:7px;color:#ef4444;font-weight:700">-1% ('+S+dn1.toLocaleString('en-IN')+')</div><div style="font-size:14px;font-weight:900;color:#ef4444;font-family:JetBrains Mono">'+(strat.type==='BUY'&&strat.name.indexOf('Bear')>=0?'+'+S+Math.round(risk.maxProfit*0.4).toLocaleString('en-IN'):strat.type==='SELL'?'-'+S+Math.round(risk.maxLoss*0.15).toLocaleString('en-IN'):'-'+S+Math.round(risk.maxLoss*0.2).toLocaleString('en-IN'))+'</div></div>';
+  h+='<div style="flex:1;padding:10px;border-radius:10px;background:#05966415;text-align:center"><div style="font-size:7px;color:#059669;font-weight:700">+1% ('+S+up1.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+')</div><div style="font-size:14px;font-weight:900;color:#059669;font-family:JetBrains Mono">'+(strat.type==='BUY'&&strat.name.indexOf('Bull')>=0?'+'+S+Math.round(risk.maxProfit*0.4).toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN'):strat.type==='SELL'?'-'+S+Math.round(risk.maxLoss*0.15).toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN'):'+'+S+Math.round(risk.maxProfit*0.2).toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN'))+'</div></div>';
+  h+='<div style="flex:1;padding:10px;border-radius:10px;background:#1e293b;text-align:center"><div style="font-size:7px;color:#64748b;font-weight:700">FLAT</div><div style="font-size:14px;font-weight:900;color:#64748b;font-family:JetBrains Mono">'+(strat.type==='SELL'?'+'+S+Math.round(risk.maxProfit*0.3).toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN'):'0')+'</div></div>';
+  h+='<div style="flex:1;padding:10px;border-radius:10px;background:#ef444415;text-align:center"><div style="font-size:7px;color:#ef4444;font-weight:700">-1% ('+S+dn1.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+')</div><div style="font-size:14px;font-weight:900;color:#ef4444;font-family:JetBrains Mono">'+(strat.type==='BUY'&&strat.name.indexOf('Bear')>=0?'+'+S+Math.round(risk.maxProfit*0.4).toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN'):strat.type==='SELL'?'-'+S+Math.round(risk.maxLoss*0.15).toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN'):'-'+S+Math.round(risk.maxLoss*0.2).toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN'))+'</div></div>';
   h+='</div></div>';
   
   // Close the collapsible L1-L6 deep analysis block
@@ -943,8 +943,8 @@ function _renderOptionsEngine(d,sym){
       var c=z.type==='CALL WRITING'?'#ef4444':'#059669';
       h+='<div style="padding:6px 12px;border-radius:8px;background:'+c+'12;border:1px solid '+c+'25">';
       h+='<div style="font-size:7px;color:'+c+';font-weight:700">'+z.type+'</div>';
-      h+='<div style="font-size:12px;font-weight:900;color:'+c+';font-family:JetBrains Mono">'+S+z.strike.toLocaleString('en-IN')+'</div>';
-      h+='<div style="font-size:7px;color:#64748b">+'+z.chg.toLocaleString('en-IN')+' OI</div></div>';
+      h+='<div style="font-size:12px;font-weight:900;color:'+c+';font-family:JetBrains Mono">'+S+z.strike.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div>';
+      h+='<div style="font-size:7px;color:#64748b">+'+z.chg.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+' OI</div></div>';
     });
     h+='</div></div>';
   }
@@ -971,10 +971,10 @@ function _renderOptionsEngine(d,sym){
   h+='<div style="font-size:8px;color:#64748b;margin-bottom:8px;font-style:italic">👀 Read: The blue "TRADE SIZE" number is how many lots to buy. NEVER exceed this. TOTAL RISK is the maximum you can lose. If it\'s more than you\'re comfortable losing, reduce lots to 1.</div>';
   h+='<div style="display:flex;gap:8px;flex-wrap:wrap">';
   h+='<div style="flex:1;min-width:100px;padding:10px;border-radius:10px;background:#1e293b;text-align:center"><div style="font-size:7px;color:#64748b;font-weight:700">CAPITAL</div><div style="font-size:16px;font-weight:900;color:#e2e8f0;font-family:JetBrains Mono">'+S+(pos.capital/100000).toFixed(0)+'L</div></div>';
-  h+='<div style="flex:1;min-width:100px;padding:10px;border-radius:10px;background:#1e293b;text-align:center"><div style="font-size:7px;color:#64748b;font-weight:700">RISK PER TRADE</div><div style="font-size:16px;font-weight:900;color:#d97706;font-family:JetBrains Mono">'+pos.riskPct+'%</div><div style="font-size:8px;color:#64748b">'+S+pos.maxRiskAmount.toLocaleString('en-IN')+'</div></div>';
+  h+='<div style="flex:1;min-width:100px;padding:10px;border-radius:10px;background:#1e293b;text-align:center"><div style="font-size:7px;color:#64748b;font-weight:700">RISK PER TRADE</div><div style="font-size:16px;font-weight:900;color:#d97706;font-family:JetBrains Mono">'+pos.riskPct+'%</div><div style="font-size:8px;color:#64748b">'+S+pos.maxRiskAmount.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div></div>';
   h+='<div style="flex:1;min-width:100px;padding:10px;border-radius:10px;background:#3b82f615;border:1px solid #3b82f625;text-align:center"><div style="font-size:7px;color:#3b82f6;font-weight:700">TRADE SIZE</div><div style="font-size:20px;font-weight:900;color:#3b82f6;font-family:JetBrains Mono">'+pos.lots+'</div><div style="font-size:8px;color:#64748b">lot(s) × '+lot3+'</div></div>';
-  h+='<div style="flex:1;min-width:100px;padding:10px;border-radius:10px;background:#1e293b;text-align:center"><div style="font-size:7px;color:#64748b;font-weight:700">TOTAL RISK</div><div style="font-size:16px;font-weight:900;color:#ef4444;font-family:JetBrains Mono">'+S+pos.totalRisk.toLocaleString('en-IN')+'</div><div style="font-size:8px;color:#64748b">'+pos.capitalUsed+'% of capital</div></div>';
-  h+='<div style="flex:1;min-width:100px;padding:10px;border-radius:10px;background:#1e293b;text-align:center"><div style="font-size:7px;color:#64748b;font-weight:700">TOTAL REWARD</div><div style="font-size:16px;font-weight:900;color:#059669;font-family:JetBrains Mono">'+S+pos.totalReward.toLocaleString('en-IN')+'</div></div>';
+  h+='<div style="flex:1;min-width:100px;padding:10px;border-radius:10px;background:#1e293b;text-align:center"><div style="font-size:7px;color:#64748b;font-weight:700">TOTAL RISK</div><div style="font-size:16px;font-weight:900;color:#ef4444;font-family:JetBrains Mono">'+S+pos.totalRisk.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div><div style="font-size:8px;color:#64748b">'+pos.capitalUsed+'% of capital</div></div>';
+  h+='<div style="flex:1;min-width:100px;padding:10px;border-radius:10px;background:#1e293b;text-align:center"><div style="font-size:7px;color:#64748b;font-weight:700">TOTAL REWARD</div><div style="font-size:16px;font-weight:900;color:#059669;font-family:JetBrains Mono">'+S+pos.totalReward.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div></div>';
   h+='</div></div>';
   
   // ─── STEP 6: RISK CONTROL (GAP 6 — EXIT RULES) ───
@@ -982,8 +982,8 @@ function _renderOptionsEngine(d,sym){
   h+='<div style="font-size:11px;font-weight:800;color:#64748b;letter-spacing:1.5px;margin-bottom:4px">STEP 6 · EXIT RULES & RISK CONTROL</div>';
   h+='<div style="font-size:8px;color:#64748b;margin-bottom:8px;font-style:italic">👀 Read: Set these exits in your broker BEFORE entering. MAX LOSS = absolute worst case. PROFIT TARGET = where to book. The red rules below are non-negotiable — if any triggers, exit immediately.</div>';
   h+='<div style="display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap">';
-  h+='<div style="padding:8px 14px;border-radius:8px;background:#ef444415;border:1px solid #ef444425"><div style="font-size:7px;color:#ef4444;font-weight:700">MAX LOSS</div><div style="font-size:14px;font-weight:900;color:#ef4444;font-family:JetBrains Mono">'+S+pos.totalRisk.toLocaleString('en-IN')+'</div></div>';
-  h+='<div style="padding:8px 14px;border-radius:8px;background:#d9770615;border:1px solid #d9770625"><div style="font-size:7px;color:#d97706;font-weight:700">STOP LOSS TRIGGER</div><div style="font-size:14px;font-weight:900;color:#d97706;font-family:JetBrains Mono">'+(strat.type==='SELL'?(risk.breakEvenUp?S+risk.breakEvenUp.toLocaleString('en-IN'):'Breakeven'):'-50% of premium')+'</div></div>';
+  h+='<div style="padding:8px 14px;border-radius:8px;background:#ef444415;border:1px solid #ef444425"><div style="font-size:7px;color:#ef4444;font-weight:700">MAX LOSS</div><div style="font-size:14px;font-weight:900;color:#ef4444;font-family:JetBrains Mono">'+S+pos.totalRisk.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div></div>';
+  h+='<div style="padding:8px 14px;border-radius:8px;background:#d9770615;border:1px solid #d9770625"><div style="font-size:7px;color:#d97706;font-weight:700">STOP LOSS TRIGGER</div><div style="font-size:14px;font-weight:900;color:#d97706;font-family:JetBrains Mono">'+(strat.type==='SELL'?(risk.breakEvenUp?S+risk.breakEvenUp.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN'):'Breakeven'):'-50% of premium')+'</div></div>';
   h+='<div style="padding:8px 14px;border-radius:8px;background:#05966415;border:1px solid #05966425"><div style="font-size:7px;color:#059669;font-weight:700">PROFIT TARGET</div><div style="font-size:14px;font-weight:900;color:#059669;font-family:JetBrains Mono">50% of max</div></div>';
   h+='</div>';
   h+='<div style="font-size:9px;color:#94a3b8;margin-bottom:6px;font-weight:700">EXIT IF any condition triggers:</div>';
@@ -1050,35 +1050,35 @@ function _renderOptionsEngine(d,sym){
   // Scenario A — Expected move
   h+='<div style="flex:1;min-width:220px;padding:14px;border-radius:12px;background:#05966410;border:1px solid #05966425">';
   h+='<div style="font-size:10px;font-weight:900;color:#059669;margin-bottom:8px">✅ SCENARIO A — Expected Move</div>';
-  h+='<div style="font-size:9px;color:#94a3b8;margin-bottom:6px">'+sym+' moves to '+S+scenA_price.toLocaleString('en-IN')+' ('+(regime.trend==='BEARISH'?'↓ drops':'↑ rises')+' as expected)</div>';
+  h+='<div style="font-size:9px;color:#94a3b8;margin-bottom:6px">'+sym+' moves to '+S+scenA_price.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+' ('+(regime.trend==='BEARISH'?'↓ drops':'↑ rises')+' as expected)</div>';
   h+='<div style="display:flex;gap:6px;margin-bottom:8px">';
-  h+='<div style="flex:1;padding:6px;border-radius:6px;background:#1e293b;text-align:center"><div style="font-size:6px;color:#64748b">SPREAD VALUE</div><div style="font-size:12px;font-weight:900;color:#059669;font-family:JetBrains Mono">'+S+Math.abs(premA).toLocaleString('en-IN')+'</div></div>';
-  h+='<div style="flex:1;padding:6px;border-radius:6px;background:#1e293b;text-align:center"><div style="font-size:6px;color:#64748b">P&L ('+pos.lots+' lots)</div><div style="font-size:12px;font-weight:900;color:#059669;font-family:JetBrains Mono">+'+S+Math.abs(scenA_profit).toLocaleString('en-IN')+'</div></div>';
+  h+='<div style="flex:1;padding:6px;border-radius:6px;background:#1e293b;text-align:center"><div style="font-size:6px;color:#64748b">SPREAD VALUE</div><div style="font-size:12px;font-weight:900;color:#059669;font-family:JetBrains Mono">'+S+Math.abs(premA).toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div></div>';
+  h+='<div style="flex:1;padding:6px;border-radius:6px;background:#1e293b;text-align:center"><div style="font-size:6px;color:#64748b">P&L ('+pos.lots+' lots)</div><div style="font-size:12px;font-weight:900;color:#059669;font-family:JetBrains Mono">+'+S+Math.abs(scenA_profit).toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div></div>';
   h+='</div>';
   h+='<div style="font-size:8px;font-weight:700;color:#059669;margin-bottom:3px">👉 ACTION:</div>';
-  h+='<div style="font-size:8px;color:#94a3b8;padding:4px 8px;border-radius:4px;background:#05966408;margin-bottom:2px">✔ Book 50% profit ('+S+Math.round(scenA_profit/2).toLocaleString('en-IN')+')</div>';
+  h+='<div style="font-size:8px;color:#94a3b8;padding:4px 8px;border-radius:4px;background:#05966408;margin-bottom:2px">✔ Book 50% profit ('+S+Math.round(scenA_profit/2).toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+')</div>';
   h+='<div style="font-size:8px;color:#94a3b8;padding:4px 8px;border-radius:4px;background:#05966408">✔ Trail rest with SL at entry price (zero-risk)</div>';
   h+='</div>';
   
   // Scenario B — Adverse move
   h+='<div style="flex:1;min-width:220px;padding:14px;border-radius:12px;background:#ef444410;border:1px solid #ef444425">';
   h+='<div style="font-size:10px;font-weight:900;color:#ef4444;margin-bottom:8px">❌ SCENARIO B — Adverse Move</div>';
-  h+='<div style="font-size:9px;color:#94a3b8;margin-bottom:6px">'+sym+' moves to '+S+scenB_price.toLocaleString('en-IN')+' ('+(regime.trend==='BEARISH'?'↑ rallies':'↓ drops')+' against position)</div>';
+  h+='<div style="font-size:9px;color:#94a3b8;margin-bottom:6px">'+sym+' moves to '+S+scenB_price.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+' ('+(regime.trend==='BEARISH'?'↑ rallies':'↓ drops')+' against position)</div>';
   h+='<div style="display:flex;gap:6px;margin-bottom:8px">';
-  h+='<div style="flex:1;padding:6px;border-radius:6px;background:#1e293b;text-align:center"><div style="font-size:6px;color:#64748b">SPREAD VALUE</div><div style="font-size:12px;font-weight:900;color:#ef4444;font-family:JetBrains Mono">'+S+Math.abs(premB).toLocaleString('en-IN')+'</div></div>';
-  h+='<div style="flex:1;padding:6px;border-radius:6px;background:#1e293b;text-align:center"><div style="font-size:6px;color:#64748b">P&L ('+pos.lots+' lots)</div><div style="font-size:12px;font-weight:900;color:#ef4444;font-family:JetBrains Mono">-'+S+Math.abs(scenB_loss).toLocaleString('en-IN')+'</div></div>';
+  h+='<div style="flex:1;padding:6px;border-radius:6px;background:#1e293b;text-align:center"><div style="font-size:6px;color:#64748b">SPREAD VALUE</div><div style="font-size:12px;font-weight:900;color:#ef4444;font-family:JetBrains Mono">'+S+Math.abs(premB).toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div></div>';
+  h+='<div style="flex:1;padding:6px;border-radius:6px;background:#1e293b;text-align:center"><div style="font-size:6px;color:#64748b">P&L ('+pos.lots+' lots)</div><div style="font-size:12px;font-weight:900;color:#ef4444;font-family:JetBrains Mono">-'+S+Math.abs(scenB_loss).toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div></div>';
   h+='</div>';
   h+='<div style="font-size:8px;font-weight:700;color:#ef4444;margin-bottom:3px">👉 ACTION:</div>';
   h+='<div style="font-size:8px;color:#94a3b8;padding:4px 8px;border-radius:4px;background:#ef444408;margin-bottom:2px">✘ EXIT FULL — '+(regime.trend==='BEARISH'?'VWAP reclaim + delta flip':'Support broken + flow flipped')+'</div>';
-  h+='<div style="font-size:8px;color:#94a3b8;padding:4px 8px;border-radius:4px;background:#ef444408">✘ Hard SL: '+S+pos.totalRisk.toLocaleString('en-IN')+' (pre-defined, no exceptions)</div>';
+  h+='<div style="font-size:8px;color:#94a3b8;padding:4px 8px;border-radius:4px;background:#ef444408">✘ Hard SL: '+S+pos.totalRisk.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+' (pre-defined, no exceptions)</div>';
   h+='</div>';
   
   // Scenario C — Flat / Theta
   h+='<div style="flex:1;min-width:220px;padding:14px;border-radius:12px;background:#d9770610;border:1px solid #d9770625">';
   h+='<div style="font-size:10px;font-weight:900;color:#d97706;margin-bottom:8px">⏳ SCENARIO C — Sideways / Theta</div>';
-  h+='<div style="font-size:9px;color:#94a3b8;margin-bottom:6px">'+sym+' stays near '+S+spot.toLocaleString('en-IN')+' (range-bound)</div>';
+  h+='<div style="font-size:9px;color:#94a3b8;margin-bottom:6px">'+sym+' stays near '+S+spot.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+' (range-bound)</div>';
   h+='<div style="display:flex;gap:6px;margin-bottom:8px">';
-  var thetaPnL=strat.type==='SELL'?'+'+S+Math.round(thetaPerDay*pos.lots).toLocaleString('en-IN')+'/day':'-'+S+Math.round(Math.abs(risk.maxLoss)/(Math.max(expEng.dte,1)*2)).toLocaleString('en-IN')+'/day';
+  var thetaPnL=strat.type==='SELL'?'+'+S+Math.round(thetaPerDay*pos.lots).toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'/day':'-'+S+Math.round(Math.abs(risk.maxLoss)/(Math.max(expEng.dte,1)*2)).toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'/day';
   h+='<div style="flex:1;padding:6px;border-radius:6px;background:#1e293b;text-align:center"><div style="font-size:6px;color:#64748b">THETA P&L</div><div style="font-size:12px;font-weight:900;color:#d97706;font-family:JetBrains Mono">'+thetaPnL+'</div></div>';
   h+='<div style="flex:1;padding:6px;border-radius:6px;background:#1e293b;text-align:center"><div style="font-size:6px;color:#64748b">DTE</div><div style="font-size:12px;font-weight:900;color:#d97706;font-family:JetBrains Mono">'+expEng.dte+' days</div></div>';
   h+='</div>';
@@ -1102,18 +1102,18 @@ function _renderOptionsEngine(d,sym){
   if(!entry.ready){
     var triggerLevel=regime.trend==='BEARISH'?Math.min(inst.support,spot-moveSize):Math.max(inst.resistance,spot+moveSize);
     alerts2.push({type:'ENTRY',icon:'🟢',color:'#059669',
-      condition:sym+' breaks '+S+triggerLevel.toLocaleString('en-IN')+' with volume spike',
+      condition:sym+' breaks '+S+triggerLevel.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+' with volume spike',
       action:'Execute '+strat.name+' immediately'});
   }
   // Stop loss alert
   var slLevel=regime.trend==='BEARISH'?Math.max(inst.resistance,spot+moveSize*2):Math.min(inst.support,spot-moveSize*2);
   alerts2.push({type:'STOP LOSS',icon:'🔴',color:'#ef4444',
-    condition:sym+(regime.trend==='BEARISH'?' reclaims '+S+slLevel.toLocaleString('en-IN'):' breaks below '+S+slLevel.toLocaleString('en-IN')),
+    condition:sym+(regime.trend==='BEARISH'?' reclaims '+S+slLevel.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN'):' breaks below '+S+slLevel.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')),
     action:'EXIT ALL — Trend invalidated'});
   // Profit target
   var tgtLevel=regime.trend==='BEARISH'?spot-moveSize*3:spot+moveSize*3;
   alerts2.push({type:'TARGET',icon:'🎯',color:'#059669',
-    condition:sym+' reaches '+S+tgtLevel.toLocaleString('en-IN'),
+    condition:sym+' reaches '+S+tgtLevel.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN'),
     action:'Book 50% profit, trail rest'});
   // VIX alert
   alerts2.push({type:'VIX SPIKE',icon:'⚡',color:'#d97706',
@@ -1122,7 +1122,7 @@ function _renderOptionsEngine(d,sym){
   // VWAP alert
   if(vwap2>0){
     alerts2.push({type:'VWAP',icon:'📊',color:'#a855f7',
-      condition:sym+(regime.trend==='BEARISH'?' reclaims VWAP '+S+Math.round(vwap2).toLocaleString('en-IN'):' loses VWAP '+S+Math.round(vwap2).toLocaleString('en-IN')),
+      condition:sym+(regime.trend==='BEARISH'?' reclaims VWAP '+S+Math.round(vwap2).toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN'):' loses VWAP '+S+Math.round(vwap2).toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')),
       action:'Signal flip — close or hedge position'});
   }
   // Expiry day
@@ -1194,7 +1194,7 @@ window._renderCandlestick=function(bars,vwap,spot,S){
   var h='<div style="background:#0F172A;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:1px solid #1e293b">';
   h+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">';
   h+='<div style="font-size:10px;font-weight:800;color:#64748b;letter-spacing:1.5px">📈 INTRADAY CANDLESTICK + VWAP</div>';
-  h+='<div style="font-size:9px;color:#a855f7;font-weight:700">VWAP: '+S+(vwap||0).toLocaleString('en-IN')+'</div></div>';
+  h+='<div style="font-size:9px;color:#a855f7;font-weight:700">VWAP: '+S+(vwap||0).toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div></div>';
   
   // Find price range
   var hi=0,lo=999999;
@@ -1208,7 +1208,7 @@ window._renderCandlestick=function(bars,vwap,spot,S){
   if(vwap>lo&&vwap<hi){
     var vwapY=chartH-((vwap-lo)/range)*chartH;
     h+='<div style="position:absolute;top:'+vwapY+'px;left:0;right:0;height:1px;background:#a855f7;opacity:.5"></div>';
-    h+='<div style="position:absolute;top:'+(vwapY-8)+'px;right:0;font-size:7px;color:#a855f7;font-weight:700">VWAP '+S+vwap.toLocaleString('en-IN')+'</div>';
+    h+='<div style="position:absolute;top:'+(vwapY-8)+'px;right:0;font-size:7px;color:#a855f7;font-weight:700">VWAP '+S+vwap.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div>';
   }
   
   // Spot line
@@ -1392,7 +1392,7 @@ window._renderAlerts=function(spot,inst,maxPain,vwap,pivot,S){
     h+='<div style="flex:1">';
     h+='<div style="display:flex;justify-content:space-between;align-items:center">';
     h+='<div style="font-size:9px;font-weight:800;color:'+a.color+'">'+a.label+'</div>';
-    h+='<div style="font-size:12px;font-weight:900;color:#e2e8f0;font-family:JetBrains Mono">'+S+a.level.toLocaleString('en-IN')+'</div>';
+    h+='<div style="font-size:12px;font-weight:900;color:#e2e8f0;font-family:JetBrains Mono">'+S+a.level.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div>';
     h+='</div>';
     h+='<div style="font-size:7px;color:#64748b;margin-top:2px">'+a.dist+' · '+a.action+'</div>';
     h+='</div>';
@@ -1758,13 +1758,13 @@ function _renderGammaEngine(d,sym){
   triggers.checks.push({label:'Breakout Probability: '+Math.round(BP*100)+'% ('+(BP>=0.70?'ACTIONABLE':BP>=0.55?'Watchlist':'Too low')+')',pass:BP>=0.70});
   if(triggers.checks[0].pass)triggers.pass++;
   // T1: Break of level
-  triggers.checks.push({label:(bias==='BULLISH'?'Break above ':'Break below ')+S+breakLevel.toLocaleString('en-IN'),pass:bias==='BULLISH'?spot>breakLevel:spot<breakLevel});
+  triggers.checks.push({label:(bias==='BULLISH'?'Break above ':'Break below ')+S+breakLevel.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN'),pass:bias==='BULLISH'?spot>breakLevel:spot<breakLevel});
   if(triggers.checks[1].pass)triggers.pass++;
   // T2: Volume spike >= 1.8x
   triggers.checks.push({label:'Volume spike ≥ 1.8x avg ('+(recentVol/avgBarVol).toFixed(1)+'x currently)',pass:recentVol>avgBarVol*1.8});
   if(triggers.checks[2].pass)triggers.pass++;
   // T3: VWAP hold/reject
-  triggers.checks.push({label:(bias==='BULLISH'?'VWAP hold — price above ':'VWAP rejection — price below ')+S+Math.round(vwap).toLocaleString('en-IN'),pass:bias==='BULLISH'?spot>=vwap:spot<=vwap});
+  triggers.checks.push({label:(bias==='BULLISH'?'VWAP hold — price above ':'VWAP rejection — price below ')+S+Math.round(vwap).toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN'),pass:bias==='BULLISH'?spot>=vwap:spot<=vwap});
   if(triggers.checks[3].pass)triggers.pass++;
   // T4: Debounce (2 consecutive candles + momentum)
   triggers.checks.push({label:'Debounce: '+(debouncePass?'2+ consecutive bars confirmed':'Waiting for confirmation'),pass:debouncePass&&momentumOK});
@@ -1780,7 +1780,7 @@ function _renderGammaEngine(d,sym){
   // ═══ RE-ENTRY LOGIC ═══
   var reEntryType=bias==='BULLISH'?'PE':'CE'; // Reverse after first trade
   var reEntryStrike=bias==='BULLISH'?resistance:support;
-  var reEntryTrigger=bias==='BULLISH'?'Rejection at '+S+resistance.toLocaleString('en-IN')+' + delta flip':'Bounce at '+S+support.toLocaleString('en-IN')+' + delta flip';
+  var reEntryTrigger=bias==='BULLISH'?'Rejection at '+S+resistance.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+' + delta flip':'Bounce at '+S+support.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+' + delta flip';
   
   // ═══ POSITION SIZING (GAMMA) ═══
   var capital=1000000;
@@ -1822,7 +1822,7 @@ function _renderGammaEngine(d,sym){
   h+='<div style="font-size:8px;padding:3px 10px;border-radius:12px;background:#f59e0b20;color:#f59e0b;font-weight:800;letter-spacing:2px">⚡ GAMMA SCALPING MODE</div>';
   h+='<div style="font-size:8px;padding:3px 10px;border-radius:12px;background:'+(isExpiryDay?'#059669':'#d97706')+'20;color:'+(isExpiryDay?'#059669':'#d97706')+';font-weight:800">'+(isExpiryDay?'EXPIRY DAY':'DTE: '+dte)+'</div></div>';
   h+='<div style="font-size:32px;font-weight:900;color:'+finalColor+';font-family:Sora">'+finalDecision+'</div>';
-  h+='<div style="font-size:11px;color:#94a3b8">'+sym+' · '+S+spot.toLocaleString('en-IN')+' · '+(bias==='NEUTRAL'?'Neutral':bias)+' Bias · Confidence '+confidence+'%</div>';
+  h+='<div style="font-size:11px;color:#94a3b8">'+sym+' · '+S+spot.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+' · '+(bias==='NEUTRAL'?'Neutral':bias)+' Bias · Confidence '+confidence+'%</div>';
   h+='</div>';
   // Gauge
   h+='<div style="text-align:center">';
@@ -1886,7 +1886,7 @@ function _renderGammaEngine(d,sym){
   h+='<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">';
   h+='<div style="flex:1;min-width:80px;padding:8px;border-radius:8px;background:#1e293b;text-align:center"><div style="font-size:7px;color:#64748b">BP</div><div style="font-size:22px;font-weight:900;color:'+bpColor+';font-family:JetBrains Mono">'+Math.round(BP*100)+'%</div></div>';
   h+='<div style="flex:1;min-width:80px;padding:8px;border-radius:8px;background:#1e293b;text-align:center"><div style="font-size:7px;color:#64748b">DIRECTION</div><div style="font-size:14px;font-weight:900;color:'+biasColor+'">'+bias+'</div></div>';
-  h+='<div style="flex:1;min-width:80px;padding:8px;border-radius:8px;background:#1e293b;text-align:center"><div style="font-size:7px;color:#64748b">LEVEL</div><div style="font-size:14px;font-weight:900;color:#e2e8f0;font-family:JetBrains Mono">'+S+breakLevel.toLocaleString('en-IN')+'</div></div>';
+  h+='<div style="flex:1;min-width:80px;padding:8px;border-radius:8px;background:#1e293b;text-align:center"><div style="font-size:7px;color:#64748b">LEVEL</div><div style="font-size:14px;font-weight:900;color:#e2e8f0;font-family:JetBrains Mono">'+S+breakLevel.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div></div>';
   h+='<div style="flex:1;min-width:80px;padding:8px;border-radius:8px;background:#1e293b;text-align:center"><div style="font-size:7px;color:#64748b">DEBOUNCE</div><div style="font-size:14px;font-weight:900;color:'+(debouncePass?'#059669':'#ef4444')+'">'+(debouncePass?'✔ CONFIRMED':'✘ WAITING')+'</div></div>';
   h+='</div>';
   // Feature breakdown
@@ -1920,7 +1920,7 @@ function _renderGammaEngine(d,sym){
   h+='<div style="background:#0F172A;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:1px solid #ef444425">';
   h+='<div style="font-size:10px;font-weight:800;color:#ef4444;letter-spacing:1.5px;margin-bottom:8px">🛡️ GLOBAL SESSION CONTROLS</div>';
   h+='<div style="display:flex;gap:6px;flex-wrap:wrap">';
-  h+='<div style="flex:1;min-width:80px;padding:8px;border-radius:8px;background:#1e293b;text-align:center"><div style="font-size:7px;color:#ef4444;font-weight:700">DAILY LOSS CAP</div><div style="font-size:14px;font-weight:900;color:#ef4444;font-family:JetBrains Mono">'+S+globalRisk.dailyLossCap.toLocaleString('en-IN')+'</div><div style="font-size:7px;color:#64748b">2.5% of capital</div></div>';
+  h+='<div style="flex:1;min-width:80px;padding:8px;border-radius:8px;background:#1e293b;text-align:center"><div style="font-size:7px;color:#ef4444;font-weight:700">DAILY LOSS CAP</div><div style="font-size:14px;font-weight:900;color:#ef4444;font-family:JetBrains Mono">'+S+globalRisk.dailyLossCap.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div><div style="font-size:7px;color:#64748b">2.5% of capital</div></div>';
   h+='<div style="flex:1;min-width:80px;padding:8px;border-radius:8px;background:#1e293b;text-align:center"><div style="font-size:7px;color:#d97706;font-weight:700">MAX TRADES/DAY</div><div style="font-size:14px;font-weight:900;color:#d97706;font-family:JetBrains Mono">'+globalRisk.maxTradesPerDay+'</div></div>';
   h+='<div style="flex:1;min-width:80px;padding:8px;border-radius:8px;background:#1e293b;text-align:center"><div style="font-size:7px;color:#ef4444;font-weight:700">CONSEC LOSSES</div><div style="font-size:14px;font-weight:900;color:#ef4444;font-family:JetBrains Mono">'+globalRisk.maxConsecLosses+' → STOP</div></div>';
   h+='<div style="flex:1;min-width:80px;padding:8px;border-radius:8px;background:#1e293b;text-align:center"><div style="font-size:7px;color:#a855f7;font-weight:700">LIVE STATUS</div><div style="font-size:12px;font-weight:900;color:'+liveLoop.statusColor+'">'+liveLoop.status+'</div></div>';
@@ -1930,11 +1930,11 @@ function _renderGammaEngine(d,sym){
   h+='<div style="background:#0F172A;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:1px solid #1e293b">';
   h+='<div style="font-size:10px;font-weight:800;color:#f59e0b;letter-spacing:1.5px;margin-bottom:10px">STEP 1 · LEVEL MAP</div>';
   h+='<div style="display:flex;gap:8px;flex-wrap:wrap">';
-  h+='<div style="flex:1;min-width:80px;padding:8px;border-radius:8px;background:#ef444412;border:1px solid #ef444425;text-align:center"><div style="font-size:7px;color:#ef4444;font-weight:700">RESISTANCE</div><div style="font-size:16px;font-weight:900;color:#ef4444;font-family:JetBrains Mono">'+S+resistance.toLocaleString('en-IN')+'</div></div>';
-  h+='<div style="flex:1;min-width:80px;padding:8px;border-radius:8px;background:#f59e0b12;border:1px solid #f59e0b25;text-align:center"><div style="font-size:7px;color:#f59e0b;font-weight:700">SPOT</div><div style="font-size:16px;font-weight:900;color:#f59e0b;font-family:JetBrains Mono">'+S+spot.toLocaleString('en-IN')+'</div></div>';
-  h+='<div style="flex:1;min-width:80px;padding:8px;border-radius:8px;background:#05966412;border:1px solid #05966425;text-align:center"><div style="font-size:7px;color:#059669;font-weight:700">SUPPORT</div><div style="font-size:16px;font-weight:900;color:#059669;font-family:JetBrains Mono">'+S+support.toLocaleString('en-IN')+'</div></div>';
-  if(vwap>0)h+='<div style="flex:1;min-width:80px;padding:8px;border-radius:8px;background:#a855f712;border:1px solid #a855f725;text-align:center"><div style="font-size:7px;color:#a855f7;font-weight:700">VWAP</div><div style="font-size:16px;font-weight:900;color:#a855f7;font-family:JetBrains Mono">'+S+Math.round(vwap).toLocaleString('en-IN')+'</div></div>';
-  h+='<div style="flex:1;min-width:80px;padding:8px;border-radius:8px;background:#3b82f612;border:1px solid #3b82f625;text-align:center"><div style="font-size:7px;color:#3b82f6;font-weight:700">MAX PAIN</div><div style="font-size:16px;font-weight:900;color:#3b82f6;font-family:JetBrains Mono">'+S+maxPain.toLocaleString('en-IN')+'</div></div>';
+  h+='<div style="flex:1;min-width:80px;padding:8px;border-radius:8px;background:#ef444412;border:1px solid #ef444425;text-align:center"><div style="font-size:7px;color:#ef4444;font-weight:700">RESISTANCE</div><div style="font-size:16px;font-weight:900;color:#ef4444;font-family:JetBrains Mono">'+S+resistance.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div></div>';
+  h+='<div style="flex:1;min-width:80px;padding:8px;border-radius:8px;background:#f59e0b12;border:1px solid #f59e0b25;text-align:center"><div style="font-size:7px;color:#f59e0b;font-weight:700">SPOT</div><div style="font-size:16px;font-weight:900;color:#f59e0b;font-family:JetBrains Mono">'+S+spot.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div></div>';
+  h+='<div style="flex:1;min-width:80px;padding:8px;border-radius:8px;background:#05966412;border:1px solid #05966425;text-align:center"><div style="font-size:7px;color:#059669;font-weight:700">SUPPORT</div><div style="font-size:16px;font-weight:900;color:#059669;font-family:JetBrains Mono">'+S+support.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div></div>';
+  if(vwap>0)h+='<div style="flex:1;min-width:80px;padding:8px;border-radius:8px;background:#a855f712;border:1px solid #a855f725;text-align:center"><div style="font-size:7px;color:#a855f7;font-weight:700">VWAP</div><div style="font-size:16px;font-weight:900;color:#a855f7;font-family:JetBrains Mono">'+S+Math.round(vwap).toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div></div>';
+  h+='<div style="flex:1;min-width:80px;padding:8px;border-radius:8px;background:#3b82f612;border:1px solid #3b82f625;text-align:center"><div style="font-size:7px;color:#3b82f6;font-weight:700">MAX PAIN</div><div style="font-size:16px;font-weight:900;color:#3b82f6;font-family:JetBrains Mono">'+S+maxPain.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div></div>';
   h+='</div></div>';
   
   // ─── STEP 2: ORDER FLOW ───
@@ -1969,7 +1969,7 @@ function _renderGammaEngine(d,sym){
   h+='<div style="flex:1;min-width:120px;padding:12px;border-radius:10px;background:#f59e0b15;border:1px solid #f59e0b30;text-align:center">';
   h+='<div style="font-size:8px;color:#f59e0b;font-weight:700">ACTION</div>';
   h+='<div style="font-size:20px;font-weight:900;color:#f59e0b;font-family:Sora">BUY '+entryType+'</div>';
-  h+='<div style="font-size:12px;color:#e2e8f0;font-weight:800;font-family:JetBrains Mono">'+S+entryStrike.toLocaleString('en-IN')+' '+entryType+'</div></div>';
+  h+='<div style="font-size:12px;color:#e2e8f0;font-weight:800;font-family:JetBrains Mono">'+S+entryStrike.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+' '+entryType+'</div></div>';
   // Entry premium
   h+='<div style="flex:1;min-width:100px;padding:12px;border-radius:10px;background:#1e293b;text-align:center">';
   h+='<div style="font-size:8px;color:#64748b;font-weight:700">ENTRY</div>';
@@ -1988,14 +1988,14 @@ function _renderGammaEngine(d,sym){
   h+='<div style="padding:10px 14px;border-radius:8px;background:#f59e0b08;border:1px solid #f59e0b20;margin-bottom:8px">';
   h+='<div style="font-size:9px;color:#f59e0b;font-weight:800;margin-bottom:4px">⚡ GAMMA EXPLOSION PREVIEW</div>';
   h+='<div style="font-size:8px;color:#94a3b8">If '+sym+' moves '+S+gammaMove+' pts (1 strike) → Premium jumps ~'+S+premiumChange+' (~'+pctGain+'% gain)</div>';
-  h+='<div style="font-size:8px;color:#94a3b8">At '+lots+' lot(s) × '+c.lot+' qty = '+S+Math.round(premiumChange*lots*c.lot).toLocaleString('en-IN')+' profit in minutes</div>';
+  h+='<div style="font-size:8px;color:#94a3b8">At '+lots+' lot(s) × '+c.lot+' qty = '+S+Math.round(premiumChange*lots*c.lot).toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+' profit in minutes</div>';
   h+='</div>';
   
   // Position sizing
   h+='<div style="display:flex;gap:6px;flex-wrap:wrap">';
   h+='<div style="flex:1;min-width:80px;padding:6px;border-radius:6px;background:#1e293b;text-align:center"><div style="font-size:6px;color:#64748b">LOTS</div><div style="font-size:14px;font-weight:900;color:#f59e0b;font-family:JetBrains Mono">'+lots+'</div></div>';
-  h+='<div style="flex:1;min-width:80px;padding:6px;border-radius:6px;background:#1e293b;text-align:center"><div style="font-size:6px;color:#64748b">RISK</div><div style="font-size:14px;font-weight:900;color:#ef4444;font-family:JetBrains Mono">'+S+totalRisk.toLocaleString('en-IN')+'</div></div>';
-  h+='<div style="flex:1;min-width:80px;padding:6px;border-radius:6px;background:#1e293b;text-align:center"><div style="font-size:6px;color:#64748b">REWARD</div><div style="font-size:14px;font-weight:900;color:#059669;font-family:JetBrains Mono">'+S+totalReward.toLocaleString('en-IN')+'</div></div>';
+  h+='<div style="flex:1;min-width:80px;padding:6px;border-radius:6px;background:#1e293b;text-align:center"><div style="font-size:6px;color:#64748b">RISK</div><div style="font-size:14px;font-weight:900;color:#ef4444;font-family:JetBrains Mono">'+S+totalRisk.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div></div>';
+  h+='<div style="flex:1;min-width:80px;padding:6px;border-radius:6px;background:#1e293b;text-align:center"><div style="font-size:6px;color:#64748b">REWARD</div><div style="font-size:14px;font-weight:900;color:#059669;font-family:JetBrains Mono">'+S+totalReward.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div></div>';
   h+='<div style="flex:1;min-width:80px;padding:6px;border-radius:6px;background:#1e293b;text-align:center"><div style="font-size:6px;color:#64748b">HOLD TIME</div><div style="font-size:14px;font-weight:900;color:#a855f7">8-12 min</div></div>';
   h+='</div></div>';
   
@@ -2007,7 +2007,7 @@ function _renderGammaEngine(d,sym){
   h+='<div style="flex:1;min-width:120px;padding:10px;border-radius:8px;background:#a855f712;border:1px solid #a855f725;text-align:center">';
   h+='<div style="font-size:8px;color:#a855f7;font-weight:700">RE-ENTRY</div>';
   h+='<div style="font-size:16px;font-weight:900;color:#a855f7;font-family:Sora">BUY '+reEntryType+'</div>';
-  h+='<div style="font-size:10px;color:#e2e8f0;font-family:JetBrains Mono">'+S+reEntryStrike.toLocaleString('en-IN')+' '+reEntryType+'</div></div>';
+  h+='<div style="font-size:10px;color:#e2e8f0;font-family:JetBrains Mono">'+S+reEntryStrike.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+' '+reEntryType+'</div></div>';
   h+='<div style="flex:2;min-width:160px;padding:10px;border-radius:8px;background:#1e293b">';
   h+='<div style="font-size:8px;color:#64748b;font-weight:700;margin-bottom:4px">TRIGGER CONDITIONS</div>';
   h+='<div style="font-size:8px;color:#a855f7;margin-bottom:2px">✔ '+reEntryTrigger+'</div>';
@@ -2028,7 +2028,7 @@ function _renderGammaEngine(d,sym){
   h+='<div style="background:#0F172A;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:1px solid #f59e0b25">';
   h+='<div style="font-size:10px;font-weight:800;color:#f59e0b;letter-spacing:1.5px;margin-bottom:8px">🔔 SET THESE ALERTS NOW</div>';
   var gAlerts=[
-    {icon:'🟢',type:'ENTRY',color:'#059669',cond:sym+(bias==='BULLISH'?' breaks '+S+breakLevel.toLocaleString('en-IN')+' with volume spike':' breaks below '+S+breakLevel.toLocaleString('en-IN')+' with volume spike'),act:'Execute BUY '+entryType+' immediately'},
+    {icon:'🟢',type:'ENTRY',color:'#059669',cond:sym+(bias==='BULLISH'?' breaks '+S+breakLevel.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+' with volume spike':' breaks below '+S+breakLevel.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+' with volume spike'),act:'Execute BUY '+entryType+' immediately'},
     {icon:'🎯',type:'TARGET',color:'#f59e0b',cond:'Premium up '+exitTargetPct+'% ('+S+entryPrem+' → '+S+exitTarget+')',act:'Book profits — exit full position'},
     {icon:'🔴',type:'STOP',color:'#ef4444',cond:'Premium drops to '+S+stopLoss+' (-35%)',act:'EXIT — do not hold, do not average'},
     {icon:'🔁',type:'RE-ENTRY',color:'#a855f7',cond:reEntryTrigger,act:'BUY '+reEntryType+' for reversal scalp'},
@@ -2127,8 +2127,8 @@ window._renderPayoff=function(strat,spot,S,lot){
   });
   
   // Max/Min labels
-  h+='<div style="position:absolute;left:0;top:2px;font-size:7px;color:#059669;font-weight:700">Max: '+(maxPnl>=0?'+':'')+S+maxPnl.toLocaleString('en-IN')+'</div>';
-  h+='<div style="position:absolute;left:0;bottom:2px;font-size:7px;color:#ef4444;font-weight:700">Max Loss: '+S+Math.abs(minPnl).toLocaleString('en-IN')+'</div>';
+  h+='<div style="position:absolute;left:0;top:2px;font-size:7px;color:#059669;font-weight:700">Max: '+(maxPnl>=0?'+':'')+S+maxPnl.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div>';
+  h+='<div style="position:absolute;left:0;bottom:2px;font-size:7px;color:#ef4444;font-weight:700">Max Loss: '+S+Math.abs(minPnl).toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div>';
   
   h+='</div></div></div>';
   return h;
@@ -2339,9 +2339,9 @@ window._renderGEXHeatmap=function(gex,spot,S){
   // Key levels
   var flip=gex.flipPoint||0,cWall=gex.callWall||0,pWall=gex.putWall||0;
   h+='<div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap">';
-  h+='<div style="flex:1;min-width:100px;padding:8px;border-radius:8px;background:#f59e0b15;border:2px solid #f59e0b30;text-align:center"><div style="font-size:7px;color:#f59e0b;font-weight:700">⚡ GEX FLIP LEVEL</div><div style="font-size:18px;font-weight:900;color:#f59e0b;font-family:JetBrains Mono">'+S+flip.toLocaleString('en-IN')+'</div><div style="font-size:7px;color:#64748b">Below=bear accel · Above=bull accel</div></div>';
-  if(cWall)h+='<div style="flex:1;min-width:100px;padding:8px;border-radius:8px;background:#ef444412;border:1px solid #ef444425;text-align:center"><div style="font-size:7px;color:#ef4444;font-weight:700">🔴 CALL WALL (Resistance)</div><div style="font-size:16px;font-weight:900;color:#ef4444;font-family:JetBrains Mono">'+S+cWall.toLocaleString('en-IN')+'</div></div>';
-  if(pWall)h+='<div style="flex:1;min-width:100px;padding:8px;border-radius:8px;background:#05966412;border:1px solid #05966425;text-align:center"><div style="font-size:7px;color:#059669;font-weight:700">🟢 PUT WALL (Support)</div><div style="font-size:16px;font-weight:900;color:#059669;font-family:JetBrains Mono">'+S+pWall.toLocaleString('en-IN')+'</div></div>';
+  h+='<div style="flex:1;min-width:100px;padding:8px;border-radius:8px;background:#f59e0b15;border:2px solid #f59e0b30;text-align:center"><div style="font-size:7px;color:#f59e0b;font-weight:700">⚡ GEX FLIP LEVEL</div><div style="font-size:18px;font-weight:900;color:#f59e0b;font-family:JetBrains Mono">'+S+flip.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div><div style="font-size:7px;color:#64748b">Below=bear accel · Above=bull accel</div></div>';
+  if(cWall)h+='<div style="flex:1;min-width:100px;padding:8px;border-radius:8px;background:#ef444412;border:1px solid #ef444425;text-align:center"><div style="font-size:7px;color:#ef4444;font-weight:700">🔴 CALL WALL (Resistance)</div><div style="font-size:16px;font-weight:900;color:#ef4444;font-family:JetBrains Mono">'+S+cWall.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div></div>';
+  if(pWall)h+='<div style="flex:1;min-width:100px;padding:8px;border-radius:8px;background:#05966412;border:1px solid #05966425;text-align:center"><div style="font-size:7px;color:#059669;font-weight:700">🟢 PUT WALL (Support)</div><div style="font-size:16px;font-weight:900;color:#059669;font-family:JetBrains Mono">'+S+pWall.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div></div>';
   h+='<div style="flex:1;min-width:100px;padding:8px;border-radius:8px;background:'+(gex.regime==='POSITIVE'?'#059669':'#ef4444')+'12;text-align:center"><div style="font-size:7px;color:'+(gex.regime==='POSITIVE'?'#059669':'#ef4444')+';font-weight:700">GEX REGIME</div><div style="font-size:16px;font-weight:900;color:'+(gex.regime==='POSITIVE'?'#059669':'#ef4444')+'">'+gex.regime+'</div></div>';
   h+='</div>';
   
@@ -2358,7 +2358,7 @@ window._renderGEXHeatmap=function(gex,spot,S){
     h+='<div style="width:55px;font-size:8px;font-weight:'+(isFlip||isSpot?'900':'600')+';color:'+(isFlip?'#f59e0b':isSpot?'#3b82f6':'#94a3b8')+';text-align:right;font-family:JetBrains Mono">'+(isFlip?'⚡':'')+(isSpot?'📍':'')+g.strike+'</div>';
     h+='<div style="flex:1;height:14px;background:#1e293b;border-radius:3px;overflow:hidden;display:flex;'+(isPos?'justify-content:flex-start':'justify-content:flex-end')+'">';
     h+='<div style="width:'+pct+'%;height:100%;background:'+(isPos?'linear-gradient(90deg,#05966480,#059669)':'linear-gradient(90deg,#ef4444,#ef444480)')+';border-radius:3px"></div></div>';
-    h+='<div style="width:50px;font-size:7px;color:'+(isPos?'#059669':'#ef4444')+';font-family:JetBrains Mono;text-align:right">'+(isPos?'+':'')+Math.round(g.gex).toLocaleString('en-IN')+'</div>';
+    h+='<div style="width:50px;font-size:7px;color:'+(isPos?'#059669':'#ef4444')+';font-family:JetBrains Mono;text-align:right">'+(isPos?'+':'')+Math.round(g.gex).toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div>';
     h+='</div>';
   });
   
@@ -2437,7 +2437,7 @@ window._renderBacktestSim=function(bars,spot,vix,atmIV,S,sym){
   h+='<div style="flex:1;min-width:70px;padding:8px;border-radius:8px;background:#1e293b;text-align:center"><div style="font-size:6px;color:#ef4444">AVG LOSS</div><div style="font-size:16px;font-weight:900;color:#ef4444;font-family:JetBrains Mono">'+avgLoss+'%</div></div>';
   h+='<div style="flex:1;min-width:70px;padding:8px;border-radius:8px;background:'+(parseFloat(profitFactor)>=1.5?'#059669':'#d97706')+'15;text-align:center"><div style="font-size:6px;color:'+(parseFloat(profitFactor)>=1.5?'#059669':'#d97706')+'">PROFIT FACTOR</div><div style="font-size:16px;font-weight:900;color:'+(parseFloat(profitFactor)>=1.5?'#059669':'#d97706')+';font-family:JetBrains Mono">'+profitFactor+'</div></div>';
   h+='<div style="flex:1;min-width:70px;padding:8px;border-radius:8px;background:#ef444415;text-align:center"><div style="font-size:6px;color:#ef4444">MAX DD</div><div style="font-size:16px;font-weight:900;color:#ef4444;font-family:JetBrains Mono">'+maxDDPct+'%</div></div>';
-  h+='<div style="flex:1;min-width:70px;padding:8px;border-radius:8px;background:'+(totalPnL>=0?'#059669':'#ef4444')+'15;text-align:center"><div style="font-size:6px;color:'+(totalPnL>=0?'#059669':'#ef4444')+'">NET P&L</div><div style="font-size:16px;font-weight:900;color:'+(totalPnL>=0?'#059669':'#ef4444')+';font-family:JetBrains Mono">'+(totalPnL>=0?'+':'')+S+totalPnL.toLocaleString('en-IN')+'</div></div>';
+  h+='<div style="flex:1;min-width:70px;padding:8px;border-radius:8px;background:'+(totalPnL>=0?'#059669':'#ef4444')+'15;text-align:center"><div style="font-size:6px;color:'+(totalPnL>=0?'#059669':'#ef4444')+'">NET P&L</div><div style="font-size:16px;font-weight:900;color:'+(totalPnL>=0?'#059669':'#ef4444')+';font-family:JetBrains Mono">'+(totalPnL>=0?'+':'')+S+totalPnL.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div></div>';
   h+='</div>';
   
   // Equity curve
@@ -2711,6 +2711,11 @@ function _renderQuickTrade(d,sym){
   var entryStrike7=atmStrike7;
   var entryPrem7=finalBias==='BULLISH'?atmCE7:atmPE7;
   
+  // Store on window for voice patch
+  window._qtEntryStrike=entryStrike7;
+  window._qtEntryPrem=entryPrem7;
+  window._qtFinalBias=finalBias;
+  
   // ─── STEP 5: Exit ───
   var targetLow=Math.round(entryPrem7*1.25);
   var targetHigh=Math.round(entryPrem7*1.40);
@@ -2746,6 +2751,7 @@ function _renderQuickTrade(d,sym){
   window._qtGammaBlast=qtGammaBlast;
   window._qtIsExpiry=qtIsExpiry7;
   window._qtEntryStrike=0;window._qtEntryPrem=0;
+  window._qtFinalBias='';window._qtFallback=isFallback;
   
   var qtLots=qtGammaBlast?'2–3':qtIsExpiry7?'1–2':'1';
   
@@ -2788,7 +2794,7 @@ function _renderQuickTrade(d,sym){
   // Header
   h+='<div style="text-align:center;margin-bottom:20px">';
   h+='<div style="font-size:8px;color:#64748b;font-weight:800;letter-spacing:3px;margin-bottom:4px">'+(qtIsExpiry?sym+' EXPIRY MODE'+(qtGammaBlast?' ⚡':''):'EXPIRY QUICK TRADE')+'</div>';
-  h+='<div style="font-size:10px;color:#94a3b8">'+sym+' · '+S+(isUS?spot.toLocaleString('en-US'):spot.toLocaleString('en-IN'))+' · VIX '+vix.toFixed(1)+(qtIsExpiry?' · 🔥 EXPIRY DAY':'')+'</div>';
+  h+='<div style="font-size:10px;color:#94a3b8">'+sym+' · '+S+(isUS?spot.toLocaleString('en-US'):spot.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN'))+' · VIX '+vix.toFixed(1)+(qtIsExpiry?' · 🔥 EXPIRY DAY':'')+'</div>';
   if(qtGammaBlast)h+='<div style="margin-top:4px;padding:3px 12px;border-radius:10px;background:#f59e0b15;display:inline-block;font-size:9px;color:#f59e0b;font-weight:800">⚡ Gamma Blast Active — Take Bigger Position</div>';
   h+='</div>';
   
@@ -2813,58 +2819,75 @@ function _renderQuickTrade(d,sym){
     h+='<div style="font-size:8px;color:#94a3b8">'+biasStrength+' — OI '+oiBias+' + Price '+priceBias+'</div>';
     h+='</div></div>';
     
-    // WAIT FOR
-    h+='<div style="text-align:center;margin-bottom:20px;padding:16px;border-radius:14px;background:#1e293b">';
-    h+='<div style="font-size:8px;color:#64748b;font-weight:700;letter-spacing:2px;margin-bottom:8px">WAIT FOR</div>';
-    h+='<div style="font-size:11px;color:#94a3b8;margin-bottom:6px">'+(finalBias==='BULLISH'?'Price breaks above Day High':'Price breaks below Day Low')+'</div>';
-    h+='<div style="font-size:32px;font-weight:900;color:#f59e0b;font-family:JetBrains Mono">'+S+entryLevel.toLocaleString('en-IN')+'</div>';
-    h+='<div style="font-size:8px;color:#64748b;margin-top:4px">+ Volume increase + '+(finalBias==='BULLISH'?'Above VWAP':'Below VWAP')+'</div>';
-    h+='</div>';
-    
-    // ACTION
-    h+='<div style="text-align:center;margin-bottom:20px;padding:16px;border-radius:14px;background:'+biasColor+'12;border:1px solid '+biasColor+'25">';
-    h+='<div style="font-size:8px;color:'+biasColor+';font-weight:700;letter-spacing:2px;margin-bottom:8px">ACTION</div>';
-    h+='<div style="font-size:11px;color:#94a3b8;margin-bottom:4px">👉</div>';
-    h+='<div style="font-size:22px;font-weight:900;color:'+biasColor+';font-family:Sora">BUY '+S+entryStrike7.toLocaleString(isUS?'en-US':'en-IN')+' '+entryType7+'</div>';
-    h+='<div style="font-size:11px;color:#94a3b8;margin-top:4px">Premium: ~'+S+entryPrem7.toFixed(0)+' · Lot: '+c7.lot+' · Qty: '+qtLots+' lot'+(qtLots!=='1'?'s':'')+(qtGammaBlast?' ⚡':'')+'</div>';
-    if(qtGammaBlast)h+='<div style="font-size:9px;color:#f59e0b;margin-top:4px;font-weight:700">⚡ Gamma Blast → Premium can jump 30-50% in minutes</div>';
-    h+='</div>';
-    
-    // EXIT
-    var sl7=Math.round(entryPrem7*0.80);var maxRisk7=Math.round((entryPrem7-sl7)*c7.lot);var maxProf7=Math.round((targetHigh-entryPrem7)*c7.lot);
-    h+='<div style="text-align:center;margin-bottom:20px;padding:16px;border-radius:14px;background:#1e293b">';
-    h+='<div style="font-size:8px;color:#64748b;font-weight:700;letter-spacing:2px;margin-bottom:8px">EXIT</div>';
-    h+='<div style="display:flex;justify-content:center;gap:12px;flex-wrap:wrap">';
-    h+='<div><div style="font-size:8px;color:#059669;font-weight:700">TARGET</div><div style="font-size:18px;font-weight:900;color:#059669;font-family:JetBrains Mono">'+S+targetLow+' – '+S+targetHigh+'</div><div style="font-size:8px;color:#64748b">+25% to +40%</div></div>';
-    h+='<div style="width:1px;background:#334155"></div>';
-    h+='<div><div style="font-size:8px;color:#ef4444;font-weight:700">STOP LOSS</div><div style="font-size:18px;font-weight:900;color:#ef4444;font-family:JetBrains Mono">'+S+sl7+'</div><div style="font-size:8px;color:#64748b">-20%</div></div>';
-    h+='<div style="width:1px;background:#334155"></div>';
-    h+='<div><div style="font-size:8px;color:#ef4444;font-weight:700">MAX HOLD</div><div style="font-size:18px;font-weight:900;color:#ef4444">10 min</div><div style="font-size:8px;color:#64748b">Exit if slow</div></div>';
-    h+='</div>';
-    h+='<div style="display:flex;gap:12px;justify-content:center;margin-top:8px">';
-    h+='<div style="font-size:8px"><span style="color:#ef4444;font-weight:700">Max Risk:</span> <span style="color:#ef4444;font-family:JetBrains Mono">'+S+maxRisk7.toLocaleString(isUS?'en-US':'en-IN')+'</span></div>';
-    h+='<div style="font-size:8px"><span style="color:#059669;font-weight:700">Max Profit:</span> <span style="color:#059669;font-family:JetBrains Mono">'+S+maxProf7.toLocaleString(isUS?'en-US':'en-IN')+'</span></div>';
-    h+='</div></div>';
-    
-    // STATUS
-    h+='<div style="text-align:center;padding:16px;border-radius:14px;background:'+statusColor+'15;border:2px solid '+statusColor+'30">';
+    // STATUS FIRST (always visible, most important)
+    h+='<div style="text-align:center;padding:16px;border-radius:14px;background:'+statusColor+'15;border:2px solid '+statusColor+'30;margin-bottom:16px">';
     h+='<div style="font-size:8px;color:'+statusColor+';font-weight:700;letter-spacing:2px;margin-bottom:4px">STATUS</div>';
     h+='<div style="font-size:22px;font-weight:900;color:'+statusColor+';font-family:Sora">'+status+'</div>';
     if(status==='🟢 ENTER NOW')h+='<div style="font-size:9px;color:#94a3b8;margin-top:4px">All conditions met — execute trade in your broker NOW</div>';
     h+='</div>';
     
-    // Expiry-specific: Theta warning + Exit alerts
-    if(qtIsExpiry){
-      h+='<div style="text-align:center;margin-top:8px;padding:8px 14px;border-radius:10px;background:#d9770608;border:1px solid #d9770620">';
-      h+='<div style="font-size:9px;color:#d97706;font-weight:800">⏱ EXPIRY DAY — Theta decay is fast. Max hold: 10 minutes.</div></div>';
-    }
+    // BIAS
+    h+='<div style="text-align:center;margin-bottom:16px">';
+    h+='<div style="font-size:8px;color:#64748b;font-weight:700;letter-spacing:2px;margin-bottom:8px">BIAS</div>';
+    h+='<div style="display:inline-block;padding:10px 32px;border-radius:16px;background:'+biasColor+'15;border:2px solid '+biasColor+'30">';
+    h+='<div style="font-size:28px;font-weight:900;color:'+biasColor+';font-family:Sora">'+finalBias+'</div>';
+    h+='<div style="font-size:8px;color:'+biasColor+'99">'+biasStrength+' — OI '+oiBias+' + Price '+priceBias+'</div>';
+    h+='</div></div>';
+    
+    // WAIT FOR (always shown — tells user what level to watch)
+    h+='<div style="text-align:center;margin-bottom:16px;padding:16px;border-radius:14px;background:#1e293b">';
+    h+='<div style="font-size:8px;color:#64748b;font-weight:700;letter-spacing:2px;margin-bottom:8px">WAIT FOR</div>';
+    h+='<div style="font-size:11px;color:#94a3b8;margin-bottom:6px">'+(finalBias==='BULLISH'?'Price breaks above Day High':'Price breaks below Day Low')+'</div>';
+    h+='<div style="font-size:32px;font-weight:900;color:#f59e0b;font-family:JetBrains Mono">'+S+(isUS?entryLevel.toLocaleString('en-US'):entryLevel.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN'))+'</div>';
+    h+='<div style="font-size:8px;color:#64748b;margin-top:4px">+ Volume increase + '+(finalBias==='BULLISH'?'Above VWAP':'Below VWAP')+'</div>';
+    h+='</div>';
+    
+    // ACTION + EXIT — ONLY when ENTER NOW (not during WAITING)
     if(status==='🟢 ENTER NOW'){
+      // ACTION
+      h+='<div style="text-align:center;margin-bottom:16px;padding:16px;border-radius:14px;background:'+biasColor+'12;border:1px solid '+biasColor+'25">';
+      h+='<div style="font-size:8px;color:'+biasColor+';font-weight:700;letter-spacing:2px;margin-bottom:8px">ACTION</div>';
+      h+='<div style="font-size:11px;color:#94a3b8;margin-bottom:4px">👉</div>';
+      h+='<div style="font-size:22px;font-weight:900;color:'+biasColor+';font-family:Sora">BUY '+S+entryStrike7.toLocaleString(isUS?'en-US':'en-IN')+' '+entryType7+'</div>';
+      h+='<div style="font-size:11px;color:#94a3b8;margin-top:4px">Premium: ~'+S+entryPrem7.toFixed(0)+' · Lot: '+c7.lot+' · Qty: '+qtLots+' lot'+(qtLots!=='1'?'s':'')+(qtGammaBlast?' ⚡':'')+'</div>';
+      if(qtGammaBlast)h+='<div style="font-size:9px;color:#f59e0b;margin-top:4px;font-weight:700">⚡ Gamma Blast → Premium can jump 30-50% in minutes</div>';
+      h+='</div>';
+      
+      // EXIT
+      var sl7=Math.round(entryPrem7*0.80);var maxRisk7=Math.round((entryPrem7-sl7)*c7.lot);var maxProf7=Math.round((targetHigh-entryPrem7)*c7.lot);
+      h+='<div style="text-align:center;margin-bottom:16px;padding:16px;border-radius:14px;background:#1e293b">';
+      h+='<div style="font-size:8px;color:#64748b;font-weight:700;letter-spacing:2px;margin-bottom:8px">EXIT</div>';
+      h+='<div style="display:flex;justify-content:center;gap:12px;flex-wrap:wrap">';
+      h+='<div><div style="font-size:8px;color:#059669;font-weight:700">TARGET</div><div style="font-size:18px;font-weight:900;color:#059669;font-family:JetBrains Mono">'+S+targetLow+' – '+S+targetHigh+'</div><div style="font-size:8px;color:#64748b">+25% to +40%</div></div>';
+      h+='<div style="width:1px;background:#334155"></div>';
+      h+='<div><div style="font-size:8px;color:#ef4444;font-weight:700">STOP LOSS</div><div style="font-size:18px;font-weight:900;color:#ef4444;font-family:JetBrains Mono">'+S+sl7+'</div><div style="font-size:8px;color:#64748b">-20%</div></div>';
+      h+='<div style="width:1px;background:#334155"></div>';
+      h+='<div><div style="font-size:8px;color:#ef4444;font-weight:700">MAX HOLD</div><div style="font-size:18px;font-weight:900;color:#ef4444">10 min</div><div style="font-size:8px;color:#64748b">Exit if slow</div></div>';
+      h+='</div>';
+      h+='<div style="display:flex;gap:12px;justify-content:center;margin-top:8px">';
+      h+='<div style="font-size:8px"><span style="color:#ef4444;font-weight:700">Max Risk:</span> <span style="color:#ef4444;font-family:JetBrains Mono">'+S+maxRisk7.toLocaleString(isUS?'en-US':'en-IN')+'</span></div>';
+      h+='<div style="font-size:8px"><span style="color:#059669;font-weight:700">Max Profit:</span> <span style="color:#059669;font-family:JetBrains Mono">'+S+maxProf7.toLocaleString(isUS?'en-US':'en-IN')+'</span></div>';
+      h+='</div></div>';
+      
+      // Exit alerts
       h+='<div style="margin-top:8px;display:flex;gap:4px;flex-wrap:wrap;justify-content:center">';
       h+='<div style="padding:4px 10px;border-radius:6px;background:#05966410;font-size:8px;color:#059669;font-weight:700">✅ Target hit → Close</div>';
       h+='<div style="padding:4px 10px;border-radius:6px;background:#ef444410;font-size:8px;color:#ef4444;font-weight:700">❌ Stop hit → Cut Loss</div>';
       if(qtGammaBlast)h+='<div style="padding:4px 10px;border-radius:6px;background:#f59e0b10;font-size:8px;color:#f59e0b;font-weight:700">⚡ Gamma fading → Close</div>';
       if(qtIsExpiry)h+='<div style="padding:4px 10px;border-radius:6px;background:#d9770610;font-size:8px;color:#d97706;font-weight:700">⏱ Theta spike → Exit early</div>';
       h+='</div>';
+    }else{
+      // WAITING — show what will happen when breakout occurs
+      h+='<div style="text-align:center;padding:12px;border-radius:12px;background:#1e293b;margin-bottom:8px">';
+      h+='<div style="font-size:9px;color:#64748b">When '+S+(isUS?entryLevel.toLocaleString('en-US'):entryLevel.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN'))+' breaks with volume:</div>';
+      h+='<div style="font-size:11px;color:#94a3b8;margin-top:4px">→ BUY <strong style="color:'+biasColor+'">'+S+entryStrike7.toLocaleString(isUS?'en-US':'en-IN')+' '+entryType7+'</strong> @ ~'+S+entryPrem7.toFixed(0)+'</div>';
+      h+='</div>';
+    }
+    
+    // Expiry theta warning
+    if(qtIsExpiry){
+      h+='<div style="text-align:center;margin-top:8px;padding:8px 14px;border-radius:10px;background:#d9770608;border:1px solid #d9770620">';
+      h+='<div style="font-size:9px;color:#d97706;font-weight:800">⏱ EXPIRY DAY — Theta decay is fast. Max hold: 10 minutes.</div></div>';
     }
   }
   
@@ -2881,9 +2904,9 @@ function _renderQuickTrade(d,sym){
   
   // 3 Levels
   h+='<div style="max-width:480px;margin:10px auto;display:flex;gap:6px">';
-  h+='<div style="flex:1;padding:8px;border-radius:8px;background:#0F172A;border:1px solid #1e293b;text-align:center"><div style="font-size:7px;color:#a855f7;font-weight:700">VWAP</div><div style="font-size:14px;font-weight:900;color:#a855f7;font-family:JetBrains Mono">'+S+vwapLevel.toLocaleString('en-IN')+'</div></div>';
-  h+='<div style="flex:1;padding:8px;border-radius:8px;background:#0F172A;border:1px solid #1e293b;text-align:center"><div style="font-size:7px;color:#059669;font-weight:700">DAY HIGH</div><div style="font-size:14px;font-weight:900;color:#059669;font-family:JetBrains Mono">'+S+dayHigh.toLocaleString('en-IN')+'</div></div>';
-  h+='<div style="flex:1;padding:8px;border-radius:8px;background:#0F172A;border:1px solid #1e293b;text-align:center"><div style="font-size:7px;color:#ef4444;font-weight:700">DAY LOW</div><div style="font-size:14px;font-weight:900;color:#ef4444;font-family:JetBrains Mono">'+S+dayLow.toLocaleString('en-IN')+'</div></div>';
+  h+='<div style="flex:1;padding:8px;border-radius:8px;background:#0F172A;border:1px solid #1e293b;text-align:center"><div style="font-size:7px;color:#a855f7;font-weight:700">VWAP</div><div style="font-size:14px;font-weight:900;color:#a855f7;font-family:JetBrains Mono">'+S+vwapLevel.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div></div>';
+  h+='<div style="flex:1;padding:8px;border-radius:8px;background:#0F172A;border:1px solid #1e293b;text-align:center"><div style="font-size:7px;color:#059669;font-weight:700">DAY HIGH</div><div style="font-size:14px;font-weight:900;color:#059669;font-family:JetBrains Mono">'+S+dayHigh.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div></div>';
+  h+='<div style="flex:1;padding:8px;border-radius:8px;background:#0F172A;border:1px solid #1e293b;text-align:center"><div style="font-size:7px;color:#ef4444;font-weight:700">DAY LOW</div><div style="font-size:14px;font-weight:900;color:#ef4444;font-family:JetBrains Mono">'+S+dayLow.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div></div>';
   h+='</div>';
   
   // Disclaimer
@@ -2945,7 +2968,7 @@ window._voiceAlert=function(type,detail,strike,prem,isBlast,extraCtx){
   var S=t?(t.region==='US'?'dollar':'rupees'):'rupees';
   
   if(type==='ENTRY_CE'){
-    msg=(detail||'NIFTY')+expiryTag;
+    msg=(detail||sym||'Index')+expiryTag;
     msg+=' Bullish — '+(ctx.reason||'OI supports upside, breakout confirmed')+'.';
     msg+=' Buy '+(strike?strike+' ':'')+'Call at '+(prem||'market')+'.';
     if(ctx.target)msg+=' Target '+ctx.target+', stop loss '+ctx.sl+'.';
@@ -2953,7 +2976,7 @@ window._voiceAlert=function(type,detail,strike,prem,isBlast,extraCtx){
     if(isExpDay)msg+=' Watch theta decay. Exit within 10 minutes.';
   }
   else if(type==='ENTRY_PE'){
-    msg=(detail||'NIFTY')+expiryTag;
+    msg=(detail||sym||'Index')+expiryTag;
     msg+=' Bearish — '+(ctx.reason||'OI supports downside, breakdown confirmed')+'.';
     msg+=' Buy '+(strike?strike+' ':'')+'Put at '+(prem||'market')+'.';
     if(ctx.target)msg+=' Target '+ctx.target+', stop loss '+ctx.sl+'.';
@@ -3089,8 +3112,8 @@ window._renderPerformanceDashboard=function(S){
     h+='<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">';
     h+='<div style="flex:1;min-width:70px;padding:8px;border-radius:8px;background:#1e293b;text-align:center"><div style="font-size:6px;color:#64748b">TRADES</div><div style="font-size:18px;font-weight:900;color:#e2e8f0;font-family:JetBrains Mono">'+m.trades+'</div></div>';
     h+='<div style="flex:1;min-width:70px;padding:8px;border-radius:8px;background:'+(m.winRate>=55?'#059669':'#d97706')+'15;text-align:center"><div style="font-size:6px;color:'+(m.winRate>=55?'#059669':'#d97706')+'">WIN RATE</div><div style="font-size:18px;font-weight:900;color:'+(m.winRate>=55?'#059669':'#d97706')+';font-family:JetBrains Mono">'+m.winRate+'%</div></div>';
-    h+='<div style="flex:1;min-width:70px;padding:8px;border-radius:8px;background:'+(m.pnl>=0?'#059669':'#ef4444')+'15;text-align:center"><div style="font-size:6px;color:'+(m.pnl>=0?'#059669':'#ef4444')+'">P&L</div><div style="font-size:18px;font-weight:900;color:'+(m.pnl>=0?'#059669':'#ef4444')+';font-family:JetBrains Mono">'+(m.pnl>=0?'+':'')+S+m.pnl.toLocaleString('en-IN')+'</div></div>';
-    h+='<div style="flex:1;min-width:70px;padding:8px;border-radius:8px;background:#ef444415;text-align:center"><div style="font-size:6px;color:#ef4444">MAX DD</div><div style="font-size:18px;font-weight:900;color:#ef4444;font-family:JetBrains Mono">-'+S+m.maxDD.toLocaleString('en-IN')+'</div></div>';
+    h+='<div style="flex:1;min-width:70px;padding:8px;border-radius:8px;background:'+(m.pnl>=0?'#059669':'#ef4444')+'15;text-align:center"><div style="font-size:6px;color:'+(m.pnl>=0?'#059669':'#ef4444')+'">P&L</div><div style="font-size:18px;font-weight:900;color:'+(m.pnl>=0?'#059669':'#ef4444')+';font-family:JetBrains Mono">'+(m.pnl>=0?'+':'')+S+m.pnl.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div></div>';
+    h+='<div style="flex:1;min-width:70px;padding:8px;border-radius:8px;background:#ef444415;text-align:center"><div style="font-size:6px;color:#ef4444">MAX DD</div><div style="font-size:18px;font-weight:900;color:#ef4444;font-family:JetBrains Mono">-'+S+m.maxDD.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div></div>';
     h+='</div>';
     
     // Trade log
@@ -3101,7 +3124,7 @@ window._renderPerformanceDashboard=function(S){
       h+='<div style="font-size:9px;color:#94a3b8;min-width:40px">'+t.time+'</div>';
       h+='<div style="font-size:9px;font-weight:700;color:'+(t.type==='CE'?'#059669':'#ef4444')+';min-width:50px">BUY '+t.type+(t.isGamma?' ⚡':'')+(t.isExpiry?' 🔥':'')+'</div>';
       h+='<div style="flex:1;font-size:9px;color:'+(t.win?'#059669':'#ef4444')+';font-weight:800;font-family:JetBrains Mono;text-align:right">'+(t.pct>=0?'+':'')+t.pct+'% '+(t.win?'✅':'❌')+'</div>';
-      h+='<div style="font-size:9px;color:'+(t.win?'#059669':'#ef4444')+';font-family:JetBrains Mono;min-width:70px;text-align:right">'+(t.pnl>=0?'+':'')+S+t.pnl.toLocaleString('en-IN')+'</div>';
+      h+='<div style="font-size:9px;color:'+(t.win?'#059669':'#ef4444')+';font-family:JetBrains Mono;min-width:70px;text-align:right">'+(t.pnl>=0?'+':'')+S+t.pnl.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div>';
       h+='</div>';
     });
     
@@ -3160,13 +3183,13 @@ window._renderLiveTracker=function(sym,type,entryPrem,currentPrem,lots,lotSize,S
   var h='<div style="background:linear-gradient(135deg,#0A0F1C,'+pnlColor+'08);border-radius:16px;padding:18px 22px;margin-bottom:10px;border:2px solid '+pnlColor+'30">';
   h+='<div style="font-size:8px;color:#64748b;font-weight:800;letter-spacing:2px;text-align:center;margin-bottom:6px">━━━ LIVE TRADE ━━━</div>';
   h+='<div style="text-align:center">';
-  h+='<div style="font-size:14px;font-weight:900;color:#e2e8f0;font-family:Sora">BUY '+S+(sym==='BANKNIFTY'?Math.round(entryPrem/100)*100:Math.round(entryPrem/50)*50).toLocaleString('en-IN')+' '+type+'</div>';
+  h+='<div style="font-size:14px;font-weight:900;color:#e2e8f0;font-family:Sora">BUY '+S+(sym==='BANKNIFTY'?Math.round(entryPrem/100)*100:Math.round(entryPrem/50)*50).toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+' '+type+'</div>';
   h+='<div style="display:flex;justify-content:center;gap:20px;margin:12px 0">';
   h+='<div><div style="font-size:7px;color:#64748b">ENTRY</div><div style="font-size:18px;font-weight:900;color:#94a3b8;font-family:JetBrains Mono">'+S+entryPrem.toFixed(0)+'</div></div>';
   h+='<div><div style="font-size:7px;color:#64748b">CURRENT</div><div style="font-size:18px;font-weight:900;color:'+pnlColor+';font-family:JetBrains Mono">'+S+currentPrem.toFixed(0)+'</div></div>';
   h+='<div><div style="font-size:7px;color:#64748b">P&L</div><div style="font-size:18px;font-weight:900;color:'+pnlColor+';font-family:JetBrains Mono">'+(pctChange>=0?'+':'')+pctChange+'%</div></div>';
   h+='</div>';
-  h+='<div style="font-size:12px;font-weight:800;color:'+pnlColor+'">'+(pnl>=0?'+':'')+S+Math.abs(pnl).toLocaleString('en-IN')+' ('+(lots)+' lots × '+lotSize+')</div>';
+  h+='<div style="font-size:12px;font-weight:800;color:'+pnlColor+'">'+(pnl>=0?'+':'')+S+Math.abs(pnl).toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+' ('+(lots)+' lots × '+lotSize+')</div>';
   h+='<div style="margin-top:8px;font-size:10px;color:'+pnlColor+';font-weight:700">'+action+'</div>';
   h+='<div style="font-size:7px;color:#64748b;margin-top:4px;letter-spacing:2px">━━━━━━━━━━━━━━━━━</div>';
   h+='</div></div>';
@@ -3199,28 +3222,35 @@ _renderQuickTrade=function(d,sym){
     currentSignal='WAITING';
   }
   
+  // Read screen-consistent values from window (set by _renderQuickTrade)
+  var vStrike=window._qtEntryStrike||0;
+  var vPrem=window._qtEntryPrem||0;
+  var vBias=window._qtFinalBias||'';
+  var vBlast=window._qtGammaBlast||false;
+  var vExpiry=window._qtIsExpiry||false;
+  var vTarget=Math.round(vPrem*1.25);
+  var vSL=Math.round(vPrem*0.8);
+  
   // Only voice if signal actually changed from last render
   if(currentSignal!==window._lastQuickSignal){
     var prevSig=window._lastQuickSignal;
     window._lastQuickSignal=currentSignal;
     if(currentSignal==='ENTRY_CE'){
-      var reason7=oiBias==='BULLISH'?'OI supports upside':'Price above VWAP';
-      if(volOK)reason7+=', strong volume';
-      window._voiceAlert('ENTRY_CE',sym,entryStrike7,Math.round(entryPrem7),window._qtGammaBlast,{reason:reason7,target:Math.round(entryPrem7*1.25),sl:Math.round(entryPrem7*0.8)});
+      var reason7=vBias==='BULLISH'&&!window._qtFallback?'OI and price confirm upside':'Price above VWAP, breakout confirmed';
+      window._voiceAlert('ENTRY_CE',sym,vStrike,Math.round(vPrem),vBlast,{reason:reason7,target:vTarget,sl:vSL});
     }
     else if(currentSignal==='ENTRY_PE'){
-      var reason7b=oiBias==='BEARISH'?'OI supports downside':'Price below VWAP';
-      if(volOK)reason7b+=', strong volume';
-      window._voiceAlert('ENTRY_PE',sym,entryStrike7,Math.round(entryPrem7),window._qtGammaBlast,{reason:reason7b,target:Math.round(entryPrem7*1.25),sl:Math.round(entryPrem7*0.8)});
+      var reason7b=vBias==='BEARISH'&&!window._qtFallback?'OI and price confirm downside':'Price below VWAP, breakdown confirmed';
+      window._voiceAlert('ENTRY_PE',sym,vStrike,Math.round(vPrem),vBlast,{reason:reason7b,target:vTarget,sl:vSL});
     }
     else if(currentSignal==='NO_TRADE')window._voiceAlert('WAIT');
     // Exit alerts: if signal changed FROM buy TO wait/no-trade
-    else if((prevSig==='ENTRY_CE'||prevSig==='ENTRY_PE')&&(currentSignal==='WAIT'||currentSignal==='NO_TRADE')){
-      if(window._qtGammaBlast||window._lastGammaBlastState)window._voiceAlert('GAMMA_FADING');
-      else if(window._qtIsExpiry)window._voiceAlert('THETA_EXIT');
+    else if((prevSig==='ENTRY_CE'||prevSig==='ENTRY_PE')&&(currentSignal==='WAITING'||currentSignal==='NO_TRADE')){
+      if(vBlast||window._lastGammaBlastState)window._voiceAlert('GAMMA_FADING');
+      else if(vExpiry)window._voiceAlert('THETA_EXIT');
     }
   }
-  window._lastGammaBlastState=window._qtGammaBlast;
+  window._lastGammaBlastState=vBlast;
 };
 
 // ─── WIRE INTO GAMMA MODE ───
@@ -3263,9 +3293,9 @@ window._buildCoachingExplanation=function(d,sym,bias){
   var avgVol=bars.length>0?bars.reduce(function(s,b){return s+b.v},0)/bars.length:0;
   var lastVol=bars.length>0?bars[bars.length-1].v:0;
   
-  if(bias==='BULLISH'&&spot>=todayH)reasons.push({icon:'✔',text:'Breakout above Day High ('+sym+' crossed ₹'+Math.round(todayH).toLocaleString('en-IN')+')'});
-  else if(bias==='BEARISH'&&spot<=todayL)reasons.push({icon:'✔',text:'Breakdown below Day Low ('+sym+' broke ₹'+Math.round(todayL).toLocaleString('en-IN')+')'});
-  else reasons.push({icon:'⏳',text:'Waiting for level break ('+(bias==='BULLISH'?'needs ₹'+Math.round(todayH).toLocaleString('en-IN'):'needs ₹'+Math.round(todayL).toLocaleString('en-IN'))+')'});
+  if(bias==='BULLISH'&&spot>=todayH)reasons.push({icon:'✔',text:'Breakout above Day High ('+sym+' crossed ₹'+Math.round(todayH).toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+')'});
+  else if(bias==='BEARISH'&&spot<=todayL)reasons.push({icon:'✔',text:'Breakdown below Day Low ('+sym+' broke ₹'+Math.round(todayL).toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+')'});
+  else reasons.push({icon:'⏳',text:'Waiting for level break ('+(bias==='BULLISH'?'needs ₹'+Math.round(todayH).toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN'):'needs ₹'+Math.round(todayL).toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN'))+')'});
   
   if(lastVol>avgVol*1.3)reasons.push({icon:'✔',text:'Strong volume spike ('+Math.round(lastVol/avgVol*100)+'% of average)'});
   else reasons.push({icon:'✘',text:'Volume below average — momentum weak'});
@@ -3451,11 +3481,14 @@ _renderQuickTrade=function(d,sym){
   // Coaching (under the main card)
   if(bias2!=='NO TRADE')extra4+=window._renderCoaching(coaching,bias2);
   
-  // Voice coaching
-  if(coaching.confidence==='HIGH'&&bias2!=='NO TRADE'){
+  // Voice coaching — ONLY when status is ENTER NOW (not WAITING)
+  var statusForVoice=el.textContent||'';
+  if(coaching.confidence==='HIGH'&&bias2!=='NO TRADE'&&statusForVoice.indexOf('ENTER NOW')>=0){
     var coachVoice=bias2==='BULLISH'?'Buy Call Now — Breakout with strong momentum':'Buy Put Now — Breakdown with volume confirmation';
-    // Only speak if different from last
     if(window._lastCoachVoice!==coachVoice){window._lastCoachVoice=coachVoice;window._speak(coachVoice,true)}
+  }else if(statusForVoice.indexOf('WAITING')>=0||statusForVoice.indexOf('ALMOST')>=0){
+    // Reset coach voice so it fires fresh when ENTER NOW arrives
+    window._lastCoachVoice='';
   }
   
   // Auto mode panel
@@ -3611,7 +3644,7 @@ function _renderUltraSimple(d,sym){
   var target25=Math.round(entryPrem8*1.25);
   var target40=Math.round(entryPrem8*1.40);
   var stopLoss8=Math.round(entryPrem8*0.80);
-  var sigSub=signal==='BUY_CE'?'Strike: '+S+atmStrike8.toLocaleString('en-IN')+' CE @ '+S+entryPrem8.toFixed(0)+' · Qty: '+gammaLotsLabel+' Lot'+(gammaBlast?'s ⚡':''):signal==='BUY_PE'?'Strike: '+S+atmStrike8.toLocaleString('en-IN')+' PE @ '+S+entryPrem8.toFixed(0)+' · Qty: '+gammaLotsLabel+' Lot'+(gammaBlast?'s ⚡':''):signal==='NO_TRADE'?(spot===0?'Market data unavailable':'Conditions not met — protect capital'):'Scanning for breakout...';
+  var sigSub=signal==='BUY_CE'?'Strike: '+S+atmStrike8.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+' CE @ '+S+entryPrem8.toFixed(0)+' · Qty: '+gammaLotsLabel+' Lot'+(gammaBlast?'s ⚡':''):signal==='BUY_PE'?'Strike: '+S+atmStrike8.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+' PE @ '+S+entryPrem8.toFixed(0)+' · Qty: '+gammaLotsLabel+' Lot'+(gammaBlast?'s ⚡':''):signal==='NO_TRADE'?(spot===0?'Market data unavailable':'Conditions not met — protect capital'):'Scanning for breakout...';
   
   // Coaching (max 3 reasons, plain English)
   var reasons=[];
@@ -3714,7 +3747,7 @@ function _renderUltraSimple(d,sym){
     h+='<div style="background:#0F172A;border-radius:12px;padding:14px 20px;margin-bottom:12px;max-width:320px;width:100%;text-align:left">';
     h+='<div style="font-size:9px;color:#3b82f6;font-weight:800;margin-bottom:8px;text-align:center">📋 EXACT TRADE DETAILS</div>';
     h+='<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">';
-    h+='<div style="flex:1;min-width:70px;padding:6px;border-radius:6px;background:'+sigColor+'12;text-align:center"><div style="font-size:7px;color:'+sigColor+'">STRIKE</div><div style="font-size:14px;font-weight:900;color:'+sigColor+';font-family:JetBrains Mono">'+S+atmStrike8.toLocaleString('en-IN')+'</div><div style="font-size:8px;color:#94a3b8">'+(signal==='BUY_CE'?'CE (Call)':'PE (Put)')+'</div></div>';
+    h+='<div style="flex:1;min-width:70px;padding:6px;border-radius:6px;background:'+sigColor+'12;text-align:center"><div style="font-size:7px;color:'+sigColor+'">STRIKE</div><div style="font-size:14px;font-weight:900;color:'+sigColor+';font-family:JetBrains Mono">'+S+atmStrike8.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div><div style="font-size:8px;color:#94a3b8">'+(signal==='BUY_CE'?'CE (Call)':'PE (Put)')+'</div></div>';
     h+='<div style="flex:1;min-width:70px;padding:6px;border-radius:6px;background:#1e293b;text-align:center"><div style="font-size:7px;color:#94a3b8">PREMIUM</div><div style="font-size:14px;font-weight:900;color:#e2e8f0;font-family:JetBrains Mono">'+S+entryPrem8.toFixed(0)+'</div><div style="font-size:8px;color:#64748b">per unit</div></div>';
     h+='<div style="flex:1;min-width:70px;padding:6px;border-radius:6px;background:'+(gammaBlast?'#f59e0b15':'#1e293b')+';text-align:center;border:'+(gammaBlast?'1px solid #f59e0b30':'none')+'"><div style="font-size:7px;color:'+(gammaBlast?'#f59e0b':'#94a3b8')+'">'+(gammaBlast?'⚡ GAMMA QTY':'QUANTITY')+'</div><div style="font-size:14px;font-weight:900;color:'+(gammaBlast?'#f59e0b':'#e2e8f0')+';font-family:JetBrains Mono">'+gammaLotsLabel+' lots'+'</div><div style="font-size:8px;color:#64748b">'+c8.lot+' × '+gammaLots+' = '+(c8.lot*gammaLots)+' qty</div></div>';
     h+='</div>';
@@ -3728,8 +3761,8 @@ function _renderUltraSimple(d,sym){
     var maxRisk8=Math.round((entryPrem8-stopLoss8)*c8.lot*gammaLots);
     var maxProfit8=Math.round((target40-entryPrem8)*c8.lot*gammaLots);
     h+='<div style="display:flex;gap:8px">';
-    h+='<div style="flex:1;padding:4px;border-radius:4px;background:#ef444408;text-align:center"><div style="font-size:7px;color:#ef4444">MAX RISK</div><div style="font-size:11px;font-weight:800;color:#ef4444;font-family:JetBrains Mono">'+S+maxRisk8.toLocaleString('en-IN')+'</div></div>';
-    h+='<div style="flex:1;padding:4px;border-radius:4px;background:#05966408;text-align:center"><div style="font-size:7px;color:#059669">MAX PROFIT</div><div style="font-size:11px;font-weight:800;color:#059669;font-family:JetBrains Mono">'+S+maxProfit8.toLocaleString('en-IN')+'</div></div>';
+    h+='<div style="flex:1;padding:4px;border-radius:4px;background:#ef444408;text-align:center"><div style="font-size:7px;color:#ef4444">MAX RISK</div><div style="font-size:11px;font-weight:800;color:#ef4444;font-family:JetBrains Mono">'+S+maxRisk8.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div></div>';
+    h+='<div style="flex:1;padding:4px;border-radius:4px;background:#05966408;text-align:center"><div style="font-size:7px;color:#059669">MAX PROFIT</div><div style="font-size:11px;font-weight:800;color:#059669;font-family:JetBrains Mono">'+S+maxProfit8.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div></div>';
     h+='</div>';
     if(gammaBlast){
       h+='<div style="margin-top:6px;padding:5px 8px;border-radius:6px;background:#f59e0b08;border-left:2px solid #f59e0b;font-size:8px;color:#f59e0b">';
@@ -3760,7 +3793,7 @@ function _renderUltraSimple(d,sym){
   var gs=window._gameState||{streak:0,score:50};
   if(m.trades>0||true){
     h+='<div style="background:#0F172A;border-radius:16px;padding:14px 20px;display:flex;gap:12px;justify-content:center;align-items:center;flex-wrap:wrap;margin-bottom:8px">';
-    h+='<div style="text-align:center"><div style="font-size:7px;color:#64748b">TODAY</div><div style="font-size:14px;font-weight:900;color:'+(m.pnl>=0?'#059669':'#ef4444')+';font-family:JetBrains Mono">'+(m.pnl>=0?'+':'')+S+(m.pnl||0).toLocaleString('en-IN')+'</div></div>';
+    h+='<div style="text-align:center"><div style="font-size:7px;color:#64748b">TODAY</div><div style="font-size:14px;font-weight:900;color:'+(m.pnl>=0?'#059669':'#ef4444')+';font-family:JetBrains Mono">'+(m.pnl>=0?'+':'')+S+(m.pnl||0).toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div></div>';
     h+='<div style="width:1px;height:24px;background:#334155"></div>';
     h+='<div style="text-align:center"><div style="font-size:7px;color:#64748b">WIN RATE</div><div style="font-size:14px;font-weight:900;color:#3b82f6;font-family:JetBrains Mono">'+(m.winRate||0)+'%</div></div>';
     h+='<div style="width:1px;height:24px;background:#334155"></div>';
@@ -4019,7 +4052,7 @@ window._renderStrikeSelector=function(strikes,bias,sym,isExpiry,gammaBlast,S){
     var barW=Math.max(10,Math.round(s.score/Math.max(strikes[0].score,1)*100));
     h+='<div style="display:flex;align-items:center;gap:6px;padding:5px 8px;border-radius:6px;margin-bottom:3px;'+(isBest?'background:#3b82f610;border:1px solid #3b82f625':'background:#1e293b')+';cursor:pointer" onclick="window._tradeSession.activeStrike='+s.strike+';window._saveTradeSession()">';
     h+='<div style="min-width:14px;font-size:10px">'+(isBest?'⭐':'')+'</div>';
-    h+='<div style="min-width:55px;font-size:10px;font-weight:800;color:'+(isBest?'#3b82f6':'#94a3b8')+';font-family:JetBrains Mono">'+S+s.strike.toLocaleString('en-IN')+'</div>';
+    h+='<div style="min-width:55px;font-size:10px;font-weight:800;color:'+(isBest?'#3b82f6':'#94a3b8')+';font-family:JetBrains Mono">'+S+s.strike.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div>';
     h+='<div style="min-width:35px;font-size:8px;color:#64748b">'+s.label+'</div>';
     h+='<div style="min-width:45px;font-size:9px;color:#e2e8f0;font-family:JetBrains Mono">'+S+s.prem.toFixed(0)+'</div>';
     h+='<div style="flex:1;height:6px;background:#1e293b;border-radius:3px;overflow:hidden"><div style="width:'+barW+'%;height:100%;background:'+(isBest?'#3b82f6':'#475569')+';border-radius:3px"></div></div>';
@@ -4029,7 +4062,7 @@ window._renderStrikeSelector=function(strikes,bias,sym,isExpiry,gammaBlast,S){
   
   // Why this strike
   h+='<div style="margin-top:6px;padding:6px 10px;border-radius:6px;background:#1e293b;font-size:8px;color:#94a3b8">';
-  h+='<strong style="color:#3b82f6">⭐ Best: '+S+best.strike.toLocaleString('en-IN')+' '+best.type+' ('+best.label+')</strong> — ';
+  h+='<strong style="color:#3b82f6">⭐ Best: '+S+best.strike.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+' '+best.type+' ('+best.label+')</strong> — ';
   if(best.label==='ATM')h+='Most liquid, highest gamma, tightest spread';
   else if(best.label==='1-OTM')h+=isExpiry?'Expiry day OTM = cheaper entry, explosive gamma':'Slightly OTM = lower premium, decent gamma';
   else h+='Deep OTM = cheapest but risky, only if strong conviction';
