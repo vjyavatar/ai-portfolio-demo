@@ -2555,13 +2555,20 @@ window._loadQuickTrade=function(symbol){
       if(window._apiRetryTimer){clearTimeout(window._apiRetryTimer);window._apiRetryTimer=null}
       _renderQuickTrade(d,sym);
       // Auto-refresh — only if still the active ticker
+      console.log('[REFRESH] ✅ Timer started for '+sym+' (30s)');
       window._quickRefreshTimer=setInterval(function(){
         if(document.getElementById('deResult')&&window._deMode==='options'&&window._activeOptionsSym===sym){
+          console.log('[REFRESH] 🔄 Fetching '+sym+'...');
           fetch('/api/options-quick?symbol='+encodeURIComponent(sym)+'&region=IN')
             .then(function(r2){return r2.json()})
-            .then(function(d2){if(d2&&d2.success&&window._activeOptionsSym===sym)_renderQuickTrade(d2,sym)})
-            .catch(function(){});
-        }else{clearInterval(window._quickRefreshTimer);window._quickRefreshTimer=null}
+            .then(function(d2){
+              if(d2&&d2.success&&window._activeOptionsSym===sym){
+                console.log('[REFRESH] ✅ Got data for '+sym+' spot='+d2.spot);
+                _renderQuickTrade(d2,sym);
+              }
+            })
+            .catch(function(e){console.log('[REFRESH] ❌ Error: '+e)});
+        }else{console.log('[REFRESH] Stopped for '+sym);clearInterval(window._quickRefreshTimer);window._quickRefreshTimer=null}
       },30000);
     }).catch(function(e){
       el.innerHTML='<div style="color:#ef4444;padding:20px;background:#0A0F1C;border-radius:16px;text-align:center">Error: '+e.message+'</div>';
@@ -2938,7 +2945,7 @@ window._lastQuickSignal='NONE';
 
 window._speak=function(text,urgent){
   if(!window._voiceEnabled)return;
-  if(!window.speechSynthesis)return;
+  if(!window.speechSynthesis){console.log('[VOICE] No speechSynthesis');return}
   try{
     window.speechSynthesis.cancel();
     var u=new SpeechSynthesisUtterance(text);
@@ -2946,23 +2953,34 @@ window._speak=function(text,urgent){
     u.pitch=1.0;
     u.volume=urgent?1.0:0.8;
     var voices=window.speechSynthesis.getVoices();
-    var pref=voices.find(function(v){return v.lang.indexOf('en')===0&&v.name.indexOf('Google')>=0})||voices.find(function(v){return v.lang.indexOf('en')===0})||voices[0];
-    if(pref)u.voice=pref;
+    if(voices.length>0){
+      var pref=voices.find(function(v){return v.lang.indexOf('en')===0&&v.name.indexOf('Google')>=0})||voices.find(function(v){return v.lang.indexOf('en')===0})||voices[0];
+      if(pref)u.voice=pref;
+    }
     window.speechSynthesis.speak(u);
+    console.log('[VOICE] Speaking: '+text.substring(0,50)+'...');
   }catch(e){console.log('[VOICE] Error:',e)}
 };
-// Browser requires user interaction before voice works.
-// Warm up speechSynthesis on first click anywhere.
+// Load voices async (many browsers load them lazily)
+if(typeof window!=='undefined'&&window.speechSynthesis){
+  window.speechSynthesis.getVoices(); // trigger load
+  if(window.speechSynthesis.onvoiceschanged!==undefined){
+    window.speechSynthesis.onvoiceschanged=function(){window.speechSynthesis.getVoices()};
+  }
+}
+// Browser requires user interaction before voice works — warmup on first click
 if(typeof document!=='undefined'&&document.body){
-  document.body.addEventListener('click',function(){
-    if(!window._voiceWarmedUp&&window.speechSynthesis){
+  document.body.addEventListener('click',function _warmVoice(){
+    if(window.speechSynthesis&&!window._voiceWarmedUp){
       window._voiceWarmedUp=true;
-      var warmup=new SpeechSynthesisUtterance('');
-      warmup.volume=0;
-      window.speechSynthesis.speak(warmup);
-      window.speechSynthesis.cancel();
+      try{
+        var w=new SpeechSynthesisUtterance('');w.volume=0;
+        window.speechSynthesis.speak(w);
+        window.speechSynthesis.cancel();
+        console.log('[VOICE] Warmed up on click');
+      }catch(e){}
     }
-  },{once:false});
+  });
 }
 
 window._voiceAlert=function(type,detail,strike,prem,isBlast,extraCtx){
@@ -3177,6 +3195,7 @@ window._renderPerformanceDashboard=function(S){
   // Voice toggle + reset
   h+='<div style="display:flex;gap:8px;margin-top:10px;justify-content:center">';
   h+='<button onclick="window._voiceEnabled=!window._voiceEnabled;this.textContent=window._voiceEnabled?\'🔊 Voice ON\':\'🔇 Voice OFF\';this.style.background=window._voiceEnabled?\'#05966920\':\'#1e293b\';this.style.color=window._voiceEnabled?\'#059669\':\'#64748b\'" style="padding:6px 14px;border-radius:8px;background:'+(window._voiceEnabled?'#05966920':'#1e293b')+';color:'+(window._voiceEnabled?'#059669':'#64748b')+';border:1px solid #334155;font-size:9px;font-weight:700;cursor:pointer">'+(window._voiceEnabled?'🔊 Voice ON':'🔇 Voice OFF')+'</button>';
+  h+='<button onclick="window._speak(\'Voice is working. I will alert you when a good trade appears.\',true)" style="padding:6px 10px;border-radius:8px;background:#1e293b;color:#64748b;border:1px solid #334155;font-size:8px;font-weight:700;cursor:pointer">🔊 Test</button>';
   h+='<button onclick="if(confirm(\'Reset today\\\'s trade log?\')){window._tradeLog=[];localStorage.setItem(\'celesys_tradeLog\',\'[]\');this.textContent=\'✓ Reset\'}" style="padding:6px 14px;border-radius:8px;background:#1e293b;color:#64748b;border:1px solid #334155;font-size:9px;font-weight:700;cursor:pointer">🗑️ Reset Log</button>';
   h+='<button onclick="window._speak(\'Voice test. System ready.\',false)" style="padding:6px 14px;border-radius:8px;background:#1e293b;color:#64748b;border:1px solid #334155;font-size:9px;font-weight:700;cursor:pointer">🔈 Test Voice</button>';
   h+='</div>';
@@ -4249,13 +4268,15 @@ window._loadOptionsUniversal=function(symbol,region){
       d._region=reg;d._currency=reg==='US'?'$':'₹';d._lotSize=d.lot_size||(reg==='US'?100:1);
       _renderQuickTrade(d,sym);
       // Auto-refresh — only if still active
+      console.log('[REFRESH] ✅ Universal timer started for '+sym+' '+reg+' (30s)');
       window._quickRefreshTimer=setInterval(function(){
         if(document.getElementById('deResult')&&window._deMode==='options'&&window._activeOptionsSym===sym&&window._activeOptionsReg===reg){
+          console.log('[REFRESH] 🔄 Universal fetching '+sym+'...');
           fetch('/api/options-quick?symbol='+encodeURIComponent(sym)+'&region='+encodeURIComponent(reg))
             .then(function(r2){return r2.json()})
-            .then(function(d2){if(d2&&d2.success&&window._activeOptionsSym===sym){d2._region=reg;d2._currency=reg==='US'?'$':'₹';d2._lotSize=d2.lot_size||(reg==='US'?100:1);_renderQuickTrade(d2,sym)}})
-            .catch(function(){});
-        }else{clearInterval(window._quickRefreshTimer);window._quickRefreshTimer=null}
+            .then(function(d2){if(d2&&d2.success&&window._activeOptionsSym===sym){d2._region=reg;d2._currency=reg==='US'?'$':'₹';d2._lotSize=d2.lot_size||(reg==='US'?100:1);console.log('[REFRESH] ✅ Universal got '+sym+' spot='+d2.spot);_renderQuickTrade(d2,sym)}})
+            .catch(function(e){console.log('[REFRESH] ❌ Universal error: '+e)});
+        }else{console.log('[REFRESH] Universal stopped for '+sym);clearInterval(window._quickRefreshTimer);window._quickRefreshTimer=null}
       },30000);
     }).catch(function(e){
       el.innerHTML='<div style="text-align:center;padding:40px;background:#0A0F1C;border-radius:16px;color:#ef4444">Error: '+e.message+'</div>';
