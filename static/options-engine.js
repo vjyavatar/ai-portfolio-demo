@@ -2775,11 +2775,15 @@ function _renderQuickTrade(d,sym){
   else if(qtIsExpiry7)whyReasons.push({pass:false,label:'Time decay high — avoid'});
   else whyReasons.push({pass:false,label:'Move too slow'});
   
+  // Infer direction from VWAP even when no breakout (for WATCHING state)
+  var leanDirection=spot>vwapLevel?'BULLISH':'BEARISH';
+  
   var biasColor=finalBias==='BULLISH'?'#059669':finalBias==='BEARISH'?'#ef4444':'#64748b';
-  var entryLevel=finalBias==='BULLISH'?dayHigh:(finalBias==='BEARISH'?dayLow:dayHigh);
-  var entryType7=finalBias==='BULLISH'?'CE':'PE';
+  var entryLevel=finalBias==='BULLISH'?dayHigh:(finalBias==='BEARISH'?dayLow:(leanDirection==='BULLISH'?dayHigh:dayLow));
+  var entryType7=finalBias==='BULLISH'?'CE':(finalBias==='BEARISH'?'PE':(leanDirection==='BULLISH'?'CE':'PE'));
   var entryStrike7=atmStrike7;
-  var entryPrem7=finalBias==='BULLISH'?atmCE7:(finalBias==='BEARISH'?atmPE7:Math.max(atmCE7,atmPE7));
+  var entryPrem7=finalBias==='BULLISH'?atmCE7:(finalBias==='BEARISH'?atmPE7:(leanDirection==='BULLISH'?atmCE7:atmPE7));
+  if(entryPrem7<=0)entryPrem7=Math.max(atmCE7,atmPE7);
   var targetLow=Math.round(entryPrem7*1.25);var targetHigh=Math.round(entryPrem7*1.40);
   var qtLots=qtGammaBlast?'2–3':qtIsExpiry7?'1–2':'1';
   
@@ -2788,14 +2792,35 @@ function _renderQuickTrade(d,sym){
   window._qtFinalBias=finalBias;window._qtConfidence=rulesPass;window._qtWhyReasons=whyReasons;
   window._qtGammaBlast=qtGammaBlast;window._qtIsExpiry=qtIsExpiry7;window._qtFallback=isFallback;
   
-  // STATUS
-  var status='⏳ WAITING';var statusColor='#64748b';
-  if(!allPass||finalBias==='NO TRADE'){
-    status=!priceMoving&&qtIsExpiry7?'⚪ NO TRADE — Theta trap':'⚪ NO TRADE';statusColor='#64748b';
-  }else if(rule1&&rule2&&rule3){status='🟢 ENTER NOW';statusColor='#059669'}
-  else if(rule1&&rule3){status='🟡 ALMOST — Wait for volume';statusColor='#d97706'}
-  else if(priceMoving){status='⏳ WATCHING...';statusColor='#64748b'}
-  else{status='⚪ NO TRADE';statusColor='#64748b'}
+  // STATUS — 4 states: ENTER NOW / ALMOST / WATCHING / NO TRADE
+  var status='⏳ WATCHING';var statusColor='#64748b';
+  var directionLabel='';var directionColor='#64748b';
+  
+  if(!allPass){
+    status='⚪ NO TRADE';statusColor='#64748b';
+    directionLabel='CONDITIONS NOT MET';directionColor='#64748b';
+  }else if(rule1&&rule2&&rule3){
+    status='🟢 ENTER NOW';statusColor='#059669';
+    directionLabel=finalBias==='BULLISH'?'BULLISH ↑':'BEARISH ↓';
+    directionColor=finalBias==='BULLISH'?'#059669':'#ef4444';
+  }else if(rule1&&rule3){
+    status='🟡 ALMOST — Wait for volume';statusColor='#d97706';
+    directionLabel=finalBias==='BULLISH'?'BULLISH ↑':'BEARISH ↓';
+    directionColor=finalBias==='BULLISH'?'#059669':'#ef4444';
+  }else if(priceMoving){
+    finalBias=leanDirection;
+    biasColor=leanDirection==='BULLISH'?'#059669':'#ef4444';
+    statusColor=biasColor;
+    status='⏳ WATCHING';
+    directionLabel=leanDirection==='BULLISH'?'LEANING BULLISH ↑':'LEANING BEARISH ↓';
+    directionColor=biasColor;
+  }else if(!priceMoving&&qtIsExpiry7){
+    status='⚪ NO TRADE';statusColor='#64748b';
+    directionLabel='SIDEWAYS — Theta trap';directionColor='#d97706';
+  }else{
+    status='⚪ NO TRADE';statusColor='#64748b';
+    directionLabel='SIDEWAYS — No momentum';directionColor='#64748b';
+  }
   
   // ═══ RENDER ═══
   var h='';
@@ -2809,8 +2834,9 @@ function _renderQuickTrade(d,sym){
   // ─── ⚪ NO TRADE ───
   if(status.indexOf('NO TRADE')>=0){
     h+='<div style="text-align:center;padding:30px 20px">';
-    h+='<div style="font-size:60px;margin-bottom:16px">⚪</div>';
-    h+='<div style="font-size:28px;font-weight:900;color:#64748b;font-family:Sora;margin-bottom:16px">NO TRADE</div>';
+    h+='<div style="font-size:60px;margin-bottom:12px">⚪</div>';
+    h+='<div style="font-size:28px;font-weight:900;color:#64748b;font-family:Sora;margin-bottom:6px">NO TRADE</div>';
+    h+='<div style="font-size:16px;font-weight:900;color:'+directionColor+';font-family:Sora;margin-bottom:16px">'+directionLabel+'</div>';
     h+='<div style="text-align:left;max-width:260px;margin:0 auto">';
     whyReasons.forEach(function(r){h+='<div style="font-size:12px;padding:4px 0;color:'+(r.pass?'#059669':'#94a3b8')+'">'+(r.pass?'✔':'✗')+' '+r.label+'</div>'});
     h+='</div>';
@@ -2818,11 +2844,12 @@ function _renderQuickTrade(d,sym){
     h+='<div style="margin-top:16px;font-size:9px;color:#475569">💡 Best traders profit by NOT trading bad setups.</div>';
     h+='</div>';
     
-  // ─── ⏳ WAITING / 🟡 ALMOST ───
-  }else if(status.indexOf('WAITING')>=0||status.indexOf('ALMOST')>=0||status.indexOf('WATCHING')>=0){
-    h+='<div style="text-align:center;padding:20px;border-radius:16px;background:'+statusColor+'10;border:2px solid '+statusColor+'25;margin-bottom:16px">';
-    h+='<div style="font-size:28px;font-weight:900;color:'+statusColor+';font-family:Sora">'+status+'</div></div>';
-    if(finalBias!=='NO TRADE'){h+='<div style="text-align:center;margin-bottom:12px"><div style="display:inline-block;padding:6px 20px;border-radius:10px;background:'+biasColor+'10;border:1px solid '+biasColor+'20"><span style="font-size:13px;font-weight:800;color:'+biasColor+'">'+finalBias+'</span></div></div>'}
+  // ─── ⏳ WATCHING / 🟡 ALMOST ───
+  }else if(status.indexOf('WATCHING')>=0||status.indexOf('ALMOST')>=0){
+    h+='<div style="text-align:center;padding:20px;border-radius:16px;background:'+statusColor+'10;border:2px solid '+statusColor+'25;margin-bottom:12px">';
+    h+='<div style="font-size:24px;font-weight:900;color:'+statusColor+';font-family:Sora">'+status+'</div>';
+    h+='<div style="font-size:18px;font-weight:900;color:'+directionColor+';font-family:Sora;margin-top:6px">'+directionLabel+'</div>';
+    h+='</div>';
     h+='<div style="text-align:center;margin-bottom:12px;padding:12px;border-radius:10px;background:#1e293b"><div style="font-size:9px;color:#64748b;margin-bottom:4px">WATCHING FOR</div><div style="font-size:26px;font-weight:900;color:#f59e0b;font-family:JetBrains Mono">'+S+(isUS?entryLevel.toLocaleString('en-US'):entryLevel.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN'))+'</div><div style="font-size:8px;color:#64748b;margin-top:4px">+ Volume + VWAP</div></div>';
     h+='<div style="text-align:center;padding:8px;border-radius:8px;background:#1e293b50;font-size:9px;color:#64748b">When breakout → <strong style="color:'+biasColor+'">BUY '+S+entryStrike7+' '+entryType7+'</strong> @ ~'+S+entryPrem7.toFixed(0)+'</div>';
     if(qtIsExpiry){h+='<div style="text-align:center;margin-top:8px;padding:6px 12px;border-radius:8px;background:#d9770608;border:1px solid #d9770615;font-size:9px;color:#d97706;font-weight:700">⏱ Expiry day — options lose value fast. Max hold 10 min.</div>'}
