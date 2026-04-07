@@ -20,7 +20,7 @@ window._loadOptionsDecide=function(symbol){
     +'<div style="font-size:14px;font-weight:900;color:#e2e8f0;margin-top:12px;font-family:Sora,sans-serif">Loading Options Intelligence...</div>'
     +'<div style="font-size:9px;color:#64748b;margin-top:4px">Fetching '+sym+' chain · VIX · OI · GEX · PCR</div></div>';
   
-  fetch('/api/nse-options?symbol='+encodeURIComponent(sym))
+  fetch('/api/options-quick?symbol='+encodeURIComponent(sym)+'&region=IN')
     .then(function(r){return r.json()})
     .then(function(d){
       if(!d||!d.success){
@@ -1545,7 +1545,7 @@ window._loadGammaMode=function(symbol){
     +'<div style="font-size:14px;font-weight:900;color:#f59e0b;margin-top:12px;font-family:Sora">⚡ Loading Gamma Mode...</div>'
     +'<div style="font-size:9px;color:#64748b;margin-top:4px">Fetching '+sym+' chain · VIX · OI · GEX · ATM premiums</div></div>';
   
-  fetch('/api/nse-options?symbol='+encodeURIComponent(sym))
+  fetch('/api/options-quick?symbol='+encodeURIComponent(sym)+'&region=IN')
     .then(function(r){return r.json()})
     .then(function(d){
       if(!d||!d.success){
@@ -2532,16 +2532,18 @@ window._loadQuickTrade=function(symbol){
   // Clear previous refresh timer
   if(window._quickRefreshTimer){clearInterval(window._quickRefreshTimer);window._quickRefreshTimer=null}
   if(window._ultraRefreshTimer){clearInterval(window._ultraRefreshTimer);window._ultraRefreshTimer=null}
+  if(window._apiRetryTimer){clearTimeout(window._apiRetryTimer);window._apiRetryTimer=null}
   
   // Track active symbol — prevents stale timer overwrites
   window._activeOptionsSym=sym;
   window._activeOptionsReg='IN';
+  window._apiRetryCount=0;
   
   el.innerHTML='<div style="padding:40px;text-align:center;background:linear-gradient(135deg,#0A0F1C,#0f1a2e);border-radius:16px">'
     +'<div style="display:inline-block;width:20px;height:20px;border:3px solid #059669;border-top-color:transparent;border-radius:50%;animation:spin .5s linear infinite"></div>'
     +'<div style="font-size:13px;font-weight:900;color:#059669;margin-top:10px;font-family:Sora">Loading Quick Trade...</div></div>';
   
-  fetch('/api/nse-options?symbol='+encodeURIComponent(sym))
+  fetch('/api/options-quick?symbol='+encodeURIComponent(sym)+'&region=IN')
     .then(function(r){return r.json()})
     .then(function(d){
       if(!d||!d.success){
@@ -2549,11 +2551,13 @@ window._loadQuickTrade=function(symbol){
         return;
       }
       if(window._activeOptionsSym!==sym)return; // Another ticker was loaded — abort
+      window._apiRetryCount=0; // Reset on success
+      if(window._apiRetryTimer){clearTimeout(window._apiRetryTimer);window._apiRetryTimer=null}
       _renderQuickTrade(d,sym);
       // Auto-refresh — only if still the active ticker
       window._quickRefreshTimer=setInterval(function(){
         if(document.getElementById('deResult')&&window._deMode==='options'&&window._activeOptionsSym===sym){
-          fetch('/api/nse-options?symbol='+encodeURIComponent(sym))
+          fetch('/api/options-quick?symbol='+encodeURIComponent(sym)+'&region=IN')
             .then(function(r2){return r2.json()})
             .then(function(d2){if(d2&&d2.success&&window._activeOptionsSym===sym)_renderQuickTrade(d2,sym)})
             .catch(function(){});
@@ -2594,21 +2598,34 @@ function _renderQuickTrade(d,sym){
     var marketMsg=isUS?'US market hours: <strong>9:30 AM – 4:00 PM ET</strong> (Mon–Fri)':'NSE trading hours: <strong>9:15 AM – 3:30 PM IST</strong> (Mon–Fri)';
     
     if(shouldBeOpen){
-      // Market SHOULD be open but API returned empty — show retry, not "closed"
-      var h0r='<div style="max-width:480px;margin:0 auto;padding:40px 20px;text-align:center;background:#0A0F1C;border-radius:20px">';
-      h0r+='<div style="display:inline-block;width:30px;height:30px;border:3px solid #f59e0b;border-top-color:transparent;border-radius:50%;animation:spin 1s linear infinite;margin-bottom:12px"></div>';
-      h0r+='<div style="font-size:18px;font-weight:900;color:#e2e8f0;font-family:Sora;margin-bottom:8px">Fetching Live Data...</div>';
-      h0r+='<div style="font-size:11px;color:#94a3b8;margin-bottom:16px">Market is open. NSE API may take a moment to respond.<br>Auto-retrying in 10 seconds...</div>';
-      h0r+='<button onclick="window._loadQuickTrade(\''+sym+'\')" style="padding:10px 24px;border-radius:10px;background:#f59e0b;color:#000;border:none;font-size:12px;font-weight:800;cursor:pointer">🔄 Retry Now</button>';
-      h0r+='</div>';
-      el.innerHTML=h0r;
-      // Auto-retry after 10 seconds
-      setTimeout(function(){
-        if(window._activeOptionsSym===sym){
-          if(isUS)window._loadOptionsUniversal(sym,'US');
-          else window._loadQuickTrade(sym);
-        }
-      },10000);
+      // Limit auto-retries to 3
+      window._apiRetryCount=(window._apiRetryCount||0)+1;
+      if(window._apiRetryCount<=3){
+        var h0r='<div style="max-width:480px;margin:0 auto;padding:40px 20px;text-align:center;background:#0A0F1C;border-radius:20px">';
+        h0r+='<div style="display:inline-block;width:30px;height:30px;border:3px solid #f59e0b;border-top-color:transparent;border-radius:50%;animation:spin 1s linear infinite;margin-bottom:12px"></div>';
+        h0r+='<div style="font-size:18px;font-weight:900;color:#e2e8f0;font-family:Sora;margin-bottom:8px">Fetching Live Data...</div>';
+        h0r+='<div style="font-size:11px;color:#94a3b8;margin-bottom:4px">Market is open. NSE API may take a moment. Attempt '+window._apiRetryCount+' of 3.</div>';
+        h0r+='<div style="font-size:10px;color:#64748b;margin-bottom:16px">Auto-retrying in 15 seconds...</div>';
+        h0r+='<button onclick="window._loadQuickTrade(\''+sym+'\')" style="padding:10px 24px;border-radius:10px;background:#f59e0b;color:#000;border:none;font-size:12px;font-weight:800;cursor:pointer">🔄 Retry Now</button>';
+        h0r+='</div>';
+        el.innerHTML=h0r;
+        // Single retry after 15 sec (not 10 — avoid rapid flickering)
+        window._apiRetryTimer=setTimeout(function(){
+          if(window._activeOptionsSym===sym){
+            if(isUS)window._loadOptionsUniversal(sym,'US');
+            else window._loadQuickTrade(sym);
+          }
+        },15000);
+      }else{
+        // Max retries exhausted — show manual retry only
+        var h0f='<div style="max-width:480px;margin:0 auto;padding:40px 20px;text-align:center;background:#0A0F1C;border-radius:20px">';
+        h0f+='<div style="font-size:48px;margin-bottom:12px">⚠️</div>';
+        h0f+='<div style="font-size:18px;font-weight:900;color:#d97706;font-family:Sora;margin-bottom:8px">Data Temporarily Unavailable</div>';
+        h0f+='<div style="font-size:11px;color:#94a3b8;margin-bottom:16px">NSE API is not responding. This is common during the first few minutes after market open.<br>Try again in 1-2 minutes.</div>';
+        h0f+='<button onclick="window._apiRetryCount=0;window._loadQuickTrade(\''+sym+'\')" style="padding:12px 28px;border-radius:10px;background:#f59e0b;color:#000;border:none;font-size:13px;font-weight:800;cursor:pointer">🔄 Try Again</button>';
+        h0f+='</div>';
+        el.innerHTML=h0f;
+      }
       return;
     }
     
@@ -3503,7 +3520,7 @@ window._loadGammaMode=function(symbol){
   
   el.innerHTML='<div style="min-height:300px;display:flex;align-items:center;justify-content:center;background:#0A0F1C;border-radius:20px"><div style="text-align:center"><div style="width:24px;height:24px;border:3px solid #f59e0b;border-top-color:transparent;border-radius:50%;animation:spin .5s linear infinite;margin:0 auto"></div><div style="font-size:12px;color:#f59e0b;margin-top:10px;font-weight:800">Scanning '+sym+'...</div></div></div>';
   
-  fetch('/api/nse-options?symbol='+encodeURIComponent(sym))
+  fetch('/api/options-quick?symbol='+encodeURIComponent(sym)+'&region=IN')
     .then(function(r){return r.json()})
     .then(function(d){
       if(!d||!d.success){el.innerHTML='<div style="text-align:center;padding:40px;background:#0A0F1C;border-radius:20px"><div style="font-size:16px;color:#ef4444;font-weight:900">Failed to load</div><button onclick="window._loadGammaMode(\''+sym+'\')" style="margin-top:12px;padding:10px 24px;border-radius:10px;background:#f59e0b;color:#000;border:none;font-size:12px;font-weight:800;cursor:pointer">Retry</button></div>';return}
@@ -3511,7 +3528,7 @@ window._loadGammaMode=function(symbol){
       // Auto-refresh every 30 seconds
       window._ultraRefreshTimer=setInterval(function(){
         if(document.getElementById('deResult')&&window._deMode==='options'){
-          fetch('/api/nse-options?symbol='+encodeURIComponent(sym))
+          fetch('/api/options-quick?symbol='+encodeURIComponent(sym)+'&region=IN')
             .then(function(r2){return r2.json()})
             .then(function(d2){if(d2&&d2.success)_renderUltraSimple(d2,sym)})
             .catch(function(){});
@@ -4117,8 +4134,10 @@ window._loadOptionsUniversal=function(symbol,region){
   // Clear ALL timers + track active symbol
   if(window._quickRefreshTimer){clearInterval(window._quickRefreshTimer);window._quickRefreshTimer=null}
   if(window._ultraRefreshTimer){clearInterval(window._ultraRefreshTimer);window._ultraRefreshTimer=null}
+  if(window._apiRetryTimer){clearTimeout(window._apiRetryTimer);window._apiRetryTimer=null}
   window._activeOptionsSym=sym;
   window._activeOptionsReg=reg;
+  window._apiRetryCount=0;
   
   el.innerHTML='<div style="padding:40px;text-align:center;background:#0A0F1C;border-radius:16px"><div style="display:inline-block;width:20px;height:20px;border:3px solid #3b82f6;border-top-color:transparent;border-radius:50%;animation:spin .5s linear infinite"></div><div style="font-size:12px;color:#3b82f6;margin-top:10px;font-weight:800">Loading '+sym+' ('+reg+')...</div></div>';
   
@@ -4133,8 +4152,13 @@ window._loadOptionsUniversal=function(symbol,region){
         var shouldOpen2=(reg==='US')?(etH2>=9&&etH2<16&&dow2>=1&&dow2<=5):(istH2>=9&&(istH2<15||(istH2===15&&(now2.getUTCMinutes()+30)%60<=30))&&dow2>=1&&dow2<=5);
         
         if(shouldOpen2){
-          el.innerHTML='<div style="text-align:center;padding:40px;background:#0A0F1C;border-radius:16px"><div style="display:inline-block;width:30px;height:30px;border:3px solid #f59e0b;border-top-color:transparent;border-radius:50%;animation:spin 1s linear infinite;margin-bottom:12px"></div><div style="font-size:16px;font-weight:900;color:#e2e8f0">Fetching '+sym+' data...</div><div style="font-size:10px;color:#94a3b8;margin-top:8px">Market is open. Auto-retrying in 10 seconds...</div><button onclick="window._loadOptionsUniversal(\''+sym+'\',\''+reg+'\')" style="margin-top:12px;padding:8px 20px;border-radius:8px;background:#f59e0b;color:#000;border:none;cursor:pointer;font-size:11px;font-weight:800">🔄 Retry Now</button></div>';
-          setTimeout(function(){if(window._activeOptionsSym===sym)window._loadOptionsUniversal(sym,reg)},10000);
+          window._apiRetryCount=(window._apiRetryCount||0)+1;
+          if(window._apiRetryCount<=3){
+            el.innerHTML='<div style="text-align:center;padding:40px;background:#0A0F1C;border-radius:16px"><div style="display:inline-block;width:30px;height:30px;border:3px solid #f59e0b;border-top-color:transparent;border-radius:50%;animation:spin 1s linear infinite;margin-bottom:12px"></div><div style="font-size:16px;font-weight:900;color:#e2e8f0">Fetching '+sym+' data...</div><div style="font-size:10px;color:#94a3b8;margin-top:8px">Attempt '+window._apiRetryCount+' of 3. Auto-retrying in 15 sec...</div><button onclick="window._loadOptionsUniversal(\''+sym+'\',\''+reg+'\')" style="margin-top:12px;padding:8px 20px;border-radius:8px;background:#f59e0b;color:#000;border:none;cursor:pointer;font-size:11px;font-weight:800">🔄 Retry Now</button></div>';
+            window._apiRetryTimer=setTimeout(function(){if(window._activeOptionsSym===sym)window._loadOptionsUniversal(sym,reg)},15000);
+          }else{
+            el.innerHTML='<div style="text-align:center;padding:40px;background:#0A0F1C;border-radius:16px"><div style="font-size:48px;margin-bottom:12px">⚠️</div><div style="font-size:16px;color:#d97706;font-weight:900">Data Temporarily Unavailable</div><div style="font-size:10px;color:#94a3b8;margin-top:8px">API not responding. Try again in 1-2 minutes.</div><button onclick="window._apiRetryCount=0;window._loadOptionsUniversal(\''+sym+'\',\''+reg+'\')" style="margin-top:12px;padding:10px 24px;border-radius:8px;background:#f59e0b;color:#000;border:none;cursor:pointer;font-size:12px;font-weight:800">🔄 Try Again</button></div>';
+          }
         }else{
           el.innerHTML='<div style="text-align:center;padding:40px;background:#0A0F1C;border-radius:16px"><div style="font-size:48px;margin-bottom:12px">🕐</div><div style="font-size:16px;color:#ef4444;font-weight:900">No options data for '+sym+'</div><div style="font-size:10px;color:#94a3b8;margin-top:8px">'+(reg==='US'?'US market hours: 9:30 AM – 4:00 PM ET':'NSE hours: 9:15 AM – 3:30 PM IST')+'</div><button onclick="window._loadOptionsUniversal(\''+sym+'\',\''+reg+'\')" style="margin-top:12px;padding:8px 20px;border-radius:8px;background:#3b82f6;color:#fff;border:none;cursor:pointer;font-size:11px;font-weight:700">🔄 Retry</button></div>';
         }

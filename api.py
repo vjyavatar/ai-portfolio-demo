@@ -24430,13 +24430,85 @@ async def options_quick(symbol: str = "NIFTY", region: str = "IN"):
         is_india_index = sym in india_indices
         
         if is_india_index:
-            # Use existing NSE endpoint
-            from starlette.testclient import TestClient
-            # Redirect to nse-options internally
-            print(f"[OPTIONS-QUICK] Redirecting {sym} to NSE endpoint")
-            # Just call nse_options directly
-            result = await nse_options(sym)
-            return result
+            # Try NSE first, fall back to yfinance for spot data
+            print(f"[OPTIONS-QUICK] Trying NSE for {sym}...")
+            try:
+                result = await nse_options(sym)
+                if result and result.get("success") and result.get("spot", 0) > 0:
+                    return result
+                print(f"[OPTIONS-QUICK] NSE returned no data for {sym}, trying yfinance fallback...")
+            except Exception as nse_err:
+                print(f"[OPTIONS-QUICK] NSE failed for {sym}: {nse_err}, trying yfinance fallback...")
+            
+            # Fallback: use yfinance for basic spot + VIX data
+            import yfinance as yf
+            yf_map = {"NIFTY": "^NSEI", "BANKNIFTY": "^NSEBANK", "SENSEX": "^BSESN", "FINNIFTY": "NIFTY_FIN_SERVICE.NS", "MIDCPNIFTY": "NIFTY_MID_SELECT.NS"}
+            yf_sym = yf_map.get(sym, f"^NSEI")
+            print(f"[OPTIONS-QUICK] yfinance fallback: {yf_sym}")
+            _yahoo_rate_wait()
+            
+            try:
+                tk = yf.Ticker(yf_sym)
+                hist = tk.history(period="2d", interval="5m")
+                
+                if len(hist) > 0:
+                    spot = float(hist['Close'].iloc[-1])
+                    day_high = float(hist['High'].max()) if len(hist) > 5 else spot
+                    day_low = float(hist['Low'].min()) if len(hist) > 5 else spot
+                    day_open = float(hist['Open'].iloc[0]) if len(hist) > 0 else spot
+                    vwap = round((day_high + day_low + spot) / 3, 2)
+                    
+                    # Get VIX
+                    vix = 18.0
+                    try:
+                        vix_tk = yf.Ticker("^INDIAVIX")
+                        vix_h = vix_tk.history(period="1d")
+                        if len(vix_h) > 0:
+                            vix = float(vix_h['Close'].iloc[-1])
+                    except:
+                        pass
+                    
+                    # Build basic chain from intraday data
+                    step = {"NIFTY": 50, "BANKNIFTY": 100, "SENSEX": 100, "FINNIFTY": 50}.get(sym, 50)
+                    lot = {"NIFTY": 75, "BANKNIFTY": 30, "SENSEX": 20, "FINNIFTY": 40}.get(sym, 75)
+                    atm = round(spot / step) * step
+                    
+                    # Synthetic chain (no real OI — but at least gives ATM premiums)
+                    chain_data = []
+                    for k_off in range(-4, 5):
+                        k = atm + k_off * step
+                        dist = abs(k - spot)
+                        ce_prem = max(1, round(max(0, spot - k) + spot * 0.003 * max(1, 3 - dist / step)))
+                        pe_prem = max(1, round(max(0, k - spot) + spot * 0.003 * max(1, 3 - dist / step)))
+                        chain_data.append({"strike": k, "ce_oi": 200000, "pe_oi": 200000, "ce_iv": 18, "pe_iv": 18, "ce_ltp": ce_prem, "pe_ltp": pe_prem, "ce_bid": ce_prem - 1, "pe_bid": pe_prem - 1, "ce_ask": ce_prem + 1, "pe_ask": pe_prem + 1, "ce_chg": 0, "pe_chg": 0})
+                    
+                    # Build bars
+                    ohlc_bars = []
+                    for _, row in hist.tail(30).iterrows():
+                        ohlc_bars.append({"t": str(row.name.time())[:5], "o": round(float(row['Open']), 2), "h": round(float(row['High']), 2), "l": round(float(row['Low']), 2), "c": round(float(row['Close']), 2), "v": int(row.get('Volume', 50000))})
+                    
+                    result = {
+                        "success": True, "symbol": sym, "spot": round(spot, 2), "vix": round(vix, 1),
+                        "pcr": 1.0, "max_pain": atm, "atm_iv": 18, "vwap": vwap,
+                        "today_high": round(day_high, 2), "today_low": round(day_low, 2), "today_open": round(day_open, 2),
+                        "expiry": "", "expiry_dates": [],
+                        "chain_near_atm": chain_data,
+                        "ce_resistance": [{"strike": atm + step * 2, "oi": 400000, "chg": 0}],
+                        "pe_support": [{"strike": atm - step * 2, "oi": 400000, "chg": 0}],
+                        "total_ce_oi": 2000000, "total_pe_oi": 2000000,
+                        "ohlc_bars": ohlc_bars,
+                        "gex": {"total": 0, "regime": "NEUTRAL", "topStrikes": [], "flipPoint": atm, "callWall": atm + step * 3, "putWall": atm - step * 3},
+                        "pivot": vwap, "cpr_top": round(day_high * 0.998, 2), "cpr_bottom": round(day_low * 1.002, 2),
+                        "_fallback": True
+                    }
+                    print(f"[OPTIONS-QUICK] ✅ yfinance fallback SUCCESS: {sym} spot={spot}")
+                    return result
+                else:
+                    print(f"[OPTIONS-QUICK] ❌ yfinance returned no history for {yf_sym}")
+            except Exception as yf_err:
+                print(f"[OPTIONS-QUICK] ❌ yfinance fallback failed: {yf_err}")
+            
+            return {"success": False, "error": "NSE API and yfinance both failed", "spot": 0, "chain_near_atm": [], "ce_resistance": [], "pe_support": [], "gex": {"total": 0, "regime": "NEUTRAL", "topStrikes": [], "flipPoint": 0, "callWall": 0, "putWall": 0}}
         
         # ═══ US / INDIA STOCK / ETF OPTIONS (via Yahoo Finance) ═══
         yf_sym = sym
