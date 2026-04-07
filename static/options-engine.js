@@ -2726,24 +2726,32 @@ function _renderQuickTrade(d,sym){
   var qtIsExpiry=qtIsExpiry7;
   var qtExpiryNames={NIFTY:'Tuesday',BANKNIFTY:'Wednesday',SENSEX:'Thursday'};
   
-  // Expiry banner
-  if(qtIsExpiry){
-    h+='<div style="text-align:center;padding:6px 16px;border-radius:10px;background:#f59e0b10;border:1px solid #f59e0b25;margin-bottom:8px">';
-    h+='<span style="font-size:10px;font-weight:900;color:#f59e0b">🔥 '+sym+' EXPIRY DAY ('+(qtExpiryNames[sym]||'')+') — Best for trading today</span></div>';
-  }else{
-    h+='<div style="text-align:center;padding:4px;margin-bottom:8px"><span style="font-size:9px;color:#475569">Today\'s expiry: <strong style="color:#f59e0b">'+qtExpiryIdx+'</strong> — </span>';
-    h+='<span onclick="window._loadQuickTrade(\''+qtExpiryIdx+'\')" style="font-size:9px;color:#f59e0b;cursor:pointer;text-decoration:underline">Switch to '+qtExpiryIdx+'</span></div>';
-  }
+  // Expiry banner + index pills — ONLY for India indices
+  if(!isUS){
+    if(qtIsExpiry){
+      h+='<div style="text-align:center;padding:6px 16px;border-radius:10px;background:#f59e0b10;border:1px solid #f59e0b25;margin-bottom:8px">';
+      h+='<span style="font-size:10px;font-weight:900;color:#f59e0b">🔥 '+sym+' EXPIRY DAY ('+(qtExpiryNames[sym]||'')+') — Best for trading today</span></div>';
+    }else if(['NIFTY','BANKNIFTY','SENSEX'].indexOf(sym)>=0){
+      h+='<div style="text-align:center;padding:4px;margin-bottom:8px"><span style="font-size:9px;color:#475569">Today\'s expiry: <strong style="color:#f59e0b">'+qtExpiryIdx+'</strong> — </span>';
+      h+='<span onclick="window._loadQuickTrade(\''+qtExpiryIdx+'\')" style="font-size:9px;color:#f59e0b;cursor:pointer;text-decoration:underline">Switch to '+qtExpiryIdx+'</span></div>';
+    }
   
-  // Mode switcher
-  h+='<div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap;align-items:center">';
-  ['NIFTY','BANKNIFTY','SENSEX'].forEach(function(idx){
-    var isAct=idx===sym;var isExp=idx===qtExpiryIdx;
-    h+='<div onclick="window._loadQuickTrade(\''+idx+'\')" style="padding:8px 18px;border-radius:10px;font-size:11px;font-weight:800;cursor:pointer;font-family:Sora;'+(isAct?'background:linear-gradient(135deg,#059669,#10b981);color:#fff;box-shadow:0 4px 12px rgba(5,150,105,.3)':'background:#1e293b;color:#94a3b8;border:1px solid #334155')+'">'+(isExp?'🔥 ':'')+idx+(isExp?' <span style="font-size:7px">(EXP)</span>':'')+'</div>';
-  });
-  h+='<div style="flex:1"></div>';
-  h+='<div onclick="window._loadOptionsDecide(\''+sym+'\')" style="padding:8px 14px;border-radius:10px;font-size:9px;font-weight:700;cursor:pointer;background:#1e293b;color:#64748b;border:1px solid #33415540">🔬 Advanced (experts)</div>';
-  h+='</div>';
+    // India index mode switcher
+    h+='<div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap;align-items:center">';
+    ['NIFTY','BANKNIFTY','SENSEX'].forEach(function(idx){
+      var isAct=idx===sym;var isExp=idx===qtExpiryIdx;
+      h+='<div onclick="window._loadQuickTrade(\''+idx+'\')" style="padding:8px 18px;border-radius:10px;font-size:11px;font-weight:800;cursor:pointer;font-family:Sora;'+(isAct?'background:linear-gradient(135deg,#059669,#10b981);color:#fff;box-shadow:0 4px 12px rgba(5,150,105,.3)':'background:#1e293b;color:#94a3b8;border:1px solid #334155')+'">'+(isExp?'🔥 ':'')+idx+(isExp?' <span style="font-size:7px">(EXP)</span>':'')+'</div>';
+    });
+    h+='<div style="flex:1"></div>';
+    h+='<div onclick="window._loadOptionsDecide(\''+sym+'\')" style="padding:8px 14px;border-radius:10px;font-size:9px;font-weight:700;cursor:pointer;background:#1e293b;color:#64748b;border:1px solid #33415540">🔬 Advanced (experts)</div>';
+    h+='</div>';
+  }else{
+    // US: show expiry badge inline if 0DTE
+    if(qtIsExpiry7){
+      h+='<div style="text-align:center;padding:4px 12px;border-radius:8px;background:#f59e0b10;border:1px solid #f59e0b20;margin-bottom:8px;display:inline-block">';
+      h+='<span style="font-size:9px;font-weight:800;color:#f59e0b">🔥 0DTE — Expiry Day</span></div>';
+    }
+  }
   
   // ─── MAIN CARD ───
   h+='<div style="background:linear-gradient(135deg,#0A0F1C,#0f1a2e);border-radius:20px;padding:28px;border:2px solid '+biasColor+'30;max-width:480px;margin:0 auto">';
@@ -2751,7 +2759,7 @@ function _renderQuickTrade(d,sym){
   // Header
   h+='<div style="text-align:center;margin-bottom:20px">';
   h+='<div style="font-size:8px;color:#64748b;font-weight:800;letter-spacing:3px;margin-bottom:4px">'+(qtIsExpiry?sym+' EXPIRY MODE'+(qtGammaBlast?' ⚡':''):'EXPIRY QUICK TRADE')+'</div>';
-  h+='<div style="font-size:10px;color:#94a3b8">'+sym+' · '+S+spot.toLocaleString('en-IN')+' · VIX '+vix.toFixed(1)+(qtIsExpiry?' · 🔥 EXPIRY DAY':'')+'</div>';
+  h+='<div style="font-size:10px;color:#94a3b8">'+sym+' · '+S+(isUS?spot.toLocaleString('en-US'):spot.toLocaleString('en-IN'))+' · VIX '+vix.toFixed(1)+(qtIsExpiry?' · 🔥 EXPIRY DAY':'')+'</div>';
   if(qtGammaBlast)h+='<div style="margin-top:4px;padding:3px 12px;border-radius:10px;background:#f59e0b15;display:inline-block;font-size:9px;color:#f59e0b;font-weight:800">⚡ Gamma Blast Active — Take Bigger Position</div>';
   h+='</div>';
   
@@ -2788,7 +2796,7 @@ function _renderQuickTrade(d,sym){
     h+='<div style="text-align:center;margin-bottom:20px;padding:16px;border-radius:14px;background:'+biasColor+'12;border:1px solid '+biasColor+'25">';
     h+='<div style="font-size:8px;color:'+biasColor+';font-weight:700;letter-spacing:2px;margin-bottom:8px">ACTION</div>';
     h+='<div style="font-size:11px;color:#94a3b8;margin-bottom:4px">👉</div>';
-    h+='<div style="font-size:22px;font-weight:900;color:'+biasColor+';font-family:Sora">BUY '+S+entryStrike7.toLocaleString('en-IN')+' '+entryType7+'</div>';
+    h+='<div style="font-size:22px;font-weight:900;color:'+biasColor+';font-family:Sora">BUY '+S+entryStrike7.toLocaleString(isUS?'en-US':'en-IN')+' '+entryType7+'</div>';
     h+='<div style="font-size:11px;color:#94a3b8;margin-top:4px">Premium: ~'+S+entryPrem7.toFixed(0)+' · Lot: '+c7.lot+' · Qty: '+qtLots+' lot'+(qtLots!=='1'?'s':'')+(qtGammaBlast?' ⚡':'')+'</div>';
     if(qtGammaBlast)h+='<div style="font-size:9px;color:#f59e0b;margin-top:4px;font-weight:700">⚡ Gamma Blast → Premium can jump 30-50% in minutes</div>';
     h+='</div>';
@@ -2805,8 +2813,8 @@ function _renderQuickTrade(d,sym){
     h+='<div><div style="font-size:8px;color:#ef4444;font-weight:700">MAX HOLD</div><div style="font-size:18px;font-weight:900;color:#ef4444">10 min</div><div style="font-size:8px;color:#64748b">Exit if slow</div></div>';
     h+='</div>';
     h+='<div style="display:flex;gap:12px;justify-content:center;margin-top:8px">';
-    h+='<div style="font-size:8px"><span style="color:#ef4444;font-weight:700">Max Risk:</span> <span style="color:#ef4444;font-family:JetBrains Mono">'+S+maxRisk7.toLocaleString('en-IN')+'</span></div>';
-    h+='<div style="font-size:8px"><span style="color:#059669;font-weight:700">Max Profit:</span> <span style="color:#059669;font-family:JetBrains Mono">'+S+maxProf7.toLocaleString('en-IN')+'</span></div>';
+    h+='<div style="font-size:8px"><span style="color:#ef4444;font-weight:700">Max Risk:</span> <span style="color:#ef4444;font-family:JetBrains Mono">'+S+maxRisk7.toLocaleString(isUS?'en-US':'en-IN')+'</span></div>';
+    h+='<div style="font-size:8px"><span style="color:#059669;font-weight:700">Max Profit:</span> <span style="color:#059669;font-family:JetBrains Mono">'+S+maxProf7.toLocaleString(isUS?'en-US':'en-IN')+'</span></div>';
     h+='</div></div>';
     
     // STATUS
