@@ -24428,6 +24428,7 @@ async def options_quick(symbol: str = "NIFTY", region: str = "IN"):
         # Detect market type
         india_indices = ['NIFTY', 'BANKNIFTY', 'SENSEX', 'FINNIFTY', 'MIDCPNIFTY']
         is_india_index = sym in india_indices
+        result = None  # Initialize
         
         if is_india_index:
             # Try NSE first, fall back to yfinance for spot data
@@ -24510,8 +24511,8 @@ async def options_quick(symbol: str = "NIFTY", region: str = "IN"):
             
             return {"success": False, "error": "NSE API and yfinance both failed", "spot": 0, "chain_near_atm": [], "ce_resistance": [], "pe_support": [], "gex": {"total": 0, "regime": "NEUTRAL", "topStrikes": [], "flipPoint": 0, "callWall": 0, "putWall": 0}}
         
-        # ═══ LAST RESORT: If both NSE and yfinance fail, try requests directly ═══
-        if not result.get("success"):
+        # ═══ LAST RESORT: If India index and both NSE and yfinance fail ═══
+        if is_india_index and (result is None or not result.get("success")):
             print(f"[OPTIONS-QUICK] ⚠️ Last resort: trying direct Yahoo request for {sym}")
             try:
                 import requests as _rq
@@ -24547,6 +24548,12 @@ async def options_quick(symbol: str = "NIFTY", region: str = "IN"):
             except Exception as lr_err:
                 print(f"[OPTIONS-QUICK] ❌ Last resort also failed: {lr_err}")
         
+        # If India index, return whatever we have (don't fall into US path)
+        if is_india_index:
+            if result and result.get("success"):
+                return result
+            return {"success": False, "error": "All data sources failed for " + sym, "spot": 0, "chain_near_atm": [], "ce_resistance": [], "pe_support": [], "gex": {"total": 0, "regime": "NEUTRAL", "topStrikes": [], "flipPoint": 0, "callWall": 0, "putWall": 0}}
+        
         # ═══ US / INDIA STOCK / ETF OPTIONS (via Yahoo Finance) ═══
         yf_sym = sym
         if region == 'IN' and not sym.endswith('.NS'):
@@ -24571,6 +24578,19 @@ async def options_quick(symbol: str = "NIFTY", region: str = "IN"):
         day_low = info.get('dayLow', spot) or spot
         day_open = info.get('open', spot) or spot
         volume = info.get('volume', 0) or 0
+        
+        # Fallback: if info didn't give spot, try history
+        if spot <= 0:
+            try:
+                hist = tk.history(period='2d', interval='5m')
+                if len(hist) > 0:
+                    spot = float(hist['Close'].iloc[-1])
+                    day_high = float(hist['High'].max())
+                    day_low = float(hist['Low'].min())
+                    day_open = float(hist['Open'].iloc[0])
+                    print(f"[OPTIONS-QUICK] Got spot from history: {yf_sym}={spot}")
+            except Exception as hist_err:
+                print(f"[OPTIONS-QUICK] History fallback failed: {hist_err}")
         
         # Get VIX (CBOE for US, India VIX for IN)
         vix = 0

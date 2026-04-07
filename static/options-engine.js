@@ -3038,7 +3038,7 @@ window._voiceAlert=function(type,detail,strike,prem,isBlast,extraCtx){
 };
 
 // ─── 2) PERFORMANCE DASHBOARD (localStorage-based session tracker) ───
-window._tradeLog=JSON.parse(localStorage.getItem('celesys_tradeLog')||'[]');
+try{window._tradeLog=JSON.parse(localStorage.getItem('celesys_tradeLog')||'[]')}catch(e){window._tradeLog=[];console.log('[STORAGE] Reset tradeLog')}
 window._sessionDate=localStorage.getItem('celesys_sessionDate')||'';
 
 // Reset log if new day
@@ -3380,11 +3380,11 @@ window._renderCoaching=function(coaching,bias){
 };
 
 // ─── 2) GAMIFICATION — Score, Streaks, Badges, Goals ───
-window._gameState=JSON.parse(localStorage.getItem('celesys_gameState')||'null')||{
+try{window._gameState=JSON.parse(localStorage.getItem('celesys_gameState')||'null')||{
   score:50,streak:0,maxStreak:0,badges:[],
   dailyGoal:{trades:0,maxLoss:0,followedSignals:0,target:2},
   totalWins:0,totalTrades:0,antiGamble:{overrides:0,revengeTrades:0}
-};
+};}catch(e){window._gameState={score:50,streak:0,maxStreak:0,badges:[],xp:0,level:1};console.log('[STORAGE] Reset gameState')}
 var _gsDate=localStorage.getItem('celesys_gsDate')||'';
 if(_gsDate!==(new Date().toISOString().split('T')[0])){
   window._gameState.dailyGoal={trades:0,maxLoss:0,followedSignals:0,target:2};
@@ -4068,7 +4068,7 @@ window._selectBestStrike=function(d,sym,bias,isExpiry,gammaBlast){
 };
 
 // ─── TRADE SESSION TRACKER (multiple trades per day) ───
-window._tradeSession=JSON.parse(localStorage.getItem('celesys_tradeSession')||'null')||{trades:[],maxTrades:4,activeStrike:0};
+try{window._tradeSession=JSON.parse(localStorage.getItem('celesys_tradeSession')||'null')||{trades:[],maxTrades:4,activeStrike:0}}catch(e){window._tradeSession={trades:[],maxTrades:4,activeStrike:0};console.log('[STORAGE] Reset tradeSession')}
 var _tsDate=localStorage.getItem('celesys_tsDate')||'';
 if(_tsDate!==(new Date().toISOString().split('T')[0])){
   window._tradeSession={trades:[],maxTrades:4,activeStrike:0};
