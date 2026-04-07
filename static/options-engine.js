@@ -2954,18 +2954,41 @@ function _renderQuickTrade(d,sym){
   window._qtStrikeITM={strike:strikeITM,prem:premITM};
   window._qtStrikeOTM={strike:strikeOTM,prem:premOTM};
   
-  // WHY reasons
+  // WHY reasons (detailed institutional breakdown)
   var whyReasons=[];
-  if(priceActionScore>=70)whyReasons.push({pass:true,label:(isBreakUp?'Breakout above Day High':'isBreakDn'?'Breakdown below Day Low':'Strong price action')});
-  else whyReasons.push({pass:false,label:'No clear breakout yet'});
-  if(volumeScore>=60)whyReasons.push({pass:true,label:'Strong volume ('+volRatio8.toFixed(1)+'x average)'});
-  else whyReasons.push({pass:false,label:'Low volume ('+volRatio8.toFixed(1)+'x average)'});
-  if(isOptions&&gammaScore>=70)whyReasons.push({pass:true,label:'Gamma support'+(qtGammaBlast?' — BLAST active':'')});
-  else if(isOptions)whyReasons.push({pass:false,label:'No gamma catalyst'});
-  if(oiConfirms&&hasOI)whyReasons.push({pass:true,label:'OI confirms '+(direction==='BULLISH'?'bullish':'bearish')+' (PCR '+pcr8.toFixed(2)+')'});
-  else if(hasOI)whyReasons.push({pass:false,label:'OI conflicting'});
-  if(momentumScore>=60)whyReasons.push({pass:true,label:'Momentum '+(momUp>momDn?'bullish':'bearish')+' ('+Math.max(momUp,momDn)+'/5 bars)'});
-  else whyReasons.push({pass:false,label:'Weak momentum'});
+  if(priceActionScore>=70)whyReasons.push({pass:true,label:isBreakUp?'Breakout above Day High':'Breakdown below Day Low',score:priceActionScore});
+  else if(priceActionScore>=50)whyReasons.push({pass:false,label:'Approaching key level but no breakout',score:priceActionScore});
+  else whyReasons.push({pass:false,label:'No clear breakout yet',score:priceActionScore});
+  
+  if(volumeScore>=60)whyReasons.push({pass:true,label:'Strong volume ('+volRatio8.toFixed(1)+'x average) — institutional follow-through',score:volumeScore});
+  else if(volumeScore>=40)whyReasons.push({pass:false,label:'Low volume ('+volRatio8.toFixed(1)+'x average) — no institutional commitment',score:volumeScore});
+  else whyReasons.push({pass:false,label:'Very low volume ('+volRatio8.toFixed(1)+'x) — potential fake move',score:volumeScore});
+  
+  if(isOptions){
+    if(gammaScore>=70)whyReasons.push({pass:true,label:'Gamma support'+(qtGammaBlast?' — BLAST: dealers hedging creates momentum':''),score:gammaScore});
+    else whyReasons.push({pass:false,label:'No gamma catalyst — options market not driving price',score:gammaScore});
+  }
+  
+  if(hasOI){
+    if(oiConfirms)whyReasons.push({pass:true,label:'OI confirms '+(direction==='BULLISH'?'bullish':'bearish')+' (PCR '+pcr8.toFixed(2)+') — smart money aligned',score:optionsScore});
+    else whyReasons.push({pass:false,label:'OI conflicting (PCR '+pcr8.toFixed(2)+') — mixed institutional positioning',score:optionsScore});
+  }
+  
+  if(momentumScore>=60)whyReasons.push({pass:true,label:'Momentum '+(momUp>momDn?'bullish':'bearish')+' ('+Math.max(momUp,momDn)+'/5 bars) — price has conviction',score:momentumScore});
+  else whyReasons.push({pass:false,label:'Weak momentum ('+Math.max(momUp,momDn)+'/5 bars) — price lacks conviction',score:momentumScore});
+  
+  // Institutional insight line
+  var passCount=whyReasons.filter(function(r){return r.pass}).length;
+  var insightLine='';
+  if(passCount>=4)insightLine='All key factors aligned — institutional-grade setup. Execute with conviction.';
+  else if(passCount>=3)insightLine='Most factors confirm — solid setup. Standard position size.';
+  else if(passCount>=2&&direction!=='NONE')insightLine='Direction clear but supporting factors weak. Reduce size or wait.';
+  else if(passCount===1)insightLine='Only one factor passing — high risk. Institutions would NOT take this trade.';
+  else insightLine='No supporting factors — theta trap territory. Smart money is on the sidelines.';
+  
+  if(trapRisk==='HIGH')insightLine='⚠️ Potential trap — volume not confirming. Institutional desks would flag this.';
+  
+  window._qtInsight=insightLine;
   
   // Direction label
   var directionLabel='SIDEWAYS — No momentum';var directionColor='#64748b';
@@ -2989,13 +3012,16 @@ function _renderQuickTrade(d,sym){
   }
   
   // Smart money insight
+  var accumulating=volRatio8>1.2&&momUp>momDn;
   var smartMoney='';
   if(qtGammaBlast)smartMoney='Gamma exposure negative — dealer hedging creates momentum. Ride the move.';
-  else if(accumulating)smartMoney='Volume rising with price — institutional accumulation in progress.';
-  else if(oiConfirms&&pcr8>1.2)smartMoney='High PCR = put sellers are confident. Market supported below.';
-  else if(trapRisk==='HIGH')smartMoney='Volume not confirming price move — potential trap. Wait for confirmation.';
-  else smartMoney='No clear institutional signal. Patience is the edge.';
-  var accumulating=volRatio8>1.2&&momUp>momDn;
+  else if(trapRisk==='HIGH')smartMoney='⚠️ Volume not confirming — potential trap. Institutional desks would flag this before execution.';
+  else if(accumulating&&direction==='BULLISH')smartMoney='Volume rising with price — institutional accumulation detected. Smart money is buying.';
+  else if(oiConfirms&&pcr8>1.2)smartMoney='PCR '+pcr8.toFixed(2)+' = put sellers confident. Market supported below by institutional positioning.';
+  else if(oiConfirms&&pcr8<0.8)smartMoney='PCR '+pcr8.toFixed(2)+' = call sellers confident. Resistance above from institutional hedging.';
+  else if(!oiConfirms&&hasOI)smartMoney='OI positioning conflicts with price direction — mixed signals from options market. Reduce risk.';
+  else if(passCount>=3)smartMoney='Multiple confirmations aligned — this is how institutional desks validate before execution.';
+  else smartMoney='No clear institutional signal. Patience is the edge — top traders wait for high-confidence setups.';
   
   // Store on window
   window._qtEntryStrike=entryStrike7;window._qtEntryPrem=entryPrem7;
@@ -3026,7 +3052,8 @@ function _renderQuickTrade(d,sym){
     h+='<div style="text-align:left;max-width:280px;margin:0 auto">';
     whyReasons.forEach(function(r){h+='<div style="font-size:11px;padding:3px 0;color:'+(r.pass?'#059669':'#94a3b8')+'">'+(r.pass?'✔':'✗')+' '+r.label+'</div>'});
     h+='</div>';
-    h+='<div style="margin-top:12px;padding:8px;border-radius:8px;background:#1e293b;font-size:9px;color:#64748b">🧠 '+smartMoney+'</div>';
+    h+='<div style="margin-top:8px;padding:8px;border-radius:8px;background:#3b82f608;border:1px solid #3b82f615;font-size:9px;color:#3b82f6;font-weight:600">📊 '+insightLine+'</div>';
+    h+='<div style="margin-top:4px;padding:8px;border-radius:8px;background:#1e293b;font-size:9px;color:#64748b">🧠 '+smartMoney+'</div>';
     h+='</div>';
     
   // ─── ⏳ WATCHING / 🟡 ALMOST ───
@@ -3045,6 +3072,7 @@ function _renderQuickTrade(d,sym){
     h+='IF breakout above <strong style="color:#059669">'+S+(isUS?dayHigh.toLocaleString('en-US'):dayHigh.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN'))+'</strong> → '+(isOptions?'BUY CALL':'BUY')+'<br>';
     h+='IF breakdown below <strong style="color:#ef4444">'+S+(isUS?dayLow.toLocaleString('en-US'):dayLow.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN'))+'</strong> → '+(isOptions?'BUY PUT':'SELL')+'<br>';
     h+='ELSE → WAIT</div>';
+    h+='<div style="padding:8px;border-radius:8px;background:#3b82f608;border:1px solid #3b82f615;font-size:9px;color:#3b82f6;font-weight:600;margin-top:4px">📊 '+insightLine+'</div>';
     h+='<div style="padding:8px;border-radius:8px;background:#1e293b50;font-size:9px;color:#64748b;margin-top:4px">🧠 '+smartMoney+'</div>';
     
   // ─── 🟢 ENTER NOW ───

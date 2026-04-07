@@ -24760,8 +24760,9 @@ async def swing_analysis(symbol: str = "RELIANCE", region: str = "IN"):
         _yahoo_rate_wait()
         
         # Determine yfinance ticker
-        yf_sym = sym
-        if reg == 'IN' and not sym.endswith('.NS') and not sym.startswith('^'):
+        india_index_map = {"NIFTY": "^NSEI", "BANKNIFTY": "^NSEBANK", "SENSEX": "^BSESN", "FINNIFTY": "^CNXFIN", "MIDCPNIFTY": "^NSEI"}
+        yf_sym = india_index_map.get(sym, sym)
+        if yf_sym == sym and reg == 'IN' and not sym.endswith('.NS') and not sym.startswith('^'):
             yf_sym = sym + '.NS'
         
         tk = yf.Ticker(yf_sym)
