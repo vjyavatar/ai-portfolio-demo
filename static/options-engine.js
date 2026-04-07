@@ -2811,14 +2811,6 @@ function _renderQuickTrade(d,sym){
     h+='💡 <strong style="color:#e2e8f0">That\'s okay!</strong> The best traders make money by NOT trading bad setups. Check back later or try another index.</div>';
     h+='</div>';
   }else{
-    // BIAS
-    h+='<div style="text-align:center;margin-bottom:20px">';
-    h+='<div style="font-size:8px;color:#64748b;font-weight:700;letter-spacing:2px;margin-bottom:6px">BIAS</div>';
-    h+='<div style="display:inline-block;padding:8px 32px;border-radius:30px;background:'+biasColor+'20;border:2px solid '+biasColor+'40">';
-    h+='<div style="font-size:28px;font-weight:900;color:'+biasColor+';font-family:Sora">'+finalBias+'</div>';
-    h+='<div style="font-size:8px;color:#94a3b8">'+biasStrength+' — OI '+oiBias+' + Price '+priceBias+'</div>';
-    h+='</div></div>';
-    
     // STATUS FIRST (always visible, most important)
     h+='<div style="text-align:center;padding:16px;border-radius:14px;background:'+statusColor+'15;border:2px solid '+statusColor+'30;margin-bottom:16px">';
     h+='<div style="font-size:8px;color:'+statusColor+';font-weight:700;letter-spacing:2px;margin-bottom:4px">STATUS</div>';
@@ -2947,17 +2939,31 @@ window._lastQuickSignal='NONE';
 window._speak=function(text,urgent){
   if(!window._voiceEnabled)return;
   if(!window.speechSynthesis)return;
-  window.speechSynthesis.cancel();
-  var u=new SpeechSynthesisUtterance(text);
-  u.rate=urgent?1.1:0.95;
-  u.pitch=1.0;
-  u.volume=urgent?1.0:0.8;
-  // Pick a good voice
-  var voices=window.speechSynthesis.getVoices();
-  var pref=voices.find(function(v){return v.lang.indexOf('en')===0&&v.name.indexOf('Google')>=0})||voices.find(function(v){return v.lang.indexOf('en')===0})||voices[0];
-  if(pref)u.voice=pref;
-  window.speechSynthesis.speak(u);
+  try{
+    window.speechSynthesis.cancel();
+    var u=new SpeechSynthesisUtterance(text);
+    u.rate=urgent?1.1:0.95;
+    u.pitch=1.0;
+    u.volume=urgent?1.0:0.8;
+    var voices=window.speechSynthesis.getVoices();
+    var pref=voices.find(function(v){return v.lang.indexOf('en')===0&&v.name.indexOf('Google')>=0})||voices.find(function(v){return v.lang.indexOf('en')===0})||voices[0];
+    if(pref)u.voice=pref;
+    window.speechSynthesis.speak(u);
+  }catch(e){console.log('[VOICE] Error:',e)}
 };
+// Browser requires user interaction before voice works.
+// Warm up speechSynthesis on first click anywhere.
+if(typeof document!=='undefined'&&document.body){
+  document.body.addEventListener('click',function(){
+    if(!window._voiceWarmedUp&&window.speechSynthesis){
+      window._voiceWarmedUp=true;
+      var warmup=new SpeechSynthesisUtterance('');
+      warmup.volume=0;
+      window.speechSynthesis.speak(warmup);
+      window.speechSynthesis.cancel();
+    }
+  },{once:false});
+}
 
 window._voiceAlert=function(type,detail,strike,prem,isBlast,extraCtx){
   var msg='';
