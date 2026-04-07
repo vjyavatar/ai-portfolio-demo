@@ -4614,6 +4614,9 @@ window._renderOptionsNav=function(activeSym){
   });
   h+='</div>';
   
+  // Scanner button
+  h+='<div style="text-align:center;margin-bottom:6px"><button onclick="window._loadTradeScanner()" style="padding:6px 18px;border-radius:8px;background:linear-gradient(135deg,#f59e0b,#d97706);color:#000;border:none;font-size:10px;font-weight:800;cursor:pointer;font-family:Sora">🔍 SCAN ALL TRADES</button></div>';
+  
   // Category selector
   h+='<div style="display:flex;gap:4px;margin-bottom:8px;justify-content:center;flex-wrap:wrap">';
   Object.keys(regionData.categories).forEach(function(c){
@@ -5040,3 +5043,188 @@ _renderQuickTrade=function(d,sym){
     +'</div>';
   el.insertBefore(toggleDiv,el.firstChild);
 };
+
+// ═══════════════════════════════════════════════════════════════
+// TRADE SCANNER — Scans multiple tickers, shows ready trades
+// ═══════════════════════════════════════════════════════════════
+
+window._scannerGroups=[
+  {id:'in_index',label:'🇮🇳 India Index',tickers:['NIFTY','BANKNIFTY','SENSEX'],region:'IN'},
+  {id:'in_stock',label:'🇮🇳 India F&O Stocks',tickers:['RELIANCE','TCS','INFY','HDFCBANK','ICICIBANK','SBIN','BAJFINANCE','TATAMOTORS','LT','MARUTI'],region:'IN'},
+  {id:'us_index',label:'🇺🇸 US Index ETF',tickers:['SPY','QQQ','IWM','DIA'],region:'US'},
+  {id:'us_sector',label:'🇺🇸 US Sector ETF',tickers:['XLF','XLE','XLK','GLD','TLT','ARKK'],region:'US'},
+  {id:'us_stock',label:'🇺🇸 US Mega Stocks',tickers:['AAPL','MSFT','NVDA','TSLA','META','GOOGL','AMZN','MU'],region:'US'}
+];
+
+window._scanResults={};
+window._scanActive=false;
+
+window._loadTradeScanner=function(){
+  var el=document.getElementById('deResult');if(!el)return;
+  window._scanActive=true;
+  window._scanResults={};
+  
+  // Render shell
+  var h='<div style="max-width:520px;margin:0 auto">';
+  h+='<div style="text-align:center;margin-bottom:12px">';
+  h+='<div style="font-size:16px;font-weight:900;color:#e2e8f0;font-family:Sora">🔍 TRADE SCANNER</div>';
+  h+='<div style="font-size:10px;color:#94a3b8;margin-top:4px">Scanning all tickers for high-confidence setups</div>';
+  h+='</div>';
+  h+='<div id="scannerResults" style="min-height:200px"><div style="text-align:center;padding:40px"><div style="display:inline-block;width:24px;height:24px;border:3px solid #3b82f6;border-top-color:transparent;border-radius:50%;animation:spin .5s linear infinite"></div><div style="font-size:11px;color:#3b82f6;margin-top:8px" id="scanProgress">Scanning 0/0...</div></div></div>';
+  h+='<div style="text-align:center;margin-top:12px"><button onclick="window._loadTradeScanner()" style="padding:8px 24px;border-radius:10px;background:#1e293b;color:#94a3b8;border:1px solid #334155;font-size:11px;font-weight:700;cursor:pointer">🔄 Rescan All</button></div>';
+  h+='</div>';
+  el.innerHTML=h;
+  
+  // Scan all groups
+  var allTickers=[];
+  window._scannerGroups.forEach(function(g){
+    g.tickers.forEach(function(t){allTickers.push({sym:t,reg:g.region,group:g.id,groupLabel:g.label})});
+  });
+  
+  var done=0;var total=allTickers.length;
+  var ready=[];
+  
+  function updateUI(){
+    var prog=document.getElementById('scanProgress');
+    if(prog)prog.textContent='Scanning '+done+'/'+total+'...';
+    
+    var container=document.getElementById('scannerResults');
+    if(!container)return;
+    
+    // Sort: A+ first, then A, then B, then C
+    var gradeOrder={'A+':0,'A':1,'B':2,'C':3};
+    var sorted=Object.values(window._scanResults).sort(function(a,b){return(gradeOrder[a.grade]||9)-(gradeOrder[b.grade]||9)});
+    
+    var h2='';
+    
+    // Ready trades (A+ and A)
+    var readyTrades=sorted.filter(function(r){return r.grade==='A+'||r.grade==='A'});
+    if(readyTrades.length>0){
+      h2+='<div style="margin-bottom:16px">';
+      h2+='<div style="font-size:12px;font-weight:800;color:#059669;margin-bottom:8px;padding-left:4px">🟢 READY TO TRADE ('+readyTrades.length+')</div>';
+      readyTrades.forEach(function(r){h2+=window._renderScanCard(r)});
+      h2+='</div>';
+    }
+    
+    // Watching (B)
+    var watching=sorted.filter(function(r){return r.grade==='B'});
+    if(watching.length>0){
+      h2+='<div style="margin-bottom:16px">';
+      h2+='<div style="font-size:12px;font-weight:800;color:#d97706;margin-bottom:8px;padding-left:4px">🟡 WATCHING ('+watching.length+')</div>';
+      watching.forEach(function(r){h2+=window._renderScanCard(r)});
+      h2+='</div>';
+    }
+    
+    // No trade (C)
+    var noTrade=sorted.filter(function(r){return r.grade==='C'});
+    if(noTrade.length>0){
+      h2+='<div style="margin-bottom:16px">';
+      h2+='<div style="font-size:12px;font-weight:800;color:#64748b;margin-bottom:8px;padding-left:4px">⚪ NO TRADE ('+noTrade.length+')</div>';
+      noTrade.forEach(function(r){h2+=window._renderScanCard(r)});
+      h2+='</div>';
+    }
+    
+    if(done>=total&&Object.keys(window._scanResults).length===0){
+      h2='<div style="text-align:center;padding:40px;color:#64748b;font-size:12px">No data available. Markets may be closed.</div>';
+    }
+    
+    if(done>=total&&prog)prog.textContent='✅ Scan complete — '+readyTrades.length+' ready trades';
+    
+    container.innerHTML=h2;
+  }
+  
+  // Fetch each ticker with staggered timing
+  allTickers.forEach(function(tk,i){
+    setTimeout(function(){
+      if(!window._scanActive)return;
+      fetch('/api/options-quick?symbol='+encodeURIComponent(tk.sym)+'&region='+encodeURIComponent(tk.reg))
+        .then(function(r){return r.json()})
+        .then(function(d){
+          done++;
+          if(d&&d.success&&d.spot>0){
+            // Run the scoring engine mentally (simplified version)
+            var spot=d.spot;var vwap=d.vwap||0;var vix=d.vix||18;
+            var dH=d.today_high||spot;var dL=d.today_low||spot;
+            var ceR=d.ce_resistance||[];var peS=d.pe_support||[];
+            var callW=ceR.length>0?ceR[0].oi:0;var putW=peS.length>0?peS[0].oi:0;
+            var pcr=d.pcr||0;var gexReg=(d.gex||{}).regime||'NEUTRAL';
+            var chain=d.chain_near_atm||[];
+            var bars=d.ohlc_bars||[];
+            var S=tk.reg==='US'?'$':'₹';
+            
+            // Quick confidence calc
+            var isBreakUp=spot>=dH*0.998&&spot>vwap;
+            var isBreakDn=spot<=dL*1.002&&spot<vwap;
+            var dir=isBreakUp?'BULLISH':(isBreakDn?'BEARISH':(spot>vwap?'LEAN_BULL':'LEAN_BEAR'));
+            
+            var conf=50;
+            if(isBreakUp||isBreakDn)conf+=25;
+            if(gexReg==='NEGATIVE')conf+=10;
+            if(vix>=12&&vix<=22)conf+=10;
+            if(pcr>1.1&&dir.indexOf('BULL')>=0)conf+=5;
+            if(pcr<0.9&&dir.indexOf('BEAR')>=0)conf+=5;
+            if(putW>callW&&dir.indexOf('BULL')>=0)conf+=5;
+            if(callW>putW&&dir.indexOf('BEAR')>=0)conf+=5;
+            conf=Math.min(100,conf);
+            
+            var grade=conf>=85?'A+':conf>=70?'A':conf>=60?'B':'C';
+            var action='WAIT';
+            if(grade==='A+'||grade==='A'){
+              if(dir==='BULLISH')action='BUY CALL';
+              else if(dir==='BEARISH')action='BUY PUT';
+              else action='WATCH';
+            }else if(grade==='B')action='WATCH';
+            
+            // ATM strike + premium
+            var step=chain.length>=2?Math.abs(chain[1].strike-chain[0].strike):1;
+            var atm=Math.round(spot/Math.max(step,0.5))*Math.max(step,0.5);
+            var atmPrem=0;
+            chain.forEach(function(ch){if(Math.abs(ch.strike-spot)<step*1.5){atmPrem=Math.max(atmPrem,dir.indexOf('BULL')>=0?(ch.ce_ltp||0):(ch.pe_ltp||0))}});
+            
+            window._scanResults[tk.sym]={
+              sym:tk.sym,reg:tk.reg,group:tk.group,groupLabel:tk.groupLabel,
+              spot:spot,S:S,conf:conf,grade:grade,action:action,dir:dir,
+              strike:atm,prem:atmPrem,pcr:pcr,vix:vix,gex:gexReg,
+              type:dir.indexOf('BULL')>=0?'CE':'PE'
+            };
+          }
+          updateUI();
+        }).catch(function(){done++;updateUI()});
+    },i*800); // Stagger 800ms apart to avoid rate limits
+  });
+};
+
+window._renderScanCard=function(r){
+  var actionColor=r.action==='BUY CALL'?'#059669':r.action==='BUY PUT'?'#ef4444':r.action==='WATCH'?'#d97706':'#64748b';
+  var gradeColor=r.grade==='A+'?'#059669':r.grade==='A'?'#059669':r.grade==='B'?'#d97706':'#64748b';
+  var isReady=r.grade==='A+'||r.grade==='A';
+  
+  var h='<div onclick="window._swingMode=false;'+(r.reg==='IN'?"window._loadQuickTrade('"+r.sym+"')":"window._loadOptionsUniversal('"+r.sym+"','US')")+'" style="display:flex;align-items:center;gap:10px;padding:10px 14px;margin-bottom:4px;border-radius:12px;background:#0F172A;border:1px solid '+(isReady?actionColor+'30':'#1e293b')+';cursor:pointer">';
+  
+  // Ticker + price
+  h+='<div style="min-width:70px"><div style="font-size:13px;font-weight:900;color:#e2e8f0">'+r.sym+'</div>';
+  h+='<div style="font-size:9px;color:#64748b">'+r.S+r.spot.toLocaleString(r.reg==='US'?'en-US':'en-IN')+'</div></div>';
+  
+  // Action
+  h+='<div style="flex:1;text-align:center">';
+  if(isReady){
+    h+='<div style="font-size:12px;font-weight:900;color:'+actionColor+'">'+r.action+'</div>';
+    h+='<div style="font-size:9px;color:#94a3b8">'+r.S+r.strike+' '+r.type+(r.prem>0?' @ '+r.S+r.prem.toFixed(r.reg==='US'&&r.prem<10?2:0):'')+'</div>';
+  }else if(r.grade==='B'){
+    h+='<div style="font-size:11px;font-weight:700;color:#d97706">WATCHING</div>';
+    h+='<div style="font-size:9px;color:#64748b">'+(r.dir==='LEAN_BULL'?'Leaning bullish':'Leaning bearish')+'</div>';
+  }else{
+    h+='<div style="font-size:11px;color:#64748b">No setup</div>';
+  }
+  h+='</div>';
+  
+  // Confidence + Grade
+  h+='<div style="text-align:right;min-width:55px">';
+  h+='<div style="font-size:14px;font-weight:900;color:'+gradeColor+'">'+r.conf+'%</div>';
+  h+='<div style="display:inline-block;padding:1px 6px;border-radius:4px;background:'+gradeColor+'15;font-size:8px;font-weight:800;color:'+gradeColor+'">'+r.grade+'</div>';
+  h+='</div>';
+  
+  h+='</div>';
+  return h;
+};
+

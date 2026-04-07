@@ -24773,6 +24773,7 @@ async def swing_analysis(symbol: str = "RELIANCE", region: str = "IN"):
             return {"success": False, "error": f"Insufficient daily data for {sym}"}
         
         spot = float(daily['Close'].iloc[-1])
+        if hasattr(spot, 'item'): spot = spot.item()  # numpy → python
         prev = float(daily['Close'].iloc[-2]) if len(daily) > 1 else spot
         
         # ─── WEEKLY DATA (1 year) ───
@@ -24797,10 +24798,10 @@ async def swing_analysis(symbol: str = "RELIANCE", region: str = "IN"):
         trend = 'SIDEWAYS'
         trend_strength = 0
         if len(swing_highs) >= 2 and len(swing_lows) >= 2:
-            hh = swing_highs[0] > swing_highs[1]  # Higher high
-            hl = swing_lows[0] > swing_lows[1]     # Higher low
-            lh = swing_highs[0] < swing_highs[1]   # Lower high
-            ll = swing_lows[0] < swing_lows[1]      # Lower low
+            hh = bool(swing_highs[0] > swing_highs[1])  # Higher high
+            hl = bool(swing_lows[0] > swing_lows[1])     # Higher low
+            lh = bool(swing_highs[0] < swing_highs[1])   # Lower high
+            ll = bool(swing_lows[0] < swing_lows[1])      # Lower low
             if hh and hl:
                 trend = 'UPTREND'
                 trend_strength = 2
@@ -24819,8 +24820,8 @@ async def swing_analysis(symbol: str = "RELIANCE", region: str = "IN"):
         ema50 = float(daily['Close'].ewm(span=50).mean().iloc[-1]) if len(daily) >= 50 else ema20
         sma200 = float(daily['Close'].rolling(200).mean().iloc[-1]) if len(daily) >= 200 else ema50
         
-        ma_bullish = spot > ema20 > ema50
-        ma_bearish = spot < ema20 < ema50
+        ma_bullish = bool(spot > ema20) and bool(ema20 > ema50)
+        ma_bearish = bool(spot < ema20) and bool(ema20 < ema50)
         
         # ─── SUPPORT / RESISTANCE ZONES ───
         recent_high = float(highs[-20:].max())
@@ -24837,7 +24838,7 @@ async def swing_analysis(symbol: str = "RELIANCE", region: str = "IN"):
         # ─── VOLUME ANALYSIS ───
         avg_vol_20 = float(volumes[-20:].mean()) if len(volumes) >= 20 else float(volumes.mean())
         recent_vol = float(volumes[-3:].mean())
-        vol_expansion = recent_vol > avg_vol_20 * 1.3
+        vol_expansion = bool(recent_vol > avg_vol_20 * 1.3)
         vol_ratio = round(recent_vol / max(avg_vol_20, 1), 2)
         
         # ─── ACCUMULATION / DISTRIBUTION ───
@@ -24845,8 +24846,8 @@ async def swing_analysis(symbol: str = "RELIANCE", region: str = "IN"):
         price_change_5d = (closes[-1] - closes[-6]) / closes[-6] * 100 if len(closes) > 5 else 0
         vol_change_5d = (float(volumes[-3:].mean()) - float(volumes[-8:-3].mean())) / max(float(volumes[-8:-3].mean()), 1) * 100 if len(volumes) > 8 else 0
         
-        accumulating = price_change_5d > 0 and vol_change_5d > 10
-        distributing = price_change_5d < 0 and vol_change_5d > 10
+        accumulating = bool(price_change_5d > 0) and bool(vol_change_5d > 10)
+        distributing = bool(price_change_5d < 0) and bool(vol_change_5d > 10)
         
         # ─── RSI (14-day) ───
         deltas = [closes[i] - closes[i-1] for i in range(1, len(closes))]
@@ -24859,14 +24860,14 @@ async def swing_analysis(symbol: str = "RELIANCE", region: str = "IN"):
         
         # ─── CONSOLIDATION DETECTION ───
         range_20 = (recent_high - recent_low) / spot * 100
-        is_consolidating = range_20 < 8  # Less than 8% range = tight
+        is_consolidating = bool(range_20 < 8)  # Less than 8% range = tight
         
         # ─── BREAKOUT DETECTION ───
-        broke_resistance = spot > resistance * 0.99 and vol_expansion
-        broke_support = spot < support * 1.01 and vol_expansion
+        broke_resistance = bool(spot > resistance * 0.99) and vol_expansion
+        broke_support = bool(spot < support * 1.01) and vol_expansion
         
         # ─── PULLBACK DETECTION ───
-        pullback_to_ema = trend == 'UPTREND' and abs(spot - ema20) / spot < 0.02
+        pullback_to_ema = trend == 'UPTREND' and bool(abs(spot - ema20) / max(spot, 1) < 0.02)
         
         # ═══ SWING DECISION ENGINE (3 Rules) ═══
         
@@ -24940,6 +24941,38 @@ async def swing_analysis(symbol: str = "RELIANCE", region: str = "IN"):
             dir_label = 'BEARISH ↓' if trend == 'DOWNTREND' else 'LEANING BEARISH ↓'
         
         print(f"[SWING] ✅ {sym}: spot={spot}, trend={trend}, verdict={verdict}, dir={direction}")
+        
+        # Sanitize numpy types for JSON serialization
+        def _native(v):
+            """Convert numpy types to Python native"""
+            if hasattr(v, 'item'):
+                return v.item()
+            return v
+        
+        ma_bullish = bool(ma_bullish)
+        ma_bearish = bool(ma_bearish)
+        vol_expansion = bool(vol_expansion)
+        accumulating = bool(accumulating)
+        distributing = bool(distributing)
+        is_consolidating = bool(is_consolidating)
+        broke_resistance = bool(broke_resistance)
+        broke_support = bool(broke_support)
+        pullback_to_ema = bool(pullback_to_ema)
+        spot = float(spot)
+        prev = float(prev)
+        ema20 = float(ema20)
+        ema50 = float(ema50)
+        sma200 = float(sma200)
+        rsi = float(rsi)
+        support = float(support)
+        resistance = float(resistance)
+        weekly_high = float(weekly_high)
+        weekly_low = float(weekly_low)
+        avg_vol_20 = float(avg_vol_20)
+        recent_vol = float(recent_vol)
+        vol_ratio = float(vol_ratio)
+        price_change_5d = float(price_change_5d)
+        range_20 = float(range_20)
         
         return {
             "success": True,
