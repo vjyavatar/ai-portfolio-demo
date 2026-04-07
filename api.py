@@ -24742,3 +24742,244 @@ async def options_quick(symbol: str = "NIFTY", region: str = "IN"):
         print(f"[OPTIONS-QUICK] ❌ Error for {symbol}: {e}")
         import traceback; traceback.print_exc()
         return {"success": False, "error": str(e), "spot": 0, "chain_near_atm": [], "ce_resistance": [], "pe_support": [], "gex": {"total": 0, "regime": "NEUTRAL", "topStrikes": [], "flipPoint": 0, "callWall": 0, "putWall": 0}}
+
+
+# ═══════════════════════════════════════════════════════════════
+# SWING TRADING ENGINE — Positional Analysis (Days-Weeks)
+# Institutional: Daily/Weekly Structure, Trend, Accumulation
+# ═══════════════════════════════════════════════════════════════
+
+@app.get("/api/swing-analysis")
+async def swing_analysis(symbol: str = "RELIANCE", region: str = "IN"):
+    """Swing Trading Engine — uses daily/weekly data for positional decisions"""
+    try:
+        sym = symbol.upper().strip()
+        reg = region.upper().strip()
+        
+        import yfinance as yf
+        _yahoo_rate_wait()
+        
+        # Determine yfinance ticker
+        yf_sym = sym
+        if reg == 'IN' and not sym.endswith('.NS') and not sym.startswith('^'):
+            yf_sym = sym + '.NS'
+        
+        tk = yf.Ticker(yf_sym)
+        
+        # ─── DAILY DATA (3 months) ───
+        daily = tk.history(period='3mo', interval='1d')
+        if len(daily) < 10:
+            return {"success": False, "error": f"Insufficient daily data for {sym}"}
+        
+        spot = float(daily['Close'].iloc[-1])
+        prev = float(daily['Close'].iloc[-2]) if len(daily) > 1 else spot
+        
+        # ─── WEEKLY DATA (1 year) ───
+        weekly = tk.history(period='1y', interval='1wk')
+        
+        # ─── TREND ANALYSIS (HH/HL pattern) ───
+        closes = daily['Close'].values
+        highs = daily['High'].values
+        lows = daily['Low'].values
+        volumes = daily['Volume'].values
+        
+        # Find swing highs and lows (last 20 days)
+        swing_highs = []
+        swing_lows = []
+        for i in range(2, min(len(highs)-1, 20)):
+            if highs[-(i+1)] > highs[-(i)] and highs[-(i+1)] > highs[-(i+2)]:
+                swing_highs.append(float(highs[-(i+1)]))
+            if lows[-(i+1)] < lows[-(i)] and lows[-(i+1)] < lows[-(i+2)]:
+                swing_lows.append(float(lows[-(i+1)]))
+        
+        # Trend: HH+HL = uptrend, LH+LL = downtrend
+        trend = 'SIDEWAYS'
+        trend_strength = 0
+        if len(swing_highs) >= 2 and len(swing_lows) >= 2:
+            hh = swing_highs[0] > swing_highs[1]  # Higher high
+            hl = swing_lows[0] > swing_lows[1]     # Higher low
+            lh = swing_highs[0] < swing_highs[1]   # Lower high
+            ll = swing_lows[0] < swing_lows[1]      # Lower low
+            if hh and hl:
+                trend = 'UPTREND'
+                trend_strength = 2
+            elif lh and ll:
+                trend = 'DOWNTREND'
+                trend_strength = 2
+            elif hh or hl:
+                trend = 'UPTREND'
+                trend_strength = 1
+            elif lh or ll:
+                trend = 'DOWNTREND'
+                trend_strength = 1
+        
+        # ─── MOVING AVERAGES ───
+        ema20 = float(daily['Close'].ewm(span=20).mean().iloc[-1])
+        ema50 = float(daily['Close'].ewm(span=50).mean().iloc[-1]) if len(daily) >= 50 else ema20
+        sma200 = float(daily['Close'].rolling(200).mean().iloc[-1]) if len(daily) >= 200 else ema50
+        
+        ma_bullish = spot > ema20 > ema50
+        ma_bearish = spot < ema20 < ema50
+        
+        # ─── SUPPORT / RESISTANCE ZONES ───
+        recent_high = float(highs[-20:].max())
+        recent_low = float(lows[-20:].min())
+        
+        # Weekly S/R
+        weekly_high = float(weekly['High'].iloc[-4:].max()) if len(weekly) >= 4 else recent_high
+        weekly_low = float(weekly['Low'].iloc[-4:].min()) if len(weekly) >= 4 else recent_low
+        
+        # Key levels
+        support = round(recent_low, 2)
+        resistance = round(recent_high, 2)
+        
+        # ─── VOLUME ANALYSIS ───
+        avg_vol_20 = float(volumes[-20:].mean()) if len(volumes) >= 20 else float(volumes.mean())
+        recent_vol = float(volumes[-3:].mean())
+        vol_expansion = recent_vol > avg_vol_20 * 1.3
+        vol_ratio = round(recent_vol / max(avg_vol_20, 1), 2)
+        
+        # ─── ACCUMULATION / DISTRIBUTION ───
+        # Rising price + rising volume = accumulation
+        price_change_5d = (closes[-1] - closes[-6]) / closes[-6] * 100 if len(closes) > 5 else 0
+        vol_change_5d = (float(volumes[-3:].mean()) - float(volumes[-8:-3].mean())) / max(float(volumes[-8:-3].mean()), 1) * 100 if len(volumes) > 8 else 0
+        
+        accumulating = price_change_5d > 0 and vol_change_5d > 10
+        distributing = price_change_5d < 0 and vol_change_5d > 10
+        
+        # ─── RSI (14-day) ───
+        deltas = [closes[i] - closes[i-1] for i in range(1, len(closes))]
+        gains = [d if d > 0 else 0 for d in deltas[-14:]]
+        losses = [-d if d < 0 else 0 for d in deltas[-14:]]
+        avg_gain = sum(gains) / 14
+        avg_loss = sum(losses) / 14
+        rsi = 100 - (100 / (1 + avg_gain / max(avg_loss, 0.001)))
+        rsi = round(rsi, 1)
+        
+        # ─── CONSOLIDATION DETECTION ───
+        range_20 = (recent_high - recent_low) / spot * 100
+        is_consolidating = range_20 < 8  # Less than 8% range = tight
+        
+        # ─── BREAKOUT DETECTION ───
+        broke_resistance = spot > resistance * 0.99 and vol_expansion
+        broke_support = spot < support * 1.01 and vol_expansion
+        
+        # ─── PULLBACK DETECTION ───
+        pullback_to_ema = trend == 'UPTREND' and abs(spot - ema20) / spot < 0.02
+        
+        # ═══ SWING DECISION ENGINE (3 Rules) ═══
+        
+        # RULE 1: Trend Structure (HH/HL or LH/LL)
+        rule1_trend = trend != 'SIDEWAYS'
+        
+        # RULE 2: Volume Confirms (accumulation or distribution)
+        rule2_volume = vol_expansion or accumulating or distributing
+        
+        # RULE 3: Entry Trigger (breakout, pullback, or accumulation zone)
+        rule3_trigger = broke_resistance or broke_support or pullback_to_ema
+        
+        # Direction
+        direction = 'NONE'
+        if trend == 'UPTREND' and (broke_resistance or pullback_to_ema or (ma_bullish and accumulating)):
+            direction = 'BULLISH'
+        elif trend == 'DOWNTREND' and (broke_support or (ma_bearish and distributing)):
+            direction = 'BEARISH'
+        elif ma_bullish and accumulating:
+            direction = 'BULLISH'
+        elif ma_bearish and distributing:
+            direction = 'BEARISH'
+        
+        # Final verdict
+        rules_pass = (1 if rule1_trend else 0) + (1 if rule2_volume else 0) + (1 if rule3_trigger else 0)
+        
+        verdict = 'NO TRADE'
+        if rules_pass >= 3:
+            verdict = 'BUY' if direction == 'BULLISH' else ('SELL' if direction == 'BEARISH' else 'NO TRADE')
+        elif rules_pass == 2 and direction != 'NONE':
+            verdict = 'WATCH — Almost ready'
+        
+        # WHY reasons
+        why = []
+        if rule1_trend:
+            why.append({"pass": True, "label": f"{trend} — {'Higher highs + higher lows' if trend=='UPTREND' else 'Lower highs + lower lows'}"})
+        else:
+            why.append({"pass": False, "label": "No clear trend — sideways"})
+        
+        if rule2_volume:
+            if accumulating:
+                why.append({"pass": True, "label": f"Accumulation — volume up {vol_ratio}x"})
+            elif distributing:
+                why.append({"pass": True, "label": f"Distribution — volume up {vol_ratio}x"})
+            else:
+                why.append({"pass": True, "label": f"Volume expanding — {vol_ratio}x average"})
+        else:
+            why.append({"pass": False, "label": f"Low volume — {vol_ratio}x average"})
+        
+        if broke_resistance:
+            why.append({"pass": True, "label": f"Breakout above {resistance}"})
+        elif broke_support:
+            why.append({"pass": True, "label": f"Breakdown below {support}"})
+        elif pullback_to_ema:
+            why.append({"pass": True, "label": "Pullback to 20 EMA in uptrend"})
+        elif is_consolidating:
+            why.append({"pass": False, "label": f"Consolidating — range only {range_20:.1f}%"})
+        else:
+            why.append({"pass": False, "label": "No clear entry trigger"})
+        
+        # Entry/Target/SL
+        entry_level = round(resistance, 2) if direction == 'BULLISH' else round(support, 2)
+        target = round(spot * 1.08, 2) if direction == 'BULLISH' else round(spot * 0.92, 2)
+        stop_loss = round(spot * 0.95, 2) if direction == 'BULLISH' else round(spot * 1.05, 2)
+        
+        # Direction label
+        dir_label = 'SIDEWAYS — No momentum'
+        if direction == 'BULLISH':
+            dir_label = 'BULLISH ↑' if trend == 'UPTREND' else 'LEANING BULLISH ↑'
+        elif direction == 'BEARISH':
+            dir_label = 'BEARISH ↓' if trend == 'DOWNTREND' else 'LEANING BEARISH ↓'
+        
+        print(f"[SWING] ✅ {sym}: spot={spot}, trend={trend}, verdict={verdict}, dir={direction}")
+        
+        return {
+            "success": True,
+            "symbol": sym,
+            "region": reg,
+            "spot": round(spot, 2),
+            "prev_close": round(prev, 2),
+            "change_pct": round((spot - prev) / prev * 100, 2),
+            "trend": trend,
+            "trend_strength": trend_strength,
+            "direction": direction,
+            "direction_label": dir_label,
+            "verdict": verdict,
+            "rules_pass": rules_pass,
+            "why": why,
+            "ema20": round(ema20, 2),
+            "ema50": round(ema50, 2),
+            "sma200": round(sma200, 2),
+            "ma_bullish": ma_bullish,
+            "rsi": rsi,
+            "support": support,
+            "resistance": resistance,
+            "weekly_high": round(weekly_high, 2),
+            "weekly_low": round(weekly_low, 2),
+            "vol_ratio": vol_ratio,
+            "vol_expansion": vol_expansion,
+            "accumulating": accumulating,
+            "distributing": distributing,
+            "is_consolidating": is_consolidating,
+            "range_pct": round(range_20, 1),
+            "broke_resistance": broke_resistance,
+            "broke_support": broke_support,
+            "pullback_to_ema": pullback_to_ema,
+            "entry_level": entry_level,
+            "target": target,
+            "stop_loss": stop_loss,
+            "price_change_5d": round(price_change_5d, 2),
+            "currency": '$' if reg == 'US' else '₹'
+        }
+        
+    except Exception as e:
+        print(f"[SWING] ❌ Error for {symbol}: {e}")
+        import traceback; traceback.print_exc()
+        return {"success": False, "error": str(e)}

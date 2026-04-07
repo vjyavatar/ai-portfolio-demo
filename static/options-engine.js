@@ -2713,181 +2713,404 @@ function _renderQuickTrade(d,sym){
   var dayHigh=todayHigh>0?Math.round(todayHigh):spot+c7.step;
   var dayLow=todayLow>0?Math.round(todayLow):spot-c7.step;
   
+  
   // ══════════════════════════════════════════════════════════════════
-  // INSTITUTIONAL DECISION ENGINE → 3 Simple Rules for Retail
-  // BlackRock-style logic, one-click UI
+  // UNIFIED INSTITUTIONAL TRADING ENGINE
+  // Multi-asset adaptive scoring — Options / Stocks / ETFs / Index
+  // Dynamic weighted confidence model (0-100)
   // ══════════════════════════════════════════════════════════════════
   
   var isFallback=d._fallback||false;
   var callWriting=(ceRes.length>0?ceRes[0].oi:0);
   var putWriting=(peSupp.length>0?peSupp[0].oi:0);
   
-  // ─── RULE 1: Is market moving strongly? (Momentum/Breakout) ───
-  var isBreakUp=spot>=dayHigh&&spot>vwapLevel;
-  var isBreakDn=spot<=dayLow&&spot<vwapLevel;
-  var lastB3=bars.slice(-3);var avgV3=bars.length>3?(bars.reduce(function(s,b){return s+b.v},0)/bars.length):50000;
-  var recentV3=lastB3.length>0?(lastB3.reduce(function(s,b){return s+b.v},0)/lastB3.length):0;
-  var volStrong=recentV3>avgV3*1.2;
-  var priceMoving=Math.abs(dayHigh-dayLow)>spot*0.003;
-  var rule1=priceMoving&&(isBreakUp||isBreakDn);
-  var direction=isBreakUp?'BULLISH':(isBreakDn?'BEARISH':'NONE');
-  
-  // ─── RULE 2: Is big money supporting it? (Volume+Positioning) ───
-  var oiBull=isFallback?true:(putWriting>callWriting);
-  var oiBear=isFallback?true:(callWriting>putWriting);
-  var rule2=false;
-  if(direction==='BULLISH')rule2=volStrong&&(oiBull||isFallback);
-  else if(direction==='BEARISH')rule2=volStrong&&(oiBear||isFallback);
-  
-  // ─── RULE 3: Is it fast enough? (Gamma speed/Premium expansion) ───
-  var totalVol7b=bars.reduce(function(s,b){return s+b.v},0);
-  var gexNeg7=gex.regime==='NEGATIVE';
-  var highVol7=bars.length>2&&bars[bars.length-1].v>(totalVol7b/Math.max(bars.length,1))*1.5;
-  var premOK=(atmCE7>c7.minPrem||atmPE7>c7.minPrem);
-  var rule3=premOK;
-  
-  // Expiry detection
+  // ─── STEP 1: AUTO DETECT MODE ───
+  var hasChain=chain.length>0&&!isFallback;
+  var hasOI=callWriting>0||putWriting>0;
   var qtExpiryIdx7=window._getTodayExpiryIndex?window._getTodayExpiryIndex():'BANKNIFTY';
   var qtIsExpiry7=false;
   if(!isUS){qtIsExpiry7=sym===qtExpiryIdx7}
-  else{var us0DTE=['SPY','QQQ','IWM','SPX','XSP'];var dow7=new Date().getDay();if(us0DTE.indexOf(sym)>=0&&dow7>=1&&dow7<=5)qtIsExpiry7=true;else if(dow7===5)qtIsExpiry7=true}
+  else{var us0DTE7=['SPY','QQQ','IWM','SPX','XSP'];var dow7=new Date().getDay();if(us0DTE7.indexOf(sym)>=0&&dow7>=1&&dow7<=5)qtIsExpiry7=true;else if(dow7===5)qtIsExpiry7=true}
   
-  // Gamma Blast
-  var qtGammaBlast=gexNeg7&&highVol7;
-  if(qtIsExpiry7)qtGammaBlast=gexNeg7||highVol7;
-  if(qtGammaBlast)rule3=true;
+  var tradeMode='STOCK'; // Default
+  if(hasChain&&hasOI&&qtIsExpiry7)tradeMode='OPTIONS';
+  else if(hasChain&&hasOI)tradeMode='INDEX_HYBRID';
+  else tradeMode='STOCK';
   
-  // ─── FINAL DECISION ───
-  var rulesPass=(rule1?1:0)+(rule2?1:0)+(rule3?1:0);
+  // ─── STEP 2: COMPUTE ALL SIGNALS (0-100 each) ───
+  
+  // Signal 1: Price Action
+  var dayRange=Math.abs(dayHigh-dayLow);
+  var rangePct=dayRange/Math.max(spot,1)*100;
+  var isBreakUp=spot>=dayHigh*0.998&&spot>vwapLevel;
+  var isBreakDn=spot<=dayLow*1.002&&spot<vwapLevel;
+  var priceActionScore=0;
+  if(isBreakUp||isBreakDn)priceActionScore=85;
+  else if(rangePct>0.5)priceActionScore=50+rangePct*5;
+  else priceActionScore=20;
+  priceActionScore=Math.min(100,Math.max(0,priceActionScore));
+  
+  // Signal 2: Volume
+  var totalVol8=bars.reduce(function(s,b){return s+b.v},0);
+  var avgVol8=bars.length>3?totalVol8/bars.length:50000;
+  var lastBars8=bars.slice(-3);
+  var recentVol8=lastBars8.length>0?lastBars8.reduce(function(s,b){return s+b.v},0)/lastBars8.length:0;
+  var volRatio8=recentVol8/Math.max(avgVol8,1);
+  var volumeScore=Math.min(100,Math.max(0,volRatio8*60));
+  
+  // Signal 3: VWAP
+  var vwapDist=Math.abs(spot-vwapLevel)/Math.max(spot,1)*100;
+  var aboveVwap=spot>vwapLevel;
+  var vwapScore=0;
+  if(aboveVwap&&isBreakUp)vwapScore=90;
+  else if(!aboveVwap&&isBreakDn)vwapScore=90;
+  else if(aboveVwap)vwapScore=60;
+  else vwapScore=40;
+  
+  // Signal 4: Momentum (last 5 bars direction)
+  var momBars=bars.slice(-5);
+  var momUp=0,momDn=0;
+  momBars.forEach(function(b){if(b.c>b.o)momUp++;else momDn++});
+  var momentumScore=0;
+  if(momUp>=4)momentumScore=80;
+  else if(momDn>=4)momentumScore=80;
+  else if(momUp>=3)momentumScore=60;
+  else if(momDn>=3)momentumScore=60;
+  else momentumScore=30;
+  
+  // Signal 5: Liquidity (spread + premium)
+  var liquidityScore=50;
+  if(atmCE7>=c7.minPrem||atmPE7>=c7.minPrem)liquidityScore=80;
+  if(chain.length>5)liquidityScore=Math.min(100,liquidityScore+20);
+  
+  // Signal 6: Market Context (VIX)
+  var contextScore=50;
+  if(vix>=12&&vix<=22)contextScore=85; // Sweet spot
+  else if(vix>=10&&vix<=28)contextScore=65;
+  else if(vix>35)contextScore=25; // Too volatile
+  else contextScore=40;
+  
+  // Signal 7: Options Data (OI, PCR)
+  var pcr8=d.pcr||0;
+  var optionsScore=50;
+  if(hasOI){
+    if(pcr8>1.2)optionsScore=75; // Bullish
+    else if(pcr8<0.8)optionsScore=75; // Bearish (confirming)
+    else optionsScore=50;
+    if(putWriting>callWriting*1.3)optionsScore+=10; // Strong put support
+    else if(callWriting>putWriting*1.3)optionsScore+=10; // Strong call resistance
+  }
+  optionsScore=Math.min(100,optionsScore);
+  
+  // Signal 8: Gamma
+  var gexNeg8=gex.regime==='NEGATIVE';
+  var highVol8=bars.length>2&&bars[bars.length-1].v>(totalVol8/Math.max(bars.length,1))*1.5;
+  var qtGammaBlast=gexNeg8&&highVol8;
+  if(qtIsExpiry7)qtGammaBlast=gexNeg8||highVol8;
+  var gammaScore=40;
+  if(qtGammaBlast)gammaScore=95;
+  else if(gexNeg8)gammaScore=70;
+  else gammaScore=40;
+  
+  // ─── STEP 2B: APPLY WEIGHTS PER MODE ───
+  var confidence=0;
+  var weights={};
+  if(tradeMode==='OPTIONS'){
+    weights={price:15,volume:15,vwap:10,momentum:10,liquidity:15,context:10,options:10,gamma:15};
+  }else if(tradeMode==='INDEX_HYBRID'){
+    weights={price:20,volume:15,vwap:10,momentum:10,liquidity:15,context:15,options:10,gamma:5};
+  }else{
+    weights={price:25,volume:20,vwap:5,momentum:15,liquidity:5,context:15,options:10,gamma:5};
+  }
+  
+  confidence=Math.round(
+    priceActionScore*weights.price/100+
+    volumeScore*weights.volume/100+
+    vwapScore*weights.vwap/100+
+    momentumScore*weights.momentum/100+
+    liquidityScore*weights.liquidity/100+
+    contextScore*weights.context/100+
+    optionsScore*weights.options/100+
+    gammaScore*weights.gamma/100
+  );
+  
+  // ─── STEP 3: GAMMA BONUS ───
+  if(qtGammaBlast&&(isBreakUp||isBreakDn))confidence=Math.min(100,confidence+10);
+  
+  // ─── STEP 5: NORMALIZATION CAPS ───
+  if(volumeScore<40)confidence=Math.min(confidence,60);
+  if(momentumScore<40)confidence=Math.min(confidence,65);
+  
+  // Direction
+  var leanDir=spot>vwapLevel?'BULLISH':'BEARISH';
+  var direction='NONE';
+  if(isBreakUp)direction='BULLISH';
+  else if(isBreakDn)direction='BEARISH';
+  else if(confidence>=50)direction=leanDir;
+  
+  // OI confirmation check
+  var oiConfirms=isFallback?true:(direction==='BULLISH'?putWriting>callWriting:callWriting>putWriting);
+  if(!oiConfirms&&hasOI)confidence=Math.min(confidence,65); // Cap if OI disagrees
+  
+  // ─── STEP 6: HARD FILTERS ───
+  var hardBlock=false;var blockReason='';
+  if(!allPass){hardBlock=true;blockReason='VIX or premium conditions not met'}
+  if(vix>35||vix<8){hardBlock=true;blockReason='VIX '+vix.toFixed(1)+' — outside safe range'}
+  if(volumeScore<20&&priceActionScore>70){hardBlock=true;blockReason='Fake breakout — no volume'}
+  if(direction==='NONE'&&confidence<50){hardBlock=true;blockReason='No clear direction'}
+  
+  // ─── STEP 7: TRADE GRADING ───
+  var grade='C';var gradeLabel='No Trade';
+  if(hardBlock){grade='C';gradeLabel='No Trade'}
+  else if(confidence>=85){grade='A+';gradeLabel='Aggressive'}
+  else if(confidence>=70){grade='A';gradeLabel='Strong'}
+  else if(confidence>=60){grade='B';gradeLabel='Controlled'}
+  else{grade='C';gradeLabel='No Trade'}
+  
+  // Trap risk
+  var trapRisk='LOW';
+  if(volumeScore<40&&priceActionScore>60)trapRisk='HIGH';
+  else if(!oiConfirms&&hasOI)trapRisk='MEDIUM';
+  else if(vix>30)trapRisk='MEDIUM';
+  
+  // ─── DECISION ───
   var finalBias='NO TRADE';
-  if(rule1&&rule2&&rule3){finalBias=direction}
-  else if(rule1&&rule3){finalBias=direction} // 2 of 3 OK, positioning unclear
+  var isOptions=tradeMode==='OPTIONS'||tradeMode==='INDEX_HYBRID';
+  if(grade==='C'||hardBlock){
+    finalBias='NO TRADE';
+  }else{
+    finalBias=direction;
+  }
   
-  // WHY reasons (user sees simple ✔/✗)
+  // ─── SMART STRIKE SELECTION (Institutional) ───
+  // ATM = max gamma (fast moves, blasts)
+  // 1-ITM = better delta, less theta (normal trades)
+  // 1-OTM = cheaper entry (lower confidence / budget)
+  var entryLevel=finalBias==='BULLISH'?dayHigh:(finalBias==='BEARISH'?dayLow:(leanDir==='BULLISH'?dayHigh:dayLow));
+  var entryType7=finalBias==='BULLISH'?'CE':(finalBias==='BEARISH'?'PE':(leanDir==='BULLISH'?'CE':'PE'));
+  var isCE=entryType7==='CE';
+  
+  // Sort chain by distance from spot
+  var sortedChain=chain.slice().sort(function(a,b){return Math.abs(a.strike-spot)-Math.abs(b.strike-spot)});
+  var atmCh=sortedChain[0]||{strike:atmStrike7,ce_ltp:atmCE7,pe_ltp:atmPE7};
+  
+  // Find ATM, 1-ITM, 1-OTM strikes
+  var strikeATM=atmCh.strike;
+  var premATM=isCE?(atmCh.ce_ltp||0):(atmCh.pe_ltp||0);
+  
+  // ITM: for CE = strike below spot, for PE = strike above spot
+  var itmCandidates=chain.filter(function(ch){return isCE?(ch.strike<spot-c7.step*0.5):(ch.strike>spot+c7.step*0.5)})
+    .sort(function(a,b){return isCE?(b.strike-a.strike):(a.strike-b.strike)});
+  var itmCh=itmCandidates[0]||atmCh;
+  var strikeITM=itmCh.strike;
+  var premITM=isCE?(itmCh.ce_ltp||0):(itmCh.pe_ltp||0);
+  
+  // OTM: for CE = strike above spot, for PE = strike below spot
+  var otmCandidates=chain.filter(function(ch){return isCE?(ch.strike>spot+c7.step*0.5):(ch.strike<spot-c7.step*0.5)})
+    .sort(function(a,b){return isCE?(a.strike-b.strike):(b.strike-a.strike)});
+  var otmCh=otmCandidates[0]||atmCh;
+  var strikeOTM=otmCh.strike;
+  var premOTM=isCE?(otmCh.ce_ltp||0):(otmCh.pe_ltp||0);
+  
+  // Selection logic
+  var entryStrike7=strikeATM;
+  var entryPrem7=premATM;
+  var strikeLabel='ATM';
+  var strikeReason='Maximum gamma exposure';
+  
+  if(qtGammaBlast||grade==='A+'){
+    // Gamma blast / highest confidence → ATM (max gamma)
+    entryStrike7=strikeATM;entryPrem7=premATM;
+    strikeLabel='ATM';strikeReason='Max gamma — fastest premium expansion';
+  }else if(grade==='A'&&qtIsExpiry7){
+    // Expiry + strong signal → 1 ITM (avoid theta, better delta)
+    if(premITM>0&&premITM<premATM*3){
+      entryStrike7=strikeITM;entryPrem7=premITM;
+      strikeLabel='1-ITM';strikeReason='Higher delta — less theta risk on expiry';
+    }
+  }else if(grade==='A'){
+    // Normal strong → ATM (balanced)
+    entryStrike7=strikeATM;entryPrem7=premATM;
+    strikeLabel='ATM';strikeReason='Balanced gamma + delta';
+  }else if(grade==='B'){
+    // Controlled → 1 OTM (cheaper entry, defined risk)
+    if(premOTM>0&&premOTM>c7.minPrem*0.3){
+      entryStrike7=strikeOTM;entryPrem7=premOTM;
+      strikeLabel='1-OTM';strikeReason='Lower cost — defined risk for uncertain setup';
+    }
+  }
+  
+  // Fallback: if selected premium is 0, use ATM
+  if(entryPrem7<=0){entryStrike7=strikeATM;entryPrem7=premATM>0?premATM:Math.max(atmCE7,atmPE7);strikeLabel='ATM';strikeReason='Best available'}
+  
+  var targetLow=Math.round(entryPrem7*1.25);var targetHigh=Math.round(entryPrem7*1.40);
+  var sl8=Math.round(entryPrem7*0.80);
+  var qtLots=qtGammaBlast?'2–3':qtIsExpiry7?'1–2':'1';
+  
+  // Store strike selection info
+  window._qtStrikeLabel=strikeLabel;
+  window._qtStrikeReason=strikeReason;
+  window._qtStrikeATM={strike:strikeATM,prem:premATM};
+  window._qtStrikeITM={strike:strikeITM,prem:premITM};
+  window._qtStrikeOTM={strike:strikeOTM,prem:premOTM};
+  
+  // WHY reasons
   var whyReasons=[];
-  if(rule1)whyReasons.push({pass:true,label:direction==='BULLISH'?'Breakout':'Breakdown'});
-  else if(priceMoving)whyReasons.push({pass:false,label:'No clear breakout yet'});
-  else whyReasons.push({pass:false,label:'No clear move'});
-  if(rule2)whyReasons.push({pass:true,label:'Strong '+(direction==='BULLISH'?'buying':'selling')});
-  else if(volStrong)whyReasons.push({pass:false,label:'Volume OK but positioning unclear'});
-  else whyReasons.push({pass:false,label:'Low momentum'});
-  if(rule3)whyReasons.push({pass:true,label:'Fast move'+(qtGammaBlast?' ⚡':'')});
-  else if(qtIsExpiry7)whyReasons.push({pass:false,label:'Time decay high — avoid'});
-  else whyReasons.push({pass:false,label:'Move too slow'});
+  if(priceActionScore>=70)whyReasons.push({pass:true,label:(isBreakUp?'Breakout above Day High':'isBreakDn'?'Breakdown below Day Low':'Strong price action')});
+  else whyReasons.push({pass:false,label:'No clear breakout yet'});
+  if(volumeScore>=60)whyReasons.push({pass:true,label:'Strong volume ('+volRatio8.toFixed(1)+'x average)'});
+  else whyReasons.push({pass:false,label:'Low volume ('+volRatio8.toFixed(1)+'x average)'});
+  if(isOptions&&gammaScore>=70)whyReasons.push({pass:true,label:'Gamma support'+(qtGammaBlast?' — BLAST active':'')});
+  else if(isOptions)whyReasons.push({pass:false,label:'No gamma catalyst'});
+  if(oiConfirms&&hasOI)whyReasons.push({pass:true,label:'OI confirms '+(direction==='BULLISH'?'bullish':'bearish')+' (PCR '+pcr8.toFixed(2)+')'});
+  else if(hasOI)whyReasons.push({pass:false,label:'OI conflicting'});
+  if(momentumScore>=60)whyReasons.push({pass:true,label:'Momentum '+(momUp>momDn?'bullish':'bearish')+' ('+Math.max(momUp,momDn)+'/5 bars)'});
+  else whyReasons.push({pass:false,label:'Weak momentum'});
   
-  // Infer direction from VWAP even when no breakout (for WATCHING state)
-  var leanDirection=spot>vwapLevel?'BULLISH':'BEARISH';
+  // Direction label
+  var directionLabel='SIDEWAYS — No momentum';var directionColor='#64748b';
+  if(finalBias==='BULLISH'){directionLabel='BULLISH ↑';directionColor='#059669'}
+  else if(finalBias==='BEARISH'){directionLabel='BEARISH ↓';directionColor='#ef4444'}
+  else if(direction!=='NONE'){directionLabel=(direction==='BULLISH'?'LEANING BULLISH ↑':'LEANING BEARISH ↓');directionColor=direction==='BULLISH'?'#059669':'#ef4444'}
+  if(trapRisk==='HIGH')directionLabel+=' ⚠️ Trap risk';
   
   var biasColor=finalBias==='BULLISH'?'#059669':finalBias==='BEARISH'?'#ef4444':'#64748b';
-  var entryLevel=finalBias==='BULLISH'?dayHigh:(finalBias==='BEARISH'?dayLow:(leanDirection==='BULLISH'?dayHigh:dayLow));
-  var entryType7=finalBias==='BULLISH'?'CE':(finalBias==='BEARISH'?'PE':(leanDirection==='BULLISH'?'CE':'PE'));
-  var entryStrike7=atmStrike7;
-  var entryPrem7=finalBias==='BULLISH'?atmCE7:(finalBias==='BEARISH'?atmPE7:(leanDirection==='BULLISH'?atmCE7:atmPE7));
-  if(entryPrem7<=0)entryPrem7=Math.max(atmCE7,atmPE7);
-  var targetLow=Math.round(entryPrem7*1.25);var targetHigh=Math.round(entryPrem7*1.40);
-  var qtLots=qtGammaBlast?'2–3':qtIsExpiry7?'1–2':'1';
+  
+  // Status
+  var status='⚪ NO TRADE';var statusColor='#64748b';
+  if(hardBlock){status='⚪ NO TRADE';statusColor='#64748b'}
+  else if(grade==='A+'||grade==='A'){status='🟢 ENTER NOW';statusColor='#059669'}
+  else if(grade==='B'){status='🟡 ALMOST — Confidence '+confidence+'%';statusColor='#d97706'}
+  else{status='⏳ WATCHING';statusColor='#64748b'}
+  
+  // If watching, upgrade direction label
+  if(status.indexOf('WATCHING')>=0&&direction!=='NONE'){
+    finalBias=direction;biasColor=directionColor;
+  }
+  
+  // Smart money insight
+  var smartMoney='';
+  if(qtGammaBlast)smartMoney='Gamma exposure negative — dealer hedging creates momentum. Ride the move.';
+  else if(accumulating)smartMoney='Volume rising with price — institutional accumulation in progress.';
+  else if(oiConfirms&&pcr8>1.2)smartMoney='High PCR = put sellers are confident. Market supported below.';
+  else if(trapRisk==='HIGH')smartMoney='Volume not confirming price move — potential trap. Wait for confirmation.';
+  else smartMoney='No clear institutional signal. Patience is the edge.';
+  var accumulating=volRatio8>1.2&&momUp>momDn;
   
   // Store on window
   window._qtEntryStrike=entryStrike7;window._qtEntryPrem=entryPrem7;
-  window._qtFinalBias=finalBias;window._qtConfidence=rulesPass;window._qtWhyReasons=whyReasons;
+  window._qtFinalBias=finalBias;window._qtConfidence=confidence;window._qtWhyReasons=whyReasons;
   window._qtGammaBlast=qtGammaBlast;window._qtIsExpiry=qtIsExpiry7;window._qtFallback=isFallback;
+  window._qtGrade=grade;window._qtTradeMode=tradeMode;window._qtTrapRisk=trapRisk;
   
-  // STATUS — 4 states: ENTER NOW / ALMOST / WATCHING / NO TRADE
-  var status='⏳ WATCHING';var statusColor='#64748b';
-  var directionLabel='';var directionColor='#64748b';
-  
-  if(!allPass){
-    status='⚪ NO TRADE';statusColor='#64748b';
-    directionLabel='CONDITIONS NOT MET';directionColor='#64748b';
-  }else if(rule1&&rule2&&rule3){
-    status='🟢 ENTER NOW';statusColor='#059669';
-    directionLabel=finalBias==='BULLISH'?'BULLISH ↑':'BEARISH ↓';
-    directionColor=finalBias==='BULLISH'?'#059669':'#ef4444';
-  }else if(rule1&&rule3){
-    status='🟡 ALMOST — Wait for volume';statusColor='#d97706';
-    directionLabel=finalBias==='BULLISH'?'BULLISH ↑':'BEARISH ↓';
-    directionColor=finalBias==='BULLISH'?'#059669':'#ef4444';
-  }else if(priceMoving){
-    finalBias=leanDirection;
-    biasColor=leanDirection==='BULLISH'?'#059669':'#ef4444';
-    statusColor=biasColor;
-    status='⏳ WATCHING';
-    directionLabel=leanDirection==='BULLISH'?'LEANING BULLISH ↑':'LEANING BEARISH ↓';
-    directionColor=biasColor;
-  }else if(!priceMoving&&qtIsExpiry7){
-    status='⚪ NO TRADE';statusColor='#64748b';
-    directionLabel='SIDEWAYS — Theta trap';directionColor='#d97706';
-  }else{
-    status='⚪ NO TRADE';statusColor='#64748b';
-    directionLabel='SIDEWAYS — No momentum';directionColor='#64748b';
-  }
-  
-  // ═══ RENDER ═══
+  // ═══ RENDER — Unified Decision Card ═══
   var h='';
   var qtIsExpiry=qtIsExpiry7;
   
   if(!isUS){h+='<div style="text-align:right;margin-bottom:8px"><div onclick="window._loadOptionsDecide(\''+sym+'\')" style="padding:6px 14px;border-radius:8px;font-size:9px;font-weight:700;cursor:pointer;display:inline-block;background:#f1f5f9;color:#64748b;border:1px solid #e2e8f0">🔬 Advanced</div></div>'}
   
   h+='<div style="background:linear-gradient(135deg,#0A0F1C,#0f1a2e);border-radius:20px;padding:28px;border:2px solid '+biasColor+'30;max-width:480px;margin:0 auto">';
+  
+  // Header: Mode badge + ticker + price
+  h+='<div style="text-align:center;margin-bottom:4px"><div style="display:inline-block;padding:2px 10px;border-radius:6px;background:'+(tradeMode==='OPTIONS'?'#3b82f615':'#8b5cf615')+';font-size:7px;font-weight:800;color:'+(tradeMode==='OPTIONS'?'#3b82f6':'#8b5cf6')+';letter-spacing:2px">'+(tradeMode==='OPTIONS'?'⚡ OPTIONS ENGINE':tradeMode==='INDEX_HYBRID'?'🌐 INDEX HYBRID':'📈 STOCK ENGINE')+'</div></div>';
   h+='<div style="text-align:center;margin-bottom:16px"><div style="font-size:10px;color:#94a3b8">'+sym+' · '+S+(isUS?spot.toLocaleString('en-US'):spot.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN'))+' · VIX '+vix.toFixed(1)+(qtIsExpiry?' · 🔥 EXPIRY':'')+'</div></div>';
   
   // ─── ⚪ NO TRADE ───
   if(status.indexOf('NO TRADE')>=0){
-    h+='<div style="text-align:center;padding:30px 20px">';
+    h+='<div style="text-align:center;padding:24px">';
     h+='<div style="font-size:60px;margin-bottom:12px">⚪</div>';
-    h+='<div style="font-size:28px;font-weight:900;color:#64748b;font-family:Sora;margin-bottom:6px">NO TRADE</div>';
-    h+='<div style="font-size:16px;font-weight:900;color:'+directionColor+';font-family:Sora;margin-bottom:16px">'+directionLabel+'</div>';
-    h+='<div style="text-align:left;max-width:260px;margin:0 auto">';
-    whyReasons.forEach(function(r){h+='<div style="font-size:12px;padding:4px 0;color:'+(r.pass?'#059669':'#94a3b8')+'">'+(r.pass?'✔':'✗')+' '+r.label+'</div>'});
+    h+='<div style="font-size:28px;font-weight:900;color:#64748b;font-family:Sora;margin-bottom:4px">NO TRADE</div>';
+    h+='<div style="font-size:16px;font-weight:900;color:'+directionColor+';font-family:Sora;margin-bottom:4px">'+directionLabel+'</div>';
+    if(hardBlock)h+='<div style="font-size:10px;color:#ef4444;margin-bottom:12px">⚠️ '+blockReason+'</div>';
+    h+='<div style="font-size:11px;color:#64748b;margin-bottom:12px">Confidence: '+confidence+'% · Grade: '+grade+'</div>';
+    h+='<div style="text-align:left;max-width:280px;margin:0 auto">';
+    whyReasons.forEach(function(r){h+='<div style="font-size:11px;padding:3px 0;color:'+(r.pass?'#059669':'#94a3b8')+'">'+(r.pass?'✔':'✗')+' '+r.label+'</div>'});
     h+='</div>';
-    if(!priceMoving&&qtIsExpiry)h+='<div style="margin-top:16px;padding:10px;border-radius:10px;background:#d9770610;font-size:10px;color:#d97706;font-weight:700">⏱ Sideways on expiry = theta trap. Smart money avoids this.</div>';
-    h+='<div style="margin-top:16px;font-size:9px;color:#475569">💡 Best traders profit by NOT trading bad setups.</div>';
+    h+='<div style="margin-top:12px;padding:8px;border-radius:8px;background:#1e293b;font-size:9px;color:#64748b">🧠 '+smartMoney+'</div>';
     h+='</div>';
     
   // ─── ⏳ WATCHING / 🟡 ALMOST ───
   }else if(status.indexOf('WATCHING')>=0||status.indexOf('ALMOST')>=0){
-    h+='<div style="text-align:center;padding:20px;border-radius:16px;background:'+statusColor+'10;border:2px solid '+statusColor+'25;margin-bottom:12px">';
+    h+='<div style="text-align:center;padding:16px;border-radius:16px;background:'+statusColor+'10;border:2px solid '+statusColor+'25;margin-bottom:12px">';
     h+='<div style="font-size:24px;font-weight:900;color:'+statusColor+';font-family:Sora">'+status+'</div>';
-    h+='<div style="font-size:18px;font-weight:900;color:'+directionColor+';font-family:Sora;margin-top:6px">'+directionLabel+'</div>';
+    h+='<div style="font-size:18px;font-weight:900;color:'+directionColor+';font-family:Sora;margin-top:4px">'+directionLabel+'</div>';
+    h+='<div style="font-size:10px;color:#94a3b8;margin-top:4px">Confidence: '+confidence+'% · Grade: '+grade+' · Trap: '+trapRisk+'</div>';
     h+='</div>';
-    // WHY reasons
-    h+='<div style="text-align:left;max-width:260px;margin:0 auto 12px">';
+    h+='<div style="text-align:left;max-width:280px;margin:0 auto 12px">';
     whyReasons.forEach(function(r){h+='<div style="font-size:11px;padding:3px 0;color:'+(r.pass?'#059669':'#94a3b8')+'">'+(r.pass?'✔':'✗')+' '+r.label+'</div>'});
     h+='</div>';
-    h+='<div style="text-align:center;margin-bottom:12px;padding:12px;border-radius:10px;background:#1e293b"><div style="font-size:9px;color:#64748b;margin-bottom:4px">WATCHING FOR</div><div style="font-size:26px;font-weight:900;color:#f59e0b;font-family:JetBrains Mono">'+S+(isUS?entryLevel.toLocaleString('en-US'):entryLevel.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN'))+'</div><div style="font-size:8px;color:#64748b;margin-top:4px">+ Volume + VWAP</div></div>';
-    h+='<div style="text-align:center;padding:8px;border-radius:8px;background:#1e293b50;font-size:9px;color:#64748b">When breakout → <strong style="color:'+biasColor+'">BUY '+S+entryStrike7+' '+entryType7+'</strong> @ ~'+S+entryPrem7.toFixed(0)+'</div>';
-    if(qtIsExpiry){h+='<div style="text-align:center;margin-top:8px;padding:6px 12px;border-radius:8px;background:#d9770608;border:1px solid #d9770615;font-size:9px;color:#d97706;font-weight:700">⏱ Expiry day — options lose value fast. Max hold 10 min.</div>'}
+    // Scenario
+    h+='<div style="padding:10px;border-radius:10px;background:#1e293b;margin-bottom:8px;font-size:9px;color:#94a3b8">';
+    h+='<div style="color:#64748b;font-weight:700;margin-bottom:4px">⚠️ SCENARIOS</div>';
+    h+='IF breakout above <strong style="color:#059669">'+S+(isUS?dayHigh.toLocaleString('en-US'):dayHigh.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN'))+'</strong> → '+(isOptions?'BUY CALL':'BUY')+'<br>';
+    h+='IF breakdown below <strong style="color:#ef4444">'+S+(isUS?dayLow.toLocaleString('en-US'):dayLow.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN'))+'</strong> → '+(isOptions?'BUY PUT':'SELL')+'<br>';
+    h+='ELSE → WAIT</div>';
+    h+='<div style="padding:8px;border-radius:8px;background:#1e293b50;font-size:9px;color:#64748b;margin-top:4px">🧠 '+smartMoney+'</div>';
     
   // ─── 🟢 ENTER NOW ───
   }else{
-    h+='<div style="text-align:center;padding:24px;border-radius:16px;background:#05966915;border:3px solid #05966940;margin-bottom:16px">';
-    h+='<div style="font-size:36px;font-weight:900;color:#059669;font-family:Sora">'+(finalBias==='BULLISH'?'🟢 BUY CALL NOW':'🔴 BUY PUT NOW')+'</div>';
-    h+='<div style="font-size:16px;color:#e2e8f0;font-weight:800;margin-top:8px">'+S+entryStrike7+' '+entryType7+' @ '+S+entryPrem7.toFixed(0)+'</div>';
-    h+='<div style="font-size:11px;color:#94a3b8;margin-top:4px">Lot: '+c7.lot+' · Qty: '+qtLots+(qtLots!=='1'?' lots':' lot')+'</div>';
-    if(qtGammaBlast)h+='<div style="margin-top:8px;padding:4px 14px;border-radius:8px;background:#f59e0b15;display:inline-block;font-size:10px;color:#f59e0b;font-weight:800">⚡ GAMMA BLAST — Bigger position!</div>';
+    var actionText=isOptions?(finalBias==='BULLISH'?'🟢 BUY CALL NOW':'🔴 BUY PUT NOW'):(finalBias==='BULLISH'?'🟢 BUY NOW':'🔴 SELL NOW');
+    h+='<div style="text-align:center;padding:20px;border-radius:16px;background:'+(finalBias==='BULLISH'?'#059669':'#ef4444')+'15;border:3px solid '+(finalBias==='BULLISH'?'#059669':'#ef4444')+'40;margin-bottom:12px">';
+    h+='<div style="font-size:32px;font-weight:900;color:'+(finalBias==='BULLISH'?'#059669':'#ef4444')+';font-family:Sora">'+actionText+'</div>';
+    h+='<div style="font-size:18px;font-weight:900;color:'+directionColor+';font-family:Sora;margin-top:4px">'+directionLabel+'</div>';
+    if(isOptions){
+      h+='<div style="font-size:14px;color:#e2e8f0;font-weight:800;margin-top:8px"><span style="padding:2px 6px;border-radius:4px;background:#3b82f620;color:#3b82f6;font-size:9px;font-weight:800">'+strikeLabel+'</span> '+S+entryStrike7+' '+entryType7+' @ '+S+entryPrem7.toFixed(isUS&&entryPrem7<10?2:0)+'</div>';
+      h+='<div style="font-size:8px;color:#64748b;margin-top:2px">'+strikeReason+'</div>';
+    }
+    h+='<div style="font-size:10px;color:#94a3b8;margin-top:4px">Confidence: <strong style="color:'+(confidence>=70?'#059669':'#d97706')+'">'+confidence+'%</strong> · Grade: <strong>'+grade+'</strong> ('+gradeLabel+') · Trap: '+trapRisk+'</div>';
+    if(isOptions)h+='<div style="font-size:10px;color:#94a3b8;margin-top:2px">Lot: '+c7.lot+' · Qty: '+qtLots+(qtLots!=='1'?' lots':' lot')+'</div>';
+    if(qtGammaBlast)h+='<div style="margin-top:6px;padding:4px 14px;border-radius:8px;background:#f59e0b15;display:inline-block;font-size:10px;color:#f59e0b;font-weight:800">⚡ GAMMA BLAST — Bigger position!</div>';
     h+='</div>';
     
-    h+='<div style="text-align:center;margin-bottom:12px"><div style="font-size:9px;color:#64748b;font-weight:700;margin-bottom:4px">WHY?</div>';
-    whyReasons.forEach(function(r){if(r.pass)h+='<div style="font-size:12px;color:#059669;padding:2px 0;font-weight:600">✔ '+r.label+'</div>'});
+    // WHY
+    h+='<div style="text-align:center;margin-bottom:10px"><div style="font-size:9px;color:#64748b;font-weight:700;margin-bottom:4px">WHY?</div>';
+    whyReasons.forEach(function(r){if(r.pass)h+='<div style="font-size:11px;color:#059669;padding:2px 0;font-weight:600">✔ '+r.label+'</div>'});
     h+='</div>';
     
-    var sl7=Math.round(entryPrem7*0.80);var maxRisk7=Math.round((entryPrem7-sl7)*c7.lot);var maxProf7=Math.round((targetHigh-entryPrem7)*c7.lot);
-    h+='<div style="text-align:center;padding:12px;border-radius:10px;background:#1e293b;margin-bottom:10px"><div style="display:flex;justify-content:center;gap:14px;flex-wrap:wrap">';
-    h+='<div><div style="font-size:7px;color:#059669;font-weight:700">TARGET</div><div style="font-size:15px;font-weight:900;color:#059669;font-family:JetBrains Mono">'+S+targetLow+' – '+S+targetHigh+'</div></div>';
+    // Entry + Target + SL
+    var maxRisk8=Math.round((entryPrem7-sl8)*c7.lot);var maxProf8=Math.round((targetHigh-entryPrem7)*c7.lot);
+    var rr=maxRisk8>0?Math.round(maxProf8/maxRisk8*10)/10:0;
+    h+='<div style="text-align:center;padding:10px;border-radius:10px;background:#1e293b;margin-bottom:8px"><div style="display:flex;justify-content:center;gap:12px;flex-wrap:wrap">';
+    h+='<div><div style="font-size:7px;color:#059669;font-weight:700">TARGET</div><div style="font-size:14px;font-weight:900;color:#059669;font-family:JetBrains Mono">'+S+targetLow+' – '+S+targetHigh+'</div></div>';
     h+='<div style="width:1px;background:#334155"></div>';
-    h+='<div><div style="font-size:7px;color:#ef4444;font-weight:700">STOP LOSS</div><div style="font-size:15px;font-weight:900;color:#ef4444;font-family:JetBrains Mono">'+S+sl7+'</div></div>';
+    h+='<div><div style="font-size:7px;color:#ef4444;font-weight:700">STOP LOSS</div><div style="font-size:14px;font-weight:900;color:#ef4444;font-family:JetBrains Mono">'+S+sl8+'</div></div>';
     h+='<div style="width:1px;background:#334155"></div>';
-    h+='<div><div style="font-size:7px;color:#d97706;font-weight:700">MAX HOLD</div><div style="font-size:15px;font-weight:900;color:#d97706">10 min</div></div>';
-    h+='</div><div style="font-size:7px;color:#64748b;margin-top:4px">Risk: '+S+maxRisk7.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+' · Profit: '+S+maxProf7.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div></div>';
+    h+='<div><div style="font-size:7px;color:#d97706;font-weight:700">MAX HOLD</div><div style="font-size:14px;font-weight:900;color:#d97706">'+(isOptions?'10 min':'3-10 days')+'</div></div>';
+    h+='<div style="width:1px;background:#334155"></div>';
+    h+='<div><div style="font-size:7px;color:#3b82f6;font-weight:700">R:R</div><div style="font-size:14px;font-weight:900;color:#3b82f6">1:'+rr+'</div></div>';
+    h+='</div></div>';
     
-    h+='<div style="display:flex;gap:4px;flex-wrap:wrap;justify-content:center">';
-    h+='<div style="padding:4px 8px;border-radius:6px;background:#05966410;font-size:8px;color:#059669;font-weight:700">✅ Target → Close</div>';
-    h+='<div style="padding:4px 8px;border-radius:6px;background:#ef444410;font-size:8px;color:#ef4444;font-weight:700">❌ Stop → Exit</div>';
-    h+='<div style="padding:4px 8px;border-radius:6px;background:#d9770610;font-size:8px;color:#d97706;font-weight:700">⏱ 10 min → Exit</div>';
-    if(qtGammaBlast)h+='<div style="padding:4px 8px;border-radius:6px;background:#f59e0b10;font-size:8px;color:#f59e0b;font-weight:700">⚡ Momentum slows → Close</div>';
+    // Exit rules
+    h+='<div style="display:flex;gap:4px;flex-wrap:wrap;justify-content:center;margin-bottom:8px">';
+    h+='<div style="padding:3px 8px;border-radius:6px;background:#05966410;font-size:8px;color:#059669;font-weight:700">✅ Target → Close</div>';
+    h+='<div style="padding:3px 8px;border-radius:6px;background:#ef444410;font-size:8px;color:#ef4444;font-weight:700">❌ Stop → Exit</div>';
+    if(isOptions)h+='<div style="padding:3px 8px;border-radius:6px;background:#d9770610;font-size:8px;color:#d97706;font-weight:700">⏱ 10 min → Exit</div>';
+    if(qtGammaBlast)h+='<div style="padding:3px 8px;border-radius:6px;background:#f59e0b10;font-size:8px;color:#f59e0b;font-weight:700">⚡ Momentum slows → Close</div>';
     h+='</div>';
-    if(qtIsExpiry){h+='<div style="text-align:center;margin-top:8px;padding:6px;border-radius:8px;background:#d9770608;font-size:9px;color:#d97706;font-weight:700">⏱ EXPIRY — Exit within 10 min.</div>'}
+    
+    // Smart money
+    // Strike comparison (ATM / ITM / OTM)
+    if(isOptions&&window._qtStrikeATM){
+      var sa=window._qtStrikeATM,si=window._qtStrikeITM,so=window._qtStrikeOTM;
+      h+='<div style="padding:8px;border-radius:8px;background:#1e293b;margin-bottom:6px">';
+      h+='<div style="font-size:7px;color:#64748b;font-weight:700;margin-bottom:4px">STRIKE OPTIONS</div>';
+      h+='<div style="display:flex;gap:4px">';
+      var strikes3=[{l:'1-ITM',s:si.strike,p:si.prem,sel:strikeLabel==='1-ITM'},{l:'ATM',s:sa.strike,p:sa.prem,sel:strikeLabel==='ATM'},{l:'1-OTM',s:so.strike,p:so.prem,sel:strikeLabel==='1-OTM'}];
+      strikes3.forEach(function(sk){
+        var bg=sk.sel?biasColor+'20':'#0f172a';var brd=sk.sel?biasColor+'40':'#334155';var col=sk.sel?biasColor:'#64748b';
+        h+='<div style="flex:1;padding:6px;border-radius:6px;background:'+bg+';border:1px solid '+brd+';text-align:center">';
+        h+='<div style="font-size:7px;color:'+col+';font-weight:700">'+sk.l+(sk.sel?' ✓':'')+'</div>';
+        h+='<div style="font-size:11px;font-weight:900;color:'+(sk.sel?'#e2e8f0':'#64748b')+';font-family:JetBrains Mono">'+S+sk.s+'</div>';
+        h+='<div style="font-size:8px;color:'+(sk.sel?'#94a3b8':'#475569')+'">'+S+(sk.p>0?sk.p.toFixed(isUS&&sk.p<10?2:0):'—')+'</div>';
+        h+='</div>';
+      });
+      h+='</div></div>';
+    }
+    h+='<div style="padding:8px;border-radius:8px;background:#1e293b;font-size:9px;color:#64748b">🧠 '+smartMoney+'</div>';
+    if(qtIsExpiry)h+='<div style="text-align:center;margin-top:6px;padding:5px;border-radius:6px;background:#d9770608;font-size:9px;color:#d97706;font-weight:700">⏱ EXPIRY — Exit within 10 min</div>';
   }
+  
+  h+='</div>'; // close main card
   
   // Refresh button + Last Updated
   var nowTs=new Date();
@@ -3273,11 +3496,13 @@ _renderQuickTrade=function(d,sym){
     var prevSig=window._lastQuickSignal;
     window._lastQuickSignal=currentSignal;
     if(currentSignal==='ENTRY_CE'){
-      var reason7=(window._qtConfidence||0)>=3?'All signals confirm — breakout with strong buying':'Price above VWAP with volume';
+      var conf7=window._qtConfidence||0;var sl7=window._qtStrikeLabel||'ATM';
+      var reason7=conf7>=70?conf7+'% confidence. '+sl7+' strike — all signals confirm upside':sl7+' strike — price above VWAP with volume';
       window._voiceAlert('ENTRY_CE',sym,vStrike,Math.round(vPrem),vBlast,{reason:reason7,target:vTarget,sl:vSL});
     }
     else if(currentSignal==='ENTRY_PE'){
-      var reason7b=(window._qtConfidence||0)>=3?'All signals confirm — breakdown with strong selling':'Price below VWAP with selling pressure';
+      var conf7b=window._qtConfidence||0;var sl7b=window._qtStrikeLabel||'ATM';
+      var reason7b=conf7b>=70?conf7b+'% confidence. '+sl7b+' strike — all signals confirm downside':sl7b+' strike — price below VWAP with selling pressure';
       window._voiceAlert('ENTRY_PE',sym,vStrike,Math.round(vPrem),vBlast,{reason:reason7b,target:vTarget,sl:vSL});
     }
     else if(currentSignal==='NO_TRADE')window._voiceAlert('WAIT');
@@ -4599,3 +4824,179 @@ _renderQuickTrade=function(d,sym){
 };
 
 console.log('[TRADE LIFECYCLE] ✅ Active trade monitoring + timed exits loaded');
+
+// ═══════════════════════════════════════════════════════════════
+// SWING TRADING ENGINE — Positional Analysis (Days-Weeks)
+// Institutional: Daily/Weekly Structure, Trend, Accumulation
+// ═══════════════════════════════════════════════════════════════
+
+window._swingMode=false;
+
+window._loadSwingAnalysis=function(symbol,region){
+  var el=document.getElementById('deResult');if(!el)return;
+  var sym=(symbol||'RELIANCE').toUpperCase();
+  var reg=region||'IN';
+  window._activeOptionsSym=sym;window._activeOptionsReg=reg;
+  
+  el.innerHTML='<div style="padding:40px;text-align:center;background:#0A0F1C;border-radius:16px"><div style="display:inline-block;width:20px;height:20px;border:3px solid #8b5cf6;border-top-color:transparent;border-radius:50%;animation:spin .5s linear infinite"></div><div style="font-size:12px;color:#8b5cf6;margin-top:10px;font-weight:800">Loading '+sym+' Swing Analysis...</div></div>';
+  
+  fetch('/api/swing-analysis?symbol='+encodeURIComponent(sym)+'&region='+encodeURIComponent(reg))
+    .then(function(r){return r.json()})
+    .then(function(d){
+      if(!d||!d.success){
+        el.innerHTML='<div style="text-align:center;padding:30px;background:#0A0F1C;border-radius:16px"><div style="font-size:14px;color:#ef4444;margin-bottom:8px">Cannot load swing data</div><div style="font-size:10px;color:#94a3b8;margin-bottom:12px">'+(d&&d.error?d.error:'API error')+'</div><button onclick="window._retryLast()" style="padding:8px 20px;border-radius:8px;background:#8b5cf6;color:#fff;border:none;cursor:pointer;font-size:11px;font-weight:700">🔄 Retry</button></div>';
+        return;
+      }
+      window._renderSwingCard(d,sym);
+      // Auto-refresh every 60s for swing
+      if(window._swingRefreshTimer)clearInterval(window._swingRefreshTimer);
+      window._swingRefreshTimer=setInterval(function(){
+        if(window._swingMode&&window._activeOptionsSym===sym){
+          fetch('/api/swing-analysis?symbol='+encodeURIComponent(sym)+'&region='+encodeURIComponent(reg))
+            .then(function(r2){return r2.json()})
+            .then(function(d2){if(d2&&d2.success&&window._activeOptionsSym===sym)window._renderSwingCard(d2,sym)})
+            .catch(function(){});
+        }else{clearInterval(window._swingRefreshTimer);window._swingRefreshTimer=null}
+      },60000);
+    }).catch(function(e){
+      el.innerHTML='<div style="text-align:center;padding:30px;background:#0A0F1C;border-radius:16px"><div style="font-size:14px;color:#ef4444;margin-bottom:8px">Cannot connect to server</div><div style="font-size:10px;color:#94a3b8;margin-bottom:12px">'+(e.message||'Network error')+'</div><button onclick="window._retryLast()" style="padding:8px 20px;border-radius:8px;background:#8b5cf6;color:#fff;border:none;cursor:pointer;font-size:11px;font-weight:700">🔄 Retry</button></div>';
+    });
+};
+
+window._renderSwingCard=function(d,sym){
+  var el=document.getElementById('deResult');if(!el)return;
+  var S=d.currency||'₹';
+  var isUS=d.region==='US';
+  var L=function(v){return isUS?v.toLocaleString('en-US'):v.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')};
+  
+  var verdict=d.verdict||'NO TRADE';
+  var dir=d.direction||'NONE';
+  var dirLabel=d.direction_label||'SIDEWAYS';
+  var why=d.why||[];
+  
+  var biasColor=dir==='BULLISH'?'#059669':dir==='BEARISH'?'#ef4444':'#64748b';
+  var statusColor=verdict==='BUY'?'#059669':verdict==='SELL'?'#ef4444':verdict.indexOf('WATCH')>=0?'#d97706':'#64748b';
+  
+  // ─── MODE TOGGLE ───
+  var h='';
+  h+='<div style="display:flex;justify-content:center;gap:4px;margin-bottom:12px">';
+  h+='<button onclick="window._swingMode=false;window._loadQuickTrade(\''+sym+'\')" style="padding:8px 20px;border-radius:10px 0 0 10px;font-size:11px;font-weight:800;cursor:pointer;border:2px solid #3b82f6;background:transparent;color:#3b82f6">⚡ OPTIONS</button>';
+  h+='<button style="padding:8px 20px;border-radius:0 10px 10px 0;font-size:11px;font-weight:800;cursor:pointer;border:2px solid #8b5cf6;background:#8b5cf6;color:#fff">📈 SWING</button>';
+  h+='</div>';
+  
+  // ─── MAIN CARD ───
+  h+='<div style="background:linear-gradient(135deg,#0A0F1C,#1a0f2e);border-radius:20px;padding:28px;border:2px solid '+biasColor+'30;max-width:480px;margin:0 auto">';
+  
+  // Header
+  h+='<div style="text-align:center;margin-bottom:4px"><div style="font-size:8px;color:#8b5cf6;font-weight:800;letter-spacing:3px">📈 SWING TRADING ENGINE</div></div>';
+  h+='<div style="text-align:center;margin-bottom:16px"><div style="font-size:10px;color:#94a3b8">'+sym+' · '+S+L(d.spot)+' · '+(d.change_pct>=0?'+':'')+d.change_pct+'%'+' · RSI '+d.rsi+'</div></div>';
+  
+  // ─── NO TRADE ───
+  if(verdict==='NO TRADE'){
+    h+='<div style="text-align:center;padding:24px">';
+    h+='<div style="font-size:60px;margin-bottom:12px">⚪</div>';
+    h+='<div style="font-size:28px;font-weight:900;color:#64748b;font-family:Sora;margin-bottom:6px">NO TRADE</div>';
+    h+='<div style="font-size:16px;font-weight:900;color:'+biasColor+';font-family:Sora;margin-bottom:16px">'+dirLabel+'</div>';
+    h+='<div style="text-align:left;max-width:280px;margin:0 auto">';
+    why.forEach(function(r){h+='<div style="font-size:12px;padding:4px 0;color:'+(r.pass?'#059669':'#94a3b8')+'">'+(r.pass?'✔':'✗')+' '+r.label+'</div>'});
+    h+='</div>';
+    h+='<div style="margin-top:16px;font-size:9px;color:#475569">💡 Wait for trend + volume + trigger alignment.</div>';
+    h+='</div>';
+    
+  // ─── WATCH ───
+  }else if(verdict.indexOf('WATCH')>=0){
+    h+='<div style="text-align:center;padding:20px;border-radius:16px;background:'+statusColor+'10;border:2px solid '+statusColor+'25;margin-bottom:12px">';
+    h+='<div style="font-size:24px;font-weight:900;color:'+statusColor+';font-family:Sora">⏳ WATCHING</div>';
+    h+='<div style="font-size:18px;font-weight:900;color:'+biasColor+';font-family:Sora;margin-top:6px">'+dirLabel+'</div>';
+    h+='</div>';
+    h+='<div style="text-align:left;max-width:280px;margin:0 auto 12px">';
+    why.forEach(function(r){h+='<div style="font-size:11px;padding:3px 0;color:'+(r.pass?'#059669':'#94a3b8')+'">'+(r.pass?'✔':'✗')+' '+r.label+'</div>'});
+    h+='</div>';
+    h+='<div style="text-align:center;padding:12px;border-radius:10px;background:#1e293b"><div style="font-size:9px;color:#64748b;margin-bottom:4px">WATCHING FOR</div><div style="font-size:24px;font-weight:900;color:#f59e0b;font-family:JetBrains Mono">'+S+L(d.entry_level)+'</div><div style="font-size:8px;color:#64748b;margin-top:4px">'+d.trend+' + Volume confirmation</div></div>';
+    
+  // ─── BUY / SELL ───
+  }else{
+    var isBuy=verdict==='BUY';
+    h+='<div style="text-align:center;padding:24px;border-radius:16px;background:'+(isBuy?'#059669':'#ef4444')+'15;border:3px solid '+(isBuy?'#059669':'#ef4444')+'40;margin-bottom:16px">';
+    h+='<div style="font-size:36px;font-weight:900;color:'+(isBuy?'#059669':'#ef4444')+';font-family:Sora">'+(isBuy?'🟢 BUY':'🔴 SELL')+'</div>';
+    h+='<div style="font-size:18px;font-weight:900;color:'+biasColor+';font-family:Sora;margin-top:4px">'+dirLabel+'</div>';
+    h+='<div style="font-size:12px;color:#94a3b8;margin-top:8px">'+(isBuy?'Above':'Below')+' '+S+L(d.entry_level)+'</div>';
+    h+='</div>';
+    
+    h+='<div style="text-align:center;margin-bottom:12px"><div style="font-size:9px;color:#64748b;font-weight:700;margin-bottom:4px">WHY?</div>';
+    why.forEach(function(r){if(r.pass)h+='<div style="font-size:12px;color:#059669;padding:2px 0;font-weight:600">✔ '+r.label+'</div>'});
+    h+='</div>';
+    
+    // Target / SL
+    h+='<div style="text-align:center;padding:12px;border-radius:10px;background:#1e293b;margin-bottom:10px"><div style="display:flex;justify-content:center;gap:16px;flex-wrap:wrap">';
+    h+='<div><div style="font-size:7px;color:#059669;font-weight:700">TARGET (8%)</div><div style="font-size:16px;font-weight:900;color:#059669;font-family:JetBrains Mono">'+S+L(d.target)+'</div></div>';
+    h+='<div style="width:1px;background:#334155"></div>';
+    h+='<div><div style="font-size:7px;color:#ef4444;font-weight:700">STOP LOSS (5%)</div><div style="font-size:16px;font-weight:900;color:#ef4444;font-family:JetBrains Mono">'+S+L(d.stop_loss)+'</div></div>';
+    h+='<div style="width:1px;background:#334155"></div>';
+    h+='<div><div style="font-size:7px;color:#d97706;font-weight:700">HOLD TIME</div><div style="font-size:16px;font-weight:900;color:#d97706">3-10 days</div></div>';
+    h+='</div></div>';
+    
+    // Exit rules
+    h+='<div style="display:flex;gap:4px;flex-wrap:wrap;justify-content:center">';
+    h+='<div style="padding:4px 8px;border-radius:6px;background:#05966410;font-size:8px;color:#059669;font-weight:700">✅ Target → Exit</div>';
+    h+='<div style="padding:4px 8px;border-radius:6px;background:#ef444410;font-size:8px;color:#ef4444;font-weight:700">❌ Stop → Exit</div>';
+    h+='<div style="padding:4px 8px;border-radius:6px;background:#d9770610;font-size:8px;color:#d97706;font-weight:700">📉 Trend breaks → Exit</div>';
+    h+='</div>';
+  }
+  
+  h+='</div>'; // close main card
+  
+  // ─── TECHNICAL LEVELS ───
+  h+='<div style="max-width:480px;margin:10px auto;display:flex;gap:6px">';
+  h+='<div style="flex:1;padding:8px;border-radius:8px;background:#0F172A;border:1px solid #1e293b;text-align:center"><div style="font-size:7px;color:#059669;font-weight:700">EMA 20</div><div style="font-size:14px;font-weight:900;color:#059669;font-family:JetBrains Mono">'+S+L(d.ema20)+'</div></div>';
+  h+='<div style="flex:1;padding:8px;border-radius:8px;background:#0F172A;border:1px solid #1e293b;text-align:center"><div style="font-size:7px;color:#3b82f6;font-weight:700">EMA 50</div><div style="font-size:14px;font-weight:900;color:#3b82f6;font-family:JetBrains Mono">'+S+L(d.ema50)+'</div></div>';
+  h+='<div style="flex:1;padding:8px;border-radius:8px;background:#0F172A;border:1px solid #1e293b;text-align:center"><div style="font-size:7px;color:#ef4444;font-weight:700">RESISTANCE</div><div style="font-size:14px;font-weight:900;color:#ef4444;font-family:JetBrains Mono">'+S+L(d.resistance)+'</div></div>';
+  h+='</div>';
+  
+  // ─── SWING INDICATORS ───
+  h+='<div style="max-width:480px;margin:6px auto;display:flex;gap:6px;flex-wrap:wrap">';
+  h+='<div style="flex:1;min-width:90px;padding:6px;border-radius:6px;background:#0F172A;border:1px solid #1e293b;text-align:center"><div style="font-size:6px;color:#64748b">TREND</div><div style="font-size:11px;font-weight:900;color:'+(d.trend==='UPTREND'?'#059669':d.trend==='DOWNTREND'?'#ef4444':'#64748b')+'">'+d.trend+'</div></div>';
+  h+='<div style="flex:1;min-width:90px;padding:6px;border-radius:6px;background:#0F172A;border:1px solid #1e293b;text-align:center"><div style="font-size:6px;color:#64748b">RSI</div><div style="font-size:11px;font-weight:900;color:'+(d.rsi>70?'#ef4444':d.rsi<30?'#059669':'#94a3b8')+'">'+d.rsi+'</div></div>';
+  h+='<div style="flex:1;min-width:90px;padding:6px;border-radius:6px;background:#0F172A;border:1px solid #1e293b;text-align:center"><div style="font-size:6px;color:#64748b">VOLUME</div><div style="font-size:11px;font-weight:900;color:'+(d.vol_expansion?'#059669':'#64748b')+'">'+d.vol_ratio+'x</div></div>';
+  h+='<div style="flex:1;min-width:90px;padding:6px;border-radius:6px;background:#0F172A;border:1px solid #1e293b;text-align:center"><div style="font-size:6px;color:#64748b">5D CHANGE</div><div style="font-size:11px;font-weight:900;color:'+(d.price_change_5d>0?'#059669':'#ef4444')+'">'+(d.price_change_5d>0?'+':'')+d.price_change_5d+'%</div></div>';
+  h+='</div>';
+  
+  // Refresh + timestamp
+  var ts=new Date();var tsStr=ts.getHours().toString().padStart(2,'0')+':'+ts.getMinutes().toString().padStart(2,'0')+':'+ts.getSeconds().toString().padStart(2,'0');
+  h+='<div style="max-width:480px;margin:8px auto;display:flex;justify-content:space-between;align-items:center">';
+  h+='<div style="font-size:9px;color:#475569">Updated: '+tsStr+' · Auto-refresh 60s</div>';
+  h+='<button onclick="window._loadSwingAnalysis(\''+sym+'\',\''+d.region+'\')" style="padding:6px 16px;border-radius:8px;background:#1e293b;color:#94a3b8;border:1px solid #334155;font-size:10px;font-weight:700;cursor:pointer">🔄 Refresh</button>';
+  h+='</div>';
+  
+  // Disclaimer
+  h+='<div style="max-width:480px;margin:8px auto;font-size:7px;color:#475569;text-align:center">⚠️ Swing analysis for positional trades (3-10 days). Not financial advice. Use with your own risk management.</div>';
+  
+  el.innerHTML=h;
+  
+  // Voice for swing
+  if(window._voiceEnabled&&verdict!=='NO TRADE'&&window._lastSwingVerdict!==verdict+sym){
+    window._lastSwingVerdict=verdict+sym;
+    var vMsg='';
+    if(verdict==='BUY')vMsg='Swing trade alert! '+sym+' showing '+d.trend.toLowerCase()+' with volume expansion. Consider buying above '+S+d.entry_level+'. Target '+S+d.target+'. Stop loss '+S+d.stop_loss+'. Hold 3 to 10 days.';
+    else if(verdict==='SELL')vMsg='Swing trade alert! '+sym+' showing '+d.trend.toLowerCase()+' with distribution. Consider selling below '+S+d.entry_level+'. Target '+S+d.target+'. Stop loss '+S+d.stop_loss+'.';
+    else if(verdict.indexOf('WATCH')>=0)vMsg=sym+' is setting up for a swing trade. '+d.trend+'. Watching for confirmation above '+S+d.entry_level+'.';
+    if(vMsg)window._speak(vMsg,verdict==='BUY'||verdict==='SELL');
+  }
+};
+
+// ─── Add MODE TOGGLE to Options Engine ───
+var _origQTSwing=_renderQuickTrade;
+_renderQuickTrade=function(d,sym){
+  _origQTSwing(d,sym);
+  // Add mode toggle at top of the card
+  var el=document.getElementById('deResult');if(!el)return;
+  var isUS=d._region==='US'||d.region==='US';
+  var reg=isUS?'US':'IN';
+  var toggleDiv=document.createElement('div');
+  toggleDiv.style.cssText='text-align:center;margin-bottom:8px';
+  toggleDiv.innerHTML='<div style="display:inline-flex;gap:0">'
+    +'<button style="padding:8px 20px;border-radius:10px 0 0 10px;font-size:11px;font-weight:800;cursor:pointer;border:2px solid #3b82f6;background:#3b82f6;color:#fff">⚡ OPTIONS</button>'
+    +'<button onclick="window._swingMode=true;window._loadSwingAnalysis(\''+sym+'\',\''+reg+'\')" style="padding:8px 20px;border-radius:0 10px 10px 0;font-size:11px;font-weight:800;cursor:pointer;border:2px solid #8b5cf6;background:transparent;color:#8b5cf6">📈 SWING</button>'
+    +'</div>';
+  el.insertBefore(toggleDiv,el.firstChild);
+};
