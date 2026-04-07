@@ -2795,7 +2795,7 @@ function _renderQuickTrade(d,sym){
   h+='<div style="text-align:center;margin-bottom:20px">';
   h+='<div style="font-size:8px;color:#64748b;font-weight:800;letter-spacing:3px;margin-bottom:4px">'+(qtIsExpiry?sym+' EXPIRY MODE'+(qtGammaBlast?' ⚡':''):'EXPIRY QUICK TRADE')+'</div>';
   h+='<div style="font-size:10px;color:#94a3b8">'+sym+' · '+S+(isUS?spot.toLocaleString('en-US'):spot.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN'))+' · VIX '+vix.toFixed(1)+(qtIsExpiry?' · 🔥 EXPIRY DAY':'')+'</div>';
-  if(qtGammaBlast)h+='<div style="margin-top:4px;padding:3px 12px;border-radius:10px;background:#f59e0b15;display:inline-block;font-size:9px;color:#f59e0b;font-weight:800">⚡ Gamma Blast Active — Take Bigger Position</div>';
+  if(qtGammaBlast)h+='<div style="margin-top:4px;padding:3px 12px;border-radius:10px;background:#f59e0b15;display:inline-block;font-size:9px;color:#f59e0b;font-weight:800">⚡ Strong Momentum — Take Bigger Position (prices moving fast)</div>';
   h+='</div>';
   
   // Should you trade?
@@ -2850,7 +2850,7 @@ function _renderQuickTrade(d,sym){
       h+='<div style="font-size:11px;color:#94a3b8;margin-bottom:4px">👉</div>';
       h+='<div style="font-size:22px;font-weight:900;color:'+biasColor+';font-family:Sora">BUY '+S+entryStrike7.toLocaleString(isUS?'en-US':'en-IN')+' '+entryType7+'</div>';
       h+='<div style="font-size:11px;color:#94a3b8;margin-top:4px">Premium: ~'+S+entryPrem7.toFixed(0)+' · Lot: '+c7.lot+' · Qty: '+qtLots+' lot'+(qtLots!=='1'?'s':'')+(qtGammaBlast?' ⚡':'')+'</div>';
-      if(qtGammaBlast)h+='<div style="font-size:9px;color:#f59e0b;margin-top:4px;font-weight:700">⚡ Gamma Blast → Premium can jump 30-50% in minutes</div>';
+      if(qtGammaBlast)h+='<div style="font-size:9px;color:#f59e0b;margin-top:4px;font-weight:700">⚡ Fast move happening — premium can jump 30-50% in minutes</div>';
       h+='</div>';
       
       // EXIT
@@ -2873,8 +2873,8 @@ function _renderQuickTrade(d,sym){
       h+='<div style="margin-top:8px;display:flex;gap:4px;flex-wrap:wrap;justify-content:center">';
       h+='<div style="padding:4px 10px;border-radius:6px;background:#05966410;font-size:8px;color:#059669;font-weight:700">✅ Target hit → Close</div>';
       h+='<div style="padding:4px 10px;border-radius:6px;background:#ef444410;font-size:8px;color:#ef4444;font-weight:700">❌ Stop hit → Cut Loss</div>';
-      if(qtGammaBlast)h+='<div style="padding:4px 10px;border-radius:6px;background:#f59e0b10;font-size:8px;color:#f59e0b;font-weight:700">⚡ Gamma fading → Close</div>';
-      if(qtIsExpiry)h+='<div style="padding:4px 10px;border-radius:6px;background:#d9770610;font-size:8px;color:#d97706;font-weight:700">⏱ Theta spike → Exit early</div>';
+      if(qtGammaBlast)h+='<div style="padding:4px 10px;border-radius:6px;background:#f59e0b10;font-size:8px;color:#f59e0b;font-weight:700">⚡ Momentum dying → Close</div>';
+      if(qtIsExpiry)h+='<div style="padding:4px 10px;border-radius:6px;background:#d9770610;font-size:8px;color:#d97706;font-weight:700">⏱ Premium losing value → Exit early</div>';
       h+='</div>';
     }else{
       // WAITING — show what will happen when breakout occurs
@@ -2887,11 +2887,19 @@ function _renderQuickTrade(d,sym){
     // Expiry theta warning
     if(qtIsExpiry){
       h+='<div style="text-align:center;margin-top:8px;padding:8px 14px;border-radius:10px;background:#d9770608;border:1px solid #d9770620">';
-      h+='<div style="font-size:9px;color:#d97706;font-weight:800">⏱ EXPIRY DAY — Theta decay is fast. Max hold: 10 minutes.</div></div>';
+      h+='<div style="font-size:9px;color:#d97706;font-weight:800">⏱ EXPIRY DAY — Options lose value fast today. Exit within 10 minutes.</div></div>';
     }
   }
   
   h+='</div>'; // close main card
+  
+  // Refresh button + Last Updated
+  var nowTs=new Date();
+  var timeStr=nowTs.getHours().toString().padStart(2,'0')+':'+nowTs.getMinutes().toString().padStart(2,'0')+':'+nowTs.getSeconds().toString().padStart(2,'0');
+  h+='<div style="max-width:480px;margin:8px auto;display:flex;justify-content:space-between;align-items:center">';
+  h+='<div style="font-size:9px;color:#475569">Updated: '+timeStr+' · Auto-refresh 30s</div>';
+  h+='<button onclick="window._loadQuickTrade(\''+sym+'\')" style="padding:6px 16px;border-radius:8px;background:#1e293b;color:#94a3b8;border:1px solid #334155;font-size:10px;font-weight:700;cursor:pointer">🔄 Refresh</button>';
+  h+='</div>';
   
   // 3 GOLDEN RULES
   h+='<div style="max-width:480px;margin:12px auto 0;padding:14px 20px;border-radius:14px;background:#0F172A;border:1px solid #ef444420">';
@@ -2961,64 +2969,63 @@ window._voiceAlert=function(type,detail,strike,prem,isBlast,extraCtx){
   if(us0DTEv.indexOf(detail)>=0&&usDowV>=1&&usDowV<=5)isExpDay=true;
   else if(usDowV===5&&detail)isExpDay=true;
   if(window._qtIsExpiry)isExpDay=true;
-  var expiryTag=isExpDay?' Expiry day.':'';
   
-  // Active trade data for exit alerts
   var t=window._activeTrade;
   var S=t?(t.region==='US'?'dollar':'rupees'):'rupees';
   
   if(type==='ENTRY_CE'){
-    msg=(detail||sym||'Index')+expiryTag;
-    msg+=' Bullish — '+(ctx.reason||'OI supports upside, breakout confirmed')+'.';
+    msg='Trade alert! '+(detail||'Index')+' is going up.';
+    msg+=' '+(ctx.reason||'Price breaking out with volume')+'.';
     msg+=' Buy '+(strike?strike+' ':'')+'Call at '+(prem||'market')+'.';
     if(ctx.target)msg+=' Target '+ctx.target+', stop loss '+ctx.sl+'.';
-    if(isBlast)msg+=' Gamma Blast active! Take 2 to 3 lots.';
-    if(isExpDay)msg+=' Watch theta decay. Exit within 10 minutes.';
+    if(isBlast)msg+=' Strong momentum — take bigger position, 2 to 3 lots.';
+    if(isExpDay)msg+=' Options expire today — exit within 10 minutes, premiums lose value fast.';
   }
   else if(type==='ENTRY_PE'){
-    msg=(detail||sym||'Index')+expiryTag;
-    msg+=' Bearish — '+(ctx.reason||'OI supports downside, breakdown confirmed')+'.';
+    msg='Trade alert! '+(detail||'Index')+' is going down.';
+    msg+=' '+(ctx.reason||'Price breaking down with volume')+'.';
     msg+=' Buy '+(strike?strike+' ':'')+'Put at '+(prem||'market')+'.';
     if(ctx.target)msg+=' Target '+ctx.target+', stop loss '+ctx.sl+'.';
-    if(isBlast)msg+=' Gamma Blast active! Take 2 to 3 lots.';
-    if(isExpDay)msg+=' Watch theta decay. Exit within 10 minutes.';
+    if(isBlast)msg+=' Strong momentum — take bigger position, 2 to 3 lots.';
+    if(isExpDay)msg+=' Options expire today — exit within 10 minutes, premiums lose value fast.';
   }
-  else if(type==='WAIT')msg='No trade right now. Waiting for breakout with volume confirmation.';
+  else if(type==='WAIT')msg='No good trade right now. Waiting for a clear breakout with volume. Will alert you when ready.';
   else if(type==='PARTIAL'){
     if(t){
       var pnlP=Math.round((ctx.currentPrem-t.entryPrem)*t.lots*t.lotSize);
-      msg='Target 1 reached at '+(ctx.currentPrem||'')+'. Premium up 25 percent.';
-      msg+=' Book half position. Profit so far: '+(pnlP>0?pnlP:'')+' '+S+'.';
-    }else msg='Book 50 percent profit. Trail the rest.';
+      msg='Good news! Premium reached '+(ctx.currentPrem||'')+', up 25 percent.';
+      msg+=' Sell half your position now. Lock in '+(pnlP>0?pnlP:'')+' '+S+' profit.';
+      msg+=' Let the rest run with a trailing stop.';
+    }else msg='Premium up 25 percent. Book half your profit now.';
   }
   else if(type==='TARGET_HIT'){
     if(t){
       var pnlT=Math.round((ctx.currentPrem-t.entryPrem)*t.lots*t.lotSize);
-      msg='Target 2 reached at '+(ctx.currentPrem||'')+'. Premium up 40 percent!';
-      msg+=' Close full position now. Total profit: '+(pnlT>0?pnlT:'')+' '+S+'.';
-    }else msg='Target reached! Close trade and book profit.';
+      msg='Full target reached at '+(ctx.currentPrem||'')+'. Premium up 40 percent!';
+      msg+=' Close everything now. Total profit '+(pnlT>0?pnlT:'')+' '+S+'. Great trade!';
+    }else msg='Target reached! Close your position and book full profit.';
   }
   else if(type==='STOP_HIT'){
     if(t){
       var lossAmt=Math.abs(Math.round((ctx.currentPrem-t.entryPrem)*t.lots*t.lotSize));
       msg='Stop loss hit at '+(ctx.currentPrem||'')+'. Premium down 20 percent.';
-      msg+=' Cut loss immediately. Loss: '+lossAmt+' '+S+'. Do not hold.';
-    }else msg='Stop loss hit! Cut loss now. Do not hold.';
+      msg+=' Exit immediately. Loss is '+lossAmt+' '+S+'. Do not hold hoping it will come back.';
+    }else msg='Stop loss hit. Exit immediately. Do not hold.';
   }
   else if(type==='GAMMA_FADING'){
-    msg='Gamma fading! Momentum is dying.';
-    if(t&&ctx.currentPrem)msg+=' Premium now at '+ctx.currentPrem+', was '+t.entryPrem+'.';
-    msg+=' Close trade now before premium collapses.';
+    msg='Momentum is dying. The big move is over.';
+    if(t&&ctx.currentPrem)msg+=' Premium dropped from '+t.entryPrem+' to '+ctx.currentPrem+'.';
+    msg+=' Close your trade now before premium drops further.';
   }
   else if(type==='THETA_EXIT'){
     if(t){
       var mins=Math.round((Date.now()-t.entryTime)/60000);
-      msg='Theta accelerating! '+mins+' minutes in trade. Premium decaying fast.';
-    }else msg='Theta accelerating! Premium decaying fast.';
-    msg+=' Exit now to protect capital.';
+      msg='You have been in this trade for '+mins+' minutes. On expiry day, premiums lose value very fast.';
+    }else msg='Premiums are losing value fast.';
+    msg+=' Exit now to protect your profit.';
   }
-  else if(type==='EXIT')msg='Exit trade immediately. Signal has reversed.';
-  else if(type==='STOP')msg='Two consecutive losses. Stop trading for today. Protect your capital. Come back tomorrow.';
+  else if(type==='EXIT')msg='Signal reversed. Exit your trade immediately.';
+  else if(type==='STOP')msg='You have 2 losses in a row. Stop trading for today. The best traders know when to stop. Come back tomorrow with fresh eyes.';
   else msg=type;
   
   window._speak(msg,type==='ENTRY_CE'||type==='ENTRY_PE'||type==='EXIT'||type==='GAMMA_FADING'||type==='STOP_HIT');
@@ -3232,7 +3239,8 @@ _renderQuickTrade=function(d,sym){
   var vSL=Math.round(vPrem*0.8);
   
   // Only voice if signal actually changed from last render
-  if(currentSignal!==window._lastQuickSignal){
+  // Skip first render (NONE→anything) — don't announce on initial load
+  if(currentSignal!==window._lastQuickSignal&&window._lastQuickSignal!=='NONE'){
     var prevSig=window._lastQuickSignal;
     window._lastQuickSignal=currentSignal;
     if(currentSignal==='ENTRY_CE'){
@@ -3249,8 +3257,60 @@ _renderQuickTrade=function(d,sym){
       if(vBlast||window._lastGammaBlastState)window._voiceAlert('GAMMA_FADING');
       else if(vExpiry)window._voiceAlert('THETA_EXIT');
     }
+  }else if(window._lastQuickSignal==='NONE'){
+    // First render — just track, don't voice
+    window._lastQuickSignal=currentSignal;
   }
   window._lastGammaBlastState=vBlast;
+  
+  // ─── PERIODIC MARKET COMMENTARY (while WAITING — every 3 min max) ───
+  window._renderCount=(window._renderCount||0)+1;
+  var now9=Date.now();
+  if(!window._lastCommentaryTime)window._lastCommentaryTime=now9;
+  var commentaryGap=now9-window._lastCommentaryTime;
+  
+  // Skip first 2 renders (initial load + first refresh) — no commentary
+  if(window._renderCount>2&&currentSignal==='WAITING'&&commentaryGap>180000){
+    
+    // Gamma blast detected while waiting
+    if(vBlast&&!window._lastBlastAnnounced){
+      window._lastBlastAnnounced=true;
+      window._lastCommentaryTime=now9;
+      window._speak('Strong momentum detected! Prices moving fast. Watching closely for a good entry.',true);
+    }
+    // Gamma blast gone
+    else if(!vBlast&&window._lastBlastAnnounced){
+      window._lastBlastAnnounced=false;
+      window._lastCommentaryTime=now9;
+      window._speak('Momentum has calmed down. Back to normal watching.',false);
+    }
+    // Expiry day theta reminder (every 5 min)
+    else if(vExpiry&&commentaryGap>300000){
+      window._lastCommentaryTime=now9;
+      window._speak('Still watching '+sym+'. Options are losing value every minute on expiry day. Will alert you when a good setup appears.',false);
+    }
+    // General alive check (every 5 min, not on expiry — less urgent)
+    else if(!vExpiry&&commentaryGap>300000){
+      window._lastCommentaryTime=now9;
+      window._speak('Still watching '+sym+'. No clear trade yet. Market is '+(vBias==='BULLISH'?'leaning up':'leaning down')+'. Waiting for confirmation.',false);
+    }
+  }
+  
+  // Gamma blast change detection — announce immediately but NOT on first 2 loads
+  if(window._renderCount>2&&window._lastQuickSignal!=='NONE'&&window._lastQuickSignal!==undefined){
+    if(vBlast&&!window._prevBlastState){
+      window._lastCommentaryTime=now9;
+      window._lastBlastAnnounced=true;
+      window._speak('Strong momentum just started! Watching for entry. If breakout happens now, take bigger position.',true);
+    }else if(!vBlast&&window._prevBlastState&&currentSignal==='WAITING'){
+      window._lastBlastAnnounced=false;
+      if(commentaryGap>60000){
+        window._lastCommentaryTime=now9;
+        window._speak('Momentum fading. Back to patient watching.',false);
+      }
+    }
+  }
+  window._prevBlastState=vBlast;
 };
 
 // ─── WIRE INTO GAMMA MODE ───
@@ -3484,7 +3544,7 @@ _renderQuickTrade=function(d,sym){
   // Voice coaching — ONLY when status is ENTER NOW (not WAITING)
   var statusForVoice=el.textContent||'';
   if(coaching.confidence==='HIGH'&&bias2!=='NO TRADE'&&statusForVoice.indexOf('ENTER NOW')>=0){
-    var coachVoice=bias2==='BULLISH'?'Buy Call Now — Breakout with strong momentum':'Buy Put Now — Breakdown with volume confirmation';
+    var coachVoice=bias2==='BULLISH'?'Market is going up. Good trade setup. Execute now.':'Market is going down. Good trade setup. Execute now.';
     if(window._lastCoachVoice!==coachVoice){window._lastCoachVoice=coachVoice;window._speak(coachVoice,true)}
   }else if(statusForVoice.indexOf('WAITING')>=0||statusForVoice.indexOf('ALMOST')>=0){
     // Reset coach voice so it fires fresh when ENTER NOW arrives
@@ -3715,7 +3775,7 @@ function _renderUltraSimple(d,sym){
   // Gamma Blast indicator
   if(gammaBlast&&(signal==='BUY_CE'||signal==='BUY_PE')){
     h+='<div style="margin:8px 0;padding:6px 20px;border-radius:20px;background:linear-gradient(135deg,#f59e0b20,#d9770620);border:1px solid #f59e0b40;display:inline-block">';
-    h+='<span style="font-size:12px;font-weight:900;color:#f59e0b">⚡ Gamma Blast → Take Larger Quantity!</span></div>';
+    h+='<span style="font-size:12px;font-weight:900;color:#f59e0b">⚡ Strong momentum — take bigger position!</span></div>';
   }
   // Auto-refresh countdown
   h+='<div style="font-size:8px;color:#334155;margin-top:8px">Auto-refresh: 30 sec</div>';
@@ -3728,8 +3788,8 @@ function _renderUltraSimple(d,sym){
       var isGood=r.indexOf('Waiting')< 0&&r.indexOf('not ')< 0&&r.indexOf('building')< 0;
       h+='<div style="font-size:11px;color:'+(isGood?'#059669':'#d97706')+';padding:2px 0;font-weight:600">'+(isGood?'✔':'⏳')+' '+r+'</div>';
     });
-    if(gammaBlast)h+='<div style="font-size:11px;color:#f59e0b;padding:2px 0;font-weight:600">⚡ Gamma Blast → Momentum spike</div>';
-    if(isExpiryDay)h+='<div style="font-size:11px;color:#d97706;padding:2px 0;font-weight:600">⏱ Theta Decay accelerating → Monitor exit closely</div>';
+    if(gammaBlast)h+='<div style="font-size:11px;color:#f59e0b;padding:2px 0;font-weight:600">⚡ Prices moving fast — strong momentum</div>';
+    if(isExpiryDay)h+='<div style="font-size:11px;color:#d97706;padding:2px 0;font-weight:600">⏱ Options losing value fast today — exit within 10 min</div>';
     h+='</div>';
   }else if(signal==='WAIT'){
     h+='<div style="background:#1e293b;border-radius:12px;padding:12px 20px;max-width:300px;width:100%">';
@@ -3780,8 +3840,8 @@ function _renderUltraSimple(d,sym){
     h+='<div style="display:flex;gap:4px;flex-wrap:wrap;justify-content:center">';
     h+='<div style="padding:4px 10px;border-radius:6px;background:#05966410;font-size:8px;color:#059669;font-weight:700">✅ Target hit → Close Trade</div>';
     h+='<div style="padding:4px 10px;border-radius:6px;background:#ef444410;font-size:8px;color:#ef4444;font-weight:700">❌ Stop hit → Cut Loss</div>';
-    if(gammaBlast)h+='<div style="padding:4px 10px;border-radius:6px;background:#f59e0b10;font-size:8px;color:#f59e0b;font-weight:700">⚡ Gamma fading → Close Trade</div>';
-    if(isExpiryDay)h+='<div style="padding:4px 10px;border-radius:6px;background:#d9770610;font-size:8px;color:#d97706;font-weight:700">⏱ Theta spike → Exit early</div>';
+    if(gammaBlast)h+='<div style="padding:4px 10px;border-radius:6px;background:#f59e0b10;font-size:8px;color:#f59e0b;font-weight:700">⚡ Momentum dying → Close Trade</div>';
+    if(isExpiryDay)h+='<div style="padding:4px 10px;border-radius:6px;background:#d9770610;font-size:8px;color:#d97706;font-weight:700">⏱ Premium losing value → Exit early</div>';
     h+='</div></div>';
   }else if(signal==='WAIT'){
     h+='<div style="margin-top:8px;padding:12px 32px;border-radius:12px;background:#1e293b;color:#475569;font-size:12px;font-weight:700">⏳ WAIT — No action needed</div>';
