@@ -2578,11 +2578,40 @@ function _renderQuickTrade(d,sym){
   var gex=d.gex||{};
   var todayHigh=d.today_high||spot,todayLow=d.today_low||spot;
   
-  // MARKET CLOSED GUARD
+  // MARKET CLOSED GUARD — if spot=0 or no chain data
   if(spot<=0||chain.length===0){
+    // Check if market SHOULD be open (IST for India, ET for US)
+    var now=new Date();
+    var istH=now.getUTCHours()+5+(now.getUTCMinutes()+30>=60?1:0);
+    var istM=(now.getUTCMinutes()+30)%60;
+    var isINMarketHours=!isUS&&istH>=9&&(istH<15||(istH===15&&istM<=30))&&now.getUTCDay()>=1&&now.getUTCDay()<=5;
+    var etH=now.getUTCHours()-4; // approximate ET
+    var isUSMarketHours=isUS&&etH>=9&&etH<16&&now.getUTCDay()>=1&&now.getUTCDay()<=5;
+    var shouldBeOpen=isINMarketHours||isUSMarketHours;
+    
     var qtExp0=window._getTodayExpiryIndex?window._getTodayExpiryIndex():'BANKNIFTY';
     var qtExpNames0={NIFTY:'Tuesday',BANKNIFTY:'Wednesday',SENSEX:'Thursday'};
     var marketMsg=isUS?'US market hours: <strong>9:30 AM – 4:00 PM ET</strong> (Mon–Fri)':'NSE trading hours: <strong>9:15 AM – 3:30 PM IST</strong> (Mon–Fri)';
+    
+    if(shouldBeOpen){
+      // Market SHOULD be open but API returned empty — show retry, not "closed"
+      var h0r='<div style="max-width:480px;margin:0 auto;padding:40px 20px;text-align:center;background:#0A0F1C;border-radius:20px">';
+      h0r+='<div style="display:inline-block;width:30px;height:30px;border:3px solid #f59e0b;border-top-color:transparent;border-radius:50%;animation:spin 1s linear infinite;margin-bottom:12px"></div>';
+      h0r+='<div style="font-size:18px;font-weight:900;color:#e2e8f0;font-family:Sora;margin-bottom:8px">Fetching Live Data...</div>';
+      h0r+='<div style="font-size:11px;color:#94a3b8;margin-bottom:16px">Market is open. NSE API may take a moment to respond.<br>Auto-retrying in 10 seconds...</div>';
+      h0r+='<button onclick="window._loadQuickTrade(\''+sym+'\')" style="padding:10px 24px;border-radius:10px;background:#f59e0b;color:#000;border:none;font-size:12px;font-weight:800;cursor:pointer">🔄 Retry Now</button>';
+      h0r+='</div>';
+      el.innerHTML=h0r;
+      // Auto-retry after 10 seconds
+      setTimeout(function(){
+        if(window._activeOptionsSym===sym){
+          if(isUS)window._loadOptionsUniversal(sym,'US');
+          else window._loadQuickTrade(sym);
+        }
+      },10000);
+      return;
+    }
+    
     var h0='<div style="max-width:480px;margin:0 auto;padding:40px 20px;text-align:center;background:#0A0F1C;border-radius:20px">';
     h0+='<div style="font-size:48px;margin-bottom:12px">🕐</div>';
     h0+='<div style="font-size:22px;font-weight:900;color:#e2e8f0;font-family:Sora;margin-bottom:8px">Market Closed</div>';
@@ -3493,12 +3522,26 @@ window._loadGammaMode=function(symbol){
 
 function _renderUltraSimple(d,sym){
   var el=document.getElementById('deResult');if(!el)return;
-  var S='₹';
+  var isUS8u=d._region==='US'||d.region==='US';
+  var S=isUS8u?'$':'₹';
   var spot=d.spot||0,vix=d.vix||0,vwap=d.vwap||0,pcr=d.pcr||0;
   var bars=d.ohlc_bars||[];var gex=d.gex||{};var chain=d.chain_near_atm||[];
   var ceRes=d.ce_resistance||[],peSupp=d.pe_support||[];
   var todayH=d.today_high||spot,todayL=d.today_low||spot;
   var atmIV=d.atm_iv||0;
+  
+  // Market guard
+  if(spot<=0||chain.length===0){
+    var now8=new Date();var istH8=now8.getUTCHours()+5+(now8.getUTCMinutes()+30>=60?1:0);
+    var shouldOpen8=(!isUS8u&&istH8>=9&&istH8<16&&now8.getUTCDay()>=1&&now8.getUTCDay()<=5);
+    if(shouldOpen8){
+      el.innerHTML='<div style="text-align:center;padding:40px;background:#0A0F1C;border-radius:16px"><div style="display:inline-block;width:30px;height:30px;border:3px solid #f59e0b;border-top-color:transparent;border-radius:50%;animation:spin 1s linear infinite;margin-bottom:12px"></div><div style="font-size:16px;font-weight:900;color:#e2e8f0">Fetching '+sym+'...</div><div style="font-size:10px;color:#94a3b8;margin-top:8px">Auto-retrying...</div></div>';
+      return;
+    }
+    el.innerHTML='<div style="text-align:center;padding:40px;background:#0A0F1C;border-radius:16px"><div style="font-size:48px;margin-bottom:12px">🕐</div><div style="font-size:18px;font-weight:900;color:#e2e8f0">Market Closed</div><div style="font-size:10px;color:#94a3b8;margin-top:8px">'+(isUS8u?'US: 9:30 AM – 4:00 PM ET':'NSE: 9:15 AM – 3:30 PM IST')+'</div></div>';
+    return;
+  }
+  
   var cfg8={NIFTY:{lot:75,step:50,minPrem:80},BANKNIFTY:{lot:30,step:100,minPrem:150},SENSEX:{lot:20,step:100,minPrem:100},FINNIFTY:{lot:40,step:50,minPrem:60},MIDCPNIFTY:{lot:75,step:25,minPrem:50}};
   var c8=cfg8[sym]||cfg8.NIFTY;
   var atmStrike8=Math.round(spot/c8.step)*c8.step;
@@ -4084,7 +4127,17 @@ window._loadOptionsUniversal=function(symbol,region){
     .then(function(d){
       if(window._activeOptionsSym!==sym)return; // Another ticker loaded — abort
       if(!d||!d.success){
-        el.innerHTML='<div style="text-align:center;padding:40px;background:#0A0F1C;border-radius:16px"><div style="font-size:48px;margin-bottom:12px">🕐</div><div style="font-size:16px;color:#ef4444;font-weight:900">No options data for '+sym+'</div><div style="font-size:10px;color:#94a3b8;margin-top:8px">'+(reg==='US'?'US market hours: 9:30 AM – 4:00 PM ET':'NSE hours: 9:15 AM – 3:30 PM IST')+'</div><button onclick="window._loadOptionsUniversal(\''+sym+'\',\''+reg+'\')" style="margin-top:12px;padding:8px 20px;border-radius:8px;background:#3b82f6;color:#fff;border:none;cursor:pointer;font-size:11px;font-weight:700">🔄 Retry</button></div>';
+        // Check if market should be open
+        var now2=new Date();var istH2=now2.getUTCHours()+5+(now2.getUTCMinutes()+30>=60?1:0);
+        var etH2=now2.getUTCHours()-4;var dow2=now2.getUTCDay();
+        var shouldOpen2=(reg==='US')?(etH2>=9&&etH2<16&&dow2>=1&&dow2<=5):(istH2>=9&&(istH2<15||(istH2===15&&(now2.getUTCMinutes()+30)%60<=30))&&dow2>=1&&dow2<=5);
+        
+        if(shouldOpen2){
+          el.innerHTML='<div style="text-align:center;padding:40px;background:#0A0F1C;border-radius:16px"><div style="display:inline-block;width:30px;height:30px;border:3px solid #f59e0b;border-top-color:transparent;border-radius:50%;animation:spin 1s linear infinite;margin-bottom:12px"></div><div style="font-size:16px;font-weight:900;color:#e2e8f0">Fetching '+sym+' data...</div><div style="font-size:10px;color:#94a3b8;margin-top:8px">Market is open. Auto-retrying in 10 seconds...</div><button onclick="window._loadOptionsUniversal(\''+sym+'\',\''+reg+'\')" style="margin-top:12px;padding:8px 20px;border-radius:8px;background:#f59e0b;color:#000;border:none;cursor:pointer;font-size:11px;font-weight:800">🔄 Retry Now</button></div>';
+          setTimeout(function(){if(window._activeOptionsSym===sym)window._loadOptionsUniversal(sym,reg)},10000);
+        }else{
+          el.innerHTML='<div style="text-align:center;padding:40px;background:#0A0F1C;border-radius:16px"><div style="font-size:48px;margin-bottom:12px">🕐</div><div style="font-size:16px;color:#ef4444;font-weight:900">No options data for '+sym+'</div><div style="font-size:10px;color:#94a3b8;margin-top:8px">'+(reg==='US'?'US market hours: 9:30 AM – 4:00 PM ET':'NSE hours: 9:15 AM – 3:30 PM IST')+'</div><button onclick="window._loadOptionsUniversal(\''+sym+'\',\''+reg+'\')" style="margin-top:12px;padding:8px 20px;border-radius:8px;background:#3b82f6;color:#fff;border:none;cursor:pointer;font-size:11px;font-weight:700">🔄 Retry</button></div>';
+        }
         return;
       }
       d._region=reg;d._currency=reg==='US'?'$':'₹';d._lotSize=d.lot_size||(reg==='US'?100:1);

@@ -3679,7 +3679,7 @@ async def nse_options(symbol: str = "NIFTY"):
     
     # 3-min cache
     if cache_key in _nse_cache and cache_key in _nse_cache_ts:
-        if (now - _nse_cache_ts[cache_key]).total_seconds() < 600:
+        if (now - _nse_cache_ts[cache_key]).total_seconds() < 120:
             return _nse_cache[cache_key]
     
     hdr = {
@@ -3693,14 +3693,32 @@ async def nse_options(symbol: str = "NIFTY"):
     
     try:
         s = req.Session()
-        # Step 1: Get cookies
-        s.get("https://www.nseindia.com/", headers=hdr, timeout=3)
+        # Step 1: Get cookies (NSE needs this first)
+        try:
+            s.get("https://www.nseindia.com/", headers=hdr, timeout=8)
+        except:
+            print(f"[NSE-OPTIONS] ⚠️ Cookie warmup slow for {symbol}, retrying...")
+            try:
+                s.get("https://www.nseindia.com/", headers=hdr, timeout=10)
+            except:
+                print(f"[NSE-OPTIONS] ❌ Cookie warmup failed for {symbol}")
         
-        # Step 2: Fetch options chain
-        oc_url = f"https://www.nseindia.com/api/option-chain-indices?symbol={symbol}" if symbol in ["NIFTY", "BANKNIFTY", "NIFTY BANK", "FINNIFTY", "MIDCPNIFTY"] else f"https://www.nseindia.com/api/option-chain-equities?symbol={symbol}"
+        # Step 2: Fetch options chain (with retry)
+        oc_url = f"https://www.nseindia.com/api/option-chain-indices?symbol={symbol}" if symbol in ["NIFTY", "BANKNIFTY", "NIFTY BANK", "FINNIFTY", "MIDCPNIFTY", "SENSEX"] else f"https://www.nseindia.com/api/option-chain-equities?symbol={symbol}"
         
-        oc_resp = s.get(oc_url, headers=hdr, timeout=4)
-        if oc_resp.status_code == 200:
+        oc_resp = None
+        for attempt in range(2):
+            try:
+                oc_resp = s.get(oc_url, headers=hdr, timeout=10)
+                if oc_resp.status_code == 200:
+                    break
+                print(f"[NSE-OPTIONS] ⚠️ Attempt {attempt+1} got status {oc_resp.status_code} for {symbol}")
+            except Exception as e2:
+                print(f"[NSE-OPTIONS] ⚠️ Attempt {attempt+1} failed for {symbol}: {e2}")
+                if attempt == 0:
+                    import time as _t; _t.sleep(1)
+        
+        if oc_resp and oc_resp.status_code == 200:
             oc_data = oc_resp.json()
             records = oc_data.get("records", {})
             data = records.get("data", [])
@@ -3906,7 +3924,7 @@ async def nse_options(symbol: str = "NIFTY"):
         
         # Step 3: Fetch India VIX
         try:
-            vix_resp = s.get("https://www.nseindia.com/api/allIndices", headers=hdr, timeout=3)
+            vix_resp = s.get("https://www.nseindia.com/api/allIndices", headers=hdr, timeout=8)
             if vix_resp.status_code == 200:
                 for idx in vix_resp.json().get("data", []):
                     if "VIX" in idx.get("index", "").upper():
@@ -5035,8 +5053,8 @@ async def market_pulse():
             import requests as req
             s = req.Session()
             hdr = {"User-Agent": "Mozilla/5.0", "Accept": "application/json", "Referer": "https://www.nseindia.com/"}
-            s.get("https://www.nseindia.com/", headers=hdr, timeout=2)
-            resp = s.get("https://www.nseindia.com/api/fiidiiTradeReact", headers=hdr, timeout=2)
+            s.get("https://www.nseindia.com/", headers=hdr, timeout=6)
+            resp = s.get("https://www.nseindia.com/api/fiidiiTradeReact", headers=hdr, timeout=6)
             if resp.status_code == 200:
                 for entry in resp.json():
                     cat = entry.get("category", "")
