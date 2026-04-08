@@ -75,7 +75,7 @@ function _renderOptionsEngine(d,sym){
   inst.support=inst.maxPutOI.strike;
   inst.range=inst.resistance-inst.support;
   inst.midpoint=Math.round((inst.resistance+inst.support)/2);
-  inst.spotVsMid=spot>inst.midpoint?'ABOVE MID — Bullish bias':'BELOW MID — Bearish bias';
+  inst.spotVsMid=spot>_instMidpoint?'ABOVE MID — Bullish bias':'BELOW MID — Bearish bias';
   
   // Smart money zones
   var smartZones=[];
@@ -456,7 +456,7 @@ function _renderOptionsEngine(d,sym){
   // T2: Break of key level
   entry.total++;
   if(regime.trend==='BEARISH'&&spot<inst.support){entry.triggers.push({label:'Break below support '+S+inst.support.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN'),pass:true,icon:'✔'});entry.pass++}
-  else if(regime.trend==='BULLISH'&&spot>inst.midpoint){entry.triggers.push({label:'Price above OI midpoint '+S+inst.midpoint.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN'),pass:true,icon:'✔'});entry.pass++}
+  else if(regime.trend==='BULLISH'&&spot>_instMidpoint){entry.triggers.push({label:'Price above OI midpoint '+S+inst.midpoint.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN'),pass:true,icon:'✔'});entry.pass++}
   else if(regime.trend==='RANGE-BOUND'&&spot>inst.support&&spot<inst.resistance){entry.triggers.push({label:'Price within OI walls ('+S+inst.support.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+' - '+S+inst.resistance.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+')',pass:true,icon:'✔'});entry.pass++}
   else{entry.triggers.push({label:'No key level break yet',pass:false,icon:'✘'})}
   // T3: Volume confirmation
@@ -3091,10 +3091,16 @@ function _renderQuickTrade(d,sym){
   // Smart money insight — built from REAL institutional data
   var accumulating=volRatio8>1.2&&momUp>momDn;
   var distributing=volRatio8>1.2&&momDn>momUp;
-  var _instSupp=inst.support||0;
-  var _instRes=inst.resistance||0;
-  var _maxPainV=pa.maxPainDist||0;
-  var _smartZ=smartZones||[];
+  // Rebuild institutional data from raw chain (inst is in different scope)
+  var _instMaxCallOI=(ceRes&&ceRes.length>0)?ceRes[0]:{strike:0,oi:0,chg:0};
+  var _instMaxPutOI=(peSupp&&peSupp.length>0)?peSupp[0]:{strike:0,oi:0,chg:0};
+  var _instRes=_instMaxCallOI.strike||0;
+  var _instSupp=_instMaxPutOI.strike||0;
+  var _instMidpoint=(_instRes>0&&_instSupp>0)?Math.round((_instRes+_instSupp)/2):0;
+  var _maxPainV=0;
+  var _smartZ=[];
+  if(ceRes)ceRes.forEach(function(c){if(c.chg>5000)_smartZ.push({strike:c.strike,type:'CALL WRITING',chg:c.chg})});
+  if(d.pe_buildup)d.pe_buildup.forEach(function(p){if(p.chg>5000)_smartZ.push({strike:p.strike,type:'PUT WRITING',chg:p.chg})});
   var smartParts=[];
   
   // 1. Gamma / Dealer positioning
@@ -3104,9 +3110,9 @@ function _renderQuickTrade(d,sym){
   
   // 2. OI walls + support/resistance
   if(_instSupp>0&&_instRes>0){
-    smartParts.push('Institutional OI walls: Support '+S+_instSupp.toLocaleString()+' ('+inst.maxPutOI.oi.toLocaleString()+' put OI) · Resistance '+S+_instRes.toLocaleString()+' ('+inst.maxCallOI.oi.toLocaleString()+' call OI).');
-    if(spot>inst.midpoint)smartParts.push('Price is above the midpoint '+S+inst.midpoint.toLocaleString()+' — bullish institutional bias.');
-    else smartParts.push('Price is below the midpoint '+S+inst.midpoint.toLocaleString()+' — bearish institutional bias.');
+    smartParts.push('Institutional OI walls: Support '+S+_instSupp.toLocaleString()+' ('+_instMaxPutOI.oi.toLocaleString()+' put OI) · Resistance '+S+_instRes.toLocaleString()+' ('+_instMaxCallOI.oi.toLocaleString()+' call OI).');
+    if(spot>_instMidpoint)smartParts.push('Price is above the midpoint '+S+_instMidpoint.toLocaleString()+' — bullish institutional bias.');
+    else smartParts.push('Price is below the midpoint '+S+_instMidpoint.toLocaleString()+' — bearish institutional bias.');
   }
   
   // 3. Smart money flow (OI changes)
