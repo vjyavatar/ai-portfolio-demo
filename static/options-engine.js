@@ -5575,7 +5575,7 @@ window._renderOptionsNav=function(activeSym){
   h+='</div>';
   
   // Scanner button
-  h+='<div style="text-align:center;margin-bottom:6px"><button onclick="window._loadTradeScanner()" style="padding:6px 18px;border-radius:8px;background:linear-gradient(135deg,#f59e0b,#d97706);color:#000;border:none;font-size:10px;font-weight:800;cursor:pointer;font-family:Sora">🔍 SCAN ALL TRADES</button></div>';
+  h+='<div style="text-align:center;margin-bottom:6px"><button onclick="window._showBuyNowDashboard()" style="padding:6px 18px;border-radius:8px;background:linear-gradient(135deg,#059669,#10b981);color:#fff;border:none;font-size:10px;font-weight:800;cursor:pointer;font-family:Sora">🔥 BUY NOW Today</button></div>';
   
   // Category selector
   h+='<div style="display:flex;gap:4px;margin-bottom:8px;justify-content:center;flex-wrap:wrap">';
@@ -5653,6 +5653,192 @@ window.switchDEMode=function(mode){
   if(mode==='options'){
     setTimeout(function(){window._loadSmartOptions()},120);
   }
+};
+
+// ═══════════════════════════════════════════════════════════════
+// 🔥 BUY NOW TODAY — Dashboard landing page for Options mode
+// Scans all tickers per category, shows which have BUY signals
+// ═══════════════════════════════════════════════════════════════
+
+window._buyNowCategory='index'; // 'index', 'stock', 'etf'
+
+window._showBuyNowDashboard=function(cat){
+  var el=document.getElementById('deResult');if(!el)return;
+  if(cat)window._buyNowCategory=cat;
+  var reg=window._optionsRegion||'IN';
+  var filterCat=window._buyNowCategory;
+  var nav=window._optionsNav;
+  var regionData=nav[reg]||nav.IN;
+  var S=reg==='US'?'$':'₹';
+  
+  // Get tickers for selected category
+  var catData=regionData.categories[filterCat];
+  if(!catData){filterCat='index';catData=regionData.categories.index;window._buyNowCategory='index'}
+  
+  var h='';
+  
+  // Keep the normal nav at top (so user can go back)
+  h+=window._renderOptionsNav()||'';
+  
+  // BUY NOW header
+  h+='<div style="max-width:520px;margin:0 auto">';
+  h+='<div style="text-align:center;margin:8px 0 12px">';
+  h+='<div style="font-size:18px;font-weight:900;color:#e2e8f0;font-family:Sora">🔥 BUY NOW Today</div>';
+  h+='<div style="font-size:10px;color:#94a3b8;margin-top:2px">Scanning '+catData.label+' — showing only active BUY signals</div>';
+  h+='</div>';
+  
+  // Category tabs: Index | Stocks | ETFs
+  h+='<div style="display:flex;gap:4px;margin-bottom:10px;justify-content:center">';
+  Object.keys(regionData.categories).forEach(function(ck){
+    var cd=regionData.categories[ck];
+    var isAct=ck===filterCat;
+    h+='<div onclick="window._showBuyNowDashboard(\''+ck+'\')" style="padding:8px 16px;border-radius:10px;font-size:11px;font-weight:800;cursor:pointer;font-family:Sora;'+(isAct?'background:linear-gradient(135deg,#059669,#10b981);color:#fff;box-shadow:0 4px 12px rgba(5,150,105,.3)':'background:#1e293b;color:#64748b;border:1px solid #334155')+'">'+cd.label+'</div>';
+  });
+  h+='</div>';
+  
+  // Results area
+  h+='<div id="buyNowResults" style="min-height:150px"><div style="text-align:center;padding:30px"><div style="display:inline-block;width:20px;height:20px;border:3px solid #059669;border-top-color:transparent;border-radius:50%;animation:spin .5s linear infinite"></div><div style="font-size:10px;color:#059669;margin-top:6px" id="buyNowProg">Scanning '+catData.tickers.length+' tickers...</div></div></div>';
+  h+='</div>';
+  
+  el.innerHTML=h;
+  
+  // Scan tickers in this category
+  var tickers=catData.tickers;
+  var results=[];
+  var done2=0;
+  var total2=tickers.length;
+  window._buyNowVoiceFired=false;
+  
+  function renderBuyNow(){
+    var container=document.getElementById('buyNowResults');
+    if(!container)return;
+    var prog=document.getElementById('buyNowProg');
+    if(prog)prog.textContent='Scanned '+done2+'/'+total2;
+    
+    var buyNow=results.filter(function(r){return r.action==='BUY CALL'||r.action==='BUY PUT'});
+    var watching=results.filter(function(r){return r.action==='WATCH'});
+    var noTrade=results.filter(function(r){return r.action!=='BUY CALL'&&r.action!=='BUY PUT'&&r.action!=='WATCH'});
+    
+    var rh='';
+    
+    if(buyNow.length>0){
+      rh+='<div style="margin-bottom:10px"><div style="font-size:11px;font-weight:800;color:#059669;margin-bottom:6px;padding-left:4px">🟢 '+buyNow.length+' ACTIVE SIGNAL'+(buyNow.length>1?'S':'')+'</div>';
+      buyNow.forEach(function(r){rh+=window._renderBuyNowCard(r)});
+      rh+='</div>';
+    }
+    
+    if(watching.length>0){
+      rh+='<div style="margin-bottom:10px"><div style="font-size:10px;font-weight:700;color:#d97706;margin-bottom:4px;padding-left:4px">🟡 '+watching.length+' APPROACHING</div>';
+      watching.forEach(function(r){rh+=window._renderBuyNowMini(r)});
+      rh+='</div>';
+    }
+    
+    if(noTrade.length>0&&done2>=total2){
+      rh+='<div><div style="font-size:9px;font-weight:700;color:#64748b;margin-bottom:4px;padding-left:4px">⚪ NO SIGNAL — '+noTrade.length+'</div>';
+      rh+='<div style="display:flex;flex-wrap:wrap;gap:4px;padding-left:4px">';
+      noTrade.forEach(function(r){
+        rh+='<div onclick="'+(r.reg==='IN'&&r.cat==='index'?"window._loadQuickTrade(\'"+r.sym+"\')" :"window._loadOptionsUniversal(\'"+r.sym+"\',\'"+r.reg+"\')")+'" style="padding:4px 10px;border-radius:6px;background:#0F172A;border:1px solid #1e293b;font-size:9px;color:#475569;cursor:pointer;font-weight:700">'+r.sym+'</div>';
+      });
+      rh+='</div></div>';
+    }
+    
+    if(done2>=total2&&buyNow.length===0){
+      rh+='<div style="text-align:center;padding:20px;background:#1e293b;border-radius:12px"><div style="font-size:32px;margin-bottom:8px">🕐</div><div style="font-size:14px;color:#94a3b8;font-weight:700">No BUY signals in '+catData.label+' right now</div><div style="font-size:10px;color:#475569;margin-top:4px">Try another category or wait for market to develop</div></div>';
+    }
+    
+    container.innerHTML=rh;
+    
+    // Voice
+    if(done2>=total2&&!window._buyNowVoiceFired){
+      window._buyNowVoiceFired=true;
+      if(buyNow.length>0){
+        var ceList=buyNow.filter(function(r){return r.action==='BUY CALL'}).map(function(r){return r.sym});
+        var peList=buyNow.filter(function(r){return r.action==='BUY PUT'}).map(function(r){return r.sym});
+        var msg2=buyNow.length+' buy signal'+(buyNow.length>1?'s':'')+' found in '+catData.label+'. ';
+        if(ceList.length>0)msg2+=ceList.join(', ')+' bullish. ';
+        if(peList.length>0)msg2+=peList.join(', ')+' bearish. ';
+        msg2+='Tap to see full trade details.';
+        window._speak(msg2,true);
+      }
+    }
+  }
+  
+  tickers.forEach(function(tk,i){
+    setTimeout(function(){
+      fetch('/api/options-quick?symbol='+encodeURIComponent(tk)+'&region='+encodeURIComponent(reg))
+        .then(function(r2){return r2.json()})
+        .then(function(d){
+          done2++;
+          if(!d||!d.success){renderBuyNow();return}
+          
+          var spot2=d.spot||0;var chain2=d.chain_near_atm||[];var bars2=d.ohlc_bars||[];
+          var pcr2=d.pcr||0;var vix2=d.vix||0;var gexReg2=(d.gex||{}).regime||'NEUTRAL';
+          var vwap2=d.vwap||spot2;var dHigh2=d.today_high||spot2;var dLow2=d.today_low||spot2;
+          
+          var momUp2=0,momDn2=0;
+          bars2.slice(-5).forEach(function(b){if(b.c>b.o)momUp2++;else momDn2++});
+          var totalVol2=bars2.reduce(function(s2,b2){return s2+b2.v},0);
+          var avgVol2=bars2.length>3?totalVol2/bars2.length:0;
+          var recentVol2=bars2.length>0?bars2.slice(-3).reduce(function(s2,b2){return s2+b2.v},0)/3:0;
+          var volRatio2=avgVol2>0?recentVol2/avgVol2:0;
+          var range2=Math.abs(dHigh2-dLow2)/Math.max(spot2,1)*100;
+          
+          var isBreakUp2=spot2>=dHigh2*0.998&&spot2>vwap2;
+          var isBreakDn2=spot2<=dLow2*1.002&&spot2<vwap2;
+          var dir2='NONE';
+          if(isBreakUp2&&momUp2>=3)dir2='BULLISH';
+          else if(isBreakDn2&&momDn2>=3)dir2='BEARISH';
+          else if(momUp2>=4&&spot2>vwap2)dir2='BULLISH';
+          else if(momDn2>=4&&spot2<vwap2)dir2='BEARISH';
+          
+          var conf2=0;
+          if(isBreakUp2||isBreakDn2)conf2+=30;else if(range2>0.3)conf2+=15;
+          if(volRatio2>1.2)conf2+=20;else if(volRatio2>0.8)conf2+=10;
+          if(momUp2>=4||momDn2>=4)conf2+=20;else if(momUp2>=3||momDn2>=3)conf2+=10;
+          if(vix2>=12&&vix2<=22)conf2+=15;else if(vix2>=10&&vix2<=28)conf2+=10;
+          if(pcr2>1.2&&dir2==='BULLISH')conf2+=10;
+          if(pcr2<0.8&&dir2==='BEARISH')conf2+=10;
+          conf2=Math.min(100,Math.max(0,conf2));
+          
+          var grade2=conf2>=70?'A':conf2>=55?'B':conf2>=40?'C':'D';
+          var action2='NO SETUP';
+          if(grade2==='A'&&dir2==='BULLISH')action2='BUY CALL';
+          else if(grade2==='A'&&dir2==='BEARISH')action2='BUY PUT';
+          else if(grade2==='B'&&dir2!=='NONE')action2='WATCH';
+          
+          var step2=chain2.length>=2?Math.abs(chain2[1].strike-chain2[0].strike):1;
+          var atm2=Math.round(spot2/Math.max(step2,0.5))*Math.max(step2,0.5);
+          var atmPrem2=0;
+          chain2.forEach(function(ch2){if(Math.abs(ch2.strike-spot2)<step2*1.5){atmPrem2=Math.max(atmPrem2,dir2==='BULLISH'?(ch2.ce_ltp||0):(ch2.pe_ltp||0))}});
+          
+          results.push({
+            sym:tk,reg:reg,cat:filterCat,catLabel:catData.label,
+            spot:spot2,S:S,conf:conf2,grade:grade2,action:action2,dir:dir2,
+            strike:atm2,prem:atmPrem2,pcr:pcr2,vix:vix2,gex:gexReg2,
+            type:dir2==='BULLISH'?'CE':'PE',volRatio:volRatio2,range:range2,
+            lot:d.lot_size||(reg==='US'?100:({NIFTY:75,BANKNIFTY:30,SENSEX:20}[tk]||1))
+          });
+          
+          results.sort(function(a,b){
+            var ao=a.action==='BUY CALL'||a.action==='BUY PUT'?0:a.action==='WATCH'?1:2;
+            var bo=b.action==='BUY CALL'||b.action==='BUY PUT'?0:b.action==='WATCH'?1:2;
+            return ao!==bo?ao-bo:b.conf-a.conf;
+          });
+          renderBuyNow();
+        }).catch(function(){done2++;renderBuyNow()});
+    },i*500);
+  });
+};
+
+window._renderBuyNowMini=function(r){
+  var isUS=r.reg==='US';
+  var h='<div onclick="'+(r.reg==='IN'&&r.cat==='index'?"window._loadQuickTrade('"+r.sym+"')":"window._loadOptionsUniversal('"+r.sym+"','"+r.reg+"')")+'" style="display:flex;align-items:center;gap:8px;padding:6px 10px;margin-bottom:3px;border-radius:8px;background:#0F172A;border:1px solid #1e293b;cursor:pointer">';
+  h+='<div style="font-size:11px;font-weight:800;color:#e2e8f0;min-width:65px">'+r.sym+'</div>';
+  h+='<div style="font-size:9px;color:#d97706;flex:1">'+(r.dir==='BULLISH'?'↑ Leaning bullish':r.dir==='BEARISH'?'↓ Leaning bearish':'Sideways')+'</div>';
+  h+='<div style="font-size:10px;font-weight:800;color:#d97706">'+r.conf+'%</div>';
+  h+='<div style="font-size:8px;color:#64748b">'+r.catLabel+'</div>';
+  h+='</div>';
+  return h;
 };
 
 console.log('[OPTIONS NAV] ✅ Region → Category → Ticker navigator loaded');
