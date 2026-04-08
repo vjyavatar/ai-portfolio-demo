@@ -3164,7 +3164,7 @@ function _renderQuickTrade(d,sym){
   window._qtVolumeScore=volumeScore;window._qtMomBars=momBars;window._qtHasVolData=hasVolData;window._qtPriceAction=priceActionScore;window._qtMomentumScore=momentumScore;
   window._qtSpotFmt=_spotFmt;window._qtDhFmt=_dhFmt;window._qtDlFmt=_dlFmt;
   window._qtRangePctFmt=_rangePctFmt;window._qtVwapFmt=_vwapFmt;
-  window._qtS=S;window._qtGex=gex||{};window._qtMaxPain=maxPain;window._qtVix=vix;
+  window._qtS=S;window._qtGex=gex||{};window._qtMaxPain=maxPain;window._qtVix=vix;window._qtVixAdj=vix>0?Math.max(0.5,vix/20):1;
   window._qtEntryStrike=entryStrike7;window._qtEntryPrem=entryPrem7;
   window._qtFinalBias=finalBias;window._qtConfidence=confidence;window._qtWhyReasons=whyReasons;
   window._qtGammaBlast=qtGammaBlast;window._qtIsExpiry=qtIsExpiry7;window._qtFallback=isFallback;
@@ -4089,6 +4089,7 @@ _renderQuickTrade=function(d,sym){
   var S=window._qtS||'₹';
   var vBias=window._qtFinalBias||'';
   var vix=window._qtVix||0;
+  var _vixAdj=window._qtVixAdj||1;
   var momentumScore=window._qtMomentumScore||0;
 
   // Tracks 25 market microstructure states. Voice fires only on STATE TRANSITIONS.
@@ -4111,7 +4112,11 @@ _renderQuickTrade=function(d,sym){
   function _scenarioClear(id){_ss[id]=false}
   
   // ═══ S1: RANGE COMPRESSION (Energy Build) ═══
-  var _s1_tightRange=rangePct<0.3&&vwapDist<0.15;
+  // Adaptive thresholds — VIX-adjusted (high VIX = wider normal range)
+  var _vixAdj=vix>0?Math.max(0.5,vix/20):1; // VIX 20=1x, VIX 30=1.5x, VIX 10=0.5x
+  var _tightThresh=0.3*_vixAdj; // Range compression threshold adapts to VIX
+  var _volSpikeThresh=1.0+0.3*_vixAdj; // Volume spike threshold
+  var _s1_tightRange=rangePct<_tightThresh&&vwapDist<0.15*_vixAdj;
   var _s1_gammaBuilding=gex&&gex.regime==='NEGATIVE';
   if(_s1_tightRange&&window._renderCount>3){
     _scenarioVoice('S1','Market is coiling — price range very tight at '+_rangePctFmt+' near VWAP. A breakout is building. Get your order ready — do not enter yet, wait for the break.',false);
@@ -4130,7 +4135,7 @@ _renderQuickTrade=function(d,sym){
   var _s3_nearOIwall=(_instRes>0&&Math.abs(spot-_instRes)/Math.max(spot,1)<0.003)||(_instSupp>0&&Math.abs(spot-_instSupp)/Math.max(spot,1)<0.003);
   if((_s3_nearHigh||_s3_nearLow||_s3_nearOIwall)&&window._renderCount>3){
     var _s3_level=_s3_nearHigh?'day high '+_dhFmt:_s3_nearLow?'day low '+_dlFmt:_s3_nearOIwall?'OI wall at '+S+(_instRes>0&&Math.abs(spot-_instRes)<Math.abs(spot-_instSupp)?_instRes:_instSupp).toLocaleString():'key level';
-    _scenarioVoice('S3','Price approaching '+_s3_level+'. Watch for breakout or rejection. This is a decision point.',false);
+    _scenarioVoice('S3','Price approaching '+_s3_level+'. Get ready to act — if price breaks through, buy immediately. If it bounces off, wait.',false);
   }else{_scenarioClear('S3')}
   
   // ═══ S6: VWAP RECLAIM ═══
@@ -4233,7 +4238,7 @@ _renderQuickTrade=function(d,sym){
   _ss._dirHistory=_s24_consistent;
   var _s24_allSame=_s24_consistent.length>=4&&_s24_consistent.every(function(d2){return d2===_s24_consistent[0]});
   if(_s24_allSame&&_s24_consistent[0]!=='NONE'&&window._renderCount>6){
-    _scenarioVoice('S24',sym+' has been consistently '+_s24_consistent[0].toLowerCase()+' for '+_s24_consistent.length+' consecutive readings. Trend is confirmed — higher probability setup.',false);
+    _scenarioVoice('S24',sym+' has been consistently '+_s24_consistent[0].toLowerCase()+' for '+_s24_consistent.length+' consecutive readings. Trend is confirmed — you can trade this with more confidence. Use full position size.',false);
   }else{_scenarioClear('S24')}
   
   // ═══ LATE ENTRY VOICE WARNING ═══
@@ -4306,7 +4311,8 @@ _renderQuickTrade=function(d,sym){
     
     // ═══ TIME-BASED EXHAUSTION — trade too long without progress ═══
     var _eeElapsed=Math.round((Date.now()-_at2.entryTime)/60000);
-    if(_eeElapsed>=15&&Math.abs(_eePct)<10){
+    var _timeThresh=(_at2&&_at2.isExpiry)?8:15; // 8 min on expiry, 15 min normal
+    if(_eeElapsed>=_timeThresh&&Math.abs(_eePct)<10){
       _scenarioVoice('EARLY_EXIT_TIME','You have been in this trade for '+_eeElapsed+' minutes with only '+_eePct+'% movement. The move is over. Exit now — on options, every minute costs you money. Do not wait hoping for a miracle.',false);
     }else{_scenarioClear('EARLY_EXIT_TIME')}
     
@@ -4331,7 +4337,7 @@ _renderQuickTrade=function(d,sym){
     
     // ═══ S-NEW4: ADD POSITION / PYRAMIDING ═══
     // Only if: in profit + new breakout + volume confirms
-    var _addPosOk=_eePct>=10&&_eePct<=25&&priceActionScore>=70&&volRatio8>=1.3;
+    var _addPosOk=_eePct>=10&&_eePct<=25&&priceActionScore>=70&&volRatio8>=_volSpikeThresh;
     if(_addPosOk&&!_ss._addAnnounced){
       _ss._addAnnounced=true;
       _scenarioVoice('ADD_POSITION','Price just broke another level with '+volRatio8.toFixed(1)+'x volume and you are already up '+_eePct+'%. You can buy more — but only half of your original size. Move your stop loss to entry price first so the whole trade is safe.',true);
@@ -4340,7 +4346,7 @@ _renderQuickTrade=function(d,sym){
     
     // ═══ S-NEW5: ABSORPTION DETECTION — big volume, price flat ═══
     var _absRange=Math.abs(dayHigh-dayLow)/Math.max(spot,1)*100;
-    if(volRatio8>2.0&&_absRange<0.2&&hasOI){
+    if(volRatio8>1.5*_vixAdj&&_absRange<0.2*_vixAdj&&hasOI){
       var _absBias=callWriting>putWriting*1.2?'distribution (selling)':'accumulation (buying)';
       _scenarioVoice('ABSORPTION','Big players are active — volume is '+volRatio8.toFixed(1)+'x normal but price barely moved ('+_absRange.toFixed(2)+'% range). Someone big is quietly '+_absBias+'. A big move is likely coming soon. '+((_eePct>0)?'Hold your position — this is bullish for your trade.':'Watch for the breakout direction.'),true);
     }else{_scenarioClear('ABSORPTION')}
@@ -5584,17 +5590,17 @@ window._optionsNav={
   IN:{
     label:'🇮🇳 INDIA',
     categories:{
-      index:{label:'📊 Index',tickers:['NIFTY','BANKNIFTY','SENSEX','FINNIFTY'],api:'nse'},
-      stock:{label:'📈 Stocks',tickers:['RELIANCE','TCS','INFY','HDFCBANK','ICICIBANK','SBIN','BAJFINANCE','TATAMOTORS','LT','MARUTI'],api:'yahoo'},
-      etf:{label:'📦 ETFs',tickers:['NIFTYBEES','BANKBEES','GOLDBEES','SILVERBEES','ITBEES','JUNIORBEES','CPSE','PHARMABEES','LIQUIDBEES','CPSEETF'],api:'yahoo'}
+      index:{label:'📊 Index',tickers:['NIFTY','BANKNIFTY','SENSEX','FINNIFTY','MIDCPNIFTY'],api:'nse'},
+      stock:{label:'📈 Stocks',tickers:['RELIANCE','TCS','INFY','HDFCBANK','ICICIBANK','SBIN','BAJFINANCE','TATAMOTORS','LT','MARUTI','AXISBANK','KOTAKBANK','ITC','HINDUNILVR','BHARTIARTL','WIPRO','HCLTECH','ADANIENT','ADANIPORTS','POWERGRID','NTPC','ULTRACEMCO','GRASIM','TITAN','NESTLEIND','BAJAJFINSV','TECHM','SUNPHARMA','DRREDDY','CIPLA','COALINDIA','JSWSTEEL','TATASTEEL','ONGC','BPCL','HINDALCO','DIVISLAB','HEROMOTOCO','EICHERMOT','BRITANNIA','APOLLOHOSP','SBILIFE','INDUSINDBK','ASIANPAINT','PIDILITIND','TRENT','ZOMATO','JIOFIN','SHRIRAMFIN','ETERNAL'],api:'yahoo'},
+      etf:{label:'📦 ETFs',tickers:['NIFTYBEES','BANKBEES','GOLDBEES','SILVERBEES','ITBEES','JUNIORBEES','CPSE','PHARMABEES','LIQUIDBEES','CPSEETF','SETFNIF50','MOM50','MOM30','MIDCAP','LOWVOLIETF','ALPHA'],api:'yahoo'}
     }
   },
   US:{
     label:'🇺🇸 USA',
     categories:{
-      index:{label:'📊 Index',tickers:['SPY','QQQ','IWM','DIA'],api:'yahoo'},
-      stock:{label:'📈 Stocks',tickers:['AAPL','TSLA','NVDA','AMZN','MSFT','META','GOOGL','AMD','NFLX','MU'],api:'yahoo'},
-      etf:{label:'📦 ETFs',tickers:['GLD','TLT','XLF','XLE','XLK','ARKK','SOXX','VTI','VOO','SCHD'],api:'yahoo'}
+      index:{label:'📊 Index',tickers:['SPY','QQQ','IWM','DIA','VIX'],api:'yahoo'},
+      stock:{label:'📈 Stocks',tickers:['AAPL','TSLA','NVDA','AMZN','MSFT','META','GOOGL','AMD','NFLX','MU','COIN','PLTR','SNOW','CRM','UBER','SQ','SHOP','ROKU','RBLX','MARA','SMCI','ARM','AVGO','INTC','BA','JPM','GS','V','MA','WMT','COST','HD','DIS','NKE','KO','PEP','JNJ','PFE','UNH','LLY','ABBV','MRK','XOM','CVX','COP','RIVN','LCID','SOFI','HOOD','ABNB'],api:'yahoo'},
+      etf:{label:'📦 ETFs',tickers:['GLD','TLT','XLF','XLE','XLK','ARKK','SOXX','VTI','VOO','SCHD','SOXL','TQQQ','SQQQ','UVXY','KWEB','EEM','FXI','IBIT','MSTR','BITO','SLV','USO','XBI','SMH','HACK'],api:'yahoo'}
     }
   }
 };
@@ -5836,31 +5842,74 @@ window._showBuyNowDashboard=function(cat){
           else if(momUp2>=4&&spot2>vwap2)dir2='BULLISH';
           else if(momDn2>=4&&spot2<vwap2)dir2='BEARISH';
           
-          var conf2=0;
-          if(isBreakUp2||isBreakDn2)conf2+=30;else if(range2>0.3)conf2+=15;
-          if(volRatio2>1.2)conf2+=20;else if(volRatio2>0.8)conf2+=10;
-          if(momUp2>=4||momDn2>=4)conf2+=20;else if(momUp2>=3||momDn2>=3)conf2+=10;
-          if(vix2>=12&&vix2<=22)conf2+=15;else if(vix2>=10&&vix2<=28)conf2+=10;
-          if(pcr2>1.2&&dir2==='BULLISH')conf2+=10;
-          if(pcr2<0.8&&dir2==='BEARISH')conf2+=10;
+          // Scoring aligned with main engine weights
+          var _va=vix2>0?Math.max(0.5,vix2/20):1;
+          var priceScore2=0;
+          if(isBreakUp2||isBreakDn2)priceScore2=85;
+          else if(range2>0.5)priceScore2=Math.min(100,50+range2*5);
+          else priceScore2=20;
+          
+          var volScore2=50;
+          if(totalVol2>0&&avgVol2>0)volScore2=Math.min(100,Math.max(0,(recentVol2/avgVol2)*60));
+          
+          var momScore2=0;
+          if(momUp2>=4||momDn2>=4)momScore2=80;
+          else if(momUp2>=3||momDn2>=3)momScore2=60;
+          else momScore2=30;
+          
+          var ctxScore2=50;
+          if(vix2>=12&&vix2<=22)ctxScore2=85;
+          else if(vix2>=10&&vix2<=28)ctxScore2=65;
+          else if(vix2>35)ctxScore2=25;
+          
+          var vwapScore2=0;
+          if(spot2>vwap2&&isBreakUp2)vwapScore2=90;
+          else if(spot2<vwap2&&isBreakDn2)vwapScore2=90;
+          else if(spot2>vwap2)vwapScore2=60;
+          else vwapScore2=40;
+          
+          var oiScore2=50;
+          if(pcr2>1.2&&dir2==='BULLISH')oiScore2=75;
+          else if(pcr2<0.8&&dir2==='BEARISH')oiScore2=75;
+          
+          // Same weights as main engine
+          var hasChain2=chain2.length>0;
+          var conf2=Math.round(
+            priceScore2*(hasChain2?15:25)/100+
+            volScore2*(hasChain2?15:20)/100+
+            vwapScore2*(hasChain2?10:5)/100+
+            momScore2*(hasChain2?10:15)/100+
+            ctxScore2*(hasChain2?10:15)/100+
+            oiScore2*(hasChain2?10:10)/100
+          );
+          // Add liquidity + gamma bonus if chain exists
+          if(hasChain2)conf2+=15; // baseline for having real options data
           conf2=Math.min(100,Math.max(0,conf2));
           
-          var grade2=conf2>=70?'A':conf2>=55?'B':conf2>=40?'C':'D';
+          var grade2=conf2>=65?'A':conf2>=50?'B':conf2>=35?'C':'D';
+          // STRICT: only BUY if breakout + volume + momentum all confirm
           var action2='NO SETUP';
-          if(grade2==='A'&&dir2==='BULLISH')action2='BUY CALL';
-          else if(grade2==='A'&&dir2==='BEARISH')action2='BUY PUT';
-          else if(grade2==='B'&&dir2!=='NONE')action2='WATCH';
+          var _strictBuy=(isBreakUp2||isBreakDn2)&&volScore2>=50&&momScore2>=60;
+          if(grade2==='A'&&dir2==='BULLISH'&&_strictBuy)action2='BUY CALL';
+          else if(grade2==='A'&&dir2==='BEARISH'&&_strictBuy)action2='BUY PUT';
+          else if((grade2==='A'||grade2==='B')&&dir2!=='NONE')action2='WATCH';
           
           var step2=chain2.length>=2?Math.abs(chain2[1].strike-chain2[0].strike):1;
           var atm2=Math.round(spot2/Math.max(step2,0.5))*Math.max(step2,0.5);
           var atmPrem2=0;
           chain2.forEach(function(ch2){if(Math.abs(ch2.strike-spot2)<step2*1.5){atmPrem2=Math.max(atmPrem2,dir2==='BULLISH'?(ch2.ce_ltp||0):(ch2.pe_ltp||0))}});
           
+          // Momentum score for sorting
+          var highMom2=(momUp2>=4||momDn2>=4)&&volScore2>=60;
+          var momTag2=highMom2?'🔥 HIGH MOMENTUM':momScore2>=60?'📈 Momentum':momScore2>=40?'➡️ Flat':'📉 Weak';
+          
           results.push({
             sym:tk,reg:reg,cat:filterCat,catLabel:catData.label,
             spot:spot2,S:S,conf:conf2,grade:grade2,action:action2,dir:dir2,
             strike:atm2,prem:atmPrem2,pcr:pcr2,vix:vix2,gex:gexReg2,
             type:dir2==='BULLISH'?'CE':'PE',volRatio:volRatio2,range:range2,
+            momTag:momTag2,highMom:highMom2,momScore:momScore2,
+            hasChain:hasChain2,
             lot:d.lot_size||(reg==='US'?100:({NIFTY:75,BANKNIFTY:30,SENSEX:20}[tk]||1))
           });
           
@@ -6240,12 +6289,12 @@ _renderQuickTrade=function(d,sym){
 // ═══════════════════════════════════════════════════════════════
 
 window._scannerGroups=[
-  {id:'in_index',label:'🇮🇳 India Index',tickers:['NIFTY','BANKNIFTY','SENSEX'],region:'IN'},
-  {id:'in_stock',label:'🇮🇳 India Stocks',tickers:['RELIANCE','TCS','INFY','HDFCBANK','ICICIBANK','SBIN','BAJFINANCE','TATAMOTORS','LT','MARUTI'],region:'IN'},
-  {id:'in_etf',label:'🇮🇳 India ETFs',tickers:['NIFTYBEES','BANKBEES','GOLDBEES','SILVERBEES','ITBEES'],region:'IN'},
+  {id:'in_index',label:'🇮🇳 India Index',tickers:['NIFTY','BANKNIFTY','SENSEX','FINNIFTY'],region:'IN'},
+  {id:'in_stock',label:'🇮🇳 India Stocks (Top 25)',tickers:['RELIANCE','TCS','INFY','HDFCBANK','ICICIBANK','SBIN','BAJFINANCE','TATAMOTORS','LT','MARUTI','AXISBANK','KOTAKBANK','ITC','HINDUNILVR','BHARTIARTL','WIPRO','HCLTECH','ADANIENT','TITAN','SUNPHARMA','DRREDDY','JSWSTEEL','TECHM','COALINDIA','NTPC'],region:'IN'},
+  {id:'in_etf',label:'🇮🇳 India ETFs',tickers:['NIFTYBEES','BANKBEES','GOLDBEES','SILVERBEES','ITBEES','JUNIORBEES','CPSE','MOM50'],region:'IN'},
   {id:'us_index',label:'🇺🇸 US Index',tickers:['SPY','QQQ','IWM','DIA'],region:'US'},
-  {id:'us_stock',label:'🇺🇸 US Stocks',tickers:['AAPL','MSFT','NVDA','TSLA','META','GOOGL','AMZN','MU'],region:'US'},
-  {id:'us_etf',label:'🇺🇸 US ETFs',tickers:['GLD','TLT','XLF','XLE','ARKK','SOXX'],region:'US'}
+  {id:'us_stock',label:'🇺🇸 US Stocks (Top 25)',tickers:['AAPL','MSFT','NVDA','TSLA','META','GOOGL','AMZN','MU','AMD','NFLX','COIN','PLTR','CRM','UBER','SMCI','ARM','AVGO','BA','JPM','V','LLY','UNH','XOM','SOFI','ABNB'],region:'US'},
+  {id:'us_etf',label:'🇺🇸 US ETFs',tickers:['GLD','TLT','XLF','XLE','XLK','ARKK','SOXX','SOXL','TQQQ','IBIT','SMH','SLV'],region:'US'}
 ];
 
 window._scanResults={};
