@@ -2970,7 +2970,12 @@ function _renderQuickTrade(d,sym){
   var _rangePctFmt=rangePct.toFixed(2)+'%';
   var _vwapFmt=S+vwapLevel.toLocaleString();
   
-  // 1. PRICE — Is the stock moving or stuck?
+  // Build smart zones from chain data (needed by both whyReasons and smartParts)
+  var _smartZ=[];
+  if(ceRes)ceRes.forEach(function(c){if(c.chg>5000)_smartZ.push({strike:c.strike,type:'CALL WRITING',chg:c.chg})});
+  if(d.pe_buildup)d.pe_buildup.forEach(function(p){if(p.chg>5000)_smartZ.push({strike:p.strike,type:'PUT WRITING',chg:p.chg})});
+
+    // 1. PRICE — Is the stock moving or stuck?
   if(priceActionScore>=70){
     if(isBreakUp)whyReasons.push({pass:true,label:'Price '+_spotFmt+' just crossed above today\'s high '+_dhFmt+' — that means buyers are winning right now',score:priceActionScore});
     else whyReasons.push({pass:true,label:'Price '+_spotFmt+' just dropped below today\'s low '+_dlFmt+' — sellers are in charge right now',score:priceActionScore});
@@ -3023,7 +3028,7 @@ function _renderQuickTrade(d,sym){
   if(hasOI){
     var _pcrStr=pcr8.toFixed(2);
     var _oiExtra='';
-    if(smartZones.length>0)_oiExtra=' | Big bet spotted: '+smartZones[0].type+' at '+S+smartZones[0].strike;
+    if(_smartZ.length>0)_oiExtra=' | Big bet spotted: '+_smartZ[0].type+' at '+S+_smartZ[0].strike;
     if(oiConfirms){
       whyReasons.push({pass:true,label:'Big traders are betting on '+direction.toLowerCase()+' (Put/Call ratio: '+_pcrStr+(pcr8>1?' — more puts = support below':pcr8<0.8?' — more calls = resistance above':' — balanced')+')'+_oiExtra,score:optionsScore});
     }else{
@@ -3098,9 +3103,7 @@ function _renderQuickTrade(d,sym){
   var _instSupp=_instMaxPutOI.strike||0;
   var _instMidpoint=(_instRes>0&&_instSupp>0)?Math.round((_instRes+_instSupp)/2):0;
   var _maxPainV=0;
-  var _smartZ=[];
-  if(ceRes)ceRes.forEach(function(c){if(c.chg>5000)_smartZ.push({strike:c.strike,type:'CALL WRITING',chg:c.chg})});
-  if(d.pe_buildup)d.pe_buildup.forEach(function(p){if(p.chg>5000)_smartZ.push({strike:p.strike,type:'PUT WRITING',chg:p.chg})});
+  // _smartZ already defined above
   var smartParts=[];
   
   // 1. Gamma / Dealer positioning

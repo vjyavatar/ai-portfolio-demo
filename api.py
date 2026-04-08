@@ -6615,6 +6615,14 @@ async def _algo_signal_impl(symbol: str = "NIFTY", region: str = ""):
         except:
             pass
         # Try yfinance options chain for US stocks
+        # NaN guard — Yahoo returns NaN for missing OI/IV fields
+        import math as _math
+        def _is_nan(v):
+            try:
+                return v is None or _math.isnan(float(v))
+            except (TypeError, ValueError):
+                return True
+        
         try:
             opts = tk.options
             if opts:
@@ -24691,13 +24699,13 @@ async def options_quick(symbol: str = "NIFTY", region: str = "IN"):
                 for _, c in calls.iterrows():
                     if abs(c['strike'] - atm_strike) <= step * 5:
                         put_match = puts[puts['strike'] == c['strike']]
-                        pe_oi = int(put_match['openInterest'].iloc[0]) if len(put_match) > 0 and 'openInterest' in put_match.columns else 0
-                        pe_iv = float(put_match['impliedVolatility'].iloc[0] * 100) if len(put_match) > 0 and 'impliedVolatility' in put_match.columns else 0
-                        pe_ltp = float(put_match['lastPrice'].iloc[0]) if len(put_match) > 0 else 0
-                        pe_bid = float(put_match['bid'].iloc[0]) if len(put_match) > 0 and 'bid' in put_match.columns else 0
-                        pe_ask = float(put_match['ask'].iloc[0]) if len(put_match) > 0 and 'ask' in put_match.columns else 0
+                        pe_oi = int(put_match['openInterest'].iloc[0]) if len(put_match) > 0 and 'openInterest' in put_match.columns and not _is_nan(put_match['openInterest'].iloc[0]) else 0
+                        pe_iv = float(put_match['impliedVolatility'].iloc[0] * 100) if len(put_match) > 0 and 'impliedVolatility' in put_match.columns and not _is_nan(put_match['impliedVolatility'].iloc[0]) else 0
+                        pe_ltp = float(put_match['lastPrice'].iloc[0]) if len(put_match) > 0 and not _is_nan(put_match['lastPrice'].iloc[0]) else 0
+                        pe_bid = float(put_match['bid'].iloc[0]) if len(put_match) > 0 and 'bid' in put_match.columns and not _is_nan(put_match['bid'].iloc[0]) else 0
+                        pe_ask = float(put_match['ask'].iloc[0]) if len(put_match) > 0 and 'ask' in put_match.columns and not _is_nan(put_match['ask'].iloc[0]) else 0
                         
-                        ce_oi = int(c.get('openInterest', 0) or 0)
+                        ce_oi = int(c.get('openInterest', 0)) if not _is_nan(c.get('openInterest', 0)) else 0
                         ce_iv = float(c.get('impliedVolatility', 0) or 0) * 100
                         ce_ltp = float(c.get('lastPrice', 0) or 0)
                         ce_bid = float(c.get('bid', 0) or 0)
