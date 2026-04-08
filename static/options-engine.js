@@ -2879,10 +2879,20 @@ function _renderQuickTrade(d,sym){
   else if(confidence>=60){grade='B';gradeLabel='Controlled'}
   else{grade='C';gradeLabel='No Trade'}
   
+  // EXPIRY DAY WEIGHT ADJUSTMENT — gamma gets 20% instead of 15%
+  if(isExpiry&&gexRegime==='NEGATIVE'){
+    // Gamma blast on expiry = +5% confidence boost
+    confidence=Math.min(100,confidence+5);
+  }
+  if(isExpiry&&gexRegime==='POSITIVE'&&gammaBlast){
+    // Strong gamma on expiry = +10% confidence
+    confidence=Math.min(100,confidence+10);
+  }
   // R:R FILTER — downgrade if risk:reward is too poor
   var _dayR2=dayRange/Math.max(spot,1)*100;
   var _pmMult2=_dayR2>0.5?1.5:_dayR2>0.3?1.35:1.25;
-  var _rrEst=(entryPrem7>0&&sl7>0)?((entryPrem7*_pmMult2-entryPrem7)/(entryPrem7-sl7)):0;
+  var _slPrem7=Math.round(entryPrem7*(_dayR2>0.5?0.70:_dayR2>0.3?0.75:0.80));
+  var _rrEst=(entryPrem7>0&&_slPrem7>0&&entryPrem7>_slPrem7)?((entryPrem7*_pmMult2-entryPrem7)/(entryPrem7-_slPrem7)):0;
   if((grade==='A+'||grade==='A')&&_rrEst>0&&_rrEst<1.2){
     grade='B';gradeLabel='Weak R:R';
     confidence=Math.min(confidence,60);
@@ -3180,7 +3190,7 @@ function _renderQuickTrade(d,sym){
   window._qtVolumeScore=volumeScore;window._qtMomBars=momBars;window._qtHasVolData=hasVolData;window._qtPriceAction=priceActionScore;window._qtMomentumScore=momentumScore;
   window._qtSpotFmt=_spotFmt;window._qtDhFmt=_dhFmt;window._qtDlFmt=_dlFmt;
   window._qtRangePctFmt=_rangePctFmt;window._qtVwapFmt=_vwapFmt;
-  window._qtS=S;window._qtGex=gex||{};window._qtMaxPain=maxPain;window._qtVix=vix;window._qtVixAdj=vix>0?Math.max(0.5,vix/20):1;
+  window._qtS=S;window._qtGex=gex||{};window._qtGammaBlast=gammaBlast||false;window._qtMaxPain=maxPain;window._qtVix=vix;window._qtVixAdj=vix>0?Math.max(0.5,vix/20):1;
   window._qtEntryStrike=entryStrike7;window._qtEntryPrem=entryPrem7;
   window._qtFinalBias=finalBias;window._qtConfidence=confidence;window._qtWhyReasons=whyReasons;
   window._qtGammaBlast=qtGammaBlast;window._qtIsExpiry=qtIsExpiry7;window._qtFallback=isFallback;
@@ -3370,7 +3380,8 @@ function _renderQuickTrade(d,sym){
     // Entry Score = (Freshness × 0.35) + (R:R × 0.30) + (Volume × 0.20) + (VWAP × 0.15)
     var _sigAge2=window._qtSignalTime>0?Math.round((Date.now()-window._qtSignalTime)/60000):0;
     var _sigAgeSec=window._qtSignalTime>0?Math.round((Date.now()-window._qtSignalTime)/1000):0;
-    var _rrVal=sl7>0&&entryPrem7>sl7?((targetLow-entryPrem7)/(entryPrem7-sl7)):0;
+    var _slPrem72=Math.round(entryPrem7*(_dayRPct>0.5?0.70:_dayRPct>0.3?0.75:0.80));
+    var _rrVal=_slPrem72>0&&entryPrem7>_slPrem72?((targetLow-entryPrem7)/(entryPrem7-_slPrem72)):0;
     var _vwapDistPct=Math.abs(spot-vwap)/Math.max(spot,1)*100;
     var _isExpToday=(d.expiry_today||false)||(d.is_expiry||false);
     var _vAdj=vix>0?Math.max(0.5,vix/20):1; // VIX adjustment
@@ -3387,13 +3398,15 @@ function _renderQuickTrade(d,sym){
     else if(_adjustedAge<=15)_freshnessScore=30;
     else _freshnessScore=10;
     
-    // 3. R:R Score (0-100)
+    // 3. R:R Score (0-100) — gamma blast enhances R:R
+    var _gammaRRboost=(window._qtGammaBlast||false)?1.5:1.0; // Gamma blast = 1.5x target
+    var _adjRR=_rrVal*_gammaRRboost;
     var _rrScore=0;
-    if(_rrVal>=2.5)_rrScore=100;
-    else if(_rrVal>=2.0)_rrScore=85;
-    else if(_rrVal>=1.5)_rrScore=70;
-    else if(_rrVal>=1.2)_rrScore=50;
-    else if(_rrVal>=1.0)_rrScore=30;
+    if(_adjRR>=2.5)_rrScore=100;
+    else if(_adjRR>=2.0)_rrScore=85;
+    else if(_adjRR>=1.5)_rrScore=70;
+    else if(_adjRR>=1.2)_rrScore=50;
+    else if(_adjRR>=1.0)_rrScore=30;
     else _rrScore=10;
     
     // 4. Volume Confirmation Score (0-100)
@@ -3414,11 +3427,13 @@ function _renderQuickTrade(d,sym){
     if((direction==='BULLISH'&&aboveVwap)||(direction==='BEARISH'&&!aboveVwap))_vwapAlignScore=Math.min(100,_vwapAlignScore+15);
     
     // 6. COMPOSITE ENTRY SCORE
+    var _gammaBonus=(window._qtGammaBlast||false)?8:((window._qtGex||{}).regime==='NEGATIVE'?4:0);
     var _entryScore=Math.round(
       _freshnessScore*0.35+
       _rrScore*0.30+
       _volConfScore*0.20+
-      _vwapAlignScore*0.15
+      _vwapAlignScore*0.15+
+      _gammaBonus // Gamma blast bonus: +8, negative gamma: +4
     );
     
     // 7. Theta impact (options-specific)
@@ -3434,6 +3449,13 @@ function _renderQuickTrade(d,sym){
     
     // 8. Decision
     var _entryTiming='TOO LATE';var _timingColor='#ef4444';var _timingIcon='🔴';var _entryVerdict='Do not enter';
+    // Gamma exception: active gamma blast can rescue a late entry
+    var _gammaActive=(window._qtGex||{}).regime==='NEGATIVE'||(window._qtGex||{}).regime==='POSITIVE';
+    var _gammaBlastNow=window._qtGammaBlast||false;
+    if(_gammaBlastNow&&_entryScore>=50&&_entryScore<60){
+      _entryScore=62; // Upgrade: gamma blast makes late entry viable
+    }
+    
     if(_entryScore>=80){
       _entryTiming='EARLY';_timingColor='#059669';_timingIcon='🟢';
       _entryVerdict='Approved — execute now';
@@ -4482,6 +4504,18 @@ _renderQuickTrade=function(d,sym){
     }
   }else{_scenarioClear('S23');_scenarioClear('S23b')}
   
+  // ═══ EXPIRY CLOSING — square off positions ═══
+  var _isExp2=vExpiry||false;
+  if(_isExp2&&window._renderCount>5){
+    var _expNow=new Date();
+    var _expIstH2=(_expNow.getUTCHours()*60+_expNow.getUTCMinutes()+330)/60;
+    var _expEtH2=(_expNow.getUTCHours()*60+_expNow.getUTCMinutes()-240)/60;
+    var _lastHalf=(vBias!=='US')?(_expIstH2>=14.75):(_expEtH2>=15.5);
+    if(_lastHalf){
+      _scenarioVoice('EXPIRY_CLOSE','Expiry day — last 30 minutes! Square off all open positions now. Options will lose value very fast from here. Do not hold into close unless you are deep in profit.',true);
+    }else{_scenarioClear('EXPIRY_CLOSE')}
+  }
+  
   // ═══ S24: INDEX ALIGNMENT (cross-check) ═══
   // We can only check this if we have the previous index data cached
   // For now, check if the same direction holds across refreshes (consistency signal)
@@ -4596,6 +4630,12 @@ _renderQuickTrade=function(d,sym){
       _scenarioVoice('ADD_POSITION','Price just broke another level with '+volRatio8.toFixed(1)+'x volume and you are already up '+_eePct+'%. You can buy more — but only half of your original size. Move your stop loss to entry price first so the whole trade is safe.',true);
     }
     if(_eePct<5||priceActionScore<50){_ss._addAnnounced=false;_scenarioClear('ADD_POSITION')}
+    
+    // ═══ BEARISH GAMMA BLAST — downside gamma acceleration ═══
+    var _gammaReg=gex.regime||'NEUTRAL';
+    if(_gammaReg==='NEGATIVE'&&direction==='BEARISH'&&priceActionScore>=60&&_at2&&_at2.type==='PE'){
+      _scenarioVoice('GAMMA_BLAST_DN','Bearish gamma blast detected — dealers are selling to hedge and pushing price down fast. Your Put is benefiting. Hold for bigger target but set a tight trailing stop.',true);
+    }else{_scenarioClear('GAMMA_BLAST_DN')}
     
     // ═══ S-NEW5: ABSORPTION DETECTION — big volume, price flat ═══
     var _absRange=Math.abs(dayHigh-dayLow)/Math.max(spot,1)*100;
@@ -7092,16 +7132,16 @@ window._renderGiftNiftyTicker=function(){
   
   var bar=document.createElement('div');
   bar.id='giftNiftyBar';
-  bar.style.cssText='max-width:520px;margin:0 auto 8px;padding:10px 14px;border-radius:12px;background:linear-gradient(135deg,#0F172A,#1a1040);border:1px solid '+gapColor+'30;cursor:pointer';
+  bar.style.cssText='max-width:520px;margin:0 auto 8px;padding:12px 14px;border-radius:12px;background:linear-gradient(135deg,#0F172A,#1a1040);border:2px solid '+gapColor+'40;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,0.3)';
   bar.onclick=function(){window._showGiftNiftyDetail()};
   
   var h='<div style="display:flex;align-items:center;justify-content:space-between">';
   
   // Left: Gift Nifty price + gap
   h+='<div>';
-  h+='<div style="font-size:8px;font-weight:800;color:#a855f7;letter-spacing:1px;margin-bottom:2px">GIFT NIFTY'+(d.gift_source?' ('+d.gift_source+')':'')+'</div>';
+  h+='<div style="font-size:9px;font-weight:800;color:#a855f7;letter-spacing:1px;margin-bottom:2px">GIFT NIFTY'+(d.gift_source?' ('+d.gift_source+')':'')+'</div>';
   if(d.gift_nifty>0){
-    h+='<div style="font-size:16px;font-weight:900;color:#e2e8f0;font-family:JetBrains Mono">\u20B9'+d.gift_nifty.toLocaleString()+'</div>';
+    h+='<div style="font-size:18px;font-weight:900;color:#f1f5f9;font-family:JetBrains Mono">\u20B9'+d.gift_nifty.toLocaleString()+'</div>';
   }
   h+='</div>';
   
@@ -7132,12 +7172,12 @@ window._renderGiftNiftyTicker=function(){
   cues.forEach(function(c){
     if(c.data&&c.data.price){
       var cc=c.data.change>=0?'#059669':'#ef4444';
-      h+='<div style="padding:2px 6px;border-radius:4px;background:#1e293b;font-size:7px"><span style="color:#64748b">'+c.label+'</span> <span style="color:'+cc+';font-weight:800">'+(c.data.change>=0?'+':'')+c.data.change+'%</span></div>';
+      h+='<div style="padding:3px 8px;border-radius:4px;background:'+cc+'15;border:1px solid '+cc+'25;font-size:8px"><span style="color:#94a3b8;font-weight:600">'+c.label+'</span> <span style="color:'+cc+';font-weight:800">'+(c.data.change>=0?'+':'')+c.data.change+'%</span></div>';
     }
   });
   h+='</div>';
   
-  h+='<div style="text-align:center;font-size:7px;color:#475569;margin-top:4px">Tap for detailed pre-market analysis</div>';
+  h+='<div style="text-align:center;font-size:8px;color:#94a3b8;margin-top:4px;font-weight:600">Tap for detailed pre-market analysis →</div>';
   
   bar.innerHTML=h;
   
