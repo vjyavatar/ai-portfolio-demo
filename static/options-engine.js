@@ -6529,3 +6529,186 @@ window._renderScanCard=function(r){
   return h;
 };
 
+
+
+// ═══════════════════════════════════════════════════════════════════════
+// 🔴 LIVE SCANNER RIBBON — Auto-scanning ticker bar (no click needed)
+// Runs in background while user explores individual tickers
+// Shows BUY/WATCH signals scrolling across bottom of screen
+// ═══════════════════════════════════════════════════════════════════════
+
+window._liveScannerActive=false;
+window._liveScannerTimer=null;
+window._liveScanResults=[];
+window._liveScanLastVoice=0;
+window._liveScanPrevBuys={}; // Track previous BUY signals to detect NEW ones
+
+// Top tickers per region for auto-scan
+window._liveScanTickers={
+  IN:['NIFTY','BANKNIFTY','SENSEX','RELIANCE','TCS','INFY','HDFCBANK','ICICIBANK','SBIN',
+      'BAJFINANCE','TATAMOTORS','LT','MARUTI','AXISBANK','KOTAKBANK','ITC','HINDUNILVR',
+      'BHARTIARTL','WIPRO','HCLTECH','ADANIENT','TITAN','SUNPHARMA','DRREDDY','JSWSTEEL',
+      'NTPC','POWERGRID','COALINDIA','TECHM','CIPLA','ULTRACEMCO','HEROMOTOCO','BRITANNIA',
+      'APOLLOHOSP','TRENT','ZOMATO','NIFTYBEES','BANKBEES','GOLDBEES','ITBEES',
+      'SILVERBEES','JUNIORBEES','MOM50','CPSE','MIDCAP','PHARMABEES'],
+  US:['SPY','QQQ','IWM','DIA','AAPL','TSLA','NVDA','AMZN','MSFT','META','GOOGL','AMD',
+      'NFLX','MU','COIN','PLTR','CRM','UBER','SMCI','ARM','AVGO','INTC','BA','JPM',
+      'V','LLY','UNH','XOM','SOFI','ABNB','GLD','TLT','XLF','XLE','XLK','ARKK',
+      'SOXX','SOXL','TQQQ','IBIT','SMH','SLV','KWEB','VTI','VOO','SCHD','MARA',
+      'RIVN','LCID','HOOD']
+};
+
+window._startLiveScanner=function(){
+  if(window._liveScannerActive)return;
+  window._liveScannerActive=true;
+  
+  // Create ribbon element if it doesn't exist
+  if(!document.getElementById('liveScanRibbon')){
+    var ribbon=document.createElement('div');
+    ribbon.id='liveScanRibbon';
+    ribbon.style.cssText='position:fixed;bottom:0;left:0;right:0;z-index:9999;background:linear-gradient(180deg,#0A0F1Cee,#0A0F1C);border-top:2px solid #1e293b;padding:0;font-family:JetBrains Mono,monospace;display:none';
+    ribbon.innerHTML='<div id="liveScanContent" style="overflow:hidden;white-space:nowrap;padding:6px 0"></div>';
+    document.body.appendChild(ribbon);
+  }
+  
+  // Run first scan immediately
+  window._runLiveScan();
+  
+  // Then every 60 seconds
+  window._liveScannerTimer=setInterval(function(){
+    if(window._deMode==='options'){
+      window._runLiveScan();
+    }
+  },60000);
+  
+  console.log('[LIVE SCANNER] ✅ Started — scanning every 60s');
+};
+
+window._stopLiveScanner=function(){
+  window._liveScannerActive=false;
+  if(window._liveScannerTimer){clearInterval(window._liveScannerTimer);window._liveScannerTimer=null}
+  var ribbon=document.getElementById('liveScanRibbon');
+  if(ribbon)ribbon.style.display='none';
+  console.log('[LIVE SCANNER] ⏹ Stopped');
+};
+
+window._runLiveScan=function(){
+  var reg=window._optionsRegion||'IN';
+  var tickers=window._liveScanTickers[reg]||window._liveScanTickers.IN;
+  var S=reg==='US'?'$':'₹';
+  
+  fetch('/api/live-scan',{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({tickers:tickers,region:reg})
+  })
+  .then(function(r){return r.json()})
+  .then(function(d){
+    if(!d||!d.success)return;
+    window._liveScanResults=d.results;
+    window._renderScanRibbon(d.results,S,reg);
+    
+    // Voice: announce NEW BUY signals (not already announced)
+    var newBuys=d.results.filter(function(r2){
+      return r2.action.startsWith('BUY')&&!window._liveScanPrevBuys[r2.sym];
+    });
+    
+    if(newBuys.length>0&&Date.now()-window._liveScanLastVoice>30000){
+      window._liveScanLastVoice=Date.now();
+      var ceList=newBuys.filter(function(r2){return r2.action==='BUY_CE'}).map(function(r2){return r2.sym});
+      var peList=newBuys.filter(function(r2){return r2.action==='BUY_PE'}).map(function(r2){return r2.sym});
+      var msg='New signal! ';
+      if(ceList.length>0)msg+=ceList.join(', ')+' bullish. ';
+      if(peList.length>0)msg+=peList.join(', ')+' bearish. ';
+      msg+='Tap the ticker bar at bottom to see details.';
+      window._alertTone('ENTRY');
+      setTimeout(function(){window._speak(msg,true)},500);
+    }
+    
+    // Update previous buys tracker
+    window._liveScanPrevBuys={};
+    d.results.forEach(function(r2){
+      if(r2.action.startsWith('BUY'))window._liveScanPrevBuys[r2.sym]=true;
+    });
+    
+    console.log('[LIVE SCANNER] Scanned '+d.scanned+'/'+d.total+' | BUY:'+d.buy_count+' WATCH:'+d.watch_count+' ('+d.elapsed+'s)');
+  })
+  .catch(function(e){console.log('[LIVE SCANNER] Error:',e)});
+};
+
+window._renderScanRibbon=function(results,S,reg){
+  var ribbon=document.getElementById('liveScanRibbon');
+  var content=document.getElementById('liveScanContent');
+  if(!ribbon||!content)return;
+  
+  ribbon.style.display='block';
+  
+  var buys=results.filter(function(r){return r.action.startsWith('BUY')});
+  var watches=results.filter(function(r){return r.action==='WATCH'});
+  var highMom=results.filter(function(r){return r.highMom});
+  
+  var h='';
+  
+  // Header badge
+  h+='<span style="display:inline-block;padding:3px 10px;margin:0 8px;border-radius:6px;background:#ef444420;color:#ef4444;font-size:8px;font-weight:800;vertical-align:middle">🔴 LIVE</span>';
+  h+='<span style="display:inline-block;padding:3px 8px;margin:0 4px;border-radius:4px;background:#05966915;color:#059669;font-size:9px;font-weight:800;vertical-align:middle">'+buys.length+' BUY</span>';
+  h+='<span style="display:inline-block;padding:3px 8px;margin:0 4px;border-radius:4px;background:#d9770615;color:#d97706;font-size:9px;font-weight:800;vertical-align:middle">'+watches.length+' WATCH</span>';
+  if(highMom.length>0)h+='<span style="display:inline-block;padding:3px 8px;margin:0 4px;border-radius:4px;background:#f59e0b15;color:#f59e0b;font-size:9px;font-weight:800;vertical-align:middle">🔥'+highMom.length+' HOT</span>';
+  h+='<span style="color:#334155;margin:0 6px">│</span>';
+  
+  // Scrolling tickers
+  var allItems=buys.concat(watches).concat(results.filter(function(r){return r.action==='NONE'}).slice(0,10));
+  
+  allItems.forEach(function(r){
+    var color=r.action==='BUY_CE'?'#059669':r.action==='BUY_PE'?'#ef4444':r.action==='WATCH'?'#d97706':'#475569';
+    var bgColor=r.action.startsWith('BUY')?color+'15':'transparent';
+    var chgColor=r.chg>=0?'#059669':'#ef4444';
+    var actionLabel=r.action==='BUY_CE'?'▲CE':r.action==='BUY_PE'?'▼PE':r.action==='WATCH'?'👁':'';
+    var loadFn=(reg==='IN'&&['NIFTY','BANKNIFTY','SENSEX','FINNIFTY','MIDCPNIFTY'].indexOf(r.sym)>=0)?
+      "window._loadQuickTrade(\'"+r.sym+"\')":
+      "window._loadOptionsUniversal(\'"+r.sym+"\',\'"+reg+"\')";
+    
+    h+='<span onclick="'+loadFn+'" style="display:inline-block;padding:3px 8px;margin:0 3px;border-radius:6px;background:'+bgColor+';cursor:pointer;vertical-align:middle;border:1px solid '+(r.action.startsWith('BUY')?color+'30':'transparent')+'">';
+    h+='<span style="font-size:10px;font-weight:900;color:'+color+'">'+r.sym+'</span> ';
+    h+='<span style="font-size:9px;color:#94a3b8">'+S+r.spot.toLocaleString()+'</span> ';
+    h+='<span style="font-size:9px;color:'+chgColor+'">'+(r.chg>=0?'+':'')+r.chg+'%</span>';
+    if(actionLabel)h+=' <span style="font-size:8px;font-weight:800;color:'+color+'">'+actionLabel+'</span>';
+    if(r.highMom)h+=' <span style="font-size:7px">🔥</span>';
+    h+='</span>';
+  });
+  
+  // Close button
+  h+='<span style="color:#334155;margin:0 6px">│</span>';
+  h+='<span onclick="window._stopLiveScanner()" style="display:inline-block;padding:2px 8px;border-radius:4px;background:#1e293b;color:#64748b;font-size:8px;cursor:pointer;vertical-align:middle">✕</span>';
+  
+  // Animate scroll for long content
+  content.innerHTML=h;
+  
+  // If content overflows, add marquee-style scroll
+  if(content.scrollWidth>content.clientWidth){
+    content.style.animation='liveScanScroll '+(content.scrollWidth/50)+'s linear infinite';
+    if(!document.getElementById('liveScanStyle')){
+      var style=document.createElement('style');
+      style.id='liveScanStyle';
+      style.textContent='@keyframes liveScanScroll{0%{transform:translateX(0)}100%{transform:translateX(-50%)}}';
+      document.head.appendChild(style);
+    }
+    // Duplicate content for seamless scroll
+    content.innerHTML=h+h;
+  }else{
+    content.style.animation='none';
+  }
+};
+
+// Auto-start when entering Options mode
+var _origSwitchScanner=window.switchDEMode;
+window.switchDEMode=function(mode){
+  if(typeof _origSwitchScanner==='function')_origSwitchScanner(mode);
+  if(mode==='options'){
+    setTimeout(function(){window._startLiveScanner()},2000);
+  }else{
+    window._stopLiveScanner();
+  }
+};
+
+console.log('[LIVE SCANNER] ✅ Ribbon module loaded');

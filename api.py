@@ -4618,6 +4618,178 @@ async def stock_quick(ticker: str = ""):
         return {"success": False, "error": f"Failed to fetch data for {ticker}: {str(e)[:100]}"}
 
 
+
+
+# ═══════════════════════════════════════════════════════════════
+# LIVE SCANNER — Batch scan up to 100 tickers in one API call
+# Uses yfinance.download() for batch pricing (single HTTP request)
+# Returns: [{sym, spot, direction, confidence, action, momentum}]
+# ═══════════════════════════════════════════════════════════════
+
+@app.post("/api/live-scan")
+async def live_scan(request: Request):
+    """Batch scan tickers — returns direction + confidence for each."""
+    import time as _time
+    _t0 = _time.time()
+    try:
+        data = await request.json()
+        tickers = data.get("tickers", [])
+        region = data.get("region", "IN")
+        
+        if not tickers or len(tickers) > 120:
+            return {"success": False, "error": "Provide 1-120 tickers"}
+        
+        # Add .NS suffix for India stocks (not indices)
+        india_indices = ['NIFTY', 'BANKNIFTY', 'SENSEX', 'FINNIFTY', 'MIDCPNIFTY',
+                        '^NSEI', '^NSEBANK', '^BSESN']
+        yf_tickers = []
+        ticker_map = {}  # yf_sym → original sym
+        for t in tickers:
+            t = t.upper().strip()
+            if region == 'IN' and t not in india_indices and not t.startswith('^'):
+                yf_sym = t + '.NS'
+            else:
+                yf_sym = t
+            yf_tickers.append(yf_sym)
+            ticker_map[yf_sym] = t
+        
+        import yfinance as yf
+        import pandas as pd
+        
+        # ONE batch download — much faster than individual calls
+        _yahoo_rate_wait()
+        df = yf.download(yf_tickers, period='2d', interval='15m', 
+                         group_by='ticker', progress=False, threads=True)
+        
+        results = []
+        
+        for yf_sym in yf_tickers:
+            orig_sym = ticker_map[yf_sym]
+            try:
+                # Extract this ticker's data
+                if len(yf_tickers) == 1:
+                    ticker_df = df
+                else:
+                    if yf_sym in df.columns.get_level_values(0):
+                        ticker_df = df[yf_sym]
+                    else:
+                        continue
+                
+                ticker_df = ticker_df.dropna(subset=['Close'])
+                if len(ticker_df) < 3:
+                    continue
+                
+                # Current data
+                spot = float(ticker_df['Close'].iloc[-1])
+                prev_close = float(ticker_df['Close'].iloc[-2]) if len(ticker_df) > 1 else spot
+                day_high = float(ticker_df['High'].tail(8).max())  # Last 2 hours approx
+                day_low = float(ticker_df['Low'].tail(8).min())
+                day_open = float(ticker_df['Open'].iloc[-8]) if len(ticker_df) >= 8 else spot
+                
+                if spot <= 0:
+                    continue
+                
+                # VWAP estimate
+                vwap = round((day_high + day_low + spot) / 3, 2)
+                
+                # Volume analysis (last 5 bars)
+                vols = ticker_df['Volume'].tail(10).tolist()
+                avg_vol = sum(vols) / max(len(vols), 1) if vols else 0
+                recent_vol = sum(vols[-3:]) / 3 if len(vols) >= 3 else avg_vol
+                vol_ratio = recent_vol / max(avg_vol, 1) if avg_vol > 0 else 0
+                
+                # Momentum (last 5 bars)
+                closes = ticker_df['Close'].tail(6).tolist()
+                opens = ticker_df['Open'].tail(6).tolist()
+                mom_up = sum(1 for c, o in zip(closes[-5:], opens[-5:]) if c > o)
+                mom_dn = 5 - mom_up
+                
+                # Price action
+                range_pct = abs(day_high - day_low) / max(spot, 1) * 100
+                is_break_up = spot >= day_high * 0.998 and spot > vwap
+                is_break_dn = spot <= day_low * 1.002 and spot < vwap
+                above_vwap = spot > vwap
+                
+                # Direction
+                direction = 'NONE'
+                if is_break_up and mom_up >= 3:
+                    direction = 'BULLISH'
+                elif is_break_dn and mom_dn >= 3:
+                    direction = 'BEARISH'
+                elif mom_up >= 4 and above_vwap:
+                    direction = 'BULLISH'
+                elif mom_dn >= 4 and not above_vwap:
+                    direction = 'BEARISH'
+                
+                # Confidence scoring (same weights as main engine)
+                price_score = 85 if (is_break_up or is_break_dn) else min(100, 50 + range_pct * 5) if range_pct > 0.5 else 20
+                vol_score = min(100, max(0, vol_ratio * 60)) if avg_vol > 0 else 50
+                mom_score = 80 if (mom_up >= 4 or mom_dn >= 4) else 60 if (mom_up >= 3 or mom_dn >= 3) else 30
+                vwap_score = 90 if ((above_vwap and is_break_up) or (not above_vwap and is_break_dn)) else 60 if above_vwap else 40
+                
+                conf = round(price_score * 0.25 + vol_score * 0.20 + mom_score * 0.15 + vwap_score * 0.10 + 15)  # 15 base
+                conf = min(100, max(0, conf))
+                
+                # Grade + Action
+                grade = 'A' if conf >= 65 else 'B' if conf >= 50 else 'C' if conf >= 35 else 'D'
+                strict_buy = (is_break_up or is_break_dn) and vol_score >= 50 and mom_score >= 60
+                
+                action = 'NONE'
+                if grade == 'A' and direction == 'BULLISH' and strict_buy:
+                    action = 'BUY_CE'
+                elif grade == 'A' and direction == 'BEARISH' and strict_buy:
+                    action = 'BUY_PE'
+                elif (grade == 'A' or grade == 'B') and direction != 'NONE':
+                    action = 'WATCH'
+                
+                # Change from previous close
+                change_pct = round((spot - prev_close) / max(prev_close, 1) * 100, 2)
+                
+                # High momentum flag
+                high_mom = (mom_up >= 4 or mom_dn >= 4) and vol_score >= 60
+                
+                results.append({
+                    "sym": orig_sym,
+                    "spot": round(spot, 2),
+                    "chg": change_pct,
+                    "dir": direction,
+                    "conf": conf,
+                    "grade": grade,
+                    "action": action,
+                    "volR": round(vol_ratio, 1),
+                    "mom": mom_up if direction != 'BEARISH' else -mom_dn,
+                    "highMom": high_mom,
+                    "range": round(range_pct, 2),
+                    "vwap": round(vwap, 2),
+                    "aboveVwap": above_vwap,
+                })
+                
+            except Exception as te:
+                # Skip failed tickers silently
+                pass
+        
+        # Sort: BUY first, then by confidence
+        results.sort(key=lambda x: (0 if x['action'].startswith('BUY') else 1 if x['action'] == 'WATCH' else 2, -x['conf']))
+        
+        _elapsed = round(_time.time() - _t0, 1)
+        print(f"📡 live-scan: {len(results)}/{len(tickers)} scored in {_elapsed}s | BUY: {sum(1 for r in results if r['action'].startswith('BUY'))} | WATCH: {sum(1 for r in results if r['action']=='WATCH')}")
+        
+        return {
+            "success": True,
+            "results": results,
+            "scanned": len(results),
+            "total": len(tickers),
+            "elapsed": _elapsed,
+            "region": region,
+            "buy_count": sum(1 for r in results if r['action'].startswith('BUY')),
+            "watch_count": sum(1 for r in results if r['action'] == 'WATCH'),
+        }
+        
+    except Exception as e:
+        print(f"❌ live-scan error: {e}")
+        return {"success": False, "error": str(e)[:200], "results": []}
+
+
 # ═══ BATCH PRICES — multi-source live prices for stock picks ═══
 
 @app.get("/api/test-price/{ticker}")
