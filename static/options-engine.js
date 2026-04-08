@@ -3161,14 +3161,26 @@ function _renderQuickTrade(d,sym){
   window._qtVolRatio=volRatio8;window._qtHasOI=hasOI;window._qtCallWriting=callWriting;
   window._qtPutWriting=putWriting;window._qtOiConfirms=oiConfirms;window._qtPcr8=pcr8;
   window._qtInstRes=_instRes;window._qtInstSupp=_instSupp;window._qtInstMid=_instMidpoint;
-  window._qtVolumeScore=volumeScore;window._qtMomBars=momBars;window._qtHasVolData=hasVolData;window._qtPriceAction=priceActionScore;
+  window._qtVolumeScore=volumeScore;window._qtMomBars=momBars;window._qtHasVolData=hasVolData;window._qtPriceAction=priceActionScore;window._qtMomentumScore=momentumScore;
   window._qtSpotFmt=_spotFmt;window._qtDhFmt=_dhFmt;window._qtDlFmt=_dlFmt;
   window._qtRangePctFmt=_rangePctFmt;window._qtVwapFmt=_vwapFmt;
-  window._qtS=S;window._qtGex=gex||{};window._qtMaxPain=maxPain;
+  window._qtS=S;window._qtGex=gex||{};window._qtMaxPain=maxPain;window._qtVix=vix;
   window._qtEntryStrike=entryStrike7;window._qtEntryPrem=entryPrem7;
   window._qtFinalBias=finalBias;window._qtConfidence=confidence;window._qtWhyReasons=whyReasons;
   window._qtGammaBlast=qtGammaBlast;window._qtIsExpiry=qtIsExpiry7;window._qtFallback=isFallback;
   window._qtGrade=grade;window._qtTradeMode=tradeMode;window._qtTrapRisk=trapRisk;
+  // Track WHEN signal first appeared (for late entry warnings)
+  var _isEntryGrade=(grade==='A+'||grade==='A');
+  var _wasEntryGrade=window._qtWasEntry||false;
+  if(_isEntryGrade&&!_wasEntryGrade){
+    window._qtSignalTime=Date.now(); // Signal just fired NOW
+    window._qtSignalPrem=entryPrem7; // Premium at signal time
+    window._qtSignalSpot=spot; // Spot at signal time
+  }
+  if(!_isEntryGrade){
+    window._qtSignalTime=0;window._qtSignalPrem=0;window._qtSignalSpot=0;
+  }
+  window._qtWasEntry=_isEntryGrade;
   
   // ═══ RENDER — Unified Decision Card ═══
   var h='';
@@ -3296,6 +3308,25 @@ function _renderQuickTrade(d,sym){
     if(!isOptions)h+='<div style="font-size:9px;color:#64748b;margin-top:4px">'+_entryLabel+' '+S+_stockEntry.toLocaleString()+' · Target '+S+_stockTarget.toLocaleString()+' · SL '+S+_stockSL.toLocaleString()+' · R:R 1:'+_stockRR+'</div>';
     h+='<div style="font-size:12px;color:#94a3b8;margin-top:6px">Confidence: <strong style="color:'+(confidence>=70?'#059669':'#d97706')+'">'+confidence+'%</strong> · Grade: <strong>'+grade+'</strong> ('+gradeLabel+') · Trap: '+trapRisk+'</div>';
     if(qtGammaBlast)h+='<div style="margin-top:6px;padding:4px 14px;border-radius:8px;background:#f59e0b15;display:inline-block;font-size:10px;color:#f59e0b;font-weight:800">⚡ GAMMA BLAST — Bigger position!</div>';
+    // LATE ENTRY WARNING
+    var _sigAge=window._qtSignalTime>0?Math.round((Date.now()-window._qtSignalTime)/60000):0;
+    var _sigPremChg=window._qtSignalPrem>0?Math.round((entryPrem7-window._qtSignalPrem)/Math.max(window._qtSignalPrem,1)*100):0;
+    var _sigSpotChg=window._qtSignalSpot>0?Math.round((spot-window._qtSignalSpot)/Math.max(window._qtSignalSpot,1)*10000)/100:0;
+    if(_sigAge>=2&&_sigAge<=30){
+      var _lateColor=_sigAge>=10?'#ef4444':_sigAge>=5?'#d97706':'#3b82f6';
+      h+='<div style="margin-top:8px;padding:10px;border-radius:10px;background:'+_lateColor+'08;border:1px solid '+_lateColor+'20">';
+      h+='<div style="font-size:9px;font-weight:800;color:'+_lateColor+';margin-bottom:4px">⏱ SIGNAL FIRED '+_sigAge+' MIN AGO</div>';
+      if(_sigAge<5&&Math.abs(_sigPremChg)<5){
+        h+='<div style="font-size:10px;color:#3b82f6">Price consolidating after signal — the move paused. This is actually a safer entry than chasing. Enter now at '+S+Math.round(entryPrem7)+' with normal stop loss.</div>';
+      }else if(_sigAge<5){
+        h+='<div style="font-size:10px;color:#94a3b8">Still fresh — you can enter. Premium moved '+(_sigPremChg>=0?'+':'')+_sigPremChg+'% since signal ('+S+Math.round(window._qtSignalPrem)+' → '+S+Math.round(entryPrem7)+'). Spot moved '+(_sigSpotChg>=0?'+':'')+_sigSpotChg.toFixed(2)+'%.</div>';
+      }else if(_sigAge<10){
+        h+='<div style="font-size:10px;color:#d97706">Caution — signal is '+_sigAge+' min old. Premium already moved '+(_sigPremChg>=0?'+':'')+_sigPremChg+'%. '+(Math.abs(_sigPremChg)>15?'Too much premium decay — consider WAITING for next signal.':'You can still enter but use smaller size and tighter stop.')+'</div>';
+      }else{
+        h+='<div style="font-size:10px;color:#ef4444">Late entry risk — '+_sigAge+' min since signal. Premium changed '+(_sigPremChg>=0?'+':'')+_sigPremChg+'%. '+(Math.abs(_sigPremChg)>20?'DO NOT CHASE — premium has moved too much. Wait for next setup.':'Enter only at a better price or wait for pullback.')+'</div>';
+      }
+      h+='</div>';
+    }
     h+='</div>';
     
     // WHY
@@ -3392,8 +3423,45 @@ function _renderQuickTrade(d,sym){
 }
 
 // ═══ Add Quick Trade as default mode for Options tab ═══
+// ═══ AUTO-SCAN on first Options mode entry ═══
+window._autoScanDone=false;
 var _origSwitchDE=window.switchDEMode;
 window.switchDEMode=function(mode){
+    // Auto-scan on first Options entry — "X trades available" voice
+    if(mode==='options'&&!window._autoScanDone){
+      window._autoScanDone=true;
+      // Quick lightweight scan — just check current region's index tickers
+      var _asReg=window._optionsRegion||'IN';
+      var _asTickers=_asReg==='IN'?['NIFTY','BANKNIFTY']:['SPY','QQQ'];
+      var _asReady=0;var _asDone=0;var _asTotal=_asTickers.length;var _asNames=[];
+      _asTickers.forEach(function(tk,i){
+        setTimeout(function(){
+          fetch('/api/options-quick?symbol='+tk+'&region='+_asReg)
+            .then(function(r){return r.json()})
+            .then(function(d){
+              if(d&&d.success){
+                var _asSpot=d.spot||0;var _asChain=d.chain_near_atm||[];
+                var _asBars=d.ohlc_bars||[];
+                var _asMomUp=0;_asBars.slice(-5).forEach(function(b){if(b.c>b.o)_asMomUp++});
+                var _asVwap=d.vwap||_asSpot;
+                var _asVol=_asBars.length>3?_asBars.slice(-3).reduce(function(s,b){return s+b.v},0)/3:0;
+                var _asAvg=_asBars.length>3?_asBars.reduce(function(s,b){return s+b.v},0)/_asBars.length:0;
+                var _asGood=_asMomUp>=3&&_asVol>_asAvg*1.0&&_asSpot>0;
+                if(_asGood){_asReady++;_asNames.push(tk)}
+              }
+              _asDone++;
+              if(_asDone>=_asTotal){
+                if(_asReady>0){
+                  window._speak(_asReady+' potential trade'+((_asReady>1)?'s':'')+' detected: '+_asNames.join(' and ')+'. Tap to see details. Use Scan All for full analysis.',true);
+                }else{
+                  window._speak('Markets are open. No strong trades yet. I am watching and will alert you when a good setup appears.',false);
+                }
+              }
+            }).catch(function(){_asDone++});
+        },i*600);
+      });
+    }
+
   if(typeof _origSwitchDE==='function')_origSwitchDE(mode);
   // Options mode loading handled by Patch 3 (loadSmartOptions) — no action here
 };
@@ -3917,6 +3985,8 @@ _renderQuickTrade=function(d,sym){
   var vStrike=window._qtEntryStrike||0;
   var vPrem=window._qtEntryPrem||0;
   var vBias=window._qtFinalBias||'';
+  var vix=window._qtVix||0;
+  var momentumScore=window._qtMomentumScore||0;
   var vBlast=window._qtGammaBlast||false;
   var vExpiry=window._qtIsExpiry||false;
   var vTarget=Math.round(vPrem*1.25);
@@ -4018,6 +4088,8 @@ _renderQuickTrade=function(d,sym){
   var _vwapFmt=window._qtVwapFmt||'';
   var S=window._qtS||'₹';
   var vBias=window._qtFinalBias||'';
+  var vix=window._qtVix||0;
+  var momentumScore=window._qtMomentumScore||0;
 
   // Tracks 25 market microstructure states. Voice fires only on STATE TRANSITIONS.
   
@@ -4163,6 +4235,81 @@ _renderQuickTrade=function(d,sym){
   if(_s24_allSame&&_s24_consistent[0]!=='NONE'&&window._renderCount>6){
     _scenarioVoice('S24',sym+' has been consistently '+_s24_consistent[0].toLowerCase()+' for '+_s24_consistent.length+' consecutive readings. Trend is confirmed — higher probability setup.',false);
   }else{_scenarioClear('S24')}
+  
+  // ═══ LATE ENTRY VOICE WARNING ═══
+  var _leSigAge=window._qtSignalTime>0?Math.round((Date.now()-window._qtSignalTime)/60000):0;
+  var _leIsEntry=(window._qtGrade==='A+'||window._qtGrade==='A');
+  if(_leIsEntry&&_leSigAge>=5&&_leSigAge<30){
+    var _lePremChg=window._qtSignalPrem>0?Math.round((window._qtEntryPrem-window._qtSignalPrem)/Math.max(window._qtSignalPrem,1)*100):0;
+    if(_leSigAge>=10&&Math.abs(_lePremChg)>15){
+      _scenarioVoice('LATE_DONT','This signal is '+_leSigAge+' minutes old and premium has already moved '+Math.abs(_lePremChg)+' percent. Do not chase. Wait for the next fresh signal.',true);
+    }else if(_leSigAge>=5){
+      _scenarioVoice('LATE_CAUTION','Signal is '+_leSigAge+' minutes old. Premium moved '+_lePremChg+' percent since signal. You can still enter but use smaller position and tighter stop loss.',false);
+    }
+  }else{_scenarioClear('LATE_DONT');_scenarioClear('LATE_CAUTION')}
+  
+  // ═══ EARLY EXIT TRIGGERS ═══
+  // Proactive warnings BEFORE stop/target — helps user prepare
+  var _at2=window._activeTradeValue;
+  if(_at2&&_at2.entryPrem>0){
+    var _eePrem=_at2.currentPrem||_at2.entryPrem;
+    var _eePct=Math.round((_eePrem-_at2.entryPrem)/Math.max(_at2.entryPrem,1)*100);
+    
+    // Momentum dying while in profit — exit early
+    if(_eePct>10&&volumeScore<40&&momentumScore<40){
+      _scenarioVoice('EARLY_EXIT_MOM','You are up '+_eePct+' percent but momentum is fading and volume is dropping. Consider exiting now to lock in profit before it disappears.',true);
+    }else{_scenarioClear('EARLY_EXIT_MOM')}
+    
+    // VIX spiking while in trade — tighten stop
+    var _eeVix=window._qtVix||0;
+    if(_eeVix>25&&_eePct>0){
+      _scenarioVoice('EARLY_EXIT_VIX','VIX just spiked to '+_eeVix.toFixed(1)+' while you are in a trade. Market getting dangerous. Tighten your stop loss or exit with '+_eePct+' percent profit.',true);
+    }else{_scenarioClear('EARLY_EXIT_VIX')}
+    
+    // Price approaching resistance while holding call
+    if(_at2.type==='CE'&&_instRes>0&&spot>_instRes*0.995){
+      _scenarioVoice('EARLY_EXIT_WALL','Price approaching call resistance wall at '+S+_instRes.toLocaleString()+'. You are holding a Call — this is where sellers step in. Consider booking profit.',true);
+    }else{_scenarioClear('EARLY_EXIT_WALL')}
+    
+    // Price approaching support while holding put
+    if(_at2.type==='PE'&&_instSupp>0&&spot<_instSupp*1.005){
+      _scenarioVoice('EARLY_EXIT_SUPP','Price approaching put support wall at '+S+_instSupp.toLocaleString()+'. You are holding a Put — this is where buyers step in. Consider booking profit.',true);
+    }else{_scenarioClear('EARLY_EXIT_SUPP')}
+    
+    // ═══ VWAP LOST — price crosses VWAP against your trade ═══
+    var _eeAboveVwap=aboveVwap;
+    if(_at2.type==='CE'&&!_eeAboveVwap&&_eePct>0){
+      _scenarioVoice('EARLY_EXIT_VWAP','Warning — price dropped below VWAP while you hold a Call. Buyers are losing control. You still have '+_eePct+'% profit — consider exiting before it turns to loss.',true);
+    }else if(_at2.type==='PE'&&_eeAboveVwap&&_eePct>0){
+      _scenarioVoice('EARLY_EXIT_VWAP','Warning — price climbed above VWAP while you hold a Put. Sellers are losing control. You still have '+_eePct+'% profit — consider exiting.',true);
+    }else{_scenarioClear('EARLY_EXIT_VWAP')}
+    
+    // ═══ OI FLIP — new OI building against your position ═══
+    var _eePrevCOI=_ss._prevCallOI||callWriting;
+    var _eePrevPOI=_ss._prevPutOI||putWriting;
+    if(_at2.type==='CE'&&callWriting>_eePrevCOI*1.15&&hasOI){
+      _scenarioVoice('EARLY_EXIT_OI','Alert — call open interest just jumped '+Math.round((callWriting/_eePrevCOI-1)*100)+'%. New call writers are selling against your position. Resistance building — consider exit.',true);
+    }else if(_at2.type==='PE'&&putWriting>_eePrevPOI*1.15&&hasOI){
+      _scenarioVoice('EARLY_EXIT_OI','Alert — put open interest just jumped '+Math.round((putWriting/_eePrevPOI-1)*100)+'%. New put writers forming support against your position. Consider exit.',true);
+    }else{_scenarioClear('EARLY_EXIT_OI')}
+    _ss._prevCallOI=callWriting;_ss._prevPutOI=putWriting;
+    
+    // ═══ CANDLE SIZE SHRINKING — move exhaustion ═══
+    if(momBars.length>=3){
+      var _eeLastBars=momBars.slice(-3);
+      var _eeSizes=_eeLastBars.map(function(b){return Math.abs(b.c-b.o)});
+      var _eeShrinking=_eeSizes[2]<_eeSizes[1]*0.6&&_eeSizes[1]<_eeSizes[0]*0.6;
+      if(_eeShrinking&&_eePct>5){
+        _scenarioVoice('EARLY_EXIT_CANDLE','Candle sizes shrinking rapidly — last 3 bars getting smaller and smaller. The move is exhausting itself. You are up '+_eePct+'% — book profits before reversal.',true);
+      }else{_scenarioClear('EARLY_EXIT_CANDLE')}
+    }
+    
+    // ═══ TIME-BASED EXHAUSTION — trade too long without progress ═══
+    var _eeElapsed=Math.round((Date.now()-_at2.entryTime)/60000);
+    if(_eeElapsed>=15&&Math.abs(_eePct)<10){
+      _scenarioVoice('EARLY_EXIT_TIME','You have been in this trade for '+_eeElapsed+' minutes with only '+_eePct+'% movement. The move may be over. On options, time decay is eating your premium every minute. Consider exiting.',false);
+    }else{_scenarioClear('EARLY_EXIT_TIME')}
+  }
   
   // ═══ S25: DIVERGENCE WARNING ═══
   if(!oiConfirms&&hasOI&&direction!=='NONE'&&priceActionScore>60&&window._renderCount>4){
@@ -5877,6 +6024,7 @@ window._loadTradeScanner=function(){
   var el=document.getElementById('deResult');if(!el)return;
   window._scanActive=true;
   window._scanResults={};
+  window._scanVoiceFired=false;
   
   // Render shell
   var h='<div style="max-width:520px;margin:0 auto">';
@@ -5913,6 +6061,21 @@ window._loadTradeScanner=function(){
     
     // Ready trades (A+ and A)
     var readyTrades=sorted.filter(function(r){return r.grade==='A+'||r.grade==='A'});
+            // ═══ SCANNER VOICE — announce best signals ═══
+            if(readyTrades.length>0&&!window._scanVoiceFired){
+              window._scanVoiceFired=true;
+              var _svCE=readyTrades.filter(function(r){return r.action==='BUY CALL'});
+              var _svPE=readyTrades.filter(function(r){return r.action==='BUY PUT'});
+              var _svMsg=readyTrades.length+' high-confidence trade'+(readyTrades.length>1?'s':'')+' detected. ';
+              if(_svCE.length>0)_svMsg+=_svCE.length+' bullish: '+_svCE.map(function(r){return r.sym}).join(', ')+'. ';
+              if(_svPE.length>0)_svMsg+=_svPE.length+' bearish: '+_svPE.map(function(r){return r.sym}).join(', ')+'. ';
+              _svMsg+='Tap any ticker to see full analysis.';
+              setTimeout(function(){window._speak(_svMsg,true)},1000);
+            }
+            if(readyTrades.length===0&&done>=total&&!window._scanVoiceFired){
+              window._scanVoiceFired=true;
+              setTimeout(function(){window._speak('Scan complete. No high-confidence trades right now. All tickers are in wait or no-trade zone. Will alert you when something appears.',false)},1000);
+            }
     if(readyTrades.length>0){
       h2+='<div style="margin-bottom:16px">';
       h2+='<div style="font-size:12px;font-weight:800;color:#059669;margin-bottom:8px;padding-left:4px">🟢 READY TO TRADE ('+readyTrades.length+')</div>';
