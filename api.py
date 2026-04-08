@@ -6615,14 +6615,6 @@ async def _algo_signal_impl(symbol: str = "NIFTY", region: str = ""):
         except:
             pass
         # Try yfinance options chain for US stocks
-        # NaN guard — Yahoo returns NaN for missing OI/IV fields
-        import math as _math
-        def _is_nan(v):
-            try:
-                return v is None or _math.isnan(float(v))
-            except (TypeError, ValueError):
-                return True
-        
         try:
             opts = tk.options
             if opts:
@@ -24662,6 +24654,14 @@ async def options_quick(symbol: str = "NIFTY", region: str = "IN"):
         except Exception as e:
             print(f"[OPTIONS-QUICK] VIX fetch error: {e}")
             vix = 18.0  # fallback
+        
+        # NaN guard — Yahoo returns NaN for missing OI/IV fields
+        import math as _math
+        def _is_nan(v):
+            try:
+                return v is None or _math.isnan(float(v))
+            except (TypeError, ValueError):
+                return True
         
         # Get options chain
         chain_data = []
