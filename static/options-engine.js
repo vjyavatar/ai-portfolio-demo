@@ -2567,6 +2567,10 @@ window._loadQuickTrade=function(symbol){
       if(window._activeOptionsSym!==sym)return; // Another ticker was loaded — abort
       window._apiRetryCount=0; // Reset on success
       if(window._apiRetryTimer){clearTimeout(window._apiRetryTimer);window._apiRetryTimer=null}
+      // Market hours check — tag data so engine knows if market is live
+      var _mqNow=new Date();var _mqIstH=_mqNow.getUTCHours()+5+(_mqNow.getUTCMinutes()+30>=60?1:0);
+      var _mqDow=_mqNow.getUTCDay();
+      d._marketOpen=(_mqIstH>=9&&(_mqIstH<15||(_mqIstH===15&&(_mqNow.getUTCMinutes()+30)%60<=30))&&_mqDow>=1&&_mqDow<=5);
       _renderQuickTrade(d,sym);
       // Auto-refresh — only if still the active ticker
       console.log('[REFRESH] ✅ Timer started for '+sym+' (30s)');
@@ -3168,7 +3172,7 @@ function _renderQuickTrade(d,sym){
   window._qtEntryStrike=entryStrike7;window._qtEntryPrem=entryPrem7;
   window._qtFinalBias=finalBias;window._qtConfidence=confidence;window._qtWhyReasons=whyReasons;
   window._qtGammaBlast=qtGammaBlast;window._qtIsExpiry=qtIsExpiry7;window._qtFallback=isFallback;
-  window._qtGrade=grade;window._qtTradeMode=tradeMode;window._qtTrapRisk=trapRisk;
+  window._qtGrade=grade;window._qtTradeMode=tradeMode;window._qtTrapRisk=trapRisk;window._qtMarketOpen=d._marketOpen!==false;
   // Track WHEN signal first appeared (for late entry warnings)
   var _isEntryGrade=(grade==='A+'||grade==='A');
   var _wasEntryGrade=window._qtWasEntry||false;
@@ -3306,6 +3310,13 @@ function _renderQuickTrade(d,sym){
     h+='</div>';
     if(isOptions)h+='<div style="font-size:9px;color:#64748b;margin-top:4px">'+strikeReason+' · Lot: '+c7.lot+' · Qty: '+qtLots+(qtLots!=='1'?' lots':' lot')+'</div>';
     if(!isOptions)h+='<div style="font-size:9px;color:#64748b;margin-top:4px">'+_entryLabel+' '+S+_stockEntry.toLocaleString()+' · Target '+S+_stockTarget.toLocaleString()+' · SL '+S+_stockSL.toLocaleString()+' · R:R 1:'+_stockRR+'</div>';
+    // MARKET CLOSED CHECK — if market is closed, override BUY NOW with warning
+    if(d._marketOpen===false){
+      h+='<div style="margin-top:8px;padding:10px;border-radius:10px;background:#ef444410;border:2px solid #ef444430">';
+      h+='<div style="font-size:11px;font-weight:900;color:#ef4444;text-align:center">⚠️ MARKET CLOSED — DATA IS FROM LAST SESSION</div>';
+      h+='<div style="font-size:9px;color:#94a3b8;text-align:center;margin-top:4px">This is NOT a live signal. Do not trade based on this. Come back during market hours.</div>';
+      h+='</div>';
+    }
     h+='<div style="font-size:12px;color:#94a3b8;margin-top:6px">Confidence: <strong style="color:'+(confidence>=70?'#059669':'#d97706')+'">'+confidence+'%</strong> · Grade: <strong>'+grade+'</strong> ('+gradeLabel+') · Trap: '+trapRisk+'</div>';
     if(qtGammaBlast)h+='<div style="margin-top:6px;padding:4px 14px;border-radius:8px;background:#f59e0b15;display:inline-block;font-size:10px;color:#f59e0b;font-weight:800">⚡ GAMMA BLAST — Bigger position!</div>';
     // LATE ENTRY WARNING
@@ -4007,6 +4018,8 @@ _renderQuickTrade=function(d,sym){
   // Only voice if signal actually changed from last render
   // BUT: Also fire on render #2 if already in ENTRY state (page opened into active trade)
   var shouldVoice=false;
+  var _marketLive=window._qtMarketOpen!==false;
+  if(!_marketLive){shouldVoice=false} // No voice when market closed
   var isTransition=currentSignal!==window._lastQuickSignal&&window._lastQuickSignal!=='NONE';
   var isFirstEntry=window._lastQuickSignal==='NONE'&&(currentSignal==='ENTRY_CE'||currentSignal==='ENTRY_PE');
   
@@ -4094,6 +4107,8 @@ _renderQuickTrade=function(d,sym){
 
   // Tracks 25 market microstructure states. Voice fires only on STATE TRANSITIONS.
   
+  // Skip scenario engine when market is closed — all data is stale
+  if(window._qtMarketOpen===false){return}
   if(!window._scenarioState)window._scenarioState={};
   var _ss=window._scenarioState;
   var _scenarioVoiceGap=Date.now()-(window._lastScenarioVoice||0);
@@ -5545,6 +5560,16 @@ window._loadOptionsUniversal=function(symbol,region){
         return;
       }
       d._region=reg;d._currency=reg==='US'?'$':'₹';d._lotSize=d.lot_size||(reg==='US'?100:1);
+      // Market hours check
+      var _mqNow2=new Date();
+      var _mqIstH2=_mqNow2.getUTCHours()+5+(_mqNow2.getUTCMinutes()+30>=60?1:0);
+      var _mqEtH2=_mqNow2.getUTCHours()-4;
+      var _mqDow2=_mqNow2.getUTCDay();
+      if(reg==='US'){
+        d._marketOpen=(_mqEtH2>=9&&_mqEtH2<16&&_mqDow2>=1&&_mqDow2<=5);
+      }else{
+        d._marketOpen=(_mqIstH2>=9&&(_mqIstH2<15||(_mqIstH2===15&&(_mqNow2.getUTCMinutes()+30)%60<=30))&&_mqDow2>=1&&_mqDow2<=5);
+      }
       _renderQuickTrade(d,sym);
       // Auto-refresh — only if still active
       console.log('[REFRESH] ✅ Universal timer started for '+sym+' '+reg+' (30s)');
@@ -5553,7 +5578,9 @@ window._loadOptionsUniversal=function(symbol,region){
           console.log('[REFRESH] 🔄 Universal fetching '+sym+'...');
           fetch('/api/options-quick?symbol='+encodeURIComponent(sym)+'&region='+encodeURIComponent(reg))
             .then(function(r2){return r2.json()})
-            .then(function(d2){if(d2&&d2.success&&window._activeOptionsSym===sym){d2._region=reg;d2._currency=reg==='US'?'$':'₹';d2._lotSize=d2.lot_size||(reg==='US'?100:1);console.log('[REFRESH] ✅ Universal got '+sym+' spot='+d2.spot);_renderQuickTrade(d2,sym)}})
+            .then(function(d2){if(d2&&d2.success&&window._activeOptionsSym===sym){d2._region=reg;d2._currency=reg==='US'?'$':'₹';d2._lotSize=d2.lot_size||(reg==='US'?100:1);
+              var _mqNow3=new Date();var _mqIstH3=_mqNow3.getUTCHours()+5+(_mqNow3.getUTCMinutes()+30>=60?1:0);var _mqEtH3=_mqNow3.getUTCHours()-4;var _mqDow3=_mqNow3.getUTCDay();
+              d2._marketOpen=reg==='US'?(_mqEtH3>=9&&_mqEtH3<16&&_mqDow3>=1&&_mqDow3<=5):(_mqIstH3>=9&&(_mqIstH3<15||(_mqIstH3===15&&(_mqNow3.getUTCMinutes()+30)%60<=30))&&_mqDow3>=1&&_mqDow3<=5);console.log('[REFRESH] ✅ Universal got '+sym+' spot='+d2.spot);_renderQuickTrade(d2,sym)}})
             .catch(function(e){console.log('[REFRESH] ❌ Universal error: '+e)});
         }else{console.log('[REFRESH] Universal stopped for '+sym);clearInterval(window._quickRefreshTimer);window._quickRefreshTimer=null}
       },30000);
@@ -5591,7 +5618,7 @@ window._optionsNav={
     label:'🇮🇳 INDIA',
     categories:{
       index:{label:'📊 Index',tickers:['NIFTY','BANKNIFTY','SENSEX','FINNIFTY','MIDCPNIFTY'],api:'nse'},
-      stock:{label:'📈 Stocks',tickers:['RELIANCE','TCS','INFY','HDFCBANK','ICICIBANK','SBIN','BAJFINANCE','TATAMOTORS','LT','MARUTI','AXISBANK','KOTAKBANK','ITC','HINDUNILVR','BHARTIARTL','WIPRO','HCLTECH','ADANIENT','ADANIPORTS','POWERGRID','NTPC','ULTRACEMCO','GRASIM','TITAN','NESTLEIND','BAJAJFINSV','TECHM','SUNPHARMA','DRREDDY','CIPLA','COALINDIA','JSWSTEEL','TATASTEEL','ONGC','BPCL','HINDALCO','DIVISLAB','HEROMOTOCO','EICHERMOT','BRITANNIA','APOLLOHOSP','SBILIFE','INDUSINDBK','ASIANPAINT','PIDILITIND','TRENT','ZOMATO','JIOFIN','SHRIRAMFIN','ETERNAL'],api:'yahoo'},
+      stock:{label:'📈 Stocks',tickers:['RELIANCE','TCS','INFY','HDFCBANK','ICICIBANK','SBIN','BAJFINANCE','TATAMOTORS','LT','MARUTI','AXISBANK','KOTAKBANK','ITC','HINDUNILVR','BHARTIARTL','WIPRO','HCLTECH','ADANIENT','ADANIPORTS','POWERGRID','NTPC','ULTRACEMCO','GRASIM','TITAN','NESTLEIND','BAJAJFINSV','TECHM','SUNPHARMA','DRREDDY','CIPLA','COALINDIA','JSWSTEEL','TATASTEEL','ONGC','BPCL','HINDALCO','DIVISLAB','HEROMOTOCO','EICHERMOT','BRITANNIA','APOLLOHOSP','SBILIFE','INDUSINDBK','ASIANPAINT','PIDILITIND','TRENT','ZOMATO','JIOFIN','SHRIRAMFIN','ETERNAL','VEDL','BANKBARODA','IDFCFIRSTB','PNB','CANBK','SAIL','NMDC','GLENMARK','VOLTAS','HAL','BEL','IRCTC','DELHIVERY','PAYTM'],api:'yahoo'},
       etf:{label:'📦 ETFs',tickers:['NIFTYBEES','BANKBEES','GOLDBEES','SILVERBEES','ITBEES','JUNIORBEES','CPSE','PHARMABEES','LIQUIDBEES','CPSEETF','SETFNIF50','MOM50','MOM30','MIDCAP','LOWVOLIETF','ALPHA'],api:'yahoo'}
     }
   },
@@ -5599,8 +5626,8 @@ window._optionsNav={
     label:'🇺🇸 USA',
     categories:{
       index:{label:'📊 Index',tickers:['SPY','QQQ','IWM','DIA','VIX'],api:'yahoo'},
-      stock:{label:'📈 Stocks',tickers:['AAPL','TSLA','NVDA','AMZN','MSFT','META','GOOGL','AMD','NFLX','MU','COIN','PLTR','SNOW','CRM','UBER','SQ','SHOP','ROKU','RBLX','MARA','SMCI','ARM','AVGO','INTC','BA','JPM','GS','V','MA','WMT','COST','HD','DIS','NKE','KO','PEP','JNJ','PFE','UNH','LLY','ABBV','MRK','XOM','CVX','COP','RIVN','LCID','SOFI','HOOD','ABNB'],api:'yahoo'},
-      etf:{label:'📦 ETFs',tickers:['GLD','TLT','XLF','XLE','XLK','ARKK','SOXX','VTI','VOO','SCHD','SOXL','TQQQ','SQQQ','UVXY','KWEB','EEM','FXI','IBIT','MSTR','BITO','SLV','USO','XBI','SMH','HACK'],api:'yahoo'}
+      stock:{label:'📈 Stocks',tickers:['AAPL','TSLA','NVDA','AMZN','MSFT','META','GOOGL','AMD','NFLX','MU','COIN','PLTR','SNOW','CRM','UBER','SQ','SHOP','ROKU','RBLX','MARA','SMCI','ARM','AVGO','INTC','BA','JPM','GS','V','MA','WMT','COST','HD','DIS','NKE','KO','PEP','JNJ','PFE','UNH','LLY','ABBV','MRK','XOM','CVX','COP','RIVN','LCID','SOFI','HOOD','ABNB','LRCX','PANW','CRWD','DDOG','NET','ANET','MRVL','ON','DELL','ORCL','ADBE','NOW','PYPL','SNAP','PINS','DASH','TTD','ENPH','FSLR','CELH'],api:'yahoo'},
+      etf:{label:'📦 ETFs',tickers:['GLD','TLT','XLF','XLE','XLK','ARKK','SOXX','VTI','VOO','SCHD','SOXL','TQQQ','SQQQ','UVXY','KWEB','EEM','FXI','IBIT','MSTR','BITO','SLV','USO','XBI','SMH','HACK','LITX','SNDX'],api:'yahoo'}
     }
   }
 };
@@ -5773,28 +5800,14 @@ window._showBuyNowDashboard=function(cat){
     var rh='';
     
     if(buyNow.length>0){
-      rh+='<div style="margin-bottom:10px"><div style="font-size:11px;font-weight:800;color:#059669;margin-bottom:6px;padding-left:4px">🟢 '+buyNow.length+' ACTIVE SIGNAL'+(buyNow.length>1?'S':'')+'</div>';
+      rh+='<div style="margin-bottom:10px"><div style="font-size:12px;font-weight:800;color:#059669;margin-bottom:8px;padding-left:4px">\u{1F7E2} '+buyNow.length+' BUY NOW'+(buyNow.length>1?' SIGNALS':' SIGNAL')+'</div>';
       buyNow.forEach(function(r){rh+=window._renderBuyNowCard(r)});
       rh+='</div>';
-    }
-    
-    if(watching.length>0){
-      rh+='<div style="margin-bottom:10px"><div style="font-size:10px;font-weight:700;color:#d97706;margin-bottom:4px;padding-left:4px">🟡 '+watching.length+' APPROACHING</div>';
-      watching.forEach(function(r){rh+=window._renderBuyNowMini(r)});
-      rh+='</div>';
-    }
-    
-    if(noTrade.length>0&&done2>=total2){
-      rh+='<div><div style="font-size:9px;font-weight:700;color:#64748b;margin-bottom:4px;padding-left:4px">⚪ NO SIGNAL — '+noTrade.length+'</div>';
-      rh+='<div style="display:flex;flex-wrap:wrap;gap:4px;padding-left:4px">';
-      noTrade.forEach(function(r){
-        rh+='<div onclick="'+(r.reg==='IN'&&r.cat==='index'?"window._loadQuickTrade(\'"+r.sym+"\')" :"window._loadOptionsUniversal(\'"+r.sym+"\',\'"+r.reg+"\')")+'" style="padding:4px 10px;border-radius:6px;background:#0F172A;border:1px solid #1e293b;font-size:9px;color:#475569;cursor:pointer;font-weight:700">'+r.sym+'</div>';
-      });
-      rh+='</div></div>';
+      rh+='<div style="text-align:center;font-size:9px;color:#475569;margin-top:4px">Scanned '+total2+' tickers \u2014 only showing active BUY signals</div>';
     }
     
     if(done2>=total2&&buyNow.length===0){
-      rh+='<div style="text-align:center;padding:20px;background:#1e293b;border-radius:12px"><div style="font-size:32px;margin-bottom:8px">🕐</div><div style="font-size:14px;color:#94a3b8;font-weight:700">No BUY signals in '+catData.label+' right now</div><div style="font-size:10px;color:#475569;margin-top:4px">Try another category or wait for market to develop</div></div>';
+      rh+='<div style="text-align:center;padding:24px;background:#1e293b;border-radius:12px"><div style="font-size:32px;margin-bottom:8px">\u{1F554}</div><div style="font-size:14px;color:#94a3b8;font-weight:700">No BUY NOW signals in '+catData.label+'</div><div style="font-size:10px;color:#475569;margin-top:4px">Scanned '+total2+' tickers \u2014 none qualify right now. Try another category or wait.</div></div>';
     }
     
     container.innerHTML=rh;
@@ -6290,10 +6303,10 @@ _renderQuickTrade=function(d,sym){
 
 window._scannerGroups=[
   {id:'in_index',label:'🇮🇳 India Index',tickers:['NIFTY','BANKNIFTY','SENSEX','FINNIFTY'],region:'IN'},
-  {id:'in_stock',label:'🇮🇳 India Stocks (Top 25)',tickers:['RELIANCE','TCS','INFY','HDFCBANK','ICICIBANK','SBIN','BAJFINANCE','TATAMOTORS','LT','MARUTI','AXISBANK','KOTAKBANK','ITC','HINDUNILVR','BHARTIARTL','WIPRO','HCLTECH','ADANIENT','TITAN','SUNPHARMA','DRREDDY','JSWSTEEL','TECHM','COALINDIA','NTPC'],region:'IN'},
+  {id:'in_stock',label:'🇮🇳 India Stocks (Top 32)',tickers:['RELIANCE','TCS','INFY','HDFCBANK','ICICIBANK','SBIN','BAJFINANCE','TATAMOTORS','LT','MARUTI','AXISBANK','KOTAKBANK','ITC','HINDUNILVR','BHARTIARTL','WIPRO','HCLTECH','ADANIENT','TITAN','SUNPHARMA','DRREDDY','JSWSTEEL','TECHM','COALINDIA','NTPC','HAL','BEL','VEDL','BANKBARODA','PNB','IRCTC','PAYTM'],region:'IN'},
   {id:'in_etf',label:'🇮🇳 India ETFs',tickers:['NIFTYBEES','BANKBEES','GOLDBEES','SILVERBEES','ITBEES','JUNIORBEES','CPSE','MOM50'],region:'IN'},
   {id:'us_index',label:'🇺🇸 US Index',tickers:['SPY','QQQ','IWM','DIA'],region:'US'},
-  {id:'us_stock',label:'🇺🇸 US Stocks (Top 25)',tickers:['AAPL','MSFT','NVDA','TSLA','META','GOOGL','AMZN','MU','AMD','NFLX','COIN','PLTR','CRM','UBER','SMCI','ARM','AVGO','BA','JPM','V','LLY','UNH','XOM','SOFI','ABNB'],region:'US'},
+  {id:'us_stock',label:'🇺🇸 US Stocks (Top 35)',tickers:['AAPL','MSFT','NVDA','TSLA','META','GOOGL','AMZN','MU','AMD','NFLX','COIN','PLTR','CRM','UBER','SMCI','ARM','AVGO','BA','JPM','V','LLY','UNH','XOM','SOFI','ABNB','PANW','CRWD','MRVL','ORCL','ADBE','DELL','LRCX','PYPL','DASH','NOW'],region:'US'},
   {id:'us_etf',label:'🇺🇸 US ETFs',tickers:['GLD','TLT','XLF','XLE','XLK','ARKK','SOXX','SOXL','TQQQ','IBIT','SMH','SLV'],region:'US'}
 ];
 
@@ -6549,13 +6562,15 @@ window._liveScanTickers={
       'BAJFINANCE','TATAMOTORS','LT','MARUTI','AXISBANK','KOTAKBANK','ITC','HINDUNILVR',
       'BHARTIARTL','WIPRO','HCLTECH','ADANIENT','TITAN','SUNPHARMA','DRREDDY','JSWSTEEL',
       'NTPC','POWERGRID','COALINDIA','TECHM','CIPLA','ULTRACEMCO','HEROMOTOCO','BRITANNIA',
-      'APOLLOHOSP','TRENT','ZOMATO','NIFTYBEES','BANKBEES','GOLDBEES','ITBEES',
-      'SILVERBEES','JUNIORBEES','MOM50','CPSE','MIDCAP','PHARMABEES'],
+      'APOLLOHOSP','TRENT','ZOMATO','HAL','BEL','VEDL','BANKBARODA','PNB','IRCTC','PAYTM',
+      'NIFTYBEES','BANKBEES','GOLDBEES','ITBEES','SILVERBEES','JUNIORBEES','MOM50','CPSE',
+      'MIDCAP','PHARMABEES'],
   US:['SPY','QQQ','IWM','DIA','AAPL','TSLA','NVDA','AMZN','MSFT','META','GOOGL','AMD',
       'NFLX','MU','COIN','PLTR','CRM','UBER','SMCI','ARM','AVGO','INTC','BA','JPM',
-      'V','LLY','UNH','XOM','SOFI','ABNB','GLD','TLT','XLF','XLE','XLK','ARKK',
+      'V','LLY','UNH','XOM','SOFI','ABNB','PANW','CRWD','MRVL','ORCL','ADBE','DELL',
+      'LRCX','PYPL','DASH','NOW','GLD','TLT','XLF','XLE','XLK','ARKK',
       'SOXX','SOXL','TQQQ','IBIT','SMH','SLV','KWEB','VTI','VOO','SCHD','MARA',
-      'RIVN','LCID','HOOD']
+      'RIVN','LCID','HOOD','LITX','SNDX']
 };
 
 window._startLiveScanner=function(){
@@ -6712,3 +6727,190 @@ window.switchDEMode=function(mode){
 };
 
 console.log('[LIVE SCANNER] ✅ Ribbon module loaded');
+
+
+// ═══════════════════════════════════════════════════════════════
+// GIFT NIFTY — Pre-market indicator for India
+// Shows in top nav when India market is closed
+// Fetches global cues to predict opening gap
+// ═══════════════════════════════════════════════════════════════
+
+window._giftNiftyData=null;
+window._giftNiftyLoaded=false;
+
+window._loadGiftNifty=function(){
+  if(window._giftNiftyLoaded)return; // Only load once per session
+  
+  fetch('/api/gift-nifty')
+    .then(function(r){return r.json()})
+    .then(function(d){
+      if(!d||!d.success)return;
+      window._giftNiftyData=d;
+      window._giftNiftyLoaded=true;
+      window._renderGiftNiftyTicker();
+      console.log('[GIFT NIFTY] Loaded: gap='+d.expected_gap_pct+'% sentiment='+d.overall_sentiment);
+    })
+    .catch(function(e){console.log('[GIFT NIFTY] Error:',e)});
+};
+
+window._renderGiftNiftyTicker=function(){
+  var d=window._giftNiftyData;
+  if(!d)return;
+  
+  // Insert into top of options nav (if India region and market closed)
+  var existing=document.getElementById('giftNiftyBar');
+  if(existing)existing.remove();
+  
+  var gapColor=d.expected_gap_pct>=0.1?'#059669':d.expected_gap_pct<=-0.1?'#ef4444':'#94a3b8';
+  var sentColor=d.overall_sentiment==='BULLISH'?'#059669':d.overall_sentiment==='BEARISH'?'#ef4444':'#d97706';
+  
+  var bar=document.createElement('div');
+  bar.id='giftNiftyBar';
+  bar.style.cssText='max-width:520px;margin:0 auto 8px;padding:10px 14px;border-radius:12px;background:linear-gradient(135deg,#0F172A,#1a1040);border:1px solid '+gapColor+'30;cursor:pointer';
+  bar.onclick=function(){window._showGiftNiftyDetail()};
+  
+  var h='<div style="display:flex;align-items:center;justify-content:space-between">';
+  
+  // Left: Gift Nifty price + gap
+  h+='<div>';
+  h+='<div style="font-size:8px;font-weight:800;color:#a855f7;letter-spacing:1px;margin-bottom:2px">GIFT NIFTY'+(d.gift_source?' ('+d.gift_source+')':'')+'</div>';
+  if(d.gift_nifty>0){
+    h+='<div style="font-size:16px;font-weight:900;color:#e2e8f0;font-family:JetBrains Mono">\u20B9'+d.gift_nifty.toLocaleString()+'</div>';
+  }
+  h+='</div>';
+  
+  // Center: Gap
+  h+='<div style="text-align:center">';
+  h+='<div style="font-size:18px;font-weight:900;color:'+gapColor+'">'+(d.expected_gap_pct>=0?'+':'')+d.expected_gap_pct+'%</div>';
+  h+='<div style="font-size:9px;font-weight:800;color:'+gapColor+'">'+d.gap_label+'</div>';
+  h+='</div>';
+  
+  // Right: Sentiment
+  h+='<div style="text-align:right">';
+  h+='<div style="display:inline-block;padding:4px 10px;border-radius:6px;background:'+sentColor+'15;font-size:10px;font-weight:800;color:'+sentColor+'">'+d.overall_sentiment+'</div>';
+  h+='<div style="font-size:8px;color:#64748b;margin-top:2px">'+d.signals_bull+' bull / '+d.signals_bear+' bear</div>';
+  h+='</div>';
+  
+  h+='</div>';
+  
+  // Mini global cues row
+  h+='<div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">';
+  var cues=[
+    {label:'S&P',data:d.global_cues.sp500},
+    {label:'NASDAQ',data:d.global_cues.nasdaq},
+    {label:'VIX',data:d.global_cues.vix},
+    {label:'CRUDE',data:d.global_cues.crude},
+    {label:'GOLD',data:d.global_cues.gold},
+    {label:'DXY',data:d.global_cues.dxy},
+  ];
+  cues.forEach(function(c){
+    if(c.data&&c.data.price){
+      var cc=c.data.change>=0?'#059669':'#ef4444';
+      h+='<div style="padding:2px 6px;border-radius:4px;background:#1e293b;font-size:7px"><span style="color:#64748b">'+c.label+'</span> <span style="color:'+cc+';font-weight:800">'+(c.data.change>=0?'+':'')+c.data.change+'%</span></div>';
+    }
+  });
+  h+='</div>';
+  
+  h+='<div style="text-align:center;font-size:7px;color:#475569;margin-top:4px">Tap for detailed pre-market analysis</div>';
+  
+  bar.innerHTML=h;
+  
+  // Insert at top of deResult
+  var el=document.getElementById('deResult');
+  if(el)el.insertBefore(bar,el.firstChild);
+};
+
+window._showGiftNiftyDetail=function(){
+  var d=window._giftNiftyData;
+  if(!d)return;
+  
+  var gapColor=d.expected_gap_pct>=0.1?'#059669':d.expected_gap_pct<=-0.1?'#ef4444':'#94a3b8';
+  var sentColor=d.overall_sentiment==='BULLISH'?'#059669':d.overall_sentiment==='BEARISH'?'#ef4444':'#d97706';
+  
+  var h='<div style="max-width:520px;margin:0 auto;padding:20px;background:#0A0F1C;border-radius:16px;border:1px solid #a855f720">';
+  h+='<div style="text-align:center;margin-bottom:12px">';
+  h+='<div style="font-size:14px;font-weight:900;color:#a855f7;font-family:Sora">Pre-Market Analysis</div>';
+  h+='<div style="font-size:10px;color:#94a3b8;margin-top:2px">India market is closed — here\'s what to expect at open</div>';
+  h+='</div>';
+  
+  // Expected open
+  h+='<div style="text-align:center;padding:16px;background:#1e293b;border-radius:12px;margin-bottom:12px">';
+  h+='<div style="font-size:10px;color:#64748b;margin-bottom:4px">EXPECTED NIFTY OPEN</div>';
+  h+='<div style="font-size:28px;font-weight:900;color:'+gapColor+';font-family:JetBrains Mono">\u20B9'+d.expected_open.toLocaleString()+'</div>';
+  h+='<div style="font-size:14px;font-weight:800;color:'+gapColor+';margin-top:4px">'+d.gap_label+' '+(d.expected_gap_pct>=0?'+':'')+d.expected_gap_pct+'%</div>';
+  if(d.nifty_close>0)h+='<div style="font-size:9px;color:#64748b;margin-top:4px">Previous close: \u20B9'+d.nifty_close.toLocaleString()+'</div>';
+  h+='</div>';
+  
+  // Analysis points
+  if(d.analysis&&d.analysis.length>0){
+    h+='<div style="margin-bottom:12px">';
+    h+='<div style="font-size:10px;font-weight:800;color:#e2e8f0;margin-bottom:6px">Global Cues Analysis:</div>';
+    d.analysis.forEach(function(point){
+      var pColor=point.indexOf('bullish')>=0||point.indexOf('positive')>=0||point.indexOf('calm')>=0?'#059669':
+                 point.indexOf('bearish')>=0||point.indexOf('negative')>=0||point.indexOf('fear')>=0?'#ef4444':'#94a3b8';
+      h+='<div style="padding:6px 10px;margin-bottom:4px;border-radius:8px;background:#1e293b;font-size:10px;color:'+pColor+'">'+point+'</div>';
+    });
+    h+='</div>';
+  }
+  
+  // Trading plan
+  h+='<div style="padding:12px;background:'+sentColor+'08;border-radius:10px;border:1px solid '+sentColor+'20">';
+  h+='<div style="font-size:10px;font-weight:800;color:'+sentColor+';margin-bottom:4px">Trading Plan for Tomorrow:</div>';
+  if(d.overall_sentiment==='BULLISH'){
+    h+='<div style="font-size:10px;color:#94a3b8">Market likely to open higher. Watch for BUY CALL signals on NIFTY and BANKNIFTY after first 15 minutes. Do not buy in the gap — wait for price to hold above yesterday\'s high before entering.</div>';
+  }else if(d.overall_sentiment==='BEARISH'){
+    h+='<div style="font-size:10px;color:#94a3b8">Market likely to open lower. Watch for BUY PUT signals if NIFTY breaks below yesterday\'s low. Gap down openings often recover — do not sell immediately. Wait for confirmation after 9:30 AM.</div>';
+  }else{
+    h+='<div style="font-size:10px;color:#94a3b8">Mixed global signals — market may open flat. Wait for direction to develop in first 15 minutes. Avoid trading in the first candle. Let the engine tell you when a setup appears.</div>';
+  }
+  h+='</div>';
+  
+  // Close button
+  h+='<div style="text-align:center;margin-top:12px"><button onclick="this.parentElement.parentElement.remove()" style="padding:8px 20px;border-radius:8px;background:#1e293b;color:#64748b;border:1px solid #334155;font-size:10px;cursor:pointer;font-weight:700">Close</button></div>';
+  
+  h+='</div>';
+  
+  // Insert as overlay
+  var overlay=document.createElement('div');
+  overlay.style.cssText='position:fixed;top:0;left:0;right:0;bottom:0;z-index:9999;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;padding:20px';
+  overlay.onclick=function(e){if(e.target===overlay)overlay.remove()};
+  overlay.innerHTML=h;
+  document.body.appendChild(overlay);
+};
+
+// Auto-load Gift Nifty when India market is closed and Options mode
+var _origSwitchGN=window.switchDEMode;
+window.switchDEMode=function(mode){
+  if(typeof _origSwitchGN==='function')_origSwitchGN(mode);
+  if(mode==='options'&&(window._optionsRegion||'IN')==='IN'){
+    var _gnNow=new Date();
+    var _gnIstH=_gnNow.getUTCHours()+5+(_gnNow.getUTCMinutes()+30>=60?1:0);
+    var _gnDow=_gnNow.getUTCDay();
+    var _gnMarketOpen=(_gnIstH>=9&&(_gnIstH<15||(_gnIstH===15&&(_gnNow.getUTCMinutes()+30)%60<=30))&&_gnDow>=1&&_gnDow<=5);
+    if(!_gnMarketOpen){
+      setTimeout(function(){window._loadGiftNifty()},1500);
+    }
+  }
+};
+
+// Also load on region switch to India
+var _origRegSwitch=window._optionsRegion;
+// Patch: when nav renders and region is IN + market closed, show Gift Nifty
+var _origRenderNav=window._renderOptionsNav;
+if(typeof _origRenderNav==='function'){
+  window._renderOptionsNav=function(sym){
+    var result=_origRenderNav(sym);
+    if((window._optionsRegion||'IN')==='IN'){
+      var _gnNow2=new Date();
+      var _gnIstH2=_gnNow2.getUTCHours()+5+(_gnNow2.getUTCMinutes()+30>=60?1:0);
+      var _gnDow2=_gnNow2.getUTCDay();
+      var _gnOpen2=(_gnIstH2>=9&&(_gnIstH2<15||(_gnIstH2===15&&(_gnNow2.getUTCMinutes()+30)%60<=30))&&_gnDow2>=1&&_gnDow2<=5);
+      if(!_gnOpen2&&!window._giftNiftyLoaded){
+        window._loadGiftNifty();
+      }
+    }
+    return result;
+  };
+}
+
+console.log('[GIFT NIFTY] ✅ Module loaded');

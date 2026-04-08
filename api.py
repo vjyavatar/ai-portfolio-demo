@@ -3567,8 +3567,8 @@ async def ads_txt():
 # ═══════════════════════════════════════════════════════════
 # INDEX TRADES — AI Daily Trade Ideas (Restricted Access)
 # ═══════════════════════════════════════════════════════════
-TRADES_ALLOWED_EMAILS = ["chk@cls.com"]
-DREAM_ALLOWED_EMAILS = ["chk@cls.com"]  # Ultra-premium: Dream Portfolio + Multibagger Hunter
+TRADES_ALLOWED_EMAILS = ["bbk@asl.com"]
+DREAM_ALLOWED_EMAILS = ["bbk@asl.com"]  # Ultra-premium: Dream Portfolio + Multibagger Hunter
 # ═══ SERVER-SIDE AUTH — Premium email verification ═══
 _premium_sessions = {}  # {email: {ts, verified}}
 
@@ -4618,6 +4618,173 @@ async def stock_quick(ticker: str = ""):
         return {"success": False, "error": f"Failed to fetch data for {ticker}: {str(e)[:100]}"}
 
 
+
+
+
+
+# ═══════════════════════════════════════════════════════════════
+# GIFT NIFTY / PRE-MARKET INDICATOR
+# When India market is closed, fetch global cues to predict gap
+# Uses: SGX Nifty futures, US futures (ES, NQ), Asia markets
+# ═══════════════════════════════════════════════════════════════
+
+@app.get("/api/gift-nifty")
+async def gift_nifty():
+    """Pre-market indicator for India — Gift Nifty + global cues."""
+    try:
+        import yfinance as yf
+        import time as _time
+        
+        _t0 = _time.time()
+        
+        # Fetch multiple signals in parallel
+        # Gift Nifty proxy: Nifty futures, US futures, Asia ETFs
+        symbols = {
+            "nifty_close": "^NSEI",       # Nifty 50 (last close)
+            "nifty_fut": "NIFTY_FUT.NS",  # Nifty futures (if available)
+            "sp500_fut": "ES=F",           # S&P 500 futures (24/5)
+            "nasdaq_fut": "NQ=F",          # Nasdaq futures (24/5)
+            "dow_fut": "YM=F",             # Dow futures
+            "vix": "^VIX",                 # VIX
+            "india_vix": "^INDIAVIX",      # India VIX
+            "dxy": "DX-Y.NYB",            # Dollar index
+            "gold": "GC=F",               # Gold futures
+            "crude": "CL=F",              # Crude oil
+            "asia_etf": "INDA",           # India ETF (US-listed)
+        }
+        
+        _yahoo_rate_wait()
+        
+        results = {}
+        for key, sym in symbols.items():
+            try:
+                tk = yf.Ticker(sym)
+                hist = tk.history(period="2d")
+                if len(hist) >= 1:
+                    current = float(hist['Close'].iloc[-1])
+                    prev = float(hist['Close'].iloc[-2]) if len(hist) >= 2 else current
+                    change = round((current - prev) / max(prev, 1) * 100, 2)
+                    results[key] = {
+                        "price": round(current, 2),
+                        "prev": round(prev, 2),
+                        "change": change,
+                        "sym": sym
+                    }
+            except:
+                pass
+        
+        # Calculate expected gap
+        nifty_close = results.get("nifty_close", {}).get("price", 0)
+        
+        # Gift Nifty estimate:
+        # If we have Nifty futures, use that directly
+        gift_nifty_price = 0
+        gift_nifty_gap = 0
+        gift_source = ""
+        
+        if "nifty_fut" in results and results["nifty_fut"]["price"] > 0:
+            gift_nifty_price = results["nifty_fut"]["price"]
+            gift_source = "NSE Futures"
+        elif "asia_etf" in results and nifty_close > 0:
+            # Use INDA ETF change as proxy
+            inda_change = results["asia_etf"]["change"]
+            gift_nifty_price = round(nifty_close * (1 + inda_change / 100), 2)
+            gift_source = "INDA ETF proxy"
+        
+        if gift_nifty_price > 0 and nifty_close > 0:
+            gift_nifty_gap = round((gift_nifty_price - nifty_close) / max(nifty_close, 1) * 100, 2)
+        
+        # US market impact on India (correlation ~0.6)
+        sp_change = results.get("sp500_fut", {}).get("change", 0)
+        nq_change = results.get("nasdaq_fut", {}).get("change", 0)
+        us_impact = round((sp_change * 0.4 + nq_change * 0.6), 2)  # Nasdaq weighted more
+        
+        # Expected Nifty gap (weighted)
+        if gift_nifty_gap != 0:
+            expected_gap = gift_nifty_gap
+        else:
+            expected_gap = round(us_impact * 0.6, 2)  # Use US as proxy with 0.6 correlation
+        
+        expected_nifty_open = round(nifty_close * (1 + expected_gap / 100), 2) if nifty_close > 0 else 0
+        
+        # Sentiment analysis
+        vix_val = results.get("vix", {}).get("price", 0)
+        vix_change = results.get("vix", {}).get("change", 0)
+        crude_change = results.get("crude", {}).get("change", 0)
+        gold_change = results.get("gold", {}).get("change", 0)
+        dxy_change = results.get("dxy", {}).get("change", 0)
+        
+        # Build pre-market analysis
+        signals_bullish = 0
+        signals_bearish = 0
+        analysis_points = []
+        
+        if sp_change > 0.3:
+            signals_bullish += 1
+            analysis_points.append(f"US markets positive (+{sp_change}%) — bullish for India open")
+        elif sp_change < -0.3:
+            signals_bearish += 1
+            analysis_points.append(f"US markets negative ({sp_change}%) — bearish for India open")
+        
+        if crude_change < -1:
+            signals_bullish += 1
+            analysis_points.append(f"Crude oil down ({crude_change}%) — positive for India (lower import cost)")
+        elif crude_change > 1:
+            signals_bearish += 1
+            analysis_points.append(f"Crude oil up (+{crude_change}%) — negative for India (higher import cost)")
+        
+        if dxy_change < -0.3:
+            signals_bullish += 1
+            analysis_points.append(f"Dollar weakening ({dxy_change}%) — positive for emerging markets")
+        elif dxy_change > 0.3:
+            signals_bearish += 1
+            analysis_points.append(f"Dollar strengthening (+{dxy_change}%) — negative for emerging markets")
+        
+        if gold_change > 0.5:
+            analysis_points.append(f"Gold up (+{gold_change}%) — risk-off sentiment")
+        
+        if vix_change > 5:
+            signals_bearish += 1
+            analysis_points.append(f"VIX spiked (+{vix_change}%) — fear rising, expect volatile open")
+        elif vix_change < -5:
+            signals_bullish += 1
+            analysis_points.append(f"VIX dropped ({vix_change}%) — calm markets, positive open likely")
+        
+        overall = "BULLISH" if signals_bullish > signals_bearish else "BEARISH" if signals_bearish > signals_bullish else "NEUTRAL"
+        
+        gap_label = "GAP UP" if expected_gap > 0.1 else "GAP DOWN" if expected_gap < -0.1 else "FLAT OPEN"
+        
+        _elapsed = round(_time.time() - _t0, 1)
+        
+        return {
+            "success": True,
+            "nifty_close": nifty_close,
+            "gift_nifty": gift_nifty_price,
+            "gift_source": gift_source,
+            "gift_gap_pct": gift_nifty_gap,
+            "expected_gap_pct": expected_gap,
+            "expected_open": expected_nifty_open,
+            "gap_label": gap_label,
+            "overall_sentiment": overall,
+            "signals_bull": signals_bullish,
+            "signals_bear": signals_bearish,
+            "analysis": analysis_points,
+            "global_cues": {
+                "sp500": results.get("sp500_fut", {}),
+                "nasdaq": results.get("nasdaq_fut", {}),
+                "dow": results.get("dow_fut", {}),
+                "vix": results.get("vix", {}),
+                "india_vix": results.get("india_vix", {}),
+                "crude": results.get("crude", {}),
+                "gold": results.get("gold", {}),
+                "dxy": results.get("dxy", {}),
+            },
+            "elapsed": _elapsed,
+        }
+        
+    except Exception as e:
+        print(f"❌ gift-nifty error: {e}")
+        return {"success": False, "error": str(e)[:200]}
 
 
 # ═══════════════════════════════════════════════════════════════
