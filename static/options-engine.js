@@ -5185,7 +5185,8 @@ window._loadTradeScanner=function(){
               sym:tk.sym,reg:tk.reg,group:tk.group,groupLabel:tk.groupLabel,
               spot:spot,S:S,conf:conf,grade:grade,action:action,dir:dir,
               strike:atm,prem:atmPrem,pcr:pcr,vix:vix,gex:gexReg,
-              type:dir.indexOf('BULL')>=0?'CE':'PE'
+              type:dir.indexOf('BULL')>=0?'CE':'PE',
+              lot:d.lot_size||(tk.reg==='US'?100:({NIFTY:75,BANKNIFTY:30,SENSEX:20}[tk.sym]||1))
             };
           }
           updateUI();
@@ -5198,21 +5199,26 @@ window._renderScanCard=function(r){
   var actionColor=r.action==='BUY CALL'?'#059669':r.action==='BUY PUT'?'#ef4444':r.action==='WATCH'?'#d97706':'#64748b';
   var gradeColor=r.grade==='A+'?'#059669':r.grade==='A'?'#059669':r.grade==='B'?'#d97706':'#64748b';
   var isReady=r.grade==='A+'||r.grade==='A';
+  var isUS=r.reg==='US';
+  var L=function(v){return isUS?v.toLocaleString('en-US'):v.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')};
   
-  var h='<div onclick="window._swingMode=false;'+(r.reg==='IN'?"window._loadQuickTrade('"+r.sym+"')":"window._loadOptionsUniversal('"+r.sym+"','US')")+'" style="display:flex;align-items:center;gap:10px;padding:10px 14px;margin-bottom:4px;border-radius:12px;background:#0F172A;border:1px solid '+(isReady?actionColor+'30':'#1e293b')+';cursor:pointer">';
+  var h='<div style="margin-bottom:6px;border-radius:14px;background:#0F172A;border:1px solid '+(isReady?actionColor+'30':'#1e293b')+';overflow:hidden">';
   
-  // Ticker + price
-  h+='<div style="min-width:70px"><div style="font-size:13px;font-weight:900;color:#e2e8f0">'+r.sym+'</div>';
-  h+='<div style="font-size:9px;color:#64748b">'+r.S+r.spot.toLocaleString(r.reg==='US'?'en-US':'en-IN')+'</div></div>';
+  // Top row — always visible (clickable to open full view)
+  h+='<div onclick="window._swingMode=false;'+(r.reg==='IN'?"window._loadQuickTrade('"+r.sym+"')":"window._loadOptionsUniversal('"+r.sym+"','US')")+'" style="display:flex;align-items:center;gap:10px;padding:10px 14px;cursor:pointer">';
   
-  // Action
+  // Ticker + spot
+  h+='<div style="min-width:75px"><div style="font-size:14px;font-weight:900;color:#e2e8f0">'+r.sym+'</div>';
+  h+='<div style="font-size:10px;color:#94a3b8">Spot: '+r.S+L(r.spot)+'</div></div>';
+  
+  // Action + strike
   h+='<div style="flex:1;text-align:center">';
   if(isReady){
-    h+='<div style="font-size:12px;font-weight:900;color:'+actionColor+'">'+r.action+'</div>';
-    h+='<div style="font-size:9px;color:#94a3b8">'+r.S+r.strike+' '+r.type+(r.prem>0?' @ '+r.S+r.prem.toFixed(r.reg==='US'&&r.prem<10?2:0):'')+'</div>';
+    h+='<div style="font-size:13px;font-weight:900;color:'+actionColor+'">'+r.action+'</div>';
+    h+='<div style="font-size:11px;font-weight:800;color:#e2e8f0">'+r.S+r.strike+' '+r.type+' @ '+r.S+(r.prem>0?r.prem.toFixed(isUS&&r.prem<10?2:0):'—')+'</div>';
   }else if(r.grade==='B'){
-    h+='<div style="font-size:11px;font-weight:700;color:#d97706">WATCHING</div>';
-    h+='<div style="font-size:9px;color:#64748b">'+(r.dir==='LEAN_BULL'?'Leaning bullish':'Leaning bearish')+'</div>';
+    h+='<div style="font-size:12px;font-weight:700;color:#d97706">WATCHING</div>';
+    h+='<div style="font-size:10px;color:#64748b">'+(r.dir==='LEAN_BULL'?'↑ Leaning bullish':'↓ Leaning bearish')+'</div>';
   }else{
     h+='<div style="font-size:11px;color:#64748b">No setup</div>';
   }
@@ -5220,11 +5226,49 @@ window._renderScanCard=function(r){
   
   // Confidence + Grade
   h+='<div style="text-align:right;min-width:55px">';
-  h+='<div style="font-size:14px;font-weight:900;color:'+gradeColor+'">'+r.conf+'%</div>';
-  h+='<div style="display:inline-block;padding:1px 6px;border-radius:4px;background:'+gradeColor+'15;font-size:8px;font-weight:800;color:'+gradeColor+'">'+r.grade+'</div>';
+  h+='<div style="font-size:16px;font-weight:900;color:'+gradeColor+'">'+r.conf+'%</div>';
+  h+='<div style="display:inline-block;padding:2px 8px;border-radius:4px;background:'+gradeColor+'15;font-size:9px;font-weight:800;color:'+gradeColor+'">'+r.grade+'</div>';
   h+='</div>';
+  h+='</div>'; // close top row
   
-  h+='</div>';
+  // Expanded trade info — ONLY for ready trades (A+ / A)
+  if(isReady&&r.prem>0){
+    var tgt25=Math.round(r.prem*1.25*100)/100;
+    var tgt40=Math.round(r.prem*1.40*100)/100;
+    var sl=Math.round(r.prem*0.80*100)/100;
+    var lot=r.lot||100;
+    var maxRisk=Math.round((r.prem-sl)*lot);
+    var maxProf=Math.round((tgt40-r.prem)*lot);
+    
+    h+='<div style="padding:0 14px 10px;border-top:1px solid #1e293b">';
+    
+    // Strike + Spot + Premium row
+    h+='<div style="display:flex;gap:8px;margin-top:8px;margin-bottom:6px">';
+    h+='<div style="flex:1;padding:5px;border-radius:6px;background:#1e293b;text-align:center"><div style="font-size:8px;color:#64748b">STRIKE</div><div style="font-size:13px;font-weight:900;color:#e2e8f0;font-family:JetBrains Mono">'+r.S+L(r.strike)+'</div></div>';
+    h+='<div style="flex:1;padding:5px;border-radius:6px;background:#1e293b;text-align:center"><div style="font-size:8px;color:#64748b">PREMIUM</div><div style="font-size:13px;font-weight:900;color:#f59e0b;font-family:JetBrains Mono">'+r.S+r.prem.toFixed(isUS&&r.prem<10?2:0)+'</div></div>';
+    h+='<div style="flex:1;padding:5px;border-radius:6px;background:#1e293b;text-align:center"><div style="font-size:8px;color:#64748b">LOT</div><div style="font-size:13px;font-weight:900;color:#94a3b8">'+lot+'</div></div>';
+    h+='</div>';
+    
+    // Target + SL + R:R
+    h+='<div style="display:flex;gap:8px;margin-bottom:6px">';
+    h+='<div style="flex:1;padding:5px;border-radius:6px;background:#05966408;text-align:center"><div style="font-size:8px;color:#059669;font-weight:700">TARGET</div><div style="font-size:11px;font-weight:900;color:#059669;font-family:JetBrains Mono">'+r.S+tgt25+' – '+r.S+tgt40+'</div></div>';
+    h+='<div style="flex:1;padding:5px;border-radius:6px;background:#ef444408;text-align:center"><div style="font-size:8px;color:#ef4444;font-weight:700">STOP LOSS</div><div style="font-size:11px;font-weight:900;color:#ef4444;font-family:JetBrains Mono">'+r.S+sl+'</div></div>';
+    var rr=maxRisk>0?(maxProf/maxRisk).toFixed(1):'—';
+    h+='<div style="flex:1;padding:5px;border-radius:6px;background:#3b82f608;text-align:center"><div style="font-size:8px;color:#3b82f6;font-weight:700">R:R</div><div style="font-size:11px;font-weight:900;color:#3b82f6">1:'+rr+'</div></div>';
+    h+='</div>';
+    
+    // Risk + Profit
+    h+='<div style="display:flex;justify-content:center;gap:16px;font-size:9px">';
+    h+='<span style="color:#ef4444">Risk: '+r.S+L(maxRisk)+'</span>';
+    h+='<span style="color:#059669">Profit: '+r.S+L(maxProf)+'</span>';
+    h+='<span style="color:#64748b">PCR: '+r.pcr.toFixed(2)+'</span>';
+    h+='<span style="color:#64748b">GEX: '+r.gex+'</span>';
+    h+='</div>';
+    
+    h+='</div>'; // close expanded
+  }
+  
+  h+='</div>'; // close card
   return h;
 };
 
