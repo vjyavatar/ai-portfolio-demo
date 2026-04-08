@@ -6608,6 +6608,20 @@ window._stopLiveScanner=function(){
 };
 
 window._runLiveScan=function(){
+  // Skip scanning when market is closed
+  var _lsNow=new Date();
+  var _lsIstH=_lsNow.getUTCHours()+5+(_lsNow.getUTCMinutes()+30>=60?1:0);
+  var _lsEtH=_lsNow.getUTCHours()-4;
+  var _lsDow=_lsNow.getUTCDay();
+  var _lsReg=window._optionsRegion||'IN';
+  var _lsMarketOpen=_lsReg==='US'?(_lsEtH>=9&&_lsEtH<16&&_lsDow>=1&&_lsDow<=5):(_lsIstH>=9&&(_lsIstH<15||(_lsIstH===15&&(_lsNow.getUTCMinutes()+30)%60<=30))&&_lsDow>=1&&_lsDow<=5);
+  if(!_lsMarketOpen){
+    var ribbon=document.getElementById('liveScanRibbon');
+    if(ribbon)ribbon.style.display='none';
+    console.log('[LIVE SCANNER] Market closed — skipping scan');
+    return;
+  }
+
   var reg=window._optionsRegion||'IN';
   var tickers=window._liveScanTickers[reg]||window._liveScanTickers.IN;
   var S=reg==='US'?'$':'₹';
@@ -6623,12 +6637,20 @@ window._runLiveScan=function(){
     window._liveScanResults=d.results;
     window._renderScanRibbon(d.results,S,reg);
     
-    // Voice: announce NEW BUY signals (not already announced)
+    // Voice priority check:
+    // P1: Active trade running → ribbon stays SILENT (trade monitor owns voice)
+    // P2: User watching a ticker → ribbon stays SILENT (scenario engine owns voice)
+    // P3: No active ticker → ribbon CAN speak
+    var _hasActiveTrade=window._activeTradeValue&&window._activeTradeValue.entryPrem>0;
+    var _hasActiveTicker=window._activeOptionsSym&&document.getElementById('deResult')&&window._deMode==='options';
+    var _ribbonCanSpeak=!_hasActiveTrade&&!_hasActiveTicker;
+    
+    // Voice: announce NEW BUY signals ONLY when ribbon has voice priority
     var newBuys=d.results.filter(function(r2){
       return r2.action.startsWith('BUY')&&!window._liveScanPrevBuys[r2.sym];
     });
     
-    if(newBuys.length>0&&Date.now()-window._liveScanLastVoice>30000){
+    if(newBuys.length>0&&_ribbonCanSpeak&&Date.now()-window._liveScanLastVoice>30000){
       window._liveScanLastVoice=Date.now();
       var ceList=newBuys.filter(function(r2){return r2.action==='BUY_CE'}).map(function(r2){return r2.sym});
       var peList=newBuys.filter(function(r2){return r2.action==='BUY_PE'}).map(function(r2){return r2.sym});
@@ -6638,6 +6660,9 @@ window._runLiveScan=function(){
       msg+='Tap the ticker bar at bottom to see details.';
       window._alertTone('ENTRY');
       setTimeout(function(){window._speak(msg,true)},500);
+    }else if(newBuys.length>0&&!_ribbonCanSpeak){
+      // Still notify visually — just no voice (don't interrupt active analysis)
+      console.log('[LIVE SCANNER] New BUY: '+newBuys.map(function(r2){return r2.sym}).join(',')+' — voice suppressed (active ticker/trade)');
     }
     
     // Update previous buys tracker
@@ -6656,6 +6681,8 @@ window._renderScanRibbon=function(results,S,reg){
   var content=document.getElementById('liveScanContent');
   if(!ribbon||!content)return;
   
+  // Hide ribbon if no BUY and no WATCH signals
+  if(buys.length===0&&watches.length===0){ribbon.style.display='none';return}
   ribbon.style.display='block';
   
   var buys=results.filter(function(r){return r.action.startsWith('BUY')});
@@ -6664,30 +6691,40 @@ window._renderScanRibbon=function(results,S,reg){
   
   var h='';
   
-  // Header badge
+  // Header badges — BUY (green) + WATCH (orange) clearly separated
   h+='<span style="display:inline-block;padding:3px 10px;margin:0 8px;border-radius:6px;background:#ef444420;color:#ef4444;font-size:8px;font-weight:800;vertical-align:middle">🔴 LIVE</span>';
-  h+='<span style="display:inline-block;padding:3px 8px;margin:0 4px;border-radius:4px;background:#05966915;color:#059669;font-size:9px;font-weight:800;vertical-align:middle">'+buys.length+' BUY</span>';
-  h+='<span style="display:inline-block;padding:3px 8px;margin:0 4px;border-radius:4px;background:#d9770615;color:#d97706;font-size:9px;font-weight:800;vertical-align:middle">'+watches.length+' WATCH</span>';
+  if(buys.length>0)h+='<span style="display:inline-block;padding:3px 8px;margin:0 4px;border-radius:4px;background:#059669;color:#fff;font-size:9px;font-weight:800;vertical-align:middle">'+buys.length+' BUY NOW</span>';
+  if(watches.length>0)h+='<span style="display:inline-block;padding:3px 8px;margin:0 4px;border-radius:4px;background:#d97706;color:#fff;font-size:9px;font-weight:800;vertical-align:middle">'+watches.length+' WATCH</span>';
   if(highMom.length>0)h+='<span style="display:inline-block;padding:3px 8px;margin:0 4px;border-radius:4px;background:#f59e0b15;color:#f59e0b;font-size:9px;font-weight:800;vertical-align:middle">🔥'+highMom.length+' HOT</span>';
   h+='<span style="color:#334155;margin:0 6px">│</span>';
   
-  // Scrolling tickers
-  var allItems=buys.concat(watches).concat(results.filter(function(r){return r.action==='NONE'}).slice(0,10));
+  // BUY + WATCH with distinct colors — no NONE
+  var allItems=buys.concat(watches);
+  
+  if(allItems.length===0){
+    h+='<span style="display:inline-block;padding:3px 10px;font-size:9px;color:#475569;vertical-align:middle">Scanning '+results.length+' tickers — no active signals right now</span>';
+  }
   
   allItems.forEach(function(r){
+    var isBuy=r.action.startsWith('BUY');
     var color=r.action==='BUY_CE'?'#059669':r.action==='BUY_PE'?'#ef4444':r.action==='WATCH'?'#d97706':'#475569';
-    var bgColor=r.action.startsWith('BUY')?color+'15':'transparent';
+    var bgColor=isBuy?color:'transparent';
+    var textColor=isBuy?'#fff':color;
     var chgColor=r.chg>=0?'#059669':'#ef4444';
-    var actionLabel=r.action==='BUY_CE'?'▲CE':r.action==='BUY_PE'?'▼PE':r.action==='WATCH'?'👁':'';
+    var actionLabel=r.action==='BUY_CE'?'▲ BUY CE':r.action==='BUY_PE'?'▼ BUY PE':r.action==='WATCH'?'👁 WATCH':'';
     var loadFn=(reg==='IN'&&['NIFTY','BANKNIFTY','SENSEX','FINNIFTY','MIDCPNIFTY'].indexOf(r.sym)>=0)?
       "window._loadQuickTrade(\'"+r.sym+"\')":
       "window._loadOptionsUniversal(\'"+r.sym+"\',\'"+reg+"\')";
     
-    h+='<span onclick="'+loadFn+'" style="display:inline-block;padding:3px 8px;margin:0 3px;border-radius:6px;background:'+bgColor+';cursor:pointer;vertical-align:middle;border:1px solid '+(r.action.startsWith('BUY')?color+'30':'transparent')+'">';
-    h+='<span style="font-size:10px;font-weight:900;color:'+color+'">'+r.sym+'</span> ';
-    h+='<span style="font-size:9px;color:#94a3b8">'+S+r.spot.toLocaleString()+'</span> ';
-    h+='<span style="font-size:9px;color:'+chgColor+'">'+(r.chg>=0?'+':'')+r.chg+'%</span>';
-    if(actionLabel)h+=' <span style="font-size:8px;font-weight:800;color:'+color+'">'+actionLabel+'</span>';
+    h+='<span onclick="'+loadFn+'" style="display:inline-block;padding:'+(isBuy?'4px 10px':'3px 8px')+';margin:0 3px;border-radius:'+(isBuy?'8px':'6px')+';background:'+bgColor+';cursor:pointer;vertical-align:middle;border:'+(isBuy?'2px solid '+color:'1px solid '+(r.action==='WATCH'?color+'40':'transparent'))+'">';
+    h+='<span style="font-size:'+(isBuy?'11px':'9px')+';font-weight:900;color:'+textColor+'">'+r.sym+'</span> ';
+    if(isBuy){
+      h+='<span style="font-size:9px;color:#ffffffcc">'+(r.chg>=0?'+':'')+r.chg+'%</span>';
+      h+=' <span style="font-size:9px;font-weight:900;color:#fff">'+actionLabel+'</span>';
+    }else{
+      h+='<span style="font-size:8px;color:#94a3b8">'+(r.chg>=0?'+':'')+r.chg+'%</span>';
+      h+=' <span style="font-size:7px;font-weight:700;color:'+color+'">'+actionLabel+'</span>';
+    }
     if(r.highMom)h+=' <span style="font-size:7px">🔥</span>';
     h+='</span>';
   });
