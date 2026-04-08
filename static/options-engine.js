@@ -2962,43 +2962,108 @@ function _renderQuickTrade(d,sym){
   window._qtStrikeITM={strike:strikeITM,prem:premITM};
   window._qtStrikeOTM={strike:strikeOTM,prem:premOTM};
   
-  // WHY reasons (detailed institutional breakdown)
+  // WHY reasons — plain English with real numbers
   var whyReasons=[];
-  if(priceActionScore>=70)whyReasons.push({pass:true,label:isBreakUp?'Price broke above today\'s high — buyers are in control':'Price broke below today\'s low — sellers are pushing down',score:priceActionScore});
-  else if(priceActionScore>=50)whyReasons.push({pass:false,label:'Price approaching key level but hasn\'t broken through yet',score:priceActionScore});
-  else whyReasons.push({pass:false,label:'Price is in the middle of the range — no clear breakout',score:priceActionScore});
+  var _spotFmt=S+spot.toLocaleString();
+  var _dhFmt=S+dayHigh.toLocaleString();
+  var _dlFmt=S+dayLow.toLocaleString();
+  var _rangePctFmt=rangePct.toFixed(2)+'%';
+  var _vwapFmt=S+vwapLevel.toLocaleString();
   
-  if(!hasVolData)whyReasons.push({pass:false,label:'No volume data yet — market may not have opened or data delayed',score:50});
-  else if(volumeScore>=60)whyReasons.push({pass:true,label:'High trading activity ('+volRatio8.toFixed(1)+'x normal) — big players are participating',score:volumeScore});
-  else if(volumeScore>=40)whyReasons.push({pass:false,label:'Low trading activity ('+volRatio8.toFixed(1)+'x normal) — big players are sitting out',score:volumeScore});
-  else whyReasons.push({pass:false,label:'Very low activity ('+volRatio8.toFixed(1)+'x normal) — this move may not be real',score:volumeScore});
+  // 1. PRICE — Is the stock moving or stuck?
+  if(priceActionScore>=70){
+    if(isBreakUp)whyReasons.push({pass:true,label:'Price '+_spotFmt+' just crossed above today\'s high '+_dhFmt+' — that means buyers are winning right now',score:priceActionScore});
+    else whyReasons.push({pass:true,label:'Price '+_spotFmt+' just dropped below today\'s low '+_dlFmt+' — sellers are in charge right now',score:priceActionScore});
+  }else if(priceActionScore>=50){
+    var _nearHigh=Math.abs(spot-dayHigh)/Math.max(spot,1)*100;
+    var _nearLow=Math.abs(spot-dayLow)/Math.max(spot,1)*100;
+    whyReasons.push({pass:false,label:'Price '+_spotFmt+' is close to '+(_nearHigh<_nearLow?'the high '+_dhFmt+' ('+_nearHigh.toFixed(1)+'% away)':'the low '+_dlFmt+' ('+_nearLow.toFixed(1)+'% away)')+' but hasn\'t broken through yet — wait for a clear move',score:priceActionScore});
+  }else{
+    whyReasons.push({pass:false,label:'Price '+_spotFmt+' is stuck between '+_dlFmt+' and '+_dhFmt+' with only '+_rangePctFmt+' movement — no clear direction yet',score:priceActionScore});
+  }
   
-  if(isOptions){
-    if(gammaScore>=70)whyReasons.push({pass:true,label:'Options market supporting the move'+(qtGammaBlast?' — STRONG: dealers forced to buy/sell, creating a fast move':''),score:gammaScore});
-    else whyReasons.push({pass:false,label:'Options market is quiet — no extra push from derivatives',score:gammaScore});
+  // 2. VOLUME — Are real traders participating?
+  if(!hasVolData){
+    whyReasons.push({pass:false,label:'No trading volume data available — the market may not have opened yet or the data feed is delayed',score:50});
+  }else{
+    if(volumeScore>=60)whyReasons.push({pass:true,label:'Trading volume is '+volRatio8.toFixed(1)+'x higher than normal — big traders are active and this move is likely real',score:volumeScore});
+    else if(volumeScore>=40)whyReasons.push({pass:false,label:'Trading volume is only '+volRatio8.toFixed(1)+'x normal — not enough big traders participating, this move could be fake',score:volumeScore});
+    else whyReasons.push({pass:false,label:'Very low volume at '+volRatio8.toFixed(1)+'x normal — almost nobody is trading, any price move here is unreliable',score:volumeScore});
+  }
+  
+  // 3. VIX — Is the market calm or chaotic?
+  if(vix>0){
+    if(contextScore>=70)whyReasons.push({pass:true,label:'Market fear index (VIX) is '+vix.toFixed(1)+' — this is the sweet spot. Not too calm, not too scary. Good conditions to trade',score:contextScore});
+    else if(vix>28)whyReasons.push({pass:false,label:'Market fear index (VIX) is '+vix.toFixed(1)+' — that\'s very high. Wild swings expected. Risky to enter new trades right now'+(vixChg>=0?' (VIX rose +'+vixChg.toFixed(1)+'% today — fear increasing)':''),score:contextScore});
+    else if(vix<12)whyReasons.push({pass:false,label:'Market fear index (VIX) is only '+vix.toFixed(1)+' — the market is too calm. Options premiums are cheap but there\'s no movement to profit from',score:contextScore});
+    else whyReasons.push({pass:false,label:'Market fear index (VIX) is '+vix.toFixed(1)+' — borderline. Tradeable but not ideal conditions'+(vixChg!==0?' (changed '+(vixChg>=0?'+':'')+vixChg.toFixed(1)+'% today)':''),score:contextScore});
+  }
+  
+  // 4. VWAP — Is the smart money buying or selling?
+  if(vwapLevel>0&&spot>0){
+    var _aboveBelow=aboveVwap?'above':'below';
+    if((aboveVwap&&direction==='BULLISH')||(!aboveVwap&&direction==='BEARISH')){
+      whyReasons.push({pass:true,label:'Price is '+_aboveBelow+' the average traded price (VWAP '+_vwapFmt+') — this confirms the '+(direction==='BULLISH'?'upward':'downward')+' trend. Smart money and price agree',score:vwapScore});
+    }else if(vwapDist<0.1){
+      whyReasons.push({pass:false,label:'Price is right at the average traded price (VWAP '+_vwapFmt+') — the market is undecided. No clear bias up or down',score:vwapScore});
+    }else{
+      whyReasons.push({pass:false,label:'Price is '+_aboveBelow+' VWAP '+_vwapFmt+' but the signal says '+(direction==='BULLISH'?'up':'down')+' — conflicting signal. Be cautious',score:vwapScore});
+    }
+  }
+  
+  // 5. OPTIONS FLOW — What are the big players betting on?
+  if(isOptions||hasOI){
+    if(gammaScore>=70){
+      whyReasons.push({pass:true,label:'Options dealers are being forced to '+(direction==='BULLISH'?'buy':'sell')+' heavily to hedge — this creates extra momentum in our favor'+(qtIsExpiry7?' (EXPIRY DAY — maximum force!)':'')+(qtGammaBlast?' — this is a rare gamma squeeze setup':''),score:gammaScore});
+    }else{
+      whyReasons.push({pass:false,label:'Options market is quiet — no extra push from derivatives. The move depends only on normal buying/selling'+(gex.regime?' ('+gex.regime+' regime)':''),score:gammaScore});
+    }
   }
   
   if(hasOI){
-    if(oiConfirms)whyReasons.push({pass:true,label:'Big money agrees — '+(direction==='BULLISH'?'more put selling (support below)':'more call selling (resistance above)')+' (PCR '+pcr8.toFixed(2)+')',score:optionsScore});
-    else whyReasons.push({pass:false,label:'Big money is split — no clear direction from options market (PCR '+pcr8.toFixed(2)+')',score:optionsScore});
+    var _pcrStr=pcr8.toFixed(2);
+    var _oiExtra='';
+    if(smartZones.length>0)_oiExtra=' | Big bet spotted: '+smartZones[0].type+' at '+S+smartZones[0].strike;
+    if(oiConfirms){
+      whyReasons.push({pass:true,label:'Big traders are betting on '+direction.toLowerCase()+' (Put/Call ratio: '+_pcrStr+(pcr8>1?' — more puts = support below':pcr8<0.8?' — more calls = resistance above':' — balanced')+')'+_oiExtra,score:optionsScore});
+    }else{
+      whyReasons.push({pass:false,label:'Big traders are split — no clear direction from options bets (Put/Call ratio: '+_pcrStr+')'+_oiExtra+'. Mixed signals',score:optionsScore});
+    }
   }
   
-  if(momentumScore>=60)whyReasons.push({pass:true,label:'Price moving with conviction — '+(momUp>momDn?Math.max(momUp,momDn)+' of last 5 candles are green':Math.max(momUp,momDn)+' of last 5 candles are red'),score:momentumScore});
-  else{
-    if(momBars.length===0)whyReasons.push({pass:false,label:'No price action data yet — waiting for market to open',score:50});
-    else whyReasons.push({pass:false,label:'Weak momentum ('+Math.max(momUp,momDn)+'/5 bars agree) — price moving without conviction',score:momentumScore});
+  // 6. MOMENTUM — Is the price moving with conviction?
+  if(momentumScore>=60){
+    var _momDir=momUp>momDn?'up':'down';
+    var _momCount=Math.max(momUp,momDn);
+    var _lastBar=momBars.length>0?momBars[momBars.length-1]:null;
+    var _lastMove=_lastBar?(' (last candle: '+(_lastBar.c>_lastBar.o?'+':'')+(((_lastBar.c-_lastBar.o)/Math.max(_lastBar.o,1))*100).toFixed(2)+'%)'):'';
+    whyReasons.push({pass:true,label:_momCount+' out of last '+momBars.length+' candles went '+_momDir+' — the price is moving with real conviction'+_lastMove,score:momentumScore});
+  }else{
+    if(momBars.length===0)whyReasons.push({pass:false,label:'No candle data yet — waiting for the market to open and show us price action',score:50});
+    else whyReasons.push({pass:false,label:'Only '+Math.max(momUp,momDn)+' of last '+momBars.length+' candles agree — the price is chopping back and forth with no clear trend',score:momentumScore});
   }
   
-  // Institutional insight line
+  // 7. LIQUIDITY — Can you actually trade this?
+  if(tradeMode==='OPTIONS'||tradeMode==='INDEX_HYBRID'){
+    var _bestPrem=Math.max(atmCE7,atmPE7);
+    if(liquidityScore>=70)whyReasons.push({pass:true,label:'Option premium is '+S+_bestPrem.toFixed(0)+' with '+chain.length+' strikes available — good liquidity, you can enter and exit easily',score:liquidityScore});
+    else whyReasons.push({pass:false,label:'Option premium is only '+S+_bestPrem.toFixed(0)+' with '+chain.length+' strikes — thin market, you might get a bad fill price',score:liquidityScore});
+  }
+  
+  // Bottom line — plain English summary
   var passCount=whyReasons.filter(function(r){return r.pass}).length;
+  var totalReasons=whyReasons.length;
+  var _topScore=Math.max(priceActionScore,volumeScore,momentumScore,contextScore);
+  var _weakest=Math.min(priceActionScore,volumeScore,momentumScore);
+  var _weakName=_weakest===priceActionScore?'price movement':_weakest===volumeScore?'trading volume':'momentum';
   var insightLine='';
-  if(passCount>=4)insightLine='All key factors aligned — institutional-grade setup. Execute with conviction.';
-  else if(passCount>=3)insightLine='Most factors confirm — solid setup. Standard position size.';
-  else if(passCount>=2&&direction!=='NONE')insightLine='Direction clear but supporting factors weak. Reduce size or wait.';
-  else if(passCount===1)insightLine='Only one factor passing — high risk. Institutions would NOT take this trade.';
-  else insightLine='No supporting factors — theta trap territory. Smart money is on the sidelines.';
+  if(passCount>=4)insightLine='🟢 '+passCount+' out of '+totalReasons+' checks are positive — this is a strong setup. You can trade this with confidence.';
+  else if(passCount>=3)insightLine='🟡 '+passCount+' out of '+totalReasons+' checks pass — decent setup but '+_weakName+' is the weak link. '+(vix>22?'Market fear (VIX '+vix.toFixed(1)+') is also a concern. ':'')+'Use smaller size and keep strict stop loss.';
+  else if(passCount>=2&&direction!=='NONE')insightLine='🟠 Only '+passCount+' of '+totalReasons+' checks pass — the direction looks '+(direction==='BULLISH'?'up':'down')+' but '+_weakName+' is not supporting it. Better to wait or use very small size.';
+  else if(passCount===1)insightLine='🔴 Only 1 check passing out of '+totalReasons+' — this is risky. Most experienced traders would skip this and wait for a better opportunity.';
+  else insightLine='⛔ None of the '+totalReasons+' checks pass — do NOT trade this. The conditions are not in your favor. Wait for a clear setup.';
   
-  if(trapRisk==='HIGH')insightLine='⚠️ Potential trap — volume not confirming. Institutional desks would flag this.';
+  if(trapRisk==='HIGH')insightLine='⚠️ CAREFUL — This might be a trap! The '+_weakName+' is not confirming (volume only '+volRatio8.toFixed(1)+'x normal). Price might reverse suddenly. Professional traders would stay away.';
   
   window._qtInsight=insightLine;
   
@@ -3023,17 +3088,61 @@ function _renderQuickTrade(d,sym){
     finalBias=direction;biasColor=directionColor;
   }
   
-  // Smart money insight
+  // Smart money insight — built from REAL institutional data
   var accumulating=volRatio8>1.2&&momUp>momDn;
-  var smartMoney='';
-  if(qtGammaBlast)smartMoney='Gamma exposure negative — dealer hedging creates momentum. Ride the move.';
-  else if(trapRisk==='HIGH')smartMoney='Smart money waits for volume confirmation before committing. No volume = no conviction.';
-  else if(accumulating&&direction==='BULLISH')smartMoney='Volume rising with price — institutional accumulation detected. Smart money is buying.';
-  else if(oiConfirms&&pcr8>1.2)smartMoney='PCR '+pcr8.toFixed(2)+' = put sellers confident. Market supported below by institutional positioning.';
-  else if(oiConfirms&&pcr8<0.8)smartMoney='PCR '+pcr8.toFixed(2)+' = call sellers confident. Resistance above from institutional hedging.';
-  else if(!oiConfirms&&hasOI)smartMoney='OI positioning conflicts with price direction — mixed signals from options market. Reduce risk.';
-  else if(passCount>=3)smartMoney='Multiple confirmations aligned — this is how institutional desks validate before execution.';
-  else smartMoney='No clear institutional signal. Patience is the edge — top traders wait for high-confidence setups.';
+  var distributing=volRatio8>1.2&&momDn>momUp;
+  var _instSupp=inst.support||0;
+  var _instRes=inst.resistance||0;
+  var _maxPainV=pa.maxPainDist||0;
+  var _smartZ=smartZones||[];
+  var smartParts=[];
+  
+  // 1. Gamma / Dealer positioning
+  if(qtGammaBlast)smartParts.push('Dealers forced to hedge (GEX: '+gex.regime+') — gamma squeeze active. Volume '+volRatio8.toFixed(1)+'x normal confirms the force.');
+  else if(gex.regime==='NEGATIVE')smartParts.push('Dealers in negative gamma (GEX NEGATIVE) — any '+(direction==='BULLISH'?'rally':'selloff')+' will be amplified by dealer hedging. ATM IV: '+(atmIV>0?(atmIV*100).toFixed(1)+'%':'N/A')+'.');
+  else if(gex.regime==='POSITIVE')smartParts.push('Dealers in positive gamma (GEX POSITIVE) — expect range '+S+dayLow.toLocaleString()+' to '+S+dayHigh.toLocaleString()+'. Dealers absorb moves in both directions.');
+  
+  // 2. OI walls + support/resistance
+  if(_instSupp>0&&_instRes>0){
+    smartParts.push('Institutional OI walls: Support '+S+_instSupp.toLocaleString()+' ('+inst.maxPutOI.oi.toLocaleString()+' put OI) · Resistance '+S+_instRes.toLocaleString()+' ('+inst.maxCallOI.oi.toLocaleString()+' call OI).');
+    if(spot>inst.midpoint)smartParts.push('Price is above the midpoint '+S+inst.midpoint.toLocaleString()+' — bullish institutional bias.');
+    else smartParts.push('Price is below the midpoint '+S+inst.midpoint.toLocaleString()+' — bearish institutional bias.');
+  }
+  
+  // 3. Smart money flow (OI changes)
+  if(_smartZ.length>0){
+    var _zoneStr=_smartZ.slice(0,3).map(function(z){return z.type+' at '+S+z.strike.toLocaleString()+' (+'+z.chg.toLocaleString()+' OI)'}).join(', ');
+    smartParts.push('Fresh smart money activity: '+_zoneStr+'.');
+  }
+  
+  // 4. PCR
+  if(pcr8>0){
+    if(pcr8>1.3)smartParts.push('PCR '+pcr8.toFixed(2)+' is high — institutions are selling puts heavily, providing a floor below current price.');
+    else if(pcr8>1.0)smartParts.push('PCR '+pcr8.toFixed(2)+' slightly bullish — more put selling than call selling.');
+    else if(pcr8<0.7)smartParts.push('PCR '+pcr8.toFixed(2)+' is low — heavy call selling means institutions expect resistance above.');
+    else smartParts.push('PCR '+pcr8.toFixed(2)+' is neutral — no strong directional bet from institutions.');
+  }
+  
+  // 5. Max Pain
+  if(maxPain>0&&spot>0){
+    var _mpDist=Math.abs(spot-maxPain);
+    var _mpPct=(_mpDist/spot*100).toFixed(1);
+    if(_mpPct<0.3)smartParts.push('Price is at Max Pain '+S+maxPain.toLocaleString()+' — pinning likely on expiry. Institutions want price HERE.');
+    else if(spot>maxPain)smartParts.push('Price is '+_mpPct+'% above Max Pain '+S+maxPain.toLocaleString()+' — expiry gravity may pull price down.');
+    else smartParts.push('Price is '+_mpPct+'% below Max Pain '+S+maxPain.toLocaleString()+' — potential upward pull toward expiry.');
+  }
+  
+  // 6. Volume + accumulation/distribution
+  if(accumulating&&direction==='BULLISH')smartParts.push('Volume '+volRatio8.toFixed(1)+'x avg with '+momUp+'/'+momBars.length+' green candles — institutional accumulation pattern at '+_spotFmt+'.');
+  else if(distributing&&direction==='BEARISH')smartParts.push('Volume '+volRatio8.toFixed(1)+'x avg with '+momDn+'/'+momBars.length+' red candles — institutional distribution at '+_spotFmt+'. Big players selling.');
+  else if(trapRisk==='HIGH')smartParts.push('TRAP WARNING — volume only '+volRatio8.toFixed(1)+'x avg (need 1.2x+). Price at '+_spotFmt+' but only '+Math.max(momUp,momDn)+'/'+momBars.length+' candles agree. Smart money sits out.');
+  
+  // 7. Overall conviction
+  if(smartParts.length===0){
+    smartParts.push('No options chain data for '+sym+' — trading on price action only. Spot '+_spotFmt+', range '+_rangePctFmt+', volume '+volRatio8.toFixed(1)+'x. Wait for OI data to load.');
+  }
+  
+  var smartMoney=smartParts.join(' ');
   
   // Store on window
   window._qtEntryStrike=entryStrike7;window._qtEntryPrem=entryPrem7;
@@ -3065,7 +3174,15 @@ function _renderQuickTrade(d,sym){
     whyReasons.forEach(function(r){h+='<div style="font-size:13px;padding:4px 0;color:'+(r.pass?'#059669':'#94a3b8')+'">'+(r.pass?'✔':'✗')+' '+r.label+'</div>'});
     h+='</div>';
     h+='<div style="margin-top:8px;padding:8px;border-radius:8px;background:#3b82f608;border:1px solid #3b82f615;font-size:11px;color:#3b82f6;font-weight:600">📊 '+insightLine+'</div>';
-    h+='<div style="margin-top:4px;padding:8px;border-radius:8px;background:#1e293b;font-size:11px;color:#94a3b8">🧠 '+smartMoney+'</div>';
+    h+='<div style="margin-top:4px;padding:10px;border-radius:8px;background:#1e293b;border:1px solid #334155"><div style="font-size:8px;color:#a855f7;font-weight:700;margin-bottom:4px;letter-spacing:0.5px">🧠 INSTITUTIONAL SIGNALS</div>';smartParts.forEach(function(sp){h+='<div style="font-size:10px;color:#94a3b8;padding:2px 0;line-height:1.5">• '+sp+'</div>'});h+='</div>';
+    // Show what setup WOULD look like if conditions improve
+    if(isOptions&&entryPrem7>0&&direction!=='NONE'){
+      h+='<div style="margin-top:8px;padding:10px;border-radius:10px;background:#1e293b50;border:1px dashed #334155">';
+      h+='<div style="font-size:8px;color:#64748b;font-weight:700;margin-bottom:6px">🔮 IF CONDITIONS IMPROVE — WATCH FOR:</div>';
+      h+='<div style="font-size:10px;color:#94a3b8">Strike: <strong style="color:#f59e0b;font-family:JetBrains Mono">'+S+entryStrike7+' '+entryType7+'</strong> ('+strikeLabel+') · Premium ~'+S+entryPrem7.toFixed(isUS&&entryPrem7<10?2:0)+' · Target: '+S+targetLow+'–'+S+targetHigh+' · SL: '+S+sl8+'</div>';
+      h+='<div style="font-size:9px;color:#64748b;margin-top:4px">Need: '+(volumeScore<50?'Volume pickup (currently '+volRatio8.toFixed(1)+'x) ':'')+(priceActionScore<60?'Price breakout above '+S+dayHigh+' or below '+S+dayLow+' ':'')+(momentumScore<50?'Momentum improvement ('+Math.max(momUp,momDn)+'/'+momBars.length+' bars aligned) ':'')+'to trigger</div>';
+      h+='</div>';
+    }
     h+='</div>';
     
   // ─── ⏳ WATCHING / 🟡 ALMOST ───
@@ -3078,14 +3195,57 @@ function _renderQuickTrade(d,sym){
     h+='<div style="text-align:left;max-width:280px;margin:0 auto 12px">';
     whyReasons.forEach(function(r){h+='<div style="font-size:13px;padding:4px 0;color:'+(r.pass?'#059669':'#94a3b8')+'">'+(r.pass?'✔':'✗')+' '+r.label+'</div>'});
     h+='</div>';
-    // Scenario
-    h+='<div style="padding:10px;border-radius:10px;background:#1e293b;margin-bottom:8px;font-size:9px;color:#94a3b8">';
-    h+='<div style="color:#64748b;font-weight:700;margin-bottom:4px">⚠️ SCENARIOS</div>';
-    h+='IF breakout above <strong style="color:#059669">'+S+(isUS?dayHigh.toLocaleString('en-US'):dayHigh.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN'))+'</strong> → '+(isOptions?'BUY CALL':'BUY')+'<br>';
-    h+='IF breakdown below <strong style="color:#ef4444">'+S+(isUS?dayLow.toLocaleString('en-US'):dayLow.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN'))+'</strong> → '+(isOptions?'BUY PUT':'SELL')+'<br>';
-    h+='ELSE → WAIT</div>';
+    // ─── TRADE PLAN (what to do when signal triggers) ───
+    if(isOptions&&entryPrem7>0){
+      h+='<div style="padding:12px;border-radius:12px;background:linear-gradient(135deg,#1e293b,#0f172a);margin-bottom:8px;border:1px solid #334155">';
+      h+='<div style="font-size:8px;font-weight:800;color:#d97706;letter-spacing:1px;margin-bottom:8px">📋 TRADE PLAN — READY WHEN SIGNAL TRIGGERS</div>';
+      // Strike + Premium + Type
+      h+='<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px">';
+      h+='<div style="flex:1;min-width:80px;text-align:center;padding:8px;border-radius:8px;background:#0f172a;border:1px solid '+biasColor+'30">';
+      h+='<div style="font-size:7px;color:#64748b;font-weight:700">STRIKE <span style="padding:1px 4px;border-radius:3px;background:#3b82f620;color:#3b82f6;font-size:6px">'+strikeLabel+'</span></div>';
+      h+='<div style="font-size:16px;font-weight:900;color:#f59e0b;font-family:JetBrains Mono">'+S+entryStrike7.toLocaleString()+' '+entryType7+'</div>';
+      h+='<div style="font-size:7px;color:#64748b;margin-top:2px">'+strikeReason+'</div></div>';
+      h+='<div style="flex:1;min-width:60px;text-align:center;padding:8px;border-radius:8px;background:#0f172a;border:1px solid #334155">';
+      h+='<div style="font-size:7px;color:#64748b;font-weight:700">ENTRY PREMIUM</div>';
+      h+='<div style="font-size:16px;font-weight:900;color:#e2e8f0;font-family:JetBrains Mono">'+S+entryPrem7.toFixed(isUS&&entryPrem7<10?2:0)+'</div></div>';
+      h+='<div style="flex:1;min-width:60px;text-align:center;padding:8px;border-radius:8px;background:#0f172a;border:1px solid #334155">';
+      h+='<div style="font-size:7px;color:#64748b;font-weight:700">QTY</div>';
+      h+='<div style="font-size:16px;font-weight:900;color:#a855f7;font-family:JetBrains Mono">'+qtLots+' <span style="font-size:9px;color:#64748b">lot(s)</span></div>';
+      h+='<div style="font-size:7px;color:#64748b">Lot size: '+c7.lot+'</div></div></div>';
+      // Target + SL + R:R
+      var _maxRisk9=Math.round((entryPrem7-sl8)*c7.lot);var _maxProf9=Math.round((targetHigh-entryPrem7)*c7.lot);
+      var _rr9=_maxRisk9>0?Math.round(_maxProf9/_maxRisk9*10)/10:0;
+      h+='<div style="display:flex;justify-content:space-between;gap:6px;flex-wrap:wrap">';
+      h+='<div style="flex:1;text-align:center;padding:6px;border-radius:8px;background:#05966408;border:1px solid #05966420">';
+      h+='<div style="font-size:7px;color:#059669;font-weight:700">TARGET</div>';
+      h+='<div style="font-size:13px;font-weight:900;color:#059669;font-family:JetBrains Mono">'+S+targetLow+' – '+S+targetHigh+'</div>';
+      h+='<div style="font-size:7px;color:#059669">+25% to +40%</div></div>';
+      h+='<div style="flex:1;text-align:center;padding:6px;border-radius:8px;background:#ef444408;border:1px solid #ef444420">';
+      h+='<div style="font-size:7px;color:#ef4444;font-weight:700">STOP LOSS</div>';
+      h+='<div style="font-size:13px;font-weight:900;color:#ef4444;font-family:JetBrains Mono">'+S+sl8+'</div>';
+      h+='<div style="font-size:7px;color:#ef4444">-20% max loss</div></div>';
+      h+='<div style="flex:1;text-align:center;padding:6px;border-radius:8px;background:#3b82f608;border:1px solid #3b82f620">';
+      h+='<div style="font-size:7px;color:#3b82f6;font-weight:700">R:R</div>';
+      h+='<div style="font-size:13px;font-weight:900;color:#3b82f6;font-family:JetBrains Mono">1:'+_rr9+'</div>';
+      h+='<div style="font-size:7px;color:#3b82f6">Risk '+S+Math.abs(_maxRisk9).toLocaleString()+' / Reward '+S+_maxProf9.toLocaleString()+'</div></div>';
+      h+='</div></div>';
+    }
+    // Scenario triggers
+    h+='<div style="padding:10px;border-radius:10px;background:#1e293b;margin-bottom:8px;font-size:10px;color:#94a3b8">';
+    h+='<div style="color:#d97706;font-weight:800;margin-bottom:6px;font-size:9px;letter-spacing:0.5px">⚠️ TRIGGER CONDITIONS</div>';
+    h+='<div style="margin-bottom:4px">IF breakout above <strong style="color:#059669;font-family:JetBrains Mono">'+S+(isUS?dayHigh.toLocaleString('en-US'):dayHigh.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN'))+'</strong>';
+    if(isOptions)h+=' → <strong style="color:#059669">BUY '+entryStrike7+' '+entryType7+' @ '+S+entryPrem7.toFixed(isUS&&entryPrem7<10?2:0)+'</strong>';
+    else h+=' → <strong style="color:#059669">BUY</strong>';
+    h+='</div>';
+    h+='<div style="margin-bottom:4px">IF breakdown below <strong style="color:#ef4444;font-family:JetBrains Mono">'+S+(isUS?dayLow.toLocaleString('en-US'):dayLow.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN'))+'</strong>';
+    if(isOptions){
+      var _altType=entryType7==='CE'?'PE':'CE';
+      h+=' → <strong style="color:#ef4444">BUY '+entryStrike7+' '+_altType+' @ '+S+(entryType7==='CE'?atmPE7:atmCE7).toFixed(isUS?2:0)+'</strong>';
+    }else h+=' → <strong style="color:#ef4444">SELL</strong>';
+    h+='</div>';
+    h+='<div>ELSE → <strong style="color:#64748b">WAIT</strong> (no edge yet)</div></div>';
     h+='<div style="padding:8px;border-radius:8px;background:#3b82f608;border:1px solid #3b82f615;font-size:11px;color:#3b82f6;font-weight:600;margin-top:4px">📊 '+insightLine+'</div>';
-    h+='<div style="padding:8px;border-radius:8px;background:#1e293b50;font-size:9px;color:#64748b;margin-top:4px">🧠 '+smartMoney+'</div>';
+    h+='<div style="padding:10px;border-radius:8px;background:#1e293b50;border:1px solid #334155;margin-top:4px"><div style="font-size:8px;color:#a855f7;font-weight:700;margin-bottom:4px;letter-spacing:0.5px">🧠 INSTITUTIONAL SIGNALS</div>';smartParts.forEach(function(sp){h+='<div style="font-size:9px;color:#64748b;padding:2px 0;line-height:1.5">• '+sp+'</div>'});h+='</div>';
     
   // ─── 🟢 ENTER NOW ───
   }else{
@@ -3100,10 +3260,20 @@ function _renderQuickTrade(d,sym){
       h+='<div><div style="font-size:8px;color:#64748b">STRIKE <span style="padding:1px 4px;border-radius:3px;background:#3b82f620;color:#3b82f6;font-size:7px">'+strikeLabel+'</span></div><div style="font-size:16px;font-weight:900;color:#f59e0b;font-family:JetBrains Mono">'+S+entryStrike7+' '+entryType7+'</div></div>';
       h+='<div><div style="font-size:8px;color:#64748b">PREMIUM</div><div style="font-size:16px;font-weight:900;color:#e2e8f0;font-family:JetBrains Mono">'+S+entryPrem7.toFixed(isUS&&entryPrem7<10?2:0)+'</div></div>';
     }else{
-      h+='<div><div style="font-size:8px;color:#64748b">ENTRY ABOVE</div><div style="font-size:16px;font-weight:900;color:#f59e0b;font-family:JetBrains Mono">'+S+(isUS?entryLevel.toLocaleString('en-US'):entryLevel.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN'))+'</div></div>';
+      // Stock mode — show proper entry/target/SL based on price levels
+      var _stockEntry=finalBias==='BULLISH'?dayHigh:dayLow;
+      var _stockSL=finalBias==='BULLISH'?dayLow:dayHigh;
+      var _stockRange=Math.abs(dayHigh-dayLow);
+      var _stockTarget=finalBias==='BULLISH'?Math.round(_stockEntry+_stockRange*1.5):Math.round(_stockEntry-_stockRange*1.5);
+      var _stockRR=_stockRange>0?Math.round((_stockRange*1.5)/_stockRange*10)/10:0;
+      var _entryLabel=finalBias==='BULLISH'?'BUY ABOVE':'SELL BELOW';
+      h+='<div><div style="font-size:8px;color:#64748b">'+_entryLabel+'</div><div style="font-size:16px;font-weight:900;color:#f59e0b;font-family:JetBrains Mono">'+S+(isUS?_stockEntry.toLocaleString('en-US'):_stockEntry.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN'))+'</div></div>';
+      h+='<div><div style="font-size:8px;color:#059669">TARGET</div><div style="font-size:16px;font-weight:900;color:#059669;font-family:JetBrains Mono">'+S+(isUS?_stockTarget.toLocaleString('en-US'):_stockTarget.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN'))+'</div></div>';
+      h+='<div><div style="font-size:8px;color:#ef4444">STOP LOSS</div><div style="font-size:16px;font-weight:900;color:#ef4444;font-family:JetBrains Mono">'+S+(isUS?_stockSL.toLocaleString('en-US'):_stockSL.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN'))+'</div></div>';
     }
     h+='</div>';
     if(isOptions)h+='<div style="font-size:9px;color:#64748b;margin-top:4px">'+strikeReason+' · Lot: '+c7.lot+' · Qty: '+qtLots+(qtLots!=='1'?' lots':' lot')+'</div>';
+    if(!isOptions)h+='<div style="font-size:9px;color:#64748b;margin-top:4px">'+_entryLabel+' '+S+_stockEntry.toLocaleString()+' · Target '+S+_stockTarget.toLocaleString()+' · SL '+S+_stockSL.toLocaleString()+' · R:R 1:'+_stockRR+'</div>';
     h+='<div style="font-size:12px;color:#94a3b8;margin-top:6px">Confidence: <strong style="color:'+(confidence>=70?'#059669':'#d97706')+'">'+confidence+'%</strong> · Grade: <strong>'+grade+'</strong> ('+gradeLabel+') · Trap: '+trapRisk+'</div>';
     if(qtGammaBlast)h+='<div style="margin-top:6px;padding:4px 14px;border-radius:8px;background:#f59e0b15;display:inline-block;font-size:10px;color:#f59e0b;font-weight:800">⚡ GAMMA BLAST — Bigger position!</div>';
     h+='</div>';
@@ -3113,15 +3283,27 @@ function _renderQuickTrade(d,sym){
     whyReasons.forEach(function(r){if(r.pass)h+='<div style="font-size:13px;color:#059669;padding:3px 0;font-weight:600">✔ '+r.label+'</div>'});
     h+='</div>';
     
-    // Entry + Target + SL
-    var maxRisk8=Math.round((entryPrem7-sl8)*c7.lot);var maxProf8=Math.round((targetHigh-entryPrem7)*c7.lot);
-    var rr=maxRisk8>0?Math.round(maxProf8/maxRisk8*10)/10:0;
-    h+='<div style="text-align:center;padding:10px;border-radius:10px;background:#1e293b;margin-bottom:8px"><div style="display:flex;justify-content:center;gap:12px;flex-wrap:wrap">';
-    h+='<div><div style="font-size:7px;color:#059669;font-weight:700">TARGET</div><div style="font-size:14px;font-weight:900;color:#059669;font-family:JetBrains Mono">'+S+targetLow+' – '+S+targetHigh+'</div></div>';
-    h+='<div style="width:1px;background:#334155"></div>';
-    h+='<div><div style="font-size:7px;color:#ef4444;font-weight:700">STOP LOSS</div><div style="font-size:14px;font-weight:900;color:#ef4444;font-family:JetBrains Mono">'+S+sl8+'</div></div>';
-    h+='<div style="width:1px;background:#334155"></div>';
-    h+='<div><div style="font-size:7px;color:#d97706;font-weight:700">MAX HOLD</div><div style="font-size:14px;font-weight:900;color:#d97706">'+(isOptions?'10 min':'3-10 days')+'</div></div>';
+    // Entry + Target + SL — proper values for options vs stock
+    if(isOptions){
+      var maxRisk8=Math.round((entryPrem7-sl8)*c7.lot);var maxProf8=Math.round((targetHigh-entryPrem7)*c7.lot);
+      var rr=maxRisk8>0?Math.round(maxProf8/maxRisk8*10)/10:0;
+      h+='<div style="text-align:center;padding:10px;border-radius:10px;background:#1e293b;margin-bottom:8px"><div style="display:flex;justify-content:center;gap:12px;flex-wrap:wrap">';
+      h+='<div><div style="font-size:7px;color:#059669;font-weight:700">PREMIUM TARGET</div><div style="font-size:14px;font-weight:900;color:#059669;font-family:JetBrains Mono">'+S+targetLow+' – '+S+targetHigh+'</div></div>';
+      h+='<div style="width:1px;background:#334155"></div>';
+      h+='<div><div style="font-size:7px;color:#ef4444;font-weight:700">PREMIUM SL</div><div style="font-size:14px;font-weight:900;color:#ef4444;font-family:JetBrains Mono">'+S+sl8+'</div></div>';
+      h+='<div style="width:1px;background:#334155"></div>';
+      h+='<div><div style="font-size:7px;color:#d97706;font-weight:700">MAX HOLD</div><div style="font-size:14px;font-weight:900;color:#d97706">10 min</div></div>';
+    }else{
+      // Stock mode — price-based targets already shown above, show R:R and hold time
+      var _sRange2=Math.abs(dayHigh-dayLow);
+      var _sRR2=_sRange2>0?'1:1.5':'N/A';
+      h+='<div style="text-align:center;padding:10px;border-radius:10px;background:#1e293b;margin-bottom:8px"><div style="display:flex;justify-content:center;gap:12px;flex-wrap:wrap">';
+      h+='<div><div style="font-size:7px;color:#3b82f6;font-weight:700">RISK:REWARD</div><div style="font-size:14px;font-weight:900;color:#3b82f6;font-family:JetBrains Mono">'+_sRR2+'</div></div>';
+      h+='<div style="width:1px;background:#334155"></div>';
+      h+='<div><div style="font-size:7px;color:#a855f7;font-weight:700">DAY RANGE</div><div style="font-size:14px;font-weight:900;color:#a855f7;font-family:JetBrains Mono">'+S+dayLow.toLocaleString()+' – '+S+dayHigh.toLocaleString()+'</div></div>';
+      h+='<div style="width:1px;background:#334155"></div>';
+      h+='<div><div style="font-size:7px;color:#d97706;font-weight:700">MAX HOLD</div><div style="font-size:14px;font-weight:900;color:#d97706">3-10 days</div></div>';
+    }
     h+='<div style="width:1px;background:#334155"></div>';
     h+='<div><div style="font-size:7px;color:#3b82f6;font-weight:700">R:R</div><div style="font-size:14px;font-weight:900;color:#3b82f6">1:'+rr+'</div></div>';
     h+='</div></div>';
@@ -3152,7 +3334,7 @@ function _renderQuickTrade(d,sym){
       });
       h+='</div></div>';
     }
-    h+='<div style="padding:8px;border-radius:8px;background:#1e293b;font-size:11px;color:#94a3b8">🧠 '+smartMoney+'</div>';
+    h+='<div style="padding:10px;border-radius:8px;background:#1e293b;border:1px solid #334155"><div style="font-size:8px;color:#a855f7;font-weight:700;margin-bottom:4px;letter-spacing:0.5px">🧠 INSTITUTIONAL SIGNALS</div>';smartParts.forEach(function(sp){h+='<div style="font-size:10px;color:#94a3b8;padding:2px 0;line-height:1.5">• '+sp+'</div>'});h+='</div>';
     if(qtIsExpiry)h+='<div style="text-align:center;margin-top:6px;padding:5px;border-radius:6px;background:#d9770608;font-size:9px;color:#d97706;font-weight:700">⏱ EXPIRY — Exit within 10 min</div>';
   }
   
@@ -3204,6 +3386,18 @@ console.log('[QUICK TRADE] ✅ Simplified 1-click mode loaded');
 
 // ─── 1) VOICE ALERT ENGINE ───
 
+// Auto-unlock voice when user navigates to Options (they've clicked = gesture)
+document.addEventListener('click',function(){
+  if(!window._voiceFullyReady&&window._voiceEnabled){
+    window._unlockVoice();
+  }
+},{once:true});
+document.addEventListener('touchstart',function(){
+  if(!window._voiceFullyReady&&window._voiceEnabled){
+    window._unlockVoice();
+  }
+},{once:true});
+
 window._retryLast=function(){var s=window._activeOptionsSym||'NIFTY';var r=window._activeOptionsReg||'IN';if(r==='US')window._loadOptionsUniversal(s,r);else window._loadQuickTrade(s)};
 window._voiceEnabled=true;
 window._voiceRepeatCount=0;
@@ -3211,22 +3405,200 @@ window._voiceRepeatTimer=null;
 window._lastVoiceSignal='';
 window._lastQuickSignal='NONE';
 
+// ═══════════════════════════════════════════════════════════════════
+// BULLETPROOF VOICE ENGINE — works without repeated user clicks
+// 
+// How it works:
+// 1. User clicks "Start Voice" ONCE → unlocks AudioContext + speechSynthesis
+// 2. After that, voice works forever — even on other tabs
+// 3. Web Audio API beep plays BEFORE speech to wake up audio pipeline
+// 4. Chrome keep-alive pings every 10s to prevent garbage collection
+// 5. Long text auto-split to avoid Chrome 15s freeze bug
+// 6. If speechSynthesis completely fails → falls back to beep-only alerts
+// 7. Notification API used as visual backup when tab is hidden
+// ═══════════════════════════════════════════════════════════════════
+
+window._audioCtx=null;
+window._audioUnlocked=false;
+window._speechUnlocked=false;
+window._voiceFullyReady=false;
+
+// Create AudioContext (survives tab switches unlike speechSynthesis)
+function _ensureAudioCtx(){
+  if(!window._audioCtx){
+    try{
+      window._audioCtx=new (window.AudioContext||window.webkitAudioContext)();
+      console.log('[VOICE] AudioContext created');
+    }catch(e){console.log('[VOICE] AudioContext failed:',e)}
+  }
+  // Resume if suspended (happens after tab switch)
+  if(window._audioCtx&&window._audioCtx.state==='suspended'){
+    window._audioCtx.resume().then(function(){console.log('[VOICE] AudioContext resumed')});
+  }
+  return window._audioCtx;
+}
+
+// Play a tone — always works after one click, even in background
+window._playTone=function(freq,duration,vol){
+  var ctx=_ensureAudioCtx();
+  if(!ctx)return;
+  try{
+    var osc=ctx.createOscillator();
+    var gain=ctx.createGain();
+    osc.connect(gain);gain.connect(ctx.destination);
+    osc.frequency.value=freq||800;
+    gain.gain.value=vol||0.3;
+    osc.start();
+    gain.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+(duration||0.3));
+    osc.stop(ctx.currentTime+(duration||0.3));
+  }catch(e){}
+};
+
+// Alert tones for different events
+window._alertTone=function(type){
+  if(type==='ENTRY')     {window._playTone(880,0.15,0.4);setTimeout(function(){window._playTone(1100,0.15,0.4)},180);setTimeout(function(){window._playTone(1320,0.2,0.5)},360)}
+  else if(type==='EXIT') {window._playTone(1320,0.15,0.5);setTimeout(function(){window._playTone(880,0.15,0.5)},180);setTimeout(function(){window._playTone(660,0.25,0.5)},360)}
+  else if(type==='STOP') {window._playTone(440,0.3,0.6);setTimeout(function(){window._playTone(330,0.3,0.6)},350);setTimeout(function(){window._playTone(220,0.4,0.6)},700)}
+  else if(type==='PROFIT'){window._playTone(660,0.1,0.3);setTimeout(function(){window._playTone(880,0.15,0.3)},150)}
+  else if(type==='WARN') {window._playTone(600,0.2,0.4);setTimeout(function(){window._playTone(600,0.2,0.4)},300)}
+  else                   {window._playTone(700,0.15,0.3)}
+};
+
+// THE ONE-TIME UNLOCK — call this from a user click/touch
+window._unlockVoice=function(){
+  // 1. Unlock AudioContext
+  _ensureAudioCtx();
+  if(window._audioCtx){
+    window._audioCtx.resume().then(function(){
+      window._audioUnlocked=true;
+      console.log('[VOICE] AudioContext unlocked');
+    });
+    // Play silent tone to fully activate
+    window._playTone(1,0.01,0.001);
+  }
+  
+  // 2. Unlock speechSynthesis with empty utterance
+  if(window.speechSynthesis){
+    try{
+      window.speechSynthesis.cancel();
+      var w=new SpeechSynthesisUtterance(' ');
+      w.volume=0.01;w.rate=2;
+      window.speechSynthesis.speak(w);
+      setTimeout(function(){
+        try{window.speechSynthesis.cancel()}catch(e){}
+        window._speechUnlocked=true;
+        console.log('[VOICE] speechSynthesis unlocked');
+      },100);
+    }catch(e){console.log('[VOICE] speechSynthesis unlock failed:',e)}
+  }
+  
+  // 3. Request notification permission (backup for background tab)
+  if('Notification' in window&&Notification.permission==='default'){
+    Notification.requestPermission().then(function(p){
+      console.log('[VOICE] Notification permission: '+p);
+    });
+  }
+  
+  // 4. Start keep-alive
+  _startKeepAlive();
+  
+  window._voiceFullyReady=true;
+  console.log('[VOICE] ✅ FULLY UNLOCKED — voice will work without further interaction');
+  
+  // Confirm to user
+  setTimeout(function(){
+    window._speak('Voice assistant is ready. I will guide you through every trade.',false);
+  },300);
+};
+
+// KEEP-ALIVE: prevents Chrome from killing audio/speech
+var _keepAliveTimer=null;
+function _startKeepAlive(){
+  if(_keepAliveTimer)return;
+  _keepAliveTimer=setInterval(function(){
+    // Keep AudioContext alive
+    _ensureAudioCtx();
+    // Keep speechSynthesis alive
+    if(window.speechSynthesis){
+      // Chrome bug: resume if paused
+      if(window.speechSynthesis.paused)window.speechSynthesis.resume();
+      // Poke voices list to prevent GC
+      window.speechSynthesis.getVoices();
+    }
+  },10000);
+  console.log('[VOICE] Keep-alive started');
+}
+
+// THE MAIN SPEAK FUNCTION — bulletproof
 window._speak=function(text,urgent){
   if(!window._voiceEnabled)return;
-  if(!window.speechSynthesis){console.log('[VOICE] No speechSynthesis');return}
+  if(!text)return;
+  
+  // Auto-unlock if not yet unlocked (first speech triggers full setup)
+  if(!window._voiceFullyReady){
+    window._unlockVoice();
+  }
+  
+  // Resume AudioContext if suspended (tab switch, phone lock)
+  _ensureAudioCtx();
+  
+  // Always play alert tone first — this works even if speech fails
+  if(urgent)window._alertTone('WARN');
+  
+  // Background tab notification
+  if(document.hidden&&'Notification' in window&&Notification.permission==='granted'){
+    try{new Notification('Celesys Trade Alert',{body:text.substring(0,120),icon:'/favicon.ico',requireInteraction:urgent})}catch(e){}
+  }
+  
+  // speechSynthesis
+  if(!window.speechSynthesis){console.log('[VOICE] No speechSynthesis — tone only');return}
+  
   try{
+    // Cancel any stuck speech
     window.speechSynthesis.cancel();
-    var u=new SpeechSynthesisUtterance(text);
-    u.rate=urgent?1.1:0.95;
-    u.pitch=1.0;
-    u.volume=urgent?1.0:0.8;
-    var voices=window.speechSynthesis.getVoices();
-    if(voices.length>0){
-      var pref=voices.find(function(v){return v.lang.indexOf('en')===0&&v.name.indexOf('Google')>=0})||voices.find(function(v){return v.lang.indexOf('en')===0})||voices[0];
-      if(pref)u.voice=pref;
-    }
-    window.speechSynthesis.speak(u);
-    console.log('[VOICE] Speaking: '+text.substring(0,50)+'...');
+    
+    // Resume AudioContext if suspended (tab switch)
+    _ensureAudioCtx();
+    
+    setTimeout(function(){
+      try{
+        // Get voices
+        var voices=window.speechSynthesis.getVoices();
+        var pref=null;
+        if(voices.length>0){
+          pref=voices.find(function(v){return v.lang.indexOf('en')===0&&v.name.indexOf('Google')>=0})
+            ||voices.find(function(v){return v.lang.indexOf('en')===0&&v.name.indexOf('Female')>=0})
+            ||voices.find(function(v){return v.lang.indexOf('en')===0})
+            ||voices[0];
+        }
+        
+        // Split long text to avoid Chrome 15s freeze
+        var chunks=text.length>150?(text.match(/[^.!?]+[.!?]+/g)||[text]):[text];
+        
+        chunks.forEach(function(chunk,i){
+          var u=new SpeechSynthesisUtterance(chunk.trim());
+          u.rate=urgent?1.05:0.92;
+          u.pitch=1.0;
+          u.volume=urgent?1.0:0.85;
+          if(pref)u.voice=pref;
+          
+          // Chrome 15s pause fix — resume before it happens
+          u.onstart=function(){
+            if(window._speechResumeTimer)clearTimeout(window._speechResumeTimer);
+            window._speechResumeTimer=setTimeout(function(){
+              if(window.speechSynthesis.paused)window.speechSynthesis.resume();
+            },13000);
+          };
+          
+          window.speechSynthesis.speak(u);
+        });
+        
+        console.log('[VOICE] Speaking: '+text.substring(0,60)+'...');
+      }catch(e2){
+        console.log('[VOICE] Speech failed — tone only:',e2);
+        if(urgent)window._alertTone('WARN');
+      }
+    },30);
   }catch(e){console.log('[VOICE] Error:',e)}
 };
 // Load voices async (many browsers load them lazily)
@@ -3234,27 +3606,13 @@ if(typeof window!=='undefined'&&window.speechSynthesis){
   window.speechSynthesis.getVoices();
   if(window.speechSynthesis.onvoiceschanged!==undefined){
     window.speechSynthesis.onvoiceschanged=function(){
-      window.speechSynthesis.getVoices();
-      console.log('[VOICE] Voices loaded: '+window.speechSynthesis.getVoices().length);
+      var v=window.speechSynthesis.getVoices();
+      console.log('[VOICE] Voices loaded: '+v.length);
     };
   }
 }
-// Browser requires user interaction before voice works — warmup on first click/touch
-function _warmupVoice(){
-  if(window.speechSynthesis&&!window._voiceWarmedUp){
-    window._voiceWarmedUp=true;
-    try{
-      var w=new SpeechSynthesisUtterance('');w.volume=0;
-      window.speechSynthesis.speak(w);
-      setTimeout(function(){try{window.speechSynthesis.cancel()}catch(e){}},100);
-      console.log('[VOICE] Warmed up on user gesture');
-    }catch(e){console.log('[VOICE] Warmup failed:',e)}
-  }
-}
-if(typeof document!=='undefined'){
-  document.addEventListener('click',_warmupVoice);
-  document.addEventListener('touchstart',_warmupVoice);
-}
+
+// Voice init moved to bulletproof engine above
 
 window._voiceAlert=function(type,detail,strike,prem,isBlast,extraCtx){
   var msg='';
@@ -3325,7 +3683,17 @@ window._voiceAlert=function(type,detail,strike,prem,isBlast,extraCtx){
   else if(type==='STOP')msg='You have 2 losses in a row. Stop trading for today. The best traders know when to stop. Come back tomorrow with fresh eyes.';
   else msg=type;
   
-  window._speak(msg,type==='ENTRY_CE'||type==='ENTRY_PE'||type==='EXIT'||type==='GAMMA_FADING'||type==='STOP_HIT');
+  // Play distinctive alert tone BEFORE speech — this always works
+  if(type==='ENTRY_CE'||type==='ENTRY_PE')window._alertTone('ENTRY');
+  else if(type==='STOP_HIT')window._alertTone('STOP');
+  else if(type==='EXIT'||type==='GAMMA_FADING')window._alertTone('EXIT');
+  else if(type==='TARGET_HIT'||type==='PARTIAL')window._alertTone('PROFIT');
+  else window._alertTone('WARN');
+  
+  // Small delay so tone finishes before speech starts
+  setTimeout(function(){
+    window._speak(msg,type==='ENTRY_CE'||type==='ENTRY_PE'||type==='EXIT'||type==='GAMMA_FADING'||type==='STOP_HIT');
+  },500);
   
   // Repeat logic: critical alerts repeat 3 times, 5 sec apart
   if(type==='ENTRY_CE'||type==='ENTRY_PE'||type==='EXIT'||type==='GAMMA_FADING'||type==='STOP_HIT'||type==='TARGET_HIT'){
@@ -3467,8 +3835,8 @@ window._renderPerformanceDashboard=function(S){
   
   // Voice toggle + reset
   h+='<div style="display:flex;gap:8px;margin-top:10px;justify-content:center">';
-  h+='<button onclick="window._voiceEnabled=!window._voiceEnabled;this.textContent=window._voiceEnabled?\'🔊 Voice ON\':\'🔇 Voice OFF\';this.style.background=window._voiceEnabled?\'#05966920\':\'#1e293b\';this.style.color=window._voiceEnabled?\'#059669\':\'#64748b\'" style="padding:6px 14px;border-radius:8px;background:'+(window._voiceEnabled?'#05966920':'#1e293b')+';color:'+(window._voiceEnabled?'#059669':'#64748b')+';border:1px solid #334155;font-size:9px;font-weight:700;cursor:pointer">'+(window._voiceEnabled?'🔊 Voice ON':'🔇 Voice OFF')+'</button>';
-  h+='<button onclick="window._speak(\'Voice is working. I will alert you when a good trade appears.\',true)" style="padding:6px 10px;border-radius:8px;background:#1e293b;color:#64748b;border:1px solid #334155;font-size:8px;font-weight:700;cursor:pointer">🔊 Test</button>';
+  h+='<button onclick="if(!window._voiceFullyReady){window._unlockVoice();this.textContent=\'🔊 Voice ACTIVE\';this.style.background=\'#05966920\';this.style.color=\'#059669\'}else{window._voiceEnabled=!window._voiceEnabled;this.textContent=window._voiceEnabled?\'🔊 Voice ACTIVE\':\'🔇 Voice OFF\';this.style.background=window._voiceEnabled?\'#05966920\':\'#1e293b\';this.style.color=window._voiceEnabled?\'#059669\':\'#64748b\'}" style="padding:6px 14px;border-radius:8px;background:'+(window._voiceFullyReady&&window._voiceEnabled?'#05966920':'#1e293b')+';color:'+(window._voiceFullyReady&&window._voiceEnabled?'#059669':'#64748b')+';border:1px solid #334155;font-size:9px;font-weight:700;cursor:pointer">'+(window._voiceFullyReady&&window._voiceEnabled?'🔊 Voice ACTIVE':'🔊 Start Voice')+'</button>';
+  h+='<button onclick="window._alertTone(\'ENTRY\');window._speak(\'Voice is working. Entry alert sounds like this. I will guide you through every trade.\',true)" style="padding:6px 10px;border-radius:8px;background:#1e293b;color:#64748b;border:1px solid #334155;font-size:8px;font-weight:700;cursor:pointer">🔊 Test Alert</button>';
   h+='<button onclick="if(confirm(\'Reset today\\\'s trade log?\')){window._tradeLog=[];localStorage.setItem(\'celesys_tradeLog\',\'[]\');this.textContent=\'✓ Reset\'}" style="padding:6px 14px;border-radius:8px;background:#1e293b;color:#64748b;border:1px solid #334155;font-size:9px;font-weight:700;cursor:pointer">🗑️ Reset Log</button>';
   h+='<button onclick="window._speak(\'Voice test. System ready.\',false)" style="padding:6px 14px;border-radius:8px;background:#1e293b;color:#64748b;border:1px solid #334155;font-size:9px;font-weight:700;cursor:pointer">🔈 Test Voice</button>';
   h+='</div>';
@@ -3515,17 +3883,15 @@ _renderQuickTrade=function(d,sym){
   el.appendChild(dashDiv);
   
   // Voice alert on signal change (NOT every render)
+  // Signal detection from engine state (NOT DOM text — that's fragile)
   var currentSignal='NONE';
-  var statusText2=el.textContent||'';
-  if(statusText2.indexOf('ENTER NOW')>=0){
-    var actionText=el.textContent||'';
-    if(actionText.indexOf('BUY')>=0&&actionText.indexOf('CE')>=0)currentSignal='ENTRY_CE';
-    else if(actionText.indexOf('BUY')>=0&&actionText.indexOf('PE')>=0)currentSignal='ENTRY_PE';
-  }else if(statusText2.indexOf('NO TRADE')>=0||statusText2.indexOf('DON')>=0){
-    currentSignal='NO_TRADE';
-  }else{
-    currentSignal='WAITING';
-  }
+  var _qGrade=window._qtGrade||'';
+  var _qBias=window._qtFinalBias||'';
+  if((_qGrade==='A+'||_qGrade==='A')&&_qBias==='BULLISH')currentSignal='ENTRY_CE';
+  else if((_qGrade==='A+'||_qGrade==='A')&&_qBias==='BEARISH')currentSignal='ENTRY_PE';
+  else if(_qBias==='NO TRADE'||_qGrade==='D'||_qGrade==='F')currentSignal='NO_TRADE';
+  else if(_qBias==='BULLISH'||_qBias==='BEARISH')currentSignal='WAITING';
+  else currentSignal='NO_TRADE';
   
   // Read screen-consistent values from window (set by _renderQuickTrade)
   var vStrike=window._qtEntryStrike||0;
@@ -3535,6 +3901,18 @@ _renderQuickTrade=function(d,sym){
   var vExpiry=window._qtIsExpiry||false;
   var vTarget=Math.round(vPrem*1.25);
   var vSL=Math.round(vPrem*0.8);
+  
+  // ═══ CRITICAL: Update _activeTrade.currentPrem on every refresh ═══
+  // Without this, the P&L trade monitor always shows 0% and never triggers alerts
+  var _at=window._activeTradeValue||null;
+  if(_at&&_at.sym===sym&&vPrem>0){
+    _at.currentPrem=vPrem;
+    // Also update the ATM premiums for better P&L tracking
+    var _liveATMprem=window._qtStrikeATM?window._qtStrikeATM.prem:0;
+    if(_liveATMprem>0&&_at.strike===window._qtStrikeATM.strike){
+      _at.currentPrem=_at.type==='CE'?(window._qtStrikeATM.prem||vPrem):(window._qtStrikeATM.prem||vPrem);
+    }
+  }
   
   // Only voice if signal actually changed from last render
   // BUT: Also fire on render #2 if already in ENTRY state (page opened into active trade)
@@ -3582,6 +3960,8 @@ _renderQuickTrade=function(d,sym){
     var reasonFS=confFS+'% confidence. '+slFS+' strike.';
     window._voiceAlert(currentSignal,sym,vStrike,Math.round(vPrem),vBlast,{reason:reasonFS,target:vTarget,sl:vSL});
     console.log('[VOICE] Failsafe fired for '+sym+' '+currentSignal);
+    // Also check for signal reversal against active trade
+    window._checkSignalReversal(currentSignal,sym);
   }
   if(currentSignal!=='ENTRY_CE'&&currentSignal!=='ENTRY_PE')window._voiceHasFiredEntry=false;
   
@@ -3632,6 +4012,8 @@ _renderQuickTrade=function(d,sym){
       }
     }
   }
+  // Check signal reversal on every render (not just transitions)
+  window._checkSignalReversal(currentSignal,sym);
   window._prevBlastState=vBlast;
 };
 
@@ -3661,6 +4043,203 @@ _renderOptionsEngine=function(d,sym){
 if(window.speechSynthesis)window.speechSynthesis.onvoiceschanged=function(){window.speechSynthesis.getVoices()};
 
 console.log('[VOICE+PERFORMANCE] ✅ Voice alerts + Dashboard + Live tracker loaded');
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 🔊 ACTIVE TRADE VOICE MONITOR — speaks at every important P&L milestone
+// Runs every 15s when a trade is active. Announces hold/exit/partial/stop.
+// Works even when user is on another tab (speechSynthesis works in background)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+window._tradeVoiceMonitor=null;
+window._lastVoicePnlBand='NONE'; // tracks which P&L band we last announced
+window._lastVoiceMonitorTime=0;
+window._tradeVoiceCount=0; // how many voice updates this trade
+
+window._startTradeVoiceMonitor=function(){
+  if(window._tradeVoiceMonitor)clearInterval(window._tradeVoiceMonitor);
+  window._lastVoicePnlBand='ENTRY';
+  window._tradeVoiceCount=0;
+  window._lastVoiceMonitorTime=Date.now();
+  
+  window._tradeVoiceMonitor=setInterval(function(){
+    var t=window._activeTrade;
+    if(!t||!t.entryPrem||!window._voiceEnabled)return;
+    
+    var now=Date.now();
+    var elapsed=Math.round((now-t.entryTime)/60000); // minutes
+    var S=t.region==='US'?'dollars':'rupees';
+    var currentPrem=t.currentPrem||t.entryPrem;
+    var pctChange=Math.round((currentPrem-t.entryPrem)/Math.max(t.entryPrem,1)*100);
+    var pnl=Math.round((currentPrem-t.entryPrem)*(t.lots||1)*(t.lotSize||1));
+    var band='HOLD';
+    
+    // Determine P&L band
+    if(pctChange>=40)band='FULL_TARGET';
+    else if(pctChange>=25)band='PARTIAL_TARGET';
+    else if(pctChange>=15)band='PROFIT_GOOD';
+    else if(pctChange>=5)band='PROFIT_SMALL';
+    else if(pctChange>=-5)band='BREAKEVEN';
+    else if(pctChange>=-15)band='LOSS_SMALL';
+    else if(pctChange>=-20)band='STOP_ZONE';
+    else band='STOP_HIT';
+    
+    // Only speak if band changed from last announcement
+    if(band===window._lastVoicePnlBand)return;
+    
+    var prevBand=window._lastVoicePnlBand;
+    window._lastVoicePnlBand=band;
+    window._tradeVoiceCount++;
+    window._lastVoiceMonitorTime=now;
+    
+    var msg='';
+    
+    if(band==='FULL_TARGET'){
+      window._alertTone('PROFIT');
+      msg='Target reached! Your option is up '+pctChange+' percent. Profit is '+Math.abs(pnl)+' '+S+'. Close your full position now. Great trade!';
+      window._speak(msg,true);
+      // Repeat this one 
+      setTimeout(function(){window._speak('Reminder — close your trade now. Target hit. Do not get greedy.',true)},8000);
+    }
+    else if(band==='PARTIAL_TARGET'){
+      window._alertTone('PROFIT');
+      msg='Good news! Premium is up '+pctChange+' percent. You are making '+Math.abs(pnl)+' '+S+'. Sell half your position now to lock in profit. Let the other half run with a trailing stop.';
+      window._speak(msg,true);
+    }
+    else if(band==='PROFIT_GOOD'&&prevBand==='PARTIAL_TARGET'){
+      // Profit dropping from partial target zone
+      msg='Heads up — premium dropping back. Now up only '+pctChange+' percent. If you did not book partial profit yet, do it now before it drops more.';
+      window._speak(msg,true);
+    }
+    else if(band==='PROFIT_GOOD'&&(prevBand==='BREAKEVEN'||prevBand==='PROFIT_SMALL')){
+      msg='Your trade is going well. Up '+pctChange+' percent, profit '+Math.abs(pnl)+' '+S+'. Keep holding. Target is 25 percent. Move your stop loss to entry price to make this a risk-free trade.';
+      window._speak(msg,false);
+    }
+    else if(band==='PROFIT_SMALL'&&prevBand==='BREAKEVEN'){
+      msg='Trade is moving in your favor. Up '+pctChange+' percent so far. Keep holding. Patience pays.';
+      window._speak(msg,false);
+    }
+    else if(band==='BREAKEVEN'&&(prevBand==='PROFIT_SMALL'||prevBand==='PROFIT_GOOD')){
+      msg='Caution — profit erasing. Premium is back near your entry price. If you are nervous, exit at breakeven. No shame in a flat trade.';
+      window._speak(msg,false);
+    }
+    else if(band==='BREAKEVEN'&&(prevBand==='LOSS_SMALL')){
+      msg='Good recovery! Price is back near your entry. You are close to breakeven now.';
+      window._speak(msg,false);
+    }
+    else if(band==='LOSS_SMALL'&&prevBand==='BREAKEVEN'){
+      msg='Trade is going against you. Down '+Math.abs(pctChange)+' percent, loss '+Math.abs(pnl)+' '+S+'. Stop loss is at minus 20 percent. Hold your nerve but be ready to exit.';
+      window._speak(msg,false);
+    }
+    else if(band==='STOP_ZONE'){
+      window._alertTone('WARN');
+      msg='Warning! Getting close to stop loss. Down '+Math.abs(pctChange)+' percent. Loss is '+Math.abs(pnl)+' '+S+'. If premium drops 5 more percent, you must exit. Get your finger on the sell button.';
+      window._speak(msg,true);
+      setTimeout(function(){window._speak('Reminder — stop loss zone. Be ready to exit immediately.',true)},6000);
+    }
+    else if(band==='STOP_HIT'){
+      window._alertTone('STOP');
+      msg='Stop loss hit! Down '+Math.abs(pctChange)+' percent. Exit now! Sell everything immediately. Loss is '+Math.abs(pnl)+' '+S+'. Do not hold hoping it will come back — that makes losses bigger.';
+      window._speak(msg,true);
+      setTimeout(function(){window._speak('Exit your trade now. Stop loss hit. Do not wait.',true)},5000);
+      setTimeout(function(){window._speak('Final reminder — close your position. The trade is over.',true)},12000);
+    }
+    
+    // Also: time-based alerts for expiry day
+    if(t.isExpiry&&elapsed>0&&elapsed%5===0&&band!=='STOP_HIT'&&band!=='FULL_TARGET'){
+      setTimeout(function(){
+        window._speak('You have been in this trade for '+elapsed+' minutes. On expiry day, every minute costs you money in time decay. '+(pctChange>10?'You are in profit — consider exiting.':'Keep watching closely.'),false);
+      },2000);
+    }
+    
+    console.log('[TRADE MONITOR] Band: '+prevBand+' → '+band+' | P&L: '+pctChange+'% | '+pnl+' '+S);
+    
+  },15000); // Check every 15 seconds
+  
+  console.log('[TRADE MONITOR] ✅ Started — monitoring every 15s');
+};
+
+window._stopTradeVoiceMonitor=function(){
+  if(window._tradeVoiceMonitor){
+    clearInterval(window._tradeVoiceMonitor);
+    window._tradeVoiceMonitor=null;
+    window._lastVoicePnlBand='NONE';
+    console.log('[TRADE MONITOR] ⏹ Stopped');
+  }
+};
+
+// Auto-start monitor when trade becomes active
+var _origActiveTradeSetter=Object.getOwnPropertyDescriptor(window,'_activeTrade');
+window._activeTradeValue=window._activeTrade||null;
+try{
+  Object.defineProperty(window,'_activeTrade',{
+    get:function(){return window._activeTradeValue},
+    set:function(v){
+      var hadTrade=!!window._activeTradeValue;
+      window._activeTradeValue=v;
+      if(v&&!hadTrade){
+        // Trade just started
+        window._startTradeVoiceMonitor();
+        console.log('[TRADE MONITOR] Trade detected — auto-started');
+      }else if(!v&&hadTrade){
+        // Trade just ended
+        window._stopTradeVoiceMonitor();
+      }
+    },
+    configurable:true
+  });
+}catch(e){
+  // Fallback: just start monitor and check periodically
+  console.log('[TRADE MONITOR] Property setter failed, using fallback polling');
+  setInterval(function(){
+    if(window._activeTradeValue&&!window._tradeVoiceMonitor)window._startTradeVoiceMonitor();
+    else if(!window._activeTradeValue&&window._tradeVoiceMonitor)window._stopTradeVoiceMonitor();
+  },5000);
+}
+
+// ═══ SIGNAL REVERSAL VOICE — when signal flips while in a trade ═══
+// This is the critical "EXIT NOW" voice that fires even if user is on another tab
+window._prevTradeSignal=null;
+window._checkSignalReversal=function(currentSignal,sym){
+  var t=window._activeTrade;
+  if(!t)return;
+  
+  // User entered a CE trade but signal flipped to bearish
+  if(t.type==='CE'&&(currentSignal==='ENTRY_PE'||currentSignal==='NO_TRADE')){
+    if(window._prevTradeSignal!=='REVERSED'){
+      window._prevTradeSignal='REVERSED';
+      window._alertTone('EXIT');
+      var msg='Alert! Signal has reversed! You are holding a Call but the market is now turning '+(currentSignal==='ENTRY_PE'?'bearish':'neutral')+'. ';
+      var currentPrem=t.currentPrem||t.entryPrem;
+      var pct=Math.round((currentPrem-t.entryPrem)/Math.max(t.entryPrem,1)*100);
+      if(pct>0)msg+='You still have '+pct+' percent profit. Exit now to keep your gains.';
+      else msg+='You are down '+Math.abs(pct)+' percent. Exit now to limit your loss.';
+      msg+=' Do not fight the market.';
+      window._speak(msg,true);
+      setTimeout(function(){window._speak('Signal reversed. Exit your Call position now.',true)},7000);
+    }
+  }
+  // User entered a PE trade but signal flipped to bullish  
+  else if(t.type==='PE'&&(currentSignal==='ENTRY_CE'||currentSignal==='NO_TRADE')){
+    if(window._prevTradeSignal!=='REVERSED'){
+      window._prevTradeSignal='REVERSED';
+      var msg2='Alert! Signal has reversed! You are holding a Put but the market is now turning '+(currentSignal==='ENTRY_CE'?'bullish':'neutral')+'. ';
+      var currentPrem2=t.currentPrem||t.entryPrem;
+      var pct2=Math.round((currentPrem2-t.entryPrem)/Math.max(t.entryPrem,1)*100);
+      if(pct2>0)msg2+='You still have '+pct2+' percent profit. Exit now to keep your gains.';
+      else msg2+='You are down '+Math.abs(pct2)+' percent. Exit now to limit your loss.';
+      msg2+=' Do not fight the market.';
+      window._speak(msg2,true);
+      setTimeout(function(){window._speak('Signal reversed. Exit your Put position now.',true)},7000);
+    }
+  }
+  // Signal re-confirms trade direction — clear reversal flag
+  else if((t.type==='CE'&&currentSignal==='ENTRY_CE')||(t.type==='PE'&&currentSignal==='ENTRY_PE')){
+    if(window._prevTradeSignal==='REVERSED'){
+      window._prevTradeSignal=null;
+      window._speak('Good news — signal is back in your favor. Your '+t.type+' trade is confirmed again. Hold your position.',false);
+    }
+  }
+};
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // 🧠 SMART COACHING + 🎮 GAMIFICATION + 🤖 AUTO MODE
@@ -4729,12 +5308,12 @@ console.log('[OPTIONS NAV] ✅ Region → Category → Ticker navigator loaded')
 // 🔄 TRADE LIFECYCLE ENGINE — Tracks active trade, monitors premium, timed exits
 // ═══════════════════════════════════════════════════════════════════════════════
 
-window._activeTrade=null; // {sym,type,strike,entryPrem,entryTime,lots,lotSize,isGamma,isExpiry,region}
+window._activeTradeValue=null; // {sym,type,strike,entryPrem,entryTime,lots,lotSize,isGamma,isExpiry,region}
 window._tradeTimerInterval=null;
 
 // ─── START TRADE ───
 window._startTrade=function(sym,type,strike,prem,lots,lotSize,isGamma,isExpiry,region){
-  window._activeTrade={
+  window._activeTradeValue={
     sym:sym,type:type,strike:strike,entryPrem:prem,entryTime:Date.now(),
     lots:lots,lotSize:lotSize,isGamma:!!isGamma,isExpiry:!!isExpiry,region:region||'IN',
     target25:Math.round(prem*1.25*100)/100,
@@ -4811,7 +5390,7 @@ window._endTrade=function(exitPrem,won){
     window._voiceAlert('STOP');
   }
   
-  window._activeTrade=null;
+  window._activeTradeValue=null; window._stopTradeVoiceMonitor();
   console.log('[TRADE] 🏁 Ended: '+(won?'WIN':'LOSS'));
 };
 
