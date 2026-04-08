@@ -3154,6 +3154,17 @@ function _renderQuickTrade(d,sym){
   var smartMoney=smartParts.join(' ');
   
   // Store on window
+  // Store scoring vars for scenario engine (wrapper runs after this function)
+  window._qtRangePct=rangePct;window._qtVwapDist=vwapDist;window._qtAboveVwap=aboveVwap;
+  window._qtDayHigh=dayHigh;window._qtDayLow=dayLow;window._qtSpot=spot;
+  window._qtDirection=direction;window._qtMomUp=momUp;window._qtMomDn=momDn;
+  window._qtVolRatio=volRatio8;window._qtHasOI=hasOI;window._qtCallWriting=callWriting;
+  window._qtPutWriting=putWriting;window._qtOiConfirms=oiConfirms;window._qtPcr8=pcr8;
+  window._qtInstRes=_instRes;window._qtInstSupp=_instSupp;window._qtInstMid=_instMidpoint;
+  window._qtVolumeScore=volumeScore;window._qtMomBars=momBars;window._qtHasVolData=hasVolData;window._qtPriceAction=priceActionScore;
+  window._qtSpotFmt=_spotFmt;window._qtDhFmt=_dhFmt;window._qtDlFmt=_dlFmt;
+  window._qtRangePctFmt=_rangePctFmt;window._qtVwapFmt=_vwapFmt;
+  window._qtS=S;window._qtGex=gex||{};window._qtMaxPain=maxPain;
   window._qtEntryStrike=entryStrike7;window._qtEntryPrem=entryPrem7;
   window._qtFinalBias=finalBias;window._qtConfidence=confidence;window._qtWhyReasons=whyReasons;
   window._qtGammaBlast=qtGammaBlast;window._qtIsExpiry=qtIsExpiry7;window._qtFallback=isFallback;
@@ -3975,6 +3986,39 @@ _renderQuickTrade=function(d,sym){
   if(currentSignal!=='ENTRY_CE'&&currentSignal!=='ENTRY_PE')window._voiceHasFiredEntry=false;
   
   // ─── INSTITUTIONAL VOICE SCENARIO ENGINE (runs every refresh) ───
+  // Read scoring data from window (stored by _renderQuickTrade)
+  var rangePct=window._qtRangePct||0;
+  var vwapDist=window._qtVwapDist||0;
+  var aboveVwap=window._qtAboveVwap||false;
+  var dayHigh=window._qtDayHigh||0;
+  var dayLow=window._qtDayLow||0;
+  var spot=window._qtSpot||0;
+  var direction=window._qtDirection||'NONE';
+  var momUp=window._qtMomUp||0;
+  var momDn=window._qtMomDn||0;
+  var volRatio8=window._qtVolRatio||0;
+  var hasOI=window._qtHasOI||false;
+  var callWriting=window._qtCallWriting||0;
+  var putWriting=window._qtPutWriting||0;
+  var oiConfirms=window._qtOiConfirms||false;
+  var pcr8=window._qtPcr8||0;
+  var gex=window._qtGex||{};
+  var maxPain=window._qtMaxPain||0;
+  var _instRes=window._qtInstRes||0;
+  var _instSupp=window._qtInstSupp||0;
+  var _instMidpoint=window._qtInstMid||0;
+  var volumeScore=window._qtVolumeScore||0;
+  var momBars=window._qtMomBars||[];
+  var priceActionScore=window._qtPriceAction||0;
+  var hasVolData=window._qtHasVolData||false;
+  var _spotFmt=window._qtSpotFmt||'';
+  var _dhFmt=window._qtDhFmt||'';
+  var _dlFmt=window._qtDlFmt||'';
+  var _rangePctFmt=window._qtRangePctFmt||'';
+  var _vwapFmt=window._qtVwapFmt||'';
+  var S=window._qtS||'₹';
+  var vBias=window._qtFinalBias||'';
+
   // Tracks 25 market microstructure states. Voice fires only on STATE TRANSITIONS.
   
   if(!window._scenarioState)window._scenarioState={};
