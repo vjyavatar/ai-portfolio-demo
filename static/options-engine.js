@@ -4114,7 +4114,7 @@ _renderQuickTrade=function(d,sym){
   var _s1_tightRange=rangePct<0.3&&vwapDist<0.15;
   var _s1_gammaBuilding=gex&&gex.regime==='NEGATIVE';
   if(_s1_tightRange&&window._renderCount>3){
-    _scenarioVoice('S1','Market is coiling — price range very tight at '+_rangePctFmt+' near VWAP. A breakout is building. Get ready.',false);
+    _scenarioVoice('S1','Market is coiling — price range very tight at '+_rangePctFmt+' near VWAP. A breakout is building. Get your order ready — do not enter yet, wait for the break.',false);
   }else{_scenarioClear('S1')}
   
   // ═══ S2: LIQUIDITY BUILD-UP ═══
@@ -4144,7 +4144,7 @@ _renderQuickTrade=function(d,sym){
   var _s7_wasBullish=_ss._prevDirection==='BULLISH';
   var _s7_nearVwap=aboveVwap&&vwapDist<0.2;
   if(_s7_wasBullish&&_s7_nearVwap&&direction==='BULLISH'&&priceActionScore<60&&window._renderCount>5){
-    _scenarioVoice('S7','Pullback into VWAP support — price dipped to '+_spotFmt+' near VWAP '+_vwapFmt+'. Good dip-buy opportunity if volume picks up.',false);
+    _scenarioVoice('S7','Pullback into VWAP support — price dipped to '+_spotFmt+' near VWAP '+_vwapFmt+'. You can buy this dip if volume picks up. Set stop loss below '+_dlFmt+'.',false);
   }else{_scenarioClear('S7')}
   _ss._prevDirection=direction;
   
@@ -4169,7 +4169,7 @@ _renderQuickTrade=function(d,sym){
   var _s11_wasNearHigh=_ss._wasNearHigh||false;
   var _s11_nowBelow=spot<dayHigh*0.997;
   if(_s11_wasNearHigh&&_s11_nowBelow&&window._renderCount>4){
-    _scenarioVoice('S11','Rejection at resistance — price touched '+_dhFmt+' but fell back to '+_spotFmt+'. Bearish reversal possible. '+(hasOI?'Call OI wall at '+S+_instRes.toLocaleString()+' blocked the move.':''),true);
+    _scenarioVoice('S11','Rejection at resistance — price touched '+_dhFmt+' but fell back to '+_spotFmt+'. Do not buy calls here. If you are holding calls, exit now. '+(hasOI?'Call OI wall at '+S+_instRes.toLocaleString()+' blocked the move.':''),true);
   }else{_scenarioClear('S11')}
   _ss._wasNearHigh=_s3_nearHigh;
   
@@ -4185,7 +4185,7 @@ _renderQuickTrade=function(d,sym){
   var _s13_brokeHigh=_ss._brokeHigh||false;
   var _s13_nowBack=spot<dayHigh*0.998&&_s13_brokeHigh;
   if(_s13_nowBack&&volumeScore<50&&window._renderCount>4){
-    _scenarioVoice('S13','Fake breakout detected! Price broke above '+_dhFmt+' but fell back with low volume ('+volRatio8.toFixed(1)+'x). This is a bull trap — avoid long positions.',true);
+    _scenarioVoice('S13','Fake breakout detected! Price broke above '+_dhFmt+' but fell back with low volume ('+volRatio8.toFixed(1)+'x). This is a bull trap — do NOT buy. If you bought, exit immediately.',true);
   }else{_scenarioClear('S13')}
   if(spot>dayHigh*1.002)_ss._brokeHigh=true;
   if(spot<dayHigh*0.995)_ss._brokeHigh=false;
@@ -4194,14 +4194,14 @@ _renderQuickTrade=function(d,sym){
   var _s14_brokeLow=_ss._brokeLow||false;
   var _s14_nowBack=spot>dayLow*1.002&&_s14_brokeLow;
   if(_s14_nowBack&&window._renderCount>4){
-    _scenarioVoice('S14','Bear trap detected! Price broke below '+_dlFmt+' but reversed sharply to '+_spotFmt+'. Downside was fake — possible reversal to upside.',true);
+    _scenarioVoice('S14','Bear trap detected! Price broke below '+_dlFmt+' but reversed sharply to '+_spotFmt+'. Downside was fake. Do not sell. If you bought puts, exit now.',true);
   }else{_scenarioClear('S14')}
   if(spot<dayLow*0.998)_ss._brokeLow=true;
   if(spot>dayLow*1.005)_ss._brokeLow=false;
   
   // ═══ S15: LOW LIQUIDITY TRAP ═══
   if(hasVolData&&volRatio8<0.3&&window._renderCount>3){
-    _scenarioVoice('S15','Very low liquidity — volume only '+volRatio8.toFixed(1)+'x average. Any price move is unreliable. Avoid trading until volume picks up.',false);
+    _scenarioVoice('S15','Very low liquidity — volume only '+volRatio8.toFixed(1)+'x average. Any price move is unreliable. Do not place any trades. Wait for volume to come back above 1x.',false);
   }else{_scenarioClear('S15')}
   
   // ═══ S22: MIDDAY CHOP ═══
@@ -4210,7 +4210,7 @@ _renderQuickTrade=function(d,sym){
   var _etH22=_now22.getUTCHours()-4;
   var _isMidday=(vBias!=='US')?(_istH22>=12&&_istH22<=13):(_etH22>=11&&_etH22<=13);
   if(_isMidday&&rangePct<0.3&&volumeScore<50&&window._renderCount>5){
-    _scenarioVoice('S22','Midday chop zone — price flat ('+_rangePctFmt+' range), volume thin. This is the worst time to trade. Wait for 2 PM activity.',false);
+    _scenarioVoice('S22','Midday chop zone — price flat ('+_rangePctFmt+' range), volume thin. Do not trade now. Close your browser and come back after 2 PM when volume returns.',false);
   }else{_scenarioClear('S22')}
   
   // ═══ S23: POWER HOUR ═══
@@ -4268,12 +4268,12 @@ _renderQuickTrade=function(d,sym){
     
     // Price approaching resistance while holding call
     if(_at2.type==='CE'&&_instRes>0&&spot>_instRes*0.995){
-      _scenarioVoice('EARLY_EXIT_WALL','Price approaching call resistance wall at '+S+_instRes.toLocaleString()+'. You are holding a Call — this is where sellers step in. Consider booking profit.',true);
+      _scenarioVoice('EARLY_EXIT_WALL','Price approaching call resistance wall at '+S+_instRes.toLocaleString()+'. You are holding a Call — sellers will push price down here. Book your profit now before it reverses.',true);
     }else{_scenarioClear('EARLY_EXIT_WALL')}
     
     // Price approaching support while holding put
     if(_at2.type==='PE'&&_instSupp>0&&spot<_instSupp*1.005){
-      _scenarioVoice('EARLY_EXIT_SUPP','Price approaching put support wall at '+S+_instSupp.toLocaleString()+'. You are holding a Put — this is where buyers step in. Consider booking profit.',true);
+      _scenarioVoice('EARLY_EXIT_SUPP','Price approaching put support wall at '+S+_instSupp.toLocaleString()+'. You are holding a Put — buyers will push price up here. Book your profit now before it bounces.',true);
     }else{_scenarioClear('EARLY_EXIT_SUPP')}
     
     // ═══ VWAP LOST — price crosses VWAP against your trade ═══
@@ -4288,9 +4288,9 @@ _renderQuickTrade=function(d,sym){
     var _eePrevCOI=_ss._prevCallOI||callWriting;
     var _eePrevPOI=_ss._prevPutOI||putWriting;
     if(_at2.type==='CE'&&callWriting>_eePrevCOI*1.15&&hasOI){
-      _scenarioVoice('EARLY_EXIT_OI','Alert — call open interest just jumped '+Math.round((callWriting/_eePrevCOI-1)*100)+'%. New call writers are selling against your position. Resistance building — consider exit.',true);
+      _scenarioVoice('EARLY_EXIT_OI','Alert — call open interest just jumped '+Math.round((callWriting/_eePrevCOI-1)*100)+'%. Big traders are betting against your call position. Exit now or tighten your stop loss immediately.',true);
     }else if(_at2.type==='PE'&&putWriting>_eePrevPOI*1.15&&hasOI){
-      _scenarioVoice('EARLY_EXIT_OI','Alert — put open interest just jumped '+Math.round((putWriting/_eePrevPOI-1)*100)+'%. New put writers forming support against your position. Consider exit.',true);
+      _scenarioVoice('EARLY_EXIT_OI','Alert — put open interest just jumped '+Math.round((putWriting/_eePrevPOI-1)*100)+'%. Big traders are forming a floor under the price. Your put will lose value. Exit now.',true);
     }else{_scenarioClear('EARLY_EXIT_OI')}
     _ss._prevCallOI=callWriting;_ss._prevPutOI=putWriting;
     
@@ -4307,8 +4307,53 @@ _renderQuickTrade=function(d,sym){
     // ═══ TIME-BASED EXHAUSTION — trade too long without progress ═══
     var _eeElapsed=Math.round((Date.now()-_at2.entryTime)/60000);
     if(_eeElapsed>=15&&Math.abs(_eePct)<10){
-      _scenarioVoice('EARLY_EXIT_TIME','You have been in this trade for '+_eeElapsed+' minutes with only '+_eePct+'% movement. The move may be over. On options, time decay is eating your premium every minute. Consider exiting.',false);
+      _scenarioVoice('EARLY_EXIT_TIME','You have been in this trade for '+_eeElapsed+' minutes with only '+_eePct+'% movement. The move is over. Exit now — on options, every minute costs you money. Do not wait hoping for a miracle.',false);
     }else{_scenarioClear('EARLY_EXIT_TIME')}
+    
+    // ═══ S-NEW1: PARTIAL PROFIT BOOKING — T1 hit, book 50% ═══
+    if(_eePct>=20&&_eePct<35){
+      _scenarioVoice('PARTIAL_BOOK','You are up '+_eePct+'% — sell half your position RIGHT NOW. Do it immediately. Then move your stop loss to your entry price. The remaining half is now a free trade — if it goes higher you win more, if it falls you break even.',true);
+    }else{_scenarioClear('PARTIAL_BOOK')}
+    
+    // ═══ S-NEW2: RUNNER MANAGEMENT — hold + trail after partial ═══
+    if(_eePct>=35&&momentumScore>=50&&volumeScore>=40){
+      _scenarioVoice('RUNNER_HOLD','Strong runner — you are up '+_eePct+'% and momentum is still alive. Hold your remaining position. Trail your stop loss to '+Math.round(_at2.entryPrem*1.15)+' (lock in 15% minimum profit). Let the winner run.',false);
+    }else if(_eePct>=25&&(momentumScore<40||volumeScore<35)){
+      _scenarioVoice('RUNNER_EXIT','Runner losing steam — up '+_eePct+'% but momentum dropping. Close remaining position now before profits shrink.',true);
+    }else{_scenarioClear('RUNNER_HOLD');_scenarioClear('RUNNER_EXIT')}
+    
+    // ═══ S-NEW3: TRAILING STOP ACTIVATION — move SL to breakeven ═══
+    if(_eePct>=12&&_eePct<20&&!_ss._trailAnnounced){
+      _ss._trailAnnounced=true;
+      _scenarioVoice('TRAIL_ACTIVATE','You are up '+_eePct+'%. Move your stop loss to entry price '+S+Math.round(_at2.entryPrem)+'. This makes your trade risk-free. If price falls back, you lose nothing. If it keeps going, you win big.',true);
+    }
+    if(_eePct<5){_ss._trailAnnounced=false;_scenarioClear('TRAIL_ACTIVATE')}
+    
+    // ═══ S-NEW4: ADD POSITION / PYRAMIDING ═══
+    // Only if: in profit + new breakout + volume confirms
+    var _addPosOk=_eePct>=10&&_eePct<=25&&priceActionScore>=70&&volRatio8>=1.3;
+    if(_addPosOk&&!_ss._addAnnounced){
+      _ss._addAnnounced=true;
+      _scenarioVoice('ADD_POSITION','Price just broke another level with '+volRatio8.toFixed(1)+'x volume and you are already up '+_eePct+'%. You can buy more — but only half of your original size. Move your stop loss to entry price first so the whole trade is safe.',true);
+    }
+    if(_eePct<5||priceActionScore<50){_ss._addAnnounced=false;_scenarioClear('ADD_POSITION')}
+    
+    // ═══ S-NEW5: ABSORPTION DETECTION — big volume, price flat ═══
+    var _absRange=Math.abs(dayHigh-dayLow)/Math.max(spot,1)*100;
+    if(volRatio8>2.0&&_absRange<0.2&&hasOI){
+      var _absBias=callWriting>putWriting*1.2?'distribution (selling)':'accumulation (buying)';
+      _scenarioVoice('ABSORPTION','Big players are active — volume is '+volRatio8.toFixed(1)+'x normal but price barely moved ('+_absRange.toFixed(2)+'% range). Someone big is quietly '+_absBias+'. A big move is likely coming soon. '+((_eePct>0)?'Hold your position — this is bullish for your trade.':'Watch for the breakout direction.'),true);
+    }else{_scenarioClear('ABSORPTION')}
+    
+    // ═══ S-NEW9: OVERTRADING PREVENTION ═══
+    var _tradeLog=window._tradeLog||[];
+    var _todayTrades=_tradeLog.length;
+    var _todayLosses=_tradeLog.filter(function(t2){return !t2.win}).length;
+    if(_todayTrades>=3&&_todayLosses>=2){
+      _scenarioVoice('OVERTRADE','You have taken '+_todayTrades+' trades today with '+_todayLosses+' losses. Professional traders stop after 2 losses. Your judgment is affected by loss aversion. Step away. Come back tomorrow with fresh eyes.',true);
+    }else if(_todayTrades>=5){
+      _scenarioVoice('OVERTRADE_WARN',''+_todayTrades+' trades today — that is a lot. Quality over quantity. Only take Grade A setups from here. Every extra trade increases risk of giving back profits.',false);
+    }else{_scenarioClear('OVERTRADE');_scenarioClear('OVERTRADE_WARN')}
   }
   
   // ═══ S25: DIVERGENCE WARNING ═══
