@@ -3093,12 +3093,18 @@ function _renderQuickTrade(d,sym){
     h+='<div style="text-align:center;padding:20px;border-radius:16px;background:'+(finalBias==='BULLISH'?'#059669':'#ef4444')+'15;border:3px solid '+(finalBias==='BULLISH'?'#059669':'#ef4444')+'40;margin-bottom:12px">';
     h+='<div style="font-size:32px;font-weight:900;color:'+(finalBias==='BULLISH'?'#059669':'#ef4444')+';font-family:Sora">'+actionText+'</div>';
     h+='<div style="font-size:18px;font-weight:900;color:'+directionColor+';font-family:Sora;margin-top:4px">'+directionLabel+'</div>';
+    // ALWAYS show entry details — spot + strike + premium
+    h+='<div style="margin-top:10px;display:flex;justify-content:center;gap:16px;flex-wrap:wrap">';
+    h+='<div><div style="font-size:8px;color:#64748b">SPOT</div><div style="font-size:16px;font-weight:900;color:#e2e8f0;font-family:JetBrains Mono">'+S+(isUS?spot.toLocaleString('en-US'):spot.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN'))+'</div></div>';
     if(isOptions){
-      h+='<div style="font-size:14px;color:#e2e8f0;font-weight:800;margin-top:8px"><span style="padding:2px 6px;border-radius:4px;background:#3b82f620;color:#3b82f6;font-size:9px;font-weight:800">'+strikeLabel+'</span> '+S+entryStrike7+' '+entryType7+' @ '+S+entryPrem7.toFixed(isUS&&entryPrem7<10?2:0)+'</div>';
-      h+='<div style="font-size:8px;color:#64748b;margin-top:2px">'+strikeReason+'</div>';
+      h+='<div><div style="font-size:8px;color:#64748b">STRIKE <span style="padding:1px 4px;border-radius:3px;background:#3b82f620;color:#3b82f6;font-size:7px">'+strikeLabel+'</span></div><div style="font-size:16px;font-weight:900;color:#f59e0b;font-family:JetBrains Mono">'+S+entryStrike7+' '+entryType7+'</div></div>';
+      h+='<div><div style="font-size:8px;color:#64748b">PREMIUM</div><div style="font-size:16px;font-weight:900;color:#e2e8f0;font-family:JetBrains Mono">'+S+entryPrem7.toFixed(isUS&&entryPrem7<10?2:0)+'</div></div>';
+    }else{
+      h+='<div><div style="font-size:8px;color:#64748b">ENTRY ABOVE</div><div style="font-size:16px;font-weight:900;color:#f59e0b;font-family:JetBrains Mono">'+S+(isUS?entryLevel.toLocaleString('en-US'):entryLevel.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN'))+'</div></div>';
     }
+    h+='</div>';
+    if(isOptions)h+='<div style="font-size:9px;color:#64748b;margin-top:4px">'+strikeReason+' · Lot: '+c7.lot+' · Qty: '+qtLots+(qtLots!=='1'?' lots':' lot')+'</div>';
     h+='<div style="font-size:12px;color:#94a3b8;margin-top:6px">Confidence: <strong style="color:'+(confidence>=70?'#059669':'#d97706')+'">'+confidence+'%</strong> · Grade: <strong>'+grade+'</strong> ('+gradeLabel+') · Trap: '+trapRisk+'</div>';
-    if(isOptions)h+='<div style="font-size:10px;color:#94a3b8;margin-top:2px">Lot: '+c7.lot+' · Qty: '+qtLots+(qtLots!=='1'?' lots':' lot')+'</div>';
     if(qtGammaBlast)h+='<div style="margin-top:6px;padding:4px 14px;border-radius:8px;background:#f59e0b15;display:inline-block;font-size:10px;color:#f59e0b;font-weight:800">⚡ GAMMA BLAST — Bigger position!</div>';
     h+='</div>';
     
@@ -3531,8 +3537,20 @@ _renderQuickTrade=function(d,sym){
   var vSL=Math.round(vPrem*0.8);
   
   // Only voice if signal actually changed from last render
-  // Skip first render (NONE→anything) — don't announce on initial load
-  if(currentSignal!==window._lastQuickSignal&&window._lastQuickSignal!=='NONE'){
+  // BUT: Also fire on render #2 if already in ENTRY state (page opened into active trade)
+  var shouldVoice=false;
+  var isTransition=currentSignal!==window._lastQuickSignal&&window._lastQuickSignal!=='NONE';
+  var isFirstEntry=window._lastQuickSignal==='NONE'&&(currentSignal==='ENTRY_CE'||currentSignal==='ENTRY_PE');
+  
+  if(isTransition){
+    shouldVoice=true;
+  }else if(isFirstEntry){
+    // Page loaded directly into ENTER NOW — voice on render #2 (after warmup)
+    window._lastQuickSignal=currentSignal;
+    if(window._renderCount>=2)shouldVoice=true;
+  }
+  
+  if(shouldVoice){
     var prevSig=window._lastQuickSignal;
     window._lastQuickSignal=currentSignal;
     if(currentSignal==='ENTRY_CE'){
@@ -3545,8 +3563,7 @@ _renderQuickTrade=function(d,sym){
       var reason7b=conf7b>=70?conf7b+'% confidence. '+sl7b+' strike — all signals confirm downside':sl7b+' strike — price below VWAP with selling pressure';
       window._voiceAlert('ENTRY_PE',sym,vStrike,Math.round(vPrem),vBlast,{reason:reason7b,target:vTarget,sl:vSL});
     }
-    else if(currentSignal==='NO_TRADE')window._voiceAlert('WAIT');
-    // Exit alerts: if signal changed FROM buy TO wait/no-trade
+    else if(currentSignal==='NO_TRADE'&&prevSig!=='NONE')window._voiceAlert('WAIT');
     else if((prevSig==='ENTRY_CE'||prevSig==='ENTRY_PE')&&(currentSignal==='WAITING'||currentSignal==='NO_TRADE')){
       if(vBlast||window._lastGammaBlastState)window._voiceAlert('GAMMA_FADING');
       else if(vExpiry)window._voiceAlert('THETA_EXIT');
@@ -3556,6 +3573,17 @@ _renderQuickTrade=function(d,sym){
     window._lastQuickSignal=currentSignal;
   }
   window._lastGammaBlastState=vBlast;
+  
+  // VOICE FAILSAFE: If ENTER NOW and voice hasn't spoken yet, force it
+  if(!window._voiceHasFiredEntry&&(currentSignal==='ENTRY_CE'||currentSignal==='ENTRY_PE')&&(window._renderCount||0)>=2){
+    window._voiceHasFiredEntry=true;
+    var confFS=window._qtConfidence||0;var slFS=window._qtStrikeLabel||'ATM';
+    var dirFS=currentSignal==='ENTRY_CE'?'up':'down';
+    var reasonFS=confFS+'% confidence. '+slFS+' strike.';
+    window._voiceAlert(currentSignal,sym,vStrike,Math.round(vPrem),vBlast,{reason:reasonFS,target:vTarget,sl:vSL});
+    console.log('[VOICE] Failsafe fired for '+sym+' '+currentSignal);
+  }
+  if(currentSignal!=='ENTRY_CE'&&currentSignal!=='ENTRY_PE')window._voiceHasFiredEntry=false;
   
   // ─── PERIODIC MARKET COMMENTARY (while WAITING — every 3 min max) ───
   window._renderCount=(window._renderCount||0)+1;
