@@ -2437,6 +2437,24 @@ def get_live_stock_data(company_name: str) -> dict:
         # For direct/scrape sources, margins are already raw decimals
         is_direct = data_source != 'yfinance'
         
+        # ═══ SAFETY NET: If ALL sources failed, return error ═══
+        if info is None or current_price is None:
+            # Try stale cache as absolute last resort
+            if cache_key in stock_data_cache:
+                stale_data, stale_time = stock_data_cache[cache_key]
+                stale_age = (current_time - stale_time).total_seconds() / 60
+                print(f"🆘 ALL SOURCES FAILED — returning STALE cache ({stale_age:.0f}m old)")
+                return stale_data
+            return {"error": f"Could not fetch data for {ticker_symbol} from any source", "success": False}
+        
+        # ═══ SAFETY NET: Ensure critical numeric fields are never None ═══
+        if current_price is None: current_price = 0
+        if previous_close is None: previous_close = current_price
+        if week52_high is None: week52_high = current_price * 1.1 if current_price > 0 else 0
+        if week52_low is None: week52_low = current_price * 0.9 if current_price > 0 else 0
+        if info is None: info = {}
+
+        
         live_data = {
             "success": True,
             "ticker": ticker_symbol,
@@ -2450,8 +2468,8 @@ def get_live_stock_data(company_name: str) -> dict:
             "forward_pe": safe_get('forwardPE') or 'N/A',
             "pb_ratio": safe_get('priceToBook') or 'N/A',
             "dividend_yield": round(safe_get('dividendYield') * (100 if safe_get('dividendYield') < 1 else 1), 2) if safe_get('dividendYield') else 0,
-            "week52_high": round(week52_high, 2),
-            "week52_low": round(week52_low, 2),
+            "week52_high": round(week52_high or 0, 2),
+            "week52_low": round(week52_low or 0, 2),
             "beta": safe_get('beta') or 'N/A',
             "sector": info.get('sector', 'N/A'),
             "industry": info.get('industry', 'N/A'),
@@ -4582,10 +4600,10 @@ async def stock_quick(ticker: str = ""):
             "pb_ratio": round(sn('priceToBook'), 2) if sn('priceToBook') else 'N/A',
             "profit_margin": pm or 'N/A',
             "roe": roe_val or 'N/A',
-            "beta": round(sn('beta', 1), 2),
+            "beta": round(sn('beta', 1) or 1, 2),
             "dividend_yield": round(sn('dividendYield') * 100, 2) if sn('dividendYield') and sn('dividendYield') < 1 else round(sn('dividendYield'), 2) if sn('dividendYield') else 0,
-            "week52_high": round(sn('fiftyTwoWeekHigh'), 2),
-            "week52_low": round(sn('fiftyTwoWeekLow'), 2),
+            "week52_high": round(sn('fiftyTwoWeekHigh') or 0, 2),
+            "week52_low": round(sn('fiftyTwoWeekLow') or 0, 2),
             "sma_20": sma20,
             "sma_50": sma50,
             "sma_200": sma200,
@@ -4594,7 +4612,7 @@ async def stock_quick(ticker: str = ""):
             "earnings_growth": eg,
             "sector_avg_pe": sector_pe_map.get(sec, 20),
             "sector": sec,
-            "market_cap": int(sn('marketCap')) if sn('marketCap') > 1e6 else 0,
+            "market_cap": int(sn('marketCap')) if sn('marketCap') and sn('marketCap') > 1e6 else 0,
         }
     except Exception as e:
         return {"success": False, "error": f"Failed to fetch data for {ticker}: {str(e)[:100]}"}
@@ -11932,10 +11950,12 @@ Industry: {live_data['industry']}
         # ═══ DETERMINISTIC STOCK VERDICT ENGINE (server-side) ═══
         # This ensures AI always uses the same verdict for same data
         def _n(v):
+            """Safe numeric conversion: None, 'N/A', '' → 0"""
+            if v is None or v == 'N/A' or v == '':
+                return 0
             try:
-                f = float(v)
-                return f if v != 'N/A' else 0
-            except:
+                return float(str(v).replace(',', ''))
+            except (ValueError, TypeError):
                 return 0
         
         v_score = 0
@@ -12210,13 +12230,44 @@ Your job is to EXPLAIN why this verdict makes sense using the data, not to chang
             if iv.get('graham'): intrinsic_section += f"Graham Number: {currency_symbol}{iv['graham']:,.2f} ({iv['graham_upside']:+.1f}% vs current price)\n"
             if iv.get('dcf_simple'): intrinsic_section += f"DCF (Graham Growth): {currency_symbol}{iv['dcf_simple']:,.2f} ({iv['dcf_upside']:+.1f}% vs current price)\n"
             if iv.get('lynch'): intrinsic_section += f"Lynch Fair Value (PEG=1): {currency_symbol}{iv['lynch']:,.2f}\n"
-            if iv.get('earnings_yield'): intrinsic_section += f"Earnings Yield: {iv['earnings_yield']}% (premium vs 10Y bond: {iv['earnings_yield_premium']:+.2f}%)\n"
+            if iv.get('earnings_yield') and iv.get('earnings_yield_premium') is not None: intrinsic_section += f"Earnings Yield: {iv['earnings_yield']}% (premium vs 10Y bond: {iv['earnings_yield_premium']:+.2f}%)\n"
             if iv.get('book_value'): intrinsic_section += f"Book Value/Share: {currency_symbol}{iv['book_value']:,.2f}\n"
             intrinsic_section += "USE these intrinsic values in your Valuation Analysis section.\n═══ END INTRINSIC ═══"
         
         print(f"📊 Stock Verdict: {v_verdict} (score: {v_score:+d}, conviction: {v_conviction})")
         print(f"   Factors: {len(v_reasons)}")
 
+        
+        # ═══ SAFE PRE-COMPUTED VALUES for prompt (avoid None/N/A crashes) ═══
+        # Any live_data value could be None or 'N/A' if Yahoo fails
+        def _safe_num(val, default=0):
+            """Convert any value to float safely. 'N/A', None, '' all → default."""
+            if val is None or val == 'N/A' or val == '':
+                return default
+            try:
+                return float(str(val).replace(',', ''))
+            except (ValueError, TypeError):
+                return default
+        
+        _safe_w52_pct = 0
+        try:
+            _w52h = _safe_num(live_data.get('week52_high'))
+            _cprice = _safe_num(live_data.get('current_price'))
+            if _w52h > 0:
+                _safe_w52_pct = round((_cprice / _w52h) * 100)
+        except:
+            _safe_w52_pct = 0
+        
+        _safe_current_price_fmt = f"{currency_symbol}{_safe_num(live_data.get('current_price')):,.2f}"
+        
+        # Ensure all live_data values used with :<format> in the prompt are safe strings
+        # The prompt uses str(live_data['pe_ratio']) etc — 'N/A' is fine for str()
+        # But {live_data['current_price']:<10,.2f} would crash
+        # We pre-format anything that uses numeric format specs
+        _safe_pe = str(live_data.get('pe_ratio', 'N/A'))
+        _safe_fpe = str(live_data.get('forward_pe', 'N/A'))
+        _safe_pm = str(live_data.get('profit_margin', 'N/A'))
+        
         # CREATE CLAUDE PROMPT
         prompt = f"""Analyze {company} using the VERIFIED LIVE DATA below.
 
@@ -12316,7 +12367,7 @@ Give a clear 2-3 sentence verdict for each pillar, then an overall synthesis. Do
 ┌──────────────────────────────────────────────────────┐
 │ METRIC               LIVE VALUE     ASSESSMENT       │
 ├──────────────────────────────────────────────────────┤
-│ Current Price        {currency_symbol}{live_data['current_price']:<10,.2f}  [Today's price] │
+│ Current Price        {currency_symbol}{_safe_current_price_fmt:<10}  [Today's price] │
 │ P/E Ratio (F1)       {str(live_data['pe_ratio']):<13}  [vs industry]  │
 │ P/B Ratio (F2)       {str(live_data['pb_ratio']):<13}  [vs industry]  │
 │ Forward PE (F5)      {str(live_data.get('forward_pe','N/A')):<13}  [Growth signal] │
@@ -12373,7 +12424,7 @@ IMPORTANT: If quarterly revenue/earnings data is provided above, use REAL number
 [If NOT available, use these PROXY INDICATORS — always provide analysis:]
 - Forward PE vs Trailing PE: {live_data.get('forward_pe', 'N/A')} vs {live_data['pe_ratio']} → [If forward < trailing = earnings expected to GROW, if forward > trailing = earnings expected to SHRINK]
 - Profit Margin at {live_data['profit_margin']}%: [Above 15% = strong, 8-15% = moderate, below 8% = tight]
-- Price at {((live_data['current_price']/live_data['week52_high'])*100) if live_data['week52_high'] > 0 else 0:.0f}% of 52-week high → [Above 80% = upward momentum, 40-80% = neutral, below 40% = decline]
+- Price at {_safe_w52_pct}% of 52-week high → [Above 80% = upward momentum, 40-80% = neutral, below 40% = decline]
 - Verdict: [ACCELERATING 🟢 / STABLE 🟡 / DECELERATING 🔴]
 
 **YoY Structural Growth (Year-over-Year):**
