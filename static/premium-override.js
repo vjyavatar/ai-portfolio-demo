@@ -8350,6 +8350,8 @@ window._runL0WatchlistScan=function(){
 // ═══════════════════════════════════════════════════════════════
 
 window._exportSummaryPDF=function(){
+if(!window._isPdfUser)return;
+
   var d=window._lastInvestorData;
   if(!d){alert('Analyze a stock first');return}
   var S=d.csym||'$';var lv=d.levels||{};var biz=d.business||{};var moat=d.moat||{};

@@ -3974,7 +3974,159 @@ _renderQuickTrade=function(d,sym){
   }
   if(currentSignal!=='ENTRY_CE'&&currentSignal!=='ENTRY_PE')window._voiceHasFiredEntry=false;
   
-  // ─── PERIODIC MARKET COMMENTARY (while WAITING — every 3 min max) ───
+  // ─── INSTITUTIONAL VOICE SCENARIO ENGINE (runs every refresh) ───
+  // Tracks 25 market microstructure states. Voice fires only on STATE TRANSITIONS.
+  
+  if(!window._scenarioState)window._scenarioState={};
+  var _ss=window._scenarioState;
+  var _scenarioVoiceGap=Date.now()-(window._lastScenarioVoice||0);
+  var _canScenarioVoice=_scenarioVoiceGap>20000; // Min 20s between scenario voices (don't spam)
+  
+  // Helper: fire voice only if state changed AND enough time passed
+  function _scenarioVoice(id,msg,urgent){
+    if(_ss[id]===true)return; // Already announced this state
+    _ss[id]=true;
+    if(!_canScenarioVoice)return;
+    window._lastScenarioVoice=Date.now();
+    if(urgent)window._alertTone('WARN');
+    setTimeout(function(){window._speak(msg,urgent||false)},urgent?500:100);
+    console.log('[SCENARIO] '+id+': '+msg.substring(0,60));
+  }
+  function _scenarioClear(id){_ss[id]=false}
+  
+  // ═══ S1: RANGE COMPRESSION (Energy Build) ═══
+  var _s1_tightRange=rangePct<0.3&&vwapDist<0.15;
+  var _s1_gammaBuilding=gex&&gex.regime==='NEGATIVE';
+  if(_s1_tightRange&&window._renderCount>3){
+    _scenarioVoice('S1','Market is coiling — price range very tight at '+_rangePctFmt+' near VWAP. A breakout is building. Get ready.',false);
+  }else{_scenarioClear('S1')}
+  
+  // ═══ S2: LIQUIDITY BUILD-UP ═══
+  var _s2_oiBothSides=hasOI&&callWriting>0&&putWriting>0&&Math.abs(callWriting-putWriting)<callWriting*0.3;
+  var _s2_volRising=volRatio8>0.8&&volRatio8<1.5;
+  if(_s2_oiBothSides&&_s2_volRising&&window._renderCount>3){
+    _scenarioVoice('S2','Liquidity building — institutions adding positions on both sides. Call OI '+callWriting.toLocaleString()+', Put OI '+putWriting.toLocaleString()+'. Big move coming, direction unknown.',false);
+  }else{_scenarioClear('S2')}
+  
+  // ═══ S3: KEY LEVEL APPROACH ═══
+  var _s3_nearHigh=Math.abs(spot-dayHigh)/Math.max(spot,1)<0.002;
+  var _s3_nearLow=Math.abs(spot-dayLow)/Math.max(spot,1)<0.002;
+  var _s3_nearOIwall=(_instRes>0&&Math.abs(spot-_instRes)/Math.max(spot,1)<0.003)||(_instSupp>0&&Math.abs(spot-_instSupp)/Math.max(spot,1)<0.003);
+  if((_s3_nearHigh||_s3_nearLow||_s3_nearOIwall)&&window._renderCount>3){
+    var _s3_level=_s3_nearHigh?'day high '+_dhFmt:_s3_nearLow?'day low '+_dlFmt:_s3_nearOIwall?'OI wall at '+S+(_instRes>0&&Math.abs(spot-_instRes)<Math.abs(spot-_instSupp)?_instRes:_instSupp).toLocaleString():'key level';
+    _scenarioVoice('S3','Price approaching '+_s3_level+'. Watch for breakout or rejection. This is a decision point.',false);
+  }else{_scenarioClear('S3')}
+  
+  // ═══ S6: VWAP RECLAIM ═══
+  var _s6_prev=_ss._prevAboveVwap||false;
+  if(aboveVwap&&!_s6_prev&&volRatio8>1.0&&window._renderCount>3){
+    _scenarioVoice('S6','Price just reclaimed VWAP '+_vwapFmt+' — institutional buying signal. Volume is '+volRatio8.toFixed(1)+'x average.',true);
+  }
+  _ss._prevAboveVwap=aboveVwap;
+  
+  // ═══ S7: PULLBACK ENTRY ═══
+  var _s7_wasBullish=_ss._prevDirection==='BULLISH';
+  var _s7_nearVwap=aboveVwap&&vwapDist<0.2;
+  if(_s7_wasBullish&&_s7_nearVwap&&direction==='BULLISH'&&priceActionScore<60&&window._renderCount>5){
+    _scenarioVoice('S7','Pullback into VWAP support — price dipped to '+_spotFmt+' near VWAP '+_vwapFmt+'. Good dip-buy opportunity if volume picks up.',false);
+  }else{_scenarioClear('S7')}
+  _ss._prevDirection=direction;
+  
+  // ═══ S9: SHORT COVERING RALLY ═══
+  // Price up + OI decreasing (tracked via previous OI snapshot)
+  var _s9_totalOI=(callWriting||0)+(putWriting||0);
+  var _s9_prevOI=_ss._prevTotalOI||_s9_totalOI;
+  var _s9_oiDropping=_s9_totalOI<_s9_prevOI*0.95; // OI dropped 5%+
+  var _s9_priceUp=direction==='BULLISH'&&momUp>momDn;
+  if(_s9_oiDropping&&_s9_priceUp&&window._renderCount>4){
+    _scenarioVoice('S9','Short covering detected — price rising but open interest dropping. Fast upside move likely. Previous OI: '+_s9_prevOI.toLocaleString()+' → Now: '+_s9_totalOI.toLocaleString(),true);
+  }else{_scenarioClear('S9')}
+  _ss._prevTotalOI=_s9_totalOI;
+  
+  // ═══ S10: LONG UNWINDING ═══
+  var _s10_priceDown=direction==='BEARISH'&&momDn>momUp;
+  if(_s9_oiDropping&&_s10_priceDown&&window._renderCount>4){
+    _scenarioVoice('S10','Long unwinding — price falling and open interest dropping. Longs are exiting. Downside pressure will continue.',true);
+  }else{_scenarioClear('S10')}
+  
+  // ═══ S11: REJECTION AT RESISTANCE ═══
+  var _s11_wasNearHigh=_ss._wasNearHigh||false;
+  var _s11_nowBelow=spot<dayHigh*0.997;
+  if(_s11_wasNearHigh&&_s11_nowBelow&&window._renderCount>4){
+    _scenarioVoice('S11','Rejection at resistance — price touched '+_dhFmt+' but fell back to '+_spotFmt+'. Bearish reversal possible. '+(hasOI?'Call OI wall at '+S+_instRes.toLocaleString()+' blocked the move.':''),true);
+  }else{_scenarioClear('S11')}
+  _ss._wasNearHigh=_s3_nearHigh;
+  
+  // ═══ S12: SUPPORT HOLDING ═══
+  var _s12_wasNearLow=_ss._wasNearLow||false;
+  var _s12_nowAbove=spot>dayLow*1.003;
+  if(_s12_wasNearLow&&_s12_nowAbove&&window._renderCount>4){
+    _scenarioVoice('S12','Support holding — price tested '+_dlFmt+' and bounced to '+_spotFmt+'. Buyers defending this level. '+(hasOI?'Put support at '+S+_instSupp.toLocaleString()+'.':''),false);
+  }else{_scenarioClear('S12')}
+  _ss._wasNearLow=_s3_nearLow;
+  
+  // ═══ S13: FAKE BREAKOUT (Bull Trap) ═══
+  var _s13_brokeHigh=_ss._brokeHigh||false;
+  var _s13_nowBack=spot<dayHigh*0.998&&_s13_brokeHigh;
+  if(_s13_nowBack&&volumeScore<50&&window._renderCount>4){
+    _scenarioVoice('S13','Fake breakout detected! Price broke above '+_dhFmt+' but fell back with low volume ('+volRatio8.toFixed(1)+'x). This is a bull trap — avoid long positions.',true);
+  }else{_scenarioClear('S13')}
+  if(spot>dayHigh*1.002)_ss._brokeHigh=true;
+  if(spot<dayHigh*0.995)_ss._brokeHigh=false;
+  
+  // ═══ S14: BEAR TRAP ═══
+  var _s14_brokeLow=_ss._brokeLow||false;
+  var _s14_nowBack=spot>dayLow*1.002&&_s14_brokeLow;
+  if(_s14_nowBack&&window._renderCount>4){
+    _scenarioVoice('S14','Bear trap detected! Price broke below '+_dlFmt+' but reversed sharply to '+_spotFmt+'. Downside was fake — possible reversal to upside.',true);
+  }else{_scenarioClear('S14')}
+  if(spot<dayLow*0.998)_ss._brokeLow=true;
+  if(spot>dayLow*1.005)_ss._brokeLow=false;
+  
+  // ═══ S15: LOW LIQUIDITY TRAP ═══
+  if(hasVolData&&volRatio8<0.3&&window._renderCount>3){
+    _scenarioVoice('S15','Very low liquidity — volume only '+volRatio8.toFixed(1)+'x average. Any price move is unreliable. Avoid trading until volume picks up.',false);
+  }else{_scenarioClear('S15')}
+  
+  // ═══ S22: MIDDAY CHOP ═══
+  var _now22=new Date();
+  var _istH22=_now22.getUTCHours()+5+(_now22.getUTCMinutes()+30>=60?1:0);
+  var _etH22=_now22.getUTCHours()-4;
+  var _isMidday=(vBias!=='US')?(_istH22>=12&&_istH22<=13):(_etH22>=11&&_etH22<=13);
+  if(_isMidday&&rangePct<0.3&&volumeScore<50&&window._renderCount>5){
+    _scenarioVoice('S22','Midday chop zone — price flat ('+_rangePctFmt+' range), volume thin. This is the worst time to trade. Wait for 2 PM activity.',false);
+  }else{_scenarioClear('S22')}
+  
+  // ═══ S23: POWER HOUR ═══
+  var _isPowerHour=(vBias!=='US')?(_istH22>=14&&_istH22<15):(_etH22>=15&&_etH22<16);
+  if(_isPowerHour&&window._renderCount>5){
+    var _ph_active=volumeScore>60||rangePct>0.4;
+    if(_ph_active){
+      _scenarioVoice('S23','Power hour is active — institutions making final moves. Volume '+volRatio8.toFixed(1)+'x average. Stay alert for strong directional moves.',true);
+    }else{
+      _scenarioVoice('S23b','Last hour of trading but volume is quiet. Market may close flat today.',false);
+    }
+  }else{_scenarioClear('S23');_scenarioClear('S23b')}
+  
+  // ═══ S24: INDEX ALIGNMENT (cross-check) ═══
+  // We can only check this if we have the previous index data cached
+  // For now, check if the same direction holds across refreshes (consistency signal)
+  var _s24_consistent=_ss._dirHistory||[];
+  _s24_consistent.push(direction);
+  if(_s24_consistent.length>5)_s24_consistent=_s24_consistent.slice(-5);
+  _ss._dirHistory=_s24_consistent;
+  var _s24_allSame=_s24_consistent.length>=4&&_s24_consistent.every(function(d2){return d2===_s24_consistent[0]});
+  if(_s24_allSame&&_s24_consistent[0]!=='NONE'&&window._renderCount>6){
+    _scenarioVoice('S24',sym+' has been consistently '+_s24_consistent[0].toLowerCase()+' for '+_s24_consistent.length+' consecutive readings. Trend is confirmed — higher probability setup.',false);
+  }else{_scenarioClear('S24')}
+  
+  // ═══ S25: DIVERGENCE WARNING ═══
+  if(!oiConfirms&&hasOI&&direction!=='NONE'&&priceActionScore>60&&window._renderCount>4){
+    _scenarioVoice('S25','Divergence warning — price says '+direction.toLowerCase()+' but options market disagrees (PCR '+pcr8.toFixed(2)+'). Trade cautiously or reduce size.',true);
+  }else{_scenarioClear('S25')}
+  
+
+    // ─── PERIODIC MARKET COMMENTARY (while WAITING — every 3 min max) ───
   window._renderCount=(window._renderCount||0)+1;
   var now9=Date.now();
   if(!window._lastCommentaryTime)window._lastCommentaryTime=now9;
@@ -5196,16 +5348,17 @@ window._optionsNav={
   IN:{
     label:'🇮🇳 INDIA',
     categories:{
-      index:{label:'📊 Index',tickers:['NIFTY','BANKNIFTY','SENSEX'],api:'nse'},
-      stock:{label:'📈 F&O Stocks',tickers:['RELIANCE','TCS','INFY','HDFCBANK','ICICIBANK','SBIN','BAJFINANCE','TATAMOTORS','LT','MARUTI'],api:'yahoo'}
+      index:{label:'📊 Index',tickers:['NIFTY','BANKNIFTY','SENSEX','FINNIFTY'],api:'nse'},
+      stock:{label:'📈 Stocks',tickers:['RELIANCE','TCS','INFY','HDFCBANK','ICICIBANK','SBIN','BAJFINANCE','TATAMOTORS','LT','MARUTI'],api:'yahoo'},
+      etf:{label:'📦 ETFs',tickers:['NIFTYBEES','BANKBEES','GOLDBEES','SILVERBEES','ITBEES','JUNIORBEES','CPSE','PHARMABEES','LIQUIDBEES','CPSEETF'],api:'yahoo'}
     }
   },
   US:{
     label:'🇺🇸 USA',
     categories:{
-      index:{label:'📊 Index ETF',tickers:['SPY','QQQ','IWM','DIA'],api:'yahoo'},
-      etf:{label:'📈 Sector ETF',tickers:['GLD','TLT','XLF','XLE','ARKK'],api:'yahoo'},
-      stock:{label:'📈 Mega Stocks',tickers:['AAPL','TSLA','NVDA','AMZN','MSFT','META','GOOGL','AMD','NFLX'],api:'yahoo'}
+      index:{label:'📊 Index',tickers:['SPY','QQQ','IWM','DIA'],api:'yahoo'},
+      stock:{label:'📈 Stocks',tickers:['AAPL','TSLA','NVDA','AMZN','MSFT','META','GOOGL','AMD','NFLX','MU'],api:'yahoo'},
+      etf:{label:'📦 ETFs',tickers:['GLD','TLT','XLF','XLE','XLK','ARKK','SOXX','VTI','VOO','SCHD'],api:'yahoo'}
     }
   }
 };
@@ -5666,10 +5819,11 @@ _renderQuickTrade=function(d,sym){
 
 window._scannerGroups=[
   {id:'in_index',label:'🇮🇳 India Index',tickers:['NIFTY','BANKNIFTY','SENSEX'],region:'IN'},
-  {id:'in_stock',label:'🇮🇳 India F&O Stocks',tickers:['RELIANCE','TCS','INFY','HDFCBANK','ICICIBANK','SBIN','BAJFINANCE','TATAMOTORS','LT','MARUTI'],region:'IN'},
-  {id:'us_index',label:'🇺🇸 US Index ETF',tickers:['SPY','QQQ','IWM','DIA'],region:'US'},
-  {id:'us_sector',label:'🇺🇸 US Sector ETF',tickers:['XLF','XLE','XLK','GLD','TLT','ARKK'],region:'US'},
-  {id:'us_stock',label:'🇺🇸 US Mega Stocks',tickers:['AAPL','MSFT','NVDA','TSLA','META','GOOGL','AMZN','MU'],region:'US'}
+  {id:'in_stock',label:'🇮🇳 India Stocks',tickers:['RELIANCE','TCS','INFY','HDFCBANK','ICICIBANK','SBIN','BAJFINANCE','TATAMOTORS','LT','MARUTI'],region:'IN'},
+  {id:'in_etf',label:'🇮🇳 India ETFs',tickers:['NIFTYBEES','BANKBEES','GOLDBEES','SILVERBEES','ITBEES'],region:'IN'},
+  {id:'us_index',label:'🇺🇸 US Index',tickers:['SPY','QQQ','IWM','DIA'],region:'US'},
+  {id:'us_stock',label:'🇺🇸 US Stocks',tickers:['AAPL','MSFT','NVDA','TSLA','META','GOOGL','AMZN','MU'],region:'US'},
+  {id:'us_etf',label:'🇺🇸 US ETFs',tickers:['GLD','TLT','XLF','XLE','ARKK','SOXX'],region:'US'}
 ];
 
 window._scanResults={};

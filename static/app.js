@@ -113,6 +113,8 @@ const m=stocks.filter(s=>s.t.includes(v)||s.n.toUpperCase().includes(v)).slice(0
 m.forEach(s=>{const d=document.createElement('div');d.className='aci';d.innerHTML=`<span class="act">${s.t}</span><span class="acn">${s.n}</span>`;d.onclick=()=>{TI.value=s.t;AC.classList.remove('show')};AC.appendChild(d)});AC.classList.add('show')});
 document.addEventListener('click',e=>{if(e.target!==TI)AC.classList.remove('show')});
 document.getElementById('email').addEventListener('keypress',e=>{if(e.key==='Enter')TI.focus()});
+// PDF button hidden by default — shown only for PDF users
+var _pdfBtn=document.getElementById('pdfExportBtn');if(_pdfBtn)_pdfBtn.style.display='none';
 // Expose tab functions globally (backup for onclick handlers)
 window.switchTabGroup = switchTabGroup;
 window.switchTab = switchTab;
@@ -395,6 +397,8 @@ window._isPremiumUser=d.premium;
 window._showPicks=d.premium;
 window._isDreamUser=d.dreamAccess||false;
 window._verifiedEmail=email;  // Store confirmed email
+window._isPdfUser=(email==='vj@vnky.com');
+var _pb=document.getElementById('pdfExportBtn');if(_pb)_pb.style.display=window._isPdfUser?'':'none';
 _applyPremiumGating(d.premium,d.premium,email);
 _applyDreamGating(d.dreamAccess||false);
 if(d.premium)console.log('✅ Server verified premium:',email);
@@ -448,6 +452,9 @@ try{if(show&&window._activeGroup==='dream'&&typeof switchTabGroup==='function'){
 document.getElementById('email').addEventListener('blur',function(){
 var el=document.getElementById('email');
 var email=(el.dataset.real||el.value).trim().toLowerCase();
+// Show/hide PDF buttons based on email
+var _pdfBtns=document.querySelectorAll('[data-pdf-gate]');
+_pdfBtns.forEach(function(b){b.style.display=email==='vj@vnky.com'?'':'none'});
 if(email&&email.includes('@')){
 window._verifiedEmail=email;
 el.dataset.real=email;
@@ -5687,6 +5694,8 @@ if(btn)btn.innerHTML=next==='dark'?'&#127763; Dark':'&#9728; Light';
 
 // ═══ 2. PDF EXPORT ═══
 async function exportPDF(){
+if(!window._isPdfUser)return;
+
 // If on the investor-decide tab, use the dedicated print-based PDF export
 // html2canvas-based export fails on complex investor-decide pages (blank pages, truncation)
 if(window._lastInvestorData && document.getElementById('deResult') && document.getElementById('deResult').innerHTML.length > 500){
@@ -17244,7 +17253,7 @@ box.style.cssText='width:96%;max-width:960px;max-height:92vh;border-radius:20px;
 var hdr=document.createElement('div');
 hdr.style.cssText='padding:16px 24px;background:linear-gradient(135deg,'+('#f8fafc,#eef2ff')+');border-bottom:1px solid '+('#e5e7eb')+';display:flex;justify-content:space-between;align-items:center;flex-shrink:0';
 var _tx='#1f2937';var _ts='#374151';var _tm='#6b7280';
-hdr.innerHTML='<div><div style="font-size:17px;font-weight:900;color:'+_tx+'">🏛️ Institutional PMS Intelligence</div><div style="font-size:10px;font-weight:600;color:'+_ts+';margin-top:2px">All data from LIVE API · Zero hardcoded values</div></div><div style="display:flex;gap:6px;align-items:center"><button onclick="_pmsExportPDF()" style="padding:6px 12px;border-radius:8px;background:#ef4444;color:#fff;border:none;font-size:9px;font-weight:800;cursor:pointer;display:flex;align-items:center;gap:4px" title="Download PDF Report">📄 PDF</button><button onclick="_pmsShareWhatsApp()" style="padding:6px 12px;border-radius:8px;background:#25D366;color:#fff;border:none;font-size:9px;font-weight:800;cursor:pointer;display:flex;align-items:center;gap:4px" title="Share via WhatsApp">💬 Share</button><button onclick="document.getElementById(\'pmsChartModal\').style.opacity=\'0\';setTimeout(function(){document.getElementById(\'pmsChartModal\').remove()},300)" style="width:36px;height:36px;border-radius:10px;background:'+('#f1f5f9')+';border:1px solid '+('#e5e7eb')+';font-size:18px;cursor:pointer;color:'+_tm+'">✕</button></div>';
+hdr.innerHTML='<div><div style="font-size:17px;font-weight:900;color:'+_tx+'">🏛️ Institutional PMS Intelligence</div><div style="font-size:10px;font-weight:600;color:'+_ts+';margin-top:2px">All data from LIVE API · Zero hardcoded values</div></div><div style="display:flex;gap:6px;align-items:center">'+(window._isPdfUser?'<button onclick="_pmsExportPDF()" style="padding:6px 12px;border-radius:8px;background:#ef4444;color:#fff;border:none;font-size:9px;font-weight:800;cursor:pointer;display:flex;align-items:center;gap:4px" title="Download PDF Report">📄 PDF</button>':'')+'<button onclick="_pmsShareWhatsApp()" style="padding:6px 12px;border-radius:8px;background:#25D366;color:#fff;border:none;font-size:9px;font-weight:800;cursor:pointer;display:flex;align-items:center;gap:4px" title="Share via WhatsApp">💬 Share</button><button onclick="document.getElementById(\'pmsChartModal\').style.opacity=\'0\';setTimeout(function(){document.getElementById(\'pmsChartModal\').remove()},300)" style="width:36px;height:36px;border-radius:10px;background:'+('#f1f5f9')+';border:1px solid '+('#e5e7eb')+';font-size:18px;cursor:pointer;color:'+_tm+'">✕</button></div>';
 var body=document.createElement('div');body.style.cssText='flex:1;overflow-y:auto;padding:20px';
 box.appendChild(hdr);box.appendChild(body);ov.appendChild(box);document.body.appendChild(ov);
 setTimeout(function(){ov.style.opacity='1'},50);
@@ -17783,7 +17792,7 @@ box.style.cssText='width:95%;max-width:900px;max-height:90vh;border-radius:20px;
 var hdr=document.createElement('div');
 hdr.style.cssText='padding:16px 20px;border-bottom:1px solid '+('#e5e7eb')+';display:flex;justify-content:space-between;align-items:center;flex-shrink:0';
 var _txMain='#1f2937';var _txSub='#374151';var _txMute='#6b7280';
-hdr.innerHTML='<div><div style="font-size:16px;font-weight:900;color:'+_txMain+';font-family:Sora,sans-serif">📊 '+d.symbol+' — Premium Analytics</div><div style="font-size:10px;font-weight:600;color:'+_txSub+';margin-top:2px">Decision Radar · Risk · Profitability · Valuation</div></div><div style="display:flex;gap:6px;align-items:center"><button onclick="_investorExportPDF()" style="padding:5px 10px;border-radius:8px;background:#ef4444;color:#fff;border:none;font-size:8px;font-weight:800;cursor:pointer">📄 PDF</button><button onclick="_investorShareWA()" style="padding:5px 10px;border-radius:8px;background:#25D366;color:#fff;border:none;font-size:8px;font-weight:800;cursor:pointer">💬 Share</button><button onclick="document.getElementById(\'ivChartModal\').style.opacity=\'0\';setTimeout(function(){document.getElementById(\'ivChartModal\').remove()},300)" style="width:36px;height:36px;border-radius:10px;background:'+('#f1f5f9')+';border:1px solid '+('#e5e7eb')+';font-size:18px;cursor:pointer;color:'+_txMute+';display:flex;align-items:center;justify-content:center">✕</button></div>';
+hdr.innerHTML='<div><div style="font-size:16px;font-weight:900;color:'+_txMain+';font-family:Sora,sans-serif">📊 '+d.symbol+' — Premium Analytics</div><div style="font-size:10px;font-weight:600;color:'+_txSub+';margin-top:2px">Decision Radar · Risk · Profitability · Valuation</div></div><div style="display:flex;gap:6px;align-items:center">'+(window._isPdfUser?'<button onclick="_investorExportPDF()" style="padding:5px 10px;border-radius:8px;background:#ef4444;color:#fff;border:none;font-size:8px;font-weight:800;cursor:pointer">📄 PDF</button>':'')+'<button onclick="_investorShareWA()" style="padding:5px 10px;border-radius:8px;background:#25D366;color:#fff;border:none;font-size:8px;font-weight:800;cursor:pointer">💬 Share</button><button onclick="document.getElementById(\'ivChartModal\').style.opacity=\'0\';setTimeout(function(){document.getElementById(\'ivChartModal\').remove()},300)" style="width:36px;height:36px;border-radius:10px;background:'+('#f1f5f9')+';border:1px solid '+('#e5e7eb')+';font-size:18px;cursor:pointer;color:'+_txMute+';display:flex;align-items:center;justify-content:center">✕</button></div>';
 
 var body=document.createElement('div');body.style.cssText='flex:1;overflow-y:auto;padding:20px';
 box.appendChild(hdr);box.appendChild(body);ov.appendChild(box);document.body.appendChild(ov);
@@ -19428,6 +19437,8 @@ el.innerHTML=h;
 
 // ═══ INVESTOR PDF + WHATSAPP ═══
 function _investorExportPDF(){
+if(!window._isPdfUser)return;
+
 var d=window._lastInvestorData;if(!d){alert('Analyze a stock first');return}
 var S=d.csym||'\u20b9';
 console.log('[PDF] Generating full report PDF for',d.symbol);
@@ -19533,6 +19544,8 @@ window.open('https://wa.me/?text='+encodeURIComponent(msg),'_blank');
 }
 
 function _pmsExportPDF(){
+if(!window._isPdfUser)return;
+
 if(!window._pmsData){alert('No portfolio data');return}
 var pd=window._pmsData;var S=pd.csym||'₹';
 var ret=pd.retain||[];var ex=pd.exit||[];var add=pd.add||[];
