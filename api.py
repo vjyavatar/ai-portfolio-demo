@@ -1008,9 +1008,9 @@ def fetch_management_context(ticker: str, company_name: str) -> tuple:
                         value_val = value.get('raw', 0) if isinstance(value, dict) else 0
                         fund_holdings_data["institutions"].append({
                             "name": name, "pct": round(pct_val * 100, 2),
-                            "shares": int(shares_val), "value": int(value_val)
+                            "shares": _safe_int(shares_val), "value": _safe_int(value_val)
                         })
-                        parts.append(f"{name}: {pct_val*100:.2f}% ({int(shares_val):,} shares, ${int(value_val):,})")
+                        parts.append(f"{name}: {pct_val*100:.2f}% ({_safe_int(shares_val):,} shares, ${_safe_int(value_val):,})")
                 
                 # Top mutual fund holders
                 funds = d.get('fundOwnership', {}).get('ownershipList', [])
@@ -1024,9 +1024,9 @@ def fetch_management_context(ticker: str, company_name: str) -> tuple:
                         shares_val = shares.get('raw', 0) if isinstance(shares, dict) else 0
                         fund_holdings_data["funds"].append({
                             "name": name, "pct": round(pct_val * 100, 2),
-                            "shares": int(shares_val)
+                            "shares": _safe_int(shares_val)
                         })
-                        parts.append(f"{name}: {pct_val*100:.2f}% ({int(shares_val):,} shares)")
+                        parts.append(f"{name}: {pct_val*100:.2f}% ({_safe_int(shares_val):,} shares)")
                 
                 if parts:
                     context_parts.append("=== FUND & INSTITUTIONAL HOLDINGS (REAL) ===\n" + "\n".join(parts))
@@ -1368,6 +1368,29 @@ class SafeJSONResponse(JSONResponse):
         return json.dumps(content, cls=NaNSafeEncoder, ensure_ascii=False).encode("utf-8")
 
 print("[STARTUP] Creating FastAPI app...")
+
+import math
+
+def _safe_int(val, default=0):
+    """Safely convert to int — handles NaN, None, inf."""
+    try:
+        if val is None: return default
+        f = float(val)
+        if math.isnan(f) or math.isinf(f): return default
+        return int(f)
+    except (ValueError, TypeError):
+        return default
+
+def _safe_float(val, default=0.0):
+    """Safely convert to float — handles NaN, None."""
+    try:
+        if val is None: return default
+        f = float(val)
+        if math.isnan(f) or math.isinf(f): return default
+        return f
+    except (ValueError, TypeError):
+        return default
+
 app = FastAPI(title="Celesys AI - Verified Live Data", default_response_class=SafeJSONResponse)
 print("[STARTUP] ✅ FastAPI app created successfully")
 
@@ -2676,7 +2699,7 @@ def get_live_stock_data(company_name: str) -> dict:
                                 "name": str(row.get('Insider', row.get('insider', 'Unknown')) or 'Unknown'),
                                 "relation": str(row.get('Relation', row.get('position', '')) or ''),
                                 "type": str(row.get('Transaction', row.get('transaction', '')) or ''),
-                                "shares": int(float(_shares)),
+                                "shares": _safe_int(_shares),
                                 "value": float(_value),
                                 "date": str(row.get('Date', row.get('startDate', '')) or '')[:10]
                             })
@@ -6989,7 +7012,7 @@ async def _algo_signal_impl(symbol: str = "NIFTY", region: str = ""):
             "ema9": ema9, "ema21": ema21, "ema50": ema50,
             "rsi": rsi, "macd_hist": macd_hist, "macd_bullish": macd_bullish,
             "supertrend_buy": supertrend_buy, "atr14": atr14,
-            "vol_ratio": vol_ratio, "last_volume": int(float(volumes[-1])) if volumes else 0, "avg_volume": int(float(avg_vol)) if avg_vol else 0, "w52h": w52h, "w52l": w52l, "w52pos": w52pos,
+            "vol_ratio": vol_ratio, "last_volume": _safe__safe_int(volumes[-1]) if volumes else 0, "avg_volume": _safe_int(avg_vol) if avg_vol else 0, "w52h": w52h, "w52l": w52l, "w52pos": w52pos,
             "hh_hl": hh_hl, "lh_ll": lh_ll,
             "pe": pe, "roe": roe, "margin": margin, "de": de, "beta": beta_val,
             "adx": 0,  # Placeholder — computed later in trend engine, patched back here
@@ -13943,7 +13966,7 @@ async def market_daily():
             day_high = round(highs[-1], 2)
             day_low = round(lows[-1], 2)
             day_open = round(opens[-1], 2)
-            day_vol = int(volumes[-1]) if len(volumes) > 0 else 0
+            day_vol = _safe_int(volumes[-1]) if len(volumes) > 0 else 0
             avg_vol_20 = int(np.mean(volumes[-20:])) if len(volumes) >= 20 else day_vol
             vol_ratio = round(day_vol / avg_vol_20, 2) if avg_vol_20 > 0 else 1
             
@@ -14078,7 +14101,7 @@ async def market_daily():
                     "low": round(lows[idx], 2),
                     "close": d_close,
                     "change_pct": d_chg,
-                    "volume": int(volumes[idx]) if idx < len(volumes) else 0
+                    "volume": _safe_int(volumes[idx]) if idx < len(volumes) else 0
                 })
             
             return info["short"], {
@@ -24446,7 +24469,7 @@ async def _run_stock_intel(symbol, region, cache_key):
                 vol_ratio = round(recent_vol / avg_vol, 1) if avg_vol > 0 else 1.0
                 vol_confirm = "STRONG" if vol_ratio > 1.3 else ("MODERATE" if vol_ratio > 0.8 else "WEAK")
                 _pa_avg_vol = int(avg_vol)
-                _pa_last_vol = int(volumes[-1]) if len(volumes) > 0 else 0
+                _pa_last_vol = _safe_int(volumes[-1]) if len(volumes) > 0 else 0
                 _pa_vol_ratio = vol_ratio
         
         # ─── TECHNICALS DIAGNOSTIC LOG ───
