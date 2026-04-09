@@ -434,7 +434,7 @@ var decideBtn=document.getElementById('tabBtnDecide');
 if(decideBtn)decideBtn.style.display=showTrades?'':'none';
 
 var tradingBtn=document.getElementById('tabBtnTrading');
-if(tradingBtn)tradingBtn.style.display=showTrades?'':'none';
+if(tradingBtn)tradingBtn.style.display=(showTrades||TRADING_ONLY_EMAILS.includes(email))?'':'none';
 
 document.querySelectorAll('.sc[data-tab="smarttrades"]').forEach(function(s){s.style.display=showTrades?'':'none'});
 document.querySelectorAll('.sc[data-tab="gems"]').forEach(function(s){s.style.display=showTrades?'':'none'});
@@ -20703,5 +20703,45 @@ console.log('[TRADING] ✅ EMA 9/21 + RSI trading tab loaded');
     setTimeout(function(){clearInterval(_patchInterval)},30000);
   }
   
+})();
+
+
+
+// ═══ TAB ACCESS: MutationObserver — fires once when report shows ═══
+(function(){
+  function applyTabRoles(){
+    var email=(window._verifiedEmail||'').toLowerCase();
+    if(!email)return;
+    
+    var isTradingUser=(['tmp@cls.com'].indexOf(email)>=0);
+    var isFullUser=(['bbk@asl.com','vj@vnky.com'].indexOf(email)>=0);
+    var isAdmin=email==='vj@vnky.com';
+    
+    var tradingBtn=document.getElementById('tabBtnTrading');
+    if(tradingBtn&&(isTradingUser||isFullUser)){
+      tradingBtn.style.setProperty('display','inline-flex','important');
+    }
+    
+    if(isTradingUser){
+      ['tabBtnResearch','tabBtnMarkets','tabBtnDecide','tabBtnDream'].forEach(function(id){
+        var el=document.getElementById(id);
+        if(el)el.style.setProperty('display','none','important');
+      });
+    }
+  }
+  
+  // Watch for report becoming visible
+  var rpt=document.getElementById('report');
+  if(rpt){
+    var obs=new MutationObserver(function(mutations){
+      if(rpt.classList.contains('show')){
+        applyTabRoles();
+      }
+    });
+    obs.observe(rpt,{attributes:true,attributeFilter:['class']});
+  }
+  
+  // Also run once on page load in case report is already visible
+  setTimeout(applyTabRoles,2000);
 })();
 
