@@ -2426,6 +2426,8 @@ function switchTabGroup(group) {
   }
   // Remove any existing premium gate
   var eg=document.getElementById('_premGate');if(eg)eg.remove();
+  // Restore tabContentArea (may have been hidden by Trading view)
+  var _tca2=document.getElementById('tabContentArea');if(_tca2)_tca2.style.display='';
   
   window._activeGroup = group;
   
