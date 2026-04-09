@@ -2572,7 +2572,20 @@ window._loadQuickTrade=function(symbol){
       var _mqNow=new Date();var _mqIstH=_mqNow.getUTCHours()+5+(_mqNow.getUTCMinutes()+30>=60?1:0);
       var _mqDow=_mqNow.getUTCDay();
       d._marketOpen=(_mqIstH>=9&&(_mqIstH<15||(_mqIstH===15&&(_mqNow.getUTCMinutes()+30)%60<=30))&&_mqDow>=1&&_mqDow<=5);
-      _renderQuickTrade(d,sym);
+      // Ensure all required arrays exist (nuclear guard)
+      if(!d.ohlc_bars)d.ohlc_bars=[];
+      if(!d.chain_near_atm)d.chain_near_atm=[];
+      if(!d.ce_resistance)d.ce_resistance=[];
+      if(!d.pe_support)d.pe_support=[];
+      if(!d.gex)d.gex={total:0,regime:'NEUTRAL',topStrikes:[],flipPoint:0,callWall:0,putWall:0};
+      if(!d.expiry_dates)d.expiry_dates=[];
+      try{
+        _renderQuickTrade(d,sym);
+      }catch(_renderErr){
+        console.error('[RENDER CRASH]',_renderErr);
+        var _crashEl=document.getElementById('deResult');
+        if(_crashEl)_crashEl.innerHTML='<div style=\"text-align:center;padding:30px;background:#0A0F1C;border-radius:16px\"><div style=\"font-size:14px;color:#ef4444;font-weight:800;margin-bottom:8px\">Render Error</div><div style=\"font-size:10px;color:#94a3b8;margin-bottom:8px\">'+(_renderErr.message||'Unknown error')+'</div><div style=\"font-size:8px;color:#475569;margin-bottom:12px\">'+(_renderErr.stack?_renderErr.stack.split('\\n').slice(0,3).join('<br>'):'')+'</div><button onclick=\"window._retryLast()\" style=\"padding:8px 20px;border-radius:8px;background:#3b82f6;color:#fff;border:none;cursor:pointer;font-size:11px;font-weight:700\">🔄 Retry</button></div>';
+      }
       // Auto-refresh — only if still the active ticker
       console.log('[REFRESH] ✅ Timer started for '+sym+' (30s)');
       window._quickRefreshTimer=setInterval(function(){
@@ -2583,7 +2596,8 @@ window._loadQuickTrade=function(symbol){
             .then(function(d2){
               if(d2&&d2.success&&window._activeOptionsSym===sym){
                 console.log('[REFRESH] ✅ Got data for '+sym+' spot='+d2.spot);
-                _renderQuickTrade(d2,sym);
+                if(!d2.ohlc_bars)d2.ohlc_bars=[];if(!d2.chain_near_atm)d2.chain_near_atm=[];if(!d2.ce_resistance)d2.ce_resistance=[];if(!d2.pe_support)d2.pe_support=[];if(!d2.gex)d2.gex={total:0,regime:'NEUTRAL',topStrikes:[],flipPoint:0,callWall:0,putWall:0};if(!d2.expiry_dates)d2.expiry_dates=[];
+                try{_renderQuickTrade(d2,sym)}catch(e){console.error('[REFRESH CRASH]',e)}
               }
             })
             .catch(function(e){console.log('[REFRESH] ❌ Error: '+e)});
@@ -6283,7 +6297,20 @@ window._loadOptionsUniversal=function(symbol,region){
       }else{
         d._marketOpen=(_mqIstH2>=9&&(_mqIstH2<15||(_mqIstH2===15&&(_mqNow2.getUTCMinutes()+30)%60<=30))&&_mqDow2>=1&&_mqDow2<=5);
       }
-      _renderQuickTrade(d,sym);
+      // Nuclear guard — ensure all arrays exist
+      if(!d.ohlc_bars)d.ohlc_bars=[];
+      if(!d.chain_near_atm)d.chain_near_atm=[];
+      if(!d.ce_resistance)d.ce_resistance=[];
+      if(!d.pe_support)d.pe_support=[];
+      if(!d.gex)d.gex={total:0,regime:'NEUTRAL',topStrikes:[],flipPoint:0,callWall:0,putWall:0};
+      if(!d.expiry_dates)d.expiry_dates=[];
+      try{
+        _renderQuickTrade(d,sym);
+      }catch(_renderErr2){
+        console.error('[RENDER CRASH]',_renderErr2);
+        var _crashEl2=document.getElementById('deResult');
+        if(_crashEl2)_crashEl2.innerHTML='<div style="text-align:center;padding:30px;background:#0A0F1C;border-radius:16px"><div style="font-size:14px;color:#ef4444;font-weight:800;margin-bottom:8px">Render Error</div><div style="font-size:10px;color:#94a3b8;margin-bottom:8px">'+(_renderErr2.message||'Unknown')+'</div><div style="font-size:8px;color:#475569;margin-bottom:12px">'+(_renderErr2.stack?_renderErr2.stack.split("\\n").slice(0,3).join("<br>"):'')+'</div><button onclick="window._retryLast()" style="padding:8px 20px;border-radius:8px;background:#3b82f6;color:#fff;border:none;cursor:pointer;font-size:11px;font-weight:700">🔄 Retry</button></div>';
+      }
       // Auto-refresh — only if still active
       console.log('[REFRESH] ✅ Universal timer started for '+sym+' '+reg+' (30s)');
       window._quickRefreshTimer=setInterval(function(){
