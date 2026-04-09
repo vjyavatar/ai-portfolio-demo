@@ -3598,9 +3598,10 @@ async def verify_premium(request: Request):
         
         is_premium = email in [e.lower() for e in TRADES_ALLOWED_EMAILS]
         is_dream = email in [e.lower() for e in DREAM_ALLOWED_EMAILS]
+        is_trading_only = email in [e.lower() for e in TRADING_ONLY_EMAILS]
         
         # Cache session for 24 hours
-        _premium_sessions[email] = {"ts": time.time(), "verified": is_premium or is_dream, "dream": is_dream}
+        _premium_sessions[email] = {"ts": time.time(), "verified": is_premium or is_dream or is_trading_only, "dream": is_dream, "trading_only": is_trading_only}
         
         # Cleanup old sessions
         if len(_premium_sessions) > 1000:
@@ -3609,8 +3610,9 @@ async def verify_premium(request: Request):
             for k in expired: del _premium_sessions[k]
         
         return {
-            "success": True, "premium": is_premium or is_dream, "email": email,
+            "success": True, "premium": is_premium or is_dream or is_trading_only, "email": email,
             "dreamAccess": is_dream,
+            "tradingOnly": is_trading_only,
             "features": {
                 "trading": is_premium or is_dream,
                 "smartTrades": is_premium or is_dream,
@@ -4643,12 +4645,21 @@ async def stock_quick(ticker: str = ""):
 # Uses: SGX Nifty futures, US futures (ES, NQ), Asia markets
 # ═══════════════════════════════════════════════════════════════
 
+# Gift Nifty cache — 5 min
+_gift_nifty_cache = {"data": None, "time": 0}
+
 @app.get("/api/gift-nifty")
 async def gift_nifty():
     """Pre-market indicator for India — Gift Nifty + global cues."""
     try:
         import yfinance as yf
         import time as _time
+        
+        # Check cache (5 min)
+        if _gift_nifty_cache["data"] and (_time.time() - _gift_nifty_cache["time"]) < 300:
+            cached = _gift_nifty_cache["data"].copy()
+            cached["_cached"] = True
+            return cached
         
         _t0 = _time.time()
         
@@ -4771,8 +4782,9 @@ async def gift_nifty():
         
         _elapsed = round(_time.time() - _t0, 1)
         
-        return {
+        _result = {
             "success": True,
+            "_cached": False,
             "nifty_close": nifty_close,
             "gift_nifty": gift_nifty_price,
             "gift_source": gift_source,
@@ -4796,6 +4808,9 @@ async def gift_nifty():
             },
             "elapsed": _elapsed,
         }
+        _gift_nifty_cache["data"] = _result
+        _gift_nifty_cache["time"] = _time.time()
+        return _result
         
     except Exception as e:
         print(f"❌ gift-nifty error: {e}")
@@ -4951,6 +4966,9 @@ async def us_premarket():
             },
             "elapsed": _elapsed,
         }
+        _gift_nifty_cache["data"] = _result
+        _gift_nifty_cache["time"] = _time.time()
+        return _result
     except Exception as e:
         print(f"❌ us-premarket error: {e}")
         return {"success": False, "error": str(e)[:200]}
@@ -4980,12 +4998,27 @@ async def validate_session(email: str = ""):
 
 
 # ═══ EMA CROSSOVER + RSI — Simple Trading Signals ═══
+# EMA signal cache — 60s per symbol
+_ema_cache = {}
+_EMA_CACHE_TTL = 60  # seconds
+
 @app.get("/api/ema-signal")
 async def ema_signal(symbol: str = "NIFTY", region: str = "IN"):
     """EMA 9/21 crossover + RSI signal for trading tab."""
     try:
         import yfinance as yf
         import numpy as np
+        import time as _time
+        
+        # Check cache first
+        cache_key = f"{symbol.upper()}_{region}"
+        if cache_key in _ema_cache:
+            cached, cached_at = _ema_cache[cache_key]
+            age = _time.time() - cached_at
+            if age < _EMA_CACHE_TTL:
+                cached["_cached"] = True
+                cached["_cache_age"] = round(age, 1)
+                return cached
         
         yf_sym = symbol.upper()
         if region == 'IN' and yf_sym not in ['NIFTY','BANKNIFTY','SENSEX','FINNIFTY','MIDCPNIFTY','^NSEI','^NSEBANK','^BSESN']:
@@ -5113,8 +5146,9 @@ async def ema_signal(symbol: str = "NIFTY", region: str = "IN"):
                 "v": int(idx.Volume),
             })
         
-        return {
+        result = {
             "success": True,
+            "_cached": False,
             "symbol": symbol.upper(),
             "region": region,
             "spot": spot,
@@ -5134,6 +5168,16 @@ async def ema_signal(symbol: str = "NIFTY", region: str = "IN"):
             "day_low": day_low,
             "bars": recent,
         }
+        
+        # Save to cache
+        _ema_cache[cache_key] = (result, _time.time())
+        # Clean old cache entries (keep max 50)
+        if len(_ema_cache) > 50:
+            oldest = sorted(_ema_cache.items(), key=lambda x: x[1][1])[:10]
+            for k, _ in oldest:
+                del _ema_cache[k]
+        
+        return result
         
     except Exception as e:
         print(f"❌ ema-signal error: {e}")
