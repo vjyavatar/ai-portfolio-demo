@@ -8486,7 +8486,14 @@ window._portfolioRisk={
   maxConcurrentTrades:3,
   trades:[], // Active trades tracked this session
   dailyPnL:0,
-  blocked:false
+  blocked:false,
+  alerts:[], // Must be initialized — crash if undefined
+  netDelta:0,
+  netGamma:0,
+  netTheta:0,
+  netVega:0,
+  totalExposure:0,
+  exposurePct:0
 };
 
 window._updatePortfolioRisk=function(trade){
@@ -8824,18 +8831,19 @@ _renderQuickTrade=function(d,sym){
   }
   
   // ── Portfolio Risk ──
-  var pr2=window._portfolioRisk;
-  if(pr2.trades.length>0||pr2.alerts.length>0){
+  var pr2=window._portfolioRisk||{};
+  var _prTrades=pr2.trades||[];var _prAlerts=pr2.alerts||[];
+  if(_prTrades.length>0||_prAlerts.length>0){
     ih+='<div style="margin-bottom:8px">';
     ih+='<div style="font-size:9px;font-weight:800;color:#ef4444;letter-spacing:1px;margin-bottom:6px">🛡️ PORTFOLIO RISK</div>';
     ih+='<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:4px;margin-bottom:4px">';
-    ih+='<div style="padding:4px;border-radius:6px;background:#1e293b;text-align:center"><div style="font-size:6px;color:#64748b">Trades</div><div style="font-size:10px;font-weight:800;color:#e2e8f0">'+pr2.trades.length+'/'+pr2.maxConcurrentTrades+'</div></div>';
-    ih+='<div style="padding:4px;border-radius:6px;background:#1e293b;text-align:center"><div style="font-size:6px;color:#64748b">Exposure</div><div style="font-size:10px;font-weight:800;color:'+(pr2.exposurePct>20?'#ef4444':'#059669')+'">'+pr2.exposurePct+'%</div></div>';
-    ih+='<div style="padding:4px;border-radius:6px;background:#1e293b;text-align:center"><div style="font-size:6px;color:#64748b">Net Δ</div><div style="font-size:10px;font-weight:800;color:#e2e8f0">'+pr2.netDelta+'</div></div>';
-    ih+='<div style="padding:4px;border-radius:6px;background:#1e293b;text-align:center"><div style="font-size:6px;color:#64748b">Day P&L</div><div style="font-size:10px;font-weight:800;color:'+(pr2.dailyPnL>=0?'#059669':'#ef4444')+'">'+S2+Math.round(pr2.dailyPnL)+'</div></div>';
+    ih+='<div style="padding:4px;border-radius:6px;background:#1e293b;text-align:center"><div style="font-size:6px;color:#64748b">Trades</div><div style="font-size:10px;font-weight:800;color:#e2e8f0">'+_prTrades.length+'/'+(pr2.maxConcurrentTrades||3)+'</div></div>';
+    ih+='<div style="padding:4px;border-radius:6px;background:#1e293b;text-align:center"><div style="font-size:6px;color:#64748b">Exposure</div><div style="font-size:10px;font-weight:800;color:'+((pr2.exposurePct||0)>20?'#ef4444':'#059669')+'">'+(pr2.exposurePct||0)+'%</div></div>';
+    ih+='<div style="padding:4px;border-radius:6px;background:#1e293b;text-align:center"><div style="font-size:6px;color:#64748b">Net Δ</div><div style="font-size:10px;font-weight:800;color:#e2e8f0">'+(pr2.netDelta||0)+'</div></div>';
+    ih+='<div style="padding:4px;border-radius:6px;background:#1e293b;text-align:center"><div style="font-size:6px;color:#64748b">Day P&L</div><div style="font-size:10px;font-weight:800;color:'+((pr2.dailyPnL||0)>=0?'#059669':'#ef4444')+'">'+S2+Math.round(pr2.dailyPnL||0)+'</div></div>';
     ih+='</div>';
-    pr2.alerts.forEach(function(a){
-      ih+='<div style="font-size:7px;padding:3px 8px;border-radius:4px;background:'+a.color+'15;color:'+a.color+';font-weight:700;margin-bottom:2px">'+a.msg+'</div>';
+    _prAlerts.forEach(function(a){
+      ih+='<div style="font-size:7px;padding:3px 8px;border-radius:4px;background:'+(a.color||'#64748b')+'15;color:'+(a.color||'#64748b')+';font-weight:700;margin-bottom:2px">'+(a.msg||'')+'</div>';
     });
     ih+='</div>';
   }
