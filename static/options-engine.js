@@ -40,6 +40,7 @@ function _renderOptionsEngine(d,sym){
   var spot=d.spot||0,pcr=d.pcr||0,maxPain=d.max_pain||0,atmIV=d.atm_iv||0;
   var vix=d.vix||0,vixChg=d.vix_change||0;
   var gex=d.gex||{},gexRegime=gex.regime||'UNKNOWN';
+  var isExpiry=(d.expiry_today||false)||(d.is_expiry||false);
   var expiry=d.expiry||'—',expiryDates=d.expiry_dates||[];
   var ceRes=d.ce_resistance||[],peSupp=d.pe_support||[];
   var pivot=d.pivot||0,cprTop=d.cpr_top||0,cprBot=d.cpr_bottom||0,cprType=d.cpr_type||'MEDIUM';
@@ -2605,6 +2606,9 @@ function _renderQuickTrade(d,sym){
   var chain=d.chain_near_atm||[];
   var bars=d.ohlc_bars||[];
   var gex=d.gex||{};
+  var gexRegime=gex.regime||'NEUTRAL';
+  var gammaBlast=(gexRegime==='NEGATIVE'&&bars.length>0);
+  var isExpiry=(d.expiry_today||false)||(d.is_expiry||false);
   var todayHigh=d.today_high||spot,todayLow=d.today_low||spot;
   
   // MARKET CLOSED GUARD — if spot=0 or no chain data
@@ -3190,10 +3194,11 @@ function _renderQuickTrade(d,sym){
   window._qtVolumeScore=volumeScore;window._qtMomBars=momBars;window._qtHasVolData=hasVolData;window._qtPriceAction=priceActionScore;window._qtMomentumScore=momentumScore;
   window._qtSpotFmt=_spotFmt;window._qtDhFmt=_dhFmt;window._qtDlFmt=_dlFmt;
   window._qtRangePctFmt=_rangePctFmt;window._qtVwapFmt=_vwapFmt;
-  window._qtS=S;window._qtGex=gex||{};window._qtGammaBlast=gammaBlast||false;window._qtMaxPain=maxPain;window._qtVix=vix;window._qtVixAdj=vix>0?Math.max(0.5,vix/20):1;
+  window._qtS=S;window._qtGex=gex||{};window._qtGammaBlast=gammaBlast||false;window._qtIsExpiry=isExpiry;window._qtMaxPain=maxPain;window._qtVix=vix;window._qtVixAdj=vix>0?Math.max(0.5,vix/20):1;
   window._qtEntryStrike=entryStrike7;window._qtEntryPrem=entryPrem7;
   window._qtFinalBias=finalBias;window._qtConfidence=confidence;window._qtWhyReasons=whyReasons;
   window._qtGammaBlast=qtGammaBlast;window._qtIsExpiry=qtIsExpiry7;window._qtFallback=isFallback;
+  var isEnterNow=(grade==='A+'||grade==='A')&&(direction==='BULLISH'||direction==='BEARISH');
   window._qtGrade=grade;window._qtTradeMode=tradeMode;window._qtTrapRisk=trapRisk;window._qtMarketOpen=d._marketOpen!==false;
   // Track WHEN signal first appeared (for late entry warnings)
   var _isEntryGrade=(grade==='A+'||grade==='A');
@@ -7282,8 +7287,176 @@ if(typeof _origRenderNav==='function'){
         window._loadGiftNifty();
       }
     }
+    // US pre-market when US region + market closed
+    if((window._optionsRegion||'IN')==='US'){
+      var _usNow=new Date();
+      var _usEtH=(_usNow.getUTCHours()*60+_usNow.getUTCMinutes()-240)/60;
+      var _usDow=_usNow.getUTCDay();
+      var _usOpen=(_usEtH>=9.5&&_usEtH<16&&_usDow>=1&&_usDow<=5);
+      if(!_usOpen&&!window._usPremarketLoaded){
+        window._loadUSPremarket();
+      }
+    }
     return result;
   };
 }
 
 console.log('[GIFT NIFTY] ✅ Module loaded');
+
+
+// ═══════════════════════════════════════════════════════════════
+// US PRE-MARKET / POST-MARKET — Futures + Global Cues
+// Shows when US market is closed + region is US
+// ═══════════════════════════════════════════════════════════════
+
+window._usPremarketData=null;
+window._usPremarketLoaded=false;
+
+window._loadUSPremarket=function(){
+  if(window._usPremarketLoaded)return;
+  
+  fetch('/api/us-premarket')
+    .then(function(r){return r.json()})
+    .then(function(d){
+      if(!d||!d.success)return;
+      window._usPremarketData=d;
+      window._usPremarketLoaded=true;
+      window._renderUSPremarketTicker();
+      console.log('[US PREMARKET] Loaded: gap='+d.expected_gap_pct+'% sentiment='+d.overall_sentiment);
+    })
+    .catch(function(e){console.log('[US PREMARKET] Error:',e)});
+};
+
+window._renderUSPremarketTicker=function(){
+  var d=window._usPremarketData;
+  if(!d)return;
+  
+  var existing=document.getElementById('usPremarketBar');
+  if(existing)existing.remove();
+  
+  var gapColor=d.expected_gap_pct>=0.1?'#059669':d.expected_gap_pct<=-0.1?'#ef4444':'#94a3b8';
+  var sentColor=d.overall_sentiment==='BULLISH'?'#059669':d.overall_sentiment==='BEARISH'?'#ef4444':'#d97706';
+  
+  var bar=document.createElement('div');
+  bar.id='usPremarketBar';
+  bar.style.cssText='max-width:520px;margin:0 auto 8px;padding:12px 14px;border-radius:12px;background:linear-gradient(135deg,#0F172A,#0f1a2e);border:2px solid '+gapColor+'40;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,0.3)';
+  bar.onclick=function(){window._showUSPremarketDetail()};
+  
+  var h='<div style="display:flex;align-items:center;justify-content:space-between">';
+  h+='<div>';
+  h+='<div style="font-size:9px;font-weight:800;color:#3b82f6;letter-spacing:1px;margin-bottom:2px">US FUTURES PRE-MARKET</div>';
+  if(d.es_futures>0)h+='<div style="font-size:18px;font-weight:900;color:#f1f5f9;font-family:JetBrains Mono">ES $'+d.es_futures.toLocaleString()+'</div>';
+  h+='</div>';
+  
+  h+='<div style="text-align:center">';
+  h+='<div style="font-size:18px;font-weight:900;color:'+gapColor+'">'+(d.expected_gap_pct>=0?'+':'')+d.expected_gap_pct+'%</div>';
+  h+='<div style="font-size:9px;font-weight:800;color:'+gapColor+'">'+d.gap_label+'</div>';
+  h+='</div>';
+  
+  h+='<div style="text-align:right">';
+  h+='<div style="display:inline-block;padding:4px 10px;border-radius:6px;background:'+sentColor+'15;font-size:10px;font-weight:800;color:'+sentColor+'">'+d.overall_sentiment+'</div>';
+  h+='<div style="font-size:8px;color:#94a3b8;margin-top:2px">'+d.signals_bull+' bull / '+d.signals_bear+' bear</div>';
+  h+='</div>';
+  h+='</div>';
+  
+  // Cues row
+  h+='<div style="display:flex;gap:4px;margin-top:6px;flex-wrap:wrap">';
+  var cues=[
+    {label:'ES',data:d.global_cues.sp500_fut},
+    {label:'NQ',data:d.global_cues.nasdaq_fut},
+    {label:'VIX',data:d.global_cues.vix},
+    {label:'BTC',data:d.global_cues.btc},
+    {label:'CRUDE',data:d.global_cues.crude},
+    {label:'10Y',data:d.global_cues.tnx},
+    {label:'GOLD',data:d.global_cues.gold},
+    {label:'DXY',data:d.global_cues.dxy},
+  ];
+  cues.forEach(function(c){
+    if(c.data&&c.data.price){
+      var cc=c.data.change>=0?'#059669':'#ef4444';
+      h+='<div style="padding:3px 8px;border-radius:4px;background:'+cc+'15;border:1px solid '+cc+'25;font-size:8px"><span style="color:#94a3b8;font-weight:600">'+c.label+'</span> <span style="color:'+cc+';font-weight:800">'+(c.data.change>=0?'+':'')+c.data.change+'%</span></div>';
+    }
+  });
+  h+='</div>';
+  h+='<div style="text-align:center;font-size:8px;color:#94a3b8;margin-top:4px;font-weight:600">Tap for detailed pre-market analysis \u2192</div>';
+  
+  bar.innerHTML=h;
+  
+  var el=document.getElementById('deResult');
+  if(el){
+    if(el.firstChild&&el.firstChild.nextSibling){
+      el.insertBefore(bar,el.firstChild.nextSibling);
+    }else{
+      el.insertBefore(bar,el.firstChild);
+    }
+  }
+};
+
+window._showUSPremarketDetail=function(){
+  var d=window._usPremarketData;
+  if(!d)return;
+  
+  var gapColor=d.expected_gap_pct>=0.1?'#059669':d.expected_gap_pct<=-0.1?'#ef4444':'#94a3b8';
+  var sentColor=d.overall_sentiment==='BULLISH'?'#059669':d.overall_sentiment==='BEARISH'?'#ef4444':'#d97706';
+  
+  var h='<div style="max-width:520px;margin:0 auto;padding:20px;background:#0A0F1C;border-radius:16px;border:1px solid #3b82f620">';
+  h+='<div style="text-align:center;margin-bottom:12px">';
+  h+='<div style="font-size:14px;font-weight:900;color:#3b82f6;font-family:Sora">US Pre-Market Analysis</div>';
+  h+='<div style="font-size:10px;color:#94a3b8;margin-top:2px">US market is closed \u2014 futures indicate next session direction</div>';
+  h+='</div>';
+  
+  h+='<div style="text-align:center;padding:16px;background:#1e293b;border-radius:12px;margin-bottom:12px">';
+  h+='<div style="font-size:10px;color:#64748b;margin-bottom:4px">EXPECTED SPY OPEN</div>';
+  h+='<div style="font-size:28px;font-weight:900;color:'+gapColor+';font-family:JetBrains Mono">$'+d.expected_spy_open.toLocaleString()+'</div>';
+  h+='<div style="font-size:14px;font-weight:800;color:'+gapColor+';margin-top:4px">'+d.gap_label+' '+(d.expected_gap_pct>=0?'+':'')+d.expected_gap_pct+'%</div>';
+  if(d.spy_close>0)h+='<div style="font-size:9px;color:#64748b;margin-top:4px">Previous close: $'+d.spy_close.toLocaleString()+' | VIX: '+d.vix+'</div>';
+  h+='</div>';
+  
+  // Futures detail
+  h+='<div style="display:flex;gap:6px;margin-bottom:12px">';
+  ['sp500_fut','nasdaq_fut','dow_fut','russell_fut'].forEach(function(k){
+    var c=d.global_cues[k];
+    if(c&&c.price){
+      var cc=c.change>=0?'#059669':'#ef4444';
+      var labels={sp500_fut:'S&P 500',nasdaq_fut:'NASDAQ',dow_fut:'DOW',russell_fut:'RUSSELL'};
+      h+='<div style="flex:1;padding:8px;background:#1e293b;border-radius:8px;text-align:center">';
+      h+='<div style="font-size:7px;color:#64748b">'+labels[k]+'</div>';
+      h+='<div style="font-size:12px;font-weight:900;color:'+cc+'">'+( c.change>=0?'+':'')+c.change+'%</div>';
+      h+='</div>';
+    }
+  });
+  h+='</div>';
+  
+  if(d.analysis&&d.analysis.length>0){
+    h+='<div style="margin-bottom:12px">';
+    h+='<div style="font-size:10px;font-weight:800;color:#e2e8f0;margin-bottom:6px">Market Signals:</div>';
+    d.analysis.forEach(function(point){
+      var pColor=point.indexOf('bullish')>=0||point.indexOf('strong')>=0||point.indexOf('good')>=0?'#059669':
+                 point.indexOf('bearish')>=0||point.indexOf('weak')>=0||point.indexOf('fear')>=0||point.indexOf('pressure')>=0?'#ef4444':'#94a3b8';
+      h+='<div style="padding:6px 10px;margin-bottom:4px;border-radius:8px;background:#1e293b;font-size:10px;color:'+pColor+'">'+point+'</div>';
+    });
+    h+='</div>';
+  }
+  
+  h+='<div style="padding:12px;background:'+sentColor+'08;border-radius:10px;border:1px solid '+sentColor+'20">';
+  h+='<div style="font-size:10px;font-weight:800;color:'+sentColor+';margin-bottom:4px">Trading Plan:</div>';
+  if(d.overall_sentiment==='BULLISH'){
+    h+='<div style="font-size:10px;color:#94a3b8">Futures indicate gap up. Watch for BUY CALL signals on SPY and QQQ after the first 15 minutes. If gap holds above previous close, trend is strong. Do not short a gap up day.</div>';
+  }else if(d.overall_sentiment==='BEARISH'){
+    h+='<div style="font-size:10px;color:#94a3b8">Futures indicate gap down. Watch for BUY PUT signals if SPY breaks below previous day low. Gap downs often recover — wait for confirmation. Do not panic sell at open.</div>';
+  }else{
+    h+='<div style="font-size:10px;color:#94a3b8">Mixed signals — market may open flat. Wait for direction in first 15 minutes. Use the engine to identify which sector (tech, financials, energy) is leading.</div>';
+  }
+  h+='</div>';
+  
+  h+='<div style="text-align:center;margin-top:12px"><button onclick="this.parentElement.parentElement.remove()" style="padding:8px 20px;border-radius:8px;background:#1e293b;color:#64748b;border:1px solid #334155;font-size:10px;cursor:pointer;font-weight:700">Close</button></div>';
+  h+='</div>';
+  
+  var overlay=document.createElement('div');
+  overlay.style.cssText='position:fixed;top:0;left:0;right:0;bottom:0;z-index:9999;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;padding:20px';
+  overlay.onclick=function(e){if(e.target===overlay)overlay.remove()};
+  overlay.innerHTML=h;
+  document.body.appendChild(overlay);
+};
+
+console.log('[US PREMARKET] \u2705 Module loaded');

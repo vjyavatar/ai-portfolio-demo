@@ -4787,6 +4787,160 @@ async def gift_nifty():
         return {"success": False, "error": str(e)[:200]}
 
 
+
+
+# ═══════════════════════════════════════════════════════════════
+# US PRE-MARKET / POST-MARKET INDICATOR
+# When US market is closed, fetch futures + global cues
+# ES=F, NQ=F, VIX trade almost 24 hours
+# ═══════════════════════════════════════════════════════════════
+
+@app.get("/api/us-premarket")
+async def us_premarket():
+    """US pre/post-market indicator — futures + global cues."""
+    try:
+        import yfinance as yf
+        import time as _time
+        
+        _t0 = _time.time()
+        
+        symbols = {
+            "sp500_close": "SPY",
+            "sp500_fut": "ES=F",
+            "nasdaq_fut": "NQ=F",
+            "dow_fut": "YM=F",
+            "russell_fut": "RTY=F",
+            "vix": "^VIX",
+            "dxy": "DX-Y.NYB",
+            "gold": "GC=F",
+            "crude": "CL=F",
+            "tnx": "^TNX",       # 10Y Treasury yield
+            "btc": "BTC-USD",    # Bitcoin (risk appetite)
+        }
+        
+        _yahoo_rate_wait()
+        
+        results = {}
+        for key, sym in symbols.items():
+            try:
+                tk = yf.Ticker(sym)
+                hist = tk.history(period="2d")
+                if len(hist) >= 1:
+                    current = float(hist['Close'].iloc[-1])
+                    prev = float(hist['Close'].iloc[-2]) if len(hist) >= 2 else current
+                    change = round((current - prev) / max(prev, 1) * 100, 2)
+                    results[key] = {
+                        "price": round(current, 2),
+                        "prev": round(prev, 2),
+                        "change": change,
+                        "sym": sym
+                    }
+            except:
+                pass
+        
+        # SPY close + futures gap
+        spy_close = results.get("sp500_close", {}).get("price", 0)
+        es_price = results.get("sp500_fut", {}).get("price", 0)
+        nq_price = results.get("nasdaq_fut", {}).get("price", 0)
+        
+        # Expected gap from futures
+        sp_fut_change = results.get("sp500_fut", {}).get("change", 0)
+        nq_fut_change = results.get("nasdaq_fut", {}).get("change", 0)
+        expected_gap = round((sp_fut_change * 0.5 + nq_fut_change * 0.5), 2)
+        
+        expected_spy_open = round(spy_close * (1 + expected_gap / 100), 2) if spy_close > 0 else 0
+        
+        # Sentiment
+        vix_val = results.get("vix", {}).get("price", 0)
+        vix_change = results.get("vix", {}).get("change", 0)
+        crude_change = results.get("crude", {}).get("change", 0)
+        gold_change = results.get("gold", {}).get("change", 0)
+        dxy_change = results.get("dxy", {}).get("change", 0)
+        btc_change = results.get("btc", {}).get("change", 0)
+        tnx_change = results.get("tnx", {}).get("change", 0)
+        
+        signals_bullish = 0
+        signals_bearish = 0
+        analysis = []
+        
+        if sp_fut_change > 0.3:
+            signals_bullish += 1
+            analysis.append(f"S&P futures up +{sp_fut_change}% — bullish open expected")
+        elif sp_fut_change < -0.3:
+            signals_bearish += 1
+            analysis.append(f"S&P futures down {sp_fut_change}% — bearish open expected")
+        
+        if nq_fut_change > 0.5:
+            signals_bullish += 1
+            analysis.append(f"Nasdaq futures strong +{nq_fut_change}% — tech leading")
+        elif nq_fut_change < -0.5:
+            signals_bearish += 1
+            analysis.append(f"Nasdaq futures weak {nq_fut_change}% — tech lagging")
+        
+        if vix_change > 5:
+            signals_bearish += 1
+            analysis.append(f"VIX spiked +{vix_change}% — fear rising, volatile open")
+        elif vix_change < -5:
+            signals_bullish += 1
+            analysis.append(f"VIX dropped {vix_change}% — calm markets, bullish")
+        
+        if btc_change > 2:
+            signals_bullish += 1
+            analysis.append(f"Bitcoin up +{btc_change}% — risk appetite strong")
+        elif btc_change < -2:
+            signals_bearish += 1
+            analysis.append(f"Bitcoin down {btc_change}% — risk-off sentiment")
+        
+        if tnx_change > 2:
+            signals_bearish += 1
+            analysis.append(f"Treasury yields rising +{tnx_change}% — pressure on growth stocks")
+        elif tnx_change < -2:
+            signals_bullish += 1
+            analysis.append(f"Treasury yields falling {tnx_change}% — good for growth/tech")
+        
+        if crude_change > 2:
+            analysis.append(f"Crude oil up +{crude_change}% — energy sector strong")
+        elif crude_change < -2:
+            analysis.append(f"Crude oil down {crude_change}% — energy weak, but lower inflation")
+        
+        overall = "BULLISH" if signals_bullish > signals_bearish else "BEARISH" if signals_bearish > signals_bullish else "NEUTRAL"
+        gap_label = "GAP UP" if expected_gap > 0.1 else "GAP DOWN" if expected_gap < -0.1 else "FLAT OPEN"
+        
+        _elapsed = round(_time.time() - _t0, 1)
+        
+        return {
+            "success": True,
+            "spy_close": spy_close,
+            "es_futures": es_price,
+            "nq_futures": nq_price,
+            "expected_gap_pct": expected_gap,
+            "expected_spy_open": expected_spy_open,
+            "gap_label": gap_label,
+            "overall_sentiment": overall,
+            "signals_bull": signals_bullish,
+            "signals_bear": signals_bearish,
+            "analysis": analysis,
+            "vix": vix_val,
+            "vix_change": vix_change,
+            "global_cues": {
+                "sp500_fut": results.get("sp500_fut", {}),
+                "nasdaq_fut": results.get("nasdaq_fut", {}),
+                "dow_fut": results.get("dow_fut", {}),
+                "russell_fut": results.get("russell_fut", {}),
+                "vix": results.get("vix", {}),
+                "crude": results.get("crude", {}),
+                "gold": results.get("gold", {}),
+                "dxy": results.get("dxy", {}),
+                "tnx": results.get("tnx", {}),
+                "btc": results.get("btc", {}),
+            },
+            "elapsed": _elapsed,
+        }
+    except Exception as e:
+        print(f"❌ us-premarket error: {e}")
+        return {"success": False, "error": str(e)[:200]}
+
+
 # ═══════════════════════════════════════════════════════════════
 # LIVE SCANNER — Batch scan up to 100 tickers in one API call
 # Uses yfinance.download() for batch pricing (single HTTP request)
