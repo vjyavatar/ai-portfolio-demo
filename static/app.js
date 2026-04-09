@@ -125,10 +125,10 @@ window.loadInvestorDE = typeof loadInvestorDE !== 'undefined' ? loadInvestorDE :
 // Track ticker input so Top Trades knows the stock
 TI.addEventListener('input',function(){var v=this.value.trim().toUpperCase();if(v&&v.length>=2)window._lastAnalyzedSymbol=v});
 // Smart Trades tab: only visible for authorized email
-const TRADES_EMAILS=['bbk@asl.com','tmp@cls.com'];
+const TRADES_EMAILS=['bbk@asl.com','tmp@cls.com','vj@vnky.com'];
 const TRADING_ONLY_EMAILS=['tmp@cls.com']; // Only Overview + Trading tab
-const PICKS_EMAILS=['bbk@asl.com'];
-const DREAM_EMAILS=['bbk@asl.com'];
+const PICKS_EMAILS=['bbk@asl.com','vj@vnky.com'];
+const DREAM_EMAILS=['bbk@asl.com','vj@vnky.com'];
 let _pulseData=null;
 let _pulseFetching=false,_pulseLoaded=false;
 
@@ -1366,13 +1366,7 @@ var _ts2=document.getElementById('timestamp');if(_ts2)_ts2.innerHTML='<div class
 // FORCE SHOW REPORT IMMEDIATELY — even before template renders
 var rpt=document.getElementById('report');
 if(rpt){rpt.style.setProperty('display','block','important');rpt.classList.add('show');}
-// Re-apply tab gating now that report is visible
-var _reEmail=(window._verifiedEmail||'').toLowerCase();
-if(_reEmail){
-  var _reShowTrades=TRADES_EMAILS.includes(_reEmail)||DREAM_EMAILS.includes(_reEmail)||TRADING_ONLY_EMAILS.includes(_reEmail);
-  var _reShowPicks=PICKS_EMAILS.includes(_reEmail);
-  _applyPremiumGating(_reShowTrades,_reShowPicks,_reEmail);
-}
+// Tab gating handled by MutationObserver (removed inline call)
 // Overview enhancements triggered only on Overview tab click (in premium-override.js)
 // FAILSAFE: Show tab bar IMMEDIATELY — before any rendering that might error
 // Tab bar will be shown by createAnalysisSections or FATAL catch — not here (avoids ghost buttons)

@@ -3567,8 +3567,8 @@ async def ads_txt():
 # ═══════════════════════════════════════════════════════════
 # INDEX TRADES — AI Daily Trade Ideas (Restricted Access)
 # ═══════════════════════════════════════════════════════════
-TRADES_ALLOWED_EMAILS = ["bbk@asl.com"]
-DREAM_ALLOWED_EMAILS = ["bbk@asl.com"]  # Ultra-premium: Dream Portfolio + Multibagger Hunter
+TRADES_ALLOWED_EMAILS = ["bbk@asl.com", "vj@vnky.com"]
+DREAM_ALLOWED_EMAILS = ["bbk@asl.com", "vj@vnky.com"]  # Ultra-premium: Dream Portfolio + Multibagger Hunter
 
 # Master list — ALL emails that can access the platform
 AUTHORIZED_EMAILS = list(set(
