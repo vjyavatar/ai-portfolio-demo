@@ -20745,6 +20745,14 @@ console.log('[TRADING] ✅ EMA 9/21 + RSI trading tab loaded');
       tradingBtn.style.setProperty('display','inline-flex','important');
     }
     
+    // Show Decide, Research, Markets, Dream tabs for full/admin users
+    if(isFullUser){
+      ['tabBtnResearch','tabBtnMarkets','tabBtnDecide','tabBtnDream'].forEach(function(id){
+        var el=document.getElementById(id);
+        if(el)el.style.setProperty('display','inline-flex','important');
+      });
+    }
+    
     if(isTradingUser){
       ['tabBtnResearch','tabBtnMarkets','tabBtnDecide','tabBtnDream'].forEach(function(id){
         var el=document.getElementById(id);
