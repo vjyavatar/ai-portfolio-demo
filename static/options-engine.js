@@ -3536,7 +3536,8 @@ function _renderQuickTrade(d,sym){
       h+='<div style="font-size:13px;font-weight:900;color:#ef4444;text-align:center">⚠️ MARKET CLOSED</div>';
       h+='<div style="font-size:10px;color:#ef4444;text-align:center;margin-top:4px">Data below is from LAST SESSION — NOT live. Do not trade based on this.</div>';
       var _gnd=window._giftNiftyData;
-      if(_gnd&&_gnd.expected_gap_pct!==undefined){
+      var _isIndiaRegion=(window._optionsRegion||'IN')==='IN'||(window._activeOptionsReg||'IN')==='IN';
+      if(_gnd&&_gnd.expected_gap_pct!==undefined&&_isIndiaRegion){
         var _gGapC=_gnd.expected_gap_pct>=0.1?'#059669':_gnd.expected_gap_pct<=-0.1?'#ef4444':'#94a3b8';
         h+='<div style="margin-top:8px;padding:8px;background:#1e293b;border-radius:8px;text-align:center">';
         h+='<div style="font-size:9px;color:#a855f7;font-weight:800">GIFT NIFTY PRE-MARKET</div>';
@@ -3547,6 +3548,18 @@ function _renderQuickTrade(d,sym){
       }
       h+='</div>';
     }
+      // US Pre-Market: show futures when US market is closed
+      if(!_isIndiaRegion){
+        h+='<div style="margin-top:8px;padding:10px;background:#1e293b;border-radius:10px;text-align:center">';
+        h+='<div style="font-size:9px;font-weight:800;color:#3b82f6;letter-spacing:1px;margin-bottom:4px">US PRE-MARKET FUTURES</div>';
+        h+='<div style="font-size:10px;color:#94a3b8">Check live US futures at market open for direction cues.</div>';
+        h+='<div style="display:flex;gap:6px;justify-content:center;margin-top:6px;flex-wrap:wrap">';
+        h+='<a href="https://www.google.com/finance/quote/ES=F:CME" target="_blank" style="padding:4px 10px;border-radius:6px;background:#3b82f610;color:#3b82f6;font-size:9px;font-weight:700;text-decoration:none;border:1px solid #3b82f620">S&P 500 Futures</a>';
+        h+='<a href="https://www.google.com/finance/quote/NQ=F:CME" target="_blank" style="padding:4px 10px;border-radius:6px;background:#8b5cf610;color:#8b5cf6;font-size:9px;font-weight:700;text-decoration:none;border:1px solid #8b5cf620">Nasdaq Futures</a>';
+        h+='<a href="https://www.google.com/finance/quote/.VIX:INDEXCBOE" target="_blank" style="padding:4px 10px;border-radius:6px;background:#ef444410;color:#ef4444;font-size:9px;font-weight:700;text-decoration:none;border:1px solid #ef444420">VIX</a>';
+        h+='</div>';
+        h+='</div>';
+      }
     h+='<div style="font-size:12px;color:#94a3b8;margin-top:6px">Confidence: <strong style="color:'+(confidence>=70?'#059669':'#d97706')+'">'+confidence+'%</strong> · Grade: <strong>'+grade+'</strong> ('+gradeLabel+') · Trap: '+trapRisk+'</div>';
     if(qtGammaBlast)h+='<div style="margin-top:6px;padding:4px 14px;border-radius:8px;background:#f59e0b15;display:inline-block;font-size:10px;color:#f59e0b;font-weight:800">⚡ GAMMA BLAST — Bigger position!</div>';
     // LATE ENTRY WARNING
@@ -6008,8 +6021,9 @@ _renderQuickTrade=function(d,sym){
   navDiv.innerHTML=navHtml;
   el.insertBefore(navDiv,el.firstChild);
   
-  // Gift Nifty: show when India market closed
-  if((window._optionsRegion||'IN')==='IN'||(window._activeOptionsReg||'IN')==='IN'){
+  // Pre-market: Gift Nifty for India, Futures for US (when market closed)
+  var _preMarketRegion=(window._optionsRegion||window._activeOptionsReg||'IN');
+  if(_preMarketRegion==='IN'){
     var _gnNowR=new Date();
     var _gnIstHR=(_gnNowR.getUTCHours()*60+_gnNowR.getUTCMinutes()+330)/60; // Precise IST hours
     var _gnDowR=_gnNowR.getUTCDay();
