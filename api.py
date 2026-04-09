@@ -3574,8 +3574,11 @@ DREAM_ALLOWED_EMAILS = ["bbk@asl.com"]  # Ultra-premium: Dream Portfolio + Multi
 AUTHORIZED_EMAILS = list(set(
     [e.lower() for e in TRADES_ALLOWED_EMAILS] +
     [e.lower() for e in DREAM_ALLOWED_EMAILS] +
-    ["vj@vnky.com"]  # Admin/PDF access
+    ["vj@vnky.com", "tmp@cls.com"]  # Admin + Trading-only
 ))
+
+# Trading-only emails — can ONLY access Overview + Trading tab
+TRADING_ONLY_EMAILS = ["tmp@cls.com"]
 
 def _is_authorized(email: str) -> bool:
     """Check if email is authorized to use the platform."""
@@ -4972,6 +4975,169 @@ async def validate_session(email: str = ""):
         "authorized": authorized,
         "email": email,
     }
+
+
+
+
+# ═══ EMA CROSSOVER + RSI — Simple Trading Signals ═══
+@app.get("/api/ema-signal")
+async def ema_signal(symbol: str = "NIFTY", region: str = "IN"):
+    """EMA 9/21 crossover + RSI signal for trading tab."""
+    try:
+        import yfinance as yf
+        import numpy as np
+        
+        yf_sym = symbol.upper()
+        if region == 'IN' and yf_sym not in ['NIFTY','BANKNIFTY','SENSEX','FINNIFTY','MIDCPNIFTY','^NSEI','^NSEBANK','^BSESN']:
+            yf_sym = symbol.upper() + '.NS'
+        
+        _yahoo_rate_wait()
+        tk = yf.Ticker(yf_sym)
+        hist = tk.history(period='5d', interval='5m')
+        
+        if len(hist) < 25:
+            return {"success": False, "error": "Insufficient data"}
+        
+        closes = hist['Close'].values.astype(float)
+        highs = hist['High'].values.astype(float)
+        lows = hist['Low'].values.astype(float)
+        volumes = hist['Volume'].values.astype(float)
+        
+        # EMA calculation
+        def ema(data, period):
+            alpha = 2 / (period + 1)
+            result = np.zeros_like(data)
+            result[0] = data[0]
+            for i in range(1, len(data)):
+                result[i] = alpha * data[i] + (1 - alpha) * result[i-1]
+            return result
+        
+        ema9 = ema(closes, 9)
+        ema21 = ema(closes, 21)
+        
+        # RSI calculation (14 period)
+        deltas = np.diff(closes)
+        gains = np.where(deltas > 0, deltas, 0)
+        losses = np.where(deltas < 0, -deltas, 0)
+        avg_gain = np.zeros_like(closes)
+        avg_loss = np.zeros_like(closes)
+        avg_gain[14] = np.mean(gains[:14])
+        avg_loss[14] = np.mean(losses[:14])
+        for i in range(15, len(closes)):
+            avg_gain[i] = (avg_gain[i-1] * 13 + gains[i-1]) / 14
+            avg_loss[i] = (avg_loss[i-1] * 13 + losses[i-1]) / 14
+        rs = np.where(avg_loss > 0, avg_gain / avg_loss, 100)
+        rsi = 100 - (100 / (1 + rs))
+        
+        # Current values
+        spot = round(float(closes[-1]), 2)
+        cur_ema9 = round(float(ema9[-1]), 2)
+        cur_ema21 = round(float(ema21[-1]), 2)
+        prev_ema9 = round(float(ema9[-2]), 2)
+        prev_ema21 = round(float(ema21[-2]), 2)
+        cur_rsi = round(float(rsi[-1]), 1)
+        
+        # Signal detection
+        ema9_above = cur_ema9 > cur_ema21
+        prev_ema9_above = prev_ema9 > prev_ema21
+        
+        # Crossover detection
+        bullish_cross = ema9_above and not prev_ema9_above  # EMA9 just crossed above EMA21
+        bearish_cross = not ema9_above and prev_ema9_above  # EMA21 just crossed above EMA9
+        
+        # Find when last crossover happened
+        cross_bars_ago = 0
+        for i in range(len(ema9)-2, max(0, len(ema9)-50), -1):
+            was_above = ema9[i] > ema21[i]
+            was_above_prev = ema9[i-1] > ema21[i-1]
+            if was_above != was_above_prev:
+                cross_bars_ago = len(ema9) - 1 - i
+                break
+        
+        cross_min_ago = cross_bars_ago * 5  # 5 min bars
+        
+        # Gap between EMAs (trend strength)
+        ema_gap = round(abs(cur_ema9 - cur_ema21), 2)
+        ema_gap_pct = round(ema_gap / max(spot, 1) * 100, 3)
+        
+        # Signal + RSI confirmation
+        signal = "NEUTRAL"
+        action = "WAIT"
+        confidence = 0
+        
+        if ema9_above:
+            if cur_rsi >= 50 and cur_rsi <= 75:
+                signal = "BULLISH"
+                action = "BUY"
+                confidence = 80 if bullish_cross else 65
+            elif cur_rsi > 75:
+                signal = "OVERBOUGHT"
+                action = "HOLD / EXIT"
+                confidence = 40
+            else:
+                signal = "WEAK BULL"
+                action = "WAIT"
+                confidence = 45
+        else:
+            if cur_rsi <= 50 and cur_rsi >= 25:
+                signal = "BEARISH"
+                action = "SELL"
+                confidence = 80 if bearish_cross else 65
+            elif cur_rsi < 25:
+                signal = "OVERSOLD"
+                action = "HOLD / EXIT"
+                confidence = 40
+            else:
+                signal = "WEAK BEAR"
+                action = "WAIT"
+                confidence = 45
+        
+        # Fresh crossover boost
+        if (bullish_cross or bearish_cross) and cross_min_ago <= 15:
+            confidence = min(100, confidence + 15)
+        
+        # Day high/low
+        today_bars = hist.tail(78)  # ~6.5 hours of 5min bars
+        day_high = round(float(today_bars['High'].max()), 2)
+        day_low = round(float(today_bars['Low'].min()), 2)
+        
+        # Recent bars for chart
+        recent = []
+        for idx in hist.tail(20).itertuples():
+            recent.append({
+                "t": idx.Index.strftime('%H:%M') if hasattr(idx.Index, 'strftime') else str(idx.Index)[-8:-3],
+                "o": round(float(idx.Open), 2),
+                "h": round(float(idx.High), 2),
+                "l": round(float(idx.Low), 2),
+                "c": round(float(idx.Close), 2),
+                "v": int(idx.Volume),
+            })
+        
+        return {
+            "success": True,
+            "symbol": symbol.upper(),
+            "region": region,
+            "spot": spot,
+            "ema9": cur_ema9,
+            "ema21": cur_ema21,
+            "rsi": cur_rsi,
+            "signal": signal,
+            "action": action,
+            "confidence": confidence,
+            "ema9_above": ema9_above,
+            "bullish_cross": bullish_cross,
+            "bearish_cross": bearish_cross,
+            "cross_min_ago": cross_min_ago,
+            "ema_gap": ema_gap,
+            "ema_gap_pct": ema_gap_pct,
+            "day_high": day_high,
+            "day_low": day_low,
+            "bars": recent,
+        }
+        
+    except Exception as e:
+        print(f"❌ ema-signal error: {e}")
+        return {"success": False, "error": str(e)[:200]}
 
 
 # ═══════════════════════════════════════════════════════════════

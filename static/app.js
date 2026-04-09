@@ -126,6 +126,7 @@ window.loadInvestorDE = typeof loadInvestorDE !== 'undefined' ? loadInvestorDE :
 TI.addEventListener('input',function(){var v=this.value.trim().toUpperCase();if(v&&v.length>=2)window._lastAnalyzedSymbol=v});
 // Smart Trades tab: only visible for authorized email
 const TRADES_EMAILS=['bbk@asl.com'];
+const TRADING_ONLY_EMAILS=['tmp@cls.com']; // Only Overview + Trading tab
 const PICKS_EMAILS=['bbk@asl.com'];
 const DREAM_EMAILS=['bbk@asl.com'];
 let _pulseData=null;
@@ -399,6 +400,20 @@ window._isDreamUser=d.dreamAccess||false;
 window._verifiedEmail=email;  // Store confirmed email
 window._isPdfUser=(email==='vj@vnky.com');
 var _pb=document.getElementById('pdfExportBtn');if(_pb)_pb.style.display=window._isPdfUser?'':'none';
+
+// Trading-only restriction
+window._isTradingOnly=TRADING_ONLY_EMAILS.includes(email);
+if(window._isTradingOnly){
+  // Hide all tabs except Overview + Trading
+  var _restrictTabs=['proScan','reports','pms','investor','options'];
+  _restrictTabs.forEach(function(tid){
+    var el2=document.querySelectorAll('[onclick*="'+tid+'"]');
+    el2.forEach(function(e){e.style.display='none'});
+  });
+  // Show trading tab button if not visible
+  var _tradingTabBtn=document.getElementById('traderTab');
+  if(_tradingTabBtn)_tradingTabBtn.style.display='';
+}
 _applyPremiumGating(d.premium,d.premium,email);
 _applyDreamGating(d.dreamAccess||false);
 if(d.premium)console.log('✅ Server verified premium:',email);
@@ -20177,165 +20192,356 @@ document.addEventListener('click', function(e) {
 })();
 
 
+
 // ═══════════════════════════════════════════════════════════════
-// EMAIL GATE + SESSION EXPIRY (2 hours)
-// Full overlay blocks everything until email entered
-// After 2 hours of inactivity → re-authentication required
+// TRADING TAB — EMA 9/21 Crossover + RSI (auto-refresh)
+// Simple signals: BUY when EMA9 crosses above EMA21 + RSI > 50
+//                 SELL when EMA21 crosses above EMA9 + RSI < 50
+// ═══════════════════════════════════════════════════════════════
+
+window._tradingRefreshTimer=null;
+window._tradingPrevSignal=null;
+
+window._loadTradingView=function(symbol,region){
+  var sym=(symbol||window._lastDESym||'NIFTY').toUpperCase();
+  var reg=region||(sym==='SPY'||sym==='QQQ'||sym==='AAPL'?'US':'IN');
+  var rpt=document.getElementById('report');
+  if(!rpt)return;
+  
+  // Clear old timer
+  if(window._tradingRefreshTimer){clearInterval(window._tradingRefreshTimer);window._tradingRefreshTimer=null}
+  
+  rpt.innerHTML='<div style="text-align:center;padding:40px"><div style="display:inline-block;width:24px;height:24px;border:3px solid #3b82f6;border-top-color:transparent;border-radius:50%;animation:spin .5s linear infinite"></div><div style="font-size:12px;color:#3b82f6;margin-top:8px">Loading '+sym+' trading signals...</div></div>';
+  rpt.classList.add('show');
+  
+  function fetchAndRender(){
+    fetch('/api/ema-signal?symbol='+encodeURIComponent(sym)+'&region='+encodeURIComponent(reg))
+      .then(function(r){return r.json()})
+      .then(function(d){
+        if(!d||!d.success){
+          rpt.innerHTML='<div style="text-align:center;padding:30px;color:#ef4444">Failed to load '+sym+' — '+(d?d.error:'no data')+'</div>';
+          return;
+        }
+        window._renderTradingView(d,rpt);
+      })
+      .catch(function(e){
+        rpt.innerHTML='<div style="text-align:center;padding:30px;color:#ef4444">Error: '+e.message+'</div>';
+      });
+  }
+  
+  fetchAndRender();
+  
+  // Auto-refresh every 30 seconds
+  window._tradingRefreshTimer=setInterval(fetchAndRender,30000);
+};
+
+window._renderTradingView=function(d,rpt){
+  var S=d.region==='US'?'$':'\u20B9';
+  
+  // Determine verdict from EMA + RSI
+  var verdict='NEUTRAL';var verdictColor='#64748b';var verdictIcon='';var verdictConf=d.confidence;
+  
+  if(d.bullish_cross&&d.rsi>=50&&d.rsi<=75){
+    verdict='STRONG BUY';verdictColor='#059669';verdictIcon='\u{1F7E2}';verdictConf=Math.min(100,d.confidence+10);
+  }else if(d.ema9_above&&d.rsi>=55&&d.rsi<=70){
+    verdict='BUY';verdictColor='#10b981';verdictIcon='\u{1F7E2}';
+  }else if(d.ema9_above&&d.rsi>=45){
+    verdict='LEANING BUY';verdictColor='#3b82f6';verdictIcon='\u{1F535}';
+  }else if(!d.ema9_above&&d.rsi<=45&&d.rsi>=30){
+    verdict='LEANING BEARISH';verdictColor='#d97706';verdictIcon='\u{1F7E0}';
+  }else if(!d.ema9_above&&d.rsi<=50&&d.rsi>=25){
+    verdict='BEARISH';verdictColor='#ef4444';verdictIcon='\u{1F534}';
+  }else if(d.bearish_cross&&d.rsi<=50&&d.rsi>=25){
+    verdict='STRONG SELL';verdictColor='#dc2626';verdictIcon='\u{1F534}';verdictConf=Math.min(100,d.confidence+10);
+  }else if(d.rsi>75){
+    verdict='OVERBOUGHT';verdictColor='#d97706';verdictIcon='\u26A0\uFE0F';
+  }else if(d.rsi<25){
+    verdict='OVERSOLD';verdictColor='#d97706';verdictIcon='\u26A0\uFE0F';
+  }
+  
+  var h='<div style="max-width:480px;margin:0 auto">';
+  
+  // Header
+  h+='<div style="text-align:center;margin-bottom:16px">';
+  h+='<div style="font-size:9px;color:#3b82f6;font-weight:800;letter-spacing:2px">\u26A1 TRADING</div>';
+  h+='<div style="font-size:20px;font-weight:900;color:var(--text);font-family:Sora;margin-top:2px">'+d.symbol+'</div>';
+  h+='<div style="font-size:24px;font-weight:900;color:var(--text);font-family:JetBrains Mono;margin-top:4px">'+S+d.spot.toLocaleString()+'</div>';
+  h+='</div>';
+  
+  // Verdict — big and clean
+  h+='<div style="padding:24px;border-radius:16px;background:'+verdictColor+'08;border:2px solid '+verdictColor+'25;text-align:center;margin-bottom:12px">';
+  h+='<div style="font-size:36px;font-weight:900;color:'+verdictColor+';font-family:Sora">'+verdictIcon+' '+verdict+'</div>';
+  h+='<div style="font-size:14px;color:'+verdictColor+';font-weight:700;margin-top:8px">Confidence: '+verdictConf+'%</div>';
+  
+  // Crossover alert
+  if(d.bullish_cross){
+    h+='<div style="margin-top:10px;padding:6px 16px;border-radius:8px;background:#059669;color:#fff;font-size:11px;font-weight:800;display:inline-block">EMA 9 crossed above EMA 21 \u2014 '+d.cross_min_ago+'m ago</div>';
+  }else if(d.bearish_cross){
+    h+='<div style="margin-top:10px;padding:6px 16px;border-radius:8px;background:#ef4444;color:#fff;font-size:11px;font-weight:800;display:inline-block">EMA 21 crossed above EMA 9 \u2014 '+d.cross_min_ago+'m ago</div>';
+  }
+  h+='</div>';
+  
+  // Key numbers — compact row
+  h+='<div style="display:flex;gap:6px;margin-bottom:12px">';
+  h+='<div style="flex:1;padding:8px;border-radius:10px;background:var(--surface);border:1px solid var(--border);text-align:center"><div style="font-size:7px;color:#059669;font-weight:700">EMA 9</div><div style="font-size:13px;font-weight:900;color:var(--text);font-family:JetBrains Mono">'+d.ema9.toLocaleString()+'</div></div>';
+  h+='<div style="flex:1;padding:8px;border-radius:10px;background:var(--surface);border:1px solid var(--border);text-align:center"><div style="font-size:7px;color:#ef4444;font-weight:700">EMA 21</div><div style="font-size:13px;font-weight:900;color:var(--text);font-family:JetBrains Mono">'+d.ema21.toLocaleString()+'</div></div>';
+  var _rsiC=d.rsi>70?'#ef4444':d.rsi<30?'#059669':d.rsi>50?'#059669':'#ef4444';
+  h+='<div style="flex:1;padding:8px;border-radius:10px;background:var(--surface);border:1px solid var(--border);text-align:center"><div style="font-size:7px;color:'+_rsiC+';font-weight:700">RSI</div><div style="font-size:13px;font-weight:900;color:'+_rsiC+';font-family:JetBrains Mono">'+d.rsi+'</div></div>';
+  h+='</div>';
+  
+  // Ticker input
+  h+='<div style="display:flex;gap:6px;margin-bottom:8px;justify-content:center">';
+  h+='<input id="tradingTickerInput" value="'+d.symbol+'" placeholder="NIFTY" style="padding:6px 12px;border-radius:8px;background:var(--surface);border:1px solid var(--border);color:var(--text);font-size:11px;font-weight:700;width:100px;text-align:center;font-family:Sora">';
+  h+='<button onclick="var t=document.getElementById(\'tradingTickerInput\').value.trim();if(t)window._loadTradingView(t)" style="padding:6px 14px;border-radius:8px;background:#3b82f6;color:#fff;border:none;font-size:10px;font-weight:800;cursor:pointer">Go</button>';
+  h+='</div>';
+  
+  h+='<div style="text-align:center;font-size:8px;color:var(--text3)">Auto-refreshes every 30s \u00B7 '+new Date().toLocaleTimeString()+'</div>';
+  h+='</div>';
+  rpt.innerHTML=h;
+  rpt.classList.add('show');
+  
+  // ═══ VOICE — clean verdicts ═══
+  if(verdict!==window._tradingPrevSignal){
+    window._tradingPrevSignal=verdict;
+    var voice='';
+    if(verdict==='STRONG BUY')voice=d.symbol+' strong buy signal. EMA 9 just crossed above EMA 21. RSI '+d.rsi+' confirms. Enter now.';
+    else if(verdict==='BUY')voice=d.symbol+' is in buy zone. Trend is up. Hold or enter long.';
+    else if(verdict==='LEANING BUY')voice=d.symbol+' leaning bullish. Not a strong signal yet. Wait for confirmation.';
+    else if(verdict==='LEANING BEARISH')voice=d.symbol+' leaning bearish. Trend weakening. Be cautious with longs.';
+    else if(verdict==='BEARISH')voice=d.symbol+' is bearish. EMA 21 above EMA 9. Stay out of longs.';
+    else if(verdict==='STRONG SELL')voice=d.symbol+' strong sell signal. EMA 21 crossed above EMA 9. RSI '+d.rsi+'. Exit all longs now.';
+    else if(verdict==='OVERBOUGHT')voice='Warning. '+d.symbol+' RSI is '+d.rsi+'. Overbought. Book profits if you are in.';
+    else if(verdict==='OVERSOLD')voice='Warning. '+d.symbol+' RSI is '+d.rsi+'. Oversold. Bounce may come. Wait for crossover.';
+    if(voice&&window._speak)window._speak(voice,verdict==='STRONG BUY'||verdict==='STRONG SELL');
+  }
+};
+
+
+
+// ═══ TRADING TAB — Ticker Navigation ═══
+window._tradingRegion=window._tradingRegion||'IN';
+window._tradingCat=window._tradingCat||'index';
+
+window._tradingTickers={
+  IN:{
+    index:{label:'\u{1F4CA} Index',tickers:['NIFTY','BANKNIFTY','SENSEX','FINNIFTY','MIDCPNIFTY']},
+    stock:{label:'\u{1F4C8} Stocks',tickers:['RELIANCE','TCS','INFY','HDFCBANK','ICICIBANK','SBIN','BAJFINANCE','TATAMOTORS','LT','MARUTI','ITC','HINDUNILVR','BHARTIARTL','WIPRO','HCLTECH','ADANIENT','TITAN','SUNPHARMA','DRREDDY','JSWSTEEL','HAL','BEL','VEDL','IRCTC','PAYTM']},
+    etf:{label:'\u{1F4E6} ETFs',tickers:['NIFTYBEES','BANKBEES','GOLDBEES','SILVERBEES','ITBEES','JUNIORBEES','CPSE','PHARMABEES','MOM50','MIDCAP']},
+  },
+  US:{
+    index:{label:'\u{1F4CA} Index',tickers:['SPY','QQQ','IWM','DIA']},
+    stock:{label:'\u{1F4C8} Stocks',tickers:['AAPL','TSLA','NVDA','AMZN','MSFT','META','GOOGL','AMD','NFLX','MU','COIN','PLTR','CRM','UBER','SMCI','ARM','AVGO','BA','JPM','V','LLY','SOFI','PANW','CRWD','ORCL']},
+    etf:{label:'\u{1F4E6} ETFs',tickers:['GLD','TLT','XLF','XLE','XLK','ARKK','SOXX','TQQQ','IBIT','SMH','SLV','SCHD']},
+  }
+};
+
+window._buildTradingNav=function(reg,activeSym){
+  var data=window._tradingTickers[reg]||window._tradingTickers.IN;
+  var cat=window._tradingCat||'index';
+  var h='';
+  
+  // Category tabs
+  h+='<div style="display:flex;gap:3px;justify-content:center;margin-bottom:6px">';
+  ['index','stock','etf'].forEach(function(ck){
+    var cd=data[ck];if(!cd)return;
+    var isAct=ck===cat;
+    h+='<div onclick="window._tradingCat=\''+ck+'\';window._renderTradingNav()" style="padding:4px 12px;border-radius:6px;font-size:9px;font-weight:800;cursor:pointer;'+(isAct?'background:#3b82f6;color:#fff':'background:var(--surface);color:var(--text3);border:1px solid var(--border)')+'">'+cd.label+'</div>';
+  });
+  h+='</div>';
+  
+  // Ticker pills — scrollable
+  var tickers=data[cat]?data[cat].tickers:[];
+  h+='<div style="display:flex;flex-wrap:wrap;gap:3px;justify-content:center;max-height:80px;overflow-y:auto;padding:2px">';
+  tickers.forEach(function(tk){
+    var isAct2=tk===activeSym;
+    h+='<div onclick="window._loadTradingView(\''+tk+'\',\''+reg+'\')" style="padding:3px 8px;border-radius:5px;font-size:8px;font-weight:700;cursor:pointer;font-family:JetBrains Mono;'+(isAct2?'background:'+('#059669')+';color:#fff':'background:var(--surface);color:var(--text3);border:1px solid var(--border)')+'">'+tk+'</div>';
+  });
+  h+='</div>';
+  
+  return h;
+};
+
+window._renderTradingNav=function(){
+  var nav=document.getElementById('tradingTickerNav');
+  if(nav){
+    var activeSym=window._tradingActiveSym||'NIFTY';
+    nav.innerHTML=window._buildTradingNav(window._tradingRegion||'IN',activeSym);
+  }
+  // Also reload data for first ticker in category
+  var reg=window._tradingRegion||'IN';
+  var cat=window._tradingCat||'index';
+  var data=window._tradingTickers[reg];
+  if(data&&data[cat]&&data[cat].tickers.length>0){
+    window._loadTradingView(data[cat].tickers[0],reg);
+  }
+};
+
+// Store active symbol for highlight
+var _origLoadTV=window._loadTradingView;
+window._loadTradingView=function(sym,reg){
+  window._tradingActiveSym=sym;
+  window._tradingRegion=reg||(sym&&['SPY','QQQ','IWM','DIA','AAPL','TSLA','NVDA','AMZN','MSFT','META','GOOGL'].indexOf(sym)>=0?'US':'IN');
+  if(typeof _origLoadTV==='function')_origLoadTV(sym,reg||window._tradingRegion);
+};
+
+console.log('[TRADING] ✅ EMA 9/21 + RSI trading tab loaded');
+
+
+// ═══════════════════════════════════════════════════════════════
+// EMAIL PERSISTENCE + TAB ACCESS CONTROL
+// Email saved in localStorage — enter once, never asked again
+// 2-hour idle → re-enter (but email field pre-filled)
+// Tab visibility based on email role
 // ═══════════════════════════════════════════════════════════════
 
 (function(){
-  var SESSION_TIMEOUT=2*60*60*1000; // 2 hours in ms
-  var ACTIVITY_CHECK=60000; // Check every 1 minute
-  
-  // Track last activity
+  var IDLE_TIMEOUT=2*60*60*1000; // 2 hours
   window._lastActivity=Date.now();
-  ['click','keydown','touchstart','scroll','mousemove'].forEach(function(evt){
-    document.addEventListener(evt,function(){window._lastActivity=Date.now()},true);
+  ['click','keydown','touchstart','scroll'].forEach(function(e){
+    document.addEventListener(e,function(){window._lastActivity=Date.now()},true);
   });
   
-  function showEmailGate(reason){
-    // Remove existing gate if any
-    var existing=document.getElementById('emailGateOverlay');
-    if(existing)existing.remove();
+  // ═══ 1. RESTORE EMAIL FROM localStorage ═══
+  function restoreEmail(){
+    var saved='';
+    try{saved=localStorage.getItem('celesys_email')||''}catch(e){}
+    if(!saved)return;
     
-    var overlay=document.createElement('div');
-    overlay.id='emailGateOverlay';
-    overlay.style.cssText='position:fixed;top:0;left:0;right:0;bottom:0;z-index:999999;background:linear-gradient(135deg,#0A0F1C,#1a1040);display:flex;align-items:center;justify-content:center;padding:20px';
-    
-    var h='<div style="max-width:400px;width:100%;text-align:center">';
-    h+='<div style="font-size:48px;margin-bottom:16px">🔐</div>';
-    h+='<div style="font-size:24px;font-weight:900;color:#e2e8f0;font-family:Sora,sans-serif;margin-bottom:8px">Celesys</div>';
-    h+='<div style="font-size:12px;color:#94a3b8;margin-bottom:24px">'+(reason||'Enter your email to access the platform')+'</div>';
-    h+='<input type="email" id="gateEmailInput" placeholder="your@email.com" style="width:100%;padding:14px 18px;border-radius:12px;background:#1e293b;border:2px solid #334155;color:#e2e8f0;font-size:14px;font-family:Sora,sans-serif;outline:none;text-align:center;box-sizing:border-box" autocomplete="email">';
-    h+='<div id="gateError" style="font-size:11px;color:#ef4444;margin-top:8px;min-height:16px"></div>';
-    h+='<button onclick="window._validateGateEmail()" id="gateSubmitBtn" style="margin-top:12px;padding:14px 40px;border-radius:12px;background:linear-gradient(135deg,#059669,#10b981);color:#fff;border:none;font-size:14px;font-weight:800;cursor:pointer;font-family:Sora,sans-serif;width:100%">Continue</button>';
-    h+='<div style="font-size:9px;color:#475569;margin-top:16px">Institutional-grade stock analysis platform</div>';
-    h+='</div>';
-    
-    overlay.innerHTML=h;
-    document.body.appendChild(overlay);
-    
-    // Auto-focus email input
-    setTimeout(function(){
-      var inp=document.getElementById('gateEmailInput');
-      if(inp){
-        inp.focus();
-        inp.addEventListener('keypress',function(e){if(e.key==='Enter')window._validateGateEmail()});
-      }
-    },200);
+    window._verifiedEmail=saved;
+    var el=document.getElementById('email');
+    if(el&&!(el.dataset.real||'').trim()){
+      el.dataset.real=saved;
+      var p=saved.split('@');
+      el.value=p[0][0]+'***@'+p[1];
+      el.type='text';
+    }
+    applyTabAccess(saved);
   }
   
-  window._validateGateEmail=function(){
-    var inp=document.getElementById('gateEmailInput');
-    var err=document.getElementById('gateError');
-    if(!inp)return;
-    
-    var email=inp.value.trim().toLowerCase();
-    
-    // Basic validation
-    if(!email||!email.includes('@')||!email.includes('.')){
-      if(err)err.textContent='Please enter a valid email address';
-      inp.style.borderColor='#ef4444';
-      return;
-    }
-    
-    // Set the email in the main email field
-    var mainEmail=document.getElementById('email');
-    if(mainEmail){
-      mainEmail.value=email;
-      mainEmail.dataset.real=email;
-      // Trigger blur to activate masking + checkTradesAccess
-      var blurEvt=new Event('blur',{bubbles:true});
-      mainEmail.dispatchEvent(blurEvt);
-    }
-    
-    // Store session
-    window._verifiedEmail=email;
-    window._lastActivity=Date.now();
-    window._sessionStart=Date.now();
-    
-    // Save to sessionStorage (survives page refresh within tab, dies on tab close)
-    try{
-      sessionStorage.setItem('celesys_email',email);
-      sessionStorage.setItem('celesys_session_start',Date.now().toString());
-    }catch(e){}
-    
-    // Remove gate
-    var overlay=document.getElementById('emailGateOverlay');
-    if(overlay){
-      overlay.style.opacity='0';
-      overlay.style.transition='opacity 0.3s';
-      setTimeout(function(){overlay.remove()},300);
-    }
-    
-    // Run access check
-    if(typeof checkTradesAccess==='function')checkTradesAccess();
-  };
+  // ═══ 2. SAVE EMAIL whenever entered ═══
+  function patchEmailSave(){
+    var el=document.getElementById('email');
+    if(!el||el._celesysPatched)return;
+    el._celesysPatched=true;
+    el.addEventListener('blur',function(){
+      var email=(el.dataset.real||el.value||'').trim().toLowerCase();
+      if(email&&email.includes('@')&&email.includes('.')){
+        try{localStorage.setItem('celesys_email',email)}catch(e){}
+        window._verifiedEmail=email;
+        window._lastActivity=Date.now();
+        applyTabAccess(email);
+      }
+    });
+  }
   
-  // ═══ SESSION EXPIRY CHECK ═══
-  function checkSessionExpiry(){
+  // ═══ 3. TAB ACCESS CONTROL ═══
+  function applyTabAccess(email){
+    email=(email||'').toLowerCase();
+    
+    // Define roles
+    var FULL_ACCESS=['bbk@asl.com']; // Everything except PDF
+    var TRADING_ACCESS=['tmp@cls.com']; // Overview + Trading + Tools
+    var PDF_ACCESS=['vj@vnky.com']; // Everything + PDF
+    
+    var role='public'; // Default: Overview + Tools only
+    if(PDF_ACCESS.indexOf(email)>=0)role='admin';
+    else if(FULL_ACCESS.indexOf(email)>=0)role='full';
+    else if(TRADING_ACCESS.indexOf(email)>=0)role='trading';
+    
+    window._userRole=role;
+    window._isPdfUser=(role==='admin');
+    window._isTradingOnly=(role==='trading');
+    
+    // Tab IDs and which roles can see them
+    // Format: {selector, roles that CAN see it}
+    var tabRules=[
+      // Overview — everyone
+      // Tools — everyone  
+      {sel:'[onclick*="trader"], #traderTab, [onclick*="switchDEMode"][onclick*="trader"]', roles:['admin','full','trading']},
+      {sel:'[onclick*="investor"], #investorTab', roles:['admin','full']},
+      {sel:'[onclick*="options"], #optionsTab, [onclick*="switchDEMode"][onclick*="options"]', roles:['admin','full']},
+      {sel:'[onclick*="proScan"], [onclick*="Pro Scan"]', roles:['admin','full']},
+      {sel:'[onclick*="reports"], [onclick*="Reports"]', roles:['admin','full']},
+      {sel:'[onclick*="pms"], [onclick*="PMS"]', roles:['admin','full']},
+      {sel:'#pdfExportBtn', roles:['admin']},
+    ];
+    
+    tabRules.forEach(function(rule){
+      try{
+        var els=document.querySelectorAll(rule.sel);
+        els.forEach(function(el2){
+          if(rule.roles.indexOf(role)>=0){
+            el2.style.display='';
+          }else{
+            el2.style.display='none';
+          }
+        });
+      }catch(e){}
+    });
+    
+    console.log('[ACCESS] Email: '+email+' → Role: '+role);
+  }
+  
+  // ═══ 4. IDLE CHECK — 2 hours no activity → clear session ═══
+  setInterval(function(){
     var email=(window._verifiedEmail||'').trim();
-    if(!email){
-      // No email = show gate
-      showEmailGate();
-      return;
-    }
+    if(!email)return;
     
-    var idle=Date.now()-window._lastActivity;
-    if(idle>=SESSION_TIMEOUT){
-      // Session expired — clear and show gate
+    if(Date.now()-window._lastActivity>=IDLE_TIMEOUT){
+      // Idle too long — clear session but keep email in field for easy re-entry
       window._verifiedEmail='';
-      window._isPdfUser=false;
-      try{sessionStorage.removeItem('celesys_email');sessionStorage.removeItem('celesys_session_start')}catch(e){}
+      try{localStorage.removeItem('celesys_email')}catch(e){}
       
-      // Clear main email field
-      var mainEmail=document.getElementById('email');
-      if(mainEmail){mainEmail.value='';mainEmail.dataset.real=''}
+      // Stop timers
+      if(window._quickRefreshTimer)clearInterval(window._quickRefreshTimer);
+      if(window._liveScannerTimer)clearInterval(window._liveScannerTimer);
+      if(window._tradingRefreshTimer)clearInterval(window._tradingRefreshTimer);
       
-      showEmailGate('Session expired (2 hours inactive). Please re-enter your email.');
+      // Show idle message in report area
+      var rpt=document.getElementById('report');
+      if(rpt)rpt.innerHTML='<div style="text-align:center;padding:40px"><div style="font-size:36px;margin-bottom:12px">\u{1F634}</div><div style="font-size:16px;font-weight:900;color:var(--text)">Session Paused</div><div style="font-size:11px;color:var(--text3);margin-top:8px">Inactive for 2 hours. Click Analyze or switch tabs to resume.</div></div>';
+      
+      console.log('[SESSION] Idle timeout — session paused');
     }
-  }
+  },60000); // Check every minute
   
-  // ═══ INITIALIZE ON PAGE LOAD ═══
-  function initGate(){
-    // Check if there's a session from sessionStorage (page refresh)
-    var savedEmail='';
-    try{savedEmail=sessionStorage.getItem('celesys_email')||''}catch(e){}
-    
-    var mainEmail=document.getElementById('email');
-    var currentEmail=mainEmail?(mainEmail.dataset.real||mainEmail.value||'').trim():'';
-    
-    if(savedEmail){
-      // Restore session from sessionStorage
-      window._verifiedEmail=savedEmail;
-      window._lastActivity=Date.now();
-      if(mainEmail&&!currentEmail){
-        mainEmail.dataset.real=savedEmail;
-        var parts=savedEmail.split('@');
-        mainEmail.value=parts[0][0]+'***@'+parts[1];
-        mainEmail.type='text';
-      }
-      // Don't show gate
-    }else if(!currentEmail){
-      // No email anywhere — show gate
-      showEmailGate();
-    }
-  }
-  
-  // Run on DOM ready
-  if(document.readyState==='loading'){
-    document.addEventListener('DOMContentLoaded',initGate);
-  }else{
-    setTimeout(initGate,500); // Small delay to let other scripts initialize
-  }
-  
-  // Periodic expiry check every minute
-  setInterval(checkSessionExpiry,ACTIVITY_CHECK);
-  
-  // Also check on tab visibility change
+  // ═══ 5. RE-VALIDATE on tab focus ═══
   document.addEventListener('visibilitychange',function(){
-    if(!document.hidden)checkSessionExpiry();
+    if(!document.hidden){
+      var email=(window._verifiedEmail||'').trim();
+      if(!email){
+        // Try restore from localStorage
+        restoreEmail();
+      }
+      if(email){
+        window._lastActivity=Date.now(); // User is back — reset idle
+      }
+    }
   });
+  
+  // ═══ INIT ═══
+  if(document.readyState==='loading'){
+    document.addEventListener('DOMContentLoaded',function(){
+      setTimeout(function(){restoreEmail();patchEmailSave()},500);
+    });
+  }else{
+    setTimeout(function(){restoreEmail();patchEmailSave()},500);
+  }
+  
+  // Re-apply access after checkTradesAccess runs
+  var _origCTA=window.checkTradesAccess;
+  if(typeof checkTradesAccess==='function'){
+    // Patch to also apply tab access after it runs
+    var _patchInterval=setInterval(function(){
+      var email=(window._verifiedEmail||'').trim();
+      if(email){
+        applyTabAccess(email);
+        // Save to localStorage
+        try{localStorage.setItem('celesys_email',email)}catch(e){}
+      }
+    },3000); // Re-apply every 3 seconds for first 30 seconds
+    setTimeout(function(){clearInterval(_patchInterval)},30000);
+  }
   
 })();
 
