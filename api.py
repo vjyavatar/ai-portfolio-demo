@@ -4668,6 +4668,88 @@ async def stock_quick(ticker: str = ""):
 # Uses: SGX Nifty futures, US futures (ES, NQ), Asia markets
 # ═══════════════════════════════════════════════════════════════
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# PARTICIPANT-WISE OI — Client/FII/Pro breakdown from NSE
+# ═══════════════════════════════════════════════════════════════════════════════
+_participant_oi_cache = {"data": None, "time": 0}
+
+@app.get("/api/participant-oi")
+async def participant_oi():
+    """Fetch participant-wise open interest data from NSE (Client/FII/DII/Pro)."""
+    try:
+        # Cache for 10 minutes
+        if _participant_oi_cache["data"] and time.time() - _participant_oi_cache["time"] < 600:
+            return _participant_oi_cache["data"]
+        
+        import requests as req
+        s = req.Session()
+        hdr = {"User-Agent": "Mozilla/5.0", "Accept": "application/json", "Referer": "https://www.nseindia.com/"}
+        s.get("https://www.nseindia.com/", headers=hdr, timeout=6)
+        
+        # Participant-wise trading volumes (OI data)
+        resp = s.get("https://www.nseindia.com/api/reports?archives=[%22fo%22,%22cat%22]", headers=hdr, timeout=8)
+        
+        result = {"success": False, "participants": {}, "summary": ""}
+        
+        if resp.status_code == 200:
+            data = resp.json()
+            participants = {}
+            
+            for entry in (data if isinstance(data, list) else data.get("data", [])):
+                cat = entry.get("clientType", "").strip()
+                if not cat:
+                    continue
+                
+                fut_long = float(entry.get("futIdxLong", 0) or 0) + float(entry.get("futStkLong", 0) or 0)
+                fut_short = float(entry.get("futIdxShort", 0) or 0) + float(entry.get("futStkShort", 0) or 0)
+                opt_ce_long = float(entry.get("optIdxCallLong", 0) or 0) + float(entry.get("optStkCallLong", 0) or 0)
+                opt_ce_short = float(entry.get("optIdxCallShort", 0) or 0) + float(entry.get("optStkCallShort", 0) or 0)
+                opt_pe_long = float(entry.get("optIdxPutLong", 0) or 0) + float(entry.get("optStkPutLong", 0) or 0)
+                opt_pe_short = float(entry.get("optIdxPutShort", 0) or 0) + float(entry.get("optStkPutShort", 0) or 0)
+                
+                net_fut = fut_long - fut_short
+                net_opt = (opt_ce_long - opt_ce_short) + (opt_pe_long - opt_pe_short)
+                
+                participants[cat] = {
+                    "futLong": fut_long, "futShort": fut_short, "futNet": net_fut,
+                    "optCeLong": opt_ce_long, "optCeShort": opt_ce_short,
+                    "optPeLong": opt_pe_long, "optPeShort": opt_pe_short,
+                    "optNet": net_opt,
+                    "bias": "BULLISH" if (net_fut + net_opt) > 0 else "BEARISH"
+                }
+            
+            # Generate summary
+            fii = participants.get("FII", participants.get("FPI", {}))
+            client = participants.get("Client", {})
+            pro = participants.get("Pro", participants.get("PROP", {}))
+            
+            summary_parts = []
+            if fii:
+                summary_parts.append(f"FII: {'Bullish' if fii.get('bias') == 'BULLISH' else 'Bearish'} (Fut net: {fii.get('futNet', 0):,.0f})")
+            if client:
+                summary_parts.append(f"Client: {'Bullish' if client.get('bias') == 'BULLISH' else 'Bearish'}")
+            if pro:
+                summary_parts.append(f"Pro: {'Bullish' if pro.get('bias') == 'BULLISH' else 'Bearish'}")
+            
+            result = {
+                "success": True,
+                "participants": participants,
+                "summary": " | ".join(summary_parts),
+                "fii_bias": fii.get("bias", "NEUTRAL") if fii else "NEUTRAL",
+                "smart_money_signal": fii.get("bias", "NEUTRAL") if fii else "NEUTRAL",
+                "timestamp": time.strftime("%H:%M IST")
+            }
+            
+            _participant_oi_cache["data"] = result
+            _participant_oi_cache["time"] = time.time()
+            print(f"📊 Participant OI: {result['summary']}")
+        
+        return result
+    except Exception as e:
+        print(f"❌ Participant OI error: {e}")
+        return {"success": False, "error": str(e), "participants": {}}
+
+
 # Gift Nifty cache — 5 min
 _gift_nifty_cache = {"data": None, "time": 0}
 
@@ -25551,14 +25633,56 @@ async def options_quick(symbol: str = "NIFTY", region: str = "IN"):
             "pe_support": pe_support,
             "total_ce_oi": sum(c['ce_oi'] for c in chain_data),
             "total_pe_oi": sum(c['pe_oi'] for c in chain_data),
-            "ohlc_bars": [],  # Yahoo doesn't give intraday easily
+            "ohlc_bars": [],  # Will be populated below
             "gex": {"total": 0, "regime": "NEUTRAL", "topStrikes": [], "flipPoint": max_pain, "callWall": ce_resistance[0]['strike'] if ce_resistance else 0, "putWall": pe_support[0]['strike'] if pe_support else 0},
             "pivot": vwap,
             "cpr_top": round(day_high * 0.998, 2),
             "cpr_bottom": round(day_low * 1.002, 2),
         }
         
-        print(f"[OPTIONS-QUICK] ✅ {sym} ({region}): spot={spot}, chain={len(chain_data)} strikes, pcr={pcr}")
+        # ═══ FETCH INTRADAY BARS (5-min) for framework features ═══
+        # Without bars: Session Profile, VWAP Bands, ATR, Confirmation Bars all fail
+        try:
+            _yahoo_rate_wait()
+            hist_5m = tk.history(period='1d', interval='5m')
+            if len(hist_5m) > 0:
+                ohlc_bars = []
+                for _, row in hist_5m.iterrows():
+                    ohlc_bars.append({
+                        "t": str(row.name.time())[:5] if hasattr(row.name, 'time') else "",
+                        "o": round(float(row['Open']), 2),
+                        "h": round(float(row['High']), 2),
+                        "l": round(float(row['Low']), 2),
+                        "c": round(float(row['Close']), 2),
+                        "v": int(row.get('Volume', 0))
+                    })
+                result["ohlc_bars"] = ohlc_bars
+                # Recalculate VWAP from actual bars (more accurate)
+                vwap_num = sum((b["h"]+b["l"]+b["c"])/3 * b["v"] for b in ohlc_bars if b["v"] > 0)
+                vwap_den = sum(b["v"] for b in ohlc_bars if b["v"] > 0)
+                if vwap_den > 0:
+                    result["vwap"] = round(vwap_num / vwap_den, 2)
+                # Update today_high/low from bars if more accurate
+                bar_high = max(b["h"] for b in ohlc_bars) if ohlc_bars else day_high
+                bar_low = min(b["l"] for b in ohlc_bars) if ohlc_bars else day_low
+                if bar_high > result["today_high"]:
+                    result["today_high"] = round(bar_high, 2)
+                if bar_low < result["today_low"] and bar_low > 0:
+                    result["today_low"] = round(bar_low, 2)
+                # Store prev_close for gap calc
+                try:
+                    hist_2d = tk.history(period='5d', interval='1d')
+                    if len(hist_2d) >= 2:
+                        result["prev_close"] = round(float(hist_2d['Close'].iloc[-2]), 2)
+                except:
+                    pass
+                print(f"[OPTIONS-QUICK] ✅ {sym} bars: {len(ohlc_bars)} 5-min bars, VWAP={result['vwap']}")
+            else:
+                print(f"[OPTIONS-QUICK] ⚠️ No 5-min history for {yf_sym}")
+        except Exception as bar_err:
+            print(f"[OPTIONS-QUICK] ⚠️ Bars fetch error for {yf_sym}: {bar_err}")
+        
+        print(f"[OPTIONS-QUICK] ✅ {sym} ({region}): spot={spot}, chain={len(chain_data)} strikes, pcr={pcr}, bars={len(result.get('ohlc_bars', []))}")
         return result
         
     except Exception as e:
