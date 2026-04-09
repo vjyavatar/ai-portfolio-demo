@@ -125,7 +125,7 @@ window.loadInvestorDE = typeof loadInvestorDE !== 'undefined' ? loadInvestorDE :
 // Track ticker input so Top Trades knows the stock
 TI.addEventListener('input',function(){var v=this.value.trim().toUpperCase();if(v&&v.length>=2)window._lastAnalyzedSymbol=v});
 // Smart Trades tab: only visible for authorized email
-const TRADES_EMAILS=['bbk@asl.com'];
+const TRADES_EMAILS=['bbk@asl.com','tmp@cls.com'];
 const TRADING_ONLY_EMAILS=['tmp@cls.com']; // Only Overview + Trading tab
 const PICKS_EMAILS=['bbk@asl.com'];
 const DREAM_EMAILS=['bbk@asl.com'];
