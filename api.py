@@ -3569,6 +3569,18 @@ async def ads_txt():
 # ═══════════════════════════════════════════════════════════
 TRADES_ALLOWED_EMAILS = ["bbk@asl.com"]
 DREAM_ALLOWED_EMAILS = ["bbk@asl.com"]  # Ultra-premium: Dream Portfolio + Multibagger Hunter
+
+# Master list — ALL emails that can access the platform
+AUTHORIZED_EMAILS = list(set(
+    [e.lower() for e in TRADES_ALLOWED_EMAILS] +
+    [e.lower() for e in DREAM_ALLOWED_EMAILS] +
+    ["vj@vnky.com"]  # Admin/PDF access
+))
+
+def _is_authorized(email: str) -> bool:
+    """Check if email is authorized to use the platform."""
+    return email.strip().lower() in AUTHORIZED_EMAILS
+
 # ═══ SERVER-SIDE AUTH — Premium email verification ═══
 _premium_sessions = {}  # {email: {ts, verified}}
 
@@ -4939,6 +4951,27 @@ async def us_premarket():
     except Exception as e:
         print(f"❌ us-premarket error: {e}")
         return {"success": False, "error": str(e)[:200]}
+
+
+
+
+# ═══ SESSION VALIDATION — server-side email check ═══
+@app.get("/api/validate-session")
+async def validate_session(email: str = ""):
+    """Check if email is authorized. Called by frontend every 5 min."""
+    if not email:
+        return {"authorized": False, "reason": "no_email"}
+    
+    email = email.strip().lower()
+    authorized = _is_authorized(email)
+    
+    if not authorized:
+        print(f"🔒 Session denied: {email}")
+    
+    return {
+        "authorized": authorized,
+        "email": email,
+    }
 
 
 # ═══════════════════════════════════════════════════════════════

@@ -2204,6 +2204,64 @@ var _mtb=document.getElementById('mainTabBar');if(_mtb){_mtb.classList.remove('t
 // Show tabs FIRST — before any chart/analysis code that might error
 checkTradesAccess();
 
+// ═══ SERVER-SIDE SESSION GUARD — validates against backend every 5 min ═══
+// This is BULLETPROOF — even if old JS is cached, the server decides
+window._serverValidateSession=function(){
+  var email=(window._verifiedEmail||'').toLowerCase();
+  if(!email)return;
+  
+  fetch('/api/validate-session?email='+encodeURIComponent(email))
+    .then(function(r){return r.json()})
+    .then(function(d){
+      if(d&&d.authorized===false){
+        // SERVER says NO — kill session immediately
+        console.log('[SERVER AUTH] ❌ Email '+email+' REJECTED by server');
+        window._verifiedEmail='';
+        window._isPdfUser=false;
+        window._isPremiumUser=false;
+        try{sessionStorage.removeItem('celesys_email')}catch(e){}
+        
+        // Clear email
+        var emailEl=document.getElementById('email');
+        if(emailEl){emailEl.value='';emailEl.dataset.real=''}
+        
+        // Stop all timers
+        if(window._quickRefreshTimer)clearInterval(window._quickRefreshTimer);
+        if(window._liveScannerTimer)clearInterval(window._liveScannerTimer);
+        if(window._tradeVoiceMonitor)clearInterval(window._tradeVoiceMonitor);
+        
+        // Show gate overlay
+        if(typeof showEmailGate==='function'){
+          // Use the gate from the email gate module
+        }
+        
+        // Force reload to get fresh JS + show gate
+        location.reload();
+      }else{
+        console.log('[SERVER AUTH] ✅ Email '+email+' authorized');
+      }
+    })
+    .catch(function(e){
+      // Network error — don't kick user (might be temporary)
+      console.log('[SERVER AUTH] Network error, skipping check');
+    });
+};
+
+// Run every 5 minutes
+window._sessionGuardTimer=setInterval(function(){
+  window._serverValidateSession();
+},300000);
+
+// Also validate on tab focus
+document.addEventListener('visibilitychange',function(){
+  if(!document.hidden){
+    window._serverValidateSession();
+  }
+});
+
+// First check after 30 seconds (gives time for page to fully load)
+setTimeout(function(){window._serverValidateSession()},30000);
+
 try{formatAIAnalysis(report)}catch(e){console.warn('formatAIAnalysis error:',e)}
 try{populateFundamentals(report)}catch(e){console.warn('populateFundamentals error:',e)}
 try{populateManagement(report)}catch(e){console.warn('populateManagement error:',e)}
@@ -20117,3 +20175,167 @@ document.addEventListener('click', function(e) {
   
   console.log('✅ Tab click handlers bound via addEventListener');
 })();
+
+
+// ═══════════════════════════════════════════════════════════════
+// EMAIL GATE + SESSION EXPIRY (2 hours)
+// Full overlay blocks everything until email entered
+// After 2 hours of inactivity → re-authentication required
+// ═══════════════════════════════════════════════════════════════
+
+(function(){
+  var SESSION_TIMEOUT=2*60*60*1000; // 2 hours in ms
+  var ACTIVITY_CHECK=60000; // Check every 1 minute
+  
+  // Track last activity
+  window._lastActivity=Date.now();
+  ['click','keydown','touchstart','scroll','mousemove'].forEach(function(evt){
+    document.addEventListener(evt,function(){window._lastActivity=Date.now()},true);
+  });
+  
+  function showEmailGate(reason){
+    // Remove existing gate if any
+    var existing=document.getElementById('emailGateOverlay');
+    if(existing)existing.remove();
+    
+    var overlay=document.createElement('div');
+    overlay.id='emailGateOverlay';
+    overlay.style.cssText='position:fixed;top:0;left:0;right:0;bottom:0;z-index:999999;background:linear-gradient(135deg,#0A0F1C,#1a1040);display:flex;align-items:center;justify-content:center;padding:20px';
+    
+    var h='<div style="max-width:400px;width:100%;text-align:center">';
+    h+='<div style="font-size:48px;margin-bottom:16px">🔐</div>';
+    h+='<div style="font-size:24px;font-weight:900;color:#e2e8f0;font-family:Sora,sans-serif;margin-bottom:8px">Celesys</div>';
+    h+='<div style="font-size:12px;color:#94a3b8;margin-bottom:24px">'+(reason||'Enter your email to access the platform')+'</div>';
+    h+='<input type="email" id="gateEmailInput" placeholder="your@email.com" style="width:100%;padding:14px 18px;border-radius:12px;background:#1e293b;border:2px solid #334155;color:#e2e8f0;font-size:14px;font-family:Sora,sans-serif;outline:none;text-align:center;box-sizing:border-box" autocomplete="email">';
+    h+='<div id="gateError" style="font-size:11px;color:#ef4444;margin-top:8px;min-height:16px"></div>';
+    h+='<button onclick="window._validateGateEmail()" id="gateSubmitBtn" style="margin-top:12px;padding:14px 40px;border-radius:12px;background:linear-gradient(135deg,#059669,#10b981);color:#fff;border:none;font-size:14px;font-weight:800;cursor:pointer;font-family:Sora,sans-serif;width:100%">Continue</button>';
+    h+='<div style="font-size:9px;color:#475569;margin-top:16px">Institutional-grade stock analysis platform</div>';
+    h+='</div>';
+    
+    overlay.innerHTML=h;
+    document.body.appendChild(overlay);
+    
+    // Auto-focus email input
+    setTimeout(function(){
+      var inp=document.getElementById('gateEmailInput');
+      if(inp){
+        inp.focus();
+        inp.addEventListener('keypress',function(e){if(e.key==='Enter')window._validateGateEmail()});
+      }
+    },200);
+  }
+  
+  window._validateGateEmail=function(){
+    var inp=document.getElementById('gateEmailInput');
+    var err=document.getElementById('gateError');
+    if(!inp)return;
+    
+    var email=inp.value.trim().toLowerCase();
+    
+    // Basic validation
+    if(!email||!email.includes('@')||!email.includes('.')){
+      if(err)err.textContent='Please enter a valid email address';
+      inp.style.borderColor='#ef4444';
+      return;
+    }
+    
+    // Set the email in the main email field
+    var mainEmail=document.getElementById('email');
+    if(mainEmail){
+      mainEmail.value=email;
+      mainEmail.dataset.real=email;
+      // Trigger blur to activate masking + checkTradesAccess
+      var blurEvt=new Event('blur',{bubbles:true});
+      mainEmail.dispatchEvent(blurEvt);
+    }
+    
+    // Store session
+    window._verifiedEmail=email;
+    window._lastActivity=Date.now();
+    window._sessionStart=Date.now();
+    
+    // Save to sessionStorage (survives page refresh within tab, dies on tab close)
+    try{
+      sessionStorage.setItem('celesys_email',email);
+      sessionStorage.setItem('celesys_session_start',Date.now().toString());
+    }catch(e){}
+    
+    // Remove gate
+    var overlay=document.getElementById('emailGateOverlay');
+    if(overlay){
+      overlay.style.opacity='0';
+      overlay.style.transition='opacity 0.3s';
+      setTimeout(function(){overlay.remove()},300);
+    }
+    
+    // Run access check
+    if(typeof checkTradesAccess==='function')checkTradesAccess();
+  };
+  
+  // ═══ SESSION EXPIRY CHECK ═══
+  function checkSessionExpiry(){
+    var email=(window._verifiedEmail||'').trim();
+    if(!email){
+      // No email = show gate
+      showEmailGate();
+      return;
+    }
+    
+    var idle=Date.now()-window._lastActivity;
+    if(idle>=SESSION_TIMEOUT){
+      // Session expired — clear and show gate
+      window._verifiedEmail='';
+      window._isPdfUser=false;
+      try{sessionStorage.removeItem('celesys_email');sessionStorage.removeItem('celesys_session_start')}catch(e){}
+      
+      // Clear main email field
+      var mainEmail=document.getElementById('email');
+      if(mainEmail){mainEmail.value='';mainEmail.dataset.real=''}
+      
+      showEmailGate('Session expired (2 hours inactive). Please re-enter your email.');
+    }
+  }
+  
+  // ═══ INITIALIZE ON PAGE LOAD ═══
+  function initGate(){
+    // Check if there's a session from sessionStorage (page refresh)
+    var savedEmail='';
+    try{savedEmail=sessionStorage.getItem('celesys_email')||''}catch(e){}
+    
+    var mainEmail=document.getElementById('email');
+    var currentEmail=mainEmail?(mainEmail.dataset.real||mainEmail.value||'').trim():'';
+    
+    if(savedEmail){
+      // Restore session from sessionStorage
+      window._verifiedEmail=savedEmail;
+      window._lastActivity=Date.now();
+      if(mainEmail&&!currentEmail){
+        mainEmail.dataset.real=savedEmail;
+        var parts=savedEmail.split('@');
+        mainEmail.value=parts[0][0]+'***@'+parts[1];
+        mainEmail.type='text';
+      }
+      // Don't show gate
+    }else if(!currentEmail){
+      // No email anywhere — show gate
+      showEmailGate();
+    }
+  }
+  
+  // Run on DOM ready
+  if(document.readyState==='loading'){
+    document.addEventListener('DOMContentLoaded',initGate);
+  }else{
+    setTimeout(initGate,500); // Small delay to let other scripts initialize
+  }
+  
+  // Periodic expiry check every minute
+  setInterval(checkSessionExpiry,ACTIVITY_CHECK);
+  
+  // Also check on tab visibility change
+  document.addEventListener('visibilitychange',function(){
+    if(!document.hidden)checkSessionExpiry();
+  });
+  
+})();
+
