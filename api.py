@@ -1008,9 +1008,9 @@ def fetch_management_context(ticker: str, company_name: str) -> tuple:
                         value_val = value.get('raw', 0) if isinstance(value, dict) else 0
                         fund_holdings_data["institutions"].append({
                             "name": name, "pct": round(pct_val * 100, 2),
-                            "shares": int(shares_val), "value": int(value_val)
+                            "shares": _safe_int(shares_val), "value": _safe_int(value_val)
                         })
-                        parts.append(f"{name}: {pct_val*100:.2f}% ({int(shares_val):,} shares, ${int(value_val):,})")
+                        parts.append(f"{name}: {pct_val*100:.2f}% ({_safe_int(shares_val):,} shares, ${_safe_int(value_val):,})")
                 
                 # Top mutual fund holders
                 funds = d.get('fundOwnership', {}).get('ownershipList', [])
@@ -1024,9 +1024,9 @@ def fetch_management_context(ticker: str, company_name: str) -> tuple:
                         shares_val = shares.get('raw', 0) if isinstance(shares, dict) else 0
                         fund_holdings_data["funds"].append({
                             "name": name, "pct": round(pct_val * 100, 2),
-                            "shares": int(shares_val)
+                            "shares": _safe_int(shares_val)
                         })
-                        parts.append(f"{name}: {pct_val*100:.2f}% ({int(shares_val):,} shares)")
+                        parts.append(f"{name}: {pct_val*100:.2f}% ({_safe_int(shares_val):,} shares)")
                 
                 if parts:
                     context_parts.append("=== FUND & INSTITUTIONAL HOLDINGS (REAL) ===\n" + "\n".join(parts))
@@ -1368,6 +1368,29 @@ class SafeJSONResponse(JSONResponse):
         return json.dumps(content, cls=NaNSafeEncoder, ensure_ascii=False).encode("utf-8")
 
 print("[STARTUP] Creating FastAPI app...")
+
+import math
+
+def _safe_int(val, default=0):
+    """Safely convert to int — handles NaN, None, inf."""
+    try:
+        if val is None: return default
+        f = float(val)
+        if math.isnan(f) or math.isinf(f): return default
+        return int(f)
+    except (ValueError, TypeError):
+        return default
+
+def _safe_float(val, default=0.0):
+    """Safely convert to float — handles NaN, None."""
+    try:
+        if val is None: return default
+        f = float(val)
+        if math.isnan(f) or math.isinf(f): return default
+        return f
+    except (ValueError, TypeError):
+        return default
+
 app = FastAPI(title="Celesys AI - Verified Live Data", default_response_class=SafeJSONResponse)
 print("[STARTUP] ✅ FastAPI app created successfully")
 
@@ -2676,7 +2699,7 @@ def get_live_stock_data(company_name: str) -> dict:
                                 "name": str(row.get('Insider', row.get('insider', 'Unknown')) or 'Unknown'),
                                 "relation": str(row.get('Relation', row.get('position', '')) or ''),
                                 "type": str(row.get('Transaction', row.get('transaction', '')) or ''),
-                                "shares": int(float(_shares)),
+                                "shares": _safe_int(_shares),
                                 "value": float(_value),
                                 "date": str(row.get('Date', row.get('startDate', '')) or '')[:10]
                             })
@@ -3567,8 +3590,23 @@ async def ads_txt():
 # ═══════════════════════════════════════════════════════════
 # INDEX TRADES — AI Daily Trade Ideas (Restricted Access)
 # ═══════════════════════════════════════════════════════════
-TRADES_ALLOWED_EMAILS = ["chk@cls.com"]
-DREAM_ALLOWED_EMAILS = ["chk@cls.com"]  # Ultra-premium: Dream Portfolio + Multibagger Hunter
+TRADES_ALLOWED_EMAILS = ["bbk@asl.com", "vj@vnky.com"]
+DREAM_ALLOWED_EMAILS = ["bbk@asl.com", "vj@vnky.com"]  # Ultra-premium: Dream Portfolio + Multibagger Hunter
+
+# Master list — ALL emails that can access the platform
+AUTHORIZED_EMAILS = list(set(
+    [e.lower() for e in TRADES_ALLOWED_EMAILS] +
+    [e.lower() for e in DREAM_ALLOWED_EMAILS] +
+    ["vj@vnky.com", "tmp@cls.com"]  # Admin + Trading-only
+))
+
+# Trading-only emails — can ONLY access Overview + Trading tab
+TRADING_ONLY_EMAILS = ["tmp@cls.com"]
+
+def _is_authorized(email: str) -> bool:
+    """Check if email is authorized to use the platform."""
+    return email.strip().lower() in AUTHORIZED_EMAILS
+
 # ═══ SERVER-SIDE AUTH — Premium email verification ═══
 _premium_sessions = {}  # {email: {ts, verified}}
 
@@ -3583,9 +3621,10 @@ async def verify_premium(request: Request):
         
         is_premium = email in [e.lower() for e in TRADES_ALLOWED_EMAILS]
         is_dream = email in [e.lower() for e in DREAM_ALLOWED_EMAILS]
+        is_trading_only = email in [e.lower() for e in TRADING_ONLY_EMAILS]
         
         # Cache session for 24 hours
-        _premium_sessions[email] = {"ts": time.time(), "verified": is_premium or is_dream, "dream": is_dream}
+        _premium_sessions[email] = {"ts": time.time(), "verified": is_premium or is_dream or is_trading_only, "dream": is_dream, "trading_only": is_trading_only}
         
         # Cleanup old sessions
         if len(_premium_sessions) > 1000:
@@ -3594,8 +3633,9 @@ async def verify_premium(request: Request):
             for k in expired: del _premium_sessions[k]
         
         return {
-            "success": True, "premium": is_premium or is_dream, "email": email,
+            "success": True, "premium": is_premium or is_dream or is_trading_only, "email": email,
             "dreamAccess": is_dream,
+            "tradingOnly": is_trading_only,
             "features": {
                 "trading": is_premium or is_dream,
                 "smartTrades": is_premium or is_dream,
@@ -4616,6 +4656,730 @@ async def stock_quick(ticker: str = ""):
         }
     except Exception as e:
         return {"success": False, "error": f"Failed to fetch data for {ticker}: {str(e)[:100]}"}
+
+
+
+
+
+
+# ═══════════════════════════════════════════════════════════════
+# GIFT NIFTY / PRE-MARKET INDICATOR
+# When India market is closed, fetch global cues to predict gap
+# Uses: SGX Nifty futures, US futures (ES, NQ), Asia markets
+# ═══════════════════════════════════════════════════════════════
+
+# Gift Nifty cache — 5 min
+_gift_nifty_cache = {"data": None, "time": 0}
+
+@app.get("/api/gift-nifty")
+async def gift_nifty():
+    """Pre-market indicator for India — Gift Nifty + global cues."""
+    try:
+        import yfinance as yf
+        import time as _time
+        
+        # Check cache (5 min)
+        if _gift_nifty_cache["data"] and (_time.time() - _gift_nifty_cache["time"]) < 300:
+            cached = _gift_nifty_cache["data"].copy()
+            cached["_cached"] = True
+            return cached
+        
+        _t0 = _time.time()
+        
+        # Fetch multiple signals in parallel
+        # Gift Nifty proxy: Nifty futures, US futures, Asia ETFs
+        symbols = {
+            "nifty_close": "^NSEI",       # Nifty 50 (last close)
+            "nifty_fut": "NIFTY_FUT.NS",  # Nifty futures (if available)
+            "sp500_fut": "ES=F",           # S&P 500 futures (24/5)
+            "nasdaq_fut": "NQ=F",          # Nasdaq futures (24/5)
+            "dow_fut": "YM=F",             # Dow futures
+            "vix": "^VIX",                 # VIX
+            "india_vix": "^INDIAVIX",      # India VIX
+            "dxy": "DX-Y.NYB",            # Dollar index
+            "gold": "GC=F",               # Gold futures
+            "crude": "CL=F",              # Crude oil
+            "asia_etf": "INDA",           # India ETF (US-listed)
+        }
+        
+        _yahoo_rate_wait()
+        
+        results = {}
+        for key, sym in symbols.items():
+            try:
+                tk = yf.Ticker(sym)
+                hist = tk.history(period="2d")
+                if len(hist) >= 1:
+                    current = float(hist['Close'].iloc[-1])
+                    prev = float(hist['Close'].iloc[-2]) if len(hist) >= 2 else current
+                    change = round((current - prev) / max(prev, 1) * 100, 2)
+                    results[key] = {
+                        "price": round(current, 2),
+                        "prev": round(prev, 2),
+                        "change": change,
+                        "sym": sym
+                    }
+            except:
+                pass
+        
+        # Calculate expected gap
+        nifty_close = results.get("nifty_close", {}).get("price", 0)
+        
+        # Gift Nifty estimate:
+        # If we have Nifty futures, use that directly
+        gift_nifty_price = 0
+        gift_nifty_gap = 0
+        gift_source = ""
+        
+        if "nifty_fut" in results and results["nifty_fut"]["price"] > 0:
+            gift_nifty_price = results["nifty_fut"]["price"]
+            gift_source = "NSE Futures"
+        elif "asia_etf" in results and nifty_close > 0:
+            # Use INDA ETF change as proxy
+            inda_change = results["asia_etf"]["change"]
+            gift_nifty_price = round(nifty_close * (1 + inda_change / 100), 2)
+            gift_source = "INDA ETF proxy"
+        
+        if gift_nifty_price > 0 and nifty_close > 0:
+            gift_nifty_gap = round((gift_nifty_price - nifty_close) / max(nifty_close, 1) * 100, 2)
+        
+        # US market impact on India (correlation ~0.6)
+        sp_change = results.get("sp500_fut", {}).get("change", 0)
+        nq_change = results.get("nasdaq_fut", {}).get("change", 0)
+        us_impact = round((sp_change * 0.4 + nq_change * 0.6), 2)  # Nasdaq weighted more
+        
+        # Expected Nifty gap (weighted)
+        if gift_nifty_gap != 0:
+            expected_gap = gift_nifty_gap
+        else:
+            expected_gap = round(us_impact * 0.6, 2)  # Use US as proxy with 0.6 correlation
+        
+        expected_nifty_open = round(nifty_close * (1 + expected_gap / 100), 2) if nifty_close > 0 else 0
+        
+        # Sentiment analysis
+        vix_val = results.get("vix", {}).get("price", 0)
+        vix_change = results.get("vix", {}).get("change", 0)
+        crude_change = results.get("crude", {}).get("change", 0)
+        gold_change = results.get("gold", {}).get("change", 0)
+        dxy_change = results.get("dxy", {}).get("change", 0)
+        
+        # Build pre-market analysis
+        signals_bullish = 0
+        signals_bearish = 0
+        analysis_points = []
+        
+        if sp_change > 0.3:
+            signals_bullish += 1
+            analysis_points.append(f"US markets positive (+{sp_change}%) — bullish for India open")
+        elif sp_change < -0.3:
+            signals_bearish += 1
+            analysis_points.append(f"US markets negative ({sp_change}%) — bearish for India open")
+        
+        if crude_change < -1:
+            signals_bullish += 1
+            analysis_points.append(f"Crude oil down ({crude_change}%) — positive for India (lower import cost)")
+        elif crude_change > 1:
+            signals_bearish += 1
+            analysis_points.append(f"Crude oil up (+{crude_change}%) — negative for India (higher import cost)")
+        
+        if dxy_change < -0.3:
+            signals_bullish += 1
+            analysis_points.append(f"Dollar weakening ({dxy_change}%) — positive for emerging markets")
+        elif dxy_change > 0.3:
+            signals_bearish += 1
+            analysis_points.append(f"Dollar strengthening (+{dxy_change}%) — negative for emerging markets")
+        
+        if gold_change > 0.5:
+            analysis_points.append(f"Gold up (+{gold_change}%) — risk-off sentiment")
+        
+        if vix_change > 5:
+            signals_bearish += 1
+            analysis_points.append(f"VIX spiked (+{vix_change}%) — fear rising, expect volatile open")
+        elif vix_change < -5:
+            signals_bullish += 1
+            analysis_points.append(f"VIX dropped ({vix_change}%) — calm markets, positive open likely")
+        
+        overall = "BULLISH" if signals_bullish > signals_bearish else "BEARISH" if signals_bearish > signals_bullish else "NEUTRAL"
+        
+        gap_label = "GAP UP" if expected_gap > 0.1 else "GAP DOWN" if expected_gap < -0.1 else "FLAT OPEN"
+        
+        _elapsed = round(_time.time() - _t0, 1)
+        
+        _result = {
+            "success": True,
+            "_cached": False,
+            "nifty_close": nifty_close,
+            "gift_nifty": gift_nifty_price,
+            "gift_source": gift_source,
+            "gift_gap_pct": gift_nifty_gap,
+            "expected_gap_pct": expected_gap,
+            "expected_open": expected_nifty_open,
+            "gap_label": gap_label,
+            "overall_sentiment": overall,
+            "signals_bull": signals_bullish,
+            "signals_bear": signals_bearish,
+            "analysis": analysis_points,
+            "global_cues": {
+                "sp500": results.get("sp500_fut", {}),
+                "nasdaq": results.get("nasdaq_fut", {}),
+                "dow": results.get("dow_fut", {}),
+                "vix": results.get("vix", {}),
+                "india_vix": results.get("india_vix", {}),
+                "crude": results.get("crude", {}),
+                "gold": results.get("gold", {}),
+                "dxy": results.get("dxy", {}),
+            },
+            "elapsed": _elapsed,
+        }
+        _gift_nifty_cache["data"] = _result
+        _gift_nifty_cache["time"] = _time.time()
+        return _result
+        
+    except Exception as e:
+        print(f"❌ gift-nifty error: {e}")
+        return {"success": False, "error": str(e)[:200]}
+
+
+
+
+# ═══════════════════════════════════════════════════════════════
+# US PRE-MARKET / POST-MARKET INDICATOR
+# When US market is closed, fetch futures + global cues
+# ES=F, NQ=F, VIX trade almost 24 hours
+# ═══════════════════════════════════════════════════════════════
+
+@app.get("/api/us-premarket")
+async def us_premarket():
+    """US pre/post-market indicator — futures + global cues."""
+    try:
+        import yfinance as yf
+        import time as _time
+        
+        _t0 = _time.time()
+        
+        symbols = {
+            "sp500_close": "SPY",
+            "sp500_fut": "ES=F",
+            "nasdaq_fut": "NQ=F",
+            "dow_fut": "YM=F",
+            "russell_fut": "RTY=F",
+            "vix": "^VIX",
+            "dxy": "DX-Y.NYB",
+            "gold": "GC=F",
+            "crude": "CL=F",
+            "tnx": "^TNX",       # 10Y Treasury yield
+            "btc": "BTC-USD",    # Bitcoin (risk appetite)
+        }
+        
+        _yahoo_rate_wait()
+        
+        results = {}
+        for key, sym in symbols.items():
+            try:
+                tk = yf.Ticker(sym)
+                hist = tk.history(period="2d")
+                if len(hist) >= 1:
+                    current = float(hist['Close'].iloc[-1])
+                    prev = float(hist['Close'].iloc[-2]) if len(hist) >= 2 else current
+                    change = round((current - prev) / max(prev, 1) * 100, 2)
+                    results[key] = {
+                        "price": round(current, 2),
+                        "prev": round(prev, 2),
+                        "change": change,
+                        "sym": sym
+                    }
+            except:
+                pass
+        
+        # SPY close + futures gap
+        spy_close = results.get("sp500_close", {}).get("price", 0)
+        es_price = results.get("sp500_fut", {}).get("price", 0)
+        nq_price = results.get("nasdaq_fut", {}).get("price", 0)
+        
+        # Expected gap from futures
+        sp_fut_change = results.get("sp500_fut", {}).get("change", 0)
+        nq_fut_change = results.get("nasdaq_fut", {}).get("change", 0)
+        expected_gap = round((sp_fut_change * 0.5 + nq_fut_change * 0.5), 2)
+        
+        expected_spy_open = round(spy_close * (1 + expected_gap / 100), 2) if spy_close > 0 else 0
+        
+        # Sentiment
+        vix_val = results.get("vix", {}).get("price", 0)
+        vix_change = results.get("vix", {}).get("change", 0)
+        crude_change = results.get("crude", {}).get("change", 0)
+        gold_change = results.get("gold", {}).get("change", 0)
+        dxy_change = results.get("dxy", {}).get("change", 0)
+        btc_change = results.get("btc", {}).get("change", 0)
+        tnx_change = results.get("tnx", {}).get("change", 0)
+        
+        signals_bullish = 0
+        signals_bearish = 0
+        analysis = []
+        
+        if sp_fut_change > 0.3:
+            signals_bullish += 1
+            analysis.append(f"S&P futures up +{sp_fut_change}% — bullish open expected")
+        elif sp_fut_change < -0.3:
+            signals_bearish += 1
+            analysis.append(f"S&P futures down {sp_fut_change}% — bearish open expected")
+        
+        if nq_fut_change > 0.5:
+            signals_bullish += 1
+            analysis.append(f"Nasdaq futures strong +{nq_fut_change}% — tech leading")
+        elif nq_fut_change < -0.5:
+            signals_bearish += 1
+            analysis.append(f"Nasdaq futures weak {nq_fut_change}% — tech lagging")
+        
+        if vix_change > 5:
+            signals_bearish += 1
+            analysis.append(f"VIX spiked +{vix_change}% — fear rising, volatile open")
+        elif vix_change < -5:
+            signals_bullish += 1
+            analysis.append(f"VIX dropped {vix_change}% — calm markets, bullish")
+        
+        if btc_change > 2:
+            signals_bullish += 1
+            analysis.append(f"Bitcoin up +{btc_change}% — risk appetite strong")
+        elif btc_change < -2:
+            signals_bearish += 1
+            analysis.append(f"Bitcoin down {btc_change}% — risk-off sentiment")
+        
+        if tnx_change > 2:
+            signals_bearish += 1
+            analysis.append(f"Treasury yields rising +{tnx_change}% — pressure on growth stocks")
+        elif tnx_change < -2:
+            signals_bullish += 1
+            analysis.append(f"Treasury yields falling {tnx_change}% — good for growth/tech")
+        
+        if crude_change > 2:
+            analysis.append(f"Crude oil up +{crude_change}% — energy sector strong")
+        elif crude_change < -2:
+            analysis.append(f"Crude oil down {crude_change}% — energy weak, but lower inflation")
+        
+        overall = "BULLISH" if signals_bullish > signals_bearish else "BEARISH" if signals_bearish > signals_bullish else "NEUTRAL"
+        gap_label = "GAP UP" if expected_gap > 0.1 else "GAP DOWN" if expected_gap < -0.1 else "FLAT OPEN"
+        
+        _elapsed = round(_time.time() - _t0, 1)
+        
+        return {
+            "success": True,
+            "spy_close": spy_close,
+            "es_futures": es_price,
+            "nq_futures": nq_price,
+            "expected_gap_pct": expected_gap,
+            "expected_spy_open": expected_spy_open,
+            "gap_label": gap_label,
+            "overall_sentiment": overall,
+            "signals_bull": signals_bullish,
+            "signals_bear": signals_bearish,
+            "analysis": analysis,
+            "vix": vix_val,
+            "vix_change": vix_change,
+            "global_cues": {
+                "sp500_fut": results.get("sp500_fut", {}),
+                "nasdaq_fut": results.get("nasdaq_fut", {}),
+                "dow_fut": results.get("dow_fut", {}),
+                "russell_fut": results.get("russell_fut", {}),
+                "vix": results.get("vix", {}),
+                "crude": results.get("crude", {}),
+                "gold": results.get("gold", {}),
+                "dxy": results.get("dxy", {}),
+                "tnx": results.get("tnx", {}),
+                "btc": results.get("btc", {}),
+            },
+            "elapsed": _elapsed,
+        }
+        _gift_nifty_cache["data"] = _result
+        _gift_nifty_cache["time"] = _time.time()
+        return _result
+    except Exception as e:
+        print(f"❌ us-premarket error: {e}")
+        return {"success": False, "error": str(e)[:200]}
+
+
+
+
+# ═══ SESSION VALIDATION — server-side email check ═══
+@app.get("/api/validate-session")
+async def validate_session(email: str = ""):
+    """Check if email is authorized. Called by frontend every 5 min."""
+    if not email:
+        return {"authorized": False, "reason": "no_email"}
+    
+    email = email.strip().lower()
+    authorized = _is_authorized(email)
+    
+    if not authorized:
+        print(f"🔒 Session denied: {email}")
+    
+    return {
+        "authorized": authorized,
+        "email": email,
+    }
+
+
+
+
+# ═══ EMA CROSSOVER + RSI — Simple Trading Signals ═══
+# EMA signal cache — 60s per symbol
+_ema_cache = {}
+_EMA_CACHE_TTL = 60  # seconds
+
+@app.get("/api/ema-signal")
+async def ema_signal(symbol: str = "NIFTY", region: str = "IN"):
+    """EMA 9/21 crossover + RSI signal for trading tab."""
+    try:
+        import yfinance as yf
+        import numpy as np
+        import time as _time
+        
+        # Check cache first
+        cache_key = f"{symbol.upper()}_{region}"
+        if cache_key in _ema_cache:
+            cached, cached_at = _ema_cache[cache_key]
+            age = _time.time() - cached_at
+            if age < _EMA_CACHE_TTL:
+                cached["_cached"] = True
+                cached["_cache_age"] = round(age, 1)
+                return cached
+        
+        yf_sym = symbol.upper()
+        if region == 'IN' and yf_sym not in ['NIFTY','BANKNIFTY','SENSEX','FINNIFTY','MIDCPNIFTY','^NSEI','^NSEBANK','^BSESN']:
+            yf_sym = symbol.upper() + '.NS'
+        
+        _yahoo_rate_wait()
+        tk = yf.Ticker(yf_sym)
+        hist = tk.history(period='5d', interval='5m')
+        
+        # Fallback: if 5-min data insufficient, try 15-min then daily
+        if hist is None or len(hist) < 25:
+            hist = tk.history(period='10d', interval='15m')
+        if hist is None or len(hist) < 25:
+            hist = tk.history(period='60d', interval='1d')
+        if hist is None or len(hist) < 25:
+            return {"success": False, "error": f"Insufficient data for {yf_sym}"}
+        
+        closes = hist['Close'].values.astype(float)
+        highs = hist['High'].values.astype(float)
+        lows = hist['Low'].values.astype(float)
+        volumes = hist['Volume'].values.astype(float)
+        
+        # EMA calculation
+        def ema(data, period):
+            alpha = 2 / (period + 1)
+            result = np.zeros_like(data)
+            result[0] = data[0]
+            for i in range(1, len(data)):
+                result[i] = alpha * data[i] + (1 - alpha) * result[i-1]
+            return result
+        
+        ema9 = ema(closes, 9)
+        ema21 = ema(closes, 21)
+        
+        # RSI calculation (14 period)
+        deltas = np.diff(closes)
+        gains = np.where(deltas > 0, deltas, 0)
+        losses = np.where(deltas < 0, -deltas, 0)
+        avg_gain = np.zeros_like(closes)
+        avg_loss = np.zeros_like(closes)
+        avg_gain[14] = np.mean(gains[:14])
+        avg_loss[14] = np.mean(losses[:14])
+        for i in range(15, len(closes)):
+            avg_gain[i] = (avg_gain[i-1] * 13 + gains[i-1]) / 14
+            avg_loss[i] = (avg_loss[i-1] * 13 + losses[i-1]) / 14
+        rs = np.where(avg_loss > 0, avg_gain / avg_loss, 100)
+        rsi = 100 - (100 / (1 + rs))
+        
+        # Current values
+        spot = round(float(closes[-1]), 2)
+        cur_ema9 = round(float(ema9[-1]), 2)
+        cur_ema21 = round(float(ema21[-1]), 2)
+        prev_ema9 = round(float(ema9[-2]), 2)
+        prev_ema21 = round(float(ema21[-2]), 2)
+        cur_rsi = round(float(rsi[-1]), 1)
+        
+        # Signal detection
+        ema9_above = cur_ema9 > cur_ema21
+        prev_ema9_above = prev_ema9 > prev_ema21
+        
+        # Crossover detection
+        bullish_cross = ema9_above and not prev_ema9_above  # EMA9 just crossed above EMA21
+        bearish_cross = not ema9_above and prev_ema9_above  # EMA21 just crossed above EMA9
+        
+        # Find when last crossover happened
+        cross_bars_ago = 0
+        for i in range(len(ema9)-2, max(0, len(ema9)-50), -1):
+            was_above = ema9[i] > ema21[i]
+            was_above_prev = ema9[i-1] > ema21[i-1]
+            if was_above != was_above_prev:
+                cross_bars_ago = len(ema9) - 1 - i
+                break
+        
+        cross_min_ago = cross_bars_ago * 5  # 5 min bars
+        
+        # Gap between EMAs (trend strength)
+        ema_gap = round(abs(cur_ema9 - cur_ema21), 2)
+        ema_gap_pct = round(ema_gap / max(spot, 1) * 100, 3)
+        
+        # Signal + RSI confirmation
+        signal = "NEUTRAL"
+        action = "WAIT"
+        confidence = 0
+        
+        if ema9_above:
+            if cur_rsi >= 50 and cur_rsi <= 75:
+                signal = "BULLISH"
+                action = "BUY"
+                confidence = 80 if bullish_cross else 65
+            elif cur_rsi > 75:
+                signal = "OVERBOUGHT"
+                action = "HOLD / EXIT"
+                confidence = 40
+            else:
+                signal = "WEAK BULL"
+                action = "WAIT"
+                confidence = 45
+        else:
+            if cur_rsi <= 50 and cur_rsi >= 25:
+                signal = "BEARISH"
+                action = "SELL"
+                confidence = 80 if bearish_cross else 65
+            elif cur_rsi < 25:
+                signal = "OVERSOLD"
+                action = "HOLD / EXIT"
+                confidence = 40
+            else:
+                signal = "WEAK BEAR"
+                action = "WAIT"
+                confidence = 45
+        
+        # Fresh crossover boost
+        if (bullish_cross or bearish_cross) and cross_min_ago <= 15:
+            confidence = min(100, confidence + 15)
+        
+        # Day high/low
+        today_bars = hist.tail(78)  # ~6.5 hours of 5min bars
+        day_high = round(float(today_bars['High'].max()), 2)
+        day_low = round(float(today_bars['Low'].min()), 2)
+        
+        # Recent bars for chart
+        recent = []
+        for idx in hist.tail(20).itertuples():
+            recent.append({
+                "t": idx.Index.strftime('%H:%M') if hasattr(idx.Index, 'strftime') else str(idx.Index)[-8:-3],
+                "o": round(float(idx.Open), 2),
+                "h": round(float(idx.High), 2),
+                "l": round(float(idx.Low), 2),
+                "c": round(float(idx.Close), 2),
+                "v": int(idx.Volume),
+            })
+        
+        result = {
+            "success": True,
+            "_cached": False,
+            "symbol": symbol.upper(),
+            "region": region,
+            "spot": spot,
+            "ema9": cur_ema9,
+            "ema21": cur_ema21,
+            "rsi": cur_rsi,
+            "signal": signal,
+            "action": action,
+            "confidence": confidence,
+            "ema9_above": ema9_above,
+            "bullish_cross": bullish_cross,
+            "bearish_cross": bearish_cross,
+            "cross_min_ago": cross_min_ago,
+            "ema_gap": ema_gap,
+            "ema_gap_pct": ema_gap_pct,
+            "day_high": day_high,
+            "day_low": day_low,
+            "bars": recent,
+        }
+        
+        # Save to cache
+        _ema_cache[cache_key] = (result, _time.time())
+        # Clean old cache entries (keep max 50)
+        if len(_ema_cache) > 50:
+            oldest = sorted(_ema_cache.items(), key=lambda x: x[1][1])[:10]
+            for k, _ in oldest:
+                del _ema_cache[k]
+        
+        return result
+        
+    except Exception as e:
+        print(f"❌ ema-signal error: {e}")
+        return {"success": False, "error": str(e)[:200]}
+
+
+# ═══════════════════════════════════════════════════════════════
+# LIVE SCANNER — Batch scan up to 100 tickers in one API call
+# Uses yfinance.download() for batch pricing (single HTTP request)
+# Returns: [{sym, spot, direction, confidence, action, momentum}]
+# ═══════════════════════════════════════════════════════════════
+
+@app.post("/api/live-scan")
+async def live_scan(request: Request):
+    """Batch scan tickers — returns direction + confidence for each."""
+    import time as _time
+    _t0 = _time.time()
+    try:
+        data = await request.json()
+        tickers = data.get("tickers", [])
+        region = data.get("region", "IN")
+        
+        if not tickers or len(tickers) > 120:
+            return {"success": False, "error": "Provide 1-120 tickers"}
+        
+        # Add .NS suffix for India stocks (not indices)
+        india_indices = ['NIFTY', 'BANKNIFTY', 'SENSEX', 'FINNIFTY', 'MIDCPNIFTY',
+                        '^NSEI', '^NSEBANK', '^BSESN']
+        yf_tickers = []
+        ticker_map = {}  # yf_sym → original sym
+        for t in tickers:
+            t = t.upper().strip()
+            if region == 'IN' and t not in india_indices and not t.startswith('^'):
+                yf_sym = t + '.NS'
+            else:
+                yf_sym = t
+            yf_tickers.append(yf_sym)
+            ticker_map[yf_sym] = t
+        
+        import yfinance as yf
+        import pandas as pd
+        
+        # ONE batch download — much faster than individual calls
+        _yahoo_rate_wait()
+        df = yf.download(yf_tickers, period='2d', interval='15m', 
+                         group_by='ticker', progress=False, threads=True)
+        
+        results = []
+        
+        for yf_sym in yf_tickers:
+            orig_sym = ticker_map[yf_sym]
+            try:
+                # Extract this ticker's data
+                if len(yf_tickers) == 1:
+                    ticker_df = df
+                else:
+                    if yf_sym in df.columns.get_level_values(0):
+                        ticker_df = df[yf_sym]
+                    else:
+                        continue
+                
+                ticker_df = ticker_df.dropna(subset=['Close'])
+                if len(ticker_df) < 3:
+                    continue
+                
+                # Current data
+                spot = float(ticker_df['Close'].iloc[-1])
+                prev_close = float(ticker_df['Close'].iloc[-2]) if len(ticker_df) > 1 else spot
+                day_high = float(ticker_df['High'].tail(8).max())  # Last 2 hours approx
+                day_low = float(ticker_df['Low'].tail(8).min())
+                day_open = float(ticker_df['Open'].iloc[-8]) if len(ticker_df) >= 8 else spot
+                
+                if spot <= 0:
+                    continue
+                
+                # VWAP estimate
+                vwap = round((day_high + day_low + spot) / 3, 2)
+                
+                # Volume analysis (last 5 bars)
+                vols = ticker_df['Volume'].tail(10).tolist()
+                avg_vol = sum(vols) / max(len(vols), 1) if vols else 0
+                recent_vol = sum(vols[-3:]) / 3 if len(vols) >= 3 else avg_vol
+                vol_ratio = recent_vol / max(avg_vol, 1) if avg_vol > 0 else 0
+                
+                # Momentum (last 5 bars)
+                closes = ticker_df['Close'].tail(6).tolist()
+                opens = ticker_df['Open'].tail(6).tolist()
+                mom_up = sum(1 for c, o in zip(closes[-5:], opens[-5:]) if c > o)
+                mom_dn = 5 - mom_up
+                
+                # Price action
+                range_pct = abs(day_high - day_low) / max(spot, 1) * 100
+                is_break_up = spot >= day_high * 0.998 and spot > vwap
+                is_break_dn = spot <= day_low * 1.002 and spot < vwap
+                above_vwap = spot > vwap
+                
+                # Direction
+                direction = 'NONE'
+                if is_break_up and mom_up >= 3:
+                    direction = 'BULLISH'
+                elif is_break_dn and mom_dn >= 3:
+                    direction = 'BEARISH'
+                elif mom_up >= 4 and above_vwap:
+                    direction = 'BULLISH'
+                elif mom_dn >= 4 and not above_vwap:
+                    direction = 'BEARISH'
+                
+                # Confidence scoring (same weights as main engine)
+                price_score = 85 if (is_break_up or is_break_dn) else min(100, 50 + range_pct * 5) if range_pct > 0.5 else 20
+                vol_score = min(100, max(0, vol_ratio * 60)) if avg_vol > 0 else 50
+                mom_score = 80 if (mom_up >= 4 or mom_dn >= 4) else 60 if (mom_up >= 3 or mom_dn >= 3) else 30
+                vwap_score = 90 if ((above_vwap and is_break_up) or (not above_vwap and is_break_dn)) else 60 if above_vwap else 40
+                
+                conf = round(price_score * 0.25 + vol_score * 0.20 + mom_score * 0.15 + vwap_score * 0.10 + 15)  # 15 base
+                conf = min(100, max(0, conf))
+                
+                # Grade + Action
+                grade = 'A' if conf >= 65 else 'B' if conf >= 50 else 'C' if conf >= 35 else 'D'
+                strict_buy = (is_break_up or is_break_dn) and vol_score >= 50 and mom_score >= 60
+                
+                action = 'NONE'
+                if grade == 'A' and direction == 'BULLISH' and strict_buy:
+                    action = 'BUY_CE'
+                elif grade == 'A' and direction == 'BEARISH' and strict_buy:
+                    action = 'BUY_PE'
+                elif (grade == 'A' or grade == 'B') and direction != 'NONE':
+                    action = 'WATCH'
+                
+                # Change from previous close
+                change_pct = round((spot - prev_close) / max(prev_close, 1) * 100, 2)
+                
+                # High momentum flag
+                high_mom = (mom_up >= 4 or mom_dn >= 4) and vol_score >= 60
+                
+                results.append({
+                    "sym": orig_sym,
+                    "spot": round(spot, 2),
+                    "chg": change_pct,
+                    "dir": direction,
+                    "conf": conf,
+                    "grade": grade,
+                    "action": action,
+                    "volR": round(vol_ratio, 1),
+                    "mom": mom_up if direction != 'BEARISH' else -mom_dn,
+                    "highMom": high_mom,
+                    "range": round(range_pct, 2),
+                    "vwap": round(vwap, 2),
+                    "aboveVwap": above_vwap,
+                })
+                
+            except Exception as te:
+                # Skip failed tickers silently
+                pass
+        
+        # Sort: BUY first, then by confidence
+        results.sort(key=lambda x: (0 if x['action'].startswith('BUY') else 1 if x['action'] == 'WATCH' else 2, -x['conf']))
+        
+        _elapsed = round(_time.time() - _t0, 1)
+        print(f"📡 live-scan: {len(results)}/{len(tickers)} scored in {_elapsed}s | BUY: {sum(1 for r in results if r['action'].startswith('BUY'))} | WATCH: {sum(1 for r in results if r['action']=='WATCH')}")
+        
+        return {
+            "success": True,
+            "results": results,
+            "scanned": len(results),
+            "total": len(tickers),
+            "elapsed": _elapsed,
+            "region": region,
+            "buy_count": sum(1 for r in results if r['action'].startswith('BUY')),
+            "watch_count": sum(1 for r in results if r['action'] == 'WATCH'),
+        }
+        
+    except Exception as e:
+        print(f"❌ live-scan error: {e}")
+        return {"success": False, "error": str(e)[:200], "results": []}
 
 
 # ═══ BATCH PRICES — multi-source live prices for stock picks ═══
@@ -6248,7 +7012,7 @@ async def _algo_signal_impl(symbol: str = "NIFTY", region: str = ""):
             "ema9": ema9, "ema21": ema21, "ema50": ema50,
             "rsi": rsi, "macd_hist": macd_hist, "macd_bullish": macd_bullish,
             "supertrend_buy": supertrend_buy, "atr14": atr14,
-            "vol_ratio": vol_ratio, "last_volume": int(float(volumes[-1])) if volumes else 0, "avg_volume": int(float(avg_vol)) if avg_vol else 0, "w52h": w52h, "w52l": w52l, "w52pos": w52pos,
+            "vol_ratio": vol_ratio, "last_volume": _safe__safe_int(volumes[-1]) if volumes else 0, "avg_volume": _safe_int(avg_vol) if avg_vol else 0, "w52h": w52h, "w52l": w52l, "w52pos": w52pos,
             "hh_hl": hh_hl, "lh_ll": lh_ll,
             "pe": pe, "roe": roe, "margin": margin, "de": de, "beta": beta_val,
             "adx": 0,  # Placeholder — computed later in trend engine, patched back here
@@ -13202,7 +13966,7 @@ async def market_daily():
             day_high = round(highs[-1], 2)
             day_low = round(lows[-1], 2)
             day_open = round(opens[-1], 2)
-            day_vol = int(volumes[-1]) if len(volumes) > 0 else 0
+            day_vol = _safe_int(volumes[-1]) if len(volumes) > 0 else 0
             avg_vol_20 = int(np.mean(volumes[-20:])) if len(volumes) >= 20 else day_vol
             vol_ratio = round(day_vol / avg_vol_20, 2) if avg_vol_20 > 0 else 1
             
@@ -13337,7 +14101,7 @@ async def market_daily():
                     "low": round(lows[idx], 2),
                     "close": d_close,
                     "change_pct": d_chg,
-                    "volume": int(volumes[idx]) if idx < len(volumes) else 0
+                    "volume": _safe_int(volumes[idx]) if idx < len(volumes) else 0
                 })
             
             return info["short"], {
@@ -23705,7 +24469,7 @@ async def _run_stock_intel(symbol, region, cache_key):
                 vol_ratio = round(recent_vol / avg_vol, 1) if avg_vol > 0 else 1.0
                 vol_confirm = "STRONG" if vol_ratio > 1.3 else ("MODERATE" if vol_ratio > 0.8 else "WEAK")
                 _pa_avg_vol = int(avg_vol)
-                _pa_last_vol = int(volumes[-1]) if len(volumes) > 0 else 0
+                _pa_last_vol = _safe_int(volumes[-1]) if len(volumes) > 0 else 0
                 _pa_vol_ratio = vol_ratio
         
         # ─── TECHNICALS DIAGNOSTIC LOG ───
