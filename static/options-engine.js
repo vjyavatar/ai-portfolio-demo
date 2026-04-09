@@ -3911,10 +3911,14 @@ window._speak=function(text,urgent){
         var voices=window.speechSynthesis.getVoices();
         var pref=null;
         if(voices.length>0){
-          pref=voices.find(function(v){return v.lang.indexOf('en')===0&&v.name.indexOf('Google')>=0})
-            ||voices.find(function(v){return v.lang.indexOf('en')===0&&v.name.indexOf('Female')>=0})
-            ||voices.find(function(v){return v.lang.indexOf('en')===0})
-            ||voices[0];
+          // Priority: Indian English → Natural/Neural → any English
+          var _inV=['India','Hindi','Indian','Rishi','Veena','Aditi','Kajal','Neerja'];
+          for(var _iv=0;_iv<_inV.length&&!pref;_iv++){pref=voices.find(function(v){return v.name.indexOf(_inV[_iv])>=0&&v.lang.indexOf('en')>=0})}
+          if(!pref)pref=voices.find(function(v){return v.lang==='en-IN'});
+          if(!pref){var _natV=['Natural','Neural','Online','Premium','Enhanced'];for(var _nv=0;_nv<_natV.length&&!pref;_nv++){pref=voices.find(function(v){return v.name.indexOf(_natV[_nv])>=0&&v.lang.indexOf('en')>=0})}}
+          if(!pref)pref=voices.find(function(v){return v.lang.indexOf('en')===0&&v.name.indexOf('Female')>=0});
+          if(!pref)pref=voices.find(function(v){return v.lang.indexOf('en')===0});
+          if(!pref)pref=voices[0];
         }
         
         // Split long text to avoid Chrome 15s freeze

@@ -20193,6 +20193,126 @@ document.addEventListener('click', function(e) {
 
 
 
+
+
+// ═══ VOICE ENGINE (standalone — works without options-engine) ═══
+// Defines window._speak if not already defined
+// Handles Chrome 15s pause bug, auto-unlock, etc.
+
+if(!window._speak){
+  window._speakQueue=[];
+  window._speakBusy=false;
+  
+  // Unlock audio on first user interaction
+  window._audioUnlocked=false;
+  ['click','touchstart','keydown'].forEach(function(evt){
+    document.addEventListener(evt,function(){
+      if(!window._audioUnlocked){
+        window._audioUnlocked=true;
+        // Create and resume AudioContext to unlock
+        try{
+          var ctx=new (window.AudioContext||window.webkitAudioContext)();
+          ctx.resume();
+          var osc=ctx.createOscillator();
+          osc.connect(ctx.destination);
+          osc.start();
+          osc.stop(ctx.currentTime+0.01);
+        }catch(e){}
+        console.log('[VOICE] Audio unlocked by user interaction');
+      }
+    },{once:false,passive:true});
+  });
+  
+  window._speak=function(text,urgent){
+    if(!text)return;
+    if(!window.speechSynthesis)return;
+    
+    // Cancel current if urgent
+    if(urgent){
+      try{speechSynthesis.cancel()}catch(e){}
+      window._speakQueue=[];
+    }
+    
+    // Split long text at sentence boundaries
+    var chunks=[];
+    if(text.length>150){
+      var sentences=text.match(/[^.!?]+[.!?]+/g)||[text];
+      var current='';
+      sentences.forEach(function(s){
+        if((current+s).length>150){
+          if(current)chunks.push(current.trim());
+          current=s;
+        }else{
+          current+=s;
+        }
+      });
+      if(current)chunks.push(current.trim());
+    }else{
+      chunks=[text];
+    }
+    
+    function speakNext(){
+      if(chunks.length===0){window._speakBusy=false;return}
+      window._speakBusy=true;
+      
+      var chunk=chunks.shift();
+      var u=new SpeechSynthesisUtterance(chunk);
+      u.volume=1.0;
+      
+      // Pick natural Indian English voice (or closest natural voice)
+      var voices=speechSynthesis.getVoices();
+      var picked=null;
+      
+      // Priority 1: Indian English voices
+      var indian=['India','Hindi','Indian','Rishi','Veena','Aditi','Kajal','Microsoft Neerja','Neerja'];
+      for(var vi=0;vi<indian.length&&!picked;vi++){
+        picked=voices.find(function(v){return v.name.indexOf(indian[vi])>=0&&v.lang.indexOf('en')>=0});
+      }
+      // Priority 2: Indian locale voices (en-IN)
+      if(!picked)picked=voices.find(function(v){return v.lang==='en-IN'});
+      // Priority 3: Natural/premium voices (not robotic)
+      if(!picked){
+        var natural=['Natural','Neural','Online','Premium','Enhanced','Samantha','Karen','Google UK English Female','Daniel'];
+        for(var vi2=0;vi2<natural.length&&!picked;vi2++){
+          picked=voices.find(function(v){return v.name.indexOf(natural[vi2])>=0&&v.lang.indexOf('en')>=0});
+        }
+      }
+      // Priority 4: Any English voice
+      if(!picked)picked=voices.find(function(v){return v.lang&&v.lang.indexOf('en')>=0});
+      
+      if(picked)u.voice=picked;
+      u.rate=0.95; // Slightly slower = more natural
+      u.pitch=1.05; // Slightly higher = warmer
+      
+      u.onend=function(){speakNext()};
+      u.onerror=function(){speakNext()};
+      
+      // Chrome 15s pause bug fix
+      var resumeTimer=setInterval(function(){
+        if(speechSynthesis.speaking&&speechSynthesis.paused){
+          speechSynthesis.resume();
+        }
+      },13000);
+      
+      var origEnd=u.onend;
+      u.onend=function(){clearInterval(resumeTimer);if(origEnd)origEnd()};
+      
+      try{
+        speechSynthesis.cancel();
+        speechSynthesis.speak(u);
+      }catch(e){
+        clearInterval(resumeTimer);
+        speakNext();
+      }
+    }
+    
+    speakNext();
+  };
+  
+  console.log('[VOICE] Standalone _speak loaded for Trading tab');
+}
+
+
 // ═══════════════════════════════════════════════════════════════
 // TRADING TAB — EMA 9/21 Crossover + RSI (auto-refresh)
 // Simple signals: BUY when EMA9 crosses above EMA21 + RSI > 50
