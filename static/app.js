@@ -383,7 +383,7 @@ if(!email||!email.includes('@')){window._isPremiumUser=false;return}
 const showTradesLocal=TRADES_EMAILS.includes(email);
 const showPicksLocal=PICKS_EMAILS.includes(email);
 const showDreamLocal=DREAM_EMAILS.includes(email);
-window._isPremiumUser=showTradesLocal||showDreamLocal;
+window._isPremiumUser=showTradesLocal||showDreamLocal||TRADING_ONLY_EMAILS.includes(email);
 window._showPicks=showPicksLocal;
 window._isDreamUser=showDreamLocal;
 window._verifiedEmail=email;  // Store for API calls
@@ -399,6 +399,8 @@ window._showPicks=d.premium;
 window._isDreamUser=d.dreamAccess||false;
 window._verifiedEmail=email;  // Store confirmed email
 window._isPdfUser=(email==='vj@vnky.com');
+window._isTradingOnly=TRADING_ONLY_EMAILS.includes(email);
+if(window._isTradingOnly)window._isPremiumUser=true; // Trading-only gets premium for trading tab
 var _pb=document.getElementById('pdfExportBtn');if(_pb)_pb.style.display=window._isPdfUser?'':'none';
 
 // Trading-only restriction
@@ -480,7 +482,7 @@ el.value=masked;
 // Silently set flags but DON'T touch any UI
 var showTradesLocal=TRADES_EMAILS.includes(email);
 var showDreamLocal=DREAM_EMAILS.includes(email);
-window._isPremiumUser=showTradesLocal||showDreamLocal;
+window._isPremiumUser=showTradesLocal||showDreamLocal||TRADING_ONLY_EMAILS.includes(email);
 window._isDreamUser=showDreamLocal;
 window._showPicks=showTradesLocal||showDreamLocal;
 }
@@ -2372,7 +2374,7 @@ function switchTabGroup(group) {
   if (!g) return;
   
   // ═══ PREMIUM GATE — Only Trading suite requires premium ═══
-  if (group === 'trading' && !window._isPremiumUser) {
+  if (group === 'trading' && !window._isPremiumUser && !window._isTradingOnly && !TRADING_ONLY_EMAILS.includes((window._verifiedEmail||'').toLowerCase())) {
     window._activeGroup = group;
     var rpt=document.getElementById('report');if(rpt&&rpt.classList.contains('show')){rpt.style.setProperty('display','block','important');}
     var mainTabBar=document.getElementById('mainTabBar');var _rReady2=rpt&&rpt.classList.contains('show');if(mainTabBar&&_rReady2){mainTabBar.classList.remove('tab-bar-hidden');mainTabBar.style.display='flex'};
