@@ -20575,15 +20575,30 @@ console.log('[TRADING] ✅ EMA 9/21 + RSI trading tab loaded');
     // Tab IDs and which roles can see them
     // Format: {selector, roles that CAN see it}
     var tabRules=[
-      // Overview — everyone
-      // Tools — everyone  
-      {sel:'[onclick*="trader"], #traderTab, [onclick*="switchDEMode"][onclick*="trader"]', roles:['admin','full','trading']},
-      {sel:'[onclick*="investor"], #investorTab', roles:['admin','full']},
-      {sel:'[onclick*="options"], #optionsTab, [onclick*="switchDEMode"][onclick*="options"]', roles:['admin','full']},
-      {sel:'[onclick*="proScan"], [onclick*="Pro Scan"]', roles:['admin','full']},
-      {sel:'[onclick*="reports"], [onclick*="Reports"]', roles:['admin','full']},
-      {sel:'[onclick*="pms"], [onclick*="PMS"]', roles:['admin','full']},
+      // Main top tabs (by ID)
+      {sel:'#tabBtnResearch', roles:['admin','full']},           // Stock tab
+      {sel:'#tabBtnMarkets', roles:['admin','full']},            // Markets tab
+      {sel:'#tabBtnDecide', roles:['admin','full']},             // Decide tab
+      {sel:'#tabBtnDream', roles:['admin','full']},              // Dream tab
+      {sel:'#tabBtnTrading', roles:['admin','full','trading']},  // Trader tab
+      // tabBtnOverview → everyone
+      // tabBtnTools → everyone
+      
+      // Decision Engine mode buttons
+      {sel:'#deModeInvestor', roles:['admin','full']},
+      {sel:'#deModeOptions', roles:['admin','full']},
+      {sel:'#deModeTrader', roles:['admin','full','trading']},
+      
+      // Sub-tabs within Stock (Valuation, Technical, Activity, Risk)
+      {sel:'[onclick*="switchTabGroup(\'research\'"]', roles:['admin','full']},
+      
+      // PDF
       {sel:'#pdfExportBtn', roles:['admin']},
+      
+      // Pro Scan, Reports, PMS buttons
+      {sel:'[onclick*="proScan"]', roles:['admin','full']},
+      {sel:'[onclick*="reports"]', roles:['admin','full']},
+      {sel:'[onclick*="pms"]', roles:['admin','full']},
     ];
     
     tabRules.forEach(function(rule){
@@ -20600,6 +20615,22 @@ console.log('[TRADING] ✅ EMA 9/21 + RSI trading tab loaded');
     });
     
     console.log('[ACCESS] Email: '+email+' → Role: '+role);
+    
+    // For trading/public roles: also hide sub-sections inside reports
+    if(role==='trading'||role==='public'){
+      // Hide Stock sub-tabs when report loads
+      var _hideRestrictedContent=function(){
+        // Valuation, Technical, Activity, Risk sub-tabs
+        document.querySelectorAll('[onclick*="valuation"],[onclick*="technical"],[onclick*="activity"],[onclick*="risk"]').forEach(function(el3){el3.style.display='none'});
+        // Report sections that shouldn't be visible
+        document.querySelectorAll('#researchSection,#decideSection,#dreamSection,.investor-only,.premium-only').forEach(function(el3){el3.style.display='none'});
+      };
+      _hideRestrictedContent();
+      // Re-apply every 2 seconds (catches dynamically loaded content)
+      if(window._restrictTimer)clearInterval(window._restrictTimer);
+      window._restrictTimer=setInterval(_hideRestrictedContent,2000);
+      setTimeout(function(){clearInterval(window._restrictTimer)},60000); // Stop after 1 min
+    }
   }
   
   // ═══ 4. IDLE CHECK — 2 hours no activity → clear session ═══
