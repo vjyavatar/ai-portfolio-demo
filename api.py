@@ -25329,6 +25329,15 @@ async def _start_cds_auto_scan():
 async def options_quick(symbol: str = "NIFTY", region: str = "IN"):
     """Universal options quick trade data — works for India indices, US stocks, ETFs."""
     try:
+        return await _options_quick_impl(symbol, region)
+    except Exception as e:
+        print(f"[OPTIONS-QUICK] ❌ Top-level error for {symbol}: {e}")
+        return {"success": False, "error": str(e)[:200], "spot": 0, "ohlc_bars": [], "chain_near_atm": [], "ce_resistance": [], "pe_support": [], "gex": {"total": 0, "regime": "NEUTRAL", "topStrikes": [], "flipPoint": 0, "callWall": 0, "putWall": 0}}
+
+
+async def _options_quick_impl(symbol: str = "NIFTY", region: str = "IN"):
+    """Actual implementation — separated so top-level catches ALL errors cleanly."""
+    try:
         sym = symbol.upper().replace('.NS', '').replace('.BO', '')
         
         # Detect market type
@@ -25683,7 +25692,7 @@ async def options_quick(symbol: str = "NIFTY", region: str = "IN"):
     except Exception as e:
         print(f"[OPTIONS-QUICK] ❌ Error for {symbol}: {e}")
         import traceback; traceback.print_exc()
-        return {"success": False, "error": str(e), "spot": 0, "chain_near_atm": [], "ce_resistance": [], "pe_support": [], "gex": {"total": 0, "regime": "NEUTRAL", "topStrikes": [], "flipPoint": 0, "callWall": 0, "putWall": 0}}
+        return {"success": False, "error": str(e), "spot": 0, "ohlc_bars": [], "chain_near_atm": [], "ce_resistance": [], "pe_support": [], "gex": {"total": 0, "regime": "NEUTRAL", "topStrikes": [], "flipPoint": 0, "callWall": 0, "putWall": 0}}
 
 
 # ═══════════════════════════════════════════════════════════════

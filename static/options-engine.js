@@ -6633,9 +6633,9 @@ window._renderBuyNowCard=function(r){
   
   // Price + Strike + Premium
   h+='<div style="display:flex;gap:8px;margin-bottom:6px;font-size:10px">';
-  h+='<span style="color:#94a3b8">Spot: <strong style="color:#e2e8f0">'+S+r.spot.toLocaleString(isUS?'en-US':'en-IN')+'</strong></span>';
-  if(r.prem>0)h+='<span style="color:#94a3b8">Strike: <strong style="color:#f59e0b">'+S+r.strike+'</strong> @ '+S+r.prem.toFixed(isUS?2:0)+'</span>';
-  h+='<span style="color:#94a3b8">'+r.momTag+'</span>';
+  h+='<span style="color:#94a3b8">Spot: <strong style="color:#e2e8f0">'+S+(r.spot||0).toLocaleString(isUS?'en-US':'en-IN')+'</strong></span>';
+  if(r.prem>0)h+='<span style="color:#94a3b8">Strike: <strong style="color:#f59e0b">'+S+r.strike+'</strong> @ '+S+(r.prem||0).toFixed(isUS?2:0)+'</span>';
+  h+='<span style="color:#94a3b8">'+(r.momTag||'')+'</span>';
   h+='</div>';
   
   // Framework Quality Badges
@@ -6647,7 +6647,7 @@ window._renderBuyNowCard=function(r){
   h+='<span style="font-size:8px;padding:2px 6px;border-radius:4px;background:'+cnCol+'15;color:'+cnCol+';font-weight:700">'+cn+'/6 Confirms</span>';
   h+='<span style="font-size:8px;padding:2px 6px;border-radius:4px;background:'+fkCol+'15;color:'+fkCol+';font-weight:700">Fake: '+fk+'</span>';
   h+='<span style="font-size:8px;padding:2px 6px;border-radius:4px;background:'+rfCol+'15;color:'+rfCol+';font-weight:700">Flags: '+rf+'</span>';
-  if(r.volRatio>=1.5)h+='<span style="font-size:8px;padding:2px 6px;border-radius:4px;background:#05966915;color:#059669;font-weight:700">Vol '+r.volRatio.toFixed(1)+'×</span>';
+  if((r.volRatio||0)>=1.5)h+='<span style="font-size:8px;padding:2px 6px;border-radius:4px;background:#05966915;color:#059669;font-weight:700">Vol '+(r.volRatio||0).toFixed(1)+'×</span>';
   if(!r.barConfirm)h+='<span style="font-size:8px;padding:2px 6px;border-radius:4px;background:#ef444415;color:#ef4444;font-weight:700">⚠ Bars disagree</span>';
   h+='</div>';
   
@@ -7162,7 +7162,7 @@ window._renderScanCard=function(r){
   h+='<div style="flex:1;text-align:center">';
   if(isReady){
     h+='<div style="font-size:13px;font-weight:900;color:'+actionColor+'">'+r.action+'</div>';
-    h+='<div style="font-size:11px;font-weight:800;color:#e2e8f0">'+r.S+r.strike+' '+r.type+' @ '+r.S+(r.prem>0?r.prem.toFixed(isUS&&r.prem<10?2:0):'—')+'</div>';
+    h+='<div style="font-size:11px;font-weight:800;color:#e2e8f0">'+r.S+(r.strike||0)+' '+(r.type||'CE')+' @ '+r.S+((r.prem||0)>0?(r.prem||0).toFixed(isUS&&r.prem<10?2:0):'—')+'</div>';
   }else if(r.grade==='B'){
     h+='<div style="font-size:12px;font-weight:700;color:#d97706">WATCHING</div>';
     h+='<div style="font-size:10px;color:#64748b">'+(r.dir==='LEAN_BULL'?'↑ Leaning bullish':'↓ Leaning bearish')+'</div>';
@@ -7196,7 +7196,7 @@ window._renderScanCard=function(r){
     // Strike + Spot + Premium row
     h+='<div style="display:flex;gap:8px;margin-top:8px;margin-bottom:6px">';
     h+='<div style="flex:1;padding:5px;border-radius:6px;background:#1e293b;text-align:center"><div style="font-size:8px;color:#64748b">STRIKE</div><div style="font-size:13px;font-weight:900;color:#e2e8f0;font-family:JetBrains Mono">'+r.S+L(r.strike)+'</div></div>';
-    h+='<div style="flex:1;padding:5px;border-radius:6px;background:#1e293b;text-align:center"><div style="font-size:8px;color:#64748b">PREMIUM</div><div style="font-size:13px;font-weight:900;color:#f59e0b;font-family:JetBrains Mono">'+r.S+r.prem.toFixed(isUS&&r.prem<10?2:0)+'</div></div>';
+    h+='<div style="flex:1;padding:5px;border-radius:6px;background:#1e293b;text-align:center"><div style="font-size:8px;color:#64748b">PREMIUM</div><div style="font-size:13px;font-weight:900;color:#f59e0b;font-family:JetBrains Mono">'+r.S+(r.prem||0).toFixed(isUS&&(r.prem||0)<10?2:0)+'</div></div>';
     h+='<div style="flex:1;padding:5px;border-radius:6px;background:#1e293b;text-align:center"><div style="font-size:8px;color:#64748b">LOT</div><div style="font-size:13px;font-weight:900;color:#94a3b8">'+lot+'</div></div>';
     h+='</div>';
     
@@ -7212,7 +7212,7 @@ window._renderScanCard=function(r){
     h+='<div style="display:flex;justify-content:center;gap:16px;font-size:9px">';
     h+='<span style="color:#ef4444">Risk: '+r.S+L(maxRisk)+'</span>';
     h+='<span style="color:#059669">Profit: '+r.S+L(maxProf)+'</span>';
-    h+='<span style="color:#64748b">PCR: '+r.pcr.toFixed(2)+'</span>';
+    h+='<span style="color:#64748b">PCR: '+(r.pcr||0).toFixed(2)+'</span>';
     h+='<span style="color:#64748b">GEX: '+r.gex+'</span>';
     h+='</div>';
     
