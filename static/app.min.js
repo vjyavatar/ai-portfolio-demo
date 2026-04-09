@@ -1366,6 +1366,13 @@ var _ts2=document.getElementById('timestamp');if(_ts2)_ts2.innerHTML='<div class
 // FORCE SHOW REPORT IMMEDIATELY — even before template renders
 var rpt=document.getElementById('report');
 if(rpt){rpt.style.setProperty('display','block','important');rpt.classList.add('show');}
+// Re-apply tab gating now that report is visible
+var _reEmail=(window._verifiedEmail||'').toLowerCase();
+if(_reEmail){
+  var _reShowTrades=TRADES_EMAILS.includes(_reEmail)||DREAM_EMAILS.includes(_reEmail)||TRADING_ONLY_EMAILS.includes(_reEmail);
+  var _reShowPicks=PICKS_EMAILS.includes(_reEmail);
+  _applyPremiumGating(_reShowTrades,_reShowPicks,_reEmail);
+}
 // Overview enhancements triggered only on Overview tab click (in premium-override.js)
 // FAILSAFE: Show tab bar IMMEDIATELY — before any rendering that might error
 // Tab bar will be shown by createAnalysisSections or FATAL catch — not here (avoids ghost buttons)
