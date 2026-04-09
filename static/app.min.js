@@ -2395,7 +2395,15 @@ function switchTabGroup(group) {
     var _asb=document.getElementById('analysisSubTabs');if(_asb)_asb.style.display='none';
     // Remove any premium gate
     var eg=document.getElementById('_premGate');if(eg)eg.remove();
-    // Load our EMA/RSI Trading view into the report area
+    // HIDE the old tab content area completely
+    var _tca=document.getElementById('tabContentArea');
+    if(_tca)_tca.style.display='none';
+    // HIDE the main tab bar sub-nav
+    var _mtb=document.getElementById('mainTabBar');
+    // Make report area visible and full width
+    var _rpt=document.getElementById('report');
+    if(_rpt){_rpt.style.setProperty('display','block','important');_rpt.classList.add('show')}
+    // Load our EMA/RSI Trading view
     var sym=window._lastDESym||window._lastAnalyzedSymbol||'NIFTY';
     window._loadTradingView(sym);
     return;

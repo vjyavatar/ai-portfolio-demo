@@ -3536,7 +3536,7 @@ function _renderQuickTrade(d,sym){
       h+='<div style="font-size:13px;font-weight:900;color:#ef4444;text-align:center">⚠️ MARKET CLOSED</div>';
       h+='<div style="font-size:10px;color:#ef4444;text-align:center;margin-top:4px">Data below is from LAST SESSION — NOT live. Do not trade based on this.</div>';
       var _gnd=window._giftNiftyData;
-      var _isIndiaRegion=(window._optionsRegion||'IN')==='IN'||(window._activeOptionsReg||'IN')==='IN';
+      var _isIndiaRegion=!isUS;
       if(_gnd&&_gnd.expected_gap_pct!==undefined&&_isIndiaRegion){
         var _gGapC=_gnd.expected_gap_pct>=0.1?'#059669':_gnd.expected_gap_pct<=-0.1?'#ef4444':'#94a3b8';
         h+='<div style="margin-top:8px;padding:8px;background:#1e293b;border-radius:8px;text-align:center">';
