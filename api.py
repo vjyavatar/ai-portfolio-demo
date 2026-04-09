@@ -4065,6 +4065,15 @@ async def nse_options(symbol: str = "NIFTY"):
         except Exception as e:
             print(f"CPR calc error: {e}")
         
+        # Ensure ohlc_bars and vwap always exist (intraday fetch is optional and may fail)
+        if "ohlc_bars" not in result:
+            result["ohlc_bars"] = []
+        if "vwap" not in result:
+            _s = result.get("spot", 0)
+            result["vwap"] = round((result.get("today_high", _s) + result.get("today_low", _s) + _s) / 3, 2) if _s > 0 else 0
+        if "prev_close" not in result:
+            result["prev_close"] = result.get("pdc", result.get("spot", 0))
+        
         print(f"📊 NSE Options: {symbol} spot={result.get('spot')} pcr={result.get('pcr')} maxpain={result.get('max_pain')} vix={result.get('vix')}")
     
     except Exception as e:
@@ -25633,21 +25642,23 @@ async def options_quick(symbol: str = "NIFTY", region: str = "IN"):
             "pe_support": pe_support,
             "total_ce_oi": sum(c['ce_oi'] for c in chain_data),
             "total_pe_oi": sum(c['pe_oi'] for c in chain_data),
-            "ohlc_bars": [],  # Will be populated below
+            "ohlc_bars": [],  # Will be populated below if available
             "gex": {"total": 0, "regime": "NEUTRAL", "topStrikes": [], "flipPoint": max_pain, "callWall": ce_resistance[0]['strike'] if ce_resistance else 0, "putWall": pe_support[0]['strike'] if pe_support else 0},
             "pivot": vwap,
             "cpr_top": round(day_high * 0.998, 2),
             "cpr_bottom": round(day_low * 1.002, 2),
+            "prev_close": round(prev_close, 2) if prev_close else round(spot * 0.998, 2),
         }
         
-        # ═══ FETCH INTRADAY BARS (5-min) for framework features ═══
-        # Without bars: Session Profile, VWAP Bands, ATR, Confirmation Bars all fail
+        # ═══ FETCH INTRADAY BARS (5-min) — OPTIONAL, non-critical ═══
+        # Skip if we already used too many Yahoo calls (rate limit protection)
         try:
             _yahoo_rate_wait()
             hist_5m = tk.history(period='1d', interval='5m')
-            if len(hist_5m) > 0:
+            if hist_5m is not None and len(hist_5m) > 0:
                 ohlc_bars = []
-                for _, row in hist_5m.iterrows():
+                # Limit to last 30 bars to keep response size small
+                for _, row in hist_5m.tail(30).iterrows():
                     ohlc_bars.append({
                         "t": str(row.name.time())[:5] if hasattr(row.name, 'time') else "",
                         "o": round(float(row['Open']), 2),
@@ -25657,32 +25668,16 @@ async def options_quick(symbol: str = "NIFTY", region: str = "IN"):
                         "v": int(row.get('Volume', 0))
                     })
                 result["ohlc_bars"] = ohlc_bars
-                # Recalculate VWAP from actual bars (more accurate)
+                # Recalculate VWAP from bars
                 vwap_num = sum((b["h"]+b["l"]+b["c"])/3 * b["v"] for b in ohlc_bars if b["v"] > 0)
                 vwap_den = sum(b["v"] for b in ohlc_bars if b["v"] > 0)
                 if vwap_den > 0:
                     result["vwap"] = round(vwap_num / vwap_den, 2)
-                # Update today_high/low from bars if more accurate
-                bar_high = max(b["h"] for b in ohlc_bars) if ohlc_bars else day_high
-                bar_low = min(b["l"] for b in ohlc_bars) if ohlc_bars else day_low
-                if bar_high > result["today_high"]:
-                    result["today_high"] = round(bar_high, 2)
-                if bar_low < result["today_low"] and bar_low > 0:
-                    result["today_low"] = round(bar_low, 2)
-                # Store prev_close for gap calc
-                try:
-                    hist_2d = tk.history(period='5d', interval='1d')
-                    if len(hist_2d) >= 2:
-                        result["prev_close"] = round(float(hist_2d['Close'].iloc[-2]), 2)
-                except:
-                    pass
-                print(f"[OPTIONS-QUICK] ✅ {sym} bars: {len(ohlc_bars)} 5-min bars, VWAP={result['vwap']}")
-            else:
-                print(f"[OPTIONS-QUICK] ⚠️ No 5-min history for {yf_sym}")
+                print(f"[OPTIONS-QUICK] ✅ {sym} bars: {len(ohlc_bars)}")
         except Exception as bar_err:
-            print(f"[OPTIONS-QUICK] ⚠️ Bars fetch error for {yf_sym}: {bar_err}")
+            print(f"[OPTIONS-QUICK] ⚠️ Bars skipped for {yf_sym}: {bar_err}")
         
-        print(f"[OPTIONS-QUICK] ✅ {sym} ({region}): spot={spot}, chain={len(chain_data)} strikes, pcr={pcr}, bars={len(result.get('ohlc_bars', []))}")
+        print(f"[OPTIONS-QUICK] ✅ {sym} ({region}): spot={spot}, chain={len(chain_data)}, bars={len(result.get('ohlc_bars', []))}")
         return result
         
     except Exception as e:

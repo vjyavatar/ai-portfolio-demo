@@ -6607,7 +6607,7 @@ window._showBuyNowDashboard=function(cat){
           });
           renderBuyNow();
         }).catch(function(){done2++;renderBuyNow()});
-    },i*400); // 400ms stagger (faster than 500ms)
+    },i*1200); // 1.2s stagger to avoid Yahoo rate limits
   });
 };
 
@@ -6639,7 +6639,7 @@ window._renderBuyNowCard=function(r){
   h+='</div>';
   
   // Framework Quality Badges
-  var cn=r.confirms||0;var fk=r.fakeScore||0;var rf=r.redFlags||0;
+  var cn=r.confirms||0;var fk=r.fakeScore||0;var rf=Array.isArray(r.redFlags)?r.redFlags.length:(r.redFlags||0);
   var cnCol=cn>=4?'#059669':cn>=3?'#3b82f6':'#d97706';
   var fkCol=fk<=20?'#059669':fk<=40?'#d97706':'#ef4444';
   var rfCol=rf<2?'#059669':'#ef4444';
@@ -8121,7 +8121,7 @@ window._scanBottomNav=function(){
           if(done>=total)window._renderBottomNav();
         })
         .catch(function(){done++;if(done>=total)window._renderBottomNav()});
-    },i*500);
+    },i*1500); // 1.5s stagger to avoid Yahoo rate limits
   });
 };
 
