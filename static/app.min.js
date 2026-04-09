@@ -431,7 +431,7 @@ if(!_reportShowing)return;
 
 // DECIDE tab — only for premium/trades users
 var decideBtn=document.getElementById('tabBtnDecide');
-if(decideBtn)decideBtn.style.display=showTrades?'':'none';
+if(decideBtn)decideBtn.style.display=(showTrades&&!TRADING_ONLY_EMAILS.includes(email))?'':'none';
 
 var tradingBtn=document.getElementById('tabBtnTrading');
 if(tradingBtn)tradingBtn.style.display=(showTrades||TRADING_ONLY_EMAILS.includes(email))?'':'none';
@@ -2381,6 +2381,25 @@ function switchTabGroup(group) {
   if (!g) return;
   
   // ═══ PREMIUM GATE — Only Trading suite requires premium ═══
+  // Trading-only users get our simple EMA/RSI Trading view, not the full suite
+  if (group === 'trading' && TRADING_ONLY_EMAILS.includes((window._verifiedEmail||'').toLowerCase())) {
+    window._activeGroup = group;
+    document.querySelectorAll('.tab-btn').forEach(function(b){b.classList.remove('active')});
+    var mainBtn = document.getElementById('tabBtnTrading');
+    if(mainBtn)mainBtn.classList.add('active');
+    // Hide sub-tabs (Algo Trades, Smart Trades etc)
+    var subNav=document.getElementById('groupSubNav');if(subNav)subNav.style.display='none';
+    // Hide all tab content sections
+    document.querySelectorAll('.sc[data-tab]').forEach(function(s){s.style.display='none'});
+    document.querySelectorAll('#tabContentArea > [data-tab]').forEach(function(s){s.style.display='none'});
+    var _asb=document.getElementById('analysisSubTabs');if(_asb)_asb.style.display='none';
+    // Remove any premium gate
+    var eg=document.getElementById('_premGate');if(eg)eg.remove();
+    // Load our EMA/RSI Trading view into the report area
+    var sym=window._lastDESym||window._lastAnalyzedSymbol||'NIFTY';
+    window._loadTradingView(sym);
+    return;
+  }
   if (group === 'trading' && !window._isPremiumUser && !window._isTradingOnly && !TRADING_ONLY_EMAILS.includes((window._verifiedEmail||'').toLowerCase())) {
     window._activeGroup = group;
     var rpt=document.getElementById('report');if(rpt&&rpt.classList.contains('show')){rpt.style.setProperty('display','block','important');}
