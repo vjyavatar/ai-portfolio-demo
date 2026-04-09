@@ -5028,8 +5028,13 @@ async def ema_signal(symbol: str = "NIFTY", region: str = "IN"):
         tk = yf.Ticker(yf_sym)
         hist = tk.history(period='5d', interval='5m')
         
-        if len(hist) < 25:
-            return {"success": False, "error": "Insufficient data"}
+        # Fallback: if 5-min data insufficient, try 15-min then daily
+        if hist is None or len(hist) < 25:
+            hist = tk.history(period='10d', interval='15m')
+        if hist is None or len(hist) < 25:
+            hist = tk.history(period='60d', interval='1d')
+        if hist is None or len(hist) < 25:
+            return {"success": False, "error": f"Insufficient data for {yf_sym}"}
         
         closes = hist['Close'].values.astype(float)
         highs = hist['High'].values.astype(float)
