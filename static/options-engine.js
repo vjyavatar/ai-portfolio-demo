@@ -4484,6 +4484,7 @@ window._renderLiveTracker=function(sym,type,entryPrem,currentPrem,lots,lotSize,S
 var _origQuickTrade=_renderQuickTrade;
 _renderQuickTrade=function(d,sym){
   _origQuickTrade(d,sym);
+  if(window._qtBatchMode)return;
   var el=document.getElementById('deResult');if(!el)return;
   var S='₹';
   
@@ -5604,6 +5605,7 @@ window._renderAutoPanel=function(sym,bias,status){
 var _origQT2=_renderQuickTrade;
 _renderQuickTrade=function(d,sym){
   _origQT2(d,sym);
+  if(window._qtBatchMode)return;
   var el=document.getElementById('deResult');if(!el)return;
   
   var spot=d.spot||0,vwap=d.vwap||0;
@@ -6089,6 +6091,7 @@ window.switchDEMode=function(mode){
 var _origQT3=_renderQuickTrade;
 _renderQuickTrade=function(d,sym){
   _origQT3(d,sym);
+  if(window._qtBatchMode)return;
   var el=document.getElementById('deResult');if(!el)return;
   var btn=document.createElement('div');
   btn.style.cssText='text-align:center;margin:8px auto;max-width:480px';
@@ -6226,6 +6229,7 @@ window._renderStrikeSelector=function(strikes,bias,sym,isExpiry,gammaBlast,S){
 var _origQT4=_renderQuickTrade;
 _renderQuickTrade=function(d,sym){
   _origQT4(d,sym);
+  if(window._qtBatchMode)return;
   var el=document.getElementById('deResult');if(!el)return;
   var S='₹';
   var ceRes=d.ce_resistance||[],peSupp=d.pe_support||[];
@@ -6499,12 +6503,16 @@ window._loadSmartOptions=function(ticker){
 var _origQT6=_renderQuickTrade;
 _renderQuickTrade=function(d,sym){
   _origQT6(d,sym);
+  if(window._qtBatchMode)return; // Skip nav/gift-nifty in batch mode
   var el=document.getElementById('deResult');if(!el)return;
-  // Prepend the navigator
-  var navHtml=window._renderOptionsNav(sym);
-  var navDiv=document.createElement('div');
-  navDiv.innerHTML=navHtml;
-  el.insertBefore(navDiv,el.firstChild);
+  // Prepend the navigator (only if not already present)
+  if(!el.querySelector('#optNavInjected')){
+    var navHtml=window._renderOptionsNav(sym);
+    var navDiv=document.createElement('div');
+    navDiv.id='optNavInjected';
+    navDiv.innerHTML=navHtml;
+    el.insertBefore(navDiv,el.firstChild);
+  }
   
   // Pre-market: Gift Nifty for India, Futures for US (when market closed)
   var _preMarketRegion=(window._optionsRegion||window._activeOptionsReg||'IN');
@@ -7072,11 +7080,14 @@ window._renderSwingCard=function(d,sym){
 var _origQTSwing=_renderQuickTrade;
 _renderQuickTrade=function(d,sym){
   _origQTSwing(d,sym);
+  if(window._qtBatchMode)return;
   // Add mode toggle at top of the card
   var el=document.getElementById('deResult');if(!el)return;
+  if(el.querySelector('#optSwingToggle'))return; // prevent duplicates
   var isUS=d._region==='US'||d.region==='US';
   var reg=isUS?'US':'IN';
   var toggleDiv=document.createElement('div');
+  toggleDiv.id='optSwingToggle';
   toggleDiv.style.cssText='text-align:center;margin-bottom:8px';
   toggleDiv.innerHTML='<div style="display:inline-flex;gap:0">'
     +'<button style="padding:8px 20px;border-radius:10px 0 0 10px;font-size:11px;font-weight:800;cursor:pointer;border:2px solid #3b82f6;background:#3b82f6;color:#fff">⚡ OPTIONS</button>'
