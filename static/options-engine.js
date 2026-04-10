@@ -2764,118 +2764,183 @@ function _renderQuickTrade(d,sym){
   
   // Expiry adjusts gamma weight but doesn't change mode
   
-  // ─── STEP 2: COMPUTE ALL SIGNALS (0-100 each) ───
+  // ═══════════════════════════════════════════════════════════════════════
+  // INSTITUTIONAL CONFLUENCE SCORING MODEL v4.0
+  // 7-Factor Model per Rule Engine Specification
+  // Market Structure 25% | VWAP 20% | Volume 15% | Trend 15% |
+  // Options 15% | Momentum 5% | Volatility 5%
+  // ═══════════════════════════════════════════════════════════════════════
   
-  // Signal 1: Price Action
   var dayRange=Math.abs(dayHigh-dayLow);
   var rangePct=dayRange/Math.max(spot,1)*100;
   var isBreakUp=spot>=dayHigh*0.998&&spot>vwapLevel;
   var isBreakDn=spot<=dayLow*1.002&&spot<vwapLevel;
-  var priceActionScore=0;
-  if(isBreakUp||isBreakDn)priceActionScore=85;
-  else if(rangePct>0.5)priceActionScore=Math.min(100,50+rangePct*5);
-  else priceActionScore=20;
-  priceActionScore=Math.min(100,Math.max(0,priceActionScore));
+  var aboveVwap=spot>vwapLevel;
+  var vwapDist=Math.abs(spot-vwapLevel)/Math.max(spot,1)*100;
   
-  // Signal 2: Volume
+  // Volume basics
   var totalVol8=bars.reduce(function(s,b){return s+b.v},0);
   var avgVol8=bars.length>3?totalVol8/bars.length:0;
   var lastBars8=bars.slice(-3);
   var recentVol8=lastBars8.length>0?lastBars8.reduce(function(s,b){return s+b.v},0)/lastBars8.length:0;
   var hasVolData=totalVol8>0&&avgVol8>0;
   var volRatio8=hasVolData?(recentVol8/avgVol8):0;
-  var volumeScore=50; // Neutral default when no data
-  if(hasVolData)volumeScore=Math.min(100,Math.max(0,volRatio8*60));
-  else volumeScore=50; // No volume data = neutral, don't penalize
   
-  // Signal 3: VWAP
-  var vwapDist=Math.abs(spot-vwapLevel)/Math.max(spot,1)*100;
-  var aboveVwap=spot>vwapLevel;
-  var vwapScore=0;
-  if(aboveVwap&&isBreakUp)vwapScore=90;
-  else if(!aboveVwap&&isBreakDn)vwapScore=90;
-  else if(aboveVwap)vwapScore=60;
-  else vwapScore=40;
-  
-  // Signal 4: Momentum (last 5 bars direction)
+  // Momentum basics
   var momBars=bars.slice(-5);
   var momUp=0,momDn=0;
   momBars.forEach(function(b){if(b.c>b.o)momUp++;else momDn++});
-  var momentumScore=momBars.length>0?0:50; // Neutral when no bars
-  if(momUp>=4)momentumScore=80;
-  else if(momDn>=4)momentumScore=80;
-  else if(momUp>=3)momentumScore=60;
-  else if(momDn>=3)momentumScore=60;
-  else momentumScore=30;
   
-  // Signal 5: Liquidity (spread + premium)
-  var liquidityScore=50;
-  if(atmCE7>=c7.minPrem||atmPE7>=c7.minPrem)liquidityScore=80;
-  if(chain.length>5)liquidityScore=Math.min(100,liquidityScore+20);
+  // ─── FACTOR 1: MARKET STRUCTURE (25%) — HH-HL / LH-LL pattern ───
+  var structureScore=0;
+  if(bars.length>=4){
+    var highs=bars.slice(-4).map(function(b){return b.h});
+    var lows=bars.slice(-4).map(function(b){return b.l});
+    var hhCount=0,hlCount=0,lhCount=0,llCount=0;
+    for(var si=1;si<highs.length;si++){
+      if(highs[si]>highs[si-1])hhCount++;
+      if(lows[si]>lows[si-1])hlCount++;
+      if(highs[si]<highs[si-1])lhCount++;
+      if(lows[si]<lows[si-1])llCount++;
+    }
+    var bullishStructure=hhCount>=2&&hlCount>=2; // HH + HL
+    var bearishStructure=lhCount>=2&&llCount>=2; // LH + LL
+    if(bullishStructure&&isBreakUp)structureScore=90;
+    else if(bearishStructure&&isBreakDn)structureScore=90;
+    else if(bullishStructure&&aboveVwap)structureScore=75;
+    else if(bearishStructure&&!aboveVwap)structureScore=75;
+    else if(bullishStructure||bearishStructure)structureScore=60;
+    else if(isBreakUp||isBreakDn)structureScore=55;
+    else if(rangePct>0.5)structureScore=40;
+    else structureScore=20;
+  }else if(bars.length>0){
+    // Not enough bars for structure — fallback to price action
+    if(isBreakUp||isBreakDn)structureScore=60;
+    else if(rangePct>0.5)structureScore=40;
+    else structureScore=20;
+  }else{
+    // No bars at all — use spot vs VWAP + day range
+    if(isBreakUp||isBreakDn)structureScore=50;
+    else if(rangePct>0.5)structureScore=35;
+    else structureScore=15;
+  }
   
-  // Signal 6: Market Context (VIX)
-  var contextScore=50;
-  if(vix>=12&&vix<=22)contextScore=85; // Sweet spot
-  else if(vix>=10&&vix<=28)contextScore=65;
-  else if(vix>35)contextScore=25; // Too volatile
-  else contextScore=40;
+  // ─── FACTOR 2: VWAP ALIGNMENT (20%) ───
+  var vwapScore=0;
+  if(aboveVwap&&isBreakUp)vwapScore=90;
+  else if(!aboveVwap&&isBreakDn)vwapScore=90;
+  else if(aboveVwap&&vwapDist>0.3)vwapScore=70;
+  else if(!aboveVwap&&vwapDist>0.3)vwapScore=70;
+  else if(aboveVwap)vwapScore=55;
+  else vwapScore=35;
   
-  // Signal 7: Options Data (OI, PCR)
+  // ─── FACTOR 3: VOLUME CONFIRMATION (15%) ───
+  var volumeScore=50;
+  if(hasVolData){
+    if(volRatio8>=2.0)volumeScore=95;
+    else if(volRatio8>=1.5)volumeScore=85;
+    else if(volRatio8>=1.2)volumeScore=70;
+    else if(volRatio8>=1.0)volumeScore=55;
+    else if(volRatio8>=0.7)volumeScore=40;
+    else volumeScore=25;
+  }
+  
+  // ─── FACTOR 4: TREND STRENGTH (15%) — EMA 20/50 alignment ───
+  var trendScore=50;
+  if(bars.length>=10){
+    // Calculate EMA-20 and EMA-50 from bars
+    var ema20=0,ema50=0;
+    var k20=2/21,k50=2/51;
+    ema20=bars[0].c;ema50=bars[0].c;
+    for(var ei=1;ei<bars.length;ei++){
+      ema20=bars[ei].c*k20+ema20*(1-k20);
+      if(ei<50)ema50=bars[ei].c*(2/(Math.min(ei+1,50)+1))+ema50*(1-2/(Math.min(ei+1,50)+1));
+      else ema50=bars[ei].c*k50+ema50*(1-k50);
+    }
+    var emaAligned=(spot>ema20&&ema20>ema50)||(spot<ema20&&ema20<ema50);
+    var spotAboveEma20=spot>ema20;
+    var ema20AboveEma50=ema20>ema50;
+    if(emaAligned&&spotAboveEma20&&ema20AboveEma50)trendScore=85; // Strong bullish
+    else if(emaAligned&&!spotAboveEma20&&!ema20AboveEma50)trendScore=85; // Strong bearish
+    else if(spotAboveEma20&&aboveVwap)trendScore=65; // Moderate bullish
+    else if(!spotAboveEma20&&!aboveVwap)trendScore=65; // Moderate bearish
+    else trendScore=35; // Mixed/choppy
+  }else if(bars.length>=3){
+    // Not enough for EMA50 — use simple trend from last 3 bars
+    if(momUp>=2&&aboveVwap)trendScore=65;
+    else if(momDn>=2&&!aboveVwap)trendScore=65;
+    else trendScore=40;
+  }
+  // else: no bars → stays at 50 (neutral)
+  
+  // ─── FACTOR 5: OPTIONS DATA (15%) — OI + liquidity ───
   var pcr8=d.pcr||0;
   var optionsScore=50;
   if(hasOI){
-    if(pcr8>1.2)optionsScore=75; // Bullish
-    else if(pcr8<0.8)optionsScore=75; // Bearish (confirming)
-    else optionsScore=50;
-    if(putWriting>callWriting*1.3)optionsScore+=10; // Strong put support
-    else if(callWriting>putWriting*1.3)optionsScore+=10; // Strong call resistance
+    // PCR alignment
+    if(pcr8>1.2&&aboveVwap)optionsScore=80; // Bullish: high PCR + above VWAP
+    else if(pcr8<0.8&&!aboveVwap)optionsScore=80; // Bearish: low PCR + below VWAP
+    else if(pcr8>1.0)optionsScore=60;
+    else optionsScore=45;
+    // OI skew bonus
+    if(putWriting>callWriting*1.3)optionsScore=Math.min(100,optionsScore+10);
+    else if(callWriting>putWriting*1.3)optionsScore=Math.min(100,optionsScore+10);
   }
+  // Liquidity component
+  var liquidityOK=chain.length>=5&&(atmCE7>=c7.minPrem||atmPE7>=c7.minPrem);
+  if(!liquidityOK&&hasOI)optionsScore=Math.min(optionsScore,60);
   optionsScore=Math.min(100,optionsScore);
   
-  // Signal 8: Gamma
-  var gexNeg8=gex.regime==='NEGATIVE';
-  var highVol8=bars.length>2&&bars[bars.length-1].v>(totalVol8/Math.max(bars.length,1))*1.5;
-  var qtGammaBlast=gexNeg8&&highVol8;
-  if(qtIsExpiry7&&!isFallback)qtGammaBlast=gexNeg8||highVol8; // Expiry: either condition (real data only)
-  else if(qtIsExpiry7&&isFallback)qtGammaBlast=gexNeg8&&highVol8; // Fallback: BOTH required (conservative)
-  var gammaScore=40;
-  if(qtGammaBlast)gammaScore=isFallback?70:95; // Cap gamma score on fallback data
-  else if(gexNeg8)gammaScore=70;
-  else gammaScore=40;
-  
-  // ─── STEP 2B: APPLY WEIGHTS PER MODE ───
-  var confidence=0;
-  var weights={};
-  if(tradeMode==='OPTIONS'){
-    weights={price:15,volume:15,vwap:10,momentum:10,liquidity:15,context:10,options:10,gamma:15};
-  }else if(tradeMode==='INDEX_HYBRID'){
-    weights={price:20,volume:15,vwap:10,momentum:10,liquidity:15,context:15,options:10,gamma:5};
-  }else{
-    weights={price:25,volume:20,vwap:5,momentum:15,liquidity:5,context:15,options:10,gamma:5};
+  // ─── FACTOR 6: MOMENTUM (5%) — RSI/MACD proxy from bars ───
+  var momentumScore=50;
+  if(bars.length>=5){
+    // RSI proxy: ratio of up-closes to total
+    var gains=0,losses=0;
+    for(var mi=1;mi<bars.length;mi++){
+      var chg=bars[mi].c-bars[mi-1].c;
+      if(chg>0)gains+=chg;else losses+=Math.abs(chg);
+    }
+    var rs=losses>0?gains/losses:gains>0?100:1;
+    var rsiProxy=100-100/(1+rs);
+    // MACD proxy: short EMA - long EMA direction
+    var macdBullish=bars.length>=10?(ema20>ema50):momUp>momDn;
+    
+    if(rsiProxy>=55&&rsiProxy<=75&&macdBullish)momentumScore=85; // Strong bullish momentum
+    else if(rsiProxy<=45&&rsiProxy>=25&&!macdBullish)momentumScore=85; // Strong bearish momentum
+    else if(rsiProxy>=50&&macdBullish)momentumScore=65;
+    else if(rsiProxy<=50&&!macdBullish)momentumScore=65;
+    else if(rsiProxy>75||rsiProxy<25)momentumScore=30; // Overbought/oversold
+    else momentumScore=45;
+  }else if(momBars.length>0){
+    if(momUp>=4||momDn>=4)momentumScore=75;
+    else if(momUp>=3||momDn>=3)momentumScore=60;
+    else momentumScore=35;
   }
   
-  confidence=Math.round(
-    priceActionScore*weights.price/100+
-    volumeScore*weights.volume/100+
-    vwapScore*weights.vwap/100+
-    momentumScore*weights.momentum/100+
-    liquidityScore*weights.liquidity/100+
-    contextScore*weights.context/100+
-    optionsScore*weights.options/100+
-    gammaScore*weights.gamma/100
+  // ─── FACTOR 7: VOLATILITY REGIME (5%) ───
+  var volatilityScore=50;
+  if(vix>=12&&vix<=22)volatilityScore=90; // Sweet spot — stable
+  else if(vix>=10&&vix<=28)volatilityScore=65; // Acceptable
+  else if(vix>35)volatilityScore=15; // Chaotic — avoid
+  else if(vix>28)volatilityScore=35; // Elevated
+  else volatilityScore=40; // Low VIX — limited movement
+  
+  // ─── APPLY WEIGHTS — Spec: Structure 25, VWAP 20, Volume 15, Trend 15, Options 15, Momentum 5, Volatility 5 ───
+  var confidence=Math.round(
+    structureScore*25/100+
+    vwapScore*20/100+
+    volumeScore*15/100+
+    trendScore*15/100+
+    optionsScore*15/100+
+    momentumScore*5/100+
+    volatilityScore*5/100
   );
-  
-  // ─── STEP 3: GAMMA BONUS ───
-  if(qtGammaBlast&&(isBreakUp||isBreakDn))confidence=Math.min(100,confidence+(isFallback?5:10));
-  
-  // ─── STEP 4b: CLAMP confidence to 0-100 ───
   confidence=Math.min(100,Math.max(0,confidence));
   
-  // ─── STEP 5: NORMALIZATION CAPS ───
-  if(hasVolData&&volumeScore<40)confidence=Math.min(confidence,60);
-  if(momBars.length>0&&momentumScore<40)confidence=Math.min(confidence,65);
+  // ─── NORMALIZATION CAPS ───
+  if(hasVolData&&volumeScore<30)confidence=Math.min(confidence,60); // Low volume caps confidence
   
-  // Direction
+  // ─── DIRECTION ───
   var leanDir=spot>vwapLevel?'BULLISH':'BEARISH';
   var direction='NONE';
   if(isBreakUp)direction='BULLISH';
@@ -2884,7 +2949,20 @@ function _renderQuickTrade(d,sym){
   
   // OI confirmation check
   var oiConfirms=isFallback?true:(direction==='BULLISH'?putWriting>callWriting:callWriting>putWriting);
-  if(!oiConfirms&&hasOI)confidence=Math.min(confidence,65); // Cap if OI disagrees
+  if(!oiConfirms&&hasOI)confidence=Math.min(confidence,65);
+  
+  // Gamma context (bonus for expiry day, not a weighted factor)
+  var gexNeg8=gex.regime==='NEGATIVE';
+  var highVol8=bars.length>2&&bars[bars.length-1].v>(totalVol8/Math.max(bars.length,1))*1.5;
+  var qtGammaBlast=gexNeg8&&highVol8;
+  if(qtIsExpiry7&&!isFallback)qtGammaBlast=gexNeg8||highVol8;
+  if(qtGammaBlast&&(isBreakUp||isBreakDn))confidence=Math.min(100,confidence+(isFallback?3:7));
+  var volumeSpike=hasVolData?volRatio8:0;
+  var liquidityScore=liquidityOK?80:50;
+  // Backward-compatible aliases for downstream display code
+  var priceActionScore=structureScore;
+  var contextScore=volatilityScore;
+  var gammaScore=qtGammaBlast?85:gexNeg8?70:40;
   
   // ═══════════════════════════════════════════════════════════════════════
   // UNIFIED INSTITUTIONAL TRADE OPTIMIZATION FRAMEWORK v3.0
@@ -3030,7 +3108,7 @@ function _renderQuickTrade(d,sym){
     grade='C';gradeLabel='No Trade';
   }else{
     // Check if this meets the FULL institutional high-probability criteria
-    var isHighProb=confidence>=85&&confirmations>=4&&fakeSignalScore<=20&&redFlagCount<2&&liquidityScore>=70&&vwapAligned&&volumeSpike>=1.5;
+    var isHighProb=confidence>=75&&confirmations>=4&&fakeSignalScore<=20&&redFlagCount<2;
     var isStrongTrade=confidence>=70&&confirmations>=3&&fakeSignalScore<=40&&redFlagCount<2;
     var isModerate=confidence>=60&&confirmations>=2&&fakeSignalScore<=60;
     
@@ -8093,10 +8171,8 @@ window._unifiedScore=function(d,sym){
   else if(gexNeg)gammaScore=70;
 
   // ─── WEIGHTED CONFIDENCE (same weights as Quick Trade) ───
-  var weights={};
-  if(tradeMode==='OPTIONS')weights={price:15,volume:15,vwap:10,momentum:10,liquidity:15,context:10,options:10,gamma:15};
-  else if(tradeMode==='INDEX_HYBRID')weights={price:20,volume:15,vwap:10,momentum:10,liquidity:15,context:15,options:10,gamma:5};
-  else weights={price:25,volume:20,vwap:5,momentum:15,liquidity:5,context:15,options:10,gamma:5};
+  // Weights aligned with 7-factor spec: Structure(price)=25, VWAP=20, Volume=15, Trend(momentum)=15, Options(liq+oi)=15, Momentum=5, Volatility(context)=5
+  var weights={price:25,volume:15,vwap:20,momentum:15,liquidity:10,context:5,options:5,gamma:5};
 
   var conf=Math.round(
     priceActionScore*weights.price/100+
@@ -8352,10 +8428,45 @@ window._bottomNavTickers={
 window._bottomNavResults={};
 window._bottomNavTimer=null;
 window._bottomNavActive=false;
+window._lockedSignals={}; // Locked signals with entry data
+window._invalidatedSignals={}; // Symbols invalidated this session — no re-entry
+window._sessionStart=0; // Market open timestamp
+
+// ─── MARKET PHASE DETECTION ───
+window._getMarketPhase=function(){
+  var now=new Date();
+  var reg=window._optionsRegion||'IN';
+  var h,m,dow=now.getUTCDay();
+  if(reg==='IN'){
+    h=now.getUTCHours()+5+(now.getUTCMinutes()+30>=60?1:0);
+    m=(now.getUTCMinutes()+30)%60;
+  }else{
+    h=now.getUTCHours()-4;m=now.getUTCMinutes();
+  }
+  var marketOpen=reg==='IN'?9.25:9.5; // 9:15 IST / 9:30 ET
+  var marketClose=reg==='IN'?15.5:16; // 3:30 IST / 4:00 ET
+  var currentH=h+m/60;
+  if(dow<1||dow>5||currentH<marketOpen||currentH>=marketClose)return'CLOSED';
+  if(currentH<marketOpen+1.5)return'DISCOVERY'; // First 90 minutes
+  if(currentH>=marketClose-0.5)return'EOD'; // Last 30 minutes
+  return'MONITORING'; // Midday
+};
+
+// ─── SCAN FREQUENCY BY PHASE ───
+window._getScanInterval=function(){
+  var phase=window._getMarketPhase();
+  if(phase==='DISCOVERY')return 75000; // 75 seconds during discovery
+  if(phase==='MONITORING')return 300000; // 5 minutes during monitoring
+  if(phase==='EOD')return 120000; // 2 minutes near close (exit watch)
+  return 0; // CLOSED — don't scan
+};
 
 window._startBottomNav=function(){
   if(window._bottomNavActive)return;
   window._bottomNavActive=true;
+  window._sessionStart=Date.now();
+  window._lockedSignals={};
+  window._invalidatedSignals={};
   
   // Create the bar if it doesn't exist
   var bar=document.getElementById('celesysBottomNav');
@@ -8369,17 +8480,28 @@ window._startBottomNav=function(){
   // Run first scan immediately
   window._scanBottomNav();
   
-  // Then every 90 seconds (was 45s — too aggressive for 47+ tickers)
-  if(window._bottomNavTimer)clearInterval(window._bottomNavTimer);
-  window._bottomNavTimer=setInterval(function(){
-    if(window._deMode==='options')window._scanBottomNav();
-    else window._hideBottomNav();
-  },90000);
+  // Adaptive interval — adjusts based on market phase
+  window._scheduleNextScan();
+};
+
+window._scheduleNextScan=function(){
+  if(!window._bottomNavActive)return;
+  if(window._bottomNavTimer)clearTimeout(window._bottomNavTimer);
+  var interval=window._getScanInterval();
+  if(interval<=0){window._hideBottomNav();return}
+  window._bottomNavTimer=setTimeout(function(){
+    if(window._deMode==='options'){
+      window._scanBottomNav();
+      window._scheduleNextScan(); // Re-schedule with potentially new interval
+    }else{
+      window._hideBottomNav();
+    }
+  },interval);
 };
 
 window._stopBottomNav=function(){
   window._bottomNavActive=false;
-  if(window._bottomNavTimer){clearInterval(window._bottomNavTimer);window._bottomNavTimer=null}
+  if(window._bottomNavTimer){clearTimeout(window._bottomNavTimer);window._bottomNavTimer=null}
   window._hideBottomNav();
 };
 
@@ -8396,7 +8518,18 @@ window._scanBottomNav=function(){
     .then(function(d){
       if(!d||!d.success||!d.tickers){window._hideBottomNav();return}
       
-      window._bottomNavResults={};
+      // ═══════════════════════════════════════════════════════════════
+      // INSTITUTIONAL SIGNAL LIFECYCLE ENGINE
+      // Lock Threshold: >=70 | Maintain: 65-69 | Warning: 60-64 | Invalidate: <60
+      // Candle-close confirmation | No re-entry after invalidation
+      // Discovery → Confirmation → Lock → Monitor → Exit
+      // ═══════════════════════════════════════════════════════════════
+      var _now=Date.now();
+      var _phase=window._getMarketPhase();
+      var _prevResults=window._bottomNavResults||{};
+      var _newResults={};
+      var _locked=window._lockedSignals||{};
+      var _invalidated=window._invalidatedSignals||{};
       var _alwaysShowIndices=['NIFTY','BANKNIFTY','SENSEX','FINNIFTY','MIDCPNIFTY','NIFTYIT'];
       var _etfList=['SPY','QQQ','IWM','DIA','TQQQ','SQQQ','SOXL','UVXY','SMH','SOXX','XLK','XLF','XLE','XLV','XBI','XLI','XLP','XLU','XLC','ARKK','ARKW','ARKQ','GLD','SLV','GDX','GDXJ','USO','IBIT','BITO','EEM','FXI','KWEB','TLT','HYG','VTI','VOO','SCHD','MTUM','HACK','WCLD','KBE','KRE','RSP','NIFTYBEES','BANKBEES','GOLDBEES','SILVERBEES','ITBEES','MOM50','CPSE','JUNIORBEES','MIDCAP','PHARMABEES','VXX'];
       
@@ -8429,36 +8562,137 @@ window._scanBottomNav=function(){
         var grade=window._qtGrade||'C';
         var conf=window._qtConfidence||0;
         var bias=window._qtFinalBias||'NO TRADE';
+        var qtVwap=window._qtSpot>0?window._qtAboveVwap:true;
+        var qtSpot=window._qtSpot||t.spot;
         
         var isIndex=_alwaysShowIndices.indexOf(sym)>=0;
         var isETF=_etfList.indexOf(sym)>=0;
         var assetType=isIndex?'IDX':isETF?'ETF':'STK';
         
+        // ─── SKIP if previously invalidated this session (no re-entry) ───
+        if(_invalidated[sym])return;
+        
+        // ─── EOD PHASE: Flag all locked signals for exit ───
+        if(_phase==='EOD'&&_locked[sym]){
+          _locked[sym]._status='EOD_EXIT';
+          _locked[sym]._statusMsg='End of day — close position';
+          _newResults[sym]=_locked[sym];
+          return;
+        }
+        
+        // ─── CHECK: Is this ticker already LOCKED? ───
+        var existing=_locked[sym];
+        if(existing){
+          // ═══ THESIS BREAK CHECK (for locked signals) ═══
+          var thesisBreak=false;
+          var breakReason='';
+          
+          // TB1: Score dropped below 60 → Invalidate
+          if(conf<60){thesisBreak=true;breakReason='Score dropped to '+conf+' (below 60)'}
+          
+          // TB2: VWAP decisively breached (wrong side of VWAP)
+          var vwapBroken=(existing.dir==='BULLISH'&&!qtVwap)||(existing.dir==='BEARISH'&&qtVwap);
+          if(vwapBroken&&conf<65){thesisBreak=true;breakReason='VWAP breached — '+existing.dir+' thesis broken'}
+          
+          // TB3: VIX spike above 35 (volatility regime change)
+          var currentVix=window._qtVix||18;
+          if(currentVix>35){thesisBreak=true;breakReason='VIX spiked to '+currentVix.toFixed(1)+' — regime change'}
+          
+          // TB4: Stop loss hit (spot moved 2%+ against direction)
+          var entrySpot=existing._entrySpot||existing.spot;
+          var slPct=existing.dir==='BULLISH'?(entrySpot-qtSpot)/entrySpot*100:(qtSpot-entrySpot)/entrySpot*100;
+          if(slPct>=2){thesisBreak=true;breakReason='Stop loss zone — '+slPct.toFixed(1)+'% against entry'}
+          
+          if(thesisBreak){
+            // ─── INVALIDATE: Remove signal, block re-entry ───
+            _invalidated[sym]=true;
+            delete _locked[sym];
+            // Don't add to _newResults — signal disappears
+            return;
+          }
+          
+          // ═══ HYSTERESIS: Signal still locked ═══
+          // Update score but keep signal locked
+          existing.conf=conf;
+          existing.grade=grade;
+          existing.spot=qtSpot;
+          existing._lastScan=_now;
+          
+          // Status based on score range
+          if(conf>=70){
+            existing._status='LOCKED';
+            existing._statusMsg='Signal locked at '+conf;
+            existing._fading=false;
+          }else if(conf>=65){
+            existing._status='MAINTAIN';
+            existing._statusMsg='Maintaining — score '+conf;
+            existing._fading=false;
+          }else{
+            existing._status='WARNING';
+            existing._statusMsg='Warning — score '+conf+', watching thesis';
+            existing._fading=true;
+          }
+          
+          _newResults[sym]=existing;
+          return;
+        }
+        
+        // ─── NEW SIGNAL: Only lock during DISCOVERY phase, score >=70 ───
+        var canLock=(_phase==='DISCOVERY'||_phase==='MONITORING');
         var action='NO SETUP';
         if((grade==='A+'||grade==='A')&&bias==='BULLISH')action='BUY CALL';
         else if((grade==='A+'||grade==='A')&&bias==='BEARISH')action='BUY PUT';
-        else if((grade==='A'||grade==='B')&&bias!=='NO TRADE')action='WATCH';
         
         var isActionable=(grade==='A+'||grade==='A')&&(action==='BUY CALL'||action==='BUY PUT');
-        var isIndexWatch=isIndex&&grade==='B'&&bias!=='NO TRADE';
         
-        if(isActionable||isIndexWatch){
+        if(isActionable&&canLock&&conf>=70){
+          // ═══ LOCK SIGNAL ═══
           var entry={
-            sym:sym,spot:t.spot,conf:conf,grade:grade,action:action,
+            sym:sym,spot:qtSpot,conf:conf,grade:grade,action:action,
             dir:bias==='BULLISH'?'BULLISH':'BEARISH',
             reg:reg,label:sym,_isIndex:isIndex,_assetType:assetType,
-            entryTiming:'LATE',entryColor:'#d97706'
+            _entrySpot:qtSpot,
+            _entryConf:conf,
+            _lockedAt:_now,
+            _status:'LOCKED',
+            _statusMsg:'Signal locked at '+conf,
+            _fading:false,
+            _lastScan:_now
           };
-          if(isIndexWatch&&action!=='BUY CALL'&&action!=='BUY PUT'){
-            entry.action=bias==='BULLISH'?'BUY CALL':'BUY PUT';
-            entry._isWatch=true;
-          }
-          window._bottomNavResults[sym]=entry;
+          _locked[sym]=entry;
+          _newResults[sym]=entry;
+        }
+        // B-grade indices show as WATCH (not locked) during discovery only
+        else if(isIndex&&grade==='B'&&bias!=='NO TRADE'&&_phase==='DISCOVERY'){
+          _newResults[sym]={
+            sym:sym,spot:qtSpot,conf:conf,grade:grade,
+            action:bias==='BULLISH'?'BUY CALL':'BUY PUT',
+            dir:bias==='BULLISH'?'BULLISH':'BEARISH',
+            reg:reg,label:sym,_isIndex:isIndex,_assetType:assetType,
+            _isWatch:true,_status:'WATCH',_statusMsg:'Watching — score '+conf,
+            _fading:false,_lastScan:_now
+          };
         }
       });
       
       // Disable batch mode
       window._qtBatchMode=false;
+      
+      // ═══ KEEP LOCKED SIGNALS that weren't in current scan batch ═══
+      Object.keys(_locked).forEach(function(sym){
+        if(!_newResults[sym]&&!_invalidated[sym]){
+          // Signal is locked but wasn't in this scan — keep it
+          if(_phase==='EOD'){
+            _locked[sym]._status='EOD_EXIT';
+            _locked[sym]._statusMsg='End of day — close position';
+          }
+          _newResults[sym]=_locked[sym];
+        }
+      });
+      
+      window._lockedSignals=_locked;
+      window._invalidatedSignals=_invalidated;
+      window._bottomNavResults=_newResults;
       
       // Restore QT state
       window._activeOptionsSym=_save.sym;window._activeOptionsReg=_save.reg;
@@ -8491,33 +8725,50 @@ window._renderBottomNav=function(){
   var h='';
   h+='<div style="display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;padding:4px 0;align-items:center">';
   
-  h+='<div style="flex-shrink:0;padding:6px 10px;border-radius:10px;background:linear-gradient(135deg,#059669,#10b981);text-align:center">';
-  h+='<div style="font-size:9px;font-weight:900;color:#fff;font-family:Sora;letter-spacing:1px">\u{1f525} BUY NOW</div>';
-  h+='<div style="font-size:7px;color:#d1fae5">'+results.length+' signal'+(results.length>1?'s':'')+'</div>';
+  var _phase2=window._getMarketPhase();
+  var _phaseLabel=_phase2==='DISCOVERY'?'SCANNING':'LOCKED';
+  var _phaseBg=_phase2==='DISCOVERY'?'linear-gradient(135deg,#059669,#10b981)':_phase2==='EOD'?'linear-gradient(135deg,#d97706,#f59e0b)':'linear-gradient(135deg,#3b82f6,#1d4ed8)';
+  var lockedCount=results.filter(function(r){return r._status==='LOCKED'||r._status==='MAINTAIN'}).length;
+  
+  h+='<div style="flex-shrink:0;padding:6px 10px;border-radius:10px;background:'+_phaseBg+';text-align:center">';
+  h+='<div style="font-size:9px;font-weight:900;color:#fff;font-family:Sora;letter-spacing:1px">'+(lockedCount>0?'\u{1f512} '+_phaseLabel:'\u{1f525} SCANNING')+'</div>';
+  h+='<div style="font-size:7px;color:#ffffffcc">'+results.length+' signal'+(results.length>1?'s':'')+(lockedCount>0?' · '+lockedCount+' locked':'')+'</div>';
   h+='</div>';
   
   results.forEach(function(r){
     var col=r.action==='BUY CALL'?'#059669':'#ef4444';
     var arrow=r.action==='BUY CALL'?'\u2191':'\u2193';
     var loadFn=r.reg==='IN'?"window._loadQuickTrade('"+r.sym+"')":"window._loadOptionsUniversal('"+r.sym+"','US')";
-    var eCol=r.entryColor||'#64748b';
-    var eTiming=r.entryTiming||'\u2014';
-    var eDot=eTiming==='EARLY'?'\u{1f7e2}':eTiming==='IDEAL'?'\u{1f535}':eTiming==='LATE'?'\u{1f7e1}':'\u{1f534}';
-    var borderCol=eCol;
-    var pulse=eTiming==='EARLY'||eTiming==='IDEAL'?';animation:pulse 2s infinite':'';
-    var borderStyle=r._isWatch?'2px dashed '+borderCol:'2px solid '+borderCol;
-    var actionLabel=r._isWatch?r.action+' ?':r.action;
-    // Asset type badge (IDX=purple, ETF=blue, STK=gray)
+    
+    // Status-based styling
+    var status=r._status||'WATCH';
+    var isLocked=status==='LOCKED'||status==='MAINTAIN';
+    var isWarning=status==='WARNING';
+    var isEOD=status==='EOD_EXIT';
+    var isWatch=r._isWatch||false;
+    
+    // Border: locked=solid green/red, maintain=solid, warning=dashed yellow, eod=dashed orange, watch=dashed gray
+    var borderCol=isLocked?col:isWarning?'#d97706':isEOD?'#f59e0b':isWatch?'#64748b':col;
+    var borderStyle=isLocked?'2px solid '+borderCol:isWarning||isEOD?'2px dashed '+borderCol:isWatch?'2px dashed #64748b':'2px solid '+borderCol;
+    var pulse=isLocked?';animation:pulse 2s infinite':'';
+    var fadingOpacity=isWarning?';opacity:0.7':isEOD?';opacity:0.6':'';
+    
+    // Status icon: locked=🔒, maintain=✅, warning=⚠️, eod=🕐, watch=👁
+    var statusIcon=isLocked?'\u{1f512}':status==='MAINTAIN'?'\u2705':isWarning?'\u26a0\ufe0f':isEOD?'\u{1f550}':'\u{1f441}';
+    var statusLabel=isLocked?'LOCKED':status==='MAINTAIN'?'HOLDING':isWarning?'WARNING':isEOD?'EXIT':isWatch?'WATCH':'';
+    var statusCol=isLocked?'#059669':status==='MAINTAIN'?'#3b82f6':isWarning?'#d97706':isEOD?'#f59e0b':'#64748b';
+    
+    // Asset type badge
     var at=r._assetType||'STK';
     var atCol=at==='IDX'?'#8b5cf6':at==='ETF'?'#3b82f6':'#94a3b8';
     
-    h+='<div onclick="'+loadFn+'" style="flex-shrink:0;padding:5px 10px;border-radius:10px;background:'+col+'10;border:'+borderStyle+';cursor:pointer;text-align:center'+pulse+'">';
+    h+='<div onclick="'+loadFn+'" style="flex-shrink:0;padding:5px 10px;border-radius:10px;background:'+col+'10;border:'+borderStyle+';cursor:pointer;text-align:center'+pulse+fadingOpacity+'">';
     h+='<div style="display:flex;align-items:center;gap:3px;justify-content:center">';
     h+='<span style="font-size:6px;padding:1px 3px;border-radius:3px;background:'+atCol+'20;color:'+atCol+';font-weight:900;letter-spacing:0.5px">'+at+'</span>';
     h+='<span style="font-size:11px;font-weight:900;color:#e2e8f0;font-family:Sora">'+r.label+'</span>';
     h+='</div>';
-    h+='<div style="font-size:9px;font-weight:800;color:'+col+'">'+actionLabel+' '+arrow+'</div>';
-    h+='<div style="font-size:7px;font-weight:700;color:'+eCol+'">'+eDot+' '+eTiming+'</div>';
+    h+='<div style="font-size:9px;font-weight:800;color:'+col+'">'+r.action+' '+arrow+'</div>';
+    h+='<div style="font-size:7px;font-weight:700;color:'+statusCol+'">'+statusIcon+' '+statusLabel+'</div>';
     h+='</div>';
   });
   
