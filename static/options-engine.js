@@ -8071,16 +8071,86 @@ console.log('[UNIFIED] ✅ Shared scoring function loaded — ALL scanners use s
 
 window._bottomNavTickers={
   IN:[
+    // Indices
     {sym:'NIFTY',label:'NIFTY',reg:'IN'},
     {sym:'BANKNIFTY',label:'BNIFTY',reg:'IN'},
     {sym:'SENSEX',label:'SENSEX',reg:'IN'},
-    {sym:'FINNIFTY',label:'FINNFTY',reg:'IN'}
+    {sym:'FINNIFTY',label:'FINNFTY',reg:'IN'},
+    // Top Stocks
+    {sym:'RELIANCE',label:'RELIANCE',reg:'IN'},
+    {sym:'TCS',label:'TCS',reg:'IN'},
+    {sym:'HDFCBANK',label:'HDFC',reg:'IN'},
+    {sym:'INFY',label:'INFY',reg:'IN'},
+    {sym:'ICICIBANK',label:'ICICI',reg:'IN'},
+    {sym:'SBIN',label:'SBIN',reg:'IN'},
+    {sym:'BAJFINANCE',label:'BAJFIN',reg:'IN'},
+    {sym:'TATAMOTORS',label:'TATAMOT',reg:'IN'},
+    // ETFs
+    {sym:'NIFTYBEES',label:'NBEES',reg:'IN'},
+    {sym:'BANKBEES',label:'BBEES',reg:'IN'},
+    {sym:'GOLDBEES',label:'GOLD',reg:'IN'}
   ],
   US:[
+    // Index ETFs (Core)
     {sym:'SPY',label:'SPY',reg:'US'},
     {sym:'QQQ',label:'QQQ',reg:'US'},
     {sym:'IWM',label:'IWM',reg:'US'},
-    {sym:'DIA',label:'DIA',reg:'US'}
+    {sym:'DIA',label:'DIA',reg:'US'},
+    // Leveraged Momentum
+    {sym:'TQQQ',label:'TQQQ',reg:'US'},
+    {sym:'SOXL',label:'SOXL',reg:'US'},
+    {sym:'SQQQ',label:'SQQQ',reg:'US'},
+    {sym:'UVXY',label:'UVXY',reg:'US'},
+    // Semiconductor & AI
+    {sym:'SMH',label:'SMH',reg:'US'},
+    {sym:'SOXX',label:'SOXX',reg:'US'},
+    // Tech & Innovation
+    {sym:'XLK',label:'XLK',reg:'US'},
+    {sym:'ARKK',label:'ARKK',reg:'US'},
+    {sym:'ARKW',label:'ARKW',reg:'US'},
+    {sym:'ARKQ',label:'ARKQ',reg:'US'},
+    // Precious Metals & Commodities
+    {sym:'GLD',label:'GLD',reg:'US'},
+    {sym:'SLV',label:'SLV',reg:'US'},
+    {sym:'GDX',label:'GDX',reg:'US'},
+    {sym:'GDXJ',label:'GDXJ',reg:'US'},
+    {sym:'USO',label:'USO',reg:'US'},
+    // Crypto & Digital Assets
+    {sym:'IBIT',label:'IBIT',reg:'US'},
+    {sym:'BITO',label:'BITO',reg:'US'},
+    {sym:'MSTR',label:'MSTR',reg:'US'},
+    // Sector Momentum
+    {sym:'XLE',label:'XLE',reg:'US'},
+    {sym:'XLF',label:'XLF',reg:'US'},
+    {sym:'XLV',label:'XLV',reg:'US'},
+    {sym:'XBI',label:'XBI',reg:'US'},
+    {sym:'KBE',label:'KBE',reg:'US'},
+    // Emerging & International Momentum
+    {sym:'EEM',label:'EEM',reg:'US'},
+    {sym:'FXI',label:'FXI',reg:'US'},
+    {sym:'KWEB',label:'KWEB',reg:'US'},
+    // Fixed Income & Defensive
+    {sym:'TLT',label:'TLT',reg:'US'},
+    {sym:'HYG',label:'HYG',reg:'US'},
+    // Broad & Factor
+    {sym:'VTI',label:'VTI',reg:'US'},
+    {sym:'VOO',label:'VOO',reg:'US'},
+    {sym:'SCHD',label:'SCHD',reg:'US'},
+    {sym:'MTUM',label:'MTUM',reg:'US'},
+    // Cybersecurity & Cloud
+    {sym:'HACK',label:'HACK',reg:'US'},
+    {sym:'WCLD',label:'WCLD',reg:'US'},
+    // Top US Stocks (high options volume)
+    {sym:'AAPL',label:'AAPL',reg:'US'},
+    {sym:'TSLA',label:'TSLA',reg:'US'},
+    {sym:'NVDA',label:'NVDA',reg:'US'},
+    {sym:'MSFT',label:'MSFT',reg:'US'},
+    {sym:'META',label:'META',reg:'US'},
+    {sym:'AMZN',label:'AMZN',reg:'US'},
+    {sym:'AMD',label:'AMD',reg:'US'},
+    {sym:'GOOGL',label:'GOOGL',reg:'US'},
+    {sym:'COIN',label:'COIN',reg:'US'},
+    {sym:'PLTR',label:'PLTR',reg:'US'}
   ]
 };
 
@@ -8097,7 +8167,7 @@ window._startBottomNav=function(){
   if(!bar){
     bar=document.createElement('div');
     bar.id='celesysBottomNav';
-    bar.style.cssText='position:fixed;bottom:0;left:0;right:0;z-index:9998;background:linear-gradient(180deg,#0A0F1Cee,#0A0F1C);backdrop-filter:blur(12px);border-top:1px solid #1e293b;padding:6px 8px;display:none;transition:transform .3s ease';
+    bar.style.cssText='position:fixed;top:0;left:0;right:0;z-index:9999;background:linear-gradient(180deg,#0A0F1C,#0A0F1Cee);backdrop-filter:blur(12px);border-bottom:1px solid #1e293b;padding:6px 8px;display:none;transition:transform .3s ease;box-shadow:0 4px 20px rgba(0,0,0,0.3)';
     document.body.appendChild(bar);
   }
   
@@ -8159,54 +8229,43 @@ window._renderBottomNav=function(){
   var results=Object.values(window._bottomNavResults);
   if(results.length===0){bar.style.display='none';return}
   
+  // ONLY show BUY CALL / BUY PUT signals (A/A+ grade)
+  var buySignals=results.filter(function(r){return(r.grade==='A+'||r.grade==='A')&&(r.action==='BUY CALL'||r.action==='BUY PUT')});
+  
+  // If no buy signals, hide the bar completely
+  if(buySignals.length===0){bar.style.display='none';return}
+  
   // Sort: A+ first, then A, by confidence
-  var gradeOrder={'A+':0,'A':1,'B':2,'C':3};
-  results.sort(function(a,b){return(gradeOrder[a.grade]||9)-(gradeOrder[b.grade]||9)||(b.conf-a.conf)});
+  buySignals.sort(function(a,b){return(a.grade==='A+'?0:1)-(b.grade==='A+'?0:1)||(b.conf-a.conf)});
   
   var h='';
+  h+='<div style="display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;padding:4px 0;align-items:center">';
   
-  // Scrollable ticker strip
-  h+='<div style="display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;padding:2px 0">';
+  // "BUY NOW" label
+  h+='<div style="flex-shrink:0;padding:6px 12px;border-radius:10px;background:linear-gradient(135deg,#059669,#10b981);text-align:center">';
+  h+='<div style="font-size:9px;font-weight:900;color:#fff;font-family:Sora;letter-spacing:1px">🔥 BUY NOW</div>';
+  h+='<div style="font-size:7px;color:#d1fae5">'+buySignals.length+' signal'+(buySignals.length>1?'s':'')+'</div>';
+  h+='</div>';
   
-  results.forEach(function(r){
-    var isHot=r.grade==='A+'||r.grade==='A';
-    var isBuy=r.action==='BUY CALL'||r.action==='BUY PUT';
-    var col=isBuy?(r.action==='BUY CALL'?'#059669':'#ef4444'):isHot?'#3b82f6':r.grade==='B'?'#d97706':'#475569';
-    var bgCol=isBuy?col+'20':isHot?col+'15':'#1e293b';
-    var borderCol=isBuy?col+'50':isHot?col+'30':'#334155';
-    var icon=r.action==='BUY CALL'?'🟢':r.action==='BUY PUT'?'🔴':r.grade==='B'?'🟡':'⚪';
+  buySignals.forEach(function(r){
+    var col=r.action==='BUY CALL'?'#059669':'#ef4444';
+    var icon=r.action==='BUY CALL'?'🟢':'🔴';
+    var arrow=r.action==='BUY CALL'?'↑':'↓';
     var flag=r.reg==='US'?'🇺🇸':'🇮🇳';
-    
     var loadFn=r.reg==='IN'?"window._loadQuickTrade('"+r.sym+"')":"window._loadOptionsUniversal('"+r.sym+"','US')";
     
-    h+='<div onclick="'+loadFn+'" style="flex-shrink:0;padding:6px 10px;border-radius:10px;background:'+bgCol+';border:1px solid '+borderCol+';cursor:pointer;min-width:80px;text-align:center'+(isBuy?';animation:pulse 2s infinite':'')+'">';
+    h+='<div onclick="'+loadFn+'" style="flex-shrink:0;padding:8px 14px;border-radius:12px;background:'+col+'15;border:2px solid '+col+'40;cursor:pointer;text-align:center;animation:pulse 2s infinite">';
     h+='<div style="display:flex;align-items:center;gap:4px;justify-content:center">';
     h+='<span style="font-size:8px">'+flag+'</span>';
-    h+='<span style="font-size:11px;font-weight:900;color:#e2e8f0;font-family:Sora">'+r.label+'</span>';
-    h+='<span style="font-size:8px">'+icon+'</span>';
+    h+='<span style="font-size:13px;font-weight:900;color:#fff;font-family:Sora">'+r.label+'</span>';
+    h+='<span style="font-size:10px">'+icon+'</span>';
     h+='</div>';
-    
-    // Grade + Confidence
-    h+='<div style="font-size:9px;font-weight:800;color:'+col+'">'+r.grade+' · '+r.conf+'%</div>';
-    
-    // Action (only for A/A+)
-    if(isBuy){
-      h+='<div style="font-size:7px;font-weight:800;color:'+col+';margin-top:1px">'+r.action+'</div>';
-    }else if(r.grade==='B'){
-      h+='<div style="font-size:7px;color:#d97706;margin-top:1px">WATCH</div>';
-    }
-    
-    // Confirms badge
-    h+='<div style="font-size:6px;color:#64748b;margin-top:1px">'+r.confirms+'/6 · F:'+r.fakeScore+'</div>';
-    
+    h+='<div style="font-size:10px;font-weight:900;color:'+col+'">'+r.action+' '+arrow+'</div>';
+    h+='<div style="font-size:8px;color:#94a3b8">'+r.grade+' · '+r.conf+'% · '+r.confirms+'/6</div>';
     h+='</div>';
   });
   
   h+='</div>';
-  
-  // Show/hide toggle + count
-  var hotCount=results.filter(function(r){return r.grade==='A+'||r.grade==='A'}).length;
-  var buyCount=results.filter(function(r){return r.action==='BUY CALL'||r.action==='BUY PUT'}).length;
   
   bar.innerHTML=h;
   bar.style.display='block';
