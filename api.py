@@ -4694,12 +4694,14 @@ def _score_one_ticker(sym, reg):
     try:
         import asyncio
         loop = asyncio.new_event_loop()
-        d = loop.run_until_complete(_options_quick_impl(sym, reg))
-        loop.close()
+        asyncio.set_event_loop(loop)
+        try:
+            d = loop.run_until_complete(asyncio.wait_for(_options_quick_impl(sym, reg), timeout=30))
+        finally:
+            loop.close()
         if not d or not d.get("success") or d.get("spot", 0) <= 0:
+            print(f"[BOTTOM-NAV] ⚠️ {sym}: No data (success={d.get('success') if d else 'None'}, spot={d.get('spot',0) if d else 0})")
             return None
-        # Return RAW data — frontend _unifiedScore does scoring
-        # This guarantees bottom nav grade === Quick Trade grade
         return {
             "sym": sym, "_region": reg, "success": True,
             "spot": d.get("spot", 0),
@@ -4714,103 +4716,102 @@ def _score_one_ticker(sym, reg):
             "_fallback": d.get("_fallback", False),
             "lot_size": d.get("lot_size", 100 if reg == "US" else 1)
         }
-    except:
+    except Exception as e:
+        print(f"[BOTTOM-NAV] ❌ {sym} ({reg}): {type(e).__name__}: {e}")
         return None
 
 def _run_bottom_nav_scan(reg):
-    """Two-stage scan: Stage 1 = fast batch pre-filter, Stage 2 = full scoring on candidates only."""
+    """India: skip yf, go straight to NSE via _options_quick_impl. US: Stage 1 yf pre-filter + Stage 2."""
     if reg in _bottom_nav_busy: return
     _bottom_nav_busy.add(reg)
     try:
-        import yfinance as yf
         from concurrent.futures import ThreadPoolExecutor, as_completed
-        
-        yf_map = {
-            "IN": {
-                "NIFTY":"^NSEI","BANKNIFTY":"^NSEBANK","SENSEX":"^BSESN",
-                "RELIANCE":"RELIANCE.NS","TCS":"TCS.NS","HDFCBANK":"HDFCBANK.NS","INFY":"INFY.NS",
-                "ICICIBANK":"ICICIBANK.NS","SBIN":"SBIN.NS","BAJFINANCE":"BAJFINANCE.NS","TATAMOTORS":"TATAMOTORS.NS",
-                "LT":"LT.NS","MARUTI":"MARUTI.NS","AXISBANK":"AXISBANK.NS","KOTAKBANK":"KOTAKBANK.NS",
-                "ITC":"ITC.NS","HINDUNILVR":"HINDUNILVR.NS","BHARTIARTL":"BHARTIARTL.NS","WIPRO":"WIPRO.NS",
-                "HCLTECH":"HCLTECH.NS","ADANIENT":"ADANIENT.NS","TITAN":"TITAN.NS","SUNPHARMA":"SUNPHARMA.NS",
-                "DRREDDY":"DRREDDY.NS","JSWSTEEL":"JSWSTEEL.NS","TECHM":"TECHM.NS",
-                "COALINDIA":"COALINDIA.NS","NTPC":"NTPC.NS","HAL":"HAL.NS","BEL":"BEL.NS",
-                "VEDL":"VEDL.NS","BANKBARODA":"BANKBARODA.NS","PNB":"PNB.NS",
-                "IRCTC":"IRCTC.NS","PAYTM":"PAYTM.NS","ZOMATO":"ZOMATO.NS","TRENT":"TRENT.NS",
-                "CUMMINSIND":"CUMMINSIND.NS","PERSISTENT":"PERSISTENT.NS","COFORGE":"COFORGE.NS",
-                "NIFTYBEES":"NIFTYBEES.NS","BANKBEES":"BANKBEES.NS","GOLDBEES":"GOLDBEES.NS",
-                "SILVERBEES":"SILVERBEES.NS","ITBEES":"ITBEES.NS","MOM50":"MOM50.NS","CPSE":"CPSE.NS"
-            },
-            "US": {
-                "SPY":"SPY","QQQ":"QQQ","IWM":"IWM","DIA":"DIA",
-                "TQQQ":"TQQQ","SQQQ":"SQQQ","SOXL":"SOXL","LABU":"LABU","SPXL":"SPXL","UPRO":"UPRO",
-                "TLT":"TLT","HYG":"HYG","LQD":"LQD","TIP":"TIP",
-                "GLD":"GLD","SLV":"SLV","GDX":"GDX","GDXJ":"GDXJ","PPLT":"PPLT",
-                "USO":"USO","UNG":"UNG","DBA":"DBA","UVXY":"UVXY","VXX":"VXX",
-                "IBIT":"IBIT","BITO":"BITO","MSTR":"MSTR",
-                "XLK":"XLK","XLF":"XLF","XLE":"XLE","XLV":"XLV","XBI":"XBI","XLI":"XLI","XLP":"XLP","XLU":"XLU","XLC":"XLC",
-                "SMH":"SMH","SOXX":"SOXX",
-                "ARKK":"ARKK","ARKW":"ARKW","ARKQ":"ARKQ",
-                "EEM":"EEM","EFA":"EFA","FXI":"FXI","KWEB":"KWEB","EWZ":"EWZ","EWJ":"EWJ",
-                "KRE":"KRE","KBE":"KBE","HACK":"HACK","WCLD":"WCLD","MTUM":"MTUM",
-                "VTI":"VTI","VOO":"VOO","SCHD":"SCHD","RSP":"RSP",
-                "AAPL":"AAPL","MSFT":"MSFT","NVDA":"NVDA","TSLA":"TSLA","META":"META","AMZN":"AMZN","GOOGL":"GOOGL","AMD":"AMD",
-                "COIN":"COIN","PLTR":"PLTR","NFLX":"NFLX","CRM":"CRM","UBER":"UBER","SOFI":"SOFI","SMCI":"SMCI","ARM":"ARM",
-                "AVGO":"AVGO","BA":"BA","JPM":"JPM","V":"V","LLY":"LLY","UNH":"UNH","XOM":"XOM","MU":"MU",
-                "ABNB":"ABNB","PANW":"PANW","CRWD":"CRWD","MRVL":"MRVL","ORCL":"ORCL","ADBE":"ADBE","DELL":"DELL","LRCX":"LRCX",
-                "PYPL":"PYPL","DASH":"DASH","NOW":"NOW","SNOW":"SNOW","SHOP":"SHOP","SQ":"SQ","RIVN":"RIVN","HOOD":"HOOD"
-            }
-        }
-        ticker_map = yf_map.get(reg, yf_map["IN"])
-        yf_symbols = list(ticker_map.values())
-        
-        # ═══ STAGE 1: FAST BATCH PRE-FILTER (~5s for ALL tickers in 1 HTTP call) ═══
-        print(f"[BOTTOM-NAV] Stage 1: Batch download {len(yf_symbols)} {reg} tickers...")
         t1 = time.time()
-        _yahoo_rate_wait()
-        data = yf.download(yf_symbols, period="2d", interval="1d", group_by="ticker", threads=True, progress=False)
         
-        candidates = []
-        for sym, yf_sym in ticker_map.items():
-            try:
-                if len(ticker_map) == 1: df = data
-                else: df = data[yf_sym] if yf_sym in data.columns.get_level_values(0) else None
-                if df is None or df.empty or len(df) < 1: continue
-                c = float(df['Close'].iloc[-1]) if not df['Close'].isna().iloc[-1] else 0
-                pc = float(df['Close'].iloc[-2]) if len(df)>=2 and not df['Close'].isna().iloc[-2] else c
-                h2 = float(df['High'].iloc[-1]) if not df['High'].isna().iloc[-1] else c
-                l2 = float(df['Low'].iloc[-1]) if not df['Low'].isna().iloc[-1] else c
-                v2 = int(df['Volume'].iloc[-1]) if 'Volume' in df.columns and not df['Volume'].isna().iloc[-1] else 0
-                pv = int(df['Volume'].iloc[-2]) if len(df)>=2 and 'Volume' in df.columns and not df['Volume'].isna().iloc[-2] else v2
-                if c <= 0: continue
-                chg = abs(c - pc) / max(pc, 1) * 100
-                vr = v2 / max(pv, 1)
-                dr = (h2 - l2) / max(c, 1) * 100
-                # Pre-filter: needs momentum to be worth full scoring
-                if chg > 0.5 or dr > 0.8 or c >= h2 * 0.998 or c <= l2 * 1.002 or vr > 1.2:
-                    candidates.append(sym)
-            except: continue
+        in_tickers = ["NIFTY","BANKNIFTY","SENSEX","FINNIFTY",
+            "RELIANCE","TCS","HDFCBANK","INFY","ICICIBANK","SBIN","BAJFINANCE","TATAMOTORS",
+            "LT","MARUTI","AXISBANK","KOTAKBANK","ITC","HINDUNILVR","BHARTIARTL","WIPRO",
+            "HCLTECH","ADANIENT","TITAN","SUNPHARMA","DRREDDY","JSWSTEEL","TECHM",
+            "COALINDIA","NTPC","HAL","BEL","VEDL","BANKBARODA","PNB",
+            "IRCTC","PAYTM","ZOMATO","TRENT","CUMMINSIND","PERSISTENT","COFORGE",
+            "NIFTYBEES","BANKBEES","GOLDBEES","SILVERBEES","ITBEES","MOM50","CPSE"]
         
-        print(f"[BOTTOM-NAV] Stage 1: {time.time()-t1:.1f}s — {len(candidates)}/{len(ticker_map)} pass pre-filter")
+        us_yf_map = {
+            "SPY":"SPY","QQQ":"QQQ","IWM":"IWM","DIA":"DIA",
+            "TQQQ":"TQQQ","SQQQ":"SQQQ","SOXL":"SOXL","LABU":"LABU","SPXL":"SPXL","UPRO":"UPRO",
+            "TLT":"TLT","HYG":"HYG","LQD":"LQD","TIP":"TIP",
+            "GLD":"GLD","SLV":"SLV","GDX":"GDX","GDXJ":"GDXJ","PPLT":"PPLT",
+            "USO":"USO","UNG":"UNG","DBA":"DBA","UVXY":"UVXY","VXX":"VXX",
+            "IBIT":"IBIT","BITO":"BITO","MSTR":"MSTR",
+            "XLK":"XLK","XLF":"XLF","XLE":"XLE","XLV":"XLV","XBI":"XBI","XLI":"XLI","XLP":"XLP","XLU":"XLU","XLC":"XLC",
+            "SMH":"SMH","SOXX":"SOXX",
+            "ARKK":"ARKK","ARKW":"ARKW","ARKQ":"ARKQ",
+            "EEM":"EEM","EFA":"EFA","FXI":"FXI","KWEB":"KWEB","EWZ":"EWZ","EWJ":"EWJ",
+            "KRE":"KRE","KBE":"KBE","HACK":"HACK","WCLD":"WCLD","MTUM":"MTUM",
+            "VTI":"VTI","VOO":"VOO","SCHD":"SCHD","RSP":"RSP",
+            "AAPL":"AAPL","MSFT":"MSFT","NVDA":"NVDA","TSLA":"TSLA","META":"META","AMZN":"AMZN","GOOGL":"GOOGL","AMD":"AMD",
+            "COIN":"COIN","PLTR":"PLTR","NFLX":"NFLX","CRM":"CRM","UBER":"UBER","SOFI":"SOFI","SMCI":"SMCI","ARM":"ARM",
+            "AVGO":"AVGO","BA":"BA","JPM":"JPM","V":"V","LLY":"LLY","UNH":"UNH","XOM":"XOM","MU":"MU",
+            "ABNB":"ABNB","PANW":"PANW","CRWD":"CRWD","MRVL":"MRVL","ORCL":"ORCL","ADBE":"ADBE","DELL":"DELL","LRCX":"LRCX",
+            "PYPL":"PYPL","DASH":"DASH","NOW":"NOW","SNOW":"SNOW","SHOP":"SHOP","SQ":"SQ","RIVN":"RIVN","HOOD":"HOOD"
+        }
+        
+        if reg == "IN":
+            # ═══ INDIA: Skip yf entirely — go straight to NSE/options-quick ═══
+            candidates = in_tickers
+            print(f"[BOTTOM-NAV] 🇮🇳 India: Direct scoring {len(candidates)} tickers (no yf pre-filter)...")
+        else:
+            # ═══ US: Stage 1 yf pre-filter, then Stage 2 full scoring ═══
+            import yfinance as yf
+            yf_symbols = list(us_yf_map.values())
+            print(f"[BOTTOM-NAV] 🇺🇸 Stage 1: Batch download {len(yf_symbols)} US tickers...")
+            _yahoo_rate_wait()
+            data = yf.download(yf_symbols, period="2d", interval="1d", group_by="ticker", threads=True, progress=False)
+            
+            candidates = []
+            for sym, yf_sym in us_yf_map.items():
+                try:
+                    df = data[yf_sym] if yf_sym in data.columns.get_level_values(0) else None
+                    if df is None or df.empty or len(df) < 1: continue
+                    c = float(df['Close'].iloc[-1]) if not df['Close'].isna().iloc[-1] else 0
+                    pc = float(df['Close'].iloc[-2]) if len(df)>=2 and not df['Close'].isna().iloc[-2] else c
+                    h2 = float(df['High'].iloc[-1]) if not df['High'].isna().iloc[-1] else c
+                    l2 = float(df['Low'].iloc[-1]) if not df['Low'].isna().iloc[-1] else c
+                    v2 = int(df['Volume'].iloc[-1]) if 'Volume' in df.columns and not df['Volume'].isna().iloc[-1] else 0
+                    pv = int(df['Volume'].iloc[-2]) if len(df)>=2 and 'Volume' in df.columns and not df['Volume'].isna().iloc[-2] else v2
+                    if c <= 0: continue
+                    chg = abs(c - pc) / max(pc, 1) * 100
+                    vr = v2 / max(pv, 1)
+                    dr = (h2 - l2) / max(c, 1) * 100
+                    is_idx = sym in ("SPY","QQQ","IWM","DIA")
+                    if is_idx or chg > 0.5 or dr > 0.8 or c >= h2 * 0.998 or c <= l2 * 1.002 or vr > 1.2:
+                        candidates.append(sym)
+                except: continue
+            
+            # Always include index ETFs
+            for must in ["SPY","QQQ","IWM","DIA"]:
+                if must not in candidates: candidates.append(must)
+            
+            print(f"[BOTTOM-NAV] 🇺🇸 Stage 1: {time.time()-t1:.1f}s — {len(candidates)}/{len(us_yf_map)} pass")
         
         if not candidates:
             _bottom_nav_cache[reg] = {"data": {"success":True,"region":reg,"count":0,"tickers":[],"ts":time.time()}, "time":time.time()}
-            print(f"[BOTTOM-NAV] ✅ {reg}: 0 candidates")
             return
         
-        # ═══ STAGE 2: FULL SCORING only on candidates (8 parallel threads) ═══
-        print(f"[BOTTOM-NAV] Stage 2: Full scoring {len(candidates)} candidates...")
+        # ═══ STAGE 2: Full scoring via _options_quick_impl ═══
+        n_workers = 4 if reg == "IN" else 8  # India: 4 threads (NSE rate limit), US: 8
+        print(f"[BOTTOM-NAV] Stage 2: Scoring {len(candidates)} {reg} candidates ({n_workers} threads)...")
         t2 = time.time()
         results = []
-        with ThreadPoolExecutor(max_workers=8) as executor:
+        with ThreadPoolExecutor(max_workers=n_workers) as executor:
             futures = {executor.submit(_score_one_ticker, s, reg): s for s in candidates}
-            for future in as_completed(futures, timeout=90):
+            for future in as_completed(futures, timeout=120):
                 try:
                     r = future.result()
                     if r: results.append(r)
                 except: pass
         
-        results.sort(key=lambda x: x.get("conf", 0), reverse=True)
+        results.sort(key=lambda x: x.get("spot", 0), reverse=True)
         _bottom_nav_cache[reg] = {"data": {"success":True,"region":reg,"count":len(results),"tickers":results,"ts":time.time()}, "time":time.time()}
         bc = len([r for r in results if r.get("action") in ("BUY CALL","BUY PUT")])
         print(f"[BOTTOM-NAV] ✅ {reg}: {len(results)} scored in {time.time()-t2:.1f}s, {bc} buy (total: {time.time()-t1:.1f}s)")
@@ -4819,6 +4820,7 @@ def _run_bottom_nav_scan(reg):
         import traceback; traceback.print_exc()
     finally:
         _bottom_nav_busy.discard(reg)
+
 
 @app.get("/api/bottom-nav-scan")
 async def bottom_nav_scan(region: str = "IN"):

@@ -3154,7 +3154,7 @@ function _renderQuickTrade(d,sym){
   window._qtRREstimate=_rrReal; // Overwrite with REAL value
   
   // Re-apply R:R filter with REAL premium data
-  if((grade==='A+'||grade==='A')&&_rrReal>0&&_rrReal<1.5){
+  if((grade==='A+'||grade==='A')&&_rrReal>0&&_rrReal<1.0){
     grade='B';gradeLabel='Weak R:R ('+_rrReal.toFixed(1)+' < 1.5)';
     confidence=Math.min(confidence,60);
     finalBias='NO TRADE'; // Downgraded — can't be A/A+ with bad R:R
@@ -3586,6 +3586,7 @@ function _renderQuickTrade(d,sym){
     h+='<div style="text-align:center;padding:20px;border-radius:16px;background:'+(finalBias==='BULLISH'?'#059669':'#ef4444')+'15;border:3px solid '+(finalBias==='BULLISH'?'#059669':'#ef4444')+'40;margin-bottom:12px">';
     h+='<div style="font-size:32px;font-weight:900;color:'+(finalBias==='BULLISH'?'#059669':'#ef4444')+';font-family:Sora">'+actionText+'</div>';
     h+='<div style="font-size:18px;font-weight:900;color:'+directionColor+';font-family:Sora;margin-top:4px">'+directionLabel+'</div>';
+    h+='<div style="font-size:12px;color:#94a3b8;margin-top:6px">Confidence: <strong style="color:'+(confidence>=70?'#059669':'#d97706')+'">'+confidence+'%</strong> · Grade: <strong>'+grade+'</strong> ('+gradeLabel+') · Trap: '+trapRisk+'</div>';
     // ALWAYS show entry details — spot + strike + premium
     h+='<div style="margin-top:10px;display:flex;justify-content:center;gap:16px;flex-wrap:wrap">';
     h+='<div><div style="font-size:8px;color:#64748b">SPOT</div><div style="font-size:16px;font-weight:900;color:#e2e8f0;font-family:JetBrains Mono">'+S+(isUS?spot.toLocaleString('en-US'):spot.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN'))+'</div></div>';
@@ -8074,6 +8075,20 @@ window._unifiedScore=function(d,sym){
   var atmPrem=0;
   chain.forEach(function(ch){if(Math.abs(ch.strike-spot)<step*1.5){atmPrem=Math.max(atmPrem,dir==='BULLISH'?(ch.ce_ltp||0):(ch.pe_ltp||0))}});
   
+  // ═══ R:R CHECK — downgrade A/A+ to B if R:R < 1.5 ═══
+  var rrEst=0;
+  if(atmPrem>0&&hasChain){
+    var dayRPct=range;
+    var pmMult=dayRPct>0.5?1.5:dayRPct>0.3?1.35:1.25;
+    var slPrem=Math.round(atmPrem*(dayRPct>0.5?0.70:dayRPct>0.3?0.75:0.80));
+    if(slPrem>0&&atmPrem>slPrem)rrEst=(atmPrem*pmMult-atmPrem)/(atmPrem-slPrem);
+    if((grade==='A+'||grade==='A')&&rrEst>0&&rrEst<1.0){
+      grade='B';gradeLabel='Weak R:R';
+      conf=Math.min(conf,60);
+      action='WATCH';
+    }
+  }
+  
   var highMom=(momUp>=4||momDn>=4)&&volScore>=60;
   var momTag=highMom?'🔥 HIGH MOM':momScore>=60?'📈 Mom':momScore>=40?'➡️ Flat':'📉 Weak';
   
@@ -8113,7 +8128,7 @@ window._unifiedScore=function(d,sym){
     volRatio:volRatio,range:range,momTag:momTag,highMom:highMom,momScore:momScore,
     confirms:cn,cnDetail:cnDetail,fakeScore:fk,fakeFlags:fkFlags,redFlags:rf,barConfirm:barOK,
     hasChain:hasChain,lot:d.lot_size||(isUS?100:({NIFTY:75,BANKNIFTY:30,SENSEX:20}[sym]||1)),
-    entryTiming:entryTiming,entryColor:entryColor
+    entryTiming:entryTiming,entryColor:entryColor,rrEst:Math.round(rrEst*10)/10
   };
 };
 
