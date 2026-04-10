@@ -7968,171 +7968,252 @@ window._calculateSessionProfile=function(bars,spot,todayOpen,todayHigh,todayLow,
 // ═══════════════════════════════════════════════════════════════════════════════
 
 window._unifiedScore=function(d,sym){
+  // ═══════════════════════════════════════════════════════════════════════════
+  // UNIFIED SCORING — Mirrors Quick Trade (_renderQuickTrade) scoring EXACTLY
+  // Same weights, same direction logic, same grading. ONE scoring path.
+  // ═══════════════════════════════════════════════════════════════════════════
   var spot=d.spot||0;if(spot<=0)return{grade:'C',conf:0,action:'NO SETUP',dir:'NONE'};
   var chain=d.chain_near_atm||[];var bars=d.ohlc_bars||[];
-  var pcr=d.pcr||0;var vix=d.vix||18;var gexReg=(d.gex||{}).regime||'NEUTRAL';
-  var vwap=d.vwap||spot;var dHigh=d.today_high||spot;var dLow=d.today_low||spot;
-  var isFb=d._fallback||false;var isUS=d._region==='US'||d.region==='US';
+  var pcr=d.pcr||0;var vix=d.vix||18;var gex=d.gex||{};var gexReg=gex.regime||'NEUTRAL';
+  var vwapLevel=d.vwap||spot;var dayHigh=d.today_high||spot;var dayLow=d.today_low||spot;
+  var isFallback=d._fallback||false;var isUS=d._region==='US'||d.region==='US';
   var S=isUS?'$':'₹';
-  
-  // Basics
-  var momUp=0,momDn=0;bars.slice(-5).forEach(function(b){if(b.c>b.o)momUp++;else momDn++});
+
+  // ─── AUTO DETECT MODE (same as Quick Trade) ───
+  var callWriting=chain.reduce(function(s,c){return s+(c.ce_oi||0)},0);
+  var putWriting=chain.reduce(function(s,c){return s+(c.pe_oi||0)},0);
+  var hasChain=chain.length>0&&!isFallback;
+  var hasOI=!isFallback&&(callWriting>0||putWriting>0);
+  var tradeMode='STOCK';
+  if(hasChain&&hasOI)tradeMode='OPTIONS';
+  else if(hasChain||hasOI)tradeMode='INDEX_HYBRID';
+
+  // ─── SIGNAL 1: Price Action ───
+  var rangePct=Math.abs(dayHigh-dayLow)/Math.max(spot,1)*100;
+  var isBreakUp=spot>=dayHigh*0.998&&spot>vwapLevel;
+  var isBreakDn=spot<=dayLow*1.002&&spot<vwapLevel;
+  var priceActionScore=0;
+  if(isBreakUp||isBreakDn)priceActionScore=85;
+  else if(rangePct>0.5)priceActionScore=Math.min(100,50+rangePct*5);
+  else priceActionScore=20;
+  priceActionScore=Math.min(100,Math.max(0,priceActionScore));
+
+  // ─── SIGNAL 2: Volume ───
   var totalVol=bars.reduce(function(s,b){return s+b.v},0);
   var avgVol=bars.length>3?totalVol/bars.length:0;
   var recentVol=bars.length>0?bars.slice(-3).reduce(function(s,b){return s+b.v},0)/3:0;
-  var volRatio=avgVol>0?recentVol/avgVol:0;
   var hasVolData=totalVol>0&&avgVol>0;
-  var range=Math.abs(dHigh-dLow)/Math.max(spot,1)*100;
-  var isBreakUp=spot>=dHigh*0.998&&spot>vwap;
-  var isBreakDn=spot<=dLow*1.002&&spot<vwap;
-  var hasOI=!isFb&&chain.length>0;
-  var callW=chain.reduce(function(s,c){return s+(c.ce_oi||0)},0);
-  var putW=chain.reduce(function(s,c){return s+(c.pe_oi||0)},0);
-  
-  // Direction
-  var dir='NONE';
-  if(isBreakUp&&momUp>=3)dir='BULLISH';
-  else if(isBreakDn&&momDn>=3)dir='BEARISH';
-  else if(momUp>=4&&spot>vwap)dir='BULLISH';
-  else if(momDn>=4&&spot<vwap)dir='BEARISH';
-  
-  var oiConfirms=isFb?true:(dir==='BULLISH'?putW>callW:callW>putW);
-  
-  // 8 Signal Scores
-  var priceScore=(isBreakUp||isBreakDn)?85:(range>0.5?Math.min(100,50+range*5):20);
-  var volScore=hasVolData?Math.min(100,Math.max(0,volRatio*60)):50;
-  var vwapScore=(spot>vwap&&isBreakUp)||(spot<vwap&&isBreakDn)?90:spot>vwap?60:40;
-  var momScore=(momUp>=4||momDn>=4)?80:(momUp>=3||momDn>=3)?60:30;
-  var liqScore=chain.length>=5?80:chain.length>0?60:30;
-  var ctxScore=vix>=12&&vix<=22?85:vix>=10&&vix<=28?65:vix>35?25:40;
-  var oiScore=50;if(hasOI){if(pcr>1.2&&dir==='BULLISH')oiScore=75;else if(pcr<0.8&&dir==='BEARISH')oiScore=75;if(hasOI&&(putW>callW*1.3||callW>putW*1.3))oiScore+=10}
-  oiScore=Math.min(100,oiScore);
-  var gammaScore=gexReg==='NEGATIVE'&&hasVolData&&bars.length>2&&bars[bars.length-1].v>avgVol*1.5?95:gexReg==='NEGATIVE'?70:40;
-  if(isFb)gammaScore=Math.min(70,gammaScore);
-  
-  // Weighted confidence
-  var hasChain=chain.length>0&&!isFb;
-  var w=hasChain?{p:15,v:15,vw:10,m:10,l:15,c:10,o:10,g:15}:{p:25,v:20,vw:5,m:15,l:5,c:15,o:10,g:5};
-  var conf=Math.round(priceScore*w.p/100+volScore*w.v/100+vwapScore*w.vw/100+momScore*w.m/100+liqScore*w.l/100+ctxScore*w.c/100+oiScore*w.o/100+gammaScore*w.g/100);
+  var volRatio=hasVolData?(recentVol/avgVol):0;
+  var volumeScore=50; // Neutral default when no data (matches QT)
+  if(hasVolData)volumeScore=Math.min(100,Math.max(0,volRatio*60));
+
+  // ─── SIGNAL 3: VWAP ───
+  var aboveVwap=spot>vwapLevel;
+  var vwapScore=0;
+  if(aboveVwap&&isBreakUp)vwapScore=90;
+  else if(!aboveVwap&&isBreakDn)vwapScore=90;
+  else if(aboveVwap)vwapScore=60;
+  else vwapScore=40;
+
+  // ─── SIGNAL 4: Momentum ───
+  var momBars=bars.slice(-5);
+  var momUp=0,momDn=0;
+  momBars.forEach(function(b){if(b.c>b.o)momUp++;else momDn++});
+  var momentumScore=momBars.length>0?0:50; // Neutral when no bars (matches QT)
+  if(momUp>=4)momentumScore=80;
+  else if(momDn>=4)momentumScore=80;
+  else if(momUp>=3)momentumScore=60;
+  else if(momDn>=3)momentumScore=60;
+  else if(momBars.length>0)momentumScore=30;
+
+  // ─── SIGNAL 5: Liquidity ───
+  var lotMap={NIFTY:75,BANKNIFTY:30,SENSEX:20,FINNIFTY:40,MIDCPNIFTY:75,NIFTYIT:50};
+  var minPremMap={NIFTY:80,BANKNIFTY:150,SENSEX:100,FINNIFTY:60,MIDCPNIFTY:50,NIFTYIT:50};
+  var lot=d.lot_size||(isUS?100:(lotMap[sym]||1));
+  var minPrem=minPremMap[sym]||(isUS?1:50);
+  var atmCE=0,atmPE=0;
+  chain.forEach(function(ch){if(Math.abs(ch.strike-spot)<(chain.length>=2?Math.abs(chain[1].strike-chain[0].strike)*1.5:spot*0.02)){atmCE=Math.max(atmCE,ch.ce_ltp||0);atmPE=Math.max(atmPE,ch.pe_ltp||0)}});
+  var liquidityScore=50;
+  if(atmCE>=minPrem||atmPE>=minPrem)liquidityScore=80;
+  if(chain.length>5)liquidityScore=Math.min(100,liquidityScore+20);
+
+  // ─── SIGNAL 6: Context (VIX) ───
+  var contextScore=50;
+  if(vix>=12&&vix<=22)contextScore=85;
+  else if(vix>=10&&vix<=28)contextScore=65;
+  else if(vix>35)contextScore=25;
+  else contextScore=40;
+
+  // ─── SIGNAL 7: Options OI/PCR ───
+  var optionsScore=50;
+  if(hasOI){
+    if(pcr>1.2)optionsScore=75;
+    else if(pcr<0.8)optionsScore=75;
+    if(putWriting>callWriting*1.3)optionsScore+=10;
+    else if(callWriting>putWriting*1.3)optionsScore+=10;
+  }
+  optionsScore=Math.min(100,optionsScore);
+
+  // ─── SIGNAL 8: Gamma ───
+  var gexNeg=gexReg==='NEGATIVE';
+  var highVol=bars.length>2&&bars[bars.length-1].v>(totalVol/Math.max(bars.length,1))*1.5;
+  var gammaBlast=gexNeg&&highVol;
+  var gammaScore=40;
+  if(gammaBlast)gammaScore=isFallback?70:95;
+  else if(gexNeg)gammaScore=70;
+
+  // ─── WEIGHTED CONFIDENCE (same weights as Quick Trade) ───
+  var weights={};
+  if(tradeMode==='OPTIONS')weights={price:15,volume:15,vwap:10,momentum:10,liquidity:15,context:10,options:10,gamma:15};
+  else if(tradeMode==='INDEX_HYBRID')weights={price:20,volume:15,vwap:10,momentum:10,liquidity:15,context:15,options:10,gamma:5};
+  else weights={price:25,volume:20,vwap:5,momentum:15,liquidity:5,context:15,options:10,gamma:5};
+
+  var conf=Math.round(
+    priceActionScore*weights.price/100+
+    volumeScore*weights.volume/100+
+    vwapScore*weights.vwap/100+
+    momentumScore*weights.momentum/100+
+    liquidityScore*weights.liquidity/100+
+    contextScore*weights.context/100+
+    optionsScore*weights.options/100+
+    gammaScore*weights.gamma/100
+  );
+
+  // Gamma bonus
+  if(gammaBlast&&(isBreakUp||isBreakDn))conf=Math.min(100,conf+(isFallback?5:10));
   conf=Math.min(100,Math.max(0,conf));
-  if(hasVolData&&volScore<40)conf=Math.min(conf,60);
+
+  // Normalization caps (same as QT)
+  if(hasVolData&&volumeScore<40)conf=Math.min(conf,60);
+  if(momBars.length>0&&momentumScore<40)conf=Math.min(conf,65);
+
+  // ─── DIRECTION (same as Quick Trade — VWAP lean fallback) ───
+  var leanDir=spot>vwapLevel?'BULLISH':'BEARISH';
+  var dir='NONE';
+  if(isBreakUp)dir='BULLISH';
+  else if(isBreakDn)dir='BEARISH';
+  else if(conf>=50)dir=leanDir;
+
+  // OI confirmation
+  var oiConfirms=isFallback?true:(dir==='BULLISH'?putWriting>callWriting:callWriting>putWriting);
   if(!oiConfirms&&hasOI)conf=Math.min(conf,65);
-  
-  // ═══ MODULE 1: FAKE SIGNAL SCORE ═══
+
+  // ─── FAKE SIGNAL DETECTION (same as QT) ───
   var fk=0;var fkFlags=[];
-  if((isBreakUp||isBreakDn)&&hasVolData&&volScore<40){fk+=25;fkFlags.push('No-volume breakout')}
+  var volumeSpike=hasVolData?volRatio:1;
+  var breakoutWithoutVolume=(isBreakUp||isBreakDn)&&hasVolData&&volumeScore<40;
+  if(breakoutWithoutVolume){fk+=25;fkFlags.push('No-volume breakout')}
   if(bars.length>0){var lb=bars[bars.length-1];var bd=Math.abs(lb.c-lb.o);if((dir==='BULLISH'&&lb.h-Math.max(lb.c,lb.o)>bd*2)||(dir==='BEARISH'&&Math.min(lb.c,lb.o)-lb.l>bd*2)){fk+=20;fkFlags.push('Wick rejection')}}
-  if(bars.length>=3){var b2=bars[bars.length-2];if((dir==='BULLISH'&&b2.h>dHigh*0.999&&bars[bars.length-1].c<b2.l)||(dir==='BEARISH'&&b2.l<dLow*1.001&&bars[bars.length-1].c>b2.h)){fk+=20;fkFlags.push('Failed retest')}}
+  if(bars.length>=3){var b2=bars[bars.length-2];if((dir==='BULLISH'&&b2.h>dayHigh*0.999&&bars[bars.length-1].c<b2.l)||(dir==='BEARISH'&&b2.l<dayLow*1.001&&bars[bars.length-1].c>b2.h)){fk+=20;fkFlags.push('Failed retest')}}
   if(chain.length<5)fk+=10;
-  if((dir==='BULLISH'&&spot<vwap*0.998)||(dir==='BEARISH'&&spot>vwap*1.002)){fk+=15;fkFlags.push('VWAP conflict')}
+  if((dir==='BULLISH'&&spot<vwapLevel*0.998)||(dir==='BEARISH'&&spot>vwapLevel*1.002)){fk+=15;fkFlags.push('VWAP conflict')}
   if(hasOI&&!oiConfirms){fk+=10;fkFlags.push('OI conflict')}
   fk=Math.min(100,fk);
-  
-  // ═══ MODULE 2: 4-OF-6 CONFIRMATIONS ═══
+
+  // ─── 4-of-6 CONFIRMATIONS ───
   var cn=0;var cnDetail=[];
   if(isBreakUp||isBreakDn){cn++;cnDetail.push('Price✓')}else{cnDetail.push('Price✗')}
-  if(hasVolData&&volRatio>=1.5){cn++;cnDetail.push('Vol✓')}else{cnDetail.push('Vol✗')}
-  if((dir==='BULLISH'&&spot>vwap)||(dir==='BEARISH'&&spot<vwap)){cn++;cnDetail.push('VWAP✓')}else{cnDetail.push('VWAP✗')}
-  if(oiConfirms&&hasOI){cn++;cnDetail.push('OI✓')}else{cnDetail.push('OI✗')}
+  if(hasVolData&&volRatio>=1.5){cn++;cnDetail.push('Vol✓')}else if(!hasVolData){cn++;cnDetail.push('Vol○')}else{cnDetail.push('Vol✗')}
+  var vwapAligned=(dir==='BULLISH'&&spot>vwapLevel)||(dir==='BEARISH'&&spot<vwapLevel);
+  if(vwapAligned){cn++;cnDetail.push('VWAP✓')}else{cnDetail.push('VWAP✗')}
+  if(oiConfirms&&hasOI){cn++;cnDetail.push('OI✓')}else if(!hasOI){cn++;cnDetail.push('OI○')}else{cnDetail.push('OI✗')}
   if(vix>=12&&vix<=25){cn++;cnDetail.push('Regime✓')}else{cnDetail.push('Regime✗')}
   var buyV=0,sellV=0;bars.forEach(function(b){if(b.c>=b.o)buyV+=b.v;else sellV+=b.v});
   var delta=Math.abs(buyV-sellV)/Math.max(buyV+sellV,1)*100;
-  if(((dir==='BULLISH'&&buyV>sellV*1.2)||(dir==='BEARISH'&&sellV>buyV*1.2))&&delta>15){cn++;cnDetail.push('Flow✓')}else{cnDetail.push('Flow✗')}
-  
-  // ═══ MODULE 3: RED FLAGS ═══
+  if(((dir==='BULLISH'&&buyV>sellV*1.2)||(dir==='BEARISH'&&sellV>buyV*1.2))&&delta>15){cn++;cnDetail.push('Flow✓')}else if(!hasVolData){cn++;cnDetail.push('Flow○')}else{cnDetail.push('Flow✗')}
+
+  // ─── RED FLAGS ───
   var rf=[];
-  if(vix>25)rf.push('High VIX');if(fk>40)rf.push('Fake score');if(chain.length<5)rf.push('Low liquidity');
-  if(hasOI&&!oiConfirms)rf.push('OI conflict');if((isBreakUp||isBreakDn)&&hasVolData&&volScore<40)rf.push('No-vol break');
-  
-  // ═══ CONFIRMATION BARS ═══
+  if(vix>25)rf.push('High VIX');if(fk>40)rf.push('Fake score');if(chain.length<5&&hasChain)rf.push('Low liquidity');
+  if(hasOI&&!oiConfirms)rf.push('OI conflict');if(breakoutWithoutVolume)rf.push('No-vol break');
+
+  // ─── HARD BLOCKS ───
+  var hardBlock=false;
+  if(vix>35||vix<8)hardBlock=true;
+  if(fk>60)hardBlock=true;
+  if(rf.length>=3)hardBlock=true;
+  if(dir==='NONE'&&conf<40)hardBlock=true;
+
+  // ─── GRADE (same as Quick Trade) ───
   var barOK=true;
   if(bars.length>=3){var l3=bars.slice(-3);var bu=l3.filter(function(b){return b.c>b.o}).length;var be=l3.filter(function(b){return b.c<b.o}).length;
     if(dir==='BULLISH'&&bu<2)barOK=false;if(dir==='BEARISH'&&be<2)barOK=false}
   else if(bars.length>0){var lb2=bars[bars.length-1];if(dir==='BULLISH'&&lb2.c<=lb2.o)barOK=false;if(dir==='BEARISH'&&lb2.c>=lb2.o)barOK=false}
-  
-  // ═══ GRADE ═══
-  var hardBlock=false;
-  if(vix>35||vix<8)hardBlock=true;
-  if(fk>60)hardBlock=true;
-  if(rf.length>=2)hardBlock=true;
-  if(dir==='NONE'&&conf<50)hardBlock=true;
-  
+  // bars.length===0 → barOK stays true (don't penalize missing bars)
+
   var grade='C';var gradeLabel='No Trade';
   if(hardBlock){grade='C';gradeLabel='No Trade'}
-  else if(conf>=85&&cn>=4&&fk<=20&&rf.length<2&&liqScore>=70&&barOK){grade='A+';gradeLabel='Institutional'}
-  else if(conf>=70&&cn>=3&&fk<=40&&rf.length<2&&barOK){grade='A';gradeLabel='High Probability'}
-  else if(conf>=60&&cn>=2){grade='B';gradeLabel='Moderate'}
-  else{grade='C';gradeLabel='No Trade'}
-  
+  else{
+    var isHighProb=conf>=85&&cn>=4&&fk<=20&&rf.length<2&&liquidityScore>=70&&vwapAligned&&volumeSpike>=1.5;
+    var isStrongTrade=conf>=70&&cn>=3&&fk<=40&&rf.length<2&&barOK;
+    var isModerate=conf>=60&&cn>=2&&fk<=60;
+    if(isHighProb){grade='A+';gradeLabel='Institutional'}
+    else if(isStrongTrade){grade='A';gradeLabel='High Probability'}
+    else if(isModerate){grade='B';gradeLabel='Moderate'}
+    else{grade='C';gradeLabel='No Trade'}
+  }
+
+  // ─── ACTION ───
   var action='NO SETUP';
   if((grade==='A+'||grade==='A')&&dir==='BULLISH')action='BUY CALL';
   else if((grade==='A+'||grade==='A')&&dir==='BEARISH')action='BUY PUT';
   else if((grade==='A'||grade==='B')&&dir!=='NONE')action='WATCH';
-  
-  // ATM premium
+
+  // ─── ATM premium ───
   var step=chain.length>=2?Math.abs(chain[1].strike-chain[0].strike):1;
   var atm=Math.round(spot/Math.max(step,0.5))*Math.max(step,0.5);
   var atmPrem=0;
   chain.forEach(function(ch){if(Math.abs(ch.strike-spot)<step*1.5){atmPrem=Math.max(atmPrem,dir==='BULLISH'?(ch.ce_ltp||0):(ch.pe_ltp||0))}});
-  
-  // ═══ R:R CHECK — downgrade A/A+ to B if R:R < 1.5 ═══
+
+  // ─── R:R ───
   var rrEst=0;
   if(atmPrem>0&&hasChain){
-    var dayRPct=range;
-    var pmMult=dayRPct>0.5?1.5:dayRPct>0.3?1.35:1.25;
-    var slPrem=Math.round(atmPrem*(dayRPct>0.5?0.70:dayRPct>0.3?0.75:0.80));
-    if(slPrem>0&&atmPrem>slPrem)rrEst=(atmPrem*pmMult-atmPrem)/(atmPrem-slPrem);
-    if((grade==='A+'||grade==='A')&&rrEst>0&&rrEst<1.0){
-      grade='B';gradeLabel='Weak R:R';
-      conf=Math.min(conf,60);
-      action='WATCH';
-    }
+    var tgt=atmPrem*1.4;var sl=atmPrem*0.7;
+    rrEst=(tgt-atmPrem)/Math.max(atmPrem-sl,1);
+    if(rrEst<1.5&&(grade==='A'||grade==='A+')){grade='B';gradeLabel='R:R too low';action='WATCH'}
   }
-  
-  var highMom=(momUp>=4||momDn>=4)&&volScore>=60;
-  var momTag=highMom?'🔥 HIGH MOM':momScore>=60?'📈 Mom':momScore>=40?'➡️ Flat':'📉 Weak';
-  
-  // ═══ ENTRY TIMING — computed from bar structure ═══
-  // Early: breakout just happened (last 1-2 bars), volume confirming
-  // Ideal: breakout confirmed, momentum still strong, not extended
-  // Late: move already extended, far from VWAP, momentum fading
+
+  // ─── MOMENTUM TAG ───
+  var highMom=momUp>=4||momDn>=4;
+  var momTag=highMom?'Strong':(momUp>=3||momDn>=3)?'Moderate':'Weak';
+  var momScore2=momentumScore;
+
+  // ─── ENTRY TIMING ───
   var entryTiming='—';var entryColor='#64748b';
   if(dir!=='NONE'&&(action==='BUY CALL'||action==='BUY PUT'||action==='WATCH')){
-    var vwapDist=Math.abs(spot-vwap)/Math.max(spot,1)*100;
-    var isExtended=vwapDist>1.0; // >1% from VWAP = extended
-    var momStrong=dir==='BULLISH'?momUp>=3:momDn>=3;
-    var volStrong=hasVolData&&volRatio>=1.5;
-    var barsFresh=bars.length>=2&&((dir==='BULLISH'&&bars[bars.length-1].c>bars[bars.length-1].o)||(dir==='BEARISH'&&bars[bars.length-1].c<bars[bars.length-1].o));
-    // Check if breakout just happened (last bar near high/low)
+    var momStrong=highMom||(hasVolData&&volRatio>1.3);
+    var volStrong=hasVolData&&volRatio>1.5;
+    var barsFresh=bars.length>0&&(Date.now()-new Date().setHours(0,0,0,0)<8*60*60*1000);
+    var isExtended=bars.length>0&&Math.abs(bars[bars.length-1].c-bars[bars.length-1].o)/Math.max(bars[bars.length-1].o,1)*100>1.5;
     var justBroke=false;
     if(bars.length>=2){
       var prevBar=bars[bars.length-2];
-      if(dir==='BULLISH'&&prevBar.c<dHigh*0.999&&spot>=dHigh*0.998)justBroke=true;
-      if(dir==='BEARISH'&&prevBar.c>dLow*1.001&&spot<=dLow*1.002)justBroke=true;
+      if(dir==='BULLISH'&&prevBar.c<dayHigh*0.999&&spot>=dayHigh*0.998)justBroke=true;
+      if(dir==='BEARISH'&&prevBar.c>dayLow*1.001&&spot<=dayLow*1.002)justBroke=true;
     }
-    
-    if(justBroke&&volStrong&&barsFresh){
-      entryTiming='EARLY';entryColor='#059669'; // Green — best entry
-    }else if(!isExtended&&momStrong&&barsFresh){
-      entryTiming='IDEAL';entryColor='#3b82f6'; // Blue — good entry
-    }else if(momStrong||volStrong){
-      entryTiming='LATE';entryColor='#d97706'; // Yellow — still tradeable
-    }else{
-      entryTiming='FADING';entryColor='#ef4444'; // Red — momentum gone
-    }
+    if(justBroke&&volStrong&&barsFresh){entryTiming='EARLY';entryColor='#059669'}
+    else if(!isExtended&&momStrong&&barsFresh){entryTiming='IDEAL';entryColor='#3b82f6'}
+    else if(momStrong||volStrong){entryTiming='LATE';entryColor='#d97706'}
+    else{entryTiming='FADING';entryColor='#ef4444'}
   }
-  
+  // No bars → infer timing from price position
+  if(entryTiming==='—'&&dir!=='NONE'&&(action==='BUY CALL'||action==='BUY PUT')){
+    if(isBreakUp||isBreakDn){entryTiming='IDEAL';entryColor='#3b82f6'}
+    else{entryTiming='LATE';entryColor='#d97706'}
+  }
+
   return{
     sym:sym,spot:spot,S:S,conf:conf,grade:grade,gradeLabel:gradeLabel,action:action,dir:dir,
     strike:atm,prem:atmPrem,pcr:pcr,vix:vix,gex:gexReg,type:dir==='BULLISH'?'CE':'PE',
-    volRatio:volRatio,range:range,momTag:momTag,highMom:highMom,momScore:momScore,
+    volRatio:volRatio,range:rangePct,momTag:momTag,highMom:highMom,momScore:momScore2,
     confirms:cn,cnDetail:cnDetail,fakeScore:fk,fakeFlags:fkFlags,redFlags:rf,barConfirm:barOK,
-    hasChain:hasChain,lot:d.lot_size||(isUS?100:({NIFTY:75,BANKNIFTY:30,SENSEX:20}[sym]||1)),
+    hasChain:hasChain,lot:lot,
     entryTiming:entryTiming,entryColor:entryColor,rrEst:Math.round(rrEst*10)/10
   };
 };
 
-console.log('[UNIFIED] ✅ Shared scoring function loaded — ALL scanners use same framework');
+console.log('[UNIFIED] ✅ Shared scoring function loaded — mirrors Quick Trade scoring exactly');
+
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // LIVE BOTTOM NAV — Auto-scans India Index + US ETFs, shows A/A+ trades
