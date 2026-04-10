@@ -8202,52 +8202,36 @@ window._hideBottomNav=function(){
 
 window._scanBottomNav=function(){
   var reg=window._optionsRegion||'IN';
-  // ONLY scan current region — no cross-region (performance fix)
-  var tickers=window._bottomNavTickers[reg]||window._bottomNavTickers.IN;
   
-  // Clear previous results for this region
-  var oldKeys=Object.keys(window._bottomNavResults);
-  oldKeys.forEach(function(k){
-    var r=window._bottomNavResults[k];
-    if(r&&r.reg!==reg)delete window._bottomNavResults[k]; // Remove other region's stale results
-  });
-  
-  var done=0;var total=tickers.length;
-  
-  // PARALLEL BATCHES of 5 — much faster than sequential 1.5s stagger
-  var BATCH_SIZE=5;
-  var BATCH_DELAY=2000; // 2s between batches (not between individual tickers)
-  
-  function scanBatch(startIdx){
-    var batch=tickers.slice(startIdx,startIdx+BATCH_SIZE);
-    if(batch.length===0)return;
-    
-    // Fire all in this batch simultaneously (parallel)
-    batch.forEach(function(tk){
-      fetch('/api/options-quick?symbol='+encodeURIComponent(tk.sym)+'&region='+encodeURIComponent(tk.reg))
-        .then(function(r){return r.json()})
-        .then(function(d){
-          done++;
-          if(d&&d.success&&d.spot>0){
-            d._region=tk.reg;
-            var result=window._unifiedScore(d,tk.sym);
-            result.reg=tk.reg;result.label=tk.label;
-            window._bottomNavResults[tk.sym]=result;
-          }
-          // Progressive render — update bar as results come in
-          if(done%BATCH_SIZE===0||done>=total)window._renderBottomNav();
-        })
-        .catch(function(){done++;if(done>=total)window._renderBottomNav()});
-    });
-    
-    // Schedule next batch
-    if(startIdx+BATCH_SIZE<tickers.length){
-      setTimeout(function(){scanBatch(startIdx+BATCH_SIZE)},BATCH_DELAY);
-    }
-  }
-  
-  // Start first batch immediately
-  scanBatch(0);
+  // SINGLE API call — server does all the work, returns in ~3 seconds
+  fetch('/api/bottom-nav-scan?region='+reg)
+    .then(function(r){return r.json()})
+    .then(function(d){
+      if(!d||!d.success||!d.tickers)return;
+      
+      // Map server results to bottom nav format
+      window._bottomNavResults={};
+      d.tickers.forEach(function(t){
+        if(t.action==='BUY CALL'||t.action==='BUY PUT'){
+          window._bottomNavResults[t.sym]={
+            sym:t.sym,label:t.sym,reg:reg,spot:t.spot,
+            conf:t.score,grade:t.score>=85?'A+':t.score>=70?'A':t.score>=60?'B':'C',
+            action:t.action,dir:t.dir,
+            confirms:Math.round(t.score/20), // approximate
+            fakeScore:t.score>=70?0:30,
+            strike:0,prem:0,pcr:0,vix:0,gex:'NEUTRAL',type:t.dir==='BULLISH'?'CE':'PE',
+            volRatio:t.volRatio,range:t.range,momTag:t.volRatio>1.3?'🔥 MOM':'',
+            highMom:t.volRatio>1.3,momScore:t.score,
+            hasChain:false,barConfirm:true,
+            lot:reg==='US'?100:1,redFlags:[],fakeFlags:[],cnDetail:[]
+          };
+        }
+      });
+      
+      window._renderBottomNav();
+      console.log('[BOTTOM-NAV] ✅ Batch scan: '+d.count+' tickers, '+Object.keys(window._bottomNavResults).length+' buy signals');
+    })
+    .catch(function(e){console.log('[BOTTOM-NAV] ❌ Scan error:',e)});
 };
 
 window._renderBottomNav=function(){

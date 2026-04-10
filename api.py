@@ -4682,6 +4682,126 @@ async def stock_quick(ticker: str = ""):
 # ═══════════════════════════════════════════════════════════════════════════════
 _participant_oi_cache = {"data": None, "time": 0}
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# BOTTOM NAV BATCH SCAN — Scans all tickers in ONE call, cached server-side
+# Returns quick spot + direction for each ticker without full options chain
+# ═══════════════════════════════════════════════════════════════════════════════
+_bottom_nav_cache = {"IN": {"data": None, "time": 0}, "US": {"data": None, "time": 0}}
+
+@app.get("/api/bottom-nav-scan")
+async def bottom_nav_scan(region: str = "IN"):
+    """Fast batch scan — returns spot, direction, basic scoring for all tickers in a region."""
+    try:
+        reg = region.upper()
+        cache = _bottom_nav_cache.get(reg, {"data": None, "time": 0})
+        
+        # 2-minute cache — don't rescan if recent
+        if cache["data"] and time.time() - cache["time"] < 120:
+            return cache["data"]
+        
+        import yfinance as yf
+        
+        tickers_map = {
+            "IN": {
+                "NIFTY": "^NSEI", "BANKNIFTY": "^NSEBANK", "SENSEX": "^BSESN",
+                "RELIANCE": "RELIANCE.NS", "TCS": "TCS.NS", "HDFCBANK": "HDFCBANK.NS",
+                "INFY": "INFY.NS", "ICICIBANK": "ICICIBANK.NS", "SBIN": "SBIN.NS",
+                "BAJFINANCE": "BAJFINANCE.NS", "TATAMOTORS": "TATAMOTORS.NS",
+                "NIFTYBEES": "NIFTYBEES.NS", "BANKBEES": "BANKBEES.NS", "GOLDBEES": "GOLDBEES.NS"
+            },
+            "US": {
+                "SPY": "SPY", "QQQ": "QQQ", "IWM": "IWM", "DIA": "DIA",
+                "TQQQ": "TQQQ", "SOXL": "SOXL", "SQQQ": "SQQQ",
+                "SMH": "SMH", "SOXX": "SOXX", "XLK": "XLK",
+                "ARKK": "ARKK", "ARKQ": "ARKQ",
+                "GLD": "GLD", "SLV": "SLV", "GDX": "GDX", "GDXJ": "GDXJ",
+                "IBIT": "IBIT", "MSTR": "MSTR",
+                "XLE": "XLE", "XLF": "XLF", "XBI": "XBI", "KBE": "KBE",
+                "EEM": "EEM", "FXI": "FXI", "KWEB": "KWEB",
+                "TLT": "TLT", "MTUM": "MTUM",
+                "AAPL": "AAPL", "TSLA": "TSLA", "NVDA": "NVDA", "MSFT": "MSFT",
+                "META": "META", "AMZN": "AMZN", "AMD": "AMD", "GOOGL": "GOOGL",
+                "COIN": "COIN", "PLTR": "PLTR"
+            }
+        }
+        
+        ticker_map = tickers_map.get(reg, tickers_map["IN"])
+        yf_symbols = list(ticker_map.values())
+        
+        # SINGLE yfinance batch download — ALL tickers at once (FAST)
+        print(f"[BOTTOM-NAV] Batch scanning {len(yf_symbols)} {reg} tickers...")
+        _yahoo_rate_wait()
+        
+        data = yf.download(yf_symbols, period="2d", interval="1d", group_by="ticker", threads=True, progress=False)
+        
+        results = []
+        for sym, yf_sym in ticker_map.items():
+            try:
+                if len(ticker_map) == 1:
+                    df = data
+                else:
+                    df = data[yf_sym] if yf_sym in data.columns.get_level_values(0) else None
+                
+                if df is None or df.empty or len(df) < 1:
+                    continue
+                
+                close = float(df['Close'].iloc[-1]) if not df['Close'].isna().iloc[-1] else 0
+                prev_close = float(df['Close'].iloc[-2]) if len(df) >= 2 and not df['Close'].isna().iloc[-2] else close
+                day_high = float(df['High'].iloc[-1]) if not df['High'].isna().iloc[-1] else close
+                day_low = float(df['Low'].iloc[-1]) if not df['Low'].isna().iloc[-1] else close
+                day_open = float(df['Open'].iloc[-1]) if not df['Open'].isna().iloc[-1] else close
+                volume = int(df['Volume'].iloc[-1]) if 'Volume' in df.columns and not df['Volume'].isna().iloc[-1] else 0
+                prev_vol = int(df['Volume'].iloc[-2]) if len(df) >= 2 and 'Volume' in df.columns and not df['Volume'].isna().iloc[-2] else volume
+                
+                if close <= 0:
+                    continue
+                
+                chg_pct = round((close - prev_close) / max(prev_close, 1) * 100, 2)
+                vol_ratio = round(volume / max(prev_vol, 1), 2)
+                day_range = round((day_high - day_low) / max(close, 1) * 100, 2)
+                
+                # Quick direction
+                is_break_up = close >= day_high * 0.998 and close > (day_high + day_low + close) / 3
+                is_break_dn = close <= day_low * 1.002 and close < (day_high + day_low + close) / 3
+                direction = "BULLISH" if is_break_up or chg_pct > 0.5 else ("BEARISH" if is_break_dn or chg_pct < -0.5 else "NEUTRAL")
+                
+                # Quick score (simplified — full scoring done client-side if user taps)
+                score = 50
+                if abs(chg_pct) > 1:
+                    score += 15
+                if vol_ratio > 1.3:
+                    score += 10
+                if day_range > 1:
+                    score += 10
+                if is_break_up or is_break_dn:
+                    score += 15
+                score = min(100, score)
+                
+                results.append({
+                    "sym": sym, "spot": round(close, 2), "chg": chg_pct,
+                    "high": round(day_high, 2), "low": round(day_low, 2),
+                    "volRatio": vol_ratio, "range": day_range,
+                    "dir": direction, "score": score,
+                    "action": "BUY CALL" if direction == "BULLISH" and score >= 70 else ("BUY PUT" if direction == "BEARISH" and score >= 70 else "WATCH" if score >= 60 else "NONE")
+                })
+            except Exception as te:
+                continue
+        
+        # Sort by score desc
+        results.sort(key=lambda x: x["score"], reverse=True)
+        
+        response = {"success": True, "region": reg, "count": len(results), "tickers": results, "ts": time.time()}
+        _bottom_nav_cache[reg] = {"data": response, "time": time.time()}
+        
+        buy_count = len([r for r in results if r["action"] in ["BUY CALL", "BUY PUT"]])
+        print(f"[BOTTOM-NAV] ✅ {reg}: {len(results)} tickers, {buy_count} buy signals")
+        return response
+        
+    except Exception as e:
+        print(f"[BOTTOM-NAV] ❌ Error: {e}")
+        return {"success": False, "error": str(e)[:200], "tickers": []}
+
+
 @app.get("/api/participant-oi")
 async def participant_oi():
     """Fetch participant-wise open interest data from NSE (Client/FII/DII/Pro)."""
