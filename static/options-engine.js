@@ -27,7 +27,8 @@ window._loadOptionsDecide=function(symbol){
         el.innerHTML='<div style="color:#ef4444;padding:20px;font-size:12px;text-align:center;background:#0A0F1C;border-radius:16px">❌ Failed to load options data for '+sym+'<br><button onclick="window._loadOptionsDecide(\''+sym+'\')" style="margin-top:10px;padding:8px 20px;border-radius:8px;background:#3b82f6;color:#fff;border:none;cursor:pointer;font-size:11px;font-weight:700">Retry</button></div>';
         return;
       }
-      _renderOptionsEngine(d,sym);
+      if(!d.ohlc_bars)d.ohlc_bars=[];if(!d.chain_near_atm)d.chain_near_atm=[];if(!d.ce_resistance)d.ce_resistance=[];if(!d.pe_support)d.pe_support=[];if(!d.gex)d.gex={total:0,regime:'NEUTRAL',topStrikes:[],flipPoint:0,callWall:0,putWall:0};
+      try{_renderOptionsEngine(d,sym)}catch(_reErr){console.error('[RENDER CRASH] OptionsEngine:',_reErr);el.innerHTML='<div style="text-align:center;padding:30px;background:#0A0F1C;border-radius:16px"><div style="font-size:14px;color:#ef4444;font-weight:800;margin-bottom:8px">Render Error</div><div style="font-size:10px;color:#94a3b8;margin-bottom:8px">'+(_reErr.message||'')+'</div><button onclick="window._retryLast()" style="padding:8px 20px;border-radius:8px;background:#3b82f6;color:#fff;border:none;cursor:pointer;font-size:11px;font-weight:700">🔄 Retry</button></div>'}
     })
     .catch(function(e){
       el.innerHTML='<div style="text-align:center;padding:30px;background:#0A0F1C;border-radius:16px"><div style="font-size:14px;color:#ef4444;font-weight:800;margin-bottom:8px">Cannot connect to server</div><div style="font-size:10px;color:#94a3b8;margin-bottom:12px">'+e.message+'</div><button onclick="window._retryLast()" style="padding:8px 20px;border-radius:8px;background:#3b82f6;color:#fff;border:none;cursor:pointer;font-size:11px;font-weight:700">🔄 Retry</button></div>';
@@ -1553,7 +1554,8 @@ window._loadGammaMode=function(symbol){
         el.innerHTML='<div style="color:#ef4444;padding:20px;text-align:center;background:#0A0F1C;border-radius:16px">❌ Failed to load data<br><button onclick="window._loadGammaMode(\''+sym+'\')" style="margin-top:10px;padding:8px 20px;border-radius:8px;background:#f59e0b;color:#000;border:none;cursor:pointer;font-size:11px;font-weight:700">Retry</button></div>';
         return;
       }
-      _renderGammaEngine(d,sym);
+      if(!d.ohlc_bars)d.ohlc_bars=[];if(!d.chain_near_atm)d.chain_near_atm=[];if(!d.ce_resistance)d.ce_resistance=[];if(!d.pe_support)d.pe_support=[];if(!d.gex)d.gex={total:0,regime:'NEUTRAL',topStrikes:[],flipPoint:0,callWall:0,putWall:0};
+      try{_renderGammaEngine(d,sym)}catch(_rgErr){console.error('[RENDER CRASH] GammaEngine:',_rgErr);el.innerHTML='<div style="text-align:center;padding:30px;background:#0A0F1C;border-radius:16px"><div style="font-size:14px;color:#ef4444;font-weight:800;margin-bottom:8px">Render Error</div><div style="font-size:10px;color:#94a3b8;margin-bottom:8px">'+(_rgErr.message||'')+'</div><button onclick="window._retryLast()" style="padding:8px 20px;border-radius:8px;background:#059669;color:#fff;border:none;cursor:pointer;font-size:11px;font-weight:700">🔄 Retry</button></div>'}
     }).catch(function(e){
       el.innerHTML='<div style="text-align:center;padding:30px;background:#0A0F1C;border-radius:16px"><div style="font-size:14px;color:#ef4444;font-weight:800;margin-bottom:8px">Cannot connect to server</div><div style="font-size:10px;color:#94a3b8;margin-bottom:12px">'+e.message+'</div><button onclick="window._retryLast()" style="padding:8px 20px;border-radius:8px;background:#059669;color:#fff;border:none;cursor:pointer;font-size:11px;font-weight:700">🔄 Retry</button></div>';
     });
@@ -8075,12 +8077,43 @@ window._unifiedScore=function(d,sym){
   var highMom=(momUp>=4||momDn>=4)&&volScore>=60;
   var momTag=highMom?'🔥 HIGH MOM':momScore>=60?'📈 Mom':momScore>=40?'➡️ Flat':'📉 Weak';
   
+  // ═══ ENTRY TIMING — computed from bar structure ═══
+  // Early: breakout just happened (last 1-2 bars), volume confirming
+  // Ideal: breakout confirmed, momentum still strong, not extended
+  // Late: move already extended, far from VWAP, momentum fading
+  var entryTiming='—';var entryColor='#64748b';
+  if(dir!=='NONE'&&(action==='BUY CALL'||action==='BUY PUT'||action==='WATCH')){
+    var vwapDist=Math.abs(spot-vwap)/Math.max(spot,1)*100;
+    var isExtended=vwapDist>1.0; // >1% from VWAP = extended
+    var momStrong=dir==='BULLISH'?momUp>=3:momDn>=3;
+    var volStrong=hasVolData&&volRatio>=1.5;
+    var barsFresh=bars.length>=2&&((dir==='BULLISH'&&bars[bars.length-1].c>bars[bars.length-1].o)||(dir==='BEARISH'&&bars[bars.length-1].c<bars[bars.length-1].o));
+    // Check if breakout just happened (last bar near high/low)
+    var justBroke=false;
+    if(bars.length>=2){
+      var prevBar=bars[bars.length-2];
+      if(dir==='BULLISH'&&prevBar.c<dHigh*0.999&&spot>=dHigh*0.998)justBroke=true;
+      if(dir==='BEARISH'&&prevBar.c>dLow*1.001&&spot<=dLow*1.002)justBroke=true;
+    }
+    
+    if(justBroke&&volStrong&&barsFresh){
+      entryTiming='EARLY';entryColor='#059669'; // Green — best entry
+    }else if(!isExtended&&momStrong&&barsFresh){
+      entryTiming='IDEAL';entryColor='#3b82f6'; // Blue — good entry
+    }else if(momStrong||volStrong){
+      entryTiming='LATE';entryColor='#d97706'; // Yellow — still tradeable
+    }else{
+      entryTiming='FADING';entryColor='#ef4444'; // Red — momentum gone
+    }
+  }
+  
   return{
     sym:sym,spot:spot,S:S,conf:conf,grade:grade,gradeLabel:gradeLabel,action:action,dir:dir,
     strike:atm,prem:atmPrem,pcr:pcr,vix:vix,gex:gexReg,type:dir==='BULLISH'?'CE':'PE',
     volRatio:volRatio,range:range,momTag:momTag,highMom:highMom,momScore:momScore,
     confirms:cn,cnDetail:cnDetail,fakeScore:fk,fakeFlags:fkFlags,redFlags:rf,barConfirm:barOK,
-    hasChain:hasChain,lot:d.lot_size||(isUS?100:({NIFTY:75,BANKNIFTY:30,SENSEX:20}[sym]||1))
+    hasChain:hasChain,lot:d.lot_size||(isUS?100:({NIFTY:75,BANKNIFTY:30,SENSEX:20}[sym]||1)),
+    entryTiming:entryTiming,entryColor:entryColor
   };
 };
 
@@ -8225,14 +8258,14 @@ window._scanBottomNav=function(){
       
       window._bottomNavResults={};
       d.tickers.forEach(function(t){
-        // ONLY A/A+ with BUY CALL or BUY PUT — strict institutional filter
-        if((t.grade==='A+'||t.grade==='A')&&(t.action==='BUY CALL'||t.action==='BUY PUT')){
-          window._bottomNavResults[t.sym]={
-            sym:t.sym,label:t.sym,reg:reg,spot:t.spot,
-            conf:t.conf,grade:t.grade,action:t.action,dir:t.dir,
-            confirms:t.confirms,fakeScore:t.fakeScore,
-            volRatio:t.volRatio,redFlags:t.redFlags||0,barConfirm:t.barConfirm
-          };
+        if(!t||!t.success||!t.spot)return;
+        // Score using THE SAME _unifiedScore function as Quick Trade
+        t._region=reg;
+        var scored=window._unifiedScore(t,t.sym);
+        // Only show A/A+ BUY signals
+        if((scored.grade==='A+'||scored.grade==='A')&&(scored.action==='BUY CALL'||scored.action==='BUY PUT')){
+          scored.reg=reg;scored.label=t.sym;
+          window._bottomNavResults[t.sym]=scored;
         }
       });
       window._renderBottomNav();
@@ -8262,14 +8295,21 @@ window._renderBottomNav=function(){
     var arrow=r.action==='BUY CALL'?'\u2191':'\u2193';
     var flag=r.reg==='US'?'\u{1f1fa}\u{1f1f8}':'\u{1f1ee}\u{1f1f3}';
     var loadFn=r.reg==='IN'?"window._loadQuickTrade('"+r.sym+"')":"window._loadOptionsUniversal('"+r.sym+"','US')";
+    var eCol=r.entryColor||'#64748b';
+    var eTiming=r.entryTiming||'\u2014';
+    var eDot=eTiming==='EARLY'?'\u{1f7e2}':eTiming==='IDEAL'?'\u{1f535}':eTiming==='LATE'?'\u{1f7e1}':'\u{1f534}';
+    // Border color = entry timing (green=early, blue=ideal, yellow=late, red=fading)
+    var borderCol=eCol;
+    var pulse=eTiming==='EARLY'||eTiming==='IDEAL'?';animation:pulse 2s infinite':'';
     
-    h+='<div onclick="'+loadFn+'" style="flex-shrink:0;padding:6px 10px;border-radius:10px;background:'+col+'12;border:1px solid '+col+'30;cursor:pointer;text-align:center;animation:pulse 2s infinite">';
+    h+='<div onclick="'+loadFn+'" style="flex-shrink:0;padding:6px 10px;border-radius:10px;background:'+col+'10;border:2px solid '+borderCol+';cursor:pointer;text-align:center'+pulse+'">';
     h+='<div style="display:flex;align-items:center;gap:3px;justify-content:center">';
     h+='<span style="font-size:7px">'+flag+'</span>';
     h+='<span style="font-size:11px;font-weight:900;color:#e2e8f0;font-family:Sora">'+r.label+'</span>';
     h+='</div>';
     h+='<div style="font-size:9px;font-weight:800;color:'+col+'">'+r.action+' '+arrow+'</div>';
-    h+='<div style="font-size:7px;color:#94a3b8">'+r.grade+' \u00b7 '+r.conf+'% \u00b7 '+(r.confirms||0)+'/6</div>';
+    h+='<div style="font-size:7px;color:#94a3b8">'+r.grade+' \u00b7 '+r.conf+'%</div>';
+    h+='<div style="font-size:7px;font-weight:700;color:'+eCol+'">'+eDot+' '+eTiming+'</div>';
     h+='</div>';
   });
   
