@@ -2140,7 +2140,7 @@ ${(()=>{const bt=parseFloat(d.beta)||1;return bt>1.5?' Expect bigger swings than
 <div class="sbody">
 <div id="convictionLeaderboard">
 <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px" id="convGeoTabs">
-<button class="ptab active" onclick="showConvGeo(this,'india')" style="background:var(--amber);color:#000;border-color:var(--amber)">IN India</button>
+<button class="ptab active" onclick="showConvGeo(this,'india')" style="background:var(--amber);color:#fff;border-color:var(--amber)">IN India</button>
 <button class="ptab" onclick="showConvGeo(this,'usa')">US USA</button>
 </div>
 <div id="convGrid" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px"></div>
@@ -4549,8 +4549,8 @@ const isPenny=cat==='penny';
 let h=`<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
 <div style="font-family:'Sora',sans-serif;font-size:12px;font-weight:700;color:var(--text)">${data.title}</div>
 <div class="pick-geo">
-<button class="${_pickGeo==='india'?'active':''}" onclick="togglePickGeo(this,'india')" style="${_pickGeo==='india'?'background:var(--amber);color:#000;border-color:var(--amber)':''}">IN India</button>
-<button class="${_pickGeo==='usa'?'active':''}" onclick="togglePickGeo(this,'usa')" style="${_pickGeo==='usa'?'background:var(--amber);color:#000;border-color:var(--amber)':''}">US USA</button>
+<button class="${_pickGeo==='india'?'active':''}" onclick="togglePickGeo(this,'india')" style="${_pickGeo==='india'?'background:var(--amber);color:#fff;border-color:var(--amber)':''}">IN India</button>
+<button class="${_pickGeo==='usa'?'active':''}" onclick="togglePickGeo(this,'usa')" style="${_pickGeo==='usa'?'background:var(--amber);color:#fff;border-color:var(--amber)':''}">US USA</button>
 </div></div>`;
 h+=`<div style="overflow-x:auto"><table class="pick-tbl"><tr><th>#</th><th>Company</th><th>Rating</th><th style="color:var(--cyan)">Live Price</th><th style="color:var(--green)">Entry Zone</th><th style="color:var(--cyan)">Decision &amp; Timeline</th><th>Edge</th><th>${isIdx?'Returns':'Type'}</th></tr>`;
 list.forEach((s,i)=>{
@@ -15314,7 +15314,7 @@ ${_inp('ef_current','Current Emergency Savings','e.g. 100000')}
 ${_inp('ef_monthly','Monthly Contribution','e.g. 5000')}
 ${_inp('ef_type','Employment Type (1=Salaried, 2=Self-employed)','e.g. 1')}
 </div>
-<button onclick="window._calcEmergency()" style="padding:10px 24px;border-radius:8px;background:linear-gradient(135deg,#1A3A78,#1e40af);color:#000;border:none;font-weight:700;cursor:pointer;font-family:Sora,sans-serif">Calculate Emergency Fund</button>
+<button onclick="window._calcEmergency()" style="padding:10px 24px;border-radius:8px;background:linear-gradient(135deg,#1A3A78,#1e40af);color:#fff;border:none;font-weight:700;cursor:pointer;font-family:Sora,sans-serif">Calculate Emergency Fund</button>
 <div id="ef_result" style="margin-top:16px"></div>`,
 
 // ═══ 5. SAVINGS ARCHITECT ═══
@@ -15350,7 +15350,7 @@ ${_inp('tx_home_loan','Home Loan Interest (Sec 24)','e.g. 200000')}
 ${_inp('tx_standard','Standard Deduction','e.g. 75000')}
 ${_inp('tx_other','Other Deductions','e.g. 0')}
 </div>
-<button onclick="window._calcTax()" style="padding:10px 24px;border-radius:8px;background:#06b6d4;color:#000;border:none;font-weight:700;cursor:pointer;font-family:Sora,sans-serif">Compare Old vs New Regime</button>
+<button onclick="window._calcTax()" style="padding:10px 24px;border-radius:8px;background:#06b6d4;color:#fff;border:none;font-weight:700;cursor:pointer;font-family:Sora,sans-serif">Compare Old vs New Regime</button>
 <div id="tx_result" style="margin-top:16px"></div>`,
 
 // ═══ 7. NET WORTH TRACKER ═══
@@ -16715,7 +16715,7 @@ data.gut_picks.forEach((g,i)=>{
 const dir=(g.direction||'').toUpperCase();
 const dCol=dir.includes('BULL')?'var(--green)':'var(--red)';
 html+=`<tr style="background:rgba(16,185,129,.04);border-bottom:1px solid rgba(16,185,129,.1)">
-<td style="padding:10px 6px"><span style="font-size:11px;background:var(--green);color:#000;padding:2px 8px;border-radius:4px;font-weight:900">&#127942; #${i+1}</span></td>
+<td style="padding:10px 6px"><span style="font-size:11px;background:var(--green);color:#fff;padding:2px 8px;border-radius:4px;font-weight:900">&#127942; #${i+1}</span></td>
 <td style="padding:10px 6px;font-weight:700;color:var(--text)">${g.index_or_stock||g.instrument||'-'}</td>
 <td style="padding:10px 6px;text-align:center;font-weight:700;color:${dCol}">${dir}</td>
 <td style="padding:10px 6px;text-align:right;color:var(--blue);font-weight:700">${g.entry_level||g.entry||'-'}</td>

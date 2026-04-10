@@ -1551,7 +1551,7 @@ window._loadGammaMode=function(symbol){
     .then(function(r){return r.json()})
     .then(function(d){
       if(!d||!d.success){
-        el.innerHTML='<div style="color:#ef4444;padding:20px;text-align:center;background:#0A0F1C;border-radius:16px">❌ Failed to load data<br><button onclick="window._loadGammaMode(\''+sym+'\')" style="margin-top:10px;padding:8px 20px;border-radius:8px;background:#f59e0b;color:#000;border:none;cursor:pointer;font-size:11px;font-weight:700">Retry</button></div>';
+        el.innerHTML='<div style="color:#ef4444;padding:20px;text-align:center;background:#0A0F1C;border-radius:16px">❌ Failed to load data<br><button onclick="window._loadGammaMode(\''+sym+'\')" style="margin-top:10px;padding:8px 20px;border-radius:8px;background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;border:none;cursor:pointer;font-size:11px;font-weight:700">Retry</button></div>';
         return;
       }
       if(!d.ohlc_bars)d.ohlc_bars=[];if(!d.chain_near_atm)d.chain_near_atm=[];if(!d.ce_resistance)d.ce_resistance=[];if(!d.pe_support)d.pe_support=[];if(!d.gex)d.gex={total:0,regime:'NEUTRAL',topStrikes:[],flipPoint:0,callWall:0,putWall:0};
@@ -1844,7 +1844,7 @@ function _renderGammaEngine(d,sym){
   h+='<div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap;align-items:center">';
   ['NIFTY','BANKNIFTY','SENSEX','FINNIFTY'].forEach(function(idx){
     var isAct=idx===sym;
-    h+='<div onclick="window._loadGammaMode(\''+idx+'\')" style="padding:8px 18px;border-radius:10px;font-size:11px;font-weight:800;cursor:pointer;font-family:Sora;'+(isAct?'background:linear-gradient(135deg,#f59e0b,#d97706);color:#000;box-shadow:0 4px 12px rgba(245,158,11,.3)':'background:#1e293b;color:#94a3b8;border:1px solid #334155')+'">'+idx+'</div>';
+    h+='<div onclick="window._loadGammaMode(\''+idx+'\')" style="padding:8px 18px;border-radius:10px;font-size:11px;font-weight:800;cursor:pointer;font-family:Sora;'+(isAct?'background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;box-shadow:0 4px 12px rgba(245,158,11,.3)':'background:#1e293b;color:#94a3b8;border:1px solid #334155')+'">'+idx+'</div>';
   });
   h+='<div style="flex:1"></div>';
   h+='<div onclick="window._loadOptionsDecide(\''+sym+'\')" style="padding:8px 18px;border-radius:10px;font-size:10px;font-weight:700;cursor:pointer;background:#1e293b;color:#3b82f6;border:1px solid #3b82f625">← Back to Full Engine</div>';
@@ -2068,7 +2068,7 @@ _renderOptionsEngine=function(d,sym){
   // Insert gamma mode button at top
   var gammaBtn=document.createElement('div');
   gammaBtn.style.cssText='text-align:center;margin:10px 0';
-  gammaBtn.innerHTML='<button onclick="window._loadGammaMode(\''+sym+'\')" style="padding:12px 28px;border-radius:12px;background:linear-gradient(135deg,#f59e0b,#d97706);color:#000;border:none;font-size:12px;font-weight:900;cursor:pointer;font-family:Sora;box-shadow:0 4px 16px rgba(245,158,11,.3)">⚡ GAMMA SCALPING MODE'+(dte2<=0?' (EXPIRY DAY!)':'')+'</button>';
+  gammaBtn.innerHTML='<button onclick="window._loadGammaMode(\''+sym+'\')" style="padding:12px 28px;border-radius:12px;background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;border:none;font-size:12px;font-weight:900;cursor:pointer;font-family:Sora;box-shadow:0 4px 16px rgba(245,158,11,.3)">⚡ GAMMA SCALPING MODE'+(dte2<=0?' (EXPIRY DAY!)':'')+'</button>';
   el.insertBefore(gammaBtn,el.firstChild);
 };
 
@@ -2557,10 +2557,10 @@ window._loadQuickTrade=function(symbol){
         if(shouldOpen3){
           window._apiRetryCount=(window._apiRetryCount||0)+1;
           if(window._apiRetryCount<=3){
-            el.innerHTML='<div style="max-width:480px;margin:0 auto;padding:40px 20px;text-align:center;background:#0A0F1C;border-radius:20px"><div style="display:inline-block;width:30px;height:30px;border:3px solid #f59e0b;border-top-color:transparent;border-radius:50%;animation:spin 1s linear infinite;margin-bottom:12px"></div><div style="font-size:16px;font-weight:900;color:#e2e8f0">Fetching '+sym+' data...</div><div style="font-size:10px;color:#94a3b8;margin-top:8px">Attempt '+window._apiRetryCount+' of 3. Auto-retrying in 15 sec...</div><button onclick="window._retryLast()" style="margin-top:12px;padding:8px 20px;border-radius:8px;background:#f59e0b;color:#000;border:none;cursor:pointer;font-size:11px;font-weight:800">🔄 Retry Now</button></div>';
+            el.innerHTML='<div style="max-width:480px;margin:0 auto;padding:40px 20px;text-align:center;background:#0A0F1C;border-radius:20px"><div style="display:inline-block;width:30px;height:30px;border:3px solid #f59e0b;border-top-color:transparent;border-radius:50%;animation:spin 1s linear infinite;margin-bottom:12px"></div><div style="font-size:16px;font-weight:900;color:#e2e8f0">Fetching '+sym+' data...</div><div style="font-size:10px;color:#94a3b8;margin-top:8px">Attempt '+window._apiRetryCount+' of 3. Auto-retrying in 15 sec...</div><button onclick="window._retryLast()" style="margin-top:12px;padding:8px 20px;border-radius:8px;background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;border:none;cursor:pointer;font-size:11px;font-weight:800">🔄 Retry Now</button></div>';
             window._apiRetryTimer=setTimeout(function(){if(window._activeOptionsSym===sym)window._loadQuickTrade(sym)},15000);
           }else{
-            el.innerHTML='<div style="max-width:480px;margin:0 auto;padding:40px 20px;text-align:center;background:#0A0F1C;border-radius:20px"><div style="font-size:48px;margin-bottom:12px">⚠️</div><div style="font-size:16px;font-weight:900;color:#d97706">Data Temporarily Unavailable</div><div style="font-size:10px;color:#94a3b8;margin-top:8px">'+(d&&d.error?d.error:'NSE API not responding')+'<br>Try again in 1-2 minutes.</div><button onclick="window._retryLast()" style="margin-top:12px;padding:10px 24px;border-radius:8px;background:#f59e0b;color:#000;border:none;cursor:pointer;font-size:12px;font-weight:800">🔄 Try Again</button></div>';
+            el.innerHTML='<div style="max-width:480px;margin:0 auto;padding:40px 20px;text-align:center;background:#0A0F1C;border-radius:20px"><div style="font-size:48px;margin-bottom:12px">⚠️</div><div style="font-size:16px;font-weight:900;color:#d97706">Data Temporarily Unavailable</div><div style="font-size:10px;color:#94a3b8;margin-top:8px">'+(d&&d.error?d.error:'NSE API not responding')+'<br>Try again in 1-2 minutes.</div><button onclick="window._retryLast()" style="margin-top:12px;padding:10px 24px;border-radius:8px;background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;border:none;cursor:pointer;font-size:12px;font-weight:800">🔄 Try Again</button></div>';
           }
         }else{
           el.innerHTML='<div style="max-width:480px;margin:0 auto;padding:40px 20px;text-align:center;background:#0A0F1C;border-radius:20px"><div style="font-size:48px;margin-bottom:12px">🕐</div><div style="font-size:18px;font-weight:900;color:#e2e8f0">Market Closed</div><div style="font-size:10px;color:#94a3b8;margin-top:8px">NSE: 9:15 AM – 3:30 PM IST</div><button onclick="window._retryLast()" style="margin-top:12px;padding:8px 20px;border-radius:8px;background:#1e293b;color:#64748b;border:1px solid #334155;cursor:pointer;font-size:11px;font-weight:700">🔄 Refresh</button></div>';
@@ -2652,7 +2652,7 @@ function _renderQuickTrade(d,sym){
         h0r+='<div style="font-size:18px;font-weight:900;color:#e2e8f0;font-family:Sora;margin-bottom:8px">Fetching Live Data...</div>';
         h0r+='<div style="font-size:11px;color:#94a3b8;margin-bottom:4px">Market is open. NSE API may take a moment. Attempt '+window._apiRetryCount+' of 3.</div>';
         h0r+='<div style="font-size:10px;color:#64748b;margin-bottom:16px">Auto-retrying in 15 seconds...</div>';
-        h0r+='<button onclick="window._retryLast()" style="padding:10px 24px;border-radius:10px;background:#f59e0b;color:#000;border:none;font-size:12px;font-weight:800;cursor:pointer">🔄 Retry Now</button>';
+        h0r+='<button onclick="window._retryLast()" style="padding:10px 24px;border-radius:10px;background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;border:none;font-size:12px;font-weight:800;cursor:pointer">🔄 Retry Now</button>';
         h0r+='</div>';
         el.innerHTML=h0r;
         // Single retry after 15 sec (not 10 — avoid rapid flickering)
@@ -2668,7 +2668,7 @@ function _renderQuickTrade(d,sym){
         h0f+='<div style="font-size:48px;margin-bottom:12px">⚠️</div>';
         h0f+='<div style="font-size:18px;font-weight:900;color:#d97706;font-family:Sora;margin-bottom:8px">Data Temporarily Unavailable</div>';
         h0f+='<div style="font-size:11px;color:#94a3b8;margin-bottom:16px">NSE API is not responding. This is common during the first few minutes after market open.<br>Try again in 1-2 minutes.</div>';
-        h0f+='<button onclick="window._retryLast()" style="padding:12px 28px;border-radius:10px;background:#f59e0b;color:#000;border:none;font-size:13px;font-weight:800;cursor:pointer">🔄 Try Again</button>';
+        h0f+='<button onclick="window._retryLast()" style="padding:12px 28px;border-radius:10px;background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;border:none;font-size:13px;font-weight:800;cursor:pointer">🔄 Try Again</button>';
         h0f+='</div>';
         el.innerHTML=h0f;
       }
@@ -3104,6 +3104,8 @@ function _renderQuickTrade(d,sym){
   if(direction==='NONE'&&confidence<50){hardBlock=true;blockReason='No clear direction'}
   if(noTradeFromRedFlags){hardBlock=true;blockReason=redFlagCount+' red flags: '+redFlags.slice(0,2).join(', ')}
   if(fakeSignalScore>60){hardBlock=true;blockReason='Fake signal score '+fakeSignalScore+'/100 — too many trap indicators'}
+  // Premium viability — block if premium too low to trade
+  if(isOptions&&!premOK7&&chain.length>0){hardBlock=true;blockReason='Premium too low to trade ('+S+Math.max(atmCE7,atmPE7).toFixed(isUS?2:0)+')'}
   
   
   // ═══ STEP 7: TRADE GRADING (HIGH-PROBABILITY MODEL) ═══
@@ -3376,10 +3378,30 @@ function _renderQuickTrade(d,sym){
   
   // Status
   var status='⚪ NO TRADE';var statusColor='#64748b';
-  if(hardBlock){status='⚪ NO TRADE';statusColor='#64748b'}
+  // Check if signal is locked in bottom nav
+  var _isLocked5=!window._qtBatchMode&&window._lockedSignals&&window._lockedSignals[sym];
+  var _lockValid5=_isLocked5&&(_isLocked5._status==='LOCKED'||_isLocked5._status==='MAINTAIN');
+  
+  if(hardBlock&&!_lockValid5){status='⚪ NO TRADE';statusColor='#64748b'}
+  else if(_lockValid5&&confidence>=60){
+    // Signal is locked and within maintain range — show as active trade
+    status='🟢 ENTER NOW';statusColor='#059669';
+    // Restore grade to match lock (don't show B when locked)
+    if(grade==='B'&&confidence>=65){grade='A';gradeLabel='Locked — Active Trade'}
+    finalBias=_isLocked5.dir||direction;
+  }
   else if(grade==='A+'||grade==='A'){status='🟢 ENTER NOW';statusColor='#059669'}
   else if(grade==='B'){status='🟡 ALMOST — Confidence '+confidence+'%';statusColor='#d97706'}
   else{status='⏳ WATCHING';statusColor='#64748b'}
+  
+  // If locked but in warning zone (60-64), show with caution
+  if(_lockValid5&&confidence>=60&&confidence<65){
+    status='🟡 HOLD — Score '+confidence+'%';statusColor='#d97706';
+  }
+  // If locked but thesis breaking (<60), let hardBlock handle it
+  if(_isLocked5&&confidence<60){
+    status='🔴 EXIT TRADE — Thesis Break';statusColor='#ef4444';
+  }
   
   // If watching, upgrade direction label
   if(status.indexOf('WATCHING')>=0&&direction!=='NONE'){
@@ -3786,6 +3808,8 @@ function _renderQuickTrade(d,sym){
     
     // 8. Decision
     var _entryTiming='TOO LATE';var _timingColor='#ef4444';var _timingIcon='🔴';var _entryVerdict='Do not enter';
+    // Check if signal is LOCKED in bottom nav — if so, trust the lock
+    var _isLockedSignal=window._lockedSignals&&window._lockedSignals[sym]&&(window._lockedSignals[sym]._status==='LOCKED'||window._lockedSignals[sym]._status==='MAINTAIN');
     // Gamma exception: active gamma blast can rescue a late entry
     var _gammaActive=(window._qtGex||{}).regime==='NEGATIVE'||(window._qtGex||{}).regime==='POSITIVE';
     var _gammaBlastNow=window._qtGammaBlast||false;
@@ -3793,7 +3817,27 @@ function _renderQuickTrade(d,sym){
       _entryScore=62; // Upgrade: gamma blast makes late entry viable
     }
     
-    if(_entryScore>=80){
+    // Premium viability check — $0.05 premium is not tradeable
+    var _premTooLow=isOptions&&entryPrem7<(isUS?0.30:10);
+    if(_premTooLow){
+      _entryScore=Math.min(_entryScore,30);
+    }
+    
+    if(_isLockedSignal&&!_premTooLow){
+      // Signal is locked — show active trade status per spec
+      var _lockStatus3=window._lockedSignals[sym]._status;
+      if(_lockStatus3==='LOCKED'){
+        _entryTiming='ACTIVE';_timingColor='#059669';_timingIcon='🔒';
+        _entryVerdict='Signal locked — trade active. No action required.';
+      }else if(_lockStatus3==='MAINTAIN'){
+        _entryTiming='HOLDING';_timingColor='#3b82f6';_timingIcon='✅';
+        _entryVerdict='Signal holding — minor fluctuations are normal.';
+      }else{
+        // WARNING (60-64)
+        _entryTiming='MONITOR';_timingColor='#d97706';_timingIcon='⚠️';
+        _entryVerdict='Signal weakening — monitor closely. Consider tightening stop loss.';
+      }
+    }else if(_entryScore>=80){
       _entryTiming='EARLY';_timingColor='#059669';_timingIcon='🟢';
       _entryVerdict='Approved — execute now';
     }else if(_entryScore>=70){
@@ -3804,11 +3848,11 @@ function _renderQuickTrade(d,sym){
       _entryVerdict='Caution — reduced reward, smaller position';
     }else{
       _entryTiming='TOO LATE';_timingColor='#ef4444';_timingIcon='🔴';
-      _entryVerdict='Expired — do not chase';
+      _entryVerdict=_premTooLow?'Premium too low to trade — skip this setup':'Expired — do not chase';
     }
     
-    // Confidence alignment: if timing is TOO LATE, cap confidence
-    if(_entryScore<60&&confidence>65){confidence=60;grade='B';gradeLabel='Signal Expired'}
+    // Confidence alignment: if timing is TOO LATE AND not locked, cap confidence
+    if(_entryScore<60&&confidence>65&&!_isLockedSignal){confidence=60;grade='B';gradeLabel='Signal Expired'}
     
     // DISPLAY: Entry Timing Analysis panel
     if(isEnterNow){
@@ -4027,7 +4071,192 @@ function _renderQuickTrade(d,sym){
   h+='<div style="max-width:480px;margin:10px auto;padding:8px;border-radius:8px;background:#1e293b;text-align:center;font-size:7px;color:#475569">';
   h+='⚠️ Simplified view of AI analysis. Not financial advice. Options involve risk of total loss. Start with 1 lot.</div>';
   
-  // ─── SIGNAL TRACKING PANEL (if locked in bottom nav) ───
+  // ═══════════════════════════════════════════════════════════════════════
+  // INSTITUTIONAL PRICE MAP — Where can price go? Where will it reverse?
+  // Uses: OI walls, GEX, VWAP, Volume Profile, Max Pain
+  // ═══════════════════════════════════════════════════════════════════════
+  if(!window._qtBatchMode&&spot>0&&(chain.length>0||bars.length>3)){
+    var _pm={};
+    // ─── 1. OI-based support/resistance walls ───
+    var _pmCallWall=(gex&&gex.callWall>0)?gex.callWall:(_instRes>0?_instRes:0);
+    var _pmPutWall=(gex&&gex.putWall>0)?gex.putWall:(_instSupp>0?_instSupp:0);
+    var _pmFlip=(gex&&gex.flipPoint>0)?gex.flipPoint:0;
+    var _pmMaxPain=maxPain>0?maxPain:_instMidpoint;
+    
+    // ─── 2. Volume Profile POC from bars ───
+    var _pmPOC=0,_pmPOCvol=0;
+    if(bars.length>=5){
+      var _priceVol={};
+      var _pmStep=chain.length>=2?Math.abs(chain[1].strike-chain[0].strike):Math.round(spot*0.005);
+      if(_pmStep<=0)_pmStep=1;
+      bars.forEach(function(b){
+        var bucket=Math.round(((b.h+b.l+b.c)/3)/_pmStep)*_pmStep;
+        _priceVol[bucket]=(_priceVol[bucket]||0)+b.v;
+      });
+      Object.keys(_priceVol).forEach(function(p){
+        if(_priceVol[p]>_pmPOCvol){_pmPOCvol=_priceVol[p];_pmPOC=parseFloat(p)}
+      });
+    }
+    
+    // ─── 3. Upside/Downside distance ───
+    var _pmUpside=_pmCallWall>spot?_pmCallWall:dayHigh*1.01;
+    var _pmDownside=_pmPutWall>0&&_pmPutWall<spot?_pmPutWall:dayLow*0.99;
+    var _pmUpsidePct=Math.round((_pmUpside-spot)/spot*10000)/100;
+    var _pmDownsidePct=Math.round((spot-_pmDownside)/spot*10000)/100;
+    
+    // ─── 4. Reversal probability ───
+    var _pmDistToCallWall=_pmCallWall>0?Math.abs(spot-_pmCallWall)/spot*100:99;
+    var _pmDistToPutWall=_pmPutWall>0?Math.abs(spot-_pmPutWall)/spot*100:99;
+    var _pmNearCeiling=_pmDistToCallWall<0.3;
+    var _pmNearFloor=_pmDistToPutWall<0.3;
+    var _pmReversalRisk='LOW';var _pmReversalColor='#059669';
+    if(_pmNearCeiling&&direction==='BULLISH'){_pmReversalRisk='HIGH';_pmReversalColor='#ef4444'}
+    else if(_pmNearFloor&&direction==='BEARISH'){_pmReversalRisk='HIGH';_pmReversalColor='#ef4444'}
+    else if(_pmDistToCallWall<0.6&&direction==='BULLISH'){_pmReversalRisk='MODERATE';_pmReversalColor='#d97706'}
+    else if(_pmDistToPutWall<0.6&&direction==='BEARISH'){_pmReversalRisk='MODERATE';_pmReversalColor='#d97706'}
+    
+    // ─── 5. Zone classification ───
+    var _pmZone='NEUTRAL';var _pmZoneColor='#64748b';
+    if(spot>_pmCallWall*0.998&&_pmCallWall>0){_pmZone='AT RESISTANCE';_pmZoneColor='#ef4444'}
+    else if(spot<_pmPutWall*1.002&&_pmPutWall>0){_pmZone='AT SUPPORT';_pmZoneColor='#059669'}
+    else if(_pmPOC>0&&Math.abs(spot-_pmPOC)/spot<0.003){_pmZone='AT POC (Max Volume)';_pmZoneColor='#3b82f6'}
+    else if(spot>(_pmCallWall+_pmPutWall)/2){_pmZone='UPPER HALF';_pmZoneColor='#d97706'}
+    else{_pmZone='LOWER HALF';_pmZoneColor='#3b82f6'}
+    
+    // ─── 6. Conviction tier (for position sizing) ───
+    var _pmConviction='STANDARD';var _pmConvColor='#3b82f6';var _pmLots='1 lot';
+    if(confidence>=80&&_pmReversalRisk==='LOW'){_pmConviction='HIGH';_pmConvColor='#059669';_pmLots='2 lots'}
+    else if(confidence>=75){_pmConviction='STRONG';_pmConvColor='#059669';_pmLots='1-2 lots'}
+    else if(confidence>=70){_pmConviction='STANDARD';_pmConvColor='#3b82f6';_pmLots='1 lot'}
+    else{_pmConviction='LOW';_pmConvColor='#d97706';_pmLots='½ lot'}
+    
+    // Store for voice
+    window._pmZone=_pmZone;window._pmReversalRisk=_pmReversalRisk;
+    window._pmUpside=_pmUpside;window._pmDownside=_pmDownside;
+    window._pmCallWall=_pmCallWall;window._pmPutWall=_pmPutWall;
+    window._pmConviction=_pmConviction;window._pmPOC=_pmPOC;
+    
+    // ─── PRICE MAP VOICE — Layman language ───
+    var _pmVoiceKey=sym+'_'+_pmZone+'_'+_pmReversalRisk;
+    if(_pmVoiceKey!==window._lastPMVoice){
+      window._lastPMVoice=_pmVoiceKey;
+      var _pmVoice='';
+      var _pmUpFmt=S+_pmUpside.toLocaleString();
+      var _pmDnFmt=S+_pmDownside.toLocaleString();
+      var _pmSpFmt=S+spot.toLocaleString();
+      
+      if(_pmNearCeiling&&direction==='BULLISH'){
+        _pmVoice=sym+' at '+_pmSpFmt+' is very close to the ceiling. Big sellers are waiting at '+_pmUpFmt+'. Price usually falls from here. If you are in profit, book it now.';
+      }else if(_pmNearFloor&&direction==='BEARISH'){
+        _pmVoice=sym+' at '+_pmSpFmt+' is near the floor. Big buyers are defending '+_pmDnFmt+'. Price usually bounces from here. If you have puts in profit, book them.';
+      }else if(_pmReversalRisk==='MODERATE'&&direction==='BULLISH'){
+        _pmVoice=sym+' is moving up but getting close to a selling zone at '+_pmUpFmt+'. Enter with a smaller position and tight stop loss.';
+      }else if(_pmReversalRisk==='MODERATE'&&direction==='BEARISH'){
+        _pmVoice=sym+' is falling but approaching a buying zone at '+_pmDnFmt+'. Watch for a bounce before adding to puts.';
+      }else if(_pmConviction==='HIGH'&&(grade==='A+'||grade==='A')&&direction==='BULLISH'){
+        _pmVoice='Strong bullish setup on '+sym+'. Price can go up to '+_pmUpFmt+'. Your safety net is at '+_pmDnFmt+'. You can take '+_pmLots+' with confidence.';
+      }else if(_pmConviction==='HIGH'&&(grade==='A+'||grade==='A')&&direction==='BEARISH'){
+        _pmVoice='Strong bearish setup on '+sym+'. Price can fall to '+_pmDnFmt+'. Sellers are in control. Resistance at '+_pmUpFmt+' blocks any bounce. You can take '+_pmLots+'.';
+      }else if((grade==='A+'||grade==='A')&&direction==='BULLISH'){
+        _pmVoice=sym+' is bullish. Price can go up to '+_pmUpFmt+'. Buyers are protecting '+_pmDnFmt+'. Good setup for '+_pmLots+'.';
+      }else if((grade==='A+'||grade==='A')&&direction==='BEARISH'){
+        _pmVoice=sym+' is bearish. Price can drop to '+_pmDnFmt+'. Sellers in control. '+_pmLots+' recommended.';
+      }
+      if(_pmVoice&&!window._qtBatchMode){
+        setTimeout(function(){window._speak(_pmVoice,_pmReversalRisk==='HIGH')},2000);
+      }
+    }
+    
+    // ─── RENDER PRICE MAP ───
+    h+='<div style="max-width:480px;margin:12px auto;padding:14px;border-radius:14px;background:#0A0F1C;border:1px solid #1e293b">';
+    h+='<div style="font-size:9px;color:#8b5cf6;font-weight:800;letter-spacing:1.5px;margin-bottom:10px">🏛️ INSTITUTIONAL PRICE MAP</div>';
+    
+    // Visual bar: Put Wall ──── Spot ──── Call Wall
+    var _pmBarWidth=100;
+    var _pmRange=(_pmCallWall>0&&_pmPutWall>0)?_pmCallWall-_pmPutWall:dayHigh-dayLow;
+    if(_pmRange<=0)_pmRange=1;
+    var _pmSpotPos=(_pmPutWall>0)?Math.max(5,Math.min(95,((spot-_pmPutWall)/_pmRange)*100)):50;
+    var _pmVwapPos=(_pmPutWall>0&&vwap>0)?Math.max(5,Math.min(95,((vwap-_pmPutWall)/_pmRange)*100)):45;
+    var _pmPOCpos=(_pmPutWall>0&&_pmPOC>0)?Math.max(5,Math.min(95,((_pmPOC-_pmPutWall)/_pmRange)*100)):50;
+    var _pmMaxPainPos=(_pmPutWall>0&&_pmMaxPain>0)?Math.max(5,Math.min(95,((_pmMaxPain-_pmPutWall)/_pmRange)*100)):50;
+    
+    h+='<div style="position:relative;height:40px;margin:8px 0;background:linear-gradient(90deg,#059669 0%,#059669 15%,#1e293b 15%,#1e293b 85%,#ef4444 85%,#ef4444 100%);border-radius:8px;overflow:visible">';
+    // Put Wall label
+    h+='<div style="position:absolute;left:0;top:-14px;font-size:7px;color:#059669;font-weight:800">'+(_pmPutWall>0?S+_pmPutWall.toLocaleString():'—')+'</div>';
+    // Call Wall label
+    h+='<div style="position:absolute;right:0;top:-14px;font-size:7px;color:#ef4444;font-weight:800">'+(_pmCallWall>0?S+_pmCallWall.toLocaleString():'—')+'</div>';
+    // VWAP marker
+    if(vwap>0)h+='<div style="position:absolute;left:'+_pmVwapPos+'%;top:0;bottom:0;width:2px;background:#3b82f680" title="VWAP"></div>';
+    // POC marker
+    if(_pmPOC>0)h+='<div style="position:absolute;left:'+_pmPOCpos+'%;top:0;bottom:0;width:3px;background:#f59e0b80;border-radius:2px" title="POC"></div>';
+    // Max Pain marker
+    if(_pmMaxPain>0)h+='<div style="position:absolute;left:'+_pmMaxPainPos+'%;top:0;bottom:0;width:2px;background:#a855f680" title="Max Pain"></div>';
+    // Spot marker (prominent)
+    h+='<div style="position:absolute;left:calc('+_pmSpotPos+'% - 6px);top:50%;transform:translateY(-50%);width:12px;height:12px;background:#fff;border-radius:50%;border:2px solid '+(direction==='BULLISH'?'#059669':'#ef4444')+';box-shadow:0 0 8px '+(direction==='BULLISH'?'#05966980':'#ef444480')+'"></div>';
+    h+='</div>';
+    
+    // Legend
+    h+='<div style="display:flex;justify-content:center;gap:12px;margin:6px 0;flex-wrap:wrap">';
+    h+='<span style="font-size:7px;color:#059669">● Put Wall</span>';
+    h+='<span style="font-size:7px;color:#3b82f6">│ VWAP</span>';
+    if(_pmPOC>0)h+='<span style="font-size:7px;color:#f59e0b">█ POC</span>';
+    if(_pmMaxPain>0)h+='<span style="font-size:7px;color:#a855f7">│ Max Pain</span>';
+    h+='<span style="font-size:7px;color:#ef4444">● Call Wall</span>';
+    h+='<span style="font-size:7px;color:#fff">◉ Spot</span>';
+    h+='</div>';
+    
+    // Key levels grid
+    h+='<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin:8px 0">';
+    h+='<div style="text-align:center;padding:6px;border-radius:8px;background:#05966410;border:1px solid #05966420"><div style="font-size:7px;color:#059669;font-weight:700">SUPPORT (Put Wall)</div><div style="font-size:13px;font-weight:900;color:#059669;font-family:JetBrains Mono">'+(_pmPutWall>0?S+_pmPutWall.toLocaleString():'—')+'</div><div style="font-size:7px;color:#059669">'+_pmDownsidePct.toFixed(1)+'% below</div></div>';
+    h+='<div style="text-align:center;padding:6px;border-radius:8px;background:#3b82f610;border:1px solid #3b82f620"><div style="font-size:7px;color:#3b82f6;font-weight:700">SPOT NOW</div><div style="font-size:13px;font-weight:900;color:#e2e8f0;font-family:JetBrains Mono">'+S+spot.toLocaleString()+'</div><div style="font-size:7px;color:'+_pmZoneColor+'">'+_pmZone+'</div></div>';
+    h+='<div style="text-align:center;padding:6px;border-radius:8px;background:#ef444410;border:1px solid #ef444420"><div style="font-size:7px;color:#ef4444;font-weight:700">RESISTANCE (Call Wall)</div><div style="font-size:13px;font-weight:900;color:#ef4444;font-family:JetBrains Mono">'+(_pmCallWall>0?S+_pmCallWall.toLocaleString():'—')+'</div><div style="font-size:7px;color:#ef4444">'+_pmUpsidePct.toFixed(1)+'% above</div></div>';
+    h+='</div>';
+    
+    // Reversal + Conviction row
+    h+='<div style="display:flex;justify-content:space-between;gap:8px;margin-top:6px">';
+    h+='<div style="flex:1;text-align:center;padding:6px;border-radius:8px;background:'+_pmReversalColor+'10;border:1px solid '+_pmReversalColor+'20"><div style="font-size:7px;color:'+_pmReversalColor+';font-weight:700">REVERSAL RISK</div><div style="font-size:11px;font-weight:900;color:'+_pmReversalColor+'">'+_pmReversalRisk+'</div></div>';
+    if(_pmPOC>0)h+='<div style="flex:1;text-align:center;padding:6px;border-radius:8px;background:#f59e0b10;border:1px solid #f59e0b20"><div style="font-size:7px;color:#f59e0b;font-weight:700">MAX VOLUME (POC)</div><div style="font-size:11px;font-weight:900;color:#f59e0b;font-family:JetBrains Mono">'+S+_pmPOC.toLocaleString()+'</div></div>';
+    if(_pmMaxPain>0)h+='<div style="flex:1;text-align:center;padding:6px;border-radius:8px;background:#a855f710;border:1px solid #a855f720"><div style="font-size:7px;color:#a855f7;font-weight:700">MAX PAIN</div><div style="font-size:11px;font-weight:900;color:#a855f7;font-family:JetBrains Mono">'+S+_pmMaxPain.toLocaleString()+'</div></div>';
+    h+='<div style="flex:1;text-align:center;padding:6px;border-radius:8px;background:'+_pmConvColor+'10;border:1px solid '+_pmConvColor+'20"><div style="font-size:7px;color:'+_pmConvColor+';font-weight:700">CONVICTION</div><div style="font-size:11px;font-weight:900;color:'+_pmConvColor+'">'+_pmConviction+'</div><div style="font-size:7px;color:#64748b">'+_pmLots+'</div></div>';
+    h+='</div>';
+    
+    // Plain English summary — layman trader language
+    var _pmSummary='';
+    var _pmUpsideFmt=S+_pmUpside.toLocaleString();
+    var _pmDownsideFmt=S+_pmDownside.toLocaleString();
+    var _pmSpotFmt=S+spot.toLocaleString();
+    
+    if(direction==='BULLISH'){
+      if(_pmNearCeiling){
+        _pmSummary='⚠️ Price '+_pmSpotFmt+' is very close to the ceiling at '+_pmUpsideFmt+'. Big players have sold heavily at this level — price usually bounces back down from here. If you already bought, consider taking your profit now.';
+      }else if(_pmReversalRisk==='MODERATE'){
+        _pmSummary='Price '+_pmSpotFmt+' is moving up but getting close to a strong selling zone at '+_pmUpsideFmt+'. You can still enter but keep a tight stop loss. Your downside protection is at '+_pmDownsideFmt+' — big buyers are defending that level.';
+      }else{
+        _pmSummary='Price '+_pmSpotFmt+' has room to go up to '+_pmUpsideFmt+' ('+_pmUpsidePct.toFixed(1)+'% potential profit). If something goes wrong, big buyers are protecting '+_pmDownsideFmt+' — that is your safety net. '+(
+          _pmConviction==='HIGH'?'This is a strong setup — you can take a bigger position.':
+          _pmConviction==='STRONG'?'Good setup — normal position size.':
+          'Decent setup — start small, add if it moves in your favor.'
+        );
+      }
+    }else if(direction==='BEARISH'){
+      if(_pmNearFloor){
+        _pmSummary='⚠️ Price '+_pmSpotFmt+' is very close to a strong buying zone at '+_pmDownsideFmt+'. Big players are defending this level — price usually bounces back up from here. If you already have puts, consider taking profit.';
+      }else if(_pmReversalRisk==='MODERATE'){
+        _pmSummary='Price '+_pmSpotFmt+' is falling but approaching a buying zone at '+_pmDownsideFmt+'. You can still enter puts but watch for a bounce. Resistance above at '+_pmUpsideFmt+' caps any recovery.';
+      }else{
+        _pmSummary='Price '+_pmSpotFmt+' is falling and can drop to '+_pmDownsideFmt+' ('+_pmDownsidePct.toFixed(1)+'% potential profit on puts). Sellers are in control. Resistance at '+_pmUpsideFmt+' blocks any bounce attempt. '+(
+          _pmConviction==='HIGH'?'Strong bearish setup — you can take a bigger position.':
+          _pmConviction==='STRONG'?'Good bearish setup — normal position size.':
+          'Moderate setup — keep position small.'
+        );
+      }
+    }else{
+      _pmSummary='Price '+_pmSpotFmt+' is stuck between '+_pmDownsideFmt+' and '+_pmUpsideFmt+'. No clear direction right now. Wait for price to break above '+_pmUpsideFmt+' (bullish) or below '+_pmDownsideFmt+' (bearish) before entering.';
+    }
+    h+='<div style="font-size:9px;color:#94a3b8;margin-top:8px;line-height:1.6">'+_pmSummary+'</div>';
+    h+='</div>';
+  }
+  
   if(!window._qtBatchMode){
     var _bnLocked2=window._lockedSignals&&window._lockedSignals[sym];
     if(_bnLocked2){
@@ -5728,9 +5957,8 @@ _renderQuickTrade=function(d,sym){
   
   var spot=d.spot||0,vwap=d.vwap||0;
   var ceRes=d.ce_resistance||[],peSupp=d.pe_support||[];
-  var oiBias2=(peSupp.length>0?peSupp[0].oi:0)>(ceRes.length>0?ceRes[0].oi:0)?'BULLISH':'BEARISH';
-  var priceBias2=spot>vwap?'BULLISH':'BEARISH';
-  var bias2=oiBias2===priceBias2?oiBias2:'NO TRADE';
+  // Use the MAIN ENGINE's direction — don't compute independent bias
+  var bias2=window._qtFinalBias||'NO TRADE';
   
   // Build coaching
   var coaching=window._buildCoachingExplanation(d,sym,bias2);
@@ -5799,7 +6027,7 @@ window._loadGammaMode=function(symbol){
   fetch('/api/options-quick?symbol='+encodeURIComponent(sym)+'&region=IN')
     .then(function(r){return r.json()})
     .then(function(d){
-      if(!d||!d.success){el.innerHTML='<div style="text-align:center;padding:40px;background:#0A0F1C;border-radius:20px"><div style="font-size:16px;color:#ef4444;font-weight:900">Failed to load</div><button onclick="window._loadGammaMode(\''+sym+'\')" style="margin-top:12px;padding:10px 24px;border-radius:10px;background:#f59e0b;color:#000;border:none;font-size:12px;font-weight:800;cursor:pointer">Retry</button></div>';return}
+      if(!d||!d.success){el.innerHTML='<div style="text-align:center;padding:40px;background:#0A0F1C;border-radius:20px"><div style="font-size:16px;color:#ef4444;font-weight:900">Failed to load</div><button onclick="window._loadGammaMode(\''+sym+'\')" style="margin-top:12px;padding:10px 24px;border-radius:10px;background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;border:none;font-size:12px;font-weight:800;cursor:pointer">Retry</button></div>';return}
       _renderUltraSimple(d,sym);
       // Auto-refresh every 30 seconds
       window._ultraRefreshTimer=setInterval(function(){
@@ -6434,10 +6662,10 @@ window._loadOptionsUniversal=function(symbol,region){
         if(shouldOpen2){
           window._apiRetryCount=(window._apiRetryCount||0)+1;
           if(window._apiRetryCount<=3){
-            el.innerHTML='<div style="text-align:center;padding:40px;background:#0A0F1C;border-radius:16px"><div style="display:inline-block;width:30px;height:30px;border:3px solid #f59e0b;border-top-color:transparent;border-radius:50%;animation:spin 1s linear infinite;margin-bottom:12px"></div><div style="font-size:16px;font-weight:900;color:#e2e8f0">Fetching '+sym+' data...</div><div style="font-size:10px;color:#94a3b8;margin-top:8px">Attempt '+window._apiRetryCount+' of 3. Auto-retrying in 15 sec...</div><button onclick="window._loadOptionsUniversal(\''+sym+'\',\''+reg+'\')" style="margin-top:12px;padding:8px 20px;border-radius:8px;background:#f59e0b;color:#000;border:none;cursor:pointer;font-size:11px;font-weight:800">🔄 Retry Now</button></div>';
+            el.innerHTML='<div style="text-align:center;padding:40px;background:#0A0F1C;border-radius:16px"><div style="display:inline-block;width:30px;height:30px;border:3px solid #f59e0b;border-top-color:transparent;border-radius:50%;animation:spin 1s linear infinite;margin-bottom:12px"></div><div style="font-size:16px;font-weight:900;color:#e2e8f0">Fetching '+sym+' data...</div><div style="font-size:10px;color:#94a3b8;margin-top:8px">Attempt '+window._apiRetryCount+' of 3. Auto-retrying in 15 sec...</div><button onclick="window._loadOptionsUniversal(\''+sym+'\',\''+reg+'\')" style="margin-top:12px;padding:8px 20px;border-radius:8px;background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;border:none;cursor:pointer;font-size:11px;font-weight:800">🔄 Retry Now</button></div>';
             window._apiRetryTimer=setTimeout(function(){if(window._activeOptionsSym===sym)window._loadOptionsUniversal(sym,reg)},15000);
           }else{
-            el.innerHTML='<div style="text-align:center;padding:40px;background:#0A0F1C;border-radius:16px"><div style="font-size:48px;margin-bottom:12px">⚠️</div><div style="font-size:16px;color:#d97706;font-weight:900">Data Temporarily Unavailable</div><div style="font-size:10px;color:#94a3b8;margin-top:8px">API not responding. Try again in 1-2 minutes.</div><button onclick="window._apiRetryCount=0;window._loadOptionsUniversal(\''+sym+'\',\''+reg+'\')" style="margin-top:12px;padding:10px 24px;border-radius:8px;background:#f59e0b;color:#000;border:none;cursor:pointer;font-size:12px;font-weight:800">🔄 Try Again</button></div>';
+            el.innerHTML='<div style="text-align:center;padding:40px;background:#0A0F1C;border-radius:16px"><div style="font-size:48px;margin-bottom:12px">⚠️</div><div style="font-size:16px;color:#d97706;font-weight:900">Data Temporarily Unavailable</div><div style="font-size:10px;color:#94a3b8;margin-top:8px">API not responding. Try again in 1-2 minutes.</div><button onclick="window._apiRetryCount=0;window._loadOptionsUniversal(\''+sym+'\',\''+reg+'\')" style="margin-top:12px;padding:10px 24px;border-radius:8px;background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;border:none;cursor:pointer;font-size:12px;font-weight:800">🔄 Try Again</button></div>';
           }
         }else{
           el.innerHTML='<div style="text-align:center;padding:40px;background:#0A0F1C;border-radius:16px"><div style="font-size:48px;margin-bottom:12px">🕐</div><div style="font-size:16px;color:#ef4444;font-weight:900">No options data for '+sym+'</div><div style="font-size:10px;color:#94a3b8;margin-top:8px">'+(reg==='US'?'US market hours: 9:30 AM – 4:00 PM ET':'NSE hours: 9:15 AM – 3:30 PM IST')+'</div><button onclick="window._loadOptionsUniversal(\''+sym+'\',\''+reg+'\')" style="margin-top:12px;padding:8px 20px;border-radius:8px;background:#3b82f6;color:#fff;border:none;cursor:pointer;font-size:11px;font-weight:700">🔄 Retry</button></div>';
@@ -8644,10 +8872,17 @@ window._scanBottomNav=function(){
           if(slPct>=2){thesisBreak=true;breakReason='Stop loss zone — '+slPct.toFixed(1)+'% against entry'}
           
           if(thesisBreak){
-            // ─── INVALIDATE: Remove signal, block re-entry ───
+            // ─── INVALIDATE: Archive signal (visible for 5 min), block re-entry ───
             _invalidated[sym]=true;
+            existing._status='ARCHIVED';
+            existing._statusMsg='Invalidated — '+breakReason;
+            existing._archivedAt=_now;
+            existing._fading=true;
             delete _locked[sym];
-            // Don't add to _newResults — signal disappears
+            // Show archived signal for 5 minutes then remove
+            if(!existing._archivedAt||(_now-existing._archivedAt)<300000){
+              _newResults[sym]=existing;
+            }
             return;
           }
           
@@ -8824,21 +9059,20 @@ window._renderBottomNav=function(){
     
     // Status-based styling
     var status=r._status||'WATCH';
-    var isLocked=status==='LOCKED'||status==='MAINTAIN';
-    var isWarning=status==='WARNING';
+    var isLocked=status==='LOCKED'||status==='MAINTAIN'||status==='WARNING';
     var isEOD=status==='EOD_EXIT';
     var isWatch=r._isWatch||false;
+    var isArchived=status==='ARCHIVED';
     
-    // Border: locked=solid green/red, maintain=solid, warning=dashed yellow, eod=dashed orange, watch=dashed gray
-    var borderCol=isLocked?col:isWarning?'#d97706':isEOD?'#f59e0b':isWatch?'#64748b':col;
-    var borderStyle=isLocked?'2px solid '+borderCol:isWarning||isEOD?'2px dashed '+borderCol:isWatch?'2px dashed #64748b':'2px solid '+borderCol;
+    // Bottom nav pill: 🔒 LOCKED for active, ❌ ARCHIVED for invalidated, 🕐 EXIT for EOD
+    var pillIcon=isArchived?'❌':isEOD?'🕐':isWatch?'👁':'🔒';
+    var pillLabel=isArchived?'EXIT':isEOD?'EXIT':isWatch?'WATCH':'LOCKED';
+    var pillCol=isArchived?'#ef4444':isLocked?col:isEOD?'#f59e0b':'#64748b';
+    
+    var borderCol=isLocked?col:isEOD?'#f59e0b':isWatch?'#64748b':col;
+    var borderStyle=isLocked?'2px solid '+borderCol:isEOD?'2px dashed '+borderCol:isWatch?'2px dashed #64748b':'2px solid '+borderCol;
     var pulse=isLocked?';animation:pulse 2s infinite':'';
-    var fadingOpacity=isWarning?';opacity:0.7':isEOD?';opacity:0.6':'';
-    
-    // Status icon: locked=🔒, maintain=✅, warning=⚠️, eod=🕐, watch=👁
-    var statusIcon=isLocked?'\u{1f512}':status==='MAINTAIN'?'\u2705':isWarning?'\u26a0\ufe0f':isEOD?'\u{1f550}':'\u{1f441}';
-    var statusLabel=isLocked?'LOCKED':status==='MAINTAIN'?'HOLDING':isWarning?'WARNING':isEOD?'EXIT':isWatch?'WATCH':'';
-    var statusCol=isLocked?'#059669':status==='MAINTAIN'?'#3b82f6':isWarning?'#d97706':isEOD?'#f59e0b':'#64748b';
+    var fadingOpacity=isEOD?';opacity:0.6':'';
     
     // Asset type badge
     var at=r._assetType||'STK';
@@ -8850,7 +9084,7 @@ window._renderBottomNav=function(){
     h+='<span style="font-size:11px;font-weight:900;color:#e2e8f0;font-family:Sora">'+r.label+'</span>';
     h+='</div>';
     h+='<div style="font-size:9px;font-weight:800;color:'+col+'">'+r.action+' '+arrow+'</div>';
-    h+='<div style="font-size:7px;font-weight:700;color:'+statusCol+'">'+statusIcon+' '+statusLabel+'</div>';
+    h+='<div style="font-size:7px;font-weight:700;color:'+pillCol+'">'+pillIcon+' '+pillLabel+'</div>';
     h+='</div>';
   });
   
@@ -8864,10 +9098,13 @@ window._renderBottomNav=function(){
   var eodResults=results.filter(function(r){return r._status==='EOD_EXIT'});
   var allLocked=results.filter(function(r){return r._status==='LOCKED'||r._status==='MAINTAIN'});
   
-  // Voice 1: New signal locked (first time only)
+  // Voice 1: New signal locked — first time only
   if(lockedResults.length>0){
-    var newSigs=lockedResults.map(function(r){return r.sym+' '+(r.action==='BUY CALL'?'bullish':'bearish')});
-    var msg='Signal locked. '+newSigs.join(', ')+'. Confidence '+lockedResults[0].conf+' percent. Trade remains valid unless thesis breaks.';
+    var newSigs=lockedResults.map(function(r){
+      var dir=r.action==='BUY CALL'?'going up':'going down';
+      return r.sym+' is '+dir;
+    });
+    var msg='New trade found! '+newSigs.join('. ')+'. Confidence '+lockedResults[0].conf+' percent. This trade is now locked. You can enter. I will watch it for you and alert you if anything changes.';
     var sigKey=lockedResults.map(function(r){return r.sym+r.action}).join(',');
     if(sigKey!==window._lastBottomNavSigKey){
       window._lastBottomNavSigKey=sigKey;
@@ -8876,19 +9113,39 @@ window._renderBottomNav=function(){
     lockedResults.forEach(function(r){r._voiced=true});
   }
   
-  // Voice 2: Warning — score dropping
+  // Voice 2: Warning — trade weakening
   if(warningResults.length>0&&!window._warningVoiced){
     window._warningVoiced=true;
-    var warnMsg=warningResults.map(function(r){return r.sym}).join(', ')+' signal weakening. Monitoring mode active. No action required yet.';
-    window._speak(warnMsg,false);
+    var warnNames=warningResults.map(function(r){return r.sym}).join(' and ');
+    window._speak('Heads up. '+warnNames+' trade is weakening. Do not panic — just watch it closely. If I say exit, then exit. For now, hold your position.',false);
   }else if(warningResults.length===0){
     window._warningVoiced=false;
   }
   
-  // Voice 3: EOD exit reminder
+  // Voice 3: EOD — close everything
   if(eodResults.length>0&&!window._eodVoiced){
     window._eodVoiced=true;
-    window._speak('Market closing in 30 minutes. '+eodResults.length+' active trade'+(eodResults.length>1?'s':'')+'. Close all positions before market close.',true);
+    window._speak('Market closing in 30 minutes. You have '+eodResults.length+' open trade'+(eodResults.length>1?'s':'')+'. Close all positions now. Do not carry overnight.',true);
+  }
+  
+  // Voice 4: Thesis break — exit immediately
+  var archivedResults=results.filter(function(r){return r._status==='ARCHIVED'&&!r._invalidVoiced});
+  if(archivedResults.length>0){
+    archivedResults.forEach(function(r){
+      var reason=r._statusMsg||'conditions changed';
+      window._speak(r.sym+' trade is over. Exit your position now. Reason: '+reason+'. Do not hold — the setup has broken.',true);
+      r._invalidVoiced=true;
+    });
+  }
+  
+  // Voice 5: All good — periodic reassurance (every 5 min)
+  if(allLocked.length>0){
+    var timeSinceLast=Date.now()-(window._lastStableVoice||0);
+    if(timeSinceLast>300000){
+      window._lastStableVoice=Date.now();
+      var tradeNames=allLocked.slice(0,3).map(function(r){return r.sym}).join(', ');
+      window._speak('Your trade'+(allLocked.length>1?'s are':' is')+' looking good. '+tradeNames+(allLocked.length>3?' and '+(allLocked.length-3)+' more':'')+'. Everything is on track. No action needed from you.',false);
+    }
   }
 };
 
