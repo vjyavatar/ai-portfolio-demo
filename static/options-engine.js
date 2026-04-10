@@ -6438,6 +6438,13 @@ window._loadSmartOptions=function(ticker){
   
   var sym=ticker||catData.tickers[0];
   
+  // Rescan bottom nav when region changes
+  if(window._bottomNavActive&&window._lastBottomNavReg!==reg){
+    window._lastBottomNavReg=reg;
+    window._bottomNavResults={}; // Clear old region data
+    setTimeout(function(){window._scanBottomNav()},1000);
+  }
+  
   // India index → use Quick Trade (NSE real-time)
   if(reg==='IN'&&cat==='index'){
     // Auto-select expiry index
@@ -8167,19 +8174,19 @@ window._startBottomNav=function(){
   if(!bar){
     bar=document.createElement('div');
     bar.id='celesysBottomNav';
-    bar.style.cssText='position:fixed;top:0;left:0;right:0;z-index:9999;background:linear-gradient(180deg,#0A0F1C,#0A0F1Cee);backdrop-filter:blur(12px);border-bottom:1px solid #1e293b;padding:6px 8px;display:none;transition:transform .3s ease;box-shadow:0 4px 20px rgba(0,0,0,0.3)';
+    bar.style.cssText='position:fixed;bottom:0;left:0;right:0;z-index:9998;background:linear-gradient(180deg,#0A0F1Cee,#0A0F1C);backdrop-filter:blur(12px);border-top:1px solid #1e293b;padding:6px 8px;display:none;transition:transform .3s ease;box-shadow:0 -4px 20px rgba(0,0,0,0.3)';
     document.body.appendChild(bar);
   }
   
   // Run first scan immediately
   window._scanBottomNav();
   
-  // Then every 45 seconds
+  // Then every 90 seconds (was 45s — too aggressive for 47+ tickers)
   if(window._bottomNavTimer)clearInterval(window._bottomNavTimer);
   window._bottomNavTimer=setInterval(function(){
     if(window._deMode==='options')window._scanBottomNav();
     else window._hideBottomNav();
-  },45000);
+  },90000);
 };
 
 window._stopBottomNav=function(){
@@ -8195,16 +8202,28 @@ window._hideBottomNav=function(){
 
 window._scanBottomNav=function(){
   var reg=window._optionsRegion||'IN';
+  // ONLY scan current region — no cross-region (performance fix)
   var tickers=window._bottomNavTickers[reg]||window._bottomNavTickers.IN;
-  // Also include the other region's top 2
-  var otherReg=reg==='IN'?'US':'IN';
-  var otherTickers=(window._bottomNavTickers[otherReg]||[]).slice(0,2);
-  var allTickers=tickers.concat(otherTickers);
   
-  var done=0;var total=allTickers.length;
+  // Clear previous results for this region
+  var oldKeys=Object.keys(window._bottomNavResults);
+  oldKeys.forEach(function(k){
+    var r=window._bottomNavResults[k];
+    if(r&&r.reg!==reg)delete window._bottomNavResults[k]; // Remove other region's stale results
+  });
   
-  allTickers.forEach(function(tk,i){
-    setTimeout(function(){
+  var done=0;var total=tickers.length;
+  
+  // PARALLEL BATCHES of 5 — much faster than sequential 1.5s stagger
+  var BATCH_SIZE=5;
+  var BATCH_DELAY=2000; // 2s between batches (not between individual tickers)
+  
+  function scanBatch(startIdx){
+    var batch=tickers.slice(startIdx,startIdx+BATCH_SIZE);
+    if(batch.length===0)return;
+    
+    // Fire all in this batch simultaneously (parallel)
+    batch.forEach(function(tk){
       fetch('/api/options-quick?symbol='+encodeURIComponent(tk.sym)+'&region='+encodeURIComponent(tk.reg))
         .then(function(r){return r.json()})
         .then(function(d){
@@ -8215,11 +8234,20 @@ window._scanBottomNav=function(){
             result.reg=tk.reg;result.label=tk.label;
             window._bottomNavResults[tk.sym]=result;
           }
-          if(done>=total)window._renderBottomNav();
+          // Progressive render — update bar as results come in
+          if(done%BATCH_SIZE===0||done>=total)window._renderBottomNav();
         })
         .catch(function(){done++;if(done>=total)window._renderBottomNav()});
-    },i*1500); // 1.5s stagger to avoid Yahoo rate limits
-  });
+    });
+    
+    // Schedule next batch
+    if(startIdx+BATCH_SIZE<tickers.length){
+      setTimeout(function(){scanBatch(startIdx+BATCH_SIZE)},BATCH_DELAY);
+    }
+  }
+  
+  // Start first batch immediately
+  scanBatch(0);
 };
 
 window._renderBottomNav=function(){
