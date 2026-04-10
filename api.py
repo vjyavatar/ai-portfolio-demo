@@ -4683,51 +4683,138 @@ async def stock_quick(ticker: str = ""):
 _participant_oi_cache = {"data": None, "time": 0}
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# BOTTOM NAV — Background scan thread + instant cache endpoint
-# Server scans on boot in background. Frontend reads cache = 0ms wait.
+# BOTTOM NAV — Parallel real scoring via ThreadPoolExecutor + cache
+# Each ticker gets REAL options-quick data + REAL unified score. No faking.
 # ═══════════════════════════════════════════════════════════════════════════════
 _bottom_nav_cache = {"IN": {"data": None, "time": 0}, "US": {"data": None, "time": 0}}
 _bottom_nav_busy = set()
 
+def _score_one_ticker(sym, reg):
+    """Score ONE ticker using real options-quick pipeline. Runs in thread."""
+    try:
+        import asyncio
+        loop = asyncio.new_event_loop()
+        d = loop.run_until_complete(_options_quick_impl(sym, reg))
+        loop.close()
+        if not d or not d.get("success") or d.get("spot", 0) <= 0:
+            return None
+        spot = d.get("spot", 0)
+        bars = d.get("ohlc_bars", [])
+        chain = d.get("chain_near_atm", [])
+        pcr = d.get("pcr", 0); vix = d.get("vix", 18)
+        vwap = d.get("vwap", spot)
+        dH = d.get("today_high", spot); dL = d.get("today_low", spot)
+        gex_regime = (d.get("gex") or {}).get("regime", "NEUTRAL")
+        is_fb = d.get("_fallback", False)
+        # Momentum
+        momUp = sum(1 for b in bars[-5:] if b.get("c",0) > b.get("o",0))
+        momDn = sum(1 for b in bars[-5:] if b.get("c",0) < b.get("o",0))
+        totalVol = sum(b.get("v",0) for b in bars)
+        avgVol = totalVol / max(len(bars), 1) if len(bars) > 3 else 0
+        recentVol = sum(b.get("v",0) for b in bars[-3:]) / 3 if bars else 0
+        volRatio = recentVol / max(avgVol, 1) if avgVol > 0 else 0
+        hasVolData = totalVol > 0 and avgVol > 0
+        isBreakUp = spot >= dH * 0.998 and spot > vwap
+        isBreakDn = spot <= dL * 1.002 and spot < vwap
+        hasOI = not is_fb and len(chain) > 0
+        callW = sum(c.get("ce_oi",0) for c in chain)
+        putW = sum(c.get("pe_oi",0) for c in chain)
+        direction = "NONE"
+        if isBreakUp and momUp >= 3: direction = "BULLISH"
+        elif isBreakDn and momDn >= 3: direction = "BEARISH"
+        elif momUp >= 4 and spot > vwap: direction = "BULLISH"
+        elif momDn >= 4 and spot < vwap: direction = "BEARISH"
+        oiConfirms = True if is_fb else (putW > callW if direction == "BULLISH" else callW > putW)
+        # Scores
+        priceScore = 85 if (isBreakUp or isBreakDn) else 20
+        volScore = min(100, max(0, volRatio * 60)) if hasVolData else 50
+        vwapScore = 90 if ((spot>vwap and isBreakUp) or (spot<vwap and isBreakDn)) else (60 if spot>vwap else 40)
+        momScore = 80 if (momUp>=4 or momDn>=4) else (60 if (momUp>=3 or momDn>=3) else 30)
+        liqScore = 80 if len(chain)>=5 else (60 if chain else 30)
+        ctxScore = 85 if 12<=vix<=22 else (65 if 10<=vix<=28 else (25 if vix>35 else 40))
+        oiScore = 50
+        if hasOI and pcr>1.2 and direction=="BULLISH": oiScore=75
+        elif hasOI and pcr<0.8 and direction=="BEARISH": oiScore=75
+        gammaScore = 70 if gex_regime=="NEGATIVE" else 40
+        hasChain = len(chain)>0 and not is_fb
+        w = {"p":15,"v":15,"vw":10,"m":10,"l":15,"c":10,"o":10,"g":15} if hasChain else {"p":25,"v":20,"vw":5,"m":15,"l":5,"c":15,"o":10,"g":5}
+        conf = round(priceScore*w["p"]/100+volScore*w["v"]/100+vwapScore*w["vw"]/100+momScore*w["m"]/100+liqScore*w["l"]/100+ctxScore*w["c"]/100+oiScore*w["o"]/100+gammaScore*w["g"]/100)
+        conf = min(100, max(0, conf))
+        if hasVolData and volScore<40: conf = min(conf, 60)
+        if not oiConfirms and hasOI: conf = min(conf, 65)
+        # Fake signal
+        fk = 0
+        if (isBreakUp or isBreakDn) and hasVolData and volScore<40: fk+=25
+        if bars:
+            lb=bars[-1]; bd=abs(lb.get("c",0)-lb.get("o",0))
+            if direction=="BULLISH" and lb.get("h",0)-max(lb.get("c",0),lb.get("o",0))>bd*2: fk+=20
+            if direction=="BEARISH" and min(lb.get("c",0),lb.get("o",0))-lb.get("l",0)>bd*2: fk+=20
+        if (direction=="BULLISH" and spot<vwap*0.998) or (direction=="BEARISH" and spot>vwap*1.002): fk+=15
+        if hasOI and not oiConfirms: fk+=10
+        fk = min(100, fk)
+        # Confirmations
+        cn = 0
+        if isBreakUp or isBreakDn: cn+=1
+        if hasVolData and volRatio>=1.5: cn+=1
+        if (direction=="BULLISH" and spot>vwap) or (direction=="BEARISH" and spot<vwap): cn+=1
+        if oiConfirms and hasOI: cn+=1
+        if 12<=vix<=25: cn+=1
+        buyV=sum(b.get("v",0) for b in bars if b.get("c",0)>=b.get("o",0))
+        sellV=sum(b.get("v",0) for b in bars if b.get("c",0)<b.get("o",0))
+        delta2=abs(buyV-sellV)/max(buyV+sellV,1)*100
+        if ((direction=="BULLISH" and buyV>sellV*1.2) or (direction=="BEARISH" and sellV>buyV*1.2)) and delta2>15: cn+=1
+        # Red flags
+        rf = 0
+        if vix>25: rf+=1
+        if fk>40: rf+=1
+        if len(chain)<5: rf+=1
+        if hasOI and not oiConfirms: rf+=1
+        # Bars
+        barOK = True
+        if len(bars)>=3:
+            bu=sum(1 for b in bars[-3:] if b.get("c",0)>b.get("o",0))
+            be=sum(1 for b in bars[-3:] if b.get("c",0)<b.get("o",0))
+            if direction=="BULLISH" and bu<2: barOK=False
+            if direction=="BEARISH" and be<2: barOK=False
+        # Grade
+        hardBlock = vix>35 or vix<8 or fk>60 or rf>=2 or (direction=="NONE" and conf<50)
+        if hardBlock: grade="C"
+        elif conf>=85 and cn>=4 and fk<=20 and rf<2 and liqScore>=70 and barOK: grade="A+"
+        elif conf>=70 and cn>=3 and fk<=40 and rf<2 and barOK: grade="A"
+        elif conf>=60 and cn>=2: grade="B"
+        else: grade="C"
+        action = "NO SETUP"
+        if grade in ("A+","A") and direction=="BULLISH": action="BUY CALL"
+        elif grade in ("A+","A") and direction=="BEARISH": action="BUY PUT"
+        elif grade in ("A","B") and direction!="NONE": action="WATCH"
+        return {"sym":sym,"spot":round(spot,2),"dir":direction,"conf":conf,"grade":grade,"action":action,"confirms":cn,"fakeScore":fk,"redFlags":rf,"volRatio":round(volRatio,2),"barConfirm":barOK}
+    except Exception as e:
+        return None
+
 def _run_bottom_nav_scan(reg):
-    """Runs in background thread — never blocks the main server."""
-    if reg in _bottom_nav_busy:
-        return
+    """Scans all tickers in PARALLEL using ThreadPoolExecutor."""
+    if reg in _bottom_nav_busy: return
     _bottom_nav_busy.add(reg)
     try:
-        import yfinance as yf
+        from concurrent.futures import ThreadPoolExecutor, as_completed
         tm = {
-            "IN": {"NIFTY":"^NSEI","BANKNIFTY":"^NSEBANK","SENSEX":"^BSESN","RELIANCE":"RELIANCE.NS","TCS":"TCS.NS","HDFCBANK":"HDFCBANK.NS","INFY":"INFY.NS","ICICIBANK":"ICICIBANK.NS","SBIN":"SBIN.NS","BAJFINANCE":"BAJFINANCE.NS","TATAMOTORS":"TATAMOTORS.NS","NIFTYBEES":"NIFTYBEES.NS","BANKBEES":"BANKBEES.NS","GOLDBEES":"GOLDBEES.NS"},
-            "US": {"SPY":"SPY","QQQ":"QQQ","IWM":"IWM","DIA":"DIA","TQQQ":"TQQQ","SOXL":"SOXL","SMH":"SMH","SOXX":"SOXX","XLK":"XLK","ARKK":"ARKK","GLD":"GLD","SLV":"SLV","GDX":"GDX","GDXJ":"GDXJ","IBIT":"IBIT","MSTR":"MSTR","XLE":"XLE","XLF":"XLF","XBI":"XBI","KBE":"KBE","EEM":"EEM","KWEB":"KWEB","TLT":"TLT","MTUM":"MTUM","AAPL":"AAPL","TSLA":"TSLA","NVDA":"NVDA","MSFT":"MSFT","META":"META","AMZN":"AMZN","AMD":"AMD","GOOGL":"GOOGL","COIN":"COIN","PLTR":"PLTR"}
+            "IN": ["NIFTY","BANKNIFTY","SENSEX","FINNIFTY","RELIANCE","TCS","HDFCBANK","INFY","ICICIBANK","SBIN","BAJFINANCE","TATAMOTORS","NIFTYBEES","BANKBEES","GOLDBEES"],
+            "US": ["SPY","QQQ","IWM","DIA","TQQQ","SOXL","SMH","SOXX","XLK","ARKK","GLD","SLV","GDX","GDXJ","IBIT","MSTR","XLE","XLF","XBI","KBE","EEM","KWEB","TLT","MTUM","AAPL","TSLA","NVDA","MSFT","META","AMZN","AMD","GOOGL","COIN","PLTR"]
         }
-        ticker_map = tm.get(reg, tm["IN"])
-        _yahoo_rate_wait()
-        data = yf.download(list(ticker_map.values()), period="2d", interval="1d", group_by="ticker", threads=True, progress=False)
+        tickers = tm.get(reg, tm["IN"])
+        print(f"[BOTTOM-NAV] 🔄 Scanning {len(tickers)} {reg} tickers (8 parallel threads)...")
         results = []
-        for sym, yf_sym in ticker_map.items():
-            try:
-                df = data[yf_sym] if yf_sym in data.columns.get_level_values(0) else None
-                if df is None or df.empty or len(df) < 1: continue
-                c = float(df['Close'].iloc[-1]) if not df['Close'].isna().iloc[-1] else 0
-                pc = float(df['Close'].iloc[-2]) if len(df)>=2 and not df['Close'].isna().iloc[-2] else c
-                h = float(df['High'].iloc[-1]) if not df['High'].isna().iloc[-1] else c
-                l = float(df['Low'].iloc[-1]) if not df['Low'].isna().iloc[-1] else c
-                v = int(df['Volume'].iloc[-1]) if 'Volume' in df.columns and not df['Volume'].isna().iloc[-1] else 0
-                pv = int(df['Volume'].iloc[-2]) if len(df)>=2 and 'Volume' in df.columns and not df['Volume'].isna().iloc[-2] else v
-                if c <= 0: continue
-                chg = round((c-pc)/max(pc,1)*100, 2)
-                vr = round(v/max(pv,1), 2)
-                dr = round((h-l)/max(c,1)*100, 2)
-                d2 = "BULLISH" if chg>0.5 else ("BEARISH" if chg<-0.5 else "NEUTRAL")
-                sc = 50 + (15 if abs(chg)>1 else 0) + (10 if vr>1.3 else 0) + (10 if dr>1 else 0) + (15 if c>=h*0.998 or c<=l*1.002 else 0)
-                sc = min(100, sc)
-                act = "BUY CALL" if d2=="BULLISH" and sc>=70 else ("BUY PUT" if d2=="BEARISH" and sc>=70 else "WATCH" if sc>=60 else "NONE")
-                results.append({"sym":sym,"spot":round(c,2),"chg":chg,"high":round(h,2),"low":round(l,2),"volRatio":vr,"range":dr,"dir":d2,"score":sc,"action":act})
-            except: continue
-        results.sort(key=lambda x: x["score"], reverse=True)
-        _bottom_nav_cache[reg] = {"data": {"success":True,"region":reg,"count":len(results),"tickers":results,"ts":time.time()}, "time": time.time()}
-        bc = len([r for r in results if r["action"] in ["BUY CALL","BUY PUT"]])
-        print(f"[BOTTOM-NAV] ✅ {reg}: {len(results)} tickers, {bc} buy signals")
+        with ThreadPoolExecutor(max_workers=8) as executor:
+            futures = {executor.submit(_score_one_ticker, s, reg): s for s in tickers}
+            for future in as_completed(futures, timeout=90):
+                try:
+                    r = future.result()
+                    if r: results.append(r)
+                except: pass
+        results.sort(key=lambda x: x.get("conf",0), reverse=True)
+        _bottom_nav_cache[reg] = {"data": {"success":True,"region":reg,"count":len(results),"tickers":results,"ts":time.time()}, "time":time.time()}
+        bc = len([r for r in results if r.get("action") in ("BUY CALL","BUY PUT")])
+        print(f"[BOTTOM-NAV] ✅ {reg}: {len(results)} scored, {bc} buy signals")
     except Exception as e:
         print(f"[BOTTOM-NAV] ❌ {reg}: {e}")
     finally:
@@ -4738,19 +4825,16 @@ async def bottom_nav_scan(region: str = "IN"):
     """INSTANT — returns cached data. Triggers background refresh if stale."""
     reg = region.upper()
     cache = _bottom_nav_cache.get(reg, {"data": None, "time": 0})
-    # Always return cache instantly (even if stale)
     if cache["data"]:
         if time.time() - cache["time"] > 120 and reg not in _bottom_nav_busy:
             import threading
             threading.Thread(target=_run_bottom_nav_scan, args=(reg,), daemon=True).start()
         return cache["data"]
-    # No cache yet — trigger scan, return empty now (frontend will retry in 90s)
     if reg not in _bottom_nav_busy:
         import threading
         threading.Thread(target=_run_bottom_nav_scan, args=(reg,), daemon=True).start()
     return {"success": True, "region": reg, "count": 0, "tickers": [], "ts": 0}
 
-# Auto-scan both regions 15s after server boot (in background — never blocks startup)
 def _auto_scan_boot():
     import threading
     def _bg():

@@ -8203,7 +8203,6 @@ window._hideBottomNav=function(){
 window._scanBottomNav=function(){
   var reg=window._optionsRegion||'IN';
   
-  // Just read server cache — server scans in background, always instant
   fetch('/api/bottom-nav-scan?region='+reg)
     .then(function(r){return r.json()})
     .then(function(d){
@@ -8211,14 +8210,13 @@ window._scanBottomNav=function(){
       
       window._bottomNavResults={};
       d.tickers.forEach(function(t){
-        if(t.action==='BUY CALL'||t.action==='BUY PUT'){
+        // Only show A+/A BUY signals — REAL grades from server
+        if((t.grade==='A+'||t.grade==='A')&&(t.action==='BUY CALL'||t.action==='BUY PUT')){
           window._bottomNavResults[t.sym]={
             sym:t.sym,label:t.sym,reg:reg,spot:t.spot,
-            conf:t.score,grade:t.score>=85?'A+':t.score>=70?'A':'B',
-            action:t.action,dir:t.dir,
-            confirms:Math.round(t.score/20),fakeScore:0,
-            volRatio:t.volRatio,range:t.range,
-            redFlags:[],barConfirm:true
+            conf:t.conf,grade:t.grade,action:t.action,dir:t.dir,
+            confirms:t.confirms,fakeScore:t.fakeScore,
+            volRatio:t.volRatio,redFlags:t.redFlags||0,barConfirm:t.barConfirm
           };
         }
       });
@@ -8234,44 +8232,33 @@ window._renderBottomNav=function(){
   var results=Object.values(window._bottomNavResults);
   if(results.length===0){bar.style.display='none';return}
   
-  // ONLY show BUY CALL / BUY PUT signals (A/A+ grade)
-  var buySignals=results.filter(function(r){return(r.grade==='A+'||r.grade==='A')&&(r.action==='BUY CALL'||r.action==='BUY PUT')});
-  
-  // If no buy signals, hide the bar completely
-  if(buySignals.length===0){bar.style.display='none';return}
-  
-  // Sort: A+ first, then A, by confidence
-  buySignals.sort(function(a,b){return(a.grade==='A+'?0:1)-(b.grade==='A+'?0:1)||(b.conf-a.conf)});
+  results.sort(function(a,b){return(a.grade==='A+'?0:1)-(b.grade==='A+'?0:1)||(b.conf-a.conf)});
   
   var h='';
   h+='<div style="display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;padding:4px 0;align-items:center">';
   
-  // "BUY NOW" label
   h+='<div style="flex-shrink:0;padding:6px 12px;border-radius:10px;background:linear-gradient(135deg,#059669,#10b981);text-align:center">';
   h+='<div style="font-size:9px;font-weight:900;color:#fff;font-family:Sora;letter-spacing:1px">🔥 BUY NOW</div>';
-  h+='<div style="font-size:7px;color:#d1fae5">'+buySignals.length+' signal'+(buySignals.length>1?'s':'')+'</div>';
+  h+='<div style="font-size:7px;color:#d1fae5">'+results.length+' signal'+(results.length>1?'s':'')+'</div>';
   h+='</div>';
   
-  buySignals.forEach(function(r){
+  results.forEach(function(r){
     var col=r.action==='BUY CALL'?'#059669':'#ef4444';
-    var icon=r.action==='BUY CALL'?'🟢':'🔴';
     var arrow=r.action==='BUY CALL'?'↑':'↓';
     var flag=r.reg==='US'?'🇺🇸':'🇮🇳';
     var loadFn=r.reg==='IN'?"window._loadQuickTrade('"+r.sym+"')":"window._loadOptionsUniversal('"+r.sym+"','US')";
     
-    h+='<div onclick="'+loadFn+'" style="flex-shrink:0;padding:8px 14px;border-radius:12px;background:'+col+'15;border:2px solid '+col+'40;cursor:pointer;text-align:center;animation:pulse 2s infinite">';
-    h+='<div style="display:flex;align-items:center;gap:4px;justify-content:center">';
-    h+='<span style="font-size:8px">'+flag+'</span>';
-    h+='<span style="font-size:13px;font-weight:900;color:#fff;font-family:Sora">'+r.label+'</span>';
-    h+='<span style="font-size:10px">'+icon+'</span>';
+    h+='<div onclick="'+loadFn+'" style="flex-shrink:0;padding:8px 12px;border-radius:12px;background:'+col+'12;border:1px solid '+col+'30;cursor:pointer;text-align:center;animation:pulse 2s infinite">';
+    h+='<div style="display:flex;align-items:center;gap:3px;justify-content:center">';
+    h+='<span style="font-size:7px">'+flag+'</span>';
+    h+='<span style="font-size:12px;font-weight:900;color:#e2e8f0;font-family:Sora">'+r.label+'</span>';
     h+='</div>';
-    h+='<div style="font-size:10px;font-weight:900;color:'+col+'">'+r.action+' '+arrow+'</div>';
+    h+='<div style="font-size:10px;font-weight:800;color:'+col+'">'+r.action+' '+arrow+'</div>';
     h+='<div style="font-size:8px;color:#94a3b8">'+r.grade+' · '+r.conf+'% · '+r.confirms+'/6</div>';
     h+='</div>';
   });
   
   h+='</div>';
-  
   bar.innerHTML=h;
   bar.style.display='block';
   
