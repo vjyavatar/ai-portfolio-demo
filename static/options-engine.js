@@ -8141,11 +8141,13 @@ console.log('[UNIFIED] ✅ Shared scoring function loaded — ALL scanners use s
 
 window._bottomNavTickers={
   IN:[
-    // Indices
-    {sym:'NIFTY',label:'NIFTY',reg:'IN'},
-    {sym:'BANKNIFTY',label:'BNIFTY',reg:'IN'},
-    {sym:'SENSEX',label:'SENSEX',reg:'IN'},
-    {sym:'FINNIFTY',label:'FINNFTY',reg:'IN'},
+    // Indices — ALL Indian indices (always scanned, priority display)
+    {sym:'NIFTY',label:'NIFTY',reg:'IN',isIndex:true},
+    {sym:'BANKNIFTY',label:'BANKNIFTY',reg:'IN',isIndex:true},
+    {sym:'SENSEX',label:'SENSEX',reg:'IN',isIndex:true},
+    {sym:'FINNIFTY',label:'FINNIFTY',reg:'IN',isIndex:true},
+    {sym:'MIDCPNIFTY',label:'MIDCPNIFTY',reg:'IN',isIndex:true},
+    {sym:'NIFTYIT',label:'NIFTYIT',reg:'IN',isIndex:true},
     // Top Stocks
     {sym:'RELIANCE',label:'RELIANCE',reg:'IN'},
     {sym:'TCS',label:'TCS',reg:'IN'},
@@ -8272,14 +8274,25 @@ window._scanBottomNav=function(){
       if(!d||!d.success||!d.tickers){window._hideBottomNav();return}
       
       window._bottomNavResults={};
+      // Indian indices that should ALWAYS show if they have any tradeable signal
+      var _alwaysShowIndices=['NIFTY','BANKNIFTY','SENSEX','FINNIFTY','MIDCPNIFTY','NIFTYIT'];
       d.tickers.forEach(function(t){
         if(!t||!t.success||!t.spot)return;
         // Score using THE SAME _unifiedScore function as Quick Trade
         t._region=reg;
         var scored=window._unifiedScore(t,t.sym);
-        // Only show A/A+ BUY signals
-        if((scored.grade==='A+'||scored.grade==='A')&&(scored.action==='BUY CALL'||scored.action==='BUY PUT')){
+        var isIndex=_alwaysShowIndices.indexOf(t.sym)>=0;
+        // A/A+ BUY signals always show; Indian indices also show at grade B with direction
+        var isActionable=(scored.grade==='A+'||scored.grade==='A')&&(scored.action==='BUY CALL'||scored.action==='BUY PUT');
+        var isIndexWatch=isIndex&&scored.grade==='B'&&scored.dir!=='NONE';
+        if(isActionable||isIndexWatch){
           scored.reg=reg;scored.label=t.sym;
+          scored._isIndex=isIndex;
+          if(isIndexWatch&&scored.action!=='BUY CALL'&&scored.action!=='BUY PUT'){
+            // Promote index B-grade to show action for visibility
+            scored.action=scored.dir==='BULLISH'?'BUY CALL':'BUY PUT';
+            scored._isWatch=true;
+          }
           window._bottomNavResults[t.sym]=scored;
         }
       });
@@ -8295,7 +8308,12 @@ window._renderBottomNav=function(){
   var results=Object.values(window._bottomNavResults);
   if(results.length===0){bar.style.display='none';return}
   
-  results.sort(function(a,b){return(a.grade==='A+'?0:1)-(b.grade==='A+'?0:1)||(b.conf-a.conf)});
+  results.sort(function(a,b){
+    // Indices first, then by grade, then by confidence
+    var ai=a._isIndex?0:1, bi=b._isIndex?0:1;
+    if(ai!==bi)return ai-bi;
+    return(a.grade==='A+'?0:a.grade==='A'?1:2)-(b.grade==='A+'?0:b.grade==='A'?1:2)||(b.conf-a.conf);
+  });
   
   var h='';
   h+='<div style="display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;padding:4px 0;align-items:center">';
@@ -8316,13 +8334,16 @@ window._renderBottomNav=function(){
     // Border color = entry timing (green=early, blue=ideal, yellow=late, red=fading)
     var borderCol=eCol;
     var pulse=eTiming==='EARLY'||eTiming==='IDEAL'?';animation:pulse 2s infinite':'';
+    // Watch items (B-grade indices) get dashed border
+    var borderStyle=r._isWatch?'2px dashed '+borderCol:'2px solid '+borderCol;
+    var actionLabel=r._isWatch?r.action+' ?':r.action;
     
-    h+='<div onclick="'+loadFn+'" style="flex-shrink:0;padding:6px 10px;border-radius:10px;background:'+col+'10;border:2px solid '+borderCol+';cursor:pointer;text-align:center'+pulse+'">';
+    h+='<div onclick="'+loadFn+'" style="flex-shrink:0;padding:6px 10px;border-radius:10px;background:'+col+'10;border:'+borderStyle+';cursor:pointer;text-align:center'+pulse+'">';
     h+='<div style="display:flex;align-items:center;gap:3px;justify-content:center">';
     h+='<span style="font-size:7px">'+flag+'</span>';
     h+='<span style="font-size:11px;font-weight:900;color:#e2e8f0;font-family:Sora">'+r.label+'</span>';
     h+='</div>';
-    h+='<div style="font-size:9px;font-weight:800;color:'+col+'">'+r.action+' '+arrow+'</div>';
+    h+='<div style="font-size:9px;font-weight:800;color:'+col+'">'+actionLabel+' '+arrow+'</div>';
     h+='<div style="font-size:7px;color:#94a3b8">'+r.grade+' \u00b7 '+r.conf+'%</div>';
     h+='<div style="font-size:7px;font-weight:700;color:'+eCol+'">'+eDot+' '+eTiming+'</div>';
     h+='</div>';
@@ -8333,6 +8354,7 @@ window._renderBottomNav=function(){
   bar.style.display='block';
   
   // Voice announcement for new A+ trades
+  var buyCount=results.filter(function(r){return(r.action==='BUY CALL'||r.action==='BUY PUT')&&!r._isWatch}).length;
   if(buyCount>0&&!window._bottomNavVoicedThisCycle){
     window._bottomNavVoicedThisCycle=true;
     var buyTickers=results.filter(function(r){return r.action==='BUY CALL'||r.action==='BUY PUT'});

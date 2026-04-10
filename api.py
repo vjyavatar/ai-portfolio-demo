@@ -4728,7 +4728,7 @@ def _run_bottom_nav_scan(reg):
         from concurrent.futures import ThreadPoolExecutor, as_completed
         t1 = time.time()
         
-        in_tickers = ["NIFTY","BANKNIFTY","SENSEX","FINNIFTY",
+        in_tickers = ["NIFTY","BANKNIFTY","SENSEX","FINNIFTY","MIDCPNIFTY","NIFTYIT",
             "RELIANCE","TCS","HDFCBANK","INFY","ICICIBANK","SBIN","BAJFINANCE","TATAMOTORS",
             "LT","MARUTI","AXISBANK","KOTAKBANK","ITC","HINDUNILVR","BHARTIARTL","WIPRO",
             "HCLTECH","ADANIENT","TITAN","SUNPHARMA","DRREDDY","JSWSTEEL","TECHM",
