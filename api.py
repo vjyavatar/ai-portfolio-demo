@@ -4036,11 +4036,11 @@ async def nse_options(symbol: str = "NIFTY"):
                     # Intraday OHLC for candlestick chart
                     try:
                         _yahoo_rate_wait()
-                        intra = tk.history(period="5d", interval="15m")
+                        intra = tk.history(period="5d", interval="5m")
                         if intra is not None and len(intra) > 10:
                             ohlc_bars = []
-                            # Get last 30 bars
-                            for idx_r in range(max(0, len(intra)-30), len(intra)):
+                            # Get last 40 bars (5-min = ~3.3 hours of data)
+                            for idx_r in range(max(0, len(intra)-40), len(intra)):
                                 bar = intra.iloc[idx_r]
                                 ts = str(intra.index[idx_r])
                                 ohlc_bars.append({

@@ -2792,10 +2792,14 @@ function _renderQuickTrade(d,sym){
   momBars.forEach(function(b){if(b.c>b.o)momUp++;else momDn++});
   
   // ─── FACTOR 1: MARKET STRUCTURE (25%) — HH-HL / LH-LL pattern ───
+  // Works with 5-min bars: 3 bars = 15 min → earliest signal at ~15 min after open
   var structureScore=0;
-  if(bars.length>=4){
-    var highs=bars.slice(-4).map(function(b){return b.h});
-    var lows=bars.slice(-4).map(function(b){return b.l});
+  var bullishStructure=false,bearishStructure=false;
+  if(bars.length>=3){
+    // Use last N bars (adapts to available data)
+    var structBars=bars.slice(-(Math.min(bars.length,8)));
+    var highs=structBars.map(function(b){return b.h});
+    var lows=structBars.map(function(b){return b.l});
     var hhCount=0,hlCount=0,lhCount=0,llCount=0;
     for(var si=1;si<highs.length;si++){
       if(highs[si]>highs[si-1])hhCount++;
@@ -2803,8 +2807,13 @@ function _renderQuickTrade(d,sym){
       if(highs[si]<highs[si-1])lhCount++;
       if(lows[si]<lows[si-1])llCount++;
     }
-    var bullishStructure=hhCount>=2&&hlCount>=2; // HH + HL
-    var bearishStructure=lhCount>=2&&llCount>=2; // LH + LL
+    var pairs=highs.length-1;
+    // For 3 bars: need 2/2 HH+HL (both). For 5+: need majority
+    var hhThresh=pairs<=3?2:Math.ceil(pairs*0.6);
+    var hlThresh=hhThresh;
+    bullishStructure=hhCount>=hhThresh&&hlCount>=hlThresh;
+    bearishStructure=lhCount>=hhThresh&&llCount>=hlThresh;
+    
     if(bullishStructure&&isBreakUp)structureScore=90;
     else if(bearishStructure&&isBreakDn)structureScore=90;
     else if(bullishStructure&&aboveVwap)structureScore=75;
@@ -2814,12 +2823,12 @@ function _renderQuickTrade(d,sym){
     else if(rangePct>0.5)structureScore=40;
     else structureScore=20;
   }else if(bars.length>0){
-    // Not enough bars for structure — fallback to price action
+    // 1-2 bars — use price action + VWAP direction
     if(isBreakUp||isBreakDn)structureScore=60;
     else if(rangePct>0.5)structureScore=40;
     else structureScore=20;
   }else{
-    // No bars at all — use spot vs VWAP + day range
+    // No bars — use spot vs VWAP + day range
     if(isBreakUp||isBreakDn)structureScore=50;
     else if(rangePct>0.5)structureScore=35;
     else structureScore=15;
@@ -4017,6 +4026,37 @@ function _renderQuickTrade(d,sym){
   // Disclaimer
   h+='<div style="max-width:480px;margin:10px auto;padding:8px;border-radius:8px;background:#1e293b;text-align:center;font-size:7px;color:#475569">';
   h+='⚠️ Simplified view of AI analysis. Not financial advice. Options involve risk of total loss. Start with 1 lot.</div>';
+  
+  // ─── SIGNAL TRACKING PANEL (if locked in bottom nav) ───
+  if(!window._qtBatchMode){
+    var _bnLocked2=window._lockedSignals&&window._lockedSignals[sym];
+    if(_bnLocked2){
+      var _now_ts2=Date.now();
+      var _lockAge2=Math.round((_now_ts2-(_bnLocked2._lockedAt||_now_ts2))/60000);
+      var _scanCount2=(_bnLocked2._dirHistory||[]).length;
+      var _consistent2=_bnLocked2._consistentScans||0;
+      var _reversed2=_bnLocked2._dirReversed||false;
+      var _trend2=_bnLocked2._scoreTrend||'STABLE';
+      var _sh2=_bnLocked2._scoreHistory||[];
+      var _trendIcon2=_trend2==='RISING'?'📈':_trend2==='FALLING'?'📉':'➡️';
+      var _trendCol2=_trend2==='RISING'?'#059669':_trend2==='FALLING'?'#ef4444':'#3b82f6';
+      var _lockStatus2=_bnLocked2._status||'LOCKED';
+      var _lockIcon2=_lockStatus2==='LOCKED'?'🔒':_lockStatus2==='MAINTAIN'?'✅':_lockStatus2==='WARNING'?'⚠️':'🕐';
+      var _stCol2=_lockStatus2==='LOCKED'?'#059669':_lockStatus2==='MAINTAIN'?'#3b82f6':_lockStatus2==='WARNING'?'#d97706':'#f59e0b';
+      
+      h+='<div style="max-width:480px;margin:8px auto;padding:10px 14px;border-radius:12px;background:#0F172A;border:1px solid '+_stCol2+'30">';
+      h+='<div style="font-size:8px;color:'+_stCol2+';font-weight:800;letter-spacing:1px;margin-bottom:6px">'+_lockIcon2+' SIGNAL TRACKING</div>';
+      h+='<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:4px">';
+      h+='<div style="font-size:10px;color:#e2e8f0;font-weight:700">'+_lockIcon2+' <span style="color:'+_stCol2+'">'+_lockStatus2+'</span> · '+_lockAge2+' min</div>';
+      h+='<div style="font-size:9px;color:'+_trendCol2+';font-weight:700">'+_trendIcon2+' Score '+_trend2+'</div>';
+      h+='</div>';
+      if(_consistent2>2)h+='<div style="font-size:9px;color:#059669;margin-top:4px">✅ Direction consistent for '+_consistent2+' scans — institutional confidence high</div>';
+      else if(_reversed2)h+='<div style="font-size:9px;color:#ef4444;margin-top:4px">⚠️ Direction reversed from '+(_bnLocked2._lockedDir||'?')+' — consider reducing position</div>';
+      if(_sh2.length>=3)h+='<div style="font-size:8px;color:#64748b;margin-top:3px;font-family:JetBrains Mono">Score trend: '+_sh2.slice(-6).join(' → ')+'</div>';
+      h+='<div style="font-size:8px;color:#475569;margin-top:4px;font-style:italic">'+(_bnLocked2._statusMsg||'Trade remains valid unless thesis breaks. Minor fluctuations are normal.')+'</div>';
+      h+='</div>';
+    }
+  }
   
   el.innerHTML=h;
 }
@@ -8618,19 +8658,55 @@ window._scanBottomNav=function(){
           existing.spot=qtSpot;
           existing._lastScan=_now;
           
-          // Status based on score range
+          // ─── DIRECTION TRACKING ───
+          var currentDir=bias==='BULLISH'?'BULLISH':bias==='BEARISH'?'BEARISH':'NONE';
+          var lockedDir=existing._lockedDir||existing.dir;
+          if(!existing._dirHistory)existing._dirHistory=[];
+          if(!existing._scoreHistory)existing._scoreHistory=[];
+          existing._dirHistory.push({dir:currentDir,conf:conf,ts:_now});
+          if(existing._dirHistory.length>20)existing._dirHistory=existing._dirHistory.slice(-20); // Keep last 20
+          existing._scoreHistory.push(conf);
+          if(existing._scoreHistory.length>20)existing._scoreHistory=existing._scoreHistory.slice(-20);
+          
+          // Check if direction reversed from lock direction
+          if(currentDir!=='NONE'&&currentDir!==lockedDir){
+            existing._dirReversed=true;
+            existing._consistentScans=0;
+          }else{
+            existing._dirReversed=false;
+            existing._consistentScans=(existing._consistentScans||0)+1;
+          }
+          
+          // Score trend: rising, falling, stable
+          var sh=existing._scoreHistory;
+          if(sh.length>=3){
+            var recent3=sh.slice(-3);
+            var trend=recent3[2]-recent3[0];
+            existing._scoreTrend=trend>2?'RISING':trend<-2?'FALLING':'STABLE';
+          }else{
+            existing._scoreTrend='STABLE';
+          }
+          
+          // Status based on score range + direction tracking
           if(conf>=70){
             existing._status='LOCKED';
-            existing._statusMsg='Signal locked at '+conf;
+            existing._statusMsg='Signal locked at '+conf+(existing._consistentScans>3?' · '+existing._consistentScans+' scans consistent':'');
             existing._fading=false;
           }else if(conf>=65){
             existing._status='MAINTAIN';
-            existing._statusMsg='Maintaining — score '+conf;
+            existing._statusMsg='Maintaining — score '+conf+(existing._scoreTrend==='FALLING'?' · trending down':'');
             existing._fading=false;
           }else{
             existing._status='WARNING';
-            existing._statusMsg='Warning — score '+conf+', watching thesis';
+            existing._statusMsg='Warning — score '+conf+(existing._dirReversed?' · DIRECTION REVERSED':existing._scoreTrend==='FALLING'?' · score declining':'');
             existing._fading=true;
+          }
+          
+          // Direction reversal is a thesis break condition
+          if(existing._dirReversed&&conf<65){
+            // Direction flipped AND score dropped — this is serious
+            thesisBreak=true;
+            breakReason='Direction reversed from '+lockedDir+' to '+currentDir+' with score '+conf;
           }
           
           _newResults[sym]=existing;
@@ -8654,10 +8730,16 @@ window._scanBottomNav=function(){
             _entrySpot:qtSpot,
             _entryConf:conf,
             _lockedAt:_now,
+            _lockedDir:bias==='BULLISH'?'BULLISH':'BEARISH',
             _status:'LOCKED',
             _statusMsg:'Signal locked at '+conf,
             _fading:false,
-            _lastScan:_now
+            _lastScan:_now,
+            // Direction tracking
+            _dirHistory:[{dir:bias==='BULLISH'?'BULLISH':'BEARISH',conf:conf,ts:_now}],
+            _scoreHistory:[conf],
+            _consistentScans:1,
+            _dirReversed:false
           };
           _locked[sym]=entry;
           _newResults[sym]=entry;
@@ -8776,26 +8858,37 @@ window._renderBottomNav=function(){
   bar.innerHTML=h;
   bar.style.display='block';
   
-  // Voice announcement for new A+ trades
-  var buyCount=results.filter(function(r){return(r.action==='BUY CALL'||r.action==='BUY PUT')&&!r._isWatch}).length;
-  if(buyCount>0&&!window._bottomNavVoicedThisCycle){
-    window._bottomNavVoicedThisCycle=true;
-    var buyTickers=results.filter(function(r){return r.action==='BUY CALL'||r.action==='BUY PUT'});
-    var msg=buyCount+' trade signal'+(buyCount>1?'s':'')+' active: ';
-    buyTickers.forEach(function(r,i){
-      msg+=r.sym+' '+(r.action==='BUY CALL'?'bullish':'bearish')+' '+r.conf+'%';
-      if(i<buyTickers.length-1)msg+=', ';
-    });
-    msg+='. Check the bottom bar for details.';
-    // Only voice if it's a NEW signal (not repeated)
-    var sigKey=buyTickers.map(function(r){return r.sym+r.action}).join(',');
+  // ═══ VOICE ANNOUNCEMENTS — Lifecycle-aware ═══
+  var lockedResults=results.filter(function(r){return r._status==='LOCKED'&&!r._voiced});
+  var warningResults=results.filter(function(r){return r._status==='WARNING'});
+  var eodResults=results.filter(function(r){return r._status==='EOD_EXIT'});
+  var allLocked=results.filter(function(r){return r._status==='LOCKED'||r._status==='MAINTAIN'});
+  
+  // Voice 1: New signal locked (first time only)
+  if(lockedResults.length>0){
+    var newSigs=lockedResults.map(function(r){return r.sym+' '+(r.action==='BUY CALL'?'bullish':'bearish')});
+    var msg='Signal locked. '+newSigs.join(', ')+'. Confidence '+lockedResults[0].conf+' percent. Trade remains valid unless thesis breaks.';
+    var sigKey=lockedResults.map(function(r){return r.sym+r.action}).join(',');
     if(sigKey!==window._lastBottomNavSigKey){
       window._lastBottomNavSigKey=sigKey;
       window._speak(msg,true);
     }
-  }else if(buyCount===0){
-    window._bottomNavVoicedThisCycle=false;
-    window._lastBottomNavSigKey='';
+    lockedResults.forEach(function(r){r._voiced=true});
+  }
+  
+  // Voice 2: Warning — score dropping
+  if(warningResults.length>0&&!window._warningVoiced){
+    window._warningVoiced=true;
+    var warnMsg=warningResults.map(function(r){return r.sym}).join(', ')+' signal weakening. Monitoring mode active. No action required yet.';
+    window._speak(warnMsg,false);
+  }else if(warningResults.length===0){
+    window._warningVoiced=false;
+  }
+  
+  // Voice 3: EOD exit reminder
+  if(eodResults.length>0&&!window._eodVoiced){
+    window._eodVoiced=true;
+    window._speak('Market closing in 30 minutes. '+eodResults.length+' active trade'+(eodResults.length>1?'s':'')+'. Close all positions before market close.',true);
   }
 };
 
