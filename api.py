@@ -4690,7 +4690,7 @@ _bottom_nav_cache = {"IN": {"data": None, "time": 0}, "US": {"data": None, "time
 _bottom_nav_busy = set()
 
 def _score_one_ticker(sym, reg):
-    """Get raw options-quick data for ONE ticker. Frontend does the scoring."""
+    """Get FULL options-quick data for ONE ticker. Returns everything _renderQuickTrade needs."""
     try:
         import asyncio
         loop = asyncio.new_event_loop()
@@ -4700,22 +4700,12 @@ def _score_one_ticker(sym, reg):
         finally:
             loop.close()
         if not d or not d.get("success") or d.get("spot", 0) <= 0:
-            print(f"[BOTTOM-NAV] ⚠️ {sym}: No data (success={d.get('success') if d else 'None'}, spot={d.get('spot',0) if d else 0})")
             return None
-        return {
-            "sym": sym, "_region": reg, "success": True,
-            "spot": d.get("spot", 0),
-            "ohlc_bars": d.get("ohlc_bars", []),
-            "chain_near_atm": d.get("chain_near_atm", []),
-            "pcr": d.get("pcr", 0),
-            "vix": d.get("vix", 18),
-            "vwap": d.get("vwap", d.get("spot", 0)),
-            "today_high": d.get("today_high", d.get("spot", 0)),
-            "today_low": d.get("today_low", d.get("spot", 0)),
-            "gex": d.get("gex", {"regime": "NEUTRAL"}),
-            "_fallback": d.get("_fallback", False),
-            "lot_size": d.get("lot_size", 100 if reg == "US" else 1)
-        }
+        # Return FULL data — same shape as /api/options-quick response
+        # Frontend will run _renderQuickTrade on this exact data
+        d["sym"] = sym
+        d["_region"] = reg
+        return d
     except Exception as e:
         print(f"[BOTTOM-NAV] ❌ {sym} ({reg}): {type(e).__name__}: {e}")
         return None
