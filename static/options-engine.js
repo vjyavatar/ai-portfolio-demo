@@ -6320,7 +6320,7 @@ window._loadOptionsUniversal=function(symbol,region){
             .then(function(r2){return r2.json()})
             .then(function(d2){if(d2&&d2.success&&window._activeOptionsSym===sym){d2._region=reg;d2._currency=reg==='US'?'$':'₹';d2._lotSize=d2.lot_size||(reg==='US'?100:1);
               var _mqNow3=new Date();var _mqIstH3=_mqNow3.getUTCHours()+5+(_mqNow3.getUTCMinutes()+30>=60?1:0);var _mqEtH3=_mqNow3.getUTCHours()-4;var _mqDow3=_mqNow3.getUTCDay();
-              d2._marketOpen=reg==='US'?(_mqEtH3>=9&&_mqEtH3<16&&_mqDow3>=1&&_mqDow3<=5):(_mqIstH3>=9&&(_mqIstH3<15||(_mqIstH3===15&&(_mqNow3.getUTCMinutes()+30)%60<=30))&&_mqDow3>=1&&_mqDow3<=5);console.log('[REFRESH] ✅ Universal got '+sym+' spot='+d2.spot);_renderQuickTrade(d2,sym)}})
+              d2._marketOpen=reg==='US'?(_mqEtH3>=9&&_mqEtH3<16&&_mqDow3>=1&&_mqDow3<=5):(_mqIstH3>=9&&(_mqIstH3<15||(_mqIstH3===15&&(_mqNow3.getUTCMinutes()+30)%60<=30))&&_mqDow3>=1&&_mqDow3<=5);console.log('[REFRESH] ✅ Universal got '+sym+' spot='+d2.spot);if(!d2.ohlc_bars)d2.ohlc_bars=[];if(!d2.chain_near_atm)d2.chain_near_atm=[];if(!d2.ce_resistance)d2.ce_resistance=[];if(!d2.pe_support)d2.pe_support=[];if(!d2.gex)d2.gex={total:0,regime:'NEUTRAL',topStrikes:[],flipPoint:0,callWall:0,putWall:0};if(!d2.expiry_dates)d2.expiry_dates=[];try{_renderQuickTrade(d2,sym)}catch(e3){console.error('[REFRESH CRASH]',e3)}}})
             .catch(function(e){console.log('[REFRESH] ❌ Universal error: '+e)});
         }else{console.log('[REFRESH] Universal stopped for '+sym);clearInterval(window._quickRefreshTimer);window._quickRefreshTimer=null}
       },30000);
@@ -8203,35 +8203,28 @@ window._hideBottomNav=function(){
 window._scanBottomNav=function(){
   var reg=window._optionsRegion||'IN';
   
-  // SINGLE API call — server does all the work, returns in ~3 seconds
+  // Just read server cache — server scans in background, always instant
   fetch('/api/bottom-nav-scan?region='+reg)
     .then(function(r){return r.json()})
     .then(function(d){
-      if(!d||!d.success||!d.tickers)return;
+      if(!d||!d.success||!d.tickers){window._hideBottomNav();return}
       
-      // Map server results to bottom nav format
       window._bottomNavResults={};
       d.tickers.forEach(function(t){
         if(t.action==='BUY CALL'||t.action==='BUY PUT'){
           window._bottomNavResults[t.sym]={
             sym:t.sym,label:t.sym,reg:reg,spot:t.spot,
-            conf:t.score,grade:t.score>=85?'A+':t.score>=70?'A':t.score>=60?'B':'C',
+            conf:t.score,grade:t.score>=85?'A+':t.score>=70?'A':'B',
             action:t.action,dir:t.dir,
-            confirms:Math.round(t.score/20), // approximate
-            fakeScore:t.score>=70?0:30,
-            strike:0,prem:0,pcr:0,vix:0,gex:'NEUTRAL',type:t.dir==='BULLISH'?'CE':'PE',
-            volRatio:t.volRatio,range:t.range,momTag:t.volRatio>1.3?'🔥 MOM':'',
-            highMom:t.volRatio>1.3,momScore:t.score,
-            hasChain:false,barConfirm:true,
-            lot:reg==='US'?100:1,redFlags:[],fakeFlags:[],cnDetail:[]
+            confirms:Math.round(t.score/20),fakeScore:0,
+            volRatio:t.volRatio,range:t.range,
+            redFlags:[],barConfirm:true
           };
         }
       });
-      
       window._renderBottomNav();
-      console.log('[BOTTOM-NAV] ✅ Batch scan: '+d.count+' tickers, '+Object.keys(window._bottomNavResults).length+' buy signals');
     })
-    .catch(function(e){console.log('[BOTTOM-NAV] ❌ Scan error:',e)});
+    .catch(function(){});
 };
 
 window._renderBottomNav=function(){
@@ -8317,9 +8310,8 @@ window.switchDEMode=function(mode){
 };
 
 // Also start if already in options mode on page load
-setTimeout(function(){
-  if(window._deMode==='options')window._startBottomNav();
-},5000);
+// Bottom nav only starts when user enters Options mode — never on page load
+// Server pre-scans in background on boot, so cache is warm by the time user gets here
 
 console.log('[BOTTOM-NAV] ✅ Live A/A+ scanner bar loaded — India Index + US ETFs');
 
