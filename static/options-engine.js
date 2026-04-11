@@ -4412,35 +4412,21 @@ function _renderQuickTrade(d,sym){
   }
   
   // ═══════════════════════════════════════════════════════════════════════
-  // 3-COLUMN GRID LAYOUT — Desktop: side-by-side | Mobile: stacked
-  // Left: Price Map | Center: Quick Trade | Right: Trade Setup + Tracking
+  // SINGLE COLUMN LAYOUT — Price Map + Tracking appended below signal card
+  // Keeps everything in one scrollable column. No layout breakage.
   // ═══════════════════════════════════════════════════════════════════════
-  var _finalHTML='';
   var _hasLeft=_leftCol&&_leftCol.length>10;
   var _hasRight=_rightCol&&_rightCol.length>10;
   
-  if((_hasLeft||_hasRight)&&!window._qtBatchMode&&!_isMktClosed){
-    // Desktop: 3 columns. Tablet: 2 columns. Mobile: 1 column (stacked)
-    var _gridCols=_hasLeft&&_hasRight?'minmax(250px,280px) minmax(300px,1fr) minmax(200px,240px)':
-                  _hasLeft?'minmax(250px,300px) 1fr':'1fr minmax(200px,260px)';
-    _finalHTML+='<div style="display:grid;grid-template-columns:'+_gridCols+';gap:12px;max-width:1200px;margin:0 auto;align-items:start">';
-    if(_hasLeft)_finalHTML+='<div style="min-width:0">'+_leftCol+'</div>';
-    _finalHTML+='<div style="min-width:0">'+h+'</div>';
-    if(_hasRight)_finalHTML+='<div style="min-width:0">'+_rightCol+'</div>';
-    _finalHTML+='</div>';
-    // Add responsive CSS once
-    if(!window._qtGridStyleAdded){
-      window._qtGridStyleAdded=true;
-      var _gridStyle=document.createElement('style');
-      _gridStyle.textContent='@media(max-width:1024px){[data-qt-grid]{grid-template-columns:1fr 1fr !important}}@media(max-width:700px){[data-qt-grid]{grid-template-columns:1fr !important}}';
-      document.body.appendChild(_gridStyle);
-    }
-    _finalHTML=_finalHTML.replace('<div style="display:grid;','<div data-qt-grid style="display:grid;');
-  }else{
-    _finalHTML=h;
+  // Append side panels INLINE below the main card
+  if(_hasLeft&&!window._qtBatchMode&&!_isMktClosed){
+    h+='<div style="max-width:480px;margin:0 auto">'+_leftCol+'</div>';
+  }
+  if(_hasRight&&!window._qtBatchMode&&!_isMktClosed){
+    h+='<div style="max-width:480px;margin:0 auto">'+_rightCol+'</div>';
   }
   
-  el.innerHTML=_finalHTML;
+  el.innerHTML=h;
 }
 
 // ═══ Add Quick Trade as default mode for Options tab ═══
