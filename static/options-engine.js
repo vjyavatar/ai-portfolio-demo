@@ -3455,11 +3455,22 @@ function _renderQuickTrade(d,sym){
   
   // Status
   var status='⚪ NO TRADE';var statusColor='#64748b';
+  
+  // ─── MARKET CLOSED GUARD — override ALL signals when market is closed ───
+  var _isMktClosed=d._marketOpen===false;
+  if(_isMktClosed){
+    status='🔴 MARKET CLOSED';statusColor='#ef4444';
+    finalBias='NO TRADE';
+    grade='C';gradeLabel='Market Closed — Data is stale';
+  }
+  
   // Check if signal is locked in bottom nav
   var _isLocked5=!window._qtBatchMode&&window._lockedSignals&&window._lockedSignals[sym];
   var _lockValid5=_isLocked5&&(_isLocked5._status==='LOCKED'||_isLocked5._status==='MAINTAIN');
   
-  if(hardBlock&&!_lockValid5){status='⚪ NO TRADE';statusColor='#64748b'}
+  if(_isMktClosed){
+    // Already set above — don't override
+  }else if(hardBlock&&!_lockValid5){status='⚪ NO TRADE';statusColor='#64748b'}
   else if(_lockValid5&&confidence>=60){
     // Signal is locked and within maintain range — show as active trade
     status='🟢 ENTER NOW';statusColor='#059669';
@@ -3929,10 +3940,10 @@ function _renderQuickTrade(d,sym){
     }
     
     // Confidence alignment: if timing is TOO LATE AND not locked, cap confidence
-    if(_entryScore<60&&confidence>65&&!_isLockedSignal){confidence=60;grade='B';gradeLabel='Signal Expired'}
+    if(_entryScore<60&&confidence>65&&!_isLockedSignal&&!_isMktClosed){confidence=60;grade='B';gradeLabel='Signal Expired'}
     
-    // DISPLAY: Entry Timing Analysis panel
-    if(isEnterNow){
+    // DISPLAY: Entry Timing Analysis panel — HIDE when market closed
+    if(isEnterNow&&!_isMktClosed){
       h+='<div style="margin-top:8px;padding:10px;border-radius:10px;background:#0A0F1C;border:1px solid '+_timingColor+'30">';
       h+='<div style="font-size:9px;font-weight:800;color:#64748b;letter-spacing:1px;margin-bottom:6px">ENTRY TIMING ANALYSIS</div>';
       
@@ -4405,18 +4416,26 @@ function _renderQuickTrade(d,sym){
   // Left: Price Map | Center: Quick Trade | Right: Trade Setup + Tracking
   // ═══════════════════════════════════════════════════════════════════════
   var _finalHTML='';
-  if((_leftCol||_rightCol)&&!window._qtBatchMode){
-    _finalHTML+='<div style="display:grid;grid-template-columns:280px 1fr 240px;gap:12px;max-width:1200px;margin:0 auto;align-items:start">';
-    // Responsive: stack on mobile
-    _finalHTML+='<style>@media(max-width:900px){[data-qt-grid]{grid-template-columns:1fr !important}}</style>';
-    _finalHTML=_finalHTML.replace('display:grid;','display:grid;').replace('<div style="display:grid;','<div data-qt-grid style="display:grid;');
-    // Left column
-    _finalHTML+='<div style="min-width:0">'+(_leftCol||'')+'</div>';
-    // Center column (main Quick Trade)
+  var _hasLeft=_leftCol&&_leftCol.length>10;
+  var _hasRight=_rightCol&&_rightCol.length>10;
+  
+  if((_hasLeft||_hasRight)&&!window._qtBatchMode&&!_isMktClosed){
+    // Desktop: 3 columns. Tablet: 2 columns. Mobile: 1 column (stacked)
+    var _gridCols=_hasLeft&&_hasRight?'minmax(250px,280px) minmax(300px,1fr) minmax(200px,240px)':
+                  _hasLeft?'minmax(250px,300px) 1fr':'1fr minmax(200px,260px)';
+    _finalHTML+='<div style="display:grid;grid-template-columns:'+_gridCols+';gap:12px;max-width:1200px;margin:0 auto;align-items:start">';
+    if(_hasLeft)_finalHTML+='<div style="min-width:0">'+_leftCol+'</div>';
     _finalHTML+='<div style="min-width:0">'+h+'</div>';
-    // Right column
-    _finalHTML+='<div style="min-width:0">'+(_rightCol||'')+'</div>';
+    if(_hasRight)_finalHTML+='<div style="min-width:0">'+_rightCol+'</div>';
     _finalHTML+='</div>';
+    // Add responsive CSS once
+    if(!window._qtGridStyleAdded){
+      window._qtGridStyleAdded=true;
+      var _gridStyle=document.createElement('style');
+      _gridStyle.textContent='@media(max-width:1024px){[data-qt-grid]{grid-template-columns:1fr 1fr !important}}@media(max-width:700px){[data-qt-grid]{grid-template-columns:1fr !important}}';
+      document.body.appendChild(_gridStyle);
+    }
+    _finalHTML=_finalHTML.replace('<div style="display:grid;','<div data-qt-grid style="display:grid;');
   }else{
     _finalHTML=h;
   }
