@@ -3662,6 +3662,14 @@ function _renderQuickTrade(d,sym){
   
   // ─── ⚪ NO TRADE ───
   if(status.indexOf('NO TRADE')>=0||status.indexOf('MARKET CLOSED')>=0){
+    // Simple voice for market closed — once per ticker
+    if(_isMktClosed&&!window._qtBatchMode&&window._speak){
+      var _mcKey='_mktClosedVoice_'+sym;
+      if(!window[_mcKey]){
+        window[_mcKey]=true;
+        window._speak('Market is closed for '+sym+'. Data shown is from the last session. Do not trade based on this.',false);
+      }
+    }
     h+='<div style="text-align:center;padding:16px;border-radius:16px;background:#64748b10;border:2px solid #64748b25;margin-bottom:8px">';
     h+='<div style="font-size:24px;font-weight:900;color:'+(status.indexOf('MARKET')>=0?'#ef4444':'#64748b')+';font-family:Sora">'+status+'</div>';
     if(direction!=='NONE')h+='<div style="font-size:12px;font-weight:800;color:'+directionColor+';margin-top:4px">'+directionLabel+'</div>';
@@ -3677,6 +3685,10 @@ function _renderQuickTrade(d,sym){
       h+='</div>';
     }
     
+    // Details toggle for verbose analysis
+    var _detailIdNT='qtDetail_'+sym.replace(/[^a-zA-Z0-9]/g,'')+'_nt';
+    h+='<div style="text-align:center;margin-bottom:8px"><button onclick="var d=document.getElementById(\''+_detailIdNT+'\');d.style.display=d.style.display===\'none\'?\'block\':\'none\'" style="padding:6px 20px;border-radius:8px;background:#f1f5f9;color:#475569;border:1px solid #cbd5e1;font-size:9px;font-weight:700;cursor:pointer">📊 Details & Analysis ▼</button></div>';
+    h+='<div id="'+_detailIdNT+'" style="display:none">';
     // ═══ SIGNAL QUALITY DASHBOARD — NO TRADE view (shows what's missing) ═══
     h+='<div style="padding:10px;border-radius:12px;background:#111827;border:1px solid #1e293b;margin-bottom:12px">';
     h+='<div style="font-size:8px;font-weight:800;color:#64748b;letter-spacing:1px;margin-bottom:6px">WHY NO TRADE — Signal Quality</div>';
@@ -3709,7 +3721,7 @@ function _renderQuickTrade(d,sym){
       h+='<div style="font-size:9px;color:#64748b;margin-top:4px">Need: '+(volumeScore<50?'Volume pickup (currently '+volRatio8.toFixed(1)+'x) ':'')+(priceActionScore<60?'Price breakout above '+S+dayHigh+' or below '+S+dayLow+' ':'')+(momentumScore<50?'Momentum improvement ('+Math.max(momUp,momDn)+'/'+momBars.length+' bars aligned) ':'')+'to trigger</div>';
       h+='</div>';
     }
-    h+='</div>';
+    h+='</div>'; // close details toggle div
     
   // ─── ⏳ WATCHING / 🟡 ALMOST / 🟡 HOLD ───
   }else if(status.indexOf('WATCHING')>=0||status.indexOf('ALMOST')>=0||status.indexOf('HOLD')>=0||status.indexOf('EXIT TRADE')>=0){
@@ -9577,7 +9589,13 @@ window._loadCatalystScanner=function(){
         if(cat.type==='NEWS'){
           h+='<span style="font-size:7px;padding:1px 4px;border-radius:3px;background:'+sentCol+'20;color:'+sentCol+';font-weight:800;margin-right:4px">'+cat.sentiment.toUpperCase()+'</span>';
         }
-        h+=cat.text+'</div>';
+        if(cat.link){
+          h+='<a href="'+cat.link+'" target="_blank" rel="noopener" style="color:#94a3b8;text-decoration:underline dotted #64748b">'+cat.text+'</a>';
+          h+=' <span style="color:#3b82f6;font-size:8px">↗</span>';
+        }else{
+          h+=cat.text;
+        }
+        h+='</div>';
         h+='</div>';
       });
       

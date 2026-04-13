@@ -25628,6 +25628,7 @@ async def catalyst_scan(region: str = "IN"):
                         "type": "NEWS", "icon": "📰",
                         "text": n["title"][:100],
                         "sentiment": n["sentiment"],
+                        "link": n.get("link", ""),
                         "impact": 20
                     })
                     result["score"] += 20
