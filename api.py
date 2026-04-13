@@ -3874,8 +3874,8 @@ async def nse_options(symbol: str = "NIFTY"):
                     except: continue
             except: pass
             
-            _lot_map = {"NIFTY": 75, "BANKNIFTY": 30, "FINNIFTY": 40, "MIDCPNIFTY": 75, "SENSEX": 20}
-            _lot = _lot_map.get(symbol, 75)
+            _lot_map = {"NIFTY": 65, "BANKNIFTY": 30, "FINNIFTY": 60, "MIDCPNIFTY": 120, "SENSEX": 20}
+            _lot = _lot_map.get(symbol, 65)
             _gex_total = 0
             _gex_by_strike = []
             _rf = 0.07  # India risk-free
@@ -3951,9 +3951,11 @@ async def nse_options(symbol: str = "NIFTY"):
                     if avg_iv_s > 0:
                         iv_smile.append({"strike": sk, "iv": round(avg_iv_s, 1), "ceIV": round(sd.get("ce_iv", 0), 1), "peIV": round(sd.get("pe_iv", 0), 1)})
             
+            _nse_lot = ALGO_INSTRUMENTS.get(sym, {}).get("lot", 1)
             result.update({
                 "success": True,
                 "spot": spot,
+                "lot_size": _nse_lot,
                 "expiry": current_expiry,
                 "expiry_dates": expiry_dates[:4],
                 "pcr": pcr,
@@ -6649,7 +6651,7 @@ ALGO_INSTRUMENTS = {
     "NIFTY": {"sym": "^NSEI", "lot": 65, "gap": 50, "ex": "NFO", "exp": "Tuesday", "region": "IN", "currency": "INR"},
     "BANKNIFTY": {"sym": "^NSEBANK", "lot": 30, "gap": 100, "ex": "NFO", "exp": "Monthly-Tue", "region": "IN", "currency": "INR"},
     "SENSEX": {"sym": "^BSESN", "lot": 20, "gap": 100, "ex": "BFO", "exp": "Thursday", "region": "IN", "currency": "INR"},
-    "FINNIFTY": {"sym": "NIFTY_FIN_SERVICE.NS", "lot": 65, "gap": 50, "ex": "NFO", "exp": "Monthly-Tue", "region": "IN", "currency": "INR"},
+    "FINNIFTY": {"sym": "NIFTY_FIN_SERVICE.NS", "lot": 60, "gap": 50, "ex": "NFO", "exp": "Monthly-Tue", "region": "IN", "currency": "INR"},
     "MIDCPNIFTY": {"sym": "NIFTY_MID_SELECT.NS", "lot": 120, "gap": 25, "ex": "NFO", "exp": "Monthly-Tue", "region": "IN", "currency": "INR"},
     "BANKEX": {"sym": "BSE-BANK.BO", "lot": 30, "gap": 100, "ex": "BFO", "exp": "Friday", "region": "IN", "currency": "INR"},
     "RELIANCE": {"sym": "RELIANCE.NS", "lot": 250, "gap": 20, "ex": "NFO", "region": "IN", "currency": "INR"},
@@ -25543,7 +25545,7 @@ async def _options_quick_impl(symbol: str = "NIFTY", region: str = "IN"):
                     
                     # Build basic chain from intraday data
                     step = {"NIFTY": 50, "BANKNIFTY": 100, "SENSEX": 100, "FINNIFTY": 50}.get(sym, 50)
-                    lot = {"NIFTY": 75, "BANKNIFTY": 30, "SENSEX": 20, "FINNIFTY": 40}.get(sym, 75)
+                    lot = {"NIFTY": 65, "BANKNIFTY": 30, "SENSEX": 20, "FINNIFTY": 60, "MIDCPNIFTY": 120}.get(sym, 65)
                     atm = round(spot / step) * step
                     
                     # Synthetic chain (no real OI — but at least gives ATM premiums)
@@ -25783,7 +25785,9 @@ async def _options_quick_impl(symbol: str = "NIFTY", region: str = "IN"):
         
         # Currency
         currency = '$' if region == 'US' else '₹'
-        lot_size = 100 if region == 'US' else 1
+        # Lot size: look up from ALGO_INSTRUMENTS, default 100 for US, 1 for unknown India stocks
+        _algo_inst = ALGO_INSTRUMENTS.get(sym, {})
+        lot_size = _algo_inst.get("lot", 100 if region == 'US' else 1)
         
         result = {
             "success": True if spot > 0 else False,

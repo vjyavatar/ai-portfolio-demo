@@ -3797,32 +3797,67 @@ function _renderQuickTrade(d,sym){
     
   // ─── 🟢 ENTER NOW ───
   }else{
-    var actionText=isOptions?(finalBias==='BULLISH'?'🟢 BUY CALL NOW':'🔴 BUY PUT NOW'):(finalBias==='BULLISH'?'🟢 BUY NOW':'🔴 SELL NOW');
-    h+='<div style="text-align:center;padding:20px;border-radius:16px;background:'+(finalBias==='BULLISH'?'#059669':'#ef4444')+'15;border:3px solid '+(finalBias==='BULLISH'?'#059669':'#ef4444')+'40;margin-bottom:12px">';
-    h+='<div style="font-size:32px;font-weight:900;color:'+(finalBias==='BULLISH'?'#059669':'#ef4444')+';font-family:Sora">'+actionText+'</div>';
-    h+='<div style="font-size:18px;font-weight:900;color:'+directionColor+';font-family:Sora;margin-top:4px">'+directionLabel+'</div>';
-    h+='<div style="font-size:12px;color:#94a3b8;margin-top:6px">Confidence: <strong style="color:'+(confidence>=70?'#059669':'#d97706')+'">'+confidence+'%</strong> · Grade: <strong>'+grade+'</strong> ('+gradeLabel+') · Trap: '+trapRisk+'</div>';
-    // ALWAYS show entry details — spot + strike + premium
-    h+='<div style="margin-top:10px;display:flex;justify-content:center;gap:16px;flex-wrap:wrap">';
-    h+='<div><div style="font-size:8px;color:#64748b">SPOT</div><div style="font-size:16px;font-weight:900;color:#e2e8f0;font-family:JetBrains Mono">'+S+(isUS?spot.toLocaleString('en-US'):spot.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN'))+'</div></div>';
+    var actionText=isOptions?(finalBias==='BULLISH'?'🟢 BUY CALL':'🔴 BUY PUT'):(finalBias==='BULLISH'?'🟢 BUY':'🔴 SELL');
+    var _rrDisp2=window._qtRREstimate||0;
+    var _lockInfo=window._lockedSignals&&window._lockedSignals[sym];
+    var _lockAge3=_lockInfo?Math.round((Date.now()-(_lockInfo._lockedAt||Date.now()))/60000):0;
+    var _pnlDisp=_lockInfo&&_lockInfo._pnlPct!==undefined?_lockInfo._pnlPct:null;
+    var _pmCW=window._pmCallWall||0;
+    var _pmPW=window._pmPutWall||0;
+    
+    // ═══ COMPACT ACTION CARD — Everything trader needs in ONE view ═══
+    h+='<div style="text-align:center;padding:14px;border-radius:16px;background:'+(finalBias==='BULLISH'?'#059669':'#ef4444')+'12;border:2px solid '+(finalBias==='BULLISH'?'#059669':'#ef4444')+'40;margin-bottom:8px">';
+    
+    // Row 1: Action + Direction
+    h+='<div style="font-size:28px;font-weight:900;color:'+(finalBias==='BULLISH'?'#059669':'#ef4444')+';font-family:Sora">'+actionText+'</div>';
+    h+='<div style="font-size:10px;color:#94a3b8;margin-top:2px">'+confidence+'% · Grade '+grade+' · Trap '+trapRisk+'</div>';
+    
+    // Row 2: Strike + Premium + Target + SL (all in one row)
     if(isOptions){
-      h+='<div><div style="font-size:8px;color:#64748b">STRIKE <span style="padding:1px 4px;border-radius:3px;background:#3b82f620;color:#3b82f6;font-size:7px">'+strikeLabel+'</span></div><div style="font-size:16px;font-weight:900;color:#f59e0b;font-family:JetBrains Mono">'+S+entryStrike7+' '+entryType7+'</div></div>';
-      h+='<div><div style="font-size:8px;color:#64748b">PREMIUM</div><div style="font-size:16px;font-weight:900;color:#e2e8f0;font-family:JetBrains Mono">'+S+entryPrem7.toFixed(isUS&&entryPrem7<10?2:0)+'</div></div>';
+      h+='<div style="margin-top:10px;display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:4px;text-align:center">';
+      h+='<div style="padding:6px 4px;border-radius:8px;background:#1e293b"><div style="font-size:7px;color:#64748b">STRIKE</div><div style="font-size:14px;font-weight:900;color:#f59e0b;font-family:JetBrains Mono">'+S+entryStrike7+'</div><div style="font-size:7px;color:#3b82f6">'+entryType7+' '+strikeLabel+'</div></div>';
+      h+='<div style="padding:6px 4px;border-radius:8px;background:#1e293b"><div style="font-size:7px;color:#64748b">PREMIUM</div><div style="font-size:14px;font-weight:900;color:#e2e8f0;font-family:JetBrains Mono">'+S+entryPrem7.toFixed(isUS&&entryPrem7<10?2:0)+'</div><div style="font-size:7px;color:#64748b">'+c7.lot+' × '+(qtLots||'1')+'</div></div>';
+      h+='<div style="padding:6px 4px;border-radius:8px;background:#05966410"><div style="font-size:7px;color:#059669">TARGET</div><div style="font-size:14px;font-weight:900;color:#059669;font-family:JetBrains Mono">'+S+targetLow+'</div><div style="font-size:7px;color:#059669">R:R 1:'+(_rrDisp2>0?_rrDisp2.toFixed(1):'—')+'</div></div>';
+      h+='<div style="padding:6px 4px;border-radius:8px;background:#ef444410"><div style="font-size:7px;color:#ef4444">STOP LOSS</div><div style="font-size:14px;font-weight:900;color:#ef4444;font-family:JetBrains Mono">'+S+sl8+'</div><div style="font-size:7px;color:#ef4444">'+(entryPrem7>0?'-'+Math.round((1-sl8/entryPrem7)*100)+'%':'')+'</div></div>';
+      h+='</div>';
     }else{
-      // Stock mode — show proper entry/target/SL based on price levels
       var _stockEntry=finalBias==='BULLISH'?dayHigh:dayLow;
       var _stockSL=finalBias==='BULLISH'?dayLow:dayHigh;
       var _stockRange=Math.abs(dayHigh-dayLow);
       var _stockTarget=finalBias==='BULLISH'?Math.round(_stockEntry+_stockRange*1.5):Math.round(_stockEntry-_stockRange*1.5);
-      var _stockRR=_stockRange>0?Math.round((_stockRange*1.5)/_stockRange*10)/10:0;
-      var _entryLabel=finalBias==='BULLISH'?'BUY ABOVE':'SELL BELOW';
-      h+='<div><div style="font-size:8px;color:#64748b">'+_entryLabel+'</div><div style="font-size:16px;font-weight:900;color:#f59e0b;font-family:JetBrains Mono">'+S+(isUS?_stockEntry.toLocaleString('en-US'):_stockEntry.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN'))+'</div></div>';
-      h+='<div><div style="font-size:8px;color:#059669">TARGET</div><div style="font-size:16px;font-weight:900;color:#059669;font-family:JetBrains Mono">'+S+(isUS?_stockTarget.toLocaleString('en-US'):_stockTarget.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN'))+'</div></div>';
-      h+='<div><div style="font-size:8px;color:#ef4444">STOP LOSS</div><div style="font-size:16px;font-weight:900;color:#ef4444;font-family:JetBrains Mono">'+S+(isUS?_stockSL.toLocaleString('en-US'):_stockSL.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN'))+'</div></div>';
+      h+='<div style="margin-top:10px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;text-align:center">';
+      h+='<div style="padding:6px;border-radius:8px;background:#1e293b"><div style="font-size:7px;color:#64748b">'+(finalBias==='BULLISH'?'BUY ABOVE':'SELL BELOW')+'</div><div style="font-size:14px;font-weight:900;color:#f59e0b;font-family:JetBrains Mono">'+S+_stockEntry.toLocaleString()+'</div></div>';
+      h+='<div style="padding:6px;border-radius:8px;background:#05966410"><div style="font-size:7px;color:#059669">TARGET</div><div style="font-size:14px;font-weight:900;color:#059669;font-family:JetBrains Mono">'+S+_stockTarget.toLocaleString()+'</div></div>';
+      h+='<div style="padding:6px;border-radius:8px;background:#ef444410"><div style="font-size:7px;color:#ef4444">STOP LOSS</div><div style="font-size:14px;font-weight:900;color:#ef4444;font-family:JetBrains Mono">'+S+_stockSL.toLocaleString()+'</div></div>';
+      h+='</div>';
     }
+    
+    // Row 3: Support ← Spot → Resistance (compact price map inline)
+    if(_pmPW>0||_pmCW>0){
+      h+='<div style="margin-top:8px;display:flex;justify-content:space-between;align-items:center;padding:4px 8px;border-radius:6px;background:#0F172A">';
+      h+='<span style="font-size:8px;color:#059669;font-weight:700">▼ '+S+(_pmPW>0?_pmPW.toLocaleString():'—')+'</span>';
+      h+='<span style="font-size:8px;color:#64748b">← '+S+spot.toLocaleString()+' →</span>';
+      h+='<span style="font-size:8px;color:#ef4444;font-weight:700">▲ '+S+(_pmCW>0?_pmCW.toLocaleString():'—')+'</span>';
+      h+='</div>';
+    }
+    
+    // Row 4: Lock status + P&L (if locked)
+    if(_lockInfo){
+      var _lSt=_lockInfo._status||'LOCKED';
+      var _lCol=_lSt==='LOCKED'?'#059669':_lSt==='MAINTAIN'?'#3b82f6':'#d97706';
+      h+='<div style="margin-top:6px;font-size:9px;color:'+_lCol+'">';
+      h+='🔒 '+_lSt+' · '+_lockAge3+'min';
+      if(_pnlDisp!==null)h+=' · <strong style="color:'+(_pnlDisp>=0?'#059669':'#ef4444')+'">'+(_pnlDisp>=0?'+':'')+_pnlDisp+'%</strong>';
+      if(_lockInfo._whatChanged)h+=' · '+_lockInfo._whatChanged;
+      h+='</div>';
+    }
+    
     h+='</div>';
-    if(isOptions)h+='<div style="font-size:9px;color:#64748b;margin-top:4px">'+strikeReason+' · Lot: '+c7.lot+' · Qty: '+qtLots+(qtLots!=='1'?' lots':' lot')+'</div>';
-    if(!isOptions)h+='<div style="font-size:9px;color:#64748b;margin-top:4px">'+_entryLabel+' '+S+_stockEntry.toLocaleString()+' · Target '+S+_stockTarget.toLocaleString()+' · SL '+S+_stockSL.toLocaleString()+' · R:R 1:'+_stockRR+'</div>';
+    
+    // ═══ DETAILS TOGGLE — Everything else goes behind this ═══
+    var _detailId='qtDetail_'+sym.replace(/[^a-zA-Z0-9]/g,'');
+    h+='<div style="text-align:center;margin-bottom:8px"><button onclick="var d=document.getElementById(\''+_detailId+'\');d.style.display=d.style.display===\'none\'?\'block\':\'none\'" style="padding:6px 20px;border-radius:8px;background:#1e293b;color:#64748b;border:1px solid #334155;font-size:9px;font-weight:700;cursor:pointer">📊 Details & Analysis ▼</button></div>';
+    h+='<div id="'+_detailId+'" style="display:none">';
     // ═══ INSTITUTIONAL ENTRY TIMING ENGINE ═══
     // Entry Score = (Freshness × 0.35) + (R:R × 0.30) + (Volume × 0.20) + (VWAP × 0.15)
     var _sigAge2=window._qtSignalTime>0?Math.round((Date.now()-window._qtSignalTime)/60000):0;
@@ -4155,7 +4190,12 @@ function _renderQuickTrade(d,sym){
   h+='<div style="flex:1;padding:8px;border-radius:8px;background:#0F172A;border:1px solid #1e293b;text-align:center"><div style="font-size:7px;color:#ef4444;font-weight:700">DAY LOW</div><div style="font-size:14px;font-weight:900;color:#ef4444;font-family:JetBrains Mono">'+S+dayLow.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div></div>';
   h+='</div>';
   
-  // Disclaimer (stays in center column)
+  // Close details toggle div (opened in BUY NOW section)
+  if(isEnterNow&&!_isMktClosed){
+    h+='</div>'; // close #qtDetail_XXX
+  }
+  
+  // Disclaimer
   h+='<div style="margin:10px auto;padding:8px;border-radius:8px;background:#1e293b;text-align:center;font-size:7px;color:#475569">';
   h+='⚠️ Simplified view. Not financial advice. Options involve risk. Start with 1 lot.</div>';
   
@@ -7575,8 +7615,9 @@ _renderQuickTrade=function(d,sym){
   toggleDiv.id='optSwingToggle';
   toggleDiv.style.cssText='text-align:center;margin-bottom:8px';
   toggleDiv.innerHTML='<div style="display:inline-flex;gap:0">'
-    +'<button style="padding:8px 20px;border-radius:10px 0 0 10px;font-size:11px;font-weight:800;cursor:pointer;border:2px solid #3b82f6;background:#3b82f6;color:#fff">⚡ OPTIONS</button>'
-    +'<button onclick="window._swingMode=true;window._loadSwingAnalysis(\''+sym+'\',\''+reg+'\')" style="padding:8px 20px;border-radius:0 10px 10px 0;font-size:11px;font-weight:800;cursor:pointer;border:2px solid #8b5cf6;background:transparent;color:#8b5cf6">📈 SWING</button>'
+    +'<button style="padding:8px 16px;border-radius:10px 0 0 10px;font-size:11px;font-weight:800;cursor:pointer;border:2px solid #3b82f6;background:#3b82f6;color:#fff">⚡ OPTIONS</button>'
+    +'<button onclick="window._loadCatalystScanner()" style="padding:8px 16px;border-radius:0;font-size:11px;font-weight:800;cursor:pointer;border:2px solid #f59e0b;border-left:none;background:transparent;color:#f59e0b">🔥 CATALYST</button>'
+    +'<button onclick="window._swingMode=true;window._loadSwingAnalysis(\''+sym+'\',\''+reg+'\')" style="padding:8px 16px;border-radius:0 10px 10px 0;font-size:11px;font-weight:800;cursor:pointer;border:2px solid #8b5cf6;border-left:none;background:transparent;color:#8b5cf6">📈 SWING</button>'
     +'</div>';
   el.insertBefore(toggleDiv,el.firstChild);
 };
@@ -9462,6 +9503,216 @@ window._renderBottomNav=function(){
       if(zMsg)window._speak(zMsg,zone==='AT_RESISTANCE'||zone==='AT_SUPPORT');
     }
     window._zoneVoiceTracker[r.sym]=zone;
+  });
+};
+
+// ═══════════════════════════════════════════════════════════════
+// 🔥 CATALYST SCANNER — Morning watchlist based on real catalysts
+// Gap stocks, volume surges, OI build-up, overnight movers
+// ═══════════════════════════════════════════════════════════════
+window._loadCatalystScanner=function(){
+  var el=document.getElementById('deResult');if(!el)return;
+  var reg=window._optionsRegion||'IN';
+  var isUS=reg==='US';
+  var S=isUS?'$':'₹';
+  
+  // Show loading
+  el.innerHTML='<div style="max-width:520px;margin:0 auto;text-align:center;padding:40px">'
+    +'<div style="display:inline-block;width:30px;height:30px;border:3px solid #f59e0b;border-top-color:transparent;border-radius:50%;animation:spin 1s linear infinite;margin-bottom:12px"></div>'
+    +'<div style="font-size:16px;font-weight:900;color:#e2e8f0;font-family:Sora">🔥 Scanning for Catalysts...</div>'
+    +'<div style="font-size:10px;color:#94a3b8;margin-top:4px">Checking gaps, volume surges, OI build-up</div>'
+    +'</div>';
+  
+  // Tickers to scan
+  var tickers=isUS?
+    ['SPY','QQQ','AAPL','MSFT','NVDA','TSLA','META','GOOGL','AMZN','MU','AMD','NFLX','COIN','PLTR','SOFI','SMCI','ARM','BA','JPM','UBER']:
+    ['NIFTY','BANKNIFTY','RELIANCE','TCS','HDFCBANK','INFY','ICICIBANK','SBIN','BAJFINANCE','TATAMOTORS','LT','MARUTI','AXISBANK','ITC','BHARTIARTL','WIPRO','HCLTECH','ADANIENT','TITAN','SUNPHARMA'];
+  
+  // Fetch all tickers via bottom-nav-scan API
+  var apiUrl=isUS?'/api/bottom-nav-scan?region=US':'/api/bottom-nav-scan?region=IN';
+  fetch(apiUrl).then(function(r){return r.json()}).then(function(data){
+    if(!data||!data.results){el.innerHTML='<div style="text-align:center;padding:40px;color:#ef4444">Failed to fetch data</div>';return}
+    
+    var catalysts=[];
+    
+    Object.keys(data.results).forEach(function(sym){
+      var d=data.results[sym];
+      if(!d||!d.spot)return;
+      
+      var spot=d.spot||0;
+      var prevClose=d.prev_close||d.previous_close||0;
+      var vwap=d.vwap||0;
+      var bars=d.ohlc_bars||[];
+      var chain=d.chain_near_atm||[];
+      var pcr=d.pcr||0;
+      var vix=d.vix||0;
+      var ceBuild=d.ce_buildup||[];
+      var peBuild=d.pe_buildup||[];
+      
+      var catalyst={sym:sym,spot:spot,reasons:[],score:0,direction:'NEUTRAL',urgency:'LOW'};
+      
+      // ─── 1. GAP DETECTION ───
+      if(prevClose>0){
+        var gapPct=((spot-prevClose)/prevClose*100);
+        if(Math.abs(gapPct)>=0.5){
+          catalyst.reasons.push({
+            type:'GAP',
+            icon:gapPct>0?'🟢':'🔴',
+            text:(gapPct>0?'Gap Up':'Gap Down')+' '+Math.abs(gapPct).toFixed(1)+'% from yesterday '+S+prevClose.toLocaleString(),
+            impact:Math.min(40,Math.round(Math.abs(gapPct)*8))
+          });
+          catalyst.score+=Math.min(40,Math.round(Math.abs(gapPct)*8));
+          catalyst.direction=gapPct>0?'BULLISH':'BEARISH';
+        }
+      }
+      
+      // ─── 2. VOLUME SURGE ───
+      if(bars.length>=3){
+        var recentVol=bars.slice(-2).reduce(function(s,b){return s+b.v},0)/2;
+        var avgVol=bars.reduce(function(s,b){return s+b.v},0)/bars.length;
+        var volRatio=avgVol>0?recentVol/avgVol:1;
+        if(volRatio>=1.8){
+          catalyst.reasons.push({
+            type:'VOLUME',
+            icon:'📊',
+            text:'Volume surge '+volRatio.toFixed(1)+'x normal — big players are active',
+            impact:Math.min(30,Math.round(volRatio*10))
+          });
+          catalyst.score+=Math.min(30,Math.round(volRatio*10));
+        }
+      }
+      
+      // ─── 3. OI BUILD-UP (overnight institutional positioning) ───
+      if(peBuild.length>0&&peBuild[0].chg>10000){
+        catalyst.reasons.push({
+          type:'OI_BUILDUP',
+          icon:'🏛️',
+          text:'Put writers built '+peBuild[0].chg.toLocaleString()+' contracts at '+S+peBuild[0].strike.toLocaleString()+' — bullish institutional bet',
+          impact:25
+        });
+        catalyst.score+=25;
+        if(catalyst.direction==='NEUTRAL')catalyst.direction='BULLISH';
+      }
+      if(ceBuild.length>0&&ceBuild[0].chg>10000){
+        catalyst.reasons.push({
+          type:'OI_BUILDUP',
+          icon:'🏛️',
+          text:'Call writers built '+ceBuild[0].chg.toLocaleString()+' contracts at '+S+ceBuild[0].strike.toLocaleString()+' — bearish institutional bet',
+          impact:25
+        });
+        catalyst.score+=25;
+        if(catalyst.direction==='NEUTRAL')catalyst.direction='BEARISH';
+      }
+      
+      // ─── 4. BREAKOUT FROM RANGE ───
+      var dayHigh=d.today_high||0;
+      var dayLow=d.today_low||0;
+      if(dayHigh>0&&dayLow>0){
+        var range=dayHigh-dayLow;
+        var rangePct=range/spot*100;
+        if(rangePct>=1.0){
+          var breakUp=spot>=(dayHigh*0.998);
+          var breakDn=spot<=(dayLow*1.002);
+          if(breakUp){
+            catalyst.reasons.push({type:'BREAKOUT',icon:'🚀',text:'Breaking above day high '+S+dayHigh.toLocaleString()+' — momentum buyers stepping in',impact:20});
+            catalyst.score+=20;
+            catalyst.direction='BULLISH';
+          }else if(breakDn){
+            catalyst.reasons.push({type:'BREAKOUT',icon:'💥',text:'Breaking below day low '+S+dayLow.toLocaleString()+' — sellers in control',impact:20});
+            catalyst.score+=20;
+            catalyst.direction='BEARISH';
+          }
+        }
+      }
+      
+      // ─── 5. PCR EXTREME ───
+      if(pcr>1.5){
+        catalyst.reasons.push({type:'PCR',icon:'📈',text:'PCR '+pcr.toFixed(1)+' — extreme put writing, very bullish institutional sentiment',impact:15});
+        catalyst.score+=15;
+      }else if(pcr<0.5&&pcr>0){
+        catalyst.reasons.push({type:'PCR',icon:'📉',text:'PCR '+pcr.toFixed(1)+' — extreme call writing, very bearish institutional sentiment',impact:15});
+        catalyst.score+=15;
+      }
+      
+      // Urgency
+      if(catalyst.score>=60)catalyst.urgency='HIGH';
+      else if(catalyst.score>=35)catalyst.urgency='MEDIUM';
+      
+      if(catalyst.reasons.length>0)catalysts.push(catalyst);
+    });
+    
+    // Sort by score
+    catalysts.sort(function(a,b){return b.score-a.score});
+    
+    // ─── RENDER ───
+    var h='<div style="max-width:520px;margin:0 auto">';
+    h+='<div style="text-align:center;margin-bottom:12px">';
+    h+='<div style="font-size:18px;font-weight:900;color:#f59e0b;font-family:Sora">🔥 CATALYST SCANNER</div>';
+    h+='<div style="font-size:10px;color:#94a3b8;margin-top:4px">Stocks with catalysts today — sorted by urgency</div>';
+    h+='</div>';
+    
+    if(catalysts.length===0){
+      h+='<div style="text-align:center;padding:40px;color:#64748b">No strong catalysts detected right now. Market is quiet.</div>';
+    }else{
+      // Summary
+      var highCount=catalysts.filter(function(c){return c.urgency==='HIGH'}).length;
+      var medCount=catalysts.filter(function(c){return c.urgency==='MEDIUM'}).length;
+      h+='<div style="display:flex;justify-content:center;gap:12px;margin-bottom:12px">';
+      if(highCount>0)h+='<div style="padding:4px 12px;border-radius:6px;background:#ef444420;color:#ef4444;font-size:10px;font-weight:800">🔴 '+highCount+' HIGH URGENCY</div>';
+      if(medCount>0)h+='<div style="padding:4px 12px;border-radius:6px;background:#f59e0b20;color:#f59e0b;font-size:10px;font-weight:800">🟡 '+medCount+' MEDIUM</div>';
+      h+='</div>';
+      
+      catalysts.forEach(function(c){
+        var urgCol=c.urgency==='HIGH'?'#ef4444':c.urgency==='MEDIUM'?'#f59e0b':'#64748b';
+        var dirCol=c.direction==='BULLISH'?'#059669':'#ef4444';
+        var dirIcon=c.direction==='BULLISH'?'↑':'↓';
+        var loadFn=reg==='IN'?"window._loadQuickTrade('"+c.sym+"')":"window._loadOptionsUniversal('"+c.sym+"','US')";
+        
+        h+='<div onclick="'+loadFn+'" style="padding:12px;border-radius:12px;background:#0F172A;border:1px solid '+urgCol+'30;margin-bottom:8px;cursor:pointer">';
+        
+        // Header: Symbol + Direction + Score
+        h+='<div style="display:flex;justify-content:space-between;align-items:center">';
+        h+='<div style="display:flex;align-items:center;gap:8px">';
+        h+='<span style="font-size:14px;font-weight:900;color:#e2e8f0;font-family:Sora">'+c.sym+'</span>';
+        h+='<span style="font-size:10px;font-weight:800;color:'+dirCol+'">'+c.direction+' '+dirIcon+'</span>';
+        h+='</div>';
+        h+='<div style="display:flex;align-items:center;gap:6px">';
+        h+='<span style="font-size:9px;padding:2px 8px;border-radius:4px;background:'+urgCol+'20;color:'+urgCol+';font-weight:800">'+c.urgency+'</span>';
+        h+='<span style="font-size:12px;font-weight:900;color:'+urgCol+'">'+c.score+'</span>';
+        h+='</div>';
+        h+='</div>';
+        
+        // Spot price
+        h+='<div style="font-size:10px;color:#64748b;margin-top:2px">'+S+c.spot.toLocaleString()+'</div>';
+        
+        // Catalyst reasons
+        c.reasons.forEach(function(r){
+          h+='<div style="margin-top:4px;font-size:9px;color:#94a3b8;line-height:1.5">'+r.icon+' '+r.text+'</div>';
+        });
+        
+        // Action hint
+        h+='<div style="margin-top:6px;font-size:8px;color:'+dirCol+';font-weight:700">Tap to see full trade setup →</div>';
+        h+='</div>';
+      });
+    }
+    
+    h+='<div style="text-align:center;margin-top:12px"><button onclick="window._loadCatalystScanner()" style="padding:8px 20px;border-radius:8px;background:#1e293b;color:#f59e0b;border:1px solid #f59e0b30;font-size:10px;font-weight:700;cursor:pointer">🔄 Refresh Catalysts</button></div>';
+    h+='</div>';
+    
+    el.innerHTML=h;
+    
+    // Voice: announce top catalysts
+    if(catalysts.length>0&&catalysts[0].urgency==='HIGH'){
+      var topC=catalysts.filter(function(c){return c.urgency==='HIGH'}).slice(0,3);
+      var vMsg=topC.length+' high urgency catalyst'+(topC.length>1?'s':'')+' detected. ';
+      topC.forEach(function(c,i){
+        vMsg+=c.sym+' is '+(c.direction==='BULLISH'?'going up':'going down')+'. '+c.reasons[0].text+'. ';
+      });
+      vMsg+='Tap any ticker to see the full trade setup.';
+      window._speak(vMsg,true);
+    }
+  }).catch(function(e){
+    el.innerHTML='<div style="text-align:center;padding:40px;color:#ef4444">Failed to scan: '+e.message+'<br><button onclick="window._loadCatalystScanner()" style="margin-top:12px;padding:8px 20px;border-radius:8px;background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;border:none;cursor:pointer;font-size:11px;font-weight:700">🔄 Retry</button></div>';
   });
 };
 
