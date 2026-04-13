@@ -6957,8 +6957,11 @@ window._renderOptionsNav=function(activeSym){
   });
   h+='</div>';
   
-  // Scanner button
-  h+='<div style="text-align:center;margin-bottom:6px"><button onclick="window._showBuyNowDashboard()" style="padding:6px 18px;border-radius:8px;background:linear-gradient(135deg,#059669,#10b981);color:#fff;border:none;font-size:10px;font-weight:800;cursor:pointer;font-family:Sora">🔥 BUY NOW Today</button></div>';
+  // Scanner buttons — BUY NOW + CATALYST
+  h+='<div style="text-align:center;margin-bottom:6px;display:flex;gap:6px;justify-content:center">';
+  h+='<button onclick="window._showBuyNowDashboard()" style="padding:6px 18px;border-radius:8px;background:linear-gradient(135deg,#059669,#10b981);color:#fff;border:none;font-size:10px;font-weight:800;cursor:pointer;font-family:Sora">🔥 BUY NOW Today</button>';
+  h+='<button onclick="window._loadCatalystScanner()" style="padding:6px 18px;border-radius:8px;background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;border:none;font-size:10px;font-weight:800;cursor:pointer;font-family:Sora">🔥 Catalyst Scanner</button>';
+  h+='</div>';
   
   // Category selector
   h+='<div style="display:flex;gap:4px;margin-bottom:8px;justify-content:center;flex-wrap:wrap">';
@@ -7096,13 +7099,14 @@ window._showBuyNowDashboard=function(cat){
   h+='<div style="font-size:10px;color:#94a3b8;margin-top:2px">Scanning '+catData.label+' — showing only active BUY signals</div>';
   h+='</div>';
   
-  // Category tabs: Index | Stocks | ETFs
+  // Category tabs: Index | Stocks | ETFs | Catalyst
   h+='<div style="display:flex;gap:4px;margin-bottom:10px;justify-content:center">';
   Object.keys(regionData.categories).forEach(function(ck){
     var cd=regionData.categories[ck];
     var isAct=ck===filterCat;
     h+='<div onclick="window._showBuyNowDashboard(\''+ck+'\')" style="padding:8px 16px;border-radius:10px;font-size:11px;font-weight:800;cursor:pointer;font-family:Sora;'+(isAct?'background:linear-gradient(135deg,#059669,#10b981);color:#fff;box-shadow:0 4px 12px rgba(5,150,105,.3)':'background:#1e293b;color:#64748b;border:1px solid #334155')+'">'+cd.label+'</div>';
   });
+  h+='<div onclick="window._loadCatalystScanner()" style="padding:8px 16px;border-radius:10px;font-size:11px;font-weight:800;cursor:pointer;font-family:Sora;background:#1e293b;color:#f59e0b;border:1px solid #f59e0b30">🔥 Catalyst</div>';
   h+='</div>';
   
   // Results area
