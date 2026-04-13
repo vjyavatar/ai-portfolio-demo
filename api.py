@@ -25823,7 +25823,7 @@ async def _options_quick_impl(symbol: str = "NIFTY", region: str = "IN"):
                         dist = abs(k - spot)
                         ce_prem = max(1, round(max(0, spot - k) + spot * 0.003 * max(1, 3 - dist / step)))
                         pe_prem = max(1, round(max(0, k - spot) + spot * 0.003 * max(1, 3 - dist / step)))
-                        chain_data.append({"strike": k, "ce_oi": 200000, "pe_oi": 200000, "ce_iv": 18, "pe_iv": 18, "ce_ltp": ce_prem, "pe_ltp": pe_prem, "ce_bid": ce_prem - 1, "pe_bid": pe_prem - 1, "ce_ask": ce_prem + 1, "pe_ask": pe_prem + 1, "ce_chg": 0, "pe_chg": 0})
+                        chain_data.append({"strike": k, "ce_oi": 0, "pe_oi": 0, "ce_iv": 0, "pe_iv": 0, "ce_ltp": ce_prem, "pe_ltp": pe_prem, "ce_bid": ce_prem - 1, "pe_bid": pe_prem - 1, "ce_ask": ce_prem + 1, "pe_ask": pe_prem + 1, "ce_chg": 0, "pe_chg": 0})
                     
                     # Build bars
                     ohlc_bars = []
@@ -25836,11 +25836,11 @@ async def _options_quick_impl(symbol: str = "NIFTY", region: str = "IN"):
                         "today_high": round(day_high, 2), "today_low": round(day_low, 2), "today_open": round(day_open, 2),
                         "expiry": "", "expiry_dates": [],
                         "chain_near_atm": chain_data,
-                        "ce_resistance": [{"strike": atm + step * 2, "oi": 400000, "chg": 0}],
-                        "pe_support": [{"strike": atm - step * 2, "oi": 400000, "chg": 0}],
-                        "total_ce_oi": 2000000, "total_pe_oi": 2000000,
+                        "ce_resistance": [],
+                        "pe_support": [],
+                        "total_ce_oi": 0, "total_pe_oi": 0,
                         "ohlc_bars": ohlc_bars,
-                        "gex": {"total": 0, "regime": "NEUTRAL", "topStrikes": [], "flipPoint": atm, "callWall": atm + step * 3, "putWall": atm - step * 3},
+                        "gex": {"total": 0, "regime": "NEUTRAL", "topStrikes": [], "flipPoint": atm, "callWall": 0, "putWall": 0},
                         "pivot": vwap, "cpr_top": round(day_high * 0.998, 2), "cpr_bottom": round(day_low * 1.002, 2),
                         "_fallback": True
                     }
@@ -25870,7 +25870,7 @@ async def _options_quick_impl(symbol: str = "NIFTY", region: str = "IN"):
                         step2 = {"NIFTY": 50, "BANKNIFTY": 100, "SENSEX": 100}.get(sym, 50)
                         lot2 = {"NIFTY": 75, "BANKNIFTY": 30, "SENSEX": 20}.get(sym, 75)
                         atm2 = round(spot2 / step2) * step2
-                        chain2 = [{"strike": atm2 + k * step2, "ce_oi": 200000, "pe_oi": 200000, "ce_iv": 20, "pe_iv": 20,
+                        chain2 = [{"strike": atm2 + k * step2, "ce_oi": 0, "pe_oi": 0, "ce_iv": 0, "pe_iv": 0,
                             "ce_ltp": max(1, round(max(0, spot2 - (atm2 + k * step2)) + spot2 * 0.003 * max(1, 3 - abs(k)))),
                             "pe_ltp": max(1, round(max(0, (atm2 + k * step2) - spot2) + spot2 * 0.003 * max(1, 3 - abs(k)))),
                             "ce_bid": 1, "pe_bid": 1, "ce_ask": 2, "pe_ask": 2, "ce_chg": 0, "pe_chg": 0} for k in range(-4, 5)]
@@ -25880,10 +25880,10 @@ async def _options_quick_impl(symbol: str = "NIFTY", region: str = "IN"):
                             "pcr": 1.0, "max_pain": atm2, "atm_iv": 20, "vwap": round(spot2 * 0.998, 2),
                             "today_high": round(spot2 * 1.005, 2), "today_low": round(spot2 * 0.995, 2), "today_open": round(spot2 * 0.999, 2),
                             "expiry": "", "expiry_dates": [], "chain_near_atm": chain2,
-                            "ce_resistance": [{"strike": atm2 + step2 * 2, "oi": 400000, "chg": 0}],
-                            "pe_support": [{"strike": atm2 - step2 * 2, "oi": 400000, "chg": 0}],
-                            "total_ce_oi": 2000000, "total_pe_oi": 2000000, "ohlc_bars": [],
-                            "gex": {"total": 0, "regime": "NEUTRAL", "topStrikes": [], "flipPoint": atm2, "callWall": atm2 + step2 * 3, "putWall": atm2 - step2 * 3},
+                            "ce_resistance": [],
+                            "pe_support": [],
+                            "total_ce_oi": 0, "total_pe_oi": 0, "ohlc_bars": [],
+                            "gex": {"total": 0, "regime": "NEUTRAL", "topStrikes": [], "flipPoint": atm2, "callWall": 0, "putWall": 0},
                             "pivot": round(spot2, 2), "cpr_top": round(spot2 * 1.003, 2), "cpr_bottom": round(spot2 * 0.997, 2),
                             "_fallback": True
                         }
@@ -26045,7 +26045,7 @@ async def _options_quick_impl(symbol: str = "NIFTY", region: str = "IN"):
                 dist = abs(k - spot)
                 ce_p = max(0.1, round(max(0, spot - k) + spot * 0.003 * max(1, 3 - dist / step), 2))
                 pe_p = max(0.1, round(max(0, k - spot) + spot * 0.003 * max(1, 3 - dist / step), 2))
-                chain_data.append({"strike": k, "ce_oi": 200000, "pe_oi": 200000, "ce_iv": 20, "pe_iv": 20, "ce_ltp": ce_p, "pe_ltp": pe_p, "ce_bid": max(0.01, ce_p - 0.1), "pe_bid": max(0.01, pe_p - 0.1), "ce_ask": ce_p + 0.1, "pe_ask": pe_p + 0.1, "ce_chg": 0, "pe_chg": 0})
+                chain_data.append({"strike": k, "ce_oi": 0, "pe_oi": 0, "ce_iv": 0, "pe_iv": 0, "ce_ltp": ce_p, "pe_ltp": pe_p, "ce_bid": max(0.01, ce_p - 0.1), "pe_bid": max(0.01, pe_p - 0.1), "ce_ask": ce_p + 0.1, "pe_ask": pe_p + 0.1, "ce_chg": 0, "pe_chg": 0})
             if not ce_resistance:
                 ce_resistance = [{"strike": atm + step * 2, "oi": 400000, "chg": 0}]
             if not pe_support:

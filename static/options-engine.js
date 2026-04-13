@@ -2490,7 +2490,7 @@ _renderGammaEngine=function(d,sym){
   _origRenderGamma3(d,sym);
   var el=document.getElementById('deResult');if(!el)return;
   var S='₹';
-  var gex=d.gex||{};var bars=d.ohlc_bars||[];var spot=d.spot||0;var vix=d.vix||0;var atmIV=d.atm_iv||0;
+  var gex=d.gex||{};var bars=d.ohlc_bars||[];var spot=d.spot||0;var vix=d.vix||0;var vixChg=d.vix_change||0;var atmIV=d.atm_iv||0;
   
   var extra3='';
   extra3+=window._renderGEXHeatmap(gex,spot,S);
@@ -2631,6 +2631,7 @@ function _renderQuickTrade(d,sym){
   
   // MARKET CLOSED GUARD — if spot=0 or no chain data
   if(spot<=0||chain.length===0){
+    window._qtGrade='C';window._qtFinalBias='NO TRADE';window._qtConfidence=0;
     // Check if market SHOULD be open (IST for India, ET for US)
     var now=new Date();
     var istH=now.getUTCHours()+5+(now.getUTCMinutes()+30>=60?1:0);
@@ -2885,7 +2886,8 @@ function _renderQuickTrade(d,sym){
   
   // ─── FACTOR 5: OPTIONS DATA (15%) — OI + liquidity + BUILD-UP ───
   var pcr8=d.pcr||0;
-  var optionsScore=50;
+  var _hasRealOI=hasOI&&(callWriting>0||putWriting>0);
+  var optionsScore=_hasRealOI?50:-1; // -1 = NO DATA, skip this factor
   
   // ─── OI BUILD-UP DETECTION (LEADING SIGNAL) ───
   // Detects when institutions are building positions BEFORE price moves
@@ -3012,16 +3014,35 @@ function _renderQuickTrade(d,sym){
   else if(vix>28)volatilityScore=35; // Elevated
   else volatilityScore=40; // Low VIX — limited movement
   
-  // ─── APPLY WEIGHTS — Spec: Structure 25, VWAP 20, Volume 15, Trend 15, Options 15, Momentum 5, Volatility 5 ───
-  var confidence=Math.round(
-    structureScore*25/100+
-    vwapScore*20/100+
-    volumeScore*15/100+
-    trendScore*15/100+
-    optionsScore*15/100+
-    momentumScore*5/100+
-    volatilityScore*5/100
-  );
+  // ─── APPLY WEIGHTS — Only use factors with REAL data ───
+  var _factors=[
+    {score:structureScore,weight:25,name:'Structure'},
+    {score:vwapScore,weight:20,name:'VWAP'},
+    {score:volumeScore,weight:15,name:'Volume'},
+    {score:trendScore,weight:15,name:'Trend'},
+    {score:optionsScore,weight:15,name:'Options'},
+    {score:momentumScore,weight:5,name:'Momentum'},
+    {score:volatilityScore,weight:5,name:'Volatility'}
+  ];
+  // Filter out factors with no real data (score=-1)
+  var _validFactors=_factors.filter(function(f){return f.score>=0});
+  var _totalWeight=_validFactors.reduce(function(s,f){return s+f.weight},0);
+  // Normalize weights to sum to 100
+  var confidence=0;
+  if(_totalWeight>0){
+    confidence=Math.round(_validFactors.reduce(function(s,f){
+      return s+f.score*(f.weight/_totalWeight*100)/100;
+    },0));
+  }
+  // If fallback data, cap VWAP contribution (estimated VWAP is unreliable)
+  if(isFallback&&vwapScore>=0){
+    // Recalculate with VWAP capped at 60 (don't let fake VWAP inflate score)
+    var _cappedVwap=Math.min(vwapScore,60);
+    if(_cappedVwap!==vwapScore){
+      var _diff=(vwapScore-_cappedVwap)*(20/_totalWeight*100)/100;
+      confidence=Math.max(0,confidence-Math.round(_diff));
+    }
+  }
   confidence=Math.min(100,Math.max(0,confidence));
   
   // ─── NORMALIZATION CAPS ───
@@ -3086,8 +3107,10 @@ function _renderQuickTrade(d,sym){
   }
   
   // F4: Low liquidity (wide spreads = easy to manipulate)
-  var lowLiquidity=chain.length<5||(liquidityScore<50);
-  if(lowLiquidity){fakeSignalScore+=10;fakeFlags.push('Low liquidity — easy to manipulate')}
+  var _knownIndex=(['NIFTY','BANKNIFTY','SENSEX','FINNIFTY','MIDCPNIFTY','SPY','QQQ','IWM','DIA'].indexOf(sym)>=0);
+  var lowLiquidity=(!_knownIndex&&chain.length<5)||(liquidityScore<50);
+  if(lowLiquidity&&!isUS){fakeSignalScore+=10;fakeFlags.push('Low liquidity — easy to manipulate')}
+  if(lowLiquidity&&isUS){fakeSignalScore+=3;fakeFlags.push('Low OI — typical for this instrument')}
   
   // F5: VWAP conflict (price vs VWAP disagree with signal)
   var vwapConflict=(direction==='BULLISH'&&spot<vwapLevel*0.998)||(direction==='BEARISH'&&spot>vwapLevel*1.002);
@@ -3159,8 +3182,12 @@ function _renderQuickTrade(d,sym){
   var redFlags=[];
   if(vix>25)redFlags.push('High VIX ('+vix.toFixed(1)+')');
   if(fakeSignalScore>40)redFlags.push('Fake signal score '+fakeSignalScore+'/100');
-  if(lowLiquidity)redFlags.push('Low liquidity');
-  if(conflictingOptionsData)redFlags.push('Conflicting OI');
+  // Low liquidity and Conflicting OI are warnings for US ETFs, red flags only for India indices
+  var _isUSorETF=isUS||(spot<500&&isUS===false);
+  if(lowLiquidity&&!_isUSorETF)redFlags.push('Low liquidity');
+  if(conflictingOptionsData&&!_isUSorETF)redFlags.push('Conflicting OI');
+  if(lowLiquidity&&_isUSorETF)fakeFlags.push('Low liquidity — typical for this instrument');
+  if(conflictingOptionsData&&_isUSorETF)fakeFlags.push('Conflicting OI — typical for ETFs');
   if(breakoutWithoutVolume)redFlags.push('No-volume breakout');
   if(vwapConflict)redFlags.push('VWAP conflict');
   // Event risk from session
@@ -3168,7 +3195,7 @@ function _renderQuickTrade(d,sym){
   if(_sp9.isLunchHour)redFlags.push('Lunch hour — low volatility');
   
   var redFlagCount=redFlags.length;
-  var noTradeFromRedFlags=redFlagCount>=2;
+  var noTradeFromRedFlags=redFlagCount>=3;
   
   window._qtRedFlags=redFlags;
   window._qtRedFlagCount=redFlagCount;
@@ -3199,7 +3226,8 @@ function _renderQuickTrade(d,sym){
     // Check if this meets the FULL institutional high-probability criteria
     var isHighProb=confidence>=75&&confirmations>=4&&fakeSignalScore<=20&&redFlagCount<2;
     var isStrongTrade=confidence>=70&&confirmations>=3&&fakeSignalScore<=40&&redFlagCount<2;
-    var isModerate=confidence>=60&&confirmations>=2&&fakeSignalScore<=60;
+    var isModerate=confidence>=60&&confirmations>=2&&fakeSignalScore<=60&&redFlagCount<=3;
+    var isWeak=confidence>=55&&confirmations>=2;
     
     if(isHighProb){grade='A+';gradeLabel='Institutional — Execute Aggressively'}
     else if(isStrongTrade){grade='A';gradeLabel='High Probability — Execute'}
@@ -3226,8 +3254,12 @@ function _renderQuickTrade(d,sym){
   // ─── DECISION ───
   var finalBias='NO TRADE';
   var isOptions=tradeMode==='OPTIONS'||tradeMode==='INDEX_HYBRID';
-  if(grade==='C'||hardBlock){
+  if(hardBlock){
     finalBias='NO TRADE';
+  }else if(grade==='C'){
+    // Grade C still shows direction — so trader knows which way market leans
+    // But status will be NO TRADE / WATCHING — won't show as BUY
+    finalBias=(direction==='BULLISH'||direction==='BEARISH')?direction:'NO TRADE';
   }else{
     finalBias=direction;
   }
