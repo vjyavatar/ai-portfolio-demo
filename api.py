@@ -25490,8 +25490,9 @@ _catalyst_cache = {"ts": 0, "data": None, "region": ""}
 
 @app.get("/api/catalyst-scan")
 async def catalyst_scan(region: str = "IN"):
-    """Scan tickers for news catalysts, earnings, gaps, volume surges"""
+    """Catalyst scanner — India: NSE for options + yfinance for news. US: yfinance for both."""
     import asyncio
+    from concurrent.futures import ThreadPoolExecutor, as_completed
     global _catalyst_cache
     
     now = time.time()
@@ -25510,175 +25511,230 @@ async def catalyst_scan(region: str = "IN"):
     bullish_kw = ["surge","rally","beat","upgrade","record","growth","profit","gain","buy","bullish","outperform","raise","boost","strong","soar","jump","positive","exceed","upside","dividend","bonus","split","buyback","order","deal","contract","approve"]
     bearish_kw = ["fall","drop","decline","cut","downgrade","miss","loss","sell","bearish","underperform","weak","crash","fear","risk","warning","slash","layoff","concern","threat","negative","panic","plunge","tumble","fraud","probe","ban","fine","penalty","resign"]
     
-    def _scan_one(sym):
+    def _classify_news(title):
+        t = title.lower()
+        bull = sum(1 for k in bullish_kw if k in t)
+        bear = sum(1 for k in bearish_kw if k in t)
+        return "bullish" if bull > bear else ("bearish" if bear > bull else "neutral")
+    
+    def _fetch_news_yf(sym):
+        """Fetch news from Yahoo Finance — works for both IN and US"""
         try:
-            yf_sym = sym if is_us else (f"{sym}.NS" if sym not in ["NIFTY","BANKNIFTY","SENSEX","FINNIFTY"] else {"NIFTY":"^NSEI","BANKNIFTY":"^NSEBANK","SENSEX":"^BSESN","FINNIFTY":"NIFTY_FIN_SERVICE.NS"}.get(sym, f"{sym}.NS"))
+            yf_map = {"NIFTY":"^NSEI","BANKNIFTY":"^NSEBANK","SENSEX":"^BSESN","FINNIFTY":"NIFTY_FIN_SERVICE.NS"}
+            yf_sym = sym if is_us else yf_map.get(sym, f"{sym}.NS")
             _yahoo_rate_wait()
             tk = yf.Ticker(yf_sym)
-            
+            news = tk.news or []
+            items = []
+            for n in news[:5]:
+                title = n.get("title", "") or n.get("content", {}).get("title", "") or ""
+                publisher = n.get("publisher", "") or n.get("content", {}).get("provider", {}).get("displayName", "") or ""
+                link = n.get("link", "") or n.get("content", {}).get("canonicalUrl", {}).get("url", "") or ""
+                if title:
+                    items.append({"title": title, "publisher": publisher, "link": link, "sentiment": _classify_news(title)})
+            return items
+        except:
+            return []
+    
+    def _fetch_price_yf(sym):
+        """Fetch price/gap/volume from Yahoo Finance — used for US stocks"""
+        try:
+            _yahoo_rate_wait()
+            tk = yf.Ticker(sym)
+            hist = tk.history(period="5d")
+            if len(hist) < 2:
+                return {}
+            spot = float(hist["Close"].iloc[-1])
+            prev_close = float(hist["Close"].iloc[-2])
+            today_open = float(hist["Open"].iloc[-1])
+            gap_pct = round((today_open - prev_close) / prev_close * 100, 2) if prev_close > 0 else 0
+            today_vol = float(hist["Volume"].iloc[-1])
+            avg_vol = float(hist["Volume"].iloc[-5:-1].mean()) if len(hist) >= 5 else today_vol
+            vol_ratio = round(today_vol / avg_vol, 1) if avg_vol > 0 else 1
+            today_high = float(hist["High"].iloc[-1])
+            today_low = float(hist["Low"].iloc[-1])
+            return {"spot": round(spot, 2), "prevClose": round(prev_close, 2), "gapPct": gap_pct,
+                    "volRatio": vol_ratio, "todayHigh": round(today_high, 2), "todayLow": round(today_low, 2)}
+        except:
+            return {}
+    
+    def _fetch_india_data(sym):
+        """Fetch India data from NSE via _options_quick_impl (sync wrapper)"""
+        try:
+            import asyncio as _aio
+            _loop = _aio.new_event_loop()
+            try:
+                data = _loop.run_until_complete(_options_quick_impl(sym, "IN"))
+                if data and data.get("success"):
+                    spot = data.get("spot", 0)
+                    vwap = data.get("vwap", 0)
+                    prev_close = data.get("prev_close", 0) or data.get("previous_close", 0) or 0
+                    pcr = data.get("pcr", 0)
+                    bars = data.get("ohlc_bars", [])
+                    chain = data.get("chain_near_atm", [])
+                    ce_build = data.get("ce_buildup", [])
+                    pe_build = data.get("pe_buildup", [])
+                    gex = data.get("gex", {})
+                    lot_size = data.get("lot_size", 1)
+                    
+                    gap_pct = round((spot - prev_close) / prev_close * 100, 2) if prev_close > 0 and spot > 0 else 0
+                    
+                    vol_ratio = 1.0
+                    if bars and len(bars) >= 3:
+                        recent_vol = sum(b.get("v", 0) for b in bars[-2:]) / 2
+                        avg_vol = sum(b.get("v", 0) for b in bars) / len(bars)
+                        vol_ratio = round(recent_vol / avg_vol, 1) if avg_vol > 0 else 1
+                    
+                    today_high = max(b.get("h", 0) for b in bars) if bars else 0
+                    today_low = min(b.get("l", 99999999) for b in bars) if bars else 0
+                    
+                    return {
+                        "spot": round(spot, 2), "prevClose": round(prev_close, 2), "gapPct": gap_pct,
+                        "volRatio": vol_ratio, "todayHigh": round(today_high, 2), "todayLow": round(today_low, 2),
+                        "pcr": pcr, "vwap": round(vwap, 2), "lot_size": lot_size,
+                        "ce_buildup": ce_build, "pe_buildup": pe_build,
+                        "gex": gex, "chain": chain
+                    }
+                return {}
+            finally:
+                _loop.close()
+        except:
+            return {}
+    
+    def _scan_one(sym):
+        try:
             result = {"sym": sym, "catalysts": [], "score": 0, "direction": "NEUTRAL", "news": [], "spot": 0, "prevClose": 0, "gapPct": 0}
             
-            # 1. NEWS
-            try:
-                news = tk.news or []
-                for n in news[:5]:
-                    title = n.get("title", "") or n.get("content", {}).get("title", "") or ""
-                    publisher = n.get("publisher", "") or n.get("content", {}).get("provider", {}).get("displayName", "") or ""
-                    if not title: continue
-                    t_lower = title.lower()
-                    bull = sum(1 for k in bullish_kw if k in t_lower)
-                    bear = sum(1 for k in bearish_kw if k in t_lower)
-                    sentiment = "bullish" if bull > bear else ("bearish" if bear > bull else "neutral")
-                    link = n.get("link", "") or n.get("content", {}).get("canonicalUrl", {}).get("url", "") or ""
-                    result["news"].append({"title": title, "publisher": publisher, "sentiment": sentiment, "link": link})
-                    
-                    # Score news
-                    if sentiment != "neutral":
-                        result["catalysts"].append({
-                            "type": "NEWS",
-                            "icon": "📰",
-                            "text": title[:100],
-                            "sentiment": sentiment,
-                            "impact": 20 + (bull + bear) * 5
-                        })
-                        result["score"] += 20 + (bull + bear) * 5
-                        if sentiment == "bullish" and result["direction"] == "NEUTRAL": result["direction"] = "BULLISH"
-                        if sentiment == "bearish" and result["direction"] == "NEUTRAL": result["direction"] = "BEARISH"
-            except: pass
+            # ─── STEP 1: Get price data (NSE for India, yfinance for US) ───
+            if is_us:
+                pdata = _fetch_price_yf(sym)
+            else:
+                pdata = _fetch_india_data(sym)
             
-            # 2. EARNINGS DATE
-            try:
-                cal = tk.calendar
-                if cal is not None and not (hasattr(cal, 'empty') and cal.empty):
-                    if hasattr(cal, 'iloc'):
-                        earn_date = str(cal.iloc[0, 0]) if cal.shape[1] > 0 else ""
-                    elif isinstance(cal, dict):
-                        earn_date = str(cal.get("Earnings Date", [""])[0]) if cal.get("Earnings Date") else ""
-                    else:
-                        earn_date = str(cal)
-                    if earn_date and "NaT" not in earn_date:
-                        result["catalysts"].append({
-                            "type": "EARNINGS",
-                            "icon": "📊",
-                            "text": f"Earnings: {earn_date[:20]}",
-                            "sentiment": "neutral",
-                            "impact": 30
-                        })
-                        result["score"] += 30
-            except: pass
+            if not pdata or not pdata.get("spot"):
+                return result
             
-            # 3. GAP (today open vs yesterday close)
-            try:
-                hist = tk.history(period="5d")
-                if len(hist) >= 2:
-                    today_open = float(hist["Open"].iloc[-1])
-                    prev_close = float(hist["Close"].iloc[-2])
-                    spot = float(hist["Close"].iloc[-1])
-                    result["spot"] = round(spot, 2)
-                    result["prevClose"] = round(prev_close, 2)
-                    gap_pct = round((today_open - prev_close) / prev_close * 100, 2)
-                    result["gapPct"] = gap_pct
-                    
-                    if abs(gap_pct) >= 0.5:
-                        direction = "BULLISH" if gap_pct > 0 else "BEARISH"
-                        result["catalysts"].append({
-                            "type": "GAP",
-                            "icon": "🟢" if gap_pct > 0 else "🔴",
-                            "text": f"{'Gap Up' if gap_pct > 0 else 'Gap Down'} {abs(gap_pct):.1f}% — opened at {today_open:.0f} vs yesterday {prev_close:.0f}",
-                            "sentiment": "bullish" if gap_pct > 0 else "bearish",
-                            "impact": min(40, int(abs(gap_pct) * 8))
-                        })
-                        result["score"] += min(40, int(abs(gap_pct) * 8))
-                        if result["direction"] == "NEUTRAL": result["direction"] = direction
-                    
-                    # 4. VOLUME SURGE
-                    if len(hist) >= 5:
-                        today_vol = float(hist["Volume"].iloc[-1])
-                        avg_vol = float(hist["Volume"].iloc[-5:-1].mean())
-                        if avg_vol > 0:
-                            vol_ratio = round(today_vol / avg_vol, 1)
-                            if vol_ratio >= 1.5:
-                                result["catalysts"].append({
-                                    "type": "VOLUME",
-                                    "icon": "📊",
-                                    "text": f"Volume {vol_ratio}x average — significant institutional activity",
-                                    "sentiment": "neutral",
-                                    "impact": min(25, int(vol_ratio * 8))
-                                })
-                                result["score"] += min(25, int(vol_ratio * 8))
-            except: pass
+            spot = pdata["spot"]
+            result["spot"] = spot
+            result["prevClose"] = pdata.get("prevClose", 0)
+            result["gapPct"] = pdata.get("gapPct", 0)
+            
+            # ─── STEP 2: News (yfinance for both — best free source) ───
+            news_items = _fetch_news_yf(sym)
+            for n in news_items:
+                result["news"].append(n)
+                if n["sentiment"] != "neutral":
+                    result["catalysts"].append({
+                        "type": "NEWS", "icon": "📰",
+                        "text": n["title"][:100],
+                        "sentiment": n["sentiment"],
+                        "impact": 20
+                    })
+                    result["score"] += 20
+                    if n["sentiment"] == "bullish" and result["direction"] == "NEUTRAL":
+                        result["direction"] = "BULLISH"
+                    if n["sentiment"] == "bearish" and result["direction"] == "NEUTRAL":
+                        result["direction"] = "BEARISH"
+            
+            # ─── STEP 3: Gap detection ───
+            gap = pdata.get("gapPct", 0)
+            if abs(gap) >= 0.5:
+                result["catalysts"].append({
+                    "type": "GAP",
+                    "icon": "\U0001f7e2" if gap > 0 else "\U0001f534",
+                    "text": f"{'Gap Up' if gap > 0 else 'Gap Down'} {abs(gap):.1f}%",
+                    "sentiment": "bullish" if gap > 0 else "bearish",
+                    "impact": min(35, int(abs(gap) * 8))
+                })
+                result["score"] += min(35, int(abs(gap) * 8))
+                if result["direction"] == "NEUTRAL":
+                    result["direction"] = "BULLISH" if gap > 0 else "BEARISH"
+            
+            # ─── STEP 4: Volume surge ───
+            vr = pdata.get("volRatio", 1)
+            if vr >= 1.5:
+                result["catalysts"].append({
+                    "type": "VOLUME", "icon": "\U0001f4ca",
+                    "text": f"Volume {vr}x average — institutional activity",
+                    "sentiment": "neutral",
+                    "impact": min(25, int(vr * 8))
+                })
+                result["score"] += min(25, int(vr * 8))
+            
+            # ─── STEP 5: India-specific — OI Build-up + PCR ───
+            if not is_us:
+                ce_build = pdata.get("ce_buildup", [])
+                pe_build = pdata.get("pe_buildup", [])
+                pcr = pdata.get("pcr", 0)
+                
+                if pe_build and len(pe_build) > 0 and pe_build[0].get("chg", 0) > 5000:
+                    result["catalysts"].append({
+                        "type": "OI_BUILDUP", "icon": "\U0001f3db\ufe0f",
+                        "text": f"Put writers built {pe_build[0]['chg']:,} contracts at {pe_build[0]['strike']:,} — bullish",
+                        "sentiment": "bullish", "impact": 25
+                    })
+                    result["score"] += 25
+                    if result["direction"] == "NEUTRAL": result["direction"] = "BULLISH"
+                
+                if ce_build and len(ce_build) > 0 and ce_build[0].get("chg", 0) > 5000:
+                    result["catalysts"].append({
+                        "type": "OI_BUILDUP", "icon": "\U0001f3db\ufe0f",
+                        "text": f"Call writers built {ce_build[0]['chg']:,} contracts at {ce_build[0]['strike']:,} — bearish",
+                        "sentiment": "bearish", "impact": 25
+                    })
+                    result["score"] += 25
+                    if result["direction"] == "NEUTRAL": result["direction"] = "BEARISH"
+                
+                if pcr > 1.5:
+                    result["catalysts"].append({"type": "PCR", "icon": "\U0001f4c8", "text": f"PCR {pcr:.1f} — extreme put writing, very bullish", "sentiment": "bullish", "impact": 15})
+                    result["score"] += 15
+                elif 0 < pcr < 0.5:
+                    result["catalysts"].append({"type": "PCR", "icon": "\U0001f4c9", "text": f"PCR {pcr:.1f} — extreme call writing, very bearish", "sentiment": "bearish", "impact": 15})
+                    result["score"] += 15
+            
+            # ─── STEP 6: Trade details (computed) ───
+            if spot > 0 and result["direction"] != "NEUTRAL":
+                _inst = ALGO_INSTRUMENTS.get(sym, {})
+                lot = pdata.get("lot_size", 0) or _inst.get("lot", 100 if is_us else 1)
+                step = _inst.get("gap", 1 if is_us else (50 if spot > 5000 else 20 if spot > 1000 else 5))
+                is_bull = result["direction"] == "BULLISH"
+                atm = round(spot / step) * step
+                
+                day_range = abs(gap) * spot / 100 + spot * 0.005
+                est_prem = round(day_range * (1.5 if is_us else 1.0), 2)
+                if est_prem <= 0: est_prem = round(spot * 0.01, 2)
+                
+                target = round(est_prem * 1.4, 2)
+                sl = round(est_prem * 0.70, 2)
+                rr = round((target - est_prem) / max(est_prem - sl, 0.01), 1)
+                
+                result["trade"] = {
+                    "action": "BUY CALL" if is_bull else "BUY PUT",
+                    "strike": atm, "type": "CE" if is_bull else "PE",
+                    "premium": est_prem, "target": target, "sl": sl,
+                    "rr": rr, "lot": lot, "spot": round(spot, 2)
+                }
             
             # Urgency
             result["urgency"] = "HIGH" if result["score"] >= 50 else ("MEDIUM" if result["score"] >= 25 else "LOW")
-            
-            # 5. TRADE DETAILS — fetch ATM strike, premium, target, SL
-            try:
-                spot = result["spot"]
-                if spot > 0 and result["direction"] != "NEUTRAL":
-                    # Get lot size
-                    _inst = ALGO_INSTRUMENTS.get(sym, {})
-                    lot = _inst.get("lot", 100 if is_us else 1)
-                    step = _inst.get("gap", 50 if spot > 5000 else 5 if spot > 100 else 1)
-                    
-                    # ATM strike
-                    atm = round(spot / step) * step
-                    
-                    # Fetch options chain for nearest expiry
-                    try:
-                        exp_dates = tk.options
-                        if exp_dates and len(exp_dates) > 0:
-                            chain = tk.option_chain(exp_dates[0])
-                            is_bull = result["direction"] == "BULLISH"
-                            opt_df = chain.calls if is_bull else chain.puts
-                            
-                            # Find ATM option
-                            opt_df = opt_df.copy()
-                            opt_df["dist"] = abs(opt_df["strike"] - spot)
-                            atm_row = opt_df.sort_values("dist").iloc[0] if len(opt_df) > 0 else None
-                            
-                            if atm_row is not None:
-                                strike = float(atm_row["strike"])
-                                prem = float(atm_row["lastPrice"]) if atm_row["lastPrice"] > 0 else float(atm_row["ask"]) if atm_row.get("ask", 0) > 0 else 0
-                                
-                                if prem > 0:
-                                    day_range_pct = abs(result.get("gapPct", 0)) + 0.5
-                                    target = round(prem * (1 + day_range_pct / 100 * 3), 2)
-                                    sl = round(prem * 0.75, 2)
-                                    rr = round((target - prem) / (prem - sl), 1) if prem > sl else 0
-                                    
-                                    result["trade"] = {
-                                        "strike": strike,
-                                        "type": "CE" if is_bull else "PE",
-                                        "premium": round(prem, 2),
-                                        "target": round(target, 2),
-                                        "sl": round(sl, 2),
-                                        "rr": rr,
-                                        "lot": lot,
-                                        "expiry": exp_dates[0],
-                                        "action": "BUY CALL" if is_bull else "BUY PUT"
-                                    }
-                    except: pass
-            except: pass
-            
             return result
         except Exception as e:
             return {"sym": sym, "catalysts": [], "score": 0, "direction": "NEUTRAL", "news": [], "urgency": "LOW", "error": str(e)}
     
-    # Run in parallel with ThreadPoolExecutor
-    from concurrent.futures import ThreadPoolExecutor, as_completed
+    # Run in parallel
     results = []
     try:
         with ThreadPoolExecutor(max_workers=5) as executor:
             futures = {executor.submit(_scan_one, t): t for t in tickers}
-            for future in as_completed(futures, timeout=45):
+            for future in as_completed(futures, timeout=60):
                 try:
-                    r = future.result(timeout=10)
+                    r = future.result(timeout=15)
                     if r: results.append(r)
                 except: pass
     except: pass
     
-    # Sort by score, filter out empty
-    results = [r for r in results if r["score"] > 0]
+    # Sort by score, filter empty
+    results = [r for r in results if r.get("score", 0) > 0]
     results.sort(key=lambda x: x["score"], reverse=True)
     
     response = {
@@ -25686,7 +25742,7 @@ async def catalyst_scan(region: str = "IN"):
         "region": region,
         "catalysts": results[:15],
         "total_scanned": len(tickers),
-        "high_urgency": len([r for r in results if r["urgency"] == "HIGH"]),
+        "high_urgency": len([r for r in results if r.get("urgency") == "HIGH"]),
         "ts": now
     }
     
