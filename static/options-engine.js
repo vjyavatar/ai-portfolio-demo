@@ -2530,6 +2530,7 @@ window._activeOptionsReg='IN';
 
 window._loadQuickTrade=function(symbol){
   var el=document.getElementById('deResult');if(!el)return;
+  window._catalystMode=false; // Exit catalyst view
   var sym=(symbol||'NIFTY').toUpperCase();
   
   // Clear previous refresh timer
@@ -2591,7 +2592,7 @@ window._loadQuickTrade=function(symbol){
       // Auto-refresh — only if still the active ticker
       console.log('[REFRESH] ✅ Timer started for '+sym+' (30s)');
       window._quickRefreshTimer=setInterval(function(){
-        if(document.getElementById('deResult')&&window._deMode==='options'&&window._activeOptionsSym===sym){
+        if(document.getElementById('deResult')&&window._deMode==='options'&&window._activeOptionsSym===sym&&!window._catalystMode){
           console.log('[REFRESH] 🔄 Fetching '+sym+'...');
           fetch('/api/options-quick?symbol='+encodeURIComponent(sym)+'&region=IN')
             .then(function(r2){return r2.json()})
@@ -3660,13 +3661,21 @@ function _renderQuickTrade(d,sym){
   h+='<div style="text-align:center;margin-bottom:16px"><div style="font-size:10px;color:#94a3b8">'+sym+' · '+S+(isUS?spot.toLocaleString('en-US'):spot.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN'))+' · VIX '+vix.toFixed(1)+(qtIsExpiry?' · 🔥 EXPIRY':'')+'</div></div>';
   
   // ─── ⚪ NO TRADE ───
-  if(status.indexOf('NO TRADE')>=0){
-    h+='<div style="text-align:center;padding:24px">';
-    h+='<div style="font-size:60px;margin-bottom:12px">⚪</div>';
-    h+='<div style="font-size:28px;font-weight:900;color:#64748b;font-family:Sora;margin-bottom:4px">NO TRADE</div>';
-    h+='<div style="font-size:16px;font-weight:900;color:'+directionColor+';font-family:Sora;margin-bottom:4px">'+directionLabel+'</div>';
-    if(hardBlock)h+='<div style="font-size:10px;color:#ef4444;margin-bottom:12px">⚠️ '+blockReason+'</div>';
-    h+='<div style="font-size:12px;color:#94a3b8;margin-bottom:8px">Confidence: '+confidence+'% · Grade: '+grade+'</div>';
+  if(status.indexOf('NO TRADE')>=0||status.indexOf('MARKET CLOSED')>=0){
+    h+='<div style="text-align:center;padding:16px;border-radius:16px;background:#64748b10;border:2px solid #64748b25;margin-bottom:8px">';
+    h+='<div style="font-size:24px;font-weight:900;color:'+(status.indexOf('MARKET')>=0?'#ef4444':'#64748b')+';font-family:Sora">'+status+'</div>';
+    if(direction!=='NONE')h+='<div style="font-size:12px;font-weight:800;color:'+directionColor+';margin-top:4px">'+directionLabel+'</div>';
+    h+='<div style="font-size:10px;color:#94a3b8;margin-top:4px">Confidence: '+confidence+'% · Grade: '+grade+'</div>';
+    if(hardBlock)h+='<div style="font-size:9px;color:#ef4444;margin-top:4px">'+blockReason+'</div>';
+    h+='</div>';
+    // Compact why — just top 2 reasons
+    var _topWhy=whyReasons.filter(function(r){return !r.pass}).slice(0,2);
+    if(_topWhy.length>0){
+      h+='<div style="padding:8px;border-radius:8px;background:#1e293b;margin-bottom:8px">';
+      h+='<div style="font-size:8px;color:#64748b;font-weight:700;margin-bottom:4px">Why no trade:</div>';
+      _topWhy.forEach(function(r){h+='<div style="font-size:9px;color:#94a3b8;padding:2px 0">✗ '+r.label+'</div>'});
+      h+='</div>';
+    }
     
     // ═══ SIGNAL QUALITY DASHBOARD — NO TRADE view (shows what's missing) ═══
     h+='<div style="padding:10px;border-radius:12px;background:#111827;border:1px solid #1e293b;margin-bottom:12px">';
@@ -3702,98 +3711,58 @@ function _renderQuickTrade(d,sym){
     }
     h+='</div>';
     
-  // ─── ⏳ WATCHING / 🟡 ALMOST ───
-  }else if(status.indexOf('WATCHING')>=0||status.indexOf('ALMOST')>=0){
-    h+='<div style="text-align:center;padding:16px;border-radius:16px;background:'+statusColor+'10;border:2px solid '+statusColor+'25;margin-bottom:12px">';
-    h+='<div style="font-size:24px;font-weight:900;color:'+statusColor+';font-family:Sora">'+status+'</div>';
-    h+='<div style="font-size:18px;font-weight:900;color:'+directionColor+';font-family:Sora;margin-top:4px">'+directionLabel+'</div>';
-    h+='<div style="font-size:12px;color:#94a3b8;margin-top:6px">Confidence: '+confidence+'% · Grade: '+grade+' · Trap: '+trapRisk+'</div>';
+  // ─── ⏳ WATCHING / 🟡 ALMOST / 🟡 HOLD ───
+  }else if(status.indexOf('WATCHING')>=0||status.indexOf('ALMOST')>=0||status.indexOf('HOLD')>=0||status.indexOf('EXIT TRADE')>=0){
+    var _isAlmost=status.indexOf('ALMOST')>=0||status.indexOf('HOLD')>=0;
+    var _isExit=status.indexOf('EXIT')>=0;
     
-    // ═══ SIGNAL QUALITY DASHBOARD — Shows framework internals to user ═══
-    h+='<div style="margin-top:8px;padding:10px;border-radius:12px;background:#111827;border:1px solid #1e293b">';
-    // Header row: Confirmations | Fake Score | Red Flags | R:R
-    h+='<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:6px;margin-bottom:6px">';
-    var _cCol=confirmations>=4?'#059669':confirmations>=3?'#3b82f6':confirmations>=2?'#d97706':'#ef4444';
-    h+='<div style="text-align:center;padding:4px;border-radius:6px;background:'+_cCol+'10"><div style="font-size:7px;color:'+_cCol+';font-weight:800">CONFIRMS</div><div style="font-size:14px;font-weight:900;color:'+_cCol+'">'+confirmations+'/6</div></div>';
-    var _fCol=fakeSignalScore<=20?'#059669':fakeSignalScore<=40?'#d97706':'#ef4444';
-    h+='<div style="text-align:center;padding:4px;border-radius:6px;background:'+_fCol+'10"><div style="font-size:7px;color:'+_fCol+';font-weight:800">FAKE SCORE</div><div style="font-size:14px;font-weight:900;color:'+_fCol+'">'+fakeSignalScore+'</div></div>';
-    var _rCol=redFlagCount<2?'#059669':redFlagCount<3?'#d97706':'#ef4444';
-    h+='<div style="text-align:center;padding:4px;border-radius:6px;background:'+_rCol+'10"><div style="font-size:7px;color:'+_rCol+';font-weight:800">RED FLAGS</div><div style="font-size:14px;font-weight:900;color:'+_rCol+'">'+redFlagCount+'</div></div>';
-    var _rrCol2=_rrReal>=1.5?'#059669':_rrReal>=1?'#d97706':'#ef4444';
-    h+='<div style="text-align:center;padding:4px;border-radius:6px;background:'+_rrCol2+'10"><div style="font-size:7px;color:'+_rrCol2+';font-weight:800">R:R</div><div style="font-size:14px;font-weight:900;color:'+_rrCol2+'">'+(_rrReal>0?_rrReal.toFixed(1):'—')+'</div></div>';
-    h+='</div>';
-    // Confirmation details
-    h+='<div style="font-size:8px;color:#64748b;margin-top:2px">';
-    confirmDetail.forEach(function(cd){h+='<span style="color:'+(cd.pass?'#059669':'#475569')+';margin-right:6px">'+(cd.pass?'✓':'✗')+' '+cd.factor+'</span>'});
-    h+='</div>';
-    // Fake flags (if any)
-    if(fakeFlags.length>0){
-      h+='<div style="margin-top:4px">';
-      fakeFlags.forEach(function(ff){h+='<div style="font-size:7px;color:#ef4444;padding:1px 0">⚠ '+ff+'</div>'});
+    // Compact status card
+    h+='<div style="text-align:center;padding:14px;border-radius:16px;background:'+statusColor+'10;border:2px solid '+statusColor+'30;margin-bottom:8px">';
+    h+='<div style="font-size:22px;font-weight:900;color:'+statusColor+';font-family:Sora">'+status+'</div>';
+    if(direction!=='NONE')h+='<div style="font-size:12px;font-weight:800;color:'+directionColor+';margin-top:2px">'+directionLabel+'</div>';
+    h+='<div style="font-size:10px;color:#94a3b8;margin-top:4px">'+confidence+'% · Grade '+grade+' · Trap '+trapRisk+'</div>';
+    
+    // If almost/hold — show what the trade WOULD be
+    if((_isAlmost||_isExit)&&isOptions&&entryPrem7>0){
+      h+='<div style="margin-top:8px;display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:4px;text-align:center">';
+      h+='<div style="padding:4px;border-radius:6px;background:#1e293b"><div style="font-size:6px;color:#64748b">STRIKE</div><div style="font-size:11px;font-weight:900;color:#f59e0b;font-family:JetBrains Mono">'+S+entryStrike7+'</div><div style="font-size:6px;color:#3b82f6">'+entryType7+'</div></div>';
+      h+='<div style="padding:4px;border-radius:6px;background:#1e293b"><div style="font-size:6px;color:#64748b">PREMIUM</div><div style="font-size:11px;font-weight:900;color:#e2e8f0;font-family:JetBrains Mono">'+S+entryPrem7.toFixed(isUS&&entryPrem7<10?2:0)+'</div></div>';
+      h+='<div style="padding:4px;border-radius:6px;background:#05966410"><div style="font-size:6px;color:#059669">TARGET</div><div style="font-size:11px;font-weight:900;color:#059669;font-family:JetBrains Mono">'+S+targetLow+'</div></div>';
+      h+='<div style="padding:4px;border-radius:6px;background:#ef444410"><div style="font-size:6px;color:#ef4444">SL</div><div style="font-size:11px;font-weight:900;color:#ef4444;font-family:JetBrains Mono">'+S+sl8+'</div></div>';
       h+='</div>';
     }
-    // Red flags (if any)
-    if(redFlags.length>0){
-      h+='<div style="margin-top:2px">';
-      redFlags.forEach(function(rf){h+='<div style="font-size:7px;color:#d97706;padding:1px 0">🚩 '+rf+'</div>'});
+    
+    // What's missing — compact
+    var _missing=whyReasons.filter(function(r){return !r.pass}).slice(0,2);
+    if(_missing.length>0&&!_isExit){
+      h+='<div style="margin-top:6px;font-size:9px;color:#94a3b8">';
+      h+='<span style="color:#d97706;font-weight:700">Needs:</span> ';
+      h+=_missing.map(function(r){return r.label.split('—')[0].split('(')[0].trim()}).join(' · ');
       h+='</div>';
     }
     h+='</div>';
-    h+='</div>';
-    h+='<div style="text-align:left;max-width:280px;margin:0 auto 12px">';
-    whyReasons.forEach(function(r){h+='<div style="font-size:13px;padding:4px 0;color:'+(r.pass?'#059669':'#94a3b8')+'">'+(r.pass?'✔':'✗')+' '+r.label+'</div>'});
-    h+='</div>';
-    // ─── TRADE PLAN (what to do when signal triggers) ───
-    if(isOptions&&entryPrem7>0){
-      h+='<div style="padding:12px;border-radius:12px;background:linear-gradient(135deg,#1e293b,#0f172a);margin-bottom:8px;border:1px solid #334155">';
-      h+='<div style="font-size:8px;font-weight:800;color:#d97706;letter-spacing:1px;margin-bottom:8px">📋 TRADE PLAN — READY WHEN SIGNAL TRIGGERS</div>';
-      // Strike + Premium + Type
-      h+='<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px">';
-      h+='<div style="flex:1;min-width:80px;text-align:center;padding:8px;border-radius:8px;background:#0f172a;border:1px solid '+biasColor+'30">';
-      h+='<div style="font-size:7px;color:#64748b;font-weight:700">STRIKE <span style="padding:1px 4px;border-radius:3px;background:#3b82f620;color:#3b82f6;font-size:6px">'+strikeLabel+'</span></div>';
-      h+='<div style="font-size:16px;font-weight:900;color:#f59e0b;font-family:JetBrains Mono">'+S+entryStrike7.toLocaleString()+' '+entryType7+'</div>';
-      h+='<div style="font-size:7px;color:#64748b;margin-top:2px">'+strikeReason+'</div></div>';
-      h+='<div style="flex:1;min-width:60px;text-align:center;padding:8px;border-radius:8px;background:#0f172a;border:1px solid #334155">';
-      h+='<div style="font-size:7px;color:#64748b;font-weight:700">ENTRY PREMIUM</div>';
-      h+='<div style="font-size:16px;font-weight:900;color:#e2e8f0;font-family:JetBrains Mono">'+S+entryPrem7.toFixed(isUS&&entryPrem7<10?2:0)+'</div></div>';
-      h+='<div style="flex:1;min-width:60px;text-align:center;padding:8px;border-radius:8px;background:#0f172a;border:1px solid #334155">';
-      h+='<div style="font-size:7px;color:#64748b;font-weight:700">QTY</div>';
-      h+='<div style="font-size:16px;font-weight:900;color:#a855f7;font-family:JetBrains Mono">'+qtLots+' <span style="font-size:9px;color:#64748b">lot(s)</span></div>';
-      h+='<div style="font-size:7px;color:#64748b">Lot size: '+c7.lot+'</div></div></div>';
-      // Target + SL + R:R
-      var _maxRisk9=Math.round((entryPrem7-sl8)*c7.lot);var _maxProf9=Math.round((targetHigh-entryPrem7)*c7.lot);
-      var _rr9=_maxRisk9>0?Math.round(_maxProf9/_maxRisk9*10)/10:0;
-      h+='<div style="display:flex;justify-content:space-between;gap:6px;flex-wrap:wrap">';
-      h+='<div style="flex:1;text-align:center;padding:6px;border-radius:8px;background:#05966408;border:1px solid #05966420">';
-      h+='<div style="font-size:7px;color:#059669;font-weight:700">TARGET</div>';
-      h+='<div style="font-size:13px;font-weight:900;color:#059669;font-family:JetBrains Mono">'+S+targetLow+' – '+S+targetHigh+'</div>';
-      h+='<div style="font-size:7px;color:#059669">+25% to +40%</div></div>';
-      h+='<div style="flex:1;text-align:center;padding:6px;border-radius:8px;background:#ef444408;border:1px solid #ef444420">';
-      h+='<div style="font-size:7px;color:#ef4444;font-weight:700">STOP LOSS</div>';
-      h+='<div style="font-size:13px;font-weight:900;color:#ef4444;font-family:JetBrains Mono">'+S+sl8+'</div>';
-      h+='<div style="font-size:7px;color:#ef4444">-20% max loss</div></div>';
-      h+='<div style="flex:1;text-align:center;padding:6px;border-radius:8px;background:#3b82f608;border:1px solid #3b82f620">';
-      h+='<div style="font-size:7px;color:#3b82f6;font-weight:700">R:R</div>';
-      h+='<div style="font-size:13px;font-weight:900;color:#3b82f6;font-family:JetBrains Mono">1:'+_rr9+'</div>';
-      h+='<div style="font-size:7px;color:#3b82f6">Risk '+S+Math.abs(_maxRisk9).toLocaleString()+' / Reward '+S+_maxProf9.toLocaleString()+'</div></div>';
-      h+='</div></div>';
+    
+    // Trigger conditions — compact one-liner
+    if(isOptions&&entryPrem7>0&&!_isExit){
+      h+='<div style="padding:8px;border-radius:8px;background:#1e293b;margin-bottom:8px;font-size:9px;color:#94a3b8">';
+      h+='<span style="color:#059669">▲ Break above '+S+dayHigh.toLocaleString()+' → BUY '+entryStrike7+' CE</span>';
+      h+=' &nbsp;|&nbsp; ';
+      h+='<span style="color:#ef4444">▼ Break below '+S+dayLow.toLocaleString()+' → BUY '+entryStrike7+' PE</span>';
+      h+='</div>';
     }
-    // Scenario triggers
-    h+='<div style="padding:10px;border-radius:10px;background:#1e293b;margin-bottom:8px;font-size:10px;color:#94a3b8">';
-    h+='<div style="color:#d97706;font-weight:800;margin-bottom:6px;font-size:9px;letter-spacing:0.5px">⚠️ TRIGGER CONDITIONS</div>';
-    h+='<div style="margin-bottom:4px">IF breakout above <strong style="color:#059669;font-family:JetBrains Mono">'+S+(isUS?dayHigh.toLocaleString('en-US'):dayHigh.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN'))+'</strong>';
-    if(isOptions)h+=' → <strong style="color:#059669">BUY '+entryStrike7+' '+entryType7+' @ '+S+entryPrem7.toFixed(isUS&&entryPrem7<10?2:0)+'</strong>';
-    else h+=' → <strong style="color:#059669">BUY</strong>';
+    
+    // Details toggle for full analysis
+    var _detailId2='qtDetail_'+sym.replace(/[^a-zA-Z0-9]/g,'')+'_w';
+    h+='<div style="text-align:center;margin-bottom:8px"><button onclick="var d=document.getElementById(\''+_detailId2+'\');d.style.display=d.style.display===\'none\'?\'block\':\'none\'" style="padding:6px 20px;border-radius:8px;background:#1e293b;color:#64748b;border:1px solid #334155;font-size:9px;font-weight:700;cursor:pointer">📊 Details & Analysis ▼</button></div>';
+    h+='<div id="'+_detailId2+'" style="display:none">';
+    // Full why reasons inside toggle
+    whyReasons.forEach(function(r){h+='<div style="font-size:10px;padding:3px 0;color:'+(r.pass?'#059669':'#94a3b8')+'">'+(r.pass?'✔':'✗')+' '+r.label+'</div>'});
+    if(smartParts.length>0){
+      h+='<div style="padding:8px;border-radius:8px;background:#1e293b;margin-top:6px"><div style="font-size:8px;color:#a855f7;font-weight:700;margin-bottom:4px">🧠 INSTITUTIONAL SIGNALS</div>';
+      smartParts.forEach(function(sp){h+='<div style="font-size:9px;color:#64748b;padding:1px 0">• '+sp+'</div>'});
+      h+='</div>';
+    }
     h+='</div>';
-    h+='<div style="margin-bottom:4px">IF breakdown below <strong style="color:#ef4444;font-family:JetBrains Mono">'+S+(isUS?dayLow.toLocaleString('en-US'):dayLow.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN'))+'</strong>';
-    if(isOptions){
-      var _altType=entryType7==='CE'?'PE':'CE';
-      h+=' → <strong style="color:#ef4444">BUY '+entryStrike7+' '+_altType+' @ '+S+(entryType7==='CE'?atmPE7:atmCE7).toFixed(isUS?2:0)+'</strong>';
-    }else h+=' → <strong style="color:#ef4444">SELL</strong>';
-    h+='</div>';
-    h+='<div>ELSE → <strong style="color:#64748b">WAIT</strong> (no edge yet)</div></div>';
-    h+='<div style="padding:8px;border-radius:8px;background:#3b82f608;border:1px solid #3b82f615;font-size:11px;color:#3b82f6;font-weight:600;margin-top:4px">📊 '+insightLine+'</div>';
-    h+='<div style="padding:10px;border-radius:8px;background:#1e293b50;border:1px solid #334155;margin-top:4px"><div style="font-size:8px;color:#a855f7;font-weight:700;margin-bottom:4px;letter-spacing:0.5px">🧠 INSTITUTIONAL SIGNALS</div>';smartParts.forEach(function(sp){h+='<div style="font-size:9px;color:#64748b;padding:2px 0;line-height:1.5">• '+sp+'</div>'});h+='</div>';
     
   // ─── 🟢 ENTER NOW ───
   }else{
@@ -6210,7 +6179,7 @@ window._loadGammaMode=function(symbol){
       _renderUltraSimple(d,sym);
       // Auto-refresh every 30 seconds
       window._ultraRefreshTimer=setInterval(function(){
-        if(document.getElementById('deResult')&&window._deMode==='options'){
+        if(document.getElementById('deResult')&&window._deMode==='options'&&!window._catalystMode){
           fetch('/api/options-quick?symbol='+encodeURIComponent(sym)+'&region=IN')
             .then(function(r2){return r2.json()})
             .then(function(d2){if(d2&&d2.success)_renderUltraSimple(d2,sym)})
@@ -6815,6 +6784,7 @@ window._inStockOptions=['RELIANCE','TCS','INFY','HDFCBANK','ICICIBANK','SBIN','B
 
 window._loadOptionsUniversal=function(symbol,region){
   var el=document.getElementById('deResult');if(!el)return;
+  window._catalystMode=false; // Exit catalyst view
   var sym=(symbol||'SPY').toUpperCase();
   var reg=region||'US';
   
@@ -6879,7 +6849,7 @@ window._loadOptionsUniversal=function(symbol,region){
       // Auto-refresh — only if still active
       console.log('[REFRESH] ✅ Universal timer started for '+sym+' '+reg+' (30s)');
       window._quickRefreshTimer=setInterval(function(){
-        if(document.getElementById('deResult')&&window._deMode==='options'&&window._activeOptionsSym===sym&&window._activeOptionsReg===reg){
+        if(document.getElementById('deResult')&&window._deMode==='options'&&window._activeOptionsSym===sym&&window._activeOptionsReg===reg&&!window._catalystMode){
           console.log('[REFRESH] 🔄 Universal fetching '+sym+'...');
           fetch('/api/options-quick?symbol='+encodeURIComponent(sym)+'&region='+encodeURIComponent(reg))
             .then(function(r2){return r2.json()})
@@ -9516,6 +9486,20 @@ window._renderBottomNav=function(){
 // ═══════════════════════════════════════════════════════════════
 window._loadCatalystScanner=function(){
   var el=document.getElementById('deResult');if(!el)return;
+  
+  // ─── STOP ALL REFRESH TIMERS — prevent overwriting catalyst view ───
+  window._catalystMode=true;
+  if(window._quickRefreshTimer){clearInterval(window._quickRefreshTimer);window._quickRefreshTimer=null}
+  if(window._ultraRefreshTimer){clearInterval(window._ultraRefreshTimer);window._ultraRefreshTimer=null}
+  if(window._swingRefreshTimer){clearInterval(window._swingRefreshTimer);window._swingRefreshTimer=null}
+  if(window._liveScannerTimer){clearInterval(window._liveScannerTimer);window._liveScannerTimer=null}
+  if(window._tradeVoiceMonitor){clearInterval(window._tradeVoiceMonitor);window._tradeVoiceMonitor=null}
+  if(window._apiRetryTimer){clearTimeout(window._apiRetryTimer);window._apiRetryTimer=null}
+  // Remove ticker toggle if present
+  var _oldToggle=document.getElementById('optSwingToggle');
+  if(_oldToggle)_oldToggle.remove();
+  window._activeOptionsSym=''; // Clear active ticker so refreshes don't fire
+  
   var reg=window._optionsRegion||'IN';
   var isUS=reg==='US';
   var S=isUS?'$':'₹';
