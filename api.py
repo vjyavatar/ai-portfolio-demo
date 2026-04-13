@@ -25529,7 +25529,8 @@ async def catalyst_scan(region: str = "IN"):
                     bull = sum(1 for k in bullish_kw if k in t_lower)
                     bear = sum(1 for k in bearish_kw if k in t_lower)
                     sentiment = "bullish" if bull > bear else ("bearish" if bear > bull else "neutral")
-                    result["news"].append({"title": title, "publisher": publisher, "sentiment": sentiment})
+                    link = n.get("link", "") or n.get("content", {}).get("canonicalUrl", {}).get("url", "") or ""
+                    result["news"].append({"title": title, "publisher": publisher, "sentiment": sentiment, "link": link})
                     
                     # Score news
                     if sentiment != "neutral":
