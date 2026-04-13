@@ -9547,7 +9547,7 @@ window._loadCatalystScanner=function(){
       var dirIcon=c.direction==='BULLISH'?'↑':c.direction==='BEARISH'?'↓':'—';
       var loadFn=reg==='IN'?"window._loadQuickTrade('"+c.sym+"')":"window._loadOptionsUniversal('"+c.sym+"','US')";
       
-      h+='<div onclick="'+loadFn+'" style="padding:12px;border-radius:12px;background:#0F172A;border:1px solid '+urgCol+'30;margin-bottom:8px;cursor:pointer">';
+      h+='<div style="padding:12px;border-radius:12px;background:#0F172A;border:1px solid '+urgCol+'30;margin-bottom:8px">';
       
       // Row 1: Symbol + Direction + Urgency + Score
       h+='<div style="display:flex;justify-content:space-between;align-items:center">';
@@ -9619,7 +9619,7 @@ window._loadCatalystScanner=function(){
         h+='</div>';
       }
       
-      h+='<div style="margin-top:8px;text-align:center"><span style="padding:5px 16px;border-radius:6px;background:'+dirCol+'15;color:'+dirCol+';font-size:9px;font-weight:800;border:1px solid '+dirCol+'30">📊 Open Quick Trade →</span></div>';
+      h+='<div style="margin-top:8px;text-align:center"><span onclick="'+loadFn+'" style="padding:5px 16px;border-radius:6px;background:'+dirCol+'15;color:'+dirCol+';font-size:9px;font-weight:800;border:1px solid '+dirCol+'30;cursor:pointer">📊 Open Quick Trade →</span></div>';
       h+='</div>';
     });
     
