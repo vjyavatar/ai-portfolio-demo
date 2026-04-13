@@ -7076,7 +7076,6 @@ window._showBuyNowDashboard=function(cat){
     var isAct=ck===filterCat;
     h+='<div onclick="window._showBuyNowDashboard(\''+ck+'\')" style="padding:8px 16px;border-radius:10px;font-size:11px;font-weight:800;cursor:pointer;font-family:Sora;'+(isAct?'background:linear-gradient(135deg,#059669,#10b981);color:#fff;box-shadow:0 4px 12px rgba(5,150,105,.3)':'background:#f1f5f9;color:#475569;border:1px solid #cbd5e1')+'">'+cd.label+'</div>';
   });
-  h+='<div onclick="window._loadCatalystScanner()" style="padding:8px 16px;border-radius:10px;font-size:11px;font-weight:800;cursor:pointer;font-family:Sora;background:#1e293b;color:#f59e0b;border:1px solid #f59e0b30">🔥 Catalyst</div>';
   h+='</div>';
   
   // Results area
@@ -9588,13 +9587,18 @@ window._loadCatalystScanner=function(){
         if(shownNews.length>0){
           shownNews.forEach(function(n){
             var nc=n.sentiment==='bullish'?'#059669':'#ef4444';
-            var newsLink=n.link?'onclick="event.stopPropagation();window.open(\''+n.link.replace(/'/g,"\\'")+'\',\'_blank\')" style="cursor:pointer;text-decoration:underline dotted"':'';
-            h+='<div style="margin-top:3px;font-size:8px;color:#64748b;padding-left:20px" '+newsLink+'>'+
-              '<span style="color:'+nc+';font-weight:700">'+(n.sentiment==='bullish'?'▲':'▼')+'</span> '+
-              n.title.substring(0,90)+(n.title.length>90?'...':'')+
-              (n.publisher?' — <span style="color:#475569">'+n.publisher+'</span>':'')+
-              (n.link?' <span style="color:#3b82f6">↗</span>':'')+
-              '</div>';
+            h+='<div style="margin-top:3px;font-size:8px;color:#64748b;padding-left:20px">';
+            h+='<span style="color:'+nc+';font-weight:700">'+(n.sentiment==='bullish'?'▲':'▼')+'</span> ';
+            if(n.link){
+              h+='<a href="'+n.link+'" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="color:#64748b;text-decoration:underline dotted #94a3b8">';
+              h+=n.title.substring(0,90)+(n.title.length>90?'...':'');
+              h+='</a>';
+            }else{
+              h+=n.title.substring(0,90)+(n.title.length>90?'...':'');
+            }
+            if(n.publisher)h+=' — <span style="color:#475569">'+n.publisher+'</span>';
+            if(n.link)h+=' <span style="color:#3b82f6">↗</span>';
+            h+='</div>';
           });
         }
       }
