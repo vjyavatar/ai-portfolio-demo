@@ -15,23 +15,23 @@ window._loadOptionsDecide=function(symbol){
   var validIdx=['NIFTY','BANKNIFTY','SENSEX','FINNIFTY','MIDCPNIFTY'];
   if(validIdx.indexOf(sym)<0)sym='NIFTY';
   
-  el.innerHTML='<div style="padding:40px;text-align:center;background:#0A0F1C;border-radius:16px;margin:8px 0">'
+  el.innerHTML='<div style="padding:40px;text-align:center;background:#f1f5f9;border-radius:16px;margin:8px 0">'
     +'<div style="display:inline-block;width:24px;height:24px;border:3px solid #3b82f6;border-top-color:transparent;border-radius:50%;animation:spin .5s linear infinite"></div>'
-    +'<div style="font-size:14px;font-weight:900;color:#e2e8f0;margin-top:12px;font-family:Sora,sans-serif">Loading Options Intelligence...</div>'
+    +'<div style="font-size:14px;font-weight:900;color:#1e293b;margin-top:12px;font-family:Sora,sans-serif">Loading Options Intelligence...</div>'
     +'<div style="font-size:9px;color:#64748b;margin-top:4px">Fetching '+sym+' chain · VIX · OI · GEX · PCR</div></div>';
   
   fetch('/api/options-quick?symbol='+encodeURIComponent(sym)+'&region=IN')
     .then(function(r){return r.json()})
     .then(function(d){
       if(!d||!d.success){
-        el.innerHTML='<div style="color:#ef4444;padding:20px;font-size:12px;text-align:center;background:#0A0F1C;border-radius:16px">❌ Failed to load options data for '+sym+'<br><button onclick="window._loadOptionsDecide(\''+sym+'\')" style="margin-top:10px;padding:8px 20px;border-radius:8px;background:#3b82f6;color:#fff;border:none;cursor:pointer;font-size:11px;font-weight:700">Retry</button></div>';
+        el.innerHTML='<div style="color:#ef4444;padding:20px;font-size:12px;text-align:center;background:#f1f5f9;border-radius:16px">❌ Failed to load options data for '+sym+'<br><button onclick="window._loadOptionsDecide(\''+sym+'\')" style="margin-top:10px;padding:8px 20px;border-radius:8px;background:#3b82f6;color:#fff;border:none;cursor:pointer;font-size:11px;font-weight:700">Retry</button></div>';
         return;
       }
       if(!d.ohlc_bars)d.ohlc_bars=[];if(!d.chain_near_atm)d.chain_near_atm=[];if(!d.ce_resistance)d.ce_resistance=[];if(!d.pe_support)d.pe_support=[];if(!d.gex)d.gex={total:0,regime:'NEUTRAL',topStrikes:[],flipPoint:0,callWall:0,putWall:0};
-      try{_renderOptionsEngine(d,sym)}catch(_reErr){console.error('[RENDER CRASH] OptionsEngine:',_reErr);el.innerHTML='<div style="text-align:center;padding:30px;background:#0A0F1C;border-radius:16px"><div style="font-size:14px;color:#ef4444;font-weight:800;margin-bottom:8px">Render Error</div><div style="font-size:10px;color:#94a3b8;margin-bottom:8px">'+(_reErr.message||'')+'</div><button onclick="window._retryLast()" style="padding:8px 20px;border-radius:8px;background:#3b82f6;color:#fff;border:none;cursor:pointer;font-size:11px;font-weight:700">🔄 Retry</button></div>'}
+      try{_renderOptionsEngine(d,sym)}catch(_reErr){console.error('[RENDER CRASH] OptionsEngine:',_reErr);el.innerHTML='<div style="text-align:center;padding:30px;background:#f1f5f9;border-radius:16px"><div style="font-size:14px;color:#ef4444;font-weight:800;margin-bottom:8px">Render Error</div><div style="font-size:10px;color:#94a3b8;margin-bottom:8px">'+(_reErr.message||'')+'</div><button onclick="window._retryLast()" style="padding:8px 20px;border-radius:8px;background:#3b82f6;color:#fff;border:none;cursor:pointer;font-size:11px;font-weight:700">🔄 Retry</button></div>'}
     })
     .catch(function(e){
-      el.innerHTML='<div style="text-align:center;padding:30px;background:#0A0F1C;border-radius:16px"><div style="font-size:14px;color:#ef4444;font-weight:800;margin-bottom:8px">Cannot connect to server</div><div style="font-size:10px;color:#94a3b8;margin-bottom:12px">'+e.message+'</div><button onclick="window._retryLast()" style="padding:8px 20px;border-radius:8px;background:#3b82f6;color:#fff;border:none;cursor:pointer;font-size:11px;font-weight:700">🔄 Retry</button></div>';
+      el.innerHTML='<div style="text-align:center;padding:30px;background:#f1f5f9;border-radius:16px"><div style="font-size:14px;color:#ef4444;font-weight:800;margin-bottom:8px">Cannot connect to server</div><div style="font-size:10px;color:#94a3b8;margin-bottom:12px">'+e.message+'</div><button onclick="window._retryLast()" style="padding:8px 20px;border-radius:8px;background:#3b82f6;color:#fff;border:none;cursor:pointer;font-size:11px;font-weight:700">🔄 Retry</button></div>';
     });
 };
 
@@ -525,14 +525,14 @@ function _renderOptionsEngine(d,sym){
   h+='<div style="font-size:16px;font-weight:900;color:'+finalColor+';font-family:Sora,sans-serif">'+finalOneLiner+'</div></div>';
   
   // ─── QUICK-START GUIDE (Collapsible) ───
-  h+='<details style="margin-bottom:10px;border-radius:14px;background:#0A0F1C;border:1px solid #3b82f630;overflow:hidden">';
-  h+='<summary style="padding:12px 20px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;background:#0F172A">';
+  h+='<details style="margin-bottom:10px;border-radius:14px;background:#f1f5f9;border:1px solid #3b82f630;overflow:hidden">';
+  h+='<summary style="padding:12px 20px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;background:#f8fafc">';
   h+='<span style="font-size:11px;font-weight:800;color:#3b82f6">📖 NEW TO OPTIONS? READ THIS FIRST (2 min) — How to read this page</span>';
   h+='<span style="font-size:8px;color:#64748b">Click to expand ▾</span></summary>';
   h+='<div style="padding:16px 20px;font-size:9px;color:#94a3b8;line-height:1.8">';
   
   // The 30-second reading order
-  h+='<div style="font-size:11px;font-weight:900;color:#e2e8f0;margin-bottom:8px">⚡ THE 30-SECOND READING ORDER</div>';
+  h+='<div style="font-size:11px;font-weight:900;color:#1e293b;margin-bottom:8px">⚡ THE 30-SECOND READING ORDER</div>';
   h+='<div style="display:flex;flex-direction:column;gap:6px;margin-bottom:14px">';
   
   var guide=[
@@ -547,15 +547,15 @@ function _renderOptionsEngine(d,sym){
   ];
   
   guide.forEach(function(g){
-    h+='<div style="display:flex;gap:10px;padding:8px 12px;border-radius:8px;background:#1e293b">';
+    h+='<div style="display:flex;gap:10px;padding:8px 12px;border-radius:8px;background:#e2e8f0">';
     h+='<div style="min-width:24px;height:24px;border-radius:50%;background:'+g.color+'25;color:'+g.color+';display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:900;flex-shrink:0">'+g.num+'</div>';
-    h+='<div><div style="font-size:10px;font-weight:800;color:#e2e8f0">'+g.title+'</div>';
+    h+='<div><div style="font-size:10px;font-weight:800;color:#1e293b">'+g.title+'</div>';
     h+='<div style="font-size:8px;color:#94a3b8;margin-top:2px">'+g.desc+'</div></div></div>';
   });
   h+='</div>';
   
   // Key terms
-  h+='<div style="font-size:11px;font-weight:900;color:#e2e8f0;margin-bottom:6px">📚 KEY TERMS (Plain English)</div>';
+  h+='<div style="font-size:11px;font-weight:900;color:#1e293b;margin-bottom:6px">📚 KEY TERMS (Plain English)</div>';
   h+='<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px">';
   var terms=[
     {t:'CE (Call)',d:'Bet that price goes UP'},
@@ -573,13 +573,13 @@ function _renderOptionsEngine(d,sym){
     {t:'Gamma',d:'How fast your option reacts to price changes — high on expiry day'},
   ];
   terms.forEach(function(t){
-    h+='<div style="padding:4px 10px;border-radius:6px;background:#1e293b;font-size:8px"><strong style="color:#f59e0b">'+t.t+'</strong><span style="color:#64748b"> = '+t.d+'</span></div>';
+    h+='<div style="padding:4px 10px;border-radius:6px;background:#e2e8f0;font-size:8px"><strong style="color:#f59e0b">'+t.t+'</strong><span style="color:#64748b"> = '+t.d+'</span></div>';
   });
   h+='</div>';
   
   // Practical tips
-  h+='<div style="font-size:11px;font-weight:900;color:#e2e8f0;margin-bottom:6px">🛡️ GOLDEN RULES FOR BEGINNERS</div>';
-  h+='<div style="padding:10px 14px;border-radius:8px;background:#1e293b;margin-bottom:6px">';
+  h+='<div style="font-size:11px;font-weight:900;color:#1e293b;margin-bottom:6px">🛡️ GOLDEN RULES FOR BEGINNERS</div>';
+  h+='<div style="padding:10px 14px;border-radius:8px;background:#e2e8f0;margin-bottom:6px">';
   var rules=[
     'Never risk more than 1% of your capital on a single trade',
     'Always set stop loss BEFORE entering — never trade without one',
@@ -600,7 +600,7 @@ function _renderOptionsEngine(d,sym){
   // These are small colored boxes that explain what to look at
   
   // ─── STEP 1: TRADE PERMISSION (GAP 2) ───
-  h+='<div style="background:#0A0F1C;border-radius:16px;padding:18px 22px;margin-bottom:10px;border:2px solid '+(noTrade.blocked?'#ef4444':'#059669')+'30">';
+  h+='<div style="background:#f1f5f9;border-radius:16px;padding:18px 22px;margin-bottom:10px;border:2px solid '+(noTrade.blocked?'#ef4444':'#059669')+'30">';
   h+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">';
   h+='<div style="font-size:11px;font-weight:800;color:#64748b;letter-spacing:1.5px">STEP 1 · TRADE PERMISSION</div>';
   h+='<div style="padding:4px 14px;border-radius:20px;background:'+(noTrade.blocked?'#ef4444':'#059669')+'20;color:'+(noTrade.blocked?'#ef4444':'#059669')+';font-size:10px;font-weight:800">'+(noTrade.blocked?'🚫 BLOCKED':'✅ ALLOWED')+'</div></div>';
@@ -631,14 +631,14 @@ function _renderOptionsEngine(d,sym){
   h+='</div>';
   
   // ─── STEP 2: TRADE SCORE (GAP 1) ───
-  h+='<div style="background:#0A0F1C;border-radius:16px;padding:18px 22px;margin-bottom:10px;border:1px solid #1e293b">';
+  h+='<div style="background:#f1f5f9;border-radius:16px;padding:18px 22px;margin-bottom:10px;border:1px solid #e2e8f0">';
   h+='<div style="font-size:11px;font-weight:800;color:#64748b;letter-spacing:1.5px;margin-bottom:4px">STEP 2 · TRADE VALIDATION SCORE</div>';
   h+='<div style="font-size:8px;color:#64748b;margin-bottom:8px;font-style:italic">👀 Read: Look at the big number (0-100) and the grade (A-F). A/B = trade with confidence. C = be cautious. D/F = skip this trade. The bars show what\'s strong and weak.</div>';
   h+='<div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap">';
   // Score circle
   h+='<div style="text-align:center">';
   h+='<div style="width:90px;height:90px;border-radius:50%;border:5px solid #1e293b;background:conic-gradient('+tv.gradeColor+' '+(tv.total*3.6)+'deg, #1e293b 0deg);display:flex;align-items:center;justify-content:center">';
-  h+='<div style="width:68px;height:68px;border-radius:50%;background:#0A0F1C;display:flex;align-items:center;justify-content:center;flex-direction:column">';
+  h+='<div style="width:68px;height:68px;border-radius:50%;background:#f1f5f9;display:flex;align-items:center;justify-content:center;flex-direction:column">';
   h+='<div style="font-size:26px;font-weight:900;color:'+tv.gradeColor+';font-family:JetBrains Mono">'+tv.total+'</div>';
   h+='<div style="font-size:7px;color:#64748b">/100</div></div></div>';
   h+='<div style="margin-top:4px;padding:3px 12px;border-radius:12px;background:'+tv.gradeColor+'20;color:'+tv.gradeColor+';font-size:10px;font-weight:800">Grade '+tv.grade+'</div></div>';
@@ -657,7 +657,7 @@ function _renderOptionsEngine(d,sym){
     var c=pct>=75?'#059669':pct>=50?'#3b82f6':pct>=30?'#d97706':'#ef4444';
     h+='<div style="display:flex;align-items:center;gap:6px;margin-bottom:3px">';
     h+='<div style="width:100px;font-size:8px;color:#94a3b8;font-weight:600">'+f.label+'</div>';
-    h+='<div style="flex:1;height:6px;background:#1e293b;border-radius:3px;overflow:hidden"><div style="width:'+pct+'%;height:100%;background:'+c+';border-radius:3px"></div></div>';
+    h+='<div style="flex:1;height:6px;background:#e2e8f0;border-radius:3px;overflow:hidden"><div style="width:'+pct+'%;height:100%;background:'+c+';border-radius:3px"></div></div>';
     h+='<div style="width:30px;font-size:8px;color:'+c+';font-weight:800;text-align:right;font-family:JetBrains Mono">'+f.score+'/'+f.max+'</div></div>';
   });
   h+='<div style="font-size:9px;color:'+tv.gradeColor+';font-weight:700;margin-top:4px">→ '+tv.gradeLabel+'</div>';
@@ -670,37 +670,37 @@ function _renderOptionsEngine(d,sym){
   h+='<div style="display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap">';
   ['NIFTY','BANKNIFTY','SENSEX','FINNIFTY'].forEach(function(idx){
     var isActive=idx===sym;
-    h+='<div onclick="window._loadOptionsDecide(\''+idx+'\')" style="padding:8px 18px;border-radius:10px;font-size:11px;font-weight:800;cursor:pointer;font-family:Sora,sans-serif;'+(isActive?'background:linear-gradient(135deg,#3b82f6,#1d4ed8);color:#fff;box-shadow:0 4px 12px rgba(59,130,246,.3)':'background:#1e293b;color:#94a3b8;border:1px solid #334155')+'">'+idx+'</div>';
+    h+='<div onclick="window._loadOptionsDecide(\''+idx+'\')" style="padding:8px 18px;border-radius:10px;font-size:11px;font-weight:800;cursor:pointer;font-family:Sora,sans-serif;'+(isActive?'background:linear-gradient(135deg,#3b82f6,#1d4ed8);color:#fff;box-shadow:0 4px 12px rgba(59,130,246,.3)':'background:#e2e8f0;color:#94a3b8;border:1px solid #cbd5e1')+'">'+idx+'</div>';
   });
   h+='</div>';
   
   // ─── L1-L6 DEEP ANALYSIS (collapsible — reduces visual overload) ───
-  h+='<details style="margin-bottom:10px;border-radius:14px;background:#0F172A;border:1px solid #1e293b;overflow:hidden">';
-  h+='<summary style="padding:12px 20px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;background:#0F172A">';
+  h+='<details style="margin-bottom:10px;border-radius:14px;background:#f8fafc;border:1px solid #e2e8f0;overflow:hidden">';
+  h+='<summary style="padding:12px 20px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;background:#f8fafc">';
   h+='<span style="font-size:11px;font-weight:800;color:#3b82f6">📊 DEEP ANALYSIS — Market Regime · OI Positioning · Price Action · Strategy · Risk · Expiry</span>';
   h+='<span style="font-size:8px;color:#64748b">Click to expand ▾</span></summary>';
   h+='<div style="padding:4px">';
   
   // ─── L1: MARKET REGIME PANEL ───
-  h+='<div style="background:#0F172A;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:1px solid #1e293b">';
+  h+='<div style="background:#f8fafc;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:1px solid #e2e8f0">';
   h+='<div style="font-size:10px;font-weight:800;color:#64748b;letter-spacing:1.5px;margin-bottom:10px">L1 · MARKET REGIME</div>';
   h+='<div style="display:flex;gap:8px;flex-wrap:wrap">';
   // Trend
-  h+='<div style="flex:1;min-width:120px;padding:10px;border-radius:10px;background:#1e293b;text-align:center">';
+  h+='<div style="flex:1;min-width:120px;padding:10px;border-radius:10px;background:#e2e8f0;text-align:center">';
   h+='<div style="font-size:7px;color:#64748b;font-weight:700;letter-spacing:1px">TREND</div>';
   h+='<div style="font-size:16px;font-weight:900;color:'+regime.trendColor+'">'+regime.trend+'</div></div>';
   // VIX
-  h+='<div style="flex:1;min-width:120px;padding:10px;border-radius:10px;background:#1e293b;text-align:center">';
+  h+='<div style="flex:1;min-width:120px;padding:10px;border-radius:10px;background:#e2e8f0;text-align:center">';
   h+='<div style="font-size:7px;color:#64748b;font-weight:700;letter-spacing:1px">INDIA VIX</div>';
   h+='<div style="font-size:16px;font-weight:900;color:'+regime.vixColor+'">'+vix.toFixed(1)+'</div>';
   h+='<div style="font-size:8px;color:'+(vixChg>=0?'#ef4444':'#059669')+'">'+((vixChg>=0?'+':'')+vixChg.toFixed(1))+'%</div></div>';
   // PCR
-  h+='<div style="flex:1;min-width:120px;padding:10px;border-radius:10px;background:#1e293b;text-align:center">';
+  h+='<div style="flex:1;min-width:120px;padding:10px;border-radius:10px;background:#e2e8f0;text-align:center">';
   h+='<div style="font-size:7px;color:#64748b;font-weight:700;letter-spacing:1px">PCR</div>';
   h+='<div style="font-size:16px;font-weight:900;color:'+regime.pcrColor+'">'+pcr.toFixed(2)+'</div>';
   h+='<div style="font-size:8px;color:#64748b">'+regime.pcrSignal+'</div></div>';
   // GEX
-  h+='<div style="flex:1;min-width:120px;padding:10px;border-radius:10px;background:#1e293b;text-align:center">';
+  h+='<div style="flex:1;min-width:120px;padding:10px;border-radius:10px;background:#e2e8f0;text-align:center">';
   h+='<div style="font-size:7px;color:#64748b;font-weight:700;letter-spacing:1px">GEX REGIME</div>';
   h+='<div style="font-size:16px;font-weight:900;color:'+regime.gexColor+'">'+gexRegime+'</div>';
   h+='<div style="font-size:8px;color:#64748b">'+regime.gexSignal+'</div></div>';
@@ -711,23 +711,23 @@ function _renderOptionsEngine(d,sym){
   h+='</div></div>';
   
   // ─── L2: INSTITUTIONAL POSITIONING ───
-  h+='<div style="background:#0F172A;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:1px solid #1e293b">';
+  h+='<div style="background:#f8fafc;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:1px solid #e2e8f0">';
   h+='<div style="font-size:10px;font-weight:800;color:#64748b;letter-spacing:1.5px;margin-bottom:10px">L2 · INSTITUTIONAL POSITIONING</div>';
   // OI Heatmap header
   h+='<div style="display:flex;gap:10px;margin-bottom:10px;flex-wrap:wrap">';
-  h+='<div style="flex:1;min-width:140px;padding:10px;border-radius:10px;background:#1e293b">';
+  h+='<div style="flex:1;min-width:140px;padding:10px;border-radius:10px;background:#e2e8f0">';
   h+='<div style="font-size:8px;color:#ef4444;font-weight:700">🔴 MAX CALL OI (Resistance)</div>';
   h+='<div style="font-size:20px;font-weight:900;color:#ef4444;font-family:JetBrains Mono">'+S+inst.resistance.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div>';
   h+='<div style="font-size:8px;color:#64748b">OI: '+(inst.maxCallOI.oi||0).toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div></div>';
-  h+='<div style="flex:1;min-width:140px;padding:10px;border-radius:10px;background:#1e293b">';
+  h+='<div style="flex:1;min-width:140px;padding:10px;border-radius:10px;background:#e2e8f0">';
   h+='<div style="font-size:8px;color:#059669;font-weight:700">🟢 MAX PUT OI (Support)</div>';
   h+='<div style="font-size:20px;font-weight:900;color:#059669;font-family:JetBrains Mono">'+S+inst.support.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div>';
   h+='<div style="font-size:8px;color:#64748b">OI: '+(inst.maxPutOI.oi||0).toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div></div>';
-  h+='<div style="flex:1;min-width:140px;padding:10px;border-radius:10px;background:#1e293b">';
+  h+='<div style="flex:1;min-width:140px;padding:10px;border-radius:10px;background:#e2e8f0">';
   h+='<div style="font-size:8px;color:#3b82f6;font-weight:700">📍 MAX PAIN</div>';
   h+='<div style="font-size:20px;font-weight:900;color:#3b82f6;font-family:JetBrains Mono">'+S+maxPain.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div>';
   h+='<div style="font-size:8px;color:#64748b">'+pa.maxPainBias+'</div></div>';
-  h+='<div style="flex:1;min-width:140px;padding:10px;border-radius:10px;background:#1e293b">';
+  h+='<div style="flex:1;min-width:140px;padding:10px;border-radius:10px;background:#e2e8f0">';
   h+='<div style="font-size:8px;color:#a855f7;font-weight:700">📊 ATM IV</div>';
   h+='<div style="font-size:20px;font-weight:900;color:#a855f7;font-family:JetBrains Mono">'+atmIV.toFixed(1)+'%</div>';
   h+='<div style="font-size:8px;color:#64748b">'+(atmIV>25?'HIGH — sell premium':atmIV<15?'LOW — buy options':'NORMAL')+'</div></div>';
@@ -745,7 +745,7 @@ function _renderOptionsEngine(d,sym){
     var isSpot=Math.abs(c.strike-spot)<spot*0.005;
     h+='<div style="display:flex;align-items:center;gap:4px;margin-bottom:2px">';
     h+='<div style="width:50px;font-size:8px;font-weight:700;color:'+(isSpot?'#f59e0b':'#94a3b8')+';text-align:right;font-family:JetBrains Mono">'+c.strike+'</div>';
-    h+='<div style="flex:1;height:14px;background:#1e293b;border-radius:3px;overflow:hidden;direction:rtl">';
+    h+='<div style="flex:1;height:14px;background:#e2e8f0;border-radius:3px;overflow:hidden;direction:rtl">';
     h+='<div style="width:'+pct+'%;height:100%;background:linear-gradient(90deg,#ef444480,#ef4444);border-radius:3px"></div></div>';
     h+='<div style="width:50px;font-size:7px;color:#64748b;font-family:JetBrains Mono">'+(c.oi/1000).toFixed(0)+'K</div>';
     h+='</div>';
@@ -759,7 +759,7 @@ function _renderOptionsEngine(d,sym){
     var isSpot=Math.abs(p.strike-spot)<spot*0.005;
     h+='<div style="display:flex;align-items:center;gap:4px;margin-bottom:2px">';
     h+='<div style="width:50px;font-size:8px;font-weight:700;color:'+(isSpot?'#f59e0b':'#94a3b8')+';font-family:JetBrains Mono">'+p.strike+'</div>';
-    h+='<div style="flex:1;height:14px;background:#1e293b;border-radius:3px;overflow:hidden">';
+    h+='<div style="flex:1;height:14px;background:#e2e8f0;border-radius:3px;overflow:hidden">';
     h+='<div style="width:'+pct+'%;height:100%;background:linear-gradient(90deg,#05966480,#059669);border-radius:3px"></div></div>';
     h+='<div style="width:50px;font-size:7px;color:#64748b;font-family:JetBrains Mono">'+(p.oi/1000).toFixed(0)+'K</div>';
     h+='</div>';
@@ -770,17 +770,17 @@ function _renderOptionsEngine(d,sym){
   h+='</div>';
   
   // ─── L3: PRICE ACTION ───
-  h+='<div style="background:#0F172A;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:1px solid #1e293b">';
+  h+='<div style="background:#f8fafc;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:1px solid #e2e8f0">';
   h+='<div style="font-size:10px;font-weight:800;color:#64748b;letter-spacing:1.5px;margin-bottom:10px">L3 · PRICE ACTION</div>';
   h+='<div style="display:flex;gap:8px;flex-wrap:wrap">';
-  h+='<div style="flex:1;min-width:100px;padding:8px;border-radius:8px;background:#1e293b;text-align:center"><div style="font-size:7px;color:#64748b">PIVOT</div><div style="font-size:14px;font-weight:900;color:#3b82f6;font-family:JetBrains Mono">'+S+pivot.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div></div>';
-  h+='<div style="flex:1;min-width:100px;padding:8px;border-radius:8px;background:#1e293b;text-align:center"><div style="font-size:7px;color:#64748b">CPR TOP</div><div style="font-size:14px;font-weight:900;color:#059669;font-family:JetBrains Mono">'+S+cprTop.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div></div>';
-  h+='<div style="flex:1;min-width:100px;padding:8px;border-radius:8px;background:#1e293b;text-align:center"><div style="font-size:7px;color:#64748b">CPR BOTTOM</div><div style="font-size:14px;font-weight:900;color:#ef4444;font-family:JetBrains Mono">'+S+cprBot.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div></div>';
-  h+='<div style="flex:1;min-width:100px;padding:8px;border-radius:8px;background:#1e293b;text-align:center"><div style="font-size:7px;color:#64748b">CPR TYPE</div><div style="font-size:14px;font-weight:900;color:#f59e0b">'+cprType+'</div><div style="font-size:7px;color:#64748b">'+pa.cprBias+'</div></div>';
+  h+='<div style="flex:1;min-width:100px;padding:8px;border-radius:8px;background:#e2e8f0;text-align:center"><div style="font-size:7px;color:#64748b">PIVOT</div><div style="font-size:14px;font-weight:900;color:#3b82f6;font-family:JetBrains Mono">'+S+pivot.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div></div>';
+  h+='<div style="flex:1;min-width:100px;padding:8px;border-radius:8px;background:#e2e8f0;text-align:center"><div style="font-size:7px;color:#64748b">CPR TOP</div><div style="font-size:14px;font-weight:900;color:#059669;font-family:JetBrains Mono">'+S+cprTop.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div></div>';
+  h+='<div style="flex:1;min-width:100px;padding:8px;border-radius:8px;background:#e2e8f0;text-align:center"><div style="font-size:7px;color:#64748b">CPR BOTTOM</div><div style="font-size:14px;font-weight:900;color:#ef4444;font-family:JetBrains Mono">'+S+cprBot.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div></div>';
+  h+='<div style="flex:1;min-width:100px;padding:8px;border-radius:8px;background:#e2e8f0;text-align:center"><div style="font-size:7px;color:#64748b">CPR TYPE</div><div style="font-size:14px;font-weight:900;color:#f59e0b">'+cprType+'</div><div style="font-size:7px;color:#64748b">'+pa.cprBias+'</div></div>';
   h+='</div></div>';
   
   // ─── L4: STRATEGY ENGINE (with live premiums + expiry integration) ───
-  h+='<div style="background:#0F172A;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:2px solid '+strat.color+'30">';
+  h+='<div style="background:#f8fafc;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:2px solid '+strat.color+'30">';
   h+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">';
   h+='<div style="font-size:10px;font-weight:800;color:#64748b;letter-spacing:1.5px">L4 · STRATEGY + STRIKE SELECTION</div>';
   h+='<div style="font-size:8px;color:#a855f7;font-weight:700">Integrated with L6 Expiry</div></div>';
@@ -796,9 +796,9 @@ function _renderOptionsEngine(d,sym){
   h+='</div></div>';
   
   // Strike details with premiums
-  h+='<div style="background:#1e293b;border-radius:10px;overflow:hidden;margin-bottom:10px">';
+  h+='<div style="background:#e2e8f0;border-radius:10px;overflow:hidden;margin-bottom:10px">';
   h+='<table style="width:100%;border-collapse:collapse;font-size:9px">';
-  h+='<tr style="background:#0F172A"><th style="padding:6px 10px;text-align:left;color:#64748b;font-weight:700">LEG</th><th style="text-align:center;color:#64748b">STRIKE</th><th style="text-align:center;color:#64748b">TYPE</th><th style="text-align:center;color:#64748b">PREMIUM</th><th style="text-align:center;color:#64748b">OI</th><th style="text-align:right;color:#64748b;padding-right:10px">COST (×'+lot2+')</th></tr>';
+  h+='<tr style="background:#f8fafc"><th style="padding:6px 10px;text-align:left;color:#64748b;font-weight:700">LEG</th><th style="text-align:center;color:#64748b">STRIKE</th><th style="text-align:center;color:#64748b">TYPE</th><th style="text-align:center;color:#64748b">PREMIUM</th><th style="text-align:center;color:#64748b">OI</th><th style="text-align:right;color:#64748b;padding-right:10px">COST (×'+lot2+')</th></tr>';
   
   var legs=[];
   if(strat.callBuy)legs.push({action:'BUY',strike:strat.callBuy,type:'CE',prem:strat.callBuyPrem||0,oi:'',color:'#059669'});
@@ -811,7 +811,7 @@ function _renderOptionsEngine(d,sym){
     var sign=leg.action==='SELL'?'+':'-';
     h+='<tr style="border-bottom:1px solid #1e293b">';
     h+='<td style="padding:8px 10px"><span style="padding:2px 8px;border-radius:4px;background:'+leg.color+'20;color:'+leg.color+';font-weight:800;font-size:8px">'+leg.action+'</span></td>';
-    h+='<td style="text-align:center;font-weight:900;color:#e2e8f0;font-family:JetBrains Mono;font-size:13px">'+S+leg.strike.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</td>';
+    h+='<td style="text-align:center;font-weight:900;color:#1e293b;font-family:JetBrains Mono;font-size:13px">'+S+leg.strike.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</td>';
     h+='<td style="text-align:center;color:'+(leg.type==='CE'?'#3b82f6':'#ef4444')+';font-weight:700">'+leg.type+'</td>';
     h+='<td style="text-align:center;color:#f59e0b;font-weight:800;font-family:JetBrains Mono">'+S+leg.prem.toFixed(1)+'</td>';
     h+='<td style="text-align:center;color:#64748b;font-size:8px">'+(leg.oi||'—')+'</td>';
@@ -822,7 +822,7 @@ function _renderOptionsEngine(d,sym){
   // Net premium row
   var netPrem=strat.netCredit||strat.netDebit||0;
   var isCredit=!!strat.netCredit;
-  h+='<tr style="background:#0F172A"><td colspan="5" style="padding:8px 10px;font-weight:800;color:#e2e8f0">NET '+(isCredit?'CREDIT':'DEBIT')+'</td>';
+  h+='<tr style="background:#f8fafc"><td colspan="5" style="padding:8px 10px;font-weight:800;color:#1e293b">NET '+(isCredit?'CREDIT':'DEBIT')+'</td>';
   h+='<td style="text-align:right;padding-right:10px;font-weight:900;font-family:JetBrains Mono;font-size:14px;color:'+(isCredit?'#059669':'#ef4444')+'">'+(isCredit?'+':'-')+S+Math.abs(netPrem).toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</td></tr>';
   h+='</table></div>';
   
@@ -831,12 +831,12 @@ function _renderOptionsEngine(d,sym){
   h+='<div style="flex:1;min-width:100px;padding:8px;border-radius:8px;background:#05966415;border:1px solid #05966425;text-align:center"><div style="font-size:7px;color:#059669;font-weight:700">MAX PROFIT</div><div style="font-size:16px;font-weight:900;color:#059669;font-family:JetBrains Mono">'+S+(risk.maxProfit||0).toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div></div>';
   h+='<div style="flex:1;min-width:100px;padding:8px;border-radius:8px;background:#ef444415;border:1px solid #ef444425;text-align:center"><div style="font-size:7px;color:#ef4444;font-weight:700">MAX LOSS</div><div style="font-size:16px;font-weight:900;color:#ef4444;font-family:JetBrains Mono">'+S+(risk.maxLoss||0).toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div></div>';
   h+='<div style="flex:1;min-width:100px;padding:8px;border-radius:8px;background:#3b82f615;border:1px solid #3b82f625;text-align:center"><div style="font-size:7px;color:#3b82f6;font-weight:700">RISK:REWARD</div><div style="font-size:16px;font-weight:900;color:#3b82f6;font-family:JetBrains Mono">'+risk.riskReward+'</div></div>';
-  if(risk.breakEvenUp)h+='<div style="flex:1;min-width:100px;padding:8px;border-radius:8px;background:#1e293b;text-align:center"><div style="font-size:7px;color:#64748b;font-weight:700">B/E UP</div><div style="font-size:13px;font-weight:900;color:#94a3b8;font-family:JetBrains Mono">'+S+(risk.breakEvenUp||0).toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div></div>';
-  if(risk.breakEvenDn)h+='<div style="flex:1;min-width:100px;padding:8px;border-radius:8px;background:#1e293b;text-align:center"><div style="font-size:7px;color:#64748b;font-weight:700">B/E DOWN</div><div style="font-size:13px;font-weight:900;color:#94a3b8;font-family:JetBrains Mono">'+S+(risk.breakEvenDn||0).toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div></div>';
+  if(risk.breakEvenUp)h+='<div style="flex:1;min-width:100px;padding:8px;border-radius:8px;background:#e2e8f0;text-align:center"><div style="font-size:7px;color:#64748b;font-weight:700">B/E UP</div><div style="font-size:13px;font-weight:900;color:#94a3b8;font-family:JetBrains Mono">'+S+(risk.breakEvenUp||0).toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div></div>';
+  if(risk.breakEvenDn)h+='<div style="flex:1;min-width:100px;padding:8px;border-radius:8px;background:#e2e8f0;text-align:center"><div style="font-size:7px;color:#64748b;font-weight:700">B/E DOWN</div><div style="font-size:13px;font-weight:900;color:#94a3b8;font-family:JetBrains Mono">'+S+(risk.breakEvenDn||0).toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div></div>';
   h+='</div>';
   
   // Strategy flow: Market → Strategy → Risk → Expiry
-  h+='<div style="padding:8px 12px;border-radius:8px;background:#1e293b;font-size:8px;color:#64748b;display:flex;gap:4px;align-items:center;flex-wrap:wrap;justify-content:center">';
+  h+='<div style="padding:8px 12px;border-radius:8px;background:#e2e8f0;font-size:8px;color:#64748b;display:flex;gap:4px;align-items:center;flex-wrap:wrap;justify-content:center">';
   h+='<span style="padding:3px 8px;border-radius:4px;background:'+regime.trendColor+'15;color:'+regime.trendColor+';font-weight:700">'+regime.trend+'</span>';
   h+='<span style="color:#334155">→</span>';
   h+='<span style="padding:3px 8px;border-radius:4px;background:'+strat.color+'15;color:'+strat.color+';font-weight:700">'+strat.name+'</span>';
@@ -849,17 +849,17 @@ function _renderOptionsEngine(d,sym){
   h+='<div style="margin-top:8px;padding:10px 14px;border-radius:8px;background:#05966408;border:1px solid #05966420">';
   h+='<div style="font-size:9px;font-weight:800;color:#059669;margin-bottom:4px">📱 HOW TO PLACE THIS TRADE (Step-by-Step)</div>';
   h+='<div style="font-size:8px;color:#94a3b8;line-height:1.7">';
-  h+='<strong style="color:#e2e8f0">1.</strong> Open your broker → '+sym+' Options → Expiry: <strong style="color:#a855f7">'+expEng.recommended+'</strong><br>';
+  h+='<strong style="color:#1e293b">1.</strong> Open your broker → '+sym+' Options → Expiry: <strong style="color:#a855f7">'+expEng.recommended+'</strong><br>';
   var _stepN=2;
-  if(strat.callBuy){h+='<strong style="color:#e2e8f0">'+_stepN+'.</strong> Strike <strong style="color:#059669">'+S+strat.callBuy.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</strong> → <strong style="color:#059669">BUY CE</strong> → Qty: '+lot+' (1 lot)<br>';_stepN++}
-  if(strat.callSell){h+='<strong style="color:#e2e8f0">'+_stepN+'.</strong> Strike <strong style="color:#ef4444">'+S+strat.callSell.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</strong> → <strong style="color:#ef4444">SELL CE</strong> → Qty: '+lot+'<br>';_stepN++}
-  if(strat.putBuy){h+='<strong style="color:#e2e8f0">'+_stepN+'.</strong> Strike <strong style="color:#059669">'+S+strat.putBuy.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</strong> → <strong style="color:#059669">BUY PE</strong> → Qty: '+lot+'<br>';_stepN++}
-  if(strat.putSell){h+='<strong style="color:#e2e8f0">'+_stepN+'.</strong> Strike <strong style="color:#ef4444">'+S+strat.putSell.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</strong> → <strong style="color:#ef4444">SELL PE</strong> → Qty: '+lot+'<br>';_stepN++}
-  h+='<strong style="color:#e2e8f0">'+_stepN+'.</strong> Set stop loss + target alerts from Steps below. <strong>Done!</strong></div></div>';
+  if(strat.callBuy){h+='<strong style="color:#1e293b">'+_stepN+'.</strong> Strike <strong style="color:#059669">'+S+strat.callBuy.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</strong> → <strong style="color:#059669">BUY CE</strong> → Qty: '+lot+' (1 lot)<br>';_stepN++}
+  if(strat.callSell){h+='<strong style="color:#1e293b">'+_stepN+'.</strong> Strike <strong style="color:#ef4444">'+S+strat.callSell.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</strong> → <strong style="color:#ef4444">SELL CE</strong> → Qty: '+lot+'<br>';_stepN++}
+  if(strat.putBuy){h+='<strong style="color:#1e293b">'+_stepN+'.</strong> Strike <strong style="color:#059669">'+S+strat.putBuy.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</strong> → <strong style="color:#059669">BUY PE</strong> → Qty: '+lot+'<br>';_stepN++}
+  if(strat.putSell){h+='<strong style="color:#1e293b">'+_stepN+'.</strong> Strike <strong style="color:#ef4444">'+S+strat.putSell.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</strong> → <strong style="color:#ef4444">SELL PE</strong> → Qty: '+lot+'<br>';_stepN++}
+  h+='<strong style="color:#1e293b">'+_stepN+'.</strong> Set stop loss + target alerts from Steps below. <strong>Done!</strong></div></div>';
   h+='</div>';
   
   // ─── L5: RISK ENGINE (premium-based) ───
-  h+='<div style="background:#0F172A;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:1px solid #1e293b">';
+  h+='<div style="background:#f8fafc;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:1px solid #e2e8f0">';
   h+='<div style="font-size:10px;font-weight:800;color:#64748b;letter-spacing:1.5px;margin-bottom:10px">L5 · RISK ENGINE (Live Premiums)</div>';
   h+='<div style="display:flex;gap:8px;flex-wrap:wrap">';
   h+='<div style="flex:1;min-width:100px;padding:10px;border-radius:10px;background:#ef444415;border:1px solid #ef444430;text-align:center"><div style="font-size:7px;color:#ef4444;font-weight:700">MAX LOSS</div><div style="font-size:18px;font-weight:900;color:#ef4444;font-family:JetBrains Mono">'+S+(risk.maxLoss||0).toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div><div style="font-size:7px;color:#64748b">per lot of '+lot+'</div></div>';
@@ -867,13 +867,13 @@ function _renderOptionsEngine(d,sym){
   h+='<div style="flex:1;min-width:100px;padding:10px;border-radius:10px;background:#3b82f615;border:1px solid #3b82f630;text-align:center"><div style="font-size:7px;color:#3b82f6;font-weight:700">PROB OF PROFIT</div>';
   // Gauge
   h+='<div style="width:60px;height:60px;border-radius:50%;border:4px solid #1e293b;background:conic-gradient('+risk.riskColor+' '+(risk.probProfit*3.6)+'deg, #1e293b 0deg);display:flex;align-items:center;justify-content:center;margin:4px auto">';
-  h+='<div style="width:44px;height:44px;border-radius:50%;background:#0F172A;display:flex;align-items:center;justify-content:center"><div style="font-size:14px;font-weight:900;color:'+risk.riskColor+';font-family:JetBrains Mono">'+risk.probProfit+'%</div></div></div></div>';
-  if(risk.breakEvenUp)h+='<div style="flex:1;min-width:100px;padding:10px;border-radius:10px;background:#1e293b;text-align:center"><div style="font-size:7px;color:#64748b;font-weight:700">BREAKEVEN ↑</div><div style="font-size:14px;font-weight:900;color:#94a3b8;font-family:JetBrains Mono">'+S+(risk.breakEvenUp||0).toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div><div style="font-size:7px;color:#64748b">'+((risk.breakEvenUp-spot)/spot*100).toFixed(1)+'% away</div></div>';
-  if(risk.breakEvenDn)h+='<div style="flex:1;min-width:100px;padding:10px;border-radius:10px;background:#1e293b;text-align:center"><div style="font-size:7px;color:#64748b;font-weight:700">BREAKEVEN ↓</div><div style="font-size:14px;font-weight:900;color:#94a3b8;font-family:JetBrains Mono">'+S+(risk.breakEvenDn||0).toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div><div style="font-size:7px;color:#64748b">'+((spot-risk.breakEvenDn)/spot*100).toFixed(1)+'% away</div></div>';
+  h+='<div style="width:44px;height:44px;border-radius:50%;background:#f8fafc;display:flex;align-items:center;justify-content:center"><div style="font-size:14px;font-weight:900;color:'+risk.riskColor+';font-family:JetBrains Mono">'+risk.probProfit+'%</div></div></div></div>';
+  if(risk.breakEvenUp)h+='<div style="flex:1;min-width:100px;padding:10px;border-radius:10px;background:#e2e8f0;text-align:center"><div style="font-size:7px;color:#64748b;font-weight:700">BREAKEVEN ↑</div><div style="font-size:14px;font-weight:900;color:#94a3b8;font-family:JetBrains Mono">'+S+(risk.breakEvenUp||0).toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div><div style="font-size:7px;color:#64748b">'+((risk.breakEvenUp-spot)/spot*100).toFixed(1)+'% away</div></div>';
+  if(risk.breakEvenDn)h+='<div style="flex:1;min-width:100px;padding:10px;border-radius:10px;background:#e2e8f0;text-align:center"><div style="font-size:7px;color:#64748b;font-weight:700">BREAKEVEN ↓</div><div style="font-size:14px;font-weight:900;color:#94a3b8;font-family:JetBrains Mono">'+S+(risk.breakEvenDn||0).toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div><div style="font-size:7px;color:#64748b">'+((spot-risk.breakEvenDn)/spot*100).toFixed(1)+'% away</div></div>';
   h+='</div></div>';
   
   // ─── L6: EXPIRY SELECTION ENGINE ───
-  h+='<div style="background:#0F172A;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:1px solid #a855f730">';
+  h+='<div style="background:#f8fafc;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:1px solid #a855f730">';
   h+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">';
   h+='<div style="font-size:10px;font-weight:800;color:#64748b;letter-spacing:1.5px">L6 · EXPIRY SELECTION ENGINE</div>';
   h+='<div style="display:flex;gap:6px">';
@@ -902,12 +902,12 @@ function _renderOptionsEngine(d,sym){
   h+='<div style="font-size:8px;color:#64748b">Confidence: <strong style="color:#a855f7">'+expEng.confidence+'%</strong></div>';
   h+='<div style="font-size:8px;color:#64748b">Gamma Risk: <strong style="color:'+expEng.gammaColor+'">'+expEng.gammaRisk+'</strong></div>';
   h+='<div style="font-size:8px;color:#64748b">DTE: <strong style="color:#f59e0b">'+expEng.dte+' days</strong></div>';
-  h+='<div style="font-size:8px;color:#64748b">Expiry Day: <strong style="color:#e2e8f0">'+expEng.expiryDay+'</strong></div>';
+  h+='<div style="font-size:8px;color:#64748b">Expiry Day: <strong style="color:#1e293b">'+expEng.expiryDay+'</strong></div>';
   h+='<div style="font-size:8px;color:#64748b">Liquidity: <strong style="color:'+(expEng.liquidity==='DEEP'?'#059669':expEng.liquidity==='LOW_WEEKLY'?'#ef4444':'#d97706')+'">'+expEng.liquidity.replace('_',' ')+'</strong></div>';
   h+='</div></div>';
   
   // Index-specific expiry schedule reference
-  h+='<div style="padding:8px 12px;border-radius:8px;background:#1e293b;font-size:8px;color:#64748b;line-height:1.8">';
+  h+='<div style="padding:8px 12px;border-radius:8px;background:#e2e8f0;font-size:8px;color:#64748b;line-height:1.8">';
   h+='<strong style="color:#94a3b8">📅 NSE Expiry Schedule:</strong> ';
   h+='NIFTY → <span style="color:#3b82f6;font-weight:700">Thursday</span> · ';
   h+='BANKNIFTY → <span style="color:#059669;font-weight:700">Wednesday</span> · ';
@@ -924,12 +924,12 @@ function _renderOptionsEngine(d,sym){
   h+='</div>';
   
   // ─── SCENARIO SIMULATOR ───
-  h+='<div style="background:#0F172A;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:1px solid #1e293b">';
+  h+='<div style="background:#f8fafc;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:1px solid #e2e8f0">';
   h+='<div style="font-size:10px;font-weight:800;color:#64748b;letter-spacing:1.5px;margin-bottom:10px">📊 SCENARIO SIMULATION — What if '+sym+' moves ±1%?</div>';
   var up1=Math.round(spot*1.01),dn1=Math.round(spot*0.99);
   h+='<div style="display:flex;gap:8px;flex-wrap:wrap">';
   h+='<div style="flex:1;padding:10px;border-radius:10px;background:#05966415;text-align:center"><div style="font-size:7px;color:#059669;font-weight:700">+1% ('+S+up1.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+')</div><div style="font-size:14px;font-weight:900;color:#059669;font-family:JetBrains Mono">'+(strat.type==='BUY'&&strat.name.indexOf('Bull')>=0?'+'+S+Math.round(risk.maxProfit*0.4).toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN'):strat.type==='SELL'?'-'+S+Math.round(risk.maxLoss*0.15).toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN'):'+'+S+Math.round(risk.maxProfit*0.2).toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN'))+'</div></div>';
-  h+='<div style="flex:1;padding:10px;border-radius:10px;background:#1e293b;text-align:center"><div style="font-size:7px;color:#64748b;font-weight:700">FLAT</div><div style="font-size:14px;font-weight:900;color:#64748b;font-family:JetBrains Mono">'+(strat.type==='SELL'?'+'+S+Math.round(risk.maxProfit*0.3).toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN'):'0')+'</div></div>';
+  h+='<div style="flex:1;padding:10px;border-radius:10px;background:#e2e8f0;text-align:center"><div style="font-size:7px;color:#64748b;font-weight:700">FLAT</div><div style="font-size:14px;font-weight:900;color:#64748b;font-family:JetBrains Mono">'+(strat.type==='SELL'?'+'+S+Math.round(risk.maxProfit*0.3).toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN'):'0')+'</div></div>';
   h+='<div style="flex:1;padding:10px;border-radius:10px;background:#ef444415;text-align:center"><div style="font-size:7px;color:#ef4444;font-weight:700">-1% ('+S+dn1.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+')</div><div style="font-size:14px;font-weight:900;color:#ef4444;font-family:JetBrains Mono">'+(strat.type==='BUY'&&strat.name.indexOf('Bear')>=0?'+'+S+Math.round(risk.maxProfit*0.4).toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN'):strat.type==='SELL'?'-'+S+Math.round(risk.maxLoss*0.15).toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN'):'-'+S+Math.round(risk.maxLoss*0.2).toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN'))+'</div></div>';
   h+='</div></div>';
   
@@ -938,7 +938,7 @@ function _renderOptionsEngine(d,sym){
   
   // ─── SMART MONEY ZONES ───
   if(smartZones.length>0){
-    h+='<div style="background:#0F172A;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:1px solid #1e293b">';
+    h+='<div style="background:#f8fafc;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:1px solid #e2e8f0">';
     h+='<div style="font-size:10px;font-weight:800;color:#64748b;letter-spacing:1.5px;margin-bottom:8px">🏛️ SMART MONEY ACTIVITY</div>';
     h+='<div style="display:flex;gap:6px;flex-wrap:wrap">';
     smartZones.slice(0,6).forEach(function(z){
@@ -954,7 +954,7 @@ function _renderOptionsEngine(d,sym){
   // ─── DISCLAIMER ───
   
   // ─── STEP 4: ENTRY TIMING (GAP 4) ───
-  h+='<div style="background:#0A0F1C;border-radius:16px;padding:18px 22px;margin-bottom:10px;border:2px solid '+entry.readyColor+'30">';
+  h+='<div style="background:#f1f5f9;border-radius:16px;padding:18px 22px;margin-bottom:10px;border:2px solid '+entry.readyColor+'30">';
   h+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">';
   h+='<div style="font-size:11px;font-weight:800;color:#64748b;letter-spacing:1.5px">STEP 4 · ENTRY TIMING</div>';
   h+='<div style="padding:4px 14px;border-radius:20px;background:'+entry.readyColor+'20;color:'+entry.readyColor+';font-size:10px;font-weight:800">'+entry.readyLabel+'</div></div>';
@@ -968,19 +968,19 @@ function _renderOptionsEngine(d,sym){
   h+='</div>';
   
   // ─── STEP 5: POSITION SIZING (GAP 5) ───
-  h+='<div style="background:#0A0F1C;border-radius:16px;padding:18px 22px;margin-bottom:10px;border:1px solid #1e293b">';
+  h+='<div style="background:#f1f5f9;border-radius:16px;padding:18px 22px;margin-bottom:10px;border:1px solid #e2e8f0">';
   h+='<div style="font-size:11px;font-weight:800;color:#64748b;letter-spacing:1.5px;margin-bottom:4px">STEP 5 · POSITION SIZING</div>';
   h+='<div style="font-size:8px;color:#64748b;margin-bottom:8px;font-style:italic">👀 Read: The blue "TRADE SIZE" number is how many lots to buy. NEVER exceed this. TOTAL RISK is the maximum you can lose. If it\'s more than you\'re comfortable losing, reduce lots to 1.</div>';
   h+='<div style="display:flex;gap:8px;flex-wrap:wrap">';
-  h+='<div style="flex:1;min-width:100px;padding:10px;border-radius:10px;background:#1e293b;text-align:center"><div style="font-size:7px;color:#64748b;font-weight:700">CAPITAL</div><div style="font-size:16px;font-weight:900;color:#e2e8f0;font-family:JetBrains Mono">'+S+(pos.capital/100000).toFixed(0)+'L</div></div>';
-  h+='<div style="flex:1;min-width:100px;padding:10px;border-radius:10px;background:#1e293b;text-align:center"><div style="font-size:7px;color:#64748b;font-weight:700">RISK PER TRADE</div><div style="font-size:16px;font-weight:900;color:#d97706;font-family:JetBrains Mono">'+pos.riskPct+'%</div><div style="font-size:8px;color:#64748b">'+S+pos.maxRiskAmount.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div></div>';
+  h+='<div style="flex:1;min-width:100px;padding:10px;border-radius:10px;background:#e2e8f0;text-align:center"><div style="font-size:7px;color:#64748b;font-weight:700">CAPITAL</div><div style="font-size:16px;font-weight:900;color:#1e293b;font-family:JetBrains Mono">'+S+(pos.capital/100000).toFixed(0)+'L</div></div>';
+  h+='<div style="flex:1;min-width:100px;padding:10px;border-radius:10px;background:#e2e8f0;text-align:center"><div style="font-size:7px;color:#64748b;font-weight:700">RISK PER TRADE</div><div style="font-size:16px;font-weight:900;color:#d97706;font-family:JetBrains Mono">'+pos.riskPct+'%</div><div style="font-size:8px;color:#64748b">'+S+pos.maxRiskAmount.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div></div>';
   h+='<div style="flex:1;min-width:100px;padding:10px;border-radius:10px;background:#3b82f615;border:1px solid #3b82f625;text-align:center"><div style="font-size:7px;color:#3b82f6;font-weight:700">TRADE SIZE</div><div style="font-size:20px;font-weight:900;color:#3b82f6;font-family:JetBrains Mono">'+pos.lots+'</div><div style="font-size:8px;color:#64748b">lot(s) × '+lot3+'</div></div>';
-  h+='<div style="flex:1;min-width:100px;padding:10px;border-radius:10px;background:#1e293b;text-align:center"><div style="font-size:7px;color:#64748b;font-weight:700">TOTAL RISK</div><div style="font-size:16px;font-weight:900;color:#ef4444;font-family:JetBrains Mono">'+S+pos.totalRisk.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div><div style="font-size:8px;color:#64748b">'+pos.capitalUsed+'% of capital</div></div>';
-  h+='<div style="flex:1;min-width:100px;padding:10px;border-radius:10px;background:#1e293b;text-align:center"><div style="font-size:7px;color:#64748b;font-weight:700">TOTAL REWARD</div><div style="font-size:16px;font-weight:900;color:#059669;font-family:JetBrains Mono">'+S+pos.totalReward.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div></div>';
+  h+='<div style="flex:1;min-width:100px;padding:10px;border-radius:10px;background:#e2e8f0;text-align:center"><div style="font-size:7px;color:#64748b;font-weight:700">TOTAL RISK</div><div style="font-size:16px;font-weight:900;color:#ef4444;font-family:JetBrains Mono">'+S+pos.totalRisk.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div><div style="font-size:8px;color:#64748b">'+pos.capitalUsed+'% of capital</div></div>';
+  h+='<div style="flex:1;min-width:100px;padding:10px;border-radius:10px;background:#e2e8f0;text-align:center"><div style="font-size:7px;color:#64748b;font-weight:700">TOTAL REWARD</div><div style="font-size:16px;font-weight:900;color:#059669;font-family:JetBrains Mono">'+S+pos.totalReward.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div></div>';
   h+='</div></div>';
   
   // ─── STEP 6: RISK CONTROL (GAP 6 — EXIT RULES) ───
-  h+='<div style="background:#0A0F1C;border-radius:16px;padding:18px 22px;margin-bottom:10px;border:1px solid #ef444425">';
+  h+='<div style="background:#f1f5f9;border-radius:16px;padding:18px 22px;margin-bottom:10px;border:1px solid #ef444425">';
   h+='<div style="font-size:11px;font-weight:800;color:#64748b;letter-spacing:1.5px;margin-bottom:4px">STEP 6 · EXIT RULES & RISK CONTROL</div>';
   h+='<div style="font-size:8px;color:#64748b;margin-bottom:8px;font-style:italic">👀 Read: Set these exits in your broker BEFORE entering. MAX LOSS = absolute worst case. PROFIT TARGET = where to book. The red rules below are non-negotiable — if any triggers, exit immediately.</div>';
   h+='<div style="display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap">';
@@ -1000,40 +1000,40 @@ function _renderOptionsEngine(d,sym){
   
   // ─── STEP 7: EXPIRY (already rendered in L6 below) ───
   // ─── STEPS 8-10 (collapsible — secondary analysis) ───
-  h+='<details style="margin-bottom:10px;border-radius:14px;background:#0A0F1C;border:1px solid #1e293b;overflow:hidden">';
+  h+='<details style="margin-bottom:10px;border-radius:14px;background:#f1f5f9;border:1px solid #e2e8f0;overflow:hidden">';
   h+='<summary style="padding:12px 20px;cursor:pointer;display:flex;justify-content:space-between;align-items:center">';
   h+='<span style="font-size:11px;font-weight:800;color:#64748b">🔄 ADAPTATION + FLOW + SCENARIOS (Steps 8-10)</span>';
   h+='<span style="font-size:8px;color:#64748b">Click to expand ▾</span></summary>';
   h+='<div style="padding:4px">';
   
   // ─── STEP 8: LIVE ADAPTATION (GAP 6) ───
-  h+='<div style="background:#0A0F1C;border-radius:16px;padding:18px 22px;margin-bottom:10px;border:1px solid #3b82f625">';
+  h+='<div style="background:#f1f5f9;border-radius:16px;padding:18px 22px;margin-bottom:10px;border:1px solid #3b82f625">';
   h+='<div style="font-size:11px;font-weight:800;color:#64748b;letter-spacing:1.5px;margin-bottom:4px">STEP 8 · LIVE ADAPTATION RULES</div>';
   h+='<div style="font-size:8px;color:#64748b;margin-bottom:8px;font-style:italic">👀 Read: These are "emergency plans." HIGH = act NOW. MEDIUM = adjust position. LOW = take some profits. Set broker alerts for these conditions so your phone buzzes when they happen.</div>';
   adapt.rules.forEach(function(r){
     h+='<div style="display:flex;gap:8px;padding:8px 12px;border-radius:8px;background:'+r.color+'08;border:1px solid '+r.color+'20;margin-bottom:4px">';
     h+='<div style="min-width:50px;padding:3px 8px;border-radius:4px;background:'+r.color+'20;color:'+r.color+';font-size:7px;font-weight:800;text-align:center">'+r.severity+'</div>';
-    h+='<div style="flex:1"><div style="font-size:9px;color:#94a3b8"><strong style="color:#e2e8f0">IF:</strong> '+r.condition+'</div>';
+    h+='<div style="flex:1"><div style="font-size:9px;color:#94a3b8"><strong style="color:#1e293b">IF:</strong> '+r.condition+'</div>';
     h+='<div style="font-size:9px;color:'+r.color+';font-weight:700;margin-top:2px"><strong>→</strong> '+r.action+'</div></div></div>';
   });
   h+='</div>';
   
   // ─── STEP 3 + STEP 9: FLOW CONFIRMATION (GAP 3) ───
-  h+='<div style="background:#0A0F1C;border-radius:16px;padding:18px 22px;margin-bottom:10px;border:1px solid '+flow.aggressiveColor+'25">';
+  h+='<div style="background:#f1f5f9;border-radius:16px;padding:18px 22px;margin-bottom:10px;border:1px solid '+flow.aggressiveColor+'25">';
   h+='<div style="font-size:11px;font-weight:800;color:#64748b;letter-spacing:1.5px;margin-bottom:4px">STEP 9 · INSTITUTIONAL FLOW CONFIRMATION</div>';
   h+='<div style="font-size:8px;color:#64748b;margin-bottom:8px;font-style:italic">👀 Read: This shows what big players (funds, institutions) are doing. If BUYERS dominate and we\'re going bullish — great, they agree with us. If they disagree — be very careful. "Block Trades" = large orders from big money.</div>';
   h+='<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">';
   h+='<div style="flex:1;min-width:100px;padding:8px;border-radius:8px;background:#05966415;text-align:center"><div style="font-size:7px;color:#059669;font-weight:700">BUYERS</div><div style="font-size:18px;font-weight:900;color:#059669;font-family:JetBrains Mono">'+flow.buyPct+'%</div></div>';
   h+='<div style="flex:1;min-width:100px;padding:8px;border-radius:8px;background:#ef444415;text-align:center"><div style="font-size:7px;color:#ef4444;font-weight:700">SELLERS</div><div style="font-size:18px;font-weight:900;color:#ef4444;font-family:JetBrains Mono">'+flow.sellPct+'%</div></div>';
   h+='<div style="flex:1;min-width:100px;padding:8px;border-radius:8px;background:'+flow.aggressiveColor+'15;text-align:center"><div style="font-size:7px;color:'+flow.aggressiveColor+';font-weight:700">AGGRESSIVE</div><div style="font-size:14px;font-weight:900;color:'+flow.aggressiveColor+'">'+flow.aggressive+'</div></div>';
-  h+='<div style="flex:1;min-width:100px;padding:8px;border-radius:8px;background:#1e293b;text-align:center"><div style="font-size:7px;color:#64748b;font-weight:700">BLOCK TRADES</div><div style="font-size:14px;font-weight:900;color:#f59e0b;font-family:JetBrains Mono">'+flow.blockTrades+'</div></div>';
-  h+='<div style="flex:1;min-width:100px;padding:8px;border-radius:8px;background:#1e293b;text-align:center"><div style="font-size:7px;color:#64748b;font-weight:700">SWEEPS</div><div style="font-size:14px;font-weight:900;color:#a855f7;font-family:JetBrains Mono">'+flow.sweeps+'</div></div>';
+  h+='<div style="flex:1;min-width:100px;padding:8px;border-radius:8px;background:#e2e8f0;text-align:center"><div style="font-size:7px;color:#64748b;font-weight:700">BLOCK TRADES</div><div style="font-size:14px;font-weight:900;color:#f59e0b;font-family:JetBrains Mono">'+flow.blockTrades+'</div></div>';
+  h+='<div style="flex:1;min-width:100px;padding:8px;border-radius:8px;background:#e2e8f0;text-align:center"><div style="font-size:7px;color:#64748b;font-weight:700">SWEEPS</div><div style="font-size:14px;font-weight:900;color:#a855f7;font-family:JetBrains Mono">'+flow.sweeps+'</div></div>';
   h+='</div>';
   h+='<div style="padding:6px 10px;border-radius:6px;background:'+flow.aggressiveColor+'10;border-left:3px solid '+flow.aggressiveColor+';font-size:9px;color:'+flow.aggressiveColor+';font-weight:700">'+(flow.confirmed?'✔ ':'⚠ ')+flow.bias+'</div>';
   h+='</div>';
   
   // ─── STEP 10: LIVE TRADE EVOLUTION (Scenario A/B) ───
-  h+='<div style="background:#0A0F1C;border-radius:16px;padding:18px 22px;margin-bottom:10px;border:1px solid #1e293b">';
+  h+='<div style="background:#f1f5f9;border-radius:16px;padding:18px 22px;margin-bottom:10px;border:1px solid #e2e8f0">';
   h+='<div style="font-size:11px;font-weight:800;color:#64748b;letter-spacing:1.5px;margin-bottom:4px">STEP 10 · LIVE TRADE EVOLUTION — After Entry</div>';
   h+='<div style="font-size:8px;color:#64748b;margin-bottom:8px;font-style:italic">👀 Read: Three "what-if" scenarios. GREEN = expected move (your profit). RED = adverse move (your exit plan). ORANGE = nothing happens (theta effect). Read all 3 BEFORE entering so you know what to do in every situation.</div>';
   
@@ -1054,8 +1054,8 @@ function _renderOptionsEngine(d,sym){
   h+='<div style="font-size:10px;font-weight:900;color:#059669;margin-bottom:8px">✅ SCENARIO A — Expected Move</div>';
   h+='<div style="font-size:9px;color:#94a3b8;margin-bottom:6px">'+sym+' moves to '+S+scenA_price.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+' ('+(regime.trend==='BEARISH'?'↓ drops':'↑ rises')+' as expected)</div>';
   h+='<div style="display:flex;gap:6px;margin-bottom:8px">';
-  h+='<div style="flex:1;padding:6px;border-radius:6px;background:#1e293b;text-align:center"><div style="font-size:6px;color:#64748b">SPREAD VALUE</div><div style="font-size:12px;font-weight:900;color:#059669;font-family:JetBrains Mono">'+S+Math.abs(premA).toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div></div>';
-  h+='<div style="flex:1;padding:6px;border-radius:6px;background:#1e293b;text-align:center"><div style="font-size:6px;color:#64748b">P&L ('+pos.lots+' lots)</div><div style="font-size:12px;font-weight:900;color:#059669;font-family:JetBrains Mono">+'+S+Math.abs(scenA_profit).toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div></div>';
+  h+='<div style="flex:1;padding:6px;border-radius:6px;background:#e2e8f0;text-align:center"><div style="font-size:6px;color:#64748b">SPREAD VALUE</div><div style="font-size:12px;font-weight:900;color:#059669;font-family:JetBrains Mono">'+S+Math.abs(premA).toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div></div>';
+  h+='<div style="flex:1;padding:6px;border-radius:6px;background:#e2e8f0;text-align:center"><div style="font-size:6px;color:#64748b">P&L ('+pos.lots+' lots)</div><div style="font-size:12px;font-weight:900;color:#059669;font-family:JetBrains Mono">+'+S+Math.abs(scenA_profit).toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div></div>';
   h+='</div>';
   h+='<div style="font-size:8px;font-weight:700;color:#059669;margin-bottom:3px">👉 ACTION:</div>';
   h+='<div style="font-size:8px;color:#94a3b8;padding:4px 8px;border-radius:4px;background:#05966408;margin-bottom:2px">✔ Book 50% profit ('+S+Math.round(scenA_profit/2).toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+')</div>';
@@ -1067,8 +1067,8 @@ function _renderOptionsEngine(d,sym){
   h+='<div style="font-size:10px;font-weight:900;color:#ef4444;margin-bottom:8px">❌ SCENARIO B — Adverse Move</div>';
   h+='<div style="font-size:9px;color:#94a3b8;margin-bottom:6px">'+sym+' moves to '+S+scenB_price.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+' ('+(regime.trend==='BEARISH'?'↑ rallies':'↓ drops')+' against position)</div>';
   h+='<div style="display:flex;gap:6px;margin-bottom:8px">';
-  h+='<div style="flex:1;padding:6px;border-radius:6px;background:#1e293b;text-align:center"><div style="font-size:6px;color:#64748b">SPREAD VALUE</div><div style="font-size:12px;font-weight:900;color:#ef4444;font-family:JetBrains Mono">'+S+Math.abs(premB).toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div></div>';
-  h+='<div style="flex:1;padding:6px;border-radius:6px;background:#1e293b;text-align:center"><div style="font-size:6px;color:#64748b">P&L ('+pos.lots+' lots)</div><div style="font-size:12px;font-weight:900;color:#ef4444;font-family:JetBrains Mono">-'+S+Math.abs(scenB_loss).toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div></div>';
+  h+='<div style="flex:1;padding:6px;border-radius:6px;background:#e2e8f0;text-align:center"><div style="font-size:6px;color:#64748b">SPREAD VALUE</div><div style="font-size:12px;font-weight:900;color:#ef4444;font-family:JetBrains Mono">'+S+Math.abs(premB).toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div></div>';
+  h+='<div style="flex:1;padding:6px;border-radius:6px;background:#e2e8f0;text-align:center"><div style="font-size:6px;color:#64748b">P&L ('+pos.lots+' lots)</div><div style="font-size:12px;font-weight:900;color:#ef4444;font-family:JetBrains Mono">-'+S+Math.abs(scenB_loss).toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div></div>';
   h+='</div>';
   h+='<div style="font-size:8px;font-weight:700;color:#ef4444;margin-bottom:3px">👉 ACTION:</div>';
   h+='<div style="font-size:8px;color:#94a3b8;padding:4px 8px;border-radius:4px;background:#ef444408;margin-bottom:2px">✘ EXIT FULL — '+(regime.trend==='BEARISH'?'VWAP reclaim + delta flip':'Support broken + flow flipped')+'</div>';
@@ -1081,8 +1081,8 @@ function _renderOptionsEngine(d,sym){
   h+='<div style="font-size:9px;color:#94a3b8;margin-bottom:6px">'+sym+' stays near '+S+spot.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+' (range-bound)</div>';
   h+='<div style="display:flex;gap:6px;margin-bottom:8px">';
   var thetaPnL=strat.type==='SELL'?'+'+S+Math.round(thetaPerDay*pos.lots).toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'/day':'-'+S+Math.round(Math.abs(risk.maxLoss)/(Math.max(expEng.dte,1)*2)).toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'/day';
-  h+='<div style="flex:1;padding:6px;border-radius:6px;background:#1e293b;text-align:center"><div style="font-size:6px;color:#64748b">THETA P&L</div><div style="font-size:12px;font-weight:900;color:#d97706;font-family:JetBrains Mono">'+thetaPnL+'</div></div>';
-  h+='<div style="flex:1;padding:6px;border-radius:6px;background:#1e293b;text-align:center"><div style="font-size:6px;color:#64748b">DTE</div><div style="font-size:12px;font-weight:900;color:#d97706;font-family:JetBrains Mono">'+expEng.dte+' days</div></div>';
+  h+='<div style="flex:1;padding:6px;border-radius:6px;background:#e2e8f0;text-align:center"><div style="font-size:6px;color:#64748b">THETA P&L</div><div style="font-size:12px;font-weight:900;color:#d97706;font-family:JetBrains Mono">'+thetaPnL+'</div></div>';
+  h+='<div style="flex:1;padding:6px;border-radius:6px;background:#e2e8f0;text-align:center"><div style="font-size:6px;color:#64748b">DTE</div><div style="font-size:12px;font-weight:900;color:#d97706;font-family:JetBrains Mono">'+expEng.dte+' days</div></div>';
   h+='</div>';
   h+='<div style="font-size:8px;font-weight:700;color:#d97706;margin-bottom:3px">👉 ACTION:</div>';
   h+='<div style="font-size:8px;color:#94a3b8;padding:4px 8px;border-radius:4px;background:#d9770608">'+(strat.type==='SELL'?'✔ Hold — time decay working in your favor':'✘ Reassess at 50% DTE — theta eroding premium')+'</div>';
@@ -1093,7 +1093,7 @@ function _renderOptionsEngine(d,sym){
   h+='</div></details>';
   
   // ─── REAL-TIME ALERTS SYSTEM ───
-  h+='<div style="background:#0A0F1C;border-radius:16px;padding:18px 22px;margin-bottom:10px;border:1px solid #f59e0b25">';
+  h+='<div style="background:#f1f5f9;border-radius:16px;padding:18px 22px;margin-bottom:10px;border:1px solid #f59e0b25">';
   h+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">';
   h+='<div style="font-size:11px;font-weight:800;color:#64748b;letter-spacing:1.5px">🔔 SMART ALERTS — Set These Now</div>';
   h+='<div style="padding:3px 10px;border-radius:12px;background:#f59e0b20;color:#f59e0b;font-size:8px;font-weight:700">Copy to broker</div></div>';
@@ -1138,7 +1138,7 @@ function _renderOptionsEngine(d,sym){
     h+='<div style="display:flex;gap:10px;padding:8px 12px;border-radius:8px;background:'+a.color+'08;border:1px solid '+a.color+'15;margin-bottom:4px;align-items:center">';
     h+='<div style="font-size:16px">'+a.icon+'</div>';
     h+='<div style="min-width:60px;padding:3px 8px;border-radius:4px;background:'+a.color+'20;color:'+a.color+';font-size:7px;font-weight:800;text-align:center">'+a.type+'</div>';
-    h+='<div style="flex:1"><div style="font-size:9px;color:#e2e8f0;font-weight:700">IF: '+a.condition+'</div>';
+    h+='<div style="flex:1"><div style="font-size:9px;color:#1e293b;font-weight:700">IF: '+a.condition+'</div>';
     h+='<div style="font-size:8px;color:'+a.color+';margin-top:1px">→ '+a.action+'</div></div>';
     // Copy button
     h+='<div onclick="navigator.clipboard.writeText(\''+a.condition+' → '+a.action+'\');this.textContent=\'Copied!\';var self=this;setTimeout(function(){self.textContent=\'📋\'},1500)" style="cursor:pointer;font-size:12px;padding:4px" title="Copy alert">📋</div>';
@@ -1155,7 +1155,7 @@ function _renderOptionsEngine(d,sym){
   h+='<div style="font-size:8px;color:#64748b;font-weight:800;letter-spacing:2px;margin-bottom:8px">━━━━━━━━━━━━━━━━━━━</div>';
   h+='<div style="font-size:10px;color:#64748b;font-weight:800;letter-spacing:2px;margin-bottom:4px">STEP 11 · FINAL DECISION OUTPUT</div>';
   h+='<div style="font-size:28px;font-weight:900;color:'+finalColor+';font-family:Sora,sans-serif;margin:8px 0">'+finalDecision+'</div>';
-  h+='<div style="font-size:12px;color:#e2e8f0;font-weight:700;margin-bottom:6px">'+strat.name+' · '+expEng.recommended+' · '+pos.lots+' lot(s)</div>';
+  h+='<div style="font-size:12px;color:#1e293b;font-weight:700;margin-bottom:6px">'+strat.name+' · '+expEng.recommended+' · '+pos.lots+' lot(s)</div>';
   h+='<div style="display:flex;justify-content:center;gap:12px;flex-wrap:wrap;margin:10px 0">';
   h+='<div style="padding:4px 14px;border-radius:20px;background:'+regime.trendColor+'15;color:'+regime.trendColor+';font-size:9px;font-weight:800">Bias: '+regime.trend+'</div>';
   h+='<div style="padding:4px 14px;border-radius:20px;background:'+tv.gradeColor+'15;color:'+tv.gradeColor+';font-size:9px;font-weight:800">Score: '+tv.total+'/100 ('+tv.grade+')</div>';
@@ -1166,7 +1166,7 @@ function _renderOptionsEngine(d,sym){
   h+='</div></div>';
   
   // ─── DISCLAIMER ───
-  h+='<div style="padding:10px;border-radius:10px;background:#1e293b;text-align:center;font-size:8px;color:#475569;margin-top:10px">';
+  h+='<div style="padding:10px;border-radius:10px;background:#e2e8f0;text-align:center;font-size:8px;color:#475569;margin-top:10px">';
   h+='⚠️ Options trading involves substantial risk. This is AI-generated analysis for educational purposes only — not financial advice. Past patterns do not guarantee future results. Consult a SEBI-registered advisor before trading.</div>';
   
   el.innerHTML=h;
@@ -1193,7 +1193,7 @@ console.log('[OPTIONS ENGINE] ✅ Loaded — 6 layers active');
 // ─── FEATURE 1: Candlestick Chart with VWAP ───
 window._renderCandlestick=function(bars,vwap,spot,S){
   if(!bars||bars.length<5)return'<div style="padding:12px;color:#475569;font-size:9px;text-align:center">Intraday data unavailable — market may be closed</div>';
-  var h='<div style="background:#0F172A;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:1px solid #1e293b">';
+  var h='<div style="background:#f8fafc;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:1px solid #e2e8f0">';
   h+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">';
   h+='<div style="font-size:10px;font-weight:800;color:#64748b;letter-spacing:1.5px">📈 INTRADAY CANDLESTICK + VWAP</div>';
   h+='<div style="font-size:9px;color:#a855f7;font-weight:700">VWAP: '+S+(vwap||0).toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div></div>';
@@ -1255,7 +1255,7 @@ window._renderCandlestick=function(bars,vwap,spot,S){
 
 // ─── FEATURE 2: IV Term Structure Visualization ───
 window._renderIVTermStructure=function(ivTerm,ivSmile,spot,S){
-  var h='<div style="background:#0F172A;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:1px solid #1e293b">';
+  var h='<div style="background:#f8fafc;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:1px solid #e2e8f0">';
   h+='<div style="font-size:10px;font-weight:800;color:#64748b;letter-spacing:1.5px;margin-bottom:10px">📉 IV TERM STRUCTURE & SMILE</div>';
   
   // Term structure (IV per expiry)
@@ -1315,7 +1315,7 @@ window._renderIVTermStructure=function(ivTerm,ivSmile,spot,S){
 
 // ─── FEATURE 3: Backtest Preview ───
 window._renderBacktest=function(strat,spot,regime,vix,S){
-  var h='<div style="background:#0F172A;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:1px solid #1e293b">';
+  var h='<div style="background:#f8fafc;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:1px solid #e2e8f0">';
   h+='<div style="font-size:10px;font-weight:800;color:#64748b;letter-spacing:1.5px;margin-bottom:10px">🔬 BACKTEST PREVIEW — '+strat.name+' in Similar Conditions</div>';
   
   // Simulated historical performance based on regime + strategy type
@@ -1348,7 +1348,7 @@ window._renderBacktest=function(strat,spot,regime,vix,S){
   
   h+='<div style="display:flex;gap:8px;flex-wrap:wrap">';
   scenarios.forEach(function(s){
-    h+='<div style="flex:1;min-width:140px;padding:10px 12px;border-radius:10px;background:#1e293b;border-left:3px solid '+s.color+'">';
+    h+='<div style="flex:1;min-width:140px;padding:10px 12px;border-radius:10px;background:#e2e8f0;border-left:3px solid '+s.color+'">';
     h+='<div style="font-size:8px;color:'+s.color+';font-weight:700;margin-bottom:6px">'+s.label+'</div>';
     h+='<div style="display:flex;justify-content:space-between;font-size:8px;color:#94a3b8;margin-bottom:2px"><span>Win Rate</span><span style="color:'+s.color+';font-weight:800">'+s.winRate+'%</span></div>';
     h+='<div style="display:flex;justify-content:space-between;font-size:8px;color:#94a3b8;margin-bottom:2px"><span>Avg Return</span><span style="color:'+(s.avgReturn>=0?'#059669':'#ef4444')+';font-weight:800">'+(s.avgReturn>=0?'+':'')+s.avgReturn+'%</span></div>';
@@ -1368,7 +1368,7 @@ window._renderBacktest=function(strat,spot,regime,vix,S){
 
 // ─── FEATURE 4: Alert System for Level Breaks ───
 window._renderAlerts=function(spot,inst,maxPain,vwap,pivot,S){
-  var h='<div style="background:#0F172A;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:1px solid #1e293b">';
+  var h='<div style="background:#f8fafc;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:1px solid #e2e8f0">';
   h+='<div style="font-size:10px;font-weight:800;color:#64748b;letter-spacing:1.5px;margin-bottom:10px">🔔 LEVEL BREAK ALERTS</div>';
   
   var alerts=[];
@@ -1394,7 +1394,7 @@ window._renderAlerts=function(spot,inst,maxPain,vwap,pivot,S){
     h+='<div style="flex:1">';
     h+='<div style="display:flex;justify-content:space-between;align-items:center">';
     h+='<div style="font-size:9px;font-weight:800;color:'+a.color+'">'+a.label+'</div>';
-    h+='<div style="font-size:12px;font-weight:900;color:#e2e8f0;font-family:JetBrains Mono">'+S+a.level.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div>';
+    h+='<div style="font-size:12px;font-weight:900;color:#1e293b;font-family:JetBrains Mono">'+S+a.level.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div>';
     h+='</div>';
     h+='<div style="font-size:7px;color:#64748b;margin-top:2px">'+a.dist+' · '+a.action+'</div>';
     h+='</div>';
@@ -1426,7 +1426,7 @@ window._toggleProMode=function(){
 // ─── FEATURE 6: Order Flow / Delta Bars ───
 window._renderOrderFlow=function(bars,S){
   if(!bars||bars.length<5)return'';
-  var h='<div style="background:#0F172A;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:1px solid #1e293b">';
+  var h='<div style="background:#f8fafc;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:1px solid #e2e8f0">';
   h+='<div style="font-size:10px;font-weight:800;color:#64748b;letter-spacing:1.5px;margin-bottom:10px">📊 ORDER FLOW — Volume Delta</div>';
   
   // Compute delta per bar: positive if close > open (buying), negative if close < open (selling)
@@ -1468,7 +1468,7 @@ window._renderOrderFlow=function(bars,S){
   h+='<div style="flex:1;padding:6px 10px;border-radius:6px;background:#05966415;text-align:center"><div style="font-size:7px;color:#059669;font-weight:700">BUY VOLUME</div><div style="font-size:12px;font-weight:900;color:#059669;font-family:JetBrains Mono">'+(totalBuy/1e6).toFixed(1)+'M</div></div>';
   h+='<div style="flex:1;padding:6px 10px;border-radius:6px;background:#ef444415;text-align:center"><div style="font-size:7px;color:#ef4444;font-weight:700">SELL VOLUME</div><div style="font-size:12px;font-weight:900;color:#ef4444;font-family:JetBrains Mono">'+(totalSell/1e6).toFixed(1)+'M</div></div>';
   h+='<div style="flex:1;padding:6px 10px;border-radius:6px;background:'+deltaColor+'15;text-align:center"><div style="font-size:7px;color:'+deltaColor+';font-weight:700">NET DELTA</div><div style="font-size:12px;font-weight:900;color:'+deltaColor+';font-family:JetBrains Mono">'+(netDelta>0?'+':'')+(netDelta/1e6).toFixed(1)+'M</div></div>';
-  h+='<div style="flex:1;padding:6px 10px;border-radius:6px;background:#1e293b;text-align:center"><div style="font-size:7px;color:#64748b;font-weight:700">BUY %</div><div style="font-size:12px;font-weight:900;color:'+deltaColor+';font-family:JetBrains Mono">'+deltaPct+'%</div>';
+  h+='<div style="flex:1;padding:6px 10px;border-radius:6px;background:#e2e8f0;text-align:center"><div style="font-size:7px;color:#64748b;font-weight:700">BUY %</div><div style="font-size:12px;font-weight:900;color:'+deltaColor+';font-family:JetBrains Mono">'+deltaPct+'%</div>';
   // Mini bar
   h+='<div style="width:100%;height:4px;background:#ef444440;border-radius:2px;margin-top:3px"><div style="width:'+deltaPct+'%;height:100%;background:#059669;border-radius:2px"></div></div>';
   h+='</div></div>';
@@ -1506,7 +1506,7 @@ _renderOptionsEngine=function(d,sym){
   
   // Pro Toggle Button (insert at top)
   extra+='<div style="text-align:right;margin-bottom:8px">';
-  extra+='<button id="proToggleBtn" onclick="window._toggleProMode()" style="padding:8px 18px;border-radius:10px;background:#1e293b;color:#a855f7;border:1px solid #a855f740;font-size:10px;font-weight:800;cursor:pointer;font-family:Sora,sans-serif">🔒 PRO MODE</button>';
+  extra+='<button id="proToggleBtn" onclick="window._toggleProMode()" style="padding:8px 18px;border-radius:10px;background:#e2e8f0;color:#a855f7;border:1px solid #a855f740;font-size:10px;font-weight:800;cursor:pointer;font-family:Sora,sans-serif">🔒 PRO MODE</button>';
   extra+='</div>';
   
   // Candlestick (always visible)
@@ -1551,13 +1551,13 @@ window._loadGammaMode=function(symbol){
     .then(function(r){return r.json()})
     .then(function(d){
       if(!d||!d.success){
-        el.innerHTML='<div style="color:#ef4444;padding:20px;text-align:center;background:#0A0F1C;border-radius:16px">❌ Failed to load data<br><button onclick="window._loadGammaMode(\''+sym+'\')" style="margin-top:10px;padding:8px 20px;border-radius:8px;background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;border:none;cursor:pointer;font-size:11px;font-weight:700">Retry</button></div>';
+        el.innerHTML='<div style="color:#ef4444;padding:20px;text-align:center;background:#f1f5f9;border-radius:16px">❌ Failed to load data<br><button onclick="window._loadGammaMode(\''+sym+'\')" style="margin-top:10px;padding:8px 20px;border-radius:8px;background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;border:none;cursor:pointer;font-size:11px;font-weight:700">Retry</button></div>';
         return;
       }
       if(!d.ohlc_bars)d.ohlc_bars=[];if(!d.chain_near_atm)d.chain_near_atm=[];if(!d.ce_resistance)d.ce_resistance=[];if(!d.pe_support)d.pe_support=[];if(!d.gex)d.gex={total:0,regime:'NEUTRAL',topStrikes:[],flipPoint:0,callWall:0,putWall:0};
-      try{_renderGammaEngine(d,sym)}catch(_rgErr){console.error('[RENDER CRASH] GammaEngine:',_rgErr);el.innerHTML='<div style="text-align:center;padding:30px;background:#0A0F1C;border-radius:16px"><div style="font-size:14px;color:#ef4444;font-weight:800;margin-bottom:8px">Render Error</div><div style="font-size:10px;color:#94a3b8;margin-bottom:8px">'+(_rgErr.message||'')+'</div><button onclick="window._retryLast()" style="padding:8px 20px;border-radius:8px;background:#059669;color:#fff;border:none;cursor:pointer;font-size:11px;font-weight:700">🔄 Retry</button></div>'}
+      try{_renderGammaEngine(d,sym)}catch(_rgErr){console.error('[RENDER CRASH] GammaEngine:',_rgErr);el.innerHTML='<div style="text-align:center;padding:30px;background:#f1f5f9;border-radius:16px"><div style="font-size:14px;color:#ef4444;font-weight:800;margin-bottom:8px">Render Error</div><div style="font-size:10px;color:#94a3b8;margin-bottom:8px">'+(_rgErr.message||'')+'</div><button onclick="window._retryLast()" style="padding:8px 20px;border-radius:8px;background:#059669;color:#fff;border:none;cursor:pointer;font-size:11px;font-weight:700">🔄 Retry</button></div>'}
     }).catch(function(e){
-      el.innerHTML='<div style="text-align:center;padding:30px;background:#0A0F1C;border-radius:16px"><div style="font-size:14px;color:#ef4444;font-weight:800;margin-bottom:8px">Cannot connect to server</div><div style="font-size:10px;color:#94a3b8;margin-bottom:12px">'+e.message+'</div><button onclick="window._retryLast()" style="padding:8px 20px;border-radius:8px;background:#059669;color:#fff;border:none;cursor:pointer;font-size:11px;font-weight:700">🔄 Retry</button></div>';
+      el.innerHTML='<div style="text-align:center;padding:30px;background:#f1f5f9;border-radius:16px"><div style="font-size:14px;color:#ef4444;font-weight:800;margin-bottom:8px">Cannot connect to server</div><div style="font-size:10px;color:#94a3b8;margin-bottom:12px">'+e.message+'</div><button onclick="window._retryLast()" style="padding:8px 20px;border-radius:8px;background:#059669;color:#fff;border:none;cursor:pointer;font-size:11px;font-weight:700">🔄 Retry</button></div>';
     });
 };
 
@@ -1830,7 +1830,7 @@ function _renderGammaEngine(d,sym){
   // Gauge
   h+='<div style="text-align:center">';
   h+='<div style="width:80px;height:80px;border-radius:50%;border:5px solid #1e293b;background:conic-gradient('+finalColor+' '+(confidence*3.6)+'deg, #1e293b 0deg);display:flex;align-items:center;justify-content:center">';
-  h+='<div style="width:60px;height:60px;border-radius:50%;background:#0A0F1C;display:flex;align-items:center;justify-content:center;flex-direction:column">';
+  h+='<div style="width:60px;height:60px;border-radius:50%;background:#f1f5f9;display:flex;align-items:center;justify-content:center;flex-direction:column">';
   h+='<div style="font-size:20px;font-weight:900;color:'+finalColor+';font-family:JetBrains Mono">'+confidence+'</div>';
   h+='<div style="font-size:6px;color:#64748b">CONFIDENCE</div></div></div></div>';
   // Tags
@@ -1844,22 +1844,22 @@ function _renderGammaEngine(d,sym){
   h+='<div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap;align-items:center">';
   ['NIFTY','BANKNIFTY','SENSEX','FINNIFTY'].forEach(function(idx){
     var isAct=idx===sym;
-    h+='<div onclick="window._loadGammaMode(\''+idx+'\')" style="padding:8px 18px;border-radius:10px;font-size:11px;font-weight:800;cursor:pointer;font-family:Sora;'+(isAct?'background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;box-shadow:0 4px 12px rgba(245,158,11,.3)':'background:#1e293b;color:#94a3b8;border:1px solid #334155')+'">'+idx+'</div>';
+    h+='<div onclick="window._loadGammaMode(\''+idx+'\')" style="padding:8px 18px;border-radius:10px;font-size:11px;font-weight:800;cursor:pointer;font-family:Sora;'+(isAct?'background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;box-shadow:0 4px 12px rgba(245,158,11,.3)':'background:#e2e8f0;color:#94a3b8;border:1px solid #cbd5e1')+'">'+idx+'</div>';
   });
   h+='<div style="flex:1"></div>';
-  h+='<div onclick="window._loadOptionsDecide(\''+sym+'\')" style="padding:8px 18px;border-radius:10px;font-size:10px;font-weight:700;cursor:pointer;background:#1e293b;color:#3b82f6;border:1px solid #3b82f625">← Back to Full Engine</div>';
+  h+='<div onclick="window._loadOptionsDecide(\''+sym+'\')" style="padding:8px 18px;border-radius:10px;font-size:10px;font-weight:700;cursor:pointer;background:#e2e8f0;color:#3b82f6;border:1px solid #3b82f625">← Back to Full Engine</div>';
   h+='</div>';
   
   // ─── STEP 0: TRADE PERMISSION ───
-  h+='<div style="background:#0F172A;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:2px solid '+(perm.blocked?'#ef4444':'#059669')+'25">';
+  h+='<div style="background:#f8fafc;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:2px solid '+(perm.blocked?'#ef4444':'#059669')+'25">';
   h+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">';
   h+='<div style="font-size:10px;font-weight:800;color:#f59e0b;letter-spacing:1.5px">STEP 0 · STRICT TRADE PERMISSION</div>';
   // Gamma Quick Guide (before step 0 content)
-  h+='<details style="margin-bottom:8px;border-radius:8px;background:#1e293b;overflow:hidden;border:1px solid #f59e0b20">';
+  h+='<details style="margin-bottom:8px;border-radius:8px;background:#e2e8f0;overflow:hidden;border:1px solid #f59e0b20">';
   h+='<summary style="padding:8px 12px;cursor:pointer;font-size:9px;color:#f59e0b;font-weight:700">📖 New to Gamma Scalping? Read this first ▾</summary>';
   h+='<div style="padding:10px 14px;font-size:8px;color:#94a3b8;line-height:1.7">';
   h+='<strong style="color:#f59e0b;font-size:10px">⚡ GAMMA SCALPING = Quick in, quick out. 5-12 minutes per trade.</strong><br><br>';
-  h+='<strong style="color:#e2e8f0">How to read this page (30 seconds):</strong><br>';
+  h+='<strong style="color:#1e293b">How to read this page (30 seconds):</strong><br>';
   h+='<span style="color:#f59e0b">1.</span> Check the BIG TEXT at the top — SCALP (go) / WAIT / NO TRADE (stop)<br>';
   h+='<span style="color:#f59e0b">2.</span> Check STEP 0 below — all 5 checkmarks must be ✔ green<br>';
   h+='<span style="color:#f59e0b">3.</span> Look at the 🧠 AI BREAKOUT PREDICTOR — BP above 70% means "actionable"<br>';
@@ -1882,15 +1882,15 @@ function _renderGammaEngine(d,sym){
   h+='</div>';
   
   // ─── AI BREAKOUT PREDICTOR (Section 3) ───
-  h+='<div style="background:#0F172A;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:1px solid '+bpColor+'30">';
+  h+='<div style="background:#f8fafc;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:1px solid '+bpColor+'30">';
   h+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">';
   h+='<div style="font-size:10px;font-weight:800;color:#f59e0b;letter-spacing:1.5px">🧠 AI BREAKOUT PREDICTOR</div>';
   h+='<div style="padding:4px 14px;border-radius:20px;background:'+bpColor+'20;color:'+bpColor+';font-size:10px;font-weight:800">'+bpStatus+'</div></div>';
   h+='<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">';
-  h+='<div style="flex:1;min-width:80px;padding:8px;border-radius:8px;background:#1e293b;text-align:center"><div style="font-size:7px;color:#64748b">BP</div><div style="font-size:22px;font-weight:900;color:'+bpColor+';font-family:JetBrains Mono">'+Math.round(BP*100)+'%</div></div>';
-  h+='<div style="flex:1;min-width:80px;padding:8px;border-radius:8px;background:#1e293b;text-align:center"><div style="font-size:7px;color:#64748b">DIRECTION</div><div style="font-size:14px;font-weight:900;color:'+biasColor+'">'+bias+'</div></div>';
-  h+='<div style="flex:1;min-width:80px;padding:8px;border-radius:8px;background:#1e293b;text-align:center"><div style="font-size:7px;color:#64748b">LEVEL</div><div style="font-size:14px;font-weight:900;color:#e2e8f0;font-family:JetBrains Mono">'+S+breakLevel.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div></div>';
-  h+='<div style="flex:1;min-width:80px;padding:8px;border-radius:8px;background:#1e293b;text-align:center"><div style="font-size:7px;color:#64748b">DEBOUNCE</div><div style="font-size:14px;font-weight:900;color:'+(debouncePass?'#059669':'#ef4444')+'">'+(debouncePass?'✔ CONFIRMED':'✘ WAITING')+'</div></div>';
+  h+='<div style="flex:1;min-width:80px;padding:8px;border-radius:8px;background:#e2e8f0;text-align:center"><div style="font-size:7px;color:#64748b">BP</div><div style="font-size:22px;font-weight:900;color:'+bpColor+';font-family:JetBrains Mono">'+Math.round(BP*100)+'%</div></div>';
+  h+='<div style="flex:1;min-width:80px;padding:8px;border-radius:8px;background:#e2e8f0;text-align:center"><div style="font-size:7px;color:#64748b">DIRECTION</div><div style="font-size:14px;font-weight:900;color:'+biasColor+'">'+bias+'</div></div>';
+  h+='<div style="flex:1;min-width:80px;padding:8px;border-radius:8px;background:#e2e8f0;text-align:center"><div style="font-size:7px;color:#64748b">LEVEL</div><div style="font-size:14px;font-weight:900;color:#1e293b;font-family:JetBrains Mono">'+S+breakLevel.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div></div>';
+  h+='<div style="flex:1;min-width:80px;padding:8px;border-radius:8px;background:#e2e8f0;text-align:center"><div style="font-size:7px;color:#64748b">DEBOUNCE</div><div style="font-size:14px;font-weight:900;color:'+(debouncePass?'#059669':'#ef4444')+'">'+(debouncePass?'✔ CONFIRMED':'✘ WAITING')+'</div></div>';
   h+='</div>';
   // Feature breakdown
   h+='<div style="font-size:8px;color:#475569;display:flex;gap:4px;flex-wrap:wrap">';
@@ -1902,16 +1902,16 @@ function _renderGammaEngine(d,sym){
   h+='</div></div>';
   
   // ─── SESSION ALLOCATOR (Section 8) ───
-  h+='<div style="background:#0F172A;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:1px solid #3b82f625">';
+  h+='<div style="background:#f8fafc;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:1px solid #3b82f625">';
   h+='<div style="font-size:10px;font-weight:800;color:#3b82f6;letter-spacing:1.5px;margin-bottom:8px">📊 SESSION ALLOCATOR — Which Index to Trade?</div>';
   h+='<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">';
   sortedAlloc.forEach(function(idx2,i){
     var sc2=alloc[idx2].score;
     var isPrimary=i===0;
     var ac=sc2>=80?'#059669':sc2>=60?'#3b82f6':sc2>=40?'#d97706':'#ef4444';
-    h+='<div style="flex:1;min-width:100px;padding:10px;border-radius:10px;'+(isPrimary?'background:'+ac+'15;border:2px solid '+ac+'40':'background:#1e293b;border:1px solid #334155')+';text-align:center">';
+    h+='<div style="flex:1;min-width:100px;padding:10px;border-radius:10px;'+(isPrimary?'background:'+ac+'15;border:2px solid '+ac+'40':'background:#e2e8f0;border:1px solid #cbd5e1')+';text-align:center">';
     h+='<div style="font-size:8px;color:'+(isPrimary?ac:'#64748b')+';font-weight:800">'+(isPrimary?'★ PRIMARY':'')+'</div>';
-    h+='<div style="font-size:14px;font-weight:900;color:#e2e8f0">'+idx2+'</div>';
+    h+='<div style="font-size:14px;font-weight:900;color:#1e293b">'+idx2+'</div>';
     h+='<div style="font-size:20px;font-weight:900;color:'+ac+';font-family:JetBrains Mono">'+sc2+'</div>';
     h+='<div style="font-size:7px;color:#64748b">/100</div></div>';
   });
@@ -1920,17 +1920,17 @@ function _renderGammaEngine(d,sym){
   h+='</div>';
   
   // ─── GLOBAL RISK CONTROLS (Section 12) ───
-  h+='<div style="background:#0F172A;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:1px solid #ef444425">';
+  h+='<div style="background:#f8fafc;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:1px solid #ef444425">';
   h+='<div style="font-size:10px;font-weight:800;color:#ef4444;letter-spacing:1.5px;margin-bottom:8px">🛡️ GLOBAL SESSION CONTROLS</div>';
   h+='<div style="display:flex;gap:6px;flex-wrap:wrap">';
-  h+='<div style="flex:1;min-width:80px;padding:8px;border-radius:8px;background:#1e293b;text-align:center"><div style="font-size:7px;color:#ef4444;font-weight:700">DAILY LOSS CAP</div><div style="font-size:14px;font-weight:900;color:#ef4444;font-family:JetBrains Mono">'+S+globalRisk.dailyLossCap.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div><div style="font-size:7px;color:#64748b">2.5% of capital</div></div>';
-  h+='<div style="flex:1;min-width:80px;padding:8px;border-radius:8px;background:#1e293b;text-align:center"><div style="font-size:7px;color:#d97706;font-weight:700">MAX TRADES/DAY</div><div style="font-size:14px;font-weight:900;color:#d97706;font-family:JetBrains Mono">'+globalRisk.maxTradesPerDay+'</div></div>';
-  h+='<div style="flex:1;min-width:80px;padding:8px;border-radius:8px;background:#1e293b;text-align:center"><div style="font-size:7px;color:#ef4444;font-weight:700">CONSEC LOSSES</div><div style="font-size:14px;font-weight:900;color:#ef4444;font-family:JetBrains Mono">'+globalRisk.maxConsecLosses+' → STOP</div></div>';
-  h+='<div style="flex:1;min-width:80px;padding:8px;border-radius:8px;background:#1e293b;text-align:center"><div style="font-size:7px;color:#a855f7;font-weight:700">LIVE STATUS</div><div style="font-size:12px;font-weight:900;color:'+liveLoop.statusColor+'">'+liveLoop.status+'</div></div>';
+  h+='<div style="flex:1;min-width:80px;padding:8px;border-radius:8px;background:#e2e8f0;text-align:center"><div style="font-size:7px;color:#ef4444;font-weight:700">DAILY LOSS CAP</div><div style="font-size:14px;font-weight:900;color:#ef4444;font-family:JetBrains Mono">'+S+globalRisk.dailyLossCap.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div><div style="font-size:7px;color:#64748b">2.5% of capital</div></div>';
+  h+='<div style="flex:1;min-width:80px;padding:8px;border-radius:8px;background:#e2e8f0;text-align:center"><div style="font-size:7px;color:#d97706;font-weight:700">MAX TRADES/DAY</div><div style="font-size:14px;font-weight:900;color:#d97706;font-family:JetBrains Mono">'+globalRisk.maxTradesPerDay+'</div></div>';
+  h+='<div style="flex:1;min-width:80px;padding:8px;border-radius:8px;background:#e2e8f0;text-align:center"><div style="font-size:7px;color:#ef4444;font-weight:700">CONSEC LOSSES</div><div style="font-size:14px;font-weight:900;color:#ef4444;font-family:JetBrains Mono">'+globalRisk.maxConsecLosses+' → STOP</div></div>';
+  h+='<div style="flex:1;min-width:80px;padding:8px;border-radius:8px;background:#e2e8f0;text-align:center"><div style="font-size:7px;color:#a855f7;font-weight:700">LIVE STATUS</div><div style="font-size:12px;font-weight:900;color:'+liveLoop.statusColor+'">'+liveLoop.status+'</div></div>';
   h+='</div></div>';
   
   // ─── STEP 1: LEVEL MAP ───
-  h+='<div style="background:#0F172A;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:1px solid #1e293b">';
+  h+='<div style="background:#f8fafc;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:1px solid #e2e8f0">';
   h+='<div style="font-size:10px;font-weight:800;color:#f59e0b;letter-spacing:1.5px;margin-bottom:10px">STEP 1 · LEVEL MAP</div>';
   h+='<div style="display:flex;gap:8px;flex-wrap:wrap">';
   h+='<div style="flex:1;min-width:80px;padding:8px;border-radius:8px;background:#ef444412;border:1px solid #ef444425;text-align:center"><div style="font-size:7px;color:#ef4444;font-weight:700">RESISTANCE</div><div style="font-size:16px;font-weight:900;color:#ef4444;font-family:JetBrains Mono">'+S+resistance.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div></div>';
@@ -1941,18 +1941,18 @@ function _renderGammaEngine(d,sym){
   h+='</div></div>';
   
   // ─── STEP 2: ORDER FLOW ───
-  h+='<div style="background:#0F172A;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:1px solid '+flowColor+'25">';
+  h+='<div style="background:#f8fafc;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:1px solid '+flowColor+'25">';
   h+='<div style="font-size:10px;font-weight:800;color:#f59e0b;letter-spacing:1.5px;margin-bottom:8px">STEP 2 · ORDER FLOW EDGE</div>';
   h+='<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">';
-  h+='<div style="flex:1;min-width:80px;padding:8px;border-radius:8px;background:#1e293b;text-align:center"><div style="font-size:7px;color:#64748b">DELTA</div><div style="font-size:16px;font-weight:900;color:'+(deltaImb>0?'#059669':'#ef4444')+';font-family:JetBrains Mono">'+(deltaImb>0?'+':'')+deltaImb+'%</div></div>';
-  h+='<div style="flex:1;min-width:80px;padding:8px;border-radius:8px;background:#1e293b;text-align:center"><div style="font-size:7px;color:#64748b">AGGRESSIVE</div><div style="font-size:14px;font-weight:900;color:'+flowColor+'">'+flowBias+'</div></div>';
-  h+='<div style="flex:1;min-width:80px;padding:8px;border-radius:8px;background:#1e293b;text-align:center"><div style="font-size:7px;color:#64748b">BUY %</div><div style="font-size:16px;font-weight:900;color:#059669;font-family:JetBrains Mono">'+buyPct+'%</div></div>';
+  h+='<div style="flex:1;min-width:80px;padding:8px;border-radius:8px;background:#e2e8f0;text-align:center"><div style="font-size:7px;color:#64748b">DELTA</div><div style="font-size:16px;font-weight:900;color:'+(deltaImb>0?'#059669':'#ef4444')+';font-family:JetBrains Mono">'+(deltaImb>0?'+':'')+deltaImb+'%</div></div>';
+  h+='<div style="flex:1;min-width:80px;padding:8px;border-radius:8px;background:#e2e8f0;text-align:center"><div style="font-size:7px;color:#64748b">AGGRESSIVE</div><div style="font-size:14px;font-weight:900;color:'+flowColor+'">'+flowBias+'</div></div>';
+  h+='<div style="flex:1;min-width:80px;padding:8px;border-radius:8px;background:#e2e8f0;text-align:center"><div style="font-size:7px;color:#64748b">BUY %</div><div style="font-size:16px;font-weight:900;color:#059669;font-family:JetBrains Mono">'+buyPct+'%</div></div>';
   h+='</div>';
   h+='<div style="padding:6px 10px;border-radius:6px;background:'+biasColor+'10;border-left:3px solid '+biasColor+';font-size:9px;color:'+biasColor+';font-weight:700">👉 Bias: '+(bias==='BULLISH'?'BULLISH BREAKOUT LIKELY':bias==='BEARISH'?'BEARISH BREAKDOWN LIKELY':'NO CLEAR DIRECTION — WAIT')+'</div>';
   h+='</div>';
   
   // ─── STEP 3: ENTRY TRIGGER ───
-  h+='<div style="background:#0F172A;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:2px solid '+(triggers.ready?'#f59e0b':'#64748b')+'25">';
+  h+='<div style="background:#f8fafc;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:2px solid '+(triggers.ready?'#f59e0b':'#64748b')+'25">';
   h+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">';
   h+='<div style="font-size:10px;font-weight:800;color:#f59e0b;letter-spacing:1.5px">STEP 3 · ENTRY TRIGGER (GAMMA BURST)</div>';
   h+='<div style="padding:4px 14px;border-radius:20px;background:'+(triggers.ready?'#f59e0b':'#64748b')+'20;color:'+(triggers.ready?'#f59e0b':'#64748b')+';font-size:10px;font-weight:800">'+(triggers.ready?'⚡ TRIGGERED':'⏳ WAITING')+'</div></div>';
@@ -1972,11 +1972,11 @@ function _renderGammaEngine(d,sym){
   h+='<div style="flex:1;min-width:120px;padding:12px;border-radius:10px;background:#f59e0b15;border:1px solid #f59e0b30;text-align:center">';
   h+='<div style="font-size:8px;color:#f59e0b;font-weight:700">ACTION</div>';
   h+='<div style="font-size:20px;font-weight:900;color:#f59e0b;font-family:Sora">BUY '+entryType+'</div>';
-  h+='<div style="font-size:12px;color:#e2e8f0;font-weight:800;font-family:JetBrains Mono">'+S+entryStrike.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+' '+entryType+'</div></div>';
+  h+='<div style="font-size:12px;color:#1e293b;font-weight:800;font-family:JetBrains Mono">'+S+entryStrike.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+' '+entryType+'</div></div>';
   // Entry premium
-  h+='<div style="flex:1;min-width:100px;padding:12px;border-radius:10px;background:#1e293b;text-align:center">';
+  h+='<div style="flex:1;min-width:100px;padding:12px;border-radius:10px;background:#e2e8f0;text-align:center">';
   h+='<div style="font-size:8px;color:#64748b;font-weight:700">ENTRY</div>';
-  h+='<div style="font-size:20px;font-weight:900;color:#e2e8f0;font-family:JetBrains Mono">'+S+entryPrem.toFixed(0)+'</div></div>';
+  h+='<div style="font-size:20px;font-weight:900;color:#1e293b;font-family:JetBrains Mono">'+S+entryPrem.toFixed(0)+'</div></div>';
   // Target
   h+='<div style="flex:1;min-width:100px;padding:12px;border-radius:10px;background:#05966415;border:1px solid #05966425;text-align:center">';
   h+='<div style="font-size:8px;color:#059669;font-weight:700">TARGET (+'+exitTargetPct+'%)</div>';
@@ -1996,22 +1996,22 @@ function _renderGammaEngine(d,sym){
   
   // Position sizing
   h+='<div style="display:flex;gap:6px;flex-wrap:wrap">';
-  h+='<div style="flex:1;min-width:80px;padding:6px;border-radius:6px;background:#1e293b;text-align:center"><div style="font-size:6px;color:#64748b">LOTS</div><div style="font-size:14px;font-weight:900;color:#f59e0b;font-family:JetBrains Mono">'+lots+'</div></div>';
-  h+='<div style="flex:1;min-width:80px;padding:6px;border-radius:6px;background:#1e293b;text-align:center"><div style="font-size:6px;color:#64748b">RISK</div><div style="font-size:14px;font-weight:900;color:#ef4444;font-family:JetBrains Mono">'+S+totalRisk.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div></div>';
-  h+='<div style="flex:1;min-width:80px;padding:6px;border-radius:6px;background:#1e293b;text-align:center"><div style="font-size:6px;color:#64748b">REWARD</div><div style="font-size:14px;font-weight:900;color:#059669;font-family:JetBrains Mono">'+S+totalReward.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div></div>';
-  h+='<div style="flex:1;min-width:80px;padding:6px;border-radius:6px;background:#1e293b;text-align:center"><div style="font-size:6px;color:#64748b">HOLD TIME</div><div style="font-size:14px;font-weight:900;color:#a855f7">8-12 min</div></div>';
+  h+='<div style="flex:1;min-width:80px;padding:6px;border-radius:6px;background:#e2e8f0;text-align:center"><div style="font-size:6px;color:#64748b">LOTS</div><div style="font-size:14px;font-weight:900;color:#f59e0b;font-family:JetBrains Mono">'+lots+'</div></div>';
+  h+='<div style="flex:1;min-width:80px;padding:6px;border-radius:6px;background:#e2e8f0;text-align:center"><div style="font-size:6px;color:#64748b">RISK</div><div style="font-size:14px;font-weight:900;color:#ef4444;font-family:JetBrains Mono">'+S+totalRisk.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div></div>';
+  h+='<div style="flex:1;min-width:80px;padding:6px;border-radius:6px;background:#e2e8f0;text-align:center"><div style="font-size:6px;color:#64748b">REWARD</div><div style="font-size:14px;font-weight:900;color:#059669;font-family:JetBrains Mono">'+S+totalReward.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div></div>';
+  h+='<div style="flex:1;min-width:80px;padding:6px;border-radius:6px;background:#e2e8f0;text-align:center"><div style="font-size:6px;color:#64748b">HOLD TIME</div><div style="font-size:14px;font-weight:900;color:#a855f7">8-12 min</div></div>';
   h+='</div></div>';
   
   // ─── RE-ENTRY LOGIC ───
-  h+='<div style="background:#0F172A;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:1px solid #a855f725">';
+  h+='<div style="background:#f8fafc;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:1px solid #a855f725">';
   h+='<div style="font-size:10px;font-weight:800;color:#f59e0b;letter-spacing:1.5px;margin-bottom:8px">🔁 TRADE 2 — RE-ENTRY (REVERSAL)</div>';
   h+='<div style="font-size:9px;color:#94a3b8;margin-bottom:6px">After Trade 1 exit, look for reversal setup:</div>';
   h+='<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">';
   h+='<div style="flex:1;min-width:120px;padding:10px;border-radius:8px;background:#a855f712;border:1px solid #a855f725;text-align:center">';
   h+='<div style="font-size:8px;color:#a855f7;font-weight:700">RE-ENTRY</div>';
   h+='<div style="font-size:16px;font-weight:900;color:#a855f7;font-family:Sora">BUY '+reEntryType+'</div>';
-  h+='<div style="font-size:10px;color:#e2e8f0;font-family:JetBrains Mono">'+S+reEntryStrike.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+' '+reEntryType+'</div></div>';
-  h+='<div style="flex:2;min-width:160px;padding:10px;border-radius:8px;background:#1e293b">';
+  h+='<div style="font-size:10px;color:#1e293b;font-family:JetBrains Mono">'+S+reEntryStrike.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+' '+reEntryType+'</div></div>';
+  h+='<div style="flex:2;min-width:160px;padding:10px;border-radius:8px;background:#e2e8f0">';
   h+='<div style="font-size:8px;color:#64748b;font-weight:700;margin-bottom:4px">TRIGGER CONDITIONS</div>';
   h+='<div style="font-size:8px;color:#a855f7;margin-bottom:2px">✔ '+reEntryTrigger+'</div>';
   h+='<div style="font-size:8px;color:#a855f7;margin-bottom:2px">✔ Delta flip '+(bias==='BULLISH'?'negative':'positive')+'</div>';
@@ -2019,7 +2019,7 @@ function _renderGammaEngine(d,sym){
   h+='</div></div></div>';
   
   // ─── RISK RULES (STRICT) ───
-  h+='<div style="background:#0F172A;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:2px solid #ef444425">';
+  h+='<div style="background:#f8fafc;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:2px solid #ef444425">';
   h+='<div style="font-size:10px;font-weight:800;color:#ef4444;letter-spacing:1.5px;margin-bottom:8px">⚠️ STRICT RISK RULES (NON-NEGOTIABLE)</div>';
   var strictRules=['❌ Never hold > 8-12 minutes — gamma scalps are TIME-SENSITIVE','❌ Never average losses — exit and re-enter fresh','❌ Max 2 consecutive losses → STOP trading for the session','❌ Premium decay is your ENEMY on expiry day — act fast','❌ If straddle premium < '+S+Math.round(c.minPrem*1.5)+' → liquidity drying up, STOP'];
   strictRules.forEach(function(r){
@@ -2028,7 +2028,7 @@ function _renderGammaEngine(d,sym){
   h+='</div>';
   
   // ─── GAMMA ALERTS ───
-  h+='<div style="background:#0F172A;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:1px solid #f59e0b25">';
+  h+='<div style="background:#f8fafc;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:1px solid #f59e0b25">';
   h+='<div style="font-size:10px;font-weight:800;color:#f59e0b;letter-spacing:1.5px;margin-bottom:8px">🔔 SET THESE ALERTS NOW</div>';
   var gAlerts=[
     {icon:'🟢',type:'ENTRY',color:'#059669',cond:sym+(bias==='BULLISH'?' breaks '+S+breakLevel.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+' with volume spike':' breaks below '+S+breakLevel.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+' with volume spike'),act:'Execute BUY '+entryType+' immediately'},
@@ -2041,7 +2041,7 @@ function _renderGammaEngine(d,sym){
     h+='<div style="display:flex;gap:8px;padding:6px 10px;border-radius:6px;background:'+a.color+'08;border:1px solid '+a.color+'15;margin-bottom:3px;align-items:center">';
     h+='<div style="font-size:14px">'+a.icon+'</div>';
     h+='<div style="min-width:50px;padding:2px 6px;border-radius:4px;background:'+a.color+'20;color:'+a.color+';font-size:7px;font-weight:800;text-align:center">'+a.type+'</div>';
-    h+='<div style="flex:1"><div style="font-size:8px;color:#e2e8f0"><strong>IF:</strong> '+a.cond+'</div>';
+    h+='<div style="flex:1"><div style="font-size:8px;color:#1e293b"><strong>IF:</strong> '+a.cond+'</div>';
     h+='<div style="font-size:8px;color:'+a.color+'">→ '+a.act+'</div></div>';
     h+='<div onclick="navigator.clipboard.writeText(\''+a.cond.replace(/'/g,"\\'")+' → '+a.act.replace(/'/g,"\\'")+'\');this.textContent=\'✓\';var s=this;setTimeout(function(){s.textContent=\'📋\'},1500)" style="cursor:pointer;font-size:12px;padding:3px" title="Copy">📋</div>';
     h+='</div>';
@@ -2049,7 +2049,7 @@ function _renderGammaEngine(d,sym){
   h+='</div>';
   
   // ─── DISCLAIMER ───
-  h+='<div style="padding:10px;border-radius:10px;background:#1e293b;text-align:center;font-size:8px;color:#475569">';
+  h+='<div style="padding:10px;border-radius:10px;background:#e2e8f0;text-align:center;font-size:8px;color:#475569">';
   h+='⚡ Gamma scalping is HIGH RISK / HIGH REWARD. Requires discipline + speed. Win rate ~55-65% with asymmetric R:R. This is AI-generated — not financial advice. Consult a SEBI-registered advisor.</div>';
   
   el.innerHTML=h;
@@ -2081,7 +2081,7 @@ console.log('[GAMMA MODE] ✅ Loaded');
 // ─── GAP 5: PAYOFF DIAGRAM ───
 window._renderPayoff=function(strat,spot,S,lot){
   if(!strat||!strat.name)return'';
-  var h='<div style="background:#0F172A;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:1px solid #3b82f625">';
+  var h='<div style="background:#f8fafc;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:1px solid #3b82f625">';
   h+='<div style="font-size:10px;font-weight:800;color:#3b82f6;letter-spacing:1.5px;margin-bottom:10px">📈 PAYOFF DIAGRAM — '+strat.name+' at Expiry</div>';
   
   var lo=spot*0.96,hi=spot*1.04,steps=20;
@@ -2158,7 +2158,7 @@ window._renderGreeks=function(spot,strike,dte,iv,optType,S){
   else theta+=r*strike*Math.exp(-r*T)*(1-nd2)/365;
   var vega=spot*npd1*Math.sqrt(T)/100;
   
-  var h='<div style="background:#0F172A;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:1px solid #a855f725">';
+  var h='<div style="background:#f8fafc;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:1px solid #a855f725">';
   h+='<div style="font-size:10px;font-weight:800;color:#a855f7;letter-spacing:1.5px;margin-bottom:10px">📐 GREEKS — '+S+strike+' '+optType+' ('+Math.max(dte,0)+' DTE)</div>';
   h+='<div style="display:flex;gap:8px;flex-wrap:wrap">';
   
@@ -2170,7 +2170,7 @@ window._renderGreeks=function(spot,strike,dte,iv,optType,S){
   ];
   
   greeks.forEach(function(g){
-    h+='<div style="flex:1;min-width:80px;padding:10px;border-radius:10px;background:#1e293b;text-align:center">';
+    h+='<div style="flex:1;min-width:80px;padding:10px;border-radius:10px;background:#e2e8f0;text-align:center">';
     h+='<div style="font-size:8px;color:'+g.color+';font-weight:700">'+g.name+'</div>';
     h+='<div style="font-size:18px;font-weight:900;color:'+g.color+';font-family:JetBrains Mono">'+g.val+'</div>';
     h+='<div style="font-size:7px;color:#64748b;margin-top:2px">'+g.desc+'</div></div>';
@@ -2210,21 +2210,21 @@ window._renderIVvsHV=function(atmIV,bars,spot,S){
   var verdict=ivHvRatio>1.2?'IV > HV → Options OVERPRICED → SELL premium':ivHvRatio<0.8?'IV < HV → Options UNDERPRICED → BUY options':'IV ≈ HV → Fairly priced';
   var verdictColor=ivHvRatio>1.2?'#ef4444':ivHvRatio<0.8?'#059669':'#3b82f6';
   
-  var h='<div style="background:#0F172A;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:1px solid '+verdictColor+'25">';
+  var h='<div style="background:#f8fafc;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:1px solid '+verdictColor+'25">';
   h+='<div style="font-size:10px;font-weight:800;color:#64748b;letter-spacing:1.5px;margin-bottom:10px">📊 IV vs HV — Premium Pricing</div>';
   h+='<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:8px">';
   // IV bar
   h+='<div style="flex:1;min-width:120px">';
   h+='<div style="font-size:8px;color:#a855f7;font-weight:700;margin-bottom:4px">IMPLIED VOLATILITY (IV)</div>';
-  h+='<div style="height:30px;background:#1e293b;border-radius:6px;overflow:hidden;position:relative">';
+  h+='<div style="height:30px;background:#e2e8f0;border-radius:6px;overflow:hidden;position:relative">';
   h+='<div style="width:'+Math.min(100,atmIV)+'%;height:100%;background:linear-gradient(90deg,#a855f7,#7c3aed);border-radius:6px"></div>';
-  h+='<div style="position:absolute;right:8px;top:7px;font-size:12px;font-weight:900;color:#e2e8f0;font-family:JetBrains Mono">'+atmIV.toFixed(1)+'%</div></div></div>';
+  h+='<div style="position:absolute;right:8px;top:7px;font-size:12px;font-weight:900;color:#1e293b;font-family:JetBrains Mono">'+atmIV.toFixed(1)+'%</div></div></div>';
   // HV bar
   h+='<div style="flex:1;min-width:120px">';
   h+='<div style="font-size:8px;color:#3b82f6;font-weight:700;margin-bottom:4px">HISTORICAL VOLATILITY (HV)</div>';
-  h+='<div style="height:30px;background:#1e293b;border-radius:6px;overflow:hidden;position:relative">';
+  h+='<div style="height:30px;background:#e2e8f0;border-radius:6px;overflow:hidden;position:relative">';
   h+='<div style="width:'+Math.min(100,hv)+'%;height:100%;background:linear-gradient(90deg,#3b82f6,#1d4ed8);border-radius:6px"></div>';
-  h+='<div style="position:absolute;right:8px;top:7px;font-size:12px;font-weight:900;color:#e2e8f0;font-family:JetBrains Mono">'+hv.toFixed(1)+'%</div></div></div>';
+  h+='<div style="position:absolute;right:8px;top:7px;font-size:12px;font-weight:900;color:#1e293b;font-family:JetBrains Mono">'+hv.toFixed(1)+'%</div></div></div>';
   // Ratio
   h+='<div style="min-width:80px;padding:10px;border-radius:10px;background:'+verdictColor+'15;border:1px solid '+verdictColor+'25;text-align:center">';
   h+='<div style="font-size:7px;color:'+verdictColor+';font-weight:700">IV/HV RATIO</div>';
@@ -2279,7 +2279,7 @@ _renderGammaEngine=function(d,sym){
   if(atmCE2>0){
     var dsl=window._getDualSL(atmCE2);
     var dtt=window._getDualTarget(atmCE2);
-    extra+='<div style="background:#0F172A;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:1px solid #1e293b">';
+    extra+='<div style="background:#f8fafc;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:1px solid #e2e8f0">';
     extra+='<div style="font-size:10px;font-weight:800;color:#64748b;letter-spacing:1.5px;margin-bottom:8px">🎯 DUAL TARGET + DUAL STOP (Institutional)</div>';
     extra+='<div style="display:flex;gap:6px;flex-wrap:wrap">';
     extra+='<div style="flex:1;min-width:80px;padding:8px;border-radius:8px;background:#05966415;text-align:center"><div style="font-size:7px;color:#059669;font-weight:700">T1 (+25%)</div><div style="font-size:14px;font-weight:900;color:#059669;font-family:JetBrains Mono">'+S+dtt.T1+'</div><div style="font-size:7px;color:#64748b">'+dtt.T1Action+'</div></div>';
@@ -2335,7 +2335,7 @@ console.log('[LAYMAN TIPS] ✅ Inline tips active at every step');
 // ─── GEX HEATMAP + FLIP LEVEL + WALLS ───
 window._renderGEXHeatmap=function(gex,spot,S){
   if(!gex||!gex.topStrikes||gex.topStrikes.length<2)return'';
-  var h='<div style="background:#0F172A;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:1px solid #f59e0b25">';
+  var h='<div style="background:#f8fafc;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:1px solid #f59e0b25">';
   h+='<div style="font-size:10px;font-weight:800;color:#f59e0b;letter-spacing:1.5px;margin-bottom:4px">🌡️ GEX HEATMAP — Dealer Hedging Zones</div>';
   h+='<div style="font-size:8px;color:#64748b;margin-bottom:10px;font-style:italic">👀 Read: GREEN zones = market gets pinned (range). RED zones = explosive moves (breakouts). The FLIP LEVEL is the most important number — below it bearish acceleration, above it bullish acceleration.</div>';
   
@@ -2359,7 +2359,7 @@ window._renderGEXHeatmap=function(gex,spot,S){
     var isSpot=Math.abs(g.strike-spot)<spot*0.003;
     h+='<div style="display:flex;align-items:center;gap:6px;margin-bottom:2px">';
     h+='<div style="width:55px;font-size:8px;font-weight:'+(isFlip||isSpot?'900':'600')+';color:'+(isFlip?'#f59e0b':isSpot?'#3b82f6':'#94a3b8')+';text-align:right;font-family:JetBrains Mono">'+(isFlip?'⚡':'')+(isSpot?'📍':'')+g.strike+'</div>';
-    h+='<div style="flex:1;height:14px;background:#1e293b;border-radius:3px;overflow:hidden;display:flex;'+(isPos?'justify-content:flex-start':'justify-content:flex-end')+'">';
+    h+='<div style="flex:1;height:14px;background:#e2e8f0;border-radius:3px;overflow:hidden;display:flex;'+(isPos?'justify-content:flex-start':'justify-content:flex-end')+'">';
     h+='<div style="width:'+pct+'%;height:100%;background:'+(isPos?'linear-gradient(90deg,#05966480,#059669)':'linear-gradient(90deg,#ef4444,#ef444480)')+';border-radius:3px"></div></div>';
     h+='<div style="width:50px;font-size:7px;color:'+(isPos?'#059669':'#ef4444')+';font-family:JetBrains Mono;text-align:right">'+(isPos?'+':'')+Math.round(g.gex).toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div>';
     h+='</div>';
@@ -2378,7 +2378,7 @@ window._renderGEXHeatmap=function(gex,spot,S){
 // ─── BACKTEST SIMULATOR (1-min bar simulation) ───
 window._renderBacktestSim=function(bars,spot,vix,atmIV,S,sym){
   if(!bars||bars.length<10)return'';
-  var h='<div style="background:#0F172A;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:1px solid #a855f725">';
+  var h='<div style="background:#f8fafc;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:1px solid #a855f725">';
   h+='<div style="font-size:10px;font-weight:800;color:#a855f7;letter-spacing:1.5px;margin-bottom:4px">🔬 BACKTEST SIMULATOR — '+sym+' (Last '+bars.length+' bars)</div>';
   h+='<div style="font-size:8px;color:#64748b;margin-bottom:10px;font-style:italic">👀 Read: This simulates what would have happened if you traded the gamma strategy on recent data. Win rate, profit factor, and drawdown tell you if the strategy is working in current conditions.</div>';
   
@@ -2434,10 +2434,10 @@ window._renderBacktestSim=function(bars,spot,vix,atmIV,S,sym){
   
   // Display
   h+='<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">';
-  h+='<div style="flex:1;min-width:70px;padding:8px;border-radius:8px;background:#1e293b;text-align:center"><div style="font-size:6px;color:#64748b">TRADES</div><div style="font-size:16px;font-weight:900;color:#e2e8f0;font-family:JetBrains Mono">'+trades.length+'</div></div>';
+  h+='<div style="flex:1;min-width:70px;padding:8px;border-radius:8px;background:#e2e8f0;text-align:center"><div style="font-size:6px;color:#64748b">TRADES</div><div style="font-size:16px;font-weight:900;color:#1e293b;font-family:JetBrains Mono">'+trades.length+'</div></div>';
   h+='<div style="flex:1;min-width:70px;padding:8px;border-radius:8px;background:'+(winRate>=55?'#059669':'#d97706')+'15;text-align:center"><div style="font-size:6px;color:'+(winRate>=55?'#059669':'#d97706')+'">WIN RATE</div><div style="font-size:16px;font-weight:900;color:'+(winRate>=55?'#059669':'#d97706')+';font-family:JetBrains Mono">'+winRate+'%</div></div>';
-  h+='<div style="flex:1;min-width:70px;padding:8px;border-radius:8px;background:#1e293b;text-align:center"><div style="font-size:6px;color:#059669">AVG GAIN</div><div style="font-size:16px;font-weight:900;color:#059669;font-family:JetBrains Mono">+'+avgGain+'%</div></div>';
-  h+='<div style="flex:1;min-width:70px;padding:8px;border-radius:8px;background:#1e293b;text-align:center"><div style="font-size:6px;color:#ef4444">AVG LOSS</div><div style="font-size:16px;font-weight:900;color:#ef4444;font-family:JetBrains Mono">'+avgLoss+'%</div></div>';
+  h+='<div style="flex:1;min-width:70px;padding:8px;border-radius:8px;background:#e2e8f0;text-align:center"><div style="font-size:6px;color:#059669">AVG GAIN</div><div style="font-size:16px;font-weight:900;color:#059669;font-family:JetBrains Mono">+'+avgGain+'%</div></div>';
+  h+='<div style="flex:1;min-width:70px;padding:8px;border-radius:8px;background:#e2e8f0;text-align:center"><div style="font-size:6px;color:#ef4444">AVG LOSS</div><div style="font-size:16px;font-weight:900;color:#ef4444;font-family:JetBrains Mono">'+avgLoss+'%</div></div>';
   h+='<div style="flex:1;min-width:70px;padding:8px;border-radius:8px;background:'+(parseFloat(profitFactor)>=1.5?'#059669':'#d97706')+'15;text-align:center"><div style="font-size:6px;color:'+(parseFloat(profitFactor)>=1.5?'#059669':'#d97706')+'">PROFIT FACTOR</div><div style="font-size:16px;font-weight:900;color:'+(parseFloat(profitFactor)>=1.5?'#059669':'#d97706')+';font-family:JetBrains Mono">'+profitFactor+'</div></div>';
   h+='<div style="flex:1;min-width:70px;padding:8px;border-radius:8px;background:#ef444415;text-align:center"><div style="font-size:6px;color:#ef4444">MAX DD</div><div style="font-size:16px;font-weight:900;color:#ef4444;font-family:JetBrains Mono">'+maxDDPct+'%</div></div>';
   h+='<div style="flex:1;min-width:70px;padding:8px;border-radius:8px;background:'+(totalPnL>=0?'#059669':'#ef4444')+'15;text-align:center"><div style="font-size:6px;color:'+(totalPnL>=0?'#059669':'#ef4444')+'">NET P&L</div><div style="font-size:16px;font-weight:900;color:'+(totalPnL>=0?'#059669':'#ef4444')+';font-family:JetBrains Mono">'+(totalPnL>=0?'+':'')+S+totalPnL.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div></div>';
@@ -2461,9 +2461,9 @@ window._renderBacktestSim=function(bars,spot,vix,atmIV,S,sym){
   h+='<div style="display:flex;gap:4px;flex-wrap:wrap">';
   [{bp:0.60,wr:52,tr:12,q:'High trades, low quality'},{bp:0.65,wr:55,tr:8,q:'Moderate'},{bp:0.70,wr:58,tr:6,q:'⭐ Balanced (recommended)'},{bp:0.75,wr:62,tr:4,q:'Fewer, higher accuracy'},{bp:0.80,wr:66,tr:2,q:'Too restrictive'}].forEach(function(c){
     var isBest=c.bp===0.70;
-    h+='<div style="flex:1;min-width:70px;padding:6px;border-radius:6px;'+(isBest?'background:#f59e0b15;border:1px solid #f59e0b30':'background:#1e293b')+';text-align:center">';
+    h+='<div style="flex:1;min-width:70px;padding:6px;border-radius:6px;'+(isBest?'background:#f59e0b15;border:1px solid #f59e0b30':'background:#e2e8f0')+';text-align:center">';
     h+='<div style="font-size:7px;color:'+(isBest?'#f59e0b':'#64748b')+';font-weight:700">BP ≥ '+c.bp+'</div>';
-    h+='<div style="font-size:10px;font-weight:900;color:#e2e8f0">'+c.wr+'% WR</div>';
+    h+='<div style="font-size:10px;font-weight:900;color:#1e293b">'+c.wr+'% WR</div>';
     h+='<div style="font-size:7px;color:#64748b">~'+c.tr+' trades/day</div>';
     h+='<div style="font-size:6px;color:'+(isBest?'#f59e0b':'#475569')+'">'+c.q+'</div></div>';
   });
@@ -2471,7 +2471,7 @@ window._renderBacktestSim=function(bars,spot,vix,atmIV,S,sym){
   
   // SL/TP Grid
   h+='<div style="margin-top:10px;font-size:8px;color:#94a3b8;font-weight:700;margin-bottom:4px">Optimal SL/TP Grid (from experience)</div>';
-  h+='<div style="padding:8px;border-radius:6px;background:#1e293b;font-size:8px">';
+  h+='<div style="padding:8px;border-radius:6px;background:#e2e8f0;font-size:8px">';
   h+='<table style="width:100%;border-collapse:collapse;color:#94a3b8">';
   h+='<tr><td style="padding:3px 6px;color:#64748b">Config</td><td style="color:#059669;font-weight:700">⭐ Best</td><td>Aggressive</td><td>Conservative</td></tr>';
   h+='<tr><td style="padding:3px 6px;color:#64748b">TP1</td><td style="color:#059669;font-weight:700">+25%</td><td>+20%</td><td>+30%</td></tr>';
@@ -2558,13 +2558,13 @@ window._loadQuickTrade=function(symbol){
         if(shouldOpen3){
           window._apiRetryCount=(window._apiRetryCount||0)+1;
           if(window._apiRetryCount<=3){
-            el.innerHTML='<div style="max-width:480px;margin:0 auto;padding:40px 20px;text-align:center;background:#0A0F1C;border-radius:20px"><div style="display:inline-block;width:30px;height:30px;border:3px solid #f59e0b;border-top-color:transparent;border-radius:50%;animation:spin 1s linear infinite;margin-bottom:12px"></div><div style="font-size:16px;font-weight:900;color:#e2e8f0">Fetching '+sym+' data...</div><div style="font-size:10px;color:#94a3b8;margin-top:8px">Attempt '+window._apiRetryCount+' of 3. Auto-retrying in 15 sec...</div><button onclick="window._retryLast()" style="margin-top:12px;padding:8px 20px;border-radius:8px;background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;border:none;cursor:pointer;font-size:11px;font-weight:800">🔄 Retry Now</button></div>';
+            el.innerHTML='<div style="max-width:480px;margin:0 auto;padding:40px 20px;text-align:center;background:#f1f5f9;border-radius:20px"><div style="display:inline-block;width:30px;height:30px;border:3px solid #f59e0b;border-top-color:transparent;border-radius:50%;animation:spin 1s linear infinite;margin-bottom:12px"></div><div style="font-size:16px;font-weight:900;color:#1e293b">Fetching '+sym+' data...</div><div style="font-size:10px;color:#94a3b8;margin-top:8px">Attempt '+window._apiRetryCount+' of 3. Auto-retrying in 15 sec...</div><button onclick="window._retryLast()" style="margin-top:12px;padding:8px 20px;border-radius:8px;background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;border:none;cursor:pointer;font-size:11px;font-weight:800">🔄 Retry Now</button></div>';
             window._apiRetryTimer=setTimeout(function(){if(window._activeOptionsSym===sym)window._loadQuickTrade(sym)},15000);
           }else{
-            el.innerHTML='<div style="max-width:480px;margin:0 auto;padding:40px 20px;text-align:center;background:#0A0F1C;border-radius:20px"><div style="font-size:48px;margin-bottom:12px">⚠️</div><div style="font-size:16px;font-weight:900;color:#d97706">Data Temporarily Unavailable</div><div style="font-size:10px;color:#94a3b8;margin-top:8px">'+(d&&d.error?d.error:'NSE API not responding')+'<br>Try again in 1-2 minutes.</div><button onclick="window._retryLast()" style="margin-top:12px;padding:10px 24px;border-radius:8px;background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;border:none;cursor:pointer;font-size:12px;font-weight:800">🔄 Try Again</button></div>';
+            el.innerHTML='<div style="max-width:480px;margin:0 auto;padding:40px 20px;text-align:center;background:#f1f5f9;border-radius:20px"><div style="font-size:48px;margin-bottom:12px">⚠️</div><div style="font-size:16px;font-weight:900;color:#d97706">Data Temporarily Unavailable</div><div style="font-size:10px;color:#94a3b8;margin-top:8px">'+(d&&d.error?d.error:'NSE API not responding')+'<br>Try again in 1-2 minutes.</div><button onclick="window._retryLast()" style="margin-top:12px;padding:10px 24px;border-radius:8px;background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;border:none;cursor:pointer;font-size:12px;font-weight:800">🔄 Try Again</button></div>';
           }
         }else{
-          el.innerHTML='<div style="max-width:480px;margin:0 auto;padding:40px 20px;text-align:center;background:#0A0F1C;border-radius:20px"><div style="font-size:48px;margin-bottom:12px">🕐</div><div style="font-size:18px;font-weight:900;color:#e2e8f0">Market Closed</div><div style="font-size:10px;color:#94a3b8;margin-top:8px">NSE: 9:15 AM – 3:30 PM IST</div><button onclick="window._retryLast()" style="margin-top:12px;padding:8px 20px;border-radius:8px;background:#f1f5f9;color:#475569;border:1px solid #cbd5e1;cursor:pointer;font-size:11px;font-weight:700">🔄 Refresh</button></div>';
+          el.innerHTML='<div style="max-width:480px;margin:0 auto;padding:40px 20px;text-align:center;background:#f1f5f9;border-radius:20px"><div style="font-size:48px;margin-bottom:12px">🕐</div><div style="font-size:18px;font-weight:900;color:#1e293b">Market Closed</div><div style="font-size:10px;color:#94a3b8;margin-top:8px">NSE: 9:15 AM – 3:30 PM IST</div><button onclick="window._retryLast()" style="margin-top:12px;padding:8px 20px;border-radius:8px;background:#f1f5f9;color:#475569;border:1px solid #cbd5e1;cursor:pointer;font-size:11px;font-weight:700">🔄 Refresh</button></div>';
         }
         return;
       }
@@ -2587,7 +2587,7 @@ window._loadQuickTrade=function(symbol){
       }catch(_renderErr){
         console.error('[RENDER CRASH]',_renderErr);
         var _crashEl=document.getElementById('deResult');
-        if(_crashEl)_crashEl.innerHTML='<div style=\"text-align:center;padding:30px;background:#0A0F1C;border-radius:16px\"><div style=\"font-size:14px;color:#ef4444;font-weight:800;margin-bottom:8px\">Render Error</div><div style=\"font-size:10px;color:#94a3b8;margin-bottom:8px\">'+(_renderErr.message||'Unknown error')+'</div><div style=\"font-size:8px;color:#475569;margin-bottom:12px\">'+(_renderErr.stack?_renderErr.stack.split('\\n').slice(0,3).join('<br>'):'')+'</div><button onclick=\"window._retryLast()\" style=\"padding:8px 20px;border-radius:8px;background:#3b82f6;color:#fff;border:none;cursor:pointer;font-size:11px;font-weight:700\">🔄 Retry</button></div>';
+        if(_crashEl)_crashEl.innerHTML='<div style=\"text-align:center;padding:30px;background:#f1f5f9;border-radius:16px\"><div style=\"font-size:14px;color:#ef4444;font-weight:800;margin-bottom:8px\">Render Error</div><div style=\"font-size:10px;color:#94a3b8;margin-bottom:8px\">'+(_renderErr.message||'Unknown error')+'</div><div style=\"font-size:8px;color:#475569;margin-bottom:12px\">'+(_renderErr.stack?_renderErr.stack.split('\\n').slice(0,3).join('<br>'):'')+'</div><button onclick=\"window._retryLast()\" style=\"padding:8px 20px;border-radius:8px;background:#3b82f6;color:#fff;border:none;cursor:pointer;font-size:11px;font-weight:700\">🔄 Retry</button></div>';
       }
       // Auto-refresh — only if still the active ticker
       console.log('[REFRESH] ✅ Timer started for '+sym+' (30s)');
@@ -2607,7 +2607,7 @@ window._loadQuickTrade=function(symbol){
         }else{console.log('[REFRESH] Stopped for '+sym);clearInterval(window._quickRefreshTimer);window._quickRefreshTimer=null}
       },30000);
     }).catch(function(e){
-      el.innerHTML='<div style="text-align:center;padding:30px;background:#0A0F1C;border-radius:16px"><div style="font-size:14px;color:#ef4444;font-weight:800;margin-bottom:8px">Cannot connect to server</div><div style="font-size:10px;color:#94a3b8;margin-bottom:12px">'+e.message+'</div><button onclick="window._retryLast()" style="padding:8px 20px;border-radius:8px;background:#059669;color:#fff;border:none;cursor:pointer;font-size:11px;font-weight:700">🔄 Retry</button></div>';
+      el.innerHTML='<div style="text-align:center;padding:30px;background:#f1f5f9;border-radius:16px"><div style="font-size:14px;color:#ef4444;font-weight:800;margin-bottom:8px">Cannot connect to server</div><div style="font-size:10px;color:#94a3b8;margin-bottom:12px">'+e.message+'</div><button onclick="window._retryLast()" style="padding:8px 20px;border-radius:8px;background:#059669;color:#fff;border:none;cursor:pointer;font-size:11px;font-weight:700">🔄 Retry</button></div>';
     });
 };
 
@@ -2649,9 +2649,9 @@ function _renderQuickTrade(d,sym){
       // Limit auto-retries to 3
       window._apiRetryCount=(window._apiRetryCount||0)+1;
       if(window._apiRetryCount<=3){
-        var h0r='<div style="max-width:480px;margin:0 auto;padding:40px 20px;text-align:center;background:#0A0F1C;border-radius:20px">';
+        var h0r='<div style="max-width:480px;margin:0 auto;padding:40px 20px;text-align:center;background:#f1f5f9;border-radius:20px">';
         h0r+='<div style="display:inline-block;width:30px;height:30px;border:3px solid #f59e0b;border-top-color:transparent;border-radius:50%;animation:spin 1s linear infinite;margin-bottom:12px"></div>';
-        h0r+='<div style="font-size:18px;font-weight:900;color:#e2e8f0;font-family:Sora;margin-bottom:8px">Fetching Live Data...</div>';
+        h0r+='<div style="font-size:18px;font-weight:900;color:#1e293b;font-family:Sora;margin-bottom:8px">Fetching Live Data...</div>';
         h0r+='<div style="font-size:11px;color:#94a3b8;margin-bottom:4px">Market is open. NSE API may take a moment. Attempt '+window._apiRetryCount+' of 3.</div>';
         h0r+='<div style="font-size:10px;color:#64748b;margin-bottom:16px">Auto-retrying in 15 seconds...</div>';
         h0r+='<button onclick="window._retryLast()" style="padding:10px 24px;border-radius:10px;background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;border:none;font-size:12px;font-weight:800;cursor:pointer">🔄 Retry Now</button>';
@@ -2666,7 +2666,7 @@ function _renderQuickTrade(d,sym){
         },15000);
       }else{
         // Max retries exhausted — show manual retry only
-        var h0f='<div style="max-width:480px;margin:0 auto;padding:40px 20px;text-align:center;background:#0A0F1C;border-radius:20px">';
+        var h0f='<div style="max-width:480px;margin:0 auto;padding:40px 20px;text-align:center;background:#f1f5f9;border-radius:20px">';
         h0f+='<div style="font-size:48px;margin-bottom:12px">⚠️</div>';
         h0f+='<div style="font-size:18px;font-weight:900;color:#d97706;font-family:Sora;margin-bottom:8px">Data Temporarily Unavailable</div>';
         h0f+='<div style="font-size:11px;color:#94a3b8;margin-bottom:16px">NSE API is not responding. This is common during the first few minutes after market open.<br>Try again in 1-2 minutes.</div>';
@@ -2677,11 +2677,11 @@ function _renderQuickTrade(d,sym){
       return;
     }
     
-    var h0='<div style="max-width:480px;margin:0 auto;padding:40px 20px;text-align:center;background:#0A0F1C;border-radius:20px">';
+    var h0='<div style="max-width:480px;margin:0 auto;padding:40px 20px;text-align:center;background:#f1f5f9;border-radius:20px">';
     h0+='<div style="font-size:48px;margin-bottom:12px">🕐</div>';
-    h0+='<div style="font-size:22px;font-weight:900;color:#e2e8f0;font-family:Sora;margin-bottom:8px">Market Closed</div>';
+    h0+='<div style="font-size:22px;font-weight:900;color:#1e293b;font-family:Sora;margin-bottom:8px">Market Closed</div>';
     h0+='<div style="font-size:12px;color:#94a3b8;margin-bottom:16px">'+marketMsg+'</div>';
-    h0+='<div style="padding:12px 16px;border-radius:12px;background:#1e293b;margin-bottom:16px;text-align:left">';
+    h0+='<div style="padding:12px 16px;border-radius:12px;background:#e2e8f0;margin-bottom:16px;text-align:left">';
     h0+='<div style="font-size:10px;color:#f59e0b;font-weight:800;margin-bottom:6px">📅 NEXT TRADING SESSION</div>';
     h0+='<div style="font-size:9px;color:#94a3b8;line-height:1.6">Today\'s expiry index: <strong style="color:#f59e0b">'+qtExp0+'</strong> ('+(qtExpNames0[qtExp0]||'')+')<br>';
     h0+='Come back during market hours to see live signals.<br>';
@@ -2689,7 +2689,7 @@ function _renderQuickTrade(d,sym){
     h0+='🟢 BUY CALL / 🔴 BUY PUT / ⚪ WAIT</div></div>';
     h0+='<div style="display:flex;gap:8px;justify-content:center">';
     ['NIFTY','BANKNIFTY','SENSEX'].forEach(function(idx){
-      h0+='<div onclick="window._retryLast()" style="padding:8px 16px;border-radius:10px;font-size:10px;font-weight:800;cursor:pointer;font-family:Sora;'+(idx===sym?'background:#1e293b;color:#3b82f6;border:1px solid #3b82f630':'background:#f1f5f9;color:#475569;border:1px solid #cbd5e1')+'">'+idx+'</div>';
+      h0+='<div onclick="window._retryLast()" style="padding:8px 16px;border-radius:10px;font-size:10px;font-weight:800;cursor:pointer;font-family:Sora;'+(idx===sym?'background:#e2e8f0;color:#3b82f6;border:1px solid #3b82f630':'background:#f1f5f9;color:#475569;border:1px solid #cbd5e1')+'">'+idx+'</div>';
     });
     h0+='</div>';
     h0+='<button onclick="window._retryLast()" style="margin-top:16px;padding:10px 24px;border-radius:10px;background:#f1f5f9;color:#475569;border:1px solid #cbd5e1;font-size:11px;font-weight:700;cursor:pointer">🔄 Refresh</button>';
@@ -3711,7 +3711,7 @@ function _renderQuickTrade(d,sym){
     // Compact why — just top 2 reasons
     var _topWhy=whyReasons.filter(function(r){return !r.pass}).slice(0,2);
     if(_topWhy.length>0){
-      h+='<div style="padding:8px;border-radius:8px;background:#1e293b;margin-bottom:8px">';
+      h+='<div style="padding:8px;border-radius:8px;background:#e2e8f0;margin-bottom:8px">';
       h+='<div style="font-size:8px;color:#64748b;font-weight:700;margin-bottom:4px">Why no trade:</div>';
       _topWhy.forEach(function(r){h+='<div style="font-size:9px;color:#94a3b8;padding:2px 0">✗ '+r.label+'</div>'});
       h+='</div>';
@@ -3722,7 +3722,7 @@ function _renderQuickTrade(d,sym){
     h+='<div style="text-align:center;margin-bottom:8px"><button onclick="var d=document.getElementById(\''+_detailIdNT+'\');d.style.display=d.style.display===\'none\'?\'block\':\'none\'" style="padding:6px 20px;border-radius:8px;background:#f1f5f9;color:#475569;border:1px solid #cbd5e1;font-size:9px;font-weight:700;cursor:pointer">📊 Details & Analysis ▼</button></div>';
     h+='<div id="'+_detailIdNT+'" style="display:none">';
     // ═══ SIGNAL QUALITY DASHBOARD — NO TRADE view (shows what's missing) ═══
-    h+='<div style="padding:10px;border-radius:12px;background:#111827;border:1px solid #1e293b;margin-bottom:12px">';
+    h+='<div style="padding:10px;border-radius:12px;background:#f1f5f9;border:1px solid #e2e8f0;margin-bottom:12px">';
     h+='<div style="font-size:8px;font-weight:800;color:#64748b;letter-spacing:1px;margin-bottom:6px">WHY NO TRADE — Signal Quality</div>';
     h+='<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:6px;margin-bottom:6px">';
     var _cColN=confirmations>=4?'#059669':confirmations>=3?'#3b82f6':confirmations>=2?'#d97706':'#ef4444';
@@ -3744,10 +3744,10 @@ function _renderQuickTrade(d,sym){
     whyReasons.forEach(function(r){h+='<div style="font-size:13px;padding:4px 0;color:'+(r.pass?'#059669':'#94a3b8')+'">'+(r.pass?'✔':'✗')+' '+r.label+'</div>'});
     h+='</div>';
     h+='<div style="margin-top:8px;padding:8px;border-radius:8px;background:#3b82f608;border:1px solid #3b82f615;font-size:11px;color:#3b82f6;font-weight:600">📊 '+insightLine+'</div>';
-    h+='<div style="margin-top:4px;padding:10px;border-radius:8px;background:#1e293b;border:1px solid #334155"><div style="font-size:8px;color:#a855f7;font-weight:700;margin-bottom:4px;letter-spacing:0.5px">🧠 INSTITUTIONAL SIGNALS</div>';smartParts.forEach(function(sp){h+='<div style="font-size:10px;color:#94a3b8;padding:2px 0;line-height:1.5">• '+sp+'</div>'});h+='</div>';
+    h+='<div style="margin-top:4px;padding:10px;border-radius:8px;background:#e2e8f0;border:1px solid #cbd5e1"><div style="font-size:8px;color:#a855f7;font-weight:700;margin-bottom:4px;letter-spacing:0.5px">🧠 INSTITUTIONAL SIGNALS</div>';smartParts.forEach(function(sp){h+='<div style="font-size:10px;color:#94a3b8;padding:2px 0;line-height:1.5">• '+sp+'</div>'});h+='</div>';
     // Show what setup WOULD look like if conditions improve
     if(isOptions&&entryPrem7>0&&direction!=='NONE'){
-      h+='<div style="margin-top:8px;padding:10px;border-radius:10px;background:#1e293b50;border:1px dashed #334155">';
+      h+='<div style="margin-top:8px;padding:10px;border-radius:10px;background:#e2e8f050;border:1px dashed #334155">';
       h+='<div style="font-size:8px;color:#64748b;font-weight:700;margin-bottom:6px">🔮 IF CONDITIONS IMPROVE — WATCH FOR:</div>';
       h+='<div style="font-size:10px;color:#94a3b8">Strike: <strong style="color:#f59e0b;font-family:JetBrains Mono">'+S+entryStrike7+' '+entryType7+'</strong> ('+strikeLabel+') · Premium ~'+S+entryPrem7.toFixed(isUS&&entryPrem7<10?2:0)+' · Target: '+S+targetLow+'–'+S+targetHigh+' · SL: '+S+sl8+'</div>';
       h+='<div style="font-size:9px;color:#64748b;margin-top:4px">Need: '+(volumeScore<50?'Volume pickup (currently '+volRatio8.toFixed(1)+'x) ':'')+(priceActionScore<60?'Price breakout above '+S+dayHigh+' or below '+S+dayLow+' ':'')+(momentumScore<50?'Momentum improvement ('+Math.max(momUp,momDn)+'/'+momBars.length+' bars aligned) ':'')+'to trigger</div>';
@@ -3769,8 +3769,8 @@ function _renderQuickTrade(d,sym){
     // If almost/hold — show what the trade WOULD be
     if((_isAlmost||_isExit)&&isOptions&&entryPrem7>0){
       h+='<div style="margin-top:8px;display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:4px;text-align:center">';
-      h+='<div style="padding:4px;border-radius:6px;background:#1e293b"><div style="font-size:6px;color:#64748b">STRIKE</div><div style="font-size:11px;font-weight:900;color:#f59e0b;font-family:JetBrains Mono">'+S+entryStrike7+'</div><div style="font-size:6px;color:#3b82f6">'+entryType7+'</div></div>';
-      h+='<div style="padding:4px;border-radius:6px;background:#1e293b"><div style="font-size:6px;color:#64748b">PREMIUM</div><div style="font-size:11px;font-weight:900;color:#e2e8f0;font-family:JetBrains Mono">'+S+entryPrem7.toFixed(isUS&&entryPrem7<10?2:0)+'</div></div>';
+      h+='<div style="padding:4px;border-radius:6px;background:#e2e8f0"><div style="font-size:6px;color:#64748b">STRIKE</div><div style="font-size:11px;font-weight:900;color:#f59e0b;font-family:JetBrains Mono">'+S+entryStrike7+'</div><div style="font-size:6px;color:#3b82f6">'+entryType7+'</div></div>';
+      h+='<div style="padding:4px;border-radius:6px;background:#e2e8f0"><div style="font-size:6px;color:#64748b">PREMIUM</div><div style="font-size:11px;font-weight:900;color:#1e293b;font-family:JetBrains Mono">'+S+entryPrem7.toFixed(isUS&&entryPrem7<10?2:0)+'</div></div>';
       h+='<div style="padding:4px;border-radius:6px;background:#05966410"><div style="font-size:6px;color:#059669">TARGET</div><div style="font-size:11px;font-weight:900;color:#059669;font-family:JetBrains Mono">'+S+targetLow+'</div></div>';
       h+='<div style="padding:4px;border-radius:6px;background:#ef444410"><div style="font-size:6px;color:#ef4444">SL</div><div style="font-size:11px;font-weight:900;color:#ef4444;font-family:JetBrains Mono">'+S+sl8+'</div></div>';
       h+='</div>';
@@ -3788,7 +3788,7 @@ function _renderQuickTrade(d,sym){
     
     // Trigger conditions — compact one-liner
     if(isOptions&&entryPrem7>0&&!_isExit){
-      h+='<div style="padding:8px;border-radius:8px;background:#1e293b;margin-bottom:8px;font-size:9px;color:#94a3b8">';
+      h+='<div style="padding:8px;border-radius:8px;background:#e2e8f0;margin-bottom:8px;font-size:9px;color:#94a3b8">';
       h+='<span style="color:#059669">▲ Break above '+S+dayHigh.toLocaleString()+' → BUY '+entryStrike7+' CE</span>';
       h+=' &nbsp;|&nbsp; ';
       h+='<span style="color:#ef4444">▼ Break below '+S+dayLow.toLocaleString()+' → BUY '+entryStrike7+' PE</span>';
@@ -3802,7 +3802,7 @@ function _renderQuickTrade(d,sym){
     // Full why reasons inside toggle
     whyReasons.forEach(function(r){h+='<div style="font-size:10px;padding:3px 0;color:'+(r.pass?'#059669':'#94a3b8')+'">'+(r.pass?'✔':'✗')+' '+r.label+'</div>'});
     if(smartParts.length>0){
-      h+='<div style="padding:8px;border-radius:8px;background:#1e293b;margin-top:6px"><div style="font-size:8px;color:#a855f7;font-weight:700;margin-bottom:4px">🧠 INSTITUTIONAL SIGNALS</div>';
+      h+='<div style="padding:8px;border-radius:8px;background:#e2e8f0;margin-top:6px"><div style="font-size:8px;color:#a855f7;font-weight:700;margin-bottom:4px">🧠 INSTITUTIONAL SIGNALS</div>';
       smartParts.forEach(function(sp){h+='<div style="font-size:9px;color:#64748b;padding:1px 0">• '+sp+'</div>'});
       h+='</div>';
     }
@@ -3828,8 +3828,8 @@ function _renderQuickTrade(d,sym){
     // Row 2: Strike + Premium + Target + SL (all in one row)
     if(isOptions){
       h+='<div style="margin-top:10px;display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:4px;text-align:center">';
-      h+='<div style="padding:6px 4px;border-radius:8px;background:#1e293b"><div style="font-size:7px;color:#64748b">STRIKE</div><div style="font-size:14px;font-weight:900;color:#f59e0b;font-family:JetBrains Mono">'+S+entryStrike7+'</div><div style="font-size:7px;color:#3b82f6">'+entryType7+' '+strikeLabel+'</div></div>';
-      h+='<div style="padding:6px 4px;border-radius:8px;background:#1e293b"><div style="font-size:7px;color:#64748b">PREMIUM</div><div style="font-size:14px;font-weight:900;color:#e2e8f0;font-family:JetBrains Mono">'+S+entryPrem7.toFixed(isUS&&entryPrem7<10?2:0)+'</div><div style="font-size:7px;color:#64748b">'+c7.lot+' × '+(qtLots||'1')+'</div></div>';
+      h+='<div style="padding:6px 4px;border-radius:8px;background:#e2e8f0"><div style="font-size:7px;color:#64748b">STRIKE</div><div style="font-size:14px;font-weight:900;color:#f59e0b;font-family:JetBrains Mono">'+S+entryStrike7+'</div><div style="font-size:7px;color:#3b82f6">'+entryType7+' '+strikeLabel+'</div></div>';
+      h+='<div style="padding:6px 4px;border-radius:8px;background:#e2e8f0"><div style="font-size:7px;color:#64748b">PREMIUM</div><div style="font-size:14px;font-weight:900;color:#1e293b;font-family:JetBrains Mono">'+S+entryPrem7.toFixed(isUS&&entryPrem7<10?2:0)+'</div><div style="font-size:7px;color:#64748b">'+c7.lot+' × '+(qtLots||'1')+'</div></div>';
       h+='<div style="padding:6px 4px;border-radius:8px;background:#05966410"><div style="font-size:7px;color:#059669">TARGET</div><div style="font-size:14px;font-weight:900;color:#059669;font-family:JetBrains Mono">'+S+targetLow+'</div><div style="font-size:7px;color:#059669">R:R 1:'+(_rrDisp2>0?_rrDisp2.toFixed(1):'—')+'</div></div>';
       h+='<div style="padding:6px 4px;border-radius:8px;background:#ef444410"><div style="font-size:7px;color:#ef4444">STOP LOSS</div><div style="font-size:14px;font-weight:900;color:#ef4444;font-family:JetBrains Mono">'+S+sl8+'</div><div style="font-size:7px;color:#ef4444">'+(entryPrem7>0?'-'+Math.round((1-sl8/entryPrem7)*100)+'%':'')+'</div></div>';
       h+='</div>';
@@ -3839,7 +3839,7 @@ function _renderQuickTrade(d,sym){
       var _stockRange=Math.abs(dayHigh-dayLow);
       var _stockTarget=finalBias==='BULLISH'?Math.round(_stockEntry+_stockRange*1.5):Math.round(_stockEntry-_stockRange*1.5);
       h+='<div style="margin-top:10px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;text-align:center">';
-      h+='<div style="padding:6px;border-radius:8px;background:#1e293b"><div style="font-size:7px;color:#64748b">'+(finalBias==='BULLISH'?'BUY ABOVE':'SELL BELOW')+'</div><div style="font-size:14px;font-weight:900;color:#f59e0b;font-family:JetBrains Mono">'+S+_stockEntry.toLocaleString()+'</div></div>';
+      h+='<div style="padding:6px;border-radius:8px;background:#e2e8f0"><div style="font-size:7px;color:#64748b">'+(finalBias==='BULLISH'?'BUY ABOVE':'SELL BELOW')+'</div><div style="font-size:14px;font-weight:900;color:#f59e0b;font-family:JetBrains Mono">'+S+_stockEntry.toLocaleString()+'</div></div>';
       h+='<div style="padding:6px;border-radius:8px;background:#05966410"><div style="font-size:7px;color:#059669">TARGET</div><div style="font-size:14px;font-weight:900;color:#059669;font-family:JetBrains Mono">'+S+_stockTarget.toLocaleString()+'</div></div>';
       h+='<div style="padding:6px;border-radius:8px;background:#ef444410"><div style="font-size:7px;color:#ef4444">STOP LOSS</div><div style="font-size:14px;font-weight:900;color:#ef4444;font-family:JetBrains Mono">'+S+_stockSL.toLocaleString()+'</div></div>';
       h+='</div>';
@@ -3847,7 +3847,7 @@ function _renderQuickTrade(d,sym){
     
     // Row 3: Support ← Spot → Resistance (compact price map inline)
     if(_pmPW>0||_pmCW>0){
-      h+='<div style="margin-top:8px;display:flex;justify-content:space-between;align-items:center;padding:4px 8px;border-radius:6px;background:#0F172A">';
+      h+='<div style="margin-top:8px;display:flex;justify-content:space-between;align-items:center;padding:4px 8px;border-radius:6px;background:#f8fafc">';
       h+='<span style="font-size:8px;color:#059669;font-weight:700">▼ '+S+(_pmPW>0?_pmPW.toLocaleString():'—')+'</span>';
       h+='<span style="font-size:8px;color:#64748b">← '+S+spot.toLocaleString()+' →</span>';
       h+='<span style="font-size:8px;color:#ef4444;font-weight:700">▲ '+S+(_pmCW>0?_pmCW.toLocaleString():'—')+'</span>';
@@ -3992,7 +3992,7 @@ function _renderQuickTrade(d,sym){
     
     // DISPLAY: Entry Timing Analysis panel — HIDE when market closed
     if(isEnterNow&&!_isMktClosed){
-      h+='<div style="margin-top:8px;padding:10px;border-radius:10px;background:#0A0F1C;border:1px solid '+_timingColor+'30">';
+      h+='<div style="margin-top:8px;padding:10px;border-radius:10px;background:#f1f5f9;border:1px solid '+_timingColor+'30">';
       h+='<div style="font-size:9px;font-weight:800;color:#64748b;letter-spacing:1px;margin-bottom:6px">ENTRY TIMING ANALYSIS</div>';
       
       // Status + Score
@@ -4003,12 +4003,12 @@ function _renderQuickTrade(d,sym){
       
       // Detail rows
       h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;font-size:9px">';
-      h+='<div style="padding:4px 6px;border-radius:4px;background:#1e293b"><span style="color:#64748b">Signal Age:</span> <span style="color:#e2e8f0;font-weight:700">'+(_sigAge2>0?_sigAge2+'m '+(_sigAgeSec%60)+'s':'fresh')+'</span></div>';
-      h+='<div style="padding:4px 6px;border-radius:4px;background:#1e293b"><span style="color:#64748b">R:R:</span> <span style="color:'+(_rrVal>=1.5?'#059669':'#ef4444')+';font-weight:700">1:'+_rrVal.toFixed(1)+'</span></div>';
-      h+='<div style="padding:4px 6px;border-radius:4px;background:#1e293b"><span style="color:#64748b">Volume:</span> <span style="color:'+(_volConfScore>=65?'#059669':'#d97706')+';font-weight:700">'+volRatio8.toFixed(1)+'x '+(volRatio8>=1.0?'✓':'✗')+'</span></div>';
-      h+='<div style="padding:4px 6px;border-radius:4px;background:#1e293b"><span style="color:#64748b">VWAP Dist:</span> <span style="color:'+(_vwapDistPct<=0.6?'#059669':'#d97706')+';font-weight:700">'+_vwapDistPct.toFixed(2)+'%</span></div>';
-      h+='<div style="padding:4px 6px;border-radius:4px;background:#1e293b"><span style="color:#64748b">Theta:</span> <span style="color:'+_thetaColor+';font-weight:700">'+_thetaImpact+'</span></div>';
-      h+='<div style="padding:4px 6px;border-radius:4px;background:#1e293b"><span style="color:#64748b">Verdict:</span> <span style="color:'+_timingColor+';font-weight:700">'+_entryVerdict+'</span></div>';
+      h+='<div style="padding:4px 6px;border-radius:4px;background:#e2e8f0"><span style="color:#64748b">Signal Age:</span> <span style="color:#1e293b;font-weight:700">'+(_sigAge2>0?_sigAge2+'m '+(_sigAgeSec%60)+'s':'fresh')+'</span></div>';
+      h+='<div style="padding:4px 6px;border-radius:4px;background:#e2e8f0"><span style="color:#64748b">R:R:</span> <span style="color:'+(_rrVal>=1.5?'#059669':'#ef4444')+';font-weight:700">1:'+_rrVal.toFixed(1)+'</span></div>';
+      h+='<div style="padding:4px 6px;border-radius:4px;background:#e2e8f0"><span style="color:#64748b">Volume:</span> <span style="color:'+(_volConfScore>=65?'#059669':'#d97706')+';font-weight:700">'+volRatio8.toFixed(1)+'x '+(volRatio8>=1.0?'✓':'✗')+'</span></div>';
+      h+='<div style="padding:4px 6px;border-radius:4px;background:#e2e8f0"><span style="color:#64748b">VWAP Dist:</span> <span style="color:'+(_vwapDistPct<=0.6?'#059669':'#d97706')+';font-weight:700">'+_vwapDistPct.toFixed(2)+'%</span></div>';
+      h+='<div style="padding:4px 6px;border-radius:4px;background:#e2e8f0"><span style="color:#64748b">Theta:</span> <span style="color:'+_thetaColor+';font-weight:700">'+_thetaImpact+'</span></div>';
+      h+='<div style="padding:4px 6px;border-radius:4px;background:#e2e8f0"><span style="color:#64748b">Verdict:</span> <span style="color:'+_timingColor+';font-weight:700">'+_entryVerdict+'</span></div>';
       h+='</div>';
       
       // Score breakdown bar
@@ -4051,7 +4051,7 @@ function _renderQuickTrade(d,sym){
       var _isIndiaRegion=!isUS;
       if(_gnd&&_gnd.expected_gap_pct!==undefined&&_isIndiaRegion){
         var _gGapC=_gnd.expected_gap_pct>=0.1?'#059669':_gnd.expected_gap_pct<=-0.1?'#ef4444':'#94a3b8';
-        h+='<div style="margin-top:8px;padding:8px;background:#1e293b;border-radius:8px;text-align:center">';
+        h+='<div style="margin-top:8px;padding:8px;background:#e2e8f0;border-radius:8px;text-align:center">';
         h+='<div style="font-size:9px;color:#a855f7;font-weight:800">GIFT NIFTY PRE-MARKET</div>';
         h+='<div style="font-size:14px;font-weight:900;color:'+_gGapC+';margin-top:2px">'+_gnd.gap_label+' '+(_gnd.expected_gap_pct>=0?'+':'')+_gnd.expected_gap_pct+'%</div>';
         h+='<div style="font-size:9px;color:#94a3b8;margin-top:2px">Expected open: \u20B9'+(_gnd.expected_open||0).toLocaleString()+' | Sentiment: '+(_gnd.overall_sentiment||'--')+'</div>';
@@ -4062,7 +4062,7 @@ function _renderQuickTrade(d,sym){
     }
       // US Pre-Market: show futures when US market is closed
       if(!_isIndiaRegion){
-        h+='<div style="margin-top:8px;padding:10px;background:#1e293b;border-radius:10px;text-align:center">';
+        h+='<div style="margin-top:8px;padding:10px;background:#e2e8f0;border-radius:10px;text-align:center">';
         h+='<div style="font-size:9px;font-weight:800;color:#3b82f6;letter-spacing:1px;margin-bottom:4px">US PRE-MARKET FUTURES</div>';
         h+='<div style="font-size:10px;color:#94a3b8">Check live US futures at market open for direction cues.</div>';
         h+='<div style="display:flex;gap:6px;justify-content:center;margin-top:6px;flex-wrap:wrap">';
@@ -4075,7 +4075,7 @@ function _renderQuickTrade(d,sym){
     h+='<div style="font-size:12px;color:#94a3b8;margin-top:6px">Confidence: <strong style="color:'+(confidence>=70?'#059669':'#d97706')+'">'+confidence+'%</strong> · Grade: <strong>'+grade+'</strong> ('+gradeLabel+') · Trap: '+trapRisk+'</div>';
     
     // ═══ SIGNAL QUALITY DASHBOARD — ENTER NOW view ═══
-    h+='<div style="margin-top:8px;padding:10px;border-radius:12px;background:#111827;border:1px solid #1e293b">';
+    h+='<div style="margin-top:8px;padding:10px;border-radius:12px;background:#f1f5f9;border:1px solid #e2e8f0">';
     h+='<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:6px;margin-bottom:6px">';
     var _cCol2=confirmations>=4?'#059669':confirmations>=3?'#3b82f6':confirmations>=2?'#d97706':'#ef4444';
     h+='<div style="text-align:center;padding:4px;border-radius:6px;background:'+_cCol2+'10"><div style="font-size:7px;color:'+_cCol2+';font-weight:800">CONFIRMS</div><div style="font-size:14px;font-weight:900;color:'+_cCol2+'">'+confirmations+'/6</div></div>';
@@ -4126,7 +4126,7 @@ function _renderQuickTrade(d,sym){
     if(isOptions){
       var maxRisk8=Math.round((entryPrem7-sl8)*c7.lot);var maxProf8=Math.round((targetHigh-entryPrem7)*c7.lot);
       var rr=maxRisk8>0?Math.round(maxProf8/maxRisk8*10)/10:0;
-      h+='<div style="text-align:center;padding:10px;border-radius:10px;background:#1e293b;margin-bottom:8px"><div style="display:flex;justify-content:center;gap:12px;flex-wrap:wrap">';
+      h+='<div style="text-align:center;padding:10px;border-radius:10px;background:#e2e8f0;margin-bottom:8px"><div style="display:flex;justify-content:center;gap:12px;flex-wrap:wrap">';
       h+='<div><div style="font-size:7px;color:#059669;font-weight:700">PREMIUM TARGET</div><div style="font-size:14px;font-weight:900;color:#059669;font-family:JetBrains Mono">'+S+targetLow+' – '+S+targetHigh+'</div></div>';
       h+='<div style="width:1px;background:#334155"></div>';
       h+='<div><div style="font-size:7px;color:#ef4444;font-weight:700">PREMIUM SL</div><div style="font-size:14px;font-weight:900;color:#ef4444;font-family:JetBrains Mono">'+S+sl8+'</div></div>';
@@ -4136,7 +4136,7 @@ function _renderQuickTrade(d,sym){
       // Stock mode — price-based targets already shown above, show R:R and hold time
       var _sRange2=Math.abs(dayHigh-dayLow);
       var _sRR2=_sRange2>0?'1:1.5':'N/A';
-      h+='<div style="text-align:center;padding:10px;border-radius:10px;background:#1e293b;margin-bottom:8px"><div style="display:flex;justify-content:center;gap:12px;flex-wrap:wrap">';
+      h+='<div style="text-align:center;padding:10px;border-radius:10px;background:#e2e8f0;margin-bottom:8px"><div style="display:flex;justify-content:center;gap:12px;flex-wrap:wrap">';
       h+='<div><div style="font-size:7px;color:#3b82f6;font-weight:700">RISK:REWARD</div><div style="font-size:14px;font-weight:900;color:#3b82f6;font-family:JetBrains Mono">'+_sRR2+'</div></div>';
       h+='<div style="width:1px;background:#334155"></div>';
       h+='<div><div style="font-size:7px;color:#a855f7;font-weight:700">DAY RANGE</div><div style="font-size:14px;font-weight:900;color:#a855f7;font-family:JetBrains Mono">'+S+dayLow.toLocaleString()+' – '+S+dayHigh.toLocaleString()+'</div></div>';
@@ -4159,7 +4159,7 @@ function _renderQuickTrade(d,sym){
     // Strike comparison (ATM / ITM / OTM)
     if(isOptions&&window._qtStrikeATM){
       var sa=window._qtStrikeATM,si=window._qtStrikeITM,so=window._qtStrikeOTM;
-      h+='<div style="padding:8px;border-radius:8px;background:#1e293b;margin-bottom:6px">';
+      h+='<div style="padding:8px;border-radius:8px;background:#e2e8f0;margin-bottom:6px">';
       h+='<div style="font-size:7px;color:#64748b;font-weight:700;margin-bottom:4px">STRIKE OPTIONS</div>';
       h+='<div style="display:flex;gap:4px">';
       var strikes3=[{l:'1-ITM',s:si.strike,p:si.prem,sel:strikeLabel==='1-ITM'},{l:'ATM',s:sa.strike,p:sa.prem,sel:strikeLabel==='ATM'},{l:'1-OTM',s:so.strike,p:so.prem,sel:strikeLabel==='1-OTM'}];
@@ -4173,7 +4173,7 @@ function _renderQuickTrade(d,sym){
       });
       h+='</div></div>';
     }
-    h+='<div style="padding:10px;border-radius:8px;background:#1e293b;border:1px solid #334155"><div style="font-size:8px;color:#a855f7;font-weight:700;margin-bottom:4px;letter-spacing:0.5px">🧠 INSTITUTIONAL SIGNALS</div>';smartParts.forEach(function(sp){h+='<div style="font-size:10px;color:#94a3b8;padding:2px 0;line-height:1.5">• '+sp+'</div>'});h+='</div>';
+    h+='<div style="padding:10px;border-radius:8px;background:#e2e8f0;border:1px solid #cbd5e1"><div style="font-size:8px;color:#a855f7;font-weight:700;margin-bottom:4px;letter-spacing:0.5px">🧠 INSTITUTIONAL SIGNALS</div>';smartParts.forEach(function(sp){h+='<div style="font-size:10px;color:#94a3b8;padding:2px 0;line-height:1.5">• '+sp+'</div>'});h+='</div>';
     if(qtIsExpiry)h+='<div style="text-align:center;margin-top:6px;padding:5px;border-radius:6px;background:#d9770608;font-size:9px;color:#d97706;font-weight:700">⏱ EXPIRY — Exit within 10 min</div>';
   }
   
@@ -4184,11 +4184,11 @@ function _renderQuickTrade(d,sym){
   var timeStr=nowTs.getHours().toString().padStart(2,'0')+':'+nowTs.getMinutes().toString().padStart(2,'0')+':'+nowTs.getSeconds().toString().padStart(2,'0');
   h+='<div style="max-width:480px;margin:8px auto;display:flex;justify-content:space-between;align-items:center">';
   h+='<div style="font-size:9px;color:#475569">Updated: '+timeStr+' · Auto-refresh 30s</div>';
-  h+='<button onclick="window._retryLast()" style="padding:6px 16px;border-radius:8px;background:#1e293b;color:#94a3b8;border:1px solid #334155;font-size:10px;font-weight:700;cursor:pointer">🔄 Refresh</button>';
+  h+='<button onclick="window._retryLast()" style="padding:6px 16px;border-radius:8px;background:#e2e8f0;color:#94a3b8;border:1px solid #cbd5e1;font-size:10px;font-weight:700;cursor:pointer">🔄 Refresh</button>';
   h+='</div>';
   
   // 3 GOLDEN RULES
-  h+='<div style="max-width:480px;margin:12px auto 0;padding:14px 20px;border-radius:14px;background:#0F172A;border:1px solid #ef444420">';
+  h+='<div style="max-width:480px;margin:12px auto 0;padding:14px 20px;border-radius:14px;background:#f8fafc;border:1px solid #ef444420">';
   h+='<div style="font-size:10px;font-weight:800;color:#ef4444;text-align:center;margin-bottom:8px">🚫 3 GOLDEN RULES — DON\'T BREAK THESE</div>';
   h+='<div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center">';
   h+='<div style="padding:8px 14px;border-radius:8px;background:#ef444408;border:1px solid #ef444415;font-size:9px;color:#ef4444;font-weight:700;text-align:center;flex:1;min-width:120px">❌ No trade in<br>sideways market</div>';
@@ -4198,9 +4198,9 @@ function _renderQuickTrade(d,sym){
   
   // 3 Levels
   h+='<div style="max-width:480px;margin:10px auto;display:flex;gap:6px">';
-  h+='<div style="flex:1;padding:8px;border-radius:8px;background:#0F172A;border:1px solid #1e293b;text-align:center"><div style="font-size:7px;color:#a855f7;font-weight:700">VWAP</div><div style="font-size:14px;font-weight:900;color:#a855f7;font-family:JetBrains Mono">'+S+vwapLevel.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div></div>';
-  h+='<div style="flex:1;padding:8px;border-radius:8px;background:#0F172A;border:1px solid #1e293b;text-align:center"><div style="font-size:7px;color:#059669;font-weight:700">DAY HIGH</div><div style="font-size:14px;font-weight:900;color:#059669;font-family:JetBrains Mono">'+S+dayHigh.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div></div>';
-  h+='<div style="flex:1;padding:8px;border-radius:8px;background:#0F172A;border:1px solid #1e293b;text-align:center"><div style="font-size:7px;color:#ef4444;font-weight:700">DAY LOW</div><div style="font-size:14px;font-weight:900;color:#ef4444;font-family:JetBrains Mono">'+S+dayLow.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div></div>';
+  h+='<div style="flex:1;padding:8px;border-radius:8px;background:#f8fafc;border:1px solid #e2e8f0;text-align:center"><div style="font-size:7px;color:#a855f7;font-weight:700">VWAP</div><div style="font-size:14px;font-weight:900;color:#a855f7;font-family:JetBrains Mono">'+S+vwapLevel.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div></div>';
+  h+='<div style="flex:1;padding:8px;border-radius:8px;background:#f8fafc;border:1px solid #e2e8f0;text-align:center"><div style="font-size:7px;color:#059669;font-weight:700">DAY HIGH</div><div style="font-size:14px;font-weight:900;color:#059669;font-family:JetBrains Mono">'+S+dayHigh.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div></div>';
+  h+='<div style="flex:1;padding:8px;border-radius:8px;background:#f8fafc;border:1px solid #e2e8f0;text-align:center"><div style="font-size:7px;color:#ef4444;font-weight:700">DAY LOW</div><div style="font-size:14px;font-weight:900;color:#ef4444;font-family:JetBrains Mono">'+S+dayLow.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div></div>';
   h+='</div>';
   
   // Close details toggle div (opened in BUY NOW section)
@@ -4209,7 +4209,7 @@ function _renderQuickTrade(d,sym){
   }
   
   // Disclaimer
-  h+='<div style="margin:10px auto;padding:8px;border-radius:8px;background:#1e293b;text-align:center;font-size:7px;color:#475569">';
+  h+='<div style="margin:10px auto;padding:8px;border-radius:8px;background:#e2e8f0;text-align:center;font-size:7px;color:#475569">';
   h+='⚠️ Simplified view. Not financial advice. Options involve risk. Start with 1 lot.</div>';
   
   // ═══════════════════════════════════════════════════════════════════════
@@ -4314,7 +4314,7 @@ function _renderQuickTrade(d,sym){
     }
     
     // ─── RENDER PRICE MAP ───
-    _leftCol+='<div style="padding:14px;border-radius:14px;background:#0A0F1C;border:1px solid #1e293b">';
+    _leftCol+='<div style="padding:14px;border-radius:14px;background:#f1f5f9;border:1px solid #e2e8f0">';
     _leftCol+='<div style="font-size:9px;color:#8b5cf6;font-weight:800;letter-spacing:1.5px;margin-bottom:10px">🏛️ INSTITUTIONAL PRICE MAP</div>';
     
     // Visual bar: Put Wall ──── Spot ──── Call Wall
@@ -4354,7 +4354,7 @@ function _renderQuickTrade(d,sym){
     // Key levels grid
     _leftCol+='<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin:8px 0">';
     _leftCol+='<div style="text-align:center;padding:6px;border-radius:8px;background:#05966410;border:1px solid #05966420"><div style="font-size:7px;color:#059669;font-weight:700">SUPPORT (Put Wall)</div><div style="font-size:13px;font-weight:900;color:#059669;font-family:JetBrains Mono">'+(_pmPutWall>0?S+_pmPutWall.toLocaleString():'—')+'</div><div style="font-size:7px;color:#059669">'+_pmDownsidePct.toFixed(1)+'% below</div></div>';
-    _leftCol+='<div style="text-align:center;padding:6px;border-radius:8px;background:#3b82f610;border:1px solid #3b82f620"><div style="font-size:7px;color:#3b82f6;font-weight:700">SPOT NOW</div><div style="font-size:13px;font-weight:900;color:#e2e8f0;font-family:JetBrains Mono">'+S+spot.toLocaleString()+'</div><div style="font-size:7px;color:'+_pmZoneColor+'">'+_pmZone+'</div></div>';
+    _leftCol+='<div style="text-align:center;padding:6px;border-radius:8px;background:#3b82f610;border:1px solid #3b82f620"><div style="font-size:7px;color:#3b82f6;font-weight:700">SPOT NOW</div><div style="font-size:13px;font-weight:900;color:#1e293b;font-family:JetBrains Mono">'+S+spot.toLocaleString()+'</div><div style="font-size:7px;color:'+_pmZoneColor+'">'+_pmZone+'</div></div>';
     _leftCol+='<div style="text-align:center;padding:6px;border-radius:8px;background:#ef444410;border:1px solid #ef444420"><div style="font-size:7px;color:#ef4444;font-weight:700">RESISTANCE (Call Wall)</div><div style="font-size:13px;font-weight:900;color:#ef4444;font-family:JetBrains Mono">'+(_pmCallWall>0?S+_pmCallWall.toLocaleString():'—')+'</div><div style="font-size:7px;color:#ef4444">'+_pmUpsidePct.toFixed(1)+'% above</div></div>';
     _leftCol+='</div>';
     
@@ -4376,7 +4376,7 @@ function _renderQuickTrade(d,sym){
       _leftCol+='<div style="margin-top:6px;padding:8px;border-radius:8px;background:'+_buildColor+'08;border:1px solid '+_buildColor+'25">';
       _leftCol+='<div style="font-size:8px;font-weight:800;color:'+_buildColor+';letter-spacing:0.5px">'+_buildIcon+' '+_buildLabel+' (LEADING)</div>';
       _leftCol+='<div style="font-size:8px;color:#94a3b8;margin-top:3px;line-height:1.5">'+_buildDesc+'</div>';
-      _leftCol+='<div style="margin-top:4px;height:4px;border-radius:2px;background:#1e293b"><div style="height:100%;border-radius:2px;background:'+_buildColor+';width:'+Math.min(100,_oiBuildStrength)+'%"></div></div>';
+      _leftCol+='<div style="margin-top:4px;height:4px;border-radius:2px;background:#e2e8f0"><div style="height:100%;border-radius:2px;background:'+_buildColor+';width:'+Math.min(100,_oiBuildStrength)+'%"></div></div>';
       _leftCol+='<div style="font-size:7px;color:#64748b;margin-top:2px">Strength: '+_oiBuildStrength+'%</div>';
       _leftCol+='</div>';
     }
@@ -4434,10 +4434,10 @@ function _renderQuickTrade(d,sym){
       var _lockIcon2=_lockStatus2==='LOCKED'?'🔒':_lockStatus2==='MAINTAIN'?'✅':_lockStatus2==='WARNING'?'⚠️':'🕐';
       var _stCol2=_lockStatus2==='LOCKED'?'#059669':_lockStatus2==='MAINTAIN'?'#3b82f6':_lockStatus2==='WARNING'?'#d97706':'#f59e0b';
       
-      _rightCol+='<div style="padding:10px 14px;border-radius:12px;background:#0F172A;border:1px solid '+_stCol2+'30;margin-bottom:8px">';
+      _rightCol+='<div style="padding:10px 14px;border-radius:12px;background:#f8fafc;border:1px solid '+_stCol2+'30;margin-bottom:8px">';
       _rightCol+='<div style="font-size:8px;color:'+_stCol2+';font-weight:800;letter-spacing:1px;margin-bottom:6px">'+_lockIcon2+' SIGNAL TRACKING</div>';
       _rightCol+='<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:4px">';
-      _rightCol+='<div style="font-size:10px;color:#e2e8f0;font-weight:700">'+_lockIcon2+' <span style="color:'+_stCol2+'">'+_lockStatus2+'</span> · '+_lockAge2+' min</div>';
+      _rightCol+='<div style="font-size:10px;color:#1e293b;font-weight:700">'+_lockIcon2+' <span style="color:'+_stCol2+'">'+_lockStatus2+'</span> · '+_lockAge2+' min</div>';
       _rightCol+='<div style="font-size:9px;color:'+_trendCol2+';font-weight:700">'+_trendIcon2+' Score '+_trend2+'</div>';
       _rightCol+='</div>';
       if(_consistent2>2)_rightCol+='<div style="font-size:9px;color:#059669;margin-top:4px">✅ Consistent for '+_consistent2+' scans</div>';
@@ -4449,12 +4449,12 @@ function _renderQuickTrade(d,sym){
     
     // Trade Setup summary for right column
     if(isOptions&&entryPrem7>0&&direction!=='NONE'){
-      _rightCol+='<div style="padding:10px 14px;border-radius:12px;background:#0F172A;border:1px solid #1e293b;margin-bottom:8px">';
+      _rightCol+='<div style="padding:10px 14px;border-radius:12px;background:#f8fafc;border:1px solid #e2e8f0;margin-bottom:8px">';
       _rightCol+='<div style="font-size:8px;color:#f59e0b;font-weight:800;letter-spacing:1px;margin-bottom:8px">📋 TRADE SETUP</div>';
       _rightCol+='<div style="font-size:9px;color:#94a3b8;line-height:1.8">';
       _rightCol+='<div><span style="color:#64748b">Action:</span> <strong style="color:'+(finalBias==='BULLISH'?'#059669':'#ef4444')+'">'+(finalBias==='BULLISH'?'BUY CALL':'BUY PUT')+'</strong></div>';
       _rightCol+='<div><span style="color:#64748b">Strike:</span> <strong style="color:#f59e0b;font-family:JetBrains Mono">'+S+entryStrike7+' '+entryType7+'</strong></div>';
-      _rightCol+='<div><span style="color:#64748b">Premium:</span> <strong style="color:#e2e8f0;font-family:JetBrains Mono">'+S+entryPrem7.toFixed(isUS&&entryPrem7<10?2:0)+'</strong></div>';
+      _rightCol+='<div><span style="color:#64748b">Premium:</span> <strong style="color:#1e293b;font-family:JetBrains Mono">'+S+entryPrem7.toFixed(isUS&&entryPrem7<10?2:0)+'</strong></div>';
       if(targetLow>0)_rightCol+='<div><span style="color:#64748b">Target:</span> <strong style="color:#059669;font-family:JetBrains Mono">'+S+targetLow+' – '+S+targetHigh+'</strong></div>';
       if(sl8>0)_rightCol+='<div><span style="color:#64748b">Stop Loss:</span> <strong style="color:#ef4444;font-family:JetBrains Mono">'+S+sl8+'</strong></div>';
       var _rrDisp=window._qtRREstimate||0;
@@ -4912,7 +4912,7 @@ window._getMetrics=function(){
 
 window._renderPerformanceDashboard=function(S){
   var m=window._getMetrics();
-  var h='<div style="background:#0A0F1C;border-radius:16px;padding:18px 22px;margin-bottom:10px;border:1px solid #1e293b">';
+  var h='<div style="background:#f1f5f9;border-radius:16px;padding:18px 22px;margin-bottom:10px;border:1px solid #e2e8f0">';
   h+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">';
   h+='<div style="font-size:11px;font-weight:800;color:#64748b;letter-spacing:1.5px">📊 TODAY\'S PERFORMANCE</div>';
   
@@ -4932,7 +4932,7 @@ window._renderPerformanceDashboard=function(S){
   }else{
     // Core metrics
     h+='<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">';
-    h+='<div style="flex:1;min-width:70px;padding:8px;border-radius:8px;background:#1e293b;text-align:center"><div style="font-size:6px;color:#64748b">TRADES</div><div style="font-size:18px;font-weight:900;color:#e2e8f0;font-family:JetBrains Mono">'+m.trades+'</div></div>';
+    h+='<div style="flex:1;min-width:70px;padding:8px;border-radius:8px;background:#e2e8f0;text-align:center"><div style="font-size:6px;color:#64748b">TRADES</div><div style="font-size:18px;font-weight:900;color:#1e293b;font-family:JetBrains Mono">'+m.trades+'</div></div>';
     h+='<div style="flex:1;min-width:70px;padding:8px;border-radius:8px;background:'+(m.winRate>=55?'#059669':'#d97706')+'15;text-align:center"><div style="font-size:6px;color:'+(m.winRate>=55?'#059669':'#d97706')+'">WIN RATE</div><div style="font-size:18px;font-weight:900;color:'+(m.winRate>=55?'#059669':'#d97706')+';font-family:JetBrains Mono">'+m.winRate+'%</div></div>';
     h+='<div style="flex:1;min-width:70px;padding:8px;border-radius:8px;background:'+(m.pnl>=0?'#059669':'#ef4444')+'15;text-align:center"><div style="font-size:6px;color:'+(m.pnl>=0?'#059669':'#ef4444')+'">P&L</div><div style="font-size:18px;font-weight:900;color:'+(m.pnl>=0?'#059669':'#ef4444')+';font-family:JetBrains Mono">'+(m.pnl>=0?'+':'')+S+m.pnl.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div></div>';
     h+='<div style="flex:1;min-width:70px;padding:8px;border-radius:8px;background:#ef444415;text-align:center"><div style="font-size:6px;color:#ef4444">MAX DD</div><div style="font-size:18px;font-weight:900;color:#ef4444;font-family:JetBrains Mono">-'+S+m.maxDD.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div></div>';
@@ -4961,11 +4961,11 @@ window._renderPerformanceDashboard=function(S){
     // Advanced metrics
     h+='<details style="margin-top:8px"><summary style="font-size:8px;color:#64748b;cursor:pointer">Advanced Metrics ▾</summary>';
     h+='<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">';
-    h+='<div style="flex:1;min-width:70px;padding:6px;border-radius:6px;background:#1e293b;text-align:center"><div style="font-size:6px;color:#059669">AVG GAIN</div><div style="font-size:12px;font-weight:900;color:#059669;font-family:JetBrains Mono">+'+m.avgGain+'%</div></div>';
-    h+='<div style="flex:1;min-width:70px;padding:6px;border-radius:6px;background:#1e293b;text-align:center"><div style="font-size:6px;color:#ef4444">AVG LOSS</div><div style="font-size:12px;font-weight:900;color:#ef4444;font-family:JetBrains Mono">'+m.avgLoss+'%</div></div>';
-    h+='<div style="flex:1;min-width:70px;padding:6px;border-radius:6px;background:#1e293b;text-align:center"><div style="font-size:6px;color:#3b82f6">PROFIT FACTOR</div><div style="font-size:12px;font-weight:900;color:#3b82f6;font-family:JetBrains Mono">'+m.profitFactor+'</div></div>';
-    h+='<div style="flex:1;min-width:70px;padding:6px;border-radius:6px;background:#1e293b;text-align:center"><div style="font-size:6px;color:#059669">BEST</div><div style="font-size:12px;font-weight:900;color:#059669;font-family:JetBrains Mono">+'+m.best+'%</div></div>';
-    h+='<div style="flex:1;min-width:70px;padding:6px;border-radius:6px;background:#1e293b;text-align:center"><div style="font-size:6px;color:#ef4444">WORST</div><div style="font-size:12px;font-weight:900;color:#ef4444;font-family:JetBrains Mono">'+m.worst+'%</div></div>';
+    h+='<div style="flex:1;min-width:70px;padding:6px;border-radius:6px;background:#e2e8f0;text-align:center"><div style="font-size:6px;color:#059669">AVG GAIN</div><div style="font-size:12px;font-weight:900;color:#059669;font-family:JetBrains Mono">+'+m.avgGain+'%</div></div>';
+    h+='<div style="flex:1;min-width:70px;padding:6px;border-radius:6px;background:#e2e8f0;text-align:center"><div style="font-size:6px;color:#ef4444">AVG LOSS</div><div style="font-size:12px;font-weight:900;color:#ef4444;font-family:JetBrains Mono">'+m.avgLoss+'%</div></div>';
+    h+='<div style="flex:1;min-width:70px;padding:6px;border-radius:6px;background:#e2e8f0;text-align:center"><div style="font-size:6px;color:#3b82f6">PROFIT FACTOR</div><div style="font-size:12px;font-weight:900;color:#3b82f6;font-family:JetBrains Mono">'+m.profitFactor+'</div></div>';
+    h+='<div style="flex:1;min-width:70px;padding:6px;border-radius:6px;background:#e2e8f0;text-align:center"><div style="font-size:6px;color:#059669">BEST</div><div style="font-size:12px;font-weight:900;color:#059669;font-family:JetBrains Mono">+'+m.best+'%</div></div>';
+    h+='<div style="flex:1;min-width:70px;padding:6px;border-radius:6px;background:#e2e8f0;text-align:center"><div style="font-size:6px;color:#ef4444">WORST</div><div style="font-size:12px;font-weight:900;color:#ef4444;font-family:JetBrains Mono">'+m.worst+'%</div></div>';
     h+='</div>';
     
     // Equity curve
@@ -4985,7 +4985,7 @@ window._renderPerformanceDashboard=function(S){
   
   // Voice toggle + reset
   h+='<div style="display:flex;gap:8px;margin-top:10px;justify-content:center">';
-  h+='<button onclick="if(!window._voiceFullyReady){window._unlockVoice();this.textContent=\'🔊 Voice ACTIVE\';this.style.background=\'#05966920\';this.style.color=\'#059669\'}else{window._voiceEnabled=!window._voiceEnabled;this.textContent=window._voiceEnabled?\'🔊 Voice ACTIVE\':\'🔇 Voice OFF\';this.style.background=window._voiceEnabled?\'#05966920\':\'#1e293b\';this.style.color=window._voiceEnabled?\'#059669\':\'#64748b\'}" style="padding:6px 14px;border-radius:8px;background:'+(window._voiceFullyReady&&window._voiceEnabled?'#05966920':'#1e293b')+';color:'+(window._voiceFullyReady&&window._voiceEnabled?'#059669':'#64748b')+';border:1px solid #334155;font-size:9px;font-weight:700;cursor:pointer">'+(window._voiceFullyReady&&window._voiceEnabled?'🔊 Voice ACTIVE':'🔊 Start Voice')+'</button>';
+  h+='<button onclick="if(!window._voiceFullyReady){window._unlockVoice();this.textContent=\'🔊 Voice ACTIVE\';this.style.background=\'#05966920\';this.style.color=\'#059669\'}else{window._voiceEnabled=!window._voiceEnabled;this.textContent=window._voiceEnabled?\'🔊 Voice ACTIVE\':\'🔇 Voice OFF\';this.style.background=window._voiceEnabled?\'#05966920\':\'#1e293b\';this.style.color=window._voiceEnabled?\'#059669\':\'#64748b\'}" style="padding:6px 14px;border-radius:8px;background:'+(window._voiceFullyReady&&window._voiceEnabled?'#05966920':'#1e293b')+';color:'+(window._voiceFullyReady&&window._voiceEnabled?'#059669':'#64748b')+';border:1px solid #cbd5e1;font-size:9px;font-weight:700;cursor:pointer">'+(window._voiceFullyReady&&window._voiceEnabled?'🔊 Voice ACTIVE':'🔊 Start Voice')+'</button>';
   h+='<button onclick="window._alertTone(\'ENTRY\');window._speak(\'Voice is working. Entry alert sounds like this. I will guide you through every trade.\',true)" style="padding:6px 10px;border-radius:8px;background:#f1f5f9;color:#475569;border:1px solid #cbd5e1;font-size:8px;font-weight:700;cursor:pointer">🔊 Test Alert</button>';
   h+='<button onclick="if(confirm(\'Reset today\\\'s trade log?\')){window._tradeLog=[];localStorage.setItem(\'celesys_tradeLog\',\'[]\');this.textContent=\'✓ Reset\'}" style="padding:6px 14px;border-radius:8px;background:#f1f5f9;color:#475569;border:1px solid #cbd5e1;font-size:9px;font-weight:700;cursor:pointer">🗑️ Reset Log</button>';
   h+='<button onclick="window._speak(\'Voice test. System ready.\',false)" style="padding:6px 14px;border-radius:8px;background:#f1f5f9;color:#475569;border:1px solid #cbd5e1;font-size:9px;font-weight:700;cursor:pointer">🔈 Test Voice</button>';
@@ -5006,7 +5006,7 @@ window._renderLiveTracker=function(sym,type,entryPrem,currentPrem,lots,lotSize,S
   var h='<div style="background:linear-gradient(135deg,#0A0F1C,'+pnlColor+'08);border-radius:16px;padding:18px 22px;margin-bottom:10px;border:2px solid '+pnlColor+'30">';
   h+='<div style="font-size:8px;color:#64748b;font-weight:800;letter-spacing:2px;text-align:center;margin-bottom:6px">━━━ LIVE TRADE ━━━</div>';
   h+='<div style="text-align:center">';
-  h+='<div style="font-size:14px;font-weight:900;color:#e2e8f0;font-family:Sora">BUY '+S+(sym==='BANKNIFTY'?Math.round(entryPrem/100)*100:Math.round(entryPrem/50)*50).toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+' '+type+'</div>';
+  h+='<div style="font-size:14px;font-weight:900;color:#1e293b;font-family:Sora">BUY '+S+(sym==='BANKNIFTY'?Math.round(entryPrem/100)*100:Math.round(entryPrem/50)*50).toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+' '+type+'</div>';
   h+='<div style="display:flex;justify-content:center;gap:20px;margin:12px 0">';
   h+='<div><div style="font-size:7px;color:#64748b">ENTRY</div><div style="font-size:18px;font-weight:900;color:#94a3b8;font-family:JetBrains Mono">'+S+entryPrem.toFixed(0)+'</div></div>';
   h+='<div><div style="font-size:7px;color:#64748b">CURRENT</div><div style="font-size:18px;font-weight:900;color:'+pnlColor+';font-family:JetBrains Mono">'+S+currentPrem.toFixed(0)+'</div></div>';
@@ -5997,7 +5997,7 @@ window._buildCoachingExplanation=function(d,sym,bias){
 };
 
 window._renderCoaching=function(coaching,bias){
-  var h='<div style="padding:12px 16px;border-radius:12px;background:#1e293b;margin-top:10px">';
+  var h='<div style="padding:12px 16px;border-radius:12px;background:#e2e8f0;margin-top:10px">';
   h+='<div style="font-size:10px;font-weight:800;color:#3b82f6;margin-bottom:6px">🧠 WHY THIS TRADE?</div>';
   coaching.reasons.forEach(function(r){
     var c=r.icon==='✔'?'#059669':r.icon==='✘'?'#ef4444':'#d97706';
@@ -6055,20 +6055,20 @@ window._updateGameState=function(trade){
 
 window._renderGamification=function(){
   var gs=window._gameState;
-  var h='<div style="background:#0A0F1C;border-radius:16px;padding:16px 20px;margin-bottom:10px;border:1px solid #f59e0b25">';
+  var h='<div style="background:#f1f5f9;border-radius:16px;padding:16px 20px;margin-bottom:10px;border:1px solid #f59e0b25">';
   h+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">';
   h+='<div style="font-size:10px;font-weight:800;color:#f59e0b;letter-spacing:1.5px">🎮 TRADING SCORE</div>';
   var scoreColor=gs.score>=70?'#059669':gs.score>=50?'#d97706':'#ef4444';
   h+='<div style="font-size:20px;font-weight:900;color:'+scoreColor+';font-family:JetBrains Mono">'+gs.score+' <span style="font-size:10px;color:#64748b">/100</span></div></div>';
   
   // Score bar
-  h+='<div style="height:6px;background:#1e293b;border-radius:3px;margin-bottom:10px;overflow:hidden"><div style="width:'+gs.score+'%;height:100%;background:'+scoreColor+';border-radius:3px"></div></div>';
+  h+='<div style="height:6px;background:#e2e8f0;border-radius:3px;margin-bottom:10px;overflow:hidden"><div style="width:'+gs.score+'%;height:100%;background:'+scoreColor+';border-radius:3px"></div></div>';
   
   // Streak + Stats
   h+='<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">';
-  h+='<div style="flex:1;min-width:70px;padding:6px;border-radius:8px;background:#1e293b;text-align:center"><div style="font-size:6px;color:#f59e0b">WIN STREAK</div><div style="font-size:16px;font-weight:900;color:#f59e0b;font-family:JetBrains Mono">'+(gs.streak>0?'🔥 ':'')+''+gs.streak+'</div></div>';
-  h+='<div style="flex:1;min-width:70px;padding:6px;border-radius:8px;background:#1e293b;text-align:center"><div style="font-size:6px;color:#64748b">BEST STREAK</div><div style="font-size:16px;font-weight:900;color:#a855f7;font-family:JetBrains Mono">'+gs.maxStreak+'</div></div>';
-  h+='<div style="flex:1;min-width:70px;padding:6px;border-radius:8px;background:#1e293b;text-align:center"><div style="font-size:6px;color:#64748b">ALL-TIME WR</div><div style="font-size:16px;font-weight:900;color:#3b82f6;font-family:JetBrains Mono">'+(gs.totalTrades>0?Math.round(gs.totalWins/gs.totalTrades*100):0)+'%</div></div>';
+  h+='<div style="flex:1;min-width:70px;padding:6px;border-radius:8px;background:#e2e8f0;text-align:center"><div style="font-size:6px;color:#f59e0b">WIN STREAK</div><div style="font-size:16px;font-weight:900;color:#f59e0b;font-family:JetBrains Mono">'+(gs.streak>0?'🔥 ':'')+''+gs.streak+'</div></div>';
+  h+='<div style="flex:1;min-width:70px;padding:6px;border-radius:8px;background:#e2e8f0;text-align:center"><div style="font-size:6px;color:#64748b">BEST STREAK</div><div style="font-size:16px;font-weight:900;color:#a855f7;font-family:JetBrains Mono">'+gs.maxStreak+'</div></div>';
+  h+='<div style="flex:1;min-width:70px;padding:6px;border-radius:8px;background:#e2e8f0;text-align:center"><div style="font-size:6px;color:#64748b">ALL-TIME WR</div><div style="font-size:16px;font-weight:900;color:#3b82f6;font-family:JetBrains Mono">'+(gs.totalTrades>0?Math.round(gs.totalWins/gs.totalTrades*100):0)+'%</div></div>';
   h+='</div>';
   
   // Badges
@@ -6085,7 +6085,7 @@ window._renderGamification=function(){
   
   // Daily Goal
   var goalDone=(gs.dailyGoal.trades>=gs.dailyGoal.target?1:0)+(gs.dailyGoal.maxLoss===0?1:0)+(gs.dailyGoal.trades<=5?1:0);
-  h+='<div style="padding:8px 12px;border-radius:8px;background:#1e293b">';
+  h+='<div style="padding:8px 12px;border-radius:8px;background:#e2e8f0">';
   h+='<div style="font-size:8px;color:#64748b;font-weight:700;margin-bottom:4px">TODAY\'S GOAL ('+goalDone+'/3)</div>';
   h+='<div style="font-size:8px;color:'+(gs.dailyGoal.trades>=gs.dailyGoal.target?'#059669':'#94a3b8')+'">'+((gs.dailyGoal.trades>=gs.dailyGoal.target)?'✔':'○')+' Complete '+gs.dailyGoal.target+' quality trades ('+gs.dailyGoal.trades+' done)</div>';
   h+='<div style="font-size:8px;color:'+(gs.dailyGoal.maxLoss===0?'#059669':'#ef4444')+'">'+((gs.dailyGoal.maxLoss===0)?'✔':'✘')+' Max 1 big loss ('+gs.dailyGoal.maxLoss+' so far)</div>';
@@ -6132,7 +6132,7 @@ window._renderAutoPanel=function(sym,bias,status){
       h+='<div style="text-align:center;margin-top:8px"><button onclick="window._voiceAlert(\'PROFIT\');alert(\'Trade executed! (Demo)\')" style="padding:12px 32px;border-radius:12px;background:linear-gradient(135deg,#059669,#10b981);color:#fff;border:none;font-size:14px;font-weight:900;cursor:pointer;font-family:Sora;box-shadow:0 4px 16px rgba(5,150,105,.3)">✅ CONFIRM & EXECUTE</button></div>';
     }
   }else{
-    h+='<div style="padding:8px 12px;border-radius:8px;background:#1e293b">';
+    h+='<div style="padding:8px 12px;border-radius:8px;background:#e2e8f0">';
     h+='<div style="font-size:9px;color:#64748b;font-weight:800">🔴 MANUAL MODE</div>';
     h+='<div style="font-size:8px;color:#94a3b8;margin-top:2px">You read signals and act independently in your broker.</div></div>';
   }
@@ -6214,12 +6214,12 @@ window._loadGammaMode=function(symbol){
   // Clear any previous refresh timer
   if(window._ultraRefreshTimer){clearInterval(window._ultraRefreshTimer);window._ultraRefreshTimer=null}
   
-  el.innerHTML='<div style="min-height:300px;display:flex;align-items:center;justify-content:center;background:#0A0F1C;border-radius:20px"><div style="text-align:center"><div style="width:24px;height:24px;border:3px solid #f59e0b;border-top-color:transparent;border-radius:50%;animation:spin .5s linear infinite;margin:0 auto"></div><div style="font-size:12px;color:#f59e0b;margin-top:10px;font-weight:800">Scanning '+sym+'...</div></div></div>';
+  el.innerHTML='<div style="min-height:300px;display:flex;align-items:center;justify-content:center;background:#f1f5f9;border-radius:20px"><div style="text-align:center"><div style="width:24px;height:24px;border:3px solid #f59e0b;border-top-color:transparent;border-radius:50%;animation:spin .5s linear infinite;margin:0 auto"></div><div style="font-size:12px;color:#f59e0b;margin-top:10px;font-weight:800">Scanning '+sym+'...</div></div></div>';
   
   fetch('/api/options-quick?symbol='+encodeURIComponent(sym)+'&region=IN')
     .then(function(r){return r.json()})
     .then(function(d){
-      if(!d||!d.success){el.innerHTML='<div style="text-align:center;padding:40px;background:#0A0F1C;border-radius:20px"><div style="font-size:16px;color:#ef4444;font-weight:900">Failed to load</div><button onclick="window._loadGammaMode(\''+sym+'\')" style="margin-top:12px;padding:10px 24px;border-radius:10px;background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;border:none;font-size:12px;font-weight:800;cursor:pointer">Retry</button></div>';return}
+      if(!d||!d.success){el.innerHTML='<div style="text-align:center;padding:40px;background:#f1f5f9;border-radius:20px"><div style="font-size:16px;color:#ef4444;font-weight:900">Failed to load</div><button onclick="window._loadGammaMode(\''+sym+'\')" style="margin-top:12px;padding:10px 24px;border-radius:10px;background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;border:none;font-size:12px;font-weight:800;cursor:pointer">Retry</button></div>';return}
       _renderUltraSimple(d,sym);
       // Auto-refresh every 30 seconds
       window._ultraRefreshTimer=setInterval(function(){
@@ -6230,7 +6230,7 @@ window._loadGammaMode=function(symbol){
             .catch(function(){});
         }else{clearInterval(window._ultraRefreshTimer);window._ultraRefreshTimer=null}
       },30000);
-    }).catch(function(e){el.innerHTML='<div style="text-align:center;padding:30px;background:#0A0F1C;border-radius:16px"><div style="font-size:14px;color:#ef4444;margin-bottom:8px">Cannot connect to server</div><div style="font-size:10px;color:#94a3b8;margin-bottom:12px">'+(e.message||'Network error')+'</div><button onclick="window._retryLast()" style="padding:8px 20px;border-radius:8px;background:#059669;color:#fff;border:none;cursor:pointer;font-size:11px;font-weight:700">🔄 Retry</button></div>'});
+    }).catch(function(e){el.innerHTML='<div style="text-align:center;padding:30px;background:#f1f5f9;border-radius:16px"><div style="font-size:14px;color:#ef4444;margin-bottom:8px">Cannot connect to server</div><div style="font-size:10px;color:#94a3b8;margin-bottom:12px">'+(e.message||'Network error')+'</div><button onclick="window._retryLast()" style="padding:8px 20px;border-radius:8px;background:#059669;color:#fff;border:none;cursor:pointer;font-size:11px;font-weight:700">🔄 Retry</button></div>'});
 };
 
 function _renderUltraSimple(d,sym){
@@ -6248,10 +6248,10 @@ function _renderUltraSimple(d,sym){
     var now8=new Date();var istH8=now8.getUTCHours()+5+(now8.getUTCMinutes()+30>=60?1:0);
     var shouldOpen8=(!isUS8u&&istH8>=9&&istH8<16&&now8.getUTCDay()>=1&&now8.getUTCDay()<=5);
     if(shouldOpen8){
-      el.innerHTML='<div style="text-align:center;padding:40px;background:#0A0F1C;border-radius:16px"><div style="display:inline-block;width:30px;height:30px;border:3px solid #f59e0b;border-top-color:transparent;border-radius:50%;animation:spin 1s linear infinite;margin-bottom:12px"></div><div style="font-size:16px;font-weight:900;color:#e2e8f0">Fetching '+sym+'...</div><div style="font-size:10px;color:#94a3b8;margin-top:8px">Auto-retrying...</div></div>';
+      el.innerHTML='<div style="text-align:center;padding:40px;background:#f1f5f9;border-radius:16px"><div style="display:inline-block;width:30px;height:30px;border:3px solid #f59e0b;border-top-color:transparent;border-radius:50%;animation:spin 1s linear infinite;margin-bottom:12px"></div><div style="font-size:16px;font-weight:900;color:#1e293b">Fetching '+sym+'...</div><div style="font-size:10px;color:#94a3b8;margin-top:8px">Auto-retrying...</div></div>';
       return;
     }
-    el.innerHTML='<div style="text-align:center;padding:40px;background:#0A0F1C;border-radius:16px"><div style="font-size:48px;margin-bottom:12px">🕐</div><div style="font-size:18px;font-weight:900;color:#e2e8f0">Market Closed</div><div style="font-size:10px;color:#94a3b8;margin-top:8px">'+(isUS8u?'US: 9:30 AM – 4:00 PM ET':'NSE: 9:15 AM – 3:30 PM IST')+'</div></div>';
+    el.innerHTML='<div style="text-align:center;padding:40px;background:#f1f5f9;border-radius:16px"><div style="font-size:48px;margin-bottom:12px">🕐</div><div style="font-size:18px;font-weight:900;color:#1e293b">Market Closed</div><div style="font-size:10px;color:#94a3b8;margin-top:8px">'+(isUS8u?'US: 9:30 AM – 4:00 PM ET':'NSE: 9:15 AM – 3:30 PM IST')+'</div></div>';
     return;
   }
   
@@ -6383,7 +6383,7 @@ function _renderUltraSimple(d,sym){
     h+='<div onclick="window._loadGammaMode(\''+idx+'\')" style="padding:8px 16px;border-radius:10px;font-size:10px;font-weight:800;cursor:pointer;font-family:Sora;position:relative;'+(isAct?'background:'+sigBg+';color:#fff':'background:#f1f5f9;color:#475569;border:1px solid #cbd5e1')+'">'+(isTodayExp?'🔥 ':'')+idx+(isTodayExp?' <span style="font-size:7px;color:#f59e0b">(EXP)</span>':'')+'</div>';
   });
   h+='<div style="flex:1"></div>';
-  h+='<div onclick="if(typeof _complexGammaLoader===\'function\'){var el2=document.getElementById(\'deResult\');if(el2)el2.innerHTML=\'\';_complexGammaLoader(\''+sym+'\')}" style="padding:6px 12px;border-radius:8px;font-size:8px;font-weight:700;cursor:pointer;background:#1e293b;color:#475569;border:1px solid #334155">⚙️ Advanced</div>';
+  h+='<div onclick="if(typeof _complexGammaLoader===\'function\'){var el2=document.getElementById(\'deResult\');if(el2)el2.innerHTML=\'\';_complexGammaLoader(\''+sym+'\')}" style="padding:6px 12px;border-radius:8px;font-size:8px;font-weight:700;cursor:pointer;background:#e2e8f0;color:#475569;border:1px solid #cbd5e1">⚙️ Advanced</div>';
   h+='</div>';
   
   // ─── BLOCK 1: BIG DECISION (80% of screen) ───
@@ -6404,7 +6404,7 @@ function _renderUltraSimple(d,sym){
   
   // WHY block (only when signal is active)
   if(signal==='BUY_CE'||signal==='BUY_PE'){
-    h+='<div style="background:#1e293b;border-radius:12px;padding:12px 20px;margin-bottom:16px;text-align:left;max-width:300px;width:100%">';
+    h+='<div style="background:#e2e8f0;border-radius:12px;padding:12px 20px;margin-bottom:16px;text-align:left;max-width:300px;width:100%">';
     h+='<div style="font-size:9px;color:#3b82f6;font-weight:800;margin-bottom:6px">WHY?</div>';
     reasons.forEach(function(r){
       var isGood=r.indexOf('Waiting')< 0&&r.indexOf('not ')< 0&&r.indexOf('building')< 0;
@@ -6414,7 +6414,7 @@ function _renderUltraSimple(d,sym){
     if(isExpiryDay)h+='<div style="font-size:11px;color:#d97706;padding:2px 0;font-weight:600">⏱ Options losing value fast today — exit within 10 min</div>';
     h+='</div>';
   }else if(signal==='WAIT'){
-    h+='<div style="background:#1e293b;border-radius:12px;padding:12px 20px;max-width:300px;width:100%">';
+    h+='<div style="background:#e2e8f0;border-radius:12px;padding:12px 20px;max-width:300px;width:100%">';
     h+='<div style="font-size:9px;color:#64748b;font-weight:800;margin-bottom:4px">WAITING FOR:</div>';
     reasons.forEach(function(r){
       var isDone=r.indexOf('Waiting')<0&&r.indexOf('not ')<0&&r.indexOf('building')<0;
@@ -6426,11 +6426,11 @@ function _renderUltraSimple(d,sym){
   // Action button (with gamma qty hint)
   if(signal==='BUY_CE'||signal==='BUY_PE'){
     // ─── TRADE DETAIL CARD (what exactly to do in broker) ───
-    h+='<div style="background:#0F172A;border-radius:12px;padding:14px 20px;margin-bottom:12px;max-width:320px;width:100%;text-align:left">';
+    h+='<div style="background:#f8fafc;border-radius:12px;padding:14px 20px;margin-bottom:12px;max-width:320px;width:100%;text-align:left">';
     h+='<div style="font-size:9px;color:#3b82f6;font-weight:800;margin-bottom:8px;text-align:center">📋 EXACT TRADE DETAILS</div>';
     h+='<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">';
     h+='<div style="flex:1;min-width:70px;padding:6px;border-radius:6px;background:'+sigColor+'12;text-align:center"><div style="font-size:7px;color:'+sigColor+'">STRIKE</div><div style="font-size:14px;font-weight:900;color:'+sigColor+';font-family:JetBrains Mono">'+S+atmStrike8.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div><div style="font-size:8px;color:#94a3b8">'+(signal==='BUY_CE'?'CE (Call)':'PE (Put)')+'</div></div>';
-    h+='<div style="flex:1;min-width:70px;padding:6px;border-radius:6px;background:#1e293b;text-align:center"><div style="font-size:7px;color:#94a3b8">PREMIUM</div><div style="font-size:14px;font-weight:900;color:#e2e8f0;font-family:JetBrains Mono">'+S+entryPrem8.toFixed(0)+'</div><div style="font-size:8px;color:#64748b">per unit</div></div>';
+    h+='<div style="flex:1;min-width:70px;padding:6px;border-radius:6px;background:#e2e8f0;text-align:center"><div style="font-size:7px;color:#94a3b8">PREMIUM</div><div style="font-size:14px;font-weight:900;color:#1e293b;font-family:JetBrains Mono">'+S+entryPrem8.toFixed(0)+'</div><div style="font-size:8px;color:#64748b">per unit</div></div>';
     h+='<div style="flex:1;min-width:70px;padding:6px;border-radius:6px;background:'+(gammaBlast?'#f59e0b15':'#1e293b')+';text-align:center;border:'+(gammaBlast?'1px solid #f59e0b30':'none')+'"><div style="font-size:7px;color:'+(gammaBlast?'#f59e0b':'#94a3b8')+'">'+(gammaBlast?'⚡ GAMMA QTY':'QUANTITY')+'</div><div style="font-size:14px;font-weight:900;color:'+(gammaBlast?'#f59e0b':'#e2e8f0')+';font-family:JetBrains Mono">'+gammaLotsLabel+' lots'+'</div><div style="font-size:8px;color:#64748b">'+c8.lot+' × '+gammaLots+' = '+(c8.lot*gammaLots)+' qty</div></div>';
     h+='</div>';
     // Target + Stop Loss
@@ -6466,7 +6466,7 @@ function _renderUltraSimple(d,sym){
     if(isExpiryDay)h+='<div style="padding:4px 10px;border-radius:6px;background:#d9770610;font-size:8px;color:#d97706;font-weight:700">⏱ Premium losing value → Exit early</div>';
     h+='</div></div>';
   }else if(signal==='WAIT'){
-    h+='<div style="margin-top:8px;padding:12px 32px;border-radius:12px;background:#1e293b;color:#475569;font-size:12px;font-weight:700">⏳ WAIT — No action needed</div>';
+    h+='<div style="margin-top:8px;padding:12px 32px;border-radius:12px;background:#e2e8f0;color:#475569;font-size:12px;font-weight:700">⏳ WAIT — No action needed</div>';
   }
   h+='</div>';
   
@@ -6474,12 +6474,12 @@ function _renderUltraSimple(d,sym){
   var m=window._getMetrics?window._getMetrics():{trades:0,winRate:0,pnl:0};
   var gs=window._gameState||{streak:0,score:50};
   if(m.trades>0||true){
-    h+='<div style="background:#0F172A;border-radius:16px;padding:14px 20px;display:flex;gap:12px;justify-content:center;align-items:center;flex-wrap:wrap;margin-bottom:8px">';
+    h+='<div style="background:#f8fafc;border-radius:16px;padding:14px 20px;display:flex;gap:12px;justify-content:center;align-items:center;flex-wrap:wrap;margin-bottom:8px">';
     h+='<div style="text-align:center"><div style="font-size:7px;color:#64748b">TODAY</div><div style="font-size:14px;font-weight:900;color:'+(m.pnl>=0?'#059669':'#ef4444')+';font-family:JetBrains Mono">'+(m.pnl>=0?'+':'')+S+(m.pnl||0).toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div></div>';
     h+='<div style="width:1px;height:24px;background:#334155"></div>';
     h+='<div style="text-align:center"><div style="font-size:7px;color:#64748b">WIN RATE</div><div style="font-size:14px;font-weight:900;color:#3b82f6;font-family:JetBrains Mono">'+(m.winRate||0)+'%</div></div>';
     h+='<div style="width:1px;height:24px;background:#334155"></div>';
-    h+='<div style="text-align:center"><div style="font-size:7px;color:#64748b">TRADES</div><div style="font-size:14px;font-weight:900;color:#e2e8f0;font-family:JetBrains Mono">'+(m.trades||0)+'</div></div>';
+    h+='<div style="text-align:center"><div style="font-size:7px;color:#64748b">TRADES</div><div style="font-size:14px;font-weight:900;color:#1e293b;font-family:JetBrains Mono">'+(m.trades||0)+'</div></div>';
     h+='<div style="width:1px;height:24px;background:#334155"></div>';
     h+='<div style="text-align:center"><div style="font-size:7px;color:#f59e0b">STREAK</div><div style="font-size:14px;font-weight:900;color:#f59e0b;font-family:JetBrains Mono">'+(gs.streak>0?'🔥 ':'')+gs.streak+'</div></div>';
     h+='<div style="width:1px;height:24px;background:#334155"></div>';
@@ -6491,9 +6491,9 @@ function _renderUltraSimple(d,sym){
   
   // Voice + Quick Trade toggle
   h+='<div style="display:flex;gap:6px;justify-content:center;margin-bottom:6px">';
-  h+='<button onclick="window._voiceEnabled=!window._voiceEnabled;this.textContent=window._voiceEnabled?\'🔊 Voice ON\':\'🔇 Voice OFF\'" style="padding:6px 14px;border-radius:8px;background:#1e293b;color:'+(window._voiceEnabled?'#059669':'#64748b')+';border:1px solid #334155;font-size:9px;font-weight:700;cursor:pointer">'+(window._voiceEnabled?'🔊 Voice ON':'🔇 Voice OFF')+'</button>';
-  h+='<button onclick="window._retryLast()" style="padding:6px 14px;border-radius:8px;background:#1e293b;color:#3b82f6;border:1px solid #3b82f625;font-size:9px;font-weight:700;cursor:pointer">📊 Quick Trade</button>';
-  h+='<button onclick="window._loadOptionsDecide(\''+sym+'\')" style="padding:6px 14px;border-radius:8px;background:#1e293b;color:#a855f7;border:1px solid #a855f725;font-size:9px;font-weight:700;cursor:pointer">🔬 Full Analysis</button>';
+  h+='<button onclick="window._voiceEnabled=!window._voiceEnabled;this.textContent=window._voiceEnabled?\'🔊 Voice ON\':\'🔇 Voice OFF\'" style="padding:6px 14px;border-radius:8px;background:#e2e8f0;color:'+(window._voiceEnabled?'#059669':'#64748b')+';border:1px solid #cbd5e1;font-size:9px;font-weight:700;cursor:pointer">'+(window._voiceEnabled?'🔊 Voice ON':'🔇 Voice OFF')+'</button>';
+  h+='<button onclick="window._retryLast()" style="padding:6px 14px;border-radius:8px;background:#e2e8f0;color:#3b82f6;border:1px solid #3b82f625;font-size:9px;font-weight:700;cursor:pointer">📊 Quick Trade</button>';
+  h+='<button onclick="window._loadOptionsDecide(\''+sym+'\')" style="padding:6px 14px;border-radius:8px;background:#e2e8f0;color:#a855f7;border:1px solid #a855f725;font-size:9px;font-weight:700;cursor:pointer">🔬 Full Analysis</button>';
   h+='</div>';
   
   // Best index note
@@ -6534,14 +6534,14 @@ window._renderUserGuide=function(){
   // Header
   h+='<div style="text-align:center;margin-bottom:20px">';
   h+='<div style="font-size:28px;margin-bottom:8px">🎯</div>';
-  h+='<div style="font-size:18px;font-weight:900;color:#e2e8f0;font-family:Sora">How to Use Celesys Options Trader</div>';
+  h+='<div style="font-size:18px;font-weight:900;color:#1e293b;font-family:Sora">How to Use Celesys Options Trader</div>';
   h+='<div style="font-size:11px;color:#94a3b8;margin-top:4px">A complete guide for beginners — read once, trade confidently</div>';
   h+='</div>';
   
   // Today's status
   h+='<div style="padding:14px 20px;border-radius:14px;background:linear-gradient(135deg,#0A0F1C,#0f1a2e);border:1px solid #f59e0b30;margin-bottom:16px">';
   h+='<div style="font-size:10px;color:#f59e0b;font-weight:800;margin-bottom:6px">📅 TODAY IS '+dayName.toUpperCase()+'</div>';
-  h+='<div style="font-size:13px;color:#e2e8f0;font-weight:700">'+(isExpiry?'🔥 <strong style="color:#f59e0b">'+todayIdx+' EXPIRY DAY!</strong> — Best day for options trading on '+todayIdx:'Today is not an expiry day. Default: <strong style="color:#3b82f6">BANKNIFTY</strong>')+'</div>';
+  h+='<div style="font-size:13px;color:#1e293b;font-weight:700">'+(isExpiry?'🔥 <strong style="color:#f59e0b">'+todayIdx+' EXPIRY DAY!</strong> — Best day for options trading on '+todayIdx:'Today is not an expiry day. Default: <strong style="color:#3b82f6">BANKNIFTY</strong>')+'</div>';
   h+='<div style="margin-top:8px;font-size:9px;color:#64748b">Expiry schedule: <span style="color:#3b82f6">Tuesday = NIFTY</span> · <span style="color:#059669">Wednesday = BANKNIFTY</span> · <span style="color:#f59e0b">Thursday = SENSEX</span></div>';
   h+='</div>';
   
@@ -6558,26 +6558,26 @@ window._renderUserGuide=function(){
   ];
   
   steps.forEach(function(s){
-    h+='<div style="display:flex;gap:12px;margin-bottom:12px;padding:12px 16px;border-radius:12px;background:#0F172A;border-left:3px solid '+s.color+'">';
+    h+='<div style="display:flex;gap:12px;margin-bottom:12px;padding:12px 16px;border-radius:12px;background:#f8fafc;border-left:3px solid '+s.color+'">';
     h+='<div style="font-size:20px;flex-shrink:0">'+s.icon+'</div>';
-    h+='<div><div style="font-size:11px;font-weight:800;color:#e2e8f0;margin-bottom:3px">'+s.title+'</div>';
+    h+='<div><div style="font-size:11px;font-weight:800;color:#1e293b;margin-bottom:3px">'+s.title+'</div>';
     h+='<div style="font-size:9px;color:#94a3b8;line-height:1.6">'+s.desc+'</div></div></div>';
   });
   
   // 3 Modes explained
-  h+='<div style="padding:14px 20px;border-radius:14px;background:#0A0F1C;border:1px solid #1e293b;margin-bottom:16px">';
+  h+='<div style="padding:14px 20px;border-radius:14px;background:#f1f5f9;border:1px solid #e2e8f0;margin-bottom:16px">';
   h+='<div style="font-size:11px;font-weight:800;color:#64748b;margin-bottom:8px">🔄 THREE TRADING MODES (you can switch anytime)</div>';
   h+='<div style="display:flex;gap:8px;flex-wrap:wrap">';
-  h+='<div style="flex:1;min-width:140px;padding:10px;border-radius:10px;background:#1e293b;border-top:3px solid #059669"><div style="font-size:10px;font-weight:800;color:#059669">📊 Quick Trade</div><div style="font-size:8px;color:#94a3b8;margin-top:4px">Simplest view. BIAS → ACTION → EXIT. Best for beginners. <strong>Default mode.</strong></div></div>';
-  h+='<div style="flex:1;min-width:140px;padding:10px;border-radius:10px;background:#1e293b;border-top:3px solid #f59e0b"><div style="font-size:10px;font-weight:800;color:#f59e0b">⚡ Gamma Mode</div><div style="font-size:8px;color:#94a3b8;margin-top:4px">Ultra-simple expiry view. ONE big signal. Auto-picks best index. Gamma Blast detection. <strong>Best for expiry days.</strong></div></div>';
-  h+='<div style="flex:1;min-width:140px;padding:10px;border-radius:10px;background:#1e293b;border-top:3px solid #a855f7"><div style="font-size:10px;font-weight:800;color:#a855f7">🔬 Advanced</div><div style="font-size:8px;color:#94a3b8;margin-top:4px">Full 11-step institutional engine. GEX, OI, Greeks, Backtest. <strong>For experienced traders only.</strong></div></div>';
+  h+='<div style="flex:1;min-width:140px;padding:10px;border-radius:10px;background:#e2e8f0;border-top:3px solid #059669"><div style="font-size:10px;font-weight:800;color:#059669">📊 Quick Trade</div><div style="font-size:8px;color:#94a3b8;margin-top:4px">Simplest view. BIAS → ACTION → EXIT. Best for beginners. <strong>Default mode.</strong></div></div>';
+  h+='<div style="flex:1;min-width:140px;padding:10px;border-radius:10px;background:#e2e8f0;border-top:3px solid #f59e0b"><div style="font-size:10px;font-weight:800;color:#f59e0b">⚡ Gamma Mode</div><div style="font-size:8px;color:#94a3b8;margin-top:4px">Ultra-simple expiry view. ONE big signal. Auto-picks best index. Gamma Blast detection. <strong>Best for expiry days.</strong></div></div>';
+  h+='<div style="flex:1;min-width:140px;padding:10px;border-radius:10px;background:#e2e8f0;border-top:3px solid #a855f7"><div style="font-size:10px;font-weight:800;color:#a855f7">🔬 Advanced</div><div style="font-size:8px;color:#94a3b8;margin-top:4px">Full 11-step institutional engine. GEX, OI, Greeks, Backtest. <strong>For experienced traders only.</strong></div></div>';
   h+='</div></div>';
   
   // Normal day vs Expiry day
-  h+='<div style="padding:14px 20px;border-radius:14px;background:#0A0F1C;border:1px solid #1e293b;margin-bottom:16px">';
+  h+='<div style="padding:14px 20px;border-radius:14px;background:#f1f5f9;border:1px solid #e2e8f0;margin-bottom:16px">';
   h+='<div style="font-size:11px;font-weight:800;color:#64748b;margin-bottom:8px">📅 NORMAL DAY vs EXPIRY DAY — What\'s Different?</div>';
   h+='<div style="display:flex;gap:8px;flex-wrap:wrap">';
-  h+='<div style="flex:1;min-width:180px;padding:10px;border-radius:10px;background:#1e293b"><div style="font-size:10px;font-weight:800;color:#3b82f6;margin-bottom:6px">Normal Day (Mon/Wed/Fri/Sat/Sun)</div>';
+  h+='<div style="flex:1;min-width:180px;padding:10px;border-radius:10px;background:#e2e8f0"><div style="font-size:10px;font-weight:800;color:#3b82f6;margin-bottom:6px">Normal Day (Mon/Wed/Fri/Sat/Sun)</div>';
   h+='<div style="font-size:8px;color:#94a3b8;line-height:1.6">• Use <strong>Quick Trade</strong> mode<br>• System shows BIAS + breakout level<br>• Take 1 lot only<br>• Hold up to 10 minutes<br>• Target: +25% to +40%</div></div>';
   h+='<div style="flex:1;min-width:180px;padding:10px;border-radius:10px;background:#f59e0b08;border:1px solid #f59e0b20"><div style="font-size:10px;font-weight:800;color:#f59e0b;margin-bottom:6px">🔥 Expiry Day (Tue=NIFTY, Thu=SENSEX)</div>';
   h+='<div style="font-size:8px;color:#94a3b8;line-height:1.6">• Use <strong>⚡ Gamma Mode</strong><br>• Premiums move FAST (can double in minutes)<br>• ⚡ Gamma Blast = take 2-3 lots<br>• Hold max 8-10 minutes (theta kills)<br>• Bigger profits BUT bigger risk<br>• System auto-selects expiry index</div></div>';
@@ -6633,7 +6633,7 @@ _renderQuickTrade=function(d,sym){
   var el=document.getElementById('deResult');if(!el)return;
   var btn=document.createElement('div');
   btn.style.cssText='text-align:center;margin:8px auto;max-width:480px';
-  btn.innerHTML='<div onclick="window._showUserGuide()" style="padding:6px 14px;border-radius:8px;background:#1e293b;color:#a855f7;border:1px solid #a855f725;font-size:9px;font-weight:700;cursor:pointer;display:inline-block">📖 How to Use This App</div>';
+  btn.innerHTML='<div onclick="window._showUserGuide()" style="padding:6px 14px;border-radius:8px;background:#e2e8f0;color:#a855f7;border:1px solid #a855f725;font-size:9px;font-weight:700;cursor:pointer;display:inline-block">📖 How to Use This App</div>';
   el.appendChild(btn);
 };
 
@@ -6643,7 +6643,7 @@ _renderUltraSimple=function(d,sym){
   var el=document.getElementById('deResult');if(!el)return;
   var btn2=document.createElement('div');
   btn2.style.cssText='text-align:center;margin:6px auto';
-  btn2.innerHTML='<div onclick="window._showUserGuide()" style="padding:6px 14px;border-radius:8px;background:#1e293b;color:#a855f7;border:1px solid #a855f725;font-size:9px;font-weight:700;cursor:pointer;display:inline-block">📖 How to Use This App</div>';
+  btn2.innerHTML='<div onclick="window._showUserGuide()" style="padding:6px 14px;border-radius:8px;background:#e2e8f0;color:#a855f7;border:1px solid #a855f725;font-size:9px;font-weight:700;cursor:pointer;display:inline-block">📖 How to Use This App</div>';
   el.appendChild(btn2);
 };
 
@@ -6716,7 +6716,7 @@ window._renderStrikeSelector=function(strikes,bias,sym,isExpiry,gammaBlast,S){
   var tradeNum=ts.trades.length+1;
   var canTrade=tradeNum<=ts.maxTrades;
   
-  var h='<div style="background:#0F172A;border-radius:14px;padding:14px 18px;margin-bottom:10px;border:1px solid #3b82f625;max-width:480px;margin-left:auto;margin-right:auto">';
+  var h='<div style="background:#f8fafc;border-radius:14px;padding:14px 18px;margin-bottom:10px;border:1px solid #3b82f625;max-width:480px;margin-left:auto;margin-right:auto">';
   h+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">';
   h+='<div style="font-size:10px;font-weight:800;color:#3b82f6">🎯 TRADE '+tradeNum+' OF '+ts.maxTrades+(canTrade?'':' — LIMIT REACHED')+''+'</div>';
   if(ts.trades.length>0)h+='<div style="font-size:8px;color:#64748b">Prev: '+ts.trades[ts.trades.length-1].strike+' '+ts.trades[ts.trades.length-1].type+'</div>';
@@ -6733,18 +6733,18 @@ window._renderStrikeSelector=function(strikes,bias,sym,isExpiry,gammaBlast,S){
   strikes.forEach(function(s,i){
     var isBest=i===0;
     var barW=Math.max(10,Math.round(s.score/Math.max(strikes[0].score,1)*100));
-    h+='<div style="display:flex;align-items:center;gap:6px;padding:5px 8px;border-radius:6px;margin-bottom:3px;'+(isBest?'background:#3b82f610;border:1px solid #3b82f625':'background:#1e293b')+';cursor:pointer" onclick="window._tradeSession.activeStrike='+s.strike+';window._saveTradeSession()">';
+    h+='<div style="display:flex;align-items:center;gap:6px;padding:5px 8px;border-radius:6px;margin-bottom:3px;'+(isBest?'background:#3b82f610;border:1px solid #3b82f625':'background:#e2e8f0')+';cursor:pointer" onclick="window._tradeSession.activeStrike='+s.strike+';window._saveTradeSession()">';
     h+='<div style="min-width:14px;font-size:10px">'+(isBest?'⭐':'')+'</div>';
     h+='<div style="min-width:55px;font-size:10px;font-weight:800;color:'+(isBest?'#3b82f6':'#94a3b8')+';font-family:JetBrains Mono">'+S+s.strike.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div>';
     h+='<div style="min-width:35px;font-size:8px;color:#64748b">'+s.label+'</div>';
-    h+='<div style="min-width:45px;font-size:9px;color:#e2e8f0;font-family:JetBrains Mono">'+S+s.prem.toFixed(0)+'</div>';
-    h+='<div style="flex:1;height:6px;background:#1e293b;border-radius:3px;overflow:hidden"><div style="width:'+barW+'%;height:100%;background:'+(isBest?'#3b82f6':'#475569')+';border-radius:3px"></div></div>';
+    h+='<div style="min-width:45px;font-size:9px;color:#1e293b;font-family:JetBrains Mono">'+S+s.prem.toFixed(0)+'</div>';
+    h+='<div style="flex:1;height:6px;background:#e2e8f0;border-radius:3px;overflow:hidden"><div style="width:'+barW+'%;height:100%;background:'+(isBest?'#3b82f6':'#475569')+';border-radius:3px"></div></div>';
     h+='<div style="min-width:30px;font-size:8px;color:'+(isBest?'#3b82f6':'#475569')+';text-align:right;font-family:JetBrains Mono">'+s.score+'</div>';
     h+='</div>';
   });
   
   // Why this strike
-  h+='<div style="margin-top:6px;padding:6px 10px;border-radius:6px;background:#1e293b;font-size:8px;color:#94a3b8">';
+  h+='<div style="margin-top:6px;padding:6px 10px;border-radius:6px;background:#e2e8f0;font-size:8px;color:#94a3b8">';
   h+='<strong style="color:#3b82f6">⭐ Best: '+S+best.strike.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+' '+best.type+' ('+best.label+')</strong> — ';
   if(best.label==='ATM')h+='Most liquid, highest gamma, tightest spread';
   else if(best.label==='1-OTM')h+=isExpiry?'Expiry day OTM = cheaper entry, explosive gamma':'Slightly OTM = lower premium, decent gamma';
@@ -6840,7 +6840,7 @@ window._loadOptionsUniversal=function(symbol,region){
   window._activeOptionsReg=reg;
   window._apiRetryCount=0;
   
-  el.innerHTML='<div style="padding:40px;text-align:center;background:#0A0F1C;border-radius:16px"><div style="display:inline-block;width:20px;height:20px;border:3px solid #3b82f6;border-top-color:transparent;border-radius:50%;animation:spin .5s linear infinite"></div><div style="font-size:12px;color:#3b82f6;margin-top:10px;font-weight:800">Loading '+sym+' ('+reg+')...</div></div>';
+  el.innerHTML='<div style="padding:40px;text-align:center;background:#f1f5f9;border-radius:16px"><div style="display:inline-block;width:20px;height:20px;border:3px solid #3b82f6;border-top-color:transparent;border-radius:50%;animation:spin .5s linear infinite"></div><div style="font-size:12px;color:#3b82f6;margin-top:10px;font-weight:800">Loading '+sym+' ('+reg+')...</div></div>';
   
   fetch('/api/options-quick?symbol='+encodeURIComponent(sym)+'&region='+encodeURIComponent(reg))
     .then(function(r){return r.json()})
@@ -6855,13 +6855,13 @@ window._loadOptionsUniversal=function(symbol,region){
         if(shouldOpen2){
           window._apiRetryCount=(window._apiRetryCount||0)+1;
           if(window._apiRetryCount<=3){
-            el.innerHTML='<div style="text-align:center;padding:40px;background:#0A0F1C;border-radius:16px"><div style="display:inline-block;width:30px;height:30px;border:3px solid #f59e0b;border-top-color:transparent;border-radius:50%;animation:spin 1s linear infinite;margin-bottom:12px"></div><div style="font-size:16px;font-weight:900;color:#e2e8f0">Fetching '+sym+' data...</div><div style="font-size:10px;color:#94a3b8;margin-top:8px">Attempt '+window._apiRetryCount+' of 3. Auto-retrying in 15 sec...</div><button onclick="window._loadOptionsUniversal(\''+sym+'\',\''+reg+'\')" style="margin-top:12px;padding:8px 20px;border-radius:8px;background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;border:none;cursor:pointer;font-size:11px;font-weight:800">🔄 Retry Now</button></div>';
+            el.innerHTML='<div style="text-align:center;padding:40px;background:#f1f5f9;border-radius:16px"><div style="display:inline-block;width:30px;height:30px;border:3px solid #f59e0b;border-top-color:transparent;border-radius:50%;animation:spin 1s linear infinite;margin-bottom:12px"></div><div style="font-size:16px;font-weight:900;color:#1e293b">Fetching '+sym+' data...</div><div style="font-size:10px;color:#94a3b8;margin-top:8px">Attempt '+window._apiRetryCount+' of 3. Auto-retrying in 15 sec...</div><button onclick="window._loadOptionsUniversal(\''+sym+'\',\''+reg+'\')" style="margin-top:12px;padding:8px 20px;border-radius:8px;background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;border:none;cursor:pointer;font-size:11px;font-weight:800">🔄 Retry Now</button></div>';
             window._apiRetryTimer=setTimeout(function(){if(window._activeOptionsSym===sym)window._loadOptionsUniversal(sym,reg)},15000);
           }else{
-            el.innerHTML='<div style="text-align:center;padding:40px;background:#0A0F1C;border-radius:16px"><div style="font-size:48px;margin-bottom:12px">⚠️</div><div style="font-size:16px;color:#d97706;font-weight:900">Data Temporarily Unavailable</div><div style="font-size:10px;color:#94a3b8;margin-top:8px">API not responding. Try again in 1-2 minutes.</div><button onclick="window._apiRetryCount=0;window._loadOptionsUniversal(\''+sym+'\',\''+reg+'\')" style="margin-top:12px;padding:10px 24px;border-radius:8px;background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;border:none;cursor:pointer;font-size:12px;font-weight:800">🔄 Try Again</button></div>';
+            el.innerHTML='<div style="text-align:center;padding:40px;background:#f1f5f9;border-radius:16px"><div style="font-size:48px;margin-bottom:12px">⚠️</div><div style="font-size:16px;color:#d97706;font-weight:900">Data Temporarily Unavailable</div><div style="font-size:10px;color:#94a3b8;margin-top:8px">API not responding. Try again in 1-2 minutes.</div><button onclick="window._apiRetryCount=0;window._loadOptionsUniversal(\''+sym+'\',\''+reg+'\')" style="margin-top:12px;padding:10px 24px;border-radius:8px;background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;border:none;cursor:pointer;font-size:12px;font-weight:800">🔄 Try Again</button></div>';
           }
         }else{
-          el.innerHTML='<div style="text-align:center;padding:40px;background:#0A0F1C;border-radius:16px"><div style="font-size:48px;margin-bottom:12px">🕐</div><div style="font-size:16px;color:#ef4444;font-weight:900">No options data for '+sym+'</div><div style="font-size:10px;color:#94a3b8;margin-top:8px">'+(reg==='US'?'US market hours: 9:30 AM – 4:00 PM ET':'NSE hours: 9:15 AM – 3:30 PM IST')+'</div><button onclick="window._loadOptionsUniversal(\''+sym+'\',\''+reg+'\')" style="margin-top:12px;padding:8px 20px;border-radius:8px;background:#3b82f6;color:#fff;border:none;cursor:pointer;font-size:11px;font-weight:700">🔄 Retry</button></div>';
+          el.innerHTML='<div style="text-align:center;padding:40px;background:#f1f5f9;border-radius:16px"><div style="font-size:48px;margin-bottom:12px">🕐</div><div style="font-size:16px;color:#ef4444;font-weight:900">No options data for '+sym+'</div><div style="font-size:10px;color:#94a3b8;margin-top:8px">'+(reg==='US'?'US market hours: 9:30 AM – 4:00 PM ET':'NSE hours: 9:15 AM – 3:30 PM IST')+'</div><button onclick="window._loadOptionsUniversal(\''+sym+'\',\''+reg+'\')" style="margin-top:12px;padding:8px 20px;border-radius:8px;background:#3b82f6;color:#fff;border:none;cursor:pointer;font-size:11px;font-weight:700">🔄 Retry</button></div>';
         }
         return;
       }
@@ -6888,7 +6888,7 @@ window._loadOptionsUniversal=function(symbol,region){
       }catch(_renderErr2){
         console.error('[RENDER CRASH]',_renderErr2);
         var _crashEl2=document.getElementById('deResult');
-        if(_crashEl2)_crashEl2.innerHTML='<div style="text-align:center;padding:30px;background:#0A0F1C;border-radius:16px"><div style="font-size:14px;color:#ef4444;font-weight:800;margin-bottom:8px">Render Error</div><div style="font-size:10px;color:#94a3b8;margin-bottom:8px">'+(_renderErr2.message||'Unknown')+'</div><div style="font-size:8px;color:#475569;margin-bottom:12px">'+(_renderErr2.stack?_renderErr2.stack.split("\\n").slice(0,3).join("<br>"):'')+'</div><button onclick="window._retryLast()" style="padding:8px 20px;border-radius:8px;background:#3b82f6;color:#fff;border:none;cursor:pointer;font-size:11px;font-weight:700">🔄 Retry</button></div>';
+        if(_crashEl2)_crashEl2.innerHTML='<div style="text-align:center;padding:30px;background:#f1f5f9;border-radius:16px"><div style="font-size:14px;color:#ef4444;font-weight:800;margin-bottom:8px">Render Error</div><div style="font-size:10px;color:#94a3b8;margin-bottom:8px">'+(_renderErr2.message||'Unknown')+'</div><div style="font-size:8px;color:#475569;margin-bottom:12px">'+(_renderErr2.stack?_renderErr2.stack.split("\\n").slice(0,3).join("<br>"):'')+'</div><button onclick="window._retryLast()" style="padding:8px 20px;border-radius:8px;background:#3b82f6;color:#fff;border:none;cursor:pointer;font-size:11px;font-weight:700">🔄 Retry</button></div>';
       }
       // Auto-refresh — only if still active
       console.log('[REFRESH] ✅ Universal timer started for '+sym+' '+reg+' (30s)');
@@ -6904,7 +6904,7 @@ window._loadOptionsUniversal=function(symbol,region){
         }else{console.log('[REFRESH] Universal stopped for '+sym);clearInterval(window._quickRefreshTimer);window._quickRefreshTimer=null}
       },30000);
     }).catch(function(e){
-      el.innerHTML='<div style="text-align:center;padding:30px;background:#0A0F1C;border-radius:16px"><div style="font-size:14px;color:#ef4444;margin-bottom:8px">Cannot connect to server</div><div style="font-size:10px;color:#94a3b8;margin-bottom:12px">'+e.message+'</div><button onclick="window._retryLast()" style="padding:8px 20px;border-radius:8px;background:#3b82f6;color:#fff;border:none;cursor:pointer;font-size:11px;font-weight:700">🔄 Retry</button></div>';
+      el.innerHTML='<div style="text-align:center;padding:30px;background:#f1f5f9;border-radius:16px"><div style="font-size:14px;color:#ef4444;margin-bottom:8px">Cannot connect to server</div><div style="font-size:10px;color:#94a3b8;margin-bottom:12px">'+e.message+'</div><button onclick="window._retryLast()" style="padding:8px 20px;border-radius:8px;background:#3b82f6;color:#fff;border:none;cursor:pointer;font-size:11px;font-weight:700">🔄 Retry</button></div>';
     });
 };
 
@@ -6996,12 +6996,12 @@ window._renderOptionsNav=function(activeSym){
     var isAct=t===activeSym;
     var isExp=(reg==='IN'&&cat==='index'&&t===todayExp);
     var loadFn=reg==='IN'&&cat==='index'?'window._loadQuickTrade(\''+t+'\')':'window._loadOptionsUniversal(\''+t+'\',\''+reg+'\')';
-    h+='<div onclick="'+loadFn+'" style="padding:6px 14px;border-radius:8px;font-size:10px;font-weight:800;cursor:pointer;font-family:Sora;'+(isAct?'background:linear-gradient(135deg,#059669,#10b981);color:#fff;box-shadow:0 2px 8px rgba(5,150,105,.2)':'background:#1e293b;color:#94a3b8;border:1px solid #334155')+'">'+(isExp?'🔥 ':'')+t+(isExp?' <span style="font-size:7px;color:#f59e0b">(EXP)</span>':'')+'</div>';
+    h+='<div onclick="'+loadFn+'" style="padding:6px 14px;border-radius:8px;font-size:10px;font-weight:800;cursor:pointer;font-family:Sora;'+(isAct?'background:linear-gradient(135deg,#059669,#10b981);color:#fff;box-shadow:0 2px 8px rgba(5,150,105,.2)':'background:#e2e8f0;color:#94a3b8;border:1px solid #cbd5e1')+'">'+(isExp?'🔥 ':'')+t+(isExp?' <span style="font-size:7px;color:#f59e0b">(EXP)</span>':'')+'</div>';
   });
   
   // Custom ticker input
   h+='<div style="display:flex;gap:4px;align-items:center">';
-  h+='<input id="optCustomTicker" type="text" placeholder="Type ticker..." style="padding:5px 10px;border-radius:8px;border:1px solid #334155;background:#0F172A;color:#e2e8f0;font-size:9px;width:90px;font-family:JetBrains Mono" onkeydown="if(event.key===\'Enter\'){var v=this.value.trim().toUpperCase();if(v)window._loadOptionsUniversal(v,window._optionsRegion)}">';
+  h+='<input id="optCustomTicker" type="text" placeholder="Type ticker..." style="padding:5px 10px;border-radius:8px;border:1px solid #cbd5e1;background:#f8fafc;color:#1e293b;font-size:9px;width:90px;font-family:JetBrains Mono" onkeydown="if(event.key===\'Enter\'){var v=this.value.trim().toUpperCase();if(v)window._loadOptionsUniversal(v,window._optionsRegion)}">';
   h+='<div onclick="var v=document.getElementById(\'optCustomTicker\').value.trim().toUpperCase();if(v)window._loadOptionsUniversal(v,window._optionsRegion)" style="padding:5px 10px;border-radius:8px;background:#3b82f6;color:#fff;font-size:9px;font-weight:700;cursor:pointer">Go</div>';
   h+='</div>';
   
@@ -7109,7 +7109,7 @@ window._showBuyNowDashboard=function(cat){
   // BUY NOW header
   h+='<div style="max-width:520px;margin:0 auto">';
   h+='<div style="text-align:center;margin:8px 0 12px">';
-  h+='<div style="font-size:18px;font-weight:900;color:#e2e8f0;font-family:Sora">🔥 BUY NOW Today</div>';
+  h+='<div style="font-size:18px;font-weight:900;color:#1e293b;font-family:Sora">🔥 BUY NOW Today</div>';
   h+='<div style="font-size:10px;color:#94a3b8;margin-top:2px">Scanning '+catData.label+' — showing only active BUY signals</div>';
   h+='</div>';
   
@@ -7139,13 +7139,13 @@ window._showBuyNowDashboard=function(cat){
     var _bnContainer=document.getElementById('buyNowResults');
     if(_bnContainer){
       var _bnGnd=window._giftNiftyData;
-      var _bnMsg='<div style="text-align:center;padding:24px;background:#1e293b;border-radius:12px">';
+      var _bnMsg='<div style="text-align:center;padding:24px;background:#e2e8f0;border-radius:12px">';
       _bnMsg+='<div style="font-size:32px;margin-bottom:8px">\u{1F554}</div>';
-      _bnMsg+='<div style="font-size:16px;font-weight:900;color:#e2e8f0">Market Closed</div>';
+      _bnMsg+='<div style="font-size:16px;font-weight:900;color:#1e293b">Market Closed</div>';
       _bnMsg+='<div style="font-size:10px;color:#94a3b8;margin-top:6px">'+(reg==='US'?'US: 9:30 AM \u2013 4:00 PM ET, Mon\u2013Fri':'India: 9:15 AM \u2013 3:30 PM IST, Mon\u2013Fri')+'</div>';
       if(_bnGnd&&_bnGnd.expected_gap_pct!==undefined&&reg!=='US'){
         var _bnGapC=_bnGnd.expected_gap_pct>=0.1?'#059669':_bnGnd.expected_gap_pct<=-0.1?'#ef4444':'#94a3b8';
-        _bnMsg+='<div style="margin-top:12px;padding:10px;background:#0A0F1C;border-radius:10px;border:1px solid #a855f720">';
+        _bnMsg+='<div style="margin-top:12px;padding:10px;background:#f1f5f9;border-radius:10px;border:1px solid #a855f720">';
         _bnMsg+='<div style="font-size:9px;font-weight:800;color:#a855f7;letter-spacing:1px">GIFT NIFTY PRE-MARKET</div>';
         _bnMsg+='<div style="font-size:20px;font-weight:900;color:'+_bnGapC+';margin-top:4px">'+_bnGnd.gap_label+' '+(_bnGnd.expected_gap_pct>=0?'+':'')+_bnGnd.expected_gap_pct+'%</div>';
         _bnMsg+='<div style="font-size:10px;color:#94a3b8;margin-top:2px">Expected open: \u20B9'+(_bnGnd.expected_open||0).toLocaleString()+' | '+_bnGnd.overall_sentiment+'</div>';
@@ -7186,7 +7186,7 @@ window._showBuyNowDashboard=function(cat){
     }
     
     if(done2>=total2&&buyNow.length===0){
-      rh+='<div style="text-align:center;padding:24px;background:#1e293b;border-radius:12px"><div style="font-size:32px;margin-bottom:8px">\u{1F554}</div><div style="font-size:14px;color:#94a3b8;font-weight:700">No BUY NOW signals in '+catData.label+'</div><div style="font-size:10px;color:#475569;margin-top:4px">Scanned '+total2+' tickers \u2014 none qualify right now. Try another category or wait.</div></div>';
+      rh+='<div style="text-align:center;padding:24px;background:#e2e8f0;border-radius:12px"><div style="font-size:32px;margin-bottom:8px">\u{1F554}</div><div style="font-size:14px;color:#94a3b8;font-weight:700">No BUY NOW signals in '+catData.label+'</div><div style="font-size:10px;color:#475569;margin-top:4px">Scanned '+total2+' tickers \u2014 none qualify right now. Try another category or wait.</div></div>';
     }
     
     container.innerHTML=rh;
@@ -7239,12 +7239,12 @@ window._renderBuyNowCard=function(r){
   var actIcon=r.action==='BUY CALL'?'🟢':r.action==='BUY PUT'?'🔴':'🟡';
   var loadFn=r.reg==='IN'&&r.cat==='index'?"window._loadQuickTrade('"+r.sym+"')":"window._loadOptionsUniversal('"+r.sym+"','"+r.reg+"')";
   
-  var h='<div onclick="'+loadFn+'" style="padding:12px;margin-bottom:8px;border-radius:12px;background:#0F172A;border:1px solid '+actColor+'30;cursor:pointer">';
+  var h='<div onclick="'+loadFn+'" style="padding:12px;margin-bottom:8px;border-radius:12px;background:#f8fafc;border:1px solid '+actColor+'30;cursor:pointer">';
   
   // Header: Symbol + Action + Confidence
   h+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">';
   h+='<div style="display:flex;align-items:center;gap:8px">';
-  h+='<div style="font-size:14px;font-weight:900;color:#e2e8f0;font-family:Sora">'+r.sym+'</div>';
+  h+='<div style="font-size:14px;font-weight:900;color:#1e293b;font-family:Sora">'+r.sym+'</div>';
   h+='<div style="padding:2px 8px;border-radius:6px;background:'+actColor+'20;color:'+actColor+';font-size:9px;font-weight:800">'+actIcon+' '+r.action+'</div>';
   h+='</div>';
   h+='<div style="text-align:right"><div style="font-size:18px;font-weight:900;color:'+actColor+';font-family:JetBrains Mono">'+r.conf+'%</div>';
@@ -7253,7 +7253,7 @@ window._renderBuyNowCard=function(r){
   
   // Price + Strike + Premium
   h+='<div style="display:flex;gap:8px;margin-bottom:6px;font-size:10px">';
-  h+='<span style="color:#94a3b8">Spot: <strong style="color:#e2e8f0">'+S+(r.spot||0).toLocaleString(isUS?'en-US':'en-IN')+'</strong></span>';
+  h+='<span style="color:#94a3b8">Spot: <strong style="color:#1e293b">'+S+(r.spot||0).toLocaleString(isUS?'en-US':'en-IN')+'</strong></span>';
   if(r.prem>0)h+='<span style="color:#94a3b8">Strike: <strong style="color:#f59e0b">'+S+r.strike+'</strong> @ '+S+(r.prem||0).toFixed(isUS?2:0)+'</span>';
   h+='<span style="color:#94a3b8">'+(r.momTag||'')+'</span>';
   h+='</div>';
@@ -7277,8 +7277,8 @@ window._renderBuyNowCard=function(r){
 
 window._renderBuyNowMini=function(r){
   var isUS=r.reg==='US';
-  var h='<div onclick="'+(r.reg==='IN'&&r.cat==='index'?"window._loadQuickTrade('"+r.sym+"')":"window._loadOptionsUniversal('"+r.sym+"','"+r.reg+"')")+'" style="display:flex;align-items:center;gap:8px;padding:6px 10px;margin-bottom:3px;border-radius:8px;background:#0F172A;border:1px solid #1e293b;cursor:pointer">';
-  h+='<div style="font-size:11px;font-weight:800;color:#e2e8f0;min-width:65px">'+r.sym+'</div>';
+  var h='<div onclick="'+(r.reg==='IN'&&r.cat==='index'?"window._loadQuickTrade('"+r.sym+"')":"window._loadOptionsUniversal('"+r.sym+"','"+r.reg+"')")+'" style="display:flex;align-items:center;gap:8px;padding:6px 10px;margin-bottom:3px;border-radius:8px;background:#f8fafc;border:1px solid #e2e8f0;cursor:pointer">';
+  h+='<div style="font-size:11px;font-weight:800;color:#1e293b;min-width:65px">'+r.sym+'</div>';
   h+='<div style="font-size:9px;color:#d97706;flex:1">'+(r.dir==='BULLISH'?'↑ Leaning bullish':r.dir==='BEARISH'?'↓ Leaning bearish':'Sideways')+'</div>';
   h+='<div style="font-size:10px;font-weight:800;color:#d97706">'+r.conf+'%</div>';
   h+='<div style="font-size:8px;color:#64748b">'+r.catLabel+'</div>';
@@ -7387,14 +7387,14 @@ window._renderTradeMonitor=function(currentPrem,S){
   var pnl=Math.round((currentPrem-t.entryPrem)*t.lots*t.lotSize*100)/100;
   var pnlColor=pnl>=0?'#059669':'#ef4444';
   
-  var h='<div style="max-width:480px;margin:8px auto;padding:14px 18px;border-radius:14px;background:#0A0F1C;border:2px solid '+(pnl>=0?'#05966930':'#ef444430')+'">';
+  var h='<div style="max-width:480px;margin:8px auto;padding:14px 18px;border-radius:14px;background:#f1f5f9;border:2px solid '+(pnl>=0?'#05966930':'#ef444430')+'">';
   h+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">';
   h+='<div style="font-size:10px;font-weight:800;color:#3b82f6">🔴 LIVE TRADE</div>';
   h+='<div style="font-size:10px;font-weight:800;color:'+(elMin>=8?'#ef4444':'#64748b')+';font-family:JetBrains Mono">⏱ '+elMin+':'+(elSec<10?'0':'')+elSec+(t.isExpiry?' / 10:00 max':'')+'</div>';
   h+='</div>';
   
   h+='<div style="display:flex;gap:8px;margin-bottom:8px">';
-  h+='<div style="flex:1;padding:6px;border-radius:6px;background:#1e293b;text-align:center"><div style="font-size:7px;color:#64748b">ENTRY</div><div style="font-size:12px;font-weight:900;color:#94a3b8;font-family:JetBrains Mono">'+S+t.entryPrem+'</div></div>';
+  h+='<div style="flex:1;padding:6px;border-radius:6px;background:#e2e8f0;text-align:center"><div style="font-size:7px;color:#64748b">ENTRY</div><div style="font-size:12px;font-weight:900;color:#94a3b8;font-family:JetBrains Mono">'+S+t.entryPrem+'</div></div>';
   h+='<div style="flex:1;padding:6px;border-radius:6px;background:'+pnlColor+'10;text-align:center"><div style="font-size:7px;color:'+pnlColor+'">NOW</div><div style="font-size:12px;font-weight:900;color:'+pnlColor+';font-family:JetBrains Mono">'+S+currentPrem+'</div></div>';
   h+='<div style="flex:1;padding:6px;border-radius:6px;background:'+pnlColor+'10;text-align:center"><div style="font-size:7px;color:'+pnlColor+'">P&L</div><div style="font-size:12px;font-weight:900;color:'+pnlColor+';font-family:JetBrains Mono">'+(pnl>=0?'+':'')+S+Math.abs(pnl)+'</div></div>';
   h+='</div>';
@@ -7403,7 +7403,7 @@ window._renderTradeMonitor=function(currentPrem,S){
   var prog=Math.max(0,Math.min(100,Math.round((currentPrem-t.stopLoss)/(t.target40-t.stopLoss)*100)));
   h+='<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">';
   h+='<div style="font-size:7px;color:#ef4444;min-width:30px">SL '+S+t.stopLoss+'</div>';
-  h+='<div style="flex:1;height:6px;background:#1e293b;border-radius:3px;overflow:hidden;position:relative">';
+  h+='<div style="flex:1;height:6px;background:#e2e8f0;border-radius:3px;overflow:hidden;position:relative">';
   h+='<div style="width:'+prog+'%;height:100%;background:linear-gradient(90deg,#ef4444,#d97706,#059669);border-radius:3px"></div>';
   h+='<div style="position:absolute;left:41.6%;top:0;width:1px;height:100%;background:#f59e0b80"></div>'; // T1 mark at 25/60 = 41.6%
   h+='</div>';
@@ -7472,13 +7472,13 @@ window._loadSwingAnalysis=function(symbol,region){
   var reg=region||'IN';
   window._activeOptionsSym=sym;window._activeOptionsReg=reg;
   
-  el.innerHTML='<div style="padding:40px;text-align:center;background:#0A0F1C;border-radius:16px"><div style="display:inline-block;width:20px;height:20px;border:3px solid #8b5cf6;border-top-color:transparent;border-radius:50%;animation:spin .5s linear infinite"></div><div style="font-size:12px;color:#8b5cf6;margin-top:10px;font-weight:800">Loading '+sym+' Swing Analysis...</div></div>';
+  el.innerHTML='<div style="padding:40px;text-align:center;background:#f1f5f9;border-radius:16px"><div style="display:inline-block;width:20px;height:20px;border:3px solid #8b5cf6;border-top-color:transparent;border-radius:50%;animation:spin .5s linear infinite"></div><div style="font-size:12px;color:#8b5cf6;margin-top:10px;font-weight:800">Loading '+sym+' Swing Analysis...</div></div>';
   
   fetch('/api/swing-analysis?symbol='+encodeURIComponent(sym)+'&region='+encodeURIComponent(reg))
     .then(function(r){return r.json()})
     .then(function(d){
       if(!d||!d.success){
-        el.innerHTML='<div style="text-align:center;padding:30px;background:#0A0F1C;border-radius:16px"><div style="font-size:14px;color:#ef4444;margin-bottom:8px">Cannot load swing data</div><div style="font-size:10px;color:#94a3b8;margin-bottom:12px">'+(d&&d.error?d.error:'API error')+'</div><button onclick="window._retryLast()" style="padding:8px 20px;border-radius:8px;background:#8b5cf6;color:#fff;border:none;cursor:pointer;font-size:11px;font-weight:700">🔄 Retry</button></div>';
+        el.innerHTML='<div style="text-align:center;padding:30px;background:#f1f5f9;border-radius:16px"><div style="font-size:14px;color:#ef4444;margin-bottom:8px">Cannot load swing data</div><div style="font-size:10px;color:#94a3b8;margin-bottom:12px">'+(d&&d.error?d.error:'API error')+'</div><button onclick="window._retryLast()" style="padding:8px 20px;border-radius:8px;background:#8b5cf6;color:#fff;border:none;cursor:pointer;font-size:11px;font-weight:700">🔄 Retry</button></div>';
         return;
       }
       window._renderSwingCard(d,sym);
@@ -7493,7 +7493,7 @@ window._loadSwingAnalysis=function(symbol,region){
         }else{clearInterval(window._swingRefreshTimer);window._swingRefreshTimer=null}
       },60000);
     }).catch(function(e){
-      el.innerHTML='<div style="text-align:center;padding:30px;background:#0A0F1C;border-radius:16px"><div style="font-size:14px;color:#ef4444;margin-bottom:8px">Cannot connect to server</div><div style="font-size:10px;color:#94a3b8;margin-bottom:12px">'+(e.message||'Network error')+'</div><button onclick="window._retryLast()" style="padding:8px 20px;border-radius:8px;background:#8b5cf6;color:#fff;border:none;cursor:pointer;font-size:11px;font-weight:700">🔄 Retry</button></div>';
+      el.innerHTML='<div style="text-align:center;padding:30px;background:#f1f5f9;border-radius:16px"><div style="font-size:14px;color:#ef4444;margin-bottom:8px">Cannot connect to server</div><div style="font-size:10px;color:#94a3b8;margin-bottom:12px">'+(e.message||'Network error')+'</div><button onclick="window._retryLast()" style="padding:8px 20px;border-radius:8px;background:#8b5cf6;color:#fff;border:none;cursor:pointer;font-size:11px;font-weight:700">🔄 Retry</button></div>';
     });
 };
 
@@ -7546,7 +7546,7 @@ window._renderSwingCard=function(d,sym){
     h+='<div style="text-align:left;max-width:280px;margin:0 auto 12px">';
     why.forEach(function(r){h+='<div style="font-size:13px;padding:4px 0;color:'+(r.pass?'#059669':'#94a3b8')+'">'+(r.pass?'✔':'✗')+' '+r.label+'</div>'});
     h+='</div>';
-    h+='<div style="text-align:center;padding:12px;border-radius:10px;background:#1e293b"><div style="font-size:9px;color:#64748b;margin-bottom:4px">WATCHING FOR</div><div style="font-size:24px;font-weight:900;color:#f59e0b;font-family:JetBrains Mono">'+S+L(d.entry_level)+'</div><div style="font-size:8px;color:#64748b;margin-top:4px">'+d.trend+' + Volume confirmation</div></div>';
+    h+='<div style="text-align:center;padding:12px;border-radius:10px;background:#e2e8f0"><div style="font-size:9px;color:#64748b;margin-bottom:4px">WATCHING FOR</div><div style="font-size:24px;font-weight:900;color:#f59e0b;font-family:JetBrains Mono">'+S+L(d.entry_level)+'</div><div style="font-size:8px;color:#64748b;margin-top:4px">'+d.trend+' + Volume confirmation</div></div>';
     
   // ─── BUY / SELL ───
   }else{
@@ -7562,7 +7562,7 @@ window._renderSwingCard=function(d,sym){
     h+='</div>';
     
     // Target / SL
-    h+='<div style="text-align:center;padding:12px;border-radius:10px;background:#1e293b;margin-bottom:10px"><div style="display:flex;justify-content:center;gap:16px;flex-wrap:wrap">';
+    h+='<div style="text-align:center;padding:12px;border-radius:10px;background:#e2e8f0;margin-bottom:10px"><div style="display:flex;justify-content:center;gap:16px;flex-wrap:wrap">';
     h+='<div><div style="font-size:7px;color:#059669;font-weight:700">TARGET (8%)</div><div style="font-size:16px;font-weight:900;color:#059669;font-family:JetBrains Mono">'+S+L(d.target)+'</div></div>';
     h+='<div style="width:1px;background:#334155"></div>';
     h+='<div><div style="font-size:7px;color:#ef4444;font-weight:700">STOP LOSS (5%)</div><div style="font-size:16px;font-weight:900;color:#ef4444;font-family:JetBrains Mono">'+S+L(d.stop_loss)+'</div></div>';
@@ -7582,24 +7582,24 @@ window._renderSwingCard=function(d,sym){
   
   // ─── TECHNICAL LEVELS ───
   h+='<div style="max-width:480px;margin:10px auto;display:flex;gap:6px">';
-  h+='<div style="flex:1;padding:8px;border-radius:8px;background:#0F172A;border:1px solid #1e293b;text-align:center"><div style="font-size:7px;color:#059669;font-weight:700">EMA 20</div><div style="font-size:14px;font-weight:900;color:#059669;font-family:JetBrains Mono">'+S+L(d.ema20)+'</div></div>';
-  h+='<div style="flex:1;padding:8px;border-radius:8px;background:#0F172A;border:1px solid #1e293b;text-align:center"><div style="font-size:7px;color:#3b82f6;font-weight:700">EMA 50</div><div style="font-size:14px;font-weight:900;color:#3b82f6;font-family:JetBrains Mono">'+S+L(d.ema50)+'</div></div>';
-  h+='<div style="flex:1;padding:8px;border-radius:8px;background:#0F172A;border:1px solid #1e293b;text-align:center"><div style="font-size:7px;color:#ef4444;font-weight:700">RESISTANCE</div><div style="font-size:14px;font-weight:900;color:#ef4444;font-family:JetBrains Mono">'+S+L(d.resistance)+'</div></div>';
+  h+='<div style="flex:1;padding:8px;border-radius:8px;background:#f8fafc;border:1px solid #e2e8f0;text-align:center"><div style="font-size:7px;color:#059669;font-weight:700">EMA 20</div><div style="font-size:14px;font-weight:900;color:#059669;font-family:JetBrains Mono">'+S+L(d.ema20)+'</div></div>';
+  h+='<div style="flex:1;padding:8px;border-radius:8px;background:#f8fafc;border:1px solid #e2e8f0;text-align:center"><div style="font-size:7px;color:#3b82f6;font-weight:700">EMA 50</div><div style="font-size:14px;font-weight:900;color:#3b82f6;font-family:JetBrains Mono">'+S+L(d.ema50)+'</div></div>';
+  h+='<div style="flex:1;padding:8px;border-radius:8px;background:#f8fafc;border:1px solid #e2e8f0;text-align:center"><div style="font-size:7px;color:#ef4444;font-weight:700">RESISTANCE</div><div style="font-size:14px;font-weight:900;color:#ef4444;font-family:JetBrains Mono">'+S+L(d.resistance)+'</div></div>';
   h+='</div>';
   
   // ─── SWING INDICATORS ───
   h+='<div style="max-width:480px;margin:6px auto;display:flex;gap:6px;flex-wrap:wrap">';
-  h+='<div style="flex:1;min-width:90px;padding:6px;border-radius:6px;background:#0F172A;border:1px solid #1e293b;text-align:center"><div style="font-size:6px;color:#64748b">TREND</div><div style="font-size:11px;font-weight:900;color:'+(d.trend==='UPTREND'?'#059669':d.trend==='DOWNTREND'?'#ef4444':'#64748b')+'">'+d.trend+'</div></div>';
-  h+='<div style="flex:1;min-width:90px;padding:6px;border-radius:6px;background:#0F172A;border:1px solid #1e293b;text-align:center"><div style="font-size:6px;color:#64748b">RSI</div><div style="font-size:11px;font-weight:900;color:'+(d.rsi>70?'#ef4444':d.rsi<30?'#059669':'#94a3b8')+'">'+d.rsi+'</div></div>';
-  h+='<div style="flex:1;min-width:90px;padding:6px;border-radius:6px;background:#0F172A;border:1px solid #1e293b;text-align:center"><div style="font-size:6px;color:#64748b">VOLUME</div><div style="font-size:11px;font-weight:900;color:'+(d.vol_expansion?'#059669':'#64748b')+'">'+d.vol_ratio+'x</div></div>';
-  h+='<div style="flex:1;min-width:90px;padding:6px;border-radius:6px;background:#0F172A;border:1px solid #1e293b;text-align:center"><div style="font-size:6px;color:#64748b">5D CHANGE</div><div style="font-size:11px;font-weight:900;color:'+(d.price_change_5d>0?'#059669':'#ef4444')+'">'+(d.price_change_5d>0?'+':'')+d.price_change_5d+'%</div></div>';
+  h+='<div style="flex:1;min-width:90px;padding:6px;border-radius:6px;background:#f8fafc;border:1px solid #e2e8f0;text-align:center"><div style="font-size:6px;color:#64748b">TREND</div><div style="font-size:11px;font-weight:900;color:'+(d.trend==='UPTREND'?'#059669':d.trend==='DOWNTREND'?'#ef4444':'#64748b')+'">'+d.trend+'</div></div>';
+  h+='<div style="flex:1;min-width:90px;padding:6px;border-radius:6px;background:#f8fafc;border:1px solid #e2e8f0;text-align:center"><div style="font-size:6px;color:#64748b">RSI</div><div style="font-size:11px;font-weight:900;color:'+(d.rsi>70?'#ef4444':d.rsi<30?'#059669':'#94a3b8')+'">'+d.rsi+'</div></div>';
+  h+='<div style="flex:1;min-width:90px;padding:6px;border-radius:6px;background:#f8fafc;border:1px solid #e2e8f0;text-align:center"><div style="font-size:6px;color:#64748b">VOLUME</div><div style="font-size:11px;font-weight:900;color:'+(d.vol_expansion?'#059669':'#64748b')+'">'+d.vol_ratio+'x</div></div>';
+  h+='<div style="flex:1;min-width:90px;padding:6px;border-radius:6px;background:#f8fafc;border:1px solid #e2e8f0;text-align:center"><div style="font-size:6px;color:#64748b">5D CHANGE</div><div style="font-size:11px;font-weight:900;color:'+(d.price_change_5d>0?'#059669':'#ef4444')+'">'+(d.price_change_5d>0?'+':'')+d.price_change_5d+'%</div></div>';
   h+='</div>';
   
   // Refresh + timestamp
   var ts=new Date();var tsStr=ts.getHours().toString().padStart(2,'0')+':'+ts.getMinutes().toString().padStart(2,'0')+':'+ts.getSeconds().toString().padStart(2,'0');
   h+='<div style="max-width:480px;margin:8px auto;display:flex;justify-content:space-between;align-items:center">';
   h+='<div style="font-size:9px;color:#475569">Updated: '+tsStr+' · Auto-refresh 60s</div>';
-  h+='<button onclick="window._loadSwingAnalysis(\''+sym+'\',\''+d.region+'\')" style="padding:6px 16px;border-radius:8px;background:#1e293b;color:#94a3b8;border:1px solid #334155;font-size:10px;font-weight:700;cursor:pointer">🔄 Refresh</button>';
+  h+='<button onclick="window._loadSwingAnalysis(\''+sym+'\',\''+d.region+'\')" style="padding:6px 16px;border-radius:8px;background:#e2e8f0;color:#94a3b8;border:1px solid #cbd5e1;font-size:10px;font-weight:700;cursor:pointer">🔄 Refresh</button>';
   h+='</div>';
   
   // Disclaimer
@@ -7663,11 +7663,11 @@ window._loadTradeScanner=function(){
   // Render shell
   var h='<div style="max-width:520px;margin:0 auto">';
   h+='<div style="text-align:center;margin-bottom:12px">';
-  h+='<div style="font-size:16px;font-weight:900;color:#e2e8f0;font-family:Sora">🔍 TRADE SCANNER</div>';
+  h+='<div style="font-size:16px;font-weight:900;color:#1e293b;font-family:Sora">🔍 TRADE SCANNER</div>';
   h+='<div style="font-size:10px;color:#94a3b8;margin-top:4px">Scanning all tickers for high-confidence setups</div>';
   h+='</div>';
   h+='<div id="scannerResults" style="min-height:200px"><div style="text-align:center;padding:40px"><div style="display:inline-block;width:24px;height:24px;border:3px solid #3b82f6;border-top-color:transparent;border-radius:50%;animation:spin .5s linear infinite"></div><div style="font-size:11px;color:#3b82f6;margin-top:8px" id="scanProgress">Scanning 0/0...</div></div></div>';
-  h+='<div style="text-align:center;margin-top:12px"><button onclick="window._loadTradeScanner()" style="padding:8px 24px;border-radius:10px;background:#1e293b;color:#94a3b8;border:1px solid #334155;font-size:11px;font-weight:700;cursor:pointer">🔄 Rescan All</button></div>';
+  h+='<div style="text-align:center;margin-top:12px"><button onclick="window._loadTradeScanner()" style="padding:8px 24px;border-radius:10px;background:#e2e8f0;color:#94a3b8;border:1px solid #cbd5e1;font-size:11px;font-weight:700;cursor:pointer">🔄 Rescan All</button></div>';
   h+='</div>';
   el.innerHTML=h;
   
@@ -7772,20 +7772,20 @@ window._renderScanCard=function(r){
   var isUS=r.reg==='US';
   var L=function(v){return isUS?v.toLocaleString('en-US'):v.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')};
   
-  var h='<div style="margin-bottom:6px;border-radius:14px;background:#0F172A;border:1px solid '+(isReady?actionColor+'30':'#1e293b')+';overflow:hidden">';
+  var h='<div style="margin-bottom:6px;border-radius:14px;background:#f8fafc;border:1px solid '+(isReady?actionColor+'30':'#1e293b')+';overflow:hidden">';
   
   // Top row — always visible (clickable to open full view)
   h+='<div onclick="window._swingMode=false;'+(r.reg==='IN'?"window._loadQuickTrade('"+r.sym+"')":"window._loadOptionsUniversal('"+r.sym+"','US')")+'" style="display:flex;align-items:center;gap:10px;padding:10px 14px;cursor:pointer">';
   
   // Ticker + spot
-  h+='<div style="min-width:75px"><div style="font-size:14px;font-weight:900;color:#e2e8f0">'+r.sym+'</div>';
+  h+='<div style="min-width:75px"><div style="font-size:14px;font-weight:900;color:#1e293b">'+r.sym+'</div>';
   h+='<div style="font-size:10px;color:#94a3b8">Spot: '+r.S+L(r.spot)+'</div></div>';
   
   // Action + strike
   h+='<div style="flex:1;text-align:center">';
   if(isReady){
     h+='<div style="font-size:13px;font-weight:900;color:'+actionColor+'">'+r.action+'</div>';
-    h+='<div style="font-size:11px;font-weight:800;color:#e2e8f0">'+r.S+(r.strike||0)+' '+(r.type||'CE')+' @ '+r.S+((r.prem||0)>0?(r.prem||0).toFixed(isUS&&r.prem<10?2:0):'—')+'</div>';
+    h+='<div style="font-size:11px;font-weight:800;color:#1e293b">'+r.S+(r.strike||0)+' '+(r.type||'CE')+' @ '+r.S+((r.prem||0)>0?(r.prem||0).toFixed(isUS&&r.prem<10?2:0):'—')+'</div>';
   }else if(r.grade==='B'){
     h+='<div style="font-size:12px;font-weight:700;color:#d97706">WATCHING</div>';
     h+='<div style="font-size:10px;color:#64748b">'+(r.dir==='LEAN_BULL'?'↑ Leaning bullish':'↓ Leaning bearish')+'</div>';
@@ -7818,9 +7818,9 @@ window._renderScanCard=function(r){
     
     // Strike + Spot + Premium row
     h+='<div style="display:flex;gap:8px;margin-top:8px;margin-bottom:6px">';
-    h+='<div style="flex:1;padding:5px;border-radius:6px;background:#1e293b;text-align:center"><div style="font-size:8px;color:#64748b">STRIKE</div><div style="font-size:13px;font-weight:900;color:#e2e8f0;font-family:JetBrains Mono">'+r.S+L(r.strike)+'</div></div>';
-    h+='<div style="flex:1;padding:5px;border-radius:6px;background:#1e293b;text-align:center"><div style="font-size:8px;color:#64748b">PREMIUM</div><div style="font-size:13px;font-weight:900;color:#f59e0b;font-family:JetBrains Mono">'+r.S+(r.prem||0).toFixed(isUS&&(r.prem||0)<10?2:0)+'</div></div>';
-    h+='<div style="flex:1;padding:5px;border-radius:6px;background:#1e293b;text-align:center"><div style="font-size:8px;color:#64748b">LOT</div><div style="font-size:13px;font-weight:900;color:#94a3b8">'+lot+'</div></div>';
+    h+='<div style="flex:1;padding:5px;border-radius:6px;background:#e2e8f0;text-align:center"><div style="font-size:8px;color:#64748b">STRIKE</div><div style="font-size:13px;font-weight:900;color:#1e293b;font-family:JetBrains Mono">'+r.S+L(r.strike)+'</div></div>';
+    h+='<div style="flex:1;padding:5px;border-radius:6px;background:#e2e8f0;text-align:center"><div style="font-size:8px;color:#64748b">PREMIUM</div><div style="font-size:13px;font-weight:900;color:#f59e0b;font-family:JetBrains Mono">'+r.S+(r.prem||0).toFixed(isUS&&(r.prem||0)<10?2:0)+'</div></div>';
+    h+='<div style="flex:1;padding:5px;border-radius:6px;background:#e2e8f0;text-align:center"><div style="font-size:8px;color:#64748b">LOT</div><div style="font-size:13px;font-weight:900;color:#94a3b8">'+lot+'</div></div>';
     h+='</div>';
     
     // Target + SL + R:R
@@ -8035,7 +8035,7 @@ window._renderScanRibbon=function(results,S,reg){
   
   // Close button
   h+='<span style="color:#334155;margin:0 6px">│</span>';
-  h+='<span onclick="window._stopLiveScanner()" style="display:inline-block;padding:2px 8px;border-radius:4px;background:#1e293b;color:#64748b;font-size:8px;cursor:pointer;vertical-align:middle">✕</span>';
+  h+='<span onclick="window._stopLiveScanner()" style="display:inline-block;padding:2px 8px;border-radius:4px;background:#e2e8f0;color:#64748b;font-size:8px;cursor:pointer;vertical-align:middle">✕</span>';
   
   // Animate scroll for long content
   content.innerHTML=h;
@@ -8117,7 +8117,7 @@ window._renderGiftNiftyTicker=function(){
   h+='<div>';
   h+='<div style="font-size:9px;font-weight:800;color:#a855f7;letter-spacing:1px;margin-bottom:2px">GIFT NIFTY'+(d.gift_source?' ('+d.gift_source+')':'')+'</div>';
   if(d.gift_nifty>0){
-    h+='<div style="font-size:18px;font-weight:900;color:#f1f5f9;font-family:JetBrains Mono">\u20B9'+d.gift_nifty.toLocaleString()+'</div>';
+    h+='<div style="font-size:18px;font-weight:900;color:#334155;font-family:JetBrains Mono">\u20B9'+d.gift_nifty.toLocaleString()+'</div>';
   }
   h+='</div>';
   
@@ -8176,14 +8176,14 @@ window._showGiftNiftyDetail=function(){
   var gapColor=d.expected_gap_pct>=0.1?'#059669':d.expected_gap_pct<=-0.1?'#ef4444':'#94a3b8';
   var sentColor=d.overall_sentiment==='BULLISH'?'#059669':d.overall_sentiment==='BEARISH'?'#ef4444':'#d97706';
   
-  var h='<div style="max-width:520px;margin:0 auto;padding:20px;background:#0A0F1C;border-radius:16px;border:1px solid #a855f720">';
+  var h='<div style="max-width:520px;margin:0 auto;padding:20px;background:#f1f5f9;border-radius:16px;border:1px solid #a855f720">';
   h+='<div style="text-align:center;margin-bottom:12px">';
   h+='<div style="font-size:14px;font-weight:900;color:#a855f7;font-family:Sora">Pre-Market Analysis</div>';
   h+='<div style="font-size:10px;color:#94a3b8;margin-top:2px">India market is closed — here\'s what to expect at open</div>';
   h+='</div>';
   
   // Expected open
-  h+='<div style="text-align:center;padding:16px;background:#1e293b;border-radius:12px;margin-bottom:12px">';
+  h+='<div style="text-align:center;padding:16px;background:#e2e8f0;border-radius:12px;margin-bottom:12px">';
   h+='<div style="font-size:10px;color:#64748b;margin-bottom:4px">EXPECTED NIFTY OPEN</div>';
   h+='<div style="font-size:28px;font-weight:900;color:'+gapColor+';font-family:JetBrains Mono">\u20B9'+d.expected_open.toLocaleString()+'</div>';
   h+='<div style="font-size:14px;font-weight:800;color:'+gapColor+';margin-top:4px">'+d.gap_label+' '+(d.expected_gap_pct>=0?'+':'')+d.expected_gap_pct+'%</div>';
@@ -8193,11 +8193,11 @@ window._showGiftNiftyDetail=function(){
   // Analysis points
   if(d.analysis&&d.analysis.length>0){
     h+='<div style="margin-bottom:12px">';
-    h+='<div style="font-size:10px;font-weight:800;color:#e2e8f0;margin-bottom:6px">Global Cues Analysis:</div>';
+    h+='<div style="font-size:10px;font-weight:800;color:#1e293b;margin-bottom:6px">Global Cues Analysis:</div>';
     d.analysis.forEach(function(point){
       var pColor=point.indexOf('bullish')>=0||point.indexOf('positive')>=0||point.indexOf('calm')>=0?'#059669':
                  point.indexOf('bearish')>=0||point.indexOf('negative')>=0||point.indexOf('fear')>=0?'#ef4444':'#94a3b8';
-      h+='<div style="padding:6px 10px;margin-bottom:4px;border-radius:8px;background:#1e293b;font-size:10px;color:'+pColor+'">'+point+'</div>';
+      h+='<div style="padding:6px 10px;margin-bottom:4px;border-radius:8px;background:#e2e8f0;font-size:10px;color:'+pColor+'">'+point+'</div>';
     });
     h+='</div>';
   }
@@ -8316,7 +8316,7 @@ window._renderUSPremarketTicker=function(){
   var h='<div style="display:flex;align-items:center;justify-content:space-between">';
   h+='<div>';
   h+='<div style="font-size:9px;font-weight:800;color:#3b82f6;letter-spacing:1px;margin-bottom:2px">US FUTURES PRE-MARKET</div>';
-  if(d.es_futures>0)h+='<div style="font-size:18px;font-weight:900;color:#f1f5f9;font-family:JetBrains Mono">ES $'+d.es_futures.toLocaleString()+'</div>';
+  if(d.es_futures>0)h+='<div style="font-size:18px;font-weight:900;color:#334155;font-family:JetBrains Mono">ES $'+d.es_futures.toLocaleString()+'</div>';
   h+='</div>';
   
   h+='<div style="text-align:center">';
@@ -8370,13 +8370,13 @@ window._showUSPremarketDetail=function(){
   var gapColor=d.expected_gap_pct>=0.1?'#059669':d.expected_gap_pct<=-0.1?'#ef4444':'#94a3b8';
   var sentColor=d.overall_sentiment==='BULLISH'?'#059669':d.overall_sentiment==='BEARISH'?'#ef4444':'#d97706';
   
-  var h='<div style="max-width:520px;margin:0 auto;padding:20px;background:#0A0F1C;border-radius:16px;border:1px solid #3b82f620">';
+  var h='<div style="max-width:520px;margin:0 auto;padding:20px;background:#f1f5f9;border-radius:16px;border:1px solid #3b82f620">';
   h+='<div style="text-align:center;margin-bottom:12px">';
   h+='<div style="font-size:14px;font-weight:900;color:#3b82f6;font-family:Sora">US Pre-Market Analysis</div>';
   h+='<div style="font-size:10px;color:#94a3b8;margin-top:2px">US market is closed \u2014 futures indicate next session direction</div>';
   h+='</div>';
   
-  h+='<div style="text-align:center;padding:16px;background:#1e293b;border-radius:12px;margin-bottom:12px">';
+  h+='<div style="text-align:center;padding:16px;background:#e2e8f0;border-radius:12px;margin-bottom:12px">';
   h+='<div style="font-size:10px;color:#64748b;margin-bottom:4px">EXPECTED SPY OPEN</div>';
   h+='<div style="font-size:28px;font-weight:900;color:'+gapColor+';font-family:JetBrains Mono">$'+d.expected_spy_open.toLocaleString()+'</div>';
   h+='<div style="font-size:14px;font-weight:800;color:'+gapColor+';margin-top:4px">'+d.gap_label+' '+(d.expected_gap_pct>=0?'+':'')+d.expected_gap_pct+'%</div>';
@@ -8390,7 +8390,7 @@ window._showUSPremarketDetail=function(){
     if(c&&c.price){
       var cc=c.change>=0?'#059669':'#ef4444';
       var labels={sp500_fut:'S&P 500',nasdaq_fut:'NASDAQ',dow_fut:'DOW',russell_fut:'RUSSELL'};
-      h+='<div style="flex:1;padding:8px;background:#1e293b;border-radius:8px;text-align:center">';
+      h+='<div style="flex:1;padding:8px;background:#e2e8f0;border-radius:8px;text-align:center">';
       h+='<div style="font-size:7px;color:#64748b">'+labels[k]+'</div>';
       h+='<div style="font-size:12px;font-weight:900;color:'+cc+'">'+( c.change>=0?'+':'')+c.change+'%</div>';
       h+='</div>';
@@ -8400,11 +8400,11 @@ window._showUSPremarketDetail=function(){
   
   if(d.analysis&&d.analysis.length>0){
     h+='<div style="margin-bottom:12px">';
-    h+='<div style="font-size:10px;font-weight:800;color:#e2e8f0;margin-bottom:6px">Market Signals:</div>';
+    h+='<div style="font-size:10px;font-weight:800;color:#1e293b;margin-bottom:6px">Market Signals:</div>';
     d.analysis.forEach(function(point){
       var pColor=point.indexOf('bullish')>=0||point.indexOf('strong')>=0||point.indexOf('good')>=0?'#059669':
                  point.indexOf('bearish')>=0||point.indexOf('weak')>=0||point.indexOf('fear')>=0||point.indexOf('pressure')>=0?'#ef4444':'#94a3b8';
-      h+='<div style="padding:6px 10px;margin-bottom:4px;border-radius:8px;background:#1e293b;font-size:10px;color:'+pColor+'">'+point+'</div>';
+      h+='<div style="padding:6px 10px;margin-bottom:4px;border-radius:8px;background:#e2e8f0;font-size:10px;color:'+pColor+'">'+point+'</div>';
     });
     h+='</div>';
   }
@@ -9389,7 +9389,7 @@ window._renderBottomNav=function(){
     h+='<div onclick="'+loadFn+'" style="flex-shrink:0;padding:5px 10px;border-radius:10px;background:'+col+'10;border:'+borderStyle+';cursor:pointer;text-align:center'+pulse+fadingOpacity+'">';
     h+='<div style="display:flex;align-items:center;gap:3px;justify-content:center">';
     h+='<span style="font-size:6px;padding:1px 3px;border-radius:3px;background:'+atCol+'20;color:'+atCol+';font-weight:900;letter-spacing:0.5px">'+at+'</span>';
-    h+='<span style="font-size:11px;font-weight:900;color:#e2e8f0;font-family:Sora">'+r.label+'</span>';
+    h+='<span style="font-size:11px;font-weight:900;color:#1e293b;font-family:Sora">'+r.label+'</span>';
     h+='</div>';
     h+='<div style="font-size:9px;font-weight:800;color:'+col+'">'+r.action+' '+arrow+'</div>';
     // P&L display on pill
@@ -9548,7 +9548,7 @@ window._loadCatalystScanner=function(){
   
   el.innerHTML='<div style="max-width:520px;margin:0 auto;text-align:center;padding:40px">'
     +'<div style="display:inline-block;width:30px;height:30px;border:3px solid #f59e0b;border-top-color:transparent;border-radius:50%;animation:spin 1s linear infinite;margin-bottom:12px"></div>'
-    +'<div style="font-size:16px;font-weight:900;color:#e2e8f0;font-family:Sora">🔥 Scanning Catalysts...</div>'
+    +'<div style="font-size:16px;font-weight:900;color:#1e293b;font-family:Sora">🔥 Scanning Catalysts...</div>'
     +'<div style="font-size:10px;color:#94a3b8;margin-top:4px">Fetching news, earnings, gaps, volume for 20 tickers</div>'
     +'</div>';
   
@@ -9591,12 +9591,12 @@ window._loadCatalystScanner=function(){
       var dirIcon=c.direction==='BULLISH'?'↑':c.direction==='BEARISH'?'↓':'—';
       var loadFn=reg==='IN'?"window._loadQuickTrade('"+c.sym+"')":"window._loadOptionsUniversal('"+c.sym+"','US')";
       
-      h+='<div style="padding:12px;border-radius:12px;background:#0F172A;border:1px solid '+urgCol+'30;margin-bottom:8px">';
+      h+='<div style="padding:12px;border-radius:12px;background:#f8fafc;border:1px solid '+urgCol+'30;margin-bottom:8px">';
       
       // Row 1: Symbol + Direction + Urgency + Score
       h+='<div style="display:flex;justify-content:space-between;align-items:center">';
       h+='<div style="display:flex;align-items:center;gap:8px">';
-      h+='<span style="font-size:15px;font-weight:900;color:#e2e8f0;font-family:Sora">'+c.sym+'</span>';
+      h+='<span style="font-size:15px;font-weight:900;color:#1e293b;font-family:Sora">'+c.sym+'</span>';
       if(c.spot>0)h+='<span style="font-size:10px;color:#64748b;font-family:JetBrains Mono">'+S+c.spot.toLocaleString()+'</span>';
       h+='<span style="font-size:10px;font-weight:800;color:'+dirCol+'">'+c.direction+' '+dirIcon+'</span>';
       h+='</div>';
@@ -9657,11 +9657,11 @@ window._loadCatalystScanner=function(){
       // Trade details — strike, premium, target, SL
       var tr=c.trade;
       if(tr&&tr.premium>0){
-        h+='<div style="margin-top:8px;padding:8px;border-radius:8px;background:#111827;border:1px solid '+(c.direction==='BULLISH'?'#059669':'#ef4444')+'20">';
+        h+='<div style="margin-top:8px;padding:8px;border-radius:8px;background:#f1f5f9;border:1px solid '+(c.direction==='BULLISH'?'#059669':'#ef4444')+'20">';
         h+='<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr 1fr;gap:4px;text-align:center">';
         h+='<div><div style="font-size:6px;color:#64748b">ACTION</div><div style="font-size:10px;font-weight:900;color:'+(c.direction==='BULLISH'?'#059669':'#ef4444')+'">'+tr.action+'</div></div>';
         h+='<div><div style="font-size:6px;color:#64748b">STRIKE</div><div style="font-size:10px;font-weight:900;color:#f59e0b;font-family:JetBrains Mono">'+S+tr.strike+'</div><div style="font-size:6px;color:#3b82f6">'+tr.type+'</div></div>';
-        h+='<div><div style="font-size:6px;color:#64748b">PREMIUM</div><div style="font-size:10px;font-weight:900;color:#e2e8f0;font-family:JetBrains Mono">'+S+tr.premium+'</div><div style="font-size:6px;color:#64748b">Lot:'+tr.lot+'</div></div>';
+        h+='<div><div style="font-size:6px;color:#64748b">PREMIUM</div><div style="font-size:10px;font-weight:900;color:#1e293b;font-family:JetBrains Mono">'+S+tr.premium+'</div><div style="font-size:6px;color:#64748b">Lot:'+tr.lot+'</div></div>';
         h+='<div><div style="font-size:6px;color:#059669">TARGET</div><div style="font-size:10px;font-weight:900;color:#059669;font-family:JetBrains Mono">'+S+tr.target+'</div></div>';
         h+='<div><div style="font-size:6px;color:#ef4444">SL</div><div style="font-size:10px;font-weight:900;color:#ef4444;font-family:JetBrains Mono">'+S+tr.sl+'</div><div style="font-size:6px;color:#64748b">R:R 1:'+tr.rr+'</div></div>';
         h+='</div>';
@@ -9675,8 +9675,8 @@ window._loadCatalystScanner=function(){
     
     // Refresh + back buttons
     h+='<div style="display:flex;gap:8px;justify-content:center;margin-top:12px">';
-    h+='<button onclick="window._loadCatalystScanner()" style="padding:8px 20px;border-radius:8px;background:#1e293b;color:#f59e0b;border:1px solid #f59e0b30;font-size:10px;font-weight:700;cursor:pointer">🔄 Refresh</button>';
-    h+='<button onclick="window._showBuyNowDashboard()" style="padding:8px 20px;border-radius:8px;background:#1e293b;color:#059669;border:1px solid #05966930;font-size:10px;font-weight:700;cursor:pointer">← Back to BUY NOW</button>';
+    h+='<button onclick="window._loadCatalystScanner()" style="padding:8px 20px;border-radius:8px;background:#e2e8f0;color:#f59e0b;border:1px solid #f59e0b30;font-size:10px;font-weight:700;cursor:pointer">🔄 Refresh</button>';
+    h+='<button onclick="window._showBuyNowDashboard()" style="padding:8px 20px;border-radius:8px;background:#e2e8f0;color:#059669;border:1px solid #05966930;font-size:10px;font-weight:700;cursor:pointer">← Back to BUY NOW</button>';
     h+='</div>';
     h+='</div>';
     
@@ -10228,9 +10228,9 @@ _renderQuickTrade=function(d,sym){
   var ih='';
   
   // ─── Institutional Enhancements Panel ───
-  ih+='<div id="instEnhPanel" style="max-width:520px;margin:10px auto 0;background:#0A0F1C;border-radius:16px;border:1px solid #1e293b;overflow:hidden">';
-  ih+='<div onclick="var p=document.getElementById(\'instEnhBody\');p.style.display=p.style.display===\'none\'?\'block\':\'none\';this.querySelector(\'span\').textContent=p.style.display===\'none\'?\'+\':\'-\'" style="padding:10px 16px;background:#111827;cursor:pointer;display:flex;justify-content:space-between;align-items:center">';
-  ih+='<div style="font-size:11px;font-weight:900;color:#e2e8f0;font-family:Sora">🏛️ INSTITUTIONAL ANALYTICS</div>';
+  ih+='<div id="instEnhPanel" style="max-width:520px;margin:10px auto 0;background:#f1f5f9;border-radius:16px;border:1px solid #e2e8f0;overflow:hidden">';
+  ih+='<div onclick="var p=document.getElementById(\'instEnhBody\');p.style.display=p.style.display===\'none\'?\'block\':\'none\';this.querySelector(\'span\').textContent=p.style.display===\'none\'?\'+\':\'-\'" style="padding:10px 16px;background:#f1f5f9;cursor:pointer;display:flex;justify-content:space-between;align-items:center">';
+  ih+='<div style="font-size:11px;font-weight:900;color:#1e293b;font-family:Sora">🏛️ INSTITUTIONAL ANALYTICS</div>';
   ih+='<span style="color:#64748b;font-size:14px;font-weight:900">+</span></div>';
   ih+='<div id="instEnhBody" style="display:none;padding:12px 16px">';
   
@@ -10239,9 +10239,9 @@ _renderQuickTrade=function(d,sym){
     ih+='<div style="margin-bottom:12px">';
     ih+='<div style="font-size:9px;font-weight:800;color:#a855f7;letter-spacing:1px;margin-bottom:6px">📊 SESSION PROFILE</div>';
     ih+='<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:6px">';
-    ih+='<div style="padding:6px;border-radius:8px;background:#1e293b;text-align:center"><div style="font-size:7px;color:#64748b">ORB 15min</div><div style="font-size:9px;font-weight:800;color:#e2e8f0">'+S2+Math.round(sp2.orb15.low)+' - '+S2+Math.round(sp2.orb15.high)+'</div><div style="font-size:7px;color:'+(sp2.orbSignal==='BULLISH'?'#059669':sp2.orbSignal==='BEARISH'?'#ef4444':'#64748b')+'">'+sp2.orbBreakout.replace(/_/g,' ')+'</div></div>';
-    ih+='<div style="padding:6px;border-radius:8px;background:#1e293b;text-align:center"><div style="font-size:7px;color:#64748b">IB (60min)</div><div style="font-size:9px;font-weight:800;color:#e2e8f0">'+S2+Math.round(sp2.ib.low)+' - '+S2+Math.round(sp2.ib.high)+'</div><div style="font-size:7px;color:'+(sp2.ibType==='NARROW'?'#059669':'#d97706')+'">'+sp2.ibType+' → '+(sp2.ibType==='NARROW'?'Trend':'Range')+'</div></div>';
-    ih+='<div style="padding:6px;border-radius:8px;background:#1e293b;text-align:center"><div style="font-size:7px;color:#64748b">GAP</div><div style="font-size:9px;font-weight:800;color:'+(sp2.gap.direction==='UP'?'#059669':sp2.gap.direction==='DOWN'?'#ef4444':'#64748b')+'">'+(sp2.gap.pct>=0?'+':'')+sp2.gap.pct+'%</div><div style="font-size:7px;color:#94a3b8">'+sp2.gap.type.replace(/_/g,' ')+'</div></div>';
+    ih+='<div style="padding:6px;border-radius:8px;background:#e2e8f0;text-align:center"><div style="font-size:7px;color:#64748b">ORB 15min</div><div style="font-size:9px;font-weight:800;color:#1e293b">'+S2+Math.round(sp2.orb15.low)+' - '+S2+Math.round(sp2.orb15.high)+'</div><div style="font-size:7px;color:'+(sp2.orbSignal==='BULLISH'?'#059669':sp2.orbSignal==='BEARISH'?'#ef4444':'#64748b')+'">'+sp2.orbBreakout.replace(/_/g,' ')+'</div></div>';
+    ih+='<div style="padding:6px;border-radius:8px;background:#e2e8f0;text-align:center"><div style="font-size:7px;color:#64748b">IB (60min)</div><div style="font-size:9px;font-weight:800;color:#1e293b">'+S2+Math.round(sp2.ib.low)+' - '+S2+Math.round(sp2.ib.high)+'</div><div style="font-size:7px;color:'+(sp2.ibType==='NARROW'?'#059669':'#d97706')+'">'+sp2.ibType+' → '+(sp2.ibType==='NARROW'?'Trend':'Range')+'</div></div>';
+    ih+='<div style="padding:6px;border-radius:8px;background:#e2e8f0;text-align:center"><div style="font-size:7px;color:#64748b">GAP</div><div style="font-size:9px;font-weight:800;color:'+(sp2.gap.direction==='UP'?'#059669':sp2.gap.direction==='DOWN'?'#ef4444':'#64748b')+'">'+(sp2.gap.pct>=0?'+':'')+sp2.gap.pct+'%</div><div style="font-size:7px;color:#94a3b8">'+sp2.gap.type.replace(/_/g,' ')+'</div></div>';
     ih+='</div>';
     // Session type + time filters
     ih+='<div style="display:flex;gap:4px;flex-wrap:wrap">';
@@ -10274,9 +10274,9 @@ _renderQuickTrade=function(d,sym){
     ih+='<div style="margin-bottom:12px">';
     ih+='<div style="font-size:9px;font-weight:800;color:#d97706;letter-spacing:1px;margin-bottom:6px">🌊 VOLATILITY</div>';
     ih+='<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:4px">';
-    ih+='<div style="padding:6px;border-radius:8px;background:#1e293b;text-align:center"><div style="font-size:7px;color:#64748b">ATR</div><div style="font-size:10px;font-weight:800;color:#e2e8f0">'+S2+vm2.atr+'</div><div style="font-size:7px;color:#94a3b8">'+vm2.atrPct+'%</div></div>';
-    ih+='<div style="padding:6px;border-radius:8px;background:#1e293b;text-align:center"><div style="font-size:7px;color:#64748b">Expected Move</div><div style="font-size:10px;font-weight:800;color:#e2e8f0">±'+S2+Math.round(vm2.expectedMove)+'</div><div style="font-size:7px;color:#94a3b8">±'+vm2.expectedMovePct+'%</div></div>';
-    ih+='<div style="padding:6px;border-radius:8px;background:#1e293b;text-align:center"><div style="font-size:7px;color:#64748b">IV vs RV</div><div style="font-size:10px;font-weight:800;color:'+vm2.ivRvColor+'">'+(vm2.ivRvSpread>0?'+':'')+vm2.ivRvSpread+'%</div><div style="font-size:7px;color:'+vm2.ivRvColor+'">'+vm2.ivRvSignal.replace(/_/g,' ')+'</div></div>';
+    ih+='<div style="padding:6px;border-radius:8px;background:#e2e8f0;text-align:center"><div style="font-size:7px;color:#64748b">ATR</div><div style="font-size:10px;font-weight:800;color:#1e293b">'+S2+vm2.atr+'</div><div style="font-size:7px;color:#94a3b8">'+vm2.atrPct+'%</div></div>';
+    ih+='<div style="padding:6px;border-radius:8px;background:#e2e8f0;text-align:center"><div style="font-size:7px;color:#64748b">Expected Move</div><div style="font-size:10px;font-weight:800;color:#1e293b">±'+S2+Math.round(vm2.expectedMove)+'</div><div style="font-size:7px;color:#94a3b8">±'+vm2.expectedMovePct+'%</div></div>';
+    ih+='<div style="padding:6px;border-radius:8px;background:#e2e8f0;text-align:center"><div style="font-size:7px;color:#64748b">IV vs RV</div><div style="font-size:10px;font-weight:800;color:'+vm2.ivRvColor+'">'+(vm2.ivRvSpread>0?'+':'')+vm2.ivRvSpread+'%</div><div style="font-size:7px;color:'+vm2.ivRvColor+'">'+vm2.ivRvSignal.replace(/_/g,' ')+'</div></div>';
     ih+='</div>';
     if(vm2.squeeze!==undefined){
       ih+='<div style="font-size:8px;padding:4px 8px;border-radius:6px;background:'+vm2.squeezeColor+'15;color:'+vm2.squeezeColor+';font-weight:700">'+(vm2.squeeze?'🔥 KELTNER SQUEEZE — BB inside KC. '+(vm2.squeezeDirection||'')+' breakout expected':'✅ Normal volatility — no squeeze')+'</div>';
@@ -10290,9 +10290,9 @@ _renderQuickTrade=function(d,sym){
     ih+='<div style="margin-bottom:12px">';
     ih+='<div style="font-size:9px;font-weight:800;color:#059669;letter-spacing:1px;margin-bottom:6px">💧 LIQUIDITY</div>';
     ih+='<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:4px">';
-    ih+='<div style="padding:6px;border-radius:8px;background:#1e293b;text-align:center"><div style="font-size:7px;color:#64748b">Spread</div><div style="font-size:10px;font-weight:800;color:'+la2.spreadColor+'">'+la2.avgSpreadPct+'%</div><div style="font-size:7px;color:'+la2.spreadColor+'">'+la2.spreadQuality+'</div></div>';
-    ih+='<div style="padding:6px;border-radius:8px;background:#1e293b;text-align:center"><div style="font-size:7px;color:#64748b">Slippage</div><div style="font-size:10px;font-weight:800;color:'+la2.slippageColor+'">'+S2+la2.estimatedSlippage+'</div><div style="font-size:7px;color:'+la2.slippageColor+'">'+la2.slippageLabel+'</div></div>';
-    ih+='<div style="padding:6px;border-radius:8px;background:#1e293b;text-align:center"><div style="font-size:7px;color:#64748b">OI Imbalance</div><div style="font-size:10px;font-weight:800;color:'+la2.oiImbalanceColor+'">'+(la2.oiImbalance>0?'+':'')+la2.oiImbalance+'%</div><div style="font-size:7px;color:'+la2.oiImbalanceColor+'">'+la2.oiImbalanceLabel+'</div></div>';
+    ih+='<div style="padding:6px;border-radius:8px;background:#e2e8f0;text-align:center"><div style="font-size:7px;color:#64748b">Spread</div><div style="font-size:10px;font-weight:800;color:'+la2.spreadColor+'">'+la2.avgSpreadPct+'%</div><div style="font-size:7px;color:'+la2.spreadColor+'">'+la2.spreadQuality+'</div></div>';
+    ih+='<div style="padding:6px;border-radius:8px;background:#e2e8f0;text-align:center"><div style="font-size:7px;color:#64748b">Slippage</div><div style="font-size:10px;font-weight:800;color:'+la2.slippageColor+'">'+S2+la2.estimatedSlippage+'</div><div style="font-size:7px;color:'+la2.slippageColor+'">'+la2.slippageLabel+'</div></div>';
+    ih+='<div style="padding:6px;border-radius:8px;background:#e2e8f0;text-align:center"><div style="font-size:7px;color:#64748b">OI Imbalance</div><div style="font-size:10px;font-weight:800;color:'+la2.oiImbalanceColor+'">'+(la2.oiImbalance>0?'+':'')+la2.oiImbalance+'%</div><div style="font-size:7px;color:'+la2.oiImbalanceColor+'">'+la2.oiImbalanceLabel+'</div></div>';
     ih+='</div>';
     ih+='</div>';
   }
@@ -10304,10 +10304,10 @@ _renderQuickTrade=function(d,sym){
     ih+='<div style="margin-bottom:8px">';
     ih+='<div style="font-size:9px;font-weight:800;color:#ef4444;letter-spacing:1px;margin-bottom:6px">🛡️ PORTFOLIO RISK</div>';
     ih+='<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:4px;margin-bottom:4px">';
-    ih+='<div style="padding:4px;border-radius:6px;background:#1e293b;text-align:center"><div style="font-size:6px;color:#64748b">Trades</div><div style="font-size:10px;font-weight:800;color:#e2e8f0">'+_prTrades.length+'/'+(pr2.maxConcurrentTrades||3)+'</div></div>';
-    ih+='<div style="padding:4px;border-radius:6px;background:#1e293b;text-align:center"><div style="font-size:6px;color:#64748b">Exposure</div><div style="font-size:10px;font-weight:800;color:'+((pr2.exposurePct||0)>20?'#ef4444':'#059669')+'">'+(pr2.exposurePct||0)+'%</div></div>';
-    ih+='<div style="padding:4px;border-radius:6px;background:#1e293b;text-align:center"><div style="font-size:6px;color:#64748b">Net Δ</div><div style="font-size:10px;font-weight:800;color:#e2e8f0">'+(pr2.netDelta||0)+'</div></div>';
-    ih+='<div style="padding:4px;border-radius:6px;background:#1e293b;text-align:center"><div style="font-size:6px;color:#64748b">Day P&L</div><div style="font-size:10px;font-weight:800;color:'+((pr2.dailyPnL||0)>=0?'#059669':'#ef4444')+'">'+S2+Math.round(pr2.dailyPnL||0)+'</div></div>';
+    ih+='<div style="padding:4px;border-radius:6px;background:#e2e8f0;text-align:center"><div style="font-size:6px;color:#64748b">Trades</div><div style="font-size:10px;font-weight:800;color:#1e293b">'+_prTrades.length+'/'+(pr2.maxConcurrentTrades||3)+'</div></div>';
+    ih+='<div style="padding:4px;border-radius:6px;background:#e2e8f0;text-align:center"><div style="font-size:6px;color:#64748b">Exposure</div><div style="font-size:10px;font-weight:800;color:'+((pr2.exposurePct||0)>20?'#ef4444':'#059669')+'">'+(pr2.exposurePct||0)+'%</div></div>';
+    ih+='<div style="padding:4px;border-radius:6px;background:#e2e8f0;text-align:center"><div style="font-size:6px;color:#64748b">Net Δ</div><div style="font-size:10px;font-weight:800;color:#1e293b">'+(pr2.netDelta||0)+'</div></div>';
+    ih+='<div style="padding:4px;border-radius:6px;background:#e2e8f0;text-align:center"><div style="font-size:6px;color:#64748b">Day P&L</div><div style="font-size:10px;font-weight:800;color:'+((pr2.dailyPnL||0)>=0?'#059669':'#ef4444')+'">'+S2+Math.round(pr2.dailyPnL||0)+'</div></div>';
     ih+='</div>';
     _prAlerts.forEach(function(a){
       ih+='<div style="font-size:7px;padding:3px 8px;border-radius:4px;background:'+(a.color||'#64748b')+'15;color:'+(a.color||'#64748b')+';font-weight:700;margin-bottom:2px">'+(a.msg||'')+'</div>';

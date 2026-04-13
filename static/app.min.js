@@ -7724,7 +7724,7 @@ if(window._deMode==='options'){
   if(_optIdx.indexOf(sym.toUpperCase())>=0){window._loadOptionsDecide(sym.toUpperCase());return}
   // If not an index, show message
   var r=document.getElementById('deResult');
-  if(r)r.innerHTML='<div style="text-align:center;padding:30px;background:#0A0F1C;border-radius:16px"><div style="font-size:14px;font-weight:900;color:#ef4444;font-family:Sora">'+sym+' is a stock — Options Engine is for indices only</div><div style="font-size:10px;color:#64748b;margin-top:8px">Use NIFTY, BANKNIFTY, SENSEX, or FINNIFTY for options analysis.<br>Switch to 📊 Investor mode for stock analysis.</div></div>';
+  if(r)r.innerHTML='<div style="text-align:center;padding:30px;background:#f1f5f9;border-radius:16px"><div style="font-size:14px;font-weight:900;color:#ef4444;font-family:Sora">'+sym+' is a stock — Options Engine is for indices only</div><div style="font-size:10px;color:#64748b;margin-top:8px">Use NIFTY, BANKNIFTY, SENSEX, or FINNIFTY for options analysis.<br>Switch to 📊 Investor mode for stock analysis.</div></div>';
   return;
 }
 var el=document.getElementById('deResult');if(!el)return;
