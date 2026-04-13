@@ -25492,6 +25492,7 @@ _catalyst_cache = {"ts": 0, "data": None, "region": ""}
 async def catalyst_scan(region: str = "IN"):
     """Scan tickers for news catalysts, earnings, gaps, volume surges"""
     import asyncio
+    global _catalyst_cache
     
     now = time.time()
     if _catalyst_cache["data"] and now - _catalyst_cache["ts"] < 300 and _catalyst_cache["region"] == region:
@@ -25662,8 +25663,18 @@ async def catalyst_scan(region: str = "IN"):
         except Exception as e:
             return {"sym": sym, "catalysts": [], "score": 0, "direction": "NEUTRAL", "news": [], "urgency": "LOW", "error": str(e)}
     
-    # Run in parallel
-    results = await loop.run_in_executor(None, lambda: [_scan_one(t) for t in tickers])
+    # Run in parallel with ThreadPoolExecutor
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    results = []
+    try:
+        with ThreadPoolExecutor(max_workers=5) as executor:
+            futures = {executor.submit(_scan_one, t): t for t in tickers}
+            for future in as_completed(futures, timeout=45):
+                try:
+                    r = future.result(timeout=10)
+                    if r: results.append(r)
+                except: pass
+    except: pass
     
     # Sort by score, filter out empty
     results = [r for r in results if r["score"] > 0]
