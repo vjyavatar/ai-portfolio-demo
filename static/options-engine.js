@@ -9588,7 +9588,7 @@ window._loadCatalystScanner=function(){
         if(shownNews.length>0){
           shownNews.forEach(function(n){
             var nc=n.sentiment==='bullish'?'#059669':'#ef4444';
-            var newsLink=n.link?'onclick="window.open(\''+n.link.replace(/'/g,"\\'")+'\',\'_blank\')" style="cursor:pointer;text-decoration:underline dotted"':'';
+            var newsLink=n.link?'onclick="event.stopPropagation();window.open(\''+n.link.replace(/'/g,"\\'")+'\',\'_blank\')" style="cursor:pointer;text-decoration:underline dotted"':'';
             h+='<div style="margin-top:3px;font-size:8px;color:#64748b;padding-left:20px" '+newsLink+'>'+
               '<span style="color:'+nc+';font-weight:700">'+(n.sentiment==='bullish'?'▲':'▼')+'</span> '+
               n.title.substring(0,90)+(n.title.length>90?'...':'')+
@@ -9615,7 +9615,7 @@ window._loadCatalystScanner=function(){
         h+='</div>';
       }
       
-      h+='<div style="margin-top:6px;font-size:8px;color:'+dirCol+';font-weight:700">Tap for detailed analysis →</div>';
+      h+='<div style="margin-top:8px;text-align:center"><span style="padding:5px 16px;border-radius:6px;background:'+dirCol+'15;color:'+dirCol+';font-size:9px;font-weight:800;border:1px solid '+dirCol+'30">📊 Open Quick Trade →</span></div>';
       h+='</div>';
     });
     
