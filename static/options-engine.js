@@ -2793,37 +2793,131 @@ function _renderQuickTrade(d,sym){
   var momUp=0,momDn=0;
   momBars.forEach(function(b){if(b.c>b.o)momUp++;else momDn++});
   
-  // ─── FACTOR 1: MARKET STRUCTURE (25%) — HH-HL / LH-LL pattern ───
+  // ─── FACTOR 1: MARKET STRUCTURE (25%) — Smart Money Concepts (SMC) ───
+  // BOS (Break of Structure), CHoCH (Change of Character), FVG (Fair Value Gap)
   // Works with 5-min bars: 3 bars = 15 min → earliest signal at ~15 min after open
   var structureScore=0;
   var bullishStructure=false,bearishStructure=false;
+  var _smcSignals={bos:null,choch:null,fvg:null,eql:null,hhhl:0,lhll:0};
+  
   if(bars.length>=3){
-    // Use last N bars (adapts to available data)
-    var structBars=bars.slice(-(Math.min(bars.length,8)));
+    var structBars=bars.slice(-(Math.min(bars.length,12)));
     var highs=structBars.map(function(b){return b.h});
     var lows=structBars.map(function(b){return b.l});
+    var closes=structBars.map(function(b){return b.c});
+    var opens=structBars.map(function(b){return b.o});
+    
+    // ─── 1. SWING HIGHS & LOWS (pivot detection) ───
+    var swingHighs=[],swingLows=[];
+    for(var si=1;si<highs.length-1;si++){
+      if(highs[si]>highs[si-1]&&highs[si]>highs[si+1])swingHighs.push({idx:si,price:highs[si]});
+      if(lows[si]<lows[si-1]&&lows[si]<lows[si+1])swingLows.push({idx:si,price:lows[si]});
+    }
+    
+    // ─── 2. HH-HL / LH-LL counting (original logic, kept) ───
     var hhCount=0,hlCount=0,lhCount=0,llCount=0;
-    for(var si=1;si<highs.length;si++){
-      if(highs[si]>highs[si-1])hhCount++;
-      if(lows[si]>lows[si-1])hlCount++;
-      if(highs[si]<highs[si-1])lhCount++;
-      if(lows[si]<lows[si-1])llCount++;
+    for(var si2=1;si2<highs.length;si2++){
+      if(highs[si2]>highs[si2-1])hhCount++;
+      if(lows[si2]>lows[si2-1])hlCount++;
+      if(highs[si2]<highs[si2-1])lhCount++;
+      if(lows[si2]<lows[si2-1])llCount++;
     }
     var pairs=highs.length-1;
-    // For 3 bars: need 2/2 HH+HL (both). For 5+: need majority
     var hhThresh=pairs<=3?2:Math.ceil(pairs*0.6);
-    var hlThresh=hhThresh;
-    bullishStructure=hhCount>=hhThresh&&hlCount>=hlThresh;
-    bearishStructure=lhCount>=hhThresh&&llCount>=hlThresh;
+    _smcSignals.hhhl=hhCount;_smcSignals.lhll=lhCount;
+    bullishStructure=hhCount>=hhThresh&&hlCount>=hhThresh;
+    bearishStructure=lhCount>=hhThresh&&llCount>=hhThresh;
     
-    if(bullishStructure&&isBreakUp)structureScore=90;
-    else if(bearishStructure&&isBreakDn)structureScore=90;
-    else if(bullishStructure&&aboveVwap)structureScore=75;
-    else if(bearishStructure&&!aboveVwap)structureScore=75;
-    else if(bullishStructure||bearishStructure)structureScore=60;
-    else if(isBreakUp||isBreakDn)structureScore=55;
-    else if(rangePct>0.5)structureScore=40;
-    else structureScore=20;
+    // ─── 3. BOS — Break of Structure ───
+    // Bullish BOS: price breaks above the most recent swing high
+    // Bearish BOS: price breaks below the most recent swing low
+    var lastSwingHigh=swingHighs.length>0?swingHighs[swingHighs.length-1].price:dayHigh;
+    var lastSwingLow=swingLows.length>0?swingLows[swingLows.length-1].price:dayLow;
+    var lastClose=closes[closes.length-1];
+    
+    if(lastClose>lastSwingHigh&&lastClose>opens[opens.length-1]){
+      _smcSignals.bos='BULLISH';
+      structureScore=Math.max(structureScore,85); // BOS is strong
+    }
+    if(lastClose<lastSwingLow&&lastClose<opens[opens.length-1]){
+      _smcSignals.bos='BEARISH';
+      structureScore=Math.max(structureScore,85);
+    }
+    
+    // ─── 4. CHoCH — Change of Character ───
+    // Bullish CHoCH: After a series of LH-LL, price makes a HH (trend reversal)
+    // Bearish CHoCH: After a series of HH-HL, price makes a LL
+    if(swingHighs.length>=2&&swingLows.length>=2){
+      var lastTwoHighs=[swingHighs[swingHighs.length-2].price,swingHighs[swingHighs.length-1].price];
+      var lastTwoLows=[swingLows[swingLows.length-2].price,swingLows[swingLows.length-1].price];
+      
+      // Was making lower highs, now made higher high = bullish CHoCH
+      if(lastTwoHighs[0]>lastTwoHighs[1]&&lastClose>lastTwoHighs[0]){
+        _smcSignals.choch='BULLISH';
+        structureScore=Math.max(structureScore,80);
+      }
+      // Was making higher lows, now made lower low = bearish CHoCH
+      if(lastTwoLows[0]<lastTwoLows[1]&&lastClose<lastTwoLows[0]){
+        _smcSignals.choch='BEARISH';
+        structureScore=Math.max(structureScore,80);
+      }
+    }
+    
+    // ─── 5. FVG — Fair Value Gap (3-candle imbalance) ───
+    // Bullish FVG: candle[i-2].high < candle[i].low (gap up imbalance)
+    // Bearish FVG: candle[i-2].low > candle[i].high (gap down imbalance)
+    for(var fi=2;fi<structBars.length;fi++){
+      if(structBars[fi-2].h<structBars[fi].l){
+        // Bullish FVG — gap between bar[i-2] high and bar[i] low
+        _smcSignals.fvg='BULLISH';
+        structureScore=Math.max(structureScore,70);
+      }
+      if(structBars[fi-2].l>structBars[fi].h){
+        // Bearish FVG
+        _smcSignals.fvg='BEARISH';
+        structureScore=Math.max(structureScore,70);
+      }
+    }
+    
+    // ─── 6. EQL — Equal Lows/Highs (liquidity pools) ───
+    var eqlThreshold=spot*0.002; // 0.2% tolerance
+    for(var ei=0;ei<lows.length-1;ei++){
+      for(var ej=ei+1;ej<lows.length;ej++){
+        if(Math.abs(lows[ei]-lows[ej])<eqlThreshold){
+          _smcSignals.eql='LOWS'; // Equal lows = liquidity below
+        }
+        if(Math.abs(highs[ei]-highs[ej])<eqlThreshold){
+          _smcSignals.eql=_smcSignals.eql==='LOWS'?'BOTH':'HIGHS';
+        }
+      }
+    }
+    
+    // ─── COMBINE: HH-HL + SMC signals ───
+    if(structureScore===0){
+      // Fallback to HH-HL if no SMC signals
+      if(bullishStructure&&isBreakUp)structureScore=90;
+      else if(bearishStructure&&isBreakDn)structureScore=90;
+      else if(bullishStructure&&aboveVwap)structureScore=75;
+      else if(bearishStructure&&!aboveVwap)structureScore=75;
+      else if(bullishStructure||bearishStructure)structureScore=60;
+      else if(isBreakUp||isBreakDn)structureScore=55;
+      else if(rangePct>0.5)structureScore=40;
+      else structureScore=20;
+    }
+    
+    // SMC bonus: if BOS + FVG aligned, boost score
+    if(_smcSignals.bos&&_smcSignals.fvg&&_smcSignals.bos===_smcSignals.fvg){
+      structureScore=Math.min(100,structureScore+10); // BOS + FVG confluence
+    }
+    // CHoCH is a reversal — use with caution
+    if(_smcSignals.choch&&!_smcSignals.bos){
+      // CHoCH without BOS confirmation = early reversal signal
+      structureScore=Math.max(structureScore,65);
+    }
+    
+    // Update bullish/bearish based on SMC
+    if(!bullishStructure&&(_smcSignals.bos==='BULLISH'||_smcSignals.choch==='BULLISH'))bullishStructure=true;
+    if(!bearishStructure&&(_smcSignals.bos==='BEARISH'||_smcSignals.choch==='BEARISH'))bearishStructure=true;
   }else if(bars.length>0){
     // 1-2 bars — use price action + VWAP direction
     if(isBreakUp||isBreakDn)structureScore=60;
@@ -3134,10 +3228,19 @@ function _renderQuickTrade(d,sym){
   
   // C1: Price Action — Sustained breakout with candle close (not just wick)
   var priceBreakoutConfirmed=false;
-  if(isBreakUp&&lastBar.c>dayHigh*0.998){priceBreakoutConfirmed=true;confirmations++;confirmDetail.push({factor:'Price Action',pass:true,detail:'Breakout with candle CLOSE above high'})}
-  else if(isBreakDn&&lastBar.c<dayLow*1.002){priceBreakoutConfirmed=true;confirmations++;confirmDetail.push({factor:'Price Action',pass:true,detail:'Breakdown with candle CLOSE below low'})}
-  else if(priceActionScore>=70){confirmations++;confirmDetail.push({factor:'Price Action',pass:true,detail:'Strong price action score '+priceActionScore})}
-  else{confirmDetail.push({factor:'Price Action',pass:false,detail:'No confirmed breakout — price score only '+priceActionScore})}
+  // SMC details for confirmation
+  var _smcDetail='';
+  if(_smcSignals.bos)_smcDetail+='BOS '+_smcSignals.bos+' ';
+  if(_smcSignals.choch)_smcDetail+='CHoCH '+_smcSignals.choch+' ';
+  if(_smcSignals.fvg)_smcDetail+='FVG '+_smcSignals.fvg+' ';
+  if(_smcSignals.eql)_smcDetail+='EQL '+_smcSignals.eql+' ';
+  
+  if(isBreakUp&&lastBar.c>dayHigh*0.998){priceBreakoutConfirmed=true;confirmations++;confirmDetail.push({factor:'Price Action',pass:true,detail:'Breakout with candle CLOSE above high'+(_smcDetail?' · '+_smcDetail.trim():'')})}
+  else if(isBreakDn&&lastBar.c<dayLow*1.002){priceBreakoutConfirmed=true;confirmations++;confirmDetail.push({factor:'Price Action',pass:true,detail:'Breakdown with candle CLOSE below low'+(_smcDetail?' · '+_smcDetail.trim():'')})}
+  else if(_smcSignals.bos){priceBreakoutConfirmed=true;confirmations++;confirmDetail.push({factor:'Price Action',pass:true,detail:'Break of Structure (BOS) '+_smcSignals.bos+(_smcSignals.fvg?' + FVG '+_smcSignals.fvg:'')})}
+  else if(_smcSignals.choch){confirmations++;confirmDetail.push({factor:'Price Action',pass:true,detail:'Change of Character (CHoCH) '+_smcSignals.choch+' — trend reversal detected'})}
+  else if(priceActionScore>=70){confirmations++;confirmDetail.push({factor:'Price Action',pass:true,detail:'Strong price action score '+priceActionScore+(_smcDetail?' · '+_smcDetail.trim():'')})}
+  else{confirmDetail.push({factor:'Price Action',pass:false,detail:'No confirmed breakout — price score only '+priceActionScore+(_smcDetail?' · '+_smcDetail.trim():'')})}
   
   // C2: Volume — ≥ 1.5× average volume
   var volumeSpike=hasVolData?volRatio8:0;
@@ -3382,8 +3485,12 @@ function _renderQuickTrade(d,sym){
 
     // 1. PRICE — Is the stock moving or stuck?
   if(priceActionScore>=70){
-    if(isBreakUp)whyReasons.push({pass:true,label:'Price '+_spotFmt+' just crossed above today\'s high '+_dhFmt+' — that means buyers are winning right now',score:priceActionScore});
-    else whyReasons.push({pass:true,label:'Price '+_spotFmt+' just dropped below today\'s low '+_dlFmt+' — sellers are in charge right now',score:priceActionScore});
+    if(isBreakUp)whyReasons.push({pass:true,label:'Price '+_spotFmt+' just crossed above today\'s high '+_dhFmt+' — buyers are winning'+(_smcSignals.bos==='BULLISH'?' (Break of Structure confirmed)':''),score:priceActionScore});
+    else whyReasons.push({pass:true,label:'Price '+_spotFmt+' just dropped below today\'s low '+_dlFmt+' — sellers are in charge'+(_smcSignals.bos==='BEARISH'?' (Break of Structure confirmed)':''),score:priceActionScore});
+  }else if(_smcSignals.bos){
+    whyReasons.push({pass:true,label:'Smart money pattern detected — Break of Structure (BOS) '+_smcSignals.bos+'. Price broke past a key swing level'+(_smcSignals.fvg?' with a Fair Value Gap — strong institutional move':''),score:priceActionScore});
+  }else if(_smcSignals.choch){
+    whyReasons.push({pass:true,label:'Trend reversal signal — Change of Character (CHoCH) '+_smcSignals.choch+'. The previous trend has shifted direction — institutional players are repositioning',score:priceActionScore});
   }else if(priceActionScore>=50){
     var _nearHigh=Math.abs(spot-dayHigh)/Math.max(spot,1)*100;
     var _nearLow=Math.abs(spot-dayLow)/Math.max(spot,1)*100;
@@ -3553,6 +3660,12 @@ function _renderQuickTrade(d,sym){
     if(spot>_instMidpoint)smartParts.push('Price is above the midpoint '+S+_instMidpoint.toLocaleString()+' — bullish institutional bias.');
     else smartParts.push('Price is below the midpoint '+S+_instMidpoint.toLocaleString()+' — bearish institutional bias.');
   }
+  
+  // SMC signals in institutional display
+  if(_smcSignals.bos)smartParts.push('Break of Structure (BOS) '+_smcSignals.bos+' — price broke past swing '+(_smcSignals.bos==='BULLISH'?'high':'low')+'. Smart money is driving this move.');
+  if(_smcSignals.choch)smartParts.push('Change of Character (CHoCH) '+_smcSignals.choch+' — previous trend reversed. Institutions are repositioning.');
+  if(_smcSignals.fvg)smartParts.push('Fair Value Gap (FVG) '+_smcSignals.fvg+' — imbalance zone detected. Price likely to revisit this area.');
+  if(_smcSignals.eql)smartParts.push('Equal '+(_smcSignals.eql==='LOWS'?'Lows':'Highs')+' detected — liquidity pool. Smart money may sweep this level before reversing.');
   
   // 3. Smart money flow (OI changes)
   if(_smartZ.length>0){
@@ -4679,6 +4792,11 @@ function _startKeepAlive(){
 window._speak=function(text,urgent){
   if(!window._voiceEnabled)return;
   if(!text)return;
+  
+  // MARKET CLOSED GUARD — silence all voice except "Market is closed" announcement
+  if(window._qtMarketOpen===false && text.indexOf('Market is closed')<0){
+    return; // Don't speak trading signals when market is closed
+  }
   
   // Auto-unlock if not yet unlocked (first speech triggers full setup)
   if(!window._voiceFullyReady){
