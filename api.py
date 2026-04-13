@@ -25483,6 +25483,205 @@ async def _start_cds_auto_scan():
 # UNIVERSAL OPTIONS QUICK TRADE — Works for ANY ticker (India/US/ETF)
 # Returns: spot, chain, bias, breakout levels in unified format
 # ═══════════════════════════════════════════════════════════════════════════════
+# CATALYST SCANNER — News + Earnings + Gap + Volume for morning watchlist
+# ═══════════════════════════════════════════════════════════════════════════════
+
+_catalyst_cache = {"ts": 0, "data": None, "region": ""}
+
+@app.get("/api/catalyst-scan")
+async def catalyst_scan(region: str = "IN"):
+    """Scan tickers for news catalysts, earnings, gaps, volume surges"""
+    import asyncio
+    
+    now = time.time()
+    if _catalyst_cache["data"] and now - _catalyst_cache["ts"] < 300 and _catalyst_cache["region"] == region:
+        return _catalyst_cache["data"]
+    
+    is_us = region.upper() == "US"
+    tickers = (
+        ["SPY","QQQ","AAPL","MSFT","NVDA","TSLA","META","GOOGL","AMZN","MU","AMD","NFLX","COIN","PLTR","SOFI","BA","JPM","UBER","CRM","SMCI"]
+        if is_us else
+        ["NIFTY","BANKNIFTY","RELIANCE","TCS","HDFCBANK","INFY","ICICIBANK","SBIN","BAJFINANCE","TATAMOTORS","LT","MARUTI","AXISBANK","ITC","BHARTIARTL","WIPRO","HCLTECH","ADANIENT","TITAN","SUNPHARMA"]
+    )
+    
+    loop = asyncio.get_event_loop()
+    
+    bullish_kw = ["surge","rally","beat","upgrade","record","growth","profit","gain","buy","bullish","outperform","raise","boost","strong","soar","jump","positive","exceed","upside","dividend","bonus","split","buyback","order","deal","contract","approve"]
+    bearish_kw = ["fall","drop","decline","cut","downgrade","miss","loss","sell","bearish","underperform","weak","crash","fear","risk","warning","slash","layoff","concern","threat","negative","panic","plunge","tumble","fraud","probe","ban","fine","penalty","resign"]
+    
+    def _scan_one(sym):
+        try:
+            yf_sym = sym if is_us else (f"{sym}.NS" if sym not in ["NIFTY","BANKNIFTY","SENSEX","FINNIFTY"] else {"NIFTY":"^NSEI","BANKNIFTY":"^NSEBANK","SENSEX":"^BSESN","FINNIFTY":"NIFTY_FIN_SERVICE.NS"}.get(sym, f"{sym}.NS"))
+            _yahoo_rate_wait()
+            tk = yf.Ticker(yf_sym)
+            
+            result = {"sym": sym, "catalysts": [], "score": 0, "direction": "NEUTRAL", "news": [], "spot": 0, "prevClose": 0, "gapPct": 0}
+            
+            # 1. NEWS
+            try:
+                news = tk.news or []
+                for n in news[:5]:
+                    title = n.get("title", "") or n.get("content", {}).get("title", "") or ""
+                    publisher = n.get("publisher", "") or n.get("content", {}).get("provider", {}).get("displayName", "") or ""
+                    if not title: continue
+                    t_lower = title.lower()
+                    bull = sum(1 for k in bullish_kw if k in t_lower)
+                    bear = sum(1 for k in bearish_kw if k in t_lower)
+                    sentiment = "bullish" if bull > bear else ("bearish" if bear > bull else "neutral")
+                    result["news"].append({"title": title, "publisher": publisher, "sentiment": sentiment})
+                    
+                    # Score news
+                    if sentiment != "neutral":
+                        result["catalysts"].append({
+                            "type": "NEWS",
+                            "icon": "📰",
+                            "text": title[:100],
+                            "sentiment": sentiment,
+                            "impact": 20 + (bull + bear) * 5
+                        })
+                        result["score"] += 20 + (bull + bear) * 5
+                        if sentiment == "bullish" and result["direction"] == "NEUTRAL": result["direction"] = "BULLISH"
+                        if sentiment == "bearish" and result["direction"] == "NEUTRAL": result["direction"] = "BEARISH"
+            except: pass
+            
+            # 2. EARNINGS DATE
+            try:
+                cal = tk.calendar
+                if cal is not None and not (hasattr(cal, 'empty') and cal.empty):
+                    if hasattr(cal, 'iloc'):
+                        earn_date = str(cal.iloc[0, 0]) if cal.shape[1] > 0 else ""
+                    elif isinstance(cal, dict):
+                        earn_date = str(cal.get("Earnings Date", [""])[0]) if cal.get("Earnings Date") else ""
+                    else:
+                        earn_date = str(cal)
+                    if earn_date and "NaT" not in earn_date:
+                        result["catalysts"].append({
+                            "type": "EARNINGS",
+                            "icon": "📊",
+                            "text": f"Earnings: {earn_date[:20]}",
+                            "sentiment": "neutral",
+                            "impact": 30
+                        })
+                        result["score"] += 30
+            except: pass
+            
+            # 3. GAP (today open vs yesterday close)
+            try:
+                hist = tk.history(period="5d")
+                if len(hist) >= 2:
+                    today_open = float(hist["Open"].iloc[-1])
+                    prev_close = float(hist["Close"].iloc[-2])
+                    spot = float(hist["Close"].iloc[-1])
+                    result["spot"] = round(spot, 2)
+                    result["prevClose"] = round(prev_close, 2)
+                    gap_pct = round((today_open - prev_close) / prev_close * 100, 2)
+                    result["gapPct"] = gap_pct
+                    
+                    if abs(gap_pct) >= 0.5:
+                        direction = "BULLISH" if gap_pct > 0 else "BEARISH"
+                        result["catalysts"].append({
+                            "type": "GAP",
+                            "icon": "🟢" if gap_pct > 0 else "🔴",
+                            "text": f"{'Gap Up' if gap_pct > 0 else 'Gap Down'} {abs(gap_pct):.1f}% — opened at {today_open:.0f} vs yesterday {prev_close:.0f}",
+                            "sentiment": "bullish" if gap_pct > 0 else "bearish",
+                            "impact": min(40, int(abs(gap_pct) * 8))
+                        })
+                        result["score"] += min(40, int(abs(gap_pct) * 8))
+                        if result["direction"] == "NEUTRAL": result["direction"] = direction
+                    
+                    # 4. VOLUME SURGE
+                    if len(hist) >= 5:
+                        today_vol = float(hist["Volume"].iloc[-1])
+                        avg_vol = float(hist["Volume"].iloc[-5:-1].mean())
+                        if avg_vol > 0:
+                            vol_ratio = round(today_vol / avg_vol, 1)
+                            if vol_ratio >= 1.5:
+                                result["catalysts"].append({
+                                    "type": "VOLUME",
+                                    "icon": "📊",
+                                    "text": f"Volume {vol_ratio}x average — significant institutional activity",
+                                    "sentiment": "neutral",
+                                    "impact": min(25, int(vol_ratio * 8))
+                                })
+                                result["score"] += min(25, int(vol_ratio * 8))
+            except: pass
+            
+            # Urgency
+            result["urgency"] = "HIGH" if result["score"] >= 50 else ("MEDIUM" if result["score"] >= 25 else "LOW")
+            
+            # 5. TRADE DETAILS — fetch ATM strike, premium, target, SL
+            try:
+                spot = result["spot"]
+                if spot > 0 and result["direction"] != "NEUTRAL":
+                    # Get lot size
+                    _inst = ALGO_INSTRUMENTS.get(sym, {})
+                    lot = _inst.get("lot", 100 if is_us else 1)
+                    step = _inst.get("gap", 50 if spot > 5000 else 5 if spot > 100 else 1)
+                    
+                    # ATM strike
+                    atm = round(spot / step) * step
+                    
+                    # Fetch options chain for nearest expiry
+                    try:
+                        exp_dates = tk.options
+                        if exp_dates and len(exp_dates) > 0:
+                            chain = tk.option_chain(exp_dates[0])
+                            is_bull = result["direction"] == "BULLISH"
+                            opt_df = chain.calls if is_bull else chain.puts
+                            
+                            # Find ATM option
+                            opt_df = opt_df.copy()
+                            opt_df["dist"] = abs(opt_df["strike"] - spot)
+                            atm_row = opt_df.sort_values("dist").iloc[0] if len(opt_df) > 0 else None
+                            
+                            if atm_row is not None:
+                                strike = float(atm_row["strike"])
+                                prem = float(atm_row["lastPrice"]) if atm_row["lastPrice"] > 0 else float(atm_row["ask"]) if atm_row.get("ask", 0) > 0 else 0
+                                
+                                if prem > 0:
+                                    day_range_pct = abs(result.get("gapPct", 0)) + 0.5
+                                    target = round(prem * (1 + day_range_pct / 100 * 3), 2)
+                                    sl = round(prem * 0.75, 2)
+                                    rr = round((target - prem) / (prem - sl), 1) if prem > sl else 0
+                                    
+                                    result["trade"] = {
+                                        "strike": strike,
+                                        "type": "CE" if is_bull else "PE",
+                                        "premium": round(prem, 2),
+                                        "target": round(target, 2),
+                                        "sl": round(sl, 2),
+                                        "rr": rr,
+                                        "lot": lot,
+                                        "expiry": exp_dates[0],
+                                        "action": "BUY CALL" if is_bull else "BUY PUT"
+                                    }
+                    except: pass
+            except: pass
+            
+            return result
+        except Exception as e:
+            return {"sym": sym, "catalysts": [], "score": 0, "direction": "NEUTRAL", "news": [], "urgency": "LOW", "error": str(e)}
+    
+    # Run in parallel
+    results = await loop.run_in_executor(None, lambda: [_scan_one(t) for t in tickers])
+    
+    # Sort by score, filter out empty
+    results = [r for r in results if r["score"] > 0]
+    results.sort(key=lambda x: x["score"], reverse=True)
+    
+    response = {
+        "success": True,
+        "region": region,
+        "catalysts": results[:15],
+        "total_scanned": len(tickers),
+        "high_urgency": len([r for r in results if r["urgency"] == "HIGH"]),
+        "ts": now
+    }
+    
+    _catalyst_cache = {"ts": now, "data": response, "region": region}
+    return response
+
+# ═══════════════════════════════════════════════════════════════════════════════
 
 @app.get("/api/options-quick")
 async def options_quick(symbol: str = "NIFTY", region: str = "IN"):
