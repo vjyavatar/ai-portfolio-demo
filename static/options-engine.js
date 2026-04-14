@@ -10343,6 +10343,13 @@ _renderQuickTrade=function(d,sym){
   var el2=document.getElementById('deResult');
   if(!el2)return;
   
+  // Remove any existing institutional panel first
+  var _oldInst=document.getElementById('instEnhPanel');
+  if(_oldInst)_oldInst.remove();
+  
+  // Don't show when market closed or batch mode
+  if(window._qtMarketOpen===false||window._qtBatchMode)return;
+  
   var ih='';
   
   // ─── Institutional Enhancements Panel ───
