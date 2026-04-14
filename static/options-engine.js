@@ -4715,6 +4715,7 @@ window._playTone=function(freq,duration,vol){
 
 // Alert tones for different events
 window._alertTone=function(type){
+  if(window._qtMarketOpen===false)return; // No alert tones when market closed
   if(type==='ENTRY')     {window._playTone(880,0.15,0.4);setTimeout(function(){window._playTone(1100,0.15,0.4)},180);setTimeout(function(){window._playTone(1320,0.2,0.5)},360)}
   else if(type==='EXIT') {window._playTone(1320,0.15,0.5);setTimeout(function(){window._playTone(880,0.15,0.5)},180);setTimeout(function(){window._playTone(660,0.25,0.5)},360)}
   else if(type==='STOP') {window._playTone(440,0.3,0.6);setTimeout(function(){window._playTone(330,0.3,0.6)},350);setTimeout(function(){window._playTone(220,0.4,0.6)},700)}
@@ -5466,7 +5467,10 @@ _renderQuickTrade=function(d,sym){
   if(!window._scenarioState)window._scenarioState={};
   var _ss=window._scenarioState;
   var _scenarioVoiceGap=Date.now()-(window._lastScenarioVoice||0);
-  var _canScenarioVoice=_scenarioVoiceGap>20000; // Min 20s between scenario voices (don't spam)
+  var _canScenarioVoice=_scenarioVoiceGap>20000;
+  
+  // MARKET CLOSED: Skip ALL scenario detection — no voices, no history updates
+  if(window._qtMarketOpen===false){return}
   
   // Helper: fire voice only if state changed AND enough time passed
   function _scenarioVoice(id,msg,urgent){
@@ -9134,6 +9138,10 @@ window._hideBottomNav=function(){
 };
 
 window._scanBottomNav=function(){
+  // Don't scan when market is closed
+  var phase=window._getMarketPhase?window._getMarketPhase():'CLOSED';
+  if(phase==='CLOSED'){window._hideBottomNav&&window._hideBottomNav();return}
+  
   var reg=window._optionsRegion||'IN';
   
   fetch('/api/bottom-nav-scan?region='+reg)
