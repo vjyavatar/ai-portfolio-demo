@@ -9082,9 +9082,9 @@ window._getMarketPhase=function(){
 // ─── SCAN FREQUENCY BY PHASE ───
 window._getScanInterval=function(){
   var phase=window._getMarketPhase();
-  if(phase==='DISCOVERY')return 75000; // 75 seconds during discovery
-  if(phase==='MONITORING')return 300000; // 5 minutes during monitoring
-  if(phase==='EOD')return 120000; // 2 minutes near close (exit watch)
+  if(phase==='DISCOVERY')return 180000; // 3 minutes during first 90 min (was 75s — too frequent)
+  if(phase==='MONITORING')return 300000; // 5 minutes during midday
+  if(phase==='EOD')return 180000; // 3 minutes near close (exit watch)
   return 0; // CLOSED — don't scan
 };
 
@@ -9462,74 +9462,75 @@ window._renderBottomNav=function(){
   if(results.length===0){bar.style.display='none';return}
   
   results.sort(function(a,b){
-    // Indices first, then by grade, then by confidence
-    var ai=a._isIndex?0:1, bi=b._isIndex?0:1;
+    var ai=a._isIndex?0:1,bi=b._isIndex?0:1;
     if(ai!==bi)return ai-bi;
     return(a.grade==='A+'?0:a.grade==='A'?1:2)-(b.grade==='A+'?0:b.grade==='A'?1:2)||(b.conf-a.conf);
   });
   
-  var h='';
-  h+='<div style="display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;padding:4px 0;align-items:center">';
-  
+  var buyNow=results.filter(function(r){return r.grade==='A+'||r.grade==='A'});
+  var watching=results.filter(function(r){return r.grade==='B'}).slice(0,5);
   var _phase2=window._getMarketPhase();
-  var _phaseLabel=_phase2==='DISCOVERY'?'SCANNING':'LOCKED';
-  var _phaseBg=_phase2==='DISCOVERY'?'linear-gradient(135deg,#059669,#10b981)':_phase2==='EOD'?'linear-gradient(135deg,#d97706,#f59e0b)':'linear-gradient(135deg,#3b82f6,#1d4ed8)';
-  var lockedCount=results.filter(function(r){return r._status==='LOCKED'||r._status==='MAINTAIN'}).length;
   
-  h+='<div style="flex-shrink:0;padding:6px 10px;border-radius:10px;background:'+_phaseBg+';text-align:center">';
-  h+='<div style="font-size:9px;font-weight:900;color:#fff;font-family:Sora;letter-spacing:1px">'+(lockedCount>0?'\u{1f512} '+_phaseLabel:'\u{1f525} SCANNING')+'</div>';
-  h+='<div style="font-size:7px;color:#ffffffcc">'+results.length+' signal'+(results.length>1?'s':'')+(lockedCount>0?' · '+lockedCount+' locked':'')+'</div>';
-  // Session stats
-  var _ss=window._getSessionStats();
-  if(_ss.trades>0){
-    h+='<div style="font-size:6px;color:'+(_ss.totalPnl>=0?'#bbf7d0':'#fca5a5')+'">'+_ss.wins+'W/'+_ss.losses+'L · '+(_ss.totalPnl>=0?'+':'')+_ss.totalPnl+'%</div>';
+  var h='<div style="max-width:520px;margin:0 auto;padding:4px 8px">';
+  
+  // BUY NOW TABLE
+  if(buyNow.length>0){
+    h+='<div style="margin-bottom:6px">';
+    h+='<div onclick="var t=document.getElementById(\'bnBuyTable\');t.style.display=t.style.display===\'none\'?\'block\':\'none\'" style="display:flex;justify-content:space-between;align-items:center;padding:6px 10px;border-radius:8px 8px 0 0;background:#059669;cursor:pointer">';
+    h+='<span style="font-size:10px;font-weight:900;color:#fff;font-family:Sora">\u{1f7e2} BUY NOW ('+buyNow.length+')</span>';
+    h+='<span style="color:#fff;font-size:12px">\u25BC</span></div>';
+    h+='<div id="bnBuyTable"><table style="width:100%;border-collapse:collapse;font-size:9px">';
+    h+='<thead><tr style="background:#f0fdf4"><th style="padding:4px 6px;text-align:left;color:#059669;font-weight:800">Ticker</th><th style="padding:4px;text-align:center;color:#059669;font-weight:800">Dir</th><th style="padding:4px;text-align:center;color:#059669;font-weight:800">Conf</th><th style="padding:4px;text-align:right;color:#059669;font-weight:800">Strike</th><th style="padding:4px;text-align:right;color:#059669;font-weight:800">R:R</th><th style="padding:4px;text-align:center;color:#059669;font-weight:800">Status</th></tr></thead><tbody>';
+    buyNow.forEach(function(r){
+      var loadFn=r.reg==='IN'?"window._loadQuickTrade('"+r.sym+"')":"window._loadOptionsUniversal('"+r.sym+"','US')";
+      var dirCol=r.action==='BUY CALL'?'#059669':'#ef4444';
+      var dirArrow=r.action==='BUY CALL'?'\u2191 CE':'\u2193 PE';
+      var statusIcon=r._status==='LOCKED'?'\u{1f512}':'\u{1f7e2}';
+      var pnlStr=r._pnlPct!==undefined&&r._entryPrem>0?(r._pnlPct>=0?'+':'')+r._pnlPct+'%':'\u2014';
+      var pnlCol=r._pnlPct>=0?'#059669':'#ef4444';
+      h+='<tr onclick="'+loadFn+'" style="border-bottom:1px solid #e2e8f0;cursor:pointer" onmouseover="this.style.background=\'#f0fdf4\'" onmouseout="this.style.background=\'transparent\'">';
+      h+='<td style="padding:5px 6px;font-weight:900;color:#1e293b;font-family:Sora">'+r.label+'</td>';
+      h+='<td style="padding:5px 4px;text-align:center;color:'+dirCol+';font-weight:800">'+dirArrow+'</td>';
+      h+='<td style="padding:5px 4px;text-align:center;font-weight:800;color:'+dirCol+'">'+r.conf+'%</td>';
+      h+='<td style="padding:5px 4px;text-align:right;font-family:JetBrains Mono;color:#1e293b">'+(r._strike||'\u2014')+'</td>';
+      h+='<td style="padding:5px 4px;text-align:right;font-family:JetBrains Mono;color:#3b5998">'+(r._rr||'\u2014')+'</td>';
+      h+='<td style="padding:5px 4px;text-align:center;font-size:8px">'+statusIcon+' <span style="color:'+pnlCol+'">'+pnlStr+'</span></td>';
+      h+='</tr>';
+    });
+    h+='</tbody></table></div></div>';
   }
-  h+='</div>';
   
-  results.forEach(function(r){
-    var col=r.action==='BUY CALL'?'#059669':'#ef4444';
-    var arrow=r.action==='BUY CALL'?'\u2191':'\u2193';
-    var loadFn=r.reg==='IN'?"window._loadQuickTrade('"+r.sym+"')":"window._loadOptionsUniversal('"+r.sym+"','US')";
-    
-    // Status-based styling
-    var status=r._status||'WATCH';
-    var isLocked=status==='LOCKED'||status==='MAINTAIN'||status==='WARNING';
-    var isEOD=status==='EOD_EXIT';
-    var isWatch=r._isWatch||false;
-    var isArchived=status==='ARCHIVED';
-    
-    // Bottom nav pill: 🔒 LOCKED for active, ❌ ARCHIVED for invalidated, 🕐 EXIT for EOD
-    var pillIcon=isArchived?'❌':isEOD?'🕐':isWatch?'👁':'🔒';
-    var pillLabel=isArchived?'EXIT':isEOD?'EXIT':isWatch?'WATCH':'LOCKED';
-    var pillCol=isArchived?'#ef4444':isLocked?col:isEOD?'#f59e0b':'#64748b';
-    
-    var borderCol=isLocked?col:isEOD?'#f59e0b':isWatch?'#64748b':col;
-    var borderStyle=isLocked?'2px solid '+borderCol:isEOD?'2px dashed '+borderCol:isWatch?'2px dashed #64748b':'2px solid '+borderCol;
-    var pulse=isLocked?';animation:pulse 2s infinite':'';
-    var fadingOpacity=isEOD?';opacity:0.6':'';
-    
-    // Asset type badge
-    var at=r._assetType||'STK';
-    var atCol=at==='IDX'?'#8b5cf6':at==='ETF'?'#3b82f6':'#94a3b8';
-    
-    h+='<div onclick="'+loadFn+'" style="flex-shrink:0;padding:5px 10px;border-radius:10px;background:'+col+'10;border:'+borderStyle+';cursor:pointer;text-align:center'+pulse+fadingOpacity+'">';
-    h+='<div style="display:flex;align-items:center;gap:3px;justify-content:center">';
-    h+='<span style="font-size:6px;padding:1px 3px;border-radius:3px;background:'+atCol+'20;color:'+atCol+';font-weight:900;letter-spacing:0.5px">'+at+'</span>';
-    h+='<span style="font-size:11px;font-weight:900;color:#1e293b;font-family:Sora">'+r.label+'</span>';
-    h+='</div>';
-    h+='<div style="font-size:9px;font-weight:800;color:'+col+'">'+r.action+' '+arrow+'</div>';
-    // P&L display on pill
-    var _pillPnl='';
-    if(r._pnlPct!==undefined&&r._entryPrem>0){
-      _pillPnl=r._pnlPct>=0?' +'+r._pnlPct+'%':' '+r._pnlPct+'%';
-    }
-    h+='<div style="font-size:7px;font-weight:700;color:'+pillCol+'">'+pillIcon+' '+pillLabel+(_pillPnl?'<span style="color:'+(r._pnlPct>=0?'#059669':'#ef4444')+'">'+_pillPnl+'</span>':'')+'</div>';
-    h+='</div>';
-  });
+  // WATCHING TABLE
+  if(watching.length>0){
+    h+='<div>';
+    h+='<div onclick="var t=document.getElementById(\'bnWatchTable\');t.style.display=t.style.display===\'none\'?\'block\':\'none\'" style="display:flex;justify-content:space-between;align-items:center;padding:6px 10px;border-radius:8px 8px 0 0;background:#f59e0b;cursor:pointer">';
+    h+='<span style="font-size:10px;font-weight:900;color:#fff;font-family:Sora">\u23f3 WATCHING ('+watching.length+')</span>';
+    h+='<span style="color:#fff;font-size:12px">\u25BC</span></div>';
+    h+='<div id="bnWatchTable" style="display:none"><table style="width:100%;border-collapse:collapse;font-size:9px">';
+    h+='<thead><tr style="background:#fffbeb"><th style="padding:4px 6px;text-align:left;color:#d97706;font-weight:800">Ticker</th><th style="padding:4px;text-align:center;color:#d97706;font-weight:800">Lean</th><th style="padding:4px;text-align:center;color:#d97706;font-weight:800">Conf</th><th style="padding:4px;text-align:left;color:#d97706;font-weight:800">Needs</th></tr></thead><tbody>';
+    watching.forEach(function(r){
+      var loadFn=r.reg==='IN'?"window._loadQuickTrade('"+r.sym+"')":"window._loadOptionsUniversal('"+r.sym+"','US')";
+      var dirCol=r.action==='BUY CALL'?'#059669':r.action==='BUY PUT'?'#ef4444':'#3b5998';
+      var dirArrow=r.action==='BUY CALL'?'\u2191':r.action==='BUY PUT'?'\u2193':'\u2014';
+      var needs=r.conf<60?'Volume + Breakout':r.conf<65?'Breakout confirm':'OI alignment';
+      h+='<tr onclick="'+loadFn+'" style="border-bottom:1px solid #e2e8f0;cursor:pointer" onmouseover="this.style.background=\'#fffbeb\'" onmouseout="this.style.background=\'transparent\'">';
+      h+='<td style="padding:4px 6px;font-weight:800;color:#1e293b;font-family:Sora">'+r.label+'</td>';
+      h+='<td style="padding:4px;text-align:center;color:'+dirCol+';font-weight:800">'+dirArrow+'</td>';
+      h+='<td style="padding:4px;text-align:center;color:#d97706;font-weight:700">'+r.conf+'%</td>';
+      h+='<td style="padding:4px;color:#3b5998;font-size:8px">'+needs+'</td>';
+      h+='</tr>';
+    });
+    h+='</tbody></table></div></div>';
+  }
+  
+  if(buyNow.length===0&&watching.length===0){
+    h+='<div style="text-align:center;padding:8px;color:#3b5998;font-size:10px">'+(_phase2==='DISCOVERY'?'Scanning...':'No active signals')+'</div>';
+  }
   
   h+='</div>';
   bar.innerHTML=h;
   bar.style.display='block';
+    bar.style.display='block';
   
   // ═══ VOICE ANNOUNCEMENTS — Lifecycle-aware ═══
   var lockedResults=results.filter(function(r){return r._status==='LOCKED'&&!r._voiced});
@@ -9537,115 +9538,42 @@ window._renderBottomNav=function(){
   var eodResults=results.filter(function(r){return r._status==='EOD_EXIT'});
   var allLocked=results.filter(function(r){return r._status==='LOCKED'||r._status==='MAINTAIN'});
   
-  // Voice 1: New signal locked — first time only
-  if(lockedResults.length>0){
-    var newSigs=lockedResults.map(function(r){
-      var dir=r.action==='BUY CALL'?'going up':'going down';
-      return r.sym+' is '+dir;
-    });
-    var msg='New trade found! '+newSigs.join('. ')+'. Confidence '+lockedResults[0].conf+' percent. This trade is now locked. You can enter. I will watch it for you and alert you if anything changes.';
-    var sigKey=lockedResults.map(function(r){return r.sym+r.action}).join(',');
-    if(sigKey!==window._lastBottomNavSigKey){
-      window._lastBottomNavSigKey=sigKey;
-      window._speak(msg,true);
-    }
-    lockedResults.forEach(function(r){r._voiced=true});
-  }
+  // ═══ BOTTOM NAV VOICE — ONLY CRITICAL SAFETY ALERTS ═══
+  // Removed: new signal, reassurance, warning, zone changes (too noisy per user feedback)
+  // Kept: EOD, thesis break, stop loss, target hit
   
-  // Voice 2: Warning — trade weakening
-  if(warningResults.length>0&&!window._warningVoiced){
-    window._warningVoiced=true;
-    var warnNames=warningResults.map(function(r){return r.sym}).join(' and ');
-    window._speak('Heads up. '+warnNames+' trade is weakening. Do not panic — just watch it closely. If I say exit, then exit. For now, hold your position.',false);
-  }else if(warningResults.length===0){
-    window._warningVoiced=false;
-  }
-  
-  // Voice 3: EOD — close everything
+  // EOD — close everything (CRITICAL)
   if(eodResults.length>0&&!window._eodVoiced){
     window._eodVoiced=true;
-    window._speak('Market closing in 30 minutes. You have '+eodResults.length+' open trade'+(eodResults.length>1?'s':'')+'. Close all positions now. Do not carry overnight.',true);
+    window._speak('Market closing in 30 minutes. Close all positions now.',true);
   }
   
-  // Voice 4: Thesis break — exit immediately
+  // Thesis break — exit immediately (CRITICAL)
   var archivedResults=results.filter(function(r){return r._status==='ARCHIVED'&&!r._invalidVoiced});
   if(archivedResults.length>0){
     archivedResults.forEach(function(r){
-      var reason=r._statusMsg||'conditions changed';
-      window._speak(r.sym+' trade is over. Exit your position now. Reason: '+reason+'. Do not hold — the setup has broken.',true);
+      window._speak(r.sym+' setup has broken. Exit now.',true);
       r._invalidVoiced=true;
     });
   }
   
-  // Voice 5: Target hit — book profit
-  var targetHits=results.filter(function(r){return r._targetHit&&!r._targetVoiced});
-  if(targetHits.length>0){
-    targetHits.forEach(function(r){
-      var pnl=r._pnlPct||0;
-      window._speak('Target reached on '+r.sym+'! You are up '+pnl+' percent. Consider booking at least half your position now. Let the rest ride with a trailing stop.',true);
-      r._targetVoiced=true;
-    });
-  }
-  
-  // Voice 6: Stop loss approaching
+  // Stop loss hit (CRITICAL)
   var slHits=results.filter(function(r){return r._slHit&&!r._slVoiced});
   if(slHits.length>0){
     slHits.forEach(function(r){
-      var pnl=r._pnlPct||0;
-      window._speak('Warning! '+r.sym+' premium dropped to your stop loss zone. You are down '+Math.abs(pnl)+' percent. Exit now to limit your loss. Do not hold hoping for recovery.',true);
+      window._speak(r.sym+' hit stop loss. Exit now.',true);
       r._slVoiced=true;
     });
   }
   
-  // Voice 5: All good — periodic reassurance (every 5 min)
-  if(allLocked.length>0){
-    var timeSinceLast=Date.now()-(window._lastStableVoice||0);
-    if(timeSinceLast>300000){
-      window._lastStableVoice=Date.now();
-      var tradeNames=allLocked.slice(0,3).map(function(r){return r.sym}).join(', ');
-      window._speak('Your trade'+(allLocked.length>1?'s are':' is')+' looking good. '+tradeNames+(allLocked.length>3?' and '+(allLocked.length-3)+' more':'')+'. Everything is on track. No action needed from you.',false);
-    }
+  // Target hit
+  var targetHits=results.filter(function(r){return r._targetHit&&!r._targetVoiced});
+  if(targetHits.length>0){
+    targetHits.forEach(function(r){
+      window._speak(r.sym+' target reached. Book profit.',false);
+      r._targetVoiced=true;
+    });
   }
-  
-  // Voice 8: Support/Resistance zone change for locked signals
-  // Fires when price moves into a new zone (e.g., from LOWER HALF → AT RESISTANCE)
-  if(!window._zoneVoiceTracker)window._zoneVoiceTracker={};
-  allLocked.forEach(function(r){
-    // Get current zone from price map data
-    var cw=window._pmCallWall||0;
-    var pw=window._pmPutWall||0;
-    var sp=r.spot||0;
-    if(cw<=0||pw<=0||sp<=0)return;
-    
-    var distUp=Math.abs(sp-cw)/sp*100;
-    var distDn=Math.abs(sp-pw)/sp*100;
-    var zone='MID';
-    if(distUp<0.3)zone='AT_RESISTANCE';
-    else if(distDn<0.3)zone='AT_SUPPORT';
-    else if(distUp<0.8)zone='NEAR_RESISTANCE';
-    else if(distDn<0.8)zone='NEAR_SUPPORT';
-    
-    var prevZone=window._zoneVoiceTracker[r.sym]||'';
-    if(zone!==prevZone&&prevZone!==''){
-      var S2=r.reg==='IN'?'₹':'$';
-      var zMsg='';
-      if(zone==='AT_RESISTANCE'&&r.dir==='BULLISH'){
-        zMsg=r.sym+' just reached the resistance zone at '+S2+cw.toLocaleString()+'. Big sellers are here. If you are in profit, book it now. Price usually reverses from this level.';
-      }else if(zone==='AT_SUPPORT'&&r.dir==='BEARISH'){
-        zMsg=r.sym+' just hit the support zone at '+S2+pw.toLocaleString()+'. Big buyers defending here. If your puts are profitable, take profit. Expect a bounce.';
-      }else if(zone==='NEAR_RESISTANCE'&&r.dir==='BULLISH'){
-        zMsg=r.sym+' approaching resistance at '+S2+cw.toLocaleString()+'. You are close to the ceiling. Tighten your stop loss and be ready to book profit.';
-      }else if(zone==='NEAR_SUPPORT'&&r.dir==='BEARISH'){
-        zMsg=r.sym+' approaching support at '+S2+pw.toLocaleString()+'. Getting close to the floor. Tighten your stop and watch for a bounce.';
-      }else if(zone==='AT_SUPPORT'&&r.dir==='BULLISH'){
-        zMsg=r.sym+' dropped to support at '+S2+pw.toLocaleString()+'. Big buyers should defend here. If they do, this is a buying opportunity. Watch for a bounce.';
-      }else if(zone==='AT_RESISTANCE'&&r.dir==='BEARISH'){
-        zMsg=r.sym+' bounced up to resistance at '+S2+cw.toLocaleString()+'. Sellers should step in here. If they do, add to your puts.';
-      }
-      if(zMsg)window._speak(zMsg,zone==='AT_RESISTANCE'||zone==='AT_SUPPORT');
-    }
-    window._zoneVoiceTracker[r.sym]=zone;
-  });
 };
 
 // ═══════════════════════════════════════════════════════════════
