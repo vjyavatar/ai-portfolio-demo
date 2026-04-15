@@ -26159,6 +26159,30 @@ async def _options_quick_impl(symbol: str = "NIFTY", region: str = "IN"):
         except Exception as dt_err:
             print(f"[OPTIONS-QUICK] ⚠️ Daily trend skipped for {sym}: {dt_err}")
         
+        # ═══ US MARKET IMPACT — For India tickers, show how US markets are doing ═══
+        if region == 'IN':
+            try:
+                _yahoo_rate_wait()
+                import yfinance as yf
+                _sp500 = yf.Ticker("^GSPC")
+                _sp_hist = _sp500.history(period='5d')
+                if _sp_hist is not None and len(_sp_hist) >= 2:
+                    _sp_last = float(_sp_hist['Close'].iloc[-1])
+                    _sp_prev = float(_sp_hist['Close'].iloc[-2])
+                    _sp_chg = round((_sp_last - _sp_prev) / _sp_prev * 100, 2)
+                    _sp_5d = round((_sp_last - float(_sp_hist['Close'].iloc[0])) / float(_sp_hist['Close'].iloc[0]) * 100, 2) if len(_sp_hist) >= 5 else _sp_chg
+                    
+                    result["us_market"] = {
+                        "sp500": round(_sp_last, 2),
+                        "sp500_chg": _sp_chg,
+                        "sp500_5d": _sp_5d,
+                        "impact": "POSITIVE" if _sp_chg > 0.3 else "NEGATIVE" if _sp_chg < -0.3 else "NEUTRAL",
+                        "detail": f"S&P 500 at {_sp_last:.0f} ({'+'if _sp_chg>0 else ''}{_sp_chg}% last session, {'+'if _sp_5d>0 else ''}{_sp_5d}% 5-day)"
+                    }
+                    print(f"[OPTIONS-QUICK] ✅ US market impact: S&P {_sp_last:.0f} ({_sp_chg:+.2f}%)")
+            except Exception as us_err:
+                print(f"[OPTIONS-QUICK] ⚠️ US market data skipped: {us_err}")
+        
         print(f"[OPTIONS-QUICK] ✅ {sym} ({region}): spot={spot}, chain={len(chain_data)}, bars={len(result.get('ohlc_bars', []))}")
         return result
         

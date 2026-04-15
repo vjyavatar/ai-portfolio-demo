@@ -3938,24 +3938,73 @@ function _renderQuickTrade(d,sym){
         window._speak('Market is closed for '+sym+'. Data shown is from the last session. Do not trade based on this.',false);
       }
     }
-    h+='<div style="text-align:center;padding:16px;border-radius:16px;background:#64748b10;border:2px solid #64748b25;margin-bottom:8px">';
-    h+='<div style="font-size:24px;font-weight:900;color:'+(status.indexOf('MARKET')>=0?'#ef4444':'#475569')+';font-family:Sora">'+status+'</div>';
-    if(direction!=='NONE')h+='<div style="font-size:12px;font-weight:800;color:'+directionColor+';margin-top:4px">'+directionLabel+'</div>';
-    h+='<div style="font-size:10px;color:#4a6fa5;margin-top:4px">Confidence: '+confidence+'% · Grade: '+grade+'</div>';
-    if(hardBlock)h+='<div style="font-size:9px;color:#ef4444;margin-top:4px">'+blockReason+'</div>';
-    h+='</div>';
-    // Compact why — just top 2 reasons
-    var _topWhy=whyReasons.filter(function(r){return !r.pass}).slice(0,2);
-    if(_topWhy.length>0){
-      h+='<div style="padding:8px;border-radius:8px;background:#e2e8f0;margin-bottom:8px">';
-      h+='<div style="font-size:8px;color:#3b5998;font-weight:700;margin-bottom:4px">Why no trade:</div>';
-      _topWhy.forEach(function(r){h+='<div style="font-size:9px;color:#4a6fa5;padding:2px 0">✗ '+r.label+'</div>'});
+    
+    if(_isMktClosed){
+      // ═══ CLEAN MARKET CLOSED VIEW — no stale signals ═══
+      h+='<div style="text-align:center;padding:20px;border-radius:12px;background:#fff;border:1px solid #e2e8f0;margin-bottom:8px">';
+      h+='<div style="font-size:20px;font-weight:900;color:#ef4444;font-family:JetBrains Mono,monospace;letter-spacing:1px">MARKET CLOSED</div>';
+      h+='<div style="font-size:10px;color:#64748b;margin-top:6px;font-family:JetBrains Mono">Data from last trading session</div>';
+      h+='</div>';
+      
+      // Previous session summary — real data, not predictions
+      h+='<div style="padding:10px;border-radius:8px;background:#f8fafc;border:1px solid #e2e8f0;margin-bottom:8px">';
+      h+='<div style="font-size:9px;font-weight:800;color:#1e40af;font-family:JetBrains Mono;letter-spacing:0.5px;margin-bottom:6px">LAST SESSION SUMMARY</div>';
+      h+='<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;font-family:JetBrains Mono,monospace">';
+      
+      var _prevC=d.prev_close||0;
+      var _chgPct=_prevC>0?Math.round((spot-_prevC)/_prevC*10000)/100:0;
+      var _chgCol=_chgPct>=0?'#059669':'#ef4444';
+      
+      h+='<div style="text-align:center"><div style="font-size:8px;color:#64748b">CLOSE</div><div style="font-size:13px;font-weight:800;color:#1e293b">'+S+Math.round(spot).toLocaleString()+'</div></div>';
+      h+='<div style="text-align:center"><div style="font-size:8px;color:#64748b">CHANGE</div><div style="font-size:13px;font-weight:800;color:'+_chgCol+'">'+(_chgPct>=0?'+':'')+_chgPct+'%</div></div>';
+      h+='<div style="text-align:center"><div style="font-size:8px;color:#64748b">RANGE</div><div style="font-size:13px;font-weight:800;color:#1e293b">'+rangePct.toFixed(1)+'%</div></div>';
+      h+='</div>';
+      
+      h+='<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-top:6px;font-family:JetBrains Mono,monospace">';
+      h+='<div style="text-align:center"><div style="font-size:8px;color:#64748b">HIGH</div><div style="font-size:11px;font-weight:700;color:#059669">'+S+Math.round(dayHigh).toLocaleString()+'</div></div>';
+      h+='<div style="text-align:center"><div style="font-size:8px;color:#64748b">LOW</div><div style="font-size:11px;font-weight:700;color:#ef4444">'+S+Math.round(dayLow).toLocaleString()+'</div></div>';
+      h+='<div style="text-align:center"><div style="font-size:8px;color:#64748b">VIX</div><div style="font-size:11px;font-weight:700;color:'+(vix>25?'#ef4444':vix<15?'#059669':'#d97706')+'">'+vix.toFixed(1)+'</div></div>';
+      h+='</div>';
+      h+='</div>';
+      
+      // Key levels for next session
+      if(maxPain>0||vwapLevel>0){
+        h+='<div style="padding:8px;border-radius:8px;background:#f8fafc;border:1px solid #e2e8f0;margin-bottom:8px">';
+        h+='<div style="font-size:9px;font-weight:800;color:#1e40af;font-family:JetBrains Mono;letter-spacing:0.5px;margin-bottom:4px">KEY LEVELS FOR NEXT SESSION</div>';
+        h+='<div style="display:flex;gap:8px;flex-wrap:wrap;font-family:JetBrains Mono,monospace;font-size:9px">';
+        if(vwapLevel>0)h+='<span style="color:#3b82f6;font-weight:700">VWAP '+S+Math.round(vwapLevel).toLocaleString()+'</span>';
+        if(maxPain>0)h+='<span style="color:#d97706;font-weight:700">Max Pain '+S+Math.round(maxPain).toLocaleString()+'</span>';
+        var _cw0=gex.callWall||0,_pw0=gex.putWall||0;
+        if(_cw0>0)h+='<span style="color:#ef4444;font-weight:700">Resistance '+S+Math.round(_cw0).toLocaleString()+'</span>';
+        if(_pw0>0)h+='<span style="color:#059669;font-weight:700">Support '+S+Math.round(_pw0).toLocaleString()+'</span>';
+        h+='</div></div>';
+      }
+      
+    }else{
+      // Regular NO TRADE (market open but conditions not met)
+      h+='<div style="text-align:center;padding:16px;border-radius:16px;background:#64748b10;border:2px solid #64748b25;margin-bottom:8px">';
+      h+='<div style="font-size:24px;font-weight:900;color:#475569;font-family:Sora">'+status+'</div>';
+      if(direction!=='NONE')h+='<div style="font-size:12px;font-weight:800;color:'+directionColor+';margin-top:4px">'+directionLabel+'</div>';
+      h+='<div style="font-size:10px;color:#4a6fa5;margin-top:4px">'+confidence+'% · Grade '+grade+' · Risk: '+(trapRisk==='HIGH'?'High':'Low')+'</div>';
+      if(hardBlock)h+='<div style="font-size:9px;color:#ef4444;margin-top:4px">'+blockReason+'</div>';
       h+='</div>';
     }
+    // Compact why — just top 2 reasons
+    // Show why-reasons only when market is open (not stale data)
+    if(!_isMktClosed){
+      var _topWhy=whyReasons.filter(function(r){return !r.pass}).slice(0,2);
+      if(_topWhy.length>0){
+        h+='<div style="padding:8px;border-radius:8px;background:#e2e8f0;margin-bottom:8px">';
+        h+='<div style="font-size:8px;color:#3b5998;font-weight:700;margin-bottom:4px">Why no trade:</div>';
+        _topWhy.forEach(function(r){h+='<div style="font-size:9px;color:#4a6fa5;padding:2px 0">✗ '+r.label+'</div>'});
+        h+='</div>';
+      }
+    }
     
-    // Details toggle for verbose analysis
+    // Details toggle — only show when market is open (stale analysis is misleading)
+    if(!_isMktClosed){
     var _detailIdNT='qtDetail_'+sym.replace(/[^a-zA-Z0-9]/g,'')+'_nt';
-    h+='<div style="text-align:center;margin-bottom:8px"><button onclick="var d=document.getElementById(\''+_detailIdNT+'\');d.style.display=d.style.display===\'none\'?\'block\':\'none\'" style="padding:6px 20px;border-radius:8px;background:#f8fafc;color:#2d4373;border:1px solid #cbd5e1;font-size:9px;font-weight:700;cursor:pointer"> Details & Analysis ▼</button></div>';
+    h+='<div style="text-align:center;margin-bottom:8px"><button onclick="var d=document.getElementById(\''+_detailIdNT+'\');d.style.display=d.style.display===\'none\'?\'block\':\'none\'" style="padding:6px 20px;border-radius:8px;background:#f8fafc;color:#2d4373;border:1px solid #cbd5e1;font-size:9px;font-weight:700;cursor:pointer">Details & Analysis ▼</button></div>';
     h+='<div id="'+_detailIdNT+'" style="display:none">';
     // ═══ SIGNAL QUALITY DASHBOARD — NO TRADE view (shows what's missing) ═══
     h+='<div style="padding:10px;border-radius:12px;background:#f8fafc;border:1px solid #e2e8f0;margin-bottom:12px">';
@@ -3990,6 +4039,7 @@ function _renderQuickTrade(d,sym){
       h+='</div>';
     }
     h+='</div>'; // close details toggle div
+    } // close if(!_isMktClosed) for details
     
   // ───  WATCHING /  ALMOST /  HOLD ───
   }else if(status.indexOf('WATCHING')>=0||status.indexOf('CLOSE TO BUY')>=0||status.indexOf('HOLD')>=0||status.indexOf('EXIT TRADE')>=0){
@@ -7407,6 +7457,9 @@ _renderQuickTrade=function(d,sym){
   
   // Render sentiment bar (market mood + sector health)
   if(window._renderSentimentBar)window._renderSentimentBar(d,sym);
+  
+  // Render smart insights (gap, theta, max pain, risk, flow, window)
+  if(window._renderSmartInsights)window._renderSmartInsights(d,sym);
   
     // Pre-market: Gift Nifty for India, Futures for US (when market closed)
   var _preMarketRegion=(window._optionsRegion||window._activeOptionsReg||'IN');
@@ -11015,5 +11068,284 @@ window._renderSentimentBar=function(d,sym){
     el.insertBefore(bar,nav.nextSibling);
   }else{
     el.insertBefore(bar,el.firstChild);
+  }
+};
+
+// ═══════════════════════════════════════════════════════════════
+// SMART INSIGHTS — Innovative data points that help traders win
+// All computed from existing data — no new API calls needed
+// ═══════════════════════════════════════════════════════════════
+
+window._renderSmartInsights=function(d,sym){
+  if(!d||!d.spot||d.spot===0)return;
+  if(window._qtMarketOpen===false)return;
+  if(window._qtBatchMode)return;
+  
+  var el=document.getElementById('deResult');
+  if(!el)return;
+  
+  var old=el.querySelector('#smartInsights');
+  if(old)old.remove();
+  
+  var spot=d.spot||0;
+  var vwap=d.vwap||0;
+  var bars=d.ohlc_bars||[];
+  var chain=d.chain_near_atm||[];
+  var maxPain=d.max_pain||0;
+  var vix=d.vix||0;
+  var pcr=d.pcr||0;
+  var prevClose=d.prev_close||d.today_open||spot;
+  var dayHigh=d.today_high||spot;
+  var dayLow=d.today_low||spot;
+  var isUS=d._region==='US'||d.region==='US';
+  var S=isUS?'$':'₹';
+  var lotSize=d.lot_size||1;
+  
+  var insights=[];
+  
+  // ─── 1. GAP ANALYSIS ───
+  if(prevClose>0&&d.today_open>0){
+    var gapPct=Math.round((d.today_open-prevClose)/prevClose*10000)/100;
+    if(Math.abs(gapPct)>0.2){
+      var gapFilled=gapPct>0?(dayLow<=prevClose):(dayHigh>=prevClose);
+      var gapDir=gapPct>0?'up':'down';
+      insights.push({
+        label:'GAP',
+        value:(gapPct>0?'+':'')+gapPct+'% '+gapDir,
+        detail:gapFilled?'Gap filled — price came back to previous close. Normal trading resumes.':'Gap unfilled — price hasn\'t returned to '+S+Math.round(prevClose)+'. '+(gapDir==='up'?'Buyers':'Sellers')+' are strong.',
+        color:gapPct>0?'#059669':'#ef4444',
+        icon:gapFilled?'↩':'→'
+      });
+    }
+  }
+  
+  // ─── 2. PREMIUM DECAY (Theta Clock) ───
+  if(chain.length>0&&vix>0){
+    var atmPrem=0;
+    chain.forEach(function(c2){if(Math.abs(c2.strike-spot)<spot*0.01){atmPrem=Math.max(atmPrem,c2.ce_ltp||0,c2.pe_ltp||0)}});
+    if(atmPrem>0){
+      // Approximate theta: ATM option loses ~1/365th of premium per day
+      // Accelerates near expiry — use sqrt(DTE) adjustment
+      var dailyDecay=atmPrem*vix/100/Math.sqrt(365);
+      var hourlyDecay=dailyDecay/6.5; // 6.5 trading hours
+      var minuteDecay=hourlyDecay/60;
+      var decayPerLot=Math.round(minuteDecay*lotSize*100)/100;
+      insights.push({
+        label:'THETA',
+        value:S+(decayPerLot>1?Math.round(decayPerLot):decayPerLot.toFixed(2))+'/min',
+        detail:'Your option loses about '+S+(decayPerLot>1?Math.round(decayPerLot):decayPerLot.toFixed(2))+' per minute per lot just from time passing. The longer you hold, the more you lose to time decay.',
+        color:'#d97706',
+        icon:'⏱'
+      });
+    }
+  }
+  
+  // ─── 3. MAX PAIN MAGNET ───
+  if(maxPain>0&&spot>0){
+    var mpDist=Math.round((spot-maxPain)/spot*10000)/100;
+    var mpDir=spot>maxPain?'above':'below';
+    insights.push({
+      label:'MAX PAIN',
+      value:S+Math.round(maxPain)+' ('+Math.abs(mpDist)+'% '+mpDir+')',
+      detail:'Max Pain is where option sellers make the most money. Price tends to drift toward '+S+Math.round(maxPain)+' near expiry. You are '+Math.abs(mpDist)+'% away'+(Math.abs(mpDist)<0.5?' — very close, expect pinning':'')+'.',
+      color:Math.abs(mpDist)<0.5?'#d97706':'#475569',
+      icon:'◎'
+    });
+  }
+  
+  // ─── 4. RISK PER TRADE (in plain ₹/$) ───
+  if(chain.length>0){
+    var entryPrem=0;
+    chain.forEach(function(c3){if(Math.abs(c3.strike-spot)<spot*0.01){entryPrem=Math.max(entryPrem,c3.ce_ltp||0,c3.pe_ltp||0)}});
+    if(entryPrem>0){
+      var maxLoss=Math.round(entryPrem*0.25*lotSize); // 25% SL
+      var targetProfit=Math.round(entryPrem*0.30*lotSize); // 30% target
+      var costPerLot=Math.round(entryPrem*lotSize);
+      insights.push({
+        label:'RISK',
+        value:'Max loss '+S+maxLoss+' per lot',
+        detail:'1 lot costs '+S+costPerLot+'. If you set a 25% stop loss, maximum you lose is '+S+maxLoss+'. Target profit at 30% = '+S+targetProfit+'. Risk:Reward = 1:1.2',
+        color:'#ef4444',
+        icon:'⚖'
+      });
+    }
+  }
+  
+  // ─── 5. SMART MONEY FLOW (OI direction) ───
+  if(chain.length>=3){
+    var totalCeOI=0,totalPeOI=0,ceChg=0,peChg=0;
+    chain.forEach(function(c4){
+      totalCeOI+=(c4.ce_oi||0);totalPeOI+=(c4.pe_oi||0);
+      ceChg+=(c4.ce_chg||0);peChg+=(c4.pe_chg||0);
+    });
+    if(totalCeOI>0||totalPeOI>0){
+      var flowDir=(peChg>ceChg&&peChg>0)?'BULLISH (puts building = support)':
+                  (ceChg>peChg&&ceChg>0)?'BEARISH (calls building = resistance)':'NEUTRAL';
+      var flowColor=flowDir.indexOf('BULLISH')>=0?'#059669':flowDir.indexOf('BEARISH')>=0?'#ef4444':'#475569';
+      insights.push({
+        label:'SMART MONEY',
+        value:flowDir.split('(')[0].trim(),
+        detail:'Institutions are '+(flowDir.indexOf('BULLISH')>=0?'adding puts at lower strikes — they expect support here. This is bullish.':flowDir.indexOf('BEARISH')>=0?'adding calls at higher strikes — they expect resistance. This is bearish.':'not making big moves right now. Wait for a directional signal.'),
+        color:flowColor,
+        icon:'$'
+      });
+    }
+  }
+  
+  // ─── 6. BEST TRADING WINDOW ───
+  var _btNow=new Date();
+  var _btReg=d._region||'IN';
+  var _btH,_btM;
+  if(_btReg==='IN'){
+    _btH=_btNow.getUTCHours()+5+(_btNow.getUTCMinutes()+30>=60?1:0);
+    _btM=(_btNow.getUTCMinutes()+30)%60;
+  }else{
+    _btH=_btNow.getUTCHours()-4;_btM=_btNow.getUTCMinutes();
+  }
+  var _btCurrent=_btH+_btM/60;
+  var _openH=_btReg==='IN'?9.25:9.5;
+  var _closeH=_btReg==='IN'?15.5:16;
+  
+  if(_btCurrent>=_openH&&_btCurrent<_closeH){
+    var window_label='';
+    var window_detail='';
+    var window_color='#475569';
+    if(_btCurrent<_openH+1.5){
+      window_label='OPENING — Best for breakouts';
+      window_detail='First 90 minutes have the most volume and largest moves. This is the best time for options trading. ORB (Opening Range Breakout) is most reliable now.';
+      window_color='#059669';
+    }else if(_btCurrent>=_closeH-0.5){
+      window_label='CLOSING — Exit positions';
+      window_detail='Last 30 minutes. Time decay accelerates. Close all intraday options NOW. Do not hold overnight unless swing trade.';
+      window_color='#ef4444';
+    }else if(_btCurrent>=_closeH-1.5){
+      window_label='LATE SESSION — Reduce size';
+      window_detail='Last 90 minutes. Momentum fades, spreads widen. Trade with half position size. Book profits on existing trades.';
+      window_color='#d97706';
+    }else if(_btCurrent>=12&&_btCurrent<13.5&&_btReg==='IN'){
+      window_label='LUNCH HOUR — Low volume';
+      window_detail='12:00-1:30 IST is historically the lowest volume period. Avoid new entries. Fake breakouts are common. Wait for 2pm revival.';
+      window_color='#d97706';
+    }else{
+      window_label='MID-SESSION — Trend trades';
+      window_detail='The midday session is best for trend-following strategies. If a trend started in the morning, it usually continues. Avoid counter-trend trades.';
+      window_color='#3b82f6';
+    }
+    insights.push({
+      label:'WINDOW',
+      value:window_label,
+      detail:window_detail,
+      color:window_color,
+      icon:'◷'
+    });
+  }
+  
+  // ─── 7. US MARKET IMPACT (for India tickers) ───
+  if(!isUS){
+    var usMarket=d.us_market||null;
+    if(usMarket&&usMarket.sp500){
+      var _usChg=usMarket.sp500_chg||0;
+      var _us5d=usMarket.sp500_5d||0;
+      var _usImpactLabel=usMarket.impact||'NEUTRAL';
+      var _usColor2=_usImpactLabel==='POSITIVE'?'#059669':_usImpactLabel==='NEGATIVE'?'#ef4444':'#475569';
+      var _usDetail='S&P 500 at $'+usMarket.sp500.toLocaleString()+' ('+(_usChg>=0?'+':'')+_usChg+'% last session). ';
+      if(_usImpactLabel==='POSITIVE'){
+        _usDetail+='US markets are up — positive for India opening. Foreign investors tend to buy when US is strong.';
+      }else if(_usImpactLabel==='NEGATIVE'){
+        _usDetail+='US markets are down — expect cautious India opening. Foreign investors may book profits.';
+      }else{
+        _usDetail+='US markets flat — India may trade on its own domestic factors today.';
+      }
+      if(Math.abs(_us5d)>2){
+        _usDetail+=' 5-day trend: '+(_us5d>=0?'+':'')+_us5d+'%.';
+      }
+      insights.push({
+        label:'US MARKET',
+        value:'S&P '+(_usChg>=0?'+':'')+_usChg+'%',
+        detail:_usDetail,
+        color:_usColor2,
+        icon:'$'
+      });
+    }else if(d.daily_trend&&d.daily_trend.d5_change){
+      // Fallback — use daily trend as proxy
+      var dt2=d.daily_trend;
+      if(Math.abs(dt2.d5_change)>2){
+        insights.push({
+          label:'GLOBAL',
+          value:dt2.d5_change>0?'POSITIVE':'NEGATIVE',
+          detail:'Global markets '+(dt2.d5_change>0?'trending up (+'+dt2.d5_change+'%). Positive for India.':'under pressure ('+dt2.d5_change+'%). Negative for India.'),
+          color:dt2.d5_change>0?'#059669':'#ef4444',
+          icon:'⊕'
+        });
+      }
+    }
+  }
+  
+  if(insights.length===0)return;
+  
+  // ─── VOICE for critical insights (once per ticker per session) ───
+  if(!window._insightVoiced)window._insightVoiced={};
+  var _ivKey=sym+'_'+new Date().toDateString();
+  if(!window._insightVoiced[_ivKey]){
+    window._insightVoiced[_ivKey]=true;
+    
+    var voiceParts=[];
+    
+    insights.forEach(function(ins){
+      if(ins.label==='GAP'&&ins.value.indexOf('up')>=0){
+        voiceParts.push(sym+' opened with a gap '+ins.value+'. '+ins.detail.split('.')[0]);
+      }
+      if(ins.label==='THETA'){
+        voiceParts.push('Time decay is '+ins.value+' per lot. The longer you hold, the more you lose');
+      }
+      if(ins.label==='MAX PAIN'&&ins.detail.indexOf('very close')>=0){
+        voiceParts.push('Price is very close to max pain '+ins.value.split('(')[0]+'. Expect pinning near this level');
+      }
+      if(ins.label==='SMART MONEY'&&ins.value!=='NEUTRAL'){
+        voiceParts.push('Smart money flow is '+ins.value+'. '+ins.detail.split('.')[0]);
+      }
+      if(ins.label==='WINDOW'){
+        voiceParts.push(ins.value.split('—')[0].trim()+'. '+ins.detail.split('.')[0]);
+      }
+      if(ins.label==='GLOBAL'){
+        voiceParts.push('Global market impact: '+ins.value+'. '+ins.detail.split('.')[0]);
+      }
+    });
+    
+    // Speak top 2 most important insights (don't overwhelm)
+    if(voiceParts.length>0){
+      var _insightMsg=voiceParts.slice(0,2).join('. ');
+      setTimeout(function(){window._speak(_insightMsg,false)},3000);
+    }
+  }
+  
+  // ─── RENDER ───
+  var div=document.createElement('div');
+  div.id='smartInsights';
+  div.style.cssText='max-width:520px;margin:8px auto;padding:0';
+  
+  var h='<div style="border-radius:4px;overflow:hidden;border:1px solid #e2e8f0">';
+  h+='<div onclick="var t=this.nextElementSibling;t.style.display=t.style.display===\'none\'?\'block\':\'none\'" style="padding:6px 10px;background:#f8fafc;cursor:pointer;display:flex;justify-content:space-between;align-items:center">';
+  h+='<span style="font-size:10px;font-weight:800;color:#1e40af;font-family:JetBrains Mono,monospace;letter-spacing:0.5px">SMART INSIGHTS</span>';
+  h+='<span style="color:#64748b;font-size:9px;font-family:JetBrains Mono">toggle</span></div>';
+  h+='<div style="display:none;padding:8px 10px;background:#fff">';
+  
+  insights.forEach(function(ins){
+    h+='<div style="display:flex;align-items:flex-start;gap:8px;padding:6px 0;border-bottom:1px solid #f1f5f9">';
+    h+='<div style="flex-shrink:0;width:65px"><span style="font-size:8px;font-weight:800;color:'+ins.color+';font-family:JetBrains Mono,monospace;letter-spacing:0.3px">'+ins.label+'</span></div>';
+    h+='<div style="flex:1"><div style="font-size:10px;font-weight:700;color:#1e293b;font-family:JetBrains Mono,monospace">'+ins.value+'</div>';
+    h+='<div style="font-size:9px;color:#475569;margin-top:2px;line-height:1.3">'+ins.detail+'</div></div>';
+    h+='</div>';
+  });
+  
+  h+='</div></div>';
+  div.innerHTML=h;
+  
+  // Insert before the institutional analytics panel or at end
+  var instPanel=el.querySelector('#instEnhPanel');
+  if(instPanel){
+    el.insertBefore(div,instPanel);
+  }else{
+    el.appendChild(div);
   }
 };
