@@ -7164,15 +7164,96 @@ window._loadSmartOptions=function(ticker){
 var _origQT6=_renderQuickTrade;
 _renderQuickTrade=function(d,sym){
   _origQT6(d,sym);
-  if(window._qtBatchMode)return; // Skip nav/gift-nifty in batch mode
+  if(window._qtBatchMode)return;
   var el=document.getElementById('deResult');if(!el)return;
-  // Prepend the navigator (only if not already present)
+  // Prepend the navigator
   if(!el.querySelector('#optNavInjected')){
     var navHtml=window._renderOptionsNav(sym);
     var navDiv=document.createElement('div');
     navDiv.id='optNavInjected';
     navDiv.innerHTML=navHtml;
     el.insertBefore(navDiv,el.firstChild);
+  }
+  
+  // ─── APPEND BLOTTER TABLES below the card (always visible) ───
+  var _oldBlotter=el.querySelector('#inlineBlotter');
+  if(_oldBlotter)_oldBlotter.remove();
+  
+  var bnResults=Object.values(window._bottomNavResults||{});
+  var _blotterPhase=window._getMarketPhase?window._getMarketPhase():'CLOSED';
+  
+  // Always show blotter div (with status when empty)
+  var bDiv=document.createElement('div');
+  bDiv.id='inlineBlotter';
+  bDiv.style.cssText='max-width:520px;margin:12px auto 0;padding:0';
+  var bh='';
+  
+  if(bnResults.length>0){
+    bnResults.sort(function(a,b){return(b.conf||0)-(a.conf||0)});
+    var buyNow=bnResults.filter(function(r){return r.grade==='A+'||r.grade==='A'}).slice(0,5);
+    var watching=bnResults.filter(function(r){return r.grade==='B'}).slice(0,5);
+    
+    if(buyNow.length>0||watching.length>0){
+      
+      if(buyNow.length>0){
+        bh+='<div style="margin-bottom:8px;border-radius:4px;overflow:hidden;border:1px solid #d1fae5">';
+        bh+='<div onclick="var t=this.nextElementSibling;t.style.display=t.style.display===\'none\'?\'block\':\'none\'" style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:#f0fdf4;cursor:pointer;border-bottom:1px solid #d1fae5">';
+        bh+='<span style="font-size:11px;font-weight:800;color:#059669;font-family:JetBrains Mono,monospace;letter-spacing:0.5px">BUY NOW ('+buyNow.length+')</span>';
+        bh+='<span style="color:#059669;font-size:10px;font-family:JetBrains Mono">click to expand</span></div>';
+        bh+='<div style="display:none;max-height:200px;overflow-y:auto"><table style="width:100%;border-collapse:collapse;font-size:10px;font-family:JetBrains Mono,monospace;background:#fff">';
+        bh+='<thead><tr style="background:#f8fafc;border-bottom:1px solid #e2e8f0"><th style="padding:4px 8px;text-align:left;color:#475569;font-size:8px">SYM</th><th style="padding:4px;text-align:center;color:#475569;font-size:8px">DIR</th><th style="padding:4px;text-align:center;color:#475569;font-size:8px">CONF</th><th style="padding:4px;text-align:center;color:#475569;font-size:8px">STATUS</th></tr></thead><tbody>';
+        buyNow.forEach(function(r){
+          var loadFn=r.reg==='IN'?"window._loadQuickTrade('"+r.sym+"')":"window._loadOptionsUniversal('"+r.sym+"','US')";
+          var dc=r.action==='BUY CALL'?'#059669':'#ef4444';
+          var da=r.action==='BUY CALL'?'CE ↑':'PE ↓';
+          bh+='<tr onclick="'+loadFn+'" style="border-bottom:1px solid #f1f5f9;cursor:pointer" onmouseover="this.style.background=\'#f8fafc\'" onmouseout="this.style.background=\'#fff\'">';
+          bh+='<td style="padding:6px 8px;font-weight:800;color:#1e293b">'+r.label+'</td>';
+          bh+='<td style="padding:6px;text-align:center;color:'+dc+';font-weight:700">'+da+'</td>';
+          bh+='<td style="padding:6px;text-align:center;font-weight:700;color:'+dc+'">'+r.conf+'%</td>';
+          bh+='<td style="padding:6px;text-align:center;font-size:9px;color:#475569">'+(r._status||'NEW')+'</td>';
+          bh+='</tr>';
+        });
+        bh+='</tbody></table></div></div>';
+      }
+      
+      if(watching.length>0){
+        bh+='<div style="border-radius:4px;overflow:hidden;border:1px solid #fde68a">';
+        bh+='<div onclick="var t=this.nextElementSibling;t.style.display=t.style.display===\'none\'?\'block\':\'none\'" style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:#fffbeb;cursor:pointer;border-bottom:1px solid #fde68a">';
+        bh+='<span style="font-size:11px;font-weight:800;color:#d97706;font-family:JetBrains Mono,monospace;letter-spacing:0.5px">WATCHING ('+watching.length+')</span>';
+        bh+='<span style="color:#d97706;font-size:10px;font-family:JetBrains Mono">click to expand</span></div>';
+        bh+='<div style="display:none;max-height:160px;overflow-y:auto"><table style="width:100%;border-collapse:collapse;font-size:10px;font-family:JetBrains Mono,monospace;background:#fff">';
+        bh+='<thead><tr style="background:#f8fafc;border-bottom:1px solid #e2e8f0"><th style="padding:4px 8px;text-align:left;color:#475569;font-size:8px">SYM</th><th style="padding:4px;text-align:center;color:#475569;font-size:8px">DIR</th><th style="padding:4px;text-align:center;color:#475569;font-size:8px">CONF</th><th style="padding:4px;text-align:left;color:#475569;font-size:8px">NEEDS</th></tr></thead><tbody>';
+        watching.forEach(function(r){
+          var loadFn=r.reg==='IN'?"window._loadQuickTrade('"+r.sym+"')":"window._loadOptionsUniversal('"+r.sym+"','US')";
+          var dc=r.action==='BUY CALL'?'#059669':r.action==='BUY PUT'?'#ef4444':'#475569';
+          var da=r.action==='BUY CALL'?'↑':r.action==='BUY PUT'?'↓':'-';
+          var needs=r.conf<60?'Vol+Break':r.conf<65?'Breakout':'OI conf';
+          bh+='<tr onclick="'+loadFn+'" style="border-bottom:1px solid #f1f5f9;cursor:pointer" onmouseover="this.style.background=\'#f8fafc\'" onmouseout="this.style.background=\'#fff\'">';
+          bh+='<td style="padding:5px 8px;font-weight:700;color:#1e293b">'+r.label+'</td>';
+          bh+='<td style="padding:5px;text-align:center;color:'+dc+';font-weight:700">'+da+'</td>';
+          bh+='<td style="padding:5px;text-align:center;color:#d97706;font-weight:700">'+r.conf+'%</td>';
+          bh+='<td style="padding:5px;color:#64748b;font-size:9px">'+needs+'</td>';
+          bh+='</tr>';
+        });
+        bh+='</tbody></table></div></div>';
+      }
+      
+      bDiv.innerHTML=bh;
+      el.appendChild(bDiv);
+    }else{
+      // Has scan results but no A/B grades
+      bh+='<div style="padding:10px;text-align:center;font-size:10px;color:#64748b;font-family:JetBrains Mono,monospace;background:#f8fafc;border-radius:4px;border:1px solid #e2e8f0">No BUY signals right now · '+bnResults.length+' tickers scanned</div>';
+      bDiv.innerHTML=bh;
+      el.appendChild(bDiv);
+    }
+  }else{
+    // No results yet — show status
+    var _statusMsg=_blotterPhase==='CLOSED'?
+      (window._optionsRegion==='IN'?'IN market closed · Switch to US':'US market closed'):
+      'Scanning '+((window._optionsRegion||'IN')==='IN'?'India':'US')+' market...';
+    bh+='<div style="padding:10px;text-align:center;font-size:10px;color:#64748b;font-family:JetBrains Mono,monospace;background:#f8fafc;border-radius:4px;border:1px solid #e2e8f0">'+_statusMsg+'</div>';
+    bDiv.innerHTML=bh;
+    el.appendChild(bDiv);
   }
   
   // Pre-market: Gift Nifty for India, Futures for US (when market closed)
