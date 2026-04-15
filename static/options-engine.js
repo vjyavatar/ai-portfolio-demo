@@ -7175,35 +7175,18 @@ _renderQuickTrade=function(d,sym){
     el.insertBefore(navDiv,el.firstChild);
   }
   
-  // ─── WRAP QT CARD + BLOTTER in 2-column grid ───
+  // ─── BLOTTER above QT card (simple stack, no grid) ───
   var _oldBlotter=el.querySelector('#inlineBlotter');
   if(_oldBlotter)_oldBlotter.remove();
   var _oldGrid=el.querySelector('#qtGridLayout');
   if(_oldGrid)_oldGrid.remove();
   
-  // Collect QT card content (everything after nav)
-  var _navEl=el.querySelector('#optNavInjected');
-  var _qtContent=[];
-  var _child=_navEl?_navEl.nextSibling:el.firstChild;
-  while(_child){var _next=_child.nextSibling;if(_child.id!=='optNavInjected')_qtContent.push(_child);_child=_next;}
-  
-  // Build grid
-  var grid=document.createElement('div');
-  grid.id='qtGridLayout';
-  if(!window._qtGridStyleAdded){
-    window._qtGridStyleAdded=true;
-    var sty=document.createElement('style');
-    sty.textContent='@media(min-width:768px){#qtGridLayout{display:grid!important;grid-template-columns:280px 1fr!important;gap:12px!important}}';
-    document.head.appendChild(sty);
-  }
-  grid.style.cssText='display:flex;flex-direction:column;gap:8px;max-width:900px;margin:0 auto';
-  
-  // LEFT: Blotter
-  var leftCol=document.createElement('div');
-  leftCol.style.cssText='min-width:0';
-  
   var bnResults=Object.values(window._bottomNavResults||{});
   var _blotterPhase=window._getMarketPhase?window._getMarketPhase():'CLOSED';
+  
+  var bDiv=document.createElement('div');
+  bDiv.id='inlineBlotter';
+  bDiv.style.cssText='max-width:520px;margin:0 auto 10px;padding:0';
   var bh='';
   
   if(bnResults.length>0){
@@ -7212,20 +7195,21 @@ _renderQuickTrade=function(d,sym){
     var watching=bnResults.filter(function(r){return r.grade==='B'}).slice(0,5);
     
     if(buyNow.length>0){
-      bh+='<div style="margin-bottom:8px;border-radius:4px;overflow:hidden;border:1px solid #d1fae5">';
-      bh+='<div onclick="var t=this.nextElementSibling;t.style.display=t.style.display===\'none\'?\'block\':\'none\'" style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;background:#f0fdf4;cursor:pointer;border-bottom:1px solid #d1fae5">';
+      bh+='<div style="margin-bottom:6px;border-radius:4px;overflow:hidden;border:1px solid #d1fae5">';
+      bh+='<div onclick="var t=this.nextElementSibling;t.style.display=t.style.display===\'none\'?\'block\':\'none\'" style="display:flex;justify-content:space-between;align-items:center;padding:6px 10px;background:#f0fdf4;cursor:pointer">';
       bh+='<span style="font-size:11px;font-weight:800;color:#059669;font-family:JetBrains Mono,monospace">BUY NOW ('+buyNow.length+')</span>';
-      bh+='<span style="color:#059669;font-size:8px;font-family:JetBrains Mono">toggle</span></div>';
-      bh+='<div style="max-height:220px;overflow-y:auto"><table style="width:100%;border-collapse:collapse;font-size:10px;font-family:JetBrains Mono,monospace;background:#fff">';
-      bh+='<thead><tr style="background:#f8fafc;border-bottom:1px solid #e2e8f0"><th style="padding:4px 6px;text-align:left;color:#475569;font-size:8px">SYM</th><th style="padding:4px;text-align:center;color:#475569;font-size:8px">DIR</th><th style="padding:4px;text-align:center;color:#475569;font-size:8px">CONF</th></tr></thead><tbody>';
+      bh+='<span style="color:#059669;font-size:9px;font-family:JetBrains Mono">toggle</span></div>';
+      bh+='<div style="max-height:180px;overflow-y:auto"><table style="width:100%;border-collapse:collapse;font-size:10px;font-family:JetBrains Mono,monospace;background:#fff">';
+      bh+='<thead><tr style="background:#f8fafc"><th style="padding:4px 8px;text-align:left;color:#475569;font-size:8px">SYM</th><th style="padding:4px;text-align:center;color:#475569;font-size:8px">DIR</th><th style="padding:4px;text-align:center;color:#475569;font-size:8px">CONF</th><th style="padding:4px;text-align:center;color:#475569;font-size:8px">STATUS</th></tr></thead><tbody>';
       buyNow.forEach(function(r){
         var loadFn=r.reg==='IN'?"window._loadQuickTrade(\'"+r.sym+"\')":'window._loadOptionsUniversal(\''+r.sym+"\',\'US\')";
         var dc=r.action==='BUY CALL'?'#059669':'#ef4444';
         var da=r.action==='BUY CALL'?'CE \u2191':'PE \u2193';
         bh+='<tr onclick="'+loadFn+'" style="border-bottom:1px solid #f1f5f9;cursor:pointer" onmouseover="this.style.background=\'#f0fdf4\'" onmouseout="this.style.background=\'#fff\'">';
-        bh+='<td style="padding:6px;font-weight:800;color:#1e293b">'+r.label+'</td>';
-        bh+='<td style="padding:6px;text-align:center;color:'+dc+';font-weight:700;font-size:9px">'+da+'</td>';
-        bh+='<td style="padding:6px;text-align:center;font-weight:700;color:'+dc+'">'+r.conf+'%</td>';
+        bh+='<td style="padding:5px 8px;font-weight:800;color:#1e293b">'+r.label+'</td>';
+        bh+='<td style="padding:5px;text-align:center;color:'+dc+';font-weight:700;font-size:9px">'+da+'</td>';
+        bh+='<td style="padding:5px;text-align:center;font-weight:700;color:'+dc+'">'+r.conf+'%</td>';
+        bh+='<td style="padding:5px;text-align:center;font-size:8px;color:#475569">'+(r._status||'NEW')+'</td>';
         bh+='</tr>';
       });
       bh+='</tbody></table></div></div>';
@@ -7233,45 +7217,43 @@ _renderQuickTrade=function(d,sym){
     
     if(watching.length>0){
       bh+='<div style="border-radius:4px;overflow:hidden;border:1px solid #fde68a">';
-      bh+='<div onclick="var t=this.nextElementSibling;t.style.display=t.style.display===\'none\'?\'block\':\'none\'" style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;background:#fffbeb;cursor:pointer;border-bottom:1px solid #fde68a">';
+      bh+='<div onclick="var t=this.nextElementSibling;t.style.display=t.style.display===\'none\'?\'block\':\'none\'" style="display:flex;justify-content:space-between;align-items:center;padding:6px 10px;background:#fffbeb;cursor:pointer">';
       bh+='<span style="font-size:11px;font-weight:800;color:#d97706;font-family:JetBrains Mono,monospace">WATCHING ('+watching.length+')</span>';
-      bh+='<span style="color:#d97706;font-size:8px;font-family:JetBrains Mono">toggle</span></div>';
-      bh+='<div style="display:none;max-height:160px;overflow-y:auto"><table style="width:100%;border-collapse:collapse;font-size:10px;font-family:JetBrains Mono,monospace;background:#fff">';
-      bh+='<thead><tr style="background:#f8fafc;border-bottom:1px solid #e2e8f0"><th style="padding:4px 6px;text-align:left;color:#475569;font-size:8px">SYM</th><th style="padding:4px;text-align:center;color:#475569;font-size:8px">DIR</th><th style="padding:4px;text-align:center;color:#475569;font-size:8px">CONF</th></tr></thead><tbody>';
+      bh+='<span style="color:#d97706;font-size:9px;font-family:JetBrains Mono">toggle</span></div>';
+      bh+='<div style="display:none;max-height:140px;overflow-y:auto"><table style="width:100%;border-collapse:collapse;font-size:10px;font-family:JetBrains Mono,monospace;background:#fff">';
+      bh+='<thead><tr style="background:#f8fafc"><th style="padding:4px 8px;text-align:left;color:#475569;font-size:8px">SYM</th><th style="padding:4px;text-align:center;color:#475569;font-size:8px">DIR</th><th style="padding:4px;text-align:center;color:#475569;font-size:8px">CONF</th></tr></thead><tbody>';
       watching.forEach(function(r){
         var loadFn=r.reg==='IN'?"window._loadQuickTrade(\'"+r.sym+"\')":'window._loadOptionsUniversal(\''+r.sym+"\',\'US\')";
         var dc=r.action==='BUY CALL'?'#059669':r.action==='BUY PUT'?'#ef4444':'#475569';
         var da=r.action==='BUY CALL'?'\u2191':r.action==='BUY PUT'?'\u2193':'-';
         bh+='<tr onclick="'+loadFn+'" style="border-bottom:1px solid #f1f5f9;cursor:pointer" onmouseover="this.style.background=\'#fffbeb\'" onmouseout="this.style.background=\'#fff\'">';
-        bh+='<td style="padding:5px 6px;font-weight:700;color:#1e293b">'+r.label+'</td>';
-        bh+='<td style="padding:5px;text-align:center;color:'+dc+';font-weight:700">'+da+'</td>';
-        bh+='<td style="padding:5px;text-align:center;color:#d97706;font-weight:700">'+r.conf+'%</td>';
+        bh+='<td style="padding:4px 8px;font-weight:700;color:#1e293b">'+r.label+'</td>';
+        bh+='<td style="padding:4px;text-align:center;color:'+dc+';font-weight:700">'+da+'</td>';
+        bh+='<td style="padding:4px;text-align:center;color:#d97706;font-weight:700">'+r.conf+'%</td>';
         bh+='</tr>';
       });
       bh+='</tbody></table></div></div>';
     }
     
     if(buyNow.length===0&&watching.length===0){
-      bh+='<div style="padding:10px;text-align:center;font-size:9px;color:#64748b;font-family:JetBrains Mono;background:#f8fafc;border-radius:4px;border:1px solid #e2e8f0">No BUY signals · '+bnResults.length+' scanned</div>';
+      bh+='<div style="padding:8px;text-align:center;font-size:9px;color:#64748b;font-family:JetBrains Mono;background:#f8fafc;border-radius:4px;border:1px solid #e2e8f0">No BUY signals · '+bnResults.length+' scanned</div>';
     }
-  }else{
-    var _statusMsg=_blotterPhase==='CLOSED'?
-      ((window._optionsRegion||'IN')==='IN'?'IN closed · Switch to US':'US closed'):
-      'Scanning '+((window._optionsRegion||'IN')==='IN'?'IN':'US')+'...';
-    bh+='<div style="padding:10px;text-align:center;font-size:9px;color:#64748b;font-family:JetBrains Mono;background:#f8fafc;border-radius:4px;border:1px solid #e2e8f0">'+_statusMsg+'</div>';
+  }else if(_blotterPhase!=='CLOSED'){
+    bh+='<div style="padding:8px;text-align:center;font-size:9px;color:#64748b;font-family:JetBrains Mono;background:#f8fafc;border-radius:4px;border:1px solid #e2e8f0">Scanning '+((window._optionsRegion||'IN')==='IN'?'IN':'US')+'...</div>';
   }
-  leftCol.innerHTML=bh;
   
-  // RIGHT: QT card content
-  var rightCol=document.createElement('div');
-  rightCol.style.cssText='min-width:0';
-  _qtContent.forEach(function(c){rightCol.appendChild(c)});
+  if(bh){
+    bDiv.innerHTML=bh;
+    // Insert BEFORE the QT card content (after nav)
+    var _navEl2=el.querySelector('#optNavInjected');
+    if(_navEl2&&_navEl2.nextSibling){
+      el.insertBefore(bDiv,_navEl2.nextSibling);
+    }else{
+      el.insertBefore(bDiv,el.firstChild);
+    }
+  }
   
-  grid.appendChild(leftCol);
-  grid.appendChild(rightCol);
-  el.appendChild(grid);
-  
-  // Pre-market: Gift Nifty for India, Futures for US (when market closed)
+    // Pre-market: Gift Nifty for India, Futures for US (when market closed)
   var _preMarketRegion=(window._optionsRegion||window._activeOptionsReg||'IN');
   if(_preMarketRegion==='IN'){
     var _gnNowR=new Date();
