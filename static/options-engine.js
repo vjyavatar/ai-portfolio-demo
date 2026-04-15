@@ -15,7 +15,7 @@ window._loadOptionsDecide=function(symbol){
   var validIdx=['NIFTY','BANKNIFTY','SENSEX','FINNIFTY','MIDCPNIFTY'];
   if(validIdx.indexOf(sym)<0)sym='NIFTY';
   
-  el.innerHTML='<div style="padding:40px;text-align:center;background:#f1f5f9;border-radius:16px;margin:8px 0">'
+  el.innerHTML='<div style="padding:40px;text-align:center;background:#f8fafc;border-radius:16px;margin:8px 0">'
     +'<div style="display:inline-block;width:24px;height:24px;border:3px solid #3b82f6;border-top-color:transparent;border-radius:50%;animation:spin .5s linear infinite"></div>'
     +'<div style="font-size:14px;font-weight:900;color:#1e293b;margin-top:12px;font-family:Sora,sans-serif">Loading Options Intelligence...</div>'
     +'<div style="font-size:9px;color:#3b5998;margin-top:4px">Fetching '+sym+' chain · VIX · OI · GEX · PCR</div></div>';
@@ -24,14 +24,14 @@ window._loadOptionsDecide=function(symbol){
     .then(function(r){return r.json()})
     .then(function(d){
       if(!d||!d.success){
-        el.innerHTML='<div style="color:#ef4444;padding:20px;font-size:12px;text-align:center;background:#f1f5f9;border-radius:16px">❌ Failed to load options data for '+sym+'<br><button onclick="window._loadOptionsDecide(\''+sym+'\')" style="margin-top:10px;padding:8px 20px;border-radius:8px;background:#3b82f6;color:#fff;border:none;cursor:pointer;font-size:11px;font-weight:700">Retry</button></div>';
+        el.innerHTML='<div style="color:#ef4444;padding:20px;font-size:12px;text-align:center;background:#f8fafc;border-radius:16px">❌ Failed to load options data for '+sym+'<br><button onclick="window._loadOptionsDecide(\''+sym+'\')" style="margin-top:10px;padding:8px 20px;border-radius:8px;background:#3b82f6;color:#fff;border:none;cursor:pointer;font-size:11px;font-weight:700">Retry</button></div>';
         return;
       }
       if(!d.ohlc_bars)d.ohlc_bars=[];if(!d.chain_near_atm)d.chain_near_atm=[];if(!d.ce_resistance)d.ce_resistance=[];if(!d.pe_support)d.pe_support=[];if(!d.gex)d.gex={total:0,regime:'NEUTRAL',topStrikes:[],flipPoint:0,callWall:0,putWall:0};
-      try{_renderOptionsEngine(d,sym)}catch(_reErr){console.error('[RENDER CRASH] OptionsEngine:',_reErr);el.innerHTML='<div style="text-align:center;padding:30px;background:#f1f5f9;border-radius:16px"><div style="font-size:14px;color:#ef4444;font-weight:800;margin-bottom:8px">Render Error</div><div style="font-size:10px;color:#4a6fa5;margin-bottom:8px">'+(_reErr.message||'')+'</div><button onclick="window._retryLast()" style="padding:8px 20px;border-radius:8px;background:#3b82f6;color:#fff;border:none;cursor:pointer;font-size:11px;font-weight:700">🔄 Retry</button></div>'}
+      try{_renderOptionsEngine(d,sym)}catch(_reErr){console.error('[RENDER CRASH] OptionsEngine:',_reErr);el.innerHTML='<div style="text-align:center;padding:30px;background:#f8fafc;border-radius:16px"><div style="font-size:14px;color:#ef4444;font-weight:800;margin-bottom:8px">Render Error</div><div style="font-size:10px;color:#4a6fa5;margin-bottom:8px">'+(_reErr.message||'')+'</div><button onclick="window._retryLast()" style="padding:8px 20px;border-radius:8px;background:#3b82f6;color:#fff;border:none;cursor:pointer;font-size:11px;font-weight:700">🔄 Retry</button></div>'}
     })
     .catch(function(e){
-      el.innerHTML='<div style="text-align:center;padding:30px;background:#f1f5f9;border-radius:16px"><div style="font-size:14px;color:#ef4444;font-weight:800;margin-bottom:8px">Cannot connect to server</div><div style="font-size:10px;color:#4a6fa5;margin-bottom:12px">'+e.message+'</div><button onclick="window._retryLast()" style="padding:8px 20px;border-radius:8px;background:#3b82f6;color:#fff;border:none;cursor:pointer;font-size:11px;font-weight:700">🔄 Retry</button></div>';
+      el.innerHTML='<div style="text-align:center;padding:30px;background:#f8fafc;border-radius:16px"><div style="font-size:14px;color:#ef4444;font-weight:800;margin-bottom:8px">Cannot connect to server</div><div style="font-size:10px;color:#4a6fa5;margin-bottom:12px">'+e.message+'</div><button onclick="window._retryLast()" style="padding:8px 20px;border-radius:8px;background:#3b82f6;color:#fff;border:none;cursor:pointer;font-size:11px;font-weight:700">🔄 Retry</button></div>';
     });
 };
 
@@ -525,8 +525,8 @@ function _renderOptionsEngine(d,sym){
   h+='<div style="font-size:16px;font-weight:900;color:'+finalColor+';font-family:Sora,sans-serif">'+finalOneLiner+'</div></div>';
   
   // ─── QUICK-START GUIDE (Collapsible) ───
-  h+='<details style="margin-bottom:10px;border-radius:14px;background:#f1f5f9;border:1px solid #3b82f630;overflow:hidden">';
-  h+='<summary style="padding:12px 20px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;background:#f8fafc">';
+  h+='<details style="margin-bottom:10px;border-radius:14px;background:#f8fafc;border:1px solid #3b82f630;overflow:hidden">';
+  h+='<summary style="padding:12px 20px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;background:#ffffff">';
   h+='<span style="font-size:11px;font-weight:800;color:#3b82f6">📖 NEW TO OPTIONS? READ THIS FIRST (2 min) — How to read this page</span>';
   h+='<span style="font-size:8px;color:#3b5998">Click to expand ▾</span></summary>';
   h+='<div style="padding:16px 20px;font-size:9px;color:#4a6fa5;line-height:1.8">';
@@ -600,7 +600,7 @@ function _renderOptionsEngine(d,sym){
   // These are small colored boxes that explain what to look at
   
   // ─── STEP 1: TRADE PERMISSION (GAP 2) ───
-  h+='<div style="background:#f1f5f9;border-radius:16px;padding:18px 22px;margin-bottom:10px;border:2px solid '+(noTrade.blocked?'#ef4444':'#059669')+'30">';
+  h+='<div style="background:#f8fafc;border-radius:16px;padding:18px 22px;margin-bottom:10px;border:2px solid '+(noTrade.blocked?'#ef4444':'#059669')+'30">';
   h+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">';
   h+='<div style="font-size:11px;font-weight:800;color:#3b5998;letter-spacing:1.5px">STEP 1 · TRADE PERMISSION</div>';
   h+='<div style="padding:4px 14px;border-radius:20px;background:'+(noTrade.blocked?'#ef4444':'#059669')+'20;color:'+(noTrade.blocked?'#ef4444':'#059669')+';font-size:10px;font-weight:800">'+(noTrade.blocked?'🚫 BLOCKED':'✅ ALLOWED')+'</div></div>';
@@ -631,14 +631,14 @@ function _renderOptionsEngine(d,sym){
   h+='</div>';
   
   // ─── STEP 2: TRADE SCORE (GAP 1) ───
-  h+='<div style="background:#f1f5f9;border-radius:16px;padding:18px 22px;margin-bottom:10px;border:1px solid #e2e8f0">';
+  h+='<div style="background:#f8fafc;border-radius:16px;padding:18px 22px;margin-bottom:10px;border:1px solid #e2e8f0">';
   h+='<div style="font-size:11px;font-weight:800;color:#3b5998;letter-spacing:1.5px;margin-bottom:4px">STEP 2 · TRADE VALIDATION SCORE</div>';
   h+='<div style="font-size:8px;color:#3b5998;margin-bottom:8px;font-style:italic">👀 Read: Look at the big number (0-100) and the grade (A-F). A/B = trade with confidence. C = be cautious. D/F = skip this trade. The bars show what\'s strong and weak.</div>';
   h+='<div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap">';
   // Score circle
   h+='<div style="text-align:center">';
   h+='<div style="width:90px;height:90px;border-radius:50%;border:5px solid #1e293b;background:conic-gradient('+tv.gradeColor+' '+(tv.total*3.6)+'deg, #1e293b 0deg);display:flex;align-items:center;justify-content:center">';
-  h+='<div style="width:68px;height:68px;border-radius:50%;background:#f1f5f9;display:flex;align-items:center;justify-content:center;flex-direction:column">';
+  h+='<div style="width:68px;height:68px;border-radius:50%;background:#f8fafc;display:flex;align-items:center;justify-content:center;flex-direction:column">';
   h+='<div style="font-size:26px;font-weight:900;color:'+tv.gradeColor+';font-family:JetBrains Mono">'+tv.total+'</div>';
   h+='<div style="font-size:7px;color:#3b5998">/100</div></div></div>';
   h+='<div style="margin-top:4px;padding:3px 12px;border-radius:12px;background:'+tv.gradeColor+'20;color:'+tv.gradeColor+';font-size:10px;font-weight:800">Grade '+tv.grade+'</div></div>';
@@ -675,14 +675,14 @@ function _renderOptionsEngine(d,sym){
   h+='</div>';
   
   // ─── L1-L6 DEEP ANALYSIS (collapsible — reduces visual overload) ───
-  h+='<details style="margin-bottom:10px;border-radius:14px;background:#f8fafc;border:1px solid #e2e8f0;overflow:hidden">';
-  h+='<summary style="padding:12px 20px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;background:#f8fafc">';
+  h+='<details style="margin-bottom:10px;border-radius:14px;background:#ffffff;border:1px solid #e2e8f0;overflow:hidden">';
+  h+='<summary style="padding:12px 20px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;background:#ffffff">';
   h+='<span style="font-size:11px;font-weight:800;color:#3b82f6">📊 DEEP ANALYSIS — Market Regime · OI Positioning · Price Action · Strategy · Risk · Expiry</span>';
   h+='<span style="font-size:8px;color:#3b5998">Click to expand ▾</span></summary>';
   h+='<div style="padding:4px">';
   
   // ─── L1: MARKET REGIME PANEL ───
-  h+='<div style="background:#f8fafc;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:1px solid #e2e8f0">';
+  h+='<div style="background:#ffffff;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:1px solid #e2e8f0">';
   h+='<div style="font-size:10px;font-weight:800;color:#3b5998;letter-spacing:1.5px;margin-bottom:10px">L1 · MARKET REGIME</div>';
   h+='<div style="display:flex;gap:8px;flex-wrap:wrap">';
   // Trend
@@ -711,7 +711,7 @@ function _renderOptionsEngine(d,sym){
   h+='</div></div>';
   
   // ─── L2: INSTITUTIONAL POSITIONING ───
-  h+='<div style="background:#f8fafc;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:1px solid #e2e8f0">';
+  h+='<div style="background:#ffffff;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:1px solid #e2e8f0">';
   h+='<div style="font-size:10px;font-weight:800;color:#3b5998;letter-spacing:1.5px;margin-bottom:10px">L2 · INSTITUTIONAL POSITIONING</div>';
   // OI Heatmap header
   h+='<div style="display:flex;gap:10px;margin-bottom:10px;flex-wrap:wrap">';
@@ -770,7 +770,7 @@ function _renderOptionsEngine(d,sym){
   h+='</div>';
   
   // ─── L3: PRICE ACTION ───
-  h+='<div style="background:#f8fafc;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:1px solid #e2e8f0">';
+  h+='<div style="background:#ffffff;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:1px solid #e2e8f0">';
   h+='<div style="font-size:10px;font-weight:800;color:#3b5998;letter-spacing:1.5px;margin-bottom:10px">L3 · PRICE ACTION</div>';
   h+='<div style="display:flex;gap:8px;flex-wrap:wrap">';
   h+='<div style="flex:1;min-width:100px;padding:8px;border-radius:8px;background:#e2e8f0;text-align:center"><div style="font-size:7px;color:#3b5998">PIVOT</div><div style="font-size:14px;font-weight:900;color:#3b82f6;font-family:JetBrains Mono">'+S+pivot.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div></div>';
@@ -780,7 +780,7 @@ function _renderOptionsEngine(d,sym){
   h+='</div></div>';
   
   // ─── L4: STRATEGY ENGINE (with live premiums + expiry integration) ───
-  h+='<div style="background:#f8fafc;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:2px solid '+strat.color+'30">';
+  h+='<div style="background:#ffffff;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:2px solid '+strat.color+'30">';
   h+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">';
   h+='<div style="font-size:10px;font-weight:800;color:#3b5998;letter-spacing:1.5px">L4 · STRATEGY + STRIKE SELECTION</div>';
   h+='<div style="font-size:8px;color:#a855f7;font-weight:700">Integrated with L6 Expiry</div></div>';
@@ -798,7 +798,7 @@ function _renderOptionsEngine(d,sym){
   // Strike details with premiums
   h+='<div style="background:#e2e8f0;border-radius:10px;overflow:hidden;margin-bottom:10px">';
   h+='<table style="width:100%;border-collapse:collapse;font-size:9px">';
-  h+='<tr style="background:#f8fafc"><th style="padding:6px 10px;text-align:left;color:#3b5998;font-weight:700">LEG</th><th style="text-align:center;color:#3b5998">STRIKE</th><th style="text-align:center;color:#3b5998">TYPE</th><th style="text-align:center;color:#3b5998">PREMIUM</th><th style="text-align:center;color:#3b5998">OI</th><th style="text-align:right;color:#3b5998;padding-right:10px">COST (×'+lot2+')</th></tr>';
+  h+='<tr style="background:#ffffff"><th style="padding:6px 10px;text-align:left;color:#3b5998;font-weight:700">LEG</th><th style="text-align:center;color:#3b5998">STRIKE</th><th style="text-align:center;color:#3b5998">TYPE</th><th style="text-align:center;color:#3b5998">PREMIUM</th><th style="text-align:center;color:#3b5998">OI</th><th style="text-align:right;color:#3b5998;padding-right:10px">COST (×'+lot2+')</th></tr>';
   
   var legs=[];
   if(strat.callBuy)legs.push({action:'BUY',strike:strat.callBuy,type:'CE',prem:strat.callBuyPrem||0,oi:'',color:'#059669'});
@@ -822,7 +822,7 @@ function _renderOptionsEngine(d,sym){
   // Net premium row
   var netPrem=strat.netCredit||strat.netDebit||0;
   var isCredit=!!strat.netCredit;
-  h+='<tr style="background:#f8fafc"><td colspan="5" style="padding:8px 10px;font-weight:800;color:#1e293b">NET '+(isCredit?'CREDIT':'DEBIT')+'</td>';
+  h+='<tr style="background:#ffffff"><td colspan="5" style="padding:8px 10px;font-weight:800;color:#1e293b">NET '+(isCredit?'CREDIT':'DEBIT')+'</td>';
   h+='<td style="text-align:right;padding-right:10px;font-weight:900;font-family:JetBrains Mono;font-size:14px;color:'+(isCredit?'#059669':'#ef4444')+'">'+(isCredit?'+':'-')+S+Math.abs(netPrem).toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</td></tr>';
   h+='</table></div>';
   
@@ -859,7 +859,7 @@ function _renderOptionsEngine(d,sym){
   h+='</div>';
   
   // ─── L5: RISK ENGINE (premium-based) ───
-  h+='<div style="background:#f8fafc;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:1px solid #e2e8f0">';
+  h+='<div style="background:#ffffff;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:1px solid #e2e8f0">';
   h+='<div style="font-size:10px;font-weight:800;color:#3b5998;letter-spacing:1.5px;margin-bottom:10px">L5 · RISK ENGINE (Live Premiums)</div>';
   h+='<div style="display:flex;gap:8px;flex-wrap:wrap">';
   h+='<div style="flex:1;min-width:100px;padding:10px;border-radius:10px;background:#ef444415;border:1px solid #ef444430;text-align:center"><div style="font-size:7px;color:#ef4444;font-weight:700">MAX LOSS</div><div style="font-size:18px;font-weight:900;color:#ef4444;font-family:JetBrains Mono">'+S+(risk.maxLoss||0).toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div><div style="font-size:7px;color:#3b5998">per lot of '+lot+'</div></div>';
@@ -867,13 +867,13 @@ function _renderOptionsEngine(d,sym){
   h+='<div style="flex:1;min-width:100px;padding:10px;border-radius:10px;background:#3b82f615;border:1px solid #3b82f630;text-align:center"><div style="font-size:7px;color:#3b82f6;font-weight:700">PROB OF PROFIT</div>';
   // Gauge
   h+='<div style="width:60px;height:60px;border-radius:50%;border:4px solid #1e293b;background:conic-gradient('+risk.riskColor+' '+(risk.probProfit*3.6)+'deg, #1e293b 0deg);display:flex;align-items:center;justify-content:center;margin:4px auto">';
-  h+='<div style="width:44px;height:44px;border-radius:50%;background:#f8fafc;display:flex;align-items:center;justify-content:center"><div style="font-size:14px;font-weight:900;color:'+risk.riskColor+';font-family:JetBrains Mono">'+risk.probProfit+'%</div></div></div></div>';
+  h+='<div style="width:44px;height:44px;border-radius:50%;background:#ffffff;display:flex;align-items:center;justify-content:center"><div style="font-size:14px;font-weight:900;color:'+risk.riskColor+';font-family:JetBrains Mono">'+risk.probProfit+'%</div></div></div></div>';
   if(risk.breakEvenUp)h+='<div style="flex:1;min-width:100px;padding:10px;border-radius:10px;background:#e2e8f0;text-align:center"><div style="font-size:7px;color:#3b5998;font-weight:700">BREAKEVEN ↑</div><div style="font-size:14px;font-weight:900;color:#4a6fa5;font-family:JetBrains Mono">'+S+(risk.breakEvenUp||0).toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div><div style="font-size:7px;color:#3b5998">'+((risk.breakEvenUp-spot)/spot*100).toFixed(1)+'% away</div></div>';
   if(risk.breakEvenDn)h+='<div style="flex:1;min-width:100px;padding:10px;border-radius:10px;background:#e2e8f0;text-align:center"><div style="font-size:7px;color:#3b5998;font-weight:700">BREAKEVEN ↓</div><div style="font-size:14px;font-weight:900;color:#4a6fa5;font-family:JetBrains Mono">'+S+(risk.breakEvenDn||0).toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div><div style="font-size:7px;color:#3b5998">'+((spot-risk.breakEvenDn)/spot*100).toFixed(1)+'% away</div></div>';
   h+='</div></div>';
   
   // ─── L6: EXPIRY SELECTION ENGINE ───
-  h+='<div style="background:#f8fafc;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:1px solid #a855f730">';
+  h+='<div style="background:#ffffff;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:1px solid #a855f730">';
   h+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">';
   h+='<div style="font-size:10px;font-weight:800;color:#3b5998;letter-spacing:1.5px">L6 · EXPIRY SELECTION ENGINE</div>';
   h+='<div style="display:flex;gap:6px">';
@@ -887,7 +887,7 @@ function _renderOptionsEngine(d,sym){
   expiryDates.slice(0,4).forEach(function(exp,i){
     var isRec=exp===expEng.recommended;
     var label=i===0?'Current Weekly':i===1?'Next Weekly':i===expiryDates.length-1?'Monthly':'Weekly '+(i+1);
-    h+='<div style="flex:1;min-width:100px;padding:10px 14px;border-radius:10px;'+(isRec?'background:linear-gradient(135deg,#a855f7,#7c3aed);color:#fff;box-shadow:0 4px 12px rgba(168,85,247,.3)':'background:#f1f5f9;color:#2d4373;border:1px solid #cbd5e1')+';text-align:center">';
+    h+='<div style="flex:1;min-width:100px;padding:10px 14px;border-radius:10px;'+(isRec?'background:linear-gradient(135deg,#a855f7,#7c3aed);color:#fff;box-shadow:0 4px 12px rgba(168,85,247,.3)':'background:#f8fafc;color:#2d4373;border:1px solid #cbd5e1')+';text-align:center">';
     h+='<div style="font-size:7px;font-weight:700;letter-spacing:1px">'+(isRec?'★ RECOMMENDED':label)+'</div>';
     h+='<div style="font-size:13px;font-weight:800;margin:2px 0">'+exp+'</div>';
     if(isRec)h+='<div style="font-size:7px;opacity:.7">Confidence '+expEng.confidence+'%</div>';
@@ -924,7 +924,7 @@ function _renderOptionsEngine(d,sym){
   h+='</div>';
   
   // ─── SCENARIO SIMULATOR ───
-  h+='<div style="background:#f8fafc;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:1px solid #e2e8f0">';
+  h+='<div style="background:#ffffff;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:1px solid #e2e8f0">';
   h+='<div style="font-size:10px;font-weight:800;color:#3b5998;letter-spacing:1.5px;margin-bottom:10px">📊 SCENARIO SIMULATION — What if '+sym+' moves ±1%?</div>';
   var up1=Math.round(spot*1.01),dn1=Math.round(spot*0.99);
   h+='<div style="display:flex;gap:8px;flex-wrap:wrap">';
@@ -938,7 +938,7 @@ function _renderOptionsEngine(d,sym){
   
   // ─── SMART MONEY ZONES ───
   if(smartZones.length>0){
-    h+='<div style="background:#f8fafc;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:1px solid #e2e8f0">';
+    h+='<div style="background:#ffffff;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:1px solid #e2e8f0">';
     h+='<div style="font-size:10px;font-weight:800;color:#3b5998;letter-spacing:1.5px;margin-bottom:8px">🏛️ SMART MONEY ACTIVITY</div>';
     h+='<div style="display:flex;gap:6px;flex-wrap:wrap">';
     smartZones.slice(0,6).forEach(function(z){
@@ -954,7 +954,7 @@ function _renderOptionsEngine(d,sym){
   // ─── DISCLAIMER ───
   
   // ─── STEP 4: ENTRY TIMING (GAP 4) ───
-  h+='<div style="background:#f1f5f9;border-radius:16px;padding:18px 22px;margin-bottom:10px;border:2px solid '+entry.readyColor+'30">';
+  h+='<div style="background:#f8fafc;border-radius:16px;padding:18px 22px;margin-bottom:10px;border:2px solid '+entry.readyColor+'30">';
   h+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">';
   h+='<div style="font-size:11px;font-weight:800;color:#3b5998;letter-spacing:1.5px">STEP 4 · ENTRY TIMING</div>';
   h+='<div style="padding:4px 14px;border-radius:20px;background:'+entry.readyColor+'20;color:'+entry.readyColor+';font-size:10px;font-weight:800">'+entry.readyLabel+'</div></div>';
@@ -968,7 +968,7 @@ function _renderOptionsEngine(d,sym){
   h+='</div>';
   
   // ─── STEP 5: POSITION SIZING (GAP 5) ───
-  h+='<div style="background:#f1f5f9;border-radius:16px;padding:18px 22px;margin-bottom:10px;border:1px solid #e2e8f0">';
+  h+='<div style="background:#f8fafc;border-radius:16px;padding:18px 22px;margin-bottom:10px;border:1px solid #e2e8f0">';
   h+='<div style="font-size:11px;font-weight:800;color:#3b5998;letter-spacing:1.5px;margin-bottom:4px">STEP 5 · POSITION SIZING</div>';
   h+='<div style="font-size:8px;color:#3b5998;margin-bottom:8px;font-style:italic">👀 Read: The blue "TRADE SIZE" number is how many lots to buy. NEVER exceed this. TOTAL RISK is the maximum you can lose. If it\'s more than you\'re comfortable losing, reduce lots to 1.</div>';
   h+='<div style="display:flex;gap:8px;flex-wrap:wrap">';
@@ -980,7 +980,7 @@ function _renderOptionsEngine(d,sym){
   h+='</div></div>';
   
   // ─── STEP 6: RISK CONTROL (GAP 6 — EXIT RULES) ───
-  h+='<div style="background:#f1f5f9;border-radius:16px;padding:18px 22px;margin-bottom:10px;border:1px solid #ef444425">';
+  h+='<div style="background:#f8fafc;border-radius:16px;padding:18px 22px;margin-bottom:10px;border:1px solid #ef444425">';
   h+='<div style="font-size:11px;font-weight:800;color:#3b5998;letter-spacing:1.5px;margin-bottom:4px">STEP 6 · EXIT RULES & RISK CONTROL</div>';
   h+='<div style="font-size:8px;color:#3b5998;margin-bottom:8px;font-style:italic">👀 Read: Set these exits in your broker BEFORE entering. MAX LOSS = absolute worst case. PROFIT TARGET = where to book. The red rules below are non-negotiable — if any triggers, exit immediately.</div>';
   h+='<div style="display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap">';
@@ -1000,14 +1000,14 @@ function _renderOptionsEngine(d,sym){
   
   // ─── STEP 7: EXPIRY (already rendered in L6 below) ───
   // ─── STEPS 8-10 (collapsible — secondary analysis) ───
-  h+='<details style="margin-bottom:10px;border-radius:14px;background:#f1f5f9;border:1px solid #e2e8f0;overflow:hidden">';
+  h+='<details style="margin-bottom:10px;border-radius:14px;background:#f8fafc;border:1px solid #e2e8f0;overflow:hidden">';
   h+='<summary style="padding:12px 20px;cursor:pointer;display:flex;justify-content:space-between;align-items:center">';
   h+='<span style="font-size:11px;font-weight:800;color:#3b5998">🔄 ADAPTATION + FLOW + SCENARIOS (Steps 8-10)</span>';
   h+='<span style="font-size:8px;color:#3b5998">Click to expand ▾</span></summary>';
   h+='<div style="padding:4px">';
   
   // ─── STEP 8: LIVE ADAPTATION (GAP 6) ───
-  h+='<div style="background:#f1f5f9;border-radius:16px;padding:18px 22px;margin-bottom:10px;border:1px solid #3b82f625">';
+  h+='<div style="background:#f8fafc;border-radius:16px;padding:18px 22px;margin-bottom:10px;border:1px solid #3b82f625">';
   h+='<div style="font-size:11px;font-weight:800;color:#3b5998;letter-spacing:1.5px;margin-bottom:4px">STEP 8 · LIVE ADAPTATION RULES</div>';
   h+='<div style="font-size:8px;color:#3b5998;margin-bottom:8px;font-style:italic">👀 Read: These are "emergency plans." HIGH = act NOW. MEDIUM = adjust position. LOW = take some profits. Set broker alerts for these conditions so your phone buzzes when they happen.</div>';
   adapt.rules.forEach(function(r){
@@ -1019,7 +1019,7 @@ function _renderOptionsEngine(d,sym){
   h+='</div>';
   
   // ─── STEP 3 + STEP 9: FLOW CONFIRMATION (GAP 3) ───
-  h+='<div style="background:#f1f5f9;border-radius:16px;padding:18px 22px;margin-bottom:10px;border:1px solid '+flow.aggressiveColor+'25">';
+  h+='<div style="background:#f8fafc;border-radius:16px;padding:18px 22px;margin-bottom:10px;border:1px solid '+flow.aggressiveColor+'25">';
   h+='<div style="font-size:11px;font-weight:800;color:#3b5998;letter-spacing:1.5px;margin-bottom:4px">STEP 9 · INSTITUTIONAL FLOW CONFIRMATION</div>';
   h+='<div style="font-size:8px;color:#3b5998;margin-bottom:8px;font-style:italic">👀 Read: This shows what big players (funds, institutions) are doing. If BUYERS dominate and we\'re going bullish — great, they agree with us. If they disagree — be very careful. "Block Trades" = large orders from big money.</div>';
   h+='<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">';
@@ -1033,7 +1033,7 @@ function _renderOptionsEngine(d,sym){
   h+='</div>';
   
   // ─── STEP 10: LIVE TRADE EVOLUTION (Scenario A/B) ───
-  h+='<div style="background:#f1f5f9;border-radius:16px;padding:18px 22px;margin-bottom:10px;border:1px solid #e2e8f0">';
+  h+='<div style="background:#f8fafc;border-radius:16px;padding:18px 22px;margin-bottom:10px;border:1px solid #e2e8f0">';
   h+='<div style="font-size:11px;font-weight:800;color:#3b5998;letter-spacing:1.5px;margin-bottom:4px">STEP 10 · LIVE TRADE EVOLUTION — After Entry</div>';
   h+='<div style="font-size:8px;color:#3b5998;margin-bottom:8px;font-style:italic">👀 Read: Three "what-if" scenarios. GREEN = expected move (your profit). RED = adverse move (your exit plan). ORANGE = nothing happens (theta effect). Read all 3 BEFORE entering so you know what to do in every situation.</div>';
   
@@ -1093,7 +1093,7 @@ function _renderOptionsEngine(d,sym){
   h+='</div></details>';
   
   // ─── REAL-TIME ALERTS SYSTEM ───
-  h+='<div style="background:#f1f5f9;border-radius:16px;padding:18px 22px;margin-bottom:10px;border:1px solid #f59e0b25">';
+  h+='<div style="background:#f8fafc;border-radius:16px;padding:18px 22px;margin-bottom:10px;border:1px solid #f59e0b25">';
   h+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">';
   h+='<div style="font-size:11px;font-weight:800;color:#3b5998;letter-spacing:1.5px">🔔 SMART ALERTS — Set These Now</div>';
   h+='<div style="padding:3px 10px;border-radius:12px;background:#f59e0b20;color:#f59e0b;font-size:8px;font-weight:700">Copy to broker</div></div>';
@@ -1193,7 +1193,7 @@ console.log('[OPTIONS ENGINE] ✅ Loaded — 6 layers active');
 // ─── FEATURE 1: Candlestick Chart with VWAP ───
 window._renderCandlestick=function(bars,vwap,spot,S){
   if(!bars||bars.length<5)return'<div style="padding:12px;color:#2d4373;font-size:9px;text-align:center">Intraday data unavailable — market may be closed</div>';
-  var h='<div style="background:#f8fafc;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:1px solid #e2e8f0">';
+  var h='<div style="background:#ffffff;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:1px solid #e2e8f0">';
   h+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">';
   h+='<div style="font-size:10px;font-weight:800;color:#3b5998;letter-spacing:1.5px">📈 INTRADAY CANDLESTICK + VWAP</div>';
   h+='<div style="font-size:9px;color:#a855f7;font-weight:700">VWAP: '+S+(vwap||0).toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div></div>';
@@ -1255,7 +1255,7 @@ window._renderCandlestick=function(bars,vwap,spot,S){
 
 // ─── FEATURE 2: IV Term Structure Visualization ───
 window._renderIVTermStructure=function(ivTerm,ivSmile,spot,S){
-  var h='<div style="background:#f8fafc;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:1px solid #e2e8f0">';
+  var h='<div style="background:#ffffff;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:1px solid #e2e8f0">';
   h+='<div style="font-size:10px;font-weight:800;color:#3b5998;letter-spacing:1.5px;margin-bottom:10px">📉 IV TERM STRUCTURE & SMILE</div>';
   
   // Term structure (IV per expiry)
@@ -1315,7 +1315,7 @@ window._renderIVTermStructure=function(ivTerm,ivSmile,spot,S){
 
 // ─── FEATURE 3: Backtest Preview ───
 window._renderBacktest=function(strat,spot,regime,vix,S){
-  var h='<div style="background:#f8fafc;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:1px solid #e2e8f0">';
+  var h='<div style="background:#ffffff;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:1px solid #e2e8f0">';
   h+='<div style="font-size:10px;font-weight:800;color:#3b5998;letter-spacing:1.5px;margin-bottom:10px">🔬 BACKTEST PREVIEW — '+strat.name+' in Similar Conditions</div>';
   
   // Simulated historical performance based on regime + strategy type
@@ -1368,7 +1368,7 @@ window._renderBacktest=function(strat,spot,regime,vix,S){
 
 // ─── FEATURE 4: Alert System for Level Breaks ───
 window._renderAlerts=function(spot,inst,maxPain,vwap,pivot,S){
-  var h='<div style="background:#f8fafc;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:1px solid #e2e8f0">';
+  var h='<div style="background:#ffffff;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:1px solid #e2e8f0">';
   h+='<div style="font-size:10px;font-weight:800;color:#3b5998;letter-spacing:1.5px;margin-bottom:10px">🔔 LEVEL BREAK ALERTS</div>';
   
   var alerts=[];
@@ -1389,7 +1389,7 @@ window._renderAlerts=function(spot,inst,maxPain,vwap,pivot,S){
   h+='<div style="display:flex;flex-direction:column;gap:4px">';
   alerts.forEach(function(a){
     var isNear=Math.abs(a.level-spot)/spot<0.005;
-    h+='<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:8px;background:'+(isNear?a.color+'15':'#1e293b')+';border:1px solid '+(isNear?a.color+'40':'#334155')+'">';
+    h+='<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:8px;background:'+(isNear?a.color+'15':'#f8fafc')+';border:1px solid '+(isNear?a.color+'40':'#334155')+'">';
     h+='<div style="font-size:14px">'+a.icon+'</div>';
     h+='<div style="flex:1">';
     h+='<div style="display:flex;justify-content:space-between;align-items:center">';
@@ -1426,7 +1426,7 @@ window._toggleProMode=function(){
 // ─── FEATURE 6: Order Flow / Delta Bars ───
 window._renderOrderFlow=function(bars,S){
   if(!bars||bars.length<5)return'';
-  var h='<div style="background:#f8fafc;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:1px solid #e2e8f0">';
+  var h='<div style="background:#ffffff;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:1px solid #e2e8f0">';
   h+='<div style="font-size:10px;font-weight:800;color:#3b5998;letter-spacing:1.5px;margin-bottom:10px">📊 ORDER FLOW — Volume Delta</div>';
   
   // Compute delta per bar: positive if close > open (buying), negative if close < open (selling)
@@ -1542,7 +1542,7 @@ window._loadGammaMode=function(symbol){
   var el=document.getElementById('deResult');if(!el)return;
   var sym=(symbol||'NIFTY').toUpperCase();
   
-  el.innerHTML='<div style="padding:40px;text-align:center;background:linear-gradient(135deg,#f8fafc,#ede9fe);border-radius:16px">'
+  el.innerHTML='<div style="padding:40px;text-align:center;background:#ffffff;border-radius:16px">'
     +'<div style="display:inline-block;width:24px;height:24px;border:3px solid #f59e0b;border-top-color:transparent;border-radius:50%;animation:spin .5s linear infinite"></div>'
     +'<div style="font-size:14px;font-weight:900;color:#f59e0b;margin-top:12px;font-family:Sora">⚡ Loading Gamma Mode...</div>'
     +'<div style="font-size:9px;color:#3b5998;margin-top:4px">Fetching '+sym+' chain · VIX · OI · GEX · ATM premiums</div></div>';
@@ -1551,13 +1551,13 @@ window._loadGammaMode=function(symbol){
     .then(function(r){return r.json()})
     .then(function(d){
       if(!d||!d.success){
-        el.innerHTML='<div style="color:#ef4444;padding:20px;text-align:center;background:#f1f5f9;border-radius:16px">❌ Failed to load data<br><button onclick="window._loadGammaMode(\''+sym+'\')" style="margin-top:10px;padding:8px 20px;border-radius:8px;background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;border:none;cursor:pointer;font-size:11px;font-weight:700">Retry</button></div>';
+        el.innerHTML='<div style="color:#ef4444;padding:20px;text-align:center;background:#f8fafc;border-radius:16px">❌ Failed to load data<br><button onclick="window._loadGammaMode(\''+sym+'\')" style="margin-top:10px;padding:8px 20px;border-radius:8px;background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;border:none;cursor:pointer;font-size:11px;font-weight:700">Retry</button></div>';
         return;
       }
       if(!d.ohlc_bars)d.ohlc_bars=[];if(!d.chain_near_atm)d.chain_near_atm=[];if(!d.ce_resistance)d.ce_resistance=[];if(!d.pe_support)d.pe_support=[];if(!d.gex)d.gex={total:0,regime:'NEUTRAL',topStrikes:[],flipPoint:0,callWall:0,putWall:0};
-      try{_renderGammaEngine(d,sym)}catch(_rgErr){console.error('[RENDER CRASH] GammaEngine:',_rgErr);el.innerHTML='<div style="text-align:center;padding:30px;background:#f1f5f9;border-radius:16px"><div style="font-size:14px;color:#ef4444;font-weight:800;margin-bottom:8px">Render Error</div><div style="font-size:10px;color:#4a6fa5;margin-bottom:8px">'+(_rgErr.message||'')+'</div><button onclick="window._retryLast()" style="padding:8px 20px;border-radius:8px;background:#059669;color:#fff;border:none;cursor:pointer;font-size:11px;font-weight:700">🔄 Retry</button></div>'}
+      try{_renderGammaEngine(d,sym)}catch(_rgErr){console.error('[RENDER CRASH] GammaEngine:',_rgErr);el.innerHTML='<div style="text-align:center;padding:30px;background:#f8fafc;border-radius:16px"><div style="font-size:14px;color:#ef4444;font-weight:800;margin-bottom:8px">Render Error</div><div style="font-size:10px;color:#4a6fa5;margin-bottom:8px">'+(_rgErr.message||'')+'</div><button onclick="window._retryLast()" style="padding:8px 20px;border-radius:8px;background:#059669;color:#fff;border:none;cursor:pointer;font-size:11px;font-weight:700">🔄 Retry</button></div>'}
     }).catch(function(e){
-      el.innerHTML='<div style="text-align:center;padding:30px;background:#f1f5f9;border-radius:16px"><div style="font-size:14px;color:#ef4444;font-weight:800;margin-bottom:8px">Cannot connect to server</div><div style="font-size:10px;color:#4a6fa5;margin-bottom:12px">'+e.message+'</div><button onclick="window._retryLast()" style="padding:8px 20px;border-radius:8px;background:#059669;color:#fff;border:none;cursor:pointer;font-size:11px;font-weight:700">🔄 Retry</button></div>';
+      el.innerHTML='<div style="text-align:center;padding:30px;background:#f8fafc;border-radius:16px"><div style="font-size:14px;color:#ef4444;font-weight:800;margin-bottom:8px">Cannot connect to server</div><div style="font-size:10px;color:#4a6fa5;margin-bottom:12px">'+e.message+'</div><button onclick="window._retryLast()" style="padding:8px 20px;border-radius:8px;background:#059669;color:#fff;border:none;cursor:pointer;font-size:11px;font-weight:700">🔄 Retry</button></div>';
     });
 };
 
@@ -1817,7 +1817,7 @@ function _renderGammaEngine(d,sym){
   var h='';
   
   // ─── HEADER ───
-  h+='<div style="background:linear-gradient(135deg,#ede9fe,#f8fafc);border-radius:18px;padding:20px 24px;margin-bottom:10px;border:2px solid #f59e0b30;position:relative;overflow:hidden">';
+  h+='<div style="background:#ffffff;border-radius:18px;padding:20px 24px;margin-bottom:10px;border:2px solid #f59e0b30;position:relative;overflow:hidden">';
   h+='<div style="position:absolute;top:-20px;right:-20px;font-size:80px;opacity:.05">⚡</div>';
   h+='<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">';
   h+='<div>';
@@ -1830,7 +1830,7 @@ function _renderGammaEngine(d,sym){
   // Gauge
   h+='<div style="text-align:center">';
   h+='<div style="width:80px;height:80px;border-radius:50%;border:5px solid #1e293b;background:conic-gradient('+finalColor+' '+(confidence*3.6)+'deg, #1e293b 0deg);display:flex;align-items:center;justify-content:center">';
-  h+='<div style="width:60px;height:60px;border-radius:50%;background:#f1f5f9;display:flex;align-items:center;justify-content:center;flex-direction:column">';
+  h+='<div style="width:60px;height:60px;border-radius:50%;background:#f8fafc;display:flex;align-items:center;justify-content:center;flex-direction:column">';
   h+='<div style="font-size:20px;font-weight:900;color:'+finalColor+';font-family:JetBrains Mono">'+confidence+'</div>';
   h+='<div style="font-size:6px;color:#3b5998">CONFIDENCE</div></div></div></div>';
   // Tags
@@ -1851,7 +1851,7 @@ function _renderGammaEngine(d,sym){
   h+='</div>';
   
   // ─── STEP 0: TRADE PERMISSION ───
-  h+='<div style="background:#f8fafc;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:2px solid '+(perm.blocked?'#ef4444':'#059669')+'25">';
+  h+='<div style="background:#ffffff;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:2px solid '+(perm.blocked?'#ef4444':'#059669')+'25">';
   h+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">';
   h+='<div style="font-size:10px;font-weight:800;color:#f59e0b;letter-spacing:1.5px">STEP 0 · STRICT TRADE PERMISSION</div>';
   // Gamma Quick Guide (before step 0 content)
@@ -1882,7 +1882,7 @@ function _renderGammaEngine(d,sym){
   h+='</div>';
   
   // ─── AI BREAKOUT PREDICTOR (Section 3) ───
-  h+='<div style="background:#f8fafc;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:1px solid '+bpColor+'30">';
+  h+='<div style="background:#ffffff;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:1px solid '+bpColor+'30">';
   h+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">';
   h+='<div style="font-size:10px;font-weight:800;color:#f59e0b;letter-spacing:1.5px">🧠 AI BREAKOUT PREDICTOR</div>';
   h+='<div style="padding:4px 14px;border-radius:20px;background:'+bpColor+'20;color:'+bpColor+';font-size:10px;font-weight:800">'+bpStatus+'</div></div>';
@@ -1902,7 +1902,7 @@ function _renderGammaEngine(d,sym){
   h+='</div></div>';
   
   // ─── SESSION ALLOCATOR (Section 8) ───
-  h+='<div style="background:#f8fafc;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:1px solid #3b82f625">';
+  h+='<div style="background:#ffffff;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:1px solid #3b82f625">';
   h+='<div style="font-size:10px;font-weight:800;color:#3b82f6;letter-spacing:1.5px;margin-bottom:8px">📊 SESSION ALLOCATOR — Which Index to Trade?</div>';
   h+='<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">';
   sortedAlloc.forEach(function(idx2,i){
@@ -1920,7 +1920,7 @@ function _renderGammaEngine(d,sym){
   h+='</div>';
   
   // ─── GLOBAL RISK CONTROLS (Section 12) ───
-  h+='<div style="background:#f8fafc;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:1px solid #ef444425">';
+  h+='<div style="background:#ffffff;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:1px solid #ef444425">';
   h+='<div style="font-size:10px;font-weight:800;color:#ef4444;letter-spacing:1.5px;margin-bottom:8px">🛡️ GLOBAL SESSION CONTROLS</div>';
   h+='<div style="display:flex;gap:6px;flex-wrap:wrap">';
   h+='<div style="flex:1;min-width:80px;padding:8px;border-radius:8px;background:#e2e8f0;text-align:center"><div style="font-size:7px;color:#ef4444;font-weight:700">DAILY LOSS CAP</div><div style="font-size:14px;font-weight:900;color:#ef4444;font-family:JetBrains Mono">'+S+globalRisk.dailyLossCap.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div><div style="font-size:7px;color:#3b5998">2.5% of capital</div></div>';
@@ -1930,7 +1930,7 @@ function _renderGammaEngine(d,sym){
   h+='</div></div>';
   
   // ─── STEP 1: LEVEL MAP ───
-  h+='<div style="background:#f8fafc;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:1px solid #e2e8f0">';
+  h+='<div style="background:#ffffff;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:1px solid #e2e8f0">';
   h+='<div style="font-size:10px;font-weight:800;color:#f59e0b;letter-spacing:1.5px;margin-bottom:10px">STEP 1 · LEVEL MAP</div>';
   h+='<div style="display:flex;gap:8px;flex-wrap:wrap">';
   h+='<div style="flex:1;min-width:80px;padding:8px;border-radius:8px;background:#ef444412;border:1px solid #ef444425;text-align:center"><div style="font-size:7px;color:#ef4444;font-weight:700">RESISTANCE</div><div style="font-size:16px;font-weight:900;color:#ef4444;font-family:JetBrains Mono">'+S+resistance.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div></div>';
@@ -1941,7 +1941,7 @@ function _renderGammaEngine(d,sym){
   h+='</div></div>';
   
   // ─── STEP 2: ORDER FLOW ───
-  h+='<div style="background:#f8fafc;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:1px solid '+flowColor+'25">';
+  h+='<div style="background:#ffffff;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:1px solid '+flowColor+'25">';
   h+='<div style="font-size:10px;font-weight:800;color:#f59e0b;letter-spacing:1.5px;margin-bottom:8px">STEP 2 · ORDER FLOW EDGE</div>';
   h+='<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">';
   h+='<div style="flex:1;min-width:80px;padding:8px;border-radius:8px;background:#e2e8f0;text-align:center"><div style="font-size:7px;color:#3b5998">DELTA</div><div style="font-size:16px;font-weight:900;color:'+(deltaImb>0?'#059669':'#ef4444')+';font-family:JetBrains Mono">'+(deltaImb>0?'+':'')+deltaImb+'%</div></div>';
@@ -1952,20 +1952,20 @@ function _renderGammaEngine(d,sym){
   h+='</div>';
   
   // ─── STEP 3: ENTRY TRIGGER ───
-  h+='<div style="background:#f8fafc;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:2px solid '+(triggers.ready?'#f59e0b':'#64748b')+'25">';
+  h+='<div style="background:#ffffff;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:2px solid '+(triggers.ready?'#f59e0b':'#64748b')+'25">';
   h+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">';
   h+='<div style="font-size:10px;font-weight:800;color:#f59e0b;letter-spacing:1.5px">STEP 3 · ENTRY TRIGGER (GAMMA BURST)</div>';
   h+='<div style="padding:4px 14px;border-radius:20px;background:'+(triggers.ready?'#f59e0b':'#64748b')+'20;color:'+(triggers.ready?'#f59e0b':'#64748b')+';font-size:10px;font-weight:800">'+(triggers.ready?'⚡ TRIGGERED':'⏳ WAITING')+'</div></div>';
   h+='<div style="font-size:9px;color:#4a6fa5;margin-bottom:6px">ENTER '+entryType+' ONLY IF:</div>';
   triggers.checks.forEach(function(t){
-    h+='<div style="display:flex;align-items:center;gap:8px;padding:5px 10px;border-radius:4px;background:'+(t.pass?'#f59e0b08':'#1e293b')+';margin-bottom:2px">';
+    h+='<div style="display:flex;align-items:center;gap:8px;padding:5px 10px;border-radius:4px;background:'+(t.pass?'#f59e0b08':'#f8fafc')+';margin-bottom:2px">';
     h+='<div style="font-size:11px;color:'+(t.pass?'#f59e0b':'#475569')+'">'+(t.pass?'✔':'✘')+'</div>';
     h+='<div style="font-size:9px;color:'+(t.pass?'#f59e0b':'#475569')+';font-weight:600">'+t.label+'</div></div>';
   });
   h+='</div>';
   
   // ─── LIVE TRADE CARD ───
-  h+='<div style="background:linear-gradient(135deg,#ede9fe,#f8fafc);border-radius:14px;padding:18px 22px;margin-bottom:10px;border:2px solid #f59e0b30">';
+  h+='<div style="background:#ffffff;border-radius:14px;padding:18px 22px;margin-bottom:10px;border:2px solid #f59e0b30">';
   h+='<div style="font-size:10px;font-weight:800;color:#f59e0b;letter-spacing:1.5px;margin-bottom:10px">🚀 TRADE 1 — GAMMA SCALP</div>';
   h+='<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px">';
   // Action
@@ -2003,7 +2003,7 @@ function _renderGammaEngine(d,sym){
   h+='</div></div>';
   
   // ─── RE-ENTRY LOGIC ───
-  h+='<div style="background:#f8fafc;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:1px solid #a855f725">';
+  h+='<div style="background:#ffffff;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:1px solid #a855f725">';
   h+='<div style="font-size:10px;font-weight:800;color:#f59e0b;letter-spacing:1.5px;margin-bottom:8px">🔁 TRADE 2 — RE-ENTRY (REVERSAL)</div>';
   h+='<div style="font-size:9px;color:#4a6fa5;margin-bottom:6px">After Trade 1 exit, look for reversal setup:</div>';
   h+='<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">';
@@ -2019,7 +2019,7 @@ function _renderGammaEngine(d,sym){
   h+='</div></div></div>';
   
   // ─── RISK RULES (STRICT) ───
-  h+='<div style="background:#f8fafc;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:2px solid #ef444425">';
+  h+='<div style="background:#ffffff;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:2px solid #ef444425">';
   h+='<div style="font-size:10px;font-weight:800;color:#ef4444;letter-spacing:1.5px;margin-bottom:8px">⚠️ STRICT RISK RULES (NON-NEGOTIABLE)</div>';
   var strictRules=['❌ Never hold > 8-12 minutes — gamma scalps are TIME-SENSITIVE','❌ Never average losses — exit and re-enter fresh','❌ Max 2 consecutive losses → STOP trading for the session','❌ Premium decay is your ENEMY on expiry day — act fast','❌ If straddle premium < '+S+Math.round(c.minPrem*1.5)+' → liquidity drying up, STOP'];
   strictRules.forEach(function(r){
@@ -2028,7 +2028,7 @@ function _renderGammaEngine(d,sym){
   h+='</div>';
   
   // ─── GAMMA ALERTS ───
-  h+='<div style="background:#f8fafc;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:1px solid #f59e0b25">';
+  h+='<div style="background:#ffffff;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:1px solid #f59e0b25">';
   h+='<div style="font-size:10px;font-weight:800;color:#f59e0b;letter-spacing:1.5px;margin-bottom:8px">🔔 SET THESE ALERTS NOW</div>';
   var gAlerts=[
     {icon:'🟢',type:'ENTRY',color:'#059669',cond:sym+(bias==='BULLISH'?' breaks '+S+breakLevel.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+' with volume spike':' breaks below '+S+breakLevel.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+' with volume spike'),act:'Execute BUY '+entryType+' immediately'},
@@ -2081,7 +2081,7 @@ console.log('[GAMMA MODE] ✅ Loaded');
 // ─── GAP 5: PAYOFF DIAGRAM ───
 window._renderPayoff=function(strat,spot,S,lot){
   if(!strat||!strat.name)return'';
-  var h='<div style="background:#f8fafc;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:1px solid #3b82f625">';
+  var h='<div style="background:#ffffff;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:1px solid #3b82f625">';
   h+='<div style="font-size:10px;font-weight:800;color:#3b82f6;letter-spacing:1.5px;margin-bottom:10px">📈 PAYOFF DIAGRAM — '+strat.name+' at Expiry</div>';
   
   var lo=spot*0.96,hi=spot*1.04,steps=20;
@@ -2158,7 +2158,7 @@ window._renderGreeks=function(spot,strike,dte,iv,optType,S){
   else theta+=r*strike*Math.exp(-r*T)*(1-nd2)/365;
   var vega=spot*npd1*Math.sqrt(T)/100;
   
-  var h='<div style="background:#f8fafc;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:1px solid #a855f725">';
+  var h='<div style="background:#ffffff;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:1px solid #a855f725">';
   h+='<div style="font-size:10px;font-weight:800;color:#a855f7;letter-spacing:1.5px;margin-bottom:10px">📐 GREEKS — '+S+strike+' '+optType+' ('+Math.max(dte,0)+' DTE)</div>';
   h+='<div style="display:flex;gap:8px;flex-wrap:wrap">';
   
@@ -2210,7 +2210,7 @@ window._renderIVvsHV=function(atmIV,bars,spot,S){
   var verdict=ivHvRatio>1.2?'IV > HV → Options OVERPRICED → SELL premium':ivHvRatio<0.8?'IV < HV → Options UNDERPRICED → BUY options':'IV ≈ HV → Fairly priced';
   var verdictColor=ivHvRatio>1.2?'#ef4444':ivHvRatio<0.8?'#059669':'#3b82f6';
   
-  var h='<div style="background:#f8fafc;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:1px solid '+verdictColor+'25">';
+  var h='<div style="background:#ffffff;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:1px solid '+verdictColor+'25">';
   h+='<div style="font-size:10px;font-weight:800;color:#3b5998;letter-spacing:1.5px;margin-bottom:10px">📊 IV vs HV — Premium Pricing</div>';
   h+='<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:8px">';
   // IV bar
@@ -2279,7 +2279,7 @@ _renderGammaEngine=function(d,sym){
   if(atmCE2>0){
     var dsl=window._getDualSL(atmCE2);
     var dtt=window._getDualTarget(atmCE2);
-    extra+='<div style="background:#f8fafc;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:1px solid #e2e8f0">';
+    extra+='<div style="background:#ffffff;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:1px solid #e2e8f0">';
     extra+='<div style="font-size:10px;font-weight:800;color:#3b5998;letter-spacing:1.5px;margin-bottom:8px">🎯 DUAL TARGET + DUAL STOP (Institutional)</div>';
     extra+='<div style="display:flex;gap:6px;flex-wrap:wrap">';
     extra+='<div style="flex:1;min-width:80px;padding:8px;border-radius:8px;background:#05966415;text-align:center"><div style="font-size:7px;color:#059669;font-weight:700">T1 (+25%)</div><div style="font-size:14px;font-weight:900;color:#059669;font-family:JetBrains Mono">'+S+dtt.T1+'</div><div style="font-size:7px;color:#3b5998">'+dtt.T1Action+'</div></div>';
@@ -2335,7 +2335,7 @@ console.log('[LAYMAN TIPS] ✅ Inline tips active at every step');
 // ─── GEX HEATMAP + FLIP LEVEL + WALLS ───
 window._renderGEXHeatmap=function(gex,spot,S){
   if(!gex||!gex.topStrikes||gex.topStrikes.length<2)return'';
-  var h='<div style="background:#f8fafc;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:1px solid #f59e0b25">';
+  var h='<div style="background:#ffffff;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:1px solid #f59e0b25">';
   h+='<div style="font-size:10px;font-weight:800;color:#f59e0b;letter-spacing:1.5px;margin-bottom:4px">🌡️ GEX HEATMAP — Dealer Hedging Zones</div>';
   h+='<div style="font-size:8px;color:#3b5998;margin-bottom:10px;font-style:italic">👀 Read: GREEN zones = market gets pinned (range). RED zones = explosive moves (breakouts). The FLIP LEVEL is the most important number — below it bearish acceleration, above it bullish acceleration.</div>';
   
@@ -2378,7 +2378,7 @@ window._renderGEXHeatmap=function(gex,spot,S){
 // ─── BACKTEST SIMULATOR (1-min bar simulation) ───
 window._renderBacktestSim=function(bars,spot,vix,atmIV,S,sym){
   if(!bars||bars.length<10)return'';
-  var h='<div style="background:#f8fafc;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:1px solid #a855f725">';
+  var h='<div style="background:#ffffff;border-radius:14px;padding:16px 20px;margin-bottom:10px;border:1px solid #a855f725">';
   h+='<div style="font-size:10px;font-weight:800;color:#a855f7;letter-spacing:1.5px;margin-bottom:4px">🔬 BACKTEST SIMULATOR — '+sym+' (Last '+bars.length+' bars)</div>';
   h+='<div style="font-size:8px;color:#3b5998;margin-bottom:10px;font-style:italic">👀 Read: This simulates what would have happened if you traded the gamma strategy on recent data. Win rate, profit factor, and drawdown tell you if the strategy is working in current conditions.</div>';
   
@@ -2543,7 +2543,7 @@ window._loadQuickTrade=function(symbol){
   window._activeOptionsReg='IN';
   window._apiRetryCount=0;
   
-  el.innerHTML='<div style="padding:40px;text-align:center;background:linear-gradient(135deg,#f8fafc,#0f1a2e);border-radius:16px">'
+  el.innerHTML='<div style="padding:40px;text-align:center;background:#ffffff;border-radius:16px">'
     +'<div style="display:inline-block;width:20px;height:20px;border:3px solid #059669;border-top-color:transparent;border-radius:50%;animation:spin .5s linear infinite"></div>'
     +'<div style="font-size:13px;font-weight:900;color:#059669;margin-top:10px;font-family:Sora">Loading Quick Trade...</div></div>';
   
@@ -2558,13 +2558,13 @@ window._loadQuickTrade=function(symbol){
         if(shouldOpen3){
           window._apiRetryCount=(window._apiRetryCount||0)+1;
           if(window._apiRetryCount<=3){
-            el.innerHTML='<div style="max-width:480px;margin:0 auto;padding:40px 20px;text-align:center;background:#f1f5f9;border-radius:20px"><div style="display:inline-block;width:30px;height:30px;border:3px solid #f59e0b;border-top-color:transparent;border-radius:50%;animation:spin 1s linear infinite;margin-bottom:12px"></div><div style="font-size:16px;font-weight:900;color:#1e293b">Fetching '+sym+' data...</div><div style="font-size:10px;color:#4a6fa5;margin-top:8px">Attempt '+window._apiRetryCount+' of 3. Auto-retrying in 15 sec...</div><button onclick="window._retryLast()" style="margin-top:12px;padding:8px 20px;border-radius:8px;background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;border:none;cursor:pointer;font-size:11px;font-weight:800">🔄 Retry Now</button></div>';
+            el.innerHTML='<div style="max-width:480px;margin:0 auto;padding:40px 20px;text-align:center;background:#f8fafc;border-radius:20px"><div style="display:inline-block;width:30px;height:30px;border:3px solid #f59e0b;border-top-color:transparent;border-radius:50%;animation:spin 1s linear infinite;margin-bottom:12px"></div><div style="font-size:16px;font-weight:900;color:#1e293b">Fetching '+sym+' data...</div><div style="font-size:10px;color:#4a6fa5;margin-top:8px">Attempt '+window._apiRetryCount+' of 3. Auto-retrying in 15 sec...</div><button onclick="window._retryLast()" style="margin-top:12px;padding:8px 20px;border-radius:8px;background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;border:none;cursor:pointer;font-size:11px;font-weight:800">🔄 Retry Now</button></div>';
             window._apiRetryTimer=setTimeout(function(){if(window._activeOptionsSym===sym)window._loadQuickTrade(sym)},15000);
           }else{
-            el.innerHTML='<div style="max-width:480px;margin:0 auto;padding:40px 20px;text-align:center;background:#f1f5f9;border-radius:20px"><div style="font-size:48px;margin-bottom:12px">⚠️</div><div style="font-size:16px;font-weight:900;color:#d97706">Data Temporarily Unavailable</div><div style="font-size:10px;color:#4a6fa5;margin-top:8px">'+(d&&d.error?d.error:'NSE API not responding')+'<br>Try again in 1-2 minutes.</div><button onclick="window._retryLast()" style="margin-top:12px;padding:10px 24px;border-radius:8px;background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;border:none;cursor:pointer;font-size:12px;font-weight:800">🔄 Try Again</button></div>';
+            el.innerHTML='<div style="max-width:480px;margin:0 auto;padding:40px 20px;text-align:center;background:#f8fafc;border-radius:20px"><div style="font-size:48px;margin-bottom:12px">⚠️</div><div style="font-size:16px;font-weight:900;color:#d97706">Data Temporarily Unavailable</div><div style="font-size:10px;color:#4a6fa5;margin-top:8px">'+(d&&d.error?d.error:'NSE API not responding')+'<br>Try again in 1-2 minutes.</div><button onclick="window._retryLast()" style="margin-top:12px;padding:10px 24px;border-radius:8px;background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;border:none;cursor:pointer;font-size:12px;font-weight:800">🔄 Try Again</button></div>';
           }
         }else{
-          el.innerHTML='<div style="max-width:480px;margin:0 auto;padding:40px 20px;text-align:center;background:#f1f5f9;border-radius:20px"><div style="font-size:48px;margin-bottom:12px">🕐</div><div style="font-size:18px;font-weight:900;color:#1e293b">Market Closed</div><div style="font-size:10px;color:#4a6fa5;margin-top:8px">NSE: 9:15 AM – 3:30 PM IST</div><button onclick="window._retryLast()" style="margin-top:12px;padding:8px 20px;border-radius:8px;background:#f1f5f9;color:#2d4373;border:1px solid #cbd5e1;cursor:pointer;font-size:11px;font-weight:700">🔄 Refresh</button></div>';
+          el.innerHTML='<div style="max-width:480px;margin:0 auto;padding:40px 20px;text-align:center;background:#f8fafc;border-radius:20px"><div style="font-size:48px;margin-bottom:12px">🕐</div><div style="font-size:18px;font-weight:900;color:#1e293b">Market Closed</div><div style="font-size:10px;color:#4a6fa5;margin-top:8px">NSE: 9:15 AM – 3:30 PM IST</div><button onclick="window._retryLast()" style="margin-top:12px;padding:8px 20px;border-radius:8px;background:#f8fafc;color:#2d4373;border:1px solid #cbd5e1;cursor:pointer;font-size:11px;font-weight:700">🔄 Refresh</button></div>';
         }
         return;
       }
@@ -2587,7 +2587,7 @@ window._loadQuickTrade=function(symbol){
       }catch(_renderErr){
         console.error('[RENDER CRASH]',_renderErr);
         var _crashEl=document.getElementById('deResult');
-        if(_crashEl)_crashEl.innerHTML='<div style=\"text-align:center;padding:30px;background:#f1f5f9;border-radius:16px\"><div style=\"font-size:14px;color:#ef4444;font-weight:800;margin-bottom:8px\">Render Error</div><div style=\"font-size:10px;color:#4a6fa5;margin-bottom:8px\">'+(_renderErr.message||'Unknown error')+'</div><div style=\"font-size:8px;color:#2d4373;margin-bottom:12px\">'+(_renderErr.stack?_renderErr.stack.split('\\n').slice(0,3).join('<br>'):'')+'</div><button onclick=\"window._retryLast()\" style=\"padding:8px 20px;border-radius:8px;background:#3b82f6;color:#fff;border:none;cursor:pointer;font-size:11px;font-weight:700\">🔄 Retry</button></div>';
+        if(_crashEl)_crashEl.innerHTML='<div style=\"text-align:center;padding:30px;background:#f8fafc;border-radius:16px\"><div style=\"font-size:14px;color:#ef4444;font-weight:800;margin-bottom:8px\">Render Error</div><div style=\"font-size:10px;color:#4a6fa5;margin-bottom:8px\">'+(_renderErr.message||'Unknown error')+'</div><div style=\"font-size:8px;color:#2d4373;margin-bottom:12px\">'+(_renderErr.stack?_renderErr.stack.split('\\n').slice(0,3).join('<br>'):'')+'</div><button onclick=\"window._retryLast()\" style=\"padding:8px 20px;border-radius:8px;background:#3b82f6;color:#fff;border:none;cursor:pointer;font-size:11px;font-weight:700\">🔄 Retry</button></div>';
       }
       // Auto-refresh — only if still the active ticker
       console.log('[REFRESH] ✅ Timer started for '+sym+' (30s)');
@@ -2607,7 +2607,7 @@ window._loadQuickTrade=function(symbol){
         }else{console.log('[REFRESH] Stopped for '+sym);clearInterval(window._quickRefreshTimer);window._quickRefreshTimer=null}
       },30000);
     }).catch(function(e){
-      el.innerHTML='<div style="text-align:center;padding:30px;background:#f1f5f9;border-radius:16px"><div style="font-size:14px;color:#ef4444;font-weight:800;margin-bottom:8px">Cannot connect to server</div><div style="font-size:10px;color:#4a6fa5;margin-bottom:12px">'+e.message+'</div><button onclick="window._retryLast()" style="padding:8px 20px;border-radius:8px;background:#059669;color:#fff;border:none;cursor:pointer;font-size:11px;font-weight:700">🔄 Retry</button></div>';
+      el.innerHTML='<div style="text-align:center;padding:30px;background:#f8fafc;border-radius:16px"><div style="font-size:14px;color:#ef4444;font-weight:800;margin-bottom:8px">Cannot connect to server</div><div style="font-size:10px;color:#4a6fa5;margin-bottom:12px">'+e.message+'</div><button onclick="window._retryLast()" style="padding:8px 20px;border-radius:8px;background:#059669;color:#fff;border:none;cursor:pointer;font-size:11px;font-weight:700">🔄 Retry</button></div>';
     });
 };
 
@@ -2649,7 +2649,7 @@ function _renderQuickTrade(d,sym){
       // Limit auto-retries to 3
       window._apiRetryCount=(window._apiRetryCount||0)+1;
       if(window._apiRetryCount<=3){
-        var h0r='<div style="max-width:480px;margin:0 auto;padding:40px 20px;text-align:center;background:#f1f5f9;border-radius:20px">';
+        var h0r='<div style="max-width:480px;margin:0 auto;padding:40px 20px;text-align:center;background:#f8fafc;border-radius:20px">';
         h0r+='<div style="display:inline-block;width:30px;height:30px;border:3px solid #f59e0b;border-top-color:transparent;border-radius:50%;animation:spin 1s linear infinite;margin-bottom:12px"></div>';
         h0r+='<div style="font-size:18px;font-weight:900;color:#1e293b;font-family:Sora;margin-bottom:8px">Fetching Live Data...</div>';
         h0r+='<div style="font-size:11px;color:#4a6fa5;margin-bottom:4px">Market is open. NSE API may take a moment. Attempt '+window._apiRetryCount+' of 3.</div>';
@@ -2666,7 +2666,7 @@ function _renderQuickTrade(d,sym){
         },15000);
       }else{
         // Max retries exhausted — show manual retry only
-        var h0f='<div style="max-width:480px;margin:0 auto;padding:40px 20px;text-align:center;background:#f1f5f9;border-radius:20px">';
+        var h0f='<div style="max-width:480px;margin:0 auto;padding:40px 20px;text-align:center;background:#f8fafc;border-radius:20px">';
         h0f+='<div style="font-size:48px;margin-bottom:12px">⚠️</div>';
         h0f+='<div style="font-size:18px;font-weight:900;color:#d97706;font-family:Sora;margin-bottom:8px">Data Temporarily Unavailable</div>';
         h0f+='<div style="font-size:11px;color:#4a6fa5;margin-bottom:16px">NSE API is not responding. This is common during the first few minutes after market open.<br>Try again in 1-2 minutes.</div>';
@@ -2677,7 +2677,7 @@ function _renderQuickTrade(d,sym){
       return;
     }
     
-    var h0='<div style="max-width:480px;margin:0 auto;padding:40px 20px;text-align:center;background:#f1f5f9;border-radius:20px">';
+    var h0='<div style="max-width:480px;margin:0 auto;padding:40px 20px;text-align:center;background:#f8fafc;border-radius:20px">';
     h0+='<div style="font-size:48px;margin-bottom:12px">🕐</div>';
     h0+='<div style="font-size:22px;font-weight:900;color:#1e293b;font-family:Sora;margin-bottom:8px">Market Closed</div>';
     h0+='<div style="font-size:12px;color:#4a6fa5;margin-bottom:16px">'+marketMsg+'</div>';
@@ -2689,10 +2689,10 @@ function _renderQuickTrade(d,sym){
     h0+='🟢 BUY CALL / 🔴 BUY PUT / ⚪ WAIT</div></div>';
     h0+='<div style="display:flex;gap:8px;justify-content:center">';
     ['NIFTY','BANKNIFTY','SENSEX'].forEach(function(idx){
-      h0+='<div onclick="window._retryLast()" style="padding:8px 16px;border-radius:10px;font-size:10px;font-weight:800;cursor:pointer;font-family:Sora;'+(idx===sym?'background:#e2e8f0;color:#3b82f6;border:1px solid #3b82f630':'background:#f1f5f9;color:#2d4373;border:1px solid #cbd5e1')+'">'+idx+'</div>';
+      h0+='<div onclick="window._retryLast()" style="padding:8px 16px;border-radius:10px;font-size:10px;font-weight:800;cursor:pointer;font-family:Sora;'+(idx===sym?'background:#e2e8f0;color:#3b82f6;border:1px solid #3b82f630':'background:#f8fafc;color:#2d4373;border:1px solid #cbd5e1')+'">'+idx+'</div>';
     });
     h0+='</div>';
-    h0+='<button onclick="window._retryLast()" style="margin-top:16px;padding:10px 24px;border-radius:10px;background:#f1f5f9;color:#2d4373;border:1px solid #cbd5e1;font-size:11px;font-weight:700;cursor:pointer">🔄 Refresh</button>';
+    h0+='<button onclick="window._retryLast()" style="margin-top:16px;padding:10px 24px;border-radius:10px;background:#f8fafc;color:#2d4373;border:1px solid #cbd5e1;font-size:11px;font-weight:700;cursor:pointer">🔄 Refresh</button>';
     h0+='</div>';
     el.innerHTML=h0;
     return;
@@ -3797,9 +3797,9 @@ function _renderQuickTrade(d,sym){
   var h='';
   var qtIsExpiry=qtIsExpiry7;
   
-  if(!isUS){h+='<div style="text-align:right;margin-bottom:8px"><div onclick="window._loadOptionsDecide(\''+sym+'\')" style="padding:6px 14px;border-radius:8px;font-size:9px;font-weight:700;cursor:pointer;display:inline-block;background:#f1f5f9;color:#3b5998;border:1px solid #e2e8f0">🔬 Advanced</div></div>'}
+  if(!isUS){h+='<div style="text-align:right;margin-bottom:8px"><div onclick="window._loadOptionsDecide(\''+sym+'\')" style="padding:6px 14px;border-radius:8px;font-size:9px;font-weight:700;cursor:pointer;display:inline-block;background:#f8fafc;color:#3b5998;border:1px solid #e2e8f0">🔬 Advanced</div></div>'}
   
-  h+='<div style="background:linear-gradient(135deg,#f8fafc,#0f1a2e);border-radius:20px;padding:28px;border:2px solid '+biasColor+'30;max-width:480px;margin:0 auto">';
+  h+='<div style="background:#ffffff;border-radius:20px;padding:28px;border:2px solid '+biasColor+'30;max-width:480px;margin:0 auto">';
   
   // Header: Mode badge + ticker + price
   h+='<div style="text-align:center;margin-bottom:4px"><div style="display:inline-block;padding:2px 10px;border-radius:6px;background:'+(tradeMode==='OPTIONS'?'#3b82f615':'#8b5cf615')+';font-size:7px;font-weight:800;color:'+(tradeMode==='OPTIONS'?'#3b82f6':'#8b5cf6')+';letter-spacing:2px">'+(tradeMode==='OPTIONS'?'⚡ OPTIONS ENGINE':tradeMode==='INDEX_HYBRID'?'🌐 INDEX HYBRID':'📈 STOCK ENGINE')+'</div></div>';
@@ -3832,10 +3832,10 @@ function _renderQuickTrade(d,sym){
     
     // Details toggle for verbose analysis
     var _detailIdNT='qtDetail_'+sym.replace(/[^a-zA-Z0-9]/g,'')+'_nt';
-    h+='<div style="text-align:center;margin-bottom:8px"><button onclick="var d=document.getElementById(\''+_detailIdNT+'\');d.style.display=d.style.display===\'none\'?\'block\':\'none\'" style="padding:6px 20px;border-radius:8px;background:#f1f5f9;color:#2d4373;border:1px solid #cbd5e1;font-size:9px;font-weight:700;cursor:pointer">📊 Details & Analysis ▼</button></div>';
+    h+='<div style="text-align:center;margin-bottom:8px"><button onclick="var d=document.getElementById(\''+_detailIdNT+'\');d.style.display=d.style.display===\'none\'?\'block\':\'none\'" style="padding:6px 20px;border-radius:8px;background:#f8fafc;color:#2d4373;border:1px solid #cbd5e1;font-size:9px;font-weight:700;cursor:pointer">📊 Details & Analysis ▼</button></div>';
     h+='<div id="'+_detailIdNT+'" style="display:none">';
     // ═══ SIGNAL QUALITY DASHBOARD — NO TRADE view (shows what's missing) ═══
-    h+='<div style="padding:10px;border-radius:12px;background:#f1f5f9;border:1px solid #e2e8f0;margin-bottom:12px">';
+    h+='<div style="padding:10px;border-radius:12px;background:#f8fafc;border:1px solid #e2e8f0;margin-bottom:12px">';
     h+='<div style="font-size:8px;font-weight:800;color:#3b5998;letter-spacing:1px;margin-bottom:6px">WHY NO TRADE — Signal Quality</div>';
     h+='<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:6px;margin-bottom:6px">';
     var _cColN=confirmations>=4?'#059669':confirmations>=3?'#3b82f6':confirmations>=2?'#d97706':'#ef4444';
@@ -3910,7 +3910,7 @@ function _renderQuickTrade(d,sym){
     
     // Details toggle for full analysis
     var _detailId2='qtDetail_'+sym.replace(/[^a-zA-Z0-9]/g,'')+'_w';
-    h+='<div style="text-align:center;margin-bottom:8px"><button onclick="var d=document.getElementById(\''+_detailId2+'\');d.style.display=d.style.display===\'none\'?\'block\':\'none\'" style="padding:6px 20px;border-radius:8px;background:#f1f5f9;color:#2d4373;border:1px solid #cbd5e1;font-size:9px;font-weight:700;cursor:pointer">📊 Details & Analysis ▼</button></div>';
+    h+='<div style="text-align:center;margin-bottom:8px"><button onclick="var d=document.getElementById(\''+_detailId2+'\');d.style.display=d.style.display===\'none\'?\'block\':\'none\'" style="padding:6px 20px;border-radius:8px;background:#f8fafc;color:#2d4373;border:1px solid #cbd5e1;font-size:9px;font-weight:700;cursor:pointer">📊 Details & Analysis ▼</button></div>';
     h+='<div id="'+_detailId2+'" style="display:none">';
     // Full why reasons inside toggle
     whyReasons.forEach(function(r){h+='<div style="font-size:10px;padding:3px 0;color:'+(r.pass?'#059669':'#94a3b8')+'">'+(r.pass?'✔':'✗')+' '+r.label+'</div>'});
@@ -3960,7 +3960,7 @@ function _renderQuickTrade(d,sym){
     
     // Row 3: Support ← Spot → Resistance (compact price map inline)
     if(_pmPW>0||_pmCW>0){
-      h+='<div style="margin-top:8px;display:flex;justify-content:space-between;align-items:center;padding:4px 8px;border-radius:6px;background:#f8fafc">';
+      h+='<div style="margin-top:8px;display:flex;justify-content:space-between;align-items:center;padding:4px 8px;border-radius:6px;background:#ffffff">';
       h+='<span style="font-size:8px;color:#059669;font-weight:700">▼ '+S+(_pmPW>0?_pmPW.toLocaleString():'—')+'</span>';
       h+='<span style="font-size:8px;color:#3b5998">← '+S+spot.toLocaleString()+' →</span>';
       h+='<span style="font-size:8px;color:#ef4444;font-weight:700">▲ '+S+(_pmCW>0?_pmCW.toLocaleString():'—')+'</span>';
@@ -3982,7 +3982,7 @@ function _renderQuickTrade(d,sym){
     
     // ═══ DETAILS TOGGLE — Everything else goes behind this ═══
     var _detailId='qtDetail_'+sym.replace(/[^a-zA-Z0-9]/g,'');
-    h+='<div style="text-align:center;margin-bottom:8px"><button onclick="var d=document.getElementById(\''+_detailId+'\');d.style.display=d.style.display===\'none\'?\'block\':\'none\'" style="padding:6px 20px;border-radius:8px;background:#f1f5f9;color:#2d4373;border:1px solid #cbd5e1;font-size:9px;font-weight:700;cursor:pointer">📊 Details & Analysis ▼</button></div>';
+    h+='<div style="text-align:center;margin-bottom:8px"><button onclick="var d=document.getElementById(\''+_detailId+'\');d.style.display=d.style.display===\'none\'?\'block\':\'none\'" style="padding:6px 20px;border-radius:8px;background:#f8fafc;color:#2d4373;border:1px solid #cbd5e1;font-size:9px;font-weight:700;cursor:pointer">📊 Details & Analysis ▼</button></div>';
     h+='<div id="'+_detailId+'" style="display:none">';
     // ═══ INSTITUTIONAL ENTRY TIMING ENGINE ═══
     // Entry Score = (Freshness × 0.35) + (R:R × 0.30) + (Volume × 0.20) + (VWAP × 0.15)
@@ -4105,7 +4105,7 @@ function _renderQuickTrade(d,sym){
     
     // DISPLAY: Entry Timing Analysis panel — HIDE when market closed
     if(isEnterNow&&!_isMktClosed){
-      h+='<div style="margin-top:8px;padding:10px;border-radius:10px;background:#f1f5f9;border:1px solid '+_timingColor+'30">';
+      h+='<div style="margin-top:8px;padding:10px;border-radius:10px;background:#f8fafc;border:1px solid '+_timingColor+'30">';
       h+='<div style="font-size:9px;font-weight:800;color:#3b5998;letter-spacing:1px;margin-bottom:6px">ENTRY TIMING ANALYSIS</div>';
       
       // Status + Score
@@ -4188,7 +4188,7 @@ function _renderQuickTrade(d,sym){
     h+='<div style="font-size:12px;color:#4a6fa5;margin-top:6px">Confidence: <strong style="color:'+(confidence>=70?'#059669':'#d97706')+'">'+confidence+'%</strong> · Grade: <strong>'+grade+'</strong> ('+gradeLabel+') · Trap: '+trapRisk+'</div>';
     
     // ═══ SIGNAL QUALITY DASHBOARD — ENTER NOW view ═══
-    h+='<div style="margin-top:8px;padding:10px;border-radius:12px;background:#f1f5f9;border:1px solid #e2e8f0">';
+    h+='<div style="margin-top:8px;padding:10px;border-radius:12px;background:#f8fafc;border:1px solid #e2e8f0">';
     h+='<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:6px;margin-bottom:6px">';
     var _cCol2=confirmations>=4?'#059669':confirmations>=3?'#3b82f6':confirmations>=2?'#d97706':'#ef4444';
     h+='<div style="text-align:center;padding:4px;border-radius:6px;background:'+_cCol2+'10"><div style="font-size:7px;color:'+_cCol2+';font-weight:800">CONFIRMS</div><div style="font-size:14px;font-weight:900;color:'+_cCol2+'">'+confirmations+'/6</div></div>';
@@ -4301,7 +4301,7 @@ function _renderQuickTrade(d,sym){
   h+='</div>';
   
   // 3 GOLDEN RULES
-  h+='<div style="max-width:480px;margin:12px auto 0;padding:14px 20px;border-radius:14px;background:#f8fafc;border:1px solid #ef444420">';
+  h+='<div style="max-width:480px;margin:12px auto 0;padding:14px 20px;border-radius:14px;background:#ffffff;border:1px solid #ef444420">';
   h+='<div style="font-size:10px;font-weight:800;color:#ef4444;text-align:center;margin-bottom:8px">🚫 3 GOLDEN RULES — DON\'T BREAK THESE</div>';
   h+='<div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center">';
   h+='<div style="padding:8px 14px;border-radius:8px;background:#ef444408;border:1px solid #ef444415;font-size:9px;color:#ef4444;font-weight:700;text-align:center;flex:1;min-width:120px">❌ No trade in<br>sideways market</div>';
@@ -4311,9 +4311,9 @@ function _renderQuickTrade(d,sym){
   
   // 3 Levels
   h+='<div style="max-width:480px;margin:10px auto;display:flex;gap:6px">';
-  h+='<div style="flex:1;padding:8px;border-radius:8px;background:#f8fafc;border:1px solid #e2e8f0;text-align:center"><div style="font-size:7px;color:#a855f7;font-weight:700">VWAP</div><div style="font-size:14px;font-weight:900;color:#a855f7;font-family:JetBrains Mono">'+S+vwapLevel.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div></div>';
-  h+='<div style="flex:1;padding:8px;border-radius:8px;background:#f8fafc;border:1px solid #e2e8f0;text-align:center"><div style="font-size:7px;color:#059669;font-weight:700">DAY HIGH</div><div style="font-size:14px;font-weight:900;color:#059669;font-family:JetBrains Mono">'+S+dayHigh.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div></div>';
-  h+='<div style="flex:1;padding:8px;border-radius:8px;background:#f8fafc;border:1px solid #e2e8f0;text-align:center"><div style="font-size:7px;color:#ef4444;font-weight:700">DAY LOW</div><div style="font-size:14px;font-weight:900;color:#ef4444;font-family:JetBrains Mono">'+S+dayLow.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div></div>';
+  h+='<div style="flex:1;padding:8px;border-radius:8px;background:#ffffff;border:1px solid #e2e8f0;text-align:center"><div style="font-size:7px;color:#a855f7;font-weight:700">VWAP</div><div style="font-size:14px;font-weight:900;color:#a855f7;font-family:JetBrains Mono">'+S+vwapLevel.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div></div>';
+  h+='<div style="flex:1;padding:8px;border-radius:8px;background:#ffffff;border:1px solid #e2e8f0;text-align:center"><div style="font-size:7px;color:#059669;font-weight:700">DAY HIGH</div><div style="font-size:14px;font-weight:900;color:#059669;font-family:JetBrains Mono">'+S+dayHigh.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div></div>';
+  h+='<div style="flex:1;padding:8px;border-radius:8px;background:#ffffff;border:1px solid #e2e8f0;text-align:center"><div style="font-size:7px;color:#ef4444;font-weight:700">DAY LOW</div><div style="font-size:14px;font-weight:900;color:#ef4444;font-family:JetBrains Mono">'+S+dayLow.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div></div>';
   h+='</div>';
   
   // Close details toggle div (opened in BUY NOW section)
@@ -4427,7 +4427,7 @@ function _renderQuickTrade(d,sym){
     }
     
     // ─── RENDER PRICE MAP ───
-    _leftCol+='<div style="padding:14px;border-radius:14px;background:#f1f5f9;border:1px solid #e2e8f0">';
+    _leftCol+='<div style="padding:14px;border-radius:14px;background:#f8fafc;border:1px solid #e2e8f0">';
     _leftCol+='<div style="font-size:9px;color:#8b5cf6;font-weight:800;letter-spacing:1.5px;margin-bottom:10px">🏛️ INSTITUTIONAL PRICE MAP</div>';
     
     // Visual bar: Put Wall ──── Spot ──── Call Wall
@@ -4547,7 +4547,7 @@ function _renderQuickTrade(d,sym){
       var _lockIcon2=_lockStatus2==='LOCKED'?'🔒':_lockStatus2==='MAINTAIN'?'✅':_lockStatus2==='WARNING'?'⚠️':'🕐';
       var _stCol2=_lockStatus2==='LOCKED'?'#059669':_lockStatus2==='MAINTAIN'?'#3b82f6':_lockStatus2==='WARNING'?'#d97706':'#f59e0b';
       
-      _rightCol+='<div style="padding:10px 14px;border-radius:12px;background:#f8fafc;border:1px solid '+_stCol2+'30;margin-bottom:8px">';
+      _rightCol+='<div style="padding:10px 14px;border-radius:12px;background:#ffffff;border:1px solid '+_stCol2+'30;margin-bottom:8px">';
       _rightCol+='<div style="font-size:8px;color:'+_stCol2+';font-weight:800;letter-spacing:1px;margin-bottom:6px">'+_lockIcon2+' SIGNAL TRACKING</div>';
       _rightCol+='<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:4px">';
       _rightCol+='<div style="font-size:10px;color:#1e293b;font-weight:700">'+_lockIcon2+' <span style="color:'+_stCol2+'">'+_lockStatus2+'</span> · '+_lockAge2+' min</div>';
@@ -4562,7 +4562,7 @@ function _renderQuickTrade(d,sym){
     
     // Trade Setup summary for right column
     if(isOptions&&entryPrem7>0&&direction!=='NONE'){
-      _rightCol+='<div style="padding:10px 14px;border-radius:12px;background:#f8fafc;border:1px solid #e2e8f0;margin-bottom:8px">';
+      _rightCol+='<div style="padding:10px 14px;border-radius:12px;background:#ffffff;border:1px solid #e2e8f0;margin-bottom:8px">';
       _rightCol+='<div style="font-size:8px;color:#f59e0b;font-weight:800;letter-spacing:1px;margin-bottom:8px">📋 TRADE SETUP</div>';
       _rightCol+='<div style="font-size:9px;color:#4a6fa5;line-height:1.8">';
       _rightCol+='<div><span style="color:#3b5998">Action:</span> <strong style="color:'+(finalBias==='BULLISH'?'#059669':'#ef4444')+'">'+(finalBias==='BULLISH'?'BUY CALL':'BUY PUT')+'</strong></div>';
@@ -5031,7 +5031,7 @@ window._getMetrics=function(){
 
 window._renderPerformanceDashboard=function(S){
   var m=window._getMetrics();
-  var h='<div style="background:#f1f5f9;border-radius:16px;padding:18px 22px;margin-bottom:10px;border:1px solid #e2e8f0">';
+  var h='<div style="background:#f8fafc;border-radius:16px;padding:18px 22px;margin-bottom:10px;border:1px solid #e2e8f0">';
   h+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">';
   h+='<div style="font-size:11px;font-weight:800;color:#3b5998;letter-spacing:1.5px">📊 TODAY\'S PERFORMANCE</div>';
   
@@ -5105,9 +5105,9 @@ window._renderPerformanceDashboard=function(S){
   // Voice toggle + reset
   h+='<div style="display:flex;gap:8px;margin-top:10px;justify-content:center">';
   h+='<button onclick="if(!window._voiceFullyReady){window._unlockVoice();this.textContent=\'🔊 Voice ACTIVE\';this.style.background=\'#05966920\';this.style.color=\'#059669\'}else{window._voiceEnabled=!window._voiceEnabled;this.textContent=window._voiceEnabled?\'🔊 Voice ACTIVE\':\'🔇 Voice OFF\';this.style.background=window._voiceEnabled?\'#05966920\':\'#1e293b\';this.style.color=window._voiceEnabled?\'#059669\':\'#64748b\'}" style="padding:6px 14px;border-radius:8px;background:'+(window._voiceFullyReady&&window._voiceEnabled?'#05966920':'#1e293b')+';color:'+(window._voiceFullyReady&&window._voiceEnabled?'#059669':'#64748b')+';border:1px solid #cbd5e1;font-size:9px;font-weight:700;cursor:pointer">'+(window._voiceFullyReady&&window._voiceEnabled?'🔊 Voice ACTIVE':'🔊 Start Voice')+'</button>';
-  h+='<button onclick="window._alertTone(\'ENTRY\');window._speak(\'Voice is working. Entry alert sounds like this. I will guide you through every trade.\',true)" style="padding:6px 10px;border-radius:8px;background:#f1f5f9;color:#2d4373;border:1px solid #cbd5e1;font-size:8px;font-weight:700;cursor:pointer">🔊 Test Alert</button>';
-  h+='<button onclick="if(confirm(\'Reset today\\\'s trade log?\')){window._tradeLog=[];localStorage.setItem(\'celesys_tradeLog\',\'[]\');this.textContent=\'✓ Reset\'}" style="padding:6px 14px;border-radius:8px;background:#f1f5f9;color:#2d4373;border:1px solid #cbd5e1;font-size:9px;font-weight:700;cursor:pointer">🗑️ Reset Log</button>';
-  h+='<button onclick="window._speak(\'Voice test. System ready.\',false)" style="padding:6px 14px;border-radius:8px;background:#f1f5f9;color:#2d4373;border:1px solid #cbd5e1;font-size:9px;font-weight:700;cursor:pointer">🔈 Test Voice</button>';
+  h+='<button onclick="window._alertTone(\'ENTRY\');window._speak(\'Voice is working. Entry alert sounds like this. I will guide you through every trade.\',true)" style="padding:6px 10px;border-radius:8px;background:#f8fafc;color:#2d4373;border:1px solid #cbd5e1;font-size:8px;font-weight:700;cursor:pointer">🔊 Test Alert</button>';
+  h+='<button onclick="if(confirm(\'Reset today\\\'s trade log?\')){window._tradeLog=[];localStorage.setItem(\'celesys_tradeLog\',\'[]\');this.textContent=\'✓ Reset\'}" style="padding:6px 14px;border-radius:8px;background:#f8fafc;color:#2d4373;border:1px solid #cbd5e1;font-size:9px;font-weight:700;cursor:pointer">🗑️ Reset Log</button>';
+  h+='<button onclick="window._speak(\'Voice test. System ready.\',false)" style="padding:6px 14px;border-radius:8px;background:#f8fafc;color:#2d4373;border:1px solid #cbd5e1;font-size:9px;font-weight:700;cursor:pointer">🔈 Test Voice</button>';
   h+='</div>';
   
   h+='</div>';
@@ -6177,7 +6177,7 @@ window._updateGameState=function(trade){
 
 window._renderGamification=function(){
   var gs=window._gameState;
-  var h='<div style="background:#f1f5f9;border-radius:16px;padding:16px 20px;margin-bottom:10px;border:1px solid #f59e0b25">';
+  var h='<div style="background:#f8fafc;border-radius:16px;padding:16px 20px;margin-bottom:10px;border:1px solid #f59e0b25">';
   h+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">';
   h+='<div style="font-size:10px;font-weight:800;color:#f59e0b;letter-spacing:1.5px">🎮 TRADING SCORE</div>';
   var scoreColor=gs.score>=70?'#059669':gs.score>=50?'#d97706':'#ef4444';
@@ -6236,7 +6236,7 @@ window._renderAutoPanel=function(sym,bias,status){
     var active=mode===m;
     var mc=m==='AUTO'?'#059669':m==='ASSISTED'?'#d97706':'#64748b';
     var lbl=m==='AUTO'?'🟢 Auto':m==='ASSISTED'?'🟡 Assisted':'🔴 Manual';
-    h+='<div onclick="window._retryLast()" style="padding:5px 14px;border-radius:8px;font-size:9px;font-weight:800;cursor:pointer;'+(active?'background:'+mc+';color:#fff;border:1px solid '+mc+';box-shadow:0 2px 8px '+mc+'40':'background:#f1f5f9;color:#3b5998;border:1px solid #e2e8f0')+'">'+lbl+'</div>';
+    h+='<div onclick="window._retryLast()" style="padding:5px 14px;border-radius:8px;font-size:9px;font-weight:800;cursor:pointer;'+(active?'background:'+mc+';color:#fff;border:1px solid '+mc+';box-shadow:0 2px 8px '+mc+'40':'background:#f8fafc;color:#3b5998;border:1px solid #e2e8f0')+'">'+lbl+'</div>';
   });
   h+='</div></div>';
   
@@ -6336,12 +6336,12 @@ window._loadGammaMode=function(symbol){
   // Clear any previous refresh timer
   if(window._ultraRefreshTimer){clearInterval(window._ultraRefreshTimer);window._ultraRefreshTimer=null}
   
-  el.innerHTML='<div style="min-height:300px;display:flex;align-items:center;justify-content:center;background:#f1f5f9;border-radius:20px"><div style="text-align:center"><div style="width:24px;height:24px;border:3px solid #f59e0b;border-top-color:transparent;border-radius:50%;animation:spin .5s linear infinite;margin:0 auto"></div><div style="font-size:12px;color:#f59e0b;margin-top:10px;font-weight:800">Scanning '+sym+'...</div></div></div>';
+  el.innerHTML='<div style="min-height:300px;display:flex;align-items:center;justify-content:center;background:#f8fafc;border-radius:20px"><div style="text-align:center"><div style="width:24px;height:24px;border:3px solid #f59e0b;border-top-color:transparent;border-radius:50%;animation:spin .5s linear infinite;margin:0 auto"></div><div style="font-size:12px;color:#f59e0b;margin-top:10px;font-weight:800">Scanning '+sym+'...</div></div></div>';
   
   fetch('/api/options-quick?symbol='+encodeURIComponent(sym)+'&region=IN')
     .then(function(r){return r.json()})
     .then(function(d){
-      if(!d||!d.success){el.innerHTML='<div style="text-align:center;padding:40px;background:#f1f5f9;border-radius:20px"><div style="font-size:16px;color:#ef4444;font-weight:900">Failed to load</div><button onclick="window._loadGammaMode(\''+sym+'\')" style="margin-top:12px;padding:10px 24px;border-radius:10px;background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;border:none;font-size:12px;font-weight:800;cursor:pointer">Retry</button></div>';return}
+      if(!d||!d.success){el.innerHTML='<div style="text-align:center;padding:40px;background:#f8fafc;border-radius:20px"><div style="font-size:16px;color:#ef4444;font-weight:900">Failed to load</div><button onclick="window._loadGammaMode(\''+sym+'\')" style="margin-top:12px;padding:10px 24px;border-radius:10px;background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;border:none;font-size:12px;font-weight:800;cursor:pointer">Retry</button></div>';return}
       _renderUltraSimple(d,sym);
       // Auto-refresh every 30 seconds
       window._ultraRefreshTimer=setInterval(function(){
@@ -6352,7 +6352,7 @@ window._loadGammaMode=function(symbol){
             .catch(function(){});
         }else{clearInterval(window._ultraRefreshTimer);window._ultraRefreshTimer=null}
       },30000);
-    }).catch(function(e){el.innerHTML='<div style="text-align:center;padding:30px;background:#f1f5f9;border-radius:16px"><div style="font-size:14px;color:#ef4444;margin-bottom:8px">Cannot connect to server</div><div style="font-size:10px;color:#4a6fa5;margin-bottom:12px">'+(e.message||'Network error')+'</div><button onclick="window._retryLast()" style="padding:8px 20px;border-radius:8px;background:#059669;color:#fff;border:none;cursor:pointer;font-size:11px;font-weight:700">🔄 Retry</button></div>'});
+    }).catch(function(e){el.innerHTML='<div style="text-align:center;padding:30px;background:#f8fafc;border-radius:16px"><div style="font-size:14px;color:#ef4444;margin-bottom:8px">Cannot connect to server</div><div style="font-size:10px;color:#4a6fa5;margin-bottom:12px">'+(e.message||'Network error')+'</div><button onclick="window._retryLast()" style="padding:8px 20px;border-radius:8px;background:#059669;color:#fff;border:none;cursor:pointer;font-size:11px;font-weight:700">🔄 Retry</button></div>'});
 };
 
 function _renderUltraSimple(d,sym){
@@ -6370,10 +6370,10 @@ function _renderUltraSimple(d,sym){
     var now8=new Date();var istH8=now8.getUTCHours()+5+(now8.getUTCMinutes()+30>=60?1:0);
     var shouldOpen8=(!isUS8u&&istH8>=9&&istH8<16&&now8.getUTCDay()>=1&&now8.getUTCDay()<=5);
     if(shouldOpen8){
-      el.innerHTML='<div style="text-align:center;padding:40px;background:#f1f5f9;border-radius:16px"><div style="display:inline-block;width:30px;height:30px;border:3px solid #f59e0b;border-top-color:transparent;border-radius:50%;animation:spin 1s linear infinite;margin-bottom:12px"></div><div style="font-size:16px;font-weight:900;color:#1e293b">Fetching '+sym+'...</div><div style="font-size:10px;color:#4a6fa5;margin-top:8px">Auto-retrying...</div></div>';
+      el.innerHTML='<div style="text-align:center;padding:40px;background:#f8fafc;border-radius:16px"><div style="display:inline-block;width:30px;height:30px;border:3px solid #f59e0b;border-top-color:transparent;border-radius:50%;animation:spin 1s linear infinite;margin-bottom:12px"></div><div style="font-size:16px;font-weight:900;color:#1e293b">Fetching '+sym+'...</div><div style="font-size:10px;color:#4a6fa5;margin-top:8px">Auto-retrying...</div></div>';
       return;
     }
-    el.innerHTML='<div style="text-align:center;padding:40px;background:#f1f5f9;border-radius:16px"><div style="font-size:48px;margin-bottom:12px">🕐</div><div style="font-size:18px;font-weight:900;color:#1e293b">Market Closed</div><div style="font-size:10px;color:#4a6fa5;margin-top:8px">'+(isUS8u?'US: 9:30 AM – 4:00 PM ET':'NSE: 9:15 AM – 3:30 PM IST')+'</div></div>';
+    el.innerHTML='<div style="text-align:center;padding:40px;background:#f8fafc;border-radius:16px"><div style="font-size:48px;margin-bottom:12px">🕐</div><div style="font-size:18px;font-weight:900;color:#1e293b">Market Closed</div><div style="font-size:10px;color:#4a6fa5;margin-top:8px">'+(isUS8u?'US: 9:30 AM – 4:00 PM ET':'NSE: 9:15 AM – 3:30 PM IST')+'</div></div>';
     return;
   }
   
@@ -6502,7 +6502,7 @@ function _renderUltraSimple(d,sym){
   h+='<div style="display:flex;gap:6px;margin-bottom:12px;justify-content:center;align-items:center;flex-wrap:wrap">';
   ['NIFTY','BANKNIFTY','SENSEX'].forEach(function(idx){
     var isAct=idx===sym;var isTodayExp=idx===todayExpiryIdx;
-    h+='<div onclick="window._loadGammaMode(\''+idx+'\')" style="padding:8px 16px;border-radius:10px;font-size:10px;font-weight:800;cursor:pointer;font-family:Sora;position:relative;'+(isAct?'background:'+sigBg+';color:#fff':'background:#f1f5f9;color:#2d4373;border:1px solid #cbd5e1')+'">'+(isTodayExp?'🔥 ':'')+idx+(isTodayExp?' <span style="font-size:7px;color:#f59e0b">(EXP)</span>':'')+'</div>';
+    h+='<div onclick="window._loadGammaMode(\''+idx+'\')" style="padding:8px 16px;border-radius:10px;font-size:10px;font-weight:800;cursor:pointer;font-family:Sora;position:relative;'+(isAct?'background:'+sigBg+';color:#fff':'background:#f8fafc;color:#2d4373;border:1px solid #cbd5e1')+'">'+(isTodayExp?'🔥 ':'')+idx+(isTodayExp?' <span style="font-size:7px;color:#f59e0b">(EXP)</span>':'')+'</div>';
   });
   h+='<div style="flex:1"></div>';
   h+='<div onclick="if(typeof _complexGammaLoader===\'function\'){var el2=document.getElementById(\'deResult\');if(el2)el2.innerHTML=\'\';_complexGammaLoader(\''+sym+'\')}" style="padding:6px 12px;border-radius:8px;font-size:8px;font-weight:700;cursor:pointer;background:#e2e8f0;color:#2d4373;border:1px solid #cbd5e1">⚙️ Advanced</div>';
@@ -6548,12 +6548,12 @@ function _renderUltraSimple(d,sym){
   // Action button (with gamma qty hint)
   if(signal==='BUY_CE'||signal==='BUY_PE'){
     // ─── TRADE DETAIL CARD (what exactly to do in broker) ───
-    h+='<div style="background:#f8fafc;border-radius:12px;padding:14px 20px;margin-bottom:12px;max-width:320px;width:100%;text-align:left">';
+    h+='<div style="background:#ffffff;border-radius:12px;padding:14px 20px;margin-bottom:12px;max-width:320px;width:100%;text-align:left">';
     h+='<div style="font-size:9px;color:#3b82f6;font-weight:800;margin-bottom:8px;text-align:center">📋 EXACT TRADE DETAILS</div>';
     h+='<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">';
     h+='<div style="flex:1;min-width:70px;padding:6px;border-radius:6px;background:'+sigColor+'12;text-align:center"><div style="font-size:7px;color:'+sigColor+'">STRIKE</div><div style="font-size:14px;font-weight:900;color:'+sigColor+';font-family:JetBrains Mono">'+S+atmStrike8.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div><div style="font-size:8px;color:#4a6fa5">'+(signal==='BUY_CE'?'CE (Call)':'PE (Put)')+'</div></div>';
     h+='<div style="flex:1;min-width:70px;padding:6px;border-radius:6px;background:#e2e8f0;text-align:center"><div style="font-size:7px;color:#4a6fa5">PREMIUM</div><div style="font-size:14px;font-weight:900;color:#1e293b;font-family:JetBrains Mono">'+S+entryPrem8.toFixed(0)+'</div><div style="font-size:8px;color:#3b5998">per unit</div></div>';
-    h+='<div style="flex:1;min-width:70px;padding:6px;border-radius:6px;background:'+(gammaBlast?'#f59e0b15':'#1e293b')+';text-align:center;border:'+(gammaBlast?'1px solid #f59e0b30':'none')+'"><div style="font-size:7px;color:'+(gammaBlast?'#f59e0b':'#94a3b8')+'">'+(gammaBlast?'⚡ GAMMA QTY':'QUANTITY')+'</div><div style="font-size:14px;font-weight:900;color:'+(gammaBlast?'#f59e0b':'#e2e8f0')+';font-family:JetBrains Mono">'+gammaLotsLabel+' lots'+'</div><div style="font-size:8px;color:#3b5998">'+c8.lot+' × '+gammaLots+' = '+(c8.lot*gammaLots)+' qty</div></div>';
+    h+='<div style="flex:1;min-width:70px;padding:6px;border-radius:6px;background:'+(gammaBlast?'#f59e0b15':'#f8fafc')+';text-align:center;border:'+(gammaBlast?'1px solid #f59e0b30':'none')+'"><div style="font-size:7px;color:'+(gammaBlast?'#f59e0b':'#94a3b8')+'">'+(gammaBlast?'⚡ GAMMA QTY':'QUANTITY')+'</div><div style="font-size:14px;font-weight:900;color:'+(gammaBlast?'#f59e0b':'#e2e8f0')+';font-family:JetBrains Mono">'+gammaLotsLabel+' lots'+'</div><div style="font-size:8px;color:#3b5998">'+c8.lot+' × '+gammaLots+' = '+(c8.lot*gammaLots)+' qty</div></div>';
     h+='</div>';
     // Target + Stop Loss
     h+='<div style="display:flex;gap:8px;margin-bottom:6px">';
@@ -6596,7 +6596,7 @@ function _renderUltraSimple(d,sym){
   var m=window._getMetrics?window._getMetrics():{trades:0,winRate:0,pnl:0};
   var gs=window._gameState||{streak:0,score:50};
   if(m.trades>0||true){
-    h+='<div style="background:#f8fafc;border-radius:16px;padding:14px 20px;display:flex;gap:12px;justify-content:center;align-items:center;flex-wrap:wrap;margin-bottom:8px">';
+    h+='<div style="background:#ffffff;border-radius:16px;padding:14px 20px;display:flex;gap:12px;justify-content:center;align-items:center;flex-wrap:wrap;margin-bottom:8px">';
     h+='<div style="text-align:center"><div style="font-size:7px;color:#3b5998">TODAY</div><div style="font-size:14px;font-weight:900;color:'+(m.pnl>=0?'#059669':'#ef4444')+';font-family:JetBrains Mono">'+(m.pnl>=0?'+':'')+S+(m.pnl||0).toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+'</div></div>';
     h+='<div style="width:1px;height:24px;background:#334155"></div>';
     h+='<div style="text-align:center"><div style="font-size:7px;color:#3b5998">WIN RATE</div><div style="font-size:14px;font-weight:900;color:#3b82f6;font-family:JetBrains Mono">'+(m.winRate||0)+'%</div></div>';
@@ -6661,7 +6661,7 @@ window._renderUserGuide=function(){
   h+='</div>';
   
   // Today's status
-  h+='<div style="padding:14px 20px;border-radius:14px;background:linear-gradient(135deg,#f8fafc,#0f1a2e);border:1px solid #f59e0b30;margin-bottom:16px">';
+  h+='<div style="padding:14px 20px;border-radius:14px;background:#ffffff;border:1px solid #f59e0b30;margin-bottom:16px">';
   h+='<div style="font-size:10px;color:#f59e0b;font-weight:800;margin-bottom:6px">📅 TODAY IS '+dayName.toUpperCase()+'</div>';
   h+='<div style="font-size:13px;color:#1e293b;font-weight:700">'+(isExpiry?'🔥 <strong style="color:#f59e0b">'+todayIdx+' EXPIRY DAY!</strong> — Best day for options trading on '+todayIdx:'Today is not an expiry day. Default: <strong style="color:#3b82f6">BANKNIFTY</strong>')+'</div>';
   h+='<div style="margin-top:8px;font-size:9px;color:#3b5998">Expiry schedule: <span style="color:#3b82f6">Tuesday = NIFTY</span> · <span style="color:#059669">Wednesday = BANKNIFTY</span> · <span style="color:#f59e0b">Thursday = SENSEX</span></div>';
@@ -6680,14 +6680,14 @@ window._renderUserGuide=function(){
   ];
   
   steps.forEach(function(s){
-    h+='<div style="display:flex;gap:12px;margin-bottom:12px;padding:12px 16px;border-radius:12px;background:#f8fafc;border-left:3px solid '+s.color+'">';
+    h+='<div style="display:flex;gap:12px;margin-bottom:12px;padding:12px 16px;border-radius:12px;background:#ffffff;border-left:3px solid '+s.color+'">';
     h+='<div style="font-size:20px;flex-shrink:0">'+s.icon+'</div>';
     h+='<div><div style="font-size:11px;font-weight:800;color:#1e293b;margin-bottom:3px">'+s.title+'</div>';
     h+='<div style="font-size:9px;color:#4a6fa5;line-height:1.6">'+s.desc+'</div></div></div>';
   });
   
   // 3 Modes explained
-  h+='<div style="padding:14px 20px;border-radius:14px;background:#f1f5f9;border:1px solid #e2e8f0;margin-bottom:16px">';
+  h+='<div style="padding:14px 20px;border-radius:14px;background:#f8fafc;border:1px solid #e2e8f0;margin-bottom:16px">';
   h+='<div style="font-size:11px;font-weight:800;color:#3b5998;margin-bottom:8px">🔄 THREE TRADING MODES (you can switch anytime)</div>';
   h+='<div style="display:flex;gap:8px;flex-wrap:wrap">';
   h+='<div style="flex:1;min-width:140px;padding:10px;border-radius:10px;background:#e2e8f0;border-top:3px solid #059669"><div style="font-size:10px;font-weight:800;color:#059669">📊 Quick Trade</div><div style="font-size:8px;color:#4a6fa5;margin-top:4px">Simplest view. BIAS → ACTION → EXIT. Best for beginners. <strong>Default mode.</strong></div></div>';
@@ -6696,7 +6696,7 @@ window._renderUserGuide=function(){
   h+='</div></div>';
   
   // Normal day vs Expiry day
-  h+='<div style="padding:14px 20px;border-radius:14px;background:#f1f5f9;border:1px solid #e2e8f0;margin-bottom:16px">';
+  h+='<div style="padding:14px 20px;border-radius:14px;background:#f8fafc;border:1px solid #e2e8f0;margin-bottom:16px">';
   h+='<div style="font-size:11px;font-weight:800;color:#3b5998;margin-bottom:8px">📅 NORMAL DAY vs EXPIRY DAY — What\'s Different?</div>';
   h+='<div style="display:flex;gap:8px;flex-wrap:wrap">';
   h+='<div style="flex:1;min-width:180px;padding:10px;border-radius:10px;background:#e2e8f0"><div style="font-size:10px;font-weight:800;color:#3b82f6;margin-bottom:6px">Normal Day (Mon/Wed/Fri/Sat/Sun)</div>';
@@ -6838,7 +6838,7 @@ window._renderStrikeSelector=function(strikes,bias,sym,isExpiry,gammaBlast,S){
   var tradeNum=ts.trades.length+1;
   var canTrade=tradeNum<=ts.maxTrades;
   
-  var h='<div style="background:#f8fafc;border-radius:14px;padding:14px 18px;margin-bottom:10px;border:1px solid #3b82f625;max-width:480px;margin-left:auto;margin-right:auto">';
+  var h='<div style="background:#ffffff;border-radius:14px;padding:14px 18px;margin-bottom:10px;border:1px solid #3b82f625;max-width:480px;margin-left:auto;margin-right:auto">';
   h+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">';
   h+='<div style="font-size:10px;font-weight:800;color:#3b82f6">🎯 TRADE '+tradeNum+' OF '+ts.maxTrades+(canTrade?'':' — LIMIT REACHED')+''+'</div>';
   if(ts.trades.length>0)h+='<div style="font-size:8px;color:#3b5998">Prev: '+ts.trades[ts.trades.length-1].strike+' '+ts.trades[ts.trades.length-1].type+'</div>';
@@ -6962,7 +6962,7 @@ window._loadOptionsUniversal=function(symbol,region){
   window._activeOptionsReg=reg;
   window._apiRetryCount=0;
   
-  el.innerHTML='<div style="padding:40px;text-align:center;background:#f1f5f9;border-radius:16px"><div style="display:inline-block;width:20px;height:20px;border:3px solid #3b82f6;border-top-color:transparent;border-radius:50%;animation:spin .5s linear infinite"></div><div style="font-size:12px;color:#3b82f6;margin-top:10px;font-weight:800">Loading '+sym+' ('+reg+')...</div></div>';
+  el.innerHTML='<div style="padding:40px;text-align:center;background:#f8fafc;border-radius:16px"><div style="display:inline-block;width:20px;height:20px;border:3px solid #3b82f6;border-top-color:transparent;border-radius:50%;animation:spin .5s linear infinite"></div><div style="font-size:12px;color:#3b82f6;margin-top:10px;font-weight:800">Loading '+sym+' ('+reg+')...</div></div>';
   
   fetch('/api/options-quick?symbol='+encodeURIComponent(sym)+'&region='+encodeURIComponent(reg))
     .then(function(r){return r.json()})
@@ -6977,13 +6977,13 @@ window._loadOptionsUniversal=function(symbol,region){
         if(shouldOpen2){
           window._apiRetryCount=(window._apiRetryCount||0)+1;
           if(window._apiRetryCount<=3){
-            el.innerHTML='<div style="text-align:center;padding:40px;background:#f1f5f9;border-radius:16px"><div style="display:inline-block;width:30px;height:30px;border:3px solid #f59e0b;border-top-color:transparent;border-radius:50%;animation:spin 1s linear infinite;margin-bottom:12px"></div><div style="font-size:16px;font-weight:900;color:#1e293b">Fetching '+sym+' data...</div><div style="font-size:10px;color:#4a6fa5;margin-top:8px">Attempt '+window._apiRetryCount+' of 3. Auto-retrying in 15 sec...</div><button onclick="window._loadOptionsUniversal(\''+sym+'\',\''+reg+'\')" style="margin-top:12px;padding:8px 20px;border-radius:8px;background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;border:none;cursor:pointer;font-size:11px;font-weight:800">🔄 Retry Now</button></div>';
+            el.innerHTML='<div style="text-align:center;padding:40px;background:#f8fafc;border-radius:16px"><div style="display:inline-block;width:30px;height:30px;border:3px solid #f59e0b;border-top-color:transparent;border-radius:50%;animation:spin 1s linear infinite;margin-bottom:12px"></div><div style="font-size:16px;font-weight:900;color:#1e293b">Fetching '+sym+' data...</div><div style="font-size:10px;color:#4a6fa5;margin-top:8px">Attempt '+window._apiRetryCount+' of 3. Auto-retrying in 15 sec...</div><button onclick="window._loadOptionsUniversal(\''+sym+'\',\''+reg+'\')" style="margin-top:12px;padding:8px 20px;border-radius:8px;background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;border:none;cursor:pointer;font-size:11px;font-weight:800">🔄 Retry Now</button></div>';
             window._apiRetryTimer=setTimeout(function(){if(window._activeOptionsSym===sym)window._loadOptionsUniversal(sym,reg)},15000);
           }else{
-            el.innerHTML='<div style="text-align:center;padding:40px;background:#f1f5f9;border-radius:16px"><div style="font-size:48px;margin-bottom:12px">⚠️</div><div style="font-size:16px;color:#d97706;font-weight:900">Data Temporarily Unavailable</div><div style="font-size:10px;color:#4a6fa5;margin-top:8px">API not responding. Try again in 1-2 minutes.</div><button onclick="window._apiRetryCount=0;window._loadOptionsUniversal(\''+sym+'\',\''+reg+'\')" style="margin-top:12px;padding:10px 24px;border-radius:8px;background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;border:none;cursor:pointer;font-size:12px;font-weight:800">🔄 Try Again</button></div>';
+            el.innerHTML='<div style="text-align:center;padding:40px;background:#f8fafc;border-radius:16px"><div style="font-size:48px;margin-bottom:12px">⚠️</div><div style="font-size:16px;color:#d97706;font-weight:900">Data Temporarily Unavailable</div><div style="font-size:10px;color:#4a6fa5;margin-top:8px">API not responding. Try again in 1-2 minutes.</div><button onclick="window._apiRetryCount=0;window._loadOptionsUniversal(\''+sym+'\',\''+reg+'\')" style="margin-top:12px;padding:10px 24px;border-radius:8px;background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;border:none;cursor:pointer;font-size:12px;font-weight:800">🔄 Try Again</button></div>';
           }
         }else{
-          el.innerHTML='<div style="text-align:center;padding:40px;background:#f1f5f9;border-radius:16px"><div style="font-size:48px;margin-bottom:12px">🕐</div><div style="font-size:16px;color:#ef4444;font-weight:900">No options data for '+sym+'</div><div style="font-size:10px;color:#4a6fa5;margin-top:8px">'+(reg==='US'?'US market hours: 9:30 AM – 4:00 PM ET':'NSE hours: 9:15 AM – 3:30 PM IST')+'</div><button onclick="window._loadOptionsUniversal(\''+sym+'\',\''+reg+'\')" style="margin-top:12px;padding:8px 20px;border-radius:8px;background:#3b82f6;color:#fff;border:none;cursor:pointer;font-size:11px;font-weight:700">🔄 Retry</button></div>';
+          el.innerHTML='<div style="text-align:center;padding:40px;background:#f8fafc;border-radius:16px"><div style="font-size:48px;margin-bottom:12px">🕐</div><div style="font-size:16px;color:#ef4444;font-weight:900">No options data for '+sym+'</div><div style="font-size:10px;color:#4a6fa5;margin-top:8px">'+(reg==='US'?'US market hours: 9:30 AM – 4:00 PM ET':'NSE hours: 9:15 AM – 3:30 PM IST')+'</div><button onclick="window._loadOptionsUniversal(\''+sym+'\',\''+reg+'\')" style="margin-top:12px;padding:8px 20px;border-radius:8px;background:#3b82f6;color:#fff;border:none;cursor:pointer;font-size:11px;font-weight:700">🔄 Retry</button></div>';
         }
         return;
       }
@@ -7010,7 +7010,7 @@ window._loadOptionsUniversal=function(symbol,region){
       }catch(_renderErr2){
         console.error('[RENDER CRASH]',_renderErr2);
         var _crashEl2=document.getElementById('deResult');
-        if(_crashEl2)_crashEl2.innerHTML='<div style="text-align:center;padding:30px;background:#f1f5f9;border-radius:16px"><div style="font-size:14px;color:#ef4444;font-weight:800;margin-bottom:8px">Render Error</div><div style="font-size:10px;color:#4a6fa5;margin-bottom:8px">'+(_renderErr2.message||'Unknown')+'</div><div style="font-size:8px;color:#2d4373;margin-bottom:12px">'+(_renderErr2.stack?_renderErr2.stack.split("\\n").slice(0,3).join("<br>"):'')+'</div><button onclick="window._retryLast()" style="padding:8px 20px;border-radius:8px;background:#3b82f6;color:#fff;border:none;cursor:pointer;font-size:11px;font-weight:700">🔄 Retry</button></div>';
+        if(_crashEl2)_crashEl2.innerHTML='<div style="text-align:center;padding:30px;background:#f8fafc;border-radius:16px"><div style="font-size:14px;color:#ef4444;font-weight:800;margin-bottom:8px">Render Error</div><div style="font-size:10px;color:#4a6fa5;margin-bottom:8px">'+(_renderErr2.message||'Unknown')+'</div><div style="font-size:8px;color:#2d4373;margin-bottom:12px">'+(_renderErr2.stack?_renderErr2.stack.split("\\n").slice(0,3).join("<br>"):'')+'</div><button onclick="window._retryLast()" style="padding:8px 20px;border-radius:8px;background:#3b82f6;color:#fff;border:none;cursor:pointer;font-size:11px;font-weight:700">🔄 Retry</button></div>';
       }
       // Auto-refresh — only if still active
       console.log('[REFRESH] ✅ Universal timer started for '+sym+' '+reg+' (30s)');
@@ -7026,7 +7026,7 @@ window._loadOptionsUniversal=function(symbol,region){
         }else{console.log('[REFRESH] Universal stopped for '+sym);clearInterval(window._quickRefreshTimer);window._quickRefreshTimer=null}
       },30000);
     }).catch(function(e){
-      el.innerHTML='<div style="text-align:center;padding:30px;background:#f1f5f9;border-radius:16px"><div style="font-size:14px;color:#ef4444;margin-bottom:8px">Cannot connect to server</div><div style="font-size:10px;color:#4a6fa5;margin-bottom:12px">'+e.message+'</div><button onclick="window._retryLast()" style="padding:8px 20px;border-radius:8px;background:#3b82f6;color:#fff;border:none;cursor:pointer;font-size:11px;font-weight:700">🔄 Retry</button></div>';
+      el.innerHTML='<div style="text-align:center;padding:30px;background:#f8fafc;border-radius:16px"><div style="font-size:14px;color:#ef4444;margin-bottom:8px">Cannot connect to server</div><div style="font-size:10px;color:#4a6fa5;margin-bottom:12px">'+e.message+'</div><button onclick="window._retryLast()" style="padding:8px 20px;border-radius:8px;background:#3b82f6;color:#fff;border:none;cursor:pointer;font-size:11px;font-weight:700">🔄 Retry</button></div>';
     });
 };
 
@@ -7085,48 +7085,45 @@ window._renderOptionsNav=function(activeSym){
   
   var h='';
   
-  // Region selector
-  h+='<div style="display:flex;gap:6px;margin-bottom:6px;justify-content:center">';
+  // ─── SINGLE COMPACT NAV BAR — institutional style ───
+  h+='<div style="display:flex;align-items:center;gap:6px;padding:6px 0;margin-bottom:8px;border-bottom:1px solid #e2e8f0;flex-wrap:wrap">';
+  
+  // Region toggle (minimal)
   ['IN','US'].forEach(function(r){
     var isAct=r===reg;
-    h+='<div onclick="window._optionsRegion=\''+r+'\';window._optionsCategory=\'index\';window._loadSmartOptions()" style="padding:6px 18px;border-radius:8px;font-size:10px;font-weight:800;cursor:pointer;font-family:Sora;'+(isAct?'background:linear-gradient(135deg,#3b82f6,#1d4ed8);color:#fff':'background:#f1f5f9;color:#2d4373;border:1px solid #cbd5e1')+'">'+nav[r].label+'</div>';
-  });
-  h+='</div>';
-  
-  // Scanner buttons — BUY NOW + CATALYST
-  h+='<div style="text-align:center;margin-bottom:6px;display:flex;gap:6px;justify-content:center">';
-  h+='<button onclick="window._showBuyNowDashboard()" style="padding:6px 18px;border-radius:8px;background:linear-gradient(135deg,#059669,#10b981);color:#fff;border:none;font-size:10px;font-weight:800;cursor:pointer;font-family:Sora">🔥 BUY NOW Today</button>';
-  h+='<button onclick="window._loadCatalystScanner()" style="padding:6px 18px;border-radius:8px;background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;border:none;font-size:10px;font-weight:800;cursor:pointer;font-family:Sora">🔥 Catalyst Scanner</button>';
-  h+='</div>';
-  
-  // Category selector
-  h+='<div style="display:flex;gap:4px;margin-bottom:8px;justify-content:center;flex-wrap:wrap">';
-  Object.keys(regionData.categories).forEach(function(c){
-    var isAct=c===cat;
-    var cd=regionData.categories[c];
-    h+='<div onclick="window._optionsCategory=\''+c+'\';window._loadSmartOptions()" style="padding:4px 12px;border-radius:6px;font-size:9px;font-weight:700;cursor:pointer;'+(isAct?'background:#3b82f620;color:#3b82f6;border:1px solid #3b82f630':'background:#f1f5f9;color:#2d4373;border:1px solid #cbd5e1')+'">'+cd.label+'</div>';
-  });
-  h+='</div>';
-  
-  // Ticker pills
-  h+='<div style="display:flex;gap:4px;flex-wrap:wrap;justify-content:center;margin-bottom:10px">';
-  
-  // Expiry badge for India indices
-  var todayExp=window._getTodayExpiryIndex?window._getTodayExpiryIndex():'BANKNIFTY';
-  
-  catData.tickers.forEach(function(t){
-    var isAct=t===activeSym;
-    var isExp=(reg==='IN'&&cat==='index'&&t===todayExp);
-    var loadFn=reg==='IN'&&cat==='index'?'window._loadQuickTrade(\''+t+'\')':'window._loadOptionsUniversal(\''+t+'\',\''+reg+'\')';
-    h+='<div onclick="'+loadFn+'" style="padding:6px 14px;border-radius:8px;font-size:10px;font-weight:800;cursor:pointer;font-family:Sora;'+(isAct?'background:linear-gradient(135deg,#059669,#10b981);color:#fff;box-shadow:0 2px 8px rgba(5,150,105,.2)':'background:#e2e8f0;color:#4a6fa5;border:1px solid #cbd5e1')+'">'+(isExp?'🔥 ':'')+t+(isExp?' <span style="font-size:7px;color:#f59e0b">(EXP)</span>':'')+'</div>';
+    h+='<div onclick="window._optionsRegion=\''+r+'\';window._optionsCategory=\'index\';window._loadSmartOptions()" style="padding:4px 10px;font-size:10px;font-weight:'+(isAct?'800':'600')+';cursor:pointer;font-family:JetBrains Mono,monospace;color:'+(isAct?'#1e40af':'#64748b')+';border-bottom:'+(isAct?'2px solid #1e40af':'2px solid transparent')+'">'+(r==='IN'?'IN':'US')+'</div>';
   });
   
-  // Custom ticker input
+  h+='<div style="width:1px;height:16px;background:#e2e8f0"></div>';
+  
+  // Quick actions
+  h+='<div onclick="window._showBuyNowDashboard()" style="padding:4px 8px;font-size:9px;font-weight:700;cursor:pointer;color:#059669;font-family:JetBrains Mono,monospace">SCAN</div>';
+  h+='<div onclick="window._loadCatalystScanner()" style="padding:4px 8px;font-size:9px;font-weight:700;cursor:pointer;color:#d97706;font-family:JetBrains Mono,monospace">CATALYST</div>';
+  
+  h+='<div style="flex:1"></div>';
+  
+  // Search input (right-aligned)
   h+='<div style="display:flex;gap:4px;align-items:center">';
-  h+='<input id="optCustomTicker" type="text" placeholder="Type ticker..." style="padding:5px 10px;border-radius:8px;border:1px solid #cbd5e1;background:#f8fafc;color:#1e293b;font-size:9px;width:90px;font-family:JetBrains Mono" onkeydown="if(event.key===\'Enter\'){var v=this.value.trim().toUpperCase();if(v)window._loadOptionsUniversal(v,window._optionsRegion)}">';
-  h+='<div onclick="var v=document.getElementById(\'optCustomTicker\').value.trim().toUpperCase();if(v)window._loadOptionsUniversal(v,window._optionsRegion)" style="padding:5px 10px;border-radius:8px;background:#3b82f6;color:#fff;font-size:9px;font-weight:700;cursor:pointer">Go</div>';
+  h+='<input id="optCustomTicker" type="text" placeholder="Search..." style="padding:4px 8px;border:1px solid #e2e8f0;background:#fff;color:#1e293b;font-size:10px;width:80px;font-family:JetBrains Mono,monospace;border-radius:4px" onkeydown="if(event.key===\'Enter\'){var v=this.value.trim().toUpperCase();if(v)window._loadOptionsUniversal(v,window._optionsRegion)}">';
+  h+='</div>';
   h+='</div>';
   
+  // ─── TICKER STRIP — single scrollable row, minimal style ───
+  var allTickers=[];
+  var todayExp=window._getTodayExpiryIndex?window._getTodayExpiryIndex():'BANKNIFTY';
+  ['index','stock','etf'].forEach(function(ck){
+    var cd=regionData.categories[ck];
+    if(cd&&cd.tickers)cd.tickers.forEach(function(t){if(allTickers.indexOf(t)<0)allTickers.push(t)});
+  });
+  
+  h+='<div style="display:flex;gap:2px;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;padding:0 0 8px;margin-bottom:4px">';
+  allTickers.forEach(function(t){
+    var isAct=t===activeSym;
+    var isExp=(reg==='IN'&&t===todayExp);
+    var isIndex=regionData.categories.index&&regionData.categories.index.tickers.indexOf(t)>=0;
+    var loadFn=reg==='IN'&&isIndex?'window._loadQuickTrade(\''+t+'\')':'window._loadOptionsUniversal(\''+t+'\',\''+reg+'\')';
+    h+='<div onclick="'+loadFn+'" style="flex-shrink:0;padding:4px 10px;font-size:10px;font-weight:'+(isAct?'800':'600')+';cursor:pointer;font-family:JetBrains Mono,monospace;white-space:nowrap;border-radius:4px;'+(isAct?'background:#1e40af;color:#fff':'color:#475569;background:'+(isExp?'#fef3c7':'#f8fafc'))+'">'+(isExp?'* ':'')+t+'</div>';
+  });
   h+='</div>';
   
   return h;
@@ -7240,7 +7237,7 @@ window._showBuyNowDashboard=function(cat){
   Object.keys(regionData.categories).forEach(function(ck){
     var cd=regionData.categories[ck];
     var isAct=ck===filterCat;
-    h+='<div onclick="window._showBuyNowDashboard(\''+ck+'\')" style="padding:8px 16px;border-radius:10px;font-size:11px;font-weight:800;cursor:pointer;font-family:Sora;'+(isAct?'background:linear-gradient(135deg,#059669,#10b981);color:#fff;box-shadow:0 4px 12px rgba(5,150,105,.3)':'background:#f1f5f9;color:#2d4373;border:1px solid #cbd5e1')+'">'+cd.label+'</div>';
+    h+='<div onclick="window._showBuyNowDashboard(\''+ck+'\')" style="padding:8px 16px;border-radius:10px;font-size:11px;font-weight:800;cursor:pointer;font-family:Sora;'+(isAct?'background:linear-gradient(135deg,#059669,#10b981);color:#fff;box-shadow:0 4px 12px rgba(5,150,105,.3)':'background:#f8fafc;color:#2d4373;border:1px solid #cbd5e1')+'">'+cd.label+'</div>';
   });
   h+='</div>';
   
@@ -7267,7 +7264,7 @@ window._showBuyNowDashboard=function(cat){
       _bnMsg+='<div style="font-size:10px;color:#4a6fa5;margin-top:6px">'+(reg==='US'?'US: 9:30 AM \u2013 4:00 PM ET, Mon\u2013Fri':'India: 9:15 AM \u2013 3:30 PM IST, Mon\u2013Fri')+'</div>';
       if(_bnGnd&&_bnGnd.expected_gap_pct!==undefined&&reg!=='US'){
         var _bnGapC=_bnGnd.expected_gap_pct>=0.1?'#059669':_bnGnd.expected_gap_pct<=-0.1?'#ef4444':'#94a3b8';
-        _bnMsg+='<div style="margin-top:12px;padding:10px;background:#f1f5f9;border-radius:10px;border:1px solid #a855f720">';
+        _bnMsg+='<div style="margin-top:12px;padding:10px;background:#f8fafc;border-radius:10px;border:1px solid #a855f720">';
         _bnMsg+='<div style="font-size:9px;font-weight:800;color:#a855f7;letter-spacing:1px">GIFT NIFTY PRE-MARKET</div>';
         _bnMsg+='<div style="font-size:20px;font-weight:900;color:'+_bnGapC+';margin-top:4px">'+_bnGnd.gap_label+' '+(_bnGnd.expected_gap_pct>=0?'+':'')+_bnGnd.expected_gap_pct+'%</div>';
         _bnMsg+='<div style="font-size:10px;color:#4a6fa5;margin-top:2px">Expected open: \u20B9'+(_bnGnd.expected_open||0).toLocaleString()+' | '+_bnGnd.overall_sentiment+'</div>';
@@ -7361,7 +7358,7 @@ window._renderBuyNowCard=function(r){
   var actIcon=r.action==='BUY CALL'?'🟢':r.action==='BUY PUT'?'🔴':'🟡';
   var loadFn=r.reg==='IN'&&r.cat==='index'?"window._loadQuickTrade('"+r.sym+"')":"window._loadOptionsUniversal('"+r.sym+"','"+r.reg+"')";
   
-  var h='<div onclick="'+loadFn+'" style="padding:12px;margin-bottom:8px;border-radius:12px;background:#f8fafc;border:1px solid '+actColor+'30;cursor:pointer">';
+  var h='<div onclick="'+loadFn+'" style="padding:12px;margin-bottom:8px;border-radius:12px;background:#ffffff;border:1px solid '+actColor+'30;cursor:pointer">';
   
   // Header: Symbol + Action + Confidence
   h+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">';
@@ -7399,7 +7396,7 @@ window._renderBuyNowCard=function(r){
 
 window._renderBuyNowMini=function(r){
   var isUS=r.reg==='US';
-  var h='<div onclick="'+(r.reg==='IN'&&r.cat==='index'?"window._loadQuickTrade('"+r.sym+"')":"window._loadOptionsUniversal('"+r.sym+"','"+r.reg+"')")+'" style="display:flex;align-items:center;gap:8px;padding:6px 10px;margin-bottom:3px;border-radius:8px;background:#f8fafc;border:1px solid #e2e8f0;cursor:pointer">';
+  var h='<div onclick="'+(r.reg==='IN'&&r.cat==='index'?"window._loadQuickTrade('"+r.sym+"')":"window._loadOptionsUniversal('"+r.sym+"','"+r.reg+"')")+'" style="display:flex;align-items:center;gap:8px;padding:6px 10px;margin-bottom:3px;border-radius:8px;background:#ffffff;border:1px solid #e2e8f0;cursor:pointer">';
   h+='<div style="font-size:11px;font-weight:800;color:#1e293b;min-width:65px">'+r.sym+'</div>';
   h+='<div style="font-size:9px;color:#d97706;flex:1">'+(r.dir==='BULLISH'?'↑ Leaning bullish':r.dir==='BEARISH'?'↓ Leaning bearish':'Sideways')+'</div>';
   h+='<div style="font-size:10px;font-weight:800;color:#d97706">'+r.conf+'%</div>';
@@ -7509,7 +7506,7 @@ window._renderTradeMonitor=function(currentPrem,S){
   var pnl=Math.round((currentPrem-t.entryPrem)*t.lots*t.lotSize*100)/100;
   var pnlColor=pnl>=0?'#059669':'#ef4444';
   
-  var h='<div style="max-width:480px;margin:8px auto;padding:14px 18px;border-radius:14px;background:#f1f5f9;border:2px solid '+(pnl>=0?'#05966930':'#ef444430')+'">';
+  var h='<div style="max-width:480px;margin:8px auto;padding:14px 18px;border-radius:14px;background:#f8fafc;border:2px solid '+(pnl>=0?'#05966930':'#ef444430')+'">';
   h+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">';
   h+='<div style="font-size:10px;font-weight:800;color:#3b82f6">🔴 LIVE TRADE</div>';
   h+='<div style="font-size:10px;font-weight:800;color:'+(elMin>=8?'#ef4444':'#64748b')+';font-family:JetBrains Mono">⏱ '+elMin+':'+(elSec<10?'0':'')+elSec+(t.isExpiry?' / 10:00 max':'')+'</div>';
@@ -7594,13 +7591,13 @@ window._loadSwingAnalysis=function(symbol,region){
   var reg=region||'IN';
   window._activeOptionsSym=sym;window._activeOptionsReg=reg;
   
-  el.innerHTML='<div style="padding:40px;text-align:center;background:#f1f5f9;border-radius:16px"><div style="display:inline-block;width:20px;height:20px;border:3px solid #8b5cf6;border-top-color:transparent;border-radius:50%;animation:spin .5s linear infinite"></div><div style="font-size:12px;color:#8b5cf6;margin-top:10px;font-weight:800">Loading '+sym+' Swing Analysis...</div></div>';
+  el.innerHTML='<div style="padding:40px;text-align:center;background:#f8fafc;border-radius:16px"><div style="display:inline-block;width:20px;height:20px;border:3px solid #8b5cf6;border-top-color:transparent;border-radius:50%;animation:spin .5s linear infinite"></div><div style="font-size:12px;color:#8b5cf6;margin-top:10px;font-weight:800">Loading '+sym+' Swing Analysis...</div></div>';
   
   fetch('/api/swing-analysis?symbol='+encodeURIComponent(sym)+'&region='+encodeURIComponent(reg))
     .then(function(r){return r.json()})
     .then(function(d){
       if(!d||!d.success){
-        el.innerHTML='<div style="text-align:center;padding:30px;background:#f1f5f9;border-radius:16px"><div style="font-size:14px;color:#ef4444;margin-bottom:8px">Cannot load swing data</div><div style="font-size:10px;color:#4a6fa5;margin-bottom:12px">'+(d&&d.error?d.error:'API error')+'</div><button onclick="window._retryLast()" style="padding:8px 20px;border-radius:8px;background:#8b5cf6;color:#fff;border:none;cursor:pointer;font-size:11px;font-weight:700">🔄 Retry</button></div>';
+        el.innerHTML='<div style="text-align:center;padding:30px;background:#f8fafc;border-radius:16px"><div style="font-size:14px;color:#ef4444;margin-bottom:8px">Cannot load swing data</div><div style="font-size:10px;color:#4a6fa5;margin-bottom:12px">'+(d&&d.error?d.error:'API error')+'</div><button onclick="window._retryLast()" style="padding:8px 20px;border-radius:8px;background:#8b5cf6;color:#fff;border:none;cursor:pointer;font-size:11px;font-weight:700">🔄 Retry</button></div>';
         return;
       }
       window._renderSwingCard(d,sym);
@@ -7615,7 +7612,7 @@ window._loadSwingAnalysis=function(symbol,region){
         }else{clearInterval(window._swingRefreshTimer);window._swingRefreshTimer=null}
       },60000);
     }).catch(function(e){
-      el.innerHTML='<div style="text-align:center;padding:30px;background:#f1f5f9;border-radius:16px"><div style="font-size:14px;color:#ef4444;margin-bottom:8px">Cannot connect to server</div><div style="font-size:10px;color:#4a6fa5;margin-bottom:12px">'+(e.message||'Network error')+'</div><button onclick="window._retryLast()" style="padding:8px 20px;border-radius:8px;background:#8b5cf6;color:#fff;border:none;cursor:pointer;font-size:11px;font-weight:700">🔄 Retry</button></div>';
+      el.innerHTML='<div style="text-align:center;padding:30px;background:#f8fafc;border-radius:16px"><div style="font-size:14px;color:#ef4444;margin-bottom:8px">Cannot connect to server</div><div style="font-size:10px;color:#4a6fa5;margin-bottom:12px">'+(e.message||'Network error')+'</div><button onclick="window._retryLast()" style="padding:8px 20px;border-radius:8px;background:#8b5cf6;color:#fff;border:none;cursor:pointer;font-size:11px;font-weight:700">🔄 Retry</button></div>';
     });
 };
 
@@ -7641,7 +7638,7 @@ window._renderSwingCard=function(d,sym){
   h+='</div>';
   
   // ─── MAIN CARD ───
-  h+='<div style="background:linear-gradient(135deg,#f8fafc,#1a0f2e);border-radius:20px;padding:28px;border:2px solid '+biasColor+'30;max-width:480px;margin:0 auto">';
+  h+='<div style="background:#ffffff;border-radius:20px;padding:28px;border:2px solid '+biasColor+'30;max-width:480px;margin:0 auto">';
   
   // Header
   h+='<div style="text-align:center;margin-bottom:4px"><div style="font-size:8px;color:#8b5cf6;font-weight:800;letter-spacing:3px">📈 SWING TRADING ENGINE</div></div>';
@@ -7704,17 +7701,17 @@ window._renderSwingCard=function(d,sym){
   
   // ─── TECHNICAL LEVELS ───
   h+='<div style="max-width:480px;margin:10px auto;display:flex;gap:6px">';
-  h+='<div style="flex:1;padding:8px;border-radius:8px;background:#f8fafc;border:1px solid #e2e8f0;text-align:center"><div style="font-size:7px;color:#059669;font-weight:700">EMA 20</div><div style="font-size:14px;font-weight:900;color:#059669;font-family:JetBrains Mono">'+S+L(d.ema20)+'</div></div>';
-  h+='<div style="flex:1;padding:8px;border-radius:8px;background:#f8fafc;border:1px solid #e2e8f0;text-align:center"><div style="font-size:7px;color:#3b82f6;font-weight:700">EMA 50</div><div style="font-size:14px;font-weight:900;color:#3b82f6;font-family:JetBrains Mono">'+S+L(d.ema50)+'</div></div>';
-  h+='<div style="flex:1;padding:8px;border-radius:8px;background:#f8fafc;border:1px solid #e2e8f0;text-align:center"><div style="font-size:7px;color:#ef4444;font-weight:700">RESISTANCE</div><div style="font-size:14px;font-weight:900;color:#ef4444;font-family:JetBrains Mono">'+S+L(d.resistance)+'</div></div>';
+  h+='<div style="flex:1;padding:8px;border-radius:8px;background:#ffffff;border:1px solid #e2e8f0;text-align:center"><div style="font-size:7px;color:#059669;font-weight:700">EMA 20</div><div style="font-size:14px;font-weight:900;color:#059669;font-family:JetBrains Mono">'+S+L(d.ema20)+'</div></div>';
+  h+='<div style="flex:1;padding:8px;border-radius:8px;background:#ffffff;border:1px solid #e2e8f0;text-align:center"><div style="font-size:7px;color:#3b82f6;font-weight:700">EMA 50</div><div style="font-size:14px;font-weight:900;color:#3b82f6;font-family:JetBrains Mono">'+S+L(d.ema50)+'</div></div>';
+  h+='<div style="flex:1;padding:8px;border-radius:8px;background:#ffffff;border:1px solid #e2e8f0;text-align:center"><div style="font-size:7px;color:#ef4444;font-weight:700">RESISTANCE</div><div style="font-size:14px;font-weight:900;color:#ef4444;font-family:JetBrains Mono">'+S+L(d.resistance)+'</div></div>';
   h+='</div>';
   
   // ─── SWING INDICATORS ───
   h+='<div style="max-width:480px;margin:6px auto;display:flex;gap:6px;flex-wrap:wrap">';
-  h+='<div style="flex:1;min-width:90px;padding:6px;border-radius:6px;background:#f8fafc;border:1px solid #e2e8f0;text-align:center"><div style="font-size:6px;color:#3b5998">TREND</div><div style="font-size:11px;font-weight:900;color:'+(d.trend==='UPTREND'?'#059669':d.trend==='DOWNTREND'?'#ef4444':'#64748b')+'">'+d.trend+'</div></div>';
-  h+='<div style="flex:1;min-width:90px;padding:6px;border-radius:6px;background:#f8fafc;border:1px solid #e2e8f0;text-align:center"><div style="font-size:6px;color:#3b5998">RSI</div><div style="font-size:11px;font-weight:900;color:'+(d.rsi>70?'#ef4444':d.rsi<30?'#059669':'#94a3b8')+'">'+d.rsi+'</div></div>';
-  h+='<div style="flex:1;min-width:90px;padding:6px;border-radius:6px;background:#f8fafc;border:1px solid #e2e8f0;text-align:center"><div style="font-size:6px;color:#3b5998">VOLUME</div><div style="font-size:11px;font-weight:900;color:'+(d.vol_expansion?'#059669':'#64748b')+'">'+d.vol_ratio+'x</div></div>';
-  h+='<div style="flex:1;min-width:90px;padding:6px;border-radius:6px;background:#f8fafc;border:1px solid #e2e8f0;text-align:center"><div style="font-size:6px;color:#3b5998">5D CHANGE</div><div style="font-size:11px;font-weight:900;color:'+(d.price_change_5d>0?'#059669':'#ef4444')+'">'+(d.price_change_5d>0?'+':'')+d.price_change_5d+'%</div></div>';
+  h+='<div style="flex:1;min-width:90px;padding:6px;border-radius:6px;background:#ffffff;border:1px solid #e2e8f0;text-align:center"><div style="font-size:6px;color:#3b5998">TREND</div><div style="font-size:11px;font-weight:900;color:'+(d.trend==='UPTREND'?'#059669':d.trend==='DOWNTREND'?'#ef4444':'#64748b')+'">'+d.trend+'</div></div>';
+  h+='<div style="flex:1;min-width:90px;padding:6px;border-radius:6px;background:#ffffff;border:1px solid #e2e8f0;text-align:center"><div style="font-size:6px;color:#3b5998">RSI</div><div style="font-size:11px;font-weight:900;color:'+(d.rsi>70?'#ef4444':d.rsi<30?'#059669':'#94a3b8')+'">'+d.rsi+'</div></div>';
+  h+='<div style="flex:1;min-width:90px;padding:6px;border-radius:6px;background:#ffffff;border:1px solid #e2e8f0;text-align:center"><div style="font-size:6px;color:#3b5998">VOLUME</div><div style="font-size:11px;font-weight:900;color:'+(d.vol_expansion?'#059669':'#64748b')+'">'+d.vol_ratio+'x</div></div>';
+  h+='<div style="flex:1;min-width:90px;padding:6px;border-radius:6px;background:#ffffff;border:1px solid #e2e8f0;text-align:center"><div style="font-size:6px;color:#3b5998">5D CHANGE</div><div style="font-size:11px;font-weight:900;color:'+(d.price_change_5d>0?'#059669':'#ef4444')+'">'+(d.price_change_5d>0?'+':'')+d.price_change_5d+'%</div></div>';
   h+='</div>';
   
   // Refresh + timestamp
@@ -7894,7 +7891,7 @@ window._renderScanCard=function(r){
   var isUS=r.reg==='US';
   var L=function(v){return isUS?v.toLocaleString('en-US'):v.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')};
   
-  var h='<div style="margin-bottom:6px;border-radius:14px;background:#f8fafc;border:1px solid '+(isReady?actionColor+'30':'#1e293b')+';overflow:hidden">';
+  var h='<div style="margin-bottom:6px;border-radius:14px;background:#ffffff;border:1px solid '+(isReady?actionColor+'30':'#1e293b')+';overflow:hidden">';
   
   // Top row — always visible (clickable to open full view)
   h+='<div onclick="window._swingMode=false;'+(r.reg==='IN'?"window._loadQuickTrade('"+r.sym+"')":"window._loadOptionsUniversal('"+r.sym+"','US')")+'" style="display:flex;align-items:center;gap:10px;padding:10px 14px;cursor:pointer">';
@@ -8007,7 +8004,7 @@ window._startLiveScanner=function(){
   if(!document.getElementById('liveScanRibbon')){
     var ribbon=document.createElement('div');
     ribbon.id='liveScanRibbon';
-    ribbon.style.cssText='position:fixed;bottom:0;left:0;right:0;z-index:9999;background:linear-gradient(180deg,#f8fafc,#f1f5f9);border-top:2px solid #e2e8f0;padding:0;font-family:JetBrains Mono,monospace;display:none';
+    ribbon.style.cssText='position:fixed;bottom:0;left:0;right:0;z-index:9999;background:#ffffff;border-top:2px solid #e2e8f0;padding:0;font-family:JetBrains Mono,monospace;display:none';
     ribbon.innerHTML='<div id="liveScanContent" style="overflow:hidden;white-space:nowrap;padding:6px 0"></div>';
     document.body.appendChild(ribbon);
   }
@@ -8230,7 +8227,7 @@ window._renderGiftNiftyTicker=function(){
   
   var bar=document.createElement('div');
   bar.id='giftNiftyBar';
-  bar.style.cssText='max-width:520px;margin:0 auto 8px;padding:12px 14px;border-radius:12px;background:linear-gradient(135deg,#f8fafc,#ede9fe);border:2px solid '+gapColor+'40;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,0.3)';
+  bar.style.cssText='max-width:520px;margin:0 auto 8px;padding:12px 14px;border-radius:12px;background:#ffffff;border:2px solid '+gapColor+'40;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,0.3)';
   bar.onclick=function(){window._showGiftNiftyDetail()};
   
   var h='<div style="display:flex;align-items:center;justify-content:space-between">';
@@ -8298,7 +8295,7 @@ window._showGiftNiftyDetail=function(){
   var gapColor=d.expected_gap_pct>=0.1?'#059669':d.expected_gap_pct<=-0.1?'#ef4444':'#94a3b8';
   var sentColor=d.overall_sentiment==='BULLISH'?'#059669':d.overall_sentiment==='BEARISH'?'#ef4444':'#d97706';
   
-  var h='<div style="max-width:520px;margin:0 auto;padding:20px;background:#f1f5f9;border-radius:16px;border:1px solid #a855f720">';
+  var h='<div style="max-width:520px;margin:0 auto;padding:20px;background:#f8fafc;border-radius:16px;border:1px solid #a855f720">';
   h+='<div style="text-align:center;margin-bottom:12px">';
   h+='<div style="font-size:14px;font-weight:900;color:#a855f7;font-family:Sora">Pre-Market Analysis</div>';
   h+='<div style="font-size:10px;color:#4a6fa5;margin-top:2px">India market is closed — here\'s what to expect at open</div>';
@@ -8337,7 +8334,7 @@ window._showGiftNiftyDetail=function(){
   h+='</div>';
   
   // Close button
-  h+='<div style="text-align:center;margin-top:12px"><button onclick="this.parentElement.parentElement.remove()" style="padding:8px 20px;border-radius:8px;background:#f1f5f9;color:#2d4373;border:1px solid #cbd5e1;font-size:10px;cursor:pointer;font-weight:700">Close</button></div>';
+  h+='<div style="text-align:center;margin-top:12px"><button onclick="this.parentElement.parentElement.remove()" style="padding:8px 20px;border-radius:8px;background:#f8fafc;color:#2d4373;border:1px solid #cbd5e1;font-size:10px;cursor:pointer;font-weight:700">Close</button></div>';
   
   h+='</div>';
   
@@ -8432,7 +8429,7 @@ window._renderUSPremarketTicker=function(){
   
   var bar=document.createElement('div');
   bar.id='usPremarketBar';
-  bar.style.cssText='max-width:520px;margin:0 auto 8px;padding:12px 14px;border-radius:12px;background:linear-gradient(135deg,#f8fafc,#eef2ff);border:2px solid '+gapColor+'40;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,0.3)';
+  bar.style.cssText='max-width:520px;margin:0 auto 8px;padding:12px 14px;border-radius:12px;background:#ffffff;border:2px solid '+gapColor+'40;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,0.3)';
   bar.onclick=function(){window._showUSPremarketDetail()};
   
   var h='<div style="display:flex;align-items:center;justify-content:space-between">';
@@ -8492,7 +8489,7 @@ window._showUSPremarketDetail=function(){
   var gapColor=d.expected_gap_pct>=0.1?'#059669':d.expected_gap_pct<=-0.1?'#ef4444':'#94a3b8';
   var sentColor=d.overall_sentiment==='BULLISH'?'#059669':d.overall_sentiment==='BEARISH'?'#ef4444':'#d97706';
   
-  var h='<div style="max-width:520px;margin:0 auto;padding:20px;background:#f1f5f9;border-radius:16px;border:1px solid #3b82f620">';
+  var h='<div style="max-width:520px;margin:0 auto;padding:20px;background:#f8fafc;border-radius:16px;border:1px solid #3b82f620">';
   h+='<div style="text-align:center;margin-bottom:12px">';
   h+='<div style="font-size:14px;font-weight:900;color:#3b82f6;font-family:Sora">US Pre-Market Analysis</div>';
   h+='<div style="font-size:10px;color:#4a6fa5;margin-top:2px">US market is closed \u2014 futures indicate next session direction</div>';
@@ -8542,7 +8539,7 @@ window._showUSPremarketDetail=function(){
   }
   h+='</div>';
   
-  h+='<div style="text-align:center;margin-top:12px"><button onclick="this.parentElement.parentElement.remove()" style="padding:8px 20px;border-radius:8px;background:#f1f5f9;color:#2d4373;border:1px solid #cbd5e1;font-size:10px;cursor:pointer;font-weight:700">Close</button></div>';
+  h+='<div style="text-align:center;margin-top:12px"><button onclick="this.parentElement.parentElement.remove()" style="padding:8px 20px;border-radius:8px;background:#f8fafc;color:#2d4373;border:1px solid #cbd5e1;font-size:10px;cursor:pointer;font-weight:700">Close</button></div>';
   h+='</div>';
   
   var overlay=document.createElement('div');
@@ -9095,16 +9092,16 @@ window._startBottomNav=function(){
   window._lockedSignals={};
   window._invalidatedSignals={};
   
-  // Create the blotter area if it doesn't exist — INLINE, not floating
+  // Create the blotter area if it doesn't exist — INLINE, AFTER Quick Trade card
   var bar=document.getElementById('celesysBottomNav');
   if(!bar){
     bar=document.createElement('div');
     bar.id='celesysBottomNav';
     bar.style.cssText='max-width:540px;margin:12px auto;padding:0;display:none';
-    // Insert before the deResult element, or append to body as fallback
+    // Insert AFTER the deResult element (below Quick Trade card)
     var deEl=document.getElementById('deResult');
     if(deEl&&deEl.parentNode){
-      deEl.parentNode.insertBefore(bar,deEl);
+      deEl.parentNode.insertBefore(bar,deEl.nextSibling);
     }else{
       document.body.appendChild(bar);
     }
@@ -9473,7 +9470,7 @@ window._renderBottomNav=function(){
     return(a.grade==='A+'?0:a.grade==='A'?1:2)-(b.grade==='A+'?0:b.grade==='A'?1:2)||(b.conf-a.conf);
   });
   
-  var buyNow=results.filter(function(r){return r.grade==='A+'||r.grade==='A'});
+  var buyNow=results.filter(function(r){return r.grade==='A+'||r.grade==='A'}).slice(0,5);
   var watching=results.filter(function(r){return r.grade==='B'}).slice(0,5);
   var _phase2=window._getMarketPhase();
   
@@ -9481,10 +9478,10 @@ window._renderBottomNav=function(){
   
   if(buyNow.length>0){
     h+='<div style="margin-bottom:10px;border-radius:12px;overflow:hidden;border:1px solid #bbf7d0;box-shadow:0 2px 8px rgba(5,150,105,0.08)">';
-    h+='<div onclick="var t=document.getElementById(\'bnBuyTable\');t.style.display=t.style.display===\'none\'?\'block\':\'none\';this.querySelector(\'span:last-child\').textContent=t.style.display===\'none\'?\'\u25BC\':\'\u25B2\'" style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;background:linear-gradient(135deg,#ecfdf5,#d1fae5);cursor:pointer">';
-    h+='<span style="font-size:12px;font-weight:900;color:#059669;font-family:Sora">\u{1f7e2} BUY NOW ('+buyNow.length+')</span>';
-    h+='<span style="color:#059669;font-size:12px">\u25B2</span></div>';
-    h+='<div id="bnBuyTable"><table style="width:100%;border-collapse:collapse;font-size:10px;background:#fff">';
+    h+='<div onclick="var t=document.getElementById(\'bnBuyTable\');t.style.display=t.style.display===\'none\'?\'block\':\'none\';this.querySelector(\'span:last-child\').textContent=t.style.display===\'none\'?\'\u25BC\':\'\u25B2\'" style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;background:#f0fdf4;border-bottom:2px solid #059669;cursor:pointer">';
+    h+='<span style="font-size:12px;font-weight:900;color:#059669;font-family:Sora">BUY NOW ('+buyNow.length+')</span>';
+    h+='<span style="color:#059669;font-size:12px">\u25BC</span></div>';
+    h+='<div id="bnBuyTable" style="display:none;max-height:220px;overflow-y:auto"><table style="width:100%;border-collapse:collapse;font-size:10px;background:#fff">';
     h+='<thead><tr style="background:#f0fdf4;border-bottom:2px solid #bbf7d0"><th style="padding:6px 10px;text-align:left;color:#059669;font-weight:800;font-size:8px;letter-spacing:0.5px">TICKER</th><th style="padding:6px;text-align:center;color:#059669;font-weight:800;font-size:8px">DIR</th><th style="padding:6px;text-align:center;color:#059669;font-weight:800;font-size:8px">CONF</th><th style="padding:6px;text-align:right;color:#059669;font-weight:800;font-size:8px">STRIKE</th><th style="padding:6px;text-align:right;color:#059669;font-weight:800;font-size:8px">R:R</th><th style="padding:6px;text-align:center;color:#059669;font-weight:800;font-size:8px">STATUS</th></tr></thead><tbody>';
     buyNow.forEach(function(r){
       var loadFn=r.reg==='IN'?"window._loadQuickTrade('"+r.sym+"')":"window._loadOptionsUniversal('"+r.sym+"','US')";
@@ -9497,8 +9494,8 @@ window._renderBottomNav=function(){
       h+='<td style="padding:8px 10px;font-weight:900;color:#1e293b;font-family:Sora;font-size:11px">'+r.label+'</td>';
       h+='<td style="padding:8px 4px;text-align:center;color:'+dirCol+';font-weight:800;font-size:10px">'+dirArrow+'</td>';
       h+='<td style="padding:8px 4px;text-align:center;font-weight:900;color:'+dirCol+';font-size:11px">'+r.conf+'%</td>';
-      h+='<td style="padding:8px 4px;text-align:right;font-family:JetBrains Mono;color:#2d4373;font-size:10px">'+(r._strike||'\u2014')+'</td>';
-      h+='<td style="padding:8px 4px;text-align:right;font-family:JetBrains Mono;color:#3b5998;font-size:10px">'+(r._rr||'\u2014')+'</td>';
+      h+='<td style="padding:8px 4px;text-align:right;font-family:JetBrains Mono;color:#2d4373;font-size:10px">'+(r._entryStrike?((r.reg==='US'?'$':'\u20b9')+r._entryStrike):'\u2014')+'</td>';
+      h+='<td style="padding:8px 4px;text-align:right;font-family:JetBrains Mono;color:#3b5998;font-size:10px">'+(r._entryPrem&&r._entryTarget?'1:'+(((r._entryTarget-r._entryPrem)/Math.max(r._entryPrem-r._entrySL,1))||0).toFixed(1):'\u2014')+'</td>';
       h+='<td style="padding:8px 4px;text-align:center;font-size:9px">'+statusIcon+' <span style="color:'+pnlCol+';font-weight:700">'+pnlStr+'</span></td>';
       h+='</tr>';
     });
@@ -9507,8 +9504,8 @@ window._renderBottomNav=function(){
   
   if(watching.length>0){
     h+='<div style="border-radius:12px;overflow:hidden;border:1px solid #fde68a;box-shadow:0 2px 8px rgba(245,158,11,0.08)">';
-    h+='<div onclick="var t=document.getElementById(\'bnWatchTable\');t.style.display=t.style.display===\'none\'?\'block\':\'none\';this.querySelector(\'span:last-child\').textContent=t.style.display===\'none\'?\'\u25BC\':\'\u25B2\'" style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;background:linear-gradient(135deg,#fffbeb,#fef3c7);cursor:pointer">';
-    h+='<span style="font-size:12px;font-weight:900;color:#d97706;font-family:Sora">\u23f3 WATCHING ('+watching.length+')</span>';
+    h+='<div onclick="var t=document.getElementById(\'bnWatchTable\');t.style.display=t.style.display===\'none\'?\'block\':\'none\';this.querySelector(\'span:last-child\').textContent=t.style.display===\'none\'?\'\u25BC\':\'\u25B2\'" style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;background:#fffbeb;border-bottom:2px solid #d97706;cursor:pointer">';
+    h+='<span style="font-size:12px;font-weight:900;color:#d97706;font-family:Sora">WATCHING ('+watching.length+')</span>';
     h+='<span style="color:#d97706;font-size:12px">\u25BC</span></div>';
     h+='<div id="bnWatchTable" style="display:none"><table style="width:100%;border-collapse:collapse;font-size:10px;background:#fff">';
     h+='<thead><tr style="background:#fffbeb;border-bottom:2px solid #fde68a"><th style="padding:6px 10px;text-align:left;color:#d97706;font-weight:800;font-size:8px;letter-spacing:0.5px">TICKER</th><th style="padding:6px;text-align:center;color:#d97706;font-weight:800;font-size:8px">LEAN</th><th style="padding:6px;text-align:center;color:#d97706;font-weight:800;font-size:8px">CONF</th><th style="padding:6px;text-align:left;color:#d97706;font-weight:800;font-size:8px">NEEDS</th></tr></thead><tbody>';
@@ -9528,7 +9525,7 @@ window._renderBottomNav=function(){
   }
   
   if(buyNow.length===0&&watching.length===0){
-    h+='<div style="text-align:center;padding:16px;color:#3b5998;font-size:11px;background:#f8fafc;border-radius:12px;border:1px solid #e2e8f0">'+(_phase2==='DISCOVERY'?'\u{1f50d} Scanning for signals...':'No active signals')+'</div>';
+    h+='<div style="text-align:center;padding:16px;color:#3b5998;font-size:11px;background:#ffffff;border-radius:12px;border:1px solid #e2e8f0">'+(_phase2==='DISCOVERY'?'\u{1f50d} Scanning for signals...':'No active signals')+'</div>';
   }
   
   h+='</div>';
@@ -9624,8 +9621,8 @@ window._loadCatalystScanner=function(){
     
     // Region toggle
     h+='<div style="display:flex;gap:4px;margin-bottom:10px;justify-content:center">';
-    h+='<div onclick="window._optionsRegion=\'IN\';window._loadCatalystScanner()" style="padding:6px 16px;border-radius:8px;font-size:10px;font-weight:800;cursor:pointer;'+(reg==='IN'?'background:#f59e0b;color:#fff':'background:#f1f5f9;color:#2d4373;border:1px solid #cbd5e1')+'">🇮🇳 India</div>';
-    h+='<div onclick="window._optionsRegion=\'US\';window._loadCatalystScanner()" style="padding:6px 16px;border-radius:8px;font-size:10px;font-weight:800;cursor:pointer;'+(reg==='US'?'background:#f59e0b;color:#fff':'background:#f1f5f9;color:#2d4373;border:1px solid #cbd5e1')+'">🇺🇸 US</div>';
+    h+='<div onclick="window._optionsRegion=\'IN\';window._loadCatalystScanner()" style="padding:6px 16px;border-radius:8px;font-size:10px;font-weight:800;cursor:pointer;'+(reg==='IN'?'background:#f59e0b;color:#fff':'background:#f8fafc;color:#2d4373;border:1px solid #cbd5e1')+'">🇮🇳 India</div>';
+    h+='<div onclick="window._optionsRegion=\'US\';window._loadCatalystScanner()" style="padding:6px 16px;border-radius:8px;font-size:10px;font-weight:800;cursor:pointer;'+(reg==='US'?'background:#f59e0b;color:#fff':'background:#f8fafc;color:#2d4373;border:1px solid #cbd5e1')+'">🇺🇸 US</div>';
     h+='</div>';
     
     // Summary badges
@@ -9649,7 +9646,7 @@ window._loadCatalystScanner=function(){
       var dirIcon=c.direction==='BULLISH'?'↑':c.direction==='BEARISH'?'↓':'—';
       var loadFn=reg==='IN'?"window._loadQuickTrade('"+c.sym+"')":"window._loadOptionsUniversal('"+c.sym+"','US')";
       
-      h+='<div style="padding:12px;border-radius:12px;background:#f8fafc;border:1px solid '+urgCol+'30;margin-bottom:8px">';
+      h+='<div style="padding:12px;border-radius:12px;background:#ffffff;border:1px solid '+urgCol+'30;margin-bottom:8px">';
       
       // Row 1: Symbol + Direction + Urgency + Score
       h+='<div style="display:flex;justify-content:space-between;align-items:center">';
@@ -9715,7 +9712,7 @@ window._loadCatalystScanner=function(){
       // Trade details — strike, premium, target, SL
       var tr=c.trade;
       if(tr&&tr.premium>0){
-        h+='<div style="margin-top:8px;padding:8px;border-radius:8px;background:#f1f5f9;border:1px solid '+(c.direction==='BULLISH'?'#059669':'#ef4444')+'20">';
+        h+='<div style="margin-top:8px;padding:8px;border-radius:8px;background:#f8fafc;border:1px solid '+(c.direction==='BULLISH'?'#059669':'#ef4444')+'20">';
         h+='<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr 1fr;gap:4px;text-align:center">';
         h+='<div><div style="font-size:6px;color:#3b5998">ACTION</div><div style="font-size:10px;font-weight:900;color:'+(c.direction==='BULLISH'?'#059669':'#ef4444')+'">'+tr.action+'</div></div>';
         h+='<div><div style="font-size:6px;color:#3b5998">STRIKE</div><div style="font-size:10px;font-weight:900;color:#f59e0b;font-family:JetBrains Mono">'+S+tr.strike+'</div><div style="font-size:6px;color:#3b82f6">'+tr.type+'</div></div>';
@@ -10293,8 +10290,8 @@ _renderQuickTrade=function(d,sym){
   var ih='';
   
   // ─── Institutional Enhancements Panel ───
-  ih+='<div id="instEnhPanel" style="max-width:520px;margin:10px auto 0;background:#f1f5f9;border-radius:16px;border:1px solid #e2e8f0;overflow:hidden">';
-  ih+='<div onclick="var p=document.getElementById(\'instEnhBody\');p.style.display=p.style.display===\'none\'?\'block\':\'none\';this.querySelector(\'span\').textContent=p.style.display===\'none\'?\'+\':\'-\'" style="padding:10px 16px;background:#f1f5f9;cursor:pointer;display:flex;justify-content:space-between;align-items:center">';
+  ih+='<div id="instEnhPanel" style="max-width:520px;margin:10px auto 0;background:#f8fafc;border-radius:16px;border:1px solid #e2e8f0;overflow:hidden">';
+  ih+='<div onclick="var p=document.getElementById(\'instEnhBody\');p.style.display=p.style.display===\'none\'?\'block\':\'none\';this.querySelector(\'span\').textContent=p.style.display===\'none\'?\'+\':\'-\'" style="padding:10px 16px;background:#f8fafc;cursor:pointer;display:flex;justify-content:space-between;align-items:center">';
   ih+='<div style="font-size:11px;font-weight:900;color:#1e293b;font-family:Sora">🏛️ INSTITUTIONAL ANALYTICS</div>';
   ih+='<span style="color:#3b5998;font-size:14px;font-weight:900">+</span></div>';
   ih+='<div id="instEnhBody" style="display:none;padding:12px 16px">';
