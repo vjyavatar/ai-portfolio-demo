@@ -26115,6 +26115,50 @@ async def _options_quick_impl(symbol: str = "NIFTY", region: str = "IN"):
         except Exception as bar_err:
             print(f"[OPTIONS-QUICK] ⚠️ Bars skipped for {yf_sym}: {bar_err}")
         
+        # ═══ DAILY TREND DATA — Multi-day context for swing signals ═══
+        try:
+            _yahoo_rate_wait()
+            hist_daily = tk.history(period='1mo', interval='1d')
+            if hist_daily is not None and len(hist_daily) >= 5:
+                closes = [float(r['Close']) for _, r in hist_daily.iterrows()]
+                # EMA calculation
+                def _ema(data, period):
+                    if len(data) < period: return 0
+                    k = 2 / (period + 1)
+                    ema = sum(data[:period]) / period
+                    for p in data[period:]:
+                        ema = p * k + ema * (1 - k)
+                    return round(ema, 2)
+                
+                ema5 = _ema(closes, 5)
+                ema13 = _ema(closes, 13)
+                ema26 = _ema(closes, 26) if len(closes) >= 26 else 0
+                
+                # Daily trend: bullish if EMA5 > EMA13 > EMA26
+                daily_trend = 'NEUTRAL'
+                if ema5 > ema13 and (ema26 == 0 or ema13 > ema26):
+                    daily_trend = 'BULLISH'
+                elif ema5 < ema13 and (ema26 == 0 or ema13 < ema26):
+                    daily_trend = 'BEARISH'
+                
+                # Recent momentum: last 5 days
+                if len(closes) >= 6:
+                    _d5_change = round((closes[-1] - closes[-6]) / closes[-6] * 100, 2)
+                else:
+                    _d5_change = 0
+                
+                result["daily_trend"] = {
+                    "trend": daily_trend,
+                    "ema5": ema5,
+                    "ema13": ema13,
+                    "ema26": ema26,
+                    "d5_change": _d5_change,
+                    "days": len(closes)
+                }
+                print(f"[OPTIONS-QUICK] ✅ {sym} daily trend: {daily_trend} (EMA5={ema5}, EMA13={ema13})")
+        except Exception as dt_err:
+            print(f"[OPTIONS-QUICK] ⚠️ Daily trend skipped for {sym}: {dt_err}")
+        
         print(f"[OPTIONS-QUICK] ✅ {sym} ({region}): spot={spot}, chain={len(chain_data)}, bars={len(result.get('ohlc_bars', []))}")
         return result
         

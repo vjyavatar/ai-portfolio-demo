@@ -2615,6 +2615,22 @@ function _renderQuickTrade(d,sym){
   var _batchMode=window._qtBatchMode||false;
   var el=_batchMode?document.createElement('div'):document.getElementById('deResult');if(!el)return;
   
+  // ═══ RELIABLE MARKET OPEN DETECTION — computed here, not from API ═══
+  // Only compute if d._marketOpen is NOT explicitly set (undefined)
+  if(d._marketOpen===undefined||d._marketOpen===null){
+    var _mqNow0=new Date();
+    var _mqDow0=_mqNow0.getUTCDay();
+    var _mqReg0=d._region||d.region||(window._optionsRegion)||'IN';
+    if(_mqReg0==='IN'){
+      var _mqH0=_mqNow0.getUTCHours()+5+(_mqNow0.getUTCMinutes()+30>=60?1:0);
+      var _mqM0=(_mqNow0.getUTCMinutes()+30)%60;
+      d._marketOpen=(_mqH0>=9&&(_mqH0<15||(_mqH0===15&&_mqM0<=30))&&_mqDow0>=1&&_mqDow0<=5);
+    }else{
+      var _mqH0b=_mqNow0.getUTCHours()-4;
+      d._marketOpen=(_mqH0b>=9.5&&_mqH0b<16&&_mqDow0>=1&&_mqDow0<=5);
+    }
+  }
+  
   // Auto-detect region + currency from API response
   var isUS=d._region==='US'||d.region==='US';
   var S=isUS?'$':'₹';
@@ -2736,7 +2752,20 @@ function _renderQuickTrade(d,sym){
   var allPass=checks.filter(function(c2){return c2.ok}).length>=3;
   
   // ─── STEP 2: 3 Levels ───
-  var vwapLevel=vwap>0?Math.round(vwap):spot;
+  // REAL VWAP — computed from intraday bars (not the fake H+L+C/3 from API)
+  var _computedVwap=0;
+  if(bars.length>=3){
+    var _vwapNum=0,_vwapDen=0;
+    bars.forEach(function(b){
+      var tp=(b.h+b.l+b.c)/3; // typical price
+      var v=b.v||1; // avoid div by zero
+      _vwapNum+=tp*v;
+      _vwapDen+=v;
+    });
+    if(_vwapDen>0)_computedVwap=Math.round(_vwapNum/_vwapDen*100)/100;
+  }
+  // Use computed VWAP if available and reasonable, otherwise fall back to API VWAP
+  var vwapLevel=_computedVwap>0&&Math.abs(_computedVwap-spot)/Math.max(spot,1)<0.05?_computedVwap:(vwap>0?Math.round(vwap):spot);
   var dayHigh=todayHigh>0?Math.round(todayHigh):spot+c7.step;
   var dayLow=todayLow>0?Math.round(todayLow):spot-c7.step;
   
@@ -2777,7 +2806,9 @@ function _renderQuickTrade(d,sym){
   var rangePct=dayRange/Math.max(spot,1)*100;
   var isBreakUp=spot>=dayHigh*0.998&&spot>vwapLevel;
   var isBreakDn=spot<=dayLow*1.002&&spot<vwapLevel;
-  var aboveVwap=spot>vwapLevel;
+  var _vwapTolerance=spot*0.0015; // 0.15% tolerance
+  var _lastBarGreen=bars.length>0&&bars[bars.length-1].c>bars[bars.length-1].o;
+  var aboveVwap=Math.abs(spot-vwapLevel)<_vwapTolerance?(_lastBarGreen||spot>vwapLevel):spot>vwapLevel;
   var vwapDist=Math.abs(spot-vwapLevel)/Math.max(spot,1)*100;
   
   // Volume basics
@@ -3303,6 +3334,36 @@ function _renderQuickTrade(d,sym){
   window._qtRedFlags=redFlags;
   window._qtRedFlagCount=redFlagCount;
   
+  // ═══ DAILY TREND ALIGNMENT — Multi-day context from API ═══
+  var dailyTrend=d.daily_trend||null;
+  var _dailyAligned=true;
+  if(dailyTrend&&dailyTrend.trend){
+    var _dt=dailyTrend.trend;
+    // Check if intraday direction aligns with daily trend
+    if(direction==='BULLISH'&&_dt==='BEARISH'){
+      _dailyAligned=false;
+      confidence=Math.max(0,confidence-5);
+      fakeFlags.push('Going against the daily trend (daily is bearish, you are buying calls)');
+    }else if(direction==='BEARISH'&&_dt==='BULLISH'){
+      _dailyAligned=false;
+      confidence=Math.max(0,confidence-5);
+      fakeFlags.push('Going against the daily trend (daily is bullish, you are buying puts)');
+    }else if(direction!=='NONE'&&_dt===direction){
+      // Aligned with daily trend — boost confidence
+      confidence=Math.min(100,confidence+3);
+      confirmations++;
+      confirmDetail.push({factor:'Daily Trend',pass:true,detail:'Intraday '+direction+' aligns with daily '+_dt+' (EMA5 '+dailyTrend.ema5+' vs EMA13 '+dailyTrend.ema13+')'});
+    }
+    // 5-day momentum check
+    if(dailyTrend.d5_change){
+      if(direction==='BULLISH'&&dailyTrend.d5_change<-3){
+        fakeFlags.push('Stock down '+Math.abs(dailyTrend.d5_change)+'% in 5 days — buying into weakness');
+      }else if(direction==='BEARISH'&&dailyTrend.d5_change>3){
+        fakeFlags.push('Stock up '+dailyTrend.d5_change+'% in 5 days — shorting into strength');
+      }
+    }
+  }
+  
   
   // ═══ STEP 6: HARD FILTERS (enhanced with framework) ═══
   var hardBlock=false;var blockReason='';
@@ -3331,14 +3392,25 @@ function _renderQuickTrade(d,sym){
     // A  = High probability: 75%+ conf, 4+ confirmations, low traps
     // B  = Moderate: 65%+ conf, 3+ confirmations — WATCHING only, not BUY
     // C  = Skip
-    var isHighProb=confidence>=80&&confirmations>=5&&fakeSignalScore<=15&&redFlagCount===0&&hasVolData;
-    var isStrongTrade=confidence>=75&&confirmations>=4&&fakeSignalScore<=30&&redFlagCount<2;
+    
+    // CANDLE CLOSE CHECK: Only allow A/A+ if last bar appears to be a closed candle
+    // A 5-min candle is "closed" if we have at least 3 bars (15 min of data)
+    // and the current time is past the last bar's timestamp + 5 min
+    var _lastBarTime=bars.length>0?(bars[bars.length-1].t||''):'';
+    var _lbParts=_lastBarTime.split(':');
+    var _lbMin=_lbParts.length>=2?parseInt(_lbParts[0])*60+parseInt(_lbParts[1]):0;
+    var _nowDt=new Date();
+    var _nowMinLocal=_nowDt.getHours()*60+_nowDt.getMinutes();
+    var _candleConfirmed=bars.length>=3&&(_nowMinLocal>=_lbMin+5||window._qtBatchMode);
+    
+    var isHighProb=confidence>=80&&confirmations>=5&&fakeSignalScore<=15&&redFlagCount===0&&hasVolData&&_candleConfirmed;
+    var isStrongTrade=confidence>=75&&confirmations>=4&&fakeSignalScore<=30&&redFlagCount<2&&_candleConfirmed;
     var isModerate=confidence>=65&&confirmations>=3&&fakeSignalScore<=50&&redFlagCount<=2;
     var isWeak=confidence>=55&&confirmations>=2;
     
     if(isHighProb){grade='A+';gradeLabel='Top Pick — High Conviction'}
     else if(isStrongTrade){grade='A';gradeLabel='Strong Setup — Trade with Confidence'}
-    else if(isModerate){grade='B';gradeLabel='Watching — Needs More Confirmation'}
+    else if(isModerate){grade='B';gradeLabel=_candleConfirmed?'Watching — Needs More Confirmation':'Waiting for candle close...'}
     else{grade='C';gradeLabel='Skip — Not Enough Evidence'}
   }
   
@@ -3349,13 +3421,60 @@ function _renderQuickTrade(d,sym){
   if(isExpiry&&gexRegime==='POSITIVE'&&gammaBlast){
     confidence=Math.min(100,confidence+10);
   }
+  
+  // THETA-AWARE: Reduce confidence near market close (time decay accelerates)
+  var _thetaNow=new Date();
+  var _thetaReg=d._region||'IN';
+  var _thetaH,_thetaM;
+  if(_thetaReg==='IN'){
+    _thetaH=_thetaNow.getUTCHours()+5+(_thetaNow.getUTCMinutes()+30>=60?1:0);
+    _thetaM=(_thetaNow.getUTCMinutes()+30)%60;
+  }else{
+    _thetaH=_thetaNow.getUTCHours()-4;_thetaM=_thetaNow.getUTCMinutes();
+  }
+  var _thetaClose=_thetaReg==='IN'?15.5:16; // 3:30 IST / 4:00 ET
+  var _thetaCurrent=_thetaH+_thetaM/60;
+  var _minToClose=Math.round((_thetaClose-_thetaCurrent)*60);
+  
+  if(_minToClose>0&&_minToClose<=15){
+    // Last 15 min — strong theta penalty, only exit trades
+    confidence=Math.max(0,confidence-20);
+    if(grade==='A+'||grade==='A'){grade='B';gradeLabel='Too late — close positions, don\'t open new ones'}
+  }else if(_minToClose>15&&_minToClose<=45){
+    // Last 45 min — moderate theta penalty
+    confidence=Math.max(0,confidence-8);
+    if(grade==='A+'){grade='A';gradeLabel='Late entry — reduce position size'}
+  }else if(_minToClose>45&&_minToClose<=90){
+    // Last 90 min — slight penalty
+    confidence=Math.max(0,confidence-3);
+  }
   // NOTE: R:R FILTER moved to AFTER strike selection where entryPrem7 is defined
   // (was here but entryPrem7 was undefined → NaN → filter NEVER fired)
+  
+  // BID-ASK SPREAD CHECK — block if spread too wide (illiquid options)
+  var _spreadOK=true;
+  var _spreadPct=0;
+  if(chain.length>0){
+    var _atmChain=chain[0]; // Nearest ATM
+    var _bid=direction==='BULLISH'?(_atmChain.ce_bid||0):(_atmChain.pe_bid||0);
+    var _ask=direction==='BULLISH'?(_atmChain.ce_ask||0):(_atmChain.pe_ask||0);
+    if(_bid>0&&_ask>0){
+      var _mid=(_bid+_ask)/2;
+      _spreadPct=Math.round((_ask-_bid)/_mid*100);
+      if(_spreadPct>20){
+        _spreadOK=false;
+        fakeSignalScore+=15;
+        fakeFlags.push('Wide bid-ask spread ('+_spreadPct+'%) — you will lose money on entry');
+      }else if(_spreadPct>10){
+        fakeFlags.push('Moderate spread ('+_spreadPct+'%) — watch your fill price');
+      }
+    }
+  }
   
   // Risk: High (enhanced with fake signal score)
   var trapRisk='LOW';
   if(fakeSignalScore>=40||breakoutWithoutVolume)trapRisk='HIGH';
-  else if(fakeSignalScore>=20||!oiConfirms&&hasOI)trapRisk='MEDIUM';
+  else if(fakeSignalScore>=20||!oiConfirms&&hasOI||!_spreadOK)trapRisk='MEDIUM';
   else if(vix>30)trapRisk='MEDIUM';
   
   // ─── DECISION ───
@@ -6448,10 +6567,28 @@ function _renderUltraSimple(d,sym){
   var gammaLots=gammaBlast?3:1;
   var gammaLotsLabel=gammaBlast?'2–3':'1';
   var _dayRPct8=Math.abs((d.today_high||spot)-(d.today_low||spot))/Math.max(spot,1)*100;
+  
+  // LEVEL-BASED TARGETS — use resistance/support levels, not premium %
+  var _cw8=gex.callWall||0, _pw8=gex.putWall||0;
+  var _vwap8=vwap>0?vwap:spot;
+  var _levelTarget=0, _levelSL=0;
+  
+  if(signal==='BUY_CE'&&_cw8>spot){
+    // CE target: distance to call wall, converted to premium move
+    var _spotToWall=(_cw8-spot)/Math.max(spot,1); // % move to wall
+    _levelTarget=Math.round(entryPrem8*(1+_spotToWall*15)); // delta ~0.5, gamma boost ~15x
+    _levelSL=Math.round(entryPrem8*(1-Math.abs(spot-_vwap8)/Math.max(spot,1)*10)); // SL at VWAP breach
+  }else if(signal==='BUY_PE'&&_pw8>0&&_pw8<spot){
+    var _spotToWall2=(spot-_pw8)/Math.max(spot,1);
+    _levelTarget=Math.round(entryPrem8*(1+_spotToWall2*15));
+    _levelSL=Math.round(entryPrem8*(1-Math.abs(_vwap8-spot)/Math.max(spot,1)*10));
+  }
+  
+  // Fallback to premium-based if levels unavailable
   var _premM8=_dayRPct8>0.5?1.5:_dayRPct8>0.3?1.35:1.25;
-  var target25=entryPrem8>10?Math.round(entryPrem8*_premM8):Math.max(0.01,Math.round(entryPrem8*_premM8*100)/100);
+  var target25=_levelTarget>entryPrem8?_levelTarget:(entryPrem8>10?Math.round(entryPrem8*_premM8):Math.max(0.01,Math.round(entryPrem8*_premM8*100)/100));
   var target40=entryPrem8>10?Math.round(entryPrem8*(_premM8+0.15)):Math.max(0.01,Math.round(entryPrem8*(_premM8+0.15)*100)/100);
-  var stopLoss8=entryPrem8>10?Math.round(entryPrem8*0.75):Math.max(0.01,Math.round(entryPrem8*0.65*100)/100);
+  var stopLoss8=_levelSL>0&&_levelSL<entryPrem8?Math.max(0.01,_levelSL):(entryPrem8>10?Math.round(entryPrem8*0.75):Math.max(0.01,Math.round(entryPrem8*0.65*100)/100));
   var sigSub=signal==='BUY_CE'?'Strike: '+S+atmStrike8.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+' CE @ '+S+entryPrem8.toFixed(0)+' · Qty: '+gammaLotsLabel+' Lot'+(gammaBlast?'s ':''):signal==='BUY_PE'?'Strike: '+S+atmStrike8.toLocaleString(window._activeOptionsReg==='US'?'en-US':'en-IN')+' PE @ '+S+entryPrem8.toFixed(0)+' · Qty: '+gammaLotsLabel+' Lot'+(gammaBlast?'s ':''):signal==='NO_TRADE'?(spot===0?'Market data unavailable':'Conditions not met — protect capital'):'Scanning for breakout...';
   
   // Coaching (max 3 reasons, plain English)
@@ -7267,6 +7404,9 @@ _renderQuickTrade=function(d,sym){
   
   // ─── RUN PRICE ACTION MONITOR on every refresh ───
   if(window._runPriceActionMonitor)window._runPriceActionMonitor(d,sym);
+  
+  // Render sentiment bar (market mood + sector health)
+  if(window._renderSentimentBar)window._renderSentimentBar(d,sym);
   
     // Pre-market: Gift Nifty for India, Futures for US (when market closed)
   var _preMarketRegion=(window._optionsRegion||window._activeOptionsReg||'IN');
@@ -10710,4 +10850,170 @@ window._showPriceActionAlert=function(sym,alert){
     var b4=document.getElementById('paAlertBar');
     if(b4)b4.remove();
   },60000);
+};
+
+// ═══════════════════════════════════════════════════════════════
+// SECTOR ROTATION AWARENESS — Penalize signals against sector trend
+// ═══════════════════════════════════════════════════════════════
+
+window._sectorMap={
+  // US sectors
+  'TECH':['NVDA','AMD','MSFT','META','GOOGL','AAPL','AMZN','CRM','PLTR','SNOW','MU','NFLX','COIN'],
+  'SEMIS':['NVDA','AMD','MU','SMH','SOXL','SOXX','LRCX'],
+  'ENERGY':['XOM','CVX','XLE','USO'],
+  'FINANCE':['XLF','GS','JPM','BAC'],
+  'HEALTH':['XBI','LLY','UNH','ABBV'],
+  // India sectors
+  'IT_IN':['TCS','INFY','WIPRO','HCLTECH','TECHM'],
+  'BANK_IN':['HDFCBANK','ICICIBANK','SBIN','KOTAKBANK','AXISBANK'],
+  'AUTO_IN':['TATAMOTORS','MARUTI','M&M','BAJAJ-AUTO','HEROMOTOCO'],
+  'PHARMA_IN':['SUNPHARMA','DRREDDY','CIPLA','DIVISLAB','BIOCON']
+};
+
+// Get sector health from bottom nav scan results
+window._getSectorHealth=function(sym){
+  var results=window._bottomNavResults||{};
+  var sectors=window._sectorMap;
+  var mySector=null;
+  
+  // Find which sector this ticker belongs to
+  Object.keys(sectors).forEach(function(s){
+    if(sectors[s].indexOf(sym)>=0)mySector=s;
+  });
+  if(!mySector)return {sector:null,health:'UNKNOWN',bullish:0,bearish:0,total:0};
+  
+  // Count bullish vs bearish in this sector from scan results
+  var bullish=0,bearish=0,total=0;
+  sectors[mySector].forEach(function(t){
+    var r=results[t];
+    if(r){
+      total++;
+      if(r.dir==='BULLISH')bullish++;
+      else if(r.dir==='BEARISH')bearish++;
+    }
+  });
+  
+  var health='NEUTRAL';
+  if(total>=3){
+    if(bullish/total>=0.7)health='BULLISH';
+    else if(bearish/total>=0.7)health='BEARISH';
+    else if(bullish>bearish)health='LEANING_BULL';
+    else if(bearish>bullish)health='LEANING_BEAR';
+  }
+  
+  return {sector:mySector,health:health,bullish:bullish,bearish:bearish,total:total};
+};
+
+// ═══════════════════════════════════════════════════════════════
+// MARKET SENTIMENT GAUGE — Fear & Greed + Sector Health
+// Displays above the Quick Trade card as a compact bar
+// ═══════════════════════════════════════════════════════════════
+
+window._renderSentimentBar=function(d,sym){
+  if(!d||!d.spot||window._qtMarketOpen===false)return;
+  var el=document.getElementById('deResult');
+  if(!el)return;
+  
+  // Remove old sentiment bar
+  var old=el.querySelector('#sentimentBar');
+  if(old)old.remove();
+  
+  var vix=d.vix||0;
+  var pcr=d.pcr||0;
+  var spot=d.spot||0;
+  var isUS=d._region==='US'||d.region==='US';
+  
+  // ─── FEAR & GREED CALCULATION ───
+  // VIX-based: <12=Extreme Greed, 12-16=Greed, 16-20=Neutral, 20-25=Fear, >25=Extreme Fear
+  var fgScore=0;
+  var fgLabel='';
+  var fgColor='';
+  
+  if(vix<=12){fgScore=85;fgLabel='Extreme Greed';fgColor='#059669'}
+  else if(vix<=16){fgScore=70;fgLabel='Greed';fgColor='#10b981'}
+  else if(vix<=20){fgScore=50;fgLabel='Neutral';fgColor='#d97706'}
+  else if(vix<=25){fgScore=30;fgLabel='Fear';fgColor='#f59e0b'}
+  else if(vix<=30){fgScore=15;fgLabel='High Fear';fgColor='#ef4444'}
+  else{fgScore=5;fgLabel='Extreme Fear';fgColor='#dc2626'}
+  
+  // PCR adjustment: High PCR (>1.2) = more puts = more fear
+  if(pcr>1.3)fgScore=Math.max(0,fgScore-10);
+  else if(pcr<0.7)fgScore=Math.min(100,fgScore+10);
+  
+  // ─── SECTOR HEALTH ───
+  var sectorInfo=window._getSectorHealth?window._getSectorHealth(sym):{sector:null,health:'UNKNOWN'};
+  var sectorLabel='';
+  var sectorColor='#475569';
+  if(sectorInfo.sector&&sectorInfo.total>=2){
+    sectorLabel=sectorInfo.sector.replace('_IN','').replace('_','/');
+    if(sectorInfo.health==='BULLISH'){sectorColor='#059669'}
+    else if(sectorInfo.health==='BEARISH'){sectorColor='#ef4444'}
+    else if(sectorInfo.health==='LEANING_BULL'){sectorColor='#10b981'}
+    else if(sectorInfo.health==='LEANING_BEAR'){sectorColor='#f59e0b'}
+  }
+  
+  // ─── DAILY TREND ───
+  var dt=d.daily_trend||null;
+  var dtLabel='';
+  var dtColor='#475569';
+  if(dt&&dt.trend){
+    dtLabel=dt.trend;
+    dtColor=dt.trend==='BULLISH'?'#059669':dt.trend==='BEARISH'?'#ef4444':'#d97706';
+  }
+  
+  // ─── RENDER COMPACT SENTIMENT BAR ───
+  var bar=document.createElement('div');
+  bar.id='sentimentBar';
+  bar.style.cssText='max-width:520px;margin:0 auto 8px;padding:6px 10px;border-radius:4px;background:#f8fafc;border:1px solid #e2e8f0;display:flex;align-items:center;gap:12px;flex-wrap:wrap;font-family:JetBrains Mono,monospace;font-size:9px';
+  
+  var h='';
+  
+  // Fear & Greed gauge
+  h+='<div style="display:flex;align-items:center;gap:4px">';
+  h+='<span style="color:#475569">SENTIMENT</span>';
+  h+='<span style="font-weight:800;color:'+fgColor+'">'+fgLabel.toUpperCase()+'</span>';
+  h+='<span style="color:#94a3b8">(VIX '+vix.toFixed(1)+')</span>';
+  h+='</div>';
+  
+  // Separator
+  h+='<div style="width:1px;height:12px;background:#e2e8f0"></div>';
+  
+  // PCR
+  h+='<div style="display:flex;align-items:center;gap:4px">';
+  h+='<span style="color:#475569">PCR</span>';
+  h+='<span style="font-weight:800;color:'+(pcr>1.2?'#059669':pcr<0.7?'#ef4444':'#475569')+'">'+pcr.toFixed(2)+'</span>';
+  h+='<span style="color:#94a3b8">'+(pcr>1.2?'Put heavy':'Put light')+'</span>';
+  h+='</div>';
+  
+  // Daily trend (if available)
+  if(dtLabel){
+    h+='<div style="width:1px;height:12px;background:#e2e8f0"></div>';
+    h+='<div style="display:flex;align-items:center;gap:4px">';
+    h+='<span style="color:#475569">DAILY</span>';
+    h+='<span style="font-weight:800;color:'+dtColor+'">'+dtLabel+'</span>';
+    if(dt&&dt.d5_change){
+      h+='<span style="color:'+(dt.d5_change>=0?'#059669':'#ef4444')+'">'+(dt.d5_change>=0?'+':'')+dt.d5_change+'%</span>';
+    }
+    h+='</div>';
+  }
+  
+  // Sector (if available)
+  if(sectorLabel&&sectorInfo.total>=2){
+    h+='<div style="width:1px;height:12px;background:#e2e8f0"></div>';
+    h+='<div style="display:flex;align-items:center;gap:4px">';
+    h+='<span style="color:#475569">SECTOR</span>';
+    h+='<span style="font-weight:800;color:'+sectorColor+'">'+sectorLabel+'</span>';
+    h+='<span style="color:#94a3b8">'+sectorInfo.bullish+'B/'+sectorInfo.bearish+'S</span>';
+    h+='</div>';
+  }
+  
+  bar.innerHTML=h;
+  
+  // Insert after nav, before blotter/card
+  var nav=el.querySelector('#optNavInjected');
+  if(nav&&nav.nextSibling){
+    el.insertBefore(bar,nav.nextSibling);
+  }else{
+    el.insertBefore(bar,el.firstChild);
+  }
 };
