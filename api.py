@@ -26047,9 +26047,9 @@ async def _options_quick_impl(symbol: str = "NIFTY", region: str = "IN"):
                 pe_p = max(0.1, round(max(0, k - spot) + spot * 0.003 * max(1, 3 - dist / step), 2))
                 chain_data.append({"strike": k, "ce_oi": 0, "pe_oi": 0, "ce_iv": 0, "pe_iv": 0, "ce_ltp": ce_p, "pe_ltp": pe_p, "ce_bid": max(0.01, ce_p - 0.1), "pe_bid": max(0.01, pe_p - 0.1), "ce_ask": ce_p + 0.1, "pe_ask": pe_p + 0.1, "ce_chg": 0, "pe_chg": 0})
             if not ce_resistance:
-                ce_resistance = [{"strike": atm + step * 2, "oi": 400000, "chg": 0}]
+                ce_resistance = []
             if not pe_support:
-                pe_support = [{"strike": atm - step * 2, "oi": 400000, "chg": 0}]
+                pe_support = []
         
         # Currency
         currency = '$' if region == 'US' else '₹'
