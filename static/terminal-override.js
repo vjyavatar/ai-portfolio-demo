@@ -1,5 +1,4 @@
-/* CELESYS TERMINAL v4 — JS Override
-   Clutter removal, overview subtab merge, dark theme, print icon */
+/* CELESYS TERMINAL v6 — JS Override */
 (function() {
   'use strict';
   var _ready = setInterval(function() {
@@ -9,14 +8,13 @@
   }, 200);
 
   function init() {
-
-    // §1 CLUTTER REMOVAL
+    // §1 CLUTTER REMOVAL — minimal, keep landing content
     function hideClutter() {
       ['siteWatermark','globalDecisionBar','pwaInstallBanner','stickyTag','heroDiagram'].forEach(function(id) {
         var el = document.getElementById(id);
         if (el) { el.style.setProperty('display','none','important'); el.style.setProperty('height','0','important'); }
       });
-      ['heroExtras','seoHome','premiumPricing'].forEach(function(id) {
+      ['premiumPricing'].forEach(function(id) {
         var el = document.getElementById(id);
         if (el) el.style.setProperty('display','none','important');
       });
@@ -33,47 +31,41 @@
       window._updateGlobalBar = function() {
         _origBar.apply(this, arguments);
         var gdb = document.getElementById('globalDecisionBar');
-        if (gdb) { gdb.style.setProperty('display','none','important'); }
+        if (gdb) gdb.style.setProperty('display','none','important');
         document.documentElement.style.setProperty('--gdb-h','0px');
       };
     }
 
-    // §3 OVERVIEW SUBTABS → merge into #groupSubNav
-    var OVERVIEW_SUBS = [
+    // §3 OVERVIEW SUBTABS → merge into groupSubNav
+    var OSUBS = [
       { id:'overview',  label:'\u{1F4CA} Overview' },
       { id:'valuation', label:'\u{1F4B0} Valuation' },
       { id:'technical', label:'\u{1F4C8} Technical' },
       { id:'activity',  label:'\u{1F3E2} Activity' },
       { id:'risk',      label:'\u26A0 Risk' }
     ];
-
     function injectOverviewSubTabs() {
       var subNav = document.getElementById('groupSubNav');
       if (!subNav) return;
       var activeSub = window._activeSubTab || 'overview';
       var h = '';
-      OVERVIEW_SUBS.forEach(function(sub) {
+      OSUBS.forEach(function(sub) {
         var a = sub.id === activeSub;
-        h += '<button onclick="window._termOverviewSub(\'' + sub.id + '\')" '
-          + 'class="sub-tab-btn' + (a ? ' active' : '') + '" '
-          + 'data-osub="' + sub.id + '">'
-          + sub.label + '</button>';
+        h += '<button onclick="window._termOSub(\'' + sub.id + '\')" class="sub-tab-btn' + (a?' active':'') + '" data-osub="' + sub.id + '">' + sub.label + '</button>';
       });
       subNav.innerHTML = h;
       subNav.style.display = 'flex';
     }
-
-    window._termOverviewSub = function(subId) {
+    window._termOSub = function(subId) {
       if (typeof window.switchSubTab === 'function') window.switchSubTab(subId);
       window._activeSubTab = subId;
       var subNav = document.getElementById('groupSubNav');
-      if (!subNav) return;
-      subNav.querySelectorAll('.sub-tab-btn').forEach(function(btn) {
+      if (subNav) subNav.querySelectorAll('.sub-tab-btn').forEach(function(btn) {
         btn.classList.toggle('active', btn.getAttribute('data-osub') === subId);
       });
     };
 
-    // §4 HOOK switchTabGroup
+    // §4 HOOKS
     var _origGroup = window.switchTabGroup;
     window.switchTabGroup = function(group) {
       _origGroup.apply(this, arguments);
@@ -81,8 +73,6 @@
       var sst = document.getElementById('summarySubTabs');
       if (sst) sst.style.setProperty('display','none','important');
     };
-
-    // §5 HOOK switchSubTab
     var _origSub = window.switchSubTab;
     window.switchSubTab = function(sub) {
       _origSub.apply(this, arguments);
@@ -96,8 +86,6 @@
       var sst = document.getElementById('summarySubTabs');
       if (sst) sst.style.setProperty('display','none','important');
     };
-
-    // §6 HOOK switchTab
     var _origTab = window.switchTab;
     if (typeof _origTab === 'function') {
       window.switchTab = function(tab) {
@@ -107,7 +95,7 @@
       };
     }
 
-    // §7 HERO COLLAPSE + FORCE TABBAR
+    // §5 HERO COLLAPSE + FORCE TABBAR
     var _rpt = document.getElementById('report');
     function onReportShow() {
       var hero = document.querySelector('.hero');
@@ -127,7 +115,7 @@
       }
     }
 
-    // §8 DARK THEME TOGGLE (replace the killed toggleTheme)
+    // §6 DARK THEME TOGGLE
     window.toggleTheme = function() {
       var next = (document.documentElement.getAttribute('data-theme') === 'dark') ? 'light' : 'dark';
       document.documentElement.setAttribute('data-theme', next);
@@ -137,10 +125,8 @@
         if (btn) btn.innerHTML = (next === 'dark') ? '\u2600' : '\u263E';
       });
     };
-    // Restore saved theme
     try {
-      var saved = localStorage.getItem('celesys-theme');
-      if (saved === 'dark') {
+      if (localStorage.getItem('celesys-theme') === 'dark') {
         document.documentElement.setAttribute('data-theme', 'dark');
         window._currentTheme = 'dark';
         [document.getElementById('themeToggleBtn'), document.querySelector('.nbtn-theme')].forEach(function(btn) {
@@ -151,14 +137,45 @@
     var navBtn = document.querySelector('.nbtn-theme');
     if (navBtn) navBtn.setAttribute('onclick', 'toggleTheme()');
 
-    // §9 COMPACT PRINT ICON
+    // §7 COMPACT PRINT ICON
     var pdfBtn = document.getElementById('pdfExportBtn');
-    if (pdfBtn) {
-      pdfBtn.innerHTML = '\u{1F5A8}';
-      pdfBtn.title = 'Print';
-      pdfBtn.style.cssText = 'padding:1px 5px;font-size:11px;border-radius:4px;border:1px solid rgba(0,0,0,.1);background:transparent;color:#64748B;cursor:pointer;';
-    }
+    if (pdfBtn) { pdfBtn.innerHTML = '\u{1F5A8}'; pdfBtn.title = 'Print'; }
 
-    console.log('[Celesys Terminal v4] Loaded');
+    console.log('[Celesys Terminal v6] Loaded');
   }
 })();
+
+// §10 AUTO-OPEN all collapsed <details> in decision cockpit
+// Critical data like score breakdown, exit strategy, risk warnings
+// should never be hidden from users
+function autoOpenDetails() {
+  ['deResult','algoResult'].forEach(function(id) {
+    var el = document.getElementById(id);
+    if (el) {
+      el.querySelectorAll('details:not([open])').forEach(function(d) {
+        d.setAttribute('open', '');
+      });
+    }
+  });
+  document.querySelectorAll('.dc details:not([open])').forEach(function(d) {
+    d.setAttribute('open', '');
+  });
+}
+// Run after loadDE completes
+var _origLoadDE = window.loadDE;
+if (typeof _origLoadDE === 'function') {
+  window.loadDE = function() {
+    _origLoadDE.apply(this, arguments);
+    setTimeout(autoOpenDetails, 500);
+    setTimeout(autoOpenDetails, 2000);
+  };
+}
+// Also run on any algoSelect
+var _origAlgo = window.algoSelect;
+if (typeof _origAlgo === 'function') {
+  window.algoSelect = function() {
+    _origAlgo.apply(this, arguments);
+    setTimeout(autoOpenDetails, 500);
+    setTimeout(autoOpenDetails, 2000);
+  };
+}
