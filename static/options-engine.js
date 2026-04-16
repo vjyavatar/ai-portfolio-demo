@@ -4192,9 +4192,11 @@ function _renderQuickTrade(d,sym){
       var _stockTarget=finalBias==='BULLISH'?Math.round(_stockEntry+_stockRange*1.5):Math.round(_stockEntry-_stockRange*1.5);
       
       // ─── OPTION STRIKE RECOMMENDATION — prominent, above stock details ───
-      // Check if this ticker has listed options (skip for ETFs like BANKBEES)
+      // Check if this ticker has listed options
+      // ETFs explicitly blocked
       var _noOptTickers=['NIFTYBEES','BANKBEES','GOLDBEES','SILVERBEES','ITBEES','JUNIORBEES','CPSE','PHARMABEES','LIQUIDBEES','CPSEETF','SETFNIF50','MOM50','MOM30','MIDCAP','LOWVOLIETF','ALPHA','SETFNIFBK','HDFCNIFTY','ICICINIFTY'];
-      var _hasOptions=_noOptTickers.indexOf(sym)<0&&chain.length>0&&!d._fallback;
+      // Has options if: NOT an ETF AND chain exists (real or from any source)
+      var _hasOptions=_noOptTickers.indexOf(sym)<0&&chain.length>0;
       
       if(_hasOptions&&(finalBias==='BULLISH'||finalBias==='BEARISH')){
         var _optType=finalBias==='BULLISH'?'CE':'PE';
@@ -4214,9 +4216,24 @@ function _renderQuickTrade(d,sym){
         
         if(_atmStrike>0&&_atmPrem>0){
           var _optColor=finalBias==='BULLISH'?'#059669':'#ef4444';
+          
+          // Friendly expiry format: "this week" / "next week" / date
+          var _exp=d.expiry||'';
+          var _expF='';
+          if(_exp){
+            try{
+              var _expDt=new Date(_exp);
+              var _daysLeft=Math.ceil((_expDt-new Date())/(1000*60*60*24));
+              if(_daysLeft<=7)_expF='this week ('+_expDt.toLocaleDateString('en-IN',{day:'numeric',month:'short'})+')';
+              else if(_daysLeft<=14)_expF='next week ('+_expDt.toLocaleDateString('en-IN',{day:'numeric',month:'short'})+')';
+              else _expF=_expDt.toLocaleDateString('en-IN',{day:'numeric',month:'short'});
+            }catch(e){_expF=_exp;}
+          }
+          
           h+='<div style="margin-top:10px;padding:10px 12px;border-radius:8px;background:'+_optColor+'08;border:1px solid '+_optColor+'40;text-align:center">';
           h+='<div style="font-size:8px;font-weight:800;color:'+_optColor+';letter-spacing:0.5px;margin-bottom:4px">BUY THIS OPTION</div>';
           h+='<div style="font-size:16px;font-weight:900;color:'+_optColor+';font-family:JetBrains Mono">'+sym+' '+_atmStrike.toLocaleString()+' '+_optType+'</div>';
+          if(_expF)h+='<div style="font-size:10px;font-weight:700;color:'+_optColor+';margin-top:2px">Expiry: '+_expF+'</div>';
           h+='<div style="font-size:10px;color:#475569;margin-top:2px">Premium around '+S+(_atmPrem>10?Math.round(_atmPrem):_atmPrem.toFixed(2))+' · Buy '+_optTypeFull+' at ATM strike</div>';
           h+='</div>';
         }
@@ -10912,10 +10929,9 @@ window._runPriceActionMonitor=function(d,sym){
     }catch(e){_expFriendly=_expiry;}
   }
   function _getStrikeSuggestion(dir){
-    // Skip for ETFs and non-optionable tickers
+    // Skip for ETFs only — F&O stocks should still get strike suggestions
     var _noOpts=['NIFTYBEES','BANKBEES','GOLDBEES','SILVERBEES','ITBEES','JUNIORBEES','CPSE','PHARMABEES','LIQUIDBEES','CPSEETF','SETFNIF50','MOM50','MOM30','MIDCAP','LOWVOLIETF','ALPHA','SETFNIFBK','HDFCNIFTY','ICICINIFTY'];
     if(_noOpts.indexOf(sym)>=0)return '';
-    if(d._fallback)return ''; // No real option data, don't suggest fake strikes
     if(_chain.length===0)return '';
     var _atm=spot,_atmP=0,_minD=Infinity;
     _chain.forEach(function(c){
@@ -10955,23 +10971,23 @@ window._runPriceActionMonitor=function(d,sym){
   if(swingHighs.length>=2){
     var h1=swingHighs[swingHighs.length-2],h2=swingHighs[swingHighs.length-1];
     if(h1>h2&&lastBar.c>h1){
-      alerts.push({type:'REVERSAL',dir:'BULLISH',msg:'Trend is reversing upward — was falling, now buyers are stepping in. Good time to look for calls'+_getStrikeSuggestion('BULLISH'),priority:3,color:'#059669'});
+      alerts.push({type:'REVERSAL',dir:'BULLISH',msg:'Trend is reversing upward — it was falling, now buyers are stepping in. This is a good time to look for call options'+_getStrikeSuggestion('BULLISH'),priority:3,color:'#059669'});
     }
   }
   if(swingLows.length>=2){
     var l1=swingLows[swingLows.length-2],l2=swingLows[swingLows.length-1];
     if(l1<l2&&lastBar.c<l1){
-      alerts.push({type:'REVERSAL',dir:'BEARISH',msg:'Trend is reversing downward — was rising, now sellers are stepping in. Watch for puts'+_getStrikeSuggestion('BEARISH'),priority:3,color:'#ef4444'});
+      alerts.push({type:'REVERSAL',dir:'BEARISH',msg:'Trend is reversing downward — it was rising, now sellers are stepping in. Watch for put options'+_getStrikeSuggestion('BEARISH'),priority:3,color:'#ef4444'});
     }
   }
   
   // ─── 3. FVG — Fair Value Gap detection ───
   if(bar3){
     if(bar3.h<lastBar.l){
-      alerts.push({type:'GAP',dir:'BULLISH',msg:'Big buyers left a price gap — strong buying pressure between '+S+Math.round(bar3.h)+' and '+S+Math.round(lastBar.l),priority:1,color:'#3b82f6'});
+      alerts.push({type:'GAP',dir:'BULLISH',msg:'Big buyers left a price gap — strong buying pressure between '+S+Math.round(bar3.h)+' and '+S+Math.round(lastBar.l)+'. Price often returns to this zone before going higher — watch for a dip to buy.'+_getStrikeSuggestion('BULLISH'),priority:2,color:'#3b82f6'});
     }
     if(bar3.l>lastBar.h){
-      alerts.push({type:'GAP',dir:'BEARISH',msg:'Big sellers left a price gap — strong selling pressure between '+S+Math.round(lastBar.h)+' and '+S+Math.round(bar3.l),priority:1,color:'#f59e0b'});
+      alerts.push({type:'GAP',dir:'BEARISH',msg:'Big sellers left a price gap — strong selling pressure between '+S+Math.round(lastBar.h)+' and '+S+Math.round(bar3.l)+'. Price often returns to this zone before going lower — watch for a bounce to sell.'+_getStrikeSuggestion('BEARISH'),priority:2,color:'#f59e0b'});
     }
   }
   
@@ -10989,8 +11005,9 @@ window._runPriceActionMonitor=function(d,sym){
   // ─── 5. Volume Surge ───
   if(lastBar.v>avgVol*2&&avgVol>0){
     var volX=Math.round(lastBar.v/avgVol*10)/10;
-    var volDir=lastBar.c>lastBar.o?'BULL':'BEAR';
-    alerts.push({type:'VOLUME',dir:volDir,msg:'Big volume spike — '+volX+'x more trading than normal on a '+(volDir==='BULL'?'buying':'selling')+' candle. Smart money is active',priority:1,color:volDir==='BULL'?'#059669':'#ef4444'});
+    var volDir=lastBar.c>lastBar.o?'BULLISH':'BEARISH';
+    var _volSug=volX>=3?_getStrikeSuggestion(volDir):''; // Only suggest strike on 3x+ surges
+    alerts.push({type:'VOLUME',dir:volDir,msg:'Heavy trading happening right now — '+volX+' times more activity than usual on a '+(volDir==='BULLISH'?'green':'red')+' candle. Big players are taking positions'+_volSug,priority:volX>=3?2:1,color:volDir==='BULLISH'?'#059669':'#ef4444'});
   }
   
   // ─── 6. Momentum Shift (3 consecutive same-direction candles) ───
@@ -10998,9 +11015,9 @@ window._runPriceActionMonitor=function(d,sym){
     var last3=bars.slice(-3);
     var allGreen=last3.every(function(b){return b.c>b.o});
     var allRed=last3.every(function(b){return b.c<b.o});
-    var momDir=allGreen?'BULL':allRed?'BEAR':null;
+    var momDir=allGreen?'BULLISH':allRed?'BEARISH':null;
     if(momDir&&momDir!==st.prevMomDir){
-      alerts.push({type:'MOMENTUM',dir:momDir,msg:'Strong momentum — 3 candles in a row going '+(momDir==='BULL'?'up':'down')+'. The trend is building',priority:1,color:momDir==='BULL'?'#059669':'#ef4444'});
+      alerts.push({type:'MOMENTUM',dir:momDir,msg:'Strong '+(momDir==='BULLISH'?'upward':'downward')+' momentum — price is moving '+(momDir==='BULLISH'?'up':'down')+' steadily for the last 15 minutes. The trend is building'+_getStrikeSuggestion(momDir),priority:2,color:momDir==='BULLISH'?'#059669':'#ef4444'});
     }
     st.prevMomDir=momDir;
   }
@@ -11008,10 +11025,10 @@ window._runPriceActionMonitor=function(d,sym){
   // ─── 7. Key Level Test ───
   var dayHigh=d.today_high||0,dayLow=d.today_low||0;
   if(dayHigh>0&&Math.abs(spot-dayHigh)/spot<0.001){
-    alerts.push({type:'KEY LEVEL',dir:'BULLISH',msg:'Price is testing today\'s highest point '+S+Math.round(dayHigh)+' — if it breaks above, expect a big move up',priority:1,color:'#059669'});
+    alerts.push({type:'KEY LEVEL',dir:'BULLISH',msg:'Price is right at today\'s highest point of '+S+Math.round(dayHigh)+' — if it breaks above, expect a big move up. Wait for the break before entering.',priority:1,color:'#059669'});
   }
   if(dayLow>0&&Math.abs(spot-dayLow)/spot<0.001){
-    alerts.push({type:'KEY LEVEL',dir:'BEARISH',msg:'Price is testing today\'s lowest point '+S+Math.round(dayLow)+' — if it breaks below, expect a big move down',priority:1,color:'#ef4444'});
+    alerts.push({type:'KEY LEVEL',dir:'BEARISH',msg:'Price is right at today\'s lowest point of '+S+Math.round(dayLow)+' — if it breaks below, expect a big move down. Wait for the break before entering.',priority:1,color:'#ef4444'});
   }
   
   // ─── 8. Order Block retest ───
@@ -11022,11 +11039,11 @@ window._runPriceActionMonitor=function(d,sym){
       var _ob2Green=_ob2P.c>_ob2P.o,_ob2NextR=_ob2N.c<_ob2N.o;
       var _ob2Move=Math.abs(_ob2N.c-_ob2N.o)/Math.max(spot,1)*100;
       if(_ob2Red&&_ob2NextG&&_ob2Move>0.2&&lastBar.l<=_ob2P.o&&lastBar.c>=_ob2P.c){
-        alerts.push({type:'ORDER BLOCK',dir:'BULLISH',msg:'Price is retesting a bullish order block zone ('+S+Math.round(_ob2P.c)+'-'+S+Math.round(_ob2P.o)+') — institutions bought here before, they may buy again'+_getStrikeSuggestion('BULLISH'),priority:2,color:'#059669'});
+        alerts.push({type:'ORDER BLOCK',dir:'BULLISH',msg:'Price is back at a zone where big institutions bought before ('+S+Math.round(_ob2P.c)+' to '+S+Math.round(_ob2P.o)+'). They may buy again here — watch for a bounce up'+_getStrikeSuggestion('BULLISH'),priority:2,color:'#059669'});
         break;
       }
       if(_ob2Green&&_ob2NextR&&_ob2Move>0.2&&lastBar.h>=_ob2P.o&&lastBar.c<=_ob2P.c){
-        alerts.push({type:'ORDER BLOCK',dir:'BEARISH',msg:'Price is retesting a bearish order block zone ('+S+Math.round(_ob2P.o)+'-'+S+Math.round(_ob2P.c)+') — institutions sold here before, expect rejection'+_getStrikeSuggestion('BEARISH'),priority:2,color:'#ef4444'});
+        alerts.push({type:'ORDER BLOCK',dir:'BEARISH',msg:'Price is back at a zone where big institutions sold before ('+S+Math.round(_ob2P.o)+' to '+S+Math.round(_ob2P.c)+'). They may sell again here — expect price to drop'+_getStrikeSuggestion('BEARISH'),priority:2,color:'#ef4444'});
         break;
       }
     }
@@ -11041,11 +11058,11 @@ window._runPriceActionMonitor=function(d,sym){
     
     if(lastBar.l<_swpMinLow&&lastBar.c>_swpMinLow){
       var _sugBull=_getStrikeSuggestion('BULLISH');
-      alerts.push({type:'LIQ SWEEP',dir:'BULLISH',msg:'Liquidity sweep — price dipped below '+S+Math.round(_swpMinLow)+' to grab stop losses, then reversed up. Smart money bought the dip.'+_sugBull,priority:3,color:'#059669'});
+      alerts.push({type:'LIQ SWEEP',dir:'BULLISH',msg:'Stop loss hunt complete — price briefly dipped below '+S+Math.round(_swpMinLow)+' to trigger everyone\'s stop losses, then reversed back up. Big players just bought the dip — this is a strong bullish signal.'+_sugBull,priority:3,color:'#059669'});
     }
     if(lastBar.h>_swpMaxHigh&&lastBar.c<_swpMaxHigh){
       var _sugBear=_getStrikeSuggestion('BEARISH');
-      alerts.push({type:'LIQ SWEEP',dir:'BEARISH',msg:'Liquidity sweep — price spiked above '+S+Math.round(_swpMaxHigh)+' to grab stop losses, then reversed down. Smart money sold the top.'+_sugBear,priority:3,color:'#ef4444'});
+      alerts.push({type:'LIQ SWEEP',dir:'BEARISH',msg:'Stop loss hunt complete — price briefly spiked above '+S+Math.round(_swpMaxHigh)+' to trigger everyone\'s stop losses, then reversed back down. Big players just sold the top — this is a strong bearish signal.'+_sugBear,priority:3,color:'#ef4444'});
     }
   }
   
