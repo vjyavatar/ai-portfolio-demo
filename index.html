@@ -1225,7 +1225,114 @@ details.grp>summary{font-size:13px !important;font-weight:800 !important}
 @keyframes tscroll{0%{transform:translateX(0)}100%{transform:translateX(-50%)}}
 </style>
 <link rel="stylesheet" href="/static/premium-theme.css?v=1775315896">
-<link rel="stylesheet" href="/static/ui-revamp.css?v=1775711039">
+
+<!-- ═══ UI REVAMP v5.2 — INLINE CRITICAL CSS ═══ -->
+<style id="uiRevampCSS">
+/* KILL OLD TABS */
+#mainTabBar,.tab-bar,#groupSubNav,#summarySubTabs,#analysisSubTabs,.sticky-tagline,#globalDecisionBar,#reportHeader{display:none!important}
+/* KILL CLUTTER */
+#heroDiagram,#heroExtras,#seoHome,#premiumPricing,#macroIntel,#eventAlertArea,.site-watermark,.btt,#pwaInstallBanner{display:none!important}
+.gridbg{background-image:none!important}
+.gticker{display:none!important}
+/* COMPACT NAV — 40px */
+:root{--nav-h:40px!important;--tab-h:0px!important;--rh-h:0px!important;--ticker-h:0px!important;--gdb-h:0px!important}
+nav{height:40px!important;padding:0 12px!important}
+.nlogo{width:22px!important;height:22px!important;font-size:10px!important;border-radius:5px!important}
+.nname{font-size:11px!important}.ntag,.ncenter,.npill{display:none!important}
+.nlive{padding:2px 7px!important;font-size:7px!important}
+.ldot{width:4px!important;height:4px!important}
+.nbtn-theme{width:22px!important;height:22px!important;font-size:10px!important;border-radius:4px!important}
+body{padding-top:40px!important;padding-bottom:0!important}
+/* COMPACT HERO */
+.hero{padding:12px 14px 6px!important;background:var(--bg)!important}
+.hero::before{display:none!important}
+.hero h1{font-size:clamp(16px,3vw,24px)!important;margin:0 0 4px!important}
+.hero-sub{font-size:11px!important;margin-bottom:4px!important;line-height:1.3!important;max-width:480px!important}
+.hero-eye,.hbadges,.search-help,.hero .feat-card{display:none!important}
+#heroIntro>p:last-child{display:none!important}
+.hero.collapsed{padding:2px 0!important;min-height:0!important}
+.hero.collapsed .icard{margin-bottom:0!important}
+.hero.collapsed #heroIntro{display:none!important}
+/* TIGHT INPUT */
+.icard{padding:12px 14px!important;border-radius:10px!important;max-width:640px!important;margin:0 auto 8px!important}
+.icard::before{height:2px!important}
+.irow{gap:6px!important}
+.ipt{padding:8px 10px!important;font-size:12px!important;border-radius:8px!important}
+.btn{padding:8px 12px!important;font-size:11px!important;border-radius:8px!important;letter-spacing:.3px!important}
+.sbar{margin-top:8px!important;padding:8px 12px!important;font-size:11px!important}
+.lsteps .ls{padding:3px 0!important;font-size:11px!important}
+/* COMPACT CARDS */
+.sc{margin-bottom:4px!important;border-radius:8px!important;scroll-margin-top:80px!important}
+.sc .sh{padding:8px 12px!important;gap:6px!important}
+.sc .si{width:20px!important;height:20px!important;font-size:10px!important;border-radius:5px!important}
+.sc .st{font-size:10px!important}
+.sc .sh::after{width:16px!important;height:16px!important;font-size:7px!important;border-radius:3px!important}
+.sc .sbody{padding:8px 12px!important}
+details{margin-bottom:4px!important;border-radius:8px!important}
+details summary{padding:8px 12px!important;font-size:10px!important}
+details>div{padding:8px 12px!important}
+details.grp>summary{padding:10px 14px!important;font-size:11px!important}
+details.grp>summary .gi{width:22px!important;height:22px!important;font-size:12px!important}
+#report{scroll-margin-top:80px!important}
+footer>div{padding:10px 14px 6px!important}
+/* ═══ MENU BAR — 34px sticky below nav ═══ */
+#celesysMenuBar{position:sticky;top:40px;left:0;right:0;z-index:300;background:#fff;border-bottom:1px solid #e5e7eb;box-shadow:0 1px 2px rgba(0,0,0,.03);display:none;align-items:center;padding:0 8px;height:34px;gap:0;font-family:'Sora',sans-serif;overflow:visible}
+[data-theme="dark"] #celesysMenuBar{background:#0f1d32!important;border-bottom-color:rgba(255,255,255,.08)!important}
+#celesysMenuBar .menu-ticker{display:flex;align-items:center;gap:6px;margin-right:6px;padding-right:8px;border-right:1px solid #e5e7eb;flex-shrink:0}
+#celesysMenuBar .menu-ticker .mt-sym{font-size:10px;font-weight:800;color:#1A3A78;font-family:'IBM Plex Mono',monospace;background:rgba(26,58,120,.06);padding:1px 6px;border-radius:3px}
+#celesysMenuBar .menu-ticker .mt-name{font-size:10px;font-weight:600;color:var(--text);max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cmenu-item{position:relative;display:flex;align-items:center}
+.cmenu-trigger{display:flex;align-items:center;gap:3px;padding:4px 8px;border:none;border-radius:5px;background:transparent;color:#6b7280;font-size:10px;font-weight:600;font-family:'Sora',sans-serif;cursor:pointer;transition:all .12s;white-space:nowrap;line-height:1}
+.cmenu-trigger:hover{background:rgba(26,58,120,.05);color:#1A3A78}
+.cmenu-trigger.active{color:#1A3A78;font-weight:800;background:rgba(26,58,120,.06)}
+.cmenu-trigger .cmi{font-size:11px;line-height:1}
+.cmenu-trigger .cma{font-size:6px;opacity:.4;transition:transform .2s;margin-left:1px}
+.cmenu-item:hover .cmenu-trigger .cma,.cmenu-item.open .cmenu-trigger .cma{transform:rotate(180deg)}
+.cmenu-drop{position:absolute;top:100%;left:0;min-width:180px;max-width:240px;background:#fff;border:1px solid #e5e7eb;border-radius:8px;box-shadow:0 6px 24px rgba(0,0,0,.1);padding:3px;opacity:0;visibility:hidden;transform:translateY(-3px);transition:all .12s ease;z-index:400}
+[data-theme="dark"] .cmenu-drop{background:#152238;border-color:rgba(255,255,255,.1);box-shadow:0 6px 24px rgba(0,0,0,.4)}
+.cmenu-item:hover .cmenu-drop,.cmenu-item.open .cmenu-drop{opacity:1;visibility:visible;transform:translateY(1px)}
+.cmenu-drop button{display:flex;align-items:center;gap:6px;width:100%;padding:6px 10px;border:none;border-radius:5px;background:transparent;color:var(--text2);font-size:10px;font-weight:500;font-family:'Plus Jakarta Sans',sans-serif;cursor:pointer;text-align:left;transition:all .1s;line-height:1.2}
+.cmenu-drop button:hover{background:rgba(26,58,120,.06);color:#1A3A78}
+.cmenu-drop .cmd-icon{font-size:12px;width:16px;text-align:center;flex-shrink:0}
+.cmenu-drop .cmd-label{font-weight:700;font-size:10px}
+.cmenu-drop .cmd-desc{font-size:8px;color:var(--text3);font-weight:400}
+.cmenu-drop .cmd-divider{height:1px;background:#f1f3f5;margin:2px 6px}
+[data-theme="dark"] .cmenu-drop .cmd-divider{background:rgba(255,255,255,.06)}
+#celesysMenuBar .menu-actions{display:flex;align-items:center;gap:2px;margin-left:auto;flex-shrink:0}
+#celesysMenuBar .menu-actions button{padding:2px 6px;border-radius:4px;border:1px solid #e5e7eb;background:#fff;color:var(--text2);font-size:9px;font-weight:600;cursor:pointer;transition:all .12s;font-family:'Sora',sans-serif;line-height:1}
+#celesysMenuBar .menu-actions button:hover{background:#f1f5f9;border-color:#c7d2fe}
+/* Dark mode menu */
+[data-theme="dark"] .cmenu-trigger{color:#94a3b8}
+[data-theme="dark"] .cmenu-trigger:hover{color:#e2e8f0;background:rgba(255,255,255,.06)}
+[data-theme="dark"] .cmenu-trigger.active{color:#60a5fa;background:rgba(96,165,250,.08)}
+[data-theme="dark"] .cmenu-drop button:hover{background:rgba(255,255,255,.06);color:#e2e8f0}
+[data-theme="dark"] #celesysMenuBar .menu-ticker .mt-sym{color:#60a5fa;background:rgba(96,165,250,.1)}
+[data-theme="dark"] #celesysMenuBar .menu-actions button{border-color:rgba(255,255,255,.1);background:rgba(255,255,255,.04);color:#cbd5e1}
+/* MOBILE */
+@media(max-width:768px){
+#celesysMenuBar{padding:0 4px!important;height:30px!important;gap:0!important;overflow-x:auto!important;overflow-y:visible!important;scrollbar-width:none!important;top:36px!important}
+#celesysMenuBar::-webkit-scrollbar{display:none}
+.cmenu-trigger{padding:3px 5px!important;font-size:8px!important;gap:1px!important}
+.cmenu-trigger .cmi{font-size:10px!important}
+.cmenu-trigger .cma{display:none!important}
+#celesysMenuBar .menu-ticker,#celesysMenuBar .menu-actions{display:none!important}
+.cmenu-drop{min-width:160px!important;left:-10px!important}
+nav{height:36px!important;padding:0 8px!important}
+body{padding-top:36px!important}
+.hero{padding:8px 8px 4px!important}
+.hero h1{font-size:16px!important}
+.icard{padding:10px!important}
+.irow{grid-template-columns:1fr!important}
+.sc .sh{padding:6px 8px!important}
+.sc .sbody{padding:6px 8px!important}
+.sc{scroll-margin-top:70px!important}
+}
+@media(max-width:480px){
+.cmenu-trigger span:not(.cmi){display:none!important}
+.cmenu-trigger{padding:3px 4px!important}
+}
+@media print{#celesysMenuBar,nav,.gticker{display:none!important}}
+</style>
 </head>
 <body>
 <!-- Global Watermark -->
@@ -2334,7 +2441,123 @@ Think of this as your <strong>daily briefing from a fund manager's desk</strong>
 <script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.9/purify.min.js" defer></script><script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script><script src="/static/app.min.js?v=1775711038"></script>
 <script src="/static/premium-override.js?v=1775711038" defer></script>
 <script src="/static/options-engine.js?v=1775711038" defer></script>
-<script src="/static/ui-revamp.js?v=1775711039" defer></script>
+
+<!-- ═══ UI REVAMP v5.2 — INLINE JS ═══ -->
+<script>
+(function(){
+'use strict';
+function buildMenuBar(){
+if(document.getElementById('celesysMenuBar'))return;
+var bar=document.createElement('div');bar.id='celesysMenuBar';
+bar.innerHTML='<div class="menu-ticker" id="menuTicker" style="display:none"><span class="mt-sym" id="menuSym"></span><span class="mt-name" id="menuName"></span></div>'
++'<div class="cmenu-item" data-group="overview"><button class="cmenu-trigger"><span class="cmi">⚡</span><span>Overview</span><span class="cma">▾</span></button><div class="cmenu-drop">'
++'<button onclick="window._menuNav(\'overview\',\'quick\');if(typeof switchSubTab===\'function\')switchSubTab(\'overview\')"><span class="cmd-icon">📊</span><span class="cmd-label">Summary</span></button>'
++'<button onclick="window._menuNav(\'overview\',\'quick\');if(typeof switchSubTab===\'function\')switchSubTab(\'valuation\')"><span class="cmd-icon">💰</span><span class="cmd-label">Valuation</span></button>'
++'<button onclick="window._menuNav(\'overview\',\'quick\');if(typeof switchSubTab===\'function\')switchSubTab(\'technical\')"><span class="cmd-icon">📈</span><span class="cmd-label">Technical</span></button>'
++'<button onclick="window._menuNav(\'overview\',\'quick\');if(typeof switchSubTab===\'function\')switchSubTab(\'activity\')"><span class="cmd-icon">🏛️</span><span class="cmd-label">Activity</span></button>'
++'<button onclick="window._menuNav(\'overview\',\'quick\');if(typeof switchSubTab===\'function\')switchSubTab(\'risk\')"><span class="cmd-icon">⚠️</span><span class="cmd-label">Risk</span></button>'
++'</div></div>'
++'<div class="cmenu-item" data-group="research"><button class="cmenu-trigger"><span class="cmi">📊</span><span>Research</span><span class="cma">▾</span></button><div class="cmenu-drop">'
++'<button onclick="window._menuNav(\'research\',\'analysis\');setTimeout(function(){if(typeof switchAnalysisSubTab===\'function\')switchAnalysisSubTab(\'report\')},100)"><span class="cmd-icon">🤖</span><span class="cmd-label">AI Report</span></button>'
++'<button onclick="window._menuNav(\'research\',\'analysis\');setTimeout(function(){if(typeof switchAnalysisSubTab===\'function\')switchAnalysisSubTab(\'earnings\')},100)"><span class="cmd-icon">📊</span><span class="cmd-label">Earnings</span></button>'
++'<button onclick="window._menuNav(\'research\',\'analysis\');setTimeout(function(){if(typeof switchAnalysisSubTab===\'function\')switchAnalysisSubTab(\'management\')},100)"><span class="cmd-icon">👔</span><span class="cmd-label">Management</span></button>'
++'<button onclick="window._menuNav(\'research\',\'analysis\');setTimeout(function(){if(typeof switchAnalysisSubTab===\'function\')switchAnalysisSubTab(\'outlook\')},100)"><span class="cmd-icon">🔮</span><span class="cmd-label">Outlook</span></button>'
++'<div class="cmd-divider"></div>'
++'<button onclick="window._menuNav(\'research\',\'dcf\')"><span class="cmd-icon">💰</span><span class="cmd-label">DCF Valuation</span></button>'
++'<button onclick="window._menuNav(\'research\',\'equity\')"><span class="cmd-icon">📋</span><span class="cmd-label">Equity Research</span></button>'
++'</div></div>'
++'<div class="cmenu-item" data-group="decide" id="menuDecide" style="display:none"><button class="cmenu-trigger"><span class="cmi">🎯</span><span>Decide</span><span class="cma">▾</span></button><div class="cmenu-drop">'
++'<button onclick="window._menuNav(\'decide\',\'decision\')"><span class="cmd-icon">🎯</span><span class="cmd-label">Analyze Stock</span></button>'
++'<button onclick="window._menuNav(\'decide\',\'toptrades\')"><span class="cmd-icon">🔥</span><span class="cmd-label">Top Trades</span></button>'
++'<button onclick="window._menuNav(\'decide\',\'topinvest\')"><span class="cmd-icon">💎</span><span class="cmd-label">Top Investments</span></button>'
++'<div class="cmd-divider"></div>'
++'<button onclick="window._menuNav(\'decide\',\'proscan\')"><span class="cmd-icon">🔬</span><span class="cmd-label">Pro Scan</span></button>'
++'<button onclick="window._menuNav(\'decide\',\'reports\')"><span class="cmd-icon">📊</span><span class="cmd-label">Reports</span></button>'
++'<button onclick="window._menuNav(\'decide\',\'pms\')"><span class="cmd-icon">💼</span><span class="cmd-label">Portfolio</span></button>'
++'</div></div>'
++'<div class="cmenu-item" data-group="trading"><button class="cmenu-trigger"><span class="cmi">⚡</span><span>Trading</span><span class="cma">▾</span></button><div class="cmenu-drop">'
++'<button onclick="window._menuNav(\'trading\',\'trades\')"><span class="cmd-icon">📡</span><span class="cmd-label">Algo Trades</span></button>'
++'<button onclick="window._menuNav(\'trading\',\'smarttrades\')"><span class="cmd-icon">💡</span><span class="cmd-label">Smart Trades</span></button>'
++'<button onclick="window._menuNav(\'trading\',\'stockintel\')"><span class="cmd-icon">🔬</span><span class="cmd-label">Stock Intel</span></button>'
++'<div class="cmd-divider"></div>'
++'<button onclick="window._menuNav(\'trading\',\'scanner\')"><span class="cmd-icon">📡</span><span class="cmd-label">Scanner</span></button>'
++'<button onclick="window._menuNav(\'trading\',\'valreport\')"><span class="cmd-icon">📈</span><span class="cmd-label">Valuation</span></button>'
++'<button onclick="window._menuNav(\'trading\',\'backtest\')"><span class="cmd-icon">📊</span><span class="cmd-label">Backtest</span></button>'
++'<button onclick="window._menuNav(\'trading\',\'journal\')"><span class="cmd-icon">📝</span><span class="cmd-label">Journal</span></button>'
++'<button onclick="window._menuNav(\'trading\',\'aiassist\')"><span class="cmd-icon">🤖</span><span class="cmd-label">AI Assistant</span></button>'
++'</div></div>'
++'<div class="cmenu-item" data-group="markets"><button class="cmenu-trigger"><span class="cmi">📈</span><span>Markets</span><span class="cma">▾</span></button><div class="cmenu-drop">'
++'<button onclick="window._menuNav(\'markets\',\'indices\')"><span class="cmd-icon">🏆</span><span class="cmd-label">Top Performers</span></button>'
++'<button onclick="window._menuNav(\'markets\',\'daily\')"><span class="cmd-icon">📰</span><span class="cmd-label">Market Daily</span></button>'
++'<button onclick="window._menuNav(\'markets\',\'newsimpact\')"><span class="cmd-icon">📰</span><span class="cmd-label">News Impact</span></button>'
++'<button onclick="window._menuNav(\'markets\',\'assets\')"><span class="cmd-icon">🌐</span><span class="cmd-label">Global Assets</span></button>'
++'</div></div>'
++'<div class="cmenu-item" data-group="tools"><button class="cmenu-trigger"><span class="cmi">🛠️</span><span>Tools</span><span class="cma">▾</span></button><div class="cmenu-drop">'
++'<button onclick="window._menuNav(\'tools\',\'finance\')"><span class="cmd-icon">🧮</span><span class="cmd-label">Finance Tools</span></button>'
++'<button onclick="window._menuNav(\'tools\',\'education\')"><span class="cmd-icon">🎓</span><span class="cmd-label">Education</span></button>'
++'<button onclick="window._menuNav(\'tools\',\'compare\')"><span class="cmd-icon">⚖️</span><span class="cmd-label">Compare Stocks</span></button>'
++'</div></div>'
++'<div class="menu-actions"><button onclick="newSearch()" title="New">🔍</button><button onclick="toggleTheme()" title="Theme">🌙</button><button onclick="exportPDF()" title="PDF" style="color:#cd004b">📄</button><button onclick="shareReport(\'copy\')" title="Copy">🔗</button></div>';
+var nav=document.querySelector('nav');
+if(nav&&nav.nextSibling)nav.parentNode.insertBefore(bar,nav.nextSibling);
+else document.body.prepend(bar);
+document.addEventListener('click',function(e){if(!e.target.closest('.cmenu-item'))document.querySelectorAll('.cmenu-item.open').forEach(function(m){m.classList.remove('open')})});
+document.querySelectorAll('.cmenu-item').forEach(function(item){var t=item.querySelector('.cmenu-trigger');var d=item.querySelector('.cmenu-drop');if(!d)return;t.addEventListener('click',function(e){e.stopPropagation();var w=item.classList.contains('open');document.querySelectorAll('.cmenu-item.open').forEach(function(m){m.classList.remove('open')});if(!w)item.classList.add('open')})});
+}
+window._menuNav=function(group,tab){
+document.querySelectorAll('.cmenu-item.open').forEach(function(m){m.classList.remove('open')});
+document.querySelectorAll('.cmenu-trigger').forEach(function(t){t.classList.remove('active')});
+var ai=document.querySelector('.cmenu-item[data-group="'+group+'"]');
+if(ai)ai.querySelector('.cmenu-trigger').classList.add('active');
+var rpt=document.getElementById('report');
+if(rpt){rpt.style.setProperty('display','block','important');rpt.classList.add('show')}
+var tca=document.getElementById('tabContentArea');if(tca)tca.style.display='';
+var eg=document.getElementById('_premGate');if(eg)eg.remove();
+if(typeof switchTabGroup==='function')switchTabGroup(group);
+if(tab&&typeof switchTab==='function')switchTab(tab);
+requestAnimationFrame(function(){
+['mainTabBar','groupSubNav','summarySubTabs','analysisSubTabs'].forEach(function(id){var el=document.getElementById(id);if(el)el.style.display='none'});
+});
+var navH=40,menuH=34;
+if(rpt){var r=rpt.getBoundingClientRect();var st=window.pageYOffset+r.top-navH-menuH-4;if(st>0)window.scrollTo({top:st,behavior:'instant'})}
+};
+var _oST=window.switchTab;
+if(typeof _oST==='function'){window.switchTab=function(tab){_oST(tab);requestAnimationFrame(function(){['mainTabBar','groupSubNav','summarySubTabs','analysisSubTabs'].forEach(function(id){var el=document.getElementById(id);if(el)el.style.display='none'});if(tab!=='quick'&&tab!=='analysis'){var fs=document.querySelector('.sc[data-tab="'+tab+'"]');if(fs){var r=fs.getBoundingClientRect();window.scrollTo({top:Math.max(0,window.pageYOffset+r.top-40-34-6),behavior:'instant'})}}})}}
+var _oSTG=window.switchTabGroup;
+if(typeof _oSTG==='function'){window.switchTabGroup=function(g){_oSTG(g);requestAnimationFrame(function(){['mainTabBar','groupSubNav','summarySubTabs','analysisSubTabs'].forEach(function(id){var el=document.getElementById(id);if(el)el.style.display='none'})});document.querySelectorAll('.cmenu-trigger').forEach(function(t){t.classList.remove('active')});var ai=document.querySelector('.cmenu-item[data-group="'+g+'"]');if(ai)ai.querySelector('.cmenu-trigger').classList.add('active')}}
+var _oSST=window.switchSubTab;
+if(typeof _oSST==='function'){window.switchSubTab=function(s){_oSST(s);requestAnimationFrame(function(){var f=document.querySelector('[data-tab="quick"][data-subtab="'+s+'"]:not([style*="display:none"])');if(f){var r=f.getBoundingClientRect();window.scrollTo({top:Math.max(0,window.pageYOffset+r.top-40-34-6),behavior:'instant'})}})}}
+var _oSAST=window.switchAnalysisSubTab;
+if(typeof _oSAST==='function'){window.switchAnalysisSubTab=function(s){_oSAST(s);requestAnimationFrame(function(){var f=document.querySelector('.sc[data-tab="analysis"][data-asub="'+s+'"]:not([style*="display:none"])');if(f){var r=f.getBoundingClientRect();window.scrollTo({top:Math.max(0,window.pageYOffset+r.top-40-34-6),behavior:'instant'})}})}}
+function showMenuBar(){
+var bar=document.getElementById('celesysMenuBar');if(!bar)buildMenuBar();
+bar=document.getElementById('celesysMenuBar');if(bar)bar.style.display='flex';
+var sym=document.getElementById('tickerTag'),name=document.getElementById('companyName');
+var ms=document.getElementById('menuSym'),mn=document.getElementById('menuName'),mt=document.getElementById('menuTicker');
+if(sym&&ms)ms.textContent=sym.textContent||'';
+if(name&&mn)mn.textContent=name.textContent||'';
+if(mt&&ms&&ms.textContent)mt.style.display='flex';
+var dm=document.getElementById('menuDecide'),db=document.getElementById('tabBtnDecide');
+if(dm)dm.style.display=(db&&db.style.display!=='none')?'flex':'none';
+var ov=document.querySelector('.cmenu-item[data-group="overview"]');
+if(ov)ov.querySelector('.cmenu-trigger').classList.add('active');
+}
+function init(){
+buildMenuBar();
+var rpt=document.getElementById('report');
+if(rpt){
+new MutationObserver(function(){if(rpt.classList.contains('show'))showMenuBar()}).observe(rpt,{attributes:true,attributeFilter:['class','style']});
+if(rpt.classList.contains('show'))showMenuBar();
+}
+var mtb=document.getElementById('mainTabBar');
+if(mtb)new MutationObserver(function(){if(mtb.style.display==='flex'||!mtb.classList.contains('tab-bar-hidden')){mtb.style.display='none';showMenuBar()}}).observe(mtb,{attributes:true,attributeFilter:['style','class']});
+}
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);
+else init();
+setTimeout(init,1000);
+setTimeout(function(){var m=document.getElementById('mainTabBar');if(m)m.style.display='none';var g=document.getElementById('groupSubNav');if(g)g.style.display='none'},2000);
+})();
+</script>
 
 
 
