@@ -4222,11 +4222,20 @@ function _renderQuickTrade(d,sym){
           var _expF='';
           if(_exp){
             try{
-              var _expDt=new Date(_exp);
-              var _daysLeft=Math.ceil((_expDt-new Date())/(1000*60*60*24));
-              if(_daysLeft<=7)_expF='this week ('+_expDt.toLocaleDateString('en-IN',{day:'numeric',month:'short'})+')';
-              else if(_daysLeft<=14)_expF='next week ('+_expDt.toLocaleDateString('en-IN',{day:'numeric',month:'short'})+')';
-              else _expF=_expDt.toLocaleDateString('en-IN',{day:'numeric',month:'short'});
+              var _expDt;
+              var _nseM=_exp.match(/^(\d{1,2})-([A-Za-z]{3})-(\d{4})$/);
+              if(_nseM){
+                var _mM={Jan:0,Feb:1,Mar:2,Apr:3,May:4,Jun:5,Jul:6,Aug:7,Sep:8,Oct:9,Nov:10,Dec:11};
+                _expDt=new Date(parseInt(_nseM[3]),_mM[_nseM[2]],parseInt(_nseM[1]));
+              }else{
+                _expDt=new Date(_exp);
+              }
+              if(_expDt&&!isNaN(_expDt.getTime())){
+                var _daysLeft=Math.ceil((_expDt-new Date())/(1000*60*60*24));
+                if(_daysLeft<=7)_expF='this week ('+_expDt.toLocaleDateString('en-IN',{day:'numeric',month:'short'})+')';
+                else if(_daysLeft<=14)_expF='next week ('+_expDt.toLocaleDateString('en-IN',{day:'numeric',month:'short'})+')';
+                else _expF=_expDt.toLocaleDateString('en-IN',{day:'numeric',month:'short'});
+              }else{_expF=_exp;}
             }catch(e){_expF=_exp;}
           }
           
@@ -5118,18 +5127,36 @@ window._speak=function(text,urgent){
   }
   
   // ─── VOICE QUEUE — prevent overlap ───
-  // If already speaking, queue this message (unless urgent — then it interrupts)
-  if(window._voiceSpeaking&&!urgent){
-    // Skip if queue already has this exact message (dedup)
-    var _isDup=window._voiceQueue.some(function(q){return q.text===text});
-    if(_isDup)return;
-    // Skip if queue is getting too long (max 2 pending)
-    if(window._voiceQueue.length>=2)return;
-    window._voiceQueue.push({text:text,urgent:urgent});
-    return;
+  // Urgent messages interrupt; non-urgent queue behind current speech
+  if(window._voiceSpeaking){
+    if(urgent){
+      // URGENT — interrupt current speech and speak immediately
+      try{window.speechSynthesis.cancel();}catch(e){}
+      window._voiceSpeaking=false; // Reset — we're taking over
+      window._voiceQueue=[]; // Clear pending queue (urgent is more important)
+    }else{
+      // NON-URGENT — queue behind current speech
+      var _isDup=window._voiceQueue.some(function(q){return q.text===text});
+      if(_isDup)return;
+      if(window._voiceQueue.length>=2)return; // Max 2 pending
+      window._voiceQueue.push({text:text,urgent:urgent});
+      return;
+    }
   }
   
   window._voiceSpeaking=true;
+  
+  // ─── SAFETY TIMEOUT — if onend doesn't fire within 30s, force reset ───
+  if(window._voiceSafetyTimer)clearTimeout(window._voiceSafetyTimer);
+  window._voiceSafetyTimer=setTimeout(function(){
+    window._voiceSpeaking=false;
+    // Process queue if anything pending
+    if(window._voiceQueue.length>0){
+      var next=window._voiceQueue.shift();
+      window._speak(next.text,next.urgent);
+    }
+  },30000);
+  
   
   // Auto-unlock if not yet unlocked (first speech triggers full setup)
   if(!window._voiceFullyReady){
@@ -5195,6 +5222,7 @@ window._speak=function(text,urgent){
           if(i===chunks.length-1){
             u.onend=function(){
               window._voiceSpeaking=false;
+              if(window._voiceSafetyTimer){clearTimeout(window._voiceSafetyTimer);window._voiceSafetyTimer=null;}
               // Process next queued message with small gap
               setTimeout(function(){
                 if(window._voiceQueue.length>0){
@@ -5205,6 +5233,7 @@ window._speak=function(text,urgent){
             };
             u.onerror=function(){
               window._voiceSpeaking=false;
+              if(window._voiceSafetyTimer){clearTimeout(window._voiceSafetyTimer);window._voiceSafetyTimer=null;}
               window._voiceQueue=[]; // Clear queue on error
             };
           }
@@ -10920,12 +10949,24 @@ window._runPriceActionMonitor=function(d,sym){
   var _expFriendly='';
   if(_expiry){
     try{
-      var _expD=new Date(_expiry);
-      var _today=new Date();
-      var _daysOut=Math.ceil((_expD-_today)/(1000*60*60*24));
-      if(_daysOut<=7)_expFriendly='this week ('+_expD.toLocaleDateString('en-IN',{day:'numeric',month:'short'})+')';
-      else if(_daysOut<=14)_expFriendly='next week ('+_expD.toLocaleDateString('en-IN',{day:'numeric',month:'short'})+')';
-      else _expFriendly=_expD.toLocaleDateString('en-IN',{day:'numeric',month:'short'});
+      var _expD;
+      // Handle NSE format "17-Apr-2026" — JS Date can't parse directly
+      var _nseMatch=_expiry.match(/^(\d{1,2})-([A-Za-z]{3})-(\d{4})$/);
+      if(_nseMatch){
+        var _monthMap={Jan:0,Feb:1,Mar:2,Apr:3,May:4,Jun:5,Jul:6,Aug:7,Sep:8,Oct:9,Nov:10,Dec:11};
+        _expD=new Date(parseInt(_nseMatch[3]),_monthMap[_nseMatch[2]],parseInt(_nseMatch[1]));
+      }else{
+        _expD=new Date(_expiry); // ISO format "2026-04-17"
+      }
+      if(_expD&&!isNaN(_expD.getTime())){
+        var _today=new Date();
+        var _daysOut=Math.ceil((_expD-_today)/(1000*60*60*24));
+        if(_daysOut<=7)_expFriendly='this week ('+_expD.toLocaleDateString('en-IN',{day:'numeric',month:'short'})+')';
+        else if(_daysOut<=14)_expFriendly='next week ('+_expD.toLocaleDateString('en-IN',{day:'numeric',month:'short'})+')';
+        else _expFriendly=_expD.toLocaleDateString('en-IN',{day:'numeric',month:'short'});
+      }else{
+        _expFriendly=_expiry; // Fallback: show raw
+      }
     }catch(e){_expFriendly=_expiry;}
   }
   function _getStrikeSuggestion(dir){
