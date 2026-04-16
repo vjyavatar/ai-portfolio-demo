@@ -11066,10 +11066,10 @@ window._runPriceActionMonitor=function(d,sym){
   // ─── 7. Key Level Test ───
   var dayHigh=d.today_high||0,dayLow=d.today_low||0;
   if(dayHigh>0&&Math.abs(spot-dayHigh)/spot<0.001){
-    alerts.push({type:'KEY LEVEL',dir:'BULLISH',msg:'Price is right at today\'s highest point of '+S+Math.round(dayHigh)+' — if it breaks above, expect a big move up. Wait for the break before entering.',priority:1,color:'#059669'});
+    alerts.push({type:'KEY LEVEL',dir:'BULLISH',msg:'Price is right at today\'s highest point of '+S+Math.round(dayHigh)+' — if it breaks above, expect a big move up. Wait for the break before entering.',priority:2,color:'#059669'});
   }
   if(dayLow>0&&Math.abs(spot-dayLow)/spot<0.001){
-    alerts.push({type:'KEY LEVEL',dir:'BEARISH',msg:'Price is right at today\'s lowest point of '+S+Math.round(dayLow)+' — if it breaks below, expect a big move down. Wait for the break before entering.',priority:1,color:'#ef4444'});
+    alerts.push({type:'KEY LEVEL',dir:'BEARISH',msg:'Price is right at today\'s lowest point of '+S+Math.round(dayLow)+' — if it breaks below, expect a big move down. Wait for the break before entering.',priority:2,color:'#ef4444'});
   }
   
   // ─── 8. Order Block retest ───
