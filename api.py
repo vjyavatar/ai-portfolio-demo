@@ -26115,12 +26115,18 @@ async def _options_quick_impl(symbol: str = "NIFTY", region: str = "IN"):
         except Exception as bar_err:
             print(f"[OPTIONS-QUICK] ⚠️ Bars skipped for {yf_sym}: {bar_err}")
         
-        # ═══ DAILY TREND DATA — Multi-day context for swing signals ═══
+        # ═══ DAILY TREND DATA — SMA 200/400 + EMA 9/21 for Trend Compass ═══
         try:
             _yahoo_rate_wait()
-            hist_daily = tk.history(period='1mo', interval='1d')
+            hist_daily = tk.history(period='2y', interval='1d')
             if hist_daily is not None and len(hist_daily) >= 5:
                 closes = [float(r['Close']) for _, r in hist_daily.iterrows()]
+                
+                # SMA calculation
+                def _sma(data, period):
+                    if len(data) < period: return 0
+                    return round(sum(data[-period:]) / period, 2)
+                
                 # EMA calculation
                 def _ema(data, period):
                     if len(data) < period: return 0
@@ -26130,32 +26136,41 @@ async def _options_quick_impl(symbol: str = "NIFTY", region: str = "IN"):
                         ema = p * k + ema * (1 - k)
                     return round(ema, 2)
                 
+                sma200 = _sma(closes, 200)
+                sma400 = _sma(closes, 400)
+                ema9 = _ema(closes, 9)
+                ema21 = _ema(closes, 21)
                 ema5 = _ema(closes, 5)
                 ema13 = _ema(closes, 13)
                 ema26 = _ema(closes, 26) if len(closes) >= 26 else 0
                 
-                # Daily trend: bullish if EMA5 > EMA13 > EMA26
+                # Daily trend: bullish if price above SMA200 and EMA5 > EMA13
                 daily_trend = 'NEUTRAL'
-                if ema5 > ema13 and (ema26 == 0 or ema13 > ema26):
+                if closes[-1] > sma200 and ema5 > ema13:
                     daily_trend = 'BULLISH'
-                elif ema5 < ema13 and (ema26 == 0 or ema13 < ema26):
+                elif closes[-1] < sma200 and ema5 < ema13:
+                    daily_trend = 'BEARISH'
+                elif closes[-1] > sma200:
+                    daily_trend = 'BULLISH'
+                elif closes[-1] < sma200:
                     daily_trend = 'BEARISH'
                 
                 # Recent momentum: last 5 days
-                if len(closes) >= 6:
-                    _d5_change = round((closes[-1] - closes[-6]) / closes[-6] * 100, 2)
-                else:
-                    _d5_change = 0
+                _d5_change = round((closes[-1] - closes[-6]) / closes[-6] * 100, 2) if len(closes) >= 6 else 0
                 
                 result["daily_trend"] = {
                     "trend": daily_trend,
+                    "sma200": sma200,
+                    "sma400": sma400,
+                    "ema9": ema9,
+                    "ema21": ema21,
                     "ema5": ema5,
                     "ema13": ema13,
                     "ema26": ema26,
                     "d5_change": _d5_change,
                     "days": len(closes)
                 }
-                print(f"[OPTIONS-QUICK] ✅ {sym} daily trend: {daily_trend} (EMA5={ema5}, EMA13={ema13})")
+                print(f"[OPTIONS-QUICK] ✅ {sym} trend: {daily_trend} SMA200={sma200} SMA400={sma400} EMA9={ema9} EMA21={ema21}")
         except Exception as dt_err:
             print(f"[OPTIONS-QUICK] ⚠️ Daily trend skipped for {sym}: {dt_err}")
         

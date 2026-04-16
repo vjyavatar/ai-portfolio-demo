@@ -2807,8 +2807,12 @@ function _renderQuickTrade(d,sym){
   var isBreakUp=spot>=dayHigh*0.998&&spot>vwapLevel;
   var isBreakDn=spot<=dayLow*1.002&&spot<vwapLevel;
   var _vwapTolerance=spot*0.0015; // 0.15% tolerance
-  var _lastBarGreen=bars.length>0&&bars[bars.length-1].c>bars[bars.length-1].o;
-  var aboveVwap=Math.abs(spot-vwapLevel)<_vwapTolerance?(_lastBarGreen||spot>vwapLevel):spot>vwapLevel;
+  // Use last 3 bars momentum as tiebreaker when within tolerance
+  var _momG=0,_momR=0;
+  var _mb=bars.slice(-3);
+  _mb.forEach(function(b){if(b.c>b.o)_momG++;else if(b.c<b.o)_momR++});
+  var _momBullish=_momG>_momR;
+  var aboveVwap=Math.abs(spot-vwapLevel)<_vwapTolerance?_momBullish:spot>vwapLevel;
   var vwapDist=Math.abs(spot-vwapLevel)/Math.max(spot,1)*100;
   
   // Volume basics
@@ -2829,7 +2833,7 @@ function _renderQuickTrade(d,sym){
   // Works with 5-min bars: 3 bars = 15 min → earliest signal at ~15 min after open
   var structureScore=0;
   var bullishStructure=false,bearishStructure=false;
-  var _smcSignals={bos:null,choch:null,fvg:null,eql:null,hhhl:0,lhll:0};
+  var _smcSignals={bos:null,choch:null,fvg:null,eql:null,ob:null,sweep:null,breaker:null,hhhl:0,lhll:0};
   
   if(bars.length>=3){
     var structBars=bars.slice(-(Math.min(bars.length,12)));
@@ -2920,6 +2924,59 @@ function _renderQuickTrade(d,sym){
         if(Math.abs(highs[ei]-highs[ej])<eqlThreshold){
           _smcSignals.eql=_smcSignals.eql==='LOWS'?'BOTH':'HIGHS';
         }
+      }
+    }
+    
+    // ─── 7. ORDER BLOCKS — Institutional entry zones ───
+    // Bullish OB: last RED candle before a strong GREEN move (institutions bought there)
+    // Bearish OB: last GREEN candle before a strong RED move (institutions sold there)
+    for(var obi=1;obi<structBars.length-1;obi++){
+      var obPrev=structBars[obi];
+      var obNext=structBars[obi+1];
+      var obPrevRed=obPrev.c<obPrev.o; // red candle
+      var obNextGreen=obNext.c>obNext.o; // green candle
+      var obPrevGreen=obPrev.c>obPrev.o;
+      var obNextRed=obNext.c<obNext.o;
+      var obMoveSize=Math.abs(obNext.c-obNext.o)/Math.max(spot,1)*100;
+      
+      // Strong move = candle body > 0.2% of spot
+      if(obPrevRed&&obNextGreen&&obMoveSize>0.2){
+        _smcSignals.ob='BULLISH';
+        _smcSignals.obZone={high:obPrev.o,low:obPrev.c}; // The red candle IS the order block zone
+      }
+      if(obPrevGreen&&obNextRed&&obMoveSize>0.2){
+        _smcSignals.ob='BEARISH';
+        _smcSignals.obZone={high:obPrev.c,low:obPrev.o};
+      }
+    }
+    
+    // Check if price is revisiting an order block (institutional re-entry)
+    if(_smcSignals.ob&&_smcSignals.obZone){
+      var _obZ=_smcSignals.obZone;
+      var _inOBZone=lastClose>=_obZ.low&&lastClose<=_obZ.high;
+      if(_inOBZone){
+        structureScore=Math.max(structureScore,75);
+        _smcSignals.obRetest=true;
+      }
+    }
+    
+    // ─── 8. LIQUIDITY SWEEPS — Stop loss hunts by smart money ───
+    // Sweep of lows: price wicks below a previous low then closes back above it
+    // Sweep of highs: price wicks above a previous high then closes back below it
+    if(structBars.length>=4){
+      var _recentLow=Math.min.apply(null,lows.slice(0,-1)); // Lowest before last bar
+      var _recentHigh=Math.max.apply(null,highs.slice(0,-1)); // Highest before last bar
+      
+      var _lastSB=structBars[structBars.length-1];
+      // Sweep of lows: last bar's wick went below the low, but closed above it
+      if(_lastSB.l<_recentLow&&lastClose>_recentLow){
+        _smcSignals.sweep='BULLISH'; // Swept lows and reversed = bullish
+        structureScore=Math.max(structureScore,80);
+      }
+      // Sweep of highs: last bar's wick went above the high, but closed below it
+      if(_lastSB.h>_recentHigh&&lastClose<_recentHigh){
+        _smcSignals.sweep='BEARISH'; // Swept highs and reversed = bearish
+        structureScore=Math.max(structureScore,80);
       }
     }
     
@@ -3174,7 +3231,7 @@ function _renderQuickTrade(d,sym){
   if(hasVolData&&volumeScore<30)confidence=Math.min(confidence,60); // Low volume caps confidence
   
   // ─── DIRECTION ───
-  var leanDir=spot>vwapLevel?'BULLISH':'BEARISH';
+  var leanDir=aboveVwap?'BULLISH':'BEARISH';
   var direction='NONE';
   if(isBreakUp)direction='BULLISH';
   else if(isBreakDn)direction='BEARISH';
@@ -3261,10 +3318,12 @@ function _renderQuickTrade(d,sym){
   var priceBreakoutConfirmed=false;
   // SMC details for confirmation
   var _smcDetail='';
-  if(_smcSignals.bos)_smcDetail+='BOS '+_smcSignals.bos+' ';
-  if(_smcSignals.choch)_smcDetail+='CHoCH '+_smcSignals.choch+' ';
-  if(_smcSignals.fvg)_smcDetail+='FVG '+_smcSignals.fvg+' ';
-  if(_smcSignals.eql)_smcDetail+='EQL '+_smcSignals.eql+' ';
+  if(_smcSignals.bos)_smcDetail+='Breakout '+_smcSignals.bos+' ';
+  if(_smcSignals.choch)_smcDetail+='Reversal '+_smcSignals.choch+' ';
+  if(_smcSignals.fvg)_smcDetail+='Price Gap '+_smcSignals.fvg+' ';
+  if(_smcSignals.eql)_smcDetail+='Equal '+_smcSignals.eql+' ';
+  if(_smcSignals.ob)_smcDetail+='Order Block '+_smcSignals.ob+(_smcSignals.obRetest?' (retesting!)':'')+' ';
+  if(_smcSignals.sweep)_smcDetail+='Liquidity Sweep '+_smcSignals.sweep+' ';
   
   if(isBreakUp&&lastBar.c>dayHigh*0.998){priceBreakoutConfirmed=true;confirmations++;confirmDetail.push({factor:'Price Action',pass:true,detail:'Breakout with candle CLOSE above high'+(_smcDetail?' · '+_smcDetail.trim():'')})}
   else if(isBreakDn&&lastBar.c<dayLow*1.002){priceBreakoutConfirmed=true;confirmations++;confirmDetail.push({factor:'Price Action',pass:true,detail:'Breakdown with candle CLOSE below low'+(_smcDetail?' · '+_smcDetail.trim():'')})}
@@ -3789,6 +3848,13 @@ function _renderQuickTrade(d,sym){
   if(_smcSignals.choch)smartParts.push('The trend just reversed to '+_smcSignals.choch+'. Big institutions are changing their positions.');
   if(_smcSignals.fvg)smartParts.push('Price gap detected ('+_smcSignals.fvg+') — there was such strong buying/selling that price skipped a zone. It may come back to fill this gap.');
   if(_smcSignals.eql)smartParts.push('Price touched the same '+(_smcSignals.eql==='LOWS'?'low':'high')+' point twice — this is where stop losses cluster. Big players may push through this level to trigger stops before reversing.');
+  if(_smcSignals.ob){
+    var _obDir=_smcSignals.ob==='BULLISH';
+    smartParts.push('Order Block detected ('+_smcSignals.ob+') — institutions '+(_obDir?'bought':'sold')+' heavily at this zone'+(_smcSignals.obZone?' ('+S+Math.round(_smcSignals.obZone.low)+' to '+S+Math.round(_smcSignals.obZone.high)+')':'')+'. Price tends to return here for re-entry.'+(_smcSignals.obRetest?' Price is RIGHT NOW in this zone — high probability '+(_obDir?'bounce up':'drop down')+'.':''));
+  }
+  if(_smcSignals.sweep){
+    smartParts.push('Liquidity Sweep detected ('+_smcSignals.sweep+') — smart money just '+(_smcSignals.sweep==='BULLISH'?'swept below the recent low to grab stop losses, then reversed up. This is a classic buy signal — the fake dip is over.':'swept above the recent high to grab stop losses, then reversed down. This is a classic sell signal — the fake breakout is over.'));
+  }
   
   // 3. Smart money flow (OI changes)
   if(_smartZ.length>0){
@@ -7461,6 +7527,9 @@ _renderQuickTrade=function(d,sym){
   // Render smart insights (gap, theta, max pain, risk, flow, window)
   if(window._renderSmartInsights)window._renderSmartInsights(d,sym);
   
+  // Render trend compass (long-term vs short-term direction)
+  if(window._renderTrendCompass)window._renderTrendCompass(d,sym);
+  
     // Pre-market: Gift Nifty for India, Futures for US (when market closed)
   var _preMarketRegion=(window._optionsRegion||window._activeOptionsReg||'IN');
   if(_preMarketRegion==='IN'){
@@ -8984,8 +9053,12 @@ window._unifiedScore=function(d,sym){
   var volumeScore=50; // Neutral default when no data (matches QT)
   if(hasVolData)volumeScore=Math.min(100,Math.max(0,volRatio*60));
 
-  // ─── SIGNAL 3: VWAP ───
-  var aboveVwap=spot>vwapLevel;
+  // ─── SIGNAL 3: VWAP (with 0.15% tolerance + momentum tiebreaker) ───
+  var _bsVwapTol=spot*0.0015;
+  var _bsMG=0,_bsMR=0;
+  bars.slice(-3).forEach(function(b){if(b.c>b.o)_bsMG++;else if(b.c<b.o)_bsMR++});
+  var _bsMomBull=_bsMG>_bsMR;
+  var aboveVwap=Math.abs(spot-vwapLevel)<_bsVwapTol?_bsMomBull:spot>vwapLevel;
   var vwapScore=0;
   if(aboveVwap&&isBreakUp)vwapScore=90;
   else if(!aboveVwap&&isBreakDn)vwapScore=90;
@@ -9063,7 +9136,7 @@ window._unifiedScore=function(d,sym){
   if(momBars.length>0&&momentumScore<40)conf=Math.min(conf,65);
 
   // ─── DIRECTION (same as Quick Trade — VWAP lean fallback) ───
-  var leanDir=spot>vwapLevel?'BULLISH':'BEARISH';
+  var leanDir=aboveVwap?'BULLISH':'BEARISH';
   var dir='NONE';
   if(isBreakUp)dir='BULLISH';
   else if(isBreakDn)dir='BEARISH';
@@ -10817,6 +10890,39 @@ window._runPriceActionMonitor=function(d,sym){
     alerts.push({type:'KEY LEVEL',dir:'BEARISH',msg:'Price is testing today\'s lowest point '+S+Math.round(dayLow)+' — if it breaks below, expect a big move down',priority:1,color:'#ef4444'});
   }
   
+  // ─── 8. Order Block retest ───
+  if(bars.length>=4){
+    for(var _obi2=1;_obi2<bars.length-2;_obi2++){
+      var _ob2P=bars[_obi2],_ob2N=bars[_obi2+1];
+      var _ob2Red=_ob2P.c<_ob2P.o,_ob2NextG=_ob2N.c>_ob2N.o;
+      var _ob2Green=_ob2P.c>_ob2P.o,_ob2NextR=_ob2N.c<_ob2N.o;
+      var _ob2Move=Math.abs(_ob2N.c-_ob2N.o)/Math.max(spot,1)*100;
+      if(_ob2Red&&_ob2NextG&&_ob2Move>0.2&&lastBar.l<=_ob2P.o&&lastBar.c>=_ob2P.c){
+        alerts.push({type:'ORDER BLOCK',dir:'BULLISH',msg:'Price is retesting a bullish order block zone ('+S+Math.round(_ob2P.c)+'-'+S+Math.round(_ob2P.o)+') — institutions bought here before, they may buy again',priority:2,color:'#059669'});
+        break;
+      }
+      if(_ob2Green&&_ob2NextR&&_ob2Move>0.2&&lastBar.h>=_ob2P.o&&lastBar.c<=_ob2P.c){
+        alerts.push({type:'ORDER BLOCK',dir:'BEARISH',msg:'Price is retesting a bearish order block zone ('+S+Math.round(_ob2P.o)+'-'+S+Math.round(_ob2P.c)+') — institutions sold here before, expect rejection',priority:2,color:'#ef4444'});
+        break;
+      }
+    }
+  }
+  
+  // ─── 9. Liquidity Sweep ───
+  if(bars.length>=4&&prevBar){
+    var _swpLows=bars.slice(0,-1).map(function(b){return b.l});
+    var _swpHighs=bars.slice(0,-1).map(function(b){return b.h});
+    var _swpMinLow=Math.min.apply(null,_swpLows);
+    var _swpMaxHigh=Math.max.apply(null,_swpHighs);
+    
+    if(lastBar.l<_swpMinLow&&lastBar.c>_swpMinLow){
+      alerts.push({type:'LIQ SWEEP',dir:'BULLISH',msg:'Liquidity sweep — price dipped below '+S+Math.round(_swpMinLow)+' to grab stop losses, then reversed up. Smart money just bought the dip. Bullish signal.',priority:3,color:'#059669'});
+    }
+    if(lastBar.h>_swpMaxHigh&&lastBar.c<_swpMaxHigh){
+      alerts.push({type:'LIQ SWEEP',dir:'BEARISH',msg:'Liquidity sweep — price spiked above '+S+Math.round(_swpMaxHigh)+' to grab stop losses, then reversed down. Smart money just sold the top. Bearish signal.',priority:3,color:'#ef4444'});
+    }
+  }
+  
   // ─── RATE LIMIT by priority ───
   // HIGH (3): 60 second cooldown (trend reversals are rare)
   // MED (2): 90 second cooldown (breakouts, VWAP crosses)
@@ -11347,5 +11453,129 @@ window._renderSmartInsights=function(d,sym){
     el.insertBefore(div,instPanel);
   }else{
     el.appendChild(div);
+  }
+};
+
+// ═══════════════════════════════════════════════════════════════
+// TREND COMPASS — Long-term vs Short-term direction at a glance
+// Shows if you're trading WITH or AGAINST the bigger picture
+// ═══════════════════════════════════════════════════════════════
+
+window._renderTrendCompass=function(d,sym){
+  if(!d||!d.spot||d.spot===0)return;
+  if(window._qtMarketOpen===false)return;
+  if(window._qtBatchMode)return;
+  
+  var el=document.getElementById('deResult');
+  if(!el)return;
+  
+  var old=el.querySelector('#trendCompass');
+  if(old)old.remove();
+  
+  var spot=d.spot||0;
+  var bars=d.ohlc_bars||[];
+  var isUS=d._region==='US'||d.region==='US';
+  var S=isUS?'$':'\u20b9';
+  var dt=d.daily_trend||null;
+  
+  // ─── LONG TERM: SMA 200 / SMA 400 from daily data ───
+  var ltDir='NEUTRAL',ltColor='#475569',ltSma200=0,ltSma400=0;
+  if(dt){
+    ltSma200=dt.sma200||0;
+    ltSma400=dt.sma400||0;
+    if(spot>ltSma200&&(ltSma400===0||spot>ltSma400)){
+      ltDir='BULLISH';ltColor='#059669';
+    }else if(spot<ltSma200&&(ltSma400===0||spot<ltSma400)){
+      ltDir='BEARISH';ltColor='#ef4444';
+    }
+  }
+  
+  // ─── SHORT TERM: HH-HL structure + VWAP position (reads real price action) ───
+  var stDir='NEUTRAL',stColor='#475569';
+  var stVwapPos='',stStructure='';
+  if(bars.length>=3){
+    // Compute real VWAP from bars
+    var _stVn=0,_stVd=0;
+    bars.forEach(function(b){var tp=(b.h+b.l+b.c)/3;_stVn+=tp*(b.v||1);_stVd+=(b.v||1)});
+    var _stVwap=_stVd>0?Math.round(_stVn/_stVd*100)/100:(d.vwap||spot);
+    var aboveVwapS=spot>_stVwap;
+    stVwapPos=aboveVwapS?'Above VWAP':'Below VWAP';
+    
+    // HH-HL vs LH-LL detection on last 5 bars
+    var recentBars=bars.slice(-5);
+    var hs=recentBars.map(function(b){return b.h});
+    var ls=recentBars.map(function(b){return b.l});
+    var hh=0,hl=0,lh=0,ll=0;
+    for(var si=1;si<hs.length;si++){
+      if(hs[si]>hs[si-1])hh++;else if(hs[si]<hs[si-1])lh++;
+      if(ls[si]>ls[si-1])hl++;else if(ls[si]<ls[si-1])ll++;
+    }
+    var bullStruct=hh>=2&&hl>=2;
+    var bearStruct=lh>=2&&ll>=2;
+    stStructure=bullStruct?'HH-HL':bearStruct?'LH-LL':'Mixed';
+    
+    // Combine: both signals agree = strong, one signal = neutral
+    if(aboveVwapS&&bullStruct){stDir='BULLISH';stColor='#059669'}
+    else if(!aboveVwapS&&bearStruct){stDir='BEARISH';stColor='#ef4444'}
+    else if(aboveVwapS&&!bearStruct){stDir='BULLISH';stColor='#10b981'}
+    else if(!aboveVwapS&&!bullStruct){stDir='BEARISH';stColor='#f59e0b'}
+  }
+  
+  // ─── ALIGNMENT ───
+  var aligned=ltDir===stDir&&ltDir!=='NEUTRAL';
+  var conflict=ltDir!=='NEUTRAL'&&stDir!=='NEUTRAL'&&ltDir!==stDir;
+  
+  // ─── RENDER — clean, compact, no reasons ───
+  var div=document.createElement('div');
+  div.id='trendCompass';
+  div.style.cssText='max-width:520px;margin:0 auto 8px;font-family:JetBrains Mono,monospace';
+  
+  var h='<div style="border-radius:4px;overflow:hidden;border:1px solid #e2e8f0">';
+  
+  // Two columns — just direction, no clutter
+  h+='<div style="display:grid;grid-template-columns:1fr 1fr;background:#fff">';
+  
+  // Long term
+  h+='<div style="padding:8px 10px;border-right:1px solid #f1f5f9;text-align:center">';
+  h+='<div style="font-size:8px;color:#64748b;letter-spacing:0.5px">LONG TERM</div>';
+  h+='<div style="font-size:16px;font-weight:800;color:'+ltColor+';margin:2px 0">'+ltDir+'</div>';
+  if(ltSma200>0)h+='<div style="font-size:8px;color:#94a3b8">SMA200 '+S+Math.round(ltSma200).toLocaleString()+(ltSma400>0?' / 400 '+S+Math.round(ltSma400).toLocaleString():'')+'</div>';
+  h+='</div>';
+  
+  // Short term
+  h+='<div style="padding:8px 10px;text-align:center">';
+  h+='<div style="font-size:8px;color:#64748b;letter-spacing:0.5px">SHORT TERM</div>';
+  h+='<div style="font-size:16px;font-weight:800;color:'+stColor+';margin:2px 0">'+stDir+'</div>';
+  if(stVwapPos)h+='<div style="font-size:8px;color:#94a3b8">'+stVwapPos+(stStructure?' · '+stStructure:'')+'</div>';
+  h+='</div>';
+  
+  h+='</div>';
+  
+  // Alignment strip — one line
+  if(aligned){
+    h+='<div style="padding:4px 10px;background:#f0fdf4;text-align:center;font-size:9px;font-weight:700;color:#059669">ALIGNED — trade with confidence</div>';
+  }else if(conflict){
+    h+='<div style="padding:4px 10px;background:#fef3c7;text-align:center;font-size:9px;font-weight:700;color:#d97706">CONFLICT — reduce size or wait</div>';
+  }
+  
+  h+='</div>';
+  div.innerHTML=h;
+  
+  // Insert after sentiment bar
+  var sentBar=el.querySelector('#sentimentBar');
+  if(sentBar&&sentBar.nextSibling){
+    el.insertBefore(div,sentBar.nextSibling);
+  }else{
+    var nav2=el.querySelector('#optNavInjected');
+    if(nav2&&nav2.nextSibling)el.insertBefore(div,nav2.nextSibling);
+    else el.appendChild(div);
+  }
+  
+  // Voice — only on conflict
+  if(conflict&&!window._trendConflictVoiced){
+    window._trendConflictVoiced=true;
+    setTimeout(function(){
+      window._speak(sym+'. Long-term trend is '+ltDir.toLowerCase()+' but short-term is '+stDir.toLowerCase()+'. Reduce position size or wait.',false);
+    },4000);
   }
 };
