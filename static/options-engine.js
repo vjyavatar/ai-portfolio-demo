@@ -4190,6 +4190,34 @@ function _renderQuickTrade(d,sym){
       var _stockSL=finalBias==='BULLISH'?dayLow:dayHigh;
       var _stockRange=Math.abs(dayHigh-dayLow);
       var _stockTarget=finalBias==='BULLISH'?Math.round(_stockEntry+_stockRange*1.5):Math.round(_stockEntry-_stockRange*1.5);
+      
+      // ─── OPTION STRIKE RECOMMENDATION — prominent, above stock details ───
+      if(chain.length>0&&(finalBias==='BULLISH'||finalBias==='BEARISH')){
+        var _optType=finalBias==='BULLISH'?'CE':'PE';
+        var _optTypeFull=finalBias==='BULLISH'?'CALL':'PUT';
+        // Find ATM strike
+        var _atmStrike=spot;
+        var _atmPrem=0;
+        var _minDist=Infinity;
+        chain.forEach(function(c5){
+          var _dist=Math.abs(c5.strike-spot);
+          if(_dist<_minDist){
+            _minDist=_dist;
+            _atmStrike=c5.strike;
+            _atmPrem=finalBias==='BULLISH'?(c5.ce_ltp||0):(c5.pe_ltp||0);
+          }
+        });
+        
+        if(_atmStrike>0&&_atmPrem>0){
+          var _optColor=finalBias==='BULLISH'?'#059669':'#ef4444';
+          h+='<div style="margin-top:10px;padding:10px 12px;border-radius:8px;background:'+_optColor+'08;border:1px solid '+_optColor+'40;text-align:center">';
+          h+='<div style="font-size:8px;font-weight:800;color:'+_optColor+';letter-spacing:0.5px;margin-bottom:4px">BUY THIS OPTION</div>';
+          h+='<div style="font-size:16px;font-weight:900;color:'+_optColor+';font-family:JetBrains Mono">'+sym+' '+_atmStrike.toLocaleString()+' '+_optType+'</div>';
+          h+='<div style="font-size:10px;color:#475569;margin-top:2px">Premium around '+S+(_atmPrem>10?Math.round(_atmPrem):_atmPrem.toFixed(2))+' · Buy '+_optTypeFull+' at ATM strike</div>';
+          h+='</div>';
+        }
+      }
+      
       h+='<div style="margin-top:10px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;text-align:center">';
       h+='<div style="padding:6px;border-radius:8px;background:#e2e8f0"><div style="font-size:7px;color:#3b5998">'+(finalBias==='BULLISH'?'BUY ABOVE':'SELL BELOW')+'</div><div style="font-size:14px;font-weight:900;color:#f59e0b;font-family:JetBrains Mono">'+S+_stockEntry.toLocaleString()+'</div></div>';
       h+='<div style="padding:6px;border-radius:8px;background:#05966410"><div style="font-size:7px;color:#059669">TARGET</div><div style="font-size:14px;font-weight:900;color:#059669;font-family:JetBrains Mono">'+S+_stockTarget.toLocaleString()+'</div></div>';
