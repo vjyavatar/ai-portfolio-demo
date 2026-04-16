@@ -1230,6 +1230,9 @@ details.grp>summary{font-size:13px !important;font-weight:800 !important}
 <style id="uiRevampCSS">
 /* KILL OLD TABS */
 #mainTabBar,.tab-bar,#groupSubNav,#summarySubTabs,#analysisSubTabs,.sticky-tagline,#globalDecisionBar,#reportHeader{display:none!important}
+/* KILL the 5 navigation cards (Should I Buy, Is It Overpriced, etc) */
+.sc[data-tab="quick"][data-subtab="overview"]:first-child,
+div.sc[data-tab="quick"][data-subtab="overview"]:has(>[style*="grid-template-columns"]):not(:has(.sh)){display:none!important}
 /* KILL CLUTTER */
 #heroDiagram,#heroExtras,#seoHome,#premiumPricing,#macroIntel,#eventAlertArea,.site-watermark,.btt,#pwaInstallBanner{display:none!important}
 .gridbg{background-image:none!important}
@@ -2544,13 +2547,41 @@ if(ov)ov.querySelector('.cmenu-trigger').classList.add('active');
 }
 function init(){
 buildMenuBar();
+// ROBUST: Poll every 500ms until report shows, then show menu
+var _poll=setInterval(function(){
+var rpt=document.getElementById('report');
+if(rpt&&(rpt.classList.contains('show')||rpt.style.display==='block')){
+showMenuBar();
+// Also hide the 5 nav cards via JS (CSS :has may not work everywhere)
+hideNavCards();
+}
+// Always force-hide old tab bars
+['mainTabBar','groupSubNav','summarySubTabs','analysisSubTabs'].forEach(function(id){
+var el=document.getElementById(id);
+if(el&&(el.style.display==='flex'||el.style.display==='block')){
+el.style.display='none';
+}
+});
+},500);
+// Also use MutationObserver as backup
 var rpt=document.getElementById('report');
 if(rpt){
-new MutationObserver(function(){if(rpt.classList.contains('show'))showMenuBar()}).observe(rpt,{attributes:true,attributeFilter:['class','style']});
-if(rpt.classList.contains('show'))showMenuBar();
+new MutationObserver(function(){if(rpt.classList.contains('show')){showMenuBar();hideNavCards()}}).observe(rpt,{attributes:true,attributeFilter:['class','style']});
+if(rpt.classList.contains('show')){showMenuBar();hideNavCards()}
 }
 var mtb=document.getElementById('mainTabBar');
 if(mtb)new MutationObserver(function(){if(mtb.style.display==='flex'||!mtb.classList.contains('tab-bar-hidden')){mtb.style.display='none';showMenuBar()}}).observe(mtb,{attributes:true,attributeFilter:['style','class']});
+}
+// Hide the 5 quick-decision navigation cards
+function hideNavCards(){
+var cards=document.querySelectorAll('.sc[data-tab="quick"][data-subtab="overview"]');
+if(cards.length>0){
+// The FIRST one is the nav card grid (no .sh header inside)
+var first=cards[0];
+if(first&&!first.querySelector('.sh')){
+first.style.display='none';
+}
+}
 }
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);
 else init();
