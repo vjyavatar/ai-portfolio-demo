@@ -4192,7 +4192,11 @@ function _renderQuickTrade(d,sym){
       var _stockTarget=finalBias==='BULLISH'?Math.round(_stockEntry+_stockRange*1.5):Math.round(_stockEntry-_stockRange*1.5);
       
       // ─── OPTION STRIKE RECOMMENDATION — prominent, above stock details ───
-      if(chain.length>0&&(finalBias==='BULLISH'||finalBias==='BEARISH')){
+      // Check if this ticker has listed options (skip for ETFs like BANKBEES)
+      var _noOptTickers=['NIFTYBEES','BANKBEES','GOLDBEES','SILVERBEES','ITBEES','JUNIORBEES','CPSE','PHARMABEES','LIQUIDBEES','CPSEETF','SETFNIF50','MOM50','MOM30','MIDCAP','LOWVOLIETF','ALPHA','SETFNIFBK','HDFCNIFTY','ICICINIFTY'];
+      var _hasOptions=_noOptTickers.indexOf(sym)<0&&chain.length>0&&!d._fallback;
+      
+      if(_hasOptions&&(finalBias==='BULLISH'||finalBias==='BEARISH')){
         var _optType=finalBias==='BULLISH'?'CE':'PE';
         var _optTypeFull=finalBias==='BULLISH'?'CALL':'PUT';
         // Find ATM strike
@@ -4218,11 +4222,38 @@ function _renderQuickTrade(d,sym){
         }
       }
       
+      // ─── ETF-specific banner (cash equity only) ───
+      var _isETF=_noOptTickers.indexOf(sym)>=0;
+      if(_isETF){
+        if(finalBias==='BULLISH'){
+          h+='<div style="margin-top:10px;padding:10px 12px;border-radius:8px;background:#05966408;border:1px solid #05966940;text-align:center">';
+          h+='<div style="font-size:16px;font-weight:900;color:#059669;font-family:JetBrains Mono">BUY '+sym+'</div>';
+          h+='</div>';
+        }else if(finalBias==='BEARISH'){
+          h+='<div style="margin-top:10px;padding:10px 12px;border-radius:8px;background:#ef444408;border:1px solid #ef444440;text-align:center">';
+          h+='<div style="font-size:16px;font-weight:900;color:#ef4444;font-family:JetBrains Mono">AVOID '+sym+'</div>';
+          h+='</div>';
+        }else{
+          h+='<div style="margin-top:10px;padding:10px 12px;border-radius:8px;background:#f8fafc;border:1px solid #e2e8f0;text-align:center">';
+          h+='<div style="font-size:14px;font-weight:900;color:#475569;font-family:JetBrains Mono">WAIT</div>';
+          h+='</div>';
+        }
+      }
+      
+      // Skip BUY ABOVE/SELL BELOW grid for ETFs (can't short)
+      if(!_isETF){
       h+='<div style="margin-top:10px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;text-align:center">';
       h+='<div style="padding:6px;border-radius:8px;background:#e2e8f0"><div style="font-size:7px;color:#3b5998">'+(finalBias==='BULLISH'?'BUY ABOVE':'SELL BELOW')+'</div><div style="font-size:14px;font-weight:900;color:#f59e0b;font-family:JetBrains Mono">'+S+_stockEntry.toLocaleString()+'</div></div>';
       h+='<div style="padding:6px;border-radius:8px;background:#05966410"><div style="font-size:7px;color:#059669">TARGET</div><div style="font-size:14px;font-weight:900;color:#059669;font-family:JetBrains Mono">'+S+_stockTarget.toLocaleString()+'</div></div>';
       h+='<div style="padding:6px;border-radius:8px;background:#ef444410"><div style="font-size:7px;color:#ef4444">STOP LOSS</div><div style="font-size:14px;font-weight:900;color:#ef4444;font-family:JetBrains Mono">'+S+_stockSL.toLocaleString()+'</div></div>';
       h+='</div>';
+      }else if(finalBias==='BULLISH'){
+        // ETF bullish: show buy zone + target (no stop loss for long-term holders)
+        h+='<div style="margin-top:10px;display:grid;grid-template-columns:1fr 1fr;gap:6px;text-align:center">';
+        h+='<div style="padding:6px;border-radius:8px;background:#05966410"><div style="font-size:7px;color:#059669">ENTRY ZONE</div><div style="font-size:14px;font-weight:900;color:#059669;font-family:JetBrains Mono">'+S+Math.round(spot*0.998).toLocaleString()+' - '+S+Math.round(spot*1.002).toLocaleString()+'</div></div>';
+        h+='<div style="padding:6px;border-radius:8px;background:#3b82f610"><div style="font-size:7px;color:#3b82f6">TARGET</div><div style="font-size:14px;font-weight:900;color:#3b82f6;font-family:JetBrains Mono">'+S+_stockTarget.toLocaleString()+'</div></div>';
+        h+='</div>';
+      }
     }
     
     // Row 3: Support ← Spot → Resistance (compact price map inline)
@@ -5057,6 +5088,9 @@ function _startKeepAlive(){
 }
 
 // THE MAIN SPEAK FUNCTION — bulletproof
+window._voiceQueue=window._voiceQueue||[];
+window._voiceSpeaking=false;
+
 window._speak=function(text,urgent){
   if(!window._voiceEnabled)return;
   if(!text)return;
@@ -5065,6 +5099,20 @@ window._speak=function(text,urgent){
   if(window._qtMarketOpen===false && text.indexOf('Market is closed')<0){
     return; // Don't speak trading signals when market is closed
   }
+  
+  // ─── VOICE QUEUE — prevent overlap ───
+  // If already speaking, queue this message (unless urgent — then it interrupts)
+  if(window._voiceSpeaking&&!urgent){
+    // Skip if queue already has this exact message (dedup)
+    var _isDup=window._voiceQueue.some(function(q){return q.text===text});
+    if(_isDup)return;
+    // Skip if queue is getting too long (max 2 pending)
+    if(window._voiceQueue.length>=2)return;
+    window._voiceQueue.push({text:text,urgent:urgent});
+    return;
+  }
+  
+  window._voiceSpeaking=true;
   
   // Auto-unlock if not yet unlocked (first speech triggers full setup)
   if(!window._voiceFullyReady){
@@ -5125,6 +5173,24 @@ window._speak=function(text,urgent){
               if(window.speechSynthesis.paused)window.speechSynthesis.resume();
             },13000);
           };
+          
+          // Last chunk — mark speaking done and process queue
+          if(i===chunks.length-1){
+            u.onend=function(){
+              window._voiceSpeaking=false;
+              // Process next queued message with small gap
+              setTimeout(function(){
+                if(window._voiceQueue.length>0){
+                  var next=window._voiceQueue.shift();
+                  window._speak(next.text,next.urgent);
+                }
+              },500);
+            };
+            u.onerror=function(){
+              window._voiceSpeaking=false;
+              window._voiceQueue=[]; // Clear queue on error
+            };
+          }
           
           window.speechSynthesis.speak(u);
         });
@@ -10831,6 +10897,36 @@ window._runPriceActionMonitor=function(d,sym){
   var prevBar=bars.length>=2?bars[bars.length-2]:null;
   var bar3=bars.length>=3?bars[bars.length-3]:null;
   
+  // ─── Strike + Expiry context for option suggestions ───
+  var _chain=d.chain_near_atm||[];
+  var _expiry=d.expiry||'';
+  var _expFriendly='';
+  if(_expiry){
+    try{
+      var _expD=new Date(_expiry);
+      var _today=new Date();
+      var _daysOut=Math.ceil((_expD-_today)/(1000*60*60*24));
+      if(_daysOut<=7)_expFriendly='this week ('+_expD.toLocaleDateString('en-IN',{day:'numeric',month:'short'})+')';
+      else if(_daysOut<=14)_expFriendly='next week ('+_expD.toLocaleDateString('en-IN',{day:'numeric',month:'short'})+')';
+      else _expFriendly=_expD.toLocaleDateString('en-IN',{day:'numeric',month:'short'});
+    }catch(e){_expFriendly=_expiry;}
+  }
+  function _getStrikeSuggestion(dir){
+    // Skip for ETFs and non-optionable tickers
+    var _noOpts=['NIFTYBEES','BANKBEES','GOLDBEES','SILVERBEES','ITBEES','JUNIORBEES','CPSE','PHARMABEES','LIQUIDBEES','CPSEETF','SETFNIF50','MOM50','MOM30','MIDCAP','LOWVOLIETF','ALPHA','SETFNIFBK','HDFCNIFTY','ICICINIFTY'];
+    if(_noOpts.indexOf(sym)>=0)return '';
+    if(d._fallback)return ''; // No real option data, don't suggest fake strikes
+    if(_chain.length===0)return '';
+    var _atm=spot,_atmP=0,_minD=Infinity;
+    _chain.forEach(function(c){
+      var _d0=Math.abs(c.strike-spot);
+      if(_d0<_minD){_minD=_d0;_atm=c.strike;_atmP=dir==='BULLISH'?(c.ce_ltp||0):(c.pe_ltp||0);}
+    });
+    if(_atm===0||_atmP===0)return '';
+    var _t=dir==='BULLISH'?'CE':'PE';
+    return ' → Buy '+sym+' '+_atm.toLocaleString()+' '+_t+' @ '+S+(_atmP>10?Math.round(_atmP):_atmP.toFixed(2))+(_expFriendly?' (expiry '+_expFriendly+')':'');
+  }
+  
   // Compute averages
   var avgVol=0;
   bars.forEach(function(b){avgVol+=b.v||0});
@@ -10847,10 +10943,10 @@ window._runPriceActionMonitor=function(d,sym){
   
   // ─── 1. BOS — Break of Structure ───
   if(lastBar.c>lastSwH&&st.prevSwingHigh>0&&lastSwH>st.prevSwingHigh*0.998){
-    alerts.push({type:'BREAKOUT',dir:'BULLISH',msg:'Price broke above a key resistance level '+S+Math.round(lastSwH)+' — buyers are pushing higher',priority:2,color:'#059669'});
+    alerts.push({type:'BREAKOUT',dir:'BULLISH',msg:'Price broke above a key resistance level '+S+Math.round(lastSwH)+' — buyers are pushing higher'+_getStrikeSuggestion('BULLISH'),priority:2,color:'#059669'});
   }
   if(lastBar.c<lastSwL&&st.prevSwingLow<999999&&lastSwL<st.prevSwingLow*1.002){
-    alerts.push({type:'BREAKOUT',dir:'BEARISH',msg:'Price broke below a key support level '+S+Math.round(lastSwL)+' — sellers taking control',priority:2,color:'#ef4444'});
+    alerts.push({type:'BREAKOUT',dir:'BEARISH',msg:'Price broke below a key support level '+S+Math.round(lastSwL)+' — sellers taking control'+_getStrikeSuggestion('BEARISH'),priority:2,color:'#ef4444'});
   }
   st.prevSwingHigh=lastSwH;
   st.prevSwingLow=lastSwL;
@@ -10859,13 +10955,13 @@ window._runPriceActionMonitor=function(d,sym){
   if(swingHighs.length>=2){
     var h1=swingHighs[swingHighs.length-2],h2=swingHighs[swingHighs.length-1];
     if(h1>h2&&lastBar.c>h1){
-      alerts.push({type:'REVERSAL',dir:'BULLISH',msg:'Trend is reversing upward — was falling, now buyers are stepping in. Good time to look for calls',priority:3,color:'#059669'});
+      alerts.push({type:'REVERSAL',dir:'BULLISH',msg:'Trend is reversing upward — was falling, now buyers are stepping in. Good time to look for calls'+_getStrikeSuggestion('BULLISH'),priority:3,color:'#059669'});
     }
   }
   if(swingLows.length>=2){
     var l1=swingLows[swingLows.length-2],l2=swingLows[swingLows.length-1];
     if(l1<l2&&lastBar.c<l1){
-      alerts.push({type:'REVERSAL',dir:'BEARISH',msg:'Trend is reversing downward — was rising, now sellers are stepping in. Watch for puts',priority:3,color:'#ef4444'});
+      alerts.push({type:'REVERSAL',dir:'BEARISH',msg:'Trend is reversing downward — was rising, now sellers are stepping in. Watch for puts'+_getStrikeSuggestion('BEARISH'),priority:3,color:'#ef4444'});
     }
   }
   
@@ -10883,9 +10979,9 @@ window._runPriceActionMonitor=function(d,sym){
   var aboveVwap=spot>vwap;
   if(st.prevAboveVwap!==null&&aboveVwap!==st.prevAboveVwap&&vwap>0){
     if(aboveVwap){
-      alerts.push({type:'VWAP CROSS',dir:'BULLISH',msg:'Price just crossed above the average price '+S+Math.round(vwap)+' — this is bullish, buyers are in control now',priority:2,color:'#059669'});
+      alerts.push({type:'VWAP CROSS',dir:'BULLISH',msg:'Price just crossed above the average price '+S+Math.round(vwap)+' — this is bullish, buyers are in control now'+_getStrikeSuggestion('BULLISH'),priority:2,color:'#059669'});
     }else{
-      alerts.push({type:'VWAP CROSS',dir:'BEARISH',msg:'Price dropped below the average price '+S+Math.round(vwap)+' — sellers are winning right now',priority:2,color:'#ef4444'});
+      alerts.push({type:'VWAP CROSS',dir:'BEARISH',msg:'Price dropped below the average price '+S+Math.round(vwap)+' — sellers are winning right now'+_getStrikeSuggestion('BEARISH'),priority:2,color:'#ef4444'});
     }
   }
   st.prevAboveVwap=aboveVwap;
@@ -10926,11 +11022,11 @@ window._runPriceActionMonitor=function(d,sym){
       var _ob2Green=_ob2P.c>_ob2P.o,_ob2NextR=_ob2N.c<_ob2N.o;
       var _ob2Move=Math.abs(_ob2N.c-_ob2N.o)/Math.max(spot,1)*100;
       if(_ob2Red&&_ob2NextG&&_ob2Move>0.2&&lastBar.l<=_ob2P.o&&lastBar.c>=_ob2P.c){
-        alerts.push({type:'ORDER BLOCK',dir:'BULLISH',msg:'Price is retesting a bullish order block zone ('+S+Math.round(_ob2P.c)+'-'+S+Math.round(_ob2P.o)+') — institutions bought here before, they may buy again',priority:2,color:'#059669'});
+        alerts.push({type:'ORDER BLOCK',dir:'BULLISH',msg:'Price is retesting a bullish order block zone ('+S+Math.round(_ob2P.c)+'-'+S+Math.round(_ob2P.o)+') — institutions bought here before, they may buy again'+_getStrikeSuggestion('BULLISH'),priority:2,color:'#059669'});
         break;
       }
       if(_ob2Green&&_ob2NextR&&_ob2Move>0.2&&lastBar.h>=_ob2P.o&&lastBar.c<=_ob2P.c){
-        alerts.push({type:'ORDER BLOCK',dir:'BEARISH',msg:'Price is retesting a bearish order block zone ('+S+Math.round(_ob2P.o)+'-'+S+Math.round(_ob2P.c)+') — institutions sold here before, expect rejection',priority:2,color:'#ef4444'});
+        alerts.push({type:'ORDER BLOCK',dir:'BEARISH',msg:'Price is retesting a bearish order block zone ('+S+Math.round(_ob2P.o)+'-'+S+Math.round(_ob2P.c)+') — institutions sold here before, expect rejection'+_getStrikeSuggestion('BEARISH'),priority:2,color:'#ef4444'});
         break;
       }
     }
@@ -10944,10 +11040,12 @@ window._runPriceActionMonitor=function(d,sym){
     var _swpMaxHigh=Math.max.apply(null,_swpHighs);
     
     if(lastBar.l<_swpMinLow&&lastBar.c>_swpMinLow){
-      alerts.push({type:'LIQ SWEEP',dir:'BULLISH',msg:'Liquidity sweep — price dipped below '+S+Math.round(_swpMinLow)+' to grab stop losses, then reversed up. Smart money just bought the dip. Bullish signal.',priority:3,color:'#059669'});
+      var _sugBull=_getStrikeSuggestion('BULLISH');
+      alerts.push({type:'LIQ SWEEP',dir:'BULLISH',msg:'Liquidity sweep — price dipped below '+S+Math.round(_swpMinLow)+' to grab stop losses, then reversed up. Smart money bought the dip.'+_sugBull,priority:3,color:'#059669'});
     }
     if(lastBar.h>_swpMaxHigh&&lastBar.c<_swpMaxHigh){
-      alerts.push({type:'LIQ SWEEP',dir:'BEARISH',msg:'Liquidity sweep — price spiked above '+S+Math.round(_swpMaxHigh)+' to grab stop losses, then reversed down. Smart money just sold the top. Bearish signal.',priority:3,color:'#ef4444'});
+      var _sugBear=_getStrikeSuggestion('BEARISH');
+      alerts.push({type:'LIQ SWEEP',dir:'BEARISH',msg:'Liquidity sweep — price spiked above '+S+Math.round(_swpMaxHigh)+' to grab stop losses, then reversed down. Smart money sold the top.'+_sugBear,priority:3,color:'#ef4444'});
     }
   }
   
@@ -10979,7 +11077,7 @@ window._runPriceActionMonitor=function(d,sym){
     
     // ─── VOICE: Short concise alert ───
     if(topAlert.priority>=2){
-      window._speak(sym+'. '+topAlert.msg,topAlert.priority>=3);
+      window._speak(sym+'. '+topAlert.msg,topAlert.priority>=2);
     }
   }
   
