@@ -12386,59 +12386,42 @@ if(_scenario==='ALIGNED_BULL'){
   _noHoldAdvice='<strong>\u23F3 WAIT for clarity.</strong><br>\u2022 <strong>Watchlist</strong> \u2014 don\'t commit capital yet.<br>\u2022 <strong>Entry trigger</strong>: 2 of 3 systems agree.<br>\u2022 <strong>If impatient</strong>: 1% tracking position with stop at '+S+Math.round(lv.sl||_sumPrice*0.90).toLocaleString()+'.';
 }
 
-h+='<div style="margin:22px 0;border-radius:18px;overflow:hidden;border:2.5px solid '+_scenarioColor+'35;background:#fff;box-shadow:0 6px 24px rgba(10,22,40,.08);border-left:6px solid '+_scenarioColor+'">';
-// Header
-h+='<div style="padding:20px 24px;background:linear-gradient(135deg,'+_scenarioColor+'12,'+_scenarioColor+'04);border-bottom:2px solid '+_scenarioColor+'18">';
-h+='<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">';
-h+='<div><div style="font-size:9px;font-weight:800;color:#4a6fa5;letter-spacing:2px">DECISION SUMMARY — '+d.symbol+' · '+(d.companyName||d.symbol)+'</div>';
-h+='<div style="font-size:20px;font-weight:900;color:'+_scenarioColor+';font-family:Sora,sans-serif;margin-top:4px">'+_scenarioIcon+' '+_scenarioLabel+'</div></div>';
-h+='<div style="display:flex;gap:8px;flex-wrap:wrap">';
-// Three pills showing each system's verdict
-h+='<div style="padding:5px 12px;border-radius:100px;font-size:8px;font-weight:800;background:'+dC+'12;color:'+dC+';border:1px solid '+dC+'20">Quality: '+_sumDecision+'</div>';
+h+='<div style="margin:12px 0;border-radius:10px;overflow:hidden;border:1.5px solid '+_scenarioColor+'30;background:#fff">';
+// Row 1: Headline + pills (compact)
+h+='<div style="padding:10px 14px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;border-bottom:1px solid #f1f5f9">';
+h+='<div style="font-size:14px;font-weight:900;color:'+_scenarioColor+'">'+_scenarioIcon+' '+_scenarioLabel+'</div>';
+h+='<div style="display:flex;gap:4px;flex-wrap:wrap">';
+h+='<span style="padding:2px 8px;border-radius:100px;font-size:7px;font-weight:800;background:'+dC+'12;color:'+dC+'">Quality: '+_sumDecision+'</span>';
 var _mdoV=window._calcInstitutionalMDO?window._calcInstitutionalMDO(d,S):null;
 var _mdoLabel=_mdoV?_mdoV.verdict:'—';var _mdoC=_mdoV?_mdoV.vC:'#6b7280';
-h+='<div style="padding:5px 12px;border-radius:100px;font-size:8px;font-weight:800;background:'+_mdoC+'12;color:'+_mdoC+';border:1px solid '+_mdoC+'20">Timing: '+_mdoLabel+'</div>';
+h+='<span style="padding:2px 8px;border-radius:100px;font-size:7px;font-weight:800;background:'+_mdoC+'12;color:'+_mdoC+'">Timing: '+_mdoLabel+'</span>';
 var _techLabel2=_techBull?'BULLISH':_techBear?'BEARISH':'NEUTRAL';var _techC2=_techBull?'#059669':_techBear?'#dc2626':'#d97706';
-h+='<div style="padding:5px 12px;border-radius:100px;font-size:8px;font-weight:800;background:'+_techC2+'12;color:'+_techC2+';border:1px solid '+_techC2+'20">Trend: '+_techLabel2+'</div>';
-h+='</div></div></div>';
-// How to read this section
-h+='<div style="padding:14px 24px;border-bottom:1px solid #E2E8F0;background:#F8FAFC">';
-h+='<div style="font-size:9px;font-weight:800;color:#5E6F8E;letter-spacing:1px;margin-bottom:6px">📖 HOW THE 3 SCORING SYSTEMS WORK TOGETHER</div>';
-h+='<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">';
-h+='<div style="padding:8px 10px;border-radius:8px;background:#fff;border:1px solid #E2E8F0;font-size:8px;line-height:1.5;color:#2d4373"><strong style="color:'+dC+'">① Quality Verdict</strong><br>F-Score, Moat, ROE, PE, DCF upside<br><em style="color:#4a6fa5">= Is this a good business?</em></div>';
-h+='<div style="padding:8px 10px;border-radius:8px;background:#fff;border:1px solid #E2E8F0;font-size:8px;line-height:1.5;color:#2d4373"><strong style="color:'+(_mdoC||'#6b7280')+'">② Timing (MDO/CDS)</strong><br>Trend, RSI, volume, volatility, flow<br><em style="color:#4a6fa5">= Is NOW a good time to enter?</em></div>';
-h+='<div style="padding:8px 10px;border-radius:8px;background:#fff;border:1px solid #E2E8F0;font-size:8px;line-height:1.5;color:#2d4373"><strong style="color:'+_techC2+'">③ Consensus (9 Charts)</strong><br>Aggregates all chart decisions<br><em style="color:#4a6fa5">= Do the signals agree?</em></div>';
+h+='<span style="padding:2px 8px;border-radius:100px;font-size:7px;font-weight:800;background:'+_techC2+'12;color:'+_techC2+'">Trend: '+_techLabel2+'</span>';
 h+='</div></div>';
-// Action cards - If you hold / If you don't hold
-h+='<div style="padding:16px 24px">';
-h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">';
-// Already holding
-h+='<div style="padding:14px 16px;border-radius:12px;background:#F0FDF4;border:1px solid #BBF7D0">';
-h+='<div style="font-size:9px;font-weight:800;color:#059669;letter-spacing:1px;margin-bottom:6px">📗 IF YOU ALREADY HOLD</div>';
-h+='<div style="font-size:10px;color:#2d4373;line-height:1.7">'+_holdAdvice+'</div></div>';
-// Not holding
-h+='<div style="padding:14px 16px;border-radius:12px;background:#EFF6FF;border:1px solid #BFDBFE">';
-h+='<div style="font-size:9px;font-weight:800;color:#2563EB;letter-spacing:1px;margin-bottom:6px">📘 IF YOU DON\'T HOLD</div>';
-h+='<div style="font-size:10px;color:#2d4373;line-height:1.7">'+_noHoldAdvice+'</div></div>';
+// Row 2: Two-column action (compact, no bullet lists — just the key action)
+h+='<div style="display:grid;grid-template-columns:1fr 1fr;border-bottom:1px solid #f1f5f9">';
+h+='<div style="padding:8px 12px;border-right:1px solid #f1f5f9">';
+h+='<div style="font-size:7px;font-weight:800;color:#059669;letter-spacing:0.5px;margin-bottom:3px">IF YOU HOLD</div>';
+h+='<div style="font-size:9px;color:#2d4373;line-height:1.5">'+_holdAdvice+'</div></div>';
+h+='<div style="padding:8px 12px">';
+h+='<div style="font-size:7px;font-weight:800;color:#2563EB;letter-spacing:0.5px;margin-bottom:3px">IF YOU DON\'T HOLD</div>';
+h+='<div style="font-size:9px;color:#2d4373;line-height:1.5">'+_noHoldAdvice+'</div></div>';
 h+='</div>';
-// Key levels reference
-h+='<div style="margin-top:12px;padding:10px 14px;border-radius:8px;background:#F8FAFC;border:1px solid #E2E8F0;font-size:9px;color:#5E6F8E;line-height:1.8">';
-h+='<strong style="color:#1A3A78">Key Levels:</strong> ';
-h+='Entry: <strong>'+S+Math.round(_sumPrice).toLocaleString()+'</strong> · ';
-h+='SMA50: <strong>'+S+Math.round(_sumSMA50).toLocaleString()+'</strong> · ';
-h+='SMA200: <strong>'+S+Math.round(_sumSMA200).toLocaleString()+'</strong> · ';
-h+='Stop: <strong>'+S+Math.round(lv.sl||_sumPrice*0.92).toLocaleString()+'</strong> · ';
-h+='Target: <strong>'+S+Math.round(lv.target1||_sumFV*0.95).toLocaleString()+'</strong> · ';
-h+='Fair Value: <strong>'+S+Math.round(_sumFV).toLocaleString()+'</strong>';
+// Row 3: Key levels + allocation inline
+h+='<div style="padding:6px 12px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:4px;background:#f8fafc">';
+h+='<div style="font-size:8px;color:#5E6F8E;line-height:1.6">';
+h+='<strong style="color:#1A3A78">Key:</strong> ';
+h+='Entry '+S+Math.round(_sumPrice).toLocaleString()+' · ';
+h+='SMA50 '+S+Math.round(_sumSMA50).toLocaleString()+' · ';
+h+='SMA200 '+S+Math.round(_sumSMA200).toLocaleString()+' · ';
+h+='Stop '+S+Math.round(lv.sl||_sumPrice*0.92).toLocaleString()+' · ';
+h+='Target '+S+Math.round(lv.target1||_sumFV*0.95).toLocaleString()+' · ';
+h+='Fair Value '+S+Math.round(_sumFV).toLocaleString();
 h+='</div>';
-// ── ALLOCATION RECONCILIATION — one clear number, no confusion ──
 var _arC=_cdsAlloc>=8?'#059669':_cdsAlloc>=3?'#d97706':'#dc2626';
-h+='<div style="margin-top:8px;padding:10px 14px;border-radius:8px;background:'+_arC+'08;border:1.5px solid '+_arC+'30;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">';
-h+='<div><div style="font-size:8px;font-weight:800;color:'+_arC+';letter-spacing:1px">POSITION SIZE (Half-Kelly)</div>';
-h+='<div style="font-size:8px;color:#5E6F8E;margin-top:1px">All 3 systems → one number. Use this. Ignore other allocation figures in sections above.</div></div>';
-h+='<div style="font-family:JetBrains Mono,monospace;font-size:28px;font-weight:900;color:'+_arC+'">'+_cdsAlloc+'%</div>';
+h+='<div style="display:flex;align-items:center;gap:4px"><span style="font-size:7px;font-weight:800;color:'+_arC+'">SIZE</span><span style="font-family:JetBrains Mono;font-size:18px;font-weight:900;color:'+_arC+'">'+_cdsAlloc+'%</span></div>';
 h+='</div>';
-h+='</div></div>';
+h+='</div>';
 // ═══ END DECISION SUMMARY ═══
 
 h+='<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">';
