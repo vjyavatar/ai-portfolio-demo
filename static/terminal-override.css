@@ -1,0 +1,1228 @@
+/* ═══════════════════════════════════════════════════════════════════════════════
+   CELESYS TERMINAL — Bloomberg + Linear Design System Override
+   ═══════════════════════════════════════════════════════════════════════════════
+   
+   ARCHITECTURE:
+   ┌─────────────────────────────────────────────────────────┐  ← .gticker (28px)
+   │  SPY 594.12 ▲0.8%  │  NIFTY 24,800 ▼0.2%  │ ...       │
+   ├─────────────────────────────────────────────────────────┤  ← nav (36px)
+   │  ◆ CELESYS AI          IN/US 3 reports      ☽ Live     │
+   ├─────────────────────────────────────────────────────────┤  ← #reportHeader (30px)
+   │  AAPL  Apple Inc.  • Live   [🔍New] [🌙] [📄] [📎]    │
+   ├─────────────────────────────────────────────────────────┤  ← #mainTabBar MENU (28px)
+   │  ⚡Overview  📊Stock  🎯Decide  ⚡Trader  📈Markets  💰Tools │
+   ├─────────────────────────────────────────────────────────┤  ← #groupSubNav SUBMENU (26px)
+   │  Overview · Valuation · Technical · Activity · Risk     │
+   ├─────────────────────────────────────────────────────────┤
+   │                                                         │
+   │  CONTENT AREA                                           │
+   │                                                         │
+   └─────────────────────────────────────────────────────────┘
+   
+   CSS-only where possible. Minimal JS only for:
+   - Merging #summarySubTabs into #groupSubNav when overview is active
+   - Hiding clutter elements on load
+   
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+
+/* ═══════════════════════════════════════════════════════════════
+   §0  DESIGN TOKENS — Bloomberg Navy + Linear Neutrals
+   ═══════════════════════════════════════════════════════════════ */
+:root {
+  /* — Heights (the contract) — */
+  --t-nav:    36px;
+  --t-rh:     30px;
+  --t-tab:    28px;
+  --t-sub:    26px;
+  --t-ticker: 28px;
+
+  /* — Palette — */
+  --t-bg-deep:    #080E1A;   /* Bloomberg deep navy  */
+  --t-bg-panel:   #0D1421;   /* Nav / header panels  */
+  --t-bg-bar:     #111827;   /* Tab bar background   */
+  --t-bg-sub:     #0F172A;   /* Submenu row          */
+  --t-surface:    #FFFFFF;   /* Content cards        */
+  --t-border:     #1E293B;   /* Dark borders         */
+  --t-border-l:   #E2E8F0;   /* Light borders        */
+
+  /* — Typography — */
+  --t-text:       #F1F5F9;   /* Primary on dark      */
+  --t-text-dim:   #64748B;   /* Muted / inactive     */
+  --t-text-body:  #0F172A;   /* Body text on white   */
+
+  /* — Accent — */
+  --t-accent:     #3B82F6;   /* Bloomberg blue       */
+  --t-accent-dim: rgba(59,130,246,.12);
+  --t-green:      #22C55E;
+  --t-red:        #EF4444;
+  --t-amber:      #F59E0B;
+
+  /* — Fonts — */
+  --t-sans:  'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  --t-mono:  'IBM Plex Mono', 'JetBrains Mono', 'SF Mono', Consolas, monospace;
+  --t-head:  'Sora', var(--t-sans);
+
+  /* — Override the existing CSS-var contract — */
+  --nav-h:     var(--t-nav);
+  --rh-h:      var(--t-rh);
+  --tab-h:     var(--t-tab);
+  --ticker-h:  var(--t-ticker);
+  --gdb-h:     0px;
+
+  /* BUG 6: Align --blue with terminal accent so inline var(--blue) matches */
+  --blue:      #3B82F6;
+  --blue2:     #2563EB;
+}
+
+
+/* ═══════════════════════════════════════════════════════════════
+   §1  GLOBAL RESETS & CLUTTER REMOVAL
+   ═══════════════════════════════════════════════════════════════ */
+
+/* — Hide all clutter — */
+#heroIntro,
+#heroExtras,
+#seoHome,
+#premiumPricing,
+.site-watermark,
+.sticky-tagline,
+#pwaInstallBanner,
+#globalDecisionBar,
+.edu-bar,
+.btt,
+.hero-eye,
+.hbadges,
+.feat-card,
+.hero-sub,
+.hero h1,
+.hero .search-help,
+.hero p[style*="Not financial advice"],
+.hero .hlp,
+.hero::before,
+.gridbg {
+  display: none !important;
+  height: 0 !important;
+  overflow: hidden !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+
+/* — Hero: collapse to just the search card — */
+.hero {
+  padding: 8px 16px 8px !important;
+  margin: 0 !important;
+  background: var(--t-surface) !important;
+  border-bottom: 1px solid var(--t-border-l) !important;
+  min-height: 0 !important;
+  text-align: left !important;
+}
+/* BUG 1: .hero.collapsed in index.html has same specificity — we win by load order */
+.hero.collapsed {
+  padding: 4px 16px 4px !important;
+  margin: 0 !important;
+  background: var(--t-surface) !important;
+  border-bottom: 1px solid var(--t-border-l) !important;
+  border: none !important;
+  border-bottom: 1px solid var(--t-border-l) !important;
+}
+.hero.collapsed .icard {
+  box-shadow: none !important;
+  border-radius: 8px !important;
+  margin: 0 auto !important;
+  max-width: 100% !important;
+}
+.hero::before,
+.hero::after {
+  display: none !important;
+}
+
+/* — Search card: compact inline — */
+.hero .icard {
+  max-width: 100% !important;
+  margin: 0 auto !important;
+  padding: 8px 12px !important;
+  border-radius: 8px !important;
+  box-shadow: none !important;
+  border: 1px solid var(--t-border-l) !important;
+  background: #F8FAFC !important;
+}
+.hero .icard::before {
+  display: none !important;  /* kill gradient top bar */
+}
+.hero .irow {
+  grid-template-columns: 180px 1fr 90px !important;
+  gap: 8px !important;
+}
+.hero .ipt {
+  padding: 6px 10px !important;
+  font-size: 12px !important;
+  border-radius: 6px !important;
+}
+.hero .btn {
+  padding: 6px 12px !important;
+  font-size: 11px !important;
+  border-radius: 6px !important;
+  letter-spacing: 0 !important;
+  text-transform: none !important;
+}
+/* Hide status / loading steps / rate limit in hero when compact */
+.hero .sbar,
+.hero .lsteps,
+.hero .rlbox {
+  margin-top: 6px !important;
+}
+/* Event alert area - compact */
+#eventAlertArea {
+  max-width: 100% !important;
+  margin: 4px auto 4px !important;
+}
+
+
+/* ═══════════════════════════════════════════════════════════════
+   §2  GLOBAL TICKER — Slim 28px data strip
+   ═══════════════════════════════════════════════════════════════ */
+.gticker {
+  height: var(--t-ticker) !important;
+  background: var(--t-bg-deep) !important;
+  border-bottom: 1px solid rgba(255,255,255,.04) !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+}
+.gticker .trow {
+  height: var(--t-ticker) !important;
+  line-height: var(--t-ticker) !important;
+}
+.gticker .trow .ti {
+  padding: 0 10px !important;
+  font-size: 10px !important;
+  line-height: var(--t-ticker) !important;
+}
+.gticker .nrow {
+  display: none !important;   /* hide news row — ticker only */
+}
+
+
+/* ═══════════════════════════════════════════════════════════════
+   §3  NAV BAR — 36px command strip
+   ═══════════════════════════════════════════════════════════════ */
+nav {
+  height: var(--t-nav) !important;
+  min-height: var(--t-nav) !important;
+  max-height: var(--t-nav) !important;
+  background: var(--t-bg-panel) !important;
+  border-bottom: 1px solid var(--t-border) !important;
+  box-shadow: none !important;
+  padding: 0 16px !important;
+  position: fixed !important;
+  top: var(--t-ticker) !important;
+  left: 0 !important;
+  right: 0 !important;
+  z-index: 999 !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+/* Logo — smaller */
+.nlogo {
+  width: 22px !important;
+  height: 22px !important;
+  border-radius: 5px !important;
+  font-size: 10px !important;
+  box-shadow: none !important;
+  background: var(--t-accent) !important;
+  border: none !important;
+}
+.nbrand {
+  gap: 6px !important;
+}
+.nname {
+  font-size: 11px !important;
+  letter-spacing: .5px !important;
+}
+.ntag {
+  display: none !important;  /* hide "Stock Intelligence" tagline */
+}
+
+/* Center pills — shrink */
+.npill {
+  padding: 2px 8px !important;
+  font-size: 9px !important;
+  border-radius: 4px !important;
+  background: rgba(255,255,255,.04) !important;
+  border: 1px solid rgba(255,255,255,.08) !important;
+}
+.npill .v {
+  font-size: 9px !important;
+}
+
+/* Right side */
+.nlive {
+  padding: 2px 8px !important;
+  font-size: 8px !important;
+  border-radius: 4px !important;
+  gap: 4px !important;
+  letter-spacing: .5px !important;
+}
+.ldot {
+  width: 5px !important;
+  height: 5px !important;
+}
+.nbtn-theme {
+  width: 24px !important;
+  height: 24px !important;
+  border-radius: 5px !important;
+  font-size: 12px !important;
+}
+
+
+/* ═══════════════════════════════════════════════════════════════
+   §4  REPORT HEADER (#reportHeader) — 30px breadcrumb bar
+   ═══════════════════════════════════════════════════════════════ */
+#reportHeader {
+  height: var(--t-rh) !important;
+  min-height: var(--t-rh) !important;
+  max-height: var(--t-rh) !important;
+  padding: 0 12px !important;
+  background: #F8FAFC !important;
+  border-bottom: 1px solid var(--t-border-l) !important;
+  box-shadow: none !important;
+  position: sticky !important;
+  top: calc(var(--t-ticker) + var(--t-nav)) !important;
+  z-index: 210 !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  overflow: hidden !important;
+}
+/* Ticker tag */
+#reportHeader .rptk {
+  font-size: 11px !important;
+  padding: 1px 6px !important;
+  border-radius: 3px !important;
+  font-weight: 800 !important;
+  letter-spacing: .3px !important;
+  line-height: 1.4 !important;
+}
+/* Company name */
+#reportHeader .rpco {
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+}
+/* Timestamp */
+#reportHeader .rplv {
+  font-size: 8px !important;
+  gap: 3px !important;
+}
+#reportHeader .rplv .ldot {
+  width: 4px !important;
+  height: 4px !important;
+}
+/* Action toolbar buttons — tiny */
+#actionToolbar button {
+  padding: 1px 6px !important;
+  font-size: 9px !important;
+  border-radius: 4px !important;
+  line-height: 1.4 !important;
+}
+
+
+/* ═══════════════════════════════════════════════════════════════
+   §5  MAIN TAB BAR (#mainTabBar) — 28px MENU row
+   ═══════════════════════════════════════════════════════════════
+   
+   This is the MENU level: Overview | Stock | Decide | Trader | Markets | Tools
+   Each item, when clicked, populates #groupSubNav with its SUBMENU items.
+   ═══════════════════════════════════════════════════════════════ */
+#mainTabBar,
+.tab-bar {
+  height: var(--t-tab) !important;
+  min-height: var(--t-tab) !important;
+  max-height: var(--t-tab) !important;
+  background: var(--t-bg-bar) !important;
+  border-bottom: 1px solid var(--t-border) !important;
+  box-shadow: none !important;
+  padding: 0 8px !important;
+  gap: 0 !important;
+  position: sticky !important;
+  top: calc(var(--t-ticker) + var(--t-nav) + var(--t-rh)) !important;
+  z-index: 200 !important;
+  align-items: stretch !important;
+  overflow-x: auto !important;
+  scrollbar-width: none !important;
+}
+#mainTabBar::-webkit-scrollbar {
+  display: none !important;
+}
+
+/* — Menu items — */
+.tab-btn {
+  height: var(--t-tab) !important;
+  padding: 0 14px !important;
+  font-size: 10px !important;
+  font-weight: 600 !important;
+  font-family: var(--t-sans) !important;
+  letter-spacing: .3px !important;
+  color: var(--t-text-dim) !important;
+  background: transparent !important;
+  border: none !important;
+  border-bottom: 2px solid transparent !important;
+  border-radius: 0 !important;
+  gap: 4px !important;
+  white-space: nowrap !important;
+  transition: color .15s, border-color .15s, background .15s !important;
+  box-shadow: none !important;
+  line-height: 1 !important;
+  display: flex !important;
+  align-items: center !important;
+}
+.tab-btn .tab-icon {
+  width: 16px !important;
+  height: 16px !important;
+  font-size: 10px !important;
+  border-radius: 3px !important;
+  background: transparent !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+.tab-btn:hover:not(.active) {
+  color: var(--t-text) !important;
+  background: rgba(255,255,255,.04) !important;
+}
+
+/* — Active menu item — */
+.tab-btn.active {
+  color: #FFFFFF !important;
+  background: rgba(59,130,246,.08) !important;
+  border-bottom: 2px solid var(--t-accent) !important;
+  font-weight: 700 !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+}
+.tab-btn.active .tab-icon {
+  background: rgba(59,130,246,.15) !important;
+  color: var(--t-accent) !important;
+}
+
+/* Override the [data-color] specificity from index.html */
+.tab-btn[data-color] {
+  color: var(--t-text-dim) !important;
+  background: transparent !important;
+  border-bottom-color: transparent !important;
+}
+.tab-btn[data-color]:hover:not(.active) {
+  color: var(--t-text) !important;
+  background: rgba(255,255,255,.04) !important;
+}
+.tab-btn[data-color].active {
+  color: #FFFFFF !important;
+  background: rgba(59,130,246,.08) !important;
+  border-bottom-color: var(--t-accent) !important;
+}
+.tab-btn[data-color].active .tab-icon {
+  background: rgba(59,130,246,.15) !important;
+  color: var(--t-accent) !important;
+}
+
+/* Kill tooltips on tabs — too noisy */
+.tab-btn::after {
+  display: none !important;
+}
+
+
+/* ═══════════════════════════════════════════════════════════════
+   §6  GROUP SUB-NAV (#groupSubNav) — 26px SUBMENU row
+   ═══════════════════════════════════════════════════════════════
+   
+   This is the SUBMENU level. Populated by JS per active menu.
+   For Overview: shows Overview | Valuation | Technical | Activity | Risk
+   For Stock: shows AI Analysis | DCF Valuation | Research | Compare
+   etc.
+   
+   The 5 overview sub-tabs from #summarySubTabs are MERGED here via JS.
+   ═══════════════════════════════════════════════════════════════ */
+#groupSubNav {
+  height: var(--t-sub) !important;
+  min-height: var(--t-sub) !important;
+  max-height: var(--t-sub) !important;
+  background: var(--t-bg-sub) !important;
+  border-bottom: 1px solid var(--t-border) !important;
+  box-shadow: none !important;
+  padding: 0 10px !important;
+  gap: 2px !important;
+  position: sticky !important;
+  top: calc(var(--t-ticker) + var(--t-nav) + var(--t-rh) + var(--t-tab)) !important;
+  z-index: 190 !important;
+  align-items: center !important;
+  overflow-x: auto !important;
+  flex-wrap: nowrap !important;
+  scrollbar-width: none !important;
+  -webkit-overflow-scrolling: touch !important;
+}
+#groupSubNav::-webkit-scrollbar {
+  display: none !important;
+}
+
+/* — Submenu items (pills) — */
+#groupSubNav .sub-tab-btn,
+#groupSubNav button {
+  height: 20px !important;
+  padding: 0 10px !important;
+  font-size: 9px !important;
+  font-weight: 600 !important;
+  font-family: var(--t-sans) !important;
+  letter-spacing: .2px !important;
+  color: var(--t-text-dim) !important;
+  background: transparent !important;
+  border: 1px solid rgba(255,255,255,.06) !important;
+  border-radius: 4px !important;
+  cursor: pointer !important;
+  white-space: nowrap !important;
+  flex-shrink: 0 !important;
+  transition: all .12s ease !important;
+  line-height: 18px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+}
+/* BUG 5: Also catch bare .sub-tab-btn outside groupSubNav (switchTab sets inline styles) */
+.sub-tab-btn {
+  border-radius: 4px !important;
+  font-family: var(--t-sans) !important;
+}
+#groupSubNav .sub-tab-btn:hover:not(.active),
+#groupSubNav button:hover:not(.active) {
+  color: var(--t-text) !important;
+  background: rgba(255,255,255,.05) !important;
+  border-color: rgba(255,255,255,.1) !important;
+}
+
+/* — Active submenu pill — */
+#groupSubNav .sub-tab-btn.active,
+#groupSubNav button.active {
+  color: #FFFFFF !important;
+  background: var(--t-accent) !important;
+  border-color: var(--t-accent) !important;
+  box-shadow: 0 1px 4px rgba(59,130,246,.3) !important;
+  font-weight: 700 !important;
+}
+
+/* — Separator dots between submenu groups — */
+#groupSubNav .t-sep {
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: rgba(255,255,255,.15);
+  flex-shrink: 0;
+  margin: 0 4px;
+}
+
+
+/* ═══════════════════════════════════════════════════════════════
+   §7  SUMMARY SUB-TABS (#summarySubTabs) — HIDDEN
+   ═══════════════════════════════════════════════════════════════
+   
+   These 5 buttons (Overview, Valuation, Technical, Activity, Risk) 
+   are now rendered INSIDE #groupSubNav by the terminal-override.js.
+   The original bar is permanently hidden.
+   ═══════════════════════════════════════════════════════════════ */
+#summarySubTabs {
+  display: none !important;
+  height: 0 !important;
+  overflow: hidden !important;
+  visibility: hidden !important;
+}
+
+
+/* ═══════════════════════════════════════════════════════════════
+   §8  CONTENT AREA — Clean white surface
+   ═══════════════════════════════════════════════════════════════ */
+
+/* BUG 2: #analysisSubTabs — sticky sub-tab bar for Stock > AI Analysis */
+#analysisSubTabs {
+  background: var(--t-bg-sub) !important;
+  border-bottom: 1px solid var(--t-border) !important;
+  position: sticky !important;
+  top: calc(var(--t-ticker) + var(--t-nav) + var(--t-rh) + var(--t-tab) + var(--t-sub)) !important;
+  z-index: 185 !important;
+  padding: 4px 10px !important;
+  gap: 4px !important;
+  flex-wrap: nowrap !important;
+  overflow-x: auto !important;
+  scrollbar-width: none !important;
+}
+#analysisSubTabs::-webkit-scrollbar { display: none !important; }
+#analysisSubTabs .stab {
+  height: 20px !important;
+  padding: 0 10px !important;
+  font-size: 9px !important;
+  font-weight: 600 !important;
+  color: var(--t-text-dim) !important;
+  background: transparent !important;
+  border: 1px solid rgba(255,255,255,.06) !important;
+  border-radius: 4px !important;
+  line-height: 18px !important;
+  white-space: nowrap !important;
+}
+#analysisSubTabs .stab:hover:not(.active) {
+  color: var(--t-text) !important;
+  background: rgba(255,255,255,.05) !important;
+}
+#analysisSubTabs .stab.active {
+  color: #fff !important;
+  background: var(--t-accent) !important;
+  border-color: var(--t-accent) !important;
+  font-weight: 700 !important;
+}
+
+/* BUG 3: scroll-margin-top — match new total chrome height (148px + buffer) */
+.sc {
+  scroll-margin-top: 160px !important;
+}
+[data-subtab] {
+  scroll-margin-top: 170px !important;
+}
+[data-asub] {
+  scroll-margin-top: 170px !important;
+}
+#report {
+  scroll-margin-top: 110px !important;
+}
+
+/* BUG 12: Hide pricing link in footer */
+a[href="#premiumPricing"] {
+  display: none !important;
+}
+
+/* BUG 13: Kill ALL tooltip pseudo-elements on tab/sub-tab buttons */
+.tab-btn[title]:hover::after,
+.tab-btn[data-tip]:hover::after,
+.sub-tab-btn[title]:hover::after {
+  display: none !important;
+  opacity: 0 !important;
+  visibility: hidden !important;
+  content: none !important;
+}
+#report {
+  max-width: 1120px !important;
+  padding: 0 12px 24px !important;
+  background: var(--t-surface) !important;
+}
+
+/* Section cards (.sc) — tighter, sharper */
+.sc {
+  border-radius: 8px !important;
+  margin-bottom: 6px !important;
+  box-shadow: 0 1px 2px rgba(0,0,0,.04) !important;
+  border: 1px solid var(--t-border-l) !important;
+}
+.sc:hover {
+  box-shadow: 0 2px 8px rgba(0,0,0,.06) !important;
+  transform: none !important; /* kill float-on-hover */
+}
+.sc .sh {
+  padding: 10px 14px 0 !important;
+}
+.sc .st {
+  font-size: 11px !important;
+  font-weight: 700 !important;
+}
+.sc .si {
+  width: 24px !important;
+  height: 24px !important;
+  border-radius: 6px !important;
+  font-size: 12px !important;
+}
+.sc .sbody {
+  padding: 10px 14px 12px !important;
+}
+/* Kill the left-border accent on expanded cards — too noisy */
+.sc:not(.collapsed) {
+  border-left: 1px solid var(--t-border-l) !important;
+}
+/* Collapse chevron — smaller */
+.sc .sh::after {
+  width: 18px !important;
+  height: 18px !important;
+  font-size: 8px !important;
+  border-radius: 4px !important;
+}
+
+/* Metric cards */
+.mcard {
+  border-radius: 6px !important;
+  padding: 10px !important;
+}
+.ml {
+  font-size: 8px !important;
+  letter-spacing: .6px !important;
+}
+.mv {
+  font-size: 16px !important;
+}
+
+/* Chart cards */
+.ccard {
+  border-radius: 6px !important;
+  padding: 12px !important;
+}
+
+/* Tab content scroll area */
+.tab-scroll-area {
+  padding: 10px 0 !important;
+  border: none !important;
+  background: transparent !important;
+}
+
+/* sub-nav inside content sections — restyle to match submenu */
+/* BUG 7: correct top position for all 5 sticky layers */
+.sub-nav {
+  background: #F8FAFC !important;
+  border-bottom: 1px solid var(--t-border-l) !important;
+  backdrop-filter: none !important;
+  padding: 6px 12px !important;
+  gap: 4px !important;
+  top: calc(var(--t-ticker) + var(--t-nav) + var(--t-rh) + var(--t-tab) + var(--t-sub)) !important;
+  z-index: 96 !important;
+}
+.sub-nav a {
+  font-size: 10px !important;
+  padding: 3px 10px !important;
+  border-radius: 4px !important;
+}
+
+
+/* ═══════════════════════════════════════════════════════════════
+   §9  PREMIUM SECTIONS — Tighter spacing
+   ═══════════════════════════════════════════════════════════════ */
+.prem-section {
+  border-radius: 8px !important;
+  margin-bottom: 6px !important;
+}
+.prem-fold {
+  padding: 10px 14px !important;
+  gap: 8px !important;
+}
+.prem-fold-icon {
+  width: 28px !important;
+  height: 28px !important;
+  border-radius: 6px !important;
+  font-size: 14px !important;
+}
+.prem-fold-title h3 {
+  font-size: 11px !important;
+}
+.prem-fold-title p {
+  font-size: 8px !important;
+}
+.prem-fold-badge {
+  font-size: 8px !important;
+  padding: 2px 8px !important;
+}
+.prem-fold-body {
+  padding: 0 14px !important;
+}
+.prem-fold.open + .prem-fold-body {
+  padding: 0 14px 12px !important;
+}
+.prem-card {
+  border-radius: 8px !important;
+  padding: 12px 14px !important;
+}
+.prem-card::before {
+  height: 2px !important;
+}
+
+
+/* ═══════════════════════════════════════════════════════════════
+   §10  DECISION ENGINE / TRADING COCKPIT — Compact
+   ═══════════════════════════════════════════════════════════════ */
+.dc {
+  border-radius: 12px !important;
+}
+.dc-hero {
+  padding: 20px 20px 16px !important;
+}
+.dc-section {
+  padding: 14px 18px !important;
+}
+.dc-section-title {
+  font-size: 10px !important;
+}
+
+
+/* ═══════════════════════════════════════════════════════════════
+   §11  TABLES — Denser terminal-style
+   ═══════════════════════════════════════════════════════════════ */
+.prem-table thead th {
+  padding: 6px 10px !important;
+  font-size: 8px !important;
+  letter-spacing: .6px !important;
+}
+.prem-table tbody td {
+  padding: 6px 10px !important;
+  font-size: 10px !important;
+}
+.pick-tbl th {
+  padding: 4px 6px !important;
+  font-size: 8px !important;
+}
+.pick-tbl td {
+  padding: 4px 6px !important;
+  font-size: 10px !important;
+}
+
+
+/* ═══════════════════════════════════════════════════════════════
+   §12  FOOTER — Minimal single line
+   ═══════════════════════════════════════════════════════════════ */
+footer {
+  border-top: 1px solid var(--t-border-l) !important;
+}
+footer > div {
+  padding: 12px 20px 8px !important;
+}
+.fblogo {
+  width: 20px !important;
+  height: 20px !important;
+  font-size: 9px !important;
+  border-radius: 4px !important;
+}
+.fbname {
+  font-size: 10px !important;
+}
+
+
+/* ═══════════════════════════════════════════════════════════════
+   §13  ALGO BUTTONS & REGION TOGGLES — Compact
+   ═══════════════════════════════════════════════════════════════ */
+.algo-btn {
+  padding: 3px 10px !important;
+  font-size: 9px !important;
+  border-radius: 4px !important;
+  font-weight: 600 !important;
+  background: transparent !important;
+  border: 1px solid var(--t-border-l) !important;
+  color: var(--t-text-dim) !important;
+}
+.algo-btn:hover:not(.active) {
+  background: #F1F5F9 !important;
+  color: var(--t-accent) !important;
+  border-color: var(--t-accent) !important;
+}
+.algo-btn.active {
+  background: var(--t-accent) !important;
+  color: #fff !important;
+  border-color: var(--t-accent) !important;
+  box-shadow: 0 1px 4px rgba(59,130,246,.2) !important;
+}
+
+
+/* ═══════════════════════════════════════════════════════════════
+   §14  MODAL — Tighter
+   ═══════════════════════════════════════════════════════════════ */
+.deep-modal-panel {
+  border-radius: 12px 12px 0 0 !important;
+}
+.deep-modal-header {
+  padding: 10px 16px !important;
+}
+.deep-modal-body {
+  padding: 12px 16px 24px !important;
+}
+.deep-modal-close {
+  width: 28px !important;
+  height: 28px !important;
+  font-size: 14px !important;
+}
+
+
+/* ═══════════════════════════════════════════════════════════════
+   §15  SCROLLBAR — Terminal-thin
+   ═══════════════════════════════════════════════════════════════ */
+::-webkit-scrollbar {
+  width: 4px !important;
+  height: 4px !important;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(100,116,139,.2) !important;
+  border-radius: 2px !important;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(100,116,139,.35) !important;
+}
+::-webkit-scrollbar-track {
+  background: transparent !important;
+}
+
+
+/* ═══════════════════════════════════════════════════════════════
+   §16  RESPONSIVE — Mobile (<768px)
+   ═══════════════════════════════════════════════════════════════ */
+@media (max-width: 768px) {
+  :root {
+    --t-nav:    32px;
+    --t-rh:     28px;
+    --t-tab:    26px;
+    --t-sub:    24px;
+    --t-ticker: 24px;
+    --nav-h:    32px;
+  }
+
+  nav {
+    padding: 0 10px !important;
+  }
+  .nlogo {
+    width: 20px !important;
+    height: 20px !important;
+    font-size: 9px !important;
+  }
+  .nname {
+    font-size: 10px !important;
+  }
+  .nlive {
+    display: none !important;
+  }
+
+  .tab-btn {
+    padding: 0 8px !important;
+    font-size: 8px !important;
+    gap: 2px !important;
+  }
+  .tab-btn .tab-icon {
+    width: 13px !important;
+    height: 13px !important;
+    font-size: 8px !important;
+  }
+
+  #groupSubNav .sub-tab-btn,
+  #groupSubNav button {
+    font-size: 8px !important;
+    padding: 0 7px !important;
+    height: 18px !important;
+    line-height: 16px !important;
+  }
+
+  .hero .irow {
+    grid-template-columns: 1fr 1fr 80px !important;
+  }
+
+  .sc .sh {
+    padding: 8px 10px 0 !important;
+  }
+  .sc .sbody {
+    padding: 8px 10px 10px !important;
+  }
+  .sc .st {
+    font-size: 10px !important;
+  }
+}
+
+@media (max-width: 480px) {
+  :root {
+    --t-nav:    30px;
+    --t-tab:    24px;
+    --t-sub:    22px;
+    --nav-h:    30px;
+  }
+
+  .tab-btn {
+    padding: 0 6px !important;
+    font-size: 7px !important;
+  }
+  .tab-btn .tab-icon {
+    display: none !important; /* icons too small to be useful */
+  }
+
+  #groupSubNav .sub-tab-btn,
+  #groupSubNav button {
+    font-size: 7px !important;
+    padding: 0 6px !important;
+  }
+
+  #actionToolbar button {
+    padding: 1px 4px !important;
+    font-size: 8px !important;
+  }
+}
+
+
+/* ═══════════════════════════════════════════════════════════════
+   §17  DARK MODE — Full terminal dark theme
+   ═══════════════════════════════════════════════════════════════
+   premium-theme.css forces light everywhere with [data-theme="dark"] overrides.
+   We COUNTER every one of those + add proper dark content styling.
+   ═══════════════════════════════════════════════════════════════ */
+
+/* — Counter premium-theme.css §2 dark kills — */
+[data-theme="dark"] {
+  --bg: #0C1222 !important; --bg2: #131D32 !important; --bg3: #1A2742 !important;
+  --surface: #131D32 !important; --glass: rgba(12,18,34,.97) !important;
+  --border: rgba(255,255,255,.08) !important; --border2: rgba(255,255,255,.14) !important;
+  --text: #F1F5F9 !important; --text2: #CBD5E1 !important; --text3: #64748B !important;
+  --blue: #60A5FA !important; --green: #34D399 !important; --red: #F87171 !important;
+  --amber: #FBBF24 !important; --purple: #A78BFA !important; --cyan: #22D3EE !important;
+  --t-border-l: rgba(255,255,255,.08) !important;
+  --t-surface: #131D32 !important;
+}
+[data-theme="dark"] body {
+  background: #0B1120 !important;
+  color: #F1F5F9 !important;
+}
+
+/* — Nav / ticker / tabs: already dark, keep as-is — */
+[data-theme="dark"] nav {
+  background: var(--t-bg-panel) !important;
+}
+[data-theme="dark"] .gticker {
+  background: #060B14 !important;
+}
+[data-theme="dark"] #mainTabBar,
+[data-theme="dark"] .tab-bar {
+  background: var(--t-bg-bar) !important;
+  border-bottom-color: var(--t-border) !important;
+}
+[data-theme="dark"] .tab-btn {
+  color: #64748B !important;
+  background: transparent !important;
+}
+[data-theme="dark"] .tab-btn:hover:not(.active) {
+  background: rgba(255,255,255,.04) !important;
+  color: #F1F5F9 !important;
+}
+[data-theme="dark"] .tab-btn.active {
+  color: #fff !important;
+  background: rgba(59,130,246,.08) !important;
+  border-bottom-color: #3B82F6 !important;
+}
+[data-theme="dark"] .tab-btn.active .tab-icon {
+  background: rgba(59,130,246,.15) !important;
+  color: #3B82F6 !important;
+}
+[data-theme="dark"] #groupSubNav {
+  background: var(--t-bg-sub) !important;
+  border-bottom-color: var(--t-border) !important;
+}
+[data-theme="dark"] #analysisSubTabs {
+  background: var(--t-bg-sub) !important;
+  border-bottom-color: var(--t-border) !important;
+}
+
+/* — Report header — */
+[data-theme="dark"] #reportHeader {
+  background: #0F172A !important;
+  border-bottom-color: rgba(255,255,255,.06) !important;
+}
+[data-theme="dark"] #reportHeader .rpco {
+  color: #F1F5F9 !important;
+}
+[data-theme="dark"] #actionToolbar button {
+  background: rgba(255,255,255,.04) !important;
+  border-color: rgba(255,255,255,.08) !important;
+  color: #94A3B8 !important;
+}
+[data-theme="dark"] #actionToolbar button:first-child {
+  background: #3B82F6 !important;
+  border-color: #3B82F6 !important;
+  color: #fff !important;
+}
+
+/* — Content cards — */
+[data-theme="dark"] .sc {
+  background: #131D32 !important;
+  border-color: rgba(255,255,255,.06) !important;
+}
+[data-theme="dark"] .sc:not(.collapsed) {
+  border-left-color: rgba(99,102,241,.3) !important;
+}
+[data-theme="dark"] .sc .st {
+  color: #F1F5F9 !important;
+}
+[data-theme="dark"] .sc .sh::after {
+  background: rgba(255,255,255,.06) !important;
+  color: #64748B !important;
+}
+[data-theme="dark"] .mcard {
+  background: #0F172A !important;
+  border-color: rgba(255,255,255,.06) !important;
+}
+[data-theme="dark"] .ccard {
+  background: #0F172A !important;
+  border-color: rgba(255,255,255,.06) !important;
+}
+[data-theme="dark"] .icard {
+  background: #0F172A !important;
+  border-color: rgba(255,255,255,.06) !important;
+}
+
+/* — Hero / search — */
+[data-theme="dark"] .hero {
+  background: #0B1120 !important;
+  border-bottom-color: rgba(255,255,255,.06) !important;
+}
+[data-theme="dark"] .hero::before {
+  display: none !important;
+}
+[data-theme="dark"] .hero .icard {
+  background: #131D32 !important;
+  border-color: rgba(255,255,255,.06) !important;
+}
+[data-theme="dark"] .hero.collapsed {
+  background: #0B1120 !important;
+  border-bottom-color: rgba(255,255,255,.06) !important;
+}
+[data-theme="dark"] input,
+[data-theme="dark"] select,
+[data-theme="dark"] textarea {
+  background: #0C1222 !important;
+  color: #F1F5F9 !important;
+  border-color: rgba(255,255,255,.1) !important;
+}
+[data-theme="dark"] .ipt {
+  background: #0C1222 !important;
+  color: #F1F5F9 !important;
+  border-color: rgba(255,255,255,.1) !important;
+}
+[data-theme="dark"] .ac {
+  background: #131D32 !important;
+  border-color: rgba(255,255,255,.08) !important;
+}
+
+/* — Tables — */
+[data-theme="dark"] thead th {
+  background: rgba(255,255,255,.03) !important;
+  color: #64748B !important;
+}
+[data-theme="dark"] table th {
+  color: #94A3B8 !important;
+}
+[data-theme="dark"] table td {
+  color: #CBD5E1 !important;
+  border-color: rgba(255,255,255,.04) !important;
+}
+
+/* — Details/accordions — */
+[data-theme="dark"] details {
+  background: #131D32 !important;
+  border-color: rgba(255,255,255,.06) !important;
+}
+[data-theme="dark"] details summary {
+  color: #F1F5F9 !important;
+}
+
+/* — Premium cards / folds — */
+[data-theme="dark"] .prem-section {
+  background: #131D32 !important;
+  border-color: rgba(255,255,255,.06) !important;
+}
+[data-theme="dark"] .prem-card {
+  background: #0F172A !important;
+  border-color: rgba(255,255,255,.06) !important;
+}
+[data-theme="dark"] .prem-fold-chevron {
+  background: rgba(255,255,255,.06) !important;
+  color: #64748B !important;
+}
+
+/* — Algo / sub-tab buttons in dark — */
+[data-theme="dark"] .algo-btn {
+  background: transparent !important;
+  border-color: rgba(255,255,255,.08) !important;
+  color: #64748B !important;
+}
+[data-theme="dark"] .algo-btn:hover:not(.active) {
+  background: rgba(255,255,255,.04) !important;
+  color: #F1F5F9 !important;
+}
+[data-theme="dark"] .algo-btn.active {
+  background: #3B82F6 !important;
+  color: #fff !important;
+  border-color: #3B82F6 !important;
+}
+
+/* — Sub-nav inside content — */
+[data-theme="dark"] .sub-nav {
+  background: #0F172A !important;
+  border-bottom-color: rgba(255,255,255,.06) !important;
+}
+
+/* — Decision cockpit — */
+[data-theme="dark"] .dc-glass {
+  background: rgba(19,29,50,.9) !important;
+  border-color: rgba(255,255,255,.06) !important;
+}
+
+/* — Scrollbar dark — */
+[data-theme="dark"] ::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,.1) !important;
+}
+
+/* — Footer dark — */
+[data-theme="dark"] footer {
+  border-top-color: rgba(255,255,255,.06) !important;
+  background: #0B1120 !important;
+}
+[data-theme="dark"] footer a,
+[data-theme="dark"] footer div {
+  color: #64748B !important;
+}
+[data-theme="dark"] footer a:hover {
+  color: #F1F5F9 !important;
+}
+
+/* — Report container — */
+[data-theme="dark"] #report {
+  background: #0B1120 !important;
+}
+[data-theme="dark"] .tab-scroll-area {
+  background: transparent !important;
+}
+
+/* — Gridbg — */
+[data-theme="dark"] .gridbg {
+  background: #0B1120 !important;
+}
+
+/* — Metric cards — */
+[data-theme="dark"] .t-metric,
+[data-theme="dark"] .kpi-card {
+  background: rgba(255,255,255,.03) !important;
+  border-color: rgba(255,255,255,.06) !important;
+}
+
+/* — Chart inference boxes — */
+[data-theme="dark"] .chart-card {
+  background: #131D32 !important;
+  border-color: rgba(255,255,255,.06) !important;
+}
+[data-theme="dark"] .chart-inference {
+  background: rgba(59,130,246,.06) !important;
+}
+
+
+/* ═══════════════════════════════════════════════════════════════
+   §18  PRINT OVERRIDE — Clean prints
+   ═══════════════════════════════════════════════════════════════ */
+@media print {
+  nav, .gticker, #mainTabBar, #groupSubNav, #summarySubTabs,
+  #analysisSubTabs, #actionToolbar, .btt, .edu-bar, footer,
+  .site-watermark, .hero, #pwaInstallBanner, #globalDecisionBar {
+    display: none !important;
+  }
+  #report {
+    display: block !important;
+    padding: 0 !important;
+  }
+  .sc {
+    break-inside: avoid;
+    box-shadow: none !important;
+    border: 1px solid #ccc !important;
+  }
+  body::before {
+    content: none !important;
+  }
+}
