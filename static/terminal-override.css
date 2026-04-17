@@ -274,3 +274,114 @@ details [style*="font-size:6px"],details [style*="font-size:7px"],details [style
 
 /* === §27 PRINT === */
 @media print { nav,.gticker,#mainTabBar,#groupSubNav,#summarySubTabs,#analysisSubTabs,#actionToolbar,.btt,.edu-bar,.site-watermark,.hero,#pwaInstallBanner,#globalDecisionBar { display: none !important; } #report { display: block !important; padding: 0 !important; background: #fff !important; color: #000 !important; } .sc { background: #fff !important; color: #000 !important; border: 1px solid #ccc !important; break-inside: avoid; } .sc .st { color: #000 !important; } .sc .sbody { color: #333 !important; } }
+
+/* ================================================================
+   §28 FULL VIEWPORT LAYOUT — Every page fills screen
+   ================================================================ */
+
+/* Make the content area fill remaining viewport */
+#report {
+  height: calc(100vh - var(--ticker-h, 24px) - var(--nav-h, 40px) - var(--rh-h, 28px) - var(--tab-h, 30px)) !important;
+  overflow: auto !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+/* Hero fills remaining space on home page (before report loads) */
+.hero:not(.collapsed) {
+  min-height: calc(100vh - var(--ticker-h, 24px) - var(--nav-h, 40px) - 60px) !important;
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: center !important;
+}
+
+/* ================================================================
+   §29 DECIDE TAB — 3-PANEL SPLIT LAYOUT (per spec)
+   
+   .dc container gets CSS grid:
+   - Top area: hero + why + engine (left 65%) + gauges (right 35%)
+   - Bottom: scanner 220px
+   ================================================================ */
+
+/* The .dc container — full height grid */
+.dc {
+  display: grid !important;
+  grid-template-columns: 65% 35% !important;
+  grid-template-rows: 1fr 200px !important;
+  height: calc(100vh - var(--ticker-h, 24px) - var(--nav-h, 40px) - var(--rh-h, 28px) - var(--tab-h, 30px) - 26px) !important;
+  overflow: hidden !important;
+  border-radius: 0 !important;
+  margin: 0 !important;
+}
+
+/* LEFT PANEL — Hero + Why + Engine (scrollable) */
+.dc-hero { grid-column: 1 !important; }
+.dc-why { grid-column: 1 !important; }
+
+/* RIGHT PANEL — Gauges + Trade Plan */
+.dc-grid { grid-column: 2 !important; grid-row: 1 !important; }
+
+/* BOTTOM SCANNER — spans full width */
+#scannerResults {
+  grid-column: 1 / -1 !important;
+  grid-row: 2 !important;
+  height: 200px !important;
+  overflow: auto !important;
+  border-top: 1px solid #1E293B !important;
+  background: #020617 !important;
+}
+
+/* Fallback: if .dc doesn't have grid children, use flexbox */
+.dc-flip-container {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  height: calc(100vh - var(--ticker-h, 24px) - var(--nav-h, 40px) - var(--rh-h, 28px) - var(--tab-h, 30px) - 60px) !important;
+  overflow: hidden !important;
+  border-radius: 0 !important;
+  margin: 0 !important;
+}
+
+/* LEFT side of the cockpit (hero + why + engine) */
+.dc-hero, .dc-why,
+.dc [style*="Elite"],
+.dc [style*="elite"],
+.dc-execute {
+  flex-basis: 65% !important;
+  max-width: 65% !important;
+}
+
+/* RIGHT side (gauges grid) */
+.dc-grid.dc-grid-5,
+.dc-grid {
+  flex-basis: 35% !important;
+  max-width: 35% !important;
+  overflow: auto !important;
+  border-left: 1px solid #1E293B !important;
+}
+
+/* Options engine output — also fill viewport */
+#deResult {
+  height: calc(100vh - var(--ticker-h, 24px) - var(--nav-h, 40px) - var(--rh-h, 28px) - var(--tab-h, 30px) - 80px) !important;
+  overflow: auto !important;
+}
+
+/* Algo result — fill viewport */
+#algoResult {
+  height: calc(100vh - var(--ticker-h, 24px) - var(--nav-h, 40px) - var(--rh-h, 28px) - var(--tab-h, 30px) - 80px) !important;
+  overflow: auto !important;
+}
+
+/* Section cards on non-Decide pages — no max-width constraint */
+.sc {
+  max-width: 100% !important;
+}
+
+/* ================================================================
+   §30 HEADER — 48px per spec with index selector
+   ================================================================ */
+nav {
+  height: 48px !important;
+  min-height: 48px !important;
+}
+.nlogo { width: 28px !important; height: 28px !important; font-size: 13px !important; border-radius: 6px !important; }
+.nname { font-size: 15px !important; }

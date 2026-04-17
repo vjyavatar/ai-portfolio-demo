@@ -173,3 +173,57 @@
     console.log('[Celesys Terminal v8] Production loaded - dark theme active');
   }
 })();
+
+// §12 INDEX SELECTOR — inject NIFTY/BANKNIFTY/SENSEX buttons into nav (per spec)
+function injectIndexSelector() {
+  var nav = document.querySelector('nav');
+  if (!nav || document.getElementById('terminalIndexSel')) return;
+  var container = document.createElement('div');
+  container.id = 'terminalIndexSel';
+  container.style.cssText = 'display:flex;gap:4px;align-items:center;margin-left:auto;margin-right:12px';
+  ['NIFTY','BANKNIFTY','SENSEX'].forEach(function(idx, i) {
+    var btn = document.createElement('button');
+    btn.textContent = idx;
+    btn.style.cssText = 'padding:4px 14px;border-radius:5px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;border:1px solid ' + (i === 0 ? '#3B82F6' : '#1E293B') + ';background:' + (i === 0 ? 'rgba(59,130,246,.1)' : 'transparent') + ';color:' + (i === 0 ? '#3B82F6' : '#64748B');
+    btn.onclick = function() {
+      container.querySelectorAll('button').forEach(function(b) {
+        b.style.borderColor = '#1E293B';
+        b.style.background = 'transparent';
+        b.style.color = '#64748B';
+      });
+      btn.style.borderColor = '#3B82F6';
+      btn.style.background = 'rgba(59,130,246,.1)';
+      btn.style.color = '#3B82F6';
+      // Trigger the index in the options engine if available
+      if (typeof window._loadOptionsDecide === 'function') window._loadOptionsDecide(idx);
+    };
+    container.appendChild(btn);
+  });
+  // Insert before the right-side elements
+  var rightSection = nav.querySelector('.nlive') || nav.querySelector('.npill');
+  if (rightSection && rightSection.parentElement === nav) {
+    nav.insertBefore(container, rightSection);
+  } else {
+    nav.appendChild(container);
+  }
+}
+injectIndexSelector();
+
+// §13 DECIDE TAB — Post-render DOM restructuring
+// After loadDE or options-engine renders, wrap sections into left/right panels
+function restructureDecideLayout() {
+  var dc = document.querySelector('.dc');
+  if (!dc) return;
+  // Mark dc for CSS grid layout
+  dc.setAttribute('data-terminal-split', 'true');
+}
+
+// Hook into loadDE to apply restructuring after render
+var _origLoadDE2 = window.loadDE;
+if (typeof _origLoadDE2 === 'function') {
+  window.loadDE = function() {
+    _origLoadDE2.apply(this, arguments);
+    setTimeout(restructureDecideLayout, 800);
+    setTimeout(restructureDecideLayout, 2000);
+  };
+}
