@@ -71,7 +71,9 @@
     lastClose: null,
     flash: null,
     countdown: formatCountdown(msUntilNextFiveMin()),
-    logs: []
+    logs: [],
+    loaded: false,
+    lastFetchMsg: ''
   };
 
   var timers = { countdown: null, soft90: null, candle5m: null };
@@ -79,46 +81,75 @@
 
   // ── DATA LAYER ──────────────────────────────────────────────────────────
   function mapScanRowToTrade(row) {
-    // /api/bottom-nav-scan → _score_one_ticker → _options_quick_impl
-    // Expected shape: { sym, spot, action, confidence|score, reason, atm_strike, trigger, sl, target, lot }
+    // /api/bottom-nav-scan returns tickers via _options_quick_impl → nse_options
+    // Real fields: sym, spot, pcr, atm_strike, chain_near_atm, ce_buildup, pe_buildup, max_pain, gex
+    // No server-side 'action'/'confidence' — we compute client-side from pcr, gex regime, buildup
     var sym = row.sym || row.symbol || '';
-    var action = row.action || '';
-    var isCall = action.indexOf('CALL') !== -1 || action === 'BUY CALL';
-    var isPut  = action.indexOf('PUT')  !== -1 || action === 'BUY PUT';
-    var side = isPut ? 'PE' : 'CE';
-    var atm = row.atm_strike || row.atm || Math.round((row.spot || 0));
-    var strike = atm + ' ' + side;
-    var conf = Math.round(row.confidence || row.score || row.cds_score || 0);
-    var reason = row.reason || row.setup || row.thesis || (side === 'CE' ? 'Bullish setup detected' : 'Bearish setup detected');
-    var price = row.ltp || row.premium || row.spot || 0;
-    var trigger = row.trigger || row.entry || (price * 1.002);
-    var sl = row.sl || row.stop || (price * 0.95);
-    var target = row.target || row.tp || (price * 1.1);
-    var lotMap = { NIFTY: 65, BANKNIFTY: 30, FINNIFTY: 60, MIDCPNIFTY: 120, SENSEX: 20 };
-    var lot = row.lot || lotMap[sym] || 50;
-    // State derived from confidence + action
+    var spot = row.spot || 0;
+    if (!sym || spot <= 0) return null;
+
+    var pcr = row.pcr || 1;
+    var gex = row.gex || {};
+    var gexRegime = (gex.regime || 'NEUTRAL').toUpperCase();
+    var ceBuildup = row.ce_buildup || [];
+    var peBuildup = row.pe_buildup || [];
+    var atm = row.atm_strike || Math.round(spot);
+    var maxPain = row.max_pain || atm;
+
+    // Derive direction: PCR > 1.3 = bullish (heavy put writing), PCR < 0.7 = bearish (heavy call writing)
+    // Combine with GEX regime: POSITIVE_GAMMA → pinning, NEGATIVE_GAMMA → volatile
+    var bullish = 0, bearish = 0;
+    if (pcr >= 1.2) bullish += 2; else if (pcr <= 0.8) bearish += 2;
+    if (spot > maxPain * 1.002) bullish += 1; else if (spot < maxPain * 0.998) bearish += 1;
+    if (peBuildup.length > 0 && (peBuildup[0].chg || 0) > 50000) bullish += 2;
+    if (ceBuildup.length > 0 && (ceBuildup[0].chg || 0) > 50000) bearish += 2;
+    if (gexRegime === 'POSITIVE') bullish += 1;
+    if (gexRegime === 'NEGATIVE') bearish += 1;
+
+    var side = bullish >= bearish ? 'CE' : 'PE';
+    var conf = Math.min(95, 45 + Math.abs(bullish - bearish) * 8);
+    if (conf < 55) return null; // filter out flat/noisy signals
+
     var stateKey = conf >= 80 ? 'ideal' : conf >= 70 ? 'early' : conf >= 60 ? 'late' : 'avoid';
-    if (!isCall && !isPut) return null;
+
+    // Reason string
+    var reasons = [];
+    if (pcr >= 1.3) reasons.push('Put writing PCR ' + pcr.toFixed(2));
+    else if (pcr <= 0.7) reasons.push('Call writing PCR ' + pcr.toFixed(2));
+    if (peBuildup[0] && (peBuildup[0].chg || 0) > 50000) reasons.push('PE buildup @' + peBuildup[0].strike);
+    if (ceBuildup[0] && (ceBuildup[0].chg || 0) > 50000) reasons.push('CE buildup @' + ceBuildup[0].strike);
+    if (gexRegime !== 'NEUTRAL') reasons.push(gexRegime + ' GEX');
+    var reason = reasons.length ? reasons.join(' + ') : (side === 'CE' ? 'Bullish structure' : 'Bearish structure');
+
+    // Get premium from chain_near_atm for the ATM strike
+    var chain = row.chain_near_atm || [];
+    var atmRow = chain.filter(function (r) { return r.strike === atm; })[0];
+    var premium = atmRow ? (side === 'CE' ? (atmRow.ce_ltp || 0) : (atmRow.pe_ltp || 0)) : 0;
+    if (premium <= 0) premium = Math.round(spot * 0.01);
+
+    // Risk levels: simple percentage based
+    var trigger = premium * 1.02;
+    var sl = premium * 0.85;
+    var target = premium * 1.30;
+
+    var lotMap = { NIFTY: 65, BANKNIFTY: 30, FINNIFTY: 60, MIDCPNIFTY: 120, SENSEX: 20 };
+    var lot = row.lot_size || lotMap[sym] || 50;
+
     return {
-      id: sym + '-' + strike,
-      symbol: sym, strike: strike, side: side,
-      confidence: conf, state: stateKey, reason: reason,
-      price: price, trigger: trigger, sl: sl, target: target, lot: lot,
+      id: sym + '-' + atm + '-' + side,
+      symbol: sym,
+      strike: atm + ' ' + side,
+      side: side,
+      confidence: Math.round(conf),
+      state: stateKey,
+      reason: reason,
+      price: premium,
+      trigger: trigger,
+      sl: sl,
+      target: target,
+      lot: lot,
       _raw: row
     };
-  }
-
-  function fetchTopTrades() {
-    return fetch('/api/bottom-nav-scan?region=' + state.region)
-      .then(function (r) { return r.json(); })
-      .then(function (d) {
-        if (!d || !d.tickers) return [];
-        return d.tickers
-          .map(mapScanRowToTrade)
-          .filter(function (t) { return t; })
-          .sort(function (a, b) { return b.confidence - a.confidence; });
-      })
-      .catch(function (e) { console.warn('[AT] bottom-nav fetch failed', e); return []; });
   }
 
   function fetchOptionChain(symbol, strikeStr) {
@@ -127,29 +158,37 @@
     return fetch('/api/nse-options?symbol=' + encodeURIComponent(symbol))
       .then(function (r) { return r.json(); })
       .then(function (d) {
-        if (!d || !d.success || !d.strike_oi) return [];
-        var strikes = Object.keys(d.strike_oi).map(Number).sort(function (a, b) { return a - b; });
+        if (!d || !d.success) return [];
+        // Response shape: { success, spot, atm_strike, chain_near_atm: [{strike, ce_oi, pe_oi, ce_chg, pe_chg, ...}] }
+        var chain = d.chain_near_atm || [];
+        if (chain.length === 0) return [];
+        var strikes = chain.map(function (r) { return r.strike; }).sort(function (a, b) { return a - b; });
         if (atmStrike === 0) atmStrike = d.atm_strike || strikes[Math.floor(strikes.length / 2)];
-        // Closest strike to ATM
+
+        // Find ATM index
         var atmIdx = 0, minDiff = Infinity;
         for (var i = 0; i < strikes.length; i++) {
           var diff = Math.abs(strikes[i] - atmStrike);
           if (diff < minDiff) { minDiff = diff; atmIdx = i; }
         }
+
+        // Build lookup for chain rows by strike
+        var lookup = {};
+        chain.forEach(function (c) { lookup[c.strike] = c; });
+
         var rows = [];
         for (var k = atmIdx - 2; k <= atmIdx + 2; k++) {
           if (k < 0 || k >= strikes.length) continue;
           var st = strikes[k];
-          var oi = d.strike_oi[st] || {};
+          var oi = lookup[st] || {};
           rows.push({
             strike: st,
             callOi: Math.round(oi.ce_chg || 0),
             putOi: Math.round(oi.pe_chg || 0),
-            volSpike: (oi.ce_chg || 0) > 50000 || (oi.pe_chg || 0) > 50000,
+            volSpike: Math.abs(oi.ce_chg || 0) > 50000 || Math.abs(oi.pe_chg || 0) > 50000,
             isAtm: k === atmIdx
           });
         }
-        // Pad to 5 rows if NSE returned fewer
         while (rows.length < 5) rows.push({ strike: 0, callOi: 0, putOi: 0, volSpike: false, isAtm: false });
         return rows;
       })
@@ -298,6 +337,9 @@
     for (var i = 0; i < 3; i++) {
       var t = state.trades[i];
       if (!t) {
+        var placeholderText = !state.loaded
+          ? 'Loading…'
+          : (state.lastFetchMsg || 'No high-confidence trades');
         panel.appendChild(el('div', {
           style: {
             height: '84px', marginBottom: '6px', borderRadius: '12px',
@@ -305,7 +347,7 @@
             alignItems: 'center', justifyContent: 'center',
             color: C.textMute, fontSize: '12px', fontStyle: 'italic'
           }
-        }, state.trades.length === 0 ? 'Loading…' : 'No high-confidence trades'));
+        }, placeholderText));
       } else {
         panel.appendChild(tradeCard(t));
       }
@@ -775,27 +817,55 @@
 
   // ── REFRESH CYCLES ──────────────────────────────────────────────────────
   function refreshTopTrades() {
-    return fetchTopTrades().then(function (trades) {
-      state.trades = trades;
-      // Also populate scanner from same data (scanner = trades 4..9)
-      state.scanner = trades.slice(3, 9).map(function (t) {
-        return {
-          symbol: t.symbol, direction: t.side,
-          score: t.confidence, state: t.state,
-          trend: [Math.max(40, t.confidence - 4), Math.max(45, t.confidence - 2), t.confidence]
-        };
-      });
-      // Auto-select first trade if none
-      if (!state.selected && trades.length > 0) {
-        state.selected = trades[0];
-        state.lastClose = trades[0].price;
-        fetchOptionChain(trades[0].symbol, trades[0].strike).then(function (rows) {
-          state.chain = rows;
-          rerender();
+    return fetch('/api/bottom-nav-scan?region=' + state.region)
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        state.loaded = true;
+        if (!d || !d.success) {
+          state.lastFetchMsg = 'API error — check /api/bottom-nav-scan';
+          state.trades = []; state.scanner = [];
+          rerender(); return;
+        }
+        var raw = d.tickers || [];
+        if (raw.length === 0) {
+          state.lastFetchMsg = 'Scanner still warming up (boot takes ~30s) — retrying';
+          state.trades = []; state.scanner = [];
+          rerender(); return;
+        }
+        var mapped = raw
+          .map(mapScanRowToTrade)
+          .filter(function (t) { return t; })
+          .sort(function (a, b) { return b.confidence - a.confidence; });
+        if (mapped.length === 0) {
+          state.lastFetchMsg = 'No high-conviction setups right now (' + raw.length + ' scanned)';
+        } else {
+          state.lastFetchMsg = '';
+        }
+        state.trades = mapped;
+        state.scanner = mapped.slice(3, 9).map(function (t) {
+          return {
+            symbol: t.symbol, direction: t.side,
+            score: t.confidence, state: t.state,
+            trend: [Math.max(40, t.confidence - 4), Math.max(45, t.confidence - 2), t.confidence]
+          };
         });
-      }
-      rerender();
-    });
+        // Auto-select first trade if none
+        if (!state.selected && mapped.length > 0) {
+          state.selected = mapped[0];
+          state.lastClose = mapped[0].price;
+          fetchOptionChain(mapped[0].symbol, mapped[0].strike).then(function (rows) {
+            state.chain = rows;
+            rerender();
+          });
+        }
+        rerender();
+      })
+      .catch(function (e) {
+        console.warn('[AT] bottom-nav fetch failed', e);
+        state.loaded = true;
+        state.lastFetchMsg = 'Network error — backend unreachable';
+        rerender();
+      });
   }
 
   function refreshChain() {
@@ -875,8 +945,31 @@
     var container = document.getElementById(containerId || 'deResult');
     if (!container) return;
 
+    // Neutralize the parent white card styling so our dark terminal isn't sandwiched
+    // in a white .sc wrapper. We restore it on unmount.
+    var sc = container.closest ? container.closest('.sc') : null;
+    var sbody = container.closest ? container.closest('.sbody') : null;
+    if (sc) {
+      sc.dataset._atPrevBorderLeft = sc.style.borderLeft || '';
+      sc.dataset._atPrevBg = sc.style.background || '';
+      sc.style.borderLeft = '3px solid #0F172A';
+      sc.style.background = '#020617';
+    }
+    if (sbody) {
+      sbody.dataset._atPrevBg = sbody.style.background || '';
+      sbody.dataset._atPrevPadding = sbody.style.padding || '';
+      sbody.style.background = '#020617';
+      sbody.style.padding = '0';
+    }
+    // Hide the old Visual Decision Engine header while Active Trading is active
+    var deHeader = document.getElementById('deHeader');
+    if (deHeader) {
+      deHeader.dataset._atPrevDisplay = deHeader.style.display || '';
+      deHeader.style.display = 'none';
+    }
+
     // Clear and create a dedicated mount node
-    container.innerHTML = '<div id="activeTradingMount" style="width:100%"></div>';
+    container.innerHTML = '<div id="activeTradingMount" style="width:100%;background:#020617"></div>';
     mounted = true;
 
     render(document.getElementById('activeTradingMount'));
@@ -889,5 +982,25 @@
     stopTimers();
     var mount = document.getElementById('activeTradingMount');
     if (mount) mount.innerHTML = '';
+    // Restore parent card styling
+    var sc = mount && mount.closest ? mount.closest('.sc') : null;
+    var sbody = mount && mount.closest ? mount.closest('.sbody') : null;
+    if (sc) {
+      sc.style.borderLeft = sc.dataset._atPrevBorderLeft || '';
+      sc.style.background = sc.dataset._atPrevBg || '';
+      delete sc.dataset._atPrevBorderLeft;
+      delete sc.dataset._atPrevBg;
+    }
+    if (sbody) {
+      sbody.style.background = sbody.dataset._atPrevBg || '';
+      sbody.style.padding = sbody.dataset._atPrevPadding || '';
+      delete sbody.dataset._atPrevBg;
+      delete sbody.dataset._atPrevPadding;
+    }
+    var deHeader = document.getElementById('deHeader');
+    if (deHeader) {
+      deHeader.style.display = deHeader.dataset._atPrevDisplay || '';
+      delete deHeader.dataset._atPrevDisplay;
+    }
   };
 })();
