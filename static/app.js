@@ -7367,11 +7367,16 @@ var r=document.getElementById('deResult');if(r)r.innerHTML='<div style="text-ali
 }
 window._deMode='investor';
 function switchDEMode(mode){
+// Unmount Active Trading terminal when switching away from it
+if(window._deMode==='activetrading' && mode!=='activetrading' && typeof window.unmountActiveTrading==='function'){
+  try{window.unmountActiveTrading()}catch(e){}
+}
 window._deMode=mode;
-var tb=document.getElementById('deModeTrader');var ib=document.getElementById('deModeInvestor');var pb=document.getElementById('deModePortfolio');var ob=document.getElementById('deModeOptions');
+var tb=document.getElementById('deModeTrader');var ib=document.getElementById('deModeInvestor');var pb=document.getElementById('deModePortfolio');var ob=document.getElementById('deModeOptions');var atb=document.getElementById('deModeActiveTrading');
 if(tb){tb.style.background=mode==='trader'?'linear-gradient(135deg,#1A3A78,#1e40af)':'#f1f5f9';tb.style.color=mode==='trader'?'#fff':'#374151';tb.style.border=mode==='trader'?'none':'1px solid #e2e5ea'}
 if(ib){ib.style.background=mode==='investor'?'linear-gradient(135deg,#1A3A78,#1e40af)':'#f1f5f9';ib.style.color=mode==='investor'?'#fff':'#374151';ib.style.border=mode==='investor'?'none':'1px solid #e2e5ea'}
 if(ob){ob.style.background=mode==='options'?'linear-gradient(135deg,#7c3aed,#a855f7)':'#f1f5f9';ob.style.color=mode==='options'?'#fff':'#374151';ob.style.border=mode==='options'?'none':'1px solid #e2e5ea'}
+if(atb){atb.style.background=mode==='activetrading'?'linear-gradient(135deg,#0f172a,#1e293b)':'#f1f5f9';atb.style.color=mode==='activetrading'?'#fff':'#374151';atb.style.border=mode==='activetrading'?'none':'1px solid #e2e5ea'}
 if(pb){pb.style.background=mode==='portfolio'?'linear-gradient(135deg,#1A3A78,#1e40af)':'#f1f5f9';pb.style.color=mode==='portfolio'?'#fff':'#374151'}
 
 // Hide/show index quick-buttons
@@ -7379,7 +7384,7 @@ var inIdx=document.getElementById('deStocksIN');var usIdx=document.getElementByI
 var deRegRow=document.getElementById('deRegIN');
 if(deRegRow)deRegRow=deRegRow.parentElement; // get the row containing region buttons
 
-if(mode==='options'){
+if(mode==='options'||mode==='activetrading'){
   // HIDE everything: INDICES row, region buttons, stock dropdown, custom input
   if(inIdx)inIdx.style.display='none';
   if(usIdx)usIdx.style.display='none';
@@ -7394,7 +7399,7 @@ if(mode==='options'){
 // Hide stock dropdown/region/analyze in Options mode
 var deCtrl=document.getElementById('deControls');
 if(deCtrl){
-  if(mode==='options'){
+  if(mode==='options'||mode==='activetrading'){
     // Hide ALL children except the mode buttons row
     var allChildren=deCtrl.children;
     for(var ci=0;ci<allChildren.length;ci++){
@@ -7417,7 +7422,19 @@ if(deCtrl){
 }
 
 var r=document.getElementById('deResult');
-if(mode==='options'){
+if(mode==='activetrading'){
+  // Mount the institutional trading terminal
+  if(typeof window.mountActiveTrading==='function'){
+    window.mountActiveTrading('deResult');
+  }else if(r){
+    r.innerHTML='<div style="text-align:center;padding:20px;color:var(--text3);font-size:10px">⏳ Loading Active Trading…</div>';
+    // Retry once active-trading.js finishes loading
+    var _retries=0;var _waitAT=setInterval(function(){_retries++;
+      if(typeof window.mountActiveTrading==='function'){clearInterval(_waitAT);window.mountActiveTrading('deResult');}
+      else if(_retries>40){clearInterval(_waitAT);if(r)r.innerHTML='<div style="text-align:center;padding:20px;color:var(--red);font-size:10px">Failed to load Active Trading terminal.</div>';}
+    },100);
+  }
+}else if(mode==='options'){
   // Auto-load NIFTY immediately
   // Quick Trade loads via options-engine.js switchDEMode patch — no action needed here
   if(r)r.innerHTML='<div style="text-align:center;padding:20px;color:var(--text3);font-size:10px">🎯 Loading Options...</div>';

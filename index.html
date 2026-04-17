@@ -1676,7 +1676,7 @@ window._fillAlgoSelect=fillSelect;
 <div style="display:flex;gap:0;border:2px solid var(--border);border-radius:10px;overflow:hidden">
 <button id="deModeTrader" onclick="switchDEMode('trader')" style="padding:8px 20px;font-size:11px;font-weight:800;border:none;cursor:pointer;font-family:Sora,sans-serif;background:#f1f5f9;color:#374151;transition:all .2s">⚡ Trader</button>
 <button id="deModeInvestor" onclick="switchDEMode('investor')" style="padding:8px 20px;font-size:11px;font-weight:800;border:none;cursor:pointer;font-family:Sora,sans-serif;background:linear-gradient(135deg,#1A3A78,#1e40af);color:#fff;transition:all .2s">📊 Investor</button>
-<button id="deModeOptions" onclick="switchDEMode('options')" style="padding:8px 20px;font-size:11px;font-weight:800;border:none;cursor:pointer;font-family:Sora,sans-serif;background:#f1f5f9;color:#374151;transition:all .2s">🎯 Options</button>
+<button id="deModeOptions" onclick="switchDEMode('options')" style="display:none;padding:8px 20px;font-size:11px;font-weight:800;border:none;cursor:pointer;font-family:Sora,sans-serif;background:#f1f5f9;color:#374151;transition:all .2s">🎯 Options</button><button id="deModeActiveTrading" onclick="switchDEMode('activetrading')" style="padding:8px 20px;font-size:11px;font-weight:800;border:none;cursor:pointer;font-family:Sora,sans-serif;background:#f1f5f9;color:#374151;transition:all .2s">🎯 Active Trading</button>
 </div>
 <div style="display:flex;gap:0;border:1px solid var(--border);border-radius:8px;overflow:hidden">
 <button id="deRegIN" onclick="switchDERegion('IN')" style="padding:6px 14px;font-size:10px;font-weight:800;border:none;cursor:pointer;font-family:Sora,sans-serif;background:linear-gradient(135deg,#1A3A78,#1e40af);color:#fff;box-shadow:0 2px 8px rgba(26,58,120,.2)">IN India</button>
@@ -2330,9 +2330,10 @@ Think of this as your <strong>daily briefing from a fund manager's desk</strong>
 <!-- BACK TO TOP -->
 <button class="btt" id="bttBtn" onclick="window.scrollTo({top:0,behavior:'smooth'})" aria-label="Back to top">&#8593; Top</button>
 
-<script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.9/purify.min.js" defer></script><script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script><script src="/static/app.min.js?v=1775711038"></script>
+<script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.9/purify.min.js" defer></script><script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script><script src="/static/app.min.js?v=1775711039"></script>
 <script src="/static/premium-override.js?v=1775711038" defer></script>
 <script src="/static/options-engine.js?v=1775711038" defer></script>
+<script src="/static/active-trading.js?v=2" defer></script>
 
 
 
