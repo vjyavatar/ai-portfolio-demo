@@ -3090,7 +3090,7 @@ app.add_middleware(DomainRedirectMiddleware)
 @app.get("/", response_class=HTMLResponse)
 async def home():
     try:
-        with open("static/dist/index.html", "r") as f:
+        with open("old_index.html", "r") as f:
             return f.read()
     except:
         return """<html><body style="font-family: Arial; padding: 50px; text-align: center;">
@@ -26484,4 +26484,5 @@ async def swing_analysis(symbol: str = "RELIANCE", region: str = "IN"):
 # React frontend serving (appended by UI revamp)
 from react_serve import attach_react_routes
 attach_react_routes(app)
+
 
