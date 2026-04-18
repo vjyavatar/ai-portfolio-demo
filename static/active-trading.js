@@ -44,6 +44,92 @@
 
   var confColor = function (c) { return c >= 80 ? C.green : c >= 60 ? C.yellow : C.red; };
 
+  // ── SCOPED CSS ──────────────────────────────────────────────────────────
+  // The Celesys site has hard-override rules:
+  //   [data-theme="dark"] .sc { background: #fff !important; ... }
+  //   .sbody { padding: 16px 20px 18px; }
+  // These force a white border around our dark terminal and add whitespace.
+  //
+  // Strategy: while Active Trading is mounted, we add `at-mode` class to
+  // document.body. Scoped rules below activate ONLY when that class exists
+  // AND ONLY for the .sc that contains #activeTradingMount (via :has selector
+  // with fallback). When unmounted, the class is removed and every other tab
+  // (Trader/Investor/Options) goes back to pristine white styling.
+  function installScopedStyles() {
+    if (document.getElementById('activeTradingScopedCSS')) return;
+    var css = [
+      // Terminal interior
+      '#activeTradingMount,',
+      '#activeTradingMount * {',
+      '  box-sizing: border-box;',
+      '}',
+      '#activeTradingMount {',
+      '  background: #020617 !important;',
+      '  color: #E2E8F0 !important;',
+      '  font-family: "Sora", "Inter", system-ui, sans-serif !important;',
+      '}',
+      '#activeTradingMount button,',
+      '#activeTradingMount input,',
+      '#activeTradingMount select {',
+      '  font-family: inherit;',
+      '}',
+
+      // Parent overrides — ONLY active while body.at-mode is set
+      // Uses :has() where supported (Chrome 105+, Safari 15.4+, Firefox 121+).
+      // Fallback: mount-level data attributes on the ancestors (set by JS).
+      'body.at-mode .sc:has(#activeTradingMount) {',
+      '  background: #020617 !important;',
+      '  border: 1px solid #1E293B !important;',
+      '  border-left: 3px solid #0F172A !important;',
+      '  box-shadow: none !important;',
+      '  padding: 0 !important;',
+      '}',
+      'body.at-mode .sc:has(#activeTradingMount) .sbody {',
+      '  background: #020617 !important;',
+      '  padding: 0 !important;',
+      '}',
+      'body.at-mode .sc:has(#activeTradingMount) #deHeader,',
+      'body.at-mode .sc:has(#activeTradingMount) .sh {',
+      '  display: none !important;',
+      '}',
+
+      // Fallback for older browsers without :has() — JS sets [data-at-host="1"]
+      'body.at-mode .sc[data-at-host="1"] {',
+      '  background: #020617 !important;',
+      '  border: 1px solid #1E293B !important;',
+      '  border-left: 3px solid #0F172A !important;',
+      '  box-shadow: none !important;',
+      '  padding: 0 !important;',
+      '}',
+      'body.at-mode .sc[data-at-host="1"] .sbody {',
+      '  background: #020617 !important;',
+      '  padding: 0 !important;',
+      '}',
+      'body.at-mode .sc[data-at-host="1"] > .sh,',
+      'body.at-mode .sc[data-at-host="1"] #deHeader {',
+      '  display: none !important;',
+      '}',
+
+      // Price flash animations (5m CLOSE field)
+      '@keyframes atPriceUp   { 0% { color: #22C55E; } 100% { color: #E2E8F0; } }',
+      '@keyframes atPriceDown { 0% { color: #EF4444; } 100% { color: #E2E8F0; } }',
+      '#activeTradingMount .at-flash-up { animation: atPriceUp .5s ease both; }',
+      '#activeTradingMount .at-flash-dn { animation: atPriceDown .5s ease both; }',
+
+      // Spec §8: Crossfade (opacity fade, 200-300ms, no slide/resize)
+      // Applied to Tier 1 value containers (confidence, state pill, price).
+      '@keyframes atCrossfade {',
+      '  0%   { opacity: 0.3; }',
+      '  100% { opacity: 1; }',
+      '}',
+      '#activeTradingMount .at-fade { animation: atCrossfade .25s ease both; }'
+    ].join('\n');
+    var s = document.createElement('style');
+    s.id = 'activeTradingScopedCSS';
+    s.textContent = css;
+    document.head.appendChild(s);
+  }
+
   // ── WALL-CLOCK 5m BOUNDARY ──────────────────────────────────────────────
   function nextFiveMinBoundary() {
     var d = new Date();
@@ -56,6 +142,15 @@
     var total = Math.max(0, Math.floor(ms / 1000));
     var m = Math.floor(total / 60), s = total % 60;
     return (m < 10 ? '0' : '') + m + ':' + (s < 10 ? '0' : '') + s;
+  }
+
+  function formatAgo(seconds) {
+    // Spec §9: "Last Updated: 01:30 ago"
+    if (seconds < 10) return 'just now';
+    if (seconds < 60) return seconds + 's ago';
+    var m = Math.floor(seconds / 60);
+    var s = seconds % 60;
+    return (m < 10 ? '0' : '') + m + ':' + (s < 10 ? '0' : '') + s + ' ago';
   }
 
   // ── MODULE STATE ────────────────────────────────────────────────────────
@@ -75,121 +170,375 @@
     loaded: false,
     lastFetchMsg: '',
     lockedIds: {},         // { tradeId: firstSeenTimestamp } — for 3-min stability lock
-    prevTradeIds: {}       // tracked across refreshes for "new top trade" voice trigger
+    prevTradeIds: {},      // tracked across refreshes for voice triggers
+    // v3 additions
+    scoreHistory: {},      // { tradeId: [prev3, prev2, prev1] } — for trend display
+    lastFullRefreshAt: 0,  // ms timestamp of last Tier 1 (5m close) update
+    lastTier2RefreshAt: 0, // ms timestamp of last Tier 2 (90s) update
+    gammaModeIds: {},      // { tradeId: true } trades currently in expiry-day gamma override
+    gammaHistory: {},      // { tradeId: { triggeredAtClose: <priceAtTrigger>, referenceClose } } for kill-switch
+    fadeTick: 0            // incremented on every 5m close; keyed into render to restart crossfade
   };
 
   var timers = { countdown: null, soft90: null, candle5m: null };
   var mounted = false;
 
   // ── DATA LAYER ──────────────────────────────────────────────────────────
-  function mapScanRowToTrade(row) {
-    // Real fields from /api/bottom-nav-scan:
-    //   sym, spot, vwap, today_open, today_high, today_low, pcr, max_pain, atm_strike,
-    //   chain_near_atm[], gex.regime, _fallback
-    // NOTE: When _fallback=true (NSE blocked), OI fields are all 0. We score from
-    //       price structure instead: VWAP, open, H/L range, max pain delta.
-    var sym = row.sym || row.symbol || '';
-    var spot = row.spot || 0;
-    if (!sym || spot <= 0) return null;
 
+  // ═══════════════════════════════════════════════════════════════════════
+  // v3 CONFIDENCE SCORE ENGINE
+  // Weighted composite: 0.25·Trend + 0.20·VWAP + 0.20·OI + 0.15·Vol + 0.10·Strike + 0.10·R:R
+  // All factors normalized to 0-100, clamped [0,100] at end.
+  // Computed ONLY at 5m candle close. Persisted for the full 5-min interval.
+  // ═══════════════════════════════════════════════════════════════════════
+
+  function scoreTrendStrength(row, side) {
+    // Inputs: last 3 x 5m candles from ohlc_bars.
+    // Bull: HH + HC (higher-high, higher-close) sequence → high score.
+    // Bear: LL + LC sequence → high score.
+    var bars = row.ohlc_bars || [];
+    if (bars.length < 3) return 50; // neutral when data missing
+    var last3 = bars.slice(-3);
+    var hh = 0, hc = 0, ll = 0, lc = 0;
+    for (var i = 1; i < 3; i++) {
+      if (last3[i].h > last3[i-1].h) hh++;
+      if (last3[i].c > last3[i-1].c) hc++;
+      if (last3[i].l < last3[i-1].l) ll++;
+      if (last3[i].c < last3[i-1].c) lc++;
+    }
+    var bullSeq = hh + hc; // 0-4
+    var bearSeq = ll + lc; // 0-4
+    var raw = side === 'CE' ? bullSeq : bearSeq;
+    // 4 → 95, 3 → 80, 2 → 65, 1 → 50, 0 → 30
+    var map = [30, 50, 65, 80, 95];
+    return map[Math.max(0, Math.min(4, raw))];
+  }
+
+  function scoreVwapAlignment(row, side) {
+    // VWAP distance normalized by ATR (simple ATR proxy: avg bar range over last 5).
+    var bars = row.ohlc_bars || [];
+    var spot = row.spot || 0, vwap = row.vwap || spot;
+    if (spot <= 0 || vwap <= 0) return 50;
+    var atr = 0;
+    if (bars.length >= 5) {
+      var sum = 0;
+      for (var i = bars.length - 5; i < bars.length; i++) sum += (bars[i].h - bars[i].l);
+      atr = sum / 5;
+    }
+    if (atr <= 0) atr = spot * 0.002; // fallback ATR ≈ 0.2% of spot
+    var dist = (spot - vwap) / atr; // positive = above VWAP
+    var signed = side === 'CE' ? dist : -dist;
+    // signed in ATR units: >1.5 → 95, 0.5-1.5 → 80, 0-0.5 → 65, 0 to -0.5 → 40, <-0.5 → 20
+    if (signed >= 1.5) return 95;
+    if (signed >= 0.5) return 80;
+    if (signed >= 0) return 65;
+    if (signed >= -0.5) return 40;
+    return 20;
+  }
+
+  function scoreOiStructure(row, side, isFallback) {
+    // Spec (strict): bullish CALL trade needs BOTH:
+    //   (a) CE OI ↑  (resistance writing shifting UP — call writers adding)
+    //   (b) PE OI ↑ heavy  (put writers strongly defending — floor building)
+    //       OR PE OI ↓ if current level broken (unwinding old support)
+    // For PUT trade: mirror.
+    //
+    // Scoring:
+    //   Both aligned → 85-100 (spec "Strong alignment")
+    //   One aligned  → 60-80  (spec "Partial")
+    //   Divergent    → <50    (spec "Divergent")
+    //
+    // Fallback mode: OI is zero → return neutral 50 (no signal).
+    if (isFallback) return 50;
+
+    var ceBuildup = row.ce_buildup || [];
+    var peBuildup = row.pe_buildup || [];
+    // Find the top strike buildup change on each side (may be 0 if flat/divergent)
+    var ceTopChg = ceBuildup[0] ? (ceBuildup[0].chg || 0) : 0;
+    var peTopChg = peBuildup[0] ? (peBuildup[0].chg || 0) : 0;
+    var pcr = row.pcr || 1;
+
+    // Classify each side as STRONG / WEAK / DIVERGENT
+    function classify(chg) {
+      if (chg > 50000) return 2;   // strong positive
+      if (chg > 10000) return 1;   // weak positive
+      if (chg < -10000) return -1; // unwinding
+      return 0;                    // flat
+    }
+    var ceSignal = classify(ceTopChg);
+    var peSignal = classify(peTopChg);
+
+    if (side === 'CE') {
+      // Bullish: want CE writing ↑ (resistance moving up) AND PE writing ↑ (floor defended)
+      // Both strong → 95. One strong + one weak → 80. Flat both → 60. Inverted → 35.
+      if (ceSignal >= 1 && peSignal >= 2) return 95; // both strongly confirming
+      if (ceSignal >= 1 && peSignal >= 1) return 82; // partial alignment
+      if (peSignal >= 2) return 75;                   // PE-only confirmation (put writing)
+      if (ceSignal >= 1 || peSignal >= 1) return 65;
+      // Divergence: PE writers backing away (PE OI ↓) + CE flat = weak
+      if (peSignal < 0) return 35;
+      // Reinforce with PCR as sanity
+      if (pcr >= 1.3) return 60;
+      return 50;
+    } else {
+      // Bearish: want PE writing ↑ (resistance from below building) AND CE writing ↑ heavily
+      if (peSignal >= 1 && ceSignal >= 2) return 95;
+      if (peSignal >= 1 && ceSignal >= 1) return 82;
+      if (ceSignal >= 2) return 75;
+      if (peSignal >= 1 || ceSignal >= 1) return 65;
+      if (ceSignal < 0) return 35;
+      if (pcr <= 0.7) return 60;
+      return 50;
+    }
+  }
+
+  function scoreVolumeConfirmation(row) {
+    var bars = row.ohlc_bars || [];
+    if (bars.length < 5) return 50;
+    var last = bars[bars.length - 1];
+    var prev5 = bars.slice(-6, -1);
+    var avg = prev5.reduce(function (s, b) { return s + (b.v || 0); }, 0) / 5;
+    if (avg <= 0) return 50; // no volume data (fallback mode) → neutral
+    var ratio = (last.v || 0) / avg;
+    if (ratio >= 1.5) return 92;
+    if (ratio >= 1.2) return 78;
+    if (ratio >= 1.0) return 62;
+    return 45;
+  }
+
+  function scoreStrikeQuality(atm, spot, strikeStep) {
+    if (!spot || !atm) return 50;
+    var step = strikeStep || spot * 0.005;
+    var distance = Math.abs(atm - spot) / step;
+    if (distance < 0.5) return 95; // ATM
+    if (distance < 1.5) return 80; // ATM ±1
+    if (distance < 2.5) return 65; // ATM ±2
+    return 45;
+  }
+
+  function scoreRiskReward(target, sl, premium) {
+    var reward = Math.abs(target - premium);
+    var risk = Math.abs(premium - sl);
+    if (risk <= 0) return 50;
+    var rr = reward / risk;
+    if (rr >= 2.0) return 92;
+    if (rr >= 1.5) return 78;
+    if (rr >= 1.2) return 65;
+    return 45;
+  }
+
+  // Detect side from price structure + OI before we compute the full score
+  function detectSide(row) {
+    var spot = row.spot || 0;
     var vwap = row.vwap || spot;
     var openPx = row.today_open || spot;
     var high = row.today_high || spot;
     var low = row.today_low || spot;
+    var maxPain = row.max_pain || row.atm_strike || spot;
     var pcr = row.pcr || 1;
-    var gex = row.gex || {};
-    var gexRegime = (gex.regime || 'NEUTRAL').toUpperCase();
-    var ceBuildup = row.ce_buildup || [];
-    var peBuildup = row.pe_buildup || [];
-    var atm = row.atm_strike || Math.round(spot);
-    var maxPain = row.max_pain || atm;
     var isFallback = row._fallback === true;
 
-    var bullScore = 0, bearScore = 0;
-
-    // ── PRICE STRUCTURE (works always, even in fallback mode) ─────────────
-    // VWAP relationship — strongest intraday signal
-    var vwapPct = (spot - vwap) / vwap * 100;
-    if (vwapPct > 0.3)  bullScore += 20;
-    else if (vwapPct > 0.1) bullScore += 12;
-    else if (vwapPct > 0)   bullScore += 5;
-    if (vwapPct < -0.3) bearScore += 20;
-    else if (vwapPct < -0.1) bearScore += 12;
-    else if (vwapPct < 0)    bearScore += 5;
-
-    // Open vs current — intraday direction
-    var openPct = (spot - openPx) / openPx * 100;
-    if (openPct > 0.2)  bullScore += 12;
-    else if (openPct > 0) bullScore += 5;
-    if (openPct < -0.2) bearScore += 12;
-    else if (openPct < 0) bearScore += 5;
-
-    // Range position — where in the day's H/L is price sitting?
-    var range = high - low;
-    if (range > 0) {
-      var rangePct = (spot - low) / range; // 0 = at low, 1 = at high
-      if (rangePct > 0.75) bullScore += 10;  // trading near high
-      else if (rangePct > 0.6) bullScore += 5;
-      if (rangePct < 0.25) bearScore += 10;  // trading near low
-      else if (rangePct < 0.4) bearScore += 5;
+    var bullHints = 0, bearHints = 0;
+    if (spot > vwap) bullHints += 2;
+    if (spot < vwap) bearHints += 2;
+    if (spot > openPx) bullHints += 1;
+    if (spot < openPx) bearHints += 1;
+    if (high > low) {
+      var rp = (spot - low) / (high - low);
+      if (rp > 0.6) bullHints += 1;
+      if (rp < 0.4) bearHints += 1;
     }
-
-    // Max Pain differential
-    var mpPct = (spot - maxPain) / maxPain * 100;
-    if (mpPct > 0.3)  bullScore += 8;
-    else if (mpPct > 0) bullScore += 4;
-    if (mpPct < -0.3) bearScore += 8;
-    else if (mpPct < 0) bearScore += 4;
-
-    // ── OI SIGNALS (only meaningful when NOT fallback) ────────────────────
+    if (spot > maxPain) bullHints += 1;
+    if (spot < maxPain) bearHints += 1;
     if (!isFallback) {
-      if (pcr >= 1.3) bullScore += 15;
-      else if (pcr >= 1.1) bullScore += 8;
-      if (pcr <= 0.7) bearScore += 15;
-      else if (pcr <= 0.9) bearScore += 8;
+      if (pcr >= 1.2) bullHints += 1;
+      if (pcr <= 0.8) bearHints += 1;
+    }
+    if (bullHints === bearHints) return null;
+    return bullHints > bearHints ? 'CE' : 'PE';
+  }
 
-      if (peBuildup.length > 0 && (peBuildup[0].chg || 0) > 50000) bullScore += 12;
-      else if (peBuildup.length > 0 && (peBuildup[0].chg || 0) > 10000) bullScore += 6;
-      if (ceBuildup.length > 0 && (ceBuildup[0].chg || 0) > 50000) bearScore += 12;
-      else if (ceBuildup.length > 0 && (ceBuildup[0].chg || 0) > 10000) bearScore += 6;
+  // ═══════════════════════════════════════════════════════════════════════
+  // §13 FALSE BREAKOUT FILTER — evaluated at 5m close
+  // Returns { triggered: bool, penalty: 15-25, downgrade: bool }
+  // ═══════════════════════════════════════════════════════════════════════
+  function checkFalseBreakout(row, side, isFallback) {
+    if (isFallback) return { triggered: false, penalty: 0 };
+    var spot = row.spot || 0, vwap = row.vwap || spot;
+    var ceBuildup = row.ce_buildup || [];
+    var peBuildup = row.pe_buildup || [];
+    var ceChg = ceBuildup[0] ? (ceBuildup[0].chg || 0) : 0;
+    var peChg = peBuildup[0] ? (peBuildup[0].chg || 0) : 0;
 
-      if (gexRegime === 'POSITIVE' || gexRegime === 'POSITIVE_GAMMA') bullScore += 8;
-      if (gexRegime === 'NEGATIVE' || gexRegime === 'NEGATIVE_GAMMA') bearScore += 8;
+    if (side === 'CE') {
+      // Bullish breakout: price ABOVE VWAP + CE OI↓ (or flat) + PE OI↑ = DIVERGENCE
+      var aboveVwap = spot > vwap;
+      var ceDivergent = ceChg <= 0;
+      var peDivergent = peChg > 20000;
+      if (aboveVwap && (ceDivergent || peDivergent)) {
+        var severity = (ceDivergent ? 1 : 0) + (peDivergent ? 1 : 0);
+        return { triggered: true, penalty: severity === 2 ? 25 : 15 };
+      }
+    } else {
+      var belowVwap = spot < vwap;
+      var peDivergentBear = peChg <= 0;
+      var ceDivergentBear = ceChg > 20000;
+      if (belowVwap && (peDivergentBear || ceDivergentBear)) {
+        var severityB = (peDivergentBear ? 1 : 0) + (ceDivergentBear ? 1 : 0);
+        return { triggered: true, penalty: severityB === 2 ? 25 : 15 };
+      }
+    }
+    return { triggered: false, penalty: 0 };
+  }
+
+  function downgradeState(stateKey) {
+    // §13 spec table: Early→Late, Ideal→Late, Late→Avoid
+    if (stateKey === 'early' || stateKey === 'ideal') return 'late';
+    if (stateKey === 'late') return 'avoid';
+    return stateKey;
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // §12 EXPIRY-DAY GAMMA OVERRIDE
+  // ═══════════════════════════════════════════════════════════════════════
+  function isSameDayExpiry(row) {
+    var exp = row.expiry;
+    if (!exp) return false;
+    try {
+      // NSE format: "18-Apr-2026" or similar
+      var d = new Date(exp);
+      if (isNaN(d)) {
+        // try "DD-MMM-YYYY"
+        var parts = String(exp).split('-');
+        if (parts.length === 3) {
+          d = new Date(parts[1] + ' ' + parts[0] + ' ' + parts[2]);
+        }
+      }
+      if (isNaN(d)) return false;
+      var today = new Date();
+      return d.getDate() === today.getDate() &&
+             d.getMonth() === today.getMonth() &&
+             d.getFullYear() === today.getFullYear();
+    } catch (e) { return false; }
+  }
+
+  function isInGammaTimeWindow(region) {
+    var now = new Date();
+    if (region === 'IN') {
+      // IST 11:30+
+      var istMs = now.getTime() + (5.5 * 60 * 60 * 1000) + (now.getTimezoneOffset() * 60 * 1000);
+      var ist = new Date(istMs);
+      var mm = ist.getUTCHours() * 60 + ist.getUTCMinutes();
+      return mm >= (11 * 60 + 30) && mm <= (15 * 60 + 30);
+    } else {
+      // ET 12:00+ (approx via UTC)
+      var hh = now.getUTCHours();
+      var mm2 = hh * 60 + now.getUTCMinutes();
+      return mm2 >= (16 * 60) && mm2 <= (20 * 60); // 12pm-4pm ET approx
+    }
+  }
+
+  function checkGammaOverride(row, side, region, isFallback) {
+    if (isFallback) return { triggered: false };
+    if (!isSameDayExpiry(row)) return { triggered: false };
+    if (!isInGammaTimeWindow(region)) return { triggered: false };
+
+    var spot = row.spot || 0;
+    var atm = row.atm_strike || spot;
+    var bars = row.ohlc_bars || [];
+    if (bars.length < 5) return { triggered: false };
+    var last = bars[bars.length - 1];
+
+    // (a) Candle body ≥ 1.2× ATR — spec §12 "Large candle body"
+    var ranges = bars.slice(-5).map(function (b) { return b.h - b.l; });
+    var atr = ranges.reduce(function (a, b) { return a + b; }, 0) / ranges.length;
+    var body = Math.abs(last.c - last.o);
+    var bigBody = atr > 0 && body >= atr * 1.2;
+
+    // (b) Strong close — spec §12 "top/bottom 25% of range"
+    var range = last.h - last.l;
+    var closePos = range > 0 ? (last.c - last.l) / range : 0.5;
+    var strongClose = side === 'CE' ? closePos >= 0.75 : closePos <= 0.25;
+
+    // (c) Break key strike ATM±1 — spec §12
+    var stepApprox = spot * 0.005;
+    var brokenStrike = side === 'CE'
+      ? spot > atm + stepApprox * 0.5
+      : spot < atm - stepApprox * 0.5;
+
+    // (d) OI spike >1.5× AVG of chain — spec §12 strict
+    // Compute chain-wide average of absolute OI change (all strikes, both sides)
+    var chain = row.chain_near_atm || [];
+    var chgSum = 0, chgCount = 0;
+    chain.forEach(function (r) {
+      if (r.ce_chg != null) { chgSum += Math.abs(r.ce_chg); chgCount++; }
+      if (r.pe_chg != null) { chgSum += Math.abs(r.pe_chg); chgCount++; }
+    });
+    var chainAvgChg = chgCount > 0 ? chgSum / chgCount : 0;
+
+    // Focus strike: the side-appropriate top-buildup strike
+    var bld = side === 'CE' ? (row.pe_buildup || []) : (row.ce_buildup || []);
+    var focusChg = bld[0] ? Math.abs(bld[0].chg || 0) : 0;
+    var oiSpike = chainAvgChg > 0
+      ? focusChg > chainAvgChg * 1.5
+      : focusChg > 50000; // fallback to absolute threshold if chain data missing
+
+    // (e) ATM straddle concentration — spec §12 "ATM straddle OI concentration"
+    // Check if ATM strike's CE+PE OI dominate the near-ATM chain.
+    var atmRow = chain.filter(function (r) { return r.strike === atm; })[0];
+    var atmStraddleConcentrated = false;
+    if (atmRow && chain.length >= 3) {
+      var atmOi = (atmRow.ce_oi || 0) + (atmRow.pe_oi || 0);
+      var totalOi = chain.reduce(function (s, r) {
+        return s + (r.ce_oi || 0) + (r.pe_oi || 0);
+      }, 0);
+      // ATM straddle is >30% of near-ATM chain = gamma pin zone
+      if (totalOi > 0 && atmOi / totalOi > 0.30) atmStraddleConcentrated = true;
     }
 
-    // ── Decide side & confidence ──────────────────────────────────────────
-    var diff = Math.abs(bullScore - bearScore);
-    var totalSignal = bullScore + bearScore;
-
-    // If there's ANY directional evidence, surface it — don't be picky when signals are weak
-    if (diff < 1 || totalSignal < 3) return null;
-
-    var conf = Math.min(92, 48 + diff * 1.8 + totalSignal * 0.2);
-    var side = bullScore > bearScore ? 'CE' : 'PE';
-    var stateKey = conf >= 78 ? 'ideal' : conf >= 68 ? 'early' : conf >= 58 ? 'late' : 'avoid';
-
-    // Reason string — always meaningful
-    var reasons = [];
-    if (vwapPct > 0.1) reasons.push('Above VWAP +' + vwapPct.toFixed(2) + '%');
-    else if (vwapPct < -0.1) reasons.push('Below VWAP ' + vwapPct.toFixed(2) + '%');
-    if (openPct > 0.2) reasons.push('Up from open');
-    else if (openPct < -0.2) reasons.push('Down from open');
-    if (range > 0) {
-      var rp = (spot - low) / range;
-      if (rp > 0.75) reasons.push('Near day high');
-      else if (rp < 0.25) reasons.push('Near day low');
+    // Spec §12 trigger: ALL of (breaks strike, OI spike, strong close)
+    // PLUS signal inputs: (big body, ATM straddle concentration)
+    // Require all 4 hard conditions; straddle concentration is a boost hint.
+    if (bigBody && strongClose && brokenStrike && oiSpike) {
+      // Boost size scales with straddle concentration (stronger pin = bigger boost)
+      var boost = atmStraddleConcentrated ? 18 : 14;
+      return {
+        triggered: true,
+        boost: boost,
+        atmStraddleConcentrated: atmStraddleConcentrated
+      };
     }
-    if (!isFallback && pcr >= 1.2) reasons.push('PCR ' + pcr.toFixed(2));
-    else if (!isFallback && pcr <= 0.8) reasons.push('PCR ' + pcr.toFixed(2));
-    if (reasons.length === 0) {
-      reasons.push(side === 'CE' ? 'Bullish structure' : 'Bearish structure');
-    }
-    var reason = reasons.slice(0, 3).join(' + ');
+    return { triggered: false };
+  }
 
-    // Premium from chain_near_atm
+  function promoteStateForGamma(stateKey) {
+    // §12 spec table
+    if (stateKey === 'early') return 'ideal'; // Aggressive
+    if (stateKey === 'ideal') return 'ideal'; // Strong Entry (still ideal pill)
+    if (stateKey === 'late') return 'early';  // Still Valid (promoted to early)
+    return stateKey;
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // MAIN: build a trade object from one ticker row
+  // ═══════════════════════════════════════════════════════════════════════
+  function mapScanRowToTrade(row) {
+    var sym = row.sym || row.symbol || '';
+    var spot = row.spot || 0;
+    if (!sym || spot <= 0) return null;
+
+    var isFallback = row._fallback === true;
+    var atm = row.atm_strike || Math.round(spot);
+    var stepMap = { NIFTY: 50, BANKNIFTY: 100, FINNIFTY: 50, MIDCPNIFTY: 25, SENSEX: 100 };
+    var strikeStep = stepMap[sym] || (spot > 1000 ? 50 : spot * 0.005);
+
+    // Step 1: determine side
+    var side = detectSide(row);
+    if (!side) return null;
+
+    // Step 2: premium from embedded chain
     var chain = row.chain_near_atm || [];
     var atmRow = chain.filter(function (r) { return r.strike === atm; })[0];
-    // Try nearest strike if exact ATM missing
     if (!atmRow && chain.length) {
       atmRow = chain.reduce(function (best, r) {
         return (!best || Math.abs(r.strike - atm) < Math.abs(best.strike - atm)) ? r : best;
@@ -198,19 +547,117 @@
     var premium = atmRow ? (side === 'CE' ? (atmRow.ce_ltp || 0) : (atmRow.pe_ltp || 0)) : 0;
     if (premium <= 0) premium = Math.round(spot * 0.008);
 
-    var trigger = premium * 1.02;
+    // Step 3: compute SL/Target FIRST (R:R score needs them)
     var sl = premium * 0.85;
     var target = premium * 1.30;
+    var trigger = premium * 1.02;
+
+    // Step 4: six factor scores (each 0-100)
+    var f = {
+      trend: scoreTrendStrength(row, side),
+      vwap:  scoreVwapAlignment(row, side),
+      oi:    scoreOiStructure(row, side, isFallback),
+      vol:   scoreVolumeConfirmation(row),
+      strike: scoreStrikeQuality(atm, spot, strikeStep),
+      rr:    scoreRiskReward(target, sl, premium)
+    };
+
+    // Step 5: weighted composite per spec §11
+    var baseScore =
+      0.25 * f.trend +
+      0.20 * f.vwap +
+      0.20 * f.oi +
+      0.15 * f.vol +
+      0.10 * f.strike +
+      0.10 * f.rr;
+
+    // Step 6: apply False Breakout Filter (§13)
+    var fb = checkFalseBreakout(row, side, isFallback);
+    var postFilterScore = baseScore - fb.penalty;
+
+    // Initial state from score alone
+    var stateKey = postFilterScore >= 80 ? 'ideal'
+                 : postFilterScore >= 68 ? 'early'
+                 : postFilterScore >= 60 ? 'late'
+                 : 'avoid';
+
+    // Apply downgrade if false breakout triggered
+    if (fb.triggered) stateKey = downgradeState(stateKey);
+
+    // Step 7: Gamma Override (§12) — boost & promote after filter
+    var gamma = checkGammaOverride(row, side, state.region, isFallback);
+    var gammaMode = false;
+    var finalScore = postFilterScore;
+
+    // Kill switch (spec §12): if gamma was active last candle, check reversal
+    var id = sym + '-' + atm + '-' + side;
+    var gammaHist = state.gammaHistory && state.gammaHistory[id];
+    var killed = false;
+    if (gammaHist) {
+      // Was it active last candle? Check for reversal > 50% or OI unwind.
+      var bars = row.ohlc_bars || [];
+      if (bars.length >= 2) {
+        var last = bars[bars.length - 1];
+        var refClose = gammaHist.triggeredAtClose;
+        var move = last.c - gammaHist.referenceOpen;
+        // Reversal >50% means the candle that follows gave back half or more
+        var prevMove = gammaHist.triggeredAtClose - gammaHist.referenceOpen;
+        if (prevMove !== 0) {
+          var reversalPct = -move / prevMove; // positive if new move is opposite
+          if (reversalPct > 0.5) killed = true;
+        }
+      }
+      // OI unwind: buildup chg dropped significantly
+      var bld = side === 'CE' ? (row.pe_buildup || []) : (row.ce_buildup || []);
+      var prevBldChg = gammaHist.referenceBuildupChg || 0;
+      var curBldChg = bld[0] ? (bld[0].chg || 0) : 0;
+      if (prevBldChg > 0 && curBldChg < prevBldChg * 0.3) killed = true;
+    }
+
+    if (gamma.triggered && !killed) {
+      finalScore += gamma.boost;
+      stateKey = promoteStateForGamma(stateKey);
+      target = premium * 1.30 * 1.3; // spec: 1.3× base target
+      gammaMode = true;
+    }
+
+    // Clamp
+    finalScore = Math.max(0, Math.min(100, Math.round(finalScore)));
+    if (finalScore < 55) return null; // too weak
+
+    // Build reason string (institutional vocabulary)
+    var reasons = [];
+    if (side === 'CE') {
+      if (f.vwap >= 80) reasons.push('VWAP reclaim');
+      else if (f.vwap >= 65) reasons.push('VWAP hold');
+      if (f.oi >= 72 && !isFallback) reasons.push('Put writing');
+      if (f.trend >= 80) reasons.push('3-candle bullish');
+      if (f.vol >= 78) reasons.push('Volume surge');
+      if (gammaMode) reasons.push('Gamma break');
+      if (fb.triggered) reasons.push('Weak OI confirm');
+    } else {
+      if (f.vwap >= 80) reasons.push('VWAP breakdown');
+      else if (f.vwap >= 65) reasons.push('Below VWAP');
+      if (f.oi >= 72 && !isFallback) reasons.push('Call writing');
+      if (f.trend >= 80) reasons.push('3-candle bearish');
+      if (f.vol >= 78) reasons.push('Volume surge');
+      if (gammaMode) reasons.push('Gamma break');
+      if (fb.triggered) reasons.push('Weak OI confirm');
+    }
+    if (reasons.length === 0) {
+      reasons.push(side === 'CE' ? 'Bullish structure' : 'Bearish structure');
+    }
+    var reason = reasons.slice(0, 3).join(' + ');
 
     var lotMap = { NIFTY: 75, BANKNIFTY: 30, FINNIFTY: 65, MIDCPNIFTY: 120, SENSEX: 20 };
     var lot = row.lot_size || lotMap[sym] || 50;
 
     return {
-      id: sym + '-' + atm + '-' + side,
+      id: id,
       symbol: sym,
       strike: atm + ' ' + side,
       side: side,
-      confidence: Math.round(conf),
+      confidence: finalScore,
       state: stateKey,
       reason: reason,
       price: premium,
@@ -218,51 +665,60 @@
       sl: sl,
       target: target,
       lot: lot,
+      gammaMode: gammaMode,
+      falseBreakout: fb.triggered,
+      factors: f,
       _raw: row
     };
   }
 
-  function fetchOptionChain(symbol, strikeStr) {
-    // strikeStr = "24500 CE" → extract numeric
+  function fetchOptionChain(symbol, strikeStr, selectedTrade) {
+    // EMBED-ONLY: use chain_near_atm that already arrived with bottom-nav-scan.
+    // We never call /api/nse-options per-stock — that would risk rate-limiting.
+    // If the embedded chain is missing (backend didn't attach one for this
+    // ticker), we return empty rows and the UI shows "—" placeholders.
     var atmStrike = parseFloat((strikeStr || '').replace(/[^\d.]/g, '')) || 0;
-    return fetch('/api/nse-options?symbol=' + encodeURIComponent(symbol))
-      .then(function (r) { return r.json(); })
-      .then(function (d) {
-        if (!d || !d.success) return [];
-        // Response shape: { success, spot, atm_strike, chain_near_atm: [{strike, ce_oi, pe_oi, ce_chg, pe_chg, ...}] }
-        var chain = d.chain_near_atm || [];
-        if (chain.length === 0) return [];
-        var strikes = chain.map(function (r) { return r.strike; }).sort(function (a, b) { return a - b; });
-        if (atmStrike === 0) atmStrike = d.atm_strike || strikes[Math.floor(strikes.length / 2)];
 
-        // Find ATM index
-        var atmIdx = 0, minDiff = Infinity;
-        for (var i = 0; i < strikes.length; i++) {
-          var diff = Math.abs(strikes[i] - atmStrike);
-          if (diff < minDiff) { minDiff = diff; atmIdx = i; }
-        }
+    if (selectedTrade && selectedTrade._raw && selectedTrade._raw.chain_near_atm) {
+      var embedded = selectedTrade._raw.chain_near_atm;
+      if (embedded.length > 0) {
+        return Promise.resolve(
+          buildChainRows(embedded, atmStrike, selectedTrade._raw.atm_strike)
+        );
+      }
+    }
+    return Promise.resolve([]);
+  }
 
-        // Build lookup for chain rows by strike
-        var lookup = {};
-        chain.forEach(function (c) { lookup[c.strike] = c; });
+  function buildChainRows(chain, atmStrike, apiAtmStrike) {
+    var strikes = chain.map(function (r) { return r.strike; }).sort(function (a, b) { return a - b; });
+    if (atmStrike === 0) atmStrike = apiAtmStrike || strikes[Math.floor(strikes.length / 2)];
 
-        var rows = [];
-        for (var k = atmIdx - 2; k <= atmIdx + 2; k++) {
-          if (k < 0 || k >= strikes.length) continue;
-          var st = strikes[k];
-          var oi = lookup[st] || {};
-          rows.push({
-            strike: st,
-            callOi: Math.round(oi.ce_chg || 0),
-            putOi: Math.round(oi.pe_chg || 0),
-            volSpike: Math.abs(oi.ce_chg || 0) > 50000 || Math.abs(oi.pe_chg || 0) > 50000,
-            isAtm: k === atmIdx
-          });
-        }
-        while (rows.length < 5) rows.push({ strike: 0, callOi: 0, putOi: 0, volSpike: false, isAtm: false });
-        return rows;
-      })
-      .catch(function (e) { console.warn('[AT] option-chain fetch failed', e); return []; });
+    // Find ATM index
+    var atmIdx = 0, minDiff = Infinity;
+    for (var i = 0; i < strikes.length; i++) {
+      var diff = Math.abs(strikes[i] - atmStrike);
+      if (diff < minDiff) { minDiff = diff; atmIdx = i; }
+    }
+
+    var lookup = {};
+    chain.forEach(function (c) { lookup[c.strike] = c; });
+
+    var rows = [];
+    for (var k = atmIdx - 2; k <= atmIdx + 2; k++) {
+      if (k < 0 || k >= strikes.length) continue;
+      var st = strikes[k];
+      var oi = lookup[st] || {};
+      rows.push({
+        strike: st,
+        callOi: Math.round(oi.ce_chg || 0),
+        putOi: Math.round(oi.pe_chg || 0),
+        volSpike: Math.abs(oi.ce_chg || 0) > 50000 || Math.abs(oi.pe_chg || 0) > 50000,
+        isAtm: k === atmIdx
+      });
+    }
+    while (rows.length < 5) rows.push({ strike: 0, callOi: 0, putOi: 0, volSpike: false, isAtm: false });
+    return rows;
   }
 
   // ── DOM HELPERS ─────────────────────────────────────────────────────────
@@ -318,7 +774,7 @@
     var wrap = el('div', {
       style: {
         width: '100%',
-        height: '820px',
+        height: '880px',
         background: C.bg,
         color: C.textPri,
         fontFamily: '"Sora", system-ui, sans-serif',
@@ -388,6 +844,7 @@
 
     var regionBtn = function (reg, label) {
       var active = state.region === reg;
+      var src = reg === 'IN' ? 'NSE direct (yfinance fallback)' : 'yfinance primary';
       return el('button', {
         onClick: function () {
           if (state.region === reg) return;
@@ -397,6 +854,7 @@
           state.loaded = false; state.lastFetchMsg = '';
           rerender(); refreshAll();
         },
+        title: 'Data source: ' + src,
         style: {
           fontSize: '10px', fontWeight: 800, padding: '3px 8px',
           border: '1px solid ' + (active ? C.green : C.divider),
@@ -422,7 +880,8 @@
     return el('div', {
       style: {
         height: '36px', background: C.card, borderBottom: '1px solid ' + C.divider,
-        display: 'flex', alignItems: 'center', padding: '0 12px', gap: '12px', flexShrink: 0
+        display: 'flex', alignItems: 'center', padding: '0 12px', gap: '12px', flexShrink: 0,
+        position: 'sticky', top: 0, zIndex: 10  // spec §3: sticky (always visible)
       }
     }, [
       // LEFT: app name + market badge
@@ -518,7 +977,7 @@
         }
         panel.appendChild(el('div', {
           style: {
-            height: '84px', marginBottom: '6px', borderRadius: '12px',
+            height: '96px', marginBottom: '6px', borderRadius: '12px',
             border: '1px dashed ' + C.divider, display: 'flex',
             alignItems: 'center', justifyContent: 'center',
             color: C.textMute, fontSize: '12px', fontStyle: 'italic'
@@ -533,23 +992,38 @@
 
   function tradeCard(trade) {
     var isSelected = state.selected && state.selected.id === trade.id;
+    var history = state.scoreHistory[trade.id] || [];
 
     var card = el('div', {
       onClick: function () { selectTrade(trade); },
       style: {
-        height: '84px', padding: '8px',
+        height: '96px', padding: '8px',  // bumped from 84 to fit trend row
         background: isSelected ? C.active : C.card,
         borderRadius: '12px',
-        border: '1px solid ' + (isSelected ? C.blue : C.divider),
+        border: '1px solid ' + (isSelected ? C.blue : (trade.gammaMode ? '#F59E0B' : C.divider)),
         marginBottom: '6px',
         display: 'grid',
         gridTemplateColumns: '1fr auto auto',
-        gridTemplateRows: 'auto auto',
-        columnGap: '12px', rowGap: '4px',
+        gridTemplateRows: 'auto auto auto',
+        columnGap: '12px', rowGap: '3px',
         cursor: 'pointer',
-        transition: 'background 120ms ease, border-color 120ms ease'
+        transition: 'background 120ms ease, border-color 120ms ease',
+        position: 'relative'
       }
     });
+
+    // GAMMA MODE badge (top-right absolute) — spec §12
+    if (trade.gammaMode) {
+      card.appendChild(el('div', {
+        style: {
+          position: 'absolute', top: '4px', right: '4px',
+          fontSize: '9px', fontWeight: 800, padding: '2px 6px',
+          borderRadius: '3px', background: 'linear-gradient(90deg, #F59E0B, #FB923C)',
+          color: '#1A1400', letterSpacing: '0.5px',
+          boxShadow: '0 0 0 1px #F59E0B88'
+        }
+      }, '⚡ GAMMA MODE'));
+    }
 
     // Row 1 col 1 — symbol + strike
     var sym = el('div', {
@@ -559,15 +1033,17 @@
     sym.appendChild(el('span', { style: { color: C.textSec } }, trade.strike));
     card.appendChild(sym);
 
-    // Row 1 col 2 — confidence
+    // Row 1 col 2 — confidence (crossfade on 5m close, spec §8)
     card.appendChild(el('div', {
+      className: 'at-fade at-fade-' + (state.fadeTick || 0),
       style: {
         fontSize: '20px', fontWeight: 700, color: confColor(trade.confidence),
-        lineHeight: 1.1, alignSelf: 'center', fontFamily: MONO
+        lineHeight: 1.1, alignSelf: 'center', fontFamily: MONO,
+        minWidth: '54px', textAlign: 'right'  // reserve for "100%" max-width
       }
     }, trade.confidence + '%'));
 
-    // Row 1 col 3 — EXECUTE (per spec: 36px × 100px green gradient)
+    // Row 1 col 3 — EXECUTE (spec §4.5: 36 × 100 green gradient)
     card.appendChild(el('button', {
       onClick: function (e) { e.stopPropagation(); onExecute(trade); },
       style: {
@@ -591,7 +1067,7 @@
     // Row 2 col 2 — state pill
     card.appendChild(el('div', { style: { alignSelf: 'center' } }, pill(trade.state, true)));
 
-    // Row 2 col 3 — voice
+    // Row 2 col 3 — voice mic
     card.appendChild(el('button', {
       onClick: function (e) { e.stopPropagation(); onVoice(trade); },
       title: 'Speak trade',
@@ -602,6 +1078,38 @@
         fontSize: '12px', alignSelf: 'center', padding: 0
       }
     }, '🎙'));
+
+    // Row 3 col 1 — score trend (spec §5: "78 → 82 → 85" green if rising, red if falling)
+    var trendRow = el('div', {
+      style: {
+        fontSize: '11px', color: C.textMute, fontFamily: MONO,
+        display: 'flex', alignItems: 'center', gap: '8px', lineHeight: 1,
+        overflow: 'hidden', whiteSpace: 'nowrap'
+      }
+    });
+    if (history.length >= 2) {
+      var first = history[0], last = history[history.length - 1];
+      var trendColor = last > first ? C.green : last < first ? C.red : C.textMute;
+      trendRow.appendChild(el('span', {}, 'Score: '));
+      trendRow.appendChild(el('span', { style: { color: trendColor, fontWeight: 600 } },
+        history.join(' → ')));
+    } else {
+      trendRow.appendChild(el('span', { style: { color: C.textMute } },
+        'Score: ' + trade.confidence + ' (building history…)'));
+    }
+    // False-breakout warning (spec §13)
+    if (trade.falseBreakout) {
+      trendRow.appendChild(el('span', {
+        style: {
+          color: C.orange, fontSize: '10px', fontWeight: 700,
+          marginLeft: 'auto', letterSpacing: '0.3px'
+        }
+      }, '⚠ Weak OI confirmation'));
+    }
+    card.appendChild(trendRow);
+    // Row 3 cols 2-3 reserved (empty) so grid stays consistent
+    card.appendChild(el('div', {}));
+    card.appendChild(el('div', {}));
 
     return card;
   }
@@ -655,9 +1163,11 @@
     hdr.appendChild(left);
 
     var confBox = el('div', {
+      className: 'at-fade at-fade-' + (state.fadeTick || 0),
       style: {
         fontSize: '20px', fontWeight: 700, color: confColor(t.confidence),
-        fontFamily: MONO, textAlign: 'right', lineHeight: 1
+        fontFamily: MONO, textAlign: 'right', lineHeight: 1,
+        minWidth: '54px'  // spec §8: reserve for "100%"
       }
     }, t.confidence + '%');
     confBox.appendChild(el('div', {
@@ -666,15 +1176,18 @@
     hdr.appendChild(confBox);
 
     var priceBox = el('div', {
-      className: state.flash === 'up' ? 'flash-up' : state.flash === 'down' ? 'flash-dn' : '',
+      className: (state.flash === 'up' ? 'at-flash-up' : state.flash === 'down' ? 'at-flash-dn' : '') +
+                 ' at-fade at-fade-' + (state.fadeTick || 0),
+      title: 'Last completed 5-minute candle close price',
       style: {
         fontSize: '16px', fontWeight: 600, color: C.textPri,
-        fontFamily: MONO, textAlign: 'right', lineHeight: 1
+        fontFamily: MONO, textAlign: 'right', lineHeight: 1,
+        minWidth: '70px'  // spec §8: reserve for max digits (e.g., "99999.99")
       }
     }, state.lastClose != null ? state.lastClose.toFixed(2) : '—');
     priceBox.appendChild(el('div', {
       style: { fontSize: '9px', color: C.textMute, fontWeight: 600, letterSpacing: '1px', marginTop: '2px' }
-    }, '5m CLOSE'));
+    }, '5M CLOSE'));
     hdr.appendChild(priceBox);
 
     return hdr;
@@ -719,9 +1232,15 @@
     ]);
     row1.appendChild(left);
     row1.appendChild(el('div', {
+      'data-countdown': '1',
       style: { fontSize: '10px', color: C.textMute, fontWeight: 700, fontFamily: MONO, letterSpacing: '1px' }
-    }, 'NEXT ' + state.countdown));
+    }, 'Next Evaluation In: ' + state.countdown));
     box.appendChild(row1);
+
+    // Spec §6: "Basis: Last 5m candle close" line
+    box.appendChild(el('div', {
+      style: { fontSize: '10px', color: C.textMute, fontFamily: MONO, letterSpacing: '0.3px', marginTop: '-2px' }
+    }, 'Basis: Last 5m candle close'));
 
     // Row 2: trigger + current — spec §5.2 format: "Break above 243.50"
     var triggerVerb = t.side === 'PE' ? 'Break below' : 'Break above';
@@ -889,10 +1408,28 @@
   function renderScanner() {
     var wrap = el('div', {
       style: {
-        height: '168px', background: C.bg, borderTop: '1px solid ' + C.divider,
+        height: '186px', background: C.bg, borderTop: '1px solid ' + C.divider,
         display: 'flex', flexDirection: 'column', flexShrink: 0
       }
     });
+
+    // Spec §9: "Last Updated: 01:30 ago" label
+    var lastUpText = 'Last Updated: —';
+    if (state.lastFullRefreshAt) {
+      var ago = Math.floor((Date.now() - state.lastFullRefreshAt) / 1000);
+      lastUpText = 'Last Updated: ' + formatAgo(ago);
+    }
+    wrap.appendChild(el('div', {
+      style: {
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        padding: '4px 8px 2px',
+        fontSize: '9px', fontWeight: 700, color: C.textMute,
+        letterSpacing: '0.8px', fontFamily: MONO
+      }
+    }, [
+      el('span', {}, 'SECONDARY SCANNER'),
+      el('span', { 'data-last-up': '1' }, lastUpText)
+    ]));
 
     wrap.appendChild(el('div', {
       style: {
@@ -956,7 +1493,7 @@
     state.selected = t;
     state.lastClose = t.price;
     state.flash = null; // NEVER flash on user selection — only on 5m close price change
-    fetchOptionChain(t.symbol, t.strike).then(function (rows) {
+    fetchOptionChain(t.symbol, t.strike, t).then(function (rows) {
       state.chain = rows;
       rerender();
     });
@@ -971,8 +1508,9 @@
   }
 
   function onVoice(t) {
-    var m = STATE_MAP[t.state] || STATE_MAP.ideal;
-    speak(t.symbol + ' ' + t.strike + ', confidence ' + t.confidence + ' percent, ' + m.label.toLowerCase());
+    // Spec §4.6: speaks "NIFTY 24500 CE, confidence 84%, entry now"
+    // Phrase is fixed — not derived from state pill. Use "entry now" always.
+    speak(t.symbol + ' ' + t.strike + ', confidence ' + t.confidence + ' percent, entry now');
   }
 
   function speak(text) {
@@ -1024,53 +1562,84 @@
 
         state.lastFetchMsg = '';
 
-        // ═══ 3-MIN STABILITY LOCK (spec section 10) ═════════════════════
-        // Top trades must remain stable for minimum 3 minutes before being
-        // replaced. Any trade that's been in the top-3 for <3min stays locked
-        // in its slot even if a higher-confidence candidate arrives.
+        // ═══ 3-MIN STABILITY LOCK + +12% OVERRIDE RULE (v3 §5) ══════════
+        // Normal rule: top-3 slots lock for 3 minutes.
+        // Override exception (v3): if a candidate's score exceeds the current
+        // trade's score by >12% AND the current trade isn't in ACTIVE ENTRY,
+        // allow replacement even within lock window.
         var now = Date.now();
         var LOCK_MS = 3 * 60 * 1000;
+        var OVERRIDE_DELTA = 12; // percentage points
         var prev = state.trades || [];
         var top3 = [];
 
-        // First, carry forward locked trades that are still in the mapped set
+        // Pass 1: carry forward locked trades that (a) are still in the
+        // mapped set AND (b) don't have a candidate exceeding them by +12%.
+        var activeEntryId = null;
+        if (state.selected) {
+          // Approximation: "ACTIVE ENTRY" = selected trade whose current price
+          // has crossed its trigger. We check via _lastClose.
+          var lc = state.lastClose != null ? state.lastClose : state.selected.price;
+          var crossed = state.selected.side === 'CE'
+            ? lc >= state.selected.trigger
+            : lc <= state.selected.trigger;
+          if (crossed) activeEntryId = state.selected.id;
+        }
+
         for (var i = 0; i < prev.length && top3.length < 3; i++) {
           var p = prev[i];
           if (!p) continue;
           var lockStart = state.lockedIds[p.id];
           if (lockStart && (now - lockStart) < LOCK_MS) {
-            // Still locked — check if it's still in current scan (else it expired)
             var fresh = mapped.filter(function (m) { return m.id === p.id; })[0];
-            if (fresh) {
-              top3.push(fresh); // update with fresh data but keep slot
-            }
+            if (!fresh) continue; // expired from mapped set
+
+            // v3 §5 override: a candidate beats this locked slot by >12% AND
+            // the locked trade isn't the user's ACTIVE ENTRY → allow replacement
+            var beaten = mapped.some(function (m) {
+              return m.id !== p.id && (m.confidence - fresh.confidence) > OVERRIDE_DELTA;
+            });
+            if (beaten && p.id !== activeEntryId) continue; // skip — Pass 2 fills
+
+            top3.push(fresh);
           }
         }
 
-        // Fill remaining slots with highest-confidence non-locked trades
+        // Pass 2: fill remaining slots from highest-confidence non-locked
         for (var j = 0; j < mapped.length && top3.length < 3; j++) {
-          var m = mapped[j];
-          if (top3.filter(function (t) { return t.id === m.id; }).length === 0) {
-            top3.push(m);
-            if (!state.lockedIds[m.id]) {
-              state.lockedIds[m.id] = now; // start 3-min lock for new entrant
-            }
+          var m2 = mapped[j];
+          if (top3.filter(function (t) { return t.id === m2.id; }).length === 0) {
+            top3.push(m2);
+            if (!state.lockedIds[m2.id]) state.lockedIds[m2.id] = now;
           }
         }
 
-        // Clean up stale lock entries
+        // GC stale lock entries
         var newLocks = {};
-        top3.forEach(function (t) {
-          newLocks[t.id] = state.lockedIds[t.id] || now;
-        });
+        top3.forEach(function (t) { newLocks[t.id] = state.lockedIds[t.id] || now; });
         state.lockedIds = newLocks;
 
-        // ═══ VOICE TRIGGERS (spec section 7) ════════════════════════════
-        // prevIds is now a map: { tradeId: { state, confidence } } so we can
-        // detect both state transitions AND confidence rises (momentum).
+        // ═══ SCORE HISTORY — v3 §5 "Score: 78 → 82 → 85" trend display ══
+        // Persist last 3 confidence scores per trade id. Only updated here at
+        // 5m close (Tier 1). Stale entries cleaned up.
+        var newHist = {};
+        top3.forEach(function (t) {
+          var h = (state.scoreHistory[t.id] || []).slice();
+          // Only append if changed (avoid stuttering on no-op refreshes)
+          if (h.length === 0 || h[h.length - 1] !== t.confidence) {
+            h.push(t.confidence);
+          }
+          if (h.length > 3) h = h.slice(-3);
+          newHist[t.id] = h;
+        });
+        state.scoreHistory = newHist;
+
+        // ═══ v3 VOICE TRIGGERS (spec §7) ════════════════════════════════
+        // Spec: fire only on candle close OR state transition.
+        // This function is called on 5m close via on5mClose() → refreshAll().
         var prevIds = state.prevTradeIds || {};
 
-        // Trigger 1: NEW TOP TRADE — a trade not present in previous refresh
+        // Trigger 1: NEW TOP TRADE
         var newTopTrade = top3.filter(function (t) { return !prevIds[t.id]; })[0];
         if (newTopTrade && Object.keys(prevIds).length > 0) {
           pushLog('NEW TOP: ' + newTopTrade.symbol + ' ' + newTopTrade.strike, C.green);
@@ -1078,32 +1647,52 @@
                 ', confidence ' + newTopTrade.confidence + ' percent');
         }
 
-        // Trigger 3: LATE WARNING — prev state was early/ideal, now late
+        // Trigger: FALSE BREAKOUT (v3 §13)
         top3.forEach(function (t) {
-          var prev = prevIds[t.id];
-          var prevState = prev && prev.state;
-          if (prevState && (prevState === 'early' || prevState === 'ideal') && t.state === 'late') {
-            pushLog('LATE: ' + t.symbol + ' ' + t.strike + ' — reduce size', C.orange);
-            speak(t.symbol + ' ' + t.strike + ' becoming late. Reduce size.');
+          var prevHad = prevIds[t.id];
+          if (t.falseBreakout && (!prevHad || !prevHad.falseBreakout)) {
+            pushLog('⚠ ' + t.symbol + ' ' + t.strike + ' — weak OI confirmation', C.orange);
+            speak(t.symbol + ' breakout lacks institutional support. Avoid entry.');
           }
         });
 
-        // Trigger — MOMENTUM BUILDING (spec §5.5 example log)
-        // Fires when the currently-selected trade's confidence rises by ≥5 points
-        // between refreshes. Quiet, non-blocking — just a log + soft voice cue.
-        if (state.selected) {
-          var sel = top3.filter(function (t) { return t.id === state.selected.id; })[0];
-          var selPrev = prevIds[state.selected.id];
-          if (sel && selPrev && typeof selPrev.confidence === 'number') {
-            var delta = sel.confidence - selPrev.confidence;
-            if (delta >= 5) {
-              pushLog('Momentum building (+' + delta + ')', C.yellow);
-              speak('Momentum building');
-            }
+        // Trigger: GAMMA MODE activation (v3 §12)
+        top3.forEach(function (t) {
+          if (t.gammaMode && !state.gammaModeIds[t.id]) {
+            pushLog('⚡ GAMMA MODE: ' + t.symbol + ' ' + t.strike, C.yellow);
+            speak('Gamma mode active on ' + t.symbol);
           }
-        }
+        });
+        var newGammaIds = {};
+        var newGammaHist = {};
+        top3.forEach(function (t) {
+          if (t.gammaMode) {
+            newGammaIds[t.id] = true;
+            // Record reference data for next-candle kill-switch check
+            var bars = t._raw.ohlc_bars || [];
+            var lastBar = bars[bars.length - 1] || {};
+            var bld = t.side === 'CE' ? (t._raw.pe_buildup || []) : (t._raw.ce_buildup || []);
+            newGammaHist[t.id] = {
+              triggeredAtClose: lastBar.c || t.price,
+              referenceOpen: lastBar.o || t.price,
+              referenceBuildupChg: bld[0] ? (bld[0].chg || 0) : 0
+            };
+          }
+        });
+        state.gammaModeIds = newGammaIds;
+        state.gammaHistory = newGammaHist;
 
-        // Trigger 4: EXIT — selected trade dropped out of top-3 OR flipped to avoid
+        // Trigger 3: LATE WARNING (spec §7: "Momentum weakening — reduce position")
+        top3.forEach(function (t) {
+          var pr = prevIds[t.id];
+          var prevState = pr && pr.state;
+          if (prevState && (prevState === 'early' || prevState === 'ideal') && t.state === 'late') {
+            pushLog('Momentum weakening: ' + t.symbol + ' ' + t.strike + ' — reduce position', C.orange);
+            speak('Momentum weakening — reduce position');
+          }
+        });
+
+        // Trigger 4: EXIT
         if (state.selected) {
           var stillIn = top3.filter(function (t) { return t.id === state.selected.id; })[0];
           if (!stillIn && prevIds[state.selected.id]) {
@@ -1116,31 +1705,38 @@
           }
         }
 
-        // Save full snapshot (state + confidence) for next refresh's comparison
+        // Snapshot for next 5m close's comparison
         var nextPrev = {};
-        top3.forEach(function (t) { nextPrev[t.id] = { state: t.state, confidence: t.confidence }; });
+        top3.forEach(function (t) {
+          nextPrev[t.id] = {
+            state: t.state, confidence: t.confidence, falseBreakout: t.falseBreakout
+          };
+        });
         state.prevTradeIds = nextPrev;
 
         state.trades = top3;
 
-        // Secondary scanner gets the 4th–9th ranked mapped trades (NOT top 3)
+        // Secondary scanner — ranks 4-9, uses score history for real trend arrows
         var scannerPool = mapped.filter(function (m) {
           return top3.filter(function (t) { return t.id === m.id; }).length === 0;
         });
         state.scanner = scannerPool.slice(0, 6).map(function (t) {
+          var h = state.scoreHistory[t.id];
+          // Use real history if we have it; else show current as flat
+          var trend = (h && h.length >= 2) ? h : [t.confidence, t.confidence, t.confidence];
           return {
             symbol: t.symbol, direction: t.side,
             score: t.confidence, state: t.state,
-            trend: [Math.max(40, t.confidence - 4), Math.max(45, t.confidence - 2), t.confidence]
+            trend: trend
           };
         });
 
-        // Auto-select first trade if nothing selected yet
+        // Auto-select first trade on first load
         if (!state.selected && top3.length > 0) {
           state.selected = top3[0];
           state.lastClose = top3[0].price;
           state.flash = null;
-          fetchOptionChain(top3[0].symbol, top3[0].strike).then(function (rows) {
+          fetchOptionChain(top3[0].symbol, top3[0].strike, top3[0]).then(function (rows) {
             state.chain = rows;
             rerender();
           });
@@ -1157,48 +1753,77 @@
 
   function refreshChain() {
     if (!state.selected) return Promise.resolve();
-    return fetchOptionChain(state.selected.symbol, state.selected.strike).then(function (rows) {
+    return fetchOptionChain(state.selected.symbol, state.selected.strike, state.selected).then(function (rows) {
       state.chain = rows;
       rerender();
     });
   }
 
   function refreshAll() {
-    pushLog('90s soft-refresh', C.textSec);
+    // TIER 1 fetch + full recompute. Called at:
+    //   (a) initial mount (so user sees something)
+    //   (b) every 5m wall-clock candle close
+    // NOT called on 90s. Spec §2/§3 forbids mid-cycle Tier 1 updates.
     return Promise.all([refreshTopTrades(), refreshChain()]);
   }
 
-  function on5mClose() {
-    if (!state.selected) return;
-    // Fetch fresh option chain (force-sync) + re-evaluate entry
-    refreshChain();
-    // Simulate candle close price movement — in prod, fetch latest 5m close from backend
-    var prev = state.lastClose != null ? state.lastClose : state.selected.price;
-    var newClose = prev + (Math.random() - 0.5) * (prev * 0.003);
-    state.lastClose = newClose;
-    state.flash = newClose > prev ? 'up' : 'down';
-    pushLog('5m close @ ' + newClose.toFixed(2) + ' — re-evaluated entry', C.yellow);
-    if (newClose >= state.selected.trigger) {
-      pushLog('Entry confirmed', C.green);
-      speak('Entry window opening');
-    }
+  function refreshTier2() {
+    // Tier 2 allowed updates per spec §3:
+    //   - "Last Updated" label on scanner
+    //   - OI context (option chain Δ view)
+    // NEVER touches: trade ranking, confidence, entry state, SL/target.
+    state.lastTier2RefreshAt = Date.now();
     rerender();
-    setTimeout(function () { state.flash = null; rerender(); }, 500);
+  }
+
+  function on5mClose() {
+    // Spec §2: T+0s close → T+2s all engines recompute → single UI batch
+    state.lastFullRefreshAt = Date.now();
+    state.fadeTick = (state.fadeTick || 0) + 1; // spec §8: crossfade Tier 1 values
+    refreshAll().then(function () {
+      // Record the selected trade's 5m close price for Entry Engine display
+      if (state.selected) {
+        var prev = state.lastClose != null ? state.lastClose : state.selected.price;
+        var newClose = state.selected.price;
+        if (Math.abs(newClose - prev) > 0.001) {
+          state.flash = newClose > prev ? 'up' : 'down';
+          setTimeout(function () { state.flash = null; rerender(); }, 500);
+        }
+        state.lastClose = newClose;
+
+        pushLog('5m close @ ' + newClose.toFixed(2), C.yellow);
+
+        // Entry confirmed check
+        if ((state.selected.side === 'CE' && newClose >= state.selected.trigger) ||
+            (state.selected.side === 'PE' && newClose <= state.selected.trigger)) {
+          pushLog('Entry confirmed, confidence ' + state.selected.confidence + '%', C.green);
+          speak(state.selected.symbol + ' ' + state.selected.strike +
+                ' entry confirmed, confidence ' + state.selected.confidence + ' percent');
+        }
+      }
+      rerender();
+    });
   }
 
   function startTimers() {
-    // Countdown ticks the label every second (no data fetch)
+    // Countdown: label-only update, no data fetch, no rerender of anything else
     timers.countdown = setInterval(function () {
       state.countdown = formatCountdown(msUntilNextFiveMin());
-      // Only rerender the countdown cheaply — full rerender is fine at 1 Hz
       var countEl = document.querySelector('#activeTradingMount [data-countdown]');
-      if (countEl) countEl.textContent = 'NEXT ' + state.countdown;
+      if (countEl) countEl.textContent = 'Next Evaluation In: ' + state.countdown;
+      // Scanner "Last Updated" label (spec §9)
+      var lastUpEl = document.querySelector('#activeTradingMount [data-last-up]');
+      if (lastUpEl && state.lastFullRefreshAt) {
+        var ago = Math.floor((Date.now() - state.lastFullRefreshAt) / 1000);
+        lastUpEl.textContent = 'Last Updated: ' + formatAgo(ago);
+      }
     }, 1000);
 
-    // 90s soft-refresh
-    timers.soft90 = setInterval(refreshAll, 90000);
+    // 90s Tier 2 refresh — scanner "Last Updated" label + non-decision fields only.
+    // NEVER touches Top Trades ranking, confidence, entry state, SL/target.
+    timers.soft90 = setInterval(refreshTier2, 90000);
 
-    // 5m candle close — aligned to wall-clock
+    // 5m candle close — the ONLY moment Tier 1 decision fields recompute.
     function scheduleNext5m() {
       var ms = msUntilNextFiveMin();
       timers.candle5m = setTimeout(function () {
@@ -1232,10 +1857,14 @@
     var container = document.getElementById(containerId || 'deResult');
     if (!container) return;
 
-    // IMPORTANT: Do NOT modify any parent styles (.sc, .sbody, #deHeader).
-    // Those are shared with Trader/Investor/Options tabs — changing them corrupts
-    // the site's appearance for every other mode. The terminal is fully
-    // self-contained inside #activeTradingMount with its own dark background.
+    installScopedStyles();
+
+    // Set body-level marker + tag ancestor .sc so CSS can scope override
+    // without touching any inline styles. Everything is undone on unmount.
+    document.body.classList.add('at-mode');
+    var sc = container.closest ? container.closest('.sc') : null;
+    if (sc) sc.setAttribute('data-at-host', '1');
+
     container.innerHTML =
       '<div id="activeTradingMount" ' +
         'style="width:100%;background:#020617;border-radius:8px;' +
@@ -1250,8 +1879,16 @@
   window.unmountActiveTrading = function () {
     mounted = false;
     stopTimers();
+
+    // Remove body marker + data-at-host so all parent styling reverts
+    // to original pristine state. Zero lingering side effects.
+    document.body.classList.remove('at-mode');
+    var allHosts = document.querySelectorAll('.sc[data-at-host="1"]');
+    for (var i = 0; i < allHosts.length; i++) {
+      allHosts[i].removeAttribute('data-at-host');
+    }
+
     var mount = document.getElementById('activeTradingMount');
     if (mount) mount.innerHTML = '';
-    // Nothing else to restore — we never touched anything outside the mount.
   };
 })();

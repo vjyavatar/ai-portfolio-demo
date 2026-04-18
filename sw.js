@@ -1,4 +1,4 @@
-const CACHE_NAME = 'celesys-v36';
+const CACHE_NAME = 'celesys-v37';
 const ASSETS = ['/'];
 
 self.addEventListener('install', e => {
@@ -15,7 +15,14 @@ self.addEventListener('activate', e => {
 });
 
 self.addEventListener('fetch', e => {
-  if (e.request.url.includes('app.min.js') || e.request.url.includes('app.js')) {
+  // ALWAYS bypass SW cache for these JS files so updates deploy immediately.
+  // Cache-busting via ?v=N query params alone doesn't work once SW has cached
+  // a resource — we must explicitly always-fetch.
+  if (
+    e.request.url.includes('app.min.js') ||
+    e.request.url.includes('app.js') ||
+    e.request.url.includes('active-trading.js')
+  ) {
     e.respondWith(fetch(e.request));
     return;
   }
