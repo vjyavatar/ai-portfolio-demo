@@ -18,6 +18,10 @@
 (function () {
   'use strict';
 
+  // Loud startup log so we can verify the deployed version at a glance
+  console.log('%c[ActiveTrading] v21 loaded — dark theme with MutationObserver enforcement',
+              'color:#22C55E;font-weight:bold;font-size:13px');
+
   // ── COLOR TOKENS ────────────────────────────────────────────────────────
   var C = {
     bg: '#020617',
@@ -73,12 +77,13 @@
       '#activeTradingMount select {',
       '  font-family: inherit;',
       '}',
-      // Nuke any white/light background that sneaks in from site CSS onto
-      // untagged descendant divs inside the mount. Transparent default is
-      // fine — but browsers sometimes compute white based on UA rules.
-      '#activeTradingMount > div,',
-      '#activeTradingMount > div > div {',
-      '  background-color: transparent;',
+      // Every descendant div of the mount defaults to DARK background, not
+      // transparent or inherited. This makes it impossible for site-wide
+      // rules (e.g. [data-theme="dark"] .sc .sbody [style*=...]) to paint
+      // any intermediate div white. The header and panels with their own
+      // distinct colors opt out by carrying a stronger inline !important.
+      '#activeTradingMount div {',
+      '  background-color: #020617;',
       '}',
 
       // Parent overrides — ONLY active while body.at-mode is set
@@ -2040,24 +2045,164 @@
           }
         }
       }
+      // Also force #deResult itself to dark so no white strip shows around
+      // the terminal if it has any padding/margin from a CSS rule.
+      nodesToStyle.push({ el: container, orig: container.getAttribute('style') || '' });
+      container.setAttribute('style',
+        (container.getAttribute('style') || '') +
+        ';background:#020617 !important' +
+        ';padding:0 !important' +
+        ';margin:0 !important' +
+        ';min-height:0 !important'
+      );
+
       state._hiddenSiblings = hiddenSiblings;
     }
     state._brutedNodes = nodesToStyle;
 
     container.innerHTML =
       '<div id="activeTradingMount" ' +
-        'style="width:100%;background:#020617;border-radius:8px;' +
+        'style="width:100%;background:#020617 !important;border-radius:8px;' +
                'border:1px solid #1E293B;overflow:hidden"></div>';
     mounted = true;
 
     render(document.getElementById('activeTradingMount'));
     refreshAll();
     startTimers();
+
+    // ═══ MUTATION OBSERVER — BULLETPROOF DARK ENFORCEMENT ════════════════
+    // CSS rules, inline styles, and scoped stylesheets all failed in Vijay's
+    // real browser. This runs in a loop: on every DOM change inside the
+    // terminal (or on the ancestor .sc/.sbody) we re-apply dark backgrounds.
+    // Any script or stylesheet that tries to paint white gets overridden
+    // the moment they do it, on the next animation frame.
+    function enforceDark() {
+      if (!mounted) return;
+      // Force dark on all key elements
+      var targets = [
+        { el: sc, props: { background: '#020617', padding: '0', boxShadow: 'none' } },
+        { el: sc && sc.querySelector('.sbody'), props: { background: '#020617', padding: '0' } },
+        { el: container, props: { background: '#020617', padding: '0', minHeight: '0' } },
+        { el: document.getElementById('activeTradingMount'),
+          props: { background: '#020617' } }
+      ];
+      targets.forEach(function (t) {
+        if (!t.el) return;
+        for (var prop in t.props) {
+          // setProperty with 'important' priority — most forceful JS API
+          t.el.style.setProperty(
+            prop.replace(/([A-Z])/g, '-$1').toLowerCase(),
+            t.props[prop],
+            'important'
+          );
+        }
+      });
+      // All descendants of the mount — force dark if they have any bg other
+      // than our allowed colors (card #0F172A, active #1E293B, bg #020617)
+      var mount = document.getElementById('activeTradingMount');
+      if (mount) {
+        var allDivs = mount.querySelectorAll('div');
+        for (var i = 0; i < allDivs.length; i++) {
+          var div = allDivs[i];
+          var cs = window.getComputedStyle(div);
+          var bg = cs.backgroundColor;
+          // Allow transparent, our dark palette, and semi-transparent colored pills
+          var allowedExact = {
+            'rgba(0, 0, 0, 0)': 1, 'transparent': 1,
+            'rgb(2, 6, 23)': 1,    // C.bg
+            'rgb(15, 23, 42)': 1,  // C.card
+            'rgb(30, 41, 59)': 1   // C.active
+          };
+          if (allowedExact[bg]) continue;
+          // Allow low-alpha colored pills (state tags, warnings) — these use
+          // rgba with alpha < 0.5 and are fine
+          var m = bg.match(/rgba?\(([^)]+)\)/);
+          if (m) {
+            var parts = m[1].split(',').map(function (x) { return parseFloat(x); });
+            if (parts.length === 4 && parts[3] < 0.5) continue;
+          }
+          // Anything else (white, light gray, etc.) → force dark
+          div.style.setProperty('background-color', '#020617', 'important');
+        }
+      }
+    }
+
+    // Run once immediately
+    enforceDark();
+    // Run again after any DOM change (React-style re-renders, injected scripts)
+    if (state._observer) state._observer.disconnect();
+    state._observer = new MutationObserver(function () {
+      // Throttle via rAF — don't block every mutation, coalesce per frame
+      if (state._raf) return;
+      state._raf = requestAnimationFrame(function () {
+        state._raf = null;
+        enforceDark();
+      });
+    });
+    // Observe the ENTIRE document body for style/attribute/child changes,
+    // because something OUTSIDE the mount may be repainting parent .sc.
+    state._observer.observe(document.body, {
+      attributes: true,       // catches style=".." attribute changes
+      attributeFilter: ['style', 'class'],
+      childList: true,
+      subtree: true
+    });
+    // Also poll every 500ms as a safety net in case MutationObserver misses
+    // something (e.g. computed style changes driven by media queries)
+    if (state._pollTimer) clearInterval(state._pollTimer);
+    state._pollTimer = setInterval(enforceDark, 500);
+
+    // ═══ DEBUG: log computed backgrounds so we can see what's white ═══
+    // Expose a function the user can call from console: window._atDebug()
+    window._atDebug = function () {
+      var rows = [];
+      function inspect(sel, label) {
+        var el = typeof sel === 'string' ? document.querySelector(sel) : sel;
+        if (!el) { rows.push({ label: label, bg: '[MISSING]', inline: '', rule: '' }); return; }
+        var cs = window.getComputedStyle(el);
+        rows.push({
+          label: label,
+          bg: cs.backgroundColor,
+          inline: el.getAttribute('style') ? el.getAttribute('style').substring(0, 100) : '',
+          width: cs.width, height: cs.height
+        });
+      }
+      inspect('html', 'html');
+      inspect('body', 'body');
+      inspect('.sc[data-at-host="1"]', 'sc (host)');
+      inspect('.sc[data-at-host="1"] .sbody', 'sbody');
+      inspect('#deResult', '#deResult');
+      inspect('#activeTradingMount', '#activeTradingMount');
+      var mount = document.getElementById('activeTradingMount');
+      if (mount) {
+        inspect(mount.children[0], 'wrap (child 1)');
+        if (mount.children[0] && mount.children[0].children[1]) {
+          inspect(mount.children[0].children[1], 'body grid');
+          if (mount.children[0].children[1].children[0]) {
+            inspect(mount.children[0].children[1].children[0], 'top trades panel');
+          }
+        }
+      }
+      console.table(rows);
+      return rows;
+    };
+    // Auto-run once after mount so user sees it immediately in console
+    setTimeout(function () {
+      console.log('%c[ActiveTrading] v21 MUTATION OBSERVER active — call window._atDebug() anytime',
+                  'color:#22C55E;font-weight:bold;background:#020617;padding:4px 8px');
+      window._atDebug();
+    }, 500);
   };
 
   window.unmountActiveTrading = function () {
     mounted = false;
     stopTimers();
+
+    // Stop mutation observer + polling immediately so they don't fight the
+    // theme restoration below.
+    if (state._observer) { state._observer.disconnect(); state._observer = null; }
+    if (state._pollTimer) { clearInterval(state._pollTimer); state._pollTimer = null; }
+    if (state._raf) { cancelAnimationFrame(state._raf); state._raf = null; }
 
     document.body.classList.remove('at-mode');
     var allHosts = document.querySelectorAll('.sc[data-at-host="1"]');
