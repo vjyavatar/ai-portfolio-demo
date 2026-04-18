@@ -1975,26 +1975,61 @@
       if (e && e.parentElement) e.parentElement.removeChild(e);
     });
 
-    // Also hide any SIBLINGS of #deResult inside .sbody that carry their own
-    // backgrounds (e.g. standalone export rows injected outside deResult).
-    // Record what we hid so we can restore on unmount.
-    var hiddenSiblings = [];
+    // ═══ BRUTE-FORCE DARK BACKGROUND ═══════════════════════════════════
+    // CSS rules keep losing to something on the deployed site. We now
+    // write inline styles DIRECTLY on the ancestor chain. Inline styles
+    // with !important beat external stylesheets regardless of specificity.
+    // Store originals on a custom property so unmount can restore.
+    var nodesToStyle = [];
     if (sc) {
+      nodesToStyle.push({ el: sc, orig: sc.getAttribute('style') || '' });
+      sc.setAttribute('style',
+        (sc.getAttribute('style') || '') +
+        ';background:#020617 !important' +
+        ';border:1px solid #1E293B !important' +
+        ';border-left:3px solid #0F172A !important' +
+        ';box-shadow:none !important' +
+        ';padding:0 !important'
+      );
+
       var sbody = sc.querySelector('.sbody');
+      if (sbody) {
+        nodesToStyle.push({ el: sbody, orig: sbody.getAttribute('style') || '' });
+        sbody.setAttribute('style',
+          (sbody.getAttribute('style') || '') +
+          ';background:#020617 !important' +
+          ';padding:0 !important'
+        );
+      }
+
+      // Hide every sibling of #deResult inside .sbody (deHeader via .sh,
+      // #deControls with its mode/region rows, any injected report blocks)
+      var hiddenSiblings = [];
+      var sh = sc.querySelector('#deHeader') || sc.querySelector('.sh');
+      if (sh) {
+        hiddenSiblings.push({ el: sh, orig: sh.getAttribute('style') || '' });
+        sh.setAttribute('style', (sh.getAttribute('style') || '') + ';display:none !important');
+      }
+      var deCtrl = sc.querySelector('#deControls');
+      if (deCtrl) {
+        hiddenSiblings.push({ el: deCtrl, orig: deCtrl.getAttribute('style') || '' });
+        deCtrl.setAttribute('style', (deCtrl.getAttribute('style') || '') + ';display:none !important');
+      }
+      // Any other direct children of .sbody besides our #deResult
       if (sbody) {
         var kids = sbody.children;
         for (var i = 0; i < kids.length; i++) {
-          if (kids[i] !== container && kids[i].style.display !== 'none') {
-            hiddenSiblings.push({
-              el: kids[i],
-              prevDisplay: kids[i].style.display || ''
-            });
-            kids[i].style.display = 'none';
+          if (kids[i] !== container && kids[i].id !== 'deControls') {
+            hiddenSiblings.push({ el: kids[i], orig: kids[i].getAttribute('style') || '' });
+            kids[i].setAttribute('style',
+              (kids[i].getAttribute('style') || '') + ';display:none !important'
+            );
           }
         }
       }
+      state._hiddenSiblings = hiddenSiblings;
     }
-    state._hiddenSiblings = hiddenSiblings;
+    state._brutedNodes = nodesToStyle;
 
     container.innerHTML =
       '<div id="activeTradingMount" ' +
@@ -2011,18 +2046,28 @@
     mounted = false;
     stopTimers();
 
-    // Remove body marker + data-at-host so all parent styling reverts
-    // to original pristine state. Zero lingering side effects.
     document.body.classList.remove('at-mode');
     var allHosts = document.querySelectorAll('.sc[data-at-host="1"]');
     for (var i = 0; i < allHosts.length; i++) {
       allHosts[i].removeAttribute('data-at-host');
     }
 
-    // Restore any siblings we hid on mount
+    // Restore the brute-forced inline styles
+    if (state._brutedNodes) {
+      state._brutedNodes.forEach(function (n) {
+        if (n.el) {
+          if (n.orig) n.el.setAttribute('style', n.orig);
+          else n.el.removeAttribute('style');
+        }
+      });
+      state._brutedNodes = null;
+    }
     if (state._hiddenSiblings) {
       state._hiddenSiblings.forEach(function (h) {
-        if (h.el && h.el.parentElement) h.el.style.display = h.prevDisplay;
+        if (h.el) {
+          if (h.orig) h.el.setAttribute('style', h.orig);
+          else h.el.removeAttribute('style');
+        }
       });
       state._hiddenSiblings = null;
     }
