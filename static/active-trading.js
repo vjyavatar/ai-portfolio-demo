@@ -61,7 +61,7 @@
   // ── MODULE STATE ────────────────────────────────────────────────────────
   var state = {
     index: 'NIFTY',
-    voiceOn: true,
+    voiceOn: true,         // per spec requirement: ON by default
     alertsOn: true,
     region: 'IN',
     trades: [],
@@ -73,7 +73,9 @@
     countdown: formatCountdown(msUntilNextFiveMin()),
     logs: [],
     loaded: false,
-    lastFetchMsg: ''
+    lastFetchMsg: '',
+    lockedIds: {},         // { tradeId: firstSeenTimestamp } — for 3-min stability lock
+    prevTradeIds: {}       // tracked across refreshes for "new top trade" voice trigger
   };
 
   var timers = { countdown: null, soft90: null, candle5m: null };
@@ -293,9 +295,9 @@
     var m = STATE_MAP[stateKey] || STATE_MAP.ideal;
     return el('span', {
       style: {
-        fontSize: (compact ? 10 : 11) + 'px',
+        fontSize: (compact ? 12 : 12) + 'px', // spec §4.3: state pill is 12px
         fontWeight: 700,
-        padding: compact ? '2px 6px' : '3px 8px',
+        padding: compact ? '3px 8px' : '3px 8px',
         borderRadius: '999px',
         background: m.color + '22',
         color: m.color,
@@ -360,8 +362,17 @@
   }
 
   function renderHeader() {
-    var indices = ['NIFTY', 'BANKNIFTY', 'SENSEX'];
-    var indexBtns = indices.map(function (ix) {
+    // Contextual index list based on region
+    var indexList = state.region === 'US'
+      ? ['SPY', 'QQQ', 'IWM']
+      : ['NIFTY', 'BANKNIFTY', 'SENSEX'];
+
+    // Reset to first index when region changes if current isn't in list
+    if (indexList.indexOf(state.index) === -1) {
+      state.index = indexList[0];
+    }
+
+    var indexBtns = indexList.map(function (ix) {
       var active = state.index === ix;
       return el('button', {
         onClick: function () { state.index = ix; rerender(); refreshAll(); },
@@ -375,16 +386,38 @@
       }, ix);
     });
 
-    var marketOpen = isIndianMarketOpen();
+    var regionBtn = function (reg, label) {
+      var active = state.region === reg;
+      return el('button', {
+        onClick: function () {
+          if (state.region === reg) return;
+          state.region = reg;
+          state.trades = []; state.scanner = []; state.selected = null;
+          state.chain = []; state.lockedIds = {}; state.prevTradeIds = {};
+          state.loaded = false; state.lastFetchMsg = '';
+          rerender(); refreshAll();
+        },
+        style: {
+          fontSize: '10px', fontWeight: 800, padding: '3px 8px',
+          border: '1px solid ' + (active ? C.green : C.divider),
+          background: active ? C.green + '22' : 'transparent',
+          color: active ? C.green : C.textSec,
+          borderRadius: '4px', cursor: 'pointer', letterSpacing: '0.5px',
+          fontFamily: MONO
+        }
+      }, label);
+    };
+
+    var isLive = state.region === 'IN' ? isIndianMarketOpen() : isUSMarketOpen();
     var marketBadge = el('span', {
       style: {
         fontSize: '9px', fontWeight: 800, padding: '2px 6px', borderRadius: '4px',
-        background: marketOpen ? C.green + '22' : C.textMute + '22',
-        color: marketOpen ? C.green : C.textMute,
-        border: '1px solid ' + (marketOpen ? C.green + '55' : C.textMute + '55'),
+        background: isLive ? C.green + '22' : C.textMute + '22',
+        color: isLive ? C.green : C.textMute,
+        border: '1px solid ' + (isLive ? C.green + '55' : C.textMute + '55'),
         letterSpacing: '0.5px', marginLeft: '8px'
       }
-    }, marketOpen ? '● LIVE' : '● CLOSED');
+    }, isLive ? '● LIVE' : '● CLOSED');
 
     return el('div', {
       style: {
@@ -392,15 +425,56 @@
         display: 'flex', alignItems: 'center', padding: '0 12px', gap: '12px', flexShrink: 0
       }
     }, [
+      // LEFT: app name + market badge
       el('div', {
-        style: { fontSize: '13px', fontWeight: 800, color: C.textPri, letterSpacing: '0.5px', fontFamily: MONO, display: 'flex', alignItems: 'center' }
+        style: {
+          fontSize: '13px', fontWeight: 800, color: C.textPri, letterSpacing: '0.5px',
+          fontFamily: MONO, display: 'flex', alignItems: 'center'
+        }
       }, ['CELESYS · ACTIVE TRADING', marketBadge]),
-      el('div', { style: { flex: 1, display: 'flex', justifyContent: 'center', gap: '4px' } }, indexBtns),
+
+      // CENTER: region toggle + index selector
+      el('div', {
+        style: { flex: 1, display: 'flex', justifyContent: 'center', gap: '8px', alignItems: 'center' }
+      }, [
+        el('div', { style: { display: 'flex', gap: '2px', padding: '2px', background: C.bg, borderRadius: '5px' } }, [
+          regionBtn('IN', 'IN'),
+          regionBtn('US', 'US')
+        ]),
+        el('div', { style: { width: '1px', height: '16px', background: C.divider } }),
+        el('div', { style: { display: 'flex', gap: '4px' } }, indexBtns)
+      ]),
+
+      // RIGHT: alerts + voice + user profile
       el('div', { style: { display: 'flex', alignItems: 'center', gap: '8px' } }, [
         iconBtn('🔔', state.alertsOn, function () { state.alertsOn = !state.alertsOn; rerender(); }),
-        iconBtn('🎙', state.voiceOn, function () { state.voiceOn = !state.voiceOn; rerender(); })
+        iconBtn('🎙', state.voiceOn, function () { state.voiceOn = !state.voiceOn; rerender(); }),
+        el('div', {
+          title: 'Profile',
+          style: {
+            width: '24px', height: '24px', borderRadius: '50%',
+            background: 'linear-gradient(135deg, #1A3A78, #3B82F6)',
+            color: '#fff',
+            border: '1px solid ' + C.divider,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: '10px', fontWeight: 800, cursor: 'pointer',
+            fontFamily: MONO, letterSpacing: '0.3px'
+          }
+        }, 'V')
       ])
     ]);
+  }
+
+  function isUSMarketOpen() {
+    // US equities: Mon–Fri 09:30–16:00 ET. Approximate via UTC
+    var now = new Date();
+    var day = now.getUTCDay();
+    if (day === 0 || day === 6) return false;
+    // ET = UTC-5 (EST) or UTC-4 (EDT). Use a rough window that covers both
+    var hours = now.getUTCHours();
+    var mins = now.getUTCMinutes();
+    var mm = hours * 60 + mins;
+    return mm >= (13 * 60 + 30) && mm <= (20 * 60 + 0);
   }
 
   function iconBtn(icon, on, handler) {
@@ -429,9 +503,19 @@
     for (var i = 0; i < 3; i++) {
       var t = state.trades[i];
       if (!t) {
-        var placeholderText = !state.loaded
-          ? 'Loading…'
-          : (state.lastFetchMsg || 'No high-confidence trades');
+        // Spec §4 rules: if <3 trades → "No high-confidence trades"
+        // Before first fetch completes: "Loading…"
+        // If fetch failed: show error detail
+        var placeholderText;
+        if (!state.loaded) {
+          placeholderText = 'Loading…';
+        } else if (state.lastFetchMsg && state.lastFetchMsg.indexOf('error') !== -1) {
+          placeholderText = state.lastFetchMsg;
+        } else if (state.lastFetchMsg && state.lastFetchMsg.indexOf('warming up') !== -1) {
+          placeholderText = state.lastFetchMsg;
+        } else {
+          placeholderText = 'No high-confidence trades';
+        }
         panel.appendChild(el('div', {
           style: {
             height: '84px', marginBottom: '6px', borderRadius: '12px',
@@ -483,11 +567,11 @@
       }
     }, trade.confidence + '%'));
 
-    // Row 1 col 3 — EXECUTE
+    // Row 1 col 3 — EXECUTE (per spec: 36px × 100px green gradient)
     card.appendChild(el('button', {
       onClick: function (e) { e.stopPropagation(); onExecute(trade); },
       style: {
-        height: '32px', width: '96px',
+        height: '36px', width: '100px',
         background: 'linear-gradient(180deg, ' + C.green + ', #16A34A)',
         color: '#062B17', fontWeight: 800, fontSize: '11px',
         border: 'none', borderRadius: '6px', cursor: 'pointer',
@@ -639,12 +723,13 @@
     }, 'NEXT ' + state.countdown));
     box.appendChild(row1);
 
-    // Row 2: trigger + current
+    // Row 2: trigger + current — spec §5.2 format: "Break above 243.50"
+    var triggerVerb = t.side === 'PE' ? 'Break below' : 'Break above';
     var triggerLine = el('div', {
       style: { fontSize: '12px', color: C.textSec, lineHeight: 1.2, fontFamily: MONO }
     });
     triggerLine.appendChild(document.createTextNode('Trigger: '));
-    triggerLine.appendChild(el('span', { style: { color: C.textPri } }, t.trigger.toFixed(2)));
+    triggerLine.appendChild(el('span', { style: { color: C.textPri } }, triggerVerb + ' ' + t.trigger.toFixed(2)));
     triggerLine.appendChild(document.createTextNode('   ·   Current: '));
     triggerLine.appendChild(el('span', { style: { color: status.color } },
       (lc != null ? lc.toFixed(2) : '—') + ' → ' + status.label.toLowerCase()));
@@ -870,6 +955,7 @@
   function selectTrade(t) {
     state.selected = t;
     state.lastClose = t.price;
+    state.flash = null; // NEVER flash on user selection — only on 5m close price change
     fetchOptionChain(t.symbol, t.strike).then(function (rows) {
       state.chain = rows;
       rerender();
@@ -909,7 +995,8 @@
 
   // ── REFRESH CYCLES ──────────────────────────────────────────────────────
   function refreshTopTrades() {
-    return fetch('/api/bottom-nav-scan?region=' + state.region)
+    var url = '/api/bottom-nav-scan?region=' + state.region;
+    return fetch(url)
       .then(function (r) { return r.json(); })
       .then(function (d) {
         state.loaded = true;
@@ -928,24 +1015,132 @@
           .map(mapScanRowToTrade)
           .filter(function (t) { return t; })
           .sort(function (a, b) { return b.confidence - a.confidence; });
+
         if (mapped.length === 0) {
           state.lastFetchMsg = 'No high-conviction setups right now (' + raw.length + ' scanned)';
-        } else {
-          state.lastFetchMsg = '';
+          state.trades = []; state.scanner = [];
+          rerender(); return;
         }
-        state.trades = mapped;
-        state.scanner = mapped.slice(3, 9).map(function (t) {
+
+        state.lastFetchMsg = '';
+
+        // ═══ 3-MIN STABILITY LOCK (spec section 10) ═════════════════════
+        // Top trades must remain stable for minimum 3 minutes before being
+        // replaced. Any trade that's been in the top-3 for <3min stays locked
+        // in its slot even if a higher-confidence candidate arrives.
+        var now = Date.now();
+        var LOCK_MS = 3 * 60 * 1000;
+        var prev = state.trades || [];
+        var top3 = [];
+
+        // First, carry forward locked trades that are still in the mapped set
+        for (var i = 0; i < prev.length && top3.length < 3; i++) {
+          var p = prev[i];
+          if (!p) continue;
+          var lockStart = state.lockedIds[p.id];
+          if (lockStart && (now - lockStart) < LOCK_MS) {
+            // Still locked — check if it's still in current scan (else it expired)
+            var fresh = mapped.filter(function (m) { return m.id === p.id; })[0];
+            if (fresh) {
+              top3.push(fresh); // update with fresh data but keep slot
+            }
+          }
+        }
+
+        // Fill remaining slots with highest-confidence non-locked trades
+        for (var j = 0; j < mapped.length && top3.length < 3; j++) {
+          var m = mapped[j];
+          if (top3.filter(function (t) { return t.id === m.id; }).length === 0) {
+            top3.push(m);
+            if (!state.lockedIds[m.id]) {
+              state.lockedIds[m.id] = now; // start 3-min lock for new entrant
+            }
+          }
+        }
+
+        // Clean up stale lock entries
+        var newLocks = {};
+        top3.forEach(function (t) {
+          newLocks[t.id] = state.lockedIds[t.id] || now;
+        });
+        state.lockedIds = newLocks;
+
+        // ═══ VOICE TRIGGERS (spec section 7) ════════════════════════════
+        // prevIds is now a map: { tradeId: { state, confidence } } so we can
+        // detect both state transitions AND confidence rises (momentum).
+        var prevIds = state.prevTradeIds || {};
+
+        // Trigger 1: NEW TOP TRADE — a trade not present in previous refresh
+        var newTopTrade = top3.filter(function (t) { return !prevIds[t.id]; })[0];
+        if (newTopTrade && Object.keys(prevIds).length > 0) {
+          pushLog('NEW TOP: ' + newTopTrade.symbol + ' ' + newTopTrade.strike, C.green);
+          speak('New top trade: ' + newTopTrade.symbol + ' ' + newTopTrade.strike +
+                ', confidence ' + newTopTrade.confidence + ' percent');
+        }
+
+        // Trigger 3: LATE WARNING — prev state was early/ideal, now late
+        top3.forEach(function (t) {
+          var prev = prevIds[t.id];
+          var prevState = prev && prev.state;
+          if (prevState && (prevState === 'early' || prevState === 'ideal') && t.state === 'late') {
+            pushLog('LATE: ' + t.symbol + ' ' + t.strike + ' — reduce size', C.orange);
+            speak(t.symbol + ' ' + t.strike + ' becoming late. Reduce size.');
+          }
+        });
+
+        // Trigger — MOMENTUM BUILDING (spec §5.5 example log)
+        // Fires when the currently-selected trade's confidence rises by ≥5 points
+        // between refreshes. Quiet, non-blocking — just a log + soft voice cue.
+        if (state.selected) {
+          var sel = top3.filter(function (t) { return t.id === state.selected.id; })[0];
+          var selPrev = prevIds[state.selected.id];
+          if (sel && selPrev && typeof selPrev.confidence === 'number') {
+            var delta = sel.confidence - selPrev.confidence;
+            if (delta >= 5) {
+              pushLog('Momentum building (+' + delta + ')', C.yellow);
+              speak('Momentum building');
+            }
+          }
+        }
+
+        // Trigger 4: EXIT — selected trade dropped out of top-3 OR flipped to avoid
+        if (state.selected) {
+          var stillIn = top3.filter(function (t) { return t.id === state.selected.id; })[0];
+          if (!stillIn && prevIds[state.selected.id]) {
+            pushLog('EXIT: ' + state.selected.symbol + ' ' + state.selected.strike +
+                    ' — momentum fading', C.red);
+            speak('Exit ' + state.selected.symbol + ', momentum fading');
+          } else if (stillIn && stillIn.state === 'avoid') {
+            pushLog('EXIT SIGNAL: ' + stillIn.symbol + ' invalidated', C.red);
+            speak('Exit now, setup invalidated');
+          }
+        }
+
+        // Save full snapshot (state + confidence) for next refresh's comparison
+        var nextPrev = {};
+        top3.forEach(function (t) { nextPrev[t.id] = { state: t.state, confidence: t.confidence }; });
+        state.prevTradeIds = nextPrev;
+
+        state.trades = top3;
+
+        // Secondary scanner gets the 4th–9th ranked mapped trades (NOT top 3)
+        var scannerPool = mapped.filter(function (m) {
+          return top3.filter(function (t) { return t.id === m.id; }).length === 0;
+        });
+        state.scanner = scannerPool.slice(0, 6).map(function (t) {
           return {
             symbol: t.symbol, direction: t.side,
             score: t.confidence, state: t.state,
             trend: [Math.max(40, t.confidence - 4), Math.max(45, t.confidence - 2), t.confidence]
           };
         });
-        // Auto-select first trade if none
-        if (!state.selected && mapped.length > 0) {
-          state.selected = mapped[0];
-          state.lastClose = mapped[0].price;
-          fetchOptionChain(mapped[0].symbol, mapped[0].strike).then(function (rows) {
+
+        // Auto-select first trade if nothing selected yet
+        if (!state.selected && top3.length > 0) {
+          state.selected = top3[0];
+          state.lastClose = top3[0].price;
+          state.flash = null;
+          fetchOptionChain(top3[0].symbol, top3[0].strike).then(function (rows) {
             state.chain = rows;
             rerender();
           });
@@ -1037,31 +1232,14 @@
     var container = document.getElementById(containerId || 'deResult');
     if (!container) return;
 
-    // Neutralize the parent white card styling so our dark terminal isn't sandwiched
-    // in a white .sc wrapper. We restore it on unmount.
-    var sc = container.closest ? container.closest('.sc') : null;
-    var sbody = container.closest ? container.closest('.sbody') : null;
-    if (sc) {
-      sc.dataset._atPrevBorderLeft = sc.style.borderLeft || '';
-      sc.dataset._atPrevBg = sc.style.background || '';
-      sc.style.borderLeft = '3px solid #0F172A';
-      sc.style.background = '#020617';
-    }
-    if (sbody) {
-      sbody.dataset._atPrevBg = sbody.style.background || '';
-      sbody.dataset._atPrevPadding = sbody.style.padding || '';
-      sbody.style.background = '#020617';
-      sbody.style.padding = '0';
-    }
-    // Hide the old Visual Decision Engine header while Active Trading is active
-    var deHeader = document.getElementById('deHeader');
-    if (deHeader) {
-      deHeader.dataset._atPrevDisplay = deHeader.style.display || '';
-      deHeader.style.display = 'none';
-    }
-
-    // Clear and create a dedicated mount node
-    container.innerHTML = '<div id="activeTradingMount" style="width:100%;background:#020617"></div>';
+    // IMPORTANT: Do NOT modify any parent styles (.sc, .sbody, #deHeader).
+    // Those are shared with Trader/Investor/Options tabs — changing them corrupts
+    // the site's appearance for every other mode. The terminal is fully
+    // self-contained inside #activeTradingMount with its own dark background.
+    container.innerHTML =
+      '<div id="activeTradingMount" ' +
+        'style="width:100%;background:#020617;border-radius:8px;' +
+               'border:1px solid #1E293B;overflow:hidden"></div>';
     mounted = true;
 
     render(document.getElementById('activeTradingMount'));
@@ -1074,25 +1252,6 @@
     stopTimers();
     var mount = document.getElementById('activeTradingMount');
     if (mount) mount.innerHTML = '';
-    // Restore parent card styling
-    var sc = mount && mount.closest ? mount.closest('.sc') : null;
-    var sbody = mount && mount.closest ? mount.closest('.sbody') : null;
-    if (sc) {
-      sc.style.borderLeft = sc.dataset._atPrevBorderLeft || '';
-      sc.style.background = sc.dataset._atPrevBg || '';
-      delete sc.dataset._atPrevBorderLeft;
-      delete sc.dataset._atPrevBg;
-    }
-    if (sbody) {
-      sbody.style.background = sbody.dataset._atPrevBg || '';
-      sbody.style.padding = sbody.dataset._atPrevPadding || '';
-      delete sbody.dataset._atPrevBg;
-      delete sbody.dataset._atPrevPadding;
-    }
-    var deHeader = document.getElementById('deHeader');
-    if (deHeader) {
-      deHeader.style.display = deHeader.dataset._atPrevDisplay || '';
-      delete deHeader.dataset._atPrevDisplay;
-    }
+    // Nothing else to restore — we never touched anything outside the mount.
   };
 })();
