@@ -8568,6 +8568,9 @@ window._exportFullHTML=function(){
 
 // ═══ Add export buttons to the report header ═══
 window._addExportButtons=function(){
+  // Suppress entirely when Active Trading is mounted — dark terminal must
+  // not have white PDF/Print buttons injected into its container.
+  if(document.body.classList.contains('at-mode'))return;
   var el=document.getElementById('deResult');
   if(!el)return;
   var existing=document.getElementById('celesysExportBtns');

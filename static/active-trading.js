@@ -116,6 +116,13 @@
       '#activeTradingMount .at-flash-up { animation: atPriceUp .5s ease both; }',
       '#activeTradingMount .at-flash-dn { animation: atPriceDown .5s ease both; }',
 
+      // Dark-theme scrollbars (Webkit + Firefox) — visible but subtle
+      '#activeTradingMount ::-webkit-scrollbar { width: 8px; height: 8px; }',
+      '#activeTradingMount ::-webkit-scrollbar-track { background: #020617; }',
+      '#activeTradingMount ::-webkit-scrollbar-thumb { background: #1E293B; border-radius: 4px; }',
+      '#activeTradingMount ::-webkit-scrollbar-thumb:hover { background: #334155; }',
+      '#activeTradingMount { scrollbar-color: #1E293B #020617; scrollbar-width: thin; }',
+
       // Spec §8: Crossfade (opacity fade, 200-300ms, no slide/resize)
       // Applied to Tier 1 value containers (confidence, state pill, price).
       '@keyframes atCrossfade {',
@@ -193,42 +200,52 @@
   // ═══════════════════════════════════════════════════════════════════════
 
   function scoreTrendStrength(row, side) {
-    // Inputs: last 3 x 5m candles from ohlc_bars.
-    // Bull: HH + HC (higher-high, higher-close) sequence → high score.
-    // Bear: LL + LC sequence → high score.
+    // Spec: last 3 × 5m candles.
+    // No fake neutral: if we don't have ≥3 candles, return null → caller
+    // excludes this trade from scoring rather than substituting 50.
     var bars = row.ohlc_bars || [];
-    if (bars.length < 3) return 50; // neutral when data missing
+    if (bars.length < 3) return null;
     var last3 = bars.slice(-3);
-    var hh = 0, hc = 0, ll = 0, lc = 0;
-    for (var i = 1; i < 3; i++) {
-      if (last3[i].h > last3[i-1].h) hh++;
-      if (last3[i].c > last3[i-1].c) hc++;
-      if (last3[i].l < last3[i-1].l) ll++;
-      if (last3[i].c < last3[i-1].c) lc++;
+    // All 3 candles must have real close values
+    for (var i = 0; i < 3; i++) {
+      if (last3[i] == null || last3[i].c == null || last3[i].h == null || last3[i].l == null) {
+        return null;
+      }
     }
-    var bullSeq = hh + hc; // 0-4
-    var bearSeq = ll + lc; // 0-4
+    var hh = 0, hc = 0, ll = 0, lc = 0;
+    for (var j = 1; j < 3; j++) {
+      if (last3[j].h > last3[j-1].h) hh++;
+      if (last3[j].c > last3[j-1].c) hc++;
+      if (last3[j].l < last3[j-1].l) ll++;
+      if (last3[j].c < last3[j-1].c) lc++;
+    }
+    var bullSeq = hh + hc;
+    var bearSeq = ll + lc;
     var raw = side === 'CE' ? bullSeq : bearSeq;
-    // 4 → 95, 3 → 80, 2 → 65, 1 → 50, 0 → 30
     var map = [30, 50, 65, 80, 95];
     return map[Math.max(0, Math.min(4, raw))];
   }
 
   function scoreVwapAlignment(row, side) {
-    // VWAP distance normalized by ATR (simple ATR proxy: avg bar range over last 5).
+    // Requires real spot + real VWAP. No substitution.
+    // ATR computed from last 5 bars; must have ≥5 real bars with h/l values.
     var bars = row.ohlc_bars || [];
-    var spot = row.spot || 0, vwap = row.vwap || spot;
-    if (spot <= 0 || vwap <= 0) return 50;
-    var atr = 0;
-    if (bars.length >= 5) {
-      var sum = 0;
-      for (var i = bars.length - 5; i < bars.length; i++) sum += (bars[i].h - bars[i].l);
-      atr = sum / 5;
+    var spot = row.spot;
+    var vwap = row.vwap;
+    if (spot == null || spot <= 0) return null;
+    if (vwap == null || vwap <= 0) return null;
+    if (bars.length < 5) return null;
+
+    var sum = 0;
+    for (var i = bars.length - 5; i < bars.length; i++) {
+      if (bars[i] == null || bars[i].h == null || bars[i].l == null) return null;
+      sum += (bars[i].h - bars[i].l);
     }
-    if (atr <= 0) atr = spot * 0.002; // fallback ATR ≈ 0.2% of spot
-    var dist = (spot - vwap) / atr; // positive = above VWAP
+    var atr = sum / 5;
+    if (atr <= 0) return null; // no real range = can't compute
+
+    var dist = (spot - vwap) / atr;
     var signed = side === 'CE' ? dist : -dist;
-    // signed in ATR units: >1.5 → 95, 0.5-1.5 → 80, 0-0.5 → 65, 0 to -0.5 → 40, <-0.5 → 20
     if (signed >= 1.5) return 95;
     if (signed >= 0.5) return 80;
     if (signed >= 0) return 65;
@@ -237,69 +254,72 @@
   }
 
   function scoreOiStructure(row, side, isFallback) {
-    // Spec (strict): bullish CALL trade needs BOTH:
-    //   (a) CE OI ↑  (resistance writing shifting UP — call writers adding)
-    //   (b) PE OI ↑ heavy  (put writers strongly defending — floor building)
-    //       OR PE OI ↓ if current level broken (unwinding old support)
-    // For PUT trade: mirror.
-    //
-    // Scoring:
-    //   Both aligned → 85-100 (spec "Strong alignment")
-    //   One aligned  → 60-80  (spec "Partial")
-    //   Divergent    → <50    (spec "Divergent")
-    //
-    // Fallback mode: OI is zero → return neutral 50 (no signal).
-    if (isFallback) return 50;
+    // No fake neutral. If NSE is blocked (fallback mode) OR OI data genuinely
+    // absent, return null so caller can exclude this trade from Top Trades.
+    if (isFallback) return null;
 
-    var ceBuildup = row.ce_buildup || [];
-    var peBuildup = row.pe_buildup || [];
-    // Find the top strike buildup change on each side (may be 0 if flat/divergent)
-    var ceTopChg = ceBuildup[0] ? (ceBuildup[0].chg || 0) : 0;
-    var peTopChg = peBuildup[0] ? (peBuildup[0].chg || 0) : 0;
-    var pcr = row.pcr || 1;
+    var ceBuildup = row.ce_buildup;
+    var peBuildup = row.pe_buildup;
+    // Both sides must have buildup arrays — else we have no OI view
+    if (!Array.isArray(ceBuildup) || !Array.isArray(peBuildup)) return null;
+    if (ceBuildup.length === 0 && peBuildup.length === 0) return null;
 
-    // Classify each side as STRONG / WEAK / DIVERGENT
+    var ceTopChg = ceBuildup[0] && ceBuildup[0].chg != null ? ceBuildup[0].chg : null;
+    var peTopChg = peBuildup[0] && peBuildup[0].chg != null ? peBuildup[0].chg : null;
+    // Need at least one real side
+    if (ceTopChg == null && peTopChg == null) return null;
+    // Treat missing side as 0 (flat), real zeros are valid signal
+    ceTopChg = ceTopChg == null ? 0 : ceTopChg;
+    peTopChg = peTopChg == null ? 0 : peTopChg;
+
+    var pcr = row.pcr;
+
     function classify(chg) {
-      if (chg > 50000) return 2;   // strong positive
-      if (chg > 10000) return 1;   // weak positive
-      if (chg < -10000) return -1; // unwinding
-      return 0;                    // flat
+      if (chg > 50000) return 2;
+      if (chg > 10000) return 1;
+      if (chg < -10000) return -1;
+      return 0;
     }
     var ceSignal = classify(ceTopChg);
     var peSignal = classify(peTopChg);
 
     if (side === 'CE') {
-      // Bullish: want CE writing ↑ (resistance moving up) AND PE writing ↑ (floor defended)
-      // Both strong → 95. One strong + one weak → 80. Flat both → 60. Inverted → 35.
-      if (ceSignal >= 1 && peSignal >= 2) return 95; // both strongly confirming
-      if (ceSignal >= 1 && peSignal >= 1) return 82; // partial alignment
-      if (peSignal >= 2) return 75;                   // PE-only confirmation (put writing)
+      if (ceSignal >= 1 && peSignal >= 2) return 95;
+      if (ceSignal >= 1 && peSignal >= 1) return 82;
+      if (peSignal >= 2) return 75;
       if (ceSignal >= 1 || peSignal >= 1) return 65;
-      // Divergence: PE writers backing away (PE OI ↓) + CE flat = weak
       if (peSignal < 0) return 35;
-      // Reinforce with PCR as sanity
-      if (pcr >= 1.3) return 60;
-      return 50;
+      if (pcr != null && pcr >= 1.3) return 60;
+      return 45;
     } else {
-      // Bearish: want PE writing ↑ (resistance from below building) AND CE writing ↑ heavily
       if (peSignal >= 1 && ceSignal >= 2) return 95;
       if (peSignal >= 1 && ceSignal >= 1) return 82;
       if (ceSignal >= 2) return 75;
       if (peSignal >= 1 || ceSignal >= 1) return 65;
       if (ceSignal < 0) return 35;
-      if (pcr <= 0.7) return 60;
-      return 50;
+      if (pcr != null && pcr <= 0.7) return 60;
+      return 45;
     }
   }
 
   function scoreVolumeConfirmation(row) {
-    var bars = row.ohlc_bars || [];
-    if (bars.length < 5) return 50;
+    // Requires ≥6 real bars (1 current + 5 prior) all with real volume.
+    // No fake neutral — if any bar has v=0 or missing, return null (treat as
+    // "no signal" and exclude from score).
+    var bars = row.ohlc_bars;
+    if (!Array.isArray(bars) || bars.length < 6) return null;
     var last = bars[bars.length - 1];
+    if (last == null || last.v == null || last.v <= 0) return null;
+
     var prev5 = bars.slice(-6, -1);
-    var avg = prev5.reduce(function (s, b) { return s + (b.v || 0); }, 0) / 5;
-    if (avg <= 0) return 50; // no volume data (fallback mode) → neutral
-    var ratio = (last.v || 0) / avg;
+    var sum = 0;
+    for (var i = 0; i < 5; i++) {
+      if (prev5[i] == null || prev5[i].v == null || prev5[i].v <= 0) return null;
+      sum += prev5[i].v;
+    }
+    var avg = sum / 5;
+    if (avg <= 0) return null;
+    var ratio = last.v / avg;
     if (ratio >= 1.5) return 92;
     if (ratio >= 1.2) return 78;
     if (ratio >= 1.0) return 62;
@@ -307,19 +327,21 @@
   }
 
   function scoreStrikeQuality(atm, spot, strikeStep) {
-    if (!spot || !atm) return 50;
-    var step = strikeStep || spot * 0.005;
-    var distance = Math.abs(atm - spot) / step;
-    if (distance < 0.5) return 95; // ATM
-    if (distance < 1.5) return 80; // ATM ±1
-    if (distance < 2.5) return 65; // ATM ±2
+    if (spot == null || spot <= 0 || atm == null || atm <= 0) return null;
+    if (strikeStep == null || strikeStep <= 0) return null;
+    var distance = Math.abs(atm - spot) / strikeStep;
+    if (distance < 0.5) return 95;
+    if (distance < 1.5) return 80;
+    if (distance < 2.5) return 65;
     return 45;
   }
 
   function scoreRiskReward(target, sl, premium) {
+    if (target == null || sl == null || premium == null) return null;
+    if (premium <= 0 || target <= 0 || sl <= 0) return null;
     var reward = Math.abs(target - premium);
     var risk = Math.abs(premium - sl);
-    if (risk <= 0) return 50;
+    if (risk <= 0) return null;
     var rr = reward / risk;
     if (rr >= 2.0) return 92;
     if (rr >= 1.5) return 78;
@@ -524,90 +546,123 @@
   // ═══════════════════════════════════════════════════════════════════════
   function mapScanRowToTrade(row) {
     var sym = row.sym || row.symbol || '';
-    var spot = row.spot || 0;
-    if (!sym || spot <= 0) return null;
+    var spot = row.spot;
+
+    // HARD REQUIREMENT: real symbol + real spot. No substitutes.
+    if (!sym) return null;
+    if (spot == null || spot <= 0) return null;
 
     var isFallback = row._fallback === true;
-    var atm = row.atm_strike || Math.round(spot);
-    var stepMap = { NIFTY: 50, BANKNIFTY: 100, FINNIFTY: 50, MIDCPNIFTY: 25, SENSEX: 100 };
-    var strikeStep = stepMap[sym] || (spot > 1000 ? 50 : spot * 0.005);
 
-    // Step 1: determine side
+    // HARD REQUIREMENT: real ATM strike. No rounding spot to invent one.
+    var atm = row.atm_strike;
+    if (atm == null || atm <= 0) return null;
+
+    // Real strike step — no default by spot * 0.005 heuristic
+    var stepMap = { NIFTY: 50, BANKNIFTY: 100, FINNIFTY: 50, MIDCPNIFTY: 25, SENSEX: 100 };
+    var strikeStep = stepMap[sym];
+    // For non-index symbols, derive from chain_near_atm (two adjacent strikes)
+    if (strikeStep == null && Array.isArray(row.chain_near_atm) && row.chain_near_atm.length >= 2) {
+      var strikes = row.chain_near_atm.map(function (r) { return r.strike; }).sort(function(a,b){return a-b;});
+      strikeStep = strikes[1] - strikes[0];
+    }
+    if (strikeStep == null || strikeStep <= 0) return null;
+
+    // Step 1: determine side (requires real price structure)
     var side = detectSide(row);
     if (!side) return null;
 
-    // Step 2: premium from embedded chain
-    var chain = row.chain_near_atm || [];
+    // Step 2: real premium from embedded chain. NO fabrication.
+    var chain = Array.isArray(row.chain_near_atm) ? row.chain_near_atm : [];
+    if (chain.length === 0) return null; // no chain = can't trade
+
     var atmRow = chain.filter(function (r) { return r.strike === atm; })[0];
-    if (!atmRow && chain.length) {
+    if (!atmRow) {
+      // ATM strike not found in chain — take closest but only if within 1 step
       atmRow = chain.reduce(function (best, r) {
         return (!best || Math.abs(r.strike - atm) < Math.abs(best.strike - atm)) ? r : best;
       }, null);
+      if (!atmRow || Math.abs(atmRow.strike - atm) > strikeStep) return null;
     }
-    var premium = atmRow ? (side === 'CE' ? (atmRow.ce_ltp || 0) : (atmRow.pe_ltp || 0)) : 0;
-    if (premium <= 0) premium = Math.round(spot * 0.008);
+    var premium = side === 'CE' ? atmRow.ce_ltp : atmRow.pe_ltp;
+    if (premium == null || premium <= 0) return null; // no real price = no trade
 
-    // Step 3: compute SL/Target FIRST (R:R score needs them)
+    // Step 3: SL/Target/trigger (these are DERIVED from real premium, not fake)
+    // A 15% SL and 30% target are risk policy choices applied to real premium
+    // — not substitutions for missing data. That's legitimate.
     var sl = premium * 0.85;
     var target = premium * 1.30;
     var trigger = premium * 1.02;
 
-    // Step 4: six factor scores (each 0-100)
+    // Step 4: six factor scores. Each returns null if data absent.
+    // We do NOT substitute null with 50.
     var f = {
-      trend: scoreTrendStrength(row, side),
-      vwap:  scoreVwapAlignment(row, side),
-      oi:    scoreOiStructure(row, side, isFallback),
-      vol:   scoreVolumeConfirmation(row),
+      trend:  scoreTrendStrength(row, side),
+      vwap:   scoreVwapAlignment(row, side),
+      oi:     scoreOiStructure(row, side, isFallback),
+      vol:    scoreVolumeConfirmation(row),
       strike: scoreStrikeQuality(atm, spot, strikeStep),
-      rr:    scoreRiskReward(target, sl, premium)
+      rr:     scoreRiskReward(target, sl, premium)
     };
 
-    // Step 5: weighted composite per spec §11
-    var baseScore =
-      0.25 * f.trend +
-      0.20 * f.vwap +
-      0.20 * f.oi +
-      0.15 * f.vol +
-      0.10 * f.strike +
-      0.10 * f.rr;
+    // Track which factors are real vs missing
+    var availableFactors = [];
+    var missingFactors = [];
+    var weights = { trend: 0.25, vwap: 0.20, oi: 0.20, vol: 0.15, strike: 0.10, rr: 0.10 };
+    for (var key in weights) {
+      if (f[key] == null) missingFactors.push(key);
+      else availableFactors.push(key);
+    }
 
-    // Step 6: apply False Breakout Filter (§13)
+    // REQUIRE: at least the structural factors (trend + vwap + strike + rr)
+    // These 4 provide 65% of the weight and don't depend on NSE OI/volume.
+    // If any of them is missing we genuinely cannot evaluate this trade.
+    var structuralRequired = ['trend', 'vwap', 'strike', 'rr'];
+    for (var si = 0; si < structuralRequired.length; si++) {
+      if (f[structuralRequired[si]] == null) return null;
+    }
+
+    // Step 5: weighted composite. Renormalize weights so missing factors
+    // don't silently pull the score toward zero. Only real signals count.
+    var numerator = 0, denom = 0;
+    for (var k in weights) {
+      if (f[k] != null) {
+        numerator += weights[k] * f[k];
+        denom += weights[k];
+      }
+    }
+    var baseScore = denom > 0 ? (numerator / denom) : 0;
+
+    // Step 6: False Breakout Filter
     var fb = checkFalseBreakout(row, side, isFallback);
     var postFilterScore = baseScore - fb.penalty;
 
-    // Initial state from score alone
     var stateKey = postFilterScore >= 80 ? 'ideal'
                  : postFilterScore >= 68 ? 'early'
                  : postFilterScore >= 60 ? 'late'
                  : 'avoid';
 
-    // Apply downgrade if false breakout triggered
     if (fb.triggered) stateKey = downgradeState(stateKey);
 
-    // Step 7: Gamma Override (§12) — boost & promote after filter
+    // Step 7: Gamma Override
     var gamma = checkGammaOverride(row, side, state.region, isFallback);
     var gammaMode = false;
     var finalScore = postFilterScore;
 
-    // Kill switch (spec §12): if gamma was active last candle, check reversal
     var id = sym + '-' + atm + '-' + side;
     var gammaHist = state.gammaHistory && state.gammaHistory[id];
     var killed = false;
     if (gammaHist) {
-      // Was it active last candle? Check for reversal > 50% or OI unwind.
       var bars = row.ohlc_bars || [];
       if (bars.length >= 2) {
         var last = bars[bars.length - 1];
-        var refClose = gammaHist.triggeredAtClose;
         var move = last.c - gammaHist.referenceOpen;
-        // Reversal >50% means the candle that follows gave back half or more
         var prevMove = gammaHist.triggeredAtClose - gammaHist.referenceOpen;
         if (prevMove !== 0) {
-          var reversalPct = -move / prevMove; // positive if new move is opposite
+          var reversalPct = -move / prevMove;
           if (reversalPct > 0.5) killed = true;
         }
       }
-      // OI unwind: buildup chg dropped significantly
       var bld = side === 'CE' ? (row.pe_buildup || []) : (row.ce_buildup || []);
       var prevBldChg = gammaHist.referenceBuildupChg || 0;
       var curBldChg = bld[0] ? (bld[0].chg || 0) : 0;
@@ -617,7 +672,7 @@
     if (gamma.triggered && !killed) {
       finalScore += gamma.boost;
       stateKey = promoteStateForGamma(stateKey);
-      target = premium * 1.30 * 1.3; // spec: 1.3× base target
+      target = premium * 1.30 * 1.3;
       gammaMode = true;
     }
 
@@ -625,22 +680,23 @@
     finalScore = Math.max(0, Math.min(100, Math.round(finalScore)));
     if (finalScore < 55) return null; // too weak
 
-    // Build reason string (institutional vocabulary)
+    // Build reason string (institutional vocabulary). Skip any factor that's
+    // null — we don't want to claim "VWAP reclaim" when VWAP data is missing.
     var reasons = [];
     if (side === 'CE') {
-      if (f.vwap >= 80) reasons.push('VWAP reclaim');
-      else if (f.vwap >= 65) reasons.push('VWAP hold');
-      if (f.oi >= 72 && !isFallback) reasons.push('Put writing');
-      if (f.trend >= 80) reasons.push('3-candle bullish');
-      if (f.vol >= 78) reasons.push('Volume surge');
+      if (f.vwap != null && f.vwap >= 80) reasons.push('VWAP reclaim');
+      else if (f.vwap != null && f.vwap >= 65) reasons.push('VWAP hold');
+      if (f.oi != null && f.oi >= 72) reasons.push('Put writing');
+      if (f.trend != null && f.trend >= 80) reasons.push('3-candle bullish');
+      if (f.vol != null && f.vol >= 78) reasons.push('Volume surge');
       if (gammaMode) reasons.push('Gamma break');
       if (fb.triggered) reasons.push('Weak OI confirm');
     } else {
-      if (f.vwap >= 80) reasons.push('VWAP breakdown');
-      else if (f.vwap >= 65) reasons.push('Below VWAP');
-      if (f.oi >= 72 && !isFallback) reasons.push('Call writing');
-      if (f.trend >= 80) reasons.push('3-candle bearish');
-      if (f.vol >= 78) reasons.push('Volume surge');
+      if (f.vwap != null && f.vwap >= 80) reasons.push('VWAP breakdown');
+      else if (f.vwap != null && f.vwap >= 65) reasons.push('Below VWAP');
+      if (f.oi != null && f.oi >= 72) reasons.push('Call writing');
+      if (f.trend != null && f.trend >= 80) reasons.push('3-candle bearish');
+      if (f.vol != null && f.vol >= 78) reasons.push('Volume surge');
       if (gammaMode) reasons.push('Gamma break');
       if (fb.triggered) reasons.push('Weak OI confirm');
     }
@@ -649,8 +705,13 @@
     }
     var reason = reasons.slice(0, 3).join(' + ');
 
+    // Lot size: prefer real value from backend. For known indices use the
+    // officially-published lot sizes. If backend didn't send one and it's an
+    // unknown stock, return null rather than inventing 50.
     var lotMap = { NIFTY: 75, BANKNIFTY: 30, FINNIFTY: 65, MIDCPNIFTY: 120, SENSEX: 20 };
-    var lot = row.lot_size || lotMap[sym] || 50;
+    var lot = row.lot_size;
+    if (lot == null && lotMap[sym] != null) lot = lotMap[sym];
+    // else lot stays null — UI will display "—"
 
     return {
       id: id,
@@ -668,6 +729,8 @@
       gammaMode: gammaMode,
       falseBreakout: fb.triggered,
       factors: f,
+      availableFactors: availableFactors,
+      missingFactors: missingFactors,
       _raw: row
     };
   }
@@ -957,7 +1020,7 @@
         fontSize: '10px', fontWeight: 800, color: C.textMute,
         letterSpacing: '1.5px', marginBottom: '6px', padding: '0 2px'
       }
-    }, 'TOP TRADES · 90s REFRESH'));
+    }, 'TOP TRADES · 5M CLOSE'));
 
     for (var i = 0; i < 3; i++) {
       var t = state.trades[i];
@@ -968,9 +1031,7 @@
         var placeholderText;
         if (!state.loaded) {
           placeholderText = 'Loading…';
-        } else if (state.lastFetchMsg && state.lastFetchMsg.indexOf('error') !== -1) {
-          placeholderText = state.lastFetchMsg;
-        } else if (state.lastFetchMsg && state.lastFetchMsg.indexOf('warming up') !== -1) {
+        } else if (state.lastFetchMsg) {
           placeholderText = state.lastFetchMsg;
         } else {
           placeholderText = 'No high-confidence trades';
@@ -980,7 +1041,8 @@
             height: '96px', marginBottom: '6px', borderRadius: '12px',
             border: '1px dashed ' + C.divider, display: 'flex',
             alignItems: 'center', justifyContent: 'center',
-            color: C.textMute, fontSize: '12px', fontStyle: 'italic'
+            color: C.textMute, fontSize: '12px', fontStyle: 'italic',
+            padding: '0 12px', textAlign: 'center', lineHeight: 1.3
           }
         }, placeholderText));
       } else {
@@ -1097,6 +1159,22 @@
       trendRow.appendChild(el('span', { style: { color: C.textMute } },
         'Score: ' + trade.confidence + ' (building history…)'));
     }
+
+    // Transparency: show which factors contributed vs were unavailable
+    // e.g. "OI+Vol unavailable" — makes "no fake data" visible to user
+    if (trade.missingFactors && trade.missingFactors.length > 0) {
+      var short = { oi: 'OI', vol: 'Vol', trend: 'Trend', vwap: 'VWAP', strike: 'Strike', rr: 'R:R' };
+      var labels = trade.missingFactors.map(function (k) { return short[k] || k; });
+      trendRow.appendChild(el('span', {
+        title: 'These factors had no real data and were excluded from scoring',
+        style: {
+          color: C.textMute, fontSize: '10px', fontWeight: 600,
+          marginLeft: '8px', letterSpacing: '0.2px',
+          border: '1px solid ' + C.divider, padding: '1px 5px', borderRadius: '3px'
+        }
+      }, labels.join('+') + ' unavailable'));
+    }
+
     // False-breakout warning (spec §13)
     if (trade.falseBreakout) {
       trendRow.appendChild(el('span', {
@@ -1354,7 +1432,7 @@
       cell('SL', t.sl.toFixed(2), C.red, false),
       cell('TARGET', t.target.toFixed(2), C.green, false),
       cell('R:R', '1 : ' + rr.toFixed(1), rrDanger ? C.red : C.textPri, true),
-      cell('LOT', t.lot, C.textSec, false)
+      cell('LOT', t.lot != null ? String(t.lot) : '—', C.textSec, false)
     ]);
   }
 
@@ -1374,7 +1452,7 @@
       }
     }, 'VOICE LOG'));
 
-    var list = el('div', { style: { overflow: 'hidden' } });
+    var list = el('div', { style: { overflowY: 'auto', overflowX: 'hidden', flex: 1 } });
     if (state.logs.length === 0) {
       list.appendChild(el('div', {
         style: { color: C.textMute, fontSize: '11px', fontStyle: 'italic', padding: '4px' }
@@ -1549,13 +1627,35 @@
           state.trades = []; state.scanner = [];
           rerender(); return;
         }
-        var mapped = raw
-          .map(mapScanRowToTrade)
-          .filter(function (t) { return t; })
-          .sort(function (a, b) { return b.confidence - a.confidence; });
+
+        // Track WHY tickers are being rejected so we surface real diagnostics
+        // instead of the vague "No setups" message.
+        var rejectReasons = { noSpot: 0, noAtm: 0, noChain: 0, noPremium: 0,
+                              noSide: 0, insufficientFactors: 0, belowThreshold: 0 };
+        var mapped = [];
+        raw.forEach(function (row) {
+          // Quick pre-check to categorize rejection reason
+          if (!row.sym && !row.symbol) return;
+          if (row.spot == null || row.spot <= 0) { rejectReasons.noSpot++; return; }
+          if (row.atm_strike == null || row.atm_strike <= 0) { rejectReasons.noAtm++; return; }
+          if (!Array.isArray(row.chain_near_atm) || row.chain_near_atm.length === 0) {
+            rejectReasons.noChain++; return;
+          }
+          var tr = mapScanRowToTrade(row);
+          if (tr) mapped.push(tr);
+          else rejectReasons.insufficientFactors++;
+        });
+        mapped.sort(function (a, b) { return b.confidence - a.confidence; });
 
         if (mapped.length === 0) {
-          state.lastFetchMsg = 'No high-conviction setups right now (' + raw.length + ' scanned)';
+          // Real diagnostic instead of generic "no setups"
+          var diag = [];
+          if (rejectReasons.noSpot) diag.push(rejectReasons.noSpot + ' no spot');
+          if (rejectReasons.noAtm) diag.push(rejectReasons.noAtm + ' no ATM strike');
+          if (rejectReasons.noChain) diag.push(rejectReasons.noChain + ' no option chain');
+          if (rejectReasons.insufficientFactors) diag.push(rejectReasons.insufficientFactors + ' insufficient data');
+          state.lastFetchMsg = 'No trades — ' + raw.length + ' scanned (' +
+                               (diag.join(', ') || 'all below threshold') + ')';
           state.trades = []; state.scanner = [];
           rerender(); return;
         }
@@ -1865,6 +1965,37 @@
     var sc = container.closest ? container.closest('.sc') : null;
     if (sc) sc.setAttribute('data-at-host', '1');
 
+    // Remove leftover injected elements (PDF export buttons, investor/trader
+    // report fragments) that premium-override.js and other modules add to
+    // #deResult. These carry white inline backgrounds that bleed through.
+    var leftoverIds = ['celesysExportBtns', 'investorReport', 'traderReport',
+                       'optionsReport', 'investorExportBtns'];
+    leftoverIds.forEach(function (id) {
+      var e = document.getElementById(id);
+      if (e && e.parentElement) e.parentElement.removeChild(e);
+    });
+
+    // Also hide any SIBLINGS of #deResult inside .sbody that carry their own
+    // backgrounds (e.g. standalone export rows injected outside deResult).
+    // Record what we hid so we can restore on unmount.
+    var hiddenSiblings = [];
+    if (sc) {
+      var sbody = sc.querySelector('.sbody');
+      if (sbody) {
+        var kids = sbody.children;
+        for (var i = 0; i < kids.length; i++) {
+          if (kids[i] !== container && kids[i].style.display !== 'none') {
+            hiddenSiblings.push({
+              el: kids[i],
+              prevDisplay: kids[i].style.display || ''
+            });
+            kids[i].style.display = 'none';
+          }
+        }
+      }
+    }
+    state._hiddenSiblings = hiddenSiblings;
+
     container.innerHTML =
       '<div id="activeTradingMount" ' +
         'style="width:100%;background:#020617;border-radius:8px;' +
@@ -1886,6 +2017,14 @@
     var allHosts = document.querySelectorAll('.sc[data-at-host="1"]');
     for (var i = 0; i < allHosts.length; i++) {
       allHosts[i].removeAttribute('data-at-host');
+    }
+
+    // Restore any siblings we hid on mount
+    if (state._hiddenSiblings) {
+      state._hiddenSiblings.forEach(function (h) {
+        if (h.el && h.el.parentElement) h.el.style.display = h.prevDisplay;
+      });
+      state._hiddenSiblings = null;
     }
 
     var mount = document.getElementById('activeTradingMount');
