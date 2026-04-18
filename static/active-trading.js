@@ -81,13 +81,19 @@
 
   // ── DATA LAYER ──────────────────────────────────────────────────────────
   function mapScanRowToTrade(row) {
-    // /api/bottom-nav-scan returns tickers via _options_quick_impl → nse_options
-    // Real fields: sym, spot, pcr, atm_strike, chain_near_atm, ce_buildup, pe_buildup, max_pain, gex
-    // No server-side 'action'/'confidence' — we compute client-side from pcr, gex regime, buildup
+    // Real fields from /api/bottom-nav-scan:
+    //   sym, spot, vwap, today_open, today_high, today_low, pcr, max_pain, atm_strike,
+    //   chain_near_atm[], gex.regime, _fallback
+    // NOTE: When _fallback=true (NSE blocked), OI fields are all 0. We score from
+    //       price structure instead: VWAP, open, H/L range, max pain delta.
     var sym = row.sym || row.symbol || '';
     var spot = row.spot || 0;
     if (!sym || spot <= 0) return null;
 
+    var vwap = row.vwap || spot;
+    var openPx = row.today_open || spot;
+    var high = row.today_high || spot;
+    var low = row.today_low || spot;
     var pcr = row.pcr || 1;
     var gex = row.gex || {};
     var gexRegime = (gex.regime || 'NEUTRAL').toUpperCase();
@@ -95,44 +101,106 @@
     var peBuildup = row.pe_buildup || [];
     var atm = row.atm_strike || Math.round(spot);
     var maxPain = row.max_pain || atm;
+    var isFallback = row._fallback === true;
 
-    // Derive direction: PCR > 1.3 = bullish (heavy put writing), PCR < 0.7 = bearish (heavy call writing)
-    // Combine with GEX regime: POSITIVE_GAMMA → pinning, NEGATIVE_GAMMA → volatile
-    var bullish = 0, bearish = 0;
-    if (pcr >= 1.2) bullish += 2; else if (pcr <= 0.8) bearish += 2;
-    if (spot > maxPain * 1.002) bullish += 1; else if (spot < maxPain * 0.998) bearish += 1;
-    if (peBuildup.length > 0 && (peBuildup[0].chg || 0) > 50000) bullish += 2;
-    if (ceBuildup.length > 0 && (ceBuildup[0].chg || 0) > 50000) bearish += 2;
-    if (gexRegime === 'POSITIVE') bullish += 1;
-    if (gexRegime === 'NEGATIVE') bearish += 1;
+    var bullScore = 0, bearScore = 0;
 
-    var side = bullish >= bearish ? 'CE' : 'PE';
-    var conf = Math.min(95, 45 + Math.abs(bullish - bearish) * 8);
-    if (conf < 55) return null; // filter out flat/noisy signals
+    // ── PRICE STRUCTURE (works always, even in fallback mode) ─────────────
+    // VWAP relationship — strongest intraday signal
+    var vwapPct = (spot - vwap) / vwap * 100;
+    if (vwapPct > 0.3)  bullScore += 20;
+    else if (vwapPct > 0.1) bullScore += 12;
+    else if (vwapPct > 0)   bullScore += 5;
+    if (vwapPct < -0.3) bearScore += 20;
+    else if (vwapPct < -0.1) bearScore += 12;
+    else if (vwapPct < 0)    bearScore += 5;
 
-    var stateKey = conf >= 80 ? 'ideal' : conf >= 70 ? 'early' : conf >= 60 ? 'late' : 'avoid';
+    // Open vs current — intraday direction
+    var openPct = (spot - openPx) / openPx * 100;
+    if (openPct > 0.2)  bullScore += 12;
+    else if (openPct > 0) bullScore += 5;
+    if (openPct < -0.2) bearScore += 12;
+    else if (openPct < 0) bearScore += 5;
 
-    // Reason string
+    // Range position — where in the day's H/L is price sitting?
+    var range = high - low;
+    if (range > 0) {
+      var rangePct = (spot - low) / range; // 0 = at low, 1 = at high
+      if (rangePct > 0.75) bullScore += 10;  // trading near high
+      else if (rangePct > 0.6) bullScore += 5;
+      if (rangePct < 0.25) bearScore += 10;  // trading near low
+      else if (rangePct < 0.4) bearScore += 5;
+    }
+
+    // Max Pain differential
+    var mpPct = (spot - maxPain) / maxPain * 100;
+    if (mpPct > 0.3)  bullScore += 8;
+    else if (mpPct > 0) bullScore += 4;
+    if (mpPct < -0.3) bearScore += 8;
+    else if (mpPct < 0) bearScore += 4;
+
+    // ── OI SIGNALS (only meaningful when NOT fallback) ────────────────────
+    if (!isFallback) {
+      if (pcr >= 1.3) bullScore += 15;
+      else if (pcr >= 1.1) bullScore += 8;
+      if (pcr <= 0.7) bearScore += 15;
+      else if (pcr <= 0.9) bearScore += 8;
+
+      if (peBuildup.length > 0 && (peBuildup[0].chg || 0) > 50000) bullScore += 12;
+      else if (peBuildup.length > 0 && (peBuildup[0].chg || 0) > 10000) bullScore += 6;
+      if (ceBuildup.length > 0 && (ceBuildup[0].chg || 0) > 50000) bearScore += 12;
+      else if (ceBuildup.length > 0 && (ceBuildup[0].chg || 0) > 10000) bearScore += 6;
+
+      if (gexRegime === 'POSITIVE' || gexRegime === 'POSITIVE_GAMMA') bullScore += 8;
+      if (gexRegime === 'NEGATIVE' || gexRegime === 'NEGATIVE_GAMMA') bearScore += 8;
+    }
+
+    // ── Decide side & confidence ──────────────────────────────────────────
+    var diff = Math.abs(bullScore - bearScore);
+    var totalSignal = bullScore + bearScore;
+
+    // If there's ANY directional evidence, surface it — don't be picky when signals are weak
+    if (diff < 1 || totalSignal < 3) return null;
+
+    var conf = Math.min(92, 48 + diff * 1.8 + totalSignal * 0.2);
+    var side = bullScore > bearScore ? 'CE' : 'PE';
+    var stateKey = conf >= 78 ? 'ideal' : conf >= 68 ? 'early' : conf >= 58 ? 'late' : 'avoid';
+
+    // Reason string — always meaningful
     var reasons = [];
-    if (pcr >= 1.3) reasons.push('Put writing PCR ' + pcr.toFixed(2));
-    else if (pcr <= 0.7) reasons.push('Call writing PCR ' + pcr.toFixed(2));
-    if (peBuildup[0] && (peBuildup[0].chg || 0) > 50000) reasons.push('PE buildup @' + peBuildup[0].strike);
-    if (ceBuildup[0] && (ceBuildup[0].chg || 0) > 50000) reasons.push('CE buildup @' + ceBuildup[0].strike);
-    if (gexRegime !== 'NEUTRAL') reasons.push(gexRegime + ' GEX');
-    var reason = reasons.length ? reasons.join(' + ') : (side === 'CE' ? 'Bullish structure' : 'Bearish structure');
+    if (vwapPct > 0.1) reasons.push('Above VWAP +' + vwapPct.toFixed(2) + '%');
+    else if (vwapPct < -0.1) reasons.push('Below VWAP ' + vwapPct.toFixed(2) + '%');
+    if (openPct > 0.2) reasons.push('Up from open');
+    else if (openPct < -0.2) reasons.push('Down from open');
+    if (range > 0) {
+      var rp = (spot - low) / range;
+      if (rp > 0.75) reasons.push('Near day high');
+      else if (rp < 0.25) reasons.push('Near day low');
+    }
+    if (!isFallback && pcr >= 1.2) reasons.push('PCR ' + pcr.toFixed(2));
+    else if (!isFallback && pcr <= 0.8) reasons.push('PCR ' + pcr.toFixed(2));
+    if (reasons.length === 0) {
+      reasons.push(side === 'CE' ? 'Bullish structure' : 'Bearish structure');
+    }
+    var reason = reasons.slice(0, 3).join(' + ');
 
-    // Get premium from chain_near_atm for the ATM strike
+    // Premium from chain_near_atm
     var chain = row.chain_near_atm || [];
     var atmRow = chain.filter(function (r) { return r.strike === atm; })[0];
+    // Try nearest strike if exact ATM missing
+    if (!atmRow && chain.length) {
+      atmRow = chain.reduce(function (best, r) {
+        return (!best || Math.abs(r.strike - atm) < Math.abs(best.strike - atm)) ? r : best;
+      }, null);
+    }
     var premium = atmRow ? (side === 'CE' ? (atmRow.ce_ltp || 0) : (atmRow.pe_ltp || 0)) : 0;
-    if (premium <= 0) premium = Math.round(spot * 0.01);
+    if (premium <= 0) premium = Math.round(spot * 0.008);
 
-    // Risk levels: simple percentage based
     var trigger = premium * 1.02;
     var sl = premium * 0.85;
     var target = premium * 1.30;
 
-    var lotMap = { NIFTY: 65, BANKNIFTY: 30, FINNIFTY: 60, MIDCPNIFTY: 120, SENSEX: 20 };
+    var lotMap = { NIFTY: 75, BANKNIFTY: 30, FINNIFTY: 65, MIDCPNIFTY: 120, SENSEX: 20 };
     var lot = row.lot_size || lotMap[sym] || 50;
 
     return {
@@ -278,6 +346,19 @@
     root.appendChild(wrap);
   }
 
+  function isIndianMarketOpen() {
+    // IST = UTC+5:30. NSE open 09:15–15:30 IST, Mon–Fri
+    var now = new Date();
+    var istMs = now.getTime() + (5.5 * 60 * 60 * 1000) + (now.getTimezoneOffset() * 60 * 1000);
+    var ist = new Date(istMs);
+    var day = ist.getUTCDay(); // Sun=0, Sat=6
+    if (day === 0 || day === 6) return false;
+    var hours = ist.getUTCHours();
+    var mins = ist.getUTCMinutes();
+    var mm = hours * 60 + mins;
+    return mm >= (9 * 60 + 15) && mm <= (15 * 60 + 30);
+  }
+
   function renderHeader() {
     var indices = ['NIFTY', 'BANKNIFTY', 'SENSEX'];
     var indexBtns = indices.map(function (ix) {
@@ -294,6 +375,17 @@
       }, ix);
     });
 
+    var marketOpen = isIndianMarketOpen();
+    var marketBadge = el('span', {
+      style: {
+        fontSize: '9px', fontWeight: 800, padding: '2px 6px', borderRadius: '4px',
+        background: marketOpen ? C.green + '22' : C.textMute + '22',
+        color: marketOpen ? C.green : C.textMute,
+        border: '1px solid ' + (marketOpen ? C.green + '55' : C.textMute + '55'),
+        letterSpacing: '0.5px', marginLeft: '8px'
+      }
+    }, marketOpen ? '● LIVE' : '● CLOSED');
+
     return el('div', {
       style: {
         height: '36px', background: C.card, borderBottom: '1px solid ' + C.divider,
@@ -301,8 +393,8 @@
       }
     }, [
       el('div', {
-        style: { fontSize: '13px', fontWeight: 800, color: C.textPri, letterSpacing: '0.5px', fontFamily: MONO }
-      }, 'CELESYS · ACTIVE TRADING'),
+        style: { fontSize: '13px', fontWeight: 800, color: C.textPri, letterSpacing: '0.5px', fontFamily: MONO, display: 'flex', alignItems: 'center' }
+      }, ['CELESYS · ACTIVE TRADING', marketBadge]),
       el('div', { style: { flex: 1, display: 'flex', justifyContent: 'center', gap: '4px' } }, indexBtns),
       el('div', { style: { display: 'flex', alignItems: 'center', gap: '8px' } }, [
         iconBtn('🔔', state.alertsOn, function () { state.alertsOn = !state.alertsOn; rerender(); }),
