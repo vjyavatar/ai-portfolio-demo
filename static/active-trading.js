@@ -73,6 +73,13 @@
       '#activeTradingMount select {',
       '  font-family: inherit;',
       '}',
+      // Nuke any white/light background that sneaks in from site CSS onto
+      // untagged descendant divs inside the mount. Transparent default is
+      // fine — but browsers sometimes compute white based on UA rules.
+      '#activeTradingMount > div,',
+      '#activeTradingMount > div > div {',
+      '  background-color: transparent;',
+      '}',
 
       // Parent overrides — ONLY active while body.at-mode is set
       // Uses :has() where supported (Chrome 105+, Safari 15.4+, Firefox 121+).
@@ -856,7 +863,8 @@
         flex: 1,
         display: 'grid',
         gridTemplateColumns: '65% 35%',
-        minHeight: 0
+        minHeight: 0,
+        background: C.bg  // explicit — parent inheritance isn't reliable
       }
     });
     body.appendChild(renderTopTrades());
@@ -1014,7 +1022,12 @@
   }
 
   function renderTopTrades() {
-    var panel = el('div', { style: { padding: '8px', height: '100%', overflow: 'hidden' } });
+    var panel = el('div', {
+      style: {
+        padding: '8px', height: '100%', overflow: 'hidden',
+        background: C.bg  // explicit — don't rely on inheritance
+      }
+    });
     panel.appendChild(el('div', {
       style: {
         fontSize: '10px', fontWeight: 800, color: C.textMute,
