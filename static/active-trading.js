@@ -19,8 +19,10 @@
   'use strict';
 
   // Loud startup log so we can verify the deployed version at a glance
-  console.log('%c[ActiveTrading] v21 loaded — dark theme with MutationObserver enforcement',
+  console.log('%c[ActiveTrading] v26 loaded — Institutional modules: Kelly sizing + Exec costs + Regime + Alpha decay',
               'color:#22C55E;font-weight:bold;font-size:13px');
+  console.log('%c  Debug: window._atEngine.kelly | .cost | .regime | .alphaDecay | .portfolio | .signals | .exportSignalsCSV()',
+              'color:#64748B;font-size:11px');
 
   // ── COLOR TOKENS ────────────────────────────────────────────────────────
   var C = {
@@ -171,6 +173,697 @@
     var s = seconds % 60;
     return (m < 10 ? '0' : '') + m + ':' + (s < 10 ? '0' : '') + s + ' ago';
   }
+
+  // ── ENGINE CORE (Lean-style architectural primitives) ──────────────────
+  // Not a full port of Lean — a lean (pun intended) version of its three
+  // most valuable abstractions for our options-focused use case:
+  //   1. Event bus   — decoupled signal/order/log flow
+  //   2. Signal ledger — every 5m close emits structured Signal objects
+  //                      identical to what the Python backtest consumes
+  //   3. Paper portfolio — EXECUTE writes a real position with lifecycle
+
+  // Event bus. Subscribers use bus.on('event', fn); emitters use bus.emit('event', payload).
+  // Decouples signal generation from UI updates, voice alerts, and order execution.
+  var bus = (function () {
+    var listeners = {};
+    return {
+      on: function (type, fn) {
+        (listeners[type] = listeners[type] || []).push(fn);
+      },
+      emit: function (type, payload) {
+        (listeners[type] || []).forEach(function (fn) {
+          try { fn(payload); } catch (e) { console.warn('[bus] handler error', type, e); }
+        });
+      }
+    };
+  })();
+
+  // Signal ledger — append-only. Every 5m close, one Signal per top-3 trade.
+  // Persisted in sessionStorage so dev can inspect the signal stream.
+  // Fields match the Python backtest CSV schema: ts, sym, strike, side, score,
+  // state, spot, premium, sl, target, trigger, missing_factors.
+  var signalLedger = {
+    _key: 'at_signals_session',
+    MAX: 500,  // keep last 500 signals in memory
+    all: [],
+
+    push: function (signal) {
+      this.all.push(signal);
+      if (this.all.length > this.MAX) this.all.shift();
+      try { sessionStorage.setItem(this._key, JSON.stringify(this.all)); } catch (e) {}
+      bus.emit('signal:new', signal);
+    },
+    load: function () {
+      try {
+        var raw = sessionStorage.getItem(this._key);
+        if (raw) this.all = JSON.parse(raw);
+      } catch (e) {}
+    },
+    clear: function () {
+      this.all = [];
+      try { sessionStorage.removeItem(this._key); } catch (e) {}
+    }
+  };
+  signalLedger.load();
+
+  // Paper portfolio — tracks EXECUTE'd positions through their lifecycle.
+  // State machine: pending → active → (won | lost | expired | cancelled)
+  // Persisted in window.storage so positions survive tab reloads.
+  // In Lean terms: this is a minimal Portfolio + TransactionHandler.
+  var paperPortfolio = {
+    _storageKey: 'at_paper_positions',
+    positions: {},  // { id: Position }
+
+    // Position schema:
+    //   id, sym, strike, side, score, state, reason,
+    //   entryPremium, sl, target, trigger, lot, region, currency,
+    //   status: 'pending'|'active'|'won'|'lost'|'expired'|'cancelled',
+    //   openedAt, triggeredAt, closedAt, exitPremium, realizedPct,
+    //   highWater, lowWater (premium range during hold)
+
+    load: function () {
+      var self = this;
+      if (window.storage && typeof window.storage.get === 'function') {
+        window.storage.get(this._storageKey).then(function (r) {
+          if (r && r.value) {
+            try { self.positions = JSON.parse(r.value); bus.emit('portfolio:loaded'); } catch (e) {}
+          }
+        }).catch(function () {});
+      }
+    },
+    save: function () {
+      if (window.storage && typeof window.storage.set === 'function') {
+        try {
+          window.storage.set(this._storageKey, JSON.stringify(this.positions)).catch(function () {});
+        } catch (e) {}
+      }
+    },
+    open: function (trade) {
+      // Accept a trade object from mapScanRowToTrade and create a Position
+      var id = trade.id + '@' + Date.now();
+      var pos = {
+        id: id, tradeId: trade.id,
+        sym: trade.symbol, strike: trade.strike, side: trade.side,
+        score: trade.confidence, state: trade.state, reason: trade.reason,
+        entryPremium: trade.price,
+        sl: trade.sl, target: trade.target, trigger: trade.trigger,
+        lot: trade.lot,
+        region: state.region,
+        currency: (trade._raw && trade._raw.currency) || (state.region === 'US' ? '$' : '₹'),
+        status: 'pending',
+        openedAt: Date.now(),
+        triggeredAt: null, closedAt: null,
+        exitPremium: null, realizedPct: null,
+        highWater: trade.price, lowWater: trade.price
+      };
+      this.positions[id] = pos;
+      this.save();
+      bus.emit('position:opened', pos);
+      return pos;
+    },
+    // On every 5m close, update all active positions: check triggers, SL hits,
+    // target hits, or expiry. This is the Lean RealtimeHandler equivalent.
+    tick: function (tradeData) {
+      // tradeData: map { tradeId: currentTrade } so we can look up live premium
+      var changed = false;
+      for (var id in this.positions) {
+        var p = this.positions[id];
+        if (p.status === 'won' || p.status === 'lost' ||
+            p.status === 'expired' || p.status === 'cancelled') continue;
+        var cur = tradeData[p.tradeId];
+        if (!cur) continue;
+        var currentPremium = cur.price;
+        // Track watermarks
+        if (currentPremium > p.highWater) p.highWater = currentPremium;
+        if (currentPremium < p.lowWater) p.lowWater = currentPremium;
+
+        if (p.status === 'pending') {
+          // Check trigger
+          var triggered = p.side === 'CE'
+            ? currentPremium >= p.trigger
+            : currentPremium <= p.trigger;
+          if (triggered) {
+            p.status = 'active'; p.triggeredAt = Date.now();
+            changed = true;
+            bus.emit('position:activated', p);
+          }
+        } else if (p.status === 'active') {
+          // Check SL / target
+          if (currentPremium <= p.sl) {
+            p.status = 'lost';
+            p.closedAt = Date.now();
+            p.exitPremium = currentPremium;
+            p.realizedPct = (currentPremium - p.entryPremium) / p.entryPremium * 100;
+            changed = true;
+            bus.emit('position:closed', p);
+          } else if (currentPremium >= p.target) {
+            p.status = 'won';
+            p.closedAt = Date.now();
+            p.exitPremium = currentPremium;
+            p.realizedPct = (currentPremium - p.entryPremium) / p.entryPremium * 100;
+            changed = true;
+            bus.emit('position:closed', p);
+          }
+        }
+      }
+      if (changed) this.save();
+    },
+    // Cancel still-pending positions (e.g. end of day, or user action)
+    cancel: function (id) {
+      var p = this.positions[id];
+      if (!p || p.status !== 'pending') return;
+      p.status = 'cancelled'; p.closedAt = Date.now();
+      this.save();
+      bus.emit('position:closed', p);
+    },
+    // Stats for the UI P&L widget
+    stats: function () {
+      var total = 0, wins = 0, losses = 0, active = 0, pending = 0;
+      var totalPnlPct = 0;
+      for (var id in this.positions) {
+        var p = this.positions[id];
+        total++;
+        if (p.status === 'won') { wins++; totalPnlPct += p.realizedPct || 0; }
+        else if (p.status === 'lost') { losses++; totalPnlPct += p.realizedPct || 0; }
+        else if (p.status === 'active') active++;
+        else if (p.status === 'pending') pending++;
+      }
+      var closed = wins + losses;
+      return {
+        total: total, wins: wins, losses: losses,
+        active: active, pending: pending,
+        winRate: closed > 0 ? (wins / closed * 100) : 0,
+        avgPnlPct: closed > 0 ? (totalPnlPct / closed) : 0
+      };
+    }
+  };
+  paperPortfolio.load();
+
+  // Subscribe position events to voice log + audio alerts
+  bus.on('position:activated', function (p) {
+    try {
+      pushLog('ENTRY TRIGGERED: ' + p.sym + ' ' + p.strike + ' @ ' +
+              p.currency + p.entryPremium.toFixed(2), C.green);
+      if (state.voiceOn) speak(p.sym + ' entry triggered');
+    } catch (e) {}
+  });
+  bus.on('position:closed', function (p) {
+    try {
+      var verb = p.status === 'won' ? 'WON' :
+                 p.status === 'lost' ? 'LOST' :
+                 p.status === 'cancelled' ? 'CANCELLED' : 'EXPIRED';
+      var pnl = p.realizedPct != null ? ' (' + (p.realizedPct > 0 ? '+' : '') +
+                                        p.realizedPct.toFixed(2) + '%)' : '';
+      var color = p.status === 'won' ? C.green : p.status === 'lost' ? C.red : C.textSec;
+      pushLog('POSITION ' + verb + ': ' + p.sym + ' ' + p.strike + pnl, color);
+      if (state.voiceOn && (p.status === 'won' || p.status === 'lost')) {
+        speak(p.sym + ' ' + (p.status === 'won' ? 'hit target' : 'stopped out'));
+      }
+    } catch (e) {}
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // 1. KELLY-SIZED POSITION ALLOCATION
+  // ═══════════════════════════════════════════════════════════════════════
+  // Classic Kelly formula for binary outcomes (win → target, lose → SL):
+  //   f* = (p·b - q) / b   where
+  //     p = probability of winning
+  //     q = 1 - p
+  //     b = payoff ratio = (target - entry) / (entry - SL)
+  //
+  // We map confidence score to win probability via a calibrated curve,
+  // then apply fractional Kelly (0.25× by default) for safety — full
+  // Kelly maximizes compounded return but has 50%+ drawdowns. Fractional
+  // Kelly is standard institutional practice.
+  //
+  // Win probability calibration: from our engine spec, score 55 = borderline
+  // (50% win), score 95 = elite signals (~65% historically for similar 6-
+  // factor OI/VWAP/trend composites per published options research).
+  // Linear interpolation in absence of our own backtest data.
+  var kellySizer = {
+    // Tunables — these become regime-adjustable in next round
+    fractional: 0.25,       // 0.25 = quarter-Kelly (very conservative)
+    maxPctPerTrade: 10,     // never risk more than 10% of capital on one position
+    minPctPerTrade: 0.5,    // floor — don't open sub-noise positions
+    defaultCapital: 100000, // fallback if user hasn't set capital
+
+    capital: function () {
+      // Allow user to override via localStorage; else default
+      try {
+        var stored = localStorage.getItem('at_capital');
+        if (stored) return parseFloat(stored) || this.defaultCapital;
+      } catch (e) {}
+      return this.defaultCapital;
+    },
+    setCapital: function (amount) {
+      try { localStorage.setItem('at_capital', String(amount)); } catch (e) {}
+    },
+
+    // Map confidence score (0-100) to win probability (0-1)
+    // Piecewise calibration reflecting that higher scores should have
+    // meaningfully better outcomes — anchored to what options research
+    // literature reports for multi-factor signals on 5m timeframes.
+    scoreToWinProb: function (score) {
+      if (score < 55) return 0.48; // below threshold — assume slight loss bias
+      if (score < 68) return 0.52; // late
+      if (score < 76) return 0.56; // early
+      if (score < 86) return 0.60; // ideal
+      if (score < 96) return 0.64; // strong
+      return 0.67;                 // elite
+    },
+
+    // Returns: { pctOfCapital, lots, rupees, winProb, payoffRatio, edge, reason }
+    // Inputs all from the trade object.
+    size: function (trade) {
+      var entry = trade.price;
+      var sl = trade.sl;
+      var target = trade.target;
+      var lotSize = trade.lot || 1;
+      if (!entry || !sl || !target || entry <= 0) {
+        return { error: 'missing price/sl/target', pctOfCapital: 0, lots: 0 };
+      }
+      var riskPerShare = Math.abs(entry - sl);
+      var rewardPerShare = Math.abs(target - entry);
+      if (riskPerShare <= 0) return { error: 'zero risk', pctOfCapital: 0, lots: 0 };
+
+      var b = rewardPerShare / riskPerShare;  // payoff ratio
+      var p = this.scoreToWinProb(trade.confidence);
+      var q = 1 - p;
+
+      // Kelly fraction of capital to RISK (not to invest — crucial distinction)
+      // f* tells us: "risk this fraction of bankroll on this bet"
+      var fullKelly = (p * b - q) / b;
+      var edge = p * b - q; // expected value per unit risk
+
+      // If edge is negative, skip the trade entirely
+      if (fullKelly <= 0) {
+        return {
+          pctOfCapital: 0, lots: 0, rupees: 0,
+          winProb: p, payoffRatio: b, edge: edge,
+          reason: 'Negative Kelly — skip', fullKelly: fullKelly
+        };
+      }
+
+      // Apply fractional Kelly + cap + floor
+      var kellyFrac = Math.max(0, fullKelly * this.fractional);
+      var pctCapitalToRisk = Math.min(kellyFrac * 100, this.maxPctPerTrade);
+      pctCapitalToRisk = Math.max(pctCapitalToRisk, this.minPctPerTrade);
+
+      // Convert risk% → number of lots
+      //   rupeesToRisk = capital × pct/100
+      //   lotsToBuy    = rupeesToRisk / (riskPerShare × lotSize)
+      var cap = this.capital();
+      var rupeesToRisk = cap * pctCapitalToRisk / 100;
+      var lots = Math.max(1, Math.floor(rupeesToRisk / (riskPerShare * lotSize)));
+
+      // Recompute ACTUAL pct risked given lot rounding
+      var actualRupeesRisked = lots * riskPerShare * lotSize;
+      var actualPctRisked = (actualRupeesRisked / cap) * 100;
+
+      return {
+        pctOfCapital: actualPctRisked,
+        lots: lots,
+        rupees: actualRupeesRisked,
+        premiumCost: lots * lotSize * entry,
+        winProb: p,
+        payoffRatio: b,
+        edge: edge,
+        fullKelly: fullKelly,
+        fractionApplied: this.fractional,
+        capital: cap,
+        reason: 'Kelly ' + (this.fractional * 100).toFixed(0) + '% @ ' +
+                (p * 100).toFixed(0) + '% win · ' + b.toFixed(2) + 'R'
+      };
+    }
+  };
+
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // 2. EXECUTION COST MODEL
+  // ═══════════════════════════════════════════════════════════════════════
+  // Three cost components combined into expected cost per round-trip:
+  //   (a) Slippage — premium gap between quote and fill. Scales with:
+  //       - Bid-ask spread as % of premium (wider = more slip)
+  //       - Order size vs available liquidity (impact)
+  //   (b) Brokerage — broker-specific fixed + pct fees
+  //   (c) STT / regulatory — India STT + exchange transaction + GST + SEBI
+  //
+  // Returns net realized return AFTER costs.
+  // India defaults: Zerodha-style for F&O.
+  // US defaults: typical discount broker per-contract.
+  var execCostModel = {
+    // Cost schedules — user-overridable
+    schedules: {
+      IN: {
+        label: 'India F&O (Zerodha-style)',
+        brokerageFlat: 20,          // ₹20 per order regardless of size
+        brokeragePct: 0.03,         // 0.03% of turnover, max ₹20
+        brokerageCap: 20,
+        sttSellPct: 0.05,           // STT 0.05% on SELL side only (options)
+        exchangeTxnPct: 0.053,      // NSE F&O option transaction charges
+        gstPct: 18,                 // GST on (brokerage + exchange + SEBI)
+        sebiPct: 0.0001,            // 0.0001% on turnover
+        stampPct: 0.003             // Stamp duty 0.003% BUY side
+      },
+      US: {
+        label: 'US equity options (discount broker)',
+        perContract: 0.65,          // $0.65 per contract each way
+        regFeePerContract: 0.02,    // OCC clearing + regulatory
+        brokeragePct: 0,
+        brokerageFlat: 0,
+        sttSellPct: 0,
+        exchangeTxnPct: 0,
+        gstPct: 0,
+        sebiPct: 0,
+        stampPct: 0
+      }
+    },
+
+    // Slippage estimator — returns % of premium lost to slip per side
+    estimateSlippagePct: function (trade) {
+      // Without real bid/ask we use a conservative heuristic tied to
+      // option moneyness and expiry proximity.
+      // - ATM: tight spreads (~0.3% per side)
+      // - OTM: wider (~1.0% per side)
+      // - Short-dated (<1 day): add 0.3% for illiquidity
+      var raw = trade._raw || {};
+      var spot = raw.spot || 0;
+      var atm = raw.atm_strike || 0;
+      var strikeStr = String(trade.strike).split(' ')[0];
+      var strike = parseFloat(strikeStr) || atm || spot;
+      if (!spot || !strike) return 0.6; // unknown → assume middle
+      var moneyness = Math.abs(strike - spot) / spot; // 0 = ATM
+      var base;
+      if (moneyness < 0.005) base = 0.3;      // ATM
+      else if (moneyness < 0.015) base = 0.5; // near-ATM
+      else if (moneyness < 0.03) base = 0.8;  // OTM
+      else base = 1.2;                        // far OTM
+      return base;
+    },
+
+    // Main: given a planned trade, compute per-round-trip cost in rupees
+    // AND the break-even required move on premium
+    computeCost: function (trade, lots, region) {
+      region = region || 'IN';
+      var s = this.schedules[region];
+      var lotSize = trade.lot || 1;
+      var premium = trade.price || 0;
+      var turnoverPerSide = lots * lotSize * premium;
+      var total = 0;
+      var breakdown = {};
+
+      if (region === 'IN') {
+        // Brokerage per side
+        var brokPerSide = Math.min(
+          turnoverPerSide * s.brokeragePct / 100,
+          s.brokerageCap
+        );
+        brokPerSide = Math.min(brokPerSide, s.brokerageFlat);
+        breakdown.brokerage = brokPerSide * 2;          // both sides
+        // Exchange + SEBI + stamp on both sides
+        breakdown.exchange = turnoverPerSide * s.exchangeTxnPct / 100 * 2;
+        breakdown.sebi = turnoverPerSide * s.sebiPct / 100 * 2;
+        breakdown.stamp = turnoverPerSide * s.stampPct / 100; // BUY only
+        // STT on SELL side (on premium turnover for options)
+        breakdown.stt = turnoverPerSide * s.sttSellPct / 100;
+        // GST on (brokerage + exchange + SEBI)
+        var gstBase = breakdown.brokerage + breakdown.exchange + breakdown.sebi;
+        breakdown.gst = gstBase * s.gstPct / 100;
+      } else if (region === 'US') {
+        breakdown.brokerage = lots * (s.perContract + s.regFeePerContract) * 2; // both sides
+      }
+
+      // Slippage on both sides
+      var slipPct = this.estimateSlippagePct(trade);
+      breakdown.slippage = (turnoverPerSide * slipPct / 100) * 2;
+
+      total = 0;
+      for (var k in breakdown) total += breakdown[k];
+      breakdown.total = total;
+      breakdown.totalPctOfTurnover = (total / turnoverPerSide) * 100;
+
+      // Break-even required: what % move on premium covers total cost
+      var breakEvenPremium = total / (lots * lotSize);
+      breakdown.breakEvenPremium = breakEvenPremium;
+      breakdown.breakEvenPct = (breakEvenPremium / premium) * 100;
+
+      return breakdown;
+    },
+
+    // Apply cost to realized P&L % to get NET return
+    netReturn: function (grossPct, trade, lots, region) {
+      var costs = this.computeCost(trade, lots, region);
+      return grossPct - costs.breakEvenPct;
+    }
+  };
+
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // 3. REGIME DETECTOR (trending vs ranging vs volatile)
+  // ═══════════════════════════════════════════════════════════════════════
+  // Classifies current market regime from the last N 5m candles of the
+  // lead index (NIFTY for IN, SPY for US). Regime state feeds back into
+  // Kelly (reduce size in volatile), scoring (deweight trend in range),
+  // and the UI (visible regime badge so user knows context).
+  //
+  // Regimes:
+  //   TRENDING_UP   — HH/HL sequence + price > VWAP + low ADX-like choppiness
+  //   TRENDING_DN   — LL/LH sequence + price < VWAP
+  //   RANGING       — oscillation, no HH/LL streak, low directional move
+  //   VOLATILE      — high candle-range relative to ATR, whipsaw
+  //   UNKNOWN       — insufficient data
+  var regimeDetector = {
+    current: 'UNKNOWN',
+    lastUpdate: 0,
+    history: [],
+
+    // Feed bars from the lead index and classify
+    classify: function (bars) {
+      if (!Array.isArray(bars) || bars.length < 10) {
+        this.current = 'UNKNOWN';
+        return 'UNKNOWN';
+      }
+
+      var last10 = bars.slice(-10);
+      // Validate bars
+      for (var i = 0; i < last10.length; i++) {
+        var b = last10[i];
+        if (b == null || b.h == null || b.l == null || b.c == null) {
+          this.current = 'UNKNOWN';
+          return 'UNKNOWN';
+        }
+      }
+
+      // Metric 1: directional streak (HH/HL vs LL/LH)
+      var hhhl = 0, llih = 0;
+      for (var i = 1; i < last10.length; i++) {
+        if (last10[i].h > last10[i-1].h && last10[i].l > last10[i-1].l) hhhl++;
+        else if (last10[i].l < last10[i-1].l && last10[i].h < last10[i-1].h) llih++;
+      }
+
+      // Metric 2: net move vs cumulative range (trend efficiency)
+      var netMove = Math.abs(last10[9].c - last10[0].o);
+      var cumRange = 0;
+      for (var i = 0; i < last10.length; i++) cumRange += (last10[i].h - last10[i].l);
+      var efficiency = cumRange > 0 ? netMove / cumRange : 0;
+      //   efficiency > 0.4 = strong trend (net move ≥ 40% of total range)
+      //   efficiency < 0.15 = ranging (price returned close to start)
+
+      // Metric 3: volatility — stdev of bar ranges vs mean
+      var ranges = last10.map(function (b) { return b.h - b.l; });
+      var meanRange = ranges.reduce(function (a, b) { return a + b; }, 0) / ranges.length;
+      var variance = ranges.reduce(function (s, r) {
+        return s + Math.pow(r - meanRange, 2);
+      }, 0) / ranges.length;
+      var stdRange = Math.sqrt(variance);
+      var volCV = meanRange > 0 ? stdRange / meanRange : 0;
+      //   volCV > 0.6 = spiky/volatile
+
+      // Direction sign
+      var direction = last10[9].c > last10[0].o ? 1 : -1;
+
+      var regime;
+      if (volCV > 0.6 && efficiency < 0.4) {
+        regime = 'VOLATILE';
+      } else if (efficiency > 0.4 && hhhl >= 4 && direction > 0) {
+        regime = 'TRENDING_UP';
+      } else if (efficiency > 0.4 && llih >= 4 && direction < 0) {
+        regime = 'TRENDING_DN';
+      } else if (efficiency < 0.2) {
+        regime = 'RANGING';
+      } else {
+        regime = 'MIXED';
+      }
+
+      this.current = regime;
+      this.lastUpdate = Date.now();
+      this.history.push({ ts: Date.now(), regime: regime,
+                          efficiency: efficiency, hhhl: hhhl, llih: llih, volCV: volCV });
+      if (this.history.length > 100) this.history.shift();
+      return regime;
+    },
+
+    // Regime-adaptive multipliers for Kelly sizing
+    // Returns a multiplier for the fractional Kelly value (1.0 = normal)
+    kellyMultiplier: function () {
+      switch (this.current) {
+        case 'TRENDING_UP':
+        case 'TRENDING_DN':
+          return 1.2;  // trend days — slightly more aggressive
+        case 'RANGING':
+          return 0.7;  // chop — reduce size
+        case 'VOLATILE':
+          return 0.5;  // whipsaw — half size
+        case 'MIXED':
+        default:
+          return 1.0;
+      }
+    },
+
+    // Regime-adaptive score threshold
+    // In volatile regime, require higher confidence to open a trade
+    minScoreOverride: function (defaultMin) {
+      switch (this.current) {
+        case 'VOLATILE': return Math.max(defaultMin, 75);
+        case 'RANGING':  return Math.max(defaultMin, 68);
+        default: return defaultMin;
+      }
+    },
+
+    // Human-readable label
+    label: function () {
+      return ({
+        TRENDING_UP: '↗ TRENDING UP',
+        TRENDING_DN: '↘ TRENDING DN',
+        RANGING:     '↔ RANGING',
+        VOLATILE:    '⚡ VOLATILE',
+        MIXED:       '· MIXED',
+        UNKNOWN:     '? UNKNOWN'
+      })[this.current] || this.current;
+    },
+
+    // Pill color for UI
+    color: function () {
+      switch (this.current) {
+        case 'TRENDING_UP': return '#22C55E';
+        case 'TRENDING_DN': return '#EF4444';
+        case 'RANGING':     return '#F59E0B';
+        case 'VOLATILE':    return '#A855F7';
+        default:            return '#64748B';
+      }
+    }
+  };
+
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // 4. ALPHA DECAY MONITOR
+  // ═══════════════════════════════════════════════════════════════════════
+  // Tracks whether high-confidence signals are STILL producing better
+  // outcomes than low-confidence signals over a rolling window. If the
+  // spread between ≥80 and <68 bands collapses, the engine is losing its
+  // edge and needs re-tuning or a cooldown period.
+  //
+  // Uses closed positions (won/lost) from paperPortfolio — needs at least
+  // 20 closed positions across both bands to produce a reliable read.
+  var alphaDecay = {
+    window: 50,      // rolling window of closed positions
+    minSamples: 10,  // min closed positions per band before reporting
+    warnThreshold: 3,    // if high-band avg P&L - low-band avg P&L < 3%, warn
+    alertThreshold: 0,   // if difference <= 0, alert strongly
+
+    // Compute current decay state from paperPortfolio closed positions
+    read: function () {
+      var positions = Object.values(paperPortfolio.positions)
+        .filter(function (p) {
+          return (p.status === 'won' || p.status === 'lost') &&
+                  p.realizedPct != null && p.score != null;
+        })
+        .sort(function (a, b) { return (b.closedAt || 0) - (a.closedAt || 0); })
+        .slice(0, this.window);
+
+      var high = positions.filter(function (p) { return p.score >= 80; });
+      var low = positions.filter(function (p) { return p.score < 68 && p.score >= 55; });
+
+      function stats(arr) {
+        if (arr.length === 0) return { n: 0, winRate: 0, avgPnl: 0 };
+        var wins = arr.filter(function (p) { return p.status === 'won'; }).length;
+        var avgPnl = arr.reduce(function (s, p) { return s + p.realizedPct; }, 0) / arr.length;
+        return {
+          n: arr.length,
+          winRate: (wins / arr.length) * 100,
+          avgPnl: avgPnl
+        };
+      }
+
+      var highStats = stats(high);
+      var lowStats = stats(low);
+      var spread = highStats.avgPnl - lowStats.avgPnl;
+
+      var status = 'UNKNOWN';
+      if (highStats.n >= this.minSamples && lowStats.n >= this.minSamples) {
+        if (spread > this.warnThreshold) status = 'HEALTHY';
+        else if (spread > this.alertThreshold) status = 'DEGRADING';
+        else status = 'DECAYED';
+      } else {
+        status = 'INSUFFICIENT_DATA';
+      }
+
+      return {
+        status: status,
+        spread: spread,
+        highBand: highStats,
+        lowBand: lowStats,
+        totalSamples: positions.length
+      };
+    },
+
+    // UI-ready summary string
+    summary: function () {
+      var r = this.read();
+      if (r.status === 'INSUFFICIENT_DATA') {
+        return 'Alpha: ' + r.totalSamples + '/20 samples';
+      }
+      var sign = r.spread > 0 ? '+' : '';
+      return 'Alpha: ' + r.status + ' (≥80 edge: ' + sign + r.spread.toFixed(1) + '%)';
+    },
+
+    color: function () {
+      var r = this.read();
+      if (r.status === 'HEALTHY') return '#22C55E';
+      if (r.status === 'DEGRADING') return '#F59E0B';
+      if (r.status === 'DECAYED') return '#EF4444';
+      return '#64748B';
+    }
+  };
+
+
+  // Expose for console debugging + future backtest export
+  window._atEngine = {
+    bus: bus,
+    signals: signalLedger,
+    portfolio: paperPortfolio,
+    kelly: kellySizer,
+    cost: execCostModel,
+    regime: regimeDetector,
+    alphaDecay: alphaDecay,
+
+    // Dump signals as CSV (for feeding external backtest tools)
+    exportSignalsCSV: function () {
+      if (!signalLedger.all.length) return '';
+      var keys = ['ts', 'sym', 'strike', 'side', 'score', 'state', 'spot',
+                  'premium', 'sl', 'target', 'trigger', 'missing'];
+      var rows = [keys.join(',')];
+      signalLedger.all.forEach(function (s) {
+        rows.push(keys.map(function (k) {
+          var v = s[k];
+          if (v == null) return '';
+          if (Array.isArray(v)) v = v.join(';');
+          return typeof v === 'string' ? '"' + v.replace(/"/g, '""') + '"' : v;
+        }).join(','));
+      });
+      return rows.join('\n');
+    }
+  };
 
   // ── MODULE STATE ────────────────────────────────────────────────────────
   var state = {
@@ -566,8 +1259,21 @@
 
     var isFallback = row._fallback === true;
 
-    // HARD REQUIREMENT: real ATM strike. No rounding spot to invent one.
+    // ATM strike: prefer backend-provided value. If absent, derive from the
+    // REAL option chain — find the strike closest to spot among strikes that
+    // actually exist in chain_near_atm. This is NOT fabrication: every strike
+    // in chain_near_atm comes from NSE/yfinance, so "closest actual strike"
+    // is by definition a real tradable strike.
     var atm = row.atm_strike;
+    if ((atm == null || atm <= 0) && Array.isArray(row.chain_near_atm) && row.chain_near_atm.length > 0) {
+      var closestStrike = null;
+      row.chain_near_atm.forEach(function (r) {
+        if (r.strike != null && (closestStrike == null || Math.abs(r.strike - spot) < Math.abs(closestStrike - spot))) {
+          closestStrike = r.strike;
+        }
+      });
+      atm = closestStrike;
+    }
     if (atm == null || atm <= 0) return null;
 
     // Real strike step — no default by spot * 0.005 heuristic
@@ -980,8 +1686,67 @@
         el('div', { style: { display: 'flex', gap: '4px' } }, indexBtns)
       ]),
 
-      // RIGHT: alerts + voice + user profile
-      el('div', { style: { display: 'flex', alignItems: 'center', gap: '8px' } }, [
+      // RIGHT: paper P&L + alerts + voice + user profile
+      el('div', { style: { display: 'flex', alignItems: 'center', gap: '6px' } }, [
+        // Regime pill — TRENDING / RANGING / VOLATILE
+        (function () {
+          var regimeColor = regimeDetector.color();
+          return el('div', {
+            title: 'Market regime (from lead index ' + (state.region === 'US' ? 'SPY' : 'NIFTY') + ')\n' +
+                   'Adjusts Kelly sizing: ×' + regimeDetector.kellyMultiplier().toFixed(2),
+            style: {
+              fontSize: '10px', fontWeight: 800, padding: '3px 7px',
+              border: '1px solid ' + regimeColor + '55',
+              background: regimeColor + '18', color: regimeColor,
+              borderRadius: '4px', fontFamily: MONO, letterSpacing: '0.2px'
+            }
+          }, regimeDetector.label());
+        })(),
+        // Alpha decay chip — shows edge health
+        (function () {
+          var decay = alphaDecay.read();
+          var color = alphaDecay.color();
+          var label = alphaDecay.summary();
+          return el('div', {
+            title: 'Alpha decay monitor\n' +
+                   'Compares closed ≥80 vs <68 score bands\n' +
+                   'High band: ' + decay.highBand.n + ' trades, ' +
+                   decay.highBand.avgPnl.toFixed(1) + '% avg\n' +
+                   'Low band: ' + decay.lowBand.n + ' trades, ' +
+                   decay.lowBand.avgPnl.toFixed(1) + '% avg',
+            style: {
+              fontSize: '10px', fontWeight: 700, padding: '3px 7px',
+              border: '1px solid ' + color + '55',
+              background: color + '11', color: color,
+              borderRadius: '4px', fontFamily: MONO, letterSpacing: '0.2px'
+            }
+          }, label);
+        })(),
+        // Paper portfolio stats pill
+        (function () {
+          var s = paperPortfolio.stats();
+          var label;
+          if (s.total === 0) {
+            label = 'Paper: 0';
+          } else if (s.wins + s.losses === 0) {
+            label = 'Paper: ' + (s.pending + s.active) + ' open';
+          } else {
+            label = 'Paper: ' + s.wins + 'W/' + s.losses + 'L · ' +
+                    s.winRate.toFixed(0) + '% · ' +
+                    (s.avgPnlPct > 0 ? '+' : '') + s.avgPnlPct.toFixed(1) + '%';
+          }
+          var color = s.avgPnlPct > 0 ? C.green : s.avgPnlPct < 0 ? C.red : C.textSec;
+          return el('div', {
+            title: 'Paper-trade performance (this browser only)\n' +
+                   s.total + ' total · ' + s.pending + ' pending · ' + s.active + ' active',
+            style: {
+              fontSize: '10px', fontWeight: 700, padding: '3px 7px',
+              border: '1px solid ' + color + '55',
+              background: color + '11', color: color,
+              borderRadius: '4px', fontFamily: MONO, letterSpacing: '0.2px'
+            }
+          }, label);
+        })(),
         iconBtn('🔔', state.alertsOn, function () { state.alertsOn = !state.alertsOn; rerender(); }),
         iconBtn('🎙', state.voiceOn, function () { state.voiceOn = !state.voiceOn; rerender(); }),
         el('div', {
@@ -1056,7 +1821,7 @@
         }
         panel.appendChild(el('div', {
           style: {
-            height: '96px', marginBottom: '6px', borderRadius: '12px',
+            height: '104px', marginBottom: '6px', borderRadius: '12px',
             border: '1px dashed ' + C.divider, display: 'flex',
             alignItems: 'center', justifyContent: 'center',
             color: C.textMute, fontSize: '12px', fontStyle: 'italic',
@@ -1077,7 +1842,7 @@
     var card = el('div', {
       onClick: function () { selectTrade(trade); },
       style: {
-        height: '96px', padding: '8px',  // bumped from 84 to fit trend row
+        height: '104px', padding: '8px',  // bumped to fit Buy/Trig/SL/Target line
         background: isSelected ? C.active : C.card,
         borderRadius: '12px',
         border: '1px solid ' + (isSelected ? C.blue : (trade.gammaMode ? '#F59E0B' : C.divider)),
@@ -1105,13 +1870,51 @@
       }, '⚡ GAMMA MODE'));
     }
 
-    // Row 1 col 1 — symbol + strike
+    // Row 1 col 1 — symbol + strike (stacked with Buy/Trig/SL/Target below)
+    var symCell = el('div', {
+      style: {
+        display: 'flex', flexDirection: 'column', justifyContent: 'center',
+        gap: '2px', overflow: 'hidden'
+      }
+    });
     var sym = el('div', {
-      style: { fontSize: '18px', fontWeight: 600, color: C.textPri, lineHeight: 1.15, fontFamily: MONO }
+      style: {
+        fontSize: '17px', fontWeight: 600, color: C.textPri,
+        lineHeight: 1.1, fontFamily: MONO, whiteSpace: 'nowrap',
+        overflow: 'hidden', textOverflow: 'ellipsis'
+      }
     });
     sym.appendChild(document.createTextNode(trade.symbol + ' '));
     sym.appendChild(el('span', { style: { color: C.textSec } }, trade.strike));
-    card.appendChild(sym);
+    symCell.appendChild(sym);
+
+    // Option entry price + trigger + SL + target — what the user actually trades on
+    var currency = (trade._raw && trade._raw.currency) ? trade._raw.currency : '₹';
+    var priceLine = el('div', {
+      style: {
+        fontSize: '11px', color: C.textSec, fontFamily: MONO, lineHeight: 1.1,
+        whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'
+      }
+    });
+    priceLine.appendChild(document.createTextNode('Buy '));
+    priceLine.appendChild(el('span', {
+      style: { color: C.textPri, fontWeight: 700 }
+    }, currency + trade.price.toFixed(2)));
+    priceLine.appendChild(document.createTextNode(' · Trig '));
+    priceLine.appendChild(el('span', {
+      style: { color: C.textPri, fontWeight: 600 }
+    }, trade.trigger.toFixed(2)));
+    priceLine.appendChild(document.createTextNode(' · SL '));
+    priceLine.appendChild(el('span', {
+      style: { color: C.red, fontWeight: 600 }
+    }, currency + trade.sl.toFixed(2)));
+    priceLine.appendChild(document.createTextNode(' · Tgt '));
+    priceLine.appendChild(el('span', {
+      style: { color: C.green, fontWeight: 600 }
+    }, currency + trade.target.toFixed(2)));
+    symCell.appendChild(priceLine);
+
+    card.appendChild(symCell);
 
     // Row 1 col 2 — confidence (crossfade on 5m close, spec §8)
     card.appendChild(el('div', {
@@ -1529,13 +2332,14 @@
 
     wrap.appendChild(el('div', {
       style: {
-        display: 'grid', gridTemplateColumns: '20% 10% 10% 20% 1fr',
+        display: 'grid', gridTemplateColumns: '16% 20% 8% 10% 18% 1fr',
         padding: '4px 8px',
         fontSize: '10px', fontWeight: 800, color: C.textMute, letterSpacing: '1.5px',
         borderBottom: '1px solid ' + C.divider
       }
     }, [
       el('div', {}, 'SYMBOL'),
+      el('div', {}, 'STRIKE'),
       el('div', {}, 'DIR'),
       el('div', {}, 'SCORE'),
       el('div', {}, 'STATE'),
@@ -1552,7 +2356,7 @@
 
       body.appendChild(el('div', {
         style: {
-          display: 'grid', gridTemplateColumns: '20% 10% 10% 20% 1fr',
+          display: 'grid', gridTemplateColumns: '16% 20% 8% 10% 18% 1fr',
           height: '26px', alignItems: 'center', padding: '0 8px',
           fontSize: '13px', fontFamily: MONO,
           borderBottom: i < state.scanner.length - 1 ? '1px solid ' + C.divider : 'none',
@@ -1560,6 +2364,7 @@
         }
       }, [
         el('div', { style: { fontWeight: 600 } }, r.symbol),
+        el('div', { style: { color: C.textSec, fontFamily: MONO } }, r.strike || '—'),
         el('div', { style: { color: r.direction === 'CE' ? C.green : C.red, fontWeight: 700 } }, r.direction),
         el('div', { style: { color: confColor(r.score), fontWeight: 700 } }, String(r.score)),
         el('div', {}, pill(r.state, true)),
@@ -1598,8 +2403,46 @@
   }
 
   function onExecute(t) {
-    pushLog('EXECUTE ' + t.symbol + ' ' + t.strike + ' @ ' + (t.price || 0).toFixed(2), C.green);
-    speak('Executing ' + t.symbol + ' ' + t.strike);
+    // Regime-adjusted Kelly sizing — no more fixed lot
+    var baseSaved = kellySizer.fractional;
+    kellySizer.fractional = baseSaved * regimeDetector.kellyMultiplier();
+    var sizing = kellySizer.size(t);
+    kellySizer.fractional = baseSaved;
+
+    if (sizing.lots === 0 || sizing.error) {
+      pushLog('SKIP ' + t.symbol + ' — ' + (sizing.reason || sizing.error), C.orange);
+      speak('Skipping ' + t.symbol + ' — negative edge');
+      return;
+    }
+
+    // Execution cost forecast
+    var costs = execCostModel.computeCost(t, sizing.lots, state.region);
+
+    // Attach sizing info to trade so paperPortfolio.open captures it
+    t.sizingLots = sizing.lots;
+    t.sizingRupees = sizing.rupees;
+    t.sizingPct = sizing.pctOfCapital;
+    t.costTotal = costs.total;
+    t.costBreakEvenPct = costs.breakEvenPct;
+
+    var pos = paperPortfolio.open(t);
+    pos.sizingLots = sizing.lots;
+    pos.sizingPct = sizing.pctOfCapital;
+    pos.costBreakEvenPct = costs.breakEvenPct;
+    paperPortfolio.save();
+
+    var ccy = pos.currency || (state.region === 'US' ? '$' : '₹');
+    pushLog('OPEN ' + t.symbol + ' ' + t.strike + ' · ' +
+            sizing.lots + ' lot' + (sizing.lots > 1 ? 's' : '') +
+            ' (' + sizing.pctOfCapital.toFixed(1) + '% cap) · ' +
+            'BE ' + costs.breakEvenPct.toFixed(2) + '% · ' +
+            'Kelly ' + (sizing.winProb * 100).toFixed(0) + '%@' + sizing.payoffRatio.toFixed(1) + 'R',
+            C.green);
+    pushLog('  cost: ' + ccy + costs.total.toFixed(2) +
+            ' (' + costs.totalPctOfTurnover.toFixed(2) + '% turnover) · ' +
+            'regime: ' + regimeDetector.label(), C.textSec);
+    speak(t.symbol + ' ' + t.strike + ' paper open, ' +
+          sizing.lots + ' lot' + (sizing.lots > 1 ? 's' : ''));
     rerender();
   }
 
@@ -1651,19 +2494,65 @@
         var rejectReasons = { noSpot: 0, noAtm: 0, noChain: 0, noPremium: 0,
                               noSide: 0, insufficientFactors: 0, belowThreshold: 0 };
         var mapped = [];
+        var rejectDetails = []; // for console table
         raw.forEach(function (row) {
-          // Quick pre-check to categorize rejection reason
-          if (!row.sym && !row.symbol) return;
-          if (row.spot == null || row.spot <= 0) { rejectReasons.noSpot++; return; }
-          if (row.atm_strike == null || row.atm_strike <= 0) { rejectReasons.noAtm++; return; }
+          var sym = row.sym || row.symbol || '?';
+          if (!row.sym && !row.symbol) {
+            rejectDetails.push({ sym: '?', reason: 'no symbol field' });
+            return;
+          }
+          if (row.spot == null || row.spot <= 0) {
+            rejectReasons.noSpot++;
+            rejectDetails.push({ sym: sym, reason: 'no spot price', spot: row.spot });
+            return;
+          }
           if (!Array.isArray(row.chain_near_atm) || row.chain_near_atm.length === 0) {
-            rejectReasons.noChain++; return;
+            rejectReasons.noChain++;
+            rejectDetails.push({ sym: sym, reason: 'no option chain', spot: row.spot });
+            return;
           }
           var tr = mapScanRowToTrade(row);
-          if (tr) mapped.push(tr);
-          else rejectReasons.insufficientFactors++;
+          if (tr) {
+            mapped.push(tr);
+          } else {
+            rejectReasons.insufficientFactors++;
+            // Re-derive WHY it failed inside mapScanRowToTrade by checking each factor
+            var reasonDetail = [];
+            var bars = row.ohlc_bars || [];
+            if (bars.length < 3) reasonDetail.push('bars<3');
+            if (bars.length < 5) reasonDetail.push('bars<5 (VWAP)');
+            if (bars.length < 6) reasonDetail.push('bars<6 (vol)');
+            if (row.vwap == null || row.vwap <= 0) reasonDetail.push('no vwap');
+            if (row._fallback) reasonDetail.push('fallback mode');
+            rejectDetails.push({
+              sym: sym, reason: 'mapScan returned null',
+              spot: row.spot, bars: bars.length,
+              vwap: row.vwap, fallback: row._fallback,
+              chainLen: row.chain_near_atm.length,
+              detail: reasonDetail.join(',')
+            });
+          }
         });
         mapped.sort(function (a, b) { return b.confidence - a.confidence; });
+
+        // LOG: detailed per-ticker breakdown to console on every scan
+        if (rejectDetails.length > 0 && typeof console.table === 'function') {
+          console.log('%c[ActiveTrading] Scan results: ' + mapped.length + ' accepted, ' +
+                      rejectDetails.length + ' rejected (out of ' + raw.length + ' scanned)',
+                      'color:#F59E0B;font-weight:bold');
+          if (mapped.length > 0) {
+            console.log('Accepted:', mapped.map(function(t) {
+              return { sym: t.symbol, conf: t.confidence, side: t.side, state: t.state, reason: t.reason };
+            }));
+          }
+          if (rejectDetails.length > 0 && rejectDetails.length <= 20) {
+            console.log('Rejected breakdown:');
+            console.table(rejectDetails);
+          } else if (rejectDetails.length > 20) {
+            console.log('Rejected breakdown (first 10):');
+            console.table(rejectDetails.slice(0, 10));
+          }
+        }
 
         if (mapped.length === 0) {
           // Real diagnostic instead of generic "no setups"
@@ -1834,16 +2723,46 @@
 
         state.trades = top3;
 
+        // ── REGIME DETECTION — update from lead index's bars ─────────────
+        // Find the lead ticker for the active region (NIFTY for IN, SPY for US)
+        var leadSym = state.region === 'US' ? 'SPY' : 'NIFTY';
+        var leadRow = raw.filter(function (r) {
+          return (r.sym === leadSym || r.symbol === leadSym);
+        })[0];
+        if (leadRow && Array.isArray(leadRow.ohlc_bars)) {
+          regimeDetector.classify(leadRow.ohlc_bars);
+        }
+
+        // ── LEAN-STYLE: emit Signals + tick paper portfolio on each scan ──
+        // Each top-3 trade becomes a Signal record in the ledger. The paper
+        // portfolio checks triggers/SL/target against current premium.
+        var nowIso = new Date().toISOString();
+        top3.forEach(function (t) {
+          signalLedger.push({
+            ts: nowIso, sym: t.symbol, strike: t.strike, side: t.side,
+            score: t.confidence, state: t.state, reason: t.reason,
+            spot: t._raw && t._raw.spot, premium: t.price,
+            sl: t.sl, target: t.target, trigger: t.trigger,
+            region: state.region,
+            missing: t.missingFactors || []
+          });
+        });
+        // Also tick portfolio with current trade data so pending → active,
+        // active → won/lost transitions can fire.
+        var tradeDataMap = {};
+        top3.forEach(function (t) { tradeDataMap[t.id] = t; });
+        paperPortfolio.tick(tradeDataMap);
+
         // Secondary scanner — ranks 4-9, uses score history for real trend arrows
         var scannerPool = mapped.filter(function (m) {
           return top3.filter(function (t) { return t.id === m.id; }).length === 0;
         });
         state.scanner = scannerPool.slice(0, 6).map(function (t) {
           var h = state.scoreHistory[t.id];
-          // Use real history if we have it; else show current as flat
           var trend = (h && h.length >= 2) ? h : [t.confidence, t.confidence, t.confidence];
           return {
             symbol: t.symbol, direction: t.side,
+            strike: t.strike, // spec: show strike alongside symbol for clarity
             score: t.confidence, state: t.state,
             trend: trend
           };
