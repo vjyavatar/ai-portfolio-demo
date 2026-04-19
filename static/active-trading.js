@@ -19,9 +19,11 @@
   'use strict';
 
   // Loud startup log so we can verify the deployed version at a glance
-  console.log('%c[ActiveTrading] v27 loaded — Full voice coverage for every important stage',
+  console.log('%c[ActiveTrading] v31 loaded — Smart Money Concepts wired into Consensus Engine',
               'color:#22C55E;font-weight:bold;font-size:13px');
-  console.log('%c  Debug: window._atEngine.kelly | .cost | .regime | .alphaDecay | .portfolio | .signals',
+  console.log('%c  SMC primitives: FVG + Order Block + BOS/CHoCH + Liquidity Sweep + EMA 9/21/50 + 5m candle closure',
+              'color:#64748B;font-size:11px');
+  console.log('%c  Debug: window._atEngine {.consensus .priceAction .kelly .cost .regime .alphaDecay .pricing .vol .risk .gex .strikes .monitor .compass .portfolio .signals}',
               'color:#64748B;font-size:11px');
 
   // ── COLOR TOKENS ────────────────────────────────────────────────────────
@@ -840,7 +842,1138 @@
   };
 
 
-  // Expose for console debugging + future backtest export
+  // (window._atEngine assigned below, AFTER all modules are declared —
+  //  this avoids JS hoisting issue where var decls exist but assignments
+  //  haven't run yet, leaving exposed references as undefined.)
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // 5. BLACK-SCHOLES PRICING MATH + GREEKS
+  // ═══════════════════════════════════════════════════════════════════════
+  // Ported from options-engine.js _erf + _renderGreeks. Gives us Δ/Γ/Θ/Vega
+  // for any option so the trader can see theta bleed and gamma exposure on
+  // the selected trade. Greeks are recomputed on every render using the
+  // live spot from the trade object.
+  var pricingMath = {
+    // Abramowitz-Stegun erf approximation (standard)
+    erf: function (x) {
+      var a1 = 0.254829592, a2 = -0.284496736, a3 = 1.421413741;
+      var a4 = -1.453152027, a5 = 1.061405429, p = 0.3275911;
+      var sign = x >= 0 ? 1 : -1;
+      x = Math.abs(x);
+      var t = 1 / (1 + p * x);
+      var y = 1 - (((((a5 * t + a4) * t) + a3) * t + a2) * t + a1) * t * Math.exp(-x * x);
+      return sign * y;
+    },
+    // Standard normal CDF
+    N: function (x) {
+      return 0.5 * (1 + this.erf(x / Math.sqrt(2)));
+    },
+    // Standard normal PDF
+    n: function (x) {
+      return Math.exp(-x * x / 2) / Math.sqrt(2 * Math.PI);
+    },
+
+    // Greeks for a European option.
+    //   spot, strike, dte (days), iv (% annualized), optType 'CE'|'PE'
+    //   Returns { delta, gamma, theta (per day), vega (per 1% IV), fairValue }
+    //   or null if any input is invalid.
+    greeks: function (spot, strike, dte, ivPct, optType) {
+      if (!spot || spot <= 0 || !strike || strike <= 0) return null;
+      if (ivPct == null || ivPct <= 0) return null;
+      var T = Math.max(dte, 0.01) / 365;
+      var r = 0.07;  // risk-free; small change doesn't move Greeks materially
+      var sigma = ivPct / 100;
+      var sqrtT = Math.sqrt(T);
+
+      var d1 = (Math.log(spot / strike) + (r + sigma * sigma / 2) * T) / (sigma * sqrtT);
+      var d2 = d1 - sigma * sqrtT;
+      var Nd1 = this.N(d1), Nd2 = this.N(d2);
+      var nd1 = this.n(d1);
+
+      var delta, theta, fairValue;
+      if (optType === 'CE') {
+        delta = Nd1;
+        theta = -(spot * nd1 * sigma) / (2 * sqrtT) / 365
+                - r * strike * Math.exp(-r * T) * Nd2 / 365;
+        fairValue = spot * Nd1 - strike * Math.exp(-r * T) * Nd2;
+      } else {
+        delta = Nd1 - 1;
+        theta = -(spot * nd1 * sigma) / (2 * sqrtT) / 365
+                + r * strike * Math.exp(-r * T) * (1 - Nd2) / 365;
+        fairValue = strike * Math.exp(-r * T) * (1 - Nd2) - spot * (1 - Nd1);
+      }
+      var gamma = nd1 / (spot * sigma * sqrtT);
+      var vega = spot * nd1 * sqrtT / 100;  // per 1% IV move
+
+      return {
+        delta: delta, gamma: gamma, theta: theta, vega: vega,
+        fairValue: fairValue, d1: d1, d2: d2, dte: dte
+      };
+    },
+
+    // DTE from an expiry string like '27-Nov-2025' or ISO. Returns 0 if unparseable.
+    dteFromExpiry: function (expiry) {
+      if (!expiry) return 0;
+      try {
+        // Format 1: '27-Nov-2025'
+        var m = { Jan: 0, Feb: 1, Mar: 2, Apr: 3, May: 4, Jun: 5,
+                  Jul: 6, Aug: 7, Sep: 8, Oct: 9, Nov: 10, Dec: 11 };
+        var p = expiry.split('-');
+        if (p.length === 3 && m[p[1]] != null) {
+          var d = new Date(parseInt(p[2]), m[p[1]], parseInt(p[0]));
+          return Math.max(0, Math.round((d - new Date()) / 86400000));
+        }
+        // Format 2: ISO '2025-11-27'
+        var dd = new Date(expiry);
+        if (!isNaN(dd)) return Math.max(0, Math.round((dd - new Date()) / 86400000));
+      } catch (e) {}
+      return 0;
+    }
+  };
+
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // 6. IV vs HV (Implied vs Historical Volatility)
+  // ═══════════════════════════════════════════════════════════════════════
+  // If IV >> HV → options are overpriced (sell premium)
+  // If IV << HV → options are underpriced (buy options)
+  // If IV ≈ HV → fairly priced
+  var volMath = {
+    // Compute annualized historical volatility from OHLC bars.
+    // Uses log-returns on closes; 252 trading days/year; 75 bars/day for 5m.
+    // Returns % annualized, or null if insufficient data.
+    computeHV: function (bars) {
+      if (!Array.isArray(bars) || bars.length < 10) return null;
+      var returns = [];
+      for (var i = 1; i < bars.length; i++) {
+        if (bars[i - 1].c > 0 && bars[i].c > 0) {
+          returns.push(Math.log(bars[i].c / bars[i - 1].c));
+        }
+      }
+      if (returns.length < 5) return null;
+      var mean = returns.reduce(function (s, r) { return s + r; }, 0) / returns.length;
+      var variance = returns.reduce(function (s, r) {
+        return s + (r - mean) * (r - mean);
+      }, 0) / (returns.length - 1);
+      if (variance <= 0) return null;
+      // Scale: per-bar stdev × sqrt(bars per year).
+      // 5m bars: 75/day × 252 days = 18900 bars/year
+      var barsPerYear = 18900;
+      var annualized = Math.sqrt(variance) * Math.sqrt(barsPerYear) * 100;
+      return Math.round(annualized * 10) / 10;
+    },
+
+    // Compute IV/HV ratio and verdict.
+    analyze: function (iv, bars) {
+      if (iv == null || iv <= 0) return { status: 'no_iv' };
+      var hv = this.computeHV(bars);
+      if (hv == null) return { status: 'no_hv', iv: iv };
+      var ratio = iv / Math.max(hv, 1);
+      var verdict, action;
+      if (ratio > 1.3) {
+        verdict = 'OVERPRICED'; action = 'Consider selling premium';
+      } else if (ratio > 1.1) {
+        verdict = 'ELEVATED'; action = 'Options expensive but usable';
+      } else if (ratio < 0.75) {
+        verdict = 'UNDERPRICED'; action = 'Options cheap — favor buying';
+      } else if (ratio < 0.9) {
+        verdict = 'DISCOUNTED'; action = 'Slightly cheap';
+      } else {
+        verdict = 'FAIR'; action = 'Fairly priced';
+      }
+      return {
+        status: 'ok', iv: iv, hv: hv,
+        ratio: ratio, verdict: verdict, action: action
+      };
+    }
+  };
+
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // 7. PORTFOLIO RISK CONTROLS
+  // ═══════════════════════════════════════════════════════════════════════
+  // Institutional risk guardrails that override trade sizing decisions:
+  //   - Max N concurrent positions
+  //   - Max X% daily loss (circuit breaker — stop trading until next day)
+  //   - Max Y% drawdown from session high (also a circuit breaker)
+  //   - Min K minutes between consecutive opens (cooldown)
+  //
+  // Returns { allow: true|false, reason: 'why blocked' }.
+  var portfolioRisk = {
+    config: {
+      maxConcurrent: 3,              // max pending+active paper positions
+      maxDailyLossPct: 3,            // stop trading if session P&L < -3%
+      maxDrawdownPct: 5,             // stop trading if drawdown from peak > 5%
+      cooldownSeconds: 60            // min seconds between opens
+    },
+
+    _lastOpenAt: 0,
+    _sessionStart: Date.now(),
+
+    // Override config from localStorage (lets user tune without redeploy)
+    loadConfig: function () {
+      try {
+        var stored = localStorage.getItem('at_risk_config');
+        if (stored) {
+          var parsed = JSON.parse(stored);
+          for (var k in parsed) if (this.config[k] != null) this.config[k] = parsed[k];
+        }
+      } catch (e) {}
+    },
+    saveConfig: function () {
+      try { localStorage.setItem('at_risk_config', JSON.stringify(this.config)); } catch (e) {}
+    },
+
+    // Session-scoped stats from paperPortfolio, filtered to today only
+    sessionStats: function () {
+      var self = this;
+      var dayStart = new Date(); dayStart.setHours(0, 0, 0, 0);
+      var concurrent = 0, todayClosed = 0, todayPnlPct = 0, peakPnl = 0;
+      var runningPnl = 0, minRunning = 0;
+      var todays = [];
+      for (var id in paperPortfolio.positions) {
+        var p = paperPortfolio.positions[id];
+        if (p.status === 'pending' || p.status === 'active') concurrent++;
+        if (p.closedAt && p.closedAt >= dayStart.getTime() &&
+            (p.status === 'won' || p.status === 'lost')) {
+          todays.push(p);
+        }
+      }
+      todays.sort(function (a, b) { return a.closedAt - b.closedAt; });
+      for (var i = 0; i < todays.length; i++) {
+        runningPnl += (todays[i].realizedPct || 0);
+        if (runningPnl > peakPnl) peakPnl = runningPnl;
+        var dd = peakPnl - runningPnl;
+        if (dd > -minRunning) minRunning = -dd;
+        todayPnlPct += (todays[i].realizedPct || 0);
+      }
+      todayClosed = todays.length;
+      return {
+        concurrent: concurrent,
+        todayClosed: todayClosed,
+        todayPnlPct: todayPnlPct,
+        peakPnlPct: peakPnl,
+        drawdownPct: peakPnl - runningPnl,
+        minutesSinceLastOpen: (Date.now() - this._lastOpenAt) / 60000
+      };
+    },
+
+    // Check if we should allow a new position open
+    checkAllow: function () {
+      var s = this.sessionStats();
+      if (s.concurrent >= this.config.maxConcurrent) {
+        return { allow: false,
+                 reason: 'Max concurrent positions reached (' + s.concurrent + '/' + this.config.maxConcurrent + ')' };
+      }
+      if (s.todayPnlPct <= -this.config.maxDailyLossPct) {
+        return { allow: false,
+                 reason: 'Daily loss cap hit (' + s.todayPnlPct.toFixed(1) + '% ≤ -' + this.config.maxDailyLossPct + '%)' };
+      }
+      if (s.drawdownPct >= this.config.maxDrawdownPct) {
+        return { allow: false,
+                 reason: 'Drawdown cap hit (' + s.drawdownPct.toFixed(1) + '% ≥ ' + this.config.maxDrawdownPct + '%)' };
+      }
+      var cooldown = this.config.cooldownSeconds - (Date.now() - this._lastOpenAt) / 1000;
+      if (cooldown > 0) {
+        return { allow: false,
+                 reason: 'Cooldown: wait ' + Math.ceil(cooldown) + 's between opens' };
+      }
+      return { allow: true, reason: 'ok', stats: s };
+    },
+
+    // Mark that a position was opened — enforces cooldown
+    markOpened: function () { this._lastOpenAt = Date.now(); }
+  };
+  portfolioRisk.loadConfig();
+
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // 8. GEX (Gamma Exposure) ANALYZER
+  // ═══════════════════════════════════════════════════════════════════════
+  // Reads dealer gamma exposure from backend response. Identifies:
+  //   - Flip level (above = bullish acceleration, below = bearish acceleration)
+  //   - Call wall (heaviest positive GEX = resistance where dealers sell rallies)
+  //   - Put wall (heaviest negative GEX = support where dealers buy dips)
+  //   - Regime: POSITIVE (pinned/range) vs NEGATIVE (breakout/gamma scalping)
+  //
+  // The backend's /api/options-quick response includes a `gex` object with
+  // { total, regime, topStrikes:[{strike,gex}], flipPoint, callWall, putWall }.
+  var gexAnalyzer = {
+    // Normalize raw gex data from backend. Returns null if missing.
+    read: function (raw) {
+      if (!raw || !raw.gex) return null;
+      var g = raw.gex;
+      if (!Array.isArray(g.topStrikes) || g.topStrikes.length === 0) return null;
+      return {
+        total: g.total || 0,
+        regime: g.regime || 'NEUTRAL',
+        flip: g.flipPoint || 0,
+        callWall: g.callWall || 0,
+        putWall: g.putWall || 0,
+        topStrikes: g.topStrikes.slice()  // copy
+      };
+    },
+
+    // Given raw, return a trading action tag:
+    //   BREAKOUT (negative GEX — dealers amplify moves) — favor directional trades
+    //   RANGE    (positive GEX — dealers dampen moves) — avoid breakouts
+    //   NEUTRAL  (no data)
+    actionTag: function (raw) {
+      var g = this.read(raw);
+      if (!g) return { tag: 'NEUTRAL', color: '#64748B', action: 'GEX unavailable' };
+      if (g.regime === 'NEGATIVE') {
+        return { tag: 'BREAKOUT', color: '#EF4444',
+                 action: 'Dealers amplify moves · prefer directional trades' };
+      }
+      if (g.regime === 'POSITIVE') {
+        return { tag: 'RANGE', color: '#22C55E',
+                 action: 'Market pinned by gamma · avoid breakouts' };
+      }
+      return { tag: 'NEUTRAL', color: '#64748B', action: 'Mixed GEX regime' };
+    },
+
+    // Given spot, find zone relative to flip
+    zone: function (raw, spot) {
+      var g = this.read(raw);
+      if (!g || !g.flip || !spot) return null;
+      return {
+        aboveFlip: spot > g.flip,
+        distance: spot - g.flip,
+        distancePct: ((spot - g.flip) / g.flip) * 100
+      };
+    }
+  };
+
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // 9. STRIKE SELECTOR
+  // ═══════════════════════════════════════════════════════════════════════
+  // Given a chain of nearby strikes, ranks them by tradability.
+  // Score = liquidity (OI+volume) × 0.4 + delta-fit × 0.3 + spread × 0.3.
+  // "Delta fit" prefers ~0.50 for ATM (max gamma/liquidity), ~0.30-0.35 for
+  // 1-OTM (cheaper entry, good on expiry days).
+  var strikeSelector = {
+    // Candidates: {strike, ce_ltp, pe_ltp, ce_oi, pe_oi, ce_vol, pe_vol}[]
+    // side: 'CE' or 'PE'
+    // atm: real ATM strike
+    // Returns array of { strike, label, premium, score, reason } sorted by score desc.
+    rank: function (chain, atm, spot, side, strikeStep) {
+      if (!Array.isArray(chain) || chain.length === 0 || !atm) return [];
+      var stepAbs = strikeStep || (chain.length >= 2
+        ? Math.abs(chain[1].strike - chain[0].strike) : 1);
+      var results = [];
+
+      chain.forEach(function (row) {
+        var premium = side === 'CE' ? row.ce_ltp : row.pe_ltp;
+        var oi = side === 'CE' ? (row.ce_oi || 0) : (row.pe_oi || 0);
+        var vol = side === 'CE' ? (row.ce_vol || 0) : (row.pe_vol || 0);
+        if (!premium || premium <= 0) return;
+
+        var distance = (row.strike - atm) / stepAbs;
+        var label;
+        if (Math.abs(distance) < 0.5) label = 'ATM';
+        else if (side === 'CE' && distance < 0) label = Math.abs(Math.round(distance)) + '-ITM';
+        else if (side === 'CE' && distance > 0) label = Math.abs(Math.round(distance)) + '-OTM';
+        else if (side === 'PE' && distance > 0) label = Math.abs(Math.round(distance)) + '-ITM';
+        else label = Math.abs(Math.round(distance)) + '-OTM';
+
+        // Liquidity score: log-normalized OI+vol
+        var liq = Math.log10(Math.max(1, oi + vol));
+        var liqScore = Math.min(100, liq * 20);
+
+        // Delta-fit proxy: distance from ATM (closer = higher score)
+        var distScore;
+        if (label === 'ATM') distScore = 100;
+        else if (Math.abs(distance) < 1.5) distScore = 80;
+        else if (Math.abs(distance) < 2.5) distScore = 60;
+        else distScore = 30;
+
+        // Premium-sanity: reject absurdly cheap (<0.5) or wide strikes
+        if (premium < 0.5) return;
+
+        var score = Math.round(liqScore * 0.5 + distScore * 0.5);
+        var reason = label === 'ATM'
+          ? 'Highest gamma, tightest spread'
+          : (label.indexOf('OTM') >= 0
+              ? 'Cheaper entry, lower break-even probability'
+              : 'In-the-money, higher delta');
+
+        results.push({
+          strike: row.strike, label: label, premium: premium,
+          oi: oi, volume: vol, score: score, reason: reason,
+          side: side
+        });
+      });
+
+      results.sort(function (a, b) { return b.score - a.score; });
+      return results;
+    }
+  };
+
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // 10. TRADE MONITOR (live P&L for active paper positions)
+  // ═══════════════════════════════════════════════════════════════════════
+  // Reads from paperPortfolio and presents real-time view of active positions
+  // with progress bar between SL and target. Also computes elapsed time.
+  var tradeMonitor = {
+    // Returns array of active/pending positions, each with live stats.
+    // Uses `priceLookup` (map of tradeId -> current trade object) for live premium.
+    active: function (priceLookup) {
+      priceLookup = priceLookup || {};
+      var out = [];
+      for (var id in paperPortfolio.positions) {
+        var p = paperPortfolio.positions[id];
+        if (p.status !== 'pending' && p.status !== 'active') continue;
+
+        var live = priceLookup[p.tradeId];
+        var currentPrem = live ? live.price : p.entryPremium;
+        var pctChg = ((currentPrem - p.entryPremium) / p.entryPremium) * 100;
+        var lots = p.sizingLots || p.lot || 1;
+        var pnlRupees = (currentPrem - p.entryPremium) * lots * (p.lot || 1);
+
+        // Progress: 0 at SL, 50 at entry, 100 at target
+        var progress;
+        var range = p.target - p.sl;
+        if (range > 0) {
+          progress = Math.max(0, Math.min(100,
+            ((currentPrem - p.sl) / range) * 100));
+        } else {
+          progress = 50;
+        }
+
+        var elapsedMs = Date.now() - p.openedAt;
+        var elapsedMin = Math.floor(elapsedMs / 60000);
+        var elapsedSec = Math.floor((elapsedMs % 60000) / 1000);
+
+        out.push({
+          id: p.id, sym: p.sym, strike: p.strike, side: p.side, status: p.status,
+          entryPremium: p.entryPremium, currentPremium: currentPrem,
+          sl: p.sl, target: p.target, pctChg: pctChg, pnlRupees: pnlRupees,
+          progress: progress, lots: lots, currency: p.currency,
+          elapsedMin: elapsedMin, elapsedSec: elapsedSec,
+          highWater: p.highWater, lowWater: p.lowWater
+        });
+      }
+      return out;
+    },
+
+    // Manually close an active position at current premium (user-initiated)
+    closeNow: function (id, exitPremium, reason) {
+      var p = paperPortfolio.positions[id];
+      if (!p || (p.status !== 'active' && p.status !== 'pending')) return false;
+      p.status = exitPremium >= p.entryPremium ? 'won' : 'lost';
+      p.closedAt = Date.now();
+      p.exitPremium = exitPremium;
+      p.realizedPct = ((exitPremium - p.entryPremium) / p.entryPremium) * 100;
+      p.closeReason = reason || 'manual_close';
+      paperPortfolio.save();
+      bus.emit('position:closed', p);
+      return true;
+    }
+  };
+
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // 11. TREND COMPASS (long-term vs short-term alignment)
+  // ═══════════════════════════════════════════════════════════════════════
+  // Compares SHORT-TERM intraday structure (HH-HL on last 5 5m bars + VWAP
+  // position) against LONG-TERM daily trend (SMA200/400 if available).
+  // User sees immediately whether their intraday signal aligns with the
+  // daily trend — strong alignment = higher conviction trade.
+  var trendCompass = {
+    // Reads spot + bars + daily_trend from raw response.
+    // Returns { shortTerm: BULLISH|BEARISH|NEUTRAL, longTerm: ..., aligned, conflict, detail }
+    analyze: function (raw) {
+      if (!raw) return { status: 'no_data' };
+      var spot = raw.spot || 0;
+      var bars = raw.ohlc_bars || [];
+      if (!spot) return { status: 'no_spot' };
+
+      // LONG TERM: SMA200/400 from daily_trend if backend provides
+      var lt = 'NEUTRAL', ltReason = 'No daily data';
+      var dt = raw.daily_trend || null;
+      var sma200 = dt && dt.sma200 ? dt.sma200 : 0;
+      var sma400 = dt && dt.sma400 ? dt.sma400 : 0;
+      if (sma200 > 0) {
+        if (spot > sma200 && (sma400 === 0 || spot > sma400)) {
+          lt = 'BULLISH';
+          ltReason = 'Spot > SMA200' + (sma400 ? ' + SMA400' : '');
+        } else if (spot < sma200 && (sma400 === 0 || spot < sma400)) {
+          lt = 'BEARISH';
+          ltReason = 'Spot < SMA200' + (sma400 ? ' + SMA400' : '');
+        } else {
+          ltReason = 'Mixed SMA position';
+        }
+      }
+
+      // SHORT TERM: HH-HL structure + VWAP position on last 5 5m bars
+      var st = 'NEUTRAL', stReason = 'Insufficient bars';
+      var vwapPos = '', structure = '';
+      if (bars.length >= 3) {
+        // Real VWAP from bars (don't trust backend vwap alone)
+        var vn = 0, vd = 0;
+        bars.forEach(function (b) {
+          if (b.h != null && b.l != null && b.c != null) {
+            var tp = (b.h + b.l + b.c) / 3;
+            var v = b.v || 1;
+            vn += tp * v; vd += v;
+          }
+        });
+        var barVwap = vd > 0 ? (vn / vd) : (raw.vwap || spot);
+        var aboveVwap = spot > barVwap;
+        vwapPos = aboveVwap ? 'Above VWAP' : 'Below VWAP';
+
+        var recent = bars.slice(-5);
+        var hh = 0, hl = 0, lh = 0, ll = 0;
+        for (var i = 1; i < recent.length; i++) {
+          if (recent[i].h != null && recent[i - 1].h != null) {
+            if (recent[i].h > recent[i - 1].h) hh++;
+            else if (recent[i].h < recent[i - 1].h) lh++;
+          }
+          if (recent[i].l != null && recent[i - 1].l != null) {
+            if (recent[i].l > recent[i - 1].l) hl++;
+            else if (recent[i].l < recent[i - 1].l) ll++;
+          }
+        }
+        var bullStruct = hh >= 2 && hl >= 2;
+        var bearStruct = lh >= 2 && ll >= 2;
+        structure = bullStruct ? 'HH-HL' : bearStruct ? 'LH-LL' : 'Mixed';
+
+        if (aboveVwap && bullStruct) { st = 'BULLISH'; stReason = 'HH-HL + above VWAP'; }
+        else if (!aboveVwap && bearStruct) { st = 'BEARISH'; stReason = 'LH-LL + below VWAP'; }
+        else if (aboveVwap && !bearStruct) { st = 'BULLISH'; stReason = 'Above VWAP, weak structure'; }
+        else if (!aboveVwap && !bullStruct) { st = 'BEARISH'; stReason = 'Below VWAP, weak structure'; }
+        else { stReason = vwapPos + ', ' + structure; }
+      }
+
+      var aligned = lt === st && lt !== 'NEUTRAL';
+      var conflict = lt !== 'NEUTRAL' && st !== 'NEUTRAL' && lt !== st;
+
+      return {
+        status: 'ok',
+        shortTerm: st, shortReason: stReason,
+        longTerm: lt, longReason: ltReason,
+        vwapPos: vwapPos, structure: structure,
+        aligned: aligned, conflict: conflict,
+        sma200: sma200, sma400: sma400,
+        spot: spot
+      };
+    },
+
+    // Conviction modifier: aligned = +1 (higher conviction),
+    // conflict = -1 (dial back), neutral = 0
+    convictionModifier: function (raw) {
+      var a = this.analyze(raw);
+      if (a.status !== 'ok') return 0;
+      if (a.aligned) return 1;
+      if (a.conflict) return -1;
+      return 0;
+    }
+  };
+
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // 12. CONSENSUS ENGINE — combines all module outputs into ONE verdict
+  // ═══════════════════════════════════════════════════════════════════════
+  // This is the layer that makes the product actually useful as a guide.
+  // Instead of showing 6 separate chips (score, regime, alpha, GEX, compass,
+  // IV/HV) and making the user synthesize them, we produce ONE verdict:
+  //
+  //   STRONG_BUY  — all signals aligned, take full Kelly size
+  //   BUY         — most signals aligned, take reduced size
+  //   NEUTRAL     — mixed signals, wait or take 1/4 size
+  //   AVOID       — one or more hard-stop signals (negative edge, alpha
+  //                 decayed, portfolio risk blocked, regime volatile)
+  //
+  // The verdict includes:
+  //   - Action (with size recommendation as % of normal Kelly)
+  //   - Reasons: list of bullets, each showing which module drove the call
+  //   - Warnings: softer concerns
+  //   - Blockers: hard-stops that flip to AVOID
+  // ═══════════════════════════════════════════════════════════════════════
+  // 12. PRICE ACTION ANALYZER (Smart Money Concepts)
+  // ═══════════════════════════════════════════════════════════════════════
+  // Adds institutional-grade price-action reads that the 6-factor base
+  // engine does NOT cover:
+  //
+  //   - FVG (Fair Value Gap): 3-candle imbalance where middle candle's range
+  //     doesn't overlap with candles N-2 and N (bullish FVG or bearish FVG).
+  //     Untested price → magnet for future retests.
+  //   - Order Block: last opposing candle before an impulsive move. Institutions
+  //     defend these levels on retests.
+  //   - BOS (Break of Structure): price breaks the prior swing high/low in
+  //     the direction of the trend. Confirms continuation.
+  //   - CHoCH (Change of Character): first lower-high in an uptrend or first
+  //     higher-low in a downtrend. Early reversal signal.
+  //   - Liquidity Sweep: spike beyond prior swing high/low that IMMEDIATELY
+  //     reverses — institutional stop-hunt followed by genuine move.
+  //   - EMA Structure: 9/21/50 ordering. Stacked bullish = 9>21>50>spot-above.
+  //   - Candle Closure: 5m close strength — body size vs range, wick rejection.
+  //
+  // All checks return null when there's insufficient data (not fake values).
+  var priceAction = {
+    // ── FVG (Fair Value Gap) on last N candles ──────────────────────
+    // Returns array of gaps ordered by recency: [{type, top, bottom, barIdx}]
+    fvg: function (bars, lookback) {
+      if (!Array.isArray(bars) || bars.length < 3) return [];
+      lookback = Math.min(lookback || 20, bars.length);
+      var gaps = [];
+      var start = Math.max(2, bars.length - lookback);
+      for (var i = start; i < bars.length; i++) {
+        var b0 = bars[i - 2], b1 = bars[i - 1], b2 = bars[i];
+        if (!b0 || !b1 || !b2 || b0.h == null || b2.l == null) continue;
+        // Bullish FVG: b0.high < b2.low — price gapped up, leaving imbalance
+        if (b0.h < b2.l) {
+          gaps.push({ type: 'BULL', top: b2.l, bottom: b0.h, barIdx: i });
+        }
+        // Bearish FVG: b0.low > b2.high — gapped down
+        if (b0.l > b2.h) {
+          gaps.push({ type: 'BEAR', top: b0.l, bottom: b2.h, barIdx: i });
+        }
+      }
+      return gaps;
+    },
+
+    // Is current spot inside (or close to) any unfilled FVG?
+    // Returns { inFvg: true/false, type, distance (0 = inside) }
+    spotNearFvg: function (bars, spot) {
+      var gaps = this.fvg(bars, 20);
+      if (gaps.length === 0 || !spot) return { inFvg: false };
+      // Look at most recent 5 gaps
+      var recent = gaps.slice(-5);
+      for (var i = recent.length - 1; i >= 0; i--) {
+        var g = recent[i];
+        if (spot >= g.bottom && spot <= g.top) {
+          return { inFvg: true, type: g.type, top: g.top, bottom: g.bottom, distance: 0 };
+        }
+      }
+      return { inFvg: false };
+    },
+
+    // ── ORDER BLOCK ──────────────────────────────────────────────
+    // Last BEARISH candle before a sharp bullish push = bullish order block (support)
+    // Last BULLISH candle before a sharp bearish push = bearish order block (resistance)
+    // Requires 3+ bars following with net move > 1.5× avg range.
+    orderBlock: function (bars) {
+      if (!Array.isArray(bars) || bars.length < 6) return null;
+      var avgRange = 0;
+      for (var i = 0; i < bars.length; i++) {
+        if (bars[i].h != null && bars[i].l != null) {
+          avgRange += (bars[i].h - bars[i].l);
+        }
+      }
+      avgRange /= bars.length;
+      if (avgRange <= 0) return null;
+
+      // Scan last 15 bars for order blocks
+      var start = Math.max(0, bars.length - 15);
+      var latestBull = null, latestBear = null;
+      for (var i = start; i < bars.length - 3; i++) {
+        var b = bars[i];
+        if (b.o == null || b.c == null) continue;
+        // Check the 3-bar push after this one
+        var afterStart = bars[i + 1], afterEnd = bars[i + 3];
+        if (!afterStart || !afterEnd) continue;
+        var pushMove = afterEnd.c - afterStart.o;
+        var pushMag = Math.abs(pushMove);
+        if (pushMag < avgRange * 1.5) continue;
+
+        // Bullish order block: bearish candle followed by strong up push
+        if (b.c < b.o && pushMove > 0) {
+          latestBull = { type: 'BULL_OB', top: b.h, bottom: b.l, barIdx: i, pushMag: pushMag };
+        }
+        // Bearish order block: bullish candle followed by strong down push
+        if (b.c > b.o && pushMove < 0) {
+          latestBear = { type: 'BEAR_OB', top: b.h, bottom: b.l, barIdx: i, pushMag: pushMag };
+        }
+      }
+      return { bull: latestBull, bear: latestBear };
+    },
+
+    // ── BOS / CHoCH ──────────────────────────────────────────────
+    // Detect structure breaks by comparing last bar close to prior swing highs/lows
+    bosChoch: function (bars) {
+      if (!Array.isArray(bars) || bars.length < 10) return null;
+      // Simple swing detection: pivot if higher/lower than 2 bars each side
+      var swings = [];
+      for (var i = 2; i < bars.length - 2; i++) {
+        var b = bars[i];
+        if (b.h == null || b.l == null) continue;
+        var isHigh = b.h > bars[i-1].h && b.h > bars[i-2].h &&
+                     b.h > bars[i+1].h && b.h > bars[i+2].h;
+        var isLow = b.l < bars[i-1].l && b.l < bars[i-2].l &&
+                    b.l < bars[i+1].l && b.l < bars[i+2].l;
+        if (isHigh) swings.push({ type: 'HIGH', price: b.h, barIdx: i });
+        if (isLow)  swings.push({ type: 'LOW', price: b.l, barIdx: i });
+      }
+      if (swings.length < 2) return null;
+
+      // Determine prior structure direction
+      var recent = swings.slice(-4);
+      var highs = recent.filter(function(s){return s.type==='HIGH';}).map(function(s){return s.price;});
+      var lows  = recent.filter(function(s){return s.type==='LOW';}).map(function(s){return s.price;});
+
+      var lastBar = bars[bars.length - 1];
+      var currentClose = lastBar.c;
+
+      var lastHigh = highs.length > 0 ? highs[highs.length - 1] : null;
+      var lastLow  = lows.length > 0 ? lows[lows.length - 1] : null;
+
+      // BOS: break prior high in uptrend / break prior low in downtrend
+      //       (only needs ONE prior swing high to break above)
+      // CHoCH: break opposite swing, which requires 2 highs (or 2 lows) to
+      //        detect the lower-high/higher-low reversal pattern.
+      var signals = [];
+      if (highs.length >= 1 && lastHigh && currentClose > lastHigh) {
+        if (highs.length >= 2) {
+          var priorHigh = highs[highs.length - 2];
+          if (lastHigh < priorHigh) signals.push({ type: 'CHoCH_BULL', level: lastHigh });
+          else signals.push({ type: 'BOS_BULL', level: lastHigh });
+        } else {
+          // Only one prior swing high — break above is BOS bull
+          signals.push({ type: 'BOS_BULL', level: lastHigh });
+        }
+      }
+      if (lows.length >= 1 && lastLow && currentClose < lastLow) {
+        if (lows.length >= 2) {
+          var priorLow = lows[lows.length - 2];
+          if (lastLow > priorLow) signals.push({ type: 'CHoCH_BEAR', level: lastLow });
+          else signals.push({ type: 'BOS_BEAR', level: lastLow });
+        } else {
+          signals.push({ type: 'BOS_BEAR', level: lastLow });
+        }
+      }
+      return { signals: signals, swings: swings.slice(-4) };
+    },
+
+    // ── LIQUIDITY SWEEP ──────────────────────────────────────────
+    // Price spikes BEYOND prior swing high/low, then closes back INSIDE.
+    // Classic stop-hunt pattern.
+    liquiditySweep: function (bars) {
+      if (!Array.isArray(bars) || bars.length < 8) return null;
+      var last = bars[bars.length - 1];
+      if (last.h == null || last.l == null || last.c == null) return null;
+
+      // Find highest high / lowest low of prior 7 bars (exclude current)
+      var priorHigh = -Infinity, priorLow = Infinity;
+      for (var i = bars.length - 8; i < bars.length - 1; i++) {
+        if (bars[i].h != null && bars[i].h > priorHigh) priorHigh = bars[i].h;
+        if (bars[i].l != null && bars[i].l < priorLow) priorLow = bars[i].l;
+      }
+
+      var sweeps = [];
+      // Bull sweep: wick LOW went below priorLow but close held ABOVE priorLow
+      if (last.l < priorLow && last.c > priorLow) {
+        sweeps.push({ type: 'BULL_SWEEP', level: priorLow,
+                      wickDepth: priorLow - last.l,
+                      closeStrength: last.c - priorLow });
+      }
+      // Bear sweep: wick HIGH went above priorHigh but close held BELOW priorHigh
+      if (last.h > priorHigh && last.c < priorHigh) {
+        sweeps.push({ type: 'BEAR_SWEEP', level: priorHigh,
+                      wickDepth: last.h - priorHigh,
+                      closeStrength: priorHigh - last.c });
+      }
+      return sweeps.length > 0 ? sweeps : null;
+    },
+
+    // ── EMA STRUCTURE ────────────────────────────────────────────
+    // Computes EMA 9/21/50 on close prices. Returns alignment:
+    //   STACKED_BULL: 9 > 21 > 50 and spot > 9
+    //   STACKED_BEAR: 9 < 21 < 50 and spot < 9
+    //   MIXED: anything else
+    ema: function (bars) {
+      if (!Array.isArray(bars) || bars.length < 50) return null;
+      var closes = bars.map(function(b){return b.c;}).filter(function(c){return c != null;});
+      if (closes.length < 50) return null;
+
+      function computeEma(arr, period) {
+        var k = 2 / (period + 1);
+        var e = arr[0];
+        for (var i = 1; i < arr.length; i++) e = arr[i] * k + e * (1 - k);
+        return e;
+      }
+
+      var ema9 = computeEma(closes.slice(-30), 9);
+      var ema21 = computeEma(closes.slice(-50), 21);
+      var ema50 = computeEma(closes, 50);
+      var spot = closes[closes.length - 1];
+
+      var alignment;
+      if (ema9 > ema21 && ema21 > ema50 && spot > ema9) alignment = 'STACKED_BULL';
+      else if (ema9 < ema21 && ema21 < ema50 && spot < ema9) alignment = 'STACKED_BEAR';
+      else alignment = 'MIXED';
+
+      return { ema9: ema9, ema21: ema21, ema50: ema50, spot: spot, alignment: alignment };
+    },
+
+    // ── 5M CANDLE CLOSURE STRENGTH ───────────────────────────────
+    // Analyzes the just-closed 5m candle for:
+    //   - body% of range (strong close > 70%)
+    //   - upper/lower wick rejection (wick > 60% = rejection)
+    //   - direction
+    candleClosure: function (bars) {
+      if (!Array.isArray(bars) || bars.length < 1) return null;
+      var b = bars[bars.length - 1];
+      if (b.o == null || b.c == null || b.h == null || b.l == null) return null;
+      var range = b.h - b.l;
+      if (range <= 0) return { strength: 'DOJI', direction: 'NEUTRAL', bodyPct: 0 };
+      var body = Math.abs(b.c - b.o);
+      var bodyPct = (body / range) * 100;
+      var upperWick = b.h - Math.max(b.o, b.c);
+      var lowerWick = Math.min(b.o, b.c) - b.l;
+      var upperWickPct = (upperWick / range) * 100;
+      var lowerWickPct = (lowerWick / range) * 100;
+      var direction = b.c > b.o ? 'BULL' : b.c < b.o ? 'BEAR' : 'NEUTRAL';
+
+      var strength;
+      if (bodyPct >= 70) strength = 'STRONG';
+      else if (bodyPct >= 50) strength = 'MODERATE';
+      else if (bodyPct < 25) strength = 'INDECISION';
+      else strength = 'MIXED';
+
+      var wickSignal = null;
+      if (upperWickPct >= 60) wickSignal = 'UPPER_REJECTION';  // bearish
+      else if (lowerWickPct >= 60) wickSignal = 'LOWER_REJECTION';  // bullish
+
+      return {
+        direction: direction, strength: strength, bodyPct: bodyPct,
+        upperWickPct: upperWickPct, lowerWickPct: lowerWickPct,
+        wickSignal: wickSignal
+      };
+    },
+
+    // ── ONE-CALL SUMMARY ─────────────────────────────────────────
+    // Returns structured analysis of all SMC signals for the consensus engine
+    analyze: function (raw) {
+      if (!raw || !Array.isArray(raw.ohlc_bars) || raw.ohlc_bars.length < 3) {
+        return { status: 'no_data' };
+      }
+      var bars = raw.ohlc_bars;
+      var spot = raw.spot;
+      return {
+        status: 'ok',
+        fvg: this.fvg(bars),
+        nearFvg: this.spotNearFvg(bars, spot),
+        orderBlock: this.orderBlock(bars),
+        bosChoch: this.bosChoch(bars),
+        liquiditySweep: this.liquiditySweep(bars),
+        ema: this.ema(bars),
+        candle: this.candleClosure(bars)
+      };
+    }
+  };
+
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // 12B. CONSENSUS ENGINE — updated to include Smart Money Concepts
+  // ═══════════════════════════════════════════════════════════════════════
+  var consensusEngine = {
+    // Aggregate all available module outputs for a single trade
+    // Returns { verdict, sizeMultiplier, reasons, warnings, blockers, score }
+    evaluate: function (trade, raw) {
+      raw = raw || (trade && trade._raw) || {};
+      var reasons = [];
+      var warnings = [];
+      var blockers = [];
+      var points = 0;  // signed score: positive = buy, negative = avoid
+
+      // ── HARD BLOCKERS (any one → AVOID) ─────────────────────────────
+      var gate = portfolioRisk.checkAllow();
+      if (!gate.allow) blockers.push('Portfolio risk: ' + gate.reason);
+
+      var decay = alphaDecay.read();
+      if (decay.status === 'DECAYED') {
+        blockers.push('Alpha DECAYED — engine has lost edge');
+      }
+
+      // ── SIGNED POINTS (additive — positive is pro-trade) ────────────
+
+      // Base score (0-100, normalized to -50..+50)
+      if (trade && trade.confidence) {
+        var scoreContrib = (trade.confidence - 60);  // below 60 is net negative
+        points += scoreContrib;
+        if (trade.confidence >= 85) {
+          reasons.push('Score ' + trade.confidence + ' — strong signal');
+        } else if (trade.confidence >= 72) {
+          reasons.push('Score ' + trade.confidence + ' — solid signal');
+        } else if (trade.confidence >= 60) {
+          warnings.push('Score ' + trade.confidence + ' — borderline');
+        } else {
+          warnings.push('Score ' + trade.confidence + ' — weak');
+        }
+      }
+
+      // Regime
+      var reg = regimeDetector.current;
+      if (reg === 'TRENDING_UP' || reg === 'TRENDING_DN') {
+        var dirMatch =
+          (reg === 'TRENDING_UP' && trade && trade.side === 'CE') ||
+          (reg === 'TRENDING_DN' && trade && trade.side === 'PE');
+        if (dirMatch) {
+          points += 10;
+          reasons.push('Regime aligned with trade direction');
+        } else if (trade && trade.side) {
+          points -= 15;
+          warnings.push('Regime is ' + reg + ' but trade is ' + trade.side);
+        }
+      } else if (reg === 'VOLATILE') {
+        points -= 10;
+        warnings.push('VOLATILE regime — size down, whipsaw risk');
+      } else if (reg === 'RANGING') {
+        points -= 5;
+        warnings.push('RANGING regime — breakout trades may fail');
+      }
+
+      // GEX regime
+      var gexTag = gexAnalyzer.actionTag(raw);
+      if (gexTag.tag === 'BREAKOUT') {
+        // Breakout regime favors directional trades (both CE and PE)
+        points += 8;
+        reasons.push('GEX: BREAKOUT regime (dealers amplify moves)');
+      } else if (gexTag.tag === 'RANGE') {
+        // Range regime punishes directional trades
+        points -= 8;
+        warnings.push('GEX: market pinned by gamma — prefer range plays');
+      }
+
+      // Trend compass alignment
+      var cmp = trendCompass.analyze(raw);
+      if (cmp.status === 'ok') {
+        if (cmp.aligned) {
+          // Side must match direction
+          var cmpMatch =
+            (cmp.shortTerm === 'BULLISH' && trade && trade.side === 'CE') ||
+            (cmp.shortTerm === 'BEARISH' && trade && trade.side === 'PE');
+          if (cmpMatch) {
+            points += 12;
+            reasons.push('Compass ALIGNED: ' + cmp.shortTerm + ' on both timeframes');
+          }
+        } else if (cmp.conflict) {
+          points -= 10;
+          warnings.push('Compass CONFLICT: short ' + cmp.shortTerm + ', long ' + cmp.longTerm);
+        }
+      }
+
+      // IV vs HV
+      var bars = raw.ohlc_bars || [];
+      var atmIV = raw.atm_iv || 0;
+      var ivhv = volMath.analyze(atmIV, bars);
+      if (ivhv.status === 'ok') {
+        if (ivhv.verdict === 'OVERPRICED') {
+          points -= 8;
+          warnings.push('IV ' + ivhv.ratio.toFixed(1) + '× HV — options OVERPRICED, reduce size');
+        } else if (ivhv.verdict === 'ELEVATED') {
+          points -= 3;
+          warnings.push('IV elevated vs HV');
+        } else if (ivhv.verdict === 'UNDERPRICED') {
+          points += 8;
+          reasons.push('IV ' + ivhv.ratio.toFixed(1) + '× HV — options UNDERPRICED, cheap');
+        } else if (ivhv.verdict === 'DISCOUNTED') {
+          points += 3;
+        }
+      }
+
+      // Alpha decay (soft — only flag if DEGRADING; DECAYED already blocks)
+      if (decay.status === 'DEGRADING') {
+        points -= 5;
+        warnings.push('Alpha DEGRADING — high-score signals losing edge');
+      } else if (decay.status === 'HEALTHY') {
+        points += 3;
+      }
+
+      // Kelly edge: if negative, block
+      if (trade) {
+        var sizing = kellySizer.size(trade);
+        if (sizing.lots === 0) {
+          blockers.push('Kelly sizing: ' + (sizing.reason || 'negative edge'));
+        } else if (sizing.edge < 0.05) {
+          warnings.push('Thin edge: Kelly ' + (sizing.winProb * 100).toFixed(0) +
+                        '% win × ' + sizing.payoffRatio.toFixed(1) + 'R');
+        } else if (sizing.edge > 0.3) {
+          points += 5;
+          reasons.push('Kelly edge strong (' + sizing.edge.toFixed(2) + ')');
+        }
+      }
+
+      // ── SMART MONEY CONCEPTS (FVG, OB, BOS/CHoCH, sweeps, EMA, candle) ─
+      // Each primitive contributes signed points AND populates reasons/warnings.
+      // Direction awareness: a bullish SMC read rewards CE trades and penalizes
+      // PE trades, and vice versa. If no trade.side is known, impact is halved.
+      var pa = priceAction.analyze(raw);
+      if (pa.status === 'ok') {
+        var tradeIsCE = trade && trade.side === 'CE';
+        var tradeIsPE = trade && trade.side === 'PE';
+
+        // FVG — spot inside an unfilled imbalance is a magnet
+        if (pa.nearFvg && pa.nearFvg.inFvg) {
+          if (pa.nearFvg.type === 'BULL' && tradeIsCE) {
+            points += 6;
+            reasons.push('Spot inside bullish FVG — institutional magnet');
+          } else if (pa.nearFvg.type === 'BEAR' && tradeIsPE) {
+            points += 6;
+            reasons.push('Spot inside bearish FVG — institutional magnet');
+          } else if (pa.nearFvg.type === 'BULL' && tradeIsPE) {
+            points -= 4;
+            warnings.push('Spot inside bullish FVG — trade fights the magnet');
+          } else if (pa.nearFvg.type === 'BEAR' && tradeIsCE) {
+            points -= 4;
+            warnings.push('Spot inside bearish FVG — trade fights the magnet');
+          }
+        }
+
+        // Order Block — near an OB = institutional reaction likely
+        if (pa.orderBlock && raw.spot) {
+          var sp = raw.spot;
+          var ob = pa.orderBlock;
+          if (ob.bull && sp >= ob.bull.bottom && sp <= ob.bull.top * 1.005) {
+            // spot at bullish OB (support zone)
+            if (tradeIsCE) { points += 7; reasons.push('Spot at bullish Order Block — institutional support'); }
+            else if (tradeIsPE) { points -= 5; warnings.push('Shorting into bullish Order Block — risky'); }
+          }
+          if (ob.bear && sp <= ob.bear.top && sp >= ob.bear.bottom * 0.995) {
+            if (tradeIsPE) { points += 7; reasons.push('Spot at bearish Order Block — institutional resistance'); }
+            else if (tradeIsCE) { points -= 5; warnings.push('Buying into bearish Order Block — risky'); }
+          }
+        }
+
+        // BOS / CHoCH — structure break in trade direction is strong confirmation
+        if (pa.bosChoch && pa.bosChoch.signals) {
+          pa.bosChoch.signals.forEach(function (sig) {
+            if (sig.type === 'BOS_BULL' && tradeIsCE) {
+              points += 10; reasons.push('BOS bullish — structure broke above prior swing high');
+            } else if (sig.type === 'BOS_BEAR' && tradeIsPE) {
+              points += 10; reasons.push('BOS bearish — structure broke below prior swing low');
+            } else if (sig.type === 'CHoCH_BULL' && tradeIsCE) {
+              points += 12; reasons.push('CHoCH bullish — trend reversal confirmed');
+            } else if (sig.type === 'CHoCH_BEAR' && tradeIsPE) {
+              points += 12; reasons.push('CHoCH bearish — trend reversal confirmed');
+            } else if (sig.type === 'BOS_BULL' && tradeIsPE) {
+              points -= 12; warnings.push('BOS bullish against PE trade — reconsider');
+            } else if (sig.type === 'BOS_BEAR' && tradeIsCE) {
+              points -= 12; warnings.push('BOS bearish against CE trade — reconsider');
+            }
+          });
+        }
+
+        // Liquidity Sweep — institutional stop-hunt before real move
+        if (pa.liquiditySweep && pa.liquiditySweep.length > 0) {
+          pa.liquiditySweep.forEach(function (sw) {
+            if (sw.type === 'BULL_SWEEP' && tradeIsCE) {
+              points += 8; reasons.push('Bullish liquidity sweep — stops grabbed, real move starting');
+            } else if (sw.type === 'BEAR_SWEEP' && tradeIsPE) {
+              points += 8; reasons.push('Bearish liquidity sweep — stops grabbed, real move starting');
+            } else if (sw.type === 'BULL_SWEEP' && tradeIsPE) {
+              points -= 6; warnings.push('Bullish sweep detected — PE trade fights the fuel');
+            } else if (sw.type === 'BEAR_SWEEP' && tradeIsCE) {
+              points -= 6; warnings.push('Bearish sweep detected — CE trade fights the fuel');
+            }
+          });
+        }
+
+        // EMA Structure — stacked alignment strengthens directional trade
+        if (pa.ema && pa.ema.alignment) {
+          if (pa.ema.alignment === 'STACKED_BULL') {
+            if (tradeIsCE) { points += 6; reasons.push('EMA 9>21>50 stacked bullish'); }
+            else if (tradeIsPE) { points -= 8; warnings.push('EMA stacked bullish against PE trade'); }
+          } else if (pa.ema.alignment === 'STACKED_BEAR') {
+            if (tradeIsPE) { points += 6; reasons.push('EMA 9<21<50 stacked bearish'); }
+            else if (tradeIsCE) { points -= 8; warnings.push('EMA stacked bearish against CE trade'); }
+          } else {
+            warnings.push('EMA structure MIXED — no clean trend');
+          }
+        }
+
+        // 5m Candle Closure — strong body in trade direction confirms
+        if (pa.candle) {
+          var cd = pa.candle;
+          if (cd.strength === 'STRONG') {
+            if (cd.direction === 'BULL' && tradeIsCE) {
+              points += 5; reasons.push('5m candle closed STRONG bullish (body ' + cd.bodyPct.toFixed(0) + '%)');
+            } else if (cd.direction === 'BEAR' && tradeIsPE) {
+              points += 5; reasons.push('5m candle closed STRONG bearish (body ' + cd.bodyPct.toFixed(0) + '%)');
+            } else if (cd.direction === 'BULL' && tradeIsPE) {
+              points -= 4; warnings.push('5m closed strong bullish — PE fights momentum');
+            } else if (cd.direction === 'BEAR' && tradeIsCE) {
+              points -= 4; warnings.push('5m closed strong bearish — CE fights momentum');
+            }
+          } else if (cd.strength === 'INDECISION') {
+            warnings.push('5m candle INDECISION (body ' + cd.bodyPct.toFixed(0) + '%) — weak confirmation');
+          }
+          // Wick rejection is a contrarian signal
+          if (cd.wickSignal === 'UPPER_REJECTION' && tradeIsCE) {
+            points -= 5; warnings.push('Upper wick rejection — buyers failed at highs');
+          } else if (cd.wickSignal === 'LOWER_REJECTION' && tradeIsPE) {
+            points -= 5; warnings.push('Lower wick rejection — sellers failed at lows');
+          } else if (cd.wickSignal === 'LOWER_REJECTION' && tradeIsCE) {
+            points += 3; reasons.push('Lower wick rejection — dip bought');
+          } else if (cd.wickSignal === 'UPPER_REJECTION' && tradeIsPE) {
+            points += 3; reasons.push('Upper wick rejection — rally sold');
+          }
+        }
+      } else {
+        warnings.push('SMC data unavailable (insufficient bars)');
+      }
+
+      // ── VERDICT + SIZE MULTIPLIER ───────────────────────────────────
+      var verdict, sizeMultiplier, color;
+      if (blockers.length > 0) {
+        verdict = 'AVOID';
+        sizeMultiplier = 0;
+        color = '#EF4444';
+      } else if (points >= 35 && warnings.length <= 1) {
+        verdict = 'STRONG_BUY';
+        sizeMultiplier = 1.0;
+        color = '#22C55E';
+      } else if (points >= 18) {
+        verdict = 'BUY';
+        sizeMultiplier = 0.75;
+        color = '#22C55E';
+      } else if (points >= 5) {
+        verdict = 'BUY_SMALL';
+        sizeMultiplier = 0.5;
+        color = '#378ADD';
+      } else if (points >= -5) {
+        verdict = 'NEUTRAL';
+        sizeMultiplier = 0.25;
+        color = '#F59E0B';
+      } else {
+        verdict = 'AVOID';
+        sizeMultiplier = 0;
+        color = '#EF4444';
+      }
+
+      return {
+        verdict: verdict,
+        sizeMultiplier: sizeMultiplier,
+        color: color,
+        points: points,
+        reasons: reasons,
+        warnings: warnings,
+        blockers: blockers
+      };
+    },
+
+    // One-line summary for the UI
+    oneLine: function (verdictObj) {
+      var v = verdictObj;
+      var multPct = Math.round(v.sizeMultiplier * 100);
+      switch (v.verdict) {
+        case 'STRONG_BUY': return 'STRONG BUY — full size (' + multPct + '% of Kelly)';
+        case 'BUY':        return 'BUY — ' + multPct + '% of Kelly size';
+        case 'BUY_SMALL':  return 'BUY SMALL — ' + multPct + '% of Kelly, mixed signals';
+        case 'NEUTRAL':    return 'NEUTRAL — consider waiting, ' + multPct + '% if must trade';
+        case 'AVOID':      return 'AVOID' + (v.blockers.length ? ' (' + v.blockers[0] + ')' : '');
+        default:           return v.verdict;
+      }
+    }
+  };
+
+
+  // ── EXPOSED ENGINE API ─────────────────────────────────────────────────
+  // Placed AFTER all module declarations so every reference below points
+  // to a fully-initialized object (not undefined due to var hoisting).
   window._atEngine = {
     bus: bus,
     signals: signalLedger,
@@ -849,6 +1982,15 @@
     cost: execCostModel,
     regime: regimeDetector,
     alphaDecay: alphaDecay,
+    pricing: pricingMath,
+    vol: volMath,
+    risk: portfolioRisk,
+    gex: gexAnalyzer,
+    strikes: strikeSelector,
+    monitor: tradeMonitor,
+    compass: trendCompass,
+    priceAction: priceAction,
+    consensus: consensusEngine,
 
     // Dump signals as CSV (for feeding external backtest tools)
     exportSignalsCSV: function () {
@@ -867,6 +2009,7 @@
       return rows.join('\n');
     }
   };
+
 
   // ── MODULE STATE ────────────────────────────────────────────────────────
   var state = {
@@ -1554,19 +2697,20 @@
   function render(root) {
     root.innerHTML = '';
 
-    // Terminal wrapper — fixed institutional terminal, dark
+    // Terminal wrapper — fills the overlay mount area (100% of available
+    // height, which is 100vh minus the top-bar's 44px). Flex column so
+    // inner panels can claim vertical real estate cleanly.
     var wrap = el('div', {
       style: {
         width: '100%',
-        height: '880px',
+        height: '100%',          // fill overlay (was fixed 880px which caused overflow)
         background: C.bg,
         color: C.textPri,
         fontFamily: '"Sora", system-ui, sans-serif',
         display: 'flex',
         flexDirection: 'column',
         overflow: 'hidden',
-        borderRadius: '8px',
-        border: '1px solid ' + C.divider
+        minHeight: 0
       }
     });
 
@@ -1574,17 +2718,22 @@
 
     var body = el('div', {
       style: {
-        flex: 1,
+        flex: '1 1 auto',        // claim all remaining vertical space
         display: 'grid',
         gridTemplateColumns: '65% 35%',
-        minHeight: 0,
-        background: C.bg  // explicit — parent inheritance isn't reliable
+        minHeight: 0,             // critical so grid children can shrink/scroll
+        overflow: 'hidden',
+        background: C.bg
       }
     });
     body.appendChild(renderTopTrades());
     body.appendChild(renderQuickTrade());
     wrap.appendChild(body);
 
+    // Scanner sits at the BOTTOM as a fixed-height band (does NOT belong to
+    // either column — spans full width). Flex: 0 0 auto keeps it from
+    // stealing height from the main body. Voice Log is inside QuickTrade
+    // (right column), so the two are spatially separated now.
     wrap.appendChild(renderScanner());
     root.appendChild(wrap);
   }
@@ -1725,6 +2874,32 @@
             }
           }, label);
         })(),
+        // Risk gate chip — OK or why blocked
+        (function () {
+          var gate = portfolioRisk.checkAllow();
+          var s = gate.stats || portfolioRisk.sessionStats();
+          var color = gate.allow ? C.green : C.red;
+          var label = gate.allow
+            ? ('Risk OK · ' + s.concurrent + '/' + portfolioRisk.config.maxConcurrent)
+            : 'Risk BLOCKED';
+          var tooltip =
+            'Portfolio risk gate\n' +
+            'Concurrent: ' + s.concurrent + '/' + portfolioRisk.config.maxConcurrent + '\n' +
+            'Today P&L: ' + s.todayPnlPct.toFixed(2) + '% (cap -' +
+              portfolioRisk.config.maxDailyLossPct + '%)\n' +
+            'Drawdown: ' + s.drawdownPct.toFixed(2) + '% (cap ' +
+              portfolioRisk.config.maxDrawdownPct + '%)\n' +
+            (gate.allow ? 'All checks pass' : 'BLOCKED: ' + gate.reason);
+          return el('div', {
+            title: tooltip,
+            style: {
+              fontSize: '10px', fontWeight: 700, padding: '3px 7px',
+              border: '1px solid ' + color + '55',
+              background: color + '11', color: color,
+              borderRadius: '4px', fontFamily: MONO, letterSpacing: '0.2px'
+            }
+          }, label);
+        })(),
         // Paper portfolio stats pill
         (function () {
           var s = paperPortfolio.stats();
@@ -1797,44 +2972,126 @@
   function renderTopTrades() {
     var panel = el('div', {
       style: {
-        padding: '8px', height: '100%', overflow: 'hidden',
-        background: C.bg  // explicit — don't rely on inheritance
+        padding: '8px', height: '100%',
+        background: C.bg,  // explicit — don't rely on inheritance
+        display: 'flex', flexDirection: 'column', minHeight: 0
       }
     });
-    panel.appendChild(el('div', {
+
+    // Header row — title + search
+    var header = el('div', {
+      style: {
+        display: 'flex', alignItems: 'center', gap: '8px',
+        marginBottom: '6px', padding: '0 2px', flex: '0 0 auto'
+      }
+    });
+    header.appendChild(el('div', {
       style: {
         fontSize: '10px', fontWeight: 800, color: C.textMute,
-        letterSpacing: '1.5px', marginBottom: '6px', padding: '0 2px'
+        letterSpacing: '1.5px', whiteSpace: 'nowrap'
       }
     }, 'TOP TRADES · 5M CLOSE'));
 
-    for (var i = 0; i < 3; i++) {
-      var t = state.trades[i];
-      if (!t) {
-        // Spec §4 rules: if <3 trades → "No high-confidence trades"
-        // Before first fetch completes: "Loading…"
-        // If fetch failed: show error detail
-        var placeholderText;
-        if (!state.loaded) {
-          placeholderText = 'Loading…';
-        } else if (state.lastFetchMsg) {
-          placeholderText = state.lastFetchMsg;
-        } else {
-          placeholderText = 'No high-confidence trades';
-        }
-        panel.appendChild(el('div', {
-          style: {
-            height: '104px', marginBottom: '6px', borderRadius: '12px',
-            border: '1px dashed ' + C.divider, display: 'flex',
-            alignItems: 'center', justifyContent: 'center',
-            color: C.textMute, fontSize: '12px', fontStyle: 'italic',
-            padding: '0 12px', textAlign: 'center', lineHeight: 1.3
+    // Search input — filters trades + scanner by symbol substring
+    var search = el('input', {
+      type: 'text',
+      placeholder: 'Search symbol (e.g. NIFTY, AAPL)...',
+      value: state.searchFilter || '',
+      onInput: function (e) {
+        state.searchFilter = e.target.value.toUpperCase();
+        rerender();
+        // Put focus back on input after rerender (DOM got replaced)
+        setTimeout(function () {
+          var newInput = document.querySelector('[data-at-search]');
+          if (newInput) {
+            newInput.focus();
+            newInput.setSelectionRange(newInput.value.length, newInput.value.length);
           }
-        }, placeholderText));
+        }, 0);
+      },
+      style: {
+        flex: '1 1 auto', minWidth: 0,
+        background: C.card, border: '1px solid ' + C.divider,
+        color: C.textPri, fontSize: '11px', fontFamily: MONO,
+        padding: '4px 8px', borderRadius: '4px', outline: 'none'
+      }
+    });
+    search.setAttribute('data-at-search', '1');
+    header.appendChild(search);
+
+    // Clear button (only if search has value)
+    if (state.searchFilter) {
+      header.appendChild(el('button', {
+        onClick: function () { state.searchFilter = ''; rerender(); },
+        title: 'Clear search',
+        style: {
+          background: 'transparent', border: '1px solid ' + C.divider,
+          color: C.textSec, cursor: 'pointer', fontSize: '10px',
+          padding: '3px 6px', borderRadius: '3px', fontFamily: MONO
+        }
+      }, '✕'));
+    }
+    panel.appendChild(header);
+
+    // Filtered trade list
+    var filter = state.searchFilter || '';
+    var displayTrades = filter
+      ? state.trades.filter(function (t) {
+          return t && (t.symbol || '').toUpperCase().indexOf(filter) >= 0;
+        })
+      : state.trades;
+
+    // Scrollable body
+    var body = el('div', {
+      style: {
+        flex: '1 1 auto', overflowY: 'auto', overflowX: 'hidden',
+        minHeight: 0,
+        scrollbarWidth: 'thin',
+        scrollbarColor: C.divider + ' ' + C.bg
+      }
+    });
+
+    if (filter && displayTrades.length === 0) {
+      body.appendChild(el('div', {
+        style: {
+          color: C.textMute, fontSize: '11px', fontStyle: 'italic',
+          textAlign: 'center', padding: '20px 12px'
+        }
+      }, 'No top trades match "' + filter + '". Try secondary scanner below.'));
+    } else {
+      // If filter active, show only matching trades (no placeholders)
+      if (filter) {
+        displayTrades.forEach(function (t) { body.appendChild(tradeCard(t)); });
       } else {
-        panel.appendChild(tradeCard(t));
+        // Normal: show top 3 (with placeholders for empty slots)
+        for (var i = 0; i < 3; i++) {
+          var t = state.trades[i];
+          if (!t) {
+            var placeholderText;
+            if (!state.loaded) {
+              placeholderText = 'Loading…';
+            } else if (state.lastFetchMsg) {
+              placeholderText = state.lastFetchMsg;
+            } else {
+              placeholderText = 'No high-confidence trades';
+            }
+            body.appendChild(el('div', {
+              style: {
+                height: '104px', marginBottom: '6px', borderRadius: '12px',
+                border: '1px dashed ' + C.divider, display: 'flex',
+                alignItems: 'center', justifyContent: 'center',
+                color: C.textMute, fontSize: '12px', fontStyle: 'italic',
+                padding: '0 12px', textAlign: 'center', lineHeight: 1.3
+              }
+            }, placeholderText));
+          } else {
+            body.appendChild(tradeCard(t));
+          }
+        }
       }
     }
+    panel.appendChild(body);
+
     return panel;
   }
 
@@ -2022,16 +3279,892 @@
         background: C.bg, borderLeft: '1px solid ' + C.divider,
         height: '100%', display: 'flex', flexDirection: 'column',
         opacity: state.selected ? 1 : 0.4,
-        transition: 'opacity 200ms ease'
+        transition: 'opacity 200ms ease',
+        minHeight: 0, overflow: 'hidden'
       }
     });
 
+    // Header stays fixed at top
     panel.appendChild(renderSelectedHeader());
-    panel.appendChild(renderEntryEngine());
-    panel.appendChild(renderOptionChain());
-    panel.appendChild(renderRiskBlock());
+
+    // Scrollable body — all analysis panels stack inside with internal scroll
+    var scroll = el('div', {
+      style: {
+        flex: '1 1 auto', overflowY: 'auto', overflowX: 'hidden',
+        minHeight: 0,
+        // custom dark scrollbar
+        scrollbarWidth: 'thin',
+        scrollbarColor: C.divider + ' ' + C.bg
+      }
+    });
+    // Consensus panel FIRST — the combined verdict is the most important thing
+    scroll.appendChild(renderConsensusPanel());
+    scroll.appendChild(renderEntryEngine());
+    scroll.appendChild(renderCandlestickPanel());
+    scroll.appendChild(renderPriceActionPanel());
+    scroll.appendChild(renderGexCompassPanel());
+    scroll.appendChild(renderGreeksVolPanel());
+    scroll.appendChild(renderLivePositionsPanel());
+    scroll.appendChild(renderOptionChain());
+    scroll.appendChild(renderRiskBlock());
+    panel.appendChild(scroll);
+
+    // Voice log pinned at bottom (smaller height, its own scroll)
     panel.appendChild(renderVoiceLog());
     return panel;
+  }
+
+  // ── CONSENSUS PANEL — combined verdict from all modules ─────────────────
+  // This is THE primary recommendation. Sits at the top of the detail panel
+  // so it's the first thing the user sees after selecting a trade.
+  function renderConsensusPanel() {
+    var wrap = el('div', {
+      style: {
+        background: C.card, borderBottom: '1px solid ' + C.divider,
+        padding: '10px 12px'
+      }
+    });
+    if (!state.selected) {
+      wrap.appendChild(el('div', {
+        style: {
+          color: C.textMute, fontSize: '11px', fontStyle: 'italic',
+          textAlign: 'center'
+        }
+      }, 'Select a trade for overall recommendation'));
+      return wrap;
+    }
+
+    var t = state.selected;
+    var raw = t._raw || {};
+    var v = consensusEngine.evaluate(t, raw);
+
+    // Header row — verdict badge + size multiplier
+    var header = el('div', {
+      style: {
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        marginBottom: '8px'
+      }
+    }, [
+      el('span', {
+        style: { fontSize: '9px', fontWeight: 800, letterSpacing: '1.5px', color: C.textSec }
+      }, 'CONSENSUS · ALL SIGNALS COMBINED')
+    ]);
+    wrap.appendChild(header);
+
+    // Big verdict card
+    var verdictCard = el('div', {
+      style: {
+        background: v.color + '15', borderLeft: '4px solid ' + v.color,
+        padding: '10px 12px', borderRadius: '4px', marginBottom: '8px'
+      }
+    });
+    verdictCard.appendChild(el('div', {
+      style: {
+        fontSize: '16px', fontWeight: 800, color: v.color,
+        fontFamily: MONO, letterSpacing: '0.5px', lineHeight: 1.2
+      }
+    }, consensusEngine.oneLine(v)));
+    verdictCard.appendChild(el('div', {
+      style: {
+        fontSize: '10px', color: C.textSec, marginTop: '3px'
+      }
+    }, 'Signal points: ' + (v.points >= 0 ? '+' : '') + v.points +
+       (v.blockers.length ? ' · ' + v.blockers.length + ' blocker(s)' : '') +
+       ' · ' + v.reasons.length + ' pros · ' + v.warnings.length + ' caveats'));
+    wrap.appendChild(verdictCard);
+
+    // Blockers (red) — show first if any
+    if (v.blockers.length > 0) {
+      var blockBox = el('div', {
+        style: {
+          background: '#EF444415', border: '1px solid #EF444455',
+          borderRadius: '4px', padding: '6px 8px', marginBottom: '6px'
+        }
+      });
+      blockBox.appendChild(el('div', {
+        style: { fontSize: '9px', fontWeight: 800, color: '#EF4444', marginBottom: '3px' }
+      }, '🚫 BLOCKERS'));
+      v.blockers.forEach(function (b) {
+        blockBox.appendChild(el('div', {
+          style: { fontSize: '10px', color: '#EF4444', fontFamily: MONO, lineHeight: 1.4 }
+        }, '· ' + b));
+      });
+      wrap.appendChild(blockBox);
+    }
+
+    // Two-column: reasons + warnings
+    var cols = el('div', {
+      style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }
+    });
+
+    // Reasons (green)
+    var reasonsCol = el('div', {
+      style: {
+        background: C.bg, borderLeft: '2px solid ' + C.green,
+        borderRadius: '4px', padding: '6px 8px'
+      }
+    });
+    reasonsCol.appendChild(el('div', {
+      style: { fontSize: '9px', fontWeight: 800, color: C.green, marginBottom: '3px' }
+    }, '✓ PROS (' + v.reasons.length + ')'));
+    if (v.reasons.length === 0) {
+      reasonsCol.appendChild(el('div', {
+        style: { fontSize: '10px', color: C.textMute, fontStyle: 'italic' }
+      }, 'No strong positives'));
+    }
+    v.reasons.forEach(function (r) {
+      reasonsCol.appendChild(el('div', {
+        style: { fontSize: '10px', color: C.textPri, fontFamily: MONO, lineHeight: 1.4 }
+      }, '· ' + r));
+    });
+    cols.appendChild(reasonsCol);
+
+    // Warnings (orange)
+    var warnCol = el('div', {
+      style: {
+        background: C.bg, borderLeft: '2px solid ' + C.orange,
+        borderRadius: '4px', padding: '6px 8px'
+      }
+    });
+    warnCol.appendChild(el('div', {
+      style: { fontSize: '9px', fontWeight: 800, color: C.orange, marginBottom: '3px' }
+    }, '⚠ CAVEATS (' + v.warnings.length + ')'));
+    if (v.warnings.length === 0) {
+      warnCol.appendChild(el('div', {
+        style: { fontSize: '10px', color: C.textMute, fontStyle: 'italic' }
+      }, 'No concerns'));
+    }
+    v.warnings.forEach(function (w) {
+      warnCol.appendChild(el('div', {
+        style: { fontSize: '10px', color: C.textSec, fontFamily: MONO, lineHeight: 1.4 }
+      }, '· ' + w));
+    });
+    cols.appendChild(warnCol);
+
+    wrap.appendChild(cols);
+    return wrap;
+  }
+
+  // ── GEX heatmap + Trend compass (ported from Quick Trade) ───────────────
+  // Two side-by-side institutional context panels:
+  //   LEFT: GEX — regime tag, flip level, call/put walls, top strikes
+  //   RIGHT: Trend Compass — short-term structure + long-term SMA alignment
+  function renderGexCompassPanel() {
+    var wrap = el('div', {
+      style: {
+        background: C.card, borderBottom: '1px solid ' + C.divider,
+        padding: '8px 10px'
+      }
+    });
+    if (!state.selected) return wrap;
+    var raw = state.selected._raw || {};
+
+    // GEX section
+    var gexData = gexAnalyzer.read(raw);
+    var gexAction = gexAnalyzer.actionTag(raw);
+    var zone = gexAnalyzer.zone(raw, raw.spot);
+
+    // Compass section
+    var compass = trendCompass.analyze(raw);
+
+    // Header
+    wrap.appendChild(el('div', {
+      style: {
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        marginBottom: '6px'
+      }
+    }, [
+      el('span', {
+        style: { fontSize: '9px', fontWeight: 800, letterSpacing: '1.5px', color: C.textSec }
+      }, 'GAMMA & TREND CONTEXT'),
+      el('span', {
+        title: gexAction.action,
+        style: {
+          fontSize: '9px', fontWeight: 800, padding: '2px 6px',
+          background: gexAction.color + '22', color: gexAction.color,
+          borderRadius: '3px', letterSpacing: '0.3px'
+        }
+      }, gexAction.tag)
+    ]));
+
+    // Two-column layout
+    var row = el('div', {
+      style: {
+        display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px'
+      }
+    });
+
+    // LEFT: GEX key levels
+    var gexCol = el('div', {
+      style: {
+        background: C.bg, borderRadius: '4px', padding: '6px',
+        borderLeft: '2px solid ' + gexAction.color
+      }
+    });
+    if (gexData) {
+      var levels = [
+        { label: 'Flip', val: gexData.flip, color: C.orange,
+          tip: 'Above = bullish accel, below = bearish accel' },
+        { label: 'Call Wall', val: gexData.callWall, color: C.red,
+          tip: 'Resistance (dealers sell rallies)' },
+        { label: 'Put Wall', val: gexData.putWall, color: C.green,
+          tip: 'Support (dealers buy dips)' }
+      ];
+      levels.forEach(function (lv) {
+        if (!lv.val) return;
+        gexCol.appendChild(el('div', {
+          title: lv.tip,
+          style: {
+            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+            fontSize: '10px', fontFamily: MONO, padding: '1px 0'
+          }
+        }, [
+          el('span', { style: { color: lv.color, fontWeight: 700 } }, lv.label),
+          el('span', { style: { color: C.textPri } }, lv.val.toFixed(lv.val > 1000 ? 0 : 2))
+        ]));
+      });
+      if (zone) {
+        gexCol.appendChild(el('div', {
+          style: {
+            fontSize: '9px', color: zone.aboveFlip ? C.green : C.red,
+            marginTop: '3px', fontWeight: 700
+          }
+        }, zone.aboveFlip
+          ? '↗ ' + zone.distancePct.toFixed(2) + '% above flip'
+          : '↘ ' + Math.abs(zone.distancePct).toFixed(2) + '% below flip'));
+      }
+    } else {
+      gexCol.appendChild(el('div', {
+        style: { fontSize: '9px', color: C.textMute, fontStyle: 'italic' }
+      }, 'GEX data unavailable'));
+    }
+
+    // RIGHT: Trend compass
+    var cmpCol = el('div', {
+      style: { background: C.bg, borderRadius: '4px', padding: '6px' }
+    });
+    if (compass.status === 'ok') {
+      var stColor = compass.shortTerm === 'BULLISH' ? C.green
+                  : compass.shortTerm === 'BEARISH' ? C.red : C.textSec;
+      var ltColor = compass.longTerm === 'BULLISH' ? C.green
+                  : compass.longTerm === 'BEARISH' ? C.red : C.textSec;
+      cmpCol.appendChild(el('div', {
+        style: {
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+          fontSize: '10px', fontFamily: MONO, padding: '1px 0'
+        }
+      }, [
+        el('span', { style: { color: C.textSec, fontWeight: 700 } }, 'Short'),
+        el('span', { style: { color: stColor, fontWeight: 700 } }, compass.shortTerm)
+      ]));
+      cmpCol.appendChild(el('div', {
+        style: {
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+          fontSize: '10px', fontFamily: MONO, padding: '1px 0'
+        }
+      }, [
+        el('span', { style: { color: C.textSec, fontWeight: 700 } }, 'Long'),
+        el('span', { style: { color: ltColor, fontWeight: 700 } }, compass.longTerm)
+      ]));
+      var alignColor = compass.aligned ? C.green : compass.conflict ? C.red : C.textMute;
+      var alignText = compass.aligned ? 'ALIGNED' : compass.conflict ? 'CONFLICT' : 'MIXED';
+      cmpCol.appendChild(el('div', {
+        title: 'Short: ' + compass.shortReason + '\nLong: ' + compass.longReason,
+        style: {
+          fontSize: '9px', color: alignColor, fontWeight: 700,
+          marginTop: '3px', textAlign: 'center'
+        }
+      }, alignText));
+    } else {
+      cmpCol.appendChild(el('div', {
+        style: { fontSize: '9px', color: C.textMute, fontStyle: 'italic' }
+      }, 'Compass: insufficient data'));
+    }
+
+    row.appendChild(gexCol);
+    row.appendChild(cmpCol);
+    wrap.appendChild(row);
+
+    return wrap;
+  }
+
+  // ── Live positions panel (trade monitor) ────────────────────────────────
+  // Shows all pending + active paper positions with live P&L, progress bar,
+  // elapsed time, and a Close button for manual exit.
+  function renderLivePositionsPanel() {
+    var wrap = el('div', {
+      style: {
+        background: C.card, borderBottom: '1px solid ' + C.divider,
+        padding: '8px 10px'
+      }
+    });
+
+    // Build price lookup from current trades
+    var priceLookup = {};
+    (state.trades || []).forEach(function (t) { priceLookup[t.id] = t; });
+
+    var positions = tradeMonitor.active(priceLookup);
+    wrap.appendChild(el('div', {
+      style: {
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        marginBottom: '6px'
+      }
+    }, [
+      el('span', {
+        style: { fontSize: '9px', fontWeight: 800, letterSpacing: '1.5px', color: C.textSec }
+      }, 'LIVE POSITIONS'),
+      el('span', {
+        style: { fontSize: '9px', color: C.textMute, fontFamily: MONO }
+      }, positions.length + ' open')
+    ]));
+
+    if (positions.length === 0) {
+      wrap.appendChild(el('div', {
+        style: {
+          fontSize: '10px', color: C.textMute, fontStyle: 'italic', padding: '4px 0'
+        }
+      }, 'No active paper positions — EXECUTE a trade to track here'));
+      return wrap;
+    }
+
+    positions.forEach(function (p) {
+      var pnlColor = p.pnlRupees >= 0 ? C.green : C.red;
+      var row = el('div', {
+        style: {
+          background: C.bg, borderRadius: '4px', padding: '5px 8px',
+          marginBottom: '4px', borderLeft: '2px solid ' + pnlColor,
+          fontSize: '10px', fontFamily: MONO
+        }
+      });
+      // Line 1: sym + strike + status
+      row.appendChild(el('div', {
+        style: {
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+          marginBottom: '2px'
+        }
+      }, [
+        el('span', { style: { color: C.textPri, fontWeight: 700 } },
+          p.sym + ' ' + p.strike + ' · ' + p.lots + ' lot' + (p.lots > 1 ? 's' : '')),
+        el('span', {
+          style: {
+            color: p.status === 'active' ? C.green : C.orange,
+            fontSize: '9px', padding: '1px 5px',
+            background: (p.status === 'active' ? C.green : C.orange) + '22',
+            borderRadius: '2px'
+          }
+        }, p.status.toUpperCase())
+      ]));
+      // Line 2: prices
+      row.appendChild(el('div', {
+        style: {
+          display: 'flex', justifyContent: 'space-between',
+          color: C.textSec, fontSize: '10px', marginBottom: '3px'
+        }
+      }, [
+        el('span', {}, 'Entry ' + p.currency + p.entryPremium.toFixed(2) +
+                       ' · Now ' + p.currency + p.currentPremium.toFixed(2)),
+        el('span', { style: { color: pnlColor, fontWeight: 700 } },
+          (p.pctChg >= 0 ? '+' : '') + p.pctChg.toFixed(2) + '%')
+      ]));
+      // Line 3: progress bar SL → Target
+      var progWrap = el('div', {
+        style: {
+          display: 'flex', alignItems: 'center', gap: '4px',
+          fontSize: '9px', fontFamily: MONO, marginBottom: '3px'
+        }
+      });
+      progWrap.appendChild(el('span', { style: { color: C.red, minWidth: '36px' } },
+        p.currency + p.sl.toFixed(0)));
+      var bar = el('div', {
+        style: {
+          flex: 1, height: '4px', background: C.active,
+          borderRadius: '2px', overflow: 'hidden', position: 'relative'
+        }
+      });
+      bar.appendChild(el('div', {
+        style: {
+          width: p.progress + '%', height: '100%',
+          background: 'linear-gradient(90deg, ' + C.red + ', ' + C.orange + ', ' + C.green + ')',
+          transition: 'width 200ms ease'
+        }
+      }));
+      progWrap.appendChild(bar);
+      progWrap.appendChild(el('span', {
+        style: { color: C.green, minWidth: '36px', textAlign: 'right' }
+      }, p.currency + p.target.toFixed(0)));
+      row.appendChild(progWrap);
+      // Line 4: elapsed + close button
+      var footer = el('div', {
+        style: {
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+        }
+      });
+      footer.appendChild(el('span', {
+        style: { fontSize: '9px', color: C.textMute }
+      }, '⏱ ' + p.elapsedMin + ':' + (p.elapsedSec < 10 ? '0' : '') + p.elapsedSec));
+      footer.appendChild(el('button', {
+        onClick: (function (posId, curPrem) {
+          return function (e) {
+            e.stopPropagation();
+            if (tradeMonitor.closeNow(posId, curPrem, 'user_manual')) {
+              pushLog('MANUAL CLOSE: ' + p.sym + ' ' + p.strike + ' @ ' +
+                      p.currency + curPrem.toFixed(2), C.blue);
+              rerender();
+            }
+          };
+        })(p.id, p.currentPremium),
+        style: {
+          padding: '2px 8px', fontSize: '9px', fontWeight: 700,
+          background: 'transparent', color: C.blue,
+          border: '1px solid ' + C.blue + '55', borderRadius: '3px',
+          cursor: 'pointer'
+        }
+      }, 'Close'));
+      row.appendChild(footer);
+
+      wrap.appendChild(row);
+    });
+
+    return wrap;
+  }
+
+  // ── Candlestick chart with VWAP overlay (ported from Quick Trade) ───────
+  // Compact inline SVG — last N 5m bars of the selected symbol, VWAP line,
+  // day high/low bands. Works for any number of bars ≥ 3.
+  function renderCandlestickPanel() {
+    var wrap = el('div', {
+      style: {
+        background: C.card, borderBottom: '1px solid ' + C.divider,
+        padding: '6px 10px'
+      }
+    });
+    if (!state.selected) return wrap;
+
+    var t = state.selected;
+    var raw = t._raw || {};
+    var bars = Array.isArray(raw.ohlc_bars) ? raw.ohlc_bars : [];
+    var vwap = raw.vwap || 0;
+    var high = raw.today_high || 0;
+    var low = raw.today_low || 0;
+
+    if (bars.length < 3) {
+      wrap.appendChild(el('div', {
+        style: {
+          fontSize: '9px', color: C.textMute, fontStyle: 'italic',
+          padding: '4px 0', textAlign: 'center'
+        }
+      }, 'Chart: waiting for 5m bar data (' + bars.length + ' bars)'));
+      return wrap;
+    }
+
+    // Header
+    wrap.appendChild(el('div', {
+      style: {
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        marginBottom: '4px'
+      }
+    }, [
+      el('span', {
+        style: { fontSize: '9px', fontWeight: 800, letterSpacing: '1.5px', color: C.textSec }
+      }, '5M CANDLESTICK · ' + bars.length + ' BARS'),
+      el('span', {
+        style: { fontSize: '9px', color: C.purple, fontFamily: MONO }
+      }, vwap > 0 ? 'VWAP ' + vwap.toFixed(2) : '')
+    ]));
+
+    // Compute SVG dimensions
+    var W = 320, H = 110, padT = 6, padB = 14, padL = 4, padR = 40;
+    var plotW = W - padL - padR, plotH = H - padT - padB;
+    var maxBars = Math.min(bars.length, 30);
+    var use = bars.slice(-maxBars);
+    var barW = plotW / use.length;
+    var wickW = 1;
+    var bodyW = Math.max(2, barW - 2);
+
+    // Price range — extend slightly so body edges don't touch
+    var hi = -Infinity, lo = Infinity;
+    use.forEach(function (b) {
+      if (b.h > hi) hi = b.h;
+      if (b.l < lo) lo = b.l;
+    });
+    if (high > hi) hi = high;
+    if (low > 0 && low < lo) lo = low;
+    if (vwap > 0) { if (vwap > hi) hi = vwap; if (vwap < lo) lo = vwap; }
+    var rng = hi - lo || 1;
+    var pad = rng * 0.04;
+    hi += pad; lo -= pad; rng = hi - lo;
+    function y(price) {
+      return padT + plotH - ((price - lo) / rng) * plotH;
+    }
+
+    var svgNS = 'http://www.w3.org/2000/svg';
+    var svg = document.createElementNS(svgNS, 'svg');
+    svg.setAttribute('width', W);
+    svg.setAttribute('height', H);
+    svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
+    svg.style.display = 'block';
+    svg.style.maxWidth = '100%';
+
+    // Background
+    var bg = document.createElementNS(svgNS, 'rect');
+    bg.setAttribute('x', 0); bg.setAttribute('y', 0);
+    bg.setAttribute('width', W); bg.setAttribute('height', H);
+    bg.setAttribute('fill', C.bg);
+    svg.appendChild(bg);
+
+    // VWAP line
+    if (vwap > 0 && vwap >= lo && vwap <= hi) {
+      var vy = y(vwap);
+      var vline = document.createElementNS(svgNS, 'line');
+      vline.setAttribute('x1', padL); vline.setAttribute('x2', W - padR);
+      vline.setAttribute('y1', vy); vline.setAttribute('y2', vy);
+      vline.setAttribute('stroke', C.purple);
+      vline.setAttribute('stroke-width', 1);
+      vline.setAttribute('stroke-dasharray', '3,2');
+      vline.setAttribute('opacity', 0.7);
+      svg.appendChild(vline);
+    }
+
+    // Today high line
+    if (high > 0 && high >= lo && high <= hi) {
+      var hy = y(high);
+      var hl = document.createElementNS(svgNS, 'line');
+      hl.setAttribute('x1', padL); hl.setAttribute('x2', W - padR);
+      hl.setAttribute('y1', hy); hl.setAttribute('y2', hy);
+      hl.setAttribute('stroke', C.green); hl.setAttribute('stroke-width', 0.5);
+      hl.setAttribute('stroke-dasharray', '1,3'); hl.setAttribute('opacity', 0.5);
+      svg.appendChild(hl);
+    }
+
+    // Today low line
+    if (low > 0 && low >= lo && low <= hi) {
+      var ly = y(low);
+      var ll = document.createElementNS(svgNS, 'line');
+      ll.setAttribute('x1', padL); ll.setAttribute('x2', W - padR);
+      ll.setAttribute('y1', ly); ll.setAttribute('y2', ly);
+      ll.setAttribute('stroke', C.red); ll.setAttribute('stroke-width', 0.5);
+      ll.setAttribute('stroke-dasharray', '1,3'); ll.setAttribute('opacity', 0.5);
+      svg.appendChild(ll);
+    }
+
+    // Candles
+    use.forEach(function (b, i) {
+      var cx = padL + i * barW + barW / 2;
+      var color = b.c >= b.o ? C.green : C.red;
+      // Wick
+      var w = document.createElementNS(svgNS, 'line');
+      w.setAttribute('x1', cx); w.setAttribute('x2', cx);
+      w.setAttribute('y1', y(b.h)); w.setAttribute('y2', y(b.l));
+      w.setAttribute('stroke', color); w.setAttribute('stroke-width', wickW);
+      svg.appendChild(w);
+      // Body
+      var by1 = y(Math.max(b.o, b.c));
+      var by2 = y(Math.min(b.o, b.c));
+      var bodyH = Math.max(1, by2 - by1);
+      var body = document.createElementNS(svgNS, 'rect');
+      body.setAttribute('x', cx - bodyW / 2); body.setAttribute('y', by1);
+      body.setAttribute('width', bodyW); body.setAttribute('height', bodyH);
+      body.setAttribute('fill', color);
+      svg.appendChild(body);
+    });
+
+    // Right-axis labels (hi, vwap, lo)
+    function axisLabel(val, yPos, color) {
+      var tx = document.createElementNS(svgNS, 'text');
+      tx.setAttribute('x', W - padR + 3);
+      tx.setAttribute('y', yPos + 3);
+      tx.setAttribute('fill', color);
+      tx.setAttribute('font-family', MONO);
+      tx.setAttribute('font-size', '8');
+      tx.textContent = val.toFixed(val > 1000 ? 0 : 2);
+      svg.appendChild(tx);
+    }
+    axisLabel(hi, padT, C.textMute);
+    axisLabel(lo, padT + plotH, C.textMute);
+    if (vwap > 0 && vwap >= lo && vwap <= hi) axisLabel(vwap, y(vwap), C.purple);
+
+    wrap.appendChild(svg);
+    return wrap;
+  }
+
+  // ── Price Action / Smart Money Concepts panel ──────────────────────────
+  // Renders FVG, Order Block, BOS/CHoCH, liquidity sweep, EMA alignment,
+  // 5m candle closure verdict. Every element degrades to "—" when data
+  // is insufficient — nothing fake is ever displayed.
+  function renderPriceActionPanel() {
+    var wrap = el('div', {
+      style: {
+        background: C.card, borderBottom: '1px solid ' + C.divider,
+        padding: '8px 10px'
+      }
+    });
+    if (!state.selected) return wrap;
+    var raw = state.selected._raw || {};
+    var pa = priceAction.analyze(raw);
+
+    // Header
+    wrap.appendChild(el('div', {
+      style: {
+        fontSize: '9px', fontWeight: 800, letterSpacing: '1.5px',
+        color: C.textSec, marginBottom: '6px'
+      }
+    }, 'PRICE ACTION · SMART MONEY CONCEPTS'));
+
+    if (pa.status !== 'ok') {
+      wrap.appendChild(el('div', {
+        style: { fontSize: '10px', color: C.textMute, fontStyle: 'italic' }
+      }, 'Insufficient 5m bars for SMC analysis'));
+      return wrap;
+    }
+
+    // 2-column grid — left: structure reads, right: candle + EMA
+    var grid = el('div', {
+      style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }
+    });
+
+    // ── LEFT: FVG + OB + BOS/CHoCH + Sweep ─────────────────────
+    var leftCol = el('div', {
+      style: { background: C.bg, borderRadius: '4px', padding: '6px 8px' }
+    });
+
+    // FVG
+    var fvgText, fvgColor = C.textMute;
+    if (pa.nearFvg && pa.nearFvg.inFvg) {
+      fvgText = 'Inside ' + pa.nearFvg.type + ' FVG';
+      fvgColor = pa.nearFvg.type === 'BULL' ? C.green : C.red;
+    } else if (pa.fvg.length > 0) {
+      fvgText = pa.fvg.length + ' recent FVG(s), none active';
+    } else {
+      fvgText = 'No recent FVGs';
+    }
+    leftCol.appendChild(smcRow('FVG', fvgText, fvgColor));
+
+    // Order Block
+    var obText = '—', obColor = C.textMute;
+    if (pa.orderBlock) {
+      if (pa.orderBlock.bull && pa.orderBlock.bear) {
+        obText = 'Bull OB + Bear OB active';
+      } else if (pa.orderBlock.bull) {
+        obText = 'Bull OB at ' + pa.orderBlock.bull.bottom.toFixed(2);
+        obColor = C.green;
+      } else if (pa.orderBlock.bear) {
+        obText = 'Bear OB at ' + pa.orderBlock.bear.top.toFixed(2);
+        obColor = C.red;
+      } else {
+        obText = 'No active OB';
+      }
+    }
+    leftCol.appendChild(smcRow('Order Block', obText, obColor));
+
+    // BOS / CHoCH
+    var bcText = '—', bcColor = C.textMute;
+    if (pa.bosChoch && pa.bosChoch.signals && pa.bosChoch.signals.length > 0) {
+      var sigs = pa.bosChoch.signals.map(function (s) { return s.type.replace('_', ' '); }).join(', ');
+      bcText = sigs;
+      var anyBull = pa.bosChoch.signals.some(function (s) { return s.type.indexOf('BULL') > 0; });
+      bcColor = anyBull ? C.green : C.red;
+    } else {
+      bcText = 'Structure intact';
+    }
+    leftCol.appendChild(smcRow('BOS/CHoCH', bcText, bcColor));
+
+    // Liquidity Sweep
+    var swText = '—', swColor = C.textMute;
+    if (pa.liquiditySweep && pa.liquiditySweep.length > 0) {
+      var swType = pa.liquiditySweep[0].type.replace('_', ' ');
+      swText = swType;
+      swColor = swType.indexOf('BULL') >= 0 ? C.green : C.red;
+    } else {
+      swText = 'No sweep';
+    }
+    leftCol.appendChild(smcRow('Liq Sweep', swText, swColor));
+
+    grid.appendChild(leftCol);
+
+    // ── RIGHT: EMA + Candle ───────────────────────────────────
+    var rightCol = el('div', {
+      style: { background: C.bg, borderRadius: '4px', padding: '6px 8px' }
+    });
+
+    // EMA alignment
+    if (pa.ema) {
+      var emaLabel = pa.ema.alignment.replace('_', ' ');
+      var emaColor = pa.ema.alignment === 'STACKED_BULL' ? C.green
+                    : pa.ema.alignment === 'STACKED_BEAR' ? C.red : C.textSec;
+      rightCol.appendChild(smcRow('EMA 9/21/50', emaLabel, emaColor));
+      rightCol.appendChild(smcRow('EMA values',
+        pa.ema.ema9.toFixed(1) + ' / ' + pa.ema.ema21.toFixed(1) + ' / ' + pa.ema.ema50.toFixed(1),
+        C.textSec));
+    } else {
+      rightCol.appendChild(smcRow('EMA 9/21/50', 'insufficient bars', C.textMute));
+    }
+
+    // Candle closure
+    if (pa.candle) {
+      var candleLabel = pa.candle.direction + ' · ' + pa.candle.strength;
+      var candleColor = pa.candle.direction === 'BULL' ? C.green
+                      : pa.candle.direction === 'BEAR' ? C.red : C.textSec;
+      rightCol.appendChild(smcRow('5m candle', candleLabel, candleColor));
+      rightCol.appendChild(smcRow('Body %', pa.candle.bodyPct.toFixed(0) + '%', C.textSec));
+      if (pa.candle.wickSignal) {
+        rightCol.appendChild(smcRow('Wick', pa.candle.wickSignal.replace('_', ' '), C.orange));
+      }
+    } else {
+      rightCol.appendChild(smcRow('5m candle', 'no data', C.textMute));
+    }
+
+    grid.appendChild(rightCol);
+    wrap.appendChild(grid);
+    return wrap;
+  }
+
+  // Small helper for SMC rows — label on left, value on right
+  function smcRow(label, value, color) {
+    return el('div', {
+      style: {
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        padding: '2px 0', fontSize: '10px', fontFamily: MONO, lineHeight: 1.3
+      }
+    }, [
+      el('span', { style: { color: C.textSec, fontWeight: 600 } }, label),
+      el('span', { style: { color: color, fontWeight: 700, textAlign: 'right' } }, value)
+    ]);
+  }
+
+  // ── Greeks + IV/HV panel (ported from Quick Trade) ──────────────────────
+  // Renders Δ/Γ/Θ/Vega for the selected trade's option plus IV vs HV
+  // comparison. Shows nothing if no trade selected.
+  function renderGreeksVolPanel() {
+    var wrap = el('div', {
+      style: {
+        background: C.card, borderBottom: '1px solid ' + C.divider,
+        padding: '8px 10px', fontFamily: MONO
+      }
+    });
+    if (!state.selected) {
+      wrap.appendChild(el('div', {
+        style: { color: C.textMute, fontSize: '10px', fontStyle: 'italic' }
+      }, 'Select a trade to see Greeks and IV/HV'));
+      return wrap;
+    }
+
+    var t = state.selected;
+    var raw = t._raw || {};
+    var spot = raw.spot || 0;
+    var atmIV = raw.atm_iv || 0;
+    var bars = raw.ohlc_bars || [];
+
+    // Parse strike from "24500 CE" → 24500
+    var strikeNum = 0;
+    var strikeStr = String(t.strike).split(' ')[0];
+    strikeNum = parseFloat(strikeStr) || raw.atm_strike || 0;
+    var optType = t.side || 'CE';
+
+    // DTE
+    var dte = pricingMath.dteFromExpiry(raw.expiry);
+    var g = pricingMath.greeks(spot, strikeNum, dte, atmIV, optType);
+
+    // Header
+    wrap.appendChild(el('div', {
+      style: {
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        marginBottom: '6px'
+      }
+    }, [
+      el('span', {
+        style: { fontSize: '9px', fontWeight: 800, letterSpacing: '1.5px', color: C.textSec }
+      }, 'GREEKS & VOLATILITY'),
+      el('span', {
+        style: { fontSize: '9px', color: C.textMute }
+      }, dte + 'D · IV ' + (atmIV > 0 ? atmIV.toFixed(1) + '%' : '—'))
+    ]));
+
+    if (!g) {
+      wrap.appendChild(el('div', {
+        style: { color: C.textMute, fontSize: '10px', fontStyle: 'italic' }
+      }, 'Greeks unavailable (missing spot/strike/IV)'));
+      return wrap;
+    }
+
+    // Greeks row
+    var greeks = [
+      { label: 'Δ', name: 'Delta', val: g.delta.toFixed(3), color: C.blue,
+        tip: 'Premium change per 1-unit spot move' },
+      { label: 'Γ', name: 'Gamma', val: g.gamma.toFixed(4), color: C.orange,
+        tip: 'Delta change per 1-unit spot move' },
+      { label: 'Θ', name: 'Theta', val: g.theta.toFixed(2), color: C.red,
+        tip: 'Premium decay per day' },
+      { label: 'Vega', name: 'Vega', val: g.vega.toFixed(2), color: C.green,
+        tip: 'Premium change per 1% IV move' }
+    ];
+
+    var greeksRow = el('div', {
+      style: {
+        display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '4px',
+        marginBottom: '6px'
+      }
+    });
+    greeks.forEach(function (gr) {
+      greeksRow.appendChild(el('div', {
+        title: gr.name + ': ' + gr.tip,
+        style: {
+          background: C.bg, borderRadius: '4px', padding: '4px 6px',
+          borderTop: '2px solid ' + gr.color, textAlign: 'center'
+        }
+      }, [
+        el('div', { style: { fontSize: '9px', color: gr.color, fontWeight: 800 } }, gr.label),
+        el('div', { style: { fontSize: '12px', color: C.textPri, fontWeight: 700 } }, gr.val)
+      ]));
+    });
+    wrap.appendChild(greeksRow);
+
+    // Gamma explosion warning for 0-1 DTE
+    if (dte <= 1 && g.gamma > 0) {
+      wrap.appendChild(el('div', {
+        style: {
+          background: C.orange + '15', borderLeft: '2px solid ' + C.orange,
+          padding: '4px 6px', fontSize: '9px', color: C.orange,
+          fontWeight: 700, marginBottom: '6px'
+        }
+      }, '⚡ ' + dte + 'D expiry — gamma ' + g.gamma.toFixed(4) +
+          ' means small spot moves create large premium swings'));
+    }
+
+    // IV vs HV block
+    var iv_hv = volMath.analyze(atmIV, bars);
+    if (iv_hv.status === 'ok') {
+      var verdictColor =
+        iv_hv.verdict === 'OVERPRICED' || iv_hv.verdict === 'ELEVATED' ? C.red :
+        iv_hv.verdict === 'UNDERPRICED' || iv_hv.verdict === 'DISCOUNTED' ? C.green :
+        C.blue;
+      var ivHvRow = el('div', {
+        style: {
+          background: C.bg, borderRadius: '4px', padding: '6px 8px',
+          borderLeft: '2px solid ' + verdictColor
+        }
+      });
+      ivHvRow.appendChild(el('div', {
+        style: {
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+          marginBottom: '3px'
+        }
+      }, [
+        el('span', { style: { fontSize: '9px', color: verdictColor, fontWeight: 800 } },
+          'IV/HV: ' + iv_hv.ratio.toFixed(2) + '× — ' + iv_hv.verdict),
+        el('span', { style: { fontSize: '9px', color: C.textSec, fontFamily: MONO } },
+          'IV ' + iv_hv.iv.toFixed(1) + '% · HV ' + iv_hv.hv.toFixed(1) + '%')
+      ]));
+      ivHvRow.appendChild(el('div', {
+        style: { fontSize: '9px', color: C.textMute }
+      }, iv_hv.action));
+      wrap.appendChild(ivHvRow);
+    } else {
+      wrap.appendChild(el('div', {
+        style: { fontSize: '9px', color: C.textMute, fontStyle: 'italic' }
+      }, iv_hv.status === 'no_iv' ? 'IV not available' : 'HV needs more bars'));
+    }
+
+    return wrap;
   }
 
   function renderSelectedHeader() {
@@ -2263,8 +4396,11 @@
   function renderVoiceLog() {
     var wrap = el('div', {
       style: {
-        flex: 1, minHeight: '120px', background: C.bg, padding: '6px',
-        borderTop: '1px solid ' + C.divider, overflow: 'hidden',
+        flex: '0 0 180px',    // fixed height; don't stretch into sibling territory
+        height: '180px',
+        background: C.bg, padding: '6px',
+        borderTop: '1px solid ' + C.divider,
+        overflow: 'hidden',
         display: 'flex', flexDirection: 'column'
       }
     });
@@ -2272,11 +4408,17 @@
     wrap.appendChild(el('div', {
       style: {
         fontSize: '10px', fontWeight: 800, color: C.textMute, letterSpacing: '1.5px',
-        marginBottom: '4px', padding: '0 2px'
+        marginBottom: '4px', padding: '0 2px', flex: '0 0 auto'
       }
     }, 'VOICE LOG'));
 
-    var list = el('div', { style: { overflowY: 'auto', overflowX: 'hidden', flex: 1 } });
+    var list = el('div', {
+      style: {
+        flex: '1 1 auto', minHeight: 0,
+        overflowY: 'auto', overflowX: 'hidden',
+        scrollbarWidth: 'thin', scrollbarColor: C.divider + ' ' + C.bg
+      }
+    });
     if (state.logs.length === 0) {
       list.appendChild(el('div', {
         style: { color: C.textMute, fontSize: '11px', fontStyle: 'italic', padding: '4px' }
@@ -2349,8 +4491,31 @@
       el('div', {}, 'TREND')
     ]));
 
-    var body = el('div', { style: { flex: 1, overflow: 'hidden' } });
-    state.scanner.slice(0, 6).forEach(function (r, i) {
+    var body = el('div', {
+      style: {
+        flex: 1, overflowY: 'auto', overflowX: 'hidden', minHeight: 0,
+        scrollbarWidth: 'thin', scrollbarColor: C.divider + ' ' + C.bg
+      }
+    });
+    // Apply search filter to scanner too
+    var scanFilter = state.searchFilter || '';
+    var scanSource = scanFilter
+      ? state.scanner.filter(function (r) {
+          return (r.symbol || '').toUpperCase().indexOf(scanFilter) >= 0;
+        })
+      : state.scanner;
+    // If filter active show everything matching, else top 6
+    var displayScan = scanFilter ? scanSource : scanSource.slice(0, 6);
+
+    if (displayScan.length === 0) {
+      body.appendChild(el('div', {
+        style: {
+          color: C.textMute, fontSize: '10px', fontStyle: 'italic',
+          padding: '10px', textAlign: 'center'
+        }
+      }, scanFilter ? 'No scanner matches for "' + scanFilter + '"' : 'Loading scanner…'));
+    }
+    displayScan.forEach(function (r, i) {
       var trend = r.trend || [r.score, r.score, r.score];
       var up = trend[trend.length - 1] > trend[0];
       var dn = trend[trend.length - 1] < trend[0];
@@ -2362,7 +4527,7 @@
           display: 'grid', gridTemplateColumns: '16% 20% 8% 10% 18% 1fr',
           height: '26px', alignItems: 'center', padding: '0 8px',
           fontSize: '13px', fontFamily: MONO,
-          borderBottom: i < state.scanner.length - 1 ? '1px solid ' + C.divider : 'none',
+          borderBottom: i < displayScan.length - 1 ? '1px solid ' + C.divider : 'none',
           color: C.textPri, lineHeight: 1.1
         }
       }, [
@@ -2377,16 +4542,6 @@
         ])
       ]));
     });
-
-    // Empty-state
-    if (state.scanner.length === 0) {
-      body.appendChild(el('div', {
-        style: {
-          color: C.textMute, fontSize: '11px', fontStyle: 'italic',
-          padding: '16px', textAlign: 'center'
-        }
-      }, 'Loading scanner…'));
-    }
 
     wrap.appendChild(body);
     return wrap;
@@ -2406,6 +4561,14 @@
   }
 
   function onExecute(t) {
+    // ── Portfolio risk guardrails — check before anything else ──
+    var gate = portfolioRisk.checkAllow();
+    if (!gate.allow) {
+      pushLog('BLOCKED: ' + gate.reason, C.red);
+      if (state.voiceOn) speak('Trade blocked: ' + gate.reason);
+      return;
+    }
+
     // Regime-adjusted Kelly sizing — no more fixed lot
     var baseSaved = kellySizer.fractional;
     kellySizer.fractional = baseSaved * regimeDetector.kellyMultiplier();
@@ -2429,6 +4592,7 @@
     t.costBreakEvenPct = costs.breakEvenPct;
 
     var pos = paperPortfolio.open(t);
+    portfolioRisk.markOpened();
     pos.sizingLots = sizing.lots;
     pos.sizingPct = sizing.pctOfCapital;
     pos.costBreakEvenPct = costs.breakEvenPct;
@@ -2934,245 +5098,165 @@
 
   // ── ENTRY POINT ─────────────────────────────────────────────────────────
   window.mountActiveTrading = function (containerId) {
-    var container = document.getElementById(containerId || 'deResult');
-    if (!container) return;
+    // ═══════════════════════════════════════════════════════════════════════
+    // FULL-SCREEN OVERLAY MOUNT
+    // ═══════════════════════════════════════════════════════════════════════
+    // Previous versions modified the host page (.sc, .sbody, #deControls,
+    // body.at-mode) to force the dark theme. When unmount didn't fire cleanly
+    // (tab switches, back button), those modifications leaked into other
+    // tabs and left them broken (Investor/Trader/Options).
+    //
+    // Clean fix: render Active Trading as a `position:fixed` overlay on top
+    // of the whole page, with its own z-index sandbox. Host page is never
+    // touched. Back button unmounts cleanly.
+    //
+    // The containerId arg is kept for API compatibility but NOT used for
+    // DOM targeting — we always mount to <body> as an overlay.
+
+    // Idempotent mounting — clean any prior instance
+    if (mounted || document.getElementById('activeTradingOverlay')) {
+      if (window.unmountActiveTrading) window.unmountActiveTrading();
+    }
 
     installScopedStyles();
 
-    // Set body-level marker + tag ancestor .sc so CSS can scope override
-    // without touching any inline styles. Everything is undone on unmount.
-    document.body.classList.add('at-mode');
-    var sc = container.closest ? container.closest('.sc') : null;
-    if (sc) sc.setAttribute('data-at-host', '1');
+    // Build overlay host: full viewport, fixed, high z-index
+    var overlay = document.createElement('div');
+    overlay.id = 'activeTradingOverlay';
+    overlay.setAttribute('style',
+      'position:fixed;' +
+      'top:0;left:0;right:0;bottom:0;' +
+      'width:100vw;height:100vh;' +
+      'background:#020617;' +
+      'z-index:9999;' +
+      'overflow:hidden;' +
+      'display:flex;flex-direction:column;' +
+      'color:#F8FAFC;' +
+      'font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif'
+    );
 
-    // Remove leftover injected elements (PDF export buttons, investor/trader
-    // report fragments) that premium-override.js and other modules add to
-    // #deResult. These carry white inline backgrounds that bleed through.
-    var leftoverIds = ['celesysExportBtns', 'investorReport', 'traderReport',
-                       'optionsReport', 'investorExportBtns'];
-    leftoverIds.forEach(function (id) {
-      var e = document.getElementById(id);
-      if (e && e.parentElement) e.parentElement.removeChild(e);
-    });
+    // Top bar with Back button — always visible at top of overlay
+    var topBar = document.createElement('div');
+    topBar.id = 'atTopBar';
+    topBar.setAttribute('style',
+      'flex:0 0 auto;' +
+      'height:44px;' +
+      'background:#0F172A;' +
+      'border-bottom:1px solid #1E293B;' +
+      'display:flex;align-items:center;' +
+      'padding:0 12px;gap:10px'
+    );
 
-    // ═══ BRUTE-FORCE DARK BACKGROUND ═══════════════════════════════════
-    // CSS rules keep losing to something on the deployed site. We now
-    // write inline styles DIRECTLY on the ancestor chain. Inline styles
-    // with !important beat external stylesheets regardless of specificity.
-    // Store originals on a custom property so unmount can restore.
-    var nodesToStyle = [];
-    if (sc) {
-      nodesToStyle.push({ el: sc, orig: sc.getAttribute('style') || '' });
-      sc.setAttribute('style',
-        (sc.getAttribute('style') || '') +
-        ';background:#020617 !important' +
-        ';border:1px solid #1E293B !important' +
-        ';border-left:3px solid #0F172A !important' +
-        ';box-shadow:none !important' +
-        ';padding:0 !important'
-      );
-
-      var sbody = sc.querySelector('.sbody');
-      if (sbody) {
-        nodesToStyle.push({ el: sbody, orig: sbody.getAttribute('style') || '' });
-        sbody.setAttribute('style',
-          (sbody.getAttribute('style') || '') +
-          ';background:#020617 !important' +
-          ';padding:0 !important'
-        );
+    // Back button — leaves overlay and returns to normal page
+    var backBtn = document.createElement('button');
+    backBtn.setAttribute('style',
+      'background:transparent;border:1px solid #1E293B;' +
+      'color:#F8FAFC;cursor:pointer;' +
+      'padding:5px 12px;border-radius:4px;' +
+      'font-size:12px;font-weight:700;letter-spacing:0.5px'
+    );
+    backBtn.textContent = '← BACK';
+    backBtn.onclick = function () {
+      if (window.unmountActiveTrading) window.unmountActiveTrading();
+      // Also flip host app's mode so the tab buttons highlight correctly
+      // and the user sees a real tab instead of a blank Decide with nothing mounted
+      if (typeof window.switchDEMode === 'function') {
+        try { window.switchDEMode('investor'); } catch (e) {}
       }
+    };
+    topBar.appendChild(backBtn);
 
-      // Hide every sibling of #deResult inside .sbody (deHeader via .sh,
-      // #deControls with its mode/region rows, any injected report blocks)
-      var hiddenSiblings = [];
-      var sh = sc.querySelector('#deHeader') || sc.querySelector('.sh');
-      if (sh) {
-        hiddenSiblings.push({ el: sh, orig: sh.getAttribute('style') || '' });
-        sh.setAttribute('style', (sh.getAttribute('style') || '') + ';display:none !important');
-      }
-      var deCtrl = sc.querySelector('#deControls');
-      if (deCtrl) {
-        hiddenSiblings.push({ el: deCtrl, orig: deCtrl.getAttribute('style') || '' });
-        deCtrl.setAttribute('style', (deCtrl.getAttribute('style') || '') + ';display:none !important');
-      }
-      // Any other direct children of .sbody besides our #deResult
-      if (sbody) {
-        var kids = sbody.children;
-        for (var i = 0; i < kids.length; i++) {
-          if (kids[i] !== container && kids[i].id !== 'deControls') {
-            hiddenSiblings.push({ el: kids[i], orig: kids[i].getAttribute('style') || '' });
-            kids[i].setAttribute('style',
-              (kids[i].getAttribute('style') || '') + ';display:none !important'
-            );
-          }
-        }
-      }
-      // Also force #deResult itself to dark so no white strip shows around
-      // the terminal if it has any padding/margin from a CSS rule.
-      nodesToStyle.push({ el: container, orig: container.getAttribute('style') || '' });
-      container.setAttribute('style',
-        (container.getAttribute('style') || '') +
-        ';background:#020617 !important' +
-        ';padding:0 !important' +
-        ';margin:0 !important' +
-        ';min-height:0 !important'
-      );
+    // Title
+    var title = document.createElement('div');
+    title.setAttribute('style',
+      'flex:1;font-size:13px;font-weight:700;' +
+      'letter-spacing:1px;color:#378ADD;font-family:monospace'
+    );
+    title.textContent = 'CELESYS · ACTIVE TRADING';
+    topBar.appendChild(title);
 
-      state._hiddenSiblings = hiddenSiblings;
-    }
-    state._brutedNodes = nodesToStyle;
+    overlay.appendChild(topBar);
 
-    container.innerHTML =
-      '<div id="activeTradingMount" ' +
-        'style="width:100%;background:#020617 !important;border-radius:8px;' +
-               'border:1px solid #1E293B;overflow:hidden"></div>';
+    // Main content — everything rendered by render() goes here
+    var mountDiv = document.createElement('div');
+    mountDiv.id = 'activeTradingMount';
+    mountDiv.setAttribute('style',
+      'flex:1 1 auto;' +
+      'min-height:0;' +
+      'overflow:hidden;' +
+      'background:#020617;' +
+      'display:flex;flex-direction:column'
+    );
+    overlay.appendChild(mountDiv);
+
+    document.body.appendChild(overlay);
+
+    // Prevent host page from scrolling behind the overlay
+    state._prevBodyOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
     mounted = true;
-
-    render(document.getElementById('activeTradingMount'));
+    render(mountDiv);
     refreshAll();
     startTimers();
 
-    // ═══ MUTATION OBSERVER — BULLETPROOF DARK ENFORCEMENT ════════════════
-    // CSS rules, inline styles, and scoped stylesheets all failed in Vijay's
-    // real browser. This runs in a loop: on every DOM change inside the
-    // terminal (or on the ancestor .sc/.sbody) we re-apply dark backgrounds.
-    // Any script or stylesheet that tries to paint white gets overridden
-    // the moment they do it, on the next animation frame.
-    function enforceDark() {
-      if (!mounted) return;
-      // Force dark on all key elements
-      var targets = [
-        { el: sc, props: { background: '#020617', padding: '0', boxShadow: 'none' } },
-        { el: sc && sc.querySelector('.sbody'), props: { background: '#020617', padding: '0' } },
-        { el: container, props: { background: '#020617', padding: '0', minHeight: '0' } },
-        { el: document.getElementById('activeTradingMount'),
-          props: { background: '#020617' } }
-      ];
-      targets.forEach(function (t) {
-        if (!t.el) return;
-        for (var prop in t.props) {
-          // setProperty with 'important' priority — most forceful JS API
-          t.el.style.setProperty(
-            prop.replace(/([A-Z])/g, '-$1').toLowerCase(),
-            t.props[prop],
-            'important'
-          );
-        }
-      });
-      // All descendants of the mount — force dark if they have any bg other
-      // than our allowed colors (card #0F172A, active #1E293B, bg #020617)
-      var mount = document.getElementById('activeTradingMount');
-      if (mount) {
-        var allDivs = mount.querySelectorAll('div');
-        for (var i = 0; i < allDivs.length; i++) {
-          var div = allDivs[i];
-          var cs = window.getComputedStyle(div);
-          var bg = cs.backgroundColor;
-          // Allow transparent, our dark palette, and semi-transparent colored pills
-          var allowedExact = {
-            'rgba(0, 0, 0, 0)': 1, 'transparent': 1,
-            'rgb(2, 6, 23)': 1,    // C.bg
-            'rgb(15, 23, 42)': 1,  // C.card
-            'rgb(30, 41, 59)': 1   // C.active
-          };
-          if (allowedExact[bg]) continue;
-          // Allow low-alpha colored pills (state tags, warnings) — these use
-          // rgba with alpha < 0.5 and are fine
-          var m = bg.match(/rgba?\(([^)]+)\)/);
-          if (m) {
-            var parts = m[1].split(',').map(function (x) { return parseFloat(x); });
-            if (parts.length === 4 && parts[3] < 0.5) continue;
-          }
-          // Anything else (white, light gray, etc.) → force dark
-          div.style.setProperty('background-color', '#020617', 'important');
-        }
-      }
-    }
-
-    // Run once immediately
-    enforceDark();
-    // Run again after any DOM change (React-style re-renders, injected scripts)
-    if (state._observer) state._observer.disconnect();
-    state._observer = new MutationObserver(function () {
-      // Throttle via rAF — don't block every mutation, coalesce per frame
-      if (state._raf) return;
-      state._raf = requestAnimationFrame(function () {
-        state._raf = null;
-        enforceDark();
-      });
-    });
-    // Observe the ENTIRE document body for style/attribute/child changes,
-    // because something OUTSIDE the mount may be repainting parent .sc.
-    state._observer.observe(document.body, {
-      attributes: true,       // catches style=".." attribute changes
-      attributeFilter: ['style', 'class'],
-      childList: true,
-      subtree: true
-    });
-    // Also poll every 500ms as a safety net in case MutationObserver misses
-    // something (e.g. computed style changes driven by media queries)
-    if (state._pollTimer) clearInterval(state._pollTimer);
-    state._pollTimer = setInterval(enforceDark, 500);
-
-    // ═══ DEBUG: log computed backgrounds so we can see what's white ═══
-    // Expose a function the user can call from console: window._atDebug()
+    // Debug helper for console
     window._atDebug = function () {
-      var rows = [];
-      function inspect(sel, label) {
-        var el = typeof sel === 'string' ? document.querySelector(sel) : sel;
-        if (!el) { rows.push({ label: label, bg: '[MISSING]', inline: '', rule: '' }); return; }
-        var cs = window.getComputedStyle(el);
-        rows.push({
-          label: label,
-          bg: cs.backgroundColor,
-          inline: el.getAttribute('style') ? el.getAttribute('style').substring(0, 100) : '',
-          width: cs.width, height: cs.height
-        });
-      }
-      inspect('html', 'html');
-      inspect('body', 'body');
-      inspect('.sc[data-at-host="1"]', 'sc (host)');
-      inspect('.sc[data-at-host="1"] .sbody', 'sbody');
-      inspect('#deResult', '#deResult');
-      inspect('#activeTradingMount', '#activeTradingMount');
-      var mount = document.getElementById('activeTradingMount');
-      if (mount) {
-        inspect(mount.children[0], 'wrap (child 1)');
-        if (mount.children[0] && mount.children[0].children[1]) {
-          inspect(mount.children[0].children[1], 'body grid');
-          if (mount.children[0].children[1].children[0]) {
-            inspect(mount.children[0].children[1].children[0], 'top trades panel');
+      var ov = document.getElementById('activeTradingOverlay');
+      var mt = document.getElementById('activeTradingMount');
+      var out = {
+        overlay_present: !!ov,
+        mount_present: !!mt,
+        overlay_children: ov ? ov.children.length : 0,
+        mount_children: mt ? mt.children.length : 0,
+        mounted_flag: mounted,
+        state_trades: state.trades.length,
+        state_scanner: state.scanner.length,
+        state_selected: state.selected ? state.selected.symbol : null,
+        region: state.region,
+        regime: regimeDetector.current,
+        open_positions: (function () {
+          var n = 0;
+          for (var id in paperPortfolio.positions) {
+            var p = paperPortfolio.positions[id];
+            if (p.status === 'pending' || p.status === 'active') n++;
           }
-        }
-      }
-      console.table(rows);
-      return rows;
+          return n;
+        })()
+      };
+      console.table([out]);
+      return out;
     };
-    // Auto-run once after mount so user sees it immediately in console
-    setTimeout(function () {
-      console.log('%c[ActiveTrading] v21 MUTATION OBSERVER active — call window._atDebug() anytime',
-                  'color:#22C55E;font-weight:bold;background:#020617;padding:4px 8px');
-      window._atDebug();
-    }, 500);
+
+    console.log('%c[ActiveTrading] overlay mounted — host page untouched',
+                'color:#22C55E;font-weight:bold;background:#020617;padding:4px 8px');
   };
 
   window.unmountActiveTrading = function () {
     mounted = false;
     stopTimers();
 
-    // Stop mutation observer + polling immediately so they don't fight the
-    // theme restoration below.
+    // Stop any legacy MutationObserver / poll timer that may still be around
+    // from prior buggy mount versions (nobody should have these anymore,
+    // but being defensive).
     if (state._observer) { state._observer.disconnect(); state._observer = null; }
     if (state._pollTimer) { clearInterval(state._pollTimer); state._pollTimer = null; }
     if (state._raf) { cancelAnimationFrame(state._raf); state._raf = null; }
 
-    document.body.classList.remove('at-mode');
-    var allHosts = document.querySelectorAll('.sc[data-at-host="1"]');
-    for (var i = 0; i < allHosts.length; i++) {
-      allHosts[i].removeAttribute('data-at-host');
+    // Restore host body scroll
+    if (state._prevBodyOverflow != null) {
+      document.body.style.overflow = state._prevBodyOverflow;
+      state._prevBodyOverflow = null;
     }
 
-    // Restore the brute-forced inline styles
+    // LEGACY CLEANUP — if any prior mount version left host-page mutations
+    // behind (body.at-mode, data-at-host attr, brutedNodes, hiddenSiblings),
+    // undo them all now. Safe no-op when clean.
+    document.body.classList.remove('at-mode');
+    var legacyHosts = document.querySelectorAll('.sc[data-at-host="1"]');
+    for (var i = 0; i < legacyHosts.length; i++) {
+      legacyHosts[i].removeAttribute('data-at-host');
+    }
     if (state._brutedNodes) {
       state._brutedNodes.forEach(function (n) {
         if (n.el) {
@@ -3192,7 +5276,13 @@
       state._hiddenSiblings = null;
     }
 
-    var mount = document.getElementById('activeTradingMount');
-    if (mount) mount.innerHTML = '';
+    // Remove the overlay. Host page is untouched since mount didn't mutate it.
+    var overlay = document.getElementById('activeTradingOverlay');
+    if (overlay && overlay.parentNode) {
+      overlay.parentNode.removeChild(overlay);
+    }
+
+    console.log('%c[ActiveTrading] overlay unmounted — host page restored',
+                'color:#64748B;font-weight:bold');
   };
 })();
