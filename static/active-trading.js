@@ -19,11 +19,11 @@
   'use strict';
 
   // Loud startup log so we can verify the deployed version at a glance
-  console.log('%c[ActiveTrading] v31 loaded — Smart Money Concepts wired into Consensus Engine',
+  console.log('%c[ActiveTrading] v33 loaded — 3-col layout + Live Lifecycle + Plain-English voice',
               'color:#22C55E;font-weight:bold;font-size:13px');
-  console.log('%c  SMC primitives: FVG + Order Block + BOS/CHoCH + Liquidity Sweep + EMA 9/21/50 + 5m candle closure',
+  console.log('%c  Middle column: consensus verdict + live ADD/REDUCE/EXIT tags per position + macro snapshot',
               'color:#64748B;font-size:11px');
-  console.log('%c  Debug: window._atEngine {.consensus .priceAction .kelly .cost .regime .alphaDecay .pricing .vol .risk .gex .strikes .monitor .compass .portfolio .signals}',
+  console.log('%c  Every 5m bar: engine evaluates each open position and speaks plain-English guidance',
               'color:#64748B;font-size:11px');
 
   // ── COLOR TOKENS ────────────────────────────────────────────────────────
@@ -361,12 +361,29 @@
   };
   paperPortfolio.load();
 
-  // Subscribe position events to voice log + audio alerts
+  // Subscribe position events to voice log + audio alerts.
+  // Voice tone follows Quick Trade's plain-English conversational style.
   bus.on('position:activated', function (p) {
     try {
       pushLog('ENTRY TRIGGERED: ' + p.sym + ' ' + p.strike + ' @ ' +
               p.currency + p.entryPremium.toFixed(2), C.green);
-      if (state.voiceOn) speak(p.sym + ' entry triggered');
+      // Snapshot baseline state so lifecycle engine can detect drift
+      if (window._atEngine && window._atEngine.liveGuide) {
+        var snapshot = {
+          confidence: p.score || 0,
+          side: p.side,
+          entryPremium: p.entryPremium
+        };
+        window._atEngine.liveGuide.recordEntry(p.id, snapshot);
+      }
+      if (state.voiceOn) {
+        // "NIFTY 24500 CE entry triggered at 150 rupees. Trade is now live.
+        //  I will update you every five minutes with continue, add, reduce,
+        //  or exit guidance."
+        speak(p.sym + ' ' + p.strike + ' entry triggered at ' +
+              p.entryPremium.toFixed(2) +
+              '. Trade is live. I will guide you every five minutes.');
+      }
     } catch (e) {}
   });
   bus.on('position:closed', function (p) {
@@ -378,11 +395,22 @@
                                         p.realizedPct.toFixed(2) + '%)' : '';
       var color = p.status === 'won' ? C.green : p.status === 'lost' ? C.red : C.textSec;
       pushLog('POSITION ' + verb + ': ' + p.sym + ' ' + p.strike + pnl, color);
+      // Clear lifecycle snapshot
+      if (window._atEngine && window._atEngine.liveGuide) {
+        window._atEngine.liveGuide.clearEntry(p.id);
+      }
       if (state.voiceOn && (p.status === 'won' || p.status === 'lost')) {
-        var pctAbs = Math.abs(p.realizedPct || 0).toFixed(0);
-        speak(p.sym + ' ' +
-              (p.status === 'won' ? 'target hit, up ' : 'stopped out, down ') +
-              pctAbs + ' percent');
+        var pctAbs = Math.abs(p.realizedPct || 0).toFixed(1);
+        // Friendly closing message with context
+        if (p.status === 'won') {
+          speak(p.sym + ' ' + p.strike + ' trade closed with profit of ' +
+                pctAbs + ' percent. Well played. Ready for the next setup.');
+        } else {
+          speak(p.sym + ' ' + p.strike + ' trade closed with loss of ' +
+                pctAbs + ' percent. Protect your capital. Wait for the next clean setup.');
+        }
+      } else if (state.voiceOn && p.status === 'cancelled') {
+        speak(p.sym + ' ' + p.strike + ' was cancelled before triggering.');
       }
     } catch (e) {}
   });
@@ -1667,6 +1695,275 @@
 
 
   // ═══════════════════════════════════════════════════════════════════════
+  // 13. EXTERNAL FEEDS (GIFT NIFTY · US premarket · India VIX TS · Order flow)
+  // ═══════════════════════════════════════════════════════════════════════
+  // Reads pre-open / global-cue data from backend endpoints so the consensus
+  // engine knows whether the wider market is risk-on or risk-off. These
+  // caches are populated by polling the endpoints — missing data degrades
+  // gracefully without fake values.
+  var externalFeeds = {
+    cache: {
+      gift: null,        // /api/gift-nifty response
+      usPre: null,       // /api/us-premarket response
+      lastGiftFetch: 0,
+      lastUsFetch: 0,
+      giftTTL: 300000,   // 5 minutes — matches server cache
+      usTTL: 60000       // 1 minute
+    },
+
+    // Fetch GIFT NIFTY + India global cues. Only applicable when region=IN.
+    // Safe to call repeatedly — respects local TTL.
+    fetchGift: function () {
+      var self = this;
+      var now = Date.now();
+      if (self.cache.gift && (now - self.cache.lastGiftFetch) < self.cache.giftTTL) {
+        return Promise.resolve(self.cache.gift);
+      }
+      if (typeof fetch !== 'function') return Promise.resolve(null);
+      return fetch('/api/gift-nifty')
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+          if (data && data.success) {
+            self.cache.gift = data;
+            self.cache.lastGiftFetch = now;
+          }
+          return data;
+        })
+        .catch(function () { return null; });
+    },
+
+    // US premarket — only relevant when region=US
+    fetchUsPre: function () {
+      var self = this;
+      var now = Date.now();
+      if (self.cache.usPre && (now - self.cache.lastUsFetch) < self.cache.usTTL) {
+        return Promise.resolve(self.cache.usPre);
+      }
+      if (typeof fetch !== 'function') return Promise.resolve(null);
+      return fetch('/api/us-premarket')
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+          if (data && data.success) {
+            self.cache.usPre = data;
+            self.cache.lastUsFetch = now;
+          }
+          return data;
+        })
+        .catch(function () { return null; });
+    },
+
+    // Cached reads — return what was last fetched (null if nothing yet)
+    gift: function () { return this.cache.gift; },
+    usPre: function () { return this.cache.usPre; },
+
+    // Interpret GIFT NIFTY data for consensus use.
+    // Returns { status, gap, sentiment, reason } or { status:'no_data' }
+    giftReport: function () {
+      var g = this.cache.gift;
+      if (!g || !g.success) return { status: 'no_data' };
+      var gap = g.gift_gap_pct || 0;
+      var sentiment = g.overall_sentiment || 'NEUTRAL';
+      var label;
+      if (gap >= 0.5) label = 'STRONG_GAP_UP';
+      else if (gap >= 0.15) label = 'GAP_UP';
+      else if (gap <= -0.5) label = 'STRONG_GAP_DOWN';
+      else if (gap <= -0.15) label = 'GAP_DOWN';
+      else label = 'FLAT';
+      return {
+        status: 'ok',
+        gap: gap,
+        giftPrice: g.gift_nifty || 0,
+        niftyClose: g.nifty_close || 0,
+        sentiment: sentiment,
+        label: label,
+        source: g.gift_source || '',
+        vix: (g.global_cues && g.global_cues.india_vix && g.global_cues.india_vix.price) || 0,
+        vixChange: (g.global_cues && g.global_cues.india_vix && g.global_cues.india_vix.change) || 0
+      };
+    },
+
+    usPreReport: function () {
+      var u = this.cache.usPre;
+      if (!u || !u.success) return { status: 'no_data' };
+      var gap = u.expected_gap_pct || 0;
+      var label;
+      if (gap >= 0.5) label = 'STRONG_GAP_UP';
+      else if (gap >= 0.15) label = 'GAP_UP';
+      else if (gap <= -0.5) label = 'STRONG_GAP_DOWN';
+      else if (gap <= -0.15) label = 'GAP_DOWN';
+      else label = 'FLAT';
+      return {
+        status: 'ok',
+        gap: gap,
+        sentiment: u.overall_sentiment || 'NEUTRAL',
+        label: label,
+        spFutChange: (u.sp500_fut && u.sp500_fut.change) || 0,
+        nqFutChange: (u.nasdaq_fut && u.nasdaq_fut.change) || 0,
+        vix: (u.vix && u.vix.price) || 0,
+        vixChange: (u.vix && u.vix.change) || 0
+      };
+    }
+  };
+
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // 14. IV TERM STRUCTURE ANALYZER
+  // ═══════════════════════════════════════════════════════════════════════
+  // Reads `iv_term_structure` from options-quick backend response. Classifies
+  // the curve shape to inform consensus:
+  //   NORMAL    — longer-dated IV > near-dated (contango; fair pricing)
+  //   FLAT      — all tenors within ~2% (stable expectations)
+  //   INVERTED  — near-dated IV > longer-dated (event risk priced in near term)
+  //   HUMPED    — mid-tenor spike (specific event expected, e.g. earnings)
+  var ivTermStructure = {
+    // Backend format: iv_term_structure is typically a list of
+    //   [{expiry: 'YYYY-MM-DD', dte: N, atm_iv: 15.3}, ...] sorted by DTE
+    // or may just be an object with weekly/monthly IVs. Defensive reader.
+    analyze: function (raw) {
+      if (!raw) return { status: 'no_data' };
+      var ts = raw.iv_term_structure;
+      if (!ts) return { status: 'no_data' };
+
+      // Normalize to { dte, iv } pairs
+      var points = [];
+      if (Array.isArray(ts)) {
+        ts.forEach(function (p) {
+          if (p && p.dte != null && (p.atm_iv != null || p.iv != null)) {
+            points.push({ dte: +p.dte, iv: +(p.atm_iv != null ? p.atm_iv : p.iv) });
+          }
+        });
+      } else if (typeof ts === 'object') {
+        // Object form: { weekly: {dte, iv}, monthly: {dte, iv} }
+        for (var k in ts) {
+          var v = ts[k];
+          if (v && v.dte != null && (v.atm_iv != null || v.iv != null)) {
+            points.push({ dte: +v.dte, iv: +(v.atm_iv != null ? v.atm_iv : v.iv) });
+          }
+        }
+      }
+      if (points.length < 2) return { status: 'insufficient' };
+
+      points.sort(function (a, b) { return a.dte - b.dte; });
+
+      // Classification
+      var near = points[0];
+      var far = points[points.length - 1];
+      var spread = ((far.iv - near.iv) / Math.max(near.iv, 0.01)) * 100;
+
+      var shape;
+      if (Math.abs(spread) < 2) shape = 'FLAT';
+      else if (spread > 5) shape = 'NORMAL';       // contango
+      else if (spread < -5) shape = 'INVERTED';    // backwardation
+      else shape = 'FLAT';
+
+      // Check for humped (middle tenor much higher than both ends)
+      if (points.length >= 3) {
+        var mid = points[Math.floor(points.length / 2)];
+        var endsAvg = (near.iv + far.iv) / 2;
+        if (mid.iv > endsAvg * 1.1) shape = 'HUMPED';
+      }
+
+      return {
+        status: 'ok',
+        shape: shape,
+        nearIv: near.iv, nearDte: near.dte,
+        farIv: far.iv, farDte: far.dte,
+        spread: spread,
+        points: points
+      };
+    }
+  };
+
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // 15. ORDER FLOW ANALYZER
+  // ═══════════════════════════════════════════════════════════════════════
+  // Reads bid/ask from the option chain to detect:
+  //   - Tight spread (<1%) = liquid, institutional participation
+  //   - Wide spread (>5%) = illiquid, retail-dominated, avoid
+  //   - Mid-price skew: if premium is closer to ask, buyer aggression;
+  //     closer to bid, seller aggression. Rough proxy — true order flow
+  //     requires tape/time&sales which we don't have.
+  var orderFlow = {
+    // row = chain_near_atm row; side = 'CE'|'PE'
+    readRow: function (row, side) {
+      if (!row) return null;
+      var bid = side === 'CE' ? row.ce_bid : row.pe_bid;
+      var ask = side === 'CE' ? row.ce_ask : row.pe_ask;
+      var ltp = side === 'CE' ? row.ce_ltp : row.pe_ltp;
+      if (bid == null || ask == null || !bid || !ask || !ltp) return null;
+      var mid = (bid + ask) / 2;
+      var spreadAbs = ask - bid;
+      var spreadPct = (spreadAbs / Math.max(mid, 0.01)) * 100;
+
+      // Liquidity tier
+      var liquidity;
+      if (spreadPct < 1) liquidity = 'TIGHT';
+      else if (spreadPct < 3) liquidity = 'NORMAL';
+      else if (spreadPct < 7) liquidity = 'WIDE';
+      else liquidity = 'VERY_WIDE';
+
+      // Aggression proxy
+      var aggression = 'NEUTRAL';
+      if (ltp > mid + spreadAbs * 0.25) aggression = 'BUYER';
+      else if (ltp < mid - spreadAbs * 0.25) aggression = 'SELLER';
+
+      return {
+        bid: bid, ask: ask, ltp: ltp, mid: mid,
+        spreadAbs: spreadAbs, spreadPct: spreadPct,
+        liquidity: liquidity, aggression: aggression
+      };
+    },
+
+    // Summarize order flow around ATM — reads 3 strikes nearest spot.
+    summary: function (raw, atmStrike, side) {
+      if (!raw || !Array.isArray(raw.chain_near_atm) || !atmStrike) {
+        return { status: 'no_data' };
+      }
+      // Find rows near ATM
+      var nearRows = raw.chain_near_atm.filter(function (r) {
+        return Math.abs(r.strike - atmStrike) < atmStrike * 0.01;
+      });
+      if (nearRows.length === 0) return { status: 'no_atm_row' };
+
+      var reads = [];
+      nearRows.forEach(function (r) {
+        var x = orderFlow.readRow(r, side);
+        if (x) {
+          x.strike = r.strike;
+          reads.push(x);
+        }
+      });
+      if (reads.length === 0) return { status: 'no_bidask' };
+
+      // Averages
+      var avgSpread = reads.reduce(function (a, b) { return a + b.spreadPct; }, 0) / reads.length;
+      var buyerCount = reads.filter(function (r) { return r.aggression === 'BUYER'; }).length;
+      var sellerCount = reads.filter(function (r) { return r.aggression === 'SELLER'; }).length;
+
+      var dominantLiq;
+      if (avgSpread < 1) dominantLiq = 'TIGHT';
+      else if (avgSpread < 3) dominantLiq = 'NORMAL';
+      else if (avgSpread < 7) dominantLiq = 'WIDE';
+      else dominantLiq = 'VERY_WIDE';
+
+      var flow;
+      if (buyerCount > sellerCount) flow = 'BUYER_AGGRESSION';
+      else if (sellerCount > buyerCount) flow = 'SELLER_AGGRESSION';
+      else flow = 'BALANCED';
+
+      return {
+        status: 'ok',
+        reads: reads,
+        avgSpreadPct: avgSpread,
+        liquidity: dominantLiq,
+        flow: flow
+      };
+    }
+  };
+
+
+  // ═══════════════════════════════════════════════════════════════════════
   // 12B. CONSENSUS ENGINE — updated to include Smart Money Concepts
   // ═══════════════════════════════════════════════════════════════════════
   var consensusEngine = {
@@ -1916,6 +2213,109 @@
         warnings.push('SMC data unavailable (insufficient bars)');
       }
 
+      // ── EXTERNAL FEEDS (GIFT NIFTY / US premarket) ──────────────────
+      // Only consulted during pre-open / first 30 min of session. Gap up
+      // against a PE trade is a headwind; aligned gap is a tailwind.
+      var tradeIsCE = trade && trade.side === 'CE';
+      var tradeIsPE = trade && trade.side === 'PE';
+      var region = (trade && trade._raw && trade._raw._region) || state.region || 'IN';
+      var gift = region === 'IN' ? externalFeeds.giftReport() : { status: 'no_data' };
+      var usPre = region === 'US' ? externalFeeds.usPreReport() : { status: 'no_data' };
+      var ext = gift.status === 'ok' ? gift : (usPre.status === 'ok' ? usPre : null);
+
+      if (ext) {
+        // Gap up tailwind for CE, headwind for PE
+        if (ext.label === 'STRONG_GAP_UP' || ext.label === 'GAP_UP') {
+          if (tradeIsCE) {
+            points += ext.label === 'STRONG_GAP_UP' ? 8 : 4;
+            reasons.push((region === 'IN' ? 'GIFT NIFTY' : 'US futures') +
+                         ' gap UP ' + ext.gap.toFixed(2) + '% — tailwind for CE');
+          } else if (tradeIsPE) {
+            points -= ext.label === 'STRONG_GAP_UP' ? 8 : 4;
+            warnings.push((region === 'IN' ? 'GIFT NIFTY' : 'US futures') +
+                          ' gap UP ' + ext.gap.toFixed(2) + '% against PE trade');
+          }
+        } else if (ext.label === 'STRONG_GAP_DOWN' || ext.label === 'GAP_DOWN') {
+          if (tradeIsPE) {
+            points += ext.label === 'STRONG_GAP_DOWN' ? 8 : 4;
+            reasons.push((region === 'IN' ? 'GIFT NIFTY' : 'US futures') +
+                         ' gap DOWN ' + ext.gap.toFixed(2) + '% — tailwind for PE');
+          } else if (tradeIsCE) {
+            points -= ext.label === 'STRONG_GAP_DOWN' ? 8 : 4;
+            warnings.push((region === 'IN' ? 'GIFT NIFTY' : 'US futures') +
+                          ' gap DOWN ' + ext.gap.toFixed(2) + '% against CE trade');
+          }
+        }
+
+        // VIX context — rising VIX + directional trade = caution
+        if (ext.vixChange != null && Math.abs(ext.vixChange) > 5) {
+          if (ext.vixChange > 5) {
+            warnings.push('VIX spiking +' + ext.vixChange.toFixed(1) + '% — elevated hedging activity');
+            points -= 3;
+          } else if (ext.vixChange < -5) {
+            reasons.push('VIX falling ' + ext.vixChange.toFixed(1) + '% — risk-on environment');
+            points += 2;
+          }
+        }
+      }
+
+      // ── IV TERM STRUCTURE ──────────────────────────────────────────
+      var iv = ivTermStructure.analyze(raw);
+      if (iv.status === 'ok') {
+        if (iv.shape === 'INVERTED') {
+          warnings.push('IV curve INVERTED — near-term event priced in (near ' +
+                        iv.nearIv.toFixed(1) + '% vs far ' + iv.farIv.toFixed(1) + '%)');
+          points -= 4;
+        } else if (iv.shape === 'HUMPED') {
+          warnings.push('IV curve HUMPED — specific mid-term event expected');
+          points -= 2;
+        } else if (iv.shape === 'NORMAL') {
+          // Contango is healthy — no bonus, no penalty
+        }
+      }
+
+      // ── ORDER FLOW (bid-ask spread + aggression proxy) ─────────────
+      if (trade && trade.side) {
+        // Extract ATM strike from trade
+        var atmStrike = 0;
+        if (trade.strike) {
+          var m = String(trade.strike).match(/(\d+(\.\d+)?)/);
+          if (m) atmStrike = parseFloat(m[1]);
+        }
+        if (atmStrike) {
+          var flow = orderFlow.summary(raw, atmStrike, trade.side);
+          if (flow.status === 'ok') {
+            // Liquidity
+            if (flow.liquidity === 'VERY_WIDE') {
+              points -= 10;
+              warnings.push('Order flow VERY WIDE spreads (' +
+                            flow.avgSpreadPct.toFixed(1) + '%) — poor fill quality');
+            } else if (flow.liquidity === 'WIDE') {
+              points -= 4;
+              warnings.push('Order flow WIDE spreads (' +
+                            flow.avgSpreadPct.toFixed(1) + '%)');
+            } else if (flow.liquidity === 'TIGHT') {
+              points += 3;
+              reasons.push('Order flow TIGHT spreads — institutional liquidity');
+            }
+            // Aggression
+            if (flow.flow === 'BUYER_AGGRESSION' && tradeIsCE) {
+              points += 4;
+              reasons.push('Order flow: buyer aggression on CE');
+            } else if (flow.flow === 'SELLER_AGGRESSION' && tradeIsPE) {
+              points += 4;
+              reasons.push('Order flow: seller aggression on PE');
+            } else if (flow.flow === 'SELLER_AGGRESSION' && tradeIsCE) {
+              points -= 3;
+              warnings.push('Order flow: sellers dominant on CE');
+            } else if (flow.flow === 'BUYER_AGGRESSION' && tradeIsPE) {
+              points -= 3;
+              warnings.push('Order flow: buyers dominant against PE');
+            }
+          }
+        }
+      }
+
       // ── VERDICT + SIZE MULTIPLIER ───────────────────────────────────
       var verdict, sizeMultiplier, color;
       if (blockers.length > 0) {
@@ -1971,6 +2371,238 @@
   };
 
 
+  // ═══════════════════════════════════════════════════════════════════════
+  // 16. LIVE TRADE GUIDE — lifecycle re-evaluation every 5m bar
+  // ═══════════════════════════════════════════════════════════════════════
+  // Re-assesses every open paper position against fresh data at each 5m
+  // candle close. Emits one of:
+  //   CONTINUE — hold current size, signal still intact
+  //   ADD      — signal strengthening, consider adding 25-50%
+  //   REDUCE   — signal weakening but not broken, trim to half
+  //   EXIT     — signal flipped or broken, close now
+  // Each recommendation includes a plain-English reason the user can act
+  // on without reading the numbers.
+  //
+  // This is what makes it a "live guide" instead of a static scanner.
+  // Quick Trade had terse one-shot voice; we now mirror its conversational
+  // style and extend it across the full position lifecycle.
+  var liveTradeGuide = {
+    // Per-position snapshot taken at entry time, used for drift detection
+    _entrySnapshots: {},
+
+    // Record the baseline state of a position at entry. Used to detect
+    // material changes over time. Called from paperPortfolio.activate().
+    recordEntry: function (positionId, tradeSnapshot) {
+      this._entrySnapshots[positionId] = {
+        score: tradeSnapshot.confidence,
+        side: tradeSnapshot.side,
+        regime: regimeDetector.current,
+        entryTime: Date.now()
+      };
+    },
+
+    // Clear snapshot on close
+    clearEntry: function (positionId) {
+      delete this._entrySnapshots[positionId];
+    },
+
+    // The core evaluator: for an active position, compare current signals
+    // vs entry snapshot and current market state. Returns:
+    //   { action: 'CONTINUE'|'ADD'|'REDUCE'|'EXIT',
+    //     confidence: 0-100 (how strongly we believe the action),
+    //     reason: plain-English explanation,
+    //     pnlPct: current P&L % }
+    evaluate: function (position, trade, raw) {
+      if (!position || position.status !== 'active') return null;
+      var snap = this._entrySnapshots[position.id];
+      var currentPrice = trade ? trade.price : position.entryPremium;
+      var pnlPct = ((currentPrice - position.entryPremium) / position.entryPremium) * 100;
+
+      // Hit target
+      if (currentPrice >= position.target) {
+        return {
+          action: 'EXIT',
+          confidence: 100,
+          reason: 'Target reached at ' + position.target.toFixed(2) +
+                  '. Book the profit of ' + pnlPct.toFixed(1) + ' percent. Excellent trade.',
+          pnlPct: pnlPct,
+          voiceUrgent: true
+        };
+      }
+
+      // Hit stop-loss
+      if (currentPrice <= position.sl) {
+        return {
+          action: 'EXIT',
+          confidence: 100,
+          reason: 'Stop loss hit at ' + position.sl.toFixed(2) +
+                  '. Close the position. Loss is ' + Math.abs(pnlPct).toFixed(1) +
+                  ' percent. Move on to the next setup.',
+          pnlPct: pnlPct,
+          voiceUrgent: true
+        };
+      }
+
+      // Ask consensus engine what it says about the CURRENT setup (new bars)
+      var freshConsensus = consensusEngine.evaluate(trade, raw);
+
+      // Strong flip — if consensus now says AVOID or has blockers, exit
+      if (freshConsensus.verdict === 'AVOID') {
+        return {
+          action: 'EXIT',
+          confidence: 90,
+          reason: 'Setup has invalidated. ' +
+                  (freshConsensus.blockers.length > 0
+                    ? freshConsensus.blockers[0]
+                    : 'Signals have turned against us') +
+                  '. Close out at the market.',
+          pnlPct: pnlPct,
+          voiceUrgent: true
+        };
+      }
+
+      // Signal strengthening — add to position
+      // Criteria: fresh points > 35 AND we're in profit AND original score >= 80
+      if (freshConsensus.points >= 35 &&
+          pnlPct > 5 &&
+          snap && snap.score >= 80 &&
+          freshConsensus.verdict === 'STRONG_BUY') {
+        return {
+          action: 'ADD',
+          confidence: 80,
+          reason: 'Signal strengthening with ' + pnlPct.toFixed(1) +
+                  ' percent in profit. Consensus is STRONG BUY. ' +
+                  'Consider adding 25 to 50 percent more to the position.',
+          pnlPct: pnlPct,
+          voiceUrgent: false
+        };
+      }
+
+      // Signal weakening — reduce size
+      // Criteria: fresh points < 5 OR compass flipped to conflict OR regime flipped
+      var compassNow = trendCompass.analyze(raw);
+      var regimeFlipped = snap && snap.regime !== regimeDetector.current &&
+        ((snap.regime === 'TRENDING_UP' && regimeDetector.current !== 'TRENDING_UP') ||
+         (snap.regime === 'TRENDING_DN' && regimeDetector.current !== 'TRENDING_DN'));
+
+      if (freshConsensus.points < 5 ||
+          (compassNow.status === 'ok' && compassNow.conflict) ||
+          regimeFlipped) {
+        var weakenReason;
+        if (regimeFlipped) {
+          weakenReason = 'Market regime has changed from ' + snap.regime.replace('_', ' ').toLowerCase() +
+                         ' to ' + regimeDetector.current.replace('_', ' ').toLowerCase() +
+                         '. Reduce the position to half size and set a tighter stop.';
+        } else if (compassNow.conflict) {
+          weakenReason = 'Short-term and long-term trends are now in conflict. ' +
+                         'Reduce the position to half size. If momentum fades further, exit.';
+        } else {
+          weakenReason = 'Signals are weakening. Consensus score dropped to ' + freshConsensus.points +
+                         '. Reduce the position to half size and protect profits.';
+        }
+        return {
+          action: 'REDUCE',
+          confidence: 75,
+          reason: weakenReason,
+          pnlPct: pnlPct,
+          voiceUrgent: false
+        };
+      }
+
+      // Default: continue holding. Give encouraging or cautious tone based on P&L
+      var continueReason;
+      if (pnlPct > 15) {
+        continueReason = 'Up ' + pnlPct.toFixed(1) + ' percent. Trail your stop ' +
+                         'to lock in profits. Signal still intact. Hold.';
+      } else if (pnlPct > 5) {
+        continueReason = 'In profit by ' + pnlPct.toFixed(1) +
+                         ' percent. Signal still intact. Continue holding for target.';
+      } else if (pnlPct > -5) {
+        continueReason = 'Trade is tracking normally at ' + (pnlPct >= 0 ? 'plus ' : '') +
+                         pnlPct.toFixed(1) + ' percent. Signal intact. Continue.';
+      } else {
+        continueReason = 'Drawdown of ' + Math.abs(pnlPct).toFixed(1) +
+                         ' percent but signal still valid. Give the trade room. ' +
+                         'Stop is at ' + position.sl.toFixed(2) + '.';
+      }
+      return {
+        action: 'CONTINUE',
+        confidence: 70,
+        reason: continueReason,
+        pnlPct: pnlPct,
+        voiceUrgent: false
+      };
+    },
+
+    // Run evaluation on every active position and return list of recommendations.
+    // Called from on5mClose().
+    evaluateAll: function (rawPriceMap) {
+      var out = [];
+      for (var id in paperPortfolio.positions) {
+        var p = paperPortfolio.positions[id];
+        if (p.status !== 'active') continue;
+        var trade = rawPriceMap ? rawPriceMap[p.tradeId] : null;
+        var raw = trade ? trade._raw : null;
+        var rec = this.evaluate(p, trade || { price: p.entryPremium, side: p.side }, raw);
+        if (rec) {
+          rec.positionId = p.id;
+          rec.symbol = p.sym;
+          rec.strike = p.strike;
+          rec.side = p.side;
+          out.push(rec);
+        }
+      }
+      return out;
+    }
+  };
+
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // 17. PLAIN-ENGLISH VOICE HELPERS — mirror Quick Trade's conversational tone
+  // ═══════════════════════════════════════════════════════════════════════
+  // Convert jargon-y data into user-friendly voice sentences. Quick Trade
+  // says "Early entry detected. Optimal risk to reward. Entry score 84 out
+  // of 100. Execute now." We want the same approachable style.
+  var voiceGuide = {
+    // Convert consensus verdict to plain English
+    verdictLine: function (verdict, tradeSummary) {
+      tradeSummary = tradeSummary || '';
+      switch (verdict.verdict) {
+        case 'STRONG_BUY':
+          return tradeSummary + ' is a strong buy. ' +
+                 'All signals are aligned. Take full size.';
+        case 'BUY':
+          return tradeSummary + ' is a buy with three-quarters size. ' +
+                 'Most signals support this trade.';
+        case 'BUY_SMALL':
+          return tradeSummary + ' is a small buy only. Mixed signals — ' +
+                 'take half size and watch closely.';
+        case 'NEUTRAL':
+          return tradeSummary + ' is neutral. Consider waiting for cleaner setup.';
+        case 'AVOID':
+          return 'Avoid ' + tradeSummary + '. ' +
+                 (verdict.blockers.length > 0
+                    ? verdict.blockers[0]
+                    : 'Signals are not aligned');
+        default:
+          return tradeSummary + ' status unclear';
+      }
+    },
+
+    // Lifecycle recommendations
+    lifecycleLine: function (rec) {
+      var prefix = rec.symbol + ' ' + rec.strike + ' ';
+      switch (rec.action) {
+        case 'CONTINUE': return prefix + rec.reason;
+        case 'ADD':      return prefix + '— ' + rec.reason;
+        case 'REDUCE':   return prefix + '— ' + rec.reason;
+        case 'EXIT':     return prefix + '— ' + rec.reason;
+        default:         return prefix + rec.reason;
+      }
+    }
+  };
+
+
   // ── EXPOSED ENGINE API ─────────────────────────────────────────────────
   // Placed AFTER all module declarations so every reference below points
   // to a fully-initialized object (not undefined due to var hoisting).
@@ -1990,7 +2622,12 @@
     monitor: tradeMonitor,
     compass: trendCompass,
     priceAction: priceAction,
+    externals: externalFeeds,
+    ivTerm: ivTermStructure,
+    orderFlow: orderFlow,
     consensus: consensusEngine,
+    liveGuide: liveTradeGuide,
+    voiceGuide: voiceGuide,
 
     // Dump signals as CSV (for feeding external backtest tools)
     exportSignalsCSV: function () {
@@ -2720,20 +3357,23 @@
       style: {
         flex: '1 1 auto',        // claim all remaining vertical space
         display: 'grid',
-        gridTemplateColumns: '65% 35%',
-        minHeight: 0,             // critical so grid children can shrink/scroll
+        // 3-column layout: TopTrades (28%) | Live Monitor (34%) | Detail (38%)
+        // Middle column consolidates live lifecycle guidance + key metrics
+        // so the user sees everything important WITHOUT scrolling the right
+        // column. User sees: trade signals on left, what to do with open
+        // positions in middle, full detail on right.
+        gridTemplateColumns: '28% 34% 38%',
+        minHeight: 0,
         overflow: 'hidden',
         background: C.bg
       }
     });
     body.appendChild(renderTopTrades());
+    body.appendChild(renderLiveMonitor());
     body.appendChild(renderQuickTrade());
     wrap.appendChild(body);
 
-    // Scanner sits at the BOTTOM as a fixed-height band (does NOT belong to
-    // either column — spans full width). Flex: 0 0 auto keeps it from
-    // stealing height from the main body. Voice Log is inside QuickTrade
-    // (right column), so the two are spatially separated now.
+    // Scanner sits at the BOTTOM as a fixed-height band (spans full width).
     wrap.appendChild(renderScanner());
     root.appendChild(wrap);
   }
@@ -3273,6 +3913,312 @@
     return card;
   }
 
+  // ── LIVE MONITOR — middle column ────────────────────────────────────────
+  // Consolidates everything the user needs to see at a glance:
+  //   1. Consensus verdict for currently-selected trade (ONE sentence)
+  //   2. Active positions with lifecycle tags (CONTINUE/ADD/REDUCE/EXIT)
+  //   3. Macro snapshot: regime, alpha health, pre-open gap, VIX
+  //
+  // This makes the key actionable content visible without scrolling
+  // the right-column detail panel. The right column stays for deep dives
+  // (Greeks, chain, SMC primitives, etc.).
+  function renderLiveMonitor() {
+    var panel = el('div', {
+      style: {
+        background: C.bg,
+        borderLeft: '1px solid ' + C.divider,
+        height: '100%', display: 'flex', flexDirection: 'column',
+        minHeight: 0, overflow: 'hidden'
+      }
+    });
+
+    // Header
+    panel.appendChild(el('div', {
+      style: {
+        fontSize: '10px', fontWeight: 800, color: C.textMute,
+        letterSpacing: '1.5px', padding: '8px 10px 6px',
+        borderBottom: '1px solid ' + C.divider,
+        flex: '0 0 auto'
+      }
+    }, 'LIVE MONITOR · ALL OPEN + SELECTED'));
+
+    // Scrollable body
+    var scroll = el('div', {
+      style: {
+        flex: '1 1 auto', minHeight: 0,
+        overflowY: 'auto', overflowX: 'hidden',
+        scrollbarWidth: 'thin',
+        scrollbarColor: C.divider + ' ' + C.bg
+      }
+    });
+
+    // 1. SELECTED TRADE CONSENSUS (if a trade is selected but not yet opened)
+    if (state.selected) {
+      var t = state.selected;
+      var raw = t._raw || {};
+      var v = consensusEngine.evaluate(t, raw);
+      var sel = el('div', {
+        style: {
+          padding: '10px 10px 6px', borderBottom: '1px solid ' + C.divider
+        }
+      });
+      sel.appendChild(el('div', {
+        style: {
+          fontSize: '9px', fontWeight: 700, color: C.textSec,
+          letterSpacing: '0.8px', marginBottom: '6px'
+        }
+      }, 'SELECTED: ' + t.symbol + ' ' + t.strike));
+
+      // Big verdict card
+      var verdictCard = el('div', {
+        style: {
+          background: v.color + '18', borderLeft: '3px solid ' + v.color,
+          borderRadius: '3px', padding: '8px 10px', marginBottom: '6px'
+        }
+      });
+      verdictCard.appendChild(el('div', {
+        style: {
+          fontSize: '13px', fontWeight: 800, color: v.color,
+          fontFamily: MONO, lineHeight: 1.2
+        }
+      }, consensusEngine.oneLine(v)));
+      verdictCard.appendChild(el('div', {
+        style: {
+          fontSize: '10px', color: C.textSec, marginTop: '4px', lineHeight: 1.3
+        }
+      }, v.reasons.length + ' pros · ' + v.warnings.length + ' caveats · ' +
+         'points: ' + (v.points >= 0 ? '+' : '') + v.points));
+      sel.appendChild(verdictCard);
+
+      // Top 2 reasons (quick scan)
+      if (v.reasons.length > 0) {
+        v.reasons.slice(0, 3).forEach(function (r) {
+          sel.appendChild(el('div', {
+            style: {
+              fontSize: '10px', color: C.green, fontFamily: MONO,
+              lineHeight: 1.35, marginTop: '2px'
+            }
+          }, '✓ ' + r));
+        });
+      }
+      if (v.warnings.length > 0) {
+        v.warnings.slice(0, 3).forEach(function (w) {
+          sel.appendChild(el('div', {
+            style: {
+              fontSize: '10px', color: C.orange, fontFamily: MONO,
+              lineHeight: 1.35, marginTop: '2px'
+            }
+          }, '⚠ ' + w));
+        });
+      }
+      if (v.blockers.length > 0) {
+        v.blockers.forEach(function (b) {
+          sel.appendChild(el('div', {
+            style: {
+              fontSize: '10px', color: C.red, fontFamily: MONO,
+              fontWeight: 700, lineHeight: 1.35, marginTop: '2px'
+            }
+          }, '🚫 ' + b));
+        });
+      }
+      scroll.appendChild(sel);
+    }
+
+    // 2. ACTIVE POSITIONS WITH LIFECYCLE TAGS
+    var priceLookup = {};
+    (state.trades || []).forEach(function (t) { priceLookup[t.id] = t; });
+    if (state.selected) priceLookup[state.selected.id] = state.selected;
+
+    var activePositions = [];
+    for (var id in paperPortfolio.positions) {
+      var p = paperPortfolio.positions[id];
+      if (p.status === 'active' || p.status === 'pending') activePositions.push(p);
+    }
+
+    var positionsSection = el('div', {
+      style: { padding: '10px 10px 6px' }
+    });
+    positionsSection.appendChild(el('div', {
+      style: {
+        fontSize: '9px', fontWeight: 700, color: C.textSec,
+        letterSpacing: '0.8px', marginBottom: '6px'
+      }
+    }, 'OPEN POSITIONS (' + activePositions.length + ')'));
+
+    if (activePositions.length === 0) {
+      positionsSection.appendChild(el('div', {
+        style: {
+          fontSize: '11px', color: C.textMute, fontStyle: 'italic',
+          padding: '6px 0', textAlign: 'center'
+        }
+      }, 'No open positions yet. Hit EXECUTE on a trade to start.'));
+    } else {
+      activePositions.forEach(function (pos) {
+        var liveTrade = priceLookup[pos.tradeId];
+        var currentPrice = liveTrade ? liveTrade.price : pos.entryPremium;
+        var pnlPct = ((currentPrice - pos.entryPremium) / pos.entryPremium) * 100;
+
+        // Get lifecycle recommendation
+        var rec = null;
+        if (pos.status === 'active' && liveTrade) {
+          rec = liveTradeGuide.evaluate(pos, liveTrade, liveTrade._raw);
+        }
+
+        var statusColor = pos.status === 'active' ? C.green : C.orange;
+        var actionColor = !rec ? C.textMute
+                         : rec.action === 'EXIT' ? C.red
+                         : rec.action === 'REDUCE' ? C.orange
+                         : rec.action === 'ADD' ? C.green : C.blue;
+        var pnlColor = pnlPct >= 0 ? C.green : C.red;
+
+        var posCard = el('div', {
+          style: {
+            background: C.card,
+            borderLeft: '3px solid ' + actionColor,
+            borderRadius: '3px',
+            padding: '6px 8px',
+            marginBottom: '6px'
+          }
+        });
+
+        // Line 1: symbol + status + P&L
+        posCard.appendChild(el('div', {
+          style: {
+            display: 'flex', justifyContent: 'space-between',
+            alignItems: 'center', marginBottom: '3px',
+            fontSize: '11px', fontFamily: MONO
+          }
+        }, [
+          el('span', { style: { color: C.textPri, fontWeight: 700 } },
+            pos.sym + ' ' + pos.strike),
+          el('span', { style: { color: pnlColor, fontWeight: 700 } },
+            (pnlPct >= 0 ? '+' : '') + pnlPct.toFixed(1) + '%')
+        ]));
+
+        // Line 2: status + entry/current prices
+        posCard.appendChild(el('div', {
+          style: {
+            display: 'flex', justifyContent: 'space-between',
+            fontSize: '9px', fontFamily: MONO, color: C.textSec,
+            marginBottom: '4px'
+          }
+        }, [
+          el('span', {
+            style: { color: statusColor, fontWeight: 700 }
+          }, pos.status.toUpperCase()),
+          el('span', {}, (pos.currency || '₹') + pos.entryPremium.toFixed(2) +
+                          ' → ' + (pos.currency || '₹') + currentPrice.toFixed(2))
+        ]));
+
+        // Line 3: lifecycle action tag
+        if (rec) {
+          posCard.appendChild(el('div', {
+            style: {
+              background: actionColor + '22',
+              color: actionColor,
+              padding: '3px 6px', borderRadius: '2px',
+              fontSize: '10px', fontWeight: 800,
+              fontFamily: MONO, letterSpacing: '1px',
+              display: 'inline-block', marginBottom: '4px'
+            }
+          }, rec.action));
+
+          // Reason text (wrapped)
+          posCard.appendChild(el('div', {
+            style: {
+              fontSize: '10px', color: C.textSec, lineHeight: 1.35,
+              marginTop: '2px'
+            }
+          }, rec.reason));
+        } else if (pos.status === 'pending') {
+          posCard.appendChild(el('div', {
+            style: {
+              fontSize: '10px', color: C.textMute, fontStyle: 'italic'
+            }
+          }, 'Waiting for trigger at ' + (pos.currency || '₹') +
+             pos.trigger.toFixed(2)));
+        }
+
+        positionsSection.appendChild(posCard);
+      });
+    }
+    scroll.appendChild(positionsSection);
+
+    // 3. MACRO SNAPSHOT — regime, alpha, external feeds
+    var macroSection = el('div', {
+      style: {
+        padding: '10px', borderTop: '1px solid ' + C.divider
+      }
+    });
+    macroSection.appendChild(el('div', {
+      style: {
+        fontSize: '9px', fontWeight: 700, color: C.textSec,
+        letterSpacing: '0.8px', marginBottom: '6px'
+      }
+    }, 'MACRO CONTEXT'));
+
+    // Regime
+    var regColor = regimeDetector.color();
+    macroSection.appendChild(macroRow('Regime', regimeDetector.label(), regColor));
+
+    // Alpha
+    var alphaColor = alphaDecay.color();
+    macroSection.appendChild(macroRow('Alpha edge',
+      alphaDecay.summary(), alphaColor));
+
+    // Gap (region-aware)
+    var region = state.region || 'IN';
+    var ext = region === 'IN'
+      ? externalFeeds.giftReport()
+      : externalFeeds.usPreReport();
+    if (ext && ext.status === 'ok') {
+      var gapColor = ext.gap > 0.15 ? C.green : ext.gap < -0.15 ? C.red : C.textSec;
+      macroSection.appendChild(macroRow(
+        region === 'IN' ? 'GIFT NIFTY gap' : 'Futures gap',
+        (ext.gap >= 0 ? '+' : '') + ext.gap.toFixed(2) + '%',
+        gapColor));
+    } else {
+      macroSection.appendChild(macroRow(
+        region === 'IN' ? 'GIFT NIFTY' : 'US Futures',
+        'awaiting feed', C.textMute));
+    }
+
+    // VIX
+    if (ext && ext.status === 'ok' && ext.vix) {
+      var vixColor = ext.vixChange > 5 ? C.red : ext.vixChange < -5 ? C.green : C.textSec;
+      macroSection.appendChild(macroRow(
+        region === 'IN' ? 'India VIX' : 'VIX',
+        ext.vix.toFixed(2) + ' (' + (ext.vixChange >= 0 ? '+' : '') +
+          ext.vixChange.toFixed(1) + '%)',
+        vixColor));
+    }
+
+    // Portfolio risk
+    var riskGate = portfolioRisk.checkAllow();
+    macroSection.appendChild(macroRow(
+      'Risk gate',
+      riskGate.allow ? 'OK' : 'BLOCKED',
+      riskGate.allow ? C.green : C.red));
+
+    scroll.appendChild(macroSection);
+    panel.appendChild(scroll);
+    return panel;
+  }
+
+  // Small helper row for macro section
+  function macroRow(label, value, color) {
+    return el('div', {
+      style: {
+        display: 'flex', justifyContent: 'space-between',
+        alignItems: 'center', fontSize: '11px', fontFamily: MONO,
+        padding: '2px 0', lineHeight: 1.3
+      }
+    }, [
+      el('span', { style: { color: C.textSec, fontWeight: 600 } }, label),
+      el('span', { style: { color: color, fontWeight: 700 } }, value)
+    ]);
+  }
+
   function renderQuickTrade() {
     var panel = el('div', {
       style: {
@@ -3299,6 +4245,7 @@
     });
     // Consensus panel FIRST — the combined verdict is the most important thing
     scroll.appendChild(renderConsensusPanel());
+    scroll.appendChild(renderExternalsPanel());
     scroll.appendChild(renderEntryEngine());
     scroll.appendChild(renderCandlestickPanel());
     scroll.appendChild(renderPriceActionPanel());
@@ -4029,6 +4976,146 @@
       el('span', { style: { color: C.textSec, fontWeight: 600 } }, label),
       el('span', { style: { color: color, fontWeight: 700, textAlign: 'right' } }, value)
     ]);
+  }
+
+  // ── External feeds panel (GIFT NIFTY / US premarket + IV term + order flow) ─
+  // Shows pre-open context above the main detail stack. Degrades to
+  // "awaiting feed" when data isn't cached yet.
+  function renderExternalsPanel() {
+    var wrap = el('div', {
+      style: {
+        background: C.card, borderBottom: '1px solid ' + C.divider,
+        padding: '8px 10px'
+      }
+    });
+    if (!state.selected) return wrap;
+    var raw = state.selected._raw || {};
+
+    // Header
+    wrap.appendChild(el('div', {
+      style: {
+        fontSize: '9px', fontWeight: 800, letterSpacing: '1.5px',
+        color: C.textSec, marginBottom: '6px'
+      }
+    }, 'EXTERNAL FEEDS · PRE-OPEN CONTEXT'));
+
+    // Get the right feed for current region
+    var region = (raw._region) || state.region || 'IN';
+    var gift = externalFeeds.giftReport();
+    var usPre = externalFeeds.usPreReport();
+    var ext = region === 'IN' ? gift : usPre;
+    var feedName = region === 'IN' ? 'GIFT NIFTY' : 'US Futures';
+
+    // Three-column grid: Gap | VIX | IV Curve
+    var grid = el('div', {
+      style: { display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '6px' }
+    });
+
+    // Col 1: Pre-open gap
+    var gapCol = el('div', {
+      style: { background: C.bg, borderRadius: '4px', padding: '6px 8px' }
+    });
+    gapCol.appendChild(el('div', {
+      style: { fontSize: '9px', fontWeight: 700, color: C.textSec, marginBottom: '3px' }
+    }, feedName));
+    if (ext && ext.status === 'ok') {
+      var gapColor = ext.gap > 0.15 ? C.green : ext.gap < -0.15 ? C.red : C.textSec;
+      gapCol.appendChild(el('div', {
+        style: { fontSize: '14px', fontWeight: 800, color: gapColor, fontFamily: MONO }
+      }, (ext.gap >= 0 ? '+' : '') + ext.gap.toFixed(2) + '%'));
+      gapCol.appendChild(el('div', {
+        style: { fontSize: '9px', color: C.textMute, fontFamily: MONO, marginTop: '2px' }
+      }, ext.label.replace(/_/g, ' ')));
+    } else {
+      gapCol.appendChild(el('div', {
+        style: { fontSize: '10px', color: C.textMute, fontStyle: 'italic' }
+      }, 'awaiting feed'));
+    }
+    grid.appendChild(gapCol);
+
+    // Col 2: VIX
+    var vixCol = el('div', {
+      style: { background: C.bg, borderRadius: '4px', padding: '6px 8px' }
+    });
+    vixCol.appendChild(el('div', {
+      style: { fontSize: '9px', fontWeight: 700, color: C.textSec, marginBottom: '3px' }
+    }, region === 'IN' ? 'INDIA VIX' : 'VIX'));
+    if (ext && ext.status === 'ok' && ext.vix) {
+      var vixColor = ext.vixChange > 5 ? C.red : ext.vixChange < -5 ? C.green : C.textSec;
+      vixCol.appendChild(el('div', {
+        style: { fontSize: '14px', fontWeight: 800, color: C.textPri, fontFamily: MONO }
+      }, ext.vix.toFixed(2)));
+      vixCol.appendChild(el('div', {
+        style: { fontSize: '9px', color: vixColor, fontFamily: MONO, marginTop: '2px' }
+      }, (ext.vixChange >= 0 ? '+' : '') + ext.vixChange.toFixed(2) + '%'));
+    } else {
+      vixCol.appendChild(el('div', {
+        style: { fontSize: '10px', color: C.textMute, fontStyle: 'italic' }
+      }, 'awaiting feed'));
+    }
+    grid.appendChild(vixCol);
+
+    // Col 3: IV term structure
+    var ivCol = el('div', {
+      style: { background: C.bg, borderRadius: '4px', padding: '6px 8px' }
+    });
+    ivCol.appendChild(el('div', {
+      style: { fontSize: '9px', fontWeight: 700, color: C.textSec, marginBottom: '3px' }
+    }, 'IV TERM CURVE'));
+    var iv = ivTermStructure.analyze(raw);
+    if (iv.status === 'ok') {
+      var shapeColor = iv.shape === 'INVERTED' ? C.red
+                      : iv.shape === 'HUMPED' ? C.orange
+                      : iv.shape === 'NORMAL' ? C.green : C.textSec;
+      ivCol.appendChild(el('div', {
+        style: { fontSize: '13px', fontWeight: 800, color: shapeColor, fontFamily: MONO }
+      }, iv.shape));
+      ivCol.appendChild(el('div', {
+        style: { fontSize: '9px', color: C.textMute, fontFamily: MONO, marginTop: '2px' }
+      }, iv.nearIv.toFixed(1) + '% → ' + iv.farIv.toFixed(1) + '%'));
+    } else {
+      ivCol.appendChild(el('div', {
+        style: { fontSize: '10px', color: C.textMute, fontStyle: 'italic' }
+      }, 'no term data'));
+    }
+    grid.appendChild(ivCol);
+
+    wrap.appendChild(grid);
+
+    // Order flow row — if trade is selected with ATM strike, show summary
+    var atmMatch = state.selected.strike
+      ? String(state.selected.strike).match(/(\d+(\.\d+)?)/) : null;
+    if (atmMatch) {
+      var atmStrike = parseFloat(atmMatch[1]);
+      var flow = orderFlow.summary(raw, atmStrike, state.selected.side);
+      if (flow.status === 'ok') {
+        var flowRow = el('div', {
+          style: {
+            marginTop: '6px', padding: '6px 8px',
+            background: C.bg, borderRadius: '4px',
+            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+            fontSize: '10px', fontFamily: MONO
+          }
+        });
+        var liqColor = flow.liquidity === 'TIGHT' ? C.green
+                      : flow.liquidity === 'NORMAL' ? C.textSec
+                      : flow.liquidity === 'WIDE' ? C.orange : C.red;
+        var flowColor = flow.flow === 'BUYER_AGGRESSION' ? C.green
+                       : flow.flow === 'SELLER_AGGRESSION' ? C.red : C.textSec;
+        flowRow.appendChild(el('span', {
+          style: { color: C.textSec, fontWeight: 700 }
+        }, 'ORDER FLOW'));
+        flowRow.appendChild(el('span', {
+          style: { color: liqColor, fontWeight: 700 }
+        }, flow.liquidity + ' spreads ' + flow.avgSpreadPct.toFixed(1) + '%'));
+        flowRow.appendChild(el('span', {
+          style: { color: flowColor, fontWeight: 700 }
+        }, flow.flow.replace(/_/g, ' ')));
+        wrap.appendChild(flowRow);
+      }
+    }
+
+    return wrap;
   }
 
   // ── Greeks + IV/HV panel (ported from Quick Trade) ──────────────────────
@@ -5008,7 +6095,17 @@
     //   (a) initial mount (so user sees something)
     //   (b) every 5m wall-clock candle close
     // NOT called on 90s. Spec §2/§3 forbids mid-cycle Tier 1 updates.
-    return Promise.all([refreshTopTrades(), refreshChain()]);
+    //
+    // Also kicks off external-feed refresh (GIFT NIFTY / US premarket).
+    // These are independently cached inside externalFeeds with their own
+    // TTL, so calling on every 5m bar is safe — cached hits return instantly.
+    var promises = [refreshTopTrades(), refreshChain()];
+    if (state.region === 'IN') {
+      promises.push(externalFeeds.fetchGift().catch(function () { return null; }));
+    } else {
+      promises.push(externalFeeds.fetchUsPre().catch(function () { return null; }));
+    }
+    return Promise.all(promises);
   }
 
   function refreshTier2() {
@@ -5037,14 +6134,70 @@
 
         pushLog('5m close @ ' + newClose.toFixed(2), C.yellow);
 
-        // Entry confirmed check
+        // Entry confirmed check — plain English
         if ((state.selected.side === 'CE' && newClose >= state.selected.trigger) ||
             (state.selected.side === 'PE' && newClose <= state.selected.trigger)) {
           pushLog('Entry confirmed, confidence ' + state.selected.confidence + '%', C.green);
           speak(state.selected.symbol + ' ' + state.selected.strike +
-                ' entry confirmed, confidence ' + state.selected.confidence + ' percent');
+                ' entry confirmed. Confidence ' + state.selected.confidence +
+                ' percent. You can enter the trade now.');
         }
       }
+
+      // ═══════════════════════════════════════════════════════════════════
+      // LIVE TRADE LIFECYCLE — re-evaluate every open position
+      // ═══════════════════════════════════════════════════════════════════
+      // Build price lookup from current trades
+      var priceLookup = {};
+      (state.trades || []).forEach(function (t) { priceLookup[t.id] = t; });
+      // Also include the selected trade in case it's an open position
+      if (state.selected) priceLookup[state.selected.id] = state.selected;
+
+      // Get recommendations per active position
+      var recs = liveTradeGuide.evaluateAll(priceLookup);
+      state.liveRecs = recs;  // stash for UI panel
+
+      recs.forEach(function (rec) {
+        var voiceLine = voiceGuide.lifecycleLine(rec);
+        // Log in appropriate color
+        var logColor = rec.action === 'EXIT' ? C.red
+                     : rec.action === 'REDUCE' ? C.orange
+                     : rec.action === 'ADD' ? C.green : C.blue;
+        pushLog(rec.action + ': ' + rec.symbol + ' ' + rec.strike +
+                ' · ' + rec.reason, logColor);
+        // Only speak EXIT/ADD/REDUCE changes (every-bar CONTINUE is noisy).
+        // Speak CONTINUE only if P&L crossed a notable threshold vs last bar.
+        var shouldSpeak =
+          rec.action === 'EXIT' ||
+          rec.action === 'ADD' ||
+          rec.action === 'REDUCE';
+
+        // For CONTINUE, remember last spoken pnl bucket per position to avoid spam
+        if (rec.action === 'CONTINUE') {
+          state._lastSpokenBucket = state._lastSpokenBucket || {};
+          var bucket = Math.floor(rec.pnlPct / 10) * 10;
+          if (state._lastSpokenBucket[rec.positionId] !== bucket) {
+            state._lastSpokenBucket[rec.positionId] = bucket;
+            shouldSpeak = true;
+          }
+        }
+
+        // For EXIT/REDUCE — auto-action on paper positions per institutional
+        // discipline. On live broker integration this would stay advisory.
+        if (rec.action === 'EXIT' && priceLookup[rec.positionId]) {
+          // Trigger the monitor.closeNow which fires position:closed bus event
+          // with the appropriate win/lost status based on exit price.
+          var pos = paperPortfolio.positions[rec.positionId];
+          if (pos) tradeMonitor.closeNow(rec.positionId, priceLookup[rec.positionId]
+                    ? priceLookup[rec.positionId].price : pos.entryPremium,
+                    'lifecycle_exit');
+        }
+
+        if (shouldSpeak && state.voiceOn) {
+          speak(voiceLine);
+        }
+      });
+
       rerender();
     });
   }
