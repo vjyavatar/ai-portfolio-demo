@@ -19,11 +19,11 @@
   'use strict';
 
   // Loud startup log so we can verify the deployed version at a glance
-  console.log('%c[ActiveTrading] v36 loaded — Trade lifecycle visibility',
+  console.log('%c[ActiveTrading] v37 loaded — Portfolio-aware multi-trade guidance',
               'color:#22C55E;font-weight:bold;font-size:13px');
-  console.log('%c  Top trade card shows LIVE/PENDING/WON/LOST state + colored left edge',
+  console.log('%c  PORTFOLIO TODAY strip + session summary + streak warnings + held-trades preservation',
               'color:#64748B;font-size:11px');
-  console.log('%c  Double-execute prevention + recently-closed banner in middle panel',
+  console.log('%c  New trades announced with context: "you have 1 position open, room for more"',
               'color:#64748B;font-size:11px');
 
   // ── COLOR TOKENS ────────────────────────────────────────────────────────
@@ -438,6 +438,35 @@
           speak(p.sym + ' ' + p.strike + ' trade closed with loss of ' +
                 pctAbs + ' percent. Protect your capital. Wait for the next clean setup.');
         }
+
+        // ── Portfolio-aware follow-up after close ──────────────────────
+        // After every 3rd close of the day, speak the session summary
+        // so the user has a natural check-in point (wins/losses/net).
+        // Also fire on streak milestones (2 or 3 losses in a row) so the
+        // user is reminded not to revenge-trade.
+        try {
+          if (window._atEngine && window._atEngine.sessionGuide) {
+            var sg = window._atEngine.sessionGuide;
+            var t = sg.today();
+
+            // Streak warning — fires at loss-streak 2 and 3
+            if (t.lossStreak === 2) {
+              setTimeout(function () {
+                speak('Two losses in a row today. Slow down. ' +
+                      'Consider smaller size or a break before the next trade.');
+              }, 2500);
+            } else if (t.lossStreak >= 3) {
+              setTimeout(function () {
+                speak('Three losses today. Step back from the screen. ' +
+                      'The market will be here tomorrow.');
+              }, 2500);
+            }
+            // Every 3rd close — session summary voice
+            else if (t.closedCount > 0 && t.closedCount % 3 === 0) {
+              setTimeout(function () { speak(sg.summary()); }, 2500);
+            }
+          }
+        } catch (e) {}
       } else if (state.voiceOn && p.status === 'cancelled') {
         speak(p.sym + ' ' + p.strike + ' was cancelled before triggering.');
       }
@@ -2715,6 +2744,176 @@
   };
 
 
+  // ═══════════════════════════════════════════════════════════════════════
+  // 16e. SESSION GUIDE — portfolio-level awareness across multi-trade days
+  // ═══════════════════════════════════════════════════════════════════════
+  // When the user has multiple trades in a session, they need to see the
+  // FOREST, not just individual trees. This module surfaces:
+  //   - Today's net P&L (across all closed positions)
+  //   - Win rate today
+  //   - Streak detection (3 losses in a row → warn about revenge trading)
+  //   - Context for new top trades: "you have room for 1 more position"
+  //     or "day P&L is -2.5%, near daily cap — hold off"
+  //   - Session phase overlay (e.g. "we're near market close — don't open
+  //     new intraday trades")
+  var sessionGuide = {
+    // Aggregate stats for today's closed positions
+    today: function () {
+      var dayStart = new Date(); dayStart.setHours(0, 0, 0, 0);
+      var closedToday = [];
+      var openNow = 0, pendingNow = 0;
+      for (var id in paperPortfolio.positions) {
+        var p = paperPortfolio.positions[id];
+        if (p.status === 'active') openNow++;
+        if (p.status === 'pending') pendingNow++;
+        if (p.closedAt && p.closedAt >= dayStart.getTime() &&
+            (p.status === 'won' || p.status === 'lost')) {
+          closedToday.push(p);
+        }
+      }
+      closedToday.sort(function (a, b) { return a.closedAt - b.closedAt; });
+
+      var wins = closedToday.filter(function (p) { return p.status === 'won'; });
+      var losses = closedToday.filter(function (p) { return p.status === 'lost'; });
+      var netPnl = closedToday.reduce(function (sum, p) {
+        return sum + (p.realizedPct || 0);
+      }, 0);
+
+      // Streak detection on the LAST 3 closed trades
+      var last3 = closedToday.slice(-3);
+      var lossStreak = 0, winStreak = 0;
+      for (var i = last3.length - 1; i >= 0; i--) {
+        if (last3[i].status === 'lost') {
+          if (winStreak > 0) break;
+          lossStreak++;
+        } else if (last3[i].status === 'won') {
+          if (lossStreak > 0) break;
+          winStreak++;
+        }
+      }
+
+      return {
+        closedCount: closedToday.length,
+        wins: wins.length, losses: losses.length,
+        winRate: closedToday.length > 0 ? (wins.length / closedToday.length) * 100 : 0,
+        netPnl: netPnl,
+        lossStreak: lossStreak,
+        winStreak: winStreak,
+        openNow: openNow, pendingNow: pendingNow,
+        lastClosedAt: closedToday.length ? closedToday[closedToday.length - 1].closedAt : 0
+      };
+    },
+
+    // Should we suggest taking a new trade right now? Returns:
+    //   { recommend: 'TAKE' | 'SKIP' | 'CAUTION', reason: "..." }
+    // Used when a new top-3 trade appears — we add voice context instead
+    // of just announcing "new trade!" with no consideration of user's state.
+    shouldTakeNew: function () {
+      var t = this.today();
+      var gate = portfolioRisk.checkAllow();
+
+      // Hard block: portfolio risk gate already prevents opens
+      if (!gate.allow) {
+        return { recommend: 'SKIP', reason: gate.reason };
+      }
+
+      // Session phase: closing minutes are risky for fresh intraday trades
+      var sess = sessionProfile.phase(state.region || 'IN');
+      if (sess.phase === 'CLOSING') {
+        return {
+          recommend: 'SKIP',
+          reason: 'Market closing soon — avoid opening new intraday positions'
+        };
+      }
+
+      // Loss streak: 3 losses in a row → caution to prevent revenge
+      if (t.lossStreak >= 3) {
+        return {
+          recommend: 'SKIP',
+          reason: t.lossStreak + ' losses in a row today. Step back. ' +
+                  'Don\'t revenge-trade. Wait for the next clean setup.'
+        };
+      }
+      if (t.lossStreak === 2) {
+        return {
+          recommend: 'CAUTION',
+          reason: '2 losses today. Consider reducing size on the next trade.'
+        };
+      }
+
+      // Near daily loss cap
+      if (t.netPnl <= -(portfolioRisk.config.maxDailyLossPct * 0.7)) {
+        return {
+          recommend: 'CAUTION',
+          reason: 'Day P&L at ' + t.netPnl.toFixed(1) +
+                  '% — approaching daily loss cap. Trade small if at all.'
+        };
+      }
+
+      // Approaching concurrent cap
+      if (t.openNow + t.pendingNow >= portfolioRisk.config.maxConcurrent - 1) {
+        return {
+          recommend: 'CAUTION',
+          reason: (t.openNow + t.pendingNow) + '/' + portfolioRisk.config.maxConcurrent +
+                  ' positions open. This would max out your capacity.'
+        };
+      }
+
+      // Lunch chop
+      if (sess.phase === 'LUNCH') {
+        return {
+          recommend: 'CAUTION',
+          reason: 'Lunch hour chop — win rate is historically lower. Take only premium setups.'
+        };
+      }
+
+      return {
+        recommend: 'TAKE',
+        reason: 'Portfolio capacity available. Session conditions favorable.'
+      };
+    },
+
+    // Plain-English voice line for a new top-trade announcement with context
+    newTradeAnnouncement: function (trade) {
+      var t = this.today();
+      var decision = this.shouldTakeNew();
+      var baseLine = 'New top trade: ' + trade.symbol + ' ' + trade.strike +
+                     ', confidence ' + trade.confidence + ' percent. ';
+
+      if (decision.recommend === 'TAKE') {
+        if (t.netPnl > 2) {
+          return baseLine + 'You are up ' + t.netPnl.toFixed(1) +
+                 ' percent today. ' + decision.reason;
+        } else if (t.openNow > 0) {
+          return baseLine + 'You have ' + t.openNow +
+                 ' position open. Room for more. ' + decision.reason;
+        }
+        return baseLine + decision.reason;
+      }
+      if (decision.recommend === 'CAUTION') {
+        return baseLine + 'Caution — ' + decision.reason;
+      }
+      // SKIP
+      return baseLine + 'Not recommended — ' + decision.reason;
+    },
+
+    // Summary line for session end / midday check-in
+    summary: function () {
+      var t = this.today();
+      if (t.closedCount === 0) {
+        return 'No trades closed yet today.';
+      }
+      var base = 'Today: ' + t.closedCount + ' trade' + (t.closedCount > 1 ? 's' : '') +
+                 ', ' + t.wins + ' won, ' + t.losses + ' lost, net ' +
+                 (t.netPnl >= 0 ? '+' : '') + t.netPnl.toFixed(1) + ' percent. ' +
+                 'Win rate ' + Math.round(t.winRate) + ' percent.';
+      if (t.netPnl > 3) base += ' Strong session.';
+      else if (t.netPnl < -2) base += ' Rough session — consider stopping.';
+      return base;
+    }
+  };
+
+
   var liveTradeGuide = {
     // Per-position snapshot taken at entry time, used for drift detection
     _entrySnapshots: {},
@@ -2961,6 +3160,7 @@
     payoff: payoffDiagram,
     sentiment: sentimentBar,
     session: sessionProfile,
+    sessionGuide: sessionGuide,
 
     // Dump signals as CSV (for feeding external backtest tools)
     exportSignalsCSV: function () {
@@ -4036,6 +4236,49 @@
       if (filter) {
         displayTrades.forEach(function (t) { body.appendChild(tradeCard(t)); });
       } else {
+        // ── MY POSITIONS — any held trade NOT currently in top-3 ────────
+        // When a user's active position rotates off the top-3 scan, we
+        // pin it to the top of this column so it's always visible.
+        // No duplicates: trades that ARE in top-3 are not repeated here.
+        var top3Ids = {};
+        state.trades.forEach(function (t) { if (t) top3Ids[t.id] = true; });
+        var held = (state.heldTrades || []).filter(function (h) {
+          return !top3Ids[h.id];
+        });
+        if (held.length > 0) {
+          body.appendChild(el('div', {
+            style: {
+              fontSize: '9px', fontWeight: 800, letterSpacing: '1.5px',
+              color: C.green, marginBottom: '4px',
+              padding: '4px 2px 2px'
+            }
+          }, 'MY POSITIONS (' + held.length + ') — OFF TOP-3 SCAN'));
+          held.forEach(function (t) {
+            var card = tradeCard(t);
+            // Add a subtle badge so user knows this is off-scan
+            if (t._staleData) {
+              card.appendChild(el('div', {
+                style: {
+                  position: 'absolute', top: '4px', right: '4px',
+                  fontSize: '8px', fontWeight: 700, padding: '1px 4px',
+                  borderRadius: '2px', background: C.orange + '22',
+                  color: C.orange, letterSpacing: '0.3px'
+                }
+              }, 'STALE DATA'));
+            }
+            body.appendChild(card);
+          });
+          // Separator
+          body.appendChild(el('div', {
+            style: {
+              borderTop: '1px dashed ' + C.divider,
+              margin: '8px 0 8px', fontSize: '9px',
+              color: C.textMute, textAlign: 'center', padding: '4px 0 0',
+              letterSpacing: '1.2px', fontWeight: 700
+            }
+          }, 'TOP 3 NEW OPPORTUNITIES'));
+        }
+
         // Normal: show top 3 (with placeholders for empty slots)
         for (var i = 0; i < 3; i++) {
           var t = state.trades[i];
@@ -4239,18 +4482,48 @@
         el('span', { style: { fontSize: '13px', fontWeight: 900 } }, pctTxt)
       ]);
     } else {
-      // Normal EXECUTE button (spec §4.5: 36 × 100 green gradient)
-      buttonNode = el('button', {
-        onClick: function (e) { e.stopPropagation(); onExecute(trade); },
-        style: {
-          height: '36px', width: '100px',
-          background: 'linear-gradient(180deg, ' + C.green + ', #16A34A)',
-          color: '#062B17', fontWeight: 800, fontSize: '11px',
-          border: 'none', borderRadius: '6px', cursor: 'pointer',
-          letterSpacing: '0.8px', alignSelf: 'center',
-          boxShadow: '0 0 0 1px ' + C.green + '66, 0 4px 12px ' + C.green + '33'
-        }
-      }, 'EXECUTE');
+      // Normal EXECUTE button — but check portfolio risk first so user
+      // sees why they can't open another trade (e.g. max concurrent reached).
+      var riskGate = portfolioRisk.checkAllow();
+      if (!riskGate.allow) {
+        // Risk-blocked state: greyed-out button with tooltip explaining why
+        buttonNode = el('button', {
+          onClick: function (e) {
+            e.stopPropagation();
+            // Still call onExecute — it will log + speak the block reason
+            onExecute(trade);
+          },
+          title: 'Risk gate blocked: ' + riskGate.reason,
+          style: {
+            height: '36px', width: '100px',
+            background: C.red + '15',
+            color: C.red,
+            fontWeight: 800, fontSize: '10px',
+            border: '1px solid ' + C.red + '55',
+            borderRadius: '6px', cursor: 'not-allowed',
+            letterSpacing: '0.5px', alignSelf: 'center',
+            display: 'flex', flexDirection: 'column',
+            alignItems: 'center', justifyContent: 'center',
+            lineHeight: 1.1
+          }
+        }, [
+          el('span', { style: { fontSize: '9px', opacity: 0.8 } }, 'RISK'),
+          el('span', { style: { fontSize: '11px', fontWeight: 900 } }, 'BLOCKED')
+        ]);
+      } else {
+        // Normal EXECUTE button (spec §4.5: 36 × 100 green gradient)
+        buttonNode = el('button', {
+          onClick: function (e) { e.stopPropagation(); onExecute(trade); },
+          style: {
+            height: '36px', width: '100px',
+            background: 'linear-gradient(180deg, ' + C.green + ', #16A34A)',
+            color: '#062B17', fontWeight: 800, fontSize: '11px',
+            border: 'none', borderRadius: '6px', cursor: 'pointer',
+            letterSpacing: '0.8px', alignSelf: 'center',
+            boxShadow: '0 0 0 1px ' + C.green + '66, 0 4px 12px ' + C.green + '33'
+          }
+        }, 'EXECUTE');
+      }
     }
     card.appendChild(buttonNode);
 
@@ -4357,6 +4630,158 @@
       }
     }, 'LIVE MONITOR · ALL OPEN + SELECTED'));
 
+    // ═══════════════════════════════════════════════════════════════════
+    // PORTFOLIO TODAY — pinned strip showing day-level stats
+    // ═══════════════════════════════════════════════════════════════════
+    // Users running multi-trade sessions need to see the forest, not
+    // just trees. This strip surfaces:
+    //   • Day net P&L (color-coded)
+    //   • Win/Loss count + win rate
+    //   • Open positions count / max concurrent cap
+    //   • Streak warning if losing 2+ in a row
+    var today = sessionGuide.today();
+    var decision = sessionGuide.shouldTakeNew();
+    var dayColor = today.netPnl > 1 ? C.green
+                 : today.netPnl < -1 ? C.red
+                 : C.textSec;
+    var strip = el('div', {
+      style: {
+        padding: '7px 10px 7px',
+        borderBottom: '1px solid ' + C.divider,
+        background: C.card,
+        flex: '0 0 auto'
+      }
+    });
+
+    // Row 1: "TODAY" label + 3 compact metric boxes
+    var row1 = el('div', {
+      style: {
+        display: 'grid',
+        gridTemplateColumns: 'auto 1fr 1fr 1fr',
+        gap: '8px', alignItems: 'center',
+        marginBottom: (today.lossStreak >= 2 || decision.recommend !== 'TAKE') ? '5px' : '0'
+      }
+    });
+    row1.appendChild(el('div', {
+      style: {
+        fontSize: '9px', fontWeight: 800, letterSpacing: '1.3px',
+        color: C.textMute
+      }
+    }, 'TODAY'));
+
+    // Net P&L
+    var pnlBox = el('div', {
+      style: {
+        textAlign: 'center', padding: '3px 4px',
+        background: C.bg, borderRadius: '3px',
+        borderLeft: '2px solid ' + dayColor
+      }
+    });
+    pnlBox.appendChild(el('div', {
+      style: {
+        fontSize: '8px', color: C.textMute, fontWeight: 700,
+        letterSpacing: '0.5px'
+      }
+    }, 'NET'));
+    pnlBox.appendChild(el('div', {
+      style: {
+        fontSize: '12px', fontWeight: 800, color: dayColor,
+        fontFamily: MONO, lineHeight: 1.1
+      }
+    }, (today.netPnl >= 0 ? '+' : '') + today.netPnl.toFixed(1) + '%'));
+    row1.appendChild(pnlBox);
+
+    // Record W-L + rate
+    var recBox = el('div', {
+      style: {
+        textAlign: 'center', padding: '3px 4px',
+        background: C.bg, borderRadius: '3px'
+      }
+    });
+    recBox.appendChild(el('div', {
+      style: {
+        fontSize: '8px', color: C.textMute, fontWeight: 700,
+        letterSpacing: '0.5px'
+      }
+    }, 'RECORD'));
+    recBox.appendChild(el('div', {
+      style: {
+        fontSize: '11px', fontWeight: 800, color: C.textPri,
+        fontFamily: MONO, lineHeight: 1.1
+      }
+    }, today.closedCount === 0
+         ? '—'
+         : today.wins + 'W / ' + today.losses + 'L'));
+    if (today.closedCount > 0) {
+      recBox.appendChild(el('div', {
+        style: {
+          fontSize: '8px', color: C.textMute, fontFamily: MONO,
+          lineHeight: 1
+        }
+      }, Math.round(today.winRate) + '% win'));
+    }
+    row1.appendChild(recBox);
+
+    // Open / Capacity
+    var maxConc = portfolioRisk.config.maxConcurrent;
+    var occupancy = today.openNow + today.pendingNow;
+    var capColor = occupancy >= maxConc ? C.red
+                 : occupancy >= maxConc - 1 ? C.orange : C.textSec;
+    var capBox = el('div', {
+      style: {
+        textAlign: 'center', padding: '3px 4px',
+        background: C.bg, borderRadius: '3px',
+        borderLeft: '2px solid ' + capColor
+      }
+    });
+    capBox.appendChild(el('div', {
+      style: {
+        fontSize: '8px', color: C.textMute, fontWeight: 700,
+        letterSpacing: '0.5px'
+      }
+    }, 'OPEN'));
+    capBox.appendChild(el('div', {
+      style: {
+        fontSize: '12px', fontWeight: 800, color: capColor,
+        fontFamily: MONO, lineHeight: 1.1
+      }
+    }, occupancy + '/' + maxConc));
+    row1.appendChild(capBox);
+    strip.appendChild(row1);
+
+    // Row 2 (conditional): streak warning OR new-trade recommendation
+    if (today.lossStreak >= 2) {
+      var streakBanner = el('div', {
+        style: {
+          background: C.red + '18', borderLeft: '3px solid ' + C.red,
+          borderRadius: '2px', padding: '4px 7px',
+          fontSize: '10px', color: C.red, fontWeight: 700,
+          lineHeight: 1.3
+        }
+      }, today.lossStreak + ' losses in a row · ' +
+         (today.lossStreak >= 3 ? 'STOP trading today'
+                                : 'reduce size, don\'t revenge-trade'));
+      strip.appendChild(streakBanner);
+    } else if (decision.recommend === 'CAUTION') {
+      strip.appendChild(el('div', {
+        style: {
+          background: C.orange + '15', borderLeft: '3px solid ' + C.orange,
+          borderRadius: '2px', padding: '4px 7px',
+          fontSize: '10px', color: C.orange, lineHeight: 1.3
+        }
+      }, '⚠ ' + decision.reason));
+    } else if (decision.recommend === 'SKIP') {
+      strip.appendChild(el('div', {
+        style: {
+          background: C.red + '12', borderLeft: '3px solid ' + C.red,
+          borderRadius: '2px', padding: '4px 7px',
+          fontSize: '10px', color: C.red, lineHeight: 1.3
+        }
+      }, '✕ ' + decision.reason));
+    }
+
+    panel.appendChild(strip);
+
     // Scrollable body
     var scroll = el('div', {
       style: {
@@ -4442,6 +4867,7 @@
     // 2. ACTIVE POSITIONS WITH LIFECYCLE TAGS
     var priceLookup = {};
     (state.trades || []).forEach(function (t) { priceLookup[t.id] = t; });
+    (state.heldTrades || []).forEach(function (t) { priceLookup[t.id] = t; });
     if (state.selected) priceLookup[state.selected.id] = state.selected;
 
     var activePositions = [];
@@ -5313,6 +5739,7 @@
     // Build price lookup from current trades
     var priceLookup = {};
     (state.trades || []).forEach(function (t) { priceLookup[t.id] = t; });
+    (state.heldTrades || []).forEach(function (t) { priceLookup[t.id] = t; });
 
     var positions = tradeMonitor.active(priceLookup);
     wrap.appendChild(el('div', {
@@ -6680,12 +7107,20 @@
         // This function is called on 5m close via on5mClose() → refreshAll().
         var prevIds = state.prevTradeIds || {};
 
-        // Trigger 1: NEW TOP TRADE
+        // Trigger 1: NEW TOP TRADE — with portfolio-aware context.
+        // Previously a bare announcement; now we tell the user whether
+        // it's a good moment to take another trade given their day's
+        // performance, concurrent positions, and session phase.
         var newTopTrade = top3.filter(function (t) { return !prevIds[t.id]; })[0];
         if (newTopTrade && Object.keys(prevIds).length > 0) {
-          pushLog('NEW TOP: ' + newTopTrade.symbol + ' ' + newTopTrade.strike, C.green);
-          speak('New top trade: ' + newTopTrade.symbol + ' ' + newTopTrade.strike +
-                ', confidence ' + newTopTrade.confidence + ' percent');
+          var announcement = sessionGuide.newTradeAnnouncement(newTopTrade);
+          var decision = sessionGuide.shouldTakeNew();
+          var logColor = decision.recommend === 'TAKE' ? C.green
+                       : decision.recommend === 'CAUTION' ? C.orange : C.red;
+          pushLog('NEW TOP: ' + newTopTrade.symbol + ' ' + newTopTrade.strike +
+                  ' · ' + decision.recommend +
+                  ' · ' + decision.reason, logColor);
+          speak(announcement);
         }
 
         // Trigger: FALSE BREAKOUT (v3 §13)
@@ -6756,6 +7191,42 @@
         state.prevTradeIds = nextPrev;
 
         state.trades = top3;
+
+        // ═══════════════════════════════════════════════════════════════
+        // HELD TRADES — preserve full trade data for every open/pending
+        // position the user has, regardless of whether it ranks in the
+        // current top 3. Without this, when an active position's symbol
+        // rotates off the top-3 list, the user loses visibility and the
+        // lifecycle engine loses fresh data to evaluate against.
+        //
+        // Logic: for every (pending|active) position, find the matching
+        // trade in `mapped` (full scored list) and pull the full object
+        // with its _raw bars + chain so priceLookup has fresh data.
+        // ═══════════════════════════════════════════════════════════════
+        var heldById = {};
+        for (var posId in paperPortfolio.positions) {
+          var pos = paperPortfolio.positions[posId];
+          if (pos.status !== 'pending' && pos.status !== 'active') continue;
+          // Prefer the fresh trade from mapped
+          var freshHeld = mapped.filter(function (m) { return m.id === pos.tradeId; })[0];
+          if (freshHeld) {
+            heldById[pos.tradeId] = freshHeld;
+          } else {
+            // Fallback: ticker no longer in scan universe. Synthesize
+            // minimal trade object from position snapshot so card + lifecycle
+            // can still show it (lifecycle will flag as stale).
+            heldById[pos.tradeId] = {
+              id: pos.tradeId, symbol: pos.sym, strike: pos.strike, side: pos.side,
+              confidence: pos.score || 0, state: 'stale',
+              reason: 'Scan universe dropped symbol',
+              price: pos.entryPremium,
+              sl: pos.sl, target: pos.target, trigger: pos.trigger,
+              lot: pos.lot, _staleData: true,
+              _raw: { _region: pos.region, currency: pos.currency }
+            };
+          }
+        }
+        state.heldTrades = Object.keys(heldById).map(function (k) { return heldById[k]; });
 
         // ── REGIME DETECTION — update from lead index's bars ─────────────
         // Find the lead ticker for the active region (NIFTY for IN, SPY for US)
@@ -6926,6 +7397,7 @@
       // Build price lookup from current trades
       var priceLookup = {};
       (state.trades || []).forEach(function (t) { priceLookup[t.id] = t; });
+    (state.heldTrades || []).forEach(function (t) { priceLookup[t.id] = t; });
       // Also include the selected trade in case it's an open position
       if (state.selected) priceLookup[state.selected.id] = state.selected;
 
