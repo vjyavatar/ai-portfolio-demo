@@ -19,11 +19,11 @@
   'use strict';
 
   // Loud startup log so we can verify the deployed version at a glance
-  console.log('%c[ActiveTrading] v37 loaded — Portfolio-aware multi-trade guidance',
+  console.log('%c[ActiveTrading] v39 loaded — Null-safe data handling + pre-ship checklist',
               'color:#22C55E;font-weight:bold;font-size:13px');
-  console.log('%c  PORTFOLIO TODAY strip + session summary + streak warnings + held-trades preservation',
+  console.log('%c  Fixed 4 fake-data fallbacks: detectSide, trend-compass, false-breakout, gamma override',
               'color:#64748B;font-size:11px');
-  console.log('%c  New trades announced with context: "you have 1 position open, room for more"',
+  console.log('%c  Missing VWAP/ATM no longer silently skews signals toward false BEARISH/unset',
               'color:#64748B;font-size:11px');
 
   // ── COLOR TOKENS ────────────────────────────────────────────────────────
@@ -1090,7 +1090,12 @@
       maxConcurrent: 3,              // max pending+active paper positions
       maxDailyLossPct: 3,            // stop trading if session P&L < -3%
       maxDrawdownPct: 5,             // stop trading if drawdown from peak > 5%
-      cooldownSeconds: 60            // min seconds between opens
+      // Cooldown prevents ACCIDENTAL double-clicks on the same card.
+      // Top-3 trades are pre-vetted by the scan engine, so a short
+      // cooldown (5s) is sufficient — lets user stack all 3 top trades
+      // back-to-back while still catching fat-finger mistakes. The
+      // double-execute prevention in onExecute catches same-trade dupes.
+      cooldownSeconds: 5
     },
 
     _lastOpenAt: 0,
@@ -1406,9 +1411,18 @@
             vn += tp * v; vd += v;
           }
         });
-        var barVwap = vd > 0 ? (vn / vd) : (raw.vwap || spot);
-        var aboveVwap = spot > barVwap;
-        vwapPos = aboveVwap ? 'Above VWAP' : 'Below VWAP';
+        var barVwap = null;
+        if (vd > 0) barVwap = vn / vd;
+        else if (typeof raw.vwap === 'number' && raw.vwap > 0) barVwap = raw.vwap;
+        // If VWAP truly unavailable, leave vwapPos unset rather than
+        // fabricating "Above VWAP" or "Below VWAP" from a fake comparison
+        var aboveVwap = null;
+        if (barVwap != null) {
+          aboveVwap = spot > barVwap;
+          vwapPos = aboveVwap ? 'Above VWAP' : 'Below VWAP';
+        } else {
+          vwapPos = 'VWAP data unavailable';
+        }
 
         var recent = bars.slice(-5);
         var hh = 0, hl = 0, lh = 0, ll = 0;
@@ -1426,10 +1440,13 @@
         var bearStruct = lh >= 2 && ll >= 2;
         structure = bullStruct ? 'HH-HL' : bearStruct ? 'LH-LL' : 'Mixed';
 
-        if (aboveVwap && bullStruct) { st = 'BULLISH'; stReason = 'HH-HL + above VWAP'; }
-        else if (!aboveVwap && bearStruct) { st = 'BEARISH'; stReason = 'LH-LL + below VWAP'; }
-        else if (aboveVwap && !bearStruct) { st = 'BULLISH'; stReason = 'Above VWAP, weak structure'; }
-        else if (!aboveVwap && !bullStruct) { st = 'BEARISH'; stReason = 'Below VWAP, weak structure'; }
+        // Only apply VWAP-based short-term classification when we actually
+        // know the VWAP relationship. If aboveVwap is null (no data), we
+        // don't fabricate a direction — fall through to the neutral branch.
+        if (aboveVwap === true && bullStruct) { st = 'BULLISH'; stReason = 'HH-HL + above VWAP'; }
+        else if (aboveVwap === false && bearStruct) { st = 'BEARISH'; stReason = 'LH-LL + below VWAP'; }
+        else if (aboveVwap === true && !bearStruct) { st = 'BULLISH'; stReason = 'Above VWAP, weak structure'; }
+        else if (aboveVwap === false && !bullStruct) { st = 'BEARISH'; stReason = 'Below VWAP, weak structure'; }
         else { stReason = vwapPos + ', ' + structure; }
       }
 
@@ -3370,30 +3387,44 @@
     return 45;
   }
 
-  // Detect side from price structure + OI before we compute the full score
+  // Detect side from price structure + OI before we compute the full score.
+  //
+  // Missing-data handling: we do NOT substitute missing values with `spot`
+  // (which would silently force the comparison to always equal). Instead,
+  // each hint runs only when its underlying data is a real number.
+  // This is consistent with Vijay's "no fake data" principle.
   function detectSide(row) {
     var spot = row.spot || 0;
-    var vwap = row.vwap || spot;
-    var openPx = row.today_open || spot;
-    var high = row.today_high || spot;
-    var low = row.today_low || spot;
-    var maxPain = row.max_pain || row.atm_strike || spot;
-    var pcr = row.pcr || 1;
+    var vwap = (typeof row.vwap === 'number' && row.vwap > 0) ? row.vwap : null;
+    var openPx = (typeof row.today_open === 'number' && row.today_open > 0) ? row.today_open : null;
+    var high = (typeof row.today_high === 'number' && row.today_high > 0) ? row.today_high : null;
+    var low = (typeof row.today_low === 'number' && row.today_low > 0) ? row.today_low : null;
+    var maxPain = (typeof row.max_pain === 'number' && row.max_pain > 0)
+      ? row.max_pain
+      : ((typeof row.atm_strike === 'number' && row.atm_strike > 0) ? row.atm_strike : null);
+    var pcr = (typeof row.pcr === 'number' && row.pcr > 0) ? row.pcr : null;
     var isFallback = row._fallback === true;
 
     var bullHints = 0, bearHints = 0;
-    if (spot > vwap) bullHints += 2;
-    if (spot < vwap) bearHints += 2;
-    if (spot > openPx) bullHints += 1;
-    if (spot < openPx) bearHints += 1;
-    if (high > low) {
+    // Each hint only fires when the underlying data exists
+    if (vwap != null) {
+      if (spot > vwap) bullHints += 2;
+      if (spot < vwap) bearHints += 2;
+    }
+    if (openPx != null) {
+      if (spot > openPx) bullHints += 1;
+      if (spot < openPx) bearHints += 1;
+    }
+    if (high != null && low != null && high > low) {
       var rp = (spot - low) / (high - low);
       if (rp > 0.6) bullHints += 1;
       if (rp < 0.4) bearHints += 1;
     }
-    if (spot > maxPain) bullHints += 1;
-    if (spot < maxPain) bearHints += 1;
-    if (!isFallback) {
+    if (maxPain != null) {
+      if (spot > maxPain) bullHints += 1;
+      if (spot < maxPain) bearHints += 1;
+    }
+    if (!isFallback && pcr != null) {
       if (pcr >= 1.2) bullHints += 1;
       if (pcr <= 0.8) bearHints += 1;
     }
@@ -3407,7 +3438,10 @@
   // ═══════════════════════════════════════════════════════════════════════
   function checkFalseBreakout(row, side, isFallback) {
     if (isFallback) return { triggered: false, penalty: 0 };
-    var spot = row.spot || 0, vwap = row.vwap || spot;
+    var spot = row.spot || 0;
+    var vwap = (typeof row.vwap === 'number' && row.vwap > 0) ? row.vwap : null;
+    // Without VWAP, we can't assess breakout divergence — don't trigger
+    if (vwap == null) return { triggered: false, penalty: 0, reason: 'no_vwap' };
     var ceBuildup = row.ce_buildup || [];
     var peBuildup = row.pe_buildup || [];
     var ceChg = ceBuildup[0] ? (ceBuildup[0].chg || 0) : 0;
@@ -3487,7 +3521,9 @@
     if (!isInGammaTimeWindow(region)) return { triggered: false };
 
     var spot = row.spot || 0;
-    var atm = row.atm_strike || spot;
+    var atm = (typeof row.atm_strike === 'number' && row.atm_strike > 0)
+      ? row.atm_strike : null;
+    if (atm == null) return { triggered: false, reason: 'no_atm_strike' };
     var bars = row.ohlc_bars || [];
     if (bars.length < 5) return { triggered: false };
     var last = bars[bars.length - 1];
@@ -6794,11 +6830,19 @@
       }, scanFilter ? 'No scanner matches for "' + scanFilter + '"' : 'Loading scanner…'));
     }
     displayScan.forEach(function (r, i) {
-      var trend = r.trend || [r.score, r.score, r.score];
-      var up = trend[trend.length - 1] > trend[0];
-      var dn = trend[trend.length - 1] < trend[0];
-      var tColor = up ? C.green : dn ? C.red : C.textSec;
-      var tMark = up ? '▲' : dn ? '▼' : '■';
+      var trend = r.trend;
+      // Only compute direction when we have at least 2 history points.
+      // First-seen trades (null trend) show "building" instead of a
+      // misleading flat 95→95→95 which was a bug reported by user.
+      var up = trend && trend[trend.length - 1] > trend[0];
+      var dn = trend && trend[trend.length - 1] < trend[0];
+      var tColor = !trend ? C.textMute
+                 : up ? C.green
+                 : dn ? C.red
+                 : C.textSec;
+      var tMark = !trend ? '…' : up ? '▲' : dn ? '▼' : '■';
+      var trendText = trend ? trend.join(' → ')
+                            : 'building history (' + r.historyCount + '/2)';
 
       body.appendChild(el('div', {
         style: {
@@ -6815,7 +6859,7 @@
         el('div', { style: { color: confColor(r.score), fontWeight: 700 } }, String(r.score)),
         el('div', {}, pill(r.state, true)),
         el('div', { style: { color: tColor, display: 'flex', alignItems: 'center', gap: '6px' } }, [
-          el('span', {}, trend.join(' → ')),
+          el('span', {}, trendText),
           el('span', {}, tMark)
         ])
       ]));
@@ -7090,8 +7134,19 @@
         // ═══ SCORE HISTORY — v3 §5 "Score: 78 → 82 → 85" trend display ══
         // Persist last 3 confidence scores per trade id. Only updated here at
         // 5m close (Tier 1). Stale entries cleaned up.
+        //
+        // IMPORTANT: We record history for BOTH top-3 AND secondary scanner
+        // trades. Previously only top-3 got history, which meant scanner
+        // rows always showed "95 → 95 → 95" (flat) because their history
+        // never persisted across refreshes. Now every ranked trade gets
+        // real trend data.
         var newHist = {};
-        top3.forEach(function (t) {
+        var tradesToTrackHist = top3.concat(
+          mapped.filter(function (m) {
+            return top3.filter(function (t) { return t.id === m.id; }).length === 0;
+          }).slice(0, 6)  // top 6 scanner candidates (same as what's shown)
+        );
+        tradesToTrackHist.forEach(function (t) {
           var h = (state.scoreHistory[t.id] || []).slice();
           // Only append if changed (avoid stuttering on no-op refreshes)
           if (h.length === 0 || h[h.length - 1] !== t.confidence) {
@@ -7300,12 +7355,16 @@
         });
         state.scanner = scannerPool.slice(0, 6).map(function (t) {
           var h = state.scoreHistory[t.id];
-          var trend = (h && h.length >= 2) ? h : [t.confidence, t.confidence, t.confidence];
+          // Only show a real trend if we have 2+ history points.
+          // First-seen trades get a null trend so UI can show "building…"
+          // instead of a misleading flat 95→95→95.
+          var trend = (h && h.length >= 2) ? h : null;
           return {
             symbol: t.symbol, direction: t.side,
-            strike: t.strike, // spec: show strike alongside symbol for clarity
+            strike: t.strike,
             score: t.confidence, state: t.state,
-            trend: trend
+            trend: trend,
+            historyCount: h ? h.length : 0
           };
         });
 
