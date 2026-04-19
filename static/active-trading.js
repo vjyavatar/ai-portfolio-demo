@@ -19,9 +19,9 @@
   'use strict';
 
   // Loud startup log so we can verify the deployed version at a glance
-  console.log('%c[ActiveTrading] v26 loaded — Institutional modules: Kelly sizing + Exec costs + Regime + Alpha decay',
+  console.log('%c[ActiveTrading] v27 loaded — Full voice coverage for every important stage',
               'color:#22C55E;font-weight:bold;font-size:13px');
-  console.log('%c  Debug: window._atEngine.kelly | .cost | .regime | .alphaDecay | .portfolio | .signals | .exportSignalsCSV()',
+  console.log('%c  Debug: window._atEngine.kelly | .cost | .regime | .alphaDecay | .portfolio | .signals',
               'color:#64748B;font-size:11px');
 
   // ── COLOR TOKENS ────────────────────────────────────────────────────────
@@ -377,7 +377,10 @@
       var color = p.status === 'won' ? C.green : p.status === 'lost' ? C.red : C.textSec;
       pushLog('POSITION ' + verb + ': ' + p.sym + ' ' + p.strike + pnl, color);
       if (state.voiceOn && (p.status === 'won' || p.status === 'lost')) {
-        speak(p.sym + ' ' + (p.status === 'won' ? 'hit target' : 'stopped out'));
+        var pctAbs = Math.abs(p.realizedPct || 0).toFixed(0);
+        speak(p.sym + ' ' +
+              (p.status === 'won' ? 'target hit, up ' : 'stopped out, down ') +
+              pctAbs + ' percent');
       }
     } catch (e) {}
   });
@@ -2441,8 +2444,12 @@
     pushLog('  cost: ' + ccy + costs.total.toFixed(2) +
             ' (' + costs.totalPctOfTurnover.toFixed(2) + '% turnover) · ' +
             'regime: ' + regimeDetector.label(), C.textSec);
-    speak(t.symbol + ' ' + t.strike + ' paper open, ' +
-          sizing.lots + ' lot' + (sizing.lots > 1 ? 's' : ''));
+    // Voice covers: symbol, strike, lot sizing, capital %, break-even %.
+    // Short enough to not delay but complete enough for hands-off trading.
+    speak(t.symbol + ' ' + t.strike + ' opened. ' +
+          sizing.lots + ' lot' + (sizing.lots > 1 ? 's' : '') +
+          ', ' + sizing.pctOfCapital.toFixed(0) + ' percent capital' +
+          ', break even ' + costs.breakEvenPct.toFixed(1) + ' percent');
     rerender();
   }
 
@@ -2730,8 +2737,44 @@
           return (r.sym === leadSym || r.symbol === leadSym);
         })[0];
         if (leadRow && Array.isArray(leadRow.ohlc_bars)) {
-          regimeDetector.classify(leadRow.ohlc_bars);
+          var priorRegime = regimeDetector.current;
+          var newRegime = regimeDetector.classify(leadRow.ohlc_bars);
+          // Voice-alert on regime TRANSITION (not every scan — avoid chatter)
+          if (priorRegime !== newRegime && priorRegime !== 'UNKNOWN' && newRegime !== 'UNKNOWN') {
+            var spoken = ({
+              TRENDING_UP: 'Trending up. Size up',
+              TRENDING_DN: 'Trending down. Size up',
+              RANGING:     'Regime changed: ranging. Reduce size',
+              VOLATILE:    'Regime changed: volatile. Half size, raise minimum score',
+              MIXED:       'Regime mixed'
+            })[newRegime] || 'Regime changed';
+            if (state.voiceOn) speak(spoken);
+            pushLog('REGIME: ' + priorRegime + ' → ' + newRegime + ' (Kelly ×' +
+                    regimeDetector.kellyMultiplier().toFixed(2) + ')', C.orange);
+          }
         }
+
+        // ── ALPHA DECAY — voice-alert on status transition ────────────────
+        // Only fire when we have enough data AND status has changed since last check
+        var priorDecayStatus = state._priorDecayStatus || 'INSUFFICIENT_DATA';
+        var currentDecay = alphaDecay.read();
+        if (currentDecay.status !== priorDecayStatus &&
+            currentDecay.status !== 'INSUFFICIENT_DATA') {
+          var decayMsg = ({
+            HEALTHY:   'Alpha healthy. Engine has edge',
+            DEGRADING: 'Alpha degrading. High score signals losing edge',
+            DECAYED:   'Alert: alpha decayed. Engine is noise. Pause trading'
+          })[currentDecay.status];
+          if (decayMsg) {
+            if (state.voiceOn) speak(decayMsg);
+            pushLog('ALPHA: ' + priorDecayStatus + ' → ' + currentDecay.status +
+                    ' (edge ' + (currentDecay.spread >= 0 ? '+' : '') +
+                    currentDecay.spread.toFixed(1) + '%)',
+                    currentDecay.status === 'DECAYED' ? C.red :
+                    currentDecay.status === 'DEGRADING' ? C.orange : C.green);
+          }
+        }
+        state._priorDecayStatus = currentDecay.status;
 
         // ── LEAN-STYLE: emit Signals + tick paper portfolio on each scan ──
         // Each top-3 trade becomes a Signal record in the ledger. The paper
