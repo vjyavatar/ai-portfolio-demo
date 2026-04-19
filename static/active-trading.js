@@ -19,11 +19,11 @@
   'use strict';
 
   // Loud startup log so we can verify the deployed version at a glance
-  console.log('%c[ActiveTrading] v33 loaded — 3-col layout + Live Lifecycle + Plain-English voice',
+  console.log('%c[ActiveTrading] v36 loaded — Trade lifecycle visibility',
               'color:#22C55E;font-weight:bold;font-size:13px');
-  console.log('%c  Middle column: consensus verdict + live ADD/REDUCE/EXIT tags per position + macro snapshot',
+  console.log('%c  Top trade card shows LIVE/PENDING/WON/LOST state + colored left edge',
               'color:#64748B;font-size:11px');
-  console.log('%c  Every 5m bar: engine evaluates each open position and speaks plain-English guidance',
+  console.log('%c  Double-execute prevention + recently-closed banner in middle panel',
               'color:#64748B;font-size:11px');
 
   // ── COLOR TOKENS ────────────────────────────────────────────────────────
@@ -282,6 +282,35 @@
       this.save();
       bus.emit('position:opened', pos);
       return pos;
+    },
+
+    // Find an OPEN (pending/active) position for a given trade ID.
+    // Used to prevent double-executing a trade and to render the card
+    // in its correct visual state (pending → active → won/lost).
+    findByTradeId: function (tradeId) {
+      if (!tradeId) return null;
+      for (var id in this.positions) {
+        var p = this.positions[id];
+        if (p.tradeId === tradeId &&
+            (p.status === 'pending' || p.status === 'active')) {
+          return p;
+        }
+      }
+      return null;
+    },
+
+    // Find the MOST RECENT position (any status) for a trade ID — used to
+    // show a "WON 32%" / "LOST 5%" outcome tag on the top trade card after
+    // a position closes, so the user has closure feedback.
+    findLatestByTradeId: function (tradeId) {
+      if (!tradeId) return null;
+      var latest = null;
+      for (var id in this.positions) {
+        var p = this.positions[id];
+        if (p.tradeId !== tradeId) continue;
+        if (!latest || (p.openedAt || 0) > (latest.openedAt || 0)) latest = p;
+      }
+      return latest;
     },
     // On every 5m close, update all active positions: check triggers, SL hits,
     // target hits, or expiry. This is the Lean RealtimeHandler equivalent.
@@ -2386,6 +2415,306 @@
   // This is what makes it a "live guide" instead of a static scanner.
   // Quick Trade had terse one-shot voice; we now mirror its conversational
   // style and extend it across the full position lifecycle.
+  // ═══════════════════════════════════════════════════════════════════════
+  // 16a. VOLATILITY METRICS (ATR + Expected Move + Keltner Squeeze)
+  // ═══════════════════════════════════════════════════════════════════════
+  // Computes intraday ATR, IV-derived expected move, and Keltner Squeeze
+  // (Bollinger Band width vs Keltner Channel width). Squeeze ON = BB inside
+  // KC = volatility compressed = breakout likely. Widely used setup filter.
+  var volMetrics = {
+    compute: function (bars, spot, atmIV) {
+      if (!Array.isArray(bars) || bars.length < 5 || !spot) return { status: 'no_data' };
+
+      // ATR from last 14 bars (true range each)
+      var trValues = [];
+      for (var i = 1; i < bars.length; i++) {
+        var b = bars[i], p = bars[i - 1];
+        if (b.h == null || b.l == null || p.c == null) continue;
+        var tr = Math.max(
+          b.h - b.l,
+          Math.abs(b.h - p.c),
+          Math.abs(b.l - p.c)
+        );
+        trValues.push(tr);
+      }
+      if (trValues.length === 0) return { status: 'no_data' };
+      var recent = trValues.slice(-14);
+      var atr = recent.reduce(function (s, v) { return s + v; }, 0) / recent.length;
+      var atrPct = (atr / spot) * 100;
+
+      // Expected move from IV (1-day)
+      var expectedMove = 0, expectedMovePct = 0;
+      if (atmIV && atmIV > 0) {
+        expectedMove = spot * (atmIV / 100) * Math.sqrt(1 / 252);
+        expectedMovePct = (expectedMove / spot) * 100;
+      }
+
+      // Keltner Squeeze
+      var squeeze = null, bbWidth = null, kcWidth = null, squeezeLabel = null;
+      if (bars.length >= 20) {
+        var closes = bars.slice(-20).map(function (b) { return b.c; });
+        var sma = closes.reduce(function (s, v) { return s + v; }, 0) / 20;
+        var variance = closes.reduce(function (s, v) {
+          return s + Math.pow(v - sma, 2);
+        }, 0) / 20;
+        var std = Math.sqrt(variance);
+        bbWidth = 4 * std;          // ±2σ = 4σ total
+        kcWidth = atr * 3;          // ±1.5×ATR = 3×ATR total
+        squeeze = bbWidth < kcWidth;
+        squeezeLabel = squeeze ? 'SQUEEZE ON — Breakout imminent' : 'SQUEEZE OFF — Normal volatility';
+      }
+
+      return {
+        status: 'ok',
+        atr: atr, atrPct: atrPct,
+        expectedMove: expectedMove, expectedMovePct: expectedMovePct,
+        expectedHigh: spot + expectedMove,
+        expectedLow: spot - expectedMove,
+        squeeze: squeeze, squeezeLabel: squeezeLabel,
+        bbWidth: bbWidth, kcWidth: kcWidth
+      };
+    }
+  };
+
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // 16b. PAYOFF DIAGRAM — single-leg call/put P&L curve
+  // ═══════════════════════════════════════════════════════════════════════
+  // Computes 21-point P&L table across ±4% of spot for a simple long-option
+  // trade. Used by the UI payoff panel to draw an SVG curve.
+  var payoffDiagram = {
+    compute: function (trade, spot, lot) {
+      if (!trade || !trade.side || !trade.price || !spot) return { status: 'no_data' };
+
+      // Extract strike number from "24500 CE"
+      var m = String(trade.strike || '').match(/(\d+(\.\d+)?)/);
+      if (!m) return { status: 'no_strike' };
+      var strike = parseFloat(m[1]);
+      var premium = trade.price;
+      var lotSize = lot || trade.lot || 75;
+
+      var lo = spot * 0.96;
+      var hi = spot * 1.04;
+      var steps = 20;
+      var stepSize = (hi - lo) / steps;
+      var points = [];
+      var maxPnl = -Infinity, minPnl = Infinity;
+
+      for (var i = 0; i <= steps; i++) {
+        var price = lo + stepSize * i;
+        var pnlPerUnit;
+        if (trade.side === 'CE') {
+          pnlPerUnit = Math.max(0, price - strike) - premium;
+        } else {
+          pnlPerUnit = Math.max(0, strike - price) - premium;
+        }
+        var pnl = Math.round(pnlPerUnit * lotSize);
+        if (pnl > maxPnl) maxPnl = pnl;
+        if (pnl < minPnl) minPnl = pnl;
+        points.push({ price: Math.round(price * 100) / 100, pnl: pnl });
+      }
+
+      // Breakeven
+      var breakeven = trade.side === 'CE'
+        ? strike + premium
+        : strike - premium;
+
+      return {
+        status: 'ok',
+        points: points,
+        maxPnl: maxPnl, minPnl: minPnl,
+        breakeven: breakeven,
+        strike: strike, premium: premium,
+        spot: spot, side: trade.side, lotSize: lotSize
+      };
+    }
+  };
+
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // 16c. SENTIMENT BAR — aggregated bullish/bearish vote across modules
+  // ═══════════════════════════════════════════════════════════════════════
+  // Produces a single 0-100 sentiment score by polling every module the
+  // consensus engine consults. Used as a single-glance barometer.
+  //   0   = maximally bearish
+  //   50  = balanced
+  //   100 = maximally bullish
+  var sentimentBar = {
+    read: function (raw) {
+      if (!raw) return { status: 'no_data' };
+      var bullPoints = 0, bearPoints = 0, totalChecked = 0;
+
+      // Regime
+      var reg = regimeDetector.current;
+      totalChecked++;
+      if (reg === 'TRENDING_UP') bullPoints++;
+      else if (reg === 'TRENDING_DN') bearPoints++;
+
+      // GEX regime (BREAKOUT just means directional, doesn't pick side;
+      // skip unless combined with compass to infer direction)
+      // Compass
+      var cmp = trendCompass.analyze(raw);
+      totalChecked += 2; // compass counts as 2 (short + long)
+      if (cmp.status === 'ok') {
+        if (cmp.shortTerm === 'BULLISH') bullPoints++;
+        else if (cmp.shortTerm === 'BEARISH') bearPoints++;
+        if (cmp.longTerm === 'BULLISH') bullPoints++;
+        else if (cmp.longTerm === 'BEARISH') bearPoints++;
+      }
+
+      // EMA stacking
+      var pa = priceAction.analyze(raw);
+      if (pa.status === 'ok' && pa.ema) {
+        totalChecked++;
+        if (pa.ema.alignment === 'STACKED_BULL') bullPoints++;
+        else if (pa.ema.alignment === 'STACKED_BEAR') bearPoints++;
+      }
+
+      // BOS/CHoCH
+      if (pa.status === 'ok' && pa.bosChoch && pa.bosChoch.signals) {
+        pa.bosChoch.signals.forEach(function (s) {
+          totalChecked++;
+          if (s.type.indexOf('BULL') >= 0) bullPoints++;
+          else if (s.type.indexOf('BEAR') >= 0) bearPoints++;
+        });
+      }
+
+      // Liquidity sweep
+      if (pa.status === 'ok' && pa.liquiditySweep) {
+        pa.liquiditySweep.forEach(function (sw) {
+          totalChecked++;
+          if (sw.type.indexOf('BULL') >= 0) bullPoints++;
+          else if (sw.type.indexOf('BEAR') >= 0) bearPoints++;
+        });
+      }
+
+      // Candle closure
+      if (pa.status === 'ok' && pa.candle) {
+        if (pa.candle.strength === 'STRONG') {
+          totalChecked++;
+          if (pa.candle.direction === 'BULL') bullPoints++;
+          else if (pa.candle.direction === 'BEAR') bearPoints++;
+        }
+      }
+
+      // External gap (region-aware via _region or default)
+      var region = raw._region || 'IN';
+      var ext = region === 'IN'
+        ? externalFeeds.giftReport()
+        : externalFeeds.usPreReport();
+      if (ext && ext.status === 'ok') {
+        totalChecked++;
+        if (ext.gap > 0.15) bullPoints++;
+        else if (ext.gap < -0.15) bearPoints++;
+      }
+
+      if (totalChecked === 0) return { status: 'no_data' };
+
+      // Score: 50 = balanced; each bull raises score, each bear lowers
+      var net = bullPoints - bearPoints;
+      var maxNet = totalChecked; // if everything is one-sided
+      // Normalize net to a -1..+1 range then map to 0..100
+      var norm = net / Math.max(maxNet, 1);
+      var score = Math.round(50 + norm * 50);
+      score = Math.max(0, Math.min(100, score));
+
+      var label;
+      if (score >= 75) label = 'STRONGLY BULLISH';
+      else if (score >= 60) label = 'BULLISH';
+      else if (score >= 45) label = 'NEUTRAL';
+      else if (score >= 25) label = 'BEARISH';
+      else label = 'STRONGLY BEARISH';
+
+      return {
+        status: 'ok',
+        score: score,
+        label: label,
+        bullPoints: bullPoints,
+        bearPoints: bearPoints,
+        totalChecked: totalChecked
+      };
+    }
+  };
+
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // 16d. SESSION PROFILE — classify current time within the trading session
+  // ═══════════════════════════════════════════════════════════════════════
+  // Different phases of the session have different behavior:
+  //   OPENING (first 30 min)  — high volatility, gap fills, news reactions
+  //   MORNING (30m-12:00)     — trend establishes
+  //   LUNCH (12:00-13:30)     — low volume chop
+  //   AFTERNOON (13:30-15:00) — trend resumption or reversal
+  //   CLOSING (last 30 min)   — squaring off, institutional flows
+  //
+  // Each phase adjusts the consensus engine's confidence in signals.
+  // E.g., lunch-hour breakouts have lower win rate than morning breakouts.
+  var sessionProfile = {
+    phase: function (region) {
+      region = region || 'IN';
+      var now = new Date();
+      // IST offset from local time
+      var ist;
+      if (region === 'IN') {
+        var istMs = now.getTime() + (5.5 * 60 * 60 * 1000) +
+                    (now.getTimezoneOffset() * 60 * 1000);
+        ist = new Date(istMs);
+      } else {
+        // US ET (UTC-5 standard, but skip DST for simplicity)
+        var etMs = now.getTime() - (5 * 60 * 60 * 1000) +
+                   (now.getTimezoneOffset() * 60 * 1000);
+        ist = new Date(etMs);
+      }
+      var day = ist.getUTCDay();
+      if (day === 0 || day === 6) return { phase: 'WEEKEND', open: false };
+
+      var mins = ist.getUTCHours() * 60 + ist.getUTCMinutes();
+
+      if (region === 'IN') {
+        // NSE: 09:15 - 15:30 IST
+        if (mins < 9 * 60 + 15) return { phase: 'PRE_OPEN', open: false };
+        if (mins > 15 * 60 + 30) return { phase: 'POST_CLOSE', open: false };
+        if (mins <= 9 * 60 + 45) return { phase: 'OPENING', open: true,
+          label: 'Opening volatility — expect range expansion' };
+        if (mins < 12 * 60) return { phase: 'MORNING', open: true,
+          label: 'Morning trend — high conviction window' };
+        if (mins < 13 * 60 + 30) return { phase: 'LUNCH', open: true,
+          label: 'Lunch chop — lower win rate on breakouts' };
+        if (mins < 15 * 60) return { phase: 'AFTERNOON', open: true,
+          label: 'Afternoon — watch for trend resumption' };
+        return { phase: 'CLOSING', open: true,
+          label: 'Closing flows — institutional squaring off' };
+      } else {
+        // NYSE/NASDAQ: 09:30 - 16:00 ET
+        if (mins < 9 * 60 + 30) return { phase: 'PRE_OPEN', open: false };
+        if (mins > 16 * 60) return { phase: 'POST_CLOSE', open: false };
+        if (mins <= 10 * 60) return { phase: 'OPENING', open: true,
+          label: 'Opening volatility — expect range expansion' };
+        if (mins < 12 * 60) return { phase: 'MORNING', open: true,
+          label: 'Morning trend — high conviction window' };
+        if (mins < 13 * 60 + 30) return { phase: 'LUNCH', open: true,
+          label: 'Lunch chop — lower win rate on breakouts' };
+        if (mins < 15 * 60 + 30) return { phase: 'AFTERNOON', open: true,
+          label: 'Afternoon — watch for trend resumption' };
+        return { phase: 'CLOSING', open: true,
+          label: 'Closing flows — institutional squaring off' };
+      }
+    },
+
+    // Multiplier on signal strength based on session phase
+    signalMultiplier: function (phase) {
+      switch (phase) {
+        case 'OPENING':   return 1.1;   // signals strong but volatile
+        case 'MORNING':   return 1.2;   // best conviction window
+        case 'LUNCH':     return 0.75;  // chop - lower win rate
+        case 'AFTERNOON': return 1.0;
+        case 'CLOSING':   return 0.85;  // institutional close-outs can whipsaw
+        default:          return 1.0;
+      }
+    }
+  };
+
+
   var liveTradeGuide = {
     // Per-position snapshot taken at entry time, used for drift detection
     _entrySnapshots: {},
@@ -2628,6 +2957,10 @@
     consensus: consensusEngine,
     liveGuide: liveTradeGuide,
     voiceGuide: voiceGuide,
+    volMetrics: volMetrics,
+    payoff: payoffDiagram,
+    sentiment: sentimentBar,
+    session: sessionProfile,
 
     // Dump signals as CSV (for feeding external backtest tools)
     exportSignalsCSV: function () {
@@ -3738,14 +4071,30 @@
   function tradeCard(trade) {
     var isSelected = state.selected && state.selected.id === trade.id;
     var history = state.scoreHistory[trade.id] || [];
+    // Lifecycle status for this trade (determines card left-edge color)
+    var _cardOpenPos = paperPortfolio.findByTradeId(trade.id);
+    var _cardLatestPos = _cardOpenPos ||
+      paperPortfolio.findLatestByTradeId(trade.id);
+    var _edgeColor = null;
+    if (_cardOpenPos) {
+      _edgeColor = _cardOpenPos.status === 'active' ? C.green : C.orange;
+    } else if (_cardLatestPos && _cardLatestPos.status === 'won') {
+      _edgeColor = C.green;
+    } else if (_cardLatestPos && _cardLatestPos.status === 'lost') {
+      _edgeColor = C.red;
+    }
 
     var card = el('div', {
       onClick: function () { selectTrade(trade); },
       style: {
-        height: '104px', padding: '8px',  // bumped to fit Buy/Trig/SL/Target line
+        height: '104px', padding: '8px',
         background: isSelected ? C.active : C.card,
         borderRadius: '12px',
         border: '1px solid ' + (isSelected ? C.blue : (trade.gammaMode ? '#F59E0B' : C.divider)),
+        // Thick left edge when position is live/closed to make status unmistakable
+        borderLeft: _edgeColor
+          ? '4px solid ' + _edgeColor
+          : '1px solid ' + (isSelected ? C.blue : (trade.gammaMode ? '#F59E0B' : C.divider)),
         marginBottom: '6px',
         display: 'grid',
         gridTemplateColumns: '1fr auto auto',
@@ -3826,18 +4175,84 @@
       }
     }, trade.confidence + '%'));
 
-    // Row 1 col 3 — EXECUTE (spec §4.5: 36 × 100 green gradient)
-    card.appendChild(el('button', {
-      onClick: function (e) { e.stopPropagation(); onExecute(trade); },
-      style: {
-        height: '36px', width: '100px',
-        background: 'linear-gradient(180deg, ' + C.green + ', #16A34A)',
-        color: '#062B17', fontWeight: 800, fontSize: '11px',
-        border: 'none', borderRadius: '6px', cursor: 'pointer',
-        letterSpacing: '0.8px', alignSelf: 'center',
-        boxShadow: '0 0 0 1px ' + C.green + '66, 0 4px 12px ' + C.green + '33'
-      }
-    }, 'EXECUTE'));
+    // Row 1 col 3 — EXECUTE button OR state badge if already executing/closed
+    // Determine trade lifecycle state for this card
+    var openPos = paperPortfolio.findByTradeId(trade.id);
+    var latestPos = openPos || paperPortfolio.findLatestByTradeId(trade.id);
+    var buttonNode;
+
+    if (openPos) {
+      // Currently live — pending or active
+      var activeLabel = openPos.status === 'active' ? 'LIVE' : 'PENDING';
+      var activeBg = openPos.status === 'active' ? C.green : C.orange;
+      buttonNode = el('button', {
+        onClick: function (e) {
+          e.stopPropagation();
+          // Clicking LIVE selects the trade so user sees it in middle monitor
+          selectTrade(trade);
+        },
+        title: 'Already executing — click to view in Live Monitor',
+        style: {
+          height: '36px', width: '100px',
+          background: activeBg + '22',
+          color: activeBg,
+          fontWeight: 800, fontSize: '11px',
+          border: '1px solid ' + activeBg,
+          borderRadius: '6px', cursor: 'pointer',
+          letterSpacing: '0.8px', alignSelf: 'center'
+        }
+      }, '● ' + activeLabel);
+    } else if (latestPos && (latestPos.status === 'won' ||
+                              latestPos.status === 'lost' ||
+                              latestPos.status === 'cancelled' ||
+                              latestPos.status === 'expired')) {
+      // Previous position closed — show outcome
+      var wonColor = latestPos.status === 'won' ? C.green
+                   : latestPos.status === 'lost' ? C.red : C.textMute;
+      var pctTxt = latestPos.realizedPct != null
+        ? (latestPos.realizedPct >= 0 ? '+' : '') + latestPos.realizedPct.toFixed(1) + '%'
+        : latestPos.status.toUpperCase();
+      buttonNode = el('button', {
+        onClick: function (e) {
+          e.stopPropagation();
+          // Allow re-execute after a closed trade
+          onExecute(trade);
+        },
+        title: 'Previous outcome: ' + latestPos.status.toUpperCase() +
+               (latestPos.realizedPct != null
+                  ? ' at ' + latestPos.realizedPct.toFixed(1) + '%'
+                  : '') + '. Click to re-execute.',
+        style: {
+          height: '36px', width: '100px',
+          background: wonColor + '15',
+          color: wonColor,
+          fontWeight: 800, fontSize: '10px',
+          border: '1px solid ' + wonColor + '55',
+          borderRadius: '6px', cursor: 'pointer',
+          letterSpacing: '0.5px', alignSelf: 'center',
+          display: 'flex', flexDirection: 'column',
+          alignItems: 'center', justifyContent: 'center',
+          lineHeight: 1.1
+        }
+      }, [
+        el('span', { style: { fontSize: '9px', opacity: 0.8 } }, latestPos.status.toUpperCase()),
+        el('span', { style: { fontSize: '13px', fontWeight: 900 } }, pctTxt)
+      ]);
+    } else {
+      // Normal EXECUTE button (spec §4.5: 36 × 100 green gradient)
+      buttonNode = el('button', {
+        onClick: function (e) { e.stopPropagation(); onExecute(trade); },
+        style: {
+          height: '36px', width: '100px',
+          background: 'linear-gradient(180deg, ' + C.green + ', #16A34A)',
+          color: '#062B17', fontWeight: 800, fontSize: '11px',
+          border: 'none', borderRadius: '6px', cursor: 'pointer',
+          letterSpacing: '0.8px', alignSelf: 'center',
+          boxShadow: '0 0 0 1px ' + C.green + '66, 0 4px 12px ' + C.green + '33'
+        }
+      }, 'EXECUTE');
+    }
+    card.appendChild(buttonNode);
 
     // Row 2 col 1 — reason
     card.appendChild(el('div', {
@@ -4030,9 +4445,70 @@
     if (state.selected) priceLookup[state.selected.id] = state.selected;
 
     var activePositions = [];
+    var recentlyClosed = [];
+    var nowTs = Date.now();
+    var RECENT_MS = 5 * 60 * 1000; // 5 minutes
     for (var id in paperPortfolio.positions) {
       var p = paperPortfolio.positions[id];
-      if (p.status === 'active' || p.status === 'pending') activePositions.push(p);
+      if (p.status === 'active' || p.status === 'pending') {
+        activePositions.push(p);
+      } else if ((p.status === 'won' || p.status === 'lost' ||
+                  p.status === 'cancelled' || p.status === 'expired') &&
+                 p.closedAt && (nowTs - p.closedAt) < RECENT_MS) {
+        recentlyClosed.push(p);
+      }
+    }
+    // Sort recently closed by most-recent first
+    recentlyClosed.sort(function (a, b) { return (b.closedAt || 0) - (a.closedAt || 0); });
+
+    // ── Recently-closed banner ─────────────────────────────────────────
+    // Shows outcome of last trades so user gets closure after EXIT happens.
+    // Disappears after 5 minutes — permanent record still in the portfolio.
+    if (recentlyClosed.length > 0) {
+      var closedSection = el('div', {
+        style: { padding: '10px 10px 0' }
+      });
+      closedSection.appendChild(el('div', {
+        style: {
+          fontSize: '9px', fontWeight: 700, color: C.textSec,
+          letterSpacing: '0.8px', marginBottom: '6px'
+        }
+      }, 'RECENTLY CLOSED (' + recentlyClosed.length + ')'));
+
+      recentlyClosed.slice(0, 3).forEach(function (cp) {
+        var won = cp.status === 'won';
+        var col = won ? C.green : cp.status === 'lost' ? C.red : C.textMute;
+        var pct = cp.realizedPct != null
+          ? (cp.realizedPct >= 0 ? '+' : '') + cp.realizedPct.toFixed(1) + '%'
+          : '—';
+        var minsAgo = Math.max(0, Math.floor((nowTs - cp.closedAt) / 60000));
+        var closedRow = el('div', {
+          style: {
+            background: col + '10', borderLeft: '3px solid ' + col,
+            borderRadius: '3px', padding: '6px 8px', marginBottom: '5px'
+          }
+        });
+        closedRow.appendChild(el('div', {
+          style: {
+            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+            fontSize: '11px', fontFamily: MONO
+          }
+        }, [
+          el('span', { style: { color: C.textPri, fontWeight: 700 } },
+            cp.sym + ' ' + cp.strike),
+          el('span', { style: { color: col, fontWeight: 800 } },
+            cp.status.toUpperCase() + ' ' + pct)
+        ]));
+        closedRow.appendChild(el('div', {
+          style: {
+            fontSize: '9px', color: C.textMute, fontFamily: MONO,
+            marginTop: '2px'
+          }
+        }, 'closed ' + (minsAgo === 0 ? 'just now' : minsAgo + 'm ago') +
+           (cp.closeReason ? ' · ' + cp.closeReason.replace(/_/g, ' ') : '')));
+        closedSection.appendChild(closedRow);
+      });
+      scroll.appendChild(closedSection);
     }
 
     var positionsSection = el('div', {
@@ -4155,16 +4631,11 @@
         fontSize: '9px', fontWeight: 700, color: C.textSec,
         letterSpacing: '0.8px', marginBottom: '6px'
       }
-    }, 'MACRO CONTEXT'));
+    }, 'PRE-OPEN · GLOBAL CUES'));
 
-    // Regime
-    var regColor = regimeDetector.color();
-    macroSection.appendChild(macroRow('Regime', regimeDetector.label(), regColor));
-
-    // Alpha
-    var alphaColor = alphaDecay.color();
-    macroSection.appendChild(macroRow('Alpha edge',
-      alphaDecay.summary(), alphaColor));
+    // Note: Regime, Alpha, Risk are already in the top header chips.
+    // We don't repeat them here. Only showing live external data the
+    // header doesn't cover: pre-open gap + VIX.
 
     // Gap (region-aware)
     var region = state.region || 'IN';
@@ -4192,13 +4663,6 @@
           ext.vixChange.toFixed(1) + '%)',
         vixColor));
     }
-
-    // Portfolio risk
-    var riskGate = portfolioRisk.checkAllow();
-    macroSection.appendChild(macroRow(
-      'Risk gate',
-      riskGate.allow ? 'OK' : 'BLOCKED',
-      riskGate.allow ? C.green : C.red));
 
     scroll.appendChild(macroSection);
     panel.appendChild(scroll);
@@ -4243,15 +4707,31 @@
         scrollbarColor: C.divider + ' ' + C.bg
       }
     });
-    // Consensus panel FIRST — the combined verdict is the most important thing
-    scroll.appendChild(renderConsensusPanel());
-    scroll.appendChild(renderExternalsPanel());
+    // Right-column layout is DEEP-DIVE ONLY. The middle Live Monitor
+    // already shows: consensus verdict (big card + pros/caveats), open
+    // positions with live lifecycle tags, and macro context (regime/alpha/
+    // gap/VIX/risk). We do NOT duplicate those here — that's what the user
+    // flagged as redundant.
+    //
+    // Right column provides what middle can't fit:
+    //   1. Entry engine — current price / trigger / SL / target
+    //   2. Candlestick chart with VWAP
+    //   3. Price Action / SMC primitives (FVG, OB, BOS/CHoCH, sweeps, EMA, candle)
+    //   4. Vol Metrics (ATR, Expected Move, Keltner Squeeze)
+    //   5. Payoff diagram at expiry
+    //   6. GEX heatmap + Trend compass
+    //   7. Greeks + IV/HV
+    //   8. Sentiment bar (unique horizontal visual)
+    //   9. Option chain
+    //  10. Risk block (detailed config)
     scroll.appendChild(renderEntryEngine());
     scroll.appendChild(renderCandlestickPanel());
     scroll.appendChild(renderPriceActionPanel());
+    scroll.appendChild(renderVolMetricsPanel());
+    scroll.appendChild(renderPayoffPanel());
     scroll.appendChild(renderGexCompassPanel());
     scroll.appendChild(renderGreeksVolPanel());
-    scroll.appendChild(renderLivePositionsPanel());
+    scroll.appendChild(renderSentimentBar());
     scroll.appendChild(renderOptionChain());
     scroll.appendChild(renderRiskBlock());
     panel.appendChild(scroll);
@@ -4259,6 +4739,290 @@
     // Voice log pinned at bottom (smaller height, its own scroll)
     panel.appendChild(renderVoiceLog());
     return panel;
+  }
+
+  // ── SENTIMENT BAR — single-glance aggregate bull/bear barometer ─────────
+  function renderSentimentBar() {
+    var wrap = el('div', {
+      style: {
+        background: C.card, borderBottom: '1px solid ' + C.divider,
+        padding: '8px 10px'
+      }
+    });
+    if (!state.selected) return wrap;
+    var sent = sentimentBar.read(state.selected._raw || {});
+    if (sent.status !== 'ok') {
+      wrap.appendChild(el('div', {
+        style: { fontSize: '10px', color: C.textMute, fontStyle: 'italic' }
+      }, 'Sentiment: insufficient data'));
+      return wrap;
+    }
+
+    var color = sent.score >= 75 ? C.green
+              : sent.score >= 60 ? '#84cc16'    // yellow-green
+              : sent.score >= 45 ? C.textSec
+              : sent.score >= 25 ? C.orange
+              : C.red;
+
+    wrap.appendChild(el('div', {
+      style: {
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        marginBottom: '6px'
+      }
+    }, [
+      el('span', {
+        style: { fontSize: '9px', fontWeight: 800, letterSpacing: '1.5px', color: C.textSec }
+      }, 'MARKET SENTIMENT'),
+      el('span', {
+        style: {
+          fontSize: '11px', fontWeight: 800, color: color, fontFamily: MONO
+        }
+      }, sent.label + ' · ' + sent.score + '/100')
+    ]));
+
+    // Horizontal bar
+    var barWrap = el('div', {
+      style: {
+        height: '8px', background: C.bg, borderRadius: '2px',
+        overflow: 'hidden', position: 'relative',
+        border: '1px solid ' + C.divider
+      }
+    });
+    // Gradient background: red left → yellow mid → green right
+    barWrap.appendChild(el('div', {
+      style: {
+        position: 'absolute', left: 0, top: 0, bottom: 0,
+        width: '100%',
+        background: 'linear-gradient(90deg, ' + C.red + ', ' + C.orange + ', ' + C.green + ')',
+        opacity: 0.25
+      }
+    }));
+    // Marker position
+    barWrap.appendChild(el('div', {
+      style: {
+        position: 'absolute',
+        left: 'calc(' + sent.score + '% - 2px)',
+        top: 0, bottom: 0, width: '4px',
+        background: color,
+        boxShadow: '0 0 4px ' + color
+      }
+    }));
+    wrap.appendChild(barWrap);
+    wrap.appendChild(el('div', {
+      style: {
+        fontSize: '9px', color: C.textMute, fontFamily: MONO,
+        marginTop: '3px', textAlign: 'center'
+      }
+    }, sent.bullPoints + ' bull · ' + sent.bearPoints + ' bear · ' + sent.totalChecked + ' signals'));
+
+    return wrap;
+  }
+
+  // ── VOL METRICS PANEL — ATR, Expected Move, Keltner Squeeze ─────────────
+  function renderVolMetricsPanel() {
+    var wrap = el('div', {
+      style: {
+        background: C.card, borderBottom: '1px solid ' + C.divider,
+        padding: '8px 10px'
+      }
+    });
+    if (!state.selected) return wrap;
+    var raw = state.selected._raw || {};
+    var bars = raw.ohlc_bars || [];
+    var spot = raw.spot || 0;
+    var atmIV = raw.atm_iv || 0;
+
+    wrap.appendChild(el('div', {
+      style: {
+        fontSize: '9px', fontWeight: 800, letterSpacing: '1.5px',
+        color: C.textSec, marginBottom: '6px'
+      }
+    }, 'VOLATILITY METRICS'));
+
+    var vm = volMetrics.compute(bars, spot, atmIV);
+    if (vm.status !== 'ok') {
+      wrap.appendChild(el('div', {
+        style: { fontSize: '10px', color: C.textMute, fontStyle: 'italic' }
+      }, 'Insufficient bars for volatility metrics'));
+      return wrap;
+    }
+
+    // 3-column grid: ATR | Expected Move | Keltner
+    var grid = el('div', {
+      style: { display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '6px' }
+    });
+
+    // ATR
+    var atrCol = el('div', {
+      style: { background: C.bg, borderRadius: '4px', padding: '6px 8px' }
+    });
+    atrCol.appendChild(el('div', {
+      style: { fontSize: '9px', fontWeight: 700, color: C.textSec, marginBottom: '3px' }
+    }, 'ATR 14'));
+    atrCol.appendChild(el('div', {
+      style: { fontSize: '14px', fontWeight: 800, color: C.textPri, fontFamily: MONO }
+    }, vm.atr.toFixed(2)));
+    atrCol.appendChild(el('div', {
+      style: { fontSize: '9px', color: C.textMute, fontFamily: MONO, marginTop: '2px' }
+    }, vm.atrPct.toFixed(2) + '% of spot'));
+    grid.appendChild(atrCol);
+
+    // Expected move
+    var emCol = el('div', {
+      style: { background: C.bg, borderRadius: '4px', padding: '6px 8px' }
+    });
+    emCol.appendChild(el('div', {
+      style: { fontSize: '9px', fontWeight: 700, color: C.textSec, marginBottom: '3px' }
+    }, 'EXPECTED MOVE · 1D'));
+    if (vm.expectedMove > 0) {
+      emCol.appendChild(el('div', {
+        style: { fontSize: '13px', fontWeight: 800, color: C.textPri, fontFamily: MONO }
+      }, '±' + vm.expectedMove.toFixed(2)));
+      emCol.appendChild(el('div', {
+        style: { fontSize: '9px', color: C.textMute, fontFamily: MONO, marginTop: '2px' }
+      }, vm.expectedLow.toFixed(0) + ' → ' + vm.expectedHigh.toFixed(0)));
+    } else {
+      emCol.appendChild(el('div', {
+        style: { fontSize: '10px', color: C.textMute, fontStyle: 'italic' }
+      }, 'no IV'));
+    }
+    grid.appendChild(emCol);
+
+    // Keltner Squeeze
+    var ksCol = el('div', {
+      style: { background: C.bg, borderRadius: '4px', padding: '6px 8px' }
+    });
+    ksCol.appendChild(el('div', {
+      style: { fontSize: '9px', fontWeight: 700, color: C.textSec, marginBottom: '3px' }
+    }, 'KELTNER'));
+    if (vm.squeeze != null) {
+      var kcColor = vm.squeeze ? '#a855f7' : C.textSec;
+      ksCol.appendChild(el('div', {
+        style: { fontSize: '13px', fontWeight: 800, color: kcColor, fontFamily: MONO }
+      }, vm.squeeze ? 'SQUEEZE ON' : 'NORMAL'));
+      ksCol.appendChild(el('div', {
+        style: {
+          fontSize: '9px', color: C.textMute, fontFamily: MONO, marginTop: '2px',
+          lineHeight: 1.2
+        }
+      }, vm.squeeze ? 'Breakout imminent' : 'Range-bound vol'));
+    } else {
+      ksCol.appendChild(el('div', {
+        style: { fontSize: '10px', color: C.textMute, fontStyle: 'italic' }
+      }, 'need 20+ bars'));
+    }
+    grid.appendChild(ksCol);
+
+    wrap.appendChild(grid);
+    return wrap;
+  }
+
+  // ── PAYOFF DIAGRAM — inline SVG P&L curve at expiry ─────────────────────
+  function renderPayoffPanel() {
+    var wrap = el('div', {
+      style: {
+        background: C.card, borderBottom: '1px solid ' + C.divider,
+        padding: '8px 10px'
+      }
+    });
+    if (!state.selected) return wrap;
+    var raw = state.selected._raw || {};
+    var spot = raw.spot || 0;
+    if (!spot) return wrap;
+
+    var p = payoffDiagram.compute(state.selected, spot, state.selected.lot || 75);
+    if (p.status !== 'ok') {
+      wrap.appendChild(el('div', {
+        style: { fontSize: '10px', color: C.textMute, fontStyle: 'italic' }
+      }, 'Payoff: ' + p.status.replace(/_/g, ' ')));
+      return wrap;
+    }
+
+    wrap.appendChild(el('div', {
+      style: {
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        marginBottom: '6px'
+      }
+    }, [
+      el('span', {
+        style: { fontSize: '9px', fontWeight: 800, letterSpacing: '1.5px', color: C.textSec }
+      }, 'PAYOFF AT EXPIRY'),
+      el('span', {
+        style: { fontSize: '9px', color: C.textMute, fontFamily: MONO }
+      }, 'BE ' + p.breakeven.toFixed(2))
+    ]));
+
+    // Build SVG P&L curve
+    var w = 320, h = 80;
+    var pad = 4;
+    var prices = p.points.map(function (pt) { return pt.price; });
+    var pnls = p.points.map(function (pt) { return pt.pnl; });
+    var minPrice = prices[0], maxPrice = prices[prices.length - 1];
+    var range = p.maxPnl - p.minPnl;
+    if (range === 0) range = 1;
+
+    var svg = '<svg viewBox="0 0 ' + w + ' ' + h + '" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:80px">';
+
+    // Zero line
+    var zeroY = pad + (p.maxPnl / range) * (h - 2 * pad);
+    svg += '<line x1="0" y1="' + zeroY + '" x2="' + w + '" y2="' + zeroY + '" stroke="' + C.divider + '" stroke-width="1" stroke-dasharray="2,2"/>';
+
+    // Spot marker (vertical line)
+    var spotPct = (spot - minPrice) / (maxPrice - minPrice);
+    var spotX = spotPct * w;
+    svg += '<line x1="' + spotX + '" y1="0" x2="' + spotX + '" y2="' + h + '" stroke="' + C.blue + '" stroke-width="1" stroke-dasharray="3,2" opacity="0.5"/>';
+
+    // Breakeven marker
+    var bePct = (p.breakeven - minPrice) / (maxPrice - minPrice);
+    var beX = Math.max(0, Math.min(w, bePct * w));
+    svg += '<line x1="' + beX + '" y1="0" x2="' + beX + '" y2="' + h + '" stroke="' + C.orange + '" stroke-width="1" opacity="0.5"/>';
+
+    // Fill areas (profit green, loss red)
+    var posPath = '', negPath = '';
+    var points = [];
+    for (var i = 0; i < p.points.length; i++) {
+      var pt = p.points[i];
+      var x = (i / (p.points.length - 1)) * w;
+      var y = pad + ((p.maxPnl - pt.pnl) / range) * (h - 2 * pad);
+      points.push({ x: x, y: y, pnl: pt.pnl });
+    }
+    // Profit region (above zero line)
+    svg += '<path d="M 0,' + zeroY;
+    for (var i = 0; i < points.length; i++) {
+      if (points[i].pnl >= 0) svg += ' L ' + points[i].x + ',' + points[i].y;
+      else svg += ' L ' + points[i].x + ',' + zeroY;
+    }
+    svg += ' L ' + w + ',' + zeroY + ' Z" fill="' + C.green + '" opacity="0.15"/>';
+    // Loss region
+    svg += '<path d="M 0,' + zeroY;
+    for (var i = 0; i < points.length; i++) {
+      if (points[i].pnl < 0) svg += ' L ' + points[i].x + ',' + points[i].y;
+      else svg += ' L ' + points[i].x + ',' + zeroY;
+    }
+    svg += ' L ' + w + ',' + zeroY + ' Z" fill="' + C.red + '" opacity="0.15"/>';
+
+    // Line
+    var pathData = 'M ' + points.map(function (pt) { return pt.x + ',' + pt.y; }).join(' L ');
+    svg += '<path d="' + pathData + '" fill="none" stroke="' + C.textPri + '" stroke-width="1.5"/>';
+
+    svg += '</svg>';
+    var svgDiv = el('div', { style: { marginBottom: '4px' } });
+    svgDiv.innerHTML = svg;
+    wrap.appendChild(svgDiv);
+
+    // Legend
+    wrap.appendChild(el('div', {
+      style: {
+        display: 'flex', justifyContent: 'space-between',
+        fontSize: '9px', fontFamily: MONO, color: C.textMute
+      }
+    }, [
+      el('span', {}, 'Max Loss ' + p.minPnl),
+      el('span', { style: { color: C.blue } }, 'Spot ' + spot.toFixed(0)),
+      el('span', {}, 'Max Profit ' + (p.maxPnl > 0 ? '+' + p.maxPnl : p.maxPnl))
+    ]));
+
+    return wrap;
   }
 
   // ── CONSENSUS PANEL — combined verdict from all modules ─────────────────
@@ -5648,6 +6412,18 @@
   }
 
   function onExecute(t) {
+    // Prevent double-execute: if an open position already exists for this
+    // trade, tell the user and don't open a duplicate.
+    var existing = paperPortfolio.findByTradeId(t.id);
+    if (existing) {
+      var statusWord = existing.status === 'active' ? 'already active' : 'already pending';
+      pushLog('Already executing ' + t.symbol + ' ' + t.strike +
+              ' (' + statusWord + ')', C.orange);
+      speak(t.symbol + ' ' + t.strike + ' is ' + statusWord +
+            '. See it in the Live Monitor.');
+      return;
+    }
+
     // ── Portfolio risk guardrails — check before anything else ──
     var gate = portfolioRisk.checkAllow();
     if (!gate.allow) {
