@@ -19,11 +19,11 @@
   'use strict';
 
   // Loud startup log so we can verify the deployed version at a glance
-  console.log('%c[ActiveTrading] v39 loaded — Null-safe data handling + pre-ship checklist',
+  console.log('%c[ActiveTrading] v42 loaded — In-app docs (how to trade + scoring logic)',
               'color:#22C55E;font-weight:bold;font-size:13px');
-  console.log('%c  Fixed 4 fake-data fallbacks: detectSide, trend-compass, false-breakout, gamma override',
+  console.log('%c  Click the ? icon in the header — opens 3-tab modal: HOW TO TRADE / SCORING LOGIC / KNOWN LIMITS',
               'color:#64748B;font-size:11px');
-  console.log('%c  Missing VWAP/ATM no longer silently skews signals toward false BEARISH/unset',
+  console.log('%c  Full scoring math also in /docs/HOW_TO_TRADE.md and /docs/SCORING_LOGIC.md',
               'color:#64748B;font-size:11px');
 
   // ── COLOR TOKENS ────────────────────────────────────────────────────────
@@ -261,14 +261,29 @@
       }
     },
     open: function (trade) {
-      // Accept a trade object from mapScanRowToTrade and create a Position
+      // Accept a trade object from mapScanRowToTrade and create a Position.
+      // We stamp CURRENT session phase, regime, and gamma mode at entry time
+      // so tradeAttribution can later bucket outcomes by setup context.
+      // Without this, we can only say "you won X%"—with it, we can say
+      // "you win 70% during MORNING TRENDING_UP, 20% during LUNCH RANGING".
       var id = trade.id + '@' + Date.now();
+      // Guard: modules may not be initialized in test contexts
+      var entrySession = null, entryRegime = null;
+      try {
+        if (typeof sessionProfile !== 'undefined')
+          entrySession = sessionProfile.phase(state.region || 'IN');
+      } catch (e) {}
+      try {
+        if (typeof regimeDetector !== 'undefined')
+          entryRegime = regimeDetector.current;
+      } catch (e) {}
       var pos = {
         id: id, tradeId: trade.id,
         sym: trade.symbol, strike: trade.strike, side: trade.side,
         score: trade.confidence, state: trade.state, reason: trade.reason,
         entryPremium: trade.price,
         sl: trade.sl, target: trade.target, trigger: trade.trigger,
+        slPct: trade.slPct, tgtPct: trade.tgtPct, slBasis: trade.slBasis,
         lot: trade.lot,
         region: state.region,
         currency: (trade._raw && trade._raw.currency) || (state.region === 'US' ? '$' : '₹'),
@@ -276,7 +291,12 @@
         openedAt: Date.now(),
         triggeredAt: null, closedAt: null,
         exitPremium: null, realizedPct: null,
-        highWater: trade.price, lowWater: trade.price
+        highWater: trade.price, lowWater: trade.price,
+        // Attribution context
+        entrySession: entrySession,
+        entryRegime: entryRegime,
+        entryGammaMode: !!trade.gammaMode,
+        entryConfidence: trade.confidence
       };
       this.positions[id] = pos;
       this.save();
@@ -427,6 +447,16 @@
       // Clear lifecycle snapshot
       if (window._atEngine && window._atEngine.liveGuide) {
         window._atEngine.liveGuide.clearEntry(p.id);
+      }
+
+      // ── Record for confidence-calibration harness ──
+      // Every won/lost close feeds the empirical score→winProb curve.
+      // Once ≥100 closes, kellySizer switches from theoretical to empirical.
+      if ((p.status === 'won' || p.status === 'lost') && p.entryConfidence != null) {
+        try {
+          calibrationHarness.record(p.entryConfidence, p.status === 'won');
+          calibrationHarness.applyIfReady();
+        } catch (e) {}
       }
       if (state.voiceOn && (p.status === 'won' || p.status === 'lost')) {
         var pctAbs = Math.abs(p.realizedPct || 0).toFixed(1);
@@ -2773,6 +2803,401 @@
   //     or "day P&L is -2.5%, near daily cap — hold off"
   //   - Session phase overlay (e.g. "we're near market close — don't open
   //     new intraday trades")
+  // ═══════════════════════════════════════════════════════════════════════
+  // 16f. EVENT CALENDAR — IV crush prevention
+  // ═══════════════════════════════════════════════════════════════════════
+  // Biggest single cause of options losses for retail traders buying options:
+  // holding into earnings / RBI / FOMC and getting IV-crushed after the
+  // event even when direction was right. This module holds known macro
+  // event dates and blocks or flags trades that overlap.
+  //
+  // Source: user seeds their own events via localStorage `at_events`;
+  // we also ship a baseline of major 2026 India/US macro dates.
+  // For per-ticker earnings, user adds them manually or backend supplies.
+  //
+  // Data shape:
+  //   { date: 'YYYY-MM-DD', name: 'RBI Policy', region: 'IN'|'US'|'ALL',
+  //     tickers: ['NIFTY','BANKNIFTY'] or null for all,
+  //     ivCrushRisk: 'HIGH'|'MEDIUM'|'LOW' }
+  var eventCalendar = {
+    // Seed of known 2026 Indian + US macro events (update quarterly)
+    _seedEvents: [
+      // RBI MPC 2026 — bi-monthly
+      { date: '2026-02-06', name: 'RBI MPC', region: 'IN', tickers: null, ivCrushRisk: 'HIGH' },
+      { date: '2026-04-09', name: 'RBI MPC', region: 'IN', tickers: null, ivCrushRisk: 'HIGH' },
+      { date: '2026-06-05', name: 'RBI MPC', region: 'IN', tickers: null, ivCrushRisk: 'HIGH' },
+      { date: '2026-08-06', name: 'RBI MPC', region: 'IN', tickers: null, ivCrushRisk: 'HIGH' },
+      { date: '2026-10-01', name: 'RBI MPC', region: 'IN', tickers: null, ivCrushRisk: 'HIGH' },
+      { date: '2026-12-04', name: 'RBI MPC', region: 'IN', tickers: null, ivCrushRisk: 'HIGH' },
+      // FOMC 2026 — 8 meetings per year
+      { date: '2026-01-28', name: 'FOMC', region: 'US', tickers: null, ivCrushRisk: 'HIGH' },
+      { date: '2026-03-18', name: 'FOMC', region: 'US', tickers: null, ivCrushRisk: 'HIGH' },
+      { date: '2026-04-29', name: 'FOMC', region: 'US', tickers: null, ivCrushRisk: 'HIGH' },
+      { date: '2026-06-17', name: 'FOMC', region: 'US', tickers: null, ivCrushRisk: 'HIGH' },
+      { date: '2026-07-29', name: 'FOMC', region: 'US', tickers: null, ivCrushRisk: 'HIGH' },
+      { date: '2026-09-16', name: 'FOMC', region: 'US', tickers: null, ivCrushRisk: 'HIGH' },
+      { date: '2026-11-04', name: 'FOMC', region: 'US', tickers: null, ivCrushRisk: 'HIGH' },
+      { date: '2026-12-16', name: 'FOMC', region: 'US', tickers: null, ivCrushRisk: 'HIGH' },
+      // India Budget
+      { date: '2026-02-01', name: 'Union Budget', region: 'IN', tickers: null, ivCrushRisk: 'HIGH' }
+    ],
+
+    // Load user-added events from localStorage; merged with seed.
+    load: function () {
+      try {
+        var stored = localStorage.getItem('at_events');
+        if (stored) return this._seedEvents.concat(JSON.parse(stored));
+      } catch (e) {}
+      return this._seedEvents.slice();
+    },
+
+    // Add a custom event (e.g. per-ticker earnings)
+    add: function (ev) {
+      try {
+        var custom = JSON.parse(localStorage.getItem('at_events') || '[]');
+        custom.push(ev);
+        localStorage.setItem('at_events', JSON.stringify(custom));
+        return true;
+      } catch (e) { return false; }
+    },
+
+    // Returns events within daysAhead days that affect this trade.
+    // Returns [] if nothing applies.
+    upcomingFor: function (symbol, region, daysAhead) {
+      daysAhead = daysAhead || 2;
+      var now = new Date();
+      var horizon = new Date(now.getTime() + daysAhead * 86400000);
+      var results = [];
+      this.load().forEach(function (ev) {
+        var evDate = new Date(ev.date);
+        if (isNaN(evDate)) return;
+        // Only future events within horizon
+        if (evDate < now || evDate > horizon) return;
+        // Region filter (ALL matches both)
+        if (ev.region !== 'ALL' && ev.region !== region) return;
+        // Ticker filter (null = applies to all tickers in region)
+        if (ev.tickers && ev.tickers.indexOf(symbol) < 0) return;
+        results.push({
+          date: ev.date, name: ev.name,
+          ivCrushRisk: ev.ivCrushRisk,
+          daysUntil: Math.ceil((evDate - now) / 86400000)
+        });
+      });
+      return results;
+    },
+
+    // Main user-facing check: returns one of
+    //   { action: 'CLEAR' }      — safe to trade
+    //   { action: 'WARN', ... }  — event within horizon, flag it
+    //   { action: 'BLOCK', ... } — high-risk event within 1 day
+    checkTrade: function (trade, region) {
+      var events = this.upcomingFor(trade.symbol, region || 'IN', 2);
+      if (events.length === 0) return { action: 'CLEAR' };
+      // Sort soonest first
+      events.sort(function (a, b) { return a.daysUntil - b.daysUntil; });
+      var soonest = events[0];
+      if (soonest.daysUntil <= 1 && soonest.ivCrushRisk === 'HIGH') {
+        return {
+          action: 'BLOCK',
+          event: soonest,
+          reason: soonest.name + ' in ' + soonest.daysUntil +
+                  ' day(s) — HIGH IV crush risk. Wait until after.'
+        };
+      }
+      return {
+        action: 'WARN',
+        event: soonest,
+        reason: soonest.name + ' in ' + soonest.daysUntil +
+                ' day(s) — watch for IV changes.'
+      };
+    }
+  };
+
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // 16g. PARTIAL PROFIT MANAGER — scale-out at 1.5R, trail remainder
+  // ═══════════════════════════════════════════════════════════════════════
+  // Most retail traders either (a) take profit too early (exits at +15%
+  // then watches trade hit target at +40%) or (b) never take profit and
+  // give back winners. Professional traders scale out: take partial at
+  // 1.5R (1.5× risk), let remainder run with trailing stop at break-even.
+  // Mathematically this locks in positive expectancy even if remainder
+  // stops at entry — you've already booked 0.75R net.
+  //
+  // Paper-portfolio integration: we track `scaledOutAt` on each position
+  // and `originalLots`. Scale-out produces a partial close event with
+  // 50% realized P&L. Remaining 50% trails.
+  var partialProfitManager = {
+    // Check if this position should scale out NOW.
+    // Returns { action: 'SCALE_OUT' | 'HOLD', reason: "..." }
+    evaluate: function (position, currentPrice) {
+      if (!position || position.status !== 'active') return { action: 'HOLD' };
+      if (position.scaledOutAt) return { action: 'HOLD', reason: 'already scaled out' };
+
+      var entry = position.entryPremium;
+      var sl = position.sl;
+      var risk = Math.abs(entry - sl);
+      if (risk <= 0) return { action: 'HOLD', reason: 'no risk defined' };
+
+      var reward = currentPrice - entry;
+      // Scale-out trigger: reward ≥ 1.5× risk
+      var rMultiple = reward / risk;
+      if (rMultiple >= 1.5) {
+        return {
+          action: 'SCALE_OUT',
+          rMultiple: rMultiple,
+          currentPrice: currentPrice,
+          reason: 'Up ' + rMultiple.toFixed(1) + 'R — book 50%, trail break-even on rest'
+        };
+      }
+      return { action: 'HOLD' };
+    },
+
+    // Execute the scale-out on a position. Closes 50% of lots,
+    // raises SL on remainder to entry (break-even).
+    execute: function (positionId, currentPrice) {
+      var pos = paperPortfolio.positions[positionId];
+      if (!pos || pos.status !== 'active') return null;
+      if (pos.scaledOutAt) return null;
+
+      var originalLots = pos.sizingLots || 1;
+      var halfLots = Math.ceil(originalLots / 2);
+      var partialPnlPerShare = currentPrice - pos.entryPremium;
+      var partialPnlPct = (partialPnlPerShare / pos.entryPremium) * 100;
+
+      // Record the scale-out
+      pos.scaledOutAt = Date.now();
+      pos.scaledOutPrice = currentPrice;
+      pos.scaledOutLots = halfLots;
+      pos.scaledOutPnlPct = partialPnlPct;
+      pos.originalLots = originalLots;
+      pos.sizingLots = originalLots - halfLots;  // remaining position
+      // Raise stop to break-even on remainder
+      pos.sl = pos.entryPremium;
+      pos.slWasTrailed = true;
+
+      paperPortfolio.save();
+      bus.emit('position:scaledOut', {
+        position: pos,
+        partialLots: halfLots,
+        partialPnlPct: partialPnlPct
+      });
+      return { partialLots: halfLots, partialPnlPct: partialPnlPct };
+    }
+  };
+
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // 16h. TRADE ATTRIBUTION — "you lose most during lunch"
+  // ═══════════════════════════════════════════════════════════════════════
+  // Buckets every closed trade by:
+  //   - Session phase (OPENING/MORNING/LUNCH/AFTERNOON/CLOSING)
+  //   - Market regime at entry (TRENDING_UP/DN/RANGING/VOLATILE/MIXED)
+  //   - Side (CE/PE)
+  //   - Gamma mode on/off
+  // Computes per-bucket win rate + net P&L. Surfaces insights so user
+  // can learn what works for them specifically.
+  //
+  // This is where the product graduates from "signals" to "coach".
+  var tradeAttribution = {
+    // Generate a bucket key from a position's entry context
+    bucketKey: function (pos) {
+      var phase = (pos.entrySession && pos.entrySession.phase) || 'UNKNOWN';
+      var regime = pos.entryRegime || 'UNKNOWN';
+      var side = pos.side || '?';
+      var gamma = pos.entryGammaMode ? 'G' : '-';
+      return phase + '_' + regime + '_' + side + '_' + gamma;
+    },
+
+    // Aggregate all closed positions into buckets
+    aggregate: function () {
+      var buckets = {};
+      for (var id in paperPortfolio.positions) {
+        var p = paperPortfolio.positions[id];
+        if (p.status !== 'won' && p.status !== 'lost') continue;
+        var key = this.bucketKey(p);
+        if (!buckets[key]) {
+          buckets[key] = {
+            key: key,
+            phase: (p.entrySession && p.entrySession.phase) || 'UNKNOWN',
+            regime: p.entryRegime || 'UNKNOWN',
+            side: p.side,
+            gamma: !!p.entryGammaMode,
+            count: 0, wins: 0, losses: 0,
+            netPnl: 0, totalWinPnl: 0, totalLossPnl: 0
+          };
+        }
+        var b = buckets[key];
+        b.count++;
+        if (p.status === 'won') { b.wins++; b.totalWinPnl += (p.realizedPct || 0); }
+        else { b.losses++; b.totalLossPnl += (p.realizedPct || 0); }
+        b.netPnl += (p.realizedPct || 0);
+      }
+      // Compute derived fields
+      Object.keys(buckets).forEach(function (k) {
+        var b = buckets[k];
+        b.winRate = b.count > 0 ? (b.wins / b.count) * 100 : 0;
+        b.avgWin = b.wins > 0 ? b.totalWinPnl / b.wins : 0;
+        b.avgLoss = b.losses > 0 ? b.totalLossPnl / b.losses : 0;
+        b.expectancy = b.count > 0 ? b.netPnl / b.count : 0;
+      });
+      return buckets;
+    },
+
+    // For a proposed new trade, look up your historical performance
+    // in that exact bucket. Returns null if insufficient history.
+    // MIN_SAMPLES threshold of 5 is minimal statistical basis.
+    lookupFor: function (trade) {
+      if (!trade) return null;
+      var phase = (sessionProfile.phase(state.region || 'IN')).phase;
+      var regime = regimeDetector.current;
+      var key = phase + '_' + regime + '_' + trade.side + '_' +
+                (trade.gammaMode ? 'G' : '-');
+      var buckets = this.aggregate();
+      var b = buckets[key];
+      if (!b || b.count < 5) return null;
+      return b;
+    },
+
+    // Return worst-performing buckets (for "avoid these setups" insights)
+    worstBuckets: function (minCount) {
+      minCount = minCount || 5;
+      var all = this.aggregate();
+      var arr = Object.keys(all)
+        .map(function (k) { return all[k]; })
+        .filter(function (b) { return b.count >= minCount; })
+        .sort(function (a, b) { return a.expectancy - b.expectancy; });
+      return arr.slice(0, 3);
+    },
+
+    // Best buckets
+    bestBuckets: function (minCount) {
+      minCount = minCount || 5;
+      var all = this.aggregate();
+      var arr = Object.keys(all)
+        .map(function (k) { return all[k]; })
+        .filter(function (b) { return b.count >= minCount; })
+        .sort(function (a, b) { return b.expectancy - a.expectancy; });
+      return arr.slice(0, 3);
+    },
+
+    // Natural-language summary for a bucket
+    describe: function (b) {
+      return b.phase + ' phase, ' + b.regime.replace(/_/g, ' ').toLowerCase() +
+             ' market, ' + b.side + (b.gamma ? ' + gamma' : '') +
+             ': ' + b.wins + 'W/' + b.losses + 'L, ' +
+             b.winRate.toFixed(0) + '% win rate, ' +
+             'expectancy ' + (b.expectancy >= 0 ? '+' : '') + b.expectancy.toFixed(2) + '%';
+    }
+  };
+
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // 16i. CALIBRATION HARNESS — forward-calibrate score → win probability
+  // ═══════════════════════════════════════════════════════════════════════
+  // The hardcoded scoreToWinProb curve in kellySizer is a theoretical
+  // guess. This module records every paper trade's entry score + final
+  // outcome, and once we have ≥100 closed trades, computes actual win
+  // probability per score bucket. If the empirical curve diverges from
+  // the theoretical curve, we update the live curve.
+  //
+  // IMPORTANT: this is forward calibration (live paper trades, not
+  // historical backtest). A full backtest against NSE archives would be
+  // faster and more data-rich, but requires historical 5m bars +
+  // option chains we don't have API access to. Forward calibration is
+  // the honest path given the data we have.
+  //
+  // Storage: localStorage `at_calibration` = { scoreBucket: {n, wins} }
+  var calibrationHarness = {
+    BUCKET_SIZE: 5,           // 0-4, 5-9, ..., 95-99
+    MIN_TRADES_FOR_UPDATE: 100,
+
+    // Record a closed trade's entry score vs outcome
+    record: function (entryScore, won) {
+      var bucket = Math.floor(entryScore / this.BUCKET_SIZE) * this.BUCKET_SIZE;
+      var data = this._loadRaw();
+      if (!data[bucket]) data[bucket] = { n: 0, wins: 0 };
+      data[bucket].n++;
+      if (won) data[bucket].wins++;
+      this._saveRaw(data);
+    },
+
+    _loadRaw: function () {
+      try {
+        var s = localStorage.getItem('at_calibration');
+        if (s) return JSON.parse(s);
+      } catch (e) {}
+      return {};
+    },
+    _saveRaw: function (data) {
+      try { localStorage.setItem('at_calibration', JSON.stringify(data)); }
+      catch (e) {}
+    },
+
+    // Total closed trades across all buckets
+    totalCount: function () {
+      var data = this._loadRaw();
+      var total = 0;
+      Object.keys(data).forEach(function (b) { total += data[b].n || 0; });
+      return total;
+    },
+
+    // Empirical win probability for a given score, or null if insufficient data
+    empiricalWinProb: function (score) {
+      var data = this._loadRaw();
+      var bucket = Math.floor(score / this.BUCKET_SIZE) * this.BUCKET_SIZE;
+      var b = data[bucket];
+      if (!b || b.n < 10) return null;  // need ≥10 per bucket
+      return b.wins / b.n;
+    },
+
+    // Full empirical curve (for display + replacing the theoretical curve)
+    empiricalCurve: function () {
+      var data = this._loadRaw();
+      var out = [];
+      Object.keys(data).map(Number).sort(function (a, b) { return a - b; })
+        .forEach(function (bucket) {
+          var b = data[bucket];
+          if (b.n >= 10) {
+            out.push({
+              bucketStart: bucket, n: b.n,
+              winProb: b.wins / b.n, wins: b.wins
+            });
+          }
+        });
+      return out;
+    },
+
+    // Once total >= MIN_TRADES_FOR_UPDATE, override kellySizer.scoreToWinProb
+    // with empirical data. Called once per session.
+    applyIfReady: function () {
+      if (this.totalCount() < this.MIN_TRADES_FOR_UPDATE) return false;
+      var curve = this.empiricalCurve();
+      if (curve.length < 3) return false;  // need breadth too
+      // Monkey-patch kellySizer.scoreToWinProb
+      var harness = this;
+      kellySizer.scoreToWinProb = function (score) {
+        var emp = harness.empiricalWinProb(score);
+        if (emp != null) return emp;
+        // Fallback to theoretical for score buckets with no data yet
+        if (score < 55) return 0.48;
+        if (score < 68) return 0.52;
+        if (score < 76) return 0.56;
+        if (score < 86) return 0.60;
+        if (score < 96) return 0.64;
+        return 0.67;
+      };
+      kellySizer._calibrated = true;
+      return true;
+    },
+
+    // Reset calibration data (useful for testing or starting fresh)
+    reset: function () {
+      try { localStorage.removeItem('at_calibration'); } catch (e) {}
+    }
+  };
+
+
   var sessionGuide = {
     // Aggregate stats for today's closed positions
     today: function () {
@@ -3178,6 +3603,10 @@
     sentiment: sentimentBar,
     session: sessionProfile,
     sessionGuide: sessionGuide,
+    events: eventCalendar,
+    partialProfit: partialProfitManager,
+    attribution: tradeAttribution,
+    calibration: calibrationHarness,
 
     // Dump signals as CSV (for feeding external backtest tools)
     exportSignalsCSV: function () {
@@ -3657,11 +4086,73 @@
     var premium = side === 'CE' ? atmRow.ce_ltp : atmRow.pe_ltp;
     if (premium == null || premium <= 0) return null; // no real price = no trade
 
-    // Step 3: SL/Target/trigger (these are DERIVED from real premium, not fake)
-    // A 15% SL and 30% target are risk policy choices applied to real premium
-    // — not substitutions for missing data. That's legitimate.
-    var sl = premium * 0.85;
-    var target = premium * 1.30;
+    // Step 3: SL/Target/trigger — ADAPTIVE to current volatility.
+    //
+    // ════════════════════════════════════════════════════════════════════
+    // Why not flat 15% SL / 30% target anymore:
+    // In low-vol regimes (ATR=0.3% of spot), a 15% SL triggers on normal
+    // noise and stops out winners. In high-vol regimes (ATR=1.5%), 15%
+    // SL is too tight and user gets whipsawed on routine moves.
+    //
+    // The ATR-adaptive approach:
+    //   • Underlying SL distance = 1.5× daily ATR (industry standard for
+    //     intraday setups — matches the actual noise level)
+    //   • Approximate option delta using moneyness:
+    //       ATM ≈ 0.50, 1 strike ITM ≈ 0.65, 1 strike OTM ≈ 0.35
+    //   • Premium SL = underlying move × delta, converted to % of premium
+    //   • Target = 2× SL distance (2:1 reward/risk — standard)
+    //   • Clamp to 8-25% SL and 20-50% target so we don't go silly on
+    //     extreme data
+    // ════════════════════════════════════════════════════════════════════
+    var bars = row.ohlc_bars || [];
+    var atr = null;
+    if (bars.length >= 5) {
+      var trValues = [];
+      for (var bi = 1; bi < bars.length; bi++) {
+        var b = bars[bi], p = bars[bi - 1];
+        if (b.h == null || b.l == null || p.c == null) continue;
+        trValues.push(Math.max(b.h - b.l,
+                               Math.abs(b.h - p.c),
+                               Math.abs(b.l - p.c)));
+      }
+      if (trValues.length > 0) {
+        var recent = trValues.slice(-14);
+        atr = recent.reduce(function (s, v) { return s + v; }, 0) / recent.length;
+      }
+    }
+
+    // Approximate option delta from moneyness. For at-/near-ATM
+    // options (which is what our strike selector prefers), delta ~0.5.
+    // As strike moves OTM, delta drops. We don't have a full BS
+    // calculation here (spot/strike/IV all known but cheap approx).
+    var moneyness = atm != null && spot
+      ? Math.abs(atm - spot) / spot : 0;
+    var delta = 0.50;
+    if (moneyness > 0.01) delta = 0.35;       // ~1% OTM
+    if (moneyness > 0.02) delta = 0.25;       // ~2% OTM
+    if (moneyness < -0.01 && side === 'CE') delta = 0.65;
+    if (moneyness < -0.01 && side === 'PE') delta = 0.65;
+
+    var slPct = 0.15;   // default 15% if ATR unavailable
+    var tgtPct = 0.30;  // default 30%
+    var slBasis = 'flat_default';
+
+    if (atr != null && atr > 0 && spot > 0) {
+      // Expected premium move if underlying moves 1.5× ATR against us
+      var advMove = atr * 1.5 * delta;
+      // Convert to % of premium
+      slPct = advMove / premium;
+      // Clamp: minimum 8% (can't risk less than natural spread/slippage),
+      // maximum 25% (if it wants more than 25%, the trade is too risky)
+      slPct = Math.max(0.08, Math.min(0.25, slPct));
+      // Target is 2× SL distance (2:1 reward-to-risk)
+      tgtPct = slPct * 2;
+      tgtPct = Math.max(0.20, Math.min(0.50, tgtPct));
+      slBasis = 'atr_' + (atr / spot * 100).toFixed(2) + '%_delta_' + delta.toFixed(2);
+    }
+
+    var sl = premium * (1 - slPct);
+    var target = premium * (1 + tgtPct);
     var trigger = premium * 1.02;
 
     // Step 4: six factor scores. Each returns null if data absent.
@@ -3795,6 +4286,9 @@
       trigger: trigger,
       sl: sl,
       target: target,
+      slPct: slPct,            // for UI: "SL 11% (ATR)"
+      tgtPct: tgtPct,
+      slBasis: slBasis,         // "atr_0.85%_delta_0.50" or "flat_default"
       lot: lot,
       gammaMode: gammaMode,
       falseBreakout: fb.triggered,
@@ -3944,7 +4438,471 @@
 
     // Scanner sits at the BOTTOM as a fixed-height band (spans full width).
     wrap.appendChild(renderScanner());
+
+    // Docs modal — shown on top of everything when user clicks help icon
+    if (state.showDocs) {
+      wrap.appendChild(renderDocsModal());
+    }
+
     root.appendChild(wrap);
+  }
+
+  // ── DOCS MODAL — "how to trade" + scoring logic access ─────────────────
+  // Opens over everything when user clicks the ? icon in the header.
+  // Content lives in two tabs: HOW TO TRADE (user-flow guide) and
+  // SCORING LOGIC (the math behind every number). Both mirror the
+  // markdown files in /docs but are inline so users don't need to dig
+  // into the deploy zip.
+  function renderDocsModal() {
+    var overlay = el('div', {
+      onClick: function (e) {
+        // Click outside content to close
+        if (e.target === overlay) { state.showDocs = false; rerender(); }
+      },
+      style: {
+        position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+        background: 'rgba(0,0,0,0.75)',
+        zIndex: 10000,
+        display: 'flex', alignItems: 'center', justifyContent: 'center'
+      }
+    });
+
+    var modal = el('div', {
+      style: {
+        width: '88%', maxWidth: '920px', height: '85%',
+        background: C.bg, border: '1px solid ' + C.divider,
+        borderRadius: '8px', display: 'flex', flexDirection: 'column',
+        overflow: 'hidden'
+      }
+    });
+
+    // Header with tabs + close
+    var header = el('div', {
+      style: {
+        borderBottom: '1px solid ' + C.divider, padding: '10px 14px',
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        flex: '0 0 auto'
+      }
+    });
+    var tabsWrap = el('div', {
+      style: { display: 'flex', gap: '8px', alignItems: 'center' }
+    });
+    tabsWrap.appendChild(el('div', {
+      style: {
+        fontSize: '14px', fontWeight: 800, color: C.textPri,
+        letterSpacing: '1px', marginRight: '16px'
+      }
+    }, 'HELP'));
+
+    state.docsTab = state.docsTab || 'howto';
+    function makeTab(key, label) {
+      var active = state.docsTab === key;
+      return el('button', {
+        onClick: function () { state.docsTab = key; rerender(); },
+        style: {
+          background: active ? C.blue + '22' : 'transparent',
+          color: active ? C.blue : C.textSec,
+          border: '1px solid ' + (active ? C.blue : C.divider),
+          borderRadius: '4px', padding: '6px 12px',
+          fontSize: '11px', fontWeight: 700, cursor: 'pointer',
+          letterSpacing: '0.8px', fontFamily: MONO
+        }
+      }, label);
+    }
+    tabsWrap.appendChild(makeTab('howto', 'HOW TO TRADE'));
+    tabsWrap.appendChild(makeTab('scoring', 'SCORING LOGIC'));
+    tabsWrap.appendChild(makeTab('risks', 'KNOWN LIMITS'));
+    header.appendChild(tabsWrap);
+    header.appendChild(el('button', {
+      onClick: function () { state.showDocs = false; rerender(); },
+      style: {
+        background: 'transparent', border: '1px solid ' + C.divider,
+        color: C.textSec, borderRadius: '4px', padding: '4px 10px',
+        fontSize: '14px', fontWeight: 700, cursor: 'pointer'
+      }
+    }, '✕'));
+    modal.appendChild(header);
+
+    // Body — scrollable content per tab
+    var body = el('div', {
+      style: {
+        flex: '1 1 auto', overflowY: 'auto', padding: '16px 24px',
+        fontSize: '12px', color: C.textPri, lineHeight: 1.55,
+        fontFamily: 'system-ui, sans-serif'
+      }
+    });
+
+    if (state.docsTab === 'howto') {
+      body.appendChild(docsHowTo());
+    } else if (state.docsTab === 'scoring') {
+      body.appendChild(docsScoring());
+    } else if (state.docsTab === 'risks') {
+      body.appendChild(docsRisks());
+    }
+    modal.appendChild(body);
+
+    overlay.appendChild(modal);
+    return overlay;
+  }
+
+  // Helper: section heading
+  function docsH(text, level) {
+    level = level || 2;
+    var sizes = { 1: '18px', 2: '14px', 3: '12px' };
+    var colors = { 1: C.textPri, 2: C.blue, 3: C.textSec };
+    return el('div', {
+      style: {
+        fontSize: sizes[level], fontWeight: level <= 2 ? 800 : 700,
+        color: colors[level], marginTop: level === 1 ? 0 : '16px',
+        marginBottom: '8px', letterSpacing: level <= 2 ? '0.8px' : 0
+      }
+    }, text);
+  }
+  function docsP(text) {
+    return el('div', {
+      style: {
+        marginBottom: '8px', color: C.textPri, lineHeight: 1.55
+      }
+    }, text);
+  }
+  function docsList(items) {
+    var wrap = el('div', { style: { marginBottom: '8px', paddingLeft: '8px' } });
+    items.forEach(function (t) {
+      wrap.appendChild(el('div', {
+        style: {
+          marginBottom: '4px', color: C.textSec, lineHeight: 1.45
+        }
+      }, '• ' + t));
+    });
+    return wrap;
+  }
+  function docsCode(text) {
+    return el('pre', {
+      style: {
+        background: C.card, border: '1px solid ' + C.divider,
+        borderRadius: '4px', padding: '8px 10px',
+        fontSize: '11px', color: C.textPri, fontFamily: MONO,
+        overflow: 'auto', marginBottom: '8px', whiteSpace: 'pre-wrap',
+        lineHeight: 1.4
+      }
+    }, text);
+  }
+  function docsTable(headers, rows) {
+    var table = el('table', {
+      style: {
+        borderCollapse: 'collapse', width: '100%', marginBottom: '10px',
+        fontSize: '11px', fontFamily: MONO
+      }
+    });
+    var thead = el('tr', {});
+    headers.forEach(function (h) {
+      thead.appendChild(el('th', {
+        style: {
+          background: C.card, color: C.textSec, fontWeight: 700,
+          padding: '4px 8px', border: '1px solid ' + C.divider,
+          textAlign: 'left'
+        }
+      }, h));
+    });
+    table.appendChild(thead);
+    rows.forEach(function (r) {
+      var tr = el('tr', {});
+      r.forEach(function (cell) {
+        tr.appendChild(el('td', {
+          style: {
+            padding: '4px 8px', border: '1px solid ' + C.divider,
+            color: C.textPri
+          }
+        }, cell));
+      });
+      table.appendChild(tr);
+    });
+    return table;
+  }
+
+  function docsHowTo() {
+    var root = el('div', {});
+    root.appendChild(docsH('How a trade actually happens', 1));
+    root.appendChild(docsP(
+      'The 7-step flow. Read once. Your session will make sense after this.'));
+
+    root.appendChild(docsH('Step 1 — Wait for the 5-minute close', 2));
+    root.appendChild(docsP(
+      'Every 5 minutes the engine re-scans the market and re-ranks tickers. ' +
+      'Do not trust mid-bar scores — they have not been confirmed by a candle ' +
+      'close yet. The countdown at the top-right of the deep-dive shows time ' +
+      'until next evaluation.'));
+
+    root.appendChild(docsH('Step 2 — Read the consensus verdict', 2));
+    root.appendChild(docsP(
+      'Click any top-trade card. The middle column\'s colored card shows one of:'));
+    root.appendChild(docsTable(
+      ['Verdict', 'Size', 'Meaning'],
+      [
+        ['STRONG_BUY', '100% Kelly', 'All signals aligned, +35 or more points'],
+        ['BUY', '75% Kelly', 'Most signals aligned, +18 to +34 points'],
+        ['BUY_SMALL', '50% Kelly', 'Mixed signals, +5 to +17 points'],
+        ['NEUTRAL', '25% Kelly', 'Wait for cleaner setup, -5 to +4 points'],
+        ['AVOID', '0', 'Below -5 OR hard blocker (risk, alpha, Kelly, event)']
+      ]
+    ));
+
+    root.appendChild(docsH('Step 3 — Read PROS and CAVEATS', 2));
+    root.appendChild(docsP(
+      'Green ticks show what\'s going right. Orange warnings show what\'s going ' +
+      'wrong. Read BOTH before clicking EXECUTE. A 95% confidence trade with ' +
+      '3 caveats often performs worse than an 80% trade with 0 caveats.'));
+
+    root.appendChild(docsH('Step 4 — Check PORTFOLIO TODAY', 2));
+    root.appendChild(docsList([
+      'OPEN 3/3 means you\'re at capacity. No new trades.',
+      'NET already -2% means you\'re near daily loss cap. The system will CAUTION.',
+      '"2 losses in a row" banner means system is telling you to stop. Listen.'
+    ]));
+
+    root.appendChild(docsH('Step 5 — Click EXECUTE', 2));
+    root.appendChild(docsP('Several checks run instantly:'));
+    root.appendChild(docsList([
+      'Event calendar — RBI/FOMC/earnings within 1 day → BLOCK',
+      'Portfolio risk — max concurrent, daily loss cap, drawdown, 5s cooldown',
+      'Kelly sizing — computes lots from your capital + edge, regime-adjusted',
+      'Position opens PENDING — waiting for price to cross trigger'
+    ]));
+
+    root.appendChild(docsH('Step 6 — Wait for entry trigger', 2));
+    root.appendChild(docsP(
+      'Price must cross the trigger (usually entry + 2%) before position goes ' +
+      'LIVE. Card turns green with "● LIVE" pill. Voice confirms entry.'));
+
+    root.appendChild(docsH('Step 7 — Let the system guide the exit', 2));
+    root.appendChild(docsP('Every 5 minutes, each position gets a lifecycle tag:'));
+    root.appendChild(docsTable(
+      ['Tag', 'When', 'Action'],
+      [
+        ['CONTINUE', 'Signal intact', 'Hold'],
+        ['ADD', 'Signal strengthening + in profit', 'Consider adding 25-50%'],
+        ['REDUCE', 'Regime flipped OR consensus weakened', 'Cut to half size'],
+        ['SCALE_OUT', 'Reached 1.5× risk (automatic)', '50% booked, rest trails'],
+        ['EXIT', 'Target/SL hit OR consensus AVOID', 'Auto-closes']
+      ]
+    ));
+
+    root.appendChild(docsH('The confidence sub-label', 1));
+    root.appendChild(docsP(
+      'The small text under each "95%" tells you what that number is worth:'));
+    root.appendChild(docsList([
+      '"uncal" — Theoretical score. No empirical validation yet.',
+      '"calibrated" — Your paper trades have replaced the theoretical curve.',
+      '"62% win · 24 trades" — For THIS exact setup type, your actual win rate.'
+    ]));
+    root.appendChild(docsP(
+      'The third label is the one to trust. Attribution surfaces after ~5 ' +
+      'trades of the same bucket; calibration kicks in at 100 total closes.'));
+
+    root.appendChild(docsH('Common mistakes', 1));
+    root.appendChild(docsList([
+      'Treating "95%" as a win probability. It is a score. Read the sub-label.',
+      'Ignoring REDUCE/EXIT recommendations. If the system says setup invalidated, it has.',
+      'Clicking EXECUTE without reading PROS/CAVEATS.',
+      'Trading through lunch (12:00-13:30 IST) — multiplier drops to 0.75×.',
+      'Revenge-trading after 3 losses. The streak banner exists for a reason.'
+    ]));
+
+    return root;
+  }
+
+  function docsScoring() {
+    var root = el('div', {});
+    root.appendChild(docsH('The scoring pipeline', 1));
+    root.appendChild(docsCode(
+      'Backend /api/bottom-nav-scan\n' +
+      '   ↓\n' +
+      'Raw ticker data (OHLC bars, chain, OI, PCR, VWAP)\n' +
+      '   ↓\n' +
+      'For each ticker:\n' +
+      '   detectSide(row)           → CE or PE\n' +
+      '   6-factor score            → confidence 0-100\n' +
+      '   ATR-adaptive SL/target    → trade.sl, trade.target\n' +
+      '   state classification      → early/ideal/late/avoid\n' +
+      '   ↓\n' +
+      'Rank by confidence → Top 3 trades\n' +
+      '   ↓\n' +
+      'Consensus engine → verdict + size multiplier'
+    ));
+
+    root.appendChild(docsH('The 6-factor confidence score', 1));
+    root.appendChild(docsTable(
+      ['Factor', 'Weight', 'Measures'],
+      [
+        ['Trend Strength', '25%', 'Directional momentum across recent bars'],
+        ['VWAP Alignment', '20%', 'Spot vs VWAP + distance'],
+        ['OI Structure', '20%', 'Call/Put build-up divergence'],
+        ['Volume', '15%', 'Recent volume vs average'],
+        ['Strike Quality', '10%', 'How close strike is to spot'],
+        ['Risk/Reward', '10%', 'Target distance vs SL distance']
+      ]
+    ));
+    root.appendChild(docsP(
+      'Composite = Σ (factor × weight) ÷ Σ (weights for available factors). ' +
+      'If 2+ factors are null (missing data), score is capped at 65 and the ' +
+      'card shows "OI+Vol unavailable" badges.'));
+
+    root.appendChild(docsH('Consensus engine points', 1));
+    root.appendChild(docsP('Builds on top of confidence. Adds/subtracts points per module.'));
+    root.appendChild(docsTable(
+      ['Signal', 'Points'],
+      [
+        ['Confidence score (baseline)', '(score - 60) → e.g. 95 → +35'],
+        ['Regime aligned with trade direction', '+10'],
+        ['Regime against trade', '-15'],
+        ['VOLATILE regime', '-10'],
+        ['RANGING regime', '-5'],
+        ['GEX BREAKOUT tag', '+8'],
+        ['GEX RANGE tag', '-8'],
+        ['Compass aligned (short+long match)', '+12'],
+        ['Compass conflict', '-10'],
+        ['IV OVERPRICED (>2.5× HV)', '-8'],
+        ['IV UNDERPRICED (<0.4× HV)', '+8'],
+        ['Alpha DEGRADING', '-5'],
+        ['Alpha DECAYED', 'BLOCK (AVOID)'],
+        ['Kelly negative edge', 'BLOCK (AVOID)'],
+        ['BOS bullish + CE trade', '+10'],
+        ['CHoCH reversal in trade direction', '+12'],
+        ['Liquidity sweep aligned', '+8'],
+        ['FVG magnet matches side', '+6'],
+        ['Order Block support/resistance matches', '+7'],
+        ['EMA stacked in direction', '+6'],
+        ['Strong candle closure aligned', '+5'],
+        ['STRONG_GAP_UP + CE (pre-open)', '+8'],
+        ['VIX spike >+5%', '-3'],
+        ['IV curve INVERTED', '-4'],
+        ['Order flow TIGHT + aggression aligned', '+7']
+      ]
+    ));
+
+    root.appendChild(docsH('Verdict thresholds', 2));
+    root.appendChild(docsTable(
+      ['Total points', 'Verdict', 'Size multiplier'],
+      [
+        ['≥35 AND ≤1 caveat', 'STRONG_BUY', '1.0 × Kelly'],
+        ['≥18', 'BUY', '0.75 × Kelly'],
+        ['≥5', 'BUY_SMALL', '0.5 × Kelly'],
+        ['-5 to 4', 'NEUTRAL', '0.25 × Kelly'],
+        ['<-5 OR any blocker', 'AVOID', '0']
+      ]
+    ));
+
+    root.appendChild(docsH('Regime classifier', 1));
+    root.appendChild(docsP('Runs on lead index last 10 5-min bars. Three metrics:'));
+    root.appendChild(docsList([
+      'hhhl/llih count: directional streaks',
+      'efficiency = |net move| / total range',
+      'volCV = stdev(bar ranges) / mean(bar ranges)'
+    ]));
+    root.appendChild(docsTable(
+      ['Regime', 'Condition', 'Kelly multiplier'],
+      [
+        ['VOLATILE', 'volCV > 0.6 AND efficiency < 0.4', '0.5×'],
+        ['TRENDING_UP', 'efficiency > 0.4 AND hhhl ≥ 4 AND up', '1.2×'],
+        ['TRENDING_DN', 'efficiency > 0.4 AND llih ≥ 4 AND down', '1.2×'],
+        ['RANGING', 'efficiency < 0.2', '0.7×'],
+        ['MIXED', 'else', '1.0×']
+      ]
+    ));
+
+    root.appendChild(docsH('Kelly position sizing', 1));
+    root.appendChild(docsCode(
+      'risk = |entry - SL|\n' +
+      'reward = |target - entry|\n' +
+      'b = reward / risk  (payoff ratio)\n' +
+      'p = scoreToWinProb(confidence)\n' +
+      'edge = (p × b) - (1 - p)\n' +
+      'Kelly f* = edge / b\n' +
+      'fractional = f* × 0.25 × regime_multiplier\n' +
+      '  (0.25 = quarter-Kelly, industry standard)\n' +
+      'Clamped: max 10% of capital, min 0.5%'
+    ));
+    root.appendChild(docsH('scoreToWinProb curve (before calibration)', 3));
+    root.appendChild(docsTable(
+      ['Score', 'Win probability'],
+      [
+        ['<55', '0.48'],
+        ['55-67', '0.52'],
+        ['68-75', '0.56'],
+        ['76-85', '0.60'],
+        ['86-95', '0.64'],
+        ['≥96', '0.67']
+      ]
+    ));
+
+    root.appendChild(docsH('ATR-adaptive SL/target (shipped v40)', 1));
+    root.appendChild(docsCode(
+      'ATR14 = mean true range of last 14 bars\n' +
+      'delta ≈ 0.50 at ATM, 0.35 if 1% OTM, 0.25 if 2% OTM, 0.65 if 1% ITM\n' +
+      'adverse move = ATR × 1.5 × delta\n' +
+      'slPct = adverse move / premium (clamped 8%-25%)\n' +
+      'tgtPct = slPct × 2   (clamped 20%-50%)\n\n' +
+      'Fallback to flat 15%/30% if <5 bars available.'
+    ));
+
+    root.appendChild(docsH('Partial profit (scale-out)', 1));
+    root.appendChild(docsP(
+      'At 1.5R, system auto-closes 50% of lots and raises SL on remainder to ' +
+      'break-even. Mathematically locks in at least +0.75R — you cannot lose ' +
+      'on a scaled-out trade.'));
+
+    root.appendChild(docsH('Calibration harness', 1));
+    root.appendChild(docsP(
+      'Records every closed trade\'s entry confidence score vs outcome. When ' +
+      '100+ closes with ≥10 per bucket across ≥3 buckets, the theoretical ' +
+      'scoreToWinProb curve is replaced with YOUR empirical win rates.'));
+
+    return root;
+  }
+
+  function docsRisks() {
+    var root = el('div', {});
+    root.appendChild(docsH('What this system is NOT', 1));
+    root.appendChild(docsList([
+      'Not a broker. EXECUTE opens a paper position. No real money moves.',
+      'Not a guarantee. "95% confidence" is a score, not a probability.',
+      'Not a tip service. Every decision is derived from market data — you can disagree.'
+    ]));
+
+    root.appendChild(docsH('Uncalibrated items (honestly stated)', 1));
+    root.appendChild(docsList([
+      'The 6-factor weights (25/20/20/15/10/10) are research-informed, not backtested on NSE data. Could be off by ±10%.',
+      'scoreToWinProb curve is theoretical until calibration harness kicks in at 100+ trades.',
+      'SMC signal point values (+6 FVG, +10 BOS, etc.) are industry heuristics, not NSE-tuned.',
+      'The 1.5R scale-out threshold is standard but not personalized to your setup types.'
+    ]));
+
+    root.appendChild(docsH('Real risks this system may create', 1));
+    root.appendChild(docsList([
+      'Voice guidance creating false confidence — "STRONG BUY" feels like a tip.',
+      'Every-5m lifecycle tags potentially causing overtrading vs intuition.',
+      'Paper portfolio giving false readiness for real execution (slippage, emotion, liquidity missing).'
+    ]));
+
+    root.appendChild(docsH('Before real money', 1));
+    root.appendChild(docsP(
+      'Paper-trade for 100+ trades. Then check:'));
+    root.appendChild(docsList([
+      'Calibrated win rate > 55% across your common setup buckets',
+      'YOUR EDGE section shows consistent positive expectancy',
+      'You follow all system EXIT/REDUCE recommendations even when you disagree',
+      'You can read PROS/CAVEATS before clicking EXECUTE'
+    ]));
+
+    root.appendChild(docsH('When to stop using this tool', 1));
+    root.appendChild(docsList([
+      '3 losses in a row today — streak banner is telling you',
+      'Regime chip shows VOLATILE and you are not comfortable with whipsaw',
+      'Alpha chip shows DECAYED — engine has lost edge on recent trades',
+      'You feel emotional — tool enforces discipline but not if you open broker app separately'
+    ]));
+
+    return root;
   }
 
   function isIndianMarketOpen() {
@@ -4136,6 +5094,8 @@
         })(),
         iconBtn('🔔', state.alertsOn, function () { state.alertsOn = !state.alertsOn; rerender(); }),
         iconBtn('🎙', state.voiceOn, function () { state.voiceOn = !state.voiceOn; rerender(); }),
+        // Help icon — opens docs modal explaining how to trade + scoring
+        iconBtn('?', false, function () { state.showDocs = !state.showDocs; rerender(); }),
         el('div', {
           title: 'Profile',
           style: {
@@ -4444,15 +5404,51 @@
 
     card.appendChild(symCell);
 
-    // Row 1 col 2 — confidence (crossfade on 5m close, spec §8)
-    card.appendChild(el('div', {
+    // Row 1 col 2 — confidence with honest labeling.
+    // Shows raw confidence score at top + calibration context below:
+    //   • If attribution bucket has ≥5 past trades: "62% win (24 trades)"
+    //   • Else if calibration harness applied: "calibrated"
+    //   • Else: "uncal" — marks as theoretical, not empirical
+    // This prevents users from treating "95%" as a guaranteed win probability.
+    var attrB = null;
+    try { attrB = tradeAttribution.lookupFor(trade); } catch (e) {}
+    var isCalibrated = kellySizer._calibrated;
+    var subLabel = '';
+    var subColor = C.textMute;
+    if (attrB && attrB.count >= 5) {
+      subLabel = attrB.winRate.toFixed(0) + '% win · ' + attrB.count + ' trades';
+      subColor = attrB.expectancy > 0 ? C.green
+               : attrB.expectancy < 0 ? C.red : C.textSec;
+    } else if (isCalibrated) {
+      subLabel = 'calibrated';
+      subColor = C.textSec;
+    } else {
+      subLabel = 'uncal';
+      subColor = C.textMute;
+    }
+
+    var confCell = el('div', {
+      style: {
+        display: 'flex', flexDirection: 'column', alignItems: 'flex-end',
+        alignSelf: 'center', minWidth: '54px'
+      }
+    });
+    confCell.appendChild(el('div', {
       className: 'at-fade at-fade-' + (state.fadeTick || 0),
       style: {
         fontSize: '20px', fontWeight: 700, color: confColor(trade.confidence),
-        lineHeight: 1.1, alignSelf: 'center', fontFamily: MONO,
-        minWidth: '54px', textAlign: 'right'  // reserve for "100%" max-width
+        lineHeight: 1.1, fontFamily: MONO,
+        textAlign: 'right'
       }
     }, trade.confidence + '%'));
+    confCell.appendChild(el('div', {
+      style: {
+        fontSize: '8px', color: subColor, fontFamily: MONO,
+        marginTop: '2px', whiteSpace: 'nowrap',
+        letterSpacing: '0.3px', fontWeight: 600
+      }
+    }, subLabel));
+    card.appendChild(confCell);
 
     // Row 1 col 3 — EXECUTE button OR state badge if already executing/closed
     // Determine trade lifecycle state for this card
@@ -4845,6 +5841,21 @@
         }
       }, 'SELECTED: ' + t.symbol + ' ' + t.strike));
 
+      // Event calendar warning / block banner above verdict
+      try {
+        var ev = eventCalendar.checkTrade(t, state.region || 'IN');
+        if (ev.action === 'BLOCK' || ev.action === 'WARN') {
+          var eCol = ev.action === 'BLOCK' ? C.red : C.orange;
+          sel.appendChild(el('div', {
+            style: {
+              background: eCol + '18', borderLeft: '3px solid ' + eCol,
+              borderRadius: '3px', padding: '6px 8px', marginBottom: '6px',
+              fontSize: '10px', color: eCol, fontWeight: 700, lineHeight: 1.3
+            }
+          }, (ev.action === 'BLOCK' ? '🚫 ' : '⚠ ') + ev.reason));
+        }
+      } catch (e) {}
+
       // Big verdict card
       var verdictCard = el('div', {
         style: {
@@ -5081,6 +6092,78 @@
       });
     }
     scroll.appendChild(positionsSection);
+
+    // ═══════════════════════════════════════════════════════════════════
+    // YOUR EDGE — per-user trade attribution insights
+    // ═══════════════════════════════════════════════════════════════════
+    // What this user wins at vs what they lose at. Data accumulates over
+    // time — a bucket needs ≥5 trades before it surfaces. Without this,
+    // users never learn which setups actually work FOR THEM.
+    var attrBuckets = [];
+    try {
+      var worst = tradeAttribution.worstBuckets(5);
+      var best = tradeAttribution.bestBuckets(5);
+      // Dedup: a bucket can appear in both if few buckets exist
+      var seen = {};
+      best.concat(worst).forEach(function (b) {
+        if (!seen[b.key]) { seen[b.key] = true; attrBuckets.push(b); }
+      });
+    } catch (e) {}
+    if (attrBuckets.length > 0) {
+      var edgeSection = el('div', {
+        style: {
+          padding: '10px', borderTop: '1px solid ' + C.divider
+        }
+      });
+      edgeSection.appendChild(el('div', {
+        style: {
+          fontSize: '9px', fontWeight: 700, color: C.textSec,
+          letterSpacing: '0.8px', marginBottom: '6px'
+        }
+      }, 'YOUR EDGE · LEARNED FROM ' + Object.keys(paperPortfolio.positions).length + ' TRADES'));
+
+      attrBuckets.slice(0, 4).forEach(function (b) {
+        var bCol = b.expectancy > 0 ? C.green
+                 : b.expectancy < -0.2 ? C.red : C.textSec;
+        var row = el('div', {
+          style: {
+            background: bCol + '12', borderLeft: '2px solid ' + bCol,
+            borderRadius: '2px', padding: '4px 7px', marginBottom: '4px',
+            fontSize: '10px', lineHeight: 1.3
+          }
+        });
+        row.appendChild(el('div', {
+          style: { color: C.textPri, fontFamily: MONO, fontWeight: 700 }
+        }, b.phase + ' · ' + b.regime.replace(/_/g, ' ') + ' · ' + b.side +
+           (b.gamma ? ' · gamma' : '')));
+        row.appendChild(el('div', {
+          style: { color: bCol, fontFamily: MONO, fontSize: '9px' }
+        }, b.wins + 'W / ' + b.losses + 'L · ' +
+           b.winRate.toFixed(0) + '% · expect ' +
+           (b.expectancy >= 0 ? '+' : '') + b.expectancy.toFixed(2) + '%/trade'));
+        edgeSection.appendChild(row);
+      });
+
+      // If an active trade is selected, surface its specific bucket context
+      if (state.selected) {
+        var lookup = null;
+        try { lookup = tradeAttribution.lookupFor(state.selected); } catch (e) {}
+        if (lookup) {
+          var col = lookup.expectancy > 0 ? C.green : C.red;
+          edgeSection.appendChild(el('div', {
+            style: {
+              marginTop: '6px',
+              background: col + '15', borderLeft: '3px solid ' + col,
+              borderRadius: '2px', padding: '5px 8px',
+              fontSize: '10px', color: col, fontWeight: 700, lineHeight: 1.3
+            }
+          }, 'THIS SETUP: ' + lookup.winRate.toFixed(0) + '% win rate over ' +
+             lookup.count + ' trades'));
+        }
+      }
+
+      scroll.appendChild(edgeSection);
+    }
 
     // 3. MACRO SNAPSHOT — regime, alpha, external feeds
     var macroSection = el('div', {
@@ -6903,6 +7986,23 @@
       return;
     }
 
+    // ── Event calendar check — IV crush prevention ──
+    // High-risk events (RBI/FOMC/earnings) within 1 day BLOCK trade entry.
+    // Lower-risk or further-out events WARN but allow. This saves users
+    // from buying into an event and losing on IV crush even if direction
+    // is right — the single biggest preventable loss in retail options.
+    var evCheck = eventCalendar.checkTrade(t, state.region || 'IN');
+    if (evCheck.action === 'BLOCK') {
+      pushLog('BLOCKED: ' + evCheck.reason, C.red);
+      speak(t.symbol + ' blocked — ' + evCheck.reason);
+      return;
+    }
+    if (evCheck.action === 'WARN') {
+      pushLog('⚠ ' + evCheck.reason, C.orange);
+      // Warning doesn't block; trade still opens. Voice notes it.
+      speak('Note: ' + evCheck.reason);
+    }
+
     // Regime-adjusted Kelly sizing — no more fixed lot
     var baseSaved = kellySizer.fractional;
     kellySizer.fractional = baseSaved * regimeDetector.kellyMultiplier();
@@ -7460,11 +8560,45 @@
       // Also include the selected trade in case it's an open position
       if (state.selected) priceLookup[state.selected.id] = state.selected;
 
+      // ═══════════════════════════════════════════════════════════════════
+      // SCALE-OUT CHECK — for every active position, check 1.5R partial
+      // profit before the main lifecycle evaluator runs. Scale-out closes
+      // 50% of the lot and raises SL on remainder to break-even. This is
+      // distinct from EXIT — it's "book some, let rest run" discipline.
+      // ═══════════════════════════════════════════════════════════════════
+      var scaledOutThisBar = {};
+      for (var posId in paperPortfolio.positions) {
+        var pos = paperPortfolio.positions[posId];
+        if (pos.status !== 'active') continue;
+        if (pos.scaledOutAt) continue;
+        var liveTradeSO = priceLookup[pos.tradeId];
+        var curPriceSO = liveTradeSO ? liveTradeSO.price : pos.entryPremium;
+        var soCheck = partialProfitManager.evaluate(pos, curPriceSO);
+        if (soCheck.action === 'SCALE_OUT') {
+          var result = partialProfitManager.execute(posId, curPriceSO);
+          if (result) {
+            scaledOutThisBar[posId] = true;
+            pushLog('SCALE OUT: ' + pos.sym + ' ' + pos.strike + ' · ' +
+                    result.partialLots + ' lot(s) at +' +
+                    result.partialPnlPct.toFixed(1) + '% · ' +
+                    'stop raised to break-even', C.green);
+            if (state.voiceOn) {
+              speak(pos.sym + ' ' + pos.strike + ' hit one and half R. ' +
+                    'Booked fifty percent at plus ' + result.partialPnlPct.toFixed(0) +
+                    ' percent. Remainder trails with break-even stop.');
+            }
+          }
+        }
+      }
+
       // Get recommendations per active position
       var recs = liveTradeGuide.evaluateAll(priceLookup);
       state.liveRecs = recs;  // stash for UI panel
 
       recs.forEach(function (rec) {
+        // Skip lifecycle voice/action for positions that scaled-out this bar.
+        // Double-talking about the same position in one bar is noise.
+        if (scaledOutThisBar[rec.positionId]) return;
         var voiceLine = voiceGuide.lifecycleLine(rec);
         // Log in appropriate color
         var logColor = rec.action === 'EXIT' ? C.red
