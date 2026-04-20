@@ -1,75 +1,58 @@
-# Celesys deploy — April 20, 2026 (r5)
+# Celesys deploy — April 20, 2026 (r6)
 
-Incremental over r4. `api.py` and `static/active-trading.js` both changed.
+Incremental over r5. Only `static/active-trading.js` changed vs r5.
 
-## What's new in r5
+## What's new in r6 (light theme + bigger UI)
 
-### Backend: fix Yahoo rate-limit causing 0 US tickers
+### 1. Overlay shell light-themed
 
-**Problem seen in Render logs:** every US ticker hit `Chain fetch error: Too Many Requests` → dropped by the strict no-fabrication policy → `BOTTOM-NAV ✅ US: 0 scored`. Empty scanner.
+The `C` palette was already light (off-white bg, near-black text) from an earlier session, but the outer overlay wrapper around it was still hardcoded to `#020617` (dark blue) and `#0F172A`. The BACK button and top bar bled through dark regardless of palette settings — which is why your screenshot showed a dark UI even though the cards were light.
 
-**Root cause:** 8 parallel scanner threads called `tk.option_chain()` concurrently with no rate discipline. Yahoo's per-IP concurrent-request cap got tripped; every call failed.
+Fixed three hardcoded colors at the overlay mount site: overlay bg `#020617 → #F8FAFC`, top bar bg `#0F172A → #FFFFFF`, borders/back-button `#1E293B → #CBD5E1`. Text color on the overlay flipped from `#F8FAFC → #0F172A`.
 
-**Fix (3 parts, api.py):**
-1. Added `_yahoo_rate_wait()` before `tk.option_chain()` in `_options_quick_impl`. This is a module-level mutex that serializes across threads with 1.5s spacing.
-2. Added **one retry on 429/"Too Many Requests"** with a 3s backoff. Yahoo's cap is per-burst, not per-hour, so a single patient retry usually succeeds.
-3. Reduced US worker count from 8 → 3. With the global rate-wait, 8 threads would just queue anyway. 3 is cleaner and leaves per-burst headroom.
+Now the entire Active Trading view is light.
 
-Expected scan time: ~20s for US (previously 22s with 0 results). Fits inside 2-min cache comfortably.
+### 2. Card price row always visible
 
-### Frontend: horizontal TOP TRADES strip
+Previously you had to click the chevron to see Buy / Trig@spot / SL / Target. Now a 4-column chip row with **Spot · Buy · SL · Target** renders on the collapsed card. Each chip: 9px label (weight 800), 16px value (weight 800). Red for SL, green for Target. Always visible, scannable at a glance.
 
-Three cards side-by-side at the top of the screen instead of stacked in a left column. Below them: Live Monitor + Detail in a 2-column layout.
+The trigger level (underlying breakout price) moved to the expanded-only section since it's contextual — you only need it when deciding whether to enter.
 
-**Layout before (r4):**
-```
-┌───┬────┬────┐
-│TOP│LIVE│DTL │
-│   │    │    │  (3-column vertical)
-│   │    │    │
-├───┴────┴────┤
-│  SCANNER    │
-```
+Collapsed card now shows: **Symbol · Strike · Side (CE/PE) · Confidence · Button · Chevron · Spot · Buy · SL · Target**.
 
-**Layout after (r5):**
-```
-┌─────────────┐
-│ TOP TRADES  │  (full-width horizontal strip)
-│ [1][2][3]   │
-├─────┬───────┤
-│LIVE │DETAIL │
-│     │       │  (2-column below)
-├─────┴───────┤
-│  SCANNER    │
-```
+### 3. Secondary scanner enlarged
 
-Each card still has its own chevron. Expanding one card grows only that column; the other two stay at collapsed height. Search bar moved into the strip's header row.
+- Container: 220px → 320px tall (more rows visible)
+- Header row: 12px → 14px, weight 900
+- Body rows: 15px → 18px, weight 900 on Symbol / Dir / Score, weight 800 on Strike
+- Row height: 38px → 48px
+- Trend column: 14px → 16px bold
+- TAKE TRADE button: 12px → 14px with bigger padding
+- BLOCKED / AWAITING DATA labels: 11px → 13px, weight 900
 
-Held/off-scan positions still pinned — now appear in their own horizontal mini-strip ABOVE the 3-up (max 3 visible).
+## Everything from r5 still applies
 
-### Everything from r4 still applies
-
-- WATCHING band 0.4% (fresh cards land in WATCHING, not INVALID)
-- Voice verdict fix (`v.label` → `v.verdict`)
-- Synthetic-premium block, FINNIFTY/MIDCPNIFTY removed, spot-based trigger, SYNTHETIC badge, QT lot sizes
+- Backend Yahoo rate-wait + one 429 retry + worker count 8→3 (US scanner was returning 0 tickers due to rate limits; this fixes it)
+- Horizontal TOP TRADES strip across full width, 2-column Live Monitor + Detail below
+- WATCHING band 0.4%, voice verdict fix, synthetic-premium block, FINNIFTY/MIDCPNIFTY removed, spot-based trigger, QT lot sizes
 
 ## Deploy
 
-Push `api.py` + `static/active-trading.js`. Nothing else changed. Layout change will be immediately visible on reload.
+Only `static/active-trading.js` changed since r5. If r5 is already live, push just that one file. Otherwise ship the whole zip.
 
-## What to verify
+## What to verify after deploy
 
-1. Render logs: US scan should now show `US: N scored in ~20s, M buy` where N > 0 (not 0). If still 0 after deploy, Yahoo's rate limit is per-hour not per-burst — needs a different fix (longer cache TTL).
-2. UI: top-trades are now a horizontal strip across the full width.
-3. Click a card's chevron — only that card expands, others stay small.
-4. Search bar works from within the strip header.
-5. Mobile / narrow viewport: three 1fr columns may look cramped under 900px. I did not add a breakpoint — flag if this is an issue.
-
-## Known backlog
-
-Same as before (fair_value placeholder, stale cache flag, score=50, ATR default, 52W default). Also still open: scoring calibration where OVERPRICED+WIDE+RANGING can still reach BUY_SMALL.
+1. **Is the UI actually light now?** If you still see dark bg on the back button or top bar, the browser cached the old JS — force-refresh (Cmd+Shift+R / Ctrl+Shift+F5).
+2. **Each collapsed card shows all 4 price values (Spot, Buy, SL, Target).**
+3. **Scanner rows are visibly bigger** — should fit ~5 rows in the 320px band.
+4. **Green/red/yellow colors read cleanly on white** (Tailwind-600/700 range). Not washed out, not neon.
 
 ## Honest flags
 
-- I didn't live-test the new horizontal layout. It passes `node --check` but the interplay between `flex: 0 0 auto` on the strip and `grid repeat(3, 1fr)` on the cards could look different on wide vs narrow screens.
-- The `tk.option_chain()` retry is wrapped in a try/except that only retries on rate-limit keywords. If Yahoo returns a generic error that isn't recognized (new error message, connection reset, etc), no retry will fire — the original exception propagates and the ticker drops. This is intentional but may need tuning.
+1. **Didn't live-render.** Passes `node --check`. The interplay between the topBar (symbol+side+conf+button+chevron) and the new price row below may crush on narrow cards (~320px width when three sit side-by-side on a 1366px screen). If it looks cramped, the easy fix is to drop the Side pill from the topBar and put it next to Symbol as a smaller suffix.
+2. **Trigger moved out of collapsed view.** If users find themselves expanding every card just to check the trigger level, I'd move it back in or surface it as a small pill in the topBar.
+3. **Scanner height of 320px** reduces the vertical space available for the Live Monitor + Detail area by ~100px. If that squeezes anything important below the fold, tell me.
+
+## Known backlog (unchanged)
+
+Same as before: DCF `fair_value = price × 1.05`, stale cache flag, score=50 default, ATR default, 52W default. Plus scoring calibration (OVERPRICED+WIDE+RANGING can reach BUY_SMALL).

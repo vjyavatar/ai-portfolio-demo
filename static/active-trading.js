@@ -29,19 +29,32 @@
               'color:#94A3B8;font-size:10px');
 
   // ── COLOR TOKENS ────────────────────────────────────────────────────────
+  // ═══════════════════════════════════════════════════════════════════════
+  // COLOR PALETTE — v5 light theme
+  //
+  // User requested off-white bg + near-black bold text.
+  // Status colors darkened from Tailwind-500 to Tailwind-600/700 so they read
+  // cleanly on a white background instead of looking pastel.
+  //   green:  #22C55E → #16A34A
+  //   red:    #EF4444 → #DC2626
+  //   yellow: #F59E0B → #D97706
+  //   orange: #FB923C → #EA580C
+  //   blue:   #3B82F6 → #2563EB
+  // Text colors inverted: high-contrast near-black, medium-contrast slate.
+  // ═══════════════════════════════════════════════════════════════════════
   var C = {
-    bg: '#020617',
-    card: '#0F172A',
-    active: '#1E293B',
-    divider: '#1E293B',
-    textPri: '#E2E8F0',
-    textSec: '#94A3B8',
-    textMute: '#64748B',
-    green: '#22C55E',
-    yellow: '#F59E0B',
-    orange: '#FB923C',
-    red: '#EF4444',
-    blue: '#3B82F6'
+    bg: '#F8FAFC',           // off-white page background
+    card: '#FFFFFF',         // pure white card surface for maximum pop
+    active: '#E0F2FE',       // light sky when selected (replaces dark slate)
+    divider: '#CBD5E1',      // slate-300 borders — visible on white
+    textPri: '#0F172A',      // near-black primary text
+    textSec: '#334155',      // slate-700 secondary
+    textMute: '#64748B',     // slate-500 muted
+    green: '#16A34A',
+    yellow: '#D97706',
+    orange: '#EA580C',
+    red: '#DC2626',
+    blue: '#2563EB'
   };
   var MONO = '"JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace';
 
@@ -55,16 +68,9 @@
   var confColor = function (c) { return c >= 80 ? C.green : c >= 60 ? C.yellow : C.red; };
 
   // ── SCOPED CSS ──────────────────────────────────────────────────────────
-  // The Celesys site has hard-override rules:
-  //   [data-theme="dark"] .sc { background: #fff !important; ... }
-  //   .sbody { padding: 16px 20px 18px; }
-  // These force a white border around our dark terminal and add whitespace.
-  //
-  // Strategy: while Active Trading is mounted, we add `at-mode` class to
-  // document.body. Scoped rules below activate ONLY when that class exists
-  // AND ONLY for the .sc that contains #activeTradingMount (via :has selector
-  // with fallback). When unmounted, the class is removed and every other tab
-  // (Trader/Investor/Options) goes back to pristine white styling.
+  // Light-theme variant (v5). Body keeps the off-white #F8FAFC bg; cards
+  // and elevated surfaces stay pure white. Site-wide dark overrides get
+  // neutralised while `body.at-mode` is active.
   function installScopedStyles() {
     if (document.getElementById('activeTradingScopedCSS')) return;
     var css = [
@@ -74,8 +80,8 @@
       '  box-sizing: border-box;',
       '}',
       '#activeTradingMount {',
-      '  background: #020617 !important;',
-      '  color: #E2E8F0 !important;',
+      '  background: #F8FAFC !important;',
+      '  color: #0F172A !important;',
       '  font-family: "Sora", "Inter", system-ui, sans-serif !important;',
       '}',
       '#activeTradingMount button,',
@@ -83,27 +89,24 @@
       '#activeTradingMount select {',
       '  font-family: inherit;',
       '}',
-      // Every descendant div of the mount defaults to DARK background, not
-      // transparent or inherited. This makes it impossible for site-wide
-      // rules (e.g. [data-theme="dark"] .sc .sbody [style*=...]) to paint
-      // any intermediate div white. The header and panels with their own
-      // distinct colors opt out by carrying a stronger inline !important.
+      // Every descendant div defaults to the page bg. This blocks stray dark
+      // rules from bleeding through. Panels/cards with their own distinct
+      // background (white cards, hover states) opt out via inline styles.
       '#activeTradingMount div {',
-      '  background-color: #020617;',
+      '  background-color: #F8FAFC;',
       '}',
 
-      // Parent overrides — ONLY active while body.at-mode is set
-      // Uses :has() where supported (Chrome 105+, Safari 15.4+, Firefox 121+).
-      // Fallback: mount-level data attributes on the ancestors (set by JS).
+      // Parent overrides — neutralise the site's dark-mode scoping while
+      // body.at-mode is set.
       'body.at-mode .sc:has(#activeTradingMount) {',
-      '  background: #020617 !important;',
-      '  border: 1px solid #1E293B !important;',
-      '  border-left: 3px solid #0F172A !important;',
-      '  box-shadow: none !important;',
+      '  background: #F8FAFC !important;',
+      '  border: 1px solid #CBD5E1 !important;',
+      '  border-left: 3px solid #94A3B8 !important;',
+      '  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06) !important;',
       '  padding: 0 !important;',
       '}',
       'body.at-mode .sc:has(#activeTradingMount) .sbody {',
-      '  background: #020617 !important;',
+      '  background: #F8FAFC !important;',
       '  padding: 0 !important;',
       '}',
       'body.at-mode .sc:has(#activeTradingMount) #deHeader,',
@@ -111,16 +114,16 @@
       '  display: none !important;',
       '}',
 
-      // Fallback for older browsers without :has() — JS sets [data-at-host="1"]
+      // Fallback for older browsers without :has()
       'body.at-mode .sc[data-at-host="1"] {',
-      '  background: #020617 !important;',
-      '  border: 1px solid #1E293B !important;',
-      '  border-left: 3px solid #0F172A !important;',
-      '  box-shadow: none !important;',
+      '  background: #F8FAFC !important;',
+      '  border: 1px solid #CBD5E1 !important;',
+      '  border-left: 3px solid #94A3B8 !important;',
+      '  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06) !important;',
       '  padding: 0 !important;',
       '}',
       'body.at-mode .sc[data-at-host="1"] .sbody {',
-      '  background: #020617 !important;',
+      '  background: #F8FAFC !important;',
       '  padding: 0 !important;',
       '}',
       'body.at-mode .sc[data-at-host="1"] > .sh,',
@@ -128,18 +131,18 @@
       '  display: none !important;',
       '}',
 
-      // Price flash animations (5m CLOSE field)
-      '@keyframes atPriceUp   { 0% { color: #22C55E; } 100% { color: #E2E8F0; } }',
-      '@keyframes atPriceDown { 0% { color: #EF4444; } 100% { color: #E2E8F0; } }',
+      // Price flash animations — green/red tinted against light textPri
+      '@keyframes atPriceUp   { 0% { color: #16A34A; } 100% { color: #0F172A; } }',
+      '@keyframes atPriceDown { 0% { color: #DC2626; } 100% { color: #0F172A; } }',
       '#activeTradingMount .at-flash-up { animation: atPriceUp .5s ease both; }',
       '#activeTradingMount .at-flash-dn { animation: atPriceDown .5s ease both; }',
 
-      // Dark-theme scrollbars (Webkit + Firefox) — visible but subtle
+      // Light scrollbars
       '#activeTradingMount ::-webkit-scrollbar { width: 8px; height: 8px; }',
-      '#activeTradingMount ::-webkit-scrollbar-track { background: #020617; }',
-      '#activeTradingMount ::-webkit-scrollbar-thumb { background: #1E293B; border-radius: 4px; }',
-      '#activeTradingMount ::-webkit-scrollbar-thumb:hover { background: #334155; }',
-      '#activeTradingMount { scrollbar-color: #1E293B #020617; scrollbar-width: thin; }',
+      '#activeTradingMount ::-webkit-scrollbar-track { background: #F1F5F9; }',
+      '#activeTradingMount ::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 4px; }',
+      '#activeTradingMount ::-webkit-scrollbar-thumb:hover { background: #94A3B8; }',
+      '#activeTradingMount { scrollbar-color: #CBD5E1 #F1F5F9; scrollbar-width: thin; }',
 
       // Spec §8: Crossfade (opacity fade, 200-300ms, no slide/resize)
       // Applied to Tier 1 value containers (confidence, state pill, price).
@@ -6573,7 +6576,7 @@
       }, '⚠ SYNTHETIC — DO NOT TRADE'));
     }
 
-    // ═══ TOP BAR — always visible: Symbol · Confidence · Button · Chevron ═══
+    // ═══ TOP BAR — always visible row 1: Symbol · Side · Confidence · Button · Chevron ═══
     var topBar = el('div', {
       style: {
         display: 'flex', alignItems: 'center', gap: '10px',
@@ -6585,8 +6588,8 @@
     var symCell = el('div', {
       style: {
         flex: '1 1 auto',
-        display: 'flex', flexDirection: 'column', justifyContent: 'center',
-        gap: '2px', overflow: 'hidden', minWidth: 0
+        display: 'flex', flexDirection: 'row', alignItems: 'center',
+        gap: '10px', overflow: 'hidden', minWidth: 0
       }
     });
     var sym = el('div', {
@@ -6601,17 +6604,17 @@
     sym.appendChild(el('span', { style: { color: C.textSec, fontWeight: 700 } }, trade.strike));
     symCell.appendChild(sym);
 
-    // Thin sub-line in collapsed state: just the side + reason (truncated).
-    // Provides enough at-a-glance context without the 4-value price row.
-    if (!isExpanded) {
-      symCell.appendChild(el('div', {
-        style: {
-          fontSize: '12px', color: C.textSec, lineHeight: 1.2,
-          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-          fontWeight: 600
-        }
-      }, trade.reason || (trade.side === 'CE' ? 'Bullish structure' : 'Bearish structure')));
-    }
+    // Side pill (CE / PE) — color-coded, compact. Always visible.
+    var sideColor = trade.side === 'CE' ? C.green : trade.side === 'PE' ? C.red : C.textMute;
+    symCell.appendChild(el('div', {
+      style: {
+        fontSize: '11px', fontWeight: 900, color: sideColor,
+        background: sideColor + '18', border: '1px solid ' + sideColor + '55',
+        padding: '2px 8px', borderRadius: '999px',
+        letterSpacing: '0.8px', fontFamily: MONO, flex: '0 0 auto'
+      }
+    }, trade.side || '—'));
+
     topBar.appendChild(symCell);
 
     // Row 1 col 2 — confidence with honest labeling.
@@ -6843,12 +6846,53 @@
 
     card.appendChild(topBar);
 
+    // ── ALWAYS-VISIBLE PRICE ROW — Spot, Buy, SL, Target ─────────────
+    // User asked for these on the collapsed card so they're scannable
+    // without clicking the chevron. Laid out as labeled chips that wrap
+    // if the card is narrow. Only the deeper context (reason, score
+    // trend, state pill, missing factors, etc) is hidden by default.
+    var currency = (trade._raw && trade._raw.currency) ? trade._raw.currency : '₹';
+    // Spot comes from the raw scan data; may be null on held-off-scan positions
+    var spotVal = (trade._raw && typeof trade._raw.spot === 'number') ? trade._raw.spot : null;
+    var priceRow = el('div', {
+      style: {
+        display: 'grid',
+        gridTemplateColumns: 'repeat(4, 1fr)',  // fixed 4-up so alignment is clean
+        gap: '8px',
+        fontFamily: MONO, lineHeight: 1.2,
+        paddingTop: '8px', marginTop: '2px',
+        borderTop: '1px solid ' + C.divider
+      }
+    });
+    function priceChip(label, value, valueColor) {
+      var chip = el('div', {
+        style: { display: 'flex', flexDirection: 'column', gap: '2px', minWidth: 0 }
+      });
+      chip.appendChild(el('div', {
+        style: {
+          fontSize: '9px', color: C.textMute, fontWeight: 800,
+          letterSpacing: '0.8px', whiteSpace: 'nowrap',
+          overflow: 'hidden', textOverflow: 'ellipsis'
+        }
+      }, label));
+      chip.appendChild(el('div', {
+        style: {
+          fontSize: '16px', color: valueColor || C.textPri, fontWeight: 800,
+          whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'
+        }
+      }, value));
+      return chip;
+    }
+    priceRow.appendChild(priceChip('SPOT',   spotVal != null ? spotVal.toFixed(2) : '—'));
+    priceRow.appendChild(priceChip('BUY',    currency + trade.price.toFixed(2)));
+    priceRow.appendChild(priceChip('SL',     currency + trade.sl.toFixed(2), C.red));
+    priceRow.appendChild(priceChip('TARGET', currency + trade.target.toFixed(2), C.green));
+    card.appendChild(priceRow);
+
     // ════════════════════════════════════════════════════════════════════
     // EXPANDED DETAIL SECTION — everything below only renders when the
-    // user has expanded this card. Keeps the collapsed view tall-typography
-    // and scannable. Expanded section contains: Buy/Trig@spot/SL/Tgt row,
-    // reason, state pill, voice mic, score trend, missing factors, false-
-    // breakout warning, data provenance.
+    // user has expanded this card. Deeper context: trigger level, reason,
+    // state pill, voice mic, score trend, missing factors, false-breakout.
     // ════════════════════════════════════════════════════════════════════
     if (!isExpanded) {
       // Data provenance badge still shows on collapsed cards (small, corner)
@@ -6867,30 +6911,21 @@
       return card;
     }
 
-    // ── Expanded: Buy / Trig@spot / SL / Tgt row — bigger, bolder ─────
-    var currency = (trade._raw && trade._raw.currency) ? trade._raw.currency : '₹';
-    var priceRow = el('div', {
+    // ── Expanded: Trigger (spot breakout level) as its own chip row ───
+    var trigRow = el('div', {
       style: {
-        display: 'flex', flexWrap: 'wrap', gap: '14px',
-        fontSize: '13px', fontFamily: MONO, lineHeight: 1.2,
-        paddingTop: '6px', borderTop: '1px solid ' + C.divider
+        display: 'flex', alignItems: 'center', gap: '10px',
+        paddingTop: '8px', borderTop: '1px solid ' + C.divider,
+        fontSize: '12px', fontFamily: MONO
       }
     });
-    function priceChip(label, value, valueColor) {
-      var chip = el('div', { style: { display: 'flex', flexDirection: 'column', gap: '2px' } });
-      chip.appendChild(el('div', {
-        style: { fontSize: '9px', color: C.textMute, fontWeight: 700, letterSpacing: '0.8px' }
-      }, label));
-      chip.appendChild(el('div', {
-        style: { fontSize: '14px', color: valueColor || C.textPri, fontWeight: 700 }
-      }, value));
-      return chip;
-    }
-    priceRow.appendChild(priceChip('BUY',      currency + trade.price.toFixed(2)));
-    priceRow.appendChild(priceChip('TRIG @ SPOT', trade.trigger.toFixed(2)));
-    priceRow.appendChild(priceChip('SL',       currency + trade.sl.toFixed(2), C.red));
-    priceRow.appendChild(priceChip('TARGET',   currency + trade.target.toFixed(2), C.green));
-    card.appendChild(priceRow);
+    trigRow.appendChild(el('span', {
+      style: { color: C.textMute, fontWeight: 800, letterSpacing: '0.8px', fontSize: '10px' }
+    }, 'TRIGGER @ SPOT'));
+    trigRow.appendChild(el('span', {
+      style: { color: C.textPri, fontWeight: 800, fontSize: '14px' }
+    }, (trade.side === 'PE' ? 'break below ' : 'break above ') + trade.trigger.toFixed(2)));
+    card.appendChild(trigRow);
 
     // ── Expanded: reason + state pill + voice mic row ─────────────────
     var infoRow = el('div', {
@@ -9435,12 +9470,12 @@
   function renderScanner() {
     var wrap = el('div', {
       style: {
-        height: '220px', background: C.bg, borderTop: '1px solid ' + C.divider,
+        height: '320px', background: C.bg, borderTop: '1px solid ' + C.divider,
         display: 'flex', flexDirection: 'column', flexShrink: 0
       }
     });
 
-    // "Last Updated" label — more readable
+    // "Last Updated" — larger label to match scanner typography
     var lastUpText = 'Last Updated: —';
     if (state.lastFullRefreshAt) {
       var ago = Math.floor((Date.now() - state.lastFullRefreshAt) / 1000);
@@ -9449,9 +9484,9 @@
     wrap.appendChild(el('div', {
       style: {
         display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-        padding: '6px 10px 4px',
-        fontSize: '11px', fontWeight: 800, color: C.textMute,
-        letterSpacing: '1px', fontFamily: MONO
+        padding: '10px 14px 6px',
+        fontSize: '13px', fontWeight: 900, color: C.textSec,
+        letterSpacing: '1.2px', fontFamily: MONO
       }
     }, [
       el('span', {}, 'SECONDARY SCANNER'),
@@ -9461,8 +9496,8 @@
     wrap.appendChild(el('div', {
       style: {
         display: 'grid', gridTemplateColumns: '16% 20% 8% 10% 18% 1fr',
-        padding: '6px 10px',
-        fontSize: '12px', fontWeight: 800, color: C.textMute, letterSpacing: '1.3px',
+        padding: '8px 14px',
+        fontSize: '14px', fontWeight: 900, color: C.textSec, letterSpacing: '1.3px',
         borderBottom: '1px solid ' + C.divider
       }
     }, [
@@ -9517,13 +9552,13 @@
       var scanPreview = null;
       try { scanPreview = tradePreview.compute(r); } catch (e) {}
 
-      // The action cell is a small TAKE button with size sub-label
+      // The action cell is a TAKE button with size sub-label
       var actionCell = null;
       var scanPos = paperPortfolio.findByTradeId(r.id);
       if (scanPos) {
         actionCell = el('span', {
           style: {
-            fontSize: '12px', fontWeight: 900,
+            fontSize: '14px', fontWeight: 900,
             color: scanPos.status === 'active' ? C.green : C.orange,
             letterSpacing: '0.5px'
           }
@@ -9535,9 +9570,9 @@
         actionCell = el('span', {
           title: (scanPreview.blockers || []).join(' · '),
           style: {
-            fontSize: '11px',
+            fontSize: '13px',
             color: isAwaiting ? C.orange : C.red,
-            fontWeight: 800,
+            fontWeight: 900,
             letterSpacing: '0.5px'
           }
         }, isAwaiting ? 'AWAITING DATA' : 'BLOCKED');
@@ -9555,8 +9590,8 @@
             background: C.blue + '22',
             border: '1px solid ' + C.blue + '55',
             color: C.blue,
-            padding: '4px 12px', borderRadius: '999px',
-            fontSize: '12px', fontWeight: 800, cursor: 'pointer',
+            padding: '6px 14px', borderRadius: '999px',
+            fontSize: '14px', fontWeight: 900, cursor: 'pointer',
             letterSpacing: '0.3px',
             display: 'inline-flex', flexDirection: 'column',
             alignItems: 'center', lineHeight: 1.1
@@ -9574,18 +9609,18 @@
         onClick: function () { selectTrade(r); },
         style: {
           display: 'grid', gridTemplateColumns: '16% 20% 8% 10% 18% 1fr',
-          minHeight: '38px', alignItems: 'center', padding: '5px 10px',
-          fontSize: '15px', fontFamily: MONO,
+          minHeight: '48px', alignItems: 'center', padding: '8px 14px',
+          fontSize: '18px', fontFamily: MONO,
           borderBottom: i < displayScan.length - 1 ? '1px solid ' + C.divider : 'none',
-          color: C.textPri, lineHeight: 1.15, cursor: 'pointer'
+          color: C.textPri, lineHeight: 1.2, cursor: 'pointer'
         }
       }, [
-        el('div', { style: { fontWeight: 800 } }, r.symbol),
-        el('div', { style: { color: C.textSec, fontFamily: MONO, fontWeight: 700 } }, r.strike || '—'),
+        el('div', { style: { fontWeight: 900 } }, r.symbol),
+        el('div', { style: { color: C.textSec, fontFamily: MONO, fontWeight: 800 } }, r.strike || '—'),
         el('div', { style: { color: r.direction === 'CE' ? C.green : C.red, fontWeight: 900 } }, r.direction),
         el('div', { style: { color: confColor(r.score), fontWeight: 900 } }, String(r.score)),
         el('div', {}, actionCell),
-        el('div', { style: { color: tColor, display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 700, fontSize: '14px' } }, [
+        el('div', { style: { color: tColor, display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 800, fontSize: '16px' } }, [
           el('span', {}, trendText),
           el('span', {}, tMark)
         ])
@@ -10651,11 +10686,11 @@
       'position:fixed;' +
       'top:0;left:0;right:0;bottom:0;' +
       'width:100vw;height:100vh;' +
-      'background:#020617;' +
+      'background:#F8FAFC;' +
       'z-index:9999;' +
       'overflow:hidden;' +
       'display:flex;flex-direction:column;' +
-      'color:#F8FAFC;' +
+      'color:#0F172A;' +
       'font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif'
     );
 
@@ -10665,8 +10700,8 @@
     topBar.setAttribute('style',
       'flex:0 0 auto;' +
       'height:44px;' +
-      'background:#0F172A;' +
-      'border-bottom:1px solid #1E293B;' +
+      'background:#FFFFFF;' +
+      'border-bottom:1px solid #CBD5E1;' +
       'display:flex;align-items:center;' +
       'padding:0 12px;gap:10px'
     );
@@ -10674,8 +10709,8 @@
     // Back button — leaves overlay and returns to normal page
     var backBtn = document.createElement('button');
     backBtn.setAttribute('style',
-      'background:transparent;border:1px solid #1E293B;' +
-      'color:#F8FAFC;cursor:pointer;' +
+      'background:transparent;border:1px solid #CBD5E1;' +
+      'color:#0F172A;cursor:pointer;' +
       'padding:5px 12px;border-radius:4px;' +
       'font-size:12px;font-weight:700;letter-spacing:0.5px'
     );
@@ -10708,7 +10743,7 @@
       'flex:1 1 auto;' +
       'min-height:0;' +
       'overflow:hidden;' +
-      'background:#020617;' +
+      'background:#F8FAFC;' +
       'display:flex;flex-direction:column'
     );
     overlay.appendChild(mountDiv);
