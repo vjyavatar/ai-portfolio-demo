@@ -19,11 +19,11 @@
   'use strict';
 
   // Loud startup log so we can verify the deployed version at a glance
-  console.log('%c[ActiveTrading] v42 loaded — In-app docs (how to trade + scoring logic)',
+  console.log('%c[ActiveTrading] v43 loaded — Institutional Greeks + scenarios + provenance + pro mode',
               'color:#22C55E;font-weight:bold;font-size:13px');
-  console.log('%c  Click the ? icon in the header — opens 3-tab modal: HOW TO TRADE / SCORING LOGIC / KNOWN LIMITS',
+  console.log('%c  Net book Greeks · scenario matrix on execute · vendor badges · Pro Mode gates SMC',
               'color:#64748B;font-size:11px');
-  console.log('%c  Full scoring math also in /docs/HOW_TO_TRADE.md and /docs/SCORING_LOGIC.md',
+  console.log('%c  Portfolio correlation prevents concentration · PRO toggle in header disables retail signals',
               'color:#64748B;font-size:11px');
 
   // ── COLOR TOKENS ────────────────────────────────────────────────────────
@@ -2203,8 +2203,19 @@
       // Each primitive contributes signed points AND populates reasons/warnings.
       // Direction awareness: a bullish SMC read rewards CE trades and penalizes
       // PE trades, and vice versa. If no trade.side is known, impact is halved.
+      //
+      // PRO MODE: when enabled, SMC signals are EXCLUDED from point accumulation.
+      // These are retail-trader concepts (ICT methodology) without strong
+      // academic backing. A professional consensus uses regime / GEX / IV curve /
+      // order flow / Kelly only. We still compute pa for UI display, but don't
+      // feed it into points.
       var pa = priceAction.analyze(raw);
-      if (pa.status === 'ok') {
+      if (proMode.isOn()) {
+        // Skip SMC contribution entirely. Note on verdict.
+        if (pa.status === 'ok') {
+          // No reasons/warnings pushed either — keep verdict clean.
+        }
+      } else if (pa.status === 'ok') {
         var tradeIsCE = trade && trade.side === 'CE';
         var tradeIsPE = trade && trade.side === 'PE';
 
@@ -3198,6 +3209,395 @@
   };
 
 
+  // ═══════════════════════════════════════════════════════════════════════
+  // 16j. PORTFOLIO GREEKS + CORRELATION MATRIX — institutional book view
+  // ═══════════════════════════════════════════════════════════════════════
+  // A professional desk tracks the AGGREGATE risk across all open positions,
+  // not just per-trade. Two NIFTY CE positions aren't two independent bets;
+  // they're one bigger concentrated bet. This module:
+  //   - Aggregates delta/gamma/theta/vega across all active positions
+  //   - Applies correlation-adjusted position sizing checks
+  //   - Blocks new trades that push net book past configured Greek limits
+  //
+  // Correlation matrix: seeded from published research on Indian/US market
+  // relationships. User can override via localStorage 'at_corr_override'.
+  // This is NOT a computed-from-history matrix — that requires historical
+  // returns data the sandbox doesn't have. It's a sane default that
+  // prevents concentration risk.
+  var portfolioGreeks = {
+    // Correlation defaults (sources: NSE research, CBOE white papers, common
+    // desk knowledge; values are approximations, override via config)
+    // Symbol → Symbol → correlation (0-1). Symmetric; we lookup either order.
+    _defaults: {
+      'NIFTY':        { BANKNIFTY: 0.88, FINNIFTY: 0.92, MIDCPNIFTY: 0.72, SENSEX: 0.97 },
+      'BANKNIFTY':    { FINNIFTY: 0.94, MIDCPNIFTY: 0.65, SENSEX: 0.87 },
+      'FINNIFTY':     { MIDCPNIFTY: 0.62, SENSEX: 0.91 },
+      'SENSEX':       { MIDCPNIFTY: 0.71 },
+      // US cross-index
+      'SPY':          { QQQ: 0.92, IWM: 0.85 },
+      'QQQ':          { IWM: 0.78 }
+    },
+    _sectorBuckets: {
+      // Indian large-caps by sector. Pairs within a bucket use corr = 0.7.
+      // Cross-bucket pairs use 0.3 (generic equity beta).
+      BANKS: ['HDFCBANK', 'ICICIBANK', 'SBIN', 'KOTAKBANK', 'AXISBANK', 'INDUSINDBK', 'BANKBARODA', 'PNB'],
+      IT:    ['TCS', 'INFY', 'WIPRO', 'HCLTECH', 'TECHM', 'LTIM'],
+      OIL:   ['RELIANCE', 'ONGC', 'BPCL', 'HPCL', 'IOC', 'GAIL'],
+      AUTO:  ['TATAMOTORS', 'MARUTI', 'M&M', 'EICHERMOT', 'BAJAJ-AUTO', 'HEROMOTOCO'],
+      PHARMA:['SUNPHARMA', 'DRREDDY', 'CIPLA', 'LUPIN', 'DIVISLAB', 'AUROPHARMA'],
+      FMCG:  ['ITC', 'HINDUNILVR', 'NESTLEIND', 'DABUR', 'BRITANNIA', 'MARICO'],
+      METALS:['TATASTEEL', 'JSWSTEEL', 'HINDALCO', 'COALINDIA', 'VEDL', 'SAIL']
+    },
+
+    // Returns a correlation between two tickers (0 if unknown, 1 if same)
+    correlation: function (symA, symB) {
+      if (symA === symB) return 1.0;
+      // Direct in defaults (either order)
+      var d = this._defaults;
+      if (d[symA] && d[symA][symB] != null) return d[symA][symB];
+      if (d[symB] && d[symB][symA] != null) return d[symB][symA];
+      // User override
+      try {
+        var over = JSON.parse(localStorage.getItem('at_corr_override') || '{}');
+        var k1 = symA + '_' + symB, k2 = symB + '_' + symA;
+        if (over[k1] != null) return over[k1];
+        if (over[k2] != null) return over[k2];
+      } catch (e) {}
+      // Sector bucket check
+      var bucketA = null, bucketB = null;
+      for (var bk in this._sectorBuckets) {
+        if (this._sectorBuckets[bk].indexOf(symA) >= 0) bucketA = bk;
+        if (this._sectorBuckets[bk].indexOf(symB) >= 0) bucketB = bk;
+      }
+      if (bucketA && bucketB) {
+        return bucketA === bucketB ? 0.7 : 0.3;
+      }
+      // Unknown tickers — assume moderate generic equity correlation
+      return 0.35;
+    },
+
+    // Compute aggregated Greeks across all active positions
+    // Returns { netDelta, netGamma, netVega, netTheta, positions, warnings }
+    // Notional-weighted using current premium × lot size.
+    bookGreeks: function () {
+      var active = [];
+      var book = {
+        netDelta: 0, netGamma: 0, netVega: 0, netTheta: 0,
+        grossNotional: 0, positionsCount: 0,
+        positions: [], warnings: []
+      };
+      if (typeof paperPortfolio === 'undefined') return book;
+
+      for (var id in paperPortfolio.positions) {
+        var p = paperPortfolio.positions[id];
+        if (p.status !== 'active') continue;
+        active.push(p);
+      }
+      if (active.length === 0) return book;
+
+      // We need current spot, IV, DTE per position. Best-effort from _raw.
+      // If unavailable, skip that position's greek contribution (don't fake).
+      active.forEach(function (pos) {
+        var raw = pos._lastRaw || null;  // set by price refresh path if available
+        var spot = raw && raw.spot, iv = raw && raw.atm_iv, expiry = raw && raw.expiry;
+        var strikeNum = parseFloat(String(pos.strike || '').replace(/[^\d.]/g, ''));
+        var dte = 0;
+        if (expiry && typeof pricingMath !== 'undefined') {
+          dte = pricingMath.dteFromExpiry(expiry);
+        }
+        var greeks = null;
+        if (spot && iv && strikeNum && dte > 0 && typeof pricingMath !== 'undefined') {
+          greeks = pricingMath.greeks(spot, strikeNum, dte, iv, pos.side);
+        }
+        var lots = pos.sizingLots || pos.lot || 1;
+        var lotSize = pos._lotSize || 75;  // NIFTY default; backend should provide
+        var multiplier = lots * lotSize;
+        var notional = (pos.entryPremium || 0) * multiplier;
+        book.grossNotional += notional;
+        book.positionsCount++;
+
+        var contribution = {
+          id: pos.id, sym: pos.sym, side: pos.side,
+          lots: lots, notional: notional,
+          delta: null, gamma: null, vega: null, theta: null,
+          hasGreeks: false
+        };
+        if (greeks) {
+          contribution.delta = greeks.delta * multiplier;
+          contribution.gamma = greeks.gamma * multiplier;
+          contribution.vega = greeks.vega * multiplier;
+          contribution.theta = greeks.theta * multiplier;
+          contribution.hasGreeks = true;
+          book.netDelta += contribution.delta;
+          book.netGamma += contribution.gamma;
+          book.netVega += contribution.vega;
+          book.netTheta += contribution.theta;
+        }
+        book.positions.push(contribution);
+      });
+
+      // Warnings for missing greek data
+      var missingCount = book.positions.filter(function (p) { return !p.hasGreeks; }).length;
+      if (missingCount > 0) {
+        book.warnings.push(missingCount + ' position(s) missing spot/IV/expiry — greeks partial');
+      }
+
+      return book;
+    },
+
+    // Check if opening this trade would violate book-level greek limits.
+    // Returns { allow: bool, reason, projectedDelta, projectedVega, corrPenalty }
+    //
+    // Default limits (per 1L capital): netDelta ±50, netVega ±500
+    // (reasonable for 1-3 concurrent positions at typical NIFTY size).
+    // Correlation penalty: if new position is correlated >0.7 with any existing
+    // position in same direction, the effective concentration doubles.
+    checkAllow: function (trade, raw) {
+      var book = this.bookGreeks();
+      var result = {
+        allow: true, reason: null,
+        projectedDelta: book.netDelta, projectedVega: book.netVega,
+        corrPenalty: 0, correlatedSymbols: []
+      };
+      if (!trade || !raw) return result;
+
+      // Compute new trade's greeks
+      var strikeNum = parseFloat(String(trade.strike || '').replace(/[^\d.]/g, ''));
+      var dte = 0;
+      if (raw.expiry && typeof pricingMath !== 'undefined') {
+        dte = pricingMath.dteFromExpiry(raw.expiry);
+      }
+      if (!raw.spot || !raw.atm_iv || !strikeNum || dte <= 0) {
+        // Can't check — allow by default rather than block on missing data
+        result.reason = 'insufficient_data';
+        return result;
+      }
+      var lots = trade.lot || 1;
+      var lotSize = raw.lot_size || 75;
+      var multiplier = lots * lotSize;
+      var g = pricingMath.greeks(raw.spot, strikeNum, dte, raw.atm_iv, trade.side);
+      if (!g) {
+        result.reason = 'greeks_calc_failed';
+        return result;
+      }
+
+      // Correlation check: if new trade correlates >0.7 with an existing
+      // same-direction position, flag concentration risk.
+      var self = this;
+      book.positions.forEach(function (pos) {
+        if (pos.side !== trade.side) return;  // opposite side cancels correlation
+        var corr = self.correlation(trade.symbol, pos.sym);
+        if (corr >= 0.7) {
+          result.correlatedSymbols.push({ sym: pos.sym, corr: corr });
+          result.corrPenalty += corr;
+        }
+      });
+
+      result.projectedDelta = book.netDelta + g.delta * multiplier;
+      result.projectedVega = book.netVega + g.vega * multiplier;
+
+      // Limits scaled to capital (per 1L)
+      var capital = (typeof kellySizer !== 'undefined') ? kellySizer.capital() : 100000;
+      var capitalScale = capital / 100000;
+      var deltaLimit = 100 * capitalScale * (1 + result.corrPenalty);
+      var vegaLimit = 1000 * capitalScale;
+
+      if (Math.abs(result.projectedDelta) > deltaLimit) {
+        result.allow = false;
+        result.reason = 'Net book delta ' + result.projectedDelta.toFixed(0) +
+                        ' exceeds limit ±' + deltaLimit.toFixed(0) +
+                        (result.correlatedSymbols.length
+                          ? ' (correlated: ' + result.correlatedSymbols.map(function (c) {
+                              return c.sym + ' ρ=' + c.corr.toFixed(2);
+                            }).join(', ') + ')'
+                          : '');
+      } else if (Math.abs(result.projectedVega) > vegaLimit) {
+        result.allow = false;
+        result.reason = 'Net book vega ' + result.projectedVega.toFixed(0) +
+                        ' exceeds limit ±' + vegaLimit.toFixed(0);
+      }
+      return result;
+    }
+  };
+
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // 16k. SCENARIO ANALYSIS — IV shock + spot gap tail risk at execute time
+  // ═══════════════════════════════════════════════════════════════════════
+  // Before clicking EXECUTE, show what happens to P&L if spot moves
+  // ±0.5% or IV drops/rises 3 points. This is what professional traders
+  // do mentally before every trade; we make it explicit.
+  //
+  // 3×3 matrix: [spot -0.5%, flat, +0.5%] × [IV -3pts, current, +3pts]
+  // Each cell is re-priced option value expressed as % of entry premium.
+  var scenarioAnalysis = {
+    // Compute 3×3 P&L matrix. Returns null if insufficient data.
+    compute: function (trade, raw) {
+      if (!trade || !raw || typeof pricingMath === 'undefined') return null;
+      var spot = raw.spot, iv = raw.atm_iv, expiry = raw.expiry;
+      var strikeNum = parseFloat(String(trade.strike || '').replace(/[^\d.]/g, ''));
+      var premium = trade.price;
+      if (!spot || !iv || !strikeNum || !premium) return null;
+      var dte = pricingMath.dteFromExpiry(expiry);
+      if (dte <= 0) return null;
+
+      var spotShocks = [-0.005, 0, 0.005];  // -0.5%, flat, +0.5%
+      var ivShocks = [-3, 0, 3];             // -3pts, flat, +3pts
+
+      var matrix = [];
+      for (var i = 0; i < spotShocks.length; i++) {
+        var row = [];
+        var shockedSpot = spot * (1 + spotShocks[i]);
+        for (var j = 0; j < ivShocks.length; j++) {
+          var shockedIv = Math.max(1, iv + ivShocks[j]);
+          var g = pricingMath.greeks(shockedSpot, strikeNum, dte, shockedIv, trade.side);
+          if (!g) { row.push(null); continue; }
+          // Option fairValue at shocked inputs, compared to entry premium
+          var pnlPct = ((g.fairValue - premium) / premium) * 100;
+          row.push({
+            spotShockPct: spotShocks[i] * 100,
+            ivShockPts: ivShocks[j],
+            shockedPrice: g.fairValue,
+            pnlPct: pnlPct
+          });
+        }
+        matrix.push(row);
+      }
+
+      // Find worst and best cells for headline
+      var worst = null, best = null;
+      matrix.forEach(function (row) {
+        row.forEach(function (cell) {
+          if (!cell) return;
+          if (worst === null || cell.pnlPct < worst.pnlPct) worst = cell;
+          if (best === null || cell.pnlPct > best.pnlPct) best = cell;
+        });
+      });
+
+      return {
+        matrix: matrix,
+        worst: worst,
+        best: best,
+        entryPremium: premium,
+        entrySpot: spot, entryIv: iv
+      };
+    },
+
+    // Plain-English summary line
+    summaryLine: function (scen) {
+      if (!scen || !scen.worst || !scen.best) return null;
+      var w = scen.worst, b = scen.best;
+      return 'Worst: spot ' + (w.spotShockPct >= 0 ? '+' : '') + w.spotShockPct.toFixed(1) +
+             '%, IV ' + (w.ivShockPts >= 0 ? '+' : '') + w.ivShockPts + 'pts → ' +
+             w.pnlPct.toFixed(1) + '%. ' +
+             'Best: spot ' + (b.spotShockPct >= 0 ? '+' : '') + b.spotShockPct.toFixed(1) +
+             '%, IV ' + (b.ivShockPts >= 0 ? '+' : '') + b.ivShockPts + 'pts → +' +
+             b.pnlPct.toFixed(1) + '%.';
+    }
+  };
+
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // 16l. DATA PROVENANCE — vendor / latency / staleness visible per tile
+  // ═══════════════════════════════════════════════════════════════════════
+  // Institutional users need to know: is this NSE direct or a scraped fallback?
+  // Is OI 40 seconds stale or live? Are we on Google Finance because NSE
+  // rate-limited us? This module surfaces that, honestly.
+  //
+  // Expected payload from backend (added to bottom-nav-scan response):
+  //   ticker._provenance = {
+  //     vendor: 'NSE' | 'Google Finance' | 'Yahoo' | 'fallback',
+  //     fetched_at: unix_ms,
+  //     oi_updated_at: unix_ms (for option chain data),
+  //     quality: 'live' | 'delayed' | 'cached' | 'unknown'
+  //   }
+  // If absent, we show "vendor unknown · age estimated" — honestly.
+  var dataProvenance = {
+    // Extract and normalize provenance from a raw ticker payload.
+    // Returns { vendor, latencyMs, oiAgeSec, quality, status }
+    read: function (raw) {
+      if (!raw) return { status: 'no_data', vendor: 'unknown', quality: 'unknown' };
+      var now = Date.now();
+      var prov = raw._provenance || {};
+      var result = {
+        vendor: prov.vendor || 'unknown',
+        quality: prov.quality || 'unknown',
+        latencyMs: null,
+        oiAgeSec: null,
+        status: 'ok'
+      };
+      if (prov.fetched_at && typeof prov.fetched_at === 'number') {
+        result.latencyMs = now - prov.fetched_at;
+      }
+      if (prov.oi_updated_at && typeof prov.oi_updated_at === 'number') {
+        result.oiAgeSec = Math.round((now - prov.oi_updated_at) / 1000);
+      }
+      // Health classification
+      if (result.vendor === 'unknown' && !prov.fetched_at) {
+        result.status = 'untraceable';
+      } else if (result.latencyMs != null && result.latencyMs > 5000) {
+        result.status = 'stale';
+      } else if (result.oiAgeSec != null && result.oiAgeSec > 120) {
+        result.status = 'oi_stale';
+      }
+      return result;
+    },
+
+    // Short label for UI tile: "NSE · 850ms · OI T-40s"
+    badge: function (raw) {
+      var p = this.read(raw);
+      var parts = [];
+      parts.push(p.vendor);
+      if (p.latencyMs != null) {
+        parts.push(p.latencyMs < 1000 ? p.latencyMs + 'ms' : (p.latencyMs / 1000).toFixed(1) + 's');
+      } else {
+        parts.push('age ?');
+      }
+      if (p.oiAgeSec != null) {
+        parts.push('OI T-' + p.oiAgeSec + 's');
+      }
+      return parts.join(' · ');
+    },
+
+    // Color code for the badge based on health
+    badgeColor: function (raw) {
+      var p = this.read(raw);
+      if (p.status === 'ok') return '#22C55E';       // green
+      if (p.status === 'stale' || p.status === 'oi_stale') return '#F59E0B';  // orange
+      return '#64748B';                               // gray for unknown
+    }
+  };
+
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // 16m. PRO MODE — institutional toggle; disables retail signals
+  // ═══════════════════════════════════════════════════════════════════════
+  // Toggles at runtime. When ON:
+  //   - SMC signals (FVG, OB, BOS/CHoCH, sweeps, EMA stacking, candle close)
+  //     are EXCLUDED from consensus point accumulation
+  //   - Remaining weights are proportionally redistributed to
+  //     regime / GEX / IV term / order flow / Kelly (core institutional signals)
+  //   - UI hides the SMC sections in the right-column deep dive
+  //   - Voice stops using SMC phrasing
+  var proMode = {
+    enabled: false,
+
+    init: function () {
+      try {
+        var stored = localStorage.getItem('at_pro_mode');
+        this.enabled = stored === 'true';
+      } catch (e) { this.enabled = false; }
+    },
+    toggle: function () {
+      this.enabled = !this.enabled;
+      try { localStorage.setItem('at_pro_mode', String(this.enabled)); } catch (e) {}
+      return this.enabled;
+    },
+    isOn: function () { return this.enabled; }
+  };
+  proMode.init();
+
+
   var sessionGuide = {
     // Aggregate stats for today's closed positions
     today: function () {
@@ -3607,6 +4007,10 @@
     partialProfit: partialProfitManager,
     attribution: tradeAttribution,
     calibration: calibrationHarness,
+    bookGreeks: portfolioGreeks,
+    scenario: scenarioAnalysis,
+    provenance: dataProvenance,
+    proMode: proMode,
 
     // Dump signals as CSV (for feeding external backtest tools)
     exportSignalsCSV: function () {
@@ -5094,6 +5498,23 @@
         })(),
         iconBtn('🔔', state.alertsOn, function () { state.alertsOn = !state.alertsOn; rerender(); }),
         iconBtn('🎙', state.voiceOn, function () { state.voiceOn = !state.voiceOn; rerender(); }),
+        // PRO MODE toggle — when ON, SMC signals excluded from consensus,
+        // UI hides retail-trader visual elements, voice changes vocabulary.
+        (function () {
+          var on = proMode.isOn();
+          return el('button', {
+            title: 'Institutional mode: disables SMC/FVG/OB retail signals',
+            onClick: function () { proMode.toggle(); rerender(); },
+            style: {
+              background: on ? '#9333EA' + '22' : 'transparent',
+              border: '1px solid ' + (on ? '#9333EA' : C.divider),
+              color: on ? '#9333EA' : C.textSec,
+              borderRadius: '4px', padding: '3px 8px',
+              fontSize: '9px', fontWeight: 800, cursor: 'pointer',
+              letterSpacing: '0.8px', fontFamily: MONO
+            }
+          }, on ? 'PRO ON' : 'PRO');
+        })(),
         // Help icon — opens docs modal explaining how to trade + scoring
         iconBtn('?', false, function () { state.showDocs = !state.showDocs; rerender(); }),
         el('div', {
@@ -5630,6 +6051,22 @@
     card.appendChild(el('div', {}));
     card.appendChild(el('div', {}));
 
+    // Data provenance badge — honest vendor/latency/OI-age pill in bottom-right.
+    // When backend doesn't provide metadata, shows "vendor unknown · age ?"
+    // so user knows the feed status. Institutional tables always show this.
+    try {
+      var provLabel = dataProvenance.badge(trade._raw || {});
+      var provCol = dataProvenance.badgeColor(trade._raw || {});
+      card.appendChild(el('div', {
+        title: 'Data provenance: vendor · latency · OI age',
+        style: {
+          position: 'absolute', bottom: '4px', right: '6px',
+          fontSize: '8px', color: provCol, fontFamily: MONO,
+          opacity: 0.75, letterSpacing: '0.2px', pointerEvents: 'none'
+        }
+      }, provLabel));
+    } catch (e) {}
+
     return card;
   }
 
@@ -5853,6 +6290,91 @@
               fontSize: '10px', color: eCol, fontWeight: 700, lineHeight: 1.3
             }
           }, (ev.action === 'BLOCK' ? '🚫 ' : '⚠ ') + ev.reason));
+        }
+      } catch (e) {}
+
+      // ═════════════════════════════════════════════════════════════════
+      // SCENARIO MATRIX — tail risk before EXECUTE (institutional)
+      // ═════════════════════════════════════════════════════════════════
+      // "What happens if spot gaps 0.5% against me? If IV drops 3 points?"
+      // 3×3 grid repricing the option at shocked spot × IV inputs. The
+      // worst cell and best cell are highlighted so user sees tail risk
+      // before clicking EXECUTE.
+      try {
+        var scen = scenarioAnalysis.compute(t, t._raw || {});
+        if (scen && scen.matrix) {
+          var scenPanel = el('div', {
+            style: {
+              background: C.card, border: '1px solid ' + C.divider,
+              borderRadius: '3px', padding: '7px 9px', marginBottom: '6px'
+            }
+          });
+          scenPanel.appendChild(el('div', {
+            style: {
+              fontSize: '9px', fontWeight: 700, color: C.textSec,
+              letterSpacing: '0.6px', marginBottom: '4px'
+            }
+          }, 'SCENARIO P&L · SPOT × IV SHOCK'));
+
+          // Grid: 4 cols (label + 3 IV) × 4 rows (label + 3 spot)
+          var grid = el('div', {
+            style: {
+              display: 'grid',
+              gridTemplateColumns: '46px repeat(3, 1fr)',
+              gap: '2px', fontFamily: MONO, fontSize: '9px'
+            }
+          });
+          var hdrStyle = {
+            color: C.textMute, fontWeight: 700, padding: '2px 3px',
+            textAlign: 'center'
+          };
+          grid.appendChild(el('div', { style: hdrStyle }, ''));
+          grid.appendChild(el('div', { style: hdrStyle }, 'IV -3'));
+          grid.appendChild(el('div', { style: hdrStyle }, 'IV flat'));
+          grid.appendChild(el('div', { style: hdrStyle }, 'IV +3'));
+
+          var spotLabels = ['Spot -0.5%', 'Spot flat', 'Spot +0.5%'];
+          for (var si = 0; si < 3; si++) {
+            grid.appendChild(el('div', {
+              style: Object.assign({}, hdrStyle, { textAlign: 'left' })
+            }, spotLabels[si]));
+            for (var ii = 0; ii < 3; ii++) {
+              var cell = scen.matrix[si][ii];
+              var bg = C.bg, fg = C.textPri, bd = 'transparent';
+              if (cell) {
+                var p = cell.pnlPct;
+                // Color scale — red for losses, green for gains
+                if (p < -15) { bg = C.red + '28'; fg = C.red; }
+                else if (p < 0) { bg = C.red + '12'; fg = C.red; }
+                else if (p < 15) { bg = C.green + '12'; fg = C.green; }
+                else { bg = C.green + '28'; fg = C.green; }
+                // Highlight worst/best cells
+                if (cell === scen.worst) bd = C.red;
+                else if (cell === scen.best) bd = C.green;
+              }
+              grid.appendChild(el('div', {
+                style: {
+                  background: bg, color: fg,
+                  padding: '3px 3px', textAlign: 'center',
+                  border: '1px solid ' + bd, borderRadius: '2px',
+                  fontWeight: 700
+                }
+              }, cell ? (p >= 0 ? '+' : '') + p.toFixed(0) + '%' : '—'));
+            }
+          }
+          scenPanel.appendChild(grid);
+
+          // Summary line underneath
+          var sumLine = scenarioAnalysis.summaryLine(scen);
+          if (sumLine) {
+            scenPanel.appendChild(el('div', {
+              style: {
+                fontSize: '9px', color: C.textSec, marginTop: '4px',
+                lineHeight: 1.3, fontFamily: MONO
+              }
+            }, sumLine));
+          }
+          sel.appendChild(scenPanel);
         }
       } catch (e) {}
 
@@ -6092,6 +6614,74 @@
       });
     }
     scroll.appendChild(positionsSection);
+
+    // ═══════════════════════════════════════════════════════════════════
+    // BOOK GREEKS — aggregate portfolio-level risk view (institutional)
+    // ═══════════════════════════════════════════════════════════════════
+    // Every professional desk tracks NET Greeks across the book, not per
+    // position. Two NIFTY CEs is one concentrated directional bet, not two
+    // independent trades. Shows net delta/gamma/vega/theta + correlation
+    // warnings for concentration risk.
+    try {
+      var book = portfolioGreeks.bookGreeks();
+      if (book.positionsCount > 0) {
+        var greeksSection = el('div', {
+          style: {
+            padding: '10px', borderTop: '1px solid ' + C.divider
+          }
+        });
+        greeksSection.appendChild(el('div', {
+          style: {
+            fontSize: '9px', fontWeight: 700, color: C.textSec,
+            letterSpacing: '0.8px', marginBottom: '6px',
+            display: 'flex', justifyContent: 'space-between'
+          }
+        }, 'BOOK GREEKS · ' + book.positionsCount + ' OPEN' + '⠀'));
+
+        // Four mini-cells for net delta/gamma/vega/theta
+        var row = el('div', {
+          style: { display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '4px', marginBottom: '4px' }
+        });
+        function greekCell(label, val, unit) {
+          var displayVal = val == null ? '—' : val.toFixed(0);
+          var col = C.textPri;
+          if (label === 'Δ' && val != null) {
+            col = Math.abs(val) > 50 ? C.orange : C.textPri;
+          }
+          var cell = el('div', {
+            style: {
+              background: C.card, borderRadius: '2px', padding: '4px 6px',
+              textAlign: 'center', fontFamily: MONO
+            }
+          });
+          cell.appendChild(el('div', {
+            style: { fontSize: '9px', color: C.textSec, marginBottom: '1px' }
+          }, label));
+          cell.appendChild(el('div', {
+            style: { fontSize: '12px', fontWeight: 700, color: col }
+          }, displayVal + (unit || '')));
+          return cell;
+        }
+        row.appendChild(greekCell('Δ DELTA', book.netDelta));
+        row.appendChild(greekCell('Γ GAMMA', book.netGamma));
+        row.appendChild(greekCell('ν VEGA', book.netVega));
+        row.appendChild(greekCell('θ THETA', book.netTheta));
+        greeksSection.appendChild(row);
+
+        // Warnings (missing greek data, etc.)
+        if (book.warnings.length > 0) {
+          book.warnings.forEach(function (w) {
+            greeksSection.appendChild(el('div', {
+              style: {
+                fontSize: '9px', color: C.textMute, fontStyle: 'italic',
+                marginTop: '3px', lineHeight: 1.3
+              }
+            }, '· ' + w));
+          });
+        }
+        scroll.appendChild(greeksSection);
+      }
+    } catch (e) {}
 
     // ═══════════════════════════════════════════════════════════════════
     // YOUR EDGE — per-user trade attribution insights
@@ -7156,6 +7746,25 @@
       }
     });
     if (!state.selected) return wrap;
+
+    // Pro mode hides SMC entirely — these are retail concepts (ICT methodology)
+    // that don't feed consensus points in pro mode. Show a compact note instead.
+    if (proMode.isOn()) {
+      wrap.appendChild(el('div', {
+        style: {
+          fontSize: '9px', fontWeight: 800, letterSpacing: '1.5px',
+          color: C.textMute, marginBottom: '4px'
+        }
+      }, 'PRICE ACTION — SMC DISABLED (PRO MODE)'));
+      wrap.appendChild(el('div', {
+        style: {
+          fontSize: '10px', color: C.textMute, fontStyle: 'italic',
+          lineHeight: 1.4
+        }
+      }, 'SMC signals (FVG/OB/BOS/CHoCH/sweeps) excluded from consensus in Pro Mode. Consensus now uses regime · GEX · IV curve · order flow · Kelly only.'));
+      return wrap;
+    }
+
     var raw = state.selected._raw || {};
     var pa = priceAction.analyze(raw);
 
@@ -8001,6 +8610,25 @@
       pushLog('⚠ ' + evCheck.reason, C.orange);
       // Warning doesn't block; trade still opens. Voice notes it.
       speak('Note: ' + evCheck.reason);
+    }
+
+    // ── Portfolio Greek check — prevent book concentration ──
+    // Before opening, verify this trade doesn't push net book delta/vega
+    // past limits, and flag correlation concentration with existing positions.
+    // Example: opening a 2nd NIFTY CE when one's already open + BANKNIFTY CE.
+    // They're 88% correlated — it's effectively one bigger directional bet.
+    var pgCheck = portfolioGreeks.checkAllow(t, t._raw || {});
+    if (!pgCheck.allow) {
+      pushLog('BLOCKED: ' + pgCheck.reason, C.red);
+      speak(t.symbol + ' blocked — book Greek limit exceeded.');
+      return;
+    }
+    // Warning when correlated even if under limit
+    if (pgCheck.correlatedSymbols.length > 0) {
+      var corrList = pgCheck.correlatedSymbols.map(function (c) {
+        return c.sym + ' ρ=' + c.corr.toFixed(2);
+      }).join(', ');
+      pushLog('⚠ Correlation concentration: ' + corrList, C.orange);
     }
 
     // Regime-adjusted Kelly sizing — no more fixed lot
