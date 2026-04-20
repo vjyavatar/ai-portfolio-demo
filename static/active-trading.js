@@ -4306,6 +4306,7 @@
     chain: [],
     lastClose: null,   // last 5m premium close of the selected option (for header + R:R display)
     lastSpot: null,    // last underlying spot (for ENTRY trigger evaluation — different semantics from lastClose)
+    dataTs: null,      // server timestamp of current scan (ms, from backend `ts` field) — lets UI show data age
     expandedCardIds: {}, // { tradeId: true } — per-card expand state for top-3 cards
     flash: null,
     countdown: formatCountdown(msUntilNextFiveMin()),
@@ -6889,6 +6890,35 @@
     priceRow.appendChild(priceChip('TARGET', currency + trade.target.toFixed(2), C.green));
     card.appendChild(priceRow);
 
+    // ── DATA-AGE INDICATOR ────────────────────────────────────────────
+    // Surfaces how old the scan data is. Same timestamp for all 3 cards
+    // in a given scan (they come from one backend response). If age keeps
+    // growing past 120s, the backend cache is stale / refresh stuck.
+    //
+    // Color codes:
+    //   <= 90s  gray   (normal: within one refresh cycle)
+    //   <= 180s amber  (one full cycle missed — suspicious)
+    //   >  180s red    (very stale — treat data as unreliable)
+    if (state.dataTs) {
+      var _ageSec = Math.max(0, Math.floor((Date.now() - state.dataTs) / 1000));
+      var _ageColor = _ageSec <= 90 ? C.textMute
+                    : _ageSec <= 180 ? C.yellow
+                    : C.red;
+      var _ageTxt;
+      if (_ageSec < 60) _ageTxt = _ageSec + 's ago';
+      else _ageTxt = Math.floor(_ageSec / 60) + 'm ' + (_ageSec % 60) + 's ago';
+      card.appendChild(el('div', {
+        'data-age-ts': String(state.dataTs),   // marker so the tick refresher can find these
+        title: 'Data timestamp from backend. If this stops updating the scan is cached.',
+        style: {
+          position: 'absolute', bottom: '3px', left: '10px',
+          fontSize: '9px', color: _ageColor, fontFamily: MONO,
+          fontWeight: 800, letterSpacing: '0.3px',
+          pointerEvents: 'none', opacity: 0.85
+        }
+      }, 'DATA: ' + _ageTxt));
+    }
+
     // ════════════════════════════════════════════════════════════════════
     // EXPANDED DETAIL SECTION — everything below only renders when the
     // user has expanded this card. Deeper context: trigger level, reason,
@@ -6955,6 +6985,41 @@
       }
     }, '🎙'));
     card.appendChild(infoRow);
+
+    // ── Expanded: blocker list (if any). When a trade has blockers
+    // (Kelly, Greeks, correlation, event calendar, portfolio risk),
+    // the scanner row shows "BLOCKED · <short reason>" but only the
+    // FIRST reason. Here on the expanded card we surface the FULL list
+    // so the user sees exactly why the system refuses the trade.
+    try {
+      var _cardPreview = tradePreview.compute(trade);
+      if (_cardPreview && !_cardPreview.allowed && _cardPreview.blockers && _cardPreview.blockers.length > 0) {
+        var blockersBox = el('div', {
+          style: {
+            background: C.red + '10',
+            border: '1px solid ' + C.red + '55',
+            borderRadius: '6px',
+            padding: '8px 10px',
+            display: 'flex', flexDirection: 'column', gap: '4px'
+          }
+        });
+        blockersBox.appendChild(el('div', {
+          style: {
+            fontSize: '10px', fontWeight: 900, color: C.red,
+            letterSpacing: '0.8px'
+          }
+        }, '🚫 WHY BLOCKED'));
+        _cardPreview.blockers.forEach(function (b) {
+          blockersBox.appendChild(el('div', {
+            style: {
+              fontSize: '12px', color: C.red, fontFamily: MONO,
+              fontWeight: 700, lineHeight: 1.35
+            }
+          }, '· ' + b));
+        });
+        card.appendChild(blockersBox);
+      }
+    } catch (e) {}
 
     // Score trend — slightly larger font for expanded view
     var trendRow = el('div', {
@@ -9567,15 +9632,45 @@
         var isAwaiting = (scanPreview.blockers || []).some(function (b) {
           return /awaiting|missing|lot size|insufficient_data/i.test(b);
         });
+        // Build a short reason string for the subtitle. Prefer the first
+        // blocker message, shortened to the key phrase. Common prefixes like
+        // "Kelly:" and "Portfolio risk:" stay so the user can tell which gate
+        // fired. Long blocker strings are truncated to ~32 chars.
+        var _firstBlocker = (scanPreview.blockers && scanPreview.blockers[0]) || '';
+        var _reasonShort = _firstBlocker.replace(/\s+/g, ' ').trim();
+        if (_reasonShort.length > 32) _reasonShort = _reasonShort.slice(0, 30) + '…';
+        var _actColor = isAwaiting ? C.orange : C.red;
         actionCell = el('span', {
-          title: (scanPreview.blockers || []).join(' · '),
+          title: (scanPreview.blockers || []).join(' · '),  // full reason on hover
           style: {
-            fontSize: '13px',
-            color: isAwaiting ? C.orange : C.red,
-            fontWeight: 900,
-            letterSpacing: '0.5px'
+            display: 'inline-flex', flexDirection: 'column',
+            alignItems: 'flex-start', lineHeight: 1.1,
+            cursor: 'help'
           }
-        }, isAwaiting ? 'AWAITING DATA' : 'BLOCKED');
+        }, [
+          el('span', {
+            style: {
+              fontSize: '13px',
+              color: _actColor,
+              fontWeight: 900,
+              letterSpacing: '0.5px'
+            }
+          }, isAwaiting ? 'AWAITING DATA' : 'BLOCKED'),
+          _reasonShort ? el('span', {
+            style: {
+              fontSize: '10px',
+              color: _actColor,
+              fontWeight: 700,
+              opacity: 0.85,
+              marginTop: '2px',
+              letterSpacing: '0.1px',
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              maxWidth: '180px'
+            }
+          }, _reasonShort) : null
+        ].filter(Boolean));
       } else {
         actionCell = el('button', {
           onClick: function (e) {
@@ -9952,6 +10047,13 @@
           rerender(); return;
         }
         var raw = d.tickers || [];
+        // Backend stamps every response with `ts` (epoch seconds) marking
+        // when the scan was actually computed. Store it so the UI can show
+        // data age per card. If the same `ts` shows up on repeat refreshes,
+        // the cache is serving stale data — users can see it now.
+        if (typeof d.ts === 'number' && d.ts > 0) {
+          state.dataTs = d.ts * 1000;  // seconds → ms for JS Date arithmetic
+        }
         if (raw.length === 0) {
           state.lastFetchMsg = 'Scanner still warming up (boot takes ~30s) — retrying';
           state.trades = []; state.scanner = [];
@@ -10618,6 +10720,30 @@
       if (lastUpEl && state.lastFullRefreshAt) {
         var ago = Math.floor((Date.now() - state.lastFullRefreshAt) / 1000);
         lastUpEl.textContent = 'Last Updated: ' + formatAgo(ago);
+      }
+      // Per-card data-age labels — piggy-back on the 1s ticker so every
+      // card's "DATA: Ns ago" counts up in real time without a full rerender.
+      // Color also flips as we cross 90s/180s thresholds so user sees stale
+      // data going from gray → amber → red live. No full render needed.
+      var ageEls = document.querySelectorAll('#activeTradingMount [data-age-ts]');
+      if (ageEls && ageEls.length > 0) {
+        var nowMs = Date.now();
+        for (var _i = 0; _i < ageEls.length; _i++) {
+          var _el = ageEls[_i];
+          var _tsStr = _el.getAttribute('data-age-ts');
+          var _ts = parseInt(_tsStr, 10);
+          if (!_ts) continue;
+          var _sec = Math.max(0, Math.floor((nowMs - _ts) / 1000));
+          var _txt = _sec < 60
+            ? 'DATA: ' + _sec + 's ago'
+            : 'DATA: ' + Math.floor(_sec / 60) + 'm ' + (_sec % 60) + 's ago';
+          if (_el.textContent !== _txt) _el.textContent = _txt;
+          // Color reflects freshness. Matches thresholds in tradeCard render.
+          var _col = _sec <= 90 ? '#64748B'      // slate-500 (mute)
+                   : _sec <= 180 ? '#D97706'     // amber-600 (warning)
+                   : '#DC2626';                   // red-600 (stale)
+          if (_el.style.color !== _col) _el.style.color = _col;
+        }
       }
     }, 1000);
 

@@ -1,58 +1,58 @@
-# Celesys deploy — April 20, 2026 (r6)
+# Celesys deploy — April 20, 2026 (r8)
 
-Incremental over r5. Only `static/active-trading.js` changed vs r5.
+Incremental over r7. Only `static/active-trading.js` changed.
 
-## What's new in r6 (light theme + bigger UI)
+## What's new in r8: live data-age indicator on cards
 
-### 1. Overlay shell light-themed
+**The problem:** you reported that card values (spot / buy / SL / target) stayed identical across refreshes for 5+ minutes. The backend cache is supposed to be 120s; either it's not refreshing, or the frontend is holding stale data, or the backend is handing back old timestamps. Without a visible timestamp we were flying blind.
 
-The `C` palette was already light (off-white bg, near-black text) from an earlier session, but the outer overlay wrapper around it was still hardcoded to `#020617` (dark blue) and `#0F172A`. The BACK button and top bar bled through dark regardless of palette settings — which is why your screenshot showed a dark UI even though the cards were light.
+**The fix (2 pieces):**
 
-Fixed three hardcoded colors at the overlay mount site: overlay bg `#020617 → #F8FAFC`, top bar bg `#0F172A → #FFFFFF`, borders/back-button `#1E293B → #CBD5E1`. Text color on the overlay flipped from `#F8FAFC → #0F172A`.
+### 1. Capture backend timestamp into state
+Every `/api/bottom-nav-scan` response already includes a `ts` field (epoch seconds when the scan ran). The frontend was ignoring it. Now we capture it as `state.dataTs` and surface it on every card.
 
-Now the entire Active Trading view is light.
+### 2. Live-ticking age label on each card
+Bottom-left corner of every top-3 card now shows:
+```
+DATA: 34s ago
+```
 
-### 2. Card price row always visible
+Colors shift as time passes:
+- **Gray** (≤90s) — fresh, within one refresh cycle
+- **Amber** (91–180s) — one full cycle missed, suspicious
+- **Red** (>180s) — stale, treat data as unreliable
 
-Previously you had to click the chevron to see Buy / Trig@spot / SL / Target. Now a 4-column chip row with **Spot · Buy · SL · Target** renders on the collapsed card. Each chip: 9px label (weight 800), 16px value (weight 800). Red for SL, green for Target. Always visible, scannable at a glance.
+The counter ticks every second **without full rerender** — piggy-backs on the existing 1s countdown timer to do direct DOM text updates via `data-age-ts` markers. No render cost.
 
-The trigger level (underlying breakout price) moved to the expanded-only section since it's contextual — you only need it when deciding whether to enter.
+**If DATA jumps back to "0s ago" when you refresh, cache is working correctly.**
+**If DATA keeps climbing past 180s and stays red, the backend is genuinely serving stale data** and we need to investigate `_bottom_nav_cache` in `api.py` next.
 
-Collapsed card now shows: **Symbol · Strike · Side (CE/PE) · Confidence · Button · Chevron · Spot · Buy · SL · Target**.
+## What this WON'T fix
 
-### 3. Secondary scanner enlarged
+This is a diagnostic, not a cure. If the backend is legitimately cached-stale (the 120s TTL isn't triggering a background refresh, or the refresh is erroring silently), you'll *see* the red "DATA: 3m 42s ago" label — but the data underneath will still be stale. The next step once you confirm staleness visually is a focused backend investigation of `_bottom_nav_cache` TTL behavior.
 
-- Container: 220px → 320px tall (more rows visible)
-- Header row: 12px → 14px, weight 900
-- Body rows: 15px → 18px, weight 900 on Symbol / Dir / Score, weight 800 on Strike
-- Row height: 38px → 48px
-- Trend column: 14px → 16px bold
-- TAKE TRADE button: 12px → 14px with bigger padding
-- BLOCKED / AWAITING DATA labels: 11px → 13px, weight 900
+## Everything from r7 still applies
 
-## Everything from r5 still applies
-
-- Backend Yahoo rate-wait + one 429 retry + worker count 8→3 (US scanner was returning 0 tickers due to rate limits; this fixes it)
-- Horizontal TOP TRADES strip across full width, 2-column Live Monitor + Detail below
-- WATCHING band 0.4%, voice verdict fix, synthetic-premium block, FINNIFTY/MIDCPNIFTY removed, spot-based trigger, QT lot sizes
+Scanner BLOCKED rows show reason inline, expanded card shows all blockers, light theme, horizontal TOP TRADES strip, always-visible Spot/Buy/SL/Target, 18px scanner rows, WATCHING band 0.4%, voice verdict fix, synthetic-premium block, Yahoo rate-wait, QT lot sizes.
 
 ## Deploy
 
-Only `static/active-trading.js` changed since r5. If r5 is already live, push just that one file. Otherwise ship the whole zip.
+Only `static/active-trading.js` changed. If r7 is live, push this one file.
 
-## What to verify after deploy
+## What to test
 
-1. **Is the UI actually light now?** If you still see dark bg on the back button or top bar, the browser cached the old JS — force-refresh (Cmd+Shift+R / Ctrl+Shift+F5).
-2. **Each collapsed card shows all 4 price values (Spot, Buy, SL, Target).**
-3. **Scanner rows are visibly bigger** — should fit ~5 rows in the 320px band.
-4. **Green/red/yellow colors read cleanly on white** (Tailwind-600/700 range). Not washed out, not neon.
+1. Load the page. Each card should show a gray `DATA: Ns ago` label at its bottom-left.
+2. Watch for 2 minutes. The counter should tick up every second. If it freezes, the ticker itself is broken (tell me).
+3. At ~90s the label should turn amber.
+4. At ~180s it should turn red.
+5. When the backend refreshes (should happen ~every 2 minutes for a fresh scan), the counter should reset to a small number. **If it doesn't reset, that's the staleness bug confirmed.**
 
 ## Honest flags
 
-1. **Didn't live-render.** Passes `node --check`. The interplay between the topBar (symbol+side+conf+button+chevron) and the new price row below may crush on narrow cards (~320px width when three sit side-by-side on a 1366px screen). If it looks cramped, the easy fix is to drop the Side pill from the topBar and put it next to Symbol as a smaller suffix.
-2. **Trigger moved out of collapsed view.** If users find themselves expanding every card just to check the trigger level, I'd move it back in or surface it as a small pill in the topBar.
-3. **Scanner height of 320px** reduces the vertical space available for the Live Monitor + Detail area by ~100px. If that squeezes anything important below the fold, tell me.
+- The 1s ticker runs on every card. On a narrow viewport where cards might be hidden, we're still iterating through the DOM. Negligible cost (microseconds per tick) but worth knowing.
+- The color-sync check compares `_el.style.color` string to the new color string. Browsers sometimes normalize colors (`rgb(…)` vs `#XXXXXX`), which would cause the check to always fail and cause redundant sets. Harmless but not perfectly optimized.
+- If the backend `ts` field is ever missing or zero (e.g. boot-up empty response), `state.dataTs` stays null and no label renders. Cards will look like pre-r8 in that case.
 
 ## Known backlog (unchanged)
 
-Same as before: DCF `fair_value = price × 1.05`, stale cache flag, score=50 default, ATR default, 52W default. Plus scoring calibration (OVERPRICED+WIDE+RANGING can reach BUY_SMALL).
+Scoring calibration (OVERPRICED+WIDE+RANGING → BUY_SMALL), fair_value placeholder, stale cache flag, score=50 default, ATR default, 52W default.
