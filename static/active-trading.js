@@ -19,12 +19,16 @@
   'use strict';
 
   // Loud startup log so we can verify the deployed version at a glance
-  console.log('%c[ActiveTrading] v46 loaded — Quick Start guide + live recompute on select',
+  console.log('%c[ActiveTrading] v48 loaded — Ghost-position fix + 90s refresh + honest blockers',
               'color:#22C55E;font-weight:bold;font-size:13px');
-  console.log('%c  QUICK START tab in ? modal (plain English for non-pros) · Click card → verdict refreshes NOW',
+  console.log('%c  Old paper positions auto-flushed on load (schema bump) — fixes false BLOCKED',
               'color:#64748B;font-size:11px');
-  console.log('%c  No more waiting 5 minutes for fresh scoring after you click a trade',
+  console.log('%c  90-second scoring refresh · Voice announces verdict/confidence changes',
               'color:#64748B;font-size:11px');
+  console.log('%c  Unified lot sizes · Stocks missing lot_size show "AWAITING DATA" not "BLOCKED"',
+              'color:#64748B;font-size:11px');
+  console.log('%c  Stuck? Run window._atEngine.resetPaperPositions() in console to force-clear',
+              'color:#94A3B8;font-size:10px');
 
   // ── COLOR TOKENS ────────────────────────────────────────────────────────
   var C = {
@@ -161,6 +165,22 @@
     return d;
   }
   function msUntilNextFiveMin() { return nextFiveMinBoundary().getTime() - Date.now(); }
+
+  // ── WALL-CLOCK 90s BOUNDARY ─────────────────────────────────────────────
+  // Refresh cadence in v48. Aligns to :00, :30 seconds within each minute at
+  // multiples of 90s from the current minute's :00. Using a wall-clock anchor
+  // (rather than setInterval drift) means every user's browser refreshes at
+  // the same instant, which matches backend cache expiry cleanly.
+  function msUntilNext90s() {
+    var now = Date.now();
+    // 90s buckets starting from each minute's :00. To find the next bucket:
+    // round up to the next multiple of 90,000 ms from epoch.
+    var next = Math.ceil(now / 90000) * 90000;
+    // Guard: if we're within 50ms of the boundary, jump to the one after to
+    // avoid a same-tick double-fire.
+    if (next - now < 50) next += 90000;
+    return next - now;
+  }
   function formatCountdown(ms) {
     var total = Math.max(0, Math.floor(ms / 1000));
     var m = Math.floor(total / 60), s = total % 60;
@@ -234,7 +254,8 @@
   // In Lean terms: this is a minimal Portfolio + TransactionHandler.
   var paperPortfolio = {
     _storageKey: 'at_paper_positions',
-    positions: {},  // { id: Position }
+    _schema: 'v48',     // bumped whenever position data shape or gate math changes
+    positions: {},      // { id: Position } — PURE position map, no metadata keys
 
     // Position schema:
     //   id, sym, strike, side, score, state, reason,
@@ -248,7 +269,40 @@
       if (window.storage && typeof window.storage.get === 'function') {
         window.storage.get(this._storageKey).then(function (r) {
           if (r && r.value) {
-            try { self.positions = JSON.parse(r.value); bus.emit('portfolio:loaded'); } catch (e) {}
+            try {
+              var parsed = JSON.parse(r.value);
+              // Storage payload shape (v48+):
+              //   { schema: 'v48', positions: { id: Position, ... } }
+              // Old shape (pre-v48):
+              //   { id: Position, ... } — positions at top level, no schema
+              //
+              // If the payload has a schema tag matching current, load the
+              // positions directly. Otherwise, flush — v43-era positions had
+              // wrong lot size multipliers baked into Greeks, and keeping
+              // them would falsely inflate book delta/vega → block new trades.
+              var isNewShape = parsed && parsed.schema === self._schema &&
+                               parsed.positions && typeof parsed.positions === 'object';
+              if (isNewShape) {
+                self.positions = parsed.positions;
+              } else {
+                // Count what we're about to discard (either shape)
+                var count = 0;
+                if (parsed && typeof parsed === 'object') {
+                  var toCheck = parsed.positions || parsed;
+                  Object.keys(toCheck).forEach(function (k) {
+                    if (k !== '_schema' && k !== 'schema' && toCheck[k] &&
+                        typeof toCheck[k] === 'object' && toCheck[k].status) count++;
+                  });
+                }
+                if (count > 0) {
+                  console.warn('[ActiveTrading] Discarding ' + count +
+                               ' positions from old schema — book limits no longer match');
+                }
+                self.positions = {};
+                self.save();
+              }
+              bus.emit('portfolio:loaded');
+            } catch (e) {}
           }
         }).catch(function () {});
       }
@@ -256,7 +310,13 @@
     save: function () {
       if (window.storage && typeof window.storage.set === 'function') {
         try {
-          window.storage.set(this._storageKey, JSON.stringify(this.positions)).catch(function () {});
+          // Wrap schema + positions so position map stays pure.
+          var payload = {
+            schema: this._schema,
+            positions: this.positions,
+            savedAt: Date.now()
+          };
+          window.storage.set(this._storageKey, JSON.stringify(payload)).catch(function () {});
         } catch (e) {}
       }
     },
@@ -559,7 +619,17 @@
       var entry = trade.price;
       var sl = trade.sl;
       var target = trade.target;
-      var lotSize = trade.lot || 1;
+      // Require a REAL lot size. trade.lot === null means backend didn't send
+      // it for this stock — silently using 1 would make Kelly size the trade
+      // in shares not lots, producing nonsense lot counts and nonsense risk.
+      // Better to flag it honestly so the UI shows "awaiting lot size" rather
+      // than a BLOCKED with misleading Kelly failure.
+      if (trade.lot == null) {
+        return { error: 'awaiting_lot_size',
+                 reason: 'Lot size missing for ' + (trade.symbol || 'this symbol'),
+                 pctOfCapital: 0, lots: 0 };
+      }
+      var lotSize = trade.lot;
       if (!entry || !sl || !target || entry <= 0) {
         return { error: 'missing price/sl/target', pctOfCapital: 0, lots: 0 };
       }
@@ -687,7 +757,13 @@
     computeCost: function (trade, lots, region) {
       region = region || 'IN';
       var s = this.schedules[region];
-      var lotSize = trade.lot || 1;
+      // Prefer trade.lot; if missing, try central lookup; final fallback is
+      // NIFTY lot size 65 so cost estimates don't report zero turnover.
+      // Callers that need precise costs should ensure trade.lot is set upstream.
+      var lotSize = trade.lot != null ? trade.lot
+                  : (typeof lotSizeFor === 'function'
+                     ? (lotSizeFor(trade.symbol) || 65)
+                     : 65);
       var premium = trade.price || 0;
       var turnoverPerSide = lots * lotSize * premium;
       var total = 0;
@@ -4178,6 +4254,16 @@
     provenance: dataProvenance,
     proMode: proMode,
 
+    // Reset all paper positions — useful if old-schema ghost positions
+    // are poisoning the book Greek limits after a version upgrade.
+    // Exposed for console use: window._atEngine.resetPaperPositions()
+    resetPaperPositions: function () {
+      paperPortfolio.positions = {};
+      paperPortfolio.save();
+      console.log('[ActiveTrading] Paper positions reset. Fresh book — blocked trades should now clear.');
+      return 'OK — paper portfolio cleared';
+    },
+
     // Dump signals as CSV (for feeding external backtest tools)
     exportSignalsCSV: function () {
       if (!signalLedger.all.length) return '';
@@ -4838,13 +4924,15 @@
     }
     var reason = reasons.slice(0, 3).join(' + ');
 
-    // Lot size: prefer real value from backend. For known indices use the
-    // officially-published lot sizes. If backend didn't send one and it's an
-    // unknown stock, return null rather than inventing 50.
-    var lotMap = { NIFTY: 75, BANKNIFTY: 30, FINNIFTY: 65, MIDCPNIFTY: 120, SENSEX: 20 };
+    // Lot size: prefer real value from backend (needed for per-stock lots
+    // like HCLTECH=350, SBIN=750 which change quarterly). Fall back to the
+    // central LOT_SIZES table which has the post-Jan-2026 NSE values for
+    // indices. Stocks without backend lot_size return null — UI shows
+    // "awaiting lot size" and the trade is gated rather than silently
+    // using wrong sizing.
     var lot = row.lot_size;
-    if (lot == null && lotMap[sym] != null) lot = lotMap[sym];
-    // else lot stays null — UI will display "—"
+    if (lot == null) lot = lotSizeFor(sym);  // null for unknown stocks
+    // else lot stays null — Kelly/Greek gate will flag instead of miscompute
 
     return {
       id: id,
@@ -8881,16 +8969,23 @@
     }
     var t = state.selected;
     var lc = state.lastClose != null ? state.lastClose : t.price;
-    var dist = t.trigger - lc;
+    // Defensive: if trade has no trigger (partial/shadow object), render
+    // a neutral panel rather than crashing with NaN arithmetic.
+    var hasTrigger = t.trigger != null && lc != null;
+    var dist = hasTrigger ? (t.trigger - lc) : 0;
     var status;
-    if (lc >= t.trigger || Math.abs(dist) < t.trigger * 0.001) {
+    if (!hasTrigger) {
+      status = { label: 'LOADING', color: C.textMute, dot: '⚪' };
+    } else if (lc >= t.trigger || Math.abs(dist) < t.trigger * 0.001) {
       status = { label: 'ACTIVE', color: C.green, dot: '🟢' };
     } else if (Math.abs(dist) < t.trigger * 0.005) {
       status = { label: 'WATCHING', color: C.yellow, dot: '🟡' };
     } else {
       status = { label: 'INVALID', color: C.red, dot: '🔴' };
     }
-    var pct = Math.max(0, Math.min(1, 1 - Math.abs(dist) / (t.trigger * 0.01)));
+    var pct = hasTrigger
+      ? Math.max(0, Math.min(1, 1 - Math.abs(dist) / (t.trigger * 0.01)))
+      : 0;
 
     var box = el('div', {
       style: {
@@ -8930,7 +9025,10 @@
       style: { fontSize: '12px', color: C.textSec, lineHeight: 1.2, fontFamily: MONO }
     });
     triggerLine.appendChild(document.createTextNode('Trigger: '));
-    triggerLine.appendChild(el('span', { style: { color: C.textPri } }, triggerVerb + ' ' + t.trigger.toFixed(2)));
+    var triggerTxt = (t.trigger != null)
+      ? triggerVerb + ' ' + t.trigger.toFixed(2)
+      : triggerVerb + ' —';
+    triggerLine.appendChild(el('span', { style: { color: C.textPri } }, triggerTxt));
     triggerLine.appendChild(document.createTextNode('   ·   Current: '));
     triggerLine.appendChild(el('span', { style: { color: status.color } },
       (lc != null ? lc.toFixed(2) : '—') + ' → ' + status.label.toLowerCase()));
@@ -9006,8 +9104,8 @@
     }
     var t = state.selected;
     var lc = state.lastClose != null ? state.lastClose : t.price;
-    var reward = Math.abs(t.target - lc);
-    var risk = Math.abs(lc - t.sl);
+    var reward = (t.target != null && lc != null) ? Math.abs(t.target - lc) : 0;
+    var risk = (t.sl != null && lc != null) ? Math.abs(lc - t.sl) : 0;
     var rr = risk > 0 ? reward / risk : 0;
     var rrDanger = rr < 1.5;
 
@@ -9033,8 +9131,8 @@
         borderBottom: '1px solid ' + C.divider
       }
     }, [
-      cell('SL', t.sl.toFixed(2), C.red, false),
-      cell('TARGET', t.target.toFixed(2), C.green, false),
+      cell('SL', t.sl != null ? t.sl.toFixed(2) : '—', C.red, false),
+      cell('TARGET', t.target != null ? t.target.toFixed(2) : '—', C.green, false),
       cell('R:R', '1 : ' + rr.toFixed(1), rrDanger ? C.red : C.textPri, true),
       cell('LOT', t.lot != null ? String(t.lot) : '—', C.textSec, false)
     ]);
@@ -9193,13 +9291,20 @@
           }
         }, '● ' + scanPos.status.toUpperCase());
       } else if (scanPreview && !scanPreview.allowed) {
+        // Distinguish "awaiting data" (backend missing info) from a real
+        // risk/event blocker. Former is orange info, not scary red.
+        var isAwaiting = (scanPreview.blockers || []).some(function (b) {
+          return /awaiting|missing|lot size|insufficient_data/i.test(b);
+        });
         actionCell = el('span', {
           title: (scanPreview.blockers || []).join(' · '),
           style: {
-            fontSize: '9px', color: C.red, fontWeight: 700,
+            fontSize: '9px',
+            color: isAwaiting ? C.orange : C.red,
+            fontWeight: 700,
             letterSpacing: '0.5px'
           }
-        }, 'BLOCKED');
+        }, isAwaiting ? 'AWAITING DATA' : 'BLOCKED');
       } else {
         actionCell = el('button', {
           onClick: function (e) {
@@ -9817,13 +9922,18 @@
           // First-seen trades get a null trend so UI can show "building…"
           // instead of a misleading flat 95→95→95.
           var trend = (h && h.length >= 2) ? h : null;
-          return {
-            symbol: t.symbol, direction: t.side,
+          // Preserve the full trade object so click handlers (selectTrade,
+          // onExecute, tradePreview) have access to trigger/price/sl/target
+          // /_raw — without this, scanner row click crashed with
+          // "Cannot read properties of undefined (reading 'toFixed')".
+          // Display fields remain flat for the scanner table render.
+          return Object.assign({}, t, {
+            symbol: t.symbol, direction: t.side, side: t.side,
             strike: t.strike,
             score: t.confidence, state: t.state,
             trend: trend,
             historyCount: h ? h.length : 0
-          };
+          });
         });
 
         // Auto-select first trade on first load
@@ -9881,12 +9991,40 @@
     rerender();
   }
 
+  function on90sRefresh() {
+    // v48 refresh cadence: every 90 seconds, not every 5 minutes. Backend
+    // scan endpoint has its own server-side cache, so 3 of every 4 refreshes
+    // typically hit cache (cheap). When backend data changes, frontend picks
+    // it up on the next 90s tick instead of waiting up to 4 more minutes.
+    //
+    // Before the refresh, snapshot the selected trade's verdict so we can
+    // announce any change after the refresh completes.
+    var prevVerdictLabel = null;
+    var prevConfidence = null;
+    if (state.selected) {
+      try {
+        var raw = state.selected._raw || {};
+        var prevV = consensusEngine.evaluate(state.selected, raw);
+        if (prevV) {
+          prevVerdictLabel = prevV.label;
+          prevConfidence = state.selected.confidence;
+        }
+      } catch (e) {}
+    }
+    // Attach the previous verdict to state so on5mClose's continuation can
+    // compare after refreshAll resolves with new data.
+    state._prev90sVerdict = prevVerdictLabel;
+    state._prev90sConf = prevConfidence;
+    on5mClose();
+  }
+
   function on5mClose() {
-    // Spec §2: T+0s close → T+2s all engines recompute → single UI batch
+    // Retained function name for back-compat with tests. In v48 this is
+    // invoked every 90 seconds via on90sRefresh, not every 5 minutes.
     state.lastFullRefreshAt = Date.now();
     state.fadeTick = (state.fadeTick || 0) + 1; // spec §8: crossfade Tier 1 values
     refreshAll().then(function () {
-      // Record the selected trade's 5m close price for Entry Engine display
+      // Record the selected trade's close price for Entry Engine display
       if (state.selected) {
         var prev = state.lastClose != null ? state.lastClose : state.selected.price;
         var newClose = state.selected.price;
@@ -9896,7 +10034,38 @@
         }
         state.lastClose = newClose;
 
-        pushLog('5m close @ ' + newClose.toFixed(2), C.yellow);
+        pushLog('Refresh @ ' + newClose.toFixed(2), C.yellow);
+
+        // ── Verdict change announcement (v48) ──
+        // Compare prev vs new verdict to call out meaningful transitions.
+        // Stays silent if verdict is unchanged — avoids voice spam every 90s.
+        try {
+          var curRaw = state.selected._raw || {};
+          var curV = consensusEngine.evaluate(state.selected, curRaw);
+          var curLabel = curV ? curV.label : null;
+          var curConf = state.selected.confidence;
+          if (state._prev90sVerdict && curLabel && curLabel !== state._prev90sVerdict) {
+            // Meaningful change — verdict transition
+            var msg = state.selected.symbol + ' ' + state.selected.strike +
+                      ' verdict changed. Was ' +
+                      state._prev90sVerdict.replace(/_/g, ' ').toLowerCase() +
+                      ', now ' + curLabel.replace(/_/g, ' ').toLowerCase() +
+                      '. Confidence ' + Math.round(curConf) + ' percent.';
+            pushLog('VERDICT: ' + state._prev90sVerdict + ' → ' + curLabel, C.blue);
+            if (state.voiceOn) speak(msg);
+          } else if (state._prev90sConf != null && curConf != null &&
+                     Math.abs(curConf - state._prev90sConf) >= 5) {
+            // Verdict stable but confidence moved meaningfully (≥5 points)
+            var direction = curConf > state._prev90sConf ? 'up' : 'down';
+            pushLog('Confidence ' + direction + ' ' +
+                    state._prev90sConf.toFixed(0) + ' → ' + curConf.toFixed(0),
+                    direction === 'up' ? C.green : C.orange);
+            if (state.voiceOn) {
+              speak(state.selected.symbol + ' confidence ' + direction + ' ' +
+                    Math.round(state._prev90sConf) + ' to ' + Math.round(curConf) + '.');
+            }
+          }
+        } catch (e) {}
 
         // Entry confirmed check — plain English
         if ((state.selected.side === 'CE' && newClose >= state.selected.trigger) ||
@@ -10004,7 +10173,7 @@
   function startTimers() {
     // Countdown: label-only update, no data fetch, no rerender of anything else
     timers.countdown = setInterval(function () {
-      state.countdown = formatCountdown(msUntilNextFiveMin());
+      state.countdown = formatCountdown(msUntilNext90s());
       var countEl = document.querySelector('#activeTradingMount [data-countdown]');
       if (countEl) countEl.textContent = 'Next Evaluation In: ' + state.countdown;
       // Scanner "Last Updated" label (spec §9)
@@ -10015,19 +10184,20 @@
       }
     }, 1000);
 
-    // 90s Tier 2 refresh — scanner "Last Updated" label + non-decision fields only.
-    // NEVER touches Top Trades ranking, confidence, entry state, SL/target.
-    timers.soft90 = setInterval(refreshTier2, 90000);
-
-    // 5m candle close — the ONLY moment Tier 1 decision fields recompute.
-    function scheduleNext5m() {
-      var ms = msUntilNextFiveMin();
+    // 90s refresh — re-runs the full scoring pipeline. Backend scan endpoint
+    // is cached ~5min server-side so 2-3 of every 4 fetches hit cache cheaply.
+    // When fresh data IS available (every ~5min), the frontend picks it up on
+    // the very next 90s tick rather than waiting for a 5m candle boundary.
+    // Voice announces the verdict on the selected trade so user knows the
+    // recompute ran and can act on changes.
+    function scheduleNext90s() {
+      var ms = msUntilNext90s();
       timers.candle5m = setTimeout(function () {
-        on5mClose();
-        scheduleNext5m();
+        on90sRefresh();
+        scheduleNext90s();
       }, ms);
     }
-    scheduleNext5m();
+    scheduleNext90s();
   }
 
   function stopTimers() {
