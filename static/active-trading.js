@@ -6531,7 +6531,7 @@
       onClick: function () { selectTrade(trade); },
       style: {
         minHeight: '68px',
-        padding: '10px 10px 10px 12px',
+        padding: '14px 14px 22px 16px',
         background: isSelected ? C.active : C.card,
         borderRadius: '12px',
         border: '1px solid ' + (isSelected ? C.blue : (trade.gammaMode ? '#F59E0B' : C.divider)),
@@ -6595,23 +6595,23 @@
     });
     var sym = el('div', {
       style: {
-        fontSize: '22px', fontWeight: 800, color: C.textPri,
+        fontSize: '28px', fontWeight: 900, color: C.textPri,
         lineHeight: 1.1, fontFamily: MONO, whiteSpace: 'nowrap',
         overflow: 'hidden', textOverflow: 'ellipsis',
         letterSpacing: '0.3px'
       }
     });
     sym.appendChild(document.createTextNode(trade.symbol + ' '));
-    sym.appendChild(el('span', { style: { color: C.textSec, fontWeight: 700 } }, trade.strike));
+    sym.appendChild(el('span', { style: { color: C.textSec, fontWeight: 800 } }, trade.strike));
     symCell.appendChild(sym);
 
-    // Side pill (CE / PE) — color-coded, compact. Always visible.
+    // Side pill (CE / PE) — color-coded. Always visible. Bigger in r9.
     var sideColor = trade.side === 'CE' ? C.green : trade.side === 'PE' ? C.red : C.textMute;
     symCell.appendChild(el('div', {
       style: {
-        fontSize: '11px', fontWeight: 900, color: sideColor,
+        fontSize: '14px', fontWeight: 900, color: sideColor,
         background: sideColor + '18', border: '1px solid ' + sideColor + '55',
-        padding: '2px 8px', borderRadius: '999px',
+        padding: '3px 10px', borderRadius: '999px',
         letterSpacing: '0.8px', fontFamily: MONO, flex: '0 0 auto'
       }
     }, trade.side || '—'));
@@ -6644,22 +6644,22 @@
     var confCell = el('div', {
       style: {
         display: 'flex', flexDirection: 'column', alignItems: 'flex-end',
-        alignSelf: 'center', minWidth: '60px', flex: '0 0 auto'
+        alignSelf: 'center', minWidth: '72px', flex: '0 0 auto'
       }
     });
     confCell.appendChild(el('div', {
       className: 'at-fade at-fade-' + (state.fadeTick || 0),
       style: {
-        fontSize: '26px', fontWeight: 800, color: confColor(trade.confidence),
+        fontSize: '34px', fontWeight: 900, color: confColor(trade.confidence),
         lineHeight: 1.05, fontFamily: MONO,
         textAlign: 'right'
       }
     }, trade.confidence + '%'));
     confCell.appendChild(el('div', {
       style: {
-        fontSize: '9px', color: subColor, fontFamily: MONO,
-        marginTop: '3px', whiteSpace: 'nowrap',
-        letterSpacing: '0.3px', fontWeight: 700
+        fontSize: '11px', color: subColor, fontFamily: MONO,
+        marginTop: '4px', whiteSpace: 'nowrap',
+        letterSpacing: '0.3px', fontWeight: 800
       }
     }, subLabel));
     topBar.appendChild(confCell);
@@ -6682,10 +6682,10 @@
         },
         title: 'Already executing — click to view in Live Monitor',
         style: {
-          height: '36px', width: '100px',
+          height: '48px', width: '128px',
           background: activeBg + '22',
           color: activeBg,
-          fontWeight: 800, fontSize: '11px',
+          fontWeight: 900, fontSize: '14px',
           border: '1px solid ' + activeBg,
           borderRadius: '6px', cursor: 'pointer',
           letterSpacing: '0.8px', alignSelf: 'center'
@@ -6712,7 +6712,7 @@
                   ? ' at ' + latestPos.realizedPct.toFixed(1) + '%'
                   : '') + '. Click to re-execute.',
         style: {
-          height: '36px', width: '100px',
+          height: '48px', width: '128px',
           background: wonColor + '15',
           color: wonColor,
           fontWeight: 800, fontSize: '10px',
@@ -6740,7 +6740,7 @@
           },
           title: 'Option chain looks fabricated (zero OI, zero IV). Real price unknown — trade refused.',
           style: {
-            height: '36px', width: '100px',
+            height: '48px', width: '128px',
             background: C.red + '20',
             color: C.red,
             fontWeight: 800, fontSize: '10px',
@@ -6768,7 +6768,7 @@
           },
           title: 'Risk gate blocked: ' + riskGate.reason,
           style: {
-            height: '36px', width: '100px',
+            height: '48px', width: '128px',
             background: C.red + '15',
             color: C.red,
             fontWeight: 800, fontSize: '10px',
@@ -6797,7 +6797,7 @@
             ? 'Click to confirm — opens ' + sub
             : 'Trade has blockers — click for details',
           style: {
-            height: '36px', width: '100px',
+            height: '48px', width: '128px',
             background: 'linear-gradient(180deg, ' + C.green + ', #16A34A)',
             color: '#062B17', fontWeight: 800,
             border: 'none', borderRadius: '6px', cursor: 'pointer',
@@ -6808,9 +6808,9 @@
             lineHeight: 1.15, padding: '2px 4px'
           }
         }, [
-          el('span', { style: { fontSize: '11px', fontWeight: 900 } }, 'TAKE TRADE'),
+          el('span', { style: { fontSize: '14px', fontWeight: 900, letterSpacing: '0.5px' } }, 'TAKE TRADE'),
           el('span', {
-            style: { fontSize: '8px', opacity: 0.85, fontWeight: 700 }
+            style: { fontSize: '10px', opacity: 0.85, fontWeight: 800, marginTop: '2px' }
           }, sub || '—')
         ]);
       }
@@ -6867,19 +6867,20 @@
     });
     function priceChip(label, value, valueColor) {
       var chip = el('div', {
-        style: { display: 'flex', flexDirection: 'column', gap: '2px', minWidth: 0 }
+        style: { display: 'flex', flexDirection: 'column', gap: '3px', minWidth: 0 }
       });
       chip.appendChild(el('div', {
         style: {
-          fontSize: '9px', color: C.textMute, fontWeight: 800,
-          letterSpacing: '0.8px', whiteSpace: 'nowrap',
+          fontSize: '11px', color: C.textMute, fontWeight: 900,
+          letterSpacing: '1px', whiteSpace: 'nowrap',
           overflow: 'hidden', textOverflow: 'ellipsis'
         }
       }, label));
       chip.appendChild(el('div', {
         style: {
-          fontSize: '16px', color: valueColor || C.textPri, fontWeight: 800,
-          whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'
+          fontSize: '22px', color: valueColor || C.textPri, fontWeight: 900,
+          whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+          fontFamily: MONO, lineHeight: 1.05
         }
       }, value));
       return chip;
@@ -6911,10 +6912,10 @@
         'data-age-ts': String(state.dataTs),   // marker so the tick refresher can find these
         title: 'Data timestamp from backend. If this stops updating the scan is cached.',
         style: {
-          position: 'absolute', bottom: '3px', left: '10px',
-          fontSize: '9px', color: _ageColor, fontFamily: MONO,
-          fontWeight: 800, letterSpacing: '0.3px',
-          pointerEvents: 'none', opacity: 0.85
+          position: 'absolute', bottom: '5px', left: '12px',
+          fontSize: '11px', color: _ageColor, fontFamily: MONO,
+          fontWeight: 900, letterSpacing: '0.3px',
+          pointerEvents: 'none', opacity: 0.95
         }
       }, 'DATA: ' + _ageTxt));
     }

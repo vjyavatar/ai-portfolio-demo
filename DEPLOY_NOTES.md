@@ -1,58 +1,52 @@
-# Celesys deploy — April 20, 2026 (r8)
+# Celesys deploy — April 20, 2026 (r9)
 
-Incremental over r7. Only `static/active-trading.js` changed.
+Incremental over r8. Only `static/active-trading.js` changed.
 
-## What's new in r8: live data-age indicator on cards
+## What's new in r9: cards much bigger
 
-**The problem:** you reported that card values (spot / buy / SL / target) stayed identical across refreshes for 5+ minutes. The backend cache is supposed to be 120s; either it's not refreshing, or the frontend is holding stale data, or the backend is handing back old timestamps. Without a visible timestamp we were flying blind.
+Everything on the top-3 cards scaled up for readability:
 
-**The fix (2 pieces):**
+| Element           | r8                  | r9                  |
+|-------------------|---------------------|---------------------|
+| Symbol + strike   | 22px / weight 800   | **28px / weight 900** |
+| Side pill (CE/PE) | 11px                | **14px**            |
+| Confidence        | 26px / weight 800   | **34px / weight 900** |
+| Sub-label (uncal) | 9px                 | **11px / weight 800** |
+| Price chip label  | 9px                 | **11px / weight 900** |
+| Price chip value  | 16px                | **22px / MONO / weight 900** |
+| TAKE TRADE button | 36×100 / 11px label | **48×128 / 14px label** |
+| LIVE/PENDING pill | 36×100 / 11px       | **48×128 / 14px**   |
+| DATA: Ns ago      | 9px                 | **11px / weight 900** |
+| Card padding      | 10px                | 14-16px (22px bottom for age label) |
 
-### 1. Capture backend timestamp into state
-Every `/api/bottom-nav-scan` response already includes a `ts` field (epoch seconds when the scan ran). The frontend was ignoring it. Now we capture it as `state.dataTs` and surface it on every card.
+Price values now render in MONO font for tabular alignment — so the decimals line up vertically when you scan across Spot → Buy → SL → Target.
 
-### 2. Live-ticking age label on each card
-Bottom-left corner of every top-3 card now shows:
-```
-DATA: 34s ago
-```
+## 🚨 URGENT: Your last screenshot confirmed the staleness bug
 
-Colors shift as time passes:
-- **Gray** (≤90s) — fresh, within one refresh cycle
-- **Amber** (91–180s) — one full cycle missed, suspicious
-- **Red** (>180s) — stale, treat data as unreliable
+Every card showed `DATA: 122m 32s ago` in red. **The backend hasn't refreshed in over 2 hours.** This means `_bottom_nav_cache` in `api.py` is stuck — the background refresh thread either isn't firing or is erroring silently after the boot scan.
 
-The counter ticks every second **without full rerender** — piggy-backs on the existing 1s countdown timer to do direct DOM text updates via `data-age-ts` markers. No render cost.
+The r8 indicator did its job: it made the invisible visible. But we still need to fix the cache staleness itself. That's a **separate backend investigation** — not in this r9 zip. Suggested next move after deploying r9:
+1. Check Render logs for `[BOTTOM-NAV] ✅ US: N scored in Ts` lines.
+2. If that line appears only once at boot and never again, the 120s background-refresh path in `bottom_nav_scan` is broken.
+3. Likely culprits: `_bottom_nav_busy` flag getting stuck (thread crashed after setting it, never cleared); Yahoo 429s killing the refresh thread silently; the `threading.Thread(daemon=True)` never actually starting under uvicorn's event loop.
 
-**If DATA jumps back to "0s ago" when you refresh, cache is working correctly.**
-**If DATA keeps climbing past 180s and stays red, the backend is genuinely serving stale data** and we need to investigate `_bottom_nav_cache` in `api.py` next.
-
-## What this WON'T fix
-
-This is a diagnostic, not a cure. If the backend is legitimately cached-stale (the 120s TTL isn't triggering a background refresh, or the refresh is erroring silently), you'll *see* the red "DATA: 3m 42s ago" label — but the data underneath will still be stale. The next step once you confirm staleness visually is a focused backend investigation of `_bottom_nav_cache` TTL behavior.
-
-## Everything from r7 still applies
-
-Scanner BLOCKED rows show reason inline, expanded card shows all blockers, light theme, horizontal TOP TRADES strip, always-visible Spot/Buy/SL/Target, 18px scanner rows, WATCHING band 0.4%, voice verdict fix, synthetic-premium block, Yahoo rate-wait, QT lot sizes.
+I can investigate in a fresh session focused just on that.
 
 ## Deploy
 
-Only `static/active-trading.js` changed. If r7 is live, push this one file.
+Only `static/active-trading.js` changed. Push one file or the whole zip.
 
-## What to test
+## What to verify
 
-1. Load the page. Each card should show a gray `DATA: Ns ago` label at its bottom-left.
-2. Watch for 2 minutes. The counter should tick up every second. If it freezes, the ticker itself is broken (tell me).
-3. At ~90s the label should turn amber.
-4. At ~180s it should turn red.
-5. When the backend refreshes (should happen ~every 2 minutes for a fresh scan), the counter should reset to a small number. **If it doesn't reset, that's the staleness bug confirmed.**
+1. Each card should be noticeably larger and bolder. Confidence should dominate visually (34px).
+2. Price values align in monospaced columns down the row.
+3. `DATA: Ns ago` at bottom-left should be readable at a glance, color-shifting.
 
 ## Honest flags
 
-- The 1s ticker runs on every card. On a narrow viewport where cards might be hidden, we're still iterating through the DOM. Negligible cost (microseconds per tick) but worth knowing.
-- The color-sync check compares `_el.style.color` string to the new color string. Browsers sometimes normalize colors (`rgb(…)` vs `#XXXXXX`), which would cause the check to always fail and cause redundant sets. Harmless but not perfectly optimized.
-- If the backend `ts` field is ever missing or zero (e.g. boot-up empty response), `state.dataTs` stays null and no label renders. Cards will look like pre-r8 in that case.
+- The strip's grid is still `repeat(3, 1fr)`. With 34px confidence + 128px button + chevron + 28px symbol + side pill, the top row needs ~400px per card to not wrap. On a 1440px screen this fits easily. On a 1200px screen it'll be tight. On a 1024px screen the top row will wrap or crush — if you see that, tell me and I'll drop the side pill (CE/PE color is already on the left-edge border) or shrink the button.
+- The size bump doesn't fix the cache staleness bug — that's backend. This deploy makes the UI better while the bug is visible.
 
 ## Known backlog (unchanged)
 
-Scoring calibration (OVERPRICED+WIDE+RANGING → BUY_SMALL), fair_value placeholder, stale cache flag, score=50 default, ATR default, 52W default.
+Scoring calibration, fair_value placeholder, stale cache flag, score=50 default, ATR default, 52W default. Plus now: `_bottom_nav_cache` not refreshing after boot scan.
