@@ -19,11 +19,11 @@
   'use strict';
 
   // Loud startup log so we can verify the deployed version at a glance
-  console.log('%c[ActiveTrading] v43 loaded — Institutional Greeks + scenarios + provenance + pro mode',
+  console.log('%c[ActiveTrading] v46 loaded — Quick Start guide + live recompute on select',
               'color:#22C55E;font-weight:bold;font-size:13px');
-  console.log('%c  Net book Greeks · scenario matrix on execute · vendor badges · Pro Mode gates SMC',
+  console.log('%c  QUICK START tab in ? modal (plain English for non-pros) · Click card → verdict refreshes NOW',
               'color:#64748B;font-size:11px');
-  console.log('%c  Portfolio correlation prevents concentration · PRO toggle in header disables retail signals',
+  console.log('%c  No more waiting 5 minutes for fresh scoring after you click a trade',
               'color:#64748B;font-size:11px');
 
   // ── COLOR TOKENS ────────────────────────────────────────────────────────
@@ -969,6 +969,39 @@
   // for any option so the trader can see theta bleed and gamma exposure on
   // the selected trade. Greeks are recomputed on every render using the
   // live spot from the trade object.
+  // ═══════════════════════════════════════════════════════════════════════
+  // NSE / BSE LOT SIZES — single source of truth
+  // ═══════════════════════════════════════════════════════════════════════
+  // Real current values per NSE circular FAOP70616 (Oct 3, 2025, effective
+  // Jan 2026 contracts) and BSE circulars. Verified against live option
+  // chain data as of April 2026.
+  //
+  // Always prefer lot_size from backend when available. This table is
+  // the fallback so defaults are ACCURATE, not wrong-by-default.
+  var LOT_SIZES = {
+    // NSE index derivatives
+    NIFTY:       65,
+    BANKNIFTY:   30,
+    FINNIFTY:    60,
+    MIDCPNIFTY:  120,
+    NIFTYNXT50:  25,
+    'NIFTY NEXT 50': 25,
+    // BSE index derivatives
+    SENSEX:      20,
+    BANKEX:      30,
+    SENSEX50:    50   // aka Sensex 50
+  };
+
+  function lotSizeFor(symbol) {
+    if (!symbol) return 65;  // assume NIFTY as default index
+    var key = String(symbol).toUpperCase().trim();
+    if (LOT_SIZES[key] != null) return LOT_SIZES[key];
+    // Fallback for stocks — backend must provide. Without data, use a
+    // conservative value. 1 is wrong for any real F&O stock, so we
+    // return null to let callers decide (skip / warn).
+    return null;
+  }
+
   var pricingMath = {
     // Abramowitz-Stegun erf approximation (standard)
     erf: function (x) {
@@ -2578,7 +2611,7 @@
       if (!m) return { status: 'no_strike' };
       var strike = parseFloat(m[1]);
       var premium = trade.price;
-      var lotSize = lot || trade.lot || 75;
+      var lotSize = lot || trade.lot || lotSizeFor(trade.symbol) || 65;
 
       var lo = spot * 0.96;
       var hi = spot * 1.04;
@@ -2740,16 +2773,19 @@
     phase: function (region) {
       region = region || 'IN';
       var now = new Date();
-      // IST offset from local time
+      // See isIndianMarketOpen() for the reasoning: new Date() already
+      // stores UTC ms. Add the region offset, read the "UTC" fields of
+      // the shifted Date — those fields now carry the target-zone values.
+      // Never also add getTimezoneOffset(); that double-corrects on
+      // non-UTC browsers.
       var ist;
       if (region === 'IN') {
-        var istMs = now.getTime() + (5.5 * 60 * 60 * 1000) +
-                    (now.getTimezoneOffset() * 60 * 1000);
+        var istMs = now.getTime() + (5.5 * 60 * 60 * 1000);
         ist = new Date(istMs);
       } else {
-        // US ET (UTC-5 standard, but skip DST for simplicity)
-        var etMs = now.getTime() - (5 * 60 * 60 * 1000) +
-                   (now.getTimezoneOffset() * 60 * 1000);
+        // US ET (UTC-5 standard; EDT skipped for simplicity — UI band is
+        // wide enough that DST doesn't shift a phase meaningfully).
+        var etMs = now.getTime() - (5 * 60 * 60 * 1000);
         ist = new Date(etMs);
       }
       var day = ist.getUTCDay();
@@ -3310,7 +3346,7 @@
           greeks = pricingMath.greeks(spot, strikeNum, dte, iv, pos.side);
         }
         var lots = pos.sizingLots || pos.lot || 1;
-        var lotSize = pos._lotSize || 75;  // NIFTY default; backend should provide
+        var lotSize = pos._lotSize || lotSizeFor(pos.sym) || 65;  // fallback to NIFTY if stock unknown
         var multiplier = lots * lotSize;
         var notional = (pos.entryPremium || 0) * multiplier;
         book.grossNotional += notional;
@@ -3373,7 +3409,7 @@
         return result;
       }
       var lots = trade.lot || 1;
-      var lotSize = raw.lot_size || 75;
+      var lotSize = raw.lot_size || lotSizeFor(trade.symbol) || 65;
       var multiplier = lots * lotSize;
       var g = pricingMath.greeks(raw.spot, strikeNum, dte, raw.atm_iv, trade.side);
       if (!g) {
@@ -3396,11 +3432,17 @@
       result.projectedDelta = book.netDelta + g.delta * multiplier;
       result.projectedVega = book.netVega + g.vega * multiplier;
 
-      // Limits scaled to capital (per 1L)
+      // Limits scaled to capital (per ₹1L). Calibrated against real NIFTY
+      // lot size = 65 (post Jan 2026 NSE revision).
+      // One ATM NIFTY 7-DTE CE: delta~0.50 × 65 = ~32 book delta, vega~13.5 × 65 = ~880 book vega.
+      // 3 concurrent positions (matches maxConcurrent discipline) = ~96 delta / ~2,640 vega.
+      // We set limits slightly above that so the 3rd position goes through
+      // but a 4th is blocked. Correlation penalty makes limits tighter
+      // when positions are correlated (same direction, same index).
       var capital = (typeof kellySizer !== 'undefined') ? kellySizer.capital() : 100000;
       var capitalScale = capital / 100000;
-      var deltaLimit = 100 * capitalScale * (1 + result.corrPenalty);
-      var vegaLimit = 1000 * capitalScale;
+      var deltaLimit = 150 * capitalScale * (1 + result.corrPenalty);
+      var vegaLimit = 3000 * capitalScale;
 
       if (Math.abs(result.projectedDelta) > deltaLimit) {
         result.allow = false;
@@ -3596,6 +3638,130 @@
     isOn: function () { return this.enabled; }
   };
   proMode.init();
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // 16n. TRADE PREVIEW — what the user is actually committing to on click
+  // ═══════════════════════════════════════════════════════════════════════
+  // Before confirming a trade (or rendering a compact inline label), compute
+  // everything that WILL happen: Kelly sizing, rupees at risk, SL/target in
+  // currency, all blocker checks. One function, one source of truth. Both
+  // the card preview and the confirm modal render from this.
+  //
+  // Returns:
+  //   { allowed: bool,
+  //     blockers: ['Risk gate: ...', 'Event: ...'],
+  //     warnings: ['Correlation: ...'],
+  //     sizing:  { lots, rupeesAtRisk, pctCapital, breakEvenPct },
+  //     slAbs, tgtAbs, slPct, tgtPct,
+  //     trigger, premium,
+  //     shortLabel: '2 lots · ₹4.2K risk',
+  //     isCorrelated, correlatedSymbols }
+  //
+  // Never throws. Missing data returns partial preview with the fields we
+  // could compute.
+  var tradePreview = {
+    compute: function (trade) {
+      var out = {
+        allowed: true, blockers: [], warnings: [],
+        sizing: null, slAbs: null, tgtAbs: null,
+        slPct: trade && trade.slPct, tgtPct: trade && trade.tgtPct,
+        trigger: trade && trade.trigger, premium: trade && trade.price,
+        shortLabel: '', isCorrelated: false, correlatedSymbols: []
+      };
+      if (!trade) { out.allowed = false; out.blockers.push('No trade'); return out; }
+
+      // 1) Portfolio risk gate
+      try {
+        var gate = portfolioRisk.checkAllow();
+        if (!gate.allow) {
+          out.allowed = false;
+          out.blockers.push(gate.reason);
+        }
+      } catch (e) {}
+
+      // 2) Event calendar
+      try {
+        var ev = eventCalendar.checkTrade(trade, state.region || 'IN');
+        if (ev.action === 'BLOCK') {
+          out.allowed = false;
+          out.blockers.push(ev.reason);
+        } else if (ev.action === 'WARN') {
+          out.warnings.push(ev.reason);
+        }
+      } catch (e) {}
+
+      // 3) Kelly sizing — regime-adjusted
+      try {
+        var baseSaved = kellySizer.fractional;
+        kellySizer.fractional = baseSaved * regimeDetector.kellyMultiplier();
+        var sizing = kellySizer.size(trade);
+        kellySizer.fractional = baseSaved;
+        if (sizing.lots === 0 || sizing.error) {
+          out.allowed = false;
+          out.blockers.push('Kelly: ' + (sizing.reason || sizing.error || 'negative edge'));
+        } else {
+          var lotSize = lotSizeFor(trade.symbol) || 65;
+          var shares = sizing.lots * lotSize;
+          var rupeesAtRisk = Math.abs(trade.price - trade.sl) * shares;
+          var breakEvenPct = null;
+          try {
+            var costs = execCostModel.computeCost(trade, sizing.lots, state.region);
+            if (costs && costs.breakEvenPct != null) breakEvenPct = costs.breakEvenPct;
+          } catch (e) {}
+          out.sizing = {
+            lots: sizing.lots,
+            shares: shares,
+            rupeesAtRisk: rupeesAtRisk,
+            pctCapital: sizing.pctOfCapital,
+            breakEvenPct: breakEvenPct,
+            winProb: sizing.winProb,
+            payoffRatio: sizing.payoffRatio,
+            edge: sizing.edge
+          };
+          out.slAbs = Math.abs(trade.price - trade.sl);
+          out.tgtAbs = Math.abs(trade.target - trade.price);
+        }
+      } catch (e) {}
+
+      // 4) Portfolio Greek check
+      try {
+        var pg = portfolioGreeks.checkAllow(trade, trade._raw || {});
+        if (!pg.allow) {
+          out.allowed = false;
+          out.blockers.push(pg.reason);
+        }
+        if (pg.correlatedSymbols && pg.correlatedSymbols.length > 0) {
+          out.isCorrelated = true;
+          out.correlatedSymbols = pg.correlatedSymbols;
+          pg.correlatedSymbols.forEach(function (c) {
+            out.warnings.push('Correlated with open ' + c.sym +
+                              ' (ρ=' + c.corr.toFixed(2) + ')');
+          });
+        }
+      } catch (e) {}
+
+      // Short label for button — "2 lots · ₹4.2K risk"
+      if (out.sizing) {
+        var riskTxt;
+        var r = out.sizing.rupeesAtRisk;
+        if (r >= 100000) riskTxt = '₹' + (r / 100000).toFixed(1) + 'L';
+        else if (r >= 1000) riskTxt = '₹' + (r / 1000).toFixed(1) + 'K';
+        else riskTxt = '₹' + r.toFixed(0);
+        out.shortLabel = out.sizing.lots + ' lot' +
+                         (out.sizing.lots > 1 ? 's' : '') + ' · ' + riskTxt;
+      } else if (!out.allowed) {
+        out.shortLabel = 'BLOCKED';
+      } else {
+        out.shortLabel = 'check size';
+      }
+
+      return out;
+    }
+  };
+
+  // Session-scoped confirmation memory. Resets on page reload by design —
+  // institutional discipline: fresh session = fresh protection.
+  var confirmSuppressed = false;
 
 
   var sessionGuide = {
@@ -4335,8 +4501,10 @@
   function isInGammaTimeWindow(region) {
     var now = new Date();
     if (region === 'IN') {
-      // IST 11:30+
-      var istMs = now.getTime() + (5.5 * 60 * 60 * 1000) + (now.getTimezoneOffset() * 60 * 1000);
+      // IST 11:30+ — same TZ math as isIndianMarketOpen/sessionProfile.
+      // new Date() is UTC ms; add 5.5h; read UTC fields of shifted Date.
+      // Never add getTimezoneOffset() — it double-corrects on IST browsers.
+      var istMs = now.getTime() + (5.5 * 60 * 60 * 1000);
       var ist = new Date(istMs);
       var mm = ist.getUTCHours() * 60 + ist.getUTCMinutes();
       return mm >= (11 * 60 + 30) && mm <= (15 * 60 + 30);
@@ -4848,7 +5016,265 @@
       wrap.appendChild(renderDocsModal());
     }
 
+    // Confirm-trade modal — shown when user clicks EXECUTE/TAKE TRADE
+    // and hasn't suppressed confirmations for this session.
+    if (state.pendingConfirmTrade) {
+      var confModal = renderConfirmModal();
+      if (confModal) wrap.appendChild(confModal);
+    }
+
     root.appendChild(wrap);
+  }
+
+  // ── CONFIRM-TRADE MODAL — shown before execute, unless session-suppressed ─
+  // Users complained the ENTER NOW / EXECUTE buttons did things they didn't
+  // understand. This modal shows the user EXACTLY what will happen:
+  //   • symbol / strike / side / premium / trigger
+  //   • Kelly sizing: lots, rupees at risk, % of capital, break-even
+  //   • SL/target distances in rupees AND percent
+  //   • Every warning (correlation, event proximity, etc.)
+  //   • Every blocker if trade can't execute
+  //   • "Don't ask again this session" checkbox — session-scoped only
+  //     (fresh session always confirms the first trade).
+  function renderConfirmModal() {
+    if (!state.pendingConfirmTrade) return null;
+    var t = state.pendingConfirmTrade;
+    var preview = tradePreview.compute(t);
+
+    var overlay = el('div', {
+      onClick: function (e) {
+        if (e.target === overlay) closeConfirmModal();
+      },
+      style: {
+        position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+        background: 'rgba(0,0,0,0.75)',
+        zIndex: 10000,
+        display: 'flex', alignItems: 'center', justifyContent: 'center'
+      }
+    });
+
+    var modal = el('div', {
+      style: {
+        width: '88%', maxWidth: '480px',
+        background: C.bg, border: '1px solid ' + C.divider,
+        borderRadius: '8px', display: 'flex', flexDirection: 'column',
+        overflow: 'hidden'
+      }
+    });
+
+    // Header
+    var header = el('div', {
+      style: {
+        padding: '12px 16px', borderBottom: '1px solid ' + C.divider,
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+      }
+    });
+    header.appendChild(el('div', {
+      style: {
+        fontSize: '12px', fontWeight: 800, color: C.textPri,
+        letterSpacing: '1.2px'
+      }
+    }, preview.allowed ? 'CONFIRM TRADE' : 'CANNOT EXECUTE'));
+    header.appendChild(el('button', {
+      onClick: closeConfirmModal,
+      style: {
+        background: 'transparent', border: 'none',
+        color: C.textSec, fontSize: '16px', cursor: 'pointer',
+        padding: '0 4px'
+      }
+    }, '✕'));
+    modal.appendChild(header);
+
+    // Body
+    var body = el('div', {
+      style: {
+        padding: '14px 16px', fontSize: '12px', color: C.textPri,
+        lineHeight: 1.5
+      }
+    });
+
+    // The trade header row
+    var tradeColor = t.side === 'CE' ? C.green : C.red;
+    body.appendChild(el('div', {
+      style: {
+        fontSize: '16px', fontWeight: 800, color: tradeColor,
+        fontFamily: MONO, marginBottom: '2px'
+      }
+    }, t.symbol + ' ' + t.strike));
+    body.appendChild(el('div', {
+      style: {
+        fontSize: '11px', color: C.textSec, marginBottom: '12px',
+        fontFamily: MONO
+      }
+    }, 'Premium: ₹' + (preview.premium || 0).toFixed(2) +
+       '  ·  Trigger: ₹' + (preview.trigger || 0).toFixed(2)));
+
+    // Blockers — show prominently if can't execute
+    if (preview.blockers.length > 0) {
+      var blockBox = el('div', {
+        style: {
+          background: C.red + '18', borderLeft: '3px solid ' + C.red,
+          borderRadius: '3px', padding: '8px 10px', marginBottom: '10px'
+        }
+      });
+      blockBox.appendChild(el('div', {
+        style: { fontSize: '10px', fontWeight: 800, color: C.red,
+                 letterSpacing: '0.8px', marginBottom: '4px' }
+      }, '🚫 BLOCKED'));
+      preview.blockers.forEach(function (b) {
+        blockBox.appendChild(el('div', {
+          style: { color: C.red, fontSize: '11px', lineHeight: 1.4 }
+        }, '· ' + b));
+      });
+      body.appendChild(blockBox);
+    }
+
+    // Sizing — what this trade actually costs
+    if (preview.sizing) {
+      var s = preview.sizing;
+      var sizingBox = el('div', {
+        style: {
+          background: C.card, borderRadius: '4px', padding: '10px 12px',
+          marginBottom: '10px', fontFamily: MONO, fontSize: '11px'
+        }
+      });
+      function sizingRow(label, value, valueColor) {
+        var row = el('div', {
+          style: {
+            display: 'flex', justifyContent: 'space-between',
+            padding: '2px 0', lineHeight: 1.5
+          }
+        });
+        row.appendChild(el('span', { style: { color: C.textSec } }, label));
+        row.appendChild(el('span', {
+          style: { color: valueColor || C.textPri, fontWeight: 700 }
+        }, value));
+        return row;
+      }
+      var lotSize = lotSizeFor(t.symbol) || 65;
+      sizingBox.appendChild(sizingRow(
+        'Size',
+        s.lots + ' lot' + (s.lots > 1 ? 's' : '') + ' (' + s.shares + ' shares)'));
+      sizingBox.appendChild(sizingRow(
+        'At risk',
+        '₹' + s.rupeesAtRisk.toFixed(0) +
+        ' · ' + s.pctCapital.toFixed(1) + '% of capital'));
+      if (preview.slAbs != null && preview.tgtAbs != null) {
+        sizingBox.appendChild(sizingRow(
+          'SL / Target',
+          '−₹' + preview.slAbs.toFixed(2) + ' / +₹' + preview.tgtAbs.toFixed(2) +
+          '  (' + ((preview.slPct || 0) * 100).toFixed(0) + '% / +' +
+          ((preview.tgtPct || 0) * 100).toFixed(0) + '%)'));
+      }
+      if (s.breakEvenPct != null) {
+        sizingBox.appendChild(sizingRow(
+          'Break-even',
+          '+' + s.breakEvenPct.toFixed(2) + '%',
+          s.breakEvenPct > 2 ? C.orange : C.textPri));
+      }
+      if (s.winProb != null && s.payoffRatio != null) {
+        sizingBox.appendChild(sizingRow(
+          'Kelly edge',
+          (s.winProb * 100).toFixed(0) + '% × ' + s.payoffRatio.toFixed(1) + 'R',
+          s.edge > 0.2 ? C.green : s.edge > 0.05 ? C.textPri : C.orange));
+      }
+      body.appendChild(sizingBox);
+    }
+
+    // Warnings — show but don't block
+    if (preview.warnings.length > 0) {
+      var warnBox = el('div', {
+        style: {
+          background: C.orange + '15', borderLeft: '3px solid ' + C.orange,
+          borderRadius: '3px', padding: '8px 10px', marginBottom: '10px'
+        }
+      });
+      warnBox.appendChild(el('div', {
+        style: { fontSize: '10px', fontWeight: 800, color: C.orange,
+                 letterSpacing: '0.8px', marginBottom: '4px' }
+      }, '⚠ HEADS UP'));
+      preview.warnings.forEach(function (w) {
+        warnBox.appendChild(el('div', {
+          style: { color: C.orange, fontSize: '11px', lineHeight: 1.4 }
+        }, '· ' + w));
+      });
+      body.appendChild(warnBox);
+    }
+
+    // "Don't ask again" checkbox
+    if (preview.allowed) {
+      var checkRow = el('label', {
+        style: {
+          display: 'flex', alignItems: 'center', gap: '6px',
+          cursor: 'pointer', marginTop: '4px', marginBottom: '2px',
+          fontSize: '10px', color: C.textSec, userSelect: 'none'
+        }
+      });
+      var cb = el('input', {
+        type: 'checkbox',
+        checked: state.confirmSkipNext || false,
+        onChange: function (e) {
+          state.confirmSkipNext = !!e.target.checked;
+        },
+        style: { margin: 0, cursor: 'pointer' }
+      });
+      checkRow.appendChild(cb);
+      checkRow.appendChild(el('span', {},
+        "Don't ask again this session (trust the sizing)"));
+      body.appendChild(checkRow);
+    }
+
+    modal.appendChild(body);
+
+    // Footer buttons
+    var footer = el('div', {
+      style: {
+        padding: '10px 16px', borderTop: '1px solid ' + C.divider,
+        display: 'flex', gap: '8px', justifyContent: 'flex-end'
+      }
+    });
+    footer.appendChild(el('button', {
+      onClick: closeConfirmModal,
+      style: {
+        background: 'transparent', border: '1px solid ' + C.divider,
+        color: C.textSec, padding: '8px 16px', borderRadius: '4px',
+        cursor: 'pointer', fontSize: '11px', fontWeight: 700,
+        letterSpacing: '0.8px'
+      }
+    }, 'CANCEL'));
+
+    if (preview.allowed) {
+      footer.appendChild(el('button', {
+        onClick: function () {
+          // If checkbox was ticked, suppress for this session
+          if (state.confirmSkipNext) confirmSuppressed = true;
+          var tradeToExec = state.pendingConfirmTrade;
+          state.pendingConfirmTrade = null;
+          state.confirmSkipNext = false;
+          // Call onExecute without re-triggering modal
+          onExecute(tradeToExec, { skipConfirm: true });
+          rerender();
+        },
+        style: {
+          background: 'linear-gradient(180deg, ' + C.green + ', #16A34A)',
+          border: 'none', color: '#062B17',
+          padding: '8px 20px', borderRadius: '4px',
+          cursor: 'pointer', fontSize: '11px', fontWeight: 800,
+          letterSpacing: '0.8px',
+          boxShadow: '0 0 0 1px ' + C.green + '66'
+        }
+      }, 'CONFIRM TRADE'));
+    }
+    modal.appendChild(footer);
+
+    overlay.appendChild(modal);
+    return overlay;
+  }
+
+  function closeConfirmModal() {
+    state.pendingConfirmTrade = null;
+    state.confirmSkipNext = false;
+    rerender();
   }
 
   // ── DOCS MODAL — "how to trade" + scoring logic access ─────────────────
@@ -4898,7 +5324,7 @@
       }
     }, 'HELP'));
 
-    state.docsTab = state.docsTab || 'howto';
+    state.docsTab = state.docsTab || 'quickstart';
     function makeTab(key, label) {
       var active = state.docsTab === key;
       return el('button', {
@@ -4913,6 +5339,7 @@
         }
       }, label);
     }
+    tabsWrap.appendChild(makeTab('quickstart', 'QUICK START'));
     tabsWrap.appendChild(makeTab('howto', 'HOW TO TRADE'));
     tabsWrap.appendChild(makeTab('scoring', 'SCORING LOGIC'));
     tabsWrap.appendChild(makeTab('risks', 'KNOWN LIMITS'));
@@ -4936,7 +5363,9 @@
       }
     });
 
-    if (state.docsTab === 'howto') {
+    if (state.docsTab === 'quickstart') {
+      body.appendChild(docsQuickStart());
+    } else if (state.docsTab === 'howto') {
       body.appendChild(docsHowTo());
     } else if (state.docsTab === 'scoring') {
       body.appendChild(docsScoring());
@@ -5022,6 +5451,170 @@
       table.appendChild(tr);
     });
     return table;
+  }
+
+  function docsQuickStart() {
+    // Layman's guide — the FIRST tab in the help modal. Written for
+    // people who are not professional traders. Plain English, no jargon.
+    // Mirrors /docs/QUICK_START.md but rendered inline.
+    var root = el('div', {});
+    root.appendChild(docsH('Read this first', 1));
+    root.appendChild(docsP(
+      'A simple guide to the Active Trading screen. No jargon. Five minutes ' +
+      'to read, then you can start.'));
+
+    root.appendChild(docsH('What this screen does', 2));
+    root.appendChild(docsP(
+      'Every 5 minutes, the system scans the Indian market and picks the 3 best ' +
+      'options trades it can find. You don\'t have to search. The system ' +
+      'finds trades for you. You decide whether to take them.'));
+
+    root.appendChild(docsH('The screen in 30 seconds', 2));
+    root.appendChild(docsList([
+      'LEFT column — TOP TRADES: the 3 best picks right now.',
+      'MIDDLE column — LIVE MONITOR: a "second opinion" on the trade you clicked.',
+      'RIGHT column — DEEP DIVE: full technical details (optional reading).',
+      'BOTTOM — SECONDARY SCANNER: trades 4-10 that didn\'t make the top 3.'
+    ]));
+
+    root.appendChild(docsH('Traffic light colors', 2));
+    root.appendChild(docsList([
+      'Green — good sign · take this trade · positive factor · profit',
+      'Orange/Yellow — caution · warning · but NOT a blocker',
+      'Red — stop · don\'t trade · loss · danger',
+      'Blue — information · neutral'
+    ]));
+    root.appendChild(docsP(
+      'If you see lots of green + a green button, go ahead. If orange ' +
+      'warnings, read them. If red appears, the system is blocking you. ' +
+      'Don\'t override — it\'s protecting you.'));
+
+    root.appendChild(docsH('The 3 confidence labels', 2));
+    root.appendChild(docsP(
+      'Every trade shows a number like "95%". Below it, tiny text:'));
+    root.appendChild(docsList([
+      '"uncal" — theoretical score · no proof yet · trust with caution',
+      '"calibrated" — your past paper trades back up the scoring',
+      '"62% win · 24 trades" — your actual win rate on trades like this. TRUST THIS ONE.'
+    ]));
+    root.appendChild(docsP(
+      'In the beginning, every score says "uncal". That\'s normal. Real ' +
+      'win rates appear after 50-100 closed trades.'));
+
+    root.appendChild(docsH('How to take a trade (step by step)', 1));
+    root.appendChild(docsList([
+      '1. Look at the top 3 cards on the left.',
+      '2. Click any card — middle and right columns fill with details.',
+      '3. Read the big verdict card: STRONG BUY / BUY / BUY SMALL / NEUTRAL / AVOID.',
+      '4. Read green ticks (good) and orange warnings (be careful).',
+      '5. If you agree, click the green TAKE TRADE button.',
+      '6. A confirmation box pops up. Shows: how many lots, rupees at risk, stop loss, target.',
+      '7. Click CONFIRM TRADE if you agree. CANCEL if not.'
+    ]));
+    root.appendChild(docsP(
+      'That\'s it. After that, the system guides you through the whole trade ' +
+      'with voice alerts. You don\'t have to watch the screen.'));
+
+    root.appendChild(docsH('What happens after CONFIRM', 2));
+    root.appendChild(docsList([
+      'Position goes PENDING — waiting for price to cross the trigger.',
+      'Trigger confirms the move is real before you actually buy.',
+      'Once price crosses trigger → position goes LIVE. Voice says so.',
+      'Every 5 minutes, system checks: HOLD, ADD, REDUCE, SCALE OUT, or EXIT.',
+      'Voice alerts tell you what to do. Just listen.'
+    ]));
+
+    root.appendChild(docsH('When to STOP trading', 1));
+    root.appendChild(docsP(
+      'The system warns you at these points. Listen to it.'));
+    root.appendChild(docsList([
+      '2 losses in a row — voice says slow down or take a break',
+      '3 losses in a row — voice says step back from the screen',
+      'Day P&L reaches -3% — all new trades blocked for the day',
+      'Drawdown reaches -5% from peak — all new trades blocked'
+    ]));
+    root.appendChild(docsP(
+      'Revenge trading is the #1 way retail traders lose money. The system ' +
+      'exists partly to protect you from yourself. Don\'t fight it.'));
+
+    root.appendChild(docsH('This is PAPER MONEY right now', 1));
+    root.appendChild(docsP(
+      'No real rupees move. This is by design. Use it to:'));
+    root.appendChild(docsList([
+      'Learn how the system works without risk',
+      'Build a track record of 50-100 trades',
+      'See your real win rate emerge (replaces "uncal" labels)',
+      'Decide if you trust the system before using real money'
+    ]));
+    root.appendChild(docsP(
+      'When you\'re ready for real trading, open a separate broker account ' +
+      'and place the same trades manually. Real broker integration is ' +
+      'coming in a future version.'));
+
+    root.appendChild(docsH('Things that might confuse you', 1));
+
+    root.appendChild(docsH('My trade says PENDING for a long time', 3));
+    root.appendChild(docsP(
+      'Normal. Price hasn\'t crossed the trigger yet. Trigger is usually ' +
+      'entry + 2% for a call — the price must CONFIRM the move before you ' +
+      'buy. This prevents buying tops.'));
+
+    root.appendChild(docsH('I clicked TAKE TRADE but nothing happened', 3));
+    root.appendChild(docsP(
+      'Check the red BLOCKED box in the confirm modal. Common reasons:'));
+    root.appendChild(docsList([
+      'Already 3 positions open (max limit)',
+      'RBI or FOMC event within 1 day (IV crush risk)',
+      'Too close to daily loss limit',
+      'This stock strongly correlates with a position you already have'
+    ]));
+
+    root.appendChild(docsH('Scores keep saying "uncal"', 3));
+    root.appendChild(docsP(
+      'You need 100+ closed paper trades before the system calibrates to ' +
+      'YOUR personal win rate. Be patient. Keep paper trading.'));
+
+    root.appendChild(docsH('BUY verdict but caveats say OVERPRICED', 3));
+    root.appendChild(docsP(
+      'Overall verdict can still be BUY even with 1-2 caveats. More caveats ' +
+      'mean more risk. Use smaller size. Read the PROS and CAVEATS both — ' +
+      'they\'re equally important.'));
+
+    root.appendChild(docsH('The voice is annoying', 3));
+    root.appendChild(docsP(
+      'Click the microphone icon in the header to turn it off. But note ' +
+      'you\'ll miss entry/exit alerts. Voice is the main way the system ' +
+      'tells you when to act.'));
+
+    root.appendChild(docsH('The 8 golden rules', 1));
+    root.appendChild(docsList([
+      'Never size bigger than the system recommends. Kelly math is calibrated. Overriding = blow-up.',
+      'Read the confirm modal when just starting. Understand what 2 lots × ₹4,200 risk means for YOUR capital.',
+      'Don\'t close winning trades early. Let the 5m system guide exits. It\'s smarter than your emotions.',
+      'Don\'t add to losing trades. If REDUCE or EXIT fires, do it.',
+      'Avoid trading during lunch (12:00-13:30 IST). Win rates are lower then — system already reduces signal strength.',
+      'Don\'t take a trade you don\'t understand. Click the ? icon or read CAVEATS carefully.',
+      'Don\'t ignore streak warnings. 2 losses = slow. 3 losses = stop.',
+      'Keep a journal. Screenshot confirm modals. Review losses weekly. The YOUR EDGE section will show patterns over time.'
+    ]));
+
+    root.appendChild(docsH('Where to get more help', 1));
+    root.appendChild(docsList([
+      'HOW TO TRADE tab (this modal) — detailed trade flow',
+      'SCORING LOGIC tab — the math behind every number',
+      'KNOWN LIMITS tab — honest list of what we can\'t do yet',
+      'Hover over any badge or score for a tooltip',
+      '/docs/QUICK_START.md in the deploy zip — same guide for reference'
+    ]));
+
+    root.appendChild(docsH('Still confused?', 1));
+    root.appendChild(docsP(
+      'Paper trading is risk-free. Experiment. Try 20-30 trades and watch ' +
+      'how the system behaves. Most of this becomes obvious quickly. The ' +
+      'goal right now is NOT to make money — it\'s to learn how the system ' +
+      'thinks so you trust it when real money is in play.'));
+
+    return root;
   }
 
   function docsHowTo() {
@@ -5310,9 +5903,16 @@
   }
 
   function isIndianMarketOpen() {
-    // IST = UTC+5:30. NSE open 09:15–15:30 IST, Mon–Fri
+    // NSE trading hours: 09:15–15:30 IST, Monday–Friday.
+    //
+    // Implementation note: new Date() internally stores UTC ms.
+    // We compute IST as (UTC + 5.5 hours), then read back the "UTC"
+    // fields of the shifted Date — those fields now carry IST values.
+    // DO NOT also add getTimezoneOffset() — that's the browser's local
+    // offset and would double-correct, breaking IST browsers (the
+    // most common case for this product).
     var now = new Date();
-    var istMs = now.getTime() + (5.5 * 60 * 60 * 1000) + (now.getTimezoneOffset() * 60 * 1000);
+    var istMs = now.getTime() + (5.5 * 60 * 60 * 1000);
     var ist = new Date(istMs);
     var day = ist.getUTCDay(); // Sun=0, Sat=6
     if (day === 0 || day === 6) return false;
@@ -5964,18 +6564,35 @@
           el('span', { style: { fontSize: '11px', fontWeight: 900 } }, 'BLOCKED')
         ]);
       } else {
-        // Normal EXECUTE button (spec §4.5: 36 × 100 green gradient)
+        // Primary action button with inline sizing preview.
+        // Two lines: "TAKE TRADE" + "2 lots · ₹4.2K risk" so user sees
+        // exactly what they're about to commit to without clicking first.
+        var preview = null;
+        try { preview = tradePreview.compute(trade); } catch (e) {}
+        var sub = (preview && preview.shortLabel) || '';
+
         buttonNode = el('button', {
           onClick: function (e) { e.stopPropagation(); onExecute(trade); },
+          title: (preview && preview.allowed)
+            ? 'Click to confirm — opens ' + sub
+            : 'Trade has blockers — click for details',
           style: {
             height: '36px', width: '100px',
             background: 'linear-gradient(180deg, ' + C.green + ', #16A34A)',
-            color: '#062B17', fontWeight: 800, fontSize: '11px',
+            color: '#062B17', fontWeight: 800,
             border: 'none', borderRadius: '6px', cursor: 'pointer',
-            letterSpacing: '0.8px', alignSelf: 'center',
-            boxShadow: '0 0 0 1px ' + C.green + '66, 0 4px 12px ' + C.green + '33'
+            letterSpacing: '0.5px', alignSelf: 'center',
+            boxShadow: '0 0 0 1px ' + C.green + '66, 0 4px 12px ' + C.green + '33',
+            display: 'flex', flexDirection: 'column',
+            alignItems: 'center', justifyContent: 'center',
+            lineHeight: 1.15, padding: '2px 4px'
           }
-        }, 'EXECUTE');
+        }, [
+          el('span', { style: { fontSize: '11px', fontWeight: 900 } }, 'TAKE TRADE'),
+          el('span', {
+            style: { fontSize: '8px', opacity: 0.85, fontWeight: 700 }
+          }, sub || '—')
+        ]);
       }
     }
     card.appendChild(buttonNode);
@@ -6274,9 +6891,32 @@
       sel.appendChild(el('div', {
         style: {
           fontSize: '9px', fontWeight: 700, color: C.textSec,
-          letterSpacing: '0.8px', marginBottom: '6px'
+          letterSpacing: '0.8px', marginBottom: '6px',
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center'
         }
-      }, 'SELECTED: ' + t.symbol + ' ' + t.strike));
+      }, [
+        el('span', {}, 'SELECTED: ' + t.symbol + ' ' + t.strike),
+        // Recompute timestamp — tells user "this verdict reflects the click, not 5m ago"
+        (function () {
+          var ts = state.selectedComputedAt;
+          if (!ts) return el('span', {}, '');
+          // Format HH:MM:SS in IST
+          var istMs = ts + (5.5 * 60 * 60 * 1000);
+          var d = new Date(istMs);
+          var hh = String(d.getUTCHours()).padStart(2, '0');
+          var mm = String(d.getUTCMinutes()).padStart(2, '0');
+          var ss = String(d.getUTCSeconds()).padStart(2, '0');
+          var isFresh = state.selectedRecomputeFlash;
+          return el('span', {
+            style: {
+              color: isFresh ? C.green : C.textMute,
+              fontWeight: 700, fontFamily: MONO,
+              fontSize: '9px', letterSpacing: '0.3px',
+              transition: 'color 400ms ease'
+            }
+          }, (isFresh ? '✓ RECOMPUTED · ' : '') + hh + ':' + mm + ':' + ss + ' IST');
+        })()
+      ]));
 
       // Event calendar warning / block banner above verdict
       try {
@@ -7065,7 +7705,8 @@
     var spot = raw.spot || 0;
     if (!spot) return wrap;
 
-    var p = payoffDiagram.compute(state.selected, spot, state.selected.lot || 75);
+    var p = payoffDiagram.compute(state.selected, spot,
+      state.selected.lot || lotSizeFor(state.selected.symbol) || 65);
     if (p.status !== 'ok') {
       wrap.appendChild(el('div', {
         style: { fontSize: '10px', color: C.textMute, fontStyle: 'italic' }
@@ -8493,7 +9134,7 @@
       el('div', {}, 'STRIKE'),
       el('div', {}, 'DIR'),
       el('div', {}, 'SCORE'),
-      el('div', {}, 'STATE'),
+      el('div', {}, 'ACTION'),
       el('div', {}, 'TREND')
     ]));
 
@@ -8536,20 +9177,73 @@
       var trendText = trend ? trend.join(' → ')
                             : 'building history (' + r.historyCount + '/2)';
 
+      // Compute size preview for the action cell
+      var scanPreview = null;
+      try { scanPreview = tradePreview.compute(r); } catch (e) {}
+
+      // The action cell is a small TAKE button with size sub-label
+      var actionCell = null;
+      var scanPos = paperPortfolio.findByTradeId(r.id);
+      if (scanPos) {
+        actionCell = el('span', {
+          style: {
+            fontSize: '10px', fontWeight: 800,
+            color: scanPos.status === 'active' ? C.green : C.orange,
+            letterSpacing: '0.5px'
+          }
+        }, '● ' + scanPos.status.toUpperCase());
+      } else if (scanPreview && !scanPreview.allowed) {
+        actionCell = el('span', {
+          title: (scanPreview.blockers || []).join(' · '),
+          style: {
+            fontSize: '9px', color: C.red, fontWeight: 700,
+            letterSpacing: '0.5px'
+          }
+        }, 'BLOCKED');
+      } else {
+        actionCell = el('button', {
+          onClick: function (e) {
+            e.stopPropagation();
+            selectTrade(r);
+            onExecute(r);
+          },
+          title: scanPreview && scanPreview.shortLabel
+            ? 'TAKE TRADE · ' + scanPreview.shortLabel
+            : 'TAKE TRADE',
+          style: {
+            background: C.blue + '22',
+            border: '1px solid ' + C.blue + '55',
+            color: C.blue,
+            padding: '2px 8px', borderRadius: '999px',
+            fontSize: '10px', fontWeight: 700, cursor: 'pointer',
+            letterSpacing: '0.3px',
+            display: 'inline-flex', flexDirection: 'column',
+            alignItems: 'center', lineHeight: 1.1
+          }
+        }, [
+          el('span', {}, 'TAKE TRADE'),
+          scanPreview && scanPreview.shortLabel
+            ? el('span', { style: { fontSize: '8px', opacity: 0.85 } },
+                scanPreview.shortLabel)
+            : null
+        ].filter(Boolean));
+      }
+
       body.appendChild(el('div', {
+        onClick: function () { selectTrade(r); },
         style: {
           display: 'grid', gridTemplateColumns: '16% 20% 8% 10% 18% 1fr',
-          height: '26px', alignItems: 'center', padding: '0 8px',
+          minHeight: '30px', alignItems: 'center', padding: '3px 8px',
           fontSize: '13px', fontFamily: MONO,
           borderBottom: i < displayScan.length - 1 ? '1px solid ' + C.divider : 'none',
-          color: C.textPri, lineHeight: 1.1
+          color: C.textPri, lineHeight: 1.1, cursor: 'pointer'
         }
       }, [
         el('div', { style: { fontWeight: 600 } }, r.symbol),
         el('div', { style: { color: C.textSec, fontFamily: MONO } }, r.strike || '—'),
         el('div', { style: { color: r.direction === 'CE' ? C.green : C.red, fontWeight: 700 } }, r.direction),
         el('div', { style: { color: confColor(r.score), fontWeight: 700 } }, String(r.score)),
-        el('div', {}, pill(r.state, true)),
+        el('div', {}, actionCell),
         el('div', { style: { color: tColor, display: 'flex', alignItems: 'center', gap: '6px' } }, [
           el('span', {}, trendText),
           el('span', {}, tMark)
@@ -8566,15 +9260,39 @@
     state.selected = t;
     state.lastClose = t.price;
     state.flash = null; // NEVER flash on user selection — only on 5m close price change
+
+    // ── ON-SELECT LIVE RECOMPUTE ─────────────────────────────────────────
+    // When the user clicks a card, don't make them wait for the next 5m
+    // candle to see a fresh read. Everything that derives from the CURRENT
+    // state (consensus verdict, Kelly sizing, scenario matrix, book greek
+    // check, portfolio risk gate, event calendar, correlation warnings) is
+    // already recomputed on every render() via freshConsensus / tradePreview
+    // / scenarioAnalysis — so rerender() is enough to pull fresh numbers.
+    //
+    // We stamp the moment of recompute so the user sees a visible
+    // "computed at HH:MM:SS IST" line next to the verdict and knows the
+    // numbers reflect this click, not the last 5m close.
+    state.selectedComputedAt = Date.now();
+    state.selectedRecomputeFlash = true;
+
     fetchOptionChain(t.symbol, t.strike, t).then(function (rows) {
       state.chain = rows;
       rerender();
     });
-    pushLog('Selected ' + t.symbol + ' ' + t.strike, C.blue);
+    pushLog('Selected ' + t.symbol + ' ' + t.strike +
+            ' — recomputed verdict + sizing + scenario', C.blue);
     rerender();
+
+    // Clear the flash after a moment so it only blinks to signal recompute
+    setTimeout(function () {
+      state.selectedRecomputeFlash = false;
+      rerender();
+    }, 1500);
   }
 
-  function onExecute(t) {
+  function onExecute(t, opts) {
+    opts = opts || {};
+
     // Prevent double-execute: if an open position already exists for this
     // trade, tell the user and don't open a duplicate.
     var existing = paperPortfolio.findByTradeId(t.id);
@@ -8584,6 +9302,18 @@
               ' (' + statusWord + ')', C.orange);
       speak(t.symbol + ' ' + t.strike + ' is ' + statusWord +
             '. See it in the Live Monitor.');
+      return;
+    }
+
+    // ── Confirmation gate ──
+    // First click shows a confirm modal with sizing + warnings so the user
+    // knows what they're committing to. Subsequent clicks in the same
+    // session skip the modal (one-tap flow) once user ticks "don't ask again".
+    // Fresh session always reconfirms the first trade.
+    if (!opts.skipConfirm && !confirmSuppressed) {
+      state.pendingConfirmTrade = t;
+      state.confirmSkipNext = false;
+      rerender();
       return;
     }
 
