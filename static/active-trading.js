@@ -5151,22 +5151,34 @@
 
     wrap.appendChild(renderHeader());
 
+    // ═══════════════════════════════════════════════════════════════════
+    // New layout (v49): horizontal TOP TRADES strip across the full width,
+    // then Live Monitor + Detail in two columns below it.
+    //
+    //   ┌──────────────────────────────────────────────────┐
+    //   │ TOP TRADES STRIP  (3 cards side-by-side)         │
+    //   ├─────────────────────┬────────────────────────────┤
+    //   │ LIVE MONITOR        │ QUICK TRADE / DETAIL       │
+    //   │                     │                            │
+    //   └─────────────────────┴────────────────────────────┘
+    //   [SECONDARY SCANNER spans full width at bottom]
+    //
+    // Each top card has its own chevron to expand. Collapsed: ~72px; when
+    // any card is expanded, the strip row grows to fit that card.
+    // ═══════════════════════════════════════════════════════════════════
+    wrap.appendChild(renderTopTrades());
+
     var body = el('div', {
       style: {
-        flex: '1 1 auto',        // claim all remaining vertical space
+        flex: '1 1 auto',
         display: 'grid',
-        // 3-column layout: TopTrades (28%) | Live Monitor (34%) | Detail (38%)
-        // Middle column consolidates live lifecycle guidance + key metrics
-        // so the user sees everything important WITHOUT scrolling the right
-        // column. User sees: trade signals on left, what to do with open
-        // positions in middle, full detail on right.
-        gridTemplateColumns: '28% 34% 38%',
+        // Two columns: Live Monitor (44%) | Detail / Quick Trade (56%)
+        gridTemplateColumns: '44% 56%',
         minHeight: 0,
         overflow: 'hidden',
         background: C.bg
       }
     });
-    body.appendChild(renderTopTrades());
     body.appendChild(renderLiveMonitor());
     body.appendChild(renderQuickTrade());
     wrap.appendChild(body);
@@ -6325,27 +6337,29 @@
   function renderTopTrades() {
     var panel = el('div', {
       style: {
-        padding: '8px', height: '100%',
-        background: C.bg,  // explicit — don't rely on inheritance
-        display: 'flex', flexDirection: 'column', minHeight: 0
+        padding: '8px 10px 10px',
+        background: C.bg,
+        borderBottom: '1px solid ' + C.divider,
+        display: 'flex', flexDirection: 'column',
+        flex: '0 0 auto'  // don't stretch — hug content (lets strip grow when card expands)
       }
     });
 
-    // Header row — title + search
+    // Header row — title + search (compact, horizontal)
     var header = el('div', {
       style: {
-        display: 'flex', alignItems: 'center', gap: '8px',
-        marginBottom: '6px', padding: '0 2px', flex: '0 0 auto'
+        display: 'flex', alignItems: 'center', gap: '10px',
+        marginBottom: '8px', flex: '0 0 auto'
       }
     });
     header.appendChild(el('div', {
       style: {
-        fontSize: '10px', fontWeight: 800, color: C.textMute,
+        fontSize: '11px', fontWeight: 800, color: C.textMute,
         letterSpacing: '1.5px', whiteSpace: 'nowrap'
       }
     }, 'TOP TRADES · 5M CLOSE'));
 
-    // Search input — filters trades + scanner by symbol substring
+    // Search input
     var search = el('input', {
       type: 'text',
       placeholder: 'Search symbol (e.g. NIFTY, AAPL)...',
@@ -6353,7 +6367,6 @@
       onInput: function (e) {
         state.searchFilter = e.target.value.toUpperCase();
         rerender();
-        // Put focus back on input after rerender (DOM got replaced)
         setTimeout(function () {
           var newInput = document.querySelector('[data-at-search]');
           if (newInput) {
@@ -6363,7 +6376,7 @@
         }, 0);
       },
       style: {
-        flex: '1 1 auto', minWidth: 0,
+        flex: '0 1 320px', minWidth: 0,
         background: C.card, border: '1px solid ' + C.divider,
         color: C.textPri, fontSize: '11px', fontFamily: MONO,
         padding: '4px 8px', borderRadius: '4px', outline: 'none'
@@ -6372,7 +6385,6 @@
     search.setAttribute('data-at-search', '1');
     header.appendChild(search);
 
-    // Clear button (only if search has value)
     if (state.searchFilter) {
       header.appendChild(el('button', {
         onClick: function () { state.searchFilter = ''; rerender(); },
@@ -6386,7 +6398,6 @@
     }
     panel.appendChild(header);
 
-    // Filtered trade list
     var filter = state.searchFilter || '';
     var displayTrades = filter
       ? state.trades.filter(function (t) {
@@ -6394,99 +6405,103 @@
         })
       : state.trades;
 
-    // Scrollable body
-    var body = el('div', {
+    // Held positions pinned ABOVE the 3-up strip when they've rotated off top-3
+    if (!filter) {
+      var top3Ids = {};
+      state.trades.forEach(function (t) { if (t) top3Ids[t.id] = true; });
+      var held = (state.heldTrades || []).filter(function (h) {
+        return !top3Ids[h.id];
+      });
+      if (held.length > 0) {
+        panel.appendChild(el('div', {
+          style: {
+            fontSize: '9px', fontWeight: 800, letterSpacing: '1.5px',
+            color: C.green, marginBottom: '4px', flex: '0 0 auto'
+          }
+        }, 'MY POSITIONS (' + held.length + ') — OFF TOP-3 SCAN'));
+        // Pinned positions in a horizontal strip of their own
+        var heldRow = el('div', {
+          style: {
+            display: 'grid',
+            gridTemplateColumns: 'repeat(' + Math.min(3, held.length) + ', 1fr)',
+            gap: '8px', marginBottom: '8px', flex: '0 0 auto'
+          }
+        });
+        held.slice(0, 3).forEach(function (t) {
+          var card = tradeCard(t);
+          if (t._staleData) {
+            card.appendChild(el('div', {
+              style: {
+                position: 'absolute', top: '4px', right: '4px',
+                fontSize: '8px', fontWeight: 700, padding: '1px 4px',
+                borderRadius: '2px', background: C.orange + '22',
+                color: C.orange, letterSpacing: '0.3px'
+              }
+            }, 'STALE DATA'));
+          }
+          heldRow.appendChild(card);
+        });
+        panel.appendChild(heldRow);
+      }
+    }
+
+    // ── THE 3-UP STRIP ────────────────────────────────────────────────
+    // Three cards side-by-side. Grid auto-sizes each column equally.
+    // When any card is expanded (via chevron), only that column's card
+    // grows taller — the other columns stay at their collapsed height,
+    // and the whole row settles at the tallest card's height (grid default).
+    var strip = el('div', {
       style: {
-        flex: '1 1 auto', overflowY: 'auto', overflowX: 'hidden',
-        minHeight: 0,
-        scrollbarWidth: 'thin',
-        scrollbarColor: C.divider + ' ' + C.bg
+        display: 'grid',
+        gridTemplateColumns: 'repeat(3, 1fr)',
+        gap: '10px',
+        alignItems: 'start',   // cards align to top; taller one defines row height
+        flex: '0 0 auto'
       }
     });
 
     if (filter && displayTrades.length === 0) {
-      body.appendChild(el('div', {
+      strip.style.gridTemplateColumns = '1fr';
+      strip.appendChild(el('div', {
         style: {
           color: C.textMute, fontSize: '11px', fontStyle: 'italic',
-          textAlign: 'center', padding: '20px 12px'
+          textAlign: 'center', padding: '16px 12px',
+          border: '1px dashed ' + C.divider, borderRadius: '12px'
         }
       }, 'No top trades match "' + filter + '". Try secondary scanner below.'));
+    } else if (filter) {
+      // Filtered view: show all matching (may be >3 — wrap to new rows)
+      strip.style.gridTemplateColumns = 'repeat(3, 1fr)';
+      strip.style.gridAutoRows = 'min-content';
+      displayTrades.forEach(function (t) { strip.appendChild(tradeCard(t)); });
     } else {
-      // If filter active, show only matching trades (no placeholders)
-      if (filter) {
-        displayTrades.forEach(function (t) { body.appendChild(tradeCard(t)); });
-      } else {
-        // ── MY POSITIONS — any held trade NOT currently in top-3 ────────
-        // When a user's active position rotates off the top-3 scan, we
-        // pin it to the top of this column so it's always visible.
-        // No duplicates: trades that ARE in top-3 are not repeated here.
-        var top3Ids = {};
-        state.trades.forEach(function (t) { if (t) top3Ids[t.id] = true; });
-        var held = (state.heldTrades || []).filter(function (h) {
-          return !top3Ids[h.id];
-        });
-        if (held.length > 0) {
-          body.appendChild(el('div', {
-            style: {
-              fontSize: '9px', fontWeight: 800, letterSpacing: '1.5px',
-              color: C.green, marginBottom: '4px',
-              padding: '4px 2px 2px'
-            }
-          }, 'MY POSITIONS (' + held.length + ') — OFF TOP-3 SCAN'));
-          held.forEach(function (t) {
-            var card = tradeCard(t);
-            // Add a subtle badge so user knows this is off-scan
-            if (t._staleData) {
-              card.appendChild(el('div', {
-                style: {
-                  position: 'absolute', top: '4px', right: '4px',
-                  fontSize: '8px', fontWeight: 700, padding: '1px 4px',
-                  borderRadius: '2px', background: C.orange + '22',
-                  color: C.orange, letterSpacing: '0.3px'
-                }
-              }, 'STALE DATA'));
-            }
-            body.appendChild(card);
-          });
-          // Separator
-          body.appendChild(el('div', {
-            style: {
-              borderTop: '1px dashed ' + C.divider,
-              margin: '8px 0 8px', fontSize: '9px',
-              color: C.textMute, textAlign: 'center', padding: '4px 0 0',
-              letterSpacing: '1.2px', fontWeight: 700
-            }
-          }, 'TOP 3 NEW OPPORTUNITIES'));
-        }
-
-        // Normal: show top 3 (with placeholders for empty slots)
-        for (var i = 0; i < 3; i++) {
-          var t = state.trades[i];
-          if (!t) {
-            var placeholderText;
-            if (!state.loaded) {
-              placeholderText = 'Loading…';
-            } else if (state.lastFetchMsg) {
-              placeholderText = state.lastFetchMsg;
-            } else {
-              placeholderText = 'No high-confidence trades';
-            }
-            body.appendChild(el('div', {
-              style: {
-                height: '68px', marginBottom: '6px', borderRadius: '12px',
-                border: '1px dashed ' + C.divider, display: 'flex',
-                alignItems: 'center', justifyContent: 'center',
-                color: C.textMute, fontSize: '12px', fontStyle: 'italic',
-                padding: '0 12px', textAlign: 'center', lineHeight: 1.3
-              }
-            }, placeholderText));
+      // Normal: 3 slots, one per column. Placeholder for empty slots.
+      for (var i = 0; i < 3; i++) {
+        var t = state.trades[i];
+        if (!t) {
+          var placeholderText;
+          if (!state.loaded) {
+            placeholderText = 'Loading…';
+          } else if (state.lastFetchMsg) {
+            placeholderText = state.lastFetchMsg;
           } else {
-            body.appendChild(tradeCard(t));
+            placeholderText = 'No high-confidence trades';
           }
+          strip.appendChild(el('div', {
+            style: {
+              minHeight: '72px', borderRadius: '12px',
+              border: '1px dashed ' + C.divider, display: 'flex',
+              alignItems: 'center', justifyContent: 'center',
+              color: C.textMute, fontSize: '12px', fontStyle: 'italic',
+              padding: '0 12px', textAlign: 'center', lineHeight: 1.3
+            }
+          }, placeholderText));
+        } else {
+          strip.appendChild(tradeCard(t));
         }
       }
     }
-    panel.appendChild(body);
+    panel.appendChild(strip);
 
     return panel;
   }
@@ -6519,7 +6534,6 @@
         borderLeft: _edgeColor
           ? '4px solid ' + _edgeColor
           : '1px solid ' + (isSelected ? C.blue : (trade.gammaMode ? '#F59E0B' : C.divider)),
-        marginBottom: '6px',
         display: 'flex',
         flexDirection: 'column',
         gap: isExpanded ? '10px' : '0',

@@ -1,46 +1,75 @@
-# Celesys deploy — April 20, 2026 (r4)
+# Celesys deploy — April 20, 2026 (r5)
 
-Incremental over r3. Only `static/active-trading.js` changed vs r3.
+Incremental over r4. `api.py` and `static/active-trading.js` both changed.
 
-## What's new in r4
+## What's new in r5
 
-### WATCHING threshold loosened (Option A)
+### Backend: fix Yahoo rate-limit causing 0 US tickers
 
-**Problem:** fresh-scanned cards immediately showed INVALID. Root cause: the trigger is set 0.2% past spot at scan time, and the WATCHING band was also 0.2% — so a freshly-scanned card sat exactly at the edge of INVALID by arithmetic, not by market structure.
+**Problem seen in Render logs:** every US ticker hit `Chain fetch error: Too Many Requests` → dropped by the strict no-fabrication policy → `BOTTOM-NAV ✅ US: 0 scored`. Empty scanner.
 
-**Fix:** WATCHING band bumped from 0.2% to 0.4% (2× the trigger buffer). Now a fresh card lands in WATCHING, and only flips to INVALID if spot drifts against the thesis by more than 0.4%. Spot crossing the trigger still means ACTIVE.
+**Root cause:** 8 parallel scanner threads called `tk.option_chain()` concurrently with no rate discipline. Yahoo's per-IP concurrent-request cap got tripped; every call failed.
 
-Semantics are now clean:
-- `ACTIVE` = triggered (spot has crossed the trigger level)
-- `WATCHING` = within 0.4% of trigger in the against-direction (fresh scans land here; normal intraday drift)
-- `INVALID` = more than 0.4% against the thesis (setup breaking down)
+**Fix (3 parts, api.py):**
+1. Added `_yahoo_rate_wait()` before `tk.option_chain()` in `_options_quick_impl`. This is a module-level mutex that serializes across threads with 1.5s spacing.
+2. Added **one retry on 429/"Too Many Requests"** with a 3s backoff. Yahoo's cap is per-burst, not per-hour, so a single patient retry usually succeeds.
+3. Reduced US worker count from 8 → 3. With the global rate-wait, 8 threads would just queue anyway. 3 is cleaner and leaves per-burst headroom.
 
-Also bumped the voice's "entry very close" threshold from 0.2% to 0.4% so voice + UI stay in sync.
+Expected scan time: ~20s for US (previously 22s with 0 results). Fits inside 2-min cache comfortably.
 
-## Everything from r3 still applies
+### Frontend: horizontal TOP TRADES strip
 
-r3 included (beyond r2): voice verdict fix (`v.label` → `v.verdict` at 3 sites). That stays.
+Three cards side-by-side at the top of the screen instead of stacked in a left column. Below them: Live Monitor + Detail in a 2-column layout.
 
-r2 included: synthetic-premium block, FINNIFTY/MIDCPNIFTY removed, spot-based trigger, card collapse + bigger fonts, QT lot sizes, SYNTHETIC badge + button gate.
+**Layout before (r4):**
+```
+┌───┬────┬────┐
+│TOP│LIVE│DTL │
+│   │    │    │  (3-column vertical)
+│   │    │    │
+├───┴────┴────┤
+│  SCANNER    │
+```
+
+**Layout after (r5):**
+```
+┌─────────────┐
+│ TOP TRADES  │  (full-width horizontal strip)
+│ [1][2][3]   │
+├─────┬───────┤
+│LIVE │DETAIL │
+│     │       │  (2-column below)
+├─────┴───────┤
+│  SCANNER    │
+```
+
+Each card still has its own chevron. Expanding one card grows only that column; the other two stay at collapsed height. Search bar moved into the strip's header row.
+
+Held/off-scan positions still pinned — now appear in their own horizontal mini-strip ABOVE the 3-up (max 3 visible).
+
+### Everything from r4 still applies
+
+- WATCHING band 0.4% (fresh cards land in WATCHING, not INVALID)
+- Voice verdict fix (`v.label` → `v.verdict`)
+- Synthetic-premium block, FINNIFTY/MIDCPNIFTY removed, spot-based trigger, SYNTHETIC badge, QT lot sizes
 
 ## Deploy
 
-Only `static/active-trading.js` changed vs r3. If r3 is already deployed, push just that one file. Otherwise deploy the whole zip.
+Push `api.py` + `static/active-trading.js`. Nothing else changed. Layout change will be immediately visible on reload.
 
-## What to verify after deploy
+## What to verify
 
-1. Select a trade whose spot is near its trigger — should show `🟡 WATCHING`, not `🔴 INVALID`.
-2. Wait for spot to cross trigger — should flip to `🟢 ACTIVE`.
-3. Voice should say "strong buy @ 90%" or "buy @ 77%" etc., NOT "neutral @ 77%" (r3 fix).
-4. Verdict transitions on 90s refresh should trigger voice announcements (r3 fix).
+1. Render logs: US scan should now show `US: N scored in ~20s, M buy` where N > 0 (not 0). If still 0 after deploy, Yahoo's rate limit is per-hour not per-burst — needs a different fix (longer cache TTL).
+2. UI: top-trades are now a horizontal strip across the full width.
+3. Click a card's chevron — only that card expands, others stay small.
+4. Search bar works from within the strip header.
+5. Mobile / narrow viewport: three 1fr columns may look cramped under 900px. I did not add a breakpoint — flag if this is an issue.
 
-## Known backlog (untouched)
+## Known backlog
 
-Same as before:
-1. DCF `fair_value = price × 1.05` placeholder
-2. Stale cache returned without `_stale` flag
-3. Scoring signals default to 50 when data missing
-4. ATR defaults to `price × 0.01`
-5. 52W range defaults to `price × 1.1 / 0.9`
+Same as before (fair_value placeholder, stale cache flag, score=50, ATR default, 52W default). Also still open: scoring calibration where OVERPRICED+WIDE+RANGING can still reach BUY_SMALL.
 
-Also flagged but not touched: scoring calibration — trades can reach BUY_SMALL with OVERPRICED options + WIDE spreads + RANGING regime (seen in DELL 202.5 CE screenshot, +13 points). Separate conversation if you want to tighten.
+## Honest flags
+
+- I didn't live-test the new horizontal layout. It passes `node --check` but the interplay between `flex: 0 0 auto` on the strip and `grid repeat(3, 1fr)` on the cards could look different on wide vs narrow screens.
+- The `tk.option_chain()` retry is wrapped in a try/except that only retries on rate-limit keywords. If Yahoo returns a generic error that isn't recognized (new error message, connection reset, etc), no retry will fire — the original exception propagates and the ticker drops. This is intentional but may need tuning.

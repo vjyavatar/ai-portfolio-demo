@@ -4795,7 +4795,13 @@ def _run_bottom_nav_scan(reg):
             return
         
         # ═══ STAGE 2: Full scoring via _options_quick_impl ═══
-        n_workers = 4 if reg == "IN" else 8  # India: 4 threads (NSE rate limit), US: 8
+        # US thread count reduced from 8 → 3 because Yahoo rate-limits concurrent
+        # requests from the same IP. With _yahoo_rate_wait() now serializing the
+        # chain fetches through a global 1.5s lock, 8 threads would just queue
+        # behind each other anyway — but 3 threads keeps the fan-out cleaner
+        # and leaves headroom for Yahoo's per-burst cap. Scan time increases to
+        # ~20s, which fits well inside the 2-min cache TTL.
+        n_workers = 4 if reg == "IN" else 3
         print(f"[BOTTOM-NAV] Stage 2: Scoring {len(candidates)} {reg} candidates ({n_workers} threads)...")
         t2 = time.time()
         results = []
@@ -25954,7 +25960,32 @@ async def _options_quick_impl(symbol: str = "NIFTY", region: str = "IN"):
             opts = tk.options
             if opts and len(opts) > 0:
                 expiry_dates = list(opts[:4])  # First 4 expiries
-                chain = tk.option_chain(opts[0])  # Nearest expiry
+                # ══════════════════════════════════════════════════════════════
+                # Yahoo rate-limit discipline for US option chain fetch.
+                #
+                # Without this, 8 parallel scanner threads would hit
+                # tk.option_chain() concurrently → "Too Many Requests" → every
+                # ticker dropped by our strict-honest no-fabrication policy →
+                # empty scanner. _yahoo_rate_wait() uses a module-global lock
+                # that serializes calls across threads with 1.5s spacing.
+                #
+                # We also retry once on failure with a 3s backoff — Yahoo's
+                # rate limit is a hard cap per burst, not per hour, so a single
+                # patient retry usually succeeds.
+                # ══════════════════════════════════════════════════════════════
+                _yahoo_rate_wait()
+                try:
+                    chain = tk.option_chain(opts[0])
+                except Exception as _chain_e1:
+                    _err1 = str(_chain_e1)
+                    if "Too Many" in _err1 or "429" in _err1 or "rate" in _err1.lower():
+                        import time as _t2
+                        print(f"[OPTIONS-QUICK] {yf_sym} rate-limited, retrying once after 3s...")
+                        _t2.sleep(3.0)
+                        _yahoo_rate_wait()
+                        chain = tk.option_chain(opts[0])  # raises on second failure
+                    else:
+                        raise
                 calls = chain.calls
                 puts = chain.puts
                 
