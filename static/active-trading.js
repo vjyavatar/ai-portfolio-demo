@@ -4303,6 +4303,7 @@
     chain: [],
     lastClose: null,   // last 5m premium close of the selected option (for header + R:R display)
     lastSpot: null,    // last underlying spot (for ENTRY trigger evaluation — different semantics from lastClose)
+    expandedCardIds: {}, // { tradeId: true } — per-card expand state for top-3 cards
     flash: null,
     countdown: formatCountdown(msUntilNextFiveMin()),
     logs: [],
@@ -6472,7 +6473,7 @@
             }
             body.appendChild(el('div', {
               style: {
-                height: '104px', marginBottom: '6px', borderRadius: '12px',
+                height: '68px', marginBottom: '6px', borderRadius: '12px',
                 border: '1px dashed ' + C.divider, display: 'flex',
                 alignItems: 'center', justifyContent: 'center',
                 color: C.textMute, fontSize: '12px', fontStyle: 'italic',
@@ -6492,6 +6493,7 @@
 
   function tradeCard(trade) {
     var isSelected = state.selected && state.selected.id === trade.id;
+    var isExpanded = !!(state.expandedCardIds && state.expandedCardIds[trade.id]);
     var history = state.scoreHistory[trade.id] || [];
     // Lifecycle status for this trade (determines card left-edge color)
     var _cardOpenPos = paperPortfolio.findByTradeId(trade.id);
@@ -6509,19 +6511,18 @@
     var card = el('div', {
       onClick: function () { selectTrade(trade); },
       style: {
-        height: '104px', padding: '8px',
+        minHeight: '68px',
+        padding: '10px 10px 10px 12px',
         background: isSelected ? C.active : C.card,
         borderRadius: '12px',
         border: '1px solid ' + (isSelected ? C.blue : (trade.gammaMode ? '#F59E0B' : C.divider)),
-        // Thick left edge when position is live/closed to make status unmistakable
         borderLeft: _edgeColor
           ? '4px solid ' + _edgeColor
           : '1px solid ' + (isSelected ? C.blue : (trade.gammaMode ? '#F59E0B' : C.divider)),
         marginBottom: '6px',
-        display: 'grid',
-        gridTemplateColumns: '1fr auto auto',
-        gridTemplateRows: 'auto auto auto',
-        columnGap: '12px', rowGap: '3px',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: isExpanded ? '10px' : '0',
         cursor: 'pointer',
         transition: 'background 120ms ease, border-color 120ms ease',
         position: 'relative'
@@ -6558,51 +6559,46 @@
       }, '⚠ SYNTHETIC — DO NOT TRADE'));
     }
 
-    // Row 1 col 1 — symbol + strike (stacked with Buy/Trig/SL/Target below)
+    // ═══ TOP BAR — always visible: Symbol · Confidence · Button · Chevron ═══
+    var topBar = el('div', {
+      style: {
+        display: 'flex', alignItems: 'center', gap: '10px',
+        width: '100%'
+      }
+    });
+
+    // Symbol + Strike — LARGE, primary identity
     var symCell = el('div', {
       style: {
+        flex: '1 1 auto',
         display: 'flex', flexDirection: 'column', justifyContent: 'center',
-        gap: '2px', overflow: 'hidden'
+        gap: '2px', overflow: 'hidden', minWidth: 0
       }
     });
     var sym = el('div', {
       style: {
-        fontSize: '17px', fontWeight: 600, color: C.textPri,
+        fontSize: '22px', fontWeight: 800, color: C.textPri,
         lineHeight: 1.1, fontFamily: MONO, whiteSpace: 'nowrap',
-        overflow: 'hidden', textOverflow: 'ellipsis'
+        overflow: 'hidden', textOverflow: 'ellipsis',
+        letterSpacing: '0.3px'
       }
     });
     sym.appendChild(document.createTextNode(trade.symbol + ' '));
-    sym.appendChild(el('span', { style: { color: C.textSec } }, trade.strike));
+    sym.appendChild(el('span', { style: { color: C.textSec, fontWeight: 700 } }, trade.strike));
     symCell.appendChild(sym);
 
-    // Option entry price + trigger + SL + target — what the user actually trades on
-    var currency = (trade._raw && trade._raw.currency) ? trade._raw.currency : '₹';
-    var priceLine = el('div', {
-      style: {
-        fontSize: '11px', color: C.textSec, fontFamily: MONO, lineHeight: 1.1,
-        whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'
-      }
-    });
-    priceLine.appendChild(document.createTextNode('Buy '));
-    priceLine.appendChild(el('span', {
-      style: { color: C.textPri, fontWeight: 700 }
-    }, currency + trade.price.toFixed(2)));
-    priceLine.appendChild(document.createTextNode(' · Trig@spot '));
-    priceLine.appendChild(el('span', {
-      style: { color: C.textPri, fontWeight: 600 }
-    }, trade.trigger.toFixed(2)));
-    priceLine.appendChild(document.createTextNode(' · SL '));
-    priceLine.appendChild(el('span', {
-      style: { color: C.red, fontWeight: 600 }
-    }, currency + trade.sl.toFixed(2)));
-    priceLine.appendChild(document.createTextNode(' · Tgt '));
-    priceLine.appendChild(el('span', {
-      style: { color: C.green, fontWeight: 600 }
-    }, currency + trade.target.toFixed(2)));
-    symCell.appendChild(priceLine);
-
-    card.appendChild(symCell);
+    // Thin sub-line in collapsed state: just the side + reason (truncated).
+    // Provides enough at-a-glance context without the 4-value price row.
+    if (!isExpanded) {
+      symCell.appendChild(el('div', {
+        style: {
+          fontSize: '12px', color: C.textSec, lineHeight: 1.2,
+          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          fontWeight: 600
+        }
+      }, trade.reason || (trade.side === 'CE' ? 'Bullish structure' : 'Bearish structure')));
+    }
+    topBar.appendChild(symCell);
 
     // Row 1 col 2 — confidence with honest labeling.
     // Shows raw confidence score at top + calibration context below:
@@ -6630,25 +6626,25 @@
     var confCell = el('div', {
       style: {
         display: 'flex', flexDirection: 'column', alignItems: 'flex-end',
-        alignSelf: 'center', minWidth: '54px'
+        alignSelf: 'center', minWidth: '60px', flex: '0 0 auto'
       }
     });
     confCell.appendChild(el('div', {
       className: 'at-fade at-fade-' + (state.fadeTick || 0),
       style: {
-        fontSize: '20px', fontWeight: 700, color: confColor(trade.confidence),
-        lineHeight: 1.1, fontFamily: MONO,
+        fontSize: '26px', fontWeight: 800, color: confColor(trade.confidence),
+        lineHeight: 1.05, fontFamily: MONO,
         textAlign: 'right'
       }
     }, trade.confidence + '%'));
     confCell.appendChild(el('div', {
       style: {
-        fontSize: '8px', color: subColor, fontFamily: MONO,
-        marginTop: '2px', whiteSpace: 'nowrap',
-        letterSpacing: '0.3px', fontWeight: 600
+        fontSize: '9px', color: subColor, fontFamily: MONO,
+        marginTop: '3px', whiteSpace: 'nowrap',
+        letterSpacing: '0.3px', fontWeight: 700
       }
     }, subLabel));
-    card.appendChild(confCell);
+    topBar.appendChild(confCell);
 
     // Row 1 col 3 — EXECUTE button OR state badge if already executing/closed
     // Determine trade lifecycle state for this card
@@ -6802,44 +6798,128 @@
       }
       }  // end: non-synthetic else
     }
-    card.appendChild(buttonNode);
+    topBar.appendChild(buttonNode);
 
-    // Row 2 col 1 — reason
-    card.appendChild(el('div', {
+    // Chevron toggle — expand/collapse detail. Clicking the chevron does NOT
+    // propagate to the card click (which calls selectTrade).
+    var chevron = el('button', {
+      onClick: function (e) {
+        e.stopPropagation();
+        if (!state.expandedCardIds) state.expandedCardIds = {};
+        if (state.expandedCardIds[trade.id]) {
+          delete state.expandedCardIds[trade.id];
+        } else {
+          state.expandedCardIds[trade.id] = true;
+        }
+        rerender();
+      },
+      title: isExpanded ? 'Hide details' : 'Show details (SL, target, trigger, reason, score trend)',
       style: {
-        fontSize: '13px', color: C.textSec, lineHeight: 1.2,
-        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'
+        flex: '0 0 auto',
+        width: '28px', height: '36px',
+        border: '1px solid ' + C.divider, background: 'transparent',
+        color: C.textSec, borderRadius: '6px', cursor: 'pointer',
+        fontSize: '16px', fontWeight: 800, padding: 0,
+        alignSelf: 'center',
+        transition: 'transform 120ms ease, color 120ms ease',
+        transform: isExpanded ? 'rotate(0deg)' : 'rotate(-90deg)'
+      }
+    }, '▾');
+    topBar.appendChild(chevron);
+
+    card.appendChild(topBar);
+
+    // ════════════════════════════════════════════════════════════════════
+    // EXPANDED DETAIL SECTION — everything below only renders when the
+    // user has expanded this card. Keeps the collapsed view tall-typography
+    // and scannable. Expanded section contains: Buy/Trig@spot/SL/Tgt row,
+    // reason, state pill, voice mic, score trend, missing factors, false-
+    // breakout warning, data provenance.
+    // ════════════════════════════════════════════════════════════════════
+    if (!isExpanded) {
+      // Data provenance badge still shows on collapsed cards (small, corner)
+      try {
+        var _cpProvLabel = dataProvenance.badge(trade._raw || {});
+        var _cpProvCol = dataProvenance.badgeColor(trade._raw || {});
+        card.appendChild(el('div', {
+          title: 'Data provenance: vendor · latency · OI age',
+          style: {
+            position: 'absolute', bottom: '3px', right: '8px',
+            fontSize: '8px', color: _cpProvCol, fontFamily: MONO,
+            opacity: 0.65, letterSpacing: '0.2px', pointerEvents: 'none'
+          }
+        }, _cpProvLabel));
+      } catch (e) {}
+      return card;
+    }
+
+    // ── Expanded: Buy / Trig@spot / SL / Tgt row — bigger, bolder ─────
+    var currency = (trade._raw && trade._raw.currency) ? trade._raw.currency : '₹';
+    var priceRow = el('div', {
+      style: {
+        display: 'flex', flexWrap: 'wrap', gap: '14px',
+        fontSize: '13px', fontFamily: MONO, lineHeight: 1.2,
+        paddingTop: '6px', borderTop: '1px solid ' + C.divider
+      }
+    });
+    function priceChip(label, value, valueColor) {
+      var chip = el('div', { style: { display: 'flex', flexDirection: 'column', gap: '2px' } });
+      chip.appendChild(el('div', {
+        style: { fontSize: '9px', color: C.textMute, fontWeight: 700, letterSpacing: '0.8px' }
+      }, label));
+      chip.appendChild(el('div', {
+        style: { fontSize: '14px', color: valueColor || C.textPri, fontWeight: 700 }
+      }, value));
+      return chip;
+    }
+    priceRow.appendChild(priceChip('BUY',      currency + trade.price.toFixed(2)));
+    priceRow.appendChild(priceChip('TRIG @ SPOT', trade.trigger.toFixed(2)));
+    priceRow.appendChild(priceChip('SL',       currency + trade.sl.toFixed(2), C.red));
+    priceRow.appendChild(priceChip('TARGET',   currency + trade.target.toFixed(2), C.green));
+    card.appendChild(priceRow);
+
+    // ── Expanded: reason + state pill + voice mic row ─────────────────
+    var infoRow = el('div', {
+      style: {
+        display: 'flex', alignItems: 'center', gap: '10px',
+        flexWrap: 'wrap'
+      }
+    });
+    infoRow.appendChild(el('div', {
+      style: {
+        flex: '1 1 auto',
+        fontSize: '13px', color: C.textSec, lineHeight: 1.3,
+        fontWeight: 600, minWidth: 0,
+        overflow: 'hidden', textOverflow: 'ellipsis'
       }
     }, trade.reason));
-
-    // Row 2 col 2 — state pill
-    card.appendChild(el('div', { style: { alignSelf: 'center' } }, pill(trade.state, true)));
-
-    // Row 2 col 3 — voice mic
-    card.appendChild(el('button', {
+    infoRow.appendChild(el('div', { style: { flex: '0 0 auto' } }, pill(trade.state, true)));
+    infoRow.appendChild(el('button', {
       onClick: function (e) { e.stopPropagation(); onVoice(trade); },
       title: 'Speak trade',
       style: {
-        width: '32px', height: '24px',
+        flex: '0 0 auto',
+        width: '36px', height: '28px',
         border: '1px solid ' + C.divider, background: 'transparent',
         color: C.textSec, borderRadius: '4px', cursor: 'pointer',
-        fontSize: '12px', alignSelf: 'center', padding: 0
+        fontSize: '14px', padding: 0
       }
     }, '🎙'));
+    card.appendChild(infoRow);
 
-    // Row 3 col 1 — score trend (spec §5: "78 → 82 → 85" green if rising, red if falling)
+    // Score trend — slightly larger font for expanded view
     var trendRow = el('div', {
       style: {
-        fontSize: '11px', color: C.textMute, fontFamily: MONO,
-        display: 'flex', alignItems: 'center', gap: '8px', lineHeight: 1,
-        overflow: 'hidden', whiteSpace: 'nowrap'
+        fontSize: '12px', color: C.textMute, fontFamily: MONO,
+        display: 'flex', alignItems: 'center', gap: '8px', lineHeight: 1.2,
+        overflow: 'hidden', whiteSpace: 'nowrap', fontWeight: 600
       }
     });
     if (history.length >= 2) {
       var first = history[0], last = history[history.length - 1];
       var trendColor = last > first ? C.green : last < first ? C.red : C.textMute;
       trendRow.appendChild(el('span', {}, 'Score: '));
-      trendRow.appendChild(el('span', { style: { color: trendColor, fontWeight: 600 } },
+      trendRow.appendChild(el('span', { style: { color: trendColor, fontWeight: 700 } },
         history.join(' → ')));
     } else {
       trendRow.appendChild(el('span', { style: { color: C.textMute } },
@@ -6847,16 +6927,15 @@
     }
 
     // Transparency: show which factors contributed vs were unavailable
-    // e.g. "OI+Vol unavailable" — makes "no fake data" visible to user
     if (trade.missingFactors && trade.missingFactors.length > 0) {
       var short = { oi: 'OI', vol: 'Vol', trend: 'Trend', vwap: 'VWAP', strike: 'Strike', rr: 'R:R' };
       var labels = trade.missingFactors.map(function (k) { return short[k] || k; });
       trendRow.appendChild(el('span', {
         title: 'These factors had no real data and were excluded from scoring',
         style: {
-          color: C.textMute, fontSize: '10px', fontWeight: 600,
+          color: C.textMute, fontSize: '11px', fontWeight: 700,
           marginLeft: '8px', letterSpacing: '0.2px',
-          border: '1px solid ' + C.divider, padding: '1px 5px', borderRadius: '3px'
+          border: '1px solid ' + C.divider, padding: '2px 6px', borderRadius: '3px'
         }
       }, labels.join('+') + ' unavailable'));
     }
@@ -6865,28 +6944,24 @@
     if (trade.falseBreakout) {
       trendRow.appendChild(el('span', {
         style: {
-          color: C.orange, fontSize: '10px', fontWeight: 700,
+          color: C.orange, fontSize: '11px', fontWeight: 800,
           marginLeft: 'auto', letterSpacing: '0.3px'
         }
       }, '⚠ Weak OI confirmation'));
     }
     card.appendChild(trendRow);
-    // Row 3 cols 2-3 reserved (empty) so grid stays consistent
-    card.appendChild(el('div', {}));
-    card.appendChild(el('div', {}));
 
-    // Data provenance badge — honest vendor/latency/OI-age pill in bottom-right.
-    // When backend doesn't provide metadata, shows "vendor unknown · age ?"
-    // so user knows the feed status. Institutional tables always show this.
+    // Data provenance badge (bottom-right absolute — works in both flex and grid layouts)
     try {
       var provLabel = dataProvenance.badge(trade._raw || {});
       var provCol = dataProvenance.badgeColor(trade._raw || {});
       card.appendChild(el('div', {
         title: 'Data provenance: vendor · latency · OI age',
         style: {
-          position: 'absolute', bottom: '4px', right: '6px',
-          fontSize: '8px', color: provCol, fontFamily: MONO,
-          opacity: 0.75, letterSpacing: '0.2px', pointerEvents: 'none'
+          position: 'absolute', bottom: '4px', right: '8px',
+          fontSize: '9px', color: provCol, fontFamily: MONO,
+          opacity: 0.75, letterSpacing: '0.2px', pointerEvents: 'none',
+          fontWeight: 700
         }
       }, provLabel));
     } catch (e) {}
@@ -9096,14 +9171,23 @@
     // for PE we want sp to fall down to trigger (positive dist = not yet).
     var dist = hasTrigger ? (t.trigger - sp) : 0;
     // Side-aware activation: CE fires when spot ≥ trigger; PE fires when spot ≤ trigger
+    //
+    // Threshold design (Option A):
+    //   • Trigger buffer is 0.2% past spot at scan time (see mapScanRowToTrade)
+    //   • So a freshly-scanned card sits exactly 0.2% away from its trigger
+    //   • We give WATCHING a 2× buffer (0.4%) so fresh scans land in WATCHING,
+    //     not INVALID. Spot has to drift *against* the thesis by more than 0.4%
+    //     before we call the setup broken.
+    // Previously WATCHING used 0.2% which matched the trigger buffer exactly —
+    // result: fresh cards immediately showed INVALID due to arithmetic rounding.
     var triggered = false, nearMiss = false;
     if (hasTrigger) {
       if (t.side === 'CE') {
         triggered = sp >= t.trigger;
-        nearMiss  = !triggered && (t.trigger - sp) / t.trigger < 0.002;  // within 0.2% below
+        nearMiss  = !triggered && (t.trigger - sp) / t.trigger < 0.004;  // within 0.4% below
       } else {
         triggered = sp <= t.trigger;
-        nearMiss  = !triggered && (sp - t.trigger) / t.trigger < 0.002;  // within 0.2% above
+        nearMiss  = !triggered && (sp - t.trigger) / t.trigger < 0.004;  // within 0.4% above
       }
     }
     var status;
@@ -9337,12 +9421,12 @@
   function renderScanner() {
     var wrap = el('div', {
       style: {
-        height: '186px', background: C.bg, borderTop: '1px solid ' + C.divider,
+        height: '220px', background: C.bg, borderTop: '1px solid ' + C.divider,
         display: 'flex', flexDirection: 'column', flexShrink: 0
       }
     });
 
-    // Spec §9: "Last Updated: 01:30 ago" label
+    // "Last Updated" label — more readable
     var lastUpText = 'Last Updated: —';
     if (state.lastFullRefreshAt) {
       var ago = Math.floor((Date.now() - state.lastFullRefreshAt) / 1000);
@@ -9351,9 +9435,9 @@
     wrap.appendChild(el('div', {
       style: {
         display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-        padding: '4px 8px 2px',
-        fontSize: '9px', fontWeight: 700, color: C.textMute,
-        letterSpacing: '0.8px', fontFamily: MONO
+        padding: '6px 10px 4px',
+        fontSize: '11px', fontWeight: 800, color: C.textMute,
+        letterSpacing: '1px', fontFamily: MONO
       }
     }, [
       el('span', {}, 'SECONDARY SCANNER'),
@@ -9363,8 +9447,8 @@
     wrap.appendChild(el('div', {
       style: {
         display: 'grid', gridTemplateColumns: '16% 20% 8% 10% 18% 1fr',
-        padding: '4px 8px',
-        fontSize: '10px', fontWeight: 800, color: C.textMute, letterSpacing: '1.5px',
+        padding: '6px 10px',
+        fontSize: '12px', fontWeight: 800, color: C.textMute, letterSpacing: '1.3px',
         borderBottom: '1px solid ' + C.divider
       }
     }, [
@@ -9425,23 +9509,21 @@
       if (scanPos) {
         actionCell = el('span', {
           style: {
-            fontSize: '10px', fontWeight: 800,
+            fontSize: '12px', fontWeight: 900,
             color: scanPos.status === 'active' ? C.green : C.orange,
             letterSpacing: '0.5px'
           }
         }, '● ' + scanPos.status.toUpperCase());
       } else if (scanPreview && !scanPreview.allowed) {
-        // Distinguish "awaiting data" (backend missing info) from a real
-        // risk/event blocker. Former is orange info, not scary red.
         var isAwaiting = (scanPreview.blockers || []).some(function (b) {
           return /awaiting|missing|lot size|insufficient_data/i.test(b);
         });
         actionCell = el('span', {
           title: (scanPreview.blockers || []).join(' · '),
           style: {
-            fontSize: '9px',
+            fontSize: '11px',
             color: isAwaiting ? C.orange : C.red,
-            fontWeight: 700,
+            fontWeight: 800,
             letterSpacing: '0.5px'
           }
         }, isAwaiting ? 'AWAITING DATA' : 'BLOCKED');
@@ -9459,8 +9541,8 @@
             background: C.blue + '22',
             border: '1px solid ' + C.blue + '55',
             color: C.blue,
-            padding: '2px 8px', borderRadius: '999px',
-            fontSize: '10px', fontWeight: 700, cursor: 'pointer',
+            padding: '4px 12px', borderRadius: '999px',
+            fontSize: '12px', fontWeight: 800, cursor: 'pointer',
             letterSpacing: '0.3px',
             display: 'inline-flex', flexDirection: 'column',
             alignItems: 'center', lineHeight: 1.1
@@ -9468,7 +9550,7 @@
         }, [
           el('span', {}, 'TAKE TRADE'),
           scanPreview && scanPreview.shortLabel
-            ? el('span', { style: { fontSize: '8px', opacity: 0.85 } },
+            ? el('span', { style: { fontSize: '9px', opacity: 0.85, fontWeight: 700 } },
                 scanPreview.shortLabel)
             : null
         ].filter(Boolean));
@@ -9478,18 +9560,18 @@
         onClick: function () { selectTrade(r); },
         style: {
           display: 'grid', gridTemplateColumns: '16% 20% 8% 10% 18% 1fr',
-          minHeight: '30px', alignItems: 'center', padding: '3px 8px',
-          fontSize: '13px', fontFamily: MONO,
+          minHeight: '38px', alignItems: 'center', padding: '5px 10px',
+          fontSize: '15px', fontFamily: MONO,
           borderBottom: i < displayScan.length - 1 ? '1px solid ' + C.divider : 'none',
-          color: C.textPri, lineHeight: 1.1, cursor: 'pointer'
+          color: C.textPri, lineHeight: 1.15, cursor: 'pointer'
         }
       }, [
-        el('div', { style: { fontWeight: 600 } }, r.symbol),
-        el('div', { style: { color: C.textSec, fontFamily: MONO } }, r.strike || '—'),
-        el('div', { style: { color: r.direction === 'CE' ? C.green : C.red, fontWeight: 700 } }, r.direction),
-        el('div', { style: { color: confColor(r.score), fontWeight: 700 } }, String(r.score)),
+        el('div', { style: { fontWeight: 800 } }, r.symbol),
+        el('div', { style: { color: C.textSec, fontFamily: MONO, fontWeight: 700 } }, r.strike || '—'),
+        el('div', { style: { color: r.direction === 'CE' ? C.green : C.red, fontWeight: 900 } }, r.direction),
+        el('div', { style: { color: confColor(r.score), fontWeight: 900 } }, String(r.score)),
         el('div', {}, actionCell),
-        el('div', { style: { color: tColor, display: 'flex', alignItems: 'center', gap: '6px' } }, [
+        el('div', { style: { color: tColor, display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 700, fontSize: '14px' } }, [
           el('span', {}, trendText),
           el('span', {}, tMark)
         ])
@@ -9559,9 +9641,22 @@
       try {
         var raw = cur._raw || {};
         var v = consensusEngine.evaluate(cur, raw);
-        var verdictWord = v && v.label
-          ? v.label.replace(/_/g, ' ').toLowerCase()
-          : 'neutral';
+        // consensusEngine.evaluate returns { verdict: 'STRONG_BUY' | 'BUY' | ... },
+        // NOT { label: ... }. Reading v.label was always undefined → voice said
+        // "neutral" for every trade. Use v.verdict, and fall back to confidence-
+        // derived wording only if evaluate() truly returned nothing.
+        var verdictWord;
+        if (v && v.verdict) {
+          verdictWord = v.verdict.replace(/_/g, ' ').toLowerCase();
+        } else if (cur.confidence != null) {
+          // evaluate() failed — synthesise from raw confidence so voice isn't silent
+          verdictWord = cur.confidence >= 85 ? 'strong setup'
+                      : cur.confidence >= 72 ? 'buy'
+                      : cur.confidence >= 60 ? 'borderline'
+                      : 'weak';
+        } else {
+          verdictWord = 'unavailable';
+        }
         var sizing = null;
         try { sizing = tradePreview.compute(cur); } catch (e) {}
 
@@ -9575,7 +9670,9 @@
           if (triggered) entryWord = 'entry active now';
           else {
             var distPct = Math.abs((cur.trigger - _vSpot) / cur.trigger) * 100;
-            if (distPct < 0.2) entryWord = 'entry very close';
+            // Kept in sync with renderEntryEngine's WATCHING band (0.4%).
+            // If that threshold changes, update here too.
+            if (distPct < 0.4) entryWord = 'entry very close';
             else if (distPct > 1) entryWord = 'entry far, wait';
             else entryWord = 'entry waiting';
           }
@@ -10268,7 +10365,8 @@
         var raw = state.selected._raw || {};
         var prevV = consensusEngine.evaluate(state.selected, raw);
         if (prevV) {
-          prevVerdictLabel = prevV.label;
+          // evaluate() returns .verdict, not .label — reading .label was always null
+          prevVerdictLabel = prevV.verdict;
           prevConfidence = state.selected.confidence;
         }
       } catch (e) {}
@@ -10314,7 +10412,9 @@
         try {
           var curRaw = state.selected._raw || {};
           var curV = consensusEngine.evaluate(state.selected, curRaw);
-          var curLabel = curV ? curV.label : null;
+          // evaluate() returns .verdict; reading .label was a bug that silenced
+          // verdict-change voice alerts entirely
+          var curLabel = curV ? curV.verdict : null;
           var curConf = state.selected.confidence;
           if (state._prev90sVerdict && curLabel && curLabel !== state._prev90sVerdict) {
             // Meaningful change — verdict transition

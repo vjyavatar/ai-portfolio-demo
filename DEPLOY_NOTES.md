@@ -1,46 +1,46 @@
-# Celesys deploy — April 20, 2026
+# Celesys deploy — April 20, 2026 (r4)
 
-## Files changed vs. the previous deploy
+Incremental over r3. Only `static/active-trading.js` changed vs r3.
 
-Three files were modified. All other files are byte-identical to the original archive.
+## What's new in r4
 
-| File | Why |
-|------|-----|
-| `api.py` | (1) Synthetic option-premium fabrication removed from all three fallback paths. (2) FINNIFTY + MIDCPNIFTY dropped from India scanner universe. |
-| `static/active-trading.js` | (1) Synthetic-premium detector + red badge + `onExecute` hard-block. (2) ENTRY trigger redesigned — now evaluates underlying spot against a side-aware trigger level (CE breaks above, PE breaks below), not option premium against a premium level. |
-| `static/options-engine.js` | Canonical `window._QT_LOT_SIZES` table with post-Jan-2026 NSE values. All 6 local lot-size maps routed through it. |
+### WATCHING threshold loosened (Option A)
 
-Everything else in the archive (`app.js`, `app.min.js`, `premium-override.js`, `premium-theme.css`, `index.html`, `manifest.json`, `sw.js`, `start.py`, `requirements.txt`, `runtime.txt`, `n8n-workflows.json`, `docs/`, `tools/`, `AT_PORT_PLAN.md`) is unchanged.
+**Problem:** fresh-scanned cards immediately showed INVALID. Root cause: the trigger is set 0.2% past spot at scan time, and the WATCHING band was also 0.2% — so a freshly-scanned card sat exactly at the edge of INVALID by arithmetic, not by market structure.
 
-## Deploy order
+**Fix:** WATCHING band bumped from 0.2% to 0.4% (2× the trigger buffer). Now a fresh card lands in WATCHING, and only flips to INVALID if spot drifts against the thesis by more than 0.4%. Spot crossing the trigger still means ACTIVE.
 
-1. Push `api.py` first. This stops synthetic option-premium generation at the source and removes FINNIFTY/MIDCPNIFTY from the scanner.
-2. Push both JS files. They're independent of each other; order doesn't matter.
-3. The backend's `_bottom_nav_cache` has a 2-minute TTL. Expect up to 2 minutes of stale data after step 1 — trigger a manual Render restart if you need a clean cut-over.
+Semantics are now clean:
+- `ACTIVE` = triggered (spot has crossed the trigger level)
+- `WATCHING` = within 0.4% of trigger in the against-direction (fresh scans land here; normal intraday drift)
+- `INVALID` = more than 0.4% against the thesis (setup breaking down)
 
-## Key behavior changes users will notice
+Also bumped the voice's "entry very close" threshold from 0.2% to 0.4% so voice + UI stay in sync.
 
-- **Scanner shows fewer tickers during NSE outages.** When the NSE option chain is unavailable, affected tickers now drop out silently instead of appearing with fabricated premiums. Render logs show `[SYNTH-PREMIUM-BLOCKED]` for each drop, so you can monitor frequency.
-- **No more FINNIFTY / MIDCPNIFTY in the Top Trades / scanner.** Users can still analyze them via the Quick Trade tab if they hit those symbols directly.
-- **ENTRY panel actually shows ACTIVE now.** Previously the evaluator compared the option premium to a premium-level trigger with CE-only logic, so PE cards were permanently INVALID and CE cards only went ACTIVE by coincidence. Now it compares underlying spot against a side-aware spot trigger.
-- **Scanner card label changed** from `Trig 215.22` to `Trig@spot 24611.50` so users don't confuse a spot-level number with a premium-level number.
-- **QT rupee values change for index options.** The lot size QT uses is now correct (NIFTY 65 instead of 75, MIDCPNIFTY 120 instead of 75, FINNIFTY 60 instead of 40). Every max-profit / max-loss / margin / net-premium number is now accurate. Note: users who memorized old numbers will see them shift.
+## Everything from r3 still applies
 
-## What to monitor after deploy
+r3 included (beyond r2): voice verdict fix (`v.label` → `v.verdict` at 3 sites). That stays.
 
-1. Render logs: grep for `[SYNTH-PREMIUM-BLOCKED]` — frequency reveals how often NSE was failing silently before. Spikes indicate NSE rate-limiting.
-2. Scanner count in Bottom Nav: should be similar to before since the synthetic fallback was only firing intermittently. A sustained drop means something else is wrong.
-3. One ENTRY card sample: select a ticker, wait for 90s refresh, verify status shows a sensible state (ACTIVE / WATCHING / INVALID with small distance), not a permanent INVALID.
-4. One QT NIFTY trade: confirm `Net Debit × 65 = total cost in rupees` matches the broker's expectation.
+r2 included: synthetic-premium block, FINNIFTY/MIDCPNIFTY removed, spot-based trigger, card collapse + bigger fonts, QT lot sizes, SYNTHETIC badge + button gate.
 
-## Known backlog (not fixed in this deploy)
+## Deploy
 
-Five other silent-substitution bugs identified during audit but intentionally not touched (scope creep avoidance):
+Only `static/active-trading.js` changed vs r3. If r3 is already deployed, push just that one file. Otherwise deploy the whole zip.
 
-1. `api.py:17823` — DCF `fair_value = price × 1.05` placeholder flowing into sell targets
-2. `api.py:2467` — stale cache returned without `_stale` flag
-3. `options-engine.js:9212` — scoring signals default to 50 ("neutral") when data missing
-4. `app.js:7587, 18559, 18605` — ATR defaults to `price × 0.01` when unavailable
-5. `api.py:2476` — 52-week range defaults to `price × 1.1 / price × 0.9` when Yahoo doesn't return it
+## What to verify after deploy
 
-Prioritize based on which you see in Render logs or user reports.
+1. Select a trade whose spot is near its trigger — should show `🟡 WATCHING`, not `🔴 INVALID`.
+2. Wait for spot to cross trigger — should flip to `🟢 ACTIVE`.
+3. Voice should say "strong buy @ 90%" or "buy @ 77%" etc., NOT "neutral @ 77%" (r3 fix).
+4. Verdict transitions on 90s refresh should trigger voice announcements (r3 fix).
+
+## Known backlog (untouched)
+
+Same as before:
+1. DCF `fair_value = price × 1.05` placeholder
+2. Stale cache returned without `_stale` flag
+3. Scoring signals default to 50 when data missing
+4. ATR defaults to `price × 0.01`
+5. 52W range defaults to `price × 1.1 / 0.9`
+
+Also flagged but not touched: scoring calibration — trades can reach BUY_SMALL with OVERPRICED options + WIDE spreads + RANGING regime (seen in DELL 202.5 CE screenshot, +13 points). Separate conversation if you want to tighten.
