@@ -19,13 +19,11 @@
   'use strict';
 
   // Loud startup log so we can verify the deployed version at a glance
-  console.log('%c[ActiveTrading] v48 loaded — Ghost-position fix + 90s refresh + honest blockers',
+  console.log('%c[ActiveTrading] v49 loaded — Voice-on-click + fresh-fetch-on-select + cache bust',
               'color:#22C55E;font-weight:bold;font-size:13px');
-  console.log('%c  Old paper positions auto-flushed on load (schema bump) — fixes false BLOCKED',
+  console.log('%c  Every click: fetch fresh data + voice speaks verdict/confidence/entry/size',
               'color:#64748B;font-size:11px');
-  console.log('%c  90-second scoring refresh · Voice announces verdict/confidence changes',
-              'color:#64748B;font-size:11px');
-  console.log('%c  Unified lot sizes · Stocks missing lot_size show "AWAITING DATA" not "BLOCKED"',
+  console.log('%c  Cache-buster on scan URL — no more CDN/browser-cached stale responses',
               'color:#64748B;font-size:11px');
   console.log('%c  Stuck? Run window._atEngine.resetPaperPositions() in console to force-clear',
               'color:#94A3B8;font-size:10px');
@@ -9364,29 +9362,105 @@
   function selectTrade(t) {
     state.selected = t;
     state.lastClose = t.price;
-    state.flash = null; // NEVER flash on user selection — only on 5m close price change
+    state.flash = null; // NEVER flash on user selection — only on refresh price change
 
-    // ── ON-SELECT LIVE RECOMPUTE ─────────────────────────────────────────
-    // When the user clicks a card, don't make them wait for the next 5m
-    // candle to see a fresh read. Everything that derives from the CURRENT
-    // state (consensus verdict, Kelly sizing, scenario matrix, book greek
-    // check, portfolio risk gate, event calendar, correlation warnings) is
-    // already recomputed on every render() via freshConsensus / tradePreview
-    // / scenarioAnalysis — so rerender() is enough to pull fresh numbers.
-    //
-    // We stamp the moment of recompute so the user sees a visible
-    // "computed at HH:MM:SS IST" line next to the verdict and knows the
-    // numbers reflect this click, not the last 5m close.
     state.selectedComputedAt = Date.now();
     state.selectedRecomputeFlash = true;
 
-    fetchOptionChain(t.symbol, t.strike, t).then(function (rows) {
-      state.chain = rows;
+    // v48a: on every click, FETCH FRESH DATA. Don't just recompute against
+    // stale _raw — trigger the full pipeline that runs every 90s, NOW.
+    // Once it resolves, speak a real verdict summary so the user hears what
+    // the system is telling them without having to read 3 columns of text.
+    pushLog('Selected ' + t.symbol + ' ' + t.strike + ' — fetching fresh data…', C.blue);
+    rerender();
+
+    refreshAll().then(function () {
+      // After fresh scan, find the updated version of this ticker in the
+      // new trades list (it may have different price/SL/trigger now).
+      var refreshed = null;
+      (state.trades || []).concat(state.heldTrades || []).forEach(function (r) {
+        if (r.id === t.id || (r.symbol === t.symbol && r.strike === t.strike)) {
+          refreshed = r;
+        }
+      });
+      // Also check scanner
+      if (!refreshed) {
+        (state.scanner || []).forEach(function (r) {
+          if (r.id === t.id || (r.symbol === t.symbol && r.strike === t.strike)) {
+            refreshed = r;
+          }
+        });
+      }
+      if (refreshed) {
+        state.selected = refreshed;
+        state.lastClose = refreshed.price;
+      }
+      state.selectedComputedAt = Date.now();
+
+      // Also refresh the option chain panel for this ticker
+      var cur = state.selected;
+      fetchOptionChain(cur.symbol, cur.strike, cur).then(function (rows) {
+        state.chain = rows;
+        rerender();
+      });
+
+      // ── VOICE SUMMARY ──
+      // Speak a plain-English read: verdict + confidence + entry state + size.
+      try {
+        var raw = cur._raw || {};
+        var v = consensusEngine.evaluate(cur, raw);
+        var verdictWord = v && v.label
+          ? v.label.replace(/_/g, ' ').toLowerCase()
+          : 'neutral';
+        var sizing = null;
+        try { sizing = tradePreview.compute(cur); } catch (e) {}
+
+        // Entry state in plain language
+        var entryWord = 'waiting for entry';
+        if (cur.trigger != null && cur.price != null) {
+          var side = cur.side;
+          var triggered = (side === 'CE' && cur.price >= cur.trigger) ||
+                          (side === 'PE' && cur.price <= cur.trigger);
+          if (triggered) entryWord = 'entry active now';
+          else {
+            var distPct = Math.abs((cur.trigger - cur.price) / cur.trigger) * 100;
+            if (distPct < 0.5) entryWord = 'entry very close';
+            else if (distPct > 2) entryWord = 'entry far, wait';
+            else entryWord = 'entry waiting';
+          }
+        }
+
+        var sizeWord = '';
+        if (sizing && sizing.allowed && sizing.sizing) {
+          sizeWord = ', ' + sizing.sizing.lots + ' lot' +
+                     (sizing.sizing.lots > 1 ? 's' : '');
+        } else if (sizing && !sizing.allowed && sizing.blockers.length) {
+          sizeWord = ', but ' + sizing.blockers[0].toLowerCase().replace(/[:.]/g, '');
+        }
+
+        var msg = cur.symbol + ' ' + cur.strike + '. Verdict: ' + verdictWord +
+                  '. Confidence ' + Math.round(cur.confidence || 0) + ' percent. ' +
+                  entryWord + sizeWord + '.';
+
+        pushLog('Selected: ' + verdictWord + ' @ ' + Math.round(cur.confidence || 0) + '%',
+                C.blue);
+        if (state.voiceOn) speak(msg);
+      } catch (e) {
+        if (state.voiceOn) speak(cur.symbol + ' selected');
+      }
+
+      rerender();
+    }).catch(function () {
+      // Network failure — still recompute locally and speak
+      try {
+        if (state.voiceOn) {
+          speak(t.symbol + ' ' + t.strike +
+                '. Network busy, using last data. Confidence ' +
+                Math.round(t.confidence || 0) + ' percent.');
+        }
+      } catch (e) {}
       rerender();
     });
-    pushLog('Selected ' + t.symbol + ' ' + t.strike +
-            ' — recomputed verdict + sizing + scenario', C.blue);
-    rerender();
 
     // Clear the flash after a moment so it only blinks to signal recompute
     setTimeout(function () {
@@ -9540,8 +9614,11 @@
 
   // ── REFRESH CYCLES ──────────────────────────────────────────────────────
   function refreshTopTrades() {
-    var url = '/api/bottom-nav-scan?region=' + state.region;
-    return fetch(url)
+    // Cache-buster ensures we never get a stale CDN/browser-cached response.
+    // Backend has its own ~5min server-side cache TTL so this doesn't cause
+    // N× actual recomputes — just N× cache lookups.
+    var url = '/api/bottom-nav-scan?region=' + state.region + '&_=' + Date.now();
+    return fetch(url, { cache: 'no-store' })
       .then(function (r) { return r.json(); })
       .then(function (d) {
         state.loaded = true;
