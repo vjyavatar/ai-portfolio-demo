@@ -4720,7 +4720,11 @@ def _run_bottom_nav_scan(reg):
         from concurrent.futures import ThreadPoolExecutor, as_completed
         t1 = time.time()
         
-        in_tickers = ["NIFTY","BANKNIFTY","SENSEX","FINNIFTY","MIDCPNIFTY","NIFTYIT",
+        # FINNIFTY and MIDCPNIFTY intentionally excluded from scanner per user request —
+        # low liquidity and different expiry cycles hog slots that would otherwise go
+        # to higher-quality NIFTY / BANKNIFTY / stock / ETF signals. Users can still
+        # analyze them via QT if needed.
+        in_tickers = ["NIFTY","BANKNIFTY","SENSEX","NIFTYIT",
             "RELIANCE","TCS","HDFCBANK","INFY","ICICIBANK","SBIN","BAJFINANCE","TATAMOTORS",
             "LT","MARUTI","AXISBANK","KOTAKBANK","ITC","HINDUNILVR","BHARTIARTL","WIPRO",
             "HCLTECH","ADANIENT","TITAN","SUNPHARMA","DRREDDY","JSWSTEEL","TECHM",
@@ -25812,40 +25816,27 @@ async def _options_quick_impl(symbol: str = "NIFTY", region: str = "IN"):
                         pass
                     
                     # Build basic chain from intraday data
-                    step = {"NIFTY": 50, "BANKNIFTY": 100, "SENSEX": 100, "FINNIFTY": 50}.get(sym, 50)
-                    lot = {"NIFTY": 65, "BANKNIFTY": 30, "SENSEX": 20, "FINNIFTY": 60, "MIDCPNIFTY": 120}.get(sym, 65)
-                    atm = round(spot / step) * step
-                    
-                    # Synthetic chain (no real OI — but at least gives ATM premiums)
-                    chain_data = []
-                    for k_off in range(-4, 5):
-                        k = atm + k_off * step
-                        dist = abs(k - spot)
-                        ce_prem = max(1, round(max(0, spot - k) + spot * 0.003 * max(1, 3 - dist / step)))
-                        pe_prem = max(1, round(max(0, k - spot) + spot * 0.003 * max(1, 3 - dist / step)))
-                        chain_data.append({"strike": k, "ce_oi": 0, "pe_oi": 0, "ce_iv": 0, "pe_iv": 0, "ce_ltp": ce_prem, "pe_ltp": pe_prem, "ce_bid": ce_prem - 1, "pe_bid": pe_prem - 1, "ce_ask": ce_prem + 1, "pe_ask": pe_prem + 1, "ce_chg": 0, "pe_chg": 0})
-                    
-                    # Build bars
-                    ohlc_bars = []
-                    for _, row in hist.tail(30).iterrows():
-                        ohlc_bars.append({"t": str(row.name.time())[:5], "o": round(float(row['Open']), 2), "h": round(float(row['High']), 2), "l": round(float(row['Low']), 2), "c": round(float(row['Close']), 2), "v": int(row.get('Volume', 50000))})
-                    
-                    result = {
-                        "success": True, "symbol": sym, "spot": round(spot, 2), "vix": round(vix, 1),
-                        "pcr": 1.0, "max_pain": atm, "atm_iv": 18, "vwap": vwap,
-                        "today_high": round(day_high, 2), "today_low": round(day_low, 2), "today_open": round(day_open, 2),
-                        "expiry": "", "expiry_dates": [],
-                        "chain_near_atm": chain_data,
-                        "ce_resistance": [],
-                        "pe_support": [],
-                        "total_ce_oi": 0, "total_pe_oi": 0,
-                        "ohlc_bars": ohlc_bars,
-                        "gex": {"total": 0, "regime": "NEUTRAL", "topStrikes": [], "flipPoint": atm, "callWall": 0, "putWall": 0},
-                        "pivot": vwap, "cpr_top": round(day_high * 0.998, 2), "cpr_bottom": round(day_low * 1.002, 2),
-                        "_fallback": True
+                    # ══════════════════════════════════════════════════════════════
+                    # STRICT: NSE failed and we only have yfinance spot data.
+                    # We do NOT have real option chain (LTP/bid/ask/OI) — so we
+                    # REFUSE to fabricate ce_ltp/pe_ltp from an intrinsic-value
+                    # approximation. A made-up premium corrupts every downstream
+                    # number (SL, Target, Trigger, R:R, Kelly sizing, attribution).
+                    #
+                    # Return success:False so the bottom-nav scanner drops this
+                    # ticker rather than showing a tradable card at a fake price.
+                    # See celesys core principle: no fake assumptions.
+                    # ══════════════════════════════════════════════════════════════
+                    print(f"[SYNTH-PREMIUM-BLOCKED] {sym}: NSE chain down + yfinance has no chain → dropping ticker (spot={spot}). This is intentional — we refuse to fabricate option premiums.")
+                    return {
+                        "success": False,
+                        "error": "NSE option chain unavailable and no real chain from yfinance — refusing to fabricate premiums",
+                        "symbol": sym,
+                        "spot": round(spot, 2),  # spot is real, but we won't trade without chain
+                        "_chain_unavailable": True,
+                        "ohlc_bars": [], "chain_near_atm": [], "ce_resistance": [], "pe_support": [],
+                        "gex": {"total": 0, "regime": "NEUTRAL", "topStrikes": [], "flipPoint": 0, "callWall": 0, "putWall": 0}
                     }
-                    print(f"[OPTIONS-QUICK] ✅ yfinance fallback SUCCESS: {sym} spot={spot}")
-                    return result
                 else:
                     print(f"[OPTIONS-QUICK] ❌ yfinance returned no history for {yf_sym}")
             except Exception as yf_err:
@@ -25854,8 +25845,12 @@ async def _options_quick_impl(symbol: str = "NIFTY", region: str = "IN"):
             return {"success": False, "error": "NSE API and yfinance both failed", "spot": 0, "ohlc_bars": [], "chain_near_atm": [], "ce_resistance": [], "pe_support": [], "gex": {"total": 0, "regime": "NEUTRAL", "topStrikes": [], "flipPoint": 0, "callWall": 0, "putWall": 0}}
         
         # ═══ LAST RESORT: If India index and both NSE and yfinance fail ═══
+        # We only try one more thing: fetch spot from Yahoo's chart endpoint
+        # directly (bypassing yfinance library). Even if we get spot, we do NOT
+        # have an option chain — so we refuse to fabricate premiums and return
+        # success:False. See celesys core principle: no fake assumptions.
         if is_india_index and (result is None or not result.get("success")):
-            print(f"[OPTIONS-QUICK] ⚠️ Last resort: trying direct Yahoo request for {sym}")
+            print(f"[OPTIONS-QUICK] ⚠️ Last resort: trying direct Yahoo for spot-only {sym} (no chain will be fabricated)")
             try:
                 import requests as _rq
                 yf_map2 = {"NIFTY": "^NSEI", "BANKNIFTY": "^NSEBANK", "SENSEX": "^BSESN"}
@@ -25867,25 +25862,17 @@ async def _options_quick_impl(symbol: str = "NIFTY", region: str = "IN"):
                     meta = j2.get("chart", {}).get("result", [{}])[0].get("meta", {})
                     spot2 = meta.get("regularMarketPrice", 0)
                     if spot2 > 0:
-                        step2 = {"NIFTY": 50, "BANKNIFTY": 100, "SENSEX": 100}.get(sym, 50)
-                        lot2 = {"NIFTY": 75, "BANKNIFTY": 30, "SENSEX": 20}.get(sym, 75)
-                        atm2 = round(spot2 / step2) * step2
-                        chain2 = [{"strike": atm2 + k * step2, "ce_oi": 0, "pe_oi": 0, "ce_iv": 0, "pe_iv": 0,
-                            "ce_ltp": max(1, round(max(0, spot2 - (atm2 + k * step2)) + spot2 * 0.003 * max(1, 3 - abs(k)))),
-                            "pe_ltp": max(1, round(max(0, (atm2 + k * step2) - spot2) + spot2 * 0.003 * max(1, 3 - abs(k)))),
-                            "ce_bid": 1, "pe_bid": 1, "ce_ask": 2, "pe_ask": 2, "ce_chg": 0, "pe_chg": 0} for k in range(-4, 5)]
-                        print(f"[OPTIONS-QUICK] ✅ Last resort SUCCESS: {sym} spot={spot2}")
+                        # We got spot — but WITHOUT a real option chain, we cannot
+                        # produce a tradable card. Drop the ticker.
+                        print(f"[SYNTH-PREMIUM-BLOCKED] {sym}: last-resort got spot={spot2} but no chain → dropping. Refusing to fabricate premiums.")
                         return {
-                            "success": True, "symbol": sym, "spot": round(spot2, 2), "vix": 20,
-                            "pcr": 1.0, "max_pain": atm2, "atm_iv": 20, "vwap": round(spot2 * 0.998, 2),
-                            "today_high": round(spot2 * 1.005, 2), "today_low": round(spot2 * 0.995, 2), "today_open": round(spot2 * 0.999, 2),
-                            "expiry": "", "expiry_dates": [], "chain_near_atm": chain2,
-                            "ce_resistance": [],
-                            "pe_support": [],
-                            "total_ce_oi": 0, "total_pe_oi": 0, "ohlc_bars": [],
-                            "gex": {"total": 0, "regime": "NEUTRAL", "topStrikes": [], "flipPoint": atm2, "callWall": 0, "putWall": 0},
-                            "pivot": round(spot2, 2), "cpr_top": round(spot2 * 1.003, 2), "cpr_bottom": round(spot2 * 0.997, 2),
-                            "_fallback": True
+                            "success": False,
+                            "error": "NSE+yfinance chain unavailable; spot-only data won't produce a tradable card",
+                            "symbol": sym,
+                            "spot": round(spot2, 2),
+                            "_chain_unavailable": True,
+                            "ohlc_bars": [], "chain_near_atm": [], "ce_resistance": [], "pe_support": [],
+                            "gex": {"total": 0, "regime": "NEUTRAL", "topStrikes": [], "flipPoint": 0, "callWall": 0, "putWall": 0}
                         }
             except Exception as lr_err:
                 print(f"[OPTIONS-QUICK] ❌ Last resort also failed: {lr_err}")
@@ -26035,21 +26022,27 @@ async def _options_quick_impl(symbol: str = "NIFTY", region: str = "IN"):
         # VWAP estimate
         vwap = round((day_high + day_low + spot) / 3, 2) if spot > 0 else 0
         
-        # If chain is empty but spot is valid, build synthetic chain
+        # ══════════════════════════════════════════════════════════════════
+        # STRICT: if Yahoo returned spot but no option chain, we do NOT
+        # fabricate ce_ltp/pe_ltp. A made-up premium corrupts SL, Target,
+        # Trigger, R:R, Kelly sizing, and attribution — every number on the
+        # trade card becomes a lie.
+        #
+        # Return success:False so the bottom-nav scanner drops this ticker.
+        # See celesys core principle: no fake assumptions.
+        # ══════════════════════════════════════════════════════════════════
         if spot > 0 and len(chain_data) == 0:
-            print(f"[OPTIONS-QUICK] Building synthetic chain for {sym} (spot={spot})")
-            step = 1 if spot < 100 else (2.5 if spot < 300 else (5 if spot < 600 else 10))
-            atm = round(spot / step) * step
-            for k_off in range(-4, 5):
-                k = atm + k_off * step
-                dist = abs(k - spot)
-                ce_p = max(0.1, round(max(0, spot - k) + spot * 0.003 * max(1, 3 - dist / step), 2))
-                pe_p = max(0.1, round(max(0, k - spot) + spot * 0.003 * max(1, 3 - dist / step), 2))
-                chain_data.append({"strike": k, "ce_oi": 0, "pe_oi": 0, "ce_iv": 0, "pe_iv": 0, "ce_ltp": ce_p, "pe_ltp": pe_p, "ce_bid": max(0.01, ce_p - 0.1), "pe_bid": max(0.01, pe_p - 0.1), "ce_ask": ce_p + 0.1, "pe_ask": pe_p + 0.1, "ce_chg": 0, "pe_chg": 0})
-            if not ce_resistance:
-                ce_resistance = []
-            if not pe_support:
-                pe_support = []
+            print(f"[SYNTH-PREMIUM-BLOCKED] {sym}: Yahoo returned spot={spot} but no option chain → dropping ticker. Refusing to fabricate premiums.")
+            return {
+                "success": False,
+                "error": "Option chain unavailable for " + sym + " — refusing to fabricate premiums",
+                "symbol": sym,
+                "spot": round(spot, 2),
+                "region": region,
+                "_chain_unavailable": True,
+                "ohlc_bars": [], "chain_near_atm": [], "ce_resistance": [], "pe_support": [],
+                "gex": {"total": 0, "regime": "NEUTRAL", "topStrikes": [], "flipPoint": 0, "callWall": 0, "putWall": 0}
+            }
         
         # Currency
         currency = '$' if region == 'US' else '₹'

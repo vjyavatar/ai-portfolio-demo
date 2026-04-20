@@ -7,6 +7,39 @@
 
 console.log('[OPTIONS ENGINE] Loading v1.0...');
 
+// ═══════════════════════════════════════════════════════════════════════════
+// CANONICAL NSE INDEX DERIVATIVE LOT SIZES — post-Jan-2026 NSE revision
+// ─────────────────────────────────────────────────────────────────────────
+// Source of truth for the entire QT engine. These values match active-trading.js
+// LOT_SIZES and api.py _lot_map. Any QT code that needs an index lot size MUST
+// read from window._QT_LOT_SIZES / window._qtLotSize(sym) — never hard-code.
+//
+// Why this matters: NSE revised lot sizes effective Jan 2026 (SEBI circular).
+// Previous values (NIFTY=75, FINNIFTY=40, MIDCPNIFTY=75) are WRONG and produce
+// rupee values off by 15–60% for max profit / max loss / margin / net premium.
+// The broker fills at the real lot size; user sees a fake number. That's the
+// bug this table exists to prevent.
+//
+// If NSE revises again, change this ONE table. Do not create local lotMap
+// copies — that's how drift happens.
+// ═══════════════════════════════════════════════════════════════════════════
+window._QT_LOT_SIZES = {
+  NIFTY:       65,   // was 75 pre-Jan-2026
+  BANKNIFTY:   30,   // was 35 pre-Jan-2026
+  FINNIFTY:    60,   // was 40 — NSE revision
+  MIDCPNIFTY:  120,  // was 75  — NSE revision
+  SENSEX:      20,   // BSE: was 10, increased to 20 in 2025
+  BANKEX:      30,
+  NIFTYNXT50:  25,
+  NIFTYIT:     50    // legacy — kept for compatibility with older code paths
+};
+window._qtLotSize = function(sym, fallback) {
+  if (!sym) return (fallback != null ? fallback : 1);
+  var key = String(sym).toUpperCase().trim();
+  if (window._QT_LOT_SIZES[key] != null) return window._QT_LOT_SIZES[key];
+  return (fallback != null ? fallback : 1);
+};
+
 // ═══ MAIN: Options Decide Tab ═══
 window._loadOptionsDecide=function(symbol){
   var el=document.getElementById('deResult');
@@ -96,8 +129,8 @@ function _renderOptionsEngine(d,sym){
   // Integrated with L6 Expiry — strikes chosen AFTER optimal expiry is determined
   var strat={};
   var chain=d.chain_near_atm||[];
-  var lotMap2={NIFTY:75,BANKNIFTY:30,SENSEX:20,FINNIFTY:40,MIDCPNIFTY:75};
-  var lot2=lotMap2[sym]||75;
+  // Canonical lot size — post-Jan-2026 NSE revision (see window._QT_LOT_SIZES)
+  var lot2=window._qtLotSize(sym,65);
   var step2=sym==='BANKNIFTY'?100:sym==='FINNIFTY'?50:sym==='SENSEX'?100:50;
   var atmRoundFn=function(p){return Math.round(p/step2)*step2};
   var atmStrike=atmRoundFn(spot);
@@ -212,7 +245,7 @@ function _renderOptionsEngine(d,sym){
   
   // ═══ L5: RISK ENGINE (from actual premiums) ═══
   var risk={};
-  var lot=lotMap2[sym]||75;
+  var lot=window._qtLotSize(sym,65);
   risk.maxProfit=strat.maxProfitCalc||0;
   risk.maxLoss=strat.maxLossCalc||0;
   risk.breakEvenUp=strat.breakEvenUp||0;
@@ -482,8 +515,7 @@ function _renderOptionsEngine(d,sym){
   pos.capital=1000000; // Default ₹10L
   pos.riskPct=1; // 1% risk per trade
   pos.maxRiskAmount=Math.round(pos.capital*pos.riskPct/100);
-  var lotMap3={NIFTY:75,BANKNIFTY:30,SENSEX:20,FINNIFTY:40,MIDCPNIFTY:75};
-  var lot3=lotMap3[sym]||75;
+  var lot3=window._qtLotSize(sym,65);
   pos.lotRisk=risk.maxLoss||Math.round(step2*2*lot3);
   pos.lots=Math.max(1,Math.floor(pos.maxRiskAmount/Math.max(pos.lotRisk,1)));
   pos.totalRisk=pos.lots*pos.lotRisk;
@@ -2316,8 +2348,7 @@ _renderOptionsEngine=function(d,sym){
   var optStrat2={name:'Options Strategy',callBuy:0,callSell:0,putBuy:0,putSell:0,callBuyPrem:0,callSellPrem:0,putBuyPrem:0,putSellPrem:0};
   // Get premiums from chain at ATM
   chain.forEach(function(ch){if(Math.abs(ch.strike-atmStrike3)<c3.step){optStrat2.callBuy=ch.strike;optStrat2.callBuyPrem=ch.ce_ltp||0;optStrat2.putBuy=ch.strike;optStrat2.putBuyPrem=ch.pe_ltp||0}});
-  var optLot2={NIFTY:75,BANKNIFTY:30,SENSEX:20,FINNIFTY:40};
-  extra2+=window._renderPayoff(optStrat2,spot,S,optLot2[sym]||75);
+  extra2+=window._renderPayoff(optStrat2,spot,S,window._qtLotSize(sym,65));
   extra2+='</div>';
   
   var _w3=document.createElement("div");_w3.innerHTML=extra2;while(_w3.firstChild)el.appendChild(_w3.firstChild);
@@ -2384,8 +2415,7 @@ window._renderBacktestSim=function(bars,spot,vix,atmIV,S,sym){
   
   // Simulate trades on historical bars
   var trades=[],capital=100000,equity=capital;
-  var lotMap4={NIFTY:75,BANKNIFTY:30,SENSEX:20,FINNIFTY:40};
-  var lot4=lotMap4[sym]||75;
+  var lot4=window._qtLotSize(sym,65);
   var avgVol=bars.reduce(function(s,b){return s+b.v},0)/bars.length;
   
   for(var i=5;i<bars.length-3;i++){
@@ -9217,9 +9247,8 @@ window._unifiedScore=function(d,sym){
   else if(momBars.length>0)momentumScore=30;
 
   // ─── SIGNAL 5: Liquidity ───
-  var lotMap={NIFTY:75,BANKNIFTY:30,SENSEX:20,FINNIFTY:40,MIDCPNIFTY:75,NIFTYIT:50};
   var minPremMap={NIFTY:80,BANKNIFTY:150,SENSEX:100,FINNIFTY:60,MIDCPNIFTY:50,NIFTYIT:50};
-  var lot=d.lot_size||(isUS?100:(lotMap[sym]||1));
+  var lot=d.lot_size||(isUS?100:window._qtLotSize(sym,1));
   var minPrem=minPremMap[sym]||(isUS?1:50);
   var atmCE=0,atmPE=0;
   chain.forEach(function(ch){if(Math.abs(ch.strike-spot)<(chain.length>=2?Math.abs(chain[1].strike-chain[0].strike)*1.5:spot*0.02)){atmCE=Math.max(atmCE,ch.ce_ltp||0);atmPE=Math.max(atmPE,ch.pe_ltp||0)}});
@@ -10765,8 +10794,7 @@ _renderQuickTrade=function(d,sym){
   var ve2=window._calculateVWAPBands(bars2,spot2);
   
   // Enhancement 3: Liquidity Analytics
-  var lotMap9={NIFTY:75,BANKNIFTY:30,SENSEX:20,FINNIFTY:40,MIDCPNIFTY:75};
-  var lot9=lotMap9[sym]||(isUS2?100:1);
+  var lot9=isUS2?100:window._qtLotSize(sym,1);
   var la2=window._calculateLiquidity(chain2,spot2,lot9,S2);
   
   // Enhancement 4: Volatility Metrics

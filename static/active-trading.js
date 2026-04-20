@@ -407,10 +407,20 @@
         if (currentPremium < p.lowWater) p.lowWater = currentPremium;
 
         if (p.status === 'pending') {
-          // Check trigger
-          var triggered = p.side === 'CE'
-            ? currentPremium >= p.trigger
-            : currentPremium <= p.trigger;
+          // Check trigger against the UNDERLYING SPOT (thesis-based), not
+          // the option premium. A CE thesis fires when spot crosses above
+          // trigger; a PE thesis fires when spot crosses below. Fall back
+          // to premium-based check if spot missing (defensive; should not
+          // happen with fresh scanner data).
+          var curSpot = (cur._raw && typeof cur._raw.spot === 'number') ? cur._raw.spot : null;
+          var triggered;
+          if (curSpot != null) {
+            triggered = p.side === 'CE' ? (curSpot >= p.trigger) : (curSpot <= p.trigger);
+          } else {
+            // Defensive fallback — log once so we know it happened
+            try { console.warn('[paperPortfolio] no spot for', p.tradeId, '— skipping trigger check this tick'); } catch (e) {}
+            triggered = false;
+          }
           if (triggered) {
             p.status = 'active'; p.triggeredAt = Date.now();
             changed = true;
@@ -4291,7 +4301,8 @@
     scanner: [],
     selected: null,
     chain: [],
-    lastClose: null,
+    lastClose: null,   // last 5m premium close of the selected option (for header + R:R display)
+    lastSpot: null,    // last underlying spot (for ENTRY trigger evaluation — different semantics from lastClose)
     flash: null,
     countdown: formatCountdown(msUntilNextFiveMin()),
     logs: [],
@@ -4742,6 +4753,49 @@
     var premium = side === 'CE' ? atmRow.ce_ltp : atmRow.pe_ltp;
     if (premium == null || premium <= 0) return null; // no real price = no trade
 
+    // ══════════════════════════════════════════════════════════════════════
+    // DEFENSE-IN-DEPTH: detect fabricated/synthetic option chains.
+    //
+    // The backend should never send synthetic premiums (that bug was fixed
+    // in api.py — NSE/yfinance failures now return success:false instead).
+    // But if anything ever slips through — a stale server cache, a future
+    // regression, a third-party data source — we refuse to render a
+    // tradable card and mark it for the UI to show a SYNTHETIC warning.
+    //
+    // Heuristic signals (ALL must be true → synthetic):
+    //   1. Entire chain reports zero OI on both sides (real NSE data almost
+    //      never has zero total OI across ±5 strikes on any liquid ticker)
+    //   2. Entire chain reports zero IV (real chains have 10–100% IV)
+    //   3. bid/ask spread suspiciously uniform (exactly ±1 around LTP or
+    //      exactly ±0.1 — the signatures of the old fabricator formulas)
+    //
+    // If ALL three hold, the card is still rendered but flagged; the
+    // button is disabled and a red "SYNTHETIC — DO NOT TRADE" badge shows.
+    // ══════════════════════════════════════════════════════════════════════
+    var _totalOi = 0, _totalIv = 0, _uniformSpread = 0;
+    for (var ci = 0; ci < chain.length; ci++) {
+      var cr = chain[ci];
+      _totalOi += (cr.ce_oi || 0) + (cr.pe_oi || 0);
+      _totalIv += (cr.ce_iv || 0) + (cr.pe_iv || 0);
+      // Spread signature from old fabricator: bid = ltp - 1 or ltp - 0.1
+      if (cr.ce_ltp != null && cr.ce_bid != null) {
+        var _d = cr.ce_ltp - cr.ce_bid;
+        if (Math.abs(_d - 1) < 0.01 || Math.abs(_d - 0.1) < 0.01) _uniformSpread++;
+      }
+    }
+    var _syntheticPremium = (
+      _totalOi === 0 &&
+      _totalIv === 0 &&
+      _uniformSpread >= Math.max(3, Math.floor(chain.length * 0.5))
+    );
+    if (_syntheticPremium) {
+      try { console.warn('[SYNTH-PREMIUM-DETECTED]', sym, 'chain looks fabricated — card will be non-tradable.'); } catch (e) {}
+    }
+    // Also honor explicit backend flags if ever present
+    if (row._chain_unavailable === true || row._synthetic_premium === true) {
+      _syntheticPremium = true;
+    }
+
     // Step 3: SL/Target/trigger — ADAPTIVE to current volatility.
     //
     // ════════════════════════════════════════════════════════════════════
@@ -4809,7 +4863,28 @@
 
     var sl = premium * (1 - slPct);
     var target = premium * (1 + tgtPct);
-    var trigger = premium * 1.02;
+
+    // ══════════════════════════════════════════════════════════════════
+    // TRIGGER — represents the UNDERLYING SPOT LEVEL at which the
+    // option thesis confirms. Not the option premium.
+    //
+    // For a CE: we want spot to break ABOVE current (bullish confirmation)
+    // For a PE: we want spot to break BELOW current (bearish confirmation)
+    //
+    // 0.2% buffer: tight enough to fire in normal intraday price action
+    // (NIFTY at 24500 → 49 points; ₹100 stock → ₹0.20), loose enough to
+    // not fire on microsecond noise or bid/ask flip.
+    //
+    // This was previously `premium * 1.02` which is tautological — the
+    // premium rising IS the thing a CE/PE buyer profits from, so
+    // "trigger = premium × 1.02" just says "enter when you're already
+    // making money". That design produced permanent INVALID state on
+    // PE cards (premium direction opposite to underlying direction) and
+    // fragile, noise-driven ACTIVE firing on CE.
+    // ══════════════════════════════════════════════════════════════════
+    var trigger = side === 'CE' ? spot * 1.002 : spot * 0.998;
+    // Round to strike step for clean display (spot-scale, not premium-scale)
+    trigger = Math.round(trigger * 100) / 100;
 
     // Step 4: six factor scores. Each returns null if data absent.
     // We do NOT substitute null with 50.
@@ -4953,6 +5028,7 @@
       factors: f,
       availableFactors: availableFactors,
       missingFactors: missingFactors,
+      syntheticPremium: _syntheticPremium,  // UI disables trading on this card
       _raw: row
     };
   }
@@ -6465,6 +6541,23 @@
       }, '⚡ GAMMA MODE'));
     }
 
+    // SYNTHETIC PREMIUM badge — fabricated data detected, trade blocked.
+    // Positioned lower than GAMMA MODE to avoid overlap when both fire.
+    if (trade.syntheticPremium) {
+      card.appendChild(el('div', {
+        style: {
+          position: 'absolute', top: (trade.gammaMode ? '24px' : '4px'), right: '4px',
+          fontSize: '9px', fontWeight: 900, padding: '2px 6px',
+          borderRadius: '3px',
+          background: 'linear-gradient(90deg, #DC2626, #EF4444)',
+          color: '#FFFFFF', letterSpacing: '0.5px',
+          boxShadow: '0 0 0 1px #EF444488, 0 0 8px #DC262666',
+          animation: 'none'
+        },
+        title: 'Option chain data appears fabricated (zero OI, zero IV, uniform spreads). Real price unknown — trade blocked.'
+      }, '⚠ SYNTHETIC — DO NOT TRADE'));
+    }
+
     // Row 1 col 1 — symbol + strike (stacked with Buy/Trig/SL/Target below)
     var symCell = el('div', {
       style: {
@@ -6495,7 +6588,7 @@
     priceLine.appendChild(el('span', {
       style: { color: C.textPri, fontWeight: 700 }
     }, currency + trade.price.toFixed(2)));
-    priceLine.appendChild(document.createTextNode(' · Trig '));
+    priceLine.appendChild(document.createTextNode(' · Trig@spot '));
     priceLine.appendChild(el('span', {
       style: { color: C.textPri, fontWeight: 600 }
     }, trade.trigger.toFixed(2)));
@@ -6623,6 +6716,33 @@
     } else {
       // Normal EXECUTE button — but check portfolio risk first so user
       // sees why they can't open another trade (e.g. max concurrent reached).
+      // Synthetic-premium check takes priority over risk gate: if the price
+      // itself is fabricated, the trade is meaningless regardless of risk state.
+      if (trade.syntheticPremium === true) {
+        buttonNode = el('button', {
+          onClick: function (e) {
+            e.stopPropagation();
+            onExecute(trade);  // will be hard-blocked inside onExecute + log reason
+          },
+          title: 'Option chain looks fabricated (zero OI, zero IV). Real price unknown — trade refused.',
+          style: {
+            height: '36px', width: '100px',
+            background: C.red + '20',
+            color: C.red,
+            fontWeight: 800, fontSize: '10px',
+            border: '1.5px solid ' + C.red + '88',
+            borderRadius: '6px', cursor: 'not-allowed',
+            letterSpacing: '0.5px', alignSelf: 'center',
+            display: 'flex', flexDirection: 'column',
+            alignItems: 'center', justifyContent: 'center',
+            lineHeight: 1.1,
+            boxShadow: '0 0 0 1px ' + C.red + '33'
+          }
+        }, [
+          el('span', { style: { fontSize: '9px', opacity: 0.8 } }, 'NO PRICE'),
+          el('span', { style: { fontSize: '10px', fontWeight: 900 } }, 'BLOCKED')
+        ]);
+      } else {
       var riskGate = portfolioRisk.checkAllow();
       if (!riskGate.allow) {
         // Risk-blocked state: greyed-out button with tooltip explaining why
@@ -6680,6 +6800,7 @@
           }, sub || '—')
         ]);
       }
+      }  // end: non-synthetic else
     }
     card.appendChild(buttonNode);
 
@@ -8966,24 +9087,42 @@
       return el('div', { style: { height: '72px', borderBottom: '1px solid ' + C.divider } });
     }
     var t = state.selected;
-    var lc = state.lastClose != null ? state.lastClose : t.price;
-    // Defensive: if trade has no trigger (partial/shadow object), render
-    // a neutral panel rather than crashing with NaN arithmetic.
-    var hasTrigger = t.trigger != null && lc != null;
-    var dist = hasTrigger ? (t.trigger - lc) : 0;
+    // Underlying spot is the reference for ENTRY evaluation (thesis-based trigger).
+    // Falls back to _raw.spot then to trigger itself (neutral distance) if unknown.
+    var sp = state.lastSpot;
+    if (sp == null && t._raw && typeof t._raw.spot === 'number') sp = t._raw.spot;
+    var hasTrigger = t.trigger != null && sp != null;
+    // Signed distance in spot-units: for CE we want sp to reach up to trigger (negative dist = not yet);
+    // for PE we want sp to fall down to trigger (positive dist = not yet).
+    var dist = hasTrigger ? (t.trigger - sp) : 0;
+    // Side-aware activation: CE fires when spot ≥ trigger; PE fires when spot ≤ trigger
+    var triggered = false, nearMiss = false;
+    if (hasTrigger) {
+      if (t.side === 'CE') {
+        triggered = sp >= t.trigger;
+        nearMiss  = !triggered && (t.trigger - sp) / t.trigger < 0.002;  // within 0.2% below
+      } else {
+        triggered = sp <= t.trigger;
+        nearMiss  = !triggered && (sp - t.trigger) / t.trigger < 0.002;  // within 0.2% above
+      }
+    }
     var status;
     if (!hasTrigger) {
       status = { label: 'LOADING', color: C.textMute, dot: '⚪' };
-    } else if (lc >= t.trigger || Math.abs(dist) < t.trigger * 0.001) {
+    } else if (triggered) {
       status = { label: 'ACTIVE', color: C.green, dot: '🟢' };
-    } else if (Math.abs(dist) < t.trigger * 0.005) {
+    } else if (nearMiss) {
       status = { label: 'WATCHING', color: C.yellow, dot: '🟡' };
     } else {
       status = { label: 'INVALID', color: C.red, dot: '🔴' };
     }
-    var pct = hasTrigger
-      ? Math.max(0, Math.min(1, 1 - Math.abs(dist) / (t.trigger * 0.01)))
-      : 0;
+    // Progress bar: 0 when spot is 1% away from trigger (in the against direction),
+    // 1 when triggered. Clamp into [0,1].
+    var pct = 0;
+    if (hasTrigger) {
+      var gap = t.side === 'CE' ? (t.trigger - sp) : (sp - t.trigger);
+      pct = Math.max(0, Math.min(1, 1 - gap / (t.trigger * 0.01)));
+    }
 
     var box = el('div', {
       style: {
@@ -9012,12 +9151,15 @@
     }, 'Next Evaluation In: ' + state.countdown));
     box.appendChild(row1);
 
-    // Spec §6: "Basis: Last 5m candle close" line
+    // Basis: underlying spot is what we wait on (not the option premium)
     box.appendChild(el('div', {
       style: { fontSize: '10px', color: C.textMute, fontFamily: MONO, letterSpacing: '0.3px', marginTop: '-2px' }
-    }, 'Basis: Last 5m candle close'));
+    }, 'Basis: Underlying spot vs trigger level'));
 
     // Row 2: trigger + current — spec §5.2 format: "Break above 243.50"
+    // Both sides now honestly describe spot movement:
+    //   CE → "Break above X"  (we want spot to rise through trigger)
+    //   PE → "Break below X"  (we want spot to fall through trigger)
     var triggerVerb = t.side === 'PE' ? 'Break below' : 'Break above';
     var triggerLine = el('div', {
       style: { fontSize: '12px', color: C.textSec, lineHeight: 1.2, fontFamily: MONO }
@@ -9027,9 +9169,9 @@
       ? triggerVerb + ' ' + t.trigger.toFixed(2)
       : triggerVerb + ' —';
     triggerLine.appendChild(el('span', { style: { color: C.textPri } }, triggerTxt));
-    triggerLine.appendChild(document.createTextNode('   ·   Current: '));
+    triggerLine.appendChild(document.createTextNode('   ·   Spot: '));
     triggerLine.appendChild(el('span', { style: { color: status.color } },
-      (lc != null ? lc.toFixed(2) : '—') + ' → ' + status.label.toLowerCase()));
+      (sp != null ? sp.toFixed(2) : '—') + ' → ' + status.label.toLowerCase()));
     box.appendChild(triggerLine);
 
     // Row 3: distance bar
@@ -9362,6 +9504,11 @@
   function selectTrade(t) {
     state.selected = t;
     state.lastClose = t.price;
+    // Underlying spot for ENTRY trigger evaluation (different from lastClose
+    // which is the option premium). Read from the row data the trade was
+    // derived from. Falls back to trigger-scale if unavailable so display
+    // doesn't crash, but the refreshed row below will fix it.
+    state.lastSpot = (t._raw && typeof t._raw.spot === 'number') ? t._raw.spot : null;
     state.flash = null; // NEVER flash on user selection — only on refresh price change
 
     state.selectedComputedAt = Date.now();
@@ -9394,6 +9541,9 @@
       if (refreshed) {
         state.selected = refreshed;
         state.lastClose = refreshed.price;
+        if (refreshed._raw && typeof refreshed._raw.spot === 'number') {
+          state.lastSpot = refreshed._raw.spot;
+        }
       }
       state.selectedComputedAt = Date.now();
 
@@ -9417,15 +9567,16 @@
 
         // Entry state in plain language
         var entryWord = 'waiting for entry';
-        if (cur.trigger != null && cur.price != null) {
+        var _vSpot = (cur._raw && typeof cur._raw.spot === 'number') ? cur._raw.spot : null;
+        if (cur.trigger != null && _vSpot != null) {
           var side = cur.side;
-          var triggered = (side === 'CE' && cur.price >= cur.trigger) ||
-                          (side === 'PE' && cur.price <= cur.trigger);
+          var triggered = (side === 'CE' && _vSpot >= cur.trigger) ||
+                          (side === 'PE' && _vSpot <= cur.trigger);
           if (triggered) entryWord = 'entry active now';
           else {
-            var distPct = Math.abs((cur.trigger - cur.price) / cur.trigger) * 100;
-            if (distPct < 0.5) entryWord = 'entry very close';
-            else if (distPct > 2) entryWord = 'entry far, wait';
+            var distPct = Math.abs((cur.trigger - _vSpot) / cur.trigger) * 100;
+            if (distPct < 0.2) entryWord = 'entry very close';
+            else if (distPct > 1) entryWord = 'entry far, wait';
             else entryWord = 'entry waiting';
           }
         }
@@ -9471,6 +9622,33 @@
 
   function onExecute(t, opts) {
     opts = opts || {};
+
+    // ══════════════════════════════════════════════════════════════════
+    // HARD BLOCK: synthetic/fabricated option premium detected.
+    //
+    // Set by mapScanRowToTrade when chain_near_atm looks fabricated
+    // (zero OI + zero IV + uniform bid/ask signature). The Buy price,
+    // Trigger, SL, Target on this card are all derivatives of a
+    // made-up premium — placing a real order at these prices would
+    // lose money at the broker fill. Refuse entirely.
+    //
+    // This is defense-in-depth. The backend already refuses to send
+    // synthetic premiums (api.py fix), but if a stale cache or future
+    // regression ever slips one through, the UI catches it here.
+    // ══════════════════════════════════════════════════════════════════
+    if (t && t.syntheticPremium === true) {
+      var _synthMsg = 'Trade blocked — option chain for ' + t.symbol +
+        ' looks fabricated (zero OI, zero IV, uniform spreads). Real market ' +
+        'price cannot be trusted. Refresh and try again in a few minutes.';
+      pushLog('BLOCKED (SYNTHETIC): ' + t.symbol + ' ' + t.strike +
+              ' — refusing to trade at a fake price.', C.red);
+      if (state.voiceOn) {
+        speak('Trade blocked. Option chain data for ' + t.symbol +
+              ' is unreliable. Do not execute.');
+      }
+      try { console.error('[SYNTH-PREMIUM-BLOCK]', t.symbol, t.strike, '@', t.price, '— trade refused'); } catch (e) {}
+      return;
+    }
 
     // Prevent double-execute: if an open position already exists for this
     // trade, tell the user and don't open a duplicate.
@@ -9729,12 +9907,19 @@
         // mapped set AND (b) don't have a candidate exceeding them by +12%.
         var activeEntryId = null;
         if (state.selected) {
-          // Approximation: "ACTIVE ENTRY" = selected trade whose current price
-          // has crossed its trigger. We check via _lastClose.
-          var lc = state.lastClose != null ? state.lastClose : state.selected.price;
-          var crossed = state.selected.side === 'CE'
-            ? lc >= state.selected.trigger
-            : lc <= state.selected.trigger;
+          // "ACTIVE ENTRY" = selected trade whose underlying SPOT has crossed its
+          // trigger (thesis-based, not premium-based). CE crosses upward; PE crosses
+          // downward. Defensive fallback to _raw.spot if state.lastSpot not yet set.
+          var sp = state.lastSpot;
+          if (sp == null && state.selected._raw && typeof state.selected._raw.spot === 'number') {
+            sp = state.selected._raw.spot;
+          }
+          var crossed = false;
+          if (sp != null && state.selected.trigger != null) {
+            crossed = state.selected.side === 'CE'
+              ? sp >= state.selected.trigger
+              : sp <= state.selected.trigger;
+          }
           if (crossed) activeEntryId = state.selected.id;
         }
 
@@ -10111,6 +10296,16 @@
         }
         state.lastClose = newClose;
 
+        // Also record fresh underlying spot for ENTRY trigger evaluation.
+        // This is separate from lastClose (premium) — the ENTRY engine evaluates
+        // against spot because the thesis is about underlying direction.
+        var newSpot = null;
+        if (state.selected._raw && typeof state.selected._raw.spot === 'number') {
+          newSpot = state.selected._raw.spot;
+        }
+        var prevSpot = state.lastSpot;
+        if (newSpot != null) state.lastSpot = newSpot;
+
         pushLog('Refresh @ ' + newClose.toFixed(2), C.yellow);
 
         // ── Verdict change announcement (v48) ──
@@ -10144,13 +10339,29 @@
           }
         } catch (e) {}
 
-        // Entry confirmed check — plain English
-        if ((state.selected.side === 'CE' && newClose >= state.selected.trigger) ||
-            (state.selected.side === 'PE' && newClose <= state.selected.trigger)) {
-          pushLog('Entry confirmed, confidence ' + state.selected.confidence + '%', C.green);
-          speak(state.selected.symbol + ' ' + state.selected.strike +
-                ' entry confirmed. Confidence ' + state.selected.confidence +
-                ' percent. You can enter the trade now.');
+        // Entry confirmed check — fires when underlying spot crosses the trigger
+        // level (thesis-based). We only speak on the EDGE (prev was not crossed,
+        // now is crossed) so we don't spam "entry confirmed" every 90s while the
+        // condition remains true.
+        if (newSpot != null && state.selected.trigger != null) {
+          var wasCrossed = false, nowCrossed = false;
+          if (state.selected.side === 'CE') {
+            wasCrossed = (prevSpot != null) && prevSpot >= state.selected.trigger;
+            nowCrossed = newSpot >= state.selected.trigger;
+          } else {
+            wasCrossed = (prevSpot != null) && prevSpot <= state.selected.trigger;
+            nowCrossed = newSpot <= state.selected.trigger;
+          }
+          if (nowCrossed && !wasCrossed) {
+            pushLog('Entry confirmed (spot ' + newSpot.toFixed(2) + ' crossed ' +
+                    state.selected.trigger.toFixed(2) + '), confidence ' +
+                    state.selected.confidence + '%', C.green);
+            if (state.voiceOn) {
+              speak(state.selected.symbol + ' ' + state.selected.strike +
+                    ' entry confirmed. Confidence ' + state.selected.confidence +
+                    ' percent. You can enter the trade now.');
+            }
+          }
         }
       }
 
