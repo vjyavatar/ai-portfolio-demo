@@ -10185,12 +10185,16 @@
         // fine" and "we're showing last-good data while live fetches fail".
         state.dataStale = d._stale === true;
         state.lastScanEmpty = d._last_scan_empty === true;
+        state.scannerPaused = d._scanner_paused === true;
         if (raw.length === 0) {
-          // Differentiate: actual cold boot (no scan has run) vs
-          // scan completed but returned zero tickers. Backend r10+
-          // sets _last_scan_empty=true on the second case.
-          if (state.lastScanEmpty) {
-            state.lastFetchMsg = 'No trade opportunities right now — scanner found 0/47. Data sources may be rate-limited or market is quiet.';
+          // Three distinct empty states, each gets an honest message:
+          // 1. Admin has paused the scanner (kill-switch)
+          // 2. Scan completed but returned zero tickers (likely rate-limited upstream)
+          // 3. Cold boot — scanner hasn't run yet
+          if (state.scannerPaused) {
+            state.lastFetchMsg = '⏸ Scanner paused by admin — market data providers (NSE/Yahoo) temporarily rate-limited. Resumes automatically within 30-60 min. Your broker trading continues normally.';
+          } else if (state.lastScanEmpty) {
+            state.lastFetchMsg = '⚠️ Market data provider rate-limited (NSE) — scanner temporarily unavailable. Your broker trading is unaffected. Auto-recovery in 30-60 min.';
           } else {
             state.lastFetchMsg = 'Scanner warming up (first boot takes ~30s) — retrying';
           }

@@ -3727,7 +3727,15 @@ _nse_cache_ts = {}
 
 @app.get("/api/nse-options")
 async def nse_options(symbol: str = "NIFTY"):
-    """Fetch real NSE options chain, VIX, PCR, OI, Max Pain for confluence engine."""
+    """Fetch real NSE options chain, VIX, PCR, OI, Max Pain for confluence engine.
+    
+    r18 FIX: Previously created a brand-new requests.Session() per call and
+    re-fetched cookies every time. NSE's bot-detection flags "fresh-cookies-per-
+    request" as a scraper signature and silently returns empty chains — while
+    the quote-equity endpoint (using the warm persistent _nse_session from 
+    _nse_init) keeps working. Now uses _nse_session so chain requests look like
+    a real persistent browser session.
+    """
     import requests as req
     from datetime import datetime, timedelta
     
@@ -3740,26 +3748,15 @@ async def nse_options(symbol: str = "NIFTY"):
         if (now - _nse_cache_ts[cache_key]).total_seconds() < 120:
             return _nse_cache[cache_key]
     
-    hdr = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/125.0.0.0 Safari/537.36",
-        "Accept": "application/json, text/javascript, */*",
-        "Accept-Language": "en-US,en;q=0.9",
-        "Referer": "https://www.nseindia.com/option-chain",
-    }
-    
     result = {"success": False, "symbol": symbol}
     
     try:
-        s = req.Session()
-        # Step 1: Get cookies (NSE needs this first)
-        try:
-            s.get("https://www.nseindia.com/", headers=hdr, timeout=8)
-        except:
-            print(f"[NSE-OPTIONS] ⚠️ Cookie warmup slow for {symbol}, retrying...")
-            try:
-                s.get("https://www.nseindia.com/", headers=hdr, timeout=10)
-            except:
-                print(f"[NSE-OPTIONS] ❌ Cookie warmup failed for {symbol}")
+        # r18: Use the WARM persistent _nse_session (same one quote-equity uses
+        # successfully). _nse_init handles cookie lifecycle; we just make the
+        # call. No more fresh-session-per-request bot signature.
+        _nse_init()
+        s = _nse_session
+        hdr = {"Referer": "https://www.nseindia.com/option-chain"}
         
         # Step 2: Fetch options chain (with retry)
         oc_url = f"https://www.nseindia.com/api/option-chain-indices?symbol={symbol}" if symbol in ["NIFTY", "BANKNIFTY", "NIFTY BANK", "FINNIFTY", "MIDCPNIFTY", "SENSEX"] else f"https://www.nseindia.com/api/option-chain-equities?symbol={symbol}"
@@ -3771,6 +3768,11 @@ async def nse_options(symbol: str = "NIFTY"):
                 if oc_resp.status_code == 200:
                     break
                 print(f"[NSE-OPTIONS] ⚠️ Attempt {attempt+1} got status {oc_resp.status_code} for {symbol}")
+                # On 401/403 force cookie refresh via _nse_init
+                if oc_resp.status_code in (401, 403):
+                    global _nse_cookie_ts
+                    _nse_cookie_ts = 0
+                    _nse_init()
             except Exception as e2:
                 print(f"[NSE-OPTIONS] ⚠️ Attempt {attempt+1} failed for {symbol}: {e2}")
                 if attempt == 0:
@@ -5130,6 +5132,42 @@ def _score_one_ticker(sym, reg):
 def _run_bottom_nav_scan(reg):
     """India: skip yf, go straight to NSE via _options_quick_impl. US: Stage 1 yf pre-filter + Stage 2."""
     if reg in _bottom_nav_busy: return
+    
+    # ══════════════════════════════════════════════════════════════════════
+    # KILL-SWITCH (r18).
+    # When CELESYS_SCANNER_PAUSED=1, scanner returns immediately without
+    # hitting any external data source. Used when NSE/Yahoo have banned
+    # our IP and every additional request from us extends the ban. Setting
+    # this to 1 lets the ban timer count down instead of resetting.
+    # Set to 0 (or unset) to resume normal scanning.
+    # Granular per-region: CELESYS_SCANNER_PAUSED_IN=1 or _US=1 to pause
+    # only one side.
+    # ══════════════════════════════════════════════════════════════════════
+    global_pause = os.getenv("CELESYS_SCANNER_PAUSED", "0") == "1"
+    region_pause = os.getenv(f"CELESYS_SCANNER_PAUSED_{reg}", "0") == "1"
+    if global_pause or region_pause:
+        now_ts = time.time()
+        # Preserve existing cache if we have one; otherwise commit an empty
+        # marker so the endpoint has something to serve. In both cases set
+        # _scanner_paused so frontend can show an honest banner.
+        prev = _bottom_nav_cache.get(reg, {})
+        prev_data = prev.get("data") or {}
+        if prev_data.get("tickers"):
+            prev_data["_scanner_paused"] = True
+            prev_data["_last_scan_attempt"] = now_ts
+            _bottom_nav_cache[reg] = {"data": prev_data, "time": prev.get("time", now_ts)}
+        else:
+            _bottom_nav_cache[reg] = {
+                "data": {
+                    "success": True, "region": reg, "count": 0, "tickers": [],
+                    "ts": now_ts, "_last_scan_attempt": now_ts,
+                    "_last_scan_empty": True, "_scanner_paused": True,
+                },
+                "time": now_ts,
+            }
+        print(f"[BOTTOM-NAV] ⏸  {reg}: scanner PAUSED by env var (CELESYS_SCANNER_PAUSED{'_'+reg if region_pause else ''}=1). No external calls made.")
+        return
+    
     _bottom_nav_busy.add(reg)
     _bottom_nav_busy_since[reg] = time.time()  # stuck-flag defense marker
     try:
@@ -26693,6 +26731,40 @@ async def _options_quick_impl(symbol: str = "NIFTY", region: str = "IN"):
                 }
             
             # ══════════════════════════════════════════════════════════════
+            # r18 FIX: NSE's /api/quote-equity endpoint IS working even when
+            # /api/option-chain-equities is blocked. Confirmed in live logs:
+            # "✅ NSE Quote: RELIANCE ₹1354.9" works while chain endpoint
+            # returns empty. Try quote-equity FIRST — it's the fastest and
+            # most reliable spot source. Chain stays unavailable, card is
+            # non-tradable, but at least we show a real live price.
+            # ══════════════════════════════════════════════════════════════
+            nse_quote_spot = 0
+            try:
+                q_url = f"https://www.nseindia.com/api/quote-equity?symbol={sym}"
+                q_data = _nse_get(q_url)
+                if q_data:
+                    pi = q_data.get("priceInfo") or {}
+                    try:
+                        nse_quote_spot = float(pi.get("lastPrice", 0) or 0)
+                    except (TypeError, ValueError):
+                        nse_quote_spot = 0
+            except Exception as qe:
+                print(f"[OPTIONS-QUICK] {sym}: NSE quote-equity fallback failed: {type(qe).__name__}: {qe}")
+            
+            if nse_quote_spot > 0:
+                print(f"[OPTIONS-QUICK] {sym}: NSE chain unavailable, NSE quote-equity gave spot={nse_quote_spot}. Card shown non-tradable.")
+                return {
+                    "success": False,
+                    "error": f"NSE chain unavailable; NSE quote spot={nse_quote_spot}",
+                    "symbol": sym,
+                    "spot": round(nse_quote_spot, 2),
+                    "_chain_unavailable": True,
+                    "_spot_source": "nse_quote_equity",
+                    "ohlc_bars": [], "chain_near_atm": [], "ce_resistance": [], "pe_support": [],
+                    "gex": {"total": 0, "regime": "NEUTRAL", "topStrikes": [], "flipPoint": 0, "callWall": 0, "putWall": 0}
+                }
+            
+            # ══════════════════════════════════════════════════════════════
             # MoneyControl spot fallback (r14). When NSE fails for a real
             # optionable Indian stock (HDFCBANK, RELIANCE, etc.), MC's
             # priceapi still returns spot. We get a real price to show,
@@ -26710,8 +26782,6 @@ async def _options_quick_impl(symbol: str = "NIFTY", region: str = "IN"):
                 }, timeout=5)
                 if mc_r.status_code == 200:
                     mc_json = mc_r.json() or {}
-                    # MC may return {"data": null} for unknown symbols.
-                    # "or {}" guards against None; get() is then safe.
                     mc_data = mc_json.get("data") or {}
                     if isinstance(mc_data, dict):
                         try:
