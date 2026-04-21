@@ -5277,11 +5277,22 @@ def _run_bottom_nav_scan(reg):
             except Exception as _tve:
                 print(f"[TV-OPINION] ❌ _tv_enrich_results crashed: {type(_tve).__name__}: {_tve}")
             
+            # r17 FIX: _last_scan_empty must be True whenever scan produced
+            # zero tickers — regardless of whether we have previous data to
+            # preserve. Previously the cold-boot-empty case committed this as
+            # False, which meant:
+            # (a) Frontend couldn't distinguish "scan genuinely empty" from
+            #     "haven't scanned yet" → showed misleading "warming up" message
+            # (b) Downstream consumers of the flag got wrong data
+            # Now: flag honestly reflects whether the most recent scan got
+            # anything. Always accurate.
+            scan_was_empty = len(results) == 0
             _bottom_nav_cache[reg] = {
                 "data": {
                     "success": True, "region": reg, "count": len(results),
                     "tickers": results, "ts": now_ts,
-                    "_last_scan_attempt": now_ts, "_last_scan_empty": False
+                    "_last_scan_attempt": now_ts,
+                    "_last_scan_empty": scan_was_empty,
                 },
                 "time": now_ts
             }
