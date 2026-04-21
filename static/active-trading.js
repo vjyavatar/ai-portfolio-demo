@@ -4326,8 +4326,13 @@
     situationalData: null,   // { signals, narrative, checklist, source, ts } from /api/situational-analysis
     situationalLoading: false,
     situationalError: null,
-    situationalExpanded: true,  // panel expanded by default; user can collapse
+    situationalExpanded: false,  // collapsed by default — single-line tease, click to expand
     situationalLastFetch: 0,
+    // r22: Auto paper-trading journal
+    paperJournalData: null,
+    paperJournalLoading: false,
+    paperJournalExpanded: false, // collapsed by default — opt-in visibility
+    paperJournalLastFetch: 0,
   };
 
   var timers = { countdown: null, soft90: null, candle5m: null };
@@ -5040,6 +5045,11 @@
       availableFactors: availableFactors,
       missingFactors: missingFactors,
       syntheticPremium: _syntheticPremium,  // UI disables trading on this card
+      // r25: Long-gamma + cheap-IV signal from backend Black-Scholes.
+      // Qualifies when: delta 0.3-0.7 AND atm_iv < rolling-median IV AND
+      // gamma_pct > 0.001. Scorer already added +10 bonus; this flag is
+      // for the visual badge on the card.
+      longGamma: row._long_gamma || null,
       _raw: row
     };
   }
@@ -6431,9 +6441,16 @@
     
     // Header row: title + region + collapse toggle + refresh
     var headerRow = el('div', {
+      onClick: function (ev) {
+        // Clicking anywhere on the header toggles expand (but not when
+        // clicking a button inside — those stopPropagation themselves)
+        state.situationalExpanded = !state.situationalExpanded;
+        rerender();
+      },
       style: {
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        gap: '8px', marginBottom: state.situationalExpanded ? '6px' : '0'
+        gap: '8px', marginBottom: state.situationalExpanded ? '6px' : '0',
+        cursor: 'pointer',
       }
     });
     
@@ -6467,9 +6484,10 @@
     }
     headerRow.appendChild(titleLeft);
     
-    // Collapse toggle
+    // Collapse toggle — stopPropagation so it doesn't double-toggle via header click
     var toggleBtn = el('button', {
-      onClick: function () {
+      onClick: function (ev) {
+        try { ev.stopPropagation(); } catch (e) {}
         state.situationalExpanded = !state.situationalExpanded;
         rerender();
       },
@@ -6483,7 +6501,54 @@
     headerRow.appendChild(toggleBtn);
     wrapper.appendChild(headerRow);
     
-    if (!state.situationalExpanded) return wrapper;
+    // r24: When COLLAPSED, show a one-line teaser with timeframe chips so
+    // users see the gist without expanding the full panel. Fixes the issue
+    // where the full panel was eating 40% of the screen.
+    if (!state.situationalExpanded) {
+      if (state.situationalData && state.situationalData.signals) {
+        var _sig = state.situationalData.signals;
+        var _tf = _sig.timeframes || {};
+        var teaseRow = el('div', {
+          onClick: function () { state.situationalExpanded = true; rerender(); },
+          style: {
+            display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center',
+            marginTop: '4px', cursor: 'pointer',
+            fontSize: '10px', fontFamily: MONO,
+          },
+          title: 'Click to expand full analysis',
+        });
+        // Spot chip
+        if (_sig.spot != null) {
+          teaseRow.appendChild(el('span', {
+            style: { color: C.textSec, fontWeight: 700 }
+          }, (_sig.index || 'Spot') + ': ' + _sig.spot));
+        }
+        // Timeframe chips
+        function _tfChip(emoji, label, value) {
+          var color = value === 'FAVORABLE' ? C.green
+                    : value === 'AVOID' ? C.red : C.textSec;
+          var txt = value === 'FAVORABLE' ? 'Favor'
+                  : value === 'AVOID' ? 'Avoid'
+                  : value === 'MIXED' ? 'Mixed' : '—';
+          return el('span', {
+            style: {
+              color: color, fontWeight: 800, padding: '2px 7px',
+              border: '1px solid ' + color + '55',
+              background: color + '12', borderRadius: '3px',
+              whiteSpace: 'nowrap'
+            }
+          }, emoji + ' ' + label + ': ' + txt);
+        }
+        teaseRow.appendChild(_tfChip('🎯', 'INTRADAY', _tf.intraday));
+        teaseRow.appendChild(_tfChip('📈', 'SHORT', _tf.short_term));
+        teaseRow.appendChild(_tfChip('🏛', 'LONG', _tf.long_term));
+        teaseRow.appendChild(el('span', {
+          style: { color: C.textMute, fontSize: '9px', fontStyle: 'italic', marginLeft: 'auto' }
+        }, 'click to expand →'));
+        wrapper.appendChild(teaseRow);
+      }
+      return wrapper;
+    }
     
     // Body: signals chips + narrative + checklist
     if (state.situationalLoading && !state.situationalData) {
@@ -6547,6 +6612,60 @@
     }
     if (observeRow.childNodes.length > 1) {
       wrapper.appendChild(observeRow);
+    }
+    
+    // r24: TIMEFRAMES — how today's tape reads across intraday / 3-5d / long.
+    // Per user: "tell from intraday/short terms (3 days)/long terms how is going"
+    var tf = sig.timeframes || {};
+    if (tf.intraday || tf.short_term || tf.long_term) {
+      var tfRow = el('div', {
+        style: {
+          display: 'flex', flexWrap: 'wrap', gap: '6px',
+          marginBottom: '8px', alignItems: 'center',
+          padding: '6px 8px',
+          background: C.bg, borderRadius: '4px',
+          border: '1px solid ' + C.divider,
+        }
+      });
+      tfRow.appendChild(el('span', {
+        style: {
+          fontSize: '9px', fontWeight: 900, color: C.textMute,
+          letterSpacing: '1px', whiteSpace: 'nowrap', marginRight: '4px'
+        }
+      }, 'TIMEFRAMES'));
+      
+      function _bigTfChip(emoji, label, value, explain) {
+        var color = value === 'FAVORABLE' ? C.green
+                  : value === 'AVOID' ? C.red : C.textSec;
+        var txt = value === 'FAVORABLE' ? 'FAVORABLE'
+                : value === 'AVOID' ? 'AVOID'
+                : 'MIXED';
+        var cell = el('div', {
+          title: explain,
+          style: {
+            display: 'inline-flex', flexDirection: 'column',
+            alignItems: 'flex-start', gap: '1px',
+            padding: '4px 10px',
+            background: color + '18', border: '1px solid ' + color + '66',
+            borderRadius: '4px', minWidth: '120px',
+          }
+        });
+        cell.appendChild(el('span', {
+          style: { fontSize: '9px', color: C.textMute, fontWeight: 800, letterSpacing: '0.8px' }
+        }, emoji + ' ' + label));
+        cell.appendChild(el('span', {
+          style: { fontSize: '12px', color: color, fontWeight: 900, letterSpacing: '0.4px' }
+        }, txt));
+        return cell;
+      }
+      
+      tfRow.appendChild(_bigTfChip('🎯', 'INTRADAY', tf.intraday,
+        'Intraday scalps and hourly setups. FAVORABLE = good structure and participation. AVOID = too quiet or too choppy.'));
+      tfRow.appendChild(_bigTfChip('📈', 'SHORT-TERM (3-5d)', tf.short_term,
+        'Swing trades over 3-5 days. FAVORABLE = trend visible, vol normal, gap resolved. AVOID = gap risk or vol crush risk.'));
+      tfRow.appendChild(_bigTfChip('🏛', 'LONG-TERM (weeks+)', tf.long_term,
+        'Position trades over weeks+. FAVORABLE = stable regime, normal vol. MIXED = wait for clarity.'));
+      wrapper.appendChild(tfRow);
     }
     
     // ORIENT: narrative paragraph
@@ -6641,6 +6760,269 @@
     return wrapper;
   }
 
+  // ═══════════════════════════════════════════════════════════════════════
+  // AUTO PAPER-TRADING JOURNAL PANEL (r22)
+  //
+  // Shows open/closed shadow trades + aggregate stats from
+  // /api/paper-journal. Collapsed by default — opt-in visibility so it
+  // doesn't dominate the trading view. Shows "Auto-paper disabled"
+  // honestly when backend env var is off.
+  // ═══════════════════════════════════════════════════════════════════════
+
+  function _fetchPaperJournal() {
+    if (state.paperJournalLoading) return;
+    var now = Date.now();
+    if (now - state.paperJournalLastFetch < 30000 && state.paperJournalData) return;
+    state.paperJournalLoading = true;
+    var reg = state.region || 'IN';
+    fetch('/api/paper-journal?region=' + reg + '&limit=20')
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        state.paperJournalLoading = false;
+        state.paperJournalLastFetch = Date.now();
+        if (d && d.success) state.paperJournalData = d;
+        try { rerender(); } catch (e) {}
+      })
+      .catch(function () {
+        state.paperJournalLoading = false;
+      });
+  }
+
+  function _renderPaperJournalPanel() {
+    if (state.paperJournalExpanded && !state.paperJournalData && !state.paperJournalLoading) {
+      setTimeout(_fetchPaperJournal, 10);
+    }
+    var wrapper = el('div', {
+      style: {
+        background: C.card, border: '1px solid ' + C.divider,
+        borderRadius: '6px', marginBottom: '8px',
+        padding: '8px 10px', flex: '0 0 auto',
+        fontSize: '11px', lineHeight: 1.4
+      }
+    });
+    
+    // Header row
+    var headerRow = el('div', {
+      style: {
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        gap: '8px', marginBottom: state.paperJournalExpanded ? '6px' : '0'
+      }
+    });
+    var titleLeft = el('div', {
+      style: { display: 'flex', alignItems: 'center', gap: '8px', flex: '1 1 auto', minWidth: 0 }
+    });
+    titleLeft.appendChild(el('div', {
+      style: {
+        fontSize: '10px', fontWeight: 900, color: C.textPri,
+        letterSpacing: '1.2px', whiteSpace: 'nowrap'
+      }
+    }, '📋 AUTO PAPER JOURNAL · ' + (state.region || 'IN')));
+    
+    // Status tag
+    var d = state.paperJournalData;
+    if (d) {
+      var statusLabel, statusColor;
+      if (!d.enabled) {
+        statusLabel = 'DISABLED';
+        statusColor = C.textMute;
+      } else if (d.stats && d.stats.closed_count === 0) {
+        statusLabel = 'COLLECTING';
+        statusColor = C.blue;
+      } else {
+        statusLabel = d.stats.closed_count + ' RESOLVED';
+        statusColor = C.green;
+      }
+      titleLeft.appendChild(el('span', {
+        style: {
+          fontSize: '9px', fontWeight: 800, color: statusColor,
+          padding: '1px 5px', borderRadius: '8px',
+          border: '1px solid ' + statusColor + '55',
+          letterSpacing: '0.5px', whiteSpace: 'nowrap'
+        }
+      }, statusLabel));
+    }
+    headerRow.appendChild(titleLeft);
+    
+    headerRow.appendChild(el('button', {
+      onClick: function () {
+        state.paperJournalExpanded = !state.paperJournalExpanded;
+        rerender();
+      },
+      title: state.paperJournalExpanded ? 'Collapse' : 'Expand',
+      style: {
+        background: 'transparent', border: 'none', color: C.textSec,
+        cursor: 'pointer', fontSize: '10px', fontWeight: 800,
+        padding: '2px 6px', fontFamily: MONO
+      }
+    }, state.paperJournalExpanded ? '▾' : '▸'));
+    wrapper.appendChild(headerRow);
+    
+    if (!state.paperJournalExpanded) return wrapper;
+    
+    // Body
+    if (!d && state.paperJournalLoading) {
+      wrapper.appendChild(el('div', {
+        style: { color: C.textMute, fontStyle: 'italic', padding: '4px 0' }
+      }, 'Loading journal…'));
+      return wrapper;
+    }
+    if (!d) {
+      wrapper.appendChild(el('div', {
+        style: { color: C.textMute, padding: '4px 0' }
+      }, 'Journal not loaded yet — click ▸ to refresh.'));
+      return wrapper;
+    }
+    
+    if (!d.enabled) {
+      wrapper.appendChild(el('div', {
+        style: { color: C.textSec, padding: '8px 0', lineHeight: 1.5 }
+      }, [
+        el('div', { style: { fontWeight: 800, color: C.orange, marginBottom: '4px' } },
+          '⚠ Auto paper-trading is OFF'),
+        el('div', { style: { fontSize: '10px' } },
+          'Set CELESYS_AUTO_PAPER=1 in Render env vars to enable. ' +
+          'When enabled, every A/A+ signal from the scanner auto-records ' +
+          'a shadow paper trade with entry/SL/target. Next scans resolve ' +
+          'wins/losses against current spot. Pure observation — no real orders.'),
+      ]));
+      return wrapper;
+    }
+    
+    // Stats row
+    var stats = d.stats || {};
+    var statsRow = el('div', {
+      style: {
+        display: 'flex', flexWrap: 'wrap', gap: '10px',
+        marginBottom: '8px', padding: '6px 0',
+        borderBottom: '1px solid ' + C.divider,
+        fontFamily: MONO, fontSize: '12px'
+      }
+    });
+    
+    function _stat(label, value, color) {
+      var cell = el('div', {
+        style: { display: 'flex', flexDirection: 'column', gap: '1px' }
+      });
+      cell.appendChild(el('div', {
+        style: { fontSize: '9px', color: C.textMute, fontWeight: 800, letterSpacing: '0.8px' }
+      }, label));
+      cell.appendChild(el('div', {
+        style: { color: color || C.textPri, fontWeight: 900, fontSize: '14px' }
+      }, value));
+      return cell;
+    }
+    
+    statsRow.appendChild(_stat('OPEN', String(stats.open_count || 0), C.blue));
+    statsRow.appendChild(_stat('WON', String(stats.wins || 0), C.green));
+    statsRow.appendChild(_stat('LOST', String(stats.losses || 0), C.red));
+    if (stats.win_rate != null) {
+      var wrColor = stats.win_rate >= 60 ? C.green : stats.win_rate >= 40 ? C.orange : C.red;
+      statsRow.appendChild(_stat('WIN RATE', stats.win_rate + '%', wrColor));
+    } else {
+      statsRow.appendChild(_stat('WIN RATE', '—', C.textMute));
+    }
+    if (stats.expired) statsRow.appendChild(_stat('EXPIRED', String(stats.expired), C.textMute));
+    wrapper.appendChild(statsRow);
+    
+    // By-state breakdown
+    var byState = stats.by_state || {};
+    var stateKeys = Object.keys(byState);
+    if (stateKeys.length > 0) {
+      var bsBlock = el('div', {
+        style: { marginBottom: '8px', fontSize: '10px' }
+      });
+      bsBlock.appendChild(el('div', {
+        style: { fontSize: '9px', fontWeight: 900, color: C.textMute, marginBottom: '4px', letterSpacing: '0.8px' }
+      }, 'BY STATE'));
+      stateKeys.forEach(function (st) {
+        var s = byState[st];
+        var m = STATE_MAP[st] || { color: C.textMute, label: st };
+        var row = el('div', {
+          style: { display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '2px' }
+        });
+        row.appendChild(el('span', {
+          style: {
+            color: m.color, fontWeight: 900, fontSize: '10px',
+            minWidth: '110px', letterSpacing: '0.3px'
+          }
+        }, m.label));
+        row.appendChild(el('span', {
+          style: { color: C.textSec, fontFamily: MONO, fontSize: '10px' }
+        }, s.total + ' trades'));
+        if (s.win_rate != null) {
+          row.appendChild(el('span', {
+            style: { color: s.win_rate >= 50 ? C.green : C.red, fontFamily: MONO, fontSize: '10px', fontWeight: 800 }
+          }, s.win_rate + '%'));
+        }
+        if (s.avg_r != null) {
+          row.appendChild(el('span', {
+            style: { color: s.avg_r >= 0 ? C.green : C.red, fontFamily: MONO, fontSize: '10px' }
+          }, (s.avg_r >= 0 ? '+' : '') + s.avg_r + 'R'));
+        }
+        bsBlock.appendChild(row);
+      });
+      wrapper.appendChild(bsBlock);
+    }
+    
+    // Recent closed trades (last 5)
+    var closed = (d.closed || []).slice(0, 5);
+    if (closed.length > 0) {
+      var closedBlock = el('div', {
+        style: { fontSize: '10px', fontFamily: MONO }
+      });
+      closedBlock.appendChild(el('div', {
+        style: { fontSize: '9px', fontWeight: 900, color: C.textMute, marginBottom: '4px', letterSpacing: '0.8px' }
+      }, 'RECENT · ' + closed.length + ' of ' + (d.stats.closed_count || 0)));
+      closed.forEach(function (t) {
+        var statusColor = t.status === 'WON' ? C.green : t.status === 'LOST' ? C.red : C.textMute;
+        var row = el('div', {
+          style: {
+            display: 'grid', gridTemplateColumns: '60px 40px 32px 1fr 60px',
+            alignItems: 'center', gap: '6px',
+            padding: '2px 0',
+            borderBottom: '1px dotted ' + C.divider + '44'
+          }
+        });
+        row.appendChild(el('span', { style: { color: C.textPri, fontWeight: 800 } }, t.sym));
+        row.appendChild(el('span', { style: { color: C.textSec } }, String(t.strike)));
+        row.appendChild(el('span', { style: { color: t.side === 'CE' ? C.green : C.red, fontWeight: 900 } }, t.side));
+        row.appendChild(el('span', { style: { color: statusColor, fontWeight: 800 } }, t.status));
+        var pnlTxt = t.pnl_pct != null ? (t.pnl_pct >= 0 ? '+' : '') + t.pnl_pct + '%' : '—';
+        row.appendChild(el('span', {
+          style: { color: statusColor, textAlign: 'right', fontWeight: 800 }
+        }, pnlTxt));
+        closedBlock.appendChild(row);
+      });
+      wrapper.appendChild(closedBlock);
+    } else if (stats.open_count === 0 && stats.closed_count === 0) {
+      wrapper.appendChild(el('div', {
+        style: { color: C.textMute, fontStyle: 'italic', padding: '6px 0', fontSize: '10px' }
+      }, 'No paper trades yet. Signals (A/A+ confidence) will auto-execute when the scanner finds them during live market hours.'));
+    }
+    
+    // Footer
+    var footer = el('div', {
+      style: {
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        marginTop: '6px', paddingTop: '4px', borderTop: '1px dashed ' + C.divider,
+        fontSize: '9px', color: C.textMute, fontFamily: MONO
+      }
+    });
+    footer.appendChild(el('span', {}, 'Auto paper · observational only'));
+    footer.appendChild(el('button', {
+      onClick: function () { state.paperJournalData = null; state.paperJournalLastFetch = 0; _fetchPaperJournal(); },
+      title: 'Refresh journal',
+      style: {
+        background: 'transparent', border: '1px solid ' + C.divider,
+        color: C.textSec, cursor: 'pointer', padding: '2px 8px',
+        borderRadius: '3px', fontSize: '9px', fontWeight: 800, fontFamily: MONO
+      }
+    }, '↻'));
+    wrapper.appendChild(footer);
+    
+    return wrapper;
+  }
+
   function renderTopTrades() {
     var panel = el('div', {
       style: {
@@ -6713,6 +7095,16 @@
       panel.appendChild(_renderSituationalPanel());
     } catch (e) {
       try { console.warn('[SITUATIONAL] render failed:', e); } catch (e2) {}
+    }
+
+    // ── AUTO PAPER JOURNAL PANEL (r22) ─────────────────────────────────
+    // Collapsed by default. When expanded, shows win/loss stats from
+    // auto-executed shadow trades. Helps close the feedback loop on
+    // whether A/A+ signals actually work.
+    try {
+      panel.appendChild(_renderPaperJournalPanel());
+    } catch (e) {
+      try { console.warn('[PAPER-JOURNAL] render failed:', e); } catch (e2) {}
     }
 
     var filter = state.searchFilter || '';
@@ -6888,6 +7280,35 @@
         },
         title: 'Option chain data appears fabricated (zero OI, zero IV, uniform spreads). Real price unknown — trade blocked.'
       }, '⚠ SYNTHETIC — DO NOT TRADE'));
+    }
+    
+    // r25: LONG GAMMA + CHEAP IV badge. Fires when backend's Black-Scholes
+    // check passed: delta 0.3-0.7 AND atm_iv < rolling-median IV AND
+    // gamma_pct > 0.001. Indicates a setup with good convexity and cheap
+    // premium — institutional "long gamma" setup. Tooltip shows the actual
+    // numbers for transparency.
+    if (trade.longGamma && trade.longGamma.qualifies) {
+      var _lgInfo = trade.longGamma.best_strike || {};
+      var _lgTitle = '✨ LONG GAMMA setup: delta=' + (_lgInfo.delta || '?') +
+                    ', gamma per 1%=' + (_lgInfo.gamma_pct || '?') +
+                    ', IV=' + (_lgInfo.iv || '?') + ' (cheaper than median ' +
+                    (_lgInfo.median_iv || '?') + '). +10 confidence applied.';
+      // Stack below existing badges: if gamma mode and synthetic both present
+      // stack at 44px; if either present 24px; else 4px.
+      var _lgTop = trade.syntheticPremium
+                   ? (trade.gammaMode ? '44px' : '24px')
+                   : (trade.gammaMode ? '24px' : '4px');
+      card.appendChild(el('div', {
+        title: _lgTitle,
+        style: {
+          position: 'absolute', top: _lgTop, right: '4px',
+          fontSize: '9px', fontWeight: 900, padding: '2px 6px',
+          borderRadius: '3px',
+          background: 'linear-gradient(90deg, #059669, #10B981)',
+          color: '#FFFFFF', letterSpacing: '0.5px',
+          boxShadow: '0 0 0 1px #10B98188'
+        }
+      }, '✨ LONG GAMMA'));
     }
 
     // ═══ TOP BAR — always visible row 1: Symbol · Side · Confidence · Button · Chevron ═══
@@ -10533,12 +10954,27 @@
         state.dataStale = d._stale === true;
         state.lastScanEmpty = d._last_scan_empty === true;
         state.scannerPaused = d._scanner_paused === true;
+        state.breakerTripped = d._breaker_tripped === true;
+        state.breakerProvider = d._breaker_provider || null;
+        state.breakerCooldownSec = typeof d._breaker_cooldown_sec === 'number' ? d._breaker_cooldown_sec : null;
         if (raw.length === 0) {
-          // Three distinct empty states, each gets an honest message:
-          // 1. Admin has paused the scanner (kill-switch)
-          // 2. Scan completed but returned zero tickers (likely rate-limited upstream)
-          // 3. Cold boot — scanner hasn't run yet
-          if (state.scannerPaused) {
+          // Four distinct empty states, each gets an honest message:
+          // 1. Circuit breaker auto-tripped (provider rate-limiting us, auto-pause)
+          // 2. Admin has paused the scanner (kill-switch env var)
+          // 3. Scan completed but returned zero tickers (likely rate-limited upstream)
+          // 4. Cold boot — scanner hasn't run yet
+          if (state.breakerTripped) {
+            var _providerName = state.breakerProvider === 'nse_chain' ? 'NSE'
+                              : state.breakerProvider === 'yahoo_chain' ? 'Yahoo'
+                              : 'Data provider';
+            var _mins = state.breakerCooldownSec != null
+              ? Math.ceil(state.breakerCooldownSec / 60)
+              : null;
+            state.lastFetchMsg = '🛑 Circuit breaker auto-tripped — ' + _providerName +
+              ' is rate-limiting us. Scanner paused to let the ban timer reset' +
+              (_mins != null ? ' (resumes in ~' + _mins + ' min)' : '') +
+              '. Your broker trading is unaffected.';
+          } else if (state.scannerPaused) {
             state.lastFetchMsg = '⏸ Scanner paused by admin — market data providers (NSE/Yahoo) temporarily rate-limited. Resumes automatically within 30-60 min. Your broker trading continues normally.';
           } else if (state.lastScanEmpty) {
             state.lastFetchMsg = state.region === 'IN'

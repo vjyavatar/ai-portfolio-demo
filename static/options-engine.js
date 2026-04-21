@@ -9298,6 +9298,16 @@ window._unifiedScore=function(d,sym){
 
   // Gamma bonus
   if(gammaBlast&&(isBreakUp||isBreakDn))conf=Math.min(100,conf+(isFallback?5:10));
+  
+  // r25: LONG GAMMA + CHEAP IV bonus. Backend computes this via Black-Scholes
+  // (delta 0.3-0.7 AND atm_iv < rolling-median IV AND gamma_pct > 0.001).
+  // When it qualifies, +10 confidence. Boost, not gate — failing the rule
+  // doesn't block trades, just doesn't reward them.
+  var _lg = d._long_gamma;
+  if(_lg && _lg.qualifies){
+    conf = Math.min(100, conf + 10);
+  }
+  
   conf=Math.min(100,Math.max(0,conf));
 
   // Normalization caps (same as QT)

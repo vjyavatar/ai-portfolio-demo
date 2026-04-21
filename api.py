@@ -3722,6 +3722,207 @@ def _save_trades_to_history(trades_data, date_str):
     except Exception as e:
         print(f"⚠️ Trade history save error: {e}")
 
+# ═══════════════════════════════════════════════════════════════════════
+# BLACK-SCHOLES GREEKS + ROLLING IV BUFFER (r25)
+#
+# NSE/Yahoo chain payloads give us strike, IV, spot, expiry — everything
+# needed to compute delta and gamma via standard Black-Scholes. We
+# compute them server-side once per scan and attach to each chain entry,
+# so the frontend scorer doesn't have to.
+#
+# Why this matters: a "long gamma + cheap IV" setup (delta>0.3, IV below
+# recent average, high normalized gamma) is a genuine institutional edge
+# — you're paying little for lots of convexity. The unified scorer gives
+# it a +10 confidence boost when it fires.
+#
+# Rolling buffer: 20 most recent ATM-IV observations per ticker. On the
+# 5-min scan cadence that's ~1.5 hrs of recent IV. When Polygon.io is
+# added later, we'll swap this for real 20-day history without changing
+# the scoring logic.
+# ═══════════════════════════════════════════════════════════════════════
+
+# Risk-free rate proxies per region (annual, decimal).
+# India: RBI repo ~6.5%. US: Fed funds ~4.5%. Kept slightly conservative.
+_RISK_FREE_IN = 0.065
+_RISK_FREE_US = 0.045
+
+# IV history buffer: { "<SYM>": deque([iv1, iv2, ..., iv20]) }
+# Populated on every successful scan. Keyed by canonical uppercase symbol.
+from collections import deque as _deque
+_iv_history = {}
+_IV_HISTORY_MAXLEN = 20
+
+def _norm_cdf(x):
+    """Standard normal CDF — python math.erf-based, no scipy dep."""
+    import math
+    return 0.5 * (1.0 + math.erf(x / math.sqrt(2.0)))
+
+def _norm_pdf(x):
+    import math
+    return math.exp(-x * x / 2.0) / math.sqrt(2.0 * math.pi)
+
+def _bs_greeks(spot, strike, iv_pct, dte_days, region="IN"):
+    """Compute Black-Scholes delta and gamma for both CE and PE.
+    
+    Inputs:
+      spot: underlying price
+      strike: option strike
+      iv_pct: implied volatility as a percentage (e.g. 14.5 means 14.5%)
+      dte_days: days to expiry (float OK for sub-day)
+      region: "IN" or "US" — selects risk-free rate
+    
+    Returns: dict with ce_delta, pe_delta, ce_gamma, pe_gamma, gamma_pct
+    (gamma_pct = gamma × spot / 100 = gamma per 1% move in spot, the
+    spot-normalized measure that's comparable across underlyings).
+    
+    Never raises — returns None if inputs invalid.
+    """
+    try:
+        import math
+        if spot <= 0 or strike <= 0 or iv_pct <= 0 or dte_days <= 0:
+            return None
+        sigma = iv_pct / 100.0
+        T = max(dte_days / 365.0, 1.0 / 365.0 / 24.0)  # floor at 1 hr to avoid div-by-zero
+        r = _RISK_FREE_US if region == "US" else _RISK_FREE_IN
+        
+        d1 = (math.log(spot / strike) + (r + 0.5 * sigma * sigma) * T) / (sigma * math.sqrt(T))
+        d2 = d1 - sigma * math.sqrt(T)
+        
+        ce_delta = _norm_cdf(d1)
+        pe_delta = ce_delta - 1.0
+        gamma = _norm_pdf(d1) / (spot * sigma * math.sqrt(T))
+        # Spot-normalized gamma — comparable across SPY ($600) vs NIFTY (24000)
+        # vs a $40 stock. This is what the "Gamma > threshold" rule should use.
+        gamma_pct = gamma * spot / 100.0
+        
+        return {
+            "ce_delta": round(ce_delta, 4),
+            "pe_delta": round(pe_delta, 4),
+            "ce_gamma": round(gamma, 6),
+            "pe_gamma": round(gamma, 6),  # same for CE and PE at given strike
+            "gamma_pct": round(gamma_pct, 5),
+        }
+    except Exception:
+        return None
+
+def _iv_history_record(sym, atm_iv):
+    """Record an ATM IV observation to the rolling buffer. No-op on bad input."""
+    try:
+        if not sym or not atm_iv or atm_iv <= 0 or atm_iv > 500:
+            return
+        key = sym.upper()
+        if key not in _iv_history:
+            _iv_history[key] = _deque(maxlen=_IV_HISTORY_MAXLEN)
+        _iv_history[key].append(float(atm_iv))
+    except Exception:
+        pass
+
+def _iv_history_median(sym):
+    """Median ATM-IV from rolling buffer, or None if fewer than 5 samples.
+    5-sample minimum prevents firing the signal on a cold buffer."""
+    try:
+        key = (sym or "").upper()
+        buf = _iv_history.get(key)
+        if not buf or len(buf) < 5:
+            return None
+        arr = sorted(buf)
+        n = len(arr)
+        if n % 2 == 1:
+            return arr[n // 2]
+        return (arr[n // 2 - 1] + arr[n // 2]) / 2.0
+    except Exception:
+        return None
+
+def _enrich_chain_with_greeks(chain, spot, dte_days, region="IN"):
+    """Mutate each chain entry in-place with computed greeks. Requires ce_iv/pe_iv
+    to already be in the row (NSE provides, Yahoo provides). DTE comes from
+    expiry selection upstream.
+    
+    Adds keys: ce_delta, pe_delta, ce_gamma, pe_gamma, gamma_pct per row.
+    """
+    try:
+        if not chain or not isinstance(chain, list): return
+        for row in chain:
+            try:
+                strike = row.get("strike") or 0
+                # Use average of CE/PE IV as the volatility input (standard smile approximation)
+                ce_iv = row.get("ce_iv") or 0
+                pe_iv = row.get("pe_iv") or 0
+                iv = (ce_iv + pe_iv) / 2.0 if (ce_iv and pe_iv) else (ce_iv or pe_iv or 0)
+                if iv <= 0 or strike <= 0 or spot <= 0 or dte_days <= 0:
+                    continue
+                g = _bs_greeks(spot, strike, iv, dte_days, region)
+                if g:
+                    row["ce_delta"] = g["ce_delta"]
+                    row["pe_delta"] = g["pe_delta"]
+                    row["ce_gamma"] = g["ce_gamma"]
+                    row["pe_gamma"] = g["pe_gamma"]
+                    row["gamma_pct"] = g["gamma_pct"]
+            except Exception:
+                continue
+    except Exception:
+        pass
+
+def _long_gamma_signal(chain, atm_iv, sym, region="IN"):
+    """Check if this ticker passes the 'long gamma + cheap IV' filter.
+    
+    Criteria (all must pass):
+      - Exists at least one strike with ATM-ish moneyness (|delta| in 0.3-0.7)
+      - atm_iv is below the rolling buffer median (cheap for THIS ticker)
+      - At-the-money gamma_pct > 0.001 (meaningful convexity per 1% move)
+    
+    Returns: dict with {qualifies: bool, reasons: [...], best_strike: dict|None}
+    Never raises.
+    """
+    result = {"qualifies": False, "reasons": [], "best_strike": None, "iv_vs_median": None}
+    try:
+        if not chain or not atm_iv or atm_iv <= 0:
+            result["reasons"].append("no_iv_or_chain")
+            return result
+        
+        # Check 1: delta 0.3-0.7 (directional but not deep ITM/OTM)
+        ideal = None
+        for row in chain:
+            d = row.get("ce_delta")
+            if d is None: continue
+            if 0.3 <= d <= 0.7:
+                # Pick the one closest to 0.5 (most ATM-ish)
+                if ideal is None or abs(row.get("ce_delta", 0) - 0.5) < abs(ideal.get("ce_delta", 0) - 0.5):
+                    ideal = row
+        if not ideal:
+            result["reasons"].append("no_strike_with_delta_0.3_to_0.7")
+            return result
+        
+        # Check 2: gamma_pct > 0.001 at that strike
+        gpct = ideal.get("gamma_pct") or 0
+        if gpct <= 0.001:
+            result["reasons"].append(f"gamma_pct_too_low ({gpct})")
+            return result
+        
+        # Check 3: IV below rolling median (cheap for this ticker)
+        median_iv = _iv_history_median(sym)
+        if median_iv is None:
+            result["reasons"].append("iv_history_insufficient (<5 samples)")
+            return result
+        result["iv_vs_median"] = round(atm_iv / median_iv, 3)
+        if atm_iv >= median_iv:
+            result["reasons"].append(f"iv_not_cheap ({atm_iv:.1f} >= median {median_iv:.1f})")
+            return result
+        
+        result["qualifies"] = True
+        result["best_strike"] = {
+            "strike": ideal.get("strike"),
+            "delta": ideal.get("ce_delta"),
+            "gamma_pct": gpct,
+            "iv": atm_iv,
+            "median_iv": round(median_iv, 2),
+        }
+        result["reasons"].append(f"passed: delta={ideal.get('ce_delta')}, gamma_pct={gpct}, iv={atm_iv:.1f}<median={median_iv:.1f}")
+    except Exception as e:
+        result["reasons"].append(f"error: {type(e).__name__}")
+    return result
+
+
 _nse_cache = {}
 _nse_cache_ts = {}
 
@@ -3761,6 +3962,12 @@ async def nse_options(symbol: str = "NIFTY"):
         # Step 2: Fetch options chain (with retry)
         oc_url = f"https://www.nseindia.com/api/option-chain-indices?symbol={symbol}" if symbol in ["NIFTY", "BANKNIFTY", "NIFTY BANK", "FINNIFTY", "MIDCPNIFTY", "SENSEX"] else f"https://www.nseindia.com/api/option-chain-equities?symbol={symbol}"
         
+        # r23: Circuit breaker guard. If NSE has been failing consecutively,
+        # skip the request entirely — it would just extend the ban counter.
+        if not _cb_allow("nse_chain"):
+            print(f"[NSE-OPTIONS] ⏸ {symbol}: circuit breaker OPEN for nse_chain — skipping request")
+            return result
+        
         oc_resp = None
         for attempt in range(2):
             try:
@@ -3768,6 +3975,9 @@ async def nse_options(symbol: str = "NIFTY"):
                 if oc_resp.status_code == 200:
                     break
                 print(f"[NSE-OPTIONS] ⚠️ Attempt {attempt+1} got status {oc_resp.status_code} for {symbol}")
+                # 401/403/429 are rate-limit-ish signals — report to breaker
+                if oc_resp.status_code in (401, 403, 429):
+                    _cb_record_failure("nse_chain", reason=f"status_{oc_resp.status_code}")
                 # On 401/403 force cookie refresh via _nse_init
                 if oc_resp.status_code in (401, 403):
                     global _nse_cookie_ts
@@ -3785,6 +3995,17 @@ async def nse_options(symbol: str = "NIFTY"):
             spot = records.get("underlyingValue", 0)
             expiry_dates = records.get("expiryDates", [])
             current_expiry = expiry_dates[0] if expiry_dates else ""
+            
+            # r23: Silent-ban detection for NSE. A 200 OK with empty `data`
+            # array AND zero underlying value is NSE's "we're ignoring you"
+            # signature. Report as circuit breaker failure so repeated silent
+            # bans trip the breaker instead of just being logged. If we got
+            # real data (data or spot>0), record success.
+            if data and len(data) > 0 and spot > 0:
+                _cb_record_success("nse_chain")
+            else:
+                _cb_record_failure("nse_chain", reason="empty_chain_200")
+                print(f"[NSE-OPTIONS] ⚠️ {symbol}: 200 OK but empty chain (silent-ban signature)")
             
             # Calculate PCR, Max Pain, OI analysis
             total_ce_oi = 0
@@ -3983,6 +4204,26 @@ async def nse_options(symbol: str = "NIFTY"):
                     "putWall": _put_wall,
                 },
             })
+            
+            # r25: Enrich chain with Black-Scholes delta/gamma + record ATM IV
+            # to rolling buffer for relative-IV signals. Greeks come from local
+            # math (spot, strike, IV, DTE) — NSE doesn't publish them.
+            try:
+                from datetime import datetime as _dt
+                dte_days = 7  # safe default
+                if current_expiry:
+                    # NSE returns "24-Apr-2026" style. Compute days to expiry.
+                    try:
+                        exp_dt = _dt.strptime(current_expiry, "%d-%b-%Y")
+                        dte_days = max(0.1, (exp_dt - _dt.utcnow()).total_seconds() / 86400.0)
+                    except Exception:
+                        pass
+                _enrich_chain_with_greeks(result.get("chain_near_atm") or [], spot, dte_days, region="IN")
+                _iv_history_record(symbol, atm_iv)
+                # Compute long-gamma + cheap-IV signal
+                result["_long_gamma"] = _long_gamma_signal(result.get("chain_near_atm") or [], atm_iv, symbol, region="IN")
+            except Exception as _ge:
+                print(f"[GREEKS] ⚠️ NSE greeks enrich failed for {symbol}: {type(_ge).__name__}")
         
         # Step 3: Fetch India VIX
         try:
@@ -4699,6 +4940,168 @@ _CACHE_TTL_US = 300          # US: 5min matches IN, gives Yahoo breathing room (
 
 
 # ═══════════════════════════════════════════════════════════════════════
+# CIRCUIT BREAKER (r23)
+#
+# Goal: when a provider (NSE, Yahoo) starts rate-limiting us, STOP making
+# requests so the IP's rate-limit counter can reset. Every extra request
+# during a ban extends the ban. This module makes the application
+# stop digging when the hole gets too deep.
+#
+# States per provider:
+#   CLOSED    — normal operation, requests flow
+#   OPEN      — tripped; new requests short-circuit immediately with no
+#               network call. Scanner skips this provider's tickers.
+#   HALF_OPEN — cooldown elapsed; one probe request allowed. If it works,
+#               transition to CLOSED. If it fails, transition back to OPEN.
+#
+# Trip condition: N consecutive "rate_limited" events within window.
+# A "rate_limited" event = HTTP 429 OR (provider-specific) suspicious
+# empty response that matches silent-ban pattern.
+#
+# Callers report outcomes via _cb_record_success() and _cb_record_failure().
+# Callers check before making a request via _cb_allow(provider).
+#
+# DEFAULT: enabled. Disable with CELESYS_CIRCUIT_BREAKER=0 if you want to
+# debug raw provider behavior.
+# ═══════════════════════════════════════════════════════════════════════
+
+# Breaker state: per-provider dict
+# { provider: {
+#     "state": "CLOSED" | "OPEN" | "HALF_OPEN",
+#     "consecutive_failures": int,
+#     "last_failure_ts": epoch,
+#     "last_success_ts": epoch,
+#     "opened_ts": epoch | None,
+#     "total_trips": int,
+#     "total_successes": int,
+#     "total_failures": int,
+# }}
+_cb_state = {}
+_CB_TRIP_THRESHOLD = 3        # consecutive failures to trip
+_CB_TRIP_WINDOW_SEC = 300     # failures must occur within 5 min
+_CB_COOLDOWN_SEC = 1800       # 30 min before HALF_OPEN
+_CB_LOCK = None               # lazy init threading lock
+
+def _cb_enabled():
+    return os.getenv("CELESYS_CIRCUIT_BREAKER", "1") == "1"
+
+def _cb_lock():
+    global _CB_LOCK
+    if _CB_LOCK is None:
+        import threading
+        _CB_LOCK = threading.Lock()
+    return _CB_LOCK
+
+def _cb_get(provider):
+    """Get or initialize breaker state for a provider."""
+    if provider not in _cb_state:
+        _cb_state[provider] = {
+            "state": "CLOSED",
+            "consecutive_failures": 0,
+            "last_failure_ts": 0,
+            "last_success_ts": 0,
+            "opened_ts": None,
+            "total_trips": 0,
+            "total_successes": 0,
+            "total_failures": 0,
+        }
+    return _cb_state[provider]
+
+def _cb_allow(provider):
+    """Check if provider is allowed to receive a request right now.
+    Returns True if CLOSED or HALF_OPEN (one probe allowed), False if OPEN.
+    Has side effect: may transition OPEN → HALF_OPEN if cooldown elapsed.
+    """
+    if not _cb_enabled():
+        return True
+    with _cb_lock():
+        cb = _cb_get(provider)
+        now = time.time()
+        
+        if cb["state"] == "OPEN":
+            # Cooldown elapsed? Transition to HALF_OPEN
+            opened_ts = cb.get("opened_ts") or now
+            if (now - opened_ts) >= _CB_COOLDOWN_SEC:
+                cb["state"] = "HALF_OPEN"
+                print(f"[CIRCUIT-BREAKER] 🔄 {provider} OPEN → HALF_OPEN (cooldown elapsed, probing)")
+                return True
+            # Still in cooldown
+            return False
+        
+        # CLOSED or HALF_OPEN — allow request
+        return True
+
+def _cb_record_success(provider):
+    """Caller reports the request succeeded. Transitions HALF_OPEN → CLOSED.
+    Resets consecutive_failures in CLOSED state."""
+    if not _cb_enabled(): return
+    with _cb_lock():
+        cb = _cb_get(provider)
+        now = time.time()
+        cb["last_success_ts"] = now
+        cb["total_successes"] += 1
+        
+        if cb["state"] == "HALF_OPEN":
+            cb["state"] = "CLOSED"
+            cb["consecutive_failures"] = 0
+            cb["opened_ts"] = None
+            print(f"[CIRCUIT-BREAKER] ✅ {provider} HALF_OPEN → CLOSED (probe succeeded, resuming normal ops)")
+        elif cb["state"] == "CLOSED":
+            # Reset consecutive failure counter on any success
+            cb["consecutive_failures"] = 0
+
+def _cb_record_failure(provider, reason="rate_limited"):
+    """Caller reports a rate-limit or silent-ban failure. May trip breaker.
+    Only report failures that indicate rate-limiting, not all errors.
+    A network timeout or 500 is NOT a rate-limit failure."""
+    if not _cb_enabled(): return
+    with _cb_lock():
+        cb = _cb_get(provider)
+        now = time.time()
+        cb["total_failures"] += 1
+        cb["last_failure_ts"] = now
+        
+        if cb["state"] == "HALF_OPEN":
+            # Probe failed — re-open the breaker, reset cooldown
+            cb["state"] = "OPEN"
+            cb["opened_ts"] = now
+            cb["total_trips"] += 1
+            print(f"[CIRCUIT-BREAKER] 🛑 {provider} HALF_OPEN → OPEN (probe failed: {reason}) — pausing {_CB_COOLDOWN_SEC//60} more min")
+            return
+        
+        if cb["state"] == "CLOSED":
+            # Count consecutive failures; only count if within window
+            if (now - cb.get("last_success_ts", 0)) > _CB_TRIP_WINDOW_SEC and cb["consecutive_failures"] == 0:
+                # Been a while since any activity; this is a fresh start
+                cb["consecutive_failures"] = 1
+            else:
+                cb["consecutive_failures"] += 1
+            
+            if cb["consecutive_failures"] >= _CB_TRIP_THRESHOLD:
+                cb["state"] = "OPEN"
+                cb["opened_ts"] = now
+                cb["total_trips"] += 1
+                print(f"[CIRCUIT-BREAKER] 🛑 {provider} CLOSED → OPEN ({cb['consecutive_failures']} consecutive {reason}s) — pausing {_CB_COOLDOWN_SEC//60} min. Scanner will skip this provider until {time.strftime('%H:%M', time.localtime(now + _CB_COOLDOWN_SEC))}.")
+
+def _cb_status():
+    """Return snapshot of all breakers for /api/circuit-breaker-status endpoint."""
+    result = {}
+    now = time.time()
+    for provider, cb in _cb_state.items():
+        result[provider] = {
+            "state": cb["state"],
+            "consecutive_failures": cb["consecutive_failures"],
+            "total_trips": cb["total_trips"],
+            "total_successes": cb["total_successes"],
+            "total_failures": cb["total_failures"],
+            "cooldown_remaining_sec": max(0, int(_CB_COOLDOWN_SEC - (now - (cb.get("opened_ts") or now)))) if cb["state"] == "OPEN" else 0,
+            "last_success_age_sec": int(now - cb["last_success_ts"]) if cb["last_success_ts"] else None,
+            "last_failure_age_sec": int(now - cb["last_failure_ts"]) if cb["last_failure_ts"] else None,
+        }
+    return result
+
+
+# ═══════════════════════════════════════════════════════════════════════
 # WHATSAPP ALERT SYSTEM (Meta Cloud API)
 #
 # Fires when a bottom-nav scan produces A-grade or A+ signals. Gated by:
@@ -5108,6 +5511,259 @@ def _tv_enrich_results(results, region, interval="5m"):
         print(f"[TV-OPINION] {region}: enriched {enriched} tickers")
 
 
+# ═══════════════════════════════════════════════════════════════════════
+# AUTO PAPER-TRADING MODULE (r22)
+#
+# When a scan produces an A/A+ signal (confidence >= 80 AND score >= 75),
+# auto-opens a shadow paper trade with entry/SL/target/state captured at
+# that moment. Subsequent scans check open shadow trades against current
+# spot — mark WON if spot crossed target, LOST if crossed SL, EXPIRED if
+# held past 2 trading days.
+#
+# Purpose: close the feedback loop. After N trading days we can answer
+# "did ENTER AGGRESSIVE actually win 70%? or less?" with real evidence.
+# Without this loop, the scorer's confidence numbers are claims not
+# measurements.
+#
+# Safety rails:
+#   - Off by default (env CELESYS_AUTO_PAPER=1 to enable)
+#   - Max 20 concurrent open shadow trades per region (prevents flood)
+#   - Dedup: same symbol+state within 5 min = single trade
+#   - Separate journal (_auto_paper_journal) so manual trades (via TAKE
+#     TRADE click) are unaffected — those still land in paperPortfolio
+#     on the frontend
+#   - Purely observational: no real orders, no broker calls
+# ═══════════════════════════════════════════════════════════════════════
+
+# Journal shape:
+# { "<region>": [ {id, sym, opened_ts, entry_spot, strike, side, confidence,
+#                  state, regime_tag, sl, target, status, closed_ts, exit_spot,
+#                  pnl_r, pnl_pct, tv_agreement}, ... ] }
+_auto_paper_journal = {"IN": [], "US": []}
+_auto_paper_recent_keys = {}  # { "SYM|STATE|REGION": ts } for dedup
+_AUTO_PAPER_MAX_OPEN = 20
+_AUTO_PAPER_DEDUP_WINDOW = 300  # 5 min
+_AUTO_PAPER_EXPIRY_SEC = 2 * 24 * 3600  # 2 trading days = ~48h
+
+def _auto_paper_enabled():
+    return os.getenv("CELESYS_AUTO_PAPER", "0") == "1"
+
+def _auto_paper_open(results, reg, now_ts):
+    """Open shadow paper trades for A/A+ signals. Called AFTER TV enrich,
+    BEFORE cache commit. Mutates _auto_paper_journal[reg] by appending.
+    Never raises; every ticker wrapped in try/except."""
+    if not _auto_paper_enabled(): return
+    journal = _auto_paper_journal.get(reg) or []
+    open_count = sum(1 for t in journal if t.get("status") == "OPEN")
+    if open_count >= _AUTO_PAPER_MAX_OPEN:
+        print(f"[AUTO-PAPER] {reg}: max open trades reached ({open_count}); skipping new opens this scan")
+        return
+    
+    opened = 0
+    for r in results:
+        try:
+            score = r.get("score") or r.get("confidence_score") or 0
+            conf = r.get("confidence") or 0
+            if score < 75 or conf < 80:
+                continue  # Below A grade
+            
+            sym = r.get("sym") or r.get("symbol")
+            action = r.get("action") or ""
+            side = "CE" if "CALL" in action.upper() else "PE" if "PUT" in action.upper() else ""
+            if not sym or not side:
+                continue
+            
+            state = r.get("state") or r.get("stateKey") or "ideal"
+            
+            # Dedup: skip if same sym+state opened within window
+            dedup_key = f"{sym}|{state}|{reg}"
+            last_open = _auto_paper_recent_keys.get(dedup_key, 0)
+            if now_ts - last_open < _AUTO_PAPER_DEDUP_WINDOW:
+                continue
+            
+            # Re-check: don't open if this exact sym+side is already OPEN
+            has_open = any(t.get("sym") == sym and t.get("side") == side and t.get("status") == "OPEN"
+                           for t in journal)
+            if has_open:
+                continue
+            
+            spot = float(r.get("spot") or 0)
+            strike = r.get("strike") or 0
+            sl_price = r.get("sl") or 0
+            target_price = r.get("target") or 0
+            entry_price = r.get("premium") or r.get("entry_px") or r.get("price") or 0
+            if spot <= 0 or entry_price <= 0 or sl_price <= 0 or target_price <= 0:
+                # Incomplete trade shape — don't fabricate
+                continue
+            if open_count >= _AUTO_PAPER_MAX_OPEN:
+                break
+            
+            trade = {
+                "id": f"ap_{int(now_ts)}_{sym}_{side}",
+                "sym": sym, "region": reg,
+                "side": side, "strike": strike,
+                "opened_ts": now_ts,
+                "entry_spot": spot,
+                "entry_premium": entry_price,
+                "sl_premium": sl_price,
+                "target_premium": target_price,
+                "confidence": conf, "score": score,
+                "state": state,
+                "action": action,
+                "tv_agreement": r.get("_tv_agreement") or "UNKNOWN",
+                "reason": (r.get("reason") or "")[:200],
+                "status": "OPEN",
+                "closed_ts": None, "exit_premium": None,
+                "pnl_pct": None, "pnl_r": None,
+                "close_reason": None,
+            }
+            journal.append(trade)
+            _auto_paper_recent_keys[dedup_key] = now_ts
+            opened += 1
+            open_count += 1
+            print(f"[AUTO-PAPER] 📂 OPEN {reg} {sym} {strike}{side} @ spot={spot:.2f} prem={entry_price:.2f} ({state}, conf={conf})")
+        except Exception as e:
+            print(f"[AUTO-PAPER] ❌ open failed for {r.get('sym','?')}: {type(e).__name__}: {e}")
+    
+    if opened > 0:
+        _auto_paper_journal[reg] = journal
+        print(f"[AUTO-PAPER] {reg}: opened {opened} shadow trade(s), total open now: {open_count}")
+
+def _auto_paper_resolve(results, reg, now_ts):
+    """Check open shadow trades against current scan data. Mark WON/LOST/EXPIRED.
+    Called alongside _auto_paper_open. Never raises."""
+    if not _auto_paper_enabled(): return
+    journal = _auto_paper_journal.get(reg) or []
+    if not journal: return
+    
+    # Build quick lookup of current spot per symbol from fresh scan
+    current_data = {}
+    for r in results:
+        sym = r.get("sym") or r.get("symbol")
+        if not sym: continue
+        try:
+            current_data[sym] = {
+                "spot": float(r.get("spot") or 0),
+                # If we have a matching chain entry for the trade's strike,
+                # we can resolve against premium; otherwise fall back to
+                # approximating from spot movement.
+                "chain": r.get("chain_near_atm") or [],
+            }
+        except: pass
+    
+    closed = 0
+    for t in journal:
+        if t.get("status") != "OPEN": continue
+        try:
+            sym = t["sym"]
+            # Expiry check
+            age = now_ts - (t.get("opened_ts") or now_ts)
+            if age > _AUTO_PAPER_EXPIRY_SEC:
+                t["status"] = "EXPIRED"
+                t["closed_ts"] = now_ts
+                t["close_reason"] = "time_expired"
+                closed += 1
+                print(f"[AUTO-PAPER] ⏰ EXPIRE {reg} {sym} after {int(age/3600)}h")
+                continue
+            
+            cur = current_data.get(sym)
+            if not cur or cur["spot"] <= 0:
+                # Can't resolve without fresh data for this symbol — leave OPEN
+                continue
+            
+            # Try to resolve against current premium from chain if available
+            cur_premium = None
+            try:
+                for row in cur["chain"]:
+                    if row.get("strike") == t.get("strike"):
+                        if t["side"] == "CE":
+                            cur_premium = float(row.get("ce_ltp", 0) or 0)
+                        else:
+                            cur_premium = float(row.get("pe_ltp", 0) or 0)
+                        break
+            except: pass
+            
+            # If no chain premium available, fall back to approximating from
+            # spot delta using 0.5 delta assumption for ATM options. This is
+            # an approximation — honest flag is set so we can filter later.
+            premium_approx = False
+            if cur_premium is None or cur_premium <= 0:
+                spot_delta = cur["spot"] - t["entry_spot"]
+                delta_multiplier = 0.5 if t["side"] == "CE" else -0.5
+                cur_premium = max(0.1, t["entry_premium"] + spot_delta * delta_multiplier)
+                premium_approx = True
+            
+            entry = t["entry_premium"]
+            sl = t["sl_premium"]
+            tgt = t["target_premium"]
+            
+            hit_target = (t["side"] == "CE" and cur_premium >= tgt) or \
+                         (t["side"] == "PE" and cur_premium >= tgt)
+            hit_sl = cur_premium <= sl
+            
+            if hit_target or hit_sl:
+                t["status"] = "WON" if hit_target else "LOST"
+                t["closed_ts"] = now_ts
+                t["exit_premium"] = round(cur_premium, 2)
+                t["pnl_pct"] = round((cur_premium - entry) / entry * 100, 2)
+                # R multiple: how many "risk units" (entry - sl) did we make/lose
+                risk_unit = entry - sl
+                if risk_unit > 0:
+                    t["pnl_r"] = round((cur_premium - entry) / risk_unit, 2)
+                t["close_reason"] = "target_hit" if hit_target else "sl_hit"
+                if premium_approx:
+                    t["_premium_approx"] = True
+                closed += 1
+                emoji = "🎯" if hit_target else "🛑"
+                print(f"[AUTO-PAPER] {emoji} CLOSE {reg} {sym} {t['status']} pnl={t['pnl_pct']}% R={t.get('pnl_r','?')}")
+        except Exception as e:
+            print(f"[AUTO-PAPER] ❌ resolve failed for {t.get('sym','?')}: {type(e).__name__}: {e}")
+    
+    if closed > 0:
+        print(f"[AUTO-PAPER] {reg}: closed {closed} shadow trade(s)")
+
+def _auto_paper_stats(reg):
+    """Aggregate stats for /api/paper-journal. Pure function."""
+    journal = _auto_paper_journal.get(reg) or []
+    closed_trades = [t for t in journal if t.get("status") in ("WON", "LOST", "EXPIRED")]
+    open_trades = [t for t in journal if t.get("status") == "OPEN"]
+    
+    total_closed = len(closed_trades)
+    wins = sum(1 for t in closed_trades if t.get("status") == "WON")
+    losses = sum(1 for t in closed_trades if t.get("status") == "LOST")
+    expired = sum(1 for t in closed_trades if t.get("status") == "EXPIRED")
+    
+    # Stats by state
+    by_state = {}
+    for t in closed_trades:
+        st = t.get("state") or "unknown"
+        if st not in by_state:
+            by_state[st] = {"wins": 0, "losses": 0, "expired": 0, "total": 0, "sum_r": 0.0}
+        by_state[st]["total"] += 1
+        status = t.get("status")
+        if status == "WON": by_state[st]["wins"] += 1
+        elif status == "LOST": by_state[st]["losses"] += 1
+        elif status == "EXPIRED": by_state[st]["expired"] += 1
+        r_mult = t.get("pnl_r")
+        if r_mult is not None:
+            by_state[st]["sum_r"] += r_mult
+    
+    # Compute win rate + expectancy per state
+    for st, s in by_state.items():
+        resolved = s["wins"] + s["losses"]
+        s["win_rate"] = round(s["wins"] / resolved * 100, 1) if resolved > 0 else None
+        s["avg_r"] = round(s["sum_r"] / s["total"], 2) if s["total"] > 0 else None
+    
+    return {
+        "region": reg,
+        "open_count": len(open_trades),
+        "closed_count": total_closed,
+        "wins": wins, "losses": losses, "expired": expired,
+        "win_rate": round(wins / max(wins + losses, 1) * 100, 1) if (wins + losses) > 0 else None,
+        "by_state": by_state,
+    }
+
+
 def _score_one_ticker(sym, reg):
     """Get FULL options-quick data for ONE ticker. Returns everything _renderQuickTrade needs."""
     try:
@@ -5166,6 +5822,41 @@ def _run_bottom_nav_scan(reg):
                 "time": now_ts,
             }
         print(f"[BOTTOM-NAV] ⏸  {reg}: scanner PAUSED by env var (CELESYS_SCANNER_PAUSED{'_'+reg if region_pause else ''}=1). No external calls made.")
+        return
+    
+    # r23: Automatic circuit-breaker pause. When the primary provider for
+    # this region has tripped (OPEN state), the scanner should skip the
+    # entire scan — don't hit any other ticker on the same banned provider.
+    # Primary provider: NSE for IN, Yahoo for US.
+    primary_cb = "nse_chain" if reg == "IN" else "yahoo_chain"
+    if _cb_enabled() and _cb_state.get(primary_cb, {}).get("state") == "OPEN":
+        cooldown_remaining = 0
+        cb = _cb_state.get(primary_cb, {})
+        opened_ts = cb.get("opened_ts")
+        if opened_ts:
+            cooldown_remaining = max(0, int(_CB_COOLDOWN_SEC - (time.time() - opened_ts)))
+        now_ts = time.time()
+        prev = _bottom_nav_cache.get(reg, {})
+        prev_data = prev.get("data") or {}
+        if prev_data.get("tickers"):
+            prev_data["_breaker_tripped"] = True
+            prev_data["_breaker_provider"] = primary_cb
+            prev_data["_breaker_cooldown_sec"] = cooldown_remaining
+            prev_data["_last_scan_attempt"] = now_ts
+            _bottom_nav_cache[reg] = {"data": prev_data, "time": prev.get("time", now_ts)}
+        else:
+            _bottom_nav_cache[reg] = {
+                "data": {
+                    "success": True, "region": reg, "count": 0, "tickers": [],
+                    "ts": now_ts, "_last_scan_attempt": now_ts,
+                    "_last_scan_empty": True,
+                    "_breaker_tripped": True,
+                    "_breaker_provider": primary_cb,
+                    "_breaker_cooldown_sec": cooldown_remaining,
+                },
+                "time": now_ts,
+            }
+        print(f"[BOTTOM-NAV] 🛑 {reg}: circuit breaker OPEN for {primary_cb}; skipping scan. Auto-resume in {cooldown_remaining}s.")
         return
     
     _bottom_nav_busy.add(reg)
@@ -5314,6 +6005,16 @@ def _run_bottom_nav_scan(reg):
                 _tv_enrich_results(results, reg, interval="5m")
             except Exception as _tve:
                 print(f"[TV-OPINION] ❌ _tv_enrich_results crashed: {type(_tve).__name__}: {_tve}")
+            
+            # r22: Auto paper trading. Open shadow trades for A/A+ signals;
+            # resolve any open trades against current scan. Off by default
+            # (enable with CELESYS_AUTO_PAPER=1). No real orders, observational
+            # only. See _auto_paper_* module for details.
+            try:
+                _auto_paper_resolve(results, reg, now_ts)
+                _auto_paper_open(results, reg, now_ts)
+            except Exception as _ape:
+                print(f"[AUTO-PAPER] ❌ scan-hook crashed: {type(_ape).__name__}: {_ape}")
             
             # r17 FIX: _last_scan_empty must be True whenever scan produced
             # zero tickers — regardless of whether we have previous data to
@@ -5774,6 +6475,50 @@ def _compute_situational_signals(region):
         signals["_signal_strength"] = n_strong
         signals["_sufficient_to_orient"] = n_strong >= 2
         
+        # r24: Timeframe bias — which holding horizon does today's tape favor?
+        # This is the per-timeframe lens a user asked for: intraday vs 3-day
+        # vs long-term. Rule-based, context-aware.
+        #
+        # INTRADAY (scalps, 5m-hourly): favored when vol is modest, range is
+        #   well-defined, and we can see the session structure clearly.
+        # SHORT-TERM (3-5 days, swing): favored when trend is visible but
+        #   not overextended; gap has resolved, range is normal-to-wide.
+        # LONG-TERM (weeks+): favored when regime is stable, vol normal;
+        #   poor when daily ranges are tight (low conviction) or very wide
+        #   (news-driven chop).
+        #
+        # Each lens returns a bias: FAVORABLE / MIXED / AVOID.
+        tf = {"intraday": "MIXED", "short_term": "MIXED", "long_term": "MIXED"}
+        try:
+            vix_r = signals.get("vix_regime")
+            gap_r = signals.get("gap_regime")
+            range_r = signals.get("range_regime")
+            
+            # INTRADAY lens
+            if range_r in ("tight",) and vix_r in ("very_low", "low"):
+                tf["intraday"] = "AVOID"     # too quiet to scalp profitably
+            elif range_r in ("very_wide",) and vix_r in ("elevated", "high"):
+                tf["intraday"] = "AVOID"     # chop from news, whipsaws
+            elif range_r in ("normal", "wide") and vix_r in ("normal", "low"):
+                tf["intraday"] = "FAVORABLE" # good structure, tradable
+            
+            # SHORT-TERM lens (3-5 days)
+            if gap_r in ("large",) or vix_r in ("high",):
+                tf["short_term"] = "AVOID"   # gap risk + vol crush risk
+            elif range_r in ("normal", "wide") and vix_r in ("normal", "low") and gap_r in ("flat", "small"):
+                tf["short_term"] = "FAVORABLE"
+            
+            # LONG-TERM lens (weeks+)
+            if vix_r in ("elevated", "high"):
+                tf["long_term"] = "MIXED"    # wait for vol to cool
+            elif vix_r in ("very_low", "low", "normal") and range_r not in ("very_wide",):
+                tf["long_term"] = "FAVORABLE"
+            if range_r in ("tight",) and vix_r in ("very_low",):
+                tf["long_term"] = "MIXED"    # sleepy, edge unclear
+        except Exception:
+            pass
+        signals["timeframes"] = tf
+        
     except Exception as e:
         print(f"[SITUATIONAL] ❌ compute signals failed for {region}: {type(e).__name__}: {e}")
         signals["_sufficient_to_orient"] = False
@@ -5991,6 +6736,66 @@ async def situational_analysis(region: str = "IN"):
     }
     _sit_cache[reg] = {"ts": now, "data": resp}
     return resp
+
+
+@app.get("/api/circuit-breaker-status")
+async def circuit_breaker_status():
+    """Diagnostic: current state of all provider circuit breakers.
+    
+    Returns one entry per known provider (nse_chain, yahoo_chain) with state,
+    cooldown remaining if OPEN, failure counters, and last success/failure age.
+    Use to see at a glance whether scanner is pausing itself for a reason.
+    """
+    return {
+        "success": True,
+        "enabled": _cb_enabled(),
+        "config": {
+            "trip_threshold": _CB_TRIP_THRESHOLD,
+            "trip_window_sec": _CB_TRIP_WINDOW_SEC,
+            "cooldown_sec": _CB_COOLDOWN_SEC,
+        },
+        "providers": _cb_status(),
+        "ts": time.time(),
+    }
+
+
+@app.get("/api/paper-journal")
+async def paper_journal(region: str = "IN", limit: int = 50):
+    """Auto paper-trading journal + stats.
+    
+    Returns: {
+      enabled: bool (is CELESYS_AUTO_PAPER=1),
+      region: "IN"|"US",
+      stats: {wins, losses, win_rate, by_state: {...}},
+      open: [<trades>],          // currently open shadow trades
+      closed: [<trades>],         // recent N closed trades (limit)
+      total_in_journal: int,
+    }
+    """
+    reg = region.upper()
+    if reg not in ("IN", "US"):
+        return {"success": False, "error": "region must be IN or US"}
+    
+    journal = _auto_paper_journal.get(reg) or []
+    open_trades = [t for t in journal if t.get("status") == "OPEN"]
+    closed_trades = [t for t in journal if t.get("status") != "OPEN"]
+    # Sort closed by close-ts descending (most recent first)
+    closed_trades = sorted(
+        closed_trades,
+        key=lambda t: t.get("closed_ts") or 0,
+        reverse=True,
+    )[:max(1, min(limit, 200))]
+    
+    return {
+        "success": True,
+        "enabled": _auto_paper_enabled(),
+        "region": reg,
+        "stats": _auto_paper_stats(reg),
+        "open": open_trades,
+        "closed": closed_trades,
+        "total_in_journal": len(journal),
+        "ts": time.time(),
+    }
 
 
 def _auto_scan_boot():
@@ -27238,6 +28043,12 @@ async def _options_quick_impl(symbol: str = "NIFTY", region: str = "IN"):
         expiry_dates = []
         
         try:
+            # r23: Circuit breaker guard for Yahoo. If repeated 429s have tripped
+            # the breaker, short-circuit immediately — don't fuel the fire.
+            if not _cb_allow("yahoo_chain"):
+                print(f"[OPTIONS-QUICK] ⏸ {yf_sym}: circuit breaker OPEN for yahoo_chain — skipping chain fetch")
+                raise Exception("circuit_breaker_open")
+            
             opts = tk.options
             if opts and len(opts) > 0:
                 expiry_dates = list(opts[:4])  # First 4 expiries
@@ -27260,15 +28071,28 @@ async def _options_quick_impl(symbol: str = "NIFTY", region: str = "IN"):
                 except Exception as _chain_e1:
                     _err1 = str(_chain_e1)
                     if "Too Many" in _err1 or "429" in _err1 or "rate" in _err1.lower():
+                        # r23: report rate-limit to breaker BEFORE retrying
+                        _cb_record_failure("yahoo_chain", reason="429")
                         import time as _t2
                         print(f"[OPTIONS-QUICK] {yf_sym} rate-limited, retrying once after 3s...")
                         _t2.sleep(3.0)
                         _yahoo_rate_wait()
-                        chain = tk.option_chain(opts[0])  # raises on second failure
+                        try:
+                            chain = tk.option_chain(opts[0])
+                        except Exception as _chain_e2:
+                            # Second failure also counts toward breaker
+                            _err2 = str(_chain_e2)
+                            if "Too Many" in _err2 or "429" in _err2 or "rate" in _err2.lower():
+                                _cb_record_failure("yahoo_chain", reason="429_retry")
+                            raise
                     else:
                         raise
                 calls = chain.calls
                 puts = chain.puts
+                
+                # r23: chain fetch succeeded — record breaker success
+                if len(calls) > 0 or len(puts) > 0:
+                    _cb_record_success("yahoo_chain")
                 
                 if spot <= 0 and len(calls) > 0:
                     # Estimate spot from chain midpoint
@@ -27410,6 +28234,27 @@ async def _options_quick_impl(symbol: str = "NIFTY", region: str = "IN"):
             "cpr_bottom": round(day_low * 1.002, 2),
             "prev_close": round(prev_close, 2) if prev_close else round(spot * 0.998, 2),
         }
+        
+        # r25: Enrich Yahoo chain with Black-Scholes greeks + record ATM IV
+        # to rolling buffer + compute long-gamma+cheap-IV signal. Same logic
+        # as NSE path — signal is region-agnostic.
+        try:
+            from datetime import datetime as _dt2
+            dte_days_us = 7
+            if expiry_dates:
+                try:
+                    # Yahoo returns "2026-04-25" style
+                    exp_dt = _dt2.strptime(expiry_dates[0], "%Y-%m-%d")
+                    dte_days_us = max(0.1, (exp_dt - _dt2.utcnow()).total_seconds() / 86400.0)
+                except Exception:
+                    pass
+            _enrich_chain_with_greeks(result.get("chain_near_atm") or [], spot, dte_days_us, region="US")
+            _iv_history_record(sym, atm_iv)
+            # Compute long-gamma signal (cheap IV + high gamma + delta 0.3-0.7)
+            _lg = _long_gamma_signal(result.get("chain_near_atm") or [], atm_iv, sym, region="US")
+            result["_long_gamma"] = _lg
+        except Exception as _ge2:
+            print(f"[GREEKS] ⚠️ Yahoo greeks enrich failed for {sym}: {type(_ge2).__name__}")
         
         # ═══ FETCH INTRADAY BARS (5-min) — OPTIONAL, non-critical ═══
         # Skip if we already used too many Yahoo calls (rate limit protection)
