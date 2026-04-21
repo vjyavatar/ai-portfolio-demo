@@ -3703,18 +3703,21 @@
     },
 
     // Short label for UI tile: "NSE · 850ms · OI T-40s"
+    // r30: Returns null when we have literally nothing informative (caller
+    // should not render the badge in that case), instead of misleading
+    // "unknown · age ?" text that looks like a bug.
     badge: function (raw) {
       var p = this.read(raw);
       var parts = [];
-      parts.push(p.vendor);
+      if (p.vendor && p.vendor !== 'unknown') parts.push(p.vendor);
       if (p.latencyMs != null) {
         parts.push(p.latencyMs < 1000 ? p.latencyMs + 'ms' : (p.latencyMs / 1000).toFixed(1) + 's');
-      } else {
-        parts.push('age ?');
       }
       if (p.oiAgeSec != null) {
         parts.push('OI T-' + p.oiAgeSec + 's');
       }
+      // If no real data to show, return null — caller should skip the badge
+      if (parts.length === 0) return null;
       return parts.join(' · ');
     },
 
@@ -6339,6 +6342,31 @@
             }
           }, label);
         })(),
+        // r30: Circuit breaker status chip — only renders when the scanner
+        // auto-paused due to provider rate-limiting. Gives passive visibility
+        // instead of requiring users to check /api/circuit-breaker-status.
+        // When CLOSED (normal), chip is hidden (no noise).
+        (function () {
+          if (!state.breakerTripped) return null;
+          var mins = state.breakerCooldownSec != null
+            ? Math.ceil(state.breakerCooldownSec / 60) : null;
+          var provName = state.breakerProvider === 'nse_chain' ? 'NSE'
+                       : state.breakerProvider === 'yahoo_chain' ? 'Yahoo'
+                       : 'Provider';
+          return el('div', {
+            title: 'Circuit breaker auto-tripped — ' + provName + ' is rate-limiting.\n' +
+                   'Scanner paused to let ban timer reset.\n' +
+                   (mins != null ? 'Resumes in ~' + mins + ' min\n' : '') +
+                   'Your broker trading is unaffected.',
+            style: {
+              fontSize: '10px', fontWeight: 800, padding: '3px 7px',
+              border: '1px solid ' + C.red + '66',
+              background: C.red + '15', color: C.red,
+              borderRadius: '4px', fontFamily: MONO, letterSpacing: '0.2px',
+              whiteSpace: 'nowrap'
+            }
+          }, '🛑 ' + provName + (mins != null ? ' ' + mins + 'm' : ''));
+        })(),
         // Paper portfolio stats pill
         (function () {
           var s = paperPortfolio.stats();
@@ -7348,12 +7376,13 @@
             color: C.green, marginBottom: '4px', flex: '0 0 auto'
           }
         }, 'MY POSITIONS (' + held.length + ') — OFF TOP-3 SCAN'));
-        // Pinned positions in a horizontal strip of their own
+        // r30: MY POSITIONS also responsive — same breakpoints as top-3.
         var heldRow = el('div', {
           style: {
             display: 'grid',
-            gridTemplateColumns: 'repeat(' + Math.min(3, held.length) + ', 1fr)',
-            gap: '8px', marginBottom: '8px', flex: '0 0 auto'
+            gridTemplateColumns: 'repeat(auto-fit, minmax(420px, 1fr))',
+            gap: '8px', marginBottom: '8px', flex: '0 0 auto',
+            minWidth: 0,
           }
         });
         held.slice(0, 3).forEach(function (t) {
@@ -7379,13 +7408,20 @@
     // When any card is expanded (via chevron), only that column's card
     // grows taller — the other columns stay at their collapsed height,
     // and the whole row settles at the tallest card's height (grid default).
+    // r30: Responsive grid — auto-fit with minmax(420px, 1fr).
+    // At >=1400px viewport: 3 columns (current behavior).
+    // At 940-1399px: 2 columns, third card wraps to row 2.
+    // At <940px: 1 column, cards stack vertically.
+    // No horizontal overflow/clipping at any width. No JS resize listener
+    // needed — CSS auto-fit handles it natively.
     var strip = el('div', {
       style: {
         display: 'grid',
-        gridTemplateColumns: 'repeat(3, 1fr)',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(420px, 1fr))',
         gap: '10px',
-        alignItems: 'start',   // cards align to top; taller one defines row height
-        flex: '0 0 auto'
+        alignItems: 'start',
+        flex: '0 0 auto',
+        minWidth: 0,  // lets the grid shrink instead of overflowing
       }
     });
 
@@ -7399,8 +7435,7 @@
         }
       }, 'No top trades match "' + filter + '". Try secondary scanner below.'));
     } else if (filter) {
-      // Filtered view: show all matching (may be >3 — wrap to new rows)
-      strip.style.gridTemplateColumns = 'repeat(3, 1fr)';
+      // Filtered view: same responsive grid, allows wrap for >3 matches
       strip.style.gridAutoRows = 'min-content';
       displayTrades.forEach(function (t) { strip.appendChild(tradeCard(t)); });
     } else {
@@ -7629,6 +7664,28 @@
         alignSelf: 'center', minWidth: '72px', flex: '0 0 auto'
       }
     });
+    // r30: Hover tooltip explaining what confidence means + factor breakdown
+    // Reads from trade.factors populated by _unifiedScore (8-signal weighted).
+    // Prevents users treating the number as a win-probability guarantee.
+    var _confTooltip;
+    try {
+      var f = trade.factors || {};
+      _confTooltip = 'Confidence: ' + trade.confidence + '% (8-signal weighted score)\n\n';
+      if (typeof f.price === 'number') _confTooltip += '• Price Action: ' + f.price.toFixed(0) + '\n';
+      if (typeof f.vwap === 'number') _confTooltip += '• VWAP align:   ' + f.vwap.toFixed(0) + '\n';
+      if (typeof f.volume === 'number') _confTooltip += '• Volume:       ' + f.volume.toFixed(0) + '\n';
+      if (typeof f.momentum === 'number') _confTooltip += '• Momentum:     ' + f.momentum.toFixed(0) + '\n';
+      if (typeof f.liquidity === 'number') _confTooltip += '• Liquidity:    ' + f.liquidity.toFixed(0) + '\n';
+      if (typeof f.context === 'number') _confTooltip += '• VIX context:  ' + f.context.toFixed(0) + '\n';
+      if (typeof f.options === 'number') _confTooltip += '• Options OI:   ' + f.options.toFixed(0) + '\n';
+      if (typeof f.gamma === 'number') _confTooltip += '• Gamma:        ' + f.gamma.toFixed(0) + '\n';
+      _confTooltip += '\nNOTE: This is a scoring signal, not a win-rate guarantee.';
+      if (subLabel) _confTooltip += '\nCalibration: ' + subLabel;
+    } catch (e) {
+      _confTooltip = 'Confidence: ' + trade.confidence + '% (unified score)';
+    }
+    confCell.title = _confTooltip;
+    confCell.style.cursor = 'help';
     confCell.appendChild(el('div', {
       className: 'at-fade at-fade-' + (state.fadeTick || 0),
       style: {
@@ -8091,17 +8148,20 @@
     // ════════════════════════════════════════════════════════════════════
     if (!isExpanded) {
       // Data provenance badge still shows on collapsed cards (small, corner)
+      // r30: skip when no real provenance data — prevents "unknown · age ?"
       try {
         var _cpProvLabel = dataProvenance.badge(trade._raw || {});
-        var _cpProvCol = dataProvenance.badgeColor(trade._raw || {});
-        card.appendChild(el('div', {
-          title: 'Data provenance: vendor · latency · OI age',
-          style: {
-            position: 'absolute', bottom: '3px', right: '8px',
-            fontSize: '8px', color: _cpProvCol, fontFamily: MONO,
-            opacity: 0.65, letterSpacing: '0.2px', pointerEvents: 'none'
-          }
-        }, _cpProvLabel));
+        if (_cpProvLabel) {
+          var _cpProvCol = dataProvenance.badgeColor(trade._raw || {});
+          card.appendChild(el('div', {
+            title: 'Data provenance: vendor · latency · OI age',
+            style: {
+              position: 'absolute', bottom: '3px', right: '8px',
+              fontSize: '8px', color: _cpProvCol, fontFamily: MONO,
+              opacity: 0.65, letterSpacing: '0.2px', pointerEvents: 'none'
+            }
+          }, _cpProvLabel));
+        }
       } catch (e) {}
       return card;
     }
@@ -8242,18 +8302,23 @@
     card.appendChild(trendRow);
 
     // Data provenance badge (bottom-right absolute — works in both flex and grid layouts)
+    // r30: only render when there's actual vendor/latency data; prevents the
+    // misleading "unknown · age ?" tag on cards where backend didn't supply
+    // provenance metadata.
     try {
       var provLabel = dataProvenance.badge(trade._raw || {});
-      var provCol = dataProvenance.badgeColor(trade._raw || {});
-      card.appendChild(el('div', {
-        title: 'Data provenance: vendor · latency · OI age',
-        style: {
-          position: 'absolute', bottom: '4px', right: '8px',
-          fontSize: '9px', color: provCol, fontFamily: MONO,
-          opacity: 0.75, letterSpacing: '0.2px', pointerEvents: 'none',
-          fontWeight: 700
-        }
-      }, provLabel));
+      if (provLabel) {
+        var provCol = dataProvenance.badgeColor(trade._raw || {});
+        card.appendChild(el('div', {
+          title: 'Data provenance: vendor · latency · OI age',
+          style: {
+            position: 'absolute', bottom: '4px', right: '8px',
+            fontSize: '9px', color: provCol, fontFamily: MONO,
+            opacity: 0.75, letterSpacing: '0.2px', pointerEvents: 'none',
+            fontWeight: 700
+          }
+        }, provLabel));
+      }
     } catch (e) {}
 
     return card;
@@ -10653,62 +10718,265 @@
 
     var box = el('div', {
       style: {
-        height: '72px', padding: '6px', background: C.card,
+        minHeight: '72px', padding: '6px 8px', background: C.card,
         borderBottom: '1px solid ' + C.divider,
-        display: 'flex', flexDirection: 'column', justifyContent: 'space-between'
+        display: 'flex', flexDirection: 'column', gap: '4px',
       }
     });
 
-    // Row 1: ENTRY + pill + countdown
-    var row1 = el('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' } });
-    var left = el('div', { style: { display: 'flex', alignItems: 'center', gap: '6px' } }, [
-      el('span', { style: { fontSize: '10px', fontWeight: 800, color: C.textMute, letterSpacing: '1.2px' } }, 'ENTRY'),
-      el('span', {
-        style: {
-          fontSize: '11px', fontWeight: 800, padding: '2px 8px', borderRadius: '999px',
-          background: status.color + '22', color: status.color,
-          border: '1px solid ' + status.color + '55', letterSpacing: '0.5px'
-        }
-      }, status.dot + ' ' + status.label)
-    ]);
-    row1.appendChild(left);
-    row1.appendChild(el('div', {
-      'data-countdown': '1',
-      style: { fontSize: '10px', color: C.textMute, fontWeight: 700, fontFamily: MONO, letterSpacing: '1px' }
-    }, 'Next Evaluation In: ' + state.countdown));
-    box.appendChild(row1);
-
-    // Basis: underlying spot is what we wait on (not the option premium)
-    box.appendChild(el('div', {
-      style: { fontSize: '10px', color: C.textMute, fontFamily: MONO, letterSpacing: '0.3px', marginTop: '-2px' }
-    }, 'Basis: Underlying spot vs trigger level'));
-
-    // Row 2: trigger + current — spec §5.2 format: "Break above 243.50"
-    // Both sides now honestly describe spot movement:
-    //   CE → "Break above X"  (we want spot to rise through trigger)
-    //   PE → "Break below X"  (we want spot to fall through trigger)
-    var triggerVerb = t.side === 'PE' ? 'Break below' : 'Break above';
-    var triggerLine = el('div', {
-      style: { fontSize: '12px', color: C.textSec, lineHeight: 1.2, fontFamily: MONO }
+    // r31: Previous version spent 72px showing static text ("Basis: Underlying
+    // spot vs trigger level") and a countdown already visible in the header.
+    // Now: single compact status strip (~18px) + multi-timeframe sparklines
+    // (~48px) showing spot trend across 4 horizons. This is institutional-
+    // standard top-down context for the selected trade.
+    //
+    // Timeframes are derived from the existing 5m bars by resampling (no new
+    // backend calls, no rate-limit impact):
+    //   - 5m:   last 12 bars (~1 hr)
+    //   - 15m:  groups of 3 bars (~3 hrs)
+    //   - 30m:  groups of 6 bars (~6 hrs)
+    //   - Full: all available bars (full session)
+    
+    // ── Row 1: compact status strip ──────────────────────────────────────
+    var statusStrip = el('div', {
+      style: {
+        display: 'flex', alignItems: 'center', gap: '8px',
+        fontSize: '11px', fontFamily: MONO,
+      },
+      title: 'ENTRY status · Basis: underlying spot vs trigger. ' +
+             'Click for full details.'
     });
-    triggerLine.appendChild(document.createTextNode('Trigger: '));
-    var triggerTxt = (t.trigger != null)
-      ? triggerVerb + ' ' + t.trigger.toFixed(2)
-      : triggerVerb + ' —';
-    triggerLine.appendChild(el('span', { style: { color: C.textPri } }, triggerTxt));
-    triggerLine.appendChild(document.createTextNode('   ·   Spot: '));
-    triggerLine.appendChild(el('span', { style: { color: status.color } },
-      (sp != null ? sp.toFixed(2) : '—') + ' → ' + status.label.toLowerCase()));
-    box.appendChild(triggerLine);
-
-    // Row 3: distance bar
-    var bar = el('div', { style: { height: '4px', background: C.active, borderRadius: '2px', overflow: 'hidden' } });
+    statusStrip.appendChild(el('span', {
+      style: {
+        fontSize: '10px', fontWeight: 800, padding: '2px 7px',
+        borderRadius: '999px', background: status.color + '22',
+        color: status.color, border: '1px solid ' + status.color + '55',
+        letterSpacing: '0.4px', whiteSpace: 'nowrap'
+      }
+    }, status.dot + ' ' + status.label));
+    // Trigger summary inline
+    var triggerVerb = t.side === 'PE' ? '↓' : '↑';
+    if (hasTrigger) {
+      statusStrip.appendChild(el('span', {
+        style: { color: C.textSec, fontSize: '10px' }
+      }, 'Spot ' + sp.toFixed(2) + ' ' + triggerVerb + ' ' + t.trigger.toFixed(2)));
+      // Distance in % (signed relative to trigger direction)
+      var distPctSigned = ((sp - t.trigger) / t.trigger) * 100;
+      // For CE we need spot>trigger (positive); for PE we need spot<trigger (negative)
+      var favorable = (t.side === 'CE' && distPctSigned >= 0) ||
+                       (t.side === 'PE' && distPctSigned <= 0);
+      var distColor = favorable ? C.green : (Math.abs(distPctSigned) < 0.5 ? C.orange : C.red);
+      statusStrip.appendChild(el('span', {
+        style: { color: distColor, fontSize: '10px', fontWeight: 700 }
+      }, (distPctSigned >= 0 ? '+' : '') + distPctSigned.toFixed(2) + '%'));
+    }
+    // Distance bar (compact — now inline in strip)
+    var bar = el('div', {
+      style: {
+        flex: 1, height: '4px', background: C.active + '88',
+        borderRadius: '2px', overflow: 'hidden', minWidth: '40px',
+      }
+    });
     bar.appendChild(el('div', {
       style: { width: (pct * 100) + '%', height: '100%', background: status.color, transition: 'width 600ms ease' }
     }));
-    box.appendChild(bar);
+    statusStrip.appendChild(bar);
+    // Countdown (kept — short, useful)
+    statusStrip.appendChild(el('span', {
+      'data-countdown': '1',
+      style: { fontSize: '9px', color: C.textMute, fontFamily: MONO, whiteSpace: 'nowrap' }
+    }, state.countdown));
+    box.appendChild(statusStrip);
+    
+    // ── Row 2: Multi-timeframe sparklines ────────────────────────────────
+    box.appendChild(_renderTimeframesStrip(t));
 
     return box;
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // MULTI-TIMEFRAME SPARKLINES (r31)
+  //
+  // Derives 4 horizons from the existing 5m OHLC bars by resampling —
+  // no new backend calls, respects circuit-breaker / rate-limit reality.
+  //
+  //   - 5m:   last 12 bars (~1 hr)  — microstructure, current swing
+  //   - 15m:  groups of 3 bars (~3 hrs) — session trend  
+  //   - 30m:  groups of 6 bars (~6 hrs) — day's direction
+  //   - Full: all bars                 — full day
+  //
+  // Each sparkline shows:
+  //   - Filled area chart (green/red by net direction)
+  //   - Trigger line if spot/trigger in range (dashed orange)
+  //   - First/last price labels
+  //   - Hover tooltip with detailed stats
+  //
+  // Purpose: institutional-standard "top-down" context. Hougaard, every
+  // pro desk, every HFT team: check higher timeframes BEFORE taking a
+  // trade. Putting it inline removes the friction of clicking to charts.
+  // ═══════════════════════════════════════════════════════════════════════
+  function _resampleBars(bars, groupSize) {
+    if (!Array.isArray(bars) || bars.length === 0) return [];
+    if (groupSize <= 1) return bars.slice();
+    var out = [];
+    for (var i = 0; i < bars.length; i += groupSize) {
+      var group = bars.slice(i, i + groupSize);
+      if (group.length === 0) continue;
+      // Aggregate: open = first open, close = last close, high/low = extremes
+      var o = (group[0].o != null) ? group[0].o : group[0].open;
+      var c = (group[group.length - 1].c != null) ? group[group.length - 1].c : group[group.length - 1].close;
+      var h = -Infinity, l = Infinity, v = 0;
+      group.forEach(function (b) {
+        var bh = (b.h != null) ? b.h : b.high;
+        var bl = (b.l != null) ? b.l : b.low;
+        var bv = (b.v != null) ? b.v : (b.volume || 0);
+        if (bh != null && bh > h) h = bh;
+        if (bl != null && bl < l) l = bl;
+        v += bv;
+      });
+      if (h === -Infinity) h = c;
+      if (l === Infinity) l = c;
+      out.push({ o: o, h: h, l: l, c: c, v: v });
+    }
+    return out;
+  }
+  
+  function _miniSparkline(bars, label, trigger, width) {
+    var H = 36;
+    var cell = el('div', {
+      style: {
+        flex: '1 1 0', minWidth: 0,
+        display: 'flex', flexDirection: 'column',
+        border: '1px solid ' + C.divider, borderRadius: '4px',
+        background: C.card, overflow: 'hidden',
+      }
+    });
+    // Extract closes
+    var closes = bars.map(function (b) {
+      return (b.c != null) ? b.c : (b.close != null ? b.close : null);
+    }).filter(function (v) { return v != null && !isNaN(v); });
+    
+    var labelRow = el('div', {
+      style: {
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        padding: '2px 5px', fontSize: '8px', fontFamily: MONO,
+        color: C.textMute, fontWeight: 800, letterSpacing: '0.5px',
+      }
+    });
+    labelRow.appendChild(el('span', {}, label));
+    
+    if (closes.length < 2) {
+      labelRow.appendChild(el('span', { style: { color: C.textMute } }, '—'));
+      cell.appendChild(labelRow);
+      cell.appendChild(el('div', {
+        style: {
+          height: H + 'px',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontSize: '9px', color: C.textMute, fontStyle: 'italic'
+        }
+      }, 'no data'));
+      return cell;
+    }
+    
+    var first = closes[0], last = closes[closes.length - 1];
+    var changePct = ((last - first) / first) * 100;
+    var isUp = last >= first;
+    var lineColor = isUp ? C.green : C.red;
+    
+    labelRow.appendChild(el('span', {
+      style: { color: lineColor, fontWeight: 800 }
+    }, (changePct >= 0 ? '+' : '') + changePct.toFixed(2) + '%'));
+    cell.appendChild(labelRow);
+    
+    var min = Math.min.apply(null, closes);
+    var max = Math.max.apply(null, closes);
+    if (trigger != null && !isNaN(trigger)) {
+      min = Math.min(min, trigger);
+      max = Math.max(max, trigger);
+    }
+    var range = Math.max(max - min, 0.0001);
+    
+    var W = width || 100;  // placeholder; CSS flex handles real width
+    var PAD = 1;
+    var innerW = W - PAD * 2;
+    var innerH = H - PAD * 2;
+    function xAt(i) { return PAD + (i / (closes.length - 1)) * innerW; }
+    function yAt(v) { return PAD + innerH - ((v - min) / range) * innerH; }
+    
+    var pathD = closes.map(function (v, i) {
+      return (i === 0 ? 'M' : 'L') + xAt(i).toFixed(1) + ',' + yAt(v).toFixed(1);
+    }).join(' ');
+    var areaD = pathD + ' L' + xAt(closes.length - 1).toFixed(1) + ',' + (H - PAD) +
+                ' L' + xAt(0).toFixed(1) + ',' + (H - PAD) + ' Z';
+    
+    var svgParts = [];
+    svgParts.push('<svg viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none" ' +
+                  'width="100%" height="' + H + '" style="display:block">');
+    svgParts.push('<path d="' + areaD + '" fill="' + lineColor + '22"/>');
+    // Trigger line if in range
+    if (trigger != null && trigger >= min && trigger <= max) {
+      var ty = yAt(trigger);
+      svgParts.push('<line x1="0" y1="' + ty.toFixed(1) + '" x2="' + W +
+                    '" y2="' + ty.toFixed(1) + '" stroke="' + C.orange +
+                    '" stroke-width="0.6" stroke-dasharray="3 2" opacity="0.8"/>');
+    }
+    svgParts.push('<path d="' + pathD + '" fill="none" stroke="' + lineColor +
+                  '" stroke-width="1.1" stroke-linejoin="round" stroke-linecap="round"/>');
+    // End-point dot
+    svgParts.push('<circle cx="' + xAt(closes.length - 1).toFixed(1) +
+                  '" cy="' + yAt(last).toFixed(1) + '" r="1.5" fill="' + lineColor + '"/>');
+    svgParts.push('</svg>');
+    
+    var svgHost = el('div', {
+      title: label + ' · ' + closes.length + ' bars · ' +
+             first.toFixed(2) + ' → ' + last.toFixed(2) +
+             ' (' + (changePct >= 0 ? '+' : '') + changePct.toFixed(2) + '%)' +
+             (trigger != null ? ' · trigger ' + trigger.toFixed(2) : ''),
+      style: { height: H + 'px', position: 'relative', cursor: 'help' }
+    });
+    svgHost.innerHTML = svgParts.join('');
+    cell.appendChild(svgHost);
+    return cell;
+  }
+  
+  function _renderTimeframesStrip(t) {
+    var bars = (t && t._raw && Array.isArray(t._raw.ohlc_bars)) ? t._raw.ohlc_bars : [];
+    var row = el('div', {
+      style: {
+        display: 'flex', gap: '6px', alignItems: 'stretch',
+      }
+    });
+    
+    if (bars.length < 2) {
+      row.appendChild(el('div', {
+        style: {
+          flex: 1, padding: '8px 10px',
+          fontSize: '10px', color: C.textMute, fontStyle: 'italic',
+          textAlign: 'center',
+          border: '1px dashed ' + C.divider, borderRadius: '4px',
+        }
+      }, 'Waiting for OHLC bars — multi-timeframe view activates when data flows'));
+      return row;
+    }
+    
+    var trigger = (t && t.trigger) ? t.trigger : null;
+    
+    // 5m — last 12 bars
+    var bars5m = bars.slice(-12);
+    row.appendChild(_miniSparkline(bars5m, '5m · 1h', trigger));
+    
+    // 15m — resample
+    var bars15m = _resampleBars(bars, 3).slice(-12);
+    row.appendChild(_miniSparkline(bars15m, '15m · 3h', trigger));
+    
+    // 30m — resample
+    var bars30m = _resampleBars(bars, 6).slice(-12);
+    row.appendChild(_miniSparkline(bars30m, '30m · 6h', trigger));
+    
+    // Full session
+    row.appendChild(_miniSparkline(bars, 'Session', trigger));
+    
+    return row;
   }
 
   function renderOptionChain() {
@@ -12095,7 +12363,7 @@
     timers.countdown = setInterval(function () {
       state.countdown = formatCountdown(msUntilNext90s());
       var countEl = document.querySelector('#activeTradingMount [data-countdown]');
-      if (countEl) countEl.textContent = 'Next Evaluation In: ' + state.countdown;
+      if (countEl) countEl.textContent = state.countdown;
       // Scanner "Last Updated" label (spec §9)
       var lastUpEl = document.querySelector('#activeTradingMount [data-last-up]');
       if (lastUpEl && state.lastFullRefreshAt) {
