@@ -4693,7 +4693,7 @@ _bottom_nav_busy = set()
 _bottom_nav_busy_since = {}  # { reg: time_set } — stuck-flag defense. If a flag is older than _BUSY_MAX_AGE we force-clear it because the thread presumably crashed outside the try/finally.
 _BUSY_MAX_AGE = 180          # seconds. Longer than any realistic scan (~25s) + safety margin.
 _CACHE_TTL_IN = 300          # India: NSE is reliable, refresh every 5min.
-_CACHE_TTL_US = 180          # US: Yahoo needs breathing room between bursts.
+_CACHE_TTL_US = 300          # US: 5min matches IN, gives Yahoo breathing room (was 180s).
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -5148,24 +5148,26 @@ def _run_bottom_nav_scan(reg):
             "IRCTC","PAYTM","ZOMATO","TRENT","CUMMINSIND","PERSISTENT","COFORGE",
             "NIFTYBEES","BANKBEES","GOLDBEES","SILVERBEES","ITBEES","MOM50","CPSE"]
         
+        # ══════════════════════════════════════════════════════════════
+        # US UNIVERSE — REDUCED TO 15 CORE LIQUID TICKERS (r15).
+        #
+        # Yahoo rate-limits by IP; on Render's shared-IP hosting, scanning
+        # 96 tickers × ~3 Yahoo HTTP requests per chain = ~300 requests per
+        # scan, which triggers 429s every single scan. Shrinking to 15 of
+        # the highest-daily-options-volume names (biggest ETFs + mega-caps +
+        # SOXX/SMH/XLK since options flow is concentrated there) reduces
+        # volume to ~45 requests per scan. Still not zero 429s, but rare.
+        #
+        # If you want different names, swap here. Keep the total ≤ 20.
+        # ══════════════════════════════════════════════════════════════
         us_yf_map = {
-            "SPY":"SPY","QQQ":"QQQ","IWM":"IWM","DIA":"DIA",
-            "TQQQ":"TQQQ","SQQQ":"SQQQ","SOXL":"SOXL","LABU":"LABU","SPXL":"SPXL","UPRO":"UPRO",
-            "TLT":"TLT","HYG":"HYG","LQD":"LQD","TIP":"TIP",
-            "GLD":"GLD","SLV":"SLV","GDX":"GDX","GDXJ":"GDXJ","PPLT":"PPLT",
-            "USO":"USO","UNG":"UNG","DBA":"DBA","UVXY":"UVXY","VXX":"VXX",
-            "IBIT":"IBIT","BITO":"BITO","MSTR":"MSTR",
-            "XLK":"XLK","XLF":"XLF","XLE":"XLE","XLV":"XLV","XBI":"XBI","XLI":"XLI","XLP":"XLP","XLU":"XLU","XLC":"XLC",
-            "SMH":"SMH","SOXX":"SOXX",
-            "ARKK":"ARKK","ARKW":"ARKW","ARKQ":"ARKQ",
-            "EEM":"EEM","EFA":"EFA","FXI":"FXI","KWEB":"KWEB","EWZ":"EWZ","EWJ":"EWJ",
-            "KRE":"KRE","KBE":"KBE","HACK":"HACK","WCLD":"WCLD","MTUM":"MTUM",
-            "VTI":"VTI","VOO":"VOO","SCHD":"SCHD","RSP":"RSP",
-            "AAPL":"AAPL","MSFT":"MSFT","NVDA":"NVDA","TSLA":"TSLA","META":"META","AMZN":"AMZN","GOOGL":"GOOGL","AMD":"AMD",
-            "COIN":"COIN","PLTR":"PLTR","NFLX":"NFLX","CRM":"CRM","UBER":"UBER","SOFI":"SOFI","SMCI":"SMCI","ARM":"ARM",
-            "AVGO":"AVGO","BA":"BA","JPM":"JPM","V":"V","LLY":"LLY","UNH":"UNH","XOM":"XOM","MU":"MU",
-            "ABNB":"ABNB","PANW":"PANW","CRWD":"CRWD","MRVL":"MRVL","ORCL":"ORCL","ADBE":"ADBE","DELL":"DELL","LRCX":"LRCX",
-            "PYPL":"PYPL","DASH":"DASH","NOW":"NOW","SNOW":"SNOW","SHOP":"SHOP","SQ":"SQ","RIVN":"RIVN","HOOD":"HOOD"
+            # Big-index ETFs
+            "SPY":"SPY", "QQQ":"QQQ", "IWM":"IWM", "DIA":"DIA",
+            # Mega-cap tech
+            "NVDA":"NVDA", "TSLA":"TSLA", "AAPL":"AAPL", "MSFT":"MSFT",
+            "META":"META", "AMZN":"AMZN", "GOOGL":"GOOGL", "AMD":"AMD",
+            # Sector / semi
+            "SMH":"SMH", "SOXX":"SOXX", "XLK":"XLK",
         }
         
         if reg == "IN":
@@ -26658,10 +26660,35 @@ async def _options_quick_impl(symbol: str = "NIFTY", region: str = "IN"):
         # ══════════════════════════════════════════════════════════════════
         if is_india and not is_india_index:
             # ══════════════════════════════════════════════════════════════
-            # MoneyControl spot fallback. When NSE fails, MoneyControl's
-            # priceapi still returns spot for most Indian stocks. We get a
-            # real price to show, but we STILL don't fabricate a chain —
-            # the card stays non-tradable (_chain_unavailable:True).
+            # Known-no-options symbols: NSE doesn't list options on most
+            # ETFs (NIFTYBEES, GOLDBEES, SILVERBEES, etc.). Trying them
+            # over and over wastes scan time and pollutes logs. Drop them
+            # silently — they're in the scan universe for *price* tracking
+            # on other parts of the app, not options trading.
+            # ══════════════════════════════════════════════════════════════
+            _NO_OPTIONS_SYMBOLS = {
+                "NIFTYBEES", "BANKBEES", "GOLDBEES", "SILVERBEES", "ITBEES",
+                "JUNIORBEES", "MOM50", "CPSE", "ICICIB22", "MAFANG",
+            }
+            if sym in _NO_OPTIONS_SYMBOLS:
+                # Silent drop — no error log for expected-empty tickers
+                return {
+                    "success": False,
+                    "error": f"No listed options on NSE for ETF {sym}",
+                    "symbol": sym, "spot": 0,
+                    "_chain_unavailable": True,
+                    "ohlc_bars": [], "chain_near_atm": [], "ce_resistance": [], "pe_support": [],
+                    "gex": {"total": 0, "regime": "NEUTRAL", "topStrikes": [], "flipPoint": 0, "callWall": 0, "putWall": 0}
+                }
+            
+            # ══════════════════════════════════════════════════════════════
+            # MoneyControl spot fallback (r14). When NSE fails for a real
+            # optionable Indian stock (HDFCBANK, RELIANCE, etc.), MC's
+            # priceapi still returns spot. We get a real price to show,
+            # but we STILL don't fabricate a chain — card non-tradable.
+            #
+            # DEFENSIVE (r16 fix): MC returns {"data": null} for unknown
+            # symbols. Must not assume dict-shape; every access guarded.
             # ══════════════════════════════════════════════════════════════
             mc_spot = 0
             try:
@@ -26671,10 +26698,17 @@ async def _options_quick_impl(symbol: str = "NIFTY", region: str = "IN"):
                     'Referer': 'https://www.moneycontrol.com/'
                 }, timeout=5)
                 if mc_r.status_code == 200:
-                    mc_data = mc_r.json().get("data", {})
-                    mc_spot = float(mc_data.get("pricecurrent", 0) or 0)
+                    mc_json = mc_r.json() or {}
+                    # MC may return {"data": null} for unknown symbols.
+                    # "or {}" guards against None; get() is then safe.
+                    mc_data = mc_json.get("data") or {}
+                    if isinstance(mc_data, dict):
+                        try:
+                            mc_spot = float(mc_data.get("pricecurrent", 0) or 0)
+                        except (TypeError, ValueError):
+                            mc_spot = 0
             except Exception as mce:
-                print(f"[OPTIONS-QUICK] {sym}: MC fallback also failed: {mce}")
+                print(f"[OPTIONS-QUICK] {sym}: MC fallback also failed: {type(mce).__name__}: {mce}")
             
             if mc_spot > 0:
                 print(f"[OPTIONS-QUICK] {sym}: NSE failed, MoneyControl gave spot={mc_spot}. No chain — card will be non-tradable.")
@@ -26870,18 +26904,36 @@ async def _options_quick_impl(symbol: str = "NIFTY", region: str = "IN"):
         # Trigger, R:R, Kelly sizing, and attribution — every number on the
         # trade card becomes a lie.
         #
-        # Return success:False so the bottom-nav scanner drops this ticker.
-        # See celesys core principle: no fake assumptions.
+        # r15: Before giving up, if we also lack spot (Yahoo fully failed),
+        # try Google Finance as a spot-only fallback. The card will still
+        # be non-tradable (_chain_unavailable: True), but at least users
+        # see the current price instead of a card disappearing entirely.
         # ══════════════════════════════════════════════════════════════════
+        _spot_source = "yahoo"  # default; will flip to "google_finance" if GF fallback used
+        if region == 'US' and spot <= 0 and len(chain_data) == 0:
+            try:
+                gf_exchange = _gf_resolve_exchange(sym)
+                gf_data = _gf_fetch_spot(sym, gf_exchange)
+                if gf_data and gf_data.get("spot"):
+                    spot = float(gf_data["spot"])
+                    day_high = gf_data.get("day_high") or day_high or spot
+                    day_low = gf_data.get("day_low") or day_low or spot
+                    prev_close = gf_data.get("prev_close") or prev_close or spot
+                    _spot_source = "google_finance"
+                    print(f"[OPTIONS-QUICK] {sym}: Yahoo failed, Google Finance gave spot={spot}. No chain — card will be non-tradable.")
+            except Exception as gfe:
+                print(f"[OPTIONS-QUICK] {sym}: Google Finance fallback also failed: {gfe}")
+        
         if spot > 0 and len(chain_data) == 0:
-            print(f"[SYNTH-PREMIUM-BLOCKED] {sym}: Yahoo returned spot={spot} but no option chain → dropping ticker. Refusing to fabricate premiums.")
+            print(f"[SYNTH-PREMIUM-BLOCKED] {sym}: spot={spot} from {_spot_source} but no option chain → non-tradable SPOT-ONLY card. Refusing to fabricate premiums.")
             return {
                 "success": False,
-                "error": "Option chain unavailable for " + sym + " — refusing to fabricate premiums",
+                "error": "Option chain unavailable for " + sym + " — SPOT-ONLY mode",
                 "symbol": sym,
                 "spot": round(spot, 2),
                 "region": region,
                 "_chain_unavailable": True,
+                "_spot_source": _spot_source,
                 "ohlc_bars": [], "chain_near_atm": [], "ce_resistance": [], "pe_support": [],
                 "gex": {"total": 0, "regime": "NEUTRAL", "topStrikes": [], "flipPoint": 0, "callWall": 0, "putWall": 0}
             }

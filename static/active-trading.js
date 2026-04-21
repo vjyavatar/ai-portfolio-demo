@@ -10186,7 +10186,14 @@
         state.dataStale = d._stale === true;
         state.lastScanEmpty = d._last_scan_empty === true;
         if (raw.length === 0) {
-          state.lastFetchMsg = 'Scanner still warming up (boot takes ~30s) — retrying';
+          // Differentiate: actual cold boot (no scan has run) vs
+          // scan completed but returned zero tickers. Backend r10+
+          // sets _last_scan_empty=true on the second case.
+          if (state.lastScanEmpty) {
+            state.lastFetchMsg = 'No trade opportunities right now — scanner found 0/47. Data sources may be rate-limited or market is quiet.';
+          } else {
+            state.lastFetchMsg = 'Scanner warming up (first boot takes ~30s) — retrying';
+          }
           state.trades = []; state.scanner = [];
           rerender(); return;
         }
