@@ -343,6 +343,9 @@
         sym: trade.symbol, strike: trade.strike, side: trade.side,
         score: trade.confidence, state: trade.state, reason: trade.reason,
         entryPremium: trade.price,
+        // r29: capture underlying spot at entry so sparkline can draw an
+        // entry reference line. Falls back to null when unavailable.
+        entrySpot: (trade._raw && trade._raw.spot) ? trade._raw.spot : null,
         sl: trade.sl, target: trade.target, trigger: trade.trigger,
         slPct: trade.slPct, tgtPct: trade.tgtPct, slBasis: trade.slBasis,
         lot: trade.lot,
@@ -1272,8 +1275,15 @@
       var concurrent = 0, todayClosed = 0, todayPnlPct = 0, peakPnl = 0;
       var runningPnl = 0, minRunning = 0;
       var todays = [];
+      // r28 bugfix: scope stats to the currently-viewed region. Before,
+      // a US position's P&L could block IN trades via the drawdown cap.
+      // Each region has its own risk budget. window.state may not exist
+      // in tests, so default to counting everything when unknown.
+      var activeRegion = (typeof state !== 'undefined' && state && state.region) || null;
       for (var id in paperPortfolio.positions) {
         var p = paperPortfolio.positions[id];
+        // Skip positions from other regions (when region is known and position has region)
+        if (activeRegion && p.region && p.region !== activeRegion) continue;
         if (p.status === 'pending' || p.status === 'active') concurrent++;
         if (p.closedAt && p.closedAt >= dayStart.getTime() &&
             (p.status === 'won' || p.status === 'lost')) {
@@ -1493,20 +1503,40 @@
           sl: p.sl, target: p.target, pctChg: pctChg, pnlRupees: pnlRupees,
           progress: progress, lots: lots, currency: p.currency,
           elapsedMin: elapsedMin, elapsedSec: elapsedSec,
-          highWater: p.highWater, lowWater: p.lowWater
+          highWater: p.highWater, lowWater: p.lowWater,
+          // r29: spot bars for sparkline rendering in Live Monitor row.
+          // Falls back to [] when no fresh scan data (can't synthesize).
+          // Also exposes trigger price so chart can draw that horizontal line.
+          ohlcBars: (live && live._raw && Array.isArray(live._raw.ohlc_bars))
+                    ? live._raw.ohlc_bars : [],
+          trigger: p.trigger || null,
+          entrySpot: p.entrySpot || null,
+          currentSpot: (live && live._raw && live._raw.spot) ? live._raw.spot : null,
         });
       }
       return out;
     },
 
     // Manually close an active position at current premium (user-initiated)
+    // r27: PENDING cancellations are distinct from ACTIVE closes.
+    //   - PENDING → 'cancelled' (never triggered; no P&L; excluded from alpha decay)
+    //   - ACTIVE  → 'won' or 'lost' based on exit vs entry premium
     closeNow: function (id, exitPremium, reason) {
       var p = paperPortfolio.positions[id];
       if (!p || (p.status !== 'active' && p.status !== 'pending')) return false;
-      p.status = exitPremium >= p.entryPremium ? 'won' : 'lost';
-      p.closedAt = Date.now();
-      p.exitPremium = exitPremium;
-      p.realizedPct = ((exitPremium - p.entryPremium) / p.entryPremium) * 100;
+      if (p.status === 'pending') {
+        // Trade never triggered — mark as cancelled, no P&L
+        p.status = 'cancelled';
+        p.closedAt = Date.now();
+        p.exitPremium = null;
+        p.realizedPct = null;
+      } else {
+        // Active position — close at current premium, compute P&L
+        p.status = exitPremium >= p.entryPremium ? 'won' : 'lost';
+        p.closedAt = Date.now();
+        p.exitPremium = exitPremium;
+        p.realizedPct = ((exitPremium - p.entryPremium) / p.entryPremium) * 100;
+      }
       p.closeReason = reason || 'manual_close';
       paperPortfolio.save();
       bus.emit('position:closed', p);
@@ -7374,13 +7404,39 @@
       strip.style.gridAutoRows = 'min-content';
       displayTrades.forEach(function (t) { strip.appendChild(tradeCard(t)); });
     } else {
+      // r29: When scanner is blocked (breaker / paused / rate-limited) and
+      // no trades to show, render a SINGLE banner above the strip instead
+      // of showing the same message in each of the 3 empty placeholder
+      // slots. Much cleaner visually — fixes the 3× duplicate banner bug.
+      var hasNoTrades = !state.trades.some(function (t) { return !!t; });
+      var showBanner = hasNoTrades && state.lastFetchMsg && state.loaded;
+      if (showBanner) {
+        // Pick banner color based on state
+        var bannerColor = state.breakerTripped ? C.red
+                       : state.scannerPaused ? C.orange
+                       : state.lastScanEmpty ? C.orange
+                       : C.textMute;
+        panel.appendChild(el('div', {
+          style: {
+            padding: '8px 12px', marginBottom: '8px',
+            border: '1px solid ' + bannerColor + '55',
+            background: bannerColor + '0F',
+            color: bannerColor, borderRadius: '6px',
+            fontSize: '12px', lineHeight: 1.4, fontWeight: 600,
+            textAlign: 'center',
+          }
+        }, state.lastFetchMsg));
+      }
       // Normal: 3 slots, one per column. Placeholder for empty slots.
       for (var i = 0; i < 3; i++) {
         var t = state.trades[i];
         if (!t) {
+          // When banner is shown above, use a minimal placeholder to avoid duplication
           var placeholderText;
           if (!state.loaded) {
             placeholderText = 'Loading…';
+          } else if (showBanner) {
+            placeholderText = '—';  // minimal, banner above carries the message
           } else if (state.lastFetchMsg) {
             placeholderText = state.lastFetchMsg;
           } else {
@@ -7388,10 +7444,12 @@
           }
           strip.appendChild(el('div', {
             style: {
-              minHeight: '72px', borderRadius: '12px',
+              minHeight: showBanner ? '48px' : '72px',
+              borderRadius: '12px',
               border: '1px dashed ' + C.divider, display: 'flex',
               alignItems: 'center', justifyContent: 'center',
-              color: C.textMute, fontSize: '12px', fontStyle: 'italic',
+              color: C.textMute, fontSize: showBanner ? '18px' : '12px',
+              fontStyle: 'italic',
               padding: '0 12px', textAlign: 'center', lineHeight: 1.3
             }
           }, placeholderText));
@@ -7707,23 +7765,73 @@
       // Currently live — pending or active
       var activeLabel = openPos.status === 'active' ? 'LIVE' : 'PENDING';
       var activeBg = openPos.status === 'active' ? C.green : C.orange;
-      buttonNode = el('button', {
+      // r27: Wrap in a flex container so we can add a small × close button
+      // directly on the card. Before this, users had to hunt for the tiny
+      // close button in Live Monitor. Now exit is one click from the card.
+      buttonNode = el('div', {
+        style: {
+          display: 'flex', flexDirection: 'column',
+          gap: '3px', alignSelf: 'center',
+          height: '48px', width: '128px', justifyContent: 'space-between',
+        }
+      });
+      // Main status button (click = view in monitor, same as before)
+      buttonNode.appendChild(el('button', {
         onClick: function (e) {
           e.stopPropagation();
-          // Clicking LIVE selects the trade so user sees it in middle monitor
           selectTrade(trade);
         },
-        title: 'Already executing — click to view in Live Monitor',
+        title: 'Click to view in Live Monitor',
         style: {
-          height: '48px', width: '128px',
+          flex: '1 1 auto',
           background: activeBg + '22',
           color: activeBg,
-          fontWeight: 900, fontSize: '14px',
+          fontWeight: 900, fontSize: '13px',
           border: '1px solid ' + activeBg,
           borderRadius: '6px', cursor: 'pointer',
-          letterSpacing: '0.8px', alignSelf: 'center'
+          letterSpacing: '0.8px',
         }
-      }, '● ' + activeLabel);
+      }, '● ' + activeLabel));
+      // EXIT TRADE button — cancels pending or closes active position at
+      // current premium. Uses tradeMonitor.closeNow which handles both
+      // states correctly (cancel for pending, close-at-current for active).
+      buttonNode.appendChild(el('button', {
+        onClick: (function (posId, tradeRef) {
+          return function (e) {
+            e.stopPropagation();
+            // Confirm before closing — prevents fat-finger losses
+            var sure = window.confirm(
+              (openPos.status === 'pending' ? 'Cancel PENDING ' : 'Exit LIVE ')
+              + tradeRef.symbol + ' ' + tradeRef.strike + '?'
+            );
+            if (!sure) return;
+            // Get current premium from the trade (most recent scan snapshot)
+            var curPrem = tradeRef.price || openPos.entryPremium || 0;
+            try {
+              var closed = tradeMonitor.closeNow(posId, curPrem, 'user_manual_card');
+              if (closed) {
+                pushLog((openPos.status === 'pending' ? 'CANCELLED: ' : 'MANUAL EXIT: ')
+                        + tradeRef.symbol + ' ' + tradeRef.strike, C.blue);
+                rerender();
+              }
+            } catch (err) {
+              console.warn('[ExitTrade] closeNow failed:', err);
+            }
+          };
+        })(openPos.id, trade),
+        title: openPos.status === 'pending'
+          ? 'Cancel this pending trade'
+          : 'Exit this position now at current premium',
+        style: {
+          height: '18px',
+          background: 'transparent',
+          color: C.red,
+          fontSize: '10px', fontWeight: 800,
+          border: '1px solid ' + C.red + '66',
+          borderRadius: '4px', cursor: 'pointer',
+          letterSpacing: '0.5px',
+        }
+      }, openPos.status === 'pending' ? '✕ CANCEL' : '✕ EXIT TRADE'));
     } else if (latestPos && (latestPos.status === 'won' ||
                               latestPos.status === 'lost' ||
                               latestPos.status === 'cancelled' ||
@@ -8160,6 +8268,144 @@
   // This makes the key actionable content visible without scrolling
   // the right-column detail panel. The right column stays for deep dives
   // (Greeks, chain, SMC primitives, etc.).
+  // ═══════════════════════════════════════════════════════════════════════
+  // SPARKLINE (r29)
+  //
+  // Tiny SVG line chart of recent spot prices for a position row.
+  // Shows direction at a glance without opening a modal.
+  // Design choices:
+  //   - Max 30 bars (last 2.5 hrs of 5m data) — more clutters tiny space
+  //   - Green if current >= first, red if lower (net-direction coloring)
+  //   - Entry-price dashed line in blue + trigger dashed line in orange
+  //     so user sees where they entered relative to recent action
+  //   - Renders empty div when bars < 3 (during cold-boot) — doesn't
+  //     reserve blank space then jump when data arrives
+  // ═══════════════════════════════════════════════════════════════════════
+  function _renderSparkline(p) {
+    var bars = p.ohlcBars || [];
+    var W = 240, H = 30, PAD = 1;
+    // Only render when we have meaningful data
+    if (!Array.isArray(bars) || bars.length < 3) {
+      return el('div', {
+        style: {
+          height: H + 'px', marginBottom: '4px',
+          fontSize: '9px', color: C.textMute, fontStyle: 'italic',
+          display: 'flex', alignItems: 'center', justifyContent: 'center'
+        }
+      }, 'Waiting for price history…');
+    }
+    // Take last 30 bars
+    var xs = bars.slice(-30);
+    var prices = xs.map(function (b) {
+      // Support both {c} (close) and {close} shapes
+      var v = (typeof b.c === 'number') ? b.c
+           : (typeof b.close === 'number') ? b.close
+           : null;
+      return v;
+    }).filter(function (v) { return v != null && !isNaN(v); });
+    if (prices.length < 3) {
+      return el('div', {
+        style: { height: H + 'px', marginBottom: '4px' }
+      });
+    }
+    var min = Math.min.apply(null, prices);
+    var max = Math.max.apply(null, prices);
+    // Include entry + trigger in extents if present so lines stay in bounds
+    if (p.entrySpot && p.entrySpot > 0) {
+      min = Math.min(min, p.entrySpot);
+      max = Math.max(max, p.entrySpot);
+    }
+    if (p.trigger && p.trigger > 0) {
+      min = Math.min(min, p.trigger);
+      max = Math.max(max, p.trigger);
+    }
+    var range = max - min;
+    if (range < 0.0001) range = 1;  // flat line guard
+    
+    // Scale to SVG space
+    var innerW = W - PAD * 2;
+    var innerH = H - PAD * 2;
+    function xAt(i) { return PAD + (i / (prices.length - 1)) * innerW; }
+    function yAt(v) { return PAD + innerH - ((v - min) / range) * innerH; }
+    
+    var pathD = prices.map(function (v, i) {
+      return (i === 0 ? 'M' : 'L') + xAt(i).toFixed(1) + ',' + yAt(v).toFixed(1);
+    }).join(' ');
+    
+    // Directional coloring
+    var last = prices[prices.length - 1];
+    var first = prices[0];
+    var isUp = last >= first;
+    var lineColor = isUp ? C.green : C.red;
+    var fillColor = lineColor + '22';
+    
+    // Area under curve (smoothing visual)
+    var areaD = pathD + ' L' + xAt(prices.length - 1).toFixed(1) + ',' + (H - PAD) +
+                ' L' + xAt(0).toFixed(1) + ',' + (H - PAD) + ' Z';
+    
+    // Build SVG as HTML string (more portable across browsers)
+    var svgParts = [];
+    svgParts.push('<svg viewBox="0 0 ' + W + ' ' + H + '" width="100%" height="' + H +
+                  '" preserveAspectRatio="none" style="display:block">');
+    // Area fill
+    svgParts.push('<path d="' + areaD + '" fill="' + fillColor + '"/>');
+    // Entry line (dashed blue)
+    if (p.entrySpot && p.entrySpot > 0) {
+      var ey = yAt(p.entrySpot);
+      svgParts.push('<line x1="0" y1="' + ey.toFixed(1) + '" x2="' + W +
+                    '" y2="' + ey.toFixed(1) + '" stroke="' + C.blue +
+                    '" stroke-width="0.8" stroke-dasharray="3 2" opacity="0.6"/>');
+    }
+    // Trigger line (dashed orange, only for pending)
+    if (p.status === 'pending' && p.trigger && p.trigger > 0) {
+      var ty = yAt(p.trigger);
+      svgParts.push('<line x1="0" y1="' + ty.toFixed(1) + '" x2="' + W +
+                    '" y2="' + ty.toFixed(1) + '" stroke="' + C.orange +
+                    '" stroke-width="0.8" stroke-dasharray="4 3" opacity="0.7"/>');
+    }
+    // Main line
+    svgParts.push('<path d="' + pathD + '" fill="none" stroke="' + lineColor +
+                  '" stroke-width="1.2" stroke-linejoin="round" stroke-linecap="round"/>');
+    // End-point dot
+    var lastX = xAt(prices.length - 1).toFixed(1);
+    var lastY = yAt(last).toFixed(1);
+    svgParts.push('<circle cx="' + lastX + '" cy="' + lastY + '" r="1.8" fill="' + lineColor + '"/>');
+    svgParts.push('</svg>');
+    
+    // Wrap in container with a tiny caption for first / last prices
+    var wrap = el('div', {
+      title: 'Last ' + prices.length + ' bars · first=' + first.toFixed(2) +
+             ' last=' + last.toFixed(2) +
+             (p.entrySpot ? ' · entry=' + p.entrySpot.toFixed(2) : '') +
+             (p.trigger && p.status === 'pending' ? ' · trigger=' + p.trigger.toFixed(2) : ''),
+      style: {
+        position: 'relative', height: H + 'px', marginBottom: '4px',
+        border: '1px solid ' + C.divider, borderRadius: '3px',
+        overflow: 'hidden', background: C.card,
+      }
+    });
+    // Inject SVG via innerHTML (safe — all values are numeric/from our color palette)
+    var host = el('div', { style: { position: 'absolute', inset: '0' } });
+    host.innerHTML = svgParts.join('');
+    wrap.appendChild(host);
+    // Caption overlay — tiny price pills at edges
+    wrap.appendChild(el('span', {
+      style: {
+        position: 'absolute', left: '4px', top: '2px',
+        fontSize: '8px', color: C.textMute, fontFamily: MONO,
+        background: C.card + 'CC', padding: '0 3px', borderRadius: '2px'
+      }
+    }, first.toFixed(2)));
+    wrap.appendChild(el('span', {
+      style: {
+        position: 'absolute', right: '4px', top: '2px',
+        fontSize: '8px', color: lineColor, fontFamily: MONO, fontWeight: 800,
+        background: C.card + 'CC', padding: '0 3px', borderRadius: '2px'
+      }
+    }, last.toFixed(2) + ' ' + (isUp ? '▲' : '▼')));
+    return wrap;
+  }
+
   function renderLiveMonitor() {
     var panel = el('div', {
       style: {
@@ -9618,6 +9864,11 @@
         el('span', { style: { color: pnlColor, fontWeight: 700 } },
           (p.pctChg >= 0 ? '+' : '') + p.pctChg.toFixed(2) + '%')
       ]));
+      // r29: Sparkline — spot price over recent bars. Shows direction at
+      // a glance right on the position row. Green/red coloring based on
+      // first-to-last delta. Renders nothing when bars < 3 (keeps layout
+      // clean during cold-boot).
+      row.appendChild(_renderSparkline(p));
       // Line 3: progress bar SL → Target
       var progWrap = el('div', {
         style: {
@@ -9658,20 +9909,28 @@
         onClick: (function (posId, curPrem) {
           return function (e) {
             e.stopPropagation();
+            // Confirm before closing
+            var sure = window.confirm(
+              (p.status === 'pending' ? 'Cancel PENDING ' : 'Exit LIVE ')
+              + p.sym + ' ' + p.strike + '?'
+            );
+            if (!sure) return;
             if (tradeMonitor.closeNow(posId, curPrem, 'user_manual')) {
-              pushLog('MANUAL CLOSE: ' + p.sym + ' ' + p.strike + ' @ ' +
+              pushLog((p.status === 'pending' ? 'CANCELLED: ' : 'MANUAL CLOSE: ')
+                      + p.sym + ' ' + p.strike + ' @ ' +
                       p.currency + curPrem.toFixed(2), C.blue);
               rerender();
             }
           };
         })(p.id, p.currentPremium),
+        title: p.status === 'pending' ? 'Cancel pending trade' : 'Exit position now',
         style: {
-          padding: '2px 8px', fontSize: '9px', fontWeight: 700,
-          background: 'transparent', color: C.blue,
-          border: '1px solid ' + C.blue + '55', borderRadius: '3px',
-          cursor: 'pointer'
+          padding: '4px 12px', fontSize: '11px', fontWeight: 800,
+          background: C.red + '12', color: C.red,
+          border: '1px solid ' + C.red + '66', borderRadius: '4px',
+          cursor: 'pointer', letterSpacing: '0.3px',
         }
-      }, 'Close'));
+      }, p.status === 'pending' ? '✕ CANCEL' : '✕ EXIT'));
       row.appendChild(footer);
 
       wrap.appendChild(row);
@@ -11452,6 +11711,11 @@
         for (var posId in paperPortfolio.positions) {
           var pos = paperPortfolio.positions[posId];
           if (pos.status !== 'pending' && pos.status !== 'active') continue;
+          // r28 bugfix: only show positions from the currently-selected region.
+          // Without this, a US MSFT position bleeds into the IN (NIFTY) view
+          // when the user switches regions. Positions stored in other regions
+          // still exist and will reappear when that region is selected.
+          if (pos.region && pos.region !== state.region) continue;
           // Prefer the fresh trade from mapped
           var freshHeld = mapped.filter(function (m) { return m.id === pos.tradeId; })[0];
           if (freshHeld) {
