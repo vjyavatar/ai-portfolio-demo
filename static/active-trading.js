@@ -7026,9 +7026,16 @@
       return chip;
     }
     priceRow.appendChild(priceChip('SPOT',   spotVal != null ? spotVal.toFixed(2) : '—'));
-    priceRow.appendChild(priceChip('BUY',    currency + trade.price.toFixed(2)));
-    priceRow.appendChild(priceChip('SL',     currency + trade.sl.toFixed(2), C.red));
-    priceRow.appendChild(priceChip('TARGET', currency + trade.target.toFixed(2), C.green));
+    // Defensive formatters — for spot-only cards (price/sl/target=0) show "—"
+    // instead of $0.00. Also guards against any other render path that might
+    // pass through an undefined — will never throw on toFixed of undefined.
+    var _fmt = function (v) {
+      if (v == null || v === 0 || isNaN(v)) return '—';
+      return currency + v.toFixed(2);
+    };
+    priceRow.appendChild(priceChip('BUY',    _fmt(trade.price)));
+    priceRow.appendChild(priceChip('SL',     _fmt(trade.sl), C.red));
+    priceRow.appendChild(priceChip('TARGET', _fmt(trade.target), C.green));
     card.appendChild(priceRow);
 
     // ── DATA-AGE INDICATOR ────────────────────────────────────────────
@@ -10256,6 +10263,10 @@
           // real spot but no chain, push through as a chart-only card (greyed,
           // non-tradable) instead of rejecting. Users see live price during
           // rate-limit windows instead of an empty scanner.
+          //
+          // NOTE: Must match the exact shape mapScanRowToTrade returns (line
+          // ~5015) — card render reads price/sl/target/trigger and calls
+          // .toFixed(2) on each. Keys must be present and numeric.
           if (row._spot_only === true) {
             mapped.push({
               id: 'spotonly_' + sym,
@@ -10263,12 +10274,25 @@
               spot: row.spot,
               _spotOnly: true,
               _spotSource: row._spot_source || 'unknown',
+              strike: '—',
+              side: '',
               confidence: 0,
               state: 'CHART_ONLY',
               reason: 'Chain unavailable — data provider rate-limited. Chart-only mode.',
-              side: '', strike: 0, premium: 0,
-              stop: 0, target: 0, trigger: 0,
-              action: 'CHART ONLY',
+              price: 0,     // premium — will render as "—" in UI
+              trigger: 0,
+              sl: 0,
+              target: 0,
+              slPct: 0,
+              tgtPct: 0,
+              slBasis: 'spot_only',
+              lot: 1,
+              gammaMode: 'N/A',
+              falseBreakout: false,
+              factors: {},
+              availableFactors: [],
+              missingFactors: ['chain'],
+              syntheticPremium: false,
               _raw: row,
             });
             return;
