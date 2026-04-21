@@ -5109,14 +5109,7 @@ def _tv_enrich_results(results, region, interval="5m"):
 
 
 def _score_one_ticker(sym, reg):
-    """Get FULL options-quick data for ONE ticker. Returns everything _renderQuickTrade needs.
-    
-    r18: Scanner now accepts "spot-only" cards where chain is unavailable but
-    we have a real spot price. These tickers render as greyed-out chart-only
-    cards in the UI — users see live price but cannot trade (no chain data
-    to build a real trade on). This prevents the scanner looking empty during
-    rate-limit windows while still honoring the no-fake-assumptions principle.
-    """
+    """Get FULL options-quick data for ONE ticker. Returns everything _renderQuickTrade needs."""
     try:
         import asyncio
         loop = asyncio.new_event_loop()
@@ -5125,21 +5118,13 @@ def _score_one_ticker(sym, reg):
             d = loop.run_until_complete(asyncio.wait_for(_options_quick_impl(sym, reg), timeout=30))
         finally:
             loop.close()
-        if not d:
+        if not d or not d.get("success") or d.get("spot", 0) <= 0:
             return None
-        # Full-success path: has chain, tradable card
-        if d.get("success") and d.get("spot", 0) > 0:
-            d["sym"] = sym
-            d["_region"] = reg
-            return d
-        # Spot-only path: chain unavailable but real spot from fallback source
-        # Render as chart-only card, TAKE TRADE disabled. Must have real spot.
-        if d.get("_chain_unavailable") and d.get("spot", 0) > 0:
-            d["sym"] = sym
-            d["_region"] = reg
-            d["_spot_only"] = True  # Frontend flag: render greyed card, disable TAKE TRADE
-            return d
-        return None
+        # Return FULL data — same shape as /api/options-quick response
+        # Frontend will run _renderQuickTrade on this exact data
+        d["sym"] = sym
+        d["_region"] = reg
+        return d
     except Exception as e:
         print(f"[BOTTOM-NAV] ❌ {sym} ({reg}): {type(e).__name__}: {e}")
         return None
@@ -5651,6 +5636,361 @@ async def us_spot_fallback(symbol: str):
         "source": "google_finance",
         "fetched_ts": time.time(),
     }
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# SITUATIONAL ANALYSIS — "TODAY'S MARKET CHARACTER" (r20)
+#
+# Hougaard-inspired OODA framework (Observe → Orient → Decide → Act) panel
+# that sits at the top of Active Trading. Describes today's market character
+# so traders orient BEFORE individual setups, not after.
+#
+# Hybrid generation:
+#   1. Deterministic rules compute regime signals (gap bucket, vol bucket,
+#      range bucket, trend bucket) — fast, free, predictable.
+#   2. AI (Claude Haiku) writes a 3-4 sentence narrative paragraph from
+#      those signals. Caches 15 min — session character doesn't change
+#      minute-to-minute.
+#
+# Works when data is available. Returns "insufficient data to orient"
+# when inputs are stale/missing — we don't fabricate a character.
+# ═══════════════════════════════════════════════════════════════════════
+
+_sit_cache = {}  # { "IN" | "US": {"ts": epoch, "data": {...}} }
+_SIT_CACHE_TTL = 900  # 15 min — session character is stable for this long
+
+def _bucket(value, thresholds):
+    """Map numeric value to label via threshold tuples [(max, label), ...]."""
+    if value is None or (isinstance(value, float) and (value != value)):
+        return "unknown"
+    for max_val, label in thresholds:
+        if value <= max_val:
+            return label
+    return thresholds[-1][1]
+
+def _compute_situational_signals(region):
+    """Deterministic regime signals from available data sources.
+    Returns dict of {signal_name: label} or None fields when data missing.
+    Pure function — no AI, no network calls beyond what's already cached.
+    """
+    signals = {"region": region}
+    try:
+        if region == "IN":
+            # Data: GIFT NIFTY gap (pre-open), India VIX, NIFTY spot
+            # Pull from _bottom_nav_cache if a NIFTY ticker exists there
+            nifty_data = None
+            for cache_data in (_bottom_nav_cache.get("IN", {}).get("data") or {}).get("tickers", []):
+                if (cache_data.get("sym") or "").upper() == "NIFTY":
+                    nifty_data = cache_data
+                    break
+            
+            # VIX — if NIFTY ticker has it cached, use that; else try _nse_cache
+            vix = None
+            if nifty_data and nifty_data.get("vix"):
+                vix = float(nifty_data.get("vix", 0) or 0)
+            else:
+                nifty_opt = _nse_cache.get("NIFTY")
+                if nifty_opt and nifty_opt.get("vix"):
+                    try: vix = float(nifty_opt.get("vix", 0) or 0)
+                    except: pass
+            
+            # Session range — from NIFTY OHLC if available
+            day_high = day_low = day_open = spot = None
+            if nifty_data:
+                try:
+                    spot = float(nifty_data.get("spot") or 0)
+                    day_high = float(nifty_data.get("day_high") or 0)
+                    day_low = float(nifty_data.get("day_low") or 0)
+                    day_open = float(nifty_data.get("day_open") or 0)
+                except: pass
+            
+            # GIFT NIFTY gap (pre-open sentiment) — read from real cache
+            gap_pct = None
+            try:
+                gn_cache = _gift_nifty_cache.get("data") if _gift_nifty_cache.get("data") else None
+                if gn_cache:
+                    # Real field is `gift_gap_pct` (see /api/gift-nifty response shape)
+                    raw_gap = gn_cache.get("gift_gap_pct")
+                    if raw_gap is None:
+                        raw_gap = gn_cache.get("expected_gap_pct")
+                    if raw_gap is not None:
+                        gap_pct = float(raw_gap or 0)
+            except Exception:
+                gap_pct = None
+            
+            # Bucket the signals
+            signals["vix"] = round(vix, 1) if vix else None
+            signals["vix_regime"] = _bucket(vix, [(12, "very_low"), (15, "low"), (19, "normal"), (25, "elevated"), (100, "high")])
+            signals["gap_pct"] = round(gap_pct, 2) if gap_pct is not None else None
+            signals["gap_regime"] = _bucket(abs(gap_pct) if gap_pct is not None else None, [(0.3, "flat"), (0.7, "small"), (1.5, "significant"), (100, "large")])
+            signals["gap_direction"] = ("up" if (gap_pct or 0) > 0 else "down") if gap_pct is not None else None
+            
+            if spot and day_high and day_low and day_high > day_low:
+                range_pct = (day_high - day_low) / spot * 100
+                signals["range_pct"] = round(range_pct, 2)
+                signals["range_regime"] = _bucket(range_pct, [(0.3, "tight"), (0.6, "narrow"), (1.2, "normal"), (2.0, "wide"), (100, "very_wide")])
+                if day_open:
+                    pos_in_range = (spot - day_low) / (day_high - day_low)
+                    signals["position_in_range"] = round(pos_in_range, 2)
+            
+            signals["index"] = "NIFTY"
+            signals["spot"] = round(spot, 2) if spot else None
+            
+        elif region == "US":
+            # Data: SPY gap / ES futures, VIX, session range
+            spy_data = None
+            for cache_data in (_bottom_nav_cache.get("US", {}).get("data") or {}).get("tickers", []):
+                if (cache_data.get("sym") or "").upper() == "SPY":
+                    spy_data = cache_data
+                    break
+            
+            vix_us = None  # VIX for US — would need a US-specific source
+            day_high = day_low = day_open = spot = None
+            if spy_data:
+                try:
+                    spot = float(spy_data.get("spot") or 0)
+                    day_high = float(spy_data.get("day_high") or 0)
+                    day_low = float(spy_data.get("day_low") or 0)
+                    day_open = float(spy_data.get("day_open") or 0)
+                except: pass
+            
+            signals["gap_pct"] = None  # TODO: wire in /api/us-premarket gap
+            signals["gap_regime"] = "unknown"
+            signals["vix"] = None  # TODO: VIX source
+            signals["vix_regime"] = "unknown"
+            
+            if spot and day_high and day_low and day_high > day_low:
+                range_pct = (day_high - day_low) / spot * 100
+                signals["range_pct"] = round(range_pct, 2)
+                signals["range_regime"] = _bucket(range_pct, [(0.3, "tight"), (0.6, "narrow"), (1.2, "normal"), (2.0, "wide"), (100, "very_wide")])
+            
+            signals["index"] = "SPY"
+            signals["spot"] = round(spot, 2) if spot else None
+        
+        # Count how many signals are available — determines whether we have
+        # enough to orient or should show "insufficient data".
+        n_strong = sum(1 for k in ("vix_regime", "gap_regime", "range_regime")
+                       if signals.get(k) and signals.get(k) not in ("unknown", None))
+        signals["_signal_strength"] = n_strong
+        signals["_sufficient_to_orient"] = n_strong >= 2
+        
+    except Exception as e:
+        print(f"[SITUATIONAL] ❌ compute signals failed for {region}: {type(e).__name__}: {e}")
+        signals["_sufficient_to_orient"] = False
+    
+    return signals
+
+def _deterministic_checklist(signals):
+    """Hougaard-style 5-item pre-trade checklist tailored to signals.
+    Pure function. Returns [{question, hint}, ...]."""
+    cl = []
+    
+    # Item 1: Trade WITH session character?
+    range_regime = signals.get("range_regime")
+    vix_regime = signals.get("vix_regime")
+    if range_regime in ("tight", "narrow") and vix_regime in ("very_low", "low"):
+        cl.append({
+            "q": "Am I trading WITH today's character?",
+            "hint": "Today is low-vol, narrow range → mean-reversion edge > momentum. Expect 1.5R not 3R. Fading extremes > chasing breakouts."
+        })
+    elif range_regime in ("wide", "very_wide"):
+        cl.append({
+            "q": "Am I trading WITH today's character?",
+            "hint": "Wide range session → trend-following edge > mean-reversion. Give trades room. Tighten trailing stops as they work."
+        })
+    else:
+        cl.append({
+            "q": "Am I trading WITH today's character?",
+            "hint": "Normal-vol session → both trend and reversion setups work. Trade your A+ setups only."
+        })
+    
+    # Item 2: Gap context
+    gap_regime = signals.get("gap_regime")
+    gap_dir = signals.get("gap_direction")
+    if gap_regime in ("significant", "large"):
+        cl.append({
+            "q": "Did I wait for the gap to resolve?",
+            "hint": f"A {gap_regime} gap ({gap_dir}) forms a range in first 30-60 min. Trading inside that range is noise. Wait for break of gap-fill or opening range."
+        })
+    else:
+        cl.append({
+            "q": "Have I confirmed direction from first 30 min?",
+            "hint": "Flat open. Let the opening range (9:15-9:45 IST / 9:30-10:00 ET) develop before committing. First move often fails."
+        })
+    
+    # Item 3: Position size discipline
+    if vix_regime in ("elevated", "high"):
+        cl.append({
+            "q": "Did I CUT size for this volatility?",
+            "hint": f"VIX regime = {vix_regime}. Half size at minimum. Wider stops eat into R:R. Don't size up on high-vol days even if confidence is high."
+        })
+    else:
+        cl.append({
+            "q": "Is position size within my daily risk budget?",
+            "hint": "Risk per trade ≤ 1% account. Daily max 3R drawdown. Above that, stop and review tomorrow."
+        })
+    
+    # Item 4: Invalidation clarity
+    cl.append({
+        "q": "Do I know EXACTLY what invalidates this trade?",
+        "hint": "State your stop in rupees/dollars. If the invalidation is 'it feels wrong' — don't take the trade. Clear level or pass."
+    })
+    
+    # Item 5: Psychological check (Hougaard core)
+    cl.append({
+        "q": "Am I trading the plan, or trading my feelings?",
+        "hint": "Last trade lost? Don't revenge. On a streak? Don't get greedy. The market doesn't know or care about your P&L. Each trade is independent."
+    })
+    
+    return cl
+
+def _build_narrative_prompt(signals):
+    """Compose a concise prompt for AI to write 3-4 sentences of session character."""
+    region = signals.get("region")
+    market_name = "Indian market" if region == "IN" else "US market"
+    index = signals.get("index", "index")
+    
+    parts = [
+        f"You are writing a session character summary for {market_name} ({index}) in the style of Tom Hougaard — a London-based trader known for psychology-first market analysis, top-down framing, and plain-English honesty about what the tape is actually showing.",
+        "",
+        "Today's readings:",
+    ]
+    if signals.get("spot"): parts.append(f"- {index} spot: {signals['spot']}")
+    if signals.get("vix") is not None: parts.append(f"- VIX: {signals['vix']} (regime: {signals.get('vix_regime', 'unknown')})")
+    if signals.get("gap_pct") is not None: parts.append(f"- Gap: {signals['gap_pct']}% ({signals.get('gap_regime', 'unknown')} {signals.get('gap_direction') or ''})")
+    if signals.get("range_pct") is not None: parts.append(f"- Session range: {signals['range_pct']}% ({signals.get('range_regime', 'unknown')})")
+    if signals.get("position_in_range") is not None: parts.append(f"- Current position in range: {signals['position_in_range']} (0=low, 1=high)")
+    
+    parts += [
+        "",
+        "Write exactly 3 sentences, total 60-80 words, no preamble or quotes:",
+        "Sentence 1: ORIENT — what character/pattern does today's data suggest? (trend day, chop, range-bound, news-driven)",
+        "Sentence 2: DECIDE — what trading approach fits this character? (size, setups to take, setups to skip)",
+        "Sentence 3: INVALIDATION — what single thing would change this read? (price level, VIX move, volume surge)",
+        "",
+        "No hype. No certainty. No clichés. Tone: seasoned trader thinking out loud. If data is ambiguous, say so rather than forcing a call."
+    ]
+    return "\n".join(parts)
+
+def _generate_narrative_ai(signals):
+    """Call Claude Haiku to generate session narrative. Returns str or None.
+    Uses existing ANTHROPIC_API_KEY. Never raises."""
+    if not ANTHROPIC_API_KEY:
+        return None
+    if not signals.get("_sufficient_to_orient"):
+        return None
+    try:
+        prompt = _build_narrative_prompt(signals)
+        r = requests.post(
+            "https://api.anthropic.com/v1/messages",
+            headers={
+                "x-api-key": ANTHROPIC_API_KEY,
+                "anthropic-version": "2023-06-01",
+                "content-type": "application/json",
+            },
+            json={
+                "model": "claude-haiku-4-5-20251001",
+                "max_tokens": 256,
+                "messages": [{"role": "user", "content": prompt}],
+            },
+            timeout=20,
+        )
+        if r.status_code != 200:
+            print(f"[SITUATIONAL] ❌ AI narrative status {r.status_code}: {r.text[:200]}")
+            return None
+        data = r.json()
+        content = data.get("content", [])
+        if content and content[0].get("type") == "text":
+            return content[0].get("text", "").strip()
+    except Exception as e:
+        print(f"[SITUATIONAL] ❌ AI narrative failed: {type(e).__name__}: {e}")
+    return None
+
+def _deterministic_fallback_narrative(signals):
+    """Rule-based 2-sentence narrative when AI unavailable or insufficient data."""
+    if not signals.get("_sufficient_to_orient"):
+        return ("Insufficient live data to orient on today's market character. Scan inputs (VIX, gap, range) are not yet flowing. " +
+                "Trade conservatively until the session develops — first 30 min usually clarifies direction.")
+    
+    vix_r = signals.get("vix_regime", "unknown")
+    gap_r = signals.get("gap_regime", "unknown")
+    range_r = signals.get("range_regime", "unknown")
+    gap_d = signals.get("gap_direction") or ""
+    
+    # Simple rule tree
+    if range_r in ("tight", "narrow") and vix_r in ("very_low", "low"):
+        s1 = f"Low-vol, {range_r}-range session after a {gap_r} {gap_d} open. Classic grind day — setups will be subtle, breakouts likely to fail."
+        s2 = "Favor mean-reversion over momentum. Half-size. Expect 1.5R, not 3R. Invalidated if VIX spikes above the elevated threshold or range expands 2x."
+    elif range_r in ("wide", "very_wide"):
+        s1 = f"Wide-range session — elevated participation and directional conviction in the tape."
+        s2 = "Trend-following setups have edge. Give winners room, trail stops behind structure. Invalidated if range contracts and fails to make new highs/lows."
+    elif vix_r in ("elevated", "high"):
+        s1 = f"High-vol session ({vix_r} VIX regime). Emotional tape, wide spreads, news-driven moves likely."
+        s2 = "Reduce size. Skip marginal setups. Only take A+ confluences with clear structural invalidation. Invalidated if VIX compresses and liquidity returns."
+    else:
+        s1 = f"Mixed-signal session. Neither clearly trending nor clearly chopping."
+        s2 = "Trade only A+ setups with 3+ confirmations. Let the tape declare itself. Invalidated if range expands and direction becomes obvious."
+    
+    return f"{s1} {s2}"
+
+@app.get("/api/situational-analysis")
+async def situational_analysis(region: str = "IN"):
+    """Hougaard-style OODA situational analysis for the top of Active Trading.
+    
+    Returns: {
+      signals: {vix, gap_pct, range_pct, gap_regime, vix_regime, range_regime, ...},
+      narrative: "3-sentence session character description",
+      checklist: [{q, hint}, ...5 items],
+      source: "ai" | "deterministic" | "insufficient",
+      sufficient_to_orient: bool,
+      cached: bool,
+      ts: epoch
+    }
+    """
+    reg = region.upper()
+    if reg not in ("IN", "US"):
+        return {"success": False, "error": "region must be IN or US"}
+    
+    now = time.time()
+    # Serve from cache if fresh
+    cached = _sit_cache.get(reg)
+    if cached and (now - cached["ts"]) < _SIT_CACHE_TTL:
+        resp = dict(cached["data"])
+        resp["cached"] = True
+        resp["cache_age_sec"] = int(now - cached["ts"])
+        return resp
+    
+    signals = _compute_situational_signals(reg)
+    checklist = _deterministic_checklist(signals)
+    
+    narrative = None
+    source = "insufficient"
+    if signals.get("_sufficient_to_orient"):
+        # Try AI first
+        narrative = _generate_narrative_ai(signals)
+        if narrative:
+            source = "ai"
+        else:
+            # AI failed or no key — use deterministic rule-based narrative
+            narrative = _deterministic_fallback_narrative(signals)
+            source = "deterministic"
+    else:
+        narrative = _deterministic_fallback_narrative(signals)
+        source = "insufficient"
+    
+    resp = {
+        "success": True,
+        "region": reg,
+        "signals": signals,
+        "narrative": narrative,
+        "checklist": checklist,
+        "source": source,
+        "sufficient_to_orient": bool(signals.get("_sufficient_to_orient")),
+        "cached": False,
+        "ts": now,
+    }
+    _sit_cache[reg] = {"ts": now, "data": resp}
+    return resp
 
 
 def _auto_scan_boot():

@@ -4321,7 +4321,13 @@
     lastTier2RefreshAt: 0, // ms timestamp of last Tier 2 (90s) update
     gammaModeIds: {},      // { tradeId: true } trades currently in expiry-day gamma override
     gammaHistory: {},      // { tradeId: { triggeredAtClose: <priceAtTrigger>, referenceClose } } for kill-switch
-    fadeTick: 0            // incremented on every 5m close; keyed into render to restart crossfade
+    fadeTick: 0,           // incremented on every 5m close; keyed into render to restart crossfade
+    // r20: Situational analysis panel (Hougaard/OODA)
+    situationalData: null,   // { signals, narrative, checklist, source, ts } from /api/situational-analysis
+    situationalLoading: false,
+    situationalError: null,
+    situationalExpanded: true,  // panel expanded by default; user can collapse
+    situationalLastFetch: 0,
   };
 
   var timers = { countdown: null, soft90: null, candle5m: null };
@@ -5128,6 +5134,34 @@
         lineHeight: 1,
         whiteSpace: 'nowrap',
         display: 'inline-block'
+      }
+    }, m.label);
+  }
+
+  // Loud action label — used where we want users to see the engine's
+  // recommendation at a glance (top-3 cards, scanner rows). Same colors
+  // and labels as pill(), just much bigger so it can't be missed.
+  // r21: user requested ENTER AGGRESSIVE / ENTER NOW / ENTER SMALL / AVOID
+  // to be visually dominant.
+  function bigPill(stateKey, size) {
+    var m = STATE_MAP[stateKey] || STATE_MAP.ideal;
+    var fontSize = size === 'xl' ? '22px' : size === 'md' ? '16px' : '18px';
+    var padY = size === 'xl' ? '6px' : size === 'md' ? '4px' : '5px';
+    var padX = size === 'xl' ? '14px' : size === 'md' ? '10px' : '12px';
+    return el('span', {
+      style: {
+        fontSize: fontSize,
+        fontWeight: 900,
+        padding: padY + ' ' + padX,
+        borderRadius: '6px',
+        background: m.color + '22',
+        color: m.color,
+        border: '2px solid ' + m.color + '77',
+        letterSpacing: '0.8px',
+        lineHeight: 1,
+        whiteSpace: 'nowrap',
+        display: 'inline-block',
+        textAlign: 'center'
       }
     }, m.label);
   }
@@ -6338,6 +6372,275 @@
     }, icon);
   }
 
+  // ═══════════════════════════════════════════════════════════════════════
+  // SITUATIONAL ANALYSIS PANEL (Hougaard/OODA, r20)
+  //
+  // "Today's Market Character" panel at top of Active Trading. Shows:
+  //   - Observe: key readings (VIX, gap, range) as chips
+  //   - Orient: 3-sentence narrative (AI-written in Hougaard style, or
+  //     deterministic rule-based fallback)
+  //   - Decide/Act: 5-item pre-trade checklist tailored to today's regime
+  //
+  // Data from /api/situational-analysis — cached 15 min server-side.
+  // Frontend fetches on mount + every time region changes.
+  // ═══════════════════════════════════════════════════════════════════════
+
+  function _fetchSituationalAnalysis() {
+    if (state.situationalLoading) return;
+    var now = Date.now();
+    if (now - state.situationalLastFetch < 60000 && state.situationalData) {
+      // Don't re-fetch within 60s — server has a 15min cache anyway
+      return;
+    }
+    state.situationalLoading = true;
+    state.situationalError = null;
+    var reg = state.region || 'IN';
+    fetch('/api/situational-analysis?region=' + reg)
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        state.situationalLoading = false;
+        state.situationalLastFetch = Date.now();
+        if (d && d.success) {
+          state.situationalData = d;
+        } else {
+          state.situationalError = (d && d.error) || 'Unknown error';
+        }
+        try { rerender(); } catch (e) {}
+      })
+      .catch(function (e) {
+        state.situationalLoading = false;
+        state.situationalError = (e && e.message) || 'Network error';
+        try { rerender(); } catch (e2) {}
+      });
+  }
+
+  function _renderSituationalPanel() {
+    // Trigger fetch if we don't have data yet (fire-and-forget)
+    if (!state.situationalData && !state.situationalLoading) {
+      setTimeout(_fetchSituationalAnalysis, 10);
+    }
+    
+    var wrapper = el('div', {
+      style: {
+        background: C.card, border: '1px solid ' + C.divider,
+        borderRadius: '6px', marginBottom: '8px',
+        padding: '8px 10px', flex: '0 0 auto',
+        fontSize: '11px', lineHeight: 1.4
+      }
+    });
+    
+    // Header row: title + region + collapse toggle + refresh
+    var headerRow = el('div', {
+      style: {
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        gap: '8px', marginBottom: state.situationalExpanded ? '6px' : '0'
+      }
+    });
+    
+    var titleLeft = el('div', {
+      style: { display: 'flex', alignItems: 'center', gap: '8px', flex: '1 1 auto', minWidth: 0 }
+    });
+    titleLeft.appendChild(el('div', {
+      style: {
+        fontSize: '10px', fontWeight: 900, color: C.textPri,
+        letterSpacing: '1.2px', whiteSpace: 'nowrap'
+      }
+    }, '⚡ TODAY\'S MARKET CHARACTER · ' + (state.region === 'IN' ? 'NIFTY' : 'SPY')));
+    
+    // Small tag showing source (ai / deterministic / insufficient)
+    if (state.situationalData && state.situationalData.source) {
+      var srcColor = state.situationalData.source === 'ai' ? C.green
+                   : state.situationalData.source === 'deterministic' ? C.textSec
+                   : C.textMute;
+      var srcLabel = state.situationalData.source === 'ai' ? 'AI'
+                   : state.situationalData.source === 'deterministic' ? 'Rules'
+                   : 'Low data';
+      titleLeft.appendChild(el('span', {
+        title: 'Narrative source: ' + state.situationalData.source,
+        style: {
+          fontSize: '9px', fontWeight: 800, color: srcColor,
+          padding: '1px 5px', borderRadius: '8px',
+          border: '1px solid ' + srcColor + '55',
+          letterSpacing: '0.5px', whiteSpace: 'nowrap'
+        }
+      }, srcLabel));
+    }
+    headerRow.appendChild(titleLeft);
+    
+    // Collapse toggle
+    var toggleBtn = el('button', {
+      onClick: function () {
+        state.situationalExpanded = !state.situationalExpanded;
+        rerender();
+      },
+      title: state.situationalExpanded ? 'Collapse' : 'Expand',
+      style: {
+        background: 'transparent', border: 'none', color: C.textSec,
+        cursor: 'pointer', fontSize: '10px', fontWeight: 800,
+        padding: '2px 6px', fontFamily: MONO
+      }
+    }, state.situationalExpanded ? '▾' : '▸');
+    headerRow.appendChild(toggleBtn);
+    wrapper.appendChild(headerRow);
+    
+    if (!state.situationalExpanded) return wrapper;
+    
+    // Body: signals chips + narrative + checklist
+    if (state.situationalLoading && !state.situationalData) {
+      wrapper.appendChild(el('div', {
+        style: { color: C.textMute, fontStyle: 'italic', padding: '4px 0' }
+      }, 'Reading today\'s tape…'));
+      return wrapper;
+    }
+    if (state.situationalError && !state.situationalData) {
+      wrapper.appendChild(el('div', {
+        style: { color: C.red, fontSize: '10px', padding: '4px 0' }
+      }, '⚠ Could not load analysis: ' + state.situationalError));
+      return wrapper;
+    }
+    if (!state.situationalData) return wrapper;
+    
+    var d = state.situationalData;
+    var sig = d.signals || {};
+    
+    // OBSERVE row: signal chips
+    var observeRow = el('div', {
+      style: {
+        display: 'flex', flexWrap: 'wrap', gap: '6px',
+        marginBottom: '6px', alignItems: 'center'
+      }
+    });
+    observeRow.appendChild(el('span', {
+      style: {
+        fontSize: '9px', fontWeight: 900, color: C.textMute,
+        letterSpacing: '1px', whiteSpace: 'nowrap', marginRight: '2px'
+      }
+    }, 'OBSERVE'));
+    
+    function _chip(label, value, tone) {
+      var bg = tone === 'warn' ? C.orange + '22' : tone === 'bad' ? C.red + '22' : tone === 'good' ? C.green + '22' : C.divider + '33';
+      var fg = tone === 'warn' ? C.orange : tone === 'bad' ? C.red : tone === 'good' ? C.green : C.textSec;
+      return el('span', {
+        style: {
+          background: bg, color: fg, padding: '2px 7px', borderRadius: '3px',
+          fontSize: '10px', fontWeight: 700, fontFamily: MONO,
+          whiteSpace: 'nowrap', border: '1px solid ' + fg + '33'
+        }
+      }, label + ': ' + value);
+    }
+    
+    if (sig.vix != null) {
+      var vixTone = sig.vix_regime === 'elevated' || sig.vix_regime === 'high' ? 'warn'
+                  : sig.vix_regime === 'very_low' || sig.vix_regime === 'low' ? 'good' : '';
+      observeRow.appendChild(_chip('VIX', sig.vix + ' (' + (sig.vix_regime || '?') + ')', vixTone));
+    }
+    if (sig.gap_pct != null) {
+      var gapTone = sig.gap_regime === 'large' ? 'warn' : '';
+      observeRow.appendChild(_chip('Gap', (sig.gap_pct > 0 ? '+' : '') + sig.gap_pct + '% (' + (sig.gap_regime || '?') + ')', gapTone));
+    }
+    if (sig.range_pct != null) {
+      var rTone = sig.range_regime === 'very_wide' ? 'warn' : sig.range_regime === 'tight' ? 'good' : '';
+      observeRow.appendChild(_chip('Range', sig.range_pct + '% (' + (sig.range_regime || '?') + ')', rTone));
+    }
+    if (sig.spot != null) {
+      observeRow.appendChild(_chip(sig.index || 'Spot', String(sig.spot), ''));
+    }
+    if (observeRow.childNodes.length > 1) {
+      wrapper.appendChild(observeRow);
+    }
+    
+    // ORIENT: narrative paragraph
+    if (d.narrative) {
+      var narrativeBox = el('div', {
+        style: {
+          background: C.bg, borderLeft: '3px solid ' + (d.source === 'ai' ? C.green : C.textMute),
+          padding: '6px 10px', marginBottom: '6px',
+          color: C.textPri, fontSize: '11px', lineHeight: 1.5,
+          fontStyle: d.source === 'insufficient' ? 'italic' : 'normal'
+        }
+      });
+      narrativeBox.appendChild(el('div', {
+        style: {
+          fontSize: '9px', fontWeight: 900, color: C.textMute,
+          letterSpacing: '1px', marginBottom: '3px'
+        }
+      }, 'ORIENT'));
+      narrativeBox.appendChild(el('div', {}, d.narrative));
+      wrapper.appendChild(narrativeBox);
+    }
+    
+    // DECIDE/ACT: checklist
+    if (Array.isArray(d.checklist) && d.checklist.length > 0) {
+      var checklistBox = el('div', {
+        style: {
+          display: 'flex', flexDirection: 'column', gap: '4px',
+          marginTop: '4px'
+        }
+      });
+      checklistBox.appendChild(el('div', {
+        style: {
+          fontSize: '9px', fontWeight: 900, color: C.textMute,
+          letterSpacing: '1px', marginBottom: '3px'
+        }
+      }, 'BEFORE YOU CLICK TAKE TRADE'));
+      d.checklist.forEach(function (item, idx) {
+        var row = el('div', {
+          style: {
+            display: 'flex', alignItems: 'flex-start', gap: '6px',
+            fontSize: '11px', lineHeight: 1.4
+          }
+        });
+        row.appendChild(el('span', {
+          style: {
+            color: C.textMute, fontFamily: MONO, fontWeight: 800,
+            flex: '0 0 16px', fontSize: '10px', marginTop: '1px'
+          }
+        }, '☐ ' + (idx + 1)));
+        var content = el('div', { style: { flex: '1 1 auto' } });
+        content.appendChild(el('div', {
+          style: { color: C.textPri, fontWeight: 700 }
+        }, item.q));
+        if (item.hint) {
+          content.appendChild(el('div', {
+            style: { color: C.textSec, fontSize: '10px', marginTop: '1px' }
+          }, item.hint));
+        }
+        row.appendChild(content);
+        checklistBox.appendChild(row);
+      });
+      wrapper.appendChild(checklistBox);
+    }
+    
+    // Footer: timestamp + refresh button
+    var footer = el('div', {
+      style: {
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        marginTop: '6px', paddingTop: '4px', borderTop: '1px dashed ' + C.divider,
+        fontSize: '9px', color: C.textMute, fontFamily: MONO
+      }
+    });
+    var ageText = d.cached
+      ? 'Cached ' + (d.cache_age_sec != null ? d.cache_age_sec + 's' : '') + ' ago'
+      : 'Fresh analysis';
+    footer.appendChild(el('span', {}, ageText + ' · Not investment advice'));
+    footer.appendChild(el('button', {
+      onClick: function () {
+        state.situationalData = null;
+        state.situationalLastFetch = 0;
+        _fetchSituationalAnalysis();
+      },
+      title: 'Re-read the tape',
+      style: {
+        background: 'transparent', border: '1px solid ' + C.divider,
+        color: C.textSec, cursor: 'pointer', padding: '2px 8px',
+        borderRadius: '3px', fontSize: '9px', fontWeight: 800, fontFamily: MONO
+      }
+    }, '↻ REFRESH'));
+    wrapper.appendChild(footer);
+    
+    return wrapper;
+  }
+
   function renderTopTrades() {
     var panel = el('div', {
       style: {
@@ -6401,6 +6704,16 @@
       }, '✕'));
     }
     panel.appendChild(header);
+
+    // ── SITUATIONAL ANALYSIS PANEL (Hougaard/OODA, r20) ────────────────
+    // Today's market character — orient BEFORE scanning individual setups.
+    // Lives at the very top of the Top Trades section. Collapsible to
+    // save vertical real estate for users who don't want it.
+    try {
+      panel.appendChild(_renderSituationalPanel());
+    } catch (e) {
+      try { console.warn('[SITUATIONAL] render failed:', e); } catch (e2) {}
+    }
 
     var filter = state.searchFilter || '';
     var displayTrades = filter
@@ -6779,38 +7092,7 @@
     var latestPos = openPos || paperPortfolio.findLatestByTradeId(trade.id);
     var buttonNode;
 
-    // r18: SPOT-ONLY cards show a disabled CHART ONLY button. Users see
-    // the spot price updating but cannot trade (no chain = can't build
-    // an honest trade). Prevents the scanner looking empty during
-    // rate-limit windows while respecting no-fake-assumptions.
-    if (trade._spotOnly) {
-      buttonNode = el('button', {
-        onClick: function (e) {
-          e.stopPropagation();
-          // Show a tooltip/toast explaining why trading is disabled
-          try {
-            showToast && showToast(
-              trade.symbol + ' — chain data unavailable from provider. ' +
-              'Spot price is live (' + (trade._spotSource || 'fallback source') +
-              ') but we cannot build a trade without option chain data.'
-            );
-          } catch (e2) {}
-        },
-        title: 'Chain unavailable — data provider rate-limited. Spot price is live but trading is disabled until chain returns.',
-        disabled: true,
-        style: {
-          height: '48px', width: '128px',
-          background: C.textMute + '18',
-          color: C.textMute,
-          fontWeight: 800, fontSize: '12px',
-          border: '1px dashed ' + C.divider,
-          borderRadius: '6px',
-          cursor: 'not-allowed',
-          letterSpacing: '0.6px', alignSelf: 'center',
-          opacity: 0.7,
-        }
-      }, 'CHART ONLY');
-    } else if (openPos) {
+    if (openPos) {
       // Currently live — pending or active
       var activeLabel = openPos.status === 'active' ? 'LIVE' : 'PENDING';
       var activeBg = openPos.status === 'active' ? C.green : C.orange;
@@ -7128,6 +7410,18 @@
         flexWrap: 'wrap'
       }
     });
+    // r21: ACTION BAR — loud state label in its own row above the reason.
+    // Users told us the small pill was getting lost next to the reason text.
+    // Now ENTER AGGRESSIVE / ENTER NOW / ENTER SMALL / AVOID is unmissable.
+    var actionBar = el('div', {
+      style: {
+        display: 'flex', alignItems: 'center', gap: '10px',
+        marginBottom: '6px', flex: '0 0 auto'
+      }
+    });
+    actionBar.appendChild(bigPill(trade.state, 'xl'));
+    card.appendChild(actionBar);
+
     infoRow.appendChild(el('div', {
       style: {
         flex: '1 1 auto',
@@ -7136,7 +7430,6 @@
         overflow: 'hidden', textOverflow: 'ellipsis'
       }
     }, trade.reason));
-    infoRow.appendChild(el('div', { style: { flex: '0 0 auto' } }, pill(trade.state, true)));
     infoRow.appendChild(el('button', {
       onClick: function (e) { e.stopPropagation(); onVoice(trade); },
       title: 'Speak trade',
@@ -9401,7 +9694,9 @@
     });
     left.appendChild(document.createTextNode(t.symbol + ' '));
     left.appendChild(el('span', { style: { color: C.textSec } }, t.strike));
-    left.appendChild(el('div', { style: { marginTop: '2px' } }, pill(t.state, true)));
+    // r21: state label prominent — was 12px pill, now 16px bigPill for
+    // at-a-glance read. ENTER AGGRESSIVE / ENTER NOW / ENTER SMALL / AVOID.
+    left.appendChild(el('div', { style: { marginTop: '4px' } }, bigPill(t.state, 'md')));
     hdr.appendChild(left);
 
     var confBox = el('div', {
@@ -9836,7 +10131,11 @@
           }, _reasonShort) : null
         ].filter(Boolean));
       } else {
-        actionCell = el('button', {
+        // r21: Action cell now shows the loud state label (ENTER AGGRESSIVE
+        // etc) ABOVE the TAKE TRADE button. Users should see the engine's
+        // recommendation before they click. State comes from the trade's
+        // stateKey which the scorer set during scoring.
+        var takeBtn = el('button', {
           onClick: function (e) {
             e.stopPropagation();
             selectTrade(r);
@@ -9861,6 +10160,16 @@
             ? el('span', { style: { fontSize: '9px', opacity: 0.85, fontWeight: 700 } },
                 scanPreview.shortLabel)
             : null
+        ].filter(Boolean));
+        // Wrap state label + button vertically
+        actionCell = el('div', {
+          style: {
+            display: 'inline-flex', flexDirection: 'column',
+            alignItems: 'flex-start', gap: '6px'
+          }
+        }, [
+          r.state ? bigPill(r.state, 'md') : null,
+          takeBtn,
         ].filter(Boolean));
       }
 
@@ -10257,44 +10566,6 @@
           if (row.spot == null || row.spot <= 0) {
             rejectReasons.noSpot++;
             rejectDetails.push({ sym: sym, reason: 'no spot price', spot: row.spot });
-            return;
-          }
-          // r18: Spot-only cards. When backend returns _spot_only:true with a
-          // real spot but no chain, push through as a chart-only card (greyed,
-          // non-tradable) instead of rejecting. Users see live price during
-          // rate-limit windows instead of an empty scanner.
-          //
-          // NOTE: Must match the exact shape mapScanRowToTrade returns (line
-          // ~5015) — card render reads price/sl/target/trigger and calls
-          // .toFixed(2) on each. Keys must be present and numeric.
-          if (row._spot_only === true) {
-            mapped.push({
-              id: 'spotonly_' + sym,
-              symbol: sym,
-              spot: row.spot,
-              _spotOnly: true,
-              _spotSource: row._spot_source || 'unknown',
-              strike: '—',
-              side: '',
-              confidence: 0,
-              state: 'CHART_ONLY',
-              reason: 'Chain unavailable — data provider rate-limited. Chart-only mode.',
-              price: 0,     // premium — will render as "—" in UI
-              trigger: 0,
-              sl: 0,
-              target: 0,
-              slPct: 0,
-              tgtPct: 0,
-              slBasis: 'spot_only',
-              lot: 1,
-              gammaMode: 'N/A',
-              falseBreakout: false,
-              factors: {},
-              availableFactors: [],
-              missingFactors: ['chain'],
-              syntheticPremium: false,
-              _raw: row,
-            });
             return;
           }
           if (!Array.isArray(row.chain_near_atm) || row.chain_near_atm.length === 0) {
