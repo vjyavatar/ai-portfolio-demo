@@ -3951,7 +3951,7 @@ async def nse_options(symbol: str = "NIFTY"):
                     if avg_iv_s > 0:
                         iv_smile.append({"strike": sk, "iv": round(avg_iv_s, 1), "ceIV": round(sd.get("ce_iv", 0), 1), "peIV": round(sd.get("pe_iv", 0), 1)})
             
-            _nse_lot = ALGO_INSTRUMENTS.get(sym, {}).get("lot", 1)
+            _nse_lot = ALGO_INSTRUMENTS.get(symbol, {}).get("lot", 1)
             result.update({
                 "success": True,
                 "spot": spot,
