@@ -4797,6 +4797,20 @@ def _alert_format_message(ticker, grade, region):
     if sl_px: lines.append(f"SL: {currency}{sl_px:.2f}")
     if tgt_px: lines.append(f"Target: {currency}{tgt_px:.2f}")
     if reason: lines += ["", f"Reason: {reason}"]
+    
+    # TradingView second opinion — if enrichment ran, show whether TV
+    # agrees. Disagreement is the signal worth flagging.
+    tv = ticker.get("_tv_opinion")
+    agr = ticker.get("_tv_agreement")
+    if tv and agr:
+        tv_verdict = tv.get("verdict", "?").replace("_", " ").title()
+        if agr == "AGREE":
+            lines.append(f"TV confirms: {tv_verdict} ✓")
+        elif agr == "DISAGREE":
+            lines.append(f"⚠️ TV disagrees: {tv_verdict}")
+        elif agr == "PARTIAL":
+            lines.append(f"TV neutral (inconclusive)")
+    
     lines += ["", "— Celesys · Not investment advice"]
     return "\n".join(lines)
 
@@ -4863,6 +4877,233 @@ def _alert_dispatch(results, region):
     
     if sent > 0 or skipped > 0:
         print(f"[ALERT] {region}: sent={sent}, skipped={skipped} (cooldown/below-A)")
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# TRADINGVIEW SECOND-OPINION MODULE
+#
+# For every A/A+ signal we produce, also fetch TradingView's technical-
+# analysis verdict as an independent sanity check. If both systems agree,
+# confidence goes up. If they disagree, we surface that — disagreement is
+# the signal worth paying attention to, not agreement.
+#
+# Uses the unofficial `tradingview-ta` PyPI package. It wraps the
+# undocumented /scanner endpoint that TV uses internally for their "Technicals"
+# panel. Breaks when TV changes their endpoint; we swallow all errors and
+# return None in that case so the scan pipeline continues.
+#
+# Cache: 5 minutes per (symbol, interval) — same ticker analyzed multiple
+# times in a single scan reuses cached result. Avoids hammering TV.
+# ═══════════════════════════════════════════════════════════════════════
+
+# Cache: { "<exchange>:<symbol>:<interval>": {"ts": epoch, "data": {...}} }
+_tv_opinion_cache = {}
+_TV_CACHE_TTL = 300  # 5 minutes
+
+# Symbol → TradingView (exchange, screener) mapping.
+# India indices use "NSE" exchange + "india" screener.
+# India stocks also "NSE" + "india" but symbol must be verbatim (no .NS suffix).
+# US symbols need correct exchange: NASDAQ for most tech, NYSE for traditional,
+# AMEX for most ETFs. We encode a lookup table for ones we actually scan.
+_TV_US_EXCHANGE = {
+    # ETFs on AMEX/NYSE ARCA
+    "SPY":"AMEX","QQQ":"NASDAQ","IWM":"AMEX","DIA":"AMEX",
+    "VOO":"AMEX","VTI":"AMEX","SCHD":"NASDAQ","RSP":"AMEX",
+    "TQQQ":"NASDAQ","SQQQ":"NASDAQ","SOXL":"AMEX","LABU":"AMEX","SPXL":"AMEX","UPRO":"AMEX",
+    "TLT":"NASDAQ","HYG":"AMEX","LQD":"AMEX","TIP":"AMEX",
+    "GLD":"AMEX","SLV":"AMEX","GDX":"AMEX","GDXJ":"AMEX","PPLT":"AMEX",
+    "USO":"AMEX","UNG":"AMEX","DBA":"AMEX","UVXY":"AMEX","VXX":"AMEX",
+    "IBIT":"NASDAQ","BITO":"AMEX",
+    "XLK":"AMEX","XLF":"AMEX","XLE":"AMEX","XLV":"AMEX","XBI":"AMEX","XLI":"AMEX",
+    "XLP":"AMEX","XLU":"AMEX","XLC":"AMEX",
+    "SMH":"NASDAQ","SOXX":"NASDAQ",
+    "ARKK":"AMEX","ARKW":"AMEX","ARKQ":"AMEX",
+    "EEM":"AMEX","EFA":"AMEX","FXI":"AMEX","KWEB":"AMEX","EWZ":"AMEX","EWJ":"AMEX",
+    "KRE":"AMEX","KBE":"AMEX","HACK":"AMEX","WCLD":"NASDAQ","MTUM":"AMEX",
+    # Large-cap stocks
+    "AAPL":"NASDAQ","MSFT":"NASDAQ","NVDA":"NASDAQ","TSLA":"NASDAQ",
+    "META":"NASDAQ","AMZN":"NASDAQ","GOOGL":"NASDAQ","AMD":"NASDAQ",
+    "COIN":"NASDAQ","PLTR":"NASDAQ","NFLX":"NASDAQ","CRM":"NYSE","UBER":"NYSE",
+    "SOFI":"NASDAQ","SMCI":"NASDAQ","ARM":"NASDAQ","AVGO":"NASDAQ",
+    "BA":"NYSE","JPM":"NYSE","V":"NYSE","LLY":"NYSE","UNH":"NYSE","XOM":"NYSE",
+    "MU":"NASDAQ","MSTR":"NASDAQ",
+    "ABNB":"NASDAQ","PANW":"NASDAQ","CRWD":"NASDAQ","MRVL":"NASDAQ",
+    "ORCL":"NYSE","ADBE":"NASDAQ","DELL":"NYSE","LRCX":"NASDAQ",
+    "PYPL":"NASDAQ","DASH":"NASDAQ","NOW":"NYSE","SNOW":"NYSE","SHOP":"NYSE",
+    "SQ":"NYSE","RIVN":"NASDAQ","HOOD":"NASDAQ",
+}
+
+# TradingView uses these interval codes
+_TV_INTERVAL_MAP = {
+    "1m": "1m", "5m": "5m", "15m": "15m", "30m": "30m",
+    "1h": "1h", "4h": "4h", "1d": "1d", "1D": "1d",
+    "1w": "1W", "1W": "1W",
+}
+
+def _tv_resolve_symbol(sym, reg):
+    """Return (exchange, screener) tuple for TradingView, or None if unsupported.
+    For India: exchange always NSE, screener 'india'.
+    For US: exchange varies by symbol (NASDAQ/NYSE/AMEX), screener 'america'.
+    """
+    sym = (sym or "").upper().strip().replace(".NS", "").replace(".BO", "")
+    if not sym:
+        return None
+    if reg == "IN":
+        # NSE covers both indices and stocks on TV
+        # (a few symbols like SENSEX are on BSE but our scanner excludes those)
+        return (sym, "NSE", "india")
+    # US: look up specific exchange, fall back to NASDAQ which is the common case
+    exch = _TV_US_EXCHANGE.get(sym, "NASDAQ")
+    return (sym, exch, "america")
+
+def _tv_get_opinion(sym, reg, interval="5m"):
+    """Fetch TradingView technical-analysis snapshot for one symbol.
+    Returns a normalized dict or None on failure. All errors swallowed.
+    
+    Normalized shape:
+      {
+        "verdict": "STRONG_BUY" | "BUY" | "NEUTRAL" | "SELL" | "STRONG_SELL",
+        "summary": {"buy": int, "sell": int, "neutral": int},
+        "oscillators": {"buy": int, "sell": int, "neutral": int, "verdict": "..."},
+        "ma": {"buy": int, "sell": int, "neutral": int, "verdict": "..."},
+        "exchange": "NSE" | "NASDAQ" | ...,
+        "interval": "5m" | "1d" | ...,
+        "fetched_ts": epoch,
+      }
+    """
+    resolved = _tv_resolve_symbol(sym, reg)
+    if not resolved:
+        return None
+    symbol, exchange, screener = resolved
+    tv_interval = _TV_INTERVAL_MAP.get(interval, "5m")
+    
+    # Cache lookup
+    cache_key = f"{exchange}:{symbol}:{tv_interval}"
+    cached = _tv_opinion_cache.get(cache_key)
+    if cached and (time.time() - cached["ts"]) < _TV_CACHE_TTL:
+        return cached["data"]
+    
+    try:
+        # Import lazily so api.py doesn't fail to boot if the package is
+        # missing (e.g. Render hasn't rebuilt after requirements change yet)
+        from tradingview_ta import TA_Handler, Interval
+        # tradingview_ta uses Interval.INTERVAL_X constants; map our str to those
+        _tv_interval_obj = {
+            "1m":  Interval.INTERVAL_1_MINUTE,
+            "5m":  Interval.INTERVAL_5_MINUTES,
+            "15m": Interval.INTERVAL_15_MINUTES,
+            "30m": Interval.INTERVAL_30_MINUTES,
+            "1h":  Interval.INTERVAL_1_HOUR,
+            "4h":  Interval.INTERVAL_4_HOURS,
+            "1d":  Interval.INTERVAL_1_DAY,
+            "1W":  Interval.INTERVAL_1_WEEK,
+        }.get(tv_interval, Interval.INTERVAL_5_MINUTES)
+        
+        handler = TA_Handler(
+            symbol=symbol, exchange=exchange, screener=screener,
+            interval=_tv_interval_obj, timeout=6,
+        )
+        analysis = handler.get_analysis()
+        if not analysis:
+            return None
+        
+        def _norm_verdict(rec):
+            """Map TV's verdict strings to our canonical form."""
+            r = (rec or "").upper().strip()
+            if r in ("STRONG_BUY", "BUY", "NEUTRAL", "SELL", "STRONG_SELL"):
+                return r
+            # Some responses use spaces / different caps
+            return r.replace(" ", "_")
+        
+        data = {
+            "verdict": _norm_verdict(analysis.summary.get("RECOMMENDATION")),
+            "summary": {
+                "buy": analysis.summary.get("BUY", 0),
+                "sell": analysis.summary.get("SELL", 0),
+                "neutral": analysis.summary.get("NEUTRAL", 0),
+            },
+            "oscillators": {
+                "verdict": _norm_verdict(analysis.oscillators.get("RECOMMENDATION")),
+                "buy": analysis.oscillators.get("BUY", 0),
+                "sell": analysis.oscillators.get("SELL", 0),
+                "neutral": analysis.oscillators.get("NEUTRAL", 0),
+            },
+            "ma": {
+                "verdict": _norm_verdict(analysis.moving_averages.get("RECOMMENDATION")),
+                "buy": analysis.moving_averages.get("BUY", 0),
+                "sell": analysis.moving_averages.get("SELL", 0),
+                "neutral": analysis.moving_averages.get("NEUTRAL", 0),
+            },
+            "exchange": exchange,
+            "interval": tv_interval,
+            "fetched_ts": time.time(),
+        }
+        _tv_opinion_cache[cache_key] = {"ts": time.time(), "data": data}
+        return data
+    except ImportError:
+        print(f"[TV-OPINION] tradingview_ta not installed — skipping {sym}")
+        return None
+    except Exception as e:
+        # Swallow everything. TV's endpoint is undocumented; breakage is
+        # expected occasionally. Don't let this kill the scan pipeline.
+        msg = str(e)[:200]
+        print(f"[TV-OPINION] ❌ {sym} ({exchange}, {tv_interval}): {type(e).__name__}: {msg}")
+        return None
+
+def _tv_agreement_flag(celesys_action, tv_verdict):
+    """Compare Celesys action ('BUY CALL'/'BUY PUT'/'HOLD'/etc) to TV verdict.
+    Returns 'AGREE' | 'DISAGREE' | 'PARTIAL' | 'UNKNOWN'.
+    
+    Logic:
+      - Celesys says BUY CALL + TV says BUY / STRONG_BUY → AGREE
+      - Celesys says BUY CALL + TV says SELL / STRONG_SELL → DISAGREE
+      - Celesys says BUY CALL + TV says NEUTRAL → PARTIAL (neither confirms nor denies)
+      - Celesys says BUY PUT + TV says SELL / STRONG_SELL → AGREE
+      - Celesys says BUY PUT + TV says BUY / STRONG_BUY → DISAGREE
+      - Missing data on either side → UNKNOWN
+    """
+    if not celesys_action or not tv_verdict: return "UNKNOWN"
+    action = celesys_action.upper()
+    v = tv_verdict.upper()
+    if "CALL" in action:
+        if v in ("BUY", "STRONG_BUY"): return "AGREE"
+        if v in ("SELL", "STRONG_SELL"): return "DISAGREE"
+        if v == "NEUTRAL": return "PARTIAL"
+    elif "PUT" in action:
+        if v in ("SELL", "STRONG_SELL"): return "AGREE"
+        if v in ("BUY", "STRONG_BUY"): return "DISAGREE"
+        if v == "NEUTRAL": return "PARTIAL"
+    return "UNKNOWN"
+
+def _tv_enrich_results(results, region, interval="5m"):
+    """Attach _tv_opinion to each A/A+ ticker in results. Called after scan
+    completes. Skips below-A tickers to keep TV load low — TV isn't rate-
+    limited the same way Yahoo is, but why burn 47 requests when 3 matter.
+    """
+    if not results:
+        return
+    enriched = 0
+    for ticker in results:
+        try:
+            score = ticker.get("score") or ticker.get("confidence_score") or 0
+            conf = ticker.get("confidence") or 0
+            # Only enrich A-grade or better (score>=75 AND conf>=80)
+            if score < 75 or conf < 80:
+                continue
+            sym = ticker.get("sym") or ticker.get("symbol")
+            if not sym:
+                continue
+            opinion = _tv_get_opinion(sym, region, interval)
+            if opinion:
+                ticker["_tv_opinion"] = opinion
+                ticker["_tv_agreement"] = _tv_agreement_flag(
+                    ticker.get("action"), opinion.get("verdict"))
+                enriched += 1
+        except Exception as e:
+            # Same swallow-everything posture — TV enrichment is optional
+            print(f"[TV-OPINION] ⚠️ enrich failed for {ticker.get('sym','?')}: {type(e).__name__}: {e}")
+    if enriched > 0:
+        print(f"[TV-OPINION] {region}: enriched {enriched} tickers")
 
 
 def _score_one_ticker(sym, reg):
@@ -5022,6 +5263,18 @@ def _run_bottom_nav_scan(reg):
             _bottom_nav_cache[reg] = {"data": prev_data, "time": prev.get("time", now_ts)}
             print(f"[BOTTOM-NAV] ⚠️ {reg}: empty scan result, preserving previous {len(prev_tickers)} tickers from {int(now_ts - prev.get('time', now_ts))}s ago.")
         else:
+            # ══════════════════════════════════════════════════════════════
+            # TRADINGVIEW SECOND-OPINION ENRICHMENT.
+            # Must happen BEFORE cache commit so the enriched tickers are
+            # what the frontend receives. Only A/A+ signals get enriched
+            # (keeps TV request volume low). 5m interval matches our 5/15m
+            # intraday options horizon — not daily indicators.
+            # ══════════════════════════════════════════════════════════════
+            try:
+                _tv_enrich_results(results, reg, interval="5m")
+            except Exception as _tve:
+                print(f"[TV-OPINION] ❌ _tv_enrich_results crashed: {type(_tve).__name__}: {_tve}")
+            
             _bottom_nav_cache[reg] = {
                 "data": {
                     "success": True, "region": reg, "count": len(results),
@@ -5132,6 +5385,35 @@ async def alert_test():
         "send_result": str(resp)[:500],
         "note": "Alerts only fire if CELESYS_ALERTS_ENABLED=1. Test works regardless.",
     }
+
+
+@app.get("/api/tv-second-opinion")
+async def tv_second_opinion(symbol: str, region: str = "IN", interval: str = "5m"):
+    """On-demand TradingView second-opinion fetch. Used by the 'TV' button
+    on top-3 cards when the user wants a fresh look outside the per-scan
+    enrichment cadence.
+    
+    Returns shape matches what _tv_enrich_results attaches to tickers:
+      { success, symbol, tv_opinion: {verdict, summary, oscillators, ma, ...}, agreement }
+    Agreement requires a `celesys_action` query param to be meaningful;
+    without it, we return the TV opinion and a null agreement flag.
+    """
+    reg = region.upper()
+    sym = symbol.upper().strip()
+    tv = _tv_get_opinion(sym, reg, interval)
+    if not tv:
+        return {
+            "success": False,
+            "symbol": sym, "region": reg, "interval": interval,
+            "error": "TradingView fetch failed — endpoint may be down or symbol unsupported",
+            "tv_opinion": None,
+        }
+    return {
+        "success": True,
+        "symbol": sym, "region": reg, "interval": interval,
+        "tv_opinion": tv,
+    }
+
 
 def _auto_scan_boot():
     import threading

@@ -4,3 +4,4 @@ requests==2.31.0
 yfinance
 pandas
 numpy
+tradingview-ta>=3.3.0

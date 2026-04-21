@@ -1,120 +1,155 @@
-# Celesys deploy — April 21, 2026 (r11)
+# Celesys deploy — April 21, 2026 (r12)
 
-Incremental over r10. Only `api.py` changed. Adds WhatsApp alerts via
-Meta Cloud API, plus a new doc `docs/WHATSAPP_ALERTS_SETUP.md` with the
-step-by-step Meta onboarding guide.
+Incremental over r11. Three files changed: `api.py`, `requirements.txt`,
+`static/active-trading.js`.
 
-## What's new in r11
+## What's new in r12: TradingView second-opinion integration
 
-### WhatsApp alert system
+Every A/A+ signal Celesys produces now gets a silent background fetch from
+TradingView's technical-analysis endpoint as a sanity check. If TV agrees,
+fine. If TV disagrees — that's the signal worth paying attention to.
 
-Fires a Meta Cloud API WhatsApp message to your configured recipient
-when a bottom-nav scan produces A-grade or A+ signals. Gated by:
+### Backend (`api.py`)
 
-1. Score ≥ 75 AND confidence ≥ 80 (A threshold) or ≥ 85/85 (A+)
-2. Action is `BUY CALL` or `BUY PUT` — not HOLD or AVOID
-3. Scan is fresh (not on `_last_scan_empty` keep-last-good branch)
-4. Per-symbol 30-minute cooldown (bypassed when grade upgrades A → A+)
-5. `CELESYS_ALERTS_ENABLED=1` env var is set
+Self-contained TradingView module added between the alert module and
+`_score_one_ticker`:
 
-Expected frequency: 5-15 alerts/day across IN+US during market hours.
+- `_tv_resolve_symbol(sym, reg)` — maps your scan universe to TV exchanges.
+  India: `NSE:NIFTY`, `NSE:HDFCBANK`, etc. US has a full exchange table
+  (NASDAQ/NYSE/AMEX) for the ~100 symbols we scan.
+- `_tv_get_opinion(sym, reg, interval)` — fetches TV's technical analysis
+  via the `tradingview-ta` PyPI library. 5-minute per-symbol cache.
+  Returns normalized dict with verdict + oscillator breakdown + MA breakdown.
+  Every failure returns None and logs; never crashes.
+- `_tv_agreement_flag(action, verdict)` — compares Celesys BUY CALL vs TV's
+  BUY/STRONG_BUY → AGREE, vs SELL → DISAGREE, vs NEUTRAL → PARTIAL.
+- `_tv_enrich_results(results, reg)` — attaches `_tv_opinion` and
+  `_tv_agreement` to each A/A+ ticker. Called inside `_run_bottom_nav_scan`
+  BEFORE cache commit so frontend receives enriched data.
 
-### New env vars (all 4 required)
+### Alert messages include TV opinion
 
-| Variable | Purpose |
-|---|---|
-| `CELESYS_ALERTS_ENABLED` | Master switch. Set to `1` to enable. |
-| `META_WABA_PHONE_ID` | Meta WABA phone number ID (digits, from app dashboard) |
-| `META_WABA_TOKEN` | Access token (temp 24h for test, system-user for prod) |
-| `META_WABA_RECIPIENT` | Your WhatsApp number — `919177577022` (no `+`) |
+WhatsApp alerts (r11) now append one of these lines when enrichment ran:
+- `TV confirms: Strong Buy ✓`
+- `⚠️ TV disagrees: Sell`
+- `TV neutral (inconclusive)`
 
-Without all 4 set, the `_alert_send_whatsapp` function returns
-`(False, "env vars missing...")` and does nothing. Scan pipeline
-continues normally.
+### New endpoint: `/api/tv-second-opinion`
 
-### New endpoint: `/api/alert-test`
+On-demand fetch for the frontend button:
+```
+GET /api/tv-second-opinion?symbol=NIFTY&region=IN&interval=5m
+```
+Returns:
+```json
+{
+  "success": true,
+  "symbol": "NIFTY", "region": "IN", "interval": "5m",
+  "tv_opinion": {
+    "verdict": "BUY",
+    "summary": {"buy": 14, "sell": 4, "neutral": 8},
+    "oscillators": {...},
+    "ma": {...},
+    "exchange": "NSE", "interval": "5m",
+    "fetched_ts": 1729594823.5
+  }
+}
+```
 
-Fires a diagnostic "🧪 Celesys alert test" message that bypasses
-grade and cooldown gates. Returns JSON with:
-- `config_check`: which env vars are present
-- `send_result`: raw Meta API response (or error string)
-- `success`: true/false
+### Frontend (`active-trading.js`)
 
-Use this to verify Meta Cloud API setup BEFORE waiting for real signals.
+New TV pill in each top-3 card's top bar, between confidence and button:
+- **Green ✓ TV Buy** — TV agrees, setup looks clean from two angles
+- **Red ✗ TV Sell** — TV disagrees, investigate before trading
+- **Yellow ⁓ TV Neutral** — TV inconclusive, no confirmation
+- **Gray `? TV`** — not yet enriched (ticker below A grade, or fetch failed).
+  Click to force fetch via `/api/tv-second-opinion`.
 
-### Docs
+Tooltip on hover shows full breakdown: summary B/S/N counts, oscillator
+verdict, MA verdict.
 
-`docs/WHATSAPP_ALERTS_SETUP.md` has the full Meta onboarding walkthrough
-including screenshots references, token types, and common error codes.
+Click any pill = fresh fetch, updates in place.
 
-## Everything from r10 still applies
+### requirements.txt
 
-NSE routing for Indian stocks, stuck-flag defense, keep-last-good cache,
-longer TTLs, `_stale` flag in response, light theme, horizontal TOP
-TRADES strip, big card typography, everything from r9 and below.
+Added `tradingview-ta>=3.3.0`. This is the one dependency that matters —
+Render must rebuild to pick it up.
+
+## Timeframe choice: 5m
+
+Per our prior decision: TV indicators use 5m to match your intraday
+options horizon. If we ever add a swing-trading mode, that path would
+pass `interval="1d"` instead. Daily indicators on a 5-minute-intent
+card would always say "Strong Buy" on a trending stock and mislead you.
+
+## Everything from r11 still applies
+
+WhatsApp alerts, NSE stock routing, stuck-flag defense, keep-last-good
+cache, `_stale` flag, light theme, big card typography, horizontal strip,
+etc.
 
 ## Deploy
 
-Only `api.py` changed vs r10. If r10 is live, push just that file.
-Then set the 4 new env vars in Render and rebuild.
+Three files changed. Deploy the whole zip. Render must rebuild to install
+`tradingview-ta`.
 
-## What to test
+## What to test after deploy
 
-**Order of operations:**
+### 1. Does the library install?
+Render build log should show `Collecting tradingview-ta` and
+`Successfully installed tradingview-ta-3.3.0`. If it fails, the import
+in api.py will log `[TV-OPINION] tradingview_ta not installed` and
+all TV pills will stay gray with no data.
 
-1. Deploy api.py (no env vars yet — alerts stay off)
-2. Hit `https://celesys.ai/api/alert-test` → should return
-   `success: false, send_result: "env vars missing..."`
-   (confirms the endpoint works and CELESYS_ALERTS_ENABLED is off)
-3. Follow `docs/WHATSAPP_ALERTS_SETUP.md` to provision Meta app +
-   verify your number
-4. Set 4 env vars on Render, rebuild
-5. Hit `/api/alert-test` again → should return `success: true` AND
-   you receive a WhatsApp message
-6. Wait for real alerts to fire during market hours
+### 2. Does India work?
+Open NIFTY in QT or wait for a top-3 card. Click the gray `? TV`
+pill. Should flip to green/red/yellow with a real verdict within 3
+seconds. If it stays gray, check logs for `[TV-OPINION] ❌ NIFTY`.
+
+### 3. Does US work?
+Same test on SPY / QQQ / NVDA.
+
+### 4. Does an Indian stock work?
+HDFCBANK or RELIANCE. My code assumes `NSE:HDFCBANK` works for TV.
+If it fails, the exchange prefix may need to be `BSE:` for some
+symbols — one-line fix.
+
+### 5. Disagreement detection
+Find a card where Celesys says BUY CALL but TV says SELL / STRONG_SELL.
+Pill should be red ✗. Hover to see full breakdown. This is the case
+r12 was built to surface.
 
 ## Honest flags
 
-1. **I cannot test this end-to-end.** My sandbox has no access to
-   Meta's API. The HTTP call path is coded defensively (8s timeout,
-   all errors swallowed and logged) but if Meta's API shape has
-   changed from what I coded against, you'll see the mismatch in the
-   `/api/alert-test` response. Fix would be one small session once
-   we see the actual error string.
+1. **`tradingview-ta` hits an undocumented endpoint.** TradingView can
+   and does change this. When they do, the library usually gets patched
+   within days. Meanwhile our code returns None gracefully — scans
+   continue, cards just show gray TV pills. Not a fatal failure mode.
 
-2. **24-hour window rule.** Meta's policy: freeform messages work
-   only within 24h of the recipient's last message. First time you
-   wire this up, send "hi" from your WhatsApp to the Meta test number
-   to open the window. For sustained alerting beyond 24h of silence,
-   you'd need to implement template messages (not built yet). Easy
-   workaround: reply to any alert to reset the window.
+2. **I did not live-test any of this.** My sandbox has no network. The
+   first real request will reveal whether:
+   - `tradingview-ta` installs cleanly on Render (should)
+   - NSE symbol routing works for Indian stocks (should)
+   - 5m data is available from TV for all exchanges (might not during
+     pre-market; falls back gracefully to None)
 
-3. **Temporary token expiry.** If you use the 24h temp token from
-   Meta's getting-started page, alerts will silently fail 24 hours
-   later with `HTTP 401`. For production reliability, get a permanent
-   system-user token. Doc explains the steps.
+3. **TV rate limits are undocumented.** If we spam the endpoint, they
+   may start returning 429s or block the IP. Our 5-minute per-symbol
+   cache plus A-grade-only enrichment means realistic volume is ~5-15
+   requests per scan × 1 scan per 3-5 min = low. If we start seeing
+   429s in logs, first move is to raise `_TV_CACHE_TTL` from 300 to
+   600 seconds.
 
-4. **No delivery confirmation.** We check HTTP 200 from Meta, but if
-   your phone is offline for days, messages queue server-side with no
-   signal back to us. Acceptable for this use case; worth knowing.
+4. **Only A/A+ tickers get enriched automatically.** Below-A signals
+   don't fire TV calls. That's a cost-saving decision. If you want
+   TV on every ticker the scanner sees, change `_tv_enrich_results`
+   to drop the score/confidence check — but expect ~40-50 TV calls
+   per scan instead of 3-5.
 
-5. **Grade detection uses `ticker.get("score")` with a
-   `confidence_score` fallback.** If your scanner's output schema
-   differs slightly per region (e.g. US returns `score`, IN returns
-   `confidence_score`), the primary `score` field should work. If
-   zero alerts fire on a day with known A-grade signals, dump one
-   response from `/api/bottom-nav-scan?region=IN` and check the
-   actual field names vs what `_alert_should_send` expects.
-
-6. **Message format uses the trigger formula `spot * 1.002` for CE /
-   `spot * 0.998` for PE.** This matches the spot-based trigger
-   redesign from earlier sessions. If the scanner ever sends an
-   explicit `trigger_spot` field, I should prefer that over
-   recalculating — didn't see it in the current response shape so
-   left the local calc. Verify on first real alert that the entry
-   price matches what the UI card shows for the same trade.
+5. **Alert message length.** Adding the TV line grows the WhatsApp
+   message by one line. Still well within Meta's 4096-char limit.
 
 ## Known backlog (unchanged)
 
-Scoring calibration, fair_value placeholder, score=50 default, ATR
-default, 52W default.
+Scoring calibration (OVERPRICED+WIDE+RANGING → BUY_SMALL),
+`fair_value = price × 1.05`, score=50 default, ATR default, 52W default.

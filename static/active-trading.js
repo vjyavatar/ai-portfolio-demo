@@ -6664,6 +6664,115 @@
     }, subLabel));
     topBar.appendChild(confCell);
 
+    // ── TRADINGVIEW SECOND-OPINION PILL ──────────────────────────────
+    // Backend enriches A/A+ tickers with _tv_opinion + _tv_agreement.
+    // Show a compact pill next to confidence: GREEN if TV agrees, RED if
+    // TV disagrees (worth investigating), YELLOW if TV is neutral, GRAY
+    // if not yet fetched. Click opens a fresh fetch via /api/tv-second-opinion.
+    try {
+      var tvRaw = trade._tv_opinion || (trade._raw && trade._raw._tv_opinion);
+      var tvAgr = trade._tv_agreement || (trade._raw && trade._raw._tv_agreement);
+      var tvPill;
+      if (tvRaw && tvRaw.verdict) {
+        var tvVerdict = String(tvRaw.verdict).replace(/_/g, ' ');
+        var pillColor, pillBg, pillBorder, pillLabel;
+        if (tvAgr === 'AGREE') {
+          pillColor = C.green; pillBg = C.green + '18'; pillBorder = C.green + '66';
+          pillLabel = 'TV ✓ ' + tvVerdict;
+        } else if (tvAgr === 'DISAGREE') {
+          pillColor = C.red; pillBg = C.red + '18'; pillBorder = C.red + '66';
+          pillLabel = 'TV ✗ ' + tvVerdict;
+        } else if (tvAgr === 'PARTIAL') {
+          pillColor = C.yellow; pillBg = C.yellow + '18'; pillBorder = C.yellow + '55';
+          pillLabel = 'TV ⁓ Neutral';
+        } else {
+          pillColor = C.textMute; pillBg = 'transparent'; pillBorder = C.divider;
+          pillLabel = 'TV ' + tvVerdict;
+        }
+        var tvTooltip = 'TradingView ' + (tvRaw.interval || '5m') +
+          ' · Summary: ' + (tvRaw.summary ? (tvRaw.summary.buy + 'B/' + tvRaw.summary.sell + 'S/' + tvRaw.summary.neutral + 'N') : '?') +
+          (tvRaw.oscillators ? ' · Osc: ' + (tvRaw.oscillators.verdict || '?') : '') +
+          (tvRaw.ma ? ' · MA: ' + (tvRaw.ma.verdict || '?') : '') +
+          ' · Click to refresh';
+        tvPill = el('button', {
+          title: tvTooltip,
+          onClick: function (e) {
+            e.stopPropagation();
+            // Fire-and-forget refresh — hit /api/tv-second-opinion and
+            // update the trade object in place, then rerender
+            var url = '/api/tv-second-opinion?symbol=' + encodeURIComponent(trade.symbol) +
+                     '&region=' + (state.region || 'IN') + '&interval=5m';
+            fetch(url).then(function (r) { return r.json(); }).then(function (d) {
+              if (d && d.success && d.tv_opinion) {
+                trade._tv_opinion = d.tv_opinion;
+                // Recompute agreement client-side using the same logic
+                var a = (trade.side === 'CE' || /CALL/i.test(trade.action || ''));
+                var v = String(d.tv_opinion.verdict || '').toUpperCase();
+                if (a) {
+                  trade._tv_agreement = (v === 'BUY' || v === 'STRONG_BUY') ? 'AGREE'
+                                      : (v === 'SELL' || v === 'STRONG_SELL') ? 'DISAGREE'
+                                      : (v === 'NEUTRAL') ? 'PARTIAL' : 'UNKNOWN';
+                } else {
+                  trade._tv_agreement = (v === 'SELL' || v === 'STRONG_SELL') ? 'AGREE'
+                                      : (v === 'BUY' || v === 'STRONG_BUY') ? 'DISAGREE'
+                                      : (v === 'NEUTRAL') ? 'PARTIAL' : 'UNKNOWN';
+                }
+                rerender();
+              }
+            }).catch(function () {});
+          },
+          style: {
+            fontSize: '10px', fontWeight: 900, color: pillColor,
+            background: pillBg, border: '1px solid ' + pillBorder,
+            padding: '4px 9px', borderRadius: '999px',
+            letterSpacing: '0.3px', fontFamily: MONO, flex: '0 0 auto',
+            cursor: 'pointer', lineHeight: 1.1, alignSelf: 'center',
+            whiteSpace: 'nowrap', maxWidth: '140px',
+            overflow: 'hidden', textOverflow: 'ellipsis'
+          }
+        }, pillLabel);
+      } else {
+        // Not yet enriched — show click-to-fetch placeholder
+        tvPill = el('button', {
+          title: 'Fetch TradingView second opinion for this symbol',
+          onClick: function (e) {
+            e.stopPropagation();
+            var url = '/api/tv-second-opinion?symbol=' + encodeURIComponent(trade.symbol) +
+                     '&region=' + (state.region || 'IN') + '&interval=5m';
+            fetch(url).then(function (r) { return r.json(); }).then(function (d) {
+              if (d && d.success && d.tv_opinion) {
+                trade._tv_opinion = d.tv_opinion;
+                var a = (trade.side === 'CE' || /CALL/i.test(trade.action || ''));
+                var v = String(d.tv_opinion.verdict || '').toUpperCase();
+                if (a) {
+                  trade._tv_agreement = (v === 'BUY' || v === 'STRONG_BUY') ? 'AGREE'
+                                      : (v === 'SELL' || v === 'STRONG_SELL') ? 'DISAGREE'
+                                      : (v === 'NEUTRAL') ? 'PARTIAL' : 'UNKNOWN';
+                } else {
+                  trade._tv_agreement = (v === 'SELL' || v === 'STRONG_SELL') ? 'AGREE'
+                                      : (v === 'BUY' || v === 'STRONG_BUY') ? 'DISAGREE'
+                                      : (v === 'NEUTRAL') ? 'PARTIAL' : 'UNKNOWN';
+                }
+                rerender();
+              }
+            }).catch(function () {});
+          },
+          style: {
+            fontSize: '10px', fontWeight: 900, color: C.textMute,
+            background: 'transparent', border: '1px dashed ' + C.divider,
+            padding: '4px 9px', borderRadius: '999px',
+            letterSpacing: '0.3px', fontFamily: MONO, flex: '0 0 auto',
+            cursor: 'pointer', lineHeight: 1.1, alignSelf: 'center',
+            whiteSpace: 'nowrap'
+          }
+        }, '? TV');
+      }
+      topBar.appendChild(tvPill);
+    } catch (e) {
+      // TV pill is decorative — never let a render error break the card
+      try { console.warn('[TV-PILL] render error:', e); } catch (e2) {}
+    }
+
     // Row 1 col 3 — EXECUTE button OR state badge if already executing/closed
     // Determine trade lifecycle state for this card
     var openPos = paperPortfolio.findByTradeId(trade.id);
