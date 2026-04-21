@@ -5109,7 +5109,14 @@ def _tv_enrich_results(results, region, interval="5m"):
 
 
 def _score_one_ticker(sym, reg):
-    """Get FULL options-quick data for ONE ticker. Returns everything _renderQuickTrade needs."""
+    """Get FULL options-quick data for ONE ticker. Returns everything _renderQuickTrade needs.
+    
+    r18: Scanner now accepts "spot-only" cards where chain is unavailable but
+    we have a real spot price. These tickers render as greyed-out chart-only
+    cards in the UI — users see live price but cannot trade (no chain data
+    to build a real trade on). This prevents the scanner looking empty during
+    rate-limit windows while still honoring the no-fake-assumptions principle.
+    """
     try:
         import asyncio
         loop = asyncio.new_event_loop()
@@ -5118,13 +5125,21 @@ def _score_one_ticker(sym, reg):
             d = loop.run_until_complete(asyncio.wait_for(_options_quick_impl(sym, reg), timeout=30))
         finally:
             loop.close()
-        if not d or not d.get("success") or d.get("spot", 0) <= 0:
+        if not d:
             return None
-        # Return FULL data — same shape as /api/options-quick response
-        # Frontend will run _renderQuickTrade on this exact data
-        d["sym"] = sym
-        d["_region"] = reg
-        return d
+        # Full-success path: has chain, tradable card
+        if d.get("success") and d.get("spot", 0) > 0:
+            d["sym"] = sym
+            d["_region"] = reg
+            return d
+        # Spot-only path: chain unavailable but real spot from fallback source
+        # Render as chart-only card, TAKE TRADE disabled. Must have real spot.
+        if d.get("_chain_unavailable") and d.get("spot", 0) > 0:
+            d["sym"] = sym
+            d["_region"] = reg
+            d["_spot_only"] = True  # Frontend flag: render greyed card, disable TAKE TRADE
+            return d
+        return None
     except Exception as e:
         print(f"[BOTTOM-NAV] ❌ {sym} ({reg}): {type(e).__name__}: {e}")
         return None

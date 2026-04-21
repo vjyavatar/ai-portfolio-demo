@@ -6779,7 +6779,38 @@
     var latestPos = openPos || paperPortfolio.findLatestByTradeId(trade.id);
     var buttonNode;
 
-    if (openPos) {
+    // r18: SPOT-ONLY cards show a disabled CHART ONLY button. Users see
+    // the spot price updating but cannot trade (no chain = can't build
+    // an honest trade). Prevents the scanner looking empty during
+    // rate-limit windows while respecting no-fake-assumptions.
+    if (trade._spotOnly) {
+      buttonNode = el('button', {
+        onClick: function (e) {
+          e.stopPropagation();
+          // Show a tooltip/toast explaining why trading is disabled
+          try {
+            showToast && showToast(
+              trade.symbol + ' — chain data unavailable from provider. ' +
+              'Spot price is live (' + (trade._spotSource || 'fallback source') +
+              ') but we cannot build a trade without option chain data.'
+            );
+          } catch (e2) {}
+        },
+        title: 'Chain unavailable — data provider rate-limited. Spot price is live but trading is disabled until chain returns.',
+        disabled: true,
+        style: {
+          height: '48px', width: '128px',
+          background: C.textMute + '18',
+          color: C.textMute,
+          fontWeight: 800, fontSize: '12px',
+          border: '1px dashed ' + C.divider,
+          borderRadius: '6px',
+          cursor: 'not-allowed',
+          letterSpacing: '0.6px', alignSelf: 'center',
+          opacity: 0.7,
+        }
+      }, 'CHART ONLY');
+    } else if (openPos) {
       // Currently live — pending or active
       var activeLabel = openPos.status === 'active' ? 'LIVE' : 'PENDING';
       var activeBg = openPos.status === 'active' ? C.green : C.orange;
@@ -10194,7 +10225,9 @@
           if (state.scannerPaused) {
             state.lastFetchMsg = '⏸ Scanner paused by admin — market data providers (NSE/Yahoo) temporarily rate-limited. Resumes automatically within 30-60 min. Your broker trading continues normally.';
           } else if (state.lastScanEmpty) {
-            state.lastFetchMsg = '⚠️ Market data provider rate-limited (NSE) — scanner temporarily unavailable. Your broker trading is unaffected. Auto-recovery in 30-60 min.';
+            state.lastFetchMsg = state.region === 'IN'
+              ? '⚠️ Market data provider rate-limited (NSE) — scanner temporarily unavailable. Your broker trading is unaffected. Auto-recovery in 30-60 min.'
+              : '⚠️ Market data provider rate-limited (Yahoo) — scanner temporarily unavailable. Your broker trading is unaffected. Auto-recovery in 30-60 min.';
           } else {
             state.lastFetchMsg = 'Scanner warming up (first boot takes ~30s) — retrying';
           }
@@ -10217,6 +10250,27 @@
           if (row.spot == null || row.spot <= 0) {
             rejectReasons.noSpot++;
             rejectDetails.push({ sym: sym, reason: 'no spot price', spot: row.spot });
+            return;
+          }
+          // r18: Spot-only cards. When backend returns _spot_only:true with a
+          // real spot but no chain, push through as a chart-only card (greyed,
+          // non-tradable) instead of rejecting. Users see live price during
+          // rate-limit windows instead of an empty scanner.
+          if (row._spot_only === true) {
+            mapped.push({
+              id: 'spotonly_' + sym,
+              symbol: sym,
+              spot: row.spot,
+              _spotOnly: true,
+              _spotSource: row._spot_source || 'unknown',
+              confidence: 0,
+              state: 'CHART_ONLY',
+              reason: 'Chain unavailable — data provider rate-limited. Chart-only mode.',
+              side: '', strike: 0, premium: 0,
+              stop: 0, target: 0, trigger: 0,
+              action: 'CHART ONLY',
+              _raw: row,
+            });
             return;
           }
           if (!Array.isArray(row.chain_near_atm) || row.chain_near_atm.length === 0) {
