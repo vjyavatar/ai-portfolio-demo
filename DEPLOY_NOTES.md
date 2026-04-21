@@ -1,70 +1,120 @@
-# Celesys deploy — April 20, 2026 (r10)
+# Celesys deploy — April 21, 2026 (r11)
 
-Incremental over r9. Both `api.py` and `static/active-trading.js` changed.
+Incremental over r10. Only `api.py` changed. Adds WhatsApp alerts via
+Meta Cloud API, plus a new doc `docs/WHATSAPP_ALERTS_SETUP.md` with the
+step-by-step Meta onboarding guide.
 
-## The big fix: cache + routing gaps
+## What's new in r11
 
-Your session-opening question was "why is the data 2 hours stale" and my deep trace found FIVE root causes, not one. This deploy addresses all five.
+### WhatsApp alert system
 
-### Gap 1 — Stuck busy-flag defense (FIXED)
+Fires a Meta Cloud API WhatsApp message to your configured recipient
+when a bottom-nav scan produces A-grade or A+ signals. Gated by:
 
-`_bottom_nav_busy` was a set that threads added to at scan start and removed at scan end (in a `finally`). If the thread died outside the try/finally (SIGKILL, OOM, kernel interrupt), the flag stuck forever and no future scan could fire. **This was the most likely root cause of your 2-hour staleness.**
+1. Score ≥ 75 AND confidence ≥ 80 (A threshold) or ≥ 85/85 (A+)
+2. Action is `BUY CALL` or `BUY PUT` — not HOLD or AVOID
+3. Scan is fresh (not on `_last_scan_empty` keep-last-good branch)
+4. Per-symbol 30-minute cooldown (bypassed when grade upgrades A → A+)
+5. `CELESYS_ALERTS_ENABLED=1` env var is set
 
-Fix: added `_bottom_nav_busy_since` tracking when each flag was set. The endpoint checks on every request: if a flag is older than `_BUSY_MAX_AGE` (180s, much longer than any real scan), force-clear it and spawn a fresh thread.
+Expected frequency: 5-15 alerts/day across IN+US during market hours.
 
-### Gap 2 — Keep-last-good policy (FIXED)
+### New env vars (all 4 required)
 
-Previous behavior: if a scan returned 0 tickers (e.g. Yahoo 429 storm wiping every US ticker), the cache was OVERWRITTEN with `{tickers: []}`. Good data from an earlier scan was lost.
+| Variable | Purpose |
+|---|---|
+| `CELESYS_ALERTS_ENABLED` | Master switch. Set to `1` to enable. |
+| `META_WABA_PHONE_ID` | Meta WABA phone number ID (digits, from app dashboard) |
+| `META_WABA_TOKEN` | Access token (temp 24h for test, system-user for prod) |
+| `META_WABA_RECIPIENT` | Your WhatsApp number — `919177577022` (no `+`) |
 
-Fix: if a scan returns 0 tickers AND the previous cache had tickers, preserve the previous snapshot. Original `ts` stays (so the frontend data-age chip still grows — the user sees the staleness). Two sidecar flags get added: `_last_scan_attempt` (when we last TRIED) and `_last_scan_empty: true` (so UI can show the distinction).
+Without all 4 set, the `_alert_send_whatsapp` function returns
+`(False, "env vars missing...")` and does nothing. Scan pipeline
+continues normally.
 
-### Gap 3 — Longer TTLs (FIXED)
+### New endpoint: `/api/alert-test`
 
-- India: 120s → **300s** (NSE is reliable; no need to hammer)
-- US: 120s → **180s** (Yahoo needs breathing room between bursts)
+Fires a diagnostic "🧪 Celesys alert test" message that bypasses
+grade and cooldown gates. Returns JSON with:
+- `config_check`: which env vars are present
+- `send_result`: raw Meta API response (or error string)
+- `success`: true/false
 
-### Gap 4 — Indian stock routing (FIXED — this was a real bug)
+Use this to verify Meta Cloud API setup BEFORE waiting for real signals.
 
-`nse_options` has always supported both the index endpoint (`option-chain-indices`) AND the stock endpoint (`option-chain-equities`). But `_options_quick_impl` hard-coded a whitelist of 5 indices and sent everything else to Yahoo, which **does not carry Indian stock option chains**.
+### Docs
 
-Result: every Indian single-stock scan (HDFCBANK, RELIANCE, TCS, BANKBEES, GOLDBEES, ITBEES, etc.) returned `_chain_unavailable` and got dropped. Your 47-ticker India scan was really a 3-ticker scan (just the indices that worked).
+`docs/WHATSAPP_ALERTS_SETUP.md` has the full Meta onboarding walkthrough
+including screenshots references, token types, and common error codes.
 
-Fix: broadened the NSE-first routing from `is_india_index` to `is_india` (all India symbols). Indian stocks that fail NSE now return honest failure instead of the pointless Yahoo fallback.
+## Everything from r10 still applies
 
-**Test after deploy:** pull up HDFCBANK or RELIANCE in QT. Option chain should render. If it doesn't, NSE's stock-equity endpoint response shape differs from what `nse_options` normalizes and we need a small follow-up.
-
-### Gap 5 — Stale state visible to user (FIXED, both halves)
-
-Backend endpoint now returns:
-- `_stale: true` when serving cache past TTL (refresh in progress)
-- `_cache_age_sec: <int>` so frontend can compute/display
-- `_last_scan_empty: true` when keep-last-good policy is active
-
-Frontend shows on each card's bottom-left:
-- `DATA: 34s ago` (gray) — normal
-- `STALE: 4m 12s ago` (amber) — cache past TTL, refreshing in background
-- `LAST-GOOD: 8m 30s ago` (red) — last scan returned empty, showing old data
-
-## Everything from r9 still applies
-
-Light theme, horizontal TOP TRADES strip, big card typography (34px confidence, 22px prices, MONO font, 14px button), 18px scanner rows, BLOCKED-with-reason, WATCHING 0.4%, voice verdict fix, synthetic-premium block, QT lot sizes.
+NSE routing for Indian stocks, stuck-flag defense, keep-last-good cache,
+longer TTLs, `_stale` flag in response, light theme, horizontal TOP
+TRADES strip, big card typography, everything from r9 and below.
 
 ## Deploy
 
-Both files changed: `api.py` and `static/active-trading.js`. Push both or the whole zip.
+Only `api.py` changed vs r10. If r10 is live, push just that file.
+Then set the 4 new env vars in Render and rebuild.
 
-## What to verify after deploy
+## What to test
 
-1. **India scanner count > 3**: logs should now show `[BOTTOM-NAV] ✅ IN: N scored` where N is 10-30+, not just the 3 indices. If it's still ≤3, `nse_options` is returning something unexpected for stocks.
-2. **Age label prefix reflects state**: normally `DATA:`, turns to `STALE:` after 5min, turns to `LAST-GOOD:` if Yahoo has a bad spell.
-3. **Staleness recovers**: the 2-hour freeze you saw should be impossible now — if the flag gets stuck, endpoint force-clears after 180s.
+**Order of operations:**
+
+1. Deploy api.py (no env vars yet — alerts stay off)
+2. Hit `https://celesys.ai/api/alert-test` → should return
+   `success: false, send_result: "env vars missing..."`
+   (confirms the endpoint works and CELESYS_ALERTS_ENABLED is off)
+3. Follow `docs/WHATSAPP_ALERTS_SETUP.md` to provision Meta app +
+   verify your number
+4. Set 4 env vars on Render, rebuild
+5. Hit `/api/alert-test` again → should return `success: true` AND
+   you receive a WhatsApp message
+6. Wait for real alerts to fire during market hours
 
 ## Honest flags
 
-1. **Gap 4 is the highest-risk change.** I broadened NSE routing without live-testing the response shape from `option-chain-equities`. If it differs from `option-chain-indices`, Indian stock cards may render with garbled fields. First live test should be HDFCBANK in QT.
-2. **Keep-last-good extends the staleness window.** Under sustained Yahoo 429s you could see `LAST-GOOD` data that's many minutes old and still treats Spot/Buy/SL/Target as tradable. The red color + LAST-GOOD prefix is meant to signal "don't actually trade this." If users trust the numbers anyway, we need a stronger gate (e.g. disable the TAKE TRADE button when `_last_scan_empty` is active).
-3. **Stuck-flag defense has a 180s window.** If a scan legitimately takes >180s (Yahoo stalls badly), a second scan could spawn before the first finishes — both writing to the same cache slot. Last-write-wins; not a data corruption issue, just wasted work. Acceptable.
+1. **I cannot test this end-to-end.** My sandbox has no access to
+   Meta's API. The HTTP call path is coded defensively (8s timeout,
+   all errors swallowed and logged) but if Meta's API shape has
+   changed from what I coded against, you'll see the mismatch in the
+   `/api/alert-test` response. Fix would be one small session once
+   we see the actual error string.
+
+2. **24-hour window rule.** Meta's policy: freeform messages work
+   only within 24h of the recipient's last message. First time you
+   wire this up, send "hi" from your WhatsApp to the Meta test number
+   to open the window. For sustained alerting beyond 24h of silence,
+   you'd need to implement template messages (not built yet). Easy
+   workaround: reply to any alert to reset the window.
+
+3. **Temporary token expiry.** If you use the 24h temp token from
+   Meta's getting-started page, alerts will silently fail 24 hours
+   later with `HTTP 401`. For production reliability, get a permanent
+   system-user token. Doc explains the steps.
+
+4. **No delivery confirmation.** We check HTTP 200 from Meta, but if
+   your phone is offline for days, messages queue server-side with no
+   signal back to us. Acceptable for this use case; worth knowing.
+
+5. **Grade detection uses `ticker.get("score")` with a
+   `confidence_score` fallback.** If your scanner's output schema
+   differs slightly per region (e.g. US returns `score`, IN returns
+   `confidence_score`), the primary `score` field should work. If
+   zero alerts fire on a day with known A-grade signals, dump one
+   response from `/api/bottom-nav-scan?region=IN` and check the
+   actual field names vs what `_alert_should_send` expects.
+
+6. **Message format uses the trigger formula `spot * 1.002` for CE /
+   `spot * 0.998` for PE.** This matches the spot-based trigger
+   redesign from earlier sessions. If the scanner ever sends an
+   explicit `trigger_spot` field, I should prefer that over
+   recalculating — didn't see it in the current response shape so
+   left the local calc. Verify on first real alert that the entry
+   price matches what the UI card shows for the same trade.
 
 ## Known backlog (unchanged)
 
-Scoring calibration (OVERPRICED+WIDE+RANGING → BUY_SMALL), fair_value placeholder, score=50 default, ATR default, 52W default.
+Scoring calibration, fair_value placeholder, score=50 default, ATR
+default, 52W default.

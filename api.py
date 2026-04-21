@@ -4695,6 +4695,176 @@ _BUSY_MAX_AGE = 180          # seconds. Longer than any realistic scan (~25s) + 
 _CACHE_TTL_IN = 300          # India: NSE is reliable, refresh every 5min.
 _CACHE_TTL_US = 180          # US: Yahoo needs breathing room between bursts.
 
+
+# ═══════════════════════════════════════════════════════════════════════
+# WHATSAPP ALERT SYSTEM (Meta Cloud API)
+#
+# Fires when a bottom-nav scan produces A-grade or A+ signals. Gated by:
+#   1. score >= 75 AND confidence >= 80
+#   2. action is BUY CALL / BUY PUT (not HOLD / AVOID)
+#   3. scan data fresh (not _last_scan_empty)
+#   4. per-symbol cooldown (30min), bypassed on grade upgrade
+#   5. CELESYS_ALERTS_ENABLED env var is "1" (so staging doesn't spam)
+#
+# Failure mode: any alert error is logged and swallowed. Trading pipeline
+# must NOT fail because WhatsApp is down. Alert is not a critical path.
+# ═══════════════════════════════════════════════════════════════════════
+
+# Cooldown store: { "SYMBOL_STRIKE_SIDE": {"last_grade": "A+", "last_sent_ts": epoch} }
+_alert_cooldown = {}
+_ALERT_COOLDOWN_SEC = 30 * 60  # 30 min
+
+def _alert_grade(score, confidence):
+    """Map (score, confidence) → grade string. Returns None if below A threshold."""
+    if score is None or confidence is None: return None
+    if score >= 85 and confidence >= 85: return "A+"
+    if score >= 75 and confidence >= 80: return "A"
+    return None
+
+_GRADE_RANK = {"A": 1, "A+": 2}
+
+def _alert_should_send(ticker):
+    """Decide if this ticker warrants a WhatsApp alert RIGHT NOW.
+    Returns (True, grade) to send, (False, reason) to skip."""
+    score = ticker.get("score") or ticker.get("confidence_score")
+    conf = ticker.get("confidence")
+    action = (ticker.get("action") or "").upper()
+    sym = ticker.get("sym") or ticker.get("symbol") or "?"
+    strike = ticker.get("strike") or ticker.get("atm_strike") or "?"
+    side = ticker.get("side") or ("CE" if "CALL" in action else "PE" if "PUT" in action else "?")
+    
+    grade = _alert_grade(score, conf)
+    if grade is None:
+        return (False, f"below A ({score}/{conf})")
+    if action not in ("BUY CALL", "BUY PUT"):
+        return (False, f"action={action}")
+    
+    key = f"{sym}_{strike}_{side}"
+    prior = _alert_cooldown.get(key)
+    now_ts = time.time()
+    if prior:
+        age = now_ts - prior["last_sent_ts"]
+        # Re-alert if cooldown elapsed OR grade upgraded from A to A+
+        prior_rank = _GRADE_RANK.get(prior["last_grade"], 0)
+        cur_rank = _GRADE_RANK.get(grade, 0)
+        if age < _ALERT_COOLDOWN_SEC and cur_rank <= prior_rank:
+            return (False, f"cooldown {int(age)}s, grade {prior['last_grade']}→{grade}")
+    return (True, grade)
+
+def _alert_format_message(ticker, grade, region):
+    """Build the WhatsApp message body. Returns a plain string."""
+    sym = ticker.get("sym") or ticker.get("symbol") or "?"
+    strike = ticker.get("strike") or ticker.get("atm_strike") or "?"
+    side = ticker.get("side") or ""
+    action = ticker.get("action") or ""
+    score = ticker.get("score") or ticker.get("confidence_score") or 0
+    conf = ticker.get("confidence") or 0
+    spot = ticker.get("spot", 0)
+    
+    # Chain lookup for premium/SL/target — read from chain_near_atm near strike
+    chain = ticker.get("chain_near_atm") or []
+    premium = None
+    atm_row = None
+    for row in chain:
+        if abs((row.get("strike", 0)) - float(strike if isinstance(strike, (int, float)) else 0)) < 0.01:
+            atm_row = row
+            break
+    if atm_row:
+        premium = atm_row.get("ce_ltp") if "CE" in (side or action) else atm_row.get("pe_ltp")
+    
+    # Fallback: use suggested_entry/sl/target if backend computed them
+    entry_px = ticker.get("suggested_entry") or premium or 0
+    sl_px = ticker.get("suggested_sl", 0)
+    tgt_px = ticker.get("suggested_target", 0)
+    
+    # Trigger is in underlying spot terms (per the spot-based-trigger redesign)
+    trigger_spot = spot * 1.002 if "CE" in (side or action) else spot * 0.998 if spot else 0
+    
+    currency = "₹" if region == "IN" else "$"
+    region_flag = "🇮🇳" if region == "IN" else "🇺🇸"
+    trigger_word = "above" if "CE" in (side or action) else "below"
+    
+    reason = ticker.get("reason") or ticker.get("rationale") or ""
+    if len(reason) > 120: reason = reason[:117] + "..."
+    
+    lines = [
+        f"🚨 CELESYS {grade} · {region_flag} {region}",
+        f"{sym} {strike} {side or ''} · {int(conf)}% conf · Score {int(score)}",
+        "",
+        f"Entry: {trigger_word} {trigger_spot:.2f} (spot {spot:.2f})"
+    ]
+    if entry_px: lines.append(f"Premium: {currency}{entry_px:.2f}")
+    if sl_px: lines.append(f"SL: {currency}{sl_px:.2f}")
+    if tgt_px: lines.append(f"Target: {currency}{tgt_px:.2f}")
+    if reason: lines += ["", f"Reason: {reason}"]
+    lines += ["", "— Celesys · Not investment advice"]
+    return "\n".join(lines)
+
+def _alert_send_whatsapp(message):
+    """Send via Meta WhatsApp Cloud API. Returns (True, response) on success,
+    (False, error_string) on any failure. Never raises — trading pipeline must
+    continue even if alerts die."""
+    phone_id = os.environ.get("META_WABA_PHONE_ID", "").strip()
+    token = os.environ.get("META_WABA_TOKEN", "").strip()
+    recipient = os.environ.get("META_WABA_RECIPIENT", "").strip()
+    
+    if not (phone_id and token and recipient):
+        return (False, "env vars missing (META_WABA_PHONE_ID/TOKEN/RECIPIENT)")
+    
+    url = f"https://graph.facebook.com/v20.0/{phone_id}/messages"
+    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+    payload = {
+        "messaging_product": "whatsapp",
+        "to": recipient,
+        "type": "text",
+        "text": {"preview_url": False, "body": message}
+    }
+    try:
+        r = requests.post(url, json=payload, headers=headers, timeout=8)
+        if r.status_code == 200:
+            return (True, r.json())
+        # Meta sends structured errors; log body for debugging
+        return (False, f"HTTP {r.status_code}: {r.text[:300]}")
+    except requests.exceptions.Timeout:
+        return (False, "timeout after 8s")
+    except Exception as e:
+        return (False, f"{type(e).__name__}: {e}")
+
+def _alert_dispatch(results, region):
+    """Called at end of bottom-nav scan with the scored tickers.
+    Evaluates each for alert eligibility, sends messages for those that pass.
+    Never raises. Respects CELESYS_ALERTS_ENABLED env var."""
+    if os.environ.get("CELESYS_ALERTS_ENABLED", "0").strip() != "1":
+        return  # alerts not enabled — silent noop
+    
+    sent = 0
+    skipped = 0
+    for ticker in (results or []):
+        try:
+            should, grade_or_reason = _alert_should_send(ticker)
+            if not should:
+                skipped += 1
+                continue
+            grade = grade_or_reason
+            msg = _alert_format_message(ticker, grade, region)
+            ok, resp = _alert_send_whatsapp(msg)
+            sym = ticker.get("sym") or ticker.get("symbol") or "?"
+            strike = ticker.get("strike") or "?"
+            side = ticker.get("side") or ""
+            key = f"{sym}_{strike}_{side}"
+            if ok:
+                _alert_cooldown[key] = {"last_grade": grade, "last_sent_ts": time.time()}
+                sent += 1
+                print(f"[ALERT] ✅ {region} {grade} {sym} {strike} {side} sent")
+            else:
+                print(f"[ALERT] ❌ {region} {sym} {strike} {side} failed: {resp}")
+        except Exception as e:
+            print(f"[ALERT] ⚠️ dispatch error for {ticker.get('sym', '?')}: {type(e).__name__}: {e}")
+    
+    if sent > 0 or skipped > 0:
+        print(f"[ALERT] {region}: sent={sent}, skipped={skipped} (cooldown/below-A)")
+
+
 def _score_one_ticker(sym, reg):
     """Get FULL options-quick data for ONE ticker. Returns everything _renderQuickTrade needs."""
     try:
@@ -4860,6 +5030,15 @@ def _run_bottom_nav_scan(reg):
                 },
                 "time": now_ts
             }
+            # Dispatch WhatsApp alerts ONLY on the fresh-results path.
+            # We skip alerting on the keep-last-good branch above because
+            # those tickers are old data — alerting on them would be spammy
+            # and stale. Must be inside try/except (already wrapped) so any
+            # failure doesn't bubble up and kill the scan thread.
+            try:
+                _alert_dispatch(results, reg)
+            except Exception as _ae:
+                print(f"[ALERT] ❌ _alert_dispatch crashed: {type(_ae).__name__}: {_ae}")
         bc = len([r for r in results if r.get("action") in ("BUY CALL","BUY PUT")])
         print(f"[BOTTOM-NAV] ✅ {reg}: {len(results)} scored in {time.time()-t2:.1f}s, {bc} buy (total: {time.time()-t1:.1f}s)")
     except Exception as e:
@@ -4919,6 +5098,40 @@ async def bottom_nav_scan(region: str = "IN"):
         import threading
         threading.Thread(target=_run_bottom_nav_scan, args=(reg,), daemon=True).start()
     return {"success": True, "region": reg, "count": 0, "tickers": [], "ts": 0}
+
+
+@app.get("/api/alert-test")
+async def alert_test():
+    """Diagnostic: sends a test WhatsApp message to verify Meta Cloud API
+    setup is working. Returns detailed result so you can see why it failed
+    without having to read server logs.
+    
+    Requires: CELESYS_ALERTS_ENABLED=1 AND META_WABA_{PHONE_ID,TOKEN,RECIPIENT}
+    all set in env. Bypasses grade/cooldown gates so you can test anytime.
+    """
+    enabled = os.environ.get("CELESYS_ALERTS_ENABLED", "0").strip() == "1"
+    have_phone = bool(os.environ.get("META_WABA_PHONE_ID", "").strip())
+    have_token = bool(os.environ.get("META_WABA_TOKEN", "").strip())
+    have_recipient = bool(os.environ.get("META_WABA_RECIPIENT", "").strip())
+    
+    test_msg = (
+        "🧪 Celesys alert test\n"
+        f"Server time: {datetime.utcnow().isoformat()}Z\n"
+        "If you see this, Meta WhatsApp Cloud API is wired up correctly.\n"
+        "Real alerts will look similar but with trade details."
+    )
+    ok, resp = _alert_send_whatsapp(test_msg)
+    return {
+        "success": ok,
+        "config_check": {
+            "CELESYS_ALERTS_ENABLED": enabled,
+            "META_WABA_PHONE_ID": have_phone,
+            "META_WABA_TOKEN": have_token,
+            "META_WABA_RECIPIENT": have_recipient,
+        },
+        "send_result": str(resp)[:500],
+        "note": "Alerts only fire if CELESYS_ALERTS_ENABLED=1. Test works regardless.",
+    }
 
 def _auto_scan_boot():
     import threading
