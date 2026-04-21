@@ -6908,16 +6908,32 @@
       var _ageTxt;
       if (_ageSec < 60) _ageTxt = _ageSec + 's ago';
       else _ageTxt = Math.floor(_ageSec / 60) + 'm ' + (_ageSec % 60) + 's ago';
+      // Prefix with backend-signaled state. _stale: cache served past TTL,
+      // a refresh is running. _lastScanEmpty: most recent scan attempt
+      // returned 0 tickers so this is keep-last-good data.
+      var _prefix = 'DATA';
+      if (state.lastScanEmpty) _prefix = 'LAST-GOOD';
+      else if (state.dataStale) _prefix = 'STALE';
+      // When we know we're on last-good or stale data, force amber/red
+      // regardless of age — the issue isn't age, it's that fresh data
+      // isn't landing.
+      if (state.lastScanEmpty) _ageColor = C.red;
+      else if (state.dataStale && _ageColor === C.textMute) _ageColor = C.yellow;
       card.appendChild(el('div', {
         'data-age-ts': String(state.dataTs),   // marker so the tick refresher can find these
-        title: 'Data timestamp from backend. If this stops updating the scan is cached.',
+        'data-age-prefix': _prefix,            // so the tick refresher keeps the prefix
+        title: _prefix === 'LAST-GOOD'
+          ? 'Backend is serving previous-good data; latest scan returned 0 tickers (likely Yahoo/NSE rate limit).'
+          : _prefix === 'STALE'
+            ? 'Cache is past its TTL; backend is refreshing in the background.'
+            : 'Data timestamp from backend.',
         style: {
           position: 'absolute', bottom: '5px', left: '12px',
           fontSize: '11px', color: _ageColor, fontFamily: MONO,
           fontWeight: 900, letterSpacing: '0.3px',
           pointerEvents: 'none', opacity: 0.95
         }
-      }, 'DATA: ' + _ageTxt));
+      }, _prefix + ': ' + _ageTxt));
     }
 
     // ════════════════════════════════════════════════════════════════════
@@ -10055,6 +10071,11 @@
         if (typeof d.ts === 'number' && d.ts > 0) {
           state.dataTs = d.ts * 1000;  // seconds → ms for JS Date arithmetic
         }
+        // Backend r10+ sends these two hints. Use them to show stale/empty
+        // states in UI so users know the difference between "cache is working
+        // fine" and "we're showing last-good data while live fetches fail".
+        state.dataStale = d._stale === true;
+        state.lastScanEmpty = d._last_scan_empty === true;
         if (raw.length === 0) {
           state.lastFetchMsg = 'Scanner still warming up (boot takes ~30s) — retrying';
           state.trades = []; state.scanner = [];
@@ -10735,14 +10756,21 @@
           var _ts = parseInt(_tsStr, 10);
           if (!_ts) continue;
           var _sec = Math.max(0, Math.floor((nowMs - _ts) / 1000));
+          // Honor the prefix that was set at render time ('DATA', 'STALE',
+          // 'LAST-GOOD'). Prefix reflects backend state; age just tracks time.
+          var _pref = _el.getAttribute('data-age-prefix') || 'DATA';
           var _txt = _sec < 60
-            ? 'DATA: ' + _sec + 's ago'
-            : 'DATA: ' + Math.floor(_sec / 60) + 'm ' + (_sec % 60) + 's ago';
+            ? _pref + ': ' + _sec + 's ago'
+            : _pref + ': ' + Math.floor(_sec / 60) + 'm ' + (_sec % 60) + 's ago';
           if (_el.textContent !== _txt) _el.textContent = _txt;
-          // Color reflects freshness. Matches thresholds in tradeCard render.
-          var _col = _sec <= 90 ? '#64748B'      // slate-500 (mute)
-                   : _sec <= 180 ? '#D97706'     // amber-600 (warning)
-                   : '#DC2626';                   // red-600 (stale)
+          // Color: forced red for LAST-GOOD (data isn't landing), amber for
+          // STALE (refreshing), otherwise age-based gray/amber/red.
+          var _col;
+          if (_pref === 'LAST-GOOD') _col = '#DC2626';
+          else if (_pref === 'STALE') _col = '#D97706';
+          else _col = _sec <= 90 ? '#64748B'
+                    : _sec <= 180 ? '#D97706'
+                    : '#DC2626';
           if (_el.style.color !== _col) _el.style.color = _col;
         }
       }

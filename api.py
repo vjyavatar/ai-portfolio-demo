@@ -4690,6 +4690,10 @@ _participant_oi_cache = {"data": None, "time": 0}
 # ═══════════════════════════════════════════════════════════════════════════════
 _bottom_nav_cache = {"IN": {"data": None, "time": 0}, "US": {"data": None, "time": 0}}
 _bottom_nav_busy = set()
+_bottom_nav_busy_since = {}  # { reg: time_set } — stuck-flag defense. If a flag is older than _BUSY_MAX_AGE we force-clear it because the thread presumably crashed outside the try/finally.
+_BUSY_MAX_AGE = 180          # seconds. Longer than any realistic scan (~25s) + safety margin.
+_CACHE_TTL_IN = 300          # India: NSE is reliable, refresh every 5min.
+_CACHE_TTL_US = 180          # US: Yahoo needs breathing room between bursts.
 
 def _score_one_ticker(sym, reg):
     """Get FULL options-quick data for ONE ticker. Returns everything _renderQuickTrade needs."""
@@ -4716,6 +4720,7 @@ def _run_bottom_nav_scan(reg):
     """India: skip yf, go straight to NSE via _options_quick_impl. US: Stage 1 yf pre-filter + Stage 2."""
     if reg in _bottom_nav_busy: return
     _bottom_nav_busy.add(reg)
+    _bottom_nav_busy_since[reg] = time.time()  # stuck-flag defense marker
     try:
         from concurrent.futures import ThreadPoolExecutor, as_completed
         t1 = time.time()
@@ -4791,7 +4796,18 @@ def _run_bottom_nav_scan(reg):
             print(f"[BOTTOM-NAV] 🇺🇸 Stage 1: {time.time()-t1:.1f}s — {len(candidates)}/{len(us_yf_map)} pass")
         
         if not candidates:
-            _bottom_nav_cache[reg] = {"data": {"success":True,"region":reg,"count":0,"tickers":[],"ts":time.time()}, "time":time.time()}
+            # Same keep-last-good policy: preserve earlier snapshot if present.
+            prev = _bottom_nav_cache.get(reg, {})
+            prev_data = prev.get("data") or {}
+            prev_tickers = prev_data.get("tickers") or []
+            now_ts = time.time()
+            if len(prev_tickers) > 0:
+                prev_data["_last_scan_attempt"] = now_ts
+                prev_data["_last_scan_empty"] = True
+                _bottom_nav_cache[reg] = {"data": prev_data, "time": prev.get("time", now_ts)}
+                print(f"[BOTTOM-NAV] ⚠️ {reg}: no Stage 1 candidates, preserving previous {len(prev_tickers)} tickers.")
+            else:
+                _bottom_nav_cache[reg] = {"data": {"success":True,"region":reg,"count":0,"tickers":[],"ts":now_ts,"_last_scan_attempt":now_ts,"_last_scan_empty":True}, "time":now_ts}
             return
         
         # ═══ STAGE 2: Full scoring via _options_quick_impl ═══
@@ -4814,7 +4830,36 @@ def _run_bottom_nav_scan(reg):
                 except: pass
         
         results.sort(key=lambda x: x.get("spot", 0), reverse=True)
-        _bottom_nav_cache[reg] = {"data": {"success":True,"region":reg,"count":len(results),"tickers":results,"ts":time.time()}, "time":time.time()}
+        # ══════════════════════════════════════════════════════════════════
+        # KEEP-LAST-GOOD POLICY:
+        # If this scan returned 0 tickers but the previous cache had real
+        # tickers, do NOT overwrite. A transient Yahoo 429 burst should not
+        # wipe out a working snapshot. We still update a sidecar timestamp
+        # (_last_scan_attempt) so the caller knows we tried.
+        # On the flip side: if we got real results, always take them —
+        # even "0 tickers" from a cold cache is valid (boot placeholder).
+        # ══════════════════════════════════════════════════════════════════
+        prev = _bottom_nav_cache.get(reg, {})
+        prev_data = prev.get("data") or {}
+        prev_tickers = prev_data.get("tickers") or []
+        now_ts = time.time()
+        if len(results) == 0 and len(prev_tickers) > 0:
+            # Preserve previous good snapshot but mark that we re-attempted.
+            # The original ts stays so frontend sees growing data-age and
+            # knows to treat values as possibly stale.
+            prev_data["_last_scan_attempt"] = now_ts
+            prev_data["_last_scan_empty"] = True
+            _bottom_nav_cache[reg] = {"data": prev_data, "time": prev.get("time", now_ts)}
+            print(f"[BOTTOM-NAV] ⚠️ {reg}: empty scan result, preserving previous {len(prev_tickers)} tickers from {int(now_ts - prev.get('time', now_ts))}s ago.")
+        else:
+            _bottom_nav_cache[reg] = {
+                "data": {
+                    "success": True, "region": reg, "count": len(results),
+                    "tickers": results, "ts": now_ts,
+                    "_last_scan_attempt": now_ts, "_last_scan_empty": False
+                },
+                "time": now_ts
+            }
         bc = len([r for r in results if r.get("action") in ("BUY CALL","BUY PUT")])
         print(f"[BOTTOM-NAV] ✅ {reg}: {len(results)} scored in {time.time()-t2:.1f}s, {bc} buy (total: {time.time()-t1:.1f}s)")
     except Exception as e:
@@ -4822,18 +4867,54 @@ def _run_bottom_nav_scan(reg):
         import traceback; traceback.print_exc()
     finally:
         _bottom_nav_busy.discard(reg)
+        _bottom_nav_busy_since.pop(reg, None)
 
 
 @app.get("/api/bottom-nav-scan")
 async def bottom_nav_scan(region: str = "IN"):
-    """INSTANT — returns cached data. Triggers background refresh if stale."""
+    """INSTANT — returns cached data. Triggers background refresh if stale.
+    
+    Contract:
+      - `ts` is when the tickers were last actually scored (not when the
+        response was generated). Frontend uses this to show data-age.
+      - `_stale` is True when we're serving cached data past TTL but the
+        background refresh hasn't completed yet. Frontend can show a
+        "stale" badge.
+      - `_last_scan_empty` is True when the most recent refresh attempt
+        returned zero tickers (we're serving keep-last-good).
+    """
     reg = region.upper()
     cache = _bottom_nav_cache.get(reg, {"data": None, "time": 0})
+    
+    # ══════════════════════════════════════════════════════════════════
+    # STUCK-FLAG DEFENSE.
+    # If a busy flag is older than _BUSY_MAX_AGE (180s) we assume the
+    # thread that set it has crashed in a way that skipped the finally
+    # block (OOM, SIGKILL, kernel interrupt, whatever). We force-clear
+    # it so we can spawn a fresh scan. Without this, a single crash
+    # freezes the cache until the process restarts.
+    # ══════════════════════════════════════════════════════════════════
+    busy_since = _bottom_nav_busy_since.get(reg)
+    if reg in _bottom_nav_busy and busy_since and (time.time() - busy_since) > _BUSY_MAX_AGE:
+        print(f"[BOTTOM-NAV] ⚠️ {reg}: busy flag stuck for {int(time.time()-busy_since)}s — force-clearing and respawning")
+        _bottom_nav_busy.discard(reg)
+        _bottom_nav_busy_since.pop(reg, None)
+    
+    ttl = _CACHE_TTL_IN if reg == "IN" else _CACHE_TTL_US
+    
     if cache["data"]:
-        if time.time() - cache["time"] > 120 and reg not in _bottom_nav_busy:
+        age = time.time() - cache["time"]
+        # Trigger a background refresh if TTL exceeded and no refresh is running.
+        if age > ttl and reg not in _bottom_nav_busy:
             import threading
             threading.Thread(target=_run_bottom_nav_scan, args=(reg,), daemon=True).start()
-        return cache["data"]
+        # Mirror the data but attach a `_stale` flag if we're serving it past TTL.
+        resp = dict(cache["data"])
+        resp["_stale"] = bool(age > ttl)
+        resp["_cache_age_sec"] = int(age)
+        return resp
+    
+    # Cold cache — trigger first scan
     if reg not in _bottom_nav_busy:
         import threading
         threading.Thread(target=_run_bottom_nav_scan, args=(reg,), daemon=True).start()
@@ -25780,11 +25861,22 @@ async def _options_quick_impl(symbol: str = "NIFTY", region: str = "IN"):
         # Detect market type
         india_indices = ['NIFTY', 'BANKNIFTY', 'SENSEX', 'FINNIFTY', 'MIDCPNIFTY']
         is_india_index = sym in india_indices
+        is_india = (region == 'IN') or is_india_index
         result = None  # Initialize
         
-        if is_india_index:
-            # Try NSE first, fall back to yfinance for spot data
-            print(f"[OPTIONS-QUICK] Trying NSE for {sym}...")
+        # ══════════════════════════════════════════════════════════════════
+        # NSE FIRST FOR ALL INDIA SYMBOLS (not just indices).
+        #
+        # Previously only 5 indices routed here. Everything else — HDFCBANK,
+        # RELIANCE, TCS, ETFs like BANKBEES — fell through to Yahoo, which
+        # does NOT have real option chains for Indian stocks. Result: every
+        # Indian single-stock scan produced `_chain_unavailable` and got
+        # dropped. nse_options() already handles stock equities via the
+        # option-chain-equities endpoint (see line ~3765); we just weren't
+        # calling it.
+        # ══════════════════════════════════════════════════════════════════
+        if is_india:
+            print(f"[OPTIONS-QUICK] Trying NSE for {sym} (india)...")
             try:
                 result = await nse_options(sym)
                 if result and result.get("success") and result.get("spot", 0) > 0:
@@ -25792,8 +25884,9 @@ async def _options_quick_impl(symbol: str = "NIFTY", region: str = "IN"):
                 print(f"[OPTIONS-QUICK] NSE returned no data for {sym}, trying yfinance fallback...")
             except Exception as nse_err:
                 print(f"[OPTIONS-QUICK] NSE failed for {sym}: {nse_err}, trying yfinance fallback...")
-            
-            # Fallback: use yfinance for basic spot + VIX data
+        
+        if is_india_index:
+            # Fallback: use yfinance for basic spot + VIX data (indices only)
             import yfinance as yf
             yf_map = {"NIFTY": "^NSEI", "BANKNIFTY": "^NSEBANK", "SENSEX": "^BSESN", "FINNIFTY": "NIFTY_FIN_SERVICE.NS", "MIDCPNIFTY": "NIFTY_MID_SELECT.NS"}
             yf_sym = yf_map.get(sym, f"^NSEI")
@@ -25889,10 +25982,29 @@ async def _options_quick_impl(symbol: str = "NIFTY", region: str = "IN"):
                 return result
             return {"success": False, "error": "All data sources failed for " + sym, "spot": 0, "ohlc_bars": [], "chain_near_atm": [], "ce_resistance": [], "pe_support": [], "gex": {"total": 0, "regime": "NEUTRAL", "topStrikes": [], "flipPoint": 0, "callWall": 0, "putWall": 0}}
         
-        # ═══ US / INDIA STOCK / ETF OPTIONS (via Yahoo Finance) ═══
+        # ══════════════════════════════════════════════════════════════════
+        # India STOCKS (non-index) when NSE failed:
+        # Yahoo does not carry real Indian stock option chains — falling
+        # through to the Yahoo path would either 404 or return US ticker
+        # data for name collisions (e.g. "SAIL" in India vs "SAIL" in US).
+        # Return honest failure instead of pretending there's a chain.
+        # ══════════════════════════════════════════════════════════════════
+        if is_india and not is_india_index:
+            print(f"[OPTIONS-QUICK] {sym}: NSE failed for India stock; Yahoo has no chain for Indian stocks — dropping.")
+            return {
+                "success": False,
+                "error": "NSE option chain unavailable for Indian stock " + sym,
+                "symbol": sym,
+                "spot": 0,
+                "_chain_unavailable": True,
+                "ohlc_bars": [], "chain_near_atm": [], "ce_resistance": [], "pe_support": [],
+                "gex": {"total": 0, "regime": "NEUTRAL", "topStrikes": [], "flipPoint": 0, "callWall": 0, "putWall": 0}
+            }
+        
+        # ═══ US STOCK / ETF OPTIONS (via Yahoo Finance) ═══
+        # India is handled above (short-circuits if NSE failed). Only US
+        # tickers reach this path; yf_sym matches sym directly.
         yf_sym = sym
-        if region == 'IN' and not sym.endswith('.NS'):
-            yf_sym = sym + '.NS'
         
         print(f"[OPTIONS-QUICK] Fetching {yf_sym} via Yahoo Finance")
         _yahoo_rate_wait()

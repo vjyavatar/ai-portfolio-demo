@@ -1,52 +1,70 @@
-# Celesys deploy — April 20, 2026 (r9)
+# Celesys deploy — April 20, 2026 (r10)
 
-Incremental over r8. Only `static/active-trading.js` changed.
+Incremental over r9. Both `api.py` and `static/active-trading.js` changed.
 
-## What's new in r9: cards much bigger
+## The big fix: cache + routing gaps
 
-Everything on the top-3 cards scaled up for readability:
+Your session-opening question was "why is the data 2 hours stale" and my deep trace found FIVE root causes, not one. This deploy addresses all five.
 
-| Element           | r8                  | r9                  |
-|-------------------|---------------------|---------------------|
-| Symbol + strike   | 22px / weight 800   | **28px / weight 900** |
-| Side pill (CE/PE) | 11px                | **14px**            |
-| Confidence        | 26px / weight 800   | **34px / weight 900** |
-| Sub-label (uncal) | 9px                 | **11px / weight 800** |
-| Price chip label  | 9px                 | **11px / weight 900** |
-| Price chip value  | 16px                | **22px / MONO / weight 900** |
-| TAKE TRADE button | 36×100 / 11px label | **48×128 / 14px label** |
-| LIVE/PENDING pill | 36×100 / 11px       | **48×128 / 14px**   |
-| DATA: Ns ago      | 9px                 | **11px / weight 900** |
-| Card padding      | 10px                | 14-16px (22px bottom for age label) |
+### Gap 1 — Stuck busy-flag defense (FIXED)
 
-Price values now render in MONO font for tabular alignment — so the decimals line up vertically when you scan across Spot → Buy → SL → Target.
+`_bottom_nav_busy` was a set that threads added to at scan start and removed at scan end (in a `finally`). If the thread died outside the try/finally (SIGKILL, OOM, kernel interrupt), the flag stuck forever and no future scan could fire. **This was the most likely root cause of your 2-hour staleness.**
 
-## 🚨 URGENT: Your last screenshot confirmed the staleness bug
+Fix: added `_bottom_nav_busy_since` tracking when each flag was set. The endpoint checks on every request: if a flag is older than `_BUSY_MAX_AGE` (180s, much longer than any real scan), force-clear it and spawn a fresh thread.
 
-Every card showed `DATA: 122m 32s ago` in red. **The backend hasn't refreshed in over 2 hours.** This means `_bottom_nav_cache` in `api.py` is stuck — the background refresh thread either isn't firing or is erroring silently after the boot scan.
+### Gap 2 — Keep-last-good policy (FIXED)
 
-The r8 indicator did its job: it made the invisible visible. But we still need to fix the cache staleness itself. That's a **separate backend investigation** — not in this r9 zip. Suggested next move after deploying r9:
-1. Check Render logs for `[BOTTOM-NAV] ✅ US: N scored in Ts` lines.
-2. If that line appears only once at boot and never again, the 120s background-refresh path in `bottom_nav_scan` is broken.
-3. Likely culprits: `_bottom_nav_busy` flag getting stuck (thread crashed after setting it, never cleared); Yahoo 429s killing the refresh thread silently; the `threading.Thread(daemon=True)` never actually starting under uvicorn's event loop.
+Previous behavior: if a scan returned 0 tickers (e.g. Yahoo 429 storm wiping every US ticker), the cache was OVERWRITTEN with `{tickers: []}`. Good data from an earlier scan was lost.
 
-I can investigate in a fresh session focused just on that.
+Fix: if a scan returns 0 tickers AND the previous cache had tickers, preserve the previous snapshot. Original `ts` stays (so the frontend data-age chip still grows — the user sees the staleness). Two sidecar flags get added: `_last_scan_attempt` (when we last TRIED) and `_last_scan_empty: true` (so UI can show the distinction).
+
+### Gap 3 — Longer TTLs (FIXED)
+
+- India: 120s → **300s** (NSE is reliable; no need to hammer)
+- US: 120s → **180s** (Yahoo needs breathing room between bursts)
+
+### Gap 4 — Indian stock routing (FIXED — this was a real bug)
+
+`nse_options` has always supported both the index endpoint (`option-chain-indices`) AND the stock endpoint (`option-chain-equities`). But `_options_quick_impl` hard-coded a whitelist of 5 indices and sent everything else to Yahoo, which **does not carry Indian stock option chains**.
+
+Result: every Indian single-stock scan (HDFCBANK, RELIANCE, TCS, BANKBEES, GOLDBEES, ITBEES, etc.) returned `_chain_unavailable` and got dropped. Your 47-ticker India scan was really a 3-ticker scan (just the indices that worked).
+
+Fix: broadened the NSE-first routing from `is_india_index` to `is_india` (all India symbols). Indian stocks that fail NSE now return honest failure instead of the pointless Yahoo fallback.
+
+**Test after deploy:** pull up HDFCBANK or RELIANCE in QT. Option chain should render. If it doesn't, NSE's stock-equity endpoint response shape differs from what `nse_options` normalizes and we need a small follow-up.
+
+### Gap 5 — Stale state visible to user (FIXED, both halves)
+
+Backend endpoint now returns:
+- `_stale: true` when serving cache past TTL (refresh in progress)
+- `_cache_age_sec: <int>` so frontend can compute/display
+- `_last_scan_empty: true` when keep-last-good policy is active
+
+Frontend shows on each card's bottom-left:
+- `DATA: 34s ago` (gray) — normal
+- `STALE: 4m 12s ago` (amber) — cache past TTL, refreshing in background
+- `LAST-GOOD: 8m 30s ago` (red) — last scan returned empty, showing old data
+
+## Everything from r9 still applies
+
+Light theme, horizontal TOP TRADES strip, big card typography (34px confidence, 22px prices, MONO font, 14px button), 18px scanner rows, BLOCKED-with-reason, WATCHING 0.4%, voice verdict fix, synthetic-premium block, QT lot sizes.
 
 ## Deploy
 
-Only `static/active-trading.js` changed. Push one file or the whole zip.
+Both files changed: `api.py` and `static/active-trading.js`. Push both or the whole zip.
 
-## What to verify
+## What to verify after deploy
 
-1. Each card should be noticeably larger and bolder. Confidence should dominate visually (34px).
-2. Price values align in monospaced columns down the row.
-3. `DATA: Ns ago` at bottom-left should be readable at a glance, color-shifting.
+1. **India scanner count > 3**: logs should now show `[BOTTOM-NAV] ✅ IN: N scored` where N is 10-30+, not just the 3 indices. If it's still ≤3, `nse_options` is returning something unexpected for stocks.
+2. **Age label prefix reflects state**: normally `DATA:`, turns to `STALE:` after 5min, turns to `LAST-GOOD:` if Yahoo has a bad spell.
+3. **Staleness recovers**: the 2-hour freeze you saw should be impossible now — if the flag gets stuck, endpoint force-clears after 180s.
 
 ## Honest flags
 
-- The strip's grid is still `repeat(3, 1fr)`. With 34px confidence + 128px button + chevron + 28px symbol + side pill, the top row needs ~400px per card to not wrap. On a 1440px screen this fits easily. On a 1200px screen it'll be tight. On a 1024px screen the top row will wrap or crush — if you see that, tell me and I'll drop the side pill (CE/PE color is already on the left-edge border) or shrink the button.
-- The size bump doesn't fix the cache staleness bug — that's backend. This deploy makes the UI better while the bug is visible.
+1. **Gap 4 is the highest-risk change.** I broadened NSE routing without live-testing the response shape from `option-chain-equities`. If it differs from `option-chain-indices`, Indian stock cards may render with garbled fields. First live test should be HDFCBANK in QT.
+2. **Keep-last-good extends the staleness window.** Under sustained Yahoo 429s you could see `LAST-GOOD` data that's many minutes old and still treats Spot/Buy/SL/Target as tradable. The red color + LAST-GOOD prefix is meant to signal "don't actually trade this." If users trust the numbers anyway, we need a stronger gate (e.g. disable the TAKE TRADE button when `_last_scan_empty` is active).
+3. **Stuck-flag defense has a 180s window.** If a scan legitimately takes >180s (Yahoo stalls badly), a second scan could spawn before the first finishes — both writing to the same cache slot. Last-write-wins; not a data corruption issue, just wasted work. Acceptable.
 
 ## Known backlog (unchanged)
 
-Scoring calibration, fair_value placeholder, stale cache flag, score=50 default, ATR default, 52W default. Plus now: `_bottom_nav_cache` not refreshing after boot scan.
+Scoring calibration (OVERPRICED+WIDE+RANGING → BUY_SMALL), fair_value placeholder, score=50 default, ATR default, 52W default.
