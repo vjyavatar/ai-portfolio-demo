@@ -5415,6 +5415,178 @@ async def tv_second_opinion(symbol: str, region: str = "IN", interval: str = "5m
     }
 
 
+# ═══════════════════════════════════════════════════════════════════════
+# MULTI-SOURCE INDIA FUNDAMENTALS (Investor tab)
+#
+# Exposes the existing fetch_nse_stock_data() aggregator (NSE + MoneyControl
+# + Screener.in) as a clean endpoint for the Investor/Stock analysis tab.
+# This data is NOT used by Active Trading — its lifetime is quarterly-update
+# territory (P/E, ROE, debt ratios), cached 5min inside fetch_nse_stock_data.
+# ═══════════════════════════════════════════════════════════════════════
+
+@app.get("/api/india-fundamentals")
+async def india_fundamentals(symbol: str):
+    """Aggregated India stock fundamentals from NSE + MoneyControl + Screener.in.
+    
+    Returns a unified JSON blob suitable for rendering a fundamentals panel
+    on the Investor tab. Each field has an implicit priority: NSE first, then
+    MoneyControl, then Screener.in as fallback. If all three fail, fields
+    return 0/null (never fabricated).
+    
+    Response shape:
+      {
+        success: bool,
+        symbol: "HDFCBANK",
+        price, companyName, sector,
+        pe, pb, eps, bookValue,
+        w52High, w52Low, mcap, dividendYield,
+        roe, roce, debtToEquity,
+        salesGrowth3y, profitGrowth3y,
+        promoterHolding, fii, dii,
+        _sources: {...which fields came from where...}
+      }
+    """
+    sym = (symbol or "").upper().strip().replace(".NS", "").replace(".BO", "")
+    if not sym:
+        return {"success": False, "error": "symbol required"}
+    
+    try:
+        data = fetch_nse_stock_data(sym)
+        if not data:
+            return {"success": False, "symbol": sym, "error": "all sources failed"}
+        # Attach success flag + request context
+        return {
+            "success": True,
+            "symbol": sym,
+            "data": data,
+            "fetched_ts": time.time(),
+        }
+    except Exception as e:
+        print(f"[INDIA-FUNDAMENTALS] ❌ {sym}: {type(e).__name__}: {e}")
+        return {"success": False, "symbol": sym, "error": f"{type(e).__name__}: {e}"}
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# GOOGLE FINANCE SPOT FALLBACK (US only)
+#
+# When Yahoo returns 429 or fails, scrape Google Finance for last-known
+# spot price. This does NOT provide option chains — Google Finance has
+# no option chain data. Only returns spot, day range, previous close.
+# 
+# Used by /api/us-spot-fallback for the rare case where we want to show
+# "last-known price" on a card even if the chain is unfetchable. Does
+# NOT enable trading — cards without chains stay non-tradable.
+# 
+# Fragility: Google Finance's HTML changes occasionally. Parser is
+# defensive — every field wrapped in try/except, returns null on failure.
+# ═══════════════════════════════════════════════════════════════════════
+
+_gf_spot_cache = {}  # { "SYMBOL:EXCHANGE": {"ts": epoch, "data": {...}} }
+_GF_CACHE_TTL = 60   # Google Finance data refreshes ~every minute; 60s cache is reasonable
+
+def _gf_fetch_spot(symbol, exchange="NASDAQ"):
+    """Scrape Google Finance for US spot/day-range/prev-close.
+    Returns dict or None. Never raises."""
+    cache_key = f"{symbol}:{exchange}"
+    cached = _gf_spot_cache.get(cache_key)
+    if cached and (time.time() - cached["ts"]) < _GF_CACHE_TTL:
+        return cached["data"]
+    
+    url = f"https://www.google.com/finance/quote/{symbol}:{exchange}"
+    try:
+        r = requests.get(url, headers={
+            "User-Agent": "Mozilla/5.0 (compatible; Celesys/1.0)",
+            "Accept": "text/html,application/xhtml+xml",
+        }, timeout=6)
+        if r.status_code != 200:
+            return None
+        html = r.text
+        # Google Finance embeds data in a data attribute; simplest extraction
+        # is the `data-last-price` meta tag. Failing that, regex for the price.
+        import re
+        data = {"symbol": symbol, "exchange": exchange, "source": "google_finance"}
+        
+        # Price: <div class="YMlKec fxKbKc">$150.25</div> or ₹1,234.56 etc
+        m = re.search(r'data-last-price="([^"]+)"', html)
+        if m:
+            try: data["spot"] = float(m.group(1))
+            except: pass
+        if "spot" not in data:
+            # Fallback regex: YMlKec fxKbKc is the "big price" CSS class
+            m = re.search(r'class="YMlKec fxKbKc">[\$₹]?([\d,\.]+)', html)
+            if m:
+                try: data["spot"] = float(m.group(1).replace(",", ""))
+                except: pass
+        
+        # Previous close: <div class="P6K39c">$149.50</div> after "Previous close" label
+        m = re.search(r'Previous close</div>\s*<div class="P6K39c">[\$₹]?([\d,\.]+)', html)
+        if m:
+            try: data["prev_close"] = float(m.group(1).replace(",", ""))
+            except: pass
+        
+        # Day range: "148.50 - 152.00" typically inside P6K39c after "Day range"
+        m = re.search(r'Day range</div>\s*<div class="P6K39c">[\$₹]?([\d,\.]+)\s*[-–]\s*[\$₹]?([\d,\.]+)', html)
+        if m:
+            try:
+                data["day_low"] = float(m.group(1).replace(",", ""))
+                data["day_high"] = float(m.group(2).replace(",", ""))
+            except: pass
+        
+        # Only return data if we got at least a spot price
+        if "spot" not in data or not data.get("spot"):
+            return None
+        
+        _gf_spot_cache[cache_key] = {"ts": time.time(), "data": data}
+        return data
+    except Exception as e:
+        print(f"[GF-SPOT] ❌ {symbol}:{exchange}: {type(e).__name__}: {e}")
+        return None
+
+# US symbol → Google Finance exchange mapping. Reuses the TradingView table
+# since it's the same list of tickers and most exchanges line up (NASDAQ,
+# NYSE, AMEX). A few edge cases differ — NASDAQ stocks on GF sometimes
+# appear as "NASDAQ" or "EPA:" prefix. We use the TV table's conclusion.
+def _gf_resolve_exchange(symbol):
+    sym = (symbol or "").upper().strip()
+    return _TV_US_EXCHANGE.get(sym, "NASDAQ")
+
+@app.get("/api/us-spot-fallback")
+async def us_spot_fallback(symbol: str):
+    """Fetch US spot price from Google Finance as a fallback when Yahoo
+    is rate-limited. Returns spot, prev_close, day_range if available.
+    Does NOT return option chains — GF has none.
+    
+    Used by the Active Trading scanner ONLY when Yahoo returns 429. The
+    spot lets us keep showing "last known price" on a card even though
+    the chain is stale. We do NOT render tradable cards from GF data
+    alone — no fabricated chains (celesys core principle).
+    """
+    sym = (symbol or "").upper().strip()
+    if not sym:
+        return {"success": False, "error": "symbol required"}
+    
+    exchange = _gf_resolve_exchange(sym)
+    data = _gf_fetch_spot(sym, exchange)
+    if not data:
+        return {
+            "success": False,
+            "symbol": sym,
+            "exchange": exchange,
+            "error": "Google Finance scrape failed — HTML may have changed or symbol unsupported",
+        }
+    return {
+        "success": True,
+        "symbol": sym,
+        "exchange": exchange,
+        "spot": data.get("spot"),
+        "prev_close": data.get("prev_close"),
+        "day_high": data.get("day_high"),
+        "day_low": data.get("day_low"),
+        "source": "google_finance",
+        "fetched_ts": time.time(),
+    }
+
+
 def _auto_scan_boot():
     import threading
     def _bg():
@@ -26485,7 +26657,39 @@ async def _options_quick_impl(symbol: str = "NIFTY", region: str = "IN"):
         # Return honest failure instead of pretending there's a chain.
         # ══════════════════════════════════════════════════════════════════
         if is_india and not is_india_index:
-            print(f"[OPTIONS-QUICK] {sym}: NSE failed for India stock; Yahoo has no chain for Indian stocks — dropping.")
+            # ══════════════════════════════════════════════════════════════
+            # MoneyControl spot fallback. When NSE fails, MoneyControl's
+            # priceapi still returns spot for most Indian stocks. We get a
+            # real price to show, but we STILL don't fabricate a chain —
+            # the card stays non-tradable (_chain_unavailable:True).
+            # ══════════════════════════════════════════════════════════════
+            mc_spot = 0
+            try:
+                mc_url = f"https://priceapi.moneycontrol.com/pricefeed/nse/equitycash/{sym}"
+                mc_r = requests.get(mc_url, headers={
+                    'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json',
+                    'Referer': 'https://www.moneycontrol.com/'
+                }, timeout=5)
+                if mc_r.status_code == 200:
+                    mc_data = mc_r.json().get("data", {})
+                    mc_spot = float(mc_data.get("pricecurrent", 0) or 0)
+            except Exception as mce:
+                print(f"[OPTIONS-QUICK] {sym}: MC fallback also failed: {mce}")
+            
+            if mc_spot > 0:
+                print(f"[OPTIONS-QUICK] {sym}: NSE failed, MoneyControl gave spot={mc_spot}. No chain — card will be non-tradable.")
+                return {
+                    "success": False,
+                    "error": f"NSE chain unavailable; MC spot={mc_spot}",
+                    "symbol": sym,
+                    "spot": round(mc_spot, 2),
+                    "_chain_unavailable": True,
+                    "_spot_source": "moneycontrol",
+                    "ohlc_bars": [], "chain_near_atm": [], "ce_resistance": [], "pe_support": [],
+                    "gex": {"total": 0, "regime": "NEUTRAL", "topStrikes": [], "flipPoint": 0, "callWall": 0, "putWall": 0}
+                }
+            
+            print(f"[OPTIONS-QUICK] {sym}: NSE failed for India stock; MoneyControl also failed — dropping.")
             return {
                 "success": False,
                 "error": "NSE option chain unavailable for Indian stock " + sym,

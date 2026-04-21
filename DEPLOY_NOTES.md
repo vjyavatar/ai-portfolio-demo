@@ -1,87 +1,195 @@
-# Celesys deploy — April 21, 2026 (r13 HOTFIX)
+# Celesys deploy — April 21, 2026 (r14)
 
-Incremental over r12. Only `api.py` changed — one-line fix.
+Incremental over r13. Only `api.py` changed. Three additions:
 
-## The bug
+## 1. New endpoint: `/api/india-fundamentals?symbol=HDFCBANK`
 
-Render logs after r12 deploy showed every single India ticker failing:
+Clean endpoint exposing the existing aggregated data from
+`fetch_nse_stock_data()` — which already combines NSE + MoneyControl
++ Screener.in under the hood. This wasn't accessible as a standalone
+endpoint; the Investor tab can now hit it directly to render a
+fundamentals panel.
 
+Response shape:
+```json
+{
+  "success": true,
+  "symbol": "HDFCBANK",
+  "data": {
+    "price": 1523.45, "companyName": "HDFC Bank Ltd",
+    "sector": "Financial Services",
+    "pe": 18.5, "pb": 2.8, "eps": 82.3, "bookValue": 545.2,
+    "w52High": 1825.60, "w52Low": 1363.45,
+    "mcap": 11500000000000, "dividendYield": 1.2,
+    "roe": 17.8, "roce": 13.4, "debtToEquity": 5.2,
+    "promoterHolding": 0, "fii": 52.3, "dii": 18.7,
+    ...all fields aggregated from NSE + MoneyControl + Screener.in
+  },
+  "fetched_ts": 1729594823.5
+}
 ```
-❌ NSE Options error: name 'sym' is not defined
-[OPTIONS-QUICK] NIFTYBEES: NSE failed for India stock; Yahoo has no chain
-[OPTIONS-QUICK] NIFTYBEES: NSE failed for India stock; Yahoo has no chain
-...
-[BOTTOM-NAV] ✅ IN: 0 scored in 6.5s, 0 buy
+
+Cache: 5min inside `fetch_nse_stock_data()` — fundamentals don't change
+minute-to-minute, this is more than fast enough.
+
+**What this is NOT for:** Active Trading. This endpoint is intended
+for the Investor/Stock analysis tab. Call volume should be low (once
+per stock the user examines), so there's no rate-limit exposure.
+
+## 2. MoneyControl spot fallback for Indian stocks (Active Trading)
+
+When NSE fails for an Indian stock (post-r13 we route all India stocks
+through NSE; if NSE 429s or returns empty, the stock would drop).
+Now we try MoneyControl's `priceapi.moneycontrol.com/pricefeed/nse/equitycash`
+endpoint — which returns JSON spot/prev-close/52W for Indian stocks
+reliably.
+
+**What this gets you:** when NSE is briefly rate-limited, Indian stock
+cards still show last-known spot instead of dropping. The card stays
+**non-tradable** (`_chain_unavailable: true`) because MoneyControl
+doesn't publish option chains — we do NOT fabricate a chain. This
+matches the celesys "no fake assumptions" principle.
+
+Side effect: Active Trading's `LAST-GOOD:` / `STALE:` state handling
+works correctly because we're still returning `_chain_unavailable:
+true` when chain data isn't real.
+
+## 3. New endpoint: `/api/us-spot-fallback?symbol=NVDA`
+
+Scrapes Google Finance's public HTML page for US spot + day range +
+previous close. Used as a fallback when Yahoo returns 429 for a US
+symbol. Does NOT return option chains (Google Finance has none).
+
+Response shape:
+```json
+{
+  "success": true,
+  "symbol": "NVDA", "exchange": "NASDAQ",
+  "spot": 128.45, "prev_close": 127.80,
+  "day_high": 129.20, "day_low": 126.50,
+  "source": "google_finance",
+  "fetched_ts": 1729594823.5
+}
 ```
 
-## The cause
+**What this is for:** the NEXT session's US rate-limit work. With this
+endpoint in place, we can later patch the US scanner to call it when
+Yahoo returns 429 and keep showing "last-known price" on cards even
+during Yahoo outages. Chains still require Yahoo — no alternative
+exists for free — so cards during a Yahoo storm would show
+`SPOT-ONLY` mode with the chain fields blank.
 
-`nse_options(symbol: str)` takes its parameter as `symbol`. At line 3954
-the code used an undefined `sym` instead:
-
-```python
-_nse_lot = ALGO_INSTRUMENTS.get(sym, {}).get("lot", 1)  # NameError
+Not hooked into the scanner yet. Available as a standalone endpoint
+so you can test it:
+```
+curl https://celesys.ai/api/us-spot-fallback?symbol=NVDA
 ```
 
-This line is deep in the success path. **Before r10, only 5 indices
-routed here (NIFTY/BANKNIFTY/SENSEX/FINNIFTY/MIDCPNIFTY). The code at
-line 3954 for indices evaluates `ALGO_INSTRUMENTS.get(sym, {})` — if
-`sym` is undefined Python raises NameError, BUT the outer try/except
-at line 4081 swallows it silently and returns a result with
-`"error": "name 'sym' is not defined"` AND empty fields. The indices
-then fell through to the Yahoo fallback and that worked, so nobody
-noticed the latent bug.**
+## Architecture: what the data flow now looks like
 
-r10 broadened India routing: every Indian stock+ETF (HDFCBANK, RELIANCE,
-NIFTYBEES, etc.) now hits this code path. For stocks, the Yahoo fallback
-doesn't exist — so the bug surfaces as "NSE failed → drop ticker" for
-every single Indian symbol.
+### India options (Active Trading)
+```
+Request NIFTY / HDFCBANK / BANKBEES
+  ↓
+is_india? → try nse_options() [r10]
+  ↓ (NSE success) → return real chain
+  ↓ (NSE fail + is_india_index) → yfinance indices fallback for spot only
+  ↓ (NSE fail + is_india stock) → MoneyControl spot fallback [r14 NEW]
+    ↓ (MC success) → return spot only, _chain_unavailable:true
+    ↓ (MC fail) → drop ticker honestly
+```
 
-This is the same fracture pattern I've been flagging across this
-project: two parts of code disagreeing about the same variable
-(`symbol` vs `sym`) only kept working by accident because the failure
-path happened to work elsewhere.
+### India fundamentals (Investor tab)
+```
+Request /api/india-fundamentals?symbol=X
+  ↓
+fetch_nse_stock_data(X) [unchanged, aggregates NSE+MC+Screener.in]
+  ↓
+Returns comprehensive {pe, pb, roe, roce, sector, financials...}
+```
 
-## The fix
-
-Single-char change: `sym` → `symbol` at line 3954.
-
-## What you'll see after deploy
-
-India scans should start scoring real tickers again. Expected:
-- NIFTY / BANKNIFTY / SENSEX: work via `option-chain-indices` endpoint
-- HDFCBANK / RELIANCE / TCS / etc: work via `option-chain-equities` endpoint
-- **ETFs (NIFTYBEES / BANKBEES / GOLDBEES / SILVERBEES / ITBEES / MOM50 /
-  CPSE)**: may or may not work. NSE may not publish option chains for
-  these — if they return empty from `option-chain-equities`, the r10
-  India-stock short-circuit will still drop them (correct behavior).
-
-If the India scan keeps showing 5-7 tickers instead of the full 47,
-the difference is the ETFs that NSE doesn't list options for. That's
-not a bug; it's honest "no option chain exists for this symbol". You
-can either:
-- Remove those ETF symbols from the `in_tickers` list in api.py (saves
-  wasted scan time), or
-- Leave them — they'll just silently drop and the scan stays correct.
-
-## Everything else from r12 still applies
-
-TradingView second-opinion integration, WhatsApp alerts, keep-last-good
-cache, stuck-flag defense, NSE routing, everything.
+### US options (Active Trading)
+```
+Request NVDA / SPY / etc
+  ↓
+Not-India → Yahoo primary [existing]
+  ↓ (Yahoo 429) → currently drops ticker
+  
+  [Next session] → call /api/us-spot-fallback (Google Finance)
+  → return spot only, _chain_unavailable:true, card non-tradable
+```
 
 ## Deploy
 
-Only `api.py` changed. Push one file. No new env vars, no rebuild
-needed (nothing in requirements.txt changed).
+Only `api.py` changed. Push one file. No new dependencies.
 
-## Honest flag
+## What to test after deploy
 
-I'd been staring at this bug across multiple sessions without catching
-it because the happy path for indices worked. It took the r10 broadening
-+ live logs + your screenshot to expose it. This is exactly the kind
-of fracture the recurring "contracts disagree between two pieces of
-code" pattern produces. Adding a typedef-style docstring on
-`nse_options` ("Param is `symbol` — do NOT shorten to `sym` inside
-this function") would have prevented it. Worth a pass across the other
-longer functions in api.py to inoculate against the same family of
-bug.
+### India fundamentals endpoint
+```
+https://celesys.ai/api/india-fundamentals?symbol=HDFCBANK
+https://celesys.ai/api/india-fundamentals?symbol=RELIANCE
+https://celesys.ai/api/india-fundamentals?symbol=TCS
+```
+All three should return comprehensive data blobs. If a field is 0 or
+null, that means all three sources (NSE + MC + Screener.in) couldn't
+get it — not a bug, honest reflection of data availability.
+
+### MoneyControl spot fallback
+This only triggers when NSE fails for a stock. Hard to test directly
+unless NSE rate-limits. You can verify the code path by watching
+Render logs after r14 — look for `[OPTIONS-QUICK] ... NSE failed,
+MoneyControl gave spot=...` lines if/when NSE has issues.
+
+### Google Finance spot
+```
+https://celesys.ai/api/us-spot-fallback?symbol=NVDA
+https://celesys.ai/api/us-spot-fallback?symbol=SPY
+https://celesys.ai/api/us-spot-fallback?symbol=MU
+```
+Should return `{"success": true, "spot": 128.45, ...}`.
+
+If any return `{"success": false, "error": "Google Finance scrape failed..."}`,
+the HTML has changed — our regexes broke. Fix is one session of
+re-reading their markup.
+
+## Honest flags
+
+1. **I didn't live-test any of this.** The MoneyControl endpoint shape
+   I coded against is what the existing codebase already uses at line
+   288 — that path has been working, so I'm confident the endpoint is
+   real. Google Finance HTML scraping is the most fragile piece — their
+   CSS class names (`YMlKec fxKbKc`, `P6K39c`) are minified and can
+   change. First live hit will reveal whether my regexes work.
+
+2. **MoneyControl and Screener.in are scrape targets** with no formal
+   API. Screener.in specifically discourages scraping in their ToS.
+   For personal research on a platform you own this is fine; if Celesys
+   ever goes commercial you'd need licensed providers.
+
+3. **`fetch_nse_stock_data()` already does the aggregation — I didn't
+   audit every field it returns.** The `/api/india-fundamentals` endpoint
+   exposes whatever that function produces. If a field is missing or
+   wrongly-named, the fix is in `fetch_nse_stock_data` itself, which I
+   didn't touch.
+
+4. **The Google Finance spot fallback is NOT hooked into the Active
+   Trading scanner yet.** It's available as a standalone endpoint so
+   you can validate it works. Wiring it into the scanner so Yahoo
+   429s automatically fall through to GF is the next session's work,
+   along with the broader US rate-limit fix (aggressive pre-filter +
+   chain caching).
+
+5. **Rate limiting considerations for the new endpoints:**
+   - `/api/india-fundamentals` — cached 5min per symbol, low volume
+   - MoneyControl spot in options path — called only on NSE failure,
+     cached inside nse_options normally; MC's own endpoint is quite
+     tolerant
+   - Google Finance spot — cached 60s per symbol, called only on Yahoo
+     failure; GF is more tolerant than Yahoo but not infinite
+
+## Known backlog (unchanged)
+
+Scoring calibration, fair_value placeholder, score=50 default, ATR
+default, 52W default. Plus the big open item: US Yahoo rate limits
+— next session's focus.
