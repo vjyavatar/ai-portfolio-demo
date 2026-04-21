@@ -4333,6 +4333,9 @@
     paperJournalLoading: false,
     paperJournalExpanded: false, // collapsed by default — opt-in visibility
     paperJournalLastFetch: 0,
+    // r26: Overlay modal visibility (panels moved out of top-trades area)
+    showSituationalOverlay: false,
+    showPaperJournalOverlay: false,
   };
 
   var timers = { countdown: null, soft90: null, candle5m: null };
@@ -5237,6 +5240,18 @@
     // Docs modal — shown on top of everything when user clicks help icon
     if (state.showDocs) {
       wrap.appendChild(renderDocsModal());
+    }
+    
+    // r26: Overlay modals for Market Character + Paper Journal.
+    // These panels used to live above top-trades but were pushing scanner
+    // off-screen. Now opened on-demand via header icons.
+    if (state.showSituationalOverlay) {
+      try { wrap.appendChild(_renderSituationalOverlay()); }
+      catch (e) { try { console.warn('[SITUATIONAL] overlay failed:', e); } catch (e2) {} }
+    }
+    if (state.showPaperJournalOverlay) {
+      try { wrap.appendChild(_renderPaperJournalOverlay()); }
+      catch (e) { try { console.warn('[PAPER-JOURNAL] overlay failed:', e); } catch (e2) {} }
     }
 
     // Confirm-trade modal — shown when user clicks EXECUTE/TAKE TRADE
@@ -6321,6 +6336,86 @@
         })(),
         iconBtn('🔔', state.alertsOn, function () { state.alertsOn = !state.alertsOn; rerender(); }),
         iconBtn('🎙', state.voiceOn, function () { state.voiceOn = !state.voiceOn; rerender(); }),
+        // r26: Market Character (Situational Analysis) — click to open overlay
+        (function () {
+          var active = state.showSituationalOverlay;
+          var d = state.situationalData;
+          // Small dot indicator if intraday signal is FAVORABLE or AVOID
+          var dotColor = null;
+          if (d && d.signals && d.signals.timeframes && d.signals.timeframes.intraday) {
+            var intraday = d.signals.timeframes.intraday;
+            if (intraday === 'FAVORABLE') dotColor = C.green;
+            else if (intraday === 'AVOID') dotColor = C.red;
+          }
+          return el('button', {
+            onClick: function () {
+              state.showSituationalOverlay = !state.showSituationalOverlay;
+              if (state.showSituationalOverlay && !state.situationalData) {
+                setTimeout(_fetchSituationalAnalysis, 10);
+              }
+              rerender();
+            },
+            title: 'Market Character — Today\'s session analysis (Hougaard/OODA). Click to open.',
+            style: {
+              position: 'relative',
+              background: active ? C.blue + '22' : 'transparent',
+              border: '1px solid ' + (active ? C.blue : C.divider),
+              color: active ? C.blue : C.textSec,
+              borderRadius: '4px', padding: '3px 8px',
+              fontSize: '13px', cursor: 'pointer',
+            }
+          }, [
+            el('span', {}, '⚡'),
+            dotColor ? el('span', {
+              style: {
+                position: 'absolute', top: '2px', right: '2px',
+                width: '6px', height: '6px', borderRadius: '50%',
+                background: dotColor,
+              }
+            }) : null,
+          ].filter(Boolean));
+        })(),
+        // r26: Paper Journal — click to open overlay
+        (function () {
+          var active = state.showPaperJournalOverlay;
+          var d = state.paperJournalData;
+          var dotColor = null;
+          if (d && d.enabled && d.stats) {
+            var wr = d.stats.win_rate;
+            if (wr != null) {
+              dotColor = wr >= 60 ? C.green : wr >= 40 ? C.orange : C.red;
+            } else if (d.stats.open_count > 0) {
+              dotColor = C.blue;
+            }
+          }
+          return el('button', {
+            onClick: function () {
+              state.showPaperJournalOverlay = !state.showPaperJournalOverlay;
+              if (state.showPaperJournalOverlay && !state.paperJournalData) {
+                setTimeout(_fetchPaperJournal, 10);
+              }
+              rerender();
+            },
+            title: 'Paper Journal — Auto-recorded A/A+ signals, win rates by state. Click to open.',
+            style: {
+              position: 'relative',
+              background: active ? C.blue + '22' : 'transparent',
+              border: '1px solid ' + (active ? C.blue : C.divider),
+              color: active ? C.blue : C.textSec,
+              borderRadius: '4px', padding: '3px 8px',
+              fontSize: '13px', cursor: 'pointer',
+            }
+          }, [
+            el('span', {}, '📋'),
+            dotColor ? el('span', {
+              style: {
+                position: 'absolute', top: '2px', right: '2px',
+                width: '6px', height: '6px', borderRadius: '50%',
+                background: dotColor,
+              }
+            }) : null,
+          ].filter(Boolean));
+        })(),
         // PRO MODE toggle — when ON, SMC signals excluded from consensus,
         // UI hides retail-trader visual elements, voice changes vocabulary.
         (function () {
@@ -7023,6 +7118,115 @@
     return wrapper;
   }
 
+  // ═══════════════════════════════════════════════════════════════════════
+  // OVERLAY MODALS (r26)
+  //
+  // The Situational Analysis and Paper Journal panels used to live inline
+  // above the top-trades strip, pushing the secondary scanner off-screen.
+  // Now they render as dimmed-background overlay modals on demand, opened
+  // via header icon buttons. Same content, same fetch logic — just on-demand
+  // visibility.
+  //
+  // Design: the body of each overlay is the existing _render*Panel() output,
+  // but we force `expanded: true` before rendering so the full content shows
+  // (the inline versions defaulted to collapsed). We restore the previous
+  // expanded state after closing so user's preference sticks.
+  // ═══════════════════════════════════════════════════════════════════════
+
+  function _renderOverlayShell(titleText, bodyNode, onClose) {
+    // Overlay background — click outside to close
+    var overlay = el('div', {
+      onClick: function (e) {
+        if (e.target === overlay) onClose();
+      },
+      style: {
+        position: 'fixed', inset: '0',
+        background: 'rgba(15, 23, 42, 0.55)',
+        backdropFilter: 'blur(2px)',
+        display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
+        paddingTop: '80px', zIndex: 1000
+      }
+    });
+    
+    var modal = el('div', {
+      style: {
+        background: C.card,
+        border: '1px solid ' + C.divider,
+        borderRadius: '8px',
+        maxWidth: '720px', width: '92%',
+        maxHeight: 'calc(100vh - 120px)',
+        overflow: 'hidden',
+        display: 'flex', flexDirection: 'column',
+        boxShadow: '0 20px 50px rgba(0, 0, 0, 0.2)',
+      }
+    });
+    
+    // Modal header with title + close
+    var mh = el('div', {
+      style: {
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        padding: '10px 16px',
+        borderBottom: '1px solid ' + C.divider,
+        background: C.bg,
+      }
+    });
+    mh.appendChild(el('div', {
+      style: {
+        fontSize: '12px', fontWeight: 900, color: C.textPri,
+        letterSpacing: '1.2px'
+      }
+    }, titleText));
+    mh.appendChild(el('button', {
+      onClick: function () { onClose(); },
+      title: 'Close',
+      style: {
+        background: 'transparent', border: '1px solid ' + C.divider,
+        color: C.textSec, borderRadius: '4px', padding: '4px 10px',
+        fontSize: '14px', fontWeight: 700, cursor: 'pointer'
+      }
+    }, '✕'));
+    modal.appendChild(mh);
+    
+    // Scrollable body
+    var body = el('div', {
+      style: {
+        flex: '1 1 auto', overflowY: 'auto',
+        padding: '12px 16px',
+      }
+    });
+    body.appendChild(bodyNode);
+    modal.appendChild(body);
+    
+    overlay.appendChild(modal);
+    return overlay;
+  }
+
+  function _renderSituationalOverlay() {
+    // Force expanded so the modal shows full content regardless of the
+    // inline panel's user preference state.
+    var prev = state.situationalExpanded;
+    state.situationalExpanded = true;
+    var panel = _renderSituationalPanel();
+    state.situationalExpanded = prev;
+    return _renderOverlayShell(
+      '⚡ TODAY\'S MARKET CHARACTER · ' + (state.region === 'IN' ? 'NIFTY' : 'SPY'),
+      panel,
+      function () { state.showSituationalOverlay = false; rerender(); }
+    );
+  }
+
+  function _renderPaperJournalOverlay() {
+    var prev = state.paperJournalExpanded;
+    state.paperJournalExpanded = true;
+    var panel = _renderPaperJournalPanel();
+    state.paperJournalExpanded = prev;
+    return _renderOverlayShell(
+      '📋 AUTO PAPER JOURNAL · ' + (state.region || 'IN'),
+      panel,
+      function () { state.showPaperJournalOverlay = false; rerender(); }
+    );
+  }
+
   function renderTopTrades() {
     var panel = el('div', {
       style: {
@@ -7087,25 +7291,11 @@
     }
     panel.appendChild(header);
 
-    // ── SITUATIONAL ANALYSIS PANEL (Hougaard/OODA, r20) ────────────────
-    // Today's market character — orient BEFORE scanning individual setups.
-    // Lives at the very top of the Top Trades section. Collapsible to
-    // save vertical real estate for users who don't want it.
-    try {
-      panel.appendChild(_renderSituationalPanel());
-    } catch (e) {
-      try { console.warn('[SITUATIONAL] render failed:', e); } catch (e2) {}
-    }
-
-    // ── AUTO PAPER JOURNAL PANEL (r22) ─────────────────────────────────
-    // Collapsed by default. When expanded, shows win/loss stats from
-    // auto-executed shadow trades. Helps close the feedback loop on
-    // whether A/A+ signals actually work.
-    try {
-      panel.appendChild(_renderPaperJournalPanel());
-    } catch (e) {
-      try { console.warn('[PAPER-JOURNAL] render failed:', e); } catch (e2) {}
-    }
+    // r26: Situational Analysis + Paper Journal panels REMOVED from here.
+    // They were pushing the secondary scanner off-screen on typical laptop
+    // viewports. Both features are now icon-buttons in the top header bar
+    // (see renderHeader) that open modal overlays on click. Same features,
+    // same data — just not permanently consuming screen real estate.
 
     var filter = state.searchFilter || '';
     var displayTrades = filter
