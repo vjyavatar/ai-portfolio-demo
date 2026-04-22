@@ -24223,22 +24223,197 @@ async def multibagger_hunter(email: str = "", region: str = "IN"):
 
 _momentum_radar_cache = {"US": {"ts": 0, "data": None}, "IN": {"ts": 0, "data": None}}
 
+# ═══════════════════════════════════════════════════════════════════════
+# ACCELERATION DETECTION (r44)
+#
+# Institutional-grade signal: catches setups DURING the climb phase, not
+# just after thresholds cross. Compares current metrics vs ~14 days ago.
+#
+# How it works:
+#   - Every scan, we snapshot each ticker's key metrics with a timestamp
+#   - Retention: 30 days (auto-pruned)
+#   - When scoring, we find the snapshot closest to 14 days ago
+#   - Signal 6 (Acceleration) = points for deltas beyond noise threshold
+#
+# Why this matters for CAR/SNDK detection:
+#   CAR's short interest went 10% → 19% over ~3 weeks. The old radar
+#   would see "19%" and score it, but only AT the threshold crossing.
+#   Acceleration Detection sees "climbing from 10% to 19%" and flags
+#   the stock 1-2 weeks EARLIER — during the build-up, not after.
+#
+# Honest limit: fresh install has zero history. Signal 6 is inactive
+# for the first ~14 days while snapshots accumulate. Users see 80-point
+# max scoring until then (which is the old 100-point ceiling minus
+# the new signal's allocation).
+# ═══════════════════════════════════════════════════════════════════════
 
-def _compute_momentum_score(sym, tk_info, hist_df, options_chain=None):
+_momentum_snapshots = {}  # {sym: [{ts, short_pct, vol_ratio_5d_60d, ret_30d, pct_from_high, cp_ratio, score}]}
+_SNAPSHOT_RETENTION_DAYS = 30
+_ACCELERATION_LOOKBACK_DAYS = 14
+_ACCELERATION_TOLERANCE_DAYS = 4  # find snapshot within 10-18d window
+
+def _snapshot_metrics(sym, details, score):
+    """Persist today's metrics for this ticker. Called at end of every scan."""
+    try:
+        now = time.time()
+        snap = {
+            "ts": now,
+            "short_pct":     details.get("short_pct_float", 0) or 0,
+            "vol_ratio":     details.get("volume_ratio_5d_vs_60d", 0) or 0,
+            "ret_30d":       details.get("return_30d_pct", 0) or 0,
+            "pct_from_high": details.get("pct_from_52wk_high", -100) or -100,
+            "cp_ratio":      details.get("call_put_volume_ratio", 0) or 0,
+            "score":         score,
+        }
+        lst = _momentum_snapshots.setdefault(sym, [])
+        lst.append(snap)
+        # Prune: keep only last 30 days
+        cutoff = now - (_SNAPSHOT_RETENTION_DAYS * 86400)
+        _momentum_snapshots[sym] = [s for s in lst if s["ts"] >= cutoff]
+    except Exception: pass
+
+def _get_acceleration_snapshot(sym):
+    """Find snapshot closest to 14 days ago (within ±4 day tolerance).
+    Returns snapshot dict or None if insufficient history.
+    """
+    try:
+        lst = _momentum_snapshots.get(sym) or []
+        if not lst: return None
+        target_ts = time.time() - (_ACCELERATION_LOOKBACK_DAYS * 86400)
+        tolerance = _ACCELERATION_TOLERANCE_DAYS * 86400
+        # Find snapshot closest to target within tolerance
+        best = None
+        best_diff = float('inf')
+        for s in lst:
+            diff = abs(s["ts"] - target_ts)
+            if diff < tolerance and diff < best_diff:
+                best = s
+                best_diff = diff
+        return best
+    except Exception:
+        return None
+
+def _compute_acceleration_score(current_details, historical_snap):
+    """Score 0-20 for momentum acceleration. Returns (points, delta_tags).
+    
+    delta_tags is a list of human-readable deltas like:
+      ["SHORT SQUEEZE climbing: 8% → 18% ↑"]
+    
+    We don't reward absolute values (that's what signals 1-5 do).
+    We reward DIRECTION + MAGNITUDE of change.
+    """
+    if historical_snap is None:
+        return (0, [], "no_baseline")
+    
+    points = 0
+    tags = []
+    
+    # ── Short Interest climbing (max 6 pts) ──
+    cur_si = current_details.get("short_pct_float", 0) or 0
+    old_si = historical_snap.get("short_pct", 0) or 0
+    si_delta = cur_si - old_si
+    if si_delta >= 5:  # grew by 5%+ of float
+        points += 6
+        tags.append(f"SHORT SQUEEZE accelerating: {old_si:.1f}% → {cur_si:.1f}% ↑")
+    elif si_delta >= 3:
+        points += 4
+        tags.append(f"SHORT SQUEEZE climbing: {old_si:.1f}% → {cur_si:.1f}% ↑")
+    elif si_delta >= 1.5:
+        points += 2
+    
+    # ── Volume ratio expanding (max 5 pts) ──
+    cur_vr = current_details.get("volume_ratio_5d_vs_60d", 0) or 0
+    old_vr = historical_snap.get("vol_ratio", 0) or 0
+    vr_delta = cur_vr - old_vr
+    if vr_delta >= 1.0:  # volume expansion is meaningful
+        points += 5
+        tags.append(f"VOLUME expanding: {old_vr:.1f}× → {cur_vr:.1f}× ↑")
+    elif vr_delta >= 0.5:
+        points += 3
+        tags.append(f"VOLUME building: {old_vr:.1f}× → {cur_vr:.1f}×")
+    
+    # ── Price returns accelerating (max 4 pts) ──
+    cur_r = current_details.get("return_30d_pct", 0) or 0
+    old_r = historical_snap.get("ret_30d", 0) or 0
+    r_delta = cur_r - old_r
+    if r_delta >= 15:  # gained 15%+ in 14 days
+        points += 4
+        tags.append(f"MOMENTUM accelerating: 30d return {old_r:.1f}% → {cur_r:.1f}% ↑")
+    elif r_delta >= 8:
+        points += 2
+    
+    # ── Approaching 52w high (max 3 pts) ──
+    cur_fh = current_details.get("pct_from_52wk_high", -100) or -100
+    old_fh = historical_snap.get("pct_from_high", -100) or -100
+    fh_delta = cur_fh - old_fh  # both negative; delta positive = getting closer
+    if fh_delta >= 5 and cur_fh >= -10:  # closed 5% AND near high
+        points += 3
+        tags.append(f"APPROACHING breakout: {old_fh:.1f}% → {cur_fh:.1f}% from 52w high")
+    elif fh_delta >= 3:
+        points += 1
+    
+    # ── Options flow shifting bullish (max 2 pts) ──
+    cur_cp = current_details.get("call_put_volume_ratio", 0) or 0
+    old_cp = historical_snap.get("cp_ratio", 0) or 0
+    cp_delta = cur_cp - old_cp
+    if cp_delta >= 1.0 and cur_cp >= 1.5:
+        points += 2
+        tags.append(f"OPTIONS FLOW turning bullish: C/P {old_cp:.1f}× → {cur_cp:.1f}×")
+    elif cp_delta >= 0.5:
+        points += 1
+    
+    points = min(points, 20)  # cap at 20
+    
+    # Age of comparison baseline (for UI honesty)
+    baseline_age_days = round((time.time() - historical_snap["ts"]) / 86400, 1)
+    
+    return (points, tags, f"baseline_{baseline_age_days}d_ago")
+
+
+def _compute_momentum_score(sym, tk_info, hist_df, options_chain=None, tier="A"):
     """Compute 5-signal composite score for one ticker.
     
-    Returns dict with:
-      score (0-100), signals (list of triggered), details (diagnostic fields)
+    r43: Added `tier` parameter (A/B/C) for universe-aware scoring and UI tagging.
+    Also applies liquidity gate BEFORE scoring — prevents low-volume Tier-C
+    names from producing noisy or unreliable signals.
     
-    Called on a yfinance Ticker that already has .info and .history loaded
-    (so we don't double-fetch). Options chain optional — if missing, signal 5
-    scores 0 and we flag it honestly.
+    Returns dict with:
+      score (0-100), signals (list of triggered), tier (A/B/C),
+      details (diagnostic fields including why-skipped if liquidity gate failed)
     """
     import numpy as np
     
     score = 0
     signals = []
-    details = {}
+    details = {"tier": tier}
+    
+    # ═══ LIQUIDITY GATE (r43) ═══
+    # Skip unreliable/illiquid names BEFORE wasting scoring cycles.
+    # Two-step check: 1) enough history, 2) enough $ volume to be tradable.
+    if hist_df is None or len(hist_df) < 30:
+        details["skipped"] = "insufficient_history"
+        details["history_days"] = len(hist_df) if hist_df is not None else 0
+        return {
+            "symbol": sym, "score": 0, "tier": "", "signals": [], "details": details,
+        }
+    try:
+        # Average daily dollar volume over last 20 days
+        closes = hist_df['Close'].values
+        vols = hist_df['Volume'].values
+        dollar_vol_20d = float(np.mean(closes[-20:] * vols[-20:]))
+        details["avg_dollar_volume_20d"] = round(dollar_vol_20d, 0)
+        # Minimum $5M daily dollar volume — excludes pump/dump traps
+        # Tier A/B use $5M; Tier C uses $2M (we ACCEPT more noise here
+        # because these are speculative by design — just not pure penny stocks)
+        min_dollar_vol = 2_000_000 if tier == "C" else 5_000_000
+        if dollar_vol_20d < min_dollar_vol:
+            details["skipped"] = "insufficient_liquidity"
+            details["min_required"] = min_dollar_vol
+            return {
+                "symbol": sym, "score": 0, "tier": "", "signals": [], "details": details,
+            }
+    except Exception:
+        pass  # If liquidity check itself fails, proceed — don't block on a calc error
     
     try:
         # ═══ Signal 1: SHORT SQUEEZE SETUP (20 pts) ═══
@@ -24346,60 +24521,152 @@ def _compute_momentum_score(sym, tk_info, hist_df, options_chain=None):
     except Exception as _e:
         details["compute_error"] = f"{type(_e).__name__}: {str(_e)[:120]}"
     
-    # Classification
-    if score >= 80: tier = "🔥 RED ALERT"
-    elif score >= 60: tier = "⚡ WATCH"
-    elif score >= 40: tier = "👀 EARLY"
-    else: tier = ""
+    # ═══ Signal 6: MOMENTUM ACCELERATION (r44, 0-20 pts) ═══
+    # Rate-of-change across all prior signals vs 14-day-ago snapshot.
+    # Catches setups DURING the climb, not just at threshold crossing.
+    # Uses tier param for universe classification (not the classification tier below).
+    accel_pts = 0
+    accel_tags = []
+    accel_baseline_label = "no_baseline"
+    try:
+        historical_snap = _get_acceleration_snapshot(sym)
+        accel_pts, accel_tags, accel_baseline_label = _compute_acceleration_score(details, historical_snap)
+        details["signal_6_acceleration"] = accel_pts
+        details["acceleration_baseline"] = accel_baseline_label
+        if accel_tags:
+            details["acceleration_tags"] = accel_tags
+            for t in accel_tags:
+                signals.append(t)
+    except Exception as _ae:
+        details["acceleration_error"] = f"{type(_ae).__name__}: {str(_ae)[:80]}"
+    
+    # Total raw score: signals 1-5 (max 100) + signal 6 (max 20) = 120 max
+    # Rescale to 0-100 range so classification thresholds stay familiar.
+    # Formula: base (0-100) × 0.80 + accel (0-20) × 1.0 = max 100
+    # This means existing signals contribute 80%, acceleration 20%.
+    # When no baseline exists, user sees 80% max — that's honest; radar
+    # doesn't pretend to detect acceleration it cannot compute yet.
+    base_score = score
+    rescaled = round(base_score * 0.80 + accel_pts * 1.0)
+    details["score_base"] = base_score
+    details["score_accelerated"] = rescaled
+    score = rescaled
+    
+    # r44: Snapshot for future acceleration detection — save NOW so next scan
+    # has a baseline. Must be called BEFORE we classify or return.
+    _snapshot_metrics(sym, details, base_score)
+    
+    # Classification — use different name to avoid shadowing `tier` param
+    if score >= 80: classification = "🔥 RED ALERT"
+    elif score >= 60: classification = "⚡ WATCH"
+    elif score >= 40: classification = "👀 EARLY"
+    else: classification = ""
+    
+    # Additional flag: if acceleration itself is strong (≥12/20), tag it
+    # even if absolute score is lower. This is the "catch it early" signal.
+    accelerating = accel_pts >= 12
     
     return {
         "symbol": sym,
         "score": score,
-        "tier": tier,
+        "tier": classification,        # 🔥/⚡/👀 label (based on score)
+        "universe_tier": tier,         # A/B/C market-cap tier
         "signals": signals,
         "details": details,
+        "accelerating": accelerating,  # r44: true if signal 6 ≥ 12/20
     }
 
 
-# Universe for momentum radar — wider than Dream (want to catch less-followed names)
-# US: 80 tickers including mid-cap + small-cap + recent IPOs/spinoffs
+# ═══════════════════════════════════════════════════════════════════════
+# MOMENTUM RADAR UNIVERSE (r43 — expanded, tiered)
+#
+# Three-tier structure — wider coverage without sacrificing quality:
+#
+#   Tier A (Core):   Mega/large cap — reliable Yahoo data, deep liquidity
+#   Tier B (Growth): Mid/high-momentum — sector leaders + recent IPOs
+#   Tier C (Spec):   Small/micro cap — where CAR/GME/SNDK moves originate
+#
+# Tier C is noisier by design. Backend applies a liquidity gate
+# (daily dollar volume > $5M) and skips tickers with <30d history.
+# UI tags each result with its tier so users see the quality context.
+#
+# US: ~180 tickers (was 80)
+# IN: ~100 tickers (was 50)
+# ═══════════════════════════════════════════════════════════════════════
 _momentum_universe_us = [
-    # Mega/large cap — established movers
+    # ── TIER A (CORE) — 30 names ──────────────────────────────────────
+    # Mega-cap tech + diversified leaders. Deep Yahoo data, low noise.
     "AAPL","MSFT","NVDA","GOOGL","AMZN","META","TSLA","AVGO","AMD","NFLX",
-    "CRM","ORCL","ADBE","QCOM","INTC","MU","PLTR",
-    # Mid-cap growth + momentum names
+    "CRM","ORCL","ADBE","QCOM","INTC","MU","PLTR","ANET","NOW","INTU",
+    "ISRG","LLY","UNH","V","MA","JPM","COST","HD","JNJ","ABBV",
+    # ── TIER B (GROWTH MOMENTUM) — 80 names ──────────────────────────
+    # Sector leaders + established mid-caps with proven momentum history
+    # Software / Platforms
     "SHOP","UBER","SNOW","DDOG","NET","CRWD","PANW","ZS","ZM","RBLX",
-    "COIN","SOFI","AFRM","HOOD","SQ","MARA","RIOT","CVNA","CAR","RIVN",
-    "LCID","NIO","XPEV","LI","NVAX","MRNA","BNTX","PFE","GME","AMC",
-    # Sector leaders + recent IPOs
-    "ANET","WDAY","NOW","TEAM","HUBS","VEEV","DOCU","TTD","ROKU","PINS",
-    "SNAP","TWLO","OKTA","SPLK","ESTC","MDB","FSLY","NET","U","PATH",
-    # Commodity / cyclical names that can spike
+    "WDAY","TEAM","HUBS","VEEV","DOCU","TTD","ROKU","PINS","SNAP","TWLO",
+    "OKTA","SPLK","ESTC","MDB","FSLY","U","PATH","SPOT","DUOL","RDDT",
+    # Fintech / Crypto-adjacent
+    "COIN","SOFI","AFRM","HOOD","SQ","MARA","RIOT","CVNA","CAR","TOST",
+    # EV / Mobility (high-beta names)
+    "RIVN","LCID","NIO","XPEV","LI","NVAX","MRNA","BNTX","PFE","GME",
+    # AI Infrastructure — hot theme where moves happen
+    "SMCI","DELL","VRT","POWL","MOD","NBIS","ASTS","IOT","ARM","APP",
+    # Biotech catalyst names (binary events)
+    "VRTX","REGN","GILD","BIIB","ILMN","SNDK","WDC","VKTX","MDGL","INSM",
+    # Energy / Uranium / Power (structural momentum)
+    "CCJ","UUUU","CEG","VST","TLN","OKLO","NNE","LEU","BE","BLDP",
+    # ── TIER C (SPECULATIVE / EARLY-STAGE) — 70 names ─────────────────
+    # Small-caps + recent IPOs + spinoffs where CAR/SNDK patterns emerge.
+    # Higher noise but this is where the outsized moves happen.
+    # Recent IPOs + spinoffs (2023-2025)
+    "CRWV","KVYO","TEM","CART","BIRK","ONON","LPSN","KOSS","GCT","RKLB",
+    # Meme / high short interest candidates (classic squeeze setups)
+    "AMC","BBAI","ACHR","JOBY","EVGO","QS","SDC","NKLA","MULN","FFIE",
+    # Quantum / frontier tech (catalyst-driven spikes)
+    "IONQ","RGTI","QBTS","QUBT","LAES","ARQQ","INPX","BKSY",
+    # Commodities / cyclicals (rotation plays)
     "OXY","FCX","X","CLF","NUE","STLD","MP","LTHM","ALB","SQM",
-    # Biotech / pharma catalyst names  
-    "VRTX","REGN","GILD","BIIB","ILMN","SNDK","WDC",
+    "HL","AG","EXK","CDE","PAAS","FSM","GATO","MAG","NEM","GOLD",
+    # Consumer momentum / breakout candidates
+    "ELF","CELH","DKNG","FLTR","HIMS","PLNT","VITL","SG","CAVA","WING",
+    # Small-cap biotech (binary FDA/clinical catalysts)
+    "MDGL","KRYS","ZLAB","PHAT","EWTX","BCAX","TARS","RYTM","IONS",
+    # Defence / drone / space spec
+    "KTOS","AVAV","DRS","PL","RKLB",
 ]
 
-# India universe — focus on mid/small cap where short squeeze + volume surge works
-# Note: India SI% data is poor quality from Yahoo; Signal 1 will score low for most
+# India momentum universe — expanded with small/midcap breakout candidates
 _momentum_universe_in = [
-    # Tier-1 indices components that can spike
+    # ── TIER A: Established mid-caps with momentum history ────────────
     "TATAELXSI","PERSISTENT","COFORGE","KPITTECH","DIXON","LTIM",
     "TATATECH","LATENTVIEW","MASTEK","POLICYBZR","PAYTM","ZOMATO","NYKAA",
-    # Defence + PSU (structural momentum)
+    # Defence + PSU (structural momentum, govt capex theme)
     "HAL","BEL","COCHINSHIP","MAZAGON","GRSE","BDL","RVNL","IRFC","IRCTC","RAILTEL",
-    # Renewables + EV
-    "ADANIGREEN","JSWENERGY","SUZLON","OLECTRA","TATAPOWER","NHPC","SJVN",
+    # Renewables + EV (policy tailwinds)
+    "ADANIGREEN","JSWENERGY","SUZLON","OLECTRA","TATAPOWER","NHPC","SJVN","INOXWIND",
     # Chemicals + cyclicals
     "DEEPAKNTR","PIIND","ASTRAL","POLYCAB","NAVINFLUOR","SRF","DIVISLAB",
-    # Finance small-caps
-    "ANGELONE","MOTILALOFS","NUVAMA","CAMS","KFINTECH","CDSL","BSE",
-    # Real estate momentum
-    "GODREJPROP","OBEROIRLTY","PRESTIGE","BRIGADE","SOBHA","PHOENIXLTD",
+    # Capital markets (beneficiaries of bull runs)
+    "ANGELONE","MOTILALOFS","NUVAMA","CAMS","KFINTECH","CDSL","BSE","UTIAMC",
+    # Real estate (cyclical momentum)
+    "GODREJPROP","OBEROIRLTY","PRESTIGE","BRIGADE","SOBHA","PHOENIXLTD","MACROTECH",
     # New-age + platforms
-    "JIOFIN","NAZARA","EASEMYTRIP","MAPMYINDIA","IDEAFORGE","TANLA","HAPPSTMNDS",
+    "JIOFIN","NAZARA","EASEMYTRIP","MAPMYINDIA","IDEAFORGE","TANLA","HAPPSTMNDS","ZAGGLE","RATEGAIN",
     # Auto + EV component
-    "EXIDEIND","AMARARAJA","SONACOMS","TVSMOTOR","CEATLTD",
+    "EXIDEIND","AMARARAJA","SONACOMS","TVSMOTOR","CEATLTD","MOTHERSON",
+    # ── TIER B: Small-caps + niche momentum candidates ────────────────
+    # IT mid-caps (earnings catalyst names)
+    "INTELLECT","NEWGEN","KPITTECH","BSOFT","AFFLE","ROUTE","ZENSAR","SONATSOFTW",
+    # Capital goods + defence ancillary
+    "PARAS","DATAPATTER","NETWEB","AZENT","AVALON","KAYNES",
+    # Healthcare + diagnostics
+    "LALPATHLAB","METROPOLIS","SYNGENE","ALKEM","IPCALAB","GLENMARK","TORNTPHARM","MAXHEALTH","FORTIS","MEDANTA",
+    # Specialty chemicals / niche materials
+    "FINEORG","CHAMBLFERT","AARTI","VINATIORGN","ALKYLAMINE","GALAXYSURF","GRINDWELL","TIMKEN","SKFINDIA",
+    # Consumer discretionary breakouts
+    "TRENT","DMART","KALYANKJIL","VBL","JUBLFOOD","DEVYANI","WESTLIFE","CELLO","AMBER","BLUESTARLT",
+    # Financial inclusion + NBFC
+    "MANAPPURAM","MUTHOOTFIN","CHOLAFIN","POONAWALLA","IIFL","FIVESTAR",
 ]
 
 
@@ -24533,6 +24800,20 @@ async def early_momentum_radar(email: str = "", region: str = "US"):
     red_alert = [r for r in results if r["score"] >= 80]
     watching = [r for r in results if 60 <= r["score"] < 80]
     early = [r for r in results if 40 <= r["score"] < 60]
+    # r44: Dedicated ACCELERATING bucket — any score tier where acceleration is strong.
+    # These may overlap with red_alert/watching/early but are surfaced separately
+    # because they're the EARLIEST catchable setups (before absolute score crosses
+    # high thresholds). Sort by acceleration score itself, not total score.
+    accelerating = sorted(
+        [r for r in results if r.get("accelerating")],
+        key=lambda x: x.get("details", {}).get("signal_6_acceleration", 0),
+        reverse=True
+    )
+    
+    # Count how many tickers actually had a 14-day baseline available
+    # (honest reporting: on fresh install, this starts at 0 and grows over 2 weeks)
+    with_baseline = sum(1 for r in results
+                        if r.get("details", {}).get("acceleration_baseline", "").startswith("baseline_"))
     
     elapsed = round(time.time() - t0, 1)
     coverage = {
@@ -24543,17 +24824,29 @@ async def early_momentum_radar(email: str = "", region: str = "US"):
         "scan_time_sec": elapsed,
         "region": region,
         "batch_mode": "yf.download",
+        "acceleration_baselines_available": with_baseline,
+        "acceleration_coverage_pct": round((with_baseline / max(1, len(results))) * 100, 1),
     }
-    print(f"  ✅ Momentum Radar: {len(red_alert)} RED + {len(watching)} WATCH + {len(early)} EARLY in {elapsed}s")
+    print(f"  ✅ Momentum Radar: {len(red_alert)} RED + {len(watching)} WATCH + {len(early)} EARLY + {len(accelerating)} ACCELERATING in {elapsed}s")
     print(f"  📊 Coverage: {coverage['completed']}/{coverage['scanned']} ({coverage['coverage_pct']}%)")
+    print(f"  📊 Acceleration baselines: {with_baseline}/{len(results)} ({coverage['acceleration_coverage_pct']}%)")
     try:
         diag_log("SCAN", "momentum_radar_completed", {
             **coverage,
             "red_alert": len(red_alert),
             "watching": len(watching),
             "early": len(early),
+            "accelerating": len(accelerating),
         })
     except Exception: pass
+    
+    # r44: build a status message about acceleration system state
+    if with_baseline == 0:
+        accel_status = "Acceleration detection warming up — no 14-day baselines yet. Signal 6 will activate after ~2 weeks of scan history. Until then, scores use the 80-point base."
+    elif coverage["acceleration_coverage_pct"] < 30:
+        accel_status = f"Acceleration detection partial — {with_baseline}/{len(results)} tickers have 14-day baselines. Coverage grows daily."
+    else:
+        accel_status = f"Acceleration detection active — {with_baseline}/{len(results)} tickers have 14-day baselines."
     
     result = {
         "success": True,
@@ -24563,6 +24856,8 @@ async def early_momentum_radar(email: str = "", region: str = "US"):
         "redAlert": red_alert,
         "watching": watching,
         "early": early,
+        "accelerating": accelerating,   # r44: new bucket for early-setup detection
+        "accelerationStatus": accel_status,
         "totalScored": len(results),
         "disclaimer": (
             "SIGNAL DETECTOR, NOT A TRADE RECOMMENDER. "
@@ -24627,7 +24922,15 @@ async def _momentum_scan_single_with_hist(sym, region, hist):
         _name = info.get("shortName") or info.get("longName") or sym
         _price = float(info.get("regularMarketPrice") or 0) or float(hist['Close'].iloc[-1])
         _mcap = float(info.get("marketCap") or 0)
-        result = _compute_momentum_score(sym, info, hist, options_chain)
+        # r43: Tier classification by market cap (used for liquidity gate + UI tagging)
+        # A: >$50B (Tier A CORE)   → strictest liquidity requirement, highest signal quality
+        # B: $5B–$50B (Tier B GROWTH) → standard requirements
+        # C: <$5B (Tier C SPEC)   → relaxed liquidity, more tolerance for noise
+        if _mcap >= 50_000_000_000: _tier = "A"
+        elif _mcap >= 5_000_000_000: _tier = "B"
+        elif _mcap > 0: _tier = "C"
+        else: _tier = "C"  # unknown mcap → treat as spec (conservative)
+        result = _compute_momentum_score(sym, info, hist, options_chain, tier=_tier)
         result["name"] = _name
         result["price"] = round(_price, 2)
         result["marketCap"] = _mcap

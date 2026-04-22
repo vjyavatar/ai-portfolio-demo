@@ -10281,7 +10281,13 @@ c+='<div style="display:flex;align-items:center;gap:10px">';
 c+='<div style="width:28px;height:28px;border-radius:50%;background:'+accentC+'12;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:900;color:'+accentC+';font-family:var(--mono)">'+rank+'</div>';
 c+='<div><div style="font-size:13px;font-weight:900;color:var(--text);font-family:var(--mono)">'+s.symbol+'</div>';
 c+='<div style="font-size:9px;color:var(--text3)">'+(s.name||s.symbol)+' · '+(s.sector||'')+'</div></div></div>';
-c+='<div style="text-align:right"><div style="font-size:22px;font-weight:900;color:'+accentC+';font-family:var(--mono)">'+s.score+'</div>';
+// r43: Tier badge — tells user if this is a Core (low noise), Growth, or Spec (high noise) signal
+var _tier=(s.details&&s.details.tier)||'';
+var _tierColors={A:{bg:'#05966915',c:'#059669',l:'CORE'},B:{bg:'#d9770615',c:'#d97706',l:'GROWTH'},C:{bg:'#7c3aed15',c:'#7c3aed',l:'SPEC'}};
+var _tc=_tierColors[_tier];
+c+='<div style="text-align:right;display:flex;flex-direction:column;align-items:flex-end;gap:2px">';
+c+='<div style="font-size:22px;font-weight:900;color:'+accentC+';font-family:var(--mono);line-height:1">'+s.score+'</div>';
+if(_tc){c+='<span style="font-size:7px;font-weight:800;padding:1px 6px;border-radius:100px;background:'+_tc.bg+';color:'+_tc.c+';letter-spacing:.5px">'+_tc.l+'</span>';}
 c+='<div style="font-size:8px;font-weight:800;color:'+accentC+'">'+(s.tier||'').replace(/[🔥⚡👀]/g,'').trim()+'</div></div></div>';
 // Signal breakdown — 5 mini cells
 var det=s.details||{};
@@ -10318,11 +10324,33 @@ if(_cov.coverage_pct<70){h+='<span style="color:'+_covColor+';font-weight:700">C
 h+='</div>';}
 
 // Total check
-var _mrTotal=(d.redAlert||[]).length+(d.watching||[]).length+(d.early||[]).length;
+var _mrTotal=(d.redAlert||[]).length+(d.watching||[]).length+(d.early||[]).length+(d.accelerating||[]).length;
 if(_mrTotal===0){
 h+='<div style="padding:40px;text-align:center"><div style="font-size:40px;margin-bottom:12px">🔍</div>';
 h+='<div style="font-size:16px;font-weight:800;color:var(--text);margin-bottom:8px">No momentum setups detected right now</div>';
 h+='<div style="font-size:10px;color:var(--text3);max-width:450px;margin:0 auto;line-height:1.6">Parabolic setups are rare by design — they typically fire during earnings season, short-squeeze events, or sector rotations. The radar will update every 30 minutes. Come back later or try the other region.</div></div>';}
+
+// r44: Acceleration status banner — honest about whether 14-day baselines are built
+if(d.accelerationStatus){
+var _isWarming=d.accelerationStatus.indexOf('warming up')>=0;
+var _abC=_isWarming?'#3b82f6':'#059669';
+h+='<div style="padding:10px 14px;background:'+_abC+'08;border:1px solid '+_abC+'20;border-radius:8px;margin-bottom:14px;font-size:10px;color:var(--text);display:flex;align-items:center;gap:8px">';
+h+='<span style="font-size:13px">'+(_isWarming?'⏳':'🚀')+'</span>';
+h+='<span>'+d.accelerationStatus+'</span>';
+h+='</div>';}
+
+// r44: ACCELERATING — priority bucket for EARLY catchable setups
+// Shows BEFORE red_alert because these are the highest-value early catches.
+// A stock here might only be score 45 but its signals are CLIMBING FAST,
+// which is exactly the CAR/SNDK pattern we want to catch.
+if(d.accelerating&&d.accelerating.length>0){
+h+='<div style="margin-bottom:20px">';
+h+='<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px"><div style="font-size:14px;font-weight:900;color:#7c3aed;font-family:Sora,sans-serif">🚀 ACCELERATING — Setups Building NOW (r44 early detection)</div>';
+h+='<span style="padding:2px 10px;border-radius:100px;background:#7c3aed10;color:#7c3aed;font-size:9px;font-weight:800">'+d.accelerating.length+' stocks</span></div>';
+h+='<div style="font-size:10px;color:var(--text3);margin-bottom:10px;max-width:640px">These stocks show strong signal <strong>CLIMB</strong> vs 14 days ago — setups in the building phase. Often caught 1-2 weeks before threshold-crossing RED ALERT status. Most institutionally-valuable early signals.</div>';
+h+='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(380px,1fr));gap:12px">';
+d.accelerating.forEach(function(s,i){h+=_momCard(s,i+1,'#7c3aed');});
+h+='</div></div>';}
 
 // RED ALERT — score >= 80
 if(d.redAlert&&d.redAlert.length>0){
