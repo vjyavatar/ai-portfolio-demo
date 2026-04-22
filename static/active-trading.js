@@ -7818,7 +7818,34 @@
     var latestPos = openPos || paperPortfolio.findLatestByTradeId(trade.id);
     var buttonNode;
 
-    if (openPos) {
+    // r34: Spot-only cards (chain unavailable) show a disabled CHART ONLY
+    // button. Users can see the live price + chart but can't trade because
+    // we don't have chain data to build an honest trade.
+    if (trade._spotOnly) {
+      buttonNode = el('button', {
+        onClick: function (e) {
+          e.stopPropagation();
+          try {
+            pushLog(trade.symbol + ' — chain data unavailable from provider (' +
+                    (trade._spotSource || 'fallback source') +
+                    '). Live price shown but trade disabled.', C.orange);
+          } catch (e2) {}
+        },
+        title: 'Option chain unavailable — data provider rate-limited. Spot price is live but trading is disabled until chain data returns.',
+        disabled: true,
+        style: {
+          height: '48px', width: '128px',
+          background: C.textMute + '18',
+          color: C.textMute,
+          fontWeight: 800, fontSize: '12px',
+          border: '1px dashed ' + C.divider,
+          borderRadius: '6px',
+          cursor: 'not-allowed',
+          letterSpacing: '0.6px', alignSelf: 'center',
+          opacity: 0.8,
+        }
+      }, 'CHART ONLY');
+    } else if (openPos) {
       // Currently live — pending or active
       var activeLabel = openPos.status === 'active' ? 'LIVE' : 'PENDING';
       var activeBg = openPos.status === 'active' ? C.green : C.orange;
@@ -8065,18 +8092,21 @@
     });
     function priceChip(label, value, valueColor) {
       var chip = el('div', {
-        style: { display: 'flex', flexDirection: 'column', gap: '3px', minWidth: 0 }
+        // r33: right-align — institutional dashboards always right-align
+        // numeric values. Makes price columns line up vertically and
+        // eliminates the "wasted whitespace to the right of values" look.
+        style: { display: 'flex', flexDirection: 'column', gap: '3px', minWidth: 0, textAlign: 'right' }
       });
       chip.appendChild(el('div', {
         style: {
-          fontSize: '11px', color: C.textMute, fontWeight: 900,
+          fontSize: '10px', color: C.textMute, fontWeight: 900,
           letterSpacing: '1px', whiteSpace: 'nowrap',
           overflow: 'hidden', textOverflow: 'ellipsis'
         }
       }, label));
       chip.appendChild(el('div', {
         style: {
-          fontSize: '22px', color: valueColor || C.textPri, fontWeight: 900,
+          fontSize: '20px', color: valueColor || C.textPri, fontWeight: 900,
           whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
           fontFamily: MONO, lineHeight: 1.05
         }
@@ -8922,23 +8952,34 @@
     }
 
     var positionsSection = el('div', {
-      style: { padding: '10px 10px 6px' }
+      style: { padding: '8px 10px 6px' }
     });
-    positionsSection.appendChild(el('div', {
-      style: {
-        fontSize: '9px', fontWeight: 700, color: C.textSec,
-        letterSpacing: '0.8px', marginBottom: '6px'
-      }
-    }, 'OPEN POSITIONS (' + activePositions.length + ')'));
-
+    // r33: When empty, header + message on SAME line (saves ~30px vertical).
+    // When populated, header gets its own line with count.
     if (activePositions.length === 0) {
       positionsSection.appendChild(el('div', {
         style: {
-          fontSize: '11px', color: C.textMute, fontStyle: 'italic',
-          padding: '6px 0', textAlign: 'center'
+          display: 'flex', alignItems: 'center', gap: '8px',
+          fontSize: '10px', color: C.textMute,
         }
-      }, 'No open positions yet. Hit EXECUTE on a trade to start.'));
+      }, [
+        el('span', {
+          style: {
+            fontWeight: 800, color: C.textSec, letterSpacing: '0.8px',
+            flex: '0 0 auto'
+          }
+        }, 'OPEN POSITIONS (0)'),
+        el('span', {
+          style: { fontStyle: 'italic', flex: '1 1 auto' }
+        }, '— no positions; click TAKE TRADE on a card to start')
+      ]));
     } else {
+      positionsSection.appendChild(el('div', {
+        style: {
+          fontSize: '9px', fontWeight: 700, color: C.textSec,
+          letterSpacing: '0.8px', marginBottom: '6px'
+        }
+      }, 'OPEN POSITIONS (' + activePositions.length + ')'));
       activePositions.forEach(function (pos) {
         var liveTrade = priceLookup[pos.tradeId];
         var currentPrice = liveTrade ? liveTrade.price : pos.entryPremium;
@@ -11118,10 +11159,18 @@
           el('span', {
             style: {
               color: C.textSec, overflow: 'hidden',
-              textOverflow: 'ellipsis', whiteSpace: 'nowrap'
+              textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: '1 1 auto'
             }
-          }, log.text)
-        ]);
+          }, log.text),
+          // r33: count badge for deduplicated repeats
+          (log.count && log.count > 1) ? el('span', {
+            style: {
+              color: C.textMute, fontSize: '10px', fontWeight: 800,
+              padding: '1px 5px', background: C.divider + '55',
+              borderRadius: '3px', flex: '0 0 auto'
+            }
+          }, '×' + log.count) : null
+        ].filter(Boolean));
         list.appendChild(row);
       });
     }
@@ -11638,7 +11687,16 @@
 
   function pushLog(text, color) {
     var time = new Date().toTimeString().slice(0, 8);
-    state.logs.unshift({ id: Date.now() + Math.random(), time: time, text: text, color: color });
+    // r33: Dedup consecutive identical entries (fixes log flooding with
+    // "Refresh @ 0.11" × 7). If most-recent log has same text, just bump
+    // its count and update timestamp. New-text always gets its own row.
+    var prev = state.logs[0];
+    if (prev && prev.text === text) {
+      prev.count = (prev.count || 1) + 1;
+      prev.time = time;  // update to latest occurrence
+      return;
+    }
+    state.logs.unshift({ id: Date.now() + Math.random(), time: time, text: text, color: color, count: 1 });
     state.logs = state.logs.slice(0, 20);
   }
 
@@ -11719,6 +11777,46 @@
           if (row.spot == null || row.spot <= 0) {
             rejectReasons.noSpot++;
             rejectDetails.push({ sym: sym, reason: 'no spot price', spot: row.spot });
+            return;
+          }
+          // r34: CHART ONLY cards when chain is unavailable but we have
+          // real spot (via yfinance_india / nse_quote_equity / moneycontrol).
+          // Users see live price + sparklines + trigger. TAKE TRADE is
+          // disabled with honest "chain unavailable" tooltip.
+          //
+          // CRITICAL: contract must match what mapScanRowToTrade returns
+          // so the card renderer doesn't crash on .toFixed of undefined.
+          // Got burned on this in r19 — zero-ing out price/sl/target and
+          // using _fmt() defensive formatter handles that cleanly now.
+          if (row._spot_only === true) {
+            mapped.push({
+              id: 'spotonly_' + sym,
+              symbol: sym,
+              spot: row.spot,
+              _spotOnly: true,
+              _spotSource: row._spot_source || 'unknown',
+              strike: '—',
+              side: '',
+              confidence: 0,
+              state: 'CHART_ONLY',
+              reason: 'Option chain unavailable (data provider rate-limited). Chart-only mode.',
+              price: 0,     // premium — _fmt() will render as "—"
+              trigger: 0,
+              sl: 0,
+              target: 0,
+              slPct: 0,
+              tgtPct: 0,
+              slBasis: 'spot_only',
+              lot: 1,
+              gammaMode: null,
+              falseBreakout: false,
+              factors: {},
+              availableFactors: [],
+              missingFactors: ['chain'],
+              syntheticPremium: false,
+              longGamma: null,
+              _raw: row,
+            });
             return;
           }
           if (!Array.isArray(row.chain_near_atm) || row.chain_near_atm.length === 0) {

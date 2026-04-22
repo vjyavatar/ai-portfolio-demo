@@ -5765,7 +5765,15 @@ def _auto_paper_stats(reg):
 
 
 def _score_one_ticker(sym, reg):
-    """Get FULL options-quick data for ONE ticker. Returns everything _renderQuickTrade needs."""
+    """Get FULL options-quick data for ONE ticker. Returns everything _renderQuickTrade needs.
+    
+    r34 hot-fix: when NSE is rate-limiting us at market open, returning None
+    for every India ticker gives users an empty scanner at the moment they
+    most need data. Instead, allow through tickers where `_chain_unavailable`
+    is true BUT we have a real spot (via yfinance/quote-equity fallback).
+    Frontend flags these as `_spotOnly: true` and renders non-tradable CHART
+    ONLY cards with sparklines — honest presentation of degraded state.
+    """
     try:
         import asyncio
         loop = asyncio.new_event_loop()
@@ -5774,13 +5782,22 @@ def _score_one_ticker(sym, reg):
             d = loop.run_until_complete(asyncio.wait_for(_options_quick_impl(sym, reg), timeout=30))
         finally:
             loop.close()
-        if not d or not d.get("success") or d.get("spot", 0) <= 0:
+        if not d:
             return None
-        # Return FULL data — same shape as /api/options-quick response
-        # Frontend will run _renderQuickTrade on this exact data
-        d["sym"] = sym
-        d["_region"] = reg
-        return d
+        # Full-success path: has chain, tradable card
+        if d.get("success") and d.get("spot", 0) > 0:
+            d["sym"] = sym
+            d["_region"] = reg
+            return d
+        # Chart-only path: chain unavailable, but we have a real spot
+        # from a fallback source (yfinance_india, nse_quote_equity, moneycontrol).
+        # Card will render non-tradable but users see live price + sparkline.
+        if d.get("_chain_unavailable") and d.get("spot", 0) > 0:
+            d["sym"] = sym
+            d["_region"] = reg
+            d["_spot_only"] = True  # Frontend: render CHART ONLY card, block TAKE TRADE
+            return d
+        return None
     except Exception as e:
         print(f"[BOTTOM-NAV] ❌ {sym} ({reg}): {type(e).__name__}: {e}")
         return None
@@ -27858,6 +27875,79 @@ async def _options_quick_impl(symbol: str = "NIFTY", region: str = "IN"):
         if is_india_index:
             if result and result.get("success"):
                 return result
+            # r34 bug fix: yfinance fallback was only wired for India STOCKS,
+            # not indices. When NSE blocks NIFTY/BANKNIFTY/SENSEX, the scanner
+            # hits this branch and returns failure without trying yfinance.
+            # Now: try yfinance here too. Same .NS/^ mapping as stocks path.
+            try:
+                import yfinance as yf
+                if sym in ("NIFTY", "NIFTY 50"):
+                    yf_idx_sym = "^NSEI"
+                elif sym in ("BANKNIFTY", "NIFTY BANK"):
+                    yf_idx_sym = "^NSEBANK"
+                elif sym == "SENSEX":
+                    yf_idx_sym = "^BSESN"
+                elif sym == "FINNIFTY":
+                    yf_idx_sym = "NIFTY_FIN_SERVICE.NS"
+                elif sym == "MIDCPNIFTY":
+                    yf_idx_sym = "NIFTY_MID_SELECT.NS"
+                else:
+                    yf_idx_sym = None
+                
+                if yf_idx_sym:
+                    _yahoo_rate_wait()
+                    yf_idx_tk = yf.Ticker(yf_idx_sym)
+                    yf_idx_spot = 0
+                    yf_idx_bars = []
+                    try:
+                        yf_info_idx = yf_idx_tk.info or {}
+                        yf_idx_spot = (yf_info_idx.get('regularMarketPrice', 0)
+                                       or yf_info_idx.get('currentPrice', 0) or 0)
+                    except Exception:
+                        yf_idx_spot = 0
+                    
+                    # fallback via history if .info didn't work (common for indices)
+                    if yf_idx_spot <= 0:
+                        try:
+                            _yahoo_rate_wait()
+                            _quick = yf_idx_tk.history(period="1d", interval="1m")
+                            if _quick is not None and len(_quick) > 0:
+                                yf_idx_spot = float(_quick['Close'].iloc[-1])
+                        except Exception:
+                            pass
+                    
+                    if yf_idx_spot > 0:
+                        try:
+                            _yahoo_rate_wait()
+                            yf_hist_idx = yf_idx_tk.history(period="1d", interval="5m")
+                            if yf_hist_idx is not None and len(yf_hist_idx) > 0:
+                                for _, _b in yf_hist_idx.tail(30).iterrows():
+                                    yf_idx_bars.append({
+                                        "t": str(_b.name.time())[:5] if hasattr(_b.name, 'time') else "",
+                                        "o": round(float(_b['Open']), 2),
+                                        "h": round(float(_b['High']), 2),
+                                        "l": round(float(_b['Low']), 2),
+                                        "c": round(float(_b['Close']), 2),
+                                        "v": int(_b['Volume']) if _b['Volume'] else 0,
+                                    })
+                        except Exception as _ybe:
+                            print(f"[OPTIONS-QUICK] {sym} (index): yfinance bars failed: {type(_ybe).__name__}")
+                        
+                        print(f"[OPTIONS-QUICK] {sym} (INDEX): NSE failed, yfinance gave spot={yf_idx_spot}, {len(yf_idx_bars)} bars.")
+                        return {
+                            "success": False,
+                            "error": f"NSE chain unavailable for index {sym}; yfinance spot={yf_idx_spot}",
+                            "symbol": sym,
+                            "spot": round(yf_idx_spot, 2),
+                            "_chain_unavailable": True,
+                            "_spot_source": "yfinance_india_index",
+                            "ohlc_bars": yf_idx_bars,
+                            "chain_near_atm": [], "ce_resistance": [], "pe_support": [],
+                            "gex": {"total": 0, "regime": "NEUTRAL", "topStrikes": [], "flipPoint": 0, "callWall": 0, "putWall": 0}
+                        }
+            except Exception as _yie:
+                print(f"[OPTIONS-QUICK] {sym} (index): yfinance fallback failed: {type(_yie).__name__}: {_yie}")
+            
             return {"success": False, "error": "All data sources failed for " + sym, "spot": 0, "ohlc_bars": [], "chain_near_atm": [], "ce_resistance": [], "pe_support": [], "gex": {"total": 0, "regime": "NEUTRAL", "topStrikes": [], "flipPoint": 0, "callWall": 0, "putWall": 0}}
         
         # ══════════════════════════════════════════════════════════════════
