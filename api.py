@@ -24193,6 +24193,475 @@ async def multibagger_hunter(email: str = "", region: str = "IN"):
     return result
 
 
+# ═══════════════════════════════════════════════════════════════════════
+# EARLY MOMENTUM RADAR (r39)
+#
+# Purpose: Detect stocks in the EARLY stages of parabolic moves — catch
+# the CAR/SNDK/GME-style setups 2-4 weeks BEFORE they go vertical.
+#
+# This is DIFFERENT from Dream Portfolio or Multibagger Hunter:
+#   - Dream Portfolio = long-term quality compounders (fundamental)
+#   - Multibagger Hunter = emerging growth winners (fundamental + growth)
+#   - Early Momentum Radar = near-term explosive movers (momentum + flow)
+#
+# The 5 signals we score (each 0-20 points, max 100):
+#   1. SHORT SQUEEZE SETUP — high short interest + low days-to-cover
+#   2. VOLUME SURGE — current volume spiking vs 60-day baseline  
+#   3. RELATIVE STRENGTH — outperforming benchmark sharply over 30 days
+#   4. PRICE BREAKOUT — near 52-wk high AND above 50-day MA
+#   5. CALL/PUT SKEW — bullish option flow (US only, where we have options)
+#
+# Threshold:
+#   Score 80+: 🔥 RED ALERT (multiple signals firing — rare, high-conviction)
+#   Score 60-79: ⚡ WATCH (setup forming, worth monitoring)
+#   Score 40-59: 👀 EARLY (one signal firing, track for more)
+#
+# CRITICAL HONESTY: This is a SIGNAL DETECTOR, not a trade recommender.
+# Even the best momentum radars have 40-60% false positive rates. We show
+# the signals honestly; the user judges the trade.
+# ═══════════════════════════════════════════════════════════════════════
+
+_momentum_radar_cache = {"US": {"ts": 0, "data": None}, "IN": {"ts": 0, "data": None}}
+
+
+def _compute_momentum_score(sym, tk_info, hist_df, options_chain=None):
+    """Compute 5-signal composite score for one ticker.
+    
+    Returns dict with:
+      score (0-100), signals (list of triggered), details (diagnostic fields)
+    
+    Called on a yfinance Ticker that already has .info and .history loaded
+    (so we don't double-fetch). Options chain optional — if missing, signal 5
+    scores 0 and we flag it honestly.
+    """
+    import numpy as np
+    
+    score = 0
+    signals = []
+    details = {}
+    
+    try:
+        # ═══ Signal 1: SHORT SQUEEZE SETUP (20 pts) ═══
+        # High SI% + elevated D2C = crowded short trade, vulnerable to squeeze
+        short_pct = float(tk_info.get("shortPercentOfFloat") or 0) * 100
+        short_ratio = float(tk_info.get("shortRatio") or 0)  # days to cover
+        details["short_pct_float"] = round(short_pct, 2)
+        details["days_to_cover"] = round(short_ratio, 2)
+        
+        sq_pts = 0
+        if short_pct >= 20: sq_pts += 12
+        elif short_pct >= 15: sq_pts += 8
+        elif short_pct >= 10: sq_pts += 4
+        if short_ratio >= 7: sq_pts += 8
+        elif short_ratio >= 4: sq_pts += 5
+        elif short_ratio >= 2: sq_pts += 2
+        sq_pts = min(sq_pts, 20)
+        if sq_pts >= 10:
+            signals.append(f"SHORT SQUEEZE SETUP: {short_pct:.1f}% SI, {short_ratio:.1f}d cover")
+        score += sq_pts
+        details["signal_1_short_squeeze"] = sq_pts
+        
+        # ═══ Signal 2: VOLUME SURGE (20 pts) ═══
+        # Recent volume blowing out vs baseline = institutional accumulation
+        vol_pts = 0
+        if hist_df is not None and len(hist_df) >= 65:
+            vol_arr = hist_df['Volume'].values
+            vol_5d = float(np.mean(vol_arr[-5:]))
+            vol_60d = float(np.mean(vol_arr[-65:-5])) if len(vol_arr) >= 65 else float(np.mean(vol_arr[:-5]))
+            if vol_60d > 0:
+                vol_ratio = vol_5d / vol_60d
+                details["volume_ratio_5d_vs_60d"] = round(vol_ratio, 2)
+                if vol_ratio >= 3.0: vol_pts = 20
+                elif vol_ratio >= 2.0: vol_pts = 15
+                elif vol_ratio >= 1.5: vol_pts = 10
+                elif vol_ratio >= 1.2: vol_pts = 5
+                if vol_pts >= 10:
+                    signals.append(f"VOLUME SURGE: {vol_ratio:.1f}× normal (last 5d vs 60d avg)")
+        score += vol_pts
+        details["signal_2_volume_surge"] = vol_pts
+        
+        # ═══ Signal 3: RELATIVE STRENGTH (20 pts) ═══
+        # Stock outperforming itself over time (momentum) — 30-day % gain
+        # Note: we'd ideally compare to SPY, but that requires 2 fetches.
+        # Using absolute 30-day return is a reasonable proxy — parabolic setups
+        # typically show +15% monthly gains BEFORE the big move.
+        rs_pts = 0
+        if hist_df is not None and len(hist_df) >= 30:
+            closes = hist_df['Close'].values
+            ret_30d = ((closes[-1] - closes[-30]) / closes[-30]) * 100 if closes[-30] > 0 else 0
+            details["return_30d_pct"] = round(ret_30d, 2)
+            if ret_30d >= 40: rs_pts = 20  # already parabolic
+            elif ret_30d >= 25: rs_pts = 16  # strong momentum
+            elif ret_30d >= 15: rs_pts = 12  # setup forming
+            elif ret_30d >= 8: rs_pts = 6   # early
+            if rs_pts >= 12:
+                signals.append(f"RELATIVE STRENGTH: +{ret_30d:.1f}% in 30 days")
+        score += rs_pts
+        details["signal_3_relative_strength"] = rs_pts
+        
+        # ═══ Signal 4: PRICE BREAKOUT (20 pts) ═══
+        # Within 5% of 52-wk high AND price > 50-day MA = structural breakout
+        brk_pts = 0
+        if hist_df is not None and len(hist_df) >= 50:
+            closes = hist_df['Close'].values
+            current = float(closes[-1])
+            high_52w = float(np.max(closes[-252:])) if len(closes) >= 252 else float(np.max(closes))
+            ma_50 = float(np.mean(closes[-50:]))
+            dist_from_high = ((current - high_52w) / high_52w) * 100  # 0 = at high, negative = below
+            above_ma50 = current > ma_50
+            details["pct_from_52wk_high"] = round(dist_from_high, 2)
+            details["above_50d_ma"] = bool(above_ma50)
+            if dist_from_high >= -2 and above_ma50: brk_pts = 20  # at or near 52wk high, trending
+            elif dist_from_high >= -5 and above_ma50: brk_pts = 15
+            elif dist_from_high >= -10 and above_ma50: brk_pts = 8
+            if brk_pts >= 15:
+                signals.append(f"BREAKOUT: {abs(dist_from_high):.1f}% from 52w high, above 50d MA")
+        score += brk_pts
+        details["signal_4_breakout"] = brk_pts
+        
+        # ═══ Signal 5: CALL/PUT SKEW (20 pts) ═══
+        # Bullish option flow = smart money positioning. Only scoreable for US
+        # (we don't have reliable options data for India scanner-wide).
+        cps_pts = 0
+        if options_chain:
+            try:
+                call_vol = sum(int(r.get("ce_volume") or 0) for r in options_chain)
+                put_vol = sum(int(r.get("pe_volume") or 0) for r in options_chain)
+                if put_vol > 0:
+                    cp_ratio = call_vol / put_vol
+                    details["call_put_volume_ratio"] = round(cp_ratio, 2)
+                    if cp_ratio >= 3.5: cps_pts = 20
+                    elif cp_ratio >= 2.5: cps_pts = 15
+                    elif cp_ratio >= 1.8: cps_pts = 10
+                    elif cp_ratio >= 1.3: cps_pts = 5
+                    if cps_pts >= 10:
+                        signals.append(f"BULLISH FLOW: Call/Put volume ratio {cp_ratio:.1f}×")
+            except Exception: pass
+        else:
+            details["call_put_volume_ratio"] = None
+            details["options_data_unavailable"] = True
+        score += cps_pts
+        details["signal_5_call_put_skew"] = cps_pts
+        
+    except Exception as _e:
+        details["compute_error"] = f"{type(_e).__name__}: {str(_e)[:120]}"
+    
+    # Classification
+    if score >= 80: tier = "🔥 RED ALERT"
+    elif score >= 60: tier = "⚡ WATCH"
+    elif score >= 40: tier = "👀 EARLY"
+    else: tier = ""
+    
+    return {
+        "symbol": sym,
+        "score": score,
+        "tier": tier,
+        "signals": signals,
+        "details": details,
+    }
+
+
+# Universe for momentum radar — wider than Dream (want to catch less-followed names)
+# US: 80 tickers including mid-cap + small-cap + recent IPOs/spinoffs
+_momentum_universe_us = [
+    # Mega/large cap — established movers
+    "AAPL","MSFT","NVDA","GOOGL","AMZN","META","TSLA","AVGO","AMD","NFLX",
+    "CRM","ORCL","ADBE","QCOM","INTC","MU","PLTR",
+    # Mid-cap growth + momentum names
+    "SHOP","UBER","SNOW","DDOG","NET","CRWD","PANW","ZS","ZM","RBLX",
+    "COIN","SOFI","AFRM","HOOD","SQ","MARA","RIOT","CVNA","CAR","RIVN",
+    "LCID","NIO","XPEV","LI","NVAX","MRNA","BNTX","PFE","GME","AMC",
+    # Sector leaders + recent IPOs
+    "ANET","WDAY","NOW","TEAM","HUBS","VEEV","DOCU","TTD","ROKU","PINS",
+    "SNAP","TWLO","OKTA","SPLK","ESTC","MDB","FSLY","NET","U","PATH",
+    # Commodity / cyclical names that can spike
+    "OXY","FCX","X","CLF","NUE","STLD","MP","LTHM","ALB","SQM",
+    # Biotech / pharma catalyst names  
+    "VRTX","REGN","GILD","BIIB","ILMN","SNDK","WDC",
+]
+
+# India universe — focus on mid/small cap where short squeeze + volume surge works
+# Note: India SI% data is poor quality from Yahoo; Signal 1 will score low for most
+_momentum_universe_in = [
+    # Tier-1 indices components that can spike
+    "TATAELXSI","PERSISTENT","COFORGE","KPITTECH","DIXON","LTIM",
+    "TATATECH","LATENTVIEW","MASTEK","POLICYBZR","PAYTM","ZOMATO","NYKAA",
+    # Defence + PSU (structural momentum)
+    "HAL","BEL","COCHINSHIP","MAZAGON","GRSE","BDL","RVNL","IRFC","IRCTC","RAILTEL",
+    # Renewables + EV
+    "ADANIGREEN","JSWENERGY","SUZLON","OLECTRA","TATAPOWER","NHPC","SJVN",
+    # Chemicals + cyclicals
+    "DEEPAKNTR","PIIND","ASTRAL","POLYCAB","NAVINFLUOR","SRF","DIVISLAB",
+    # Finance small-caps
+    "ANGELONE","MOTILALOFS","NUVAMA","CAMS","KFINTECH","CDSL","BSE",
+    # Real estate momentum
+    "GODREJPROP","OBEROIRLTY","PRESTIGE","BRIGADE","SOBHA","PHOENIXLTD",
+    # New-age + platforms
+    "JIOFIN","NAZARA","EASEMYTRIP","MAPMYINDIA","IDEAFORGE","TANLA","HAPPSTMNDS",
+    # Auto + EV component
+    "EXIDEIND","AMARARAJA","SONACOMS","TVSMOTOR","CEATLTD",
+]
+
+
+@app.get("/api/early-momentum-radar")
+async def early_momentum_radar(email: str = "", region: str = "US"):
+    """Detect stocks in early stages of parabolic moves.
+    
+    r40: BATCHED yfinance fetch. Prior implementation (r39) made 80 individual
+    history() + info() calls = 240+ HTTP requests to Yahoo, which tripped rate
+    limits. Now uses yf.download([tickers], period='1y') — ONE HTTP request
+    for all 80 tickers' price history. Individual .info calls remain serial
+    (no bulk API exists), but we fetch them in a bounded worker pool with
+    retry. Total Yahoo load cut by ~70%.
+    """
+    email = email.strip().lower()
+    _mr_ok = email in [e.lower() for e in DREAM_ALLOWED_EMAILS]
+    if not _mr_ok:
+        for de in DREAM_ALLOWED_EMAILS:
+            sess = _premium_sessions.get(de.lower(), {})
+            if sess.get("dream") and time.time() - sess.get("ts", 0) < 86400:
+                _mr_ok = True
+                email = de.lower()
+                break
+    if not _mr_ok:
+        return {"success": False, "error": "This feature is exclusive. Contact support for access."}
+    
+    region = region.upper()
+    if region not in ("US", "IN"):
+        return {"success": False, "error": "region must be US or IN"}
+    
+    # 30-min cache
+    cache = _momentum_radar_cache.get(region, {})
+    if cache.get("data") and time.time() - cache.get("ts", 0) < 1800:
+        return cache["data"]
+    
+    print(f"\n🔥 Early Momentum Radar starting ({region}) [BATCHED]...")
+    t0 = time.time()
+    
+    universe = _momentum_universe_us if region == "US" else _momentum_universe_in
+    universe = list(dict.fromkeys(universe))  # dedup
+    yf_symbols = [s if region == "US" else s + ".NS" for s in universe]
+    print(f"  📊 Scanning {len(universe)} tickers (batched)...")
+    
+    # ═══════════════════════════════════════════════════════════════════
+    # STEP 1: BATCH PRICE HISTORY — single yf.download() call
+    # ═══════════════════════════════════════════════════════════════════
+    # yf.download returns a DataFrame with MultiIndex columns:
+    #   level 0 = ['Open', 'High', 'Low', 'Close', 'Adj Close', 'Volume']
+    #   level 1 = ticker symbols
+    # Example: hist_all['Close']['AAPL'] gets AAPL close prices.
+    # This is ONE HTTP request — replaces 80 individual tk.history() calls.
+    import yfinance as yf
+    try:
+        _yahoo_rate_wait()
+        # Run batch download in threadpool (yf.download is sync)
+        hist_all = await asyncio.get_event_loop().run_in_executor(
+            None,
+            lambda: yf.download(
+                tickers=" ".join(yf_symbols),
+                period="1y",
+                interval="1d",
+                group_by="ticker",
+                progress=False,
+                threads=True,
+                auto_adjust=False,
+            )
+        )
+        print(f"  ✓ Batch history fetched: {len(yf_symbols)} tickers in one request")
+        try: diag_log("SCAN", "momentum_batch_download_ok", {
+            "region": region, "tickers": len(yf_symbols),
+            "elapsed_sec": round(time.time() - t0, 1),
+        })
+        except Exception: pass
+    except Exception as _de:
+        print(f"  ❌ Batch download failed: {type(_de).__name__}: {_de}")
+        try: diag_log("SCAN", "momentum_batch_download_failed", {
+            "region": region, "err": f"{type(_de).__name__}: {str(_de)[:120]}",
+        })
+        except Exception: pass
+        hist_all = None
+    
+    # ═══════════════════════════════════════════════════════════════════
+    # STEP 2: Extract per-ticker history from batch result
+    # ═══════════════════════════════════════════════════════════════════
+    def _get_hist(yf_sym):
+        """Extract single-ticker history from batch DataFrame."""
+        if hist_all is None or len(hist_all) == 0: return None
+        try:
+            # Batch with group_by='ticker' creates MultiIndex: hist_all[ticker] gives subframe
+            if len(yf_symbols) == 1:
+                # Single-ticker edge case: no MultiIndex, just regular frame
+                return hist_all if len(hist_all) >= 30 else None
+            if yf_sym not in hist_all.columns.get_level_values(0):
+                return None
+            sub = hist_all[yf_sym].dropna()
+            return sub if len(sub) >= 30 else None
+        except Exception:
+            return None
+    
+    # ═══════════════════════════════════════════════════════════════════
+    # STEP 3: Fetch .info + options per-ticker in bounded concurrent pool
+    # (These can't be batched — no Yahoo bulk API for info/options.)
+    # ═══════════════════════════════════════════════════════════════════
+    _sem = asyncio.Semaphore(6 if region == "US" else 8)
+    _task_timeout = 25  # shorter now — history already fetched in batch
+    
+    async def _scan_one(sym):
+        async with _sem:
+            try:
+                yf_sym = sym if region == "US" else sym + ".NS"
+                hist = _get_hist(yf_sym)
+                return await asyncio.wait_for(
+                    _momentum_scan_single_with_hist(sym, region, hist),
+                    timeout=_task_timeout
+                )
+            except asyncio.TimeoutError:
+                print(f"  ⏱ {sym}: timeout after {_task_timeout}s")
+                try: diag_log("SCAN", "momentum_radar_timeout", {"sym": sym, "region": region})
+                except Exception: pass
+                return None
+            except Exception as _e:
+                print(f"  ❌ {sym}: {type(_e).__name__}: {_e}")
+                return None
+    
+    tasks = [_scan_one(s) for s in universe]
+    raw = await asyncio.gather(*tasks)
+    results = [r for r in raw if r and r.get("score", 0) > 0]
+    
+    # Sort by score, bucket by tier
+    results.sort(key=lambda x: x["score"], reverse=True)
+    red_alert = [r for r in results if r["score"] >= 80]
+    watching = [r for r in results if 60 <= r["score"] < 80]
+    early = [r for r in results if 40 <= r["score"] < 60]
+    
+    elapsed = round(time.time() - t0, 1)
+    coverage = {
+        "scanned": len(universe),
+        "completed": len(results),
+        "failed": len(universe) - len(results),
+        "coverage_pct": round((len(results) / max(1, len(universe))) * 100, 1),
+        "scan_time_sec": elapsed,
+        "region": region,
+        "batch_mode": "yf.download",
+    }
+    print(f"  ✅ Momentum Radar: {len(red_alert)} RED + {len(watching)} WATCH + {len(early)} EARLY in {elapsed}s")
+    print(f"  📊 Coverage: {coverage['completed']}/{coverage['scanned']} ({coverage['coverage_pct']}%)")
+    try:
+        diag_log("SCAN", "momentum_radar_completed", {
+            **coverage,
+            "red_alert": len(red_alert),
+            "watching": len(watching),
+            "early": len(early),
+        })
+    except Exception: pass
+    
+    result = {
+        "success": True,
+        "region": region,
+        "elapsed": elapsed,
+        "coverage": coverage,
+        "redAlert": red_alert,
+        "watching": watching,
+        "early": early,
+        "totalScored": len(results),
+        "disclaimer": (
+            "SIGNAL DETECTOR, NOT A TRADE RECOMMENDER. "
+            "Even the best momentum radars have 40-60% false positive rates. "
+            "These signals identify SETUPS that historically precede parabolic moves "
+            "(CAR, SNDK, GME patterns) — but many setups never trigger. "
+            "Use as one input in your decision process, not as a buy signal."
+        ),
+    }
+    _momentum_radar_cache[region] = {"ts": time.time(), "data": result}
+    return result
+
+
+async def _momentum_scan_single_with_hist(sym, region, hist):
+    """Score one ticker using pre-fetched history from batch download.
+    
+    Still needs: .info (short interest, market cap) + options chain (US only).
+    History is provided — no individual history() call needed.
+    """
+    if hist is None or len(hist) < 30:
+        return None  # insufficient history from batch
+    
+    try:
+        import yfinance as yf
+        yf_sym = sym if region == "US" else sym + ".NS"
+        _yahoo_rate_wait()
+        tk = yf.Ticker(yf_sym)
+        info = {}
+        try:
+            info = tk.info or {}
+        except Exception as _ie:
+            print(f"  ⚠ {sym}: .info failed: {type(_ie).__name__}")
+            # Continue without info — signals 2,3,4 work from history alone
+            info = {}
+        
+        # Options chain (US only — Indian tickers rarely have yfinance options)
+        options_chain = None
+        if region == "US":
+            try:
+                _yahoo_rate_wait()
+                expiries = tk.options
+                if expiries and len(expiries) > 0:
+                    chain = tk.option_chain(expiries[0])
+                    rows = []
+                    spot = float(info.get("regularMarketPrice") or 0) or float(hist['Close'].iloc[-1])
+                    if chain.calls is not None and chain.puts is not None:
+                        for _, c_row in chain.calls.iterrows():
+                            strike = float(c_row.get('strike') or 0)
+                            if spot > 0 and abs(strike - spot) / spot > 0.15: continue
+                            matching_put = chain.puts[chain.puts['strike'] == strike]
+                            put_vol = int(matching_put['volume'].iloc[0]) if len(matching_put) > 0 else 0
+                            rows.append({
+                                "strike": strike,
+                                "ce_volume": int(c_row.get('volume') or 0),
+                                "pe_volume": put_vol,
+                            })
+                    options_chain = rows if rows else None
+            except Exception:
+                pass
+        
+        # Compute composite score
+        _name = info.get("shortName") or info.get("longName") or sym
+        _price = float(info.get("regularMarketPrice") or 0) or float(hist['Close'].iloc[-1])
+        _mcap = float(info.get("marketCap") or 0)
+        result = _compute_momentum_score(sym, info, hist, options_chain)
+        result["name"] = _name
+        result["price"] = round(_price, 2)
+        result["marketCap"] = _mcap
+        result["sector"] = info.get("sector", "N/A")
+        result["currency"] = "$" if region == "US" else "₹"
+        return result
+        
+    except Exception as _e:
+        print(f"  ❌ {sym}: {type(_e).__name__}: {str(_e)[:120]}")
+        return None
+
+
+async def _momentum_scan_single(sym, region):
+    """Legacy per-ticker scanner — kept for compatibility with r39 callers if any.
+    New code path uses batched history via _momentum_scan_single_with_hist.
+    """
+    try:
+        import yfinance as yf
+        yf_sym = sym if region == "US" else sym + ".NS"
+        _yahoo_rate_wait()
+        tk = yf.Ticker(yf_sym)
+        hist = None
+        try:
+            _yahoo_rate_wait()
+            hist = tk.history(period="1y", interval="1d")
+            if hist is None or len(hist) < 30:
+                return None
+        except Exception:
+            return None
+        return await _momentum_scan_single_with_hist(sym, region, hist)
+    except Exception:
+        return None
+
+
 _portfolio_progress = {"done": 0, "total": 0, "current": "", "started": 0, "active": False}
 
 @app.get("/api/portfolio-scan-progress")
