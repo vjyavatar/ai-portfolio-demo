@@ -27964,7 +27964,86 @@ async def _options_quick_impl(symbol: str = "NIFTY", region: str = "IN"):
                     "gex": {"total": 0, "regime": "NEUTRAL", "topStrikes": [], "flipPoint": 0, "callWall": 0, "putWall": 0}
                 }
             
-            print(f"[OPTIONS-QUICK] {sym}: NSE failed for India stock; MoneyControl also failed — dropping.")
+            # ══════════════════════════════════════════════════════════════
+            # r32: yfinance fallback for India (third-tier after NSE + MC).
+            #
+            # yfinance provides spot + OHLC bars for Indian equities via the
+            # .NS suffix (e.g. RELIANCE.NS, HDFCBANK.NS) and indices via
+            # ^NSEI / ^BSESN / etc. It does NOT provide option chains for
+            # Indian tickers — that's NSE-exclusive. So this fallback gives:
+            #   ✓ Real live spot
+            #   ✓ Intraday OHLC bars (enables sparklines, timeframes view)
+            #   ✗ No option chain → card remains non-tradable
+            #
+            # Rate-limit shared with US yfinance path via _yahoo_rate_wait().
+            # Circuit breaker (r23) protects both regions using same
+            # provider key "yahoo_chain" — but we DON'T fetch options here,
+            # just spot + bars, so no chain-level rate limit.
+            # ══════════════════════════════════════════════════════════════
+            yf_spot = 0
+            yf_bars = []
+            try:
+                import yfinance as yf
+                # Map symbol to yfinance convention
+                if sym in ("NIFTY", "NIFTY 50"):
+                    yf_india_sym = "^NSEI"
+                elif sym in ("BANKNIFTY", "NIFTY BANK"):
+                    yf_india_sym = "^NSEBANK"
+                elif sym == "SENSEX":
+                    yf_india_sym = "^BSESN"
+                elif sym == "FINNIFTY":
+                    yf_india_sym = "NIFTY_FIN_SERVICE.NS"
+                elif sym == "MIDCPNIFTY":
+                    yf_india_sym = "NIFTY_MID_SELECT.NS"
+                else:
+                    # Regular equity — append .NS for NSE listing
+                    yf_india_sym = sym + ".NS"
+                
+                _yahoo_rate_wait()  # respect global Yahoo rate limit
+                yf_tk = yf.Ticker(yf_india_sym)
+                try:
+                    yf_info = yf_tk.info or {}
+                    yf_spot = (yf_info.get('currentPrice', 0)
+                               or yf_info.get('regularMarketPrice', 0)
+                               or 0)
+                except Exception:
+                    yf_spot = 0
+                
+                # Intraday bars — last day, 5m interval (matches US path)
+                if yf_spot > 0:
+                    try:
+                        _yahoo_rate_wait()
+                        yf_hist = yf_tk.history(period="1d", interval="5m")
+                        if yf_hist is not None and len(yf_hist) > 0:
+                            for _, _b in yf_hist.tail(30).iterrows():
+                                yf_bars.append({
+                                    "t": str(_b.name.time())[:5] if hasattr(_b.name, 'time') else "",
+                                    "o": round(float(_b['Open']), 2),
+                                    "h": round(float(_b['High']), 2),
+                                    "l": round(float(_b['Low']), 2),
+                                    "c": round(float(_b['Close']), 2),
+                                    "v": int(_b['Volume']) if _b['Volume'] else 0,
+                                })
+                    except Exception as yhe:
+                        print(f"[OPTIONS-QUICK] {sym}: yfinance bars fetch failed: {type(yhe).__name__}: {yhe}")
+            except Exception as yfe:
+                print(f"[OPTIONS-QUICK] {sym}: yfinance India fallback failed: {type(yfe).__name__}: {yfe}")
+            
+            if yf_spot > 0:
+                print(f"[OPTIONS-QUICK] {sym}: NSE+MC failed, yfinance gave spot={yf_spot}, {len(yf_bars)} bars.")
+                return {
+                    "success": False,
+                    "error": f"NSE chain unavailable; yfinance spot={yf_spot}",
+                    "symbol": sym,
+                    "spot": round(yf_spot, 2),
+                    "_chain_unavailable": True,
+                    "_spot_source": "yfinance_india",
+                    "ohlc_bars": yf_bars,  # real bars → enables sparklines
+                    "chain_near_atm": [], "ce_resistance": [], "pe_support": [],
+                    "gex": {"total": 0, "regime": "NEUTRAL", "topStrikes": [], "flipPoint": 0, "callWall": 0, "putWall": 0}
+                }
+            
+            print(f"[OPTIONS-QUICK] {sym}: NSE + MC + yfinance all failed — dropping.")
             return {
                 "success": False,
                 "error": "NSE option chain unavailable for Indian stock " + sym,
