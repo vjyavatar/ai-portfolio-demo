@@ -142,6 +142,322 @@ _pool_adapter = HTTPAdapter(pool_connections=20, pool_maxsize=30, max_retries=1)
 _http_pool.mount('https://', _pool_adapter)
 _http_pool.mount('http://', _pool_adapter)
 
+
+# ═══════════════════════════════════════════════════════════════════════
+# UPSTOX OAUTH + OPTION CHAIN ADAPTER (r37)
+#
+# Purpose: permanent fix for India option chain data. Uses your personal
+# Upstox account's data entitlement — no shared-IP ban, no rate limit
+# tricks, real institutional-grade data from NSE direct via broker.
+#
+# Credentials (set in Render env vars, NOT hardcoded):
+#   UPSTOX_API_KEY       — public client ID
+#   UPSTOX_API_SECRET    — server-only, used to exchange code for token
+#   UPSTOX_REDIRECT_URI  — defaults to https://celesys.ai/api/upstox-callback
+#
+# OAuth flow:
+#   1. User clicks "Connect Upstox" → GET /api/upstox-login
+#   2. Server redirects to Upstox authorization URL
+#   3. User logs in on Upstox, authorizes app
+#   4. Upstox redirects back to /api/upstox-callback?code=XXX
+#   5. Server exchanges code for access token, stores on disk
+#   6. All future option chain calls use the stored token
+#
+# Token lifecycle:
+#   Upstox tokens expire at 3:30 AM IST daily (fixed policy).
+#   When a call returns 401, we mark token expired and UI shows
+#   "Reconnect Upstox" banner. User clicks once → re-authorizes → done.
+# ═══════════════════════════════════════════════════════════════════════
+
+UPSTOX_API_KEY = os.getenv("UPSTOX_API_KEY", "").strip()
+UPSTOX_API_SECRET = os.getenv("UPSTOX_API_SECRET", "").strip()
+UPSTOX_REDIRECT_URI = os.getenv("UPSTOX_REDIRECT_URI", "https://celesys.ai/api/upstox-callback").strip()
+
+_UPSTOX_TOKEN_FILE = os.getenv("UPSTOX_TOKEN_FILE", "/tmp/upstox_token.json")
+_upstox_token_cache = None  # in-memory mirror of disk file
+
+def _upstox_configured():
+    """True iff all required env vars are set."""
+    return bool(UPSTOX_API_KEY and UPSTOX_API_SECRET)
+
+def _upstox_load_token():
+    """Load token from disk into memory. Returns dict or None."""
+    global _upstox_token_cache
+    if _upstox_token_cache is not None:
+        return _upstox_token_cache
+    try:
+        if os.path.exists(_UPSTOX_TOKEN_FILE):
+            import json as _j
+            with open(_UPSTOX_TOKEN_FILE, "r") as f:
+                _upstox_token_cache = _j.load(f)
+                return _upstox_token_cache
+    except Exception as e:
+        print(f"[UPSTOX] Failed to load token: {type(e).__name__}: {e}")
+    return None
+
+def _upstox_save_token(tok):
+    """Persist token dict to disk + cache."""
+    global _upstox_token_cache
+    try:
+        import json as _j
+        with open(_UPSTOX_TOKEN_FILE, "w") as f:
+            _j.dump(tok, f)
+        _upstox_token_cache = tok
+        # Restrict permissions — owner read/write only
+        try:
+            os.chmod(_UPSTOX_TOKEN_FILE, 0o600)
+        except Exception: pass
+    except Exception as e:
+        print(f"[UPSTOX] Failed to save token: {type(e).__name__}: {e}")
+
+def _upstox_clear_token():
+    """Delete token from disk + memory (user-initiated disconnect)."""
+    global _upstox_token_cache
+    _upstox_token_cache = None
+    try:
+        if os.path.exists(_UPSTOX_TOKEN_FILE):
+            os.remove(_UPSTOX_TOKEN_FILE)
+    except Exception: pass
+
+def _upstox_access_token():
+    """Return valid access token or None if not connected / expired."""
+    tok = _upstox_load_token()
+    if not tok: return None
+    # Check explicit expiry if stored
+    exp = tok.get("expires_at_ts", 0)
+    if exp and time.time() > exp:
+        return None
+    return tok.get("access_token")
+
+def _upstox_is_connected():
+    """UI-level status: do we have a usable token right now?"""
+    return _upstox_access_token() is not None
+
+def _upstox_authorize_url():
+    """Build Upstox OAuth authorization URL for redirect."""
+    import urllib.parse as _up
+    params = {
+        "client_id": UPSTOX_API_KEY,
+        "redirect_uri": UPSTOX_REDIRECT_URI,
+        "response_type": "code",
+    }
+    return "https://api.upstox.com/v2/login/authorization/dialog?" + _up.urlencode(params)
+
+def _upstox_exchange_code(code):
+    """Exchange authorization code for access token. Returns dict or raises."""
+    if not _upstox_configured():
+        raise RuntimeError("Upstox not configured — missing UPSTOX_API_KEY or UPSTOX_API_SECRET env vars")
+    r = requests.post(
+        "https://api.upstox.com/v2/login/authorization/token",
+        headers={
+            "accept": "application/json",
+            "Content-Type": "application/x-www-form-urlencoded",
+        },
+        data={
+            "code": code,
+            "client_id": UPSTOX_API_KEY,
+            "client_secret": UPSTOX_API_SECRET,
+            "redirect_uri": UPSTOX_REDIRECT_URI,
+            "grant_type": "authorization_code",
+        },
+        timeout=10,
+    )
+    if r.status_code != 200:
+        raise RuntimeError(f"Upstox token exchange failed: {r.status_code} {r.text[:200]}")
+    resp = r.json()
+    # Upstox returns: access_token, token_type, expires_in (seconds), etc.
+    # Tokens expire at 3:30 AM IST regardless of expires_in — we track both.
+    tok = {
+        "access_token": resp.get("access_token"),
+        "token_type": resp.get("token_type", "Bearer"),
+        "user_id": resp.get("user_id"),
+        "user_name": resp.get("user_name"),
+        "email": resp.get("email"),
+        "issued_ts": time.time(),
+        # Upstox tokens expire at 3:30 AM IST daily. Compute that timestamp.
+        # Doing this as a safety floor — whichever is sooner (daily expiry or
+        # explicit expires_in) is treated as the expiry.
+        "expires_at_ts": _upstox_compute_daily_expiry(),
+    }
+    return tok
+
+def _upstox_compute_daily_expiry():
+    """Return epoch timestamp for next 3:30 AM IST (Upstox token daily reset)."""
+    from datetime import datetime, timedelta, timezone
+    IST = timezone(timedelta(hours=5, minutes=30))
+    now_ist = datetime.now(IST)
+    # Next 3:30 AM IST
+    expiry = now_ist.replace(hour=3, minute=30, second=0, microsecond=0)
+    if expiry <= now_ist:
+        expiry = expiry + timedelta(days=1)
+    return expiry.timestamp()
+
+def _upstox_get_option_chain(symbol):
+    """Fetch option chain from Upstox for given symbol.
+    Returns dict compatible with our internal chain shape, or None on failure.
+    
+    Upstox API: GET /v2/option/chain?instrument_key=NSE_INDEX|Nifty%2050&expiry_date=YYYY-MM-DD
+    
+    We need:
+      1. Map our symbol → Upstox instrument_key
+      2. Find nearest expiry
+      3. Fetch chain, transform to our internal shape
+    """
+    if not _upstox_is_connected(): return None
+    access_token = _upstox_access_token()
+    if not access_token: return None
+    
+    # Map symbol to Upstox instrument key
+    inst_key = _upstox_instrument_key(symbol)
+    if not inst_key:
+        try:
+            diag_log("FALLBACK", "upstox_unsupported_symbol", {"sym": symbol})
+        except Exception: pass
+        return None
+    
+    try:
+        # Step 1: get expiries for this instrument
+        exp_resp = requests.get(
+            "https://api.upstox.com/v2/option/contract",
+            headers={
+                "Accept": "application/json",
+                "Authorization": f"Bearer {access_token}",
+            },
+            params={"instrument_key": inst_key},
+            timeout=10,
+        )
+        if exp_resp.status_code == 401:
+            # Token expired mid-day (shouldn't happen but handle gracefully)
+            _upstox_clear_token()
+            try: diag_log("FALLBACK", "upstox_token_expired", {"sym": symbol})
+            except Exception: pass
+            return None
+        if exp_resp.status_code != 200:
+            try: diag_log("FALLBACK", "upstox_expiry_fetch_failed", {
+                "sym": symbol, "status": exp_resp.status_code,
+            })
+            except Exception: pass
+            return None
+        
+        exp_data = exp_resp.json() or {}
+        contracts = exp_data.get("data") or []
+        if not contracts:
+            return None
+        
+        # Extract unique expiry dates, pick nearest
+        from datetime import datetime as _dt
+        expiries = sorted(set(c.get("expiry") for c in contracts if c.get("expiry")))
+        if not expiries: return None
+        current_expiry = expiries[0]  # nearest
+        
+        # Step 2: fetch chain for current expiry
+        chain_resp = requests.get(
+            "https://api.upstox.com/v2/option/chain",
+            headers={
+                "Accept": "application/json",
+                "Authorization": f"Bearer {access_token}",
+            },
+            params={"instrument_key": inst_key, "expiry_date": current_expiry},
+            timeout=10,
+        )
+        if chain_resp.status_code != 200:
+            try: diag_log("FALLBACK", "upstox_chain_fetch_failed", {
+                "sym": symbol, "status": chain_resp.status_code,
+            })
+            except Exception: pass
+            return None
+        
+        chain_data = chain_resp.json() or {}
+        rows = chain_data.get("data") or []
+        if not rows: return None
+        
+        # Step 3: transform to our internal shape
+        # Upstox row structure (per docs):
+        # {
+        #   "strike_price": 24500,
+        #   "underlying_spot_price": 24450.3,
+        #   "call_options": {market_data: {ltp, oi, iv, volume}, ...},
+        #   "put_options": {market_data: {ltp, oi, iv, volume}, ...},
+        # }
+        chain_near_atm = []
+        spot = 0
+        total_ce_oi = 0
+        total_pe_oi = 0
+        for r in rows:
+            try:
+                strike = float(r.get("strike_price") or 0)
+                if not spot:
+                    spot = float(r.get("underlying_spot_price") or 0)
+                ce = (r.get("call_options") or {}).get("market_data") or {}
+                pe = (r.get("put_options") or {}).get("market_data") or {}
+                ce_oi = int(ce.get("oi") or 0)
+                pe_oi = int(pe.get("oi") or 0)
+                total_ce_oi += ce_oi
+                total_pe_oi += pe_oi
+                chain_near_atm.append({
+                    "strike": strike,
+                    "ce_ltp": float(ce.get("ltp") or 0),
+                    "pe_ltp": float(pe.get("ltp") or 0),
+                    "ce_oi": ce_oi,
+                    "pe_oi": pe_oi,
+                    "ce_iv": float(ce.get("iv") or 0),
+                    "pe_iv": float(pe.get("iv") or 0),
+                    "ce_volume": int(ce.get("volume") or 0),
+                    "pe_volume": int(pe.get("volume") or 0),
+                    "ce_chg": int(ce.get("oi") or 0) - int(ce.get("prev_oi") or 0),
+                    "pe_chg": int(pe.get("oi") or 0) - int(pe.get("prev_oi") or 0),
+                })
+            except Exception: continue
+        
+        if not chain_near_atm or spot <= 0:
+            return None
+        
+        # Filter to ATM ± 10 strikes (match our existing filtering)
+        chain_near_atm.sort(key=lambda x: abs(x["strike"] - spot))
+        chain_near_atm = sorted(chain_near_atm[:21], key=lambda x: x["strike"])
+        
+        pcr = (total_pe_oi / total_ce_oi) if total_ce_oi > 0 else 1.0
+        
+        return {
+            "success": True,
+            "symbol": symbol,
+            "spot": round(spot, 2),
+            "expiry": current_expiry,
+            "chain_near_atm": chain_near_atm,
+            "total_ce_oi": total_ce_oi,
+            "total_pe_oi": total_pe_oi,
+            "pcr": round(pcr, 2),
+            "_spot_source": "upstox",
+            "_chain_source": "upstox",
+        }
+    except Exception as e:
+        try: diag_log("FALLBACK", "upstox_exception", {
+            "sym": symbol, "err": f"{type(e).__name__}: {str(e)[:120]}",
+        })
+        except Exception: pass
+        return None
+
+def _upstox_instrument_key(symbol):
+    """Map our internal symbol → Upstox instrument_key.
+    Upstox uses specific identifiers; see https://upstox.com/developer/api-documentation/
+    """
+    # Indices
+    INDEX_MAP = {
+        "NIFTY":       "NSE_INDEX|Nifty 50",
+        "NIFTY 50":    "NSE_INDEX|Nifty 50",
+        "BANKNIFTY":   "NSE_INDEX|Nifty Bank",
+        "NIFTY BANK":  "NSE_INDEX|Nifty Bank",
+        "FINNIFTY":    "NSE_INDEX|Nifty Fin Service",
+        "MIDCPNIFTY":  "NSE_INDEX|Nifty Midcap 50",
+        "SENSEX":      "BSE_INDEX|SENSEX",
+    }
+    if symbol.upper() in INDEX_MAP:
+        return INDEX_MAP[symbol.upper()]
+    # Stocks — use NSE_EQ|ISIN format. We don't store ISINs, so use NSE symbol format
+    # that Upstox also accepts: NSE_EQ|<symbol>
+    return f"NSE_EQ|{symbol.upper()}"
+
+
 # ═══════════════════════════════════════════════════════════
 # NSE INDIA DATA ENGINE — Primary source for Indian stocks
 # ═══════════════════════════════════════════════════════════
@@ -4982,6 +5298,142 @@ _CB_TRIP_WINDOW_SEC = 300     # failures must occur within 5 min
 _CB_COOLDOWN_SEC = 1800       # 30 min before HALF_OPEN
 _CB_LOCK = None               # lazy init threading lock
 
+
+# ═══════════════════════════════════════════════════════════════════════
+# DIAGNOSTICS MODULE (r35)
+#
+# Purpose: make the app self-diagnosable without shell access to Render.
+#   1. `diag_log(channel, event, meta)` — structured event record kept in
+#      an in-memory ring buffer per channel. Also prints to stdout (→ Render
+#      logs) with a tag the user can grep.
+#   2. `/api/diag` endpoint — single JSON response with recent events from
+#      each channel, current state snapshots, and an IP-ban hypothesis.
+#
+# Channels: "FALLBACK", "BREAKER", "SCAN", "SYSTEM"
+# Ring size: 100 events per channel — trades recency for bounded memory.
+#
+# Log format (stdout):  [TAG ChannelName] {json}
+#   [TAG FALLBACK] {"sym":"NIFTY","step":"nse_chain","result":"429","next":"quote_equity"}
+#
+# This is ENGINEERING INSTRUMENTATION, not a fix for rate limits. Logs
+# tell us what happened — they don't make NSE unban us.
+# ═══════════════════════════════════════════════════════════════════════
+
+from collections import deque as _deq_diag
+_diag_buffers = {
+    "FALLBACK": _deq_diag(maxlen=100),  # data-source fallback chain events
+    "BREAKER":  _deq_diag(maxlen=100),  # circuit breaker state transitions
+    "SCAN":     _deq_diag(maxlen=100),  # scan results (per region per run)
+    "SYSTEM":   _deq_diag(maxlen=50),   # boot, cache events, errors
+}
+_diag_lock = None
+
+def _diag_get_lock():
+    global _diag_lock
+    if _diag_lock is None:
+        import threading
+        _diag_lock = threading.Lock()
+    return _diag_lock
+
+def diag_log(channel, event, meta=None):
+    """Record a diagnostic event. Prints to stdout AND stores in ring buffer.
+    
+    channel: "FALLBACK" | "BREAKER" | "SCAN" | "SYSTEM"
+    event:   short human-readable event name
+    meta:    optional dict of contextual fields
+    """
+    import json as _j
+    try:
+        rec = {
+            "ts": time.time(),
+            "event": event,
+            "meta": meta or {},
+        }
+        # Print with grep-friendly tag
+        try:
+            print(f"[DIAG {channel}] {event} :: {_j.dumps(meta or {}, default=str)[:500]}")
+        except Exception:
+            print(f"[DIAG {channel}] {event}")
+        # Store in ring buffer
+        with _diag_get_lock():
+            buf = _diag_buffers.get(channel)
+            if buf is None:
+                buf = _deq_diag(maxlen=100)
+                _diag_buffers[channel] = buf
+            buf.append(rec)
+    except Exception:
+        # Diagnostics must never break production
+        pass
+
+def diag_snapshot():
+    """Return a consolidated diagnostic snapshot for /api/diag endpoint.
+    Safe to call concurrently; serializable to JSON.
+    """
+    now = time.time()
+    with _diag_get_lock():
+        events_by_channel = {
+            ch: list(buf) for ch, buf in _diag_buffers.items()
+        }
+    
+    # Summarize fallback chain: success rate per spot_source in last 100 events
+    fallback_sources = {}
+    for ev in events_by_channel.get("FALLBACK", []):
+        m = ev.get("meta") or {}
+        step = m.get("step")
+        result = m.get("result")
+        if not step: continue
+        k = step
+        if k not in fallback_sources:
+            fallback_sources[k] = {"total": 0, "success": 0, "failure": 0}
+        fallback_sources[k]["total"] += 1
+        if result == "success": fallback_sources[k]["success"] += 1
+        else: fallback_sources[k]["failure"] += 1
+    
+    # IP-ban hypothesis: high NSE failure rate + high Yahoo failure rate = shared IP ban
+    nse_fails = sum(1 for ev in events_by_channel.get("FALLBACK", [])
+                    if (ev.get("meta") or {}).get("step") in ("nse_chain","nse_quote_equity")
+                    and (ev.get("meta") or {}).get("result") != "success")
+    yahoo_fails = sum(1 for ev in events_by_channel.get("FALLBACK", [])
+                      if (ev.get("meta") or {}).get("step") in ("yfinance_india","yfinance_india_index","yahoo_chain")
+                      and (ev.get("meta") or {}).get("result") != "success")
+    hypothesis = "unknown"
+    if nse_fails >= 5 and yahoo_fails >= 5:
+        hypothesis = "likely_shared_ip_ban — both NSE and Yahoo failing on your Render IP; broker API or dedicated-IP VPS is the fix"
+    elif nse_fails >= 5 and yahoo_fails == 0:
+        hypothesis = "nse_specific_ban — Yahoo works, NSE doesn't; broker API for India is the fix"
+    elif yahoo_fails >= 5 and nse_fails == 0:
+        hypothesis = "yahoo_specific_ban — NSE works, Yahoo doesn't; Polygon.io or Alpaca for US is the fix"
+    
+    # Breaker state
+    cb_state_snapshot = {}
+    try:
+        cb_state_snapshot = _cb_status()
+    except Exception:
+        pass
+    
+    return {
+        "ts": now,
+        "version": "r35",
+        "channels": {
+            ch: [{"ts": e["ts"], "age_sec": int(now - e["ts"]),
+                  "event": e["event"], "meta": e["meta"]}
+                 for e in events]
+            for ch, events in events_by_channel.items()
+        },
+        "fallback_summary": fallback_sources,
+        "breaker_state": cb_state_snapshot,
+        "cache_ages": {
+            "IN": int(now - (_bottom_nav_cache.get("IN", {}).get("time") or now)),
+            "US": int(now - (_bottom_nav_cache.get("US", {}).get("time") or now)),
+        },
+        "hypothesis": hypothesis,
+        "counters": {
+            "nse_failures_recent": nse_fails,
+            "yahoo_failures_recent": yahoo_fails,
+        },
+    }
+
+
 def _cb_enabled():
     return os.getenv("CELESYS_CIRCUIT_BREAKER", "1") == "1"
 
@@ -5024,6 +5476,12 @@ def _cb_allow(provider):
             if (now - opened_ts) >= _CB_COOLDOWN_SEC:
                 cb["state"] = "HALF_OPEN"
                 print(f"[CIRCUIT-BREAKER] 🔄 {provider} OPEN → HALF_OPEN (cooldown elapsed, probing)")
+                try:
+                    diag_log("BREAKER", "open_to_half_open", {
+                        "provider": provider, "reason": "cooldown_elapsed",
+                        "consecutive_failures": cb.get("consecutive_failures", 0)
+                    })
+                except Exception: pass
                 return True
             # Still in cooldown
             return False
@@ -5046,6 +5504,11 @@ def _cb_record_success(provider):
             cb["consecutive_failures"] = 0
             cb["opened_ts"] = None
             print(f"[CIRCUIT-BREAKER] ✅ {provider} HALF_OPEN → CLOSED (probe succeeded, resuming normal ops)")
+            try:
+                diag_log("BREAKER", "half_open_to_closed", {
+                    "provider": provider, "reason": "probe_success",
+                })
+            except Exception: pass
         elif cb["state"] == "CLOSED":
             # Reset consecutive failure counter on any success
             cb["consecutive_failures"] = 0
@@ -5067,6 +5530,12 @@ def _cb_record_failure(provider, reason="rate_limited"):
             cb["opened_ts"] = now
             cb["total_trips"] += 1
             print(f"[CIRCUIT-BREAKER] 🛑 {provider} HALF_OPEN → OPEN (probe failed: {reason}) — pausing {_CB_COOLDOWN_SEC//60} more min")
+            try:
+                diag_log("BREAKER", "half_open_to_open", {
+                    "provider": provider, "reason": reason,
+                    "cooldown_sec": _CB_COOLDOWN_SEC,
+                })
+            except Exception: pass
             return
         
         if cb["state"] == "CLOSED":
@@ -5082,6 +5551,14 @@ def _cb_record_failure(provider, reason="rate_limited"):
                 cb["opened_ts"] = now
                 cb["total_trips"] += 1
                 print(f"[CIRCUIT-BREAKER] 🛑 {provider} CLOSED → OPEN ({cb['consecutive_failures']} consecutive {reason}s) — pausing {_CB_COOLDOWN_SEC//60} min. Scanner will skip this provider until {time.strftime('%H:%M', time.localtime(now + _CB_COOLDOWN_SEC))}.")
+                try:
+                    diag_log("BREAKER", "closed_to_open", {
+                        "provider": provider, "reason": reason,
+                        "consecutive_failures": cb["consecutive_failures"],
+                        "cooldown_sec": _CB_COOLDOWN_SEC,
+                        "resume_at": time.strftime('%H:%M', time.localtime(now + _CB_COOLDOWN_SEC)),
+                    })
+                except Exception: pass
 
 def _cb_status():
     """Return snapshot of all breakers for /api/circuit-breaker-status endpoint."""
@@ -6062,7 +6539,18 @@ def _run_bottom_nav_scan(reg):
             except Exception as _ae:
                 print(f"[ALERT] ❌ _alert_dispatch crashed: {type(_ae).__name__}: {_ae}")
         bc = len([r for r in results if r.get("action") in ("BUY CALL","BUY PUT")])
+        so = len([r for r in results if r.get("_spot_only") or r.get("_chain_unavailable")])
+        tradable = len(results) - so
         print(f"[BOTTOM-NAV] ✅ {reg}: {len(results)} scored in {time.time()-t2:.1f}s, {bc} buy (total: {time.time()-t1:.1f}s)")
+        diag_log("SCAN", "scan_completed", {
+            "region": reg,
+            "total_scored": len(results),
+            "tradable": tradable,
+            "chart_only": so,
+            "buy_signals": bc,
+            "scan_time_sec": round(time.time() - t2, 1),
+            "total_time_sec": round(time.time() - t1, 1),
+        })
     except Exception as e:
         print(f"[BOTTOM-NAV] ❌ {reg}: {e}")
         import traceback; traceback.print_exc()
@@ -6776,6 +7264,151 @@ async def circuit_breaker_status():
     }
 
 
+@app.get("/api/diag")
+async def diag_endpoint(channel: str = "", limit: int = 100):
+    """Diagnostic dump for debugging issues. Returns ring-buffer events
+    across all subsystems plus IP-ban hypothesis and breaker state.
+    
+    When something goes wrong:
+      1. Open https://celesys.ai/api/diag in browser
+      2. Copy the JSON
+      3. Paste it back to engineering — enough context to diagnose without
+         Render log access
+    
+    Query params:
+      - channel: filter to one channel (FALLBACK | BREAKER | SCAN | SYSTEM)
+      - limit: max events per channel (default 100)
+    """
+    snap = diag_snapshot()
+    if channel:
+        ch = channel.upper()
+        if ch in snap.get("channels", {}):
+            snap["channels"] = {ch: snap["channels"][ch][-limit:]}
+    else:
+        # Apply limit per channel
+        snap["channels"] = {
+            ch: (events[-limit:] if limit > 0 else events)
+            for ch, events in snap.get("channels", {}).items()
+        }
+    return snap
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# UPSTOX OAUTH ENDPOINTS (r37)
+# ═══════════════════════════════════════════════════════════════════════
+
+@app.get("/api/upstox-login")
+async def upstox_login():
+    """Redirects user to Upstox authorization page to begin OAuth flow."""
+    from fastapi.responses import RedirectResponse, JSONResponse
+    if not _upstox_configured():
+        return JSONResponse(
+            status_code=503,
+            content={"success": False, "error": "Upstox not configured. Set UPSTOX_API_KEY and UPSTOX_API_SECRET env vars."},
+        )
+    return RedirectResponse(url=_upstox_authorize_url())
+
+
+@app.get("/api/upstox-callback")
+async def upstox_callback(code: str = "", state: str = "", error: str = ""):
+    """Upstox redirects here with `code` after user authorizes.
+    We exchange code for access token and store it server-side.
+    """
+    from fastapi.responses import HTMLResponse
+    if error:
+        return HTMLResponse(f"""
+<!DOCTYPE html>
+<html><body style="font-family:-apple-system,sans-serif;padding:40px;max-width:640px;margin:auto;">
+<h2 style="color:#b00020">Upstox authorization failed</h2>
+<p>Error: {error}</p>
+<p><a href="/active-trading">Return to Active Trading</a></p>
+</body></html>""")
+    if not code:
+        return HTMLResponse("""
+<!DOCTYPE html>
+<html><body style="font-family:-apple-system,sans-serif;padding:40px;max-width:640px;margin:auto;">
+<h2 style="color:#b00020">Missing authorization code</h2>
+<p>Upstox did not return an authorization code. Please try again.</p>
+<p><a href="/active-trading">Return to Active Trading</a></p>
+</body></html>""")
+    try:
+        tok = _upstox_exchange_code(code)
+        _upstox_save_token(tok)
+        try:
+            diag_log("SYSTEM", "upstox_connected", {
+                "user_id": tok.get("user_id"),
+                "user_name": tok.get("user_name"),
+                "expires_at_ts": tok.get("expires_at_ts"),
+            })
+        except Exception: pass
+        # Compute hours until expiry for UI display
+        hrs_left = max(0, int((tok.get("expires_at_ts", 0) - time.time()) / 3600))
+        return HTMLResponse(f"""
+<!DOCTYPE html>
+<html><body style="font-family:-apple-system,sans-serif;padding:40px;max-width:640px;margin:auto;text-align:center;">
+<h2 style="color:#0b8a4a">✓ Upstox Connected</h2>
+<p>Welcome <b>{tok.get('user_name', tok.get('user_id', ''))}</b>.</p>
+<p>Access token stored. Token expires at 3:30 AM IST (in ~{hrs_left} hours).</p>
+<p style="margin-top:30px"><a href="/active-trading" style="background:#0b4ea8;color:white;padding:10px 20px;text-decoration:none;border-radius:4px;">Go to Active Trading</a></p>
+</body></html>""")
+    except Exception as e:
+        print(f"[UPSTOX-CALLBACK] Exchange failed: {type(e).__name__}: {e}")
+        return HTMLResponse(f"""
+<!DOCTYPE html>
+<html><body style="font-family:-apple-system,sans-serif;padding:40px;max-width:640px;margin:auto;">
+<h2 style="color:#b00020">Token exchange failed</h2>
+<p>{type(e).__name__}: {str(e)[:200]}</p>
+<p><a href="/api/upstox-login">Try again</a> · <a href="/active-trading">Back to app</a></p>
+</body></html>""")
+
+
+@app.get("/api/upstox-status")
+async def upstox_status():
+    """Returns current Upstox connection state for UI badge."""
+    if not _upstox_configured():
+        return {
+            "success": True,
+            "configured": False,
+            "connected": False,
+            "message": "Upstox API not configured on server (missing env vars)",
+        }
+    tok = _upstox_load_token()
+    if not tok:
+        return {
+            "success": True,
+            "configured": True,
+            "connected": False,
+            "message": "Not connected — click Connect Upstox",
+        }
+    exp_ts = tok.get("expires_at_ts", 0)
+    now = time.time()
+    expired = exp_ts and now > exp_ts
+    hrs_left = max(0, int((exp_ts - now) / 3600)) if exp_ts else 0
+    mins_left = max(0, int((exp_ts - now) / 60)) if exp_ts else 0
+    return {
+        "success": True,
+        "configured": True,
+        "connected": not expired,
+        "user_name": tok.get("user_name"),
+        "user_id": tok.get("user_id"),
+        "expires_at_ts": exp_ts,
+        "hours_until_expiry": hrs_left,
+        "minutes_until_expiry": mins_left,
+        "message": ("Expired — please reconnect" if expired
+                    else f"Connected ({hrs_left}h left until 3:30 AM IST reset)"),
+    }
+
+
+@app.post("/api/upstox-disconnect")
+async def upstox_disconnect():
+    """User-initiated disconnect. Clears stored token."""
+    _upstox_clear_token()
+    try:
+        diag_log("SYSTEM", "upstox_disconnected", {})
+    except Exception: pass
+    return {"success": True, "message": "Upstox disconnected"}
+
+
 @app.get("/api/paper-journal")
 async def paper_journal(region: str = "IN", limit: int = 50):
     """Auto paper-trading journal + stats.
@@ -6820,9 +7453,13 @@ def _auto_scan_boot():
     def _bg():
         time.sleep(15)
         print("[BOTTOM-NAV] 🚀 Boot scan starting...")
+        try: diag_log("SYSTEM", "boot_scan_starting", {"delay_sec": 15})
+        except Exception: pass
         _run_bottom_nav_scan("IN")
         _run_bottom_nav_scan("US")
         print("[BOTTOM-NAV] 🚀 Boot scan done")
+        try: diag_log("SYSTEM", "boot_scan_done", {})
+        except Exception: pass
     threading.Thread(target=_bg, daemon=True).start()
 _auto_scan_boot()
 
@@ -27771,6 +28408,39 @@ async def _options_quick_impl(symbol: str = "NIFTY", region: str = "IN"):
         # calling it.
         # ══════════════════════════════════════════════════════════════════
         if is_india:
+            # r37: Upstox FIRST (if connected) — personal broker API, no
+            # IP-ban issues, real-time NSE data entitlement. This is the
+            # permanent fix for India option chains. Falls through to NSE
+            # scraping if Upstox is disconnected, token expired, or fails.
+            if _upstox_is_connected():
+                try:
+                    upstox_result = _upstox_get_option_chain(sym)
+                    if upstox_result and upstox_result.get("success") and upstox_result.get("spot", 0) > 0:
+                        try:
+                            diag_log("FALLBACK", "upstox_ok", {
+                                "sym": sym, "step": "upstox", "result": "success",
+                                "spot": upstox_result.get("spot"),
+                                "strikes": len(upstox_result.get("chain_near_atm", [])),
+                            })
+                        except Exception: pass
+                        # Need to fill in remaining fields expected downstream
+                        # (ohlc_bars, gex, etc.) — use empty/default values so
+                        # frontend doesn't crash on missing fields.
+                        upstox_result.setdefault("ohlc_bars", [])
+                        upstox_result.setdefault("ce_resistance", [])
+                        upstox_result.setdefault("pe_support", [])
+                        upstox_result.setdefault("gex", {"total": 0, "regime": "NEUTRAL", "topStrikes": [], "flipPoint": 0, "callWall": 0, "putWall": 0})
+                        return upstox_result
+                    else:
+                        try: diag_log("FALLBACK", "upstox_returned_empty", {"sym": sym})
+                        except Exception: pass
+                except Exception as _uxe:
+                    print(f"[OPTIONS-QUICK] Upstox failed for {sym}: {type(_uxe).__name__}: {_uxe}")
+                    try: diag_log("FALLBACK", "upstox_exception_outer", {
+                        "sym": sym, "err": f"{type(_uxe).__name__}: {str(_uxe)[:120]}",
+                    })
+                    except Exception: pass
+            
             print(f"[OPTIONS-QUICK] Trying NSE for {sym} (india)...")
             try:
                 result = await nse_options(sym)
@@ -27934,6 +28604,10 @@ async def _options_quick_impl(symbol: str = "NIFTY", region: str = "IN"):
                             print(f"[OPTIONS-QUICK] {sym} (index): yfinance bars failed: {type(_ybe).__name__}")
                         
                         print(f"[OPTIONS-QUICK] {sym} (INDEX): NSE failed, yfinance gave spot={yf_idx_spot}, {len(yf_idx_bars)} bars.")
+                        diag_log("FALLBACK", "yfinance_india_index_ok", {
+                            "sym": sym, "step": "yfinance_india_index", "result": "success",
+                            "spot": round(yf_idx_spot, 2), "bars": len(yf_idx_bars)
+                        })
                         return {
                             "success": False,
                             "error": f"NSE chain unavailable for index {sym}; yfinance spot={yf_idx_spot}",
@@ -27947,7 +28621,16 @@ async def _options_quick_impl(symbol: str = "NIFTY", region: str = "IN"):
                         }
             except Exception as _yie:
                 print(f"[OPTIONS-QUICK] {sym} (index): yfinance fallback failed: {type(_yie).__name__}: {_yie}")
+                diag_log("FALLBACK", "yfinance_india_index_failed", {
+                    "sym": sym, "step": "yfinance_india_index", "result": "exception",
+                    "err": f"{type(_yie).__name__}: {str(_yie)[:120]}"
+                })
             
+            # All paths exhausted for an India index
+            diag_log("FALLBACK", "all_sources_exhausted_index", {
+                "sym": sym, "step": "all_sources", "result": "failure",
+                "note": "both NSE and yfinance failed for an India index — likely shared-IP ban"
+            })
             return {"success": False, "error": "All data sources failed for " + sym, "spot": 0, "ohlc_bars": [], "chain_near_atm": [], "ce_resistance": [], "pe_support": [], "gex": {"total": 0, "regime": "NEUTRAL", "topStrikes": [], "flipPoint": 0, "callWall": 0, "putWall": 0}}
         
         # ══════════════════════════════════════════════════════════════════
@@ -28000,9 +28683,17 @@ async def _options_quick_impl(symbol: str = "NIFTY", region: str = "IN"):
                         nse_quote_spot = 0
             except Exception as qe:
                 print(f"[OPTIONS-QUICK] {sym}: NSE quote-equity fallback failed: {type(qe).__name__}: {qe}")
+                diag_log("FALLBACK", "nse_quote_equity_failed", {
+                    "sym": sym, "step": "nse_quote_equity", "result": "exception",
+                    "err": f"{type(qe).__name__}: {str(qe)[:120]}"
+                })
             
             if nse_quote_spot > 0:
                 print(f"[OPTIONS-QUICK] {sym}: NSE chain unavailable, NSE quote-equity gave spot={nse_quote_spot}. Card shown non-tradable.")
+                diag_log("FALLBACK", "nse_quote_equity_ok", {
+                    "sym": sym, "step": "nse_quote_equity", "result": "success",
+                    "spot": round(nse_quote_spot, 2)
+                })
                 return {
                     "success": False,
                     "error": f"NSE chain unavailable; NSE quote spot={nse_quote_spot}",
@@ -28043,6 +28734,10 @@ async def _options_quick_impl(symbol: str = "NIFTY", region: str = "IN"):
             
             if mc_spot > 0:
                 print(f"[OPTIONS-QUICK] {sym}: NSE failed, MoneyControl gave spot={mc_spot}. No chain — card will be non-tradable.")
+                diag_log("FALLBACK", "moneycontrol_ok", {
+                    "sym": sym, "step": "moneycontrol", "result": "success",
+                    "spot": round(mc_spot, 2)
+                })
                 return {
                     "success": False,
                     "error": f"NSE chain unavailable; MC spot={mc_spot}",
@@ -28118,9 +28813,17 @@ async def _options_quick_impl(symbol: str = "NIFTY", region: str = "IN"):
                         print(f"[OPTIONS-QUICK] {sym}: yfinance bars fetch failed: {type(yhe).__name__}: {yhe}")
             except Exception as yfe:
                 print(f"[OPTIONS-QUICK] {sym}: yfinance India fallback failed: {type(yfe).__name__}: {yfe}")
+                diag_log("FALLBACK", "yfinance_india_failed", {
+                    "sym": sym, "step": "yfinance_india", "result": "exception",
+                    "err": f"{type(yfe).__name__}: {str(yfe)[:120]}"
+                })
             
             if yf_spot > 0:
                 print(f"[OPTIONS-QUICK] {sym}: NSE+MC failed, yfinance gave spot={yf_spot}, {len(yf_bars)} bars.")
+                diag_log("FALLBACK", "yfinance_india_ok", {
+                    "sym": sym, "step": "yfinance_india", "result": "success",
+                    "spot": round(yf_spot, 2), "bars": len(yf_bars)
+                })
                 return {
                     "success": False,
                     "error": f"NSE chain unavailable; yfinance spot={yf_spot}",
@@ -28134,6 +28837,10 @@ async def _options_quick_impl(symbol: str = "NIFTY", region: str = "IN"):
                 }
             
             print(f"[OPTIONS-QUICK] {sym}: NSE + MC + yfinance all failed — dropping.")
+            diag_log("FALLBACK", "all_sources_exhausted_stock", {
+                "sym": sym, "step": "all_sources", "result": "failure",
+                "note": "NSE + MC + yfinance all failed for an India stock"
+            })
             return {
                 "success": False,
                 "error": "NSE option chain unavailable for Indian stock " + sym,

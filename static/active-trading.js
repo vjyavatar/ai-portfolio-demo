@@ -4346,6 +4346,7 @@
     logs: [],
     loaded: false,
     lastFetchMsg: '',
+    upstoxStatus: null,    // r37: {configured, connected, user_name, hours_until_expiry, ...} from /api/upstox-status
     lockedIds: {},         // { tradeId: firstSeenTimestamp } — for 3-min stability lock
     prevTradeIds: {},      // tracked across refreshes for voice triggers
     // v3 additions
@@ -6366,6 +6367,46 @@
               whiteSpace: 'nowrap'
             }
           }, '🛑 ' + provName + (mins != null ? ' ' + mins + 'm' : ''));
+        })(),
+        // r37: Upstox connection chip. Shows:
+        //   • Grey "🔗 Upstox" when disconnected → click to connect
+        //   • Green "✅ Upstox · Nh" when connected (N = hours until 3:30 AM IST)
+        //   • Orange "⚠ Upstox · reconnect" when token expired
+        //   • Hidden entirely when UPSTOX env vars not configured on server
+        (function () {
+          var u = state.upstoxStatus || null;
+          if (!u || !u.configured) return null;
+          if (!u.connected) {
+            return el('a', {
+              href: '/api/upstox-login',
+              title: 'Connect Upstox account for real NSE option chains (permanent fix for rate limits)',
+              style: {
+                fontSize: '10px', fontWeight: 800, padding: '3px 7px',
+                border: '1px solid ' + C.divider,
+                background: C.card, color: C.textSec,
+                borderRadius: '4px', fontFamily: MONO, letterSpacing: '0.2px',
+                whiteSpace: 'nowrap', textDecoration: 'none', cursor: 'pointer'
+              }
+            }, '🔗 CONNECT UPSTOX');
+          }
+          var hrsLeft = u.hours_until_expiry || 0;
+          var minsLeft = u.minutes_until_expiry || 0;
+          // Warning when under 1 hour
+          var isWarning = hrsLeft === 0 && minsLeft < 60;
+          var chipCol = isWarning ? C.orange : C.green;
+          var labelTime = (hrsLeft > 0) ? hrsLeft + 'h' : minsLeft + 'm';
+          return el('a', {
+            href: '/api/upstox-login',
+            title: 'Upstox connected as ' + (u.user_name || u.user_id || 'user') + '.\n' +
+                   u.message + '\n\nClick to reconnect when token expires at 3:30 AM IST.',
+            style: {
+              fontSize: '10px', fontWeight: 800, padding: '3px 7px',
+              border: '1px solid ' + chipCol + '66',
+              background: chipCol + '15', color: chipCol,
+              borderRadius: '4px', fontFamily: MONO, letterSpacing: '0.2px',
+              whiteSpace: 'nowrap', textDecoration: 'none', cursor: 'pointer'
+            }
+          }, '✅ UPSTOX · ' + labelTime);
         })(),
         // Paper portfolio stats pill
         (function () {
@@ -11702,6 +11743,16 @@
 
   // ── REFRESH CYCLES ──────────────────────────────────────────────────────
   function refreshTopTrades() {
+    // r37: fetch Upstox connection status every refresh cycle (cheap endpoint,
+    // server just reads a file). Non-blocking — fires off in parallel with
+    // the main scan fetch. Updates state.upstoxStatus for header chip.
+    try {
+      fetch('/api/upstox-status', { cache: 'no-store' })
+        .then(function (r) { return r.json(); })
+        .then(function (u) { if (u && u.success) state.upstoxStatus = u; })
+        .catch(function () {});
+    } catch (e) {}
+    
     // Cache-buster ensures we never get a stale CDN/browser-cached response.
     // Backend has its own ~5min server-side cache TTL so this doesn't cause
     // N× actual recomputes — just N× cache lookups.
