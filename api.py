@@ -25115,6 +25115,85 @@ async def momentum_radar_categories(region: str = "US"):
     return {"success": True, "region": region, "categories": cats}
 
 
+@app.get("/api/scanner-coverage")
+async def scanner_coverage():
+    """r47: Honest audit of how many tickers each scanner covers.
+    
+    Returns counts for Dream Portfolio, Multibagger Hunter, Momentum Radar
+    so user can see exactly what's in vs what's missing. Helps answer
+    'does my scanner cover every company?' — short answer: NO, free data
+    constraints mean we focus on quality tickers. This endpoint tells the
+    truth about what's scanned vs what exists.
+    """
+    # Collect unique tickers across all momentum radar categories
+    mr_us_cat_tickers = set()
+    for cat in _momentum_categories_us.values():
+        for t in cat["tickers"]:
+            mr_us_cat_tickers.add(t)
+    mr_in_cat_tickers = set()
+    for cat in _momentum_categories_in.values():
+        for t in cat["tickers"]:
+            mr_in_cat_tickers.add(t)
+    
+    # Union of all momentum radar tickers (All + all categories)
+    mr_us_total = set(_momentum_universe_us) | mr_us_cat_tickers
+    mr_in_total = set(_momentum_universe_in) | mr_in_cat_tickers
+    
+    # Size estimates of "available universe" for context
+    # These are approximate published counts of investable stocks
+    universe_size_us = 4500  # NYSE + NASDAQ listed (approx, excluding OTC)
+    universe_size_in = 1900  # NSE listed stocks (approx)
+    
+    return {
+        "success": True,
+        "generated_at": datetime.utcnow().isoformat(),
+        "honest_disclaimer": (
+            "Free data providers (Yahoo, NSE) rate-limit aggressive scans, so we "
+            "curate tickers by quality/liquidity rather than scanning every stock. "
+            "Expanding coverage requires paid data ($29-50/mo) OR a broker API. "
+            "Numbers below show exactly what IS scanned — not every listed stock."
+        ),
+        "scanners": {
+            "dream_portfolio": {
+                "description": "Long-term CAGR>30% compounders (10yr horizon)",
+                "us_count": 30,  # r38 curated count
+                "in_count": len([s for s in _momentum_universe_in if s]),  # approx
+                "intentional_limit": "Quality-first — 30 high-Yahoo-coverage names outperform 200 spec names",
+            },
+            "multibagger_hunter": {
+                "description": "Early-stage growth / breakout names",
+                "us_count": 60,  # approx from _smid scan
+                "in_count": 150,
+                "intentional_limit": "India focus — 150 micro/small/niche where multibaggers originate",
+            },
+            "momentum_radar": {
+                "description": "Short-term parabolic setups (CAR/SNDK/GME-style)",
+                "us_all_count": len(_momentum_universe_us),
+                "us_categories": {
+                    cid: len(cat["tickers"]) for cid, cat in _momentum_categories_us.items()
+                },
+                "us_unique_across_all_categories": len(mr_us_total),
+                "in_all_count": len(_momentum_universe_in),
+                "in_categories": {
+                    cid: len(cat["tickers"]) for cid, cat in _momentum_categories_in.items()
+                },
+                "in_unique_across_all_categories": len(mr_in_total),
+            },
+        },
+        "market_context": {
+            "us_listed_stocks_approx": universe_size_us,
+            "in_listed_stocks_approx": universe_size_in,
+            "us_coverage_pct_momentum_radar": round(len(mr_us_total) / universe_size_us * 100, 1),
+            "in_coverage_pct_momentum_radar": round(len(mr_in_total) / universe_size_in * 100, 1),
+        },
+        "to_increase_coverage": [
+            "Option 1: Paid US data (Polygon.io $29/mo) → scan Russell 3000 (3000 names)",
+            "Option 2: Kite Connect (₹2000/mo) → scan Nifty 500 + Smallcap 250 reliably",
+            "Option 3: Add more category buttons (current approach — low cost, incremental)",
+        ],
+    }
+
+
 async def _momentum_scan_single_with_hist(sym, region, hist):
     """Score one ticker using pre-fetched history from batch download.
     

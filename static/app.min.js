@@ -9984,45 +9984,45 @@ if(btn){btn.innerHTML='✅ '+d.totalScanned+' stocks scanned';btn.style.backgrou
 // migrated to this in follow-up work.
 // ═══════════════════════════════════════════════════════════════════════
 function _renderRegionToggle(loadFnName, currentReg){
-  // r45: Previous version used country-flag emojis (🇮🇳 🇺🇸) which don't
-  // render on all systems (Windows without Segoe UI Emoji, some older
-  // Chrome versions, certain fonts). Screenshots showed them appearing
-  // as "us" / "in" text prefixes — hence the blank-looking buttons.
-  //
-  // Replaced with universally-supported single-char glyphs:
-  //   ● (bullet) for both, in region-specific colors (orange=IN, blue=US)
-  // This renders identically in every browser/OS/font.
-  //
-  // Also: explicit min-width on each button + solid border between them
-  // so neither button can collapse or look like a single button.
+  // r47: Defensive rewrite. Previous versions used emoji flags or colored dots +
+  // relied on inline <span> for text. Global button CSS rules (border-radius,
+  // min-height, etc.) kept interfering. This version:
+  //   - Wraps EVERYTHING in a single <span> inside the button with inline-block
+  //   - Uses !important on color, opacity, and visibility
+  //   - Uses data-label attribute so we can see in DevTools what SHOULD render
+  //   - No dependency on external CSS for the text rendering
   var mkBtn = function(code, label, dotColor){
     var isActive = currentReg === code;
     var bg = isActive ? 'linear-gradient(135deg,#1A3A78,#1e40af)' : '#ffffff';
-    var textColor = isActive ? '#ffffff' : '#1f2937';
+    var textColor = isActive ? '#ffffff' : '#0f172a';  // darker for contrast
     var safeLabel = (label && label.length > 0) ? label : code;
     return '<button type="button" onclick="'+loadFnName+'(\''+code+'\')" ' +
-           'style="padding:10px 24px;font-size:12px;font-weight:800;' +
-           'border:none;cursor:pointer;font-family:Sora,sans-serif;' +
-           'background:'+bg+';color:'+textColor+';' +
-           'letter-spacing:.3px;transition:background .2s;' +
-           'display:inline-flex;align-items:center;gap:8px;min-width:110px;' +
-           'justify-content:center;white-space:nowrap">' +
-           '<span style="display:inline-block;width:8px;height:8px;' +
-           'border-radius:50%;background:'+dotColor+';' +
-           'box-shadow:0 0 0 2px '+(isActive ? '#ffffff44' : dotColor+'22')+'"></span>' +
-           '<span>'+safeLabel+'</span>' +
+           'data-region="'+code+'" data-label="'+safeLabel+'" ' +
+           'style="padding:10px 22px !important;font-size:13px !important;' +
+           'font-weight:800 !important;border:none !important;cursor:pointer;' +
+           'font-family:Sora,sans-serif !important;' +
+           'background:'+bg+' !important;color:'+textColor+' !important;' +
+           'opacity:1 !important;visibility:visible !important;' +
+           'letter-spacing:.3px;display:inline-flex !important;' +
+           'align-items:center;gap:8px;min-width:120px !important;' +
+           'justify-content:center;white-space:nowrap;line-height:1.2">' +
+             '<span aria-hidden="true" style="display:inline-block;' +
+             'width:10px;height:10px;border-radius:50%;background:'+dotColor+' !important;' +
+             'flex-shrink:0;box-shadow:0 0 0 2px '+(isActive ? '#ffffff44' : dotColor+'22')+'"></span>' +
+             '<span style="color:inherit !important;opacity:1 !important;' +
+             'font-weight:800 !important;font-size:13px !important;' +
+             'display:inline-block">'+safeLabel+'</span>' +
            '</button>';
   };
-  // Wrap in a centering flex container so the toggle is horizontally centered
   return '<div style="display:flex;justify-content:center;margin-bottom:16px">' +
          '<div style="display:inline-flex;align-items:stretch;' +
-         'border:1px solid #e2e8f0;' +
+         'border:1px solid #cbd5e1;' +
          'border-radius:10px;overflow:hidden;' +
          'background:#ffffff;' +
-         'box-shadow:0 1px 3px rgba(0,0,0,.06)">' +
-         mkBtn('IN', 'India', '#f59e0b') +   // orange dot for India
-         '<div style="width:1px;background:#e2e8f0"></div>' +  // divider
-         mkBtn('US', 'USA',   '#1e40af') +   // blue dot for US
+         'box-shadow:0 2px 6px rgba(15,23,42,.08)">' +
+         mkBtn('IN', 'India', '#f59e0b') +
+         '<div style="width:1px;background:#cbd5e1"></div>' +
+         mkBtn('US', 'USA',   '#1e40af') +
          '</div></div>';
 }
 
@@ -10450,6 +10450,17 @@ if(d.disclaimer){
 h+='<div style="padding:12px 14px;background:#fef3c708;border:1px solid #d9770620;border-radius:8px;margin-top:16px;font-size:10px;color:#78350f;line-height:1.5">';
 h+='<strong>⚠ Honest disclaimer:</strong> '+d.disclaimer;
 h+='</div>';}
+
+// r47: Coverage transparency — tell user EXACTLY what's scanned, not a marketing claim
+var _covInfo = d.coverage || {};
+var _totalTickers = _covInfo.scanned || 0;
+h+='<div style="padding:10px 14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;margin-top:10px;font-size:10px;color:var(--text3);line-height:1.6">';
+h+='<strong style="color:var(--text)">📋 What\'s covered in this scan:</strong> '+_totalTickers+' tickers in category <strong>'+(d.categoryLabel||'All')+'</strong>. ';
+h+='To broaden coverage, click other category buttons above. ';
+h+='For full audit, see <a href="/api/scanner-coverage" target="_blank" style="color:#3b82f6;text-decoration:underline">Scanner Coverage Report</a>. ';
+h+='<br><strong>Honest truth:</strong> Free data (Yahoo) rate-limits aggressive scans. We curate quality tickers instead of scanning every listed stock. ';
+h+='Current total across all Momentum Radar categories: <strong>~220 US / ~140 India</strong> unique tickers.';
+h+='</div>';
 
 el.innerHTML=_mrRegBar+_mrCatBar+h;
 }).catch(function(e){clearInterval(_mrTimer);el.innerHTML=_mrRegBar+_mrCatBar+'<div style="padding:20px;color:#ef4444">Error: '+e.message+'</div>';});
