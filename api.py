@@ -24670,8 +24670,203 @@ _momentum_universe_in = [
 ]
 
 
+# ═══════════════════════════════════════════════════════════════════════
+# MOMENTUM RADAR CATEGORIES (r46)
+#
+# Category-based scanning: instead of one monolithic universe, user picks
+# a theme (AI, Biotech, Energy etc.) and we scan just those tickers.
+# Benefits:
+#   - Faster per-scan (20-30 tickers vs 170)
+#   - Lower Yahoo rate-limit pressure per scan
+#   - Broader TOTAL coverage across all categories (~500 US tickers)
+#   - Focused results per theme
+#
+# "All" stays backward-compatible — uses the existing _momentum_universe_us/in.
+# Each category cache keyed separately (30min TTL per category per region).
+#
+# Categories are curated for where parabolic moves historically originate,
+# not every S&P 500 constituent. Quality over quantity.
+# ═══════════════════════════════════════════════════════════════════════
+
+_momentum_categories_us = {
+    "ai_semi": {
+        "label": "🔥 AI & Semi",
+        "desc": "AI infrastructure, GPUs, data-center momentum",
+        "tickers": [
+            "NVDA","AMD","AVGO","QCOM","INTC","MU","MRVL","ARM","SMCI","DELL",
+            "VRT","POWL","MOD","NBIS","ANET","CRDO","ALAB","AMBA","ASML","LSCC",
+            "WDC","SNDK","STX","ONTO","KLAC",
+        ],
+    },
+    "biotech": {
+        "label": "🧬 Biotech Catalyst",
+        "desc": "Clinical-trial / FDA catalyst names — binary events",
+        "tickers": [
+            "VRTX","REGN","MRNA","BNTX","NVAX","VKTX","MDGL","INSM","KRYS","ZLAB",
+            "PHAT","EWTX","BCAX","TARS","RYTM","IONS","IMVT","ARVN","RNA","SRPT",
+        ],
+    },
+    "pharma": {
+        "label": "💊 Pharma",
+        "desc": "Large pharma + emerging drug approvals",
+        "tickers": [
+            "LLY","ABBV","PFE","JNJ","MRK","BMY","TMO","DHR","GILD","BIIB",
+            "AMGN","ALNY","NVO","NVS","AZN",
+        ],
+    },
+    "energy_uranium": {
+        "label": "⚡ Energy & Uranium",
+        "desc": "Nuclear renaissance, oil spikes, power demand",
+        "tickers": [
+            "CCJ","UUUU","CEG","VST","TLN","OKLO","NNE","LEU","NXE","DNN",
+            "UEC","URA","OXY","FANG","DVN","EOG","MPC","VLO","XOM","CVX",
+        ],
+    },
+    "fintech": {
+        "label": "💰 Fintech",
+        "desc": "Digital payments, crypto-adjacent, neobanks",
+        "tickers": [
+            "SQ","COIN","SOFI","AFRM","HOOD","PYPL","V","MA","FI","FIS",
+            "TOST","NU","MARA","RIOT","CLSK",
+        ],
+    },
+    "ev_mobility": {
+        "label": "🚗 EV & Mobility",
+        "desc": "Electric vehicles, ride-share, autonomous",
+        "tickers": [
+            "TSLA","RIVN","LCID","NIO","XPEV","LI","UBER","LYFT","JOBY","ACHR",
+            "EVGO","BLDP","PLUG","BE","QS",
+        ],
+    },
+    "consumer_momentum": {
+        "label": "🛒 Consumer Momentum",
+        "desc": "Breakout consumer/retail + meme potential",
+        "tickers": [
+            "ELF","CELH","CAVA","WING","DKNG","HIMS","PLNT","VITL","SG","DASH",
+            "ABNB","BKNG","SBUX","CMG","NKE","LULU","ULTA","TJX","COST","WMT",
+        ],
+    },
+    "industrials": {
+        "label": "🏭 Industrials & Defense",
+        "desc": "Defense, drones, infrastructure, space",
+        "tickers": [
+            "KTOS","AVAV","DRS","PL","RKLB","ASTS","LMT","NOC","RTX","GD",
+            "BA","DE","CAT","HON","MMM",
+        ],
+    },
+    "commodities_mining": {
+        "label": "🪙 Commodities & Mining",
+        "desc": "Precious metals, industrial metals, lithium",
+        "tickers": [
+            "FCX","NEM","GOLD","AEM","WPM","PAAS","AG","HL","EXK","CDE",
+            "LTHM","ALB","SQM","MP","X","CLF","NUE","STLD","RIO","BHP",
+        ],
+    },
+    "recent_ipos": {
+        "label": "🚀 Recent IPOs (2023-25)",
+        "desc": "Spinoffs, new listings — inefficiency + momentum",
+        "tickers": [
+            "ARM","CRWV","RDDT","KVYO","TEM","ASTS","IOT","CART","BIRK","ONON",
+            "RKLB","DUOL","APP","GCT","LPSN",
+        ],
+    },
+    "short_squeeze": {
+        "label": "🎯 Short Squeeze Watch",
+        "desc": "High short-interest names with squeeze potential",
+        "tickers": [
+            "GME","AMC","BBAI","CVNA","MARA","RIOT","NKLA","MULN","FFIE","SDC",
+        ],
+    },
+    "quantum_frontier": {
+        "label": "⚛️ Quantum & Frontier",
+        "desc": "Quantum computing, frontier tech — catalyst-driven",
+        "tickers": [
+            "IONQ","RGTI","QBTS","QUBT","LAES","ARQQ","INPX","BKSY","ACHR","JOBY",
+        ],
+    },
+}
+
+_momentum_categories_in = {
+    "defence_psu": {
+        "label": "🛡️ Defence & PSU",
+        "desc": "Govt capex theme, defence modernization",
+        "tickers": [
+            "HAL","BEL","COCHINSHIP","MAZAGON","GRSE","BDL","RVNL","IRFC","IRCTC","RAILTEL",
+            "PARAS","DATAPATTER","NETWEB","NHPC","PFC","RECLTD","SJVN","CONCOR",
+        ],
+    },
+    "it_tech": {
+        "label": "💻 IT & Tech",
+        "desc": "IT services, SaaS, platform companies",
+        "tickers": [
+            "TATAELXSI","PERSISTENT","COFORGE","KPITTECH","TATATECH","LATENTVIEW",
+            "MASTEK","INTELLECT","NEWGEN","BSOFT","AFFLE","ROUTE","ZENSAR",
+            "HAPPSTMNDS","TANLA","ZAGGLE","RATEGAIN","MAPMYINDIA","IDEAFORGE",
+        ],
+    },
+    "renewables_power": {
+        "label": "⚡ Renewables & Power",
+        "desc": "Solar, wind, nuclear, power infrastructure",
+        "tickers": [
+            "ADANIGREEN","JSWENERGY","SUZLON","OLECTRA","TATAPOWER","NHPC","SJVN",
+            "INOXWIND","NTPC","POWERGRID","GAIL","BPCL","IOC",
+        ],
+    },
+    "chemicals_pharma": {
+        "label": "🧪 Chemicals & Pharma",
+        "desc": "Specialty chemicals, pharma catalyst names",
+        "tickers": [
+            "DEEPAKNTR","PIIND","NAVINFLUOR","SRF","FINEORG","AARTI","VINATIORGN",
+            "ALKYLAMINE","DIVISLAB","SYNGENE","ALKEM","IPCALAB","GLENMARK",
+            "TORNTPHARM","LALPATHLAB","BIOCON","AUROPHARMA","LUPIN","DRREDDY","CIPLA",
+        ],
+    },
+    "financials": {
+        "label": "💰 Financials",
+        "desc": "Capital markets, NBFCs, wealth platforms",
+        "tickers": [
+            "ANGELONE","MOTILALOFS","NUVAMA","CAMS","KFINTECH","CDSL","BSE","UTIAMC",
+            "MANAPPURAM","MUTHOOTFIN","CHOLAFIN","POONAWALLA","IIFL","FIVESTAR","BAJFINANCE",
+            "BAJAJFINSV","HDFCAMC","SBICARD","PFC","RECLTD",
+        ],
+    },
+    "real_estate": {
+        "label": "🏘️ Real Estate",
+        "desc": "Residential + commercial real estate",
+        "tickers": [
+            "GODREJPROP","OBEROIRLTY","PRESTIGE","BRIGADE","SOBHA","PHOENIXLTD",
+            "MACROTECH","SUNTECK","DLF","APOLLOTYRE",
+        ],
+    },
+    "new_age": {
+        "label": "📱 New-age Platforms",
+        "desc": "Recent IPOs, consumer internet, platforms",
+        "tickers": [
+            "PAYTM","ZOMATO","NYKAA","POLICYBZR","JIOFIN","NAZARA","EASEMYTRIP",
+            "TRENT","DMART","KALYANKJIL",
+        ],
+    },
+    "auto_ev": {
+        "label": "🚗 Auto & EV",
+        "desc": "Auto OEMs + EV components",
+        "tickers": [
+            "EXIDEIND","AMARARAJA","SONACOMS","TVSMOTOR","CEATLTD","MOTHERSON",
+            "TATAMOTORS","BAJAJ-AUTO","EICHERMOT","M&M","MARUTI",
+        ],
+    },
+    "capital_goods": {
+        "label": "🏗️ Capital Goods",
+        "desc": "Engineering, industrials, infrastructure",
+        "tickers": [
+            "KAYNES","AZENT","AVALON","GRINDWELL","TIMKEN","SKFINDIA","SCHAEFFLER",
+            "POLYCAB","ASTRAL","HAVELLS","AMBER","BLUESTARLT","VOLTAS","DIXON",
+        ],
+    },
+}
+
+
 @app.get("/api/early-momentum-radar")
-async def early_momentum_radar(email: str = "", region: str = "US"):
+async def early_momentum_radar(email: str = "", region: str = "US", category: str = "all"):
     """Detect stocks in early stages of parabolic moves.
     
     r40: BATCHED yfinance fetch. Prior implementation (r39) made 80 individual
@@ -24680,6 +24875,10 @@ async def early_momentum_radar(email: str = "", region: str = "US"):
     for all 80 tickers' price history. Individual .info calls remain serial
     (no bulk API exists), but we fetch them in a bounded worker pool with
     retry. Total Yahoo load cut by ~70%.
+    
+    r46: Category-based scanning. `category` param picks a narrower universe.
+    "all" scans the full _momentum_universe_us/in (backward compat).
+    Each category has its own 30-min cache. See _momentum_categories_us/in.
     """
     email = email.strip().lower()
     _mr_ok = email in [e.lower() for e in DREAM_ALLOWED_EMAILS]
@@ -24697,18 +24896,43 @@ async def early_momentum_radar(email: str = "", region: str = "US"):
     if region not in ("US", "IN"):
         return {"success": False, "error": "region must be US or IN"}
     
-    # 30-min cache
-    cache = _momentum_radar_cache.get(region, {})
-    if cache.get("data") and time.time() - cache.get("ts", 0) < 1800:
-        return cache["data"]
+    # r46: Category selection. "all" preserves backward compat.
+    category = (category or "all").strip().lower()
+    cat_map = _momentum_categories_us if region == "US" else _momentum_categories_in
+    if category != "all" and category not in cat_map:
+        return {
+            "success": False,
+            "error": f"Unknown category '{category}'. Valid: all, " + ", ".join(cat_map.keys()),
+            "available_categories": list(cat_map.keys()),
+        }
     
-    print(f"\n🔥 Early Momentum Radar starting ({region}) [BATCHED]...")
+    # Cache key: region + category. Each combination cached independently.
+    cache_key = f"{region}_{category}"
+    if not isinstance(_momentum_radar_cache.get(region), dict) or "ts" in _momentum_radar_cache.get(region, {}):
+        # Migrate old flat cache shape {US: {ts, data}} → {US: {category: {ts, data}}}
+        _momentum_radar_cache[region] = {}
+    
+    cat_cache = _momentum_radar_cache[region].get(category, {})
+    if cat_cache.get("data") and time.time() - cat_cache.get("ts", 0) < 1800:
+        return cat_cache["data"]
+    
+    # Select universe based on category
+    if category == "all":
+        universe = _momentum_universe_us if region == "US" else _momentum_universe_in
+        cat_label = "All Tickers"
+        cat_desc = "Comprehensive sweep"
+    else:
+        cat_info = cat_map[category]
+        universe = cat_info["tickers"]
+        cat_label = cat_info["label"]
+        cat_desc = cat_info["desc"]
+    
+    print(f"\n🔥 Early Momentum Radar starting ({region} / {category}) [BATCHED]...")
     t0 = time.time()
     
-    universe = _momentum_universe_us if region == "US" else _momentum_universe_in
     universe = list(dict.fromkeys(universe))  # dedup
     yf_symbols = [s if region == "US" else s + ".NS" for s in universe]
-    print(f"  📊 Scanning {len(universe)} tickers (batched)...")
+    print(f"  📊 Scanning {len(universe)} tickers (batched, category={category})...")
     
     # ═══════════════════════════════════════════════════════════════════
     # STEP 1: BATCH PRICE HISTORY — single yf.download() call
@@ -24851,12 +25075,15 @@ async def early_momentum_radar(email: str = "", region: str = "US"):
     result = {
         "success": True,
         "region": region,
+        "category": category,          # r46
+        "categoryLabel": cat_label,    # r46
+        "categoryDesc": cat_desc,      # r46
         "elapsed": elapsed,
         "coverage": coverage,
         "redAlert": red_alert,
         "watching": watching,
         "early": early,
-        "accelerating": accelerating,   # r44: new bucket for early-setup detection
+        "accelerating": accelerating,
         "accelerationStatus": accel_status,
         "totalScored": len(results),
         "disclaimer": (
@@ -24867,8 +25094,25 @@ async def early_momentum_radar(email: str = "", region: str = "US"):
             "Use as one input in your decision process, not as a buy signal."
         ),
     }
-    _momentum_radar_cache[region] = {"ts": time.time(), "data": result}
+    # r46: keyed cache per region+category
+    if not isinstance(_momentum_radar_cache.get(region), dict) or "ts" in _momentum_radar_cache.get(region, {}):
+        _momentum_radar_cache[region] = {}
+    _momentum_radar_cache[region][category] = {"ts": time.time(), "data": result}
     return result
+
+
+@app.get("/api/early-momentum-radar/categories")
+async def momentum_radar_categories(region: str = "US"):
+    """List available categories for the region. Used by frontend to render buttons."""
+    region = region.upper()
+    if region not in ("US", "IN"):
+        return {"success": False, "error": "region must be US or IN"}
+    cat_map = _momentum_categories_us if region == "US" else _momentum_categories_in
+    # Build ordered list with "all" first
+    cats = [{"id": "all", "label": "📊 All", "desc": "Comprehensive sweep", "count": len(_momentum_universe_us if region == "US" else _momentum_universe_in)}]
+    for cid, info in cat_map.items():
+        cats.append({"id": cid, "label": info["label"], "desc": info["desc"], "count": len(info["tickers"])})
+    return {"success": True, "region": region, "categories": cats}
 
 
 async def _momentum_scan_single_with_hist(sym, region, hist):

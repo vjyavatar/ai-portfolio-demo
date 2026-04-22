@@ -9984,30 +9984,46 @@ if(btn){btn.innerHTML='✅ '+d.totalScanned+' stocks scanned';btn.style.backgrou
 // migrated to this in follow-up work.
 // ═══════════════════════════════════════════════════════════════════════
 function _renderRegionToggle(loadFnName, currentReg){
-  var mkBtn = function(code, label, flag){
+  // r45: Previous version used country-flag emojis (🇮🇳 🇺🇸) which don't
+  // render on all systems (Windows without Segoe UI Emoji, some older
+  // Chrome versions, certain fonts). Screenshots showed them appearing
+  // as "us" / "in" text prefixes — hence the blank-looking buttons.
+  //
+  // Replaced with universally-supported single-char glyphs:
+  //   ● (bullet) for both, in region-specific colors (orange=IN, blue=US)
+  // This renders identically in every browser/OS/font.
+  //
+  // Also: explicit min-width on each button + solid border between them
+  // so neither button can collapse or look like a single button.
+  var mkBtn = function(code, label, dotColor){
     var isActive = currentReg === code;
-    var bg = isActive ? 'linear-gradient(135deg,#1A3A78,#1e40af)' : '#f1f5f9';
-    var color = isActive ? '#fff' : '#374151';
-    // Sanity: label MUST be non-empty; fallback prevents blank buttons
+    var bg = isActive ? 'linear-gradient(135deg,#1A3A78,#1e40af)' : '#ffffff';
+    var textColor = isActive ? '#ffffff' : '#1f2937';
     var safeLabel = (label && label.length > 0) ? label : code;
-    return '<button onclick="'+loadFnName+'(\''+code+'\')" ' +
-           'style="padding:8px 22px;font-size:11px;font-weight:800;' +
+    return '<button type="button" onclick="'+loadFnName+'(\''+code+'\')" ' +
+           'style="padding:10px 24px;font-size:12px;font-weight:800;' +
            'border:none;cursor:pointer;font-family:Sora,sans-serif;' +
-           'background:'+bg+';color:'+color+';' +
+           'background:'+bg+';color:'+textColor+';' +
            'letter-spacing:.3px;transition:background .2s;' +
-           'display:inline-flex;align-items:center;gap:6px;min-width:100px;' +
-           'justify-content:center">' +
-           '<span style="font-size:13px">'+flag+'</span>' +
+           'display:inline-flex;align-items:center;gap:8px;min-width:110px;' +
+           'justify-content:center;white-space:nowrap">' +
+           '<span style="display:inline-block;width:8px;height:8px;' +
+           'border-radius:50%;background:'+dotColor+';' +
+           'box-shadow:0 0 0 2px '+(isActive ? '#ffffff44' : dotColor+'22')+'"></span>' +
            '<span>'+safeLabel+'</span>' +
            '</button>';
   };
-  return '<div style="display:flex;justify-content:center;gap:0;' +
-         'margin-bottom:16px;border:1px solid var(--border);' +
-         'border-radius:10px;overflow:hidden;width:fit-content;' +
-         'margin-left:auto;margin-right:auto;box-shadow:0 1px 3px rgba(0,0,0,.04)">' +
-         mkBtn('IN', 'India', '🇮🇳') +
-         mkBtn('US', 'USA',   '🇺🇸') +
-         '</div>';
+  // Wrap in a centering flex container so the toggle is horizontally centered
+  return '<div style="display:flex;justify-content:center;margin-bottom:16px">' +
+         '<div style="display:inline-flex;align-items:stretch;' +
+         'border:1px solid #e2e8f0;' +
+         'border-radius:10px;overflow:hidden;' +
+         'background:#ffffff;' +
+         'box-shadow:0 1px 3px rgba(0,0,0,.06)">' +
+         mkBtn('IN', 'India', '#f59e0b') +   // orange dot for India
+         '<div style="width:1px;background:#e2e8f0"></div>' +  // divider
+         mkBtn('US', 'USA',   '#1e40af') +   // blue dot for US
+         '</div></div>';
 }
 
 function loadDreamPortfolio(forceReg){
@@ -10238,33 +10254,83 @@ el.innerHTML=_mbRegBar+h;
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// EARLY MOMENTUM RADAR (r41 — UI)
-// Detects stocks at early stages of parabolic moves (CAR/SNDK/GME-type setups).
-// Backend: /api/early-momentum-radar (added in r39, batched in r40).
-// Uses 5-signal composite score (0-100): short squeeze setup, volume surge,
-// relative strength, price breakout, call/put skew.
+// EARLY MOMENTUM RADAR (r41 — UI, r46 — category buttons)
+// Detects stocks at early stages of parabolic moves (CAR/SNDK/GME setups).
+// Backend: /api/early-momentum-radar?region=X&category=Y
+// 12 US categories + 9 India categories (plus "all"). Click a category
+// button → scan that specific theme. Covers ~500 US tickers total across
+// all categories (vs previous 170 monolithic universe).
 // ═══════════════════════════════════════════════════════════════════════
-function loadMomentumRadar(forceReg){
-if(!window._activeMomentumRadarTab)return; // Only run when on momentum radar tab
+
+// Cache of categories per region (fetched once per session)
+window._mrCategoriesCache = window._mrCategoriesCache || {};
+
+function _renderMomentumCategoryBar(region, activeCat){
+  var cats = window._mrCategoriesCache[region] || null;
+  if (!cats) {
+    // Loading placeholder while we fetch the list
+    return '<div id="mrCatBar" style="display:flex;justify-content:center;padding:8px 0;color:var(--text3);font-size:10px">Loading categories...</div>';
+  }
+  var h = '<div id="mrCatBar" style="display:flex;flex-wrap:wrap;justify-content:center;gap:6px;margin-bottom:14px;padding:0 8px">';
+  cats.forEach(function(c){
+    var isActive = c.id === activeCat;
+    var bg = isActive ? 'linear-gradient(135deg,#7c3aed,#9333ea)' : '#ffffff';
+    var color = isActive ? '#ffffff' : '#1f2937';
+    var border = isActive ? '#7c3aed' : '#e2e8f0';
+    h += '<button type="button" onclick="loadMomentumRadar(null,\''+c.id+'\')" ' +
+         'title="'+(c.desc||'').replace(/"/g,'&quot;')+' ('+c.count+' tickers)" ' +
+         'style="padding:6px 12px;font-size:10px;font-weight:700;' +
+         'border:1px solid '+border+';cursor:pointer;font-family:Sora,sans-serif;' +
+         'background:'+bg+';color:'+color+';border-radius:100px;white-space:nowrap;' +
+         'transition:all .15s">' +
+         c.label + ' <span style="opacity:.7;font-weight:500">· '+c.count+'</span>' +
+         '</button>';
+  });
+  h += '</div>';
+  return h;
+}
+
+function loadMomentumRadar(forceReg, forceCat){
+if(!window._activeMomentumRadarTab)return;
 var el=document.getElementById('deResult');if(!el)return;
-var reg=forceReg||window._deRegion||'US'; // US default — momentum signals work best for US
-window._deRegion=reg;var S=reg==='US'?'$':'₹';
+var reg=forceReg||window._deRegion||'US';
+window._deRegion=reg;
+// r46: category state — default "all", persists across region switches if valid
+var cat = forceCat || window._mrCategory || 'all';
+window._mrCategory = cat;
+var S=reg==='US'?'$':'₹';
 var _eml3=document.getElementById('email');
 var email=window._verifiedEmail||(_eml3?(_eml3.dataset.real||_eml3.value):'').trim().toLowerCase();
-console.log('⚡ Momentum Radar: sending email='+email+' region='+reg);
+console.log('⚡ Momentum Radar: sending email='+email+' region='+reg+' category='+cat);
 var _mrRegBar=_renderRegionToggle('loadMomentumRadar',reg);
-el.innerHTML=_mrRegBar+'<div style="padding:40px;text-align:center"><div style="font-size:48px;margin-bottom:12px">⚡</div><div style="font-size:18px;font-weight:900;color:var(--text);font-family:Sora,sans-serif;margin-bottom:4px">Scanning for Parabolic Setups</div><div style="font-size:11px;color:#2d4373;margin-bottom:16px">Batched fetch for <strong>'+(reg==='US'?'80 US':'50 Indian')+' tickers</strong> — 5-signal composite scoring</div><div style="max-width:400px;margin:0 auto"><div style="display:flex;justify-content:space-between;font-size:9px;color:#2d4373;margin-bottom:4px"><span id="mrPhase">Batch downloading price history...</span><span id="mrPct">0%</span></div><div style="height:6px;border-radius:8px;background:#f1f5f9;overflow:hidden"><div id="mrBar" style="height:100%;border-radius:8px;background:linear-gradient(90deg,#f59e0b,#dc2626);width:0%;transition:width .5s"></div></div></div><div style="font-size:9px;color:#2d4373;margin-top:12px">Short Squeeze · Volume Surge · Relative Strength · Breakout · Call/Put Skew</div><div style="font-size:9px;color:#f59e0b;margin-top:6px;font-weight:700">⏱️ Estimated: 30-60 seconds</div></div>';
+var _mrCatBar=_renderMomentumCategoryBar(reg,cat);
+
+// Fetch category list if we don't have it yet (one-time per region per session)
+if (!window._mrCategoriesCache[reg]) {
+  fetch('/api/early-momentum-radar/categories?region='+reg).then(function(r){return r.json()}).then(function(cd){
+    if (cd.success && cd.categories) {
+      window._mrCategoriesCache[reg] = cd.categories;
+      // Re-render the cat bar now that we have the list
+      var cb = document.getElementById('mrCatBar');
+      if (cb) cb.outerHTML = _renderMomentumCategoryBar(reg,cat);
+    }
+  }).catch(function(){});
+}
+
+el.innerHTML=_mrRegBar+_mrCatBar+'<div style="padding:40px;text-align:center"><div style="font-size:48px;margin-bottom:12px">⚡</div><div style="font-size:18px;font-weight:900;color:var(--text);font-family:Sora,sans-serif;margin-bottom:4px">Scanning for Parabolic Setups</div><div style="font-size:11px;color:#2d4373;margin-bottom:16px">Category: <strong>'+cat.toUpperCase()+'</strong> · 5-signal composite scoring</div><div style="max-width:400px;margin:0 auto"><div style="display:flex;justify-content:space-between;font-size:9px;color:#2d4373;margin-bottom:4px"><span id="mrPhase">Batch downloading price history...</span><span id="mrPct">0%</span></div><div style="height:6px;border-radius:8px;background:#f1f5f9;overflow:hidden"><div id="mrBar" style="height:100%;border-radius:8px;background:linear-gradient(90deg,#f59e0b,#dc2626);width:0%;transition:width .5s"></div></div></div><div style="font-size:9px;color:#2d4373;margin-top:12px">Short Squeeze · Volume Surge · Relative Strength · Breakout · Call/Put Skew</div><div style="font-size:9px;color:#f59e0b;margin-top:6px;font-weight:700">⏱️ Estimated: 30-60 seconds</div></div>';
 var _mrTimer=setInterval(function(){window._mrProg=(window._mrProg||0)+0.8+Math.random()*0.6;window._mrProg=Math.min(92,window._mrProg);var bar=document.getElementById("mrBar");var pct=document.getElementById("mrPct");var phase=document.getElementById("mrPhase");if(bar)bar.style.width=window._mrProg+"%";if(pct)pct.textContent=Math.round(window._mrProg)+"%";if(phase){var _phases=["Batch downloading price history...","Fetching short interest data...","Analyzing volume surges...","Detecting breakouts...","Scoring call/put skew...","Ranking momentum signals..."];phase.textContent=_phases[Math.min(5,Math.floor(window._mrProg/16))];}},1200);
-fetch('/api/early-momentum-radar?email='+encodeURIComponent(email)+'&region='+reg).then(function(r){return r.json()}).then(function(d){
+fetch('/api/early-momentum-radar?email='+encodeURIComponent(email)+'&region='+reg+'&category='+encodeURIComponent(cat)).then(function(r){return r.json()}).then(function(d){
 clearInterval(_mrTimer);window._mrProg=0;
-if(!d.success){el.innerHTML=_mrRegBar+'<div style="padding:30px;text-align:center;color:#ef4444">'+(d.error||'Unknown error')+'</div>';return}
+if(!d.success){el.innerHTML=_mrRegBar+_mrCatBar+'<div style="padding:30px;text-align:center;color:#ef4444">'+(d.error||'Unknown error')+'</div>';return}
 var h='';var _reg2=d.region||'US';var csym=_reg2==='US'?'$':'₹';
-// Hero
+// Hero — includes category context
+var _catLabel = d.categoryLabel || 'All Tickers';
+var _catDesc = d.categoryDesc || 'Comprehensive sweep';
 h+='<div class="dc" style="border:1px solid #f59e0b20;box-shadow:0 20px 60px #f59e0b08;margin-bottom:20px">';
 h+='<div class="dc-hero" style="background:linear-gradient(160deg,#78350f,#ea580c,#f59e0b)">';
 h+='<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">';
-h+='<div><div style="font-size:24px;font-weight:900;color:#fff;font-family:Sora,sans-serif">Early Momentum Radar</div>';
-h+='<div style="font-size:12px;color:rgba(255,255,255,.85);margin-top:4px">Catch CAR/SNDK/GME-style setups · '+(_reg2==='US'?'US Markets':'India (NSE)')+'</div></div>';
+h+='<div><div style="font-size:24px;font-weight:900;color:#fff;font-family:Sora,sans-serif">Early Momentum Radar · '+_catLabel+'</div>';
+h+='<div style="font-size:12px;color:rgba(255,255,255,.85);margin-top:4px">'+_catDesc+' · '+(_reg2==='US'?'US Markets':'India (NSE)')+'</div></div>';
 h+='<div style="display:flex;gap:14px;align-items:center">';
 h+='<div style="text-align:center;padding:8px 14px;border-radius:12px;background:rgba(255,255,255,.15)"><div style="font-size:22px;font-weight:900;color:#fff;font-family:var(--mono)">'+(d.coverage?d.coverage.completed:(d.totalScored||0))+'</div><div style="font-size:8px;color:rgba(255,255,255,.85)">Scored</div></div>';
 h+='<div style="text-align:center;padding:8px 14px;border-radius:12px;background:rgba(255,255,255,.15)"><div style="font-size:22px;font-weight:900;color:#fff;font-family:var(--mono)">'+((d.redAlert||[]).length)+'</div><div style="font-size:8px;color:rgba(255,255,255,.85)">🔥 Alert</div></div>';
@@ -10385,8 +10451,8 @@ h+='<div style="padding:12px 14px;background:#fef3c708;border:1px solid #d977062
 h+='<strong>⚠ Honest disclaimer:</strong> '+d.disclaimer;
 h+='</div>';}
 
-el.innerHTML=_mrRegBar+h;
-}).catch(function(e){clearInterval(_mrTimer);el.innerHTML=_mrRegBar+'<div style="padding:20px;color:#ef4444">Error: '+e.message+'</div>';});
+el.innerHTML=_mrRegBar+_mrCatBar+h;
+}).catch(function(e){clearInterval(_mrTimer);el.innerHTML=_mrRegBar+_mrCatBar+'<div style="padding:20px;color:#ef4444">Error: '+e.message+'</div>';});
 }
 
 // ═══ PMS — Portfolio Management System Tab ═══
