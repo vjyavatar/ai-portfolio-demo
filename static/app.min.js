@@ -10012,28 +10012,33 @@ if(btn){btn.innerHTML='✅ '+d.totalScanned+' stocks scanned';btn.style.backgrou
 // migrated to this in follow-up work.
 // ═══════════════════════════════════════════════════════════════════════
 function _renderRegionToggle(loadFnName, currentReg){
-  // r49: FINAL simple rewrite. No gradients, no !important wars, no CSS tricks.
-  // Just plain HTML the browser cannot fail to render.
+  // r53: Last attempt. Going max-defensive.
+  //   - No conditional colors; both buttons look identical in structure
+  //   - Active state shown by BORDER around the whole button (thick blue)
+  //   - Text ALWAYS dark, ALWAYS on white — cannot be invisible
+  //   - Dot colored for region identification only
   var mkBtn = function(code, label, dotColor){
     var isActive = currentReg === code;
-    var bg = isActive ? '#1e40af' : '#ffffff';
-    var textColor = isActive ? '#ffffff' : '#0f172a';
-    var border = isActive ? '#1e40af' : '#ffffff';
+    // Both active and inactive: white bg + dark text (no contrast issues possible)
+    var borderColor = isActive ? '#1e40af' : '#e2e8f0';
+    var borderWidth = isActive ? '3px' : '1px';
+    var weight = isActive ? '900' : '600';
     return '<button type="button" onclick="'+loadFnName+'(\''+code+'\')" ' +
            'data-region="'+code+'" ' +
-           'style="padding:10px 22px;font-size:13px;font-weight:800;' +
-           'border:2px solid '+border+';cursor:pointer;font-family:Sora,sans-serif;' +
-           'background:'+bg+';color:'+textColor+';' +
-           'display:inline-flex;align-items:center;gap:8px;min-width:120px;' +
-           'justify-content:center;white-space:nowrap">' +
+           'style="padding:10px 22px;font-size:13px;font-weight:'+weight+';' +
+           'border:'+borderWidth+' solid '+borderColor+';cursor:pointer;' +
+           'font-family:Sora,sans-serif;' +
+           'background:#ffffff;color:#0f172a;' +
+           'display:inline-flex;align-items:center;gap:8px;min-width:110px;' +
+           'justify-content:center;white-space:nowrap;' +
+           'border-radius:8px;margin:0 2px">' +
              '<span style="display:inline-block;width:10px;height:10px;' +
              'border-radius:50%;background:'+dotColor+';flex-shrink:0"></span>' +
-             label +
+             '<span style="color:#0f172a">'+label+'</span>' +
            '</button>';
   };
   return '<div style="display:flex;justify-content:center;margin-bottom:16px">' +
-         '<div style="display:inline-flex;border:1px solid #cbd5e1;' +
-         'border-radius:10px;overflow:hidden;background:#ffffff">' +
+         '<div style="display:inline-flex">' +
          mkBtn('IN', 'India', '#f59e0b') +
          mkBtn('US', 'USA',   '#1e40af') +
          '</div></div>';
