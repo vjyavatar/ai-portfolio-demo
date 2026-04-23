@@ -24566,14 +24566,179 @@ def _compute_momentum_score(sym, tk_info, hist_df, options_chain=None, tier="A")
     # even if absolute score is lower. This is the "catch it early" signal.
     accelerating = accel_pts >= 12
     
+    # ═══════════════════════════════════════════════════════════════════
+    # r48: PLAIN-ENGLISH LAYER for laymen users
+    # ═══════════════════════════════════════════════════════════════════
+    # Converts raw signal scores into human-readable interpretation:
+    #  - stage: where in the move are we (early/building/active/late/exhausted)
+    #  - oneLineInterpretation: plain-English summary of what's happening
+    #  - signalExplanations: dict of each signal with "what it means" in plain words
+    #  - actionGuide: risk warnings + entry/exit suggestions
+    # ═══════════════════════════════════════════════════════════════════
+    
+    ret_30d_val = details.get("return_30d_pct", 0) or 0
+    pct_from_high = details.get("pct_from_52wk_high", -100) or -100
+    si_val = details.get("short_pct_float", 0) or 0
+    vol_ratio = details.get("volume_ratio_5d_vs_60d", 0) or 0
+    cp_ratio = details.get("call_put_volume_ratio", 0) or 0
+    d2c = details.get("days_to_cover", 0) or 0
+    
+    # ═══ Stage of move (where in parabolic move are we?) ═══
+    # Based on 30-day return magnitude + distance from 52w high
+    if ret_30d_val >= 100:
+        stage = {"emoji": "⚫", "label": "EXHAUSTED",
+                 "desc": f"Already ran +{ret_30d_val:.0f}% in 30d — likely past peak, risk/reward poor"}
+    elif ret_30d_val >= 50:
+        stage = {"emoji": "🔴", "label": "LATE",
+                 "desc": f"Extended move (+{ret_30d_val:.0f}% in 30d) — momentum may be exhausting"}
+    elif ret_30d_val >= 20:
+        stage = {"emoji": "🟠", "label": "ACTIVE",
+                 "desc": f"Mid-move (+{ret_30d_val:.0f}% in 30d) — watch for continuation or pullback"}
+    elif ret_30d_val >= 8 or pct_from_high >= -5:
+        stage = {"emoji": "🟡", "label": "BUILDING",
+                 "desc": "Momentum accelerating — setup in progress"}
+    else:
+        stage = {"emoji": "🟢", "label": "EARLY",
+                 "desc": "Setup forming — signals firing but price hasn't run yet"}
+    
+    # ═══ One-line interpretation (plain English) ═══
+    interp_parts = []
+    if si_val >= 20 and d2c >= 5:
+        interp_parts.append(f"Extreme short interest ({si_val:.0f}% of float) — textbook squeeze setup")
+    elif si_val >= 15:
+        interp_parts.append(f"High short interest ({si_val:.0f}%) — squeeze potential")
+    if vol_ratio >= 2.5:
+        interp_parts.append(f"Volume spiking ({vol_ratio:.1f}× normal) — institutional accumulation likely")
+    elif vol_ratio >= 1.5:
+        interp_parts.append(f"Volume elevated ({vol_ratio:.1f}× normal)")
+    if pct_from_high >= -3 and ret_30d_val > 0:
+        interp_parts.append("Breaking out to new highs")
+    if cp_ratio >= 2.5:
+        interp_parts.append(f"Bullish options flow (C/P {cp_ratio:.1f}×)")
+    if accel_pts >= 12:
+        interp_parts.append("Signals accelerating vs 2 weeks ago")
+    if ret_30d_val >= 50:
+        interp_parts.append(f"⚠ BUT already ran {ret_30d_val:.0f}% — late entry risk")
+    
+    one_line = " · ".join(interp_parts) if interp_parts else "Moderate signals — watch for development"
+    
+    # ═══ Signal explanations (each in plain English) ═══
+    def _sig_verdict(pts, thresholds=(4, 10, 15)):
+        """Returns (color, label) for a 0-20 signal score."""
+        if pts >= thresholds[2]: return ("#059669", "STRONG")
+        if pts >= thresholds[1]: return ("#d97706", "MODERATE")
+        if pts >= thresholds[0]: return ("#3b82f6", "WEAK")
+        return ("#94a3b8", "NONE")
+    
+    sig_exp = {}
+    # Signal 1
+    s1 = details.get("signal_1_short_squeeze", 0)
+    c1, l1 = _sig_verdict(s1)
+    if si_val >= 20:
+        sig_exp["short_squeeze"] = f"{si_val:.1f}% of this stock's available shares are borrowed and sold short. Extraordinary level — any positive news could force mass buying. Days to cover: {d2c:.1f}."
+    elif si_val >= 10:
+        sig_exp["short_squeeze"] = f"Elevated short interest at {si_val:.1f}%. Days to cover {d2c:.1f} means shorts would need {d2c:.1f} days of normal volume to exit."
+    else:
+        sig_exp["short_squeeze"] = f"Low short interest ({si_val:.1f}% of float). Not a squeeze setup."
+    # Signal 2
+    if vol_ratio >= 2:
+        sig_exp["volume"] = f"Recent trading volume is {vol_ratio:.1f}× the 60-day average. Strong signal that institutional money is flowing in."
+    elif vol_ratio >= 1.2:
+        sig_exp["volume"] = f"Volume is {vol_ratio:.1f}× normal — elevated but not extreme."
+    else:
+        sig_exp["volume"] = f"Volume near baseline ({vol_ratio:.1f}× average). No unusual activity."
+    # Signal 3
+    if ret_30d_val >= 25:
+        sig_exp["momentum"] = f"Stock is up {ret_30d_val:.1f}% in the last 30 days — strong momentum. Already rewarding early buyers."
+    elif ret_30d_val >= 8:
+        sig_exp["momentum"] = f"Stock up {ret_30d_val:.1f}% in 30 days — good momentum, still early in move."
+    elif ret_30d_val > 0:
+        sig_exp["momentum"] = f"Modest gain of {ret_30d_val:.1f}% in 30 days."
+    else:
+        sig_exp["momentum"] = f"Stock is down {abs(ret_30d_val):.1f}% in 30 days. No momentum yet."
+    # Signal 4
+    if pct_from_high >= -3:
+        sig_exp["breakout"] = f"Trading at or near 52-week highs ({pct_from_high:.1f}% from high). Breakout zone — often precedes continuation."
+    elif pct_from_high >= -10:
+        sig_exp["breakout"] = f"Close to 52-week highs ({abs(pct_from_high):.1f}% below). Approaching breakout."
+    else:
+        sig_exp["breakout"] = f"{abs(pct_from_high):.1f}% below 52-week high — not in breakout zone."
+    # Signal 5
+    if cp_ratio > 0:
+        if cp_ratio >= 2.5:
+            sig_exp["options_flow"] = f"Call/put volume ratio is {cp_ratio:.1f}× — heavily bullish options positioning (smart money signal)."
+        elif cp_ratio >= 1.5:
+            sig_exp["options_flow"] = f"Call/put ratio {cp_ratio:.1f}× — mildly bullish options flow."
+        else:
+            sig_exp["options_flow"] = f"Call/put ratio {cp_ratio:.1f}× — balanced or bearish options positioning."
+    else:
+        sig_exp["options_flow"] = "Options data unavailable for this ticker."
+    
+    # ═══ Action guide (entry/risk/sizing) ═══
+    action_items = []
+    # Entry timing
+    if ret_30d_val >= 50:
+        action_items.append({
+            "icon": "⚠",
+            "label": "Entry timing",
+            "text": f"Stock already up {ret_30d_val:.0f}% in 30 days. Best to WAIT for a pullback to 20-30% below current ({(1 - 0.25) * (float(tk_info.get('regularMarketPrice') or 0)):.2f} area) before entering."
+        })
+    elif pct_from_high >= -3:
+        action_items.append({
+            "icon": "🎯",
+            "label": "Entry idea",
+            "text": "Near breakout — consider buying on confirmed close above 52-week high, with stop below recent support."
+        })
+    elif ret_30d_val >= 8 and accel_pts >= 8:
+        action_items.append({
+            "icon": "🎯",
+            "label": "Entry idea",
+            "text": "Good risk/reward setup. Can scale in. Stop-loss suggestion: 8-12% below current price."
+        })
+    else:
+        action_items.append({
+            "icon": "👀",
+            "label": "Monitor",
+            "text": "Signals present but not actionable yet. Watch for volume confirmation or breakout close above recent high."
+        })
+    
+    # Risk flag
+    if ret_30d_val >= 100:
+        action_items.append({
+            "icon": "🚨",
+            "label": "Risk",
+            "text": f"EXTREME RISK: Stock has already moved +{ret_30d_val:.0f}% — risk/reward is poor at current levels. Consider waiting for a 30%+ correction."
+        })
+    elif ret_30d_val >= 50:
+        action_items.append({
+            "icon": "⚠",
+            "label": "Risk",
+            "text": f"High risk: Stock extended +{ret_30d_val:.0f}% — momentum may reverse sharply. Keep position small."
+        })
+    
+    # Position sizing
+    _univ_tier = tier if tier in ("A", "B", "C") else "C"
+    if _univ_tier == "A":
+        size_note = "Large-cap, liquid. Can take standard 3-5% position size."
+    elif _univ_tier == "B":
+        size_note = "Mid-cap — more volatile. Limit to 2-3% of portfolio."
+    else:
+        size_note = "Small-cap/speculative — high volatility. Limit to 1-2% of portfolio."
+    action_items.append({"icon": "📊", "label": "Position size", "text": size_note})
+    
     return {
         "symbol": sym,
         "score": score,
-        "tier": classification,        # 🔥/⚡/👀 label (based on score)
-        "universe_tier": tier,         # A/B/C market-cap tier
+        "tier": classification,
+        "universe_tier": tier,
         "signals": signals,
         "details": details,
-        "accelerating": accelerating,  # r44: true if signal 6 ≥ 12/20
+        "accelerating": accelerating,
+        # r48: plain-English layer
+        "stage": stage,
+        "interpretation": one_line,
+        "signalExplanations": sig_exp,
+        "actionGuide": action_items,
     }
 
 

@@ -10340,43 +10340,86 @@ h+='</div></div></div></div>';
 // Momentum card renderer
 function _momCard(s,rank,accentC){
 var fmt=function(n){return (n||0).toLocaleString('en-US',{maximumFractionDigits:2});};
-var c='<div class="dc-trade-card" style="cursor:pointer" onclick="switchDEMode(\'investor\');loadDE(\''+s.symbol+'\')">';
-// Header with rank + score
+var _cardId='momcard_'+s.symbol+'_'+rank;
+var c='<div class="dc-trade-card" id="'+_cardId+'" style="cursor:default">';
+
+// ── Header: rank + name + score + tier badge ──
 c+='<div style="padding:12px 16px;background:'+accentC+'06;border-bottom:1px solid '+accentC+'12;display:flex;justify-content:space-between;align-items:center">';
 c+='<div style="display:flex;align-items:center;gap:10px">';
 c+='<div style="width:28px;height:28px;border-radius:50%;background:'+accentC+'12;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:900;color:'+accentC+';font-family:var(--mono)">'+rank+'</div>';
-c+='<div><div style="font-size:13px;font-weight:900;color:var(--text);font-family:var(--mono)">'+s.symbol+'</div>';
+c+='<div><div style="font-size:14px;font-weight:900;color:var(--text);font-family:var(--mono);cursor:pointer" onclick="switchDEMode(\'investor\');loadDE(\''+s.symbol+'\')" title="Open full analysis">'+s.symbol+' ↗</div>';
 c+='<div style="font-size:9px;color:var(--text3)">'+(s.name||s.symbol)+' · '+(s.sector||'')+'</div></div></div>';
-// r43: Tier badge — tells user if this is a Core (low noise), Growth, or Spec (high noise) signal
-var _tier=(s.details&&s.details.tier)||'';
+var _tierMC=(s.universe_tier||(s.details&&s.details.tier)||'');
 var _tierColors={A:{bg:'#05966915',c:'#059669',l:'CORE'},B:{bg:'#d9770615',c:'#d97706',l:'GROWTH'},C:{bg:'#7c3aed15',c:'#7c3aed',l:'SPEC'}};
-var _tc=_tierColors[_tier];
+var _tc=_tierColors[_tierMC];
 c+='<div style="text-align:right;display:flex;flex-direction:column;align-items:flex-end;gap:2px">';
-c+='<div style="font-size:22px;font-weight:900;color:'+accentC+';font-family:var(--mono);line-height:1">'+s.score+'</div>';
+c+='<div style="font-size:24px;font-weight:900;color:'+accentC+';font-family:var(--mono);line-height:1">'+s.score+'</div>';
 if(_tc){c+='<span style="font-size:7px;font-weight:800;padding:1px 6px;border-radius:100px;background:'+_tc.bg+';color:'+_tc.c+';letter-spacing:.5px">'+_tc.l+'</span>';}
-c+='<div style="font-size:8px;font-weight:800;color:'+accentC+'">'+(s.tier||'').replace(/[🔥⚡👀]/g,'').trim()+'</div></div></div>';
-// Signal breakdown — 5 mini cells
+c+='<div style="font-size:8px;font-weight:800;color:'+accentC+'">'+(s.tier||'').replace(/[🔥⚡👀⚫🔴🟠🟡🟢]/g,'').trim()+'</div></div></div>';
+
+// ── r48: STAGE banner — where in the move are we? ──
+if(s.stage){
+var _stageColors={EARLY:'#059669',BUILDING:'#d97706',ACTIVE:'#ea580c',LATE:'#dc2626',EXHAUSTED:'#1f2937'};
+var _sC=_stageColors[s.stage.label]||'#3b82f6';
+c+='<div style="padding:10px 16px;background:'+_sC+'08;border-bottom:1px solid '+_sC+'20;display:flex;align-items:flex-start;gap:10px">';
+c+='<div style="font-size:18px;line-height:1">'+(s.stage.emoji||'•')+'</div>';
+c+='<div style="flex:1"><div style="font-size:11px;font-weight:900;color:'+_sC+';letter-spacing:.5px;font-family:Sora,sans-serif">'+s.stage.label+' STAGE</div>';
+c+='<div style="font-size:10px;color:var(--text);margin-top:2px;line-height:1.4">'+(s.stage.desc||'')+'</div>';
+c+='</div></div>';}
+
+// ── r48: One-line plain-English interpretation ──
+if(s.interpretation){
+c+='<div style="padding:10px 16px;background:#f8fafc;border-bottom:1px solid #e2e8f0;font-size:11px;color:var(--text);line-height:1.5;font-weight:500">';
+c+='<span style="color:var(--text3);font-size:9px;font-weight:700;letter-spacing:.4px;text-transform:uppercase">What\'s happening:</span><br>';
+c+=s.interpretation;
+c+='</div>';}
+
+// ── Signal breakdown grid (unchanged visually, but hover shows explanations) ──
 var det=s.details||{};
+var exps=s.signalExplanations||{};
 c+='<div style="display:grid;grid-template-columns:repeat(5,1fr);border-bottom:1px solid var(--border);font-size:9px">';
-[{l:'SQUEEZE',v:(det.signal_1_short_squeeze||0),t:(det.short_pct_float||0)+'% SI'},
-{l:'VOLUME',v:(det.signal_2_volume_surge||0),t:(det.volume_ratio_5d_vs_60d||0).toFixed(1)+'× avg'},
-{l:'RS 30D',v:(det.signal_3_relative_strength||0),t:((det.return_30d_pct||0)>=0?'+':'')+(det.return_30d_pct||0).toFixed(1)+'%'},
-{l:'BREAKOUT',v:(det.signal_4_breakout||0),t:((det.pct_from_52wk_high||0)).toFixed(1)+'% to hi'},
-{l:'C/P SKEW',v:(det.signal_5_call_put_skew||0),t:det.options_data_unavailable?'no opts':((det.call_put_volume_ratio||0)).toFixed(1)+'× C/P'}
+[{l:'SQUEEZE',v:(det.signal_1_short_squeeze||0),t:(det.short_pct_float||0).toFixed(1)+'% SI',tip:exps.short_squeeze||''},
+{l:'VOLUME',v:(det.signal_2_volume_surge||0),t:(det.volume_ratio_5d_vs_60d||0).toFixed(1)+'× avg',tip:exps.volume||''},
+{l:'RS 30D',v:(det.signal_3_relative_strength||0),t:((det.return_30d_pct||0)>=0?'+':'')+(det.return_30d_pct||0).toFixed(1)+'%',tip:exps.momentum||''},
+{l:'BREAKOUT',v:(det.signal_4_breakout||0),t:((det.pct_from_52wk_high||0)).toFixed(1)+'% to hi',tip:exps.breakout||''},
+{l:'C/P SKEW',v:(det.signal_5_call_put_skew||0),t:det.options_data_unavailable?'no opts':((det.call_put_volume_ratio||0)).toFixed(1)+'× C/P',tip:exps.options_flow||''}
 ].forEach(function(m){
 var _vColor=m.v>=15?'#059669':m.v>=10?'#d97706':m.v>=5?'#3b82f6':'var(--text3)';
-c+='<div style="padding:8px 6px;text-align:center;border-right:1px solid var(--border)">';
+var _tipEsc=(m.tip||'').replace(/"/g,'&quot;');
+c+='<div title="'+_tipEsc+'" style="padding:8px 6px;text-align:center;border-right:1px solid var(--border);cursor:help">';
 c+='<div style="font-size:7px;font-weight:700;color:var(--text3);letter-spacing:.4px">'+m.l+'</div>';
-c+='<div style="font-size:13px;font-weight:900;color:'+_vColor+';font-family:var(--mono);margin-top:2px">'+m.v+'</div>';
+c+='<div style="font-size:14px;font-weight:900;color:'+_vColor+';font-family:var(--mono);margin-top:2px">'+m.v+'</div>';
 c+='<div style="font-size:7px;color:var(--text3);margin-top:2px">'+m.t+'</div></div>';});
 c+='</div>';
-// Fired signals list
+
+// ── Fired signals as chips ──
 if(s.signals&&s.signals.length>0){
-c+='<div style="padding:8px 16px;display:flex;gap:4px;flex-wrap:wrap">';
+c+='<div style="padding:8px 16px;display:flex;gap:4px;flex-wrap:wrap;border-bottom:1px solid var(--border)">';
 s.signals.forEach(function(sig){c+='<span style="font-size:8px;padding:2px 8px;border-radius:100px;background:'+accentC+'08;color:'+accentC+';font-weight:600;border:1px solid '+accentC+'12">'+sig+'</span>';});
 c+='</div>';}
-// Bottom strip
-c+='<div style="padding:6px 16px;background:#f1f5f9;font-size:9px;color:var(--text3);border-top:1px solid var(--border)">'+csym+fmt(s.price)+' · '+(s.sector||'N/A')+'</div>';
+
+// ── r48: Action guide section (expandable) ──
+if(s.actionGuide&&s.actionGuide.length>0){
+var _agId='ag_'+s.symbol+'_'+rank;
+c+='<div style="padding:10px 16px;background:#fefce8;border-bottom:1px solid #fde68a;cursor:pointer" ';
+c+='onclick="var e=document.getElementById(\''+_agId+'\');if(e){e.style.display=e.style.display===\'none\'?\'block\':\'none\';}">';
+c+='<div style="display:flex;justify-content:space-between;align-items:center">';
+c+='<div style="font-size:10px;font-weight:800;color:#78350f;font-family:Sora,sans-serif">💡 What should you do? <span style="font-size:8px;font-weight:500;color:var(--text3);margin-left:6px">(click to expand)</span></div>';
+c+='<span style="color:#78350f;font-size:14px">▾</span></div>';
+c+='<div id="'+_agId+'" style="display:none;margin-top:10px">';
+s.actionGuide.forEach(function(ag){
+c+='<div style="display:flex;gap:8px;padding:6px 0;border-top:1px solid #fde68a">';
+c+='<div style="font-size:14px;line-height:1.4;flex-shrink:0">'+(ag.icon||'•')+'</div>';
+c+='<div><div style="font-size:9px;font-weight:800;color:#78350f;letter-spacing:.3px">'+(ag.label||'').toUpperCase()+'</div>';
+c+='<div style="font-size:10px;color:var(--text);line-height:1.5;margin-top:2px">'+(ag.text||'')+'</div></div>';
+c+='</div>';});
+c+='</div></div>';}
+
+// ── Bottom strip: price + sector + action link ──
+c+='<div style="padding:8px 16px;background:#f1f5f9;font-size:10px;color:var(--text);border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">';
+c+='<span><strong style="font-family:var(--mono)">'+csym+fmt(s.price)+'</strong> · '+(s.sector||'N/A')+'</span>';
+c+='<span onclick="event.stopPropagation();switchDEMode(\'investor\');loadDE(\''+s.symbol+'\')" style="color:'+accentC+';font-weight:700;cursor:pointer;font-size:9px">FULL ANALYSIS →</span>';
+c+='</div>';
 c+='</div>';
 return c;
 }
