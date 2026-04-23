@@ -8581,10 +8581,21 @@ window._addExportButtons=function(){
   
   var btns=document.createElement('div');
   btns.id='celesysExportBtns';
-  btns.style.cssText='display:flex;gap:8px;justify-content:center;margin:10px 0;flex-wrap:wrap';
-  btns.innerHTML='<button onclick="window._exportSummaryPDF()" style="padding:8px 16px;border-radius:8px;background:#059669;color:#fff;border:none;font-size:10px;font-weight:800;cursor:pointer;font-family:Sora,sans-serif">📄 Summary PDF (for sharing)</button>'
-    +'<button onclick="window._exportFullHTML()" style="padding:8px 16px;border-radius:8px;background:#1A3A78;color:#fff;border:none;font-size:10px;font-weight:800;cursor:pointer;font-family:Sora,sans-serif">📊 Full HTML Report (internal)</button>'
-    +'<button onclick="if(typeof _investorExportPDF===\'function\')_investorExportPDF()" style="padding:8px 16px;border-radius:8px;background:#6b7280;color:#fff;border:none;font-size:10px;font-weight:800;cursor:pointer;font-family:Sora,sans-serif">🖨️ Print Report</button>';
+  // r49: compact icon-only buttons — users complained big labels were cluttering the UI
+  btns.style.cssText='display:flex;gap:6px;justify-content:flex-end;margin:8px 0;padding:0 4px';
+  var iconBtn=function(onclick,icon,tooltip,bg){
+    return '<button onclick="'+onclick+'" title="'+tooltip+'" ' +
+      'style="width:32px;height:32px;border-radius:8px;background:'+bg+';color:#fff;' +
+      'border:none;cursor:pointer;font-size:14px;display:inline-flex;' +
+      'align-items:center;justify-content:center;font-family:Sora,sans-serif;' +
+      'transition:transform .15s" ' +
+      'onmouseover="this.style.transform=\'scale(1.08)\'" ' +
+      'onmouseout="this.style.transform=\'scale(1)\'">'+icon+'</button>';
+  };
+  btns.innerHTML =
+    iconBtn('window._exportSummaryPDF()', '📄', 'Summary PDF (for sharing)', '#059669') +
+    iconBtn('window._exportFullHTML()', '📊', 'Full HTML Report (internal)', '#1A3A78') +
+    iconBtn("if(typeof _investorExportPDF==='function')_investorExportPDF()", '🖨️', 'Print Report', '#6b7280');
   
   // Insert after the hero section
   var hero=el.querySelector('[style*="text-align:center"]');

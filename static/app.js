@@ -9984,44 +9984,29 @@ if(btn){btn.innerHTML='✅ '+d.totalScanned+' stocks scanned';btn.style.backgrou
 // migrated to this in follow-up work.
 // ═══════════════════════════════════════════════════════════════════════
 function _renderRegionToggle(loadFnName, currentReg){
-  // r47: Defensive rewrite. Previous versions used emoji flags or colored dots +
-  // relied on inline <span> for text. Global button CSS rules (border-radius,
-  // min-height, etc.) kept interfering. This version:
-  //   - Wraps EVERYTHING in a single <span> inside the button with inline-block
-  //   - Uses !important on color, opacity, and visibility
-  //   - Uses data-label attribute so we can see in DevTools what SHOULD render
-  //   - No dependency on external CSS for the text rendering
+  // r49: FINAL simple rewrite. No gradients, no !important wars, no CSS tricks.
+  // Just plain HTML the browser cannot fail to render.
   var mkBtn = function(code, label, dotColor){
     var isActive = currentReg === code;
-    var bg = isActive ? 'linear-gradient(135deg,#1A3A78,#1e40af)' : '#ffffff';
-    var textColor = isActive ? '#ffffff' : '#0f172a';  // darker for contrast
-    var safeLabel = (label && label.length > 0) ? label : code;
+    var bg = isActive ? '#1e40af' : '#ffffff';
+    var textColor = isActive ? '#ffffff' : '#0f172a';
+    var border = isActive ? '#1e40af' : '#ffffff';
     return '<button type="button" onclick="'+loadFnName+'(\''+code+'\')" ' +
-           'data-region="'+code+'" data-label="'+safeLabel+'" ' +
-           'style="padding:10px 22px !important;font-size:13px !important;' +
-           'font-weight:800 !important;border:none !important;cursor:pointer;' +
-           'font-family:Sora,sans-serif !important;' +
-           'background:'+bg+' !important;color:'+textColor+' !important;' +
-           'opacity:1 !important;visibility:visible !important;' +
-           'letter-spacing:.3px;display:inline-flex !important;' +
-           'align-items:center;gap:8px;min-width:120px !important;' +
-           'justify-content:center;white-space:nowrap;line-height:1.2">' +
-             '<span aria-hidden="true" style="display:inline-block;' +
-             'width:10px;height:10px;border-radius:50%;background:'+dotColor+' !important;' +
-             'flex-shrink:0;box-shadow:0 0 0 2px '+(isActive ? '#ffffff44' : dotColor+'22')+'"></span>' +
-             '<span style="color:inherit !important;opacity:1 !important;' +
-             'font-weight:800 !important;font-size:13px !important;' +
-             'display:inline-block">'+safeLabel+'</span>' +
+           'data-region="'+code+'" ' +
+           'style="padding:10px 22px;font-size:13px;font-weight:800;' +
+           'border:2px solid '+border+';cursor:pointer;font-family:Sora,sans-serif;' +
+           'background:'+bg+';color:'+textColor+';' +
+           'display:inline-flex;align-items:center;gap:8px;min-width:120px;' +
+           'justify-content:center;white-space:nowrap">' +
+             '<span style="display:inline-block;width:10px;height:10px;' +
+             'border-radius:50%;background:'+dotColor+';flex-shrink:0"></span>' +
+             label +
            '</button>';
   };
   return '<div style="display:flex;justify-content:center;margin-bottom:16px">' +
-         '<div style="display:inline-flex;align-items:stretch;' +
-         'border:1px solid #cbd5e1;' +
-         'border-radius:10px;overflow:hidden;' +
-         'background:#ffffff;' +
-         'box-shadow:0 2px 6px rgba(15,23,42,.08)">' +
+         '<div style="display:inline-flex;border:1px solid #cbd5e1;' +
+         'border-radius:10px;overflow:hidden;background:#ffffff">' +
          mkBtn('IN', 'India', '#f59e0b') +
-         '<div style="width:1px;background:#cbd5e1"></div>' +
          mkBtn('US', 'USA',   '#1e40af') +
          '</div></div>';
 }
