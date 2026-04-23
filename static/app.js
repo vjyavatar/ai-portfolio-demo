@@ -2140,8 +2140,8 @@ ${(()=>{const bt=parseFloat(d.beta)||1;return bt>1.5?' Expect bigger swings than
 <div class="sbody">
 <div id="convictionLeaderboard">
 <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px" id="convGeoTabs">
-<button class="ptab active" onclick="showConvGeo(this,'india')" style="background:var(--amber);color:#fff;border-color:var(--amber)">IN India</button>
-<button class="ptab" onclick="showConvGeo(this,'usa')">US USA</button>
+<button class="ptab active" onclick="showConvGeo(this,'india')" style="background:var(--amber);color:#fff;border-color:var(--amber)">India</button>
+<button class="ptab" onclick="showConvGeo(this,'usa')">USA</button>
 </div>
 <div id="convGrid" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px"></div>
 </div>
@@ -2201,10 +2201,10 @@ ${(()=>{const bt=parseFloat(d.beta)||1;return bt>1.5?' Expect bigger swings than
 <div style="font-size:10px;color:var(--text2);line-height:1.6">Only funds with <strong style="color:var(--green)">25%+ CAGR</strong> over 5-year AND/OR 10-year periods. Correction resilience scored on max drawdown + recovery speed during COVID (Mar 2020), 2022 bear market, and Oct 2023 correction. <strong style="color:var(--amber)">SIP-friendly picks</strong> — designed for long-term wealth building, not trading.</div>
 </div>
 <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px" id="fundTabs">
-<button class="ptab active" onclick="showFundCat(this,'etf_in')">IN India ETFs</button>
-<button class="ptab" onclick="showFundCat(this,'mf_in')">IN India Mutual Funds</button>
-<button class="ptab" onclick="showFundCat(this,'etf_us')">US USA ETFs</button>
-<button class="ptab" onclick="showFundCat(this,'mf_us')">US USA Funds</button>
+<button class="ptab active" onclick="showFundCat(this,'etf_in')">India ETFs</button>
+<button class="ptab" onclick="showFundCat(this,'mf_in')">India Mutual Funds</button>
+<button class="ptab" onclick="showFundCat(this,'etf_us')">USA ETFs</button>
+<button class="ptab" onclick="showFundCat(this,'mf_us')">USA Funds</button>
 <button class="ptab" onclick="showFundCat(this,'compare')">&#128202; Comparison</button>
 </div>
 <div id="fundGrid"></div>
@@ -2363,7 +2363,7 @@ var TAB_GROUPS = {
   overview: {tabs: ['quick'], labels: ['Summary'], default: 'quick'},
   research: {tabs: ['analysis','dcf','equity','compare'], labels: ['AI Analysis','DCF Valuation','Research','Compare'], default: 'analysis'},
   decide:   {tabs: ['decision','toptrades','topinvest','proscan','reports','pms'], labels: ['Analyze Stock','Top Trades','Top Investments','🔬 Pro Scan','📊 Reports','📊 PMS'], default: 'decision'},
-  dream:    {tabs: ['dreamportfolio','multibagger','momentumradar'], labels: ['🌟 Dream Portfolio','🔥 Multibagger Hunter','⚡ Momentum Radar'], default: 'dreamportfolio'},
+  dream:    {tabs: ['dreamportfolio','multibagger','momentumradar','highprob','optionspulse'], labels: ['🌟 Dream Portfolio','🔥 Multibagger Hunter','⚡ Momentum Radar','🎯 High-Prob Setups','⚡ Options Pulse'], default: 'dreamportfolio'},
   trading:  {tabs: ['trades','smarttrades','stockintel','scanner','valreport','backtest','journal','aiassist'], labels: ['Algo Trades','Smart Trades','Stock Intel','Scanner','Valuation','Backtest','Journal','AI Assistant'], default: 'trades'},
   markets:  {tabs: ['indices','daily','newsimpact','assets'], labels: ['Top Performers','Market Daily','📰 News Impact','Global Assets'], default: 'indices'},
   tools:    {tabs: ['finance','education','compare'], labels: ['Finance Tools','Education','Compare Stocks'], default: 'finance'},
@@ -2559,7 +2559,7 @@ if(_cc&&tab!=='quick')_cc.style.display='none';
 
 
 // btnMap
-const btnMap={quick:'tabBtnOverview',analysis:'tabBtnResearch',dcf:'tabBtnResearch',equity:'tabBtnResearch',compare:'tabBtnTools',indices:'tabBtnMarkets',finance:'tabBtnTools',daily:'tabBtnMarkets',assets:'tabBtnMarkets',decision:'tabBtnDecide',toptrades:'tabBtnDecide',topinvest:'tabBtnDecide',reports:'tabBtnDecide',proscan:'tabBtnDecide',pms:'tabBtnDecide',dreamportfolio:'tabBtnDream',multibagger:'tabBtnDream',momentumradar:'tabBtnDream',trades:'tabBtnTrading',stockintel:'tabBtnTrading',scanner:'tabBtnTrading',valreport:'tabBtnTrading',backtest:'tabBtnTrading',smarttrades:'tabBtnTrading',journal:'tabBtnTrading',aiassist:'tabBtnTrading',education:'tabBtnTools',gems:'tabBtnOverview',picks:'tabBtnOverview',funds:'tabBtnTools'};
+const btnMap={quick:'tabBtnOverview',analysis:'tabBtnResearch',dcf:'tabBtnResearch',equity:'tabBtnResearch',compare:'tabBtnTools',indices:'tabBtnMarkets',finance:'tabBtnTools',daily:'tabBtnMarkets',assets:'tabBtnMarkets',decision:'tabBtnDecide',toptrades:'tabBtnDecide',topinvest:'tabBtnDecide',reports:'tabBtnDecide',proscan:'tabBtnDecide',pms:'tabBtnDecide',dreamportfolio:'tabBtnDream',multibagger:'tabBtnDream',momentumradar:'tabBtnDream',highprob:'tabBtnDream',optionspulse:'tabBtnDream',trades:'tabBtnTrading',stockintel:'tabBtnTrading',scanner:'tabBtnTrading',valreport:'tabBtnTrading',backtest:'tabBtnTrading',smarttrades:'tabBtnTrading',journal:'tabBtnTrading',aiassist:'tabBtnTrading',education:'tabBtnTools',gems:'tabBtnOverview',picks:'tabBtnOverview',funds:'tabBtnTools'};
 
 // Hide all
 document.querySelectorAll('.sc[data-tab]').forEach(s=>{s.style.display='none';s.style.opacity='';s.style.transform='';s.style.animation=''});
@@ -2586,7 +2586,7 @@ b.style.background='var(--blue)';b.style.color='#fff';b.style.borderColor='var(-
 // 2) Show matching tab content (sections + inline data-tab elements)
 // dreamportfolio and multibagger render into the decision section's deResult
 var _showTab = tab;
-if(tab==='dreamportfolio'||tab==='multibagger'||tab==='momentumradar'||tab==='pms') _showTab='decision';
+if(tab==='dreamportfolio'||tab==='multibagger'||tab==='momentumradar'||tab==='highprob'||tab==='optionspulse'||tab==='pms') _showTab='decision';
 // Show tab sections with animation
 document.querySelectorAll('.sc[data-tab="'+_showTab+'"]').forEach(function(s,idx){
 if(_showTab==='quick' && s.dataset.subtab) return;
@@ -2688,7 +2688,7 @@ setTimeout(function(){loadTopTrades()},100);
 if(!window._algoFirstRun){
 window._algoFirstRun=true;
 var ac=document.getElementById('algoCard');
-if(ac)ac.innerHTML='<div style="text-align:center;padding:40px"><div style="font-size:36px;margin-bottom:8px;opacity:.4">📊</div><div style="font-size:14px;font-weight:800;color:var(--text);margin-bottom:6px">Select a Region & Stock to Begin</div><div style="font-size:11px;color:var(--text3);max-width:400px;margin:0 auto">Click <strong>IN India</strong> or <strong>US USA</strong> above, then select an index or type any stock symbol to analyze.</div></div>';
+if(ac)ac.innerHTML='<div style="text-align:center;padding:40px"><div style="font-size:36px;margin-bottom:8px;opacity:.4">📊</div><div style="font-size:14px;font-weight:800;color:var(--text);margin-bottom:6px">Select a Region & Stock to Begin</div><div style="font-size:11px;color:var(--text3);max-width:400px;margin:0 auto">Click <strong>India</strong> or <strong>USA</strong> above, then select an index or type any stock symbol to analyze.</div></div>';
 }
 // Init backtest
 try{initBacktest()}catch(e){}
@@ -2720,6 +2720,8 @@ else _deHdr.style.display='none';
 if(tab==='decision'){
 window._activeMultibaggerTab=false;
 window._activeMomentumRadarTab=false;
+window._activeHighProbTab=false;
+window._activeOptionsPulseTab=false;
 document.querySelectorAll('.sc[data-tab="decision"]').forEach(function(s){
 s.style.borderLeft='3px solid #ea580c';
 var sh=s.querySelector('.sh');if(sh)sh.style.display='';
@@ -2732,7 +2734,7 @@ var _dcH=document.getElementById('deHeader');if(_dcH)_dcH.style.display='';
 // This prevents stale Dream/PMS/Multibagger content showing in other tabs
 var _dr=document.getElementById('deResult');
 if(_dr){
-var _sharedTabs=['dreamportfolio','multibagger','momentumradar','pms','decision'];
+var _sharedTabs=['dreamportfolio','multibagger','momentumradar','highprob','optionspulse','pms','decision'];
 if(_sharedTabs.indexOf(tab)>=0){
 // Clear old content from previous tab
 _dr.innerHTML='';
@@ -2780,6 +2782,32 @@ var _mrDC=document.getElementById('deControls');if(_mrDC)_mrDC.style.display='no
 var _mrDH=document.getElementById('deHeader');if(_mrDH)_mrDH.style.display='none';
 window._activeMomentumRadarTab=true;
 if(typeof loadMomentumRadar==='function')setTimeout(loadMomentumRadar,100);
+}
+// r51: High-Probability Setups tab
+if(tab==='highprob'){
+if(!window._isDreamUser){var _hp0=document.getElementById('deResult');if(_hp0)_hp0.innerHTML='<div style="padding:60px 20px;text-align:center"><div style="font-size:48px;margin-bottom:12px">🔒</div><div style="font-size:18px;font-weight:900;color:var(--text);font-family:Sora,sans-serif">Ultra-Premium Feature</div><div style="font-size:12px;color:var(--text3);margin-top:8px">High-Prob Setups is exclusive. Contact support for access.</div></div>';return;}
+document.querySelectorAll('.sc[data-tab="decision"]').forEach(function(s){
+s.style.display='block';
+s.style.borderLeft='3px solid #059669';
+var sh=s.querySelector('.sh');if(sh)sh.style.display='none';
+});
+var _hpDC=document.getElementById('deControls');if(_hpDC)_hpDC.style.display='none';
+var _hpDH=document.getElementById('deHeader');if(_hpDH)_hpDH.style.display='none';
+window._activeHighProbTab=true;
+if(typeof loadHighProb==='function')setTimeout(loadHighProb,100);
+}
+// r52: Options Pulse tab — options setup detector
+if(tab==='optionspulse'){
+if(!window._isDreamUser){var _op0=document.getElementById('deResult');if(_op0)_op0.innerHTML='<div style="padding:60px 20px;text-align:center"><div style="font-size:48px;margin-bottom:12px">🔒</div><div style="font-size:18px;font-weight:900;color:var(--text);font-family:Sora,sans-serif">Ultra-Premium Feature</div><div style="font-size:12px;color:var(--text3);margin-top:8px">Options Pulse is exclusive. Contact support for access.</div></div>';return;}
+document.querySelectorAll('.sc[data-tab="decision"]').forEach(function(s){
+s.style.display='block';
+s.style.borderLeft='3px solid #7c3aed';
+var sh=s.querySelector('.sh');if(sh)sh.style.display='none';
+});
+var _opDC=document.getElementById('deControls');if(_opDC)_opDC.style.display='none';
+var _opDH=document.getElementById('deHeader');if(_opDH)_opDH.style.display='none';
+window._activeOptionsPulseTab=true;
+if(typeof loadOptionsPulse==='function')setTimeout(loadOptionsPulse,100);
 }
 // PMS — Portfolio Management System
 if(tab==='pms'){
@@ -3085,7 +3113,7 @@ h+='</div>';
 var inda_ytd=(em.india_etf||{}).ytd||0;var fxi_ytd=(em.china_etf||{}).ytd||0;var spy_ytd=(dm.spy||{}).ytd||0;var eem_ytd=(em.em_etf||{}).ytd||0;
 h+='<div style="padding:14px;border-radius:12px;background:linear-gradient(135deg,rgba(217,119,6,.04),rgba(5,150,105,.02));border:1px solid var(--border)">';
 h+='<div style="font-size:11px;font-weight:800;color:var(--text);margin-bottom:8px">📊 YTD Performance Comparison</div>';
-var items=[{l:'US S&P 500 (SPY)',v:spy_ytd},{l:'IN India (INDA)',v:inda_ytd},{l:'🇨🇳 China (FXI)',v:fxi_ytd},{l:'🌏 EM Broad (EEM)',v:eem_ytd}];
+var items=[{l:'US S&P 500 (SPY)',v:spy_ytd},{l:'India (INDA)',v:inda_ytd},{l:'🇨🇳 China (FXI)',v:fxi_ytd},{l:'🌏 EM Broad (EEM)',v:eem_ytd}];
 items.sort(function(a,b){return b.v-a.v});
 items.forEach(function(it){
 var w=Math.min(100,Math.max(5,Math.abs(it.v)*2.5));var c=it.v>=0?'#10b981':'#ef4444';
@@ -3132,7 +3160,7 @@ var btnIN=document.getElementById('erBtnIN');var btnUS=document.getElementById('
 if(btnIN){btnIN.disabled=true;btnIN.style.opacity=reg==='IN'?'1':'.5'}
 if(btnUS){btnUS.disabled=true;btnUS.style.opacity=reg==='US'?'1':'.5'}
 var _nStocks=reg==='IN'?'~190 Nifty 500':'~85 S&P 100';
-el.innerHTML='<div style="padding:24px;border-radius:14px;background:linear-gradient(160deg,#f0fdf4,#ecfdf5);text-align:center"><div style="font-size:28px;margin-bottom:6px">🔬</div><div style="font-size:14px;font-weight:800;color:#0A1628;font-family:Sora,sans-serif">Engine Report — '+(reg==='IN'?'IN India':'US USA')+'</div><div style="font-size:10px;color:#5E6F8E;margin-top:4px">Scanning '+_nStocks+' stocks through Quality Check, then Wealth Pro deep-scan on passes</div><div style="margin-top:16px;display:flex;justify-content:center;gap:20px"><div id="erDone" style="text-align:center"><div style="font-size:24px;font-weight:900;color:#10b981;font-family:var(--mono)">0</div><div style="font-size:8px;color:#5E6F8E">Done</div></div><div id="erTotal" style="text-align:center"><div style="font-size:24px;font-weight:900;color:#4a6fa5;font-family:var(--mono)">--</div><div style="font-size:8px;color:#5E6F8E">Total</div></div><div id="erPhase" style="text-align:center"><div style="font-size:24px;font-weight:900;color:#1A3A78;font-family:var(--mono)">V1</div><div style="font-size:8px;color:#5E6F8E">Phase</div></div></div><div style="width:100%;max-width:400px;height:8px;border-radius:8px;background:rgba(26,58,120,.1);margin:14px auto 0;overflow:hidden"><div id="erBar" style="height:100%;width:0%;border-radius:8px;background:linear-gradient(90deg,#059669,#1A3A78);transition:width .5s"></div></div><div id="erCurrent" style="font-size:9px;color:#4a6fa5;margin-top:6px">Starting...</div><div style="font-size:8px;color:#4a6fa5;margin-top:8px">⏱️ First run ~5-10 min · Cached 30 min after</div></div>';
+el.innerHTML='<div style="padding:24px;border-radius:14px;background:linear-gradient(160deg,#f0fdf4,#ecfdf5);text-align:center"><div style="font-size:28px;margin-bottom:6px">🔬</div><div style="font-size:14px;font-weight:800;color:#0A1628;font-family:Sora,sans-serif">Engine Report — '+(reg==='IN'?'India':'USA')+'</div><div style="font-size:10px;color:#5E6F8E;margin-top:4px">Scanning '+_nStocks+' stocks through Quality Check, then Wealth Pro deep-scan on passes</div><div style="margin-top:16px;display:flex;justify-content:center;gap:20px"><div id="erDone" style="text-align:center"><div style="font-size:24px;font-weight:900;color:#10b981;font-family:var(--mono)">0</div><div style="font-size:8px;color:#5E6F8E">Done</div></div><div id="erTotal" style="text-align:center"><div style="font-size:24px;font-weight:900;color:#4a6fa5;font-family:var(--mono)">--</div><div style="font-size:8px;color:#5E6F8E">Total</div></div><div id="erPhase" style="text-align:center"><div style="font-size:24px;font-weight:900;color:#1A3A78;font-family:var(--mono)">V1</div><div style="font-size:8px;color:#5E6F8E">Phase</div></div></div><div style="width:100%;max-width:400px;height:8px;border-radius:8px;background:rgba(26,58,120,.1);margin:14px auto 0;overflow:hidden"><div id="erBar" style="height:100%;width:0%;border-radius:8px;background:linear-gradient(90deg,#059669,#1A3A78);transition:width .5s"></div></div><div id="erCurrent" style="font-size:9px;color:#4a6fa5;margin-top:6px">Starting...</div><div style="font-size:8px;color:#4a6fa5;margin-top:8px">⏱️ First run ~5-10 min · Cached 30 min after</div></div>';
 
 // Start polling progress
 window._erPollTimer=setInterval(function(){
@@ -3168,7 +3196,7 @@ h+='<div style="border-radius:16px;overflow:hidden;border:2px solid #10b98130;bo
 h+='<div style="padding:20px 24px;background:linear-gradient(160deg,#f0fdf4,#ecfdf5);position:relative;overflow:hidden">';
 h+='<div style="position:absolute;inset:0;background:radial-gradient(ellipse at 80% 20%,rgba(16,185,129,.15),transparent 60%)"></div>';
 h+='<div style="position:relative">';
-h+='<div style="font-size:9px;letter-spacing:2px;color:#4a6fa5">ENGINE REPORT · '+(d.region==='IN'?'IN INDIA':'US USA')+'</div>';
+h+='<div style="font-size:9px;letter-spacing:2px;color:#4a6fa5">ENGINE REPORT · '+(d.region==='IN'?'INDIA':'USA')+'</div>';
 h+='<div style="font-size:20px;font-weight:900;color:#0A1628;font-family:Sora,sans-serif;margin-top:4px">Stocks Validated by Both Engines</div>';
 h+='<div style="font-size:11px;color:#3b5998;margin-top:4px">'+d.totalScanned+' scanned → '+d.v1Passes+' passed V1 → '+d.v2Scanned+' deep-scanned V2 → <strong style="color:#10b981">'+sm.mustOwn+' MUST OWN</strong></div>';
 h+='<div style="display:flex;gap:16px;margin-top:14px">';
@@ -4564,8 +4592,8 @@ const isPenny=cat==='penny';
 let h=`<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
 <div style="font-family:'Sora',sans-serif;font-size:12px;font-weight:700;color:var(--text)">${data.title}</div>
 <div class="pick-geo">
-<button class="${_pickGeo==='india'?'active':''}" onclick="togglePickGeo(this,'india')" style="${_pickGeo==='india'?'background:var(--amber);color:#fff;border-color:var(--amber)':''}">IN India</button>
-<button class="${_pickGeo==='usa'?'active':''}" onclick="togglePickGeo(this,'usa')" style="${_pickGeo==='usa'?'background:var(--amber);color:#fff;border-color:var(--amber)':''}">US USA</button>
+<button class="${_pickGeo==='india'?'active':''}" onclick="togglePickGeo(this,'india')" style="${_pickGeo==='india'?'background:var(--amber);color:#fff;border-color:var(--amber)':''}">India</button>
+<button class="${_pickGeo==='usa'?'active':''}" onclick="togglePickGeo(this,'usa')" style="${_pickGeo==='usa'?'background:var(--amber);color:#fff;border-color:var(--amber)':''}">USA</button>
 </div></div>`;
 h+=`<div style="overflow-x:auto"><table class="pick-tbl"><tr><th>#</th><th>Company</th><th>Rating</th><th style="color:var(--cyan)">Live Price</th><th style="color:var(--green)">Entry Zone</th><th style="color:var(--cyan)">Decision &amp; Timeline</th><th>Edge</th><th>${isIdx?'Returns':'Type'}</th></tr>`;
 list.forEach((s,i)=>{
@@ -6096,8 +6124,8 @@ return h;
 // ═══ RENDER WITH COUNTRY TABS ═══
 let h='';
 h+='<div style="display:flex;gap:8px;margin-bottom:14px">';
-h+='<button class="stab active" onclick="switchPerfGeo(this,\'india\')" style="padding:6px 18px;font-size:11px">IN India</button>';
-h+='<button class="stab" onclick="switchPerfGeo(this,\'usa\')" style="padding:6px 18px;font-size:11px">US USA</button>';
+h+='<button class="stab active" onclick="switchPerfGeo(this,\'india\')" style="padding:6px 18px;font-size:11px">India</button>';
+h+='<button class="stab" onclick="switchPerfGeo(this,\'usa\')" style="padding:6px 18px;font-size:11px">USA</button>';
 h+='</div>';
 
 h+='<div id="perfIndia">'+buildCountry(data.india,'IN','₹','India')+'</div>';
@@ -6274,9 +6302,9 @@ if(_customVal&&_customVal.length>=2){
   setTimeout(function(){algoSelect(_customVal,null)},300);
 }else{
   var ac=document.getElementById('algoCard');
-  if(ac)ac.innerHTML='<div style="text-align:center;padding:40px"><div style="font-size:36px;margin-bottom:8px;opacity:.4">📊</div><div style="font-size:14px;font-weight:800;color:var(--text);margin-bottom:6px">'+( reg==='US'?'US USA':'IN India')+' Selected</div><div style="font-size:11px;color:var(--text3);max-width:400px;margin:0 auto">Click an index button above ('+( reg==='US'?'SPY, QQQ, IWM':'NIFTY, BANKNIFTY, SENSEX')+') or type any stock symbol to analyze.</div></div>';
+  if(ac)ac.innerHTML='<div style="text-align:center;padding:40px"><div style="font-size:36px;margin-bottom:8px;opacity:.4">📊</div><div style="font-size:14px;font-weight:800;color:var(--text);margin-bottom:6px">'+( reg==='US'?'USA':'India')+' Selected</div><div style="font-size:11px;color:var(--text3);max-width:400px;margin:0 auto">Click an index button above ('+( reg==='US'?'SPY, QQQ, IWM':'NIFTY, BANKNIFTY, SENSEX')+') or type any stock symbol to analyze.</div></div>';
 }
-var ac=document.getElementById('algoCard');if(ac)ac.innerHTML='<div style="text-align:center;padding:30px;color:var(--text3);font-size:11px">Switching to '+(reg==='US'?'US USA':'IN India')+'...</div>';
+var ac=document.getElementById('algoCard');if(ac)ac.innerHTML='<div style="text-align:center;padding:30px;color:var(--text3);font-size:11px">Switching to '+(reg==='US'?'USA':'India')+'...</div>';
 }
 
 // ═══ TOP TRADES TABLE — Region-aware progressive loading ═══
@@ -6570,7 +6598,7 @@ document.getElementById('scanRegIN').style.color=reg==='IN'?'#fff':'var(--text3)
 document.getElementById('scanRegUS').style.background=reg==='US'?'#1a56db':'var(--bg2)';
 document.getElementById('scanRegUS').style.color=reg==='US'?'#fff':'var(--text3)';
 // Clear all stale results from previous region
-var flag=reg==='US'?'US USA':'IN India';
+var flag=reg==='US'?'USA':'India';
 var hg=document.getElementById('heatmapGrid');
 if(hg)hg.innerHTML='<div style="text-align:center;padding:30px;color:var(--text3);font-size:11px">Switched to '+flag+'. Click <strong>Refresh</strong> to load heatmap.</div>';
 var sr=document.getElementById('screenerResult');
@@ -6906,14 +6934,14 @@ document.getElementById('siStocksIN').style.display=reg==='IN'?'flex':'none';
 document.getElementById('siStocksUS').style.display=reg==='US'?'flex':'none';
 // Clear results on region switch
 var siR=document.getElementById('siResult');
-if(siR)siR.innerHTML='<div style="text-align:center;padding:40px"><div style="font-size:40px;margin-bottom:8px;opacity:.3">🔬</div><div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:4px">Select a '+(reg==='US'?'US':'Indian')+' stock above</div><div style="font-size:11px;color:var(--text3);max-width:420px;margin:0 auto">Region switched to <strong>'+(reg==='US'?'US USA':'IN India')+'</strong>. Pick a stock or type any ticker to get the full 13-section report.</div></div>';
+if(siR)siR.innerHTML='<div style="text-align:center;padding:40px"><div style="font-size:40px;margin-bottom:8px;opacity:.3">🔬</div><div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:4px">Select a '+(reg==='US'?'US':'Indian')+' stock above</div><div style="font-size:11px;color:var(--text3);max-width:420px;margin:0 auto">Region switched to <strong>'+(reg==='US'?'USA':'India')+'</strong>. Pick a stock or type any ticker to get the full 13-section report.</div></div>';
 var tpR=document.getElementById('topPicksResult');
-if(tpR)tpR.innerHTML='<div style="text-align:center;padding:20px;color:var(--text3);font-size:10px">Click <strong>Scan All Stocks</strong> to analyze <strong>'+(reg==='US'?'70+ US':'200+ NSE')+'</strong> stocks for '+(reg==='US'?'US USA':'IN India')+'</div>';
+if(tpR)tpR.innerHTML='<div style="text-align:center;padding:20px;color:var(--text3);font-size:10px">Click <strong>Scan All Stocks</strong> to analyze <strong>'+(reg==='US'?'70+ US':'200+ NSE')+'</strong> stocks for '+(reg==='US'?'USA':'India')+'</div>';
 // Reset loading flags
 _topPicksLoading=false;
 _sectorLoading=false;
 var secR=document.getElementById('sectorIntelResult');
-if(secR)secR.innerHTML='<div style="text-align:center;padding:20px;color:var(--text3);font-size:10px">Click <strong>Scan Sectors</strong> to find top 5 stocks per sector for '+(reg==='US'?'US USA':'IN India')+'</div>';
+if(secR)secR.innerHTML='<div style="text-align:center;padding:20px;color:var(--text3);font-size:10px">Click <strong>Scan Sectors</strong> to find top 5 stocks per sector for '+(reg==='US'?'USA':'India')+'</div>';
 }
 var _siLoading=false;
 function runStockIntel(sym){
@@ -7378,7 +7406,7 @@ if(ins)ins.style.display=reg==='IN'?'flex':'none';
 if(uss)uss.style.display=reg==='US'?'flex':'none';
 }
 if(window._fillDESelect)window._fillDESelect(reg);
-var r=document.getElementById('deResult');if(r)r.innerHTML='<div style="text-align:center;padding:30px;color:var(--text3);font-size:10px">Switched to '+(reg==='US'?'US USA':'IN India')+'. Select a stock or index.</div>';
+var r=document.getElementById('deResult');if(r)r.innerHTML='<div style="text-align:center;padding:30px;color:var(--text3);font-size:10px">Switched to '+(reg==='US'?'USA':'India')+'. Select a stock or index.</div>';
 }
 window._deMode='investor';
 function switchDEMode(mode){
@@ -10494,6 +10522,384 @@ el.innerHTML=_mrRegBar+_mrCatBar+h;
 }).catch(function(e){clearInterval(_mrTimer);el.innerHTML=_mrRegBar+_mrCatBar+'<div style="padding:20px;color:#ef4444">Error: '+e.message+'</div>';});
 }
 
+// ═══════════════════════════════════════════════════════════════════════
+// HIGH-PROBABILITY SETUPS (r51 — UI)
+// Backend: /api/high-prob-setups?region=X&mode=balanced|conservative|today
+// Shows stocks meeting multiple technical setup criteria with realistic win
+// rate estimates (60-80%) based on published trading literature.
+// HONEST: no fake 99% win rate claims anywhere in this feature.
+// ═══════════════════════════════════════════════════════════════════════
+function loadHighProb(forceReg, forceMode){
+if(!window._activeHighProbTab)return;
+var el=document.getElementById('deResult');if(!el)return;
+var reg=forceReg||window._deRegion||'US';
+window._deRegion=reg;
+var mode=forceMode||window._hpMode||'balanced';
+window._hpMode=mode;
+var _eml=document.getElementById('email');
+var email=window._verifiedEmail||(_eml?(_eml.dataset.real||_eml.value):'').trim().toLowerCase();
+console.log('🎯 High-Prob Setups: email='+email+' region='+reg+' mode='+mode);
+var _hpRegBar=_renderRegionToggle('loadHighProb',reg);
+var _hpModeBar='<div style="display:flex;justify-content:center;gap:6px;margin-bottom:14px;flex-wrap:wrap">';
+[['balanced','⚖️ Balanced','2+ criteria · ~60-70% historical win rate'],
+ ['conservative','🛡️ Conservative','4+ criteria · ~75-80% win rate · fewer signals'],
+ ['today','📅 Today\'s Best','2+ criteria from today\'s Momentum Radar scan']
+].forEach(function(m){
+  var isActive=m[0]===mode;
+  var bg=isActive?'linear-gradient(135deg,#047857,#059669)':'#ffffff';
+  var color=isActive?'#ffffff':'#0f172a';
+  var border=isActive?'#047857':'#cbd5e1';
+  _hpModeBar+='<button type="button" onclick="loadHighProb(null,\''+m[0]+'\')" title="'+m[2]+'" '+
+    'style="padding:8px 16px;font-size:11px;font-weight:700;'+
+    'border:1px solid '+border+';cursor:pointer;font-family:Sora,sans-serif;'+
+    'background:'+bg+';color:'+color+';border-radius:10px;white-space:nowrap">'+m[1]+'</button>';
+});
+_hpModeBar+='</div>';
+
+el.innerHTML=_hpRegBar+_hpModeBar+'<div style="padding:40px;text-align:center"><div style="font-size:48px;margin-bottom:12px">🎯</div><div style="font-size:18px;font-weight:900;color:var(--text);font-family:Sora,sans-serif;margin-bottom:4px">Scanning for High-Probability Setups</div><div style="font-size:11px;color:#2d4373;margin-bottom:16px">Mode: <strong>'+mode.toUpperCase()+'</strong> · 6 technical patterns · Entry/Stop/Target calculations</div><div style="max-width:400px;margin:0 auto"><div style="display:flex;justify-content:space-between;font-size:9px;color:#2d4373;margin-bottom:4px"><span id="hpPhase">Batch downloading price history...</span><span id="hpPct">0%</span></div><div style="height:6px;border-radius:8px;background:#f1f5f9;overflow:hidden"><div id="hpBar" style="height:100%;border-radius:8px;background:linear-gradient(90deg,#059669,#047857);width:0%;transition:width .5s"></div></div></div><div style="font-size:9px;color:#2d4373;margin-top:12px">VCP · Pullback-to-MA · Volume Trend · Oversold Bounce · Inside Day · Uptrend Align</div><div style="font-size:9px;color:#059669;margin-top:6px;font-weight:700">⏱️ Estimated: 30-60 seconds</div></div>';
+
+var _hpTimer=setInterval(function(){
+  window._hpProg=(window._hpProg||0)+0.9+Math.random()*0.6;
+  window._hpProg=Math.min(92,window._hpProg);
+  var bar=document.getElementById("hpBar");var pct=document.getElementById("hpPct");var phase=document.getElementById("hpPhase");
+  if(bar)bar.style.width=window._hpProg+"%";
+  if(pct)pct.textContent=Math.round(window._hpProg)+"%";
+  if(phase){
+    var _phases=["Batch downloading price history...","Detecting VCP patterns...","Checking moving averages...","Scanning for volume surges...","Finding oversold bounces...","Computing entry/stop/target levels..."];
+    phase.textContent=_phases[Math.min(5,Math.floor(window._hpProg/16))];
+  }
+},1200);
+
+fetch('/api/high-prob-setups?email='+encodeURIComponent(email)+'&region='+reg+'&mode='+mode).then(function(r){return r.json()}).then(function(d){
+  clearInterval(_hpTimer);window._hpProg=0;
+  if(!d.success){el.innerHTML=_hpRegBar+_hpModeBar+'<div style="padding:30px;text-align:center;color:#ef4444">'+(d.error||'Unknown error')+'</div>';return}
+  var h='';
+  var csym=reg==='US'?'$':'₹';
+  var fmt=function(n){return (n||0).toLocaleString('en-US',{maximumFractionDigits:2});};
+  // Hero
+  h+='<div class="dc" style="border:1px solid #05966920;box-shadow:0 20px 60px #05966908;margin-bottom:20px">';
+  h+='<div class="dc-hero" style="background:linear-gradient(160deg,#064e3b,#047857,#059669)">';
+  h+='<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">';
+  h+='<div><div style="font-size:24px;font-weight:900;color:#fff;font-family:Sora,sans-serif">High-Probability Setups</div>';
+  h+='<div style="font-size:12px;color:rgba(255,255,255,.85);margin-top:4px">'+(mode==='conservative'?'Conservative — 4+ criteria, ~75-80% historical win rate':mode==='today'?'Today\'s Best — from live scan':'Balanced — 2+ criteria, ~60-70% historical win rate')+' · '+(reg==='US'?'US Markets':'India (NSE)')+'</div></div>';
+  h+='<div style="display:flex;gap:14px;align-items:center">';
+  h+='<div style="text-align:center;padding:8px 14px;border-radius:12px;background:rgba(255,255,255,.15)"><div style="font-size:22px;font-weight:900;color:#fff;font-family:var(--mono)">'+(d.setups_found||0)+'</div><div style="font-size:8px;color:rgba(255,255,255,.85)">Setups</div></div>';
+  h+='<div style="text-align:center;padding:8px 14px;border-radius:12px;background:rgba(255,255,255,.15)"><div style="font-size:22px;font-weight:900;color:#fff;font-family:var(--mono)">'+(d.universe_scanned||0)+'</div><div style="font-size:8px;color:rgba(255,255,255,.85)">Scanned</div></div>';
+  h+='<div style="text-align:center;padding:8px 14px;border-radius:12px;background:rgba(255,255,255,.15)"><div style="font-size:22px;font-weight:900;color:#fff;font-family:var(--mono)">'+(d.elapsed||0)+'s</div><div style="font-size:8px;color:rgba(255,255,255,.85)">Time</div></div>';
+  h+='</div></div></div></div>';
+  
+  // Setup card renderer
+  function _hpCard(s,rank){
+    var c='<div class="dc-trade-card" style="cursor:default">';
+    // Header: symbol + price + confidence badge
+    c+='<div style="padding:12px 16px;background:'+s.confidence_color+'08;border-bottom:1px solid '+s.confidence_color+'14;display:flex;justify-content:space-between;align-items:center">';
+    c+='<div style="display:flex;align-items:center;gap:10px">';
+    c+='<div style="width:28px;height:28px;border-radius:50%;background:'+s.confidence_color+'18;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:900;color:'+s.confidence_color+';font-family:var(--mono)">'+rank+'</div>';
+    c+='<div><div style="font-size:14px;font-weight:900;color:var(--text);font-family:var(--mono);cursor:pointer" onclick="switchDEMode(\'investor\');loadDE(\''+s.symbol+'\')" title="Open full analysis">'+s.symbol+' ↗</div>';
+    c+='<div style="font-size:10px;color:var(--text3);font-family:var(--mono)">'+csym+fmt(s.price)+' · R:R '+s.risk_reward+'</div></div></div>';
+    c+='<div style="text-align:right;display:flex;flex-direction:column;align-items:flex-end;gap:2px">';
+    c+='<div style="font-size:22px;font-weight:900;color:'+s.confidence_color+';font-family:var(--mono);line-height:1">'+s.confidence_pct+'%</div>';
+    c+='<div style="font-size:8px;font-weight:800;color:'+s.confidence_color+';letter-spacing:.5px">'+s.confidence_label.toUpperCase()+'</div>';
+    c+='<div style="font-size:8px;color:var(--text3);font-weight:600">'+s.criteria_met+'/6 criteria</div></div></div>';
+    
+    // Setup names as chips
+    if(s.setup_names&&s.setup_names.length>0){
+      c+='<div style="padding:10px 16px;background:#f8fafc;border-bottom:1px solid #e2e8f0;display:flex;gap:4px;flex-wrap:wrap">';
+      s.setup_names.forEach(function(name){
+        c+='<span style="font-size:9px;padding:3px 9px;border-radius:100px;background:'+s.confidence_color+'10;color:'+s.confidence_color+';font-weight:700;border:1px solid '+s.confidence_color+'20">'+name+'</span>';
+      });
+      c+='</div>';
+    }
+    
+    // Trade levels grid
+    c+='<div style="display:grid;grid-template-columns:repeat(4,1fr);border-bottom:1px solid var(--border)">';
+    // Entry zone
+    c+='<div style="padding:10px 6px;text-align:center;border-right:1px solid var(--border);background:#f0fdf4">';
+    c+='<div style="font-size:8px;font-weight:700;color:#059669;letter-spacing:.4px">ENTRY</div>';
+    c+='<div style="font-size:12px;font-weight:900;color:#059669;font-family:var(--mono);margin-top:2px">'+csym+fmt(s.entry_zone.low)+'-'+fmt(s.entry_zone.high)+'</div>';
+    c+='</div>';
+    // Stop loss
+    c+='<div style="padding:10px 6px;text-align:center;border-right:1px solid var(--border);background:#fef2f2">';
+    c+='<div style="font-size:8px;font-weight:700;color:#dc2626;letter-spacing:.4px">STOP</div>';
+    c+='<div style="font-size:12px;font-weight:900;color:#dc2626;font-family:var(--mono);margin-top:2px">'+csym+fmt(s.stop_loss)+'</div>';
+    var stopPct=((s.stop_loss-s.price)/s.price*100).toFixed(1);
+    c+='<div style="font-size:8px;color:var(--text3);margin-top:2px">'+stopPct+'%</div>';
+    c+='</div>';
+    // Target conservative
+    c+='<div style="padding:10px 6px;text-align:center;border-right:1px solid var(--border);background:#eff6ff">';
+    c+='<div style="font-size:8px;font-weight:700;color:#2563eb;letter-spacing:.4px">T1</div>';
+    c+='<div style="font-size:12px;font-weight:900;color:#2563eb;font-family:var(--mono);margin-top:2px">'+csym+fmt(s.target_conservative)+'</div>';
+    var t1Pct=((s.target_conservative-s.price)/s.price*100).toFixed(1);
+    c+='<div style="font-size:8px;color:var(--text3);margin-top:2px">+'+t1Pct+'%</div>';
+    c+='</div>';
+    // Target aggressive
+    c+='<div style="padding:10px 6px;text-align:center;background:#f0f9ff">';
+    c+='<div style="font-size:8px;font-weight:700;color:#0369a1;letter-spacing:.4px">T2</div>';
+    c+='<div style="font-size:12px;font-weight:900;color:#0369a1;font-family:var(--mono);margin-top:2px">'+csym+fmt(s.target_aggressive)+'</div>';
+    var t2Pct=((s.target_aggressive-s.price)/s.price*100).toFixed(1);
+    c+='<div style="font-size:8px;color:var(--text3);margin-top:2px">+'+t2Pct+'%</div>';
+    c+='</div>';
+    c+='</div>';
+    
+    // Setup notes (why these patterns fired)
+    if(s.setup_notes&&s.setup_notes.length>0){
+      c+='<div style="padding:10px 16px;border-bottom:1px solid var(--border);font-size:10px;color:var(--text);line-height:1.5">';
+      c+='<div style="font-size:8px;font-weight:700;color:var(--text3);letter-spacing:.4px;margin-bottom:4px">WHY THIS SETUP</div>';
+      s.setup_notes.forEach(function(note){
+        c+='<div style="margin-top:3px">• '+note+'</div>';
+      });
+      c+='</div>';
+    }
+    
+    // Win rate disclaimer (on each card)
+    c+='<div style="padding:8px 16px;background:#fefce8;font-size:9px;color:#78350f;line-height:1.4;border-top:1px solid #fde68a">';
+    c+='<strong>📊 '+s.win_rate_note+'</strong>';
+    c+='</div>';
+    return c;
+  }
+  
+  // Empty state
+  if(!d.stocks||d.stocks.length===0){
+    h+='<div style="padding:40px;text-align:center"><div style="font-size:40px;margin-bottom:12px">🔍</div>';
+    h+='<div style="font-size:16px;font-weight:800;color:var(--text);margin-bottom:8px">No high-probability setups today</div>';
+    h+='<div style="font-size:10px;color:var(--text3);max-width:450px;margin:0 auto;line-height:1.6">High-probability setups are rare by design. '+(mode==='conservative'?'Try <strong>Balanced</strong> mode for more signals.':'Markets don\'t always offer clean setups. Come back in a few hours.')+'</div></div>';
+  } else {
+    // Setup cards (no additional bucketing — sorted by criteria count descending)
+    h+='<div style="margin-bottom:20px">';
+    h+='<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px"><div style="font-size:14px;font-weight:900;color:#059669;font-family:Sora,sans-serif">🎯 Qualified Setups</div>';
+    h+='<span style="padding:2px 10px;border-radius:100px;background:#05966910;color:#059669;font-size:9px;font-weight:800">'+d.stocks.length+' stocks · '+d.min_criteria_required+'+ criteria</span></div>';
+    h+='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(420px,1fr));gap:14px">';
+    d.stocks.forEach(function(s,i){h+=_hpCard(s,i+1);});
+    h+='</div></div>';
+  }
+  
+  // How to use (from backend)
+  if(d.how_to_use&&d.how_to_use.length>0){
+    h+='<div style="padding:12px 16px;background:#eff6ff;border:1px solid #2563eb20;border-radius:8px;margin-top:16px">';
+    h+='<div style="font-size:11px;font-weight:800;color:#2563eb;margin-bottom:6px;font-family:Sora,sans-serif">📘 How to use these setups</div>';
+    h+='<ol style="margin:0;padding-left:18px;font-size:10px;color:var(--text);line-height:1.6">';
+    d.how_to_use.forEach(function(step){h+='<li style="margin-top:3px">'+step+'</li>';});
+    h+='</ol></div>';
+  }
+  
+  // Honest disclaimer
+  if(d.honest_disclaimer){
+    h+='<div style="padding:12px 14px;background:#fef3c708;border:1px solid #d9770620;border-radius:8px;margin-top:10px;font-size:10px;color:#78350f;line-height:1.5">';
+    h+='<strong>⚠ Honest disclaimer:</strong> '+d.honest_disclaimer;
+    h+='</div>';
+  }
+  
+  el.innerHTML=_hpRegBar+_hpModeBar+h;
+}).catch(function(e){
+  clearInterval(_hpTimer);
+  el.innerHTML=_hpRegBar+_hpModeBar+'<div style="padding:20px;color:#ef4444">Error: '+e.message+'</div>';
+});
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// OPTIONS PULSE (r52 — UI)
+// Backend: /api/options-setup-detector?region=X
+// Surfaces stocks with unusual options activity — candidates for short-term
+// options trades. HONEST: 15-min delayed data (US), India requires Upstox
+// F&O or Kite Connect for real options data.
+// ═══════════════════════════════════════════════════════════════════════
+function loadOptionsPulse(forceReg){
+if(!window._activeOptionsPulseTab)return;
+var el=document.getElementById('deResult');if(!el)return;
+var reg=forceReg||window._deRegion||'US';
+window._deRegion=reg;
+var _eml=document.getElementById('email');
+var email=window._verifiedEmail||(_eml?(_eml.dataset.real||_eml.value):'').trim().toLowerCase();
+console.log('⚡ Options Pulse: email='+email+' region='+reg);
+var _opRegBar=_renderRegionToggle('loadOptionsPulse',reg);
+
+// Persistent warning banner — never dismissible, ensures user sees limitations
+var _warningBanner='<div style="padding:10px 14px;background:#fef3c7;border:1px solid #d97706;border-radius:8px;margin-bottom:14px;font-size:10px;color:#78350f;line-height:1.5">';
+_warningBanner+='<strong>⚠ 15-MIN DELAYED SCREENER — NOT A LIVE FEED</strong><br>';
+_warningBanner+='This identifies candidates for options trades. DO NOT trade on these prices directly. Always verify on your broker\'s real-time quotes before executing. Max 1-2% portfolio per options trade.';
+_warningBanner+='</div>';
+
+el.innerHTML=_opRegBar+_warningBanner+'<div style="padding:40px;text-align:center"><div style="font-size:48px;margin-bottom:12px">⚡</div><div style="font-size:18px;font-weight:900;color:var(--text);font-family:Sora,sans-serif;margin-bottom:4px">Scanning Options Activity</div><div style="font-size:11px;color:#2d4373;margin-bottom:16px">Analyzing call/put flow · ATM IV · technical direction</div><div style="max-width:400px;margin:0 auto"><div style="display:flex;justify-content:space-between;font-size:9px;color:#2d4373;margin-bottom:4px"><span id="opPhase">Fetching price history...</span><span id="opPct">0%</span></div><div style="height:6px;border-radius:8px;background:#f1f5f9;overflow:hidden"><div id="opBar" style="height:100%;border-radius:8px;background:linear-gradient(90deg,#7c3aed,#5b21b6);width:0%;transition:width .5s"></div></div></div><div style="font-size:9px;color:#2d4373;margin-top:12px">Call/Put Flow · Volume Surge · Expected Move · Direction</div><div style="font-size:9px;color:#7c3aed;margin-top:6px;font-weight:700">⏱️ Estimated: 30-60 seconds</div></div>';
+
+var _opTimer=setInterval(function(){
+  window._opProg=(window._opProg||0)+0.9+Math.random()*0.6;
+  window._opProg=Math.min(92,window._opProg);
+  var bar=document.getElementById("opBar");var pct=document.getElementById("opPct");var phase=document.getElementById("opPhase");
+  if(bar)bar.style.width=window._opProg+"%";
+  if(pct)pct.textContent=Math.round(window._opProg)+"%";
+  if(phase){
+    var _phases=["Fetching price history...","Pulling options chains...","Analyzing call/put ratios...","Computing expected moves...","Scoring directional setups...","Ranking candidates..."];
+    phase.textContent=_phases[Math.min(5,Math.floor(window._opProg/16))];
+  }
+},1200);
+
+fetch('/api/options-setup-detector?email='+encodeURIComponent(email)+'&region='+reg).then(function(r){return r.json()}).then(function(d){
+  clearInterval(_opTimer);window._opProg=0;
+  if(!d.success){el.innerHTML=_opRegBar+_warningBanner+'<div style="padding:30px;text-align:center;color:#ef4444">'+(d.error||'Unknown error')+'</div>';return}
+  var h='';
+  var csym=reg==='US'?'$':'₹';
+  var fmt=function(n){return (n||0).toLocaleString('en-US',{maximumFractionDigits:2});};
+  
+  // India broker-needed state
+  if(d.broker_status_needed){
+    h+='<div style="padding:40px 20px;text-align:center;border:2px dashed #d97706;border-radius:12px;background:#fef3c7">';
+    h+='<div style="font-size:48px;margin-bottom:12px">🔌</div>';
+    h+='<div style="font-size:18px;font-weight:900;color:#78350f;font-family:Sora,sans-serif;margin-bottom:8px">Broker Connection Required for India Options</div>';
+    h+='<div style="font-size:11px;color:var(--text);max-width:500px;margin:0 auto;line-height:1.6">'+d.honest_disclaimer+'</div>';
+    h+='<div style="margin-top:20px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap">';
+    h+='<a href="/api/upstox-login" style="padding:10px 20px;background:#059669;color:#fff;border-radius:8px;text-decoration:none;font-size:11px;font-weight:700;font-family:Sora,sans-serif">🔗 Connect Upstox (Free)</a>';
+    h+='<a href="https://kite.trade/connect/login" target="_blank" style="padding:10px 20px;background:#6b7280;color:#fff;border-radius:8px;text-decoration:none;font-size:11px;font-weight:700;font-family:Sora,sans-serif">💳 Kite Connect (₹2000/mo)</a>';
+    h+='</div></div>';
+    el.innerHTML=_opRegBar+h;
+    return;
+  }
+  
+  // Hero
+  h+='<div class="dc" style="border:1px solid #7c3aed20;box-shadow:0 20px 60px #7c3aed08;margin-bottom:20px">';
+  h+='<div class="dc-hero" style="background:linear-gradient(160deg,#3b0764,#5b21b6,#7c3aed)">';
+  h+='<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">';
+  h+='<div><div style="font-size:24px;font-weight:900;color:#fff;font-family:Sora,sans-serif">Options Pulse</div>';
+  h+='<div style="font-size:12px;color:rgba(255,255,255,.85);margin-top:4px">Unusual options activity · '+(reg==='US'?'US Markets':'India')+' · '+(d.data_freshness||'15-min delayed')+'</div></div>';
+  h+='<div style="display:flex;gap:14px;align-items:center">';
+  h+='<div style="text-align:center;padding:8px 14px;border-radius:12px;background:rgba(255,255,255,.15)"><div style="font-size:22px;font-weight:900;color:#fff;font-family:var(--mono)">'+((d.bullish||[]).length)+'</div><div style="font-size:8px;color:rgba(255,255,255,.85)">🟢 Bull</div></div>';
+  h+='<div style="text-align:center;padding:8px 14px;border-radius:12px;background:rgba(255,255,255,.15)"><div style="font-size:22px;font-weight:900;color:#fff;font-family:var(--mono)">'+((d.bearish||[]).length)+'</div><div style="font-size:8px;color:rgba(255,255,255,.85)">🔴 Bear</div></div>';
+  h+='<div style="text-align:center;padding:8px 14px;border-radius:12px;background:rgba(255,255,255,.15)"><div style="font-size:22px;font-weight:900;color:#fff;font-family:var(--mono)">'+(d.elapsed||0)+'s</div><div style="font-size:8px;color:rgba(255,255,255,.85)">Time</div></div>';
+  h+='</div></div></div></div>';
+  
+  // Options candidate card renderer
+  function _opCard(s,rank){
+    var dirIcon=s.direction==='BULLISH'?'🟢':'🔴';
+    var accentC=s.direction_color;
+    var c='<div class="dc-trade-card" style="cursor:default">';
+    // Header
+    c+='<div style="padding:12px 16px;background:'+accentC+'08;border-bottom:1px solid '+accentC+'14;display:flex;justify-content:space-between;align-items:center">';
+    c+='<div style="display:flex;align-items:center;gap:10px">';
+    c+='<div style="width:28px;height:28px;border-radius:50%;background:'+accentC+'18;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:900;color:'+accentC+';font-family:var(--mono)">'+rank+'</div>';
+    c+='<div><div style="font-size:14px;font-weight:900;color:var(--text);font-family:var(--mono);cursor:pointer" onclick="switchDEMode(\'investor\');loadDE(\''+s.symbol+'\')" title="Open full analysis">'+s.symbol+' ↗</div>';
+    c+='<div style="font-size:10px;color:var(--text3);font-family:var(--mono)">'+csym+fmt(s.price)+' · expected move ±'+s.expected_move_pct+'%</div></div></div>';
+    c+='<div style="text-align:right;display:flex;flex-direction:column;align-items:flex-end;gap:2px">';
+    c+='<div style="font-size:18px;font-weight:900;color:'+accentC+';font-family:Sora,sans-serif;line-height:1">'+dirIcon+' '+s.direction+'</div>';
+    c+='<div style="font-size:9px;font-weight:800;color:'+accentC+'">'+s.confidence_label.toUpperCase()+' · '+s.confidence_pct+'%</div>';
+    c+='</div></div>';
+    
+    // Reasons as chips
+    if(s.direction_reasons&&s.direction_reasons.length>0){
+      c+='<div style="padding:10px 16px;background:#f8fafc;border-bottom:1px solid #e2e8f0;display:flex;gap:4px;flex-wrap:wrap">';
+      s.direction_reasons.forEach(function(reason){
+        c+='<span style="font-size:9px;padding:3px 9px;border-radius:100px;background:'+accentC+'10;color:'+accentC+';font-weight:700;border:1px solid '+accentC+'20">'+reason+'</span>';
+      });
+      c+='</div>';
+    }
+    
+    // Options metrics grid
+    c+='<div style="display:grid;grid-template-columns:repeat(4,1fr);border-bottom:1px solid var(--border);font-size:9px">';
+    c+='<div style="padding:10px 6px;text-align:center;border-right:1px solid var(--border)">';
+    c+='<div style="font-size:8px;font-weight:700;color:var(--text3);letter-spacing:.4px">C/P VOL</div>';
+    c+='<div style="font-size:13px;font-weight:900;color:'+accentC+';font-family:var(--mono);margin-top:2px">'+s.call_put_volume_ratio+'×</div>';
+    c+='</div>';
+    c+='<div style="padding:10px 6px;text-align:center;border-right:1px solid var(--border)">';
+    c+='<div style="font-size:8px;font-weight:700;color:var(--text3);letter-spacing:.4px">TOTAL VOL</div>';
+    c+='<div style="font-size:13px;font-weight:900;color:var(--text);font-family:var(--mono);margin-top:2px">'+fmt(s.total_options_volume)+'</div>';
+    c+='</div>';
+    c+='<div style="padding:10px 6px;text-align:center;border-right:1px solid var(--border)">';
+    c+='<div style="font-size:8px;font-weight:700;color:var(--text3);letter-spacing:.4px">ATM IV</div>';
+    c+='<div style="font-size:13px;font-weight:900;color:var(--text);font-family:var(--mono);margin-top:2px">'+(s.atm_iv!==null?s.atm_iv+'%':'N/A')+'</div>';
+    c+='</div>';
+    c+='<div style="padding:10px 6px;text-align:center">';
+    c+='<div style="font-size:8px;font-weight:700;color:var(--text3);letter-spacing:.4px">EXP MOVE 1W</div>';
+    c+='<div style="font-size:13px;font-weight:900;color:var(--text);font-family:var(--mono);margin-top:2px">±'+csym+fmt(s.expected_move_1w_abs)+'</div>';
+    c+='</div>';
+    c+='</div>';
+    
+    // Strike guidance
+    c+='<div style="padding:10px 16px;border-bottom:1px solid var(--border);background:'+accentC+'04">';
+    c+='<div style="font-size:8px;font-weight:700;color:var(--text3);letter-spacing:.4px;margin-bottom:6px">🎯 STRIKE GUIDANCE</div>';
+    c+='<div style="font-size:11px;color:var(--text);font-weight:600;line-height:1.5">'+s.strike_guidance+'</div>';
+    c+='<div style="font-size:9px;color:var(--text3);margin-top:4px">Alternative: '+s.alt_strike+'</div>';
+    c+='</div>';
+    
+    // Underlying trade levels
+    c+='<div style="display:grid;grid-template-columns:repeat(3,1fr);border-bottom:1px solid var(--border)">';
+    c+='<div style="padding:10px 6px;text-align:center;border-right:1px solid var(--border);background:#f0fdf4">';
+    c+='<div style="font-size:8px;font-weight:700;color:#059669;letter-spacing:.4px">UNDERLYING ENTRY</div>';
+    c+='<div style="font-size:11px;font-weight:900;color:#059669;font-family:var(--mono);margin-top:2px">'+csym+fmt(s.entry_zone.low)+'-'+fmt(s.entry_zone.high)+'</div>';
+    c+='</div>';
+    c+='<div style="padding:10px 6px;text-align:center;border-right:1px solid var(--border);background:#fef2f2">';
+    c+='<div style="font-size:8px;font-weight:700;color:#dc2626;letter-spacing:.4px">STOP (underlying)</div>';
+    c+='<div style="font-size:11px;font-weight:900;color:#dc2626;font-family:var(--mono);margin-top:2px">'+csym+fmt(s.stop_underlying)+'</div>';
+    c+='</div>';
+    c+='<div style="padding:10px 6px;text-align:center;background:#eff6ff">';
+    c+='<div style="font-size:8px;font-weight:700;color:#2563eb;letter-spacing:.4px">TARGET (underlying)</div>';
+    c+='<div style="font-size:11px;font-weight:900;color:#2563eb;font-family:var(--mono);margin-top:2px">'+csym+fmt(s.target_underlying)+'</div>';
+    c+='</div>';
+    c+='</div>';
+    
+    // Option-specific exits
+    c+='<div style="padding:10px 16px;background:#fefce8;border-top:1px solid #fde68a;font-size:10px;color:#78350f;line-height:1.5">';
+    c+='<strong>⏱ On the option itself:</strong> Target +'+s.profit_target_pct_on_option+'% premium · Stop -'+s.stop_loss_pct_on_option+'% premium · Max hold '+s.max_hold_hours+' hours';
+    c+='</div>';
+    return c;
+  }
+  
+  // Empty state
+  if(d.total_candidates===0){
+    h+='<div style="padding:40px;text-align:center"><div style="font-size:40px;margin-bottom:12px">🔍</div>';
+    h+='<div style="font-size:16px;font-weight:800;color:var(--text);margin-bottom:8px">No unusual options activity detected right now</div>';
+    h+='<div style="font-size:10px;color:var(--text3);max-width:450px;margin:0 auto;line-height:1.6">Options flow signals are rare during quiet market periods. Check back in 30 minutes or during the mid-day session (10am-3pm ET).</div></div>';
+  }
+  
+  // BULLISH candidates
+  if(d.bullish&&d.bullish.length>0){
+    h+='<div style="margin-bottom:20px">';
+    h+='<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px"><div style="font-size:14px;font-weight:900;color:#059669;font-family:Sora,sans-serif">🟢 BULLISH — Call Flow Setups</div>';
+    h+='<span style="padding:2px 10px;border-radius:100px;background:#05966910;color:#059669;font-size:9px;font-weight:800">'+d.bullish.length+'</span></div>';
+    h+='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(420px,1fr));gap:14px">';
+    d.bullish.forEach(function(s,i){h+=_opCard(s,i+1);});
+    h+='</div></div>';
+  }
+  
+  // BEARISH candidates
+  if(d.bearish&&d.bearish.length>0){
+    h+='<div style="margin-bottom:20px">';
+    h+='<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px"><div style="font-size:14px;font-weight:900;color:#dc2626;font-family:Sora,sans-serif">🔴 BEARISH — Put Flow Setups</div>';
+    h+='<span style="padding:2px 10px;border-radius:100px;background:#dc262610;color:#dc2626;font-size:9px;font-weight:800">'+d.bearish.length+'</span></div>';
+    h+='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(420px,1fr));gap:14px">';
+    d.bearish.forEach(function(s,i){h+=_opCard(s,i+1);});
+    h+='</div></div>';
+  }
+  
+  // How to use
+  if(d.how_to_use&&d.how_to_use.length>0){
+    h+='<div style="padding:12px 16px;background:#eff6ff;border:1px solid #2563eb20;border-radius:8px;margin-top:16px">';
+    h+='<div style="font-size:11px;font-weight:800;color:#2563eb;margin-bottom:6px;font-family:Sora,sans-serif">📘 How to trade these</div>';
+    h+='<ol style="margin:0;padding-left:18px;font-size:10px;color:var(--text);line-height:1.7">';
+    d.how_to_use.forEach(function(step){h+='<li style="margin-top:3px">'+step+'</li>';});
+    h+='</ol></div>';
+  }
+  
+  // Risk warnings
+  if(d.risk_warnings&&d.risk_warnings.length>0){
+    h+='<div style="padding:12px 16px;background:#fef2f2;border:1px solid #dc262620;border-radius:8px;margin-top:10px">';
+    h+='<div style="font-size:11px;font-weight:800;color:#dc2626;margin-bottom:6px;font-family:Sora,sans-serif">⚠ Risk warnings (read every time)</div>';
+    h+='<ul style="margin:0;padding-left:18px;font-size:10px;color:var(--text);line-height:1.7">';
+    d.risk_warnings.forEach(function(w){h+='<li style="margin-top:3px">'+w+'</li>';});
+    h+='</ul></div>';
+  }
+  
+  // Honest disclaimer footer
+  if(d.honest_disclaimer){
+    h+='<div style="padding:12px 14px;background:#fef3c708;border:1px solid #d9770620;border-radius:8px;margin-top:10px;font-size:10px;color:#78350f;line-height:1.5">';
+    h+=d.honest_disclaimer;
+    h+='</div>';
+  }
+  
+  el.innerHTML=_opRegBar+_warningBanner+h;
+}).catch(function(e){
+  clearInterval(_opTimer);
+  el.innerHTML=_opRegBar+_warningBanner+'<div style="padding:20px;color:#ef4444">Error: '+e.message+'</div>';
+});
+}
+
 // ═══ PMS — Portfolio Management System Tab ═══
 // ═══ PMS HOME — Professional landing page ═══
 // ═══ PRO SCAN ROUTING — Opens Pro Scan tab with pre-filled ticker ═══
@@ -10934,8 +11340,8 @@ var h='';
 h+='<div style="padding:40px 24px;text-align:center">';
 // Region toggle
 h+='<div style="display:inline-flex;gap:0;margin-bottom:24px;border:1px solid var(--border);border-radius:10px;overflow:hidden">';
-h+='<button onclick="window._pmsRegion=\'IN\';loadPMSHome()" style="padding:8px 20px;font-size:11px;font-weight:800;border:2px solid '+(reg==='IN'?'#1A3A78':'#94a3b8')+';cursor:pointer;font-family:Sora,sans-serif;background:'+(reg==='IN'?'#1A3A78':'#f1f5f9')+';color:'+(reg==='IN'?'#fff':'#0A1628')+';border-radius:8px 0 0 8px">IN India</button>';
-h+='<button onclick="window._pmsRegion=\'US\';loadPMSHome()" style="padding:8px 20px;font-size:11px;font-weight:800;border:2px solid '+(reg==='US'?'#1A3A78':'#94a3b8')+';cursor:pointer;font-family:Sora,sans-serif;background:'+(reg==='US'?'#1A3A78':'#f1f5f9')+';color:'+(reg==='US'?'#fff':'#0A1628')+';border-radius:0 8px 8px 0">US USA</button>';
+h+='<button onclick="window._pmsRegion=\'IN\';loadPMSHome()" style="padding:8px 20px;font-size:11px;font-weight:800;border:2px solid '+(reg==='IN'?'#1A3A78':'#94a3b8')+';cursor:pointer;font-family:Sora,sans-serif;background:'+(reg==='IN'?'#1A3A78':'#f1f5f9')+';color:'+(reg==='IN'?'#fff':'#0A1628')+';border-radius:8px 0 0 8px">India</button>';
+h+='<button onclick="window._pmsRegion=\'US\';loadPMSHome()" style="padding:8px 20px;font-size:11px;font-weight:800;border:2px solid '+(reg==='US'?'#1A3A78':'#94a3b8')+';cursor:pointer;font-family:Sora,sans-serif;background:'+(reg==='US'?'#1A3A78':'#f1f5f9')+';color:'+(reg==='US'?'#fff':'#0A1628')+';border-radius:0 8px 8px 0">USA</button>';
 h+='</div><br>';
 // Upload button
 h+='<div style="display:inline-block;padding:16px 40px;border-radius:14px;border:2px dashed #1A3A7830;cursor:pointer;transition:all .2s" onclick="document.getElementById(\'portfolioFile\').click()" onmouseover="this.style.borderColor=\'#1A3A78\';this.style.background=\'#1A3A7806\'" onmouseout="this.style.borderColor=\'#1A3A7830\';this.style.background=\'transparent\'">';
@@ -13878,7 +14284,7 @@ if(ins)ins.style.display=reg==='IN'?'flex':'none';
 if(uss)uss.style.display=reg==='US'?'flex':'none';
 // Clear valuation result on region switch
 var vr=document.getElementById('valResult');
-if(vr)vr.innerHTML='<div style="text-align:center;padding:40px"><div style="font-size:40px;margin-bottom:8px;opacity:.25">💰</div><div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:4px">Valuation Intelligence</div><div style="font-size:11px;color:var(--text3)">Region switched to <strong>'+(reg==='US'?'US USA':'IN India')+'</strong>. Select a stock above or enter any custom ticker.</div></div>';
+if(vr)vr.innerHTML='<div style="text-align:center;padding:40px"><div style="font-size:40px;margin-bottom:8px;opacity:.25">💰</div><div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:4px">Valuation Intelligence</div><div style="font-size:11px;color:var(--text3)">Region switched to <strong>'+(reg==='US'?'USA':'India')+'</strong>. Select a stock above or enter any custom ticker.</div></div>';
 }
 function loadValuation(sym){
 var el=document.getElementById('valResult');if(!el)return;
