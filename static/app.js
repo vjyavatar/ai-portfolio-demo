@@ -2362,7 +2362,7 @@ try{if(window._stockData)createCharts(window._stockData)}catch(e){console.warn('
 var TAB_GROUPS = {
   overview: {tabs: ['quick'], labels: ['Summary'], default: 'quick'},
   research: {tabs: ['analysis','dcf','equity','compare'], labels: ['AI Analysis','DCF Valuation','Research','Compare'], default: 'analysis'},
-  decide:   {tabs: ['decision','toptrades','topinvest','proscan','reports','pms'], labels: ['Analyze Stock','Top Trades','Top Investments','🔬 Pro Scan','📊 Reports','📊 PMS'], default: 'decision'},
+  decide:   {tabs: ['decision','toptrades','topinvest','deepdd','proscan','reports','pms'], labels: ['Analyze Stock','Top Trades','Top Investments','🔬 Deep DD','🔬 Pro Scan','📊 Reports','📊 PMS'], default: 'decision'},
   dream:    {tabs: ['dreamportfolio','multibagger','momentumradar','highprob','optionspulse','tradeticket','microcap'], labels: ['🌟 Dream Portfolio','🔥 Multibagger Hunter','⚡ Momentum Radar','🎯 High-Prob Setups','⚡ Options Pulse','🎫 Trade Ticket','🏆 Micro-Cap Challenge'], default: 'dreamportfolio'},
   trading:  {tabs: ['trades','smarttrades','stockintel','scanner','valreport','backtest','journal','aiassist'], labels: ['Algo Trades','Smart Trades','Stock Intel','Scanner','Valuation','Backtest','Journal','AI Assistant'], default: 'trades'},
   markets:  {tabs: ['indices','daily','newsimpact','assets'], labels: ['Top Performers','Market Daily','📰 News Impact','Global Assets'], default: 'indices'},
@@ -2559,7 +2559,7 @@ if(_cc&&tab!=='quick')_cc.style.display='none';
 
 
 // btnMap
-const btnMap={quick:'tabBtnOverview',analysis:'tabBtnResearch',dcf:'tabBtnResearch',equity:'tabBtnResearch',compare:'tabBtnTools',indices:'tabBtnMarkets',finance:'tabBtnTools',daily:'tabBtnMarkets',assets:'tabBtnMarkets',decision:'tabBtnDecide',toptrades:'tabBtnDecide',topinvest:'tabBtnDecide',reports:'tabBtnDecide',proscan:'tabBtnDecide',pms:'tabBtnDecide',dreamportfolio:'tabBtnDream',multibagger:'tabBtnDream',momentumradar:'tabBtnDream',highprob:'tabBtnDream',optionspulse:'tabBtnDream',tradeticket:'tabBtnDream',microcap:'tabBtnDream',trades:'tabBtnTrading',stockintel:'tabBtnTrading',scanner:'tabBtnTrading',valreport:'tabBtnTrading',backtest:'tabBtnTrading',smarttrades:'tabBtnTrading',journal:'tabBtnTrading',aiassist:'tabBtnTrading',education:'tabBtnTools',gems:'tabBtnOverview',picks:'tabBtnOverview',funds:'tabBtnTools'};
+const btnMap={quick:'tabBtnOverview',analysis:'tabBtnResearch',dcf:'tabBtnResearch',equity:'tabBtnResearch',compare:'tabBtnTools',indices:'tabBtnMarkets',finance:'tabBtnTools',daily:'tabBtnMarkets',assets:'tabBtnMarkets',decision:'tabBtnDecide',toptrades:'tabBtnDecide',topinvest:'tabBtnDecide',reports:'tabBtnDecide',proscan:'tabBtnDecide',pms:'tabBtnDecide',deepdd:'tabBtnDecide',dreamportfolio:'tabBtnDream',multibagger:'tabBtnDream',momentumradar:'tabBtnDream',highprob:'tabBtnDream',optionspulse:'tabBtnDream',tradeticket:'tabBtnDream',microcap:'tabBtnDream',trades:'tabBtnTrading',stockintel:'tabBtnTrading',scanner:'tabBtnTrading',valreport:'tabBtnTrading',backtest:'tabBtnTrading',smarttrades:'tabBtnTrading',journal:'tabBtnTrading',aiassist:'tabBtnTrading',education:'tabBtnTools',gems:'tabBtnOverview',picks:'tabBtnOverview',funds:'tabBtnTools'};
 
 // Hide all
 document.querySelectorAll('.sc[data-tab]').forEach(s=>{s.style.display='none';s.style.opacity='';s.style.transform='';s.style.animation=''});
@@ -2586,7 +2586,7 @@ b.style.background='var(--blue)';b.style.color='#fff';b.style.borderColor='var(-
 // 2) Show matching tab content (sections + inline data-tab elements)
 // dreamportfolio and multibagger render into the decision section's deResult
 var _showTab = tab;
-if(tab==='dreamportfolio'||tab==='multibagger'||tab==='momentumradar'||tab==='highprob'||tab==='optionspulse'||tab==='tradeticket'||tab==='microcap'||tab==='pms') _showTab='decision';
+if(tab==='dreamportfolio'||tab==='multibagger'||tab==='momentumradar'||tab==='highprob'||tab==='optionspulse'||tab==='tradeticket'||tab==='microcap'||tab==='deepdd'||tab==='pms') _showTab='decision';
 // Show tab sections with animation
 document.querySelectorAll('.sc[data-tab="'+_showTab+'"]').forEach(function(s,idx){
 if(_showTab==='quick' && s.dataset.subtab) return;
@@ -2724,6 +2724,7 @@ window._activeHighProbTab=false;
 window._activeOptionsPulseTab=false;
 window._activeTradeTicketTab=false;
 window._activeMicroCapTab=false;
+window._activeDeepDDTab=false;
 document.querySelectorAll('.sc[data-tab="decision"]').forEach(function(s){
 s.style.borderLeft='3px solid #ea580c';
 var sh=s.querySelector('.sh');if(sh)sh.style.display='';
@@ -2736,7 +2737,7 @@ var _dcH=document.getElementById('deHeader');if(_dcH)_dcH.style.display='';
 // This prevents stale Dream/PMS/Multibagger content showing in other tabs
 var _dr=document.getElementById('deResult');
 if(_dr){
-var _sharedTabs=['dreamportfolio','multibagger','momentumradar','highprob','optionspulse','tradeticket','microcap','pms','decision'];
+var _sharedTabs=['dreamportfolio','multibagger','momentumradar','highprob','optionspulse','tradeticket','microcap','deepdd','pms','decision'];
 if(_sharedTabs.indexOf(tab)>=0){
 // Clear old content from previous tab
 _dr.innerHTML='';
@@ -2836,6 +2837,19 @@ var _mcDC=document.getElementById('deControls');if(_mcDC)_mcDC.style.display='no
 var _mcDH=document.getElementById('deHeader');if(_mcDH)_mcDH.style.display='none';
 window._activeMicroCapTab=true;
 if(typeof loadMicroCap==='function')setTimeout(loadMicroCap,100);
+}
+// r58: Deep Due Diligence tab
+if(tab==='deepdd'){
+if(!window._isDreamUser){var _dd0=document.getElementById('deResult');if(_dd0)_dd0.innerHTML='<div style="padding:60px 20px;text-align:center"><div style="font-size:48px;margin-bottom:12px">🔒</div><div style="font-size:18px;font-weight:900;color:var(--text);font-family:Sora,sans-serif">Ultra-Premium Feature</div><div style="font-size:12px;color:var(--text3);margin-top:8px">Deep DD is exclusive. Contact support for access.</div></div>';return;}
+document.querySelectorAll('.sc[data-tab="decision"]').forEach(function(s){
+s.style.display='block';
+s.style.borderLeft='3px solid #6366f1';
+var sh=s.querySelector('.sh');if(sh)sh.style.display='none';
+});
+var _ddDC=document.getElementById('deControls');if(_ddDC)_ddDC.style.display='none';
+var _ddDH=document.getElementById('deHeader');if(_ddDH)_ddDH.style.display='none';
+window._activeDeepDDTab=true;
+if(typeof loadDeepDD==='function')setTimeout(loadDeepDD,100);
 }
 // PMS — Portfolio Management System
 if(tab==='pms'){
@@ -10939,10 +10953,11 @@ fetch('/api/options-setup-detector?email='+encodeURIComponent(email)+'&region='+
 // Single-symbol institutional-grade trade plan: contract spec, sizing,
 // stops, targets, risk flags, exit rules.
 // ═══════════════════════════════════════════════════════════════════════
-function loadTradeTicket(){
+function loadTradeTicket(forceReg){
 if(!window._activeTradeTicketTab)return;
 var el=document.getElementById('deResult');if(!el)return;
-var reg=window._deRegion||'US';
+var reg = forceReg || window._deRegion || 'US';
+window._deRegion = reg;
 
 // Render the input form first — user must enter symbol, capital, risk
 function renderForm(prefilled){
@@ -11542,6 +11557,402 @@ function renderChallenge(d){
   html += '</div>';
   el.innerHTML = html;
 }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// DEEP DUE DILIGENCE (r58 — UI)
+// Backend: /api/investor-due-diligence?symbol=X&region=Y
+// Comprehensive equity research on a single public company. REAL DATA ONLY.
+// Sections: Investment Thesis, Financial Health, Competitive, Sector,
+// Risk Matrix, SWOT, Porter's Five Forces.
+// ═══════════════════════════════════════════════════════════════════════
+function loadDeepDD(forceReg){
+if(!window._activeDeepDDTab)return;
+var el=document.getElementById('deResult');if(!el)return;
+var reg = forceReg || window._deRegion || 'US';
+window._deRegion = reg;
+var csym = reg==='US' ? '$' : '₹';
+var fmt = function(n){return (n||0).toLocaleString('en-US',{maximumFractionDigits:2});};
+var fmtBn = function(n){
+  if(!n) return 'N/A';
+  if(Math.abs(n) >= 1e12) return csym+(n/1e12).toFixed(2)+'T';
+  if(Math.abs(n) >= 1e9) return csym+(n/1e9).toFixed(2)+'B';
+  if(Math.abs(n) >= 1e6) return csym+(n/1e6).toFixed(2)+'M';
+  return csym+fmt(n);
+};
+
+var _ddRegBar = _renderRegionToggle('loadDeepDD', reg);
+
+// Render input form
+function renderForm(prefilled){
+  prefilled = prefilled || {};
+  var sym = prefilled.symbol || window._ddLastSymbol || '';
+  var html = _ddRegBar;
+  html += '<div style="max-width:720px;margin:0 auto">';
+  
+  // Hero
+  html += '<div class="dc" style="border:1px solid #6366f120;box-shadow:0 20px 60px #6366f108;margin-bottom:20px">';
+  html += '<div class="dc-hero" style="background:linear-gradient(160deg,#1e1b4b,#4338ca,#6366f1);color:#fff">';
+  html += '<div style="display:flex;align-items:center;gap:14px">';
+  html += '<div style="font-size:42px">🔬</div>';
+  html += '<div><div style="font-size:24px;font-weight:900;font-family:Sora,sans-serif">Deep Due Diligence</div>';
+  html += '<div style="font-size:12px;opacity:.85;margin-top:4px">Institutional-grade equity research · Real data only · '+(reg==='US'?'US Markets':'India NSE')+'</div></div>';
+  html += '</div></div></div>';
+  
+  // Honest scope banner
+  html += '<div style="padding:14px;background:#eef2ff;border:1px solid #6366f1;border-radius:8px;margin-bottom:16px;font-size:11px;color:#3730a3;line-height:1.6">';
+  html += '<strong>📋 What you get (real data only):</strong><br>';
+  html += '✅ Investment thesis with DCF fair value · ROE/ROIC/margins · investability score (0-100)<br>';
+  html += '✅ Financial health: revenue, debt, cash, all real 10-K data · grade per metric<br>';
+  html += '✅ Peer comparison (curated for major tickers)<br>';
+  html += '✅ Sector context: real sector ETF performance, outperformance vs sector<br>';
+  html += '✅ Risk matrix: financial risks computed from real balance sheet<br>';
+  html += '⚠️ SWOT/Porter\'s frameworks: derived from real numbers + interpretive heuristics<br>';
+  html += '<strong style="color:#dc2626">❌ NOT included:</strong> TAM/SAM (no free reliable source), customer personas (would require LLM hallucination)';
+  html += '</div>';
+  
+  // Input form
+  html += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:20px">';
+  html += '<div style="font-size:11px;font-weight:800;color:var(--text3);letter-spacing:.4px;margin-bottom:14px">📝 ENTER TICKER</div>';
+  html += '<div style="margin-bottom:14px"><label style="display:block;font-size:10px;font-weight:700;color:var(--text3);margin-bottom:4px">SYMBOL ('+(reg==='US'?'US ticker':'NSE symbol')+')</label>';
+  html += '<input type="text" id="ddSymbol" value="'+sym+'" placeholder="'+(reg==='US'?'AAPL, NVDA, TSLA, MSFT...':'RELIANCE, TCS, INFY, HDFCBANK...')+'" '+
+          'style="width:100%;padding:10px 14px;border:1px solid #cbd5e1;border-radius:8px;font-size:14px;font-family:var(--mono);font-weight:700;text-transform:uppercase" '+
+          'onkeypress="if(event.key===\'Enter\')_ddGenerate()"></div>';
+  html += '<button onclick="_ddGenerate()" style="width:100%;padding:14px;background:linear-gradient(135deg,#4338ca,#6366f1);color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:800;cursor:pointer;font-family:Sora,sans-serif;letter-spacing:.5px">🔬 GENERATE DEEP DD REPORT</button>';
+  html += '</div>';
+  
+  // Suggested tickers
+  var suggested = reg==='US' 
+    ? ['AAPL','NVDA','MSFT','GOOGL','META','AMZN','TSLA','JPM']
+    : ['RELIANCE','TCS','INFY','HDFCBANK','ICICIBANK','BHARTIARTL','LT','ITC'];
+  html += '<div style="margin-top:12px;display:flex;flex-wrap:wrap;gap:6px;justify-content:center">';
+  html += '<span style="font-size:9px;color:var(--text3);align-self:center;margin-right:4px">Quick:</span>';
+  suggested.forEach(function(s){
+    html += '<button onclick="document.getElementById(\'ddSymbol\').value=\''+s+'\';_ddGenerate()" style="padding:4px 10px;border:1px solid #cbd5e1;background:#fff;border-radius:100px;font-size:10px;font-weight:700;cursor:pointer;font-family:var(--mono)">'+s+'</button>';
+  });
+  html += '</div>';
+  
+  html += '</div>';
+  el.innerHTML = html;
+}
+
+window._ddGenerate = function(){
+  var sym = document.getElementById('ddSymbol').value.trim().toUpperCase();
+  if(!sym){alert('Enter a symbol first');return;}
+  window._ddLastSymbol = sym;
+  
+  var _eml = document.getElementById('email');
+  var email = window._verifiedEmail||(_eml?(_eml.dataset.real||_eml.value):'').trim().toLowerCase();
+  
+  el.innerHTML = _ddRegBar + '<div style="padding:40px;text-align:center"><div style="font-size:48px;margin-bottom:12px">🔬</div><div style="font-size:18px;font-weight:900;color:var(--text);margin-bottom:8px">Generating Deep DD Report</div><div style="font-size:11px;color:var(--text3);margin-bottom:16px">Symbol: <strong>'+sym+'</strong> · Pulling 10-K data, peer metrics, sector context...</div><div style="max-width:400px;margin:0 auto"><div id="ddPhase" style="font-size:9px;color:var(--text3)">Fetching company data...</div><div style="height:6px;border-radius:8px;background:#f1f5f9;overflow:hidden;margin-top:6px"><div id="ddBar" style="height:100%;border-radius:8px;background:linear-gradient(90deg,#4338ca,#6366f1);width:0%;transition:width .5s"></div></div></div><div style="font-size:9px;color:#6366f1;margin-top:12px;font-weight:700">⏱️ Estimated: 20-40 seconds</div></div>';
+  
+  var _ddTimer = setInterval(function(){
+    window._ddProg = (window._ddProg||0) + 1.5 + Math.random()*0.6;
+    window._ddProg = Math.min(92, window._ddProg);
+    var bar = document.getElementById("ddBar");
+    var phase = document.getElementById("ddPhase");
+    if(bar) bar.style.width = window._ddProg + "%";
+    if(phase){
+      var phases = ["Fetching company data...","Computing DCF fair value...","Pulling peer financials...","Sector ETF context...","Risk matrix calculation...","Frameworks synthesis..."];
+      phase.textContent = phases[Math.min(5, Math.floor(window._ddProg/16))];
+    }
+  }, 800);
+  
+  fetch('/api/investor-due-diligence?symbol='+encodeURIComponent(sym)+'&region='+reg+'&email='+encodeURIComponent(email))
+    .then(function(r){return r.json();})
+    .then(function(d){
+      clearInterval(_ddTimer); window._ddProg = 0;
+      if(!d.success){
+        renderForm({symbol: sym});
+        var errBox = document.createElement('div');
+        errBox.style.cssText = 'max-width:720px;margin:14px auto 0;padding:14px;background:#fef2f2;border:1px solid #dc2626;border-radius:8px;color:#dc2626;font-size:11px;font-weight:600;text-align:center';
+        errBox.textContent = '❌ '+(d.error||'Unknown error');
+        el.appendChild(errBox);
+        return;
+      }
+      renderReport(d);
+    })
+    .catch(function(e){
+      clearInterval(_ddTimer);
+      renderForm({symbol: sym});
+      var errBox = document.createElement('div');
+      errBox.style.cssText = 'max-width:720px;margin:14px auto 0;padding:14px;background:#fef2f2;border:1px solid #dc2626;border-radius:8px;color:#dc2626;font-size:11px;font-weight:600;text-align:center';
+      errBox.textContent = '❌ Network error: '+e.message;
+      el.appendChild(errBox);
+    });
+};
+
+function renderReport(d){
+  var c = d.company || {};
+  var t = d.thesis || {};
+  var f = d.finance || {};
+  var comp = d.competitive || {};
+  var sec = d.sector_context || {};
+  var rm = d.risk_matrix || {};
+  var sw = d.swot || {};
+  var por = d.porter || {};
+  var ddCsym = d.currency_symbol || csym;
+  
+  var h = _ddRegBar;
+  h += '<div style="max-width:900px;margin:0 auto">';
+  
+  // Top action bar
+  h += '<div style="display:flex;gap:8px;justify-content:flex-end;margin-bottom:10px">';
+  h += '<button onclick="loadDeepDD()" title="New report" style="padding:6px 12px;border:1px solid #cbd5e1;background:#fff;border-radius:6px;font-size:10px;font-weight:700;cursor:pointer;font-family:Sora,sans-serif">← New Ticker</button>';
+  h += '<button onclick="switchDEMode(\'investor\');loadDE(\''+c.symbol+'\')" title="Open full Celesys analysis" style="padding:6px 12px;border:none;background:#1e40af;color:#fff;border-radius:6px;font-size:10px;font-weight:700;cursor:pointer;font-family:Sora,sans-serif">📊 Full Celesys View →</button>';
+  h += '</div>';
+  
+  // Company hero card
+  h += '<div style="background:#fff;border:2px solid '+t.verdict_color+';border-radius:14px;overflow:hidden;box-shadow:0 20px 60px '+t.verdict_color+'15;margin-bottom:20px">';
+  h += '<div style="padding:18px 22px;background:linear-gradient(135deg,'+t.verdict_color+',rgba(0,0,0,0.3));color:#fff">';
+  h += '<div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:14px">';
+  h += '<div style="flex:1;min-width:240px">';
+  h += '<div style="font-size:11px;opacity:.85;letter-spacing:.5px;font-weight:700">DEEP DUE DILIGENCE</div>';
+  h += '<div style="font-size:26px;font-weight:900;font-family:var(--mono);margin-top:2px">'+c.symbol+'</div>';
+  h += '<div style="font-size:13px;opacity:.95;margin-top:2px">'+(c.name||c.symbol)+'</div>';
+  if(c.sector){h+='<div style="font-size:10px;opacity:.85;margin-top:4px">'+c.sector+(c.industry?' · '+c.industry:'')+'</div>';}
+  h += '</div>';
+  h += '<div style="text-align:right">';
+  h += '<div style="font-size:11px;opacity:.85;letter-spacing:.5px;font-weight:700">VERDICT</div>';
+  h += '<div style="font-size:18px;font-weight:900;margin-top:2px">'+t.verdict+'</div>';
+  h += '<div style="font-size:42px;font-weight:900;font-family:var(--mono);line-height:1;margin-top:6px">'+t.investability_score+'<span style="font-size:18px;opacity:.7">/100</span></div>';
+  h += '</div></div></div>';
+  
+  // Quick stats grid
+  h += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:0;border-bottom:1px solid var(--border)">';
+  var statBox = function(label, value, color){
+    return '<div style="padding:12px;text-align:center;border-right:1px solid var(--border)"><div style="font-size:9px;color:var(--text3);font-weight:700;letter-spacing:.4px">'+label+'</div><div style="font-size:14px;font-weight:900;color:'+(color||'var(--text)')+';font-family:var(--mono);margin-top:2px">'+value+'</div></div>';
+  };
+  h += statBox('SPOT', ddCsym+fmt(t.spot_price));
+  h += statBox('MARKET CAP', fmtBn(t.market_cap));
+  if(t.dcf_fair_value){
+    var upColor = (t.dcf_upside_pct>=0) ? '#059669' : '#dc2626';
+    var upSign = (t.dcf_upside_pct>=0) ? '+' : '';
+    h += statBox('DCF FAIR VALUE', ddCsym+fmt(t.dcf_fair_value)+' ('+upSign+t.dcf_upside_pct+'%)', upColor);
+  } else {
+    h += statBox('DCF FAIR VALUE', 'N/A');
+  }
+  if(t.forward_pe){h+=statBox('FORWARD P/E', t.forward_pe.toFixed(1), t.pe_grade[1]);}
+  if(t.peg_ratio){h+=statBox('PEG', t.peg_ratio.toFixed(2), t.peg_grade[1]);}
+  h += '</div>';
+  
+  // Score breakdown
+  h += '<div style="padding:16px 22px;background:#f8fafc">';
+  h += '<div style="font-size:10px;font-weight:800;color:var(--text3);letter-spacing:.5px;margin-bottom:10px">📊 SCORE BREAKDOWN (max 100)</div>';
+  if(t.score_breakdown && t.score_breakdown.length){
+    t.score_breakdown.forEach(function(sb){
+      h += '<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #e2e8f0">';
+      h += '<div style="font-size:11px;font-weight:700;color:var(--text)">'+sb.factor+'</div>';
+      h += '<div style="display:flex;gap:8px;align-items:center">';
+      h += '<div style="font-size:10px;color:var(--text3)">'+sb.note+'</div>';
+      h += '<div style="font-size:13px;font-weight:900;color:'+(sb.points>0?'#059669':'#94a3b8')+';font-family:var(--mono);min-width:40px;text-align:right">'+(sb.points>0?'+':'')+sb.points+'</div>';
+      h += '</div></div>';
+    });
+  }
+  h += '</div></div>';
+  
+  // Section: Financial Health
+  h += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:20px;margin-bottom:16px">';
+  h += '<div style="font-size:14px;font-weight:900;color:var(--text);font-family:Sora,sans-serif;margin-bottom:14px">📈 Financial Health <span style="font-size:9px;font-weight:600;color:#059669;margin-left:6px">REAL DATA</span></div>';
+  h += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px">';
+  var metricBox = function(label, value, gradeArr, suffix){
+    suffix = suffix || '';
+    var color = gradeArr ? gradeArr[1] : 'var(--text)';
+    var grade = gradeArr ? gradeArr[0] : '';
+    return '<div style="padding:12px;background:#f8fafc;border-radius:8px;border-left:3px solid '+color+'">'+
+      '<div style="font-size:9px;font-weight:700;color:var(--text3);letter-spacing:.4px">'+label+'</div>'+
+      '<div style="font-size:18px;font-weight:900;color:'+color+';font-family:var(--mono);margin-top:2px">'+(value!==null?value+suffix:'N/A')+'</div>'+
+      (grade?'<div style="font-size:8px;font-weight:700;color:'+color+';margin-top:2px">'+grade+'</div>':'')+
+    '</div>';
+  };
+  h += metricBox('REVENUE', fmtBn(f.revenue));
+  h += metricBox('REV GROWTH YoY', f.revenue_growth_yoy_pct, null, '%');
+  h += metricBox('GROSS MARGIN', f.gross_margin_pct, f.gross_margin_grade, '%');
+  h += metricBox('OPERATING MARGIN', f.operating_margin_pct, f.operating_margin_grade, '%');
+  h += metricBox('PROFIT MARGIN', f.profit_margin_pct, f.profit_margin_grade, '%');
+  h += metricBox('ROE', f.roe_pct, f.roe_grade, '%');
+  h += metricBox('FREE CASH FLOW', fmtBn(f.free_cash_flow));
+  h += metricBox('NET CASH', fmtBn(f.net_cash_position));
+  h += metricBox('DEBT/EQUITY', f.debt_to_equity, f.debt_to_equity_grade, '%');
+  h += metricBox('CURRENT RATIO', f.current_ratio, f.current_ratio_grade);
+  h += '</div></div>';
+  
+  // Section: Competitive position
+  if(comp.peers_count > 0){
+    h += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:20px;margin-bottom:16px">';
+    h += '<div style="font-size:14px;font-weight:900;color:var(--text);font-family:Sora,sans-serif;margin-bottom:6px">🏆 Competitive Position <span style="font-size:9px;font-weight:600;color:#059669;margin-left:6px">REAL DATA</span></div>';
+    h += '<div style="font-size:10px;color:var(--text3);margin-bottom:14px">'+comp.peers_count+' peers in '+(c.industry||'industry')+'</div>';
+    
+    // Peer table
+    h += '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:11px">';
+    h += '<thead><tr style="background:#f8fafc;font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.4px">';
+    h += '<th style="padding:8px;text-align:left">Symbol</th>';
+    h += '<th style="padding:8px;text-align:right">Mkt Cap</th>';
+    h += '<th style="padding:8px;text-align:right">Fwd P/E</th>';
+    h += '<th style="padding:8px;text-align:right">P/S</th>';
+    h += '<th style="padding:8px;text-align:right">Rev Growth</th>';
+    h += '<th style="padding:8px;text-align:right">Profit Mgn</th>';
+    h += '<th style="padding:8px;text-align:right">ROE</th>';
+    h += '</tr></thead><tbody>';
+    // Add company first row highlighted
+    h += '<tr style="background:#eef2ff;font-weight:700">';
+    h += '<td style="padding:8px;font-family:var(--mono)">'+c.symbol+' ←</td>';
+    h += '<td style="padding:8px;text-align:right">'+fmtBn(t.market_cap)+'</td>';
+    h += '<td style="padding:8px;text-align:right">'+(t.forward_pe?t.forward_pe.toFixed(1):'—')+'</td>';
+    h += '<td style="padding:8px;text-align:right">'+(t.ps_ratio?t.ps_ratio.toFixed(1):'—')+'</td>';
+    h += '<td style="padding:8px;text-align:right">'+(f.revenue_growth_yoy_pct||'—')+'%</td>';
+    h += '<td style="padding:8px;text-align:right">'+(f.profit_margin_pct||'—')+'%</td>';
+    h += '<td style="padding:8px;text-align:right">'+(f.roe_pct||'—')+'%</td>';
+    h += '</tr>';
+    comp.peers.forEach(function(p){
+      h += '<tr style="border-top:1px solid #e2e8f0">';
+      h += '<td style="padding:8px;font-family:var(--mono)"><a href="javascript:void(0)" onclick="document.getElementById(\'ddSymbol\').value=\''+p.symbol+'\';_ddGenerate()" style="color:#1e40af;text-decoration:none;font-weight:700">'+p.symbol+'</a></td>';
+      h += '<td style="padding:8px;text-align:right">'+fmtBn(p.market_cap)+'</td>';
+      h += '<td style="padding:8px;text-align:right">'+(p.forward_pe||'—')+'</td>';
+      h += '<td style="padding:8px;text-align:right">'+(p.ps_ratio||'—')+'</td>';
+      h += '<td style="padding:8px;text-align:right">'+(p.revenue_growth_pct||'—')+'%</td>';
+      h += '<td style="padding:8px;text-align:right">'+(p.profit_margin_pct||'—')+'%</td>';
+      h += '<td style="padding:8px;text-align:right">'+(p.roe_pct||'—')+'%</td>';
+      h += '</tr>';
+    });
+    h += '</tbody></table></div>';
+    
+    // Rank summary
+    if(comp.company_rank && Object.keys(comp.company_rank).length){
+      h += '<div style="margin-top:12px;padding:10px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;font-size:10px;color:#166534;line-height:1.6">';
+      h += '<strong>'+c.symbol+' rank vs peers (incl self):</strong> ';
+      var rl = [];
+      if(comp.company_rank.revenue_growth_pct) rl.push('Growth: <strong>'+comp.company_rank.revenue_growth_pct+'</strong>');
+      if(comp.company_rank.profit_margin_pct) rl.push('Margin: <strong>'+comp.company_rank.profit_margin_pct+'</strong>');
+      if(comp.company_rank.roe_pct) rl.push('ROE: <strong>'+comp.company_rank.roe_pct+'</strong>');
+      h += rl.join(' · ');
+      h += '</div>';
+    }
+    h += '</div>';
+  }
+  
+  // Section: Sector context
+  if(sec.sector_etf || sec.sector_etf_note){
+    h += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:20px;margin-bottom:16px">';
+    h += '<div style="font-size:14px;font-weight:900;color:var(--text);font-family:Sora,sans-serif;margin-bottom:14px">📊 Sector Context <span style="font-size:9px;font-weight:600;color:#059669;margin-left:6px">REAL ETF DATA</span></div>';
+    if(sec.sector_etf){
+      h += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px">';
+      h += metricBox('SECTOR', sec.sector || 'N/A');
+      h += metricBox('SECTOR ETF', sec.sector_etf);
+      h += metricBox('SECTOR 1Y', sec.sector_1y_return_pct, null, '%');
+      h += metricBox('STOCK 1Y', sec.stock_1y_return_pct, null, '%');
+      if(sec.outperformance_pct !== null && sec.outperformance_pct !== undefined){
+        var opC = sec.outperformance_pct >= 0 ? '#059669' : '#dc2626';
+        h += metricBox('OUTPERFORMANCE', (sec.outperformance_pct>=0?'+':'')+sec.outperformance_pct, [null, opC], '%');
+      }
+      h += '</div>';
+    } else if(sec.sector_etf_note){
+      h += '<div style="font-size:10px;color:var(--text3);font-style:italic">'+sec.sector_etf_note+'</div>';
+    }
+    h += '</div>';
+  }
+  
+  // Section: Risk Matrix
+  h += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:20px;margin-bottom:16px">';
+  h += '<div style="font-size:14px;font-weight:900;color:var(--text);font-family:Sora,sans-serif;margin-bottom:14px">⚠ Risk Matrix <span style="font-size:9px;font-weight:600;color:#d97706;margin-left:6px">'+rm.total_risks+' RISKS</span></div>';
+  if(rm.risks && rm.risks.length){
+    rm.risks.forEach(function(r){
+      var bg = r.severity==='High'?'#fef2f2':r.severity==='Medium'?'#fefce8':r.severity==='Low'?'#eff6ff':'#f8fafc';
+      var color = r.severity==='High'?'#dc2626':r.severity==='Medium'?'#d97706':r.severity==='Low'?'#2563eb':'var(--text3)';
+      h += '<div style="padding:10px 12px;background:'+bg+';border-radius:6px;margin-bottom:6px;display:flex;gap:10px;align-items:flex-start">';
+      h += '<div style="font-size:16px;flex-shrink:0">'+r.icon+'</div>';
+      h += '<div style="flex:1"><div style="display:flex;gap:8px;align-items:center;margin-bottom:2px"><span style="font-size:9px;font-weight:800;color:'+color+';letter-spacing:.4px">'+r.severity.toUpperCase()+' · '+r.category.toUpperCase()+'</span>';
+      if(r.interpretation){h+='<span style="font-size:8px;padding:1px 6px;background:#fef3c7;color:#78350f;border-radius:100px;font-weight:700">INTERPRETATION</span>';}
+      else if(r.real_data){h+='<span style="font-size:8px;padding:1px 6px;background:#dcfce7;color:#166534;border-radius:100px;font-weight:700">REAL DATA</span>';}
+      h += '</div><div style="font-size:11px;color:var(--text);line-height:1.4">'+r.text+'</div></div></div>';
+    });
+  } else {
+    h += '<div style="font-size:11px;color:var(--text3);text-align:center;padding:20px">No major risks flagged from financial data.</div>';
+  }
+  if(rm.honest_note){
+    h += '<div style="margin-top:8px;padding:8px 10px;background:#fefce8;border-radius:6px;font-size:9px;color:#78350f;line-height:1.4"><strong>📋 </strong>'+rm.honest_note+'</div>';
+  }
+  h += '</div>';
+  
+  // Section: SWOT
+  h += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:20px;margin-bottom:16px">';
+  h += '<div style="font-size:14px;font-weight:900;color:var(--text);font-family:Sora,sans-serif;margin-bottom:6px">🎯 SWOT Analysis</div>';
+  h += '<div style="font-size:10px;color:var(--text3);margin-bottom:14px"><span style="padding:1px 6px;background:#fef3c7;color:#78350f;border-radius:100px;font-weight:700;font-size:8px">INTERPRETATION</span> Items derived from real financial data; qualitative.</div>';
+  h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">';
+  var swotBox = function(title, items, color, bg){
+    var html = '<div style="padding:12px;background:'+bg+';border-radius:8px;border-left:3px solid '+color+'">';
+    html += '<div style="font-size:11px;font-weight:800;color:'+color+';margin-bottom:8px;font-family:Sora,sans-serif">'+title+'</div>';
+    if(items && items.length){
+      html += '<ul style="margin:0;padding-left:14px;font-size:10px;color:var(--text);line-height:1.5">';
+      items.forEach(function(it){html+='<li style="margin-top:3px">'+it+'</li>';});
+      html += '</ul>';
+    } else {
+      html += '<div style="font-size:10px;color:var(--text3);font-style:italic">No clear items from data</div>';
+    }
+    return html + '</div>';
+  };
+  h += swotBox('💪 Strengths', sw.strengths, '#059669', '#f0fdf4');
+  h += swotBox('⚠️ Weaknesses', sw.weaknesses, '#dc2626', '#fef2f2');
+  h += swotBox('🚀 Opportunities', sw.opportunities, '#2563eb', '#eff6ff');
+  h += swotBox('🚧 Threats', sw.threats, '#d97706', '#fefce8');
+  h += '</div></div>';
+  
+  // Section: Porter's Five Forces — visual bar chart
+  h += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:20px;margin-bottom:16px">';
+  h += '<div style="font-size:14px;font-weight:900;color:var(--text);font-family:Sora,sans-serif;margin-bottom:6px">⚔️ Porter\'s Five Forces</div>';
+  h += '<div style="font-size:10px;color:var(--text3);margin-bottom:14px"><span style="padding:1px 6px;background:#fef3c7;color:#78350f;border-radius:100px;font-weight:700;font-size:8px">INTERPRETATION</span> Higher score = more competitive pressure on this company.</div>';
+  
+  var forceLabels = {
+    supplier_power: "Supplier Power",
+    buyer_power: "Buyer Power",
+    competitive_rivalry: "Competitive Rivalry",
+    threat_substitution: "Threat of Substitution",
+    threat_new_entry: "Threat of New Entry"
+  };
+  Object.keys(forceLabels).forEach(function(k){
+    var force = por[k] || {score: 5, note: ''};
+    var pctW = (force.score / 10) * 100;
+    var barColor = force.score >= 7 ? '#dc2626' : force.score >= 5 ? '#d97706' : '#059669';
+    h += '<div style="margin-bottom:10px">';
+    h += '<div style="display:flex;justify-content:space-between;font-size:10px;font-weight:700;color:var(--text);margin-bottom:3px">';
+    h += '<span>'+forceLabels[k]+'</span><span style="color:'+barColor+';font-family:var(--mono)">'+force.score+'/10</span></div>';
+    h += '<div style="height:8px;background:#f1f5f9;border-radius:6px;overflow:hidden"><div style="height:100%;width:'+pctW+'%;background:'+barColor+';border-radius:6px"></div></div>';
+    if(force.note){h+='<div style="font-size:9px;color:var(--text3);margin-top:3px;line-height:1.4">'+force.note+'</div>';}
+    h += '</div>';
+  });
+  
+  if(por.industry_attractiveness){
+    var attrColor = por.industry_attractiveness > 30 ? '#059669' : por.industry_attractiveness > 15 ? '#d97706' : '#dc2626';
+    h += '<div style="margin-top:14px;padding:10px;background:'+attrColor+'10;border-radius:6px;text-align:center">';
+    h += '<div style="font-size:9px;color:var(--text3);font-weight:700">INDUSTRY ATTRACTIVENESS</div>';
+    h += '<div style="font-size:24px;font-weight:900;color:'+attrColor+';font-family:var(--mono)">'+por.industry_attractiveness+'/50</div>';
+    h += '<div style="font-size:9px;color:var(--text3);margin-top:2px">Higher = more attractive industry to operate in</div>';
+    h += '</div>';
+  }
+  h += '</div>';
+  
+  // Data quality + disclaimer
+  if(d.data_quality_note){
+    h += '<div style="background:#eff6ff;border:1px solid #2563eb20;border-radius:8px;padding:14px;margin-bottom:10px;font-size:10px;line-height:1.6">';
+    h += '<div style="font-weight:800;color:#1e40af;margin-bottom:6px">📋 Data Quality Notes</div>';
+    h += '<div><strong style="color:#059669">✓ Real data:</strong> '+(d.data_quality_note.real_data_sections||[]).join(', ')+'</div>';
+    h += '<div style="margin-top:4px"><strong style="color:#d97706">⚠ Interpretive:</strong> '+(d.data_quality_note.interpretive_sections||[]).join(', ')+'</div>';
+    h += '<div style="margin-top:4px"><strong style="color:#dc2626">✗ Not included:</strong> '+(d.data_quality_note.not_included||[]).join(', ')+'</div>';
+    h += '</div>';
+  }
+  
+  if(d.honest_disclaimer){
+    h += '<div style="padding:12px 14px;background:#fef3c7;border:1px solid #d97706;border-radius:8px;font-size:10px;color:#78350f;line-height:1.5">';
+    h += '<strong>⚠ Honest disclaimer:</strong> '+d.honest_disclaimer;
+    h += '</div>';
+  }
+  
+  h += '</div>'; // close max-width
+  el.innerHTML = h;
+}
+
+// Initial render
+renderForm();
 }
 
 // ═══ PMS — Portfolio Management System Tab ═══
