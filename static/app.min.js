@@ -2363,7 +2363,7 @@ var TAB_GROUPS = {
   overview: {tabs: ['quick'], labels: ['Summary'], default: 'quick'},
   research: {tabs: ['analysis','dcf','equity','compare'], labels: ['AI Analysis','DCF Valuation','Research','Compare'], default: 'analysis'},
   decide:   {tabs: ['decision','toptrades','topinvest','proscan','reports','pms'], labels: ['Analyze Stock','Top Trades','Top Investments','🔬 Pro Scan','📊 Reports','📊 PMS'], default: 'decision'},
-  dream:    {tabs: ['dreamportfolio','multibagger','momentumradar','highprob','optionspulse'], labels: ['🌟 Dream Portfolio','🔥 Multibagger Hunter','⚡ Momentum Radar','🎯 High-Prob Setups','⚡ Options Pulse'], default: 'dreamportfolio'},
+  dream:    {tabs: ['dreamportfolio','multibagger','momentumradar','highprob','optionspulse','tradeticket','microcap'], labels: ['🌟 Dream Portfolio','🔥 Multibagger Hunter','⚡ Momentum Radar','🎯 High-Prob Setups','⚡ Options Pulse','🎫 Trade Ticket','🏆 Micro-Cap Challenge'], default: 'dreamportfolio'},
   trading:  {tabs: ['trades','smarttrades','stockintel','scanner','valreport','backtest','journal','aiassist'], labels: ['Algo Trades','Smart Trades','Stock Intel','Scanner','Valuation','Backtest','Journal','AI Assistant'], default: 'trades'},
   markets:  {tabs: ['indices','daily','newsimpact','assets'], labels: ['Top Performers','Market Daily','📰 News Impact','Global Assets'], default: 'indices'},
   tools:    {tabs: ['finance','education','compare'], labels: ['Finance Tools','Education','Compare Stocks'], default: 'finance'},
@@ -2559,7 +2559,7 @@ if(_cc&&tab!=='quick')_cc.style.display='none';
 
 
 // btnMap
-const btnMap={quick:'tabBtnOverview',analysis:'tabBtnResearch',dcf:'tabBtnResearch',equity:'tabBtnResearch',compare:'tabBtnTools',indices:'tabBtnMarkets',finance:'tabBtnTools',daily:'tabBtnMarkets',assets:'tabBtnMarkets',decision:'tabBtnDecide',toptrades:'tabBtnDecide',topinvest:'tabBtnDecide',reports:'tabBtnDecide',proscan:'tabBtnDecide',pms:'tabBtnDecide',dreamportfolio:'tabBtnDream',multibagger:'tabBtnDream',momentumradar:'tabBtnDream',highprob:'tabBtnDream',optionspulse:'tabBtnDream',trades:'tabBtnTrading',stockintel:'tabBtnTrading',scanner:'tabBtnTrading',valreport:'tabBtnTrading',backtest:'tabBtnTrading',smarttrades:'tabBtnTrading',journal:'tabBtnTrading',aiassist:'tabBtnTrading',education:'tabBtnTools',gems:'tabBtnOverview',picks:'tabBtnOverview',funds:'tabBtnTools'};
+const btnMap={quick:'tabBtnOverview',analysis:'tabBtnResearch',dcf:'tabBtnResearch',equity:'tabBtnResearch',compare:'tabBtnTools',indices:'tabBtnMarkets',finance:'tabBtnTools',daily:'tabBtnMarkets',assets:'tabBtnMarkets',decision:'tabBtnDecide',toptrades:'tabBtnDecide',topinvest:'tabBtnDecide',reports:'tabBtnDecide',proscan:'tabBtnDecide',pms:'tabBtnDecide',dreamportfolio:'tabBtnDream',multibagger:'tabBtnDream',momentumradar:'tabBtnDream',highprob:'tabBtnDream',optionspulse:'tabBtnDream',tradeticket:'tabBtnDream',microcap:'tabBtnDream',trades:'tabBtnTrading',stockintel:'tabBtnTrading',scanner:'tabBtnTrading',valreport:'tabBtnTrading',backtest:'tabBtnTrading',smarttrades:'tabBtnTrading',journal:'tabBtnTrading',aiassist:'tabBtnTrading',education:'tabBtnTools',gems:'tabBtnOverview',picks:'tabBtnOverview',funds:'tabBtnTools'};
 
 // Hide all
 document.querySelectorAll('.sc[data-tab]').forEach(s=>{s.style.display='none';s.style.opacity='';s.style.transform='';s.style.animation=''});
@@ -2586,7 +2586,7 @@ b.style.background='var(--blue)';b.style.color='#fff';b.style.borderColor='var(-
 // 2) Show matching tab content (sections + inline data-tab elements)
 // dreamportfolio and multibagger render into the decision section's deResult
 var _showTab = tab;
-if(tab==='dreamportfolio'||tab==='multibagger'||tab==='momentumradar'||tab==='highprob'||tab==='optionspulse'||tab==='pms') _showTab='decision';
+if(tab==='dreamportfolio'||tab==='multibagger'||tab==='momentumradar'||tab==='highprob'||tab==='optionspulse'||tab==='tradeticket'||tab==='microcap'||tab==='pms') _showTab='decision';
 // Show tab sections with animation
 document.querySelectorAll('.sc[data-tab="'+_showTab+'"]').forEach(function(s,idx){
 if(_showTab==='quick' && s.dataset.subtab) return;
@@ -2722,6 +2722,8 @@ window._activeMultibaggerTab=false;
 window._activeMomentumRadarTab=false;
 window._activeHighProbTab=false;
 window._activeOptionsPulseTab=false;
+window._activeTradeTicketTab=false;
+window._activeMicroCapTab=false;
 document.querySelectorAll('.sc[data-tab="decision"]').forEach(function(s){
 s.style.borderLeft='3px solid #ea580c';
 var sh=s.querySelector('.sh');if(sh)sh.style.display='';
@@ -2734,7 +2736,7 @@ var _dcH=document.getElementById('deHeader');if(_dcH)_dcH.style.display='';
 // This prevents stale Dream/PMS/Multibagger content showing in other tabs
 var _dr=document.getElementById('deResult');
 if(_dr){
-var _sharedTabs=['dreamportfolio','multibagger','momentumradar','highprob','optionspulse','pms','decision'];
+var _sharedTabs=['dreamportfolio','multibagger','momentumradar','highprob','optionspulse','tradeticket','microcap','pms','decision'];
 if(_sharedTabs.indexOf(tab)>=0){
 // Clear old content from previous tab
 _dr.innerHTML='';
@@ -2808,6 +2810,32 @@ var _opDC=document.getElementById('deControls');if(_opDC)_opDC.style.display='no
 var _opDH=document.getElementById('deHeader');if(_opDH)_opDH.style.display='none';
 window._activeOptionsPulseTab=true;
 if(typeof loadOptionsPulse==='function')setTimeout(loadOptionsPulse,100);
+}
+// r54: Trade Ticket Generator tab
+if(tab==='tradeticket'){
+if(!window._isDreamUser){var _tt0=document.getElementById('deResult');if(_tt0)_tt0.innerHTML='<div style="padding:60px 20px;text-align:center"><div style="font-size:48px;margin-bottom:12px">🔒</div><div style="font-size:18px;font-weight:900;color:var(--text);font-family:Sora,sans-serif">Ultra-Premium Feature</div><div style="font-size:12px;color:var(--text3);margin-top:8px">Trade Ticket is exclusive. Contact support for access.</div></div>';return;}
+document.querySelectorAll('.sc[data-tab="decision"]').forEach(function(s){
+s.style.display='block';
+s.style.borderLeft='3px solid #1e40af';
+var sh=s.querySelector('.sh');if(sh)sh.style.display='none';
+});
+var _ttDC=document.getElementById('deControls');if(_ttDC)_ttDC.style.display='none';
+var _ttDH=document.getElementById('deHeader');if(_ttDH)_ttDH.style.display='none';
+window._activeTradeTicketTab=true;
+if(typeof loadTradeTicket==='function')setTimeout(loadTradeTicket,100);
+}
+// r55: Micro-Cap Challenge tab
+if(tab==='microcap'){
+if(!window._isDreamUser){var _mc0=document.getElementById('deResult');if(_mc0)_mc0.innerHTML='<div style="padding:60px 20px;text-align:center"><div style="font-size:48px;margin-bottom:12px">🔒</div><div style="font-size:18px;font-weight:900;color:var(--text);font-family:Sora,sans-serif">Ultra-Premium Feature</div><div style="font-size:12px;color:var(--text3);margin-top:8px">Micro-Cap Challenge is exclusive. Contact support for access.</div></div>';return;}
+document.querySelectorAll('.sc[data-tab="decision"]').forEach(function(s){
+s.style.display='block';
+s.style.borderLeft='3px solid #f59e0b';
+var sh=s.querySelector('.sh');if(sh)sh.style.display='none';
+});
+var _mcDC=document.getElementById('deControls');if(_mcDC)_mcDC.style.display='none';
+var _mcDH=document.getElementById('deHeader');if(_mcDH)_mcDH.style.display='none';
+window._activeMicroCapTab=true;
+if(typeof loadMicroCap==='function')setTimeout(loadMicroCap,100);
 }
 // PMS — Portfolio Management System
 if(tab==='pms'){
@@ -10903,6 +10931,617 @@ fetch('/api/options-setup-detector?email='+encodeURIComponent(email)+'&region='+
   clearInterval(_opTimer);
   el.innerHTML=_opRegBar+_warningBanner+'<div style="padding:20px;color:#ef4444">Error: '+e.message+'</div>';
 });
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// TRADE TICKET GENERATOR (r54 — UI)
+// Backend: /api/trade-ticket?symbol=X&region=Y&capital=Z&risk_pct=W
+// Single-symbol institutional-grade trade plan: contract spec, sizing,
+// stops, targets, risk flags, exit rules.
+// ═══════════════════════════════════════════════════════════════════════
+function loadTradeTicket(){
+if(!window._activeTradeTicketTab)return;
+var el=document.getElementById('deResult');if(!el)return;
+var reg=window._deRegion||'US';
+
+// Render the input form first — user must enter symbol, capital, risk
+function renderForm(prefilled){
+  prefilled = prefilled || {};
+  var sym = prefilled.symbol || window._ttLastSymbol || '';
+  var capital = prefilled.capital || window._ttLastCapital || (reg==='US'?10000:100000);
+  var risk = prefilled.risk_pct || window._ttLastRisk || 1.0;
+  var dir = prefilled.direction || window._ttLastDir || 'auto';
+  var dte = prefilled.target_dte || 14;
+  var delta = prefilled.delta_target || 0.50;
+  var csym = reg==='US' ? '$' : '₹';
+  
+  var _ttRegBar = _renderRegionToggle('loadTradeTicket', reg);
+  
+  var html = _ttRegBar;
+  html += '<div style="max-width:720px;margin:0 auto">';
+  
+  // Hero
+  html += '<div class="dc" style="border:1px solid #1e40af20;box-shadow:0 20px 60px #1e40af08;margin-bottom:20px">';
+  html += '<div class="dc-hero" style="background:linear-gradient(160deg,#0c1e3e,#1e3a8a,#1e40af)">';
+  html += '<div style="display:flex;align-items:center;gap:14px">';
+  html += '<div style="font-size:36px">🎫</div>';
+  html += '<div><div style="font-size:24px;font-weight:900;color:#fff;font-family:Sora,sans-serif">Trade Ticket Generator</div>';
+  html += '<div style="font-size:12px;color:rgba(255,255,255,.85);margin-top:4px">Institutional-grade options trade plan · '+(reg==='US'?'US (15-min delayed)':'India (Upstox real-time if connected)')+'</div></div>';
+  html += '</div></div></div>';
+  
+  // Input form
+  html += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:20px;margin-bottom:16px">';
+  html += '<div style="font-size:11px;font-weight:800;color:var(--text3);letter-spacing:.4px;margin-bottom:14px">📝 TRADE PARAMETERS</div>';
+  
+  // Symbol input
+  html += '<div style="margin-bottom:14px"><label style="display:block;font-size:10px;font-weight:700;color:var(--text3);margin-bottom:4px">SYMBOL</label>';
+  html += '<input type="text" id="ttSymbol" value="'+sym+'" placeholder="'+(reg==='US'?'NVDA, AAPL, SPY...':'NIFTY, RELIANCE, BANKNIFTY...')+'" '+
+          'style="width:100%;padding:10px 14px;border:1px solid #cbd5e1;border-radius:8px;font-size:14px;font-family:var(--mono);font-weight:700;text-transform:uppercase" '+
+          'onkeypress="if(event.key===\'Enter\')_ttGenerate()">';
+  html += '</div>';
+  
+  // Direction + delta target row
+  html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">';
+  // Direction
+  html += '<div><label style="display:block;font-size:10px;font-weight:700;color:var(--text3);margin-bottom:4px">DIRECTION</label>';
+  html += '<select id="ttDirection" style="width:100%;padding:10px 14px;border:1px solid #cbd5e1;border-radius:8px;font-size:12px;font-weight:600;background:#fff">';
+  html += '<option value="auto"'+(dir==='auto'?' selected':'')+'>Auto (use technicals)</option>';
+  html += '<option value="bullish"'+(dir==='bullish'?' selected':'')+'>🟢 Bullish (call)</option>';
+  html += '<option value="bearish"'+(dir==='bearish'?' selected':'')+'>🔴 Bearish (put)</option>';
+  html += '</select></div>';
+  // Delta
+  html += '<div><label style="display:block;font-size:10px;font-weight:700;color:var(--text3);margin-bottom:4px">STRIKE STYLE</label>';
+  html += '<select id="ttDelta" style="width:100%;padding:10px 14px;border:1px solid #cbd5e1;border-radius:8px;font-size:12px;font-weight:600;background:#fff">';
+  html += '<option value="0.30"'+(delta===0.30?' selected':'')+'>OTM (0.30 delta) — cheap, lottery</option>';
+  html += '<option value="0.50"'+(delta===0.50?' selected':'')+'>ATM (0.50 delta) — balanced</option>';
+  html += '<option value="0.70"'+(delta===0.70?' selected':'')+'>ITM (0.70 delta) — directional</option>';
+  html += '</select></div>';
+  html += '</div>';
+  
+  // Capital + Risk row
+  html += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:14px">';
+  // Capital
+  html += '<div><label style="display:block;font-size:10px;font-weight:700;color:var(--text3);margin-bottom:4px">CAPITAL ('+csym+')</label>';
+  html += '<input type="number" id="ttCapital" value="'+capital+'" min="1000" step="1000" '+
+          'style="width:100%;padding:10px 14px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px;font-family:var(--mono);font-weight:700"></div>';
+  // Risk %
+  html += '<div><label style="display:block;font-size:10px;font-weight:700;color:var(--text3);margin-bottom:4px">RISK PER TRADE (%)</label>';
+  html += '<input type="number" id="ttRisk" value="'+risk+'" min="0.1" max="5" step="0.1" '+
+          'style="width:100%;padding:10px 14px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px;font-family:var(--mono);font-weight:700"></div>';
+  // Target DTE
+  html += '<div><label style="display:block;font-size:10px;font-weight:700;color:var(--text3);margin-bottom:4px">TARGET DTE</label>';
+  html += '<select id="ttDte" style="width:100%;padding:10px 14px;border:1px solid #cbd5e1;border-radius:8px;font-size:12px;font-weight:600;background:#fff">';
+  [7,14,21,30,45].forEach(function(d){html += '<option value="'+d+'"'+(dte===d?' selected':'')+'>'+d+' days</option>';});
+  html += '</select></div>';
+  html += '</div>';
+  
+  // Generate button
+  html += '<button onclick="_ttGenerate()" style="width:100%;padding:14px;background:linear-gradient(135deg,#1e40af,#1e3a8a);color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:800;cursor:pointer;font-family:Sora,sans-serif;letter-spacing:.5px">GENERATE TRADE TICKET 🎫</button>';
+  html += '</div>';
+  
+  // Tips
+  html += '<div style="padding:12px 14px;background:#fefce8;border:1px solid #fde68a;border-radius:8px;font-size:10px;color:#78350f;line-height:1.5">';
+  html += '<strong>💡 Tips for best results:</strong> Use <strong>ATM (0.50 delta)</strong> for most trades. Pick <strong>14-21 DTE</strong> — sweet spot for theta/gamma. Risk <strong>0.5-1%</strong> per trade. ';
+  html += 'For India: ensure Upstox F&O is connected for real-time data.';
+  html += '</div>';
+  
+  html += '</div>'; // close max-width
+  
+  el.innerHTML = html;
+}
+
+// Generate — called when user clicks button
+window._ttGenerate = function(){
+  var sym = document.getElementById('ttSymbol').value.trim().toUpperCase();
+  if(!sym){alert('Enter a symbol first');return;}
+  var capital = parseFloat(document.getElementById('ttCapital').value)||10000;
+  var risk = parseFloat(document.getElementById('ttRisk').value)||1.0;
+  var dir = document.getElementById('ttDirection').value;
+  var delta = parseFloat(document.getElementById('ttDelta').value)||0.50;
+  var dte = parseInt(document.getElementById('ttDte').value)||14;
+  
+  // Cache user's last inputs
+  window._ttLastSymbol = sym;
+  window._ttLastCapital = capital;
+  window._ttLastRisk = risk;
+  window._ttLastDir = dir;
+  window._ttLastDte = dte;
+  
+  var _eml = document.getElementById('email');
+  var email = window._verifiedEmail||(_eml?(_eml.dataset.real||_eml.value):'').trim().toLowerCase();
+  
+  // Show loading state
+  var oldHTML = el.innerHTML;
+  el.innerHTML = oldHTML.replace(/GENERATE TRADE TICKET 🎫/g, '⏳ Computing trade plan...').replace(/cursor:pointer/g, 'cursor:wait;opacity:0.7');
+  
+  fetch('/api/trade-ticket?symbol='+encodeURIComponent(sym)+
+        '&region='+reg+
+        '&direction='+dir+
+        '&capital='+capital+
+        '&risk_pct='+risk+
+        '&delta_target='+delta+
+        '&target_dte='+dte+
+        '&email='+encodeURIComponent(email))
+  .then(function(r){return r.json();})
+  .then(function(d){
+    if(!d.success){
+      // Restore form + show error
+      renderForm({symbol:sym,capital:capital,risk_pct:risk,direction:dir,delta_target:delta,target_dte:dte});
+      var errBox = document.createElement('div');
+      errBox.style.cssText = 'max-width:720px;margin:14px auto 0;padding:14px;background:#fef2f2;border:1px solid #dc2626;border-radius:8px;color:#dc2626;font-size:11px;font-weight:600;text-align:center';
+      errBox.textContent = '❌ '+(d.error||'Unknown error');
+      if(d.broker_status_needed){
+        errBox.innerHTML += '<br><a href="/api/upstox-login" style="color:#fff;background:#059669;padding:6px 14px;border-radius:6px;text-decoration:none;display:inline-block;margin-top:8px;font-weight:800">🔗 Connect Upstox Now</a>';
+      }
+      el.appendChild(errBox);
+      return;
+    }
+    renderTicket(d);
+  })
+  .catch(function(e){
+    renderForm({symbol:sym,capital:capital,risk_pct:risk,direction:dir,delta_target:delta,target_dte:dte});
+    var errBox = document.createElement('div');
+    errBox.style.cssText = 'max-width:720px;margin:14px auto 0;padding:14px;background:#fef2f2;border:1px solid #dc2626;border-radius:8px;color:#dc2626;font-size:11px;font-weight:600;text-align:center';
+    errBox.textContent = '❌ Network error: '+e.message;
+    el.appendChild(errBox);
+  });
+};
+
+// Render the full ticket
+function renderTicket(d){
+  var fmt=function(n){return (n||0).toLocaleString('en-US',{maximumFractionDigits:2});};
+  var csym = d.currency_symbol || '$';
+  var u = d.underlying || {};
+  var c = d.contract || {};
+  var s = d.sizing || {};
+  var p = d.plan || {};
+  var dirColor = u.direction==='BULLISH' ? '#059669' : '#dc2626';
+  var dirIcon = u.direction==='BULLISH' ? '🟢' : '🔴';
+  
+  var _ttRegBar = _renderRegionToggle('loadTradeTicket', reg);
+  var h = _ttRegBar;
+  h += '<div style="max-width:780px;margin:0 auto">';
+  
+  // Top action bar — back to form, copy, journal
+  h += '<div style="display:flex;gap:8px;justify-content:flex-end;margin-bottom:10px">';
+  h += '<button onclick="loadTradeTicket()" title="New ticket" style="padding:6px 12px;border:1px solid #cbd5e1;background:#fff;border-radius:6px;font-size:10px;font-weight:700;cursor:pointer;font-family:Sora,sans-serif">← New Ticket</button>';
+  h += '<button onclick="_ttCopyOrder()" title="Copy order to clipboard" style="padding:6px 12px;border:none;background:#1e40af;color:#fff;border-radius:6px;font-size:10px;font-weight:700;cursor:pointer;font-family:Sora,sans-serif">📋 Copy Order</button>';
+  h += '</div>';
+  
+  // Main hero card
+  h += '<div style="background:#fff;border:2px solid '+dirColor+';border-radius:14px;overflow:hidden;box-shadow:0 20px 60px '+dirColor+'15">';
+  
+  // Header strip
+  h += '<div style="padding:16px 20px;background:linear-gradient(135deg,'+dirColor+',rgba(0,0,0,0.3));color:#fff">';
+  h += '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">';
+  h += '<div><div style="font-size:11px;opacity:.85;letter-spacing:.5px;font-weight:700">TRADE TICKET</div>';
+  h += '<div style="font-size:24px;font-weight:900;font-family:var(--mono);margin-top:2px">'+d.symbol+' '+dirIcon+' '+u.direction+'</div>';
+  h += '<div style="font-size:11px;opacity:.85;margin-top:2px">'+(u.company_name||d.symbol)+'</div></div>';
+  h += '<div style="text-align:right">';
+  h += '<div style="font-size:11px;opacity:.85;letter-spacing:.5px;font-weight:700">SPOT</div>';
+  h += '<div style="font-size:24px;font-weight:900;font-family:var(--mono);margin-top:2px">'+csym+fmt(u.spot)+'</div>';
+  h += '<div style="font-size:9px;opacity:.85;margin-top:2px">ATR '+csym+fmt(u.atr)+' ('+fmt(u.atr_pct)+'%)</div>';
+  h += '</div></div></div>';
+  
+  // Contract spec
+  h += '<div style="padding:16px 20px;border-bottom:1px solid var(--border)">';
+  h += '<div style="font-size:10px;font-weight:800;color:var(--text3);letter-spacing:.5px;margin-bottom:8px">📋 CONTRACT</div>';
+  h += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:12px">';
+  h += '<div><div style="font-size:9px;color:var(--text3);font-weight:700">TYPE</div><div style="font-size:14px;font-weight:900;color:'+dirColor+';font-family:var(--mono)">'+c.type+'</div></div>';
+  h += '<div><div style="font-size:9px;color:var(--text3);font-weight:700">STRIKE</div><div style="font-size:14px;font-weight:900;color:var(--text);font-family:var(--mono)">'+csym+fmt(c.strike)+'</div></div>';
+  h += '<div><div style="font-size:9px;color:var(--text3);font-weight:700">EXPIRY</div><div style="font-size:14px;font-weight:900;color:var(--text);font-family:var(--mono)">'+c.expiry+'</div><div style="font-size:9px;color:var(--text3)">'+c.dte+' DTE</div></div>';
+  h += '<div><div style="font-size:9px;color:var(--text3);font-weight:700">PREMIUM (mid)</div><div style="font-size:14px;font-weight:900;color:#059669;font-family:var(--mono)">'+csym+fmt(c.premium_mid)+'</div><div style="font-size:9px;color:var(--text3)">bid '+csym+fmt(c.premium_bid)+' / ask '+csym+fmt(c.premium_ask)+'</div></div>';
+  h += '<div><div style="font-size:9px;color:var(--text3);font-weight:700">IV</div><div style="font-size:14px;font-weight:900;color:var(--text);font-family:var(--mono)">'+(c.iv_pct?c.iv_pct+'%':'N/A')+'</div><div style="font-size:9px;color:var(--text3)">'+(c.iv_percentile!==null?'pctile '+c.iv_percentile+'%':'')+'</div></div>';
+  h += '<div><div style="font-size:9px;color:var(--text3);font-weight:700">LIQUIDITY</div><div style="font-size:14px;font-weight:900;color:var(--text);font-family:var(--mono)">vol '+fmt(c.volume)+'</div><div style="font-size:9px;color:var(--text3)">OI '+fmt(c.open_interest)+' · spread '+fmt(c.spread_pct)+'%</div></div>';
+  h += '</div></div>';
+  
+  // Position sizing
+  h += '<div style="padding:16px 20px;border-bottom:1px solid var(--border);background:#f8fafc">';
+  h += '<div style="font-size:10px;font-weight:800;color:var(--text3);letter-spacing:.5px;margin-bottom:8px">💰 POSITION SIZING</div>';
+  h += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:12px">';
+  h += '<div><div style="font-size:9px;color:var(--text3);font-weight:700">CAPITAL</div><div style="font-size:14px;font-weight:900;color:var(--text);font-family:var(--mono)">'+csym+fmt(s.capital)+'</div></div>';
+  h += '<div><div style="font-size:9px;color:var(--text3);font-weight:700">RISK / TRADE</div><div style="font-size:14px;font-weight:900;color:#dc2626;font-family:var(--mono)">'+s.risk_pct+'%</div><div style="font-size:9px;color:var(--text3)">= '+csym+fmt(s.max_risk_amount)+'</div></div>';
+  h += '<div><div style="font-size:9px;color:var(--text3);font-weight:700">CONTRACTS</div><div style="font-size:22px;font-weight:900;color:#1e40af;font-family:var(--mono);line-height:1">'+s.contracts+'</div><div style="font-size:9px;color:var(--text3)">lot size '+c.lot_size+'</div></div>';
+  h += '<div><div style="font-size:9px;color:var(--text3);font-weight:700">PREMIUM PAID</div><div style="font-size:14px;font-weight:900;color:var(--text);font-family:var(--mono)">'+csym+fmt(s.total_premium_paid)+'</div><div style="font-size:9px;color:var(--text3)">'+fmt(s.capital_committed_pct)+'% of capital</div></div>';
+  h += '<div><div style="font-size:9px;color:var(--text3);font-weight:700">RISK AT STOP</div><div style="font-size:14px;font-weight:900;color:#dc2626;font-family:var(--mono)">'+csym+fmt(s.total_risk_at_stop)+'</div></div>';
+  h += '</div></div>';
+  
+  // Trade plan grid
+  h += '<div style="padding:16px 20px;border-bottom:1px solid var(--border)">';
+  h += '<div style="font-size:10px;font-weight:800;color:var(--text3);letter-spacing:.5px;margin-bottom:10px">🎯 TRADE PLAN (premium levels)</div>';
+  h += '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">';
+  // Stop
+  h += '<div style="padding:12px;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;text-align:center">';
+  h += '<div style="font-size:9px;font-weight:700;color:#dc2626;letter-spacing:.4px">STOP (-30%)</div>';
+  h += '<div style="font-size:18px;font-weight:900;color:#dc2626;font-family:var(--mono);margin-top:2px">'+csym+fmt(p.stop_premium)+'</div>';
+  h += '<div style="font-size:9px;color:var(--text3);margin-top:2px">underlying '+csym+fmt(p.stop_underlying)+'</div>';
+  h += '</div>';
+  // T1
+  h += '<div style="padding:12px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;text-align:center">';
+  h += '<div style="font-size:9px;font-weight:700;color:#2563eb;letter-spacing:.4px">T1 (+30%)</div>';
+  h += '<div style="font-size:18px;font-weight:900;color:#2563eb;font-family:var(--mono);margin-top:2px">'+csym+fmt(p.target_1_premium)+'</div>';
+  h += '<div style="font-size:9px;color:var(--text3);margin-top:2px">underlying '+csym+fmt(p.target_1_underlying)+'</div>';
+  h += '</div>';
+  // T2
+  h += '<div style="padding:12px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;text-align:center">';
+  h += '<div style="font-size:9px;font-weight:700;color:#059669;letter-spacing:.4px">T2 (+70%)</div>';
+  h += '<div style="font-size:18px;font-weight:900;color:#059669;font-family:var(--mono);margin-top:2px">'+csym+fmt(p.target_2_premium)+'</div>';
+  h += '<div style="font-size:9px;color:var(--text3);margin-top:2px">underlying '+csym+fmt(p.target_2_underlying)+'</div>';
+  h += '</div>';
+  h += '</div>';
+  h += '<div style="margin-top:8px;font-size:9px;color:var(--text3);text-align:center">R:R to T1 = '+p.rr_to_t1+':1 · R:R to T2 = '+p.rr_to_t2+':1</div>';
+  h += '</div>';
+  
+  // Risk flags
+  if(d.risk_flags && d.risk_flags.length > 0){
+    h += '<div style="padding:16px 20px;border-bottom:1px solid var(--border)">';
+    h += '<div style="font-size:10px;font-weight:800;color:var(--text3);letter-spacing:.5px;margin-bottom:8px">⚠ RISK FLAGS</div>';
+    d.risk_flags.forEach(function(f){
+      var bg = f.level==='high'?'#fef2f2':f.level==='warn'?'#fefce8':f.level==='ok'?'#f0fdf4':'#f8fafc';
+      var color = f.level==='high'?'#dc2626':f.level==='warn'?'#d97706':f.level==='ok'?'#059669':'var(--text)';
+      h += '<div style="padding:8px 12px;background:'+bg+';border-radius:6px;font-size:11px;color:'+color+';margin-bottom:4px;display:flex;gap:8px;align-items:flex-start">';
+      h += '<span style="font-size:14px;flex-shrink:0">'+f.icon+'</span>';
+      h += '<span style="line-height:1.4">'+f.text+'</span>';
+      h += '</div>';
+    });
+    h += '</div>';
+  }
+  
+  // Exit rules
+  if(d.exit_rules && d.exit_rules.length > 0){
+    h += '<div style="padding:16px 20px;border-bottom:1px solid var(--border);background:#fefce8">';
+    h += '<div style="font-size:10px;font-weight:800;color:#78350f;letter-spacing:.5px;margin-bottom:8px">🚪 EXIT RULES (read carefully)</div>';
+    h += '<ol style="margin:0;padding-left:18px;font-size:11px;color:#78350f;line-height:1.6">';
+    d.exit_rules.forEach(function(r){h += '<li style="margin-top:3px">'+r+'</li>';});
+    h += '</ol></div>';
+  }
+  
+  // Order ticket text (copyable)
+  h += '<div style="padding:14px 20px;background:#0f172a;color:#e2e8f0">';
+  h += '<div style="font-size:9px;font-weight:700;color:#94a3b8;letter-spacing:.5px;margin-bottom:6px">📋 ORDER TICKET (paste in broker)</div>';
+  h += '<div id="ttOrderText" style="font-family:var(--mono);font-size:11px;color:#fff;line-height:1.5;padding:10px;background:#1e293b;border-radius:6px">'+d.order_ticket_text+'</div>';
+  h += '</div>';
+  
+  // Disclaimer
+  h += '<div style="padding:12px 20px;background:#fef3c7;font-size:10px;color:#78350f;line-height:1.5;border-top:1px solid #fde68a">';
+  h += '<strong>⚠ Honest disclaimer:</strong> '+d.honest_disclaimer;
+  h += '</div>';
+  
+  h += '</div>'; // close hero card
+  h += '</div>'; // close max-width
+  
+  el.innerHTML = h;
+  
+  // Stash data for copy button
+  window._ttCurrentTicket = d;
+}
+
+// Copy order to clipboard
+window._ttCopyOrder = function(){
+  var d = window._ttCurrentTicket;
+  if(!d || !d.order_ticket_text){alert('No ticket to copy');return;}
+  navigator.clipboard.writeText(d.order_ticket_text).then(function(){
+    var btn = event.target;
+    var orig = btn.textContent;
+    btn.textContent = '✓ Copied!';
+    btn.style.background = '#059669';
+    setTimeout(function(){btn.textContent = orig;btn.style.background = '#1e40af';}, 1500);
+  }).catch(function(){
+    alert('Copy failed. Order text:\n\n'+d.order_ticket_text);
+  });
+};
+
+// Initial render — show input form
+renderForm();
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// MICRO-CAP CHALLENGE (r55 — UI)
+// Backend: /api/microcap-challenge/start, /status, /exit-position, /reset
+// 6-month locked U.S. micro-cap (<$300M) paper portfolio. Honest expectations.
+// ═══════════════════════════════════════════════════════════════════════
+function loadMicroCap(forceReg){
+if(!window._activeMicroCapTab)return;
+var el=document.getElementById('deResult');if(!el)return;
+var _eml=document.getElementById('email');
+var email=window._verifiedEmail||(_eml?(_eml.dataset.real||_eml.value):'').trim().toLowerCase();
+// r55: per-region state. Each region has its own challenge file on backend.
+var reg = forceReg || window._mcRegion || 'US';
+window._mcRegion = reg;
+var csym = reg==='US' ? '$' : '₹';
+var fmt=function(n){return (n||0).toLocaleString('en-US',{maximumFractionDigits:2});};
+
+// Region toggle (shared helper)
+var _mcRegBar = _renderRegionToggle('loadMicroCap', reg);
+
+// Compare button — small link below toggle
+var _compareBtn = '<div style="text-align:center;margin-bottom:14px"><a href="javascript:void(0)" onclick="_mcCompare()" style="font-size:11px;color:#1e40af;text-decoration:underline;font-weight:700">📊 Compare US vs India</a></div>';
+
+// Check status — if challenge exists, show it; otherwise show start form
+el.innerHTML=_mcRegBar+_compareBtn+'<div style="padding:40px;text-align:center"><div style="font-size:48px;margin-bottom:12px">🏆</div><div style="font-size:14px;color:var(--text3)">Loading '+reg+' challenge...</div></div>';
+
+fetch('/api/microcap-challenge/status?email='+encodeURIComponent(email)+'&region='+reg)
+.then(function(r){return r.json();})
+.then(function(d){
+  if(d.no_challenge){
+    renderStartForm();
+  } else if(d.success){
+    renderChallenge(d);
+  } else {
+    el.innerHTML=_mcRegBar+_compareBtn+'<div style="padding:40px;text-align:center;color:#ef4444">Error: '+(d.error||'Unknown')+'</div>';
+  }
+}).catch(function(e){
+  el.innerHTML=_mcRegBar+_compareBtn+'<div style="padding:40px;text-align:center;color:#ef4444">Network error: '+e.message+'</div>';
+});
+
+function renderStartForm(){
+  var defaultCap = reg==='US' ? 100 : 10000;
+  var minCap = reg==='US' ? 50 : 5000;
+  var maxCap = reg==='US' ? 100000 : 10000000;
+  var stepCap = reg==='US' ? 10 : 1000;
+  var mcLabel = reg==='US' ? '$300M' : '₹1,000 Cr';
+  var liqLabel = reg==='US' ? '$500K' : '₹2 Cr';
+  
+  var html = _mcRegBar + _compareBtn + '<div style="max-width:680px;margin:0 auto">';
+  // Hero
+  html += '<div class="dc" style="border:1px solid #f59e0b20;box-shadow:0 20px 60px #f59e0b08;margin-bottom:20px">';
+  html += '<div class="dc-hero" style="background:linear-gradient(160deg,#78350f,#d97706,#f59e0b);color:#fff">';
+  html += '<div style="display:flex;align-items:center;gap:14px">';
+  html += '<div style="font-size:42px">🏆</div>';
+  html += '<div><div style="font-size:24px;font-weight:900;font-family:Sora,sans-serif">Micro-Cap Challenge · '+(reg==='US'?'USA':'India')+'</div>';
+  html += '<div style="font-size:12px;opacity:.85;margin-top:4px">6-month locked portfolio · '+(reg==='US'?'U.S. micro-caps':'NSE small/micro-caps')+' under '+mcLabel+' · Real screening, paper tracked</div></div>';
+  html += '</div></div></div>';
+  
+  // Honest disclaimer banner
+  html += '<div style="padding:14px;background:#fef3c7;border:1px solid #d97706;border-radius:8px;margin-bottom:16px;font-size:11px;color:#78350f;line-height:1.6">';
+  html += '<strong>⚠ Honest expectations ('+reg+'):</strong><br>';
+  if(reg==='US'){
+    html += '• U.S. micro-caps are HIGH RISK — historical: ~30% decline >50% over 6 months<br>';
+    html += '• Realistic 6-month outcome: <strong>+5% to +15%</strong> if picks behave; -30% to +30% range<br>';
+    html += '• Squeeze setups + biotech catalysts drive most upside (and downside)<br>';
+  } else {
+    html += '• India NSE small/micro-caps tend to be momentum-driven (less squeeze potential)<br>';
+    html += '• Realistic 6-month outcome: <strong>+8% to +20%</strong> in bull markets, but more downside in corrections<br>';
+    html += '• Liquidity gate set at ₹2 Cr daily volume — safer than SME exchange<br>';
+  }
+  html += '• TikTok-promised "23% in 4 weeks" = survivorship bias. Discipline > picks.<br>';
+  html += '• PAPER tracking — not actual broker orders';
+  html += '</div>';
+  
+  // Start form
+  html += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:20px">';
+  html += '<div style="font-size:11px;font-weight:800;color:var(--text3);letter-spacing:.4px;margin-bottom:14px">📝 START '+reg+' CHALLENGE</div>';
+  html += '<div style="margin-bottom:14px"><label style="display:block;font-size:10px;font-weight:700;color:var(--text3);margin-bottom:4px">CAPITAL ('+csym+')</label>';
+  html += '<input type="number" id="mcCapital" value="'+defaultCap+'" min="'+minCap+'" max="'+maxCap+'" step="'+stepCap+'" '+
+          'style="width:100%;padding:10px 14px;border:1px solid #cbd5e1;border-radius:8px;font-size:14px;font-family:var(--mono);font-weight:700"></div>';
+  html += '<div style="font-size:10px;color:var(--text3);margin-bottom:14px;line-height:1.5">';
+  html += 'Suggested: '+csym+defaultCap+' (matches challenge framework). Higher capital → more diversification.<br>';
+  html += '<strong>6-month timeframe is locked once started.</strong> You can manually exit positions but not extend.';
+  html += '</div>';
+  html += '<button onclick="_mcStart()" style="width:100%;padding:14px;background:linear-gradient(135deg,#d97706,#f59e0b);color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:800;cursor:pointer;font-family:Sora,sans-serif;letter-spacing:.5px">🏆 START 6-MONTH '+reg+' CHALLENGE</button>';
+  html += '</div>';
+  
+  // How it works
+  html += '<div style="padding:14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;margin-top:16px;font-size:11px;color:var(--text);line-height:1.6">';
+  html += '<strong style="color:var(--text)">How it works:</strong><br>';
+  html += '1. Backend screens '+(reg==='US'?'U.S.':'India NSE')+' micro-caps (under '+mcLabel+', >'+liqLabel+' daily volume)<br>';
+  html += '2. Picks 5-8 highest-scoring positions using: '+(reg==='US'?'short interest, momentum, volume, fundamentals':'momentum, volume surge, fundamentals (SI rare for India)')+'<br>';
+  html += '3. Allocates full-share positions equally weighted by '+csym+' amount<br>';
+  html += '4. You see live P&L, recommendations, and can exit any position manually<br>';
+  html += '5. Challenge ends after 180 days — review results';
+  html += '</div>';
+  
+  html += '</div>';
+  el.innerHTML = html;
+}
+
+window._mcStart = function(){
+  var capital = parseFloat(document.getElementById('mcCapital').value)||(reg==='US'?100:10000);
+  if(!confirm('Start 6-month locked '+reg+' Micro-Cap Challenge with '+csym+capital+'?\n\nPicks will be made now and tracked for 180 days. You can manually exit positions but not extend the timeframe.\n\nProceed?')) return;
+  el.innerHTML=_mcRegBar+_compareBtn+'<div style="padding:40px;text-align:center"><div style="font-size:48px;margin-bottom:12px">🏆</div><div style="font-size:14px;font-weight:900;color:var(--text);margin-bottom:8px">Screening '+reg+' micro-cap universe...</div><div style="font-size:11px;color:var(--text3)">~50 tickers · fundamentals + momentum check · 30-90 seconds</div></div>';
+  fetch('/api/microcap-challenge/start?email='+encodeURIComponent(email)+'&capital='+capital+'&region='+reg)
+  .then(function(r){return r.json();})
+  .then(function(d){
+    if(d.success){
+      loadMicroCap(reg);
+    } else {
+      alert('Failed to start: '+(d.error||'Unknown'));
+      loadMicroCap(reg);
+    }
+  });
+};
+
+window._mcExit = function(symbol){
+  if(!confirm('Exit '+symbol+' at current market price?\n\nThis will sell all shares and add proceeds to cash.')) return;
+  fetch('/api/microcap-challenge/exit-position?email='+encodeURIComponent(email)+'&symbol='+encodeURIComponent(symbol)+'&region='+reg,{method:'POST'})
+  .then(function(r){return r.json();})
+  .then(function(d){
+    if(d.success){
+      alert('Exited '+symbol+' at '+csym+d.exit_price+'. P&L: '+csym+d.pnl);
+      loadMicroCap(reg);
+    } else {
+      alert('Exit failed: '+(d.error||'Unknown'));
+    }
+  });
+};
+
+window._mcReset = function(){
+  if(!confirm('RESET the '+reg+' challenge? This deletes all current positions and history. This cannot be undone.')) return;
+  fetch('/api/microcap-challenge/reset?email='+encodeURIComponent(email)+'&region='+reg,{method:'DELETE'})
+  .then(function(){loadMicroCap(reg);});
+};
+
+// r55: Compare US vs India side-by-side
+window._mcCompare = function(){
+  el.innerHTML = _mcRegBar + _compareBtn + '<div style="padding:40px;text-align:center"><div style="font-size:48px;margin-bottom:12px">📊</div><div style="font-size:14px;color:var(--text3)">Loading comparison...</div></div>';
+  fetch('/api/microcap-challenge/compare?email='+encodeURIComponent(email))
+    .then(function(r){return r.json();})
+    .then(function(d){
+      var html = _mcRegBar + _compareBtn + '<div style="max-width:780px;margin:0 auto">';
+      html += '<div class="dc" style="border:1px solid #1e40af20;box-shadow:0 20px 60px #1e40af08;margin-bottom:20px">';
+      html += '<div class="dc-hero" style="background:linear-gradient(160deg,#0c1e3e,#1e3a8a,#1e40af);color:#fff">';
+      html += '<div style="display:flex;align-items:center;gap:14px">';
+      html += '<div style="font-size:42px">📊</div>';
+      html += '<div><div style="font-size:24px;font-weight:900;font-family:Sora,sans-serif">US vs India Comparison</div>';
+      html += '<div style="font-size:12px;opacity:.85;margin-top:4px">Side-by-side performance · informational only</div></div>';
+      html += '</div></div></div>';
+      
+      // Two cards side by side
+      html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">';
+      (d.summaries||[]).forEach(function(s){
+        var isWinner = d.winner === s.region && d.summaries.filter(x=>x.active).length > 1;
+        var border = isWinner ? '3px solid #059669' : '1px solid #e2e8f0';
+        var pnlColor = (s.pnl_pct||0) >= 0 ? '#059669' : '#dc2626';
+        var pnlSign = (s.pnl_pct||0) >= 0 ? '+' : '';
+        var sCsym = s.csym || (s.region==='US'?'$':'₹');
+        html += '<div style="background:#fff;border:'+border+';border-radius:12px;padding:16px;position:relative">';
+        if(isWinner){html += '<div style="position:absolute;top:-10px;right:12px;padding:3px 10px;background:#059669;color:#fff;border-radius:100px;font-size:9px;font-weight:800">🏆 LEADER</div>';}
+        html += '<div style="font-size:18px;font-weight:900;color:var(--text);font-family:Sora,sans-serif;margin-bottom:8px">'+(s.region==='US'?'🇺🇸 USA':'🇮🇳 India')+'</div>';
+        if(!s.active){
+          html += '<div style="padding:20px 0;text-align:center;color:var(--text3);font-size:11px">No active challenge<br><a href="javascript:void(0)" onclick="loadMicroCap(\''+s.region+'\')" style="color:#1e40af;font-weight:700">Start '+s.region+' Challenge →</a></div>';
+        } else {
+          html += '<div style="font-size:9px;color:var(--text3);margin-bottom:4px">P&L</div>';
+          html += '<div style="font-size:28px;font-weight:900;color:'+pnlColor+';font-family:var(--mono);line-height:1">'+pnlSign+(s.pnl_pct||0).toFixed(2)+'%</div>';
+          html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:14px;font-size:10px">';
+          html += '<div><div style="color:var(--text3);font-weight:700">INITIAL</div><div style="color:var(--text);font-weight:800;font-family:var(--mono)">'+sCsym+fmt(s.initial_capital)+'</div></div>';
+          html += '<div><div style="color:var(--text3);font-weight:700">CURRENT</div><div style="color:var(--text);font-weight:800;font-family:var(--mono)">'+sCsym+fmt(s.current_value)+'</div></div>';
+          html += '<div><div style="color:var(--text3);font-weight:700">POSITIONS</div><div style="color:var(--text);font-weight:800">'+s.positions+'</div></div>';
+          html += '<div><div style="color:var(--text3);font-weight:700">DAYS LEFT</div><div style="color:var(--text);font-weight:800">'+(s.days_remaining||'—')+'</div></div>';
+          html += '</div>';
+          html += '<button onclick="loadMicroCap(\''+s.region+'\')" style="width:100%;margin-top:14px;padding:8px;background:#f8fafc;color:var(--text);border:1px solid #cbd5e1;border-radius:6px;font-size:10px;font-weight:700;cursor:pointer">View '+s.region+' Details →</button>';
+        }
+        html += '</div>';
+      });
+      html += '</div>';
+      
+      // Honest note
+      if(d.honest_note){
+        html += '<div style="padding:12px 14px;background:#fef3c7;border:1px solid #d97706;border-radius:8px;font-size:10px;color:#78350f;line-height:1.5">';
+        html += '<strong>⚠ </strong>'+d.honest_note;
+        html += '</div>';
+      }
+      html += '</div>';
+      el.innerHTML = html;
+    })
+    .catch(function(e){
+      el.innerHTML = _mcRegBar + _compareBtn + '<div style="padding:40px;text-align:center;color:#ef4444">Compare error: '+e.message+'</div>';
+    });
+};
+
+function renderChallenge(d){
+  var c = d.challenge || {};
+  var positions = c.positions || [];
+  var history = c.trade_history || [];
+  var pnlColor = (c.total_pnl||0) >= 0 ? '#059669' : '#dc2626';
+  var pnlSign = (c.total_pnl||0) >= 0 ? '+' : '';
+  var stCsym = c.csym || csym;
+  
+  var html = _mcRegBar + _compareBtn + '<div style="max-width:780px;margin:0 auto">';
+  
+  // Hero with live P&L
+  html += '<div class="dc" style="border:2px solid '+pnlColor+';border-radius:14px;overflow:hidden;box-shadow:0 20px 60px '+pnlColor+'15;margin-bottom:20px">';
+  html += '<div style="padding:20px;background:linear-gradient(135deg,'+pnlColor+',rgba(0,0,0,0.3));color:#fff">';
+  html += '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">';
+  html += '<div><div style="font-size:11px;opacity:.85;letter-spacing:.5px;font-weight:700">🏆 MICRO-CAP CHALLENGE</div>';
+  html += '<div style="font-size:24px;font-weight:900;font-family:Sora,sans-serif;margin-top:2px">'+stCsym+fmt(c.initial_capital)+' → '+stCsym+fmt(c.current_value)+'</div>';
+  html += '<div style="font-size:11px;opacity:.85;margin-top:2px">'+(c.days_remaining||0)+' days remaining · started '+(c.started_at||'').substr(0,10)+'</div></div>';
+  html += '<div style="text-align:right">';
+  html += '<div style="font-size:9px;opacity:.85;letter-spacing:.5px;font-weight:700">TOTAL P&L</div>';
+  html += '<div style="font-size:32px;font-weight:900;font-family:var(--mono);margin-top:2px">'+pnlSign+stCsym+fmt(c.total_pnl)+'</div>';
+  html += '<div style="font-size:14px;font-weight:900;font-family:var(--mono);margin-top:2px">'+pnlSign+fmt(c.total_pnl_pct)+'%</div>';
+  html += '</div></div></div>';
+  // Action bar
+  html += '<div style="padding:8px 20px;background:#f8fafc;display:flex;justify-content:space-between;align-items:center;border-top:1px solid var(--border)">';
+  html += '<div style="font-size:11px;color:var(--text3)">Cash: '+stCsym+fmt(c.cash_remaining)+' · Invested: '+stCsym+fmt(c.total_invested)+'</div>';
+  html += '<button onclick="_mcReset()" style="padding:5px 12px;background:#fff;color:#dc2626;border:1px solid #dc2626;border-radius:6px;font-size:9px;font-weight:700;cursor:pointer">Reset Challenge</button>';
+  html += '</div></div>';
+  
+  // Recommendations
+  if(d.recommendations && d.recommendations.length > 0){
+    html += '<div style="padding:14px;background:#fef3c7;border:1px solid #d97706;border-radius:8px;margin-bottom:16px">';
+    html += '<div style="font-size:11px;font-weight:800;color:#78350f;margin-bottom:6px">📢 RECOMMENDATIONS</div>';
+    d.recommendations.forEach(function(r){html += '<div style="font-size:11px;color:#78350f;margin-top:4px;line-height:1.4">'+r+'</div>';});
+    html += '</div>';
+  }
+  
+  // Positions
+  if(positions.length > 0){
+    html += '<div style="margin-bottom:16px">';
+    html += '<div style="font-size:11px;font-weight:800;color:var(--text3);letter-spacing:.5px;margin-bottom:10px">📊 OPEN POSITIONS ('+positions.length+')</div>';
+    positions.forEach(function(pos){
+      var pnl = pos.unrealized_pnl||0;
+      var pnlPct = pos.unrealized_pnl_pct||0;
+      var pColor = pnl>=0 ? '#059669' : '#dc2626';
+      var pSign = pnl>=0 ? '+' : '';
+      html += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px;margin-bottom:10px;border-left:4px solid '+pColor+'">';
+      html += '<div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px;margin-bottom:8px">';
+      html += '<div><div style="font-size:14px;font-weight:900;color:var(--text);font-family:var(--mono)">'+pos.symbol+'</div>';
+      html += '<div style="font-size:9px;color:var(--text3)">'+(pos.name||pos.symbol)+' · '+(pos.sector||'')+'</div></div>';
+      html += '<div style="text-align:right">';
+      html += '<div style="font-size:18px;font-weight:900;color:'+pColor+';font-family:var(--mono);line-height:1">'+pSign+fmt(pnlPct)+'%</div>';
+      html += '<div style="font-size:10px;color:'+pColor+';font-family:var(--mono)">'+pSign+stCsym+fmt(pnl)+'</div></div></div>';
+      
+      // Position details grid
+      html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(80px,1fr));gap:8px;font-size:9px;margin-bottom:8px">';
+      html += '<div><div style="color:var(--text3);font-weight:700">SHARES</div><div style="font-family:var(--mono);font-weight:900;color:var(--text)">'+pos.shares+'</div></div>';
+      html += '<div><div style="color:var(--text3);font-weight:700">ENTRY</div><div style="font-family:var(--mono);font-weight:900;color:var(--text)">'+stCsym+fmt(pos.entry_price)+'</div></div>';
+      html += '<div><div style="color:var(--text3);font-weight:700">CURRENT</div><div style="font-family:var(--mono);font-weight:900;color:var(--text)">'+stCsym+fmt(pos.current_price||pos.entry_price)+'</div></div>';
+      html += '<div><div style="color:var(--text3);font-weight:700">STOP</div><div style="font-family:var(--mono);font-weight:900;color:#dc2626">'+stCsym+fmt(pos.stop_price)+'</div></div>';
+      html += '<div><div style="color:var(--text3);font-weight:700">TARGET</div><div style="font-family:var(--mono);font-weight:900;color:#059669">'+stCsym+fmt(pos.target_price)+'</div></div>';
+      html += '</div>';
+      
+      // Status flag
+      if(pos.status_flag){
+        var sfColor = pos.status_flag.indexOf('STOP')>=0?'#dc2626':pos.status_flag.indexOf('TARGET')>=0?'#059669':pos.status_flag.indexOf('Strong')>=0?'#2563eb':'var(--text3)';
+        html += '<div style="font-size:10px;color:'+sfColor+';font-weight:700;margin-bottom:8px">⚡ '+pos.status_flag+'</div>';
+      }
+      
+      // Reasons
+      if(pos.reasons && pos.reasons.length > 0){
+        html += '<div style="font-size:9px;color:var(--text3);margin-bottom:8px;line-height:1.4">';
+        html += '<strong>Why selected:</strong> ' + pos.reasons.join(' · ');
+        html += '</div>';
+      }
+      
+      // Exit button
+      html += '<button onclick="_mcExit(\''+pos.symbol+'\')" style="width:100%;padding:6px 10px;background:#fff;color:#dc2626;border:1px solid #dc2626;border-radius:6px;font-size:9px;font-weight:700;cursor:pointer">Exit Position</button>';
+      
+      html += '</div>';
+    });
+    html += '</div>';
+  }
+  
+  // Trade history (closed)
+  if(history.length > 0){
+    html += '<div style="margin-bottom:16px">';
+    html += '<div style="font-size:11px;font-weight:800;color:var(--text3);letter-spacing:.5px;margin-bottom:10px">📜 TRADE HISTORY ('+history.length+' closed)</div>';
+    html += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden">';
+    html += '<table style="width:100%;font-size:11px;border-collapse:collapse">';
+    html += '<thead><tr style="background:#f8fafc"><th style="padding:8px;text-align:left">Symbol</th><th style="padding:8px;text-align:right">Shares</th><th style="padding:8px;text-align:right">Cost</th><th style="padding:8px;text-align:right">Exit</th><th style="padding:8px;text-align:right">P&L</th></tr></thead>';
+    html += '<tbody>';
+    history.forEach(function(t){
+      var hColor = t.pnl>=0?'#059669':'#dc2626';
+      html += '<tr style="border-top:1px solid var(--border)">';
+      html += '<td style="padding:8px;font-family:var(--mono);font-weight:700">'+t.symbol+'</td>';
+      html += '<td style="padding:8px;text-align:right">'+t.shares+'</td>';
+      html += '<td style="padding:8px;text-align:right;font-family:var(--mono)">'+stCsym+fmt(t.cost_basis)+'</td>';
+      html += '<td style="padding:8px;text-align:right;font-family:var(--mono)">'+stCsym+fmt(t.proceeds)+'</td>';
+      html += '<td style="padding:8px;text-align:right;font-family:var(--mono);font-weight:700;color:'+hColor+'">'+(t.pnl>=0?'+':'')+stCsym+fmt(t.pnl)+' ('+fmt(t.pnl_pct)+'%)</td>';
+      html += '</tr>';
+    });
+    html += '</tbody></table></div></div>';
+  }
+  
+  // Disclaimer
+  if(d.honest_disclaimer){
+    html += '<div style="padding:12px;background:#fef3c7;border:1px solid #fde68a;border-radius:8px;font-size:10px;color:#78350f;line-height:1.5">';
+    html += '<strong>⚠ Reminder:</strong> '+d.honest_disclaimer;
+    html += '</div>';
+  }
+  
+  html += '</div>';
+  el.innerHTML = html;
+}
 }
 
 // ═══ PMS — Portfolio Management System Tab ═══
