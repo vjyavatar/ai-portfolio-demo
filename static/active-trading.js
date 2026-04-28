@@ -19,7 +19,7 @@
   'use strict';
 
   // Loud startup log so we can verify the deployed version at a glance
-  console.log('%c[ActiveTrading] v51 loaded — Earnings Intel + Universe filter wired — Universe Filter Bar added',
+  console.log('%c[ActiveTrading] v52 loaded — r60.4 — Earnings Intel pinned to top + Deep DD institutional pack — Universe Filter Bar added',
               'color:#22C55E;font-weight:bold;font-size:13px');
   console.log('%c  Every click: fetch fresh data + voice speaks verdict/confidence/entry/size',
               'color:#64748B;font-size:11px');
@@ -9788,6 +9788,7 @@
     //   9. Option chain
     //  10. Risk block (detailed config)
     scroll.appendChild(renderEntryEngine());
+    scroll.appendChild(renderEarningsIntelPanel());  // r60.4: moved to top so visible without scroll
     scroll.appendChild(renderCandlestickPanel());
     scroll.appendChild(renderPriceActionPanel());
     scroll.appendChild(renderVolMetricsPanel());
@@ -9795,7 +9796,6 @@
     scroll.appendChild(renderGexCompassPanel());
     scroll.appendChild(renderGreeksVolPanel());
     scroll.appendChild(renderSentimentBar());
-    scroll.appendChild(renderEarningsIntelPanel());
     scroll.appendChild(renderOptionChain());
     scroll.appendChild(renderRiskBlock());
     panel.appendChild(scroll);

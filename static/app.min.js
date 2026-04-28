@@ -12122,6 +12122,239 @@ function renderReport(d){
     h += '</div>';
   }
 
+  // ═══ NEW SECTIONS r60.4 — Institutional Deep Data ═══
+
+  // Section A: Earnings Move Intelligence panel (new in DD — was Active Trading only)
+  if (d.company && d.company.symbol) {
+    h += '<div id="dd-earnings-intel-mount-' + d.company.symbol + '" data-region="' + (d.company.country === 'India' ? 'IN' : 'US') + '" style="margin-bottom:16px"></div>';
+    // Inline async fetch — runs after DOM mount
+    setTimeout(function(){
+      var mount = document.getElementById('dd-earnings-intel-mount-' + d.company.symbol);
+      if (!mount) return;
+      var reg = mount.getAttribute('data-region') || 'US';
+      mount.innerHTML = '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:16px"><div style="font-size:14px;font-weight:900;color:var(--text);margin-bottom:8px">⚡ Earnings Move Intelligence</div><div style="font-size:10px;color:var(--text3)">fetching...</div></div>';
+      fetch('/api/earnings-intel?ticker=' + encodeURIComponent(d.company.symbol) + '&region=' + reg)
+        .then(function(r){return r.json();})
+        .then(function(ei){
+          if (!ei) return;
+          var html = '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:16px">';
+          html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">';
+          html += '<div style="font-size:14px;font-weight:900;color:var(--text);font-family:Sora,sans-serif">⚡ Earnings Move Intelligence</div>';
+          var qBadge = ei.data_quality === 'FULL' ? 'LIVE' : ei.data_quality === 'PARTIAL' ? 'PARTIAL' : 'NO DATA';
+          var qColor = ei.data_quality === 'FULL' ? '#059669' : ei.data_quality === 'PARTIAL' ? '#d97706' : '#9ca3af';
+          html += '<div style="font-size:8px;font-weight:800;color:'+qColor+';background:'+qColor+'15;padding:3px 8px;border-radius:6px">'+qBadge+'</div>';
+          html += '</div>';
+
+          if (ei.verdict === 'INCOMPLETE_DATA' || ei.data_quality === 'INCOMPLETE') {
+            html += '<div style="padding:12px;background:#f3f4f6;border-radius:6px;color:#6b7280;font-size:11px">'+(ei.verdict_reason || 'Earnings data unavailable')+'</div>';
+          } else {
+            var v = ei.verdict || 'NEUTRAL';
+            var vColor = v === 'BUY_PREMIUM' ? '#059669' : v === 'SELL_PREMIUM' ? '#dc2626' : '#6b7280';
+            var vIcon = v === 'BUY_PREMIUM' ? '↑' : v === 'SELL_PREMIUM' ? '↓' : '~';
+            var vLabel = v === 'BUY_PREMIUM' ? 'BUY PREMIUM' : v === 'SELL_PREMIUM' ? 'SELL PREMIUM' : 'NEUTRAL';
+            html += '<div style="display:flex;align-items:center;gap:10px;padding:10px;border-radius:6px;background:'+vColor+'15;border:1px solid '+vColor+'33;margin-bottom:10px">';
+            html += '<div style="font-size:24px;font-weight:900;color:'+vColor+';width:30px;text-align:center">'+vIcon+'</div>';
+            html += '<div style="flex:1"><div style="font-size:13px;font-weight:900;color:'+vColor+'">'+vLabel+'</div><div style="font-size:10px;color:var(--text2);margin-top:2px">'+(ei.verdict_reason||'')+'</div></div>';
+            html += '</div>';
+
+            var stats = ei.stats || {};
+            var nxt = ei.next_earnings;
+            html += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px">';
+            function cell(label, val, sub, color) {
+              return '<div style="padding:8px;border-radius:6px;background:#f8fafc;border:1px solid #e2e8f0;text-align:center"><div style="font-size:8px;font-weight:700;color:var(--text3)">'+label+'</div><div style="font-size:13px;font-weight:900;color:'+color+';margin:3px 0">'+val+'</div><div style="font-size:9px;color:var(--text3)">'+sub+'</div></div>';
+            }
+            html += cell('NEXT EARNINGS', nxt ? nxt.date : '—', nxt ? nxt.days_until+'d away' : 'no date', nxt ? (nxt.days_until <= 7 ? '#dc2626' : '#0f172a') : '#9ca3af');
+            html += cell('IMPLIED MOVE', ei.implied_move_pct ? '±'+ei.implied_move_pct.toFixed(1)+'%' : '—', 'from ATM straddle', ei.implied_move_pct ? '#0f172a' : '#9ca3af');
+            html += cell('AVG HIST MOVE', stats.avg_abs_move_pct ? '±'+stats.avg_abs_move_pct.toFixed(1)+'%' : '—', 'last '+(stats.n_quarters_analyzed||0)+' Q', stats.avg_abs_move_pct ? '#0f172a' : '#9ca3af');
+            html += cell('BEAT RATE', stats.beat_rate_pct !== undefined ? stats.beat_rate_pct.toFixed(0)+'%' : '—', (stats.n_beats||0)+'B / '+(stats.n_misses||0)+'M', stats.beat_rate_pct >= 75 ? '#059669' : stats.beat_rate_pct < 50 ? '#dc2626' : '#0f172a');
+            html += '</div>';
+          }
+          html += '</div>';
+          mount.innerHTML = html;
+        })
+        .catch(function(err){
+          mount.innerHTML = '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:16px;color:#9ca3af;font-size:11px">Earnings intel unavailable</div>';
+        });
+    }, 100);
+  }
+
+  // Section B: Insider Activity timeline
+  if (d.institutional && d.institutional.insider_activity) {
+    var ia = d.institutional.insider_activity;
+    h += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:16px;margin-bottom:16px">';
+    h += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">';
+    h += '<div style="font-size:14px;font-weight:900;color:var(--text);font-family:Sora,sans-serif">👁 Insider Activity</div>';
+    if (ia.sentiment) {
+      var sColor = ia.sentiment.indexOf('STRONG BUYING') >= 0 ? '#059669' : ia.sentiment.indexOf('BUYING') >= 0 ? '#10b981' : ia.sentiment.indexOf('STRONG SELLING') >= 0 ? '#dc2626' : ia.sentiment.indexOf('SELLING') >= 0 ? '#f87171' : '#6b7280';
+      h += '<div style="font-size:11px;font-weight:800;color:'+sColor+';background:'+sColor+'15;padding:4px 10px;border-radius:6px">'+ia.sentiment+'</div>';
+    }
+    h += '</div>';
+
+    if (ia.data_quality === 'INCOMPLETE') {
+      h += '<div style="padding:10px;background:#f3f4f6;border-radius:6px;color:#6b7280;font-size:11px">'+(ia.reason || 'No data')+'</div>';
+    } else if (ia.data_quality === 'PARTIAL' && ia.promoter_holding_pct !== undefined) {
+      h += '<div style="padding:12px;background:#f8fafc;border-radius:6px"><div style="font-size:11px;color:var(--text2)">Promoter holding: <strong>'+ia.promoter_holding_pct.toFixed(2)+'%</strong></div><div style="font-size:9px;color:var(--text3);margin-top:4px">'+ia.reason+'</div></div>';
+    } else {
+      h += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:10px">';
+      h += '<div style="padding:8px;background:#ecfdf5;border-radius:6px;text-align:center"><div style="font-size:9px;font-weight:700;color:#059669">BUYS</div><div style="font-size:18px;font-weight:900;color:#059669;font-family:var(--mono)">'+(ia.n_buys_6mo||0)+'</div><div style="font-size:9px;color:#059669">$'+((ia.buy_value_usd||0)/1e6).toFixed(2)+'M</div></div>';
+      h += '<div style="padding:8px;background:#fef2f2;border-radius:6px;text-align:center"><div style="font-size:9px;font-weight:700;color:#dc2626">SELLS</div><div style="font-size:18px;font-weight:900;color:#dc2626;font-family:var(--mono)">'+(ia.n_sells_6mo||0)+'</div><div style="font-size:9px;color:#dc2626">$'+((ia.sell_value_usd||0)/1e6).toFixed(2)+'M</div></div>';
+      var netColor = (ia.net_flow_usd||0) >= 0 ? '#059669' : '#dc2626';
+      h += '<div style="padding:8px;background:#f8fafc;border-radius:6px;text-align:center"><div style="font-size:9px;font-weight:700;color:var(--text3)">NET FLOW</div><div style="font-size:18px;font-weight:900;color:'+netColor+';font-family:var(--mono)">'+((ia.net_flow_usd||0) >= 0 ? '+' : '-')+'$'+(Math.abs(ia.net_flow_usd||0)/1e6).toFixed(2)+'M</div><div style="font-size:9px;color:var(--text3)">last 6 months</div></div>';
+      h += '</div>';
+
+      if (ia.transactions && ia.transactions.length > 0) {
+        h += '<div style="overflow-x:auto"><table style="width:100%;font-size:10px;font-family:var(--mono);border-collapse:collapse">';
+        h += '<thead><tr style="background:#f8fafc;color:var(--text3)"><th style="text-align:left;padding:6px 8px">DATE</th><th style="text-align:left;padding:6px 8px">INSIDER</th><th style="text-align:left;padding:6px 8px">POSITION</th><th style="text-align:center;padding:6px 8px">TYPE</th><th style="text-align:right;padding:6px 8px">SHARES</th><th style="text-align:right;padding:6px 8px">VALUE</th></tr></thead><tbody>';
+        ia.transactions.slice(0, 8).forEach(function(t){
+          var tColor = t.type === 'BUY' ? '#059669' : t.type === 'SELL' ? '#dc2626' : '#6b7280';
+          h += '<tr style="border-top:1px solid #f1f5f9">';
+          h += '<td style="padding:5px 8px;color:var(--text3)">'+(t.date||'—')+'</td>';
+          h += '<td style="padding:5px 8px">'+(t.insider||'—')+'</td>';
+          h += '<td style="padding:5px 8px;color:var(--text3)">'+(t.position||'—')+'</td>';
+          h += '<td style="text-align:center;padding:5px 8px;color:'+tColor+';font-weight:800">'+t.type+'</td>';
+          h += '<td style="text-align:right;padding:5px 8px">'+(t.shares ? t.shares.toLocaleString() : '—')+'</td>';
+          h += '<td style="text-align:right;padding:5px 8px">'+(t.value ? '$'+(t.value/1e3).toFixed(1)+'K' : '—')+'</td>';
+          h += '</tr>';
+        });
+        h += '</tbody></table></div>';
+      }
+    }
+    h += '</div>';
+  }
+
+  // Section C: Institutional Holders (top 10)
+  if (d.institutional && d.institutional.institutional_holders) {
+    var ih = d.institutional.institutional_holders;
+    h += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:16px;margin-bottom:16px">';
+    h += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">';
+    h += '<div style="font-size:14px;font-weight:900;color:var(--text);font-family:Sora,sans-serif">🏛 Institutional Ownership</div>';
+    if (ih.concentration) {
+      var cColor = ih.concentration === 'VERY HIGH' ? '#dc2626' : ih.concentration === 'HIGH' ? '#d97706' : '#059669';
+      h += '<div style="font-size:11px;font-weight:800;color:'+cColor+'">'+(ih.total_pct_outstanding||0)+'% institutional · '+ih.concentration+'</div>';
+    }
+    h += '</div>';
+
+    if (ih.data_quality === 'INCOMPLETE') {
+      h += '<div style="padding:10px;background:#f3f4f6;border-radius:6px;color:#6b7280;font-size:11px">'+(ih.reason || 'No 13F data')+'</div>';
+    } else if (ih.data_quality === 'PARTIAL' && ih.dii_pct !== undefined) {
+      h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><div style="padding:10px;background:#f0f9ff;border-radius:6px;text-align:center"><div style="font-size:9px;font-weight:700;color:#0284c7">DOMESTIC (DII)</div><div style="font-size:20px;font-weight:900;color:#0284c7;font-family:var(--mono)">'+(ih.dii_pct||0).toFixed(2)+'%</div></div>';
+      h += '<div style="padding:10px;background:#fdf4ff;border-radius:6px;text-align:center"><div style="font-size:9px;font-weight:700;color:#a855f7">FOREIGN (FII)</div><div style="font-size:20px;font-weight:900;color:#a855f7;font-family:var(--mono)">'+(ih.fii_pct||0).toFixed(2)+'%</div></div></div>';
+      h += '<div style="font-size:9px;color:var(--text3);margin-top:8px;font-style:italic">'+(ih.reason||'')+'</div>';
+    } else if (ih.top_holders && ih.top_holders.length > 0) {
+      h += '<div style="overflow-x:auto"><table style="width:100%;font-size:10px;font-family:var(--mono);border-collapse:collapse">';
+      h += '<thead><tr style="background:#f8fafc;color:var(--text3)"><th style="text-align:left;padding:6px 8px">HOLDER</th><th style="text-align:right;padding:6px 8px">SHARES</th><th style="text-align:right;padding:6px 8px">% OUT</th><th style="text-align:right;padding:6px 8px">VALUE</th></tr></thead><tbody>';
+      ih.top_holders.forEach(function(holder){
+        h += '<tr style="border-top:1px solid #f1f5f9">';
+        h += '<td style="padding:5px 8px;color:var(--text)">'+holder.name+'</td>';
+        h += '<td style="text-align:right;padding:5px 8px">'+(holder.shares ? holder.shares.toLocaleString() : '—')+'</td>';
+        h += '<td style="text-align:right;padding:5px 8px;font-weight:700">'+(holder.pct_outstanding ? holder.pct_outstanding.toFixed(2)+'%' : '—')+'</td>';
+        h += '<td style="text-align:right;padding:5px 8px">'+(holder.value_usd ? '$'+(holder.value_usd/1e9).toFixed(2)+'B' : '—')+'</td>';
+        h += '</tr>';
+      });
+      h += '</tbody></table></div>';
+    }
+    h += '</div>';
+  }
+
+  // Section D: Peer Comparison TABLE
+  if (d.institutional && d.institutional.peer_table && d.institutional.peer_table.rows) {
+    var pt = d.institutional.peer_table;
+    h += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:16px;margin-bottom:16px">';
+    h += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">';
+    h += '<div style="font-size:14px;font-weight:900;color:var(--text);font-family:Sora,sans-serif">⚖ Peer Comparison</div>';
+    h += '<div style="font-size:9px;color:var(--text3)">'+pt.rows.length+' companies · ranked highlighting best</div></div>';
+    h += '<div style="overflow-x:auto"><table style="width:100%;font-size:10px;font-family:var(--mono);border-collapse:collapse">';
+    h += '<thead><tr style="background:#f8fafc;color:var(--text3)"><th style="text-align:left;padding:6px 8px">TICKER</th><th style="text-align:left;padding:6px 8px">NAME</th><th style="text-align:right;padding:6px 8px">MCAP</th><th style="text-align:right;padding:6px 8px">P/E</th><th style="text-align:right;padding:6px 8px">ROE</th><th style="text-align:right;padding:6px 8px">OP MGN</th><th style="text-align:right;padding:6px 8px">REV GROW</th></tr></thead><tbody>';
+    function _fmt(v, suffix) { return v !== null && v !== undefined ? v.toFixed(1)+(suffix||'') : '—'; }
+    function _mcap(v) { if (!v) return '—'; if (v >= 1e12) return '$'+(v/1e12).toFixed(1)+'T'; if (v >= 1e9) return '$'+(v/1e9).toFixed(1)+'B'; return '$'+(v/1e6).toFixed(0)+'M'; }
+    function _rk(v, rank) { if (v === null || v === undefined) return '—'; var rkStr = rank === 1 ? '<span style="color:#059669;font-weight:900">★</span> ' : ''; return rkStr + v.toFixed(1); }
+    pt.rows.forEach(function(r){
+      var bg = r.is_self ? '#fef3c7' : 'transparent';
+      var weight = r.is_self ? '900' : '500';
+      h += '<tr style="border-top:1px solid #f1f5f9;background:'+bg+'">';
+      h += '<td style="padding:6px 8px;font-weight:'+weight+';color:var(--text)">'+(r.is_self ? '▶ ' : '')+(r.ticker||'—')+'</td>';
+      h += '<td style="padding:6px 8px;color:var(--text2);font-family:Inter,sans-serif">'+(r.name||'—')+'</td>';
+      h += '<td style="text-align:right;padding:6px 8px">'+_mcap(r.market_cap_usd)+'</td>';
+      h += '<td style="text-align:right;padding:6px 8px">'+_rk(r.pe, r.pe_rank)+'</td>';
+      h += '<td style="text-align:right;padding:6px 8px">'+_rk(r.roe_pct, r.roe_pct_rank)+(r.roe_pct !== null && r.roe_pct !== undefined ? '%' : '')+'</td>';
+      h += '<td style="text-align:right;padding:6px 8px">'+_rk(r.op_margin_pct, r.op_margin_pct_rank)+(r.op_margin_pct !== null && r.op_margin_pct !== undefined ? '%' : '')+'</td>';
+      h += '<td style="text-align:right;padding:6px 8px">'+_rk(r.rev_growth_pct, r.rev_growth_pct_rank)+(r.rev_growth_pct !== null && r.rev_growth_pct !== undefined ? '%' : '')+'</td>';
+      h += '</tr>';
+    });
+    h += '</tbody></table></div>';
+    h += '<div style="font-size:9px;color:var(--text3);margin-top:8px">★ = best in group · highlighted row is the subject company</div>';
+    h += '</div>';
+  }
+
+  // Section E: Price Chart (1Y sparkline)
+  if (d.institutional && d.institutional.price_chart && d.institutional.price_chart.samples) {
+    var pc = d.institutional.price_chart;
+    h += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:16px;margin-bottom:16px">';
+    h += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">';
+    h += '<div style="font-size:14px;font-weight:900;color:var(--text);font-family:Sora,sans-serif">📈 1-Year Price Chart</div>';
+    var rColor = (pc.return_pct||0) >= 0 ? '#059669' : '#dc2626';
+    h += '<div style="font-size:14px;font-weight:900;color:'+rColor+';font-family:var(--mono)">'+(pc.return_pct >= 0 ? '+' : '')+pc.return_pct+'%</div>';
+    h += '</div>';
+
+    // Build SVG sparkline
+    var samples = pc.samples;
+    var W = 600, H = 100;
+    var minV = pc.min, maxV = pc.max, range = maxV - minV || 1;
+    var pts = samples.map(function(s, i){
+      var x = (i / (samples.length - 1)) * W;
+      var y = H - ((s - minV) / range) * H;
+      return x.toFixed(1)+','+y.toFixed(1);
+    }).join(' ');
+    var lineColor = pc.return_pct >= 0 ? '#059669' : '#dc2626';
+    var fillColor = pc.return_pct >= 0 ? '#05966915' : '#dc262615';
+    h += '<svg viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="none" style="width:100%;height:100px;display:block">';
+    h += '<polygon fill="'+fillColor+'" points="0,'+H+' '+pts+' '+W+','+H+'"/>';
+    h += '<polyline fill="none" stroke="'+lineColor+'" stroke-width="2" points="'+pts+'"/>';
+    h += '</svg>';
+
+    h += '<div style="display:flex;justify-content:space-between;font-size:9px;color:var(--text3);font-family:var(--mono);margin-top:6px">';
+    h += '<span>1Y ago: '+(d.currency_symbol||'$')+pc.first+'</span>';
+    h += '<span>Low: '+(d.currency_symbol||'$')+pc.min+'</span>';
+    h += '<span>High: '+(d.currency_symbol||'$')+pc.max+'</span>';
+    h += '<span>Now: '+(d.currency_symbol||'$')+pc.last+'</span>';
+    h += '</div>';
+    h += '</div>';
+  }
+
+  // Section F: Risk-Adjusted Returns (Sharpe + Max DD)
+  if (d.institutional && d.institutional.risk_adjusted) {
+    var ra = d.institutional.risk_adjusted;
+    h += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:16px;margin-bottom:16px">';
+    h += '<div style="font-size:14px;font-weight:900;color:var(--text);font-family:Sora,sans-serif;margin-bottom:10px">📐 Risk-Adjusted Returns</div>';
+
+    if (ra.data_quality === 'INCOMPLETE') {
+      h += '<div style="padding:10px;background:#f3f4f6;border-radius:6px;color:#6b7280;font-size:11px">'+(ra.reason || 'Insufficient data')+'</div>';
+    } else {
+      h += '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">';
+      var sColor = ra.sharpe_ratio > 1 ? '#059669' : ra.sharpe_ratio > 0.5 ? '#10b981' : ra.sharpe_ratio > 0 ? '#d97706' : '#dc2626';
+      h += '<div style="padding:12px;background:'+sColor+'10;border-radius:8px;text-align:center;border:1px solid '+sColor+'33">';
+      h += '<div style="font-size:9px;font-weight:700;color:'+sColor+'">SHARPE RATIO</div>';
+      h += '<div style="font-size:24px;font-weight:900;color:'+sColor+';font-family:var(--mono);margin:4px 0">'+ra.sharpe_ratio.toFixed(2)+'</div>';
+      h += '<div style="font-size:10px;font-weight:700;color:'+sColor+'">'+ra.sharpe_grade+'</div>';
+      h += '</div>';
+
+      var ddColor = ra.max_drawdown_pct > -15 ? '#059669' : ra.max_drawdown_pct > -30 ? '#d97706' : '#dc2626';
+      h += '<div style="padding:12px;background:'+ddColor+'10;border-radius:8px;text-align:center;border:1px solid '+ddColor+'33">';
+      h += '<div style="font-size:9px;font-weight:700;color:'+ddColor+'">MAX DRAWDOWN</div>';
+      h += '<div style="font-size:24px;font-weight:900;color:'+ddColor+';font-family:var(--mono);margin:4px 0">'+ra.max_drawdown_pct+'%</div>';
+      h += '<div style="font-size:10px;font-weight:700;color:'+ddColor+'">'+ra.drawdown_grade+'</div>';
+      h += '</div>';
+
+      h += '<div style="padding:12px;background:#f8fafc;border-radius:8px;text-align:center;border:1px solid #e2e8f0">';
+      h += '<div style="font-size:9px;font-weight:700;color:var(--text3)">ANNUAL VOLATILITY</div>';
+      h += '<div style="font-size:24px;font-weight:900;color:var(--text);font-family:var(--mono);margin:4px 0">'+ra.annualized_volatility_pct+'%</div>';
+      h += '<div style="font-size:10px;color:var(--text3)">'+ra.n_days_analyzed+' days analyzed</div>';
+      h += '</div>';
+      h += '</div>';
+    }
+    h += '</div>';
+  }
+
   // Data quality + disclaimer
   if(d.data_quality_note){
     h += '<div style="background:#eff6ff;border:1px solid #2563eb20;border-radius:8px;padding:14px;margin-bottom:10px;font-size:10px;line-height:1.6">';

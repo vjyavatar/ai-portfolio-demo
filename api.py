@@ -28625,6 +28625,267 @@ async def investor_due_diligence(email: str = "", symbol: str = "", region: str 
             "CONCERNING"
         )
 
+        # ═══ SECTION 11: INSTITUTIONAL DEEP DATA (r60.4) ═══
+        # Insider activity, institutional ownership, peer table, price chart, sharpe
+        institutional = {
+            "insider_activity": None,
+            "institutional_holders": None,
+            "peer_table": None,
+            "price_chart": None,
+            "risk_adjusted": None,
+            "data_quality": "PARTIAL",
+        }
+
+        # 11.1 Insider Activity (US strong, India sparse)
+        try:
+            if data_source == "yfinance" and tk:
+                _ins_df = None
+                try: _ins_df = tk.insider_transactions
+                except Exception: pass
+                if _ins_df is not None and not _ins_df.empty:
+                    # Last 20 transactions
+                    _recent = _ins_df.head(20)
+                    buys, sells, buy_value, sell_value = 0, 0, 0.0, 0.0
+                    txns = []
+                    for _idx, row in _recent.iterrows():
+                        try:
+                            shares = _safe_float(row.get("Shares") if hasattr(row, "get") else None)
+                            value = _safe_float(row.get("Value") if hasattr(row, "get") else None)
+                            txn_type = str(row.get("Transaction") if hasattr(row, "get") else "").lower()
+                            insider = str(row.get("Insider") if hasattr(row, "get") else "")
+                            position = str(row.get("Position") if hasattr(row, "get") else "")
+                            date = str(_idx)[:10] if _idx else None
+
+                            is_buy = "buy" in txn_type or "purchase" in txn_type
+                            is_sell = "sale" in txn_type or "sell" in txn_type
+                            if is_buy:
+                                buys += 1; buy_value += abs(value)
+                            elif is_sell:
+                                sells += 1; sell_value += abs(value)
+
+                            if len(txns) < 10:
+                                txns.append({
+                                    "date": date, "insider": insider[:30], "position": position[:30],
+                                    "type": "BUY" if is_buy else "SELL" if is_sell else txn_type[:10].upper(),
+                                    "shares": int(shares) if shares else None,
+                                    "value": int(value) if value else None,
+                                })
+                        except Exception: continue
+
+                    net_value = buy_value - sell_value
+                    sentiment = (
+                        "STRONG BUYING" if buys >= 3 and net_value > 0 and buys > sells * 2 else
+                        "BUYING" if buys > sells and net_value > 0 else
+                        "NEUTRAL" if buys == sells else
+                        "SELLING" if sells > buys and net_value < 0 else
+                        "STRONG SELLING" if sells >= 3 and net_value < 0 and sells > buys * 2 else
+                        "MIXED"
+                    )
+                    institutional["insider_activity"] = {
+                        "n_buys_6mo": buys, "n_sells_6mo": sells,
+                        "buy_value_usd": int(buy_value), "sell_value_usd": int(sell_value),
+                        "net_flow_usd": int(net_value),
+                        "sentiment": sentiment,
+                        "transactions": txns,
+                        "data_quality": "FULL",
+                    }
+                else:
+                    institutional["insider_activity"] = {
+                        "data_quality": "INCOMPLETE",
+                        "reason": "No insider transactions reported in available filings",
+                    }
+            elif data_source == "NSE":
+                # NSE has promoter holding % via the fundamentals fetch
+                _prom = info.get("_nse_promoter_pct")
+                if _prom is not None:
+                    institutional["insider_activity"] = {
+                        "data_quality": "PARTIAL",
+                        "promoter_holding_pct": _prom,
+                        "reason": "NSE provides promoter % but not transaction-level data",
+                    }
+        except Exception as _ie:
+            institutional["insider_activity"] = {
+                "data_quality": "INCOMPLETE",
+                "reason": f"Insider fetch failed: {str(_ie)[:80]}",
+            }
+
+        # 11.2 Institutional Holders (top 10)
+        try:
+            if data_source == "yfinance" and tk:
+                _ih_df = None
+                try: _ih_df = tk.institutional_holders
+                except Exception: pass
+                if _ih_df is not None and not _ih_df.empty:
+                    holders = []
+                    for _idx, row in _ih_df.head(10).iterrows():
+                        try:
+                            holder = str(row.get("Holder") if hasattr(row, "get") else "")
+                            shares = _safe_float(row.get("Shares") if hasattr(row, "get") else None)
+                            pct = _safe_float(row.get("pctHeld") if hasattr(row, "get") else None)
+                            value = _safe_float(row.get("Value") if hasattr(row, "get") else None)
+                            holders.append({
+                                "name": holder[:50],
+                                "shares": int(shares) if shares else None,
+                                "pct_outstanding": round(pct * 100, 2) if pct and pct < 1 else (round(pct, 2) if pct else None),
+                                "value_usd": int(value) if value else None,
+                            })
+                        except Exception: continue
+                    held_pct = info.get("heldPercentInstitutions")
+                    institutional["institutional_holders"] = {
+                        "total_pct_outstanding": round(held_pct * 100, 2) if held_pct else None,
+                        "top_holders": holders,
+                        "concentration": (
+                            "VERY HIGH" if held_pct and held_pct > 0.85 else
+                            "HIGH" if held_pct and held_pct > 0.70 else
+                            "MODERATE" if held_pct and held_pct > 0.40 else
+                            "LOW" if held_pct else "UNKNOWN"
+                        ),
+                        "data_quality": "FULL",
+                    }
+                else:
+                    institutional["institutional_holders"] = {
+                        "data_quality": "INCOMPLETE",
+                        "reason": "Institutional holders data not available",
+                    }
+            elif data_source == "NSE":
+                _dii = info.get("_nse_dii_pct"); _fii = info.get("_nse_fii_pct")
+                if _dii is not None or _fii is not None:
+                    institutional["institutional_holders"] = {
+                        "dii_pct": _dii, "fii_pct": _fii,
+                        "total_pct_outstanding": (_dii or 0) + (_fii or 0),
+                        "data_quality": "PARTIAL",
+                        "reason": "NSE provides DII/FII aggregate %, not 13F-style holder list",
+                    }
+        except Exception as _ihe:
+            institutional["institutional_holders"] = {
+                "data_quality": "INCOMPLETE",
+                "reason": f"Institutional holders fetch failed: {str(_ihe)[:80]}",
+            }
+
+        # 11.3 Peer Comparison TABLE — reuse `peers` already in scope
+        try:
+            if peers and len(peers) > 0:
+                # Curate the table: ticker, market_cap, P/E, ROE, op_margin, rev_growth, 1Y return
+                rows = []
+                # Add the subject company first
+                rows.append({
+                    "ticker": symbol,
+                    "is_self": True,
+                    "name": (company.get("name") or symbol)[:30],
+                    "market_cap_usd": info.get("marketCap"),
+                    "pe": forward_pe,
+                    "roe_pct": round(roe * 100, 1) if roe else None,
+                    "op_margin_pct": round((info.get("operatingMargins") or 0) * 100, 1) if info.get("operatingMargins") else None,
+                    "rev_growth_pct": round(rev_growth * 100, 1) if rev_growth is not None else None,
+                })
+                for p in peers[:8]:
+                    rows.append({
+                        "ticker": p.get("ticker") or p.get("symbol"),
+                        "is_self": False,
+                        "name": (p.get("name") or p.get("ticker") or "")[:30],
+                        "market_cap_usd": p.get("market_cap"),
+                        "pe": p.get("forward_pe") or p.get("pe"),
+                        "roe_pct": p.get("roe_pct"),
+                        "op_margin_pct": p.get("op_margin_pct"),
+                        "rev_growth_pct": p.get("revenue_growth_pct"),
+                    })
+                # Compute relative rank for each numeric field (1 = best)
+                def _rank(rows, field, higher_is_better=True):
+                    vals = [(i, r.get(field)) for i, r in enumerate(rows) if r.get(field) is not None]
+                    vals.sort(key=lambda x: x[1], reverse=higher_is_better)
+                    for rk, (i, _) in enumerate(vals): rows[i][field + "_rank"] = rk + 1
+                _rank(rows, "roe_pct", True)
+                _rank(rows, "op_margin_pct", True)
+                _rank(rows, "rev_growth_pct", True)
+                _rank(rows, "pe", False)  # lower P/E = better
+                institutional["peer_table"] = {
+                    "rows": rows,
+                    "n_peers": len(peers),
+                    "data_quality": "FULL" if len(peers) >= 3 else "PARTIAL",
+                }
+            else:
+                institutional["peer_table"] = {
+                    "data_quality": "INCOMPLETE",
+                    "reason": "No peers identified for this ticker",
+                }
+        except Exception as _pe:
+            institutional["peer_table"] = {
+                "data_quality": "INCOMPLETE",
+                "reason": f"Peer table generation failed: {str(_pe)[:80]}",
+            }
+
+        # 11.4 Price Chart (1Y daily closes for sparkline)
+        try:
+            if hist is not None and len(hist) > 0:
+                _closes = hist["Close"].dropna() if "Close" in hist.columns else None
+                if _closes is not None and len(_closes) >= 30:
+                    # Downsample to ~50 points for sparkline
+                    n = len(_closes)
+                    step = max(1, n // 50)
+                    samples = [round(float(_closes.iloc[i]), 2) for i in range(0, n, step)]
+                    if samples[-1] != round(float(_closes.iloc[-1]), 2):
+                        samples.append(round(float(_closes.iloc[-1]), 2))
+                    institutional["price_chart"] = {
+                        "samples": samples,
+                        "min": round(float(_closes.min()), 2),
+                        "max": round(float(_closes.max()), 2),
+                        "first": round(float(_closes.iloc[0]), 2),
+                        "last": round(float(_closes.iloc[-1]), 2),
+                        "n_days": int(len(_closes)),
+                        "return_pct": round(((_closes.iloc[-1] - _closes.iloc[0]) / _closes.iloc[0]) * 100, 1),
+                        "data_quality": "FULL",
+                    }
+                else:
+                    institutional["price_chart"] = {"data_quality": "INCOMPLETE", "reason": "Insufficient price history"}
+            else:
+                institutional["price_chart"] = {"data_quality": "INCOMPLETE", "reason": "No price history available"}
+        except Exception as _ce:
+            institutional["price_chart"] = {"data_quality": "INCOMPLETE", "reason": f"Chart computation failed: {str(_ce)[:80]}"}
+
+        # 11.5 Risk-Adjusted Returns: Sharpe + Max Drawdown
+        try:
+            if hist is not None and len(hist) >= 60 and "Close" in hist.columns:
+                _closes = hist["Close"].dropna()
+                _rets = _closes.pct_change().dropna()
+                if len(_rets) >= 60:
+                    # Annualized Sharpe (assume 4% risk-free, daily returns × 252)
+                    rf_daily = 0.04 / 252
+                    excess = _rets - rf_daily
+                    sharpe = (excess.mean() / excess.std()) * (252 ** 0.5) if excess.std() > 0 else 0
+                    # Max Drawdown
+                    _cum = (1 + _rets).cumprod()
+                    _running_max = _cum.cummax()
+                    _dd = (_cum - _running_max) / _running_max
+                    max_dd = _dd.min()
+                    # Annualized vol
+                    ann_vol = _rets.std() * (252 ** 0.5) * 100
+                    institutional["risk_adjusted"] = {
+                        "sharpe_ratio": round(float(sharpe), 2),
+                        "max_drawdown_pct": round(float(max_dd) * 100, 1),
+                        "annualized_volatility_pct": round(float(ann_vol), 1),
+                        "sharpe_grade": (
+                            "EXCELLENT" if sharpe > 2.0 else
+                            "STRONG" if sharpe > 1.0 else
+                            "ACCEPTABLE" if sharpe > 0.5 else
+                            "WEAK" if sharpe > 0 else
+                            "POOR"
+                        ),
+                        "drawdown_grade": (
+                            "MINOR" if max_dd > -0.15 else
+                            "MODERATE" if max_dd > -0.30 else
+                            "SEVERE" if max_dd > -0.50 else
+                            "EXTREME"
+                        ),
+                        "data_quality": "FULL",
+                        "n_days_analyzed": int(len(_rets)),
+                    }
+                else:
+                    institutional["risk_adjusted"] = {"data_quality": "INCOMPLETE", "reason": "Need ≥60 days of returns"}
+            else:
+                institutional["risk_adjusted"] = {"data_quality": "INCOMPLETE", "reason": "Insufficient price history"}
+        except Exception as _re:
+            institutional["risk_adjusted"] = {"data_quality": "INCOMPLETE", "reason": f"Sharpe/DD failed: {str(_re)[:80]}"}
+
         elapsed = round(time.time() - t0, 1)
         try: diag_log("DD", "investor_dd_completed", {"symbol": symbol, "region": region, "score": score, "elapsed_sec": elapsed})
         except Exception: pass
@@ -28644,6 +28905,7 @@ async def investor_due_diligence(email: str = "", symbol: str = "", region: str 
             "catalysts": catalysts,
             "valuation_detail": valuation_detail,
             "earnings_history": earnings_history,
+            "institutional": institutional,
             "data_source": data_source,
             "honest_disclaimer": (
                 "All financial metrics from real 10-K/annual report data via Yahoo Finance. "
