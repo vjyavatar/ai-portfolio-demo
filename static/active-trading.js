@@ -19,7 +19,7 @@
   'use strict';
 
   // Loud startup log so we can verify the deployed version at a glance
-  console.log('%c[ActiveTrading] v50 loaded — Universe Filter Bar added',
+  console.log('%c[ActiveTrading] v51 loaded — Earnings Intel + Universe filter wired — Universe Filter Bar added',
               'color:#22C55E;font-weight:bold;font-size:13px');
   console.log('%c  Every click: fetch fresh data + voice speaks verdict/confidence/entry/size',
               'color:#64748B;font-size:11px');
@@ -6411,6 +6411,220 @@
  * ════════════════════════════════════════════════════════════════════════ */
 
 
+
+  // ════════════════════════════════════════════════════════════════════
+  // EARNINGS MOVE INTELLIGENCE PANEL (r60.2)
+  // ════════════════════════════════════════════════════════════════════
+  var _eiCache = {};       // { 'IONQ:US': { data, fetchedAt } }
+  var _eiFetching = {};
+  var _EI_TTL_MS = 60000;  // 60s frontend cache
+
+  function _eiKey(sym, reg) { return (sym || '') + ':' + (reg || 'IN'); }
+
+  function _fetchEI(sym, reg, spot, atmCall, atmPut, onDone) {
+    var key = _eiKey(sym, reg);
+    var cached = _eiCache[key];
+    if (cached && (Date.now() - cached.fetchedAt) < _EI_TTL_MS) {
+      onDone(cached.data); return;
+    }
+    if (_eiFetching[key]) { _eiFetching[key].push(onDone); return; }
+    _eiFetching[key] = [onDone];
+    var qs = 'ticker=' + encodeURIComponent(sym) + '&region=' + reg;
+    if (spot > 0)    qs += '&spot=' + spot;
+    if (atmCall > 0) qs += '&atm_call=' + atmCall;
+    if (atmPut > 0)  qs += '&atm_put=' + atmPut;
+    fetch('/api/earnings-intel?' + qs)
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        _eiCache[key] = { data: d, fetchedAt: Date.now() };
+        (_eiFetching[key] || []).forEach(function (cb) { try { cb(d); } catch (e) {} });
+        delete _eiFetching[key];
+      })
+      .catch(function (err) {
+        console.warn('[EI] fetch failed:', err);
+        (_eiFetching[key] || []).forEach(function (cb) { try { cb(null); } catch (e) {} });
+        delete _eiFetching[key];
+      });
+  }
+
+  function renderEarningsIntelPanel() {
+    if (!state.selected) return el('div', { style: { height: '0px' } });
+
+    var sym = state.selected.symbol;
+    var reg = (state.selected._raw && state.selected._raw._region) || state.region || 'IN';
+    var spot = state.lastSpot || (state.selected && state.selected.spot) || 0;
+    var atmCall = 0, atmPut = 0;
+    if (state.chain && state.chain.length) {
+      for (var i = 0; i < state.chain.length; i++) {
+        if (state.chain[i].isAtm) {
+          var atmRow = state.chain[i];
+          atmCall = atmRow.callLtp || atmRow.callPrem || atmRow.ce_ltp || 0;
+          atmPut  = atmRow.putLtp  || atmRow.putPrem  || atmRow.pe_ltp  || 0;
+          break;
+        }
+      }
+    }
+
+    var wrap = el('div', {
+      style: { background: C.card, borderBottom: '1px solid ' + C.divider, padding: '10px 12px' }
+    });
+    var header = el('div', {
+      style: {
+        fontSize: '10px', fontWeight: 800, color: C.textMute, letterSpacing: '1.5px',
+        marginBottom: '8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between'
+      }
+    });
+    header.appendChild(el('span', {}, 'EARNINGS MOVE INTELLIGENCE'));
+    var qBadge = el('span', {
+      style: {
+        fontSize: '8px', fontWeight: 700, color: C.textMute,
+        padding: '2px 6px', borderRadius: '4px', background: C.bg
+      }
+    }, 'LOADING…');
+    header.appendChild(qBadge);
+    wrap.appendChild(header);
+
+    var body = el('div', {});
+    body.appendChild(el('div', {
+      style: {
+        height: '64px', background: C.bg, borderRadius: '6px',
+        border: '1px dashed ' + C.divider,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        color: C.textMute, fontSize: '10px', letterSpacing: '0.5px'
+      }
+    }, 'fetching earnings history…'));
+    wrap.appendChild(body);
+
+    _fetchEI(sym, reg, spot, atmCall, atmPut, function (d) {
+      body.innerHTML = '';
+      if (!d || d.verdict === 'INCOMPLETE_DATA') {
+        qBadge.textContent = 'NO DATA'; qBadge.style.color = C.textMute;
+        var reason = (d && d.verdict_reason) || 'Earnings data unavailable.';
+        var box = el('div', {
+          style: {
+            padding: '10px', borderRadius: '6px', background: C.bg,
+            border: '1px solid ' + C.divider, display: 'flex',
+            alignItems: 'center', gap: '10px'
+          }
+        });
+        box.appendChild(el('div', {
+          style: { fontSize: '20px', color: C.textMute, lineHeight: 1 }
+        }, '⊘'));
+        var t = el('div', {});
+        t.appendChild(el('div', {
+          style: { fontSize: '11px', fontWeight: 800, color: C.textSec }
+        }, 'INCOMPLETE DATA'));
+        t.appendChild(el('div', {
+          style: { fontSize: '10px', color: C.textMute, lineHeight: 1.4 }
+        }, reason));
+        box.appendChild(t);
+        body.appendChild(box);
+        return;
+      }
+
+      qBadge.textContent = d.data_quality === 'PARTIAL' ? 'PARTIAL' : 'LIVE';
+      qBadge.style.color = d.data_quality === 'PARTIAL' ? C.yellow : C.green;
+
+      var stats = d.stats || {};
+      var nxt = d.next_earnings;
+      var quarters = d.last_8_quarters || [];
+      var verdict = d.verdict || 'NEUTRAL';
+      var implied = d.implied_move_pct;
+
+      var vColor = verdict === 'BUY_PREMIUM' ? C.green :
+                   verdict === 'SELL_PREMIUM' ? C.red : C.textMute;
+      var vIcon  = verdict === 'BUY_PREMIUM' ? '↑' :
+                   verdict === 'SELL_PREMIUM' ? '↓' : '~';
+      var vLabel = verdict === 'BUY_PREMIUM' ? 'BUY PREMIUM' :
+                   verdict === 'SELL_PREMIUM' ? 'SELL PREMIUM' : 'NEUTRAL';
+
+      var vBar = el('div', {
+        style: {
+          display: 'flex', alignItems: 'center', gap: '8px',
+          padding: '8px 10px', borderRadius: '6px',
+          background: vColor + '15', border: '1px solid ' + vColor + '33',
+          marginBottom: '8px'
+        }
+      });
+      vBar.appendChild(el('div', {
+        style: {
+          fontSize: '20px', fontWeight: 900, color: vColor, fontFamily: MONO,
+          lineHeight: 1, width: '20px', textAlign: 'center'
+        }
+      }, vIcon));
+      var vText = el('div', { style: { flex: 1, minWidth: 0 } });
+      vText.appendChild(el('div', {
+        style: { fontSize: '12px', fontWeight: 900, color: vColor, letterSpacing: '0.5px' }
+      }, vLabel));
+      vText.appendChild(el('div', {
+        style: { fontSize: '10px', color: C.textSec, marginTop: '2px', lineHeight: 1.4 }
+      }, d.verdict_reason || ''));
+      vBar.appendChild(vText);
+      body.appendChild(vBar);
+
+      // 4-cell stat grid
+      var grid = el('div', {
+        style: {
+          display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '6px', marginBottom: '8px'
+        }
+      });
+      function cell(label, value, sub, color) {
+        var c = el('div', {
+          style: {
+            padding: '6px', borderRadius: '6px', background: C.bg,
+            border: '1px solid ' + C.divider, textAlign: 'center'
+          }
+        });
+        c.appendChild(el('div', {
+          style: { fontSize: '7px', fontWeight: 700, color: C.textMute, letterSpacing: '0.7px' }
+        }, label));
+        c.appendChild(el('div', {
+          style: { fontSize: '13px', fontWeight: 900, color: color, fontFamily: MONO, margin: '3px 0' }
+        }, value));
+        c.appendChild(el('div', { style: { fontSize: '8px', color: C.textMute } }, sub));
+        return c;
+      }
+      grid.appendChild(cell('NEXT EARNINGS',
+        nxt ? nxt.date : '—',
+        nxt ? (nxt.days_until + 'd away') : 'no date',
+        nxt ? (nxt.days_until <= 7 ? C.red : nxt.days_until <= 14 ? C.yellow : C.textPri) : C.textMute));
+      grid.appendChild(cell('IMPLIED MOVE',
+        implied ? ('±' + implied.toFixed(1) + '%') : '—',
+        implied ? 'from ATM straddle' : 'no chain data',
+        implied ? C.textPri : C.textMute));
+      if (stats.avg_abs_move_pct !== undefined && stats.avg_abs_move_pct !== null) {
+        var avgC = (implied && stats.avg_abs_move_pct > implied) ? C.green :
+                   (implied && stats.avg_abs_move_pct < implied * 0.7) ? C.red : C.textPri;
+        grid.appendChild(cell('AVG HIST MOVE',
+          '±' + stats.avg_abs_move_pct.toFixed(1) + '%',
+          'last ' + stats.n_quarters_analyzed + ' Q', avgC));
+      } else {
+        grid.appendChild(cell('AVG HIST MOVE', '—', 'no history', C.textMute));
+      }
+      if (stats.beat_rate_pct !== undefined && stats.beat_rate_pct !== null) {
+        var brC = stats.beat_rate_pct >= 75 ? C.green :
+                  stats.beat_rate_pct < 50 ? C.red : C.textPri;
+        grid.appendChild(cell('BEAT RATE',
+          stats.beat_rate_pct.toFixed(0) + '%',
+          (stats.n_beats || 0) + 'B / ' + (stats.n_misses || 0) + 'M', brC));
+      } else {
+        grid.appendChild(cell('BEAT RATE', '—', 'no consensus', C.textMute));
+      }
+      body.appendChild(grid);
+
+      // Compliance footer
+      body.appendChild(el('div', {
+        style: {
+          marginTop: '4px', paddingTop: '6px', borderTop: '1px solid ' + C.divider,
+          fontSize: '8px', color: C.textMute, lineHeight: 1.4
+        }
+      }, 'Decision support — not investment advice. Historical earnings moves do not guarantee future results.'));
+    });
+
+    return wrap;
+  }
+
+
   function renderHeader() {
     // Contextual index list based on region
     var indexList = state.region === 'US'
@@ -9581,6 +9795,7 @@
     scroll.appendChild(renderGexCompassPanel());
     scroll.appendChild(renderGreeksVolPanel());
     scroll.appendChild(renderSentimentBar());
+    scroll.appendChild(renderEarningsIntelPanel());
     scroll.appendChild(renderOptionChain());
     scroll.appendChild(renderRiskBlock());
     panel.appendChild(scroll);
@@ -11491,8 +11706,19 @@
           return (r.symbol || '').toUpperCase().indexOf(scanFilter) >= 0;
         })
       : state.scanner;
+    // r60.2: Apply universe tier filter (LARGE/MID/SMALL/MICRO/ETF) if active
+    if (state.universeTier && state.universeTier !== 'ALL' && window._celesysUniverseFilter) {
+      var symList = scanSource.map(function (r) { return r.symbol; });
+      var allowedSyms = window._celesysUniverseFilter(symList);
+      var allowedSet = {};
+      allowedSyms.forEach(function (s) { allowedSet[(s || '').toUpperCase()] = true; });
+      scanSource = scanSource.filter(function (r) {
+        return allowedSet[(r.symbol || '').toUpperCase()];
+      });
+    }
     // If filter active show everything matching, else top 6
-    var displayScan = scanFilter ? scanSource : scanSource.slice(0, 6);
+    var hasAnyFilter = scanFilter || (state.universeTier && state.universeTier !== 'ALL');
+    var displayScan = hasAnyFilter ? scanSource : scanSource.slice(0, 6);
 
     if (displayScan.length === 0) {
       body.appendChild(el('div', {

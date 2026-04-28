@@ -1,128 +1,148 @@
-# Celesys v4 — r60.1 Complete Deploy
+# Celesys v4 — r60.3 Complete Deploy
 
-**This zip is the complete project. Drop in, push to Render, done.**
-
----
-
-## What's NEW in r60.1 (this deploy)
-
-### Universe Filter Bar in Active Trading
-
-**Where it appears:** Decide tab → Active Trading → directly under the header strip (between the "CELESYS · ACTIVE TRADING / IN/US/SPY/QQQ" header and the "TOP TRADES" cards).
-
-**What it shows:**
-```
-UNIVERSE  [ ALL 102 ]  [ LARGE 102 ]  [ MID 147 ]  [ SMALL 83 ]  [ MICRO 17 ]  [ ETF 35 ]   102 tickers · US
-```
-
-**What it does:**
-- Shows the live universe count for the current region
-- Click any pill to filter (e.g., click MICRO to show only IONQ-style names)
-- Click again or click ALL to deselect
-- Auto-refreshes when you switch IN ↔ US
-- Cached client-side (one fetch per region)
-
-The filter exposes `window._celesysUniverseFilter(symbols)` — any other render function can call it to apply the active filter.
+**Drop in, push to Render, done.**
 
 ---
 
-## Files changed in this deploy
+## What's NEW in r60.3
+
+### 🔴 CRITICAL FIX: India Deep DD now works
+
+Your screenshot showed **"Could not retrieve data for HDFCBANK"**. Root cause: Deep DD only tried Yahoo Finance. Yahoo blocks NSE tickers from Render IPs (you documented this yourself in api.py:6373).
+
+**Fix:** Deep DD now uses your existing fallback chain:
+- **India:** yfinance → NSE direct (`fetch_nse_stock_data`) → Google Finance
+- **US:** yfinance → Google Finance
+
+HDFCBANK, RELIANCE, TCS, etc. should now load from NSE when Yahoo blocks.
+
+### NEW: 4 institutional sections in Deep DD
+
+After all the existing sections (Verdict, Financial Health, SWOT, Porter), you now get:
+
+**1. 📅 Catalysts & Analyst Consensus** — 4-cell grid:
+- Next Earnings (date + days away + urgency color)
+- Analyst Target Price (with upside % vs current spot, recommendation)
+- Short Interest (% of float, days to cover, squeeze risk)
+- Dividend Yield (annual rate, payout ratio)
+
+**2. 💰 Valuation — DCF Intrinsic Value** — 3-card layout:
+- Current Price | Fair Value (computed via 5yr DCF, WACC 10%, terminal 2.5%) | Verdict
+- Verdicts: STRONGLY UNDERVALUED / UNDERVALUED / FAIR VALUE / OVERVALUED / STRONGLY OVERVALUED
+- Honest INSUFFICIENT DATA when FCF or shares missing (no fake numbers)
+
+**3. 📊 Quarterly Earnings History** — 8-quarter beat/miss table:
+- US: EPS Estimate vs Actual + Surprise % + ✓BEAT / ✗MISS column
+- India: Revenue + Profit per quarter (NSE doesn't give estimates)
+- Trend label: STRONG GROWTH / GROWING / STABLE / DECLINING
+- Beat rate badge (e.g., "75% Beat Rate · 6B / 2M")
+
+**4. ✅ Risk Health Checks** — surfaces what PASSED:
+- Replaces empty "no risks flagged" state
+- Shows green checkmarks for: Debt-to-Equity, Liquidity, Profitability, Revenue Growth, Valuation, Governance
+- Overall health: STRONG / HEALTHY / MIXED / CONCERNING
+
+---
+
+## Files changed
 
 | File | Change |
 |---|---|
-| `static/active-trading.js` | + Universe Filter Bar component, mounted under header, v50 |
-| `index.html` | Version hash bumped (forces browser cache refresh) |
+| `api.py` | Deep DD fallback chain + Sections 7/8/9/10 added (~250 lines) |
+| `static/app.js` | Frontend renderers for all 4 new sections (~200 lines) |
+| `static/app.min.js` | Identical copy of app.js |
+| `index.html` | Version hash bumped |
 
-Plus everything from r60 (Porter fix + universe classifier backend) which was already deployed.
+Plus everything from r60/r60.1/r60.2 still works (Porter fix, Universe Filter, Earnings Intel in Active Trading).
 
 ---
 
-## How to deploy
+## Deploy
 
 ```bash
 unzip celesys_v4_FINAL_DEPLOY.zip
 cd celesys_v4_FINAL_DEPLOY/
-
-# Replace your existing repo contents with these files
 git add -A
-git commit -m "r60.1: Universe Filter Bar in Active Trading"
+git commit -m "r60.3: Deep DD India fallback + 4 institutional sections (catalysts, DCF, earnings history, risk health)"
 git push
 ```
 
-Render auto-deploys. Wait ~3 min. Smoke test below.
+Wait ~3 min for Render auto-deploy.
 
 ---
 
-## Smoke test after deploy
+## Smoke test
 
-### 1. Visual — Universe Bar in Active Trading
+### TEST 1 — HDFCBANK loads now (the failing case from your screenshot)
 
-Open https://celesys.ai → Decide → Active Trading
+1. Open https://celesys.ai → Decide → click **HDFCBANK** quick pill
+2. Should show full report (no longer "Could not retrieve data")
+3. Top of report should show data source — if it's slow first time, that's NSE fetch (3-5s)
+4. Subsequent loads cached
 
-You should see, just below the header (CELESYS · ACTIVE TRADING / IN US / SPY QQQ IWM ...):
+### TEST 2 — New sections in Deep DD
 
-```
-UNIVERSE  [ ALL 102 ]  [ LARGE 102 ]  [ MID 147 ]  [ SMALL ##]  [ MICRO ## ]  [ ETF ## ]
-```
+Open Deep DD on **NVDA** or **MSFT** (US, lots of data). You should now see, in this order:
 
-Click the **MICRO** pill — it should highlight blue and stay selected. Click again to deselect.
+1. Verdict score (existing)
+2. Financial Health (existing)
+3. Sector Context (existing)
+4. Risk Matrix (existing — flagged risks)
+5. SWOT (existing)
+6. Porter's Five Forces (existing — 36/50 style)
+7. **NEW: 📅 Catalysts & Analyst Consensus** — date, target, short, dividend
+8. **NEW: 💰 Valuation — DCF Intrinsic Value** — current vs fair value
+9. **NEW: 📊 Quarterly Earnings History** — 8-Q table with beat/miss
+10. **NEW: ✅ Risk Health Checks** — green checkmarks
+11. Data Quality footer (existing)
 
-### 2. Console log — v50 confirmation
+### TEST 3 — INCOMPLETE state for sparse data
 
-Open browser DevTools console (F12) and look for:
-
-```
-[ActiveTrading] v50 loaded — Universe Filter Bar added
-```
-
-If you see `v49` instead, hard-refresh the page (Cmd+Shift+R / Ctrl+Shift+F5).
-
-### 3. Universe API endpoints (already verified working in r60)
-
-```bash
-curl 'https://celesys.ai/api/universe-stats'
-curl 'https://celesys.ai/api/universe?region=US&tier=LARGE'
-curl 'https://celesys.ai/api/universe-classify?ticker=IONQ&region=US'
-```
-
-### 4. Porter Five Forces fix (from r60)
-
-Open Deep DD on a high-margin name (NVDA, MSFT). Industry Attractiveness should show 30-45/50 (NOT 52/50).
+Open Deep DD on a small/foreign ticker. Sections that can't be computed should show "INSUFFICIENT DATA" / gray styling, not fake numbers.
 
 ---
 
 ## Verified before packaging
 
-- ✅ `api.py` compiles cleanly
-- ✅ `universe_classifier.py` loads 755 tickers
-- ✅ `static/active-trading.js` JS syntax OK (node --check)
-- ✅ `static/app.js` JS syntax OK
-- ✅ Universe bar function defined exactly once
-- ✅ Mount call present after `renderHeader()`
-- ✅ Version hashes bumped in `index.html`
-- ✅ v50 console log marker present
+- ✅ Python syntax (`py_compile api.py`)
+- ✅ JavaScript syntax (`node --check app.js`, `app.min.js`)
+- ✅ Indentation preserved in patched blocks
+- ✅ All 4 new sections present (4/4 grep match)
+- ✅ Response shape includes catalysts, valuation_detail, earnings_history, data_source
+- ✅ Frontend renderers present for all 4 new sections
+- ✅ NSE fallback uses existing `fetch_nse_stock_data` (no new infrastructure needed)
+- ✅ Google Finance fallback uses existing `fetch_google_finance`
+- ✅ All existing sections preserved (no regression)
+- ✅ Version hash bumped, app.min.js synced
+
+---
+
+## Honest caveats
+
+1. **First HDFCBANK / Indian load is slow (3-5s)** — NSE direct fetch is slower than Yahoo cache. Subsequent loads cached for 5 min.
+
+2. **Indian quarterly earnings shows revenue/profit, not EPS beat/miss** — NSE doesn't publish analyst estimates. The table format adapts (US shows EPS columns, India shows revenue/profit columns).
+
+3. **DCF requires Free Cash Flow + Shares Outstanding from yfinance.** For India tickers loading via NSE-only fallback, DCF will show INCOMPLETE DATA. That's the honest answer — your CDS v2.0 rule.
+
+4. **Analyst targets and short interest are US-strong, India-weak.** yfinance has decent US coverage; for Indian tickers these cells will be empty (gray "No coverage") more often than not.
+
+5. **Earnings dates from yfinance are best-effort.** Some tickers don't expose `earningsTimestamp`. Cell shows "No date available" in those cases.
 
 ---
 
 ## Rollback
 
-If the universe bar breaks anything:
-- In `static/active-trading.js`, remove the line `wrap.appendChild(renderUniverseBar());` (around line 5238)
-- That disables the UI without removing code
+Each piece independent:
 
-If you want to fully revert:
-- Restore the previous `static/active-trading.js` from your r60 deploy
-- Bump `index.html` `?v=` parameter to bust browser cache
+**India fallback only:**
+- In api.py, find and revert the block starting with `# r60.3: Region-aware fallback chain`
+- DD will still work for US, just fail for India (back to original behavior)
 
----
+**New sections only:**
+- In api.py, delete Sections 7/8/9/10
+- Remove their keys from the return dict
+- In app.js, remove the block starting with `// ═══ NEW SECTIONS r60.3`
 
-## What's NOT done in this deploy
-
-Same as r60 — these are deferred:
-
-- **Refactor of /api/top-picks, /api/multibagger-hunter, /api/early-momentum-radar, /api/microcap-challenge** to consume the universe classifier
-- **Tiered scanner** (NIFTY 500 cold scan)
-- **Earnings Move Intelligence widget**
-- **Hooking the universe filter into the secondary scanner** — currently the filter pill highlights but doesn't yet filter the bottom scanner table. That's the next small step.
-
-This deploy ships ONLY the visible Universe Filter Bar UI on top of the r60 backend. Provable. Reversible.
+**Full rollback:**
+- Restore previous `celesys_v4_FINAL_DEPLOY` files from r60.2

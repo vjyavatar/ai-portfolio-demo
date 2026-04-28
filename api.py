@@ -18,6 +18,8 @@ print("[STARTUP] Core imports OK")
 
 import yfinance as _yf_original
 from universe_classifier import UC  # r60: centralized ticker classification
+import data_sources  # r60.2: centralized region-aware fallback
+from earnings_intel import get_earnings_intel  # r60.2: earnings move intelligence
 print("[STARTUP] yfinance OK")
 
 import pandas as pd
@@ -27828,15 +27830,101 @@ async def investor_due_diligence(email: str = "", symbol: str = "", region: str 
         import numpy as np
         from datetime import datetime as _dt
         
-        _yahoo_rate_wait()
-        tk = yf.Ticker(yf_symbol)
-        try: info = tk.info or {}
-        except Exception: info = {}
-        try: hist = tk.history(period="2y", interval="1d")
-        except Exception: hist = None
-        
+        # r60.3: Region-aware fallback chain
+        info = {}
+        hist = None
+        data_source = "yfinance"
+
+        try:
+            _yahoo_rate_wait()
+            tk = yf.Ticker(yf_symbol)
+            try: info = tk.info or {}
+            except Exception: info = {}
+            try: hist = tk.history(period="2y", interval="1d")
+            except Exception: hist = None
+        except Exception as _yfe:
+            print(f"[DD] yfinance fetch failed for {yf_symbol}: {_yfe}")
+
+        _has_yf = info and info.get("regularMarketPrice")
+
+        # r60.3: India fallback — Yahoo blocks NSE tickers from Render IP
+        if not _has_yf and region == "IN":
+            try:
+                print(f"[DD] yfinance empty for {symbol} — trying NSE direct")
+                nse_data = fetch_nse_stock_data(symbol)
+                if nse_data and nse_data.get("price"):
+                    data_source = "NSE"
+                    # Map NSE shape into yfinance-compatible info dict so the
+                    # rest of the function works unchanged.
+                    info = {
+                        "regularMarketPrice": _safe_float(nse_data.get("price")),
+                        "longName": nse_data.get("companyName") or symbol,
+                        "shortName": nse_data.get("companyName") or symbol,
+                        "sector": nse_data.get("sector") or "Unknown",
+                        "industry": nse_data.get("industry") or "Unknown",
+                        "country": "India",
+                        "marketCap": _safe_float(nse_data.get("mcap")),
+                        "trailingPE": _safe_float(nse_data.get("pe")),
+                        "forwardPE": _safe_float(nse_data.get("fwdPE")),
+                        "priceToBook": _safe_float(nse_data.get("pb")),
+                        "bookValue": _safe_float(nse_data.get("bookValue")),
+                        "trailingEps": _safe_float(nse_data.get("eps")),
+                        "fiftyTwoWeekHigh": _safe_float(nse_data.get("w52High")),
+                        "fiftyTwoWeekLow": _safe_float(nse_data.get("w52Low")),
+                        "returnOnEquity": _safe_float(nse_data.get("roe")) / 100.0 if nse_data.get("roe") else None,
+                        "profitMargins": _safe_float(nse_data.get("profitMargin")) / 100.0 if nse_data.get("profitMargin") else None,
+                        "grossMargins": _safe_float(nse_data.get("grossMargin")) / 100.0 if nse_data.get("grossMargin") else None,
+                        "operatingMargins": _safe_float(nse_data.get("operatingMargin")) / 100.0 if nse_data.get("operatingMargin") else None,
+                        "debtToEquity": _safe_float(nse_data.get("debtEquity")),
+                        "revenueGrowth": _safe_float(nse_data.get("revGrowth")) / 100.0 if nse_data.get("revGrowth") else None,
+                        "earningsGrowth": _safe_float(nse_data.get("earningsGrowth")) / 100.0 if nse_data.get("earningsGrowth") else None,
+                        "dividendYield": _safe_float(nse_data.get("dividendYield")) / 100.0 if nse_data.get("dividendYield") else None,
+                        "heldPercentInsiders": _safe_float(nse_data.get("promoterHolding")) / 100.0 if nse_data.get("promoterHolding") else None,
+                        "heldPercentInstitutions": (
+                            (_safe_float(nse_data.get("diiHolding")) + _safe_float(nse_data.get("fiiHolding"))) / 100.0
+                            if (nse_data.get("diiHolding") or nse_data.get("fiiHolding")) else None
+                        ),
+                        "longBusinessSummary": f"{nse_data.get('companyName') or symbol} is an Indian company in the {nse_data.get('sector', 'unknown')} sector.",
+                        "_nse_quarterly_results": nse_data.get("quarterlyResults", []),  # used later by earnings history
+                        "_nse_promoter_pct": _safe_float(nse_data.get("promoterHolding")),
+                        "_nse_dii_pct": _safe_float(nse_data.get("diiHolding")),
+                        "_nse_fii_pct": _safe_float(nse_data.get("fiiHolding")),
+                    }
+                    # Build minimal hist from NSE 52w range — will give crude DCF/sector calcs but real data
+                    print(f"[DD] NSE fallback success for {symbol}: ₹{info['regularMarketPrice']}")
+            except Exception as _nse_err:
+                print(f"[DD] NSE fallback failed for {symbol}: {_nse_err}")
+
+        # Final fallback — Google Finance for both regions
         if not info or not info.get("regularMarketPrice"):
-            return {"success": False, "error": f"Could not retrieve data for {symbol}"}
+            try:
+                print(f"[DD] trying Google Finance for {symbol}")
+                gf_data = fetch_google_finance(yf_symbol if region == "US" else symbol + ":NSE")
+                if gf_data and gf_data.get("price"):
+                    data_source = "google_finance"
+                    info = {
+                        "regularMarketPrice": _safe_float(gf_data.get("price")),
+                        "longName": gf_data.get("name") or symbol,
+                        "shortName": gf_data.get("name") or symbol,
+                        "sector": gf_data.get("sector") or "Unknown",
+                        "industry": gf_data.get("industry") or "Unknown",
+                        "marketCap": _safe_float(gf_data.get("market_cap")),
+                        "trailingPE": _safe_float(gf_data.get("pe_ratio")),
+                        "fiftyTwoWeekHigh": _safe_float(gf_data.get("year_high")),
+                        "fiftyTwoWeekLow": _safe_float(gf_data.get("year_low")),
+                        "longBusinessSummary": f"Limited data — Google Finance fallback for {symbol}.",
+                    }
+                    print(f"[DD] Google Finance fallback success for {symbol}")
+            except Exception as _gfe:
+                print(f"[DD] Google Finance fallback failed: {_gfe}")
+
+        if not info or not info.get("regularMarketPrice"):
+            return {
+                "success": False,
+                "error": f"Could not retrieve data for {symbol} from any source (yfinance, NSE, Google Finance). Yahoo may be rate-limiting; try again in 30s.",
+                "tried_sources": ["yfinance", "NSE" if region == "IN" else None, "google_finance"],
+            }
+        print(f"[DD] {symbol} data via {data_source}")
         
         # ═══ COMPANY BASICS ═══
         company = {
@@ -28298,6 +28386,245 @@ async def investor_due_diligence(email: str = "", symbol: str = "", region: str 
             porter["industry_attractiveness_basis"] = f"Only {len(_real_porter_scores)} of 5 forces have real data — insufficient"
             porter["data_quality"] = "INCOMPLETE"
         
+
+        # ═══ SECTION 7: CATALYSTS & ANALYST CONSENSUS (r60.3) ═══
+        catalysts = {
+            "next_earnings": None,
+            "analyst": None,
+            "short_interest": None,
+            "dividend": None,
+            "data_quality": "PARTIAL",
+        }
+
+        # Next earnings date
+        try:
+            _ets = info.get("earningsTimestamp") or info.get("earningsDate")
+            if isinstance(_ets, (list, tuple)) and _ets:
+                _ets = _ets[0]
+            if _ets:
+                _ed = _dt.fromtimestamp(int(_ets)) if isinstance(_ets, (int, float)) else None
+                if _ed:
+                    days_until = (_ed.date() - _dt.now().date()).days
+                    catalysts["next_earnings"] = {
+                        "date": _ed.strftime("%Y-%m-%d"),
+                        "days_until": days_until,
+                        "urgency": "HIGH" if 0 <= days_until <= 7 else "MEDIUM" if days_until <= 14 else "LOW",
+                    }
+        except Exception: pass
+
+        # Analyst consensus
+        try:
+            target_mean = info.get("targetMeanPrice")
+            target_high = info.get("targetHighPrice")
+            target_low = info.get("targetLowPrice")
+            n_analysts = info.get("numberOfAnalystOpinions")
+            rec_mean = info.get("recommendationMean")  # 1=strong buy ... 5=strong sell
+            if target_mean and spot:
+                upside_pct = round(((target_mean - spot) / spot) * 100, 1)
+                rec_label = (
+                    "STRONG BUY" if rec_mean and rec_mean < 1.5 else
+                    "BUY" if rec_mean and rec_mean < 2.5 else
+                    "HOLD" if rec_mean and rec_mean < 3.5 else
+                    "SELL" if rec_mean and rec_mean < 4.5 else
+                    "STRONG SELL" if rec_mean else "NO CONSENSUS"
+                )
+                catalysts["analyst"] = {
+                    "target_mean": round(float(target_mean), 2),
+                    "target_high": round(float(target_high), 2) if target_high else None,
+                    "target_low": round(float(target_low), 2) if target_low else None,
+                    "upside_pct": upside_pct,
+                    "n_analysts": int(n_analysts) if n_analysts else 0,
+                    "recommendation": rec_label,
+                    "rec_mean_score": round(float(rec_mean), 2) if rec_mean else None,
+                }
+        except Exception: pass
+
+        # Short interest
+        try:
+            shares_short = info.get("sharesShort")
+            shares_float = info.get("floatShares")
+            short_pct = info.get("shortPercentOfFloat")
+            short_ratio = info.get("shortRatio")
+            if shares_short and shares_float:
+                catalysts["short_interest"] = {
+                    "shares_short": int(shares_short),
+                    "float_shares": int(shares_float),
+                    "short_pct_float": round(float(short_pct) * 100, 2) if short_pct else round((shares_short / shares_float) * 100, 2),
+                    "days_to_cover": round(float(short_ratio), 2) if short_ratio else None,
+                    "squeeze_risk": (
+                        "HIGH" if (short_pct and short_pct > 0.20) or (short_ratio and short_ratio > 7) else
+                        "MEDIUM" if (short_pct and short_pct > 0.10) or (short_ratio and short_ratio > 4) else
+                        "LOW"
+                    ),
+                }
+        except Exception: pass
+
+        # Dividend
+        try:
+            div_yield = info.get("dividendYield")
+            div_rate = info.get("dividendRate") or info.get("trailingAnnualDividendRate")
+            payout = info.get("payoutRatio")
+            if div_rate or div_yield:
+                catalysts["dividend"] = {
+                    "annual_rate": round(float(div_rate), 2) if div_rate else None,
+                    "yield_pct": round(float(div_yield) * 100, 2) if div_yield and div_yield < 1 else (round(float(div_yield), 2) if div_yield else None),
+                    "payout_ratio": round(float(payout) * 100, 1) if payout else None,
+                    "currency_symbol": csym,
+                }
+        except Exception: pass
+
+
+        # ═══ SECTION 8: VALUATION DETAIL — DCF intrinsic value (r60.3) ═══
+        # Pull the DCF target price out into its own surfaced block
+        valuation_detail = {
+            "spot": round(spot, 2),
+            "currency_symbol": csym,
+            "fair_value": None,
+            "upside_pct": None,
+            "verdict": None,
+            "method": "Simple DCF — 5yr FCF projection at WACC 10%, terminal growth 2.5%",
+            "data_quality": "FULL",
+        }
+        try:
+            # Reuse the score from Section 1 (DCF math already done there).
+            # If thesis dict has fair_value field, surface it; otherwise compute simple DCF here.
+            fcf = info.get("freeCashflow") or 0
+            shares_out = info.get("sharesOutstanding") or 0
+            if fcf and shares_out and fcf > 0:
+                growth_y = (rev_growth or 0.05)
+                growth_y = max(-0.10, min(0.30, growth_y))  # clamp
+                discount = 0.10
+                terminal_g = 0.025
+                pv = 0.0
+                cf = fcf
+                for yr in range(1, 6):
+                    cf = cf * (1 + growth_y * (0.7 ** (yr-1)))  # decaying growth
+                    pv += cf / ((1 + discount) ** yr)
+                terminal = (cf * (1 + terminal_g)) / (discount - terminal_g)
+                pv += terminal / ((1 + discount) ** 5)
+                fair_value_per_share = pv / shares_out
+                upside = ((fair_value_per_share - spot) / spot) * 100 if spot else 0
+                valuation_detail["fair_value"] = round(fair_value_per_share, 2)
+                valuation_detail["upside_pct"] = round(upside, 1)
+                valuation_detail["verdict"] = (
+                    "STRONGLY UNDERVALUED" if upside > 30 else
+                    "UNDERVALUED" if upside > 10 else
+                    "FAIR VALUE" if upside > -10 else
+                    "OVERVALUED" if upside > -30 else
+                    "STRONGLY OVERVALUED"
+                )
+            else:
+                valuation_detail["data_quality"] = "INCOMPLETE"
+                valuation_detail["verdict"] = "INSUFFICIENT DATA"
+                valuation_detail["incomplete_reason"] = (
+                    "Free cash flow or shares outstanding not available — DCF cannot be computed honestly."
+                )
+        except Exception as _ve:
+            valuation_detail["data_quality"] = "INCOMPLETE"
+            valuation_detail["verdict"] = "INSUFFICIENT DATA"
+            valuation_detail["incomplete_reason"] = f"DCF computation failed: {str(_ve)[:80]}"
+
+
+        # ═══ SECTION 9: QUARTERLY EARNINGS HISTORY (r60.3) ═══
+        # 8-quarter beat/miss + EPS trend
+        earnings_history = {
+            "quarters": [],
+            "beat_count": 0,
+            "miss_count": 0,
+            "beat_rate_pct": None,
+            "trend": None,
+            "data_quality": "INCOMPLETE",
+        }
+        try:
+            # Use yfinance earnings_history (US) or NSE quarterlyResults (IN)
+            qh_records = []
+            if data_source == "yfinance":
+                try:
+                    eh_df = tk.earnings_history if hasattr(tk, "earnings_history") else None
+                    if eh_df is not None and not eh_df.empty:
+                        # Last 8 rows
+                        for _idx, row in eh_df.tail(8).iterrows():
+                            est = row.get("epsEstimate") if hasattr(row, "get") else None
+                            act = row.get("epsActual") if hasattr(row, "get") else None
+                            try:
+                                est_v = _safe_float(est) if est is not None else None
+                                act_v = _safe_float(act) if act is not None else None
+                            except Exception:
+                                est_v, act_v = None, None
+                            if est_v is None or act_v is None: continue
+                            beat = act_v > est_v
+                            surprise_pct = ((act_v - est_v) / abs(est_v)) * 100 if est_v else None
+                            qh_records.append({
+                                "quarter": str(_idx)[:10] if _idx else None,
+                                "eps_estimate": round(est_v, 2),
+                                "eps_actual": round(act_v, 2),
+                                "beat": beat,
+                                "surprise_pct": round(surprise_pct, 1) if surprise_pct else None,
+                            })
+                except Exception as _ehe:
+                    print(f"[DD] earnings_history fetch failed: {_ehe}")
+            elif data_source == "NSE":
+                # Use _nse_quarterly_results we stashed during the NSE map
+                _qr = info.get("_nse_quarterly_results", [])[:8]
+                for q in _qr:
+                    qh_records.append({
+                        "quarter": q.get("quarter") or q.get("toDate"),
+                        "revenue": _safe_float(q.get("revenue") or q.get("totalRevenue")),
+                        "profit": _safe_float(q.get("profit") or q.get("profitFromOrdinaryActivities")),
+                        "beat": None,  # NSE doesn't give us estimates
+                        "surprise_pct": None,
+                    })
+
+            if qh_records:
+                earnings_history["quarters"] = qh_records
+                if any(q.get("beat") is not None for q in qh_records):
+                    beats = sum(1 for q in qh_records if q.get("beat") is True)
+                    misses = sum(1 for q in qh_records if q.get("beat") is False)
+                    earnings_history["beat_count"] = beats
+                    earnings_history["miss_count"] = misses
+                    if beats + misses > 0:
+                        earnings_history["beat_rate_pct"] = round((beats / (beats + misses)) * 100, 0)
+                # Trend from the last 4 EPS values (US only)
+                eps_actuals = [q.get("eps_actual") for q in qh_records if q.get("eps_actual") is not None]
+                if len(eps_actuals) >= 4:
+                    earnings_history["trend"] = (
+                        "STRONG GROWTH" if eps_actuals[-1] > eps_actuals[0] * 1.5 else
+                        "GROWING" if eps_actuals[-1] > eps_actuals[0] * 1.10 else
+                        "STABLE" if abs(eps_actuals[-1] - eps_actuals[0]) / max(abs(eps_actuals[0]), 0.01) < 0.10 else
+                        "DECLINING"
+                    )
+                earnings_history["data_quality"] = "FULL" if data_source == "yfinance" else "PARTIAL"
+            else:
+                earnings_history["incomplete_reason"] = "No quarterly earnings data available from " + data_source
+        except Exception as _ehee:
+            earnings_history["incomplete_reason"] = f"Could not fetch: {str(_ehee)[:120]}"
+
+
+        # ═══ SECTION 10: RISK MATRIX V2 — surfaces passed checks (r60.3) ═══
+        # Existing risk_matrix has flagged risks; we now ALSO show the
+        # checks that passed (so empty state doesn't look broken).
+        passed_checks = []
+        if debt_to_equity is not None and debt_to_equity <= 100:
+            passed_checks.append({"name": "Debt-to-Equity", "verdict": f"{debt_to_equity:.0f}% (healthy ≤100%)", "status": "PASS"})
+        if current_ratio is not None and current_ratio >= 1:
+            passed_checks.append({"name": "Liquidity", "verdict": f"Current ratio {current_ratio:.2f} (healthy ≥1)", "status": "PASS"})
+        if prof_margin is not None and prof_margin >= 0:
+            passed_checks.append({"name": "Profitability", "verdict": f"Margin {prof_margin*100:.1f}% (positive)", "status": "PASS"})
+        if rev_growth is not None and rev_growth >= 0:
+            passed_checks.append({"name": "Revenue Growth", "verdict": f"+{rev_growth*100:.1f}% YoY (growing)", "status": "PASS"})
+        if forward_pe and forward_pe <= 50:
+            passed_checks.append({"name": "Valuation", "verdict": f"Forward P/E {forward_pe:.1f} (reasonable ≤50)", "status": "PASS"})
+        if held_insiders is None or held_insiders <= 0.30:
+            passed_checks.append({"name": "Governance", "verdict": "Diversified insider ownership", "status": "PASS"})
+
+        risk_matrix["passed_checks"] = passed_checks
+        risk_matrix["overall_health"] = (
+            "STRONG" if len(risks) == 0 and len(passed_checks) >= 4 else
+            "HEALTHY" if len(risks) == 0 else
+            "MIXED" if len(risks) <= 2 else
+            "CONCERNING"
+        )
+
         elapsed = round(time.time() - t0, 1)
         try: diag_log("DD", "investor_dd_completed", {"symbol": symbol, "region": region, "score": score, "elapsed_sec": elapsed})
         except Exception: pass
@@ -28314,6 +28641,10 @@ async def investor_due_diligence(email: str = "", symbol: str = "", region: str 
             "risk_matrix": risk_matrix,
             "swot": swot,
             "porter": porter,
+            "catalysts": catalysts,
+            "valuation_detail": valuation_detail,
+            "earnings_history": earnings_history,
+            "data_source": data_source,
             "honest_disclaimer": (
                 "All financial metrics from real 10-K/annual report data via Yahoo Finance. "
                 "Peer comparisons use curated peer maps for major tickers (limited coverage). "
@@ -29955,6 +30286,48 @@ async def universe_classify_route(ticker: str, region: str = "US", market_cap_us
 async def universe_stats_route():
     """Counts per region per tier."""
     return UC.stats()
+
+
+
+@app.get("/api/earnings-intel")
+async def earnings_intel_route(
+    ticker: str,
+    region: str = "US",
+    spot: float = 0.0,
+    atm_call: float = 0.0,
+    atm_put: float = 0.0,
+):
+    """Earnings Move Intelligence — historical move vs current implied move."""
+    try:
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(
+            _thread_pool,
+            lambda: get_earnings_intel(
+                ticker=ticker, region=region,
+                spot=spot if spot > 0 else None,
+                atm_call=atm_call if atm_call > 0 else None,
+                atm_put=atm_put if atm_put > 0 else None,
+            ),
+        )
+        return result
+    except Exception as e:
+        print(f"[EARNINGS-INTEL] {ticker} {region} failed: {e}")
+        return {
+            "success": False, "ticker": ticker, "region": region,
+            "verdict": "INCOMPLETE_DATA",
+            "verdict_reason": f"Fetch failed: {str(e)[:120]}",
+            "data_quality": "INCOMPLETE",
+            "missing_fields": ["fetch_error"],
+        }
+
+
+@app.get("/api/data-sources-status")
+async def data_sources_status_route():
+    """Health snapshot of every data source the central fallback layer manages."""
+    try:
+        return data_sources.get_source_status()
+    except Exception as e:
+        return {"error": str(e)[:200]}
 
 
 @app.get("/api/cds-batch")

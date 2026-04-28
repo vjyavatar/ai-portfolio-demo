@@ -11958,6 +11958,170 @@ function renderReport(d){
   }
   h += '</div>';
   
+  // ═══ NEW SECTIONS r60.3 — Catalysts, Valuation, Earnings History ═══
+
+  // Section: Catalyst banner (next earnings + analyst consensus + short interest + div)
+  if (d.catalysts) {
+    var cat = d.catalysts;
+    h += '<div style="background:linear-gradient(135deg,#fff,#f0f9ff);border:1px solid #bfdbfe;border-radius:12px;padding:16px;margin-bottom:16px">';
+    h += '<div style="font-size:14px;font-weight:900;color:var(--text);font-family:Sora,sans-serif;margin-bottom:10px">📅 Catalysts & Analyst Consensus</div>';
+    h += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px">';
+
+    // Next earnings cell
+    if (cat.next_earnings) {
+      var ne = cat.next_earnings;
+      var urgColor = ne.urgency === 'HIGH' ? '#dc2626' : ne.urgency === 'MEDIUM' ? '#d97706' : '#059669';
+      h += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:10px">';
+      h += '<div style="font-size:9px;font-weight:700;color:var(--text3);letter-spacing:0.5px">NEXT EARNINGS</div>';
+      h += '<div style="font-size:18px;font-weight:900;font-family:var(--mono);color:'+urgColor+';margin-top:3px">'+ne.date+'</div>';
+      h += '<div style="font-size:11px;color:'+urgColor+';font-weight:700">'+ne.days_until+' days away · '+ne.urgency+'</div>';
+      h += '</div>';
+    } else {
+      h += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:10px;opacity:0.6">';
+      h += '<div style="font-size:9px;font-weight:700;color:var(--text3);letter-spacing:0.5px">NEXT EARNINGS</div>';
+      h += '<div style="font-size:14px;font-weight:700;color:#9ca3af;margin-top:3px">No date available</div></div>';
+    }
+
+    // Analyst consensus cell
+    if (cat.analyst) {
+      var an = cat.analyst;
+      var upColor = an.upside_pct > 15 ? '#059669' : an.upside_pct > -5 ? '#d97706' : '#dc2626';
+      h += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:10px">';
+      h += '<div style="font-size:9px;font-weight:700;color:var(--text3);letter-spacing:0.5px">ANALYST TARGET</div>';
+      h += '<div style="font-size:18px;font-weight:900;font-family:var(--mono);color:'+upColor+';margin-top:3px">'+(d.currency_symbol||'$')+an.target_mean+'</div>';
+      h += '<div style="font-size:11px;color:'+upColor+';font-weight:700">'+(an.upside_pct >= 0 ? '+' : '')+an.upside_pct+'% · '+an.recommendation+'</div>';
+      if (an.n_analysts) h += '<div style="font-size:9px;color:var(--text3);margin-top:2px">'+an.n_analysts+' analysts</div>';
+      h += '</div>';
+    } else {
+      h += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:10px;opacity:0.6">';
+      h += '<div style="font-size:9px;font-weight:700;color:var(--text3);letter-spacing:0.5px">ANALYST TARGET</div>';
+      h += '<div style="font-size:14px;font-weight:700;color:#9ca3af;margin-top:3px">No coverage</div></div>';
+    }
+
+    // Short interest cell
+    if (cat.short_interest) {
+      var si = cat.short_interest;
+      var sqColor = si.squeeze_risk === 'HIGH' ? '#dc2626' : si.squeeze_risk === 'MEDIUM' ? '#d97706' : '#059669';
+      h += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:10px">';
+      h += '<div style="font-size:9px;font-weight:700;color:var(--text3);letter-spacing:0.5px">SHORT INTEREST</div>';
+      h += '<div style="font-size:18px;font-weight:900;font-family:var(--mono);color:'+sqColor+';margin-top:3px">'+si.short_pct_float+'%</div>';
+      h += '<div style="font-size:11px;color:'+sqColor+';font-weight:700">Squeeze risk: '+si.squeeze_risk+'</div>';
+      if (si.days_to_cover) h += '<div style="font-size:9px;color:var(--text3);margin-top:2px">'+si.days_to_cover+' days to cover</div>';
+      h += '</div>';
+    }
+
+    // Dividend cell
+    if (cat.dividend && (cat.dividend.yield_pct || cat.dividend.annual_rate)) {
+      var dv = cat.dividend;
+      h += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:10px">';
+      h += '<div style="font-size:9px;font-weight:700;color:var(--text3);letter-spacing:0.5px">DIVIDEND YIELD</div>';
+      h += '<div style="font-size:18px;font-weight:900;font-family:var(--mono);color:#059669;margin-top:3px">'+(dv.yield_pct||0).toFixed(2)+'%</div>';
+      if (dv.annual_rate) h += '<div style="font-size:11px;color:var(--text2);font-weight:700">'+(dv.currency_symbol||'$')+dv.annual_rate+' annual</div>';
+      if (dv.payout_ratio) h += '<div style="font-size:9px;color:var(--text3);margin-top:2px">'+dv.payout_ratio+'% payout</div>';
+      h += '</div>';
+    }
+    h += '</div></div>';
+  }
+
+  // Section: Valuation Detail (DCF intrinsic value)
+  if (d.valuation_detail) {
+    var vd = d.valuation_detail;
+    h += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:16px;margin-bottom:16px">';
+    h += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">';
+    h += '<div style="font-size:14px;font-weight:900;color:var(--text);font-family:Sora,sans-serif">💰 Valuation — DCF Intrinsic Value</div>';
+    if (vd.data_quality === 'INCOMPLETE') {
+      h += '<div style="font-size:8px;font-weight:800;color:#6b7280;background:#f3f4f6;padding:3px 8px;border-radius:6px;letter-spacing:0.5px">INCOMPLETE</div>';
+    }
+    h += '</div>';
+
+    if (vd.fair_value && vd.upside_pct !== null) {
+      var fvColor = vd.upside_pct > 20 ? '#059669' : vd.upside_pct > 0 ? '#10b981' : vd.upside_pct > -20 ? '#d97706' : '#dc2626';
+      h += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">';
+      h += '<div style="padding:12px;background:#f8fafc;border-radius:8px;text-align:center">';
+      h += '<div style="font-size:9px;font-weight:700;color:var(--text3);letter-spacing:0.5px">CURRENT PRICE</div>';
+      h += '<div style="font-size:22px;font-weight:900;font-family:var(--mono);color:var(--text);margin-top:4px">'+(vd.currency_symbol||'$')+vd.spot+'</div></div>';
+      h += '<div style="padding:12px;background:'+fvColor+'10;border-radius:8px;text-align:center;border:2px solid '+fvColor+'33">';
+      h += '<div style="font-size:9px;font-weight:700;color:'+fvColor+';letter-spacing:0.5px">FAIR VALUE</div>';
+      h += '<div style="font-size:22px;font-weight:900;font-family:var(--mono);color:'+fvColor+';margin-top:4px">'+(vd.currency_symbol||'$')+vd.fair_value+'</div>';
+      h += '<div style="font-size:11px;color:'+fvColor+';font-weight:800;margin-top:2px">'+(vd.upside_pct >= 0 ? '+' : '')+vd.upside_pct+'%</div></div>';
+      h += '<div style="padding:12px;background:#f8fafc;border-radius:8px;text-align:center">';
+      h += '<div style="font-size:9px;font-weight:700;color:var(--text3);letter-spacing:0.5px">VERDICT</div>';
+      h += '<div style="font-size:14px;font-weight:900;color:'+fvColor+';margin-top:8px;line-height:1.2">'+vd.verdict+'</div></div>';
+      h += '</div>';
+      h += '<div style="margin-top:10px;font-size:9px;color:var(--text3);font-style:italic">Method: '+vd.method+'</div>';
+    } else {
+      h += '<div style="padding:12px;background:#f3f4f6;border-radius:8px;text-align:center;color:#6b7280">';
+      h += '<div style="font-size:13px;font-weight:700">'+(vd.verdict || 'INSUFFICIENT DATA')+'</div>';
+      h += '<div style="font-size:10px;margin-top:4px">'+(vd.incomplete_reason || 'Cannot compute DCF without complete cash flow data')+'</div>';
+      h += '</div>';
+    }
+    h += '</div>';
+  }
+
+  // Section: Quarterly Earnings History
+  if (d.earnings_history && d.earnings_history.quarters && d.earnings_history.quarters.length > 0) {
+    var eh = d.earnings_history;
+    h += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:16px;margin-bottom:16px">';
+    h += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">';
+    h += '<div style="font-size:14px;font-weight:900;color:var(--text);font-family:Sora,sans-serif">📊 Quarterly Earnings History</div>';
+    if (eh.beat_rate_pct !== null) {
+      var brColor = eh.beat_rate_pct >= 75 ? '#059669' : eh.beat_rate_pct >= 50 ? '#d97706' : '#dc2626';
+      h += '<div style="font-size:11px;font-weight:800;color:'+brColor+'">'+eh.beat_rate_pct+'% Beat Rate · '+eh.beat_count+'B / '+eh.miss_count+'M</div>';
+    }
+    h += '</div>';
+
+    if (eh.trend) {
+      var tColor = eh.trend.indexOf('GROWTH') >= 0 || eh.trend === 'GROWING' ? '#059669' : eh.trend === 'STABLE' ? '#d97706' : '#dc2626';
+      h += '<div style="font-size:11px;color:'+tColor+';font-weight:700;margin-bottom:8px">Trend: '+eh.trend+'</div>';
+    }
+
+    h += '<div style="overflow-x:auto"><table style="width:100%;font-size:10px;font-family:var(--mono);border-collapse:collapse">';
+    h += '<thead><tr style="background:#f8fafc;color:var(--text3)"><th style="text-align:left;padding:6px 8px">QUARTER</th>';
+    if (eh.quarters[0].eps_estimate !== undefined) {
+      h += '<th style="text-align:right;padding:6px 8px">EST</th><th style="text-align:right;padding:6px 8px">ACTUAL</th><th style="text-align:right;padding:6px 8px">SURPRISE</th>';
+    } else {
+      h += '<th style="text-align:right;padding:6px 8px">REVENUE</th><th style="text-align:right;padding:6px 8px">PROFIT</th>';
+    }
+    h += '<th style="text-align:center;padding:6px 8px">RESULT</th></tr></thead><tbody>';
+    eh.quarters.forEach(function(q){
+      var beatColor = q.beat === true ? '#059669' : q.beat === false ? '#dc2626' : '#9ca3af';
+      var beatLabel = q.beat === true ? '✓ BEAT' : q.beat === false ? '✗ MISS' : '—';
+      h += '<tr style="border-top:1px solid #f1f5f9">';
+      h += '<td style="padding:6px 8px;color:var(--text2)">'+(q.quarter||'—')+'</td>';
+      if (q.eps_estimate !== undefined) {
+        h += '<td style="text-align:right;padding:6px 8px">'+(q.eps_estimate || '—')+'</td>';
+        h += '<td style="text-align:right;padding:6px 8px;font-weight:700">'+(q.eps_actual || '—')+'</td>';
+        h += '<td style="text-align:right;padding:6px 8px;color:'+beatColor+'">'+(q.surprise_pct !== null ? (q.surprise_pct >= 0 ? '+' : '')+q.surprise_pct+'%' : '—')+'</td>';
+      } else {
+        h += '<td style="text-align:right;padding:6px 8px">'+(q.revenue ? (q.revenue/10000000).toFixed(1)+' Cr' : '—')+'</td>';
+        h += '<td style="text-align:right;padding:6px 8px">'+(q.profit ? (q.profit/10000000).toFixed(1)+' Cr' : '—')+'</td>';
+      }
+      h += '<td style="text-align:center;padding:6px 8px;color:'+beatColor+';font-weight:800">'+beatLabel+'</td>';
+      h += '</tr>';
+    });
+    h += '</tbody></table></div>';
+    h += '</div>';
+  }
+
+  // Risk Matrix v2 — surface PASSED checks too
+  if (d.risk_matrix && d.risk_matrix.passed_checks && d.risk_matrix.passed_checks.length > 0) {
+    var rmv2 = d.risk_matrix;
+    h += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:16px;margin-bottom:16px">';
+    var healthColor = rmv2.overall_health === 'STRONG' ? '#059669' : rmv2.overall_health === 'HEALTHY' ? '#10b981' : rmv2.overall_health === 'MIXED' ? '#d97706' : '#dc2626';
+    h += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">';
+    h += '<div style="font-size:14px;font-weight:900;color:var(--text);font-family:Sora,sans-serif">✅ Risk Health Checks</div>';
+    h += '<div style="font-size:10px;font-weight:800;color:'+healthColor+';background:'+healthColor+'15;padding:3px 10px;border-radius:6px">'+rmv2.overall_health+'</div>';
+    h += '</div>';
+    rmv2.passed_checks.forEach(function(c){
+      h += '<div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid #f1f5f9">';
+      h += '<div style="font-size:14px;color:#059669;width:18px">✓</div>';
+      h += '<div style="font-size:11px;font-weight:700;color:var(--text);width:160px">'+c.name+'</div>';
+      h += '<div style="font-size:10px;color:var(--text2);flex:1">'+c.verdict+'</div>';
+      h += '</div>';
+    });
+    h += '</div>';
+  }
+
   // Data quality + disclaimer
   if(d.data_quality_note){
     h += '<div style="background:#eff6ff;border:1px solid #2563eb20;border-radius:8px;padding:14px;margin-bottom:10px;font-size:10px;line-height:1.6">';
