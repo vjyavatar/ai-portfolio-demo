@@ -17,6 +17,7 @@ import hashlib
 print("[STARTUP] Core imports OK")
 
 import yfinance as _yf_original
+from universe_classifier import UC  # r60: centralized ticker classification
 print("[STARTUP] yfinance OK")
 
 import pandas as pd
@@ -28201,19 +28202,101 @@ async def investor_due_diligence(email: str = "", symbol: str = "", region: str 
         
         # Porter's Five Forces — interpretive scores 1-10 (HIGHER = MORE THREAT/PRESSURE)
         # Honestly labeled as interpretation
+        # ─── Porter's Five Forces — computed from real fundamentals (r60) ───
+        # All scores 1-10 (HIGHER = MORE COMPETITIVE PRESSURE).
+        # score=None when data unavailable. No fake 5/10 baselines (CDS v2.0).
+        _op_margin = info.get("operatingMargins") or 0
+        _roe_val = roe if roe else 0
+        _n_peers = len(peers) if peers else 0
+        _sector_lower = (sector or "").lower()
+
+        # 1. Supplier Power — gross_margin proxy (low margin = supplier pressure)
+        if gross_margin is not None and gross_margin > 0:
+            if   gross_margin < 0.20: _sp_s, _sp_n = 8, f"Low gross margin ({gross_margin*100:.1f}%) suggests supplier/input cost pressure"
+            elif gross_margin < 0.35: _sp_s, _sp_n = 6, f"Moderate gross margin ({gross_margin*100:.1f}%) — some supplier pressure"
+            elif gross_margin < 0.55: _sp_s, _sp_n = 4, f"Healthy gross margin ({gross_margin*100:.1f}%) — manageable supplier costs"
+            else:                     _sp_s, _sp_n = 2, f"High gross margin ({gross_margin*100:.1f}%) — pricing power over suppliers"
+            _sp_c = True
+        else:
+            _sp_s, _sp_n, _sp_c = None, "Gross margin unavailable — cannot assess", False
+
+        # 2. Buyer Power — operating margin proxy
+        if gross_margin is not None and _op_margin and gross_margin > 0:
+            if   _op_margin > 0.25: _bp_s, _bp_n = 3, f"Strong operating margin ({_op_margin*100:.1f}%) — pricing power retained"
+            elif _op_margin > 0.15: _bp_s, _bp_n = 5, f"Moderate operating margin ({_op_margin*100:.1f}%) — balanced buyer dynamics"
+            elif _op_margin > 0.05: _bp_s, _bp_n = 7, f"Thin operating margin ({_op_margin*100:.1f}%) — buyers exerting pressure"
+            else:                   _bp_s, _bp_n = 9, f"Weak operating margin ({_op_margin*100:.1f}%) — strong buyer power"
+            _bp_c = True
+        else:
+            _bp_s, _bp_n, _bp_c = None, "Operating margin unavailable", False
+
+        # 3. Competitive Rivalry — peers + growth + margin
+        if _n_peers > 0 or rev_growth is not None:
+            _cr_acc, _cr_signals = 5, []
+            if   _n_peers >= 5: _cr_acc += 2; _cr_signals.append(f"{_n_peers} peers identified")
+            elif _n_peers >= 2: _cr_acc += 1; _cr_signals.append(f"{_n_peers} peers identified")
+            elif _n_peers > 0:                _cr_signals.append(f"{_n_peers} peer identified")
+            if rev_growth is not None:
+                if   rev_growth < -0.05: _cr_acc += 2; _cr_signals.append(f"revenue declining {rev_growth*100:.1f}%")
+                elif rev_growth >  0.20: _cr_acc -= 1; _cr_signals.append(f"revenue growing {rev_growth*100:.1f}%")
+            if _op_margin and _op_margin < 0.10:
+                _cr_acc += 1; _cr_signals.append(f"compressed op margin {_op_margin*100:.1f}%")
+            _cr_s, _cr_n, _cr_c = max(1, min(10, _cr_acc)), ("; ".join(_cr_signals) if _cr_signals else "Limited rivalry indicators"), True
+        else:
+            _cr_s, _cr_n, _cr_c = None, "No peer or growth data", False
+
+        # 4. Threat of Substitution — gross_margin + sector
+        if gross_margin is not None and gross_margin > 0:
+            if   gross_margin > 0.65: _ts_base = 3
+            elif gross_margin > 0.45: _ts_base = 4
+            elif gross_margin > 0.25: _ts_base = 6
+            else:                     _ts_base = 8
+            _ts_parts = [f"Gross margin {gross_margin*100:.1f}% indicates {'differentiated' if gross_margin > 0.45 else 'commodity-like'} pricing"]
+            if _sector_lower in ("technology", "software", "communication services"):
+                _ts_base = max(1, _ts_base - 1); _ts_parts.append("tech sector — switching costs higher")
+            elif _sector_lower in ("consumer cyclical", "consumer defensive", "basic materials", "energy"):
+                _ts_base = min(10, _ts_base + 1); _ts_parts.append("consumer/commodity — substitution easier")
+            _ts_s, _ts_n, _ts_c = _ts_base, "; ".join(_ts_parts), True
+        else:
+            _ts_s, _ts_n, _ts_c = None, "Gross margin unavailable", False
+
+        # 5. Threat of New Entry — gross_margin + ROE
+        if gross_margin is not None and gross_margin > 0:
+            if gross_margin > 0.55 and _roe_val and _roe_val > 0.20:
+                _ne_s, _ne_n = 2, f"high gross margin ({gross_margin*100:.1f}%) + strong ROE ({_roe_val*100:.1f}%) suggests durable barriers"
+            elif gross_margin > 0.45: _ne_s, _ne_n = 3, f"high gross margin ({gross_margin*100:.1f}%) suggests barriers exist"
+            elif gross_margin > 0.30: _ne_s, _ne_n = 5, f"moderate gross margin ({gross_margin*100:.1f}%) — modest barriers"
+            elif gross_margin > 0.15: _ne_s, _ne_n = 7, f"low gross margin ({gross_margin*100:.1f}%) — limited barriers"
+            else:                     _ne_s, _ne_n = 8, f"very low gross margin ({gross_margin*100:.1f}%) — easy entry likely"
+            _ne_c = True
+        else:
+            _ne_s, _ne_n, _ne_c = None, "Gross margin unavailable", False
+
         porter = {
-            "supplier_power": {"score": 5, "note": "Generic industry baseline — no real supplier data available", "interpretation": True},
-            "buyer_power": {"score": 5, "note": "Generic baseline", "interpretation": True},
-            "competitive_rivalry": {"score": min(10, 4 + len(peers)) if peers else 5,
-                                    "note": f"Based on {len(peers)} identified peers in industry classification", "interpretation": False},
-            "threat_substitution": {"score": 5, "note": "Industry-specific assessment requires deeper research", "interpretation": True},
-            "threat_new_entry": {
-                "score": 3 if (gross_margin and gross_margin > 0.5) else 6,
-                "note": f"Inferred from gross margin ({(gross_margin or 0)*100:.1f}%) — high margins suggest barriers", "interpretation": True
-            },
+            "supplier_power":      {"score": _sp_s, "note": _sp_n, "computed": _sp_c, "interpretation": True},
+            "buyer_power":         {"score": _bp_s, "note": _bp_n, "computed": _bp_c, "interpretation": True},
+            "competitive_rivalry": {"score": _cr_s, "note": _cr_n, "computed": _cr_c, "interpretation": False},
+            "threat_substitution": {"score": _ts_s, "note": _ts_n, "computed": _ts_c, "interpretation": True},
+            "threat_new_entry":    {"score": _ne_s, "note": _ne_n, "computed": _ne_c, "interpretation": True},
         }
-        porter_total = sum(f["score"] for f in porter.values())
-        porter["industry_attractiveness"] = round(50 - (porter_total - 25), 1)  # higher = more attractive
+
+        # Industry attractiveness — fixed formula, properly bounded 0-50
+        _real_porter_scores = [f["score"] for f in (porter["supplier_power"], porter["buyer_power"],
+                                                     porter["competitive_rivalry"], porter["threat_substitution"],
+                                                     porter["threat_new_entry"]) if f["score"] is not None]
+        if len(_real_porter_scores) >= 3:
+            _avg_porter = sum(_real_porter_scores) / len(_real_porter_scores)
+            porter["industry_attractiveness"] = max(0, min(50, round(50 - _avg_porter * 5, 1)))
+            porter["industry_attractiveness_max"] = 50
+            porter["industry_attractiveness_basis"] = (
+                f"Computed from {len(_real_porter_scores)} of 5 forces with real data"
+                + ("" if len(_real_porter_scores) == 5 else " (others missing — score scaled)"))
+            porter["data_quality"] = "FULL" if len(_real_porter_scores) == 5 else "PARTIAL"
+        else:
+            porter["industry_attractiveness"] = None
+            porter["industry_attractiveness_max"] = 50
+            porter["industry_attractiveness_basis"] = f"Only {len(_real_porter_scores)} of 5 forces have real data — insufficient"
+            porter["data_quality"] = "INCOMPLETE"
         
         elapsed = round(time.time() - t0, 1)
         try: diag_log("DD", "investor_dd_completed", {"symbol": symbol, "region": region, "score": score, "elapsed_sec": elapsed})
@@ -29837,6 +29920,43 @@ async def l0_scan(region: str = "US", mode: str = "quality", theme: str = "", li
 # CDS BATCH SCANNER — Single batch download + server-side CDS scoring
 # 10-50x faster than individual investor-decide calls
 # ═══════════════════════════════════════════════════════════════════
+
+@app.get("/api/universe")
+async def universe_route(region: str = "US", tier: str = ""):
+    """Canonical ticker universe by region + tier (LARGE/MID/SMALL/MICRO/ETF/INDEX)."""
+    region = region.upper()
+    if region not in ("US", "IN"):
+        return {"success": False, "error": "region must be US or IN"}
+    if tier:
+        tier = tier.upper()
+        return {"success": True, "region": region, "tier": tier,
+                "tickers": UC.get(region, tier), "count": len(UC.get(region, tier))}
+    all_tiers = UC.get_all(region)
+    return {"success": True, "region": region, "tiers": all_tiers,
+            "counts": {k: len(v) for k, v in all_tiers.items()},
+            "total": sum(len(v) for v in all_tiers.values())}
+
+
+@app.get("/api/universe-classify")
+async def universe_classify_route(ticker: str, region: str = "US", market_cap_usd: float = 0.0):
+    """Classify a single ticker. Returns LARGE/MID/SMALL/MICRO/ETF/INDEX/UNKNOWN."""
+    sym = ticker.upper().strip()
+    region = region.upper()
+    static_tier = UC.classify(sym, region)
+    if static_tier != "UNKNOWN":
+        return {"success": True, "ticker": sym, "region": region, "tier": static_tier, "source": "static"}
+    if market_cap_usd > 0:
+        return {"success": True, "ticker": sym, "region": region,
+                "tier": UC.classify(sym, region, market_cap_usd=market_cap_usd), "source": "dynamic"}
+    return {"success": True, "ticker": sym, "region": region, "tier": "UNKNOWN", "source": "unknown"}
+
+
+@app.get("/api/universe-stats")
+async def universe_stats_route():
+    """Counts per region per tier."""
+    return UC.stats()
+
+
 @app.get("/api/cds-batch")
 async def cds_batch(symbols: str = "", region: str = "US", segment: str = "LARGE"):
     """Batch CDS scan — downloads all stocks in ONE yfinance call, computes CDS scores server-side.

@@ -11897,9 +11897,16 @@ function renderReport(d){
   h += swotBox('🚧 Threats', sw.threats, '#d97706', '#fefce8');
   h += '</div></div>';
   
-  // Section: Porter's Five Forces — visual bar chart
+  // Section: Porter's Five Forces — visual bar chart (r60: handles null scores + data_quality)
   h += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:20px;margin-bottom:16px">';
-  h += '<div style="font-size:14px;font-weight:900;color:var(--text);font-family:Sora,sans-serif;margin-bottom:6px">⚔️ Porter\'s Five Forces</div>';
+  h += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">';
+  h += '<div style="font-size:14px;font-weight:900;color:var(--text);font-family:Sora,sans-serif">⚔️ Porter\'s Five Forces</div>';
+  if (por.data_quality === 'PARTIAL') {
+    h += '<div style="font-size:8px;font-weight:800;color:#92400e;background:#fef3c7;padding:3px 8px;border-radius:6px;letter-spacing:0.5px">PARTIAL DATA</div>';
+  } else if (por.data_quality === 'INCOMPLETE') {
+    h += '<div style="font-size:8px;font-weight:800;color:#6b7280;background:#f3f4f6;padding:3px 8px;border-radius:6px;letter-spacing:0.5px">INCOMPLETE DATA</div>';
+  }
+  h += '</div>';
   h += '<div style="font-size:10px;color:var(--text3);margin-bottom:14px"><span style="padding:1px 6px;background:#fef3c7;color:#78350f;border-radius:100px;font-weight:700;font-size:8px">INTERPRETATION</span> Higher score = more competitive pressure on this company.</div>';
   
   var forceLabels = {
@@ -11910,23 +11917,43 @@ function renderReport(d){
     threat_new_entry: "Threat of New Entry"
   };
   Object.keys(forceLabels).forEach(function(k){
-    var force = por[k] || {score: 5, note: ''};
-    var pctW = (force.score / 10) * 100;
-    var barColor = force.score >= 7 ? '#dc2626' : force.score >= 5 ? '#d97706' : '#059669';
+    var force = por[k] || {};
+    var hasScore = (force.score !== null && force.score !== undefined);
     h += '<div style="margin-bottom:10px">';
-    h += '<div style="display:flex;justify-content:space-between;font-size:10px;font-weight:700;color:var(--text);margin-bottom:3px">';
-    h += '<span>'+forceLabels[k]+'</span><span style="color:'+barColor+';font-family:var(--mono)">'+force.score+'/10</span></div>';
-    h += '<div style="height:8px;background:#f1f5f9;border-radius:6px;overflow:hidden"><div style="height:100%;width:'+pctW+'%;background:'+barColor+';border-radius:6px"></div></div>';
-    if(force.note){h+='<div style="font-size:9px;color:var(--text3);margin-top:3px;line-height:1.4">'+force.note+'</div>';}
+    if (hasScore) {
+      var pctW = (force.score / 10) * 100;
+      var barColor = force.score >= 7 ? '#dc2626' : force.score >= 5 ? '#d97706' : '#059669';
+      h += '<div style="display:flex;justify-content:space-between;font-size:10px;font-weight:700;color:var(--text);margin-bottom:3px">';
+      h += '<span>'+forceLabels[k]+'</span><span style="color:'+barColor+';font-family:var(--mono)">'+force.score+'/10</span></div>';
+      h += '<div style="height:8px;background:#f1f5f9;border-radius:6px;overflow:hidden"><div style="height:100%;width:'+pctW+'%;background:'+barColor+';border-radius:6px"></div></div>';
+    } else {
+      h += '<div style="display:flex;justify-content:space-between;font-size:10px;font-weight:700;color:var(--text);margin-bottom:3px">';
+      h += '<span>'+forceLabels[k]+'</span><span style="color:#9ca3af;font-family:var(--mono);font-weight:600">—</span></div>';
+      h += '<div style="height:8px;background:#f3f4f6;border-radius:6px;overflow:hidden;border:1px dashed #d1d5db"></div>';
+    }
+    if(force.note){
+      var noteColor = hasScore ? 'var(--text3)' : '#9ca3af';
+      h+='<div style="font-size:9px;color:'+noteColor+';margin-top:3px;line-height:1.4">'+force.note+'</div>';
+    }
     h += '</div>';
   });
   
-  if(por.industry_attractiveness){
+  if(por.industry_attractiveness !== null && por.industry_attractiveness !== undefined){
+    var maxAttr = por.industry_attractiveness_max || 50;
     var attrColor = por.industry_attractiveness > 30 ? '#059669' : por.industry_attractiveness > 15 ? '#d97706' : '#dc2626';
     h += '<div style="margin-top:14px;padding:10px;background:'+attrColor+'10;border-radius:6px;text-align:center">';
     h += '<div style="font-size:9px;color:var(--text3);font-weight:700">INDUSTRY ATTRACTIVENESS</div>';
-    h += '<div style="font-size:24px;font-weight:900;color:'+attrColor+';font-family:var(--mono)">'+por.industry_attractiveness+'/50</div>';
+    h += '<div style="font-size:24px;font-weight:900;color:'+attrColor+';font-family:var(--mono)">'+por.industry_attractiveness+'/'+maxAttr+'</div>';
     h += '<div style="font-size:9px;color:var(--text3);margin-top:2px">Higher = more attractive industry to operate in</div>';
+    if(por.industry_attractiveness_basis){
+      h += '<div style="font-size:8px;color:var(--text3);margin-top:4px;font-style:italic">'+por.industry_attractiveness_basis+'</div>';
+    }
+    h += '</div>';
+  } else {
+    h += '<div style="margin-top:14px;padding:10px;background:#f3f4f6;border-radius:6px;text-align:center;border:1px dashed #d1d5db">';
+    h += '<div style="font-size:9px;color:#6b7280;font-weight:700">INDUSTRY ATTRACTIVENESS</div>';
+    h += '<div style="font-size:18px;font-weight:900;color:#9ca3af;font-family:var(--mono)">INCOMPLETE</div>';
+    h += '<div style="font-size:9px;color:#6b7280;margin-top:4px">'+(por.industry_attractiveness_basis || 'Insufficient force data to compute')+'</div>';
     h += '</div>';
   }
   h += '</div>';
