@@ -19,7 +19,7 @@
   'use strict';
 
   // Loud startup log so we can verify the deployed version at a glance
-  console.log('%c[ActiveTrading] v49 loaded — Voice-on-click + fresh-fetch-on-select + cache bust',
+  console.log('%c[ActiveTrading] v50 loaded — Universe Filter Bar added',
               'color:#22C55E;font-weight:bold;font-size:13px');
   console.log('%c  Every click: fetch fresh data + voice speaks verdict/confidence/entry/size',
               'color:#64748B;font-size:11px');
@@ -5235,6 +5235,7 @@
     });
 
     wrap.appendChild(renderHeader());
+    wrap.appendChild(renderUniverseBar());
 
     // ═══════════════════════════════════════════════════════════════════
     // New layout (v49): horizontal TOP TRADES strip across the full width,
@@ -6193,6 +6194,222 @@
     var mm = hours * 60 + mins;
     return mm >= (9 * 60 + 15) && mm <= (15 * 60 + 30);
   }
+
+/* ════════════════════════════════════════════════════════════════════════
+ * UNIVERSE FILTER BAR — Active Trading
+ *
+ * Mounts: Decide tab → Active Trading → just below the header strip
+ * Visible: a horizontal pill row showing tier counts + click-to-filter
+ *
+ *   ┌──────────────────────────────────────────────────────────────┐
+ *   │ UNIVERSE  [ ALL 102 ] [ LARGE 102 ] [ MID 147 ]              │
+ *   │           [ SMALL 83 ] [ MICRO 17 ] [ ETF 35 ]               │
+ *   └──────────────────────────────────────────────────────────────┘
+ *
+ * When user clicks a tier, the secondary scanner filters to that bucket.
+ * State stored in state.universeTier ('ALL' | 'LARGE' | 'MID' | ...).
+ * Counts auto-fetched from /api/universe?region=US once per region change.
+ *
+ * Drop into static/active-trading.js inside the IIFE, anywhere after the
+ * el() helper definition (around line 5180) and before renderHeader().
+ * Then mount it in main render after renderHeader().
+ * ════════════════════════════════════════════════════════════════════════ */
+
+  // ── Module state ────────────────────────────────────────────────────
+  var _universeCache = {};   // { 'US': {LARGE:[...], MID:[...], ...counts} }
+  var _universeFetching = {};
+
+  function _fetchUniverse(region, onDone) {
+    if (_universeCache[region]) { onDone(_universeCache[region]); return; }
+    if (_universeFetching[region]) {
+      _universeFetching[region].push(onDone);
+      return;
+    }
+    _universeFetching[region] = [onDone];
+    fetch('/api/universe?region=' + region)
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (d && d.success) {
+          _universeCache[region] = d;
+          (_universeFetching[region] || []).forEach(function (cb) {
+            try { cb(d); } catch (e) {}
+          });
+        } else {
+          (_universeFetching[region] || []).forEach(function (cb) {
+            try { cb(null); } catch (e) {}
+          });
+        }
+        delete _universeFetching[region];
+      })
+      .catch(function (err) {
+        console.warn('[Universe] fetch failed:', err);
+        (_universeFetching[region] || []).forEach(function (cb) {
+          try { cb(null); } catch (e) {}
+        });
+        delete _universeFetching[region];
+      });
+  }
+
+  // ── Render ──────────────────────────────────────────────────────────
+  function renderUniverseBar() {
+    if (!state.universeTier) state.universeTier = 'ALL';
+
+    var wrap = el('div', {
+      style: {
+        background: C.card,
+        borderBottom: '1px solid ' + C.divider,
+        padding: '6px 12px',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '10px',
+        flexShrink: 0,
+        minHeight: '34px',
+        flexWrap: 'wrap'
+      }
+    });
+
+    // Label
+    wrap.appendChild(el('div', {
+      style: {
+        fontSize: '9px', fontWeight: 800, color: C.textMute,
+        letterSpacing: '1.2px', fontFamily: MONO
+      }
+    }, 'UNIVERSE'));
+
+    // Pills container — populated async
+    var pillsContainer = el('div', {
+      style: { display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', flex: 1 }
+    });
+
+    // Loading skeleton
+    pillsContainer.appendChild(el('div', {
+      style: { fontSize: '10px', color: C.textMute, fontStyle: 'italic' }
+    }, 'loading universe…'));
+
+    wrap.appendChild(pillsContainer);
+
+    // Total counter on the right
+    var totalChip = el('div', {
+      style: {
+        fontSize: '9px', fontWeight: 700, color: C.textMute,
+        fontFamily: MONO, letterSpacing: '0.5px'
+      }
+    }, '');
+    wrap.appendChild(totalChip);
+
+    // Async populate
+    _fetchUniverse(state.region, function (d) {
+      pillsContainer.innerHTML = '';
+      if (!d) {
+        pillsContainer.appendChild(el('div', {
+          style: { fontSize: '10px', color: C.red }
+        }, 'universe unavailable'));
+        return;
+      }
+
+      var tiers = ['LARGE', 'MID', 'SMALL', 'MICRO', 'ETF'];
+      var counts = d.counts || {};
+      var total = d.total || 0;
+
+      // ALL pill (deselects tier filter)
+      pillsContainer.appendChild(_uPill('ALL', total, state.universeTier === 'ALL', function () {
+        state.universeTier = 'ALL';
+        rerender();
+      }));
+
+      tiers.forEach(function (tier) {
+        var n = counts[tier] || 0;
+        if (n === 0) return;
+        var active = state.universeTier === tier;
+        pillsContainer.appendChild(_uPill(tier, n, active, function () {
+          state.universeTier = (state.universeTier === tier) ? 'ALL' : tier;
+          rerender();
+        }));
+      });
+
+      totalChip.textContent = total + ' tickers · ' + state.region;
+    });
+
+    return wrap;
+  }
+
+  // ── Pill helper ─────────────────────────────────────────────────────
+  function _uPill(label, count, active, onClick) {
+    var color = active ? C.blue : C.textMute;
+    var bg = active ? C.blue + '15' : 'transparent';
+    var border = active ? C.blue + '55' : C.divider;
+
+    var pill = el('button', {
+      onClick: onClick,
+      title: label === 'ALL'
+        ? 'Show all tiers'
+        : 'Filter scanner to ' + label.toLowerCase() + ' caps only',
+      style: {
+        fontSize: '10px', fontWeight: 800,
+        padding: '3px 9px',
+        border: '1px solid ' + border,
+        background: bg,
+        color: color,
+        borderRadius: '12px',
+        cursor: 'pointer',
+        letterSpacing: '0.4px',
+        fontFamily: MONO,
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: '6px',
+        transition: 'all 120ms ease'
+      }
+    });
+
+    pill.appendChild(el('span', {}, label));
+    pill.appendChild(el('span', {
+      style: {
+        fontSize: '9px',
+        fontWeight: 600,
+        opacity: 0.7,
+        background: active ? C.blue + '22' : C.bg,
+        padding: '0 5px',
+        borderRadius: '8px',
+        minWidth: '18px',
+        textAlign: 'center'
+      }
+    }, String(count)));
+
+    return pill;
+  }
+
+  // ── Helper for other code: filter a ticker list by current universeTier ───
+  // Use anywhere you need to apply the active filter, e.g.:
+  //   var visible = _filterByUniverseTier(state.scanner.map(s => s.symbol));
+  function _filterByUniverseTier(symbols) {
+    if (!state.universeTier || state.universeTier === 'ALL') return symbols;
+    var d = _universeCache[state.region];
+    if (!d || !d.tiers) return symbols;
+    var bucket = d.tiers[state.universeTier] || [];
+    var bucketSet = {};
+    bucket.forEach(function (s) { bucketSet[s.toUpperCase()] = true; });
+    return symbols.filter(function (s) {
+      // strip .NS / .BO suffix
+      var clean = (s || '').toUpperCase().replace(/\.NS$|\.BO$/, '');
+      return bucketSet[clean];
+    });
+  }
+
+  // Make filter helper accessible to scanner / other render functions
+  window._celesysUniverseFilter = _filterByUniverseTier;
+
+/* ════════════════════════════════════════════════════════════════════════
+ * MOUNT — find this line in the main render flow:
+ *
+ *   wrap.appendChild(renderHeader());
+ *
+ * Add the next line right after it:
+ *
+ *   wrap.appendChild(renderUniverseBar());
+ *
+ * That's it. The bar appears between the header and the TOP TRADES strip.
+ * ════════════════════════════════════════════════════════════════════════ */
+
 
   function renderHeader() {
     // Contextual index list based on region

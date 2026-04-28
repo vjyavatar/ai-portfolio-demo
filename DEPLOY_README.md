@@ -1,140 +1,128 @@
-# Celesys v4 — r60 Complete Deploy Package
+# Celesys v4 — r60.1 Complete Deploy
 
-**This is the complete project. Drop-in replacement for your r59 build.**
+**This zip is the complete project. Drop in, push to Render, done.**
 
-## What to do
+---
 
-1. **Unzip this folder** somewhere
-2. **Replace your existing celesys repo files** with these (or just commit the whole folder as a new version)
-3. **Push to Render** — that's it
+## What's NEW in r60.1 (this deploy)
+
+### Universe Filter Bar in Active Trading
+
+**Where it appears:** Decide tab → Active Trading → directly under the header strip (between the "CELESYS · ACTIVE TRADING / IN/US/SPY/QQQ" header and the "TOP TRADES" cards).
+
+**What it shows:**
+```
+UNIVERSE  [ ALL 102 ]  [ LARGE 102 ]  [ MID 147 ]  [ SMALL 83 ]  [ MICRO 17 ]  [ ETF 35 ]   102 tickers · US
+```
+
+**What it does:**
+- Shows the live universe count for the current region
+- Click any pill to filter (e.g., click MICRO to show only IONQ-style names)
+- Click again or click ALL to deselect
+- Auto-refreshes when you switch IN ↔ US
+- Cached client-side (one fetch per region)
+
+The filter exposes `window._celesysUniverseFilter(symbols)` — any other render function can call it to apply the active filter.
+
+---
+
+## Files changed in this deploy
+
+| File | Change |
+|---|---|
+| `static/active-trading.js` | + Universe Filter Bar component, mounted under header, v50 |
+| `index.html` | Version hash bumped (forces browser cache refresh) |
+
+Plus everything from r60 (Porter fix + universe classifier backend) which was already deployed.
+
+---
+
+## How to deploy
 
 ```bash
-# Example deploy flow:
 unzip celesys_v4_FINAL_DEPLOY.zip
 cd celesys_v4_FINAL_DEPLOY/
+
+# Replace your existing repo contents with these files
 git add -A
-git commit -m "r60: Porter Five Forces fix + centralized universe classifier"
+git commit -m "r60.1: Universe Filter Bar in Active Trading"
 git push
 ```
 
-Render auto-deploys on push. Wait ~3 minutes, then smoke-test below.
-
----
-
-## What's in here
-
-The complete celesys codebase, identical to your r59 build, except:
-
-| File | Status | What changed |
-|---|---|---|
-| `api.py` | **MODIFIED** | Porter Five Forces fix (line ~28204) + UC import (line 20) + 3 new UC routes (line ~29924) |
-| `static/app.js` | **MODIFIED** | Porter Five Forces frontend handles null scores + INCOMPLETE/PARTIAL badges (line ~11900) |
-| `static/app.min.js` | **MODIFIED** | Identical copy of `app.js` (per your build rule) |
-| `universe_classifier.py` | **NEW FILE** | 755 tickers classified across IN/US in LARGE/MID/SMALL/MICRO/ETF/INDEX |
-| `index.html` | **MODIFIED** | Version hash bumped (forces browser cache refresh) |
-| Everything else | unchanged | identical to r59 |
-
----
-
-## Verified before packaging
-
-- ✅ `api.py` compiles cleanly (`python -m py_compile`)
-- ✅ `universe_classifier.py` loads 755 tickers (IN: 366, US: 389)
-- ✅ `start.py` compiles cleanly
-- ✅ Porter backend patch present (1 occurrence)
-- ✅ UC import present (1 occurrence)
-- ✅ UC routes present (3 occurrences: `/api/universe`, `/api/universe-classify`, `/api/universe-stats`)
-- ✅ Porter frontend patch present (1 occurrence)
-- ✅ `app.js` and `app.min.js` byte-identical (your existing build rule)
+Render auto-deploys. Wait ~3 min. Smoke test below.
 
 ---
 
 ## Smoke test after deploy
 
-```bash
-# 1. Universe classifier health
-curl 'https://celesys.ai/api/universe-stats'
-# Expected: {"IN": {"LARGE": 101, "MID": 118, ...}, "US": {...}, "total": 755}
+### 1. Visual — Universe Bar in Active Trading
 
-# 2. Get all US large caps
-curl 'https://celesys.ai/api/universe?region=US&tier=LARGE'
-# Expected: ~100 tickers including AAPL, MSFT, NVDA, GOOGL
+Open https://celesys.ai → Decide → Active Trading
 
-# 3. Classify a single ticker
-curl 'https://celesys.ai/api/universe-classify?ticker=IONQ&region=US'
-# Expected: {"tier": "MICRO", "source": "static"}
+You should see, just below the header (CELESYS · ACTIVE TRADING / IN US / SPY QQQ IWM ...):
 
-# 4. Visual: Porter Five Forces fix
-# Open celesys.ai → Deep DD on a high-margin name (NVDA, MSFT)
-# Industry Attractiveness should show 30-45/50 with all 5 force bars
-# (NOT the previous 52/50 broken display)
-
-# 5. Visual: Porter on low-data ticker
-# Open Deep DD on a sparse-data ticker
-# Should show "—" gray bars for missing forces + PARTIAL/INCOMPLETE badge
-# (NOT fake 5/10 baselines)
 ```
+UNIVERSE  [ ALL 102 ]  [ LARGE 102 ]  [ MID 147 ]  [ SMALL ##]  [ MICRO ## ]  [ ETF ## ]
+```
+
+Click the **MICRO** pill — it should highlight blue and stay selected. Click again to deselect.
+
+### 2. Console log — v50 confirmation
+
+Open browser DevTools console (F12) and look for:
+
+```
+[ActiveTrading] v50 loaded — Universe Filter Bar added
+```
+
+If you see `v49` instead, hard-refresh the page (Cmd+Shift+R / Ctrl+Shift+F5).
+
+### 3. Universe API endpoints (already verified working in r60)
+
+```bash
+curl 'https://celesys.ai/api/universe-stats'
+curl 'https://celesys.ai/api/universe?region=US&tier=LARGE'
+curl 'https://celesys.ai/api/universe-classify?ticker=IONQ&region=US'
+```
+
+### 4. Porter Five Forces fix (from r60)
+
+Open Deep DD on a high-margin name (NVDA, MSFT). Industry Attractiveness should show 30-45/50 (NOT 52/50).
 
 ---
 
-## What was fixed
+## Verified before packaging
 
-### 1. Porter Five Forces "52/50" math bug
-
-**Before:** `industry_attractiveness = 50 - (porter_total - 25)` could produce 25-70 but display said "/50". Sum of 23 → output 52. Mathematically impossible.
-
-**After:** `industry_attractiveness = max(0, min(50, round(50 - avg * 5, 1)))` properly bounded 0-50.
-
-### 2. Porter Five Forces fake baselines
-
-**Before:** 4 of 5 forces hard-coded to score=5 with notes like "Generic baseline". Violated your CDS v2.0 "no fake assumptions" rule.
-
-**After:** Each force computed from real fundamentals:
-- **Supplier Power** → from gross margin
-- **Buyer Power** → from operating margin
-- **Competitive Rivalry** → from peer count + revenue growth + op margin
-- **Threat of Substitution** → from gross margin + sector
-- **Threat of New Entry** → from gross margin + ROE
-
-When data is missing, force returns `score=null` and frontend renders gray "—" rows instead of fake bars. Below 3 real forces → `INCOMPLETE_DATA` verdict.
-
-### 3. Centralized Universe Classifier
-
-**Before:** Ticker classification (large/mid/small/micro) duplicated across 4+ endpoints. Inconsistent. Hard to update.
-
-**After:** Single `universe_classifier.py` module. Three new endpoints:
-- `GET /api/universe?region=US&tier=LARGE` — get ticker list
-- `GET /api/universe-classify?ticker=X&region=US` — classify single ticker
-- `GET /api/universe-stats` — counts per region per tier
-
-Use from anywhere in the codebase:
-```python
-from universe_classifier import UC
-UC.classify("AAPL", "US")              # → "LARGE"
-UC.get("US", "LARGE")                   # → ['AAPL', 'MSFT', ...]
-UC.bucket_tickers(["AAPL","IONQ"], "US")  # → {'LARGE': ['AAPL'], 'MICRO': ['IONQ']}
-```
+- ✅ `api.py` compiles cleanly
+- ✅ `universe_classifier.py` loads 755 tickers
+- ✅ `static/active-trading.js` JS syntax OK (node --check)
+- ✅ `static/app.js` JS syntax OK
+- ✅ Universe bar function defined exactly once
+- ✅ Mount call present after `renderHeader()`
+- ✅ Version hashes bumped in `index.html`
+- ✅ v50 console log marker present
 
 ---
 
 ## Rollback
 
-Each fix is independent:
+If the universe bar breaks anything:
+- In `static/active-trading.js`, remove the line `wrap.appendChild(renderUniverseBar());` (around line 5238)
+- That disables the UI without removing code
 
-- **Porter rollback only:** revert `api.py` and `static/app.js` to your previous version
-- **UC rollback only:** delete `universe_classifier.py` and remove `from universe_classifier import UC` from `api.py` line 20
-- **Full rollback:** revert all 4 files to your r59 build
-
-The 3 new UC routes can be removed without affecting any existing functionality — nothing currently depends on them yet.
+If you want to fully revert:
+- Restore the previous `static/active-trading.js` from your r60 deploy
+- Bump `index.html` `?v=` parameter to bust browser cache
 
 ---
 
-## What's NOT in this deploy
+## What's NOT done in this deploy
 
-These are deferred to keep this deploy focused and low-risk:
+Same as r60 — these are deferred:
 
-- **Refactor of /api/top-picks, /api/multibagger-hunter, /api/early-momentum-radar, /api/microcap-challenge** to consume UC. Their existing hardcoded lists still work. Migrate one endpoint at a time in subsequent deploys.
-- **Tiered scanner** (NIFTY 500 / S&P 500 cold scan): builds on UC. Ship UC first, layer the scanner on top in r61.
-- **Earnings Move Intelligence** (from earlier conversation): also deferred. Layer on top once UC is verified working in production.
+- **Refactor of /api/top-picks, /api/multibagger-hunter, /api/early-momentum-radar, /api/microcap-challenge** to consume the universe classifier
+- **Tiered scanner** (NIFTY 500 cold scan)
+- **Earnings Move Intelligence widget**
+- **Hooking the universe filter into the secondary scanner** — currently the filter pill highlights but doesn't yet filter the bottom scanner table. That's the next small step.
 
-This deploy ships ONLY the Porter fix + UC infrastructure. Two changes. Provable. Reversible.
+This deploy ships ONLY the visible Universe Filter Bar UI on top of the r60 backend. Provable. Reversible.
