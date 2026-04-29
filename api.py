@@ -27824,14 +27824,14 @@ async def investor_due_diligence(email: str = "", symbol: str = "", region: str 
 
     # r61.3: 30-min cache to avoid Yahoo rate-limiting
     # Bumped to v3 to invalidate old cached responses with the bugs
-    _dd_cache_key = f"dd_v4:{region}:{symbol}"  # r61.4 bump
+    _dd_cache_key = f"dd_v6:{region}:{symbol}"  # r61.7 bump
     _dd_cached = _smart_cache_get(_dd_cache_key)
     if _dd_cached:
         # Return cached but stamp it so frontend knows it's cached
         _dd_cached = dict(_dd_cached)
         _dd_cached["_cached"] = True
         _dd_cached["_cache_age_sec"] = int(time.time() - _dd_cached.get("_cached_at", time.time()))
-        print(f"📦 DD v4 cache HIT for {symbol} ({region}) — age {_dd_cached['_cache_age_sec']}s")
+        print(f"📦 DD v6 cache HIT for {symbol} ({region}) — age {_dd_cached['_cache_age_sec']}s")
         return _dd_cached
 
     print(f"\n🔬 Investor DD: {symbol} ({region}) — cache miss, fetching fresh...")
@@ -29391,8 +29391,102 @@ async def investor_due_diligence(email: str = "", symbol: str = "", region: str 
                     _analyst_pc = f"{rp:+.1f}% 1Y. Severe drawdown."
             pc["layman"] = {"plain": _plain_pc, "analyst": _analyst_pc}
 
-            # ── Removed: institutional["layman"] no longer exists ──
-            # Each sub-card now reads its own .layman from above
+            # ── r61.6: COMBINED gestalt synthesis ──
+            # A single integrated narrative for traders who want the picture
+            # at-a-glance. Detailed per-card laymen still appear below.
+            combined_p = []
+            combined_a = []
+
+            # 1. Insider signal (one short phrase)
+            if ia.get("data_quality") != "INCOMPLETE" and ia.get("sentiment"):
+                s = ia["sentiment"]
+                buys = ia.get("n_buys_6mo", 0) or 0
+                sells = ia.get("n_sells_6mo", 0) or 0
+                if "STRONG BUYING" in s:
+                    combined_p.append(f"insiders are buying ({buys}B vs {sells}S — bullish signal)")
+                    combined_a.append(f"Insider {buys}B/{sells}S (strong buy).")
+                elif "STRONG SELLING" in s:
+                    combined_p.append(f"insiders are selling ({sells}S vs {buys}B — bearish signal)")
+                    combined_a.append(f"Insider {sells}S/{buys}B (strong sell).")
+                elif s == "BUYING":
+                    combined_p.append(f"light insider buying ({buys}B/{sells}S)")
+                    combined_a.append(f"Insider {buys}B/{sells}S (mild buy).")
+                elif s == "SELLING":
+                    combined_p.append(f"light insider selling ({sells}S/{buys}B)")
+                    combined_a.append(f"Insider {sells}S/{buys}B (mild sell).")
+                else:
+                    combined_p.append(f"insider activity neutral")
+                    combined_a.append(f"Insider neutral.")
+
+            # 2. Institutional ownership
+            if ih.get("dii_pct") is not None or ih.get("fii_pct") is not None:
+                combined_p.append(f"DII {(ih.get('dii_pct') or 0):.0f}% / FII {(ih.get('fii_pct') or 0):.0f}% institutional split")
+                combined_a.append(f"DII {(ih.get('dii_pct') or 0):.1f}%/FII {(ih.get('fii_pct') or 0):.1f}%.")
+            elif ih.get("concentration"):
+                conc = ih["concentration"]
+                pct_inst = ih.get("total_pct_outstanding") or 0
+                if conc in ("VERY HIGH", "HIGH"):
+                    combined_p.append(f"strong institutional ownership ({pct_inst:.0f}% held by funds)")
+                    combined_a.append(f"Inst. {pct_inst:.0f}% ({conc}).")
+                elif conc == "LOW":
+                    combined_p.append(f"low institutional ownership ({pct_inst:.0f}%) — retail-driven")
+                    combined_a.append(f"Inst. {pct_inst:.0f}% (LOW, retail-skewed).")
+                else:
+                    combined_p.append(f"moderate institutional ownership ({pct_inst:.0f}%)")
+                    combined_a.append(f"Inst. {pct_inst:.0f}%.")
+
+            # 3. Risk-adjusted returns
+            if ra.get("data_quality") != "INCOMPLETE" and ra.get("sharpe_grade"):
+                sg = ra["sharpe_grade"]
+                ddg = ra.get("drawdown_grade", "")
+                sharpe = ra.get("sharpe_ratio")
+                dd = ra.get("max_drawdown_pct")
+                if sg in ("EXCELLENT", "STRONG"):
+                    risk_phrase = f"strong risk-adjusted returns (Sharpe {sharpe})"
+                elif sg == "ACCEPTABLE":
+                    risk_phrase = f"acceptable risk-adjusted returns (Sharpe {sharpe})"
+                else:
+                    risk_phrase = f"weak risk-adjusted returns (Sharpe {sharpe})"
+                if ddg in ("SEVERE", "EXTREME"):
+                    risk_phrase += f" but {ddg.lower()} historical drawdowns ({dd:.0f}%)"
+                combined_p.append(risk_phrase)
+                combined_a.append(f"Sharpe {sharpe} ({sg}). Max DD {dd}%.")
+
+            # 4. Peer rank — only mention if leader or clear laggard
+            if pt.get("rows"):
+                self_row = next((r for r in pt["rows"] if r.get("is_self")), {})
+                top_count = sum(1 for f in ["roe_pct_rank", "op_margin_pct_rank", "rev_growth_pct_rank", "pe_rank"]
+                                if self_row.get(f) == 1)
+                if top_count >= 2:
+                    combined_p.append(f"a peer leader (#1 in {top_count} of 4 metrics)")
+                    combined_a.append(f"Peer leader ({top_count}/4 #1).")
+                elif top_count >= 1:
+                    combined_p.append("competitive vs peers")
+                    combined_a.append(f"Peer competitive ({top_count}/4 #1).")
+
+            # 5. Price trend
+            if pc.get("data_quality") != "INCOMPLETE" and pc.get("return_pct") is not None:
+                rp = pc["return_pct"]
+                if rp > 30:
+                    combined_p.append(f"up +{rp:.0f}% over 12 months (strong momentum)")
+                    combined_a.append(f"+{rp:.0f}% 1Y.")
+                elif rp < -20:
+                    combined_p.append(f"down {rp:.0f}% over 12 months")
+                    combined_a.append(f"{rp:.0f}% 1Y.")
+
+            # Stitch into one paragraph
+            if combined_p:
+                _plain_combined = "Big picture: " + ", ".join(combined_p) + "."
+                _analyst_combined = " ".join(combined_a)
+            else:
+                _plain_combined = "Limited institutional and price-history data available for this ticker."
+                _analyst_combined = "Institutional data sparse."
+
+            # Attach combined gestalt to the institutional dict itself
+            institutional["layman"] = {
+                "plain": _plain_combined,
+                "analyst": _analyst_combined,
+            }
 
         # ═══ BOTTOM LINE — synthesizes everything ═══
         bottom_line = {
@@ -29404,26 +29498,126 @@ async def investor_due_diligence(email: str = "", symbol: str = "", region: str 
             "ideal_for": None,
         }
         try:
-            # r61.3: Read the actual key — thesis stores under investability_score
+            # r61.7: MULTI-FACTOR scoring across all subsections
+            # Each factor contributes ±points; final tally drives verdict.
             score = (thesis or {}).get("investability_score") or (thesis or {}).get("score") or 0
             v = (valuation_detail or {}).get("upside_pct")
             health = (risk_matrix or {}).get("overall_health", "")
             ne = (catalysts or {}).get("next_earnings", {}) or {}
             ra = (institutional or {}).get("risk_adjusted", {}) or {}
+            ia = (institutional or {}).get("insider_activity", {}) or {}
+            ih = (institutional or {}).get("institutional_holders", {}) or {}
+            pt = (institutional or {}).get("peer_table", {}) or {}
+            pc = (institutional or {}).get("price_chart", {}) or {}
+            outperf = (sector_data or {}).get("outperformance_pct")
+            beat_rate = (earnings_history or {}).get("beat_rate_pct")
 
-            # Headline verdict
-            if score >= 75 and (v is None or v > -10) and health in ("STRONG", "HEALTHY"):
+            # Multi-factor tally — anchored on thesis.score (40 pts), augmented by other factors
+            factor_points = float(score) * 0.4   # thesis quality is 40% of final
+            factor_breakdown = []
+            factor_breakdown.append(("Quality", round(score * 0.4, 1), f"{score}/100 thesis score"))
+
+            # Value (DCF) — up to ±15 pts
+            if v is not None:
+                val_pts = max(-15.0, min(15.0, v / 4.0))  # +60% upside = +15, -60% downside = -15
+                factor_points += val_pts
+                factor_breakdown.append(("Value", round(val_pts, 1), f"{v:+.0f}% to fair value"))
+
+            # Sector momentum — up to ±10 pts
+            if outperf is not None:
+                mom_pts = max(-10.0, min(10.0, outperf / 10.0))
+                factor_points += mom_pts
+                factor_breakdown.append(("Sector momentum", round(mom_pts, 1), f"{outperf:+.0f}% vs sector"))
+
+            # Earnings execution — ±8 pts
+            if beat_rate is not None:
+                ex_pts = (beat_rate - 50) / 6.25   # 50% = 0, 100% = +8, 0% = -8
+                factor_points += ex_pts
+                factor_breakdown.append(("Earnings execution", round(ex_pts, 1), f"{beat_rate:.0f}% beat rate"))
+
+            # Risk-adjusted returns — Sharpe ±10 pts, Drawdown -5 pts if extreme
+            sharpe = ra.get("sharpe_ratio")
+            sg = ra.get("sharpe_grade", "")
+            if sharpe is not None:
+                if sg == "EXCELLENT": sh_pts = 10
+                elif sg == "STRONG": sh_pts = 6
+                elif sg == "ACCEPTABLE": sh_pts = 2
+                elif sg == "WEAK": sh_pts = -3
+                else: sh_pts = -8
+                factor_points += sh_pts
+                factor_breakdown.append(("Risk-adj returns", round(sh_pts, 1), f"Sharpe {sharpe} ({sg})"))
+            ddg = ra.get("drawdown_grade", "")
+            if ddg == "EXTREME":
+                factor_points -= 5
+                factor_breakdown.append(("Drawdown risk", -5, f"Max DD {ra.get('max_drawdown_pct')}% (EXTREME)"))
+            elif ddg == "SEVERE":
+                factor_points -= 2
+                factor_breakdown.append(("Drawdown risk", -2, f"Max DD {ra.get('max_drawdown_pct')}% (SEVERE)"))
+
+            # Smart money — insider sentiment ±5 pts
+            ia_sent = ia.get("sentiment", "")
+            if "STRONG BUYING" in ia_sent: ia_pts = 5
+            elif ia_sent == "BUYING": ia_pts = 2
+            elif ia_sent == "NEUTRAL" or ia_sent == "MIXED": ia_pts = 0
+            elif ia_sent == "SELLING": ia_pts = -2
+            elif "STRONG SELLING" in ia_sent: ia_pts = -5
+            else: ia_pts = 0
+            if ia_pts != 0:
+                factor_points += ia_pts
+                factor_breakdown.append(("Insider signal", ia_pts, ia_sent.title() if ia_sent else ""))
+
+            # Institutional confidence ±3 pts
+            conc = ih.get("concentration", "")
+            if conc in ("VERY HIGH", "HIGH"):
+                factor_points += 3
+                factor_breakdown.append(("Inst. confidence", 3, f"{conc.title()} ({ih.get('total_pct_outstanding', 0):.0f}%)"))
+            elif conc == "LOW":
+                factor_points -= 2
+                factor_breakdown.append(("Inst. confidence", -2, "Low (retail-skewed)"))
+
+            # Peer leadership — up to +5 pts if #1 in 2+ metrics
+            self_row = next((r for r in (pt.get("rows") or []) if r.get("is_self")), {})
+            top_count = sum(1 for f in ["roe_pct_rank", "op_margin_pct_rank", "rev_growth_pct_rank", "pe_rank"]
+                           if self_row.get(f) == 1)
+            if top_count >= 3:
+                factor_points += 5
+                factor_breakdown.append(("Peer leader", 5, f"#1 in {top_count} of 4 metrics"))
+            elif top_count >= 2:
+                factor_points += 3
+                factor_breakdown.append(("Peer leader", 3, f"#1 in {top_count} of 4 metrics"))
+
+            # 1Y momentum — ±5 pts
+            rp = pc.get("return_pct")
+            if rp is not None:
+                if rp > 50: mp = 5
+                elif rp > 20: mp = 3
+                elif rp > 0: mp = 1
+                elif rp > -20: mp = -1
+                else: mp = -4
+                factor_points += mp
+                factor_breakdown.append(("1Y momentum", mp, f"{rp:+.0f}%"))
+
+            # Health override: any concerning balance sheet caps the verdict
+            if health == "CONCERNING":
+                factor_points = min(factor_points, 35)
+
+            # Final verdict from total points
+            if factor_points >= 75:
                 bottom_line["verdict"] = "STRONG BUY CANDIDATE"
                 bottom_line["verdict_color"] = "pos"
-            elif score >= 60 and health in ("STRONG", "HEALTHY", "MIXED"):
+            elif factor_points >= 55:
                 bottom_line["verdict"] = "BUY CANDIDATE"
                 bottom_line["verdict_color"] = "pos"
-            elif score >= 40:
+            elif factor_points >= 35:
                 bottom_line["verdict"] = "HOLD / SELECTIVE"
                 bottom_line["verdict_color"] = "warn"
             else:
                 bottom_line["verdict"] = "AVOID"
                 bottom_line["verdict_color"] = "neg"
+
+            # Stash the factor breakdown so the frontend can show "why this verdict"
+            bottom_line["composite_score"] = round(factor_points, 1)
+            bottom_line["factor_breakdown"] = factor_breakdown
 
             # Headline (1 sentence: what is this stock?)
             name_part = company.get("name", symbol)

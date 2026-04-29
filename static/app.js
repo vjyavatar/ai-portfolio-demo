@@ -11739,6 +11739,7 @@ function renderReport(d){
   
   // Score breakdown
   h += '<div style="padding:16px 22px;background:#f8fafc">';
+  h += _renderLayman((d.thesis||{}).layman);  // r61.7
   h += '<div style="font-size:10px;font-weight:800;color:var(--text3);letter-spacing:.5px;margin-bottom:10px">📊 SCORE BREAKDOWN (max 100)</div>';
   if(t.score_breakdown && t.score_breakdown.length){
     t.score_breakdown.forEach(function(sb){
@@ -11794,6 +11795,22 @@ function renderReport(d){
     h += '<span style="margin-left:auto;font-size:13px;font-weight:900;color:' + color + ';background:#fff;padding:4px 12px;border-radius:6px;border:1px solid ' + border + ';letter-spacing:0.5px">' + bl.verdict + '</span>';
     h += '</div>';
     h += '<div style="font-size:14px;line-height:1.5;color:#0f172a;font-weight:500;margin-bottom:10px">' + bl.headline + '</div>';
+    // r61.7: Composite score breakdown
+    if (bl.composite_score != null && bl.factor_breakdown && bl.factor_breakdown.length) {
+      h += '<details style="margin-bottom:10px;font-size:11px">';
+      h += '<summary style="cursor:pointer;color:'+color+';font-weight:700;letter-spacing:0.4px;padding:6px 10px;background:#fff;border:1px solid '+border+';border-radius:6px;display:inline-block">📊 Composite Score: '+bl.composite_score+'/100 — show breakdown</summary>';
+      h += '<div style="margin-top:8px;padding:10px 12px;background:#fff;border:1px solid '+border+';border-radius:6px">';
+      h += '<table style="width:100%;font-size:10px;font-family:var(--mono);border-collapse:collapse">';
+      h += '<thead><tr style="color:#64748b;text-align:left"><th style="padding:3px 6px;font-weight:700">FACTOR</th><th style="padding:3px 6px;text-align:right;font-weight:700">PTS</th><th style="padding:3px 6px;font-weight:700">DETAIL</th></tr></thead><tbody>';
+      bl.factor_breakdown.forEach(function(fb){
+        var fname = fb[0], pts = fb[1], detail = fb[2];
+        var ptsColor = pts > 0 ? '#059669' : pts < 0 ? '#dc2626' : '#64748b';
+        var ptsStr = (pts > 0 ? '+' : '') + pts;
+        h += '<tr style="border-top:1px solid #f1f5f9"><td style="padding:4px 6px;color:#0f172a;font-family:Inter,sans-serif">'+fname+'</td><td style="padding:4px 6px;text-align:right;color:'+ptsColor+';font-weight:700">'+ptsStr+'</td><td style="padding:4px 6px;color:#64748b">'+detail+'</td></tr>';
+      });
+      h += '</tbody></table>';
+      h += '</div></details>';
+    }
     if (bl.watch) {
       h += '<div style="font-size:12px;line-height:1.5;color:#92400e;background:#fef3c7;padding:8px 12px;border-radius:6px;margin-bottom:8px">' + bl.watch + '</div>';
     }
@@ -11811,6 +11828,7 @@ function renderReport(d){
   // Section: Financial Health
   h += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:20px;margin-bottom:16px">';
   h += '<div style="font-size:14px;font-weight:900;color:var(--text);font-family:Sora,sans-serif;margin-bottom:14px">📈 Financial Health <span style="font-size:9px;font-weight:600;color:#059669;margin-left:6px">REAL DATA</span></div>';
+  h += _renderLayman((d.finance||{}).layman);  // r61.7
   h += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px">';
   var metricBox = function(label, value, gradeArr, suffix){
     suffix = suffix || '';
@@ -11892,6 +11910,7 @@ function renderReport(d){
   if(sec.sector_etf || sec.sector_etf_note){
     h += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:20px;margin-bottom:16px">';
     h += '<div style="font-size:14px;font-weight:900;color:var(--text);font-family:Sora,sans-serif;margin-bottom:14px">📊 Sector Context <span style="font-size:9px;font-weight:600;color:#059669;margin-left:6px">REAL ETF DATA</span></div>';
+    h += _renderLayman((d.sector_context||{}).layman);  // r61.7
     if(sec.sector_etf){
       h += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px">';
       h += metricBox('SECTOR', sec.sector || 'N/A');
@@ -11934,6 +11953,7 @@ function renderReport(d){
   // Section: SWOT
   h += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:20px;margin-bottom:16px">';
   h += '<div style="font-size:14px;font-weight:900;color:var(--text);font-family:Sora,sans-serif;margin-bottom:6px">🎯 SWOT Analysis</div>';
+  h += _renderLayman((d.swot||{}).layman);  // r61.7
   h += '<div style="font-size:10px;color:var(--text3);margin-bottom:14px"><span style="padding:1px 6px;background:#fef3c7;color:#78350f;border-radius:100px;font-weight:700;font-size:8px">INTERPRETATION</span> Items derived from real financial data; qualitative.</div>';
   h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">';
   var swotBox = function(title, items, color, bg){
@@ -12207,6 +12227,33 @@ function renderReport(d){
           html += '<div style="font-size:8px;font-weight:800;color:'+qColor+';background:'+qColor+'15;padding:3px 8px;border-radius:6px">'+qBadge+'</div>';
           html += '</div>';
 
+          // r61.7: Build layman block from verdict + stats
+          var _eiLayman = null;
+          if (ei.verdict === 'BUY_PREMIUM') {
+            var stats = ei.stats || {};
+            var avg = stats.avg_abs_move_pct;
+            var imp = ei.implied_move_pct;
+            _eiLayman = {
+              plain: 'The market is pricing in a move of ±'+(imp ? imp.toFixed(1) : '?')+'%, but historically this stock moves ±'+(avg ? avg.toFixed(1) : '?')+'% on earnings — options are priced cheap relative to history. Buying premium (long calls/puts/straddles) has edge.',
+              analyst: 'BUY_PREMIUM. Implied ±'+(imp ? imp.toFixed(1) : '—')+'% < hist avg ±'+(avg ? avg.toFixed(1) : '—')+'%. Vol underpriced.'
+            };
+          } else if (ei.verdict === 'SELL_PREMIUM') {
+            var stats = ei.stats || {};
+            var avg = stats.avg_abs_move_pct;
+            var imp = ei.implied_move_pct;
+            _eiLayman = {
+              plain: 'The market is pricing in a move of ±'+(imp ? imp.toFixed(1) : '?')+'%, but historically this stock only moves ±'+(avg ? avg.toFixed(1) : '?')+'% on earnings — options are priced rich. Selling premium (iron condors, credit spreads) has edge.',
+              analyst: 'SELL_PREMIUM. Implied ±'+(imp ? imp.toFixed(1) : '—')+'% > hist avg ±'+(avg ? avg.toFixed(1) : '—')+'%. Vol overpriced.'
+            };
+          } else if (ei.verdict === 'NEUTRAL') {
+            _eiLayman = {
+              plain: 'Implied move and historical move are roughly aligned. No clear premium-pricing edge — consider directional bets if you have a thesis, otherwise sit out.',
+              analyst: 'NEUTRAL. Implied/hist move aligned.'
+            };
+          }
+          if (_eiLayman) {
+            html += _renderLayman(_eiLayman);
+          }
           if (ei.verdict === 'INCOMPLETE_DATA' || ei.data_quality === 'INCOMPLETE') {
             html += '<div style="padding:12px;background:#f3f4f6;border-radius:6px;color:#6b7280;font-size:11px">'+(ei.verdict_reason || 'Earnings data unavailable')+'</div>';
           } else {
@@ -12238,6 +12285,25 @@ function renderReport(d){
           mount.innerHTML = '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:16px;color:#9ca3af;font-size:11px">Earnings intel unavailable</div>';
         });
     }, 100);
+  }
+
+  // ═══ r61.6: Combined Institutional Summary card (gestalt) ═══
+  // Renders BEFORE the 5 individual sub-cards. Single integrated narrative
+  // for traders who want the picture at-a-glance.
+  if (d.institutional && d.institutional.layman) {
+    var _il = d.institutional.layman;
+    if (_il.plain || _il.analyst) {
+      h += '<div style="background:linear-gradient(135deg,#fff,#f8fafc);border:1px solid #1A3A78;border-radius:12px;padding:16px 18px;margin-bottom:16px">';
+      h += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">';
+      h += '<span style="font-size:16px">🏛</span>';
+      h += '<span style="font-size:11px;font-weight:800;color:#1A3A78;letter-spacing:1.2px;font-family:Inter,sans-serif">INSTITUTIONAL SUMMARY</span>';
+      h += '<span style="font-size:9px;font-weight:700;color:#64748b;letter-spacing:0.5px;margin-left:auto;font-family:var(--mono)">INSIDER · OWNERSHIP · RISK · PEERS · CHART</span>';
+      h += '</div>';
+      // Render in the standard layman style for consistency
+      h += _renderLayman(_il);
+      h += '<div style="font-size:9px;color:#94a3b8;font-style:italic;margin-top:-6px;font-family:Inter,sans-serif">↓ Detailed breakdown for each below</div>';
+      h += '</div>';
+    }
   }
 
   // Section B: Insider Activity timeline (r61.2: handles INCOMPLETE properly)

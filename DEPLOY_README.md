@@ -1,76 +1,118 @@
-# Celesys v4 — r61.5 (verified clean + earnings intel message improvement)
+# Celesys v4 — r61.7 (Layman everywhere + multi-factor Bottom Line)
 
-## What's in this deploy
-
-This bundles **r61.4** (layman split + enrichment from earlier today) + a small message improvement:
-
-### r61.4 — Layman improvements (from earlier today)
-- Split combined `institutional.layman` into 5 sub-laymen (insider / holders / risk-adjusted / peers / chart) — fixes the "bleed" you saw in your screenshot
-- Enriched all laymen with specific numbers (Sharpe 1.46, 82% inst ownership, etc.)
-- Added 4 missing frontend hooks
-- Cache bumped to v4
-
-### r61.5 — Earnings Intel message improvement (this deploy)
-The "Missing 4 key fields: earnings_history, next_earnings_date, post_earnings_moves, implied_move_inputs" message you saw is now a human-readable explanation:
-
-**Before:**
-> Missing 4 key fields: earnings_history, next_earnings_date, post_earnings_moves, implied_move_inputs
-
-**After:**
-> No upcoming earnings catalyst on the calendar. Either the company recently reported (next earnings ~3 months away) or our data provider hasn't published the next confirmed date yet. Check back closer to the typical reporting cycle.
-
-This is contextual:
-- Missing next_earnings + implied → message above
-- Missing only next_earnings → "Next earnings date unavailable"
-- Missing only options data → "Options chain unavailable for implied-move estimate"
-- Missing earnings history → "Past EPS records unavailable"
-
-Technical field list still preserved in `_missing_technical` for debugging.
+Two big improvements on what you reported:
 
 ---
 
-## About the JS error in your screenshots
+## 1. Layman blocks now on EVERY section
 
-Your Image 2 and Image 3 show `JS Error (line 1): Uncaught SyntaxError: Function statements require a function name` at the bottom.
+Audit before this deploy showed 4 sections had backend layman generated but no frontend hook:
+- ❌ Investment Thesis (Score Breakdown card)
+- ❌ Financial Health
+- ❌ Sector Context
+- ❌ SWOT Analysis
 
-I ran exhaustive syntax checks on every JS file in this build:
-- ✅ `app.js` — clean
-- ✅ `app.min.js` — clean (byte-identical to app.js)
-- ✅ `active-trading.js` — clean
-- ✅ `options-engine.js` — clean
-- ✅ `premium-override.js` — clean
-- ✅ All inline scripts in `index.html` — clean
-- ✅ Strict mode parse — clean
-- ✅ Custom anonymous-function-statement scanner — found nothing
+Plus the Earnings Move Intelligence panel had no layman.
 
-**Conclusion:** the JS error is from the OLDER deployed version on Render, not from this build.
+**All 5 now have layman blocks.** Total coverage: **15 sections** with PLAIN + NOTE summaries:
 
-When you push r61.5 the version hash bumps and the browser will fetch the new clean code, and that error should disappear.
-
-If after pushing r61.5 + hard-refresh the error STILL appears, screenshot the browser DevTools console (F12 → Console tab) — that will show the actual file and line number, which the in-page error banner doesn't.
+| # | Section | r-deployed |
+|---|---|---|
+| 1 | Investment Thesis (Score Breakdown) | r61.7 |
+| 2 | Financial Health | r61.7 |
+| 3 | Sector Context | r61.7 |
+| 4 | SWOT Analysis | r61.7 |
+| 5 | Porter's Five Forces | r61.1 |
+| 6 | Catalysts & Analyst Consensus | r61.1 |
+| 7 | Valuation (DCF Intrinsic Value) | r61.1 |
+| 8 | Quarterly Earnings History | r61.1 |
+| 9 | Risk Health Checks | r61.1 |
+| 10 | Earnings Move Intelligence | r61.7 |
+| 11 | 🏛 Institutional Summary (combined gestalt) | r61.6 |
+| 12 | Insider Activity | r61.4 |
+| 13 | Institutional Ownership | r61.4 |
+| 14 | Risk-Adjusted Returns | r61.4 |
+| 15 | Peer Comparison | r61.4 |
+| 16 | 1-Year Price Chart | r61.4 |
 
 ---
 
-## About Image 1 (Earnings Move Intelligence "NO DATA")
+## 2. Bottom Line now considers ALL subsections (multi-factor scoring)
 
-This is correct behavior, not a bug. The MU report shows "Earnings on 2026-03-18 (-42 day(s) away)" — earnings was 42 days ago. There's no upcoming earnings to analyze.
+**Before (r61.6 and earlier):**
+The Bottom Line synthesis only used 4 things: thesis.score, valuation upside, risk_matrix.health, next_earnings. So MU got "STRONG BUY 100/100" even though it's -85% above fair value, has -57.6% max drawdowns, and insiders are selling.
 
-After r61.5 deploys, the message becomes:
-> No upcoming earnings catalyst on the calendar. Either the company recently reported (next earnings ~3 months away)...
+**After (r61.7):**
+Composite scoring across 10 weighted factors:
 
-Much clearer than the old "Missing 4 key fields" technical dump.
+| Factor | Weight | Source |
+|---|---|---|
+| Quality | 40 pts | thesis.investability_score |
+| Value | ±15 pts | valuation_detail.upside_pct (DCF) |
+| Sector momentum | ±10 pts | sector_context.outperformance_pct |
+| Earnings execution | ±8 pts | earnings_history.beat_rate_pct |
+| Risk-adjusted returns | ±10 pts | institutional.risk_adjusted Sharpe + grade |
+| Drawdown penalty | -5 pts if EXTREME | risk_adjusted.drawdown_grade |
+| Smart money | ±5 pts | insider_activity.sentiment |
+| Inst confidence | ±3 pts | institutional_holders.concentration |
+| Peer leadership | +3-5 pts | peer_table top ranks |
+| 1Y momentum | ±5 pts | price_chart.return_pct |
+
+**Health override:** any "CONCERNING" balance sheet caps verdict at HOLD.
+
+### Example: MU re-scored with r61.7
+
+```
+COMPOSITE SCORE: 37.0 / 100
+
+  Quality              +40.0   100/100 thesis score
+  Value                  -15   -85.3% to fair value
+  Sector momentum        +10   +492% vs sector
+  Earnings execution    +4.0   75% beat rate
+  Risk-adj returns       +6    Sharpe 1.46 (STRONG)
+  Drawdown risk          -5    Max DD -57.6% (EXTREME)
+  Insider signal         -5    Strong Selling
+  Inst. confidence       +3    High (82%)
+  Peer leader            +3    #1 in 2 of 4 metrics
+  1Y momentum            -4    -28%
+
+VERDICT: HOLD / SELECTIVE
+```
+
+MU goes from "STRONG BUY 100/100" → "HOLD / SELECTIVE 37/100". That's the honest institutional view: yes the thesis is perfect, but valuation extreme + insiders selling + extreme drawdown risk drag it down. Don't blindly buy.
 
 ---
 
-## Files changed (vs r61.3)
+## 3. NEW: Composite score breakdown table (collapsible)
 
-| File | Change source |
+In the Bottom Line card, you'll see:
+> 📊 Composite Score: 37/100 — show breakdown ▾
+
+Click to expand. Shows the full table above so you can see WHY the verdict is what it is. No black-box scoring.
+
+---
+
+## Verdict thresholds
+
+| Composite | Verdict |
 |---|---|
-| `api.py` | r61.4 (split institutional layman + enriched laymen + cache v4) |
-| `static/app.js` | r61.4 (5 new frontend hooks for split sub-laymen) |
-| `static/app.min.js` | Synced byte-identical |
-| `earnings_intel.py` | r61.5 (human-readable INCOMPLETE messages) |
+| ≥ 75 | STRONG BUY CANDIDATE |
+| 55–74 | BUY CANDIDATE |
+| 35–54 | HOLD / SELECTIVE |
+| < 35 | AVOID |
+
+---
+
+## Files changed
+
+| File | Change |
+|---|---|
+| `api.py` | Bottom Line synthesis rewritten as multi-factor (10 factors, weighted). Cache bumped to v6. |
+| `static/app.js` | 4 new layman hooks (thesis, finance, sector, swot) + Earnings Intel layman + composite score breakdown table |
+| `static/app.min.js` | Synced |
 | `index.html` | Version hash bumped |
+
+Everything from r61.4/r61.6 (split institutional layman, gestalt summary card, etc.) preserved.
 
 ---
 
@@ -80,31 +122,28 @@ Much clearer than the old "Missing 4 key fields" technical dump.
 unzip celesys_v4_FINAL_DEPLOY.zip
 cd celesys_v4_FINAL_DEPLOY/
 git add -A
-git commit -m "r61.5: Layman split + enrichment + human-readable earnings intel messages"
+git commit -m "r61.7: Complete layman coverage + multi-factor Bottom Line synthesis"
 git push
 ```
 
-Wait ~3 min, **hard-refresh Ctrl+Shift+R** (the version hash bump should also force this), then:
-
-1. Open MU Deep DD → scroll to Insider Activity. Layman should now ONLY discuss insider activity (counts, sentiment, $ flow). No more Sharpe/ownership bleed.
-
-2. Scroll down — see separate layman blocks on Institutional Ownership, Risk-Adjusted Returns, Peer Comparison, Price Chart cards.
-
-3. Earnings Move Intelligence panel — instead of "Missing 4 key fields" you'll see a human explanation.
-
-4. JS error banner should be gone (assuming it was from the older deploy).
-
-If the JS error persists after deploy + hard-refresh, open DevTools Console (F12) and paste me the actual error with line/file info — that's the only way to track it down further.
+Wait ~3 min, hard-refresh Ctrl+Shift+R, open MU Deep DD.
 
 ---
 
-## Verified before shipping
+## What you'll see
 
-- ✅ All 4 Python files compile
-- ✅ All 5 JS files pass `node --check`
-- ✅ Strict mode parsing clean
-- ✅ No anonymous function statements at statement position (custom scan)
-- ✅ `app.min.js` byte-identical to `app.js`
-- ✅ All 11 layman frontend hooks present
-- ✅ Cache bumped to v4 (invalidates v3 entries)
-- ✅ Earnings intel falls back to friendly message
+1. **Bottom Line at top:** verdict updated based on ALL factors. MU specifically should drop from STRONG BUY → HOLD with composite ~37.
+2. **📊 Composite Score: X/100 — show breakdown** clickable disclosure showing the factor table.
+3. **PLAIN + NOTE blocks at the top of EVERY section** — including the 4 that were missing (Score Breakdown, Financial Health, Sector Context, SWOT).
+4. **Earnings Move Intelligence panel** — when verdict is BUY_PREMIUM/SELL_PREMIUM/NEUTRAL, you'll see a layman block explaining what that means and what trade has edge.
+
+---
+
+## Verified before packaging
+
+- ✅ `api.py` compiles
+- ✅ `app.js` + `app.min.js` syntax OK
+- ✅ 17 hooks present (15 section laymen + Earnings Intel + composite score table)
+- ✅ Multi-factor synthesis tested with MU data — produces honest HOLD verdict instead of fake STRONG BUY
+- ✅ Cache key v6 (invalidates v5)
+- ✅ All earlier work preserved (gestalt summary, split sub-laymen)
