@@ -67,8 +67,22 @@ def _next_session_move(closes_map: dict, earnings_dt) -> Optional[float]:
     Given price-history closes (iso_date → close) and an earnings datetime,
     find close[date-1] and close[date+1], compute pct move. Returns None if
     either side is missing.
+
+    r63.3: Defensive — coerce strings to datetime so we don't crash on
+    'str' object has no attribute 'tzinfo' (different data sources have
+    different date formats; this layer normalizes).
     """
     if not closes_map: return None
+    # r63.3: handle string input (Finnhub) AND datetime (yfinance)
+    if isinstance(earnings_dt, str):
+        try:
+            earnings_dt = datetime.strptime(earnings_dt[:10], "%Y-%m-%d")
+        except (ValueError, TypeError):
+            return None
+    if earnings_dt is None:
+        return None
+    if not hasattr(earnings_dt, "tzinfo"):
+        return None  # not a datetime, skip
     ed_naive = earnings_dt.replace(tzinfo=None) if earnings_dt.tzinfo else earnings_dt
     ed_date = ed_naive.date()
     sorted_dates = sorted(closes_map.keys())  # iso strings sort correctly
@@ -190,6 +204,14 @@ def get_earnings_intel(ticker: str, region: str = "US",
     past = []
     for r in history:
         d = r["date"]
+        # r63.3: defensive — d may be string from Finnhub, coerce
+        if isinstance(d, str):
+            try:
+                d = datetime.strptime(d[:10], "%Y-%m-%d")
+            except (ValueError, TypeError):
+                continue
+        if not hasattr(d, "tzinfo"):
+            continue
         d_aware = d if d.tzinfo else d.replace(tzinfo=timezone.utc)
         if d_aware <= now_utc:
             past.append(r)

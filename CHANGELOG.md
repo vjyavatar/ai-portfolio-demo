@@ -353,3 +353,28 @@ Should now return `dd_disk_cache: {exists: true, n_entries: ...}` after the firs
   - Both fail → graceful, no crash
 
 **Result:** Either user gets full report (if Yahoo allows yfinance for these specific endpoints — common surgical IP blocking) OR gets degraded report with honest "data unavailable" markers (if Yahoo blocks everything). Either way, no more silent empty sections.
+
+---
+
+## v4.63.3 — Fix Earnings Move tzinfo crash (current)
+
+**Built:** 2026-04-29 19:38 UTC
+
+**The bug user reported:** Screenshot showing "Earnings Move Intelligence: Fetch failed: 'str' object has no attribute 'tzinfo'"
+
+**Root cause:** Schema mismatch between data sources:
+- yfinance returns earnings dates as datetime objects (have .tzinfo)
+- Finnhub returns earnings dates as strings ("2024-10-23")
+- earnings_intel.py:_next_session_move() calls .tzinfo on the date
+- After r63.0 made Finnhub primary for earnings, this crashed every time
+
+**Fix:**
+1. `finnhub_handlers.py:get_earnings_history` converts dates to datetime before returning + adds `beat` field for yfinance schema compatibility
+2. `earnings_intel.py:_next_session_move` defensively coerces strings→datetime as belt-and-suspenders (handles future schema variations safely)
+3. `earnings_intel.py` line 193 d_aware also defensive
+
+**Verified:**
+- 5/5 audit checks pass
+- 6 runtime tests pass: string ("2024-10-23") → 10.36%, datetime → 10.36%, tz-aware → 10.36%, None → None safely, invalid → None safely, ISO with time → 10.36% (correct slicing)
+
+**Honest acknowledgment of what's NOT fixed:** Insider Activity and Institutional Ownership sections still show "data not available" — that's Yahoo blocking those specific endpoints from Render IP. Free-tier Finnhub doesn't have these. Real fixes: wait for Yahoo to recover, upgrade Finnhub (~$50/mo), or build SEC EDGAR fallback (free but more work).

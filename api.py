@@ -1797,9 +1797,9 @@ def _safe_float(val, default=0.0):
         return default
 
 # ═══ Celesys version stamp (v4.61.10) ═══════════════════════════════
-APP_VERSION = "v4.63.2"
-APP_BUILD_TIME = 1777490585
-APP_BUILD_DATE = "2026-04-29 19:23:05 UTC"
+APP_VERSION = "v4.63.4-pre1"
+APP_BUILD_TIME = 1777491698
+APP_BUILD_DATE = "2026-04-29 19:41:38 UTC"
 APP_RELEASE_NOTES = (
     "v4.62.0: Micro-Cap Hunter scanner (Decide tab) + cumulative r61.x: Aladdin DD entry page (r61.8), "
     "stale-cache fallback (r61.8), multi-factor Bottom Line (r61.7), "
@@ -32484,6 +32484,63 @@ async def earnings_intel_route(
             "data_quality": "INCOMPLETE",
             "missing_fields": ["fetch_error"],
         }
+
+
+@app.get("/api/test-edgar-connectivity")
+async def test_edgar_connectivity():
+    """r63.4-pre: Pre-flight test — does SEC EDGAR work from Render IP?
+    
+    Returns one entry per test URL with status + response size. If all 3 succeed,
+    EDGAR is reachable from Render and we can safely build the EDGAR fallback.
+    If any 403 or fail, EDGAR is blocked and we should NOT build the feature.
+    
+    Used once for diagnostics, can be removed after r63.4 ships.
+    """
+    import urllib.request
+    import json as _json
+    import time as _t
+    
+    UA = "Celesys Research celesys.ai"
+    tests = [
+        ("submissions_aapl", "https://data.sec.gov/submissions/CIK0000320193.json"),
+        ("company_facts_aapl", "https://data.sec.gov/api/xbrl/companyfacts/CIK0000320193.json"),
+        ("ticker_cik_map", "https://www.sec.gov/files/company_tickers.json"),
+    ]
+    
+    results = []
+    for name, url in tests:
+        result = {"name": name, "url": url, "status": None, "size_bytes": None, "error": None, "ms": None}
+        t0 = _t.time()
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": UA})
+            with urllib.request.urlopen(req, timeout=10) as r:
+                body = r.read()
+                result["status"] = r.status
+                result["size_bytes"] = len(body)
+                # Quick JSON validity check
+                try:
+                    parsed = _json.loads(body)
+                    result["json_valid"] = True
+                    result["top_keys"] = list(parsed.keys())[:5] if isinstance(parsed, dict) else "not_dict"
+                except Exception:
+                    result["json_valid"] = False
+        except urllib.error.HTTPError as e:
+            result["status"] = e.code
+            result["error"] = f"HTTP {e.code}"
+        except Exception as e:
+            result["error"] = f"{type(e).__name__}: {str(e)[:120]}"
+        result["ms"] = int((_t.time() - t0) * 1000)
+        results.append(result)
+    
+    all_ok = all(r.get("status") == 200 and r.get("json_valid") for r in results)
+    return {
+        "summary": "ALL_OK" if all_ok else "BLOCKED_OR_FAILED",
+        "verdict": (
+            "EDGAR works from Render — safe to build EDGAR fallback" if all_ok else
+            "EDGAR is blocked or unreachable — DO NOT build EDGAR fallback"
+        ),
+        "tests": results,
+    }
 
 
 @app.get("/api/data-sources-status")

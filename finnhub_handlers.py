@@ -317,7 +317,11 @@ def get_price_history(symbol: str, region: str = "US", period_days: int = 730, *
 
 
 def get_earnings_history(symbol: str, region: str = "US", **kwargs) -> Optional[dict]:
-    """Return last 4 quarters of earnings surprises."""
+    """Return last 4 quarters of earnings surprises.
+    r63.3: convert string dates → datetime to match yfinance schema.
+    Callers (earnings_intel.py) call .tzinfo on these — must be datetime.
+    """
+    from datetime import datetime as _dt
     if region != "US":
         return None
     if not _is_enabled():
@@ -327,11 +331,32 @@ def get_earnings_history(symbol: str, region: str = "US", **kwargs) -> Optional[
         return None
     rows = []
     for d in data:
+        # r63.3: parse "2024-10-23" → datetime to match yfinance shape
+        date_str = d.get("period")
+        date_obj = None
+        if date_str:
+            try:
+                date_obj = _dt.strptime(date_str, "%Y-%m-%d")
+            except (ValueError, TypeError):
+                # try alternate formats just in case
+                try:
+                    date_obj = _dt.strptime(date_str[:10], "%Y-%m-%d")
+                except (ValueError, TypeError):
+                    date_obj = None
+        # Skip rows with unparseable dates rather than passing strings downstream
+        if date_obj is None:
+            continue
+        # "beat" is a derived bool yfinance provides — Finnhub gives surprisePercent
+        surprise_pct = _safe_float(d.get("surprisePercent"))
+        beat = surprise_pct > 0 if surprise_pct is not None else None
         rows.append({
-            "date": d.get("period"),
-            "eps_estimate": _safe_float(d.get("estimate")),
-            "eps_actual": _safe_float(d.get("actual")),
-            "surprise": _safe_float(d.get("surprise")),
-            "surprise_pct": _safe_float(d.get("surprisePercent")),
+            "date":          date_obj,
+            "eps_estimate":  _safe_float(d.get("estimate")),
+            "eps_actual":    _safe_float(d.get("actual")),
+            "surprise":      _safe_float(d.get("surprise")),
+            "surprise_pct":  surprise_pct,
+            "beat":          beat,
         })
+    if not rows:
+        return None
     return {"data": rows, "_source": "finnhub"}

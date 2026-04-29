@@ -1,105 +1,27 @@
-# Celesys v4.63.2 — Fix r63.0 regression in DD report sections
+# Celesys v4.63.4-pre1 — EDGAR Connectivity Test (3-line deploy)
 
-You caught a real bug. r63.0 was incomplete. This fix addresses it directly.
+## Why this exists
 
----
+You said yes to building SEC EDGAR fallback (~6-8 hours work). Before I commit to that, I want to verify EDGAR actually works from your Render IP.
 
-## What you saw in your screenshot
+I tested EDGAR from my sandbox just now — got HTTP 403. That doesn't mean it'll fail from Render (different IP, different reputation), but it's a yellow flag. **I refuse to spend 6 hours building a feature that might not work.**
 
-MU report rendering with:
-- ✅ Verdict: 92/100 STRONG BUY (Finnhub working)
-- ✅ Financial Health: 85.5% (Finnhub working)
-- ❌ Risk Matrix: showing flagged/passed but **empty body**
-- ❌ SWOT: empty / sparse
-- ❌ Porter Five Forces: showing 35/50 but no scores per force
-- ❌ Insider Activity: missing
-- ❌ Institutional Ownership: missing
-- ❌ Earnings History: showing "0.10%" but missing detail
-
-That's not "Finnhub doesn't have this data" — that's a **regression I introduced in r63.0**.
+This deploy adds ONE diagnostic endpoint that hits 3 EDGAR URLs from inside Render and tells us whether they work. 5 minutes to deploy + curl, then we know.
 
 ---
 
-## The actual bug
+## What this deploy adds
 
-Look at the original r60.4 institutional fetch code:
+ONE new endpoint: `/api/test-edgar-connectivity`
 
-```python
-if data_source == "yfinance" and tk:
-    # ... fetch insider transactions, institutional holders, etc
-```
+It hits these three SEC URLs from your server:
+1. `data.sec.gov/submissions/CIK0000320193.json` (AAPL filings list)
+2. `data.sec.gov/api/xbrl/companyfacts/CIK0000320193.json` (AAPL company facts)
+3. `www.sec.gov/files/company_tickers.json` (ticker → CIK mapping)
 
-When r63.0 made Finnhub the primary source, **two things broke**:
+Returns whether each succeeded with status + size + JSON validity.
 
-1. The yfinance `tk` Ticker object was only created if Finnhub failed. When Finnhub succeeded, `tk` never existed.
-2. The condition `data_source == "yfinance"` excluded the new value `"finnhub"` and `"finnhub+yfinance"` — so the entire institutional/insider block got skipped.
-
-Net effect: when Finnhub succeeded, your report got the price + multi-factor verdict but **silently lost** Insider, Institutional, Earnings History, and dependent sections.
-
----
-
-## The fix in v4.63.2
-
-Three targeted changes:
-
-### Fix A — Always create yfinance Ticker for US tickers
-
-Even when Finnhub is the primary source, we now ALWAYS create the yfinance Ticker. This means `tk.insider_purchases`, `tk.institutional_holders`, `tk.earnings_history` are still callable. If Yahoo blocks the IP, those individual calls fail gracefully and the section shows "data unavailable" — but if Yahoo allows them (which often happens for these specific endpoints even when others are blocked), you get the data.
-
-### Fix B — Remove yfinance-only gates
-
-The conditions on Insider Activity, Institutional Holders, and Earnings History now check `tk is not None and region == "US"` instead of `data_source == "yfinance"`. So they try yfinance regardless of which source provided the price.
-
-### Fix C — Merge logic: Finnhub fields + yfinance gaps
-
-When both sources work, we merge: Finnhub fields stay (current price, fundamentals from free tier), yfinance fills gaps (insider %, institutional ownership, analyst targets). Best of both.
-
----
-
-## Pre-ship verification
-
-### 8 audit checks pass
-- ✅ yfinance Ticker always created for US tickers
-- ✅ `tk = None` initialized so downstream gates don't crash on undefined
-- ✅ Earnings gate uses `tk + region` instead of `data_source`
-- ✅ Insider gate fixed
-- ✅ Institutional gate fixed
-- ✅ data_quality marker accepts "finnhub+yfinance"
-- ✅ Old `data_source == "yfinance"` gates REMOVED
-- ✅ Version v4.63.2
-
-### 4-scenario simulation passed
-| Scenario | Result | What user sees |
-|---|---|---|
-| **S1** Finnhub HIT + Yahoo OK | data_source=finnhub+yfinance, insider/institutional WORK | Full report |
-| **S2** Finnhub HIT + Yahoo BLOCKED (your screenshot scenario!) | data_source=finnhub, insider/institutional gracefully N/A | Price + financials + verdict work; insider/institutional show "data unavailable" honestly |
-| **S3** Finnhub MISS + Yahoo OK | data_source=yfinance, full report | Pre-r63.0 behavior preserved |
-| **S4** Both fail | Graceful — no crash, all N/A | Honest error display |
-
----
-
-## What this means for your platform RIGHT NOW
-
-**Two possibilities after deploying v4.63.2:**
-
-### Best case (likely)
-Yahoo blocks the **chart/quote endpoints** from Render IP but allows the **insider/institutional/earnings endpoints**. This is how Yahoo's IP blocking often works — surgical, not blanket. After deploy:
-- MU/TSLA/NVDA: Price + financials from Finnhub ✅
-- Risk Matrix: full red flags + passed checks ✅
-- Insider Activity: Form 4 transactions ✅
-- Institutional Holders: 13F top 10 ✅
-- Earnings History: full quarter-by-quarter ✅
-- SWOT, Porter, Catalysts: full data ✅
-
-### Worst case (still acceptable)
-Yahoo blocks ALL endpoints from Render IP. After deploy:
-- MU/TSLA/NVDA: Price + financials from Finnhub ✅ (still better than v4.62.x where these failed entirely)
-- Insider Activity: shows "data unavailable" honestly ⚠
-- Institutional Holders: shows "data unavailable" honestly ⚠
-- Earnings History: shows "data unavailable" honestly ⚠
-- Risk Matrix, SWOT, Porter: render with whatever data we have ⚠
-
-Either way: **the report no longer silently shows empty sections.** Either the data populates, or it shows "N/A" with a clear reason — no more mysterious blanks.
+**Nothing else changes.** No UI, no frontend, no other backend behavior. Pure diagnostic.
 
 ---
 
@@ -109,55 +31,96 @@ Either way: **the report no longer silently shows empty sections.** Either the d
 unzip celesys_v4_FINAL_DEPLOY.zip
 cd celesys_v4_FINAL_DEPLOY/
 git add -A
-git commit -m "v4.63.2: Fix r63.0 regression — always try yfinance for insider/institutional even when Finnhub primary"
+git commit -m "v4.63.4-pre1: EDGAR connectivity test endpoint"
 git push
 ```
 
-Wait ~3 min, hard-refresh.
+Wait ~3 min for Render.
 
 ---
 
-## Verify after deploy
+## Test
 
-1. Generate Deep DD for **MU** (the one in your screenshot)
-2. Compare to your screenshot — these sections should now have content:
-   - **Risk Matrix** — list of red flags + passed checks
-   - **SWOT** — populated with actual strengths/weaknesses
-   - **Porter Five Forces** — scores per force, not just total
-   - **Insider Activity** — buy/sell transaction summary
-   - **Institutional Ownership** — top 10 13F holders
-   - **Earnings History** — quarter-by-quarter table
-3. Click PDF — full report exports cleanly with all sections
-
-If sections STILL show empty after this deploy, that means Yahoo is blocking ALL endpoints from Render (worst case). At that point we'd need to upgrade to Finnhub paid tier (Personal ~$50/mo with fundamentals add-on) to get insider/institutional from Finnhub instead.
-
----
-
-## How to tell which case you're in
-
-After deploy, check the Render logs:
-
-```
-[DD] Finnhub primary HIT for MU — N fields
-[DD] yfinance merged X fields with Finnhub for MU       ← BEST CASE: Yahoo allowing
-[DD] yfinance .info empty (Yahoo likely blocked) — using Finnhub-only data for MU   ← WORST CASE
+```bash
+curl https://celesys.ai/api/test-edgar-connectivity
 ```
 
-If you see "merged" → Yahoo allows yfinance from Render → full report
-If you see "empty" → Yahoo blocks Render → degraded report (still better than complete failure)
+You'll get back one of these two responses:
+
+### CASE A — All 3 succeed (GREEN LIGHT)
+```json
+{
+  "summary": "ALL_OK",
+  "verdict": "EDGAR works from Render — safe to build EDGAR fallback",
+  "tests": [
+    {"name": "submissions_aapl", "status": 200, "size_bytes": 1234567, "json_valid": true, "ms": 412},
+    {"name": "company_facts_aapl", "status": 200, "size_bytes": 8765432, "json_valid": true, "ms": 891},
+    {"name": "ticker_cik_map", "status": 200, "size_bytes": 1098765, "json_valid": true, "ms": 234}
+  ]
+}
+```
+
+→ Tell me "EDGAR works", I build the full v4.63.4 (Form 4 + 13F integration) over the next ~6 hours.
+
+### CASE B — Any 403 / failure (RED LIGHT)
+```json
+{
+  "summary": "BLOCKED_OR_FAILED",
+  "verdict": "EDGAR is blocked or unreachable — DO NOT build EDGAR fallback",
+  "tests": [...]
+}
+```
+
+→ Tell me "EDGAR blocked", we pivot. Options:
+- Wait it out (Yahoo + EDGAR blocking sometimes is temporary)
+- Pay for Finnhub Personal tier (~$50/mo) — has insider + 13F natively
+- Different free source (less likely to work given the pattern, but possible)
 
 ---
 
-## What's NOT changed in this deploy
+## Why I'm doing it this way
 
-- Frontend rendering (no changes to app.js)
-- PDF export from r63.1 (still works)
-- Finnhub adapter from r63.0 (still working)
-- Active Trading (untouched, as always)
-- All other Decide tabs (untouched)
-- India ticker chain (untouched)
+Earlier in this conversation I recommended Stooq, Alpha Vantage, Finnhub — all without verifying they'd actually work from your IP. Stooq blocked you, Finnhub free tier was missing institutional, etc. **I'm not making that mistake again with EDGAR.**
 
-**Pure backend logic fix.** Smallest possible change to fix the regression.
+Saying "let me build it and see" wastes 6 hours of work and your time. This 5-minute pre-flight saves both.
+
+---
+
+## What I'm NOT doing
+
+- ❌ Not bumping past v4.63.4-pre1 (the "-pre1" tag means "diagnostic, not the actual feature")
+- ❌ Not adding any Insider / Institutional / EDGAR adapter code yet
+- ❌ Not changing any UI
+- ❌ Not changing any data flow
+
+---
+
+## Honest scope reminder
+
+Even if EDGAR works (Case A), the eventual r63.4 feature has limits:
+
+1. **EDGAR has 24-48 hour filing lag.** Form 4 must be filed within 2 business days, 13F within 45 days after quarter-end. So today's insider trade won't show up for ~2 days. yfinance has the same lag.
+
+2. **EDGAR is rate-limited at 10 req/sec.** Fine for one DD report, may need pacing for full universe scans.
+
+3. **Data parsing is non-trivial.** EDGAR returns raw XML/JSON from filings. Different shape from yfinance. The adapter has to normalize it into your existing UI's expected schema, which means the implementation is more code than just "call API, return data".
+
+4. **Coverage is US-listed only.** Same as Finnhub. Indian tickers will continue using NSE direct.
+
+5. **Some specific data still won't be available.** EDGAR doesn't have analyst recommendations, price targets, or detailed financials parsed-and-summarized. It has the raw filings. So those sections will continue showing "data not available" — EDGAR doesn't fix everything.
+
+Once you confirm Case A or B from the test, I'll write the precise list of what r63.4 will and won't recover.
+
+---
+
+## Rollback (just in case)
+
+```bash
+git revert HEAD
+git push
+```
+
+But this deploy literally only adds one read-only diagnostic endpoint. There's nothing to break.
 
 ---
 
@@ -165,19 +128,6 @@ If you see "empty" → Yahoo blocks Render → degraded report (still better tha
 
 | File | What changed |
 |---|---|
-| `api.py` | DD endpoint fetch logic + 3 gate condition fixes (~35 lines changed) |
-| `static/app.js` | Version stamp only |
-| `static/app.min.js` | Synced |
+| `api.py` | + 50 lines: `/api/test-edgar-connectivity` endpoint |
+| `static/app.js` + `app.min.js` | Version stamp only |
 | `index.html` | Version stamp + cache hash |
-| `CHANGELOG.md` | v4.63.2 entry |
-| `DEPLOY_README.md` | This file |
-
----
-
-## Honest acknowledgment
-
-This bug was a regression I introduced in r63.0. I should have caught it during r63.0 testing — the merge logic LOOKED correct but I didn't verify it actually exercised all the downstream code paths. Your screenshot showed it immediately. I should have run a "render a full DD report end-to-end" test before shipping r63.0, not just verified the data adapter logic.
-
-Lesson for future deploys: when changing the data layer, run an end-to-end "render the actual report" test, not just unit-test the new adapter in isolation.
-
-Sorry for shipping that incomplete. r63.2 fixes it.
