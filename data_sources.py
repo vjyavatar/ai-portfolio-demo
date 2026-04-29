@@ -35,6 +35,7 @@ import math
 import time
 from datetime import datetime, timedelta, timezone
 from typing import Optional, Any
+import finnhub_handlers as _fh  # r63.0: Finnhub primary for US
 
 # Symbols imported from api.py at runtime. Standalone fallbacks for testing.
 try:
@@ -77,24 +78,25 @@ except ImportError:
 # For each (capability, region) — try sources in this priority order.
 # Edit here to change fallback behavior for ALL services at once.
 _CAPABILITIES = {
+    # r63.0: Finnhub primary for US (Yahoo blocks Render IP). India unchanged.
     "quote": {
-        "US": ["yfinance", "google_finance"],
+        "US": ["finnhub", "yfinance", "google_finance"],
         "IN": ["nse_quote", "yfinance", "google_finance"],
     },
     "price_history": {
-        "US": ["yfinance", "google_finance"],
+        "US": ["finnhub", "yfinance", "google_finance"],
         "IN": ["yfinance", "nse_chart", "google_finance"],
     },
     "earnings_history": {
-        "US": ["yfinance"],
+        "US": ["finnhub", "yfinance"],
         "IN": ["nse_corp_info", "yfinance"],
     },
     "next_earnings": {
-        "US": ["yfinance"],
+        "US": ["yfinance"],  # finnhub free tier doesn't have this endpoint
         "IN": ["nse_event_calendar", "yfinance"],
     },
     "quarterly_results": {
-        "US": ["yfinance"],
+        "US": ["finnhub", "yfinance"],
         "IN": ["nse_corp_info", "yfinance"],
     },
 }
@@ -361,6 +363,13 @@ def _nse_event_calendar(symbol: str, region: str, **kw) -> Optional[dict]:
 # ─── Source registry ──────────────────────────────────────────────────────
 # Maps source-id → {capability: handler}
 _HANDLERS = {
+    # r63.0: Finnhub free tier — US only, ~30 of yfinance's fields covered
+    "finnhub": {
+        "quote":              _fh.get_quote,
+        "price_history":      _fh.get_price_history,
+        "earnings_history":   _fh.get_earnings_history,
+        "quarterly_results":  _fh.get_earnings_history,
+    },
     "yfinance": {
         "quote":              _yf_quote,
         "price_history":      _yf_price_history,

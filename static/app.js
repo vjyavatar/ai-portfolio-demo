@@ -1,9 +1,9 @@
 // ═══ Celesys version stamp ═══
-window.CELESYS_VERSION = "v4.62.4";
-window.CELESYS_BUILD_TIME = 1777487102;
-window.CELESYS_BUILD_DATE = "2026-04-29 14:03:55 UTC";
+window.CELESYS_VERSION = "v4.63.1";
+window.CELESYS_BUILD_TIME = 1777489847;
+window.CELESYS_BUILD_DATE = "2026-04-29 19:10:47 UTC";
 console.log("%c━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "color:#1A3A78");
-console.log("%c CELESYS v4.62.3 %c loaded · 2026-04-29 03:29:27 UTC",
+console.log("%c CELESYS v4.63.1 %c loaded · 2026-04-29 03:29:27 UTC",
   "background:#1A3A78;color:#fff;font-weight:900;padding:3px 8px;border-radius:3px;font-family:monospace",
   "color:#1A3A78;font-weight:700;font-family:monospace");
 console.log("%c━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "color:#1A3A78");
@@ -24080,5 +24080,396 @@ console.log('[TRADING] ✅ EMA 9/21 + RSI trading tab loaded');
   
   // Also run once on page load in case report is already visible
   setTimeout(applyTabRoles,2000);
+})();
+
+
+// ═══════════════════════════════════════════════════════════════════
+// r63.1: Deep DD Toolbar — PDF export, Print, Copy URL
+// ═══════════════════════════════════════════════════════════════════
+// Adds 3 icon buttons floating top-right of the DD report.
+// Tooltips on hover. Keyboard accessible (aria-labels).
+
+window._csInjectDDToolbar = function() {
+  // Don't add toolbar twice
+  if (document.getElementById('csDDToolbar')) return;
+
+  // Only add if there's actual report content (not error or loading state)
+  var el = document.getElementById('deResult');
+  if (!el) return;
+  // Heuristic: report exists if it has substantial content (>1000 chars HTML)
+  if (el.innerHTML.length < 1000) return;
+  // Don't add if currently in error state
+  if (el.querySelector('.cs-error-block')) return;
+
+  var bar = document.createElement('div');
+  bar.id = 'csDDToolbar';
+  bar.setAttribute('role', 'toolbar');
+  bar.setAttribute('aria-label', 'Report actions');
+  bar.style.cssText = 'position:sticky;top:12px;float:right;z-index:50;display:flex;gap:6px;background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:5px;box-shadow:0 2px 8px rgba(0,0,0,0.06);font-family:Inter,sans-serif;margin-bottom:10px;margin-right:8px';
+
+  bar.innerHTML = '' +
+    // PDF button
+    '<button onclick="window._csExportPDF()" data-tooltip="Export full report as PDF" aria-label="Export as PDF" class="cs-tb-btn">' +
+      '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="15" y2="17"/></svg>' +
+      '<span style="font-size:10px;font-weight:700;letter-spacing:0.4px">PDF</span>' +
+    '</button>' +
+    // Print button
+    '<button onclick="window._csPrintReport()" data-tooltip="Print report (browser dialog)" aria-label="Print report" class="cs-tb-btn">' +
+      '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>' +
+    '</button>' +
+    // Copy URL button
+    '<button onclick="window._csCopyReportURL(this)" data-tooltip="Copy shareable link" aria-label="Copy URL" class="cs-tb-btn">' +
+      '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>' +
+    '</button>';
+
+  // Insert toolbar at the TOP of deResult (sticky positioning makes it stay visible while scrolling)
+  el.insertBefore(bar, el.firstChild);
+
+  // Inject styles ONCE per session
+  if (!document.getElementById('csTbStyles')) {
+    var style = document.createElement('style');
+    style.id = 'csTbStyles';
+    style.textContent = '' +
+      '.cs-tb-btn { display:inline-flex; align-items:center; gap:5px; padding:6px 10px; background:#fff; color:#475569; border:1px solid #e2e8f0; border-radius:6px; cursor:pointer; transition:all 120ms; position:relative; }' +
+      '.cs-tb-btn:hover { background:#1A3A78; color:#fff; border-color:#1A3A78; }' +
+      '.cs-tb-btn:active { transform:scale(0.96); }' +
+      '.cs-tb-btn:focus-visible { outline:2px solid #1A3A78; outline-offset:2px; }' +
+      // Tooltip via data-tooltip attribute
+      '.cs-tb-btn[data-tooltip]::after { content:attr(data-tooltip); position:absolute; top:100%; right:0; margin-top:8px; padding:5px 9px; background:#0f172a; color:#fff; font-size:10px; font-weight:600; border-radius:4px; white-space:nowrap; opacity:0; pointer-events:none; transition:opacity 150ms; letter-spacing:0.2px; }' +
+      '.cs-tb-btn[data-tooltip]:hover::after { opacity:1; }' +
+      '.cs-tb-btn[data-tooltip]::before { content:""; position:absolute; top:100%; right:14px; margin-top:3px; border:5px solid transparent; border-bottom-color:#0f172a; opacity:0; pointer-events:none; transition:opacity 150ms; }' +
+      '.cs-tb-btn[data-tooltip]:hover::before { opacity:1; }' +
+      // Print-only styles for Print button workflow
+      '@media print { #csDDToolbar { display:none !important; } body { background:#fff !important; } }' +
+      // Loading state
+      '.cs-tb-btn.is-loading { pointer-events:none; opacity:0.6; }' +
+      '.cs-tb-btn.is-loading svg { animation:csTbSpin 0.7s linear infinite; }' +
+      '@keyframes csTbSpin { to { transform:rotate(360deg); } }';
+    document.head.appendChild(style);
+  }
+};
+
+
+// ═══════════════════════════════════════════════════════════════════
+// PDF EXPORT — uses jsPDF + html2canvas (loaded from CDN in index.html)
+// ═══════════════════════════════════════════════════════════════════
+window._csExportPDF = async function() {
+  var btn = event && event.currentTarget;
+
+  // Check libraries are loaded
+  if (typeof window.jspdf === 'undefined' || typeof window.html2canvas === 'undefined') {
+    alert('PDF library not loaded yet. Please wait a moment and try again.');
+    return;
+  }
+
+  // Validate report exists
+  var reportEl = document.getElementById('deResult');
+  if (!reportEl || reportEl.innerHTML.length < 1000) {
+    alert('No report to export. Generate a Deep DD report first.');
+    return;
+  }
+
+  // Try to detect ticker symbol from report for filename
+  var ticker = (window._ddLastSymbol || 'REPORT').toUpperCase();
+  var dateStr = new Date().toISOString().slice(0, 10);
+  var filename = 'Celesys_DD_' + ticker + '_' + dateStr + '.pdf';
+
+  // Show loading state
+  if (btn) {
+    btn.classList.add('is-loading');
+    var origHtml = btn.innerHTML;
+    btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg><span style="font-size:10px;font-weight:700">…</span>';
+  }
+
+  try {
+    // Hide toolbar from capture
+    var tb = document.getElementById('csDDToolbar');
+    var tbDisplay = tb ? tb.style.display : '';
+    if (tb) tb.style.display = 'none';
+
+    // Capture report as canvas (whole content, ignore CSS scaling for accuracy)
+    var canvas = await window.html2canvas(reportEl, {
+      scale: 1.5,                    // higher resolution
+      useCORS: true,
+      allowTaint: false,
+      backgroundColor: '#ffffff',
+      logging: false,
+      windowWidth: reportEl.scrollWidth,
+      windowHeight: reportEl.scrollHeight,
+    });
+
+    // Restore toolbar
+    if (tb) tb.style.display = tbDisplay;
+
+    var imgData = canvas.toDataURL('image/jpeg', 0.92);
+
+    // Build PDF — A4 portrait, mm units
+    var pdf = new window.jspdf.jsPDF({
+      orientation: 'portrait',
+      unit: 'mm',
+      format: 'a4',
+    });
+
+    var pageW = pdf.internal.pageSize.getWidth();   // 210mm
+    var pageH = pdf.internal.pageSize.getHeight();  // 297mm
+    var margin = 12;
+    var contentW = pageW - (margin * 2);            // 186mm
+
+    // ─── Cover page ───────────────────────────────────────────────
+    // Navy header band
+    pdf.setFillColor(26, 58, 120);  // #1A3A78
+    pdf.rect(0, 0, pageW, 32, 'F');
+
+    pdf.setTextColor(255, 255, 255);
+    pdf.setFont('helvetica', 'bold');
+    pdf.setFontSize(22);
+    pdf.text('CELESYS', margin, 14);
+    pdf.setFontSize(10);
+    pdf.setFont('helvetica', 'normal');
+    pdf.text('INSTITUTIONAL DEEP DUE DILIGENCE', margin, 21);
+    pdf.setFontSize(8);
+    pdf.text('Generated ' + new Date().toLocaleString(), margin, 27);
+
+    // Ticker block
+    pdf.setTextColor(15, 23, 42);  // #0f172a
+    pdf.setFont('helvetica', 'bold');
+    pdf.setFontSize(48);
+    pdf.text(ticker, margin, 60);
+
+    // Subtitle
+    pdf.setFontSize(11);
+    pdf.setFont('helvetica', 'normal');
+    pdf.setTextColor(100, 116, 139);  // #64748b
+    pdf.text('Multi-factor synthesis · 16-section institutional report', margin, 68);
+
+    // Description block
+    pdf.setDrawColor(226, 232, 240);
+    pdf.line(margin, 75, pageW - margin, 75);
+
+    pdf.setFontSize(9);
+    pdf.setTextColor(71, 85, 105);
+    var bodyLines = [
+      'This report contains the full Deep Due Diligence analysis for ' + ticker + ',',
+      'generated by the Celesys institutional research engine. Sections include:',
+      '',
+      '  • Bottom Line verdict (multi-factor synthesis)',
+      '  • Investment thesis with DCF valuation',
+      '  • Financial health snapshot',
+      '  • Sector context vs benchmark ETF',
+      '  • Porter\'s Five Forces analysis',
+      '  • SWOT framework',
+      '  • Catalysts: earnings + analyst targets',
+      '  • Risk matrix with red flags',
+      '  • Insider activity (Form 4 filings)',
+      '  • Institutional ownership (13F holders)',
+      '  • Earnings history with surprise tracking',
+      '  • Layman blocks for every metric',
+    ];
+    var lineY = 85;
+    bodyLines.forEach(function(line) {
+      pdf.text(line, margin, lineY);
+      lineY += 4.5;
+    });
+
+    // Disclaimer block
+    pdf.setFillColor(255, 251, 235);  // amber-50
+    pdf.setDrawColor(253, 230, 138);  // amber-200
+    pdf.roundedRect(margin, pageH - 50, contentW, 32, 2, 2, 'FD');
+    pdf.setFontSize(8);
+    pdf.setTextColor(120, 53, 15);  // amber-900
+    pdf.setFont('helvetica', 'bold');
+    pdf.text('Important disclaimer', margin + 4, pageH - 43);
+    pdf.setFont('helvetica', 'normal');
+    pdf.setFontSize(7.5);
+    var disclaimerLines = [
+      'This report is research output, not investment advice. All figures sourced from public financial',
+      'data (Yahoo Finance, Finnhub, NSE) and may have lag or gaps. Past performance does not predict',
+      'future returns. Always conduct your own due diligence before any trade. Celesys provides analytical',
+      'frameworks; investment decisions remain solely your responsibility.',
+    ];
+    var disclaimerY = pageH - 36;
+    disclaimerLines.forEach(function(line) {
+      pdf.text(line, margin + 4, disclaimerY);
+      disclaimerY += 3.5;
+    });
+
+    // Footer
+    pdf.setFontSize(7);
+    pdf.setTextColor(148, 163, 184);
+    pdf.text('celesys.ai · v4.63.x · Page 1 of report', margin, pageH - 6);
+
+    // ─── Report pages ─────────────────────────────────────────────
+    pdf.addPage();
+
+    // Calculate scaled image dimensions
+    var imgW = contentW;
+    var imgH = (canvas.height * imgW) / canvas.width;
+    var availableH = pageH - (margin * 2) - 8;  // leave room for footer
+
+    // If image fits on one page, just add it
+    if (imgH <= availableH) {
+      pdf.addImage(imgData, 'JPEG', margin, margin, imgW, imgH);
+      pdf.setFontSize(7);
+      pdf.setTextColor(148, 163, 184);
+      pdf.text('celesys.ai · ' + ticker + ' DD · Page 2', margin, pageH - 6);
+    } else {
+      // Multi-page: slice the image
+      var sliceCanvas = document.createElement('canvas');
+      sliceCanvas.width = canvas.width;
+      var sliceHeightPx = Math.floor((availableH * canvas.width) / contentW);
+      sliceCanvas.height = sliceHeightPx;
+      var sctx = sliceCanvas.getContext('2d');
+
+      var totalSlices = Math.ceil(canvas.height / sliceHeightPx);
+      for (var i = 0; i < totalSlices; i++) {
+        if (i > 0) pdf.addPage();
+        var srcY = i * sliceHeightPx;
+        var srcH = Math.min(sliceHeightPx, canvas.height - srcY);
+
+        sctx.fillStyle = '#ffffff';
+        sctx.fillRect(0, 0, sliceCanvas.width, sliceCanvas.height);
+        sctx.drawImage(canvas, 0, srcY, canvas.width, srcH, 0, 0, canvas.width, srcH);
+
+        var slicedDataUrl = sliceCanvas.toDataURL('image/jpeg', 0.92);
+        var renderedH = (srcH * contentW) / canvas.width;
+        pdf.addImage(slicedDataUrl, 'JPEG', margin, margin, contentW, renderedH);
+
+        // Footer on each page
+        pdf.setFontSize(7);
+        pdf.setTextColor(148, 163, 184);
+        pdf.text(
+          'celesys.ai · ' + ticker + ' DD · Page ' + (i + 2) + ' of ' + (totalSlices + 1),
+          margin,
+          pageH - 6
+        );
+      }
+    }
+
+    // Save
+    pdf.save(filename);
+
+    if (btn) {
+      btn.classList.remove('is-loading');
+      btn.innerHTML = origHtml;
+    }
+  } catch (e) {
+    if (btn) {
+      btn.classList.remove('is-loading');
+      btn.innerHTML = origHtml || btn.innerHTML;
+    }
+    var tb2 = document.getElementById('csDDToolbar');
+    if (tb2) tb2.style.display = '';
+    console.error('PDF export failed:', e);
+    alert('PDF export failed: ' + e.message + '\n\nTry refreshing the page or use Print instead.');
+  }
+};
+
+
+// ═══════════════════════════════════════════════════════════════════
+// PRINT — uses native browser print dialog
+// ═══════════════════════════════════════════════════════════════════
+window._csPrintReport = function() {
+  var reportEl = document.getElementById('deResult');
+  if (!reportEl || reportEl.innerHTML.length < 1000) {
+    alert('No report to print. Generate a Deep DD report first.');
+    return;
+  }
+  // CSS @media print rule in toolbar styles already hides the toolbar
+  window.print();
+};
+
+
+// ═══════════════════════════════════════════════════════════════════
+// COPY URL — copies current page URL with ticker hash for sharing
+// ═══════════════════════════════════════════════════════════════════
+window._csCopyReportURL = function(btn) {
+  var ticker = (window._ddLastSymbol || '').toUpperCase();
+  var url = window.location.origin + window.location.pathname + '#dd/' + ticker;
+
+  // Try modern clipboard API first
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(url).then(function() {
+      _csTbFlashSuccess(btn, 'Copied!');
+    }).catch(function() {
+      _csTbFallbackCopy(url, btn);
+    });
+  } else {
+    _csTbFallbackCopy(url, btn);
+  }
+};
+
+function _csTbFallbackCopy(text, btn) {
+  // Fallback for older browsers
+  var ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.position = 'fixed';
+  ta.style.opacity = '0';
+  document.body.appendChild(ta);
+  ta.select();
+  try {
+    document.execCommand('copy');
+    _csTbFlashSuccess(btn, 'Copied!');
+  } catch (e) {
+    alert('Could not copy. URL is: ' + text);
+  }
+  document.body.removeChild(ta);
+}
+
+function _csTbFlashSuccess(btn, message) {
+  if (!btn) return;
+  var orig = btn.getAttribute('data-tooltip');
+  btn.setAttribute('data-tooltip', message || 'Copied!');
+  btn.style.background = '#059669';
+  btn.style.color = '#fff';
+  btn.style.borderColor = '#059669';
+  setTimeout(function() {
+    btn.setAttribute('data-tooltip', orig);
+    btn.style.background = '';
+    btn.style.color = '';
+    btn.style.borderColor = '';
+  }, 1400);
+}
+
+
+// ═══════════════════════════════════════════════════════════════════
+// AUTO-INJECT: inject toolbar after DD report renders
+// ═══════════════════════════════════════════════════════════════════
+// We hook into both _renderReportLegacy and _renderReportShellAladdin paths
+// by polling deResult for content changes. Lightweight, runs once per render.
+(function() {
+  var lastInnerHTML = '';
+  var checkCount = 0;
+  var pollHandle = null;
+
+  function checkAndInject() {
+    var el = document.getElementById('deResult');
+    if (!el) return;
+    if (el.innerHTML === lastInnerHTML) return;
+    lastInnerHTML = el.innerHTML;
+    // Wait one tick for DOM to settle
+    setTimeout(function() {
+      if (typeof window._csInjectDDToolbar === 'function') {
+        window._csInjectDDToolbar();
+      }
+    }, 50);
+  }
+
+  // Start polling when user navigates to DD tab
+  function startPolling() {
+    if (pollHandle) return;
+    pollHandle = setInterval(checkAndInject, 800);
+    // Stop polling after 10 minutes of inactivity (cleanup)
+    setTimeout(function() {
+      if (pollHandle) { clearInterval(pollHandle); pollHandle = null; }
+    }, 600000);
+  }
+
+  // Hook into existing tab dispatcher — when user is on DD tab, start polling
+  document.addEventListener('DOMContentLoaded', function() {
+    startPolling();
+  });
+  if (document.readyState !== 'loading') {
+    startPolling();
+  }
 })();
 

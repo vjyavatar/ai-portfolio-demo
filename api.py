@@ -19,6 +19,7 @@ print("[STARTUP] Core imports OK")
 import yfinance as _yf_original
 from universe_classifier import UC  # r60: centralized ticker classification
 import data_sources  # r60.2: centralized region-aware fallback
+import finnhub_handlers as _fh  # r63.0: Finnhub adapter for DD endpoint
 from earnings_intel import get_earnings_intel  # r60.2: earnings move intelligence
 print("[STARTUP] yfinance OK")
 
@@ -1796,9 +1797,9 @@ def _safe_float(val, default=0.0):
         return default
 
 # ═══ Celesys version stamp (v4.61.10) ═══════════════════════════════
-APP_VERSION = "v4.62.4"
-APP_BUILD_TIME = 1777487102
-APP_BUILD_DATE = "2026-04-29 18:25:02 UTC"
+APP_VERSION = "v4.63.1"
+APP_BUILD_TIME = 1777489847
+APP_BUILD_DATE = "2026-04-29 19:10:47 UTC"
 APP_RELEASE_NOTES = (
     "v4.62.0: Micro-Cap Hunter scanner (Decide tab) + cumulative r61.x: Aladdin DD entry page (r61.8), "
     "stale-cache fallback (r61.8), multi-factor Bottom Line (r61.7), "
@@ -28758,20 +28759,65 @@ async def investor_due_diligence(email: str = "", symbol: str = "", region: str 
         import numpy as np
         from datetime import datetime as _dt
         
-        # r60.3: Region-aware fallback chain
+        # r60.3+r63.0: Region-aware fallback chain
+        # For US: try Finnhub first (Yahoo blocks Render IP), fall back to yfinance
+        # For IN: keep existing yfinance + NSE chain (Finnhub free tier doesn't have IN)
         info = {}
         hist = None
         data_source = "yfinance"
 
-        try:
-            _yahoo_rate_wait()
-            tk = yf.Ticker(yf_symbol)
-            try: info = tk.info or {}
-            except Exception: info = {}
-            try: hist = tk.history(period="2y", interval="1d")
-            except Exception: hist = None
-        except Exception as _yfe:
-            print(f"[DD] yfinance fetch failed for {yf_symbol}: {_yfe}")
+        # r63.0: Finnhub PRIMARY for US tickers
+        if region == "US":
+            try:
+                fh_info = _fh.get_yfinance_shaped_info(symbol, region="US")
+                if fh_info and fh_info.get("regularMarketPrice"):
+                    info = fh_info
+                    data_source = "finnhub"
+                    print(f"[DD] Finnhub primary HIT for {symbol} — {len(info)} fields")
+            except Exception as _fhe:
+                print(f"[DD] Finnhub fetch failed for {symbol}: {_fhe}")
+
+        # If Finnhub didn't produce a price (or IN ticker), try yfinance
+        if not info or not info.get("regularMarketPrice"):
+            try:
+                _yahoo_rate_wait()
+                tk = yf.Ticker(yf_symbol)
+                try: yf_info = tk.info or {}
+                except Exception: yf_info = {}
+                # If we have partial Finnhub info, MERGE — keep Finnhub fields, fill gaps from yfinance
+                if info:
+                    for k, v in yf_info.items():
+                        if k not in info or info[k] is None:
+                            info[k] = v
+                    if yf_info.get("regularMarketPrice"):
+                        data_source = "finnhub+yfinance"
+                else:
+                    info = yf_info
+                    data_source = "yfinance"
+                try: hist = tk.history(period="2y", interval="1d")
+                except Exception: hist = None
+            except Exception as _yfe:
+                print(f"[DD] yfinance fetch failed for {yf_symbol}: {_yfe}")
+
+        # r63.0: If we have Finnhub price but no hist (Yahoo blocked), try Finnhub history
+        if (hist is None or (hasattr(hist, 'empty') and hist.empty)) and region == "US":
+            try:
+                fh_hist = _fh.get_price_history(symbol, region="US", period_days=730)
+                if fh_hist and fh_hist.get("closes"):
+                    # Build a yfinance-shaped DataFrame
+                    import pandas as _pd
+                    from datetime import datetime as _dt2
+                    idx = [_dt2.fromtimestamp(t) for t in fh_hist["timestamps"]]
+                    hist = _pd.DataFrame({
+                        "Open":   fh_hist["opens"],
+                        "High":   fh_hist["highs"],
+                        "Low":    fh_hist["lows"],
+                        "Close":  fh_hist["closes"],
+                        "Volume": fh_hist["volumes"],
+                    }, index=idx)
+                    print(f"[DD] Finnhub price history: {len(hist)} bars for {symbol}")
+            except Exception as _fhhe:
+                print(f"[DD] Finnhub history fetch failed for {symbol}: {_fhhe}")
 
         _has_yf = info and info.get("regularMarketPrice")
 
@@ -32357,30 +32403,33 @@ async def _v4_61_11_preseed_top_tickers():
 
 @app.get("/api/version")
 async def api_version():
-    """v4.61.10+v4.61.11+v4.62.4: version + build info + disk cache stats."""
+    """v4.61.10+v4.61.11+v4.62.4+v4.63.0: version + caches + Finnhub stats."""
     out = {
         "version": APP_VERSION,
         "build_time": APP_BUILD_TIME,
         "build_date": APP_BUILD_DATE,
         "release_notes": APP_RELEASE_NOTES,
     }
-    # v4.62.4: expose disk cache stats so we can diagnose Yahoo blocking
     try:
         out["dd_disk_cache"] = _dd_disk_cache_stats()
     except Exception as e:
         out["dd_disk_cache"] = {"error": str(e)[:120]}
     try:
         out["memory_cache_size"] = len(_smart_cache)
-        # Diagnostic: show which DD entries ARE cached (so we know what works)
         dd_cached_symbols = sorted({
             k.split(":")[-1] for k in _smart_cache.keys()
             if k.startswith("dd_v") or k.startswith("dd_stale_")
         })
-        out["dd_cached_tickers"] = dd_cached_symbols[:50]  # cap at 50 for response size
+        out["dd_cached_tickers"] = dd_cached_symbols[:50]
         out["dd_cached_count"] = len(dd_cached_symbols)
     except Exception as e:
         out["memory_cache_size"] = -1
         out["_diag_error"] = str(e)[:120]
+    # r63.0: Finnhub diagnostics — confirm key configured + show health
+    try:
+        out["finnhub"] = _fh.get_stats()
+    except Exception as e:
+        out["finnhub"] = {"error": str(e)[:120]}
     return out
 
 @app.get("/api/universe-stats")

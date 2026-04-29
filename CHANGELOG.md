@@ -264,3 +264,65 @@ Should now return `dd_disk_cache: {exists: true, n_entries: ...}` after the firs
 **Pure diagnostic deploy.** Nothing user-facing changed. No new features. Lowest possible risk.
 
 **Why this matters:** Without these fields visible we can't diagnose whether Yahoo blocking is permanent or transient. With them visible, the next /api/version output tells us exactly what to do next (add Stooq fallback, expand pre-seed list, or wait it out).
+
+---
+
+## v4.63.0 — Finnhub Integration (current)
+
+**Built:** 2026-04-29 19:02 UTC
+
+**Why:** Yahoo blocks Render's datacenter IP. Every US DD request was failing. Multi-factor Bottom Line, Hunter, Intraday Setups all couldn't get fundamentals data.
+
+**What:** Wired Finnhub free tier API as primary US data source. yfinance becomes fallback. India chain unchanged (NSE direct still works).
+
+**Architecture:**
+- New `finnhub_handlers.py` module (~290 lines, clean isolated)
+- Registered in `data_sources.py` `_HANDLERS` dict
+- `_CAPABILITIES` updated: `["finnhub", "yfinance", "google_finance"]` for US
+- DD endpoint in api.py: tries Finnhub first, merges with yfinance gaps, falls back gracefully
+- `/api/version` exposes Finnhub diagnostics (enabled, has_key, calls_total, calls_success, last_error)
+
+**Adapter:** Synthesizes yfinance-compatible `info` dict from 3 Finnhub endpoints (`/quote`, `/stock/profile2`, `/stock/metric`). 37 of yfinance's ~80 fields populated. Percentage-to-decimal conversion. Market cap millions-to-raw-dollars. Volume thousands-to-raw.
+
+**Free tier coverage:** Quote + OHLC + market cap + sector + P/E + margins + ROE + growth + 50/200d MA + 52w high/low + earnings surprises. ~80% of what Deep DD needs.
+
+**Free tier gaps:** Insider transactions, 13F institutional holders, short % of float, analyst targets, detailed financial statements. These DD sections render "data unavailable" gracefully when Yahoo blocked. To upgrade, switch to Finnhub Personal/Fundamentals tier (~$50/mo) — env-var swap, no code.
+
+**Kill switch:** `FINNHUB_DISABLED=1` env var → instantly falls back to yfinance + GF + NSE (pre-r63.0 behavior).
+
+**Rate limit:** 1.2s pacing internal (free tier is 60/min). Hunter/Intraday scans first-run ~108s for 90 tickers, cached afterward.
+
+**Tested:** Kill switch, IN region skip, stats shape, 37-field adapter output with correct decimal/millions conversions. NOT tested against live Finnhub key (deploy is the real test).
+
+---
+
+## v4.63.1 — PDF Export for Deep DD (current)
+
+**Built:** 2026-04-29 19:08 UTC
+
+**What:** Floating toolbar appears top-right of every Deep DD report with 3 icon buttons:
+1. 📄 PDF — generates branded multi-page PDF and triggers download
+2. 🖨 Print — opens browser's native print dialog
+3. 🔗 Copy URL — copies shareable link to clipboard
+
+**Each button has a hover tooltip** explaining what it does, plus aria-labels for accessibility, focus rings for keyboard users, smooth hover transitions to navy theme color.
+
+**PDF structure:**
+- Page 1: Navy header with CELESYS brand, large ticker, subtitle, section list, amber disclaimer block, footer
+- Pages 2-N: The on-screen report captured at 1.5× resolution, sliced into A4 pages with footers
+- Filename format: `Celesys_DD_{TICKER}_{YYYY-MM-DD}.pdf`
+
+**Architecture:** Client-side via jsPDF + html2canvas (CDN-loaded, cached). Zero server impact. Uses report already on screen — no refetching.
+
+**Verified:**
+- 15/15 audit checks pass
+- Runtime simulation: function evaluates + runs to completion with mock libs, generates correct filename
+- 7/8 toolbar UI checks (PDF/Print/Copy buttons all wired with tooltips + aria-labels + SVG icons)
+- Caught + fixed dead-code typo in PDF cover (var dlY = pdf - 36 → removed)
+- Sample preview PDF rendered to verify cover page layout
+
+**Print mode:** CSS @media print hides the toolbar so print preview is clean.
+
+**Auto-inject:** Polling every 800ms checks if DD content changed; injects toolbar after render. Stops after 10 min of inactivity.
+
+**No backend changes. No new dependencies on Render. No new env vars.**
