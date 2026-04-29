@@ -28636,64 +28636,154 @@ async def investor_due_diligence(email: str = "", symbol: str = "", region: str 
             "data_quality": "PARTIAL",
         }
 
-        # 11.1 Insider Activity (US strong, India sparse)
+        # 11.1 Insider Activity (US strong, India sparse) — r61.2 robust column handling
         try:
             if data_source == "yfinance" and tk:
+                # ─── Strategy 1: Use insider_purchases (cleaner summary) ───
+                # yfinance returns a 5-row DataFrame with columns like:
+                #   'Insider Purchases Last 6m', 'Shares', 'Trans'
+                # Rows: Purchases / Sales / Net Shares Purchased (Sold) / Total Held / Net Increase
+                summary_data = None
+                try:
+                    _ip = tk.insider_purchases
+                    if _ip is not None and not _ip.empty:
+                        # Convert to dict for robust label lookup
+                        _ip_dict = {}
+                        first_col = _ip.columns[0] if len(_ip.columns) > 0 else None
+                        for _i, _r in _ip.iterrows():
+                            label = str(_r[first_col]).strip() if first_col else str(_i).strip()
+                            shares_val = _safe_float(_r.get("Shares")) if "Shares" in _ip.columns else None
+                            trans_val = _safe_int(_r.get("Trans")) if "Trans" in _ip.columns else None
+                            _ip_dict[label] = {"shares": shares_val, "trans": trans_val}
+                        # Extract counts
+                        buys_summary = _ip_dict.get("Purchases", {}).get("trans") or 0
+                        sells_summary = _ip_dict.get("Sales", {}).get("trans") or 0
+                        buy_shares = _ip_dict.get("Purchases", {}).get("shares") or 0
+                        sell_shares = _ip_dict.get("Sales", {}).get("shares") or 0
+                        net_pct_label = "Net Increase (Decrease) %"
+                        net_pct = None
+                        for k in _ip_dict:
+                            if "net" in k.lower() and ("%" in k or "increase" in k.lower() or "decrease" in k.lower()):
+                                net_pct = _ip_dict[k].get("shares")
+                                break
+                        if buys_summary or sells_summary:
+                            summary_data = {
+                                "buys": buys_summary, "sells": sells_summary,
+                                "buy_shares": buy_shares, "sell_shares": sell_shares,
+                                "net_pct": net_pct,
+                            }
+                except Exception as _ipe:
+                    print(f"[DD] insider_purchases failed for {symbol}: {_ipe}")
+
+                # ─── Strategy 2: Use insider_transactions for recent txn list ───
+                txns = []
+                buys_tx, sells_tx, buy_value, sell_value = 0, 0, 0.0, 0.0
                 _ins_df = None
                 try: _ins_df = tk.insider_transactions
-                except Exception: pass
+                except Exception as _ite:
+                    print(f"[DD] insider_transactions failed for {symbol}: {_ite}")
+
                 if _ins_df is not None and not _ins_df.empty:
-                    # Last 20 transactions
-                    _recent = _ins_df.head(20)
-                    buys, sells, buy_value, sell_value = 0, 0, 0.0, 0.0
-                    txns = []
-                    for _idx, row in _recent.iterrows():
-                        try:
-                            shares = _safe_float(row.get("Shares") if hasattr(row, "get") else None)
-                            value = _safe_float(row.get("Value") if hasattr(row, "get") else None)
-                            txn_type = str(row.get("Transaction") if hasattr(row, "get") else "").lower()
-                            insider = str(row.get("Insider") if hasattr(row, "get") else "")
-                            position = str(row.get("Position") if hasattr(row, "get") else "")
-                            date = str(_idx)[:10] if _idx else None
+                    # Robust column detection — yfinance versions differ
+                    cols = list(_ins_df.columns)
+                    # Find the right column for each field
+                    def _pick_col(candidates):
+                        for cand in candidates:
+                            for c in cols:
+                                if c.strip().lower() == cand.lower():
+                                    return c
+                        return None
+                    col_shares = _pick_col(["Shares", "Shares Traded", "Quantity"])
+                    col_value = _pick_col(["Value", "Total Value", "Trade Value"])
+                    col_txn = _pick_col(["Transaction", "Trans", "Type", "Acquired or Disposed"])
+                    col_insider = _pick_col(["Insider", "Name", "Reporting Name"])
+                    col_position = _pick_col(["Position", "Relation", "Title", "OwnerType"])
 
-                            is_buy = "buy" in txn_type or "purchase" in txn_type
-                            is_sell = "sale" in txn_type or "sell" in txn_type
-                            if is_buy:
-                                buys += 1; buy_value += abs(value)
-                            elif is_sell:
-                                sells += 1; sell_value += abs(value)
+                    # If we couldn't even find a transaction-type column, the schema is unknown
+                    if col_txn:
+                        for _idx, row in _ins_df.head(30).iterrows():
+                            try:
+                                shares = _safe_float(row[col_shares]) if col_shares else None
+                                value = _safe_float(row[col_value]) if col_value else None
+                                txn_type_raw = str(row[col_txn] or "").lower() if col_txn else ""
+                                insider = str(row[col_insider] or "") if col_insider else ""
+                                position = str(row[col_position] or "") if col_position else ""
+                                date = str(_idx)[:10] if _idx else None
 
-                            if len(txns) < 10:
-                                txns.append({
-                                    "date": date, "insider": insider[:30], "position": position[:30],
-                                    "type": "BUY" if is_buy else "SELL" if is_sell else txn_type[:10].upper(),
-                                    "shares": int(shares) if shares else None,
-                                    "value": int(value) if value else None,
-                                })
-                        except Exception: continue
+                                is_buy = ("buy" in txn_type_raw or "purchase" in txn_type_raw or
+                                          "acquisition" in txn_type_raw and "non" not in txn_type_raw)
+                                is_sell = ("sale" in txn_type_raw or "sell" in txn_type_raw or
+                                           "disposition" in txn_type_raw and "non" not in txn_type_raw)
 
-                    net_value = buy_value - sell_value
-                    sentiment = (
-                        "STRONG BUYING" if buys >= 3 and net_value > 0 and buys > sells * 2 else
-                        "BUYING" if buys > sells and net_value > 0 else
-                        "NEUTRAL" if buys == sells else
-                        "SELLING" if sells > buys and net_value < 0 else
-                        "STRONG SELLING" if sells >= 3 and net_value < 0 and sells > buys * 2 else
-                        "MIXED"
-                    )
-                    institutional["insider_activity"] = {
-                        "n_buys_6mo": buys, "n_sells_6mo": sells,
-                        "buy_value_usd": int(buy_value), "sell_value_usd": int(sell_value),
-                        "net_flow_usd": int(net_value),
-                        "sentiment": sentiment,
-                        "transactions": txns,
-                        "data_quality": "FULL",
-                    }
+                                if is_buy and value:
+                                    buys_tx += 1; buy_value += abs(value)
+                                elif is_sell and value:
+                                    sells_tx += 1; sell_value += abs(value)
+
+                                if len(txns) < 10:
+                                    txns.append({
+                                        "date": date, "insider": insider[:30], "position": position[:30],
+                                        "type": ("BUY" if is_buy else "SELL" if is_sell
+                                                 else txn_type_raw[:12].upper().strip()),
+                                        "shares": int(shares) if shares else None,
+                                        "value": int(value) if value else None,
+                                    })
+                            except Exception as _re:
+                                continue
+                    else:
+                        print(f"[DD] insider_transactions schema unknown for {symbol} — cols: {cols[:5]}")
+
+                # ─── Pick the best data source for summary ───
+                # Prefer insider_purchases counts if available; else use parsed txns
+                if summary_data and (summary_data["buys"] or summary_data["sells"]):
+                    buys = summary_data["buys"]
+                    sells = summary_data["sells"]
+                    net_value_disp = None  # we don't have $ value reliably from purchases summary
+                    use_summary = True
+                elif buys_tx > 0 or sells_tx > 0:
+                    buys = buys_tx
+                    sells = sells_tx
+                    net_value_disp = int(buy_value - sell_value)
+                    use_summary = False
                 else:
+                    # Genuinely no data — mark INCOMPLETE
                     institutional["insider_activity"] = {
                         "data_quality": "INCOMPLETE",
-                        "reason": "No insider transactions reported in available filings",
+                        "reason": (
+                            "No insider buy/sell transactions found in last 6 months. "
+                            "This is common for stocks where insiders only receive equity grants."
+                            if (_ins_df is not None and not _ins_df.empty) or summary_data
+                            else "Insider transaction data not available from data provider."
+                        ),
                     }
+                    raise StopIteration  # exit this try block cleanly
+
+                # Sentiment from valid counts
+                if buys >= 3 and buys > sells * 2:
+                    sentiment = "STRONG BUYING"
+                elif buys > sells:
+                    sentiment = "BUYING"
+                elif sells >= 3 and sells > buys * 2:
+                    sentiment = "STRONG SELLING"
+                elif sells > buys:
+                    sentiment = "SELLING"
+                elif buys == sells and buys > 0:
+                    sentiment = "MIXED"
+                else:
+                    sentiment = "NEUTRAL"
+
+                institutional["insider_activity"] = {
+                    "n_buys_6mo": buys,
+                    "n_sells_6mo": sells,
+                    "buy_value_usd": int(buy_value) if buy_value else None,
+                    "sell_value_usd": int(sell_value) if sell_value else None,
+                    "net_flow_usd": net_value_disp,
+                    "net_pct_change": summary_data.get("net_pct") if use_summary else None,
+                    "sentiment": sentiment,
+                    "transactions": txns,
+                    "data_source": "insider_purchases" if use_summary else "insider_transactions",
+                    "data_quality": "FULL" if (buys + sells) >= 3 else "PARTIAL",
+                }
             elif data_source == "NSE":
                 # NSE has promoter holding % via the fundamentals fetch
                 _prom = info.get("_nse_promoter_pct")
@@ -28703,6 +28793,8 @@ async def investor_due_diligence(email: str = "", symbol: str = "", region: str 
                         "promoter_holding_pct": _prom,
                         "reason": "NSE provides promoter % but not transaction-level data",
                     }
+        except StopIteration:
+            pass  # Already set INCOMPLETE state above
         except Exception as _ie:
             institutional["insider_activity"] = {
                 "data_quality": "INCOMPLETE",
@@ -28886,6 +28978,364 @@ async def investor_due_diligence(email: str = "", symbol: str = "", region: str 
         except Exception as _re:
             institutional["risk_adjusted"] = {"data_quality": "INCOMPLETE", "reason": f"Sharpe/DD failed: {str(_re)[:80]}"}
 
+        # ═══ LAYMAN LAYER (r61.1) ═══════════════════════════════════
+        # Every section gets a `plain` (total-beginner) + `analyst` (Bloomberg)
+        # summary, derived from the actual numbers, not hardcoded.
+
+        def _plain(s, *args):
+            """Safe format — returns empty string if any arg is None/missing."""
+            try:
+                return s.format(*args)
+            except Exception:
+                return ""
+
+        # Investment thesis layman
+        if thesis:
+            score = thesis.get("score", 0) or 0
+            verdict_label = thesis.get("verdict") or ""
+            if score >= 80:
+                _plain_th = "Strong company. Most quality checks pass — solid finances, growing, and reasonably priced. The kind of stock most analysts would put in a 'buy' bucket."
+                _analyst_th = f"Investability score {score}/100. {verdict_label}. Multi-factor screen passes."
+            elif score >= 60:
+                _plain_th = "Decent company with some good points and some concerns. Not the strongest pick but not terrible either — depends on what you're looking for."
+                _analyst_th = f"Investability {score}/100. Mixed signals — selective entry warranted."
+            elif score >= 40:
+                _plain_th = "Okay company but with notable weak spots. Some metrics look bad. You'd want to understand what's wrong before buying."
+                _analyst_th = f"Investability {score}/100. Material concerns — defer until catalysts emerge."
+            else:
+                _plain_th = "Weak fundamentals. Most quality checks fail. Probably better stocks to look at unless you have a specific reason."
+                _analyst_th = f"Investability {score}/100. {verdict_label}. Avoid or short candidate."
+            thesis["layman"] = {"plain": _plain_th, "analyst": _analyst_th}
+
+        # Financial Health layman
+        if finance:
+            margin = (info.get("profitMargins") or 0) * 100
+            roe_pct = (roe or 0) * 100
+            de = debt_to_equity or 0
+            issues = []
+            strengths = []
+            if margin > 15: strengths.append("very profitable")
+            elif margin > 5: strengths.append("profitable")
+            elif margin < 0: issues.append("losing money")
+            if roe_pct > 20: strengths.append("excellent returns on equity")
+            elif roe_pct > 10: strengths.append("decent returns on equity")
+            elif roe_pct < 5 and roe_pct >= 0: issues.append("weak returns on equity")
+            if de < 50: strengths.append("low debt")
+            elif de > 200: issues.append("high debt load")
+            if not strengths and not issues:
+                _plain_fh = "Financials look ordinary — nothing jumps out as great or worrying."
+            elif strengths and not issues:
+                _plain_fh = "Healthy company. " + " and ".join(strengths).capitalize() + " — the kind of business you'd want to own."
+            elif issues and not strengths:
+                _plain_fh = "Concerns here. The company has " + " and ".join(issues) + " — be cautious."
+            else:
+                _plain_fh = "Mixed picture. Good things: " + ", ".join(strengths) + ". Watch out for: " + ", ".join(issues) + "."
+            _analyst_fh = f"Margin {margin:.1f}%, ROE {roe_pct:.1f}%, D/E {de:.0f}%. {'Strong' if margin > 10 and roe_pct > 15 else 'Mixed' if margin > 0 else 'Weak'} fundamentals."
+            finance["layman"] = {"plain": _plain_fh, "analyst": _analyst_fh}
+
+        # Sector context layman
+        if sector_data:
+            outperf = sector_data.get("outperformance_pct")
+            if outperf is None:
+                _plain_sc = "Couldn't measure how this stock has done compared to its sector."
+                _analyst_sc = "Sector relative performance unavailable."
+            elif outperf > 50:
+                _plain_sc = f"This stock has crushed its sector — up {outperf:+.1f}% more than the sector average. Way ahead of peers."
+                _analyst_sc = f"Strong sector outperformance: +{outperf:.1f}%. Momentum leader."
+            elif outperf > 10:
+                _plain_sc = f"Beating its sector by about {outperf:+.1f}% — performing nicely vs peers."
+                _analyst_sc = f"Outperforming sector by {outperf:.1f}%. Above-average."
+            elif outperf > -10:
+                _plain_sc = "Performing roughly in line with its sector — neither winning nor losing."
+                _analyst_sc = f"In-line sector performance ({outperf:+.1f}%)."
+            else:
+                _plain_sc = f"Lagging the sector by {abs(outperf):.1f}% — peers are doing better. Could be a bargain or a warning sign."
+                _analyst_sc = f"Underperforming sector by {abs(outperf):.1f}%. Rerating risk or value opportunity."
+            sector_data["layman"] = {"plain": _plain_sc, "analyst": _analyst_sc}
+
+        # Risk Matrix layman
+        if risk_matrix:
+            n_risks = len(risks) if risks else 0
+            health = risk_matrix.get("overall_health", "")
+            if health == "STRONG":
+                _plain_rm = "No red flags found. Balance sheet looks clean, profits are positive, debt is manageable. About as safe as stocks get."
+                _analyst_rm = "Zero flagged risks. All structural checks pass. Investment-grade balance sheet."
+            elif health == "HEALTHY":
+                _plain_rm = "No major concerns. The company is on solid footing financially."
+                _analyst_rm = "No flagged risks. Solid fundamentals."
+            elif health == "MIXED":
+                _plain_rm = f"A couple of yellow flags — {n_risks} concern(s) found. Not a dealbreaker, but worth understanding before buying."
+                _analyst_rm = f"{n_risks} flagged risks. Monitor before initiating."
+            else:
+                _plain_rm = f"Several red flags — {n_risks} risks found. Be careful — these are real problems."
+                _analyst_rm = f"{n_risks} flagged risks. CONCERNING profile."
+            risk_matrix["layman"] = {"plain": _plain_rm, "analyst": _analyst_rm}
+
+        # SWOT layman
+        if swot:
+            n_str = len(swot.get("strengths", []))
+            n_w = len(swot.get("weaknesses", []))
+            n_o = len(swot.get("opportunities", []))
+            n_t = len(swot.get("threats", []))
+            if n_str + n_o > n_w + n_t:
+                _plain_sw = f"Strengths and opportunities outweigh weaknesses and threats ({n_str + n_o} vs {n_w + n_t}). Bullish framework."
+                _analyst_sw = f"S/W ratio: {n_str}/{n_w}. O/T ratio: {n_o}/{n_t}. Net positive."
+            elif n_w + n_t > n_str + n_o:
+                _plain_sw = f"Weaknesses and threats outweigh the positives ({n_w + n_t} vs {n_str + n_o}). Cautious framework."
+                _analyst_sw = f"S/W ratio: {n_str}/{n_w}. O/T ratio: {n_o}/{n_t}. Net negative."
+            else:
+                _plain_sw = "Balanced strengths and weaknesses. The story has both promise and risk in equal measure."
+                _analyst_sw = f"Balanced SWOT. Equal positive/negative factors."
+            swot["layman"] = {"plain": _plain_sw, "analyst": _analyst_sw}
+
+        # Porter layman
+        if porter:
+            ia_score = porter.get("industry_attractiveness")
+            if ia_score is None:
+                _plain_p = "Couldn't fully assess the industry's competitive dynamics — too much missing data."
+                _analyst_p = "INCOMPLETE Porter — insufficient force data."
+            elif ia_score >= 30:
+                _plain_p = f"Pretty good industry to operate in ({ia_score}/50). Competitive pressures are manageable — strong companies should keep their edge."
+                _analyst_p = f"Industry attractiveness {ia_score}/50. Favorable competitive dynamics."
+            elif ia_score >= 15:
+                _plain_p = f"Tough industry ({ia_score}/50). Lots of competition — even good companies have to work hard to stay ahead."
+                _analyst_p = f"Industry attractiveness {ia_score}/50. Moderate competitive pressure."
+            else:
+                _plain_p = f"Brutal industry ({ia_score}/50). Heavy competition makes it hard for any company to keep its margins."
+                _analyst_p = f"Industry attractiveness {ia_score}/50. High competitive pressure."
+            porter["layman"] = {"plain": _plain_p, "analyst": _analyst_p}
+
+        # Catalysts layman
+        if catalysts:
+            ne = catalysts.get("next_earnings")
+            an = catalysts.get("analyst")
+            si = catalysts.get("short_interest")
+            parts_p = []; parts_a = []
+            if ne:
+                d = ne.get("days_until", 99)
+                if d <= 7:
+                    parts_p.append(f"Earnings in {d} day(s) — major event coming")
+                    parts_a.append(f"Earnings T-{d}d (URGENT)")
+                elif d <= 30:
+                    parts_p.append(f"Earnings in {d} days")
+                    parts_a.append(f"Earnings T-{d}d")
+            if an and an.get("upside_pct") is not None:
+                up = an["upside_pct"]
+                if up > 20:
+                    parts_p.append(f"Analysts see {up:+.0f}% upside")
+                    parts_a.append(f"Consensus +{up:.0f}% target ({an.get('recommendation')})")
+                elif up < -10:
+                    parts_p.append(f"Analysts see {up:+.0f}% downside")
+                    parts_a.append(f"Consensus {up:.0f}% downside ({an.get('recommendation')})")
+                else:
+                    parts_p.append(f"Trading near analyst target ({up:+.0f}%)")
+                    parts_a.append(f"Near consensus ({up:+.0f}%)")
+            if si and si.get("squeeze_risk") == "HIGH":
+                parts_p.append(f"Heavily shorted ({si.get('short_pct_float')}% of float) — squeeze possible")
+                parts_a.append(f"High short interest {si.get('short_pct_float')}% — squeeze setup")
+            if parts_p:
+                _plain_c = ". ".join(parts_p) + "."
+                _analyst_c = " | ".join(parts_a)
+            else:
+                _plain_c = "No major near-term catalysts visible. Quiet period."
+                _analyst_c = "No active catalysts."
+            catalysts["layman"] = {"plain": _plain_c, "analyst": _analyst_c}
+
+        # Valuation Detail (DCF) layman
+        if valuation_detail:
+            up = valuation_detail.get("upside_pct")
+            v = valuation_detail.get("verdict") or ""
+            if up is None:
+                _plain_vd = "Couldn't calculate fair value — missing some financial data needed."
+                _analyst_vd = "DCF INCOMPLETE — insufficient cashflow data."
+            elif up > 30:
+                _plain_vd = f"Looks very cheap — fair value math says it should trade {up:+.0f}% higher than today. Big margin of safety if the math is right."
+                _analyst_vd = f"DCF implies {up:+.1f}% upside. {v}."
+            elif up > 10:
+                _plain_vd = f"Looks cheap — fair value is about {up:+.0f}% above current price."
+                _analyst_vd = f"DCF implies {up:+.1f}% upside. {v}."
+            elif up > -10:
+                _plain_vd = "Trading near what the math says it's worth — fairly priced."
+                _analyst_vd = f"Trading at fair value ({up:+.1f}% delta)."
+            else:
+                _plain_vd = f"Looks expensive — fair value math says it's overpriced by about {abs(up):.0f}%. Be careful chasing here."
+                _analyst_vd = f"DCF implies {up:+.1f}% downside. {v}."
+            valuation_detail["layman"] = {"plain": _plain_vd, "analyst": _analyst_vd}
+
+        # Earnings History layman
+        if earnings_history:
+            br = earnings_history.get("beat_rate_pct")
+            trend = earnings_history.get("trend")
+            if br is None:
+                _plain_eh = "No earnings history available to judge how often this company beats expectations."
+                _analyst_eh = "Beat rate unavailable."
+            elif br >= 75:
+                _plain_eh = f"Reliably beats expectations — {br:.0f}% of the time. Track record of delivering."
+                _analyst_eh = f"{br:.0f}% beat rate. Consistent delivery."
+            elif br >= 50:
+                _plain_eh = f"Beats expectations more often than not ({br:.0f}%) but not consistently."
+                _analyst_eh = f"{br:.0f}% beat rate. Inconsistent."
+            else:
+                _plain_eh = f"Misses estimates more often than beating ({br:.0f}% beat rate). Earnings risk."
+                _analyst_eh = f"{br:.0f}% beat rate. Below par."
+            if trend:
+                if "GROWTH" in trend or trend == "GROWING":
+                    _plain_eh += f" EPS is growing — {trend.lower().replace('_', ' ')}."
+                    _analyst_eh += f" EPS trend: {trend}."
+                elif trend == "DECLINING":
+                    _plain_eh += " But EPS is declining — concerning."
+                    _analyst_eh += " EPS trend: DECLINING."
+            earnings_history["layman"] = {"plain": _plain_eh, "analyst": _analyst_eh}
+
+        # Institutional layman (combines insider + holders + peers + chart + sharpe)
+        if institutional:
+            i_parts_p = []; i_parts_a = []
+            ia = institutional.get("insider_activity") or {}
+            if ia.get("sentiment"):
+                s = ia["sentiment"]
+                if "STRONG BUYING" in s:
+                    i_parts_p.append("Insiders are buying their own stock — bullish signal")
+                    i_parts_a.append("Insider net buying.")
+                elif "STRONG SELLING" in s:
+                    i_parts_p.append("Insiders are selling — bearish signal")
+                    i_parts_a.append("Insider net selling.")
+                elif s == "BUYING":
+                    i_parts_p.append("Light insider buying")
+                    i_parts_a.append("Mild insider buying.")
+                elif s == "SELLING":
+                    i_parts_p.append("Light insider selling")
+                    i_parts_a.append("Mild insider selling.")
+                else:
+                    i_parts_p.append("Insider activity is neutral")
+                    i_parts_a.append("Neutral insider flow.")
+
+            ih = institutional.get("institutional_holders") or {}
+            if ih.get("concentration") == "VERY HIGH":
+                i_parts_p.append("very heavily owned by big institutions")
+                i_parts_a.append("Concentrated institutional ownership.")
+            elif ih.get("concentration") == "HIGH":
+                i_parts_p.append("strong institutional ownership")
+                i_parts_a.append("High inst. ownership.")
+            elif ih.get("concentration") == "LOW":
+                i_parts_p.append("low institutional ownership — retail-driven")
+                i_parts_a.append("Low inst. ownership.")
+
+            ra = institutional.get("risk_adjusted") or {}
+            if ra.get("sharpe_grade"):
+                sg = ra["sharpe_grade"]
+                if sg in ("EXCELLENT", "STRONG"):
+                    i_parts_p.append(f"returns are {sg.lower()} adjusted for risk")
+                    i_parts_a.append(f"Sharpe {ra.get('sharpe_ratio')}: {sg}.")
+                elif sg in ("WEAK", "POOR"):
+                    i_parts_p.append(f"poor risk-adjusted returns")
+                    i_parts_a.append(f"Sharpe {ra.get('sharpe_ratio')}: {sg}.")
+            if ra.get("drawdown_grade") in ("SEVERE", "EXTREME"):
+                i_parts_p.append(f"big {ra['drawdown_grade'].lower()} drops in price history")
+                i_parts_a.append(f"Max DD {ra.get('max_drawdown_pct')}%: {ra['drawdown_grade']}.")
+
+            pc = institutional.get("price_chart") or {}
+            if pc.get("return_pct") is not None:
+                rp = pc["return_pct"]
+                if rp > 30:
+                    i_parts_p.append(f"up a strong +{rp:.0f}% over the last year")
+                    i_parts_a.append(f"1Y return +{rp:.1f}%.")
+                elif rp < -20:
+                    i_parts_p.append(f"down {rp:.0f}% over the last year")
+                    i_parts_a.append(f"1Y return {rp:.1f}%.")
+
+            if i_parts_p:
+                _plain_i = ". ".join(i_parts_p[:3]).capitalize() + "."
+                _analyst_i = " ".join(i_parts_a[:4])
+            else:
+                _plain_i = "Limited institutional data available."
+                _analyst_i = "Institutional data sparse."
+            institutional["layman"] = {"plain": _plain_i, "analyst": _analyst_i}
+
+        # ═══ BOTTOM LINE — synthesizes everything ═══
+        bottom_line = {
+            "verdict": None,
+            "verdict_color": "neutral",
+            "headline": None,
+            "watch": None,
+            "concerns": None,
+            "ideal_for": None,
+        }
+        try:
+            score = (thesis or {}).get("score", 0) or 0
+            v = (valuation_detail or {}).get("upside_pct")
+            health = (risk_matrix or {}).get("overall_health", "")
+            ne = (catalysts or {}).get("next_earnings", {}) or {}
+            ra = (institutional or {}).get("risk_adjusted", {}) or {}
+
+            # Headline verdict
+            if score >= 75 and (v is None or v > -10) and health in ("STRONG", "HEALTHY"):
+                bottom_line["verdict"] = "STRONG BUY CANDIDATE"
+                bottom_line["verdict_color"] = "pos"
+            elif score >= 60 and health in ("STRONG", "HEALTHY", "MIXED"):
+                bottom_line["verdict"] = "BUY CANDIDATE"
+                bottom_line["verdict_color"] = "pos"
+            elif score >= 40:
+                bottom_line["verdict"] = "HOLD / SELECTIVE"
+                bottom_line["verdict_color"] = "warn"
+            else:
+                bottom_line["verdict"] = "AVOID"
+                bottom_line["verdict_color"] = "neg"
+
+            # Headline (1 sentence: what is this stock?)
+            name_part = company.get("name", symbol)
+            sector_part = (sector_data or {}).get("sector_etf_name") or sector or "the market"
+            outperf = (sector_data or {}).get("outperformance_pct")
+            outperf_str = f" outperforming {sector_part} by {outperf:+.0f}%" if outperf and outperf > 10 else ""
+            valuation_str = ""
+            if v is not None:
+                if v > 20: valuation_str = f", trading {abs(v):.0f}% below fair value"
+                elif v < -20: valuation_str = f", trading {abs(v):.0f}% above fair value"
+            bottom_line["headline"] = (
+                f"{symbol} ({name_part}) is a {bottom_line['verdict']} based on a {score}/100 "
+                f"investability score{outperf_str}{valuation_str}."
+            )
+
+            # Watch — most important upcoming catalyst
+            if ne and ne.get("days_until", 99) <= 14:
+                d = ne["days_until"]
+                bottom_line["watch"] = (
+                    f"⚠ Earnings on {ne.get('date')} ({d} day(s) away). "
+                    + ("Position size accordingly — IV typically crushes after earnings." if d <= 7
+                       else "Plan entries/exits around the report.")
+                )
+            elif (institutional or {}).get("insider_activity", {}).get("sentiment", "").startswith("STRONG"):
+                s = institutional["insider_activity"]["sentiment"]
+                bottom_line["watch"] = f"⚠ {s} by insiders — meaningful signal worth understanding."
+
+            # Concerns — list the biggest 1-2 negatives
+            concerns_list = []
+            if ra.get("max_drawdown_pct") is not None and ra["max_drawdown_pct"] < -40:
+                concerns_list.append(f"Max drawdown {ra['max_drawdown_pct']}% — has dropped a lot in the past")
+            if (risks or []) and len(risks) >= 2:
+                concerns_list.append(f"{len(risks)} risk flags from the balance sheet")
+            if v is not None and v < -20:
+                concerns_list.append(f"Trades {abs(v):.0f}% above fair value — overpriced")
+            if (earnings_history or {}).get("beat_rate_pct", 100) < 50:
+                concerns_list.append("Misses earnings more than half the time")
+            if concerns_list:
+                bottom_line["concerns"] = "🔴 " + " · ".join(concerns_list[:2])
+
+            # Ideal for — 1 sentence sizing the audience
+            if score >= 75 and (ra.get("sharpe_grade") in ("EXCELLENT", "STRONG")):
+                bottom_line["ideal_for"] = "👉 Suitable for most investor profiles — quality plus consistent risk-adjusted returns."
+            elif ra.get("drawdown_grade") in ("SEVERE", "EXTREME"):
+                bottom_line["ideal_for"] = "👉 Only for investors who can tolerate large drawdowns. Not for the risk-averse."
+            elif score < 40:
+                bottom_line["ideal_for"] = "👉 Not a recommended buy at current levels. Consider better-rated alternatives."
+            elif score >= 60:
+                bottom_line["ideal_for"] = "👉 Suitable for growth-oriented investors comfortable with sector volatility."
+            else:
+                bottom_line["ideal_for"] = "👉 Wait for clearer setup before initiating a position."
+
+        except Exception as _ble:
+            bottom_line["headline"] = f"{symbol} report generated. Review individual sections below."
+
+
         elapsed = round(time.time() - t0, 1)
         try: diag_log("DD", "investor_dd_completed", {"symbol": symbol, "region": region, "score": score, "elapsed_sec": elapsed})
         except Exception: pass
@@ -28906,6 +29356,7 @@ async def investor_due_diligence(email: str = "", symbol: str = "", region: str 
             "valuation_detail": valuation_detail,
             "earnings_history": earnings_history,
             "institutional": institutional,
+            "bottom_line": bottom_line,
             "data_source": data_source,
             "honest_disclaimer": (
                 "All financial metrics from real 10-K/annual report data via Yahoo Finance. "
@@ -30542,6 +30993,13 @@ async def universe_classify_route(ticker: str, region: str = "US", market_cap_us
         return {"success": True, "ticker": sym, "region": region,
                 "tier": UC.classify(sym, region, market_cap_usd=market_cap_usd), "source": "dynamic"}
     return {"success": True, "ticker": sym, "region": region, "tier": "UNKNOWN", "source": "unknown"}
+
+
+@app.get("/ds-preview")
+async def ds_preview_route():
+    """r61.0: Serves the design system preview page. Visit /ds-preview to see it."""
+    from fastapi.responses import FileResponse
+    return FileResponse("static/celesys-ds-preview.html")
 
 
 @app.get("/api/universe-stats")

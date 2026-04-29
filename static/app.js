@@ -11695,6 +11695,7 @@ function renderReport(d){
   
   var h = _ddRegBar;
   h += '<div style="max-width:900px;margin:0 auto">';
+  h += _renderBottomLine(d.bottom_line);  // r61.1
   
   // Top action bar
   h += '<div style="display:flex;gap:8px;justify-content:flex-end;margin-bottom:10px">';
@@ -11751,6 +11752,62 @@ function renderReport(d){
   }
   h += '</div></div>';
   
+  // ═══ LAYMAN BLOCK — r61.1 ═══════════════════════════════════════
+  // Renders 2 lines of plain-English + analyst-note summary at the
+  // top of any section. Call: _renderLayman(sectionData.layman)
+  function _renderLayman(layman) {
+    if (!layman || (!layman.plain && !layman.analyst)) return '';
+    var html = '<div style="margin:0 0 14px 0;padding:10px 12px;background:#f8fafc;border-left:3px solid #1A3A78;border-radius:4px;font-family:Inter,sans-serif">';
+    if (layman.plain) {
+      html += '<div style="display:flex;align-items:flex-start;gap:8px;margin-bottom:6px">';
+      html += '<span style="font-size:9px;font-weight:800;color:#059669;background:#d1fae5;padding:2px 6px;border-radius:3px;letter-spacing:0.5px;flex-shrink:0;margin-top:1px">PLAIN</span>';
+      html += '<span style="font-size:11px;line-height:1.5;color:#334155">' + layman.plain + '</span>';
+      html += '</div>';
+    }
+    if (layman.analyst) {
+      html += '<div style="display:flex;align-items:flex-start;gap:8px">';
+      html += '<span style="font-size:9px;font-weight:800;color:#1e40af;background:#dbeafe;padding:2px 6px;border-radius:3px;letter-spacing:0.5px;flex-shrink:0;margin-top:1px">NOTE</span>';
+      html += '<span style="font-size:11px;line-height:1.5;color:#334155;font-family:\'IBM Plex Mono\',monospace">' + layman.analyst + '</span>';
+      html += '</div>';
+    }
+    html += '</div>';
+    return html;
+  }
+
+  // ═══ BOTTOM LINE — synthesis card at the top of the report ═══
+  function _renderBottomLine(bl) {
+    if (!bl || !bl.headline) return '';
+    var color = bl.verdict_color === 'pos' ? '#059669'
+              : bl.verdict_color === 'neg' ? '#dc2626'
+              : bl.verdict_color === 'warn' ? '#d97706' : '#475569';
+    var bg    = bl.verdict_color === 'pos' ? '#ecfdf5'
+              : bl.verdict_color === 'neg' ? '#fef2f2'
+              : bl.verdict_color === 'warn' ? '#fffbeb' : '#f8fafc';
+    var border= bl.verdict_color === 'pos' ? '#a7f3d0'
+              : bl.verdict_color === 'neg' ? '#fecaca'
+              : bl.verdict_color === 'warn' ? '#fde68a' : '#e2e8f0';
+
+    var h = '<div style="background:' + bg + ';border:2px solid ' + border + ';border-radius:12px;padding:18px 20px;margin-bottom:20px">';
+    h += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">';
+    h += '<span style="font-size:20px">🎯</span>';
+    h += '<span style="font-size:11px;font-weight:800;color:' + color + ';letter-spacing:1.5px;font-family:Inter,sans-serif">BOTTOM LINE</span>';
+    h += '<span style="margin-left:auto;font-size:13px;font-weight:900;color:' + color + ';background:#fff;padding:4px 12px;border-radius:6px;border:1px solid ' + border + ';letter-spacing:0.5px">' + bl.verdict + '</span>';
+    h += '</div>';
+    h += '<div style="font-size:14px;line-height:1.5;color:#0f172a;font-weight:500;margin-bottom:10px">' + bl.headline + '</div>';
+    if (bl.watch) {
+      h += '<div style="font-size:12px;line-height:1.5;color:#92400e;background:#fef3c7;padding:8px 12px;border-radius:6px;margin-bottom:8px">' + bl.watch + '</div>';
+    }
+    if (bl.concerns) {
+      h += '<div style="font-size:12px;line-height:1.5;color:#991b1b;background:#fee2e2;padding:8px 12px;border-radius:6px;margin-bottom:8px">' + bl.concerns + '</div>';
+    }
+    if (bl.ideal_for) {
+      h += '<div style="font-size:12px;line-height:1.5;color:#1e3a8a;background:#dbeafe;padding:8px 12px;border-radius:6px">' + bl.ideal_for + '</div>';
+    }
+    h += '</div>';
+    return h;
+  }
+
+
   // Section: Financial Health
   h += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:20px;margin-bottom:16px">';
   h += '<div style="font-size:14px;font-weight:900;color:var(--text);font-family:Sora,sans-serif;margin-bottom:14px">📈 Financial Health <span style="font-size:9px;font-weight:600;color:#059669;margin-left:6px">REAL DATA</span></div>';
@@ -11901,6 +11958,7 @@ function renderReport(d){
   h += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:20px;margin-bottom:16px">';
   h += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">';
   h += '<div style="font-size:14px;font-weight:900;color:var(--text);font-family:Sora,sans-serif">⚔️ Porter\'s Five Forces</div>';
+  h += _renderLayman((d.porter||{}).layman);
   if (por.data_quality === 'PARTIAL') {
     h += '<div style="font-size:8px;font-weight:800;color:#92400e;background:#fef3c7;padding:3px 8px;border-radius:6px;letter-spacing:0.5px">PARTIAL DATA</div>';
   } else if (por.data_quality === 'INCOMPLETE') {
@@ -11965,6 +12023,7 @@ function renderReport(d){
     var cat = d.catalysts;
     h += '<div style="background:linear-gradient(135deg,#fff,#f0f9ff);border:1px solid #bfdbfe;border-radius:12px;padding:16px;margin-bottom:16px">';
     h += '<div style="font-size:14px;font-weight:900;color:var(--text);font-family:Sora,sans-serif;margin-bottom:10px">📅 Catalysts & Analyst Consensus</div>';
+    h += _renderLayman((d.catalysts||{}).layman);
     h += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px">';
 
     // Next earnings cell
@@ -12029,6 +12088,7 @@ function renderReport(d){
     h += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:16px;margin-bottom:16px">';
     h += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">';
     h += '<div style="font-size:14px;font-weight:900;color:var(--text);font-family:Sora,sans-serif">💰 Valuation — DCF Intrinsic Value</div>';
+    h += _renderLayman((d.valuation_detail||{}).layman);
     if (vd.data_quality === 'INCOMPLETE') {
       h += '<div style="font-size:8px;font-weight:800;color:#6b7280;background:#f3f4f6;padding:3px 8px;border-radius:6px;letter-spacing:0.5px">INCOMPLETE</div>';
     }
@@ -12064,6 +12124,7 @@ function renderReport(d){
     h += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:16px;margin-bottom:16px">';
     h += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">';
     h += '<div style="font-size:14px;font-weight:900;color:var(--text);font-family:Sora,sans-serif">📊 Quarterly Earnings History</div>';
+    h += _renderLayman((d.earnings_history||{}).layman);
     if (eh.beat_rate_pct !== null) {
       var brColor = eh.beat_rate_pct >= 75 ? '#059669' : eh.beat_rate_pct >= 50 ? '#d97706' : '#dc2626';
       h += '<div style="font-size:11px;font-weight:800;color:'+brColor+'">'+eh.beat_rate_pct+'% Beat Rate · '+eh.beat_count+'B / '+eh.miss_count+'M</div>';
@@ -12110,6 +12171,7 @@ function renderReport(d){
     var healthColor = rmv2.overall_health === 'STRONG' ? '#059669' : rmv2.overall_health === 'HEALTHY' ? '#10b981' : rmv2.overall_health === 'MIXED' ? '#d97706' : '#dc2626';
     h += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">';
     h += '<div style="font-size:14px;font-weight:900;color:var(--text);font-family:Sora,sans-serif">✅ Risk Health Checks</div>';
+    h += _renderLayman((d.risk_matrix||{}).layman);
     h += '<div style="font-size:10px;font-weight:800;color:'+healthColor+';background:'+healthColor+'15;padding:3px 10px;border-radius:6px">'+rmv2.overall_health+'</div>';
     h += '</div>';
     rmv2.passed_checks.forEach(function(c){
@@ -12178,12 +12240,19 @@ function renderReport(d){
     }, 100);
   }
 
-  // Section B: Insider Activity timeline
+  // Section B: Insider Activity timeline (r61.2: handles INCOMPLETE properly)
   if (d.institutional && d.institutional.insider_activity) {
     var ia = d.institutional.insider_activity;
+    // r61.2: if buys=0 AND sells=0 AND no transactions parsed, treat as INCOMPLETE
+    var _iaEmpty = (!ia.n_buys_6mo && !ia.n_sells_6mo && (!ia.transactions || !ia.transactions.length));
+    if (_iaEmpty && ia.data_quality !== 'INCOMPLETE') {
+      ia.data_quality = 'INCOMPLETE';
+      ia.reason = ia.reason || 'No buy/sell transactions in available filings';
+    }
     h += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:16px;margin-bottom:16px">';
     h += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">';
     h += '<div style="font-size:14px;font-weight:900;color:var(--text);font-family:Sora,sans-serif">👁 Insider Activity</div>';
+    h += _renderLayman((d.institutional||{}).layman);
     if (ia.sentiment) {
       var sColor = ia.sentiment.indexOf('STRONG BUYING') >= 0 ? '#059669' : ia.sentiment.indexOf('BUYING') >= 0 ? '#10b981' : ia.sentiment.indexOf('STRONG SELLING') >= 0 ? '#dc2626' : ia.sentiment.indexOf('SELLING') >= 0 ? '#f87171' : '#6b7280';
       h += '<div style="font-size:11px;font-weight:800;color:'+sColor+';background:'+sColor+'15;padding:4px 10px;border-radius:6px">'+ia.sentiment+'</div>';

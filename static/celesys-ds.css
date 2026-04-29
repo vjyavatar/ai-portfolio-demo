@@ -1,0 +1,568 @@
+/* ═══════════════════════════════════════════════════════════════════════
+   CELESYS DESIGN SYSTEM — r61.0
+   Aladdin-grade, light theme, medium density.
+
+   This file is ADDITIVE. It defines new tokens and component classes
+   that future screens (Active Trading v2, Deep DD v2, etc.) consume.
+   It does NOT modify or override any existing styles. Safe to deploy.
+
+   Philosophy:
+     1. White background, navy primary, monospace numerics
+     2. Medium density — 12px base, 8px padding, breathable but dense
+     3. Information hierarchy via type weight + color, not size
+     4. Color is data — green/red/amber are reserved for data signals
+     5. Borders are 1px and grey — never decorative
+
+   Token namespacing:  --cs-* (Celesys System)
+   Class namespacing:  cs-* (Celesys component)
+   Existing var(--bg), var(--text), etc. left UNTOUCHED for legacy code.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* ─── 1. TOKENS — single source of truth ─────────────────────────── */
+:root {
+  /* Surfaces — Aladdin neutrals */
+  --cs-bg:           #f5f7fa;       /* page background, slight cool grey */
+  --cs-surface:      #ffffff;       /* primary panel surface */
+  --cs-surface-alt:  #f8fafc;       /* zebra striping, table headers */
+  --cs-surface-hover:#f1f5f9;       /* row hover */
+
+  /* Borders — quiet, structural only */
+  --cs-border:       #e2e8f0;       /* default panel/divider */
+  --cs-border-strong:#cbd5e1;       /* table headers, focus */
+  --cs-border-focus: #1A3A78;       /* active states */
+
+  /* Text — 4-tier hierarchy */
+  --cs-text:         #0f172a;       /* primary content */
+  --cs-text-2:       #334155;       /* secondary, body */
+  --cs-text-3:       #64748b;       /* labels, captions */
+  --cs-text-4:       #94a3b8;       /* placeholder, muted */
+
+  /* Brand — institutional navy */
+  --cs-navy:         #1A3A78;       /* primary actions, headers */
+  --cs-navy-hover:   #142e5c;
+  --cs-navy-soft:    #eef2f9;       /* selected backgrounds */
+  --cs-navy-text:    #0f2548;       /* navy text on white */
+
+  /* Data signals — never decorative */
+  --cs-pos:          #047857;       /* gains, beats, green flags */
+  --cs-pos-soft:     #d1fae5;
+  --cs-pos-bg:       #ecfdf5;
+  --cs-neg:          #b91c1c;       /* losses, misses, red flags */
+  --cs-neg-soft:     #fee2e2;
+  --cs-neg-bg:       #fef2f2;
+  --cs-warn:         #b45309;       /* caution, partial data */
+  --cs-warn-soft:    #fef3c7;
+  --cs-warn-bg:      #fffbeb;
+  --cs-info:         #1e40af;       /* informational */
+  --cs-info-soft:    #dbeafe;
+  --cs-info-bg:      #eff6ff;
+  --cs-neutral:      #475569;       /* no signal */
+  --cs-neutral-soft: #e2e8f0;
+
+  /* Type — institutional pairing */
+  --cs-font-text:    'Inter', -apple-system, system-ui, sans-serif;
+  --cs-font-mono:    'IBM Plex Mono', 'Roboto Mono', ui-monospace, monospace;
+
+  /* Type scale — medium density: 11/12/13/14/16 only */
+  --cs-fs-micro:     10px;          /* status badges, captions */
+  --cs-fs-small:     11px;          /* labels, metadata */
+  --cs-fs-body:      12px;          /* default body, table cells */
+  --cs-fs-data:      13px;          /* numeric values */
+  --cs-fs-heading:   14px;          /* panel headers */
+  --cs-fs-hero:      18px;          /* big numbers (verdicts) */
+  --cs-fs-display:   24px;          /* hero values only */
+
+  /* Weight scale */
+  --cs-fw-regular:   400;
+  --cs-fw-medium:    500;
+  --cs-fw-semi:      600;
+  --cs-fw-bold:      700;
+  --cs-fw-black:     800;
+
+  /* Spacing — 4px base grid */
+  --cs-sp-1:  4px;
+  --cs-sp-2:  8px;
+  --cs-sp-3:  12px;
+  --cs-sp-4:  16px;
+  --cs-sp-5:  20px;
+  --cs-sp-6:  24px;
+  --cs-sp-8:  32px;
+
+  /* Radius — flat, institutional */
+  --cs-r-1: 3px;       /* badges, chips */
+  --cs-r-2: 4px;       /* buttons, inputs */
+  --cs-r-3: 6px;       /* panels, cards */
+  --cs-r-4: 8px;       /* large surfaces */
+
+  /* Elevation — subtle, no drop shadows on flat panels */
+  --cs-elev-0: none;
+  --cs-elev-1: 0 1px 2px rgba(15, 23, 42, 0.04);
+  --cs-elev-2: 0 2px 6px rgba(15, 23, 42, 0.06);
+
+  /* Layout */
+  --cs-header-h:     40px;
+  --cs-subheader-h:  32px;
+  --cs-tabbar-h:     36px;
+  --cs-row-h:        32px;          /* compact data rows */
+  --cs-row-h-tight:  28px;          /* dense scanner rows */
+}
+
+/* ─── 2. RESET WITHIN cs-app ROOTS ───────────────────────────────── */
+.cs-app {
+  font-family: var(--cs-font-text);
+  font-size: var(--cs-fs-body);
+  color: var(--cs-text);
+  background: var(--cs-bg);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+.cs-app *, .cs-app *::before, .cs-app *::after { box-sizing: border-box; }
+
+/* ─── 3. LAYOUT PRIMITIVES — fixed grids, no scroll ──────────────── */
+
+/* Workspace = full-screen container, fixed grid, never overflows */
+.cs-workspace {
+  display: grid;
+  grid-template-rows: var(--cs-header-h) var(--cs-subheader-h) var(--cs-tabbar-h) 1fr;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Canvas = the swappable area below tabs (fills remaining height) */
+.cs-canvas {
+  display: grid;
+  grid-template-columns: 360px 1fr;     /* fixed left rail, flexible right */
+  gap: 0;
+  background: var(--cs-bg);
+  overflow: hidden;
+  min-height: 0;
+}
+
+/* Left rail = persistent across tabs (top trades, monitor, mini-scanner) */
+.cs-rail {
+  background: var(--cs-surface);
+  border-right: 1px solid var(--cs-border);
+  display: grid;
+  grid-template-rows: auto auto 1fr;     /* trades / monitor / mini-scanner */
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Right pane = swaps based on active tab, internal grid */
+.cs-pane {
+  display: grid;
+  background: var(--cs-bg);
+  min-height: 0;
+  overflow: hidden;
+  padding: var(--cs-sp-2);
+  gap: var(--cs-sp-2);
+}
+/* Pane variants: */
+.cs-pane--trades   { grid-template-rows: auto 1fr auto; }      /* selected detail / chain / voice */
+.cs-pane--earnings { grid-template-rows: auto 1fr; }
+.cs-pane--scanner  { grid-template-rows: 1fr; }
+.cs-pane--analytics{ grid-template: repeat(2, 1fr) / repeat(3, 1fr); } /* 2x3 grid */
+.cs-pane--risk     { grid-template-rows: auto auto 1fr; }
+
+
+/* ─── 4. CHROME COMPONENTS — header, subheader, tabbar ──────────── */
+
+.cs-header {
+  background: var(--cs-surface);
+  border-bottom: 1px solid var(--cs-border);
+  display: flex;
+  align-items: center;
+  padding: 0 var(--cs-sp-3);
+  gap: var(--cs-sp-3);
+  font-family: var(--cs-font-mono);
+  font-size: var(--cs-fs-small);
+  letter-spacing: 0.4px;
+  color: var(--cs-text-2);
+}
+.cs-header__brand {
+  font-weight: var(--cs-fw-black);
+  color: var(--cs-navy-text);
+  font-size: var(--cs-fs-body);
+  letter-spacing: 0.5px;
+}
+.cs-header__divider {
+  width: 1px; height: 18px; background: var(--cs-border);
+}
+.cs-header__spacer { flex: 1; }
+
+.cs-subheader {
+  background: var(--cs-surface-alt);
+  border-bottom: 1px solid var(--cs-border);
+  display: flex;
+  align-items: center;
+  padding: 0 var(--cs-sp-3);
+  gap: var(--cs-sp-2);
+  font-size: var(--cs-fs-small);
+  color: var(--cs-text-3);
+}
+
+.cs-tabbar {
+  background: var(--cs-surface);
+  border-bottom: 1px solid var(--cs-border);
+  display: flex;
+  align-items: stretch;
+  padding: 0 var(--cs-sp-2);
+}
+.cs-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 var(--cs-sp-3);
+  font-size: var(--cs-fs-body);
+  font-weight: var(--cs-fw-medium);
+  color: var(--cs-text-3);
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  font-family: var(--cs-font-text);
+  letter-spacing: 0.2px;
+  transition: color 100ms, border-color 100ms;
+}
+.cs-tab:hover { color: var(--cs-text); }
+.cs-tab.is-active {
+  color: var(--cs-navy);
+  border-bottom-color: var(--cs-navy);
+  font-weight: var(--cs-fw-semi);
+}
+.cs-tab__hint {
+  font-family: var(--cs-font-mono);
+  font-size: 9px;
+  font-weight: var(--cs-fw-bold);
+  color: var(--cs-text-4);
+  background: var(--cs-bg);
+  padding: 1px 5px;
+  border-radius: var(--cs-r-1);
+  border: 1px solid var(--cs-border);
+}
+.cs-tab.is-active .cs-tab__hint {
+  color: var(--cs-navy);
+  background: var(--cs-navy-soft);
+  border-color: var(--cs-navy);
+}
+
+/* ─── 5. PANEL — the workhorse component ─────────────────────────── */
+
+.cs-panel {
+  background: var(--cs-surface);
+  border: 1px solid var(--cs-border);
+  border-radius: var(--cs-r-3);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+.cs-panel__head {
+  height: 28px;
+  flex: 0 0 28px;
+  background: var(--cs-surface-alt);
+  border-bottom: 1px solid var(--cs-border);
+  display: flex;
+  align-items: center;
+  padding: 0 var(--cs-sp-3);
+  gap: var(--cs-sp-2);
+  font-size: var(--cs-fs-small);
+  font-weight: var(--cs-fw-bold);
+  color: var(--cs-text-2);
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+}
+.cs-panel__head__spacer { flex: 1; }
+.cs-panel__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;       /* internal scroll only */
+  padding: var(--cs-sp-3);
+}
+.cs-panel__body--flush { padding: 0; }   /* for tables that want to fill */
+
+/* ─── 6. DATA ROW — compact line item ────────────────────────────── */
+
+.cs-row {
+  display: grid;
+  align-items: center;
+  height: var(--cs-row-h);
+  padding: 0 var(--cs-sp-3);
+  border-bottom: 1px solid var(--cs-border);
+  font-size: var(--cs-fs-body);
+  cursor: pointer;
+  transition: background 80ms;
+}
+.cs-row:hover { background: var(--cs-surface-hover); }
+.cs-row.is-selected {
+  background: var(--cs-navy-soft);
+  border-left: 2px solid var(--cs-navy);
+  padding-left: 10px;       /* compensate for border */
+}
+.cs-row--tight { height: var(--cs-row-h-tight); padding: 0 var(--cs-sp-2); }
+
+.cs-row__sym {
+  font-family: var(--cs-font-mono);
+  font-weight: var(--cs-fw-bold);
+  color: var(--cs-text);
+  font-size: var(--cs-fs-body);
+}
+.cs-row__num {
+  font-family: var(--cs-font-mono);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-size: var(--cs-fs-data);
+}
+
+/* ─── 7. BADGES & CHIPS ─────────────────────────────────────────── */
+
+.cs-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  font-size: 9px;
+  font-weight: var(--cs-fw-bold);
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  border-radius: var(--cs-r-1);
+  font-family: var(--cs-font-mono);
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+.cs-badge--neutral { background: var(--cs-neutral-soft); color: var(--cs-neutral); }
+.cs-badge--pos     { background: var(--cs-pos-bg); color: var(--cs-pos); border-color: var(--cs-pos-soft); }
+.cs-badge--neg     { background: var(--cs-neg-bg); color: var(--cs-neg); border-color: var(--cs-neg-soft); }
+.cs-badge--warn    { background: var(--cs-warn-bg); color: var(--cs-warn); border-color: var(--cs-warn-soft); }
+.cs-badge--info    { background: var(--cs-info-bg); color: var(--cs-info); border-color: var(--cs-info-soft); }
+
+.cs-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 9px;
+  font-size: var(--cs-fs-small);
+  font-weight: var(--cs-fw-semi);
+  border-radius: var(--cs-r-1);
+  border: 1px solid var(--cs-border);
+  background: var(--cs-surface);
+  cursor: pointer;
+  font-family: var(--cs-font-mono);
+  color: var(--cs-text-3);
+  letter-spacing: 0.4px;
+  transition: all 100ms;
+}
+.cs-chip:hover { color: var(--cs-text); border-color: var(--cs-border-strong); }
+.cs-chip.is-active {
+  color: var(--cs-navy);
+  background: var(--cs-navy-soft);
+  border-color: var(--cs-navy);
+}
+.cs-chip__count {
+  font-size: 9px;
+  font-weight: var(--cs-fw-bold);
+  background: var(--cs-bg);
+  padding: 1px 5px;
+  border-radius: var(--cs-r-1);
+  min-width: 20px;
+  text-align: center;
+  color: var(--cs-text-4);
+}
+.cs-chip.is-active .cs-chip__count {
+  background: var(--cs-surface);
+  color: var(--cs-navy);
+}
+
+/* ─── 8. TABLE — institutional grid ─────────────────────────────── */
+
+.cs-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--cs-fs-body);
+}
+.cs-table thead th {
+  position: sticky;
+  top: 0;
+  background: var(--cs-surface-alt);
+  border-bottom: 1px solid var(--cs-border-strong);
+  padding: 6px var(--cs-sp-2);
+  font-size: var(--cs-fs-small);
+  font-weight: var(--cs-fw-bold);
+  color: var(--cs-text-3);
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  text-align: left;
+  z-index: 1;
+}
+.cs-table thead th.cs-num { text-align: right; }
+.cs-table tbody td {
+  padding: 6px var(--cs-sp-2);
+  border-bottom: 1px solid var(--cs-border);
+  height: var(--cs-row-h-tight);
+  vertical-align: middle;
+}
+.cs-table tbody tr:hover { background: var(--cs-surface-hover); }
+.cs-table tbody tr.is-self { background: var(--cs-warn-bg); }
+.cs-table tbody tr.is-self td { font-weight: var(--cs-fw-semi); }
+.cs-table .cs-num {
+  font-family: var(--cs-font-mono);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.cs-table .cs-best { color: var(--cs-pos); font-weight: var(--cs-fw-bold); }
+
+/* ─── 9. STAT — labeled numeric value ────────────────────────────── */
+
+.cs-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--cs-sp-2) var(--cs-sp-3);
+  background: var(--cs-surface);
+  border: 1px solid var(--cs-border);
+  border-radius: var(--cs-r-2);
+  min-width: 0;
+}
+.cs-stat__label {
+  font-size: var(--cs-fs-micro);
+  font-weight: var(--cs-fw-bold);
+  color: var(--cs-text-3);
+  text-transform: uppercase;
+  letter-spacing: 0.7px;
+}
+.cs-stat__value {
+  font-family: var(--cs-font-mono);
+  font-size: var(--cs-fs-data);
+  font-weight: var(--cs-fw-bold);
+  color: var(--cs-text);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+.cs-stat__sub {
+  font-size: 9px;
+  color: var(--cs-text-3);
+  font-family: var(--cs-font-mono);
+}
+.cs-stat--lg .cs-stat__value { font-size: var(--cs-fs-hero); }
+.cs-stat--xl .cs-stat__value { font-size: var(--cs-fs-display); }
+.cs-stat--pos .cs-stat__value { color: var(--cs-pos); }
+.cs-stat--neg .cs-stat__value { color: var(--cs-neg); }
+
+/* ─── 10. BUTTONS — institutional, compact ──────────────────────── */
+
+.cs-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  height: 26px;
+  font-size: var(--cs-fs-body);
+  font-weight: var(--cs-fw-semi);
+  font-family: var(--cs-font-text);
+  border-radius: var(--cs-r-2);
+  border: 1px solid var(--cs-border);
+  background: var(--cs-surface);
+  color: var(--cs-text);
+  cursor: pointer;
+  letter-spacing: 0.3px;
+  transition: all 100ms;
+}
+.cs-btn:hover { border-color: var(--cs-border-strong); background: var(--cs-surface-alt); }
+.cs-btn:active { background: var(--cs-surface-hover); }
+.cs-btn--primary {
+  background: var(--cs-navy);
+  color: #fff;
+  border-color: var(--cs-navy);
+}
+.cs-btn--primary:hover { background: var(--cs-navy-hover); border-color: var(--cs-navy-hover); }
+.cs-btn--pos {
+  background: var(--cs-pos);
+  color: #fff;
+  border-color: var(--cs-pos);
+}
+.cs-btn--pos:hover { background: #036b4d; }
+.cs-btn--ghost {
+  background: transparent;
+  border-color: transparent;
+  color: var(--cs-text-3);
+}
+.cs-btn--ghost:hover { background: var(--cs-surface-hover); color: var(--cs-text); }
+.cs-btn--sm { height: 22px; padding: 0 8px; font-size: var(--cs-fs-small); }
+
+/* ─── 11. UTILITIES ─────────────────────────────────────────────── */
+
+.cs-mono { font-family: var(--cs-font-mono); font-variant-numeric: tabular-nums; }
+.cs-text-pos { color: var(--cs-pos); }
+.cs-text-neg { color: var(--cs-neg); }
+.cs-text-warn { color: var(--cs-warn); }
+.cs-text-info { color: var(--cs-info); }
+.cs-text-3 { color: var(--cs-text-3); }
+.cs-text-mute { color: var(--cs-text-4); }
+.cs-divider { width: 1px; height: 16px; background: var(--cs-border); flex-shrink: 0; }
+.cs-divider--h { width: 100%; height: 1px; background: var(--cs-border); }
+
+.cs-flex { display: flex; }
+.cs-flex--center { display: flex; align-items: center; }
+.cs-flex--gap-2 { gap: var(--cs-sp-2); }
+.cs-flex--gap-3 { gap: var(--cs-sp-3); }
+.cs-flex--col { flex-direction: column; }
+.cs-flex--1 { flex: 1; min-width: 0; }
+.cs-grid--2 { display: grid; grid-template-columns: 1fr 1fr; gap: var(--cs-sp-2); }
+.cs-grid--3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--cs-sp-2); }
+.cs-grid--4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--cs-sp-2); }
+
+/* ─── 12. STATE — empty, loading, error ──────────────────────────── */
+
+.cs-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--cs-sp-6);
+  color: var(--cs-text-3);
+  font-size: var(--cs-fs-small);
+  text-align: center;
+  gap: var(--cs-sp-2);
+}
+.cs-state__icon {
+  font-size: 18px;
+  color: var(--cs-text-4);
+}
+.cs-state__title {
+  font-size: var(--cs-fs-body);
+  font-weight: var(--cs-fw-semi);
+  color: var(--cs-text-2);
+}
+.cs-state__hint {
+  font-size: var(--cs-fs-small);
+  color: var(--cs-text-3);
+  max-width: 320px;
+  line-height: 1.4;
+}
+
+/* ─── 13. SCROLLBARS — match Aladdin discretion ─────────────────── */
+
+.cs-app *::-webkit-scrollbar { width: 6px; height: 6px; }
+.cs-app *::-webkit-scrollbar-track { background: transparent; }
+.cs-app *::-webkit-scrollbar-thumb {
+  background: var(--cs-border-strong);
+  border-radius: 3px;
+}
+.cs-app *::-webkit-scrollbar-thumb:hover { background: var(--cs-text-4); }
+
+/* ─── 14. FOCUS — keyboard navigation ───────────────────────────── */
+
+.cs-app button:focus-visible,
+.cs-app .cs-tab:focus-visible,
+.cs-app .cs-chip:focus-visible {
+  outline: 2px solid var(--cs-navy);
+  outline-offset: 1px;
+}
+
+/* ─── 15. RESPONSIVE — collapse to single column on narrow screens ─ */
+
+@media (max-width: 900px) {
+  .cs-canvas { grid-template-columns: 1fr; }
+  .cs-rail { display: none; }
+}

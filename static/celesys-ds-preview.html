@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Celesys DS Preview · r61.0</title>
+<meta name="viewport" content="width=1400, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/celesys-ds.css">
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; }
+  body.cs-app { font-family: var(--cs-font-text); }
+  /* Demo layout — fills viewport */
+  .demo-shell { height: 100vh; display: flex; flex-direction: column; }
+  .demo-banner {
+    background: var(--cs-warn-bg);
+    border-bottom: 1px solid var(--cs-warn-soft);
+    padding: 4px 12px;
+    font-size: var(--cs-fs-small);
+    color: var(--cs-warn);
+    text-align: center;
+    letter-spacing: 0.4px;
+    font-family: var(--cs-font-mono);
+  }
+</style>
+</head>
+<body class="cs-app">
+<div class="demo-shell">
+
+<div class="demo-banner">
+  PREVIEW · r61.0 design system · This is a static mock — no live data. Use this to judge the visual language before migrating screens.
+</div>
+
+<div class="cs-workspace" style="height: calc(100vh - 28px);">
+
+  <!-- ─── HEADER ─────────────────────────────────────────────── -->
+  <div class="cs-header">
+    <span class="cs-header__brand">CELESYS · ACTIVE TRADING</span>
+    <span class="cs-badge cs-badge--neutral">● CLOSED</span>
+    <div class="cs-header__divider"></div>
+
+    <!-- Region toggle -->
+    <div class="cs-flex cs-flex--gap-2">
+      <button class="cs-chip">IN</button>
+      <button class="cs-chip is-active">US</button>
+    </div>
+    <div class="cs-header__divider"></div>
+
+    <!-- Index pills -->
+    <div class="cs-flex cs-flex--gap-2">
+      <button class="cs-chip is-active">SPY</button>
+      <button class="cs-chip">QQQ</button>
+      <button class="cs-chip">IWM</button>
+    </div>
+
+    <span class="cs-header__spacer"></span>
+
+    <!-- Right-side status chips -->
+    <span class="cs-badge cs-badge--warn">RANGING</span>
+    <span class="cs-badge cs-badge--neutral">ALPHA · 0/20</span>
+    <span class="cs-badge cs-badge--pos">RISK OK · 0/3</span>
+    <button class="cs-btn cs-btn--sm">CONNECT UPSTOX</button>
+    <span class="cs-text-3 cs-mono" style="font-size: var(--cs-fs-small)">PAPER: 0</span>
+    <button class="cs-btn cs-btn--ghost cs-btn--sm">🔔</button>
+    <button class="cs-btn cs-btn--ghost cs-btn--sm">⚡</button>
+    <button class="cs-btn cs-btn--primary cs-btn--sm">PRO ON</button>
+  </div>
+
+  <!-- ─── SUBHEADER (Universe filter) ────────────────────────── -->
+  <div class="cs-subheader">
+    <span class="cs-mono" style="font-weight: var(--cs-fw-bold); letter-spacing: 1px; color: var(--cs-text-4); font-size: 9px;">UNIVERSE</span>
+    <button class="cs-chip is-active">ALL <span class="cs-chip__count">389</span></button>
+    <button class="cs-chip">LARGE <span class="cs-chip__count">102</span></button>
+    <button class="cs-chip">MID <span class="cs-chip__count">147</span></button>
+    <button class="cs-chip">SMALL <span class="cs-chip__count">83</span></button>
+    <button class="cs-chip">MICRO <span class="cs-chip__count">17</span></button>
+    <button class="cs-chip">ETF <span class="cs-chip__count">35</span></button>
+    <span class="cs-header__spacer"></span>
+    <span class="cs-mono cs-text-3" style="font-size: var(--cs-fs-small)">389 tickers · US</span>
+  </div>
+
+  <!-- ─── TAB BAR ────────────────────────────────────────────── -->
+  <div class="cs-tabbar">
+    <button class="cs-tab is-active">TRADES <span class="cs-tab__hint">T</span></button>
+    <button class="cs-tab">EARNINGS <span class="cs-tab__hint">E</span></button>
+    <button class="cs-tab">SCANNER <span class="cs-tab__hint">S</span></button>
+    <button class="cs-tab">ANALYTICS <span class="cs-tab__hint">A</span></button>
+    <button class="cs-tab">RISK <span class="cs-tab__hint">R</span></button>
+    <span class="cs-header__spacer"></span>
+    <span class="cs-flex cs-flex--center" style="padding: 0 12px; font-size: var(--cs-fs-small); color: var(--cs-text-3);" class="cs-mono">Last refresh 12s ago</span>
+  </div>
+
+  <!-- ─── CANVAS — left rail + right pane ────────────────────── -->
+  <div class="cs-canvas">
+
+    <!-- ─── LEFT RAIL — persistent across all tabs ────────────── -->
+    <div class="cs-rail">
+
+      <!-- Rail panel 1: Top Trades (compact rows, not big cards) -->
+      <div class="cs-panel" style="border-radius: 0; border-left: 0; border-right: 0; border-top: 0;">
+        <div class="cs-panel__head">
+          TOP TRADES · 5M CLOSE
+          <span class="cs-panel__head__spacer"></span>
+          <span class="cs-mono" style="font-size: 9px; font-weight: var(--cs-fw-medium); color: var(--cs-text-4);">3</span>
+        </div>
+        <div class="cs-panel__body cs-panel__body--flush">
+          <div class="cs-row is-selected" style="grid-template-columns: 50px 30px 50px 1fr auto;">
+            <span class="cs-row__sym">TSLA</span>
+            <span class="cs-badge cs-badge--neg" style="font-size: 8px;">PE</span>
+            <span class="cs-mono cs-text-pos" style="font-weight: var(--cs-fw-bold);">71%</span>
+            <span class="cs-mono cs-text-3" style="font-size: var(--cs-fs-small)">$3.20 → $4.16</span>
+            <span class="cs-badge cs-badge--pos">A</span>
+          </div>
+          <div class="cs-row" style="grid-template-columns: 50px 30px 50px 1fr auto;">
+            <span class="cs-row__sym">AAPL</span>
+            <span class="cs-badge cs-badge--pos" style="font-size: 8px;">CE</span>
+            <span class="cs-mono cs-text-pos" style="font-weight: var(--cs-fw-bold);">66%</span>
+            <span class="cs-mono cs-text-3" style="font-size: var(--cs-fs-small)">$2.01 → $2.44</span>
+            <span class="cs-badge cs-badge--info">B+</span>
+          </div>
+          <div class="cs-row" style="grid-template-columns: 50px 30px 50px 1fr auto; border-bottom: 0;">
+            <span class="cs-row__sym">QQQ</span>
+            <span class="cs-badge cs-badge--neg" style="font-size: 8px;">PE</span>
+            <span class="cs-mono cs-text-pos" style="font-weight: var(--cs-fw-bold);">62%</span>
+            <span class="cs-mono cs-text-3" style="font-size: var(--cs-fs-small)">$0.24 → $0.36</span>
+            <span class="cs-badge cs-badge--info">B</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Rail panel 2: Live Monitor -->
+      <div class="cs-panel" style="border-radius: 0; border-left: 0; border-right: 0;">
+        <div class="cs-panel__head">
+          LIVE MONITOR · 0/3 OPEN
+        </div>
+        <div class="cs-panel__body" style="padding: 8px 12px;">
+          <div class="cs-grid--3">
+            <div class="cs-stat">
+              <div class="cs-stat__label">TODAY NET</div>
+              <div class="cs-stat__value">+0.0%</div>
+            </div>
+            <div class="cs-stat">
+              <div class="cs-stat__label">RECORD</div>
+              <div class="cs-stat__value cs-text-3">—</div>
+            </div>
+            <div class="cs-stat">
+              <div class="cs-stat__label">OPEN</div>
+              <div class="cs-stat__value">0/3</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Rail panel 3: Mini Scanner — fills remaining height -->
+      <div class="cs-panel" style="border-radius: 0; border-left: 0; border-right: 0; border-bottom: 0;">
+        <div class="cs-panel__head">
+          MINI SCANNER · ALL 389
+          <span class="cs-panel__head__spacer"></span>
+          <span class="cs-mono" style="font-size: 9px; color: var(--cs-text-4);">22s</span>
+        </div>
+        <div class="cs-panel__body cs-panel__body--flush">
+          <table class="cs-table">
+            <thead>
+              <tr>
+                <th>SYM</th>
+                <th class="cs-num">SCORE</th>
+                <th>STATUS</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td class="cs-mono" style="font-weight: var(--cs-fw-bold);">SPY</td><td class="cs-num cs-text-mute">0</td><td><span class="cs-badge cs-badge--warn">FOMC</span></td></tr>
+              <tr><td class="cs-mono" style="font-weight: var(--cs-fw-bold);">META</td><td class="cs-num cs-text-mute">0</td><td><span class="cs-badge cs-badge--warn">FOMC</span></td></tr>
+              <tr><td class="cs-mono" style="font-weight: var(--cs-fw-bold);">SMH</td><td class="cs-num cs-text-mute">0</td><td><span class="cs-badge cs-badge--warn">FOMC</span></td></tr>
+              <tr><td class="cs-mono" style="font-weight: var(--cs-fw-bold);">SOXX</td><td class="cs-num cs-text-mute">0</td><td><span class="cs-badge cs-badge--warn">FOMC</span></td></tr>
+              <tr><td class="cs-mono" style="font-weight: var(--cs-fw-bold);">MSFT</td><td class="cs-num cs-text-mute">0</td><td><span class="cs-badge cs-badge--warn">FOMC</span></td></tr>
+              <tr><td class="cs-mono" style="font-weight: var(--cs-fw-bold);">TSLA</td><td class="cs-num cs-mono" style="color: var(--cs-pos); font-weight: var(--cs-fw-bold);">71</td><td><span class="cs-badge cs-badge--pos">A</span></td></tr>
+              <tr><td class="cs-mono" style="font-weight: var(--cs-fw-bold);">AAPL</td><td class="cs-num cs-mono" style="color: var(--cs-pos); font-weight: var(--cs-fw-bold);">66</td><td><span class="cs-badge cs-badge--info">B+</span></td></tr>
+              <tr><td class="cs-mono" style="font-weight: var(--cs-fw-bold);">NVDA</td><td class="cs-num cs-mono" style="color: var(--cs-warn); font-weight: var(--cs-fw-bold);">52</td><td><span class="cs-badge cs-badge--neutral">C</span></td></tr>
+              <tr><td class="cs-mono" style="font-weight: var(--cs-fw-bold);">AMD</td><td class="cs-num cs-mono" style="color: var(--cs-warn); font-weight: var(--cs-fw-bold);">48</td><td><span class="cs-badge cs-badge--neutral">C</span></td></tr>
+              <tr><td class="cs-mono" style="font-weight: var(--cs-fw-bold);">IONQ</td><td class="cs-num cs-mono" style="color: var(--cs-warn); font-weight: var(--cs-fw-bold);">45</td><td><span class="cs-badge cs-badge--warn">MICRO</span></td></tr>
+              <tr><td class="cs-mono" style="font-weight: var(--cs-fw-bold);">PLTR</td><td class="cs-num cs-mono" style="color: var(--cs-warn); font-weight: var(--cs-fw-bold);">42</td><td><span class="cs-badge cs-badge--neutral">C</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </div><!-- /cs-rail -->
+
+
+    <!-- ─── RIGHT PANE — TRADES tab ───────────────────────────── -->
+    <div class="cs-pane cs-pane--trades">
+
+      <!-- Selected ticker header -->
+      <div class="cs-panel">
+        <div class="cs-panel__head">
+          SELECTED · TSLA 375 PE · $3.20
+          <span class="cs-panel__head__spacer"></span>
+          <span class="cs-badge cs-badge--neutral">5M CLOSE</span>
+          <span class="cs-badge cs-badge--warn">FOMC -1d</span>
+          <button class="cs-btn cs-btn--pos cs-btn--sm">ENTER SMALL</button>
+        </div>
+        <div class="cs-panel__body" style="padding: 8px 12px;">
+          <div class="cs-grid--4">
+            <div class="cs-stat cs-stat--lg">
+              <div class="cs-stat__label">CONFIDENCE</div>
+              <div class="cs-stat__value cs-text-pos">71%</div>
+              <div class="cs-stat__sub">grade A</div>
+            </div>
+            <div class="cs-stat cs-stat--lg">
+              <div class="cs-stat__label">SPOT</div>
+              <div class="cs-stat__value">376.02</div>
+              <div class="cs-stat__sub">5m close</div>
+            </div>
+            <div class="cs-stat cs-stat--lg">
+              <div class="cs-stat__label">TARGET</div>
+              <div class="cs-stat__value cs-text-pos">$4.16</div>
+              <div class="cs-stat__sub">+30%</div>
+            </div>
+            <div class="cs-stat cs-stat--lg">
+              <div class="cs-stat__label">STOP</div>
+              <div class="cs-stat__value cs-text-neg">$2.72</div>
+              <div class="cs-stat__sub">-15%</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Earnings Move Intelligence — pinned, prominent -->
+      <div class="cs-panel" style="border-color: var(--cs-info-soft);">
+        <div class="cs-panel__head" style="background: var(--cs-info-bg); color: var(--cs-info);">
+          ⚡ EARNINGS MOVE INTELLIGENCE
+          <span class="cs-panel__head__spacer"></span>
+          <span class="cs-badge cs-badge--pos">LIVE</span>
+        </div>
+        <div class="cs-panel__body" style="padding: 12px;">
+          <!-- Verdict bar -->
+          <div style="display: flex; align-items: center; gap: 12px; padding: 10px 12px; background: var(--cs-pos-bg); border: 1px solid var(--cs-pos-soft); border-radius: var(--cs-r-2); margin-bottom: 12px;">
+            <span style="font-size: 24px; font-weight: 900; color: var(--cs-pos); width: 30px; text-align: center;">↑</span>
+            <div style="flex: 1; min-width: 0;">
+              <div style="font-size: 13px; font-weight: 800; color: var(--cs-pos); letter-spacing: 0.4px;">BUY PREMIUM</div>
+              <div style="font-size: 11px; color: var(--cs-text-2); margin-top: 2px;">Historical avg ±8.2% vs implied ±5.4% — straddle priced cheap relative to history</div>
+            </div>
+          </div>
+          <div class="cs-grid--4">
+            <div class="cs-stat">
+              <div class="cs-stat__label">NEXT EARNINGS</div>
+              <div class="cs-stat__value cs-text-warn">Apr 30</div>
+              <div class="cs-stat__sub">2d away · HIGH</div>
+            </div>
+            <div class="cs-stat">
+              <div class="cs-stat__label">IMPLIED MOVE</div>
+              <div class="cs-stat__value">±5.4%</div>
+              <div class="cs-stat__sub">ATM straddle</div>
+            </div>
+            <div class="cs-stat cs-stat--pos">
+              <div class="cs-stat__label">AVG HIST MOVE</div>
+              <div class="cs-stat__value">±8.2%</div>
+              <div class="cs-stat__sub">last 8 quarters</div>
+            </div>
+            <div class="cs-stat cs-stat--pos">
+              <div class="cs-stat__label">BEAT RATE</div>
+              <div class="cs-stat__value">75%</div>
+              <div class="cs-stat__sub">6B / 2M</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Voice Log -->
+      <div class="cs-panel" style="height: 120px; flex: 0 0 120px;">
+        <div class="cs-panel__head">
+          VOICE LOG
+          <span class="cs-panel__head__spacer"></span>
+          <span class="cs-mono cs-text-3" style="font-size: 9px;">3 events</span>
+        </div>
+        <div class="cs-panel__body" style="padding: 6px 12px;">
+          <div class="cs-flex cs-flex--gap-2" style="align-items: center; padding: 3px 0; font-size: var(--cs-fs-body);">
+            <span class="cs-mono cs-text-3" style="font-size: var(--cs-fs-small); width: 60px;">05:17:03</span>
+            <span style="width: 8px; height: 8px; border-radius: 50%; background: var(--cs-pos);"></span>
+            <span>Selected: <strong>buy small</strong> @ 71%</span>
+          </div>
+          <div class="cs-flex cs-flex--gap-2" style="align-items: center; padding: 3px 0; font-size: var(--cs-fs-body);">
+            <span class="cs-mono cs-text-3" style="font-size: var(--cs-fs-small); width: 60px;">05:16:59</span>
+            <span style="width: 8px; height: 8px; border-radius: 50%; background: var(--cs-info);"></span>
+            <span>Selected TSLA 375 PE — fetching fresh data…</span>
+          </div>
+          <div class="cs-flex cs-flex--gap-2" style="align-items: center; padding: 3px 0; font-size: var(--cs-fs-body);">
+            <span class="cs-mono cs-text-3" style="font-size: var(--cs-fs-small); width: 60px;">05:16:34</span>
+            <span style="width: 8px; height: 8px; border-radius: 50%; background: var(--cs-text-4);"></span>
+            <span class="cs-text-3">Refresh @ 2.01</span>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /cs-pane -->
+
+  </div><!-- /cs-canvas -->
+</div><!-- /cs-workspace -->
+
+</div><!-- /demo-shell -->
+
+</body>
+</html>
