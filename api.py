@@ -902,6 +902,91 @@ def _smart_cache_set(key: str, data, ttl: int = 120):
         for k in expired:
             del _smart_cache[k]
 
+
+# ═══ v4.61.11: Disk-backed cache for DD responses ═══════════════════
+# Survives Render redeploys (in-memory _smart_cache does not).
+# Stored as JSON at _DD_DISK_CACHE_PATH. Keyed by dd_v6:{region}:{symbol}
+# and dd_stale_v1:{region}:{symbol}. Hydrated into _smart_cache on startup.
+_DD_DISK_CACHE_PATH = os.getenv("DD_DISK_CACHE_PATH", "/tmp/celesys_dd_cache.json")
+_DD_DISK_CACHE_LOCK = False  # naive write-lock flag (we don't run threaded writes for this)
+
+def _dd_disk_cache_load():
+    """Read the disk cache and hydrate _smart_cache. Called at startup."""
+    try:
+        if not os.path.exists(_DD_DISK_CACHE_PATH):
+            print(f"[DD-DISK] No disk cache at {_DD_DISK_CACHE_PATH} — starting fresh")
+            return 0
+        with open(_DD_DISK_CACHE_PATH, "r") as f:
+            data = json.load(f)
+        n_loaded = 0
+        n_expired = 0
+        now = time.time()
+        for k, entry in (data.get("entries") or {}).items():
+            ts = entry.get("ts", 0)
+            ttl = entry.get("ttl", 0)
+            payload = entry.get("data")
+            if not payload:
+                continue
+            # Re-write into in-memory _smart_cache
+            # Even if expired, keep stale entries (TTL preserves original)
+            if (now - ts) < ttl:
+                _smart_cache[k] = {"data": payload, "ts": ts, "ttl": ttl}
+                n_loaded += 1
+            else:
+                # Expired — only restore if it's a stale-cache key (7-day window)
+                # Stale entries should still be honored as fallback by caller.
+                if k.startswith("dd_stale_") and (now - ts) < 604800:  # 7 days
+                    _smart_cache[k] = {"data": payload, "ts": ts, "ttl": ttl}
+                    n_loaded += 1
+                else:
+                    n_expired += 1
+        print(f"[DD-DISK] Hydrated {n_loaded} entries from disk ({n_expired} expired)")
+        return n_loaded
+    except Exception as e:
+        print(f"[DD-DISK] Load failed: {e}")
+        return 0
+
+def _dd_disk_cache_save():
+    """Write current DD-related cache entries to disk. Called after each DD success."""
+    global _DD_DISK_CACHE_LOCK
+    if _DD_DISK_CACHE_LOCK:
+        return  # already writing
+    _DD_DISK_CACHE_LOCK = True
+    try:
+        # Collect only DD-related keys (don't dump everything)
+        entries = {}
+        for k, v in _smart_cache.items():
+            if k.startswith("dd_v") or k.startswith("dd_stale_"):
+                entries[k] = v
+        if not entries:
+            return
+        os.makedirs(os.path.dirname(_DD_DISK_CACHE_PATH), exist_ok=True)
+        # Write atomically: write to .tmp then rename
+        tmp_path = _DD_DISK_CACHE_PATH + ".tmp"
+        with open(tmp_path, "w") as f:
+            json.dump({"version": 1, "saved_at": time.time(), "entries": entries}, f, default=str)
+        os.replace(tmp_path, _DD_DISK_CACHE_PATH)
+    except Exception as e:
+        print(f"[DD-DISK] Save failed: {e}")
+    finally:
+        _DD_DISK_CACHE_LOCK = False
+
+def _dd_disk_cache_stats():
+    """Return stats for /api/version diagnostics."""
+    try:
+        if not os.path.exists(_DD_DISK_CACHE_PATH):
+            return {"exists": False}
+        size = os.path.getsize(_DD_DISK_CACHE_PATH)
+        with open(_DD_DISK_CACHE_PATH) as f:
+            data = json.load(f)
+        n = len(data.get("entries") or {})
+        saved_at = data.get("saved_at", 0)
+        age_sec = int(time.time() - saved_at) if saved_at else None
+        return {"exists": True, "size_bytes": size, "n_entries": n, "age_sec": age_sec}
+    except Exception as e:
+        return {"exists": False, "error": str(e)[:80]}
+
+
 # 4. SHARED THREAD POOL — for all blocking IO (yfinance, HTTP scrapes)
 _thread_pool = ThreadPoolExecutor(max_workers=20, thread_name_prefix="celesys")
 
@@ -1711,11 +1796,11 @@ def _safe_float(val, default=0.0):
         return default
 
 # ═══ Celesys version stamp (v4.61.10) ═══════════════════════════════
-APP_VERSION = "v4.61.10"
-APP_BUILD_TIME = 1777432246
-APP_BUILD_DATE = "2026-04-29 03:10:46 UTC"
+APP_VERSION = "v4.61.11"
+APP_BUILD_TIME = 1777433367
+APP_BUILD_DATE = "2026-04-29 03:29:27 UTC"
 APP_RELEASE_NOTES = (
-    "v4.61.10 cumulative: Aladdin DD entry page (r61.8), "
+    "v4.61.11 cumulative + disk-backed cache: Aladdin DD entry page (r61.8), "
     "stale-cache fallback (r61.8), multi-factor Bottom Line (r61.7), "
     "layman blocks every section (r61.7), combined Institutional Summary (r61.6), "
     "insider $ values fix (r61.3), 30-min DD cache (r61.3), "
@@ -29746,11 +29831,16 @@ async def investor_due_diligence(email: str = "", symbol: str = "", region: str 
                 "not_included": ["TAM/SAM/SOM (no free reliable source)", "Customer personas (requires hallucination)", "Industry trends timeline (requires news/M&A APIs)"],
             },
         }
-        # r61.3+r61.8: Cache fresh for 30 min + stale for 7 days
+        # r61.3+r61.8+v4.61.11: Cache fresh + stale + persist to disk
         try:
             _smart_cache_set(_dd_cache_key, _dd_response, ttl=1800)
             _smart_cache_set(_dd_stale_key, _dd_response, ttl=604800)  # 7 days
             print(f"💾 DD cached: fresh 30min + stale 7d for {symbol} ({region})")
+            # v4.61.11: also persist to disk so cache survives Render redeploys
+            try:
+                _dd_disk_cache_save()
+            except Exception as _de:
+                print(f"[DD-DISK] save error (non-fatal): {_de}")
         except Exception as _ce:
             print(f"[DD] cache write failed: {_ce}")
         return _dd_response
@@ -31381,6 +31471,68 @@ async def ds_preview_route():
     """r61.0: Serves the design system preview page. Visit /ds-preview to see it."""
     from fastapi.responses import FileResponse
     return FileResponse("static/celesys-ds-preview.html")
+
+
+
+
+# ═══ v4.61.11: Hydrate DD disk cache on startup ═══
+@app.on_event("startup")
+async def _v4_61_11_hydrate_disk_cache():
+    """Load DD responses from disk so cache survives Render redeploys."""
+    try:
+        n = _dd_disk_cache_load()
+        if n > 0:
+            print(f"✅ v4.61.11: DD cache pre-warmed with {n} entries from disk")
+    except Exception as e:
+        print(f"[DD-DISK] startup hydration failed (non-fatal): {e}")
+
+# ═══ v4.61.11: Pre-seed cache for top tickers (best-effort) ═══
+@app.on_event("startup")
+async def _v4_61_11_preseed_top_tickers():
+    """
+    Fire-and-forget background task that pre-fetches top US/IN tickers
+    so users don't hit cold cache + Yahoo rate-limit on first request.
+
+    Runs ~30s after startup (lets disk hydration finish first).
+    Each ticker is fetched serially with delays to avoid triggering
+    Yahoo rate-limit. Failures are silent.
+    """
+    async def _preseed():
+        try:
+            await asyncio.sleep(30)  # let server warm up + disk hydrate
+            # Skip if disk cache already has fresh entries
+            stats = _dd_disk_cache_stats()
+            if stats.get("n_entries", 0) >= 5:
+                print(f"[DD-PRESEED] Skipping — disk already has {stats['n_entries']} entries")
+                return
+
+            top_us = ["NVDA", "AAPL", "MSFT", "GOOGL", "META", "TSLA", "AMZN", "JPM"]
+            top_in = ["RELIANCE", "TCS", "INFY", "HDFCBANK"]
+            print(f"[DD-PRESEED] Pre-fetching {len(top_us)} US + {len(top_in)} IN top tickers...")
+
+            for region, syms in [("US", top_us), ("IN", top_in)]:
+                for sym in syms:
+                    try:
+                        # Check if already cached fresh (skip if so)
+                        if _smart_cache_get(f"dd_v6:{region}:{sym}"):
+                            continue
+                        # Fetch via the actual endpoint (reuses all logic)
+                        result = await investor_due_diligence(email="", symbol=sym, region=region)
+                        if result.get("success"):
+                            print(f"[DD-PRESEED] ✅ {sym} ({region})")
+                        else:
+                            print(f"[DD-PRESEED] ⚠ {sym} ({region}) — {result.get('error', 'failed')[:60]}")
+                        # Pace requests — Yahoo rate-limits aggressive fetching
+                        await asyncio.sleep(8)
+                    except Exception as e:
+                        print(f"[DD-PRESEED] {sym} ({region}) error: {str(e)[:60]}")
+                        await asyncio.sleep(15)  # back off on errors
+            print(f"[DD-PRESEED] Done")
+        except Exception as e:
+            print(f"[DD-PRESEED] Outer error: {e}")
+
+    # Fire-and-forget — don't block startup
+    asyncio.create_task(_preseed())
 
 
 @app.get("/api/version")

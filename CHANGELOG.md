@@ -139,3 +139,27 @@ window.CELESYS_VERSION
 ```
 
 If you see the OLD version after deploying, your browser is caching the old JS. Hard-refresh: Ctrl+Shift+R (Windows/Linux) or Cmd+Shift+R (Mac).
+
+---
+
+## v4.61.11 — Disk-backed cache (current)
+
+**Built:** 2026-04-29 03:29 UTC
+
+**The fix:** `_smart_cache` is in-memory only — every Render redeploy wiped it, leaving fresh deploys with cold cache. Combined with Yahoo rate-limiting, that meant "Could not retrieve data" on the first request after every push.
+
+**What's new:**
+- Disk-backed cache layer at `/tmp/celesys_dd_cache.json`
+- On DD success → write to memory AND disk
+- On startup → hydrate memory cache from disk (cache survives redeploys)
+- Pre-seed top tickers in background (NVDA, AAPL, MSFT, GOOGL, META, TSLA, AMZN, JPM + RELIANCE, TCS, INFY, HDFCBANK)
+- `/api/version` now reports `dd_disk_cache` stats: `{exists, size_bytes, n_entries, age_sec}`
+- 4 startup hooks (FastAPI 0.104.1 supports stacking): existing prefetch loop + hydrate + pre-seed + (your existing handlers)
+
+**How to verify:**
+```bash
+curl https://celesys.ai/api/version
+```
+Should now return `dd_disk_cache: {exists: true, n_entries: ...}` after the first successful DD.
+
+**Pre-seed pacing:** 8s between requests, 15s back-off on errors. Skips if disk already has ≥5 entries (avoids hammering Yahoo on every redeploy).
