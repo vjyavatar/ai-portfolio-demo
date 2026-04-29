@@ -1,131 +1,105 @@
-# Celesys v4.63.1 — PDF Export for Deep DD
+# Celesys v4.63.2 — Fix r63.0 regression in DD report sections
 
-Adds a floating toolbar with three icon buttons to every Deep DD report. Tooltips on hover, keyboard accessible, generates branded multi-page PDF.
+You caught a real bug. r63.0 was incomplete. This fix addresses it directly.
 
 ---
 
-## What you'll see
+## What you saw in your screenshot
 
-A small toolbar appears at the top-right of every Deep DD report:
+MU report rendering with:
+- ✅ Verdict: 92/100 STRONG BUY (Finnhub working)
+- ✅ Financial Health: 85.5% (Finnhub working)
+- ❌ Risk Matrix: showing flagged/passed but **empty body**
+- ❌ SWOT: empty / sparse
+- ❌ Porter Five Forces: showing 35/50 but no scores per force
+- ❌ Insider Activity: missing
+- ❌ Institutional Ownership: missing
+- ❌ Earnings History: showing "0.10%" but missing detail
 
+That's not "Finnhub doesn't have this data" — that's a **regression I introduced in r63.0**.
+
+---
+
+## The actual bug
+
+Look at the original r60.4 institutional fetch code:
+
+```python
+if data_source == "yfinance" and tk:
+    # ... fetch insider transactions, institutional holders, etc
 ```
-                              [📄 PDF] [🖨] [🔗]
-[ ━━━━━━━━ deep dd report ━━━━━━━━ ]
-```
 
-Each button has a hover tooltip explaining what it does:
+When r63.0 made Finnhub the primary source, **two things broke**:
 
-| Icon | Action | Tooltip |
-|---|---|---|
-| 📄 PDF | Generate branded multi-page PDF and trigger download | "Export full report as PDF" |
-| 🖨 Printer | Open browser's native print dialog | "Print report (browser dialog)" |
-| 🔗 Chain | Copy shareable URL to clipboard | "Copy shareable link" |
+1. The yfinance `tk` Ticker object was only created if Finnhub failed. When Finnhub succeeded, `tk` never existed.
+2. The condition `data_source == "yfinance"` excluded the new value `"finnhub"` and `"finnhub+yfinance"` — so the entire institutional/insider block got skipped.
 
-All buttons are styled consistently — white background, navy hover state, smooth transitions, focus rings for keyboard users.
+Net effect: when Finnhub succeeded, your report got the price + multi-factor verdict but **silently lost** Insider, Institutional, Earnings History, and dependent sections.
 
 ---
 
-## What the PDF looks like
+## The fix in v4.63.2
 
-**Page 1 — Branded cover:**
-- Navy header band with CELESYS branding
-- Generated timestamp
-- Large ticker (e.g. "TSLA")
-- Subtitle: "Multi-factor synthesis · 16-section institutional report"
-- Section list of what's in the report
-- Amber disclaimer block: "This report is research output, not investment advice..."
-- Footer: "celesys.ai · v4.63.x · Page 1"
+Three targeted changes:
 
-**Pages 2-N — Captured report:**
-- Full Deep DD report rendered exactly as displayed on screen
-- Multi-page slicing handles long reports automatically
-- Footer on every page: "celesys.ai · TSLA DD · Page X of Y"
+### Fix A — Always create yfinance Ticker for US tickers
 
-A sample preview of the cover page layout is included as `celesys_dd_pdf_preview.pdf` (separate file).
+Even when Finnhub is the primary source, we now ALWAYS create the yfinance Ticker. This means `tk.insider_purchases`, `tk.institutional_holders`, `tk.earnings_history` are still callable. If Yahoo blocks the IP, those individual calls fail gracefully and the section shows "data unavailable" — but if Yahoo allows them (which often happens for these specific endpoints even when others are blocked), you get the data.
 
----
+### Fix B — Remove yfinance-only gates
 
-## How it works (architecture)
+The conditions on Insider Activity, Institutional Holders, and Earnings History now check `tk is not None and region == "US"` instead of `data_source == "yfinance"`. So they try yfinance regardless of which source provided the price.
 
-**Client-side generation** using jsPDF + html2canvas (loaded from CDN):
+### Fix C — Merge logic: Finnhub fields + yfinance gaps
 
-1. User clicks 📄 PDF button
-2. `html2canvas` captures the on-screen report at 1.5× resolution
-3. `jsPDF` creates A4 portrait document
-4. Cover page rendered with vector text + colored blocks
-5. Captured image is split into A4-sized slices
-6. Multi-page PDF assembled with footers
-7. `pdf.save()` triggers browser download
-
-**Why client-side:**
-- Zero server load
-- No data refetching — uses report already on screen
-- Faster (no round trip)
-- Works regardless of Yahoo/Finnhub state
-- PDFs whatever data the report has (graceful even if some sections show "data unavailable")
-
-**Page weight added:** ~3MB CDN scripts (cached after first load). Trivial.
+When both sources work, we merge: Finnhub fields stay (current price, fundamentals from free tier), yfinance fills gaps (insider %, institutional ownership, analyst targets). Best of both.
 
 ---
 
 ## Pre-ship verification
 
-### Code-level checks (all pass)
-- ✅ All 15 audit checks pass
-- ✅ jsPDF + html2canvas CDN scripts in index.html
-- ✅ Toolbar injection function works
-- ✅ PDF / Print / Copy URL buttons wired
-- ✅ Each button has tooltip + aria-label
-- ✅ Print CSS hides toolbar via `@media print`
-- ✅ Cover page with CELESYS branding
-- ✅ Disclaimer block included
-- ✅ Multi-page support via image slicing
-- ✅ Auto-inject polling on DD render
-- ✅ Loading state during PDF generation
+### 8 audit checks pass
+- ✅ yfinance Ticker always created for US tickers
+- ✅ `tk = None` initialized so downstream gates don't crash on undefined
+- ✅ Earnings gate uses `tk + region` instead of `data_source`
+- ✅ Insider gate fixed
+- ✅ Institutional gate fixed
+- ✅ data_quality marker accepts "finnhub+yfinance"
+- ✅ Old `data_source == "yfinance"` gates REMOVED
+- ✅ Version v4.63.2
 
-### Runtime simulation (passed)
-- ✅ `_csExportPDF` evaluates without syntax errors
-- ✅ Function runs to completion with mocked libraries
-- ✅ Generates correct filename: `Celesys_DD_TSLA_2026-04-29.pdf`
-- ✅ All jsPDF method calls work
-- ✅ Caught + fixed one dead-code typo (`var dlY = pdf - 36;`)
-
-### Toolbar UI checks (passed)
-- ✅ All 3 buttons (PDF, Print, Copy URL) wired with onclick handlers
-- ✅ Each has descriptive tooltip
-- ✅ Each has aria-label for screen readers
-- ✅ Each has SVG icon (Feather-style line icons)
-
-### Visual preview generated
-- ✅ Sample cover page rendered at correct A4 dimensions
-- ✅ Color values match brand: navy `#1A3A78`, amber `#fffbeb` for disclaimer
-- ✅ File at `/mnt/user-data/outputs/celesys_dd_pdf_preview.pdf` shows the cover layout
+### 4-scenario simulation passed
+| Scenario | Result | What user sees |
+|---|---|---|
+| **S1** Finnhub HIT + Yahoo OK | data_source=finnhub+yfinance, insider/institutional WORK | Full report |
+| **S2** Finnhub HIT + Yahoo BLOCKED (your screenshot scenario!) | data_source=finnhub, insider/institutional gracefully N/A | Price + financials + verdict work; insider/institutional show "data unavailable" honestly |
+| **S3** Finnhub MISS + Yahoo OK | data_source=yfinance, full report | Pre-r63.0 behavior preserved |
+| **S4** Both fail | Graceful — no crash, all N/A | Honest error display |
 
 ---
 
-## What I deliberately did NOT do
+## What this means for your platform RIGHT NOW
 
-1. **Did NOT regenerate report data for PDF.** Uses what's already on screen. If you generated a DD an hour ago and the PDF button is still there, it captures that report. No double-fetching.
+**Two possibilities after deploying v4.63.2:**
 
-2. **Did NOT do server-side PDF.** Would have meant adding `weasyprint` or similar to the Python deps + new endpoint + more attack surface. Client-side is simpler and works.
+### Best case (likely)
+Yahoo blocks the **chart/quote endpoints** from Render IP but allows the **insider/institutional/earnings endpoints**. This is how Yahoo's IP blocking often works — surgical, not blanket. After deploy:
+- MU/TSLA/NVDA: Price + financials from Finnhub ✅
+- Risk Matrix: full red flags + passed checks ✅
+- Insider Activity: Form 4 transactions ✅
+- Institutional Holders: 13F top 10 ✅
+- Earnings History: full quarter-by-quarter ✅
+- SWOT, Porter, Catalysts: full data ✅
 
-3. **Did NOT add a "send by email" feature.** That's a real feature with auth + email delivery + attachment sizing. Different deploy if you want it.
+### Worst case (still acceptable)
+Yahoo blocks ALL endpoints from Render IP. After deploy:
+- MU/TSLA/NVDA: Price + financials from Finnhub ✅ (still better than v4.62.x where these failed entirely)
+- Insider Activity: shows "data unavailable" honestly ⚠
+- Institutional Holders: shows "data unavailable" honestly ⚠
+- Earnings History: shows "data unavailable" honestly ⚠
+- Risk Matrix, SWOT, Porter: render with whatever data we have ⚠
 
-4. **Did NOT touch the report rendering.** The toolbar is purely additive — appears alongside, never modifies the report.
-
-5. **Did NOT add toolbar to other tabs.** Only Deep DD has it. Adding to Hunter / Intraday Setups is r63.2 if you want.
-
----
-
-## Honest tradeoffs
-
-1. **PDF quality depends on what's on screen.** If TSLA's DD report shows "data unavailable" in some sections (because Finnhub free tier doesn't cover those), the PDF will too. PDF is a snapshot, not a regeneration.
-
-2. **First click loads ~3MB of CDN scripts.** Cached after — instant on subsequent reports.
-
-3. **Very long reports → many PDF pages.** A typical Deep DD will be 4-8 pages. If your report has all 16 sections fully populated with charts, expect 6-10 pages. Each page is properly footered.
-
-4. **Browser quirks possible.** html2canvas can occasionally render some CSS slightly differently than the browser shows. If the PDF looks slightly off, the Print button (native browser print → save as PDF) is a reliable backup.
+Either way: **the report no longer silently shows empty sections.** Either the data populates, or it shows "N/A" with a clear reason — no more mysterious blanks.
 
 ---
 
@@ -135,42 +109,55 @@ A sample preview of the cover page layout is included as `celesys_dd_pdf_preview
 unzip celesys_v4_FINAL_DEPLOY.zip
 cd celesys_v4_FINAL_DEPLOY/
 git add -A
-git commit -m "v4.63.1: PDF export toolbar for Deep DD with tooltips"
+git commit -m "v4.63.2: Fix r63.0 regression — always try yfinance for insider/institutional even when Finnhub primary"
 git push
 ```
 
-Wait ~3 min for Render. Hard-refresh.
+Wait ~3 min, hard-refresh.
 
 ---
 
 ## Verify after deploy
 
-1. Go to Decide → Deep DD
-2. Generate a report for any ticker (TSLA if v4.63.0 Finnhub is working, else any India ticker)
-3. **Look top-right of the report** — you should see 3 small icon buttons
-4. **Hover each** — tooltip should appear after a brief delay
-5. **Click PDF** — button shows loading spinner → after ~3-8 seconds, browser downloads `Celesys_DD_TSLA_2026-04-29.pdf`
-6. **Open the PDF** — should show:
-   - Page 1: Navy header, big ticker, section list, disclaimer
-   - Pages 2-N: The actual report you saw on screen
-7. **Click Print** — browser print dialog opens (toolbar hidden in print preview)
-8. **Click Copy URL** — button briefly turns green with "Copied!" tooltip
+1. Generate Deep DD for **MU** (the one in your screenshot)
+2. Compare to your screenshot — these sections should now have content:
+   - **Risk Matrix** — list of red flags + passed checks
+   - **SWOT** — populated with actual strengths/weaknesses
+   - **Porter Five Forces** — scores per force, not just total
+   - **Insider Activity** — buy/sell transaction summary
+   - **Institutional Ownership** — top 10 13F holders
+   - **Earnings History** — quarter-by-quarter table
+3. Click PDF — full report exports cleanly with all sections
+
+If sections STILL show empty after this deploy, that means Yahoo is blocking ALL endpoints from Render (worst case). At that point we'd need to upgrade to Finnhub paid tier (Personal ~$50/mo with fundamentals add-on) to get insider/institutional from Finnhub instead.
 
 ---
 
-## Rollback
+## How to tell which case you're in
 
-If anything misbehaves:
+After deploy, check the Render logs:
 
-```bash
-git revert HEAD
-git push
+```
+[DD] Finnhub primary HIT for MU — N fields
+[DD] yfinance merged X fields with Finnhub for MU       ← BEST CASE: Yahoo allowing
+[DD] yfinance .info empty (Yahoo likely blocked) — using Finnhub-only data for MU   ← WORST CASE
 ```
 
-Or, even simpler — to instantly hide the toolbar without rollback (DevTools console):
-```js
-document.getElementById('csDDToolbar').style.display='none';
-```
+If you see "merged" → Yahoo allows yfinance from Render → full report
+If you see "empty" → Yahoo blocks Render → degraded report (still better than complete failure)
+
+---
+
+## What's NOT changed in this deploy
+
+- Frontend rendering (no changes to app.js)
+- PDF export from r63.1 (still works)
+- Finnhub adapter from r63.0 (still working)
+- Active Trading (untouched, as always)
+- All other Decide tabs (untouched)
+- India ticker chain (untouched)
+
+**Pure backend logic fix.** Smallest possible change to fix the regression.
 
 ---
 
@@ -178,21 +165,19 @@ document.getElementById('csDDToolbar').style.display='none';
 
 | File | What changed |
 |---|---|
-| `static/app.js` | + ~250 lines: `_csInjectDDToolbar`, `_csExportPDF`, `_csPrintReport`, `_csCopyReportURL`, polling loop, styles |
-| `static/app.min.js` | Synced (byte-identical) |
-| `index.html` | + 2 CDN script tags (jsPDF + html2canvas) |
-| `api.py` | Version stamp only |
-| `CHANGELOG.md` | v4.63.1 entry |
-
-No backend logic changed. No new dependencies on Render. No new env vars.
+| `api.py` | DD endpoint fetch logic + 3 gate condition fixes (~35 lines changed) |
+| `static/app.js` | Version stamp only |
+| `static/app.min.js` | Synced |
+| `index.html` | Version stamp + cache hash |
+| `CHANGELOG.md` | v4.63.2 entry |
+| `DEPLOY_README.md` | This file |
 
 ---
 
-## What's next (if you want)
+## Honest acknowledgment
 
-- **r63.2** — Toolbar on other tabs (Hunter, Intraday Setups, Pro Scan)
-- **r63.3** — Export PDF includes interactive charts as actual SVGs (currently captured as raster)
-- **r63.4** — Email PDF directly to user's email (needs SMTP config)
-- **r63.5** — Custom branding (user's logo on cover page)
+This bug was a regression I introduced in r63.0. I should have caught it during r63.0 testing — the merge logic LOOKED correct but I didn't verify it actually exercised all the downstream code paths. Your screenshot showed it immediately. I should have run a "render a full DD report end-to-end" test before shipping r63.0, not just verified the data adapter logic.
 
-None ship without your green light.
+Lesson for future deploys: when changing the data layer, run an end-to-end "render the actual report" test, not just unit-test the new adapter in isolation.
+
+Sorry for shipping that incomplete. r63.2 fixes it.

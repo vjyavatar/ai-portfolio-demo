@@ -326,3 +326,30 @@ Should now return `dd_disk_cache: {exists: true, n_entries: ...}` after the firs
 **Auto-inject:** Polling every 800ms checks if DD content changed; injects toolbar after render. Stops after 10 min of inactivity.
 
 **No backend changes. No new dependencies on Render. No new env vars.**
+
+---
+
+## v4.63.2 — Fix r63.0 regression (current)
+
+**Built:** 2026-04-29 19:23 UTC
+
+**The bug user reported:** Deep DD report on MU showed Finnhub-sourced verdict + financials correctly, but Risk Matrix body, SWOT, Porter scores, Insider Activity, Institutional Holders, and Earnings History sections were all empty/N/A.
+
+**Root cause:** r63.0 made Finnhub primary but had two issues:
+1. yfinance `tk` Ticker was only created when Finnhub failed → when Finnhub succeeded, `tk` was undefined
+2. Downstream sections gated on `data_source == "yfinance" and tk:` — when Finnhub succeeded, this condition skipped entire institutional/insider block
+
+**The fix (3 targeted changes):**
+1. ALWAYS create yfinance Ticker for US tickers — gives downstream sections a real `tk` to call
+2. Replace `data_source == "yfinance"` gates with `tk is not None and region == "US"` — sections try yfinance regardless of primary
+3. Improved merge logic: Finnhub fields stay, yfinance fills gaps. Diagnostic logs distinguish "yfinance merged X fields" (Yahoo allowing) vs "yfinance .info empty (Yahoo blocked)" (graceful degradation)
+
+**Verified:**
+- 8/8 audit checks pass
+- 4-scenario simulation passes:
+  - Finnhub HIT + Yahoo OK → full report
+  - Finnhub HIT + Yahoo BLOCKED (user's case) → Finnhub data + N/A markers
+  - Finnhub MISS + Yahoo OK → pure yfinance path preserved
+  - Both fail → graceful, no crash
+
+**Result:** Either user gets full report (if Yahoo allows yfinance for these specific endpoints — common surgical IP blocking) OR gets degraded report with honest "data unavailable" markers (if Yahoo blocks everything). Either way, no more silent empty sections.

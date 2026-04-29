@@ -1797,9 +1797,9 @@ def _safe_float(val, default=0.0):
         return default
 
 # ═══ Celesys version stamp (v4.61.10) ═══════════════════════════════
-APP_VERSION = "v4.63.1"
-APP_BUILD_TIME = 1777489847
-APP_BUILD_DATE = "2026-04-29 19:10:47 UTC"
+APP_VERSION = "v4.63.2"
+APP_BUILD_TIME = 1777490585
+APP_BUILD_DATE = "2026-04-29 19:23:05 UTC"
 APP_RELEASE_NOTES = (
     "v4.62.0: Micro-Cap Hunter scanner (Decide tab) + cumulative r61.x: Aladdin DD entry page (r61.8), "
     "stale-cache fallback (r61.8), multi-factor Bottom Line (r61.7), "
@@ -28759,12 +28759,14 @@ async def investor_due_diligence(email: str = "", symbol: str = "", region: str 
         import numpy as np
         from datetime import datetime as _dt
         
-        # r60.3+r63.0: Region-aware fallback chain
-        # For US: try Finnhub first (Yahoo blocks Render IP), fall back to yfinance
+        # r60.3+r63.0+r63.2: Region-aware fallback chain
+        # For US: try Finnhub first (Yahoo blocks Render IP), but ALWAYS create
+        # yfinance Ticker so insider/institutional/Porter sections can still try.
         # For IN: keep existing yfinance + NSE chain (Finnhub free tier doesn't have IN)
         info = {}
         hist = None
         data_source = "yfinance"
+        tk = None  # r63.2: ensure tk is always defined (None if yfinance unavailable)
 
         # r63.0: Finnhub PRIMARY for US tickers
         if region == "US":
@@ -28777,27 +28779,37 @@ async def investor_due_diligence(email: str = "", symbol: str = "", region: str 
             except Exception as _fhe:
                 print(f"[DD] Finnhub fetch failed for {symbol}: {_fhe}")
 
-        # If Finnhub didn't produce a price (or IN ticker), try yfinance
-        if not info or not info.get("regularMarketPrice"):
-            try:
-                _yahoo_rate_wait()
-                tk = yf.Ticker(yf_symbol)
-                try: yf_info = tk.info or {}
-                except Exception: yf_info = {}
-                # If we have partial Finnhub info, MERGE — keep Finnhub fields, fill gaps from yfinance
-                if info:
-                    for k, v in yf_info.items():
-                        if k not in info or info[k] is None:
-                            info[k] = v
-                    if yf_info.get("regularMarketPrice"):
-                        data_source = "finnhub+yfinance"
+        # r63.2: ALWAYS create yfinance Ticker — even when Finnhub provided price.
+        # Insider/institutional sections downstream need `tk` to be a real Ticker.
+        # If Yahoo blocks the IP, individual tk.X calls fail gracefully (return None).
+        try:
+            _yahoo_rate_wait()
+            tk = yf.Ticker(yf_symbol)
+            try: yf_info = tk.info or {}
+            except Exception: yf_info = {}
+
+            # Merge: Finnhub fields stay, yfinance fills gaps
+            if info and info.get("regularMarketPrice"):
+                # Finnhub got the price; merge yfinance fields where Finnhub has gaps
+                merged_count = 0
+                for k, v in (yf_info or {}).items():
+                    if k not in info or info[k] is None:
+                        info[k] = v
+                        merged_count += 1
+                if yf_info and yf_info.get("regularMarketPrice"):
+                    data_source = "finnhub+yfinance"
+                    print(f"[DD] yfinance merged {merged_count} fields with Finnhub for {symbol}")
                 else:
-                    info = yf_info
-                    data_source = "yfinance"
-                try: hist = tk.history(period="2y", interval="1d")
-                except Exception: hist = None
-            except Exception as _yfe:
-                print(f"[DD] yfinance fetch failed for {yf_symbol}: {_yfe}")
+                    print(f"[DD] yfinance .info empty (Yahoo likely blocked) — using Finnhub-only data for {symbol}")
+            else:
+                # Finnhub didn't produce data — fall back to yfinance entirely
+                info = yf_info or {}
+                data_source = "yfinance"
+
+            try: hist = tk.history(period="2y", interval="1d")
+            except Exception: hist = None
+        except Exception as _yfe:
+            print(f"[DD] yfinance fetch failed for {yf_symbol}: {_yfe}")
 
         # r63.0: If we have Finnhub price but no hist (Yahoo blocked), try Finnhub history
         if (hist is None or (hasattr(hist, 'empty') and hist.empty)) and region == "US":
@@ -29531,9 +29543,10 @@ async def investor_due_diligence(email: str = "", symbol: str = "", region: str 
             "data_quality": "INCOMPLETE",
         }
         try:
-            # Use yfinance earnings_history (US) or NSE quarterlyResults (IN)
+            # r63.2: try yfinance regardless of primary source — tk exists
+            # If Yahoo blocks, the call fails gracefully and we fall through.
             qh_records = []
-            if data_source == "yfinance":
+            if tk is not None and region == "US":
                 try:
                     eh_df = tk.earnings_history if hasattr(tk, "earnings_history") else None
                     if eh_df is not None and not eh_df.empty:
@@ -29588,7 +29601,7 @@ async def investor_due_diligence(email: str = "", symbol: str = "", region: str 
                         "STABLE" if abs(eps_actuals[-1] - eps_actuals[0]) / max(abs(eps_actuals[0]), 0.01) < 0.10 else
                         "DECLINING"
                     )
-                earnings_history["data_quality"] = "FULL" if data_source == "yfinance" else "PARTIAL"
+                earnings_history["data_quality"] = "FULL" if (data_source == "yfinance" or "yfinance" in data_source) else "PARTIAL"
             else:
                 earnings_history["incomplete_reason"] = "No quarterly earnings data available from " + data_source
         except Exception as _ehee:
@@ -29631,9 +29644,11 @@ async def investor_due_diligence(email: str = "", symbol: str = "", region: str 
             "data_quality": "PARTIAL",
         }
 
-        # 11.1 Insider Activity (US strong, India sparse) — r61.2 robust column handling
+        # 11.1 Insider Activity (US strong, India sparse) — r61.2 + r63.2
+        # r63.2: Try yfinance even when Finnhub is primary — if Yahoo blocks,
+        # tk.insider_purchases will fail gracefully and section shows N/A.
         try:
-            if data_source == "yfinance" and tk:
+            if tk is not None and region == "US":
                 # ─── Strategy 1: Use insider_purchases (cleaner summary) ───
                 # yfinance returns a 5-row DataFrame with columns like:
                 #   'Insider Purchases Last 6m', 'Shares', 'Trans'
@@ -29801,9 +29816,9 @@ async def investor_due_diligence(email: str = "", symbol: str = "", region: str 
                 "reason": f"Insider fetch failed: {str(_ie)[:80]}",
             }
 
-        # 11.2 Institutional Holders (top 10)
+        # 11.2 Institutional Holders (top 10) — r63.2: always try yfinance
         try:
-            if data_source == "yfinance" and tk:
+            if tk is not None and region == "US":
                 _ih_df = None
                 try: _ih_df = tk.institutional_holders
                 except Exception: pass
