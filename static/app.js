@@ -1,9 +1,9 @@
 // ═══ Celesys version stamp ═══
-window.CELESYS_VERSION = "v4.61.11";
-window.CELESYS_BUILD_TIME = 1777433367;
-window.CELESYS_BUILD_DATE = "2026-04-29 03:29:27 UTC";
+window.CELESYS_VERSION = "v4.62.2";
+window.CELESYS_BUILD_TIME = 1777470644;
+window.CELESYS_BUILD_DATE = "2026-04-29 13:50:44 UTC";
 console.log("%c━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "color:#1A3A78");
-console.log("%c CELESYS v4.61.11 %c loaded · 2026-04-29 03:29:27 UTC",
+console.log("%c CELESYS v4.62.2 %c loaded · 2026-04-29 03:29:27 UTC",
   "background:#1A3A78;color:#fff;font-weight:900;padding:3px 8px;border-radius:3px;font-family:monospace",
   "color:#1A3A78;font-weight:700;font-family:monospace");
 console.log("%c━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "color:#1A3A78");
@@ -2373,7 +2373,7 @@ try{if(window._stockData)createCharts(window._stockData)}catch(e){console.warn('
 var TAB_GROUPS = {
   overview: {tabs: ['quick'], labels: ['Summary'], default: 'quick'},
   research: {tabs: ['analysis','dcf','equity','compare'], labels: ['AI Analysis','DCF Valuation','Research','Compare'], default: 'analysis'},
-  decide:   {tabs: ['decision','toptrades','topinvest','deepdd','proscan','reports','pms'], labels: ['Analyze Stock','Top Trades','Top Investments','🔬 Deep DD','🔬 Pro Scan','📊 Reports','📊 PMS'], default: 'decision'},
+  decide:   {tabs: ['decision','toptrades','topinvest','deepdd','mchunter','intraday','proscan','reports','pms'], labels: ['Analyze Stock','Top Trades','Top Investments','🔬 Deep DD','🎯 Micro-Cap Hunter','⚡ Intraday Setups','🔬 Pro Scan','📊 Reports','📊 PMS'], default: 'decision'},
   dream:    {tabs: ['dreamportfolio','multibagger','momentumradar','highprob','optionspulse','tradeticket','microcap'], labels: ['🌟 Dream Portfolio','🔥 Multibagger Hunter','⚡ Momentum Radar','🎯 High-Prob Setups','⚡ Options Pulse','🎫 Trade Ticket','🏆 Micro-Cap Challenge'], default: 'dreamportfolio'},
   trading:  {tabs: ['trades','smarttrades','stockintel','scanner','valreport','backtest','journal','aiassist'], labels: ['Algo Trades','Smart Trades','Stock Intel','Scanner','Valuation','Backtest','Journal','AI Assistant'], default: 'trades'},
   markets:  {tabs: ['indices','daily','newsimpact','assets'], labels: ['Top Performers','Market Daily','📰 News Impact','Global Assets'], default: 'indices'},
@@ -2570,7 +2570,7 @@ if(_cc&&tab!=='quick')_cc.style.display='none';
 
 
 // btnMap
-const btnMap={quick:'tabBtnOverview',analysis:'tabBtnResearch',dcf:'tabBtnResearch',equity:'tabBtnResearch',compare:'tabBtnTools',indices:'tabBtnMarkets',finance:'tabBtnTools',daily:'tabBtnMarkets',assets:'tabBtnMarkets',decision:'tabBtnDecide',toptrades:'tabBtnDecide',topinvest:'tabBtnDecide',reports:'tabBtnDecide',proscan:'tabBtnDecide',pms:'tabBtnDecide',deepdd:'tabBtnDecide',dreamportfolio:'tabBtnDream',multibagger:'tabBtnDream',momentumradar:'tabBtnDream',highprob:'tabBtnDream',optionspulse:'tabBtnDream',tradeticket:'tabBtnDream',microcap:'tabBtnDream',trades:'tabBtnTrading',stockintel:'tabBtnTrading',scanner:'tabBtnTrading',valreport:'tabBtnTrading',backtest:'tabBtnTrading',smarttrades:'tabBtnTrading',journal:'tabBtnTrading',aiassist:'tabBtnTrading',education:'tabBtnTools',gems:'tabBtnOverview',picks:'tabBtnOverview',funds:'tabBtnTools'};
+const btnMap={quick:'tabBtnOverview',analysis:'tabBtnResearch',dcf:'tabBtnResearch',equity:'tabBtnResearch',compare:'tabBtnTools',indices:'tabBtnMarkets',finance:'tabBtnTools',daily:'tabBtnMarkets',assets:'tabBtnMarkets',decision:'tabBtnDecide',toptrades:'tabBtnDecide',topinvest:'tabBtnDecide',reports:'tabBtnDecide',proscan:'tabBtnDecide',pms:'tabBtnDecide',deepdd:'tabBtnDecide',mchunter:'tabBtnDecide',intraday:'tabBtnDecide',dreamportfolio:'tabBtnDream',multibagger:'tabBtnDream',momentumradar:'tabBtnDream',highprob:'tabBtnDream',optionspulse:'tabBtnDream',tradeticket:'tabBtnDream',microcap:'tabBtnDream',trades:'tabBtnTrading',stockintel:'tabBtnTrading',scanner:'tabBtnTrading',valreport:'tabBtnTrading',backtest:'tabBtnTrading',smarttrades:'tabBtnTrading',journal:'tabBtnTrading',aiassist:'tabBtnTrading',education:'tabBtnTools',gems:'tabBtnOverview',picks:'tabBtnOverview',funds:'tabBtnTools'};
 
 // Hide all
 document.querySelectorAll('.sc[data-tab]').forEach(s=>{s.style.display='none';s.style.opacity='';s.style.transform='';s.style.animation=''});
@@ -2597,7 +2597,7 @@ b.style.background='var(--blue)';b.style.color='#fff';b.style.borderColor='var(-
 // 2) Show matching tab content (sections + inline data-tab elements)
 // dreamportfolio and multibagger render into the decision section's deResult
 var _showTab = tab;
-if(tab==='dreamportfolio'||tab==='multibagger'||tab==='momentumradar'||tab==='highprob'||tab==='optionspulse'||tab==='tradeticket'||tab==='microcap'||tab==='deepdd'||tab==='pms') _showTab='decision';
+if(tab==='dreamportfolio'||tab==='multibagger'||tab==='momentumradar'||tab==='highprob'||tab==='optionspulse'||tab==='tradeticket'||tab==='microcap'||tab==='deepdd'||tab==='pms'||tab==='mchunter'||tab==='intraday') _showTab='decision';
 // Show tab sections with animation
 document.querySelectorAll('.sc[data-tab="'+_showTab+'"]').forEach(function(s,idx){
 if(_showTab==='quick' && s.dataset.subtab) return;
@@ -2836,6 +2836,193 @@ var _ttDH=document.getElementById('deHeader');if(_ttDH)_ttDH.style.display='none
 window._activeTradeTicketTab=true;
 if(typeof loadTradeTicket==='function')setTimeout(loadTradeTicket,100);
 }
+
+// ═══════════════════════════════════════════════════════════════════
+// r62.0: MICRO-CAP HUNTER — Decide tab discovery scanner
+// ═══════════════════════════════════════════════════════════════════
+window._activeMicroCapHunterTab = false;
+
+window.loadMicroCapHunter = function(forceReg) {
+  if (!window._activeMicroCapHunterTab) return;
+  var el = document.getElementById('deResult');
+  if (!el) return;
+  var reg = forceReg || window._deRegion || 'US';
+  window._deRegion = reg;
+  var csym = reg === 'US' ? '$' : '₹';
+
+  var _eml = document.getElementById('email');
+  var email = window._verifiedEmail || (_eml ? (_eml.dataset.real || _eml.value) : '').trim().toLowerCase();
+
+  // Region toggle bar (consistent with other Decide screens)
+  var _regBar = (typeof _renderRegionToggle === 'function')
+    ? _renderRegionToggle('loadMicroCapHunter', reg)
+    : '';
+
+  // Loading skeleton
+  el.innerHTML = _regBar + (
+    '<div style="max-width:1280px;margin:0 auto;padding:0 8px">' +
+    '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:14px 18px;margin-bottom:14px;display:flex;align-items:center;gap:14px">' +
+      '<div style="width:40px;height:40px;background:#1A3A78;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:14px;font-weight:900;font-family:Sora,sans-serif">MH</div>' +
+      '<div style="flex:1">' +
+        '<div style="font-size:16px;font-weight:900;color:#0f172a;font-family:Sora,sans-serif">Micro-Cap Hunter</div>' +
+        '<div style="font-size:10px;color:#64748b;font-family:\'IBM Plex Mono\',monospace;letter-spacing:0.5px;margin-top:2px">SCANNING UNIVERSE · ' + (reg === 'US' ? 'US' : 'INDIA NSE') + '</div>' +
+      '</div>' +
+      '<div style="font-size:9px;color:#1A3A78;font-weight:700;letter-spacing:0.6px;font-family:\'IBM Plex Mono\',monospace;background:#eef2f9;padding:5px 10px;border-radius:4px">FIRST RUN ~60-90s · CACHED 30 MIN</div>' +
+    '</div>' +
+    '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:30px;text-align:center">' +
+      '<div style="font-size:13px;color:#64748b;font-family:Inter,sans-serif">Scanning ' + (reg === 'US' ? '~90 US' : '~60 India') + ' micro-cap tickers through quick-screen filters...</div>' +
+      '<div style="margin-top:14px;height:4px;border-radius:2px;background:#f1f5f9;overflow:hidden;max-width:300px;margin-left:auto;margin-right:auto"><div style="height:100%;width:35%;background:#1A3A78;animation:hunterPulse 2s ease-in-out infinite"></div></div>' +
+      '<div style="margin-top:14px;font-size:10px;color:#94a3b8;font-family:\'IBM Plex Mono\',monospace;letter-spacing:0.4px">7-FACTOR LIGHT SCAN · LIQUIDITY FILTER · DISTRESS FILTER</div>' +
+    '</div>' +
+    '<style>@keyframes hunterPulse{0%,100%{width:25%}50%{width:80%}}</style>' +
+    '</div>'
+  );
+
+  fetch('/api/microcap-hunter?region=' + reg + '&email=' + encodeURIComponent(email) + '&min_score=40&limit=20')
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      if (!d.success) {
+        el.innerHTML = _regBar +
+          '<div style="max-width:720px;margin:0 auto;padding:30px;text-align:center;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;color:#991b1b;font-size:12px">' +
+          '<div style="font-size:24px;margin-bottom:8px">⚠</div>' +
+          (d.error || 'Hunter scan failed') +
+          '</div>';
+        return;
+      }
+      _renderMicroCapHunter(el, d, _regBar, reg, email);
+    })
+    .catch(function(e) {
+      el.innerHTML = _regBar +
+        '<div style="max-width:720px;margin:0 auto;padding:30px;text-align:center;color:#991b1b;font-size:12px">Network error: ' + e.message + '</div>';
+    });
+};
+
+function _renderMicroCapHunter(el, d, regBar, reg, email) {
+  var csym = d.currency_symbol || '$';
+  var fmtCcy = function(v) {
+    if (v == null) return '—';
+    if (Math.abs(v) >= 1e9) return csym + (v/1e9).toFixed(2) + 'B';
+    if (Math.abs(v) >= 1e6) return csym + (v/1e6).toFixed(0) + 'M';
+    if (Math.abs(v) >= 1e3) return csym + (v/1e3).toFixed(0) + 'K';
+    return csym + v.toFixed(2);
+  };
+
+  var h = regBar;
+  h += '<div style="max-width:1280px;margin:0 auto;padding:0 8px">';
+
+  // ═══ Header strip ═══
+  h += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:14px 18px;margin-bottom:14px;display:flex;align-items:center;gap:14px">';
+  h += '<div style="width:40px;height:40px;background:#1A3A78;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:14px;font-weight:900;font-family:Sora,sans-serif">MH</div>';
+  h += '<div style="flex:1;min-width:0">';
+  h += '<div style="font-size:16px;font-weight:900;color:#0f172a;font-family:Sora,sans-serif;letter-spacing:0.2px">Micro-Cap Hunter</div>';
+  h += '<div style="font-size:10px;color:#64748b;font-family:\'IBM Plex Mono\',monospace;letter-spacing:0.5px;margin-top:2px">' + (reg === 'US' ? 'US' : 'INDIA NSE') + ' · ' + d.universe_size + ' SCANNED · ' + d.candidates.length + ' PASS · ' + d.scan_time_sec + 's</div>';
+  h += '</div>';
+  if (d._cached) {
+    h += '<div style="font-size:9px;color:#1A3A78;font-weight:700;letter-spacing:0.6px;font-family:\'IBM Plex Mono\',monospace;background:#eef2f9;padding:5px 10px;border-radius:4px">CACHED · ' + Math.floor((d._cache_age_sec || 0)/60) + ' MIN AGO</div>';
+  } else {
+    h += '<div style="font-size:9px;color:#059669;font-weight:700;letter-spacing:0.6px;font-family:\'IBM Plex Mono\',monospace;background:#ecfdf5;padding:5px 10px;border-radius:4px">FRESH SCAN</div>';
+  }
+  h += '<button onclick="loadMicroCapHunter()" style="margin-left:8px;padding:6px 12px;border:1px solid #cbd5e1;background:#fff;border-radius:6px;font-size:10px;font-weight:700;cursor:pointer;font-family:Inter,sans-serif">↻ REFRESH</button>';
+  h += '</div>';
+
+  // Honest disclaimer
+  h += '<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:10px 14px;margin-bottom:14px;display:flex;gap:10px;align-items:center">';
+  h += '<span style="color:#d97706;font-size:14px;flex-shrink:0">⚠</span>';
+  h += '<div style="flex:1;font-size:11px;color:#78350f;line-height:1.5;font-family:Inter,sans-serif">' + (d.honest_disclaimer || '') + '</div>';
+  h += '</div>';
+
+  // No candidates fallback
+  if (!d.candidates || !d.candidates.length) {
+    h += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:40px;text-align:center;color:#64748b;font-size:13px">';
+    h += 'No candidates passed the screen. Universe scanned: ' + d.universe_size + '. Skipped: ' + d.skipped_count + '. Try lowering min_score or check Yahoo data freshness.';
+    h += '</div></div>';
+    el.innerHTML = h;
+    return;
+  }
+
+  // ═══ Candidate grid ═══
+  h += '<div style="display:grid;grid-template-columns:1fr;gap:8px">';
+  d.candidates.forEach(function(c, idx) {
+    var scoreClass = c.hunter_score >= 75 ? 'pos' : c.hunter_score >= 55 ? 'warn' : 'neutral';
+    var scoreColor = c.hunter_score >= 75 ? '#059669' : c.hunter_score >= 55 ? '#d97706' : '#64748b';
+    var scoreBg = c.hunter_score >= 75 ? '#ecfdf5' : c.hunter_score >= 55 ? '#fffbeb' : '#f8fafc';
+
+    h += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:14px 16px;display:grid;grid-template-columns:auto 1fr auto auto;gap:14px;align-items:center;cursor:pointer;transition:border-color 100ms" ' +
+         'onmouseover="this.style.borderColor=\'#1A3A78\'" onmouseout="this.style.borderColor=\'#e2e8f0\'" ' +
+         'onclick="window._hunterOpenDD(\'' + c.symbol + '\',\'' + reg + '\')">';
+
+    // Rank
+    h += '<div style="font-family:\'IBM Plex Mono\',monospace;font-size:18px;font-weight:900;color:#94a3b8;min-width:30px;text-align:right">#' + (idx + 1) + '</div>';
+
+    // Main info
+    h += '<div style="min-width:0">';
+    h += '<div style="display:flex;align-items:baseline;gap:8px;margin-bottom:3px">';
+    h += '<span style="font-family:\'IBM Plex Mono\',monospace;font-size:16px;font-weight:900;color:#0f172a;letter-spacing:0.5px">' + c.symbol + '</span>';
+    h += '<span style="font-size:11px;color:#64748b;font-family:Inter,sans-serif;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + c.name + '</span>';
+    h += '</div>';
+    h += '<div style="font-size:10px;color:#94a3b8;font-family:\'IBM Plex Mono\',monospace;letter-spacing:0.4px;margin-bottom:5px">' + (c.sector || 'UNKNOWN').toUpperCase() + ' · ' + fmtCcy(c.market_cap) + ' MCAP · ' + csym + (c.price || 0).toFixed(2) + ' SPOT</div>';
+    // Signals (the "why")
+    if (c.signals && c.signals.length) {
+      h += '<div style="display:flex;flex-wrap:wrap;gap:4px">';
+      c.signals.forEach(function(sig) {
+        h += '<span style="font-size:9px;font-weight:600;color:#0f172a;background:#f1f5f9;border:1px solid #e2e8f0;padding:2px 6px;border-radius:3px;font-family:Inter,sans-serif">' + sig + '</span>';
+      });
+      h += '</div>';
+    }
+    if (c.flags && c.flags.length) {
+      h += '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px">';
+      c.flags.forEach(function(f) {
+        h += '<span style="font-size:9px;font-weight:600;color:#dc2626;background:#fef2f2;border:1px solid #fecaca;padding:2px 6px;border-radius:3px;font-family:Inter,sans-serif">⚠ ' + f + '</span>';
+      });
+      h += '</div>';
+    }
+    h += '</div>';
+
+    // Hunter score
+    h += '<div style="text-align:right;min-width:60px">';
+    h += '<div style="font-family:\'IBM Plex Mono\',monospace;font-size:22px;font-weight:900;color:' + scoreColor + ';line-height:1">' + c.hunter_score + '</div>';
+    h += '<div style="font-size:8px;color:#94a3b8;font-family:\'IBM Plex Mono\',monospace;letter-spacing:0.4px;margin-top:2px">SCORE</div>';
+    h += '</div>';
+
+    // CTA
+    h += '<div style="display:flex;align-items:center;gap:6px"><button style="padding:6px 12px;background:#1A3A78;color:#fff;border:none;border-radius:5px;font-size:10px;font-weight:700;cursor:pointer;font-family:Inter,sans-serif;letter-spacing:0.4px">DEEP DD →</button></div>';
+
+    h += '</div>';
+  });
+  h += '</div>';
+
+  // Footer note
+  h += '<div style="margin-top:16px;padding:10px 14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;font-size:10px;color:#64748b;font-family:Inter,sans-serif">';
+  h += '<strong style="color:#0f172a">How this works:</strong> 7-factor light scan (profitability, growth, balance sheet, insider ownership, short squeeze, momentum, ROE) on ' + d.universe_size + ' tickers. Hard filters: liquidity > ' + csym + '500K daily, price > ' + csym + '1, no obvious distress. Click any row to run full Deep DD with real institutional analysis (16 sections + multi-factor verdict).';
+  h += '</div>';
+
+  h += '</div>';
+  el.innerHTML = h;
+}
+
+window._hunterOpenDD = function(symbol, region) {
+  // Open Deep DD for the selected ticker
+  if (typeof switchSubTab === 'function') {
+    // Persist the symbol so DD entry page picks it up
+    window._ddLastSymbol = symbol;
+    window._deRegion = region;
+    if (typeof switchTabGroup === 'function') switchTabGroup('decide');
+    setTimeout(function() {
+      if (typeof switchSubTab === 'function') switchSubTab('deepdd');
+      setTimeout(function() {
+        if (typeof loadDeepDD === 'function') loadDeepDD();
+        setTimeout(function() {
+          var inp = document.getElementById('ddSymbol');
+          if (inp) {
+            inp.value = symbol;
+            if (typeof window._ddGenerate === 'function') window._ddGenerate();
+          }
+        }, 200);
+      }, 100);
+    }, 100);
+  }
+};
+
 // r55: Micro-Cap Challenge tab
 if(tab==='microcap'){
 if(!window._isDreamUser){var _mc0=document.getElementById('deResult');if(_mc0)_mc0.innerHTML='<div style="padding:60px 20px;text-align:center"><div style="font-size:48px;margin-bottom:12px">🔒</div><div style="font-size:18px;font-weight:900;color:var(--text);font-family:Sora,sans-serif">Ultra-Premium Feature</div><div style="font-size:12px;color:var(--text3);margin-top:8px">Micro-Cap Challenge is exclusive. Contact support for access.</div></div>';return;}
@@ -2850,6 +3037,24 @@ window._activeMicroCapTab=true;
 if(typeof loadMicroCap==='function')setTimeout(loadMicroCap,100);
 }
 // r58: Deep Due Diligence tab
+// r62.2: Intraday Setups tab
+if(tab==='intraday'){
+  if(!window._isDreamUser){var _is0=document.getElementById('deResult');if(_is0)_is0.innerHTML='<div style="padding:60px 20px;text-align:center"><div style="font-size:48px;margin-bottom:12px">🔒</div><div style="font-size:18px;font-weight:900;color:var(--text);font-family:Sora,sans-serif">Premium Feature</div><div style="font-size:12px;color:var(--text3);margin-top:8px">Intraday Setups is exclusive. Contact support for access.</div></div>';return;}
+  window._activeIntradaySetupsTab=true;
+  if(typeof loadIntradaySetups==='function')setTimeout(loadIntradaySetups,100);
+  return;
+}
+// r62.0: Micro-Cap Hunter tab
+if(tab==='mchunter'){
+  if(!window._isDreamUser){var _mh0=document.getElementById('deResult');if(_mh0)_mh0.innerHTML='<div style="padding:60px 20px;text-align:center"><div style="font-size:48px;margin-bottom:12px">🔒</div><div style="font-size:18px;font-weight:900;color:var(--text);font-family:Sora,sans-serif">Premium Feature</div><div style="font-size:12px;color:var(--text3);margin-top:8px">Micro-Cap Hunter is exclusive. Contact support for access.</div></div>';return;}
+  // Hide all other Decide screens
+  ['decision','toptrades','topinvest','reports','proscan','pms','deepdd'].forEach(function(t){
+    var d=document.getElementById('deResult');
+  });
+  window._activeMicroCapHunterTab=true;
+  if(typeof loadMicroCapHunter==='function')setTimeout(loadMicroCapHunter,100);
+  return;
+}
 if(tab==='deepdd'){
 if(!window._isDreamUser){var _dd0=document.getElementById('deResult');if(_dd0)_dd0.innerHTML='<div style="padding:60px 20px;text-align:center"><div style="font-size:48px;margin-bottom:12px">🔒</div><div style="font-size:18px;font-weight:900;color:var(--text);font-family:Sora,sans-serif">Ultra-Premium Feature</div><div style="font-size:12px;color:var(--text3);margin-top:8px">Deep DD is exclusive. Contact support for access.</div></div>';return;}
 document.querySelectorAll('.sc[data-tab="decision"]').forEach(function(s){
@@ -10587,6 +10792,150 @@ el.innerHTML=_mrRegBar+_mrCatBar+h;
 // rate estimates (60-80%) based on published trading literature.
 // HONEST: no fake 99% win rate claims anywhere in this feature.
 // ═══════════════════════════════════════════════════════════════════════
+
+// ═══════════════════════════════════════════════════════════════════
+// r62.2: INTRADAY SETUPS — literature-cited 3-setup scanner
+// ═══════════════════════════════════════════════════════════════════
+window._activeIntradaySetupsTab = false;
+
+window.loadIntradaySetups = function(forceReg, forceTimeframe) {
+  if (!window._activeIntradaySetupsTab) return;
+  var el = document.getElementById('deResult');
+  if (!el) return;
+  var reg = forceReg || window._deRegion || 'US';
+  window._deRegion = reg;
+  var tf = forceTimeframe || window._intradayTimeframe || 'all';
+  window._intradayTimeframe = tf;
+  var csym = reg === 'US' ? '$' : '₹';
+
+  var _eml = document.getElementById('email');
+  var email = window._verifiedEmail || (_eml ? (_eml.dataset.real || _eml.value) : '').trim().toLowerCase();
+
+  var _regBar = (typeof _renderRegionToggle === 'function')
+    ? _renderRegionToggle('loadIntradaySetups', reg)
+    : '';
+
+  // Loading
+  el.innerHTML = _regBar +
+    '<div style="max-width:1280px;margin:0 auto;padding:0 8px">' +
+      '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:14px 18px;margin-bottom:14px;display:flex;align-items:center;gap:14px">' +
+        '<div style="width:40px;height:40px;background:#1A3A78;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:14px;font-weight:900;font-family:Sora,sans-serif">⚡</div>' +
+        '<div style="flex:1"><div style="font-size:16px;font-weight:900;color:#0f172a;font-family:Sora,sans-serif">Intraday & Swing Setups</div>' +
+        '<div style="font-size:10px;color:#64748b;font-family:\'IBM Plex Mono\',monospace;letter-spacing:0.5px;margin-top:2px">SCANNING ' + (reg === 'US' ? 'S&P 100' : 'NIFTY 50') + ' · ' + tf.toUpperCase() + '</div></div>' +
+      '</div>' +
+      '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:30px;text-align:center;color:#64748b;font-size:13px">Pulling 5-min bars + daily history for liquid names...</div>' +
+    '</div>';
+
+  fetch('/api/intraday-setups?region=' + reg + '&timeframe=' + tf + '&email=' + encodeURIComponent(email) + '&limit=30')
+    .then(function(r){return r.json();})
+    .then(function(d){
+      if (!d.success) {
+        el.innerHTML = _regBar + '<div style="max-width:720px;margin:0 auto;padding:30px;text-align:center;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;color:#991b1b">' + (d.error || 'Scan failed') + '</div>';
+        return;
+      }
+      _renderIntradaySetups(el, d, _regBar, reg, tf);
+    })
+    .catch(function(e){
+      el.innerHTML = _regBar + '<div style="max-width:720px;margin:0 auto;padding:30px;text-align:center;color:#991b1b">Network error: ' + e.message + '</div>';
+    });
+};
+
+function _renderIntradaySetups(el, d, regBar, reg, tf) {
+  var csym = d.currency_symbol || '$';
+  var fmt = function(v, dec) { return v == null ? '—' : (typeof v === 'number' ? v.toFixed(dec || 2) : v); };
+
+  var h = regBar;
+  h += '<div style="max-width:1280px;margin:0 auto;padding:0 8px">';
+
+  // Header
+  h += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:14px 18px;margin-bottom:14px;display:flex;align-items:center;gap:14px">';
+  h += '<div style="width:40px;height:40px;background:#1A3A78;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:14px;font-weight:900;font-family:Sora,sans-serif">⚡</div>';
+  h += '<div style="flex:1"><div style="font-size:16px;font-weight:900;color:#0f172a;font-family:Sora,sans-serif">Intraday & Swing Setups</div>';
+  h += '<div style="font-size:10px;color:#64748b;font-family:\'IBM Plex Mono\',monospace;letter-spacing:0.5px;margin-top:2px">' + (reg === 'US' ? 'S&P 100' : 'NIFTY 50') + ' · ' + d.universe_size + ' SCANNED · ' + d.candidates.length + ' SETUPS · ' + d.scan_time_sec + 's</div></div>';
+  if (d._cached) h += '<div style="font-size:9px;color:#1A3A78;font-weight:700;background:#eef2f9;padding:5px 10px;border-radius:4px;font-family:\'IBM Plex Mono\',monospace">CACHED ' + Math.floor((d._cache_age_sec||0)/60) + ' MIN</div>';
+  h += '<button onclick="loadIntradaySetups()" style="margin-left:8px;padding:6px 12px;border:1px solid #cbd5e1;background:#fff;border-radius:6px;font-size:10px;font-weight:700;cursor:pointer">↻ REFRESH</button>';
+  h += '</div>';
+
+  // Timeframe toggle
+  h += '<div style="display:flex;gap:6px;margin-bottom:14px">';
+  ['all','intraday','swing'].forEach(function(t){
+    var active = (tf === t);
+    h += '<button onclick="loadIntradaySetups(\'' + reg + '\',\'' + t + '\')" style="padding:6px 14px;border:1px solid ' + (active?'#1A3A78':'#cbd5e1') + ';background:' + (active?'#1A3A78':'#fff') + ';color:' + (active?'#fff':'#475569') + ';border-radius:6px;font-size:10px;font-weight:700;cursor:pointer;font-family:Inter,sans-serif;letter-spacing:0.5px;text-transform:uppercase">' + t + '</button>';
+  });
+  h += '</div>';
+
+  // Honest disclaimer
+  h += '<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:10px 14px;margin-bottom:14px;display:flex;gap:10px;align-items:flex-start">';
+  h += '<span style="color:#d97706;font-size:14px;flex-shrink:0">⚠</span>';
+  h += '<div style="flex:1;font-size:11px;color:#78350f;line-height:1.5;font-family:Inter,sans-serif">' + d.honest_disclaimer + '</div>';
+  h += '</div>';
+
+  if (!d.candidates || !d.candidates.length) {
+    h += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:40px;text-align:center;color:#64748b;font-size:13px">No setups detected right now. Markets may be choppy or outside trading hours. Try again later — or switch timeframe to "swing" if it\'s after-hours.</div>';
+    h += '</div>';
+    el.innerHTML = h;
+    return;
+  }
+
+  // Setup cards
+  d.candidates.forEach(function(c){
+    var dirColor = c.direction === 'long' ? '#059669' : '#dc2626';
+    var dirArrow = c.direction === 'long' ? '↑' : '↓';
+    var dirBg = c.direction === 'long' ? '#ecfdf5' : '#fef2f2';
+
+    h += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:14px 16px;margin-bottom:8px;display:grid;grid-template-columns:auto 1fr auto;gap:14px;align-items:start">';
+
+    // Direction indicator
+    h += '<div style="display:flex;flex-direction:column;align-items:center;gap:4px;min-width:50px;padding:8px;background:' + dirBg + ';border-radius:6px">';
+    h += '<div style="font-size:24px;color:' + dirColor + ';font-weight:900;line-height:1">' + dirArrow + '</div>';
+    h += '<div style="font-size:9px;color:' + dirColor + ';font-weight:700;letter-spacing:0.5px;font-family:\'IBM Plex Mono\',monospace">' + c.direction.toUpperCase() + '</div>';
+    h += '</div>';
+
+    // Body
+    h += '<div style="min-width:0">';
+    h += '<div style="display:flex;align-items:baseline;gap:8px;margin-bottom:4px">';
+    h += '<span style="font-family:\'IBM Plex Mono\',monospace;font-size:16px;font-weight:900;color:#0f172a">' + c.symbol + '</span>';
+    h += '<span style="font-size:11px;color:#64748b;overflow:hidden;text-overflow:ellipsis">' + c.name + '</span>';
+    h += '<span style="margin-left:auto;font-size:9px;font-weight:700;color:#1A3A78;background:#eef2f9;padding:2px 8px;border-radius:3px;font-family:\'IBM Plex Mono\',monospace;letter-spacing:0.5px">' + c.timeframe + '</span>';
+    h += '</div>';
+    h += '<div style="font-size:11px;color:#0f172a;font-weight:600;margin-bottom:6px">' + c.setup + '</div>';
+
+    // Levels
+    h += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:6px">';
+    h += '<div style="font-size:9px"><div style="color:#64748b;font-family:\'IBM Plex Mono\',monospace;letter-spacing:0.4px">SPOT</div><div style="color:#0f172a;font-weight:700;font-family:\'IBM Plex Mono\',monospace">' + csym + fmt(c.spot, 2) + '</div></div>';
+    h += '<div style="font-size:9px"><div style="color:#64748b;font-family:\'IBM Plex Mono\',monospace;letter-spacing:0.4px">ENTRY</div><div style="color:#1A3A78;font-weight:700;font-family:\'IBM Plex Mono\',monospace">' + csym + fmt(c.entry, 2) + '</div></div>';
+    h += '<div style="font-size:9px"><div style="color:#64748b;font-family:\'IBM Plex Mono\',monospace;letter-spacing:0.4px">STOP</div><div style="color:#dc2626;font-weight:700;font-family:\'IBM Plex Mono\',monospace">' + csym + fmt(c.stop, 2) + '</div></div>';
+    h += '<div style="font-size:9px"><div style="color:#64748b;font-family:\'IBM Plex Mono\',monospace;letter-spacing:0.4px">TARGET</div><div style="color:#059669;font-weight:700;font-family:\'IBM Plex Mono\',monospace">' + csym + fmt(c.target_1, 2) + ' / ' + csym + fmt(c.target_2, 2) + '</div></div>';
+    h += '</div>';
+
+    // Literature note
+    h += '<div style="font-size:9px;color:#475569;background:#f8fafc;padding:6px 8px;border-radius:4px;border-left:2px solid #1A3A78;font-family:Inter,sans-serif;line-height:1.4">';
+    h += '<strong style="color:#1A3A78">📚 ' + c.literature_base_rate_pct + '% literature base rate</strong> — ' + c.literature_source;
+    h += '<div style="margin-top:3px;color:#64748b;font-style:italic">' + c.honest_caveat + '</div>';
+    h += '</div>';
+    h += '</div>';
+
+    // R:R
+    h += '<div style="text-align:right;min-width:60px">';
+    h += '<div style="font-family:\'IBM Plex Mono\',monospace;font-size:18px;font-weight:900;color:' + (c.risk_reward >= 2 ? '#059669' : c.risk_reward >= 1 ? '#d97706' : '#dc2626') + '">' + fmt(c.risk_reward, 1) + ':1</div>';
+    h += '<div style="font-size:8px;color:#94a3b8;font-family:\'IBM Plex Mono\',monospace;letter-spacing:0.4px;margin-top:2px">R:R</div>';
+    h += '</div>';
+
+    h += '</div>';
+  });
+
+  // Methodology footer
+  h += '<div style="margin-top:16px;padding:14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px">';
+  h += '<div style="font-size:10px;font-weight:800;color:#1A3A78;letter-spacing:1px;margin-bottom:8px;font-family:\'IBM Plex Mono\',monospace">METHODOLOGY · CITED SOURCES</div>';
+  Object.keys(d.methodology || {}).forEach(function(k){
+    h += '<div style="font-size:11px;color:#0f172a;margin-bottom:4px;line-height:1.5"><strong>' + k + ':</strong> ' + d.methodology[k] + '</div>';
+  });
+  h += '</div>';
+
+  h += '</div>';
+  el.innerHTML = h;
+}
+
 function loadHighProb(forceReg, forceMode){
 if(!window._activeHighProbTab)return;
 var el=document.getElementById('deResult');if(!el)return;

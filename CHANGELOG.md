@@ -163,3 +163,68 @@ curl https://celesys.ai/api/version
 Should now return `dd_disk_cache: {exists: true, n_entries: ...}` after the first successful DD.
 
 **Pre-seed pacing:** 8s between requests, 15s back-off on errors. Skips if disk already has ≥5 entries (avoids hammering Yahoo on every redeploy).
+
+---
+
+## v4.62.0 — Micro-Cap Hunter (current)
+
+**Built:** 2026-04-29 04:01 UTC
+
+**New feature:** Discovery scanner in Decide tab. Runs the existing 90 US + 60 India micro-cap universe (curated in r55) through a 7-factor light-weight screen. Returns ranked candidates with one-click handoff to Deep DD.
+
+**7 scoring factors (max 100):** Profitability, Revenue Growth, Balance Sheet, Insider Ownership, Short Squeeze, Momentum, ROE.
+
+**3 hard filters:** Price > $1 (no penny stocks), avg daily $vol > $500K (no illiquid), no distress (negative book + heavy debt).
+
+**Backend:** `/api/microcap-hunter?region=US&min_score=40&limit=20` — 30-min cache + persists via v4.61.11 disk layer.
+
+**Frontend:** New "🎯 Micro-Cap Hunter" sub-tab under Decide. Aladdin-grade list of candidates. Click any row → opens Deep DD for that ticker.
+
+**Honest disclaimer baked in:** "Micro-caps are HIGH RISK. ~30% decline >50% in any 6-month window. Hunter score is a quick screen — always run Deep DD before any trade."
+
+---
+
+## v4.62.1 — Fix High-Prob Setups 62% bug (current)
+
+**Built:** 2026-04-29 13:42 UTC
+
+**The bug:** User reported all High-Prob Setups returning 62%. Investigation found 3 hardcoded confidence buckets in `_compute_high_prob_setup`:
+- `criteria_met >= 4` → 75%
+- `criteria_met >= 2` → 62%  ← almost everything landed here
+- `criteria_met >= 1` → 50%
+
+**The fix:** Replaced with continuous 0-100 score from 6 weighted components:
+- Setup confluence (30 pts max)
+- Setup quality / Minervini hierarchy (20 pts)
+- Risk/reward favorability (15 pts)
+- Trend alignment / above MAs (15 pts)
+- Volume confirmation (10 pts)
+- Action cleanness (10 pts)
+
+**Validation:** Simulated 5 representative setups — produces scores 23, 49, 63, 64, 90 instead of all 62. Weak setups (<35) now filtered entirely.
+
+**Also added:** `score_components` array in API response (frontend can render as breakdown later).
+
+**Honest disclaimer revised:** No more "Historical win rate ~75-80%" — replaced with execution-discipline guidance per band.
+
+---
+
+## v4.62.2 — Intraday & Swing Setups (current)
+
+**Built:** 2026-04-29 13:50 UTC
+
+**New feature:** Decide → ⚡ Intraday Setups. 3 setups with PUBLISHED literature base rates (cited):
+
+1. **Opening Range Breakout** (Crabel 1990, 53-58% base) — INTRADAY
+2. **VWAP Reclaim After Open Drive** (Berkowitz/Raschke, 60-65% base) — INTRADAY
+3. **Inside-Day Continuation** (Bulkowski, 55-60% base) — 2-DAY SWING
+
+**Universe:** Liquid only — S&P 100 ex-financials (87 US tickers), Nifty 50 (50 IN). Liquidity gate >$1B mcap + >$10M daily $vol enforced for US.
+
+**Honest framework:** Every response carries a disclaimer that literature base rates ≠ user's real win rate (typically 5-15% lower in live execution). Per-setup caveats explain when each base rate does/doesn't apply.
+
+**6 runtime tests passed:** ORB detects long/short/rejects chop, Inside-day detects uptrend/rejects-non-inside/rejects-no-trend.
+
+**Backend:** `/api/intraday-setups?region=US&timeframe=all|intraday|swing` — 5-min cache for intraday, 30-min for swing-only.
+
+**No backtests, no fake win rates, no micro-caps in this scanner.**
