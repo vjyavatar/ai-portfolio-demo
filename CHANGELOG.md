@@ -228,3 +228,21 @@ Should now return `dd_disk_cache: {exists: true, n_entries: ...}` after the firs
 **Backend:** `/api/intraday-setups?region=US&timeframe=all|intraday|swing` — 5-min cache for intraday, 30-min for swing-only.
 
 **No backtests, no fake win rates, no micro-caps in this scanner.**
+
+---
+
+## v4.62.3 — Production loading states (UX fix, current)
+
+**Built:** 2026-04-29
+
+**The bug:** User reported loading screen sat with static text "Pulling 5-min bars..." with no spinner, no timer, no abort. Below production standard.
+
+**The fix:** Reusable `_csLoader()` helper + `_csFetchWithTimeout()` helper. Applied to both Intraday Setups (r62.2) and Micro-Cap Hunter (r62.0) — the two loaders I shipped without proper UX.
+
+**`_csLoader()` provides:** spinner (CSS animation), title+subtitle, mutable status line, indeterminate progress bar, live elapsed time counter (color-escalates if slow), estimated typical time, CANCEL button.
+
+**`_csFetchWithTimeout()` provides:** 2-minute hard timeout via AbortController, proper cleanup, AbortError → actionable retry message.
+
+**Verified:** 8/8 loader components present, helper code eval-tested, both loaders use new pattern.
+
+**Honest note:** This pattern was already established in your codebase (lines 6005, 6917, 10074). I didn't follow it when shipping r62.0/r62.2. That's on me — fixed now.

@@ -1,13 +1,147 @@
 // ═══ Celesys version stamp ═══
-window.CELESYS_VERSION = "v4.62.2";
-window.CELESYS_BUILD_TIME = 1777470644;
-window.CELESYS_BUILD_DATE = "2026-04-29 13:50:44 UTC";
+window.CELESYS_VERSION = "v4.62.3";
+window.CELESYS_BUILD_TIME = 1777471435;
+window.CELESYS_BUILD_DATE = "2026-04-29 14:03:55 UTC";
 console.log("%c━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "color:#1A3A78");
-console.log("%c CELESYS v4.62.2 %c loaded · 2026-04-29 03:29:27 UTC",
+console.log("%c CELESYS v4.62.3 %c loaded · 2026-04-29 03:29:27 UTC",
   "background:#1A3A78;color:#fff;font-weight:900;padding:3px 8px;border-radius:3px;font-family:monospace",
   "color:#1A3A78;font-weight:700;font-family:monospace");
 console.log("%c━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "color:#1A3A78");
 // ═════════════════════════════════════
+
+// ═══════════════════════════════════════════════════════════════════
+// r62.3: Reusable production loading state for long-running scans
+// ═══════════════════════════════════════════════════════════════════
+// Replaces static "Loading..." text. Provides:
+//   - Spinner (CSS animation:spin)
+//   - Elapsed time counter (live ticker)
+//   - Estimated total time (configurable per loader)
+//   - Progress bar (indeterminate, pulses)
+//   - Status line that can be updated mid-scan
+//   - Cancel/abort button
+//   - 90s timeout safety net (if API hangs, user gets an actionable error)
+//
+// Usage:
+//   var loader = _csLoader({
+//     title: "Intraday & Swing Setups",
+//     subtitle: "Scanning S&P 100 · ALL TIMEFRAMES",
+//     statusInitial: "Pulling 5-min bars for liquid names...",
+//     estimatedSec: 45,                 // ~time first scan typically takes
+//     onAbort: function(){ ... },       // optional abort callback
+//   });
+//   el.innerHTML = loader.html;
+//   loader.start(el);                   // begin live ticker
+//
+//   // mid-scan, update status:
+//   loader.setStatus("Now running detectors...");
+//
+//   // when done (success OR failure), call:
+//   loader.stop();
+//
+window._csLoader = function(opts) {
+  opts = opts || {};
+  var id = "cs_loader_" + Math.random().toString(36).slice(2, 9);
+  var startTs = 0;
+  var tickerHandle = null;
+  var aborted = false;
+
+  var html = '' +
+    '<div id="' + id + '" style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:30px;text-align:center;font-family:Inter,sans-serif">' +
+      // spinner
+      '<div style="display:inline-block;width:36px;height:36px;border:3px solid #1A3A78;border-top-color:transparent;border-radius:50%;animation:spin 0.8s linear infinite;margin-bottom:14px"></div>' +
+      // title
+      '<div style="font-size:14px;font-weight:700;color:#0f172a;margin-bottom:4px">' + (opts.title || "Loading") + '</div>' +
+      // subtitle
+      (opts.subtitle ? '<div style="font-size:10px;color:#64748b;font-family:\'IBM Plex Mono\',monospace;letter-spacing:0.5px;margin-bottom:14px">' + opts.subtitle + '</div>' : '') +
+      // progress bar (indeterminate)
+      '<div style="height:4px;border-radius:2px;background:#f1f5f9;max-width:380px;margin:0 auto 14px;overflow:hidden">' +
+        '<div id="' + id + '_bar" style="height:100%;width:30%;background:#1A3A78;border-radius:2px;animation:csLoaderPulse 1.6s ease-in-out infinite"></div>' +
+      '</div>' +
+      // status line (mutable)
+      '<div id="' + id + '_status" style="font-size:11px;color:#475569;line-height:1.5;font-family:Inter,sans-serif;max-width:480px;margin:0 auto 12px">' +
+        (opts.statusInitial || "Working...") +
+      '</div>' +
+      // elapsed/estimated
+      '<div style="display:flex;justify-content:center;gap:14px;font-size:10px;color:#94a3b8;font-family:\'IBM Plex Mono\',monospace;letter-spacing:0.4px;margin-bottom:14px">' +
+        '<span>ELAPSED: <span id="' + id + '_elapsed" style="color:#1A3A78;font-weight:700">0s</span></span>' +
+        (opts.estimatedSec ? '<span>~ ' + opts.estimatedSec + 's TYPICAL</span>' : '') +
+      '</div>' +
+      // abort button
+      '<button id="' + id + '_abort" style="padding:5px 14px;border:1px solid #cbd5e1;background:#fff;color:#475569;border-radius:5px;font-size:10px;font-weight:700;cursor:pointer;font-family:Inter,sans-serif;letter-spacing:0.5px">CANCEL</button>' +
+    '</div>' +
+    '<style>' +
+      '@keyframes spin { to { transform: rotate(360deg); } }' +
+      '@keyframes csLoaderPulse { 0%,100% { width:25%; transform: translateX(0); } 50% { width:60%; transform: translateX(50%); } }' +
+    '</style>';
+
+  function start(rootEl) {
+    startTs = Date.now();
+    var elapsedEl = document.getElementById(id + "_elapsed");
+    var abortBtn = document.getElementById(id + "_abort");
+
+    // Live elapsed-time ticker
+    tickerHandle = setInterval(function() {
+      if (!elapsedEl) return;
+      var sec = Math.floor((Date.now() - startTs) / 1000);
+      elapsedEl.textContent = sec + "s";
+      // Visual escalation if scan is taking longer than expected
+      if (opts.estimatedSec && sec > opts.estimatedSec * 1.5) {
+        elapsedEl.style.color = "#d97706";  // amber
+      }
+      if (opts.estimatedSec && sec > opts.estimatedSec * 2.5) {
+        elapsedEl.style.color = "#dc2626";  // red
+        // Update status to warn
+        var statusEl = document.getElementById(id + "_status");
+        if (statusEl && !aborted) {
+          statusEl.innerHTML = '<span style="color:#d97706">⏱ Taking longer than usual — Yahoo may be rate-limiting. Wait or cancel.</span>';
+        }
+      }
+    }, 500);
+
+    // Wire abort button
+    if (abortBtn) {
+      abortBtn.onclick = function() {
+        aborted = true;
+        stop();
+        if (typeof opts.onAbort === "function") {
+          opts.onAbort();
+        }
+        if (rootEl) {
+          rootEl.innerHTML = '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:30px;text-align:center;color:#64748b;font-size:12px;font-family:Inter,sans-serif">Scan cancelled.</div>';
+        }
+      };
+    }
+  }
+
+  function setStatus(text) {
+    var s = document.getElementById(id + "_status");
+    if (s) s.textContent = text;
+  }
+
+  function stop() {
+    if (tickerHandle) {
+      clearInterval(tickerHandle);
+      tickerHandle = null;
+    }
+  }
+
+  function isAborted() {
+    return aborted;
+  }
+
+  return { html: html, start: start, setStatus: setStatus, stop: stop, isAborted: isAborted, id: id };
+};
+
+// Helper: wrap fetch with timeout + abort
+window._csFetchWithTimeout = function(url, opts, timeoutMs) {
+  timeoutMs = timeoutMs || 90000;  // 90s default
+  var controller = (typeof AbortController !== "undefined") ? new AbortController() : null;
+  var timeoutId = setTimeout(function() {
+    if (controller) controller.abort();
+  }, timeoutMs);
+  var fetchOpts = Object.assign({}, opts || {}, controller ? { signal: controller.signal } : {});
+  return fetch(url, fetchOpts).finally(function() { clearTimeout(timeoutId); });
+};
 
 
 function _sparkSVG(pts,c,w,h){if(!pts||pts.length<2)return'';var id='sp'+Math.random().toString(36).substr(2,6);var mn=Math.min.apply(null,pts),mx=Math.max.apply(null,pts),r=mx-mn||1;var path='';for(var i=0;i<pts.length;i++){var x=Math.round(i/(pts.length-1)*w);var y=Math.round(h-((pts[i]-mn)/r)*(h-4)-2);path+=(i===0?'M':'L')+x+','+y}var svg='<svg width="'+w+'" height="'+h+'" viewBox="0 0 '+w+' '+h+'" style="display:block;overflow:visible"><defs><linearGradient id="'+id+'" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="'+c+'" stop-opacity=".2"/><stop offset="100%" stop-color="'+c+'" stop-opacity="0"/></linearGradient></defs>';svg+='<path d="'+path+' L'+w+','+h+' L0,'+h+' Z" fill="url(#'+id+')" opacity=".8"/>';svg+='<path d="'+path+'" fill="none" stroke="'+c+'" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>';var lx=Math.round(w),ly=Math.round(h-((pts[pts.length-1]-mn)/r)*(h-4)-2);svg+='<circle cx="'+lx+'" cy="'+ly+'" r="2.5" fill="'+c+'"/></svg>';return svg}
@@ -2858,7 +2992,14 @@ window.loadMicroCapHunter = function(forceReg) {
     ? _renderRegionToggle('loadMicroCapHunter', reg)
     : '';
 
-  // Loading skeleton
+  // r62.3: Production loading state for Micro-Cap Hunter
+  var _hunterLoader = _csLoader({
+    title: "Micro-Cap Hunter",
+    subtitle: "SCANNING " + (reg === 'US' ? '~90 US' : '~60 INDIA') + " MICRO-CAPS · 7-FACTOR LIGHT SCAN",
+    statusInitial: "Running 7-factor screen with liquidity + distress filters...",
+    estimatedSec: 75,
+    onAbort: function(){ window._activeMicroCapHunterTab = false; },
+  });
   el.innerHTML = _regBar + (
     '<div style="max-width:1280px;margin:0 auto;padding:0 8px">' +
     '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:14px 18px;margin-bottom:14px;display:flex;align-items:center;gap:14px">' +
@@ -2869,31 +3010,39 @@ window.loadMicroCapHunter = function(forceReg) {
       '</div>' +
       '<div style="font-size:9px;color:#1A3A78;font-weight:700;letter-spacing:0.6px;font-family:\'IBM Plex Mono\',monospace;background:#eef2f9;padding:5px 10px;border-radius:4px">FIRST RUN ~60-90s · CACHED 30 MIN</div>' +
     '</div>' +
-    '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:30px;text-align:center">' +
-      '<div style="font-size:13px;color:#64748b;font-family:Inter,sans-serif">Scanning ' + (reg === 'US' ? '~90 US' : '~60 India') + ' micro-cap tickers through quick-screen filters...</div>' +
-      '<div style="margin-top:14px;height:4px;border-radius:2px;background:#f1f5f9;overflow:hidden;max-width:300px;margin-left:auto;margin-right:auto"><div style="height:100%;width:35%;background:#1A3A78;animation:hunterPulse 2s ease-in-out infinite"></div></div>' +
-      '<div style="margin-top:14px;font-size:10px;color:#94a3b8;font-family:\'IBM Plex Mono\',monospace;letter-spacing:0.4px">7-FACTOR LIGHT SCAN · LIQUIDITY FILTER · DISTRESS FILTER</div>' +
-    '</div>' +
-    '<style>@keyframes hunterPulse{0%,100%{width:25%}50%{width:80%}}</style>' +
+    _hunterLoader.html +
     '</div>'
   );
+  _hunterLoader.start(el);
 
-  fetch('/api/microcap-hunter?region=' + reg + '&email=' + encodeURIComponent(email) + '&min_score=40&limit=20')
+  _csFetchWithTimeout('/api/microcap-hunter?region=' + reg + '&email=' + encodeURIComponent(email) + '&min_score=40&limit=20', null, 120000)
     .then(function(r) { return r.json(); })
     .then(function(d) {
+      if (typeof _hunterLoader !== 'undefined') _hunterLoader.stop();
+      if (typeof _hunterLoader !== 'undefined' && _hunterLoader.isAborted()) return;
       if (!d.success) {
         el.innerHTML = _regBar +
-          '<div style="max-width:720px;margin:0 auto;padding:30px;text-align:center;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;color:#991b1b;font-size:12px">' +
-          '<div style="font-size:24px;margin-bottom:8px">⚠</div>' +
-          (d.error || 'Hunter scan failed') +
+          '<div style="max-width:720px;margin:24px auto;padding:24px;text-align:center;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;color:#991b1b;font-family:Inter,sans-serif">' +
+          '<div style="font-size:28px;margin-bottom:8px">⚠</div>' +
+          '<div style="font-size:13px;font-weight:700;margin-bottom:6px">Scan failed</div>' +
+          '<div style="font-size:11px;color:#7f1d1d;margin-bottom:14px">' + (d.error || 'Unknown error') + '</div>' +
+          '<button onclick="loadMicroCapHunter()" style="padding:6px 14px;border:1px solid #fca5a5;background:#fff;color:#dc2626;border-radius:5px;font-size:11px;font-weight:700;cursor:pointer">RETRY</button>' +
           '</div>';
         return;
       }
       _renderMicroCapHunter(el, d, _regBar, reg, email);
     })
     .catch(function(e) {
+      if (typeof _hunterLoader !== 'undefined') _hunterLoader.stop();
+      if (typeof _hunterLoader !== 'undefined' && _hunterLoader.isAborted()) return;
+      var msg = (e.name === 'AbortError') ? 'Scan timed out after 2 minutes. Yahoo is likely rate-limiting. Try again in a few minutes.' : ('Network error: ' + e.message);
       el.innerHTML = _regBar +
-        '<div style="max-width:720px;margin:0 auto;padding:30px;text-align:center;color:#991b1b;font-size:12px">Network error: ' + e.message + '</div>';
+        '<div style="max-width:720px;margin:24px auto;padding:24px;text-align:center;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;color:#991b1b;font-family:Inter,sans-serif">' +
+        '<div style="font-size:28px;margin-bottom:8px">⚠</div>' +
+        '<div style="font-size:13px;font-weight:700;margin-bottom:6px">Could not complete scan</div>' +
+        '<div style="font-size:11px;color:#7f1d1d;margin-bottom:14px;line-height:1.5">' + msg + '</div>' +
+        '<button onclick="loadMicroCapHunter()" style="padding:6px 14px;border:1px solid #fca5a5;background:#fff;color:#dc2626;border-radius:5px;font-size:11px;font-weight:700;cursor:pointer">RETRY</button>' +
+        '</div>';
     });
 };
 
@@ -10815,7 +10964,14 @@ window.loadIntradaySetups = function(forceReg, forceTimeframe) {
     ? _renderRegionToggle('loadIntradaySetups', reg)
     : '';
 
-  // Loading
+  // r62.3: Production-grade loading state
+  var _intradayLoader = _csLoader({
+    title: "Intraday & Swing Setups",
+    subtitle: "SCANNING " + (reg === 'US' ? 'S&P 100' : 'NIFTY 50') + " · " + tf.toUpperCase(),
+    statusInitial: "Pulling 5-min bars + daily history for liquid names...",
+    estimatedSec: 45,
+    onAbort: function(){ window._activeIntradaySetupsTab = false; },
+  });
   el.innerHTML = _regBar +
     '<div style="max-width:1280px;margin:0 auto;padding:0 8px">' +
       '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:14px 18px;margin-bottom:14px;display:flex;align-items:center;gap:14px">' +
@@ -10823,20 +10979,38 @@ window.loadIntradaySetups = function(forceReg, forceTimeframe) {
         '<div style="flex:1"><div style="font-size:16px;font-weight:900;color:#0f172a;font-family:Sora,sans-serif">Intraday & Swing Setups</div>' +
         '<div style="font-size:10px;color:#64748b;font-family:\'IBM Plex Mono\',monospace;letter-spacing:0.5px;margin-top:2px">SCANNING ' + (reg === 'US' ? 'S&P 100' : 'NIFTY 50') + ' · ' + tf.toUpperCase() + '</div></div>' +
       '</div>' +
-      '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:30px;text-align:center;color:#64748b;font-size:13px">Pulling 5-min bars + daily history for liquid names...</div>' +
+      _intradayLoader.html +
     '</div>';
+  _intradayLoader.start(el);
 
-  fetch('/api/intraday-setups?region=' + reg + '&timeframe=' + tf + '&email=' + encodeURIComponent(email) + '&limit=30')
+  _csFetchWithTimeout('/api/intraday-setups?region=' + reg + '&timeframe=' + tf + '&email=' + encodeURIComponent(email) + '&limit=30', null, 120000)
     .then(function(r){return r.json();})
     .then(function(d){
+      _intradayLoader.stop();
+      if (_intradayLoader.isAborted()) return;
       if (!d.success) {
-        el.innerHTML = _regBar + '<div style="max-width:720px;margin:0 auto;padding:30px;text-align:center;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;color:#991b1b">' + (d.error || 'Scan failed') + '</div>';
+        el.innerHTML = _regBar +
+          '<div style="max-width:720px;margin:24px auto;padding:24px;text-align:center;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;color:#991b1b;font-family:Inter,sans-serif">' +
+          '<div style="font-size:28px;margin-bottom:8px">⚠</div>' +
+          '<div style="font-size:13px;font-weight:700;margin-bottom:6px">Scan failed</div>' +
+          '<div style="font-size:11px;color:#7f1d1d;margin-bottom:14px">' + (d.error || 'Unknown error') + '</div>' +
+          '<button onclick="loadIntradaySetups()" style="padding:6px 14px;border:1px solid #fca5a5;background:#fff;color:#dc2626;border-radius:5px;font-size:11px;font-weight:700;cursor:pointer">RETRY</button>' +
+          '</div>';
         return;
       }
       _renderIntradaySetups(el, d, _regBar, reg, tf);
     })
     .catch(function(e){
-      el.innerHTML = _regBar + '<div style="max-width:720px;margin:0 auto;padding:30px;text-align:center;color:#991b1b">Network error: ' + e.message + '</div>';
+      _intradayLoader.stop();
+      if (_intradayLoader.isAborted()) return;
+      var msg = (e.name === 'AbortError') ? 'Scan timed out after 2 minutes. Yahoo is likely rate-limiting. Try again in a few minutes or check Render logs.' : ('Network error: ' + e.message);
+      el.innerHTML = _regBar +
+        '<div style="max-width:720px;margin:24px auto;padding:24px;text-align:center;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;color:#991b1b;font-family:Inter,sans-serif">' +
+        '<div style="font-size:28px;margin-bottom:8px">⚠</div>' +
+        '<div style="font-size:13px;font-weight:700;margin-bottom:6px">Could not complete scan</div>' +
+        '<div style="font-size:11px;color:#7f1d1d;margin-bottom:14px;line-height:1.5">' + msg + '</div>' +
+        '<button onclick="loadIntradaySetups()" style="padding:6px 14px;border:1px solid #fca5a5;background:#fff;color:#dc2626;border-radius:5px;font-size:11px;font-weight:700;cursor:pointer">RETRY</button>' +
+        '</div>';
     });
 };
 
