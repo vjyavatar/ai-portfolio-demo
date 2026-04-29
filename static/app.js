@@ -1,3 +1,14 @@
+// ═══ Celesys version stamp ═══
+window.CELESYS_VERSION = "v4.61.10";
+window.CELESYS_BUILD_TIME = 1777432246;
+window.CELESYS_BUILD_DATE = "2026-04-29 03:10:46 UTC";
+console.log("%c━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "color:#1A3A78");
+console.log("%c CELESYS v4.61.10 %c loaded · 2026-04-29 03:10:46 UTC",
+  "background:#1A3A78;color:#fff;font-weight:900;padding:3px 8px;border-radius:3px;font-family:monospace",
+  "color:#1A3A78;font-weight:700;font-family:monospace");
+console.log("%c━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "color:#1A3A78");
+// ═════════════════════════════════════
+
 
 function _sparkSVG(pts,c,w,h){if(!pts||pts.length<2)return'';var id='sp'+Math.random().toString(36).substr(2,6);var mn=Math.min.apply(null,pts),mx=Math.max.apply(null,pts),r=mx-mn||1;var path='';for(var i=0;i<pts.length;i++){var x=Math.round(i/(pts.length-1)*w);var y=Math.round(h-((pts[i]-mn)/r)*(h-4)-2);path+=(i===0?'M':'L')+x+','+y}var svg='<svg width="'+w+'" height="'+h+'" viewBox="0 0 '+w+' '+h+'" style="display:block;overflow:visible"><defs><linearGradient id="'+id+'" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="'+c+'" stop-opacity=".2"/><stop offset="100%" stop-color="'+c+'" stop-opacity="0"/></linearGradient></defs>';svg+='<path d="'+path+' L'+w+','+h+' L0,'+h+' Z" fill="url(#'+id+')" opacity=".8"/>';svg+='<path d="'+path+'" fill="none" stroke="'+c+'" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>';var lx=Math.round(w),ly=Math.round(h-((pts[pts.length-1]-mn)/r)*(h-4)-2);svg+='<circle cx="'+lx+'" cy="'+ly+'" r="2.5" fill="'+c+'"/></svg>';return svg}
 function _progressRing(val,max,c,label,sz){var r=36,circ=2*Math.PI*r,pct=Math.min(val/max,1),offset=circ*(1-pct);return'<div style="text-align:center"><svg width="'+sz+'" height="'+sz+'" viewBox="0 0 80 80"><circle cx="40" cy="40" r="'+r+'" fill="none" stroke="#E2E8F0" stroke-width="5"/><circle cx="40" cy="40" r="'+r+'" fill="none" stroke="'+c+'" stroke-width="5" stroke-linecap="round" stroke-dasharray="'+circ+'" stroke-dashoffset="'+offset+'" transform="rotate(-90 40 40)"/><text x="40" y="38" text-anchor="middle" font-size="18" font-weight="800" fill="'+c+'" font-family="JetBrains Mono,monospace">'+val+'</text><text x="40" y="52" text-anchor="middle" font-size="10" fill="#5E6F8E">'+label+'</text></svg></div>'}
@@ -11583,68 +11594,204 @@ var fmtBn = function(n){
 
 var _ddRegBar = _renderRegionToggle('loadDeepDD', reg);
 
-// Render input form
+// r61.8: Aladdin-grade entry page — dense, navy/white, institutional
 function renderForm(prefilled){
   prefilled = prefilled || {};
   var sym = prefilled.symbol || window._ddLastSymbol || '';
+  var errMsg = prefilled.error || '';
+  var staleData = prefilled.stale || null;
+
+  // Recent searches (localStorage)
+  var recent = [];
+  try {
+    var raw = localStorage.getItem('cs_dd_recent_'+reg);
+    if (raw) recent = JSON.parse(raw).slice(0, 6);
+  } catch(e) {}
+
+  var popular = reg==='US'
+    ? ['AAPL','NVDA','MSFT','GOOGL','META','AMZN','TSLA','JPM','MU','AMD','NFLX','UBER']
+    : ['RELIANCE','TCS','INFY','HDFCBANK','ICICIBANK','BHARTIARTL','LT','ITC','SBIN','AXISBANK','MARUTI','ASIANPAINT'];
+
   var html = _ddRegBar;
-  html += '<div style="max-width:720px;margin:0 auto">';
-  
-  // Hero
-  html += '<div class="dc" style="border:1px solid #6366f120;box-shadow:0 20px 60px #6366f108;margin-bottom:20px">';
-  html += '<div class="dc-hero" style="background:linear-gradient(160deg,#1e1b4b,#4338ca,#6366f1);color:#fff">';
-  html += '<div style="display:flex;align-items:center;gap:14px">';
-  html += '<div style="font-size:42px">🔬</div>';
-  html += '<div><div style="font-size:24px;font-weight:900;font-family:Sora,sans-serif">Deep Due Diligence</div>';
-  html += '<div style="font-size:12px;opacity:.85;margin-top:4px">Institutional-grade equity research · Real data only · '+(reg==='US'?'US Markets':'India NSE')+'</div></div>';
-  html += '</div></div></div>';
-  
-  // Honest scope banner
-  html += '<div style="padding:14px;background:#eef2ff;border:1px solid #6366f1;border-radius:8px;margin-bottom:16px;font-size:11px;color:#3730a3;line-height:1.6">';
-  html += '<strong>📋 What you get (real data only):</strong><br>';
-  html += '✅ Investment thesis with DCF fair value · ROE/ROIC/margins · investability score (0-100)<br>';
-  html += '✅ Financial health: revenue, debt, cash, all real 10-K data · grade per metric<br>';
-  html += '✅ Peer comparison (curated for major tickers)<br>';
-  html += '✅ Sector context: real sector ETF performance, outperformance vs sector<br>';
-  html += '✅ Risk matrix: financial risks computed from real balance sheet<br>';
-  html += '⚠️ SWOT/Porter\'s frameworks: derived from real numbers + interpretive heuristics<br>';
-  html += '<strong style="color:#dc2626">❌ NOT included:</strong> TAM/SAM (no free reliable source), customer personas (would require LLM hallucination)';
+  html += '<div style="max-width:1100px;margin:0 auto;padding:0 8px">';
+
+  // ═══ HEADER STRIP — institutional, compact, navy accent ═══
+  html += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:14px 18px;margin-bottom:14px;display:flex;align-items:center;gap:14px">';
+  html += '<div style="width:40px;height:40px;background:#1A3A78;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:18px;font-weight:900;font-family:Sora,sans-serif">DD</div>';
+  html += '<div style="flex:1;min-width:0">';
+  html += '<div style="font-size:16px;font-weight:900;color:#0f172a;font-family:Sora,sans-serif;letter-spacing:0.2px">Deep Due Diligence</div>';
+  html += '<div style="font-size:10px;color:#64748b;font-family:\'IBM Plex Mono\',monospace;letter-spacing:0.5px;margin-top:2px">INSTITUTIONAL-GRADE · REAL DATA ONLY · '+(reg==='US'?'US MARKETS':'INDIA NSE')+'</div>';
   html += '</div>';
-  
-  // Input form
-  html += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:20px">';
-  html += '<div style="font-size:11px;font-weight:800;color:var(--text3);letter-spacing:.4px;margin-bottom:14px">📝 ENTER TICKER</div>';
-  html += '<div style="margin-bottom:14px"><label style="display:block;font-size:10px;font-weight:700;color:var(--text3);margin-bottom:4px">SYMBOL ('+(reg==='US'?'US ticker':'NSE symbol')+')</label>';
-  html += '<input type="text" id="ddSymbol" value="'+sym+'" placeholder="'+(reg==='US'?'AAPL, NVDA, TSLA, MSFT...':'RELIANCE, TCS, INFY, HDFCBANK...')+'" '+
-          'style="width:100%;padding:10px 14px;border:1px solid #cbd5e1;border-radius:8px;font-size:14px;font-family:var(--mono);font-weight:700;text-transform:uppercase" '+
-          'onkeypress="if(event.key===\'Enter\')_ddGenerate()"></div>';
-  html += '<button onclick="_ddGenerate()" style="width:100%;padding:14px;background:linear-gradient(135deg,#4338ca,#6366f1);color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:800;cursor:pointer;font-family:Sora,sans-serif;letter-spacing:.5px">🔬 GENERATE DEEP DD REPORT</button>';
+  html += '<div style="font-size:9px;color:#1A3A78;font-weight:700;letter-spacing:0.6px;font-family:\'IBM Plex Mono\',monospace;background:#eef2f9;padding:5px 10px;border-radius:4px;border:1px solid #1A3A7820">16 SECTIONS · MULTI-FACTOR VERDICT</div>';
   html += '</div>';
-  
-  // Suggested tickers
-  var suggested = reg==='US' 
-    ? ['AAPL','NVDA','MSFT','GOOGL','META','AMZN','TSLA','JPM']
-    : ['RELIANCE','TCS','INFY','HDFCBANK','ICICIBANK','BHARTIARTL','LT','ITC'];
-  html += '<div style="margin-top:12px;display:flex;flex-wrap:wrap;gap:6px;justify-content:center">';
-  html += '<span style="font-size:9px;color:var(--text3);align-self:center;margin-right:4px">Quick:</span>';
-  suggested.forEach(function(s){
-    html += '<button onclick="document.getElementById(\'ddSymbol\').value=\''+s+'\';_ddGenerate()" style="padding:4px 10px;border:1px solid #cbd5e1;background:#fff;border-radius:100px;font-size:10px;font-weight:700;cursor:pointer;font-family:var(--mono)">'+s+'</button>';
+
+  // ═══ TWO-COLUMN: input on left, scope on right ═══
+  html += '<div style="display:grid;grid-template-columns:1fr 320px;gap:14px;margin-bottom:14px">';
+
+  // ─── LEFT: input + recent + popular ───
+  html += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:18px">';
+
+  html += '<div style="font-size:9px;font-weight:800;color:#64748b;letter-spacing:1.2px;font-family:\'IBM Plex Mono\',monospace;margin-bottom:8px">TICKER</div>';
+
+  // Big bold input
+  html += '<div style="display:flex;gap:8px;margin-bottom:14px">';
+  html += '<input type="text" id="ddSymbol" value="'+sym+'" placeholder="'+(reg==='US'?'e.g. NVDA':'e.g. RELIANCE')+'" '+
+          'style="flex:1;padding:14px 16px;border:1px solid #cbd5e1;border-radius:6px;font-size:22px;font-family:\'IBM Plex Mono\',monospace;font-weight:700;color:#0f172a;letter-spacing:1px;text-transform:uppercase;outline:none;transition:border-color 100ms" '+
+          'onfocus="this.style.borderColor=\'#1A3A78\'" onblur="this.style.borderColor=\'#cbd5e1\'" '+
+          'onkeypress="if(event.key===\'Enter\')_ddGenerate()" autocomplete="off" autofocus>';
+  html += '<button onclick="_ddGenerate()" style="padding:0 22px;background:#1A3A78;color:#fff;border:none;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;font-family:Inter,sans-serif;letter-spacing:0.5px;transition:background 100ms" '+
+          'onmouseover="this.style.background=\'#142e5c\'" onmouseout="this.style.background=\'#1A3A78\'">GENERATE →</button>';
+  html += '</div>';
+
+  // Inline error block (for failed fetches)
+  if (errMsg) {
+    html += '<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:6px;padding:10px 12px;margin-bottom:14px;display:flex;gap:10px;align-items:flex-start">';
+    html += '<span style="color:#dc2626;font-size:14px;flex-shrink:0">✕</span>';
+    html += '<div style="flex:1;min-width:0">';
+    html += '<div style="font-size:11px;font-weight:700;color:#991b1b;margin-bottom:2px">Could not retrieve data</div>';
+    html += '<div style="font-size:10px;color:#7f1d1d;line-height:1.5">'+errMsg+'</div>';
+    html += '</div>';
+    html += '<button onclick="_ddGenerate()" style="background:#fff;border:1px solid #fca5a5;color:#dc2626;padding:4px 10px;border-radius:4px;font-size:10px;font-weight:700;cursor:pointer;font-family:Inter,sans-serif">RETRY</button>';
+    html += '</div>';
+  }
+
+  // Stale data offer (if a stale cache exists)
+  if (staleData) {
+    html += '<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:6px;padding:10px 12px;margin-bottom:14px;display:flex;gap:10px;align-items:center">';
+    html += '<span style="color:#d97706;font-size:14px;flex-shrink:0">⚠</span>';
+    html += '<div style="flex:1;min-width:0">';
+    html += '<div style="font-size:11px;font-weight:700;color:#92400e">Stale data available</div>';
+    html += '<div style="font-size:10px;color:#78350f;line-height:1.5">'+staleData.reason+'</div>';
+    html += '</div>';
+    html += '<button onclick="renderReport(window._ddStaleData)" style="background:#fef3c7;border:1px solid #fde68a;color:#92400e;padding:4px 10px;border-radius:4px;font-size:10px;font-weight:700;cursor:pointer;font-family:Inter,sans-serif">VIEW STALE</button>';
+    html += '</div>';
+  }
+
+  // Recent reports — only shown if user has researched before
+  if (recent.length) {
+    html += '<div style="margin-bottom:14px">';
+    html += '<div style="font-size:9px;font-weight:800;color:#64748b;letter-spacing:1.2px;font-family:\'IBM Plex Mono\',monospace;margin-bottom:6px">RECENT</div>';
+    html += '<div style="display:flex;flex-wrap:wrap;gap:6px">';
+    recent.forEach(function(t){
+      html += '<button onclick="document.getElementById(\'ddSymbol\').value=\''+t+'\';_ddGenerate()" '+
+              'style="padding:6px 12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:4px;font-size:11px;font-weight:700;cursor:pointer;font-family:\'IBM Plex Mono\',monospace;color:#1A3A78;transition:all 100ms;letter-spacing:0.5px" '+
+              'onmouseover="this.style.background=\'#eef2f9\';this.style.borderColor=\'#1A3A78\'" '+
+              'onmouseout="this.style.background=\'#f8fafc\';this.style.borderColor=\'#e2e8f0\'">'+t+'</button>';
+    });
+    html += '</div></div>';
+  }
+
+  // Popular tickers — always shown
+  html += '<div>';
+  html += '<div style="font-size:9px;font-weight:800;color:#64748b;letter-spacing:1.2px;font-family:\'IBM Plex Mono\',monospace;margin-bottom:6px">POPULAR</div>';
+  html += '<div style="display:flex;flex-wrap:wrap;gap:6px">';
+  popular.forEach(function(t){
+    html += '<button onclick="document.getElementById(\'ddSymbol\').value=\''+t+'\';_ddGenerate()" '+
+            'style="padding:6px 12px;background:#fff;border:1px solid #e2e8f0;border-radius:4px;font-size:11px;font-weight:700;cursor:pointer;font-family:\'IBM Plex Mono\',monospace;color:#475569;transition:all 100ms;letter-spacing:0.5px" '+
+            'onmouseover="this.style.color=\'#1A3A78\';this.style.borderColor=\'#1A3A78\'" '+
+            'onmouseout="this.style.color=\'#475569\';this.style.borderColor=\'#e2e8f0\'">'+t+'</button>';
   });
+  html += '</div></div>';
+
+  html += '</div>';  // close LEFT
+
+  // ─── RIGHT: scope card ───
+  html += '<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:16px">';
+  html += '<div style="font-size:9px;font-weight:800;color:#64748b;letter-spacing:1.2px;font-family:\'IBM Plex Mono\',monospace;margin-bottom:10px">REPORT INCLUDES</div>';
+  var includes = [
+    ['🎯', 'Bottom Line verdict', 'multi-factor synthesis'],
+    ['📊', 'Investment thesis', 'DCF + score 0–100'],
+    ['📈', 'Financial health', 'real 10-K data'],
+    ['📊', 'Sector context', 'vs sector ETF'],
+    ['⚔', "Porter's 5 Forces", 'competitive dynamics'],
+    ['📅', 'Catalysts', 'earnings + analyst targets'],
+    ['💰', 'Valuation', 'DCF intrinsic value'],
+    ['🛡', 'Risk matrix', 'financial flags'],
+    ['👁', 'Insider activity', 'Form 4 filings'],
+    ['🏛', 'Institutional ownership', '13F holders'],
+    ['📐', 'Risk-adjusted returns', 'Sharpe + Max DD'],
+    ['⚖', 'Peer comparison', 'ranked vs peers'],
+  ];
+  includes.forEach(function(it){
+    html += '<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid #f1f5f9">';
+    html += '<span style="width:18px;text-align:center;flex-shrink:0">'+it[0]+'</span>';
+    html += '<span style="font-size:11px;color:#0f172a;font-weight:600;flex:1">'+it[1]+'</span>';
+    html += '<span style="font-size:9px;color:#94a3b8;font-family:\'IBM Plex Mono\',monospace;letter-spacing:0.3px">'+it[2]+'</span>';
+    html += '</div>';
+  });
+
+  // NOT included
+  html += '<div style="margin-top:12px;padding:8px 10px;background:#fff;border:1px solid #e2e8f0;border-radius:4px">';
+  html += '<div style="font-size:9px;font-weight:800;color:#dc2626;letter-spacing:0.6px;margin-bottom:4px">NOT INCLUDED</div>';
+  html += '<div style="font-size:10px;color:#64748b;line-height:1.4">TAM/SAM (no free reliable source), customer personas (would require LLM hallucination), real-time news feed (paid API)</div>';
   html += '</div>';
-  
+
+  // Data freshness indicator
+  html += '<div style="margin-top:12px;padding:8px 10px;background:#eef2f9;border:1px solid #1A3A7820;border-radius:4px">';
+  html += '<div style="font-size:9px;font-weight:800;color:#1A3A78;letter-spacing:0.6px;margin-bottom:4px">DATA FRESHNESS</div>';
+  html += '<div style="font-size:10px;color:#0f2548;line-height:1.4">Reports cached 30 min. Stale fallback (up to 7 days) if data provider is rate-limiting.</div>';
   html += '</div>';
+
+  html += '</div>';  // close RIGHT
+  html += '</div>';  // close grid
+
+  html += '</div>';  // close max-width
   el.innerHTML = html;
+
+  // Auto-focus the input
+  setTimeout(function(){
+    var i = document.getElementById('ddSymbol');
+    if (i && !sym) i.focus();
+  }, 50);
 }
 
 window._ddGenerate = function(){
   var sym = document.getElementById('ddSymbol').value.trim().toUpperCase();
-  if(!sym){alert('Enter a symbol first');return;}
+  if(!sym){
+    var inp = document.getElementById('ddSymbol');
+    if (inp) { inp.style.borderColor = '#dc2626'; inp.focus(); setTimeout(function(){inp.style.borderColor='#cbd5e1';}, 1500); }
+    return;
+  }
   window._ddLastSymbol = sym;
+
+  // r61.8: Track recent searches
+  try {
+    var key = 'cs_dd_recent_'+reg;
+    var recent = [];
+    try { recent = JSON.parse(localStorage.getItem(key) || '[]'); } catch(e) {}
+    recent = [sym].concat(recent.filter(function(x){return x !== sym;})).slice(0, 12);
+    localStorage.setItem(key, JSON.stringify(recent));
+  } catch(e) {}
   
   var _eml = document.getElementById('email');
   var email = window._verifiedEmail||(_eml?(_eml.dataset.real||_eml.value):'').trim().toLowerCase();
   
-  el.innerHTML = _ddRegBar + '<div style="padding:40px;text-align:center"><div style="font-size:48px;margin-bottom:12px">🔬</div><div style="font-size:18px;font-weight:900;color:var(--text);margin-bottom:8px">Generating Deep DD Report</div><div style="font-size:11px;color:var(--text3);margin-bottom:16px">Symbol: <strong>'+sym+'</strong> · Pulling 10-K data, peer metrics, sector context...</div><div style="max-width:400px;margin:0 auto"><div id="ddPhase" style="font-size:9px;color:var(--text3)">Fetching company data...</div><div style="height:6px;border-radius:8px;background:#f1f5f9;overflow:hidden;margin-top:6px"><div id="ddBar" style="height:100%;border-radius:8px;background:linear-gradient(90deg,#4338ca,#6366f1);width:0%;transition:width .5s"></div></div></div><div style="font-size:9px;color:#6366f1;margin-top:12px;font-weight:700">⏱️ Estimated: 20-40 seconds</div></div>';
+  // r61.8: Aladdin-grade loading state
+  var loadingHTML = _ddRegBar;
+  loadingHTML += '<div style="max-width:1100px;margin:0 auto;padding:0 8px">';
+  loadingHTML += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:18px 22px;margin-bottom:14px;display:flex;align-items:center;gap:14px">';
+  loadingHTML += '<div style="width:40px;height:40px;background:#1A3A78;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:18px;font-weight:900;font-family:Sora,sans-serif">'+sym.substring(0, 2)+'</div>';
+  loadingHTML += '<div style="flex:1">';
+  loadingHTML += '<div style="font-size:16px;font-weight:900;color:#0f172a;font-family:Sora,sans-serif">'+sym+'</div>';
+  loadingHTML += '<div id="ddPhase" style="font-size:10px;color:#64748b;font-family:\'IBM Plex Mono\',monospace;letter-spacing:0.4px;margin-top:2px">FETCHING COMPANY DATA...</div>';
+  loadingHTML += '</div>';
+  loadingHTML += '<div style="font-size:9px;color:#1A3A78;font-weight:700;letter-spacing:0.6px;font-family:\'IBM Plex Mono\',monospace;background:#eef2f9;padding:5px 10px;border-radius:4px">~20-40s</div>';
+  loadingHTML += '</div>';
+  // Progress bar
+  loadingHTML += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:16px;margin-bottom:14px">';
+  loadingHTML += '<div style="height:4px;border-radius:2px;background:#f1f5f9;overflow:hidden;margin-bottom:10px"><div id="ddBar" style="height:100%;background:#1A3A78;width:0%;transition:width .5s"></div></div>';
+  // Skeleton sections
+  loadingHTML += '<div style="display:grid;grid-template-columns:repeat(2, 1fr);gap:10px;margin-top:12px">';
+  for (var _i = 0; _i < 8; _i++) {
+    loadingHTML += '<div style="height:42px;background:#f8fafc;border:1px solid #f1f5f9;border-radius:4px;display:flex;align-items:center;padding:0 12px;gap:8px">';
+    loadingHTML += '<div style="width:20px;height:20px;background:#f1f5f9;border-radius:3px"></div>';
+    loadingHTML += '<div style="flex:1;height:8px;background:#f1f5f9;border-radius:2px"></div>';
+    loadingHTML += '</div>';
+  }
+  loadingHTML += '</div>';
+  loadingHTML += '</div>';
+  loadingHTML += '</div>';
+  el.innerHTML = loadingHTML;
   
   var _ddTimer = setInterval(function(){
     window._ddProg = (window._ddProg||0) + 1.5 + Math.random()*0.6;
@@ -11653,7 +11800,7 @@ window._ddGenerate = function(){
     var phase = document.getElementById("ddPhase");
     if(bar) bar.style.width = window._ddProg + "%";
     if(phase){
-      var phases = ["Fetching company data...","Computing DCF fair value...","Pulling peer financials...","Sector ETF context...","Risk matrix calculation...","Frameworks synthesis..."];
+      var phases = ["FETCHING COMPANY DATA...","COMPUTING DCF FAIR VALUE...","PULLING PEER FINANCIALS...","SECTOR ETF CONTEXT...","RISK MATRIX CALCULATION...","FRAMEWORKS SYNTHESIS..."];
       phase.textContent = phases[Math.min(5, Math.floor(window._ddProg/16))];
     }
   }, 800);
@@ -11663,26 +11810,284 @@ window._ddGenerate = function(){
     .then(function(d){
       clearInterval(_ddTimer); window._ddProg = 0;
       if(!d.success){
-        renderForm({symbol: sym});
-        var errBox = document.createElement('div');
-        errBox.style.cssText = 'max-width:720px;margin:14px auto 0;padding:14px;background:#fef2f2;border:1px solid #dc2626;border-radius:8px;color:#dc2626;font-size:11px;font-weight:600;text-align:center';
-        errBox.textContent = '❌ '+(d.error||'Unknown error');
-        el.appendChild(errBox);
+        // r61.8: render form with inline error in the new layout
+        var errMsg = d.error || 'Unknown error';
+        if (d.error_diagnostic) {
+          errMsg += ' [' + d.error_diagnostic.exception + ']';
+        }
+        renderForm({symbol: sym, error: errMsg});
         return;
+      }
+      // r61.8: stale data has its own banner inside the report
+      if (d._stale) {
+        // Render the report normally; the staleness banner is handled inside renderReport
       }
       renderReport(d);
     })
     .catch(function(e){
       clearInterval(_ddTimer);
-      renderForm({symbol: sym});
-      var errBox = document.createElement('div');
-      errBox.style.cssText = 'max-width:720px;margin:14px auto 0;padding:14px;background:#fef2f2;border:1px solid #dc2626;border-radius:8px;color:#dc2626;font-size:11px;font-weight:600;text-align:center';
-      errBox.textContent = '❌ Network error: '+e.message;
-      el.appendChild(errBox);
+      renderForm({symbol: sym, error: 'Network error: '+e.message+'. Check your connection and retry.'});  // r61.8
     });
 };
 
 function renderReport(d){
+  // r61.9: route through Aladdin shell wrapper IF enabled
+  // DEFAULT: OFF (legacy layout). Enable in DevTools: window._csDdShellEnabled = true; loadDeepDD();
+  if (window._csDdShellEnabled === true) {
+    return _renderReportShellAladdin(d);
+  }
+  return _renderReportLegacy(d);
+}
+
+// r61.9: Aladdin-grade shell that wraps the legacy report output
+function _renderReportShellAladdin(d){
+  var c = d.company || {};
+  var t = d.thesis || {};
+  var bl = d.bottom_line || {};
+  var ddCsym = d.currency_symbol || csym;
+
+  // Add cs-app + shell class to root for scoped CSS
+  el.classList.add('cs-app');
+  el.classList.add('cs-dd-shell-active');
+
+  var verdictPill = (bl.verdict || t.verdict || 'PROCESSING');
+  var verdictColor = bl.verdict_color === 'pos' ? 'pos'
+                   : bl.verdict_color === 'neg' ? 'neg'
+                   : bl.verdict_color === 'warn' ? 'warn' : 'pos';
+  var compositeScore = (bl.composite_score != null) ? bl.composite_score
+                      : (t.investability_score != null) ? t.investability_score
+                      : t.score;
+
+  // Build navigation items
+  var navItems = [
+    { id: 'sec-bottom-line', icon: '◆', label: 'Bottom Line', n: '00' },
+    { id: 'sec-thesis', icon: '◇', label: 'Investment Thesis', n: '01' },
+    { id: 'sec-financial', icon: '▤', label: 'Financial Health', n: '02' },
+    { id: 'sec-sector', icon: '◐', label: 'Sector Context', n: '03' },
+    { id: 'sec-swot', icon: '◫', label: 'SWOT Analysis', n: '04' },
+    { id: 'sec-porter', icon: '※', label: "Porter's 5 Forces", n: '05' },
+    { id: 'sec-catalysts', icon: '◷', label: 'Catalysts', n: '06' },
+    { id: 'sec-valuation', icon: '◭', label: 'Valuation (DCF)', n: '07' },
+    { id: 'sec-earnings-history', icon: '⌬', label: 'Earnings History', n: '08' },
+    { id: 'sec-risk-checks', icon: '⊘', label: 'Risk Health Checks', n: '09' },
+    { id: 'sec-earnings-intel', icon: '⚡', label: 'Earnings Move Intel', n: '10' },
+    { id: 'sec-inst-summary', icon: '◈', label: 'Institutional Summary', n: '11' },
+    { id: 'sec-insider', icon: '◉', label: 'Insider Activity', n: '12' },
+    { id: 'sec-holders', icon: '⬢', label: 'Inst. Ownership', n: '13' },
+    { id: 'sec-risk-adj', icon: '◇', label: 'Risk-Adj Returns', n: '14' },
+    { id: 'sec-peers', icon: '⚖', label: 'Peer Comparison', n: '15' },
+    { id: 'sec-chart', icon: '◢', label: '1Y Price Chart', n: '16' },
+  ];
+
+  var h = '';
+  h += _ddRegBar;
+
+  // Stale / cached banner
+  if (d._stale) {
+    h += '<div style="max-width:1280px;margin:0 auto;padding:8px 14px"><div class="cs-state" style="background:var(--cs-warn-bg);border:1px solid var(--cs-warn-soft);border-radius:var(--cs-r-3);padding:8px 14px;flex-direction:row;justify-content:flex-start;align-items:center"><span style="color:var(--cs-warn);font-size:14px">⚠</span><div style="font-size:11px;color:var(--cs-warn);font-family:var(--cs-font-text);text-align:left"><strong>STALE DATA</strong> · ' + (d._stale_reason || 'Live data unavailable.') + '</div></div></div>';
+  } else if (d._cached) {
+    h += '<div style="max-width:1280px;margin:0 auto;padding:8px 14px"><div style="background:var(--cs-navy-soft);border:1px solid var(--cs-navy);border-radius:var(--cs-r-2);padding:5px 12px;font-size:9px;color:var(--cs-navy);font-family:var(--cs-font-mono);letter-spacing:0.5px;display:inline-flex;align-items:center;gap:6px"><span>⌬</span><span>CACHED · ' + Math.floor((d._cache_age_sec || 0) / 60) + ' MIN AGO</span></div></div>';
+  }
+
+  // ── Workspace shell ──
+  h += '<div class="cs-dd-workspace">';
+
+  // Sidebar nav
+  h += '<aside class="cs-dd-nav" id="csDdNav">';
+  h += '<div class="cs-dd-nav__title">Sections</div>';
+  navItems.forEach(function(it){
+    h += '<a class="cs-dd-nav__item" href="#' + it.id + '" data-target="' + it.id + '" onclick="_csDdScrollTo(event,\'' + it.id + '\')">';
+    h += '<span class="cs-dd-nav__num">' + it.n + '</span>';
+    h += '<span style="flex:1">' + it.label + '</span>';
+    h += '</a>';
+  });
+  h += '</aside>';
+
+  // Right pane
+  h += '<main class="cs-dd-pane">';
+
+  // Action bar
+  h += '<div class="cs-dd-actions">';
+  h += '<button class="cs-dd-actions__btn" onclick="loadDeepDD()">← New Ticker</button>';
+  h += '<button class="cs-dd-actions__btn cs-dd-actions__btn--primary" onclick="switchDEMode(\'investor\');loadDE(\'' + c.symbol + '\')">Full Celesys View →</button>';
+  h += '</div>';
+
+  // ── Verdict strip — compact ──
+  var sym = c.symbol || '?';
+  var symBadge = sym.length <= 3 ? sym : sym.substring(0, 3);
+  h += '<div class="cs-dd-verdict" id="sec-verdict-strip">';
+  h += '<div class="cs-dd-verdict__badge">' + symBadge + '</div>';
+  h += '<div class="cs-dd-verdict__main">';
+  h += '<div class="cs-dd-verdict__sym">' + sym + '</div>';
+  h += '<div class="cs-dd-verdict__name">' + (c.name || sym) + '</div>';
+  h += '<div class="cs-dd-verdict__meta">' + (c.sector || 'Sector unknown') + (c.industry ? ' · ' + c.industry : '') + ' · ' + (d.region || 'US') + '</div>';
+  h += '</div>';
+  h += '<div class="cs-dd-verdict__score-wrap">';
+  if (compositeScore != null) {
+    var scoreClass = compositeScore >= 75 ? 'pos' : compositeScore >= 35 ? 'warn' : 'neg';
+    h += '<div><span class="cs-dd-verdict__score cs-dd-verdict__score--' + scoreClass + '">' + Math.round(compositeScore) + '</span><span class="cs-dd-verdict__score-max">/100</span></div>';
+  }
+  h += '<div class="cs-dd-verdict__pill cs-dd-verdict__pill--' + verdictColor + '">' + verdictPill + '</div>';
+  h += '</div>';
+  h += '</div>';
+
+  // ── Quick stats strip ──
+  var spot = c.spot || c.price || t.spot;
+  var marketCap = c.market_cap || c.marketCap;
+  var pe = t.pe || c.forward_pe || c.trailing_pe;
+  var fairValue = (d.valuation_detail && d.valuation_detail.fair_value) || t.dcf_fair_value;
+  var upside = (d.valuation_detail && d.valuation_detail.upside_pct) || t.dcf_upside_pct;
+  var fmtCcy = function(v) { if (v == null) return '—'; if (Math.abs(v) >= 1e12) return ddCsym + (v/1e12).toFixed(2) + 'T'; if (Math.abs(v) >= 1e9) return ddCsym + (v/1e9).toFixed(2) + 'B'; if (Math.abs(v) >= 1e6) return ddCsym + (v/1e6).toFixed(1) + 'M'; return ddCsym + v.toFixed(2); };
+  var fmtNum = function(v, dec) { return v == null ? '—' : v.toFixed(dec || 2); };
+  h += '<div class="cs-dd-stats">';
+  h += '<div class="cs-dd-stats__cell"><div class="cs-dd-stats__label">SPOT</div><div class="cs-dd-stats__val">' + (spot != null ? ddCsym + fmtNum(spot, 2) : '—') + '</div></div>';
+  h += '<div class="cs-dd-stats__cell"><div class="cs-dd-stats__label">MARKET CAP</div><div class="cs-dd-stats__val">' + fmtCcy(marketCap) + '</div></div>';
+  h += '<div class="cs-dd-stats__cell"><div class="cs-dd-stats__label">DCF FAIR VALUE</div><div class="cs-dd-stats__val ' + (upside != null && upside < -10 ? 'cs-text-neg' : upside != null && upside > 10 ? 'cs-text-pos' : '') + '">' + (fairValue != null ? ddCsym + fmtNum(fairValue, 2) : '—') + '</div><div class="cs-dd-stats__sub">' + (upside != null ? (upside > 0 ? '+' : '') + upside.toFixed(1) + '%' : '') + '</div></div>';
+  h += '<div class="cs-dd-stats__cell"><div class="cs-dd-stats__label">FORWARD P/E</div><div class="cs-dd-stats__val">' + fmtNum(pe, 1) + '</div></div>';
+  h += '<div class="cs-dd-stats__cell"><div class="cs-dd-stats__label">REGION</div><div class="cs-dd-stats__val">' + (d.region || 'US') + '</div><div class="cs-dd-stats__sub">' + (c.exchange || (d.region === 'IN' ? 'NSE' : 'NYSE/NASDAQ')) + '</div></div>';
+  h += '</div>';
+
+  // ── Embed the legacy report body ──
+  // This produces the existing 16 section blocks. We'll inject them and
+  // sprinkle in section-anchor IDs for scroll-spy.
+  h += '<div id="csDdLegacyContent">' + _legacyReportBodyHtml(d) + '</div>';
+
+  h += '</main>';   // close pane
+  h += '</div>';    // close workspace
+
+  el.innerHTML = h;
+
+  // Wire scroll-spy after DOM mount
+  setTimeout(_csDdInitScrollSpy, 100);
+
+  // Inject section-anchor IDs into the legacy content. We do this AFTER
+  // mount because the legacy renderer doesn't know about our IDs.
+  setTimeout(_csDdInjectAnchors, 50);
+}
+
+// Helper: get legacy report HTML. Calls the legacy fn but captures string
+function _legacyReportBodyHtml(d) {
+  // The legacy renderReport mutates `el.innerHTML` directly. To capture
+  // its output as a string, we render into a temp div.
+  var temp = document.createElement('div');
+  var origEl = el;
+
+  // Swap el reference temporarily
+  try {
+    el = temp;
+    _renderReportLegacy(d);
+  } finally {
+    el = origEl;
+  }
+
+  // Strip the legacy chrome (region toggle, hero card, bottom line — they're
+  // duplicated in the new shell). We keep only the section panels.
+  var html = temp.innerHTML;
+
+  // Remove the leading region toggle bar (already in shell)
+  html = html.replace(/^[\s\S]*?_renderRegionToggle[^>]*>[\s\S]*?<\/div>/, '');
+
+  // Remove duplicate Bottom Line (already in shell as verdict header)
+  // Actually keep it — Bottom Line in the report is the comprehensive
+  // narrative card; verdict strip is just the score+pill. They're different.
+
+  return html;
+}
+
+// Inject IDs onto each section panel for sidebar nav anchoring
+function _csDdInjectAnchors() {
+  var legacy = document.getElementById('csDdLegacyContent');
+  if (!legacy) return;
+  // Find all section divs (background:#fff;border:1px solid #e2e8f0;border-radius:12px)
+  // and attach IDs based on the title text within
+  var titleToId = {
+    'Bottom Line': 'sec-bottom-line',
+    'Score Breakdown': 'sec-thesis',
+    'Investment Thesis': 'sec-thesis',
+    'Financial Health': 'sec-financial',
+    'Sector Context': 'sec-sector',
+    'SWOT Analysis': 'sec-swot',
+    "Porter's Five Forces": 'sec-porter',
+    'Catalysts': 'sec-catalysts',
+    'Valuation': 'sec-valuation',
+    'Quarterly Earnings History': 'sec-earnings-history',
+    'Risk Health Checks': 'sec-risk-checks',
+    'Earnings Move Intelligence': 'sec-earnings-intel',
+    'INSTITUTIONAL SUMMARY': 'sec-inst-summary',
+    'Insider Activity': 'sec-insider',
+    'Institutional Ownership': 'sec-holders',
+    'Risk-Adjusted Returns': 'sec-risk-adj',
+    'Peer Comparison': 'sec-peers',
+    '1-Year Price Chart': 'sec-chart',
+  };
+
+  // Walk all top-level cards
+  var cards = legacy.querySelectorAll('div[style*="border-radius:12px"]');
+  cards.forEach(function(card){
+    if (card.id) return;  // already anchored
+    var titleText = (card.textContent || '').slice(0, 200);
+    for (var k in titleToId) {
+      if (titleText.indexOf(k) !== -1) {
+        card.id = titleToId[k];
+        card.classList.add('cs-dd-section-anchor');
+        // Add scroll margin so sticky nav doesn't cover the title
+        card.style.scrollMarginTop = '90px';
+        break;
+      }
+    }
+  });
+}
+
+// Smooth-scroll a section into view
+window._csDdScrollTo = function(ev, targetId) {
+  ev.preventDefault();
+  var target = document.getElementById(targetId);
+  if (target) {
+    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+  // Update active state
+  document.querySelectorAll('.cs-dd-nav__item').forEach(function(a){
+    a.classList.toggle('is-active', a.getAttribute('data-target') === targetId);
+  });
+};
+
+// Scroll-spy: highlight the nav item for the section currently in view
+function _csDdInitScrollSpy() {
+  var navItems = document.querySelectorAll('.cs-dd-nav__item');
+  if (!navItems.length) return;
+
+  var sections = [];
+  navItems.forEach(function(item){
+    var id = item.getAttribute('data-target');
+    var sec = document.getElementById(id);
+    if (sec) sections.push({ id: id, el: sec, navItem: item });
+  });
+  if (!sections.length) return;
+
+  // Activate first by default
+  if (navItems[0]) navItems[0].classList.add('is-active');
+
+  var ticking = false;
+  var onScroll = function() {
+    if (ticking) return;
+    ticking = true;
+    requestAnimationFrame(function(){
+      var scrollY = window.scrollY + 120;
+      var current = sections[0];
+      sections.forEach(function(s){
+        if (s.el.offsetTop <= scrollY) current = s;
+      });
+      navItems.forEach(function(it){ it.classList.remove('is-active'); });
+      if (current) current.navItem.classList.add('is-active');
+      ticking = false;
+    });
+  };
+  window.addEventListener('scroll', onScroll, { passive: true });
+  onScroll();
+}
+
+// Original renderReport body — RENAMED to _renderReportLegacy
+function _renderReportLegacy(d){
   var c = d.company || {};
   var t = d.thesis || {};
   var f = d.finance || {};
@@ -11695,6 +12100,17 @@ function renderReport(d){
   
   var h = _ddRegBar;
   h += '<div style="max-width:900px;margin:0 auto">';
+  // r61.8: Stale-data banner
+  if (d._stale) {
+    h += '<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:10px 14px;margin-bottom:14px;display:flex;gap:10px;align-items:center">';
+    h += '<span style="color:#d97706;font-size:14px;flex-shrink:0">⚠</span>';
+    h += '<div style="flex:1;font-size:11px;color:#78350f;line-height:1.5;font-family:Inter,sans-serif"><strong style="color:#92400e">STALE DATA</strong> · ' + (d._stale_reason || 'Showing previously cached report — live data unavailable.') + '</div>';
+    h += '</div>';
+  } else if (d._cached) {
+    h += '<div style="background:#eef2f9;border:1px solid #1A3A7820;border-radius:8px;padding:6px 12px;margin-bottom:14px;font-size:10px;color:#1A3A78;font-family:\'IBM Plex Mono\',monospace;letter-spacing:0.4px;display:flex;align-items:center;gap:8px">';
+    h += '<span>📦</span><span>CACHED · ' + Math.floor((d._cache_age_sec || 0) / 60) + ' MIN AGO</span>';
+    h += '</div>';
+  }
   h += _renderBottomLine(d.bottom_line);  // r61.1
   
   // Top action bar

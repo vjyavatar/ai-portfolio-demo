@@ -1710,6 +1710,18 @@ def _safe_float(val, default=0.0):
     except (ValueError, TypeError):
         return default
 
+# ═══ Celesys version stamp (v4.61.10) ═══════════════════════════════
+APP_VERSION = "v4.61.10"
+APP_BUILD_TIME = 1777432246
+APP_BUILD_DATE = "2026-04-29 03:10:46 UTC"
+APP_RELEASE_NOTES = (
+    "v4.61.10 cumulative: Aladdin DD entry page (r61.8), "
+    "stale-cache fallback (r61.8), multi-factor Bottom Line (r61.7), "
+    "layman blocks every section (r61.7), combined Institutional Summary (r61.6), "
+    "insider $ values fix (r61.3), 30-min DD cache (r61.3), "
+    "earnings intel friendly messages (r61.5)"
+)
+
 app = FastAPI(title="Celesys AI - Verified Live Data", default_response_class=SafeJSONResponse)
 print("[STARTUP] ✅ FastAPI app created successfully")
 
@@ -27822,16 +27834,15 @@ async def investor_due_diligence(email: str = "", symbol: str = "", region: str 
     yf_symbol = symbol if region == "US" else symbol + ".NS"
     csym = "$" if region == "US" else "₹"
 
-    # r61.3: 30-min cache to avoid Yahoo rate-limiting
-    # Bumped to v3 to invalidate old cached responses with the bugs
-    _dd_cache_key = f"dd_v6:{region}:{symbol}"  # r61.7 bump
+    # r61.3+r61.8: 30-min fresh cache + 7-day stale cache fallback
+    _dd_cache_key = f"dd_v6:{region}:{symbol}"
+    _dd_stale_key = f"dd_stale_v1:{region}:{symbol}"
     _dd_cached = _smart_cache_get(_dd_cache_key)
     if _dd_cached:
-        # Return cached but stamp it so frontend knows it's cached
         _dd_cached = dict(_dd_cached)
         _dd_cached["_cached"] = True
         _dd_cached["_cache_age_sec"] = int(time.time() - _dd_cached.get("_cached_at", time.time()))
-        print(f"📦 DD v6 cache HIT for {symbol} ({region}) — age {_dd_cached['_cache_age_sec']}s")
+        print(f"📦 DD fresh-cache HIT for {symbol} ({region}) — age {_dd_cached['_cache_age_sec']}s")
         return _dd_cached
 
     print(f"\n🔬 Investor DD: {symbol} ({region}) — cache miss, fetching fresh...")
@@ -27931,10 +27942,31 @@ async def investor_due_diligence(email: str = "", symbol: str = "", region: str 
                 print(f"[DD] Google Finance fallback failed: {_gfe}")
 
         if not info or not info.get("regularMarketPrice"):
+            # r61.8: Try stale cache before giving up
+            try:
+                _stale = _smart_cache_get(_dd_stale_key)
+                if _stale:
+                    _stale = dict(_stale)
+                    _stale["_cached"] = True
+                    _stale["_stale"] = True
+                    _stale["_cache_age_sec"] = int(time.time() - _stale.get("_cached_at", time.time()))
+                    _hrs = _stale["_cache_age_sec"] // 3600
+                    _mins = (_stale["_cache_age_sec"] % 3600) // 60
+                    _stale["_stale_reason"] = (
+                        f"Live data unavailable (data provider rate-limiting or blocked). "
+                        f"Showing last successful fetch from {_hrs}h {_mins}m ago. "
+                        f"Numbers may be slightly outdated but structural analysis (DCF, peers, ratios) remains valid."
+                    )
+                    print(f"📦 DD STALE-cache fallback for {symbol} ({region}) — {_stale['_cache_age_sec']}s old")
+                    return _stale
+            except Exception as _se:
+                print(f"[DD] stale fallback failed: {_se}")
+
             return {
                 "success": False,
                 "error": f"Could not retrieve data for {symbol} from any source (yfinance, NSE, Google Finance). Yahoo may be rate-limiting; try again in 30s.",
                 "tried_sources": ["yfinance", "NSE" if region == "IN" else None, "google_finance"],
+                "stale_cache_available": False,
             }
         print(f"[DD] {symbol} data via {data_source}")
         
@@ -29714,10 +29746,11 @@ async def investor_due_diligence(email: str = "", symbol: str = "", region: str 
                 "not_included": ["TAM/SAM/SOM (no free reliable source)", "Customer personas (requires hallucination)", "Industry trends timeline (requires news/M&A APIs)"],
             },
         }
-        # r61.3: Cache for 30 min before returning
+        # r61.3+r61.8: Cache fresh for 30 min + stale for 7 days
         try:
             _smart_cache_set(_dd_cache_key, _dd_response, ttl=1800)
-            print(f"💾 DD cached for 30 min: {symbol} ({region})")
+            _smart_cache_set(_dd_stale_key, _dd_response, ttl=604800)  # 7 days
+            print(f"💾 DD cached: fresh 30min + stale 7d for {symbol} ({region})")
         except Exception as _ce:
             print(f"[DD] cache write failed: {_ce}")
         return _dd_response
@@ -31349,6 +31382,16 @@ async def ds_preview_route():
     from fastapi.responses import FileResponse
     return FileResponse("static/celesys-ds-preview.html")
 
+
+@app.get("/api/version")
+async def api_version():
+    """v4.61.10: Return version + build info so user can verify deployment."""
+    return {
+        "version": APP_VERSION,
+        "build_time": APP_BUILD_TIME,
+        "build_date": APP_BUILD_DATE,
+        "release_notes": APP_RELEASE_NOTES,
+    }
 
 @app.get("/api/universe-stats")
 async def universe_stats_route():

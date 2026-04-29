@@ -19,7 +19,7 @@
   'use strict';
 
   // Loud startup log so we can verify the deployed version at a glance
-  console.log('%c[ActiveTrading] v52 loaded — r60.4 — Earnings Intel pinned to top + Deep DD institutional pack — Universe Filter Bar added',
+  console.log('%c[ActiveTrading] v53 loaded — v4.61.10 — Bundled with cumulative r61.x improvements (no Active Trading changes)',
               'color:#22C55E;font-weight:bold;font-size:13px');
   console.log('%c  Every click: fetch fresh data + voice speaks verdict/confidence/entry/size',
               'color:#64748B;font-size:11px');

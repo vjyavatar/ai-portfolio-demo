@@ -1,118 +1,102 @@
-# Celesys v4 — r61.7 (Layman everywhere + multi-factor Bottom Line)
+# Celesys v4.61.10 — Production Deploy
 
-Two big improvements on what you reported:
-
----
-
-## 1. Layman blocks now on EVERY section
-
-Audit before this deploy showed 4 sections had backend layman generated but no frontend hook:
-- ❌ Investment Thesis (Score Breakdown card)
-- ❌ Financial Health
-- ❌ Sector Context
-- ❌ SWOT Analysis
-
-Plus the Earnings Move Intelligence panel had no layman.
-
-**All 5 now have layman blocks.** Total coverage: **15 sections** with PLAIN + NOTE summaries:
-
-| # | Section | r-deployed |
-|---|---|---|
-| 1 | Investment Thesis (Score Breakdown) | r61.7 |
-| 2 | Financial Health | r61.7 |
-| 3 | Sector Context | r61.7 |
-| 4 | SWOT Analysis | r61.7 |
-| 5 | Porter's Five Forces | r61.1 |
-| 6 | Catalysts & Analyst Consensus | r61.1 |
-| 7 | Valuation (DCF Intrinsic Value) | r61.1 |
-| 8 | Quarterly Earnings History | r61.1 |
-| 9 | Risk Health Checks | r61.1 |
-| 10 | Earnings Move Intelligence | r61.7 |
-| 11 | 🏛 Institutional Summary (combined gestalt) | r61.6 |
-| 12 | Insider Activity | r61.4 |
-| 13 | Institutional Ownership | r61.4 |
-| 14 | Risk-Adjusted Returns | r61.4 |
-| 15 | Peer Comparison | r61.4 |
-| 16 | 1-Year Price Chart | r61.4 |
+**Single canonical version: `v4.61.10`** — stamped in 7 places so you always know what's running.
 
 ---
 
-## 2. Bottom Line now considers ALL subsections (multi-factor scoring)
+## How to verify deployed version
 
-**Before (r61.6 and earlier):**
-The Bottom Line synthesis only used 4 things: thesis.score, valuation upside, risk_matrix.health, next_earnings. So MU got "STRONG BUY 100/100" even though it's -85% above fair value, has -57.6% max drawdowns, and insiders are selling.
+After pushing, verify with any ONE of these:
 
-**After (r61.7):**
-Composite scoring across 10 weighted factors:
-
-| Factor | Weight | Source |
-|---|---|---|
-| Quality | 40 pts | thesis.investability_score |
-| Value | ±15 pts | valuation_detail.upside_pct (DCF) |
-| Sector momentum | ±10 pts | sector_context.outperformance_pct |
-| Earnings execution | ±8 pts | earnings_history.beat_rate_pct |
-| Risk-adjusted returns | ±10 pts | institutional.risk_adjusted Sharpe + grade |
-| Drawdown penalty | -5 pts if EXTREME | risk_adjusted.drawdown_grade |
-| Smart money | ±5 pts | insider_activity.sentiment |
-| Inst confidence | ±3 pts | institutional_holders.concentration |
-| Peer leadership | +3-5 pts | peer_table top ranks |
-| 1Y momentum | ±5 pts | price_chart.return_pct |
-
-**Health override:** any "CONCERNING" balance sheet caps verdict at HOLD.
-
-### Example: MU re-scored with r61.7
-
-```
-COMPOSITE SCORE: 37.0 / 100
-
-  Quality              +40.0   100/100 thesis score
-  Value                  -15   -85.3% to fair value
-  Sector momentum        +10   +492% vs sector
-  Earnings execution    +4.0   75% beat rate
-  Risk-adj returns       +6    Sharpe 1.46 (STRONG)
-  Drawdown risk          -5    Max DD -57.6% (EXTREME)
-  Insider signal         -5    Strong Selling
-  Inst. confidence       +3    High (82%)
-  Peer leader            +3    #1 in 2 of 4 metrics
-  1Y momentum            -4    -28%
-
-VERDICT: HOLD / SELECTIVE
+```bash
+# From terminal:
+curl https://celesys.ai/api/version
+# → {"version": "v4.61.10", "build_date": "2026-04-29 03:10:46 UTC", ...}
 ```
 
-MU goes from "STRONG BUY 100/100" → "HOLD / SELECTIVE 37/100". That's the honest institutional view: yes the thesis is perfect, but valuation extreme + insiders selling + extreme drawdown risk drag it down. Don't blindly buy.
+```js
+// From browser DevTools console (F12):
+window.CELESYS_VERSION
+// → "v4.61.10"
+```
+
+**Or just look at the bottom-right corner of any page** — there's a tiny `v4.61.10` stamp.
+
+If you see an older version, your browser cached old JS. Hard-refresh: **Ctrl+Shift+R**.
 
 ---
 
-## 3. NEW: Composite score breakdown table (collapsible)
+## What's in v4.61.10 (cumulative summary)
 
-In the Bottom Line card, you'll see:
-> 📊 Composite Score: 37/100 — show breakdown ▾
+Every r61.x improvement bundled:
 
-Click to expand. Shows the full table above so you can see WHY the verdict is what it is. No black-box scoring.
-
----
-
-## Verdict thresholds
-
-| Composite | Verdict |
+| Feature | Source |
 |---|---|
-| ≥ 75 | STRONG BUY CANDIDATE |
-| 55–74 | BUY CANDIDATE |
-| 35–54 | HOLD / SELECTIVE |
-| < 35 | AVOID |
+| ✅ Aladdin-grade DD entry page (replaces ugly purple-box screen) | r61.8 |
+| ✅ Stale-cache fallback (7-day) — survives Yahoo rate-limiting | r61.8 |
+| ✅ Multi-factor Bottom Line (10 weighted factors) | r61.7 |
+| ✅ Layman PLAIN + NOTE blocks on all 16 sections | r61.7 |
+| ✅ Combined Institutional Summary + 5 sub-cards | r61.6 |
+| ✅ Earnings Intel friendly messages | r61.5 |
+| ✅ Split institutional layman with specific numbers | r61.4 |
+| ✅ Insider $ values fix | r61.3 |
+| ✅ Bottom Line score field fix | r61.3 |
+| ✅ 30-min DD cache | r61.3 |
+| ✅ Insider 0/0 NEUTRAL bug fix | r61.2 |
+| ✅ Layman + Bottom Line foundation | r61.1 |
+| ✅ Design system (`celesys-ds.css`) | r61.0 |
+| ✅ 6 institutional sections in DD | r60.4 |
+| ✅ Catalysts + DCF + Earnings History + Risk Matrix v2 | r60.3 |
+| ✅ Earnings Move Intelligence + Universe Filter | r60.2/r60.1 |
+| ✅ Porter formula fix + Universe Classifier | r60.0 |
+
+See `CHANGELOG.md` for full history.
 
 ---
 
-## Files changed
+## What's NOT enabled
 
-| File | Change |
-|---|---|
-| `api.py` | Bottom Line synthesis rewritten as multi-factor (10 factors, weighted). Cache bumped to v6. |
-| `static/app.js` | 4 new layman hooks (thesis, finance, sector, swot) + Earnings Intel layman + composite score breakdown table |
-| `static/app.min.js` | Synced |
-| `index.html` | Version hash bumped |
+- 🔇 **r61.9 Deep DD report sidebar shell** — built but disabled by default (untested on real data). Enable in DevTools: `window._csDdShellEnabled = true; loadDeepDD();`
+- ❌ Other Decide screens (Top Trades, PMS, Pro Scan) — left untouched per your request
+- ❌ Active Trading — left untouched per your request
 
-Everything from r61.4/r61.6 (split institutional layman, gestalt summary card, etc.) preserved.
+---
+
+## Files in this zip
+
+```
+celesys_v4_FINAL_DEPLOY/
+├── api.py                    (33K+ lines — APP_VERSION + /api/version added)
+├── data_sources.py           (region-aware fallback layer)
+├── earnings_intel.py         (with friendlier INCOMPLETE messages)
+├── universe_classifier.py    (755 tickers IN+US classified)
+├── start.py
+├── index.html                (meta tag + footer stamp + cache-bust)
+├── DEPLOY_README.md          (this file)
+├── CHANGELOG.md              (full version history)
+└── static/
+    ├── app.js                (~22K lines — version banner on load)
+    ├── app.min.js            (byte-identical to app.js)
+    ├── active-trading.js     (~13K lines — v53 marker)
+    ├── options-engine.js     (untouched)
+    ├── premium-override.js   (untouched)
+    ├── celesys-ds.css        (design system tokens)
+    └── celesys-ds-preview.html  (visible at /ds-preview)
+```
+
+---
+
+## Pre-ship verification
+
+All passed before packaging:
+- ✅ `api.py`, `data_sources.py`, `earnings_intel.py`, `universe_classifier.py`, `start.py` — all compile
+- ✅ `app.js`, `app.min.js`, `active-trading.js`, `options-engine.js`, `premium-override.js` — all pass `node --check`
+- ✅ `app.min.js` byte-identical to `app.js`
+- ✅ `APP_VERSION = "v4.61.10"` in api.py
+- ✅ `window.CELESYS_VERSION = "v4.61.10"` in app.js
+- ✅ `/api/version` endpoint returns v4.61.10
+- ✅ Footer stamp visible
+- ✅ Cache-bust version hash bumped (forces browser refresh)
 
 ---
 
@@ -122,28 +106,83 @@ Everything from r61.4/r61.6 (split institutional layman, gestalt summary card, e
 unzip celesys_v4_FINAL_DEPLOY.zip
 cd celesys_v4_FINAL_DEPLOY/
 git add -A
-git commit -m "r61.7: Complete layman coverage + multi-factor Bottom Line synthesis"
+git commit -m "v4.61.10 production: cumulative r61.x — Aladdin entry + stale cache + multi-factor verdict + complete layman"
 git push
 ```
 
-Wait ~3 min, hard-refresh Ctrl+Shift+R, open MU Deep DD.
+Wait ~3 min for Render to build. Then **hard-refresh** browser (Ctrl+Shift+R).
+
+Verify deployment:
+```bash
+curl https://celesys.ai/api/version
+```
+Expected: `{"version": "v4.61.10", ...}`
 
 ---
 
-## What you'll see
+## After deploy — what should look different
 
-1. **Bottom Line at top:** verdict updated based on ALL factors. MU specifically should drop from STRONG BUY → HOLD with composite ~37.
-2. **📊 Composite Score: X/100 — show breakdown** clickable disclosure showing the factor table.
-3. **PLAIN + NOTE blocks at the top of EVERY section** — including the 4 that were missing (Score Breakdown, Financial Health, Sector Context, SWOT).
-4. **Earnings Move Intelligence panel** — when verdict is BUY_PREMIUM/SELL_PREMIUM/NEUTRAL, you'll see a layman block explaining what that means and what trade has edge.
+### Decide → Deep DD (entry page)
+**OLD:** Big "Deep Due Diligence" white card + purple "What you get" box + tiny ticker input
+**NEW:** Compact navy DD badge header + 2-col layout (bold input on left, scope sidebar on right)
+
+### Decide → Deep DD (after generating report on, say, MU)
+- 🎯 Bottom Line at top with composite score breakdown (shows `37/100 HOLD/SELECTIVE` for MU now, not the misleading `100/100 STRONG BUY`)
+- PLAIN + NOTE blocks at top of every section
+- 🏛 Institutional Summary card before 5 sub-cards
+- Yellow STALE banner at top if Yahoo is rate-limiting (instead of hard error)
+- Insider Activity shows real $ values, not $0.00M
+
+### Footer (every page)
+- Tiny `v4.61.10` stamp bottom-right corner
+
+### DevTools Console (every page load)
+```
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ CELESYS v4.61.10  loaded · 2026-04-29 03:10:46 UTC
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[ActiveTrading] v53 loaded — v4.61.10 — Bundled with cumulative r61.x improvements
+```
 
 ---
 
-## Verified before packaging
+## If something looks wrong after deploy
 
-- ✅ `api.py` compiles
-- ✅ `app.js` + `app.min.js` syntax OK
-- ✅ 17 hooks present (15 section laymen + Earnings Intel + composite score table)
-- ✅ Multi-factor synthesis tested with MU data — produces honest HOLD verdict instead of fake STRONG BUY
-- ✅ Cache key v6 (invalidates v5)
-- ✅ All earlier work preserved (gestalt summary, split sub-laymen)
+1. **Verify version actually deployed:**
+   ```bash
+   curl https://celesys.ai/api/version
+   ```
+   If it shows old version, the push didn't go through.
+
+2. **Verify browser isn't cached:**
+   - Open DevTools → Network tab → reload
+   - Look at `app.min.js` — should show fresh download, not "(disk cache)"
+   - If still cached: Ctrl+Shift+R to hard-refresh, or clear browser data for celesys.ai
+
+3. **Send screenshot + console:**
+   If still wrong, send a screenshot showing the page + DevTools Console (F12 → Console tab). Console errors are how I diagnose.
+
+---
+
+## Rollback
+
+```bash
+git revert HEAD
+git push
+```
+
+To disable r61.9 shell at runtime (already disabled by default in this build):
+```js
+window._csDdShellEnabled = false;
+```
+
+---
+
+## Next steps (when you're ready)
+
+If everything looks good after this deploy, I can build:
+- **r62.0** — Apply Aladdin design system to other Decide screens (Top Trades, Top Investments, etc.)
+- **r62.x** — Active Trading rebuild (separate, careful, toggleable)
+- **r62.x** — Background pre-warmer for Yahoo (so cold caches aren't cold)
+
+But none of those happen unless you ask. Cumulative is shipped, version is stamped, you're in control.

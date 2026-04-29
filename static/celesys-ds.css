@@ -566,3 +566,299 @@
   .cs-canvas { grid-template-columns: 1fr; }
   .cs-rail { display: none; }
 }
+
+
+/* ═══════════════════════════════════════════════════════════════════
+   r61.9 — Deep DD Report (Aladdin-grade compact layout)
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* Outer workspace — fixed grid, no full-page scroll */
+.cs-dd-workspace {
+  display: grid;
+  grid-template-columns: 200px 1fr;
+  gap: var(--cs-sp-3);
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: var(--cs-sp-2) var(--cs-sp-3);
+  min-height: calc(100vh - 200px);
+}
+@media (max-width: 900px) {
+  .cs-dd-workspace { grid-template-columns: 1fr; }
+  .cs-dd-nav { display: none; }
+}
+
+/* Left sticky sidebar nav */
+.cs-dd-nav {
+  position: sticky;
+  top: 80px;
+  height: fit-content;
+  max-height: calc(100vh - 100px);
+  overflow-y: auto;
+  background: var(--cs-surface);
+  border: 1px solid var(--cs-border);
+  border-radius: var(--cs-r-3);
+  padding: var(--cs-sp-2);
+}
+.cs-dd-nav__title {
+  font-size: 9px;
+  font-weight: var(--cs-fw-bold);
+  color: var(--cs-text-3);
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  padding: var(--cs-sp-2) var(--cs-sp-2) var(--cs-sp-1);
+  font-family: var(--cs-font-mono);
+  border-bottom: 1px solid var(--cs-border);
+  margin-bottom: var(--cs-sp-1);
+}
+.cs-dd-nav__item {
+  display: flex;
+  align-items: center;
+  gap: var(--cs-sp-2);
+  padding: 6px 10px;
+  font-size: 11px;
+  color: var(--cs-text-2);
+  text-decoration: none;
+  border-radius: var(--cs-r-1);
+  cursor: pointer;
+  transition: background 80ms;
+  border-left: 2px solid transparent;
+  font-weight: var(--cs-fw-medium);
+  font-family: var(--cs-font-text);
+}
+.cs-dd-nav__item:hover {
+  background: var(--cs-surface-hover);
+  color: var(--cs-text);
+}
+.cs-dd-nav__item.is-active {
+  background: var(--cs-navy-soft);
+  color: var(--cs-navy);
+  border-left-color: var(--cs-navy);
+  font-weight: var(--cs-fw-semi);
+}
+.cs-dd-nav__num {
+  font-family: var(--cs-font-mono);
+  font-size: 9px;
+  color: var(--cs-text-4);
+  min-width: 16px;
+  text-align: right;
+  font-weight: var(--cs-fw-bold);
+}
+.cs-dd-nav__item.is-active .cs-dd-nav__num { color: var(--cs-navy); }
+
+/* Right pane — scrolls internally */
+.cs-dd-pane { min-width: 0; }
+
+/* Verdict strip — compact (was huge gradient) */
+.cs-dd-verdict {
+  background: var(--cs-surface);
+  border: 1px solid var(--cs-border);
+  border-radius: var(--cs-r-3);
+  padding: var(--cs-sp-3) var(--cs-sp-4);
+  margin-bottom: var(--cs-sp-3);
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: var(--cs-sp-4);
+  align-items: center;
+}
+.cs-dd-verdict__badge {
+  width: 56px; height: 56px;
+  background: var(--cs-navy);
+  color: #fff;
+  border-radius: var(--cs-r-3);
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--cs-font-mono);
+  font-weight: var(--cs-fw-black);
+  font-size: 14px;
+  letter-spacing: 0.5px;
+  flex-shrink: 0;
+}
+.cs-dd-verdict__main { min-width: 0; }
+.cs-dd-verdict__sym {
+  font-family: var(--cs-font-mono);
+  font-size: 22px;
+  font-weight: var(--cs-fw-black);
+  color: var(--cs-text);
+  letter-spacing: 1px;
+  line-height: 1;
+}
+.cs-dd-verdict__name {
+  font-size: 12px;
+  color: var(--cs-text-2);
+  margin-top: 4px;
+  font-weight: var(--cs-fw-medium);
+}
+.cs-dd-verdict__meta {
+  font-size: 10px;
+  color: var(--cs-text-3);
+  margin-top: 2px;
+  font-family: var(--cs-font-mono);
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+}
+.cs-dd-verdict__score-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+.cs-dd-verdict__score {
+  font-family: var(--cs-font-mono);
+  font-size: 32px;
+  font-weight: var(--cs-fw-black);
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.cs-dd-verdict__score--pos { color: var(--cs-pos); }
+.cs-dd-verdict__score--neg { color: var(--cs-neg); }
+.cs-dd-verdict__score--warn { color: var(--cs-warn); }
+.cs-dd-verdict__score-max {
+  font-size: 14px;
+  color: var(--cs-text-3);
+  font-weight: var(--cs-fw-medium);
+}
+.cs-dd-verdict__pill {
+  font-size: 10px;
+  font-weight: var(--cs-fw-bold);
+  font-family: var(--cs-font-mono);
+  padding: 3px 10px;
+  border-radius: var(--cs-r-1);
+  letter-spacing: 0.6px;
+}
+.cs-dd-verdict__pill--pos { background: var(--cs-pos-bg); color: var(--cs-pos); border: 1px solid var(--cs-pos-soft); }
+.cs-dd-verdict__pill--neg { background: var(--cs-neg-bg); color: var(--cs-neg); border: 1px solid var(--cs-neg-soft); }
+.cs-dd-verdict__pill--warn { background: var(--cs-warn-bg); color: var(--cs-warn); border: 1px solid var(--cs-warn-soft); }
+
+/* Quick stats strip below verdict */
+.cs-dd-stats {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 0;
+  background: var(--cs-surface);
+  border: 1px solid var(--cs-border);
+  border-radius: var(--cs-r-3);
+  margin-bottom: var(--cs-sp-3);
+  overflow: hidden;
+}
+.cs-dd-stats__cell {
+  padding: 10px 14px;
+  border-right: 1px solid var(--cs-border);
+}
+.cs-dd-stats__cell:last-child { border-right: none; }
+.cs-dd-stats__label {
+  font-size: 9px;
+  font-weight: var(--cs-fw-bold);
+  color: var(--cs-text-3);
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  font-family: var(--cs-font-mono);
+}
+.cs-dd-stats__val {
+  font-size: 14px;
+  font-weight: var(--cs-fw-bold);
+  color: var(--cs-text);
+  font-family: var(--cs-font-mono);
+  font-variant-numeric: tabular-nums;
+  margin-top: 3px;
+  line-height: 1.2;
+}
+.cs-dd-stats__sub {
+  font-size: 9px;
+  color: var(--cs-text-3);
+  margin-top: 1px;
+  font-family: var(--cs-font-mono);
+}
+
+/* Section panels — used to wrap each report section */
+.cs-dd-section {
+  background: var(--cs-surface);
+  border: 1px solid var(--cs-border);
+  border-radius: var(--cs-r-3);
+  margin-bottom: var(--cs-sp-3);
+  overflow: hidden;
+  scroll-margin-top: 90px;  /* for sticky-nav anchors */
+}
+.cs-dd-section__head {
+  background: var(--cs-surface-alt);
+  border-bottom: 1px solid var(--cs-border);
+  padding: 8px 14px;
+  display: flex;
+  align-items: center;
+  gap: var(--cs-sp-2);
+  height: 32px;
+}
+.cs-dd-section__num {
+  font-family: var(--cs-font-mono);
+  font-size: 9px;
+  font-weight: var(--cs-fw-bold);
+  color: var(--cs-navy);
+  background: var(--cs-navy-soft);
+  padding: 1px 6px;
+  border-radius: var(--cs-r-1);
+  border: 1px solid var(--cs-navy);
+  letter-spacing: 0.4px;
+}
+.cs-dd-section__title {
+  font-size: 12px;
+  font-weight: var(--cs-fw-bold);
+  color: var(--cs-text);
+  letter-spacing: 0.4px;
+  font-family: var(--cs-font-text);
+  flex: 1;
+  text-transform: uppercase;
+}
+.cs-dd-section__badge {
+  font-size: 8px;
+  font-weight: var(--cs-fw-bold);
+  font-family: var(--cs-font-mono);
+  padding: 2px 6px;
+  border-radius: var(--cs-r-1);
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+}
+.cs-dd-section__body { padding: 14px; }
+
+/* Compact action bar */
+.cs-dd-actions {
+  display: flex;
+  gap: var(--cs-sp-2);
+  margin-bottom: var(--cs-sp-3);
+}
+.cs-dd-actions__btn {
+  padding: 6px 14px;
+  font-size: 11px;
+  font-weight: var(--cs-fw-semi);
+  border-radius: var(--cs-r-2);
+  border: 1px solid var(--cs-border);
+  background: var(--cs-surface);
+  color: var(--cs-text);
+  cursor: pointer;
+  font-family: var(--cs-font-text);
+  transition: all 100ms;
+}
+.cs-dd-actions__btn:hover {
+  border-color: var(--cs-navy);
+  color: var(--cs-navy);
+}
+.cs-dd-actions__btn--primary {
+  background: var(--cs-navy);
+  color: #fff;
+  border-color: var(--cs-navy);
+}
+.cs-dd-actions__btn--primary:hover {
+  background: var(--cs-navy-hover);
+  color: #fff;
+  border-color: var(--cs-navy-hover);
+}
+
+/* Override the existing layman block to fit the new design */
+.cs-dd-section .cs-layman-host {
+  margin-top: -4px;
+  margin-bottom: var(--cs-sp-3);
+}
+
+/* The OLD report (legacy) — when not using the new shell, hide it gracefully */
+.cs-dd-report-legacy { display: none; }
+
+/* When new layout is active, hide the OLD verdict header that comes from renderReport */
+.cs-dd-shell-active [data-legacy-verdict] { display: none !important; }
+.cs-dd-shell-active [data-legacy-action-bar] { display: none !important; }
