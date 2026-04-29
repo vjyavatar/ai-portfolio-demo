@@ -12252,7 +12252,7 @@ function renderReport(d){
     h += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:16px;margin-bottom:16px">';
     h += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">';
     h += '<div style="font-size:14px;font-weight:900;color:var(--text);font-family:Sora,sans-serif">👁 Insider Activity</div>';
-    h += _renderLayman((d.institutional||{}).layman);
+    h += _renderLayman((d.institutional&&d.institutional.insider_activity||{}).layman);  // r61.4
     if (ia.sentiment) {
       var sColor = ia.sentiment.indexOf('STRONG BUYING') >= 0 ? '#059669' : ia.sentiment.indexOf('BUYING') >= 0 ? '#10b981' : ia.sentiment.indexOf('STRONG SELLING') >= 0 ? '#dc2626' : ia.sentiment.indexOf('SELLING') >= 0 ? '#f87171' : '#6b7280';
       h += '<div style="font-size:11px;font-weight:800;color:'+sColor+';background:'+sColor+'15;padding:4px 10px;border-radius:6px">'+ia.sentiment+'</div>';
@@ -12307,6 +12307,7 @@ function renderReport(d){
     h += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:16px;margin-bottom:16px">';
     h += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">';
     h += '<div style="font-size:14px;font-weight:900;color:var(--text);font-family:Sora,sans-serif">🏛 Institutional Ownership</div>';
+    h += _renderLayman((d.institutional&&d.institutional.institutional_holders||{}).layman);  // r61.4
     if (ih.concentration) {
       var cColor = ih.concentration === 'VERY HIGH' ? '#dc2626' : ih.concentration === 'HIGH' ? '#d97706' : '#059669';
       h += '<div style="font-size:11px;font-weight:800;color:'+cColor+'">'+(ih.total_pct_outstanding||0)+'% institutional · '+ih.concentration+'</div>';
@@ -12341,6 +12342,7 @@ function renderReport(d){
     h += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:16px;margin-bottom:16px">';
     h += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">';
     h += '<div style="font-size:14px;font-weight:900;color:var(--text);font-family:Sora,sans-serif">⚖ Peer Comparison</div>';
+    h += _renderLayman((d.institutional&&d.institutional.peer_table||{}).layman);  // r61.4
     h += '<div style="font-size:9px;color:var(--text3)">'+pt.rows.length+' companies · ranked highlighting best</div></div>';
     h += '<div style="overflow-x:auto"><table style="width:100%;font-size:10px;font-family:var(--mono);border-collapse:collapse">';
     h += '<thead><tr style="background:#f8fafc;color:var(--text3)"><th style="text-align:left;padding:6px 8px">TICKER</th><th style="text-align:left;padding:6px 8px">NAME</th><th style="text-align:right;padding:6px 8px">MCAP</th><th style="text-align:right;padding:6px 8px">P/E</th><th style="text-align:right;padding:6px 8px">ROE</th><th style="text-align:right;padding:6px 8px">OP MGN</th><th style="text-align:right;padding:6px 8px">REV GROW</th></tr></thead><tbody>';
@@ -12371,6 +12373,7 @@ function renderReport(d){
     h += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:16px;margin-bottom:16px">';
     h += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">';
     h += '<div style="font-size:14px;font-weight:900;color:var(--text);font-family:Sora,sans-serif">📈 1-Year Price Chart</div>';
+    h += _renderLayman((d.institutional&&d.institutional.price_chart||{}).layman);  // r61.4
     var rColor = (pc.return_pct||0) >= 0 ? '#059669' : '#dc2626';
     h += '<div style="font-size:14px;font-weight:900;color:'+rColor+';font-family:var(--mono)">'+(pc.return_pct >= 0 ? '+' : '')+pc.return_pct+'%</div>';
     h += '</div>';
@@ -12405,6 +12408,7 @@ function renderReport(d){
     var ra = d.institutional.risk_adjusted;
     h += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:16px;margin-bottom:16px">';
     h += '<div style="font-size:14px;font-weight:900;color:var(--text);font-family:Sora,sans-serif;margin-bottom:10px">📐 Risk-Adjusted Returns</div>';
+    h += _renderLayman((d.institutional&&d.institutional.risk_adjusted||{}).layman);  // r61.4
 
     if (ra.data_quality === 'INCOMPLETE') {
       h += '<div style="padding:10px;background:#f3f4f6;border-radius:6px;color:#6b7280;font-size:11px">'+(ra.reason || 'Insufficient data')+'</div>';

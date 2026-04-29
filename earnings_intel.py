@@ -267,7 +267,34 @@ def get_earnings_intel(ticker: str, region: str = "US",
     if n_missing >= _INCOMPLETE_THRESHOLD:
         out["data_quality"] = "INCOMPLETE"
         out["verdict"] = "INCOMPLETE_DATA"
-        out["verdict_reason"] = f"Missing {n_missing} key fields: {', '.join(out['missing_fields'])}"
+        # r61.5: human-readable reason instead of technical field names
+        missing = set(out["missing_fields"])
+        if "next_earnings_date" in missing and "implied_move_inputs" in missing:
+            out["verdict_reason"] = (
+                "No upcoming earnings catalyst on the calendar. "
+                "Either the company recently reported (next earnings ~3 months away) "
+                "or our data provider hasn't published the next confirmed date yet. "
+                "Check back closer to the typical reporting cycle."
+            )
+        elif "next_earnings_date" in missing:
+            out["verdict_reason"] = (
+                "Next earnings date unavailable. The earnings calendar provider "
+                "doesn't have a confirmed date for this ticker yet."
+            )
+        elif "implied_move_inputs" in missing:
+            out["verdict_reason"] = (
+                "Options chain unavailable for implied-move estimate. "
+                "Either no options trade on this ticker or strike data is missing."
+            )
+        elif "earnings_history" in missing:
+            out["verdict_reason"] = (
+                "Earnings history unavailable. The data provider doesn't have past "
+                "EPS or post-earnings move records for this ticker."
+            )
+        else:
+            out["verdict_reason"] = f"Earnings analytics incomplete — missing: {', '.join(out['missing_fields'])}"
+        # Always store technical detail for debugging
+        out["_missing_technical"] = list(out["missing_fields"])
     elif n_missing > 0:
         out["data_quality"] = "PARTIAL"
 

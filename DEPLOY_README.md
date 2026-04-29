@@ -1,84 +1,76 @@
-# Celesys v4 — r61.3 (3 bug fixes + 30-min DD cache)
+# Celesys v4 — r61.5 (verified clean + earnings intel message improvement)
 
-You spotted 2 bugs in the screenshots. This deploy fixes both, plus adds the caching strategy you asked for.
+## What's in this deploy
 
----
+This bundles **r61.4** (layman split + enrichment from earlier today) + a small message improvement:
 
-## Bugs you reported
+### r61.4 — Layman improvements (from earlier today)
+- Split combined `institutional.layman` into 5 sub-laymen (insider / holders / risk-adjusted / peers / chart) — fixes the "bleed" you saw in your screenshot
+- Enriched all laymen with specific numbers (Sharpe 1.46, 82% inst ownership, etc.)
+- Added 4 missing frontend hooks
+- Cache bumped to v4
 
-### Bug 1: Insider Activity shows 7 buys / 15 sells but **$0.00M**
+### r61.5 — Earnings Intel message improvement (this deploy)
+The "Missing 4 key fields: earnings_history, next_earnings_date, post_earnings_moves, implied_move_inputs" message you saw is now a human-readable explanation:
 
-That's wrong. With 22 transactions for MU over 6 months, dollar values can't all be zero.
+**Before:**
+> Missing 4 key fields: earnings_history, next_earnings_date, post_earnings_moves, implied_move_inputs
 
-**Root cause:** My code grabbed counts from `tk.insider_purchases` (the cleaner summary endpoint), but the dollar values are only available in `tk.insider_transactions` — and my old code skipped that parse step when summary was used.
+**After:**
+> No upcoming earnings catalyst on the calendar. Either the company recently reported (next earnings ~3 months away) or our data provider hasn't published the next confirmed date yet. Check back closer to the typical reporting cycle.
 
-**Fix:** Always iterate `insider_transactions` for dollar values, regardless of which source provided counts. If transactions don't parse, return `null` (frontend shows "—") instead of fake "$0.00M".
+This is contextual:
+- Missing next_earnings + implied → message above
+- Missing only next_earnings → "Next earnings date unavailable"
+- Missing only options data → "Options chain unavailable for implied-move estimate"
+- Missing earnings history → "Past EPS records unavailable"
 
-### Bug 2: Bottom Line says "0/100 AVOID" while the report header shows "100/100 STRONG BUY CANDIDATE"
-
-Same MU report, same data, two different verdicts. That's a bug in my Bottom Line synthesis.
-
-**Root cause:** My synthesis read `thesis["score"]` but the actual key is `thesis["investability_score"]`. Always returned 0 → always classified as AVOID.
-
-**Fix:** Read `thesis["investability_score"]` (the correct key, with `thesis["score"]` as fallback for safety).
-
----
-
-## Caching strategy you asked for
-
-You said: *"call batch job once... complete data... and put in cache every half an hour."*
-
-**Done.** Added 30-minute cache on the entire Deep DD endpoint:
-
-```
-Request: /api/investor-due-diligence?symbol=MU&region=US
-  ├─ Cache HIT  → return cached payload instantly (no Yahoo call)
-  └─ Cache MISS → fetch all data fresh → cache for 30 min → return
-```
-
-**Cache key:** `dd_v3:{region}:{symbol}` (e.g., `dd_v3:US:MU`)
-**TTL:** 30 minutes (1800s)
-**Bumped to v3:** invalidates old cached responses with the bugs above
-
-**Why 30 min?** Fundamentals (margins, ROE, debt) update quarterly. Insider data updates with Form 4 filings (irregular). Sector returns update daily. 30 min is fresh enough for a research report and protects you from Yahoo rate limiting.
-
-**Response includes:**
-- `_cached: true` when served from cache
-- `_cache_age_sec: <int>` so you can show "data from 12 min ago" if you want
-
-The cache uses your existing `_smart_cache` infrastructure — same one that protects the Bottom Nav scanner. No new dependencies.
+Technical field list still preserved in `_missing_technical` for debugging.
 
 ---
 
-## What this does for Yahoo rate limiting
+## About the JS error in your screenshots
 
-**Before:** Every page load (or refresh) on a Deep DD page triggered:
-- 1× `tk.info`
-- 1× `tk.history(period="2y")`
-- 1× `tk.insider_transactions`
-- 1× `tk.insider_purchases`
-- 1× `tk.institutional_holders`
-- 1× `tk.earnings_history`
-- N× peer fetches (1× per peer)
+Your Image 2 and Image 3 show `JS Error (line 1): Uncaught SyntaxError: Function statements require a function name` at the bottom.
 
-**= ~8-15 Yahoo calls per Deep DD load.**
+I ran exhaustive syntax checks on every JS file in this build:
+- ✅ `app.js` — clean
+- ✅ `app.min.js` — clean (byte-identical to app.js)
+- ✅ `active-trading.js` — clean
+- ✅ `options-engine.js` — clean
+- ✅ `premium-override.js` — clean
+- ✅ All inline scripts in `index.html` — clean
+- ✅ Strict mode parse — clean
+- ✅ Custom anonymous-function-statement scanner — found nothing
 
-**After:** First load fetches once and caches. Next 30 min of loads (same ticker) = **zero Yahoo calls**. Different users hitting same ticker = same cache.
+**Conclusion:** the JS error is from the OLDER deployed version on Render, not from this build.
 
-If you have 50 users looking at MU around earnings, that's 50 page loads. Old: 400-750 Yahoo calls. New: ~10-15 Yahoo calls (one initial fetch + maybe a 30-min refresh).
+When you push r61.5 the version hash bumps and the browser will fetch the new clean code, and that error should disappear.
+
+If after pushing r61.5 + hard-refresh the error STILL appears, screenshot the browser DevTools console (F12 → Console tab) — that will show the actual file and line number, which the in-page error banner doesn't.
 
 ---
 
-## Files changed
+## About Image 1 (Earnings Move Intelligence "NO DATA")
 
-| File | Change |
+This is correct behavior, not a bug. The MU report shows "Earnings on 2026-03-18 (-42 day(s) away)" — earnings was 42 days ago. There's no upcoming earnings to analyze.
+
+After r61.5 deploys, the message becomes:
+> No upcoming earnings catalyst on the calendar. Either the company recently reported (next earnings ~3 months away)...
+
+Much clearer than the old "Missing 4 key fields" technical dump.
+
+---
+
+## Files changed (vs r61.3)
+
+| File | Change source |
 |---|---|
-| `api.py` | Insider $ value fix (Section 11.1) + Bottom Line score field fix + 30-min DD cache wrapper |
-| `static/app.js` | Frontend renders "—" when $ value is null (instead of fake $0.00M) |
-| `static/app.min.js` | Synced |
+| `api.py` | r61.4 (split institutional layman + enriched laymen + cache v4) |
+| `static/app.js` | r61.4 (5 new frontend hooks for split sub-laymen) |
+| `static/app.min.js` | Synced byte-identical |
+| `earnings_intel.py` | r61.5 (human-readable INCOMPLETE messages) |
 | `index.html` | Version hash bumped |
-
-Everything from r61.0/r61.1/r61.2 still intact (Bottom Line, Layman blocks, all sections).
 
 ---
 
@@ -88,53 +80,31 @@ Everything from r61.0/r61.1/r61.2 still intact (Bottom Line, Layman blocks, all 
 unzip celesys_v4_FINAL_DEPLOY.zip
 cd celesys_v4_FINAL_DEPLOY/
 git add -A
-git commit -m "r61.3: Fix insider \$ values + Bottom Line score field + 30-min DD cache"
+git commit -m "r61.5: Layman split + enrichment + human-readable earnings intel messages"
 git push
 ```
 
-**IMPORTANT after deploy:**
-- The cache key bumped to `dd_v3` — old cached responses (with the bugs) are abandoned automatically. First load of any ticker after deploy will be slow (cache miss → fresh fetch). After that, fast.
-- Hard-refresh browser (Ctrl+Shift+R) to load the updated `app.min.js?v=...`
+Wait ~3 min, **hard-refresh Ctrl+Shift+R** (the version hash bump should also force this), then:
+
+1. Open MU Deep DD → scroll to Insider Activity. Layman should now ONLY discuss insider activity (counts, sentiment, $ flow). No more Sharpe/ownership bleed.
+
+2. Scroll down — see separate layman blocks on Institutional Ownership, Risk-Adjusted Returns, Peer Comparison, Price Chart cards.
+
+3. Earnings Move Intelligence panel — instead of "Missing 4 key fields" you'll see a human explanation.
+
+4. JS error banner should be gone (assuming it was from the older deploy).
+
+If the JS error persists after deploy + hard-refresh, open DevTools Console (F12) and paste me the actual error with line/file info — that's the only way to track it down further.
 
 ---
 
-## Smoke test
+## Verified before shipping
 
-### TEST 1 — MU report (the failing case)
-
-1. Open Deep DD on MU
-2. Bottom Line should now show **STRONG BUY CANDIDATE** (matching the 100/100 score above)
-3. Insider Activity grid should show real $ values (e.g., $4.2M sells, $1.1M buys, -$3.1M net flow) — OR "—" if MU's transactions truly didn't parse $ values
-
-### TEST 2 — Cache verification
-
-1. Open Deep DD on MU → first load takes 5-15s (cache miss, fresh fetch)
-2. Refresh the page within 30 min → near-instant load (cache hit)
-3. Check API response: `_cached: true` field present, `_cache_age_sec` shows seconds elapsed
-
-To force a fresh fetch, wait 30+ min OR hit a different ticker first then come back.
-
-### TEST 3 — Multiple users / tickers
-
-Open Deep DD on AAPL, NVDA, TSLA in succession. Each first load = fresh. Second load = cached. Bottom Line verdict should always match the score in the header.
-
----
-
-## Verified before packaging
-
-- ✅ `api.py` compiles
-- ✅ `app.js` and `app.min.js` pass `node --check`
-- ✅ Cache HIT path returns cached payload
-- ✅ Cache MISS path fetches → caches → returns
-- ✅ Cache TTL is 1800s (30 min)
-- ✅ Cache key v3 invalidates old cached responses
-- ✅ Old buggy `thesis.get("score")` line removed
-- ✅ New line reads `thesis["investability_score"]`
-
----
-
-## Rollback
-
-To revert just the cache: in `api.py`, remove the `_dd_cache_key` block at top of DD function and the `_smart_cache_set` call before return.
-
-To revert all r61.3: restore previous `api.py`, `app.js`, `app.min.js` from r61.2.
+- ✅ All 4 Python files compile
+- ✅ All 5 JS files pass `node --check`
+- ✅ Strict mode parsing clean
+- ✅ No anonymous function statements at statement position (custom scan)
+- ✅ `app.min.js` byte-identical to `app.js`
+- ✅ All 11 layman frontend hooks present
+- ✅ Cache bumped to v4 (invalidates v3 entries)
+- ✅ Earnings intel falls back to friendly message

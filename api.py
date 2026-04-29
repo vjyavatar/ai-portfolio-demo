@@ -27824,14 +27824,14 @@ async def investor_due_diligence(email: str = "", symbol: str = "", region: str 
 
     # r61.3: 30-min cache to avoid Yahoo rate-limiting
     # Bumped to v3 to invalidate old cached responses with the bugs
-    _dd_cache_key = f"dd_v3:{region}:{symbol}"
+    _dd_cache_key = f"dd_v4:{region}:{symbol}"  # r61.4 bump
     _dd_cached = _smart_cache_get(_dd_cache_key)
     if _dd_cached:
         # Return cached but stamp it so frontend knows it's cached
         _dd_cached = dict(_dd_cached)
         _dd_cached["_cached"] = True
         _dd_cached["_cache_age_sec"] = int(time.time() - _dd_cached.get("_cached_at", time.time()))
-        print(f"📦 DD cache HIT for {symbol} ({region}) — age {_dd_cached['_cache_age_sec']}s")
+        print(f"📦 DD v4 cache HIT for {symbol} ({region}) — age {_dd_cached['_cache_age_sec']}s")
         return _dd_cached
 
     print(f"\n🔬 Investor DD: {symbol} ({region}) — cache miss, fetching fresh...")
@@ -29006,48 +29006,58 @@ async def investor_due_diligence(email: str = "", symbol: str = "", region: str 
             except Exception:
                 return ""
 
-        # Investment thesis layman
+        # Investment thesis layman — r61.4 enriched with score + verdict + DCF context
         if thesis:
-            score = thesis.get("score", 0) or 0
+            score = thesis.get("investability_score") or thesis.get("score", 0) or 0
             verdict_label = thesis.get("verdict") or ""
+            dcf_up = thesis.get("dcf_upside_pct")
+            dcf_str = ""
+            if dcf_up is not None:
+                if dcf_up > 20: dcf_str = f" DCF model shows +{dcf_up:.0f}% upside to fair value."
+                elif dcf_up < -20: dcf_str = f" DCF model shows {dcf_up:.0f}% downside — looks expensive."
+                elif abs(dcf_up) <= 10: dcf_str = " Trading near DCF fair value."
             if score >= 80:
-                _plain_th = "Strong company. Most quality checks pass — solid finances, growing, and reasonably priced. The kind of stock most analysts would put in a 'buy' bucket."
-                _analyst_th = f"Investability score {score}/100. {verdict_label}. Multi-factor screen passes."
+                _plain_th = f"Strong company ({score}/100). Most quality checks pass — solid finances, growing, and reasonably priced. The kind of stock that lands in institutional 'buy' buckets.{dcf_str}"
+                _analyst_th = f"Investability {score}/100. {verdict_label}. Multi-factor screen passes.{dcf_str}"
             elif score >= 60:
-                _plain_th = "Decent company with some good points and some concerns. Not the strongest pick but not terrible either — depends on what you're looking for."
-                _analyst_th = f"Investability {score}/100. Mixed signals — selective entry warranted."
+                _plain_th = f"Decent company ({score}/100) with both bright spots and concerns. Worth a closer look but not a slam-dunk.{dcf_str}"
+                _analyst_th = f"Investability {score}/100. {verdict_label}. Mixed signals — selective entry.{dcf_str}"
             elif score >= 40:
-                _plain_th = "Okay company but with notable weak spots. Some metrics look bad. You'd want to understand what's wrong before buying."
-                _analyst_th = f"Investability {score}/100. Material concerns — defer until catalysts emerge."
+                _plain_th = f"Okay company ({score}/100) but with notable weak spots. Several metrics look poor — understand what's wrong before buying.{dcf_str}"
+                _analyst_th = f"Investability {score}/100. {verdict_label}. Material concerns.{dcf_str}"
             else:
-                _plain_th = "Weak fundamentals. Most quality checks fail. Probably better stocks to look at unless you have a specific reason."
-                _analyst_th = f"Investability {score}/100. {verdict_label}. Avoid or short candidate."
+                _plain_th = f"Weak fundamentals ({score}/100). Most quality checks fail. Better names to look at unless you have a specific contrarian thesis.{dcf_str}"
+                _analyst_th = f"Investability {score}/100. {verdict_label}. Avoid or short candidate.{dcf_str}"
             thesis["layman"] = {"plain": _plain_th, "analyst": _analyst_th}
 
-        # Financial Health layman
+        # Financial Health layman — r61.4 with specific numbers
         if finance:
             margin = (info.get("profitMargins") or 0) * 100
             roe_pct = (roe or 0) * 100
             de = debt_to_equity or 0
+            gm = (info.get("grossMargins") or 0) * 100
             issues = []
             strengths = []
-            if margin > 15: strengths.append("very profitable")
-            elif margin > 5: strengths.append("profitable")
-            elif margin < 0: issues.append("losing money")
-            if roe_pct > 20: strengths.append("excellent returns on equity")
-            elif roe_pct > 10: strengths.append("decent returns on equity")
-            elif roe_pct < 5 and roe_pct >= 0: issues.append("weak returns on equity")
-            if de < 50: strengths.append("low debt")
-            elif de > 200: issues.append("high debt load")
+            if margin > 15: strengths.append(f"very profitable (profit margin {margin:.1f}%)")
+            elif margin > 5: strengths.append(f"profitable (profit margin {margin:.1f}%)")
+            elif margin < 0: issues.append(f"losing money (profit margin {margin:.1f}%)")
+            if roe_pct > 20: strengths.append(f"excellent returns on equity ({roe_pct:.1f}%)")
+            elif roe_pct > 10: strengths.append(f"solid ROE ({roe_pct:.1f}%)")
+            elif roe_pct < 5 and roe_pct >= 0: issues.append(f"weak ROE ({roe_pct:.1f}%)")
+            if de < 50: strengths.append(f"low debt (D/E {de:.0f}%)")
+            elif de > 200: issues.append(f"heavy debt load (D/E {de:.0f}%)")
+            elif de > 100: issues.append(f"elevated debt (D/E {de:.0f}%)")
+            if gm > 50: strengths.append(f"high gross margin ({gm:.0f}%)")
+            elif gm < 20 and gm > 0: issues.append(f"thin gross margin ({gm:.0f}%)")
             if not strengths and not issues:
-                _plain_fh = "Financials look ordinary — nothing jumps out as great or worrying."
+                _plain_fh = f"Financials look ordinary (margin {margin:.1f}%, ROE {roe_pct:.1f}%, D/E {de:.0f}%) — nothing jumps out as great or worrying."
             elif strengths and not issues:
-                _plain_fh = "Healthy company. " + " and ".join(strengths).capitalize() + " — the kind of business you'd want to own."
+                _plain_fh = "Healthy company — " + " and ".join(strengths) + ". The kind of business institutions like to own."
             elif issues and not strengths:
-                _plain_fh = "Concerns here. The company has " + " and ".join(issues) + " — be cautious."
+                _plain_fh = "Concerns here — " + " and ".join(issues) + ". Be cautious before buying."
             else:
-                _plain_fh = "Mixed picture. Good things: " + ", ".join(strengths) + ". Watch out for: " + ", ".join(issues) + "."
-            _analyst_fh = f"Margin {margin:.1f}%, ROE {roe_pct:.1f}%, D/E {de:.0f}%. {'Strong' if margin > 10 and roe_pct > 15 else 'Mixed' if margin > 0 else 'Weak'} fundamentals."
+                _plain_fh = "Mixed picture. Strengths: " + ", ".join(strengths) + ". Concerns: " + ", ".join(issues) + "."
+            _analyst_fh = f"Margin {margin:.1f}%, ROE {roe_pct:.1f}%, D/E {de:.0f}%, GM {gm:.0f}%. {'Strong' if margin > 10 and roe_pct > 15 and de < 100 else 'Mixed' if margin > 0 else 'Weak'} fundamentals."
             finance["layman"] = {"plain": _plain_fh, "analyst": _analyst_fh}
 
         # Sector context layman
@@ -29088,21 +29098,32 @@ async def investor_due_diligence(email: str = "", symbol: str = "", region: str 
                 _analyst_rm = f"{n_risks} flagged risks. CONCERNING profile."
             risk_matrix["layman"] = {"plain": _plain_rm, "analyst": _analyst_rm}
 
-        # SWOT layman
+        # SWOT layman — r61.4 with top strength + top concern named
         if swot:
-            n_str = len(swot.get("strengths", []))
-            n_w = len(swot.get("weaknesses", []))
-            n_o = len(swot.get("opportunities", []))
-            n_t = len(swot.get("threats", []))
+            strengths_list = swot.get("strengths", []) or []
+            weaknesses_list = swot.get("weaknesses", []) or []
+            opps_list = swot.get("opportunities", []) or []
+            threats_list = swot.get("threats", []) or []
+            n_str = len(strengths_list); n_w = len(weaknesses_list)
+            n_o = len(opps_list); n_t = len(threats_list)
+            top_s = strengths_list[0] if strengths_list else None
+            top_w = weaknesses_list[0] if weaknesses_list else None
+            top_t = threats_list[0] if threats_list else None
             if n_str + n_o > n_w + n_t:
-                _plain_sw = f"Strengths and opportunities outweigh weaknesses and threats ({n_str + n_o} vs {n_w + n_t}). Bullish framework."
-                _analyst_sw = f"S/W ratio: {n_str}/{n_w}. O/T ratio: {n_o}/{n_t}. Net positive."
+                _plain_sw = f"Bullish framework — {n_str} strengths and {n_o} opportunities versus only {n_w} weaknesses and {n_t} threats."
+                if top_s: _plain_sw += f" Biggest strength: {top_s.lower() if isinstance(top_s, str) else top_s}."
+                _analyst_sw = f"S/W: {n_str}/{n_w} · O/T: {n_o}/{n_t}. Net positive."
             elif n_w + n_t > n_str + n_o:
-                _plain_sw = f"Weaknesses and threats outweigh the positives ({n_w + n_t} vs {n_str + n_o}). Cautious framework."
-                _analyst_sw = f"S/W ratio: {n_str}/{n_w}. O/T ratio: {n_o}/{n_t}. Net negative."
+                _plain_sw = f"Cautious framework — {n_w} weaknesses and {n_t} threats outweigh the {n_str} strengths and {n_o} opportunities."
+                if top_w or top_t:
+                    concern = top_w if top_w else top_t
+                    _plain_sw += f" Top concern: {concern.lower() if isinstance(concern, str) else concern}."
+                _analyst_sw = f"S/W: {n_str}/{n_w} · O/T: {n_o}/{n_t}. Net negative."
             else:
-                _plain_sw = "Balanced strengths and weaknesses. The story has both promise and risk in equal measure."
-                _analyst_sw = f"Balanced SWOT. Equal positive/negative factors."
+                _plain_sw = "Balanced — promise and risk in equal measure."
+                if top_s and top_w:
+                    _plain_sw += f" Strength: {top_s.lower() if isinstance(top_s, str) else top_s}. Concern: {top_w.lower() if isinstance(top_w, str) else top_w}."
+                _analyst_sw = f"Balanced SWOT ({n_str}S/{n_w}W/{n_o}O/{n_t}T)."
             swot["layman"] = {"plain": _plain_sw, "analyst": _analyst_sw}
 
         # Porter layman
@@ -29204,69 +29225,174 @@ async def investor_due_diligence(email: str = "", symbol: str = "", region: str 
                     _analyst_eh += " EPS trend: DECLINING."
             earnings_history["layman"] = {"plain": _plain_eh, "analyst": _analyst_eh}
 
-        # Institutional layman (combines insider + holders + peers + chart + sharpe)
+        # ─── r61.4: SPLIT institutional layman into per-sub-section ───
+        # Each sub-card gets its own focused layman. No more conflating
+        # insider activity with risk-adjusted returns and ownership.
+
         if institutional:
-            i_parts_p = []; i_parts_a = []
+            # ── INSIDER ACTIVITY layman ──
             ia = institutional.get("insider_activity") or {}
-            if ia.get("sentiment"):
+            if ia.get("data_quality") == "INCOMPLETE":
+                _plain_ia = "No insider transaction data available — either no Form 4 filings in the last 6 months, or the company doesn't disclose this granularly."
+                _analyst_ia = ia.get("reason") or "Insider data unavailable."
+            elif ia.get("sentiment"):
                 s = ia["sentiment"]
+                buys = ia.get("n_buys_6mo", 0) or 0
+                sells = ia.get("n_sells_6mo", 0) or 0
+                net = ia.get("net_flow_usd")
+                net_str = ""
+                if net is not None:
+                    net_m = abs(net) / 1e6
+                    net_str = f" Net flow {'$' if net >= 0 else '-$'}{net_m:.2f}M."
                 if "STRONG BUYING" in s:
-                    i_parts_p.append("Insiders are buying their own stock — bullish signal")
-                    i_parts_a.append("Insider net buying.")
+                    _plain_ia = f"Strong insider buying — {buys} buys vs {sells} sells in 6 months. When executives buy their own stock with their own money, that's usually a bullish signal.{net_str}"
+                    _analyst_ia = f"Insider net buying. {buys}B/{sells}S 6mo.{net_str}"
                 elif "STRONG SELLING" in s:
-                    i_parts_p.append("Insiders are selling — bearish signal")
-                    i_parts_a.append("Insider net selling.")
+                    _plain_ia = f"Heavy insider selling — {sells} sells vs {buys} buys in 6 months. Could be tax planning or executives cashing out, but worth noting.{net_str}"
+                    _analyst_ia = f"Insider net selling. {sells}S/{buys}B 6mo.{net_str}"
                 elif s == "BUYING":
-                    i_parts_p.append("Light insider buying")
-                    i_parts_a.append("Mild insider buying.")
+                    _plain_ia = f"Light insider buying — {buys} buys vs {sells} sells over 6 months. Mildly positive signal.{net_str}"
+                    _analyst_ia = f"Mild insider buying. {buys}B/{sells}S.{net_str}"
                 elif s == "SELLING":
-                    i_parts_p.append("Light insider selling")
-                    i_parts_a.append("Mild insider selling.")
+                    _plain_ia = f"Light insider selling — {sells} sells vs {buys} buys over 6 months. Some executives reducing positions.{net_str}"
+                    _analyst_ia = f"Mild insider selling. {sells}S/{buys}B.{net_str}"
+                elif s == "MIXED":
+                    _plain_ia = f"Mixed insider activity — {buys} buys and {sells} sells balance out. No clear signal.{net_str}"
+                    _analyst_ia = f"Mixed insider flow. {buys}B/{sells}S.{net_str}"
                 else:
-                    i_parts_p.append("Insider activity is neutral")
-                    i_parts_a.append("Neutral insider flow.")
-
-            ih = institutional.get("institutional_holders") or {}
-            if ih.get("concentration") == "VERY HIGH":
-                i_parts_p.append("very heavily owned by big institutions")
-                i_parts_a.append("Concentrated institutional ownership.")
-            elif ih.get("concentration") == "HIGH":
-                i_parts_p.append("strong institutional ownership")
-                i_parts_a.append("High inst. ownership.")
-            elif ih.get("concentration") == "LOW":
-                i_parts_p.append("low institutional ownership — retail-driven")
-                i_parts_a.append("Low inst. ownership.")
-
-            ra = institutional.get("risk_adjusted") or {}
-            if ra.get("sharpe_grade"):
-                sg = ra["sharpe_grade"]
-                if sg in ("EXCELLENT", "STRONG"):
-                    i_parts_p.append(f"returns are {sg.lower()} adjusted for risk")
-                    i_parts_a.append(f"Sharpe {ra.get('sharpe_ratio')}: {sg}.")
-                elif sg in ("WEAK", "POOR"):
-                    i_parts_p.append(f"poor risk-adjusted returns")
-                    i_parts_a.append(f"Sharpe {ra.get('sharpe_ratio')}: {sg}.")
-            if ra.get("drawdown_grade") in ("SEVERE", "EXTREME"):
-                i_parts_p.append(f"big {ra['drawdown_grade'].lower()} drops in price history")
-                i_parts_a.append(f"Max DD {ra.get('max_drawdown_pct')}%: {ra['drawdown_grade']}.")
-
-            pc = institutional.get("price_chart") or {}
-            if pc.get("return_pct") is not None:
-                rp = pc["return_pct"]
-                if rp > 30:
-                    i_parts_p.append(f"up a strong +{rp:.0f}% over the last year")
-                    i_parts_a.append(f"1Y return +{rp:.1f}%.")
-                elif rp < -20:
-                    i_parts_p.append(f"down {rp:.0f}% over the last year")
-                    i_parts_a.append(f"1Y return {rp:.1f}%.")
-
-            if i_parts_p:
-                _plain_i = ". ".join(i_parts_p[:3]).capitalize() + "."
-                _analyst_i = " ".join(i_parts_a[:4])
+                    _plain_ia = f"Insider activity is neutral — {buys} buys and {sells} sells, balanced.{net_str}"
+                    _analyst_ia = f"Neutral insider flow.{net_str}"
             else:
-                _plain_i = "Limited institutional data available."
-                _analyst_i = "Institutional data sparse."
-            institutional["layman"] = {"plain": _plain_i, "analyst": _analyst_i}
+                _plain_ia = "No clear insider signal."
+                _analyst_ia = "Insufficient insider data."
+            ia["layman"] = {"plain": _plain_ia, "analyst": _analyst_ia}
+
+            # ── INSTITUTIONAL HOLDERS layman ──
+            ih = institutional.get("institutional_holders") or {}
+            if ih.get("data_quality") == "INCOMPLETE":
+                _plain_ih = "No 13F institutional ownership data available for this ticker."
+                _analyst_ih = ih.get("reason") or "13F data unavailable."
+            elif ih.get("dii_pct") is not None or ih.get("fii_pct") is not None:
+                # India case
+                dii = ih.get("dii_pct") or 0
+                fii = ih.get("fii_pct") or 0
+                _plain_ih = f"Domestic institutions own {dii:.1f}% and foreign institutions own {fii:.1f}% of this Indian stock. Higher DII often signals stable long-term holders, higher FII signals foreign confidence."
+                _analyst_ih = f"DII {dii:.2f}% / FII {fii:.2f}%. NSE-only; no holder list."
+            else:
+                conc = ih.get("concentration", "UNKNOWN")
+                pct_inst = ih.get("total_pct_outstanding")
+                top_holder = (ih.get("top_holders") or [{}])[0]
+                top_name = top_holder.get("name", "")
+                top_pct = top_holder.get("pct_outstanding")
+                top_str = f" Largest holder is {top_name}" + (f" with {top_pct:.1f}% of shares." if top_pct else ".")
+                if conc == "VERY HIGH":
+                    _plain_ih = f"Very heavily owned by big institutions ({pct_inst:.0f}% of all shares). Major funds dominate this stock — moves more on institutional flow than retail.{top_str}"
+                    _analyst_ih = f"Concentrated inst. ownership: {pct_inst:.1f}%."
+                elif conc == "HIGH":
+                    _plain_ih = f"Strong institutional ownership — {pct_inst:.0f}% of shares held by funds. Mainstream institutional name.{top_str}"
+                    _analyst_ih = f"High inst. ownership: {pct_inst:.1f}%."
+                elif conc == "MODERATE":
+                    _plain_ih = f"Moderate institutional ownership — {pct_inst:.0f}% of shares with funds, the rest split between insiders and retail.{top_str}"
+                    _analyst_ih = f"Moderate inst. ownership: {pct_inst:.1f}%."
+                elif conc == "LOW":
+                    _plain_ih = f"Low institutional ownership — only {pct_inst:.0f}% with funds. Retail-driven, prone to higher volatility.{top_str}"
+                    _analyst_ih = f"Low inst. ownership: {pct_inst:.1f}%. Retail-skewed."
+                else:
+                    _plain_ih = "Institutional ownership data is incomplete for this ticker."
+                    _analyst_ih = "Inst. ownership unknown."
+            ih["layman"] = {"plain": _plain_ih, "analyst": _analyst_ih}
+
+            # ── RISK-ADJUSTED RETURNS layman ──
+            ra = institutional.get("risk_adjusted") or {}
+            if ra.get("data_quality") == "INCOMPLETE":
+                _plain_ra = "Not enough price history to compute risk-adjusted returns."
+                _analyst_ra = ra.get("reason") or "Sharpe/DD unavailable."
+            else:
+                sharpe = ra.get("sharpe_ratio")
+                sg = ra.get("sharpe_grade", "")
+                dd = ra.get("max_drawdown_pct")
+                ddg = ra.get("drawdown_grade", "")
+                vol = ra.get("annualized_volatility_pct")
+                # Plain English explanation
+                if sg == "EXCELLENT":
+                    sharpe_msg = f"returns are excellent for the risk taken (Sharpe {sharpe} — top-tier)"
+                elif sg == "STRONG":
+                    sharpe_msg = f"returns are strong for the risk taken (Sharpe {sharpe} — better than most stocks)"
+                elif sg == "ACCEPTABLE":
+                    sharpe_msg = f"returns are okay for the risk taken (Sharpe {sharpe})"
+                elif sg == "WEAK":
+                    sharpe_msg = f"returns don't quite justify the risk (Sharpe {sharpe} — below average)"
+                else:
+                    sharpe_msg = f"returns don't compensate for the risk (Sharpe {sharpe} — poor)"
+                if ddg == "MINOR":
+                    dd_msg = f"with manageable drawdowns ({dd:.0f}% worst peak-to-trough)"
+                elif ddg == "MODERATE":
+                    dd_msg = f"with moderate drawdowns ({dd:.0f}% peak-to-trough — typical for growth stocks)"
+                elif ddg == "SEVERE":
+                    dd_msg = f"BUT with severe drawdowns ({dd:.0f}% peak-to-trough — half your money has been at risk historically)"
+                elif ddg == "EXTREME":
+                    dd_msg = f"BUT with extreme drawdowns ({dd:.0f}% peak-to-trough — can lose more than half your money in bad periods)"
+                else:
+                    dd_msg = f"with {dd:.0f}% max drawdown"
+                _plain_ra = f"Over the analyzed period, {sharpe_msg}, {dd_msg}. Annual volatility around {vol:.0f}%."
+                _analyst_ra = f"Sharpe {sharpe} ({sg}). Max DD {dd}% ({ddg}). Vol {vol}% ann."
+            ra["layman"] = {"plain": _plain_ra, "analyst": _analyst_ra}
+
+            # ── PEER TABLE layman ──
+            pt = institutional.get("peer_table") or {}
+            if pt.get("data_quality") == "INCOMPLETE":
+                _plain_pt = "No peers identified for this ticker — can't compare metrics head-to-head."
+                _analyst_pt = pt.get("reason") or "No peer data."
+            else:
+                rows = pt.get("rows") or []
+                # Find the subject's ranks
+                self_row = next((r for r in rows if r.get("is_self")), {})
+                ranks = []
+                for field, label in [("roe_pct_rank", "ROE"), ("op_margin_pct_rank", "operating margin"),
+                                      ("rev_growth_pct_rank", "revenue growth"), ("pe_rank", "P/E (cheaper)")]:
+                    rk = self_row.get(field)
+                    if rk == 1:
+                        ranks.append(f"#1 in {label}")
+                    elif rk == 2:
+                        ranks.append(f"#2 in {label}")
+                if ranks:
+                    _plain_pt = f"Compared to {len(rows)-1} peers in the same industry: ranks " + ", ".join(ranks[:3]) + ". A leader on these metrics."
+                    _analyst_pt = f"Top-2 ranks: {len(ranks)}/{4}. Peer leader."
+                else:
+                    _plain_pt = f"Compared to {len(rows)-1} peers, this stock is mid-pack on most metrics. Not a leader, not a laggard."
+                    _analyst_pt = f"Mid-tier vs {len(rows)-1} peers."
+            pt["layman"] = {"plain": _plain_pt, "analyst": _analyst_pt}
+
+            # ── PRICE CHART layman ──
+            pc = institutional.get("price_chart") or {}
+            if pc.get("data_quality") == "INCOMPLETE":
+                _plain_pc = "Not enough price history to chart."
+                _analyst_pc = pc.get("reason") or "No price chart."
+            else:
+                rp = pc.get("return_pct", 0) or 0
+                last = pc.get("last")
+                first = pc.get("first")
+                hi = pc.get("max")
+                lo = pc.get("min")
+                if rp > 50:
+                    _plain_pc = f"Massive 1-year run — up +{rp:.0f}% (from ${first} to ${last}). Stock is at or near 52-week highs (range ${lo}–${hi}). Late-cycle buying carries momentum risk."
+                    _analyst_pc = f"+{rp:.1f}% 1Y. Range ${lo}–${hi}. Trend mature."
+                elif rp > 15:
+                    _plain_pc = f"Strong 1-year performance — up +{rp:.0f}% (${first} → ${last}). 52-week range ${lo}–${hi}."
+                    _analyst_pc = f"+{rp:.1f}% 1Y. Range ${lo}–${hi}. Uptrend."
+                elif rp > -15:
+                    _plain_pc = f"Roughly flat over the last year ({rp:+.0f}% from ${first} to ${last}). 52-week range ${lo}–${hi}. Sideways consolidation."
+                    _analyst_pc = f"{rp:+.1f}% 1Y. Range-bound."
+                elif rp > -30:
+                    _plain_pc = f"Down {abs(rp):.0f}% over the last year (${first} → ${last}). Range ${lo}–${hi}. Could be a value setup or a falling knife — depends on the catalyst."
+                    _analyst_pc = f"{rp:+.1f}% 1Y. Downtrend. Watch reversal."
+                else:
+                    _plain_pc = f"Major decline — down {abs(rp):.0f}% from ${first} to ${last}. Range ${lo}–${hi}. Significant capital impairment over 12 months."
+                    _analyst_pc = f"{rp:+.1f}% 1Y. Severe drawdown."
+            pc["layman"] = {"plain": _plain_pc, "analyst": _analyst_pc}
+
+            # ── Removed: institutional["layman"] no longer exists ──
+            # Each sub-card now reads its own .layman from above
 
         # ═══ BOTTOM LINE — synthesizes everything ═══
         bottom_line = {
