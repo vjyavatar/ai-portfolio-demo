@@ -12265,10 +12265,20 @@ function renderReport(d){
       h += '<div style="padding:12px;background:#f8fafc;border-radius:6px"><div style="font-size:11px;color:var(--text2)">Promoter holding: <strong>'+ia.promoter_holding_pct.toFixed(2)+'%</strong></div><div style="font-size:9px;color:var(--text3);margin-top:4px">'+ia.reason+'</div></div>';
     } else {
       h += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:10px">';
-      h += '<div style="padding:8px;background:#ecfdf5;border-radius:6px;text-align:center"><div style="font-size:9px;font-weight:700;color:#059669">BUYS</div><div style="font-size:18px;font-weight:900;color:#059669;font-family:var(--mono)">'+(ia.n_buys_6mo||0)+'</div><div style="font-size:9px;color:#059669">$'+((ia.buy_value_usd||0)/1e6).toFixed(2)+'M</div></div>';
-      h += '<div style="padding:8px;background:#fef2f2;border-radius:6px;text-align:center"><div style="font-size:9px;font-weight:700;color:#dc2626">SELLS</div><div style="font-size:18px;font-weight:900;color:#dc2626;font-family:var(--mono)">'+(ia.n_sells_6mo||0)+'</div><div style="font-size:9px;color:#dc2626">$'+((ia.sell_value_usd||0)/1e6).toFixed(2)+'M</div></div>';
-      var netColor = (ia.net_flow_usd||0) >= 0 ? '#059669' : '#dc2626';
-      h += '<div style="padding:8px;background:#f8fafc;border-radius:6px;text-align:center"><div style="font-size:9px;font-weight:700;color:var(--text3)">NET FLOW</div><div style="font-size:18px;font-weight:900;color:'+netColor+';font-family:var(--mono)">'+((ia.net_flow_usd||0) >= 0 ? '+' : '-')+'$'+(Math.abs(ia.net_flow_usd||0)/1e6).toFixed(2)+'M</div><div style="font-size:9px;color:var(--text3)">last 6 months</div></div>';
+      // r61.3: render "—" when $ value is null/undefined (honest unknown), not "$0.00M"
+      var _bvFmt = (ia.buy_value_usd != null && ia.buy_value_usd > 0) ? ('$'+(ia.buy_value_usd/1e6).toFixed(2)+'M') : '—';
+      var _svFmt = (ia.sell_value_usd != null && ia.sell_value_usd > 0) ? ('$'+(ia.sell_value_usd/1e6).toFixed(2)+'M') : '—';
+      var _nfFmt;
+      if (ia.net_flow_usd == null) {
+        _nfFmt = '—';
+      } else {
+        var _abs = Math.abs(ia.net_flow_usd);
+        _nfFmt = (ia.net_flow_usd >= 0 ? '+' : '-') + '$' + (_abs/1e6).toFixed(2) + 'M';
+      }
+      var netColor = (ia.net_flow_usd == null) ? '#9ca3af' : (ia.net_flow_usd >= 0 ? '#059669' : '#dc2626');
+      h += '<div style="padding:8px;background:#ecfdf5;border-radius:6px;text-align:center"><div style="font-size:9px;font-weight:700;color:#059669">BUYS</div><div style="font-size:18px;font-weight:900;color:#059669;font-family:var(--mono)">'+(ia.n_buys_6mo||0)+'</div><div style="font-size:9px;color:#059669">'+_bvFmt+'</div></div>';
+      h += '<div style="padding:8px;background:#fef2f2;border-radius:6px;text-align:center"><div style="font-size:9px;font-weight:700;color:#dc2626">SELLS</div><div style="font-size:18px;font-weight:900;color:#dc2626;font-family:var(--mono)">'+(ia.n_sells_6mo||0)+'</div><div style="font-size:9px;color:#dc2626">'+_svFmt+'</div></div>';
+      h += '<div style="padding:8px;background:#f8fafc;border-radius:6px;text-align:center"><div style="font-size:9px;font-weight:700;color:var(--text3)">NET FLOW</div><div style="font-size:18px;font-weight:900;color:'+netColor+';font-family:var(--mono)">'+_nfFmt+'</div><div style="font-size:9px;color:var(--text3)">last 6 months</div></div>';
       h += '</div>';
 
       if (ia.transactions && ia.transactions.length > 0) {

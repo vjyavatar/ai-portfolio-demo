@@ -27821,8 +27821,20 @@ async def investor_due_diligence(email: str = "", symbol: str = "", region: str 
     
     yf_symbol = symbol if region == "US" else symbol + ".NS"
     csym = "$" if region == "US" else "₹"
-    
-    print(f"\n🔬 Investor DD: {symbol} ({region})...")
+
+    # r61.3: 30-min cache to avoid Yahoo rate-limiting
+    # Bumped to v3 to invalidate old cached responses with the bugs
+    _dd_cache_key = f"dd_v3:{region}:{symbol}"
+    _dd_cached = _smart_cache_get(_dd_cache_key)
+    if _dd_cached:
+        # Return cached but stamp it so frontend knows it's cached
+        _dd_cached = dict(_dd_cached)
+        _dd_cached["_cached"] = True
+        _dd_cached["_cache_age_sec"] = int(time.time() - _dd_cached.get("_cached_at", time.time()))
+        print(f"📦 DD cache HIT for {symbol} ({region}) — age {_dd_cached['_cache_age_sec']}s")
+        return _dd_cached
+
+    print(f"\n🔬 Investor DD: {symbol} ({region}) — cache miss, fetching fresh...")
     t0 = time.time()
     
     try:
@@ -28734,11 +28746,16 @@ async def investor_due_diligence(email: str = "", symbol: str = "", region: str 
                         print(f"[DD] insider_transactions schema unknown for {symbol} — cols: {cols[:5]}")
 
                 # ─── Pick the best data source for summary ───
-                # Prefer insider_purchases counts if available; else use parsed txns
+                # r61.3: when summary has counts, ALSO use transaction-derived $ values
+                # if available (don't lose the dollar info).
                 if summary_data and (summary_data["buys"] or summary_data["sells"]):
                     buys = summary_data["buys"]
                     sells = summary_data["sells"]
-                    net_value_disp = None  # we don't have $ value reliably from purchases summary
+                    # Use $ values from transactions if we managed to parse them
+                    if buys_tx > 0 or sells_tx > 0 or buy_value > 0 or sell_value > 0:
+                        net_value_disp = int(buy_value - sell_value)
+                    else:
+                        net_value_disp = None  # honest unknown — frontend renders "—"
                     use_summary = True
                 elif buys_tx > 0 or sells_tx > 0:
                     buys = buys_tx
@@ -29261,7 +29278,8 @@ async def investor_due_diligence(email: str = "", symbol: str = "", region: str 
             "ideal_for": None,
         }
         try:
-            score = (thesis or {}).get("score", 0) or 0
+            # r61.3: Read the actual key — thesis stores under investability_score
+            score = (thesis or {}).get("investability_score") or (thesis or {}).get("score") or 0
             v = (valuation_detail or {}).get("upside_pct")
             health = (risk_matrix or {}).get("overall_health", "")
             ne = (catalysts or {}).get("next_earnings", {}) or {}
@@ -29340,7 +29358,8 @@ async def investor_due_diligence(email: str = "", symbol: str = "", region: str 
         try: diag_log("DD", "investor_dd_completed", {"symbol": symbol, "region": region, "score": score, "elapsed_sec": elapsed})
         except Exception: pass
         
-        return {
+        # r61.3: Build response, cache it for 30 min, then return
+        _dd_response = {
             "success": True,
             "elapsed_sec": elapsed,
             "currency_symbol": csym,
@@ -29358,6 +29377,8 @@ async def investor_due_diligence(email: str = "", symbol: str = "", region: str 
             "institutional": institutional,
             "bottom_line": bottom_line,
             "data_source": data_source,
+            "_cached_at": time.time(),
+            "_cached": False,
             "honest_disclaimer": (
                 "All financial metrics from real 10-K/annual report data via Yahoo Finance. "
                 "Peer comparisons use curated peer maps for major tickers (limited coverage). "
@@ -29373,7 +29394,14 @@ async def investor_due_diligence(email: str = "", symbol: str = "", region: str 
                 "not_included": ["TAM/SAM/SOM (no free reliable source)", "Customer personas (requires hallucination)", "Industry trends timeline (requires news/M&A APIs)"],
             },
         }
-        
+        # r61.3: Cache for 30 min before returning
+        try:
+            _smart_cache_set(_dd_cache_key, _dd_response, ttl=1800)
+            print(f"💾 DD cached for 30 min: {symbol} ({region})")
+        except Exception as _ce:
+            print(f"[DD] cache write failed: {_ce}")
+        return _dd_response
+
     except Exception as e:
         print(f"  ❌ Investor DD error: {type(e).__name__}: {e}")
         return {"success": False, "error": f"{type(e).__name__}: {str(e)[:200]}"}
