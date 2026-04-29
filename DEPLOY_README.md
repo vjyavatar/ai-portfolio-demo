@@ -1,66 +1,29 @@
-# Celesys v4.62.3 — Production loading states (UX fix)
+# Celesys v4.62.4 — Diagnostic fix for /api/version
 
-You correctly called out that the Intraday Setups screen sat blank with just static text and no spinner. That's below production standard. Fixed.
-
----
-
-## What was broken
-
-Looking at the screen in your screenshot — the loading state was a single `<div>` with text "Pulling 5-min bars + daily history for liquid names..." That's it. No spinner. No progress. No timer. No abort. No timeout. If the API hangs, you'd sit there forever wondering if it's working.
-
-I shipped this in r62.2 (Intraday Setups) AND in r62.0 (Micro-Cap Hunter). Both screens had the same UX bug.
-
-**The pattern was already established in your own codebase** (lines 6005, 6917, 10074 — those use proper spinners with `animation:spin`). I just didn't follow the established pattern when I shipped new features. That's on me.
+This is a TINY one-purpose deploy. It does NOT fix the Yahoo blocking. It fixes my mistake from v4.61.11.
 
 ---
 
-## What's in r62.3
+## What I got wrong
 
-A reusable production loading component `_csLoader()` + a `_csFetchWithTimeout()` helper, then wired into both broken loaders.
+In v4.61.11 I claimed `/api/version` would expose `dd_disk_cache` stats. It didn't — that part of the patcher silently skipped. I told you to run `curl /api/version` and share the disk cache state, and your response (correctly) didn't have those fields.
 
-### `_csLoader()` provides:
-1. **Spinner** with CSS rotation (the universal "I'm working" signal)
-2. **Title + subtitle** so user knows what's loading
-3. **Status line** that can be updated mid-scan (e.g., "Pulling data..." → "Running detectors...")
-4. **Indeterminate progress bar** that pulses (visual continuity)
-5. **Live elapsed time counter** (ticks every 0.5s, color escalates if scan is slow)
-6. **Estimated typical time** (set per-loader so user knows what's normal)
-7. **CANCEL button** that aborts the scan
-8. **Color escalation** — text turns amber after 1.5× expected, red after 2.5× with warning message
+**My fault.** The disk cache code IS in your deployment (verified — all 6 markers present in api.py), but the diagnostic endpoint was never updated to expose it.
 
-### `_csFetchWithTimeout()` provides:
-- 2-minute hard timeout via AbortController
-- Properly cleans up timeout on completion
-- Triggers AbortError that the catch handler recognizes
-
-### Error path is now actionable:
-- Old: "Network error: Failed to fetch" (mystery)
-- New: "Scan timed out after 2 minutes. Yahoo is likely rate-limiting. Try again in a few minutes." with a **RETRY button**
+This deploy fixes only that.
 
 ---
 
-## Where it's wired
+## What v4.62.4 changes
 
-Both new loaders now use the helper:
+`/api/version` response now includes:
 
-| Screen | Before | After |
-|---|---|---|
-| **Decide → Intraday Setups** | static text, no spinner, no timeout | full loader + 2 min timeout + retry |
-| **Decide → Micro-Cap Hunter** | static text + ad-hoc bar, no timeout | full loader + 2 min timeout + retry |
+- `dd_disk_cache` — `{exists, size_bytes, n_entries, age_sec}`
+- `memory_cache_size` — current in-memory cache entry count
+- `dd_cached_tickers` — sorted list of which symbols are cached (capped at 50)
+- `dd_cached_count` — total DD-related entries
 
-Other loaders in the app (Pro Scan, Top Trades, etc.) were already using the working spinner pattern from before — those are unchanged.
-
----
-
-## Pre-ship verification
-
-- ✅ `api.py` compiles
-- ✅ `app.js` + `app.min.js` syntax OK + byte-identical
-- ✅ All 8 loader components present (unique ID, spinner CSS, cancel button, elapsed counter, status line, abort callback, live ticker, cleanup)
-- ✅ Helper code actually executes without error (eval-tested)
-- ✅ Both Intraday and Hunter use `_csLoader` + `_csFetchWithTimeout`
-- ✅ AbortError properly handled with actionable message
-- ✅ RETRY buttons on every error state
+That's the only change. Same TSLA "Could not retrieve data" error will still happen until we solve Yahoo IP blocking — this just lets us SEE what's going on.
 
 ---
 
@@ -70,59 +33,74 @@ Other loaders in the app (Pro Scan, Top Trades, etc.) were already using the wor
 unzip celesys_v4_FINAL_DEPLOY.zip
 cd celesys_v4_FINAL_DEPLOY/
 git add -A
-git commit -m "v4.62.3: Production loading states with spinner + timer + abort + 2min timeout"
+git commit -m "v4.62.4: Fix /api/version to expose disk cache diagnostics"
 git push
 ```
 
-Hard-refresh after deploy.
-
 ---
 
-## What you'll see now (instead of static text)
+## After deploy, please run
 
-```
-┌────────────────────────────────────────────────────────────────────┐
-│ ⚡  Intraday & Swing Setups                                        │
-│    SCANNING S&P 100 · ALL                                          │
-├────────────────────────────────────────────────────────────────────┤
-│                                                                    │
-│                   ⟳ (spinning)                                     │
-│                                                                    │
-│              Intraday & Swing Setups                               │
-│         SCANNING S&P 100 · ALL TIMEFRAMES                          │
-│                                                                    │
-│         ████████░░░░░░░░░░░░░░░░░░░░░  (pulsing)                   │
-│                                                                    │
-│   Pulling 5-min bars + daily history for liquid names...           │
-│                                                                    │
-│         ELAPSED: 12s          ~ 45s TYPICAL                        │
-│                                                                    │
-│                     [ CANCEL ]                                     │
-│                                                                    │
-└────────────────────────────────────────────────────────────────────┘
+```bash
+curl https://celesys.ai/api/version
 ```
 
-If the scan crosses 1.5× expected (~67s for intraday), elapsed time turns amber. At 2.5× (~112s), it turns red and adds a warning: "Taking longer than usual — Yahoo may be rate-limiting. Wait or cancel."
+You should now see something like:
 
-If the scan crosses 2 minutes, it auto-aborts with a friendly error + RETRY button.
+```json
+{
+  "version": "v4.62.4",
+  "build_date": "2026-04-29 ...",
+  "dd_disk_cache": {"exists": true, "n_entries": 8, "size_bytes": 12340, "age_sec": 1830},
+  "memory_cache_size": 47,
+  "dd_cached_tickers": ["AAPL", "GOOGL", "META", "MSFT", "NVDA", "TSLA", "AMZN", "JPM"],
+  "dd_cached_count": 8
+}
+```
+
+This output tells me:
+1. Whether disk cache survived deployments
+2. How many tickers ever fetched successfully (pre-seed worked or not)
+3. Whether TSLA has any cached data we can fall back on
+
+**Once you paste this back, I have actual data to make a real recommendation.** No guessing. No assumptions about what's working.
 
 ---
 
-## Honest note
+## What this deploy does NOT do
 
-I should not have shipped a "Loading..." text-only state in r62.0 or r62.2. Other loaders in your codebase already had spinners. I had the pattern in front of me and didn't apply it. **Going forward, every new loader I write will use `_csLoader`** — it's the canonical pattern in your codebase now.
+- Does NOT fix Yahoo blocking your IP
+- Does NOT add Stooq/Finnhub/Alpha Vantage fallbacks
+- Does NOT change anything user-facing
+- Does NOT touch the Decide tabs, Active Trading, or anything else
 
-You shouldn't have to remind me about basic UX. I'll do better.
+Pure diagnostic instrumentation. Smallest possible change.
 
 ---
 
-## What's next
+## Likely scenarios from the diagnostic output
 
-If after deploying this you find any OTHER loading states still showing flat text, point me to them and I'll convert. But the two recent ones (Intraday + Hunter) were the obvious bugs.
+**Scenario A: `n_entries: 0` or `dd_disk_cache: {exists: false}`**
+→ Pre-seed never worked from initial deploy (Yahoo was already blocking)
+→ Need to add a real fallback source (Stooq/Finnhub/Polygon)
 
-Beyond UX:
-- **r62.4** — Real backtester for the 3 setups (validate the literature base rates against your own broker fills)
-- **r62.5** — Pivot Point Bounce setup added to the scanner
-- **r62.6** — Polygon paid API integration ($30/mo) for reliable intraday data
+**Scenario B: `n_entries: 5-12, dd_cached_tickers includes TSLA`**
+→ Disk cache is working but TSLA's cache expired or got evicted
+→ The stale-cache fallback should still work — there's a code bug
 
-None ship without your green light.
+**Scenario C: `n_entries: 5-12, dd_cached_tickers does NOT include TSLA`**
+→ Disk cache works for some tickers, never reached TSLA
+→ Need to add TSLA to pre-seed list, or wait for Yahoo to recover
+
+Each scenario has a different fix. I'm not going to guess between them — your `/api/version` output will tell me which.
+
+---
+
+## Rollback (if needed, but very unlikely)
+
+```bash
+git revert HEAD
+git push
+```
+
+Only changes one endpoint. Lowest possible risk deploy.

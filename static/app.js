@@ -1,6 +1,6 @@
 // ═══ Celesys version stamp ═══
-window.CELESYS_VERSION = "v4.62.3";
-window.CELESYS_BUILD_TIME = 1777471435;
+window.CELESYS_VERSION = "v4.62.4";
+window.CELESYS_BUILD_TIME = 1777487102;
 window.CELESYS_BUILD_DATE = "2026-04-29 14:03:55 UTC";
 console.log("%c━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "color:#1A3A78");
 console.log("%c CELESYS v4.62.3 %c loaded · 2026-04-29 03:29:27 UTC",

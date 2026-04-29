@@ -1796,9 +1796,9 @@ def _safe_float(val, default=0.0):
         return default
 
 # ═══ Celesys version stamp (v4.61.10) ═══════════════════════════════
-APP_VERSION = "v4.62.3"
-APP_BUILD_TIME = 1777471435
-APP_BUILD_DATE = "2026-04-29 14:03:55 UTC"
+APP_VERSION = "v4.62.4"
+APP_BUILD_TIME = 1777487102
+APP_BUILD_DATE = "2026-04-29 18:25:02 UTC"
 APP_RELEASE_NOTES = (
     "v4.62.0: Micro-Cap Hunter scanner (Decide tab) + cumulative r61.x: Aladdin DD entry page (r61.8), "
     "stale-cache fallback (r61.8), multi-factor Bottom Line (r61.7), "
@@ -32357,13 +32357,31 @@ async def _v4_61_11_preseed_top_tickers():
 
 @app.get("/api/version")
 async def api_version():
-    """v4.61.10: Return version + build info so user can verify deployment."""
-    return {
+    """v4.61.10+v4.61.11+v4.62.4: version + build info + disk cache stats."""
+    out = {
         "version": APP_VERSION,
         "build_time": APP_BUILD_TIME,
         "build_date": APP_BUILD_DATE,
         "release_notes": APP_RELEASE_NOTES,
     }
+    # v4.62.4: expose disk cache stats so we can diagnose Yahoo blocking
+    try:
+        out["dd_disk_cache"] = _dd_disk_cache_stats()
+    except Exception as e:
+        out["dd_disk_cache"] = {"error": str(e)[:120]}
+    try:
+        out["memory_cache_size"] = len(_smart_cache)
+        # Diagnostic: show which DD entries ARE cached (so we know what works)
+        dd_cached_symbols = sorted({
+            k.split(":")[-1] for k in _smart_cache.keys()
+            if k.startswith("dd_v") or k.startswith("dd_stale_")
+        })
+        out["dd_cached_tickers"] = dd_cached_symbols[:50]  # cap at 50 for response size
+        out["dd_cached_count"] = len(dd_cached_symbols)
+    except Exception as e:
+        out["memory_cache_size"] = -1
+        out["_diag_error"] = str(e)[:120]
+    return out
 
 @app.get("/api/universe-stats")
 async def universe_stats_route():

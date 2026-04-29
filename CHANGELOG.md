@@ -246,3 +246,21 @@ Should now return `dd_disk_cache: {exists: true, n_entries: ...}` after the firs
 **Verified:** 8/8 loader components present, helper code eval-tested, both loaders use new pattern.
 
 **Honest note:** This pattern was already established in your codebase (lines 6005, 6917, 10074). I didn't follow it when shipping r62.0/r62.2. That's on me — fixed now.
+
+---
+
+## v4.62.4 — /api/version diagnostic fix (current)
+
+**Built:** 2026-04-29 18:25 UTC
+
+**The mistake:** v4.61.11 claimed `/api/version` would expose disk cache stats. The patcher silently skipped that change. User correctly noticed when their `/api/version` response lacked the documented fields.
+
+**The fix:** Restored the diagnostic fields in `/api/version`:
+- `dd_disk_cache` (exists, size_bytes, n_entries, age_sec)
+- `memory_cache_size`
+- `dd_cached_tickers` (sorted list, capped 50)
+- `dd_cached_count`
+
+**Pure diagnostic deploy.** Nothing user-facing changed. No new features. Lowest possible risk.
+
+**Why this matters:** Without these fields visible we can't diagnose whether Yahoo blocking is permanent or transient. With them visible, the next /api/version output tells us exactly what to do next (add Stooq fallback, expand pre-seed list, or wait it out).
