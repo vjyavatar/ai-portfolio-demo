@@ -685,3 +685,28 @@ These were not introduced in this session and removing them = scope creep + brea
 - Compile + JS syntax + byte-identical min.js
 
 **Architectural accountability:** Second time this session I shipped a feature where the README described one thing but the code built another (r63.10 bug → r63.12 fix → r63.12 visual mismatch → r63.13 fix). Lesson: when deploy is visual, conservative claims, let user verify.
+
+---
+
+## v4.63.14 — Diagnostic endpoint to find what works from Render (current)
+
+**Built:** 2026-04-30
+
+**User pushback:** "Option A.. you are not testing considering all scenarios"
+
+User was right. I had concluded "all sources blocked" based on testing from this sandbox network which has a strict allowlist — but sandbox ≠ Render. Should have built a Render-side diagnostic instead of speculating.
+
+**Added:** `/api/diag-data-sources?symbol=X&email=Y` endpoint that tests:
+1. Finnhub `/stock/candle`
+2. yfinance `.history()` 
+3. Yahoo chart API direct (different endpoint from yfinance lib)
+4. Stooq CSV (untested from Render despite being dismissed)
+5. Google Finance scraper
+
+Returns per-source: success, data_points, sample_close, elapsed_ms, error, source_url. Plus interpretation summary.
+
+Premium-gated. No production behavior change for existing features.
+
+**Path forward:** User runs the diagnostic on production, sends JSON output, r63.15 wires the actually-working source(s) into momentum scanner. No more speculation.
+
+**Lesson learned:** When investigating "everything is blocked," test from the actual production network, not a sandbox with a stricter allowlist. Multiple times this session I conflated "fails locally" with "fails in production." This was the worst instance because it led to "give up or pay $50/mo" advice that was probably wrong.

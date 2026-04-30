@@ -19,7 +19,8 @@ print("[STARTUP] Core imports OK")
 import yfinance as _yf_original
 from universe_classifier import UC  # r60: centralized ticker classification
 import data_sources  # r60.2: centralized region-aware fallback
-import finnhub_handlers as _fh  # r63.0: Finnhub adapter for DD endpoint
+import finnhub_handlers as _fh
+import data_sources as _ds  # r63.14: for diagnostic endpoint  # r63.0: Finnhub adapter for DD endpoint
 from earnings_intel import get_earnings_intel  # r60.2: earnings move intelligence
 print("[STARTUP] yfinance OK")
 
@@ -1797,9 +1798,9 @@ def _safe_float(val, default=0.0):
         return default
 
 # ═══ Celesys version stamp (v4.61.10) ═══════════════════════════════
-APP_VERSION = "v4.63.13"
-APP_BUILD_TIME = 1777592076
-APP_BUILD_DATE = "2026-04-30 23:34:36 UTC"
+APP_VERSION = "v4.63.14"
+APP_BUILD_TIME = 1777592888
+APP_BUILD_DATE = "2026-04-30 23:48:08 UTC"
 APP_RELEASE_NOTES = (
     "v4.62.0: Micro-Cap Hunter scanner (Decide tab) + cumulative r61.x: Aladdin DD entry page (r61.8), "
     "stale-cache fallback (r61.8), multi-factor Bottom Line (r61.7), "
@@ -31658,6 +31659,202 @@ async def earnings_this_week(region: str = "US", email: str = "", nocache: int =
 
 
 
+
+
+
+# ═══════════════════════════════════════════════════════════════════
+# r63.14: Diagnostic — test ALL historical price data sources from Render
+# ═══════════════════════════════════════════════════════════════════
+# Returns honest per-source status. No speculation. Lets us learn what
+# actually works from Render's network instead of guessing.
+
+@app.get("/api/diag-data-sources")
+async def diag_data_sources(symbol: str = "MU", email: str = ""):
+    """r63.14: Test multiple historical price sources, return per-source status.
+    
+    Tests for ticker `symbol` (default MU):
+      1. Finnhub /stock/candle  — what r63.8 assumed worked (probably 403)
+      2. yfinance .history()    — what we use as fallback (allegedly blocked)
+      3. Yahoo chart API direct — different endpoint than yfinance lib
+      4. Stooq CSV              — last-resort free source
+      5. Google Finance scrape  — exists in data_sources.py
+    
+    Returns dict per source: {success, data_points, error, sample_close, source_url}
+    """
+    import time, traceback
+    
+    # Light auth — use any valid premium email
+    email = (email or "").strip().lower()
+    _ok, email = check_premium_gate(email, "dream")
+    if not _ok:
+        return {"success": False, "error": "Premium gate required for diagnostic."}
+    
+    symbol = (symbol or "MU").strip().upper()
+    results = {}
+    t0_total = time.time()
+    
+    # ─── Test 1: Finnhub /stock/candle ───────────────────────────────
+    t0 = time.time()
+    try:
+        result = _fh.get_price_history(symbol, region="US", period_days=365)
+        results["finnhub_candle"] = {
+            "success": bool(result and result.get("closes")),
+            "data_points": len(result.get("closes", [])) if result else 0,
+            "sample_close": result["closes"][-1] if result and result.get("closes") else None,
+            "elapsed_ms": int((time.time() - t0) * 1000),
+            "error": None if (result and result.get("closes")) else "Returned None or empty",
+        }
+    except Exception as e:
+        results["finnhub_candle"] = {
+            "success": False, "data_points": 0, "elapsed_ms": int((time.time() - t0) * 1000),
+            "error": f"{type(e).__name__}: {str(e)[:200]}",
+        }
+    
+    # ─── Test 2: yfinance .history() ─────────────────────────────────
+    t0 = time.time()
+    try:
+        _yahoo_rate_wait()
+        tk = yf.Ticker(symbol)
+        hist = tk.history(period="1y", interval="1d")
+        if hist is not None and not hist.empty:
+            closes = list(hist["Close"].dropna())
+            results["yfinance_history"] = {
+                "success": True,
+                "data_points": len(closes),
+                "sample_close": float(closes[-1]) if closes else None,
+                "elapsed_ms": int((time.time() - t0) * 1000),
+                "error": None,
+            }
+        else:
+            results["yfinance_history"] = {
+                "success": False, "data_points": 0,
+                "elapsed_ms": int((time.time() - t0) * 1000),
+                "error": "yfinance returned empty/None",
+            }
+    except Exception as e:
+        results["yfinance_history"] = {
+            "success": False, "data_points": 0,
+            "elapsed_ms": int((time.time() - t0) * 1000),
+            "error": f"{type(e).__name__}: {str(e)[:200]}",
+        }
+    
+    # ─── Test 3: Yahoo chart API direct (different from yfinance) ────
+    t0 = time.time()
+    try:
+        import urllib.request, json as _json
+        url = f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}?interval=1d&range=1y"
+        req = urllib.request.Request(url, headers={
+            "User-Agent": "Mozilla/5.0 (compatible; Celesys/1.0)",
+            "Accept": "application/json",
+        })
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = _json.loads(resp.read())
+        chart = data.get("chart", {}).get("result", [{}])[0]
+        closes = chart.get("indicators", {}).get("quote", [{}])[0].get("close", [])
+        closes = [c for c in closes if c is not None]
+        results["yahoo_chart_direct"] = {
+            "success": bool(closes),
+            "data_points": len(closes),
+            "sample_close": closes[-1] if closes else None,
+            "elapsed_ms": int((time.time() - t0) * 1000),
+            "error": None if closes else "Empty closes array",
+            "source_url": url,
+        }
+    except Exception as e:
+        results["yahoo_chart_direct"] = {
+            "success": False, "data_points": 0,
+            "elapsed_ms": int((time.time() - t0) * 1000),
+            "error": f"{type(e).__name__}: {str(e)[:200]}",
+        }
+    
+    # ─── Test 4: Stooq CSV ───────────────────────────────────────────
+    t0 = time.time()
+    try:
+        import urllib.request
+        # Stooq needs lowercase symbol with .us suffix
+        stooq_sym = symbol.lower() + ".us"
+        url = f"https://stooq.com/q/d/l/?s={stooq_sym}&i=d"
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            csv = resp.read().decode("utf-8", errors="replace")
+        # CSV format: Date,Open,High,Low,Close,Volume
+        lines = csv.strip().split("\n")
+        if len(lines) > 2 and lines[0].startswith("Date"):
+            closes = []
+            for ln in lines[1:]:
+                parts = ln.split(",")
+                if len(parts) >= 5:
+                    try: closes.append(float(parts[4]))
+                    except: pass
+            results["stooq_csv"] = {
+                "success": len(closes) > 50,
+                "data_points": len(closes),
+                "sample_close": closes[-1] if closes else None,
+                "elapsed_ms": int((time.time() - t0) * 1000),
+                "error": None if closes else "No data parsed",
+                "source_url": url,
+            }
+        else:
+            results["stooq_csv"] = {
+                "success": False, "data_points": 0,
+                "elapsed_ms": int((time.time() - t0) * 1000),
+                "error": f"Bad CSV format. First 200 chars: {csv[:200]}",
+            }
+    except Exception as e:
+        results["stooq_csv"] = {
+            "success": False, "data_points": 0,
+            "elapsed_ms": int((time.time() - t0) * 1000),
+            "error": f"{type(e).__name__}: {str(e)[:200]}",
+        }
+    
+    # ─── Test 5: Google Finance via existing scraper ─────────────────
+    t0 = time.time()
+    try:
+        # Existing google_finance scraper in data_sources lives there
+        # Just check if the function exists and returns sane data
+        gf_result = None
+        if hasattr(_ds, "google_finance_quote"):
+            gf_result = _ds.google_finance_quote(symbol, region="US")
+        elif hasattr(_ds, "_google_finance_scrape"):
+            gf_result = _ds._google_finance_scrape(symbol)
+        # GF only gives current price, not history — note this honestly
+        results["google_finance"] = {
+            "success": bool(gf_result and gf_result.get("price")),
+            "data_points": 1 if (gf_result and gf_result.get("price")) else 0,
+            "sample_close": gf_result.get("price") if gf_result else None,
+            "elapsed_ms": int((time.time() - t0) * 1000),
+            "error": None if gf_result else "GF scraper returned None",
+            "note": "Google Finance only provides current price, not historical.",
+        }
+    except Exception as e:
+        results["google_finance"] = {
+            "success": False, "data_points": 0,
+            "elapsed_ms": int((time.time() - t0) * 1000),
+            "error": f"{type(e).__name__}: {str(e)[:200]}",
+        }
+    
+    # ─── Summary ─────────────────────────────────────────────────────
+    working = [name for name, r in results.items() if r.get("success")]
+    
+    return {
+        "success": True,
+        "symbol": symbol,
+        "tested_sources": list(results.keys()),
+        "working_sources": working,
+        "results": results,
+        "total_elapsed_sec": round(time.time() - t0_total, 1),
+        "render_node_info": {
+            "python_version": sys.version.split()[0],
+            "yfinance_available": "yfinance" in sys.modules,
+        },
+        "interpretation": (
+            f"{len(working)}/5 sources work. " +
+            ("USE THE FIRST WORKING ONE for momentum scanner price history."
+             if working else
+             "ALL FIVE SOURCES BLOCKED — no historical price data is reachable from Render. "
+             "Only paid Finnhub Personal or paid IEX/Polygon/etc would solve this.")
+        ),
+    }
 
 _portfolio_progress = {"done": 0, "total": 0, "current": "", "started": 0, "active": False}
 
