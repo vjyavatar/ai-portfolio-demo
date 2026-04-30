@@ -378,3 +378,29 @@ Should now return `dd_disk_cache: {exists: true, n_entries: ...}` after the firs
 - 6 runtime tests pass: string ("2024-10-23") → 10.36%, datetime → 10.36%, tz-aware → 10.36%, None → None safely, invalid → None safely, ISO with time → 10.36% (correct slicing)
 
 **Honest acknowledgment of what's NOT fixed:** Insider Activity and Institutional Ownership sections still show "data not available" — that's Yahoo blocking those specific endpoints from Render IP. Free-tier Finnhub doesn't have these. Real fixes: wait for Yahoo to recover, upgrade Finnhub (~$50/mo), or build SEC EDGAR fallback (free but more work).
+
+---
+
+## v4.63.4 — Email replacement + tier centralization (current)
+
+**Built:** 2026-04-30 14:42 UTC
+
+**User request:** Replace `bbk@asl.com` → `yrk@eml.com` everywhere AND apply solution-architect best practices to centralize duplicated email lists.
+
+**Email change:** Pure replace. Zero remaining occurrences of `bbk@asl.com` in api.py, app.js, or app.min.js. `yrk@eml.com` granted exact same tier access bbk had. Other emails (`vj@vnky.com`, `tmp@cls.com`) untouched.
+
+**Architectural refactor:**
+- Backend: 2 hardcoded lists (`TRADES_ALLOWED_EMAILS`, `DREAM_ALLOWED_EMAILS`) replaced with single `PREMIUM_TIERS` dict + `has_tier()` helper. Backwards-compat aliases preserve all 15+ existing call sites.
+- Frontend: 4 hardcoded `const X_EMAILS=[...]` lists replaced with single `window.CELESYS_TIERS` object + `window.hasTier()` helper. Backwards-compat aliases preserve existing callers.
+- 2 inline literals (`app.js:23900`, `app.js:24046`) refactored to use centralized definitions.
+- Pre-computed lowercased frozenset lookup (was list comprehension on every request — 15+ hot paths).
+
+**Tested:**
+- 19 audit checks pass
+- 13 backend access control tests pass (incl. case-insensitive, whitespace-stripped, defensive None handling)
+- 18 frontend hasTier tests pass
+- 8 backwards-compat alias tests pass
+
+**Honest note on drift:** Pre-existing drift between backend/frontend trades tier (frontend has `tmp@cls.com`, backend doesn't) preserved as-is. Refactor doesn't change behavior — just makes drift visible in one place per language for future audit.
+
+**To grant access to new user (going forward):** Add email to `PREMIUM_TIERS` (api.py) AND `window.CELESYS_TIERS` (app.js). Two places instead of 6+.

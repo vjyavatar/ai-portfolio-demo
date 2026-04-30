@@ -1797,9 +1797,9 @@ def _safe_float(val, default=0.0):
         return default
 
 # ═══ Celesys version stamp (v4.61.10) ═══════════════════════════════
-APP_VERSION = "v4.63.3"
-APP_BUILD_TIME = 1777502280
-APP_BUILD_DATE = "2026-04-29 22:38:00 UTC"
+APP_VERSION = "v4.63.4"
+APP_BUILD_TIME = 1777560165
+APP_BUILD_DATE = "2026-04-30 14:42:45 UTC"
 APP_RELEASE_NOTES = (
     "v4.62.0: Micro-Cap Hunter scanner (Decide tab) + cumulative r61.x: Aladdin DD entry page (r61.8), "
     "stale-cache fallback (r61.8), multi-factor Bottom Line (r61.7), "
@@ -4007,8 +4007,36 @@ async def ads_txt():
 # ═══════════════════════════════════════════════════════════
 # INDEX TRADES — AI Daily Trade Ideas (Restricted Access)
 # ═══════════════════════════════════════════════════════════
-TRADES_ALLOWED_EMAILS = ["bbk@asl.com", "vj@vnky.com"]
-DREAM_ALLOWED_EMAILS = ["bbk@asl.com", "vj@vnky.com"]  # Ultra-premium: Dream Portfolio + Multibagger Hunter
+# ═══════════════════════════════════════════════════════════════════
+# r63.4: Premium tier membership — single source of truth (backend)
+# ═══════════════════════════════════════════════════════════════════
+# To grant a user access to a tier, add their email here ONLY.
+# All access checks downstream go through has_tier() or the
+# backwards-compat aliases (TRADES_ALLOWED_EMAILS / DREAM_ALLOWED_EMAILS).
+PREMIUM_TIERS = {
+    "trades": ["yrk@eml.com", "vj@vnky.com"],          # Trades + Picks tab access
+    "dream":  ["yrk@eml.com", "vj@vnky.com"],          # Ultra-premium: Dream Portfolio + Multibagger Hunter
+}
+
+# Pre-computed lowercased lookup sets (built once at module load — used in
+# 15+ hot paths in DD/Hunter/PMS endpoints; previously each call did its
+# own [e.lower() for e in X] list comprehension).
+_PREMIUM_TIER_SETS = {
+    tier: frozenset(e.lower() for e in emails)
+    for tier, emails in PREMIUM_TIERS.items()
+}
+
+def has_tier(email, tier):
+    """Standard tier check. Use this for new code.
+    Returns True if email belongs to the named tier."""
+    if not email or not tier:
+        return False
+    return str(email).strip().lower() in _PREMIUM_TIER_SETS.get(tier, frozenset())
+
+# Backwards-compat aliases — existing call sites use these names.
+# DO NOT REMOVE without updating every call site (~15 in api.py).
+TRADES_ALLOWED_EMAILS = PREMIUM_TIERS["trades"]
+DREAM_ALLOWED_EMAILS = PREMIUM_TIERS["dream"]
 
 # Master list — ALL emails that can access the platform
 AUTHORIZED_EMAILS = list(set(

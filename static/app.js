@@ -1,9 +1,9 @@
 // ═══ Celesys version stamp ═══
-window.CELESYS_VERSION = "v4.63.3";
-window.CELESYS_BUILD_TIME = 1777502280;
-window.CELESYS_BUILD_DATE = "2026-04-29 22:38:00 UTC";
+window.CELESYS_VERSION = "v4.63.4";
+window.CELESYS_BUILD_TIME = 1777560165;
+window.CELESYS_BUILD_DATE = "2026-04-30 14:42:45 UTC";
 console.log("%c━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "color:#1A3A78");
-console.log("%c CELESYS v4.63.3 %c loaded · 2026-04-29 03:29:27 UTC",
+console.log("%c CELESYS v4.63.4 %c loaded · 2026-04-29 03:29:27 UTC",
   "background:#1A3A78;color:#fff;font-weight:900;padding:3px 8px;border-radius:3px;font-family:monospace",
   "color:#1A3A78;font-weight:700;font-family:monospace");
 console.log("%c━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "color:#1A3A78");
@@ -270,10 +270,35 @@ window.loadInvestorDE = typeof loadInvestorDE !== 'undefined' ? loadInvestorDE :
 // Track ticker input so Top Trades knows the stock
 TI.addEventListener('input',function(){var v=this.value.trim().toUpperCase();if(v&&v.length>=2)window._lastAnalyzedSymbol=v});
 // Smart Trades tab: only visible for authorized email
-const TRADES_EMAILS=['bbk@asl.com','tmp@cls.com','vj@vnky.com'];
-const TRADING_ONLY_EMAILS=['tmp@cls.com']; // Only Overview + Trading tab
-const PICKS_EMAILS=['bbk@asl.com','vj@vnky.com'];
-const DREAM_EMAILS=['bbk@asl.com','vj@vnky.com'];
+// ═══════════════════════════════════════════════════════════════════
+// r63.4: Premium tier membership — single source of truth (frontend)
+// ═══════════════════════════════════════════════════════════════════
+// Add a new user's email here ONLY to grant tier access.
+// Backend has matching PREMIUM_TIERS in api.py — keep both in sync when
+// granting/revoking access.
+window.CELESYS_TIERS = {
+  trades:       ['yrk@eml.com', 'tmp@cls.com', 'vj@vnky.com'],
+  trading_only: ['tmp@cls.com'],                          // Overview + Trading tab only
+  picks:        ['yrk@eml.com', 'vj@vnky.com'],
+  dream:        ['yrk@eml.com', 'vj@vnky.com'],
+  full_access:  ['yrk@eml.com'],                          // Everything except PDF
+};
+window.hasTier = function(email, tier) {
+  if (!email || !tier) return false;
+  var list = (window.CELESYS_TIERS[tier] || []);
+  var needle = String(email).trim().toLowerCase();
+  for (var i = 0; i < list.length; i++) {
+    if (String(list[i]).toLowerCase() === needle) return true;
+  }
+  return false;
+};
+
+// Backwards-compat aliases — existing call sites use these names.
+// DO NOT REMOVE without updating every call site.
+const TRADES_EMAILS = window.CELESYS_TIERS.trades;
+const TRADING_ONLY_EMAILS = window.CELESYS_TIERS.trading_only;
+const PICKS_EMAILS = window.CELESYS_TIERS.picks;
+const DREAM_EMAILS = window.CELESYS_TIERS.dream;
 let _pulseData=null;
 let _pulseFetching=false,_pulseLoaded=false;
 
@@ -23897,7 +23922,7 @@ console.log('[TRADING] ✅ EMA 9/21 + RSI trading tab loaded');
     email=(email||'').toLowerCase();
     
     // Define roles
-    var FULL_ACCESS=['bbk@asl.com']; // Everything except PDF
+    var FULL_ACCESS = window.CELESYS_TIERS.full_access; // r63.4: refer to centralized tier definition
     var TRADING_ACCESS=['tmp@cls.com']; // Overview + Trading + Tools
     var PDF_ACCESS=['vj@vnky.com']; // Everything + PDF
     
@@ -24043,7 +24068,7 @@ console.log('[TRADING] ✅ EMA 9/21 + RSI trading tab loaded');
     if(!email)return;
     
     var isTradingUser=(['tmp@cls.com'].indexOf(email)>=0);
-    var isFullUser=(['bbk@asl.com','vj@vnky.com'].indexOf(email)>=0);
+    var isFullUser = (window.hasTier(email, 'trades')); // r63.4: was inline literal [bbk,vj] which == trades tier
     var isAdmin=email==='vj@vnky.com';
     
     var tradingBtn=document.getElementById('tabBtnTrading');
