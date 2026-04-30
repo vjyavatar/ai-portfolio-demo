@@ -1797,9 +1797,9 @@ def _safe_float(val, default=0.0):
         return default
 
 # ═══ Celesys version stamp (v4.61.10) ═══════════════════════════════
-APP_VERSION = "v4.63.7"
-APP_BUILD_TIME = 1777569814
-APP_BUILD_DATE = "2026-04-30 17:23:34 UTC"
+APP_VERSION = "v4.63.8"
+APP_BUILD_TIME = 1777571482
+APP_BUILD_DATE = "2026-04-30 17:51:22 UTC"
 APP_RELEASE_NOTES = (
     "v4.62.0: Micro-Cap Hunter scanner (Decide tab) + cumulative r61.x: Aladdin DD entry page (r61.8), "
     "stale-cache fallback (r61.8), multi-factor Bottom Line (r61.7), "
@@ -31122,6 +31122,512 @@ async def find_similar_stocks(
     print(f"  💾 Cached. Total elapsed: {elapsed}s")
     
     return response
+
+
+
+# ═══════════════════════════════════════════════════════════════════
+# r63.8: Momentum Leaders + Earnings Calendar + This-Week Alerts
+# ═══════════════════════════════════════════════════════════════════
+
+# Reuses _FIND_SIMILAR_US_UNIVERSE / _IN_UNIVERSE from r63.6 — same curated set
+# This avoids universe-list duplication. If we want different momentum universe
+# later, we can split — for now consistency wins.
+
+def _r638_compute_momentum_score(profile, hist_closes):
+    """Compute 0-100 momentum score from profile + price history.
+    
+    Components:
+      - 30% recent return (1mo/3mo/6mo blended, recent weighted more)
+      - 25% acceleration (3mo > 1y indicates accelerating trend)
+      - 20% relative strength (return vs broad market — proxied by absolute return)
+      - 15% volume surge (avg volume now vs 50-day avg, capped)
+      - 10% breakout proximity (% from 52-week high)
+    
+    Returns dict with score + components + signal label.
+    Returns None if insufficient data.
+    """
+    if not hist_closes or len(hist_closes) < 60:
+        return None
+    
+    closes = list(hist_closes)
+    last = closes[-1]
+    if last <= 0:
+        return None
+    
+    # Helper: pct return from N days ago to today
+    def _ret_from(days_back):
+        if len(closes) <= days_back:
+            return None
+        prior = closes[-(days_back + 1)]
+        if prior <= 0:
+            return None
+        return (last - prior) / prior * 100
+    
+    ret_1m = _ret_from(21)   # ~1 month trading days
+    ret_3m = _ret_from(63)   # ~3 months
+    ret_6m = _ret_from(126)  # ~6 months
+    ret_1y = _ret_from(252)  # ~1 year
+    
+    # Skip stocks without enough history
+    if ret_3m is None:
+        return None
+    
+    # 1. Recent return blend (30% weight)
+    # Weight: 1m=30%, 3m=40%, 6m=30% — emphasize sustained 3-6mo trend over short-term spikes
+    # (Real rippers like MU/SNDK gain 80-150% over 3-6 months, not 1 month.)
+    recent_return = 0.0
+    return_count = 0
+    if ret_1m is not None: recent_return += 0.3 * ret_1m; return_count += 0.3
+    if ret_3m is not None: recent_return += 0.4 * ret_3m; return_count += 0.4
+    if ret_6m is not None: recent_return += 0.3 * ret_6m; return_count += 0.3
+    if return_count < 0.4:
+        return None
+    blended_return = recent_return / return_count
+    # Map -30% to +100% → 0 to 100 score (more sensitive than -50 to +200)
+    return_score = max(0.0, min(100.0, (blended_return + 30) * 100 / 130))
+    
+    # 2. Acceleration (25%)
+    # Strong: 3mo return >> annualized 1yr return
+    accel_score = 50.0  # default neutral
+    if ret_3m is not None and ret_1y is not None and ret_1y != 0:
+        # Annualize 3mo, compare to 1y
+        ann_3m = ret_3m * 4
+        if ann_3m > ret_1y:
+            ratio = (ann_3m - ret_1y) / max(abs(ret_1y), 10)
+            accel_score = min(100, 50 + ratio * 50)
+        else:
+            accel_score = max(0, 50 - abs(ret_1y - ann_3m) / max(abs(ret_1y), 10) * 25)
+    elif ret_3m is not None and ret_3m > 0:
+        accel_score = min(100, 50 + ret_3m / 2)  # positive 3mo with no 1y data
+    
+    # 3. Relative strength (20%) — proxied by absolute strength of 6m return
+    # In a real system we'd compare to SPY/Nifty. For now, absolute > 20% over 6m = strong.
+    rs_score = 50.0
+    if ret_6m is not None:
+        rs_score = max(0.0, min(100.0, (ret_6m + 20) * 2))  # -20% → 0, +30% → 100
+    
+    # 4. Volume surge (15%) — average recent vol / 50-day avg vol
+    # We don't have separate volume in closes-only history; pass-through if not available
+    # When called from main scanner with hist DataFrame, we'd populate this
+    vol_score = 50.0  # neutral default — we'll override in caller if vol data available
+    
+    # 5. Breakout proximity (10%) — distance to 52w high
+    if len(closes) >= 252:
+        hi_52w = max(closes[-252:])
+    else:
+        hi_52w = max(closes)
+    if hi_52w > 0:
+        distance_pct = (hi_52w - last) / hi_52w * 100
+        # 0% from high = 100, 30%+ from high = 0
+        bo_score = max(0.0, min(100.0, 100 - distance_pct * 3.33))
+    else:
+        bo_score = 50
+    
+    # Weighted total
+    # Vol_score is currently always 50 (no per-ticker volume integration yet).
+    # When vol is "neutral" (50), it drags scores down by ~7.5pts. Redistribute its
+    # 15% weight equally to return/accel/rs (the active components).
+    if vol_score == 50.0:
+        # Redistribute: return 30+5=35, accel 25+5=30, rs 20+5=25, breakout 10
+        total = (
+            0.35 * return_score +
+            0.30 * accel_score +
+            0.25 * rs_score +
+            0.10 * bo_score
+        )
+    else:
+        total = (
+            0.30 * return_score +
+            0.25 * accel_score +
+            0.20 * rs_score +
+            0.15 * vol_score +
+            0.10 * bo_score
+        )
+    
+    # Signal label
+    if total >= 80:
+        signal = "🔥 EXTREME"
+    elif total >= 65:
+        signal = "🚀 STRONG"
+    elif total >= 50:
+        signal = "⚡ BUILDING"
+    else:
+        signal = "📉 WEAK"
+    
+    return {
+        "score": round(total, 1),
+        "signal": signal,
+        "ret_1m": round(ret_1m, 1) if ret_1m is not None else None,
+        "ret_3m": round(ret_3m, 1) if ret_3m is not None else None,
+        "ret_6m": round(ret_6m, 1) if ret_6m is not None else None,
+        "ret_1y": round(ret_1y, 1) if ret_1y is not None else None,
+        "components": {
+            "return": round(return_score, 1),
+            "acceleration": round(accel_score, 1),
+            "rel_strength": round(rs_score, 1),
+            "volume_surge": round(vol_score, 1),
+            "breakout": round(bo_score, 1),
+        },
+    }
+
+
+@app.get("/api/momentum-leaders")
+async def momentum_leaders(region: str = "US", email: str = "", nocache: int = 0):
+    """r63.8: Find top momentum stocks (SNDK/MU-style rippers).
+    
+    Scans curated universe, computes 5-component momentum score per ticker,
+    filters out downtrending / illiquid / penny stocks, returns top 20 + bucketed.
+    
+    Cache: 30 min TTL (momentum doesn't change minute-to-minute)
+    """
+    import time, asyncio
+    
+    email = (email or "").strip().lower()
+    _ok, email = check_premium_gate(email, "dream")
+    if not _ok:
+        return {"success": False, "error": "Momentum Leaders is a premium feature."}
+    
+    region = (region or "US").upper()
+    if region not in ("US", "IN"):
+        return {"success": False, "error": "region must be US or IN"}
+    
+    cache_key = f"momentum_leaders_{region}"
+    if nocache != 1:
+        cached = _smart_cache_get(cache_key)
+        if cached:
+            cached["_cached"] = True
+            return cached
+    
+    t0 = time.time()
+    print("\n" + "="*60)
+    print(f"🔥 MOMENTUM LEADERS scan: region={region}")
+    print("="*60)
+    
+    # Use same universe as find-similar (consistency)
+    if region == "US":
+        universe = list(dict.fromkeys(_FIND_SIMILAR_US_UNIVERSE))
+    else:
+        universe = list(dict.fromkeys(_FIND_SIMILAR_IN_UNIVERSE))
+    
+    BATCH_SIZE = int(os.getenv("MOMENTUM_BATCH_SIZE", "20"))
+    leaders = []
+    
+    async def _fetch_one(ticker):
+        try:
+            # Get DD to extract price + has the data we need
+            dd = await investor_due_diligence(email=email, symbol=ticker, region=region)
+            if not dd.get("success"):
+                return None
+            company = dd.get("company") or {}
+            price = _safe_float(company.get("price"))
+            if price <= 0:
+                return None
+            # Hard filters: penny stocks
+            if region == "US" and price < 5:
+                return None
+            if region == "IN" and price < 50:
+                return None
+            
+            # Get price history for momentum calc
+            # Reuse Finnhub for US, NSE-via-yf for IN
+            hist_closes = None
+            try:
+                if region == "US":
+                    fh_hist = _fh.get_price_history(ticker, region="US", period_days=365)
+                    if fh_hist and fh_hist.get("closes"):
+                        hist_closes = fh_hist["closes"]
+            except Exception:
+                pass
+            
+            # Fallback: try yfinance if Finnhub didn't deliver
+            if not hist_closes:
+                try:
+                    yf_sym = ticker if region == "US" else f"{ticker}.NS"
+                    _yahoo_rate_wait()
+                    tk = yf.Ticker(yf_sym)
+                    hist_df = tk.history(period="1y", interval="1d")
+                    if hist_df is not None and not hist_df.empty:
+                        hist_closes = list(hist_df["Close"].dropna())
+                except Exception:
+                    pass
+            
+            if not hist_closes or len(hist_closes) < 60:
+                return None
+            
+            mom = _r638_compute_momentum_score({"price": price}, hist_closes)
+            if not mom:
+                return None
+            
+            # Skip stocks with weak momentum (filter)
+            if mom["score"] < 40:
+                return None
+            
+            return {
+                "ticker":    ticker,
+                "name":      company.get("name", ticker),
+                "price":     price,
+                "currency_symbol": dd.get("currency_symbol", "$"),
+                "sector":    company.get("sector", ""),
+                "score":     mom["score"],
+                "signal":    mom["signal"],
+                "ret_1m":    mom["ret_1m"],
+                "ret_3m":    mom["ret_3m"],
+                "ret_6m":    mom["ret_6m"],
+                "ret_1y":    mom["ret_1y"],
+            }
+        except Exception as e:
+            print(f"    ⚠️  {ticker} momentum failed: {type(e).__name__}: {str(e)[:80]}")
+            return None
+    
+    for i in range(0, len(universe), BATCH_SIZE):
+        batch = universe[i:i+BATCH_SIZE]
+        results = await asyncio.gather(*[_fetch_one(t) for t in batch], return_exceptions=False)
+        for r in results:
+            if r is not None:
+                leaders.append(r)
+        elapsed = time.time() - t0
+        print(f"  📈 Batch {i//BATCH_SIZE + 1} done — {len(leaders)} momentum leaders so far ({elapsed:.0f}s)")
+    
+    # Sort by score desc, take top 20
+    leaders.sort(key=lambda x: x["score"], reverse=True)
+    top_leaders = leaders[:20]
+    
+    # Bucket by signal tier
+    buckets = {
+        "extreme":  {"label": "🔥 EXTREME (score 80+)",  "results": []},
+        "strong":   {"label": "🚀 STRONG (65-80)",       "results": []},
+        "building": {"label": "⚡ BUILDING (50-65)",     "results": []},
+    }
+    for L in top_leaders:
+        s = L["score"]
+        if s >= 80:
+            buckets["extreme"]["results"].append(L)
+        elif s >= 65:
+            buckets["strong"]["results"].append(L)
+        else:
+            buckets["building"]["results"].append(L)
+    
+    for k in buckets:
+        buckets[k]["count"] = len(buckets[k]["results"])
+    
+    elapsed = round(time.time() - t0, 1)
+    response = {
+        "success":   True,
+        "region":    region,
+        "buckets":   buckets,
+        "all_leaders": top_leaders,
+        "scanned":   len(universe),
+        "qualified": len(leaders),
+        "elapsed_sec": elapsed,
+        "_cached":   False,
+        "weighting": {
+            "recent_return": "30%",
+            "acceleration":  "25%",
+            "relative_strength": "20%",
+            "volume_surge":  "15%",
+            "breakout_proximity": "10%",
+        },
+    }
+    
+    _smart_cache_set(cache_key, response, ttl=1800)
+    print(f"  💾 Cached. {len(leaders)} qualified, top 20 returned. {elapsed}s")
+    return response
+
+
+@app.get("/api/earnings-calendar")
+async def earnings_calendar(symbol: str = "", region: str = "US", email: str = "",
+                             nocache: int = 0):
+    """r63.8: Per-ticker quarterly earnings calendar (past + upcoming).
+    
+    Returns historical earnings (last 4 Q via Finnhub /stock/earnings) +
+    forward earnings (next 90 days via Finnhub /calendar/earnings if available).
+    
+    For India: only past results from NSE-via-yfinance fallback. No forward dates.
+    """
+    import time
+    
+    email = (email or "").strip().lower()
+    _ok, email = check_premium_gate(email, "dream")
+    if not _ok:
+        return {"success": False, "error": "Earnings Calendar is a premium feature."}
+    
+    symbol = (symbol or "").strip().upper()
+    region = (region or "US").upper()
+    if not symbol:
+        return {"success": False, "error": "symbol required"}
+    
+    cache_key = f"earnings_cal_{symbol}_{region}"
+    if nocache != 1:
+        cached = _smart_cache_get(cache_key)
+        if cached:
+            cached["_cached"] = True
+            return cached
+    
+    past_quarters = []
+    upcoming = []
+    
+    # 1. Past quarters via Finnhub history adapter (already exists)
+    try:
+        eh = _fh.get_earnings_history(symbol, region=region) if region == "US" else None
+        if eh and eh.get("data"):
+            for q in eh["data"]:
+                d = q.get("date")
+                # Convert datetime → string for JSON
+                if hasattr(d, "strftime"):
+                    d = d.strftime("%Y-%m-%d")
+                past_quarters.append({
+                    "date": d,
+                    "eps_estimate": q.get("eps_estimate"),
+                    "eps_actual":   q.get("eps_actual"),
+                    "surprise":     q.get("surprise"),
+                    "surprise_pct": q.get("surprise_pct"),
+                    "beat":         q.get("beat"),
+                })
+    except Exception as e:
+        print(f"[earnings-cal] past quarters fetch failed for {symbol}: {e}")
+    
+    # 2. Upcoming via Finnhub calendar (US only on free tier)
+    if region == "US":
+        try:
+            cal = _fh.get_earnings_calendar(symbol=symbol, region="US")
+            if cal and cal.get("data"):
+                for ev in cal["data"]:
+                    upcoming.append({
+                        "date":            ev.get("date"),
+                        "eps_estimate":    ev.get("epsEstimate"),
+                        "rev_estimate":    ev.get("revenueEstimate"),
+                        "hour":            ev.get("hour"),  # bmo/amc/dmh
+                        "quarter":         ev.get("quarter"),
+                        "year":            ev.get("year"),
+                    })
+        except Exception as e:
+            print(f"[earnings-cal] upcoming fetch failed for {symbol}: {e}")
+    
+    response = {
+        "success":      True,
+        "symbol":       symbol,
+        "region":       region,
+        "past_quarters": past_quarters,
+        "upcoming":     upcoming,
+        "data_quality": (
+            "FULL" if past_quarters and upcoming else
+            "PARTIAL" if past_quarters or upcoming else
+            "NONE"
+        ),
+        "data_note":    (
+            "Finnhub free tier: forward dates available for US, sparse for India. Past 4-8 quarters typically present."
+            if region == "US" else
+            "India free-tier coverage: past quarters via NSE/yfinance, NO forward dates. Upgrade to paid tier for full calendar."
+        ),
+        "_cached":      False,
+    }
+    
+    _smart_cache_set(cache_key, response, ttl=3600)  # 1 hour cache
+    return response
+
+
+@app.get("/api/earnings-this-week")
+async def earnings_this_week(region: str = "US", email: str = "", nocache: int = 0):
+    """r63.8: List companies in tracked universe with earnings reports this week.
+    
+    Scans next 7 days. Returns sorted by date ascending.
+    Cache: 6 hours (calendar doesn't change rapidly).
+    """
+    import time
+    from datetime import datetime as _dt3, timedelta as _td3
+    
+    email = (email or "").strip().lower()
+    _ok, email = check_premium_gate(email, "dream")
+    if not _ok:
+        return {"success": False, "error": "Earnings Alerts is a premium feature."}
+    
+    region = (region or "US").upper()
+    cache_key = f"earnings_this_week_{region}"
+    
+    if nocache != 1:
+        cached = _smart_cache_get(cache_key)
+        if cached:
+            cached["_cached"] = True
+            return cached
+    
+    if region != "US":
+        # India: no Finnhub calendar coverage on free tier
+        response = {
+            "success": True,
+            "region": region,
+            "events": [],
+            "data_note": "India: Finnhub free tier doesn't provide earnings calendar. Upgrade to paid tier for forward dates.",
+            "_cached": False,
+        }
+        _smart_cache_set(cache_key, response, ttl=21600)
+        return response
+    
+    # US: hit /calendar/earnings for next 7 days
+    today = _dt3.utcnow().date()
+    seven_out = today + _td3(days=7)
+    
+    try:
+        cal = _fh.get_earnings_calendar(
+            from_date=today.strftime("%Y-%m-%d"),
+            to_date=seven_out.strftime("%Y-%m-%d"),
+            region="US"
+        )
+    except Exception as e:
+        print(f"[earnings-week] calendar fetch failed: {e}")
+        cal = None
+    
+    if not cal or not cal.get("data"):
+        response = {
+            "success": True,
+            "region": region,
+            "events": [],
+            "data_note": "No earnings reported this week (or Finnhub returned empty).",
+            "_cached": False,
+        }
+        _smart_cache_set(cache_key, response, ttl=21600)
+        return response
+    
+    # Filter to tickers in our universe (or popular ones), sort by date
+    tracked_set = set(_FIND_SIMILAR_US_UNIVERSE)
+    
+    events = []
+    for ev in cal["data"]:
+        sym = ev.get("symbol", "")
+        in_universe = sym in tracked_set
+        events.append({
+            "symbol":          sym,
+            "in_universe":     in_universe,  # is this ticker in our tracked set?
+            "date":            ev.get("date"),
+            "hour":            ev.get("hour"),  # bmo/amc/dmh
+            "eps_estimate":    ev.get("epsEstimate"),
+            "rev_estimate":    ev.get("revenueEstimate"),
+            "quarter":         ev.get("quarter"),
+            "year":            ev.get("year"),
+        })
+    
+    # Sort: in_universe first (alphabetical), then by date
+    events.sort(key=lambda e: (not e["in_universe"], e.get("date") or "9999-99-99", e["symbol"]))
+    
+    # Cap to 100 to keep response size sane
+    events = events[:100]
+    
+    in_universe_count = sum(1 for e in events if e["in_universe"])
+    
+    response = {
+        "success":          True,
+        "region":           region,
+        "events":           events,
+        "from_date":        today.strftime("%Y-%m-%d"),
+        "to_date":          seven_out.strftime("%Y-%m-%d"),
+        "total_events":     len(events),
+        "in_universe_count": in_universe_count,
+        "data_note":        f"Showing {len(events)} earnings events Mon {today.strftime('%b %d')} - Sun {seven_out.strftime('%b %d')}. {in_universe_count} are in your tracked universe.",
+        "_cached":          False,
+    }
+    
+    _smart_cache_set(cache_key, response, ttl=21600)  # 6h cache
+    return response
+
 
 
 

@@ -1,9 +1,9 @@
 // ═══ Celesys version stamp ═══
-window.CELESYS_VERSION = "v4.63.7";
-window.CELESYS_BUILD_TIME = 1777569814;
-window.CELESYS_BUILD_DATE = "2026-04-30 17:23:34 UTC";
+window.CELESYS_VERSION = "v4.63.8";
+window.CELESYS_BUILD_TIME = 1777571482;
+window.CELESYS_BUILD_DATE = "2026-04-30 17:51:22 UTC";
 console.log("%c━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "color:#1A3A78");
-console.log("%c CELESYS v4.63.7 %c loaded · 2026-04-29 03:29:27 UTC",
+console.log("%c CELESYS v4.63.8 %c loaded · 2026-04-29 03:29:27 UTC",
   "background:#1A3A78;color:#fff;font-weight:900;padding:3px 8px;border-radius:3px;font-family:monospace",
   "color:#1A3A78;font-weight:700;font-family:monospace");
 console.log("%c━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "color:#1A3A78");
@@ -24711,5 +24711,387 @@ window._csInjectFindSimilarButton = function() {
     }
   }, 1000);
   setTimeout(function() { clearInterval(checkInterval); }, 600000);  // stop after 10 min
+})();
+
+
+
+// ═══════════════════════════════════════════════════════════════════
+// r63.8: Momentum Leaders + Earnings Calendar + This-Week Alerts
+// ═══════════════════════════════════════════════════════════════════
+
+// ─── Momentum Leaders modal ──────────────────────────────────────
+window._csMomentumOpen = function(region) {
+  if (!region) region = (window._ddLastRegion || 'US').toUpperCase();
+  
+  var existing = document.getElementById('csMomentumModal');
+  if (existing) existing.remove();
+  
+  var modal = document.createElement('div');
+  modal.id = 'csMomentumModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,0.7);z-index:9999;display:flex;align-items:flex-start;justify-content:center;padding:40px 20px;overflow-y:auto;font-family:Inter,sans-serif';
+  modal.innerHTML = '' +
+    '<div style="background:#fff;border-radius:14px;max-width:980px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,0.4);overflow:hidden">' +
+      '<div style="padding:20px 28px;background:linear-gradient(135deg,#7c2d12,#dc2626);color:#fff;display:flex;justify-content:space-between;align-items:center">' +
+        '<div>' +
+          '<div style="font-size:18px;font-weight:800;font-family:Sora,sans-serif">🔥 Momentum Leaders</div>' +
+          '<div style="font-size:11px;color:rgba(255,255,255,0.85);margin-top:3px">Top rippers in ' + region + ' · 5-component momentum score</div>' +
+        '</div>' +
+        '<button onclick="document.getElementById(\'csMomentumModal\').remove()" style="background:rgba(255,255,255,0.15);color:#fff;border:none;width:32px;height:32px;border-radius:8px;font-size:18px;cursor:pointer">✕</button>' +
+      '</div>' +
+      '<div id="csMomBody" style="padding:24px 28px;min-height:200px">' +
+        '<div style="text-align:center;padding:40px 20px">' +
+          '<div style="display:inline-block;width:36px;height:36px;border:3px solid #fee2e2;border-top-color:#dc2626;border-radius:50%;animation:csFsSpin 0.8s linear infinite"></div>' +
+          '<div style="margin-top:14px;font-size:13px;color:#475569;font-weight:600">Scanning for momentum leaders…</div>' +
+          '<div id="csMomTimer" style="margin-top:8px;font-size:10px;color:#64748b;font-variant-numeric:tabular-nums">Elapsed: 0s</div>' +
+        '</div>' +
+      '</div>' +
+      '<div style="padding:14px 28px;background:#f8fafc;border-top:1px solid #e2e8f0;font-size:10px;color:#64748b">Score = 30% return + 25% acceleration + 20% rel. strength + 15% volume + 10% breakout</div>' +
+    '</div>';
+  document.body.appendChild(modal);
+  
+  var t0 = Date.now();
+  var th = setInterval(function() {
+    var el = document.getElementById('csMomTimer');
+    if (el) el.textContent = 'Elapsed: ' + Math.floor((Date.now() - t0) / 1000) + 's';
+  }, 1000);
+  
+  var email = (window._authedEmail || window.localStorage.getItem('email') || '').trim();
+  
+  fetch('/api/momentum-leaders?region=' + region + '&email=' + encodeURIComponent(email))
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      clearInterval(th);
+      if (!data.success) {
+        document.getElementById('csMomBody').innerHTML =
+          '<div style="text-align:center;padding:40px;color:#dc2626"><div style="font-size:18px;font-weight:700">⚠️ ' + (data.error || 'Failed') + '</div></div>';
+        return;
+      }
+      _csMomRender(data);
+    })
+    .catch(function(err) {
+      clearInterval(th);
+      document.getElementById('csMomBody').innerHTML =
+        '<div style="text-align:center;padding:40px;color:#dc2626"><div style="font-size:18px;font-weight:700">⚠️ Network error: ' + err.message + '</div></div>';
+    });
+};
+
+function _csMomRender(data) {
+  var buckets = data.buckets || {};
+  var html = '';
+  
+  // Header summary
+  html += '<div style="background:linear-gradient(135deg,#fee2e2,#fecaca);border:1px solid #fca5a5;border-radius:10px;padding:12px 16px;margin-bottom:18px">';
+  html += '<div style="font-size:9px;color:#991b1b;font-weight:800;letter-spacing:1.2px;margin-bottom:4px">SCAN SUMMARY</div>';
+  html += '<div style="font-size:11px;color:#7f1d1d">Scanned <strong>' + data.scanned + '</strong> · Qualified <strong>' + data.qualified + '</strong> · Top 20 shown · ' + data.elapsed_sec + 's' + (data._cached ? ' (cached)' : '') + '</div>';
+  html += '</div>';
+  
+  ['extreme', 'strong', 'building'].forEach(function(key) {
+    var b = buckets[key];
+    if (!b) return;
+    var results = b.results || [];
+    
+    html += '<div style="margin-bottom:18px">';
+    html += '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px">';
+    html += '<div style="font-size:13px;font-weight:800;color:#0f172a;font-family:Sora,sans-serif">' + b.label + '</div>';
+    html += '<div style="font-size:10px;color:#94a3b8">' + (results.length === 0 ? 'No matches' : results.length) + '</div>';
+    html += '</div>';
+    
+    if (results.length === 0) {
+      html += '<div style="background:#f8fafc;border:1px dashed #e2e8f0;border-radius:8px;padding:12px;text-align:center;font-size:11px;color:#94a3b8">None in this tier</div>';
+    } else {
+      html += '<div style="display:grid;grid-template-columns:1fr;gap:6px">';
+      results.forEach(function(r) {
+        var scoreColor = r.score >= 80 ? '#dc2626' : (r.score >= 65 ? '#ea580c' : '#ca8a04');
+        var ret3mDisp = r.ret_3m != null ? (r.ret_3m > 0 ? '+' : '') + r.ret_3m + '%' : '—';
+        var ret1yDisp = r.ret_1y != null ? (r.ret_1y > 0 ? '+' : '') + r.ret_1y + '%' : '—';
+        html += '<div style="border:1px solid #e2e8f0;border-radius:8px;padding:10px 14px;background:#fff;display:flex;justify-content:space-between;align-items:center;gap:14px">';
+        html += '<div style="flex:1;min-width:0">';
+        html += '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">';
+        html += '<span style="font-size:13px;font-weight:800;color:#1A3A78;font-family:Sora,sans-serif">' + r.ticker + '</span>';
+        html += '<span style="font-size:9px;color:#475569;background:#f1f5f9;padding:2px 6px;border-radius:4px;font-weight:600">' + r.currency_symbol + (r.price || 0).toFixed(2) + '</span>';
+        if (r.sector) html += '<span style="font-size:9px;color:#94a3b8">' + _csEscape(r.sector) + '</span>';
+        html += '</div>';
+        html += '<div style="font-size:10px;color:#64748b;margin-top:4px">3M: <strong>' + ret3mDisp + '</strong> · 1Y: <strong>' + ret1yDisp + '</strong></div>';
+        html += '</div>';
+        html += '<div style="text-align:right">';
+        html += '<div style="font-size:18px;font-weight:900;color:' + scoreColor + ';font-variant-numeric:tabular-nums">' + Math.round(r.score) + '</div>';
+        html += '<div style="font-size:8px;color:#94a3b8;letter-spacing:1px">' + r.signal.replace(/[🔥🚀⚡📉]\s*/, '') + '</div>';
+        html += '</div>';
+        html += '</div>';
+      });
+      html += '</div>';
+    }
+    html += '</div>';
+  });
+  
+  document.getElementById('csMomBody').innerHTML = html;
+}
+
+
+// ─── Earnings Calendar modal ──────────────────────────────────────
+window._csEarningsCalOpen = function(symbol, region) {
+  if (!symbol) symbol = (window._ddLastSymbol || '').toUpperCase();
+  if (!region) region = (window._ddLastRegion || 'US').toUpperCase();
+  if (!symbol) {
+    alert('No ticker. Generate a Deep DD report first.');
+    return;
+  }
+  
+  var existing = document.getElementById('csEarningsCalModal');
+  if (existing) existing.remove();
+  
+  var modal = document.createElement('div');
+  modal.id = 'csEarningsCalModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,0.7);z-index:9999;display:flex;align-items:flex-start;justify-content:center;padding:40px 20px;overflow-y:auto;font-family:Inter,sans-serif';
+  modal.innerHTML = '' +
+    '<div style="background:#fff;border-radius:14px;max-width:780px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,0.4);overflow:hidden">' +
+      '<div style="padding:20px 28px;background:linear-gradient(135deg,#1e3a8a,#3b82f6);color:#fff;display:flex;justify-content:space-between;align-items:center">' +
+        '<div>' +
+          '<div style="font-size:18px;font-weight:800;font-family:Sora,sans-serif">📅 Earnings Calendar — ' + symbol + '</div>' +
+          '<div style="font-size:11px;color:rgba(255,255,255,0.85);margin-top:3px">Past quarters + upcoming reports</div>' +
+        '</div>' +
+        '<button onclick="document.getElementById(\'csEarningsCalModal\').remove()" style="background:rgba(255,255,255,0.15);color:#fff;border:none;width:32px;height:32px;border-radius:8px;font-size:18px;cursor:pointer">✕</button>' +
+      '</div>' +
+      '<div id="csEcBody" style="padding:24px 28px;min-height:200px">' +
+        '<div style="text-align:center;padding:30px"><div style="display:inline-block;width:30px;height:30px;border:3px solid #dbeafe;border-top-color:#3b82f6;border-radius:50%;animation:csFsSpin 0.8s linear infinite"></div></div>' +
+      '</div>' +
+    '</div>';
+  document.body.appendChild(modal);
+  
+  var email = (window._authedEmail || window.localStorage.getItem('email') || '').trim();
+  
+  fetch('/api/earnings-calendar?symbol=' + encodeURIComponent(symbol) + '&region=' + region + '&email=' + encodeURIComponent(email))
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (!data.success) {
+        document.getElementById('csEcBody').innerHTML =
+          '<div style="text-align:center;padding:40px;color:#dc2626"><div style="font-size:18px;font-weight:700">⚠️ ' + (data.error || 'Failed') + '</div></div>';
+        return;
+      }
+      _csEcRender(data);
+    })
+    .catch(function(err) {
+      document.getElementById('csEcBody').innerHTML =
+        '<div style="text-align:center;padding:40px;color:#dc2626">' + err.message + '</div>';
+    });
+};
+
+function _csEcRender(data) {
+  var html = '';
+  
+  // Upcoming
+  var up = data.upcoming || [];
+  html += '<div style="margin-bottom:20px">';
+  html += '<div style="font-size:13px;font-weight:800;color:#0f172a;font-family:Sora,sans-serif;margin-bottom:8px">⏭ Upcoming Reports</div>';
+  if (up.length === 0) {
+    html += '<div style="background:#f8fafc;border:1px dashed #cbd5e1;border-radius:8px;padding:14px;text-align:center;font-size:11px;color:#94a3b8">No upcoming reports in next 90 days (or data not available for this ticker)</div>';
+  } else {
+    up.forEach(function(e) {
+      var hourLabel = {bmo:'Before market open',amc:'After market close',dmh:'During market hours'}[e.hour] || '—';
+      html += '<div style="border:1px solid #c7d2fe;border-radius:8px;padding:12px 14px;background:#eef2ff;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;gap:14px">';
+      html += '<div><div style="font-size:13px;font-weight:800;color:#1e3a8a">' + (e.date || '—') + '</div>';
+      html += '<div style="font-size:10px;color:#475569;margin-top:2px">' + hourLabel + (e.quarter ? ' · Q' + e.quarter + ' ' + (e.year || '') : '') + '</div></div>';
+      html += '<div style="text-align:right;font-size:10px;color:#64748b">';
+      if (e.eps_estimate) html += 'EPS est: <strong>$' + e.eps_estimate.toFixed(2) + '</strong><br>';
+      if (e.rev_estimate && e.rev_estimate > 1e6) html += 'Rev est: <strong>$' + (e.rev_estimate/1e9).toFixed(2) + 'B</strong>';
+      html += '</div>';
+      html += '</div>';
+    });
+  }
+  html += '</div>';
+  
+  // Past
+  var past = data.past_quarters || [];
+  html += '<div>';
+  html += '<div style="font-size:13px;font-weight:800;color:#0f172a;font-family:Sora,sans-serif;margin-bottom:8px">⏮ Past Quarters</div>';
+  if (past.length === 0) {
+    html += '<div style="background:#f8fafc;border:1px dashed #cbd5e1;border-radius:8px;padding:14px;text-align:center;font-size:11px;color:#94a3b8">No historical earnings data</div>';
+  } else {
+    past.forEach(function(q) {
+      var beatColor = q.beat ? '#059669' : '#dc2626';
+      var beatLabel = q.beat ? '✓ Beat' : '✗ Miss';
+      html += '<div style="border:1px solid #e2e8f0;border-radius:8px;padding:10px 14px;background:#fff;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;gap:14px">';
+      html += '<div><div style="font-size:13px;font-weight:800;color:#0f172a">' + (q.date || '—') + '</div>';
+      html += '<div style="font-size:10px;color:#64748b;margin-top:2px">';
+      if (q.eps_actual != null) html += 'EPS: <strong>$' + q.eps_actual.toFixed(2) + '</strong>';
+      if (q.eps_estimate != null) html += ' (est $' + q.eps_estimate.toFixed(2) + ')';
+      html += '</div></div>';
+      html += '<div style="text-align:right">';
+      if (q.beat != null) html += '<div style="font-size:11px;font-weight:700;color:' + beatColor + '">' + beatLabel + '</div>';
+      if (q.surprise_pct != null) html += '<div style="font-size:10px;color:#64748b">' + (q.surprise_pct > 0 ? '+' : '') + q.surprise_pct.toFixed(1) + '% surprise</div>';
+      html += '</div>';
+      html += '</div>';
+    });
+  }
+  html += '</div>';
+  
+  // Note
+  if (data.data_note) {
+    html += '<div style="margin-top:16px;padding:8px 12px;background:#fef3c7;border:1px solid #fde68a;border-radius:6px;font-size:9px;color:#92400e">⚠ ' + _csEscape(data.data_note) + '</div>';
+  }
+  
+  document.getElementById('csEcBody').innerHTML = html;
+}
+
+
+// ─── Earnings This Week banner (auto-loads on app start) ─────────
+window._csEarningsThisWeekLoad = function() {
+  var email = (window._authedEmail || window.localStorage.getItem('email') || '').trim();
+  if (!email) return;  // not logged in, skip
+  
+  fetch('/api/earnings-this-week?region=US&email=' + encodeURIComponent(email))
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (!data.success || !data.events || data.events.length === 0) return;
+      window._csEarningsThisWeekRender(data);
+    })
+    .catch(function() {});
+};
+
+window._csEarningsThisWeekRender = function(data) {
+  if (document.getElementById('csEwBanner')) return;  // already shown
+  
+  var inUni = (data.events || []).filter(function(e) { return e.in_universe; });
+  if (inUni.length === 0) return;  // no relevant events
+  
+  var banner = document.createElement('div');
+  banner.id = 'csEwBanner';
+  banner.style.cssText = 'background:linear-gradient(135deg,#fef3c7,#fde68a);border:1px solid #f59e0b;border-radius:10px;padding:10px 14px;margin:12px;font-family:Inter,sans-serif;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap';
+  
+  var topTickers = inUni.slice(0, 6).map(function(e) { return e.symbol; }).join(', ');
+  var moreCount = inUni.length - 6;
+  
+  banner.innerHTML = '' +
+    '<div style="flex:1;min-width:200px">' +
+      '<div style="font-size:11px;font-weight:800;color:#92400e;letter-spacing:0.5px;margin-bottom:2px">📅 EARNINGS THIS WEEK</div>' +
+      '<div style="font-size:12px;color:#78350f"><strong>' + inUni.length + ' tracked tickers</strong> reporting: ' + topTickers + (moreCount > 0 ? ' + ' + moreCount + ' more' : '') + '</div>' +
+    '</div>' +
+    '<button onclick="window._csShowEarningsWeekModal()" style="padding:7px 14px;border-radius:7px;background:#f59e0b;color:#fff;border:none;font-size:11px;font-weight:700;cursor:pointer;font-family:Inter,sans-serif">View All</button>' +
+    '<button onclick="document.getElementById(\'csEwBanner\').remove()" style="background:transparent;border:none;color:#92400e;font-size:18px;cursor:pointer;padding:4px 8px">✕</button>';
+  
+  // Insert at top of body or after main header
+  var insertTarget = document.querySelector('main') || document.body.firstChild;
+  if (insertTarget && insertTarget.parentNode) {
+    insertTarget.parentNode.insertBefore(banner, insertTarget);
+  } else {
+    document.body.insertBefore(banner, document.body.firstChild);
+  }
+  
+  window._csEwData = data;  // store for modal
+};
+
+window._csShowEarningsWeekModal = function() {
+  var data = window._csEwData || {};
+  
+  var existing = document.getElementById('csEwModal');
+  if (existing) existing.remove();
+  
+  var modal = document.createElement('div');
+  modal.id = 'csEwModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,0.7);z-index:9999;display:flex;align-items:flex-start;justify-content:center;padding:40px 20px;overflow-y:auto;font-family:Inter,sans-serif';
+  
+  var events = data.events || [];
+  var inUni = events.filter(function(e) { return e.in_universe; });
+  var others = events.filter(function(e) { return !e.in_universe; });
+  
+  var html = '';
+  html += '<div style="background:#fff;border-radius:14px;max-width:880px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,0.4);overflow:hidden">';
+  html += '<div style="padding:20px 28px;background:linear-gradient(135deg,#92400e,#f59e0b);color:#fff;display:flex;justify-content:space-between;align-items:center">';
+  html += '<div><div style="font-size:18px;font-weight:800;font-family:Sora,sans-serif">📅 Earnings This Week</div>';
+  html += '<div style="font-size:11px;color:rgba(255,255,255,0.85);margin-top:3px">' + (data.from_date || '') + ' to ' + (data.to_date || '') + ' · ' + events.length + ' total events</div></div>';
+  html += '<button onclick="document.getElementById(\'csEwModal\').remove()" style="background:rgba(255,255,255,0.15);color:#fff;border:none;width:32px;height:32px;border-radius:8px;font-size:18px;cursor:pointer">✕</button>';
+  html += '</div>';
+  html += '<div style="padding:24px 28px">';
+  
+  function renderEv(e) {
+    var hourLabel = {bmo:'BMO',amc:'AMC',dmh:'DMH'}[e.hour] || '—';
+    var s = '<div style="border:1px solid #e2e8f0;border-radius:7px;padding:8px 12px;margin-bottom:5px;background:#fff;display:flex;justify-content:space-between;align-items:center;gap:10px">';
+    s += '<div style="display:flex;align-items:center;gap:10px">';
+    s += '<span style="font-size:12px;font-weight:800;color:#1A3A78;min-width:60px">' + e.symbol + '</span>';
+    s += '<span style="font-size:10px;color:#64748b">' + (e.date || '—') + '</span>';
+    s += '<span style="font-size:9px;color:#fff;background:#475569;padding:2px 5px;border-radius:3px;font-weight:700">' + hourLabel + '</span>';
+    s += '</div>';
+    s += '<div style="font-size:10px;color:#64748b">';
+    if (e.eps_estimate) s += 'EPS est $' + e.eps_estimate.toFixed(2);
+    s += '</div>';
+    s += '</div>';
+    return s;
+  }
+  
+  if (inUni.length > 0) {
+    html += '<div style="font-size:12px;font-weight:800;color:#92400e;margin-bottom:8px">⭐ TRACKED UNIVERSE (' + inUni.length + ')</div>';
+    inUni.forEach(function(e) { html += renderEv(e); });
+  }
+  if (others.length > 0) {
+    html += '<div style="font-size:12px;font-weight:800;color:#475569;margin:14px 0 8px">OTHER S&P / NASDAQ (' + others.length + ')</div>';
+    others.slice(0, 30).forEach(function(e) { html += renderEv(e); });
+    if (others.length > 30) html += '<div style="text-align:center;color:#94a3b8;font-size:10px;padding:6px">+ ' + (others.length - 30) + ' more</div>';
+  }
+  
+  html += '</div>';
+  if (data.data_note) html += '<div style="padding:10px 28px;background:#f8fafc;border-top:1px solid #e2e8f0;font-size:9px;color:#64748b">' + _csEscape(data.data_note) + '</div>';
+  html += '</div>';
+  
+  modal.innerHTML = html;
+  document.body.appendChild(modal);
+};
+
+
+// ─── Auto-inject Momentum + Earnings buttons into Deep DD toolbar ──
+window._csInjectR638Buttons = function() {
+  var bar = document.getElementById('csDDToolbar');
+  if (!bar) return;
+  
+  // Momentum button
+  if (!bar.querySelector('[data-action="momentum"]')) {
+    var btnM = document.createElement('button');
+    btnM.setAttribute('data-action', 'momentum');
+    btnM.setAttribute('data-tooltip', 'Find top momentum stocks');
+    btnM.setAttribute('aria-label', 'Momentum Leaders');
+    btnM.className = 'cs-tb-btn';
+    btnM.innerHTML =
+      '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>' +
+      '<span style="font-size:10px;font-weight:700;letter-spacing:0.4px">MOMENTUM</span>';
+    btnM.onclick = function() { window._csMomentumOpen(); };
+    bar.insertBefore(btnM, bar.firstChild);
+  }
+  
+  // Earnings calendar button
+  if (!bar.querySelector('[data-action="earnings-cal"]')) {
+    var btnE = document.createElement('button');
+    btnE.setAttribute('data-action', 'earnings-cal');
+    btnE.setAttribute('data-tooltip', 'Earnings calendar for this ticker');
+    btnE.setAttribute('aria-label', 'Earnings Calendar');
+    btnE.className = 'cs-tb-btn';
+    btnE.innerHTML =
+      '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>' +
+      '<span style="font-size:10px;font-weight:700;letter-spacing:0.4px">EARNINGS</span>';
+    btnE.onclick = function() { window._csEarningsCalOpen(); };
+    bar.insertBefore(btnE, bar.firstChild);
+  }
+};
+
+// Hook into existing DD toolbar polling
+(function() {
+  var ci = setInterval(function() {
+    if (document.getElementById('csDDToolbar')) {
+      window._csInjectR638Buttons();
+    }
+  }, 1000);
+  setTimeout(function() { clearInterval(ci); }, 600000);
+})();
+
+// Auto-load earnings-this-week banner on app start (after a delay so app is ready)
+(function() {
+  function tryLoad() {
+    if (typeof window._csEarningsThisWeekLoad === 'function') {
+      window._csEarningsThisWeekLoad();
+    }
+  }
+  if (document.readyState === 'complete' || document.readyState === 'interactive') {
+    setTimeout(tryLoad, 3000);
+  } else {
+    document.addEventListener('DOMContentLoaded', function() { setTimeout(tryLoad, 3000); });
+  }
 })();
 

@@ -360,3 +360,68 @@ def get_earnings_history(symbol: str, region: str = "US", **kwargs) -> Optional[
     if not rows:
         return None
     return {"data": rows, "_source": "finnhub"}
+
+
+def get_earnings_calendar(symbol: str = None, from_date: str = None, to_date: str = None,
+                          region: str = "US", **kwargs):
+    """r63.8: Earnings calendar (forward + recent dates).
+    
+    Args:
+        symbol: Optional ticker filter. None = all upcoming earnings.
+        from_date: ISO date "YYYY-MM-DD" (default: today)
+        to_date:   ISO date "YYYY-MM-DD" (default: today + 90 days)
+        region: "US" only on free tier; India returns None.
+    
+    Returns:
+        {"data": [{"symbol", "date", "epsEstimate", "epsActual",
+                   "revenueEstimate", "revenueActual", "hour"}], "_source": "finnhub"}
+        or None on failure / unsupported region.
+    
+    Free tier limitations:
+        - US tickers only (free tier doesn't cover NSE/BSE earnings)
+        - Forward coverage: ~30-90 days, ticker-dependent
+        - "hour" indicates BMO/AMC/DMH (Before Market Open / After Market Close / During Market Hours)
+    """
+    from datetime import datetime as _dt2, timedelta as _td2
+    if region != "US":
+        return None
+    if not _is_enabled():
+        return None
+    
+    if not from_date:
+        from_date = _dt2.utcnow().strftime("%Y-%m-%d")
+    if not to_date:
+        to_date = (_dt2.utcnow() + _td2(days=90)).strftime("%Y-%m-%d")
+    
+    params = {"from": from_date, "to": to_date}
+    if symbol:
+        params["symbol"] = symbol.upper()
+    
+    data = _fh_get("/calendar/earnings", params)
+    if not data or not isinstance(data, dict):
+        return None
+    
+    rows = data.get("earningsCalendar") or []
+    if not isinstance(rows, list):
+        return None
+    
+    out = []
+    for r in rows:
+        if not isinstance(r, dict):
+            continue
+        date_str = r.get("date")
+        if not date_str:
+            continue
+        out.append({
+            "symbol":           (r.get("symbol") or "").upper(),
+            "date":             date_str,            # "YYYY-MM-DD" string
+            "epsEstimate":      _safe_float(r.get("epsEstimate")),
+            "epsActual":        _safe_float(r.get("epsActual")),
+            "revenueEstimate":  _safe_float(r.get("revenueEstimate")),
+            "revenueActual":    _safe_float(r.get("revenueActual")),
+            "hour":             (r.get("hour") or "").lower(),   # bmo / amc / dmh
+            "year":             _safe_int(r.get("year")),
+            "quarter":          _safe_int(r.get("quarter")),
+        })
+    
+    return {"data": out, "_source": "finnhub", "from_date": from_date, "to_date": to_date}

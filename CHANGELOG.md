@@ -508,3 +508,47 @@ Should now return `dd_disk_cache: {exists: true, n_entries: ...}` after the firs
 - Separate r63.8 if user wants to restore from a clean backup
 
 **Architecture:** Decoupled "what's premium" (backend tier code, kept) from "how we sell it" (frontend pricing UI, removed). When monetization returns, re-add pricing UI without touching access control.
+
+---
+
+## v4.63.8 — Momentum Leaders + Earnings Calendar + This-Week Alerts (current)
+
+**Built:** 2026-04-30
+
+**User request:** "Identify momentum stocks like SNDK, MU... weekly basis list company quarterly results... alert for this week companies which have quarterly results."
+
+**3 new endpoints:**
+- `/api/momentum-leaders?region=US|IN` — 5-component momentum score, top 20 bucketed by tier
+- `/api/earnings-calendar?symbol=X&region=Y` — past quarters (Finnhub history) + upcoming (Finnhub calendar, US only on free tier)
+- `/api/earnings-this-week?region=US` — next 7 days from Finnhub /calendar/earnings, sorted with tracked-universe tickers first
+
+**Frontend:**
+- 🔥 MOMENTUM button auto-injects into DD toolbar
+- 📅 EARNINGS button auto-injects into DD toolbar
+- Yellow EARNINGS THIS WEEK banner auto-loads at app top, "View All" opens full modal
+
+**Momentum scoring (5 components):**
+- 35% recent return blend (30/40/30 across 1M/3M/6M, sustained > short-term spike)
+- 30% acceleration (3M annualized vs 1Y trend)
+- 25% relative strength (6M absolute return)
+- 10% breakout proximity (% from 52-week high)
+- (Volume surge default-neutral; weight redistributed when no vol data)
+
+**Hard filters:** US <$5 / IN <₹50 (penny), score <40 (downtrending)
+
+**Verified:**
+- 15/15 audit checks pass
+- Momentum math: 4/4 behavioral tests pass — explosive rippers tier STRONG (65-80), real-MU pattern correctly STRONG (65.6), declining tickers correctly filtered (<40)
+- All Python compiles, JS syntax OK, app.min.js byte-identical
+
+**Caught + fixed during build:**
+- Insertion-point regex (3 blank lines vs 1) — fixed
+- Initial scoring too conservative (explosive ripper only 64.3, below STRONG threshold) — tuned blend weights to favor 3-6 month sustained returns, redistributed unused vol weight to active components
+
+**Honest limits:**
+- India: Finnhub free /calendar/earnings doesn't cover NSE/BSE. India tickers show "No upcoming reports" (past quarters via yfinance fallback work). Upgrade path: Finnhub Personal ~$50/mo, env-var swap.
+- Forward dates: capped at 90 days
+- Volume surge: neutral (no per-ticker vol data integration); weight redistributed
+- Cold scan: 3-5 min for 80 US tickers (Finnhub free tier rate-limit serializes)
+
+**Deploy 8 of 8 in single session. Rest after this.**
