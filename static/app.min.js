@@ -1,7 +1,7 @@
 // ═══ Celesys version stamp ═══
-window.CELESYS_VERSION = "v4.63.4-pre1";
-window.CELESYS_BUILD_TIME = 1777491485;
-window.CELESYS_BUILD_DATE = "2026-04-29 19:38:05 UTC";
+window.CELESYS_VERSION = "v4.63.3";
+window.CELESYS_BUILD_TIME = 1777502280;
+window.CELESYS_BUILD_DATE = "2026-04-29 22:38:00 UTC";
 console.log("%c━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "color:#1A3A78");
 console.log("%c CELESYS v4.63.3 %c loaded · 2026-04-29 03:29:27 UTC",
   "background:#1A3A78;color:#fff;font-weight:900;padding:3px 8px;border-radius:3px;font-family:monospace",

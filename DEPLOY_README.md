@@ -1,27 +1,31 @@
-# Celesys v4.63.4-pre1 — EDGAR Connectivity Test (3-line deploy)
+# Celesys v4.63.3 — Earnings Move tzinfo crash fix
 
-## Why this exists
-
-You said yes to building SEC EDGAR fallback (~6-8 hours work). Before I commit to that, I want to verify EDGAR actually works from your Render IP.
-
-I tested EDGAR from my sandbox just now — got HTTP 403. That doesn't mean it'll fail from Render (different IP, different reputation), but it's a yellow flag. **I refuse to spend 6 hours building a feature that might not work.**
-
-This deploy adds ONE diagnostic endpoint that hits 3 EDGAR URLs from inside Render and tells us whether they work. 5 minutes to deploy + curl, then we know.
+This is the clean v4.63.3 deploy. EDGAR diagnostic removed (we already confirmed EDGAR is blocked from Render).
 
 ---
 
-## What this deploy adds
+## What this deploy does
 
-ONE new endpoint: `/api/test-edgar-connectivity`
+ONE bug fix: Earnings Move Intelligence section was crashing with `'str' object has no attribute 'tzinfo'`. After r63.0 made Finnhub primary, earnings dates came in as strings instead of datetime objects, and `earnings_dt.tzinfo` failed.
 
-It hits these three SEC URLs from your server:
-1. `data.sec.gov/submissions/CIK0000320193.json` (AAPL filings list)
-2. `data.sec.gov/api/xbrl/companyfacts/CIK0000320193.json` (AAPL company facts)
-3. `www.sec.gov/files/company_tickers.json` (ticker → CIK mapping)
+After this deploy:
+- ✅ Earnings Move Intelligence: shows real quarter-by-quarter post-earnings moves
+- ⚠ Insider Activity: still "data not available" (Yahoo blocking — confirmed structural)
+- ⚠ Institutional Ownership: still "data not available" (same)
 
-Returns whether each succeeded with status + size + JSON validity.
+14 of 16 DD sections work fully. 2 sections show honest fallback messages.
 
-**Nothing else changes.** No UI, no frontend, no other backend behavior. Pure diagnostic.
+---
+
+## Pre-ship verification
+
+- ✅ All 3 Python files compile (api.py, finnhub_handlers.py, earnings_intel.py)
+- ✅ app.js + app.min.js syntax OK + byte-identical
+- ✅ EDGAR diagnostic endpoint removed (was v4.63.4-pre1 only)
+- ✅ tzinfo fix in finnhub_handlers.py confirmed
+- ✅ tzinfo fix in earnings_intel.py confirmed
+- ✅ Version stamp consistent at v4.63.3 across api.py, app.js, app.min.js, index.html
+- ✅ Earlier 6-input-type runtime test passed (string, datetime, tz-aware, None, invalid, ISO-with-time)
 
 ---
 
@@ -31,103 +35,57 @@ Returns whether each succeeded with status + size + JSON validity.
 unzip celesys_v4_FINAL_DEPLOY.zip
 cd celesys_v4_FINAL_DEPLOY/
 git add -A
-git commit -m "v4.63.4-pre1: EDGAR connectivity test endpoint"
+git commit -m "v4.63.3: Fix Earnings Move tzinfo crash + Finnhub date schema mismatch"
 git push
 ```
 
-Wait ~3 min for Render.
+Wait ~3 min, hard-refresh.
 
 ---
 
-## Test
+## Verify after deploy
 
 ```bash
-curl https://celesys.ai/api/test-edgar-connectivity
+curl https://celesys.ai/api/version
 ```
 
-You'll get back one of these two responses:
+Should return `"version": "v4.63.3"` and the Finnhub stats from r63.0.
 
-### CASE A — All 3 succeed (GREEN LIGHT)
-```json
-{
-  "summary": "ALL_OK",
-  "verdict": "EDGAR works from Render — safe to build EDGAR fallback",
-  "tests": [
-    {"name": "submissions_aapl", "status": 200, "size_bytes": 1234567, "json_valid": true, "ms": 412},
-    {"name": "company_facts_aapl", "status": 200, "size_bytes": 8765432, "json_valid": true, "ms": 891},
-    {"name": "ticker_cik_map", "status": 200, "size_bytes": 1098765, "json_valid": true, "ms": 234}
-  ]
-}
-```
-
-→ Tell me "EDGAR works", I build the full v4.63.4 (Form 4 + 13F integration) over the next ~6 hours.
-
-### CASE B — Any 403 / failure (RED LIGHT)
-```json
-{
-  "summary": "BLOCKED_OR_FAILED",
-  "verdict": "EDGAR is blocked or unreachable — DO NOT build EDGAR fallback",
-  "tests": [...]
-}
-```
-
-→ Tell me "EDGAR blocked", we pivot. Options:
-- Wait it out (Yahoo + EDGAR blocking sometimes is temporary)
-- Pay for Finnhub Personal tier (~$50/mo) — has insider + 13F natively
-- Different free source (less likely to work given the pattern, but possible)
+Then generate any US Deep DD (TSLA, MU, NVDA). Check Earnings Move Intelligence — should now show actual data instead of the tzinfo crash.
 
 ---
 
-## Why I'm doing it this way
+## What this deploy does NOT do
 
-Earlier in this conversation I recommended Stooq, Alpha Vantage, Finnhub — all without verifying they'd actually work from your IP. Stooq blocked you, Finnhub free tier was missing institutional, etc. **I'm not making that mistake again with EDGAR.**
+- Does NOT fix Insider Activity (Yahoo blocking — Render IP issue)
+- Does NOT fix Institutional Ownership (same)
+- Does NOT add EDGAR fallback (confirmed blocked from Render)
+- Does NOT add new features
 
-Saying "let me build it and see" wastes 6 hours of work and your time. This 5-minute pre-flight saves both.
-
----
-
-## What I'm NOT doing
-
-- ❌ Not bumping past v4.63.4-pre1 (the "-pre1" tag means "diagnostic, not the actual feature")
-- ❌ Not adding any Insider / Institutional / EDGAR adapter code yet
-- ❌ Not changing any UI
-- ❌ Not changing any data flow
+Pure bug fix.
 
 ---
 
-## Honest scope reminder
+## Honest end state
 
-Even if EDGAR works (Case A), the eventual r63.4 feature has limits:
+After this ships, your platform is at its current best given Render's IP situation:
 
-1. **EDGAR has 24-48 hour filing lag.** Form 4 must be filed within 2 business days, 13F within 45 days after quarter-end. So today's insider trade won't show up for ~2 days. yfinance has the same lag.
+**Working:**
+- All US tickers (price, financials, ratios, growth, momentum, scoring) via Finnhub
+- All India tickers via NSE direct
+- Multi-factor Bottom Line synthesis
+- Risk Matrix, SWOT, Porter Five Forces
+- Earnings history + Earnings Move Intelligence
+- Hunter, Intraday Setups, Top Trades scanners
+- PDF export with toolbar
+- Active Trading (untouched throughout)
 
-2. **EDGAR is rate-limited at 10 req/sec.** Fine for one DD report, may need pacing for full universe scans.
+**Not working (Yahoo IP blocking from Render):**
+- Insider Activity (Form 4 transactions)
+- Institutional Ownership (13F holders)
 
-3. **Data parsing is non-trivial.** EDGAR returns raw XML/JSON from filings. Different shape from yfinance. The adapter has to normalize it into your existing UI's expected schema, which means the implementation is more code than just "call API, return data".
+**Path to fix the gaps later** (when you have a specific reason):
+- Finnhub Personal tier (~$50/mo) — env-var swap, no code change
+- That's it. Architecture from r63.0 is built for this upgrade.
 
-4. **Coverage is US-listed only.** Same as Finnhub. Indian tickers will continue using NSE direct.
-
-5. **Some specific data still won't be available.** EDGAR doesn't have analyst recommendations, price targets, or detailed financials parsed-and-summarized. It has the raw filings. So those sections will continue showing "data not available" — EDGAR doesn't fix everything.
-
-Once you confirm Case A or B from the test, I'll write the precise list of what r63.4 will and won't recover.
-
----
-
-## Rollback (just in case)
-
-```bash
-git revert HEAD
-git push
-```
-
-But this deploy literally only adds one read-only diagnostic endpoint. There's nothing to break.
-
----
-
-## Files changed
-
-| File | What changed |
-|---|---|
-| `api.py` | + 50 lines: `/api/test-edgar-connectivity` endpoint |
-| `static/app.js` + `app.min.js` | Version stamp only |
-| `index.html` | Version stamp + cache hash |
+Don't pay for it tonight. Wait until you have real users asking for it.
