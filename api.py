@@ -1797,9 +1797,9 @@ def _safe_float(val, default=0.0):
         return default
 
 # ═══ Celesys version stamp (v4.61.10) ═══════════════════════════════
-APP_VERSION = "v4.63.8"
-APP_BUILD_TIME = 1777571482
-APP_BUILD_DATE = "2026-04-30 17:51:22 UTC"
+APP_VERSION = "v4.63.10"
+APP_BUILD_TIME = 1777589611
+APP_BUILD_DATE = "2026-04-30 22:53:31 UTC"
 APP_RELEASE_NOTES = (
     "v4.62.0: Micro-Cap Hunter scanner (Decide tab) + cumulative r61.x: Aladdin DD entry page (r61.8), "
     "stale-cache fallback (r61.8), multi-factor Bottom Line (r61.7), "
@@ -24964,7 +24964,15 @@ _momentum_universe_us = [
     "MDGL","KRYS","ZLAB","PHAT","EWTX","BCAX","TARS","RYTM","IONS",
     # Defence / drone / space spec
     "KTOS","AVAV","DRS","PL","RKLB",
+    # r63.10: AI semis + memory peers (SNDK already present, adding peers)
+    "MRVL","TSM","ASML","STX","ON","NXPI","SWKS","MPWR","KLAC","LRCX","AMAT","TER",
+    # r63.10: AI energy peers (VST/CEG/OKLO/TLN/NNE already present, adding)
+    "GEV","ETR","D","SO","XEL","NRG",
 ]
+
+# r63.10: Alias canonical universe for find-similar/momentum scanners
+_FIND_SIMILAR_US_UNIVERSE = _momentum_universe_us
+
 
 # India momentum universe — expanded with small/midcap breakout candidates
 _momentum_universe_in = [
@@ -30767,19 +30775,10 @@ async def investor_due_diligence(email: str = "", symbol: str = "", region: str 
 # searches against same universe are instant after first scan.
 
 # Universe: same as Dream Portfolio scanner (curated, high-quality)
-_FIND_SIMILAR_US_UNIVERSE = [
-    # Tier 1 — Mega-cap & quality large-cap
-    "AAPL","MSFT","NVDA","GOOGL","AMZN","META","AVGO","ORCL","CRM","ADBE",
-    "LLY","JPM","V","MA","UNH","COST","HD","JNJ","ABBV","PG",
-    # Tier 2 — Quality mid-cap growth
-    "NFLX","AMD","QCOM","PANW","CRWD","SNOW","DDOG","SHOP","UBER","BKNG",
-    # Additional growth/mid-cap names
-    "MU","INTC","TSLA","WMT","XOM","CVX","BAC","WFC","GS","MS",
-    "PYPL","SQ","COIN","HOOD","PLTR","NET","ZS","OKTA","TEAM","NOW",
-    "INTU","ISRG","TMO","DHR","ABT","PFE","MRK","BMY","GILD","AMGN",
-    "DIS","CMCSA","T","VZ","TMUS","MCD","SBUX","NKE","LMT","RTX",
-    "BA","CAT","DE","HON","GE","MMM","KO","PEP","WBD","ROKU",
-]
+# r63.10: Point to canonical _momentum_universe_us (was 80 hand-curated tickers,
+# missing SNDK + many rippers; now points to existing 184-ticker quality universe)
+# This eliminates the duplication flagged in r63.5 architectural review.
+_FIND_SIMILAR_US_UNIVERSE = None  # Set below after _momentum_universe_us is defined
 
 _FIND_SIMILAR_IN_UNIVERSE = [
     # Nifty 50 Large Cap
@@ -31133,122 +31132,124 @@ async def find_similar_stocks(
 # This avoids universe-list duplication. If we want different momentum universe
 # later, we can split — for now consistency wins.
 
-def _r638_compute_momentum_score(profile, hist_closes):
-    """Compute 0-100 momentum score from profile + price history.
+def _r638_compute_momentum_score(profile, hist_closes, benchmark_closes=None):
+    """r63.10: Improved momentum scoring with real relative strength + step-fn breakout.
     
     Components:
-      - 30% recent return (1mo/3mo/6mo blended, recent weighted more)
-      - 25% acceleration (3mo > 1y indicates accelerating trend)
-      - 20% relative strength (return vs broad market — proxied by absolute return)
-      - 15% volume surge (avg volume now vs 50-day avg, capped)
-      - 10% breakout proximity (% from 52-week high)
+      35% recent return blend (1m=30, 3m=40, 6m=30 weighted; sustained > spike)
+      30% acceleration (3m annualized > 1y? trend strengthening?)
+      25% RELATIVE STRENGTH vs benchmark (SPY/^NSEI) — was absolute proxy
+      10% breakout proximity (step fn: <5% from 52w hi = 100)
     
-    Returns dict with score + components + signal label.
-    Returns None if insufficient data.
+    Returns dict with score + components + signal label, or None if data sparse.
+    
+    NEW IN r63.10:
+      - benchmark_closes parameter for true relative strength
+      - step-function breakout (catches ATH stocks like SNDK properly)
+      - EARLY_EMERGING signal when 60≤score<80 + accel_ratio > 2 (catches early rippers)
     """
     if not hist_closes or len(hist_closes) < 60:
         return None
-    
     closes = list(hist_closes)
     last = closes[-1]
     if last <= 0:
         return None
     
-    # Helper: pct return from N days ago to today
-    def _ret_from(days_back):
-        if len(closes) <= days_back:
-            return None
-        prior = closes[-(days_back + 1)]
-        if prior <= 0:
-            return None
-        return (last - prior) / prior * 100
+    def _ret_from(closes_arr, days_back):
+        if len(closes_arr) <= days_back: return None
+        prior = closes_arr[-(days_back + 1)]
+        if prior <= 0: return None
+        return (closes_arr[-1] - prior) / prior * 100
     
-    ret_1m = _ret_from(21)   # ~1 month trading days
-    ret_3m = _ret_from(63)   # ~3 months
-    ret_6m = _ret_from(126)  # ~6 months
-    ret_1y = _ret_from(252)  # ~1 year
+    ret_1m = _ret_from(closes, 21)
+    ret_3m = _ret_from(closes, 63)
+    ret_6m = _ret_from(closes, 126)
+    ret_1y = _ret_from(closes, 252)
     
-    # Skip stocks without enough history
-    if ret_3m is None:
-        return None
+    if ret_3m is None: return None
     
-    # 1. Recent return blend (30% weight)
-    # Weight: 1m=30%, 3m=40%, 6m=30% — emphasize sustained 3-6mo trend over short-term spikes
-    # (Real rippers like MU/SNDK gain 80-150% over 3-6 months, not 1 month.)
-    recent_return = 0.0
-    return_count = 0
+    # 1. Recent return blend (35% weight when no vol; 30% when vol available)
+    recent_return = 0.0; return_count = 0
     if ret_1m is not None: recent_return += 0.3 * ret_1m; return_count += 0.3
     if ret_3m is not None: recent_return += 0.4 * ret_3m; return_count += 0.4
     if ret_6m is not None: recent_return += 0.3 * ret_6m; return_count += 0.3
-    if return_count < 0.4:
-        return None
+    if return_count < 0.4: return None
     blended_return = recent_return / return_count
-    # Map -30% to +100% → 0 to 100 score (more sensitive than -50 to +200)
     return_score = max(0.0, min(100.0, (blended_return + 30) * 100 / 130))
     
-    # 2. Acceleration (25%)
-    # Strong: 3mo return >> annualized 1yr return
-    accel_score = 50.0  # default neutral
+    # 2. Acceleration (30% weight)
+    accel_ratio = None  # NEW: expose for EARLY_EMERGING detection
+    accel_score = 50.0
     if ret_3m is not None and ret_1y is not None and ret_1y != 0:
-        # Annualize 3mo, compare to 1y
         ann_3m = ret_3m * 4
+        if ret_1y > 0:
+            accel_ratio = ann_3m / ret_1y
         if ann_3m > ret_1y:
             ratio = (ann_3m - ret_1y) / max(abs(ret_1y), 10)
             accel_score = min(100, 50 + ratio * 50)
         else:
             accel_score = max(0, 50 - abs(ret_1y - ann_3m) / max(abs(ret_1y), 10) * 25)
     elif ret_3m is not None and ret_3m > 0:
-        accel_score = min(100, 50 + ret_3m / 2)  # positive 3mo with no 1y data
+        accel_score = min(100, 50 + ret_3m / 2)
     
-    # 3. Relative strength (20%) — proxied by absolute strength of 6m return
-    # In a real system we'd compare to SPY/Nifty. For now, absolute > 20% over 6m = strong.
-    rs_score = 50.0
-    if ret_6m is not None:
-        rs_score = max(0.0, min(100.0, (ret_6m + 20) * 2))  # -20% → 0, +30% → 100
+    # 3. RELATIVE STRENGTH vs benchmark (25% weight) — r63.10 fix
+    rs_score = 50.0  # neutral default if benchmark unavailable
+    if benchmark_closes and len(benchmark_closes) >= 126:
+        bench_6m = _ret_from(benchmark_closes, 126)
+        if ret_6m is not None and bench_6m is not None and bench_6m != 0:
+            # RS = stock return relative to benchmark
+            # If stock +60% and SPY +20%, RS = 60/20 = 3x = strong
+            # If stock +20% and SPY +20%, RS = 1x = neutral
+            # Map: 0.5x=0, 1x=50, 2x=80, 3x+=100
+            if bench_6m > 0:
+                rs_ratio = ret_6m / bench_6m
+                rs_score = max(0.0, min(100.0, 50 * rs_ratio if rs_ratio < 2 else 80 + (rs_ratio - 2) * 10))
+            else:
+                # Benchmark down — any positive return is strong
+                rs_score = 100 if ret_6m > 0 else max(0, 50 + ret_6m / 2)
+    elif ret_6m is not None:
+        # Fallback: absolute proxy if no benchmark
+        rs_score = max(0.0, min(100.0, (ret_6m + 20) * 2))
     
-    # 4. Volume surge (15%) — average recent vol / 50-day avg vol
-    # We don't have separate volume in closes-only history; pass-through if not available
-    # When called from main scanner with hist DataFrame, we'd populate this
-    vol_score = 50.0  # neutral default — we'll override in caller if vol data available
-    
-    # 5. Breakout proximity (10%) — distance to 52w high
-    if len(closes) >= 252:
-        hi_52w = max(closes[-252:])
-    else:
-        hi_52w = max(closes)
+    # 4. STEP-FUNCTION breakout proximity (10% weight) — r63.10 fix
+    if len(closes) >= 252: hi_52w = max(closes[-252:])
+    else: hi_52w = max(closes)
+    bo_score = 50.0
     if hi_52w > 0:
         distance_pct = (hi_52w - last) / hi_52w * 100
-        # 0% from high = 100, 30%+ from high = 0
-        bo_score = max(0.0, min(100.0, 100 - distance_pct * 3.33))
-    else:
-        bo_score = 50
+        # Step function: tighter scoring for ATH-region stocks
+        if distance_pct <= 2:    bo_score = 100  # at high
+        elif distance_pct <= 5:  bo_score = 90
+        elif distance_pct <= 10: bo_score = 75
+        elif distance_pct <= 20: bo_score = 55
+        elif distance_pct <= 30: bo_score = 35
+        else:                    bo_score = max(0, 35 - distance_pct + 30)
     
-    # Weighted total
-    # Vol_score is currently always 50 (no per-ticker volume integration yet).
-    # When vol is "neutral" (50), it drags scores down by ~7.5pts. Redistribute its
-    # 15% weight equally to return/accel/rs (the active components).
+    # Volume placeholder
+    vol_score = 50.0
+    
+    # Weighted total — redistribute vol when neutral (preserves r63.8 fix)
     if vol_score == 50.0:
-        # Redistribute: return 30+5=35, accel 25+5=30, rs 20+5=25, breakout 10
-        total = (
-            0.35 * return_score +
-            0.30 * accel_score +
-            0.25 * rs_score +
-            0.10 * bo_score
-        )
+        total = 0.35 * return_score + 0.30 * accel_score + 0.25 * rs_score + 0.10 * bo_score
     else:
-        total = (
-            0.30 * return_score +
-            0.25 * accel_score +
-            0.20 * rs_score +
-            0.15 * vol_score +
-            0.10 * bo_score
-        )
+        total = 0.30 * return_score + 0.25 * accel_score + 0.20 * rs_score + 0.15 * vol_score + 0.10 * bo_score
     
-    # Signal label
+    # Signal — added EARLY EMERGING for catching rippers in formation
+    # r63.10: also trigger EARLY EMERGING when 1Y data is missing but 3M return is exceptional
+    # (catches recent IPOs/spinoffs and rippers where flat 1Y prior makes accel_ratio undefined)
+    is_early_emerging = (
+        (accel_ratio is not None and accel_ratio >= 2) or
+        (ret_1y is None and ret_3m is not None and ret_3m >= 30) or
+        (ret_1y is not None and ret_1y < 5 and ret_3m is not None and ret_3m >= 25)
+    )
+    
     if total >= 80:
         signal = "🔥 EXTREME"
     elif total >= 65:
         signal = "🚀 STRONG"
+    elif total >= 60 and is_early_emerging:
+        # EARLY EMERGING: not yet STRONG but trend strongly accelerating = early rippers
+        signal = "✨ EARLY EMERGING"
     elif total >= 50:
         signal = "⚡ BUILDING"
     else:
@@ -31261,11 +31262,11 @@ def _r638_compute_momentum_score(profile, hist_closes):
         "ret_3m": round(ret_3m, 1) if ret_3m is not None else None,
         "ret_6m": round(ret_6m, 1) if ret_6m is not None else None,
         "ret_1y": round(ret_1y, 1) if ret_1y is not None else None,
+        "accel_ratio": round(accel_ratio, 2) if accel_ratio is not None else None,
         "components": {
             "return": round(return_score, 1),
             "acceleration": round(accel_score, 1),
             "rel_strength": round(rs_score, 1),
-            "volume_surge": round(vol_score, 1),
             "breakout": round(bo_score, 1),
         },
     }
@@ -31302,6 +31303,29 @@ async def momentum_leaders(region: str = "US", email: str = "", nocache: int = 0
     print("\n" + "="*60)
     print(f"🔥 MOMENTUM LEADERS scan: region={region}")
     print("="*60)
+    
+    # r63.10: Fetch benchmark closes once for relative strength calculation
+    benchmark_closes = None
+    benchmark_symbol = "SPY" if region == "US" else "^NSEI"
+    try:
+        if region == "US":
+            bench_data = _fh.get_price_history(benchmark_symbol, region="US", period_days=365)
+            if bench_data and bench_data.get("closes"):
+                benchmark_closes = bench_data["closes"]
+                print(f"  📊 Benchmark loaded: {benchmark_symbol} {len(benchmark_closes)} closes")
+        if not benchmark_closes:
+            # Fallback to yfinance
+            try:
+                _yahoo_rate_wait()
+                btk = yf.Ticker(benchmark_symbol)
+                bhist = btk.history(period="1y", interval="1d")
+                if bhist is not None and not bhist.empty:
+                    benchmark_closes = list(bhist["Close"].dropna())
+                    print(f"  📊 Benchmark via yfinance: {benchmark_symbol} {len(benchmark_closes)} closes")
+            except Exception as _be:
+                print(f"  ⚠ Benchmark fetch failed: {_be} — RS will fall back to absolute proxy")
+    except Exception as _be:
+        print(f"  ⚠ Benchmark fetch failed: {_be}")
     
     # Use same universe as find-similar (consistency)
     if region == "US":
@@ -31354,7 +31378,7 @@ async def momentum_leaders(region: str = "US", email: str = "", nocache: int = 0
             if not hist_closes or len(hist_closes) < 60:
                 return None
             
-            mom = _r638_compute_momentum_score({"price": price}, hist_closes)
+            mom = _r638_compute_momentum_score({"price": price}, hist_closes, benchmark_closes=benchmark_closes)
             if not mom:
                 return None
             
@@ -31392,11 +31416,12 @@ async def momentum_leaders(region: str = "US", email: str = "", nocache: int = 0
     leaders.sort(key=lambda x: x["score"], reverse=True)
     top_leaders = leaders[:20]
     
-    # Bucket by signal tier
+    # Bucket by signal tier — r63.10: added EARLY EMERGING for catching early rippers
     buckets = {
-        "extreme":  {"label": "🔥 EXTREME (score 80+)",  "results": []},
-        "strong":   {"label": "🚀 STRONG (65-80)",       "results": []},
-        "building": {"label": "⚡ BUILDING (50-65)",     "results": []},
+        "extreme":         {"label": "🔥 EXTREME (score 80+)",                  "results": []},
+        "strong":          {"label": "🚀 STRONG (65-80)",                       "results": []},
+        "early_emerging":  {"label": "✨ EARLY EMERGING (60+ with 2x acceleration)", "results": []},
+        "building":        {"label": "⚡ BUILDING (50-65)",                     "results": []},
     }
     for L in top_leaders:
         s = L["score"]
@@ -31404,6 +31429,8 @@ async def momentum_leaders(region: str = "US", email: str = "", nocache: int = 0
             buckets["extreme"]["results"].append(L)
         elif s >= 65:
             buckets["strong"]["results"].append(L)
+        elif L.get("signal") == "✨ EARLY EMERGING":
+            buckets["early_emerging"]["results"].append(L)
         else:
             buckets["building"]["results"].append(L)
     

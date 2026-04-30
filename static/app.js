@@ -1,9 +1,9 @@
 // ═══ Celesys version stamp ═══
-window.CELESYS_VERSION = "v4.63.8";
-window.CELESYS_BUILD_TIME = 1777571482;
-window.CELESYS_BUILD_DATE = "2026-04-30 17:51:22 UTC";
+window.CELESYS_VERSION = "v4.63.10";
+window.CELESYS_BUILD_TIME = 1777589611;
+window.CELESYS_BUILD_DATE = "2026-04-30 22:53:31 UTC";
 console.log("%c━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "color:#1A3A78");
-console.log("%c CELESYS v4.63.8 %c loaded · 2026-04-29 03:29:27 UTC",
+console.log("%c CELESYS v4.63.10 %c loaded · 2026-04-29 03:29:27 UTC",
   "background:#1A3A78;color:#fff;font-weight:900;padding:3px 8px;border-radius:3px;font-family:monospace",
   "color:#1A3A78;font-weight:700;font-family:monospace");
 console.log("%c━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "color:#1A3A78");
@@ -24479,14 +24479,11 @@ function _csTbFlashSuccess(btn, message) {
     }, 50);
   }
 
-  // Start polling when user navigates to DD tab
+  // r63.9: Start polling — runs forever as backup if renderReport wrapper fails
   function startPolling() {
     if (pollHandle) return;
     pollHandle = setInterval(checkAndInject, 800);
-    // Stop polling after 10 minutes of inactivity (cleanup)
-    setTimeout(function() {
-      if (pollHandle) { clearInterval(pollHandle); pollHandle = null; }
-    }, 600000);
+    // No timeout — polls run for the lifetime of the page
   }
 
   // Hook into existing tab dispatcher — when user is on DD tab, start polling
@@ -24705,12 +24702,13 @@ window._csInjectFindSimilarButton = function() {
 
 // Hook into existing DD toolbar polling — runs after toolbar appears
 (function() {
-  var checkInterval = setInterval(function() {
+  // r63.9: removed 10-min timeout. Polling runs forever as backup if renderReport
+  // wrapper fails to fire. Cost: trivial (one getElementById per second).
+  setInterval(function() {
     if (document.getElementById('csDDToolbar')) {
       window._csInjectFindSimilarButton();
     }
   }, 1000);
-  setTimeout(function() { clearInterval(checkInterval); }, 600000);  // stop after 10 min
 })();
 
 
@@ -25073,12 +25071,12 @@ window._csInjectR638Buttons = function() {
 
 // Hook into existing DD toolbar polling
 (function() {
-  var ci = setInterval(function() {
+  // r63.9: removed 10-min timeout. Polling runs forever as backup.
+  setInterval(function() {
     if (document.getElementById('csDDToolbar')) {
       window._csInjectR638Buttons();
     }
   }, 1000);
-  setTimeout(function() { clearInterval(ci); }, 600000);
 })();
 
 // Auto-load earnings-this-week banner on app start (after a delay so app is ready)
@@ -25094,4 +25092,70 @@ window._csInjectR638Buttons = function() {
     document.addEventListener('DOMContentLoaded', function() { setTimeout(tryLoad, 3000); });
   }
 })();
+
+
+// ═══════════════════════════════════════════════════════════════════
+// r63.9: Toolbar injection coordinator — replaces polling pattern
+// ═══════════════════════════════════════════════════════════════════
+// Previous design (r63.1, r63.6, r63.8): three independent setInterval polls,
+// each with a 10-minute setTimeout that clears them. After 10 min, polls stop;
+// re-rendering the report doesn't re-add buttons. User reported this bug.
+//
+// New design: monkey-patch renderReport(). After every render, call this
+// coordinator which (re-)injects every toolbar button. Idempotent — safe to
+// call multiple times. Zero polling overhead.
+
+window._csCoordinateToolbarInjection = function() {
+  // Run after a tick so the report DOM has settled
+  setTimeout(function() {
+    try {
+      // 1. r63.1 — PDF/Print/Copy URL toolbar
+      if (typeof window._csInjectDDToolbar === 'function') {
+        window._csInjectDDToolbar();
+      }
+      // 2. r63.6 — Find Similar button
+      if (typeof window._csInjectFindSimilarButton === 'function') {
+        window._csInjectFindSimilarButton();
+      }
+      // 3. r63.8 — Momentum + Earnings Calendar buttons
+      if (typeof window._csInjectR638Buttons === 'function') {
+        window._csInjectR638Buttons();
+      }
+    } catch (e) {
+      console.warn('[csToolbar] injection error:', e);
+    }
+  }, 100);
+};
+
+// Wrap renderReport so it triggers the coordinator after rendering
+(function() {
+  if (window._csRenderReportWrapped) return;  // idempotent
+  window._csRenderReportWrapped = true;
+  
+  function tryWrap() {
+    if (typeof window.renderReport !== 'function') {
+      // renderReport not yet defined — wait
+      return false;
+    }
+    var original = window.renderReport;
+    window.renderReport = function() {
+      var result = original.apply(this, arguments);
+      window._csCoordinateToolbarInjection();
+      return result;
+    };
+    return true;
+  }
+  
+  // Try to wrap immediately, retry until renderReport exists
+  if (!tryWrap()) {
+    var retryHandle = setInterval(function() {
+      if (tryWrap()) clearInterval(retryHandle);
+    }, 200);
+    // Give up after 30s — should never take this long
+    setTimeout(function() { clearInterval(retryHandle); }, 30000);
+  }
+})();
+
+// Also expose a manual trigger users (or other code) can call
+window._csForceToolbarRefresh = window._csCoordinateToolbarInjection;
 

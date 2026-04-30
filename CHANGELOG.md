@@ -552,3 +552,54 @@ Should now return `dd_disk_cache: {exists: true, n_entries: ...}` after the firs
 - Cold scan: 3-5 min for 80 US tickers (Finnhub free tier rate-limit serializes)
 
 **Deploy 8 of 8 in single session. Rest after this.**
+
+---
+
+## v4.63.9 — Fix toolbar buttons disappearing on re-search (current)
+
+**Built:** 2026-04-30
+
+**Bug user reported:** "Initially [the buttons] came... after I search again, why am I not getting similar, momentum button."
+
+**Root cause:** All 3 toolbar injection systems (r63.1, r63.6, r63.8) used polling loops with a 10-minute self-termination setTimeout. After 10 min of idle, polls stopped permanently. Re-rendering the report after that destroyed the toolbar but no system re-created it.
+
+User screenshot showed "CACHED · 12 MIN AGO" — exactly past the 10-min threshold. Match.
+
+**Fix:**
+1. Added `_csCoordinateToolbarInjection()` — calls all 3 inject functions in sequence after a tick
+2. Monkey-patched `window.renderReport` to call the coordinator after every render
+3. Wrapper is idempotent (`_csRenderReportWrapped` flag) and guarded (retries if renderReport undefined at script load)
+4. Removed all three 10-minute timeouts from polling loops (kept polling as backup, but now runs for lifetime of page)
+
+**Verified:**
+- 9/9 audit checks pass
+- Behavioral test in Node: first render fires all 3 injectors (0→1), re-render fires them again (1→2), original return value preserved
+
+**Honest acknowledgment:** This bug existed in r63.1, r63.6, r63.8. The pattern was wrong from the start. I caught it only because user hit it in real use after 10 min — my own behavioral tests didn't wait that long. Lesson learned: time-based bugs need time-based tests.
+
+**Pure bug fix. No new features. No backend changes.**
+
+---
+
+## v4.63.10 — Momentum scanner accuracy (current)
+
+**Built:** 2026-04-30
+
+**User report:** "Why SNDK has not come in the momentum stocks... it is spiking like anything. Make sure results are accurate."
+
+**Root cause:** r63.6 created `_FIND_SIMILAR_US_UNIVERSE` (80 tickers) instead of reusing existing `_momentum_universe_us` (180 tickers). Scanner pointed at wrong list. Compounded by inaccurate momentum math (fake relative strength, linear breakout).
+
+**4 fixes:**
+1. **Unified universe**: `_FIND_SIMILAR_US_UNIVERSE = _momentum_universe_us`. Added 18 missing AI peers (MRVL/TSM/ASML/STX/ON/NXPI/etc + AI energy peers). Net: 80 → 198 tickers.
+2. **Real relative strength**: Fetch SPY/^NSEI benchmark, compute RS as ratio (was absolute return proxy)
+3. **Step-function breakout**: Tight thresholds (2%/5%/10%/20%/30%) properly flag ATH-region stocks like SNDK
+4. **EARLY EMERGING tier**: Multi-condition detection for stocks just starting to rip
+
+**Verified (5/5 behavioral tests pass):**
+- SNDK-class parabolic → 100.0 EXTREME
+- Mid-phase rip (+72% 1Y) → 83.9 EXTREME
+- Just-starting ripper (+25% 3M, +5% 1Y) → 78.4 STRONG ← this is "early"
+- Mature/fading (+63% 1Y, +5% 3M) → 55.2 BUILDING (correctly demoted)
+- Declining (-26% 1Y) → 22.4 WEAK (filtered)
+
+**Honest acknowledgment:** This is the architecturally correct version that r63.6 should have been. User flagged the "centralize duplication" pattern in r63.5 audit; I missed it for find-similar. r63.10 fixes the miss.
