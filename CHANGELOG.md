@@ -431,3 +431,80 @@ Should now return `dd_disk_cache: {exists: true, n_entries: ...}` after the firs
 - Safe-coerce (49×): NOT refactored — the helper itself
 
 **Going forward:** Adding a premium tier = 2 places (PREMIUM_TIERS + CELESYS_TIERS) + use helpers.
+
+---
+
+## v4.63.6 — Find Similar Stocks scanner (current)
+
+**Built:** 2026-04-30
+
+**User request:** "Based on MU in deep dd, list shares which meet same criteria... like penny shares, less than 50, less than 100 etc."
+
+**What:** New `/api/find-similar-stocks` endpoint + frontend modal. Click "🔍 SIMILAR" button on Deep DD toolbar → scans universe → returns stocks bucketed by price tier with similarity scores.
+
+**Architecture:**
+- 3-component similarity: 40% verdict proximity + 35% fundamental distance + 25% risk/momentum distance
+- 5 price tier buckets per region in native currency (US: penny <$10 → $250+; IN: penny <₹100 → ₹3000+)
+- Reuses existing DD endpoint logic + _smart_cache (30 min TTL)
+- Parallel batch scanning (8 concurrent) — ~2-4 min cold, instant warm
+- Top 5 per bucket, sorted by similarity desc
+
+**Universe:** ~80 US tickers (curated mega+large+midcap) + ~110 India tickers (Nifty 50/Next 50 + Midcap)
+
+**Frontend:** Auto-injects 🔍 SIMILAR button into DD toolbar (alongside PDF/Print/Copy from r63.1). Modal shows reference profile + 5 buckets + similarity breakdowns + matching factors. HTML-escaped to prevent XSS.
+
+**Premium gating:** Uses `check_premium_gate()` helper from r63.5 (Dream tier required).
+
+**Verified:**
+- 11/11 audit checks pass
+- 5/5 synthetic similarity math tests pass (perfect clone=100, same-sector peer=90, different-sector-same-verdict=76, opposite=28, high-verdict-different-fundamentals=77)
+- Compile + JS syntax + byte-identical min.js
+- Caught + fixed f-string newline bug before shipping
+
+**Honest tradeoffs:**
+- Penny bucket often empty (universe is mostly large/mid caps — honest reflection, not bug)
+- Cold scans take minutes (Finnhub free tier rate limit — modal shows timer)
+- No nightly precompute (Phase 2, requires Render workers)
+- No cross-region USD normalization (per-region buckets cleaner)
+- Universe hardcoded (no custom selection yet)
+
+---
+
+## v4.63.7 — Batch size 20 + monetization removed (current)
+
+**Built:** 2026-04-30
+
+**User request:** "Take batch wise stocks instead of stock by stock... remove payment information from home page."
+
+**Changes:**
+
+1. **Batch size 8 → 20** in find-similar scanner (env-tunable via FIND_SIMILAR_BATCH_SIZE). Honest note: free Finnhub rate limit (60/min) means internal `_pace()` serializes regardless of concurrency — wall-clock time roughly unchanged but apparent concurrency higher.
+
+2. **Removed all monetization from index.html:**
+   - 88-line pricing tiers section (Free $0, Pro $29, Institutional $79)
+   - "Start Pro / Start Institutional" CTA buttons
+   - "7-day free trial · Cancel anytime" subtitles
+   - "Contact Enterprise Sales" CTA
+   - Footer "Pricing" link
+   - "10,000+ traders" claim, trust badges
+   - All `_showPremiumCheckout()` references (the function never existed in app.js anyway)
+
+**Preserved (intentional):**
+   - Backend PREMIUM_TIERS access control (yrk@eml.com still has Dream tier access)
+   - "Why Celesys AI?" paragraph mentioning Bloomberg cost (free-pro messaging, not CTA)
+   - Frontend hasTier() / CELESYS_TIERS (still gates Dream features)
+
+**Verified:**
+- 15/15 audit checks pass
+- 9/9 monetization sweep patterns clean
+- Compile + JS syntax + byte-identical min.js
+- Backend tier system fully functional
+
+**Flagged honestly:**
+- index.html was ALREADY truncated before this session (line 2296 cuts mid-statement: `_deferredPrompt.u`)
+- Pristine backup confirms: pre-existing damage from prior deploy
+- Did NOT attempt to fix — guessing damaged HTML is high-risk
+- Browsers auto-close unclosed tags so it still renders, just PWA install prompt broken
+- Separate r63.8 if user wants to restore from a clean backup
+
+**Architecture:** Decoupled "what's premium" (backend tier code, kept) from "how we sell it" (frontend pricing UI, removed). When monetization returns, re-add pricing UI without touching access control.

@@ -1,9 +1,9 @@
 // ═══ Celesys version stamp ═══
-window.CELESYS_VERSION = "v4.63.5";
-window.CELESYS_BUILD_TIME = 1777563610;
-window.CELESYS_BUILD_DATE = "2026-04-30 15:40:10 UTC";
+window.CELESYS_VERSION = "v4.63.7";
+window.CELESYS_BUILD_TIME = 1777569814;
+window.CELESYS_BUILD_DATE = "2026-04-30 17:23:34 UTC";
 console.log("%c━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "color:#1A3A78");
-console.log("%c CELESYS v4.63.5 %c loaded · 2026-04-29 03:29:27 UTC",
+console.log("%c CELESYS v4.63.7 %c loaded · 2026-04-29 03:29:27 UTC",
   "background:#1A3A78;color:#fff;font-weight:900;padding:3px 8px;border-radius:3px;font-family:monospace",
   "color:#1A3A78;font-weight:700;font-family:monospace");
 console.log("%c━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "color:#1A3A78");
@@ -24496,5 +24496,220 @@ function _csTbFlashSuccess(btn, message) {
   if (document.readyState !== 'loading') {
     startPolling();
   }
+})();
+
+
+
+// ═══════════════════════════════════════════════════════════════════
+// r63.6: Find Similar Stocks — modal + scanner UI
+// ═══════════════════════════════════════════════════════════════════
+// Adds a "🔍 Find Similar" button to the Deep DD report. When clicked,
+// opens a modal that scans the universe and shows results bucketed by
+// price tier with similarity scores and matching factors.
+
+window._csFindSimilarOpen = function(refTicker, region) {
+  if (!refTicker) {
+    refTicker = (window._ddLastSymbol || '').toUpperCase();
+  }
+  if (!region) region = (window._ddLastRegion || 'US').toUpperCase();
+  if (!refTicker) {
+    alert('No reference ticker. Generate a Deep DD report first.');
+    return;
+  }
+
+  // Remove any existing modal
+  var existing = document.getElementById('csFindSimilarModal');
+  if (existing) existing.remove();
+
+  // Build modal shell
+  var modal = document.createElement('div');
+  modal.id = 'csFindSimilarModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,0.7);z-index:9999;display:flex;align-items:flex-start;justify-content:center;padding:40px 20px;overflow-y:auto;font-family:Inter,sans-serif;animation:csFsFadeIn 200ms ease';
+  modal.innerHTML = '' +
+    '<div style="background:#fff;border-radius:14px;max-width:980px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,0.4);overflow:hidden">' +
+      // Header
+      '<div style="padding:20px 28px;background:linear-gradient(135deg,#0A1628,#1A3A78);color:#fff;display:flex;justify-content:space-between;align-items:center">' +
+        '<div>' +
+          '<div style="font-size:18px;font-weight:800;font-family:Sora,sans-serif">🔍 Find Similar Stocks</div>' +
+          '<div style="font-size:11px;color:rgba(255,255,255,0.7);margin-top:3px">Reference: <strong>' + refTicker + '</strong> · Region: ' + region + ' · Scanning curated universe</div>' +
+        '</div>' +
+        '<button onclick="document.getElementById(\'csFindSimilarModal\').remove()" style="background:rgba(255,255,255,0.15);color:#fff;border:none;width:32px;height:32px;border-radius:8px;font-size:18px;cursor:pointer">✕</button>' +
+      '</div>' +
+      // Body
+      '<div id="csFsBody" style="padding:24px 28px;min-height:200px">' +
+        '<div id="csFsLoading" style="text-align:center;padding:40px 20px">' +
+          '<div style="display:inline-block;width:36px;height:36px;border:3px solid #e2e8f0;border-top-color:#1A3A78;border-radius:50%;animation:csFsSpin 0.8s linear infinite"></div>' +
+          '<div style="margin-top:14px;font-size:13px;color:#475569;font-weight:600">Computing reference profile…</div>' +
+          '<div id="csFsStatus" style="margin-top:6px;font-size:11px;color:#94a3b8">Then scanning ' + (region === 'US' ? '~80' : '~110') + ' candidates. Cold scan: ~2-4 min. Warm cache: instant.</div>' +
+          '<div id="csFsTimer" style="margin-top:8px;font-size:10px;color:#64748b;font-variant-numeric:tabular-nums">Elapsed: 0s</div>' +
+        '</div>' +
+      '</div>' +
+      // Footer
+      '<div style="padding:14px 28px;background:#f8fafc;border-top:1px solid #e2e8f0;font-size:10px;color:#64748b;display:flex;justify-content:space-between;align-items:center">' +
+        '<span>Similarity = 40% verdict + 35% fundamentals + 25% risk/momentum</span>' +
+        '<span id="csFsScanInfo"></span>' +
+      '</div>' +
+    '</div>';
+  
+  document.body.appendChild(modal);
+  
+  // Inject styles once
+  if (!document.getElementById('csFsStyles')) {
+    var style = document.createElement('style');
+    style.id = 'csFsStyles';
+    style.textContent =
+      '@keyframes csFsSpin { to { transform: rotate(360deg); } }' +
+      '@keyframes csFsFadeIn { from { opacity: 0; } to { opacity: 1; } }';
+    document.head.appendChild(style);
+  }
+  
+  // Start elapsed timer
+  var t0 = Date.now();
+  var timerHandle = setInterval(function() {
+    var el = document.getElementById('csFsTimer');
+    if (el) {
+      var sec = Math.floor((Date.now() - t0) / 1000);
+      el.textContent = 'Elapsed: ' + sec + 's' + (sec > 30 ? ' (cold cache scan, please wait)' : '');
+    }
+  }, 1000);
+  
+  // Get email from app state
+  var email = (window._authedEmail || window.localStorage.getItem('email') || '').trim();
+  
+  // Fetch
+  fetch('/api/find-similar-stocks?reference=' + encodeURIComponent(refTicker) + '&region=' + region + '&email=' + encodeURIComponent(email))
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      clearInterval(timerHandle);
+      if (!data.success) {
+        document.getElementById('csFsBody').innerHTML =
+          '<div style="text-align:center;padding:40px;color:#dc2626">' +
+            '<div style="font-size:18px;font-weight:700;margin-bottom:8px">⚠️ Could not complete scan</div>' +
+            '<div style="font-size:12px;color:#475569">' + (data.error || 'Unknown error') + '</div>' +
+          '</div>';
+        return;
+      }
+      _csFsRender(data);
+    })
+    .catch(function(err) {
+      clearInterval(timerHandle);
+      document.getElementById('csFsBody').innerHTML =
+        '<div style="text-align:center;padding:40px;color:#dc2626">' +
+          '<div style="font-size:18px;font-weight:700;margin-bottom:8px">⚠️ Network error</div>' +
+          '<div style="font-size:12px;color:#475569">' + err.message + '</div>' +
+        '</div>';
+    });
+};
+
+function _csFsRender(data) {
+  var ref = data.reference || {};
+  var buckets = data.buckets || {};
+  var bucketOrder = ['penny', 'low', 'mid', 'high', 'ultra'];
+  
+  var html = '';
+  
+  // Reference summary
+  html += '<div style="background:linear-gradient(135deg,#F0F4FF,#E0E7FF);border:1px solid #c7d2fe;border-radius:10px;padding:14px 18px;margin-bottom:18px">';
+  html += '<div style="font-size:9px;color:#4338ca;font-weight:800;letter-spacing:1.2px;margin-bottom:4px">REFERENCE PROFILE</div>';
+  html += '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">';
+  html += '<div><span style="font-size:18px;font-weight:900;color:#1A3A78;font-family:Sora,sans-serif">' + ref.ticker + '</span>';
+  if (ref.name && ref.name !== ref.ticker) html += ' <span style="font-size:11px;color:#64748b">' + _csEscape(ref.name) + '</span>';
+  html += '</div>';
+  html += '<div style="font-size:11px;color:#475569">';
+  html += '<strong>' + ref.currency_symbol + (ref.price || 0).toFixed(2) + '</strong> · ';
+  html += 'Score <strong>' + Math.round(ref.verdict_score) + '/100</strong> (' + (ref.verdict_label || '—') + ')';
+  if (ref.sector) html += ' · ' + _csEscape(ref.sector);
+  html += '</div>';
+  html += '</div>';
+  html += '</div>';
+  
+  // Bucket sections
+  for (var i = 0; i < bucketOrder.length; i++) {
+    var bkey = bucketOrder[i];
+    var bucket = buckets[bkey];
+    if (!bucket) continue;
+    var results = bucket.results || [];
+    
+    html += '<div style="margin-bottom:18px">';
+    html += '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px;padding:0 4px">';
+    html += '<div style="font-size:13px;font-weight:800;color:#0f172a;font-family:Sora,sans-serif">' + bucket.label + '</div>';
+    html += '<div style="font-size:10px;color:#94a3b8;font-weight:600">' + (results.length === 0 ? 'No matches' : results.length + ' match' + (results.length === 1 ? '' : 'es')) + '</div>';
+    html += '</div>';
+    
+    if (results.length === 0) {
+      html += '<div style="background:#f8fafc;border:1px dashed #e2e8f0;border-radius:8px;padding:14px;text-align:center;font-size:11px;color:#94a3b8">No similar stocks in this price tier within scanned universe</div>';
+    } else {
+      html += '<div style="display:grid;grid-template-columns:1fr;gap:8px">';
+      for (var j = 0; j < results.length; j++) {
+        var r = results[j];
+        var simColor = r.similarity >= 75 ? '#059669' : (r.similarity >= 60 ? '#0891b2' : '#64748b');
+        html += '<div style="border:1px solid #e2e8f0;border-radius:8px;padding:12px 14px;background:#fff;display:flex;justify-content:space-between;align-items:center;gap:14px">';
+        html += '<div style="flex:1;min-width:0">';
+        html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:3px">';
+        html += '<span style="font-size:13px;font-weight:800;color:#1A3A78;font-family:Sora,sans-serif">' + r.ticker + '</span>';
+        html += '<span style="font-size:9px;color:#475569;background:#f1f5f9;padding:2px 6px;border-radius:4px;font-weight:600">' + r.currency_symbol + (r.price || 0).toFixed(2) + '</span>';
+        html += '<span style="font-size:9px;color:#fff;background:#1A3A78;padding:2px 6px;border-radius:4px;font-weight:700">' + Math.round(r.verdict_score) + '/100</span>';
+        if (r.sector) html += '<span style="font-size:9px;color:#94a3b8">' + _csEscape(r.sector) + '</span>';
+        html += '</div>';
+        if (r.matches && r.matches.length > 0) {
+          html += '<div style="font-size:10px;color:#64748b">' + r.matches.map(_csEscape).join(' · ') + '</div>';
+        }
+        html += '</div>';
+        html += '<div style="text-align:right">';
+        html += '<div style="font-size:18px;font-weight:900;color:' + simColor + ';font-variant-numeric:tabular-nums">' + Math.round(r.similarity) + '</div>';
+        html += '<div style="font-size:8px;color:#94a3b8;letter-spacing:1px">SIM</div>';
+        html += '</div>';
+        html += '</div>';
+      }
+      html += '</div>';
+    }
+    
+    html += '</div>';
+  }
+  
+  document.getElementById('csFsBody').innerHTML = html;
+  
+  var scanInfo = document.getElementById('csFsScanInfo');
+  if (scanInfo) {
+    scanInfo.textContent = 'Scanned ' + data.scanned + ' · ' + data.valid + ' valid · ' + data.elapsed_sec + 's' + (data._cached ? ' (cached)' : '');
+  }
+}
+
+function _csEscape(s) {
+  if (s == null) return '';
+  return String(s).replace(/[&<>"']/g, function(c) {
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+  });
+}
+
+
+// Auto-inject "Find Similar" button into Deep DD toolbar
+window._csInjectFindSimilarButton = function() {
+  var bar = document.getElementById('csDDToolbar');
+  if (!bar) return;
+  if (bar.querySelector('[data-action="find-similar"]')) return;  // already injected
+  
+  var btn = document.createElement('button');
+  btn.setAttribute('data-action', 'find-similar');
+  btn.setAttribute('data-tooltip', 'Find similar stocks across price tiers');
+  btn.setAttribute('aria-label', 'Find Similar Stocks');
+  btn.className = 'cs-tb-btn';
+  btn.innerHTML =
+    '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>' +
+    '<span style="font-size:10px;font-weight:700;letter-spacing:0.4px">SIMILAR</span>';
+  btn.onclick = function() { window._csFindSimilarOpen(); };
+  
+  // Insert as first button so it's prominent
+  bar.insertBefore(btn, bar.firstChild);
+};
+
+// Hook into existing DD toolbar polling — runs after toolbar appears
+(function() {
+  var checkInterval = setInterval(function() {
+    if (document.getElementById('csDDToolbar')) {
+      window._csInjectFindSimilarButton();
+    }
+  }, 1000);
+  setTimeout(function() { clearInterval(checkInterval); }, 600000);  // stop after 10 min
 })();
 

@@ -1797,9 +1797,9 @@ def _safe_float(val, default=0.0):
         return default
 
 # ═══ Celesys version stamp (v4.61.10) ═══════════════════════════════
-APP_VERSION = "v4.63.5"
-APP_BUILD_TIME = 1777563610
-APP_BUILD_DATE = "2026-04-30 15:40:10 UTC"
+APP_VERSION = "v4.63.7"
+APP_BUILD_TIME = 1777569814
+APP_BUILD_DATE = "2026-04-30 17:23:34 UTC"
 APP_RELEASE_NOTES = (
     "v4.62.0: Micro-Cap Hunter scanner (Decide tab) + cumulative r61.x: Aladdin DD entry page (r61.8), "
     "stale-cache fallback (r61.8), multi-factor Bottom Line (r61.7), "
@@ -30754,6 +30754,375 @@ async def investor_due_diligence(email: str = "", symbol: str = "", region: str 
     except Exception as e:
         print(f"  ❌ Investor DD error: {type(e).__name__}: {e}")
         return {"success": False, "error": f"{type(e).__name__}: {str(e)[:200]}"}
+
+
+# ═══════════════════════════════════════════════════════════════════
+# r63.6: Find Similar Stocks scanner
+# ═══════════════════════════════════════════════════════════════════
+# Given a reference ticker (e.g. MU), find similar stocks across the US
+# and India universes using a 3-component similarity score, bucketed by
+# price tier in native currency.
+#
+# Reuses existing DD endpoint logic — leverages 30-min cache so repeat
+# searches against same universe are instant after first scan.
+
+# Universe: same as Dream Portfolio scanner (curated, high-quality)
+_FIND_SIMILAR_US_UNIVERSE = [
+    # Tier 1 — Mega-cap & quality large-cap
+    "AAPL","MSFT","NVDA","GOOGL","AMZN","META","AVGO","ORCL","CRM","ADBE",
+    "LLY","JPM","V","MA","UNH","COST","HD","JNJ","ABBV","PG",
+    # Tier 2 — Quality mid-cap growth
+    "NFLX","AMD","QCOM","PANW","CRWD","SNOW","DDOG","SHOP","UBER","BKNG",
+    # Additional growth/mid-cap names
+    "MU","INTC","TSLA","WMT","XOM","CVX","BAC","WFC","GS","MS",
+    "PYPL","SQ","COIN","HOOD","PLTR","NET","ZS","OKTA","TEAM","NOW",
+    "INTU","ISRG","TMO","DHR","ABT","PFE","MRK","BMY","GILD","AMGN",
+    "DIS","CMCSA","T","VZ","TMUS","MCD","SBUX","NKE","LMT","RTX",
+    "BA","CAT","DE","HON","GE","MMM","KO","PEP","WBD","ROKU",
+]
+
+_FIND_SIMILAR_IN_UNIVERSE = [
+    # Nifty 50 Large Cap
+    "RELIANCE","TCS","INFY","HDFCBANK","ICICIBANK","BHARTIARTL","SBIN","LT",
+    "BAJFINANCE","TATAMOTORS","HCLTECH","SUNPHARMA","MARUTI","WIPRO","AXISBANK",
+    "TITAN","ULTRACEMCO","ASIANPAINT","TECHM","NESTLEIND","ADANIENT","ADANIPORTS",
+    "COALINDIA","NTPC","POWERGRID","HAL","BEL","DLF","TRENT","ZOMATO",
+    "BAJAJFINSV","KOTAKBANK","ITC","ONGC","JIOFIN","TATASTEEL","HINDALCO",
+    "JSWSTEEL","GRASIM","INDUSINDBK","DRREDDY","CIPLA","APOLLOHOSP","DIVISLAB",
+    "SBILIFE","HDFCLIFE","PIDILITIND","SIEMENS","ABB",
+    # Mid Cap selection
+    "PIIND","TATAELXSI","PERSISTENT","COFORGE","LTIM","MPHASIS","POLYCAB","DIXON",
+    "DMART","TATACOMM","IRCTC","RVNL","IRFC","PFC","RECLTD","NHPC",
+    "GODREJCP","DABUR","BRITANNIA","COLPAL","MARICO","BERGEPAINT","PAGEIND","RELAXO",
+    "TATAPOWER","CANBK","BANKBARODA","PNB","IDFCFIRSTB","FEDERALBNK","CHOLAFIN",
+    "MAXHEALTH","FORTIS","BIOCON","ALKEM","TORNTPHARM","GLENMARK","CUMMINSIND",
+    "SCHAEFFLER","HONAUT","KPITTECH","TATATECH","JSWENERGY","ADANIGREEN","TATACONSUM",
+    "GODREJPROP","OBEROIRLTY","PHOENIXLTD","SOLARINDS","SRF","KAYNES","RAMCOCEM",
+    "MOTHERSON","BOSCHLTD","HAVELLS","VOLTAS","CROMPTON","MRF","BALKRISIND",
+    "JUBLFOOD","MCX","CDSL","BSE","ANGELONE","CAMS","KFINTECH","APLAPOLLO",
+]
+
+
+# Price tier buckets — native currency per region
+_FIND_SIMILAR_BUCKETS_US = [
+    ("penny",  0,    10,    "< $10 (Penny)"),
+    ("low",    10,   50,    "$10 - $50"),
+    ("mid",    50,   100,   "$50 - $100"),
+    ("high",   100,  250,   "$100 - $250"),
+    ("ultra",  250,  9e9,   "$250+"),
+]
+
+_FIND_SIMILAR_BUCKETS_IN = [
+    ("penny",  0,    100,   "< ₹100 (Penny)"),
+    ("low",    100,  500,   "₹100 - ₹500"),
+    ("mid",    500,  1000,  "₹500 - ₹1,000"),
+    ("high",   1000, 3000,  "₹1,000 - ₹3,000"),
+    ("ultra",  3000, 9e9,   "₹3,000+"),
+]
+
+
+def _find_similar_extract_profile(dd_response):
+    """Extract the similarity-relevant fields from a DD response dict.
+    Returns None if data is too sparse to compare."""
+    if not dd_response or not dd_response.get("success"):
+        return None
+    bottom = dd_response.get("bottom_line") or {}
+    finance = dd_response.get("finance") or {}
+    thesis = dd_response.get("thesis") or {}
+    institutional = dd_response.get("institutional") or {}
+    company = dd_response.get("company") or {}
+
+    score = _safe_float(bottom.get("score"), 0)
+    if score <= 0:
+        return None
+
+    profile = {
+        "verdict_score":      score,
+        "verdict_label":      bottom.get("verdict", "NEUTRAL"),
+        "price":              _safe_float(company.get("price"), 0),
+        "currency_symbol":    dd_response.get("currency_symbol", "$"),
+        "name":               company.get("name", ""),
+        "sector":             company.get("sector", ""),
+        # Fundamental dimensions
+        "profit_margin":      _safe_float(finance.get("profit_margin"), 0),
+        "operating_margin":   _safe_float(finance.get("operating_margin"), 0),
+        "gross_margin":       _safe_float(finance.get("gross_margin"), 0),
+        "roe":                _safe_float(finance.get("roe"), 0),
+        "revenue_growth":     _safe_float(finance.get("revenue_growth"), 0),
+        "earnings_growth":    _safe_float(finance.get("earnings_growth"), 0),
+        # Risk/momentum dimensions
+        "sharpe":             _safe_float(institutional.get("sharpe"), 0),
+        "max_drawdown":       _safe_float(institutional.get("max_dd"), 0),
+        "ret_1y":             _safe_float(institutional.get("ret_1y"), 0),
+        "beta":               _safe_float(thesis.get("beta"), 1.0),
+    }
+    return profile
+
+
+def _find_similar_compute_score(ref_profile, cand_profile):
+    """Compute 0-100 similarity score between reference and candidate.
+    Higher = more similar. Returns dict with breakdown."""
+    if not ref_profile or not cand_profile:
+        return None
+
+    # 1. Verdict proximity (40% weight)
+    # Closer scores = higher proximity. Max gap considered = 30 points.
+    verdict_gap = abs(ref_profile["verdict_score"] - cand_profile["verdict_score"])
+    verdict_proximity = max(0, 100 - (verdict_gap * 100 / 30))
+
+    # 2. Fundamental distance (35% weight)
+    # Normalized Euclidean distance across 5 fundamental dimensions
+    fund_dims = [
+        ("profit_margin",   100),    # max realistic spread
+        ("operating_margin", 100),
+        ("gross_margin",    100),
+        ("roe",             50),
+        ("revenue_growth",  100),
+    ]
+    fund_sq_sum = 0.0
+    for dim, max_spread in fund_dims:
+        ref_v = ref_profile.get(dim, 0)
+        cand_v = cand_profile.get(dim, 0)
+        # Normalize: distance as fraction of max_spread
+        norm_diff = min(abs(ref_v - cand_v), max_spread) / max_spread
+        fund_sq_sum += norm_diff ** 2
+    # RMS distance, then convert to similarity
+    fund_dist = (fund_sq_sum / len(fund_dims)) ** 0.5
+    fund_proximity = max(0, 100 - fund_dist * 100)
+
+    # 3. Risk/momentum distance (25% weight)
+    risk_dims = [
+        ("sharpe",       3),         # Sharpe ratio: 0-3 normal range
+        ("ret_1y",       100),       # 1Y return: -100% to +100%
+        ("beta",         2),         # Beta: 0-2 normal range
+    ]
+    risk_sq_sum = 0.0
+    for dim, max_spread in risk_dims:
+        ref_v = ref_profile.get(dim, 0)
+        cand_v = cand_profile.get(dim, 0)
+        norm_diff = min(abs(ref_v - cand_v), max_spread) / max_spread
+        risk_sq_sum += norm_diff ** 2
+    risk_dist = (risk_sq_sum / len(risk_dims)) ** 0.5
+    risk_proximity = max(0, 100 - risk_dist * 100)
+
+    # Weighted total
+    total = (
+        0.40 * verdict_proximity +
+        0.35 * fund_proximity +
+        0.25 * risk_proximity
+    )
+
+    # Identify top matching factors for transparency
+    matches = []
+    if abs(ref_profile["verdict_score"] - cand_profile["verdict_score"]) < 8:
+        matches.append(f"Both score {int(cand_profile['verdict_score'])}/100 ({cand_profile['verdict_label']})")
+    if abs(ref_profile.get("revenue_growth", 0) - cand_profile.get("revenue_growth", 0)) < 10:
+        matches.append(f"Similar revenue growth ({cand_profile.get('revenue_growth', 0):.0f}%)")
+    if abs(ref_profile.get("roe", 0) - cand_profile.get("roe", 0)) < 5:
+        matches.append(f"Similar ROE ({cand_profile.get('roe', 0):.0f}%)")
+    if abs(ref_profile.get("profit_margin", 0) - cand_profile.get("profit_margin", 0)) < 5:
+        matches.append(f"Similar profit margin ({cand_profile.get('profit_margin', 0):.0f}%)")
+    if ref_profile.get("sector") and ref_profile["sector"] == cand_profile.get("sector"):
+        matches.append(f"Same sector ({cand_profile['sector']})")
+
+    return {
+        "score": round(total, 1),
+        "breakdown": {
+            "verdict": round(verdict_proximity, 1),
+            "fundamentals": round(fund_proximity, 1),
+            "risk_momentum": round(risk_proximity, 1),
+        },
+        "matches": matches[:3],  # top 3 matching factors
+    }
+
+
+@app.get("/api/find-similar-stocks")
+async def find_similar_stocks(
+    reference: str = "",
+    region: str = "US",
+    email: str = "",
+    nocache: int = 0,
+):
+    """r63.6: Find stocks similar to a reference ticker, bucketed by price tier.
+    
+    Args:
+        reference: Reference ticker (e.g., "MU")
+        region: "US" or "IN" — determines universe + bucket currency
+        email: Premium gate (Dream tier required)
+        nocache: 1 to bypass cache
+    
+    Returns:
+        {
+          "success": true,
+          "reference": {ticker, score, price, ...},
+          "buckets": {
+            "penny":  {label, range, results: [...]},
+            "low":    {...},
+            "mid":    {...},
+            "high":   {...},
+            "ultra":  {...}
+          },
+          "scanned": int,
+          "elapsed_sec": float
+        }
+    """
+    import time, asyncio, math
+    
+    email = (email or "").strip().lower()
+    _ok, email = check_premium_gate(email, "dream")
+    if not _ok:
+        return {"success": False, "error": "Find Similar Stocks is a premium feature."}
+    
+    reference = (reference or "").strip().upper()
+    region = (region or "US").upper()
+    if not reference:
+        return {"success": False, "error": "reference ticker required"}
+    if region not in ("US", "IN"):
+        return {"success": False, "error": "region must be US or IN"}
+    
+    # Cache check
+    cache_key = f"find_similar_{reference}_{region}"
+    if nocache != 1:
+        cached = _smart_cache_get(cache_key)
+        if cached:
+            cached["_cached"] = True
+            return cached
+    
+    t0 = time.time()
+    print("\n" + "="*60)
+    print(f"🔍 FIND SIMILAR: reference={reference} region={region}")
+    print("="*60)
+    
+    # Step 1: Get DD profile for reference ticker
+    try:
+        ref_dd = await investor_due_diligence(email=email, symbol=reference, region=region)
+    except Exception as e:
+        return {"success": False, "error": f"Could not fetch reference DD: {str(e)[:150]}"}
+    
+    if not ref_dd.get("success"):
+        return {"success": False, "error": f"Reference DD failed: {ref_dd.get('error', 'unknown')}"}
+    
+    ref_profile = _find_similar_extract_profile(ref_dd)
+    if not ref_profile:
+        return {"success": False, "error": f"Reference {reference} has insufficient data for comparison"}
+    
+    print(f"  📊 Reference profile: score={ref_profile['verdict_score']:.0f} price={ref_profile['currency_symbol']}{ref_profile['price']:.2f} sector={ref_profile['sector']}")
+    
+    # Step 2: Pick universe + buckets
+    if region == "US":
+        universe = list(dict.fromkeys(_FIND_SIMILAR_US_UNIVERSE))
+        buckets = _FIND_SIMILAR_BUCKETS_US
+    else:
+        universe = list(dict.fromkeys(_FIND_SIMILAR_IN_UNIVERSE))
+        buckets = _FIND_SIMILAR_BUCKETS_IN
+    
+    # Remove the reference itself from universe
+    universe = [t for t in universe if t.upper() != reference.upper()]
+    print(f"  🎯 Scanning {len(universe)} candidates")
+    
+    # Step 3: Fetch DD for each candidate (in parallel batches)
+    # Note: investor_due_diligence is async + cached, so this is fast on warm cache
+    # On cold cache, scan takes ~3-4 minutes for 100+ tickers due to Finnhub rate limit
+    
+    # r63.7: bumped from 8 → 20 per user request. Note: internal _pace()
+    # in finnhub_handlers serializes by 1.2s, so effective throughput depends
+    # more on rate limit than concurrency. If Finnhub starts 429ing, lower this.
+    BATCH_SIZE = int(os.getenv("FIND_SIMILAR_BATCH_SIZE", "20"))
+    candidates = []
+    
+    async def _fetch_one(ticker):
+        try:
+            dd = await investor_due_diligence(email=email, symbol=ticker, region=region)
+            profile = _find_similar_extract_profile(dd)
+            if not profile:
+                return None
+            sim = _find_similar_compute_score(ref_profile, profile)
+            if not sim:
+                return None
+            return {
+                "ticker": ticker,
+                "name": profile["name"] or ticker,
+                "price": profile["price"],
+                "currency_symbol": profile["currency_symbol"],
+                "verdict_score": profile["verdict_score"],
+                "verdict_label": profile["verdict_label"],
+                "sector": profile["sector"],
+                "similarity": sim["score"],
+                "breakdown": sim["breakdown"],
+                "matches": sim["matches"],
+            }
+        except Exception as e:
+            print(f"    ⚠️  {ticker} failed: {type(e).__name__}: {str(e)[:80]}")
+            return None
+    
+    for i in range(0, len(universe), BATCH_SIZE):
+        batch = universe[i:i+BATCH_SIZE]
+        results = await asyncio.gather(*[_fetch_one(t) for t in batch], return_exceptions=False)
+        for r in results:
+            if r is not None:
+                candidates.append(r)
+        elapsed = time.time() - t0
+        print(f"  📈 Batch {i//BATCH_SIZE + 1}/{(len(universe)+BATCH_SIZE-1)//BATCH_SIZE} done — {len(candidates)} matches so far ({elapsed:.0f}s)")
+    
+    print(f"  ✅ Scanned {len(universe)} → {len(candidates)} valid candidates")
+    
+    # Step 4: Bucket candidates by price tier
+    bucket_results = {}
+    for bkey, bmin, bmax, blabel in buckets:
+        bucket_results[bkey] = {
+            "label": blabel,
+            "range_min": bmin,
+            "range_max": bmax if bmax < 9e8 else None,
+            "results": [],
+        }
+    
+    for c in candidates:
+        price = c["price"]
+        if price <= 0:
+            continue
+        for bkey, bmin, bmax, _ in buckets:
+            if bmin <= price < bmax:
+                bucket_results[bkey]["results"].append(c)
+                break
+    
+    # Step 5: Sort each bucket by similarity (desc), keep top 5
+    for bkey in bucket_results:
+        bucket_results[bkey]["results"].sort(key=lambda x: x["similarity"], reverse=True)
+        bucket_results[bkey]["results"] = bucket_results[bkey]["results"][:5]
+        bucket_results[bkey]["count"] = len(bucket_results[bkey]["results"])
+    
+    elapsed = round(time.time() - t0, 1)
+    
+    response = {
+        "success": True,
+        "reference": {
+            "ticker": reference,
+            "name": ref_profile["name"] or reference,
+            "price": ref_profile["price"],
+            "currency_symbol": ref_profile["currency_symbol"],
+            "verdict_score": ref_profile["verdict_score"],
+            "verdict_label": ref_profile["verdict_label"],
+            "sector": ref_profile["sector"],
+        },
+        "region": region,
+        "buckets": bucket_results,
+        "scanned": len(universe),
+        "valid": len(candidates),
+        "elapsed_sec": elapsed,
+        "_cached": False,
+        "weighting": {
+            "verdict_proximity": "40%",
+            "fundamental_distance": "35%",
+            "risk_momentum_distance": "25%",
+        },
+    }
+    
+    # Cache for 30 min
+    _smart_cache_set(cache_key, response, ttl=1800)
+    print(f"  💾 Cached. Total elapsed: {elapsed}s")
+    
+    return response
+
 
 
 _portfolio_progress = {"done": 0, "total": 0, "current": "", "started": 0, "active": False}
