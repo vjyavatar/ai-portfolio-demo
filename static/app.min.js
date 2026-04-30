@@ -1,9 +1,9 @@
 // ═══ Celesys version stamp ═══
-window.CELESYS_VERSION = "v4.63.12";
-window.CELESYS_BUILD_TIME = 1777591244;
-window.CELESYS_BUILD_DATE = "2026-04-30 23:20:44 UTC";
+window.CELESYS_VERSION = "v4.63.13";
+window.CELESYS_BUILD_TIME = 1777592076;
+window.CELESYS_BUILD_DATE = "2026-04-30 23:34:36 UTC";
 console.log("%c━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "color:#1A3A78");
-console.log("%c CELESYS v4.63.12 %c loaded · 2026-04-29 03:29:27 UTC",
+console.log("%c CELESYS v4.63.13 %c loaded · 2026-04-29 03:29:27 UTC",
   "background:#1A3A78;color:#fff;font-weight:900;padding:3px 8px;border-radius:3px;font-family:monospace",
   "color:#1A3A78;font-weight:700;font-family:monospace");
 console.log("%c━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "color:#1A3A78");
@@ -25170,11 +25170,17 @@ window._csEwHomePanelLoad = function() {
     return;
   }
   
-  // Loading state
+  // Loading state — keep header visible, show inline spinner next to it
   container.innerHTML = '' +
-    '<div style="padding:30px;text-align:center">' +
-      '<div style="display:inline-block;width:24px;height:24px;border:2px solid #fde68a;border-top-color:#f59e0b;border-radius:50%;animation:csFsSpin 0.8s linear infinite"></div>' +
-      '<div style="margin-top:10px;font-size:11px;color:#92400e">Loading this week\'s earnings…</div>' +
+    '<div style="display:flex;align-items:center;gap:10px">' +
+      '<span style="font-size:18px">📅</span>' +
+      '<div style="flex:1">' +
+        '<div style="font-size:12px;font-weight:800;color:#92400e;font-family:Sora,sans-serif">EARNINGS THIS WEEK</div>' +
+        '<div style="font-size:10px;color:#78350f;margin-top:1px;display:flex;align-items:center;gap:6px">' +
+          '<span style="display:inline-block;width:11px;height:11px;border:2px solid #fde68a;border-top-color:#f59e0b;border-radius:50%;animation:csFsSpin 0.8s linear infinite"></span>' +
+          'Loading…' +
+        '</div>' +
+      '</div>' +
     '</div>';
   
   fetch('/api/earnings-this-week?region=US&email=' + encodeURIComponent(email))
@@ -25288,51 +25294,64 @@ function _csEwHomePanelRender(container, data) {
   container.innerHTML = html;
 }
 
-// Auto-inject the panel container into the home page
-// (Stays empty until user clicks "Load this week\'s earnings" trigger button OR
-//  it can also be auto-loaded if user wants — for now keep click-gated per r63.11)
+// r63.13: Earnings This Week panel — correct placement + actually yellow-tinted
+// Anchors to #eventAlertArea (the global market context strip).
+// Visible on every page state. Click-to-load semantics preserved from r63.11.
 window._csEwHomePanelInject = function() {
-  if (document.getElementById('csEwHomePanel')) return;  // already there
+  if (document.getElementById('csEwHomeSection')) return;  // already injected
   
-  // Find a good insertion point — after the main hero/header section
-  // Try multiple selectors to handle different home page layouts
-  var anchor = document.querySelector('main') || 
-               document.querySelector('#mainContent') ||
-               document.querySelector('.home-content') ||
-               document.body;
+  // Primary anchor: #eventAlertArea (line 1278 of index.html — the global market
+  // context strip between ticker tape and search card)
+  var anchor = document.getElementById('eventAlertArea');
+  
+  // Fallback chain if eventAlertArea is missing
+  if (!anchor) {
+    anchor = document.querySelector('nav') || document.body.firstElementChild;
+  }
   if (!anchor) return;
   
   var section = document.createElement('section');
   section.id = 'csEwHomeSection';
-  section.style.cssText = 'max-width:980px;margin:14px auto;padding:0 14px;font-family:Inter,sans-serif';
+  section.style.cssText = 'max-width:680px;margin:6px auto 14px;padding:0;font-family:Inter,sans-serif';
+  
+  // YELLOW-TINTED card with amber border, brown text — matches existing alert palette
   section.innerHTML = '' +
-    '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.04)">' +
-      '<div id="csEwHomePanel">' +
-        '<div style="padding:18px 20px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">' +
+    '<div style="background:linear-gradient(135deg,#fef3c7,#fde68a);border:1.5px solid #f59e0b;border-radius:10px;padding:12px 16px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;box-shadow:0 1px 3px rgba(245,158,11,0.15)">' +
+      '<div id="csEwHomePanel" style="flex:1;min-width:240px">' +
+        '<div style="display:flex;align-items:center;gap:8px">' +
+          '<span style="font-size:18px">📅</span>' +
           '<div>' +
-            '<div style="font-size:13px;font-weight:800;color:#92400e;font-family:Sora,sans-serif">📅 Earnings This Week</div>' +
-            '<div style="font-size:11px;color:#64748b;margin-top:3px">Tracked companies reporting in the next 7 days · click to load</div>' +
+            '<div style="font-size:12px;font-weight:800;color:#92400e;font-family:Sora,sans-serif;letter-spacing:0.3px">EARNINGS THIS WEEK</div>' +
+            '<div style="font-size:10px;color:#78350f;margin-top:1px">Tracked companies · click to load reports + outcomes</div>' +
           '</div>' +
-          '<button onclick="window._csEwHomePanelLoad()" style="padding:8px 14px;background:#f59e0b;color:#fff;border:none;border-radius:7px;font-size:11px;font-weight:700;cursor:pointer;font-family:Inter,sans-serif">Load earnings →</button>' +
         '</div>' +
       '</div>' +
+      '<button id="csEwLoadBtn" onclick="window._csEwHomePanelLoad()" style="padding:7px 14px;background:#f59e0b;color:#fff;border:none;border-radius:7px;font-size:11px;font-weight:700;cursor:pointer;font-family:Inter,sans-serif;box-shadow:0 1px 2px rgba(0,0,0,0.1);transition:background 0.15s" onmouseenter="this.style.background=\'#d97706\'" onmouseleave="this.style.background=\'#f59e0b\'">Load earnings →</button>' +
     '</div>';
   
-  // Insert after the first child of anchor (typically header) or at start of body
-  if (anchor.firstChild) {
-    anchor.insertBefore(section, anchor.firstChild.nextSibling);
+  // Insert AFTER the anchor (eventAlertArea sits in a perfect spot)
+  if (anchor.insertAdjacentElement) {
+    anchor.insertAdjacentElement('afterend', section);
+  } else if (anchor.parentNode) {
+    anchor.parentNode.insertBefore(section, anchor.nextSibling);
   } else {
-    anchor.appendChild(section);
+    document.body.appendChild(section);
   }
 };
 
-// Inject on page load
+// Inject on page load — short delay so DOM is settled
 (function() {
-  function tryInject() { window._csEwHomePanelInject(); }
-  if (document.readyState === 'complete' || document.readyState === 'interactive') {
-    setTimeout(tryInject, 1500);
-  } else {
-    document.addEventListener('DOMContentLoaded', function() { setTimeout(tryInject, 1500); });
+  function tryInject() { 
+    if (typeof window._csEwHomePanelInject === 'function') {
+      window._csEwHomePanelInject(); 
+    }
   }
+  if (document.readyState === 'complete' || document.readyState === 'interactive') {
+    setTimeout(tryInject, 800);
+  } else {
+    document.addEventListener('DOMContentLoaded', function() { setTimeout(tryInject, 800); });
+  }
+  // Also retry once after 2s in case the anchor was injected lazily
+  setTimeout(tryInject, 2500);
 })();
 

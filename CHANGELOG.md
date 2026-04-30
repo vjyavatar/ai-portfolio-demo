@@ -659,3 +659,29 @@ These were not introduced in this session and removing them = scope creep + brea
 - Bug 1+2 confirmed fixed by inspecting module-level execution order
 
 **Architectural accountability:** Second time this session I shipped a regression in a multi-line edit to the same variable in different parts of api.py. r63.6 created the dup → r63.10 fixed it but introduced None-overwrite → r63.12 fixes that. Lesson: module-level execution order matters more than "is the variable assigned somewhere."
+
+---
+
+## v4.63.13 — Earnings panel: actually yellow + correct placement (current)
+
+**Built:** 2026-04-30
+
+**User report:** "Where is yellow tinted Earnings this week" — couldn't find it.
+
+**Root cause:** r63.12 had two bugs:
+1. Built a white card with brown text instead of an actually-yellow card. README described what I imagined, not what I built.
+2. Inserted at body root via querySelector fallback — likely off-screen or behind other elements.
+
+**r63.13 fix:**
+- Anchored to `#eventAlertArea` (line 1278 of index.html — global market context strip)
+- Used `insertAdjacentElement('afterend')` for clean DOM placement
+- Real yellow palette: `linear-gradient(#fef3c7, #fde68a)` background, `1.5px solid #f59e0b` border, `#92400e` header, amber button
+
+**Architectural decision:** Placed in same logical zone as Market Pulse (global context, above search card, below ticker). Visible on every page state.
+
+**Verified:**
+- 10/10 audit checks pass
+- Behavioral test: simulated #eventAlertArea present → injector calls insertAdjacentElement('afterend') correctly → csEwHomeSection ends up immediately after anchor
+- Compile + JS syntax + byte-identical min.js
+
+**Architectural accountability:** Second time this session I shipped a feature where the README described one thing but the code built another (r63.10 bug → r63.12 fix → r63.12 visual mismatch → r63.13 fix). Lesson: when deploy is visual, conservative claims, let user verify.
