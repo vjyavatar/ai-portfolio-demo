@@ -603,3 +603,59 @@ User screenshot showed "CACHED · 12 MIN AGO" — exactly past the 10-min thresh
 - Declining (-26% 1Y) → 22.4 WEAK (filtered)
 
 **Honest acknowledgment:** This is the architecturally correct version that r63.6 should have been. User flagged the "centralize duplication" pattern in r63.5 audit; I missed it for find-similar. r63.10 fixes the miss.
+
+---
+
+## v4.63.11 — Earnings This Week click-to-load (current)
+
+**Built:** 2026-04-30
+
+**User report:** "EVERYTHING is going on batch right.. before I click on any button" → chose Option B: make banner click-to-load.
+
+**Change:** Replaced auto-loading earnings-this-week banner (r63.8 introduced) with a click-gated button at top-right of app. No API call until user clicks.
+
+**Honest disclosure:** When checking auto-fires, I confirmed 3 OTHER pre-existing auto-loaders still run:
+- `fetchMarketPulse()` (Market Pulse panel)
+- `loadGlobalTicker()` (price ticker tape)
+- `/api/stats` (counter badges)
+
+These were not introduced in this session and removing them = scope creep + breaks visible UI. Left intact unless user asks otherwise.
+
+**Verified:**
+- 8/8 audit checks pass
+- Behavioral test: page load → button in DOM (no banner, no API call). Click → banner appears, button removes itself.
+- Compile + JS syntax + byte-identical min.js
+
+**Architectural lesson:** Premium scans should be opt-in (click-gated), not auto-fired on load. r63.8's auto-fire was wrong on principle even when cheap on cost. r63.11 is the correct pattern.
+
+---
+
+## v4.63.12 — Critical fix + home page earnings panel (current)
+
+**Built:** 2026-04-30
+
+**User reports (3 things):**
+1. Momentum Leaders crashes: "Server error: 'NoneType' object is not iterable"
+2. Find Similar fails: "Reference MU has insufficient data for comparison"  
+3. Want home page section showing this-week earnings with outcomes (not banner)
+
+**Bugs 1+2 root cause:** r63.10 had two `_FIND_SIMILAR_US_UNIVERSE` assignments. Real alias at line 24974, placeholder `= None` at line 30781. Python module-level executes top-down, so placeholder won — universe was None at scan time.
+
+**Fix:** Removed the line-30781 None-overwrite. The real `= _momentum_universe_us` alias stands.
+
+**Home page panel (Bug 3):**
+- Auto-injects yellow-tinted section on home page
+- "Load earnings →" button (click-gated per r63.11 standards)
+- Renders tracked universe ⭐ first, others after
+- Per-row: ticker / date / hour (BMO/AMC/DMH) / Q-year
+- Outcomes: ✓ BEAT / ✗ MISS with EPS actual vs estimate + surprise %
+- Estimates if not yet reported: EPS est, revenue est
+- Replaces r63.11 floating button (superseded)
+
+**Verified:**
+- 11/11 audit checks pass
+- Runtime simulation: alias correctly resolves to 198-ticker list at scan time
+- JS behavioral test: home panel injects on DOMContentLoaded
+- Bug 1+2 confirmed fixed by inspecting module-level execution order
+
+**Architectural accountability:** Second time this session I shipped a regression in a multi-line edit to the same variable in different parts of api.py. r63.6 created the dup → r63.10 fixed it but introduced None-overwrite → r63.12 fixes that. Lesson: module-level execution order matters more than "is the variable assigned somewhere."

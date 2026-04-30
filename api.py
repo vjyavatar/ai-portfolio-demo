@@ -1797,9 +1797,9 @@ def _safe_float(val, default=0.0):
         return default
 
 # ═══ Celesys version stamp (v4.61.10) ═══════════════════════════════
-APP_VERSION = "v4.63.10"
-APP_BUILD_TIME = 1777589611
-APP_BUILD_DATE = "2026-04-30 22:53:31 UTC"
+APP_VERSION = "v4.63.12"
+APP_BUILD_TIME = 1777591244
+APP_BUILD_DATE = "2026-04-30 23:20:44 UTC"
 APP_RELEASE_NOTES = (
     "v4.62.0: Micro-Cap Hunter scanner (Decide tab) + cumulative r61.x: Aladdin DD entry page (r61.8), "
     "stale-cache fallback (r61.8), multi-factor Bottom Line (r61.7), "
@@ -30776,9 +30776,10 @@ async def investor_due_diligence(email: str = "", symbol: str = "", region: str 
 
 # Universe: same as Dream Portfolio scanner (curated, high-quality)
 # r63.10: Point to canonical _momentum_universe_us (was 80 hand-curated tickers,
-# missing SNDK + many rippers; now points to existing 184-ticker quality universe)
-# This eliminates the duplication flagged in r63.5 architectural review.
-_FIND_SIMILAR_US_UNIVERSE = None  # Set below after _momentum_universe_us is defined
+# missing SNDK + many rippers; now points to existing 198-ticker quality universe).
+# r63.12: Removed the redundant `= None` placeholder that was overwriting the
+# real alias defined at the canonical universe definition site (~line 24974).
+# The real assignment now stands alone and is not overwritten.
 
 _FIND_SIMILAR_IN_UNIVERSE = [
     # Nifty 50 Large Cap

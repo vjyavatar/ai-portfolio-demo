@@ -1,9 +1,9 @@
 // ═══ Celesys version stamp ═══
-window.CELESYS_VERSION = "v4.63.10";
-window.CELESYS_BUILD_TIME = 1777589611;
-window.CELESYS_BUILD_DATE = "2026-04-30 22:53:31 UTC";
+window.CELESYS_VERSION = "v4.63.12";
+window.CELESYS_BUILD_TIME = 1777591244;
+window.CELESYS_BUILD_DATE = "2026-04-30 23:20:44 UTC";
 console.log("%c━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "color:#1A3A78");
-console.log("%c CELESYS v4.63.10 %c loaded · 2026-04-29 03:29:27 UTC",
+console.log("%c CELESYS v4.63.12 %c loaded · 2026-04-29 03:29:27 UTC",
   "background:#1A3A78;color:#fff;font-weight:900;padding:3px 8px;border-radius:3px;font-family:monospace",
   "color:#1A3A78;font-weight:700;font-family:monospace");
 console.log("%c━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "color:#1A3A78");
@@ -25079,19 +25079,7 @@ window._csInjectR638Buttons = function() {
   }, 1000);
 })();
 
-// Auto-load earnings-this-week banner on app start (after a delay so app is ready)
-(function() {
-  function tryLoad() {
-    if (typeof window._csEarningsThisWeekLoad === 'function') {
-      window._csEarningsThisWeekLoad();
-    }
-  }
-  if (document.readyState === 'complete' || document.readyState === 'interactive') {
-    setTimeout(tryLoad, 3000);
-  } else {
-    document.addEventListener('DOMContentLoaded', function() { setTimeout(tryLoad, 3000); });
-  }
-})();
+// r63.11 floating button — REPLACED by r63.12 home page panel below
 
 
 // ═══════════════════════════════════════════════════════════════════
@@ -25158,4 +25146,193 @@ window._csCoordinateToolbarInjection = function() {
 
 // Also expose a manual trigger users (or other code) can call
 window._csForceToolbarRefresh = window._csCoordinateToolbarInjection;
+
+
+// ═══════════════════════════════════════════════════════════════════
+// r63.12: Earnings This Week — home page panel (replaces banner)
+// ═══════════════════════════════════════════════════════════════════
+// User asked: "I want somewhere in the home page this week companies results
+// with their outcomes and date specified in the home page"
+//
+// Renders a panel on the home page that displays this-week earnings with:
+//   - Ticker, date, hour (BMO/AMC/DMH)
+//   - EPS estimate
+//   - EPS actual (if reported) + beat/miss outcome
+//   - Sorted by date ascending, tracked-universe tickers first
+
+window._csEwHomePanelLoad = function() {
+  var container = document.getElementById('csEwHomePanel');
+  if (!container) return;
+  
+  var email = (window._authedEmail || window.localStorage.getItem('email') || '').trim();
+  if (!email) {
+    container.innerHTML = '<div style="padding:20px;text-align:center;color:#94a3b8;font-size:12px">Sign in to view earnings calendar</div>';
+    return;
+  }
+  
+  // Loading state
+  container.innerHTML = '' +
+    '<div style="padding:30px;text-align:center">' +
+      '<div style="display:inline-block;width:24px;height:24px;border:2px solid #fde68a;border-top-color:#f59e0b;border-radius:50%;animation:csFsSpin 0.8s linear infinite"></div>' +
+      '<div style="margin-top:10px;font-size:11px;color:#92400e">Loading this week\'s earnings…</div>' +
+    '</div>';
+  
+  fetch('/api/earnings-this-week?region=US&email=' + encodeURIComponent(email))
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (!data.success) {
+        container.innerHTML = '<div style="padding:20px;text-align:center;color:#dc2626;font-size:12px">⚠ ' + (data.error || 'Failed to load') + '</div>';
+        return;
+      }
+      _csEwHomePanelRender(container, data);
+    })
+    .catch(function(err) {
+      container.innerHTML = '<div style="padding:20px;text-align:center;color:#dc2626;font-size:12px">Network error: ' + (err.message || 'unknown') + '</div>';
+    });
+};
+
+function _csEwHomePanelRender(container, data) {
+  var events = data.events || [];
+  if (events.length === 0) {
+    container.innerHTML = '' +
+      '<div style="padding:24px;text-align:center;color:#64748b;font-size:12px">' +
+        '<div style="font-size:22px;margin-bottom:6px">📭</div>' +
+        '<div>No earnings reports scheduled this week</div>' +
+        (data.data_note ? '<div style="font-size:10px;margin-top:6px;color:#94a3b8">' + _csEscape(data.data_note) + '</div>' : '') +
+      '</div>';
+    return;
+  }
+  
+  // Group: tracked universe first, then others
+  var tracked = events.filter(function(e) { return e.in_universe; });
+  var others = events.filter(function(e) { return !e.in_universe; });
+  
+  var html = '';
+  
+  // Header strip
+  html += '<div style="padding:12px 16px;background:linear-gradient(135deg,#fef3c7,#fde68a);border-bottom:1px solid #f59e0b;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">';
+  html += '<div>';
+  html += '<div style="font-size:11px;font-weight:800;color:#92400e;letter-spacing:0.5px">📅 EARNINGS THIS WEEK</div>';
+  html += '<div style="font-size:10px;color:#78350f;margin-top:2px">' + (data.from_date || '') + ' to ' + (data.to_date || '') + ' · ' + tracked.length + ' tracked + ' + others.length + ' others</div>';
+  html += '</div>';
+  html += '<button onclick="window._csEwHomePanelLoad()" style="padding:5px 10px;font-size:10px;font-weight:700;border:1px solid #f59e0b;background:#fff;color:#92400e;border-radius:6px;cursor:pointer">↻ Refresh</button>';
+  html += '</div>';
+  
+  // Body
+  html += '<div style="padding:12px 16px">';
+  
+  function renderEvent(e, isTracked) {
+    var hourLabel = {bmo:'Pre-market',amc:'After close',dmh:'During hours'}[e.hour] || '—';
+    var hourColor = {bmo:'#0891b2',amc:'#7c3aed',dmh:'#ca8a04'}[e.hour] || '#64748b';
+    
+    // Outcome (if actual results in)
+    var outcomeHtml = '';
+    if (e.eps_actual != null && e.eps_actual !== 0) {
+      // Already reported
+      var beat = (e.eps_estimate != null) && (e.eps_actual >= e.eps_estimate);
+      var beatColor = beat ? '#059669' : '#dc2626';
+      var beatLabel = beat ? '✓ BEAT' : '✗ MISS';
+      var diffPct = (e.eps_estimate && e.eps_estimate > 0) ? 
+        ((e.eps_actual - e.eps_estimate) / Math.abs(e.eps_estimate) * 100).toFixed(1) : null;
+      outcomeHtml = 
+        '<div style="text-align:right">' +
+          '<div style="font-size:11px;font-weight:800;color:' + beatColor + '">' + beatLabel + '</div>' +
+          '<div style="font-size:10px;color:#64748b">EPS: $' + e.eps_actual.toFixed(2) + 
+            (e.eps_estimate ? ' (est $' + e.eps_estimate.toFixed(2) + ')' : '') + '</div>' +
+          (diffPct ? '<div style="font-size:9px;color:' + beatColor + '">' + (diffPct > 0 ? '+' : '') + diffPct + '% surprise</div>' : '') +
+        '</div>';
+    } else {
+      // Not yet reported — show estimate
+      outcomeHtml = 
+        '<div style="text-align:right">' +
+          '<div style="font-size:10px;color:#94a3b8;font-weight:700;letter-spacing:0.5px">UPCOMING</div>' +
+          (e.eps_estimate ? '<div style="font-size:10px;color:#475569;margin-top:1px">EPS est: <strong>$' + e.eps_estimate.toFixed(2) + '</strong></div>' : '') +
+          (e.rev_estimate && e.rev_estimate > 1e6 ? '<div style="font-size:9px;color:#64748b">Rev est: $' + (e.rev_estimate/1e9).toFixed(2) + 'B</div>' : '') +
+        '</div>';
+    }
+    
+    var bg = isTracked ? '#fffbeb' : '#fff';
+    var border = isTracked ? '#fde68a' : '#e2e8f0';
+    
+    return '' +
+      '<div style="border:1px solid ' + border + ';border-radius:7px;padding:10px 12px;margin-bottom:6px;background:' + bg + ';display:flex;justify-content:space-between;align-items:center;gap:12px">' +
+        '<div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0">' +
+          (isTracked ? '<span style="font-size:9px;color:#92400e;font-weight:800">⭐</span>' : '') +
+          '<span style="font-size:13px;font-weight:800;color:#1A3A78;font-family:Sora,sans-serif;min-width:55px">' + e.symbol + '</span>' +
+          '<span style="font-size:11px;color:#475569;font-weight:600">' + (e.date || '—') + '</span>' +
+          '<span style="font-size:9px;color:#fff;background:' + hourColor + ';padding:2px 6px;border-radius:3px;font-weight:700;letter-spacing:0.3px">' + hourLabel + '</span>' +
+          (e.quarter ? '<span style="font-size:9px;color:#94a3b8">Q' + e.quarter + ' ' + (e.year || '') + '</span>' : '') +
+        '</div>' +
+        outcomeHtml +
+      '</div>';
+  }
+  
+  if (tracked.length > 0) {
+    html += '<div style="font-size:10px;font-weight:800;color:#92400e;letter-spacing:0.5px;margin-bottom:6px">⭐ TRACKED UNIVERSE (' + tracked.length + ')</div>';
+    tracked.forEach(function(e) { html += renderEvent(e, true); });
+  }
+  
+  if (others.length > 0) {
+    html += '<div style="font-size:10px;font-weight:800;color:#475569;letter-spacing:0.5px;margin:14px 0 6px">OTHER S&amp;P / NASDAQ (' + Math.min(others.length, 25) + ' shown)</div>';
+    others.slice(0, 25).forEach(function(e) { html += renderEvent(e, false); });
+    if (others.length > 25) html += '<div style="text-align:center;color:#94a3b8;font-size:9px;padding:6px">+ ' + (others.length - 25) + ' more not shown</div>';
+  }
+  
+  html += '</div>';
+  
+  // Footer note
+  if (data.data_note) {
+    html += '<div style="padding:8px 16px;background:#f8fafc;border-top:1px solid #e2e8f0;font-size:9px;color:#64748b">' + _csEscape(data.data_note) + '</div>';
+  }
+  
+  container.innerHTML = html;
+}
+
+// Auto-inject the panel container into the home page
+// (Stays empty until user clicks "Load this week\'s earnings" trigger button OR
+//  it can also be auto-loaded if user wants — for now keep click-gated per r63.11)
+window._csEwHomePanelInject = function() {
+  if (document.getElementById('csEwHomePanel')) return;  // already there
+  
+  // Find a good insertion point — after the main hero/header section
+  // Try multiple selectors to handle different home page layouts
+  var anchor = document.querySelector('main') || 
+               document.querySelector('#mainContent') ||
+               document.querySelector('.home-content') ||
+               document.body;
+  if (!anchor) return;
+  
+  var section = document.createElement('section');
+  section.id = 'csEwHomeSection';
+  section.style.cssText = 'max-width:980px;margin:14px auto;padding:0 14px;font-family:Inter,sans-serif';
+  section.innerHTML = '' +
+    '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.04)">' +
+      '<div id="csEwHomePanel">' +
+        '<div style="padding:18px 20px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">' +
+          '<div>' +
+            '<div style="font-size:13px;font-weight:800;color:#92400e;font-family:Sora,sans-serif">📅 Earnings This Week</div>' +
+            '<div style="font-size:11px;color:#64748b;margin-top:3px">Tracked companies reporting in the next 7 days · click to load</div>' +
+          '</div>' +
+          '<button onclick="window._csEwHomePanelLoad()" style="padding:8px 14px;background:#f59e0b;color:#fff;border:none;border-radius:7px;font-size:11px;font-weight:700;cursor:pointer;font-family:Inter,sans-serif">Load earnings →</button>' +
+        '</div>' +
+      '</div>' +
+    '</div>';
+  
+  // Insert after the first child of anchor (typically header) or at start of body
+  if (anchor.firstChild) {
+    anchor.insertBefore(section, anchor.firstChild.nextSibling);
+  } else {
+    anchor.appendChild(section);
+  }
+};
+
+// Inject on page load
+(function() {
+  function tryInject() { window._csEwHomePanelInject(); }
+  if (document.readyState === 'complete' || document.readyState === 'interactive') {
+    setTimeout(tryInject, 1500);
+  } else {
+    document.addEventListener('DOMContentLoaded', function() { setTimeout(tryInject, 1500); });
+  }
+})();
 
