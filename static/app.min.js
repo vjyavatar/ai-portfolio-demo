@@ -1,9 +1,9 @@
 // ═══ Celesys version stamp ═══
-window.CELESYS_VERSION = "v4.63.4";
-window.CELESYS_BUILD_TIME = 1777560165;
-window.CELESYS_BUILD_DATE = "2026-04-30 14:42:45 UTC";
+window.CELESYS_VERSION = "v4.63.5";
+window.CELESYS_BUILD_TIME = 1777563610;
+window.CELESYS_BUILD_DATE = "2026-04-30 15:40:10 UTC";
 console.log("%c━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "color:#1A3A78");
-console.log("%c CELESYS v4.63.4 %c loaded · 2026-04-29 03:29:27 UTC",
+console.log("%c CELESYS v4.63.5 %c loaded · 2026-04-29 03:29:27 UTC",
   "background:#1A3A78;color:#fff;font-weight:900;padding:3px 8px;border-radius:3px;font-family:monospace",
   "color:#1A3A78;font-weight:700;font-family:monospace");
 console.log("%c━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "color:#1A3A78");
@@ -550,9 +550,9 @@ if(!el)return;
 const email=(el.dataset.real||el.value).trim().toLowerCase();
 if(!email||!email.includes('@')){window._isPremiumUser=false;return}
 // Client-side instant check (for responsiveness)
-const showTradesLocal=TRADES_EMAILS.includes(email);
-const showPicksLocal=PICKS_EMAILS.includes(email);
-const showDreamLocal=DREAM_EMAILS.includes(email);
+const showTradesLocal=window.hasTier(email,'trades');
+const showPicksLocal=window.hasTier(email,'picks');
+const showDreamLocal=window.hasTier(email,'dream');
 window._isPremiumUser=showTradesLocal||showDreamLocal||TRADING_ONLY_EMAILS.includes(email);
 window._showPicks=showPicksLocal;
 window._isDreamUser=showDreamLocal;
@@ -650,8 +650,8 @@ var parts=email.split('@');
 var masked=parts[0].charAt(0)+'*'.repeat(Math.max(1,parts[0].length-1))+'@'+parts[1].charAt(0)+'*'.repeat(Math.max(1,parts[1].length-1));
 el.value=masked;
 // Silently set flags but DON'T touch any UI
-var showTradesLocal=TRADES_EMAILS.includes(email);
-var showDreamLocal=DREAM_EMAILS.includes(email);
+var showTradesLocal=window.hasTier(email,'trades');
+var showDreamLocal=window.hasTier(email,'dream');
 window._isPremiumUser=showTradesLocal||showDreamLocal||TRADING_ONLY_EMAILS.includes(email);
 window._isDreamUser=showDreamLocal;
 window._showPicks=showTradesLocal||showDreamLocal;

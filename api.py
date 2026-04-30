@@ -1797,9 +1797,9 @@ def _safe_float(val, default=0.0):
         return default
 
 # ═══ Celesys version stamp (v4.61.10) ═══════════════════════════════
-APP_VERSION = "v4.63.4"
-APP_BUILD_TIME = 1777560165
-APP_BUILD_DATE = "2026-04-30 14:42:45 UTC"
+APP_VERSION = "v4.63.5"
+APP_BUILD_TIME = 1777563610
+APP_BUILD_DATE = "2026-04-30 15:40:10 UTC"
 APP_RELEASE_NOTES = (
     "v4.62.0: Micro-Cap Hunter scanner (Decide tab) + cumulative r61.x: Aladdin DD entry page (r61.8), "
     "stale-cache fallback (r61.8), multi-factor Bottom Line (r61.7), "
@@ -4037,6 +4037,56 @@ def has_tier(email, tier):
 # DO NOT REMOVE without updating every call site (~15 in api.py).
 TRADES_ALLOWED_EMAILS = PREMIUM_TIERS["trades"]
 DREAM_ALLOWED_EMAILS = PREMIUM_TIERS["dream"]
+
+# ═══════════════════════════════════════════════════════════════════
+# r63.5: Centralized premium gate (replaces 10x duplicated 7-line block)
+# ═══════════════════════════════════════════════════════════════════
+# Was: every premium endpoint had this boilerplate copy-pasted:
+#
+#   _ok = email in [e.lower() for e in DREAM_ALLOWED_EMAILS]
+#   if not _ok:
+#       for de in DREAM_ALLOWED_EMAILS:
+#           sess = _premium_sessions.get(de.lower(), {})
+#           if sess.get("dream") and time.time() - sess.get("ts", 0) < 86400:
+#               _ok = True; email = de.lower(); break
+#   if not _ok:
+#       return {"success": False, "error": "..."}
+#
+# Now: one call to check_premium_gate(email, tier) returns (ok, normalized_email).
+# Usage:
+#   _ok, email = check_premium_gate(email, "dream")
+#   if not _ok:
+#       return {"success": False, "error": "Premium feature."}
+
+def check_premium_gate(email: str, tier: str, session_ttl_sec: int = 86400):
+    """Check if email has access to a premium tier.
+    
+    Returns (ok: bool, email: str). On session-fallback hit, the
+    returned email is the matched session email (so caller can use it
+    consistently downstream).
+    
+    Args:
+        email: User-supplied email (will be normalized)
+        tier: One of "trades" or "dream" (matches PREMIUM_TIERS keys)
+        session_ttl_sec: How long ago a session activation is still valid
+    """
+    email = (email or "").strip().lower()
+    
+    # Fast path: email is directly in tier list
+    if has_tier(email, tier):
+        return True, email
+    
+    # Slow path: check active sessions for any tier member
+    tier_emails = PREMIUM_TIERS.get(tier, [])
+    now = time.time()
+    for tier_email in tier_emails:
+        te_lower = tier_email.lower()
+        sess = _premium_sessions.get(te_lower, {})
+        if sess.get(tier) and (now - sess.get("ts", 0)) < session_ttl_sec:
+            return True, te_lower
+    
+    return False, email
+
 
 # Master list — ALL emails that can access the platform
 AUTHORIZED_EMAILS = list(set(
@@ -23773,15 +23823,8 @@ async def dream_portfolio(email: str = "", region: str = "IN"):
     """Dream Portfolio: Stocks with CAGR>30% potential for next 10 years"""
     email = email.strip().lower()
     # Also check active sessions if email is empty/wrong
-    _dream_ok = email in [e.lower() for e in DREAM_ALLOWED_EMAILS]
-    if not _dream_ok:
-        # Fallback: check if any dream email has an active session
-        for de in DREAM_ALLOWED_EMAILS:
-            sess = _premium_sessions.get(de.lower(), {})
-            if sess.get("dream") and time.time() - sess.get("ts", 0) < 86400:
-                _dream_ok = True
-                email = de.lower()
-                break
+    # r63.5: replaced 9-line duplicated gate boilerplate
+    _dream_ok, email = check_premium_gate(email, "dream")
     print(f"  🔍 Dream gate: email='{email}' ok={_dream_ok}")
     if not _dream_ok:
         return {"success": False, "error": "This feature is exclusive. Contact support for access."}
@@ -24035,14 +24078,8 @@ _mbhunter_cache = {"ts": 0, "data": None}
 async def multibagger_hunter(email: str = "", region: str = "IN"):
     """Find stocks at the starting stage of explosive growth — works even in crashes"""
     email = email.strip().lower()
-    _mb_ok = email in [e.lower() for e in DREAM_ALLOWED_EMAILS]
-    if not _mb_ok:
-        for de in DREAM_ALLOWED_EMAILS:
-            sess = _premium_sessions.get(de.lower(), {})
-            if sess.get("dream") and time.time() - sess.get("ts", 0) < 86400:
-                _mb_ok = True
-                email = de.lower()
-                break
+    # r63.5: replaced 9-line duplicated gate boilerplate
+    _mb_ok, email = check_premium_gate(email, "dream")
     print(f"  🔍 Multibagger gate: email='{email}' ok={_mb_ok}")
     if not _mb_ok:
         return {"success": False, "error": "This feature is exclusive. Contact support for access."}
@@ -25175,14 +25212,8 @@ async def early_momentum_radar(email: str = "", region: str = "US", category: st
     Each category has its own 30-min cache. See _momentum_categories_us/in.
     """
     email = email.strip().lower()
-    _mr_ok = email in [e.lower() for e in DREAM_ALLOWED_EMAILS]
-    if not _mr_ok:
-        for de in DREAM_ALLOWED_EMAILS:
-            sess = _premium_sessions.get(de.lower(), {})
-            if sess.get("dream") and time.time() - sess.get("ts", 0) < 86400:
-                _mr_ok = True
-                email = de.lower()
-                break
+    # r63.5: replaced 9-line duplicated gate boilerplate
+    _mr_ok, email = check_premium_gate(email, "dream")
     if not _mr_ok:
         return {"success": False, "error": "This feature is exclusive. Contact support for access."}
     
@@ -26226,12 +26257,8 @@ async def intraday_setups(
 ):
     """r62.2: Scan liquid universe for ORB / VWAP-reclaim / Inside-day setups."""
     email = (email or "").strip().lower()
-    _ok = email in [e.lower() for e in DREAM_ALLOWED_EMAILS]
-    if not _ok:
-        for de in DREAM_ALLOWED_EMAILS:
-            sess = _premium_sessions.get(de.lower(), {})
-            if sess.get("dream") and time.time() - sess.get("ts", 0) < 86400:
-                _ok = True; email = de.lower(); break
+    # r63.5: replaced duplicated premium-gate boilerplate
+    _ok, email = check_premium_gate(email, "dream")
     if not _ok:
         return {"success": False, "error": "Intraday Setups is a premium feature."}
 
@@ -26380,14 +26407,8 @@ async def high_prob_setups(email: str = "", region: str = "US", mode: str = "bal
       - today: reuses momentum radar "all" scan cache (fastest)
     """
     email = email.strip().lower()
-    _ok = email in [e.lower() for e in DREAM_ALLOWED_EMAILS]
-    if not _ok:
-        for de in DREAM_ALLOWED_EMAILS:
-            sess = _premium_sessions.get(de.lower(), {})
-            if sess.get("dream") and time.time() - sess.get("ts", 0) < 86400:
-                _ok = True
-                email = de.lower()
-                break
+    # r63.5: replaced duplicated premium-gate boilerplate
+    _ok, email = check_premium_gate(email, "dream")
     if not _ok:
         return {"success": False, "error": "This feature is exclusive. Contact support for access."}
     
@@ -26900,14 +26921,8 @@ async def options_setup_detector(email: str = "", region: str = "US"):
       - IN: Upstox real-time if F&O connected; otherwise prompts user to connect
     """
     email = email.strip().lower()
-    _ok = email in [e.lower() for e in DREAM_ALLOWED_EMAILS]
-    if not _ok:
-        for de in DREAM_ALLOWED_EMAILS:
-            sess = _premium_sessions.get(de.lower(), {})
-            if sess.get("dream") and time.time() - sess.get("ts", 0) < 86400:
-                _ok = True
-                email = de.lower()
-                break
+    # r63.5: replaced duplicated premium-gate boilerplate
+    _ok, email = check_premium_gate(email, "dream")
     if not _ok:
         return {"success": False, "error": "This feature is exclusive. Contact support for access."}
     
@@ -27246,14 +27261,8 @@ async def trade_ticket(
       - Exit rules
     """
     email = email.strip().lower()
-    _ok = email in [e.lower() for e in DREAM_ALLOWED_EMAILS]
-    if not _ok:
-        for de in DREAM_ALLOWED_EMAILS:
-            sess = _premium_sessions.get(de.lower(), {})
-            if sess.get("dream") and time.time() - sess.get("ts", 0) < 86400:
-                _ok = True
-                email = de.lower()
-                break
+    # r63.5: replaced duplicated premium-gate boilerplate
+    _ok, email = check_premium_gate(email, "dream")
     if not _ok:
         return {"success": False, "error": "This feature is exclusive. Contact support for access."}
     
@@ -28056,12 +28065,8 @@ async def microcap_hunter(
 ):
     """r62.0: Scan the micro-cap universe; return top candidates."""
     email = (email or "").strip().lower()
-    _ok = email in [e.lower() for e in DREAM_ALLOWED_EMAILS]
-    if not _ok:
-        for de in DREAM_ALLOWED_EMAILS:
-            sess = _premium_sessions.get(de.lower(), {})
-            if sess.get("dream") and time.time() - sess.get("ts", 0) < 86400:
-                _ok = True; email = de.lower(); break
+    # r63.5: replaced duplicated premium-gate boilerplate
+    _ok, email = check_premium_gate(email, "dream")
     if not _ok:
         return {"success": False, "error": "Micro-Cap Hunter is a premium feature."}
 
@@ -28170,12 +28175,8 @@ async def microcap_challenge_start(email: str = "", capital: float = 100, region
     Each (email, region) pair has its own independent challenge.
     """
     email = email.strip().lower()
-    _ok = email in [e.lower() for e in DREAM_ALLOWED_EMAILS]
-    if not _ok:
-        for de in DREAM_ALLOWED_EMAILS:
-            sess = _premium_sessions.get(de.lower(), {})
-            if sess.get("dream") and time.time() - sess.get("ts", 0) < 86400:
-                _ok = True; email = de.lower(); break
+    # r63.5: replaced duplicated premium-gate boilerplate
+    _ok, email = check_premium_gate(email, "dream")
     if not _ok:
         return {"success": False, "error": "This feature is exclusive."}
     
@@ -28749,12 +28750,8 @@ async def investor_due_diligence(email: str = "", symbol: str = "", region: str 
     Real data from yfinance + sector ETF context. No hallucinations.
     """
     email = email.strip().lower()
-    _ok = email in [e.lower() for e in DREAM_ALLOWED_EMAILS]
-    if not _ok:
-        for de in DREAM_ALLOWED_EMAILS:
-            sess = _premium_sessions.get(de.lower(), {})
-            if sess.get("dream") and time.time() - sess.get("ts", 0) < 86400:
-                _ok = True; email = de.lower(); break
+    # r63.5: replaced duplicated premium-gate boilerplate
+    _ok, email = check_premium_gate(email, "dream")
     if not _ok:
         return {"success": False, "error": "This feature is exclusive."}
     

@@ -404,3 +404,30 @@ Should now return `dd_disk_cache: {exists: true, n_entries: ...}` after the firs
 **Honest note on drift:** Pre-existing drift between backend/frontend trades tier (frontend has `tmp@cls.com`, backend doesn't) preserved as-is. Refactor doesn't change behavior — just makes drift visible in one place per language for future audit.
 
 **To grant access to new user (going forward):** Add email to `PREMIUM_TIERS` (api.py) AND `window.CELESYS_TIERS` (app.js). Two places instead of 6+.
+
+---
+
+## v4.63.5 — DRY refactor: premium-gate centralization (current)
+
+**Built:** 2026-04-30
+
+**Audit-driven scope:** User asked to proactively identify repeated code. I scanned codebase, found ~5 candidate patterns, rejected 4 as poor ROI (inline CSS, response shapes, intentional helpers), refactored 1 high-value target.
+
+**The fix:**
+- 10× duplicated 7-line premium-gate boilerplate → single `check_premium_gate(email, tier)` helper
+- 5× frontend `TRADES_EMAILS.includes(email)` → `hasTier(email, 'trades')` for consistency
+
+**Verified:**
+- 9-scenario behavior parity test passed (new helper = identical results to old code)
+- 3-attempt iteration on regex (caught my own mismatches in audit, didn't ship broken)
+- Line count: 36330 → 36327 (helper +25 lines, gate replacements -28 lines)
+- Maintainability: 10 places → 1 place
+
+**Honest scope discipline applied:**
+- Inline CSS (22×): NOT refactored — UI rewrite, high regression risk
+- Currency formatting (31×): NOT refactored — too short, negative ROI
+- Response builders (266×): NOT refactored — that's how FastAPI endpoints work
+- Yahoo rate-wait (82×): NOT refactored — already a helper, intentional calls
+- Safe-coerce (49×): NOT refactored — the helper itself
+
+**Going forward:** Adding a premium tier = 2 places (PREMIUM_TIERS + CELESYS_TIERS) + use helpers.
