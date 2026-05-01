@@ -731,3 +731,44 @@ Premium-gated. No production behavior change for existing features.
 - Compile + JS syntax + byte-identical min.js
 
 **Lesson:** Audits I write check structural correctness (does it compile?) not integration correctness (does it use the same conventions as the rest of the app?). Need to read sibling code BEFORE writing new code, not after a user reports the integration bug.
+
+---
+
+## v4.63.16 — Earnings UI redesign (current)
+
+**Built:** 2026-04-30
+
+**User feedback (senior architect mode):** "Its disturbing UI Completely.. as a sr architect.. this is not right design.. think from user perspective as well"
+
+User was right. Previous design dominated home page with 58 stacked cards (4,640px scroll). Wrong information density. Wrong placement.
+
+**User spec:**
+- Modal window with calendar grid format
+- Already-declared companies in tabular form
+- Yet-to-come this week + next week (forward calendar)
+- Tracked primary, others secondary
+
+**Backend changes:**
+- `/api/earnings-this-week` extended to 3-week window (T-7 through T+14 days)
+- Returns 3 buckets: `declared`, `this_week_upcoming`, `next_week_upcoming`
+- Each declared event has `outcome` (beat/miss/reported) and `surprise_pct`
+- Cache key changed to `earnings_3wk_US` (avoids poisoning from old shape)
+
+**Frontend changes:**
+- Replaced 4,640px-tall yellow panel with 60px compact strip
+- New modal with 3 tabs (Already Declared | This Week | Next Week)
+- Declared tab: tabular format (Ticker, Date, EPS Actual, EPS Est, Surprise, Outcome)
+- This/Next Week tabs: Mon-Fri calendar grid with hour-coded chips
+- Tracked universe ⭐ always primary; Others collapsible under `▸ Others (N)` summary
+- Click any ticker → opens existing per-ticker earnings modal
+
+**Verified:**
+- 16/16 audit checks pass
+- Behavioral test: strip injects, modal opens, old fat panel completely removed
+- Compile + JS syntax + byte-identical min.js
+
+**Architectural lessons:**
+- I designed as a developer ("show all data") not as a user ("show what's actionable")
+- Senior architect feedback ("think from user perspective") was correctly directional
+- New design follows industry-standard patterns (Bloomberg/Yahoo Finance Calendar)
+- Information hierarchy: glanceable summary → detailed view on demand

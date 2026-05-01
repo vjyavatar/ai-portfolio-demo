@@ -1798,9 +1798,9 @@ def _safe_float(val, default=0.0):
         return default
 
 # ═══ Celesys version stamp (v4.61.10) ═══════════════════════════════
-APP_VERSION = "v4.63.15"
-APP_BUILD_TIME = 1777594216
-APP_BUILD_DATE = "2026-05-01 00:10:16 UTC"
+APP_VERSION = "v4.63.16"
+APP_BUILD_TIME = 1777603406
+APP_BUILD_DATE = "2026-05-01 02:43:26 UTC"
 APP_RELEASE_NOTES = (
     "v4.62.0: Micro-Cap Hunter scanner (Decide tab) + cumulative r61.x: Aladdin DD entry page (r61.8), "
     "stale-cache fallback (r61.8), multi-factor Bottom Line (r61.7), "
@@ -31557,10 +31557,13 @@ async def earnings_calendar(symbol: str = "", region: str = "US", email: str = "
 
 @app.get("/api/earnings-this-week")
 async def earnings_this_week(region: str = "US", email: str = "", nocache: int = 0):
-    """r63.8: List companies in tracked universe with earnings reports this week.
+    """r63.16: Extended to 3-week window. Returns earnings split into:
+      - declared: past 7 days + already reported in this week
+      - this_week_upcoming: rest of this week (today through Sunday)
+      - next_week_upcoming: next Monday through next Sunday
     
-    Scans next 7 days. Returns sorted by date ascending.
-    Cache: 6 hours (calendar doesn't change rapidly).
+    Each event in declared has eps_actual + beat info. Upcoming events have estimate only.
+    Cache: 6 hours.
     """
     import time
     from datetime import datetime as _dt3, timedelta as _td3
@@ -31568,10 +31571,10 @@ async def earnings_this_week(region: str = "US", email: str = "", nocache: int =
     email = (email or "").strip().lower()
     _ok, email = check_premium_gate(email, "dream")
     if not _ok:
-        return {"success": False, "error": "Earnings Alerts is a premium feature."}
+        return {"success": False, "error": "Earnings calendar is a premium feature."}
     
     region = (region or "US").upper()
-    cache_key = f"earnings_this_week_{region}"
+    cache_key = f"earnings_3wk_{region}"  # r63.16: new cache key (different shape than v15)
     
     if nocache != 1:
         cached = _smart_cache_get(cache_key)
@@ -31580,41 +31583,148 @@ async def earnings_this_week(region: str = "US", email: str = "", nocache: int =
             return cached
     
     if region != "US":
-        # India: no Finnhub calendar coverage on free tier
         response = {
             "success": True,
             "region": region,
-            "events": [],
-            "data_note": "India: Finnhub free tier doesn't provide earnings calendar. Upgrade to paid tier for forward dates.",
+            "declared": [],
+            "this_week_upcoming": [],
+            "next_week_upcoming": [],
+            "data_note": "India: Finnhub free tier doesn't provide forward earnings calendar. Upgrade to paid tier for India coverage.",
             "_cached": False,
         }
         _smart_cache_set(cache_key, response, ttl=21600)
         return response
     
-    # US: hit /calendar/earnings for next 7 days
+    # 3-week window: T-7 through T+14
     today = _dt3.utcnow().date()
-    seven_out = today + _td3(days=7)
+    week_start = today - _td3(days=today.weekday())  # Monday of this week
+    next_week_start = week_start + _td3(days=7)
+    next_week_end = next_week_start + _td3(days=6)  # Sunday of next week
+    
+    from_date = (today - _td3(days=7)).strftime("%Y-%m-%d")
+    to_date = next_week_end.strftime("%Y-%m-%d")
     
     try:
-        cal = _fh.get_earnings_calendar(
-            from_date=today.strftime("%Y-%m-%d"),
-            to_date=seven_out.strftime("%Y-%m-%d"),
-            region="US"
-        )
+        cal = _fh.get_earnings_calendar(from_date=from_date, to_date=to_date, region="US")
     except Exception as e:
-        print(f"[earnings-week] calendar fetch failed: {e}")
+        print(f"[earnings-3wk] calendar fetch failed: {e}")
         cal = None
     
     if not cal or not cal.get("data"):
         response = {
             "success": True,
             "region": region,
-            "events": [],
-            "data_note": "No earnings reported this week (or Finnhub returned empty).",
+            "declared": [],
+            "this_week_upcoming": [],
+            "next_week_upcoming": [],
+            "data_note": "No earnings data available (Finnhub returned empty).",
             "_cached": False,
         }
         _smart_cache_set(cache_key, response, ttl=21600)
         return response
+    
+    tracked_set = set(_FIND_SIMILAR_US_UNIVERSE) if _FIND_SIMILAR_US_UNIVERSE else set()
+    
+    # Bucketize all events
+    declared = []
+    this_week_upcoming = []
+    next_week_upcoming = []
+    
+    for ev in cal["data"]:
+        date_str = ev.get("date")
+        if not date_str:
+            continue
+        try:
+            ev_date = _dt3.strptime(date_str, "%Y-%m-%d").date()
+        except Exception:
+            continue
+        
+        sym = ev.get("symbol", "")
+        in_universe = sym in tracked_set
+        
+        eps_actual = ev.get("epsActual")
+        eps_estimate = ev.get("epsEstimate")
+        
+        # Outcome (for declared events)
+        outcome = None
+        surprise_pct = None
+        if eps_actual is not None and eps_actual != 0:
+            if eps_estimate is not None and eps_estimate != 0:
+                surprise_pct = (eps_actual - eps_estimate) / abs(eps_estimate) * 100
+                outcome = "beat" if eps_actual >= eps_estimate else "miss"
+            else:
+                outcome = "reported"
+        
+        bucket_event = {
+            "symbol":         sym,
+            "in_universe":    in_universe,
+            "date":           date_str,
+            "hour":           (ev.get("hour") or "").lower(),
+            "eps_estimate":   eps_estimate,
+            "eps_actual":     eps_actual,
+            "rev_estimate":   ev.get("revenueEstimate"),
+            "rev_actual":     ev.get("revenueActual"),
+            "quarter":        ev.get("quarter"),
+            "year":           ev.get("year"),
+            "outcome":        outcome,           # "beat", "miss", "reported", or None
+            "surprise_pct":   round(surprise_pct, 1) if surprise_pct is not None else None,
+        }
+        
+        # Bucket assignment
+        if eps_actual is not None and eps_actual != 0:
+            # Already reported (regardless of date — Finnhub fills epsActual on reporting)
+            declared.append(bucket_event)
+        elif ev_date < today:
+            # Past date but no actual reported — treat as declared with no data
+            declared.append(bucket_event)
+        elif ev_date <= week_start + _td3(days=6):
+            # This week (Mon-Sun)
+            this_week_upcoming.append(bucket_event)
+        elif ev_date <= next_week_end:
+            # Next week
+            next_week_upcoming.append(bucket_event)
+        # else: outside our window, skip
+    
+    # Sort each bucket: tracked first, then by date
+    def sort_key(e):
+        return (not e["in_universe"], e["date"], e["symbol"])
+    
+    declared.sort(key=sort_key, reverse=False)
+    declared.sort(key=lambda e: e["date"], reverse=True)  # most recent declared first
+    this_week_upcoming.sort(key=sort_key)
+    next_week_upcoming.sort(key=sort_key)
+    
+    # Limit to keep response sane
+    declared = declared[:60]
+    this_week_upcoming = this_week_upcoming[:80]
+    next_week_upcoming = next_week_upcoming[:80]
+    
+    tracked_count_total = sum(1 for e in (declared + this_week_upcoming + next_week_upcoming) if e["in_universe"])
+    
+    response = {
+        "success":              True,
+        "region":               region,
+        "declared":             declared,
+        "this_week_upcoming":   this_week_upcoming,
+        "next_week_upcoming":   next_week_upcoming,
+        "from_date":            from_date,
+        "to_date":              to_date,
+        "this_week_range":      [week_start.strftime("%Y-%m-%d"),
+                                 (week_start + _td3(days=6)).strftime("%Y-%m-%d")],
+        "next_week_range":      [next_week_start.strftime("%Y-%m-%d"),
+                                 next_week_end.strftime("%Y-%m-%d")],
+        "totals": {
+            "declared":          len(declared),
+            "this_week_upcoming": len(this_week_upcoming),
+            "next_week_upcoming": len(next_week_upcoming),
+            "tracked_total":      tracked_count_total,
+        },
+        "data_note":            f"Window: {from_date} to {to_date}. {tracked_count_total} events from your tracked universe.",
+        "_cached":              False,
+    }
+    
+    _smart_cache_set(cache_key, response, ttl=21600)  # 6h cache
+    return response
     
     # Filter to tickers in our universe (or popular ones), sort by date
     tracked_set = set(_FIND_SIMILAR_US_UNIVERSE)

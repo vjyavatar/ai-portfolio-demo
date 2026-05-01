@@ -1,9 +1,9 @@
 // ═══ Celesys version stamp ═══
-window.CELESYS_VERSION = "v4.63.15";
-window.CELESYS_BUILD_TIME = 1777594216;
-window.CELESYS_BUILD_DATE = "2026-05-01 00:10:16 UTC";
+window.CELESYS_VERSION = "v4.63.16";
+window.CELESYS_BUILD_TIME = 1777603406;
+window.CELESYS_BUILD_DATE = "2026-05-01 02:43:26 UTC";
 console.log("%c━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "color:#1A3A78");
-console.log("%c CELESYS v4.63.15 %c loaded · 2026-04-29 03:29:27 UTC",
+console.log("%c CELESYS v4.63.16 %c loaded · 2026-04-29 03:29:27 UTC",
   "background:#1A3A78;color:#fff;font-weight:900;padding:3px 8px;border-radius:3px;font-family:monospace",
   "color:#1A3A78;font-weight:700;font-family:monospace");
 console.log("%c━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "color:#1A3A78");
@@ -25149,201 +25149,301 @@ window._csForceToolbarRefresh = window._csCoordinateToolbarInjection;
 
 
 // ═══════════════════════════════════════════════════════════════════
-// r63.12: Earnings This Week — home page panel (replaces banner)
 // ═══════════════════════════════════════════════════════════════════
-// User asked: "I want somewhere in the home page this week companies results
-// with their outcomes and date specified in the home page"
-//
-// Renders a panel on the home page that displays this-week earnings with:
-//   - Ticker, date, hour (BMO/AMC/DMH)
-//   - EPS estimate
-//   - EPS actual (if reported) + beat/miss outcome
-//   - Sorted by date ascending, tracked-universe tickers first
+// r63.16: Earnings This Week — compact home strip + redesigned modal
+// ═══════════════════════════════════════════════════════════════════
+// User feedback: previous design dominated home page with 58 stacked cards.
+// New design: compact 60px strip on home page; click opens modal with 3 sections:
+//   1. Already Declared (tabular: ticker, date, EPS actual vs estimate, beat/miss)
+//   2. Yet to Come — This Week (Mon-Fri calendar grid)
+//   3. Yet to Come — Next Week (Mon-Fri calendar grid)
+// Tracked universe ⭐ primary, Others secondary.
 
-window._csEwHomePanelLoad = function() {
-  var container = document.getElementById('csEwHomePanel');
-  if (!container) return;
+window._csEwData = null;  // cached data after first fetch
+
+window._csEwOpenModal = function() {
+  // Open modal — fetch data if not cached
+  var existing = document.getElementById('csEwModal');
+  if (existing) existing.remove();
   
-  var email = (window._verifiedEmail || window._authedEmail || window.localStorage.getItem('email') || '').trim();
-  if (!email) {
-    container.innerHTML = '<div style="padding:20px;text-align:center;color:#94a3b8;font-size:12px">Sign in to view earnings calendar</div>';
-    return;
-  }
-  
-  // Loading state — keep header visible, show inline spinner next to it
-  container.innerHTML = '' +
-    '<div style="display:flex;align-items:center;gap:10px">' +
-      '<span style="font-size:18px">📅</span>' +
-      '<div style="flex:1">' +
-        '<div style="font-size:12px;font-weight:800;color:#92400e;font-family:Sora,sans-serif">EARNINGS THIS WEEK</div>' +
-        '<div style="font-size:10px;color:#78350f;margin-top:1px;display:flex;align-items:center;gap:6px">' +
-          '<span style="display:inline-block;width:11px;height:11px;border:2px solid #fde68a;border-top-color:#f59e0b;border-radius:50%;animation:csFsSpin 0.8s linear infinite"></span>' +
-          'Loading…' +
+  var modal = document.createElement('div');
+  modal.id = 'csEwModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,0.7);z-index:9999;display:flex;align-items:flex-start;justify-content:center;padding:30px 16px;overflow-y:auto;font-family:Inter,sans-serif';
+  modal.innerHTML = '' +
+    '<div style="background:#fff;border-radius:14px;max-width:1100px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,0.4);overflow:hidden">' +
+      '<div style="padding:18px 24px;background:linear-gradient(135deg,#92400e,#f59e0b);color:#fff;display:flex;justify-content:space-between;align-items:center">' +
+        '<div>' +
+          '<div style="font-size:17px;font-weight:800;font-family:Sora,sans-serif">📅 Earnings Calendar</div>' +
+          '<div id="csEwModalSubtitle" style="font-size:11px;color:rgba(255,255,255,0.85);margin-top:3px">Loading…</div>' +
         '</div>' +
+        '<button onclick="document.getElementById(\'csEwModal\').remove()" style="background:rgba(255,255,255,0.15);color:#fff;border:none;width:32px;height:32px;border-radius:8px;font-size:18px;cursor:pointer">✕</button>' +
+      '</div>' +
+      '<div id="csEwModalBody" style="padding:18px 24px;min-height:300px;max-height:75vh;overflow-y:auto">' +
+        '<div style="text-align:center;padding:40px"><div style="display:inline-block;width:30px;height:30px;border:3px solid #fde68a;border-top-color:#f59e0b;border-radius:50%;animation:csFsSpin 0.8s linear infinite"></div><div style="margin-top:12px;font-size:12px;color:#475569">Loading earnings calendar…</div></div>' +
       '</div>' +
     '</div>';
+  document.body.appendChild(modal);
+  
+  // Fetch data
+  var email = (window._verifiedEmail || window._authedEmail || window.localStorage.getItem('email') || '').trim();
+  if (!email) {
+    document.getElementById('csEwModalBody').innerHTML = '<div style="padding:40px;text-align:center;color:#dc2626">Sign in required.</div>';
+    return;
+  }
   
   fetch('/api/earnings-this-week?region=US&email=' + encodeURIComponent(email))
     .then(function(r) { return r.json(); })
     .then(function(data) {
       if (!data.success) {
-        container.innerHTML = '<div style="padding:20px;text-align:center;color:#dc2626;font-size:12px">⚠ ' + (data.error || 'Failed to load') + '</div>';
+        document.getElementById('csEwModalBody').innerHTML = '<div style="padding:40px;text-align:center;color:#dc2626">⚠ ' + (data.error || 'Failed') + '</div>';
         return;
       }
-      _csEwHomePanelRender(container, data);
+      window._csEwData = data;
+      _csEwModalRender(data);
     })
     .catch(function(err) {
-      container.innerHTML = '<div style="padding:20px;text-align:center;color:#dc2626;font-size:12px">Network error: ' + (err.message || 'unknown') + '</div>';
+      document.getElementById('csEwModalBody').innerHTML = '<div style="padding:40px;text-align:center;color:#dc2626">Network error: ' + (err.message || 'unknown') + '</div>';
     });
 };
 
-function _csEwHomePanelRender(container, data) {
-  var events = data.events || [];
-  if (events.length === 0) {
-    container.innerHTML = '' +
-      '<div style="padding:24px;text-align:center;color:#64748b;font-size:12px">' +
-        '<div style="font-size:22px;margin-bottom:6px">📭</div>' +
-        '<div>No earnings reports scheduled this week</div>' +
-        (data.data_note ? '<div style="font-size:10px;margin-top:6px;color:#94a3b8">' + _csEscape(data.data_note) + '</div>' : '') +
-      '</div>';
-    return;
+function _csEwModalRender(data) {
+  var totals = data.totals || {};
+  var subtitle = document.getElementById('csEwModalSubtitle');
+  if (subtitle) {
+    subtitle.textContent = 
+      totals.declared + ' declared · ' + 
+      totals.this_week_upcoming + ' upcoming this week · ' +
+      totals.next_week_upcoming + ' next week · ' +
+      totals.tracked_total + ' from your tracked universe';
   }
   
-  // Group: tracked universe first, then others
+  var html = '';
+  
+  // Tabs
+  html += '<div id="csEwTabs" style="display:flex;gap:4px;border-bottom:1px solid #e2e8f0;margin-bottom:16px;padding-bottom:0">';
+  html += _csEwTabButton('declared', '✓ Already Declared', totals.declared, true);
+  html += _csEwTabButton('this_week', '📅 This Week (Upcoming)', totals.this_week_upcoming, false);
+  html += _csEwTabButton('next_week', '⏭ Next Week', totals.next_week_upcoming, false);
+  html += '</div>';
+  
+  // Tab panels (only one visible at a time)
+  html += '<div id="csEwPanel-declared" class="cs-ew-panel">' + _csEwRenderDeclared(data.declared || []) + '</div>';
+  html += '<div id="csEwPanel-this_week" class="cs-ew-panel" style="display:none">' + _csEwRenderGrid(data.this_week_upcoming || [], data.this_week_range, 'this_week') + '</div>';
+  html += '<div id="csEwPanel-next_week" class="cs-ew-panel" style="display:none">' + _csEwRenderGrid(data.next_week_upcoming || [], data.next_week_range, 'next_week') + '</div>';
+  
+  document.getElementById('csEwModalBody').innerHTML = html;
+}
+
+function _csEwTabButton(id, label, count, active) {
+  var bg = active ? '#fef3c7' : 'transparent';
+  var color = active ? '#92400e' : '#64748b';
+  var border = active ? 'border-bottom:2px solid #f59e0b' : 'border-bottom:2px solid transparent';
+  return '<button onclick="window._csEwSwitchTab(\'' + id + '\')" data-tab="' + id + '" style="padding:10px 16px;background:' + bg + ';color:' + color + ';border:none;' + border + ';font-size:12px;font-weight:700;cursor:pointer;font-family:Inter,sans-serif;border-radius:6px 6px 0 0">' + label + ' <span style="font-size:10px;opacity:0.7;margin-left:4px">(' + count + ')</span></button>';
+}
+
+window._csEwSwitchTab = function(targetId) {
+  // Hide all panels, show target
+  var panels = document.querySelectorAll('.cs-ew-panel');
+  for (var i = 0; i < panels.length; i++) {
+    panels[i].style.display = 'none';
+  }
+  var target = document.getElementById('csEwPanel-' + targetId);
+  if (target) target.style.display = 'block';
+  
+  // Update tab styling
+  var tabs = document.querySelectorAll('#csEwTabs button[data-tab]');
+  for (var j = 0; j < tabs.length; j++) {
+    var tab = tabs[j];
+    var isActive = (tab.getAttribute('data-tab') === targetId);
+    tab.style.background = isActive ? '#fef3c7' : 'transparent';
+    tab.style.color = isActive ? '#92400e' : '#64748b';
+    tab.style.borderBottom = isActive ? '2px solid #f59e0b' : '2px solid transparent';
+  }
+};
+
+// ─── Tab 1: Already Declared (tabular) ──────────────────────────────
+function _csEwRenderDeclared(events) {
+  if (!events || events.length === 0) {
+    return '<div style="padding:40px;text-align:center;color:#94a3b8;font-size:12px">No earnings declared in the past 7 days.</div>';
+  }
+  
+  // Split tracked vs others
   var tracked = events.filter(function(e) { return e.in_universe; });
   var others = events.filter(function(e) { return !e.in_universe; });
   
   var html = '';
   
-  // Header strip
-  html += '<div style="padding:12px 16px;background:linear-gradient(135deg,#fef3c7,#fde68a);border-bottom:1px solid #f59e0b;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">';
-  html += '<div>';
-  html += '<div style="font-size:11px;font-weight:800;color:#92400e;letter-spacing:0.5px">📅 EARNINGS THIS WEEK</div>';
-  html += '<div style="font-size:10px;color:#78350f;margin-top:2px">' + (data.from_date || '') + ' to ' + (data.to_date || '') + ' · ' + tracked.length + ' tracked + ' + others.length + ' others</div>';
-  html += '</div>';
-  html += '<button onclick="window._csEwHomePanelLoad()" style="padding:5px 10px;font-size:10px;font-weight:700;border:1px solid #f59e0b;background:#fff;color:#92400e;border-radius:6px;cursor:pointer">↻ Refresh</button>';
-  html += '</div>';
-  
-  // Body
-  html += '<div style="padding:12px 16px">';
-  
-  function renderEvent(e, isTracked) {
-    var hourLabel = {bmo:'Pre-market',amc:'After close',dmh:'During hours'}[e.hour] || '—';
-    var hourColor = {bmo:'#0891b2',amc:'#7c3aed',dmh:'#ca8a04'}[e.hour] || '#64748b';
+  function renderTable(rows, isTracked) {
+    if (rows.length === 0) return '';
+    var heading = isTracked ? 
+      '<div style="font-size:11px;font-weight:800;color:#92400e;letter-spacing:0.5px;margin:14px 0 8px">⭐ TRACKED UNIVERSE (' + rows.length + ')</div>' :
+      '<div style="font-size:11px;font-weight:800;color:#475569;letter-spacing:0.5px;margin:18px 0 8px">OTHER S&amp;P / NASDAQ (' + rows.length + ')</div>';
     
-    // Outcome (if actual results in)
-    var outcomeHtml = '';
-    if (e.eps_actual != null && e.eps_actual !== 0) {
-      // Already reported
-      var beat = (e.eps_estimate != null) && (e.eps_actual >= e.eps_estimate);
-      var beatColor = beat ? '#059669' : '#dc2626';
-      var beatLabel = beat ? '✓ BEAT' : '✗ MISS';
-      var diffPct = (e.eps_estimate && e.eps_estimate > 0) ? 
-        ((e.eps_actual - e.eps_estimate) / Math.abs(e.eps_estimate) * 100).toFixed(1) : null;
-      outcomeHtml = 
-        '<div style="text-align:right">' +
-          '<div style="font-size:11px;font-weight:800;color:' + beatColor + '">' + beatLabel + '</div>' +
-          '<div style="font-size:10px;color:#64748b">EPS: $' + e.eps_actual.toFixed(2) + 
-            (e.eps_estimate ? ' (est $' + e.eps_estimate.toFixed(2) + ')' : '') + '</div>' +
-          (diffPct ? '<div style="font-size:9px;color:' + beatColor + '">' + (diffPct > 0 ? '+' : '') + diffPct + '% surprise</div>' : '') +
-        '</div>';
-    } else {
-      // Not yet reported — show estimate
-      outcomeHtml = 
-        '<div style="text-align:right">' +
-          '<div style="font-size:10px;color:#94a3b8;font-weight:700;letter-spacing:0.5px">UPCOMING</div>' +
-          (e.eps_estimate ? '<div style="font-size:10px;color:#475569;margin-top:1px">EPS est: <strong>$' + e.eps_estimate.toFixed(2) + '</strong></div>' : '') +
-          (e.rev_estimate && e.rev_estimate > 1e6 ? '<div style="font-size:9px;color:#64748b">Rev est: $' + (e.rev_estimate/1e9).toFixed(2) + 'B</div>' : '') +
-        '</div>';
-    }
-    
-    var bg = isTracked ? '#fffbeb' : '#fff';
-    var border = isTracked ? '#fde68a' : '#e2e8f0';
-    
-    return '' +
-      '<div style="border:1px solid ' + border + ';border-radius:7px;padding:10px 12px;margin-bottom:6px;background:' + bg + ';display:flex;justify-content:space-between;align-items:center;gap:12px">' +
-        '<div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0">' +
-          (isTracked ? '<span style="font-size:9px;color:#92400e;font-weight:800">⭐</span>' : '') +
-          '<span style="font-size:13px;font-weight:800;color:#1A3A78;font-family:Sora,sans-serif;min-width:55px">' + e.symbol + '</span>' +
-          '<span style="font-size:11px;color:#475569;font-weight:600">' + (e.date || '—') + '</span>' +
-          '<span style="font-size:9px;color:#fff;background:' + hourColor + ';padding:2px 6px;border-radius:3px;font-weight:700;letter-spacing:0.3px">' + hourLabel + '</span>' +
-          (e.quarter ? '<span style="font-size:9px;color:#94a3b8">Q' + e.quarter + ' ' + (e.year || '') + '</span>' : '') +
-        '</div>' +
-        outcomeHtml +
-      '</div>';
+    var t = heading;
+    t += '<table style="width:100%;border-collapse:collapse;font-size:12px;font-family:Inter,sans-serif">';
+    t += '<thead>' +
+         '<tr style="background:#f8fafc;text-align:left">' +
+           '<th style="padding:8px 10px;border-bottom:1px solid #e2e8f0;font-size:10px;color:#64748b;font-weight:700;letter-spacing:0.5px;text-transform:uppercase">Ticker</th>' +
+           '<th style="padding:8px 10px;border-bottom:1px solid #e2e8f0;font-size:10px;color:#64748b;font-weight:700;letter-spacing:0.5px;text-transform:uppercase">Date</th>' +
+           '<th style="padding:8px 10px;border-bottom:1px solid #e2e8f0;font-size:10px;color:#64748b;font-weight:700;letter-spacing:0.5px;text-transform:uppercase">EPS Actual</th>' +
+           '<th style="padding:8px 10px;border-bottom:1px solid #e2e8f0;font-size:10px;color:#64748b;font-weight:700;letter-spacing:0.5px;text-transform:uppercase">EPS Est</th>' +
+           '<th style="padding:8px 10px;border-bottom:1px solid #e2e8f0;font-size:10px;color:#64748b;font-weight:700;letter-spacing:0.5px;text-transform:uppercase">Surprise</th>' +
+           '<th style="padding:8px 10px;border-bottom:1px solid #e2e8f0;font-size:10px;color:#64748b;font-weight:700;letter-spacing:0.5px;text-transform:uppercase">Outcome</th>' +
+         '</tr>' +
+         '</thead><tbody>';
+    rows.forEach(function(e) {
+      var bg = isTracked ? '#fffbeb' : '#fff';
+      var beatColor = e.outcome === 'beat' ? '#059669' : (e.outcome === 'miss' ? '#dc2626' : '#64748b');
+      var beatLabel = e.outcome === 'beat' ? '✓ Beat' : (e.outcome === 'miss' ? '✗ Miss' : (e.outcome === 'reported' ? 'Reported' : '—'));
+      var surpriseStr = e.surprise_pct != null ? ((e.surprise_pct > 0 ? '+' : '') + e.surprise_pct + '%') : '—';
+      var epsActStr = e.eps_actual != null ? '$' + Number(e.eps_actual).toFixed(2) : '—';
+      var epsEstStr = e.eps_estimate != null ? '$' + Number(e.eps_estimate).toFixed(2) : '—';
+      
+      t += '<tr style="background:' + bg + ';border-bottom:1px solid #f1f5f9;cursor:pointer;transition:background 0.1s" onmouseenter="this.style.background=\'#fef3c7\'" onmouseleave="this.style.background=\'' + bg + '\'" onclick="window._csEarningsCalOpen(\'' + e.symbol + '\', \'US\')">';
+      t += '<td style="padding:8px 10px;font-weight:800;color:#1A3A78;font-family:Sora,sans-serif">' + (isTracked ? '⭐ ' : '') + e.symbol + '</td>';
+      t += '<td style="padding:8px 10px;color:#475569">' + (e.date || '—') + '</td>';
+      t += '<td style="padding:8px 10px;font-weight:700;color:#0f172a">' + epsActStr + '</td>';
+      t += '<td style="padding:8px 10px;color:#64748b">' + epsEstStr + '</td>';
+      t += '<td style="padding:8px 10px;font-weight:600;color:' + beatColor + '">' + surpriseStr + '</td>';
+      t += '<td style="padding:8px 10px;font-weight:700;color:' + beatColor + '">' + beatLabel + '</td>';
+      t += '</tr>';
+    });
+    t += '</tbody></table>';
+    return t;
   }
   
-  if (tracked.length > 0) {
-    html += '<div style="font-size:10px;font-weight:800;color:#92400e;letter-spacing:0.5px;margin-bottom:6px">⭐ TRACKED UNIVERSE (' + tracked.length + ')</div>';
-    tracked.forEach(function(e) { html += renderEvent(e, true); });
-  }
-  
+  html += renderTable(tracked, true);
   if (others.length > 0) {
-    html += '<div style="font-size:10px;font-weight:800;color:#475569;letter-spacing:0.5px;margin:14px 0 6px">OTHER S&amp;P / NASDAQ (' + Math.min(others.length, 25) + ' shown)</div>';
-    others.slice(0, 25).forEach(function(e) { html += renderEvent(e, false); });
-    if (others.length > 25) html += '<div style="text-align:center;color:#94a3b8;font-size:9px;padding:6px">+ ' + (others.length - 25) + ' more not shown</div>';
+    html += '<details style="margin-top:14px"><summary style="cursor:pointer;font-size:11px;color:#64748b;padding:6px 0;font-weight:700">▸ Show ' + others.length + ' other reports (S&P/NASDAQ outside tracked universe)</summary>' + renderTable(others, false) + '</details>';
   }
-  
-  html += '</div>';
-  
-  // Footer note
-  if (data.data_note) {
-    html += '<div style="padding:8px 16px;background:#f8fafc;border-top:1px solid #e2e8f0;font-size:9px;color:#64748b">' + _csEscape(data.data_note) + '</div>';
-  }
-  
-  container.innerHTML = html;
+  return html;
 }
 
-// r63.13: Earnings This Week panel — correct placement + actually yellow-tinted
-// Anchors to #eventAlertArea (the global market context strip).
-// Visible on every page state. Click-to-load semantics preserved from r63.11.
-window._csEwHomePanelInject = function() {
-  if (document.getElementById('csEwHomeSection')) return;  // already injected
-  
-  // Primary anchor: #eventAlertArea (line 1278 of index.html — the global market
-  // context strip between ticker tape and search card)
-  var anchor = document.getElementById('eventAlertArea');
-  
-  // Fallback chain if eventAlertArea is missing
-  if (!anchor) {
-    anchor = document.querySelector('nav') || document.body.firstElementChild;
+// ─── Tab 2/3: Calendar Grid (Mon-Fri columns) ─────────────────────
+function _csEwRenderGrid(events, weekRange, panelId) {
+  if (!events || events.length === 0) {
+    return '<div style="padding:40px;text-align:center;color:#94a3b8;font-size:12px">No upcoming earnings in this period.</div>';
   }
+  
+  // Bucketize by day-of-week (Monday=0 ... Sunday=6)
+  // Show only Mon-Fri (markets open). Sat/Sun events shown in summary line.
+  var byDay = { 0: [], 1: [], 2: [], 3: [], 4: [], 5: [], 6: [] };
+  events.forEach(function(e) {
+    if (!e.date) return;
+    var d = new Date(e.date + 'T00:00:00Z');
+    var dow = d.getUTCDay();  // 0=Sun, 1=Mon, ..., 6=Sat
+    byDay[dow].push(e);
+  });
+  
+  var dayNames = ['MON', 'TUE', 'WED', 'THU', 'FRI'];
+  var dayKeys = [1, 2, 3, 4, 5];  // Mon-Fri
+  
+  // Compute date for each column header
+  function dateFor(weekStartStr, dayOffset) {
+    if (!weekStartStr) return '';
+    var d = new Date(weekStartStr + 'T00:00:00Z');
+    d.setUTCDate(d.getUTCDate() + dayOffset);
+    var month = d.toLocaleDateString('en-US', { month: 'short', timeZone: 'UTC' });
+    var date = d.getUTCDate();
+    return month + ' ' + date;
+  }
+  
+  var weekStartStr = weekRange ? weekRange[0] : null;
+  
+  var html = '';
+  
+  // Calendar grid
+  html += '<div style="display:grid;grid-template-columns:repeat(5, 1fr);gap:8px;margin-bottom:14px">';
+  for (var i = 0; i < 5; i++) {
+    var dayKey = dayKeys[i];
+    var dayName = dayNames[i];
+    var dayEvents = byDay[dayKey] || [];
+    var trackedInDay = dayEvents.filter(function(e) { return e.in_universe; });
+    var othersInDay = dayEvents.filter(function(e) { return !e.in_universe; });
+    var dateLabel = dateFor(weekStartStr, i);
+    
+    html += '<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:10px;min-height:200px">';
+    html += '<div style="border-bottom:1px solid #e2e8f0;padding-bottom:6px;margin-bottom:8px">';
+    html += '<div style="font-size:10px;font-weight:800;color:#64748b;letter-spacing:1px">' + dayName + '</div>';
+    html += '<div style="font-size:13px;font-weight:700;color:#0f172a">' + dateLabel + '</div>';
+    html += '<div style="font-size:9px;color:#94a3b8;margin-top:2px">' + dayEvents.length + ' reports</div>';
+    html += '</div>';
+    
+    // Tracked tickers (chips)
+    if (trackedInDay.length > 0) {
+      trackedInDay.forEach(function(e) {
+        var hourAbbrev = {bmo:'BMO',amc:'AMC',dmh:'DMH'}[e.hour] || '?';
+        var hourColor = {bmo:'#0891b2',amc:'#7c3aed',dmh:'#ca8a04'}[e.hour] || '#64748b';
+        html += '<div onclick="window._csEarningsCalOpen(\'' + e.symbol + '\', \'US\')" style="background:#fffbeb;border:1px solid #fde68a;border-radius:5px;padding:4px 7px;margin-bottom:3px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:4px;transition:background 0.1s" onmouseenter="this.style.background=\'#fef3c7\'" onmouseleave="this.style.background=\'#fffbeb\'">';
+        html += '<span style="font-size:11px;font-weight:800;color:#92400e">⭐ ' + e.symbol + '</span>';
+        html += '<span style="font-size:8px;color:#fff;background:' + hourColor + ';padding:1px 4px;border-radius:3px;font-weight:700">' + hourAbbrev + '</span>';
+        html += '</div>';
+      });
+    }
+    
+    // Others (collapsed under fold)
+    if (othersInDay.length > 0) {
+      var otherChipsHtml = '';
+      othersInDay.slice(0, 8).forEach(function(e) {
+        var hourAbbrev = {bmo:'BMO',amc:'AMC',dmh:'DMH'}[e.hour] || '?';
+        otherChipsHtml += '<div onclick="window._csEarningsCalOpen(\'' + e.symbol + '\', \'US\')" style="font-size:10px;color:#475569;padding:3px 6px;background:#fff;border:1px solid #e2e8f0;border-radius:4px;margin-bottom:2px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:3px"><span>' + e.symbol + '</span><span style="font-size:8px;color:#94a3b8">' + hourAbbrev + '</span></div>';
+      });
+      if (othersInDay.length > 8) {
+        otherChipsHtml += '<div style="font-size:9px;color:#94a3b8;text-align:center;padding:2px">+' + (othersInDay.length - 8) + ' more</div>';
+      }
+      html += '<details style="margin-top:8px"><summary style="cursor:pointer;font-size:9px;color:#64748b;font-weight:700;padding:2px 0">▸ Others (' + othersInDay.length + ')</summary><div style="margin-top:4px">' + otherChipsHtml + '</div></details>';
+    }
+    
+    if (dayEvents.length === 0) {
+      html += '<div style="font-size:10px;color:#cbd5e1;text-align:center;padding:20px 0">—</div>';
+    }
+    
+    html += '</div>';
+  }
+  html += '</div>';
+  
+  // Hour legend
+  html += '<div style="display:flex;gap:10px;font-size:9px;color:#64748b;padding-top:6px;border-top:1px solid #f1f5f9;flex-wrap:wrap">';
+  html += '<span><span style="display:inline-block;width:8px;height:8px;background:#0891b2;border-radius:2px;margin-right:3px;vertical-align:middle"></span> BMO = Before Market Open</span>';
+  html += '<span><span style="display:inline-block;width:8px;height:8px;background:#7c3aed;border-radius:2px;margin-right:3px;vertical-align:middle"></span> AMC = After Market Close</span>';
+  html += '<span><span style="display:inline-block;width:8px;height:8px;background:#ca8a04;border-radius:2px;margin-right:3px;vertical-align:middle"></span> DMH = During Market Hours</span>';
+  html += '</div>';
+  
+  return html;
+}
+
+
+// ─── Compact home strip (replaces fat panel from r63.13) ─────────────
+window._csEwHomeStripInject = function() {
+  if (document.getElementById('csEwHomeStrip')) return;
+  
+  var anchor = document.getElementById('eventAlertArea');
+  if (!anchor) anchor = document.querySelector('nav') || document.body.firstElementChild;
   if (!anchor) return;
   
   var section = document.createElement('section');
-  section.id = 'csEwHomeSection';
-  section.style.cssText = 'max-width:680px;margin:6px auto 14px;padding:0;font-family:Inter,sans-serif';
-  
-  // YELLOW-TINTED card with amber border, brown text — matches existing alert palette
+  section.id = 'csEwHomeStrip';
+  section.style.cssText = 'max-width:680px;margin:6px auto 12px;padding:0;font-family:Inter,sans-serif';
   section.innerHTML = '' +
-    '<div style="background:linear-gradient(135deg,#fef3c7,#fde68a);border:1.5px solid #f59e0b;border-radius:10px;padding:12px 16px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;box-shadow:0 1px 3px rgba(245,158,11,0.15)">' +
-      '<div id="csEwHomePanel" style="flex:1;min-width:240px">' +
-        '<div style="display:flex;align-items:center;gap:8px">' +
-          '<span style="font-size:18px">📅</span>' +
-          '<div>' +
-            '<div style="font-size:12px;font-weight:800;color:#92400e;font-family:Sora,sans-serif;letter-spacing:0.3px">EARNINGS THIS WEEK</div>' +
-            '<div style="font-size:10px;color:#78350f;margin-top:1px">Tracked companies · click to load reports + outcomes</div>' +
-          '</div>' +
+    '<div onclick="window._csEwOpenModal()" style="background:#fff;border:1px solid #fde68a;border-radius:8px;padding:9px 14px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:10px;box-shadow:0 1px 2px rgba(245,158,11,0.06);transition:background 0.15s" onmouseenter="this.style.background=\'#fffbeb\'" onmouseleave="this.style.background=\'#fff\'">' +
+      '<div style="display:flex;align-items:center;gap:8px;flex:1;min-width:0">' +
+        '<span style="font-size:14px">📅</span>' +
+        '<div style="min-width:0;flex:1">' +
+          '<div style="font-size:11px;font-weight:700;color:#92400e;letter-spacing:0.3px">Earnings Calendar</div>' +
+          '<div id="csEwStripPreview" style="font-size:10px;color:#64748b;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Click to view this week + next week</div>' +
         '</div>' +
       '</div>' +
-      '<button id="csEwLoadBtn" onclick="window._csEwHomePanelLoad()" style="padding:7px 14px;background:#f59e0b;color:#fff;border:none;border-radius:7px;font-size:11px;font-weight:700;cursor:pointer;font-family:Inter,sans-serif;box-shadow:0 1px 2px rgba(0,0,0,0.1);transition:background 0.15s" onmouseenter="this.style.background=\'#d97706\'" onmouseleave="this.style.background=\'#f59e0b\'">Load earnings →</button>' +
+      '<div style="font-size:11px;color:#f59e0b;font-weight:700;flex-shrink:0">View →</div>' +
     '</div>';
   
-  // Insert AFTER the anchor (eventAlertArea sits in a perfect spot)
-  if (anchor.insertAdjacentElement) {
-    anchor.insertAdjacentElement('afterend', section);
-  } else if (anchor.parentNode) {
-    anchor.parentNode.insertBefore(section, anchor.nextSibling);
-  } else {
-    document.body.appendChild(section);
-  }
+  anchor.insertAdjacentElement('afterend', section);
 };
 
-// Inject on page load — short delay so DOM is settled
+// Inject on page load
 (function() {
   function tryInject() { 
-    if (typeof window._csEwHomePanelInject === 'function') {
-      window._csEwHomePanelInject(); 
+    if (typeof window._csEwHomeStripInject === 'function') {
+      window._csEwHomeStripInject(); 
     }
   }
   if (document.readyState === 'complete' || document.readyState === 'interactive') {
@@ -25351,7 +25451,6 @@ window._csEwHomePanelInject = function() {
   } else {
     document.addEventListener('DOMContentLoaded', function() { setTimeout(tryInject, 800); });
   }
-  // Also retry once after 2s in case the anchor was injected lazily
-  setTimeout(tryInject, 2500);
+  setTimeout(tryInject, 2500);  // retry once for lazy-loaded anchors
 })();
 
