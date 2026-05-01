@@ -710,3 +710,24 @@ Premium-gated. No production behavior change for existing features.
 **Path forward:** User runs the diagnostic on production, sends JSON output, r63.15 wires the actually-working source(s) into momentum scanner. No more speculation.
 
 **Lesson learned:** When investigating "everything is blocked," test from the actual production network, not a sandbox with a stricter allowlist. Multiple times this session I conflated "fails locally" with "fails in production." This was the worst instance because it led to "give up or pay $50/mo" advice that was probably wrong.
+
+---
+
+## v4.63.15 — Fix login detection (current)
+
+**Built:** 2026-04-30
+
+**User report:** "Load earnings is not coming even after login" — screenshot showed yellow panel still saying "Sign in to view earnings calendar" even though user was clearly authenticated.
+
+**Root cause:** I checked `window._authedEmail` and `localStorage.getItem('email')` for the user's email. But the rest of the app (lines 559, 570, 646) actually stores it in `window._verifiedEmail`. I made up a variable name without checking what the app uses.
+
+**Affected:** 5 features I introduced this session — find-similar, momentum, earnings-cal, earnings-this-week-banner, earnings-home-panel. The home panel exposed the bug visibly via "Sign in" message; the others may have been silently passing empty email to API.
+
+**Fix:** Single variable substitution applied to all 5 references. Now checks `window._verifiedEmail` FIRST, with the previously-checked locations as fallbacks.
+
+**Verified:**
+- 0 buggy `_authedEmail-only` lookups remain  
+- 5 fixed lookup chains present
+- Compile + JS syntax + byte-identical min.js
+
+**Lesson:** Audits I write check structural correctness (does it compile?) not integration correctness (does it use the same conventions as the rest of the app?). Need to read sibling code BEFORE writing new code, not after a user reports the integration bug.

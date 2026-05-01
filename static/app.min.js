@@ -1,9 +1,9 @@
 // ═══ Celesys version stamp ═══
-window.CELESYS_VERSION = "v4.63.14";
-window.CELESYS_BUILD_TIME = 1777592888;
-window.CELESYS_BUILD_DATE = "2026-04-30 23:48:08 UTC";
+window.CELESYS_VERSION = "v4.63.15";
+window.CELESYS_BUILD_TIME = 1777594216;
+window.CELESYS_BUILD_DATE = "2026-05-01 00:10:16 UTC";
 console.log("%c━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "color:#1A3A78");
-console.log("%c CELESYS v4.63.14 %c loaded · 2026-04-29 03:29:27 UTC",
+console.log("%c CELESYS v4.63.15 %c loaded · 2026-04-29 03:29:27 UTC",
   "background:#1A3A78;color:#fff;font-weight:900;padding:3px 8px;border-radius:3px;font-family:monospace",
   "color:#1A3A78;font-weight:700;font-family:monospace");
 console.log("%c━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "color:#1A3A78");
@@ -24571,7 +24571,7 @@ window._csFindSimilarOpen = function(refTicker, region) {
   }, 1000);
   
   // Get email from app state
-  var email = (window._authedEmail || window.localStorage.getItem('email') || '').trim();
+  var email = (window._verifiedEmail || window._authedEmail || window.localStorage.getItem('email') || '').trim();
   
   // Fetch
   fetch('/api/find-similar-stocks?reference=' + encodeURIComponent(refTicker) + '&region=' + region + '&email=' + encodeURIComponent(email))
@@ -24753,7 +24753,7 @@ window._csMomentumOpen = function(region) {
     if (el) el.textContent = 'Elapsed: ' + Math.floor((Date.now() - t0) / 1000) + 's';
   }, 1000);
   
-  var email = (window._authedEmail || window.localStorage.getItem('email') || '').trim();
+  var email = (window._verifiedEmail || window._authedEmail || window.localStorage.getItem('email') || '').trim();
   
   fetch('/api/momentum-leaders?region=' + region + '&email=' + encodeURIComponent(email))
     .then(function(r) { return r.json(); })
@@ -24856,7 +24856,7 @@ window._csEarningsCalOpen = function(symbol, region) {
     '</div>';
   document.body.appendChild(modal);
   
-  var email = (window._authedEmail || window.localStorage.getItem('email') || '').trim();
+  var email = (window._verifiedEmail || window._authedEmail || window.localStorage.getItem('email') || '').trim();
   
   fetch('/api/earnings-calendar?symbol=' + encodeURIComponent(symbol) + '&region=' + region + '&email=' + encodeURIComponent(email))
     .then(function(r) { return r.json(); })
@@ -24934,7 +24934,7 @@ function _csEcRender(data) {
 
 // ─── Earnings This Week banner (auto-loads on app start) ─────────
 window._csEarningsThisWeekLoad = function() {
-  var email = (window._authedEmail || window.localStorage.getItem('email') || '').trim();
+  var email = (window._verifiedEmail || window._authedEmail || window.localStorage.getItem('email') || '').trim();
   if (!email) return;  // not logged in, skip
   
   fetch('/api/earnings-this-week?region=US&email=' + encodeURIComponent(email))
@@ -25164,7 +25164,7 @@ window._csEwHomePanelLoad = function() {
   var container = document.getElementById('csEwHomePanel');
   if (!container) return;
   
-  var email = (window._authedEmail || window.localStorage.getItem('email') || '').trim();
+  var email = (window._verifiedEmail || window._authedEmail || window.localStorage.getItem('email') || '').trim();
   if (!email) {
     container.innerHTML = '<div style="padding:20px;text-align:center;color:#94a3b8;font-size:12px">Sign in to view earnings calendar</div>';
     return;

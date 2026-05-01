@@ -1,85 +1,51 @@
-# Celesys v4.63.14 — Diagnostic: actually test what works from Render
+# Celesys v4.63.15 — Fix: panel says "Sign in" even when logged in
 
-You called me out fairly: *"Option A.. you are not testing considering all scenarios"*
+You said: "Load earnings is not coming even after login"
 
-You were right. I tested from this sandbox network (which has a strict allowlist that blocks almost everything) and concluded "all sources blocked." **Sandbox ≠ Render.** Different networks, different access. I should have built a diagnostic that runs on Render itself.
-
-This deploy does that.
+You were right. Real bug. My fault. Found it and fixed it.
 
 ---
 
-## What r63.14 ships
+## What was wrong
 
-**A new endpoint:** `/api/diag-data-sources?symbol=MU&email=yrk@eml.com`
+My panel checked for the user's email in `window._authedEmail` and `localStorage.getItem('email')` — but the rest of your app sets the email in `window._verifiedEmail`. **I checked the wrong variable name.**
 
-Tests 5 different historical price data sources from Render's actual network:
+When my panel didn't find a value in either of my checked locations, it returned the "Sign in to view earnings calendar" message even though you were clearly logged in.
 
-| # | Source | What I claimed earlier | What we'll learn |
-|---|---|---|---|
-| 1 | Finnhub `/stock/candle` | "Paid tier only" (per docs) | Real status from your free key |
-| 2 | yfinance `tk.history()` | "IP-blocked from Render" | Confirmed only for insider/13F endpoints — `.history()` may work |
-| 3 | Yahoo chart API direct | Untested | Different endpoint from yfinance lib |
-| 4 | Stooq CSV | "Blocked from Render" | Untested from Render specifically |
-| 5 | Google Finance scraper | Already in code | Cross-check |
+This bug affected **5 functions** I introduced this session:
+1. `_csFindSimilarOpen()` — Find Similar scanner
+2. `_csMomentumOpen()` — Momentum Leaders scanner
+3. `_csEarningsCalOpen()` — Per-ticker earnings calendar
+4. `_csEarningsThisWeekLoad()` — This-week banner load
+5. `_csEwHomePanelLoad()` — Home page panel load (the one your screenshot exposed)
 
-For each: `success`, `data_points`, `sample_close`, `elapsed_ms`, `error`, `source_url`.
-
-Plus a summary `interpretation` field that tells you which sources worked and which to wire into the momentum scanner.
+The other 4 may have been silently passing empty email to the API and getting "Premium required" errors, OR getting the email from elsewhere by coincidence. The home panel exposed it because it had a visible "Sign in" message.
 
 ---
 
-## Why this matters
+## The fix (5 lines, one variable name change)
 
-The momentum scanner requires **historical OHLCV** (1 year of daily closes per ticker). My r63.8/r63.10/r63.12 builds tried Finnhub `/stock/candle` first then yfinance fallback — got 0 qualified tickers in the screenshot you showed.
-
-**Hypothesis options:**
-
-1. **Finnhub candle works, my code has a bug** — the diagnostic will confirm
-2. **Finnhub candle 403's, yfinance works, my fallback chain is broken** — the diagnostic will confirm  
-3. **Both 403, but Yahoo direct or Stooq works** — wire those instead
-4. **Everything blocked from Render** — only paid Finnhub solves it
-
-Without the diagnostic, I'm guessing. With it, you have proof.
-
----
-
-## How to use it after deploy
-
-```bash
-curl "https://celesys.ai/api/diag-data-sources?symbol=MU&email=yrk@eml.com"
+Before:
+```javascript
+var email = (window._authedEmail || window.localStorage.getItem('email') || '').trim();
 ```
 
-Or from a browser if logged in. Returns JSON like:
-
-```json
-{
-  "success": true,
-  "symbol": "MU",
-  "working_sources": ["yfinance_history", "yahoo_chart_direct"],
-  "results": {
-    "finnhub_candle": {"success": false, "error": "Returned None or empty", ...},
-    "yfinance_history": {"success": true, "data_points": 252, "sample_close": 138.42, ...},
-    "yahoo_chart_direct": {"success": true, "data_points": 252, ...},
-    "stooq_csv": {"success": false, "error": "..."},
-    "google_finance": {"success": true, "data_points": 1, ...}
-  },
-  "interpretation": "2/5 sources work. USE THE FIRST WORKING ONE for momentum scanner price history."
-}
+After:
+```javascript
+var email = (window._verifiedEmail || window._authedEmail || window.localStorage.getItem('email') || '').trim();
 ```
 
-**Send me the output.** Then I'll wire the actual working source into the momentum scanner in r63.15. No more speculation.
+Adding `window._verifiedEmail` as the FIRST checked location — that's where the rest of your app stores the email after login (lines 559, 570, 646 of app.js).
 
 ---
 
 ## Pre-ship verification
 
-### 9/9 audit checks pass
-- ✅ Diag endpoint `/api/diag-data-sources` defined
-- ✅ Tests all 5 sources (Finnhub candle, yfinance, Yahoo direct, Stooq, Google)
-- ✅ Returns honest per-source results with timing
-- ✅ Premium gate required (so it's not abusable)
-- ✅ Version v4.63.14 across all files
-- ✅ All Python compiles, JS syntax OK, app.min.js byte-identical
+- ✅ 0 occurrences of the buggy `_authedEmail-only` lookup remain
+- ✅ 5 occurrences of the fixed lookup chain present
+- ✅ All Python compiles, JS syntax OK
+- ✅ app.min.js byte-identical to app.js
+- ✅ Version v4.63.15 across api.py, app.js, index.html
 
 ---
 
@@ -89,48 +55,55 @@ Or from a browser if logged in. Returns JSON like:
 unzip celesys_v4_FINAL_DEPLOY.zip
 cd celesys_v4_FINAL_DEPLOY/
 git add -A
-git commit -m "v4.63.14: Diagnostic — actually test data sources from Render"
+git commit -m "v4.63.15: Fix login detection — use window._verifiedEmail (was _authedEmail)"
 git push
 ```
 
-Wait ~3 min, then run:
+Wait ~3 min, hard-refresh.
+
+---
+
+## Verify after deploy
+
+1. `curl https://celesys.ai/api/version` → `"version": "v4.63.15"`
+2. Open https://celesys.ai → log in as yrk@eml.com
+3. Yellow Earnings This Week panel should now show:  
+   **"Tracked companies · click to load reports + outcomes"** (NOT "Sign in")
+4. Click "Load earnings →" → should fetch and show the list
+
+Plus you can now run the diagnostic from r63.14:
 
 ```bash
 curl "https://celesys.ai/api/diag-data-sources?symbol=MU&email=yrk@eml.com"
 ```
 
-(Replace email with whatever yrk@eml.com is — your premium email)
-
-**Send me the JSON output.** Once we know what works, r63.15 fixes the momentum scanner properly.
+(Both r63.14 and r63.15 ship in this zip.)
 
 ---
 
 ## Honest accountability
 
-I should have done this 6 deploys ago. When the screenshot showed "Qualified: 0" I jumped to "everything is blocked, pay $50/mo or give up" instead of testing what was actually broken. That was lazy reasoning combined with conflating sandbox failures with Render failures.
+This is exactly the kind of bug that happens when I write code WITHOUT looking at how the rest of the app does it. I made up a variable name (`_authedEmail`) that I assumed would be set, instead of checking what your app actually uses (`_verifiedEmail`).
 
-You pushed back correctly. r63.14 is the diagnostic step I should have built first.
+The audit checks I write don't catch this class of bug because they check structural correctness (does the function exist? does it compile?) not integration correctness (does it interoperate with the rest of the app?). That requires reading sibling code.
+
+Same root cause as several other bugs today: I rushed without grounding in the existing codebase.
 
 ---
 
-## Files changed
+## What this deploy contains
 
-| File | Change |
+| Component | Status |
 |---|---|
-| `api.py` | Added `/api/diag-data-sources` endpoint (~140 lines) + `import data_sources as _ds` |
-| `static/app.js` | Version stamp only |
-| `static/app.min.js` | Synced |
-| `index.html` | Cache-bust + version stamps |
+| r63.14 diagnostic endpoint `/api/diag-data-sources` | Still here, ready to run |
+| r63.13 yellow-tinted home panel | Still here, with login fix |
+| r63.12 universe alias fix | Still here |
+| r63.11 click-to-load semantics | Still here |
+| r63.15 login detection fix | NEW |
 
-No frontend changes. No new dependencies. No production behavior change for existing features. Pure diagnostic.
+After this deploys, please:
+1. Hard-refresh
+2. Confirm the panel says "Tracked companies · click to load" (not "Sign in")
+3. Run the r63.14 diagnostic and send me the JSON output
 
----
-
-## After this ships
-
-1. Run `curl https://celesys.ai/api/diag-data-sources?symbol=MU&email=yrk@eml.com`
-2. Send me the JSON output
-3. I'll write r63.15 that wires the working source(s) into momentum scanner
-4. SNDK and other rippers should appear in the next scan
-
-That's the path forward. Diagnose first, fix correctly second. Sorry for jumping to conclusions earlier.
+That diagnostic output is what lets me fix the momentum scanner properly — it'll tell us whether yfinance.history(), Yahoo direct, or Stooq actually work from Render. Then r63.16 wires the working source.
