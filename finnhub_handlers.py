@@ -412,13 +412,22 @@ def get_earnings_calendar(symbol: str = None, from_date: str = None, to_date: st
         date_str = r.get("date")
         if not date_str:
             continue
+        # r63.17: Preserve None for eps/revenue fields so caller can distinguish
+        # "no value reported" (None) from "reported zero" (0.0). Old code used
+        # _safe_float which coerced None → 0.0, breaking declared-bucket detection.
+        def _opt_float(x):
+            try:
+                return None if x is None else float(x)
+            except (ValueError, TypeError):
+                return None
+        
         out.append({
             "symbol":           (r.get("symbol") or "").upper(),
             "date":             date_str,            # "YYYY-MM-DD" string
-            "epsEstimate":      _safe_float(r.get("epsEstimate")),
-            "epsActual":        _safe_float(r.get("epsActual")),
-            "revenueEstimate":  _safe_float(r.get("revenueEstimate")),
-            "revenueActual":    _safe_float(r.get("revenueActual")),
+            "epsEstimate":      _opt_float(r.get("epsEstimate")),
+            "epsActual":        _opt_float(r.get("epsActual")),
+            "revenueEstimate":  _opt_float(r.get("revenueEstimate")),
+            "revenueActual":    _opt_float(r.get("revenueActual")),
             "hour":             (r.get("hour") or "").lower(),   # bmo / amc / dmh
             "year":             _safe_int(r.get("year")),
             "quarter":          _safe_int(r.get("quarter")),

@@ -772,3 +772,29 @@ User was right. Previous design dominated home page with 58 stacked cards (4,640
 - Senior architect feedback ("think from user perspective") was correctly directional
 - New design follows industry-standard patterns (Bloomberg/Yahoo Finance Calendar)
 - Information hierarchy: glanceable summary → detailed view on demand
+
+---
+
+## v4.63.17 — Earnings buckets None-coercion fix (current)
+
+**Built:** 2026-05-01
+
+**User report:** "This week microsoft, amzn, meta, google and more were declared... none of them are coming with detail in tabular form" — screenshot confirmed: 0 declared, 0 this-week-upcoming, 80 next-week.
+
+**Root cause:** Finnhub adapter used `_safe_float` for eps/revenue fields, which coerces `None → 0.0`. My r63.16 bucket logic checked `eps_actual != 0` to detect declared events. Combined: events from Finnhub with null eps_actual got coerced to 0.0, then filtered out as "not declared." Past-date events with null eps_actual fell through both filters into oblivion.
+
+**Three fixes:**
+1. Finnhub adapter: new `_opt_float()` helper preserves None for eps/revenue fields in calendar response
+2. Bucket logic loosened: `ev_date <= today` always declared (regardless of eps_actual presence)
+3. Outcome detection: distinguishes None (pending) from 0.0 (reported zero)
+
+**Cache key bumped** to `earnings_3wk_v17_{region}` so old buggy cached data doesn't poison new shape.
+
+**Diagnostic added:** `/api/diag-earnings-raw?email=Y&days_back=7&days_forward=14` returns raw Finnhub response with summary stats so we can verify what's really in there.
+
+**Verified:**
+- 6/6 audit checks pass
+- Runtime simulation: META/MSFT/GOOG (with actuals) → declared with beat outcomes; AMZN/NVDA/AAPL (without actuals) → bucketed by date correctly
+- Compile + JS syntax + byte-identical min.js
+
+**Lesson (third time this session):** Read sibling-code conventions BEFORE using helpers. `_safe_float` was wrong for earnings data where None has semantic meaning. Audit checks catch structural bugs but not semantic type errors.

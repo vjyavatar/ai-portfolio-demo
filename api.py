@@ -1798,9 +1798,9 @@ def _safe_float(val, default=0.0):
         return default
 
 # ═══ Celesys version stamp (v4.61.10) ═══════════════════════════════
-APP_VERSION = "v4.63.16"
-APP_BUILD_TIME = 1777603406
-APP_BUILD_DATE = "2026-05-01 02:43:26 UTC"
+APP_VERSION = "v4.63.17"
+APP_BUILD_TIME = 1777604464
+APP_BUILD_DATE = "2026-05-01 03:01:04 UTC"
 APP_RELEASE_NOTES = (
     "v4.62.0: Micro-Cap Hunter scanner (Decide tab) + cumulative r61.x: Aladdin DD entry page (r61.8), "
     "stale-cache fallback (r61.8), multi-factor Bottom Line (r61.7), "
@@ -31574,7 +31574,7 @@ async def earnings_this_week(region: str = "US", email: str = "", nocache: int =
         return {"success": False, "error": "Earnings calendar is a premium feature."}
     
     region = (region or "US").upper()
-    cache_key = f"earnings_3wk_{region}"  # r63.16: new cache key (different shape than v15)
+    cache_key = f"earnings_3wk_v17_{region}"  # r63.17: bumped to invalidate cache with old None-as-0 data  # r63.16: new cache key (different shape than v15)
     
     if nocache != 1:
         cached = _smart_cache_get(cache_key)
@@ -31645,10 +31645,13 @@ async def earnings_this_week(region: str = "US", email: str = "", nocache: int =
         eps_actual = ev.get("epsActual")
         eps_estimate = ev.get("epsEstimate")
         
-        # Outcome (for declared events)
+        # Outcome (for declared events) — r63.17: handle None correctly
+        # eps_actual=None → "pending" (event happened but data not in feed yet)
+        # eps_actual=0.0 → could be legit zero (reported zero EPS); show as "reported"
+        # eps_actual>0 + eps_estimate>0 → compare for beat/miss
         outcome = None
         surprise_pct = None
-        if eps_actual is not None and eps_actual != 0:
+        if eps_actual is not None:
             if eps_estimate is not None and eps_estimate != 0:
                 surprise_pct = (eps_actual - eps_estimate) / abs(eps_estimate) * 100
                 outcome = "beat" if eps_actual >= eps_estimate else "miss"
@@ -31670,20 +31673,20 @@ async def earnings_this_week(region: str = "US", email: str = "", nocache: int =
             "surprise_pct":   round(surprise_pct, 1) if surprise_pct is not None else None,
         }
         
-        # Bucket assignment
-        if eps_actual is not None and eps_actual != 0:
-            # Already reported (regardless of date — Finnhub fills epsActual on reporting)
-            declared.append(bucket_event)
-        elif ev_date < today:
-            # Past date but no actual reported — treat as declared with no data
+        # Bucket assignment — r63.17: simplified, more inclusive
+        # Past-or-today dates with eps_actual present → declared with full data
+        # Past-or-today dates without eps_actual → declared anyway (event happened)
+        # Future this-week → upcoming this week
+        # Future next-week → upcoming next week
+        if ev_date <= today:
             declared.append(bucket_event)
         elif ev_date <= week_start + _td3(days=6):
-            # This week (Mon-Sun)
+            # This week (Mon-Sun) — strictly future days within this week
             this_week_upcoming.append(bucket_event)
         elif ev_date <= next_week_end:
             # Next week
             next_week_upcoming.append(bucket_event)
-        # else: outside our window, skip
+        # else: outside our window (T+15 onwards), skip
     
     # Sort each bucket: tracked first, then by date
     def sort_key(e):
@@ -31964,6 +31967,64 @@ async def diag_data_sources(symbol: str = "MU", email: str = ""):
              "ALL FIVE SOURCES BLOCKED — no historical price data is reachable from Render. "
              "Only paid Finnhub Personal or paid IEX/Polygon/etc would solve this.")
         ),
+    }
+
+
+
+@app.get("/api/diag-earnings-raw")
+async def diag_earnings_raw(email: str = "", days_back: int = 7, days_forward: int = 14,
+                             symbol: str = ""):
+    """r63.17: Inspect what Finnhub actually returns. No filtering, no bucketing.
+    
+    Returns up to first 30 events from /calendar/earnings call.
+    Lets us verify: does Finnhub actually return META/MSFT past dates?
+    Does epsActual come through as null or 0 or actual number?
+    """
+    from datetime import datetime as _dt4, timedelta as _td4
+    
+    email = (email or "").strip().lower()
+    _ok, email = check_premium_gate(email, "dream")
+    if not _ok:
+        return {"success": False, "error": "Premium gate required."}
+    
+    today = _dt4.utcnow().date()
+    from_date = (today - _td4(days=days_back)).strftime("%Y-%m-%d")
+    to_date = (today + _td4(days=days_forward)).strftime("%Y-%m-%d")
+    
+    try:
+        cal = _fh.get_earnings_calendar(
+            from_date=from_date, to_date=to_date, region="US",
+            symbol=symbol if symbol else None
+        )
+    except Exception as e:
+        return {"success": False, "error": str(e), "from_date": from_date, "to_date": to_date}
+    
+    if not cal:
+        return {"success": True, "raw_response": None, "note": "Finnhub returned None",
+                "from_date": from_date, "to_date": to_date}
+    
+    events = cal.get("data", [])
+    
+    # Filter to a few interesting test tickers if present
+    test_tickers = {"META", "MSFT", "GOOG", "GOOGL", "AMZN", "AAPL", "NVDA", "TSLA", "AMD"}
+    interesting = [e for e in events if e.get("symbol") in test_tickers]
+    
+    return {
+        "success":         True,
+        "from_date":       from_date,
+        "to_date":         to_date,
+        "today":           today.strftime("%Y-%m-%d"),
+        "total_events":    len(events),
+        "interesting":     interesting[:20],   # mega-cap names if present
+        "first_30":        events[:30],         # first 30 chronologically
+        "samples_with_actual":     [e for e in events if e.get("epsActual") is not None][:10],
+        "samples_without_actual":  [e for e in events if e.get("epsActual") is None][:10],
+        "summary": {
+            "events_with_epsActual_value":     sum(1 for e in events if e.get("epsActual") is not None),
+            "events_without_epsActual":        sum(1 for e in events if e.get("epsActual") is None),
+            "events_dated_before_today":       sum(1 for e in events if e.get("date", "") < today.strftime("%Y-%m-%d")),
+            "events_dated_today_or_after":     sum(1 for e in events if e.get("date", "") >= today.strftime("%Y-%m-%d")),
+        },
     }
 
 _portfolio_progress = {"done": 0, "total": 0, "current": "", "started": 0, "active": False}
