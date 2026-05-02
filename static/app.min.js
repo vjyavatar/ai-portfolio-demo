@@ -1,9 +1,9 @@
 // ═══ Celesys version stamp ═══
-window.CELESYS_VERSION = "v4.63.17";
-window.CELESYS_BUILD_TIME = 1777604464;
-window.CELESYS_BUILD_DATE = "2026-05-01 03:01:04 UTC";
+window.CELESYS_VERSION = "v4.63.18";
+window.CELESYS_BUILD_TIME = 1777760821;
+window.CELESYS_BUILD_DATE = "2026-05-02 22:27:01 UTC";
 console.log("%c━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "color:#1A3A78");
-console.log("%c CELESYS v4.63.17 %c loaded · 2026-04-29 03:29:27 UTC",
+console.log("%c CELESYS v4.63.18 %c loaded · 2026-04-29 03:29:27 UTC",
   "background:#1A3A78;color:#fff;font-weight:900;padding:3px 8px;border-radius:3px;font-family:monospace",
   "color:#1A3A78;font-weight:700;font-family:monospace");
 console.log("%c━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "color:#1A3A78");
@@ -25452,5 +25452,331 @@ window._csEwHomeStripInject = function() {
     document.addEventListener('DOMContentLoaded', function() { setTimeout(tryInject, 800); });
   }
   setTimeout(tryInject, 2500);  // retry once for lazy-loaded anchors
+})();
+
+
+// ═══════════════════════════════════════════════════════════════════
+// r63.18: Deep Insights + Scenarios + Competitor Benchmark + Elevator Pitch
+// ═══════════════════════════════════════════════════════════════════
+// Hooks into renderReport via the r63.9 coordinator — runs after each render,
+// injects 4 new sections after the verdict strip.
+
+window._csR6318LastSymbol = null;
+
+// Main entry: called after every renderReport
+window._csR6318InjectSections = function() {
+  var verdictStrip = document.getElementById('sec-verdict-strip');
+  if (!verdictStrip) return;  // not on a DD report page
+  
+  // Already injected this render? (re-injection on tab switch can dup)
+  if (verdictStrip.parentNode && verdictStrip.parentNode.querySelector('.cs-r6318-section')) {
+    return;
+  }
+  
+  // Determine ticker — read from verdict strip badge or from window._ddLastSymbol
+  var symEl = verdictStrip.querySelector('.cs-dd-verdict__sym');
+  var sym = symEl ? symEl.textContent.trim() : (window._ddLastSymbol || '');
+  if (!sym) return;
+  window._csR6318LastSymbol = sym;
+  
+  // Build the 4-section container
+  var container = document.createElement('div');
+  container.className = 'cs-r6318-section';
+  container.style.cssText = 'margin:14px 0;display:flex;flex-direction:column;gap:14px';
+  container.innerHTML =
+    _csR6318ElevatorPitchHtml(sym) +     // section 1 — pure JS, instant
+    _csR6318DeepInsightsHtml(sym) +       // section 2 — click to load LLM
+    _csR6318ScenariosHtml(sym) +          // section 3 — click to load
+    _csR6318BenchmarkHtml(sym);           // section 4 — click to load
+  
+  // Insert after verdict strip
+  verdictStrip.parentNode.insertBefore(container, verdictStrip.nextSibling);
+  
+  // Auto-render elevator pitch immediately (it's free — uses already-loaded DD data)
+  _csR6318RenderElevatorPitch(sym);
+};
+
+// ─── Section 1: Elevator Pitch (auto-renders) ────────────────────────
+function _csR6318ElevatorPitchHtml(sym) {
+  return '<div id="cs-r6318-pitch" style="background:linear-gradient(135deg,#1A3A78,#2563eb);color:#fff;border-radius:12px;padding:18px 20px;font-family:Inter,sans-serif;box-shadow:0 4px 12px rgba(26,58,120,0.15)">' +
+    '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">' +
+      '<span style="font-size:14px">🎯</span>' +
+      '<span style="font-size:11px;font-weight:800;letter-spacing:0.8px;color:rgba(255,255,255,0.9)">ELEVATOR PITCH</span>' +
+    '</div>' +
+    '<div id="cs-r6318-pitch-body" style="font-size:14px;line-height:1.5;color:#fff;font-weight:500">Generating…</div>' +
+  '</div>';
+}
+
+function _csR6318RenderElevatorPitch(sym) {
+  var body = document.getElementById('cs-r6318-pitch-body');
+  if (!body) return;
+  
+  // Read data from already-rendered verdict strip + stats
+  var scoreEl = document.querySelector('.cs-dd-verdict__score');
+  var pillEl = document.querySelector('.cs-dd-verdict__pill');
+  var nameEl = document.querySelector('.cs-dd-verdict__name');
+  
+  var score = scoreEl ? parseFloat(scoreEl.textContent) : null;
+  var verdict = pillEl ? pillEl.textContent.trim() : 'Unknown';
+  var name = nameEl ? nameEl.textContent.trim() : sym;
+  
+  if (score == null || isNaN(score)) {
+    body.textContent = 'Score data not available for elevator pitch.';
+    return;
+  }
+  
+  // Pitch logic
+  var conviction, reasoning;
+  if (score >= 80) {
+    conviction = 'HIGH CONVICTION BUY';
+    reasoning = 'fundamentals, valuation, and momentum aligned with strong institutional support';
+  } else if (score >= 65) {
+    conviction = 'BUY CANDIDATE';
+    reasoning = 'majority of factors positive; some areas warrant monitoring';
+  } else if (score >= 50) {
+    conviction = 'HOLD / SELECTIVE';
+    reasoning = 'mixed signals — neither clearly compelling nor clearly impaired';
+  } else if (score >= 35) {
+    conviction = 'AVOID NEW POSITIONS';
+    reasoning = 'multiple factors negative; downside risk outweighs upside in current setup';
+  } else {
+    conviction = 'AVOID / EXIT';
+    reasoning = 'institutional thesis broken across most factors';
+  }
+  
+  body.innerHTML =
+    '<strong>' + _csEscape(name) + ' (' + sym + ')</strong> ' +
+    'screens as a <strong style="color:#fde68a">' + conviction + '</strong> ' +
+    'at ' + Math.round(score) + '/100 — ' + reasoning + '. ' +
+    '<span style="color:rgba(255,255,255,0.85);font-size:12px;font-style:italic">Verdict: ' + _csEscape(verdict) + '</span>';
+}
+
+// ─── Section 2: Deep Insights (LLM, click-to-load) ───────────────────
+function _csR6318DeepInsightsHtml(sym) {
+  return '<div id="cs-r6318-deep" style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:18px 20px;font-family:Inter,sans-serif">' +
+    '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px">' +
+      '<div style="display:flex;align-items:center;gap:8px">' +
+        '<span style="font-size:16px">🧠</span>' +
+        '<span style="font-size:13px;font-weight:800;color:#0f172a;font-family:Sora,sans-serif">Deep Insights</span>' +
+        '<span style="font-size:9px;color:#94a3b8;background:#f1f5f9;padding:2px 6px;border-radius:3px;font-weight:700">AI-SYNTHESIZED</span>' +
+      '</div>' +
+      '<button onclick="window._csR6318LoadDeepInsights()" style="padding:7px 14px;background:#1A3A78;color:#fff;border:none;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer">Generate insights →</button>' +
+    '</div>' +
+    '<div id="cs-r6318-deep-body" style="font-size:12px;color:#475569;font-style:italic">Click "Generate insights" for AI-synthesized analysis: what the numbers really say, hidden risks, and falsification criteria.</div>' +
+  '</div>';
+}
+
+window._csR6318LoadDeepInsights = function() {
+  var sym = window._csR6318LastSymbol;
+  if (!sym) return;
+  var body = document.getElementById('cs-r6318-deep-body');
+  if (!body) return;
+  
+  body.innerHTML = '<div style="text-align:center;padding:20px"><div style="display:inline-block;width:24px;height:24px;border:2px solid #e0e7ff;border-top-color:#1A3A78;border-radius:50%;animation:csFsSpin 0.8s linear infinite"></div><div style="margin-top:10px;font-size:11px;color:#64748b">Generating deep insights — this takes 5-15 seconds…</div></div>';
+  
+  var email = (window._verifiedEmail || window._authedEmail || window.localStorage.getItem('email') || '').trim();
+  
+  fetch('/api/deep-insights?symbol=' + encodeURIComponent(sym) + '&email=' + encodeURIComponent(email))
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (!data.success) {
+        body.innerHTML = '<div style="color:#dc2626;font-size:12px;padding:14px;background:#fef2f2;border-radius:6px;border-left:3px solid #dc2626">⚠ ' + (data.error || 'Failed to generate insights') + '</div>';
+        return;
+      }
+      
+      var html = '';
+      var sections = [
+        { key: 'numbers_say',   icon: '📊', title: 'What the numbers actually say', color: '#0891b2' },
+        { key: 'hidden_risks',  icon: '⚠️',  title: 'Hidden risks the surface metrics miss', color: '#dc2626' },
+        { key: 'falsification', icon: '🔬', title: 'What would change my mind',     color: '#7c3aed' },
+      ];
+      sections.forEach(function(s) {
+        var content = data[s.key];
+        if (!content) return;
+        html += '<div style="margin-bottom:14px">';
+        html += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">';
+        html += '<span style="font-size:14px">' + s.icon + '</span>';
+        html += '<span style="font-size:11px;font-weight:800;color:' + s.color + ';letter-spacing:0.5px">' + s.title.toUpperCase() + '</span>';
+        html += '</div>';
+        html += '<div style="font-size:13px;line-height:1.6;color:#0f172a;padding-left:20px;border-left:2px solid ' + s.color + ';margin-left:6px">' + _csEscape(content) + '</div>';
+        html += '</div>';
+      });
+      
+      if (data._cached) {
+        html += '<div style="margin-top:8px;font-size:9px;color:#94a3b8;text-align:right">From cache (refreshes every 6h)</div>';
+      }
+      body.innerHTML = html;
+    })
+    .catch(function(err) {
+      body.innerHTML = '<div style="color:#dc2626;font-size:12px">Network error: ' + (err.message || 'unknown') + '</div>';
+    });
+};
+
+// ─── Section 3: Scenarios (deterministic, click-to-load) ────────────
+function _csR6318ScenariosHtml(sym) {
+  return '<div id="cs-r6318-scn" style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:18px 20px;font-family:Inter,sans-serif">' +
+    '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px">' +
+      '<div style="display:flex;align-items:center;gap:8px">' +
+        '<span style="font-size:16px">📈</span>' +
+        '<span style="font-size:13px;font-weight:800;color:#0f172a;font-family:Sora,sans-serif">12-Month Scenarios</span>' +
+        '<span style="font-size:9px;color:#94a3b8;background:#f1f5f9;padding:2px 6px;border-radius:3px;font-weight:700">DCF-ANCHORED</span>' +
+      '</div>' +
+      '<button onclick="window._csR6318LoadScenarios()" style="padding:7px 14px;background:#059669;color:#fff;border:none;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer">Run scenarios →</button>' +
+    '</div>' +
+    '<div id="cs-r6318-scn-body" style="font-size:12px;color:#475569;font-style:italic">Click to compute bull/base/bear 12-month price targets from DCF + growth assumptions.</div>' +
+  '</div>';
+}
+
+window._csR6318LoadScenarios = function() {
+  var sym = window._csR6318LastSymbol;
+  if (!sym) return;
+  var body = document.getElementById('cs-r6318-scn-body');
+  if (!body) return;
+  
+  body.innerHTML = '<div style="text-align:center;padding:14px"><div style="display:inline-block;width:18px;height:18px;border:2px solid #d1fae5;border-top-color:#059669;border-radius:50%;animation:csFsSpin 0.8s linear infinite"></div></div>';
+  
+  var email = (window._verifiedEmail || window._authedEmail || window.localStorage.getItem('email') || '').trim();
+  
+  fetch('/api/scenarios?symbol=' + encodeURIComponent(sym) + '&email=' + encodeURIComponent(email))
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (!data.success) {
+        body.innerHTML = '<div style="color:#94a3b8;font-size:12px">' + (data.error || 'Could not compute') + '</div>';
+        return;
+      }
+      
+      var s = data.scenarios;
+      var html = '';
+      html += '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:6px">';
+      
+      var tiers = [
+        { key: 'bull', label: 'BULL', color: '#059669', bg: '#d1fae5' },
+        { key: 'base', label: 'BASE', color: '#0891b2', bg: '#cffafe' },
+        { key: 'bear', label: 'BEAR', color: '#dc2626', bg: '#fee2e2' },
+      ];
+      
+      tiers.forEach(function(t) {
+        var sc = s[t.key];
+        var upsidePrefix = sc.upside_pct > 0 ? '+' : '';
+        html += '<div style="background:' + t.bg + ';border:1px solid ' + t.color + '40;border-radius:9px;padding:12px">';
+        html += '<div style="font-size:9px;font-weight:800;color:' + t.color + ';letter-spacing:1px;margin-bottom:4px">' + t.label + ' CASE</div>';
+        html += '<div style="font-size:18px;font-weight:900;color:#0f172a;font-family:Sora,sans-serif">$' + sc.target.toFixed(2) + '</div>';
+        html += '<div style="font-size:11px;color:' + t.color + ';font-weight:700;margin-top:2px">' + upsidePrefix + sc.upside_pct + '% from $' + data.spot.toFixed(2) + '</div>';
+        html += '<div style="font-size:10px;color:#475569;margin-top:6px;line-height:1.4">' + _csEscape(sc.reasoning) + '</div>';
+        html += '</div>';
+      });
+      
+      html += '</div>';
+      html += '<div style="margin-top:10px;font-size:9px;color:#94a3b8;font-style:italic">' + _csEscape(data._method || '') + '</div>';
+      body.innerHTML = html;
+    })
+    .catch(function(err) {
+      body.innerHTML = '<div style="color:#dc2626;font-size:12px">Error: ' + err.message + '</div>';
+    });
+};
+
+// ─── Section 4: Competitor Benchmark (click-to-load) ────────────────
+function _csR6318BenchmarkHtml(sym) {
+  return '<div id="cs-r6318-bench" style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:18px 20px;font-family:Inter,sans-serif">' +
+    '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px">' +
+      '<div style="display:flex;align-items:center;gap:8px">' +
+        '<span style="font-size:16px">🏛️</span>' +
+        '<span style="font-size:13px;font-weight:800;color:#0f172a;font-family:Sora,sans-serif">Competitor Benchmark</span>' +
+        '<span style="font-size:9px;color:#94a3b8;background:#f1f5f9;padding:2px 6px;border-radius:3px;font-weight:700">SECTOR PEERS</span>' +
+      '</div>' +
+      '<button onclick="window._csR6318LoadBenchmark()" style="padding:7px 14px;background:#7c3aed;color:#fff;border:none;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer">Compare peers →</button>' +
+    '</div>' +
+    '<div id="cs-r6318-bench-body" style="font-size:12px;color:#475569;font-style:italic">Click to compare against 4-5 sector peers from your tracked universe.</div>' +
+  '</div>';
+}
+
+window._csR6318LoadBenchmark = function() {
+  var sym = window._csR6318LastSymbol;
+  if (!sym) return;
+  var body = document.getElementById('cs-r6318-bench-body');
+  if (!body) return;
+  
+  body.innerHTML = '<div style="text-align:center;padding:20px"><div style="display:inline-block;width:24px;height:24px;border:2px solid #ede9fe;border-top-color:#7c3aed;border-radius:50%;animation:csFsSpin 0.8s linear infinite"></div><div style="margin-top:10px;font-size:11px;color:#64748b">Scanning peers… 30-90 sec depending on cache</div></div>';
+  
+  var email = (window._verifiedEmail || window._authedEmail || window.localStorage.getItem('email') || '').trim();
+  
+  fetch('/api/competitor-benchmark?symbol=' + encodeURIComponent(sym) + '&email=' + encodeURIComponent(email))
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (!data.success) {
+        body.innerHTML = '<div style="color:#dc2626;font-size:12px;padding:10px;background:#fef2f2;border-radius:6px">⚠ ' + (data.error || 'Failed') + '</div>';
+        return;
+      }
+      
+      if (!data.peers || data.peers.length === 0) {
+        body.innerHTML = '<div style="color:#94a3b8;font-size:12px;padding:14px;background:#f8fafc;border-radius:6px">' + _csEscape(data.data_note || 'No peers found in tracked universe.') + '</div>';
+        return;
+      }
+      
+      // Render comparison table
+      var html = '';
+      html += '<div style="font-size:10px;color:#64748b;margin-bottom:8px">Sector: <strong>' + _csEscape(data.target_sector || '') + '</strong> · Comparing ' + data.peers.length + ' peers</div>';
+      html += '<table style="width:100%;border-collapse:collapse;font-size:11px">';
+      html += '<thead><tr style="background:#f8fafc;text-align:left">';
+      html += '<th style="padding:6px 8px;border-bottom:1px solid #e2e8f0;font-size:9px;color:#64748b;font-weight:700;letter-spacing:0.3px;text-transform:uppercase">Ticker</th>';
+      html += '<th style="padding:6px 8px;border-bottom:1px solid #e2e8f0;font-size:9px;color:#64748b;font-weight:700;letter-spacing:0.3px;text-transform:uppercase">Price</th>';
+      html += '<th style="padding:6px 8px;border-bottom:1px solid #e2e8f0;font-size:9px;color:#64748b;font-weight:700;letter-spacing:0.3px;text-transform:uppercase">Fwd P/E</th>';
+      html += '<th style="padding:6px 8px;border-bottom:1px solid #e2e8f0;font-size:9px;color:#64748b;font-weight:700;letter-spacing:0.3px;text-transform:uppercase">Rev Growth</th>';
+      html += '<th style="padding:6px 8px;border-bottom:1px solid #e2e8f0;font-size:9px;color:#64748b;font-weight:700;letter-spacing:0.3px;text-transform:uppercase">Op Margin</th>';
+      html += '<th style="padding:6px 8px;border-bottom:1px solid #e2e8f0;font-size:9px;color:#64748b;font-weight:700;letter-spacing:0.3px;text-transform:uppercase">Score</th>';
+      html += '</tr></thead><tbody>';
+      
+      function renderRow(item, isTarget) {
+        var bg = isTarget ? '#eff6ff' : '#fff';
+        var fmtPct = function(v) { return (v == null) ? '—' : (Number(v) * 100).toFixed(1) + '%'; };
+        var fmtNum = function(v) { return (v == null) ? '—' : Number(v).toFixed(2); };
+        var fmtMoney = function(v) { return (v == null) ? '—' : '$' + Number(v).toFixed(2); };
+        
+        var s = '<tr style="background:' + bg + ';border-bottom:1px solid #f1f5f9' + (isTarget ? ';font-weight:700' : '') + '">';
+        s += '<td style="padding:6px 8px;color:#1A3A78;font-family:Sora,sans-serif;font-weight:800">' + (isTarget ? '★ ' : '') + item.ticker + '</td>';
+        s += '<td style="padding:6px 8px">' + fmtMoney(item.price) + '</td>';
+        s += '<td style="padding:6px 8px">' + fmtNum(item.forward_pe) + '</td>';
+        s += '<td style="padding:6px 8px">' + fmtPct(item.rev_growth) + '</td>';
+        s += '<td style="padding:6px 8px">' + fmtPct(item.op_margin) + '</td>';
+        s += '<td style="padding:6px 8px;font-weight:700">' + (item.score != null ? Math.round(item.score) : '—') + '</td>';
+        s += '</tr>';
+        return s;
+      }
+      
+      html += renderRow(data.target, true);
+      data.peers.forEach(function(p) { html += renderRow(p, false); });
+      
+      html += '</tbody></table>';
+      body.innerHTML = html;
+    })
+    .catch(function(err) {
+      body.innerHTML = '<div style="color:#dc2626;font-size:12px">Error: ' + err.message + '</div>';
+    });
+};
+
+// Hook into the r63.9 coordinator — ensures sections inject after every renderReport
+(function() {
+  var origCoord = window._csCoordinateToolbarInjection;
+  if (typeof origCoord !== 'function') {
+    // Coordinator not loaded yet — set up our own hook
+    var attempts = 0;
+    var hookInterval = setInterval(function() {
+      attempts++;
+      if (typeof window._csCoordinateToolbarInjection === 'function') {
+        clearInterval(hookInterval);
+        var orig = window._csCoordinateToolbarInjection;
+        window._csCoordinateToolbarInjection = function() {
+          orig();
+          setTimeout(function() { window._csR6318InjectSections(); }, 200);
+        };
+      }
+      if (attempts > 50) clearInterval(hookInterval);
+    }, 500);
+    return;
+  }
+  window._csCoordinateToolbarInjection = function() {
+    origCoord();
+    setTimeout(function() { window._csR6318InjectSections(); }, 200);
+  };
 })();
 

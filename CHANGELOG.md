@@ -798,3 +798,43 @@ User was right. Previous design dominated home page with 58 stacked cards (4,640
 - Compile + JS syntax + byte-identical min.js
 
 **Lesson (third time this session):** Read sibling-code conventions BEFORE using helpers. `_safe_float` was wrong for earnings data where None has semantic meaning. Audit checks catch structural bugs but not semantic type errors.
+
+---
+
+## v4.63.18 — Deep Insights + Scenarios + Benchmark + Elevator Pitch (current)
+
+**Built:** 2026-05-02
+
+**User request:** Implement Option A (Deep Insights LLM tab) AND Option B (3 deterministic sections) per earlier choice.
+
+**4 new sections inject after verdict strip:**
+
+1. **🎯 Elevator Pitch** — instant, JS template from composite score + verdict
+2. **🧠 Deep Insights** — click-to-load, Anthropic API claude-sonnet-4, returns JSON with 3 fields: numbers_say / hidden_risks / falsification. Cached 6h.
+3. **📈 12-Month Scenarios** — click-to-load, deterministic math: bull = DCF × (1 + g × 1.5), base = DCF, bear = DCF × 0.70
+4. **🏛️ Competitor Benchmark** — click-to-load, sector-matched peers from `_momentum_universe_us`, comparison table
+
+**Backend additions:**
+- `/api/deep-insights` — LLM endpoint
+- `/api/scenarios` — deterministic math
+- `/api/competitor-benchmark` — sector peer scan
+
+All premium-gated via existing `check_premium_gate`. All hook the r63.9 coordinator for re-injection on every renderReport.
+
+**Architecture:**
+- DOM injection (not editing `_renderReportLegacy`) — keeps 36K-line file unmodified
+- Click-gated on expensive operations, auto-render on free ones
+- JSON-structured LLM response for Deep Insights
+- claude-sonnet-4 not opus (faster, cheaper, sufficient quality)
+
+**Verified:**
+- 15/15 audit checks pass
+- Behavioral test: 4 sections inject in single container in correct order
+- Compile + JS syntax + byte-identical min.js
+
+**Honest acknowledgments:**
+- Deep Insights output quality not testable from build environment — depends on actual LLM response
+- Benchmark cold-scan can take 30-90s (DD cache helps subsequent runs)
+- r63.17 earnings declared bug status still unverified — orthogonal to this deploy
+
+**Built at 5:30 AM after extended pushback. User confirmed clearly: "implement both option a and option b as mentioned earlier now."**

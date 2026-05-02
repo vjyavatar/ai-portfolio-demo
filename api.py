@@ -1798,9 +1798,9 @@ def _safe_float(val, default=0.0):
         return default
 
 # ═══ Celesys version stamp (v4.61.10) ═══════════════════════════════
-APP_VERSION = "v4.63.17"
-APP_BUILD_TIME = 1777604464
-APP_BUILD_DATE = "2026-05-01 03:01:04 UTC"
+APP_VERSION = "v4.63.18"
+APP_BUILD_TIME = 1777760821
+APP_BUILD_DATE = "2026-05-02 22:27:01 UTC"
 APP_RELEASE_NOTES = (
     "v4.62.0: Micro-Cap Hunter scanner (Decide tab) + cumulative r61.x: Aladdin DD entry page (r61.8), "
     "stale-cache fallback (r61.8), multi-factor Bottom Line (r61.7), "
@@ -32025,6 +32025,376 @@ async def diag_earnings_raw(email: str = "", days_back: int = 7, days_forward: i
             "events_dated_before_today":       sum(1 for e in events if e.get("date", "") < today.strftime("%Y-%m-%d")),
             "events_dated_today_or_after":     sum(1 for e in events if e.get("date", "") >= today.strftime("%Y-%m-%d")),
         },
+    }
+
+
+
+# ═══════════════════════════════════════════════════════════════════
+# r63.18: Deep Insights — LLM-synthesized analysis grounded in DD data
+# ═══════════════════════════════════════════════════════════════════
+
+@app.get("/api/deep-insights")
+async def deep_insights(symbol: str = "", region: str = "US", email: str = "",
+                        nocache: int = 0):
+    """r63.18: AI-synthesized commentary grounded in actual DD data.
+    
+    Returns 3 sections:
+      1. numbers_say: What the financial picture actually means
+      2. hidden_risks: Non-obvious red flags surface metrics miss
+      3. falsification: What would change the thesis
+    
+    Each section ~80-150 words. Total response <500 words.
+    Cached 6h per ticker (ANTHROPIC_API_KEY required).
+    """
+    import time, json as _json, requests
+    
+    email = (email or "").strip().lower()
+    _ok, email = check_premium_gate(email, "dream")
+    if not _ok:
+        return {"success": False, "error": "Deep Insights is a premium feature."}
+    
+    symbol = (symbol or "").strip().upper()
+    if not symbol:
+        return {"success": False, "error": "symbol required"}
+    
+    region = (region or "US").upper()
+    cache_key = f"deep_insights_{symbol}_{region}"
+    if nocache != 1:
+        cached = _smart_cache_get(cache_key)
+        if cached:
+            cached["_cached"] = True
+            return cached
+    
+    if not ANTHROPIC_API_KEY:
+        return {"success": False, "error": "Deep Insights requires ANTHROPIC_API_KEY."}
+    
+    # Get DD data (cheap if already cached)
+    try:
+        dd = await investor_due_diligence(email=email, symbol=symbol, region=region)
+    except Exception as e:
+        return {"success": False, "error": f"Failed to fetch DD data: {str(e)[:200]}"}
+    
+    if not dd or not dd.get("success"):
+        return {"success": False, "error": "Could not generate DD data for this ticker."}
+    
+    # Extract structured summary for the prompt
+    company = dd.get("company") or {}
+    technicals = dd.get("technicals") or {}
+    valuation = dd.get("valuation_detail") or {}
+    risk = dd.get("risk_matrix") or {}
+    swot = dd.get("swot") or {}
+    
+    composite_score = dd.get("composite_score") or dd.get("institutional_score") or "N/A"
+    verdict = dd.get("verdict") or "N/A"
+    
+    # Build a compact data block (not the entire DD — just what matters for synthesis)
+    data_summary = f"""TICKER: {symbol} ({company.get('name', symbol)})
+SECTOR: {company.get('sector', 'Unknown')} / {company.get('industry', 'Unknown')}
+PRICE: {company.get('price', 'N/A')}
+MARKET CAP: {company.get('market_cap', 'N/A')}
+
+VERDICT: {verdict}
+COMPOSITE SCORE: {composite_score}/100
+
+VALUATION:
+- Forward P/E: {company.get('forward_pe', 'N/A')}
+- Trailing P/E: {company.get('trailing_pe', 'N/A')}
+- DCF Fair Value: {valuation.get('fair_value', 'N/A')}
+- DCF Upside %: {valuation.get('upside_pct', 'N/A')}
+
+GROWTH & MARGINS:
+- Revenue Growth: {company.get('revenue_growth', 'N/A')}
+- Earnings Growth: {company.get('earnings_growth', 'N/A')}
+- Operating Margin: {company.get('operating_margin', 'N/A')}
+- Profit Margin: {company.get('profit_margins', 'N/A')}
+
+BALANCE SHEET:
+- Debt-to-Equity: {company.get('debt_to_equity', 'N/A')}
+- Current Ratio: {company.get('current_ratio', 'N/A')}
+- Free Cash Flow: {company.get('free_cash_flow', 'N/A')}
+
+TECHNICALS:
+- 52w High: {technicals.get('high_52w', 'N/A')}
+- 52w Low: {technicals.get('low_52w', 'N/A')}
+- RSI: {technicals.get('rsi', 'N/A')}
+- Beta: {company.get('beta', 'N/A')}
+
+RISK FACTORS: {(risk.get('factors') or [])[:3]}
+KEY STRENGTHS: {(swot.get('strengths') or [])[:3]}
+KEY WEAKNESSES: {(swot.get('weaknesses') or [])[:3]}"""
+    
+    # Carefully designed prompt — instructs the LLM to be analytical, not generic
+    prompt = f"""You are an experienced equity analyst writing a brief deep-insights memo. The data below is for {symbol}. Write THREE sections:
+
+1. **What the numbers actually say** (~100 words): Synthesize the financial picture. Be specific to THIS company's numbers — reference actual metrics from the data. Avoid generic phrases like "shows mixed signals" or "investors should monitor". Make a clear analytical statement about what the data implies.
+
+2. **Hidden risks the surface metrics miss** (~100 words): Identify 2-3 non-obvious risks that aren't captured by the visible verdict score. Examples of REAL hidden risks: working capital deterioration trends, customer concentration not in income statement, regulatory headwinds for the specific subsector, margin compression from input costs, etc. Be specific to THIS ticker's industry.
+
+3. **What would change my mind** (~80 words): List 2-3 specific, falsifiable conditions that would flip your view. Example: "If gross margin drops below 35% next quarter, the pricing power thesis breaks." Make conditions measurable and time-bound.
+
+DATA:
+{data_summary}
+
+RULES:
+- No bullet points in your prose; write flowing analytical paragraphs
+- No disclaimers or "consult a financial advisor" language
+- Be willing to take a position — boring/balanced output is failure
+- If a metric is N/A, don't fabricate; note the gap
+- Total response under 400 words
+
+Format your response as JSON exactly like this:
+{{"numbers_say": "...", "hidden_risks": "...", "falsification": "..."}}"""
+    
+    # Call Anthropic API
+    try:
+        resp = requests.post(
+            "https://api.anthropic.com/v1/messages",
+            headers={
+                "x-api-key": ANTHROPIC_API_KEY,
+                "anthropic-version": "2023-06-01",
+                "content-type": "application/json",
+            },
+            json={
+                "model": "claude-sonnet-4-20250514",
+                "max_tokens": 1200,
+                "temperature": 0.3,  # low temp for grounded analytical output
+                "messages": [{"role": "user", "content": prompt}],
+            },
+            timeout=30,
+        )
+        if resp.status_code != 200:
+            return {"success": False, "error": f"AI API error: HTTP {resp.status_code}"}
+        ai_response = resp.json()
+        content_blocks = ai_response.get("content", [])
+        if not content_blocks:
+            return {"success": False, "error": "AI returned empty response"}
+        text = content_blocks[0].get("text", "")
+    except Exception as e:
+        return {"success": False, "error": f"AI call failed: {type(e).__name__}: {str(e)[:200]}"}
+    
+    # Parse JSON from response
+    try:
+        # Strip markdown fences if present
+        cleaned = text.strip()
+        if cleaned.startswith("```"):
+            cleaned = re.sub(r'^```(?:json)?\s*', '', cleaned)
+            cleaned = re.sub(r'\s*```\s*$', '', cleaned)
+        parsed = _json.loads(cleaned)
+    except Exception as e:
+        return {"success": False, "error": f"AI response not valid JSON: {str(e)[:100]}",
+                "raw_text": text[:500]}
+    
+    response_obj = {
+        "success":      True,
+        "symbol":       symbol,
+        "region":       region,
+        "numbers_say":  parsed.get("numbers_say", ""),
+        "hidden_risks": parsed.get("hidden_risks", ""),
+        "falsification": parsed.get("falsification", ""),
+        "_cached":      False,
+    }
+    
+    _smart_cache_set(cache_key, response_obj, ttl=21600)  # 6h cache
+    return response_obj
+
+
+# ═══════════════════════════════════════════════════════════════════
+# r63.18: Scenario Analysis — Bull/Base/Bear 12mo price targets
+# ═══════════════════════════════════════════════════════════════════
+# Pure deterministic math, no LLM. Computed from existing DD data.
+
+def _r6318_compute_scenarios(dd_data):
+    """Returns dict with bull/base/bear price targets + reasoning.
+    All math derives from data already in DD report.
+    Returns None if insufficient data."""
+    company = dd_data.get("company") or {}
+    valuation = dd_data.get("valuation_detail") or {}
+    
+    spot = _safe_float(company.get("price"))
+    dcf_fair = _safe_float(valuation.get("fair_value"))
+    
+    if spot <= 0 or dcf_fair <= 0:
+        return None
+    
+    # Use revenue growth as the tilt factor (bounded -10% to +50%)
+    rev_growth = _safe_float(company.get("revenue_growth"))
+    rev_growth = max(-0.10, min(0.50, rev_growth)) if rev_growth else 0.05
+    
+    # Base case: DCF fair value
+    base_target = dcf_fair
+    
+    # Bull case: DCF × (1 + growth × 1.5) — assumes accelerating fundamentals + multiple expansion
+    bull_multiplier = 1 + (rev_growth * 1.5)
+    bull_target = dcf_fair * bull_multiplier
+    
+    # Bear case: DCF × 0.70 — recession scenario, multiple compression
+    bear_target = dcf_fair * 0.70
+    
+    def upside_pct(target): 
+        return ((target - spot) / spot * 100) if spot > 0 else 0
+    
+    return {
+        "spot":         round(spot, 2),
+        "scenarios": {
+            "bull": {
+                "target":     round(bull_target, 2),
+                "upside_pct": round(upside_pct(bull_target), 1),
+                "reasoning":  f"Growth accelerates ({rev_growth*100:.0f}%+ revenue), multiple expands to peers' premium tier.",
+            },
+            "base": {
+                "target":     round(base_target, 2),
+                "upside_pct": round(upside_pct(base_target), 1),
+                "reasoning":  "DCF fair value at current growth assumptions and discount rate.",
+            },
+            "bear": {
+                "target":     round(bear_target, 2),
+                "upside_pct": round(upside_pct(bear_target), 1),
+                "reasoning":  "Multiple compresses 30%, growth disappoints, sector rotation away.",
+            },
+        },
+        "_method":  "DCF-anchored: bull = DCF × (1 + growth × 1.5), base = DCF, bear = DCF × 0.70",
+    }
+
+
+@app.get("/api/scenarios")
+async def scenarios_endpoint(symbol: str = "", region: str = "US", email: str = ""):
+    """r63.18: 12-month bull/base/bear scenarios. Click-gated."""
+    email = (email or "").strip().lower()
+    _ok, email = check_premium_gate(email, "dream")
+    if not _ok:
+        return {"success": False, "error": "Scenarios require premium tier."}
+    
+    symbol = (symbol or "").strip().upper()
+    if not symbol:
+        return {"success": False, "error": "symbol required"}
+    
+    try:
+        dd = await investor_due_diligence(email=email, symbol=symbol, region=region)
+    except Exception as e:
+        return {"success": False, "error": f"DD fetch failed: {str(e)[:200]}"}
+    
+    if not dd.get("success"):
+        return {"success": False, "error": "DD generation failed."}
+    
+    result = _r6318_compute_scenarios(dd)
+    if result is None:
+        return {"success": False, "error": "Insufficient data (need price + DCF fair value)."}
+    
+    result["success"] = True
+    result["symbol"] = symbol
+    return result
+
+
+# ═══════════════════════════════════════════════════════════════════
+# r63.18: Competitor Benchmark — sector peers side-by-side
+# ═══════════════════════════════════════════════════════════════════
+
+@app.get("/api/competitor-benchmark")
+async def competitor_benchmark(symbol: str = "", region: str = "US", email: str = "",
+                               max_peers: int = 5):
+    """r63.18: Pull 4-5 sector peers from _momentum_universe_us, compare side-by-side.
+    
+    Returns table-shaped data: target ticker + peers with P/E, growth, margins, score.
+    """
+    import asyncio
+    
+    email = (email or "").strip().lower()
+    _ok, email = check_premium_gate(email, "dream")
+    if not _ok:
+        return {"success": False, "error": "Competitor benchmark requires premium tier."}
+    
+    symbol = (symbol or "").strip().upper()
+    if not symbol:
+        return {"success": False, "error": "symbol required"}
+    
+    region = (region or "US").upper()
+    
+    try:
+        target_dd = await investor_due_diligence(email=email, symbol=symbol, region=region)
+    except Exception as e:
+        return {"success": False, "error": f"Target DD failed: {str(e)[:200]}"}
+    
+    if not target_dd.get("success"):
+        return {"success": False, "error": "Could not analyze target ticker."}
+    
+    target_company = target_dd.get("company") or {}
+    target_sector = (target_company.get("sector") or "").strip().lower()
+    
+    if not target_sector:
+        return {"success": False, "error": "Target ticker has no sector classification."}
+    
+    # Find peers in universe with same sector
+    universe = _FIND_SIMILAR_US_UNIVERSE if region == "US" else (_FIND_SIMILAR_IN_UNIVERSE or [])
+    if not universe:
+        return {"success": False, "error": "No tracked universe available."}
+    
+    peer_candidates = [t for t in universe if t.upper() != symbol]
+    
+    # Quick fetch peers — limit concurrent
+    BATCH_LIMIT = 30  # check up to 30 candidates to find sector matches
+    candidates_to_check = peer_candidates[:BATCH_LIMIT]
+    
+    async def fetch_peer(ticker):
+        try:
+            peer_dd = await investor_due_diligence(email=email, symbol=ticker, region=region)
+            if not peer_dd.get("success"):
+                return None
+            peer_co = peer_dd.get("company") or {}
+            peer_sector = (peer_co.get("sector") or "").strip().lower()
+            if peer_sector != target_sector:
+                return None
+            return {
+                "ticker":        ticker,
+                "name":          peer_co.get("name", ticker),
+                "price":         peer_co.get("price"),
+                "market_cap":    peer_co.get("market_cap"),
+                "forward_pe":    peer_co.get("forward_pe"),
+                "rev_growth":    peer_co.get("revenue_growth"),
+                "op_margin":     peer_co.get("operating_margin"),
+                "score":         peer_dd.get("composite_score") or peer_dd.get("institutional_score"),
+            }
+        except Exception:
+            return None
+    
+    results = await asyncio.gather(*[fetch_peer(t) for t in candidates_to_check],
+                                   return_exceptions=False)
+    peers = [r for r in results if r is not None][:max_peers]
+    
+    if not peers:
+        return {
+            "success": True,
+            "symbol": symbol,
+            "target_sector": target_company.get("sector"),
+            "target": {
+                "ticker":     symbol,
+                "name":       target_company.get("name", symbol),
+                "price":      target_company.get("price"),
+                "market_cap": target_company.get("market_cap"),
+                "forward_pe": target_company.get("forward_pe"),
+                "rev_growth": target_company.get("revenue_growth"),
+                "op_margin":  target_company.get("operating_margin"),
+                "score":      target_dd.get("composite_score") or target_dd.get("institutional_score"),
+            },
+            "peers": [],
+            "data_note": f"No sector peers found for '{target_company.get('sector')}' in tracked universe.",
+        }
+    
+    return {
+        "success": True,
+        "symbol": symbol,
+        "target_sector": target_company.get("sector"),
+        "target": {
+            "ticker":     symbol,
+            "name":       target_company.get("name", symbol),
+            "price":      target_company.get("price"),
+            "market_cap": target_company.get("market_cap"),
+            "forward_pe": target_company.get("forward_pe"),
+            "rev_growth": target_company.get("revenue_growth"),
+            "op_margin":  target_company.get("operating_margin"),
+            "score":      target_dd.get("composite_score") or target_dd.get("institutional_score"),
+        },
+        "peers": peers,
+        "peer_count": len(peers),
     }
 
 _portfolio_progress = {"done": 0, "total": 0, "current": "", "started": 0, "active": False}
