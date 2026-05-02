@@ -838,3 +838,30 @@ All premium-gated via existing `check_premium_gate`. All hook the r63.9 coordina
 - r63.17 earnings declared bug status still unverified — orthogonal to this deploy
 
 **Built at 5:30 AM after extended pushback. User confirmed clearly: "implement both option a and option b as mentioned earlier now."**
+
+---
+
+## v4.63.19 — Fix: r63.18 sections not appearing (current)
+
+**Built:** 2026-05-02
+
+**User report:** "I don't see the 4 sections below the green verdict strip."
+
+**Root cause:** r63.18 hooked into `_csCoordinateToolbarInjection` to trigger section injection. The hook was fragile:
+1. May have captured already-wrapped function instead of original
+2. Coordinator may not fire in all `renderReport` code paths
+3. 200ms timeout too short if verdict strip wasn't yet in DOM
+
+**Fix:** Replaced coordinator hook with direct DOM polling. Every 1 second:
+- Check for `#sec-verdict-strip` in DOM
+- If present AND not yet injected for current ticker → inject 4 sections
+- If different ticker shows (re-search) → remove stale, re-inject
+- If same ticker already injected → skip (idempotent)
+
+Same proven pattern as r63.9 toolbar polling. Works regardless of which render code path executed.
+
+**Verified:**
+- 4-scenario behavioral test passes (no DD → 0 calls, new DD → 1 call, same ticker → still 1, re-search → 2)
+- Compile + JS syntax + byte-identical min.js
+
+**Architectural lesson:** Direct simple patterns beat clever hook chains. Polling has trivial CPU cost (~1 getElementById/sec) but is unbreakable. Coordinator hooks are elegant but break in subtle ways. Today's session has reinforced this lesson 5 times. Finally internalized.

@@ -1,9 +1,9 @@
 // ═══ Celesys version stamp ═══
-window.CELESYS_VERSION = "v4.63.18";
-window.CELESYS_BUILD_TIME = 1777760821;
-window.CELESYS_BUILD_DATE = "2026-05-02 22:27:01 UTC";
+window.CELESYS_VERSION = "v4.63.19";
+window.CELESYS_BUILD_TIME = 1777764790;
+window.CELESYS_BUILD_DATE = "2026-05-02 23:33:10 UTC";
 console.log("%c━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "color:#1A3A78");
-console.log("%c CELESYS v4.63.18 %c loaded · 2026-04-29 03:29:27 UTC",
+console.log("%c CELESYS v4.63.19 %c loaded · 2026-04-29 03:29:27 UTC",
   "background:#1A3A78;color:#fff;font-weight:900;padding:3px 8px;border-radius:3px;font-family:monospace",
   "color:#1A3A78;font-weight:700;font-family:monospace");
 console.log("%c━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "color:#1A3A78");
@@ -25754,29 +25754,43 @@ window._csR6318LoadBenchmark = function() {
     });
 };
 
-// Hook into the r63.9 coordinator — ensures sections inject after every renderReport
+// r63.19: Direct DOM polling — simpler than coordinator hooking, more reliable.
+// Runs every 1 second for the lifetime of the page. When verdict strip appears
+// AND no sections injected yet, calls injector. Idempotent (injector self-checks).
+// CPU cost: trivial (one getElementById per second).
 (function() {
-  var origCoord = window._csCoordinateToolbarInjection;
-  if (typeof origCoord !== 'function') {
-    // Coordinator not loaded yet — set up our own hook
-    var attempts = 0;
-    var hookInterval = setInterval(function() {
-      attempts++;
-      if (typeof window._csCoordinateToolbarInjection === 'function') {
-        clearInterval(hookInterval);
-        var orig = window._csCoordinateToolbarInjection;
-        window._csCoordinateToolbarInjection = function() {
-          orig();
-          setTimeout(function() { window._csR6318InjectSections(); }, 200);
-        };
+  var lastInjectedSym = null;
+  setInterval(function() {
+    try {
+      var verdictStrip = document.getElementById('sec-verdict-strip');
+      if (!verdictStrip) return;
+      
+      // Read current ticker from verdict strip
+      var symEl = verdictStrip.querySelector('.cs-dd-verdict__sym');
+      var currentSym = symEl ? symEl.textContent.trim() : null;
+      if (!currentSym) return;
+      
+      // Already injected for THIS ticker?
+      var existing = verdictStrip.parentNode && verdictStrip.parentNode.querySelector('.cs-r6318-section');
+      
+      if (existing && lastInjectedSym === currentSym) {
+        return;  // already done for this ticker
       }
-      if (attempts > 50) clearInterval(hookInterval);
-    }, 500);
-    return;
-  }
-  window._csCoordinateToolbarInjection = function() {
-    origCoord();
-    setTimeout(function() { window._csR6318InjectSections(); }, 200);
-  };
+      
+      // Different ticker? Remove stale injection
+      if (existing && lastInjectedSym !== currentSym) {
+        existing.remove();
+      }
+      
+      // Run injector
+      if (typeof window._csR6318InjectSections === 'function') {
+        window._csR6318InjectSections();
+        lastInjectedSym = currentSym;
+      }
+    } catch (e) {
+      // swallow — don't let one error kill the polling loop
+    }
+  }, 1000);
 })();
+
 
