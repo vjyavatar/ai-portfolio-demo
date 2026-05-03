@@ -1,9 +1,9 @@
 // ═══ Celesys version stamp ═══
-window.CELESYS_VERSION = "v4.63.32";
-window.CELESYS_BUILD_TIME = 1777838708;
-window.CELESYS_BUILD_DATE = "2026-05-03 20:05:08 UTC";
+window.CELESYS_VERSION = "v4.63.33";
+window.CELESYS_BUILD_TIME = 1777845558;
+window.CELESYS_BUILD_DATE = "2026-05-03 21:59:18 UTC";
 console.log("%c━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "color:#1A3A78");
-console.log("%c CELESYS v4.63.32 %c loaded · 2026-04-29 03:29:27 UTC",
+console.log("%c CELESYS v4.63.33 %c loaded · 2026-04-29 03:29:27 UTC",
   "background:#1A3A78;color:#fff;font-weight:900;padding:3px 8px;border-radius:3px;font-family:monospace",
   "color:#1A3A78;font-weight:700;font-family:monospace");
 console.log("%c━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "color:#1A3A78");
@@ -25704,18 +25704,68 @@ function _csR6322RenderPitch(d) {
   html += '</div>';
   html += '</div>';
   
-  // r63.32: Methodology disclosure (institutional standard transparency)
-  if (d.fair_value_method || d.fair_value_low || d.fair_value_high) {
-    html += '<div style="margin-top:14px;padding:8px 12px;background:#f8fafc;border-radius:6px;border-left:3px solid #cbd5e1">';
-    html += '<div style="font-size:9px;font-weight:800;color:#64748b;letter-spacing:1px;font-family:Sora,sans-serif;margin-bottom:3px">VALUATION METHODOLOGY</div>';
-    if (d.fair_value_method) {
-      html += '<div style="font-size:11px;color:#475569;line-height:1.5;margin-bottom:4px">' + _csEscape(d.fair_value_method) + '</div>';
+  // r63.33: Institutional-standard component breakdown + disagreement warning
+  if (d.fair_value_method || d.fair_value_components || d.fair_value_low != null) {
+    var comps = d.fair_value_components || [];
+    var spread = Number(d.fair_value_spread_pct || 0);
+    var spreadIsHigh = spread > 25;  // methods strongly disagree
+    var spreadIsModerate = spread > 15 && spread <= 25;
+    
+    // Container
+    var containerBg = spreadIsHigh ? '#fef3c7' : (spreadIsModerate ? '#fef9c3' : '#f8fafc');
+    var containerBorder = spreadIsHigh ? '#f59e0b' : (spreadIsModerate ? '#fde047' : '#cbd5e1');
+    
+    html += '<div style="margin-top:14px;padding:10px 12px;background:' + containerBg + ';border-radius:6px;border-left:3px solid ' + containerBorder + '">';
+    
+    // High-disagreement warning at top if applicable
+    if (spreadIsHigh) {
+      html += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:8px">';
+      html += '<span style="font-size:14px">⚠</span>';
+      html += '<span style="font-size:10px;font-weight:800;color:#92400e;letter-spacing:0.8px;font-family:Sora,sans-serif">HIGH METHOD DISAGREEMENT (' + spread.toFixed(0) + '% SPREAD)</span>';
+      html += '</div>';
+      html += '<div style="font-size:11px;color:#78350f;line-height:1.5;margin-bottom:10px">Methods disagree significantly. DCF-based methods (cash flows) and market-based methods (analyst/sector P/E) are pointing different directions. The blended $' + Number(d.dcf_fair).toFixed(2) + ' hides this disagreement — review components below before acting.</div>';
     }
+    
+    html += '<div style="font-size:9px;font-weight:800;color:#64748b;letter-spacing:1px;font-family:Sora,sans-serif;margin-bottom:6px">VALUATION METHODOLOGY</div>';
+    if (d.fair_value_method) {
+      html += '<div style="font-size:11px;color:#475569;line-height:1.5;margin-bottom:8px">' + _csEscape(d.fair_value_method) + '</div>';
+    }
+    
+    // Component breakdown table — institutional transparency
+    if (comps.length > 0) {
+      html += '<div style="background:#fff;border-radius:4px;padding:8px 10px;margin-bottom:8px">';
+      html += '<div style="font-size:9px;font-weight:800;color:#64748b;letter-spacing:0.8px;font-family:Sora,sans-serif;margin-bottom:6px">COMPONENT BREAKDOWN</div>';
+      
+      // Sort components by value to show range visually
+      var sortedComps = comps.slice().filter(function(c){ return c.value != null && c.value > 0; });
+      sortedComps.sort(function(a, b) { return a.value - b.value; });
+      
+      sortedComps.forEach(function(comp) {
+        var diff = ((comp.value - d.dcf_fair) / d.dcf_fair * 100);
+        var diffColor = Math.abs(diff) < 10 ? '#64748b' : (diff > 0 ? '#0891b2' : '#dc2626');
+        var diffSign = diff > 0 ? '+' : '';
+        html += '<div style="display:flex;align-items:center;gap:8px;padding:3px 0;font-size:11px;border-bottom:1px solid #f1f5f9">';
+        html += '<div style="flex:1;color:#475569;font-family:Inter,sans-serif">' + _csEscape(comp.name || '?') + '</div>';
+        html += '<div style="flex-shrink:0;width:80px;text-align:right;font-family:\'IBM Plex Mono\',monospace;color:#0f172a;font-weight:700">$' + Number(comp.value).toFixed(2) + '</div>';
+        html += '<div style="flex-shrink:0;width:60px;text-align:right;font-family:\'IBM Plex Mono\',monospace;font-size:10px;color:' + diffColor + '">' + diffSign + diff.toFixed(0) + '%</div>';
+        html += '</div>';
+      });
+      
+      // Blended row at bottom
+      html += '<div style="display:flex;align-items:center;gap:8px;padding:6px 0 0;font-size:11px;border-top:1.5px solid #1A3A78;margin-top:4px">';
+      html += '<div style="flex:1;color:#1A3A78;font-family:Inter,sans-serif;font-weight:800">⚖ Weighted Blend (canonical)</div>';
+      html += '<div style="flex-shrink:0;width:80px;text-align:right;font-family:\'IBM Plex Mono\',monospace;color:#1A3A78;font-weight:900">$' + Number(d.dcf_fair).toFixed(2) + '</div>';
+      html += '<div style="flex-shrink:0;width:60px;text-align:right;font-family:\'IBM Plex Mono\',monospace;font-size:10px;color:#94a3b8">—</div>';
+      html += '</div>';
+      html += '</div>';
+    }
+    
     if (d.fair_value_low != null && d.fair_value_high != null) {
-      html += '<div style="font-size:10px;color:#94a3b8;font-family:\'IBM Plex Mono\',monospace">CONFIDENCE RANGE: $' + Number(d.fair_value_low).toFixed(2) + ' — $' + Number(d.fair_value_high).toFixed(2);
-      if (d.fair_value_spread_pct != null) {
-        html += '  ·  SPREAD ' + Number(d.fair_value_spread_pct).toFixed(0) + '%';
-      }
+      var spreadColor = spreadIsHigh ? '#92400e' : (spreadIsModerate ? '#854d0e' : '#94a3b8');
+      var spreadLabel = spreadIsHigh ? 'HIGH DISAGREEMENT' : (spreadIsModerate ? 'MODERATE DISAGREEMENT' : 'METHODS BROADLY AGREE');
+      html += '<div style="font-size:10px;color:' + spreadColor + ';font-family:\'IBM Plex Mono\',monospace;letter-spacing:0.3px">';
+      html += 'RANGE: $' + Number(d.fair_value_low).toFixed(2) + ' — $' + Number(d.fair_value_high).toFixed(2);
+      html += '  ·  SPREAD ' + spread.toFixed(0) + '% (' + spreadLabel + ')';
       html += '</div>';
     }
     html += '</div>';
