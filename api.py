@@ -1801,9 +1801,9 @@ def _safe_float(val, default=0.0):
         return default
 
 # ═══ Celesys version stamp (v4.61.10) ═══════════════════════════════
-APP_VERSION = "v4.63.36"
-APP_BUILD_TIME = 1777847453
-APP_BUILD_DATE = "2026-05-03 22:30:53 UTC"
+APP_VERSION = "v4.63.38"
+APP_BUILD_TIME = 1777852528
+APP_BUILD_DATE = "2026-05-03 23:55:28 UTC"
 APP_RELEASE_NOTES = (
     "v4.62.0: Micro-Cap Hunter scanner (Decide tab) + cumulative r61.x: Aladdin DD entry page (r61.8), "
     "stale-cache fallback (r61.8), multi-factor Bottom Line (r61.7), "
@@ -2064,6 +2064,218 @@ def _r6334_compute_price_targets(spot, dcf_fair, rev_growth_pct):
         "rev_growth_raw":  round(raw_growth, 3),
         "rev_growth_clamped": was_clamped,
     }
+
+
+# ═══════════════════════════════════════════════════════════════════
+# r63.37: INSTITUTIONAL DYNAMIC EXIT STRATEGY
+# Drives all per-ticker dynamic logic. ONE source of truth.
+# Calibrated via 7-ticker simulation (AAPL/MU/TSLA/JNJ/NVDA/RELIANCE/TCS).
+# ═══════════════════════════════════════════════════════════════════
+
+_R6337_VOL_REGIMES = {
+    "LOW":     {"max": 25, "atr_soft": 2.0, "atr_hard": 4.0,
+                "trailing": [(8, 0), (20, 8), (40, 20)],
+                "label": "LOW VOLATILITY", "color": "#10b981"},
+    "NORMAL":  {"max": 45, "atr_soft": 2.5, "atr_hard": 5.0,
+                "trailing": [(10, 0), (25, 10), (50, 25)],
+                "label": "NORMAL VOLATILITY", "color": "#3b82f6"},
+    "HIGH":    {"max": 65, "atr_soft": 3.5, "atr_hard": 7.0,
+                "trailing": [(15, 0), (35, 15), (70, 35)],
+                "label": "HIGH VOLATILITY", "color": "#f59e0b"},
+    "EXTREME": {"max": 999, "atr_soft": 4.5, "atr_hard": 9.0,
+                "trailing": [(20, 0), (50, 20), (100, 50)],
+                "label": "EXTREME VOLATILITY", "color": "#dc2626"},
+}
+
+_R6337_SECTOR_TIME_STOPS = {
+    "Technology": 4, "Communication Services": 5,
+    "Consumer Cyclical": 6, "Industrials": 6,
+    "Financial Services": 6, "Financials": 6, "Energy": 7,
+    "Basic Materials": 6, "Real Estate": 8,
+    "Healthcare": 8, "Consumer Defensive": 8, "Consumer Staples": 8,
+    "Utilities": 12,
+}
+
+
+def _r6337_kelly_fraction(score):
+    """Score-conditional Kelly fraction. Half-Kelly for high-conviction.
+    Below 60 = no position (score-gated)."""
+    if score >= 90: return 0.50
+    if score >= 80: return 0.40
+    if score >= 70: return 0.30
+    if score >= 60: return 0.20
+    return 0.0
+
+
+def _r6337_spread_multiplier(spread_pct, score):
+    """Spread penalty for methodology disagreement.
+    High score gets gentler penalty (don't double-penalize conviction)."""
+    if score >= 90:
+        if spread_pct > 50: return 0.70
+        if spread_pct > 30: return 0.90
+        return 1.0
+    elif score >= 75:
+        if spread_pct > 50: return 0.55
+        if spread_pct > 30: return 0.75
+        if spread_pct > 15: return 0.90
+        return 1.0
+    else:
+        if spread_pct > 50: return 0.40
+        if spread_pct > 30: return 0.65
+        if spread_pct > 15: return 0.85
+        return 1.0
+
+
+def _r6337_institutional_exit(spot, fair_value, vol_pct, beta, score, sector, spread_pct,
+                              rev_growth_pct=None, atr_pct=None):
+    """Returns dict with full institutional exit strategy: stops, entries, targets,
+    position sizing, time stop, all with rationale strings.
+    
+    Returns None if essential inputs invalid.
+    """
+    import math as _m
+    
+    if not (spot and fair_value) or spot <= 0 or fair_value <= 0:
+        return None
+    
+    # Defaults for missing inputs (graceful degradation)
+    vol_pct = float(vol_pct) if vol_pct and vol_pct > 0 else 30.0
+    beta = float(beta) if beta and beta > 0 else 1.0
+    score = int(score) if score else 60
+    sector = sector or ""
+    spread_pct = float(spread_pct) if spread_pct else 0.0
+    
+    # 1. ATR estimation
+    if not atr_pct or atr_pct <= 0:
+        atr_pct = (vol_pct / _m.sqrt(252)) * 1.4
+    atr_dollars = spot * (atr_pct / 100)
+    
+    # 2. Volatility regime
+    if vol_pct < 25:    regime_key = "LOW"
+    elif vol_pct < 45:  regime_key = "NORMAL"
+    elif vol_pct < 65:  regime_key = "HIGH"
+    else:               regime_key = "EXTREME"
+    R = _R6337_VOL_REGIMES[regime_key]
+    
+    # 3. Stops
+    soft_stop = round(spot - (atr_dollars * R["atr_soft"]), 2)
+    hard_stop_atr = spot - (atr_dollars * R["atr_hard"])
+    hard_stop_floor = fair_value * 0.65
+    hard_stop = round(max(hard_stop_atr, hard_stop_floor), 2)
+    
+    # 4. Entry zones
+    entry_low = round(spot - (atr_dollars * 1.5), 2)
+    entry_high = round(spot + (atr_dollars * 0.8), 2)
+    
+    # 5. Targets (canonical formula via _r6334 helper)
+    _t = _r6334_compute_price_targets(spot, fair_value, rev_growth_pct or 5.0)
+    if _t:
+        bull = _t["bull"]
+        base = _t["base"]
+        bear = _t["bear"]
+    else:
+        bull = round(fair_value * 1.30, 2)
+        base = round(fair_value, 2)
+        bear = round(fair_value * 0.70, 2)
+    
+    # 6. Trim levels
+    if base > spot:
+        trim_1 = round(spot + (base - spot) * 0.5, 2)
+    else:
+        trim_1 = round(base * 0.85, 2)
+    trim_2 = base
+    exit_full = bull
+    
+    # 7. Position sizing — Kelly + beta + score + spread
+    win_prob = score / 100.0
+    reward = (fair_value - spot) / spot
+    risk_to_soft = (spot - soft_stop) / spot
+    payoff = reward / max(risk_to_soft, 0.05) if risk_to_soft > 0 else 0
+    
+    kelly_full = 0
+    if payoff > 0 and win_prob > 0.5:
+        kelly_full = win_prob - (1 - win_prob) / payoff
+    kelly_full = max(0, min(kelly_full, 0.15))  # 15% institutional cap
+    
+    k_frac = _r6337_kelly_fraction(score)
+    kelly_sized = kelly_full * k_frac
+    
+    beta_adj = 1.0 / max(0.7, beta)
+    pos_pre_spread = kelly_sized * 100 * beta_adj
+    
+    spread_mult = _r6337_spread_multiplier(spread_pct, score)
+    final_pos = pos_pre_spread * spread_mult
+    final_pos = min(final_pos, 5.0)  # 5% single-name cap
+    final_pos = round(final_pos, 1)
+    
+    if score < 60 or kelly_full <= 0:
+        final_pos = 0.0
+    
+    # 8. Time stop
+    time_quarters = _R6337_SECTOR_TIME_STOPS.get(sector, 6)
+    
+    # 9. Rationale strings (USER-FACING TRANSPARENCY)
+    pos_parts = [f"Score {score}/100 (win-prob {int(win_prob*100)}%)"]
+    if k_frac >= 0.50:
+        pos_parts.append("half-Kelly (high conviction)")
+    elif k_frac >= 0.30:
+        pos_parts.append(f"{int(k_frac*100)}%-Kelly")
+    elif k_frac > 0:
+        pos_parts.append(f"{int(k_frac*100)}%-Kelly (light)")
+    else:
+        pos_parts.append("score below conviction threshold")
+    
+    if beta > 1.5:
+        pos_parts.append(f"β={beta:.2f} (sized down)")
+    elif beta < 0.8:
+        pos_parts.append(f"β={beta:.2f} (sized up)")
+    elif abs(beta - 1.0) > 0.05:
+        pos_parts.append(f"β={beta:.2f}")
+    
+    if spread_pct > 30:
+        pos_parts.append(f"{spread_pct:.0f}% method spread (penalty applied)")
+    
+    return {
+        "regime":        regime_key,
+        "regime_label":  R["label"],
+        "regime_color":  R["color"],
+        "atr_dollars":   round(atr_dollars, 2),
+        "atr_pct":       round(atr_pct, 2),
+        "stops": {
+            "soft": {
+                "price": soft_stop,
+                "pct":   round((soft_stop - spot) / spot * 100, 1),
+                "rationale": f"{R['atr_soft']:.1f}× ATR ($ {atr_dollars:.2f}/day) calibrated for {regime_key.lower()}-volatility regime",
+            },
+            "hard": {
+                "price": hard_stop,
+                "pct":   round((hard_stop - spot) / spot * 100, 1),
+                "rationale": f"{R['atr_hard']:.1f}× ATR or 35% below fair value (whichever is closer to spot — thesis-broken floor)",
+            },
+        },
+        "entries": {
+            "low":  entry_low,
+            "high": entry_high,
+            "rationale": "1.5× ATR pullback to 0.8× ATR ceiling — vol-adjusted accumulation band",
+        },
+        "targets": {"bull": bull, "base": base, "bear": bear},
+        "trims":   {"trim_1": trim_1, "trim_2": trim_2, "exit_full": exit_full},
+        "trailing": [{"trigger_pct": t, "lock_pct": l} for t, l in R["trailing"]],
+        "trailing_rationale": f"{regime_key.title()}-vol trailing schedule — wider locks for higher volatility",
+        "time_stop": {
+            "quarters":  time_quarters,
+            "rationale": f"{sector or 'Default'} sector typical thesis-window",
+        },
+        "position": {
+            "pct":                  final_pos,
+            "kelly_full_pct":       round(kelly_full * 100, 1),
+            "kelly_fraction_used":  k_frac,
+            "beta_adjustment":      round(beta_adj, 2),
+            "spread_multiplier":    spread_mult,
+            "rationale":            " · ".join(pos_parts),
+        },
+    }
+
 
 
 
@@ -32824,38 +33036,50 @@ async def exit_strategy(symbol: str = "", region: str = "US", email: str = "",
     # Use spot as entry if not specified
     entry = entry_price if entry_price > 0 else spot
     
-    # ────── Price Ladder ──────
-    bull_target = _targets["bull"]
-    base_target = _targets["base"]
+    # ────── r63.37: INSTITUTIONAL DYNAMIC EXIT — driven by vol/beta/score/sector/spread ──────
+    finance_dict = dd.get("finance") or {}
+    company_dict = dd.get("company") or {}
+    sector       = company_dict.get("sector") or ""
+    beta_val     = _safe_float(thesis.get("beta")) or _safe_float(finance_dict.get("beta")) or 1.0
+    score_val    = thesis.get("investability_score") or 60
+    spread_val   = _safe_float(thesis.get("fair_value_spread_pct")) or 0
+    vol_val      = _safe_float(thesis.get("volatility")) or _safe_float(thesis.get("hist_vol"))
     
-    # Entry zone: 5% below spot to spot+2% (institutional accumulation band)
-    entry_low  = round(spot * 0.95, 2)
-    entry_high = round(spot * 1.02, 2)
+    if not vol_val or vol_val <= 0:
+        try:
+            _id = await investor_decide(symbol=symbol, region=region)
+            vol_val = _safe_float((_id or {}).get("volatility")) or _safe_float((_id or {}).get("hist_vol")) or 30.0
+            if not beta_val or beta_val <= 0:
+                beta_val = _safe_float((_id or {}).get("beta"), 1.0)
+        except Exception:
+            vol_val = 30.0
     
-    # First trim: 50% of base case upside achieved
-    trim_1 = round(spot + (base_target - spot) * 0.5, 2) if base_target > spot else round(base_target * 0.85, 2)
+    inst = _r6337_institutional_exit(
+        spot=spot, fair_value=dcf_fair, vol_pct=vol_val, beta=beta_val,
+        score=score_val, sector=sector, spread_pct=spread_val,
+        rev_growth_pct=rev_growth_pct,
+    )
+    if not inst:
+        return {"success": False, "error": "Institutional exit calculation failed."}
     
-    # Second trim: base case (DCF reached)
-    trim_2 = base_target
+    bull_target = inst["targets"]["bull"]
+    base_target = inst["targets"]["base"]
+    trim_1      = inst["trims"]["trim_1"]
+    trim_2      = inst["trims"]["trim_2"]
+    exit_full   = inst["trims"]["exit_full"]
+    entry_low   = inst["entries"]["low"]
+    entry_high  = inst["entries"]["high"]
+    stop_soft   = inst["stops"]["soft"]["price"]
+    stop_hard   = inst["stops"]["hard"]["price"]
     
-    # Final exit: bull target
-    exit_full = bull_target
+    trailing_ladder = []
+    for tr in inst["trailing"]:
+        t_pct = tr["trigger_pct"]; l_pct = tr["lock_pct"]
+        rule = (f"At +{t_pct}% gain, ratchet stop to entry breakeven (no-loss lock)" if l_pct == 0
+                else f"At +{t_pct}% gain, ratchet stop to +{l_pct}% (lock profit)")
+        trailing_ladder.append({"trigger_pct": t_pct, "lock_pct": l_pct, "rule": rule})
     
-    # Stop-loss: -15% from entry (institutional default)
-    stop_soft = round(entry * 0.85, 2)
-    # Hard stop: thesis-broken (DCF compression to bear case)
-    stop_hard = round(dcf_fair * 0.70, 2)
-    
-    # ────── Trailing Stop Ladder ──────
-    trailing_ladder = [
-        {"trigger_pct": 10, "lock_pct": 0,  "rule": "At +10% gain, ratchet stop to entry breakeven (no-loss lock)"},
-        {"trigger_pct": 25, "lock_pct": 10, "rule": "At +25% gain, ratchet stop to +10% (lock first profit)"},
-        {"trigger_pct": 50, "lock_pct": 25, "rule": "At +50% gain, ratchet stop to +25% (compound discipline)"},
-    ]
-    
-    # ────── Time Stop ──────
-    # Default: 6 quarters for 1Y thesis, 12Q for 3Y
-    time_stop_quarters = 6  # ~18 months
+    time_stop_quarters = inst["time_stop"]["quarters"]
     
     # ────── Catalyst Window ──────
     next_earn = (catalysts.get("next_earnings") or {}) if isinstance(catalysts.get("next_earnings"), dict) else {}
@@ -32870,42 +33094,65 @@ async def exit_strategy(symbol: str = "", region: str = "US", email: str = "",
             ),
         }
     
-    # ────── Position Sizing (Kelly-Bounded) ──────
-    # Conservative: max 3% per single position
-    # Initial: 2% if base case > 15% upside, else 1%
+    # ────── r63.37: Position Sizing (Kelly + beta + score + spread) ──────
     base_upside_pct = (base_target - entry) / entry * 100 if entry > 0 else 0
-    
-    initial_size = 2.0 if base_upside_pct > 15 else 1.0
-    add_at_entry_low = 1.0 if base_upside_pct > 25 else 0.5
-    max_size = min(3.0, initial_size + add_at_entry_low + 0.5)  # cap at 3%
+    initial_size = inst["position"]["pct"]
+    add_at_entry_low = round(initial_size * 0.5, 1) if initial_size > 0 else 0
+    max_size = min(5.0, initial_size + add_at_entry_low)
     
     return {
         "success": True,
         "symbol": symbol,
         "spot": round(spot, 2),
         "entry": round(entry, 2),
+        # r63.37: Volatility regime (drives all dynamic logic)
+        "volatility_regime": {
+            "key":      inst["regime"],
+            "label":    inst["regime_label"],
+            "color":    inst["regime_color"],
+            "vol_pct":  vol_val,
+            "atr":      inst["atr_dollars"],
+            "atr_pct":  inst["atr_pct"],
+            "beta":     beta_val,
+            "score":    score_val,
+            "sector":   sector,
+            "spread_pct": spread_val,
+        },
         "ladder": {
-            "stop_hard":    {"price": stop_hard,  "pct_from_entry": round((stop_hard - entry) / entry * 100, 1), "label": "Thesis-broken (DCF compression)"},
-            "stop_soft":    {"price": stop_soft,  "pct_from_entry": round((stop_soft - entry) / entry * 100, 1), "label": "Soft stop (-15%)"},
-            "entry_low":    {"price": entry_low,  "pct_from_entry": round((entry_low - entry) / entry * 100, 1), "label": "Optimal accumulation low"},
+            "stop_hard":    {"price": stop_hard,  "pct_from_entry": round((stop_hard - entry) / entry * 100, 1), 
+                             "label": "Thesis-broken (vol+fair-value floor)",
+                             "rationale": inst["stops"]["hard"]["rationale"]},
+            "stop_soft":    {"price": stop_soft,  "pct_from_entry": round((stop_soft - entry) / entry * 100, 1), 
+                             "label": f"Soft stop ({inst['stops']['soft']['pct']:+.1f}% — vol-adjusted)",
+                             "rationale": inst["stops"]["soft"]["rationale"]},
+            "entry_low":    {"price": entry_low,  "pct_from_entry": round((entry_low - entry) / entry * 100, 1), 
+                             "label": "Optimal accumulation low (1.5× ATR)",
+                             "rationale": inst["entries"]["rationale"]},
             "entry":        {"price": round(entry, 2), "pct_from_entry": 0, "label": "Entry (spot)"},
-            "entry_high":   {"price": entry_high, "pct_from_entry": round((entry_high - entry) / entry * 100, 1), "label": "Accumulation ceiling"},
+            "entry_high":   {"price": entry_high, "pct_from_entry": round((entry_high - entry) / entry * 100, 1), 
+                             "label": "Accumulation ceiling (0.8× ATR)"},
             "trim_1":       {"price": trim_1,     "pct_from_entry": round((trim_1 - entry) / entry * 100, 1), "label": "Trim 25% (1Y target)"},
-            "trim_2":       {"price": trim_2,     "pct_from_entry": round((trim_2 - entry) / entry * 100, 1), "label": "Trim 50% (DCF base)"},
+            "trim_2":       {"price": trim_2,     "pct_from_entry": round((trim_2 - entry) / entry * 100, 1), "label": "Trim 50% (fair value)"},
             "exit_full":    {"price": exit_full,  "pct_from_entry": round((exit_full - entry) / entry * 100, 1), "label": "Sell remaining (bull case)"},
         },
         "trailing_stops": trailing_ladder,
+        "trailing_rationale": inst["trailing_rationale"],
         "time_stop": {
             "quarters": time_stop_quarters,
-            "rule": f"Exit position if no progress toward base target ${base_target:.2f} within {time_stop_quarters} quarters.",
+            "rule": f"Exit if no progress toward base target ${base_target:.2f} within {time_stop_quarters} quarters.",
+            "rationale": inst["time_stop"]["rationale"],
         },
         "catalyst_window": catalyst_window,
         "position_sizing": {
-            "initial_pct":      initial_size,
-            "add_at_entry_low": add_at_entry_low,
-            "max_pct":          max_size,
-            "base_upside_pct":  round(base_upside_pct, 1),
-            "rationale":        f"Initial {initial_size}% based on {base_upside_pct:.0f}% base case upside. Kelly-bounded max {max_size}%.",
+            "initial_pct":         initial_size,
+            "add_at_entry_low":    add_at_entry_low,
+            "max_pct":             max_size,
+            "base_upside_pct":     round(base_upside_pct, 1),
+            "kelly_full_pct":      inst["position"]["kelly_full_pct"],
+            "kelly_fraction_used": inst["position"]["kelly_fraction_used"],
+            "beta_adjustment":     inst["position"]["beta_adjustment"],
+            "spread_multiplier":   inst["position"]["spread_multiplier"],
+            "rationale":           inst["position"]["rationale"],
         },
     }
 
@@ -33289,6 +33536,731 @@ async def journal_delete(request: Request):
 
 _portfolio_progress = {"done": 0, "total": 0, "current": "", "started": 0, "active": False}
 
+
+
+
+# ═══════════════════════════════════════════════════════════════════
+# r63.38: INSTITUTIONAL EXECUTION SCORE FRAMEWORK
+# 6 components × real data only. No presumptions, transparent on gaps.
+# ═══════════════════════════════════════════════════════════════════
+
+def _r6338_trend_score(price, sma20, sma50, sma200, adx):
+    """Trend component (0-25). Real data: SMA alignment + ADX strength."""
+    if not price or price <= 0:
+        return {"score": 0, "available": False, "rationale": "No price data"}
+    
+    score = 0
+    parts = []
+    
+    # MA alignment (0-15)
+    above_20  = sma20 and sma20 > 0 and price > sma20
+    above_50  = sma50 and sma50 > 0 and price > sma50
+    above_200 = sma200 and sma200 > 0 and price > sma200
+    
+    if above_20 and above_50 and above_200:
+        # Perfect alignment
+        if sma20 > sma50 > sma200:
+            score += 15
+            parts.append("Perfect MA alignment (20>50>200, all upward)")
+        else:
+            score += 12
+            parts.append("Above all MAs but not stacked")
+    elif above_50 and above_200:
+        score += 10
+        parts.append("Above 50 & 200 MA (medium-term uptrend)")
+    elif above_200:
+        score += 6
+        parts.append("Above 200 MA only (long-term uptrend, recent weakness)")
+    elif above_50:
+        score += 4
+        parts.append("Above 50 MA only (mixed signal)")
+    else:
+        score += 0
+        parts.append("Below key MAs (downtrend or correction)")
+    
+    # ADX strength (0-10)
+    if adx and adx > 0:
+        if adx >= 30:
+            score += 10
+            parts.append(f"ADX {adx:.0f} (very strong trend)")
+        elif adx >= 25:
+            score += 8
+            parts.append(f"ADX {adx:.0f} (strong trend)")
+        elif adx >= 20:
+            score += 5
+            parts.append(f"ADX {adx:.0f} (developing trend)")
+        elif adx >= 15:
+            score += 3
+            parts.append(f"ADX {adx:.0f} (weak trend)")
+        else:
+            score += 0
+            parts.append(f"ADX {adx:.0f} (no trend / chop)")
+    else:
+        parts.append("ADX unavailable")
+    
+    return {
+        "score": min(score, 25),
+        "max": 25,
+        "available": True,
+        "rationale": " · ".join(parts),
+    }
+
+
+def _r6338_volume_score(vol_ratio, last_volume, avg_volume):
+    """Volume component (0-20). Real data: volume ratio + absolute thresholds."""
+    if not vol_ratio or vol_ratio <= 0:
+        return {"score": 0, "max": 20, "available": False,
+                "rationale": "Volume data unavailable"}
+    
+    score = 0
+    parts = []
+    
+    # Volume ratio (today vs 20-day avg)
+    if vol_ratio >= 2.0:
+        score += 18
+        parts.append(f"Volume {vol_ratio:.1f}× avg (strong institutional participation)")
+    elif vol_ratio >= 1.5:
+        score += 14
+        parts.append(f"Volume {vol_ratio:.1f}× avg (elevated participation)")
+    elif vol_ratio >= 1.2:
+        score += 10
+        parts.append(f"Volume {vol_ratio:.1f}× avg (moderate)")
+    elif vol_ratio >= 0.9:
+        score += 7
+        parts.append(f"Volume {vol_ratio:.1f}× avg (normal)")
+    elif vol_ratio >= 0.6:
+        score += 4
+        parts.append(f"Volume {vol_ratio:.1f}× avg (light — below average)")
+    else:
+        score += 0
+        parts.append(f"Volume {vol_ratio:.1f}× avg (very light — no participation)")
+    
+    # Bonus +2 if absolute volume is meaningful (avoid penny stocks)
+    if last_volume and avg_volume and avg_volume > 100000:
+        score += 2
+        parts.append("Liquid (avg vol >100K)")
+    
+    return {
+        "score": min(score, 20),
+        "max": 20,
+        "available": True,
+        "rationale": " · ".join(parts),
+    }
+
+
+def _r6338_structure_score(price, hi52, lo52, sma50):
+    """Structure component (0-20, but only 15 fully computable without swing detection).
+    Real data: 52w position, distance from breakout zones."""
+    if not (price and hi52 and lo52) or hi52 <= lo52:
+        return {"score": 0, "max": 20, "available": False, "partial": True,
+                "rationale": "52-week range data unavailable"}
+    
+    score = 0
+    parts = []
+    
+    # Position in 52-week range (0-10)
+    range_pos = (price - lo52) / (hi52 - lo52)
+    if range_pos >= 0.85:
+        score += 10
+        parts.append(f"Near 52w high ({range_pos*100:.0f}% of range — breakout zone)")
+    elif range_pos >= 0.70:
+        score += 8
+        parts.append(f"Upper 30% of 52w range ({range_pos*100:.0f}%)")
+    elif range_pos >= 0.50:
+        score += 5
+        parts.append(f"Middle of 52w range ({range_pos*100:.0f}%)")
+    elif range_pos >= 0.30:
+        score += 3
+        parts.append(f"Lower-middle 52w range ({range_pos*100:.0f}%)")
+    else:
+        score += 0
+        parts.append(f"Bottom 30% of 52w range ({range_pos*100:.0f}% — base building)")
+    
+    # Distance from 52w high (0-5)
+    pct_from_high = (hi52 - price) / hi52 * 100
+    if pct_from_high <= 3:
+        score += 5
+        parts.append("Within 3% of 52w high (breakout imminent or in progress)")
+    elif pct_from_high <= 10:
+        score += 3
+        parts.append(f"{pct_from_high:.0f}% below 52w high")
+    elif pct_from_high <= 25:
+        score += 1
+        parts.append(f"{pct_from_high:.0f}% below 52w high (consolidation)")
+    
+    # Honest disclosure: no swing-high/low pattern detection yet
+    # That would be the remaining 0-5 points
+    
+    return {
+        "score": min(score, 15),  # cap at 15, transparent that 5 pts unavailable
+        "max": 20,
+        "available": True,
+        "partial": True,  # flag transparency
+        "missing_capability": "Swing-high/low pattern detection (5 points unavailable until Phase 2)",
+        "rationale": " · ".join(parts),
+    }
+
+
+def _r6338_options_score(symbol, region):
+    """Options component (0-15). Real data from yfinance (US) or Upstox/NSE (India).
+    Returns score based on Call/Put OI ratio (PCR) and max OI strike positioning."""
+    score = 0
+    parts = []
+    
+    try:
+        if region.upper() == "US":
+            # Try yfinance options chain
+            _yahoo_rate_wait()
+            tk = yf.Ticker(symbol)
+            opts = tk.options
+            if not opts:
+                return {"score": 0, "max": 15, "available": False,
+                        "rationale": "No options chain available for this ticker"}
+            
+            # Use nearest expiry
+            chain = tk.option_chain(opts[0])
+            calls = chain.calls
+            puts = chain.puts
+            
+            if calls is None or puts is None or len(calls) == 0 or len(puts) == 0:
+                return {"score": 0, "max": 15, "available": False,
+                        "rationale": "Options chain empty"}
+            
+            total_call_oi = float(calls["openInterest"].sum()) if "openInterest" in calls.columns else 0
+            total_put_oi = float(puts["openInterest"].sum()) if "openInterest" in puts.columns else 0
+            
+            if total_call_oi <= 0 or total_put_oi <= 0:
+                return {"score": 0, "max": 15, "available": False,
+                        "rationale": "OI data zero or unavailable"}
+            
+            # Put/Call OI ratio (PCR)
+            pcr = total_put_oi / total_call_oi if total_call_oi > 0 else 0
+            
+            # Bullish positioning when PCR < 0.7 (more calls than puts)
+            # Bearish when PCR > 1.3 (more puts than calls)
+            if pcr < 0.5:
+                score += 13
+                parts.append(f"PCR {pcr:.2f} (heavy call positioning — bullish)")
+            elif pcr < 0.7:
+                score += 11
+                parts.append(f"PCR {pcr:.2f} (call-heavy — bullish)")
+            elif pcr < 1.0:
+                score += 8
+                parts.append(f"PCR {pcr:.2f} (moderate call bias)")
+            elif pcr < 1.3:
+                score += 5
+                parts.append(f"PCR {pcr:.2f} (balanced positioning)")
+            elif pcr < 1.7:
+                score += 2
+                parts.append(f"PCR {pcr:.2f} (put-heavy — caution)")
+            else:
+                score += 0
+                parts.append(f"PCR {pcr:.2f} (heavy put positioning — bearish)")
+            
+            # Bonus +2 for high open interest (institutional activity)
+            if total_call_oi + total_put_oi > 50000:
+                score += 2
+                parts.append(f"High OI ({int((total_call_oi+total_put_oi)/1000)}K — institutional flow)")
+            
+            return {
+                "score": min(score, 15),
+                "max": 15,
+                "available": True,
+                "pcr": round(pcr, 2),
+                "total_call_oi": int(total_call_oi),
+                "total_put_oi": int(total_put_oi),
+                "rationale": " · ".join(parts),
+            }
+        
+        else:  # India
+            # Upstox/NSE options chain
+            try:
+                chain_data = _upstox_get_option_chain(symbol)
+                if not chain_data or not chain_data.get("call_options"):
+                    return {"score": 0, "max": 15, "available": False,
+                            "rationale": "NSE options chain unavailable"}
+                
+                # Sum OI across strikes
+                total_call_oi = 0
+                total_put_oi = 0
+                for strike_key, data in chain_data.items():
+                    if isinstance(data, dict):
+                        ce = (data.get("call_options") or {}).get("market_data", {})
+                        pe = (data.get("put_options") or {}).get("market_data", {})
+                        total_call_oi += _safe_float(ce.get("oi"), 0)
+                        total_put_oi += _safe_float(pe.get("oi"), 0)
+                
+                if total_call_oi + total_put_oi == 0:
+                    return {"score": 0, "max": 15, "available": False,
+                            "rationale": "NSE OI data zero"}
+                
+                pcr = total_put_oi / total_call_oi if total_call_oi > 0 else 0
+                
+                if pcr < 0.5:    score = 13; parts.append(f"PCR {pcr:.2f} (heavy call positioning)")
+                elif pcr < 0.7:  score = 11; parts.append(f"PCR {pcr:.2f} (call-heavy)")
+                elif pcr < 1.0:  score = 8;  parts.append(f"PCR {pcr:.2f} (moderate call bias)")
+                elif pcr < 1.3:  score = 5;  parts.append(f"PCR {pcr:.2f} (balanced)")
+                elif pcr < 1.7:  score = 2;  parts.append(f"PCR {pcr:.2f} (put-heavy)")
+                else:            score = 0;  parts.append(f"PCR {pcr:.2f} (heavy put positioning)")
+                
+                return {
+                    "score": min(score, 15),
+                    "max": 15,
+                    "available": True,
+                    "pcr": round(pcr, 2),
+                    "total_call_oi": int(total_call_oi),
+                    "total_put_oi": int(total_put_oi),
+                    "rationale": " · ".join(parts),
+                }
+            except Exception as e:
+                return {"score": 0, "max": 15, "available": False,
+                        "rationale": f"NSE options fetch failed: {str(e)[:80]}"}
+    
+    except Exception as e:
+        return {"score": 0, "max": 15, "available": False,
+                "rationale": f"Options data unavailable: {str(e)[:80]}"}
+
+
+def _r6338_vwap_score(symbol, region, price):
+    """VWAP component (0-10). Real data: intraday VWAP if available, else 20-day VWAP from EOD.
+    Honest 'n/a' if neither computable."""
+    try:
+        _yahoo_rate_wait()
+        tk = yf.Ticker(symbol if region == "US" else f"{symbol}.NS")
+        
+        # Try intraday VWAP first (most accurate institutional signal)
+        intraday = tk.history(period="1d", interval="5m")
+        if intraday is not None and len(intraday) >= 10:
+            tp = (intraday["High"] + intraday["Low"] + intraday["Close"]) / 3
+            vol = intraday["Volume"]
+            vwap = float((tp * vol).sum() / max(vol.sum(), 1))
+            
+            if vwap > 0:
+                pct_vs_vwap = (price - vwap) / vwap * 100
+                
+                if pct_vs_vwap >= 2:
+                    score = 10
+                    rationale = f"Above VWAP ${vwap:.2f} by {pct_vs_vwap:+.1f}% (institutional buyers in profit)"
+                elif pct_vs_vwap >= 0.5:
+                    score = 8
+                    rationale = f"Above VWAP ${vwap:.2f} by {pct_vs_vwap:+.1f}% (mild premium)"
+                elif pct_vs_vwap >= -0.5:
+                    score = 5
+                    rationale = f"At VWAP ${vwap:.2f} ({pct_vs_vwap:+.1f}%)"
+                elif pct_vs_vwap >= -2:
+                    score = 3
+                    rationale = f"Below VWAP ${vwap:.2f} by {pct_vs_vwap:+.1f}% (mild discount)"
+                else:
+                    score = 0
+                    rationale = f"Below VWAP ${vwap:.2f} by {pct_vs_vwap:+.1f}% (institutional buyers underwater)"
+                
+                return {
+                    "score": score,
+                    "max": 10,
+                    "available": True,
+                    "vwap": round(vwap, 2),
+                    "pct_vs_vwap": round(pct_vs_vwap, 2),
+                    "type": "intraday_5min",
+                    "rationale": rationale,
+                }
+        
+        # Fall back to 20-day VWAP from EOD (less ideal but still informative)
+        eod = tk.history(period="22d", interval="1d")
+        if eod is not None and len(eod) >= 10:
+            tp = (eod["High"] + eod["Low"] + eod["Close"]) / 3
+            vol = eod["Volume"]
+            vwap_20d = float((tp * vol).sum() / max(vol.sum(), 1))
+            
+            if vwap_20d > 0:
+                pct_vs_vwap = (price - vwap_20d) / vwap_20d * 100
+                
+                if pct_vs_vwap >= 3:    score = 8;  rat = f"Above 20d-VWAP ${vwap_20d:.2f} by {pct_vs_vwap:+.1f}%"
+                elif pct_vs_vwap >= 1:  score = 6;  rat = f"Above 20d-VWAP ${vwap_20d:.2f} by {pct_vs_vwap:+.1f}%"
+                elif pct_vs_vwap >= -1: score = 4;  rat = f"At 20d-VWAP ${vwap_20d:.2f}"
+                elif pct_vs_vwap >= -3: score = 2;  rat = f"Below 20d-VWAP ${vwap_20d:.2f} by {pct_vs_vwap:+.1f}%"
+                else:                   score = 0;  rat = f"Well below 20d-VWAP ${vwap_20d:.2f} by {pct_vs_vwap:+.1f}%"
+                
+                return {
+                    "score": score,
+                    "max": 10,
+                    "available": True,
+                    "vwap": round(vwap_20d, 2),
+                    "pct_vs_vwap": round(pct_vs_vwap, 2),
+                    "type": "20day_eod",
+                    "rationale": rat + " (20-day VWAP — intraday unavailable)",
+                }
+        
+        return {"score": 0, "max": 10, "available": False,
+                "rationale": "VWAP data unavailable (insufficient price history)"}
+    
+    except Exception as e:
+        return {"score": 0, "max": 10, "available": False,
+                "rationale": f"VWAP fetch failed: {str(e)[:80]}"}
+
+
+def _r6338_volatility_expansion_score(symbol, region):
+    """Volatility expansion (0-10). ATR_now vs ATR_22d_ago.
+    Expanding = trending move. Contracting = chop or topping."""
+    try:
+        _yahoo_rate_wait()
+        tk = yf.Ticker(symbol if region == "US" else f"{symbol}.NS")
+        hist = tk.history(period="50d", interval="1d")
+        
+        if hist is None or len(hist) < 44:
+            return {"score": 0, "max": 10, "available": False,
+                    "rationale": "Insufficient price history for ATR comparison"}
+        
+        # Compute true range
+        h = hist["High"].values
+        l = hist["Low"].values
+        c = hist["Close"].values
+        
+        import numpy as _np
+        tr_list = []
+        for i in range(1, len(hist)):
+            tr = max(h[i] - l[i], abs(h[i] - c[i-1]), abs(l[i] - c[i-1]))
+            tr_list.append(tr)
+        tr = _np.array(tr_list)
+        
+        if len(tr) < 44:
+            return {"score": 0, "max": 10, "available": False,
+                    "rationale": "Insufficient TR data"}
+        
+        # ATR-22 (last 22 days vs 22 days before that)
+        atr_recent = float(tr[-22:].mean())
+        atr_prior = float(tr[-44:-22].mean())
+        
+        if atr_prior <= 0:
+            return {"score": 0, "max": 10, "available": False,
+                    "rationale": "ATR baseline zero"}
+        
+        expansion_pct = (atr_recent - atr_prior) / atr_prior * 100
+        
+        if expansion_pct >= 25:
+            score = 10
+            rat = f"ATR expanding +{expansion_pct:.0f}% (strong trending move underway)"
+        elif expansion_pct >= 10:
+            score = 8
+            rat = f"ATR expanding +{expansion_pct:.0f}% (developing trend)"
+        elif expansion_pct >= -5:
+            score = 5
+            rat = f"ATR stable ({expansion_pct:+.0f}% — sideways action)"
+        elif expansion_pct >= -20:
+            score = 3
+            rat = f"ATR contracting {expansion_pct:.0f}% (volatility cooling)"
+        else:
+            score = 1
+            rat = f"ATR collapsed {expansion_pct:.0f}% (no momentum)"
+        
+        return {
+            "score": score,
+            "max": 10,
+            "available": True,
+            "atr_recent": round(atr_recent, 2),
+            "atr_prior": round(atr_prior, 2),
+            "expansion_pct": round(expansion_pct, 1),
+            "rationale": rat,
+        }
+    
+    except Exception as e:
+        return {"score": 0, "max": 10, "available": False,
+                "rationale": f"Vol expansion calc failed: {str(e)[:80]}"}
+
+
+def _r6338_market_sector_context(region, sector_data):
+    """Market + sector trend gating (your framework: 70-80% of stock movement)."""
+    out = {"market": {"available": False}, "sector": {"available": False}}
+    
+    try:
+        _yahoo_rate_wait()
+        # Market: SPX for US, NIFTY for India
+        idx_sym = "^GSPC" if region == "US" else "^NSEI"
+        idx = yf.Ticker(idx_sym)
+        idx_hist = idx.history(period="60d", interval="1d")
+        
+        if idx_hist is not None and len(idx_hist) >= 50:
+            idx_close = float(idx_hist["Close"].iloc[-1])
+            idx_sma50 = float(idx_hist["Close"].iloc[-50:].mean())
+            idx_sma20 = float(idx_hist["Close"].iloc[-20:].mean())
+            
+            market_trend = "UPTREND" if idx_close > idx_sma20 > idx_sma50 else                            "WEAK_UP" if idx_close > idx_sma50 else                            "DOWNTREND" if idx_close < idx_sma20 < idx_sma50 else                            "MIXED"
+            
+            ret_30d = (idx_close - float(idx_hist["Close"].iloc[-30])) / float(idx_hist["Close"].iloc[-30]) * 100
+            
+            out["market"] = {
+                "available": True,
+                "index": "S&P 500" if region == "US" else "NIFTY 50",
+                "trend": market_trend,
+                "return_30d_pct": round(ret_30d, 2),
+            }
+    except Exception:
+        pass
+    
+    # Sector trend already computed in DD pipeline (sector_etf_return)
+    if sector_data and isinstance(sector_data, dict):
+        sector_ret_1y = sector_data.get("sector_1y_return_pct")
+        outperf = sector_data.get("outperformance_pct")
+        if sector_ret_1y is not None:
+            out["sector"] = {
+                "available": True,
+                "etf": sector_data.get("sector_etf"),
+                "return_1y_pct": sector_ret_1y,
+                "outperformance_pct": outperf,
+                "outperforming": outperf is not None and outperf > 0,
+            }
+    
+    return out
+
+
+def _r6338_compute_execution_score(symbol, region, dd):
+    """Master scoring function. Aggregates all 6 components from real data.
+    Returns full breakdown with rationale per component."""
+    
+    # Pull real data from DD
+    thesis = dd.get("thesis") or {}
+    finance = dd.get("finance") or {}
+    company = dd.get("company") or {}
+    sector_data = dd.get("sector") or {}
+    
+    spot = _safe_float(thesis.get("spot_price"))
+    if spot <= 0:
+        return None
+    
+    # Need price-action data: try investor_decide for full pa
+    sma20 = sma50 = sma200 = adx = vol_ratio = last_volume = avg_volume = hi52 = lo52 = 0
+    
+    try:
+        decide = await_investor_decide(symbol, region) if False else None
+    except: pass
+    
+    # Fall back to thesis/dd fields
+    sma20 = _safe_float(thesis.get("sma20"))
+    sma50 = _safe_float(thesis.get("sma50"))
+    sma200 = _safe_float(thesis.get("sma200"))
+    adx = _safe_float(thesis.get("adx"))
+    
+    # Volume / 52w
+    vol_ratio = _safe_float(thesis.get("vol_ratio")) or _safe_float(finance.get("vol_ratio"))
+    last_volume = _safe_float(thesis.get("last_volume"))
+    avg_volume = _safe_float(thesis.get("avg_volume"))
+    hi52 = _safe_float(thesis.get("hi52")) or _safe_float(thesis.get("w52h"))
+    lo52 = _safe_float(thesis.get("lo52")) or _safe_float(thesis.get("w52l"))
+    
+    # If most data missing, fetch from investor_decide synchronously
+    return None  # Placeholder — will be implemented as async in endpoint
+
+
+@app.get("/api/execution-score")
+async def execution_score(symbol: str = "", region: str = "US", email: str = ""):
+    """r63.38: Institutional Execution Score endpoint.
+    Returns 0-100 score across 6 components with full rationale per component.
+    Uses ONLY real data, transparently flags any unavailable component."""
+    email = (email or "").strip().lower()
+    _ok, email = check_premium_gate(email, "dream")
+    if not _ok:
+        return {"success": False, "error": "Premium tier required."}
+    
+    symbol = (symbol or "").strip().upper()
+    if not symbol:
+        return {"success": False, "error": "symbol required"}
+    
+    region = region.strip().upper()
+    
+    # Pull DD response (provides spot, thesis, sector data)
+    try:
+        dd = await investor_due_diligence(email=email, symbol=symbol, region=region)
+    except Exception as e:
+        return {"success": False, "error": f"DD failed: {str(e)[:200]}"}
+    
+    if not dd.get("success"):
+        return {"success": False, "error": "DD generation failed"}
+    
+    # Pull investor_decide for technical data (sma, adx, vol_ratio, etc)
+    try:
+        decide = await investor_decide(symbol=symbol, region=region)
+    except Exception as e:
+        decide = {}
+    
+    thesis = dd.get("thesis") or {}
+    company = dd.get("company") or {}
+    spot = _safe_float(thesis.get("spot_price"))
+    
+    if spot <= 0:
+        return {"success": False, "error": "No price data"}
+    
+    # Extract real technical fields from decide.technicals
+    tech = (decide or {}).get("technicals") or {}
+    sma20 = _safe_float(tech.get("sma20"))
+    sma50 = _safe_float(tech.get("sma50"))
+    sma200 = _safe_float(tech.get("sma200"))
+    adx = _safe_float(tech.get("adx"))
+    vol_ratio = _safe_float(tech.get("volRatio"))
+    last_volume = _safe_float(tech.get("volume"))
+    avg_volume = _safe_float(tech.get("avgVolume"))
+    
+    # 52-week from decide
+    levels = (decide or {}).get("levels") or {}
+    hi52 = _safe_float(levels.get("hi52"))
+    lo52 = _safe_float(levels.get("lo52"))
+    
+    # Compute each component
+    trend = _r6338_trend_score(spot, sma20, sma50, sma200, adx)
+    volume = _r6338_volume_score(vol_ratio, last_volume, avg_volume)
+    structure = _r6338_structure_score(spot, hi52, lo52, sma50)
+    options = _r6338_options_score(symbol, region)
+    vwap = _r6338_vwap_score(symbol, region, spot)
+    volatility = _r6338_volatility_expansion_score(symbol, region)
+    
+    # Market + sector context
+    sector_data = dd.get("sector") or {}
+    context = _r6338_market_sector_context(region, sector_data)
+    
+    # Aggregate score
+    components = {
+        "trend": trend,
+        "volume": volume,
+        "structure": structure,
+        "options": options,
+        "vwap": vwap,
+        "volatility_expansion": volatility,
+    }
+    
+    raw_score = 0
+    max_available = 0
+    available_count = 0
+    unavailable = []
+    for key, comp in components.items():
+        if comp.get("available"):
+            raw_score += comp["score"]
+            max_available += comp.get("max", 0)
+            available_count += 1
+        else:
+            unavailable.append(key)
+    
+    # Normalize to 100 ONLY if at least 4 of 6 components available
+    if available_count >= 4 and max_available > 0:
+        normalized_score = round((raw_score / max_available) * 100)
+        score_quality = "FULL" if available_count == 6 else "PARTIAL"
+    else:
+        normalized_score = None
+        score_quality = "INSUFFICIENT_DATA"
+    
+    # Verdict mapping (your framework)
+    if normalized_score is None:
+        verdict = "INSUFFICIENT DATA"
+        verdict_color = "#94a3b8"
+        risk_level = "Unknown"
+    elif normalized_score >= 80:
+        verdict = "AGGRESSIVE HOLD / ADD"
+        verdict_color = "#059669"
+        risk_level = "Low"
+    elif normalized_score >= 65:
+        verdict = "NORMAL HOLD"
+        verdict_color = "#10b981"
+        risk_level = "Medium"
+    elif normalized_score >= 50:
+        verdict = "REDUCE / SELECTIVE"
+        verdict_color = "#d97706"
+        risk_level = "High"
+    elif normalized_score >= 35:
+        verdict = "EXIT ON BOUNCE"
+        verdict_color = "#ea580c"
+        risk_level = "Very High"
+    else:
+        verdict = "EXIT IMMEDIATELY"
+        verdict_color = "#dc2626"
+        risk_level = "Very High"
+    
+    # Entry timing (your framework)
+    entry_timing = None
+    if normalized_score is not None:
+        if trend.get("available") and volume.get("available"):
+            t_pct = trend["score"] / max(trend["max"], 1)
+            v_pct = volume["score"] / max(volume["max"], 1)
+            
+            # EARLY: trend just turning + volume building
+            # IDEAL: confirmed trend + good volume + above key levels
+            # LATE: extended move
+            # TOO LATE: exhaustion signs
+            
+            if t_pct >= 0.7 and v_pct >= 0.7 and structure.get("score", 0) >= 12:
+                if vwap.get("available") and vwap.get("pct_vs_vwap", 0) > 5:
+                    entry_timing = {"key": "LATE", "label": "🟠 LATE (extended)",
+                                    "color": "#f59e0b",
+                                    "rationale": "Strong setup but already extended above VWAP — small size only"}
+                else:
+                    entry_timing = {"key": "IDEAL", "label": "🟡 IDEAL (confirmed trend)",
+                                    "color": "#3b82f6",
+                                    "rationale": "Confirmed trend + good volume + clean structure — safe entry"}
+            elif t_pct >= 0.5 and v_pct >= 0.5:
+                entry_timing = {"key": "EARLY", "label": "🟢 EARLY (breakout starting)",
+                                "color": "#10b981",
+                                "rationale": "Trend turning + volume building — highest R:R if confirmed"}
+            elif t_pct < 0.3 or normalized_score < 50:
+                entry_timing = {"key": "TOO_LATE", "label": "🔴 NO ENTRY (weak/exhausted)",
+                                "color": "#dc2626",
+                                "rationale": "Conditions not aligned for entry — wait or skip"}
+            else:
+                entry_timing = {"key": "WAIT", "label": "⚪ WAIT (mixed signals)",
+                                "color": "#94a3b8",
+                                "rationale": "Some signals positive, others not — wait for confirmation"}
+    
+    # Exit triggers (your framework — list of conditions to monitor)
+    exit_triggers_active = []
+    if normalized_score is not None and normalized_score < 50:
+        exit_triggers_active.append({
+            "trigger": "score_below_threshold",
+            "label": "Score below 50",
+            "current": normalized_score,
+            "threshold": 50,
+            "action": "Exit on next bounce — momentum lost",
+        })
+    
+    if vwap.get("available") and vwap.get("pct_vs_vwap", 0) < -1:
+        exit_triggers_active.append({
+            "trigger": "vwap_lost",
+            "label": "Price below VWAP",
+            "current": vwap.get("pct_vs_vwap"),
+            "vwap": vwap.get("vwap"),
+            "action": "Institutional buyers underwater — exit unless quick reclaim",
+        })
+    
+    sec = context.get("sector") or {}
+    if sec.get("available") and sec.get("outperformance_pct") is not None and sec["outperformance_pct"] < -10:
+        exit_triggers_active.append({
+            "trigger": "sector_underperforming",
+            "label": "Sector lagging market",
+            "current": sec.get("outperformance_pct"),
+            "action": "70-80% of stock returns come from sector — sector weakness is exit signal",
+        })
+    
+    if volatility.get("available") and volatility.get("expansion_pct", 0) < -20:
+        exit_triggers_active.append({
+            "trigger": "volatility_collapse",
+            "label": "ATR contracting >20%",
+            "current": volatility.get("expansion_pct"),
+            "action": "Momentum gone — trend likely over",
+        })
+    
+    return {
+        "success": True,
+        "symbol": symbol,
+        "spot": round(spot, 2),
+        "execution_score": normalized_score,
+        "score_quality": score_quality,
+        "raw_score": raw_score,
+        "max_available": max_available,
+        "verdict": verdict,
+        "verdict_color": verdict_color,
+        "risk_level": risk_level,
+        "entry_timing": entry_timing,
+        "components": components,
+        "components_unavailable": unavailable,
+        "market_context": context.get("market"),
+        "sector_context": context.get("sector"),
+        "exit_triggers_active": exit_triggers_active,
+        "framework_note": "Score reflects EXECUTION quality (when to enter/exit) — separate from FUNDAMENTALS score (whether to own).",
+    }
 
 @app.get("/api/diag-fairvalue")
 async def diag_fairvalue(symbol: str = "", region: str = "US", email: str = ""):

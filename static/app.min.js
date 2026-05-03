@@ -1,9 +1,9 @@
 // ═══ Celesys version stamp ═══
-window.CELESYS_VERSION = "v4.63.36";
-window.CELESYS_BUILD_TIME = 1777847453;
-window.CELESYS_BUILD_DATE = "2026-05-03 22:30:53 UTC";
+window.CELESYS_VERSION = "v4.63.38";
+window.CELESYS_BUILD_TIME = 1777852595;
+window.CELESYS_BUILD_DATE = "2026-05-03 23:56:35 UTC";
 console.log("%c━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "color:#1A3A78");
-console.log("%c CELESYS v4.63.36 %c loaded · 2026-04-29 03:29:27 UTC",
+console.log("%c CELESYS v4.63.38 %c loaded · 2026-04-29 03:29:27 UTC",
   "background:#1A3A78;color:#fff;font-weight:900;padding:3px 8px;border-radius:3px;font-family:monospace",
   "color:#1A3A78;font-weight:700;font-family:monospace");
 console.log("%c━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "color:#1A3A78");
@@ -25508,6 +25508,7 @@ window._csR6322Inject = function(anchorInfo) {
         _csR6322Pill('scenarios', '📈', 'Scenarios', false) +
         _csR6322Pill('peers',     '🏛',  'Peers',     false) +
         _csR6322Pill('forward',   '💎', 'Forward Value', false) +
+        _csR6322Pill('execution', '📊', 'Execution',   false) +     /* r63.38 */
         _csR6322Pill('exit',      '🚪', 'Exit Strategy', false) +
         _csR6322Pill('calendar',  '📅', 'Catalysts',   false) +
       '</div>' +
@@ -25572,6 +25573,7 @@ window._csR6322ShowTab = function(tabId) {
   if (tabId === 'scenarios') url = '/api/scenarios';
   if (tabId === 'peers')     url = '/api/competitor-benchmark';
   if (tabId === 'forward')   url = '/api/forward-value';      /* r63.25 */
+  if (tabId === 'execution') url = '/api/execution-score';    /* r63.38 */
   if (tabId === 'exit')      url = '/api/exit-strategy';      /* r63.25 */
   if (tabId === 'calendar')  url = '/api/catalyst-calendar';  /* r63.25 */
   
@@ -25609,6 +25611,7 @@ function _csR6322Render(tabId, data) {
   if (tabId === 'scenarios') return _csR6322RenderScenarios(data);
   if (tabId === 'peers')     return _csR6322RenderPeers(data);
   if (tabId === 'forward')   return _csR6322RenderForward(data);   /* r63.25 */
+  if (tabId === 'execution') return _csR6322RenderExecution(data); /* r63.38 */
   if (tabId === 'exit')      return _csR6322RenderExit(data);      /* r63.25 */
   if (tabId === 'calendar')  return _csR6322RenderCalendar(data);  /* r63.25 */
   return '';
@@ -26273,6 +26276,152 @@ function _csR6322RenderForward(d) {
 }
 
 // ─── EXIT STRATEGY — handles BOTH overvalued and undervalued stocks ──
+
+
+// ─── r63.38: Execution Score renderer (institutional framework) ─────
+function _csR6322RenderExecution(d) {
+  if (!d.success && d.error) return _csR6322Err(d.error);
+  
+  var html = '';
+  var score = d.execution_score;
+  var quality = d.score_quality || 'PARTIAL';
+  
+  // ── HEADER: BIG SCORE + VERDICT ──
+  if (score == null) {
+    html += '<div style="background:#fef2f2;border:2px solid #dc2626;border-radius:8px;padding:16px 20px;margin-bottom:18px">';
+    html += '<div style="font-size:14px;font-weight:800;color:#7f1d1d;font-family:Sora,sans-serif">⚠ INSUFFICIENT EXECUTION DATA</div>';
+    html += '<div style="font-size:12px;color:#475569;margin-top:6px;line-height:1.6">Need at least 4 of 6 components for a valid score. Available components below.</div>';
+    html += '</div>';
+  } else {
+    var vColor = d.verdict_color || '#3b82f6';
+    var bgGrad = score >= 80 ? '#ecfdf5' : score >= 65 ? '#f0fdf4' : score >= 50 ? '#fffbeb' : score >= 35 ? '#fef3c7' : '#fef2f2';
+    
+    html += '<div style="background:' + bgGrad + ';border:2px solid ' + vColor + ';border-radius:10px;padding:18px 22px;margin-bottom:18px">';
+    html += '<div style="display:flex;align-items:center;gap:18px;flex-wrap:wrap">';
+    
+    // Big score number
+    html += '<div style="text-align:center;flex:0 0 auto">';
+    html += '<div style="font-size:9px;font-weight:800;color:#94a3b8;letter-spacing:1.5px;font-family:Sora,sans-serif;margin-bottom:2px">EXECUTION SCORE</div>';
+    html += '<div style="font-size:48px;font-weight:900;color:' + vColor + ';font-family:\'IBM Plex Mono\',monospace;line-height:1">' + score + '</div>';
+    html += '<div style="font-size:11px;color:#64748b;margin-top:2px">/ 100</div>';
+    html += '</div>';
+    
+    // Verdict + risk
+    html += '<div style="flex:1;min-width:220px">';
+    html += '<div style="font-size:14px;font-weight:800;color:' + vColor + ';font-family:Sora,sans-serif;letter-spacing:0.3px;margin-bottom:4px">' + _csEscape(d.verdict || '') + '</div>';
+    html += '<div style="font-size:12px;color:#475569;line-height:1.6">Risk Level: <strong>' + _csEscape(d.risk_level || '—') + '</strong>';
+    if (quality !== 'FULL') {
+      html += ' · <span style="color:#d97706">Score quality: ' + quality + '</span> (' + (6 - (d.components_unavailable || []).length) + ' of 6 components)';
+    }
+    html += '</div>';
+    
+    // Entry timing
+    var et = d.entry_timing;
+    if (et) {
+      html += '<div style="margin-top:10px;padding:8px 12px;background:#fff;border-radius:6px;border-left:3px solid ' + (et.color || '#94a3b8') + '">';
+      html += '<div style="font-size:11px;font-weight:800;color:' + (et.color || '#94a3b8') + ';margin-bottom:2px">ENTRY TIMING: ' + _csEscape(et.label || '') + '</div>';
+      html += '<div style="font-size:11px;color:#475569;line-height:1.5">' + _csEscape(et.rationale || '') + '</div>';
+      html += '</div>';
+    }
+    html += '</div>';
+    html += '</div>';
+    html += '</div>';
+  }
+  
+  // ── EXIT TRIGGERS ACTIVE (warn user) ──
+  var triggers = d.exit_triggers_active || [];
+  if (triggers.length > 0) {
+    html += '<div style="background:#fef3c7;border:2px solid #f59e0b;border-radius:8px;padding:14px 18px;margin-bottom:18px">';
+    html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">';
+    html += '<span style="font-size:18px">🚨</span>';
+    html += '<span style="font-size:13px;font-weight:800;color:#92400e;letter-spacing:0.3px;font-family:Sora,sans-serif">' + triggers.length + ' EXIT TRIGGER' + (triggers.length === 1 ? '' : 'S') + ' ACTIVE</span>';
+    html += '</div>';
+    triggers.forEach(function(t) {
+      html += '<div style="background:#fff;border-radius:6px;padding:10px 12px;margin-bottom:6px">';
+      html += '<div style="font-size:12px;font-weight:700;color:#7f1d1d;margin-bottom:3px">⛔ ' + _csEscape(t.label || '') + '</div>';
+      html += '<div style="font-size:11px;color:#475569;line-height:1.5">' + _csEscape(t.action || '') + '</div>';
+      html += '</div>';
+    });
+    html += '</div>';
+  }
+  
+  // ── COMPONENT BREAKDOWN (institutional transparency) ──
+  var comps = d.components || {};
+  var compOrder = [
+    {key: 'trend',                label: 'Trend',                icon: '📈'},
+    {key: 'volume',               label: 'Volume',               icon: '📊'},
+    {key: 'structure',            label: 'Structure',            icon: '🏛'},
+    {key: 'options',              label: 'Options Positioning',  icon: '⚖'},
+    {key: 'vwap',                 label: 'VWAP',                 icon: '📍'},
+    {key: 'volatility_expansion', label: 'Volatility Expansion', icon: '⚡'},
+  ];
+  
+  html += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:16px 20px;margin-bottom:14px">';
+  html += '<div style="font-size:11px;font-weight:800;color:#1A3A78;letter-spacing:1px;font-family:Sora,sans-serif;margin-bottom:14px">COMPONENT BREAKDOWN</div>';
+  
+  compOrder.forEach(function(co) {
+    var comp = comps[co.key];
+    if (!comp) return;
+    var avail = comp.available;
+    var s = avail ? comp.score : 0;
+    var max = comp.max || (co.key === 'trend' ? 25 : co.key === 'volume' || co.key === 'structure' ? 20 : co.key === 'options' ? 15 : 10);
+    var pct = avail && max > 0 ? (s / max * 100) : 0;
+    var barColor = !avail ? '#cbd5e1' : pct >= 75 ? '#10b981' : pct >= 50 ? '#3b82f6' : pct >= 25 ? '#f59e0b' : '#dc2626';
+    
+    html += '<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #f1f5f9">';
+    html += '<div style="font-size:14px;flex:0 0 24px;text-align:center">' + co.icon + '</div>';
+    html += '<div style="flex:1;min-width:120px">';
+    html += '<div style="font-size:12px;font-weight:700;color:#0f172a">' + _csEscape(co.label) + '</div>';
+    html += '<div style="font-size:10px;color:#64748b;line-height:1.4;margin-top:2px">' + _csEscape(comp.rationale || '') + '</div>';
+    if (comp.partial && comp.missing_capability) {
+      html += '<div style="font-size:9px;color:#d97706;margin-top:2px;font-style:italic">⚠ ' + _csEscape(comp.missing_capability) + '</div>';
+    }
+    html += '</div>';
+    html += '<div style="flex:0 0 100px">';
+    html += '<div style="height:6px;background:#f1f5f9;border-radius:3px;overflow:hidden">';
+    html += '<div style="height:100%;width:' + pct.toFixed(0) + '%;background:' + barColor + '"></div>';
+    html += '</div>';
+    html += '</div>';
+    html += '<div style="flex:0 0 60px;text-align:right;font-family:\'IBM Plex Mono\',monospace;font-size:11px;font-weight:700;color:' + (avail ? '#0f172a' : '#94a3b8') + '">';
+    html += avail ? (s + '/' + max) : 'n/a';
+    html += '</div>';
+    html += '</div>';
+  });
+  
+  html += '</div>';
+  
+  // ── MARKET + SECTOR CONTEXT ──
+  var mc = d.market_context;
+  var sc = d.sector_context;
+  if ((mc && mc.available) || (sc && sc.available)) {
+    html += '<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px 18px;margin-bottom:14px">';
+    html += '<div style="font-size:11px;font-weight:800;color:#1A3A78;letter-spacing:1px;font-family:Sora,sans-serif;margin-bottom:10px">MARKET + SECTOR CONTEXT</div>';
+    html += '<div style="font-size:11px;color:#475569;line-height:1.7;margin-bottom:8px;font-style:italic">70-80% of stock movement = market direction + sector trend. Always verify these before entry.</div>';
+    
+    if (mc && mc.available) {
+      var mTrendColor = mc.trend === 'UPTREND' ? '#10b981' : mc.trend === 'WEAK_UP' ? '#3b82f6' : mc.trend === 'DOWNTREND' ? '#dc2626' : '#94a3b8';
+      html += '<div style="font-size:12px;margin-bottom:6px"><strong>Market (' + _csEscape(mc.index) + '):</strong> <span style="color:' + mTrendColor + ';font-weight:700">' + _csEscape(mc.trend) + '</span> · 30d return ' + (mc.return_30d_pct >= 0 ? '+' : '') + mc.return_30d_pct + '%</div>';
+    }
+    if (sc && sc.available) {
+      var sColor = sc.outperforming ? '#10b981' : '#dc2626';
+      html += '<div style="font-size:12px"><strong>Sector (' + _csEscape(sc.etf || '?') + '):</strong> 1y return ' + (sc.return_1y_pct >= 0 ? '+' : '') + sc.return_1y_pct + '%';
+      if (sc.outperformance_pct != null) {
+        html += ' · <span style="color:' + sColor + ';font-weight:700">' + (sc.outperformance_pct >= 0 ? '+' : '') + sc.outperformance_pct + '% vs market</span>';
+      }
+      html += '</div>';
+    }
+    html += '</div>';
+  }
+  
+  // ── FRAMEWORK NOTE (institutional honesty) ──
+  if (d.framework_note) {
+    html += '<div style="font-size:10px;color:#94a3b8;line-height:1.5;font-style:italic;text-align:center;padding:8px">';
+    html += _csEscape(d.framework_note);
+    html += '</div>';
+  }
+  
+  return html;
+}
 function _csR6322RenderExit(d) {
   if (!d.success && d.error) return _csR6322Err(d.error);
   
@@ -26377,7 +26526,90 @@ function _csR6322RenderExit(d) {
     html += '— <strong style="color:#10b981">' + (upsideToBase || 0).toFixed(0) + '% upside potential</strong>. ';
     html += 'You can buy here, but follow the trim/stop levels below to manage risk.';
     html += '</div>';
+      
+  // r63.37: INSTITUTIONAL REGIME CARD — premium UI showing per-ticker dynamics
+  if (d.volatility_regime) {
+    var vr = d.volatility_regime;
+    var ps = d.position_sizing || {};
+    var ts = d.time_stop || {};
+    
+    // Regime color stripe
+    var regColor = vr.color || '#3b82f6';
+    var regBg = vr.regime === 'LOW' ? '#ecfdf5' : 
+                vr.regime === 'NORMAL' ? '#eff6ff' :
+                vr.regime === 'HIGH' ? '#fffbeb' : '#fef2f2';
+    
+    html += '<div style="background:' + regBg + ';border:1px solid ' + regColor + ';border-radius:10px;padding:16px 18px;margin-bottom:18px">';
+    
+    // ── Top row: Regime badge + key inputs ──
+    html += '<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px">';
+    html += '<div style="background:' + regColor + ';color:#fff;font-size:10px;font-weight:800;letter-spacing:1px;font-family:Sora,sans-serif;padding:6px 12px;border-radius:6px">' + _csEscape(vr.label) + '</div>';
+    html += '<div style="font-size:11px;color:#475569;font-family:\'IBM Plex Mono\',monospace">';
+    html += 'VOL ' + (vr.vol_pct ? Number(vr.vol_pct).toFixed(0) + '%' : '—');
+    html += ' · ATR $' + (vr.atr ? Number(vr.atr).toFixed(2) : '—');
+    html += ' · β ' + (vr.beta ? Number(vr.beta).toFixed(2) : '—');
+    html += ' · SCORE ' + (vr.score || '—');
+    if (vr.spread_pct > 0) html += ' · SPREAD ' + Number(vr.spread_pct).toFixed(0) + '%';
+    if (vr.sector) html += ' · ' + _csEscape(vr.sector).toUpperCase();
     html += '</div>';
+    html += '</div>';
+    
+    // ── Position sizing card (institutional Kelly transparency) ──
+    if (ps.initial_pct != null) {
+      var posColor = ps.initial_pct >= 4 ? '#059669' : ps.initial_pct >= 2 ? '#0891b2' : ps.initial_pct > 0 ? '#d97706' : '#7f1d1d';
+      var posLabel = ps.initial_pct >= 4 ? 'HIGH CONVICTION' : ps.initial_pct >= 2 ? 'MODERATE' : ps.initial_pct > 0 ? 'LIGHT' : 'NO POSITION';
+      
+      html += '<div style="background:#fff;border-radius:8px;padding:12px 14px;margin-bottom:10px">';
+      html += '<div style="display:flex;align-items:flex-start;gap:14px;flex-wrap:wrap">';
+      
+      html += '<div style="flex:0 0 auto;text-align:center;min-width:90px">';
+      html += '<div style="font-size:9px;font-weight:800;color:#94a3b8;letter-spacing:1px;font-family:Sora,sans-serif;margin-bottom:3px">POSITION</div>';
+      html += '<div style="font-size:24px;font-weight:900;color:' + posColor + ';font-family:\'IBM Plex Mono\',monospace;line-height:1">' + Number(ps.initial_pct).toFixed(1) + '%</div>';
+      html += '<div style="font-size:9px;font-weight:700;color:' + posColor + ';letter-spacing:0.5px;margin-top:3px">' + posLabel + '</div>';
+      html += '</div>';
+      
+      html += '<div style="flex:1;min-width:200px">';
+      html += '<div style="font-size:9px;font-weight:800;color:#94a3b8;letter-spacing:1px;font-family:Sora,sans-serif;margin-bottom:5px">KELLY DERIVATION</div>';
+      html += '<div style="font-size:11px;color:#0f172a;line-height:1.6">';
+      if (ps.kelly_full_pct != null) {
+        html += 'Full Kelly <strong>' + Number(ps.kelly_full_pct).toFixed(1) + '%</strong>';
+        if (ps.kelly_fraction_used) {
+          var kfPct = Math.round(ps.kelly_fraction_used * 100);
+          html += ' × ' + kfPct + '%-Kelly fraction';
+        }
+        if (ps.beta_adjustment) html += ' × β-adj ' + Number(ps.beta_adjustment).toFixed(2);
+        if (ps.spread_multiplier && ps.spread_multiplier < 1) html += ' × spread-pen ' + Number(ps.spread_multiplier).toFixed(2);
+        html += ' → <strong style="color:' + posColor + '">' + Number(ps.initial_pct).toFixed(1) + '%</strong>';
+      }
+      html += '</div>';
+      if (ps.rationale) {
+        html += '<div style="font-size:10px;color:#64748b;margin-top:6px;line-height:1.5;font-style:italic">' + _csEscape(ps.rationale) + '</div>';
+      }
+      html += '</div>';
+      
+      if (ps.max_pct != null) {
+        html += '<div style="flex:0 0 auto;text-align:center;min-width:80px">';
+        html += '<div style="font-size:9px;font-weight:800;color:#94a3b8;letter-spacing:1px;font-family:Sora,sans-serif;margin-bottom:3px">MAX SIZE</div>';
+        html += '<div style="font-size:18px;font-weight:800;color:#0f172a;font-family:\'IBM Plex Mono\',monospace">' + Number(ps.max_pct).toFixed(1) + '%</div>';
+        html += '<div style="font-size:9px;color:#94a3b8;margin-top:2px">single-name cap</div>';
+        html += '</div>';
+      }
+      
+      html += '</div>';  // close flex
+      html += '</div>';  // close white card
+    }
+    
+    // ── Time stop rationale ──
+    if (ts.quarters && ts.rationale) {
+      html += '<div style="font-size:11px;color:#475569;line-height:1.5;padding-top:6px;border-top:1px solid ' + regColor + '40">';
+      html += '<strong>Time stop:</strong> ' + ts.quarters + ' quarters — ' + _csEscape(ts.rationale);
+      html += '</div>';
+    }
+    
+    html += '</div>';  // close regime card
+  }
+  
+html += '</div>';
   }
   
   // ═══ PRICE LADDER ═══
