@@ -1,9 +1,9 @@
 // ═══ Celesys version stamp ═══
-window.CELESYS_VERSION = "v4.63.22";
-window.CELESYS_BUILD_TIME = 1777788419;
-window.CELESYS_BUILD_DATE = "2026-05-03 06:06:59 UTC";
+window.CELESYS_VERSION = "v4.63.23";
+window.CELESYS_BUILD_TIME = 1777823018;
+window.CELESYS_BUILD_DATE = "2026-05-03 15:43:38 UTC";
 console.log("%c━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "color:#1A3A78");
-console.log("%c CELESYS v4.63.22 %c loaded · 2026-04-29 03:29:27 UTC",
+console.log("%c CELESYS v4.63.23 %c loaded · 2026-04-29 03:29:27 UTC",
   "background:#1A3A78;color:#fff;font-weight:900;padding:3px 8px;border-radius:3px;font-family:monospace",
   "color:#1A3A78;font-weight:700;font-family:monospace");
 console.log("%c━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "color:#1A3A78");
@@ -25867,17 +25867,19 @@ function _csR6322RenderPeers(d) {
         barWidth = Math.max(8, barWidth);  // minimum visible width
       }
       
-      html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:3px">';
+      html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">';
       // Ticker label
       html += '<div style="flex-shrink:0;width:60px;font-size:11px;font-family:Sora,sans-serif;font-weight:' + (isTarget ? '800' : '600') + ';color:' + (isTarget ? '#1A3A78' : '#475569') + '">';
-      html += (isTarget ? '<span style="color:#fde68a">★</span> ' : '') + v.ticker;
+      html += (isTarget ? '<span style="color:#f59e0b">★</span> ' : '') + v.ticker;
       html += '</div>';
-      // Bar container
-      html += '<div style="flex:1;height:18px;background:#f8fafc;border-radius:4px;position:relative;overflow:hidden">';
-      if (v.raw != null) {
-        html += '<div style="position:absolute;left:0;top:0;height:100%;width:' + barWidth + '%;background:' + barColor + ';border-radius:4px;transition:width 0.3s"></div>';
-      }
-      html += '</div>';
+      // r63.23: Bar with linear-gradient — most robust, no absolute positioning, no transition.
+      // Background gradient: bar color from 0% to barWidth%, then track color from barWidth% to 100%.
+      var trackColor = '#f1f5f9';
+      var barFill = (v.raw != null)
+        ? ('linear-gradient(to right, ' + barColor + ' 0%, ' + barColor + ' ' + barWidth + '%, ' + trackColor + ' ' + barWidth + '%, ' + trackColor + ' 100%)')
+        : trackColor;
+      var barBorder = isTarget ? ';border:1px solid ' + barColor + '40' : '';
+      html += '<div style="flex:1;height:20px;background:' + barFill + ';border-radius:4px' + barBorder + '"></div>';
       // Value label
       html += '<div style="flex-shrink:0;width:60px;text-align:right;font-size:10px;font-family:\'IBM Plex Mono\',monospace;color:#0f172a;font-weight:' + (isTarget ? '800' : '500') + '">' + fmtVal(v.raw, m.fmt) + '</div>';
       html += '</div>';

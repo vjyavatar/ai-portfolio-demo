@@ -963,3 +963,21 @@ The DD response is structured with metadata in `company`, prices/PE/score in `th
 **17/17 audit checks pass. Runtime simulation confirms real numbers.**
 
 **Process discipline that finally landed:** Confirmed actual data shapes via grep BEFORE writing code. Ran runtime simulation BEFORE shipping. Verified field paths in the actual zip. This broke the "ship → broken → patch → broken" pattern.
+
+---
+
+## v4.63.23 — Fix target row bar invisible (current)
+
+**Built:** 2026-05-03
+
+**User report:** Screenshot showed MU's data correct (P/E 25.36, Rev Growth 85.5%, Score 92) but its bar visualization not rendering — only the ticker label and value column were visible.
+
+**Root cause:** Bar used absolute-positioning inside relative parent with overflow:hidden + width transition. CSS edge case where the navy 100%-width bar didn't paint reliably.
+
+**Fix:** Replaced with single-div linear-gradient approach:
+- `background: linear-gradient(to right, color 0%, color X%, track X%, track 100%)`
+- No nested divs, no positioning context dependencies, no transitions
+- Target row gets subtle navy border outline for extra emphasis
+- Star color upgraded from light yellow (#fde68a) to amber (#f59e0b) for visibility
+
+**Verified:** Math was already correct (simulated all 4 metrics for MU + 5 peers). Just the rendering needed to be bulletproof.
