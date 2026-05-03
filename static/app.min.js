@@ -1,9 +1,9 @@
 // ═══ Celesys version stamp ═══
-window.CELESYS_VERSION = "v4.63.27";
-window.CELESYS_BUILD_TIME = 1777826640;
-window.CELESYS_BUILD_DATE = "2026-05-03 16:44:00 UTC";
+window.CELESYS_VERSION = "v4.63.32";
+window.CELESYS_BUILD_TIME = 1777838708;
+window.CELESYS_BUILD_DATE = "2026-05-03 20:05:08 UTC";
 console.log("%c━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "color:#1A3A78");
-console.log("%c CELESYS v4.63.27 %c loaded · 2026-04-29 03:29:27 UTC",
+console.log("%c CELESYS v4.63.32 %c loaded · 2026-04-29 03:29:27 UTC",
   "background:#1A3A78;color:#fff;font-weight:900;padding:3px 8px;border-radius:3px;font-family:monospace",
   "color:#1A3A78;font-weight:700;font-family:monospace");
 console.log("%c━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "color:#1A3A78");
@@ -25489,34 +25489,37 @@ window._csR6322Inject = function(anchorInfo) {
     'box-shadow:0 1px 3px rgba(15,23,42,0.06);overflow:hidden;font-family:Inter,sans-serif';
   
   card.innerHTML = 
-    // Header — matches existing section header (.sh) pattern
-    '<div style="padding:14px 18px 10px;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;gap:10px;flex-wrap:wrap">' +
-      '<div style="background:rgba(26,58,120,0.1);width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:14px">🧠</div>' +
+    // r63.30: Collapsible header with toggle + Save to Journal button
+    '<div id="cs-r6322-header" onclick="window._csR6322ToggleCollapse()" style="padding:14px 18px;cursor:pointer;display:flex;align-items:center;gap:10px;flex-wrap:wrap;user-select:none">' +
+      '<div style="background:rgba(26,58,120,0.1);width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0">🧠</div>' +
       '<div style="flex:1;min-width:160px">' +
         '<div style="font-size:13px;font-weight:800;color:#1A3A78;font-family:Sora,sans-serif;letter-spacing:0.3px">Analyst Insights</div>' +
-        '<div style="font-size:10px;color:#64748b;margin-top:1px">AI-synthesized analysis · scenarios · peer benchmark · pitch</div>' +
+        '<div id="cs-r6322-summary" style="font-size:11px;color:#64748b;margin-top:2px">' + sym + ' · Click to expand full analysis</div>' +
       '</div>' +
-      '<div style="font-size:9px;color:#94a3b8;font-family:\'IBM Plex Mono\',monospace;letter-spacing:0.5px">' + sym + '</div>' +
+      '<button onclick="event.stopPropagation();window._csR6322OpenJournalModal()" style="background:#1A3A78;color:#fff;border:none;border-radius:6px;padding:6px 12px;font-size:11px;font-weight:700;cursor:pointer;font-family:Inter,sans-serif;flex-shrink:0">📔 Save to Journal</button>' +
+      '<div id="cs-r6322-chevron" style="font-size:14px;color:#94a3b8;flex-shrink:0;transition:transform 0.2s">▼</div>' +
     '</div>' +
-    // Inline pill-style tab bar (matches India/USA toggle aesthetic)
-    '<div id="cs-r6322-tabs" style="padding:12px 18px 0;display:flex;gap:6px;flex-wrap:wrap">' +
-      _csR6322Pill('pitch',     '🎯', 'Pitch',     true)  +
-      _csR6322Pill('insights',  '🧠', 'Deep Insights',  false) +
-      _csR6322Pill('scenarios', '📈', 'Scenarios', false) +
-      _csR6322Pill('peers',     '🏛',  'Peers',     false) +
-      _csR6322Pill('forward',   '💎', 'Forward Value', false) +    /* r63.25 */
-      _csR6322Pill('exit',      '🚪', 'Exit Strategy', false) +    /* r63.25 */
-      _csR6322Pill('calendar',  '📅', 'Catalysts',   false) +     /* r63.25 */
-    '</div>' +
-    // Content panel
-    '<div id="cs-r6322-panel" style="padding:14px 18px 18px;min-height:140px"></div>';
+    // r63.30: Collapsible body wrapper
+    '<div id="cs-r6322-body" style="display:none;border-top:1px solid #f1f5f9">' +
+      // Inline pill-style tab bar
+      '<div id="cs-r6322-tabs" style="padding:12px 18px 0;display:flex;gap:6px;flex-wrap:wrap">' +
+        _csR6322Pill('pitch',     '🎯', 'Pitch',     true)  +
+        _csR6322Pill('insights',  '🧠', 'Deep Insights',  false) +
+        _csR6322Pill('scenarios', '📈', 'Scenarios', false) +
+        _csR6322Pill('peers',     '🏛',  'Peers',     false) +
+        _csR6322Pill('forward',   '💎', 'Forward Value', false) +
+        _csR6322Pill('exit',      '🚪', 'Exit Strategy', false) +
+        _csR6322Pill('calendar',  '📅', 'Catalysts',   false) +
+      '</div>' +
+      // Content panel
+      '<div id="cs-r6322-panel" style="padding:14px 18px 18px;min-height:140px"></div>' +
+    '</div>';
   
   if (anchorInfo.insertParent) {
     anchorInfo.insertParent.insertBefore(card, anchorInfo.insertBefore);
   }
   
-  // Auto-load pitch on first render
-  _csR6322ShowTab('pitch');
+  // r63.30: Don't auto-load pitch — user expands first, then it loads
 };
 
 function _csR6322Pill(id, icon, label, isActive) {
@@ -25691,7 +25694,8 @@ function _csR6322RenderPitch(d) {
   if (d.dcf_fair != null) {
     var upsideColor = (d.upside_pct || 0) > 0 ? '#059669' : '#dc2626';
     var upsideStr = d.upside_pct != null ? ' <span style="color:' + upsideColor + '">(' + (d.upside_pct > 0 ? '+' : '') + d.upside_pct + '%)</span>' : '';
-    html += '<div><span style="color:#94a3b8">DCF</span> <strong style="color:#0f172a">$' + Number(d.dcf_fair).toFixed(2) + '</strong>' + upsideStr + '</div>';
+    // r63.32: Label as "FAIR VALUE" (blended) not "DCF" — institutional standard
+    html += '<div><span style="color:#94a3b8">FAIR VALUE</span> <strong style="color:#0f172a">$' + Number(d.dcf_fair).toFixed(2) + '</strong>' + upsideStr + '</div>';
   }
   if (d.forward_pe != null) {
     html += '<div><span style="color:#94a3b8">FWD P/E</span> <strong style="color:#0f172a">' + Number(d.forward_pe).toFixed(1) + '</strong></div>';
@@ -25699,6 +25703,24 @@ function _csR6322RenderPitch(d) {
   html += '</div>';
   html += '</div>';
   html += '</div>';
+  
+  // r63.32: Methodology disclosure (institutional standard transparency)
+  if (d.fair_value_method || d.fair_value_low || d.fair_value_high) {
+    html += '<div style="margin-top:14px;padding:8px 12px;background:#f8fafc;border-radius:6px;border-left:3px solid #cbd5e1">';
+    html += '<div style="font-size:9px;font-weight:800;color:#64748b;letter-spacing:1px;font-family:Sora,sans-serif;margin-bottom:3px">VALUATION METHODOLOGY</div>';
+    if (d.fair_value_method) {
+      html += '<div style="font-size:11px;color:#475569;line-height:1.5;margin-bottom:4px">' + _csEscape(d.fair_value_method) + '</div>';
+    }
+    if (d.fair_value_low != null && d.fair_value_high != null) {
+      html += '<div style="font-size:10px;color:#94a3b8;font-family:\'IBM Plex Mono\',monospace">CONFIDENCE RANGE: $' + Number(d.fair_value_low).toFixed(2) + ' — $' + Number(d.fair_value_high).toFixed(2);
+      if (d.fair_value_spread_pct != null) {
+        html += '  ·  SPREAD ' + Number(d.fair_value_spread_pct).toFixed(0) + '%';
+      }
+      html += '</div>';
+    }
+    html += '</div>';
+  }
+  
   // Threshold ladder at bottom
   html += '<div style="margin-top:18px;padding-top:14px;border-top:1px solid #f1f5f9">' + ladder + '</div>';
   return html;
@@ -25734,6 +25756,72 @@ function _csR6322RenderScenarios(d) {
   var s = d.scenarios;
   var spot = d.spot;
   var bull = s.bull.target, base = s.base.target, bear = s.bear.target;
+  
+  // r63.29: Plain-language verdict at top — same pattern as Exit Strategy
+  var bullUpside = ((bull - spot) / spot) * 100;
+  var baseUpside = ((base - spot) / spot) * 100;
+  var bearUpside = ((bear - spot) / spot) * 100;
+  var isOvervalued = bull < spot;  // even bull case below spot = overvalued
+  var isUndervalued = bear > spot; // even bear case above spot = strong upside
+  
+  var verdictHtml = '';
+  if (isOvervalued) {
+    // Worst case scenario for buyers — even bull is below current
+    verdictHtml += '<div style="background:#fef2f2;border:2px solid #dc2626;border-radius:8px;padding:14px 18px;margin-bottom:18px">';
+    verdictHtml += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">';
+    verdictHtml += '<span style="font-size:18px">⛔</span>';
+    verdictHtml += '<span style="font-size:14px;font-weight:800;color:#7f1d1d;font-family:Sora,sans-serif;letter-spacing:0.3px">ALL SCENARIOS SHOW LOSSES — STOCK IS OVERVALUED</span>';
+    verdictHtml += '</div>';
+    verdictHtml += '<div style="font-size:13px;color:#0f172a;line-height:1.7;margin-bottom:10px">';
+    var multipleOfBase = (base && base > 0) ? (spot / base) : null;
+    verdictHtml += '<strong>Plain English:</strong> The stock trades at <strong style="color:#dc2626">$' + spot.toFixed(2) + '</strong> right now';
+    if (multipleOfBase && multipleOfBase >= 1.5) {
+      verdictHtml += ' — <strong style="color:#dc2626">' + multipleOfBase.toFixed(1) + 'x fair value</strong>';
+    }
+    verdictHtml += '. Our 12-month price models show three scenarios — and ALL THREE are below current price:';
+    verdictHtml += '</div>';
+    verdictHtml += '<div style="background:#fff;border-radius:6px;padding:10px 14px;margin-bottom:10px;font-size:12px;line-height:1.8;color:#0f172a">';
+    verdictHtml += '<div>📈 <strong style="color:#10b981">Best case (BULL):</strong> Stock falls to <strong>$' + bull.toFixed(2) + '</strong> — you lose <strong style="color:#dc2626">' + Math.abs(bullUpside).toFixed(0) + '%</strong></div>';
+    verdictHtml += '<div>➖ <strong style="color:#1A3A78">Most likely (BASE):</strong> Stock falls to <strong>$' + base.toFixed(2) + '</strong> — you lose <strong style="color:#dc2626">' + Math.abs(baseUpside).toFixed(0) + '%</strong></div>';
+    verdictHtml += '<div>📉 <strong style="color:#dc2626">Worst case (BEAR):</strong> Stock falls to <strong>$' + bear.toFixed(2) + '</strong> — you lose <strong style="color:#dc2626">' + Math.abs(bearUpside).toFixed(0) + '%</strong></div>';
+    verdictHtml += '</div>';
+    verdictHtml += '<div style="font-size:12px;color:#475569;line-height:1.6;padding-top:8px;border-top:1px solid #fecaca">';
+    verdictHtml += '<strong style="color:#7f1d1d">What this means:</strong> There is no realistic scenario in our model where buying at $' + spot.toFixed(2) + ' makes money over the next 12 months. The stock\'s real worth is around <strong>$' + base.toFixed(2) + '</strong> — anything paid above that risks a loss as price reverts to fundamentals.';
+    verdictHtml += '</div>';
+    verdictHtml += '</div>';
+  } else if (isUndervalued) {
+    // Strong setup — even bear case is above current
+    verdictHtml += '<div style="background:#ecfdf5;border:2px solid #10b981;border-radius:8px;padding:14px 18px;margin-bottom:18px">';
+    verdictHtml += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">';
+    verdictHtml += '<span style="font-size:18px">🎯</span>';
+    verdictHtml += '<span style="font-size:14px;font-weight:800;color:#047857;font-family:Sora,sans-serif;letter-spacing:0.3px">STRONG SETUP — ALL SCENARIOS SHOW GAINS</span>';
+    verdictHtml += '</div>';
+    verdictHtml += '<div style="font-size:13px;color:#0f172a;line-height:1.7;margin-bottom:10px">';
+    verdictHtml += '<strong>Plain English:</strong> The stock trades at <strong style="color:#1A3A78">$' + spot.toFixed(2) + '</strong> right now. Our 12-month price models show three scenarios — and even the WORST case is above current price:';
+    verdictHtml += '</div>';
+    verdictHtml += '<div style="background:#fff;border-radius:6px;padding:10px 14px;font-size:12px;line-height:1.8;color:#0f172a">';
+    verdictHtml += '<div>📈 <strong style="color:#10b981">Best case (BULL):</strong> Stock rises to <strong>$' + bull.toFixed(2) + '</strong> — you gain <strong style="color:#10b981">+' + bullUpside.toFixed(0) + '%</strong></div>';
+    verdictHtml += '<div>➖ <strong style="color:#1A3A78">Most likely (BASE):</strong> Stock rises to <strong>$' + base.toFixed(2) + '</strong> — you gain <strong style="color:#10b981">+' + baseUpside.toFixed(0) + '%</strong></div>';
+    verdictHtml += '<div>📉 <strong style="color:#dc2626">Worst case (BEAR):</strong> Stock rises to <strong>$' + bear.toFixed(2) + '</strong> — you still gain <strong style="color:#10b981">+' + bearUpside.toFixed(0) + '%</strong></div>';
+    verdictHtml += '</div>';
+    verdictHtml += '</div>';
+  } else {
+    // Mixed — bull above, bear below — typical buy candidate
+    verdictHtml += '<div style="background:#f0f9ff;border:2px solid #0891b2;border-radius:8px;padding:14px 18px;margin-bottom:18px">';
+    verdictHtml += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">';
+    verdictHtml += '<span style="font-size:18px">⚖️</span>';
+    verdictHtml += '<span style="font-size:14px;font-weight:800;color:#0c4a6e;font-family:Sora,sans-serif;letter-spacing:0.3px">MIXED OUTLOOK — UPSIDE WITH RISK</span>';
+    verdictHtml += '</div>';
+    verdictHtml += '<div style="font-size:13px;color:#0f172a;line-height:1.7;margin-bottom:10px">';
+    verdictHtml += '<strong>Plain English:</strong> The stock trades at <strong style="color:#1A3A78">$' + spot.toFixed(2) + '</strong> right now. Three scenarios for the next 12 months:';
+    verdictHtml += '</div>';
+    verdictHtml += '<div style="background:#fff;border-radius:6px;padding:10px 14px;font-size:12px;line-height:1.8;color:#0f172a">';
+    verdictHtml += '<div>📈 <strong style="color:#10b981">Best case:</strong> Reaches <strong>$' + bull.toFixed(2) + '</strong> — gain <strong style="color:#10b981">+' + bullUpside.toFixed(0) + '%</strong></div>';
+    verdictHtml += '<div>➖ <strong style="color:#1A3A78">Most likely:</strong> Reaches <strong>$' + base.toFixed(2) + '</strong> — ' + (baseUpside > 0 ? '<strong style="color:#10b981">gain +' : '<strong style="color:#dc2626">loss ') + Math.abs(baseUpside).toFixed(0) + '%</strong></div>';
+    verdictHtml += '<div>📉 <strong style="color:#dc2626">Worst case:</strong> Falls to <strong>$' + bear.toFixed(2) + '</strong> — loss <strong style="color:#dc2626">' + bearUpside.toFixed(0) + '%</strong></div>';
+    verdictHtml += '</div>';
+    verdictHtml += '</div>';
+  }
   
   // Compute axis range with padding
   var minPrice = Math.min(bear, spot) * 0.92;
@@ -25799,6 +25887,8 @@ function _csR6322RenderScenarios(d) {
   rows += '</div>';
   
   var html = '';
+  // r63.29: Plain-language verdict before chart
+  html += verdictHtml;
   // Header line
   html += '<div style="font-size:10px;color:#64748b;font-family:\'IBM Plex Mono\',monospace;letter-spacing:0.3px;margin-bottom:14px;padding-top:14px">12-MONTH PRICE TARGETS</div>';
   // Chart
@@ -25951,20 +26041,19 @@ function _csR6322RenderPeers(d) {
       html += (isTarget ? '<span style="color:#f59e0b">★</span> ' : '') + v.ticker;
       html += '</div>';
       
-      // r63.27: SINGLE-DIV bar with linear-gradient. Clamp 99% max to avoid edge cases.
-      // Gradient: bar color from 0% to barWidth%, then track from barWidth% to 100%.
-      // No nested divs, no width-of-child-relative-to-flex-parent issues.
+      // r63.28: TWO-DIV approach. Outer div = track + border.
+      // Inner div = colored fill, sized as percentage. Most browser-compatible pattern.
+      // No CSS shorthand ambiguity, no gradient parsing issues, no flex-child sizing issues.
       var trackColor = '#e2e8f0';
-      var safeWidth = (v.raw != null) ? Math.min(Math.max(barWidth, 1), 99) : 0;
-      var bgStyle;
-      if (v.raw == null) {
-        bgStyle = trackColor;
-      } else {
-        // CRITICAL: use sharp transition with comma-only, no space-separated stops
-        bgStyle = 'linear-gradient(90deg,' + barColor + ' 0%,' + barColor + ' ' + safeWidth + '%,' + trackColor + ' ' + safeWidth + '%,' + trackColor + ' 100%)';
+      var fillWidth = (v.raw != null) ? Math.min(Math.max(barWidth, 2), 100) : 0;
+      var borderColor = isTarget ? '#1A3A78' : '#cbd5e1';
+      var borderWidth = isTarget ? '1.5px' : '1px';
+      
+      html += '<div style="flex:1;height:20px;background-color:' + trackColor + ';border:' + borderWidth + ' solid ' + borderColor + ';border-radius:4px;box-sizing:border-box;overflow:hidden;display:block">';
+      if (v.raw != null) {
+        html += '<div style="width:' + fillWidth + '%;height:100%;background-color:' + barColor + ';display:block"></div>';
       }
-      var borderStyle = isTarget ? 'border:1.5px solid #1A3A78;' : 'border:1px solid #e2e8f0;';
-      html += '<div style="flex:1;height:20px;background:' + bgStyle + ';' + borderStyle + 'border-radius:4px;box-sizing:border-box"></div>';
+      html += '</div>';
       // Value label
       html += '<div style="flex-shrink:0;width:60px;text-align:right;font-size:10px;font-family:\'IBM Plex Mono\',monospace;color:#0f172a;font-weight:' + (isTarget ? '800' : '500') + '">' + fmtVal(v.raw, m.fmt) + '</div>';
       html += '</div>';
@@ -25997,15 +26086,23 @@ function _csR6322RenderForward(d) {
   
   // Top verdict box
   if (isOvervalued) {
+    // r63.31: Show multiple-of-fair-value too for clarity
     var er5y = er['5y_pct'] != null ? er['5y_pct'] : 0;
+    var multipleOfFairFV = (baseTarget && baseTarget > 0) ? (spot / baseTarget) : null;
     html += '<div style="background:#fef2f2;border:2px solid #dc2626;border-radius:8px;padding:14px 18px;margin-bottom:18px">';
     html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">';
     html += '<span style="font-size:16px">⛔</span>';
     html += '<span style="font-size:13px;font-weight:800;color:#7f1d1d;font-family:Sora,sans-serif;letter-spacing:0.3px">OVERVALUED — EXPECTED LOSS OVER 5 YEARS</span>';
     html += '</div>';
-    html += '<div style="font-size:13px;color:#0f172a;line-height:1.6">';
-    html += '<strong>Plain English:</strong> If you buy at <strong>$' + spot.toFixed(2) + '</strong> and hold for 5 years, our model expects you to <strong style="color:#dc2626">LOSE ' + Math.abs(er5y).toFixed(0) + '%</strong>. ';
-    html += 'The stock is trading far above its real worth (~$' + baseTarget.toFixed(2) + '). Eventually, prices return to fundamentals — that\'s the loss in the chart below.';
+    html += '<div style="font-size:13px;color:#0f172a;line-height:1.7">';
+    html += '<strong>Plain English:</strong> If you buy at <strong>$' + spot.toFixed(2) + '</strong> and hold for 5 years, our model expects you to <strong style="color:#dc2626">LOSE ' + Math.abs(er5y).toFixed(0) + '%</strong> of your capital. ';
+    html += 'The stock trades at ';
+    if (multipleOfFairFV) {
+      html += '<strong style="color:#dc2626">' + multipleOfFairFV.toFixed(1) + 'x fair value</strong> ';
+    } else {
+      html += 'far above fair value ';
+    }
+    html += '(~$' + baseTarget.toFixed(2) + '). Markets eventually price stocks at their fundamentals — that\'s the gradual loss shown in the chart below.';
     html += '</div>';
     html += '</div>';
   } else if (er['5y_pct'] != null && er['5y_pct'] > 0) {
@@ -26143,22 +26240,62 @@ function _csR6322RenderExit(d) {
   
   // ═══ TOP BANNER — plain language verdict ═══
   if (isOvervalued) {
-    var downsideToBase = baseTarget ? ((baseTarget - spot) / spot * 100) : null;
-    var downsideToBull = bullTarget ? ((bullTarget - spot) / spot * 100) : null;
+    // r63.31: Two distinct percentages, both shown for clarity.
+    // PREMIUM = how much spot exceeds fair value (e.g., 341% = trading at 4.4x fair)
+    // DOWNSIDE = how much you'd lose if price reverts to fair value (e.g., -77%)
+    var premiumOverBase = (baseTarget && baseTarget > 0) ? ((spot - baseTarget) / baseTarget * 100) : null;
+    var downsideToBase  = baseTarget ? ((baseTarget - spot) / spot * 100) : null;
+    var premiumOverBull = (bullTarget && bullTarget > 0) ? ((spot - bullTarget) / bullTarget * 100) : null;
+    var downsideToBull  = bullTarget ? ((bullTarget - spot) / spot * 100) : null;
+    var multipleOfFair  = (baseTarget && baseTarget > 0) ? (spot / baseTarget) : null;
     
     html += '<div style="background:#fef2f2;border:2px solid #dc2626;border-radius:8px;padding:14px 18px;margin-bottom:18px">';
     html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">';
     html += '<span style="font-size:18px">⛔</span>';
     html += '<span style="font-size:14px;font-weight:800;color:#7f1d1d;font-family:Sora,sans-serif;letter-spacing:0.3px">DO NOT BUY AT CURRENT PRICE</span>';
     html += '</div>';
-    html += '<div style="font-size:13px;color:#0f172a;line-height:1.6;margin-bottom:10px">';
+    
+    html += '<div style="font-size:13px;color:#0f172a;line-height:1.7;margin-bottom:12px">';
     html += '<strong>Plain English:</strong> This stock is trading at <strong style="color:#dc2626">$' + spot.toFixed(2) + '</strong>, ';
-    html += 'but our analysis says fair value is only <strong style="color:#1A3A78">$' + (baseTarget || 0).toFixed(2) + '</strong> ';
-    html += '— that\'s <strong style="color:#dc2626">' + Math.abs(downsideToBase).toFixed(0) + '% above what it\'s worth</strong>. ';
-    html += 'Even our most optimistic scenario tops out at $' + (bullTarget || 0).toFixed(2) + ', still below today\'s price.';
+    html += 'but our analysis says fair value is only <strong style="color:#1A3A78">$' + (baseTarget || 0).toFixed(2) + '</strong>';
+    if (multipleOfFair && multipleOfFair >= 1.5) {
+      html += ' — the stock trades at <strong style="color:#dc2626">' + multipleOfFair.toFixed(1) + 'x fair value</strong>';
+    }
+    html += '. Even our most optimistic scenario tops out at <strong>$' + (bullTarget || 0).toFixed(2) + '</strong>, still ';
+    // r63.31 fix: 'X% below today's price' needs (bull-spot)/spot, NOT (spot-bull)/bull
+    if (downsideToBull != null && downsideToBull < 0) {
+      html += '<strong style="color:#dc2626">' + Math.abs(downsideToBull).toFixed(0) + '% below</strong> today\'s price.';
+    } else {
+      html += 'below today\'s price.';
+    }
     html += '</div>';
-    html += '<div style="font-size:12px;color:#475569;line-height:1.5;padding-top:8px;border-top:1px solid #fecaca">';
-    html += '<strong>What this means:</strong> Buying here means buying overvalued. To make profit, you\'d need someone to pay even MORE than the current inflated price — that\'s speculation, not investing.';
+    
+    // r63.31: Two-card breakdown — PREMIUM vs DOWNSIDE (both true, both important)
+    html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">';
+    if (premiumOverBase != null) {
+      html += '<div style="background:#fff;border:1px solid #fecaca;border-radius:6px;padding:10px 12px">';
+      html += '<div style="font-size:9px;font-weight:800;color:#94a3b8;letter-spacing:1px;font-family:Sora,sans-serif;margin-bottom:3px">PREMIUM OVER FAIR VALUE</div>';
+      html += '<div style="font-size:18px;font-weight:900;color:#dc2626;font-family:\'IBM Plex Mono\',monospace">+' + premiumOverBase.toFixed(0) + '%</div>';
+      html += '<div style="font-size:10px;color:#64748b;margin-top:2px">You\'re paying $' + (spot - baseTarget).toFixed(2) + ' more per share than the stock is worth</div>';
+      html += '</div>';
+    }
+    if (downsideToBase != null) {
+      html += '<div style="background:#fff;border:1px solid #fecaca;border-radius:6px;padding:10px 12px">';
+      html += '<div style="font-size:9px;font-weight:800;color:#94a3b8;letter-spacing:1px;font-family:Sora,sans-serif;margin-bottom:3px">YOUR LOSS IF PRICE NORMALIZES</div>';
+      html += '<div style="font-size:18px;font-weight:900;color:#dc2626;font-family:\'IBM Plex Mono\',monospace">' + downsideToBase.toFixed(0) + '%</div>';
+      html += '<div style="font-size:10px;color:#64748b;margin-top:2px">If price falls to fair value, you lose this much of your capital</div>';
+      html += '</div>';
+    }
+    html += '</div>';
+    
+    html += '<div style="font-size:12px;color:#475569;line-height:1.6;padding-top:10px;border-top:1px solid #fecaca">';
+    html += '<strong>What this means:</strong> Buying here means buying overvalued. ';
+    if (multipleOfFair && multipleOfFair >= 3) {
+      html += 'A ' + multipleOfFair.toFixed(1) + 'x premium over fair value is extreme — historically, gaps this large rarely persist beyond 12-24 months. ';
+    } else if (multipleOfFair && multipleOfFair >= 2) {
+      html += 'A ' + multipleOfFair.toFixed(1) + 'x premium typically reflects either market euphoria or a moat the model isn\'t capturing. ';
+    }
+    html += 'To make profit at this price, the next buyer would need to pay even MORE — that\'s speculation, not investing. The math says wait for a pullback toward $' + (baseTarget || 0).toFixed(2) + '.';
     html += '</div>';
     html += '</div>';
     
@@ -26338,6 +26475,315 @@ function _csR6322RenderCalendar(d) {
   html += '</div>';
   return html;
 }
+
+
+// ═══════════════════════════════════════════════════════════════════
+// r63.30: Collapsible toggle + Journal modals
+// ═══════════════════════════════════════════════════════════════════
+
+window._csR6322Collapsed = true;
+
+window._csR6322ToggleCollapse = function() {
+  window._csR6322Collapsed = !window._csR6322Collapsed;
+  var body = document.getElementById('cs-r6322-body');
+  var chevron = document.getElementById('cs-r6322-chevron');
+  if (body) body.style.display = window._csR6322Collapsed ? 'none' : 'block';
+  if (chevron) chevron.style.transform = window._csR6322Collapsed ? 'rotate(0deg)' : 'rotate(180deg)';
+  if (!window._csR6322Collapsed && !window._csR6322Loaded.pitch) {
+    window._csR6322ShowTab('pitch');
+  }
+};
+
+window._csR6322UpdateSummary = function(pitchData) {
+  var summary = document.getElementById('cs-r6322-summary');
+  if (!summary || !pitchData) return;
+  var sym = window._csR6322LastSymbol || '';
+  var parts = [sym];
+  if (pitchData.verdict) parts.push('<strong style="color:#1A3A78">' + _csEscape(pitchData.verdict) + '</strong>');
+  if (pitchData.score != null) parts.push(pitchData.score + '/100');
+  if (pitchData.spot != null) parts.push('$' + Number(pitchData.spot).toFixed(2));
+  if (pitchData.dcf_fair != null && pitchData.upside_pct != null) {
+    var color = pitchData.upside_pct > 0 ? '#10b981' : '#dc2626';
+    parts.push('DCF $' + Number(pitchData.dcf_fair).toFixed(2) + ' <span style="color:' + color + '">(' + (pitchData.upside_pct > 0 ? '+' : '') + pitchData.upside_pct + '%)</span>');
+  }
+  summary.innerHTML = parts.join(' · ');
+};
+
+// Hook into showTab to update summary after pitch loads
+var _csR6322_origShowTab = window._csR6322ShowTab;
+window._csR6322ShowTab = function(tabId) {
+  _csR6322_origShowTab(tabId);
+  setTimeout(function() {
+    if (window._csR6322Data && window._csR6322Data.pitch) {
+      window._csR6322UpdateSummary(window._csR6322Data.pitch);
+    }
+  }, 1500);
+};
+
+// ─── Save to Journal Modal ───
+window._csR6322OpenJournalModal = function() {
+  var sym = window._csR6322LastSymbol;
+  if (!sym) { alert('No ticker context.'); return; }
+  
+  var modal = document.createElement('div');
+  modal.id = 'cs-journal-modal';
+  modal.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(15,23,42,0.6);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px';
+  modal.innerHTML =
+    '<div style="background:#fff;border-radius:12px;max-width:480px;width:100%;padding:24px;box-shadow:0 20px 50px rgba(0,0,0,0.3)">' +
+      '<div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">' +
+        '<div style="font-size:22px">📔</div>' +
+        '<div>' +
+          '<div style="font-size:16px;font-weight:800;color:#0f172a;font-family:Sora,sans-serif">Save ' + _csEscape(sym) + ' to Journal</div>' +
+          '<div style="font-size:11px;color:#64748b">Capture your thesis. Track reality vs your plan.</div>' +
+        '</div>' +
+      '</div>' +
+      '<div style="font-size:12px;color:#475569;margin-bottom:8px;line-height:1.5">Why are you tracking this position? (optional)</div>' +
+      '<textarea id="cs-journal-thesis" placeholder="e.g. Strong DCF upside + AI catalyst Q3 earnings. Buying for 12mo hold." style="width:100%;min-height:90px;padding:10px;border:1px solid #e2e8f0;border-radius:6px;font-size:13px;font-family:Inter,sans-serif;color:#0f172a;resize:vertical;box-sizing:border-box"></textarea>' +
+      '<div style="font-size:11px;color:#94a3b8;margin-top:6px;line-height:1.5">Current analysis (score, DCF, exit ladder) will be saved as a snapshot. Review later to see if your thesis played out.</div>' +
+      '<div style="display:flex;gap:8px;margin-top:18px">' +
+        '<button onclick="window._csR6322CloseJournalModal()" style="flex:1;padding:10px;background:#f1f5f9;color:#475569;border:none;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;font-family:Inter,sans-serif">Cancel</button>' +
+        '<button onclick="window._csR6322ConfirmSaveJournal()" id="cs-journal-save-btn" style="flex:2;padding:10px;background:#1A3A78;color:#fff;border:none;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;font-family:Inter,sans-serif">📔 Save to Journal</button>' +
+      '</div>' +
+    '</div>';
+  
+  document.body.appendChild(modal);
+  setTimeout(function() {
+    var ta = document.getElementById('cs-journal-thesis');
+    if (ta) ta.focus();
+  }, 100);
+};
+
+window._csR6322CloseJournalModal = function() {
+  var m = document.getElementById('cs-journal-modal');
+  if (m) m.remove();
+};
+
+window._csR6322ConfirmSaveJournal = function() {
+  var sym = window._csR6322LastSymbol;
+  var thesisEl = document.getElementById('cs-journal-thesis');
+  var thesis_note = thesisEl ? thesisEl.value : '';
+  var btn = document.getElementById('cs-journal-save-btn');
+  if (btn) { btn.disabled = true; btn.innerHTML = 'Saving...'; }
+  
+  var email = (window._verifiedEmail || window._authedEmail || window.localStorage.getItem('email') || '').trim();
+  
+  fetch('/api/journal/save', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({email: email, symbol: sym, region: 'US', thesis_note: thesis_note})
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(data) {
+    if (data.success) {
+      var m = document.getElementById('cs-journal-modal');
+      if (m) {
+        m.innerHTML = '<div style="background:#fff;border-radius:12px;max-width:380px;padding:24px;text-align:center;box-shadow:0 20px 50px rgba(0,0,0,0.3)">' +
+          '<div style="font-size:48px;margin-bottom:12px">✅</div>' +
+          '<div style="font-size:16px;font-weight:800;color:#047857;font-family:Sora,sans-serif;margin-bottom:6px">Saved to Journal</div>' +
+          '<div style="font-size:12px;color:#475569;line-height:1.5;margin-bottom:18px">' + _csEscape(sym) + ' added with snapshot of current analysis. ' + data.total_entries + ' position' + (data.total_entries === 1 ? '' : 's') + ' tracked.</div>' +
+          '<div style="display:flex;gap:8px">' +
+            '<button onclick="window._csR6322CloseJournalModal()" style="flex:1;padding:10px;background:#f1f5f9;color:#475569;border:none;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;font-family:Inter,sans-serif">Done</button>' +
+            '<button onclick="window._csR6322CloseJournalModal();window._csR6322OpenJournalView()" style="flex:1;padding:10px;background:#1A3A78;color:#fff;border:none;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;font-family:Inter,sans-serif">View Journal</button>' +
+          '</div>' +
+          '</div>';
+      }
+    } else {
+      if (btn) { btn.disabled = false; btn.innerHTML = '📔 Save to Journal'; }
+      alert('Save failed: ' + (data.error || 'Unknown error'));
+    }
+  })
+  .catch(function(err) {
+    if (btn) { btn.disabled = false; btn.innerHTML = '📔 Save to Journal'; }
+    alert('Network error: ' + err.message);
+  });
+};
+
+// ─── Journal List View ───
+window._csR6322OpenJournalView = function() {
+  var existing = document.getElementById('cs-journal-view-modal');
+  if (existing) existing.remove();
+  
+  var modal = document.createElement('div');
+  modal.id = 'cs-journal-view-modal';
+  modal.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(15,23,42,0.6);z-index:99999;display:flex;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto';
+  modal.innerHTML =
+    '<div style="background:#fff;border-radius:12px;max-width:920px;width:100%;padding:0;box-shadow:0 20px 50px rgba(0,0,0,0.3);max-height:90vh;display:flex;flex-direction:column;overflow:hidden">' +
+      '<div style="padding:20px 24px;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;gap:12px">' +
+        '<div style="font-size:24px">📔</div>' +
+        '<div style="flex:1">' +
+          '<div style="font-size:18px;font-weight:800;color:#0f172a;font-family:Sora,sans-serif">My Position Journal</div>' +
+          '<div style="font-size:11px;color:#64748b">Your saved positions tracked against reality</div>' +
+        '</div>' +
+        '<button onclick="document.getElementById(\'cs-journal-view-modal\').remove()" style="background:#f1f5f9;color:#475569;border:none;border-radius:6px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:Inter,sans-serif">✕ Close</button>' +
+      '</div>' +
+      '<div id="cs-journal-view-body" style="flex:1;overflow-y:auto;padding:20px 24px">' + _csR6322JournalSpin() + '</div>' +
+    '</div>';
+  
+  document.body.appendChild(modal);
+  
+  var email = (window._verifiedEmail || window._authedEmail || window.localStorage.getItem('email') || '').trim();
+  fetch('/api/journal/list?email=' + encodeURIComponent(email))
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      var body = document.getElementById('cs-journal-view-body');
+      if (!body) return;
+      if (!data.success) {
+        body.innerHTML = '<div style="padding:20px;background:#fef2f2;border-left:3px solid #dc2626;border-radius:6px;color:#7f1d1d">' + _csEscape(data.error || 'Failed to load') + '</div>';
+        return;
+      }
+      body.innerHTML = _csR6322RenderJournal(data);
+    })
+    .catch(function(err) {
+      var body = document.getElementById('cs-journal-view-body');
+      if (body) body.innerHTML = '<div style="padding:20px;background:#fef2f2;border-left:3px solid #dc2626;border-radius:6px;color:#7f1d1d">Network error: ' + err.message + '</div>';
+    });
+};
+
+function _csR6322JournalSpin() {
+  return '<div style="text-align:center;padding:60px 0">' +
+    '<div style="display:inline-block;width:32px;height:32px;border:3px solid #e2e8f0;border-top-color:#1A3A78;border-radius:50%;animation:csFsSpin 0.8s linear infinite"></div>' +
+    '<div style="margin-top:14px;font-size:11px;color:#64748b;font-family:Sora,sans-serif;font-weight:700;letter-spacing:0.5px">LOADING JOURNAL</div>' +
+  '</div>';
+}
+
+function _csR6322RenderJournal(d) {
+  var s = d.summary || {};
+  var html = '';
+  
+  if (!d.entries || d.entries.length === 0) {
+    html += '<div style="text-align:center;padding:60px 20px">';
+    html += '<div style="font-size:48px;margin-bottom:14px">📔</div>';
+    html += '<div style="font-size:16px;font-weight:700;color:#0f172a;margin-bottom:6px;font-family:Sora,sans-serif">Your journal is empty</div>';
+    html += '<div style="font-size:13px;color:#64748b;line-height:1.6;max-width:380px;margin:0 auto">Run analysis on a stock and click <strong>📔 Save to Journal</strong> in the Analyst Insights card. We&apos;ll snapshot the analysis and track reality vs your plan.</div>';
+    html += '</div>';
+    return html;
+  }
+  
+  html += '<div style="display:flex;gap:14px;margin-bottom:18px;flex-wrap:wrap;font-family:\'IBM Plex Mono\',monospace;font-size:12px">';
+  html += '<div><span style="color:#94a3b8">TRACKED</span> <strong style="color:#0f172a;font-size:16px">' + s.total + '</strong></div>';
+  if (s.alerts > 0) html += '<div><span style="color:#94a3b8">⚠ ALERTS</span> <strong style="color:#dc2626;font-size:16px">' + s.alerts + '</strong></div>';
+  if (s.winners > 0) html += '<div><span style="color:#94a3b8">WINNERS</span> <strong style="color:#10b981;font-size:16px">' + s.winners + '</strong></div>';
+  if (s.losers > 0) html += '<div><span style="color:#94a3b8">LOSERS</span> <strong style="color:#dc2626;font-size:16px">' + s.losers + '</strong></div>';
+  html += '</div>';
+  
+  if (d.alerts && d.alerts.length > 0) {
+    html += '<div style="background:#fef3c7;border:2px solid #f59e0b;border-radius:8px;padding:14px 18px;margin-bottom:18px">';
+    html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">';
+    html += '<span style="font-size:18px">🚨</span>';
+    html += '<span style="font-size:13px;font-weight:800;color:#92400e;font-family:Sora,sans-serif;letter-spacing:0.3px">ACTION NEEDED — ' + d.alerts.length + ' position' + (d.alerts.length === 1 ? '' : 's') + ' crossed your trigger levels</span>';
+    html += '</div>';
+    d.alerts.forEach(function(a) {
+      var typeIcon = a.type === 'PROFIT_TAKE' ? '💰' : '⛔';
+      var typeColor = a.type === 'PROFIT_TAKE' ? '#047857' : '#7f1d1d';
+      html += '<div style="display:flex;gap:10px;align-items:center;padding:8px 10px;background:#fff;border-radius:6px;margin-bottom:6px">';
+      html += '<div style="font-size:18px">' + typeIcon + '</div>';
+      html += '<div style="flex:1">';
+      html += '<div style="font-size:12px;color:#0f172a"><strong>' + _csEscape(a.symbol) + '</strong> hit ' + _csEscape(a.level) + ' at $' + a.price.toFixed(2) + ' (now $' + (a.current_spot || 0).toFixed(2) + ')</div>';
+      html += '<div style="font-size:11px;color:' + typeColor + ';font-weight:700;margin-top:1px">→ ' + _csEscape(a.action) + '</div>';
+      html += '</div>';
+      html += '</div>';
+    });
+    html += '</div>';
+  }
+  
+  d.entries.forEach(function(e) {
+    var pnlColor = (e.pnl_pct == null) ? '#94a3b8' : (e.pnl_pct > 0 ? '#10b981' : (e.pnl_pct < 0 ? '#dc2626' : '#94a3b8'));
+    var pnlSign = (e.pnl_pct != null && e.pnl_pct > 0) ? '+' : '';
+    var hasTriggers = e.triggers && e.triggers.length > 0;
+    var borderColor = hasTriggers ? '#f59e0b' : '#e2e8f0';
+    var borderWidth = hasTriggers ? '2px' : '1px';
+    
+    html += '<div style="background:#fff;border:' + borderWidth + ' solid ' + borderColor + ';border-radius:10px;padding:14px 18px;margin-bottom:12px">';
+    
+    html += '<div style="display:flex;align-items:flex-start;gap:14px;margin-bottom:10px;flex-wrap:wrap">';
+    html += '<div style="flex:1;min-width:160px">';
+    html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:2px">';
+    html += '<div style="font-size:15px;font-weight:800;color:#0f172a;font-family:Sora,sans-serif">' + _csEscape(e.symbol) + '</div>';
+    if (hasTriggers) html += '<span style="background:#fef3c7;color:#92400e;font-size:9px;font-weight:800;padding:2px 7px;border-radius:10px;letter-spacing:0.5px">⚠ ACTION</span>';
+    html += '</div>';
+    html += '<div style="font-size:11px;color:#64748b">' + _csEscape(e.name) + (e.sector ? ' · ' + _csEscape(e.sector) : '') + '</div>';
+    html += '<div style="font-size:10px;color:#94a3b8;margin-top:3px;font-family:\'IBM Plex Mono\',monospace">Saved ' + _csEscape(e.saved_date) + (e.days_held != null ? ' · ' + e.days_held + ' day' + (e.days_held === 1 ? '' : 's') + ' held' : '') + '</div>';
+    html += '</div>';
+    
+    html += '<div style="text-align:right;font-family:\'IBM Plex Mono\',monospace">';
+    if (e.current_spot != null && e.entry_price != null) {
+      html += '<div style="font-size:14px;font-weight:800;color:#0f172a">$' + e.current_spot.toFixed(2) + '</div>';
+      html += '<div style="font-size:11px;color:#64748b">from $' + e.entry_price.toFixed(2) + '</div>';
+      if (e.pnl_pct != null) {
+        html += '<div style="font-size:13px;font-weight:800;color:' + pnlColor + ';margin-top:2px">' + pnlSign + e.pnl_pct + '%</div>';
+      }
+    } else if (e.entry_price != null) {
+      html += '<div style="font-size:12px;color:#94a3b8">Saved at $' + e.entry_price.toFixed(2) + '</div>';
+      html += '<div style="font-size:10px;color:#cbd5e1">Live price unavailable</div>';
+    }
+    html += '</div>';
+    html += '</div>';
+    
+    if (hasTriggers) {
+      html += '<div style="background:#fffbeb;border-left:3px solid #f59e0b;border-radius:4px;padding:8px 12px;margin-bottom:10px">';
+      e.triggers.forEach(function(t) {
+        var ti = t.type === 'PROFIT_TAKE' ? '💰' : '⛔';
+        var tc = t.type === 'PROFIT_TAKE' ? '#047857' : '#7f1d1d';
+        html += '<div style="font-size:11px;color:' + tc + ';margin-bottom:2px"><span style="margin-right:6px">' + ti + '</span><strong>' + _csEscape(t.level) + ' hit at $' + t.price.toFixed(2) + '</strong> → ' + _csEscape(t.action) + '</div>';
+      });
+      html += '</div>';
+    }
+    
+    html += '<div style="display:flex;gap:14px;flex-wrap:wrap;font-size:10px;font-family:\'IBM Plex Mono\',monospace;margin-bottom:8px">';
+    if (e.score_at_save != null) html += '<div><span style="color:#94a3b8">SCORE @ SAVE</span> <strong style="color:#0f172a">' + e.score_at_save + '/100</strong></div>';
+    if (e.verdict_at_save) html += '<div><span style="color:#94a3b8">VERDICT</span> <strong style="color:#1A3A78">' + _csEscape(e.verdict_at_save) + '</strong></div>';
+    if (e.dcf_at_save != null) html += '<div><span style="color:#94a3b8">DCF @ SAVE</span> <strong style="color:#0f172a">$' + e.dcf_at_save.toFixed(2) + '</strong></div>';
+    html += '</div>';
+    
+    if (e.thesis_note) {
+      html += '<div style="background:#f8fafc;border-left:3px solid #cbd5e1;padding:8px 12px;border-radius:4px;margin-bottom:8px">';
+      html += '<div style="font-size:9px;color:#94a3b8;letter-spacing:0.8px;font-family:Sora,sans-serif;font-weight:800;margin-bottom:3px">YOUR THESIS</div>';
+      html += '<div style="font-size:11px;color:#475569;line-height:1.5;font-style:italic">' + _csEscape(e.thesis_note) + '</div>';
+      html += '</div>';
+    }
+    
+    html += '<div style="display:flex;gap:8px;margin-top:8px">';
+    html += '<button onclick="window._csR6322JournalDelete(\'' + e.id + '\')" style="padding:6px 12px;background:#fee2e2;color:#7f1d1d;border:none;border-radius:5px;font-size:11px;font-weight:600;cursor:pointer;font-family:Inter,sans-serif">Remove</button>';
+    html += '</div>';
+    
+    html += '</div>';
+  });
+  
+  return html;
+}
+
+window._csR6322JournalDelete = function(entryId) {
+  if (!confirm('Remove this position from your journal?')) return;
+  var email = (window._verifiedEmail || window._authedEmail || window.localStorage.getItem('email') || '').trim();
+  fetch('/api/journal/delete', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({email: email, entry_id: entryId})
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(data) {
+    if (data.success) window._csR6322OpenJournalView();
+    else alert('Failed: ' + (data.error || 'Unknown'));
+  });
+};
+
+// r63.30: Floating Journal access button (always visible when logged in)
+(function() {
+  function injectJournalBtn() {
+    if (document.getElementById('cs-journal-fab')) return;
+    var btn = document.createElement('button');
+    btn.id = 'cs-journal-fab';
+    btn.title = 'Open Position Journal';
+    btn.onclick = function() { window._csR6322OpenJournalView && window._csR6322OpenJournalView(); };
+    btn.style.cssText = 'position:fixed;bottom:24px;right:24px;background:#1A3A78;color:#fff;border:none;border-radius:50px;padding:12px 18px;font-size:13px;font-weight:700;cursor:pointer;font-family:Inter,sans-serif;box-shadow:0 8px 20px rgba(26,58,120,0.35);z-index:9998;display:inline-flex;align-items:center;gap:6px;transition:transform 0.15s';
+    btn.innerHTML = '<span style="font-size:15px">📔</span> Journal';
+    document.body.appendChild(btn);
+  }
+  setInterval(function() {
+    var em = (window._verifiedEmail || window._authedEmail || '').trim();
+    if (em) injectJournalBtn();
+  }, 2000);
+})();
 
 // ─── Polling — both render paths ──────────────────────────────────
 (function() {

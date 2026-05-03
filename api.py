@@ -126,6 +126,8 @@ print("✅ yfinance 401-resilient wrapper active — no more console spam")
 from functools import lru_cache
 import time
 import json
+from datetime import datetime as _journal_dt
+datetime = _journal_dt
 import random
 import asyncio
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -1799,9 +1801,9 @@ def _safe_float(val, default=0.0):
         return default
 
 # ═══ Celesys version stamp (v4.61.10) ═══════════════════════════════
-APP_VERSION = "v4.63.27"
-APP_BUILD_TIME = 1777826640
-APP_BUILD_DATE = "2026-05-03 16:44:00 UTC"
+APP_VERSION = "v4.63.32"
+APP_BUILD_TIME = 1777838708
+APP_BUILD_DATE = "2026-05-03 20:05:08 UTC"
 APP_RELEASE_NOTES = (
     "v4.62.0: Micro-Cap Hunter scanner (Decide tab) + cumulative r61.x: Aladdin DD entry page (r61.8), "
     "stale-cache fallback (r61.8), multi-factor Bottom Line (r61.7), "
@@ -29082,11 +29084,67 @@ async def investor_due_diligence(email: str = "", symbol: str = "", region: str 
         elif score >= 25: verdict_label, verdict_color = "WEAK / SKIP", "#ea580c"
         else: verdict_label, verdict_color = "AVOID", "#dc2626"
         
+        # ═══ r63.32: INSTITUTIONAL-STANDARD UNIFIED FAIR VALUE ═══
+        # Call investor_decide to get the canonical weighted blend across 5-7 methods.
+        # This eliminates the divergence between DCF-only (here) and weighted blend (other surfaces).
+        _canonical_fair_value = None
+        _canonical_fair_low = None
+        _canonical_fair_high = None
+        _canonical_fair_method = None
+        _canonical_fair_components = []
+        _canonical_fair_spread = None
+        try:
+            _decide_result = await investor_decide(symbol=symbol, region=region)
+            _decide_bands = (_decide_result or {}).get("probabilityBands") or {}
+            _canonical_fair_value = _safe_float(_decide_bands.get("base"))
+            _canonical_fair_low   = _safe_float(_decide_bands.get("bear"))
+            _canonical_fair_high  = _safe_float(_decide_bands.get("bull"))
+            _canonical_fair_spread = _safe_float(_decide_bands.get("spread"))
+            # Pull individual method components for transparency
+            _decide_methods = (_decide_result or {}).get("ivMethods") or (_decide_result or {}).get("iv_methods") or []
+            if isinstance(_decide_methods, list):
+                _canonical_fair_components = [
+                    {"name": m.get("name"), "value": m.get("value"), "desc": m.get("desc")}
+                    for m in _decide_methods if isinstance(m, dict) and m.get("value") is not None
+                ][:8]
+            if _canonical_fair_components:
+                _names = [c.get("name", "?").split("(")[0].strip() for c in _canonical_fair_components]
+                _canonical_fair_method = f"Weighted blend ({len(_canonical_fair_components)} methods): " + " + ".join(_names[:5])
+                if len(_canonical_fair_components) > 5:
+                    _canonical_fair_method += f" + {len(_canonical_fair_components) - 5} more"
+            else:
+                _canonical_fair_method = "Weighted multi-method blend (DCF + Graham + EPV + Sector P/E + Analyst Target)"
+        except Exception as _fv_err:
+            print(f"  ⚠ r63.32: investor_decide blend unavailable for {symbol}: {_fv_err}")
+            # Fallback: use DCF as canonical with explicit method label
+            _canonical_fair_value = _safe_float(dcf_value)
+            _canonical_fair_method = "DCF-only (multi-method blend unavailable)"
+        
+        # Sanity check: if blend gave None or zero, fall back to DCF
+        if not _canonical_fair_value or _canonical_fair_value <= 0:
+            _canonical_fair_value = _safe_float(dcf_value)
+            if _canonical_fair_value > 0 and not _canonical_fair_method:
+                _canonical_fair_method = "DCF-only (multi-method blend unavailable)"
+        
+        # Compute upside vs canonical (this is the institutional-standard metric)
+        _canonical_upside_pct = None
+        if spot > 0 and _canonical_fair_value and _canonical_fair_value > 0:
+            _canonical_upside_pct = round((_canonical_fair_value - spot) / spot * 100, 1)
+        
         thesis = {
             "spot_price": spot,
             "market_cap": market_cap,
-            "dcf_fair_value": dcf_value,
-            "dcf_upside_pct": dcf_upside,
+            # r63.32: CANONICAL fair value (weighted blend) — used everywhere
+            "fair_value":              round(_canonical_fair_value, 2) if _canonical_fair_value else None,
+            "fair_value_low":          round(_canonical_fair_low, 2) if _canonical_fair_low else None,
+            "fair_value_high":         round(_canonical_fair_high, 2) if _canonical_fair_high else None,
+            "fair_value_upside_pct":   _canonical_upside_pct,
+            "fair_value_method":       _canonical_fair_method,
+            "fair_value_components":   _canonical_fair_components,
+            "fair_value_spread_pct":   round(_canonical_fair_spread, 1) if _canonical_fair_spread else None,
+            # Preserved for backwards compatibility — DCF as ONE component, not the canonical
+            "dcf_fair_value":          dcf_value,
+            "dcf_upside_pct":          dcf_upside,
             "forward_pe": round(forward_pe, 2) if forward_pe else None,
             "trailing_pe": round(trailing_pe, 2) if trailing_pe else None,
             "peg_ratio": round(peg, 2) if peg else None,
@@ -29516,23 +29574,36 @@ async def investor_due_diligence(email: str = "", symbol: str = "", region: str 
         except Exception: pass
 
 
-        # ═══ SECTION 8: VALUATION DETAIL — DCF intrinsic value (r60.3) ═══
-        # Pull the DCF target price out into its own surfaced block
+        # ═══ SECTION 8: VALUATION DETAIL — r63.32: Now uses CANONICAL blended fair value ═══
+        # Pre-populate from canonical fair value computed in thesis section above
         valuation_detail = {
             "spot": round(spot, 2),
             "currency_symbol": csym,
-            "fair_value": None,
-            "upside_pct": None,
+            "fair_value": thesis.get("fair_value"),  # r63.32: canonical blend, not DCF-only
+            "upside_pct": thesis.get("fair_value_upside_pct"),
             "verdict": None,
-            "method": "Simple DCF — 5yr FCF projection at WACC 10%, terminal growth 2.5%",
-            "data_quality": "FULL",
+            "method": thesis.get("fair_value_method") or "Weighted multi-method blend",
+            "fair_value_low":  thesis.get("fair_value_low"),
+            "fair_value_high": thesis.get("fair_value_high"),
+            "components":      thesis.get("fair_value_components") or [],
+            "spread_pct":      thesis.get("fair_value_spread_pct"),
+            "data_quality":    "FULL" if thesis.get("fair_value") else "DCF_FALLBACK",
         }
+        # Set verdict based on canonical upside
+        _v_upside = valuation_detail.get("upside_pct")
+        if _v_upside is not None:
+            if _v_upside > 30:    valuation_detail["verdict"] = "STRONGLY UNDERVALUED"
+            elif _v_upside > 10:  valuation_detail["verdict"] = "UNDERVALUED"
+            elif _v_upside > -10: valuation_detail["verdict"] = "FAIR VALUE"
+            elif _v_upside > -30: valuation_detail["verdict"] = "OVERVALUED"
+            else:                 valuation_detail["verdict"] = "STRONGLY OVERVALUED"
         try:
-            # Reuse the score from Section 1 (DCF math already done there).
-            # If thesis dict has fair_value field, surface it; otherwise compute simple DCF here.
+            # r63.32: Only compute fallback DCF if canonical blend was unavailable
+            # (otherwise we keep the canonical blend already populated above)
             fcf = info.get("freeCashflow") or 0
             shares_out = info.get("sharesOutstanding") or 0
-            if fcf and shares_out and fcf > 0:
+            _need_fallback = not valuation_detail.get("fair_value") or valuation_detail.get("data_quality") == "DCF_FALLBACK"
+            if _need_fallback and fcf and shares_out and fcf > 0:
                 growth_y = (rev_growth or 0.05)
                 growth_y = max(-0.10, min(0.30, growth_y))  # clamp
                 discount = 0.10
@@ -32070,6 +32141,14 @@ async def analyst_pitch(symbol: str = "", region: str = "US", email: str = ""):
     if spot > 0 and dcf > 0:
         upside = round((dcf - spot) / spot * 100, 1)
     
+    # r63.32: Use canonical blended fair value (not DCF-only)
+    canonical_fv = _safe_float(thesis.get("fair_value"))
+    if canonical_fv <= 0:
+        canonical_fv = dcf  # fallback
+    canonical_upside = None
+    if spot > 0 and canonical_fv > 0:
+        canonical_upside = round((canonical_fv - spot) / spot * 100, 1)
+    
     return {
         "success":   True,
         "symbol":    symbol,
@@ -32078,10 +32157,16 @@ async def analyst_pitch(symbol: str = "", region: str = "US", email: str = ""):
         "score":     score,
         "verdict":   verdict,
         "spot":      spot if spot > 0 else None,
-        "dcf_fair":  dcf if dcf > 0 else None,
-        "upside_pct": upside,
+        "dcf_fair":  canonical_fv if canonical_fv > 0 else None,  # name kept for back-compat; value is now canonical
+        "upside_pct": canonical_upside if canonical_upside is not None else upside,
         "forward_pe": thesis.get("forward_pe"),
         "trailing_pe": thesis.get("trailing_pe"),
+        # r63.32: NEW fields exposing institutional-standard transparency
+        "fair_value_method":      thesis.get("fair_value_method"),
+        "fair_value_low":         thesis.get("fair_value_low"),
+        "fair_value_high":        thesis.get("fair_value_high"),
+        "fair_value_spread_pct":  thesis.get("fair_value_spread_pct"),
+        "fair_value_components":  thesis.get("fair_value_components"),
     }
 
 
@@ -32882,6 +32967,263 @@ async def catalyst_calendar(symbol: str = "", region: str = "US", email: str = "
             "earnings":   sum(1 for e in events if e["type"] in ("earnings", "earnings_projected")),
         },
     }
+
+
+
+# ═══════════════════════════════════════════════════════════════════
+# r63.30: POSITION JOURNAL — innovative daily-use feature
+# Captures user's intent at decision time, tracks against reality.
+# Storage: /tmp/celesys_journal_<email>.json (ephemeral on Render — 
+# acceptable for MVP, will move to persistent disk if usage justifies)
+# ═══════════════════════════════════════════════════════════════════
+
+_JOURNAL_DIR = "/tmp"
+
+def _journal_path(email):
+    """Per-user journal file path."""
+    safe = re.sub(r"[^a-zA-Z0-9._-]", "_", email or "anon")[:64]
+    return f"{_JOURNAL_DIR}/celesys_journal_{safe}.json"
+
+def _journal_load(email):
+    """Load user's journal entries. Returns list (possibly empty)."""
+    path = _journal_path(email)
+    try:
+        if os.path.exists(path):
+            with open(path) as f:
+                data = json.load(f)
+                return data.get("entries", []) if isinstance(data, dict) else []
+    except Exception:
+        pass
+    return []
+
+def _journal_save(email, entries):
+    """Persist entries list."""
+    path = _journal_path(email)
+    try:
+        os.makedirs(_JOURNAL_DIR, exist_ok=True)
+        with open(path, "w") as f:
+            json.dump({"version": 1, "saved_at": time.time(), "entries": entries}, f, default=str)
+        return True
+    except Exception:
+        return False
+
+
+@app.post("/api/journal/save")
+async def journal_save(request: Request):
+    """r63.30: Save a position to user's journal.
+    Captures: ticker, region, snapshot of analysis (score, DCF, exit ladder), 
+    user's thesis note, save timestamp."""
+    try:
+        body = await request.json()
+    except Exception:
+        return {"success": False, "error": "Invalid JSON body"}
+    
+    email = (body.get("email") or "").strip().lower()
+    _ok, email = check_premium_gate(email, "dream")
+    if not _ok:
+        return {"success": False, "error": "Premium tier required."}
+    
+    symbol = (body.get("symbol") or "").strip().upper()
+    if not symbol:
+        return {"success": False, "error": "symbol required"}
+    
+    region = (body.get("region") or "US").strip().upper()
+    thesis_note = (body.get("thesis_note") or "").strip()[:1000]  # cap at 1000 chars
+    
+    # Pull current DD to snapshot the analysis at save time
+    try:
+        dd = await investor_due_diligence(email=email, symbol=symbol, region=region)
+    except Exception as e:
+        return {"success": False, "error": f"DD fetch failed: {str(e)[:200]}"}
+    
+    if not dd.get("success"):
+        return {"success": False, "error": "Analysis unavailable for this ticker."}
+    
+    thesis = dd.get("thesis") or {}
+    valuation = dd.get("valuation_detail") or {}
+    bottom = dd.get("bottom_line") or {}
+    company = dd.get("company") or {}
+    
+    spot = _safe_float(thesis.get("spot_price"))
+    dcf = _safe_float(valuation.get("fair_value")) or _safe_float(thesis.get("dcf_fair_value"))
+    score = thesis.get("investability_score") or bottom.get("composite_score")
+    verdict = thesis.get("verdict") or bottom.get("verdict") or "Unknown"
+    
+    # Compute exit ladder (matching /api/exit-strategy logic)
+    rev_growth_pct = _safe_float((dd.get("finance") or {}).get("revenue_growth_yoy_pct"))
+    rev_growth = max(-0.10, min(0.40, (rev_growth_pct / 100.0) if rev_growth_pct else 0.05))
+    bull_target = round(dcf * (1 + rev_growth * 1.5), 2) if dcf > 0 else None
+    base_target = round(dcf, 2) if dcf > 0 else None
+    
+    # Build entry
+    entry = {
+        "id":             f"{symbol}_{int(time.time())}",
+        "symbol":         symbol,
+        "name":           company.get("name", symbol),
+        "sector":         company.get("sector"),
+        "region":         region,
+        "saved_at":       time.time(),
+        "saved_date":     datetime.utcnow().strftime("%Y-%m-%d"),
+        "entry_price":    round(spot, 2) if spot > 0 else None,
+        "score_at_save":  score,
+        "verdict_at_save": verdict,
+        "dcf_at_save":    round(dcf, 2) if dcf > 0 else None,
+        "thesis_note":    thesis_note,
+        "exit_ladder": {
+            "stop_hard":  round(dcf * 0.70, 2) if dcf > 0 else None,
+            "stop_soft":  round(spot * 0.85, 2) if spot > 0 else None,
+            "trim_1":     round(spot + (base_target - spot) * 0.5, 2) if base_target and spot > 0 and base_target > spot else (round(base_target * 0.85, 2) if base_target else None),
+            "trim_2":     base_target,
+            "exit_full":  bull_target,
+        },
+    }
+    
+    # Load, append (or replace if same ticker exists), save
+    entries = _journal_load(email)
+    # Remove any existing entry for this ticker (re-save = update)
+    entries = [e for e in entries if e.get("symbol") != symbol]
+    entries.insert(0, entry)  # newest first
+    # Cap journal at 100 entries to prevent runaway storage
+    entries = entries[:100]
+    
+    if _journal_save(email, entries):
+        return {"success": True, "entry": entry, "total_entries": len(entries)}
+    return {"success": False, "error": "Failed to save."}
+
+
+@app.get("/api/journal/list")
+async def journal_list(email: str = ""):
+    """r63.30: List user's saved positions WITH live spot price comparison.
+    Computes action triggers (did spot cross any trim/stop level?)."""
+    email = (email or "").strip().lower()
+    _ok, email = check_premium_gate(email, "dream")
+    if not _ok:
+        return {"success": False, "error": "Premium tier required."}
+    
+    entries = _journal_load(email)
+    if not entries:
+        return {"success": True, "entries": [], "alerts": [], "summary": {"total": 0, "alerts": 0}}
+    
+    enriched = []
+    alerts = []
+    
+    for e in entries:
+        symbol = e.get("symbol", "")
+        region = e.get("region", "US")
+        entry_price = _safe_float(e.get("entry_price"))
+        ladder = e.get("exit_ladder") or {}
+        
+        # Fetch current spot — use existing live price endpoint logic
+        current_spot = None
+        try:
+            ticker_sym = symbol if region == "US" else f"{symbol}.NS"
+            _yahoo_rate_wait()
+            tk = yf.Ticker(ticker_sym)
+            info = tk.info or {}
+            current_spot = _safe_float(info.get("regularMarketPrice") or info.get("currentPrice"))
+        except Exception:
+            current_spot = None
+        
+        # Compute P&L
+        pnl_pct = None
+        if current_spot and entry_price and entry_price > 0:
+            pnl_pct = round((current_spot - entry_price) / entry_price * 100, 1)
+        
+        # Compute action triggers — did current spot cross any level?
+        triggers = []
+        if current_spot and entry_price:
+            # Check trim levels (price went UP through them — profit-taking)
+            for level_key, level_label, action in [
+                ("trim_1",    "Trim 1 (25%)",  "sell 25% per saved plan"),
+                ("trim_2",    "Trim 2 (50%)",  "sell 50% — fair value reached"),
+                ("exit_full", "Bull target",   "sell remaining — bull case complete"),
+            ]:
+                level = _safe_float(ladder.get(level_key))
+                if level > 0 and entry_price < level <= current_spot:
+                    triggers.append({
+                        "type":       "PROFIT_TAKE",
+                        "level":      level_label,
+                        "price":      level,
+                        "action":     action,
+                        "urgency":    "HIGH" if level_key in ("trim_1", "trim_2") else "MEDIUM",
+                    })
+            
+            # Check stop levels (price went DOWN through them — exit)
+            for level_key, level_label, action in [
+                ("stop_soft", "Soft stop (-15%)",      "exit position — limit losses"),
+                ("stop_hard", "Hard stop (thesis broken)", "exit immediately — thesis failed"),
+            ]:
+                level = _safe_float(ladder.get(level_key))
+                if level > 0 and entry_price > level >= current_spot:
+                    triggers.append({
+                        "type":       "STOP_LOSS",
+                        "level":      level_label,
+                        "price":      level,
+                        "action":     action,
+                        "urgency":    "CRITICAL" if level_key == "stop_hard" else "HIGH",
+                    })
+        
+        enriched_entry = {
+            **e,
+            "current_spot": round(current_spot, 2) if current_spot else None,
+            "pnl_pct":      pnl_pct,
+            "triggers":     triggers,
+            "days_held":    int((time.time() - _safe_float(e.get("saved_at"))) / 86400) if e.get("saved_at") else None,
+        }
+        enriched.append(enriched_entry)
+        
+        # Add to top-level alerts if any triggers fired
+        for t in triggers:
+            alerts.append({
+                "symbol":      symbol,
+                "name":        e.get("name", symbol),
+                "current_spot": round(current_spot, 2) if current_spot else None,
+                **t,
+            })
+    
+    # Sort alerts by urgency
+    urgency_rank = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3}
+    alerts.sort(key=lambda a: urgency_rank.get(a.get("urgency", "LOW"), 99))
+    
+    return {
+        "success":  True,
+        "entries":  enriched,
+        "alerts":   alerts,
+        "summary": {
+            "total":   len(enriched),
+            "alerts":  len(alerts),
+            "winners": sum(1 for e in enriched if (e.get("pnl_pct") or 0) > 0),
+            "losers":  sum(1 for e in enriched if (e.get("pnl_pct") or 0) < 0),
+        },
+    }
+
+
+@app.post("/api/journal/delete")
+async def journal_delete(request: Request):
+    """r63.30: Remove an entry from journal."""
+    try:
+        body = await request.json()
+    except Exception:
+        return {"success": False, "error": "Invalid JSON body"}
+    
+    email = (body.get("email") or "").strip().lower()
+    _ok, email = check_premium_gate(email, "dream")
+    if not _ok:
+        return {"success": False, "error": "Premium tier required."}
+    
+    entry_id = (body.get("entry_id") or "").strip()
+    if not entry_id:
+        return {"success": False, "error": "entry_id required"}
+    
+    entries = _journal_load(email)
+    new_entries = [e for e in entries if e.get("id") != entry_id]
+    
+    if len(new_entries) == len(entries):
+        return {"success": False, "error": "Entry not found"}
+    
+    if _journal_save(email, new_entries):
+        return {"success": True, "remaining": len(new_entries)}
+    return {"success": False, "error": "Failed to save"}
 
 _portfolio_progress = {"done": 0, "total": 0, "current": "", "started": 0, "active": False}
 

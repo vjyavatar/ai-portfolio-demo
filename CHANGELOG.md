@@ -1100,3 +1100,50 @@ User tested with a stock at $542 where DCF fair value was only ~$63 (overvalued 
 - All compile/syntax/byte-identical checks pass
 
 **Lesson:** Numerical output needs explicit narrative interpretation. "What does this mean for me?" must come BEFORE the chart, not be inferred from it.
+
+---
+
+## v4.63.30 — Position Journal + Collapsible Insights (current)
+
+**Built:** 2026-05-03
+
+**User request:** Make Analyst Insights collapsible + add ONE innovative daily-life feature for investing/trading. Used /ultrathink slash command — signal to think deeply before coding.
+
+**Decision (after /ultrathink):**
+After considering Daily Briefing, Personal Watch, Thesis Tracker, Portfolio Composer, Earnings War Room — picked **Position Journal** because it COMPOUNDS in value. Foundation for all other features. The thing nobody builds for retail: memory of user's decisions tracked against reality.
+
+**Ships:**
+
+### Collapsible Analyst Insights
+- Single-line summary strip by default (sym · verdict · score · spot · DCF)
+- Click to expand into existing 7 tabs
+- 📔 Save to Journal button always visible in header
+
+### Position Journal MVP
+- 3 backend endpoints: /api/journal/save (POST), /api/journal/list (GET), /api/journal/delete (POST)
+- Per-user JSON storage at /tmp/celesys_journal_<email>.json (ephemeral, MVP-acceptable)
+- Save modal: thesis note + auto-snapshot (score, verdict, DCF, full exit ladder)
+- Journal view modal: list of all saved positions WITH live spot + P&L + trigger detection
+- Floating action button (FAB) bottom-right of every page when logged in
+
+### Trigger Detection — the killer feature
+Backend computes on every Journal load:
+- PROFIT_TAKE alerts: spot crossed UP through trim_1 / trim_2 / bull_target
+- STOP_LOSS alerts: spot crossed DOWN through stop_soft / stop_hard
+- Plain-language action: "sell 25% per saved plan" / "exit immediately — thesis failed"
+
+**Verified via 7-scenario simulation:**
+- All real triggers correctly fire
+- Zero false positives in 'no trigger' scenarios
+- Catastrophic (both stops) correctly fires both alerts
+
+**Why this is the moat:**
+Bloomberg has alerts but $24K/year. Robinhood/Seeking Alpha/Yahoo don't connect analysis to user's specific plan. Celesys becomes "personal investment operating system" — knows my thesis, exit plan, alerts me when reality crosses my plan.
+
+**Process discipline:**
+- /ultrathink before any code
+- Greppped storage pattern (existing /tmp/ pattern at line 913)
+- Runtime simulated trigger logic before deploy
+- Simple CSS only (no gradient edge cases)
+- Plain-language action triggers
+- Single feature, full discipline
