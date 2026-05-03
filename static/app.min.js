@@ -1,9 +1,9 @@
 // ═══ Celesys version stamp ═══
-window.CELESYS_VERSION = "v4.63.25";
-window.CELESYS_BUILD_TIME = 1777824568;
-window.CELESYS_BUILD_DATE = "2026-05-03 16:09:28 UTC";
+window.CELESYS_VERSION = "v4.63.27";
+window.CELESYS_BUILD_TIME = 1777826640;
+window.CELESYS_BUILD_DATE = "2026-05-03 16:44:00 UTC";
 console.log("%c━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "color:#1A3A78");
-console.log("%c CELESYS v4.63.25 %c loaded · 2026-04-29 03:29:27 UTC",
+console.log("%c CELESYS v4.63.27 %c loaded · 2026-04-29 03:29:27 UTC",
   "background:#1A3A78;color:#fff;font-weight:900;padding:3px 8px;border-radius:3px;font-family:monospace",
   "color:#1A3A78;font-weight:700;font-family:monospace");
 console.log("%c━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "color:#1A3A78");
@@ -25862,7 +25862,31 @@ function _csR6322RenderPeers(d) {
     var validVals = values.filter(function(v) { return v.raw != null; });
     if (validVals.length === 0) return;  // skip metric if no data anywhere
     
-    var rawNumbers = validVals.map(function(v) { return v.raw; });
+    // r63.27: Normalize percentage values to consistent units before computing range
+    var rawNumbers = validVals.map(function(v) { 
+      var n = v.raw;
+      if (m.fmt === 'pct' && Math.abs(n) < 1) {
+        // Check if this looks like a decimal-form percentage that should be ×100
+        // Heuristic: if max of all values is > 1, scale up the < 1 ones
+      }
+      return n;
+    });
+    // Detect mixed units: if some values < 1 and some > 1, normalize
+    if (m.fmt === 'pct') {
+      var hasSmall = rawNumbers.some(function(n) { return Math.abs(n) < 1; });
+      var hasLarge = rawNumbers.some(function(n) { return Math.abs(n) > 1; });
+      if (hasSmall && hasLarge) {
+        rawNumbers = rawNumbers.map(function(n) { return Math.abs(n) < 1 ? n * 100 : n; });
+        // Also update validVals raw for consistent rendering
+        validVals.forEach(function(vv) { 
+          if (Math.abs(vv.raw) < 1) vv.raw = vv.raw * 100; 
+        });
+        // Update values array too
+        values.forEach(function(vv) {
+          if (vv.raw != null && Math.abs(vv.raw) < 1) vv.raw = vv.raw * 100;
+        });
+      }
+    }
     var minV = Math.min.apply(null, rawNumbers);
     var maxV = Math.max.apply(null, rawNumbers);
     var rangeV = maxV - minV || 1;
@@ -25886,21 +25910,29 @@ function _csR6322RenderPeers(d) {
       } else if (v.raw == null || targetVal == null) {
         barColor = '#cbd5e1';  // slate = no comparison possible
       } else {
-        // Determine if this peer is better or worse than target on THIS metric
+        // r63.27: Defensive comparison — normalize both to same scale before comparing
+        // Edge case: if values are in mixed units (some decimal, some pct), auto-normalize
+        var vNorm = v.raw, tNorm = targetVal;
+        if (m.fmt === 'pct') {
+          // For percentage metrics, ensure both are in same form
+          // If one is < 1 and other is > 1, the < 1 one is decimal — multiply
+          if (Math.abs(vNorm) < 1 && Math.abs(tNorm) > 1) vNorm = vNorm * 100;
+          if (Math.abs(tNorm) < 1 && Math.abs(vNorm) > 1) tNorm = tNorm * 100;
+        }
+        
         var peerBetter;
         if (m.better === 'higher') {
-          peerBetter = v.raw > targetVal;
-        } else {  // 'lower' — like P/E
-          peerBetter = v.raw < targetVal;
-        }
-        // Threshold: only color if difference is meaningful (>5%)
-        var diffPct = Math.abs(v.raw - targetVal) / Math.max(Math.abs(targetVal), 0.01);
-        if (diffPct < 0.05) {
-          barColor = '#94a3b8';  // similar = neutral slate
-        } else if (peerBetter) {
-          barColor = '#10b981';  // emerald = peer beats target (warning)
+          peerBetter = vNorm > tNorm;
         } else {
-          barColor = '#cbd5e1';  // light slate = peer worse than target (favorable for target)
+          peerBetter = vNorm < tNorm;
+        }
+        var diffPct = Math.abs(vNorm - tNorm) / Math.max(Math.abs(tNorm), 0.01);
+        if (diffPct < 0.05) {
+          barColor = '#94a3b8';
+        } else if (peerBetter) {
+          barColor = '#10b981';  // emerald — peer beats target
+        } else {
+          barColor = '#cbd5e1';  // light slate — target leads
         }
       }
       
@@ -25919,15 +25951,20 @@ function _csR6322RenderPeers(d) {
       html += (isTarget ? '<span style="color:#f59e0b">★</span> ' : '') + v.ticker;
       html += '</div>';
       
-      // r63.24: Bar as solid fill div (not gradient) — clamp width to 99.5% to avoid 100%-edge bug
-      var trackColor = '#f1f5f9';
-      var safeWidth = (v.raw != null) ? Math.min(barWidth, 99.5) : 0;
-      
-      html += '<div style="flex:1;height:20px;background:' + trackColor + ';border-radius:4px;position:relative;overflow:hidden">';
-      if (v.raw != null) {
-        html += '<div style="height:100%;width:' + safeWidth + '%;background:' + barColor + ';border-radius:4px"></div>';
+      // r63.27: SINGLE-DIV bar with linear-gradient. Clamp 99% max to avoid edge cases.
+      // Gradient: bar color from 0% to barWidth%, then track from barWidth% to 100%.
+      // No nested divs, no width-of-child-relative-to-flex-parent issues.
+      var trackColor = '#e2e8f0';
+      var safeWidth = (v.raw != null) ? Math.min(Math.max(barWidth, 1), 99) : 0;
+      var bgStyle;
+      if (v.raw == null) {
+        bgStyle = trackColor;
+      } else {
+        // CRITICAL: use sharp transition with comma-only, no space-separated stops
+        bgStyle = 'linear-gradient(90deg,' + barColor + ' 0%,' + barColor + ' ' + safeWidth + '%,' + trackColor + ' ' + safeWidth + '%,' + trackColor + ' 100%)';
       }
-      html += '</div>';
+      var borderStyle = isTarget ? 'border:1.5px solid #1A3A78;' : 'border:1px solid #e2e8f0;';
+      html += '<div style="flex:1;height:20px;background:' + bgStyle + ';' + borderStyle + 'border-radius:4px;box-sizing:border-box"></div>';
       // Value label
       html += '<div style="flex-shrink:0;width:60px;text-align:right;font-size:10px;font-family:\'IBM Plex Mono\',monospace;color:#0f172a;font-weight:' + (isTarget ? '800' : '500') + '">' + fmtVal(v.raw, m.fmt) + '</div>';
       html += '</div>';
@@ -25950,7 +25987,40 @@ function _csR6322RenderForward(d) {
   var tr = d.total_return_5y || {};
   var spot = d.spot;
   
+  // r63.26: Plain-language verdict at top
+  var bullTarget = (t.bull_target || 0);
+  var baseTarget = (t.base_target || 0);
+  var bearTarget = (t.bear_target || 0);
+  var isOvervalued = bullTarget > 0 && bullTarget < spot;
+  
   var html = '';
+  
+  // Top verdict box
+  if (isOvervalued) {
+    var er5y = er['5y_pct'] != null ? er['5y_pct'] : 0;
+    html += '<div style="background:#fef2f2;border:2px solid #dc2626;border-radius:8px;padding:14px 18px;margin-bottom:18px">';
+    html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">';
+    html += '<span style="font-size:16px">⛔</span>';
+    html += '<span style="font-size:13px;font-weight:800;color:#7f1d1d;font-family:Sora,sans-serif;letter-spacing:0.3px">OVERVALUED — EXPECTED LOSS OVER 5 YEARS</span>';
+    html += '</div>';
+    html += '<div style="font-size:13px;color:#0f172a;line-height:1.6">';
+    html += '<strong>Plain English:</strong> If you buy at <strong>$' + spot.toFixed(2) + '</strong> and hold for 5 years, our model expects you to <strong style="color:#dc2626">LOSE ' + Math.abs(er5y).toFixed(0) + '%</strong>. ';
+    html += 'The stock is trading far above its real worth (~$' + baseTarget.toFixed(2) + '). Eventually, prices return to fundamentals — that\'s the loss in the chart below.';
+    html += '</div>';
+    html += '</div>';
+  } else if (er['5y_pct'] != null && er['5y_pct'] > 0) {
+    html += '<div style="background:#ecfdf5;border:2px solid #10b981;border-radius:8px;padding:14px 18px;margin-bottom:18px">';
+    html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">';
+    html += '<span style="font-size:16px">✓</span>';
+    html += '<span style="font-size:13px;font-weight:800;color:#047857;font-family:Sora,sans-serif;letter-spacing:0.3px">EXPECTED GAIN OVER 5 YEARS</span>';
+    html += '</div>';
+    html += '<div style="font-size:13px;color:#0f172a;line-height:1.6">';
+    html += '<strong>Plain English:</strong> If you buy at <strong>$' + spot.toFixed(2) + '</strong> and hold for 5 years, our model expects approximately <strong style="color:#10b981">+' + er['5y_pct'].toFixed(0) + '% return</strong> ';
+    html += '(CAGR ' + (er['5y_cagr'] || 0).toFixed(1) + '%). Bull case: $' + bullTarget.toFixed(2) + '. Base: $' + baseTarget.toFixed(2) + '. Bear: $' + bearTarget.toFixed(2) + '.';
+    html += '</div>';
+    html += '</div>';
+  }
+  
   html += '<div style="font-size:9px;font-weight:800;color:#0f172a;letter-spacing:1.2px;font-family:Sora,sans-serif;margin-bottom:8px">5-YEAR INTRINSIC VALUE TRAJECTORY</div>';
   
   var bull = t.bull || []; var base = t.base || []; var bear = t.bear || [];
@@ -26055,7 +26125,7 @@ function _csR6322RenderForward(d) {
   return html;
 }
 
-// ─── EXIT STRATEGY ───────────────────────────────────────────────
+// ─── EXIT STRATEGY — handles BOTH overvalued and undervalued stocks ──
 function _csR6322RenderExit(d) {
   if (!d.success && d.error) return _csR6322Err(d.error);
   
@@ -26063,19 +26133,88 @@ function _csR6322RenderExit(d) {
   var entry = d.entry;
   var spot = d.spot;
   
-  var levels = [
-    { key: 'stop_hard',  data: l.stop_hard,  color: '#7f1d1d', icon: '⛔' },
-    { key: 'stop_soft',  data: l.stop_soft,  color: '#dc2626', icon: '🛑' },
-    { key: 'entry_low',  data: l.entry_low,  color: '#0891b2', icon: '⬇' },
-    { key: 'entry',      data: l.entry,      color: '#1A3A78', icon: '●' },
-    { key: 'entry_high', data: l.entry_high, color: '#0891b2', icon: '⬆' },
-    { key: 'trim_1',     data: l.trim_1,     color: '#10b981', icon: '✂' },
-    { key: 'trim_2',     data: l.trim_2,     color: '#059669', icon: '✂' },
-    { key: 'exit_full',  data: l.exit_full,  color: '#047857', icon: '🏁' },
-  ];
+  // r63.26: CRITICAL — detect overvalued vs undervalued
+  // If bull target (best case) is BELOW current price → stock is overvalued, "exit strategy" doesn't apply normally
+  var bullTarget = l.exit_full ? l.exit_full.price : null;
+  var baseTarget = l.trim_2 ? l.trim_2.price : null;
+  var isOvervalued = bullTarget != null && bullTarget < spot;
   
   var html = '';
+  
+  // ═══ TOP BANNER — plain language verdict ═══
+  if (isOvervalued) {
+    var downsideToBase = baseTarget ? ((baseTarget - spot) / spot * 100) : null;
+    var downsideToBull = bullTarget ? ((bullTarget - spot) / spot * 100) : null;
+    
+    html += '<div style="background:#fef2f2;border:2px solid #dc2626;border-radius:8px;padding:14px 18px;margin-bottom:18px">';
+    html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">';
+    html += '<span style="font-size:18px">⛔</span>';
+    html += '<span style="font-size:14px;font-weight:800;color:#7f1d1d;font-family:Sora,sans-serif;letter-spacing:0.3px">DO NOT BUY AT CURRENT PRICE</span>';
+    html += '</div>';
+    html += '<div style="font-size:13px;color:#0f172a;line-height:1.6;margin-bottom:10px">';
+    html += '<strong>Plain English:</strong> This stock is trading at <strong style="color:#dc2626">$' + spot.toFixed(2) + '</strong>, ';
+    html += 'but our analysis says fair value is only <strong style="color:#1A3A78">$' + (baseTarget || 0).toFixed(2) + '</strong> ';
+    html += '— that\'s <strong style="color:#dc2626">' + Math.abs(downsideToBase).toFixed(0) + '% above what it\'s worth</strong>. ';
+    html += 'Even our most optimistic scenario tops out at $' + (bullTarget || 0).toFixed(2) + ', still below today\'s price.';
+    html += '</div>';
+    html += '<div style="font-size:12px;color:#475569;line-height:1.5;padding-top:8px;border-top:1px solid #fecaca">';
+    html += '<strong>What this means:</strong> Buying here means buying overvalued. To make profit, you\'d need someone to pay even MORE than the current inflated price — that\'s speculation, not investing.';
+    html += '</div>';
+    html += '</div>';
+    
+    // What to do instead
+    html += '<div style="background:#f0f9ff;border-left:4px solid #1A3A78;border-radius:6px;padding:14px 18px;margin-bottom:18px">';
+    html += '<div style="font-size:11px;font-weight:800;color:#1A3A78;letter-spacing:1.2px;font-family:Sora,sans-serif;margin-bottom:8px">✓ WHAT TO DO INSTEAD</div>';
+    html += '<div style="font-size:13px;color:#0f172a;line-height:1.7">';
+    html += '<div style="margin-bottom:8px"><strong>If you don\'t own this stock:</strong></div>';
+    html += '<div style="margin-left:12px;color:#475569">• <strong>Don\'t buy now.</strong> Wait for price to drop toward $' + (baseTarget || 0).toFixed(2) + ' (fair value) before considering a position.</div>';
+    html += '<div style="margin-left:12px;color:#475569">• Set a <strong style="color:#0891b2">price alert at $' + ((baseTarget || 0) * 1.15).toFixed(2) + '</strong> (15% above fair value — that\'s a reasonable entry zone for quality stocks).</div>';
+    html += '<div style="margin-top:14px;margin-bottom:8px"><strong>If you already own this stock:</strong></div>';
+    html += '<div style="margin-left:12px;color:#475569">• <strong>Take profits now.</strong> You\'re sitting on gains because the price is far above fair value.</div>';
+    html += '<div style="margin-left:12px;color:#475569">• <strong>Trim 50% immediately</strong> — lock in the gains. Hold the rest with a trailing stop (see below).</div>';
+    html += '<div style="margin-left:12px;color:#475569">• If price drops <strong style="color:#dc2626">below $' + (spot * 0.85).toFixed(2) + ' (-15%)</strong>, exit fully — the inflated valuation is correcting.</div>';
+    html += '</div>';
+    html += '</div>';
+  } else {
+    // Undervalued stock — normal entry guidance
+    var upsideToBase = baseTarget ? ((baseTarget - spot) / spot * 100) : null;
+    
+    html += '<div style="background:#ecfdf5;border:2px solid #10b981;border-radius:8px;padding:14px 18px;margin-bottom:18px">';
+    html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">';
+    html += '<span style="font-size:18px">✓</span>';
+    html += '<span style="font-size:14px;font-weight:800;color:#047857;font-family:Sora,sans-serif;letter-spacing:0.3px">REASONABLE BUY ZONE</span>';
+    html += '</div>';
+    html += '<div style="font-size:13px;color:#0f172a;line-height:1.6">';
+    html += '<strong>Plain English:</strong> This stock is at <strong style="color:#1A3A78">$' + spot.toFixed(2) + '</strong>, ';
+    html += 'and our analysis says fair value is <strong style="color:#10b981">$' + (baseTarget || 0).toFixed(2) + '</strong> ';
+    html += '— <strong style="color:#10b981">' + (upsideToBase || 0).toFixed(0) + '% upside potential</strong>. ';
+    html += 'You can buy here, but follow the trim/stop levels below to manage risk.';
+    html += '</div>';
+    html += '</div>';
+  }
+  
+  // ═══ PRICE LADDER ═══
+  var levels = [
+    { key: 'stop_hard',  data: l.stop_hard,  color: '#7f1d1d', icon: '⛔', humanLabel: 'Hard stop — exit fully here, thesis broken' },
+    { key: 'stop_soft',  data: l.stop_soft,  color: '#dc2626', icon: '🛑', humanLabel: 'Soft stop — protect against -15% loss' },
+    { key: 'entry_low',  data: l.entry_low,  color: '#0891b2', icon: '⬇', humanLabel: 'Buy more here (5% pullback)' },
+    { key: 'entry',      data: l.entry,      color: '#1A3A78', icon: '●', humanLabel: 'Current price' },
+    { key: 'entry_high', data: l.entry_high, color: '#0891b2', icon: '⬆', humanLabel: 'Don\'t buy above this' },
+    { key: 'trim_1',     data: l.trim_1,     color: '#10b981', icon: '✂', humanLabel: 'Trim 25% — partial profit-take' },
+    { key: 'trim_2',     data: l.trim_2,     color: '#059669', icon: '✂', humanLabel: 'Trim 50% — fair value reached' },
+    { key: 'exit_full',  data: l.exit_full,  color: '#047857', icon: '🏁', humanLabel: 'Sell remaining — bull case complete' },
+  ];
+  
   html += '<div style="font-size:9px;font-weight:800;color:#0f172a;letter-spacing:1.2px;font-family:Sora,sans-serif;margin-bottom:8px">PRICE LADDER · ENTRY $' + entry.toFixed(2) + ' · SPOT $' + spot.toFixed(2) + '</div>';
+  
+  // r63.26: Plain-language preamble
+  html += '<div style="font-size:11px;color:#64748b;margin-bottom:10px;padding:8px 12px;background:#f8fafc;border-radius:4px;border-left:3px solid #cbd5e1;line-height:1.5">';
+  if (isOvervalued) {
+    html += '<strong style="color:#7f1d1d">For owners only:</strong> The price levels below assume you already bought this stock. Trim levels show where to take profits as price reverts to fair value (downward).';
+  } else {
+    html += '<strong style="color:#047857">Action plan:</strong> Buy in the entry zone. Take profits at trim levels. Exit fully if price hits soft or hard stops.';
+  }
+  html += '</div>';
   
   var sortedLevels = levels.slice().filter(function(L) { return L.data; });
   sortedLevels.sort(function(a, b) { return b.data.price - a.data.price; });
@@ -26088,17 +26227,22 @@ function _csR6322RenderExit(d) {
     var pctColor = dat.pct_from_entry > 0 ? '#10b981' : (dat.pct_from_entry < 0 ? '#dc2626' : '#94a3b8');
     var pctSign = dat.pct_from_entry > 0 ? '+' : '';
     
-    html += '<div style="display:flex;align-items:center;gap:10px;padding:7px 10px;background:' + bg + ';border-left:3px solid ' + L.color + ';border-radius:4px;margin-bottom:4px">';
+    html += '<div style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:' + bg + ';border-left:3px solid ' + L.color + ';border-radius:4px;margin-bottom:4px">';
     html += '<div style="flex-shrink:0;width:18px;font-size:13px;text-align:center">' + L.icon + '</div>';
     html += '<div style="flex-shrink:0;width:90px;font-family:\'IBM Plex Mono\',monospace;font-weight:800;color:#0f172a;font-size:13px">$' + dat.price.toFixed(2) + '</div>';
     html += '<div style="flex-shrink:0;width:60px;font-family:\'IBM Plex Mono\',monospace;font-size:10px;color:' + pctColor + ';font-weight:700">' + pctSign + dat.pct_from_entry.toFixed(1) + '%</div>';
-    html += '<div style="flex:1;font-size:11px;color:#475569">' + _csEscape(dat.label) + (isSpot ? ' <strong style="color:#92400e">← SPOT</strong>' : '') + '</div>';
+    html += '<div style="flex:1;min-width:0">';
+    html += '<div style="font-size:11px;color:#0f172a;font-weight:700">' + _csEscape(dat.label) + (isSpot ? ' <strong style="color:#92400e">← SPOT</strong>' : '') + '</div>';
+    html += '<div style="font-size:10px;color:#64748b;margin-top:1px">' + _csEscape(L.humanLabel) + '</div>';
+    html += '</div>';
     html += '</div>';
   });
   html += '</div>';
   
-  if (d.trailing_stops && d.trailing_stops.length > 0) {
-    html += '<div style="font-size:9px;font-weight:800;color:#0f172a;letter-spacing:1.2px;font-family:Sora,sans-serif;margin-bottom:8px">TRAILING-STOP LADDER</div>';
+  // ═══ TRAILING STOPS ═══
+  if (d.trailing_stops && d.trailing_stops.length > 0 && !isOvervalued) {
+    html += '<div style="font-size:9px;font-weight:800;color:#0f172a;letter-spacing:1.2px;font-family:Sora,sans-serif;margin-bottom:6px">TRAILING-STOP LADDER</div>';
+    html += '<div style="font-size:11px;color:#64748b;margin-bottom:8px;line-height:1.5">As your gains grow, automatically raise your stop-loss to lock in profits.</div>';
     html += '<div style="background:#f8fafc;border-radius:6px;padding:12px;margin-bottom:14px">';
     d.trailing_stops.forEach(function(ts) {
       html += '<div style="display:flex;gap:10px;align-items:center;padding:5px 0;font-size:11px">';
@@ -26111,11 +26255,13 @@ function _csR6322RenderExit(d) {
     html += '</div>';
   }
   
-  if (d.time_stop) {
+  // ═══ TIME STOP ═══
+  if (d.time_stop && !isOvervalued) {
     html += '<div style="font-size:9px;font-weight:800;color:#0f172a;letter-spacing:1.2px;font-family:Sora,sans-serif;margin-bottom:8px">TIME STOP</div>';
     html += '<div style="background:#fef2f2;border-left:3px solid #dc2626;border-radius:4px;padding:10px 12px;margin-bottom:14px;font-size:11px;color:#7f1d1d">' + _csEscape(d.time_stop.rule) + '</div>';
   }
   
+  // ═══ CATALYST WINDOW ═══
   if (d.catalyst_window) {
     html += '<div style="font-size:9px;font-weight:800;color:#0f172a;letter-spacing:1.2px;font-family:Sora,sans-serif;margin-bottom:8px">NEXT CATALYST WINDOW</div>';
     var c = d.catalyst_window;
@@ -26125,9 +26271,11 @@ function _csR6322RenderExit(d) {
     html += '</div>';
   }
   
-  if (d.position_sizing) {
+  // ═══ POSITION SIZING (only for undervalued) ═══
+  if (d.position_sizing && !isOvervalued) {
     var ps = d.position_sizing;
-    html += '<div style="font-size:9px;font-weight:800;color:#0f172a;letter-spacing:1.2px;font-family:Sora,sans-serif;margin-bottom:8px">POSITION SIZING (KELLY-BOUNDED)</div>';
+    html += '<div style="font-size:9px;font-weight:800;color:#0f172a;letter-spacing:1.2px;font-family:Sora,sans-serif;margin-bottom:6px">POSITION SIZING (KELLY-BOUNDED)</div>';
+    html += '<div style="font-size:11px;color:#64748b;margin-bottom:8px;line-height:1.5">How much of your portfolio to allocate. Never go above max — even strong opportunities should never be more than this percentage of your total.</div>';
     html += '<div style="background:#f0f9ff;border-radius:6px;padding:12px;display:flex;gap:18px;flex-wrap:wrap;font-family:\'IBM Plex Mono\',monospace;font-size:11px">';
     html += '<div><span style="color:#94a3b8">INITIAL</span> <strong style="color:#0f172a;font-size:14px">' + ps.initial_pct + '%</strong></div>';
     html += '<div><span style="color:#94a3b8">ADD AT $' + (l.entry_low ? l.entry_low.price.toFixed(2) : '—') + '</span> <strong style="color:#0f172a;font-size:14px">+' + ps.add_at_entry_low + '%</strong></div>';
@@ -26139,7 +26287,7 @@ function _csR6322RenderExit(d) {
   return html;
 }
 
-// ─── CATALYST CALENDAR ────────────────────────────────────────────
+
 function _csR6322RenderCalendar(d) {
   if (!d.success && d.error) return _csR6322Err(d.error);
   if (!d.events || d.events.length === 0) {

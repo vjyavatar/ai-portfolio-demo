@@ -1,115 +1,128 @@
-# Celesys v4.63.25 — Institutional-grade upgrade: Forward Value + Exit Strategy + Catalyst Calendar
+# Celesys v4.63.26 — Plain-language explanations + overvalued stock handling
 
-You said users need institutional-standard analysis: **what is the project value, where can it go further, when is the best time to exit.** This deploy adds 3 new tabs that answer those exact questions, in the way Goldman/MS analysts actually structure these decisions.
+You said: "this is confusing.. explain in detail in laymans language... we need to exit when price reaches 90... how can we make profit.. not sure.."
+
+You were right. The Exit Strategy and Forward Value tabs were **technically correct but practically confusing**, especially for overvalued stocks like the one in your screenshot.
 
 ---
 
-## What ships in this deploy
+## The actual story your screenshot was telling
 
-**3 new tabs added to existing Analyst Insights** (alongside Pitch / Insights / Scenarios / Peers):
+Looking at the data: spot $542.23, DCF only ~$63.18.
 
-### 5. 💎 Forward Value — "Where can this go?"
+**The math was screaming "this stock is severely overvalued"** — trading 8x above its real worth. So:
+- Bull target $101 (still 81% below current price)
+- Base target $63 (88% below current)
+- Bear target $44 (92% below current)
 
-**1. 5-Year Intrinsic Value Trajectory Chart** (SVG line chart)
-- Bull / Base / Bear paths from spot to year 5
-- Spot marked at year 0
-- Endpoint price labels in IBM Plex Mono
-- Color: green/navy/red per scenario
+The system was correctly saying *"don't buy this at $542 — it's massively overpriced."* But the UI showed "Trim 50% at $63" which made no sense as profit-taking advice. **You can't profit by trimming at a price 88% below where you bought.**
 
-**2. Probability-Weighted Expected Return**
-- 1Y / 3Y / 5Y horizons with Bull 25% / Base 50% / Bear 25% default weighting
-- CAGR shown for 3Y/5Y
-- Color: green positive, red negative
+---
 
-**3. Multiple-Expansion Thesis**
-- Current Forward P/E vs sector median
-- Re-rating upside %
-- Honest interpretation ("Trading X% below sector median P/E... Re-rating implies meaningful upside" or "...thesis weak")
+## What r63.26 fixes
 
-**4. Total Return Decomposition (5Y)**
-- Capital appreciation + dividends + buyback estimate
-- Cumulative table with TOTAL row
+### 1. Overvalued stocks now get an explicit "DO NOT BUY" banner
 
-### 6. 🚪 Exit Strategy — "When do I sell?"
+When DCF fair value is BELOW current price (stock is overvalued), the Exit Strategy tab now opens with:
 
-**1. Price Ladder** (visual, sorted high-to-low)
-- 🏁 Bull target → close remaining position
-- ✂ Trim 50% (DCF base reached)
-- ✂ Trim 25% (1Y target)
-- ⬆ Accumulation ceiling
-- ● Entry (spot)
-- ⬇ Optimal accumulation low
-- 🛑 Soft stop (-15%)
-- ⛔ Hard stop (thesis-broken, DCF compression)
+```
+⛔ DO NOT BUY AT CURRENT PRICE
 
-Each level shows: price, % from entry, label. Spot row highlighted amber.
+Plain English: This stock is trading at $542.23, but our analysis 
+says fair value is only $63.18 — that's 88% above what it's worth. 
+Even our most optimistic scenario tops out at $101.09, still below 
+today's price.
 
-**2. Trailing-Stop Ladder**
-- +10% gain → ratchet stop to entry breakeven (no-loss lock)
-- +25% gain → ratchet stop to +10%
-- +50% gain → ratchet stop to +25%
+What this means: Buying here means buying overvalued. To make 
+profit, you'd need someone to pay even MORE than the current 
+inflated price — that's speculation, not investing.
+```
 
-**3. Time Stop**
-- Default: 6 quarters to make progress to base target
-- Exit if no movement by then
+### 2. Clear "WHAT TO DO INSTEAD" guidance
 
-**4. Next Catalyst Window**
-- Next earnings date + days-until
-- Rule: "Re-evaluate after earnings. EPS miss >10% OR guidance reduced → exit immediately."
+```
+✓ WHAT TO DO INSTEAD
 
-**5. Position Sizing (Kelly-Bounded)**
-- Initial % based on base case upside
-- Add-at-entry-low %
-- Max %  cap (3% per single position)
-- Rationale shown
+If you don't own this stock:
+  • Don't buy now. Wait for price to drop toward $63.18 (fair value).
+  • Set a price alert at $72.66 (15% above fair value — reasonable entry zone).
 
-### 7. 📅 Catalyst Calendar — "What's coming?"
+If you already own this stock:
+  • Take profits now. You're sitting on gains because price > fair value.
+  • Trim 50% immediately — lock in the gains.
+  • If price drops below $460.90 (-15%), exit fully — correction starting.
+```
 
-- Summary row: Total / Earnings / Bullish / Bearish counts
-- Timeline of next 12 months events:
-  - Earnings (with historical beat rate → bullish if ≥70%, bearish if ≤40%)
-  - Projected next 3 quarters (~91-day cadence, marked with reduced opacity)
-  - Dividend ex-dates (if applicable)
-  - FOMC approximate dates (rates affect multiple expansion)
+### 3. Forward Value tab now opens with plain-language verdict
 
-Each event: days countdown (red <7d, amber <30d, slate beyond), icon, title, details, color-coded tag (BULLISH / BEARISH / NEUTRAL / UNKNOWN).
+For overvalued stocks:
+```
+⛔ OVERVALUED — EXPECTED LOSS OVER 5 YEARS
+
+Plain English: If you buy at $542.23 and hold for 5 years, our 
+model expects you to LOSE 87% (CAGR -34%). The stock is trading 
+far above its real worth (~$63). Eventually, prices return to 
+fundamentals — that's the loss in the chart below.
+```
+
+For undervalued stocks (where it would actually be profitable):
+```
+✓ EXPECTED GAIN OVER 5 YEARS
+
+Plain English: If you buy at $X and hold for 5 years, our model 
+expects approximately +Y% return (CAGR Z%). Bull case: $A. 
+Base: $B. Bear: $C.
+```
+
+### 4. Every price level on the ladder now has plain-language description
+
+Before: just a label like "Trim 50% (DCF base)"
+After: label PLUS plain explanation:
+- ⛔ Hard stop — exit fully here, thesis broken
+- 🛑 Soft stop — protect against -15% loss
+- ⬇ Buy more here (5% pullback)
+- ● Current price
+- ✂ Trim 25% — partial profit-take
+- ✂ Trim 50% — fair value reached
+- 🏁 Sell remaining — bull case complete
+
+### 5. Trailing stops + position sizing now have explanations
+
+Before: just numbers
+After:
+- "As your gains grow, automatically raise your stop-loss to lock in profits"
+- "How much of your portfolio to allocate. Never go above max — even strong opportunities should never exceed this percentage"
+
+### 6. Overvalued stocks HIDE irrelevant sections
+
+Trailing stops, time stop, and position sizing are HIDDEN for overvalued stocks because they don't apply when you shouldn't buy in the first place. Less noise, less confusion.
+
+---
+
+## Why this matters
+
+Your feedback was the right feedback. The previous version was **technically correct math wrapped in confusing presentation**. An institutional analyst would understand "trim at $63 when spot is $542 = stock is overvalued, don't buy." A regular user looks at it and thinks "how do I make money if I have to sell below my entry price?"
+
+The math is identical. The presentation now tells the truth in language anyone understands:
+
+> "This stock is overpriced. Don't buy. Here's the price you'd want to wait for."
+
+That's institutional-grade thinking, finally communicated in user-friendly language.
 
 ---
 
 ## Pre-ship verification
 
-### 18/18 audit checks pass
-- ✅ 3 backend endpoints (/api/forward-value, /api/exit-strategy, /api/catalyst-calendar)
-- ✅ Backend reads from confirmed canonical paths (thesis.spot_price, valuation_detail.fair_value, finance.revenue_growth_yoy_pct, catalysts.next_earnings)
-- ✅ Trajectory math: 5Y geometric interpolation, returns 6 points each (year 0-5)
-- ✅ Trailing-stop ladder logic
-- ✅ Catalyst projection from quarterly cadence
-- ✅ 3 new tab pills with correct icons (💎 🚪 📅)
-- ✅ State init updated for new tabs (and reset on ticker change)
-- ✅ URL routing updated for new endpoints
-- ✅ Render dispatcher updated
-- ✅ Existing 4 tabs preserved (Pitch/Insights/Scenarios/Peers)
-- ✅ Login uses _verifiedEmail (preserved)
-- ✅ Version v4.63.25 across all files
-- ✅ Python compiles, JS syntax OK, app.min.js byte-identical
-
-### Runtime simulation verified
-Tested with realistic MU data (spot $138.42, DCF $95.50):
-- Forward Value returns 6-point trajectories for Bull/Base/Bear
-- Expected return: -7.6% (1Y), -31.4% (5Y), CAGR -7.3% — **honest negative output for an overvalued stock**
-- Exit Strategy returns 8 price levels with correct %-from-entry calculations
-- All endpoints return populated data, no fake values
-
----
-
-## Why the math matters
-
-The output for MU illustrates institutional discipline:
-- **MU spot $138, DCF $95.50, score 92.** A retail tool would say "score 92 = STRONG BUY!"
-- **Institutional view:** trading 45% above DCF fair value → forward expected return is NEGATIVE across all horizons.
-- The 92 score reflects current quality, not entry timing. **Quality + price determine entry.**
-
-Forward Value tells the truth: even a high-quality stock at a bad price has poor forward returns. Exit Strategy says wait for $131 entry (5% pullback) or pass. This is what makes the difference between college-finance output and Goldman analyst memo.
+- ✅ Overvalued detection logic (`isOvervalued`) — 8 references in code
+- ✅ "Plain English:" labels — 8 occurrences (one in each major section)
+- ✅ "DO NOT BUY AT CURRENT PRICE" banner present
+- ✅ "WHAT TO DO INSTEAD" guidance present  
+- ✅ Owners-vs-non-owners separate guidance
+- ✅ Trailing stops/time stop/position sizing hidden for overvalued stocks
+- ✅ Every ladder level has humanLabel description
+- ✅ Forward Value tab opens with plain-language 5Y verdict
+- ✅ All Python compiles, JS syntax OK, app.min.js byte-identical
+- ✅ Version v4.63.26 across all files
 
 ---
 
@@ -119,7 +132,7 @@ Forward Value tells the truth: even a high-quality stock at a bad price has poor
 unzip celesys_v4_FINAL_DEPLOY.zip
 cd celesys_v4_FINAL_DEPLOY/
 git add -A
-git commit -m "v4.63.25: Forward Value + Exit Strategy + Catalyst Calendar tabs"
+git commit -m "v4.63.26: Plain-language explanations + overvalued stock handling"
 git push
 ```
 
@@ -129,35 +142,32 @@ git push
 
 ## Verify after deploy
 
-1. `curl https://celesys.ai/api/version` → `"version": "v4.63.25"`
+1. `curl https://celesys.ai/api/version` → `"version": "v4.63.26"`
 2. Hard-refresh
-3. Generate Deep DD for any ticker
-4. Analyst Insights card should show **7 pill tabs** now: Pitch / Deep Insights / Scenarios / Peers / **Forward Value 💎 / Exit Strategy 🚪 / Catalysts 📅**
-5. Click 💎 Forward Value → 5Y trajectory chart + expected returns + multiple expansion + total return decomp
-6. Click 🚪 Exit Strategy → Price ladder + trailing stops + time stop + position sizing
-7. Click 📅 Catalysts → Timeline with earnings dates, days-until counters, color-coded tags
+3. Generate Deep DD for the same overvalued stock you tested
+4. Click 🚪 Exit Strategy → should now show:
+   - **⛔ DO NOT BUY AT CURRENT PRICE** red banner at top with plain explanation
+   - **✓ WHAT TO DO INSTEAD** blue box with separate guidance for owners vs non-owners
+   - Price ladder with both label AND plain description per level
+   - Trailing stops/time stop/position sizing HIDDEN (not relevant)
+5. Click 💎 Forward Value → should now show:
+   - **⛔ OVERVALUED — EXPECTED LOSS OVER 5 YEARS** red banner with plain language
+   - Then the chart and metrics below
+
+For an undervalued stock (try MSFT or smaller cap with DCF > spot):
+- Both tabs open with **✓ green banner** + appropriate guidance
+- Trailing stops/time stop/position sizing visible
+- Trim levels make sense as profit-taking
 
 ---
 
-## Architectural decisions documented
+## Honest accountability
 
-**Why deterministic math, not LLM, for forward value?**
-LLMs hallucinate forward valuations. The math here uses real DD data: spot, DCF fair value, revenue growth (real), divided into Bull/Base/Bear with documented multipliers. Reproducible, auditable, no hallucination.
+I shipped a "technically correct" institutional tool that confused the user it was meant to help. **Math being right doesn't make UX right.**
 
-**Why probability weights of 25/50/25 for expected return?**
-Standard institutional practice. Implies base case is most likely, bull/bear symmetric. Conservative — doesn't oversell upside. (We could expose these as user-configurable in future if requested.)
+The institutional-grade analyst inside Goldman knows that "trim at $63 when spot is $542" means "stock is overvalued, don't buy." But that intuition isn't built into the numbers — it has to be explicitly communicated. The fix isn't more math, it's **explicit narrative around the math.**
 
-**Why ratchet trailing stops at +10/25/50%?**
-Industry-standard institutional discipline. Locks gains progressively without choking off compounding. Mirrors Bridgewater/Renaissance position-management heuristics.
-
-**Why time stop of 6 quarters?**
-~18 months gives a thesis adequate time to play out. Beyond that, opportunity cost of capital exceeds expected upside. Forces discipline against "hope-holding" positions.
-
-**Why catalyst tags?**
-Earnings beat-rate ≥70% historically = bullish edge. ≤40% = bearish edge. Anything else neutral. Tag is honest signal, not opinion.
-
-**Why approximate FOMC dates instead of precise?**
-Real institutional tools subscribe to economic calendar APIs. We don't. Honest "approximate" tag tells the user this is a placeholder. Can upgrade to real API later.
+Lesson: every numerical output needs a plain-language interpretation. "What does this mean for me?" should be answered before the chart, not after.
 
 ---
 
@@ -165,34 +175,9 @@ Real institutional tools subscribe to economic calendar APIs. We don't. Honest "
 
 | File | Change |
 |---|---|
-| `api.py` | +3 endpoints (~280 lines): forward-value, exit-strategy, catalyst-calendar |
-| `static/app.js` | +3 pills, +3 render functions (~280 lines), state/dispatcher updates |
+| `static/app.js` | Exit Strategy renderer rewritten (~150 lines), Forward Value top banner added (~30 lines) |
 | `static/app.min.js` | Synced |
+| `api.py` | Version stamp v4.63.26 |
 | `index.html` | Cache-bust + version stamps |
 
-No backend feature regressions. No frontend behavior changes for existing tabs.
-
----
-
-## What this looks like
-
-For an institutional user analyzing MU at $138:
-
-**Forward Value tab** answers: "Should I buy at this price?"
-- Trajectory chart shows DCF ($95) is BELOW spot
-- 5Y expected return -7.3% CAGR
-- Multiple expansion shows current P/E above sector median
-- Verdict: not a buy at this price
-
-**Exit Strategy tab** answers: "If I owned this, when do I exit?"
-- Price ladder shows DCF target $95 (would trim 50% if reached, but already below)
-- For users entered at $138, soft stop at $117, hard stop at $66
-- Add at $131 (5% pullback) for accumulation
-- Time stop: re-evaluate by Q1 2027
-
-**Catalyst Calendar tab** answers: "What events affect my thesis?"
-- Next earnings 56 days away (75% historical beat rate → bullish tag)
-- Q+1, Q+2, Q+3 earnings projected at 91-day cadence
-- FOMC approximate dates flagged for macro overlay
-
-This is what institutional decision-making looks like. No retail platitudes.
+No backend changes. Just clearer presentation of the same data.

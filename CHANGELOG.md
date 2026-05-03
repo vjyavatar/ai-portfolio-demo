@@ -1060,3 +1060,43 @@ User sees in one glance which metrics MU is winning vs losing — exactly the in
 - All Python compiles, JS syntax OK, app.min.js byte-identical
 
 **What this delivers:** Institutional-grade decision support — "what is this worth, where can it go, when do I exit" answered with real math from real DD data. Not retail platitudes. Not LLM hallucinations.
+
+---
+
+## v4.63.26 — Plain-language explanations + overvalued handling (current)
+
+**Built:** 2026-05-03
+
+**User feedback:** "this is confusing.. explain in detail in laymans language... we need to exit when price reaches 90.. how can we make profit.. not sure.."
+
+User tested with a stock at $542 where DCF fair value was only ~$63 (overvalued 8x). The Exit Strategy showed "Trim 50% at $63" — technically correct math (price will revert to fair value) but practically meaningless for someone trying to understand "how do I profit?"
+
+**Root issue:** Tool was institutional-grade math wrapped in confusing presentation. The math being right doesn't mean the UX is right.
+
+**Fixes:**
+
+1. **Overvalued detection** — Exit Strategy and Forward Value now detect when stock is overvalued (bull target < spot) and render completely different UI
+
+2. **Exit Strategy for overvalued stocks:**
+   - Big red "⛔ DO NOT BUY AT CURRENT PRICE" banner with plain-English explanation of WHY
+   - Blue "✓ WHAT TO DO INSTEAD" section with separate guidance for owners vs non-owners
+   - Trailing stops, time stop, position sizing HIDDEN (irrelevant when you shouldn't buy)
+
+3. **Exit Strategy for undervalued stocks:**
+   - Green "✓ REASONABLE BUY ZONE" banner with upside %
+   - All trim/stop/sizing levels shown with plain-language descriptions
+
+4. **Forward Value plain-language verdict at top:**
+   - Overvalued: "If you buy at $X and hold 5 years, expect to LOSE Y%"
+   - Undervalued: "If you buy at $X and hold 5 years, expect +Y% return"
+
+5. **Every ladder level now has human label** — not just "Trim 50% (DCF base)" but also plain description like "Fair value reached"
+
+6. **Trailing stops + position sizing now have explanations** — what they do and why they matter
+
+**Verified:**
+- Plain English markers: 8 occurrences across both tabs
+- isOvervalued detection: 8 references in code
+- All compile/syntax/byte-identical checks pass
+
+**Lesson:** Numerical output needs explicit narrative interpretation. "What does this mean for me?" must come BEFORE the chart, not be inferred from it.
