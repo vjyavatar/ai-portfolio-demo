@@ -1,9 +1,9 @@
 // ═══ Celesys version stamp ═══
-window.CELESYS_VERSION = "v4.63.23";
-window.CELESYS_BUILD_TIME = 1777823018;
-window.CELESYS_BUILD_DATE = "2026-05-03 15:43:38 UTC";
+window.CELESYS_VERSION = "v4.63.25";
+window.CELESYS_BUILD_TIME = 1777824568;
+window.CELESYS_BUILD_DATE = "2026-05-03 16:09:28 UTC";
 console.log("%c━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "color:#1A3A78");
-console.log("%c CELESYS v4.63.23 %c loaded · 2026-04-29 03:29:27 UTC",
+console.log("%c CELESYS v4.63.25 %c loaded · 2026-04-29 03:29:27 UTC",
   "background:#1A3A78;color:#fff;font-weight:900;padding:3px 8px;border-radius:3px;font-family:monospace",
   "color:#1A3A78;font-weight:700;font-family:monospace");
 console.log("%c━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "color:#1A3A78");
@@ -25469,8 +25469,8 @@ window._csEwHomeStripInject = function() {
 
 window._csR6322LastSymbol = null;
 window._csR6322ActiveTab = 'pitch';
-window._csR6322Loaded = { pitch: false, insights: false, scenarios: false, peers: false };
-window._csR6322Data = { pitch: null, insights: null, scenarios: null, peers: null };
+window._csR6322Loaded = { pitch: false, insights: false, scenarios: false, peers: false, forward: false, exit: false, calendar: false };
+window._csR6322Data = { pitch: null, insights: null, scenarios: null, peers: null, forward: null, exit: null, calendar: null };
 
 window._csR6322Inject = function(anchorInfo) {
   if (!anchorInfo) return;
@@ -25504,6 +25504,9 @@ window._csR6322Inject = function(anchorInfo) {
       _csR6322Pill('insights',  '🧠', 'Deep Insights',  false) +
       _csR6322Pill('scenarios', '📈', 'Scenarios', false) +
       _csR6322Pill('peers',     '🏛',  'Peers',     false) +
+      _csR6322Pill('forward',   '💎', 'Forward Value', false) +    /* r63.25 */
+      _csR6322Pill('exit',      '🚪', 'Exit Strategy', false) +    /* r63.25 */
+      _csR6322Pill('calendar',  '📅', 'Catalysts',   false) +     /* r63.25 */
     '</div>' +
     // Content panel
     '<div id="cs-r6322-panel" style="padding:14px 18px 18px;min-height:140px"></div>';
@@ -25565,6 +25568,9 @@ window._csR6322ShowTab = function(tabId) {
   if (tabId === 'insights')  url = '/api/deep-insights';
   if (tabId === 'scenarios') url = '/api/scenarios';
   if (tabId === 'peers')     url = '/api/competitor-benchmark';
+  if (tabId === 'forward')   url = '/api/forward-value';      /* r63.25 */
+  if (tabId === 'exit')      url = '/api/exit-strategy';      /* r63.25 */
+  if (tabId === 'calendar')  url = '/api/catalyst-calendar';  /* r63.25 */
   
   fetch(url + '?symbol=' + encodeURIComponent(sym) + '&email=' + encodeURIComponent(email))
     .then(function(r) { return r.json(); })
@@ -25599,6 +25605,9 @@ function _csR6322Render(tabId, data) {
   if (tabId === 'insights')  return _csR6322RenderInsights(data);
   if (tabId === 'scenarios') return _csR6322RenderScenarios(data);
   if (tabId === 'peers')     return _csR6322RenderPeers(data);
+  if (tabId === 'forward')   return _csR6322RenderForward(data);   /* r63.25 */
+  if (tabId === 'exit')      return _csR6322RenderExit(data);      /* r63.25 */
+  if (tabId === 'calendar')  return _csR6322RenderCalendar(data);  /* r63.25 */
   return '';
 }
 
@@ -25834,11 +25843,19 @@ function _csR6322RenderPeers(d) {
   }
   
   var html = '';
-  // Header
-  html += '<div style="font-size:10px;color:#64748b;font-family:\'IBM Plex Mono\',monospace;letter-spacing:0.3px;margin-bottom:12px">' +
+  // Header + r63.24 legend
+  html += '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:12px">';
+  html += '<div style="font-size:10px;color:#64748b;font-family:\'IBM Plex Mono\',monospace;letter-spacing:0.3px">' +
           'SECTOR ' + '<strong style="color:#0f172a">' + _csEscape((d.target_sector || '').toUpperCase()) + '</strong>' +
           ' · COMPARING ' + d.peers.length + ' PEERS' +
           '</div>';
+  // r63.24: Color legend
+  html += '<div style="display:flex;gap:10px;font-size:9px;color:#64748b;font-family:Inter,sans-serif">' +
+          '<span style="display:inline-flex;align-items:center;gap:4px"><span style="display:inline-block;width:10px;height:10px;background:#1A3A78;border-radius:2px"></span>Target</span>' +
+          '<span style="display:inline-flex;align-items:center;gap:4px"><span style="display:inline-block;width:10px;height:10px;background:#10b981;border-radius:2px"></span>Peer beats target</span>' +
+          '<span style="display:inline-flex;align-items:center;gap:4px"><span style="display:inline-block;width:10px;height:10px;background:#cbd5e1;border-radius:2px"></span>Target leads</span>' +
+          '</div>';
+  html += '</div>';
   
   metrics.forEach(function(m) {
     var values = all.map(function(item) { return { ticker: item.ticker, raw: getNum(item[m.key]), isTarget: item.ticker === d.target.ticker }; });
@@ -25853,18 +25870,47 @@ function _csR6322RenderPeers(d) {
     html += '<div style="margin-bottom:14px">';
     html += '<div style="font-size:9px;font-weight:800;color:#64748b;letter-spacing:1.2px;font-family:Sora,sans-serif;margin-bottom:6px">' + m.label + '</div>';
     
+    // r63.24: Compute target's value for this metric — used for comparative coloring
+    var targetVal = null;
+    var targetEntry = values.filter(function(v) { return v.isTarget; })[0];
+    if (targetEntry) targetVal = targetEntry.raw;
+    
     values.forEach(function(v) {
       var isTarget = v.isTarget;
       var barWidth = 0;
-      var barColor = isTarget ? '#1A3A78' : '#cbd5e1';
+      
+      // r63.24: Comparative coloring — peers shown green if BETTER than target, red if WORSE
+      var barColor;
+      if (isTarget) {
+        barColor = '#1A3A78';  // navy = target (always)
+      } else if (v.raw == null || targetVal == null) {
+        barColor = '#cbd5e1';  // slate = no comparison possible
+      } else {
+        // Determine if this peer is better or worse than target on THIS metric
+        var peerBetter;
+        if (m.better === 'higher') {
+          peerBetter = v.raw > targetVal;
+        } else {  // 'lower' — like P/E
+          peerBetter = v.raw < targetVal;
+        }
+        // Threshold: only color if difference is meaningful (>5%)
+        var diffPct = Math.abs(v.raw - targetVal) / Math.max(Math.abs(targetVal), 0.01);
+        if (diffPct < 0.05) {
+          barColor = '#94a3b8';  // similar = neutral slate
+        } else if (peerBetter) {
+          barColor = '#10b981';  // emerald = peer beats target (warning)
+        } else {
+          barColor = '#cbd5e1';  // light slate = peer worse than target (favorable for target)
+        }
+      }
+      
       if (v.raw != null) {
-        // For "lower is better" metrics, flip the visual width
         if (m.better === 'lower') {
           barWidth = (1 - (v.raw - minV) / rangeV) * 100;
         } else {
           barWidth = (v.raw - minV) / rangeV * 100;
         }
-        barWidth = Math.max(8, barWidth);  // minimum visible width
+        barWidth = Math.max(8, barWidth);
       }
       
       html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">';
@@ -25872,14 +25918,16 @@ function _csR6322RenderPeers(d) {
       html += '<div style="flex-shrink:0;width:60px;font-size:11px;font-family:Sora,sans-serif;font-weight:' + (isTarget ? '800' : '600') + ';color:' + (isTarget ? '#1A3A78' : '#475569') + '">';
       html += (isTarget ? '<span style="color:#f59e0b">★</span> ' : '') + v.ticker;
       html += '</div>';
-      // r63.23: Bar with linear-gradient — most robust, no absolute positioning, no transition.
-      // Background gradient: bar color from 0% to barWidth%, then track color from barWidth% to 100%.
+      
+      // r63.24: Bar as solid fill div (not gradient) — clamp width to 99.5% to avoid 100%-edge bug
       var trackColor = '#f1f5f9';
-      var barFill = (v.raw != null)
-        ? ('linear-gradient(to right, ' + barColor + ' 0%, ' + barColor + ' ' + barWidth + '%, ' + trackColor + ' ' + barWidth + '%, ' + trackColor + ' 100%)')
-        : trackColor;
-      var barBorder = isTarget ? ';border:1px solid ' + barColor + '40' : '';
-      html += '<div style="flex:1;height:20px;background:' + barFill + ';border-radius:4px' + barBorder + '"></div>';
+      var safeWidth = (v.raw != null) ? Math.min(barWidth, 99.5) : 0;
+      
+      html += '<div style="flex:1;height:20px;background:' + trackColor + ';border-radius:4px;position:relative;overflow:hidden">';
+      if (v.raw != null) {
+        html += '<div style="height:100%;width:' + safeWidth + '%;background:' + barColor + ';border-radius:4px"></div>';
+      }
+      html += '</div>';
       // Value label
       html += '<div style="flex-shrink:0;width:60px;text-align:right;font-size:10px;font-family:\'IBM Plex Mono\',monospace;color:#0f172a;font-weight:' + (isTarget ? '800' : '500') + '">' + fmtVal(v.raw, m.fmt) + '</div>';
       html += '</div>';
@@ -25888,6 +25936,258 @@ function _csR6322RenderPeers(d) {
     html += '</div>';
   });
   
+  return html;
+}
+
+
+// ─── FORWARD VALUE — 5Y trajectory chart + expected returns + multiple expansion ──
+function _csR6322RenderForward(d) {
+  if (!d.success && d.error) return _csR6322Err(d.error);
+  
+  var t = d.trajectory || {};
+  var er = d.expected_return || {};
+  var me = d.multiple_expansion;
+  var tr = d.total_return_5y || {};
+  var spot = d.spot;
+  
+  var html = '';
+  html += '<div style="font-size:9px;font-weight:800;color:#0f172a;letter-spacing:1.2px;font-family:Sora,sans-serif;margin-bottom:8px">5-YEAR INTRINSIC VALUE TRAJECTORY</div>';
+  
+  var bull = t.bull || []; var base = t.base || []; var bear = t.bear || [];
+  if (bull.length === 6 && base.length === 6 && bear.length === 6) {
+    var allVals = bull.concat(base).concat(bear);
+    var minP = Math.min.apply(null, allVals) * 0.95;
+    var maxP = Math.max.apply(null, allVals) * 1.02;
+    var rng = maxP - minP || 1;
+    function yPos(v) { return 80 - ((v - minP) / rng * 80); }
+    function buildPath(arr) {
+      return arr.map(function(v, i) { return (i === 0 ? 'M' : 'L') + (i * 16) + ' ' + yPos(v).toFixed(1); }).join(' ');
+    }
+    var bullPath = buildPath(bull);
+    var basePath = buildPath(base);
+    var bearPath = buildPath(bear);
+    
+    html += '<div style="background:#f8fafc;border-radius:8px;padding:14px;margin-bottom:14px">';
+    html += '<svg viewBox="0 0 110 100" preserveAspectRatio="none" style="width:100%;height:160px;display:block">';
+    for (var i = 0; i <= 4; i++) {
+      var y = i * 20;
+      html += '<line x1="0" y1="' + y + '" x2="80" y2="' + y + '" stroke="#e2e8f0" stroke-width="0.2"/>';
+    }
+    html += '<path d="' + bearPath + '" stroke="#dc2626" stroke-width="0.8" fill="none"/>';
+    html += '<path d="' + basePath + '" stroke="#1A3A78" stroke-width="1.0" fill="none"/>';
+    html += '<path d="' + bullPath + '" stroke="#10b981" stroke-width="0.8" fill="none"/>';
+    html += '<circle cx="80" cy="' + yPos(bull[5]).toFixed(1) + '" r="1.6" fill="#10b981"/>';
+    html += '<circle cx="80" cy="' + yPos(base[5]).toFixed(1) + '" r="1.6" fill="#1A3A78"/>';
+    html += '<circle cx="80" cy="' + yPos(bear[5]).toFixed(1) + '" r="1.6" fill="#dc2626"/>';
+    html += '<circle cx="0" cy="' + yPos(spot).toFixed(1) + '" r="1.8" fill="#0f172a"/>';
+    html += '<text x="82" y="' + (yPos(bull[5]) + 1).toFixed(1) + '" font-family="IBM Plex Mono,monospace" font-size="3" fill="#10b981" font-weight="700">$' + bull[5].toFixed(0) + '</text>';
+    html += '<text x="82" y="' + (yPos(base[5]) + 1).toFixed(1) + '" font-family="IBM Plex Mono,monospace" font-size="3" fill="#1A3A78" font-weight="700">$' + base[5].toFixed(0) + '</text>';
+    html += '<text x="82" y="' + (yPos(bear[5]) + 1).toFixed(1) + '" font-family="IBM Plex Mono,monospace" font-size="3" fill="#dc2626" font-weight="700">$' + bear[5].toFixed(0) + '</text>';
+    html += '</svg>';
+    html += '<div style="display:flex;justify-content:space-between;font-family:\'IBM Plex Mono\',monospace;font-size:9px;color:#94a3b8;letter-spacing:0.5px;margin-top:6px;padding-right:24%">';
+    ['Now','1Y','2Y','3Y','4Y','5Y'].forEach(function(lbl) { html += '<span>' + lbl + '</span>'; });
+    html += '</div>';
+    html += '<div style="display:flex;gap:12px;justify-content:center;margin-top:8px;font-size:10px;color:#475569">';
+    html += '<span style="display:inline-flex;align-items:center;gap:4px"><span style="display:inline-block;width:18px;height:2px;background:#10b981"></span>Bull</span>';
+    html += '<span style="display:inline-flex;align-items:center;gap:4px"><span style="display:inline-block;width:18px;height:2px;background:#1A3A78"></span>Base</span>';
+    html += '<span style="display:inline-flex;align-items:center;gap:4px"><span style="display:inline-block;width:18px;height:2px;background:#dc2626"></span>Bear</span>';
+    html += '<span style="display:inline-flex;align-items:center;gap:4px"><span style="display:inline-block;width:8px;height:8px;background:#0f172a;border-radius:50%"></span>Spot $' + spot.toFixed(2) + '</span>';
+    html += '</div>';
+    html += '</div>';
+  }
+  
+  // Expected Return
+  html += '<div style="font-size:9px;font-weight:800;color:#0f172a;letter-spacing:1.2px;font-family:Sora,sans-serif;margin-bottom:8px">EXPECTED RETURN (probability-weighted)</div>';
+  html += '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px">';
+  function erCard(label, pct, cagr) {
+    var color = (pct == null) ? '#94a3b8' : (pct > 0 ? '#10b981' : '#dc2626');
+    var sign = (pct != null && pct > 0) ? '+' : '';
+    var v = (pct == null) ? '—' : (sign + pct.toFixed(1) + '%');
+    var sub = (cagr != null) ? ('CAGR ' + (cagr > 0 ? '+' : '') + cagr.toFixed(1) + '%') : '';
+    return '<div style="padding:10px;background:#f8fafc;border-radius:6px;border-left:3px solid ' + color + '">' +
+           '<div style="font-size:9px;font-weight:800;color:#64748b;letter-spacing:1px;font-family:Sora,sans-serif">' + label + '</div>' +
+           '<div style="font-size:18px;font-weight:900;color:' + color + ';font-family:\'IBM Plex Mono\',monospace;margin-top:2px">' + v + '</div>' +
+           (sub ? '<div style="font-size:9px;color:#94a3b8;font-family:\'IBM Plex Mono\',monospace;margin-top:2px">' + sub + '</div>' : '') +
+           '</div>';
+  }
+  html += erCard('1Y', er['1y_pct'], null);
+  html += erCard('3Y', er['3y_pct'], er['3y_cagr']);
+  html += erCard('5Y', er['5y_pct'], er['5y_cagr']);
+  html += '</div>';
+  html += '<div style="font-size:9px;color:#94a3b8;font-family:\'IBM Plex Mono\',monospace;margin-bottom:18px;letter-spacing:0.3px">';
+  html += 'WEIGHTS: BULL ' + (er.p_bull * 100).toFixed(0) + '% · BASE ' + (er.p_base * 100).toFixed(0) + '% · BEAR ' + (er.p_bear * 100).toFixed(0) + '%';
+  html += '</div>';
+  
+  // Multiple Expansion
+  if (me) {
+    html += '<div style="font-size:9px;font-weight:800;color:#0f172a;letter-spacing:1.2px;font-family:Sora,sans-serif;margin-bottom:8px">MULTIPLE-EXPANSION THESIS</div>';
+    html += '<div style="background:#f8fafc;border-radius:6px;padding:12px;margin-bottom:14px">';
+    html += '<div style="display:flex;gap:14px;flex-wrap:wrap;font-family:\'IBM Plex Mono\',monospace;font-size:11px;margin-bottom:8px">';
+    html += '<div><span style="color:#94a3b8">CURRENT FWD P/E</span> <strong style="color:#0f172a;font-size:14px">' + me.current_pe + '</strong></div>';
+    html += '<div><span style="color:#94a3b8">SECTOR MEDIAN</span> <strong style="color:#0f172a;font-size:14px">' + me.sector_median_pe + '</strong></div>';
+    var upColor = me.upside_to_sector_pct > 0 ? '#10b981' : '#dc2626';
+    html += '<div><span style="color:#94a3b8">RE-RATING UPSIDE</span> <strong style="color:' + upColor + ';font-size:14px">' + (me.upside_to_sector_pct > 0 ? '+' : '') + me.upside_to_sector_pct.toFixed(1) + '%</strong></div>';
+    html += '</div>';
+    html += '<div style="font-size:11px;color:#475569;line-height:1.5">' + _csEscape(me.interpretation) + '</div>';
+    html += '</div>';
+  }
+  
+  // Total Return Decomposition
+  html += '<div style="font-size:9px;font-weight:800;color:#0f172a;letter-spacing:1.2px;font-family:Sora,sans-serif;margin-bottom:8px">TOTAL RETURN DECOMPOSITION (5Y, base case)</div>';
+  html += '<div style="background:#f8fafc;border-radius:6px;padding:12px">';
+  html += '<table style="width:100%;border-collapse:collapse;font-size:11px">';
+  function trRow(label, pct, isTotal) {
+    var color = pct > 0 ? '#10b981' : (pct < 0 ? '#dc2626' : '#94a3b8');
+    var sign = pct > 0 ? '+' : '';
+    var fontW = isTotal ? '800' : '500';
+    return '<tr style="' + (isTotal ? 'border-top:1px solid #e2e8f0' : '') + '">' +
+           '<td style="padding:5px 0;color:#475569;font-weight:' + fontW + '">' + label + '</td>' +
+           '<td style="padding:5px 0;text-align:right;color:' + color + ';font-family:\'IBM Plex Mono\',monospace;font-weight:' + fontW + '">' + sign + pct.toFixed(1) + '%</td>' +
+           '</tr>';
+  }
+  html += trRow('Capital appreciation', tr.capital_pct || 0, false);
+  html += trRow('Dividends', tr.dividends_pct || 0, false);
+  html += trRow('Buybacks (est.)', tr.buybacks_pct || 0, false);
+  html += trRow('TOTAL EXPECTED 5Y', tr.total_pct || 0, true);
+  html += '</table>';
+  html += '</div>';
+  
+  return html;
+}
+
+// ─── EXIT STRATEGY ───────────────────────────────────────────────
+function _csR6322RenderExit(d) {
+  if (!d.success && d.error) return _csR6322Err(d.error);
+  
+  var l = d.ladder || {};
+  var entry = d.entry;
+  var spot = d.spot;
+  
+  var levels = [
+    { key: 'stop_hard',  data: l.stop_hard,  color: '#7f1d1d', icon: '⛔' },
+    { key: 'stop_soft',  data: l.stop_soft,  color: '#dc2626', icon: '🛑' },
+    { key: 'entry_low',  data: l.entry_low,  color: '#0891b2', icon: '⬇' },
+    { key: 'entry',      data: l.entry,      color: '#1A3A78', icon: '●' },
+    { key: 'entry_high', data: l.entry_high, color: '#0891b2', icon: '⬆' },
+    { key: 'trim_1',     data: l.trim_1,     color: '#10b981', icon: '✂' },
+    { key: 'trim_2',     data: l.trim_2,     color: '#059669', icon: '✂' },
+    { key: 'exit_full',  data: l.exit_full,  color: '#047857', icon: '🏁' },
+  ];
+  
+  var html = '';
+  html += '<div style="font-size:9px;font-weight:800;color:#0f172a;letter-spacing:1.2px;font-family:Sora,sans-serif;margin-bottom:8px">PRICE LADDER · ENTRY $' + entry.toFixed(2) + ' · SPOT $' + spot.toFixed(2) + '</div>';
+  
+  var sortedLevels = levels.slice().filter(function(L) { return L.data; });
+  sortedLevels.sort(function(a, b) { return b.data.price - a.data.price; });
+  
+  html += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:14px;margin-bottom:14px">';
+  sortedLevels.forEach(function(L, idx) {
+    var dat = L.data;
+    var isSpot = Math.abs(dat.price - spot) < 0.01;
+    var bg = isSpot ? '#fef3c7' : (idx % 2 === 0 ? '#fff' : '#f8fafc');
+    var pctColor = dat.pct_from_entry > 0 ? '#10b981' : (dat.pct_from_entry < 0 ? '#dc2626' : '#94a3b8');
+    var pctSign = dat.pct_from_entry > 0 ? '+' : '';
+    
+    html += '<div style="display:flex;align-items:center;gap:10px;padding:7px 10px;background:' + bg + ';border-left:3px solid ' + L.color + ';border-radius:4px;margin-bottom:4px">';
+    html += '<div style="flex-shrink:0;width:18px;font-size:13px;text-align:center">' + L.icon + '</div>';
+    html += '<div style="flex-shrink:0;width:90px;font-family:\'IBM Plex Mono\',monospace;font-weight:800;color:#0f172a;font-size:13px">$' + dat.price.toFixed(2) + '</div>';
+    html += '<div style="flex-shrink:0;width:60px;font-family:\'IBM Plex Mono\',monospace;font-size:10px;color:' + pctColor + ';font-weight:700">' + pctSign + dat.pct_from_entry.toFixed(1) + '%</div>';
+    html += '<div style="flex:1;font-size:11px;color:#475569">' + _csEscape(dat.label) + (isSpot ? ' <strong style="color:#92400e">← SPOT</strong>' : '') + '</div>';
+    html += '</div>';
+  });
+  html += '</div>';
+  
+  if (d.trailing_stops && d.trailing_stops.length > 0) {
+    html += '<div style="font-size:9px;font-weight:800;color:#0f172a;letter-spacing:1.2px;font-family:Sora,sans-serif;margin-bottom:8px">TRAILING-STOP LADDER</div>';
+    html += '<div style="background:#f8fafc;border-radius:6px;padding:12px;margin-bottom:14px">';
+    d.trailing_stops.forEach(function(ts) {
+      html += '<div style="display:flex;gap:10px;align-items:center;padding:5px 0;font-size:11px">';
+      html += '<div style="flex-shrink:0;width:60px;font-family:\'IBM Plex Mono\',monospace;font-weight:800;color:#10b981">+' + ts.trigger_pct + '%</div>';
+      html += '<div style="flex-shrink:0;font-family:\'IBM Plex Mono\',monospace;color:#94a3b8;font-size:10px">→</div>';
+      html += '<div style="flex-shrink:0;width:60px;font-family:\'IBM Plex Mono\',monospace;font-weight:700;color:#1A3A78">+' + ts.lock_pct + '%</div>';
+      html += '<div style="flex:1;color:#475569">' + _csEscape(ts.rule) + '</div>';
+      html += '</div>';
+    });
+    html += '</div>';
+  }
+  
+  if (d.time_stop) {
+    html += '<div style="font-size:9px;font-weight:800;color:#0f172a;letter-spacing:1.2px;font-family:Sora,sans-serif;margin-bottom:8px">TIME STOP</div>';
+    html += '<div style="background:#fef2f2;border-left:3px solid #dc2626;border-radius:4px;padding:10px 12px;margin-bottom:14px;font-size:11px;color:#7f1d1d">' + _csEscape(d.time_stop.rule) + '</div>';
+  }
+  
+  if (d.catalyst_window) {
+    html += '<div style="font-size:9px;font-weight:800;color:#0f172a;letter-spacing:1.2px;font-family:Sora,sans-serif;margin-bottom:8px">NEXT CATALYST WINDOW</div>';
+    var c = d.catalyst_window;
+    html += '<div style="background:#fef3c7;border-left:3px solid #f59e0b;border-radius:4px;padding:10px 12px;margin-bottom:14px">';
+    html += '<div style="font-size:11px;color:#92400e;font-weight:700;margin-bottom:4px">📅 ' + c.next_earnings_date + ' · ' + c.days_until + ' days away</div>';
+    html += '<div style="font-size:11px;color:#475569;line-height:1.5">' + _csEscape(c.rule) + '</div>';
+    html += '</div>';
+  }
+  
+  if (d.position_sizing) {
+    var ps = d.position_sizing;
+    html += '<div style="font-size:9px;font-weight:800;color:#0f172a;letter-spacing:1.2px;font-family:Sora,sans-serif;margin-bottom:8px">POSITION SIZING (KELLY-BOUNDED)</div>';
+    html += '<div style="background:#f0f9ff;border-radius:6px;padding:12px;display:flex;gap:18px;flex-wrap:wrap;font-family:\'IBM Plex Mono\',monospace;font-size:11px">';
+    html += '<div><span style="color:#94a3b8">INITIAL</span> <strong style="color:#0f172a;font-size:14px">' + ps.initial_pct + '%</strong></div>';
+    html += '<div><span style="color:#94a3b8">ADD AT $' + (l.entry_low ? l.entry_low.price.toFixed(2) : '—') + '</span> <strong style="color:#0f172a;font-size:14px">+' + ps.add_at_entry_low + '%</strong></div>';
+    html += '<div><span style="color:#94a3b8">MAX</span> <strong style="color:#0f172a;font-size:14px">' + ps.max_pct + '%</strong></div>';
+    html += '</div>';
+    html += '<div style="font-size:10px;color:#64748b;margin-top:6px;font-family:Inter,sans-serif">' + _csEscape(ps.rationale) + '</div>';
+  }
+  
+  return html;
+}
+
+// ─── CATALYST CALENDAR ────────────────────────────────────────────
+function _csR6322RenderCalendar(d) {
+  if (!d.success && d.error) return _csR6322Err(d.error);
+  if (!d.events || d.events.length === 0) {
+    return '<div style="font-size:12px;color:#94a3b8;font-style:italic">No catalyst events found in next 12 months.</div>';
+  }
+  
+  var html = '';
+  var s = d.summary || {};
+  
+  html += '<div style="display:flex;gap:14px;margin-bottom:14px;flex-wrap:wrap;font-family:\'IBM Plex Mono\',monospace;font-size:11px">';
+  html += '<div><span style="color:#94a3b8">TOTAL</span> <strong style="color:#0f172a;font-size:14px">' + s.total + '</strong></div>';
+  html += '<div><span style="color:#94a3b8">EARNINGS</span> <strong style="color:#1A3A78;font-size:14px">' + s.earnings + '</strong></div>';
+  if (s.bullish > 0) html += '<div><span style="color:#94a3b8">BULLISH</span> <strong style="color:#10b981;font-size:14px">' + s.bullish + '</strong></div>';
+  if (s.bearish > 0) html += '<div><span style="color:#94a3b8">BEARISH</span> <strong style="color:#dc2626;font-size:14px">' + s.bearish + '</strong></div>';
+  html += '</div>';
+  
+  html += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden">';
+  
+  var tagColors = {
+    bullish: { bg: '#d1fae5', text: '#047857' },
+    bearish: { bg: '#fee2e2', text: '#7f1d1d' },
+    neutral: { bg: '#f1f5f9', text: '#475569' },
+    unknown: { bg: '#fef3c7', text: '#92400e' },
+  };
+  
+  d.events.forEach(function(ev, idx) {
+    var tag = tagColors[ev.tag] || tagColors.neutral;
+    var typeIcons = { earnings: '📊', earnings_projected: '📊', dividend: '💰', macro: '🏦' };
+    var icon = typeIcons[ev.type] || '📌';
+    var isProjected = ev.type === 'earnings_projected' || (ev.title || '').indexOf('approximate') > -1;
+    var opacity = isProjected ? '0.7' : '1';
+    
+    html += '<div style="display:flex;align-items:center;gap:12px;padding:10px 14px;border-bottom:' + (idx < d.events.length - 1 ? '1px solid #f1f5f9' : 'none') + ';opacity:' + opacity + '">';
+    var urgencyColor = ev.days_until <= 7 ? '#dc2626' : (ev.days_until <= 30 ? '#f59e0b' : '#94a3b8');
+    html += '<div style="flex-shrink:0;width:64px;text-align:center">';
+    html += '<div style="font-size:18px;font-weight:900;color:' + urgencyColor + ';font-family:\'IBM Plex Mono\',monospace;line-height:1">' + ev.days_until + '</div>';
+    html += '<div style="font-size:8px;color:#94a3b8;font-family:Sora,sans-serif;letter-spacing:0.5px;margin-top:1px">DAYS</div>';
+    html += '</div>';
+    html += '<div style="flex-shrink:0;font-size:18px">' + icon + '</div>';
+    html += '<div style="flex:1;min-width:0">';
+    html += '<div style="font-size:12px;font-weight:700;color:#0f172a;font-family:Inter,sans-serif">' + _csEscape(ev.title) + '</div>';
+    html += '<div style="font-size:10px;color:#64748b;margin-top:2px">' + ev.date + (ev.details ? ' · ' + _csEscape(ev.details) : '') + '</div>';
+    html += '</div>';
+    html += '<div style="flex-shrink:0;font-size:9px;font-weight:800;color:' + tag.text + ';background:' + tag.bg + ';padding:3px 8px;border-radius:4px;letter-spacing:0.5px;font-family:Sora,sans-serif;text-transform:uppercase">' + ev.tag + '</div>';
+    html += '</div>';
+  });
+  
+  html += '</div>';
   return html;
 }
 
@@ -25925,8 +26225,8 @@ function _csR6322RenderPeers(d) {
       if (existing && lastInjectedSym === found.sym) return;
       if (existing && lastInjectedSym !== found.sym) {
         existing.remove();
-        window._csR6322Loaded = { pitch: false, insights: false, scenarios: false, peers: false };
-        window._csR6322Data = { pitch: null, insights: null, scenarios: null, peers: null };
+        window._csR6322Loaded = { pitch: false, insights: false, scenarios: false, peers: false, forward: false, exit: false, calendar: false };
+        window._csR6322Data = { pitch: null, insights: null, scenarios: null, peers: null, forward: null, exit: null, calendar: null };
       }
       
       // Remove any legacy r63.18/21 cards

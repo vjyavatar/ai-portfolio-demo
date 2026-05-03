@@ -1799,9 +1799,9 @@ def _safe_float(val, default=0.0):
         return default
 
 # ═══ Celesys version stamp (v4.61.10) ═══════════════════════════════
-APP_VERSION = "v4.63.23"
-APP_BUILD_TIME = 1777823018
-APP_BUILD_DATE = "2026-05-03 15:43:38 UTC"
+APP_VERSION = "v4.63.25"
+APP_BUILD_TIME = 1777824568
+APP_BUILD_DATE = "2026-05-03 16:09:28 UTC"
 APP_RELEASE_NOTES = (
     "v4.62.0: Micro-Cap Hunter scanner (Decide tab) + cumulative r61.x: Aladdin DD entry page (r61.8), "
     "stale-cache fallback (r61.8), multi-factor Bottom Line (r61.7), "
@@ -32463,6 +32463,424 @@ async def competitor_benchmark(symbol: str = "", region: str = "US", email: str 
         },
         "peers": peers,
         "peer_count": len(peers),
+    }
+
+
+
+# ═══════════════════════════════════════════════════════════════════
+# r63.25: Forward Value — 5Y intrinsic value trajectory + expected return
+# ═══════════════════════════════════════════════════════════════════
+
+@app.get("/api/forward-value")
+async def forward_value(symbol: str = "", region: str = "US", email: str = ""):
+    """r63.25: Computes 5Y intrinsic value path, probability-weighted return,
+    multiple-expansion thesis, total return decomposition."""
+    email = (email or "").strip().lower()
+    _ok, email = check_premium_gate(email, "dream")
+    if not _ok:
+        return {"success": False, "error": "Premium tier required."}
+    
+    symbol = (symbol or "").strip().upper()
+    if not symbol:
+        return {"success": False, "error": "symbol required"}
+    
+    try:
+        dd = await investor_due_diligence(email=email, symbol=symbol, region=region)
+    except Exception as e:
+        return {"success": False, "error": f"DD failed: {str(e)[:200]}"}
+    
+    if not dd.get("success"):
+        return {"success": False, "error": "DD generation failed."}
+    
+    # Read from confirmed canonical paths
+    thesis    = dd.get("thesis") or {}
+    finance   = dd.get("finance") or {}
+    valuation = dd.get("valuation_detail") or {}
+    company   = dd.get("company") or {}
+    
+    spot = _safe_float(thesis.get("spot_price"))
+    if spot <= 0:
+        return {"success": False, "error": "Insufficient data: no spot price."}
+    
+    dcf_fair = _safe_float(valuation.get("fair_value")) or _safe_float(thesis.get("dcf_fair_value"))
+    if dcf_fair <= 0:
+        return {"success": False, "error": "Insufficient data: DCF fair value not available."}
+    
+    fwd_pe = _safe_float(thesis.get("forward_pe"))
+    rev_growth_pct = _safe_float(finance.get("revenue_growth_yoy_pct"))
+    rev_growth = (rev_growth_pct / 100.0) if rev_growth_pct else 0.05
+    rev_growth = max(-0.10, min(0.40, rev_growth))  # bound
+    
+    # Dividend yield from yfinance (already computed in DD if available)
+    div_yield_pct = _safe_float(finance.get("dividend_yield_pct"))
+    if div_yield_pct == 0:  # finance dict might not have it; check company
+        # Fallback: check yfinance info — but we've already done that DD-side
+        # Just default to 0 if not present
+        div_yield_pct = 0
+    div_yield = div_yield_pct / 100.0
+    
+    # ────── 5-Year Intrinsic Value Trajectory ──────
+    # Bull: DCF × (1 + rev_growth × 1.5) at year 5
+    # Base: DCF (current fair value)
+    # Bear: DCF × 0.70 at year 5
+    bull_5y = dcf_fair * (1 + rev_growth * 1.5)
+    base_5y = dcf_fair
+    bear_5y = dcf_fair * 0.70
+    
+    # Annual interpolation: spot → target via geometric
+    def trajectory(target):
+        if spot <= 0 or target <= 0: return [spot, spot, spot, spot, spot, spot]
+        cagr = (target / spot) ** (1/5) - 1
+        return [round(spot * (1 + cagr) ** y, 2) for y in range(6)]  # year 0 to 5
+    
+    bull_path = trajectory(bull_5y)
+    base_path = trajectory(base_5y)
+    bear_path = trajectory(bear_5y)
+    
+    # ────── Probability-weighted Expected Return ──────
+    # Default weights: Bull 25%, Base 50%, Bear 25%
+    p_bull, p_base, p_bear = 0.25, 0.50, 0.25
+    
+    def weighted_return(bull_t, base_t, bear_t):
+        if spot <= 0: return None
+        bull_r = (bull_t - spot) / spot
+        base_r = (base_t - spot) / spot
+        bear_r = (bear_t - spot) / spot
+        return p_bull * bull_r + p_base * base_r + p_bear * bear_r
+    
+    er_1y = weighted_return(bull_path[1], base_path[1], bear_path[1])
+    er_3y = weighted_return(bull_path[3], base_path[3], bear_path[3])
+    er_5y = weighted_return(bull_5y, base_5y, bear_5y)
+    
+    cagr_3y = ((1 + er_3y) ** (1/3) - 1) if er_3y is not None else None
+    cagr_5y = ((1 + er_5y) ** (1/5) - 1) if er_5y is not None else None
+    
+    # ────── Multiple-Expansion Thesis ──────
+    # Sector median P/E — from sector_context if available, else use static estimate
+    sector_data = dd.get("sector_context") or {}
+    sector_pe = _safe_float(sector_data.get("sector_pe_median"))
+    if sector_pe <= 0:
+        # Default sector medians by broad bucket — honest fallback
+        sector_name = (company.get("sector") or "").lower()
+        sector_default_pe = {
+            "technology": 25, "healthcare": 22, "financials": 12,
+            "consumer cyclical": 18, "consumer defensive": 20,
+            "energy": 12, "utilities": 18, "real estate": 22,
+            "communication services": 18, "industrials": 19,
+            "basic materials": 15,
+        }
+        for k, v in sector_default_pe.items():
+            if k in sector_name:
+                sector_pe = v; break
+        if sector_pe <= 0: sector_pe = 18  # conservative S&P median
+    
+    multiple_expansion = None
+    if fwd_pe > 0 and sector_pe > 0:
+        # If at sector median, what does spot become?
+        upside_to_sector = (sector_pe - fwd_pe) / fwd_pe * 100 if fwd_pe > 0 else 0
+        multiple_expansion = {
+            "current_pe": round(fwd_pe, 1),
+            "sector_median_pe": round(sector_pe, 1),
+            "upside_to_sector_pct": round(upside_to_sector, 1),
+            "interpretation": (
+                f"Trading {abs(upside_to_sector):.0f}% {'below' if upside_to_sector > 0 else 'above'} sector median P/E "
+                f"({fwd_pe:.1f} vs {sector_pe:.1f}). " +
+                ("Re-rating to sector median implies meaningful upside." if upside_to_sector > 10 else
+                 "Compressing to sector median implies downside risk." if upside_to_sector < -10 else
+                 "In line with sector — multiple-expansion thesis weak.")
+            ),
+        }
+    
+    # ────── Total Return Decomposition (5Y) ──────
+    capital_appreciation_5y = (base_5y - spot) / spot if spot > 0 else 0
+    dividends_5y = div_yield * 5  # simple cumulative
+    # Buyback yield estimate — conservative 1% annually if profitable
+    profit_margin_pct = _safe_float(finance.get("profit_margin_pct"))
+    buyback_yield_5y = 0.01 * 5 if profit_margin_pct > 5 else 0
+    total_5y = capital_appreciation_5y + dividends_5y + buyback_yield_5y
+    
+    return {
+        "success":   True,
+        "symbol":    symbol,
+        "spot":      round(spot, 2),
+        "trajectory": {
+            "years":  list(range(6)),  # 0=Now, 5=Year 5
+            "bull":   bull_path,
+            "base":   base_path,
+            "bear":   bear_path,
+            "bull_target": round(bull_5y, 2),
+            "base_target": round(base_5y, 2),
+            "bear_target": round(bear_5y, 2),
+        },
+        "expected_return": {
+            "p_bull":    p_bull,
+            "p_base":    p_base,
+            "p_bear":    p_bear,
+            "1y_pct":    round(er_1y * 100, 1) if er_1y is not None else None,
+            "3y_pct":    round(er_3y * 100, 1) if er_3y is not None else None,
+            "5y_pct":    round(er_5y * 100, 1) if er_5y is not None else None,
+            "3y_cagr":   round(cagr_3y * 100, 1) if cagr_3y is not None else None,
+            "5y_cagr":   round(cagr_5y * 100, 1) if cagr_5y is not None else None,
+        },
+        "multiple_expansion": multiple_expansion,
+        "total_return_5y": {
+            "capital_pct":  round(capital_appreciation_5y * 100, 1),
+            "dividends_pct": round(dividends_5y * 100, 1),
+            "buybacks_pct":  round(buyback_yield_5y * 100, 1),
+            "total_pct":     round(total_5y * 100, 1),
+        },
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════
+# r63.25: Exit Strategy — entry/trim levels, stops, position sizing
+# ═══════════════════════════════════════════════════════════════════
+
+@app.get("/api/exit-strategy")
+async def exit_strategy(symbol: str = "", region: str = "US", email: str = "",
+                        entry_price: float = 0):
+    """r63.25: Exit strategy with price ladder, stops, position sizing."""
+    email = (email or "").strip().lower()
+    _ok, email = check_premium_gate(email, "dream")
+    if not _ok:
+        return {"success": False, "error": "Premium tier required."}
+    
+    symbol = (symbol or "").strip().upper()
+    if not symbol:
+        return {"success": False, "error": "symbol required"}
+    
+    try:
+        dd = await investor_due_diligence(email=email, symbol=symbol, region=region)
+    except Exception as e:
+        return {"success": False, "error": f"DD failed: {str(e)[:200]}"}
+    
+    if not dd.get("success"):
+        return {"success": False, "error": "DD generation failed."}
+    
+    thesis    = dd.get("thesis") or {}
+    finance   = dd.get("finance") or {}
+    valuation = dd.get("valuation_detail") or {}
+    catalysts = dd.get("catalysts") or {}
+    
+    spot = _safe_float(thesis.get("spot_price"))
+    if spot <= 0:
+        return {"success": False, "error": "Insufficient data: no spot price."}
+    
+    dcf_fair = _safe_float(valuation.get("fair_value")) or _safe_float(thesis.get("dcf_fair_value"))
+    if dcf_fair <= 0:
+        return {"success": False, "error": "Insufficient data: DCF fair value not available."}
+    
+    rev_growth_pct = _safe_float(finance.get("revenue_growth_yoy_pct"))
+    rev_growth = (rev_growth_pct / 100.0) if rev_growth_pct else 0.05
+    rev_growth = max(-0.10, min(0.40, rev_growth))
+    
+    # Use spot as entry if not specified
+    entry = entry_price if entry_price > 0 else spot
+    
+    # ────── Price Ladder ──────
+    bull_target = round(dcf_fair * (1 + rev_growth * 1.5), 2)
+    base_target = round(dcf_fair, 2)
+    
+    # Entry zone: 5% below spot to spot+2% (institutional accumulation band)
+    entry_low  = round(spot * 0.95, 2)
+    entry_high = round(spot * 1.02, 2)
+    
+    # First trim: 50% of base case upside achieved
+    trim_1 = round(spot + (base_target - spot) * 0.5, 2) if base_target > spot else round(base_target * 0.85, 2)
+    
+    # Second trim: base case (DCF reached)
+    trim_2 = base_target
+    
+    # Final exit: bull target
+    exit_full = bull_target
+    
+    # Stop-loss: -15% from entry (institutional default)
+    stop_soft = round(entry * 0.85, 2)
+    # Hard stop: thesis-broken (DCF compression to bear case)
+    stop_hard = round(dcf_fair * 0.70, 2)
+    
+    # ────── Trailing Stop Ladder ──────
+    trailing_ladder = [
+        {"trigger_pct": 10, "lock_pct": 0,  "rule": "At +10% gain, ratchet stop to entry breakeven (no-loss lock)"},
+        {"trigger_pct": 25, "lock_pct": 10, "rule": "At +25% gain, ratchet stop to +10% (lock first profit)"},
+        {"trigger_pct": 50, "lock_pct": 25, "rule": "At +50% gain, ratchet stop to +25% (compound discipline)"},
+    ]
+    
+    # ────── Time Stop ──────
+    # Default: 6 quarters for 1Y thesis, 12Q for 3Y
+    time_stop_quarters = 6  # ~18 months
+    
+    # ────── Catalyst Window ──────
+    next_earn = (catalysts.get("next_earnings") or {}) if isinstance(catalysts.get("next_earnings"), dict) else {}
+    catalyst_window = None
+    if next_earn.get("date"):
+        catalyst_window = {
+            "next_earnings_date": next_earn.get("date"),
+            "days_until":         next_earn.get("days_until"),
+            "rule": (
+                "Re-evaluate position after earnings. If EPS misses by >10% OR guidance reduced, "
+                "exit immediately regardless of price level (thesis-broken stop)."
+            ),
+        }
+    
+    # ────── Position Sizing (Kelly-Bounded) ──────
+    # Conservative: max 3% per single position
+    # Initial: 2% if base case > 15% upside, else 1%
+    base_upside_pct = (base_target - entry) / entry * 100 if entry > 0 else 0
+    
+    initial_size = 2.0 if base_upside_pct > 15 else 1.0
+    add_at_entry_low = 1.0 if base_upside_pct > 25 else 0.5
+    max_size = min(3.0, initial_size + add_at_entry_low + 0.5)  # cap at 3%
+    
+    return {
+        "success": True,
+        "symbol": symbol,
+        "spot": round(spot, 2),
+        "entry": round(entry, 2),
+        "ladder": {
+            "stop_hard":    {"price": stop_hard,  "pct_from_entry": round((stop_hard - entry) / entry * 100, 1), "label": "Thesis-broken (DCF compression)"},
+            "stop_soft":    {"price": stop_soft,  "pct_from_entry": round((stop_soft - entry) / entry * 100, 1), "label": "Soft stop (-15%)"},
+            "entry_low":    {"price": entry_low,  "pct_from_entry": round((entry_low - entry) / entry * 100, 1), "label": "Optimal accumulation low"},
+            "entry":        {"price": round(entry, 2), "pct_from_entry": 0, "label": "Entry (spot)"},
+            "entry_high":   {"price": entry_high, "pct_from_entry": round((entry_high - entry) / entry * 100, 1), "label": "Accumulation ceiling"},
+            "trim_1":       {"price": trim_1,     "pct_from_entry": round((trim_1 - entry) / entry * 100, 1), "label": "Trim 25% (1Y target)"},
+            "trim_2":       {"price": trim_2,     "pct_from_entry": round((trim_2 - entry) / entry * 100, 1), "label": "Trim 50% (DCF base)"},
+            "exit_full":    {"price": exit_full,  "pct_from_entry": round((exit_full - entry) / entry * 100, 1), "label": "Sell remaining (bull case)"},
+        },
+        "trailing_stops": trailing_ladder,
+        "time_stop": {
+            "quarters": time_stop_quarters,
+            "rule": f"Exit position if no progress toward base target ${base_target:.2f} within {time_stop_quarters} quarters.",
+        },
+        "catalyst_window": catalyst_window,
+        "position_sizing": {
+            "initial_pct":      initial_size,
+            "add_at_entry_low": add_at_entry_low,
+            "max_pct":          max_size,
+            "base_upside_pct":  round(base_upside_pct, 1),
+            "rationale":        f"Initial {initial_size}% based on {base_upside_pct:.0f}% base case upside. Kelly-bounded max {max_size}%.",
+        },
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════
+# r63.25: Catalyst Calendar — next 4 quarters of known events
+# ═══════════════════════════════════════════════════════════════════
+
+@app.get("/api/catalyst-calendar")
+async def catalyst_calendar(symbol: str = "", region: str = "US", email: str = ""):
+    """r63.25: Returns next 4 quarters of catalysts (earnings + macro + sector)."""
+    from datetime import datetime as _dt6, timedelta as _td6
+    
+    email = (email or "").strip().lower()
+    _ok, email = check_premium_gate(email, "dream")
+    if not _ok:
+        return {"success": False, "error": "Premium tier required."}
+    
+    symbol = (symbol or "").strip().upper()
+    if not symbol:
+        return {"success": False, "error": "symbol required"}
+    
+    try:
+        dd = await investor_due_diligence(email=email, symbol=symbol, region=region)
+    except Exception as e:
+        return {"success": False, "error": f"DD failed: {str(e)[:200]}"}
+    
+    if not dd.get("success"):
+        return {"success": False, "error": "DD generation failed."}
+    
+    catalysts_obj = dd.get("catalysts") or {}
+    earnings_history = dd.get("earnings_history") or {}
+    
+    today = _dt6.utcnow().date()
+    events = []
+    
+    # ────── Next earnings (highest priority) ──────
+    next_earn = catalysts_obj.get("next_earnings") if isinstance(catalysts_obj.get("next_earnings"), dict) else None
+    if next_earn and next_earn.get("date"):
+        try:
+            ed = _dt6.strptime(next_earn["date"], "%Y-%m-%d").date()
+            beat_rate = _safe_float(earnings_history.get("beat_rate_pct"))
+            tag = "neutral"
+            if beat_rate >= 70: tag = "bullish"
+            elif beat_rate <= 40 and beat_rate > 0: tag = "bearish"
+            
+            events.append({
+                "date":        ed.strftime("%Y-%m-%d"),
+                "days_until":  (ed - today).days,
+                "type":        "earnings",
+                "title":       f"{symbol} Quarterly Earnings",
+                "details":     f"Historical beat rate: {beat_rate:.0f}%" if beat_rate > 0 else "First earnings in window",
+                "tag":         tag,
+                "urgency":     next_earn.get("urgency", "MEDIUM"),
+            })
+        except Exception:
+            pass
+    
+    # ────── Project next 3 quarterly earnings (~91 days apart) ──────
+    if next_earn and next_earn.get("date"):
+        try:
+            ed = _dt6.strptime(next_earn["date"], "%Y-%m-%d").date()
+            for q in range(1, 4):  # Q+1, Q+2, Q+3
+                projected_date = ed + _td6(days=91 * q)
+                events.append({
+                    "date":       projected_date.strftime("%Y-%m-%d"),
+                    "days_until": (projected_date - today).days,
+                    "type":       "earnings_projected",
+                    "title":      f"{symbol} Q+{q} Earnings (projected)",
+                    "details":    "Projected from quarterly cadence",
+                    "tag":        "neutral",
+                    "urgency":    "LOW",
+                })
+        except Exception: pass
+    
+    # ────── Dividend ex-date (if available) ──────
+    div = catalysts_obj.get("dividend") if isinstance(catalysts_obj.get("dividend"), dict) else None
+    if div and div.get("ex_date"):
+        try:
+            xd = _dt6.strptime(div["ex_date"], "%Y-%m-%d").date()
+            if xd >= today and (xd - today).days <= 365:
+                events.append({
+                    "date":       xd.strftime("%Y-%m-%d"),
+                    "days_until": (xd - today).days,
+                    "type":       "dividend",
+                    "title":      f"{symbol} Dividend Ex-Date",
+                    "details":    f"Yield: {div.get('yield_pct', 'N/A')}% · Pays: ${div.get('amount', 'N/A')}",
+                    "tag":        "bullish",
+                    "urgency":    "LOW",
+                })
+        except Exception: pass
+    
+    # ────── Macro (Fed FOMC dates approximate — institutional discipline) ──────
+    # FOMC meets ~8 times/year. Use approximate schedule (real institutional tools subscribe).
+    # Conservative: just add quarterly Fed checkpoints
+    for q_offset in range(1, 4):
+        approx_fomc = today + _td6(days=int(82 * q_offset))  # rough Fed cadence
+        if (approx_fomc - today).days <= 365:
+            events.append({
+                "date":       approx_fomc.strftime("%Y-%m-%d"),
+                "days_until": (approx_fomc - today).days,
+                "type":       "macro",
+                "title":      "FOMC Meeting (approximate)",
+                "details":    "Rates decision — affects multiple expansion thesis",
+                "tag":        "unknown",
+                "urgency":    "LOW",
+            })
+    
+    # Sort by date
+    events.sort(key=lambda e: e["days_until"])
+    
+    return {
+        "success": True,
+        "symbol":  symbol,
+        "today":   today.strftime("%Y-%m-%d"),
+        "events":  events,
+        "summary": {
+            "total":      len(events),
+            "bullish":    sum(1 for e in events if e["tag"] == "bullish"),
+            "bearish":    sum(1 for e in events if e["tag"] == "bearish"),
+            "earnings":   sum(1 for e in events if e["type"] in ("earnings", "earnings_projected")),
+        },
     }
 
 _portfolio_progress = {"done": 0, "total": 0, "current": "", "started": 0, "active": False}

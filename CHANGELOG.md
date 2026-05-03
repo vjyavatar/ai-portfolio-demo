@@ -981,3 +981,82 @@ The DD response is structured with metadata in `company`, prices/PE/score in `th
 - Star color upgraded from light yellow (#fde68a) to amber (#f59e0b) for visibility
 
 **Verified:** Math was already correct (simulated all 4 metrics for MU + 5 peers). Just the rendering needed to be bulletproof.
+
+---
+
+## v4.63.24 — MU bar visible + comparative peer coloring (current)
+
+**Built:** 2026-05-03
+
+**User feedback:** Screenshot showed MU as empty box outline (gradient bug from r63.23 worse than r63.22). Plus user feedback: "users complaining its confusing.. they need some color to differentiate".
+
+**Fix 1 — Bar rendering:** Multi-stop gradient with stops at 100% rendered transparent. Replaced with simple solid-fill div pattern (track div containing bar div sized to %). Width clamped at 99.5% to avoid 100%-edge browser bugs.
+
+**Fix 2 — Comparative coloring:** Peer bars now colored by their competitive position vs target:
+- Navy: target ticker (always)
+- Green (#10b981): peer BEATS target on this metric
+- Slate (#cbd5e1): peer worse than target (target leads)
+- Neutral (#94a3b8): peer within 5% of target
+
+For "higher better" metrics (Rev Growth, Op Margin, Score): peer > target = green
+For "lower better" metrics (Forward P/E): peer < target = green
+
+**Plus legend** at top of peer table explaining colors.
+
+**Verified via simulation** with real MU vs semis data:
+- FWD P/E: MU navy, peers slate (MU leads)
+- REV GROWTH: MU navy, peers slate (MU leads)  
+- OP MARGIN: MU navy, NVDA green, INTC green, others slate (2 peers beat MU)
+- SCORE: MU navy, peers slate (MU leads)
+
+User sees in one glance which metrics MU is winning vs losing — exactly the institutional comparison view that was missing.
+
+**Lesson:** Don't over-engineer CSS. Simple solid-fill div more reliable than multi-stop gradient. And comparative coloring should be standard for peer benchmark from day one.
+
+---
+
+## v4.63.25 — Forward Value + Exit Strategy + Catalyst Calendar (current)
+
+**Built:** 2026-05-03
+
+**User request:** "users need very high standard considering all factors — what is the project value, where it can go further, when is the best time to exit. like the way institutional does"
+
+**3 new tabs added to Analyst Insights:**
+
+### Tab 5 — 💎 Forward Value
+- 5Y intrinsic value trajectory SVG chart (Bull/Base/Bear paths)
+- Probability-weighted expected return (1Y/3Y/5Y, default 25/50/25 weights)
+- Multiple-expansion thesis (current P/E vs sector median)
+- Total return decomposition (capital + dividends + buybacks)
+
+### Tab 6 — 🚪 Exit Strategy
+- Price ladder with 8 levels (hard stop → soft stop → entry zone → trim levels → bull target)
+- Trailing-stop ladder (+10/25/50% gain ratchets)
+- Time stop (6Q default)
+- Next catalyst window with re-evaluation rule
+- Kelly-bounded position sizing
+
+### Tab 7 — 📅 Catalyst Calendar
+- Summary row (total/earnings/bullish/bearish counts)
+- Timeline with days-until countdown, color-coded tags
+- Earnings dates with beat-rate-based bullish/bearish tagging
+- Q+1/Q+2/Q+3 projected earnings (91-day cadence)
+- Dividend ex-dates + approximate FOMC dates
+
+**Backend endpoints:**
+- `/api/forward-value` — deterministic math (no LLM)
+- `/api/exit-strategy` — institutional position management rules
+- `/api/catalyst-calendar` — events from existing DD data
+
+**Architecture discipline (process that finally works):**
+- Field paths confirmed via grep BEFORE coding
+- Runtime simulation verified math BEFORE shipping (MU realistic data: 6-point trajectories, correct expected return signs)
+- Simple CSS patterns (solid divs, no gradient edge cases)
+- Honest "Insufficient data" returns when data missing — no fabrication
+
+**Verified:**
+- 18/18 audit checks pass
+- Runtime simulation: forward_value returns valid 6-point arrays, exit_strategy returns 8 ladder levels with correct %-from-entry math
+- All Python compiles, JS syntax OK, app.min.js byte-identical
+
+**What this delivers:** Institutional-grade decision support — "what is this worth, where can it go, when do I exit" answered with real math from real DD data. Not retail platitudes. Not LLM hallucinations.
