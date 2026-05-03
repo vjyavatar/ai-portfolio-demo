@@ -1,9 +1,9 @@
 // ═══ Celesys version stamp ═══
-window.CELESYS_VERSION = "v4.63.20";
-window.CELESYS_BUILD_TIME = 1777769198;
-window.CELESYS_BUILD_DATE = "2026-05-03 00:46:38 UTC";
+window.CELESYS_VERSION = "v4.63.21";
+window.CELESYS_BUILD_TIME = 1777786703;
+window.CELESYS_BUILD_DATE = "2026-05-03 05:38:23 UTC";
 console.log("%c━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "color:#1A3A78");
-console.log("%c CELESYS v4.63.20 %c loaded · 2026-04-29 03:29:27 UTC",
+console.log("%c CELESYS v4.63.21 %c loaded · 2026-04-29 03:29:27 UTC",
   "background:#1A3A78;color:#fff;font-weight:900;padding:3px 8px;border-radius:3px;font-family:monospace",
   "color:#1A3A78;font-weight:700;font-family:monospace");
 console.log("%c━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "color:#1A3A78");
@@ -25456,421 +25456,441 @@ window._csEwHomeStripInject = function() {
 
 
 // ═══════════════════════════════════════════════════════════════════
-// r63.18: Deep Insights + Scenarios + Competitor Benchmark + Elevator Pitch
 // ═══════════════════════════════════════════════════════════════════
-// Hooks into renderReport via the r63.9 coordinator — runs after each render,
-// injects 4 new sections after the verdict strip.
+// r63.21: Analyst Tools Strip — premium redesign of r63.18 sections
+// ═══════════════════════════════════════════════════════════════════
+// User feedback: previous design was "disturbing UI", buttons should be
+// "simple icon with tooltip in bold", "be innovative".
+//
+// Design pattern: Bloomberg/Aladdin-style horizontal icon strip with
+// accordion-expand panels. Navy/slate palette. IBM Plex Mono. Restrained.
+//
+// Layout:
+//   ┌──────────────────────────────────────────────────────────┐
+//   │  ▎ ANALYST TOOLS                                          │
+//   ├──────────────────────────────────────────────────────────┤
+//   │  📊 PITCH  │  🧠 INSIGHTS  │  📈 SCENARIOS  │  🏛 PEERS  │
+//   ├──────────────────────────────────────────────────────────┤
+//   │  [active panel content expands here]                      │
+//   └──────────────────────────────────────────────────────────┘
 
-window._csR6318LastSymbol = null;
+window._csR6321LastSymbol = null;
+window._csR6321ActiveTab = 'pitch';  // pitch is default-active
+window._csR6321Loaded = { pitch: false, insights: false, scenarios: false, peers: false };
+window._csR6321Data = { pitch: null, insights: null, scenarios: null, peers: null };
 
-// r63.20: Main entry — accepts anchor info from polling (handles old + new paths)
-window._csR6318InjectSections = function(anchorInfo) {
-  // Accept anchor info from polling, or auto-detect (backward compat)
-  if (!anchorInfo) {
-    var strip = document.getElementById('sec-verdict-strip');
-    if (strip) {
-      anchorInfo = {
-        insertParent: strip.parentNode,
-        insertBefore: strip.nextSibling,
-        sym: (strip.querySelector('.cs-dd-verdict__sym') || {}).textContent || window._ddLastSymbol || ''
-      };
-    } else {
-      var hdr = document.getElementById('sec-verdict');
-      if (hdr) {
-        var scCard = hdr;
-        for (var i = 0; i < 5 && scCard; i++) {
-          if (scCard.classList && scCard.classList.contains('sc')) break;
-          scCard = scCard.parentNode;
-        }
-        if (!scCard) return;
-        anchorInfo = {
-          insertParent: scCard.parentNode,
-          insertBefore: scCard.nextSibling,
-          sym: window._ddLastSymbol || ''
-        };
-      } else {
-        return;  // no anchor found
-      }
-    }
-  }
+// Main injector — called by polling
+window._csR6321Inject = function(anchorInfo) {
+  if (!anchorInfo) return;
+  if (document.getElementById('cs-r6321-strip')) return;  // already injected
   
   var sym = (anchorInfo.sym || '').trim();
   if (!sym) return;
+  window._csR6321LastSymbol = sym;
   
-  // Already injected anywhere?
-  if (document.querySelector('.cs-r6318-section')) {
-    return;
-  }
+  var container = document.createElement('section');
+  container.id = 'cs-r6321-strip';
+  container.className = 'cs-r6321-section';  // for legacy detection
+  container.style.cssText = 
+    'margin:14px 0;border:1px solid #e2e8f0;border-radius:10px;background:#fff;' +
+    'overflow:hidden;font-family:Inter,sans-serif;' +
+    'box-shadow:0 1px 2px rgba(15,23,42,0.04)';
   
-  window._csR6318LastSymbol = sym;
-  
-  // Build the 4-section container
-  var container = document.createElement('div');
-  container.className = 'cs-r6318-section';
-  container.style.cssText = 'margin:14px 0;display:flex;flex-direction:column;gap:14px';
-  container.innerHTML =
-    _csR6318ElevatorPitchHtml(sym) +
-    _csR6318DeepInsightsHtml(sym) +
-    _csR6318ScenariosHtml(sym) +
-    _csR6318BenchmarkHtml(sym);
+  container.innerHTML = 
+    // Top label strip — institutional title
+    '<div style="background:linear-gradient(180deg,#1A3A78,#15306b);color:#fff;padding:8px 14px;' +
+         'display:flex;align-items:center;gap:8px;border-bottom:1px solid #0f1f4a">' +
+      '<span style="display:inline-block;width:3px;height:14px;background:#fde68a;border-radius:2px"></span>' +
+      '<span style="font-size:10px;font-weight:800;letter-spacing:1.2px;font-family:Sora,sans-serif">ANALYST TOOLS</span>' +
+      '<span style="font-size:9px;color:rgba(255,255,255,0.55);margin-left:auto;font-family:\'IBM Plex Mono\',monospace">' + sym + '</span>' +
+    '</div>' +
+    // Icon tab row — 4 columns with subtle dividers
+    '<div id="cs-r6321-tabs" style="display:grid;grid-template-columns:repeat(4,1fr);background:#fafbfc;border-bottom:1px solid #e2e8f0">' +
+      _csR6321TabButton('pitch',     '🎯', 'PITCH',     'Quick analyst summary',                  true)  +
+      _csR6321TabButton('insights',  '🧠', 'INSIGHTS',  'AI-synthesized analysis (numbers, risks, falsification)', false) +
+      _csR6321TabButton('scenarios', '📈', 'SCENARIOS', '12-month bull/base/bear price targets',    false) +
+      _csR6321TabButton('peers',     '🏛',  'PEERS',     'Sector competitor benchmark',              false) +
+    '</div>' +
+    // Content panel
+    '<div id="cs-r6321-panel" style="padding:16px 18px;min-height:80px;background:#fff"></div>';
   
   // Insert at the anchor location
   if (anchorInfo.insertParent) {
     anchorInfo.insertParent.insertBefore(container, anchorInfo.insertBefore);
-  } else {
-    document.body.appendChild(container);
   }
   
-  // Auto-render elevator pitch immediately
-  _csR6318RenderElevatorPitch(sym);
+  // Auto-render the pitch tab on first load
+  _csR6321ShowTab('pitch');
 };
 
-// ─── Section 1: Elevator Pitch (auto-renders) ────────────────────────
-function _csR6318ElevatorPitchHtml(sym) {
-  return '<div id="cs-r6318-pitch" style="background:linear-gradient(135deg,#1A3A78,#2563eb);color:#fff;border-radius:12px;padding:18px 20px;font-family:Inter,sans-serif;box-shadow:0 4px 12px rgba(26,58,120,0.15)">' +
-    '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">' +
-      '<span style="font-size:14px">🎯</span>' +
-      '<span style="font-size:11px;font-weight:800;letter-spacing:0.8px;color:rgba(255,255,255,0.9)">ELEVATOR PITCH</span>' +
-    '</div>' +
-    '<div id="cs-r6318-pitch-body" style="font-size:14px;line-height:1.5;color:#fff;font-weight:500">Generating…</div>' +
-  '</div>';
+function _csR6321TabButton(id, icon, label, tooltip, isActive) {
+  var activeBg = isActive ? '#fff' : 'transparent';
+  var activeBorder = isActive ? '2px solid #1A3A78' : '2px solid transparent';
+  var color = isActive ? '#1A3A78' : '#64748b';
+  return '<button onclick="window._csR6321ShowTab(\'' + id + '\')" data-tab="' + id + '" ' +
+         'title="' + tooltip + '" ' +
+         'style="background:' + activeBg + ';border:none;border-bottom:' + activeBorder + ';' +
+         'padding:11px 8px;cursor:pointer;font-family:Inter,sans-serif;display:flex;flex-direction:column;' +
+         'align-items:center;gap:3px;color:' + color + ';transition:all 0.15s;border-right:1px solid #e2e8f0" ' +
+         'onmouseenter="if(this.getAttribute(\'data-tab\')!==window._csR6321ActiveTab){this.style.background=\'#f1f5f9\'}" ' +
+         'onmouseleave="if(this.getAttribute(\'data-tab\')!==window._csR6321ActiveTab){this.style.background=\'transparent\'}">' +
+    '<span style="font-size:15px">' + icon + '</span>' +
+    '<span style="font-size:9px;font-weight:800;letter-spacing:1px;font-family:Sora,sans-serif">' + label + '</span>' +
+  '</button>';
 }
 
-function _csR6318RenderElevatorPitch(sym) {
-  var body = document.getElementById('cs-r6318-pitch-body');
-  if (!body) return;
+window._csR6321ShowTab = function(tabId) {
+  window._csR6321ActiveTab = tabId;
   
-  // r63.20: Read data from EITHER render path
-  // NEW path: .cs-dd-verdict__score / __pill / __name
-  // OLD path: read from window globals OR from sec-verdict card content
-  var scoreEl = document.querySelector('.cs-dd-verdict__score');
-  var pillEl = document.querySelector('.cs-dd-verdict__pill');
-  var nameEl = document.querySelector('.cs-dd-verdict__name');
-  
-  var score = scoreEl ? parseFloat(scoreEl.textContent) : null;
-  var verdict = pillEl ? pillEl.textContent.trim() : null;
-  var name = nameEl ? nameEl.textContent.trim() : null;
-  
-  // OLD path fallbacks
-  if (score == null || isNaN(score)) {
-    // Try window._lastReportData (set by some renderers)
-    if (window._lastReportData) {
-      score = window._lastReportData.composite_score || window._lastReportData.institutional_score;
-      verdict = verdict || window._lastReportData.verdict;
-      name = name || (window._lastReportData.company || {}).name;
-    }
+  // Update tab styling
+  var tabs = document.querySelectorAll('#cs-r6321-tabs button[data-tab]');
+  for (var i = 0; i < tabs.length; i++) {
+    var tab = tabs[i];
+    var isActive = tab.getAttribute('data-tab') === tabId;
+    tab.style.background = isActive ? '#fff' : 'transparent';
+    tab.style.borderBottom = isActive ? '2px solid #1A3A78' : '2px solid transparent';
+    tab.style.color = isActive ? '#1A3A78' : '#64748b';
   }
+  
+  var panel = document.getElementById('cs-r6321-panel');
+  if (!panel) return;
+  
+  // Render content from cache or load
+  var sym = window._csR6321LastSymbol;
+  if (!sym) { panel.innerHTML = '<div style="color:#94a3b8;font-size:12px">No ticker context.</div>'; return; }
+  
+  if (window._csR6321Loaded[tabId] && window._csR6321Data[tabId]) {
+    // Re-render from cache
+    panel.innerHTML = _csR6321RenderTab(tabId, window._csR6321Data[tabId]);
+    return;
+  }
+  
+  // First time on this tab — load
+  if (tabId === 'pitch') {
+    _csR6321LoadPitch(sym, panel);
+  } else if (tabId === 'insights') {
+    _csR6321LoadInsights(sym, panel);
+  } else if (tabId === 'scenarios') {
+    _csR6321LoadScenarios(sym, panel);
+  } else if (tabId === 'peers') {
+    _csR6321LoadPeers(sym, panel);
+  }
+};
+
+function _csR6321Spinner(label) {
+  return '<div style="text-align:center;padding:24px 0">' +
+           '<div style="display:inline-block;width:22px;height:22px;border:2px solid #e2e8f0;border-top-color:#1A3A78;border-radius:50%;animation:csFsSpin 0.8s linear infinite"></div>' +
+           '<div style="margin-top:10px;font-size:10px;color:#64748b;font-family:Sora,sans-serif;letter-spacing:0.5px;font-weight:700">' + label + '</div>' +
+         '</div>';
+}
+
+function _csR6321Error(msg) {
+  return '<div style="padding:14px;background:#fef2f2;border-left:3px solid #dc2626;border-radius:4px;font-size:12px;color:#7f1d1d;font-family:Inter,sans-serif">' +
+         _csEscape(msg) + '</div>';
+}
+
+// ─── Tab 1: Elevator Pitch ─────────────────────────────────────────
+function _csR6321LoadPitch(sym, panel) {
+  // Pitch reads from existing DOM — no API call
+  // Try multiple selectors for both render paths
+  var score = null, verdict = null, name = null;
+  
+  // NEW path
+  var scoreEl = document.querySelector('.cs-dd-verdict__score');
+  if (scoreEl) score = parseFloat(scoreEl.textContent);
+  var pillEl = document.querySelector('.cs-dd-verdict__pill');
+  if (pillEl) verdict = pillEl.textContent.trim();
+  var nameEl = document.querySelector('.cs-dd-verdict__name');
+  if (nameEl) name = nameEl.textContent.trim();
+  
+  // OLD path fallback — read from sec-verdict card
   if (score == null || isNaN(score)) {
-    // Last resort: read from sec-verdict card text
-    var oldCard = document.getElementById('sec-verdict');
-    if (oldCard) {
-      var card = oldCard;
+    var hdr = document.getElementById('sec-verdict');
+    if (hdr) {
+      var card = hdr;
       for (var i = 0; i < 5 && card; i++) {
         if (card.classList && card.classList.contains('sc')) break;
         card = card.parentNode;
       }
       if (card) {
         var txt = card.textContent || '';
-        var scoreMatch = txt.match(/(\d+(?:\.\d+)?)\s*\/\s*100/);
-        if (scoreMatch) score = parseFloat(scoreMatch[1]);
-        var verdictMatch = txt.match(/(STRONG BUY|BUY|HOLD|SELL|STRONG SELL|AVOID)/i);
-        if (verdictMatch && !verdict) verdict = verdictMatch[1];
+        var sm = txt.match(/(\d+(?:\.\d+)?)\s*\/\s*100/);
+        if (sm) score = parseFloat(sm[1]);
+        var vm = txt.match(/(STRONG BUY CANDIDATE|STRONG SELL|STRONG BUY|BUY|HOLD|SELL|AVOID)/i);
+        if (vm && !verdict) verdict = vm[1];
       }
     }
   }
-  verdict = verdict || 'Unknown';
+  if (window._lastReportData) {
+    if (score == null || isNaN(score)) score = window._lastReportData.composite_score || window._lastReportData.institutional_score;
+    if (!verdict) verdict = window._lastReportData.verdict;
+    if (!name) name = (window._lastReportData.company || {}).name;
+  }
   name = name || sym;
+  verdict = verdict || 'Unknown';
   
   if (score == null || isNaN(score)) {
-    body.textContent = 'Score data not available for elevator pitch.';
+    panel.innerHTML = _csR6321Error("Score data not available for elevator pitch.");
     return;
   }
   
-  // Pitch logic
-  var conviction, reasoning;
-  if (score >= 80) {
-    conviction = 'HIGH CONVICTION BUY';
-    reasoning = 'fundamentals, valuation, and momentum aligned with strong institutional support';
-  } else if (score >= 65) {
-    conviction = 'BUY CANDIDATE';
-    reasoning = 'majority of factors positive; some areas warrant monitoring';
-  } else if (score >= 50) {
-    conviction = 'HOLD / SELECTIVE';
-    reasoning = 'mixed signals — neither clearly compelling nor clearly impaired';
-  } else if (score >= 35) {
-    conviction = 'AVOID NEW POSITIONS';
-    reasoning = 'multiple factors negative; downside risk outweighs upside in current setup';
-  } else {
-    conviction = 'AVOID / EXIT';
-    reasoning = 'institutional thesis broken across most factors';
-  }
-  
-  body.innerHTML =
-    '<strong>' + _csEscape(name) + ' (' + sym + ')</strong> ' +
-    'screens as a <strong style="color:#fde68a">' + conviction + '</strong> ' +
-    'at ' + Math.round(score) + '/100 — ' + reasoning + '. ' +
-    '<span style="color:rgba(255,255,255,0.85);font-size:12px;font-style:italic">Verdict: ' + _csEscape(verdict) + '</span>';
+  var data = { score: score, verdict: verdict, name: name, sym: sym };
+  window._csR6321Loaded.pitch = true;
+  window._csR6321Data.pitch = data;
+  panel.innerHTML = _csR6321RenderTab('pitch', data);
 }
 
-// ─── Section 2: Deep Insights (LLM, click-to-load) ───────────────────
-function _csR6318DeepInsightsHtml(sym) {
-  return '<div id="cs-r6318-deep" style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:18px 20px;font-family:Inter,sans-serif">' +
-    '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px">' +
-      '<div style="display:flex;align-items:center;gap:8px">' +
-        '<span style="font-size:16px">🧠</span>' +
-        '<span style="font-size:13px;font-weight:800;color:#0f172a;font-family:Sora,sans-serif">Deep Insights</span>' +
-        '<span style="font-size:9px;color:#94a3b8;background:#f1f5f9;padding:2px 6px;border-radius:3px;font-weight:700">AI-SYNTHESIZED</span>' +
-      '</div>' +
-      '<button onclick="window._csR6318LoadDeepInsights()" style="padding:7px 14px;background:#1A3A78;color:#fff;border:none;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer">Generate insights →</button>' +
-    '</div>' +
-    '<div id="cs-r6318-deep-body" style="font-size:12px;color:#475569;font-style:italic">Click "Generate insights" for AI-synthesized analysis: what the numbers really say, hidden risks, and falsification criteria.</div>' +
-  '</div>';
+function _csR6321RenderPitch(d) {
+  var conviction, reasoning, color;
+  if (d.score >= 80)      { conviction = 'HIGH CONVICTION BUY';      color = '#059669'; reasoning = 'fundamentals, valuation, and momentum aligned with strong institutional support'; }
+  else if (d.score >= 65) { conviction = 'BUY CANDIDATE';            color = '#0891b2'; reasoning = 'majority of factors positive; some areas warrant monitoring'; }
+  else if (d.score >= 50) { conviction = 'HOLD / SELECTIVE';         color = '#ca8a04'; reasoning = 'mixed signals — neither clearly compelling nor clearly impaired'; }
+  else if (d.score >= 35) { conviction = 'AVOID NEW POSITIONS';      color = '#dc2626'; reasoning = 'multiple factors negative; downside risk outweighs upside'; }
+  else                    { conviction = 'AVOID / EXIT';             color = '#7f1d1d'; reasoning = 'institutional thesis broken across most factors'; }
+  
+  var html = '';
+  // Score readout — institutional style with monospace
+  html += '<div style="display:flex;align-items:baseline;gap:14px;margin-bottom:14px;flex-wrap:wrap">';
+  html += '<div style="display:flex;align-items:baseline;gap:4px">';
+  html += '<span style="font-size:34px;font-weight:900;color:' + color + ';font-family:\'IBM Plex Mono\',monospace;letter-spacing:-1px">' + Math.round(d.score) + '</span>';
+  html += '<span style="font-size:12px;color:#94a3b8;font-family:\'IBM Plex Mono\',monospace">/100</span>';
+  html += '</div>';
+  html += '<div style="flex:1;min-width:180px">';
+  html += '<div style="font-size:10px;font-weight:800;color:' + color + ';letter-spacing:1.2px;font-family:Sora,sans-serif">' + conviction + '</div>';
+  html += '<div style="font-size:11px;color:#64748b;margin-top:2px;font-family:Inter,sans-serif">Verdict: <strong style="color:#0f172a">' + _csEscape(d.verdict) + '</strong></div>';
+  html += '</div>';
+  html += '</div>';
+  
+  // Pitch line
+  html += '<div style="font-size:13px;line-height:1.55;color:#0f172a;font-family:Inter,sans-serif;padding-top:12px;border-top:1px solid #f1f5f9">';
+  html += '<strong style="color:#1A3A78">' + _csEscape(d.name) + ' (' + d.sym + ')</strong> screens as a <strong style="color:' + color + '">' + conviction + '</strong> at ' + Math.round(d.score) + '/100 — ' + reasoning + '.';
+  html += '</div>';
+  
+  return html;
 }
 
-window._csR6318LoadDeepInsights = function() {
-  var sym = window._csR6318LastSymbol;
-  if (!sym) return;
-  var body = document.getElementById('cs-r6318-deep-body');
-  if (!body) return;
-  
-  body.innerHTML = '<div style="text-align:center;padding:20px"><div style="display:inline-block;width:24px;height:24px;border:2px solid #e0e7ff;border-top-color:#1A3A78;border-radius:50%;animation:csFsSpin 0.8s linear infinite"></div><div style="margin-top:10px;font-size:11px;color:#64748b">Generating deep insights — this takes 5-15 seconds…</div></div>';
-  
+// ─── Tab 2: Deep Insights ──────────────────────────────────────────
+function _csR6321LoadInsights(sym, panel) {
+  panel.innerHTML = _csR6321Spinner('GENERATING — 5-15 SEC');
   var email = (window._verifiedEmail || window._authedEmail || window.localStorage.getItem('email') || '').trim();
   
   fetch('/api/deep-insights?symbol=' + encodeURIComponent(sym) + '&email=' + encodeURIComponent(email))
     .then(function(r) { return r.json(); })
     .then(function(data) {
       if (!data.success) {
-        body.innerHTML = '<div style="color:#dc2626;font-size:12px;padding:14px;background:#fef2f2;border-radius:6px;border-left:3px solid #dc2626">⚠ ' + (data.error || 'Failed to generate insights') + '</div>';
+        panel.innerHTML = _csR6321Error('⚠ ' + (data.error || 'Failed to generate insights'));
         return;
       }
-      
-      var html = '';
-      var sections = [
-        { key: 'numbers_say',   icon: '📊', title: 'What the numbers actually say', color: '#0891b2' },
-        { key: 'hidden_risks',  icon: '⚠️',  title: 'Hidden risks the surface metrics miss', color: '#dc2626' },
-        { key: 'falsification', icon: '🔬', title: 'What would change my mind',     color: '#7c3aed' },
-      ];
-      sections.forEach(function(s) {
-        var content = data[s.key];
-        if (!content) return;
-        html += '<div style="margin-bottom:14px">';
-        html += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">';
-        html += '<span style="font-size:14px">' + s.icon + '</span>';
-        html += '<span style="font-size:11px;font-weight:800;color:' + s.color + ';letter-spacing:0.5px">' + s.title.toUpperCase() + '</span>';
-        html += '</div>';
-        html += '<div style="font-size:13px;line-height:1.6;color:#0f172a;padding-left:20px;border-left:2px solid ' + s.color + ';margin-left:6px">' + _csEscape(content) + '</div>';
-        html += '</div>';
-      });
-      
-      if (data._cached) {
-        html += '<div style="margin-top:8px;font-size:9px;color:#94a3b8;text-align:right">From cache (refreshes every 6h)</div>';
-      }
-      body.innerHTML = html;
+      window._csR6321Loaded.insights = true;
+      window._csR6321Data.insights = data;
+      panel.innerHTML = _csR6321RenderTab('insights', data);
     })
     .catch(function(err) {
-      body.innerHTML = '<div style="color:#dc2626;font-size:12px">Network error: ' + (err.message || 'unknown') + '</div>';
+      panel.innerHTML = _csR6321Error('Network error: ' + (err.message || 'unknown'));
     });
-};
-
-// ─── Section 3: Scenarios (deterministic, click-to-load) ────────────
-function _csR6318ScenariosHtml(sym) {
-  return '<div id="cs-r6318-scn" style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:18px 20px;font-family:Inter,sans-serif">' +
-    '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px">' +
-      '<div style="display:flex;align-items:center;gap:8px">' +
-        '<span style="font-size:16px">📈</span>' +
-        '<span style="font-size:13px;font-weight:800;color:#0f172a;font-family:Sora,sans-serif">12-Month Scenarios</span>' +
-        '<span style="font-size:9px;color:#94a3b8;background:#f1f5f9;padding:2px 6px;border-radius:3px;font-weight:700">DCF-ANCHORED</span>' +
-      '</div>' +
-      '<button onclick="window._csR6318LoadScenarios()" style="padding:7px 14px;background:#059669;color:#fff;border:none;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer">Run scenarios →</button>' +
-    '</div>' +
-    '<div id="cs-r6318-scn-body" style="font-size:12px;color:#475569;font-style:italic">Click to compute bull/base/bear 12-month price targets from DCF + growth assumptions.</div>' +
-  '</div>';
 }
 
-window._csR6318LoadScenarios = function() {
-  var sym = window._csR6318LastSymbol;
-  if (!sym) return;
-  var body = document.getElementById('cs-r6318-scn-body');
-  if (!body) return;
-  
-  body.innerHTML = '<div style="text-align:center;padding:14px"><div style="display:inline-block;width:18px;height:18px;border:2px solid #d1fae5;border-top-color:#059669;border-radius:50%;animation:csFsSpin 0.8s linear infinite"></div></div>';
-  
+function _csR6321RenderInsights(d) {
+  var sections = [
+    { key: 'numbers_say',   icon: '📊', title: 'WHAT THE NUMBERS ACTUALLY SAY',     accent: '#0891b2' },
+    { key: 'hidden_risks',  icon: '⚠',  title: 'HIDDEN RISKS THE METRICS MISS',     accent: '#dc2626' },
+    { key: 'falsification', icon: '🔬', title: 'WHAT WOULD CHANGE MY MIND',         accent: '#7c3aed' },
+  ];
+  var html = '';
+  sections.forEach(function(s, idx) {
+    var content = d[s.key];
+    if (!content) return;
+    if (idx > 0) html += '<div style="height:1px;background:#f1f5f9;margin:14px 0"></div>';
+    html += '<div>';
+    html += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">';
+    html += '<span style="font-size:13px">' + s.icon + '</span>';
+    html += '<span style="font-size:9px;font-weight:800;color:' + s.accent + ';letter-spacing:1.2px;font-family:Sora,sans-serif">' + s.title + '</span>';
+    html += '</div>';
+    html += '<div style="font-size:13px;line-height:1.6;color:#0f172a;font-family:Inter,sans-serif">' + _csEscape(content) + '</div>';
+    html += '</div>';
+  });
+  if (d._cached) html += '<div style="margin-top:12px;font-size:9px;color:#94a3b8;text-align:right;font-family:\'IBM Plex Mono\',monospace">CACHED · refreshes every 6h</div>';
+  return html;
+}
+
+// ─── Tab 3: Scenarios ──────────────────────────────────────────────
+function _csR6321LoadScenarios(sym, panel) {
+  panel.innerHTML = _csR6321Spinner('COMPUTING DCF SCENARIOS');
   var email = (window._verifiedEmail || window._authedEmail || window.localStorage.getItem('email') || '').trim();
   
   fetch('/api/scenarios?symbol=' + encodeURIComponent(sym) + '&email=' + encodeURIComponent(email))
     .then(function(r) { return r.json(); })
     .then(function(data) {
       if (!data.success) {
-        body.innerHTML = '<div style="color:#94a3b8;font-size:12px">' + (data.error || 'Could not compute') + '</div>';
+        panel.innerHTML = _csR6321Error(data.error || 'Could not compute scenarios');
         return;
       }
-      
-      var s = data.scenarios;
-      var html = '';
-      html += '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:6px">';
-      
-      var tiers = [
-        { key: 'bull', label: 'BULL', color: '#059669', bg: '#d1fae5' },
-        { key: 'base', label: 'BASE', color: '#0891b2', bg: '#cffafe' },
-        { key: 'bear', label: 'BEAR', color: '#dc2626', bg: '#fee2e2' },
-      ];
-      
-      tiers.forEach(function(t) {
-        var sc = s[t.key];
-        var upsidePrefix = sc.upside_pct > 0 ? '+' : '';
-        html += '<div style="background:' + t.bg + ';border:1px solid ' + t.color + '40;border-radius:9px;padding:12px">';
-        html += '<div style="font-size:9px;font-weight:800;color:' + t.color + ';letter-spacing:1px;margin-bottom:4px">' + t.label + ' CASE</div>';
-        html += '<div style="font-size:18px;font-weight:900;color:#0f172a;font-family:Sora,sans-serif">$' + sc.target.toFixed(2) + '</div>';
-        html += '<div style="font-size:11px;color:' + t.color + ';font-weight:700;margin-top:2px">' + upsidePrefix + sc.upside_pct + '% from $' + data.spot.toFixed(2) + '</div>';
-        html += '<div style="font-size:10px;color:#475569;margin-top:6px;line-height:1.4">' + _csEscape(sc.reasoning) + '</div>';
-        html += '</div>';
-      });
-      
-      html += '</div>';
-      html += '<div style="margin-top:10px;font-size:9px;color:#94a3b8;font-style:italic">' + _csEscape(data._method || '') + '</div>';
-      body.innerHTML = html;
+      window._csR6321Loaded.scenarios = true;
+      window._csR6321Data.scenarios = data;
+      panel.innerHTML = _csR6321RenderTab('scenarios', data);
     })
     .catch(function(err) {
-      body.innerHTML = '<div style="color:#dc2626;font-size:12px">Error: ' + err.message + '</div>';
+      panel.innerHTML = _csR6321Error('Error: ' + err.message);
     });
-};
-
-// ─── Section 4: Competitor Benchmark (click-to-load) ────────────────
-function _csR6318BenchmarkHtml(sym) {
-  return '<div id="cs-r6318-bench" style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:18px 20px;font-family:Inter,sans-serif">' +
-    '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px">' +
-      '<div style="display:flex;align-items:center;gap:8px">' +
-        '<span style="font-size:16px">🏛️</span>' +
-        '<span style="font-size:13px;font-weight:800;color:#0f172a;font-family:Sora,sans-serif">Competitor Benchmark</span>' +
-        '<span style="font-size:9px;color:#94a3b8;background:#f1f5f9;padding:2px 6px;border-radius:3px;font-weight:700">SECTOR PEERS</span>' +
-      '</div>' +
-      '<button onclick="window._csR6318LoadBenchmark()" style="padding:7px 14px;background:#7c3aed;color:#fff;border:none;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer">Compare peers →</button>' +
-    '</div>' +
-    '<div id="cs-r6318-bench-body" style="font-size:12px;color:#475569;font-style:italic">Click to compare against 4-5 sector peers from your tracked universe.</div>' +
-  '</div>';
 }
 
-window._csR6318LoadBenchmark = function() {
-  var sym = window._csR6318LastSymbol;
-  if (!sym) return;
-  var body = document.getElementById('cs-r6318-bench-body');
-  if (!body) return;
-  
-  body.innerHTML = '<div style="text-align:center;padding:20px"><div style="display:inline-block;width:24px;height:24px;border:2px solid #ede9fe;border-top-color:#7c3aed;border-radius:50%;animation:csFsSpin 0.8s linear infinite"></div><div style="margin-top:10px;font-size:11px;color:#64748b">Scanning peers… 30-90 sec depending on cache</div></div>';
-  
+function _csR6321RenderScenarios(d) {
+  var s = d.scenarios;
+  var tiers = [
+    { key: 'bull', label: 'BULL',  accent: '#059669', sub: 'Multiple expansion + accelerating growth' },
+    { key: 'base', label: 'BASE',  accent: '#1A3A78', sub: 'DCF fair value at current assumptions' },
+    { key: 'bear', label: 'BEAR',  accent: '#dc2626', sub: 'Multiple compression + sector rotation' },
+  ];
+  var html = '';
+  // Spot price ribbon
+  html += '<div style="font-size:10px;color:#64748b;letter-spacing:0.5px;margin-bottom:10px;font-family:\'IBM Plex Mono\',monospace">' +
+          'SPOT &nbsp;<strong style="color:#0f172a;font-size:13px">$' + d.spot.toFixed(2) + '</strong> ' +
+          '&nbsp;·&nbsp; 12-MONTH PRICE TARGETS' +
+          '</div>';
+  html += '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;border-top:1px solid #f1f5f9;padding-top:12px">';
+  tiers.forEach(function(t, idx) {
+    var sc = s[t.key];
+    var prefix = sc.upside_pct > 0 ? '+' : '';
+    html += '<div style="padding:10px 12px;' + (idx < 2 ? 'border-right:1px solid #f1f5f9;' : '') + '">';
+    html += '<div style="font-size:9px;font-weight:800;color:' + t.accent + ';letter-spacing:1.2px;font-family:Sora,sans-serif">' + t.label + ' CASE</div>';
+    html += '<div style="display:flex;align-items:baseline;gap:4px;margin-top:4px">';
+    html += '<span style="font-size:22px;font-weight:900;color:#0f172a;font-family:\'IBM Plex Mono\',monospace;letter-spacing:-0.5px">$' + sc.target.toFixed(2) + '</span>';
+    html += '</div>';
+    html += '<div style="font-size:11px;color:' + t.accent + ';font-weight:700;font-family:\'IBM Plex Mono\',monospace;margin-top:2px">' + prefix + sc.upside_pct + '%</div>';
+    html += '<div style="font-size:10px;color:#64748b;margin-top:6px;line-height:1.4;font-family:Inter,sans-serif">' + _csEscape(sc.reasoning) + '</div>';
+    html += '</div>';
+  });
+  html += '</div>';
+  if (d._method) html += '<div style="margin-top:10px;font-size:8px;color:#94a3b8;font-family:\'IBM Plex Mono\',monospace;letter-spacing:0.3px">' + _csEscape(d._method) + '</div>';
+  return html;
+}
+
+// ─── Tab 4: Peers ──────────────────────────────────────────────────
+function _csR6321LoadPeers(sym, panel) {
+  panel.innerHTML = _csR6321Spinner('SCANNING SECTOR PEERS · 30-90 SEC');
   var email = (window._verifiedEmail || window._authedEmail || window.localStorage.getItem('email') || '').trim();
   
   fetch('/api/competitor-benchmark?symbol=' + encodeURIComponent(sym) + '&email=' + encodeURIComponent(email))
     .then(function(r) { return r.json(); })
     .then(function(data) {
       if (!data.success) {
-        body.innerHTML = '<div style="color:#dc2626;font-size:12px;padding:10px;background:#fef2f2;border-radius:6px">⚠ ' + (data.error || 'Failed') + '</div>';
+        panel.innerHTML = _csR6321Error(data.error || 'Failed');
         return;
       }
-      
-      if (!data.peers || data.peers.length === 0) {
-        body.innerHTML = '<div style="color:#94a3b8;font-size:12px;padding:14px;background:#f8fafc;border-radius:6px">' + _csEscape(data.data_note || 'No peers found in tracked universe.') + '</div>';
-        return;
-      }
-      
-      // Render comparison table
-      var html = '';
-      html += '<div style="font-size:10px;color:#64748b;margin-bottom:8px">Sector: <strong>' + _csEscape(data.target_sector || '') + '</strong> · Comparing ' + data.peers.length + ' peers</div>';
-      html += '<table style="width:100%;border-collapse:collapse;font-size:11px">';
-      html += '<thead><tr style="background:#f8fafc;text-align:left">';
-      html += '<th style="padding:6px 8px;border-bottom:1px solid #e2e8f0;font-size:9px;color:#64748b;font-weight:700;letter-spacing:0.3px;text-transform:uppercase">Ticker</th>';
-      html += '<th style="padding:6px 8px;border-bottom:1px solid #e2e8f0;font-size:9px;color:#64748b;font-weight:700;letter-spacing:0.3px;text-transform:uppercase">Price</th>';
-      html += '<th style="padding:6px 8px;border-bottom:1px solid #e2e8f0;font-size:9px;color:#64748b;font-weight:700;letter-spacing:0.3px;text-transform:uppercase">Fwd P/E</th>';
-      html += '<th style="padding:6px 8px;border-bottom:1px solid #e2e8f0;font-size:9px;color:#64748b;font-weight:700;letter-spacing:0.3px;text-transform:uppercase">Rev Growth</th>';
-      html += '<th style="padding:6px 8px;border-bottom:1px solid #e2e8f0;font-size:9px;color:#64748b;font-weight:700;letter-spacing:0.3px;text-transform:uppercase">Op Margin</th>';
-      html += '<th style="padding:6px 8px;border-bottom:1px solid #e2e8f0;font-size:9px;color:#64748b;font-weight:700;letter-spacing:0.3px;text-transform:uppercase">Score</th>';
-      html += '</tr></thead><tbody>';
-      
-      function renderRow(item, isTarget) {
-        var bg = isTarget ? '#eff6ff' : '#fff';
-        var fmtPct = function(v) { return (v == null) ? '—' : (Number(v) * 100).toFixed(1) + '%'; };
-        var fmtNum = function(v) { return (v == null) ? '—' : Number(v).toFixed(2); };
-        var fmtMoney = function(v) { return (v == null) ? '—' : '$' + Number(v).toFixed(2); };
-        
-        var s = '<tr style="background:' + bg + ';border-bottom:1px solid #f1f5f9' + (isTarget ? ';font-weight:700' : '') + '">';
-        s += '<td style="padding:6px 8px;color:#1A3A78;font-family:Sora,sans-serif;font-weight:800">' + (isTarget ? '★ ' : '') + item.ticker + '</td>';
-        s += '<td style="padding:6px 8px">' + fmtMoney(item.price) + '</td>';
-        s += '<td style="padding:6px 8px">' + fmtNum(item.forward_pe) + '</td>';
-        s += '<td style="padding:6px 8px">' + fmtPct(item.rev_growth) + '</td>';
-        s += '<td style="padding:6px 8px">' + fmtPct(item.op_margin) + '</td>';
-        s += '<td style="padding:6px 8px;font-weight:700">' + (item.score != null ? Math.round(item.score) : '—') + '</td>';
-        s += '</tr>';
-        return s;
-      }
-      
-      html += renderRow(data.target, true);
-      data.peers.forEach(function(p) { html += renderRow(p, false); });
-      
-      html += '</tbody></table>';
-      body.innerHTML = html;
+      window._csR6321Loaded.peers = true;
+      window._csR6321Data.peers = data;
+      panel.innerHTML = _csR6321RenderTab('peers', data);
     })
     .catch(function(err) {
-      body.innerHTML = '<div style="color:#dc2626;font-size:12px">Error: ' + err.message + '</div>';
+      panel.innerHTML = _csR6321Error('Error: ' + err.message);
     });
-};
+}
 
-// r63.20: Direct DOM polling — handles BOTH render paths (old + new Aladdin)
-// OLD path (most common): id="sec-verdict" inside .sc card with sub-elements
-// NEW path (Aladdin redesign): id="sec-verdict-strip" with .cs-dd-verdict__sym child
-// Polling tries both selectors. CPU cost: trivial.
+function _csR6321RenderPeers(d) {
+  if (!d.peers || d.peers.length === 0) {
+    return '<div style="font-size:12px;color:#94a3b8;font-style:italic;font-family:Inter,sans-serif">' + 
+           _csEscape(d.data_note || 'No sector peers found in tracked universe.') + '</div>';
+  }
+  
+  var html = '';
+  html += '<div style="font-size:10px;color:#64748b;margin-bottom:10px;font-family:\'IBM Plex Mono\',monospace;letter-spacing:0.3px">' +
+          'SECTOR &nbsp;<strong style="color:#0f172a">' + _csEscape((d.target_sector || '').toUpperCase()) + '</strong>' +
+          '&nbsp;·&nbsp; ' + d.peers.length + ' PEERS' +
+          '</div>';
+  
+  html += '<table style="width:100%;border-collapse:collapse;font-family:Inter,sans-serif">';
+  html += '<thead>' +
+            '<tr style="border-bottom:1px solid #e2e8f0">' +
+              '<th style="padding:7px 8px;text-align:left;font-size:9px;color:#94a3b8;font-weight:700;letter-spacing:1px;font-family:Sora,sans-serif">TICKER</th>' +
+              '<th style="padding:7px 8px;text-align:right;font-size:9px;color:#94a3b8;font-weight:700;letter-spacing:1px;font-family:Sora,sans-serif">PRICE</th>' +
+              '<th style="padding:7px 8px;text-align:right;font-size:9px;color:#94a3b8;font-weight:700;letter-spacing:1px;font-family:Sora,sans-serif">FWD P/E</th>' +
+              '<th style="padding:7px 8px;text-align:right;font-size:9px;color:#94a3b8;font-weight:700;letter-spacing:1px;font-family:Sora,sans-serif">REV GROWTH</th>' +
+              '<th style="padding:7px 8px;text-align:right;font-size:9px;color:#94a3b8;font-weight:700;letter-spacing:1px;font-family:Sora,sans-serif">OP MARGIN</th>' +
+              '<th style="padding:7px 8px;text-align:right;font-size:9px;color:#94a3b8;font-weight:700;letter-spacing:1px;font-family:Sora,sans-serif">SCORE</th>' +
+            '</tr>' +
+          '</thead><tbody>';
+  
+  // r63.21: handle BOTH None and 'N/A' string from backend
+  function fmtPct(v) {
+    if (v == null || v === 'N/A') return '<span style="color:#cbd5e1">—</span>';
+    var n = parseFloat(v);
+    if (isNaN(n)) return '<span style="color:#cbd5e1">—</span>';
+    // Backend returns growth as decimal (0.15) or already-percentage (15.0)
+    var pct = Math.abs(n) < 1 ? n * 100 : n;
+    return pct.toFixed(1) + '%';
+  }
+  function fmtNum(v) {
+    if (v == null || v === 'N/A') return '<span style="color:#cbd5e1">—</span>';
+    var n = parseFloat(v);
+    if (isNaN(n)) return '<span style="color:#cbd5e1">—</span>';
+    return n.toFixed(2);
+  }
+  function fmtMoney(v) {
+    if (v == null || v === 'N/A') return '<span style="color:#cbd5e1">—</span>';
+    var n = parseFloat(v);
+    if (isNaN(n)) return '<span style="color:#cbd5e1">—</span>';
+    return '$' + n.toFixed(2);
+  }
+  function fmtScore(v) {
+    if (v == null || v === 'N/A') return '<span style="color:#cbd5e1">—</span>';
+    var n = parseFloat(v);
+    if (isNaN(n)) return '<span style="color:#cbd5e1">—</span>';
+    return Math.round(n);
+  }
+  
+  function row(item, isTarget) {
+    var bg = isTarget ? '#f8fafc' : '#fff';
+    var s = '<tr style="background:' + bg + ';border-bottom:1px solid #f1f5f9">';
+    s += '<td style="padding:8px;font-family:Sora,sans-serif;font-weight:800;color:#1A3A78;font-size:12px">' + 
+         (isTarget ? '<span style="color:#fde68a">★</span> ' : '') + item.ticker + '</td>';
+    s += '<td style="padding:8px;text-align:right;font-family:\'IBM Plex Mono\',monospace;font-size:11px;color:#0f172a">' + fmtMoney(item.price) + '</td>';
+    s += '<td style="padding:8px;text-align:right;font-family:\'IBM Plex Mono\',monospace;font-size:11px;color:#0f172a">' + fmtNum(item.forward_pe) + '</td>';
+    s += '<td style="padding:8px;text-align:right;font-family:\'IBM Plex Mono\',monospace;font-size:11px;color:#0f172a">' + fmtPct(item.rev_growth) + '</td>';
+    s += '<td style="padding:8px;text-align:right;font-family:\'IBM Plex Mono\',monospace;font-size:11px;color:#0f172a">' + fmtPct(item.op_margin) + '</td>';
+    s += '<td style="padding:8px;text-align:right;font-family:\'IBM Plex Mono\',monospace;font-size:11px;color:#0f172a;font-weight:800">' + fmtScore(item.score) + '</td>';
+    s += '</tr>';
+    return s;
+  }
+  
+  html += row(d.target, true);
+  d.peers.forEach(function(p) { html += row(p, false); });
+  html += '</tbody></table>';
+  return html;
+}
+
+// ─── Render dispatcher ─────────────────────────────────────────────
+function _csR6321RenderTab(tabId, data) {
+  if (tabId === 'pitch')     return _csR6321RenderPitch(data);
+  if (tabId === 'insights')  return _csR6321RenderInsights(data);
+  if (tabId === 'scenarios') return _csR6321RenderScenarios(data);
+  if (tabId === 'peers')     return _csR6321RenderPeers(data);
+  return '';
+}
+
+// ─── Polling — handles BOTH render paths ───────────────────────────
 (function() {
   var lastInjectedSym = null;
   
-  // Find anchor element + extract ticker, supporting both render paths
   function findAnchor() {
-    // Try NEW path first (Aladdin redesign)
+    // NEW path
     var strip = document.getElementById('sec-verdict-strip');
     if (strip) {
       var symEl = strip.querySelector('.cs-dd-verdict__sym');
       var sym = symEl ? symEl.textContent.trim() : (window._ddLastSymbol || '');
-      // For new path, parent is the report container; insert after the verdict strip itself
-      return { 
-        anchor: strip, 
-        insertParent: strip.parentNode, 
-        insertBefore: strip.nextSibling,
-        sym: sym,
-        path: 'new'
-      };
+      return { insertParent: strip.parentNode, insertBefore: strip.nextSibling, sym: sym };
     }
-    
-    // Try OLD path
-    var verdictHeader = document.getElementById('sec-verdict');
-    if (verdictHeader) {
-      // OLD path: sec-verdict is the section header text inside an .sc card
-      // Walk up to find the .sc card (the actual section container)
-      var scCard = verdictHeader;
-      var hops = 0;
-      while (scCard && hops < 5) {
-        if (scCard.classList && scCard.classList.contains('sc')) break;
-        scCard = scCard.parentNode;
-        hops++;
+    // OLD path — walk up from sec-verdict to find .sc card
+    var hdr = document.getElementById('sec-verdict');
+    if (hdr) {
+      var card = hdr;
+      for (var i = 0; i < 5 && card; i++) {
+        if (card.classList && card.classList.contains('sc')) break;
+        card = card.parentNode;
       }
-      if (!scCard) return null;
-      
-      // Get ticker from window._ddLastSymbol (set by app.js on report load)
+      if (!card) return null;
       var sym = window._ddLastSymbol || window._currentTicker || '';
-      // Fallback: try reading from the verdict card content
-      if (!sym) {
-        var bodyText = scCard.textContent || '';
-        var match = bodyText.match(/\b([A-Z]{1,6})\b/);
-        if (match) sym = match[1];
-      }
-      
-      return {
-        anchor: scCard,
-        insertParent: scCard.parentNode,
-        insertBefore: scCard.nextSibling,
-        sym: sym,
-        path: 'old'
-      };
+      return { insertParent: card.parentNode, insertBefore: card.nextSibling, sym: sym };
     }
-    
     return null;
   }
   
@@ -25879,27 +25899,24 @@ window._csR6318LoadBenchmark = function() {
       var found = findAnchor();
       if (!found || !found.sym) return;
       
-      // Check if we already injected somewhere in the report
-      var existing = document.querySelector('.cs-r6318-section');
-      
-      if (existing && lastInjectedSym === found.sym) {
-        return;  // already done for this ticker
-      }
-      
-      // Different ticker? Remove stale injection (could be in different parent now)
+      var existing = document.getElementById('cs-r6321-strip');
+      if (existing && lastInjectedSym === found.sym) return;
       if (existing && lastInjectedSym !== found.sym) {
         existing.remove();
+        // Reset state for new ticker
+        window._csR6321Loaded = { pitch: false, insights: false, scenarios: false, peers: false };
+        window._csR6321Data = { pitch: null, insights: null, scenarios: null, peers: null };
       }
       
-      // Run injector with the found anchor info
-      if (typeof window._csR6318InjectSections === 'function') {
-        window._csR6318InjectSections(found);
-        lastInjectedSym = found.sym;
-      }
-    } catch (e) {
-      // swallow — don't kill the polling loop
-    }
+      // Also remove legacy r63.18 / r63.20 stacked cards if they somehow ended up rendered
+      var legacy = document.querySelector('.cs-r6318-section');
+      if (legacy) legacy.remove();
+      
+      window._csR6321Inject(found);
+      lastInjectedSym = found.sym;
+    } catch (e) {}
   }, 1000);
 })();
+
 
 

@@ -890,3 +890,42 @@ Elevator pitch render also handles both paths with multiple fallbacks (cs-dd-ver
 - Compile + JS syntax + byte-identical min.js
 
 **Architectural lesson #6 today:** Always grep for ALL occurrences of a target element/variable before integrating. Multiple render paths is common in evolving codebases. r63.18 assumed canonical, was wrong. r63.20 handles reality.
+
+---
+
+## v4.63.21 — Premium redesign + 3 bug fixes (current)
+
+**Built:** 2026-05-03
+
+**User feedback:** "Placement is not appropriate.. UI Look disturbed.. can be more premium way... buttons can be simple icon with tooltip in bold... i want you to be innovative.. very bad in creative abilities... nothing is coming"
+
+**3 bugs in screenshots:**
+1. Deep Insights crashed: `name 're' is not defined` — `import re` was never at module level
+2. Competitor benchmark showed `—` in every cell — frontend only checked null, backend returns 'N/A' string
+3. 4 stacked white cards with bright CTA buttons — amateur design, not BlackRock/Aladdin level
+
+**Bug fixes:**
+1. Added `import re` to api.py module top (line 15). Verified via AST parser.
+2. Updated all 4 frontend formatters (Pct, Num, Money, Score) to handle null AND 'N/A' string AND auto-scale 0.15 vs 15.0 representations
+3. Complete redesign (claude's call — user said "you decide")
+
+**Redesign — Analyst Tools strip:**
+- Single horizontal strip replacing 4 stacked cards
+- Navy gradient header (`#1A3A78`) with amber accent line
+- 4 icon tabs: 🎯 PITCH / 🧠 INSIGHTS / 📈 SCENARIOS / 🏛 PEERS
+- Sora font for labels, IBM Plex Mono for numbers (matches existing typography)
+- Click tab → accordion-expand panel below (only one open)
+- Pitch auto-loads on first render (free, reads from DOM)
+- Others lazy-load on click, cached after
+- Tooltip via browser-native `title` attribute
+- State resets on ticker change
+
+**Design philosophy:** Information density over decoration. Restrained palette over color-coded variety. Bloomberg/Aladdin pattern over Bootstrap demo.
+
+**Verified:**
+- 14/14 audit checks (1 false-negative on regex match for import re — verified via Python AST)
+- Compile + JS syntax + byte-identical min.js
+- Old r63.18/r63.20 frontend completely removed
+- Polling handles both render paths
+
+**Lesson #7 today:** Always grep for existing patterns BEFORE writing new code, not after the bug report. Today's bugs all came from assumptions: re imported (wasn't), single DOM path (was 2), null only (also 'N/A'), my taste vs platform's identity (mine was wrong).
