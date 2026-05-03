@@ -1,9 +1,9 @@
 // ═══ Celesys version stamp ═══
-window.CELESYS_VERSION = "v4.63.21";
-window.CELESYS_BUILD_TIME = 1777786703;
-window.CELESYS_BUILD_DATE = "2026-05-03 05:38:23 UTC";
+window.CELESYS_VERSION = "v4.63.22";
+window.CELESYS_BUILD_TIME = 1777788419;
+window.CELESYS_BUILD_DATE = "2026-05-03 06:06:59 UTC";
 console.log("%c━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "color:#1A3A78");
-console.log("%c CELESYS v4.63.21 %c loaded · 2026-04-29 03:29:27 UTC",
+console.log("%c CELESYS v4.63.22 %c loaded · 2026-04-29 03:29:27 UTC",
   "background:#1A3A78;color:#fff;font-weight:900;padding:3px 8px;border-radius:3px;font-family:monospace",
   "color:#1A3A78;font-weight:700;font-family:monospace");
 console.log("%c━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "color:#1A3A78");
@@ -25457,429 +25457,449 @@ window._csEwHomeStripInject = function() {
 
 // ═══════════════════════════════════════════════════════════════════
 // ═══════════════════════════════════════════════════════════════════
-// r63.21: Analyst Tools Strip — premium redesign of r63.18 sections
 // ═══════════════════════════════════════════════════════════════════
-// User feedback: previous design was "disturbing UI", buttons should be
-// "simple icon with tooltip in bold", "be innovative".
-//
-// Design pattern: Bloomberg/Aladdin-style horizontal icon strip with
-// accordion-expand panels. Navy/slate palette. IBM Plex Mono. Restrained.
-//
-// Layout:
-//   ┌──────────────────────────────────────────────────────────┐
-//   │  ▎ ANALYST TOOLS                                          │
-//   ├──────────────────────────────────────────────────────────┤
-//   │  📊 PITCH  │  🧠 INSIGHTS  │  📈 SCENARIOS  │  🏛 PEERS  │
-//   ├──────────────────────────────────────────────────────────┤
-//   │  [active panel content expands here]                      │
-//   └──────────────────────────────────────────────────────────┘
+// r63.22: Analyst Insights — graphical redesign matching platform DNA
+// ═══════════════════════════════════════════════════════════════════
+// Visually integrated with existing report sections (same border/shadow/padding).
+// Inline pill tabs (matches India/USA toggle pattern). Graphical visualizations:
+//   - Pitch: monospace score + conviction donut SVG
+//   - Insights: severity-coded sections with accent bars
+//   - Scenarios: HORIZONTAL price distribution chart (one chart, not 3 cards)
+//   - Peers: COMPARATIVE BARS per metric (target highlighted)
 
-window._csR6321LastSymbol = null;
-window._csR6321ActiveTab = 'pitch';  // pitch is default-active
-window._csR6321Loaded = { pitch: false, insights: false, scenarios: false, peers: false };
-window._csR6321Data = { pitch: null, insights: null, scenarios: null, peers: null };
+window._csR6322LastSymbol = null;
+window._csR6322ActiveTab = 'pitch';
+window._csR6322Loaded = { pitch: false, insights: false, scenarios: false, peers: false };
+window._csR6322Data = { pitch: null, insights: null, scenarios: null, peers: null };
 
-// Main injector — called by polling
-window._csR6321Inject = function(anchorInfo) {
+window._csR6322Inject = function(anchorInfo) {
   if (!anchorInfo) return;
-  if (document.getElementById('cs-r6321-strip')) return;  // already injected
+  if (document.getElementById('cs-r6322-card')) return;
   
   var sym = (anchorInfo.sym || '').trim();
   if (!sym) return;
-  window._csR6321LastSymbol = sym;
+  window._csR6322LastSymbol = sym;
   
-  var container = document.createElement('section');
-  container.id = 'cs-r6321-strip';
-  container.className = 'cs-r6321-section';  // for legacy detection
-  container.style.cssText = 
-    'margin:14px 0;border:1px solid #e2e8f0;border-radius:10px;background:#fff;' +
-    'overflow:hidden;font-family:Inter,sans-serif;' +
-    'box-shadow:0 1px 2px rgba(15,23,42,0.04)';
+  var card = document.createElement('section');
+  card.id = 'cs-r6322-card';
+  card.className = 'cs-r6322-section';  // legacy detection
+  // r63.22: matches existing report card style (.sc class equivalent)
+  card.style.cssText = 
+    'margin:14px 0;background:#fff;border:1px solid #e2e8f0;border-radius:12px;' +
+    'box-shadow:0 1px 3px rgba(15,23,42,0.06);overflow:hidden;font-family:Inter,sans-serif';
   
-  container.innerHTML = 
-    // Top label strip — institutional title
-    '<div style="background:linear-gradient(180deg,#1A3A78,#15306b);color:#fff;padding:8px 14px;' +
-         'display:flex;align-items:center;gap:8px;border-bottom:1px solid #0f1f4a">' +
-      '<span style="display:inline-block;width:3px;height:14px;background:#fde68a;border-radius:2px"></span>' +
-      '<span style="font-size:10px;font-weight:800;letter-spacing:1.2px;font-family:Sora,sans-serif">ANALYST TOOLS</span>' +
-      '<span style="font-size:9px;color:rgba(255,255,255,0.55);margin-left:auto;font-family:\'IBM Plex Mono\',monospace">' + sym + '</span>' +
+  card.innerHTML = 
+    // Header — matches existing section header (.sh) pattern
+    '<div style="padding:14px 18px 10px;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;gap:10px;flex-wrap:wrap">' +
+      '<div style="background:rgba(26,58,120,0.1);width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:14px">🧠</div>' +
+      '<div style="flex:1;min-width:160px">' +
+        '<div style="font-size:13px;font-weight:800;color:#1A3A78;font-family:Sora,sans-serif;letter-spacing:0.3px">Analyst Insights</div>' +
+        '<div style="font-size:10px;color:#64748b;margin-top:1px">AI-synthesized analysis · scenarios · peer benchmark · pitch</div>' +
+      '</div>' +
+      '<div style="font-size:9px;color:#94a3b8;font-family:\'IBM Plex Mono\',monospace;letter-spacing:0.5px">' + sym + '</div>' +
     '</div>' +
-    // Icon tab row — 4 columns with subtle dividers
-    '<div id="cs-r6321-tabs" style="display:grid;grid-template-columns:repeat(4,1fr);background:#fafbfc;border-bottom:1px solid #e2e8f0">' +
-      _csR6321TabButton('pitch',     '🎯', 'PITCH',     'Quick analyst summary',                  true)  +
-      _csR6321TabButton('insights',  '🧠', 'INSIGHTS',  'AI-synthesized analysis (numbers, risks, falsification)', false) +
-      _csR6321TabButton('scenarios', '📈', 'SCENARIOS', '12-month bull/base/bear price targets',    false) +
-      _csR6321TabButton('peers',     '🏛',  'PEERS',     'Sector competitor benchmark',              false) +
+    // Inline pill-style tab bar (matches India/USA toggle aesthetic)
+    '<div id="cs-r6322-tabs" style="padding:12px 18px 0;display:flex;gap:6px;flex-wrap:wrap">' +
+      _csR6322Pill('pitch',     '🎯', 'Pitch',     true)  +
+      _csR6322Pill('insights',  '🧠', 'Deep Insights',  false) +
+      _csR6322Pill('scenarios', '📈', 'Scenarios', false) +
+      _csR6322Pill('peers',     '🏛',  'Peers',     false) +
     '</div>' +
     // Content panel
-    '<div id="cs-r6321-panel" style="padding:16px 18px;min-height:80px;background:#fff"></div>';
+    '<div id="cs-r6322-panel" style="padding:14px 18px 18px;min-height:140px"></div>';
   
-  // Insert at the anchor location
   if (anchorInfo.insertParent) {
-    anchorInfo.insertParent.insertBefore(container, anchorInfo.insertBefore);
+    anchorInfo.insertParent.insertBefore(card, anchorInfo.insertBefore);
   }
   
-  // Auto-render the pitch tab on first load
-  _csR6321ShowTab('pitch');
+  // Auto-load pitch on first render
+  _csR6322ShowTab('pitch');
 };
 
-function _csR6321TabButton(id, icon, label, tooltip, isActive) {
-  var activeBg = isActive ? '#fff' : 'transparent';
-  var activeBorder = isActive ? '2px solid #1A3A78' : '2px solid transparent';
-  var color = isActive ? '#1A3A78' : '#64748b';
-  return '<button onclick="window._csR6321ShowTab(\'' + id + '\')" data-tab="' + id + '" ' +
-         'title="' + tooltip + '" ' +
-         'style="background:' + activeBg + ';border:none;border-bottom:' + activeBorder + ';' +
-         'padding:11px 8px;cursor:pointer;font-family:Inter,sans-serif;display:flex;flex-direction:column;' +
-         'align-items:center;gap:3px;color:' + color + ';transition:all 0.15s;border-right:1px solid #e2e8f0" ' +
-         'onmouseenter="if(this.getAttribute(\'data-tab\')!==window._csR6321ActiveTab){this.style.background=\'#f1f5f9\'}" ' +
-         'onmouseleave="if(this.getAttribute(\'data-tab\')!==window._csR6321ActiveTab){this.style.background=\'transparent\'}">' +
-    '<span style="font-size:15px">' + icon + '</span>' +
-    '<span style="font-size:9px;font-weight:800;letter-spacing:1px;font-family:Sora,sans-serif">' + label + '</span>' +
+function _csR6322Pill(id, icon, label, isActive) {
+  var bg = isActive ? '#1A3A78' : '#f1f5f9';
+  var color = isActive ? '#fff' : '#475569';
+  var fontWeight = isActive ? '700' : '600';
+  return '<button onclick="window._csR6322ShowTab(\'' + id + '\')" data-tab="' + id + '" ' +
+         'style="background:' + bg + ';color:' + color + ';border:none;border-radius:20px;' +
+         'padding:6px 14px;font-size:11px;font-weight:' + fontWeight + ';cursor:pointer;' +
+         'font-family:Inter,sans-serif;display:inline-flex;align-items:center;gap:5px;' +
+         'transition:all 0.15s">' +
+    '<span style="font-size:11px">' + icon + '</span>' +
+    '<span>' + label + '</span>' +
   '</button>';
 }
 
-window._csR6321ShowTab = function(tabId) {
-  window._csR6321ActiveTab = tabId;
+window._csR6322ShowTab = function(tabId) {
+  window._csR6322ActiveTab = tabId;
   
-  // Update tab styling
-  var tabs = document.querySelectorAll('#cs-r6321-tabs button[data-tab]');
-  for (var i = 0; i < tabs.length; i++) {
-    var tab = tabs[i];
-    var isActive = tab.getAttribute('data-tab') === tabId;
-    tab.style.background = isActive ? '#fff' : 'transparent';
-    tab.style.borderBottom = isActive ? '2px solid #1A3A78' : '2px solid transparent';
-    tab.style.color = isActive ? '#1A3A78' : '#64748b';
+  // Update pill styling
+  var pills = document.querySelectorAll('#cs-r6322-tabs button[data-tab]');
+  for (var i = 0; i < pills.length; i++) {
+    var p = pills[i];
+    var isActive = p.getAttribute('data-tab') === tabId;
+    p.style.background = isActive ? '#1A3A78' : '#f1f5f9';
+    p.style.color = isActive ? '#fff' : '#475569';
+    p.style.fontWeight = isActive ? '700' : '600';
   }
   
-  var panel = document.getElementById('cs-r6321-panel');
+  var panel = document.getElementById('cs-r6322-panel');
   if (!panel) return;
   
-  // Render content from cache or load
-  var sym = window._csR6321LastSymbol;
+  var sym = window._csR6322LastSymbol;
   if (!sym) { panel.innerHTML = '<div style="color:#94a3b8;font-size:12px">No ticker context.</div>'; return; }
   
-  if (window._csR6321Loaded[tabId] && window._csR6321Data[tabId]) {
-    // Re-render from cache
-    panel.innerHTML = _csR6321RenderTab(tabId, window._csR6321Data[tabId]);
+  // Re-render from cache if loaded
+  if (window._csR6322Loaded[tabId] && window._csR6322Data[tabId]) {
+    panel.innerHTML = _csR6322Render(tabId, window._csR6322Data[tabId]);
+    _csR6322PostRender(tabId);
     return;
   }
   
-  // First time on this tab — load
-  if (tabId === 'pitch') {
-    _csR6321LoadPitch(sym, panel);
-  } else if (tabId === 'insights') {
-    _csR6321LoadInsights(sym, panel);
-  } else if (tabId === 'scenarios') {
-    _csR6321LoadScenarios(sym, panel);
-  } else if (tabId === 'peers') {
-    _csR6321LoadPeers(sym, panel);
-  }
-};
-
-function _csR6321Spinner(label) {
-  return '<div style="text-align:center;padding:24px 0">' +
-           '<div style="display:inline-block;width:22px;height:22px;border:2px solid #e2e8f0;border-top-color:#1A3A78;border-radius:50%;animation:csFsSpin 0.8s linear infinite"></div>' +
-           '<div style="margin-top:10px;font-size:10px;color:#64748b;font-family:Sora,sans-serif;letter-spacing:0.5px;font-weight:700">' + label + '</div>' +
-         '</div>';
-}
-
-function _csR6321Error(msg) {
-  return '<div style="padding:14px;background:#fef2f2;border-left:3px solid #dc2626;border-radius:4px;font-size:12px;color:#7f1d1d;font-family:Inter,sans-serif">' +
-         _csEscape(msg) + '</div>';
-}
-
-// ─── Tab 1: Elevator Pitch ─────────────────────────────────────────
-function _csR6321LoadPitch(sym, panel) {
-  // Pitch reads from existing DOM — no API call
-  // Try multiple selectors for both render paths
-  var score = null, verdict = null, name = null;
-  
-  // NEW path
-  var scoreEl = document.querySelector('.cs-dd-verdict__score');
-  if (scoreEl) score = parseFloat(scoreEl.textContent);
-  var pillEl = document.querySelector('.cs-dd-verdict__pill');
-  if (pillEl) verdict = pillEl.textContent.trim();
-  var nameEl = document.querySelector('.cs-dd-verdict__name');
-  if (nameEl) name = nameEl.textContent.trim();
-  
-  // OLD path fallback — read from sec-verdict card
-  if (score == null || isNaN(score)) {
-    var hdr = document.getElementById('sec-verdict');
-    if (hdr) {
-      var card = hdr;
-      for (var i = 0; i < 5 && card; i++) {
-        if (card.classList && card.classList.contains('sc')) break;
-        card = card.parentNode;
-      }
-      if (card) {
-        var txt = card.textContent || '';
-        var sm = txt.match(/(\d+(?:\.\d+)?)\s*\/\s*100/);
-        if (sm) score = parseFloat(sm[1]);
-        var vm = txt.match(/(STRONG BUY CANDIDATE|STRONG SELL|STRONG BUY|BUY|HOLD|SELL|AVOID)/i);
-        if (vm && !verdict) verdict = vm[1];
-      }
-    }
-  }
-  if (window._lastReportData) {
-    if (score == null || isNaN(score)) score = window._lastReportData.composite_score || window._lastReportData.institutional_score;
-    if (!verdict) verdict = window._lastReportData.verdict;
-    if (!name) name = (window._lastReportData.company || {}).name;
-  }
-  name = name || sym;
-  verdict = verdict || 'Unknown';
-  
-  if (score == null || isNaN(score)) {
-    panel.innerHTML = _csR6321Error("Score data not available for elevator pitch.");
-    return;
-  }
-  
-  var data = { score: score, verdict: verdict, name: name, sym: sym };
-  window._csR6321Loaded.pitch = true;
-  window._csR6321Data.pitch = data;
-  panel.innerHTML = _csR6321RenderTab('pitch', data);
-}
-
-function _csR6321RenderPitch(d) {
-  var conviction, reasoning, color;
-  if (d.score >= 80)      { conviction = 'HIGH CONVICTION BUY';      color = '#059669'; reasoning = 'fundamentals, valuation, and momentum aligned with strong institutional support'; }
-  else if (d.score >= 65) { conviction = 'BUY CANDIDATE';            color = '#0891b2'; reasoning = 'majority of factors positive; some areas warrant monitoring'; }
-  else if (d.score >= 50) { conviction = 'HOLD / SELECTIVE';         color = '#ca8a04'; reasoning = 'mixed signals — neither clearly compelling nor clearly impaired'; }
-  else if (d.score >= 35) { conviction = 'AVOID NEW POSITIONS';      color = '#dc2626'; reasoning = 'multiple factors negative; downside risk outweighs upside'; }
-  else                    { conviction = 'AVOID / EXIT';             color = '#7f1d1d'; reasoning = 'institutional thesis broken across most factors'; }
-  
-  var html = '';
-  // Score readout — institutional style with monospace
-  html += '<div style="display:flex;align-items:baseline;gap:14px;margin-bottom:14px;flex-wrap:wrap">';
-  html += '<div style="display:flex;align-items:baseline;gap:4px">';
-  html += '<span style="font-size:34px;font-weight:900;color:' + color + ';font-family:\'IBM Plex Mono\',monospace;letter-spacing:-1px">' + Math.round(d.score) + '</span>';
-  html += '<span style="font-size:12px;color:#94a3b8;font-family:\'IBM Plex Mono\',monospace">/100</span>';
-  html += '</div>';
-  html += '<div style="flex:1;min-width:180px">';
-  html += '<div style="font-size:10px;font-weight:800;color:' + color + ';letter-spacing:1.2px;font-family:Sora,sans-serif">' + conviction + '</div>';
-  html += '<div style="font-size:11px;color:#64748b;margin-top:2px;font-family:Inter,sans-serif">Verdict: <strong style="color:#0f172a">' + _csEscape(d.verdict) + '</strong></div>';
-  html += '</div>';
-  html += '</div>';
-  
-  // Pitch line
-  html += '<div style="font-size:13px;line-height:1.55;color:#0f172a;font-family:Inter,sans-serif;padding-top:12px;border-top:1px solid #f1f5f9">';
-  html += '<strong style="color:#1A3A78">' + _csEscape(d.name) + ' (' + d.sym + ')</strong> screens as a <strong style="color:' + color + '">' + conviction + '</strong> at ' + Math.round(d.score) + '/100 — ' + reasoning + '.';
-  html += '</div>';
-  
-  return html;
-}
-
-// ─── Tab 2: Deep Insights ──────────────────────────────────────────
-function _csR6321LoadInsights(sym, panel) {
-  panel.innerHTML = _csR6321Spinner('GENERATING — 5-15 SEC');
+  // Load from API
+  panel.innerHTML = _csR6322Spin();
   var email = (window._verifiedEmail || window._authedEmail || window.localStorage.getItem('email') || '').trim();
   
-  fetch('/api/deep-insights?symbol=' + encodeURIComponent(sym) + '&email=' + encodeURIComponent(email))
+  var url = '';
+  if (tabId === 'pitch')     url = '/api/analyst-pitch';
+  if (tabId === 'insights')  url = '/api/deep-insights';
+  if (tabId === 'scenarios') url = '/api/scenarios';
+  if (tabId === 'peers')     url = '/api/competitor-benchmark';
+  
+  fetch(url + '?symbol=' + encodeURIComponent(sym) + '&email=' + encodeURIComponent(email))
     .then(function(r) { return r.json(); })
     .then(function(data) {
       if (!data.success) {
-        panel.innerHTML = _csR6321Error('⚠ ' + (data.error || 'Failed to generate insights'));
+        panel.innerHTML = _csR6322Err(data.error || 'Failed');
         return;
       }
-      window._csR6321Loaded.insights = true;
-      window._csR6321Data.insights = data;
-      panel.innerHTML = _csR6321RenderTab('insights', data);
+      window._csR6322Loaded[tabId] = true;
+      window._csR6322Data[tabId] = data;
+      panel.innerHTML = _csR6322Render(tabId, data);
+      _csR6322PostRender(tabId);
     })
     .catch(function(err) {
-      panel.innerHTML = _csR6321Error('Network error: ' + (err.message || 'unknown'));
+      panel.innerHTML = _csR6322Err('Network error: ' + err.message);
     });
+};
+
+function _csR6322Spin() {
+  return '<div style="text-align:center;padding:30px 0">' +
+    '<div style="display:inline-block;width:24px;height:24px;border:2px solid #e2e8f0;border-top-color:#1A3A78;border-radius:50%;animation:csFsSpin 0.8s linear infinite"></div>' +
+    '<div style="margin-top:10px;font-size:10px;color:#64748b;font-family:Sora,sans-serif;font-weight:700;letter-spacing:0.5px">LOADING</div>' +
+  '</div>';
 }
 
-function _csR6321RenderInsights(d) {
+function _csR6322Err(msg) {
+  return '<div style="padding:14px;background:#fef2f2;border-left:3px solid #dc2626;border-radius:6px;font-size:12px;color:#7f1d1d">' + _csEscape(msg) + '</div>';
+}
+
+function _csR6322Render(tabId, data) {
+  if (tabId === 'pitch')     return _csR6322RenderPitch(data);
+  if (tabId === 'insights')  return _csR6322RenderInsights(data);
+  if (tabId === 'scenarios') return _csR6322RenderScenarios(data);
+  if (tabId === 'peers')     return _csR6322RenderPeers(data);
+  return '';
+}
+
+function _csR6322PostRender(tabId) {
+  // Hook for any post-render JS (chart animations, etc.)
+}
+
+// ─── PITCH — score + conviction donut ─────────────────────────────
+function _csR6322RenderPitch(d) {
+  var score = d.score;
+  if (score == null || isNaN(parseFloat(score))) {
+    return _csR6322Err('Score data not yet available — full DD still computing.');
+  }
+  score = parseFloat(score);
+  
+  // Conviction tiers with colors
+  var tier;
+  if (score >= 80)      tier = { label: 'HIGH CONVICTION BUY',     color: '#059669', desc: 'fundamentals, valuation, and momentum aligned with strong institutional support' };
+  else if (score >= 65) tier = { label: 'BUY CANDIDATE',           color: '#0891b2', desc: 'majority of factors positive; some areas warrant monitoring' };
+  else if (score >= 50) tier = { label: 'HOLD / SELECTIVE',        color: '#ca8a04', desc: 'mixed signals — neither clearly compelling nor clearly impaired' };
+  else if (score >= 35) tier = { label: 'AVOID NEW POSITIONS',     color: '#dc2626', desc: 'multiple factors negative; downside risk outweighs upside' };
+  else                  tier = { label: 'AVOID / EXIT',            color: '#7f1d1d', desc: 'institutional thesis broken across most factors' };
+  
+  // Build conviction donut SVG (220px) — score arc on 0-100 scale, colored by tier
+  var radius = 70, cx = 90, cy = 90;
+  var circumference = 2 * Math.PI * radius;
+  var dashOffset = circumference * (1 - score / 100);
+  
+  var svg = '<svg width="180" height="180" viewBox="0 0 180 180" style="display:block">' +
+    // Background ring (slate)
+    '<circle cx="' + cx + '" cy="' + cy + '" r="' + radius + '" fill="none" stroke="#e2e8f0" stroke-width="14"/>' +
+    // Progress arc (colored)
+    '<circle cx="' + cx + '" cy="' + cy + '" r="' + radius + '" fill="none" stroke="' + tier.color + '" stroke-width="14" ' +
+      'stroke-dasharray="' + circumference + '" stroke-dashoffset="' + dashOffset + '" ' +
+      'stroke-linecap="round" transform="rotate(-90 ' + cx + ' ' + cy + ')"/>' +
+    // Center text — score
+    '<text x="' + cx + '" y="' + (cy - 2) + '" text-anchor="middle" font-family="IBM Plex Mono,monospace" font-size="38" font-weight="800" fill="#0f172a">' + Math.round(score) + '</text>' +
+    '<text x="' + cx + '" y="' + (cy + 18) + '" text-anchor="middle" font-family="IBM Plex Mono,monospace" font-size="11" fill="#94a3b8">/ 100</text>' +
+  '</svg>';
+  
+  // Threshold ladder (visual benchmark zones)
+  var thresholds = [
+    { val: 0,  label: 'Exit',    color: '#7f1d1d' },
+    { val: 35, label: 'Avoid',   color: '#dc2626' },
+    { val: 50, label: 'Hold',    color: '#ca8a04' },
+    { val: 65, label: 'Buy',     color: '#0891b2' },
+    { val: 80, label: 'Strong',  color: '#059669' },
+  ];
+  var ladder = '<div style="display:flex;align-items:center;gap:0;font-size:8px;font-family:\'IBM Plex Mono\',monospace;color:#94a3b8;letter-spacing:0.5px;margin-top:12px;width:100%;position:relative;height:28px">';
+  // Bar
+  ladder += '<div style="position:absolute;left:0;right:0;top:11px;height:4px;background:linear-gradient(90deg,#7f1d1d 0%,#dc2626 35%,#ca8a04 50%,#0891b2 65%,#059669 80%);border-radius:2px"></div>';
+  // Score marker
+  var markerLeft = Math.max(0, Math.min(100, score));
+  ladder += '<div style="position:absolute;left:' + markerLeft + '%;top:0;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center">';
+  ladder += '<div style="width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-top:6px solid ' + tier.color + '"></div>';
+  ladder += '<div style="width:2px;height:14px;background:' + tier.color + '"></div>';
+  ladder += '</div>';
+  ladder += '</div>';
+  // Threshold labels below
+  ladder += '<div style="display:flex;justify-content:space-between;margin-top:2px;font-size:8px;font-family:\'IBM Plex Mono\',monospace;color:#cbd5e1;letter-spacing:0.5px">';
+  thresholds.forEach(function(t) { ladder += '<span>' + t.val + '</span>'; });
+  ladder += '</div>';
+  
+  // Build full pitch
+  var html = '<div style="display:flex;gap:18px;align-items:center;flex-wrap:wrap">';
+  // Donut
+  html += '<div style="flex-shrink:0">' + svg + '</div>';
+  // Right side
+  html += '<div style="flex:1;min-width:240px">';
+  html += '<div style="font-size:10px;font-weight:800;color:' + tier.color + ';letter-spacing:1.2px;font-family:Sora,sans-serif;margin-bottom:4px">' + tier.label + '</div>';
+  html += '<div style="font-size:14px;font-weight:700;color:#0f172a;margin-bottom:2px">' + _csEscape(d.name) + ' <span style="color:#94a3b8;font-weight:400">(' + d.symbol + ')</span></div>';
+  if (d.sector) html += '<div style="font-size:11px;color:#64748b;margin-bottom:8px">' + _csEscape(d.sector) + '</div>';
+  // Verdict + numeric stats inline
+  html += '<div style="font-size:12px;color:#475569;line-height:1.55;margin-bottom:12px">' +
+          '<strong style="color:#0f172a">Verdict:</strong> ' + _csEscape(d.verdict || 'Unknown') + ' — ' + tier.desc + '.</div>';
+  // Quick stats row
+  html += '<div style="display:flex;gap:14px;flex-wrap:wrap;font-family:\'IBM Plex Mono\',monospace;font-size:11px">';
+  if (d.spot != null) {
+    html += '<div><span style="color:#94a3b8">SPOT</span> <strong style="color:#0f172a">$' + Number(d.spot).toFixed(2) + '</strong></div>';
+  }
+  if (d.dcf_fair != null) {
+    var upsideColor = (d.upside_pct || 0) > 0 ? '#059669' : '#dc2626';
+    var upsideStr = d.upside_pct != null ? ' <span style="color:' + upsideColor + '">(' + (d.upside_pct > 0 ? '+' : '') + d.upside_pct + '%)</span>' : '';
+    html += '<div><span style="color:#94a3b8">DCF</span> <strong style="color:#0f172a">$' + Number(d.dcf_fair).toFixed(2) + '</strong>' + upsideStr + '</div>';
+  }
+  if (d.forward_pe != null) {
+    html += '<div><span style="color:#94a3b8">FWD P/E</span> <strong style="color:#0f172a">' + Number(d.forward_pe).toFixed(1) + '</strong></div>';
+  }
+  html += '</div>';
+  html += '</div>';
+  html += '</div>';
+  // Threshold ladder at bottom
+  html += '<div style="margin-top:18px;padding-top:14px;border-top:1px solid #f1f5f9">' + ladder + '</div>';
+  return html;
+}
+
+// ─── INSIGHTS — 3 sections with severity accent ────────────────────
+function _csR6322RenderInsights(d) {
   var sections = [
-    { key: 'numbers_say',   icon: '📊', title: 'WHAT THE NUMBERS ACTUALLY SAY',     accent: '#0891b2' },
-    { key: 'hidden_risks',  icon: '⚠',  title: 'HIDDEN RISKS THE METRICS MISS',     accent: '#dc2626' },
-    { key: 'falsification', icon: '🔬', title: 'WHAT WOULD CHANGE MY MIND',         accent: '#7c3aed' },
+    { key: 'numbers_say',   icon: '📊', title: 'NUMBERS SAY',         accent: '#0891b2', bg: '#cffafe' },
+    { key: 'hidden_risks',  icon: '⚠',  title: 'HIDDEN RISKS',         accent: '#dc2626', bg: '#fee2e2' },
+    { key: 'falsification', icon: '🔬', title: 'WHAT CHANGES MY MIND', accent: '#7c3aed', bg: '#ede9fe' },
   ];
   var html = '';
   sections.forEach(function(s, idx) {
     var content = d[s.key];
     if (!content) return;
-    if (idx > 0) html += '<div style="height:1px;background:#f1f5f9;margin:14px 0"></div>';
-    html += '<div>';
-    html += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">';
-    html += '<span style="font-size:13px">' + s.icon + '</span>';
-    html += '<span style="font-size:9px;font-weight:800;color:' + s.accent + ';letter-spacing:1.2px;font-family:Sora,sans-serif">' + s.title + '</span>';
+    if (idx > 0) html += '<div style="height:14px"></div>';
+    html += '<div style="display:flex;gap:10px;align-items:flex-start">';
+    // Accent stripe
+    html += '<div style="flex-shrink:0;width:34px;height:34px;background:' + s.bg + ';border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:15px;border:1px solid ' + s.accent + '40">' + s.icon + '</div>';
+    html += '<div style="flex:1;min-width:0">';
+    html += '<div style="font-size:9px;font-weight:800;color:' + s.accent + ';letter-spacing:1.2px;font-family:Sora,sans-serif;margin-bottom:4px">' + s.title + '</div>';
+    html += '<div style="font-size:13px;line-height:1.55;color:#0f172a">' + _csEscape(content) + '</div>';
     html += '</div>';
-    html += '<div style="font-size:13px;line-height:1.6;color:#0f172a;font-family:Inter,sans-serif">' + _csEscape(content) + '</div>';
     html += '</div>';
   });
-  if (d._cached) html += '<div style="margin-top:12px;font-size:9px;color:#94a3b8;text-align:right;font-family:\'IBM Plex Mono\',monospace">CACHED · refreshes every 6h</div>';
+  if (d._cached) html += '<div style="margin-top:14px;font-size:9px;color:#94a3b8;text-align:right;font-family:\'IBM Plex Mono\',monospace;letter-spacing:0.3px">CACHED · refreshes every 6h</div>';
   return html;
 }
 
-// ─── Tab 3: Scenarios ──────────────────────────────────────────────
-function _csR6321LoadScenarios(sym, panel) {
-  panel.innerHTML = _csR6321Spinner('COMPUTING DCF SCENARIOS');
-  var email = (window._verifiedEmail || window._authedEmail || window.localStorage.getItem('email') || '').trim();
-  
-  fetch('/api/scenarios?symbol=' + encodeURIComponent(sym) + '&email=' + encodeURIComponent(email))
-    .then(function(r) { return r.json(); })
-    .then(function(data) {
-      if (!data.success) {
-        panel.innerHTML = _csR6321Error(data.error || 'Could not compute scenarios');
-        return;
-      }
-      window._csR6321Loaded.scenarios = true;
-      window._csR6321Data.scenarios = data;
-      panel.innerHTML = _csR6321RenderTab('scenarios', data);
-    })
-    .catch(function(err) {
-      panel.innerHTML = _csR6321Error('Error: ' + err.message);
-    });
-}
-
-function _csR6321RenderScenarios(d) {
+// ─── SCENARIOS — horizontal price distribution chart ──────────────
+function _csR6322RenderScenarios(d) {
   var s = d.scenarios;
-  var tiers = [
-    { key: 'bull', label: 'BULL',  accent: '#059669', sub: 'Multiple expansion + accelerating growth' },
-    { key: 'base', label: 'BASE',  accent: '#1A3A78', sub: 'DCF fair value at current assumptions' },
-    { key: 'bear', label: 'BEAR',  accent: '#dc2626', sub: 'Multiple compression + sector rotation' },
+  var spot = d.spot;
+  var bull = s.bull.target, base = s.base.target, bear = s.bear.target;
+  
+  // Compute axis range with padding
+  var minPrice = Math.min(bear, spot) * 0.92;
+  var maxPrice = Math.max(bull, spot) * 1.05;
+  var range = maxPrice - minPrice || 1;
+  
+  function pct(price) { return ((price - minPrice) / range * 100); }
+  
+  // Build chart SVG (full width)
+  var w = 100, chartH = 60;
+  var svg = '<svg viewBox="0 0 100 ' + chartH + '" preserveAspectRatio="none" style="width:100%;height:60px;display:block">' +
+    // Axis line
+    '<line x1="2" y1="36" x2="98" y2="36" stroke="#cbd5e1" stroke-width="0.3"/>';
+  
+  // Bear/Base/Bull markers
+  var marks = [
+    { p: bear, color: '#dc2626', label: 'BEAR' },
+    { p: base, color: '#1A3A78', label: 'BASE' },
+    { p: bull, color: '#059669', label: 'BULL' },
   ];
-  var html = '';
-  // Spot price ribbon
-  html += '<div style="font-size:10px;color:#64748b;letter-spacing:0.5px;margin-bottom:10px;font-family:\'IBM Plex Mono\',monospace">' +
-          'SPOT &nbsp;<strong style="color:#0f172a;font-size:13px">$' + d.spot.toFixed(2) + '</strong> ' +
-          '&nbsp;·&nbsp; 12-MONTH PRICE TARGETS' +
-          '</div>';
-  html += '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;border-top:1px solid #f1f5f9;padding-top:12px">';
-  tiers.forEach(function(t, idx) {
-    var sc = s[t.key];
-    var prefix = sc.upside_pct > 0 ? '+' : '';
-    html += '<div style="padding:10px 12px;' + (idx < 2 ? 'border-right:1px solid #f1f5f9;' : '') + '">';
-    html += '<div style="font-size:9px;font-weight:800;color:' + t.accent + ';letter-spacing:1.2px;font-family:Sora,sans-serif">' + t.label + ' CASE</div>';
-    html += '<div style="display:flex;align-items:baseline;gap:4px;margin-top:4px">';
-    html += '<span style="font-size:22px;font-weight:900;color:#0f172a;font-family:\'IBM Plex Mono\',monospace;letter-spacing:-0.5px">$' + sc.target.toFixed(2) + '</span>';
-    html += '</div>';
-    html += '<div style="font-size:11px;color:' + t.accent + ';font-weight:700;font-family:\'IBM Plex Mono\',monospace;margin-top:2px">' + prefix + sc.upside_pct + '%</div>';
-    html += '<div style="font-size:10px;color:#64748b;margin-top:6px;line-height:1.4;font-family:Inter,sans-serif">' + _csEscape(sc.reasoning) + '</div>';
-    html += '</div>';
+  marks.forEach(function(m) {
+    var x = pct(m.p);
+    svg += '<line x1="' + x + '" y1="14" x2="' + x + '" y2="58" stroke="' + m.color + '" stroke-width="0.4"/>';
+    svg += '<circle cx="' + x + '" cy="36" r="2" fill="' + m.color + '"/>';
   });
-  html += '</div>';
+  // Spot marker (vertical dashed)
+  var spotX = pct(spot);
+  svg += '<line x1="' + spotX + '" y1="6" x2="' + spotX + '" y2="58" stroke="#0f172a" stroke-width="0.5" stroke-dasharray="1,1"/>';
+  svg += '<circle cx="' + spotX + '" cy="36" r="2.5" fill="#0f172a" stroke="#fff" stroke-width="0.6"/>';
+  svg += '</svg>';
+  
+  // Labels above & below the chart
+  var labelsAbove = '<div style="position:relative;height:18px;margin-bottom:2px">';
+  marks.forEach(function(m) {
+    var x = pct(m.p);
+    labelsAbove += '<div style="position:absolute;left:' + x + '%;transform:translateX(-50%);font-size:9px;font-family:Sora,sans-serif;font-weight:800;color:' + m.color + ';letter-spacing:0.5px;white-space:nowrap">' + m.label + '</div>';
+  });
+  // Spot label too
+  labelsAbove += '<div style="position:absolute;left:' + spotX + '%;transform:translateX(-50%);font-size:9px;font-family:Sora,sans-serif;font-weight:800;color:#0f172a;letter-spacing:0.5px;white-space:nowrap;top:-12px">SPOT</div>';
+  labelsAbove += '</div>';
+  
+  var labelsBelow = '<div style="position:relative;height:14px;margin-top:2px">';
+  marks.forEach(function(m) {
+    var x = pct(m.p);
+    labelsBelow += '<div style="position:absolute;left:' + x + '%;transform:translateX(-50%);font-size:10px;font-family:\'IBM Plex Mono\',monospace;font-weight:700;color:' + m.color + ';white-space:nowrap">$' + m.p.toFixed(2) + '</div>';
+  });
+  labelsBelow += '<div style="position:absolute;left:' + spotX + '%;transform:translateX(-50%);font-size:10px;font-family:\'IBM Plex Mono\',monospace;font-weight:700;color:#0f172a;white-space:nowrap;bottom:-14px">$' + spot.toFixed(2) + '</div>';
+  labelsBelow += '</div>';
+  
+  // Reasoning rows below chart
+  var rows = '<div style="margin-top:32px;display:grid;grid-template-columns:1fr;gap:8px">';
+  marks.forEach(function(m, idx) {
+    var sc = s[m.label.toLowerCase()];
+    var prefix = sc.upside_pct > 0 ? '+' : '';
+    rows += '<div style="display:flex;gap:10px;align-items:flex-start;padding:8px 10px;background:#f8fafc;border-radius:6px;border-left:3px solid ' + m.color + '">';
+    rows += '<div style="flex-shrink:0;width:60px">';
+    rows += '<div style="font-size:9px;font-weight:800;color:' + m.color + ';letter-spacing:1px;font-family:Sora,sans-serif">' + m.label + '</div>';
+    rows += '<div style="font-size:10px;font-family:\'IBM Plex Mono\',monospace;color:' + m.color + ';font-weight:700;margin-top:2px">' + prefix + sc.upside_pct + '%</div>';
+    rows += '</div>';
+    rows += '<div style="font-size:11px;color:#475569;line-height:1.5;flex:1">' + _csEscape(sc.reasoning) + '</div>';
+    rows += '</div>';
+  });
+  rows += '</div>';
+  
+  var html = '';
+  // Header line
+  html += '<div style="font-size:10px;color:#64748b;font-family:\'IBM Plex Mono\',monospace;letter-spacing:0.3px;margin-bottom:14px;padding-top:14px">12-MONTH PRICE TARGETS</div>';
+  // Chart
+  html += '<div style="margin:0 4px">' + labelsAbove + svg + labelsBelow + '</div>';
+  // Reasoning
+  html += rows;
   if (d._method) html += '<div style="margin-top:10px;font-size:8px;color:#94a3b8;font-family:\'IBM Plex Mono\',monospace;letter-spacing:0.3px">' + _csEscape(d._method) + '</div>';
   return html;
 }
 
-// ─── Tab 4: Peers ──────────────────────────────────────────────────
-function _csR6321LoadPeers(sym, panel) {
-  panel.innerHTML = _csR6321Spinner('SCANNING SECTOR PEERS · 30-90 SEC');
-  var email = (window._verifiedEmail || window._authedEmail || window.localStorage.getItem('email') || '').trim();
-  
-  fetch('/api/competitor-benchmark?symbol=' + encodeURIComponent(sym) + '&email=' + encodeURIComponent(email))
-    .then(function(r) { return r.json(); })
-    .then(function(data) {
-      if (!data.success) {
-        panel.innerHTML = _csR6321Error(data.error || 'Failed');
-        return;
-      }
-      window._csR6321Loaded.peers = true;
-      window._csR6321Data.peers = data;
-      panel.innerHTML = _csR6321RenderTab('peers', data);
-    })
-    .catch(function(err) {
-      panel.innerHTML = _csR6321Error('Error: ' + err.message);
-    });
-}
-
-function _csR6321RenderPeers(d) {
+// ─── PEERS — comparative bars per metric ──────────────────────────
+function _csR6322RenderPeers(d) {
   if (!d.peers || d.peers.length === 0) {
-    return '<div style="font-size:12px;color:#94a3b8;font-style:italic;font-family:Inter,sans-serif">' + 
+    return '<div style="font-size:12px;color:#94a3b8;font-style:italic">' + 
            _csEscape(d.data_note || 'No sector peers found in tracked universe.') + '</div>';
   }
   
+  // Combine target + peers
+  var all = [d.target].concat(d.peers);
+  
+  // Metrics to render as comparative bars
+  var metrics = [
+    { key: 'forward_pe', label: 'FWD P/E',     fmt: 'num',  better: 'lower' },
+    { key: 'rev_growth', label: 'REV GROWTH',  fmt: 'pct',  better: 'higher' },
+    { key: 'op_margin',  label: 'OP MARGIN',   fmt: 'pct',  better: 'higher' },
+    { key: 'score',      label: 'SCORE',       fmt: 'int',  better: 'higher' },
+  ];
+  
+  function getNum(v) {
+    if (v == null || v === 'N/A') return null;
+    var n = parseFloat(v);
+    return isNaN(n) ? null : n;
+  }
+  function fmtVal(v, fmt) {
+    if (v == null) return '—';
+    if (fmt === 'pct') {
+      var pct = Math.abs(v) < 1 ? v * 100 : v;  // auto-scale
+      return pct.toFixed(1) + '%';
+    }
+    if (fmt === 'int') return Math.round(v);
+    return v.toFixed(2);
+  }
+  
   var html = '';
-  html += '<div style="font-size:10px;color:#64748b;margin-bottom:10px;font-family:\'IBM Plex Mono\',monospace;letter-spacing:0.3px">' +
-          'SECTOR &nbsp;<strong style="color:#0f172a">' + _csEscape((d.target_sector || '').toUpperCase()) + '</strong>' +
-          '&nbsp;·&nbsp; ' + d.peers.length + ' PEERS' +
+  // Header
+  html += '<div style="font-size:10px;color:#64748b;font-family:\'IBM Plex Mono\',monospace;letter-spacing:0.3px;margin-bottom:12px">' +
+          'SECTOR ' + '<strong style="color:#0f172a">' + _csEscape((d.target_sector || '').toUpperCase()) + '</strong>' +
+          ' · COMPARING ' + d.peers.length + ' PEERS' +
           '</div>';
   
-  html += '<table style="width:100%;border-collapse:collapse;font-family:Inter,sans-serif">';
-  html += '<thead>' +
-            '<tr style="border-bottom:1px solid #e2e8f0">' +
-              '<th style="padding:7px 8px;text-align:left;font-size:9px;color:#94a3b8;font-weight:700;letter-spacing:1px;font-family:Sora,sans-serif">TICKER</th>' +
-              '<th style="padding:7px 8px;text-align:right;font-size:9px;color:#94a3b8;font-weight:700;letter-spacing:1px;font-family:Sora,sans-serif">PRICE</th>' +
-              '<th style="padding:7px 8px;text-align:right;font-size:9px;color:#94a3b8;font-weight:700;letter-spacing:1px;font-family:Sora,sans-serif">FWD P/E</th>' +
-              '<th style="padding:7px 8px;text-align:right;font-size:9px;color:#94a3b8;font-weight:700;letter-spacing:1px;font-family:Sora,sans-serif">REV GROWTH</th>' +
-              '<th style="padding:7px 8px;text-align:right;font-size:9px;color:#94a3b8;font-weight:700;letter-spacing:1px;font-family:Sora,sans-serif">OP MARGIN</th>' +
-              '<th style="padding:7px 8px;text-align:right;font-size:9px;color:#94a3b8;font-weight:700;letter-spacing:1px;font-family:Sora,sans-serif">SCORE</th>' +
-            '</tr>' +
-          '</thead><tbody>';
+  metrics.forEach(function(m) {
+    var values = all.map(function(item) { return { ticker: item.ticker, raw: getNum(item[m.key]), isTarget: item.ticker === d.target.ticker }; });
+    var validVals = values.filter(function(v) { return v.raw != null; });
+    if (validVals.length === 0) return;  // skip metric if no data anywhere
+    
+    var rawNumbers = validVals.map(function(v) { return v.raw; });
+    var minV = Math.min.apply(null, rawNumbers);
+    var maxV = Math.max.apply(null, rawNumbers);
+    var rangeV = maxV - minV || 1;
+    
+    html += '<div style="margin-bottom:14px">';
+    html += '<div style="font-size:9px;font-weight:800;color:#64748b;letter-spacing:1.2px;font-family:Sora,sans-serif;margin-bottom:6px">' + m.label + '</div>';
+    
+    values.forEach(function(v) {
+      var isTarget = v.isTarget;
+      var barWidth = 0;
+      var barColor = isTarget ? '#1A3A78' : '#cbd5e1';
+      if (v.raw != null) {
+        // For "lower is better" metrics, flip the visual width
+        if (m.better === 'lower') {
+          barWidth = (1 - (v.raw - minV) / rangeV) * 100;
+        } else {
+          barWidth = (v.raw - minV) / rangeV * 100;
+        }
+        barWidth = Math.max(8, barWidth);  // minimum visible width
+      }
+      
+      html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:3px">';
+      // Ticker label
+      html += '<div style="flex-shrink:0;width:60px;font-size:11px;font-family:Sora,sans-serif;font-weight:' + (isTarget ? '800' : '600') + ';color:' + (isTarget ? '#1A3A78' : '#475569') + '">';
+      html += (isTarget ? '<span style="color:#fde68a">★</span> ' : '') + v.ticker;
+      html += '</div>';
+      // Bar container
+      html += '<div style="flex:1;height:18px;background:#f8fafc;border-radius:4px;position:relative;overflow:hidden">';
+      if (v.raw != null) {
+        html += '<div style="position:absolute;left:0;top:0;height:100%;width:' + barWidth + '%;background:' + barColor + ';border-radius:4px;transition:width 0.3s"></div>';
+      }
+      html += '</div>';
+      // Value label
+      html += '<div style="flex-shrink:0;width:60px;text-align:right;font-size:10px;font-family:\'IBM Plex Mono\',monospace;color:#0f172a;font-weight:' + (isTarget ? '800' : '500') + '">' + fmtVal(v.raw, m.fmt) + '</div>';
+      html += '</div>';
+    });
+    
+    html += '</div>';
+  });
   
-  // r63.21: handle BOTH None and 'N/A' string from backend
-  function fmtPct(v) {
-    if (v == null || v === 'N/A') return '<span style="color:#cbd5e1">—</span>';
-    var n = parseFloat(v);
-    if (isNaN(n)) return '<span style="color:#cbd5e1">—</span>';
-    // Backend returns growth as decimal (0.15) or already-percentage (15.0)
-    var pct = Math.abs(n) < 1 ? n * 100 : n;
-    return pct.toFixed(1) + '%';
-  }
-  function fmtNum(v) {
-    if (v == null || v === 'N/A') return '<span style="color:#cbd5e1">—</span>';
-    var n = parseFloat(v);
-    if (isNaN(n)) return '<span style="color:#cbd5e1">—</span>';
-    return n.toFixed(2);
-  }
-  function fmtMoney(v) {
-    if (v == null || v === 'N/A') return '<span style="color:#cbd5e1">—</span>';
-    var n = parseFloat(v);
-    if (isNaN(n)) return '<span style="color:#cbd5e1">—</span>';
-    return '$' + n.toFixed(2);
-  }
-  function fmtScore(v) {
-    if (v == null || v === 'N/A') return '<span style="color:#cbd5e1">—</span>';
-    var n = parseFloat(v);
-    if (isNaN(n)) return '<span style="color:#cbd5e1">—</span>';
-    return Math.round(n);
-  }
-  
-  function row(item, isTarget) {
-    var bg = isTarget ? '#f8fafc' : '#fff';
-    var s = '<tr style="background:' + bg + ';border-bottom:1px solid #f1f5f9">';
-    s += '<td style="padding:8px;font-family:Sora,sans-serif;font-weight:800;color:#1A3A78;font-size:12px">' + 
-         (isTarget ? '<span style="color:#fde68a">★</span> ' : '') + item.ticker + '</td>';
-    s += '<td style="padding:8px;text-align:right;font-family:\'IBM Plex Mono\',monospace;font-size:11px;color:#0f172a">' + fmtMoney(item.price) + '</td>';
-    s += '<td style="padding:8px;text-align:right;font-family:\'IBM Plex Mono\',monospace;font-size:11px;color:#0f172a">' + fmtNum(item.forward_pe) + '</td>';
-    s += '<td style="padding:8px;text-align:right;font-family:\'IBM Plex Mono\',monospace;font-size:11px;color:#0f172a">' + fmtPct(item.rev_growth) + '</td>';
-    s += '<td style="padding:8px;text-align:right;font-family:\'IBM Plex Mono\',monospace;font-size:11px;color:#0f172a">' + fmtPct(item.op_margin) + '</td>';
-    s += '<td style="padding:8px;text-align:right;font-family:\'IBM Plex Mono\',monospace;font-size:11px;color:#0f172a;font-weight:800">' + fmtScore(item.score) + '</td>';
-    s += '</tr>';
-    return s;
-  }
-  
-  html += row(d.target, true);
-  d.peers.forEach(function(p) { html += row(p, false); });
-  html += '</tbody></table>';
   return html;
 }
 
-// ─── Render dispatcher ─────────────────────────────────────────────
-function _csR6321RenderTab(tabId, data) {
-  if (tabId === 'pitch')     return _csR6321RenderPitch(data);
-  if (tabId === 'insights')  return _csR6321RenderInsights(data);
-  if (tabId === 'scenarios') return _csR6321RenderScenarios(data);
-  if (tabId === 'peers')     return _csR6321RenderPeers(data);
-  return '';
-}
-
-// ─── Polling — handles BOTH render paths ───────────────────────────
+// ─── Polling — both render paths ──────────────────────────────────
 (function() {
   var lastInjectedSym = null;
   
   function findAnchor() {
-    // NEW path
     var strip = document.getElementById('sec-verdict-strip');
     if (strip) {
       var symEl = strip.querySelector('.cs-dd-verdict__sym');
       var sym = symEl ? symEl.textContent.trim() : (window._ddLastSymbol || '');
       return { insertParent: strip.parentNode, insertBefore: strip.nextSibling, sym: sym };
     }
-    // OLD path — walk up from sec-verdict to find .sc card
     var hdr = document.getElementById('sec-verdict');
     if (hdr) {
       var card = hdr;
@@ -25899,24 +25919,26 @@ function _csR6321RenderTab(tabId, data) {
       var found = findAnchor();
       if (!found || !found.sym) return;
       
-      var existing = document.getElementById('cs-r6321-strip');
+      var existing = document.getElementById('cs-r6322-card');
       if (existing && lastInjectedSym === found.sym) return;
       if (existing && lastInjectedSym !== found.sym) {
         existing.remove();
-        // Reset state for new ticker
-        window._csR6321Loaded = { pitch: false, insights: false, scenarios: false, peers: false };
-        window._csR6321Data = { pitch: null, insights: null, scenarios: null, peers: null };
+        window._csR6322Loaded = { pitch: false, insights: false, scenarios: false, peers: false };
+        window._csR6322Data = { pitch: null, insights: null, scenarios: null, peers: null };
       }
       
-      // Also remove legacy r63.18 / r63.20 stacked cards if they somehow ended up rendered
-      var legacy = document.querySelector('.cs-r6318-section');
-      if (legacy) legacy.remove();
+      // Remove any legacy r63.18/21 cards
+      var legacy1 = document.getElementById('cs-r6321-strip');
+      if (legacy1) legacy1.remove();
+      var legacy2 = document.querySelector('.cs-r6318-section');
+      if (legacy2) legacy2.remove();
       
-      window._csR6321Inject(found);
+      window._csR6322Inject(found);
       lastInjectedSym = found.sym;
     } catch (e) {}
   }, 1000);
 })();
+
 
 
 

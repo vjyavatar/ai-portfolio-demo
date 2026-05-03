@@ -1799,9 +1799,9 @@ def _safe_float(val, default=0.0):
         return default
 
 # ═══ Celesys version stamp (v4.61.10) ═══════════════════════════════
-APP_VERSION = "v4.63.21"
-APP_BUILD_TIME = 1777786703
-APP_BUILD_DATE = "2026-05-03 05:38:23 UTC"
+APP_VERSION = "v4.63.22"
+APP_BUILD_TIME = 1777788419
+APP_BUILD_DATE = "2026-05-03 06:06:59 UTC"
 APP_RELEASE_NOTES = (
     "v4.62.0: Micro-Cap Hunter scanner (Decide tab) + cumulative r61.x: Aladdin DD entry page (r61.8), "
     "stale-cache fallback (r61.8), multi-factor Bottom Line (r61.7), "
@@ -32034,6 +32034,57 @@ async def diag_earnings_raw(email: str = "", days_back: int = 7, days_forward: i
 # r63.18: Deep Insights — LLM-synthesized analysis grounded in DD data
 # ═══════════════════════════════════════════════════════════════════
 
+@app.get("/api/analyst-pitch")
+async def analyst_pitch(symbol: str = "", region: str = "US", email: str = ""):
+    """r63.22: Returns pitch data from DD — score, verdict, name, plus benchmark
+    thresholds for visualization. Reads from real DD response, not DOM."""
+    email = (email or "").strip().lower()
+    _ok, email = check_premium_gate(email, "dream")
+    if not _ok:
+        return {"success": False, "error": "Premium tier required."}
+    
+    symbol = (symbol or "").strip().upper()
+    if not symbol:
+        return {"success": False, "error": "symbol required"}
+    
+    try:
+        dd = await investor_due_diligence(email=email, symbol=symbol, region=region)
+    except Exception as e:
+        return {"success": False, "error": f"DD failed: {str(e)[:200]}"}
+    
+    if not dd.get("success"):
+        return {"success": False, "error": "DD generation failed."}
+    
+    company  = dd.get("company") or {}
+    thesis   = dd.get("thesis") or {}
+    bottom   = dd.get("bottom_line") or {}
+    valuation = dd.get("valuation_detail") or {}
+    
+    # Score: prefer thesis.investability_score, fallback to bottom_line.composite_score
+    score = thesis.get("investability_score") or bottom.get("composite_score")
+    verdict = thesis.get("verdict") or bottom.get("verdict") or "Unknown"
+    
+    spot = _safe_float(thesis.get("spot_price"))
+    dcf  = _safe_float(valuation.get("fair_value")) or _safe_float(thesis.get("dcf_fair_value"))
+    upside = None
+    if spot > 0 and dcf > 0:
+        upside = round((dcf - spot) / spot * 100, 1)
+    
+    return {
+        "success":   True,
+        "symbol":    symbol,
+        "name":      company.get("name", symbol),
+        "sector":    company.get("sector"),
+        "score":     score,
+        "verdict":   verdict,
+        "spot":      spot if spot > 0 else None,
+        "dcf_fair":  dcf if dcf > 0 else None,
+        "upside_pct": upside,
+        "forward_pe": thesis.get("forward_pe"),
+        "trailing_pe": thesis.get("trailing_pe"),
+    }
+
+
 @app.get("/api/deep-insights")
 async def deep_insights(symbol: str = "", region: str = "US", email: str = "",
                         nocache: int = 0):
@@ -32206,20 +32257,29 @@ Format your response as JSON exactly like this:
 
 def _r6318_compute_scenarios(dd_data):
     """Returns dict with bull/base/bear price targets + reasoning.
-    All math derives from data already in DD report.
+    r63.22: Fixed field paths — reads from thesis/finance/valuation_detail.
     Returns None if insufficient data."""
-    company = dd_data.get("company") or {}
+    thesis = dd_data.get("thesis") or {}
+    finance = dd_data.get("finance") or {}
     valuation = dd_data.get("valuation_detail") or {}
     
-    spot = _safe_float(company.get("price"))
+    # Spot from thesis (canonical), with fallback
+    spot = _safe_float(thesis.get("spot_price"))
+    if spot <= 0:
+        spot = _safe_float((dd_data.get("company") or {}).get("price"))
+    
+    # DCF from valuation_detail OR thesis.dcf_fair_value
     dcf_fair = _safe_float(valuation.get("fair_value"))
+    if dcf_fair <= 0:
+        dcf_fair = _safe_float(thesis.get("dcf_fair_value"))
     
     if spot <= 0 or dcf_fair <= 0:
         return None
     
-    # Use revenue growth as the tilt factor (bounded -10% to +50%)
-    rev_growth = _safe_float(company.get("revenue_growth"))
-    rev_growth = max(-0.10, min(0.50, rev_growth)) if rev_growth else 0.05
+    # Revenue growth — finance dict stores as percentage (e.g., 15.0 = 15%)
+    rev_growth_pct = _safe_float(finance.get("revenue_growth_yoy_pct"))
+    rev_growth = (rev_growth_pct / 100.0) if rev_growth_pct else 0.05  # convert to decimal
+    rev_growth = max(-0.10, min(0.50, rev_growth))
     
     # Base case: DCF fair value
     base_target = dcf_fair
@@ -32319,6 +32379,9 @@ async def competitor_benchmark(symbol: str = "", region: str = "US", email: str 
         return {"success": False, "error": "Could not analyze target ticker."}
     
     target_company = target_dd.get("company") or {}
+    target_thesis  = target_dd.get("thesis") or {}    # r63.22
+    target_finance = target_dd.get("finance") or {}   # r63.22
+    target_bottom  = target_dd.get("bottom_line") or {}  # r63.22
     target_sector = (target_company.get("sector") or "").strip().lower()
     
     if not target_sector:
@@ -32344,15 +32407,19 @@ async def competitor_benchmark(symbol: str = "", region: str = "US", email: str 
             peer_sector = (peer_co.get("sector") or "").strip().lower()
             if peer_sector != target_sector:
                 return None
+            # r63.22: Read from correct paths in DD response
+            peer_thesis  = peer_dd.get("thesis") or {}
+            peer_finance = peer_dd.get("finance") or {}
+            peer_bottom  = peer_dd.get("bottom_line") or {}
             return {
                 "ticker":        ticker,
                 "name":          peer_co.get("name", ticker),
-                "price":         peer_co.get("price"),
-                "market_cap":    peer_co.get("market_cap"),
-                "forward_pe":    peer_co.get("forward_pe"),
-                "rev_growth":    peer_co.get("revenue_growth"),
-                "op_margin":     peer_co.get("operating_margin"),
-                "score":         peer_dd.get("composite_score") or peer_dd.get("institutional_score"),
+                "price":         peer_thesis.get("spot_price"),
+                "market_cap":    peer_thesis.get("market_cap"),
+                "forward_pe":    peer_thesis.get("forward_pe"),
+                "rev_growth":    peer_finance.get("revenue_growth_yoy_pct"),
+                "op_margin":     peer_finance.get("operating_margin_pct"),
+                "score":         peer_thesis.get("investability_score") or peer_bottom.get("composite_score"),
             }
         except Exception:
             return None
@@ -32387,12 +32454,12 @@ async def competitor_benchmark(symbol: str = "", region: str = "US", email: str 
         "target": {
             "ticker":     symbol,
             "name":       target_company.get("name", symbol),
-            "price":      target_company.get("price"),
-            "market_cap": target_company.get("market_cap"),
-            "forward_pe": target_company.get("forward_pe"),
-            "rev_growth": target_company.get("revenue_growth"),
-            "op_margin":  target_company.get("operating_margin"),
-            "score":      target_dd.get("composite_score") or target_dd.get("institutional_score"),
+            "price":      target_thesis.get("spot_price"),
+            "market_cap": target_thesis.get("market_cap"),
+            "forward_pe": target_thesis.get("forward_pe"),
+            "rev_growth": target_finance.get("revenue_growth_yoy_pct"),
+            "op_margin":  target_finance.get("operating_margin_pct"),
+            "score":      target_thesis.get("investability_score") or target_bottom.get("composite_score"),
         },
         "peers": peers,
         "peer_count": len(peers),

@@ -929,3 +929,37 @@ Elevator pitch render also handles both paths with multiple fallbacks (cs-dd-ver
 - Polling handles both render paths
 
 **Lesson #7 today:** Always grep for existing patterns BEFORE writing new code, not after the bug report. Today's bugs all came from assumptions: re imported (wasn't), single DOM path (was 2), null only (also 'N/A'), my taste vs platform's identity (mine was wrong).
+
+---
+
+## v4.63.22 — Field path fixes + graphical redesign (current)
+
+**Built:** 2026-05-03
+
+**User feedback:** "fix the gaps and with premium data... display data with appropriate information... appreciate UI has premium level representation... not even beginner level"
+
+**Root cause of all 3 broken sections in r63.18-21:** Wrong field paths.
+The DD response is structured with metadata in `company`, prices/PE/score in `thesis`, growth/margins in `finance`, DCF in `valuation_detail`. My endpoints looked for everything in `company` — got None → rendered `—`.
+
+**Backend fixes:**
+- Scenarios: `thesis.spot_price` + `valuation_detail.fair_value` (was reading nonexistent `company.price`)
+- Benchmark: peer + target both read from `peer_thesis`/`peer_finance` (was reading from `peer_co` which is metadata only)
+- New `/api/analyst-pitch` endpoint — pitch now reads from API not fragile DOM
+
+**Verified via runtime simulation:**
+- Scenarios for realistic WDC data returns Bull $122 / Base $95.50 / Bear $66.85 (not None)
+- Benchmark returns all fields (price, forward_pe, rev_growth, op_margin, score) populated
+
+**Frontend redesign:**
+- Card visually integrated with existing report sections (same border/shadow/padding pattern)
+- Pill-style tabs matching India/USA toggle aesthetic
+- Pitch: SVG donut chart + threshold ladder + tier-colored conviction label
+- Insights: 3 sections with severity-coded icon tiles
+- Scenarios: HORIZONTAL price distribution chart (BULL/BASE/BEAR + SPOT markers) — one chart not 3 cards
+- Peers: COMPARATIVE BARS per metric, target highlighted with navy + ★
+
+**Removed:** All r63.21 strip code (`cs-r6321-strip`, `_csR6321Inject*`). Polling auto-removes legacy elements if encountered.
+
+**17/17 audit checks pass. Runtime simulation confirms real numbers.**
+
+**Process discipline that finally landed:** Confirmed actual data shapes via grep BEFORE writing code. Ran runtime simulation BEFORE shipping. Verified field paths in the actual zip. This broke the "ship → broken → patch → broken" pattern.
