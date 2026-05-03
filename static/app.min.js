@@ -1,9 +1,9 @@
 // ═══ Celesys version stamp ═══
-window.CELESYS_VERSION = "v4.63.19";
-window.CELESYS_BUILD_TIME = 1777764790;
-window.CELESYS_BUILD_DATE = "2026-05-02 23:33:10 UTC";
+window.CELESYS_VERSION = "v4.63.20";
+window.CELESYS_BUILD_TIME = 1777769198;
+window.CELESYS_BUILD_DATE = "2026-05-03 00:46:38 UTC";
 console.log("%c━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "color:#1A3A78");
-console.log("%c CELESYS v4.63.19 %c loaded · 2026-04-29 03:29:27 UTC",
+console.log("%c CELESYS v4.63.20 %c loaded · 2026-04-29 03:29:27 UTC",
   "background:#1A3A78;color:#fff;font-weight:900;padding:3px 8px;border-radius:3px;font-family:monospace",
   "color:#1A3A78;font-weight:700;font-family:monospace");
 console.log("%c━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "color:#1A3A78");
@@ -25463,20 +25463,45 @@ window._csEwHomeStripInject = function() {
 
 window._csR6318LastSymbol = null;
 
-// Main entry: called after every renderReport
-window._csR6318InjectSections = function() {
-  var verdictStrip = document.getElementById('sec-verdict-strip');
-  if (!verdictStrip) return;  // not on a DD report page
+// r63.20: Main entry — accepts anchor info from polling (handles old + new paths)
+window._csR6318InjectSections = function(anchorInfo) {
+  // Accept anchor info from polling, or auto-detect (backward compat)
+  if (!anchorInfo) {
+    var strip = document.getElementById('sec-verdict-strip');
+    if (strip) {
+      anchorInfo = {
+        insertParent: strip.parentNode,
+        insertBefore: strip.nextSibling,
+        sym: (strip.querySelector('.cs-dd-verdict__sym') || {}).textContent || window._ddLastSymbol || ''
+      };
+    } else {
+      var hdr = document.getElementById('sec-verdict');
+      if (hdr) {
+        var scCard = hdr;
+        for (var i = 0; i < 5 && scCard; i++) {
+          if (scCard.classList && scCard.classList.contains('sc')) break;
+          scCard = scCard.parentNode;
+        }
+        if (!scCard) return;
+        anchorInfo = {
+          insertParent: scCard.parentNode,
+          insertBefore: scCard.nextSibling,
+          sym: window._ddLastSymbol || ''
+        };
+      } else {
+        return;  // no anchor found
+      }
+    }
+  }
   
-  // Already injected this render? (re-injection on tab switch can dup)
-  if (verdictStrip.parentNode && verdictStrip.parentNode.querySelector('.cs-r6318-section')) {
+  var sym = (anchorInfo.sym || '').trim();
+  if (!sym) return;
+  
+  // Already injected anywhere?
+  if (document.querySelector('.cs-r6318-section')) {
     return;
   }
   
-  // Determine ticker — read from verdict strip badge or from window._ddLastSymbol
-  var symEl = verdictStrip.querySelector('.cs-dd-verdict__sym');
-  var sym = symEl ? symEl.textContent.trim() : (window._ddLastSymbol || '');
-  if (!sym) return;
   window._csR6318LastSymbol = sym;
   
   // Build the 4-section container
@@ -25484,15 +25509,19 @@ window._csR6318InjectSections = function() {
   container.className = 'cs-r6318-section';
   container.style.cssText = 'margin:14px 0;display:flex;flex-direction:column;gap:14px';
   container.innerHTML =
-    _csR6318ElevatorPitchHtml(sym) +     // section 1 — pure JS, instant
-    _csR6318DeepInsightsHtml(sym) +       // section 2 — click to load LLM
-    _csR6318ScenariosHtml(sym) +          // section 3 — click to load
-    _csR6318BenchmarkHtml(sym);           // section 4 — click to load
+    _csR6318ElevatorPitchHtml(sym) +
+    _csR6318DeepInsightsHtml(sym) +
+    _csR6318ScenariosHtml(sym) +
+    _csR6318BenchmarkHtml(sym);
   
-  // Insert after verdict strip
-  verdictStrip.parentNode.insertBefore(container, verdictStrip.nextSibling);
+  // Insert at the anchor location
+  if (anchorInfo.insertParent) {
+    anchorInfo.insertParent.insertBefore(container, anchorInfo.insertBefore);
+  } else {
+    document.body.appendChild(container);
+  }
   
-  // Auto-render elevator pitch immediately (it's free — uses already-loaded DD data)
+  // Auto-render elevator pitch immediately
   _csR6318RenderElevatorPitch(sym);
 };
 
@@ -25511,14 +25540,46 @@ function _csR6318RenderElevatorPitch(sym) {
   var body = document.getElementById('cs-r6318-pitch-body');
   if (!body) return;
   
-  // Read data from already-rendered verdict strip + stats
+  // r63.20: Read data from EITHER render path
+  // NEW path: .cs-dd-verdict__score / __pill / __name
+  // OLD path: read from window globals OR from sec-verdict card content
   var scoreEl = document.querySelector('.cs-dd-verdict__score');
   var pillEl = document.querySelector('.cs-dd-verdict__pill');
   var nameEl = document.querySelector('.cs-dd-verdict__name');
   
   var score = scoreEl ? parseFloat(scoreEl.textContent) : null;
-  var verdict = pillEl ? pillEl.textContent.trim() : 'Unknown';
-  var name = nameEl ? nameEl.textContent.trim() : sym;
+  var verdict = pillEl ? pillEl.textContent.trim() : null;
+  var name = nameEl ? nameEl.textContent.trim() : null;
+  
+  // OLD path fallbacks
+  if (score == null || isNaN(score)) {
+    // Try window._lastReportData (set by some renderers)
+    if (window._lastReportData) {
+      score = window._lastReportData.composite_score || window._lastReportData.institutional_score;
+      verdict = verdict || window._lastReportData.verdict;
+      name = name || (window._lastReportData.company || {}).name;
+    }
+  }
+  if (score == null || isNaN(score)) {
+    // Last resort: read from sec-verdict card text
+    var oldCard = document.getElementById('sec-verdict');
+    if (oldCard) {
+      var card = oldCard;
+      for (var i = 0; i < 5 && card; i++) {
+        if (card.classList && card.classList.contains('sc')) break;
+        card = card.parentNode;
+      }
+      if (card) {
+        var txt = card.textContent || '';
+        var scoreMatch = txt.match(/(\d+(?:\.\d+)?)\s*\/\s*100/);
+        if (scoreMatch) score = parseFloat(scoreMatch[1]);
+        var verdictMatch = txt.match(/(STRONG BUY|BUY|HOLD|SELL|STRONG SELL|AVOID)/i);
+        if (verdictMatch && !verdict) verdict = verdictMatch[1];
+      }
+    }
+  }
+  verdict = verdict || 'Unknown';
+  name = name || sym;
   
   if (score == null || isNaN(score)) {
     body.textContent = 'Score data not available for elevator pitch.';
@@ -25754,41 +25815,89 @@ window._csR6318LoadBenchmark = function() {
     });
 };
 
-// r63.19: Direct DOM polling — simpler than coordinator hooking, more reliable.
-// Runs every 1 second for the lifetime of the page. When verdict strip appears
-// AND no sections injected yet, calls injector. Idempotent (injector self-checks).
-// CPU cost: trivial (one getElementById per second).
+// r63.20: Direct DOM polling — handles BOTH render paths (old + new Aladdin)
+// OLD path (most common): id="sec-verdict" inside .sc card with sub-elements
+// NEW path (Aladdin redesign): id="sec-verdict-strip" with .cs-dd-verdict__sym child
+// Polling tries both selectors. CPU cost: trivial.
 (function() {
   var lastInjectedSym = null;
+  
+  // Find anchor element + extract ticker, supporting both render paths
+  function findAnchor() {
+    // Try NEW path first (Aladdin redesign)
+    var strip = document.getElementById('sec-verdict-strip');
+    if (strip) {
+      var symEl = strip.querySelector('.cs-dd-verdict__sym');
+      var sym = symEl ? symEl.textContent.trim() : (window._ddLastSymbol || '');
+      // For new path, parent is the report container; insert after the verdict strip itself
+      return { 
+        anchor: strip, 
+        insertParent: strip.parentNode, 
+        insertBefore: strip.nextSibling,
+        sym: sym,
+        path: 'new'
+      };
+    }
+    
+    // Try OLD path
+    var verdictHeader = document.getElementById('sec-verdict');
+    if (verdictHeader) {
+      // OLD path: sec-verdict is the section header text inside an .sc card
+      // Walk up to find the .sc card (the actual section container)
+      var scCard = verdictHeader;
+      var hops = 0;
+      while (scCard && hops < 5) {
+        if (scCard.classList && scCard.classList.contains('sc')) break;
+        scCard = scCard.parentNode;
+        hops++;
+      }
+      if (!scCard) return null;
+      
+      // Get ticker from window._ddLastSymbol (set by app.js on report load)
+      var sym = window._ddLastSymbol || window._currentTicker || '';
+      // Fallback: try reading from the verdict card content
+      if (!sym) {
+        var bodyText = scCard.textContent || '';
+        var match = bodyText.match(/\b([A-Z]{1,6})\b/);
+        if (match) sym = match[1];
+      }
+      
+      return {
+        anchor: scCard,
+        insertParent: scCard.parentNode,
+        insertBefore: scCard.nextSibling,
+        sym: sym,
+        path: 'old'
+      };
+    }
+    
+    return null;
+  }
+  
   setInterval(function() {
     try {
-      var verdictStrip = document.getElementById('sec-verdict-strip');
-      if (!verdictStrip) return;
+      var found = findAnchor();
+      if (!found || !found.sym) return;
       
-      // Read current ticker from verdict strip
-      var symEl = verdictStrip.querySelector('.cs-dd-verdict__sym');
-      var currentSym = symEl ? symEl.textContent.trim() : null;
-      if (!currentSym) return;
+      // Check if we already injected somewhere in the report
+      var existing = document.querySelector('.cs-r6318-section');
       
-      // Already injected for THIS ticker?
-      var existing = verdictStrip.parentNode && verdictStrip.parentNode.querySelector('.cs-r6318-section');
-      
-      if (existing && lastInjectedSym === currentSym) {
+      if (existing && lastInjectedSym === found.sym) {
         return;  // already done for this ticker
       }
       
-      // Different ticker? Remove stale injection
-      if (existing && lastInjectedSym !== currentSym) {
+      // Different ticker? Remove stale injection (could be in different parent now)
+      if (existing && lastInjectedSym !== found.sym) {
         existing.remove();
       }
       
-      // Run injector
+      // Run injector with the found anchor info
       if (typeof window._csR6318InjectSections === 'function') {
-        window._csR6318InjectSections();
-        lastInjectedSym = currentSym;
+        window._csR6318InjectSections(found);
+        lastInjectedSym = found.sym;
       }
     } catch (e) {
-      // swallow — don't let one error kill the polling loop
+      // swallow — don't kill the polling loop
     }
   }, 1000);
 })();

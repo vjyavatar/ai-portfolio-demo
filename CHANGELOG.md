@@ -865,3 +865,28 @@ Same proven pattern as r63.9 toolbar polling. Works regardless of which render c
 - Compile + JS syntax + byte-identical min.js
 
 **Architectural lesson:** Direct simple patterns beat clever hook chains. Polling has trivial CPU cost (~1 getElementById/sec) but is unbreakable. Coordinator hooks are elegant but break in subtle ways. Today's session has reinforced this lesson 5 times. Finally internalized.
+
+---
+
+## v4.63.20 — Fix r63.18 sections invisible on OLD render path (current)
+
+**Built:** 2026-05-03
+
+**User report:** Screenshot of full DD report (Earnings Move, Institutional, Insider, etc.) — none of the 4 new r63.18 sections visible anywhere.
+
+**Root cause:** Codebase has TWO DD render paths — NEW Aladdin (line 12466, `id="sec-verdict-strip"`) and OLD legacy (line 1905, `id="sec-verdict"` inside `.sc` cards). r63.18 polling only looked for the NEW path. User's screenshot was unmistakably the OLD path.
+
+**Fix:** Polling now detects both paths:
+- Tries `#sec-verdict-strip` first (new Aladdin)
+- Falls back to `#sec-verdict` (old) and walks up to containing `.sc` card
+- Extracts ticker from new-path child or `window._ddLastSymbol` (old)
+- Inserts after verdict element regardless of path
+
+Elevator pitch render also handles both paths with multiple fallbacks (cs-dd-verdict__score selectors → window._lastReportData → regex parse from card text).
+
+**Verified:**
+- Behavioral test passes both paths (new=MU detected, old=SNDK detected)
+- 8 dual-path references in code (was 4 single-path before)
+- Compile + JS syntax + byte-identical min.js
+
+**Architectural lesson #6 today:** Always grep for ALL occurrences of a target element/variable before integrating. Multiple render paths is common in evolving codebases. r63.18 assumed canonical, was wrong. r63.20 handles reality.
