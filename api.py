@@ -1801,9 +1801,9 @@ def _safe_float(val, default=0.0):
         return default
 
 # ═══ Celesys version stamp (v4.61.10) ═══════════════════════════════
-APP_VERSION = "v4.63.33"
-APP_BUILD_TIME = 1777845558
-APP_BUILD_DATE = "2026-05-03 21:59:18 UTC"
+APP_VERSION = "v4.63.36"
+APP_BUILD_TIME = 1777847453
+APP_BUILD_DATE = "2026-05-03 22:30:53 UTC"
 APP_RELEASE_NOTES = (
     "v4.62.0: Micro-Cap Hunter scanner (Decide tab) + cumulative r61.x: Aladdin DD entry page (r61.8), "
     "stale-cache fallback (r61.8), multi-factor Bottom Line (r61.7), "
@@ -2011,6 +2011,59 @@ def fetch_finviz_fundamentals(ticker: str) -> dict:
     except Exception as e:
         print(f"  ⚠️ Finviz fundamentals failed: {e}")
         return None
+
+
+# ═══════════════════════════════════════════════════════════════════
+# r63.34: SINGLE CANONICAL FORMULA for bull/base/bear price targets
+# Used by: /api/scenarios, /api/exit-strategy, /api/forward-value
+# Eliminates clamp-mismatch bugs that produced different bull targets per endpoint.
+# ═══════════════════════════════════════════════════════════════════
+def _r6334_compute_price_targets(spot, dcf_fair, rev_growth_pct):
+    """Returns dict with bull/base/bear targets using ONE canonical formula.
+    
+    Args:
+        spot: current spot price
+        dcf_fair: canonical fair value (from weighted blend)
+        rev_growth_pct: revenue growth as percentage (e.g., 18.5 = 18.5%)
+    
+    Returns:
+        {
+            "bull": <bull target>,
+            "base": <base target = fair value>,
+            "bear": <bear target>,
+            "rev_growth_used": <clamped growth as decimal>,
+            "rev_growth_clamped": True/False  (whether input was clamped)
+        }
+    """
+    if not (spot and dcf_fair) or spot <= 0 or dcf_fair <= 0:
+        return None
+    
+    # Convert percentage to decimal
+    raw_growth = (rev_growth_pct / 100.0) if rev_growth_pct else 0.05
+    
+    # Single canonical clamp: -10% to +50%
+    # Above 50% growth, fundamentals can't sustain — cap conservatively
+    CLAMP_LOW = -0.10
+    CLAMP_HIGH = 0.50
+    rev_growth = max(CLAMP_LOW, min(CLAMP_HIGH, raw_growth))
+    was_clamped = (raw_growth > CLAMP_HIGH or raw_growth < CLAMP_LOW)
+    
+    # Single canonical formula:
+    # Bull = DCF × (1 + growth × 1.5)  — accelerating fundamentals + multiple expansion
+    # Base = DCF                        — fair value
+    # Bear = DCF × 0.70                 — multiple compression scenario
+    bull = round(dcf_fair * (1 + rev_growth * 1.5), 2)
+    base = round(dcf_fair, 2)
+    bear = round(dcf_fair * 0.70, 2)
+    
+    return {
+        "bull": bull,
+        "base": base,
+        "bear": bear,
+        "rev_growth_used": round(rev_growth, 3),
+        "rev_growth_raw":  round(raw_growth, 3),
+        "rev_growth_clamped": was_clamped,
+    }
 
 
 
@@ -29101,7 +29154,14 @@ async def investor_due_diligence(email: str = "", symbol: str = "", region: str 
             _canonical_fair_high  = _safe_float(_decide_bands.get("bull"))
             _canonical_fair_spread = _safe_float(_decide_bands.get("spread"))
             # Pull individual method components for transparency
-            _decide_methods = (_decide_result or {}).get("ivMethods") or (_decide_result or {}).get("iv_methods") or []
+            # r63.35: investor_decide exposes methods under intrinsicValue.methods (line 21923)
+            # NOT under ivMethods or iv_methods (those names don't exist in the response).
+            # That's why fair_value_components has been empty since r63.32.
+            _intrinsic = (_decide_result or {}).get("intrinsicValue") or {}
+            _decide_methods = _intrinsic.get("methods") or []
+            # Also pull average + marginOfSafety from intrinsicValue if probabilityBands missing
+            if not _canonical_fair_value or _canonical_fair_value <= 0:
+                _canonical_fair_value = _safe_float(_intrinsic.get("average"))
             if isinstance(_decide_methods, list):
                 _canonical_fair_components = [
                     {"name": m.get("name"), "value": m.get("value"), "desc": m.get("desc")}
@@ -32361,20 +32421,15 @@ def _r6318_compute_scenarios(dd_data):
     if spot <= 0 or dcf_fair <= 0:
         return None
     
-    # Revenue growth — finance dict stores as percentage (e.g., 15.0 = 15%)
+    # r63.34: Use canonical helper — same formula across Scenarios, Exit Strategy, Forward Value
     rev_growth_pct = _safe_float(finance.get("revenue_growth_yoy_pct"))
-    rev_growth = (rev_growth_pct / 100.0) if rev_growth_pct else 0.05  # convert to decimal
-    rev_growth = max(-0.10, min(0.50, rev_growth))
-    
-    # Base case: DCF fair value
-    base_target = dcf_fair
-    
-    # Bull case: DCF × (1 + growth × 1.5) — assumes accelerating fundamentals + multiple expansion
-    bull_multiplier = 1 + (rev_growth * 1.5)
-    bull_target = dcf_fair * bull_multiplier
-    
-    # Bear case: DCF × 0.70 — recession scenario, multiple compression
-    bear_target = dcf_fair * 0.70
+    _targets = _r6334_compute_price_targets(spot, dcf_fair, rev_growth_pct)
+    if not _targets:
+        return None
+    rev_growth = _targets["rev_growth_used"]
+    bull_target = _targets["bull"]
+    base_target = _targets["base"]
+    bear_target = _targets["bear"]
     
     def upside_pct(target): 
         return ((target - spot) / spot * 100) if spot > 0 else 0
@@ -32592,9 +32647,13 @@ async def forward_value(symbol: str = "", region: str = "US", email: str = ""):
         return {"success": False, "error": "Insufficient data: DCF fair value not available."}
     
     fwd_pe = _safe_float(thesis.get("forward_pe"))
+    # r63.34: Canonical helper — same clamp/formula as Scenarios + Exit Strategy
     rev_growth_pct = _safe_float(finance.get("revenue_growth_yoy_pct"))
-    rev_growth = (rev_growth_pct / 100.0) if rev_growth_pct else 0.05
-    rev_growth = max(-0.10, min(0.40, rev_growth))  # bound
+    _targets_fv = _r6334_compute_price_targets(spot, dcf_fair, rev_growth_pct)
+    if _targets_fv:
+        rev_growth = _targets_fv["rev_growth_used"]
+    else:
+        rev_growth = max(-0.10, min(0.50, (rev_growth_pct / 100.0) if rev_growth_pct else 0.05))
     
     # Dividend yield from yfinance (already computed in DD if available)
     div_yield_pct = _safe_float(finance.get("dividend_yield_pct"))
@@ -32755,16 +32814,19 @@ async def exit_strategy(symbol: str = "", region: str = "US", email: str = "",
     if dcf_fair <= 0:
         return {"success": False, "error": "Insufficient data: DCF fair value not available."}
     
+    # r63.34: Canonical helper — same formula as Scenarios + Forward Value
     rev_growth_pct = _safe_float(finance.get("revenue_growth_yoy_pct"))
-    rev_growth = (rev_growth_pct / 100.0) if rev_growth_pct else 0.05
-    rev_growth = max(-0.10, min(0.40, rev_growth))
+    _targets = _r6334_compute_price_targets(spot, dcf_fair, rev_growth_pct)
+    if not _targets:
+        return {"success": False, "error": "Insufficient data for exit strategy."}
+    rev_growth = _targets["rev_growth_used"]
     
     # Use spot as entry if not specified
     entry = entry_price if entry_price > 0 else spot
     
     # ────── Price Ladder ──────
-    bull_target = round(dcf_fair * (1 + rev_growth * 1.5), 2)
-    base_target = round(dcf_fair, 2)
+    bull_target = _targets["bull"]
+    base_target = _targets["base"]
     
     # Entry zone: 5% below spot to spot+2% (institutional accumulation band)
     entry_low  = round(spot * 0.95, 2)
@@ -33226,6 +33288,103 @@ async def journal_delete(request: Request):
     return {"success": False, "error": "Failed to save"}
 
 _portfolio_progress = {"done": 0, "total": 0, "current": "", "started": 0, "active": False}
+
+
+@app.get("/api/diag-fairvalue")
+async def diag_fairvalue(symbol: str = "", region: str = "US", email: str = ""):
+    """r63.36: Diagnostic endpoint — shows the full fair value pipeline.
+    Lets us validate exactly what investor_decide returns for any ticker.
+    
+    Use: curl 'https://celesys.ai/api/diag-fairvalue?symbol=MU&email=yrk@eml.com'
+    """
+    email = (email or "").strip().lower()
+    _ok, email = check_premium_gate(email, "dream")
+    if not _ok:
+        return {"success": False, "error": "Premium required"}
+    
+    if not symbol:
+        return {"success": False, "error": "symbol required"}
+    
+    symbol = symbol.strip().upper()
+    region = region.strip().upper()
+    
+    out = {
+        "success": True,
+        "symbol": symbol,
+        "region": region,
+        "investor_decide": {"called": False, "success": None, "error": None},
+        "fair_value_pipeline": {},
+        "field_path_check": {},
+        "issues": [],
+    }
+    
+    # Step 1: Call investor_decide directly
+    try:
+        decide_result = await investor_decide(symbol=symbol, region=region, nocache=1)
+        out["investor_decide"]["called"] = True
+        out["investor_decide"]["success"] = decide_result.get("success", False) if isinstance(decide_result, dict) else False
+        if not out["investor_decide"]["success"]:
+            out["investor_decide"]["error"] = decide_result.get("error", "unknown") if isinstance(decide_result, dict) else "non-dict response"
+            out["issues"].append("investor_decide returned success=False — components will be empty")
+            return out
+    except Exception as e:
+        out["investor_decide"]["error"] = str(e)[:300]
+        out["issues"].append(f"investor_decide raised exception: {str(e)[:100]}")
+        return out
+    
+    # Step 2: Check if expected fields exist in response
+    iv = decide_result.get("intrinsicValue", {})
+    pb = decide_result.get("probabilityBands", {})
+    
+    out["field_path_check"] = {
+        "has_intrinsicValue":           bool(iv),
+        "has_intrinsicValue_methods":   bool(iv.get("methods")),
+        "intrinsicValue_methods_count": len(iv.get("methods") or []),
+        "has_intrinsicValue_average":   iv.get("average") is not None,
+        "has_probabilityBands":         bool(pb),
+        "has_probabilityBands_base":    pb.get("base") is not None,
+        "has_probabilityBands_bull":    pb.get("bull") is not None,
+        "has_probabilityBands_bear":    pb.get("bear") is not None,
+        "has_probabilityBands_spread":  pb.get("spread") is not None,
+    }
+    
+    # Step 3: Show actual values
+    out["fair_value_pipeline"] = {
+        "spot_price":           decide_result.get("price"),
+        "intrinsicValue_average":      iv.get("average"),
+        "intrinsicValue_marginOfSafety": iv.get("marginOfSafety"),
+        "probabilityBands":     pb,
+        "methods":              [
+            {
+                "name":  m.get("name"),
+                "value": m.get("value"),
+                "desc":  (m.get("desc", "") or "")[:120],
+            }
+            for m in (iv.get("methods") or [])
+        ],
+    }
+    
+    # Step 4: Issues check
+    if not iv.get("methods"):
+        out["issues"].append("intrinsicValue.methods is empty — component breakdown will not render")
+    elif len(iv.get("methods") or []) < 2:
+        out["issues"].append(f"Only {len(iv.get('methods') or [])} method(s) computed — fair value may be unreliable")
+    
+    if not pb.get("base"):
+        out["issues"].append("probabilityBands.base missing — fair_value falls back to intrinsicValue.average")
+    
+    methods_list = iv.get("methods") or []
+    if methods_list:
+        values = [m.get("value", 0) for m in methods_list if m.get("value") and m.get("value") > 0]
+        if len(values) >= 2:
+            spread_pct = (max(values) - min(values)) / max(values) * 100
+            out["fair_value_pipeline"]["component_spread_pct"] = round(spread_pct, 1)
+            out["fair_value_pipeline"]["component_min"]  = min(values)
+            out["fair_value_pipeline"]["component_max"]  = max(values)
+            if spread_pct > 50:
+                out["issues"].append(f"HIGH method disagreement: {spread_pct:.0f}% spread between methods")
+    
+    return out
 
 @app.get("/api/portfolio-scan-progress")
 async def portfolio_scan_progress():

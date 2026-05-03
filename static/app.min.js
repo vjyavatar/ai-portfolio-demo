@@ -1,9 +1,9 @@
 // ═══ Celesys version stamp ═══
-window.CELESYS_VERSION = "v4.63.33";
-window.CELESYS_BUILD_TIME = 1777845558;
-window.CELESYS_BUILD_DATE = "2026-05-03 21:59:18 UTC";
+window.CELESYS_VERSION = "v4.63.36";
+window.CELESYS_BUILD_TIME = 1777847453;
+window.CELESYS_BUILD_DATE = "2026-05-03 22:30:53 UTC";
 console.log("%c━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "color:#1A3A78");
-console.log("%c CELESYS v4.63.33 %c loaded · 2026-04-29 03:29:27 UTC",
+console.log("%c CELESYS v4.63.36 %c loaded · 2026-04-29 03:29:27 UTC",
   "background:#1A3A78;color:#fff;font-weight:900;padding:3px 8px;border-radius:3px;font-family:monospace",
   "color:#1A3A78;font-weight:700;font-family:monospace");
 console.log("%c━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "color:#1A3A78");
