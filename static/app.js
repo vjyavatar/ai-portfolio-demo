@@ -1,9 +1,9 @@
 // ═══ Celesys version stamp ═══
-window.CELESYS_VERSION = "v4.63.38";
-window.CELESYS_BUILD_TIME = 1777852595;
-window.CELESYS_BUILD_DATE = "2026-05-03 23:56:35 UTC";
+window.CELESYS_VERSION = "v4.63.40";
+window.CELESYS_BUILD_TIME = 1777854738;
+window.CELESYS_BUILD_DATE = "2026-05-04 00:32:18 UTC";
 console.log("%c━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "color:#1A3A78");
-console.log("%c CELESYS v4.63.38 %c loaded · 2026-04-29 03:29:27 UTC",
+console.log("%c CELESYS v4.63.40 %c loaded · 2026-04-29 03:29:27 UTC",
   "background:#1A3A78;color:#fff;font-weight:900;padding:3px 8px;border-radius:3px;font-family:monospace",
   "color:#1A3A78;font-weight:700;font-family:monospace");
 console.log("%c━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "color:#1A3A78");
@@ -25573,7 +25573,7 @@ window._csR6322ShowTab = function(tabId) {
   if (tabId === 'scenarios') url = '/api/scenarios';
   if (tabId === 'peers')     url = '/api/competitor-benchmark';
   if (tabId === 'forward')   url = '/api/forward-value';      /* r63.25 */
-  if (tabId === 'execution') url = '/api/execution-score';    /* r63.38 */
+  if (tabId === 'execution') url = '/api/execution-score-v2'; /* r63.39 */
   if (tabId === 'exit')      url = '/api/exit-strategy';      /* r63.25 */
   if (tabId === 'calendar')  url = '/api/catalyst-calendar';  /* r63.25 */
   
@@ -26286,136 +26286,207 @@ function _csR6322RenderExecution(d) {
   var score = d.execution_score;
   var quality = d.score_quality || 'PARTIAL';
   
-  // ── HEADER: BIG SCORE + VERDICT ──
+  // ── HEADER: BIG SCORE + STATE + MATURITY + ACTION SUMMARY ──
   if (score == null) {
     html += '<div style="background:#fef2f2;border:2px solid #dc2626;border-radius:8px;padding:16px 20px;margin-bottom:18px">';
     html += '<div style="font-size:14px;font-weight:800;color:#7f1d1d;font-family:Sora,sans-serif">⚠ INSUFFICIENT EXECUTION DATA</div>';
-    html += '<div style="font-size:12px;color:#475569;margin-top:6px;line-height:1.6">Need at least 4 of 6 components for a valid score. Available components below.</div>';
+    html += '<div style="font-size:12px;color:#475569;margin-top:6px;line-height:1.6">' + _csEscape(d.error_note || 'Need at least 4 of 6 components for valid score.') + '</div>';
     html += '</div>';
   } else {
-    var vColor = d.verdict_color || '#3b82f6';
-    var bgGrad = score >= 80 ? '#ecfdf5' : score >= 65 ? '#f0fdf4' : score >= 50 ? '#fffbeb' : score >= 35 ? '#fef3c7' : '#fef2f2';
+    var es = d.entry_state || {};
+    var stateColor = es.color || '#3b82f6';
+    var bgGrad = score >= 75 ? '#ecfdf5' : score >= 60 ? '#f0fdf4' : score >= 45 ? '#fffbeb' : '#fef2f2';
     
-    html += '<div style="background:' + bgGrad + ';border:2px solid ' + vColor + ';border-radius:10px;padding:18px 22px;margin-bottom:18px">';
-    html += '<div style="display:flex;align-items:center;gap:18px;flex-wrap:wrap">';
+    html += '<div style="background:' + bgGrad + ';border:2px solid ' + stateColor + ';border-radius:10px;padding:18px 22px;margin-bottom:14px">';
+    html += '<div style="display:flex;align-items:flex-start;gap:18px;flex-wrap:wrap;margin-bottom:14px">';
     
-    // Big score number
+    // Big score
     html += '<div style="text-align:center;flex:0 0 auto">';
     html += '<div style="font-size:9px;font-weight:800;color:#94a3b8;letter-spacing:1.5px;font-family:Sora,sans-serif;margin-bottom:2px">EXECUTION SCORE</div>';
-    html += '<div style="font-size:48px;font-weight:900;color:' + vColor + ';font-family:\'IBM Plex Mono\',monospace;line-height:1">' + score + '</div>';
+    html += '<div style="font-size:48px;font-weight:900;color:' + stateColor + ';font-family:\'IBM Plex Mono\',monospace;line-height:1">' + score + '</div>';
     html += '<div style="font-size:11px;color:#64748b;margin-top:2px">/ 100</div>';
     html += '</div>';
     
-    // Verdict + risk
-    html += '<div style="flex:1;min-width:220px">';
-    html += '<div style="font-size:14px;font-weight:800;color:' + vColor + ';font-family:Sora,sans-serif;letter-spacing:0.3px;margin-bottom:4px">' + _csEscape(d.verdict || '') + '</div>';
-    html += '<div style="font-size:12px;color:#475569;line-height:1.6">Risk Level: <strong>' + _csEscape(d.risk_level || '—') + '</strong>';
+    // State + Maturity
+    html += '<div style="flex:1;min-width:240px">';
+    html += '<div style="font-size:14px;font-weight:800;color:' + stateColor + ';font-family:Sora,sans-serif;letter-spacing:0.3px;margin-bottom:4px">' + _csEscape(es.label || '') + '</div>';
+    if (es.rationale) {
+      html += '<div style="font-size:11px;color:#475569;line-height:1.5;margin-bottom:10px">' + _csEscape(es.rationale) + '</div>';
+    }
+    var mat = d.maturity || {};
+    if (mat.label) {
+      html += '<div style="font-size:11px;color:#475569"><strong>Stage:</strong> ' + _csEscape(mat.label) + '</div>';
+    }
     if (quality !== 'FULL') {
-      html += ' · <span style="color:#d97706">Score quality: ' + quality + '</span> (' + (6 - (d.components_unavailable || []).length) + ' of 6 components)';
+      html += '<div style="font-size:10px;color:#d97706;margin-top:6px">Score quality: ' + quality + ' (some components unavailable)</div>';
     }
     html += '</div>';
+    html += '</div>';
     
-    // Entry timing
-    var et = d.entry_timing;
-    if (et) {
-      html += '<div style="margin-top:10px;padding:8px 12px;background:#fff;border-radius:6px;border-left:3px solid ' + (et.color || '#94a3b8') + '">';
-      html += '<div style="font-size:11px;font-weight:800;color:' + (et.color || '#94a3b8') + ';margin-bottom:2px">ENTRY TIMING: ' + _csEscape(et.label || '') + '</div>';
-      html += '<div style="font-size:11px;color:#475569;line-height:1.5">' + _csEscape(et.rationale || '') + '</div>';
+    // Action Summary (1-line)
+    if (d.action_summary) {
+      html += '<div style="background:#fff;border-left:4px solid ' + stateColor + ';border-radius:6px;padding:12px 16px;font-size:13px;color:#0f172a;line-height:1.6">';
+      html += '<strong>👉 Action:</strong> ' + _csEscape(d.action_summary);
+      html += '</div>';
+    }
+    
+    html += '</div>';
+  }
+  
+  // ── BREAKOUT PROBABILITY + TRAP RISK ──
+  if (d.breakout_probability != null && d.trap_risk) {
+    var prob = d.breakout_probability;
+    var trap = d.trap_risk;
+    var probColor = prob >= 70 ? '#10b981' : prob >= 50 ? '#3b82f6' : prob >= 30 ? '#f59e0b' : '#dc2626';
+    
+    html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">';
+    
+    // Breakout probability
+    html += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px 18px">';
+    html += '<div style="font-size:9px;font-weight:800;color:#94a3b8;letter-spacing:1px;font-family:Sora,sans-serif;margin-bottom:6px">BREAKOUT PROBABILITY</div>';
+    html += '<div style="display:flex;align-items:center;gap:12px">';
+    html += '<div style="font-size:30px;font-weight:900;color:' + probColor + ';font-family:\'IBM Plex Mono\',monospace;line-height:1">' + prob + '%</div>';
+    html += '<div style="flex:1;font-size:10px;color:#64748b;line-height:1.4">';
+    html += 'Rule-based estimate from Trend (25%) + Structure (20%) + Volume (20%) + Options (20%) + Volatility (15%)';
+    html += '</div>';
+    html += '</div>';
+    html += '<div style="font-size:11px;color:#94a3b8;margin-top:8px;padding-top:8px;border-top:1px solid #f1f5f9">Fake breakout risk: ' + (100 - prob) + '%</div>';
+    html += '</div>';
+    
+    // Trap risk
+    html += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px 18px">';
+    html += '<div style="font-size:9px;font-weight:800;color:#94a3b8;letter-spacing:1px;font-family:Sora,sans-serif;margin-bottom:6px">TRAP RISK</div>';
+    html += '<div style="display:flex;align-items:center;gap:12px">';
+    html += '<div style="font-size:30px;font-weight:900;color:' + trap.color + ';font-family:\'IBM Plex Mono\',monospace;line-height:1">' + trap.label + '</div>';
+    html += '<div style="flex:1;font-size:10px;color:#64748b;line-height:1.4">' + trap.score + '/100 risk score · ' + (trap.flags ? trap.flags.length : 0) + ' flags';
+    html += '</div>';
+    html += '</div>';
+    if (trap.flags && trap.flags.length > 0) {
+      html += '<div style="font-size:11px;color:#7f1d1d;margin-top:8px;padding-top:8px;border-top:1px solid #f1f5f9;line-height:1.5">';
+      trap.flags.forEach(function(f) { html += '⚠ ' + _csEscape(f) + '<br>'; });
       html += '</div>';
     }
     html += '</div>';
     html += '</div>';
+  }
+  
+  // ── TRIGGER CONDITIONS (NEXT TRIGGER PLAN) ──
+  var tc = d.trigger_conditions || {};
+  if (tc.entry_above) {
+    html += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px 18px;margin-bottom:14px">';
+    html += '<div style="font-size:11px;font-weight:800;color:#1A3A78;letter-spacing:1px;font-family:Sora,sans-serif;margin-bottom:10px">📋 NEXT TRIGGER CONDITIONS (entry plan)</div>';
+    html += '<div style="font-size:12px;color:#0f172a;line-height:1.9">';
+    html += '<div>✓ <strong>Break above:</strong> $' + Number(tc.entry_above).toFixed(2) + ' (52w high breakout confirmation)</div>';
+    if (tc.volume_required) html += '<div>✓ <strong>Volume:</strong> >' + tc.volume_required.toLocaleString() + ' (1.5× avg required)</div>';
+    if (tc.pcr_target) html += '<div>✓ <strong>Options:</strong> PCR ' + _csEscape(tc.pcr_target) + ' + Call OI building</div>';
+    if (tc.vwap_condition) html += '<div>✓ <strong>VWAP:</strong> ' + _csEscape(tc.vwap_condition) + '</div>';
+    html += '</div>';
+    if (tc.instructions) {
+      html += '<div style="font-size:10px;color:#64748b;margin-top:8px;padding-top:8px;border-top:1px solid #f1f5f9;font-style:italic">' + _csEscape(tc.instructions) + '</div>';
+    }
     html += '</div>';
   }
   
-  // ── EXIT TRIGGERS ACTIVE (warn user) ──
-  var triggers = d.exit_triggers_active || [];
-  if (triggers.length > 0) {
-    html += '<div style="background:#fef3c7;border:2px solid #f59e0b;border-radius:8px;padding:14px 18px;margin-bottom:18px">';
-    html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">';
-    html += '<span style="font-size:18px">🚨</span>';
-    html += '<span style="font-size:13px;font-weight:800;color:#92400e;letter-spacing:0.3px;font-family:Sora,sans-serif">' + triggers.length + ' EXIT TRIGGER' + (triggers.length === 1 ? '' : 'S') + ' ACTIVE</span>';
-    html += '</div>';
-    triggers.forEach(function(t) {
-      html += '<div style="background:#fff;border-radius:6px;padding:10px 12px;margin-bottom:6px">';
-      html += '<div style="font-size:12px;font-weight:700;color:#7f1d1d;margin-bottom:3px">⛔ ' + _csEscape(t.label || '') + '</div>';
-      html += '<div style="font-size:11px;color:#475569;line-height:1.5">' + _csEscape(t.action || '') + '</div>';
+  // ── WHAT'S MISSING ──
+  var missing = d.whats_missing || [];
+  if (missing.length > 0) {
+    html += '<div style="background:#fef3c7;border:2px solid #f59e0b;border-radius:10px;padding:14px 18px;margin-bottom:14px">';
+    html += '<div style="font-size:11px;font-weight:800;color:#92400e;letter-spacing:1px;font-family:Sora,sans-serif;margin-bottom:10px">❗ MISSING FOR ENTRY (' + missing.length + ' condition' + (missing.length === 1 ? '' : 's') + ')</div>';
+    missing.forEach(function(m) {
+      html += '<div style="background:#fff;border-radius:6px;padding:8px 12px;margin-bottom:6px">';
+      html += '<div style="font-size:12px;font-weight:700;color:#0f172a;margin-bottom:2px">• ' + _csEscape(m.field) + '</div>';
+      html += '<div style="font-size:11px;color:#64748b;line-height:1.5">Current: <strong>' + _csEscape(m.current || '?') + '</strong> · Needed: <strong>' + _csEscape(m.needed || '?') + '</strong>';
+      if (m.gap) html += ' · ' + _csEscape(m.gap);
+      html += '</div>';
       html += '</div>';
     });
     html += '</div>';
   }
   
-  // ── COMPONENT BREAKDOWN (institutional transparency) ──
+  // ── COMPONENT BREAKDOWN ──
   var comps = d.components || {};
   var compOrder = [
-    {key: 'trend',                label: 'Trend',                icon: '📈'},
-    {key: 'volume',               label: 'Volume',               icon: '📊'},
-    {key: 'structure',            label: 'Structure',            icon: '🏛'},
-    {key: 'options',              label: 'Options Positioning',  icon: '⚖'},
-    {key: 'vwap',                 label: 'VWAP',                 icon: '📍'},
-    {key: 'volatility_expansion', label: 'Volatility Expansion', icon: '⚡'},
+    {key: 'trend',      label: 'Trend',      icon: '📈', max: 20},
+    {key: 'volume',     label: 'Volume',     icon: '📊', max: 20},
+    {key: 'structure',  label: 'Structure',  icon: '🏛', max: 20},
+    {key: 'options',    label: 'Options',    icon: '⚖', max: 20},
+    {key: 'vwap',       label: 'VWAP',       icon: '📍', max: 10},
+    {key: 'volatility', label: 'Volatility', icon: '⚡', max: 10},
   ];
   
-  html += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:16px 20px;margin-bottom:14px">';
-  html += '<div style="font-size:11px;font-weight:800;color:#1A3A78;letter-spacing:1px;font-family:Sora,sans-serif;margin-bottom:14px">COMPONENT BREAKDOWN</div>';
+  html += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px 18px;margin-bottom:14px">';
+  html += '<div style="font-size:11px;font-weight:800;color:#1A3A78;letter-spacing:1px;font-family:Sora,sans-serif;margin-bottom:12px">COMPONENT BREAKDOWN (real data, weighted)</div>';
   
   compOrder.forEach(function(co) {
     var comp = comps[co.key];
     if (!comp) return;
     var avail = comp.available;
     var s = avail ? comp.score : 0;
-    var max = comp.max || (co.key === 'trend' ? 25 : co.key === 'volume' || co.key === 'structure' ? 20 : co.key === 'options' ? 15 : 10);
+    var max = comp.max || co.max;
     var pct = avail && max > 0 ? (s / max * 100) : 0;
     var barColor = !avail ? '#cbd5e1' : pct >= 75 ? '#10b981' : pct >= 50 ? '#3b82f6' : pct >= 25 ? '#f59e0b' : '#dc2626';
     
-    html += '<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #f1f5f9">';
+    html += '<div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid #f1f5f9">';
     html += '<div style="font-size:14px;flex:0 0 24px;text-align:center">' + co.icon + '</div>';
     html += '<div style="flex:1;min-width:120px">';
     html += '<div style="font-size:12px;font-weight:700;color:#0f172a">' + _csEscape(co.label) + '</div>';
     html += '<div style="font-size:10px;color:#64748b;line-height:1.4;margin-top:2px">' + _csEscape(comp.rationale || '') + '</div>';
-    if (comp.partial && comp.missing_capability) {
-      html += '<div style="font-size:9px;color:#d97706;margin-top:2px;font-style:italic">⚠ ' + _csEscape(comp.missing_capability) + '</div>';
-    }
     html += '</div>';
-    html += '<div style="flex:0 0 100px">';
-    html += '<div style="height:6px;background:#f1f5f9;border-radius:3px;overflow:hidden">';
-    html += '<div style="height:100%;width:' + pct.toFixed(0) + '%;background:' + barColor + '"></div>';
-    html += '</div>';
-    html += '</div>';
+    html += '<div style="flex:0 0 100px"><div style="height:6px;background:#f1f5f9;border-radius:3px;overflow:hidden"><div style="height:100%;width:' + pct.toFixed(0) + '%;background:' + barColor + '"></div></div></div>';
     html += '<div style="flex:0 0 60px;text-align:right;font-family:\'IBM Plex Mono\',monospace;font-size:11px;font-weight:700;color:' + (avail ? '#0f172a' : '#94a3b8') + '">';
     html += avail ? (s + '/' + max) : 'n/a';
     html += '</div>';
     html += '</div>';
   });
-  
   html += '</div>';
   
-  // ── MARKET + SECTOR CONTEXT ──
-  var mc = d.market_context;
-  var sc = d.sector_context;
-  if ((mc && mc.available) || (sc && sc.available)) {
-    html += '<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px 18px;margin-bottom:14px">';
-    html += '<div style="font-size:11px;font-weight:800;color:#1A3A78;letter-spacing:1px;font-family:Sora,sans-serif;margin-bottom:10px">MARKET + SECTOR CONTEXT</div>';
-    html += '<div style="font-size:11px;color:#475569;line-height:1.7;margin-bottom:8px;font-style:italic">70-80% of stock movement = market direction + sector trend. Always verify these before entry.</div>';
-    
-    if (mc && mc.available) {
-      var mTrendColor = mc.trend === 'UPTREND' ? '#10b981' : mc.trend === 'WEAK_UP' ? '#3b82f6' : mc.trend === 'DOWNTREND' ? '#dc2626' : '#94a3b8';
-      html += '<div style="font-size:12px;margin-bottom:6px"><strong>Market (' + _csEscape(mc.index) + '):</strong> <span style="color:' + mTrendColor + ';font-weight:700">' + _csEscape(mc.trend) + '</span> · 30d return ' + (mc.return_30d_pct >= 0 ? '+' : '') + mc.return_30d_pct + '%</div>';
-    }
-    if (sc && sc.available) {
-      var sColor = sc.outperforming ? '#10b981' : '#dc2626';
-      html += '<div style="font-size:12px"><strong>Sector (' + _csEscape(sc.etf || '?') + '):</strong> 1y return ' + (sc.return_1y_pct >= 0 ? '+' : '') + sc.return_1y_pct + '%';
-      if (sc.outperformance_pct != null) {
-        html += ' · <span style="color:' + sColor + ';font-weight:700">' + (sc.outperformance_pct >= 0 ? '+' : '') + sc.outperformance_pct + '% vs market</span>';
-      }
+  // ── EXIT INTELLIGENCE ──
+  var exits = d.exit_signals || [];
+  if (exits.length > 0) {
+    html += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px 18px;margin-bottom:14px">';
+    html += '<div style="font-size:11px;font-weight:800;color:#7f1d1d;letter-spacing:1px;font-family:Sora,sans-serif;margin-bottom:10px">🚪 EXIT INTELLIGENCE</div>';
+    exits.forEach(function(e) {
+      var activeColor = e.active ? '#dc2626' : '#94a3b8';
+      var activeBg = e.active ? '#fef2f2' : '#f8fafc';
+      html += '<div style="background:' + activeBg + ';border-left:3px solid ' + activeColor + ';border-radius:4px;padding:8px 12px;margin-bottom:6px">';
+      html += '<div style="font-size:12px;font-weight:700;color:' + activeColor + '">' + (e.active ? '🔴 ' : '⚪ ') + _csEscape(e.trigger || '') + (e.active ? ' (ACTIVE)' : '') + '</div>';
+      html += '<div style="font-size:11px;color:#475569;margin-top:2px">Condition: ' + _csEscape(e.condition || '') + '</div>';
+      html += '<div style="font-size:11px;color:#475569;margin-top:1px"><strong>Action:</strong> ' + _csEscape(e.action || '') + '</div>';
       html += '</div>';
-    }
+    });
     html += '</div>';
   }
   
-  // ── FRAMEWORK NOTE (institutional honesty) ──
+  // ── POSITION STRATEGY ──
+  var ps = d.position_strategy || {};
+  if (ps.equity || ps.options) {
+    html += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px 18px;margin-bottom:14px">';
+    html += '<div style="font-size:11px;font-weight:800;color:#1A3A78;letter-spacing:1px;font-family:Sora,sans-serif;margin-bottom:10px">💼 POSITION STRATEGY</div>';
+    html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">';
+    
+    if (ps.equity) {
+      html += '<div><div style="font-size:11px;font-weight:700;color:#0891b2;margin-bottom:4px">EQUITY</div>';
+      ps.equity.forEach(function(line) {
+        html += '<div style="font-size:11px;color:#475569;line-height:1.6">• ' + _csEscape(line) + '</div>';
+      });
+      html += '</div>';
+    }
+    
+    if (ps.options) {
+      html += '<div><div style="font-size:11px;font-weight:700;color:#7c3aed;margin-bottom:4px">OPTIONS</div>';
+      ps.options.forEach(function(line) {
+        html += '<div style="font-size:11px;color:#475569;line-height:1.6">• ' + _csEscape(line) + '</div>';
+      });
+      html += '</div>';
+    }
+    
+    html += '</div>';
+    html += '</div>';
+  }
+  
+  // ── FRAMEWORK NOTE ──
   if (d.framework_note) {
-    html += '<div style="font-size:10px;color:#94a3b8;line-height:1.5;font-style:italic;text-align:center;padding:8px">';
+    html += '<div style="font-size:10px;color:#94a3b8;line-height:1.5;font-style:italic;text-align:center;padding:6px">';
     html += _csEscape(d.framework_note);
     html += '</div>';
   }
