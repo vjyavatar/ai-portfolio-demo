@@ -1,9 +1,9 @@
 // ═══ Celesys version stamp ═══
-window.CELESYS_VERSION = "v4.63.40";
-window.CELESYS_BUILD_TIME = 1777854738;
-window.CELESYS_BUILD_DATE = "2026-05-04 00:32:18 UTC";
+window.CELESYS_VERSION = "v4.63.42";
+window.CELESYS_BUILD_TIME = 1777875018;
+window.CELESYS_BUILD_DATE = "2026-05-04 06:10:18 UTC";
 console.log("%c━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "color:#1A3A78");
-console.log("%c CELESYS v4.63.40 %c loaded · 2026-04-29 03:29:27 UTC",
+console.log("%c CELESYS v4.63.42 %c loaded · 2026-04-29 03:29:27 UTC",
   "background:#1A3A78;color:#fff;font-weight:900;padding:3px 8px;border-radius:3px;font-family:monospace",
   "color:#1A3A78;font-weight:700;font-family:monospace");
 console.log("%c━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "color:#1A3A78");
@@ -26282,120 +26282,192 @@ function _csR6322RenderForward(d) {
 function _csR6322RenderExecution(d) {
   if (!d.success && d.error) return _csR6322Err(d.error);
   
+  // r63.41: Layperson glossary helper — single tooltip per term
+  var __glossSeen = {};
+  function gloss(term, definition) {
+    if (__glossSeen[term]) return _csEscape(term);
+    __glossSeen[term] = true;
+    return '<span style="border-bottom:1px dotted #94a3b8;cursor:help" title="' + _csEscape(definition) + '">' + _csEscape(term) + '</span><sup style="color:#94a3b8;font-size:9px;margin-left:1px">?</sup>';
+  }
+  
+  // Standard glossary — every institutional term used in the Execution tab
+  var GLOSS = {
+    'PCR': 'Put-Call Ratio. Below 1.0 = more call buyers (bullish). Above 1.3 = more put buyers (bearish).',
+    'VWAP': 'Volume-Weighted Average Price. The average price institutions paid today, weighted by volume. Above VWAP = institutions in profit.',
+    'ADX': 'Average Directional Index. Measures trend STRENGTH (not direction). Above 25 = strong trend. Below 20 = no trend / sideways.',
+    'EMA21': '21-day Exponential Moving Average. Like a rolling 3-week price trend line.',
+    'EMA50': '50-day moving average. Medium-term trend line (~10 weeks).',
+    'SMA200': '200-day moving average. Long-term trend line (~10 months). Above = long-term uptrend.',
+    'EMA20': '20-day Exponential Moving Average. Short-term trend line (~4 weeks).',
+    'EMA200': '200-day Exponential Moving Average. Long-term trend (~10 months).',
+    'ATR': 'Average True Range. How much the stock typically moves per day.',
+    'OI': 'Open Interest. Total number of options contracts active. High OI = institutional money in the market.',
+    'Call OI': 'Total open call options. Bullish bets accumulating.',
+    'Put OI': 'Total open put options. Bearish bets or downside hedges.',
+    '52w high': 'The highest price in the last 52 weeks. A breakout above this level often signals new institutional buying.',
+    'Kelly': 'Position sizing formula used by professional traders. Half-Kelly = half the mathematically optimal size, for safety.',
+  };
+  
+  function g(term) { return gloss(term, GLOSS[term] || term); }
+  
   var html = '';
-  var score = d.execution_score;
+  var score = d.execution_score != null ? d.execution_score : d.score;
   var quality = d.score_quality || 'PARTIAL';
   
-  // ── HEADER: BIG SCORE + STATE + MATURITY + ACTION SUMMARY ──
+  // ── PLAIN-ENGLISH HEADLINE (NEW r63.41) ──
+  var es = d.entry_state || {};
+  var esKey = (es && es.key) || d.state || 'UNKNOWN';
+  var plainHeadline = '';
+  var plainSub = '';
+  
+  if (esKey === 'ENTER_NOW') {
+    plainHeadline = '🟢 Setup is ready. You can enter now.';
+    plainSub = 'All confirmations aligned. This is what professional traders look for.';
+  } else if (esKey === 'PREPARE') {
+    plainHeadline = '🟡 Setup is forming. Don\'t enter yet — wait for confirmation.';
+    plainSub = 'Most signals are positive but some haven\'t fired yet. Check the Trigger Plan below.';
+  } else if (esKey === 'WATCH') {
+    plainHeadline = '🔵 Watch this stock. No trade yet.';
+    plainSub = 'Setup is building but not strong enough for a trade. Bookmark and revisit.';
+  } else if (esKey === 'AVOID') {
+    plainHeadline = '🔴 Skip this trade.';
+    plainSub = 'Conditions are weak. Risk of a fake breakout (trap) is too high right now.';
+  } else if (score == null) {
+    plainHeadline = '⚠ Not enough data for a confident assessment.';
+    plainSub = 'Some real-time data sources didn\'t respond. Try again in a few minutes.';
+  } else {
+    plainHeadline = 'Mixed signals — see breakdown below.';
+    plainSub = '';
+  }
+  
+  html += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px 18px;margin-bottom:14px">';
+  html += '<div style="font-size:9px;font-weight:800;color:#94a3b8;letter-spacing:1.5px;font-family:Sora,sans-serif;margin-bottom:6px">📊 WHAT THIS STOCK LOOKS LIKE RIGHT NOW</div>';
+  html += '<div style="font-size:15px;font-weight:700;color:#0f172a;line-height:1.4;margin-bottom:4px">' + plainHeadline + '</div>';
+  if (plainSub) html += '<div style="font-size:12px;color:#64748b;line-height:1.5">' + plainSub + '</div>';
+  // Build version visible to user (helps debug cache issues)
+  var ver = (typeof window !== "undefined" && window.CELESYS_VERSION) ? window.CELESYS_VERSION : "";
+  if (ver) html += '<div style="font-size:9px;color:#cbd5e1;margin-top:8px;text-align:right">Engine ' + _csEscape(ver) + '</div>';
+  html += '</div>';
+  
+  // ── HEADER: BIG SCORE + STATE + MATURITY ──
   if (score == null) {
     html += '<div style="background:#fef2f2;border:2px solid #dc2626;border-radius:8px;padding:16px 20px;margin-bottom:18px">';
     html += '<div style="font-size:14px;font-weight:800;color:#7f1d1d;font-family:Sora,sans-serif">⚠ INSUFFICIENT EXECUTION DATA</div>';
-    html += '<div style="font-size:12px;color:#475569;margin-top:6px;line-height:1.6">' + _csEscape(d.error_note || 'Need at least 4 of 6 components for valid score.') + '</div>';
+    html += '<div style="font-size:12px;color:#475569;margin-top:6px;line-height:1.6">' + _csEscape(d.error_note || 'Need at least 4 of 6 components for a valid score.') + '</div>';
     html += '</div>';
   } else {
-    var es = d.entry_state || {};
     var stateColor = es.color || '#3b82f6';
     var bgGrad = score >= 75 ? '#ecfdf5' : score >= 60 ? '#f0fdf4' : score >= 45 ? '#fffbeb' : '#fef2f2';
     
     html += '<div style="background:' + bgGrad + ';border:2px solid ' + stateColor + ';border-radius:10px;padding:18px 22px;margin-bottom:14px">';
     html += '<div style="display:flex;align-items:flex-start;gap:18px;flex-wrap:wrap;margin-bottom:14px">';
     
-    // Big score
     html += '<div style="text-align:center;flex:0 0 auto">';
-    html += '<div style="font-size:9px;font-weight:800;color:#94a3b8;letter-spacing:1.5px;font-family:Sora,sans-serif;margin-bottom:2px">EXECUTION SCORE</div>';
+    html += '<div style="font-size:9px;font-weight:800;color:#94a3b8;letter-spacing:1.5px;font-family:Sora,sans-serif;margin-bottom:2px">TRADE QUALITY SCORE</div>';
     html += '<div style="font-size:48px;font-weight:900;color:' + stateColor + ';font-family:\'IBM Plex Mono\',monospace;line-height:1">' + score + '</div>';
     html += '<div style="font-size:11px;color:#64748b;margin-top:2px">/ 100</div>';
     html += '</div>';
     
-    // State + Maturity
     html += '<div style="flex:1;min-width:240px">';
     html += '<div style="font-size:14px;font-weight:800;color:' + stateColor + ';font-family:Sora,sans-serif;letter-spacing:0.3px;margin-bottom:4px">' + _csEscape(es.label || '') + '</div>';
     if (es.rationale) {
       html += '<div style="font-size:11px;color:#475569;line-height:1.5;margin-bottom:10px">' + _csEscape(es.rationale) + '</div>';
     }
-    var mat = d.maturity || {};
-    if (mat.label) {
+    var mat = (d.maturity_detail) || (typeof d.maturity === 'object' ? d.maturity : null);
+    if (mat && mat.label) {
       html += '<div style="font-size:11px;color:#475569"><strong>Stage:</strong> ' + _csEscape(mat.label) + '</div>';
     }
     if (quality !== 'FULL') {
-      html += '<div style="font-size:10px;color:#d97706;margin-top:6px">Score quality: ' + quality + ' (some components unavailable)</div>';
+      var unreachable = d.unreachable_points;
+      var qualityNote = 'Score quality: ' + quality + ' (some real-time data sources didn\'t respond)';
+      if (unreachable) {
+        qualityNote += ' — up to ' + unreachable + ' points unreachable';
+      }
+      html += '<div style="font-size:10px;color:#d97706;margin-top:6px">' + qualityNote + '</div>';
     }
     html += '</div>';
     html += '</div>';
     
-    // Action Summary (1-line)
     if (d.action_summary) {
       html += '<div style="background:#fff;border-left:4px solid ' + stateColor + ';border-radius:6px;padding:12px 16px;font-size:13px;color:#0f172a;line-height:1.6">';
       html += '<strong>👉 Action:</strong> ' + _csEscape(d.action_summary);
       html += '</div>';
     }
+    html += '</div>';
     
+    html += '<div style="font-size:10px;color:#64748b;font-style:italic;margin:-8px 4px 14px;line-height:1.5">';
+    html += '↑ This score blends 6 inputs (trend, volume, structure, options, ' + g('VWAP') + ', volatility). 60+ = decent setup. 75+ = strong.';
     html += '</div>';
   }
   
   // ── BREAKOUT PROBABILITY + TRAP RISK ──
-  if (d.breakout_probability != null && d.trap_risk) {
-    var prob = d.breakout_probability;
-    var trap = d.trap_risk;
+  var prob = (d.breakout_probability != null) ? d.breakout_probability : d.probability;
+  var trap = d.trap_risk;
+  if (prob != null && trap) {
     var probColor = prob >= 70 ? '#10b981' : prob >= 50 ? '#3b82f6' : prob >= 30 ? '#f59e0b' : '#dc2626';
     
     html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">';
     
-    // Breakout probability
     html += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px 18px">';
-    html += '<div style="font-size:9px;font-weight:800;color:#94a3b8;letter-spacing:1px;font-family:Sora,sans-serif;margin-bottom:6px">BREAKOUT PROBABILITY</div>';
+    html += '<div style="font-size:9px;font-weight:800;color:#94a3b8;letter-spacing:1px;font-family:Sora,sans-serif;margin-bottom:6px">CHANCE OF SUCCESSFUL BREAKOUT</div>';
     html += '<div style="display:flex;align-items:center;gap:12px">';
     html += '<div style="font-size:30px;font-weight:900;color:' + probColor + ';font-family:\'IBM Plex Mono\',monospace;line-height:1">' + prob + '%</div>';
     html += '<div style="flex:1;font-size:10px;color:#64748b;line-height:1.4">';
-    html += 'Rule-based estimate from Trend (25%) + Structure (20%) + Volume (20%) + Options (20%) + Volatility (15%)';
+    html += 'Our estimate based on trend, structure, volume, options, volatility — weighted formula.';
     html += '</div>';
     html += '</div>';
-    html += '<div style="font-size:11px;color:#94a3b8;margin-top:8px;padding-top:8px;border-top:1px solid #f1f5f9">Fake breakout risk: ' + (100 - prob) + '%</div>';
+    html += '<div style="font-size:11px;color:#94a3b8;margin-top:8px;padding-top:8px;border-top:1px solid #f1f5f9">Risk of fake breakout: ' + (100 - prob) + '%</div>';
+    html += '<div style="font-size:10px;color:#64748b;margin-top:8px;font-style:italic;line-height:1.4">↑ Not a guarantee — best estimate from current data.</div>';
     html += '</div>';
     
-    // Trap risk
+    var trapScore = (trap && typeof trap === 'object') ? trap.score : 0;
+    var trapLabel = (trap && typeof trap === 'object') ? trap.label : '?';
+    var trapColor = (trap && typeof trap === 'object') ? trap.color : '#94a3b8';
+    var trapFlags = (trap && typeof trap === 'object') ? (trap.flags || []) : [];
+    
     html += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px 18px">';
-    html += '<div style="font-size:9px;font-weight:800;color:#94a3b8;letter-spacing:1px;font-family:Sora,sans-serif;margin-bottom:6px">TRAP RISK</div>';
+    html += '<div style="font-size:9px;font-weight:800;color:#94a3b8;letter-spacing:1px;font-family:Sora,sans-serif;margin-bottom:6px">TRAP / FAKEOUT RISK</div>';
     html += '<div style="display:flex;align-items:center;gap:12px">';
-    html += '<div style="font-size:30px;font-weight:900;color:' + trap.color + ';font-family:\'IBM Plex Mono\',monospace;line-height:1">' + trap.label + '</div>';
-    html += '<div style="flex:1;font-size:10px;color:#64748b;line-height:1.4">' + trap.score + '/100 risk score · ' + (trap.flags ? trap.flags.length : 0) + ' flags';
+    html += '<div style="font-size:30px;font-weight:900;color:' + trapColor + ';font-family:\'IBM Plex Mono\',monospace;line-height:1">' + _csEscape(trapLabel) + '</div>';
+    html += '<div style="flex:1;font-size:10px;color:#64748b;line-height:1.4">';
+    html += trapScore + '/100 risk score · ' + trapFlags.length + ' warning sign' + (trapFlags.length === 1 ? '' : 's');
     html += '</div>';
     html += '</div>';
-    if (trap.flags && trap.flags.length > 0) {
+    if (trapFlags.length > 0) {
       html += '<div style="font-size:11px;color:#7f1d1d;margin-top:8px;padding-top:8px;border-top:1px solid #f1f5f9;line-height:1.5">';
-      trap.flags.forEach(function(f) { html += '⚠ ' + _csEscape(f) + '<br>'; });
+      trapFlags.forEach(function(f) { html += '⚠ ' + _csEscape(f) + '<br>'; });
       html += '</div>';
     }
+    html += '<div style="font-size:10px;color:#64748b;margin-top:8px;font-style:italic;line-height:1.4">↑ How likely this breakout fails and reverses. Lower = safer.</div>';
     html += '</div>';
     html += '</div>';
   }
   
-  // ── TRIGGER CONDITIONS (NEXT TRIGGER PLAN) ──
+  // ── TRIGGER CONDITIONS — with plain-English glosses ──
   var tc = d.trigger_conditions || {};
   if (tc.entry_above) {
     html += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px 18px;margin-bottom:14px">';
-    html += '<div style="font-size:11px;font-weight:800;color:#1A3A78;letter-spacing:1px;font-family:Sora,sans-serif;margin-bottom:10px">📋 NEXT TRIGGER CONDITIONS (entry plan)</div>';
+    html += '<div style="font-size:11px;font-weight:800;color:#1A3A78;letter-spacing:1px;font-family:Sora,sans-serif;margin-bottom:4px">📋 ENTRY PLAN — wait for these 4 things to happen</div>';
+    html += '<div style="font-size:10px;color:#64748b;font-style:italic;margin-bottom:10px;line-height:1.5">All four must be true at the SAME time. If even one is missing, skip the trade.</div>';
     html += '<div style="font-size:12px;color:#0f172a;line-height:1.9">';
-    html += '<div>✓ <strong>Break above:</strong> $' + Number(tc.entry_above).toFixed(2) + ' (52w high breakout confirmation)</div>';
-    if (tc.volume_required) html += '<div>✓ <strong>Volume:</strong> >' + tc.volume_required.toLocaleString() + ' (1.5× avg required)</div>';
-    if (tc.pcr_target) html += '<div>✓ <strong>Options:</strong> PCR ' + _csEscape(tc.pcr_target) + ' + Call OI building</div>';
-    if (tc.vwap_condition) html += '<div>✓ <strong>VWAP:</strong> ' + _csEscape(tc.vwap_condition) + '</div>';
+    html += '<div>① <strong>Price breaks above $' + Number(tc.entry_above).toFixed(2) + '</strong> — past the ' + g('52w high') + ' (last 52 weeks)</div>';
+    if (tc.volume_required) html += '<div>② <strong>Volume:</strong> at least ' + tc.volume_required.toLocaleString() + ' shares (1.5× normal — confirms big-money buying)</div>';
+    if (tc.pcr_target) html += '<div>③ <strong>Options:</strong> ' + g('PCR') + ' ' + _csEscape(tc.pcr_target) + ' — more call buyers than put buyers (bullish positioning)</div>';
+    if (tc.vwap_condition) html += '<div>④ <strong>VWAP:</strong> ' + _csEscape(tc.vwap_condition) + ' — price stays above ' + g('VWAP') + ' (institutions in profit)</div>';
     html += '</div>';
-    if (tc.instructions) {
-      html += '<div style="font-size:10px;color:#64748b;margin-top:8px;padding-top:8px;border-top:1px solid #f1f5f9;font-style:italic">' + _csEscape(tc.instructions) + '</div>';
-    }
     html += '</div>';
   }
   
-  // ── WHAT'S MISSING ──
+  // ── WHAT'S MISSING — already plain-language ──
   var missing = d.whats_missing || [];
   if (missing.length > 0) {
     html += '<div style="background:#fef3c7;border:2px solid #f59e0b;border-radius:10px;padding:14px 18px;margin-bottom:14px">';
-    html += '<div style="font-size:11px;font-weight:800;color:#92400e;letter-spacing:1px;font-family:Sora,sans-serif;margin-bottom:10px">❗ MISSING FOR ENTRY (' + missing.length + ' condition' + (missing.length === 1 ? '' : 's') + ')</div>';
+    html += '<div style="font-size:11px;font-weight:800;color:#92400e;letter-spacing:1px;font-family:Sora,sans-serif;margin-bottom:4px">❗ WHY YOU SHOULDN\'T BUY YET — ' + missing.length + ' thing' + (missing.length === 1 ? '' : 's') + ' missing</div>';
+    html += '<div style="font-size:10px;color:#92400e;font-style:italic;margin-bottom:10px;line-height:1.5">Each row shows what we have now vs what we need to see. Wait for ALL of them.</div>';
     missing.forEach(function(m) {
       html += '<div style="background:#fff;border-radius:6px;padding:8px 12px;margin-bottom:6px">';
       html += '<div style="font-size:12px;font-weight:700;color:#0f172a;margin-bottom:2px">• ' + _csEscape(m.field) + '</div>';
-      html += '<div style="font-size:11px;color:#64748b;line-height:1.5">Current: <strong>' + _csEscape(m.current || '?') + '</strong> · Needed: <strong>' + _csEscape(m.needed || '?') + '</strong>';
+      html += '<div style="font-size:11px;color:#64748b;line-height:1.5">Now: <strong>' + _csEscape(m.current || '?') + '</strong> · Need: <strong>' + _csEscape(m.needed || '?') + '</strong>';
       if (m.gap) html += ' · ' + _csEscape(m.gap);
       html += '</div>';
       html += '</div>';
@@ -26403,34 +26475,43 @@ function _csR6322RenderExecution(d) {
     html += '</div>';
   }
   
-  // ── COMPONENT BREAKDOWN ──
-  var comps = d.components || {};
+  // ── COMPONENT BREAKDOWN with footer ──
+  var comps = d.components_detail || d.components || {};
   var compOrder = [
-    {key: 'trend',      label: 'Trend',      icon: '📈', max: 20},
-    {key: 'volume',     label: 'Volume',     icon: '📊', max: 20},
-    {key: 'structure',  label: 'Structure',  icon: '🏛', max: 20},
-    {key: 'options',    label: 'Options',    icon: '⚖', max: 20},
-    {key: 'vwap',       label: 'VWAP',       icon: '📍', max: 10},
-    {key: 'volatility', label: 'Volatility', icon: '⚡', max: 10},
+    {key: 'trend',      label: 'Trend',      icon: '📈', max: 20, plain: 'Is the stock in an uptrend?'},
+    {key: 'volume',     label: 'Volume',     icon: '📊', max: 20, plain: 'Are big buyers active?'},
+    {key: 'structure',  label: 'Structure',  icon: '🏛', max: 20, plain: 'Is price near a breakout level?'},
+    {key: 'options',    label: 'Options',    icon: '⚖', max: 20, plain: 'Do option buyers expect this to go up?'},
+    {key: 'vwap',       label: 'VWAP',       icon: '📍', max: 10, plain: 'Are institutions buying in profit?'},
+    {key: 'volatility', label: 'Volatility', icon: '⚡', max: 10, plain: 'Is the stock waking up (more daily movement)?'},
   ];
   
   html += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px 18px;margin-bottom:14px">';
-  html += '<div style="font-size:11px;font-weight:800;color:#1A3A78;letter-spacing:1px;font-family:Sora,sans-serif;margin-bottom:12px">COMPONENT BREAKDOWN (real data, weighted)</div>';
+  html += '<div style="font-size:11px;font-weight:800;color:#1A3A78;letter-spacing:1px;font-family:Sora,sans-serif;margin-bottom:4px">SCORE BREAKDOWN — what makes up the ' + (score != null ? score : '?') + '</div>';
+  html += '<div style="font-size:10px;color:#64748b;font-style:italic;margin-bottom:10px;line-height:1.5">Each row contributes to the total. Bigger numbers = stronger setup in that area.</div>';
   
   compOrder.forEach(function(co) {
     var comp = comps[co.key];
     if (!comp) return;
-    var avail = comp.available;
-    var s = avail ? comp.score : 0;
-    var max = comp.max || co.max;
+    var avail, s, max;
+    if (typeof comp === 'object' && comp !== null) {
+      avail = comp.available;
+      s = avail ? comp.score : 0;
+      max = comp.max || co.max;
+    } else if (typeof comp === 'number') {
+      avail = true; s = comp; max = co.max;
+    } else {
+      avail = false; s = 0; max = co.max;
+    }
     var pct = avail && max > 0 ? (s / max * 100) : 0;
     var barColor = !avail ? '#cbd5e1' : pct >= 75 ? '#10b981' : pct >= 50 ? '#3b82f6' : pct >= 25 ? '#f59e0b' : '#dc2626';
     
     html += '<div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid #f1f5f9">';
     html += '<div style="font-size:14px;flex:0 0 24px;text-align:center">' + co.icon + '</div>';
     html += '<div style="flex:1;min-width:120px">';
-    html += '<div style="font-size:12px;font-weight:700;color:#0f172a">' + _csEscape(co.label) + '</div>';
-    html += '<div style="font-size:10px;color:#64748b;line-height:1.4;margin-top:2px">' + _csEscape(comp.rationale || '') + '</div>';
+    html += '<div style="font-size:12px;font-weight:700;color:#0f172a">' + _csEscape(co.label) + ' <span style="font-size:10px;color:#94a3b8;font-weight:400">— ' + _csEscape(co.plain) + '</span></div>';
+    var rationale = (typeof comp === 'object' && comp !== null) ? comp.rationale : '';
+    html += '<div style="font-size:10px;color:#64748b;line-height:1.4;margin-top:2px">' + _csEscape(rationale || '') + '</div>';
     html += '</div>';
     html += '<div style="flex:0 0 100px"><div style="height:6px;background:#f1f5f9;border-radius:3px;overflow:hidden"><div style="height:100%;width:' + pct.toFixed(0) + '%;background:' + barColor + '"></div></div></div>';
     html += '<div style="flex:0 0 60px;text-align:right;font-family:\'IBM Plex Mono\',monospace;font-size:11px;font-weight:700;color:' + (avail ? '#0f172a' : '#94a3b8') + '">';
@@ -26440,17 +26521,24 @@ function _csR6322RenderExecution(d) {
   });
   html += '</div>';
   
-  // ── EXIT INTELLIGENCE ──
+  // ── EXIT INTELLIGENCE — translated ──
   var exits = d.exit_signals || [];
   if (exits.length > 0) {
     html += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px 18px;margin-bottom:14px">';
-    html += '<div style="font-size:11px;font-weight:800;color:#7f1d1d;letter-spacing:1px;font-family:Sora,sans-serif;margin-bottom:10px">🚪 EXIT INTELLIGENCE</div>';
+    html += '<div style="font-size:11px;font-weight:800;color:#7f1d1d;letter-spacing:1px;font-family:Sora,sans-serif;margin-bottom:4px">🚪 WHEN TO SELL — exit warnings we monitor</div>';
+    html += '<div style="font-size:10px;color:#64748b;font-style:italic;margin-bottom:10px;line-height:1.5">If ANY of these happen after you enter, exit the position. Don\'t hope.</div>';
     exits.forEach(function(e) {
       var activeColor = e.active ? '#dc2626' : '#94a3b8';
       var activeBg = e.active ? '#fef2f2' : '#f8fafc';
+      var triggerLabel = e.trigger || '';
+      var plainTrigger = triggerLabel;
+      if (triggerLabel === 'VWAP breakdown') plainTrigger = 'Price falls below today\'s institutional average price';
+      else if (triggerLabel === 'EMA21 trend break') plainTrigger = 'Price falls below the 3-week trend line (' + g('EMA21') + ')';
+      else if (triggerLabel === 'Options unwind') plainTrigger = 'Bullish option positions getting closed (option buyers losing confidence)';
+      
       html += '<div style="background:' + activeBg + ';border-left:3px solid ' + activeColor + ';border-radius:4px;padding:8px 12px;margin-bottom:6px">';
-      html += '<div style="font-size:12px;font-weight:700;color:' + activeColor + '">' + (e.active ? '🔴 ' : '⚪ ') + _csEscape(e.trigger || '') + (e.active ? ' (ACTIVE)' : '') + '</div>';
-      html += '<div style="font-size:11px;color:#475569;margin-top:2px">Condition: ' + _csEscape(e.condition || '') + '</div>';
+      html += '<div style="font-size:12px;font-weight:700;color:' + activeColor + '">' + (e.active ? '🔴 ' : '⚪ ') + _csEscape(plainTrigger) + (e.active ? ' (HAPPENING NOW)' : '') + '</div>';
+      html += '<div style="font-size:11px;color:#64748b;margin-top:2px">Technical: ' + _csEscape(e.condition || '') + '</div>';
       html += '<div style="font-size:11px;color:#475569;margin-top:1px"><strong>Action:</strong> ' + _csEscape(e.action || '') + '</div>';
       html += '</div>';
     });
@@ -26461,19 +26549,19 @@ function _csR6322RenderExecution(d) {
   var ps = d.position_strategy || {};
   if (ps.equity || ps.options) {
     html += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px 18px;margin-bottom:14px">';
-    html += '<div style="font-size:11px;font-weight:800;color:#1A3A78;letter-spacing:1px;font-family:Sora,sans-serif;margin-bottom:10px">💼 POSITION STRATEGY</div>';
+    html += '<div style="font-size:11px;font-weight:800;color:#1A3A78;letter-spacing:1px;font-family:Sora,sans-serif;margin-bottom:4px">💼 HOW TO POSITION — equity vs options</div>';
+    html += '<div style="font-size:10px;color:#64748b;font-style:italic;margin-bottom:10px;line-height:1.5">Two ways to play this trade. Equity = buy shares. Options = leveraged contracts (riskier, more upside).</div>';
     html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">';
     
     if (ps.equity) {
-      html += '<div><div style="font-size:11px;font-weight:700;color:#0891b2;margin-bottom:4px">EQUITY</div>';
+      html += '<div><div style="font-size:11px;font-weight:700;color:#0891b2;margin-bottom:4px">EQUITY (buying shares)</div>';
       ps.equity.forEach(function(line) {
         html += '<div style="font-size:11px;color:#475569;line-height:1.6">• ' + _csEscape(line) + '</div>';
       });
       html += '</div>';
     }
-    
     if (ps.options) {
-      html += '<div><div style="font-size:11px;font-weight:700;color:#7c3aed;margin-bottom:4px">OPTIONS</div>';
+      html += '<div><div style="font-size:11px;font-weight:700;color:#7c3aed;margin-bottom:4px">OPTIONS (leveraged)</div>';
       ps.options.forEach(function(line) {
         html += '<div style="font-size:11px;color:#475569;line-height:1.6">• ' + _csEscape(line) + '</div>';
       });
@@ -26484,7 +26572,7 @@ function _csR6322RenderExecution(d) {
     html += '</div>';
   }
   
-  // ── FRAMEWORK NOTE ──
+  // ── FRAMEWORK NOTE + ENGINE VERSION (cache debug) ──
   if (d.framework_note) {
     html += '<div style="font-size:10px;color:#94a3b8;line-height:1.5;font-style:italic;text-align:center;padding:6px">';
     html += _csEscape(d.framework_note);

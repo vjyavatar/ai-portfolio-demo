@@ -1801,9 +1801,9 @@ def _safe_float(val, default=0.0):
         return default
 
 # ═══ Celesys version stamp (v4.61.10) ═══════════════════════════════
-APP_VERSION = "v4.63.40"
-APP_BUILD_TIME = 1777854685
-APP_BUILD_DATE = "2026-05-04 00:31:25 UTC"
+APP_VERSION = "v4.63.42"
+APP_BUILD_TIME = 1777875018
+APP_BUILD_DATE = "2026-05-04 06:10:18 UTC"
 APP_RELEASE_NOTES = (
     "v4.62.0: Micro-Cap Hunter scanner (Decide tab) + cumulative r61.x: Aladdin DD entry page (r61.8), "
     "stale-cache fallback (r61.8), multi-factor Bottom Line (r61.7), "
@@ -33582,21 +33582,21 @@ def _r6338_trend_score(price, sma20, sma50, sma200, adx):
     if adx and adx > 0:
         if adx >= 30:
             score += 10
-            parts.append(f"ADX {adx:.0f} (very strong trend)")
+            parts.append(f"Very strong trend (ADX {adx:.0f})")
         elif adx >= 25:
             score += 8
-            parts.append(f"ADX {adx:.0f} (strong trend)")
+            parts.append(f"Strong trend (ADX {adx:.0f})")
         elif adx >= 20:
             score += 5
-            parts.append(f"ADX {adx:.0f} (developing trend)")
+            parts.append(f"Developing trend (ADX {adx:.0f})")
         elif adx >= 15:
             score += 3
-            parts.append(f"ADX {adx:.0f} (weak trend)")
+            parts.append(f"Weak trend (ADX {adx:.0f})")
         else:
             score += 0
-            parts.append(f"ADX {adx:.0f} (no trend / chop)")
+            parts.append(f"No clear trend / sideways (ADX {adx:.0f})")
     else:
-        parts.append("ADX unavailable")
+        parts.append("Trend strength data unavailable")
     
     return {
         "score": min(score, 25),
@@ -33618,22 +33618,22 @@ def _r6338_volume_score(vol_ratio, last_volume, avg_volume):
     # Volume ratio (today vs 20-day avg)
     if vol_ratio >= 2.0:
         score += 18
-        parts.append(f"Volume {vol_ratio:.1f}× avg (strong institutional participation)")
+        parts.append(f"Strong buying activity ({vol_ratio:.1f}× normal — big-money participating)")
     elif vol_ratio >= 1.5:
         score += 14
-        parts.append(f"Volume {vol_ratio:.1f}× avg (elevated participation)")
+        parts.append(f"Elevated buying activity ({vol_ratio:.1f}× normal volume)")
     elif vol_ratio >= 1.2:
         score += 10
-        parts.append(f"Volume {vol_ratio:.1f}× avg (moderate)")
+        parts.append(f"Moderate buying activity ({vol_ratio:.1f}× normal volume)")
     elif vol_ratio >= 0.9:
         score += 7
-        parts.append(f"Volume {vol_ratio:.1f}× avg (normal)")
+        parts.append(f"Normal buying activity ({vol_ratio:.1f}× avg volume)")
     elif vol_ratio >= 0.6:
         score += 4
-        parts.append(f"Volume {vol_ratio:.1f}× avg (light — below average)")
+        parts.append(f"Light buying activity ({vol_ratio:.1f}× normal — below average)")
     else:
         score += 0
-        parts.append(f"Volume {vol_ratio:.1f}× avg (very light — no participation)")
+        parts.append(f"Very light buying activity ({vol_ratio:.1f}× normal — no participation)")
     
     # Bonus +2 if absolute volume is meaningful (avoid penny stocks)
     if last_volume and avg_volume and avg_volume > 100000:
@@ -33740,27 +33740,27 @@ def _r6338_options_score(symbol, region):
             # Bearish when PCR > 1.3 (more puts than calls)
             if pcr < 0.5:
                 score += 13
-                parts.append(f"PCR {pcr:.2f} (heavy call positioning — bullish)")
+                parts.append(f"Heavy bullish positioning — many more call than put buyers (PCR {pcr:.2f})")
             elif pcr < 0.7:
                 score += 11
-                parts.append(f"PCR {pcr:.2f} (call-heavy — bullish)")
+                parts.append(f"More call than put buyers — bullish positioning (PCR {pcr:.2f})")
             elif pcr < 1.0:
                 score += 8
-                parts.append(f"PCR {pcr:.2f} (moderate call bias)")
+                parts.append(f"Slightly more call than put buyers (PCR {pcr:.2f})")
             elif pcr < 1.3:
                 score += 5
-                parts.append(f"PCR {pcr:.2f} (balanced positioning)")
+                parts.append(f"Balanced call vs put positioning (PCR {pcr:.2f})")
             elif pcr < 1.7:
                 score += 2
-                parts.append(f"PCR {pcr:.2f} (put-heavy — caution)")
+                parts.append(f"More put than call buyers — caution (PCR {pcr:.2f})")
             else:
                 score += 0
-                parts.append(f"PCR {pcr:.2f} (heavy put positioning — bearish)")
+                parts.append(f"Heavy bearish positioning — many more put than call buyers (PCR {pcr:.2f})")
             
             # Bonus +2 for high open interest (institutional activity)
             if total_call_oi + total_put_oi > 50000:
                 score += 2
-                parts.append(f"High OI ({int((total_call_oi+total_put_oi)/1000)}K — institutional flow)")
+                parts.append(f"Heavy institutional options activity ({int((total_call_oi+total_put_oi)/1000)}K total contracts)")
             
             return {
                 "score": min(score, 15),
@@ -33796,12 +33796,12 @@ def _r6338_options_score(symbol, region):
                 
                 pcr = total_put_oi / total_call_oi if total_call_oi > 0 else 0
                 
-                if pcr < 0.5:    score = 13; parts.append(f"PCR {pcr:.2f} (heavy call positioning)")
-                elif pcr < 0.7:  score = 11; parts.append(f"PCR {pcr:.2f} (call-heavy)")
-                elif pcr < 1.0:  score = 8;  parts.append(f"PCR {pcr:.2f} (moderate call bias)")
-                elif pcr < 1.3:  score = 5;  parts.append(f"PCR {pcr:.2f} (balanced)")
-                elif pcr < 1.7:  score = 2;  parts.append(f"PCR {pcr:.2f} (put-heavy)")
-                else:            score = 0;  parts.append(f"PCR {pcr:.2f} (heavy put positioning)")
+                if pcr < 0.5:    score = 13; parts.append(f"Heavy bullish positioning (PCR {pcr:.2f})")
+                elif pcr < 0.7:  score = 11; parts.append(f"Call-heavy positioning (PCR {pcr:.2f})")
+                elif pcr < 1.0:  score = 8;  parts.append(f"Slightly more call than put buyers (PCR {pcr:.2f})")
+                elif pcr < 1.3:  score = 5;  parts.append(f"Balanced positioning (PCR {pcr:.2f})")
+                elif pcr < 1.7:  score = 2;  parts.append(f"Put-heavy positioning (PCR {pcr:.2f})")
+                else:            score = 0;  parts.append(f"Heavy bearish positioning (PCR {pcr:.2f})")
                 
                 return {
                     "score": min(score, 15),
@@ -34301,34 +34301,34 @@ def _r6339_trend_score(price, ema21, ema50, sma200, adx, ema21_slope, ema50_slop
     
     if ema21 and ema50 and sma200 and ema21 > ema50 > sma200:
         score += 10
-        parts.append("EMA21>EMA50>SMA200 (full alignment)")
+        parts.append("Strong uptrend — price above all key averages (EMA21>EMA50>SMA200)")
     elif ema50 and sma200 and ema50 > sma200:
         score += 5
-        parts.append("EMA50>SMA200 (medium-term up)")
+        parts.append("Medium-term uptrend (EMA50 above SMA200)")
     elif sma200 and price > sma200:
         score += 3
-        parts.append("Above SMA200 (long-term up)")
+        parts.append("Long-term uptrend, recent weakness (price above SMA200 only)")
     else:
-        parts.append("MA alignment weak/down")
+        parts.append("Trend is weak or downward (price below key averages)")
     
     if ema21_slope > 0:
         score += 3
-        parts.append("EMA21 slope positive")
+        parts.append("Short-term trend rising (EMA21 slope positive)")
     
     if ema50_slope > 0:
         score += 2
-        parts.append("EMA50 slope positive")
+        parts.append("Medium-term trend rising (EMA50 slope positive)")
     
     if adx > 40:
         score += 5  # +3 base + 2 bonus
-        parts.append(f"ADX {adx:.0f} (very strong trend, bonus)")
+        parts.append(f"Very strong trend (ADX {adx:.0f})")
     elif adx > 25:
         score += 3
-        parts.append(f"ADX {adx:.0f} (strong trend)")
+        parts.append(f"Strong trend (ADX {adx:.0f})")
     elif adx > 15:
-        parts.append(f"ADX {adx:.0f} (developing)")
+        parts.append(f"Developing trend (ADX {adx:.0f})")
     elif adx > 0:
-        parts.append(f"ADX {adx:.0f} (no trend)")
+        parts.append(f"No clear trend / sideways (ADX {adx:.0f})")
     
     return {
         "score": min(score, 20),
@@ -34359,13 +34359,13 @@ def _r6339_volume_score(vol_ratio, delivery_pct, region):
     else:
         score = 3;  tier = "light"
     
-    parts = [f"Volume {vol_ratio:.1f}× avg ({tier})"]
+    parts = [f"{tier.title()} buying activity ({vol_ratio:.1f}× normal volume)"]
     
     if delivery_pct and delivery_pct > 60:
         score += 3
-        parts.append(f"Delivery {delivery_pct:.0f}% (institutional participation)")
+        parts.append(f"Big-money buying confirmed ({delivery_pct:.0f}% delivery — institutions taking real ownership)")
     elif region.upper() == "US":
-        parts.append("Delivery % bonus skipped (US — field unavailable)")
+        parts.append("(Delivery % data not available for US tickers)")
     
     return {
         "score": min(score, 20),
@@ -34389,19 +34389,19 @@ def _r6339_structure_score(price, hi52, last_10_std_pct):
     # r63.40: Strict spec compliance — binary 10/5, no intermediate tiers
     if distance <= 0.02:
         score = 15
-        parts = [f"Within 2% of 52w high (${hi52:.2f})"]
+        parts = [f"At breakout level — within 2% of 52-week high (${hi52:.2f})"]
     elif distance <= 0.05:
         score = 10
-        parts = [f"Within 5% of 52w high ({distance*100:.1f}% below)"]
+        parts = [f"Near breakout zone — {distance*100:.1f}% below 52-week high"]
     else:
         score = 5
-        parts = [f"{distance*100:.0f}% below 52w high (base/consolidation)"]
+        parts = [f"Building base — {distance*100:.0f}% below 52-week high"]
     
     if last_10_std_pct is not None and last_10_std_pct < 3:
         score += 5
-        parts.append(f"Tight 10-day range (std {last_10_std_pct:.1f}%) — coiling")
+        parts.append(f"Coiling tight — small price swings last 10 days (std {last_10_std_pct:.1f}%) suggest a move building")
     elif last_10_std_pct is not None:
-        parts.append(f"10-day range std {last_10_std_pct:.1f}% (not tight)")
+        parts.append(f"Normal price swings last 10 days (std {last_10_std_pct:.1f}%)")
     
     return {
         "score": min(score, 20),
@@ -34482,36 +34482,36 @@ def _r6339_options_score(symbol, region, current_price=0):
         # PCR logic (user spec exact)
         if pcr_val < 1.2:
             score += 8
-            parts.append(f"PCR {pcr_val:.2f} (call-bias bullish)")
+            parts.append(f"More call than put buyers — bullish positioning (PCR {pcr_val:.2f})")
         elif pcr_val < 1.5:
             score += 5
-            parts.append(f"PCR {pcr_val:.2f} (mild put bias)")
+            parts.append(f"Slight defensive positioning — more puts than calls (PCR {pcr_val:.2f})")
         else:
             score += 2
-            parts.append(f"PCR {pcr_val:.2f} (heavy put bias — bearish)")
+            parts.append(f"Heavy defensive positioning — many more puts than calls, bearish (PCR {pcr_val:.2f})")
         
         # OI change vs OI ratio (graceful fallback for US)
         if has_oi_change_data:
             if call_oi_change > put_oi_change:
                 score += 8
-                parts.append(f"Call OI building > Put OI ({call_oi_change:+,.0f} vs {put_oi_change:+,.0f})")
+                parts.append(f"Bullish bets accumulating faster than bearish ones (Call OI {call_oi_change:+,.0f} vs Put OI {put_oi_change:+,.0f})")
             else:
                 score += 3
-                parts.append(f"Call OI not building ({call_oi_change:+,.0f} vs {put_oi_change:+,.0f})")
+                parts.append(f"Bullish bets not building strongly (Call OI {call_oi_change:+,.0f} vs Put OI {put_oi_change:+,.0f})")
         else:
             # US fallback: Call OI vs Put OI ratio
             if call_oi_total > put_oi_total:
                 score += 8
-                parts.append(f"Call OI > Put OI ({int(call_oi_total/1000)}K vs {int(put_oi_total/1000)}K) [US — change-in-OI N/A]")
+                parts.append(f"More bullish than bearish bets outstanding (Calls {int(call_oi_total/1000)}K vs Puts {int(put_oi_total/1000)}K)")
             else:
                 score += 3
-                parts.append(f"Put OI > Call OI ({int(put_oi_total/1000)}K vs {int(call_oi_total/1000)}K) [US — change-in-OI N/A]")
+                parts.append(f"More bearish than bullish bets outstanding (Puts {int(put_oi_total/1000)}K vs Calls {int(call_oi_total/1000)}K)")
         
         # r63.40: Strict spec compliance — binary 4/0, no intermediate tier
         total_oi = call_oi_total + put_oi_total
         if total_oi > 100000:
             score += 4
-            parts.append(f"High total OI ({int(total_oi/1000)}K — institutional flow)")
+            parts.append(f"Heavy institutional options activity ({int(total_oi/1000)}K total contracts open)")
         
         return {
             "score": min(score, 20),
@@ -34563,13 +34563,13 @@ def _r6339_vwap_score(symbol, region, price):
         diff = (price - vwap_val) / vwap_val
         
         if diff > 0.01:
-            score = 10; rat = f"+{diff*100:.1f}% above {vwap_type} VWAP ${vwap_val:.2f} (institutions in profit)"
+            score = 10; rat = f"Above today's institutional avg price by {diff*100:.1f}% — big buyers in profit (VWAP ${vwap_val:.2f})"
         elif diff > 0:
-            score = 7; rat = f"+{diff*100:.2f}% above {vwap_type} VWAP ${vwap_val:.2f}"
+            score = 7; rat = f"Just above today's institutional avg price by {diff*100:.2f}% (VWAP ${vwap_val:.2f})"
         elif diff > -0.01:
-            score = 5; rat = f"At {vwap_type} VWAP ${vwap_val:.2f} ({diff*100:.2f}%)"
+            score = 5; rat = f"At today's institutional avg price ({diff*100:.2f}% from VWAP ${vwap_val:.2f})"
         else:
-            score = 2; rat = f"{diff*100:.1f}% below {vwap_type} VWAP ${vwap_val:.2f} (institutions underwater)"
+            score = 2; rat = f"Below today's institutional avg by {diff*100:.1f}% — big buyers underwater, bearish (VWAP ${vwap_val:.2f})"
         
         return {
             "score": score,
@@ -34630,13 +34630,13 @@ def _r6339_volatility_score(symbol, region):
         
         if expansion_pct > 10 and range_expanding:
             score = 10
-            rat = f"ATR expanding +{expansion_pct:.0f}% AND range expanding (trending move)"
+            rat = f"Daily price swings widening +{expansion_pct:.0f}% — momentum building (ATR expanding)"
         elif abs(expansion_pct) <= 10:
             score = 6
-            rat = f"ATR stable ({expansion_pct:+.0f}% — sideways)"
+            rat = f"Daily price swings unchanged — stock is going sideways (ATR {expansion_pct:+.0f}%)"
         else:
             score = 3
-            rat = f"ATR contracting {expansion_pct:.0f}% (no momentum)"
+            rat = f"Daily price swings shrinking {expansion_pct:.0f}% — no momentum (ATR contracting)"
         
         return {
             "score": score,
@@ -34688,16 +34688,16 @@ def _r6339_trap_risk(volume, options, vwap_data, structure, price, hi52):
     
     if vol_ratio_val and vol_ratio_val < 1.2:
         risk += 30
-        flags.append(f"Volume below 1.2× ({vol_ratio_val:.1f}× — no participation)")
+        flags.append(f"Light buying volume ({vol_ratio_val:.1f}× normal — no big-money confirmation)")
     
     pcr_val = options.get("pcr")
     if pcr_val and pcr_val > 1.5:
         risk += 25
-        flags.append(f"PCR {pcr_val:.2f} (heavy put bias)")
+        flags.append(f"Heavy bearish option positioning — many more puts than calls (PCR {pcr_val:.2f})")
     
     if vwap_data.get("available") and vwap_data.get("diff_pct", 0) > 2:
         risk += 20
-        flags.append(f"Price {vwap_data['diff_pct']:.1f}% above VWAP (extended)")
+        flags.append(f"Price extended {vwap_data['diff_pct']:.1f}% above today's institutional avg — risk of pullback")
     
     # No OI confirmation: Call OI <= Put OI OR call_oi_change <= put_oi_change
     call_oi = options.get("call_oi", 0)
@@ -34708,11 +34708,11 @@ def _r6339_trap_risk(volume, options, vwap_data, structure, price, hi52):
     if call_oi_chg is not None and put_oi_chg is not None:
         if call_oi_chg <= put_oi_chg:
             risk += 25
-            flags.append("Call OI not building vs Put OI")
+            flags.append("Bullish bets not building faster than bearish ones (no option-side confirmation)")
     else:
         if call_oi <= put_oi and put_oi > 0:
             risk += 25
-            flags.append("Call OI <= Put OI (defensive positioning)")
+            flags.append("More bearish than bullish bets outstanding — defensive positioning")
     
     risk = min(risk, 100)
     
@@ -34746,16 +34746,16 @@ def _r6339_entry_state(execution_score, volume, options):
     
     if execution_score >= 75 and vol_confirmed and opt_confirmed:
         return {"key": "ENTER_NOW", "label": "🟢 ENTER NOW", "color": "#10b981",
-                "rationale": "Score ≥75, volume confirmed, options confirmed — full setup"}
+                "rationale": "Trade quality score ≥75, with strong buying volume and bullish option positioning — full setup"}
     elif execution_score >= 60:
         return {"key": "PREPARE", "label": "🟡 PREPARE", "color": "#f59e0b",
-                "rationale": "Score ≥60 — breakout likely, wait for volume + options confirmation"}
+                "rationale": "Trade quality score ≥60 — breakout likely, but wait for buying volume and option positioning to confirm"}
     elif execution_score >= 45:
         return {"key": "WATCH", "label": "🔵 WATCH", "color": "#3b82f6",
-                "rationale": "Score 45-60 — building setup, monitor for confirmation"}
+                "rationale": "Trade quality score 45-60 — setup is building but not ready, monitor for confirmation"}
     else:
         return {"key": "AVOID", "label": "🔴 AVOID", "color": "#dc2626",
-                "rationale": "Score below 45 — conditions weak, trap risk material"}
+                "rationale": "Trade quality score below 45 — signals weak, fakeout risk is real, skip the trade"}
 
 
 def _r6339_signal_maturity(price, hi52, volume, structure):
@@ -34773,17 +34773,17 @@ def _r6339_signal_maturity(price, hi52, volume, structure):
     # r63.40: Strict spec compliance — only 3 states (DEVELOPING / READY / LATE)
     if price >= hi52 * 1.02:
         return {"key": "LATE", "label": "🟠 LATE (extended above breakout)",
-                "rationale": f"Price ${price:.2f} is {((price/hi52)-1)*100:.1f}% above 52w high — extended"}
+                "rationale": f"Price ${price:.2f} is {((price/hi52)-1)*100:.1f}% above 52-week high — already extended past breakout, late entry"}
     elif price >= hi52 and vol_score >= 12:
         return {"key": "READY", "label": "🟢 READY (breakout + volume confirmed)",
-                "rationale": "At/above 52w high with volume confirmation — institutional entry zone"}
+                "rationale": "Breakout firing — at or above 52-week high with strong volume, this is when big money enters"}
     elif distance <= 0.05:
         return {"key": "DEVELOPING", "label": "🟡 DEVELOPING (near breakout)",
-                "rationale": f"Within {distance*100:.1f}% of 52w high — watch for volume spike to confirm"}
+                "rationale": f"Close to breakout — within {distance*100:.1f}% of 52-week high, watch for a volume spike to confirm"}
     else:
         # Outside near-breakout zone: still DEVELOPING per spec (only 3 states defined)
         return {"key": "DEVELOPING", "label": "🟡 DEVELOPING (base/setup forming)",
-                "rationale": f"{distance*100:.0f}% below 52w high — setup forming, no near-term breakout"}
+                "rationale": f"Setup forming — {distance*100:.0f}% below 52-week high, no breakout imminent"}
 
 
 def _r6339_trigger_conditions(price, hi52, avg_volume, options, vwap_data):
@@ -34798,7 +34798,7 @@ def _r6339_trigger_conditions(price, hi52, avg_volume, options, vwap_data):
         "volume_required":    volume_required,
         "pcr_target":         pcr_target,
         "vwap_condition":     vwap_condition,
-        "instructions":       f"All four conditions must align for valid entry. Skip if even one fails.",
+        "instructions":       "All four things must be true at the same time before buying. If even one is missing, skip the trade.",
     }
 
 
@@ -34808,19 +34808,19 @@ def _r6339_exit_signals(vwap_data, ema21, options):
         {
             "trigger":   "VWAP breakdown",
             "condition": f"Close below ${vwap_data.get('vwap', 0):.2f} VWAP" if vwap_data.get("available") else "Close below VWAP",
-            "action":    "Exit immediately — institutional buyers underwater",
+            "action":    "Sell now — big buyers who entered today are losing money",
             "active":    vwap_data.get("available") and vwap_data.get("diff_pct", 0) < 0,
         },
         {
             "trigger":   "EMA21 trend break",
             "condition": f"Close below EMA21 (${ema21:.2f})" if ema21 else "Close below EMA21",
-            "action":    "Exit — short-term trend reversed",
+            "action":    "Sell — short-term trend has reversed direction",
             "active":    False,  # current implementation doesn't track multi-day
         },
         {
             "trigger":   "Options unwind",
             "condition": "Call OI drops sharply AND PCR > 1.3",
-            "action":    "Exit — institutional positioning flipping bearish",
+            "action":    "Sell — option market shifting from bullish to bearish",
             "active":    options.get("pcr") and options.get("pcr") > 1.3,
         },
     ]
@@ -34837,7 +34837,7 @@ def _r6339_whats_missing(trigger_conditions, options, volume, structure, price):
         cur_vol = float(vol_match.group(1))
         if cur_vol < 1.5:
             missing.append({
-                "field": "Volume expansion",
+                "field": "More buying volume (institutional confirmation)",
                 "current": f"{cur_vol:.1f}× avg",
                 "needed": "≥1.5× avg",
                 "gap": f"{(1.5/cur_vol - 1)*100:.0f}% more volume needed",
@@ -34847,10 +34847,10 @@ def _r6339_whats_missing(trigger_conditions, options, volume, structure, price):
     pcr_val = options.get("pcr")
     if pcr_val and pcr_val > 1.2:
         missing.append({
-            "field": "Call-side options dominance",
+            "field": "More call buyers than put buyers (bullish option positioning)",
             "current": f"PCR {pcr_val:.2f}",
             "needed": "PCR <1.2",
-            "gap": "Need call OI to build relative to puts",
+            "gap": "Need bullish bets to build relative to bearish ones",
         })
     
     # Breakout check
@@ -34858,7 +34858,7 @@ def _r6339_whats_missing(trigger_conditions, options, volume, structure, price):
     if entry_above and price < entry_above:
         gap_pct = (entry_above - price) / price * 100
         missing.append({
-            "field": "Breakout above resistance",
+            "field": "Price actually breaking above the 52-week high",
             "current": f"${price:.2f}",
             "needed": f"${entry_above:.2f}",
             "gap": f"{gap_pct:.1f}% upside to confirm",
@@ -34870,14 +34870,14 @@ def _r6339_whats_missing(trigger_conditions, options, volume, structure, price):
 def _r6339_action_summary(state, maturity, prob, missing):
     """9) ACTION SUMMARY (1-line decision)."""
     if state.get("key") == "ENTER_NOW":
-        return f"ENTER NOW — full setup confirmed, breakout probability {prob}%."
+        return f"Buy now — all signals aligned, {prob}% chance of successful breakout."
     elif state.get("key") == "PREPARE":
         miss_count = len(missing)
-        return f"PREPARE for breakout. Do not enter yet. {miss_count} condition{'s' if miss_count != 1 else ''} missing — wait for confirmation."
+        return f"Don't buy yet — wait for breakout to confirm. {miss_count} condition{'s' if miss_count != 1 else ''} still missing."
     elif state.get("key") == "WATCH":
-        return f"WATCH — setup building but not ready. Monitor for {len(missing)} missing conditions."
+        return f"Bookmark and watch — setup forming but not strong enough yet. {len(missing)} thing{'s' if len(missing) != 1 else ''} still missing."
     else:
-        return "AVOID — execution conditions weak, trap risk material. Do not enter."
+        return "Skip this trade — signals are weak and risk of a fakeout is too high right now."
 
 
 def _r6339_position_strategy(state, options, prob):
@@ -34888,24 +34888,24 @@ def _r6339_position_strategy(state, options, prob):
     options_strat = []
     
     if state.get("key") == "ENTER_NOW":
-        equity.append("Enter on confirmed break — initial 2-3% position")
-        equity.append("Add 1% on consolidation above breakout")
+        equity.append("Buy on confirmed breakout — start with 2-3% of your portfolio")
+        equity.append("Add another 1% if price holds above the breakout level")
         if pcr and pcr < 1.0:
-            options_strat.append("30-day ATM calls (PCR confirms bullish positioning)")
+            options_strat.append("Buy 30-day call options at current price — leveraged bullish bet (option market confirms bullish positioning)")
         else:
-            options_strat.append("Defined-risk only — equity preferred over options at this PCR")
+            options_strat.append("Stick to buying shares — option market not strongly bullish enough to use options")
     elif state.get("key") == "PREPARE":
-        equity.append("WAIT for breakout confirmation — do not pre-position")
-        equity.append("Set alert at breakout price")
+        equity.append("Don't buy yet — wait for the breakout to actually happen first")
+        equity.append("Set a price alert at the breakout level so you don't miss it")
         if pcr and pcr > 1.2:
-            options_strat.append("Avoid current premiums — PCR not bullish-confirming")
-        options_strat.append("If breakout: 30-day ATM calls, max 1% portfolio risk")
+            options_strat.append("Don't buy options at current prices — option market not bullish enough yet")
+        options_strat.append("If breakout fires: buy 30-day call options at current price — risk no more than 1% of portfolio")
     elif state.get("key") == "WATCH":
-        equity.append("Monitor only — no position yet")
-        options_strat.append("No options trades — setup not ready")
+        equity.append("Just watch for now — no buying yet")
+        options_strat.append("No options trades right now — setup isn't ready")
     else:
-        equity.append("AVOID — do not enter")
-        options_strat.append("AVOID — trap risk material")
+        equity.append("Don't buy — skip this trade")
+        options_strat.append("Don't trade options — fakeout risk too high")
     
     return {"equity": equity, "options": options_strat}
 
