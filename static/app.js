@@ -1,9 +1,9 @@
 // ═══ Celesys version stamp ═══
-window.CELESYS_VERSION = "v4.63.42";
-window.CELESYS_BUILD_TIME = 1777875018;
-window.CELESYS_BUILD_DATE = "2026-05-04 06:10:18 UTC";
+window.CELESYS_VERSION = "v4.63.43";
+window.CELESYS_BUILD_TIME = 1777895767;
+window.CELESYS_BUILD_DATE = "2026-05-04 11:56:07 UTC";
 console.log("%c━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "color:#1A3A78");
-console.log("%c CELESYS v4.63.42 %c loaded · 2026-04-29 03:29:27 UTC",
+console.log("%c CELESYS v4.63.43 %c loaded · 2026-04-29 03:29:27 UTC",
   "background:#1A3A78;color:#fff;font-weight:900;padding:3px 8px;border-radius:3px;font-family:monospace",
   "color:#1A3A78;font-weight:700;font-family:monospace");
 console.log("%c━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "color:#1A3A78");
@@ -26671,20 +26671,92 @@ function _csR6322RenderExit(d) {
     html += '</div>';
     html += '</div>';
   } else {
-    // Undervalued stock — normal entry guidance
+    // Undervalued stock — but reconcile with Kelly position math (r63.43)
     var upsideToBase = baseTarget ? ((baseTarget - spot) / spot * 100) : null;
     
-    html += '<div style="background:#ecfdf5;border:2px solid #10b981;border-radius:8px;padding:14px 18px;margin-bottom:18px">';
-    html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">';
-    html += '<span style="font-size:18px">✓</span>';
-    html += '<span style="font-size:14px;font-weight:800;color:#047857;font-family:Sora,sans-serif;letter-spacing:0.3px">REASONABLE BUY ZONE</span>';
-    html += '</div>';
-    html += '<div style="font-size:13px;color:#0f172a;line-height:1.6">';
-    html += '<strong>Plain English:</strong> This stock is at <strong style="color:#1A3A78">$' + spot.toFixed(2) + '</strong>, ';
-    html += 'and our analysis says fair value is <strong style="color:#10b981">$' + (baseTarget || 0).toFixed(2) + '</strong> ';
-    html += '— <strong style="color:#10b981">' + (upsideToBase || 0).toFixed(0) + '% upside potential</strong>. ';
-    html += 'You can buy here, but follow the trim/stop levels below to manage risk.';
-    html += '</div>';
+    // r63.43: Verdict-Kelly reconciliation
+    // When position math says 0% but score is decent (>=60), the issue is R:R, not fundamentals.
+    // Show AVOID verdict + warning band explaining why fundamentals say buy but math says skip.
+    var ps_v = d.position_sizing || {};
+    var vr_v = d.volatility_regime || {};
+    var posPct = ps_v.initial_pct;
+    var score = vr_v.score || 0;
+    var volPct = vr_v.vol_pct || 0;
+    var spreadPct = vr_v.spread_pct || 0;
+    var kellyFull = ps_v.kelly_full_pct;
+    
+    // Detect contradiction: position is 0 BUT score is decent (so it's NOT a fundamentals problem)
+    var positionMathOverride = (posPct != null && posPct === 0 && score >= 60);
+    
+    if (positionMathOverride) {
+      // Determine override reason (which input drove Kelly to 0?)
+      var overrideReason = '';
+      var overrideHeadline = '';
+      var whatWouldChange = [];
+      
+      if (volPct >= 65) {
+        overrideHeadline = 'AVOID — VOLATILITY MISMATCH';
+        overrideReason = 'Stock is fairly priced ($' + (baseTarget||0).toFixed(2) + ' fair vs $' + spot.toFixed(2) + ' spot, +' + (upsideToBase||0).toFixed(1) + '% upside), but EXTREME volatility (' + volPct.toFixed(0) + '% annual) means stops sit far below spot. Risk/reward is institutionally unbuyable.';
+        var fairTarget115 = (baseTarget||0) * 0.85;  // 15% pullback from fair = 25%+ upside
+        whatWouldChange.push('Spot falls below $' + fairTarget115.toFixed(2) + ' (gives ≥15% upside cushion)');
+        whatWouldChange.push('Volatility drops below 65% (smaller, less aggressive stops)');
+        whatWouldChange.push('Fair value rises above $' + (spot * 1.15).toFixed(2) + ' (more upside to compensate for stop distance)');
+      } else if (spreadPct >= 50) {
+        overrideHeadline = 'AVOID — METHOD DISAGREEMENT';
+        overrideReason = 'Stock looks fairly priced, but our valuation methods disagree by ' + spreadPct.toFixed(0) + '%. The single fair-value number hides high uncertainty. Position math sized down to zero.';
+        whatWouldChange.push('Methods converge (spread <30%) — i.e., new earnings or guidance reduces uncertainty');
+        whatWouldChange.push('Spot falls into the lower bound of the fair-value range');
+      } else if ((upsideToBase||0) < 5) {
+        overrideHeadline = 'WAIT FOR PULLBACK';
+        overrideReason = 'Only ' + (upsideToBase||0).toFixed(1) + '% upside to fair value. Insufficient margin of safety even at normal volatility. Wait for a better entry.';
+        whatWouldChange.push('Spot falls to $' + ((baseTarget||0) * 0.92).toFixed(2) + ' or below (gives ≥10% upside)');
+        whatWouldChange.push('Fair value revised upward by next quarterly results');
+      } else {
+        overrideHeadline = 'AVOID — RISK/REWARD UNFAVORABLE';
+        overrideReason = 'Fundamentals look reasonable, but with these stops the math returns risk/reward of less than 1:1 — institutional pass.';
+        whatWouldChange.push('Spot falls toward fair value (better entry)');
+        whatWouldChange.push('Volatility eases (tighter stops)');
+      }
+      
+      // RED warning band — replaces the green BUY ZONE
+      html += '<div style="background:#fef2f2;border:2px solid #dc2626;border-radius:8px;padding:14px 18px;margin-bottom:18px">';
+      html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">';
+      html += '<span style="font-size:18px">⚠</span>';
+      html += '<span style="font-size:14px;font-weight:800;color:#7f1d1d;font-family:Sora,sans-serif;letter-spacing:0.3px">' + overrideHeadline + '</span>';
+      html += '</div>';
+      html += '<div style="font-size:13px;color:#0f172a;line-height:1.7;margin-bottom:10px">';
+      html += '<strong>Plain English:</strong> ' + overrideReason;
+      html += '</div>';
+      
+      // Also disclose the original fundamental view honestly
+      html += '<div style="background:#fff;border-radius:6px;padding:10px 12px;margin-bottom:10px;font-size:12px;color:#475569;line-height:1.6">';
+      html += '<strong style="color:#0f172a">Fundamental view:</strong> Stock is at $' + spot.toFixed(2) + ' vs fair value $' + (baseTarget||0).toFixed(2) + ' (' + (upsideToBase>=0 ? '+' : '') + (upsideToBase||0).toFixed(1) + '% upside). Without volatility considered, this would be a buy zone — but position math correctly overrides.';
+      html += '</div>';
+      
+      // What would change this verdict
+      if (whatWouldChange.length > 0) {
+        html += '<div style="font-size:12px;color:#475569;line-height:1.7">';
+        html += '<strong style="color:#0f172a">What would change this verdict:</strong>';
+        whatWouldChange.forEach(function(w) {
+          html += '<div style="margin-left:12px;margin-top:4px">• ' + _csEscape(w) + '</div>';
+        });
+        html += '</div>';
+      }
+      html += '</div>';
+    } else {
+      // Normal "BUY ZONE" — Kelly agrees, fundamentals agree, ship the green box
+      html += '<div style="background:#ecfdf5;border:2px solid #10b981;border-radius:8px;padding:14px 18px;margin-bottom:18px">';
+      html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">';
+      html += '<span style="font-size:18px">✓</span>';
+      html += '<span style="font-size:14px;font-weight:800;color:#047857;font-family:Sora,sans-serif;letter-spacing:0.3px">REASONABLE BUY ZONE</span>';
+      html += '</div>';
+      html += '<div style="font-size:13px;color:#0f172a;line-height:1.6">';
+      html += '<strong>Plain English:</strong> This stock is at <strong style="color:#1A3A78">$' + spot.toFixed(2) + '</strong>, ';
+      html += 'and our analysis says fair value is <strong style="color:#10b981">$' + (baseTarget || 0).toFixed(2) + '</strong> ';
+      html += '— <strong style="color:#10b981">' + (upsideToBase || 0).toFixed(0) + '% upside potential</strong>. ';
+      html += 'You can buy here, but follow the trim/stop levels below to manage risk.';
+      html += '</div>';
+    }
       
   // r63.37: INSTITUTIONAL REGIME CARD — premium UI showing per-ticker dynamics
   if (d.volatility_regime) {
