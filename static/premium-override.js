@@ -448,7 +448,19 @@
   if(!p)return null;
   var _t=d.technicals||{};
   var beta=parseFloat(d.beta||_t.beta||0);
-  var fv=(window._stockTabDCF&&window._stockTabDCF.value>0)?window._stockTabDCF.value:parseFloat(d.fairValue||(d.intrinsicValue?d.intrinsicValue.average:0)||(d.levels?d.levels.fairValue:0)||0);
+  // r63.55b: Same Target $36 bug — sanity-check fv computation
+  var fv = 0;
+  if (d.levels && d.levels.fairValue && d.levels.fairValue > 0) fv = d.levels.fairValue;
+  else if (d.intrinsicValue && d.intrinsicValue.average && d.intrinsicValue.average > 0) fv = d.intrinsicValue.average;
+  else if (d.fairValue && d.fairValue > 0) fv = parseFloat(d.fairValue);
+  else if (d.dcf_value && d.dcf_value > 0) fv = parseFloat(d.dcf_value);
+  else if (window._stockTabDCF && window._stockTabDCF.value > 0 && window._stockTabDCF.value > p / 2) fv = window._stockTabDCF.value;
+  if (fv > 0 && fv < p * 0.5) {
+    console.warn('[CONSENSUS r63.55b] fairValue ' + fv + ' implausibly low vs price ' + p + ' — clamping');
+    fv = p * 1.05;
+  }
+  if (fv === 0 && d.upside != null) fv = p * (1 + d.upside / 100);
+  if (fv === 0) fv = p * 1.05;
   var moS=(fv>0&&p>0)?Math.round((fv-p)/p*100):0;
   var fS=parseInt(d.fScore||(d.business?d.business.fScore:0)||d.piotroski_score||0);
   var roe=parseFloat(d.roe||(d.fundamental?d.fundamental.roe:0)||0);
@@ -5243,7 +5255,19 @@ window._finalDecisionBar=function(d,S){
   else if(riskScore>=7&&factScore>=5)role='Defensive Hedge';
   else if(factScore<=3)role='Speculative';
   // Entry zones — UNIFIED: Use _stockTabDCF for fair value, API levels for support
-  var fv=(window._stockTabDCF&&window._stockTabDCF.value>0)?window._stockTabDCF.value:(d.fairValue||d.dcf_value||p);
+  // r63.55b: Same Target $36 bug — sanity-check fv computation
+  var fv = 0;
+  if (d.levels && d.levels.fairValue && d.levels.fairValue > 0) fv = d.levels.fairValue;
+  else if (d.intrinsicValue && d.intrinsicValue.average && d.intrinsicValue.average > 0) fv = d.intrinsicValue.average;
+  else if (d.fairValue && d.fairValue > 0) fv = parseFloat(d.fairValue);
+  else if (d.dcf_value && d.dcf_value > 0) fv = parseFloat(d.dcf_value);
+  else if (window._stockTabDCF && window._stockTabDCF.value > 0 && window._stockTabDCF.value > p / 2) fv = window._stockTabDCF.value;
+  if (fv > 0 && fv < p * 0.5) {
+    console.warn('[CONSENSUS r63.55b] fairValue ' + fv + ' implausibly low vs price ' + p + ' — clamping');
+    fv = p * 1.05;
+  }
+  if (fv === 0 && d.upside != null) fv = p * (1 + d.upside / 100);
+  if (fv === 0) fv = p * 1.05;
   var apiLevels=d.levels||d.support_1?{buy:d.levels?d.levels.buy:d.support_1,sl:d.levels?d.levels.sl:Math.round(p*0.92)}:{buy:Math.round(fv*0.95),sl:Math.round(p*0.92)};
   var buyZone=S+Math.round(apiLevels.buy||fv*0.95).toLocaleString();
   var addZone=S+Math.round(fv*0.90).toLocaleString();
@@ -5412,7 +5436,26 @@ window._institutionalSummary=function(d,S){
   var beta=parseFloat(d.beta||0);var fScore=d.fScore||d.piotroski_score||0;
   var rsi=parseFloat(d.rsi||0);var roe=parseFloat(d.roe||0);
   var sma50=d.sma_50||d.sma50||p;var sma200=d.sma_200||d.sma200||p;
-  var fv=(window._stockTabDCF&&window._stockTabDCF.value>0)?window._stockTabDCF.value:(d.fairValue||0);
+  // r63.55: Bug fix — Target showed $36 when entry was $187. Use correct API field paths
+  // and sanity check that fairValue is plausible (must be a meaningful number, ideally > entry/2).
+  var fv = 0;
+  // Priority 1: API levels.fairValue (most reliable, set by current investor-decide call)
+  if (d.levels && d.levels.fairValue && d.levels.fairValue > 0) fv = d.levels.fairValue;
+  // Priority 2: intrinsicValue.average (canonical field on /api/investor-decide)
+  else if (d.intrinsicValue && d.intrinsicValue.average && d.intrinsicValue.average > 0) fv = d.intrinsicValue.average;
+  // Priority 3: top-level fairValue (legacy fallback)
+  else if (d.fairValue && d.fairValue > 0) fv = d.fairValue;
+  // Priority 4: window._stockTabDCF — but ONLY if it's plausible (> p/2 to reject stale/cross-contaminated values)
+  else if (window._stockTabDCF && window._stockTabDCF.value > 0 && window._stockTabDCF.value > p / 2) fv = window._stockTabDCF.value;
+  // Sanity check: if fv is suspiciously low compared to price, fall back to a conservative estimate
+  if (fv > 0 && fv < p * 0.5) {
+    console.warn('[CONSENSUS r63.55] fairValue ' + fv + ' is implausibly low vs price ' + p + ' — clamping to price * 1.05');
+    fv = p * 1.05;
+  }
+  // If still no valid fv, derive from upside if available
+  if (fv === 0 && d.upside != null) fv = p * (1 + d.upside / 100);
+  // Last resort: assume modest 5% upside
+  if (fv === 0) fv = p * 1.05;
   var moS=p>0?Math.round((fv-p)/p*100):0;
 
   // Collect all chart verdicts
@@ -5799,7 +5842,26 @@ window._convictionHeatmap=function(d,S){
   var p=d.price;var sma50=d.sma_50||d.sma50||p;var sma200=d.sma_200||d.sma200||p;
   var rsi=parseFloat(d.rsi||0);var beta=parseFloat(d.beta||0);
   var fS=d.fScore||0;var roe=parseFloat(d.roe||0);
-  var fv=(window._stockTabDCF&&window._stockTabDCF.value>0)?window._stockTabDCF.value:(d.fairValue||0);
+  // r63.55: Bug fix — Target showed $36 when entry was $187. Use correct API field paths
+  // and sanity check that fairValue is plausible (must be a meaningful number, ideally > entry/2).
+  var fv = 0;
+  // Priority 1: API levels.fairValue (most reliable, set by current investor-decide call)
+  if (d.levels && d.levels.fairValue && d.levels.fairValue > 0) fv = d.levels.fairValue;
+  // Priority 2: intrinsicValue.average (canonical field on /api/investor-decide)
+  else if (d.intrinsicValue && d.intrinsicValue.average && d.intrinsicValue.average > 0) fv = d.intrinsicValue.average;
+  // Priority 3: top-level fairValue (legacy fallback)
+  else if (d.fairValue && d.fairValue > 0) fv = d.fairValue;
+  // Priority 4: window._stockTabDCF — but ONLY if it's plausible (> p/2 to reject stale/cross-contaminated values)
+  else if (window._stockTabDCF && window._stockTabDCF.value > 0 && window._stockTabDCF.value > p / 2) fv = window._stockTabDCF.value;
+  // Sanity check: if fv is suspiciously low compared to price, fall back to a conservative estimate
+  if (fv > 0 && fv < p * 0.5) {
+    console.warn('[CONSENSUS r63.55] fairValue ' + fv + ' is implausibly low vs price ' + p + ' — clamping to price * 1.05');
+    fv = p * 1.05;
+  }
+  // If still no valid fv, derive from upside if available
+  if (fv === 0 && d.upside != null) fv = p * (1 + d.upside / 100);
+  // Last resort: assume modest 5% upside
+  if (fv === 0) fv = p * 1.05;
   var moS=p>0?(fv-p)/p*100:0;
 
   var signals=[
@@ -5985,7 +6047,26 @@ window._masterDecisionOrchestrator=function(d,S){
   var roe=parseFloat(d.roe||0);
   var sma50=d.sma_50||d.sma50||p;
   var sma200=d.sma_200||d.sma200||p;
-  var fv=(window._stockTabDCF&&window._stockTabDCF.value>0)?window._stockTabDCF.value:(d.fairValue||0);
+  // r63.55: Bug fix — Target showed $36 when entry was $187. Use correct API field paths
+  // and sanity check that fairValue is plausible (must be a meaningful number, ideally > entry/2).
+  var fv = 0;
+  // Priority 1: API levels.fairValue (most reliable, set by current investor-decide call)
+  if (d.levels && d.levels.fairValue && d.levels.fairValue > 0) fv = d.levels.fairValue;
+  // Priority 2: intrinsicValue.average (canonical field on /api/investor-decide)
+  else if (d.intrinsicValue && d.intrinsicValue.average && d.intrinsicValue.average > 0) fv = d.intrinsicValue.average;
+  // Priority 3: top-level fairValue (legacy fallback)
+  else if (d.fairValue && d.fairValue > 0) fv = d.fairValue;
+  // Priority 4: window._stockTabDCF — but ONLY if it's plausible (> p/2 to reject stale/cross-contaminated values)
+  else if (window._stockTabDCF && window._stockTabDCF.value > 0 && window._stockTabDCF.value > p / 2) fv = window._stockTabDCF.value;
+  // Sanity check: if fv is suspiciously low compared to price, fall back to a conservative estimate
+  if (fv > 0 && fv < p * 0.5) {
+    console.warn('[CONSENSUS r63.55] fairValue ' + fv + ' is implausibly low vs price ' + p + ' — clamping to price * 1.05');
+    fv = p * 1.05;
+  }
+  // If still no valid fv, derive from upside if available
+  if (fv === 0 && d.upside != null) fv = p * (1 + d.upside / 100);
+  // Last resort: assume modest 5% upside
+  if (fv === 0) fv = p * 1.05;
   var moS=p>0?Math.round((fv-p)/p*100):0;
   var maxDD=Math.abs(d.max_drawdown||d.drawdown_from_high||0);
 

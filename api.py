@@ -1801,9 +1801,9 @@ def _safe_float(val, default=0.0):
         return default
 
 # ═══ Celesys version stamp (v4.61.10) ═══════════════════════════════
-APP_VERSION = "v4.63.53"
-APP_BUILD_TIME = 1778042231
-APP_BUILD_DATE = "2026-05-06 04:37:11 UTC"
+APP_VERSION = "v4.63.57"
+APP_BUILD_TIME = 1778046729
+APP_BUILD_DATE = "2026-05-06 05:52:09 UTC"
 APP_RELEASE_NOTES = (
     "v4.62.0: Micro-Cap Hunter scanner (Decide tab) + cumulative r61.x: Aladdin DD entry page (r61.8), "
     "stale-cache fallback (r61.8), multi-factor Bottom Line (r61.7), "
@@ -32943,12 +32943,38 @@ async def forward_value(symbol: str = "", region: str = "US", email: str = ""):
     div_yield = div_yield_pct / 100.0
     
     # ────── 5-Year Intrinsic Value Trajectory ──────
-    # Bull: DCF × (1 + rev_growth × 1.5) at year 5
-    # Base: DCF (current fair value)
-    # Bear: DCF × 0.70 at year 5
-    bull_5y = dcf_fair * (1 + rev_growth * 1.5)
-    base_5y = dcf_fair
-    bear_5y = dcf_fair * 0.70
+    # r63.56 FIX: Compound fair value FORWARD by growth rate (not held flat).
+    # Old bug: base_5y = dcf_fair → stock projected to stay at TODAY'S fair value.
+    # That made negative expected returns inevitable when DCF<spot. Wrong.
+    # Real institutional approach: fair value grows with earnings/revenue.
+    
+    # Earnings growth — preferred for compounding intrinsic value
+    earn_g_pct = _safe_float(finance.get("earnings_growth_yoy_pct")) or _safe_float(finance.get("eps_growth_pct"))
+    earn_g = (earn_g_pct / 100.0) if earn_g_pct else None
+    
+    # Pick the growth rate that drives compounding:
+    # Use earnings growth if available (most conservative for valuation),
+    # else revenue growth, else 8% default (long-run market average ~10% nominal)
+    if earn_g is not None and -0.20 <= earn_g <= 0.50:
+        g_base_growth = earn_g
+    elif rev_growth and -0.20 <= rev_growth <= 0.50:
+        g_base_growth = rev_growth * 0.7  # rev growth flows to earnings at ~70% (margin compression)
+    else:
+        g_base_growth = 0.08  # 8% default = long-term equity premium ~6% + inflation ~2%
+    
+    # Clamp base growth to realistic 0-15% (no perpetual 30% compounding)
+    g_base_growth = max(0.02, min(0.15, g_base_growth))
+    
+    # Bull = base growth + 5pp (optimistic margin expansion + multiple expansion)
+    g_bull_growth = min(0.20, g_base_growth + 0.05)
+    
+    # Bear = base growth - 5pp, floored at 0% (no permanent decline projected)
+    g_bear_growth = max(0.0, g_base_growth - 0.05)
+    
+    # Compound fair value forward 5 years
+    bull_5y = dcf_fair * ((1 + g_bull_growth) ** 5)
+    base_5y = dcf_fair * ((1 + g_base_growth) ** 5)
+    bear_5y = dcf_fair * ((1 + g_bear_growth) ** 5)
     
     # Annual interpolation: spot → target via geometric
     def trajectory(target):
@@ -36607,85 +36633,96 @@ window.celesysToday = (function() {
       return '<div style="padding:24px;background:#fef2f2;border:1px solid #fca5a5;border-radius:8px;color:#7f1d1d">' +
              '<strong>⚠ Failed to load analysis:</strong> ' + escapeHtml(d.error || 'Unknown error') + '</div>';
     }
+    
+    // r63.54: Map ACTUAL field names from /api/investor-decide
+    var price        = d.price;
+    var decision     = d.decision || '';
+    var explain      = d.explain || '';
+    var score        = d.confidence || 0;
+    var iv           = d.intrinsicValue || {};
+    var fairValue    = iv.average;
+    var levels       = d.levels || {};
+    var fund         = d.fundamental || {};
+    var tech         = d.technicals || {};
+    var sector       = d.sector || '';
+    var companyName  = d.companyName || sym;
+    var upside       = d.upside;
+    var beta         = d.beta;
+    var volatility   = d.volatility;
+    var trend        = d.trend || '';
+    var marketCap    = d.marketCap || 0;
+    var trig         = d.momentumTriggers || {};
+    var bands        = d.probabilityBands || {};
+    
+    function fmtBig(n) {
+      if (!n || isNaN(n)) return '\u2014';
+      n = Number(n);
+      if (Math.abs(n) >= 1e12) return '$' + (n/1e12).toFixed(2) + 'T';
+      if (Math.abs(n) >= 1e9)  return '$' + (n/1e9).toFixed(2)  + 'B';
+      if (Math.abs(n) >= 1e6)  return '$' + (n/1e6).toFixed(2)  + 'M';
+      return '$' + n.toLocaleString();
+    }
+    
+    var dec = (decision || '').toUpperCase();
+    var vColor = '#3b82f6', vBg = '#eff6ff';
+    if (dec.indexOf('STRONG BUY') >= 0 || dec === 'BUY') { vColor = '#10b981'; vBg = '#ecfdf5'; }
+    else if (dec.indexOf('AVOID') >= 0 || dec.indexOf('SELL') >= 0 || dec.indexOf('REJECT') >= 0) { vColor = '#dc2626'; vBg = '#fef2f2'; }
+    else if (dec.indexOf('HOLD') >= 0 || dec.indexOf('WAIT') >= 0 || dec.indexOf('NEUTRAL') >= 0) { vColor = '#f59e0b'; vBg = '#fffbeb'; }
+    
     var html = '';
-    var spot = d.spot || d.price;
-    var verdict = d.verdict || d.bottomLine || d.recommendation || {};
-    var thesis = d.thesis || {};
-    var fin = d.financials || d.finance || {};
-    var company = d.company || {};
-    var fairVal = d.fair_value || d.fairValue || (thesis.fair_value);
-    var score = d.score || (thesis.score) || 0;
-    var hi52 = thesis.hi52 || d.hi52;
-    var lo52 = thesis.lo52 || d.lo52;
-    var vol = thesis.vol_pct || thesis.vol || d.vol_pct;
-    var beta = thesis.beta || d.beta;
     
     // Header card
     html += '<div style="background:linear-gradient(135deg,#1A3A78,#1e40af);color:#fff;padding:18px 22px;border-radius:10px;margin-bottom:14px">';
     html += '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:14px;flex-wrap:wrap">';
-    html += '<div><div style="font-size:22px;font-weight:900;letter-spacing:0.3px">' + escapeHtml(sym) + '</div>';
-    if (company.name) html += '<div style="font-size:12px;opacity:0.85;margin-top:2px">' + escapeHtml(company.name) + '</div>';
-    if (company.sector) html += '<div style="font-size:10px;opacity:0.7;margin-top:1px">' + escapeHtml(company.sector) + (company.industry ? ' · ' + escapeHtml(company.industry) : '') + '</div>';
+    html += '<div style="flex:1;min-width:200px">';
+    html += '<div style="font-size:24px;font-weight:900;letter-spacing:0.3px">' + escapeHtml(sym) + '</div>';
+    if (companyName && companyName !== sym) html += '<div style="font-size:13px;opacity:0.9;margin-top:3px">' + escapeHtml(companyName) + '</div>';
+    if (sector) html += '<div style="font-size:11px;opacity:0.75;margin-top:2px">' + escapeHtml(sector) + (trend ? ' \u00b7 trend ' + escapeHtml(trend) : '') + '</div>';
     html += '</div>';
-    if (spot) {
-      html += '<div style="text-align:right">';
-      html += '<div style="font-size:24px;font-weight:900;font-family:\'IBM Plex Mono\',monospace">$' + fmt(spot, 2) + '</div>';
-      if (d.chg != null) {
-        var chgC = d.chg > 0 ? '#10b981' : '#fca5a5';
-        html += '<div style="font-size:11px;color:' + chgC + '">' + (d.chg > 0 ? '+' : '') + fmt(d.chg, 2) + '%</div>';
-      }
-      html += '</div>';
-    }
-    html += '</div>';
-    html += '</div>';
+    html += '<div style="text-align:right">';
+    if (price) html += '<div style="font-size:28px;font-weight:900;font-family:\'IBM Plex Mono\',monospace">$' + fmt(price, 2) + '</div>';
+    html += '</div></div></div>';
     
-    // Verdict + Score row
-    if (verdict.label || score) {
-      var vColor = '#3b82f6';
-      var vBg = '#eff6ff';
-      var vLabel = (verdict.label || '').toUpperCase();
-      if (vLabel.includes('BUY') || vLabel.includes('STRONG')) { vColor = '#10b981'; vBg = '#ecfdf5'; }
-      else if (vLabel.includes('AVOID') || vLabel.includes('SELL') || vLabel.includes('REJECT')) { vColor = '#dc2626'; vBg = '#fef2f2'; }
-      else if (vLabel.includes('HOLD') || vLabel.includes('WAIT') || vLabel.includes('NEUTRAL')) { vColor = '#f59e0b'; vBg = '#fffbeb'; }
-      
-      html += '<div style="background:' + vBg + ';border:2px solid ' + vColor + ';border-radius:10px;padding:16px;margin-bottom:14px">';
+    // Verdict + Score
+    if (decision || score) {
+      html += '<div style="background:' + vBg + ';border:2px solid ' + vColor + ';border-radius:10px;padding:16px 18px;margin-bottom:14px">';
       html += '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:14px">';
-      if (verdict.label) {
+      if (decision) {
         html += '<div><div style="font-size:9px;font-weight:800;color:#94a3b8;letter-spacing:1.2px;margin-bottom:4px">VERDICT</div>';
-        html += '<div style="font-size:18px;font-weight:900;color:' + vColor + '">' + escapeHtml(verdict.label) + '</div></div>';
+        html += '<div style="font-size:20px;font-weight:900;color:' + vColor + '">' + escapeHtml(decision) + '</div></div>';
       }
       if (score) {
         var sColor = score >= 70 ? '#10b981' : (score >= 50 ? '#f59e0b' : '#dc2626');
         html += '<div style="text-align:right"><div style="font-size:9px;font-weight:800;color:#94a3b8;letter-spacing:1.2px;margin-bottom:2px">SCORE</div>';
-        html += '<div style="font-size:28px;font-weight:900;color:' + sColor + ';font-family:\'IBM Plex Mono\',monospace">' + score + '<span style="font-size:14px;color:#94a3b8">/100</span></div></div>';
+        html += '<div style="font-size:32px;font-weight:900;color:' + sColor + ';font-family:\'IBM Plex Mono\',monospace">' + score + '<span style="font-size:14px;color:#94a3b8">/100</span></div></div>';
       }
       html += '</div>';
-      if (verdict.headline || verdict.summary) {
+      if (explain) {
         html += '<div style="margin-top:10px;padding-top:10px;border-top:1px solid rgba(0,0,0,0.06);font-size:13px;line-height:1.6;color:#0f172a">';
-        html += escapeHtml(verdict.headline || verdict.summary);
+        html += escapeHtml(explain);
         html += '</div>';
       }
       html += '</div>';
     }
     
-    // Key metrics grid
+    // Metrics grid
     html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px;margin-bottom:14px">';
     var cells = [];
-    if (fairVal) cells.push(['Fair Value', '$' + fmt(fairVal, 2), null]);
-    if (spot && fairVal) {
-      var upside = ((fairVal - spot) / spot * 100);
-      cells.push(['Upside', (upside > 0 ? '+' : '') + fmt(upside, 1) + '%', upside > 0 ? '#10b981' : '#dc2626']);
-    }
-    if (hi52) cells.push(['52w High', '$' + fmt(hi52, 2), null]);
-    if (lo52) cells.push(['52w Low', '$' + fmt(lo52, 2), null]);
-    if (vol) cells.push(['Volatility', fmt(vol, 1) + '%', vol > 50 ? '#dc2626' : (vol > 30 ? '#f59e0b' : '#10b981')]);
-    if (beta) cells.push(['Beta', fmt(beta, 2), null]);
-    if (fin.peTrailing || fin.pe) cells.push(['P/E', fmt(fin.peTrailing || fin.pe, 1), null]);
-    if (fin.peForward) cells.push(['Fwd P/E', fmt(fin.peForward, 1), null]);
-    if (fin.marketCap || fin.market_cap) cells.push(['Mkt Cap', '$' + fmtBig(fin.marketCap || fin.market_cap), null]);
-    if (fin.profitMargins != null) cells.push(['Margin', fmt(fin.profitMargins * 100, 1) + '%', null]);
-    if (fin.debtToEquity != null) cells.push(['D/E', fmt(fin.debtToEquity, 2), fin.debtToEquity > 1.5 ? '#dc2626' : null]);
-    if (fin.roe != null) cells.push(['ROE', fmt(fin.roe * 100, 1) + '%', fin.roe > 0.15 ? '#10b981' : null]);
+    if (fairValue) cells.push(['Fair Value', '$' + fmt(fairValue, 2), null]);
+    if (upside != null) cells.push(['Upside', (upside > 0 ? '+' : '') + fmt(upside, 1) + '%', upside > 0 ? '#10b981' : '#dc2626']);
+    if (levels.hi52) cells.push(['52w High', '$' + fmt(levels.hi52, 2), null]);
+    if (levels.lo52) cells.push(['52w Low', '$' + fmt(levels.lo52, 2), null]);
+    if (volatility) cells.push(['Volatility', fmt(volatility, 1) + '%', volatility > 50 ? '#dc2626' : (volatility > 30 ? '#f59e0b' : '#10b981')]);
+    if (beta) cells.push(['Beta', fmt(beta, 2), beta > 1.5 ? '#f59e0b' : null]);
+    if (fund.pe) cells.push(['P/E', fmt(fund.pe, 1), null]);
+    if (fund.fwdPE) cells.push(['Fwd P/E', fmt(fund.fwdPE, 1), null]);
+    if (marketCap) cells.push(['Mkt Cap', fmtBig(marketCap), null]);
+    if (fund.profitMargin != null) cells.push(['Net Margin', fmt(fund.profitMargin, 1) + '%', fund.profitMargin > 15 ? '#10b981' : null]);
+    if (fund.debtToEquity != null) cells.push(['D/E', fmt(fund.debtToEquity, 1) + '%', fund.debtToEquity > 150 ? '#dc2626' : null]);
+    if (fund.roe != null) cells.push(['ROE', fmt(fund.roe, 1) + '%', fund.roe > 15 ? '#10b981' : null]);
+    if (tech.rsi) cells.push(['RSI', fmt(tech.rsi, 0), tech.rsi > 70 ? '#dc2626' : (tech.rsi < 30 ? '#10b981' : null)]);
+    if (fund.revenueGrowth != null) cells.push(['Rev Growth', (fund.revenueGrowth>0?'+':'') + fmt(fund.revenueGrowth, 1) + '%', fund.revenueGrowth > 0 ? '#10b981' : '#dc2626']);
+    if (fund.earningsGrowth != null) cells.push(['EPS Growth', (fund.earningsGrowth>0?'+':'') + fmt(fund.earningsGrowth, 1) + '%', fund.earningsGrowth > 0 ? '#10b981' : '#dc2626']);
     
     cells.forEach(function(cell) {
       var color = cell[2] || '#0f172a';
@@ -36696,27 +36733,294 @@ window.celesysToday = (function() {
     });
     html += '</div>';
     
-    // Bottom line / catalysts / risks
-    if (d.catalysts && d.catalysts.length) {
+    // Trade levels
+    if (levels.entry || levels.stopLoss || levels.target1 || levels.target2) {
       html += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px;margin-bottom:10px">';
-      html += '<div style="font-size:10px;font-weight:800;color:#1A3A78;letter-spacing:1px;margin-bottom:8px">📈 KEY CATALYSTS</div>';
-      d.catalysts.slice(0, 6).forEach(function(c) {
-        html += '<div style="font-size:12px;color:#475569;line-height:1.6;margin-bottom:4px">• ' + escapeHtml(typeof c === 'string' ? c : (c.text || c.label || JSON.stringify(c))) + '</div>';
-      });
+      html += '<div style="font-size:10px;font-weight:800;color:#1A3A78;letter-spacing:1px;margin-bottom:8px">\ud83d\udccd TRADE LEVELS</div>';
+      html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:6px;font-family:\'IBM Plex Mono\',monospace;font-size:12px">';
+      if (levels.entry) html += '<div><div style="font-size:9px;color:#94a3b8">Entry</div><div style="color:#1A3A78;font-weight:700">$' + fmt(levels.entry, 2) + '</div></div>';
+      if (levels.stopLoss) html += '<div><div style="font-size:9px;color:#94a3b8">Stop Loss</div><div style="color:#dc2626;font-weight:700">$' + fmt(levels.stopLoss, 2) + '</div></div>';
+      if (levels.target1) html += '<div><div style="font-size:9px;color:#94a3b8">Target 1</div><div style="color:#10b981;font-weight:700">$' + fmt(levels.target1, 2) + '</div></div>';
+      if (levels.target2) html += '<div><div style="font-size:9px;color:#94a3b8">Target 2</div><div style="color:#10b981;font-weight:700">$' + fmt(levels.target2, 2) + '</div></div>';
+      html += '</div></div>';
+    }
+    
+    // Probability bands (bull/bear scenarios)
+    if (bands.bull && bands.bear) {
+      html += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px;margin-bottom:10px">';
+      html += '<div style="font-size:10px;font-weight:800;color:#1A3A78;letter-spacing:1px;margin-bottom:8px">\ud83d\udcca SCENARIO BANDS</div>';
+      html += '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;font-family:\'IBM Plex Mono\',monospace;font-size:12px">';
+      html += '<div style="background:#fef2f2;padding:8px;border-radius:6px"><div style="font-size:9px;color:#94a3b8">Bear</div><div style="color:#dc2626;font-weight:700">$' + fmt(bands.bear, 2) + '</div></div>';
+      html += '<div style="background:#eff6ff;padding:8px;border-radius:6px;border:1px solid #1A3A78"><div style="font-size:9px;color:#94a3b8">Base</div><div style="color:#1A3A78;font-weight:700">$' + fmt(bands.base, 2) + '</div></div>';
+      html += '<div style="background:#ecfdf5;padding:8px;border-radius:6px"><div style="font-size:9px;color:#94a3b8">Bull</div><div style="color:#10b981;font-weight:700">$' + fmt(bands.bull, 2) + '</div></div>';
+      html += '</div></div>';
+    }
+    
+    // r63.57: 360° AUTHORITY PANEL — institutional verdict with all context
+    var bands_360       = d.probabilityBands || {};
+    var mcProbs_360     = (d.chartData && d.chartData.mcProbabilities) || {};
+    var dark_360        = d.darkPool || {};
+    var flow_360        = d.etfFlow || {};
+    var news_360        = d.newsSentiment || {};
+    var peer_360        = d.peerData || {};
+    var valuation_360   = d.valuation || {};
+    var instOwn_360     = d.institutionalOwnership || 0;
+    var ivVal_360       = d.iv || 0;
+    var histVol_360     = d.hist_vol || d.volatility || 0;
+    
+    // ─── DERIVE TIME HORIZON RECOMMENDATION ───
+    // Trader (1-3mo): if RSI extremes + clear momentum signal
+    // Swing (3-12mo): default for most setups
+    // Investor (1-3yr): if strong fundamentals + reasonable valuation
+    var th_trader_ok = false;
+    var th_swing_ok = false;
+    var th_investor_ok = false;
+    var th_trader_msg = 'Wait for momentum confirmation';
+    var th_swing_msg = '';
+    var th_investor_msg = '';
+    
+    var rsi_360 = tech.rsi || 50;
+    var aboveSMA50 = (tech.sma50 && price > tech.sma50);
+    var aboveSMA200 = (tech.sma200 && price > tech.sma200);
+    var fScore_360 = (d.business && d.business.fScore) || 0;
+    var roe_360 = fund.roe || 0;
+    var growth_360 = fund.revenueGrowth || 0;
+    
+    if (dec.indexOf('BUY') >= 0) {
+      // Trader: needs momentum + not overextended
+      if (rsi_360 > 50 && rsi_360 < 70 && aboveSMA50) {
+        th_trader_ok = true;
+        th_trader_msg = 'Momentum supportive — entry at current levels';
+      } else if (rsi_360 < 35) {
+        th_trader_msg = 'Oversold bounce candidate — small position';
+      }
+      
+      // Swing: most BUY signals work for 3-12mo
+      th_swing_ok = true;
+      th_swing_msg = aboveSMA50 ? 'Above 50d MA — entry at current levels or pullback to SMA50' : 'Wait for $' + (tech.sma50 ? fmt(tech.sma50, 2) : '—') + ' (50d MA) reclaim';
+      
+      // Investor: needs strong fundamentals
+      if (fScore_360 >= 6 && roe_360 >= 12 && growth_360 >= 5) {
+        th_investor_ok = true;
+        th_investor_msg = 'Strong fundamentals support multi-year hold';
+      } else {
+        th_investor_msg = 'Trade only — fundamentals don\'t support long-term hold';
+      }
+    } else if (dec.indexOf('HOLD') >= 0 || dec.indexOf('NEUTRAL') >= 0) {
+      th_trader_msg = 'No clear edge — skip';
+      th_swing_msg = 'Wait for better setup';
+      th_investor_msg = 'Hold if owned, no new capital';
+    } else if (dec.indexOf('AVOID') >= 0 || dec.indexOf('SELL') >= 0) {
+      th_trader_msg = 'AVOID — risk/reward unfavorable';
+      th_swing_msg = 'Sell or stay out';
+      th_investor_msg = 'Reduce or exit — fundamentals deteriorating';
+    } else {
+      th_swing_ok = true;
+      th_swing_msg = 'Standard swing setup';
+    }
+    
+    // ─── DERIVE HOLDING PERIOD ASSERTION ───
+    var holdPeriod_360 = '';
+    if (dec.indexOf('STRONG BUY') >= 0 && th_investor_ok) holdPeriod_360 = 'HOLD 18-36 MONTHS';
+    else if (dec.indexOf('BUY') >= 0 && th_investor_ok) holdPeriod_360 = 'HOLD 12-24 MONTHS';
+    else if (dec.indexOf('BUY') >= 0) holdPeriod_360 = 'HOLD 6-12 MONTHS';
+    else if (dec.indexOf('HOLD') >= 0) holdPeriod_360 = 'HOLD CURRENT POSITION';
+    else if (dec.indexOf('AVOID') >= 0 || dec.indexOf('SELL') >= 0) holdPeriod_360 = 'EXIT POSITION';
+    else holdPeriod_360 = 'EVALUATE FURTHER';
+    
+    // ─── OPTIONS IMPLIED MOVE (if iv available) ───
+    // 30-day implied move = price × IV × sqrt(30/365)
+    var impliedMove30d = 0;
+    var impliedMoveDollar = 0;
+    if (ivVal_360 > 0 && price > 0) {
+      impliedMove30d = ivVal_360 * Math.sqrt(30 / 365);  // % move expected over 30d
+      impliedMoveDollar = price * impliedMove30d / 100;
+    }
+    
+    // ─── HOLD WHILE / SELL IF triggers ───
+    var holdWhile = [];
+    var sellIf = [];
+    
+    if (tech.sma50) holdWhile.push('Above $' + fmt(tech.sma50, 2) + ' (50-day MA — short-term support)');
+    if (tech.sma200) holdWhile.push('Above $' + fmt(tech.sma200, 2) + ' (200-day MA — long-term trend)');
+    if (fund.revenueGrowth > 0) holdWhile.push('Revenue growth maintains ' + fmt(fund.revenueGrowth, 0) + '%+ YoY');
+    if (fund.earningsGrowth > 0) holdWhile.push('EPS growth maintains ' + fmt(fund.earningsGrowth, 0) + '%+ YoY');
+    if (flow_360.direction === 'inflow' || flow_360.direction === 'strong_inflow') holdWhile.push('Sector ETF inflows continue (institutional support)');
+    if (sector) holdWhile.push(sector + ' sector remains in uptrend');
+    
+    if (levels.stopLoss) sellIf.push('Closes below $' + fmt(levels.stopLoss, 2) + ' (stop loss — thesis broken)');
+    if (tech.sma200) sellIf.push('Closes below $' + fmt(tech.sma200, 2) + ' (200-day MA — long-term trend break)');
+    if (rsi_360 > 75) sellIf.push('RSI sustains > 80 (overbought, distribution likely)');
+    sellIf.push('EPS miss + downward guidance for 2 consecutive quarters');
+    if (fund.fwdPE > 0 && fund.fwdPE > 50) sellIf.push('Forward P/E sustains > ' + fmt(fund.fwdPE * 1.5, 0) + 'x while growth slows < 15%');
+    sellIf.push('Sector ETF breaks below 200-day MA (sector rotation)');
+    
+    // ─── ASSEMBLE THE 360 PANEL ───
+    html += '<div style="background:linear-gradient(180deg,#fff,#f8fafc);border:2px solid #1A3A78;border-radius:12px;padding:18px 20px;margin-bottom:14px;margin-top:16px">';
+    html += '<div style="font-size:10px;font-weight:900;color:#1A3A78;letter-spacing:1.5px;margin-bottom:14px;text-align:center">\ud83c\udfaf  360\u00b0 AUTHORITY VERDICT</div>';
+    
+    // Headline verdict block
+    var hVerdictColor = vColor;
+    var hVerdictBg = vBg;
+    html += '<div style="background:' + hVerdictBg + ';border:2px solid ' + hVerdictColor + ';border-radius:10px;padding:18px;margin-bottom:14px;text-align:center">';
+    html += '<div style="font-size:24px;font-weight:900;color:' + hVerdictColor + ';letter-spacing:0.5px;font-family:Sora,sans-serif">';
+    html += escapeHtml(decision || 'EVALUATING');
+    if (holdPeriod_360 && holdPeriod_360 !== 'EVALUATE FURTHER') html += ' \u00b7 ' + holdPeriod_360;
+    html += '</div>';
+    if (fairValue) {
+      var basePct = price > 0 ? (((fairValue - price) / price) * 100) : 0;
+      html += '<div style="font-size:14px;color:#0f172a;margin-top:8px;font-weight:700">';
+      html += 'Target: $' + fmt(fairValue, 2) + ' (' + (basePct > 0 ? '+' : '') + fmt(basePct, 1) + '%) ';
+      if (score) html += '\u00b7 Conviction: <span style="color:' + (score >= 70 ? '#10b981' : (score >= 50 ? '#f59e0b' : '#dc2626')) + '">' + score + '/100</span>';
       html += '</div>';
     }
-    if (d.risks && d.risks.length) {
-      html += '<div style="background:#fef2f2;border:1px solid #fca5a5;border-radius:10px;padding:14px;margin-bottom:10px">';
-      html += '<div style="font-size:10px;font-weight:800;color:#7f1d1d;letter-spacing:1px;margin-bottom:8px">⚠ KEY RISKS</div>';
-      d.risks.slice(0, 6).forEach(function(c) {
-        html += '<div style="font-size:12px;color:#7f1d1d;line-height:1.6;margin-bottom:4px">• ' + escapeHtml(typeof c === 'string' ? c : (c.text || c.label || JSON.stringify(c))) + '</div>';
+    html += '</div>';
+    
+    // ─── PROBABILISTIC TARGETS ───
+    if (bands_360.bull && bands_360.bear) {
+      var bull_pct = price > 0 ? ((bands_360.bull - price) / price * 100) : 0;
+      var base_pct = price > 0 ? ((bands_360.base - price) / price * 100) : 0;
+      var bear_pct = price > 0 ? ((bands_360.bear - price) / price * 100) : 0;
+      
+      // Probability-weighted return: 25% bull, 50% base, 25% bear
+      var weighted_ret = 0.25 * bull_pct + 0.50 * base_pct + 0.25 * bear_pct;
+      
+      html += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px;margin-bottom:12px">';
+      html += '<div style="font-size:10px;font-weight:800;color:#1A3A78;letter-spacing:1px;margin-bottom:10px">\ud83d\udcca PROBABILISTIC TARGETS (12-MO)</div>';
+      html += '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;font-family:\'IBM Plex Mono\',monospace">';
+      
+      // Bull
+      html += '<div style="background:#ecfdf5;padding:10px;border-radius:6px;border:1px solid #a7f3d0">';
+      html += '<div style="font-size:9px;color:#059669;font-weight:800;letter-spacing:0.5px">BULL (25%)</div>';
+      html += '<div style="font-size:18px;color:#059669;font-weight:900;margin-top:3px">$' + fmt(bands_360.bull, 0) + '</div>';
+      html += '<div style="font-size:11px;color:#10b981;font-weight:700">' + (bull_pct > 0 ? '+' : '') + fmt(bull_pct, 1) + '%</div>';
+      html += '</div>';
+      
+      // Base (highlighted)
+      html += '<div style="background:#eff6ff;padding:10px;border-radius:6px;border:2px solid #1A3A78">';
+      html += '<div style="font-size:9px;color:#1A3A78;font-weight:800;letter-spacing:0.5px">BASE (50%)</div>';
+      html += '<div style="font-size:18px;color:#1A3A78;font-weight:900;margin-top:3px">$' + fmt(bands_360.base, 0) + '</div>';
+      html += '<div style="font-size:11px;color:#1A3A78;font-weight:700">' + (base_pct > 0 ? '+' : '') + fmt(base_pct, 1) + '%</div>';
+      html += '</div>';
+      
+      // Bear
+      html += '<div style="background:#fef2f2;padding:10px;border-radius:6px;border:1px solid #fca5a5">';
+      html += '<div style="font-size:9px;color:#dc2626;font-weight:800;letter-spacing:0.5px">BEAR (25%)</div>';
+      html += '<div style="font-size:18px;color:#dc2626;font-weight:900;margin-top:3px">$' + fmt(bands_360.bear, 0) + '</div>';
+      html += '<div style="font-size:11px;color:#dc2626;font-weight:700">' + (bear_pct > 0 ? '+' : '') + fmt(bear_pct, 1) + '%</div>';
+      html += '</div>';
+      
+      html += '</div>';
+      
+      // Probability-weighted expected return
+      var wColor = weighted_ret > 0 ? '#059669' : '#dc2626';
+      html += '<div style="margin-top:10px;padding:8px 12px;background:#f8fafc;border-radius:6px;font-size:11px;color:#475569;text-align:center">';
+      html += 'Probability-weighted expected return: <strong style="color:' + wColor + ';font-size:13px">' + (weighted_ret > 0 ? '+' : '') + fmt(weighted_ret, 1) + '%</strong>';
+      html += '</div>';
+      
+      html += '</div>';
+    }
+    
+    // ─── HOLD WHILE / SELL IF ───
+    if (holdWhile.length > 0) {
+      html += '<div style="background:#ecfdf5;border:1px solid #a7f3d0;border-radius:10px;padding:14px;margin-bottom:10px">';
+      html += '<div style="font-size:10px;font-weight:800;color:#059669;letter-spacing:1px;margin-bottom:8px">\u2705 HOLD WHILE</div>';
+      holdWhile.slice(0, 6).forEach(function(t) {
+        html += '<div style="font-size:12px;color:#0f172a;line-height:1.6;margin-bottom:4px">\u2022 ' + escapeHtml(t) + '</div>';
       });
       html += '</div>';
     }
     
-    // Footer link to full app
-    html += '<div style="text-align:center;padding:16px 0 8px">';
-    html += '<a href="/?sym=' + encodeURIComponent(sym) + '&region=' + reg + '&autoanalyze=1" style="display:inline-block;padding:10px 20px;background:linear-gradient(135deg,#1A3A78,#1e40af);color:#fff;text-decoration:none;border-radius:8px;font-weight:700;font-size:12px">Open full analysis in main app →</a>';
+    if (sellIf.length > 0) {
+      html += '<div style="background:#fef2f2;border:1px solid #fca5a5;border-radius:10px;padding:14px;margin-bottom:10px">';
+      html += '<div style="font-size:10px;font-weight:800;color:#dc2626;letter-spacing:1px;margin-bottom:8px">\u26d4 SELL IF</div>';
+      sellIf.slice(0, 6).forEach(function(t) {
+        html += '<div style="font-size:12px;color:#0f172a;line-height:1.6;margin-bottom:4px">\u2022 ' + escapeHtml(t) + '</div>';
+      });
+      html += '</div>';
+    }
+    
+    // ─── INSTITUTIONAL CONSENSUS ───
+    var consensusItems = [];
+    if (valuation_360.targetPrice && valuation_360.targetPrice > 0) {
+      var apct = price > 0 ? ((valuation_360.targetPrice - price) / price * 100) : 0;
+      consensusItems.push({label: 'Analyst Consensus', value: '$' + fmt(valuation_360.targetPrice, 0) + ' (' + (apct > 0 ? '+' : '') + fmt(apct, 0) + '%)', color: apct > 0 ? '#10b981' : '#dc2626'});
+    }
+    if (impliedMove30d > 0) {
+      consensusItems.push({label: 'Options Implied (30d)', value: '\u00b1' + fmt(impliedMove30d, 1) + '% (\u00b1$' + fmt(impliedMoveDollar, 2) + ')', color: '#1A3A78'});
+    }
+    if (instOwn_360 > 0) {
+      consensusItems.push({label: 'Institutional Ownership', value: fmt(instOwn_360, 0) + '%', color: instOwn_360 > 50 ? '#10b981' : '#64748b'});
+    }
+    if (flow_360.direction) {
+      var fcolor = flow_360.direction === 'strong_inflow' || flow_360.direction === 'inflow' ? '#10b981' : (flow_360.direction === 'outflow' ? '#dc2626' : '#64748b');
+      var fLabel = flow_360.direction.replace('_', ' ').toUpperCase();
+      consensusItems.push({label: 'Sector Flow (' + (flow_360.etfSymbol || 'ETF') + ')', value: fLabel + (flow_360.etfReturn5d != null ? ' (' + (flow_360.etfReturn5d > 0 ? '+' : '') + fmt(flow_360.etfReturn5d, 1) + '% 5d)' : ''), color: fcolor});
+    }
+    if (dark_360.signal) {
+      consensusItems.push({label: 'Dark Pool', value: escapeHtml(dark_360.signal), color: '#1A3A78'});
+    }
+    if (news_360.score != null) {
+      var nscore = news_360.score;
+      var nlabel = nscore > 0.2 ? 'POSITIVE' : (nscore < -0.2 ? 'NEGATIVE' : 'NEUTRAL');
+      var ncolor = nscore > 0.2 ? '#10b981' : (nscore < -0.2 ? '#dc2626' : '#64748b');
+      consensusItems.push({label: 'News Sentiment', value: nlabel + ' (' + fmt(nscore * 100, 0) + ')', color: ncolor});
+    }
+    if (mcProbs_360['12mo'] > 0) {
+      consensusItems.push({label: 'Monte Carlo (12mo undervalued)', value: mcProbs_360['12mo'] + '% probability', color: mcProbs_360['12mo'] > 50 ? '#10b981' : '#dc2626'});
+    }
+    
+    if (consensusItems.length > 0) {
+      html += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px;margin-bottom:10px">';
+      html += '<div style="font-size:10px;font-weight:800;color:#1A3A78;letter-spacing:1px;margin-bottom:10px">\ud83c\udfdb\ufe0f INSTITUTIONAL CONSENSUS</div>';
+      html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px">';
+      consensusItems.forEach(function(item) {
+        html += '<div style="background:#f8fafc;padding:8px 10px;border-radius:6px;border-left:3px solid ' + item.color + '">';
+        html += '<div style="font-size:9px;color:#94a3b8;font-weight:700;letter-spacing:0.3px">' + item.label + '</div>';
+        html += '<div style="font-size:13px;color:' + item.color + ';font-weight:800;margin-top:2px;font-family:\'IBM Plex Mono\',monospace">' + item.value + '</div>';
+        html += '</div>';
+      });
+      html += '</div></div>';
+    }
+    
+    // ─── TIME HORIZON ───
+    html += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px;margin-bottom:10px">';
+    html += '<div style="font-size:10px;font-weight:800;color:#1A3A78;letter-spacing:1px;margin-bottom:10px">\u23f1\ufe0f TIME HORIZON RECOMMENDATION</div>';
+    
+    function thRow(active, label, msg) {
+      var dot = active ? '<span style="color:#10b981;font-size:14px">\u25cf</span>' : '<span style="color:#cbd5e1;font-size:14px">\u25cb</span>';
+      var labelColor = active ? '#0f172a' : '#94a3b8';
+      var msgColor = active ? '#475569' : '#94a3b8';
+      var html_row = '<div style="display:flex;align-items:flex-start;gap:10px;padding:7px 0;border-bottom:1px solid #f1f5f9">';
+      html_row += '<div style="margin-top:1px">' + dot + '</div>';
+      html_row += '<div style="flex:1"><div style="font-size:11px;font-weight:800;color:' + labelColor + ';letter-spacing:0.3px">' + label + '</div>';
+      html_row += '<div style="font-size:11px;color:' + msgColor + ';margin-top:2px;line-height:1.5">' + escapeHtml(msg) + '</div>';
+      html_row += '</div></div>';
+      return html_row;
+    }
+    
+    html += thRow(th_trader_ok,   'TRADER (1-3 months)',    th_trader_msg);
+    html += thRow(th_swing_ok,    'SWING (3-12 months)',    th_swing_msg);
+    html += thRow(th_investor_ok, 'INVESTOR (1-3 years)',   th_investor_msg);
+    html += '</div>';
+    
+    // ─── DATA TRANSPARENCY ───
+    var dataNotes = [];
+    if (!valuation_360.targetPrice) dataNotes.push('Analyst consensus unavailable');
+    if (impliedMove30d === 0) dataNotes.push('Options-implied move unavailable');
+    if (!flow_360.direction) dataNotes.push('Sector flow data not loaded');
+    if (instOwn_360 === 0) dataNotes.push('Institutional ownership not available');
+    
+    if (dataNotes.length > 0) {
+      html += '<div style="font-size:9px;color:#94a3b8;text-align:center;padding:6px;font-style:italic">';
+      html += 'Note: ' + dataNotes.join(' \u00b7 ');
+      html += '</div>';
+    }
+    
+    // Footer
+    html += '<div style="text-align:center;padding:16px 0 8px;border-top:1px solid #f1f5f9;margin-top:8px">';
+    html += '<a href="/?sym=' + encodeURIComponent(sym) + '&region=' + reg + '&autoanalyze=1" style="display:inline-block;padding:10px 20px;background:linear-gradient(135deg,#1A3A78,#1e40af);color:#fff;text-decoration:none;border-radius:8px;font-weight:700;font-size:12px">Open full analysis in main app \u2192</a>';
+    html += '<div style="font-size:10px;color:#94a3b8;margin-top:6px">Loads Decide tab with full institutional view</div>';
     html += '</div>';
     
     return html;
