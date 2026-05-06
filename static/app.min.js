@@ -1,9 +1,9 @@
 // ═══ Celesys version stamp ═══
-window.CELESYS_VERSION = "v4.63.43";
-window.CELESYS_BUILD_TIME = 1777895767;
-window.CELESYS_BUILD_DATE = "2026-05-04 11:56:07 UTC";
+window.CELESYS_VERSION = "v4.63.45";
+window.CELESYS_BUILD_TIME = 1778028335;
+window.CELESYS_BUILD_DATE = "2026-05-06 00:45:35 UTC";
 console.log("%c━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "color:#1A3A78");
-console.log("%c CELESYS v4.63.43 %c loaded · 2026-04-29 03:29:27 UTC",
+console.log("%c CELESYS v4.63.45 %c loaded · 2026-04-29 03:29:27 UTC",
   "background:#1A3A78;color:#fff;font-weight:900;padding:3px 8px;border-radius:3px;font-family:monospace",
   "color:#1A3A78;font-weight:700;font-family:monospace");
 console.log("%c━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "color:#1A3A78");
@@ -25509,6 +25509,7 @@ window._csR6322Inject = function(anchorInfo) {
         _csR6322Pill('peers',     '🏛',  'Peers',     false) +
         _csR6322Pill('forward',   '💎', 'Forward Value', false) +
         _csR6322Pill('execution', '📊', 'Execution',   false) +     /* r63.38 */
+        _csR6322Pill('earnings',  '🚨', 'Earnings',    false) +     /* r63.44 */
         _csR6322Pill('exit',      '🚪', 'Exit Strategy', false) +
         _csR6322Pill('calendar',  '📅', 'Catalysts',   false) +
       '</div>' +
@@ -25574,6 +25575,7 @@ window._csR6322ShowTab = function(tabId) {
   if (tabId === 'peers')     url = '/api/competitor-benchmark';
   if (tabId === 'forward')   url = '/api/forward-value';      /* r63.25 */
   if (tabId === 'execution') url = '/api/execution-score-v2'; /* r63.39 */
+  if (tabId === 'earnings')  url = '/api/earnings-setup';      /* r63.44 */
   if (tabId === 'exit')      url = '/api/exit-strategy';      /* r63.25 */
   if (tabId === 'calendar')  url = '/api/catalyst-calendar';  /* r63.25 */
   
@@ -25612,6 +25614,7 @@ function _csR6322Render(tabId, data) {
   if (tabId === 'peers')     return _csR6322RenderPeers(data);
   if (tabId === 'forward')   return _csR6322RenderForward(data);   /* r63.25 */
   if (tabId === 'execution') return _csR6322RenderExecution(data); /* r63.38 */
+  if (tabId === 'earnings')  return _csR6322RenderEarnings(data);  /* r63.44 */
   if (tabId === 'exit')      return _csR6322RenderExit(data);      /* r63.25 */
   if (tabId === 'calendar')  return _csR6322RenderCalendar(data);  /* r63.25 */
   return '';
@@ -26581,6 +26584,190 @@ function _csR6322RenderExecution(d) {
   
   return html;
 }
+
+
+// ─── r63.44: Earnings Setup renderer (institutional + layperson) ───
+function _csR6322RenderEarnings(d) {
+  if (!d.success && d.error) return _csR6322Err(d.error);
+  
+  // Conditional: if no imminent earnings, show friendly skip message
+  if (!d.has_imminent_earnings) {
+    var html = '<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:24px;text-align:center">';
+    html += '<div style="font-size:32px;margin-bottom:8px">📅</div>';
+    html += '<div style="font-size:14px;font-weight:700;color:#0f172a;margin-bottom:8px">No earnings scheduled soon</div>';
+    html += '<div style="font-size:12px;color:#64748b;line-height:1.6;max-width:520px;margin:0 auto">' + _csEscape(d.message || 'No earnings within the next 90 days.') + ' Earnings Setup analysis will appear here when the next earnings are within 14 days.</div>';
+    html += '</div>';
+    return html;
+  }
+  
+  var html = '';
+  var ne = d.next_earnings || {};
+  var c = d.consensus;
+  var imp = d.implied_move;
+  var hist = d.historical;
+  var iv = d.iv_crush;
+  var setup = d.setup || {};
+  var spot = d.spot || 0;
+  
+  // ── HEADLINE BAR ──
+  var urgent = ne.days_until <= 3;
+  var headlineBg = urgent ? '#fef2f2' : (ne.days_until <= 7 ? '#fef3c7' : '#eff6ff');
+  var headlineBorder = urgent ? '#dc2626' : (ne.days_until <= 7 ? '#f59e0b' : '#3b82f6');
+  
+  html += '<div style="background:' + headlineBg + ';border:2px solid ' + headlineBorder + ';border-radius:10px;padding:14px 18px;margin-bottom:14px">';
+  html += '<div style="font-size:9px;font-weight:800;color:#94a3b8;letter-spacing:1.5px;font-family:Sora,sans-serif;margin-bottom:4px">📊 EARNINGS SETUP</div>';
+  html += '<div style="font-size:15px;font-weight:800;color:#0f172a;line-height:1.4">' + _csEscape(d.headline || '') + '</div>';
+  html += '<div style="font-size:11px;color:#64748b;margin-top:6px">Date: <strong>' + _csEscape(ne.date || '') + '</strong> · Timing: <strong>' + _csEscape(ne.timing || 'TBD') + '</strong> (BMO = before market, AMC = after market)</div>';
+  html += '</div>';
+  
+  // ── CONSENSUS ESTIMATES ──
+  if (c) {
+    html += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px 18px;margin-bottom:14px">';
+    html += '<div style="font-size:11px;font-weight:800;color:#1A3A78;letter-spacing:1px;font-family:Sora,sans-serif;margin-bottom:10px">📈 WHAT ANALYSTS EXPECT</div>';
+    html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;font-size:12px;color:#475569;line-height:1.7">';
+    if (c.eps_avg != null) {
+      html += '<div><strong>EPS estimate:</strong> $' + Number(c.eps_avg).toFixed(2);
+      if (c.eps_high != null && c.eps_low != null) {
+        html += ' <span style="color:#94a3b8">(range $' + Number(c.eps_low).toFixed(2) + '–$' + Number(c.eps_high).toFixed(2) + ')</span>';
+      }
+      if (c.analyst_count) html += '<br><span style="font-size:10px;color:#94a3b8">' + c.analyst_count + ' analysts surveyed</span>';
+      html += '</div>';
+    }
+    if (c.revenue_avg != null) {
+      var revB = c.revenue_avg / 1e9;
+      html += '<div><strong>Revenue estimate:</strong> $' + revB.toFixed(2) + 'B';
+      if (c.revenue_growth_yoy != null) {
+        html += '<br><span style="font-size:10px;color:#94a3b8">' + (c.revenue_growth_yoy * 100).toFixed(1) + '% YoY growth expected</span>';
+      }
+      html += '</div>';
+    }
+    html += '</div>';
+    html += '<div style="font-size:10px;color:#94a3b8;margin-top:8px;font-style:italic">↑ Beat or miss vs these numbers drives the post-earnings reaction.</div>';
+    html += '</div>';
+  }
+  
+  // ── IMPLIED VS HISTORICAL MOVE — the institutional edge ──
+  if (imp || hist) {
+    html += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px 18px;margin-bottom:14px">';
+    html += '<div style="font-size:11px;font-weight:800;color:#1A3A78;letter-spacing:1px;font-family:Sora,sans-serif;margin-bottom:4px">⚖ MARKET EXPECTATION vs HISTORY</div>';
+    html += '<div style="font-size:10px;color:#64748b;font-style:italic;margin-bottom:12px;line-height:1.5">The single most important institutional read: do options expect more or less movement than the stock typically delivers?</div>';
+    html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">';
+    
+    // Implied move card
+    if (imp) {
+      html += '<div style="background:#eff6ff;border-radius:8px;padding:12px">';
+      html += '<div style="font-size:10px;font-weight:700;color:#1e40af;margin-bottom:4px">OPTIONS MARKET EXPECTS</div>';
+      html += '<div style="font-size:24px;font-weight:900;color:#1e40af;font-family:\'IBM Plex Mono\',monospace;line-height:1">±' + Number(imp.implied_move_pct).toFixed(1) + '%</div>';
+      html += '<div style="font-size:11px;color:#475569;margin-top:6px;line-height:1.5">';
+      html += '$' + Number(imp.lower_bound).toFixed(2) + ' to $' + Number(imp.upper_bound).toFixed(2);
+      html += '<br><span style="font-size:10px;color:#94a3b8">(expiry ' + _csEscape(imp.expiry_used || '') + ', ' + imp.dte + ' days)</span>';
+      html += '</div>';
+      html += '</div>';
+    }
+    
+    // Historical card
+    if (hist) {
+      html += '<div style="background:#f0fdf4;border-radius:8px;padding:12px">';
+      html += '<div style="font-size:10px;font-weight:700;color:#047857;margin-bottom:4px">HISTORICAL AVG (last ' + hist.sample_size + ' quarters)</div>';
+      html += '<div style="font-size:24px;font-weight:900;color:#047857;font-family:\'IBM Plex Mono\',monospace;line-height:1">±' + Number(hist.avg_abs_move).toFixed(1) + '%</div>';
+      html += '<div style="font-size:11px;color:#475569;margin-top:6px;line-height:1.5">';
+      html += 'Range: ' + Number(hist.min_abs_move).toFixed(1) + '% to ' + Number(hist.max_abs_move).toFixed(1) + '%';
+      html += '<br><span style="font-size:10px;color:#94a3b8">' + Math.round(hist.up_ratio) + '% of past reactions positive</span>';
+      html += '</div>';
+      html += '</div>';
+    }
+    html += '</div>';
+    
+    // Comparison verdict
+    if (imp && hist && hist.avg_abs_move > 0) {
+      var ratio = imp.implied_move_pct / hist.avg_abs_move;
+      var verdict, vColor, vBg, vExplain;
+      if (ratio >= 1.20) {
+        verdict = 'OPTIONS PRICED RICH';
+        vColor = '#92400e'; vBg = '#fef3c7';
+        vExplain = 'Market expects ' + ratio.toFixed(1) + '× the typical move. Long options need an outsized reaction to profit. Consider selling premium or skipping.';
+      } else if (ratio <= 0.85) {
+        verdict = 'OPTIONS PRICED CHEAP';
+        vColor = '#047857'; vBg = '#ecfdf5';
+        vExplain = 'Market expects ' + ratio.toFixed(2) + '× the typical move. Long options have positive expected value if you have a directional thesis.';
+      } else {
+        verdict = 'OPTIONS PRICED FAIR';
+        vColor = '#1e40af'; vBg = '#eff6ff';
+        vExplain = 'Market expectation aligns with historical reality. No options-pricing edge — directional thesis matters most.';
+      }
+      
+      html += '<div style="background:' + vBg + ';border-radius:6px;padding:10px 14px;margin-top:12px">';
+      html += '<div style="font-size:12px;font-weight:800;color:' + vColor + ';letter-spacing:0.3px">' + _csEscape(verdict) + '</div>';
+      html += '<div style="font-size:11px;color:#475569;margin-top:4px;line-height:1.5">' + _csEscape(vExplain) + '</div>';
+      html += '</div>';
+    }
+    
+    html += '</div>';
+  }
+  
+  // ── HISTORICAL DETAIL (mini list) ──
+  if (hist && hist.history && hist.history.length > 0) {
+    html += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px 18px;margin-bottom:14px">';
+    html += '<div style="font-size:11px;font-weight:800;color:#1A3A78;letter-spacing:1px;font-family:Sora,sans-serif;margin-bottom:10px">📜 PAST EARNINGS REACTIONS</div>';
+    html += '<div style="font-size:11px;color:#475569;line-height:1.8">';
+    hist.history.forEach(function(m) {
+      var color = m.direction === 'up' ? '#10b981' : (m.direction === 'down' ? '#dc2626' : '#94a3b8');
+      var arrow = m.direction === 'up' ? '↑' : (m.direction === 'down' ? '↓' : '→');
+      html += '<div style="display:flex;justify-content:space-between;border-bottom:1px solid #f1f5f9;padding:4px 0">';
+      html += '<span>' + _csEscape(m.date) + '</span>';
+      html += '<span style="color:' + color + ';font-weight:700;font-family:\'IBM Plex Mono\',monospace">' + arrow + ' ' + (m.pct_move > 0 ? '+' : '') + Number(m.pct_move).toFixed(2) + '%</span>';
+      html += '</div>';
+    });
+    html += '</div>';
+    html += '</div>';
+  }
+  
+  // ── IV CRUSH RISK ──
+  if (iv) {
+    html += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px 18px;margin-bottom:14px">';
+    html += '<div style="font-size:11px;font-weight:800;color:#1A3A78;letter-spacing:1px;font-family:Sora,sans-serif;margin-bottom:4px">⚡ IV CRUSH RISK</div>';
+    html += '<div style="font-size:10px;color:#64748b;font-style:italic;margin-bottom:10px;line-height:1.5">Implied volatility usually collapses after earnings. High crush risk = even correct directional bets can lose money.</div>';
+    html += '<div style="display:flex;align-items:center;gap:14px;margin-bottom:8px">';
+    html += '<div style="font-size:18px;font-weight:900;color:' + iv.risk_color + ';font-family:Sora,sans-serif;letter-spacing:0.5px">' + _csEscape(iv.risk_label) + '</div>';
+    html += '<div style="font-size:11px;color:#475569;font-family:\'IBM Plex Mono\',monospace">Front IV ' + Number(iv.front_iv).toFixed(0) + '% · Back IV ' + Number(iv.back_iv).toFixed(0) + '% · Ratio ' + Number(iv.ratio).toFixed(2) + 'x</div>';
+    html += '</div>';
+    html += '<div style="font-size:11px;color:#475569;line-height:1.6">' + _csEscape(iv.rationale || '') + '</div>';
+    html += '</div>';
+  }
+  
+  // ── SETUP CLASSIFICATION ──
+  if (setup) {
+    var setupBg = setup.color === '#10b981' ? '#ecfdf5' : 
+                  setup.color === '#dc2626' ? '#fef2f2' : 
+                  setup.color === '#f59e0b' ? '#fef3c7' : '#eff6ff';
+    
+    html += '<div style="background:' + setupBg + ';border:2px solid ' + setup.color + ';border-radius:10px;padding:14px 18px;margin-bottom:14px">';
+    html += '<div style="font-size:11px;font-weight:800;color:#94a3b8;letter-spacing:1.5px;font-family:Sora,sans-serif;margin-bottom:6px">🎯 SETUP CLASSIFICATION</div>';
+    html += '<div style="font-size:18px;font-weight:900;color:' + setup.color + ';font-family:Sora,sans-serif;letter-spacing:0.3px;margin-bottom:8px">' + _csEscape(setup.classification || '') + '</div>';
+    if (setup.rationale) {
+      html += '<div style="background:#fff;border-radius:6px;padding:10px 12px;font-size:12px;color:#0f172a;line-height:1.6;margin-bottom:10px">' + _csEscape(setup.rationale) + '</div>';
+    }
+    if (setup.action_hints && setup.action_hints.length > 0) {
+      html += '<div style="font-size:11px;color:#475569;line-height:1.7">';
+      html += '<strong style="color:#0f172a">Decision support:</strong>';
+      setup.action_hints.forEach(function(hint) {
+        html += '<div style="margin-left:12px;margin-top:4px">• ' + _csEscape(hint) + '</div>';
+      });
+      html += '</div>';
+    }
+    html += '</div>';
+  }
+  
+  // ── HONEST DISCLAIMER ──
+  if (d.framework_note) {
+    html += '<div style="background:#f8fafc;border-radius:6px;padding:10px 14px;font-size:10px;color:#64748b;line-height:1.5;font-style:italic;text-align:center">';
+    html += _csEscape(d.framework_note);
+    html += '</div>';
+  }
+  
+  return html;
+}
+
 function _csR6322RenderExit(d) {
   if (!d.success && d.error) return _csR6322Err(d.error);
   

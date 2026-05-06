@@ -1801,9 +1801,9 @@ def _safe_float(val, default=0.0):
         return default
 
 # ═══ Celesys version stamp (v4.61.10) ═══════════════════════════════
-APP_VERSION = "v4.63.43"
-APP_BUILD_TIME = 1777895767
-APP_BUILD_DATE = "2026-05-04 11:56:07 UTC"
+APP_VERSION = "v4.63.45"
+APP_BUILD_TIME = 1778028335
+APP_BUILD_DATE = "2026-05-06 00:45:35 UTC"
 APP_RELEASE_NOTES = (
     "v4.62.0: Micro-Cap Hunter scanner (Decide tab) + cumulative r61.x: Aladdin DD entry page (r61.8), "
     "stale-cache fallback (r61.8), multi-factor Bottom Line (r61.7), "
@@ -35093,6 +35093,1175 @@ async def execution_score_v2(symbol: str = "", region: str = "US", email: str = 
         },
         "framework_note": "Production Scoring Engine v2 (r63.40). Strict §11 spec keys + extended UI fields. Real data only.",
     }
+
+
+
+# ═══════════════════════════════════════════════════════════════════
+# r63.44: EARNINGS SETUP MODULE
+# Pre-earnings decision support — real data only, no fake predictions.
+# ═══════════════════════════════════════════════════════════════════
+
+def _r6344_get_next_earnings(symbol, region):
+    """Returns earnings date + BMO/AMC time + days_until.
+    Uses yfinance .calendar + earningsTimestamp + earnings_dates fallback.
+    Returns None if no upcoming earnings within next 90 days."""
+    import datetime as _dt
+    try:
+        _yahoo_rate_wait()
+        tk_sym = symbol if region.upper() == "US" else f"{symbol}.NS"
+        tk = yf.Ticker(tk_sym)
+        
+        next_date = None
+        timing = None  # "BMO" / "AMC" / "DMT" (during market) / None
+        
+        # Try .calendar first (most accurate)
+        try:
+            cal = tk.calendar
+            if cal is not None:
+                if isinstance(cal, dict) and "Earnings Date" in cal:
+                    ed = cal["Earnings Date"]
+                    if isinstance(ed, list) and len(ed) > 0:
+                        next_date = ed[0]
+                    elif ed:
+                        next_date = ed
+        except Exception:
+            pass
+        
+        # Fallback: earningsTimestamp from quote
+        try:
+            info = tk.info or {}
+            ts = info.get("earningsTimestamp") or info.get("earningsTimestampStart")
+            if ts and not next_date:
+                next_date = _dt.datetime.fromtimestamp(ts).date()
+                # BMO if before 9:30 ET, AMC if after 16:00 ET
+                ts_dt = _dt.datetime.fromtimestamp(ts)
+                hr = ts_dt.hour
+                if hr < 9 or (hr == 9 and ts_dt.minute < 30):
+                    timing = "BMO"
+                elif hr >= 16:
+                    timing = "AMC"
+                else:
+                    timing = "DMT"
+        except Exception:
+            pass
+        
+        # Final fallback: earnings_dates (historical + future)
+        if not next_date:
+            try:
+                ed_df = tk.earnings_dates if hasattr(tk, "earnings_dates") else None
+                if ed_df is not None and len(ed_df) > 0:
+                    today = _dt.datetime.now()
+                    future_dates = [d for d in ed_df.index if d.to_pydatetime().replace(tzinfo=None) >= today.replace(tzinfo=None)]
+                    if future_dates:
+                        future_dates.sort()
+                        next_date = future_dates[0].to_pydatetime().date()
+            except Exception:
+                pass
+        
+        if not next_date:
+            return None
+        
+        # Normalize to date object
+        if hasattr(next_date, "date"):
+            next_date = next_date.date()
+        elif isinstance(next_date, str):
+            try:
+                next_date = _dt.datetime.strptime(next_date[:10], "%Y-%m-%d").date()
+            except Exception:
+                return None
+        
+        days_until = (next_date - _dt.date.today()).days
+        
+        # Skip if past or too far out
+        if days_until < -2 or days_until > 90:
+            return None
+        
+        return {
+            "date":        str(next_date),
+            "days_until":  days_until,
+            "timing":      timing or "TBD",
+        }
+    except Exception:
+        return None
+
+
+def _r6344_get_consensus(symbol, region):
+    """Returns EPS + revenue consensus estimates (current quarter).
+    Uses Yahoo earningsTrend module."""
+    try:
+        import requests as _rq
+        url = f"https://query2.finance.yahoo.com/v10/finance/quoteSummary/{symbol if region.upper() == 'US' else symbol + '.NS'}?modules=earningsTrend,earnings"
+        headers = {"User-Agent": "Mozilla/5.0"}
+        r = _rq.get(url, headers=headers, timeout=8)
+        if r.status_code != 200:
+            return None
+        data = r.json()
+        result = (data.get("quoteSummary", {}).get("result") or [{}])[0]
+        et = result.get("earningsTrend", {}).get("trend", [])
+        
+        # Find current quarter (period 0q)
+        for t in et:
+            if t.get("period") == "0q":
+                eps = t.get("earningsEstimate", {}).get("avg", {}).get("raw")
+                eps_high = t.get("earningsEstimate", {}).get("high", {}).get("raw")
+                eps_low  = t.get("earningsEstimate", {}).get("low", {}).get("raw")
+                analyst_count = t.get("earningsEstimate", {}).get("numberOfAnalysts", {}).get("raw")
+                rev = t.get("revenueEstimate", {}).get("avg", {}).get("raw")
+                rev_growth = t.get("revenueEstimate", {}).get("growth", {}).get("raw")
+                return {
+                    "eps_avg":       eps,
+                    "eps_high":      eps_high,
+                    "eps_low":       eps_low,
+                    "analyst_count": analyst_count,
+                    "revenue_avg":   rev,
+                    "revenue_growth_yoy": rev_growth,
+                }
+        return None
+    except Exception:
+        return None
+
+
+def _r6344_implied_move(symbol, region, spot, days_until_earnings):
+    """Compute implied move from ATM straddle priced for the expiry covering earnings.
+    Returns dict with implied_move_pct, implied_move_dollars, expiry_used.
+    
+    Implied move ≈ (ATM call premium + ATM put premium) / spot
+    Better approximation: ATM IV × sqrt(DTE/365) × spot — already used elsewhere.
+    """
+    import datetime as _dt
+    try:
+        _yahoo_rate_wait()
+        tk_sym = symbol if region.upper() == "US" else f"{symbol}.NS"
+        tk = yf.Ticker(tk_sym)
+        
+        opts = tk.options
+        if not opts:
+            return None
+        
+        # Pick the expiry that covers earnings + a bit of buffer
+        target_dte = max(days_until_earnings + 2, 3)
+        today = _dt.date.today()
+        best_expiry = None
+        best_diff = 999
+        for exp in opts:
+            try:
+                exp_date = _dt.datetime.strptime(exp, "%Y-%m-%d").date()
+                dte = (exp_date - today).days
+                if dte < target_dte:
+                    continue  # too short, doesn't cover earnings
+                diff = dte - target_dte
+                if diff < best_diff:
+                    best_diff = diff
+                    best_expiry = exp
+            except Exception:
+                continue
+        
+        if not best_expiry:
+            best_expiry = opts[0]
+        
+        chain = tk.option_chain(best_expiry)
+        calls = chain.calls
+        puts = chain.puts
+        
+        if calls is None or puts is None or len(calls) == 0 or len(puts) == 0:
+            return None
+        
+        # Find ATM strike
+        calls_sorted = calls.iloc[(calls["strike"] - spot).abs().argsort()[:1]]
+        puts_sorted = puts.iloc[(puts["strike"] - spot).abs().argsort()[:1]]
+        
+        if len(calls_sorted) == 0 or len(puts_sorted) == 0:
+            return None
+        
+        atm_strike = float(calls_sorted["strike"].iloc[0])
+        call_mid = float((calls_sorted["bid"].iloc[0] + calls_sorted["ask"].iloc[0]) / 2) if calls_sorted["bid"].iloc[0] > 0 else float(calls_sorted["lastPrice"].iloc[0] or 0)
+        put_mid = float((puts_sorted["bid"].iloc[0] + puts_sorted["ask"].iloc[0]) / 2) if puts_sorted["bid"].iloc[0] > 0 else float(puts_sorted["lastPrice"].iloc[0] or 0)
+        atm_iv = float(calls_sorted["impliedVolatility"].iloc[0]) if "impliedVolatility" in calls_sorted.columns else 0
+        
+        # Method 1: straddle / spot
+        straddle = call_mid + put_mid
+        implied_move_pct_method1 = (straddle / spot * 100) if spot > 0 else 0
+        
+        # Method 2: IV × sqrt(DTE/365)
+        exp_date = _dt.datetime.strptime(best_expiry, "%Y-%m-%d").date()
+        dte = max((exp_date - today).days, 1)
+        implied_move_pct_method2 = atm_iv * ((dte / 365) ** 0.5) * 100 if atm_iv > 0 else 0
+        
+        # Use straddle method (more accurate, market-priced)
+        implied_move_pct = implied_move_pct_method1 if implied_move_pct_method1 > 0 else implied_move_pct_method2
+        implied_move_dollars = round(spot * (implied_move_pct / 100), 2)
+        
+        return {
+            "implied_move_pct":     round(implied_move_pct, 2),
+            "implied_move_dollars": implied_move_dollars,
+            "upper_bound":          round(spot + implied_move_dollars, 2),
+            "lower_bound":          round(spot - implied_move_dollars, 2),
+            "expiry_used":          best_expiry,
+            "dte":                  dte,
+            "atm_strike":           atm_strike,
+            "atm_iv":               round(atm_iv * 100, 1),
+            "straddle_price":       round(straddle, 2),
+        }
+    except Exception as e:
+        return None
+
+
+def _r6344_historical_moves(symbol, region):
+    """Compute past N earnings reactions (1-day move on earnings day).
+    Returns list of {date, pct_move, abs_move} for last 8 quarters."""
+    import datetime as _dt
+    try:
+        _yahoo_rate_wait()
+        tk_sym = symbol if region.upper() == "US" else f"{symbol}.NS"
+        tk = yf.Ticker(tk_sym)
+        
+        # Get past earnings dates
+        ed_df = tk.earnings_dates if hasattr(tk, "earnings_dates") else None
+        if ed_df is None or len(ed_df) == 0:
+            return None
+        
+        today = _dt.datetime.now()
+        past_dates = sorted([d for d in ed_df.index if d.to_pydatetime().replace(tzinfo=None) < today.replace(tzinfo=None)], reverse=True)[:8]
+        
+        if len(past_dates) < 3:
+            return None
+        
+        # Get price history for window covering all past earnings
+        oldest = past_dates[-1].to_pydatetime().date()
+        period_days = (today.date() - oldest).days + 10
+        period_str = f"{max(period_days, 30)}d"
+        if period_days > 730:
+            period_str = "5y"
+        elif period_days > 365:
+            period_str = "2y"
+        elif period_days > 180:
+            period_str = "1y"
+        else:
+            period_str = "6mo"
+        
+        hist = tk.history(period=period_str, interval="1d")
+        if hist is None or len(hist) == 0:
+            return None
+        
+        # Compute reaction for each earnings date
+        moves = []
+        for ed in past_dates:
+            ed_date = ed.to_pydatetime().date()
+            # Find closing price the day BEFORE earnings (or close on earnings day if BMO)
+            # and closing price the day AFTER earnings
+            try:
+                idx_ed = None
+                hist_dates = [d.date() for d in hist.index]
+                # Find first trading day on or after earnings date
+                for i, d in enumerate(hist_dates):
+                    if d >= ed_date:
+                        idx_ed = i
+                        break
+                if idx_ed is None or idx_ed < 1 or idx_ed >= len(hist) - 1:
+                    continue
+                
+                price_pre = float(hist["Close"].iloc[idx_ed - 1])  # close BEFORE earnings
+                price_post = float(hist["Close"].iloc[idx_ed])     # close ON earnings day (captures both BMO and AMC reaction by next close)
+                
+                if price_pre <= 0:
+                    continue
+                pct = (price_post - price_pre) / price_pre * 100
+                moves.append({
+                    "date":     str(ed_date),
+                    "pct_move": round(pct, 2),
+                    "abs_move": round(abs(pct), 2),
+                    "direction": "up" if pct > 0 else ("down" if pct < 0 else "flat"),
+                })
+            except Exception:
+                continue
+        
+        if len(moves) < 2:
+            return None
+        
+        abs_moves = [m["abs_move"] for m in moves]
+        avg_abs = sum(abs_moves) / len(abs_moves)
+        max_abs = max(abs_moves)
+        min_abs = min(abs_moves)
+        up_count = sum(1 for m in moves if m["direction"] == "up")
+        
+        return {
+            "history":  moves,
+            "avg_abs_move":  round(avg_abs, 2),
+            "max_abs_move":  round(max_abs, 2),
+            "min_abs_move":  round(min_abs, 2),
+            "up_ratio":      round(up_count / len(moves) * 100, 0),
+            "sample_size":   len(moves),
+        }
+    except Exception:
+        return None
+
+
+def _r6344_iv_crush_risk(symbol, region):
+    """Compare front-month IV vs back-month IV. High spread = high crush risk.
+    Returns {front_iv, back_iv, ratio, risk_label, rationale}."""
+    try:
+        _yahoo_rate_wait()
+        tk_sym = symbol if region.upper() == "US" else f"{symbol}.NS"
+        tk = yf.Ticker(tk_sym)
+        
+        opts = tk.options
+        if not opts or len(opts) < 2:
+            return None
+        
+        # Front month: nearest expiry. Back month: ~60+ days out.
+        import datetime as _dt
+        today = _dt.date.today()
+        front_expiry = opts[0]
+        back_expiry = None
+        for exp in opts:
+            try:
+                ed = _dt.datetime.strptime(exp, "%Y-%m-%d").date()
+                if (ed - today).days >= 50:
+                    back_expiry = exp
+                    break
+            except Exception:
+                continue
+        if not back_expiry and len(opts) > 1:
+            back_expiry = opts[-1]
+        if not back_expiry:
+            return None
+        
+        # ATM IV from each
+        spot = float(tk.info.get("regularMarketPrice") or tk.info.get("currentPrice") or 0)
+        if spot <= 0:
+            return None
+        
+        def atm_iv(exp):
+            try:
+                ch = tk.option_chain(exp)
+                if ch.calls is None or len(ch.calls) == 0:
+                    return None
+                atm = ch.calls.iloc[(ch.calls["strike"] - spot).abs().argsort()[:1]]
+                if "impliedVolatility" in atm.columns:
+                    return float(atm["impliedVolatility"].iloc[0]) * 100
+            except Exception:
+                pass
+            return None
+        
+        front_iv = atm_iv(front_expiry)
+        back_iv = atm_iv(back_expiry)
+        
+        if not front_iv or not back_iv or back_iv <= 0:
+            return None
+        
+        ratio = front_iv / back_iv
+        # Front IV / back IV > 1.4 = elevated crush risk
+        if ratio >= 1.6:
+            risk_label = "VERY HIGH"
+            risk_color = "#7f1d1d"
+            rat = f"Front-month IV ({front_iv:.0f}%) is {ratio:.1f}× back-month ({back_iv:.0f}%) — earnings premium is heavily priced in. Long options will lose substantial value to IV crush regardless of direction. Need a move much larger than implied to profit."
+        elif ratio >= 1.3:
+            risk_label = "HIGH"
+            risk_color = "#dc2626"
+            rat = f"Front-month IV ({front_iv:.0f}%) is {ratio:.1f}× back-month ({back_iv:.0f}%) — meaningful crush risk. Long options need a move larger than implied to break even."
+        elif ratio >= 1.15:
+            risk_label = "MODERATE"
+            risk_color = "#f59e0b"
+            rat = f"Front-month IV ({front_iv:.0f}%) is {ratio:.1f}× back-month ({back_iv:.0f}%) — some crush risk."
+        else:
+            risk_label = "LOW"
+            risk_color = "#10b981"
+            rat = f"Front-month IV ({front_iv:.0f}%) close to back-month ({back_iv:.0f}%) — minimal IV crush risk. Long options pricing reasonable."
+        
+        return {
+            "front_iv":   round(front_iv, 1),
+            "back_iv":    round(back_iv, 1),
+            "ratio":      round(ratio, 2),
+            "risk_label": risk_label,
+            "risk_color": risk_color,
+            "rationale":  rat,
+            "front_expiry": front_expiry,
+            "back_expiry":  back_expiry,
+        }
+    except Exception:
+        return None
+
+
+def _r6344_classify_setup(implied_move, historical, iv_crush, days_until):
+    """Decision support classifier — NOT a prediction.
+    Returns {classification, color, rationale, action_hints}."""
+    if not implied_move or not historical:
+        return {
+            "classification": "INSUFFICIENT_DATA",
+            "color":          "#94a3b8",
+            "rationale":      "Not enough data (options chain or earnings history unavailable) to classify setup.",
+            "action_hints":   ["Skip — without implied/historical comparison, no edge identified."],
+        }
+    
+    imp = implied_move.get("implied_move_pct", 0)
+    hist_avg = historical.get("avg_abs_move", 0)
+    crush_label = (iv_crush or {}).get("risk_label", "UNKNOWN")
+    
+    # Comparison
+    rich_threshold = 1.20  # implied is 20% bigger than historical
+    cheap_threshold = 0.85  # implied is 15% smaller than historical
+    
+    rich_or_cheap = "fair"
+    if hist_avg > 0:
+        ratio = imp / hist_avg
+        if ratio >= rich_threshold:
+            rich_or_cheap = "rich"
+        elif ratio <= cheap_threshold:
+            rich_or_cheap = "cheap"
+    
+    # Classification logic
+    if crush_label in ("VERY HIGH", "HIGH") and rich_or_cheap == "rich":
+        return {
+            "classification": "IV CRUSH TRAP",
+            "color":          "#dc2626",
+            "rationale":      f"Options market expects {imp:.1f}% move, history says {hist_avg:.1f}% — premiums are RICH. Combined with {crush_label} IV crush risk, long options likely lose money even if direction is right. Avoid long calls/puts.",
+            "action_hints":   [
+                "AVOID long calls or long puts — IV crush will hurt even on correct direction",
+                "If you must trade: consider SELLING premium (iron condor, short straddle) — but defined-risk only",
+                "Best alternative: skip and wait for post-earnings clarity",
+            ],
+        }
+    elif rich_or_cheap == "cheap" and crush_label in ("LOW", "MODERATE"):
+        return {
+            "classification": "ASYMMETRIC OPPORTUNITY",
+            "color":          "#10b981",
+            "rationale":      f"Options market expects {imp:.1f}% move, history says {hist_avg:.1f}% — premiums are CHEAP relative to typical reaction. With {crush_label} IV crush risk, long options have positive expected value IF you have a directional thesis.",
+            "action_hints":   [
+                "If you have a directional thesis from elsewhere: long calls (bullish) or long puts (bearish) at ATM",
+                "Without a directional thesis: long straddle (profits if move > implied)",
+                "Avoid SELLING premium — options are not rich enough to compensate for tail risk",
+            ],
+        }
+    elif rich_or_cheap == "rich":
+        return {
+            "classification": "PREMIUM RICH",
+            "color":          "#f59e0b",
+            "rationale":      f"Options market expects {imp:.1f}% move, history says {hist_avg:.1f}% — premiums are RICH ({(imp/hist_avg if hist_avg>0 else 1):.1f}× historical). Long options need outsized move to profit. Consider selling premium or skipping.",
+            "action_hints":   [
+                "AVOID long calls/puts — premium too rich vs typical move",
+                "If selling premium: short strangle / iron condor (defined risk only)",
+                "Skip if uncertain — directional bet is unfavorable here",
+            ],
+        }
+    else:
+        return {
+            "classification": "FAIRLY PRICED",
+            "color":          "#3b82f6",
+            "rationale":      f"Options market expects {imp:.1f}% move, history says {hist_avg:.1f}% — premium is roughly fair. No clear options-pricing edge identified.",
+            "action_hints":   [
+                "No options edge identified — directional thesis matters most",
+                "If bullish: long calls or buy stock; size for vol",
+                "If bearish: long puts or short stock; defined risk",
+                "If unsure: skip — no asymmetric setup here",
+            ],
+        }
+
+
+@app.get("/api/earnings-setup")
+async def earnings_setup(symbol: str = "", region: str = "US", email: str = ""):
+    """r63.44: Earnings Setup endpoint.
+    Returns next earnings + consensus + implied move + historical reactions
+    + IV crush risk + setup classification. Real data only.
+    """
+    email = (email or "").strip().lower()
+    _ok, email = check_premium_gate(email, "dream")
+    if not _ok:
+        return {"success": False, "error": "Premium tier required."}
+    
+    symbol = (symbol or "").strip().upper()
+    if not symbol:
+        return {"success": False, "error": "symbol required"}
+    
+    region = region.strip().upper()
+    
+    # Step 1: Next earnings — gate everything else on this
+    next_e = _r6344_get_next_earnings(symbol, region)
+    if not next_e:
+        return {
+            "success":    True,
+            "symbol":     symbol,
+            "has_imminent_earnings": False,
+            "message":    "No upcoming earnings detected within next 90 days. Earnings Setup not applicable.",
+        }
+    
+    days_until = next_e["days_until"]
+    
+    # If earnings already passed (>2 days ago), skip
+    if days_until < -2:
+        return {
+            "success":    True,
+            "symbol":     symbol,
+            "has_imminent_earnings": False,
+            "message":    "Last earnings already reported.",
+        }
+    
+    # Get spot
+    try:
+        _yahoo_rate_wait()
+        tk_sym = symbol if region == "US" else f"{symbol}.NS"
+        tk = yf.Ticker(tk_sym)
+        info = tk.info or {}
+        spot = float(info.get("regularMarketPrice") or info.get("currentPrice") or 0)
+    except Exception:
+        spot = 0
+    
+    if spot <= 0:
+        return {"success": False, "error": "Spot price unavailable"}
+    
+    # Step 2-5: Pull all data points (parallel-ish, each handles its own errors)
+    consensus = _r6344_get_consensus(symbol, region)
+    implied_move = _r6344_implied_move(symbol, region, spot, max(days_until, 1))
+    historical = _r6344_historical_moves(symbol, region)
+    iv_crush = _r6344_iv_crush_risk(symbol, region)
+    
+    # Step 6: Classify setup
+    setup = _r6344_classify_setup(implied_move, historical, iv_crush, days_until)
+    
+    # Step 7: Plain-English headline
+    if days_until < 0:
+        headline = f"⚠ Just reported {abs(days_until)} day{'s' if abs(days_until)!=1 else ''} ago — analysis is post-event"
+    elif days_until == 0:
+        headline = f"🚨 Earnings TODAY — {next_e['timing']}"
+    elif days_until == 1:
+        headline = f"🚨 Earnings TOMORROW — {next_e['timing']}"
+    elif days_until <= 7:
+        headline = f"⏰ Earnings in {days_until} day{'s' if days_until!=1 else ''} — {next_e['timing']}"
+    elif days_until <= 14:
+        headline = f"📅 Earnings in {days_until} days — {next_e['timing']}"
+    else:
+        headline = f"📅 Earnings in {days_until} days"
+    
+    return {
+        "success":     True,
+        "symbol":      symbol,
+        "spot":        round(spot, 2),
+        "has_imminent_earnings": True,
+        "headline":    headline,
+        "next_earnings": next_e,
+        "consensus":   consensus,
+        "implied_move": implied_move,
+        "historical":  historical,
+        "iv_crush":    iv_crush,
+        "setup":       setup,
+        "framework_note": "Decision support, NOT prediction. Real options + history data. Setup classification helps you decide; it does not predict direction.",
+    }
+
+
+
+# ═══════════════════════════════════════════════════════════════════
+# r63.45: SECTOR HEAT MAP + TODAY'S SETUPS DISCOVERY
+# Institutional approach: rank sectors first, scan hot sectors only.
+# ═══════════════════════════════════════════════════════════════════
+
+# 24 sector ETFs covering US + India sub-sectors
+_R6345_SECTOR_ETFS = {
+    "US": {
+        # Tech sub-sectors (the most active for setups)
+        "Semiconductors":         {"etf": "SOXX", "stocks": ["NVDA", "AMD", "AVGO", "INTC", "QCOM", "MRVL", "LRCX", "KLAC", "AMAT", "ASML", "TSM", "ARM"]},
+        "Memory/Storage":         {"etf": "SOXX", "stocks": ["MU", "SNDK", "WDC", "STX"]},
+        "Software":               {"etf": "IGV",  "stocks": ["MSFT", "ORCL", "CRM", "ADBE", "NOW", "INTU", "SNOW", "DDOG", "NET", "PLTR"]},
+        "AI Infrastructure":      {"etf": "AIQ",  "stocks": ["NVDA", "AMD", "AVGO", "ARM", "ASML", "TSM", "MRVL", "PLTR", "ANET"]},
+        "Tech (broad)":           {"etf": "XLK",  "stocks": ["AAPL", "MSFT", "GOOGL", "META", "CSCO", "IBM"]},
+        "Communication":          {"etf": "XLC",  "stocks": ["GOOGL", "META", "NFLX", "DIS", "T", "VZ", "TMUS", "CMCSA"]},
+        "Cybersecurity":          {"etf": "HACK", "stocks": ["CRWD", "PANW", "ZS", "FTNT", "OKTA", "S"]},
+        "Cloud":                  {"etf": "WCLD", "stocks": ["SNOW", "DDOG", "NET", "MDB", "CRWD", "ZS"]},
+        # Financials
+        "Banks":                  {"etf": "XLF",  "stocks": ["JPM", "BAC", "WFC", "C", "GS", "MS"]},
+        "Regional Banks":         {"etf": "KRE",  "stocks": ["KEY", "USB", "TFC", "PNC", "RF", "CFG"]},
+        # Cyclicals & Growth
+        "Consumer Discretionary": {"etf": "XLY",  "stocks": ["AMZN", "TSLA", "HD", "NKE", "MCD", "SBUX", "BKNG"]},
+        "Industrials":            {"etf": "XLI",  "stocks": ["GE", "CAT", "BA", "HON", "UPS", "RTX", "DE"]},
+        "Energy":                 {"etf": "XLE",  "stocks": ["XOM", "CVX", "COP", "EOG", "SLB", "MPC"]},
+        "Materials":              {"etf": "XLB",  "stocks": ["LIN", "FCX", "NEM", "APD", "SHW"]},
+        # Defensives
+        "Healthcare":             {"etf": "XLV",  "stocks": ["UNH", "JNJ", "LLY", "PFE", "ABBV", "MRK", "TMO"]},
+        "Biotech":                {"etf": "XBI",  "stocks": ["AMGN", "GILD", "VRTX", "REGN", "BIIB", "ILMN"]},
+        "Consumer Staples":       {"etf": "XLP",  "stocks": ["WMT", "PG", "KO", "PEP", "COST", "MDLZ", "PM"]},
+        "Utilities":              {"etf": "XLU",  "stocks": ["NEE", "DUK", "SO", "AEP", "D", "SRE"]},
+        # Other
+        "Real Estate":            {"etf": "XLRE", "stocks": ["AMT", "PLD", "CCI", "EQIX", "PSA"]},
+        "Innovation":             {"etf": "ARKK", "stocks": ["TSLA", "COIN", "ROKU", "SHOP", "RBLX", "PLTR"]},
+    },
+    "IN": {
+        "Banking":     {"etf": "^NSEBANK",  "stocks": ["HDFCBANK", "ICICIBANK", "SBIN", "KOTAKBANK", "AXISBANK", "INDUSINDBK"]},
+        "IT":          {"etf": "^CNXIT",    "stocks": ["TCS", "INFY", "HCLTECH", "WIPRO", "TECHM"]},
+        "Auto":        {"etf": "^CNXAUTO",  "stocks": ["TATAMOTORS", "MARUTI", "M&M", "BAJAJ-AUTO", "HEROMOTOCO", "EICHERMOT"]},
+        "Pharma":      {"etf": "^CNXPHARMA","stocks": ["SUNPHARMA", "DRREDDY", "CIPLA", "DIVISLAB", "APOLLOHOSP"]},
+        "Energy":      {"etf": "^CNXENERGY","stocks": ["RELIANCE", "ONGC", "NTPC", "POWERGRID", "BPCL"]},
+        "FMCG":        {"etf": "^CNXFMCG",  "stocks": ["HINDUNILVR", "ITC", "NESTLEIND", "BRITANNIA"]},
+        "Metals":      {"etf": "^CNXMETAL", "stocks": ["TATASTEEL", "JSWSTEEL", "HINDALCO", "COALINDIA", "VEDL"]},
+        "Realty":      {"etf": "^CNXREALTY","stocks": ["DLF", "GODREJPROP", "OBEROIRLTY", "PRESTIGE"]},
+    },
+}
+
+_R6345_BENCHMARK = {"US": "SPY", "IN": "^NSEI"}
+_R6345_CACHE = {"US": {"data": None, "time": 0}, "IN": {"data": None, "time": 0}, "BOTH": {"data": None, "time": 0}}
+_R6345_CACHE_TTL = 600  # 10 minutes
+
+
+def _r6345_score_one_sector(etf_symbol, benchmark_data=None):
+    """Compute composite momentum score for one sector ETF.
+    
+    Formula:
+      35% × today's_return
+      25% × 5-day return  
+      20% × relative strength vs benchmark (last 20 days)
+      10% × volume z-score (today vs 20-day avg)
+      10% × technical state (above 50d MA)
+    
+    Returns dict with raw values + composite score (0-100, normalized later).
+    """
+    try:
+        _yahoo_rate_wait()
+        tk = yf.Ticker(etf_symbol)
+        hist = tk.history(period="60d", interval="1d")
+        if hist is None or len(hist) < 25:
+            return None
+        
+        closes = hist["Close"].values
+        volumes = hist["Volume"].values
+        
+        spot = float(closes[-1])
+        prev_close = float(closes[-2]) if len(closes) >= 2 else spot
+        close_5d_ago = float(closes[-6]) if len(closes) >= 6 else closes[0]
+        close_20d_ago = float(closes[-21]) if len(closes) >= 21 else closes[0]
+        
+        ret_1d = (spot - prev_close) / max(prev_close, 0.01) * 100
+        ret_5d = (spot - close_5d_ago) / max(close_5d_ago, 0.01) * 100
+        ret_20d = (spot - close_20d_ago) / max(close_20d_ago, 0.01) * 100
+        
+        # Volume z-score
+        avg_vol = float(volumes[-20:].mean()) if len(volumes) >= 20 else float(volumes.mean())
+        today_vol = float(volumes[-1])
+        vol_ratio = today_vol / max(avg_vol, 1)
+        
+        # Technical: above 50d MA?
+        sma50 = float(closes[-50:].mean()) if len(closes) >= 50 else float(closes.mean())
+        above_50 = spot > sma50
+        sma50_pct = (spot - sma50) / max(sma50, 0.01) * 100
+        
+        # Relative strength vs benchmark (computed by caller in second pass)
+        rs_vs_bench = None
+        if benchmark_data:
+            bench_ret_20d = benchmark_data.get("ret_20d", 0)
+            rs_vs_bench = ret_20d - bench_ret_20d
+        
+        return {
+            "etf":             etf_symbol,
+            "spot":            round(spot, 2),
+            "ret_1d_pct":      round(ret_1d, 2),
+            "ret_5d_pct":      round(ret_5d, 2),
+            "ret_20d_pct":     round(ret_20d, 2),
+            "vol_ratio":       round(vol_ratio, 2),
+            "above_50d_ma":    above_50,
+            "sma50_pct":       round(sma50_pct, 2),
+            "rs_vs_bench":     round(rs_vs_bench, 2) if rs_vs_bench is not None else None,
+        }
+    except Exception as e:
+        return {"etf": etf_symbol, "error": str(e)[:80]}
+
+
+def _r6345_zscore(values):
+    """Compute z-scores. Returns dict {sector_key: zscore}."""
+    if not values: return {}
+    try:
+        import statistics as _stats
+        nums = [v for v in values.values() if v is not None]
+        if len(nums) < 2: return {k: 0 for k in values}
+        mean = _stats.mean(nums)
+        stdev = _stats.stdev(nums) if len(nums) > 1 else 1
+        if stdev == 0: return {k: 0 for k in values}
+        return {k: (v - mean) / stdev if v is not None else 0 for k, v in values.items()}
+    except Exception:
+        return {k: 0 for k in values}
+
+
+def _r6345_compute_sector_heat(region):
+    """Score all sectors in region, return ranked list with composite score.
+    Returns: list of dicts sorted by composite_score desc."""
+    sectors = _R6345_SECTOR_ETFS.get(region.upper(), {})
+    if not sectors:
+        return []
+    
+    # Step 1: score each sector ETF (parallel for speed)
+    sector_data = {}
+    benchmark_sym = _R6345_BENCHMARK.get(region.upper())
+    
+    # Score benchmark first (used for RS calc)
+    bench_data = _r6345_score_one_sector(benchmark_sym) if benchmark_sym else None
+    if bench_data and "error" not in bench_data:
+        benchmark_for_rs = {"ret_20d": bench_data.get("ret_20d_pct", 0)}
+    else:
+        benchmark_for_rs = {"ret_20d": 0}
+    
+    # Score sectors in parallel
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        futures = {
+            executor.submit(_r6345_score_one_sector, info["etf"], benchmark_for_rs): name
+            for name, info in sectors.items()
+        }
+        for future in as_completed(futures, timeout=60):
+            name = futures[future]
+            try:
+                result = future.result()
+                if result and "error" not in result:
+                    sector_data[name] = result
+            except Exception:
+                pass
+    
+    if not sector_data:
+        return []
+    
+    # Step 2: z-score normalization (compares each sector vs all sectors today)
+    ret_1d_vals = {k: v["ret_1d_pct"] for k, v in sector_data.items()}
+    ret_5d_vals = {k: v["ret_5d_pct"] for k, v in sector_data.items()}
+    rs_vals = {k: v["rs_vs_bench"] for k, v in sector_data.items() if v.get("rs_vs_bench") is not None}
+    vol_vals = {k: v["vol_ratio"] for k, v in sector_data.items()}
+    
+    z_1d = _r6345_zscore(ret_1d_vals)
+    z_5d = _r6345_zscore(ret_5d_vals)
+    z_rs = _r6345_zscore(rs_vals) if rs_vals else {k: 0 for k in sector_data}
+    z_vol = _r6345_zscore(vol_vals)
+    
+    # Step 3: composite — institutional formula
+    # 35% 1d + 25% 5d + 20% RS + 10% volume + 10% technical state
+    ranked = []
+    for name, data in sector_data.items():
+        composite_z = (
+            0.35 * z_1d.get(name, 0) +
+            0.25 * z_5d.get(name, 0) +
+            0.20 * z_rs.get(name, 0) +
+            0.10 * z_vol.get(name, 0) +
+            0.10 * (1 if data.get("above_50d_ma") else -1)
+        )
+        # Map z-score to 0-100 score (z of +2 ~ 95, z of 0 ~ 50, z of -2 ~ 5)
+        score_100 = max(0, min(100, round(50 + composite_z * 25)))
+        
+        # Heat label
+        if composite_z >= 1.0:    heat = "🟢 STRONG"
+        elif composite_z >= 0.3:  heat = "🟡 BUILDING"
+        elif composite_z >= -0.3: heat = "⚪ NEUTRAL"
+        elif composite_z >= -1.0: heat = "🟠 WEAK"
+        else:                     heat = "🔴 VERY WEAK"
+        
+        ranked.append({
+            "name":            name,
+            "etf":             data["etf"],
+            "composite_score": score_100,
+            "composite_z":     round(composite_z, 2),
+            "heat":            heat,
+            "ret_1d_pct":      data["ret_1d_pct"],
+            "ret_5d_pct":      data["ret_5d_pct"],
+            "ret_20d_pct":     data["ret_20d_pct"],
+            "vol_ratio":       data["vol_ratio"],
+            "above_50d_ma":    data["above_50d_ma"],
+            "rs_vs_bench":     data.get("rs_vs_bench"),
+            "stocks":          sectors[name]["stocks"],
+        })
+    
+    ranked.sort(key=lambda x: x["composite_score"], reverse=True)
+    return ranked
+
+
+def _r6345_classify_tier(ticker_data):
+    """READY / DEVELOPING / WATCH per user spec."""
+    confidence = ticker_data.get("confidence") or 0
+    state = (ticker_data.get("state") or "").upper().replace(" ", "_")
+    grade = (ticker_data.get("grade") or "").upper()
+    
+    if confidence >= 75 or state == "ENTER_NOW" or grade in ("A", "A+"):
+        return "READY"
+    if confidence >= 60 or state in ("PREPARE", "BUILDING") or grade in ("B", "B+"):
+        return "DEVELOPING"
+    return "WATCH"
+
+
+def _r6345_extract_why(t):
+    """One-line plain-English reason."""
+    parts = []
+    vol = t.get("volRatio") or t.get("vol_ratio") or 0
+    try:
+        vol = float(vol)
+        if vol >= 1.5: parts.append(f"volume {vol:.1f}× normal")
+    except: pass
+    
+    spot = float(t.get("spot") or 0)
+    hi52 = float(t.get("hi52") or t.get("w52h") or 0)
+    if spot > 0 and hi52 > 0:
+        d = (hi52 - spot) / hi52 * 100
+        if d <= 1: parts.append("at 52w high (breakout zone)")
+        elif d <= 5: parts.append(f"{d:.1f}% below 52w high")
+    
+    if t.get("aboveSma50") and t.get("aboveSma200"):
+        parts.append("above 50/200d MA")
+    
+    pcr = t.get("pcr")
+    if pcr:
+        try:
+            pcr = float(pcr)
+            if 0 < pcr < 0.8: parts.append(f"call-bias options (PCR {pcr:.2f})")
+        except: pass
+    
+    return " · ".join(parts[:3]) if parts else "score-based setup"
+
+
+def _r6345_get_ticker_from_cache(sym, region):
+    """Look up a ticker in bottom-nav cache. Returns scored data or None."""
+    try:
+        cache = _bottom_nav_cache.get(region.upper(), {"data": None})
+        data = cache.get("data") or {}
+        tickers = data.get("tickers") or []
+        for t in tickers:
+            t_sym = (t.get("sym") or t.get("symbol") or "").upper()
+            if t_sym == sym.upper():
+                return t
+    except Exception:
+        pass
+    return None
+
+
+@app.get("/api/today-setups")
+async def today_setups(email: str = "", region: str = "BOTH"):
+    """r63.45: Today's Setups dashboard.
+    
+    Returns:
+      sector_heat: ranked sectors per region
+      hot_sectors_with_stocks: top 5 sectors with their stocks classified into tiers
+      hidden_setups: cold-sector stocks that scored ≥80 (rare exceptions)
+      meta: cache freshness, scan timestamps
+    """
+    email = (email or "").strip().lower()
+    _ok, email = check_premium_gate(email, "dream")
+    if not _ok:
+        return {"success": False, "error": "Premium tier required."}
+    
+    region = region.upper()
+    regions = ["US", "IN"] if region == "BOTH" else [region]
+    
+    # Check cache (10-min TTL — sector momentum doesn't shift that fast)
+    cache_key = region
+    cache_entry = _R6345_CACHE.get(cache_key, {})
+    cache_age = time.time() - (cache_entry.get("time") or 0)
+    if cache_entry.get("data") and cache_age < _R6345_CACHE_TTL:
+        resp = dict(cache_entry["data"])
+        resp["cache_age_sec"] = int(cache_age)
+        resp["served_from_cache"] = True
+        return resp
+    
+    result = {
+        "success": True,
+        "region": region,
+        "regions": regions,
+        "sector_heat": {},
+        "hot_sectors_with_stocks": {},
+        "hidden_setups": {},
+        "meta": {},
+    }
+    
+    for reg in regions:
+        # Layer 1: Sector heat map
+        sector_heat = _r6345_compute_sector_heat(reg)
+        result["sector_heat"][reg] = sector_heat
+        
+        # Layer 2: Top 5 hot sectors → pull their stocks from bottom-nav cache
+        top_sectors = sector_heat[:5] if len(sector_heat) >= 5 else sector_heat
+        hot_with_stocks = []
+        scanned_syms = set()
+        
+        for sec in top_sectors:
+            sec_stocks = []
+            for sym in sec["stocks"]:
+                scanned_syms.add(sym.upper())
+                t = _r6345_get_ticker_from_cache(sym, reg)
+                if t:
+                    tier = _r6345_classify_tier(t)
+                    sec_stocks.append({
+                        "sym":         sym,
+                        "spot":        t.get("spot"),
+                        "confidence":  t.get("confidence"),
+                        "state":       t.get("state"),
+                        "grade":       t.get("grade"),
+                        "tier":        tier,
+                        "why_now":     _r6345_extract_why(t),
+                        "_region":     reg,
+                    })
+                else:
+                    # Not in cache — bottom-nav-scan may not have this symbol yet
+                    sec_stocks.append({
+                        "sym":         sym,
+                        "tier":        "UNCACHED",
+                        "why_now":     "Not yet scored — bottom-nav scan in progress",
+                        "_region":     reg,
+                    })
+            
+            # Sort: READY first, DEVELOPING next, WATCH/UNCACHED last
+            tier_rank = {"READY": 0, "DEVELOPING": 1, "WATCH": 2, "UNCACHED": 3}
+            sec_stocks.sort(key=lambda x: (tier_rank.get(x["tier"], 99), -(x.get("confidence") or 0)))
+            
+            hot_with_stocks.append({
+                "sector":          sec["name"],
+                "etf":             sec["etf"],
+                "composite_score": sec["composite_score"],
+                "heat":            sec["heat"],
+                "ret_1d_pct":      sec["ret_1d_pct"],
+                "ret_5d_pct":      sec["ret_5d_pct"],
+                "stocks":          sec_stocks,
+            })
+        
+        result["hot_sectors_with_stocks"][reg] = hot_with_stocks
+        
+        # Layer 3: Hidden Setup safety net — scan cold sectors for score ≥ 80
+        cold_sectors = sector_heat[5:] if len(sector_heat) > 5 else []
+        hidden = []
+        for sec in cold_sectors:
+            for sym in sec["stocks"]:
+                if sym.upper() in scanned_syms: continue
+                t = _r6345_get_ticker_from_cache(sym, reg)
+                if t and (t.get("confidence") or 0) >= 80:
+                    hidden.append({
+                        "sym":         sym,
+                        "sector":      sec["name"],
+                        "spot":        t.get("spot"),
+                        "confidence":  t.get("confidence"),
+                        "grade":       t.get("grade"),
+                        "why_now":     _r6345_extract_why(t),
+                        "sector_heat": sec["heat"],
+                        "_region":     reg,
+                    })
+        hidden.sort(key=lambda x: -(x.get("confidence") or 0))
+        result["hidden_setups"][reg] = hidden
+        
+        # Meta info
+        bn_cache = _bottom_nav_cache.get(reg, {})
+        result["meta"][reg] = {
+            "bottom_nav_age_sec":  int(time.time() - (bn_cache.get("time") or 0)),
+            "ticker_count":        len((bn_cache.get("data") or {}).get("tickers") or []),
+        }
+    
+    # Cache the result
+    _R6345_CACHE[cache_key] = {"data": result, "time": time.time()}
+    result["cache_age_sec"] = 0
+    result["served_from_cache"] = False
+    
+    return result
+
+
+@app.get("/today")
+async def today_page():
+    """r63.45: Today's Setups discovery page (full HTML)."""
+    from fastapi.responses import HTMLResponse
+    html = r"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="cache-control" content="no-cache, must-revalidate, max-age=0">
+<title>Today's Setups · Celesys</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f8fafc; color: #0f172a; padding: 16px; }
+  .header { max-width: 1200px; margin: 0 auto 24px; padding-bottom: 16px; border-bottom: 1px solid #e2e8f0; }
+  .h1 { font-size: 24px; font-weight: 900; color: #1A3A78; letter-spacing: 0.3px; margin-bottom: 6px; }
+  .sub { font-size: 13px; color: #64748b; }
+  .container { max-width: 1200px; margin: 0 auto; }
+  .card { background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 16px 20px; margin-bottom: 14px; }
+  .card-title { font-size: 11px; font-weight: 800; color: #1A3A78; letter-spacing: 1.2px; margin-bottom: 12px; }
+  .sector-block { padding: 14px 16px; background: #f8fafc; border-radius: 8px; margin-bottom: 10px; border-left: 4px solid #cbd5e1; }
+  .sector-block.strong { border-left-color: #10b981; background: #ecfdf5; }
+  .sector-block.building { border-left-color: #f59e0b; background: #fef3c7; }
+  .sector-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .sector-name { font-size: 14px; font-weight: 800; color: #0f172a; flex: 1; min-width: 180px; }
+  .sector-stats { font-size: 11px; color: #64748b; font-family: 'IBM Plex Mono', monospace; }
+  .stocks { margin-top: 12px; display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 8px; }
+  .stock-card { padding: 10px 12px; background: #fff; border-radius: 6px; cursor: pointer; transition: transform 0.1s; border: 1px solid #f1f5f9; }
+  .stock-card:hover { transform: translateY(-1px); border-color: #cbd5e1; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+  .stock-card.ready { border-left: 3px solid #10b981; }
+  .stock-card.developing { border-left: 3px solid #f59e0b; }
+  .stock-card.watch { border-left: 3px solid #cbd5e1; opacity: 0.7; }
+  .stock-card.uncached { border-left: 3px solid #94a3b8; opacity: 0.5; }
+  .stock-sym { font-size: 13px; font-weight: 800; color: #1A3A78; font-family: 'IBM Plex Mono', monospace; }
+  .stock-meta { font-size: 10px; color: #64748b; margin-top: 2px; line-height: 1.4; }
+  .tier-badge { display: inline-block; font-size: 9px; font-weight: 700; padding: 1px 6px; border-radius: 3px; letter-spacing: 0.5px; }
+  .tier-READY { background: #10b981; color: white; }
+  .tier-DEVELOPING { background: #f59e0b; color: white; }
+  .tier-WATCH { background: #cbd5e1; color: #475569; }
+  .tier-UNCACHED { background: #f1f5f9; color: #94a3b8; }
+  .loading { text-align: center; padding: 40px; color: #64748b; font-size: 14px; }
+  .error-banner { background: #fef2f2; border: 2px solid #dc2626; padding: 14px; border-radius: 8px; color: #7f1d1d; margin-bottom: 14px; }
+  .region-tabs { display: flex; gap: 6px; margin-bottom: 16px; }
+  .region-tab { padding: 8px 16px; background: #fff; border: 1px solid #e2e8f0; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600; }
+  .region-tab.active { background: #1A3A78; color: white; border-color: #1A3A78; }
+  .hidden-setup { background: #fef3c7; border-left: 3px solid #f59e0b; padding: 10px 14px; border-radius: 6px; margin-bottom: 8px; }
+  .nav-link { color: #64748b; font-size: 12px; text-decoration: none; }
+  .nav-link:hover { color: #1A3A78; }
+  .footer-note { text-align: center; color: #94a3b8; font-size: 11px; padding: 24px; line-height: 1.5; }
+  @media (max-width: 640px) { .stocks { grid-template-columns: 1fr; } .h1 { font-size: 20px; } }
+</style>
+</head>
+<body>
+<div class="header">
+  <div class="container">
+    <a href="/" class="nav-link">← Back to Celesys</a>
+    <div class="h1">🔥 Today's Setups</div>
+    <div class="sub">Sector-first institutional discovery · Hot sectors first, top names within</div>
+  </div>
+</div>
+
+<div class="container">
+  <div class="region-tabs">
+    <div class="region-tab active" data-region="BOTH" onclick="celesysToday.setRegion('BOTH', this)">🌐 Both</div>
+    <div class="region-tab" data-region="US" onclick="celesysToday.setRegion('US', this)">🇺🇸 US</div>
+    <div class="region-tab" data-region="IN" onclick="celesysToday.setRegion('IN', this)">🇮🇳 India</div>
+  </div>
+  
+  <div id="content" class="loading">⏳ Scanning sectors...</div>
+</div>
+
+<div class="footer-note">
+  Sector ranking: 35% today's move + 25% 5-day momentum + 20% relative strength + 10% volume + 10% technical state.<br>
+  Real data only · Updates every 10 minutes · Click any stock to open full analysis.
+</div>
+
+<script>
+window.celesysToday = (function() {
+  let currentRegion = 'BOTH';
+  let userEmail = (localStorage.getItem('celesys_email') || '').trim().toLowerCase();
+  
+  function escapeHtml(s) {
+    if (s == null) return '';
+    return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+  
+  function fmt(n, d) { d = d || 2; return (n != null) ? Number(n).toFixed(d) : '—'; }
+  function pct(n) { if (n == null) return '—'; const sign = n >= 0 ? '+' : ''; return sign + fmt(n, 1) + '%'; }
+  
+  async function load() {
+    const url = '/api/today-setups?region=' + currentRegion + '&email=' + encodeURIComponent(userEmail);
+    document.getElementById('content').innerHTML = '<div class="loading">⏳ Scanning sectors and grouping setups...</div>';
+    try {
+      const r = await fetch(url);
+      const d = await r.json();
+      render(d);
+    } catch (e) {
+      document.getElementById('content').innerHTML = '<div class="error-banner">⚠ Failed to load setups: ' + escapeHtml(e.message || e) + '</div>';
+    }
+  }
+  
+  function render(d) {
+    if (!d.success) {
+      document.getElementById('content').innerHTML = '<div class="error-banner">⚠ ' + escapeHtml(d.error || 'Unknown error') + '<br><br>If this is a premium-only feature error, ensure you are logged in.</div>';
+      return;
+    }
+    
+    let html = '';
+    const regions = d.regions || ['US', 'IN'];
+    
+    regions.forEach(reg => {
+      const flag = reg === 'US' ? '🇺🇸' : '🇮🇳';
+      const heat = (d.sector_heat || {})[reg] || [];
+      const hotWithStocks = (d.hot_sectors_with_stocks || {})[reg] || [];
+      const hidden = (d.hidden_setups || {})[reg] || [];
+      const meta = (d.meta || {})[reg] || {};
+      
+      if (heat.length === 0) {
+        html += '<div class="card"><div class="card-title">' + flag + ' ' + reg + '</div><div class="loading">No sector data available — bottom-nav scanner may be cold-starting. Refresh in 30 sec.</div></div>';
+        return;
+      }
+      
+      // Sector heat map (compact view)
+      html += '<div class="card">';
+      html += '<div class="card-title">' + flag + ' ' + reg + ' SECTOR HEAT MAP</div>';
+      heat.slice(0, 10).forEach((s, i) => {
+        const cls = s.composite_z >= 1.0 ? 'strong' : (s.composite_z >= 0.3 ? 'building' : '');
+        html += '<div class="sector-block ' + cls + '">';
+        html += '<div class="sector-row">';
+        html += '<div class="sector-name">#' + (i+1) + ' ' + escapeHtml(s.name) + ' <span style="font-size:11px;font-weight:600;color:#64748b">' + escapeHtml(s.heat) + '</span></div>';
+        html += '<div class="sector-stats">1d ' + pct(s.ret_1d_pct) + ' · 5d ' + pct(s.ret_5d_pct) + ' · vol ' + fmt(s.vol_ratio, 1) + 'x · score ' + s.composite_score + '/100</div>';
+        html += '</div>';
+        html += '</div>';
+      });
+      html += '</div>';
+      
+      // Hot sectors with stocks (deep dive)
+      if (hotWithStocks.length > 0) {
+        html += '<div class="card">';
+        html += '<div class="card-title">🔥 TOP 5 HOT SECTORS — STOCKS TO WATCH</div>';
+        hotWithStocks.forEach(sec => {
+          const cls = sec.composite_score >= 75 ? 'strong' : (sec.composite_score >= 55 ? 'building' : '');
+          html += '<div class="sector-block ' + cls + '">';
+          html += '<div class="sector-row"><div class="sector-name">' + escapeHtml(sec.sector) + ' <span style="font-size:11px;font-weight:600;color:#64748b">' + escapeHtml(sec.heat) + '</span></div>';
+          html += '<div class="sector-stats">' + escapeHtml(sec.etf) + ' · 1d ' + pct(sec.ret_1d_pct) + ' · 5d ' + pct(sec.ret_5d_pct) + '</div></div>';
+          
+          html += '<div class="stocks">';
+          (sec.stocks || []).forEach(t => {
+            const tierClass = (t.tier || 'UNCACHED').toLowerCase();
+            html += '<div class="stock-card ' + tierClass + '" onclick="celesysToday.openStock(\'' + escapeHtml(t.sym) + '\',\'' + reg + '\')">';
+            html += '<div style="display:flex;justify-content:space-between;align-items:center">';
+            html += '<span class="stock-sym">' + escapeHtml(t.sym) + '</span>';
+            html += '<span class="tier-badge tier-' + (t.tier || 'UNCACHED') + '">' + (t.tier || 'UNCACHED') + '</span>';
+            html += '</div>';
+            const conf = t.confidence != null ? 'Score ' + t.confidence : '';
+            const spot = t.spot != null ? '$' + fmt(t.spot, 2) : '';
+            html += '<div class="stock-meta">' + spot + (spot && conf ? ' · ' : '') + conf + '</div>';
+            if (t.why_now) html += '<div class="stock-meta">' + escapeHtml(t.why_now) + '</div>';
+            html += '</div>';
+          });
+          html += '</div>';
+          html += '</div>';
+        });
+        html += '</div>';
+      }
+      
+      // Hidden setups (cold-sector exceptions)
+      if (hidden.length > 0) {
+        html += '<div class="card">';
+        html += '<div class="card-title">⚪ NOTABLE IN WEAK SECTORS — high-conviction exceptions</div>';
+        html += '<div style="font-size:11px;color:#64748b;font-style:italic;margin-bottom:10px">These stocks scored ≥80 even though their sector is cold. Rare — 1-2 per week. Verify carefully.</div>';
+        hidden.forEach(t => {
+          html += '<div class="hidden-setup" onclick="celesysToday.openStock(\'' + escapeHtml(t.sym) + '\',\'' + reg + '\')" style="cursor:pointer">';
+          html += '<div style="display:flex;justify-content:space-between;flex-wrap:wrap"><span class="stock-sym">' + escapeHtml(t.sym) + '</span><span style="font-size:11px;color:#64748b">' + escapeHtml(t.sector) + ' · ' + escapeHtml(t.sector_heat) + '</span></div>';
+          html += '<div class="stock-meta">Score ' + (t.confidence || '?') + ' · $' + fmt(t.spot, 2) + ' · ' + escapeHtml(t.why_now || '') + '</div>';
+          html += '</div>';
+        });
+        html += '</div>';
+      }
+      
+      // Meta info
+      html += '<div style="text-align:right;font-size:10px;color:#94a3b8;margin-bottom:14px">';
+      html += reg + ': ' + (meta.ticker_count || 0) + ' tickers cached · scan age ' + Math.round((meta.bottom_nav_age_sec || 0) / 60) + ' min';
+      html += '</div>';
+    });
+    
+    if (d.served_from_cache) {
+      html += '<div style="text-align:center;font-size:10px;color:#94a3b8;margin-bottom:14px">Served from cache (' + Math.round((d.cache_age_sec || 0) / 60) + ' min old) · 10-min refresh cycle</div>';
+    }
+    
+    document.getElementById('content').innerHTML = html;
+  }
+  
+  return {
+    setRegion(r, el) {
+      currentRegion = r;
+      document.querySelectorAll('.region-tab').forEach(t => t.classList.remove('active'));
+      el.classList.add('active');
+      load();
+    },
+    openStock(sym, reg) {
+      // Open the main app DD for this stock
+      window.location.href = '/?sym=' + encodeURIComponent(sym) + '&region=' + reg + '&autoanalyze=1';
+    },
+    refresh: load,
+  };
+})();
+
+celesysToday.refresh();
+// Auto-refresh every 5 min
+setInterval(celesysToday.refresh, 5 * 60 * 1000);
+</script>
+</body>
+</html>"""
+    return HTMLResponse(content=html)
 
 @app.get("/api/diag-fairvalue")
 async def diag_fairvalue(symbol: str = "", region: str = "US", email: str = ""):
