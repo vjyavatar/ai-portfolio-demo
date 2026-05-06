@@ -1801,9 +1801,9 @@ def _safe_float(val, default=0.0):
         return default
 
 # ═══ Celesys version stamp (v4.61.10) ═══════════════════════════════
-APP_VERSION = "v4.63.60"
-APP_BUILD_TIME = 1778080554
-APP_BUILD_DATE = "2026-05-06 15:15:54 UTC"
+APP_VERSION = "v4.63.61"
+APP_BUILD_TIME = 1778106710
+APP_BUILD_DATE = "2026-05-06 22:31:50 UTC"
 APP_RELEASE_NOTES = (
     "v4.62.0: Micro-Cap Hunter scanner (Decide tab) + cumulative r61.x: Aladdin DD entry page (r61.8), "
     "stale-cache fallback (r61.8), multi-factor Bottom Line (r61.7), "
@@ -36210,15 +36210,50 @@ async def today_setups(email: str = "", region: str = "BOTH"):
     region = region.upper()
     regions = ["US", "IN"] if region == "BOTH" else [region]
     
-    # Check cache (10-min TTL — sector momentum doesn't shift that fast)
-    cache_key = region
-    cache_entry = _R6345_CACHE.get(cache_key, {})
-    cache_age = time.time() - (cache_entry.get("time") or 0)
-    if cache_entry.get("data") and cache_age < _R6345_CACHE_TTL:
-        resp = dict(cache_entry["data"])
-        resp["cache_age_sec"] = int(cache_age)
-        resp["served_from_cache"] = True
-        return resp
+    # r63.61: Cache-first composition — never run BOTH as one big scan.
+    # If BOTH is requested, check US and IN caches separately and merge.
+    if region == "BOTH":
+        us_entry = _R6345_CACHE.get("US", {})
+        in_entry = _R6345_CACHE.get("IN", {})
+        us_age = time.time() - (us_entry.get("time") or 0)
+        in_age = time.time() - (in_entry.get("time") or 0)
+        us_fresh = us_entry.get("data") and us_age < _R6345_CACHE_TTL
+        in_fresh = in_entry.get("data") and in_age < _R6345_CACHE_TTL
+        
+        # Both cached → merge instantly
+        if us_fresh and in_fresh:
+            merged = {
+                "success": True, "region": "BOTH", "regions": ["US", "IN"],
+                "sector_heat": {**us_entry["data"].get("sector_heat", {}), **in_entry["data"].get("sector_heat", {})},
+                "hot_sectors_with_stocks": {**us_entry["data"].get("hot_sectors_with_stocks", {}), **in_entry["data"].get("hot_sectors_with_stocks", {})},
+                "hidden_setups": {**us_entry["data"].get("hidden_setups", {}), **in_entry["data"].get("hidden_setups", {})},
+                "meta": {**us_entry["data"].get("meta", {}), **in_entry["data"].get("meta", {})},
+                "cache_age_sec": max(int(us_age), int(in_age)),
+                "served_from_cache": True,
+                "_r63_61_merged": True,
+            }
+            _R6345_CACHE["BOTH"] = {"data": merged, "time": time.time()}
+            return merged
+        
+        # Only one missing — scan only that one (do NOT scan both)
+        if us_fresh and not in_fresh:
+            regions = ["IN"]  # Only fetch IN; will merge with cached US below
+        elif in_fresh and not us_fresh:
+            regions = ["US"]  # Only fetch US; will merge with cached IN below
+        else:
+            # Neither cached → scan US only first (faster), let IN come on next request
+            regions = ["US"]
+    
+    # Single-region cache check (existing behavior for US/IN direct requests)
+    if region != "BOTH":
+        cache_key = region
+        cache_entry = _R6345_CACHE.get(cache_key, {})
+        cache_age = time.time() - (cache_entry.get("time") or 0)
+        if cache_entry.get("data") and cache_age < _R6345_CACHE_TTL:
+            resp = dict(cache_entry["data"])
+            resp["cache_age_sec"] = int(cache_age)
+            resp["served_from_cache"] = True
+            return resp
     
     result = {
         "success": True,
@@ -36299,8 +36334,26 @@ async def today_setups(email: str = "", region: str = "BOTH"):
             "ticker_count":        len((bn_cache.get("data") or {}).get("tickers") or []),
         }
     
-    # Cache the result
-    _R6345_CACHE[cache_key] = {"data": result, "time": time.time()}
+    # Cache per-region (always store under its actual region, not "BOTH")
+    actual_region_scanned = regions[0] if len(regions) == 1 else region
+    _R6345_CACHE[actual_region_scanned] = {"data": result, "time": time.time()}
+    
+    # r63.61: If BOTH was requested but we only scanned one region,
+    # merge with the OTHER region's cache (if available) before returning
+    if region == "BOTH" and len(regions) == 1:
+        other_region = "IN" if regions[0] == "US" else "US"
+        other_entry = _R6345_CACHE.get(other_region, {})
+        if other_entry.get("data"):
+            other_data = other_entry["data"]
+            result["regions"] = ["US", "IN"]
+            result["region"] = "BOTH"
+            for key in ["sector_heat", "hot_sectors_with_stocks", "hidden_setups", "meta"]:
+                if key in other_data:
+                    result.setdefault(key, {}).update(other_data[key])
+            result["_r63_61_partial_merge"] = True
+        else:
+            result["_r63_61_other_region_pending"] = True
+    
     result["cache_age_sec"] = 0
     result["served_from_cache"] = False
     
