@@ -1,9 +1,9 @@
 // ═══ Celesys version stamp ═══
-window.CELESYS_VERSION = "v4.63.48";
-window.CELESYS_BUILD_TIME = 1778039021;
-window.CELESYS_BUILD_DATE = "2026-05-06 03:43:41 UTC";
+window.CELESYS_VERSION = "v4.63.50";
+window.CELESYS_BUILD_TIME = 1778040533;
+window.CELESYS_BUILD_DATE = "2026-05-06 04:08:53 UTC";
 console.log("%c━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "color:#1A3A78");
-console.log("%c CELESYS v4.63.48 %c loaded · 2026-04-29 03:29:27 UTC",
+console.log("%c CELESYS v4.63.50 %c loaded · 2026-04-29 03:29:27 UTC",
   "background:#1A3A78;color:#fff;font-weight:900;padding:3px 8px;border-radius:3px;font-family:monospace",
   "color:#1A3A78;font-weight:700;font-family:monospace");
 console.log("%c━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "color:#1A3A78");
@@ -27535,6 +27535,34 @@ window._csR6322JournalDelete = function(entryId) {
   }, 1000);
 })();
 
-
-
-
+// r63.49: Today's Setups nav button visibility
+// Reveals the nav button only when user is confirmed dream-tier.
+// Also patches the click handler to pass ?email= for the /today gate.
+window._csR6349UpdateTodayBtn = function() {
+  try {
+    var btn = document.getElementById('navTodayBtn');
+    if (!btn) return;
+    var isDream = !!window._isDreamUser;
+    btn.style.display = isDream ? 'inline-flex' : 'none';
+    if (isDream && window._verifiedEmail) {
+      // Append ?email= so the /today route's premium gate auto-passes
+      btn.href = '/today?email=' + encodeURIComponent(window._verifiedEmail);
+    }
+  } catch (e) { /* silent */ }
+};
+// Run on every potential login state change
+(function() {
+  var origDescriptor = Object.getOwnPropertyDescriptor(window, '_isDreamUser') || {};
+  var _val = window._isDreamUser;
+  Object.defineProperty(window, '_isDreamUser', {
+    configurable: true,
+    get: function() { return _val; },
+    set: function(v) { _val = v; setTimeout(window._csR6349UpdateTodayBtn, 0); }
+  });
+  // Also try on DOM ready in case button renders late
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', window._csR6349UpdateTodayBtn);
+  } else {
+    setTimeout(window._csR6349UpdateTodayBtn, 100);
+  }
+})();

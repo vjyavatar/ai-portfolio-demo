@@ -1801,9 +1801,9 @@ def _safe_float(val, default=0.0):
         return default
 
 # ═══ Celesys version stamp (v4.61.10) ═══════════════════════════════
-APP_VERSION = "v4.63.48"
-APP_BUILD_TIME = 1778039021
-APP_BUILD_DATE = "2026-05-06 03:43:41 UTC"
+APP_VERSION = "v4.63.50"
+APP_BUILD_TIME = 1778040533
+APP_BUILD_DATE = "2026-05-06 04:08:53 UTC"
 APP_RELEASE_NOTES = (
     "v4.62.0: Micro-Cap Hunter scanner (Decide tab) + cumulative r61.x: Aladdin DD entry page (r61.8), "
     "stale-cache fallback (r61.8), multi-factor Bottom Line (r61.7), "
@@ -36109,9 +36109,48 @@ async def today_setups(email: str = "", region: str = "BOTH"):
 
 
 @app.get("/today")
-async def today_page():
-    """r63.45: Today's Setups discovery page (full HTML)."""
+async def today_page(email: str = ""):
+    """r63.45: Today's Setups discovery page (full HTML).
+    r63.49: Premium-only — dream tier required."""
     from fastapi.responses import HTMLResponse
+    
+    # r63.49: Premium gate — return locked-out page for non-premium
+    email = (email or "").strip().lower()
+    _ok, email = check_premium_gate(email, "dream")
+    if not _ok:
+        locked_html = """<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Premium Feature · Celesys</title>
+<style>
+  body { font-family: -apple-system, sans-serif; background: #f8fafc; color: #0f172a; padding: 0; margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+  .lock-card { max-width: 560px; background: #fff; border-radius: 12px; padding: 40px 36px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); border: 1px solid #e2e8f0; }
+  .lock-icon { font-size: 48px; margin-bottom: 12px; }
+  .lock-title { font-size: 22px; font-weight: 900; color: #1A3A78; margin-bottom: 10px; letter-spacing: 0.3px; }
+  .lock-tag { font-size: 11px; font-weight: 800; color: #dc2626; background: #fef2f2; padding: 4px 10px; border-radius: 4px; display: inline-block; letter-spacing: 1px; margin-bottom: 16px; }
+  .lock-desc { font-size: 14px; color: #475569; line-height: 1.7; margin-bottom: 24px; }
+  .lock-feature { background: #f8fafc; border-left: 3px solid #1A3A78; padding: 12px 16px; margin: 8px 0; font-size: 13px; color: #0f172a; line-height: 1.6; }
+  .lock-cta { display: inline-block; padding: 12px 24px; background: linear-gradient(135deg,#1A3A78,#1e40af); color: #fff; text-decoration: none; border-radius: 8px; font-weight: 700; font-size: 14px; margin-top: 12px; }
+  .lock-back { display: block; margin-top: 16px; color: #64748b; font-size: 12px; text-decoration: none; }
+  .lock-back:hover { color: #1A3A78; }
+</style>
+</head>
+<body>
+<div class="lock-card">
+  <div class="lock-icon">🔒</div>
+  <div class="lock-tag">DREAM TIER ONLY</div>
+  <div class="lock-title">Today's Setups is a premium feature</div>
+  <div class="lock-desc">Sector-first institutional discovery — see which sectors are hot today and which stocks are setting up for breakouts within them. This is the BlackRock/Aladdin-style sector rotation tool.</div>
+  <div class="lock-feature"><strong>What you get:</strong> 24-sector heat map ranked by composite momentum (today + 5d + relative strength + volume + technical state). Top 5 hot sectors deep-scanned with constituent stocks classified READY/DEVELOPING/WATCH.</div>
+  <div class="lock-feature"><strong>Use case:</strong> Stop missing opportunities like MU, SNDK, WDC — see all names in a hot sector together, not just the ones you happen to remember to check.</div>
+  <a href="/" class="lock-back">← Back to Celesys</a>
+</div>
+</body>
+</html>"""
+        return HTMLResponse(content=locked_html, status_code=403)
+    
     html = r"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -36301,7 +36340,7 @@ window.celesysToday = (function() {
           html += '<div class="stocks">';
           (sec.stocks || []).forEach(t => {
             const tierClass = (t.tier || 'UNCACHED').toLowerCase();
-            html += '<div class="stock-card ' + tierClass + '" onclick="celesysToday.openStock(\'' + escapeHtml(t.sym) + '\',\'' + reg + '\')">';
+            html += '<div class="stock-card ' + tierClass + '" onclick="celesysToday.openInvestorModal(\'' + escapeHtml(t.sym) + '\',\'' + reg + '\')">';
             html += '<div style="display:flex;justify-content:space-between;align-items:center">';
             html += '<span class="stock-sym">' + escapeHtml(t.sym) + '</span>';
             html += '<span class="tier-badge tier-' + (t.tier || 'UNCACHED') + '">' + (t.tier || 'UNCACHED') + '</span>';
@@ -36324,7 +36363,7 @@ window.celesysToday = (function() {
         html += '<div class="card-title">⚪ NOTABLE IN WEAK SECTORS — high-conviction exceptions</div>';
         html += '<div style="font-size:11px;color:#64748b;font-style:italic;margin-bottom:10px">These stocks scored ≥80 even though their sector is cold. Rare — 1-2 per week. Verify carefully.</div>';
         hidden.forEach(t => {
-          html += '<div class="hidden-setup" onclick="celesysToday.openStock(\'' + escapeHtml(t.sym) + '\',\'' + reg + '\')" style="cursor:pointer">';
+          html += '<div class="hidden-setup" onclick="celesysToday.openInvestorModal(\'' + escapeHtml(t.sym) + '\',\'' + reg + '\')" style="cursor:pointer">';
           html += '<div style="display:flex;justify-content:space-between;flex-wrap:wrap"><span class="stock-sym">' + escapeHtml(t.sym) + '</span><span style="font-size:11px;color:#64748b">' + escapeHtml(t.sector) + ' · ' + escapeHtml(t.sector_heat) + '</span></div>';
           html += '<div class="stock-meta">Score ' + (t.confidence || '?') + ' · $' + fmt(t.spot, 2) + ' · ' + escapeHtml(t.why_now || '') + '</div>';
           html += '</div>';
@@ -36345,6 +36384,136 @@ window.celesysToday = (function() {
     document.getElementById('content').innerHTML = html;
   }
   
+  // r63.50: Modal helpers
+  function fmtBig(n) {
+    if (n == null || isNaN(n)) return '—';
+    n = Number(n);
+    if (Math.abs(n) >= 1e12) return (n/1e12).toFixed(2) + 'T';
+    if (Math.abs(n) >= 1e9)  return (n/1e9).toFixed(2)  + 'B';
+    if (Math.abs(n) >= 1e6)  return (n/1e6).toFixed(2)  + 'M';
+    return n.toLocaleString();
+  }
+  
+  function buildInvestorHTML(d, sym, reg) {
+    if (!d.success) {
+      return '<div style="padding:24px;background:#fef2f2;border:1px solid #fca5a5;border-radius:8px;color:#7f1d1d">' +
+             '<strong>⚠ Failed to load analysis:</strong> ' + escapeHtml(d.error || 'Unknown error') + '</div>';
+    }
+    var html = '';
+    var spot = d.spot || d.price;
+    var verdict = d.verdict || d.bottomLine || d.recommendation || {};
+    var thesis = d.thesis || {};
+    var fin = d.financials || d.finance || {};
+    var company = d.company || {};
+    var fairVal = d.fair_value || d.fairValue || (thesis.fair_value);
+    var score = d.score || (thesis.score) || 0;
+    var hi52 = thesis.hi52 || d.hi52;
+    var lo52 = thesis.lo52 || d.lo52;
+    var vol = thesis.vol_pct || thesis.vol || d.vol_pct;
+    var beta = thesis.beta || d.beta;
+    
+    // Header card
+    html += '<div style="background:linear-gradient(135deg,#1A3A78,#1e40af);color:#fff;padding:18px 22px;border-radius:10px;margin-bottom:14px">';
+    html += '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:14px;flex-wrap:wrap">';
+    html += '<div><div style="font-size:22px;font-weight:900;letter-spacing:0.3px">' + escapeHtml(sym) + '</div>';
+    if (company.name) html += '<div style="font-size:12px;opacity:0.85;margin-top:2px">' + escapeHtml(company.name) + '</div>';
+    if (company.sector) html += '<div style="font-size:10px;opacity:0.7;margin-top:1px">' + escapeHtml(company.sector) + (company.industry ? ' · ' + escapeHtml(company.industry) : '') + '</div>';
+    html += '</div>';
+    if (spot) {
+      html += '<div style="text-align:right">';
+      html += '<div style="font-size:24px;font-weight:900;font-family:\'IBM Plex Mono\',monospace">$' + fmt(spot, 2) + '</div>';
+      if (d.chg != null) {
+        var chgC = d.chg > 0 ? '#10b981' : '#fca5a5';
+        html += '<div style="font-size:11px;color:' + chgC + '">' + (d.chg > 0 ? '+' : '') + fmt(d.chg, 2) + '%</div>';
+      }
+      html += '</div>';
+    }
+    html += '</div>';
+    html += '</div>';
+    
+    // Verdict + Score row
+    if (verdict.label || score) {
+      var vColor = '#3b82f6';
+      var vBg = '#eff6ff';
+      var vLabel = (verdict.label || '').toUpperCase();
+      if (vLabel.includes('BUY') || vLabel.includes('STRONG')) { vColor = '#10b981'; vBg = '#ecfdf5'; }
+      else if (vLabel.includes('AVOID') || vLabel.includes('SELL') || vLabel.includes('REJECT')) { vColor = '#dc2626'; vBg = '#fef2f2'; }
+      else if (vLabel.includes('HOLD') || vLabel.includes('WAIT') || vLabel.includes('NEUTRAL')) { vColor = '#f59e0b'; vBg = '#fffbeb'; }
+      
+      html += '<div style="background:' + vBg + ';border:2px solid ' + vColor + ';border-radius:10px;padding:16px;margin-bottom:14px">';
+      html += '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:14px">';
+      if (verdict.label) {
+        html += '<div><div style="font-size:9px;font-weight:800;color:#94a3b8;letter-spacing:1.2px;margin-bottom:4px">VERDICT</div>';
+        html += '<div style="font-size:18px;font-weight:900;color:' + vColor + '">' + escapeHtml(verdict.label) + '</div></div>';
+      }
+      if (score) {
+        var sColor = score >= 70 ? '#10b981' : (score >= 50 ? '#f59e0b' : '#dc2626');
+        html += '<div style="text-align:right"><div style="font-size:9px;font-weight:800;color:#94a3b8;letter-spacing:1.2px;margin-bottom:2px">SCORE</div>';
+        html += '<div style="font-size:28px;font-weight:900;color:' + sColor + ';font-family:\'IBM Plex Mono\',monospace">' + score + '<span style="font-size:14px;color:#94a3b8">/100</span></div></div>';
+      }
+      html += '</div>';
+      if (verdict.headline || verdict.summary) {
+        html += '<div style="margin-top:10px;padding-top:10px;border-top:1px solid rgba(0,0,0,0.06);font-size:13px;line-height:1.6;color:#0f172a">';
+        html += escapeHtml(verdict.headline || verdict.summary);
+        html += '</div>';
+      }
+      html += '</div>';
+    }
+    
+    // Key metrics grid
+    html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px;margin-bottom:14px">';
+    var cells = [];
+    if (fairVal) cells.push(['Fair Value', '$' + fmt(fairVal, 2), null]);
+    if (spot && fairVal) {
+      var upside = ((fairVal - spot) / spot * 100);
+      cells.push(['Upside', (upside > 0 ? '+' : '') + fmt(upside, 1) + '%', upside > 0 ? '#10b981' : '#dc2626']);
+    }
+    if (hi52) cells.push(['52w High', '$' + fmt(hi52, 2), null]);
+    if (lo52) cells.push(['52w Low', '$' + fmt(lo52, 2), null]);
+    if (vol) cells.push(['Volatility', fmt(vol, 1) + '%', vol > 50 ? '#dc2626' : (vol > 30 ? '#f59e0b' : '#10b981')]);
+    if (beta) cells.push(['Beta', fmt(beta, 2), null]);
+    if (fin.peTrailing || fin.pe) cells.push(['P/E', fmt(fin.peTrailing || fin.pe, 1), null]);
+    if (fin.peForward) cells.push(['Fwd P/E', fmt(fin.peForward, 1), null]);
+    if (fin.marketCap || fin.market_cap) cells.push(['Mkt Cap', '$' + fmtBig(fin.marketCap || fin.market_cap), null]);
+    if (fin.profitMargins != null) cells.push(['Margin', fmt(fin.profitMargins * 100, 1) + '%', null]);
+    if (fin.debtToEquity != null) cells.push(['D/E', fmt(fin.debtToEquity, 2), fin.debtToEquity > 1.5 ? '#dc2626' : null]);
+    if (fin.roe != null) cells.push(['ROE', fmt(fin.roe * 100, 1) + '%', fin.roe > 0.15 ? '#10b981' : null]);
+    
+    cells.forEach(function(cell) {
+      var color = cell[2] || '#0f172a';
+      html += '<div style="background:#f8fafc;padding:9px 11px;border-radius:6px;border:1px solid #e2e8f0">';
+      html += '<div style="font-size:9px;font-weight:700;color:#94a3b8;letter-spacing:0.5px">' + cell[0] + '</div>';
+      html += '<div style="font-size:14px;font-weight:800;color:' + color + ';font-family:\'IBM Plex Mono\',monospace;margin-top:2px">' + cell[1] + '</div>';
+      html += '</div>';
+    });
+    html += '</div>';
+    
+    // Bottom line / catalysts / risks
+    if (d.catalysts && d.catalysts.length) {
+      html += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px;margin-bottom:10px">';
+      html += '<div style="font-size:10px;font-weight:800;color:#1A3A78;letter-spacing:1px;margin-bottom:8px">📈 KEY CATALYSTS</div>';
+      d.catalysts.slice(0, 6).forEach(function(c) {
+        html += '<div style="font-size:12px;color:#475569;line-height:1.6;margin-bottom:4px">• ' + escapeHtml(typeof c === 'string' ? c : (c.text || c.label || JSON.stringify(c))) + '</div>';
+      });
+      html += '</div>';
+    }
+    if (d.risks && d.risks.length) {
+      html += '<div style="background:#fef2f2;border:1px solid #fca5a5;border-radius:10px;padding:14px;margin-bottom:10px">';
+      html += '<div style="font-size:10px;font-weight:800;color:#7f1d1d;letter-spacing:1px;margin-bottom:8px">⚠ KEY RISKS</div>';
+      d.risks.slice(0, 6).forEach(function(c) {
+        html += '<div style="font-size:12px;color:#7f1d1d;line-height:1.6;margin-bottom:4px">• ' + escapeHtml(typeof c === 'string' ? c : (c.text || c.label || JSON.stringify(c))) + '</div>';
+      });
+      html += '</div>';
+    }
+    
+    // Footer link to full app
+    html += '<div style="text-align:center;padding:16px 0 8px">';
+    html += '<a href="/?sym=' + encodeURIComponent(sym) + '&region=' + reg + '&autoanalyze=1" style="display:inline-block;padding:10px 20px;background:linear-gradient(135deg,#1A3A78,#1e40af);color:#fff;text-decoration:none;border-radius:8px;font-weight:700;font-size:12px">Open full analysis in main app →</a>';
+    html += '</div>';
+    
+    return html;
+  }
+  
   return {
     setRegion(r, el) {
       currentRegion = r;
@@ -36352,9 +36521,43 @@ window.celesysToday = (function() {
       el.classList.add('active');
       load();
     },
-    openStock(sym, reg) {
-      // Open the main app DD for this stock
-      window.location.href = '/?sym=' + encodeURIComponent(sym) + '&region=' + reg + '&autoanalyze=1';
+    openInvestorModal(sym, reg) {
+      // Build modal overlay
+      var existing = document.getElementById('csInvestorModal');
+      if (existing) existing.remove();
+      
+      var overlay = document.createElement('div');
+      overlay.id = 'csInvestorModal';
+      overlay.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,0.65);backdrop-filter:blur(4px);z-index:9999;display:flex;align-items:flex-start;justify-content:center;padding:24px;overflow-y:auto';
+      overlay.onclick = function(e) { if (e.target === overlay) overlay.remove(); };
+      
+      var card = document.createElement('div');
+      card.style.cssText = 'background:#fff;max-width:920px;width:100%;border-radius:14px;box-shadow:0 20px 60px rgba(0,0,0,0.3);overflow:hidden;margin:auto';
+      
+      // Modal header with close
+      var hdr = document.createElement('div');
+      hdr.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:14px 20px;border-bottom:1px solid #e2e8f0;background:#f8fafc;position:sticky;top:0;z-index:1';
+      hdr.innerHTML = '<div style="font-size:13px;font-weight:800;color:#1A3A78;letter-spacing:0.3px">📊 Institutional Analysis: ' + escapeHtml(sym) + ' · ' + reg + '</div>' +
+                      '<button onclick="document.getElementById(\'csInvestorModal\').remove()" style="background:#e2e8f0;border:none;width:32px;height:32px;border-radius:6px;cursor:pointer;font-size:18px;color:#475569;font-weight:600">✕</button>';
+      
+      var body = document.createElement('div');
+      body.style.cssText = 'padding:20px;max-height:80vh;overflow-y:auto';
+      body.innerHTML = '<div style="text-align:center;padding:40px;color:#64748b"><div style="display:inline-block;width:32px;height:32px;border:3px solid #e2e8f0;border-top-color:#1A3A78;border-radius:50%;animation:csSpin 0.8s linear infinite"></div><div style="margin-top:12px;font-size:13px">Loading institutional analysis for ' + escapeHtml(sym) + '...</div></div>' +
+                       '<style>@keyframes csSpin{to{transform:rotate(360deg)}}</style>';
+      
+      card.appendChild(hdr);
+      card.appendChild(body);
+      overlay.appendChild(card);
+      document.body.appendChild(overlay);
+      
+      // Fetch institutional analysis
+      var apiUrl = '/api/investor-decide?symbol=' + encodeURIComponent(sym) + '&region=' + reg + '&email=' + encodeURIComponent(userEmail);
+      fetch(apiUrl)
+        .then(function(r) { return r.json(); })
+        .then(function(d) { body.innerHTML = buildInvestorHTML(d, sym, reg); })
+        .catch(function(err) {
+          body.innerHTML = '<div style="padding:24px;background:#fef2f2;border-radius:8px;color:#7f1d1d"><strong>⚠ Failed to load:</strong> ' + escapeHtml(err.message || err) + '</div>';
+        });
     },
     refresh: load,
   };
