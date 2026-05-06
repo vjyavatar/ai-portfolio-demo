@@ -1801,9 +1801,9 @@ def _safe_float(val, default=0.0):
         return default
 
 # ═══ Celesys version stamp (v4.61.10) ═══════════════════════════════
-APP_VERSION = "v4.63.45"
-APP_BUILD_TIME = 1778028335
-APP_BUILD_DATE = "2026-05-06 00:45:35 UTC"
+APP_VERSION = "v4.63.47"
+APP_BUILD_TIME = 1778037691
+APP_BUILD_DATE = "2026-05-06 03:21:31 UTC"
 APP_RELEASE_NOTES = (
     "v4.62.0: Micro-Cap Hunter scanner (Decide tab) + cumulative r61.x: Aladdin DD entry page (r61.8), "
     "stale-cache fallback (r61.8), multi-factor Bottom Line (r61.7), "
@@ -31918,7 +31918,7 @@ async def earnings_this_week(region: str = "US", email: str = "", nocache: int =
         return {"success": False, "error": "Earnings calendar is a premium feature."}
     
     region = (region or "US").upper()
-    cache_key = f"earnings_3wk_v17_{region}"  # r63.17: bumped to invalidate cache with old None-as-0 data  # r63.16: new cache key (different shape than v15)
+    cache_key = f"earnings_3wk_v47_{region}"  # r63.47: bumped to invalidate cache with yfinance-fallback data  # r63.17: bumped to invalidate cache with old None-as-0 data
     
     if nocache != 1:
         cached = _smart_cache_get(cache_key)
@@ -31968,6 +31968,67 @@ async def earnings_this_week(region: str = "US", email: str = "", nocache: int =
         return response
     
     tracked_set = set(_FIND_SIMILAR_US_UNIVERSE) if _FIND_SIMILAR_US_UNIVERSE else set()
+    
+    # r63.47: yfinance fallback for tracked universe — Finnhub free tier
+    # doesn't reliably return all S&P 500 names. Inject any missing tracked
+    # symbols whose earningsTimestamp falls in our window.
+    finnhub_symbols = set(ev.get("symbol", "") for ev in cal["data"] if ev.get("symbol"))
+    missing_from_finnhub = tracked_set - finnhub_symbols
+    
+    if missing_from_finnhub:
+        import datetime as _dtR47
+        injected_count = 0
+        max_inject = 30  # cap yfinance calls to avoid hammering rate limits
+        
+        # Limit to most-likely-to-have-imminent-earnings (just check first N tracked names)
+        # Tier A names (mega-caps) are at the start of _momentum_universe_us
+        priority_check = [s for s in _momentum_universe_us if s in missing_from_finnhub][:max_inject]
+        
+        for sym in priority_check:
+            try:
+                _yahoo_rate_wait()
+                tk_check = yf.Ticker(sym)
+                info_check = tk_check.info or {}
+                ts_check = info_check.get("earningsTimestamp") or info_check.get("earningsTimestampStart")
+                if not ts_check:
+                    continue
+                
+                ed_check = _dtR47.datetime.fromtimestamp(ts_check).date()
+                
+                # Check if in our window [today-7, next_week_end]
+                if ed_check < (today - _td3(days=7)) or ed_check > next_week_end:
+                    continue
+                
+                # Determine BMO/AMC from timestamp hour
+                ts_dt_check = _dtR47.datetime.fromtimestamp(ts_check)
+                hr_check = ts_dt_check.hour
+                if hr_check < 9 or (hr_check == 9 and ts_dt_check.minute < 30):
+                    hour_str = "bmo"
+                elif hr_check >= 16:
+                    hour_str = "amc"
+                else:
+                    hour_str = "dmh"
+                
+                # Synthetic event matching Finnhub schema
+                synthetic_ev = {
+                    "symbol":    sym,
+                    "date":      ed_check.strftime("%Y-%m-%d"),
+                    "hour":      hour_str,
+                    "epsActual": None,
+                    "epsEstimate": info_check.get("trailingEps") or None,  # imperfect but better than None
+                    "revenueEstimate": None,
+                    "revenueActual":   None,
+                    "quarter":   None,
+                    "year":      ed_check.year,
+                    "_yf_injected": True,
+                }
+                cal["data"].append(synthetic_ev)
+                injected_count += 1
+            except Exception:
+                continue
+        
+        if injected_count > 0:
+            print(f"[earnings-calendar r63.47] Injected {injected_count} tracked symbols from yfinance (Finnhub gaps)")
     
     # Bucketize all events
     declared = []
@@ -36137,14 +36198,48 @@ window.celesysToday = (function() {
   function pct(n) { if (n == null) return '—'; const sign = n >= 0 ? '+' : ''; return sign + fmt(n, 1) + '%'; }
   
   async function load() {
+    // r63.46: pull email from URL param as fallback if localStorage empty
+    if (!userEmail) {
+      const params = new URLSearchParams(window.location.search);
+      userEmail = (params.get('email') || '').trim().toLowerCase();
+      if (userEmail) localStorage.setItem('celesys_email', userEmail);
+    }
+    
+    if (!userEmail) {
+      document.getElementById('content').innerHTML = 
+        '<div class="error-banner" style="background:#fef3c7;border-color:#f59e0b;color:#7c2d12">' +
+        '<strong>⚠ Login required.</strong> This is a premium feature.<br><br>' +
+        '<strong>Two ways to fix:</strong><br>' +
+        '1. <a href="/" style="color:#1A3A78;font-weight:700">Open the main app</a> and log in first, then come back to /today.<br>' +
+        '2. Or add ?email=YOUR_EMAIL to this URL.<br><br>' +
+        '<em>Example:</em> /today?email=you@example.com' +
+        '</div>';
+      return;
+    }
+    
     const url = '/api/today-setups?region=' + currentRegion + '&email=' + encodeURIComponent(userEmail);
-    document.getElementById('content').innerHTML = '<div class="loading">⏳ Scanning sectors and grouping setups...</div>';
+    document.getElementById('content').innerHTML = 
+      '<div class="loading">⏳ Scanning sectors and grouping setups...<br>' +
+      '<span style="font-size:11px;color:#94a3b8">First scan can take 30-60 seconds. Subsequent loads are instant (cached).</span></div>';
+    
+    // r63.46: 90-second timeout with manual abort
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 90000);
+    
     try {
-      const r = await fetch(url);
+      const r = await fetch(url, { signal: controller.signal });
+      clearTimeout(timeoutId);
       const d = await r.json();
       render(d);
     } catch (e) {
-      document.getElementById('content').innerHTML = '<div class="error-banner">⚠ Failed to load setups: ' + escapeHtml(e.message || e) + '</div>';
+      clearTimeout(timeoutId);
+      let msg = e.message || String(e);
+      if (e.name === 'AbortError') {
+        msg = 'Scan timed out after 90 seconds. The bottom-nav scanner may still be cold-starting. Try refreshing in 30 seconds.';
+      }
+      document.getElementById('content').innerHTML = 
+        '<div class="error-banner">⚠ Failed to load setups: ' + escapeHtml(msg) + 
+        '<br><br><button onclick="celesysToday.refresh()" style="background:#dc2626;color:white;border:none;padding:8px 16px;border-radius:4px;cursor:pointer;font-weight:600">Retry</button></div>';
     }
   }
   
@@ -36165,7 +36260,17 @@ window.celesysToday = (function() {
       const meta = (d.meta || {})[reg] || {};
       
       if (heat.length === 0) {
-        html += '<div class="card"><div class="card-title">' + flag + ' ' + reg + '</div><div class="loading">No sector data available — bottom-nav scanner may be cold-starting. Refresh in 30 sec.</div></div>';
+        html += '<div class="card"><div class="card-title">' + flag + ' ' + reg + '</div>';
+        html += '<div class="loading">';
+        html += '<div style="font-size:14px;color:#0f172a;margin-bottom:8px">📡 ' + reg + ' sector data not yet available</div>';
+        html += '<div style="font-size:12px;color:#64748b;line-height:1.6">';
+        html += 'The bottom-nav scanner needs to populate the cache before sector heat can be computed. ';
+        html += 'This happens automatically every 2 minutes once the app is warm.';
+        html += '<br><br>';
+        html += '<strong>What to do:</strong> Open <a href="/" style="color:#1A3A78">main app</a>, scroll to bottom-nav scanner, wait for it to populate, then return here.';
+        html += '</div>';
+        html += '<button onclick="celesysToday.refresh()" style="margin-top:14px;background:#1A3A78;color:white;border:none;padding:8px 16px;border-radius:4px;cursor:pointer;font-weight:600">Refresh now</button>';
+        html += '</div></div>';
         return;
       }
       
