@@ -1801,9 +1801,9 @@ def _safe_float(val, default=0.0):
         return default
 
 # ═══ Celesys version stamp (v4.61.10) ═══════════════════════════════
-APP_VERSION = "v4.63.61"
-APP_BUILD_TIME = 1778106710
-APP_BUILD_DATE = "2026-05-06 22:31:50 UTC"
+APP_VERSION = "v4.63.63"
+APP_BUILD_TIME = 1778110800
+APP_BUILD_DATE = "2026-05-06 23:40:00 UTC"
 APP_RELEASE_NOTES = (
     "v4.62.0: Micro-Cap Hunter scanner (Decide tab) + cumulative r61.x: Aladdin DD entry page (r61.8), "
     "stale-cache fallback (r61.8), multi-factor Bottom Line (r61.7), "
@@ -30215,7 +30215,28 @@ async def investor_due_diligence(email: str = "", symbol: str = "", region: str 
                                 "value_usd": int(value) if value else None,
                             })
                         except Exception: continue
+                    
+                    # r63.62b: Multi-source fallback for total institutional %
+                    # Bug: previously only used heldPercentInstitutions; when missing → UNKNOWN
+                    # despite having full top-10 holders list. Fix: try 3 sources.
                     held_pct = info.get("heldPercentInstitutions")
+                    
+                    # Fallback 1: try institutionsFloatPercentHeld (different yfinance field)
+                    if not held_pct:
+                        held_pct = info.get("institutionsFloatPercentHeld")
+                    
+                    # Fallback 2: derive from top-10 holders' aggregate pct
+                    # (top 10 institutional holders typically represent 30-60% of float)
+                    derived_from_holders = False
+                    if not held_pct and holders:
+                        top10_sum = sum(h.get("pct_outstanding", 0) or 0 for h in holders)
+                        if top10_sum > 0:
+                            # Top 10 institutions usually = ~70-85% of TOTAL institutional ownership
+                            # for mega-caps. Conservative estimate: top10_sum / 0.75
+                            estimated_total = min(95.0, top10_sum / 0.75)
+                            held_pct = estimated_total / 100.0
+                            derived_from_holders = True
+                    
                     institutional["institutional_holders"] = {
                         "total_pct_outstanding": round(held_pct * 100, 2) if held_pct else None,
                         "top_holders": holders,
@@ -30223,9 +30244,11 @@ async def investor_due_diligence(email: str = "", symbol: str = "", region: str 
                             "VERY HIGH" if held_pct and held_pct > 0.85 else
                             "HIGH" if held_pct and held_pct > 0.70 else
                             "MODERATE" if held_pct and held_pct > 0.40 else
-                            "LOW" if held_pct else "UNKNOWN"
+                            "LOW" if held_pct and held_pct > 0 else "UNKNOWN"
                         ),
-                        "data_quality": "FULL",
+                        "data_quality": "DERIVED" if derived_from_holders else ("FULL" if held_pct else "PARTIAL"),
+                        "_data_note": ("Estimated from top 10 holders" if derived_from_holders else 
+                                      ("Yahoo aggregate field missing — top holders shown" if not held_pct else None)),
                     }
                 else:
                     institutional["institutional_holders"] = {
@@ -30674,8 +30697,16 @@ async def investor_due_diligence(email: str = "", symbol: str = "", region: str 
                     _plain_ih = f"Low institutional ownership — only {pct_inst:.0f}% with funds. Retail-driven, prone to higher volatility.{top_str}"
                     _analyst_ih = f"Low inst. ownership: {pct_inst:.1f}%. Retail-skewed."
                 else:
-                    _plain_ih = "Institutional ownership data is incomplete for this ticker."
-                    _analyst_ih = "Inst. ownership unknown."
+                    # r63.62b: only TRULY unknown when no holders, no aggregate, no fallback
+                    if ih.get("top_holders"):
+                        # Have holder list but no aggregate — show holders anyway
+                        top_h = ih["top_holders"][:3]
+                        names = ", ".join(h.get("name", "?") for h in top_h)
+                        _plain_ih = f"Institutional aggregate unavailable from data provider, but top holders include: {names}. Treat as institutionally-supported; precise % not disclosed."
+                        _analyst_ih = f"Aggregate pct missing; {len(ih.get('top_holders', []))} top holders identified."
+                    else:
+                        _plain_ih = "Institutional ownership data is incomplete for this ticker."
+                        _analyst_ih = "Inst. ownership unknown."
             ih["layman"] = {"plain": _plain_ih, "analyst": _analyst_ih}
 
             # ── RISK-ADJUSTED RETURNS layman ──
@@ -35749,31 +35780,21 @@ async def earnings_setup(symbol: str = "", region: str = "US", email: str = ""):
 # 24 sector ETFs covering US + India sub-sectors
 _R6345_SECTOR_ETFS = {
     "US": {
-        # Tech sub-sectors (the most active for setups)
+        # r63.62: Reduced to top 10 most-active sectors for /today (was 20).
+        # Cuts yfinance ETF calls in half, dramatically improves first-load time.
+        # Less-active sectors removed: Software (overlaps with AI Infra), 
+        # Cybersecurity, Cloud, Regional Banks, Materials, Consumer Staples, 
+        # Utilities, Real Estate, Innovation. Add back per request if needed.
         "Semiconductors":         {"etf": "SOXX", "stocks": ["NVDA", "AMD", "AVGO", "INTC", "QCOM", "MRVL", "LRCX", "KLAC", "AMAT", "ASML", "TSM", "ARM"]},
         "Memory/Storage":         {"etf": "SOXX", "stocks": ["MU", "SNDK", "WDC", "STX"]},
-        "Software":               {"etf": "IGV",  "stocks": ["MSFT", "ORCL", "CRM", "ADBE", "NOW", "INTU", "SNOW", "DDOG", "NET", "PLTR"]},
         "AI Infrastructure":      {"etf": "AIQ",  "stocks": ["NVDA", "AMD", "AVGO", "ARM", "ASML", "TSM", "MRVL", "PLTR", "ANET"]},
         "Tech (broad)":           {"etf": "XLK",  "stocks": ["AAPL", "MSFT", "GOOGL", "META", "CSCO", "IBM"]},
         "Communication":          {"etf": "XLC",  "stocks": ["GOOGL", "META", "NFLX", "DIS", "T", "VZ", "TMUS", "CMCSA"]},
-        "Cybersecurity":          {"etf": "HACK", "stocks": ["CRWD", "PANW", "ZS", "FTNT", "OKTA", "S"]},
-        "Cloud":                  {"etf": "WCLD", "stocks": ["SNOW", "DDOG", "NET", "MDB", "CRWD", "ZS"]},
-        # Financials
         "Banks":                  {"etf": "XLF",  "stocks": ["JPM", "BAC", "WFC", "C", "GS", "MS"]},
-        "Regional Banks":         {"etf": "KRE",  "stocks": ["KEY", "USB", "TFC", "PNC", "RF", "CFG"]},
-        # Cyclicals & Growth
         "Consumer Discretionary": {"etf": "XLY",  "stocks": ["AMZN", "TSLA", "HD", "NKE", "MCD", "SBUX", "BKNG"]},
         "Industrials":            {"etf": "XLI",  "stocks": ["GE", "CAT", "BA", "HON", "UPS", "RTX", "DE"]},
         "Energy":                 {"etf": "XLE",  "stocks": ["XOM", "CVX", "COP", "EOG", "SLB", "MPC"]},
-        "Materials":              {"etf": "XLB",  "stocks": ["LIN", "FCX", "NEM", "APD", "SHW"]},
-        # Defensives
         "Healthcare":             {"etf": "XLV",  "stocks": ["UNH", "JNJ", "LLY", "PFE", "ABBV", "MRK", "TMO"]},
-        "Biotech":                {"etf": "XBI",  "stocks": ["AMGN", "GILD", "VRTX", "REGN", "BIIB", "ILMN"]},
-        "Consumer Staples":       {"etf": "XLP",  "stocks": ["WMT", "PG", "KO", "PEP", "COST", "MDLZ", "PM"]},
-        "Utilities":              {"etf": "XLU",  "stocks": ["NEE", "DUK", "SO", "AEP", "D", "SRE"]},
-        # Other
-        "Real Estate":            {"etf": "XLRE", "stocks": ["AMT", "PLD", "CCI", "EQIX", "PSA"]},
-        "Innovation":             {"etf": "ARKK", "stocks": ["TSLA", "COIN", "ROKU", "SHOP", "RBLX", "PLTR"]},
     },
     "IN": {
         "Banking":     {"etf": "^NSEBANK",  "stocks": ["HDFCBANK", "ICICIBANK", "SBIN", "KOTAKBANK", "AXISBANK", "INDUSINDBK"]},
@@ -35789,7 +35810,7 @@ _R6345_SECTOR_ETFS = {
 
 _R6345_BENCHMARK = {"US": "SPY", "IN": "^NSEI"}
 _R6345_CACHE = {"US": {"data": None, "time": 0}, "IN": {"data": None, "time": 0}, "BOTH": {"data": None, "time": 0}}
-_R6345_CACHE_TTL = 600  # 10 minutes
+_R6345_CACHE_TTL = 21600  # r63.62: 6h (was 10min) — sectors don't shift fast, prevents rescan timeout  # 10 minutes
 
 
 def _r6345_score_one_sector(etf_symbol, benchmark_data=None):
@@ -36173,9 +36194,14 @@ def _r6351_score_sector_stocks(stocks_list, region, benchmark_data):
     if benchmark_data:
         benchmark_history = {"ret_1m": benchmark_data.get("ret_1m_pct")}
     
-    with ThreadPoolExecutor(max_workers=6) as executor:
+    # r63.62: Reduce timeout 45s → 25s, cap workers at 4 to avoid Render rate-limit thrash
+    with ThreadPoolExecutor(max_workers=4) as executor:
         futures = {executor.submit(_r6351_score_one_stock, sym, region, benchmark_history): sym for sym in stocks_list}
-        for future in as_completed(futures, timeout=45):
+        try:
+            done_futures = list(as_completed(futures, timeout=25))
+        except Exception:
+            done_futures = [f for f in futures if f.done()]
+        for future in done_futures:
             sym = futures[future]
             try:
                 result = future.result()
@@ -36272,7 +36298,7 @@ async def today_setups(email: str = "", region: str = "BOTH"):
         
         # Layer 2 (r63.51): Top 5 hot sectors → on-demand multi-timeframe fetch for each stock
         # No longer depends on _bottom_nav_cache being warm. Always shows real data.
-        top_sectors = sector_heat[:5] if len(sector_heat) >= 5 else sector_heat
+        top_sectors = sector_heat[:3] if len(sector_heat) >= 3 else sector_heat  # r63.62: 3 (was 5) for first-load speed
         hot_with_stocks = []
         scanned_syms = set()
         
