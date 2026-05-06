@@ -1801,9 +1801,9 @@ def _safe_float(val, default=0.0):
         return default
 
 # ═══ Celesys version stamp (v4.61.10) ═══════════════════════════════
-APP_VERSION = "v4.63.57"
-APP_BUILD_TIME = 1778046729
-APP_BUILD_DATE = "2026-05-06 05:52:09 UTC"
+APP_VERSION = "v4.63.60"
+APP_BUILD_TIME = 1778080554
+APP_BUILD_DATE = "2026-05-06 15:15:54 UTC"
 APP_RELEASE_NOTES = (
     "v4.62.0: Micro-Cap Hunter scanner (Decide tab) + cumulative r61.x: Aladdin DD entry page (r61.8), "
     "stale-cache fallback (r61.8), multi-factor Bottom Line (r61.7), "
@@ -36040,9 +36040,23 @@ def _r6351_score_one_stock(sym, region, benchmark_history=None):
         if spot <= 0: return None
         
         # Multi-timeframe returns
+        # r63.58: yfinance period='1y' returns ~250-252 days, so _ret_back(252) was returning None
+        # Fix: use len(closes)-1 as fallback (oldest available bar) for 1y when not enough history
         def _ret_back(n):
             if len(closes) <= n: return None
             ref = float(closes[-(n+1)])
+            if ref <= 0: return None
+            return round((spot - ref) / ref * 100, 2)
+        
+        def _ret_back_or_oldest(n):
+            """Like _ret_back but falls back to oldest available bar if too short."""
+            target_idx = -(n+1)
+            if len(closes) > n:
+                ref = float(closes[target_idx])
+            elif len(closes) >= 2:
+                ref = float(closes[0])  # oldest available
+            else:
+                return None
             if ref <= 0: return None
             return round((spot - ref) / ref * 100, 2)
         
@@ -36051,7 +36065,7 @@ def _r6351_score_one_stock(sym, region, benchmark_history=None):
         ret_1m  = _ret_back(21)   # ~21 trading days
         ret_3m  = _ret_back(63)
         ret_6m  = _ret_back(126)
-        ret_1y  = _ret_back(252)
+        ret_1y  = _ret_back_or_oldest(252)  # r63.58: graceful fallback to oldest bar
         
         # Volume ratio
         avg_vol_20 = float(volumes[-20:].mean()) if len(volumes) >= 20 else float(volumes.mean())
@@ -36293,6 +36307,443 @@ async def today_setups(email: str = "", region: str = "BOTH"):
     return result
 
 
+
+
+
+def _r6359_evaluate_triggers(sym, region, triggers, stock_data=None):
+    """r63.59: Evaluate a list of triggers for a single ticker.
+    
+    Returns {triggers: [{type, param, description, fired, current_value}], 
+             total: N, fired: M}
+    
+    Uses _r6351_score_one_stock to get current stock state with all needed fields.
+    """
+    if stock_data is None:
+        stock_data = _r6351_score_one_stock(sym, region)
+        if stock_data is None:
+            return {"triggers": [{**t, "fired": False, "error": "Data unavailable"} for t in triggers],
+                    "total": len(triggers), "fired": 0, "data_error": True}
+    
+    spot       = stock_data.get("spot", 0)
+    vol_ratio  = stock_data.get("vol_ratio", 0)
+    above_50   = stock_data.get("above_50d", False)
+    above_200  = stock_data.get("above_200d", False)
+    ret_1d     = stock_data.get("ret_1d_pct", 0) or 0
+    
+    # Need RSI for some triggers — try to get from stock_data
+    # If not present, skip RSI triggers gracefully
+    rsi_now = stock_data.get("rsi", None)
+    
+    fired_count = 0
+    evaluated = []
+    
+    for t in triggers:
+        ttype = t.get("type", "")
+        param = t.get("param", 0)
+        desc = t.get("description", "")
+        fired = False
+        current_value = None
+        
+        try:
+            if ttype == "price_above":
+                fired = spot > float(param)
+                current_value = f"${spot:.2f}"
+            elif ttype == "price_below":
+                fired = spot < float(param)
+                current_value = f"${spot:.2f}"
+            elif ttype == "vol_ratio_above":
+                fired = vol_ratio > float(param)
+                current_value = f"{vol_ratio:.1f}x"
+            elif ttype == "rsi_above" and rsi_now is not None:
+                fired = float(rsi_now) > float(param)
+                current_value = f"RSI {rsi_now:.0f}"
+            elif ttype == "rsi_below" and rsi_now is not None:
+                fired = float(rsi_now) < float(param)
+                current_value = f"RSI {rsi_now:.0f}"
+            elif ttype == "sma50_reclaim":
+                fired = above_50
+                current_value = "above" if above_50 else "below"
+            elif ttype == "sma200_reclaim":
+                fired = above_200
+                current_value = "above" if above_200 else "below"
+            elif ttype == "today_positive":
+                fired = ret_1d > 0
+                current_value = f"{ret_1d:+.1f}%"
+            elif ttype == "today_above":
+                fired = ret_1d > float(param)
+                current_value = f"{ret_1d:+.1f}%"
+            else:
+                current_value = "n/a"
+        except Exception as e:
+            current_value = f"err: {str(e)[:30]}"
+        
+        if fired:
+            fired_count += 1
+        
+        evaluated.append({
+            "type": ttype,
+            "param": param,
+            "description": desc,
+            "fired": fired,
+            "current_value": current_value,
+        })
+    
+    return {
+        "triggers": evaluated,
+        "total": len(triggers),
+        "fired": fired_count,
+        "ready": fired_count == len(triggers) and len(triggers) > 0,
+    }
+
+
+def _r6359_suggest_triggers(stock_data, sector_data=None):
+    """r63.59: Auto-generate sensible default triggers based on current stock state.
+    
+    Returns 4-6 triggers user can accept or modify.
+    """
+    if not stock_data:
+        return []
+    
+    suggested = []
+    spot       = stock_data.get("spot", 0)
+    vol_ratio  = stock_data.get("vol_ratio", 1.0)
+    above_50   = stock_data.get("above_50d", False)
+    above_200  = stock_data.get("above_200d", False)
+    dist_52wh  = stock_data.get("dist_52wh_pct", 0) or 0
+    ret_1m     = stock_data.get("ret_1m_pct", 0) or 0
+    
+    # 1. Trend trigger: above 50d if not already
+    if not above_50:
+        suggested.append({
+            "type": "sma50_reclaim",
+            "param": "sma50",
+            "description": "Reclaim 50-day MA (trend confirmation)",
+        })
+    else:
+        suggested.append({
+            "type": "sma50_reclaim",
+            "param": "sma50",
+            "description": "Stay above 50-day MA (trend intact)",
+        })
+    
+    # 2. Long-term trend
+    if not above_200:
+        suggested.append({
+            "type": "sma200_reclaim",
+            "param": "sma200",
+            "description": "Reclaim 200-day MA (long-term trend)",
+        })
+    
+    # 3. Volume confirmation (always include)
+    suggested.append({
+        "type": "vol_ratio_above",
+        "param": 1.5,
+        "description": "Volume > 1.5× 20-day average (institutional buying)",
+    })
+    
+    # 4. Today's positive close
+    suggested.append({
+        "type": "today_above",
+        "param": 0.5,
+        "description": "Today closes up > 0.5% (momentum)",
+    })
+    
+    # 5. Specific price level (above today's high if breakout setup)
+    if dist_52wh < 5 and spot > 0:
+        # Near 52w high — break above it
+        breakout_price = round(spot * 1.005, 2)  # 0.5% above current
+        suggested.append({
+            "type": "price_above",
+            "param": breakout_price,
+            "description": f"Break above ${breakout_price} (breakout)",
+        })
+    elif spot > 0:
+        # Use a 2% above current as a generic upside trigger
+        target_price = round(spot * 1.02, 2)
+        suggested.append({
+            "type": "price_above",
+            "param": target_price,
+            "description": f"Close above ${target_price} (+2%)",
+        })
+    
+    return suggested
+
+
+
+
+
+def _r6360_classify_layer_state(score):
+    """Convert L-layer score (0-100) into qualitative state."""
+    if score is None: return "N/A"
+    s = float(score)
+    if s >= 70: return "STRONG"
+    elif s >= 50: return "NEUTRAL"
+    elif s >= 30: return "BUILDING"
+    else: return "WEAK"
+
+
+def _r6360_detect_regime_shift(baseline_layers, current_layers):
+    """r63.60: Compare baseline vs current L1-L6 to detect regime shifts.
+    
+    Args:
+      baseline_layers: dict like {"L1": 65, "L2": 15, ...} (snapshot when added)
+      current_layers:  dict same shape (current state)
+    
+    Returns:
+      {
+        tier: 'NONE' | 'SOFT' | 'STRONG' | 'CONVICTION',
+        direction: 'BULLISH' | 'BEARISH' | 'MIXED' | None,
+        layers_changed: [{layer, baseline, current, delta, state_baseline, state_current}],
+        summary: str,
+        confidence: int (0-10),
+      }
+    """
+    if not baseline_layers or not current_layers:
+        return {"tier": "NONE", "direction": None, "layers_changed": [], "summary": "Insufficient data for shift detection", "confidence": 0}
+    
+    SHIFT_THRESHOLD_SOFT = 15
+    SHIFT_THRESHOLD_STRONG = 20
+    
+    layers_changed = []
+    bullish_shifts = 0
+    bearish_shifts = 0
+    
+    for L in ["L1", "L2", "L3", "L4", "L5", "L6"]:
+        baseline = baseline_layers.get(L)
+        current = current_layers.get(L)
+        if baseline is None or current is None:
+            continue
+        delta = current - baseline
+        if abs(delta) < SHIFT_THRESHOLD_SOFT:
+            continue
+        layers_changed.append({
+            "layer": L,
+            "baseline": baseline,
+            "current": current,
+            "delta": delta,
+            "state_baseline": _r6360_classify_layer_state(baseline),
+            "state_current": _r6360_classify_layer_state(current),
+        })
+        if delta > 0:
+            bullish_shifts += 1
+        else:
+            bearish_shifts += 1
+    
+    # Tier classification
+    tier = "NONE"
+    direction = None
+    
+    if not layers_changed:
+        return {"tier": "NONE", "direction": None, "layers_changed": [], "summary": "All layers stable. No regime shift.", "confidence": 0}
+    
+    # Determine direction
+    if bullish_shifts > 0 and bearish_shifts == 0:
+        direction = "BULLISH"
+    elif bearish_shifts > 0 and bullish_shifts == 0:
+        direction = "BEARISH"
+    else:
+        direction = "MIXED"
+    
+    # Tier rules:
+    #   CONVICTION: 2+ layers shifted in same direction
+    #   STRONG: L2 or L5 shifted ≥20 (regardless of others)
+    #   SOFT: any single layer shifted ≥15
+    
+    same_dir_count = max(bullish_shifts, bearish_shifts)
+    
+    has_strong_l2_l5 = any(
+        L["layer"] in ("L2", "L5") and abs(L["delta"]) >= SHIFT_THRESHOLD_STRONG
+        for L in layers_changed
+    )
+    
+    if same_dir_count >= 2 and direction != "MIXED":
+        tier = "CONVICTION"
+    elif has_strong_l2_l5:
+        tier = "STRONG"
+    else:
+        tier = "SOFT"
+    
+    # Build summary
+    layer_names = {
+        "L1": "Liquidity",
+        "L2": "Smart Money Flow",
+        "L3": "Volatility/Risk",
+        "L4": "Fundamentals",
+        "L5": "Quant/Factor",
+        "L6": "Probability",
+    }
+    
+    summary_parts = []
+    for L in layers_changed:
+        arrow = "▲" if L["delta"] > 0 else "▼"
+        sign = "+" if L["delta"] > 0 else ""
+        summary_parts.append(f"{layer_names[L['layer']]}: {L['state_baseline']} ({L['baseline']}) → {L['state_current']} ({L['current']}) {arrow} {sign}{L['delta']}")
+    summary = " · ".join(summary_parts)
+    
+    # Confidence (0-10): based on # layers shifted + magnitude + L2/L5 weight
+    confidence = min(10, same_dir_count * 3)
+    if has_strong_l2_l5: confidence = min(10, confidence + 2)
+    if max(abs(L["delta"]) for L in layers_changed) >= 30: confidence = min(10, confidence + 2)
+    
+    return {
+        "tier": tier,
+        "direction": direction,
+        "layers_changed": layers_changed,
+        "summary": summary,
+        "confidence": confidence,
+    }
+
+
+def _r6360_get_current_layers(sym, region):
+    """Fetch current L1-L6 layers for a single symbol via cds-batch logic.
+    
+    Rather than calling the endpoint (which is heavy), we extract the
+    layer computation logic and run it directly using stock data we have.
+    """
+    try:
+        stock_data = _r6351_score_one_stock(sym, region)
+        if not stock_data:
+            return None
+        
+        # Approximate L1-L6 from _r6351 stock data
+        # This is a LIGHTWEIGHT proxy — actual /api/cds-batch is more accurate
+        # but requires fetching fundamentals separately. For Path A snapshot
+        # detection, this proxy is sufficient since we compare against same-source baseline.
+        
+        spot = stock_data.get("spot", 0)
+        vol_ratio = stock_data.get("vol_ratio", 1.0)
+        ret_1d = stock_data.get("ret_1d_pct", 0) or 0
+        ret_1m = stock_data.get("ret_1m_pct", 0) or 0
+        above_50 = stock_data.get("above_50d", False)
+        above_200 = stock_data.get("above_200d", False)
+        rs_1m = stock_data.get("rs_vs_bench_1m", 0) or 0
+        score = stock_data.get("score", 50)
+        
+        # L1: Liquidity (proxy via vol_ratio)
+        l1 = min(100, int(50 + vol_ratio * 25))
+        
+        # L2: Flow / Smart Money (proxy via vol_ratio + RS + above MA)
+        l2 = 30  # base low
+        if vol_ratio > 1.5: l2 += 30
+        elif vol_ratio > 1.2: l2 += 20
+        elif vol_ratio > 1.0: l2 += 10
+        if above_50 and ret_1d > 0: l2 += 20
+        elif not above_50 or ret_1d < -1: l2 -= 15
+        if rs_1m > 5: l2 += 15
+        elif rs_1m < -5: l2 -= 15
+        l2 = max(0, min(100, l2))
+        
+        # L3: Risk/Volatility (proxy — lower is better risk-wise)
+        # Higher 1m return without 200ma support = high risk
+        l3 = 50
+        if above_200: l3 += 20
+        if abs(ret_1d) > 5: l3 -= 15  # high single-day move = risk
+        l3 = max(0, min(100, l3))
+        
+        # L4: Fundamentals (proxy via score)
+        l4 = score
+        
+        # L5: Quant/Factor (proxy via momentum + trend)
+        l5 = 0
+        if above_200: l5 += 25
+        if above_50: l5 += 20
+        if ret_1m > 0: l5 += 25
+        if vol_ratio > 1.0: l5 += 15
+        if rs_1m > 0: l5 += 15
+        l5 = min(100, l5)
+        
+        # L6: Probability (proxy via trend strength)
+        l6 = 50
+        if above_50 and above_200 and ret_1m > 5: l6 = 75
+        elif not above_50 and ret_1m < -5: l6 = 30
+        
+        return {
+            "L1": l1, "L2": l2, "L3": l3, "L4": l4, "L5": l5, "L6": l6,
+            "_source": "r6351_proxy",
+            "_stock_data": stock_data,
+        }
+    except Exception as e:
+        return None
+
+@app.get("/api/watchlist-status")
+async def watchlist_status(symbols: str = "", regions: str = "", email: str = "", triggers_json: str = "", baselines_json: str = ""):
+    """r63.59 + r63.60: Evaluate triggers + regime shifts.
+    
+    Args:
+      symbols: comma-separated tickers
+      regions: comma-separated regions
+      email: premium gate
+      triggers_json: JSON {sym: [triggers]}
+      baselines_json: JSON {sym: {L1..L6}} — baseline snapshot from when stock added
+    
+    Returns: {success, results: {sym: {triggers, regime_shift, current_layers, ...}}}
+    """
+    # Premium gate
+    email = (email or "").strip().lower()
+    _ok, email = check_premium_gate(email, "dream")
+    if not _ok:
+        return {"success": False, "error": "Premium tier required."}
+    
+    syms = [s.strip().upper() for s in (symbols or "").split(",") if s.strip()]
+    regs = [r.strip().upper() for r in (regions or "").split(",") if r.strip()]
+    
+    if not syms:
+        return {"success": False, "error": "No symbols"}
+    
+    # Default region to US for missing entries
+    while len(regs) < len(syms):
+        regs.append("US")
+    
+    # Parse triggers
+    import json as _json59
+    try:
+        all_triggers = _json59.loads(triggers_json) if triggers_json else {}
+    except Exception:
+        all_triggers = {}
+    
+    results = {}
+    
+    # Evaluate each ticker — sequential for now (could parallelize)
+    for i, sym in enumerate(syms[:20]):  # cap at 20 tickers
+        reg = regs[i] if i < len(regs) else "US"
+        triggers = all_triggers.get(sym, [])
+        
+        if not triggers:
+            # No triggers configured — return suggested defaults
+            stock_data = _r6351_score_one_stock(sym, reg)
+            current_layers = _r6360_get_current_layers(sym, reg) if stock_data else None
+            results[sym] = {
+                "stock_data": stock_data,
+                "suggested_triggers": _r6359_suggest_triggers(stock_data),
+                "current_layers": current_layers,
+                "no_triggers_configured": True,
+            }
+        else:
+            stock_data = _r6351_score_one_stock(sym, reg)
+            eval_result = _r6359_evaluate_triggers(sym, reg, triggers, stock_data)
+            eval_result["stock_data"] = stock_data
+            
+            # r63.60: Regime shift detection
+            current_layers = _r6360_get_current_layers(sym, reg) if stock_data else None
+            eval_result["current_layers"] = current_layers
+            
+            # Parse baseline if provided
+            try:
+                _all_baselines = _json59.loads(baselines_json) if baselines_json else {}
+                baseline_for_sym = _all_baselines.get(sym)
+            except Exception:
+                baseline_for_sym = None
+            
+            if baseline_for_sym and current_layers:
+                eval_result["regime_shift"] = _r6360_detect_regime_shift(baseline_for_sym, current_layers)
+            else:
+                eval_result["regime_shift"] = {"tier": "NONE", "summary": "No baseline yet — first snapshot will be saved."}
+            
+            results[sym] = eval_result
+    
+    return {"success": True, "results": results}
+
+
 @app.get("/today")
 async def today_page(email: str = ""):
     """r63.45: Today's Setups discovery page (full HTML).
@@ -36400,6 +36851,7 @@ async def today_page(email: str = ""):
     <div class="region-tab" data-region="IN" onclick="celesysToday.setRegion('IN', this)">🇮🇳 India</div>
   </div>
   
+  <div id="watchlistAlerts" style="margin-bottom:18px"></div>
   <div id="content" class="loading">⏳ Scanning sectors...</div>
 </div>
 
@@ -36420,6 +36872,193 @@ window.celesysToday = (function() {
   
   function fmt(n, d) { d = d || 2; return (n != null) ? Number(n).toFixed(d) : '—'; }
   function pct(n) { if (n == null) return '—'; const sign = n >= 0 ? '+' : ''; return sign + fmt(n, 1) + '%'; }
+  
+  // r63.59: Trigger Watchlist
+  function getWatchlist() {
+    try { var raw = localStorage.getItem('celesys_watchlist_v1'); return raw ? JSON.parse(raw) : []; } catch (e) { return []; }
+  }
+  function saveWatchlist(list) {
+    try { localStorage.setItem('celesys_watchlist_v1', JSON.stringify(list)); return true; } catch (e) { return false; }
+  }
+  function addToWatchlist(sym, region, triggers, baselineLayers) {
+    var list = getWatchlist();
+    list = list.filter(function(w) { return !(w.sym === sym && w.region === region); });
+    if (list.length >= 20) list = list.slice(-19);
+    list.push({
+      sym: sym,
+      region: region,
+      triggers: triggers || [],
+      baseline_layers: baselineLayers || null,  // r63.60: snapshot for regime detection
+      added_at: new Date().toISOString()
+    });
+    saveWatchlist(list);
+    return list;
+  }
+  function removeFromWatchlist(sym, region) {
+    var list = getWatchlist().filter(function(w) { return !(w.sym === sym && w.region === region); });
+    saveWatchlist(list);
+    return list;
+  }
+  
+  async function loadWatchlist() {
+    var list = getWatchlist();
+    var container = document.getElementById('watchlistAlerts');
+    if (!container) return;
+    if (list.length === 0) { container.innerHTML = ''; return; }
+    
+    container.innerHTML = '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px"><div style="font-size:11px;font-weight:800;color:#1A3A78;letter-spacing:1px;margin-bottom:8px">⏰ WATCHLIST ALERTS (' + list.length + ')</div><div style="font-size:11px;color:#94a3b8">Loading trigger status...</div></div>';
+    
+    var symList = list.map(function(w) { return w.sym; }).join(',');
+    var regList = list.map(function(w) { return w.region; }).join(',');
+    var triggersMap = {};
+    list.forEach(function(w) { triggersMap[w.sym] = w.triggers || []; });
+    var triggersJson = JSON.stringify(triggersMap);
+    
+    // r63.60: also send baseline layers for regime shift detection
+    var baselinesMap = {};
+    list.forEach(function(w) {
+      if (w.baseline_layers) baselinesMap[w.sym] = w.baseline_layers;
+    });
+    var baselinesJson = JSON.stringify(baselinesMap);
+    
+    var url = '/api/watchlist-status?symbols=' + encodeURIComponent(symList) + 
+              '&regions=' + encodeURIComponent(regList) + 
+              '&email=' + encodeURIComponent(userEmail) + 
+              '&triggers_json=' + encodeURIComponent(triggersJson) +
+              '&baselines_json=' + encodeURIComponent(baselinesJson);
+    
+    try {
+      var r = await fetch(url);
+      var d = await r.json();
+      if (!d.success) {
+        container.innerHTML = '<div style="padding:10px;background:#fef2f2;border-radius:8px;color:#7f1d1d;font-size:11px">⚠ Watchlist failed: ' + escapeHtml(d.error || 'Unknown') + '</div>';
+        return;
+      }
+      renderWatchlist(d.results, list);
+    } catch (e) {
+      container.innerHTML = '<div style="padding:10px;background:#fef2f2;border-radius:8px;color:#7f1d1d;font-size:11px">⚠ Watchlist error: ' + escapeHtml(e.message || e) + '</div>';
+    }
+  }
+  
+  function renderWatchlist(results, list) {
+    var container = document.getElementById('watchlistAlerts');
+    if (!container) return;
+    
+    var sorted = list.slice().sort(function(a, b) {
+      var ra = results[a.sym] || {}, rb = results[b.sym] || {};
+      var aReady = ra.ready ? 1 : 0, bReady = rb.ready ? 1 : 0;
+      if (aReady !== bReady) return bReady - aReady;
+      return (rb.fired || 0) - (ra.fired || 0);
+    });
+    
+    var readyCount = sorted.filter(function(w) { return (results[w.sym] || {}).ready; }).length;
+    
+    var html = '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px">';
+    html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">';
+    // r63.60: Count regime shifts for header summary
+    var shiftsTotal = sorted.filter(function(w) {
+      var rs = (results[w.sym] || {}).regime_shift || {};
+      return rs.tier && rs.tier !== 'NONE';
+    }).length;
+    html += '<div style="font-size:11px;font-weight:800;color:#1A3A78;letter-spacing:1px">⏰ WATCHLIST — REGIME MONITORING (' + list.length + ')</div>';
+    // r63.60: show shift count alongside ready count
+    var hdr = '';
+    if (readyCount > 0) hdr += '<div style="font-size:11px;font-weight:800;color:#10b981;margin-right:8px">🟢 ' + readyCount + ' READY</div>';
+    if (shiftsTotal > 0) hdr += '<div style="font-size:11px;font-weight:800;color:#dc2626;margin-right:0">🚨 ' + shiftsTotal + ' SHIFT' + (shiftsTotal>1?'S':'') + '</div>';
+    if (!hdr) hdr = '<div style="font-size:10px;color:#94a3b8">All layers stable</div>';
+    html += '<div style="display:flex">' + hdr + '</div>';
+    html += '</div>';
+    
+    html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:8px">';
+    
+    sorted.forEach(function(w) {
+      var r = results[w.sym] || {};
+      var sd = r.stock_data || {};
+      var fired = r.fired || 0, total = r.total || 0, ready = r.ready || false;
+      
+      var cardBg = ready ? '#ecfdf5' : (fired > 0 ? '#fffbeb' : '#f8fafc');
+      var cardBorder = ready ? '2px solid #10b981' : (fired > 0 ? '1px solid #fde68a' : '1px solid #e2e8f0');
+      var cardShadow = ready ? '0 4px 12px rgba(16,185,129,0.25)' : 'none';
+      
+      html += '<div style="background:' + cardBg + ';border:' + cardBorder + ';border-radius:8px;padding:10px;cursor:pointer;box-shadow:' + cardShadow + '" onclick="celesysToday.openInvestorModal(\'' + escapeHtml(w.sym) + '\',\'' + w.region + '\')">';
+      
+      html += '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:5px">';
+      html += '<div><span style="font-size:14px;font-weight:900;color:#0f172a">' + escapeHtml(w.sym) + '</span>';
+      html += '<span style="font-size:9px;color:#94a3b8;margin-left:5px">' + w.region + '</span></div>';
+      html += '<button onclick="event.stopPropagation();celesysToday.removeWatch(\'' + escapeHtml(w.sym) + '\',\'' + w.region + '\')" style="background:transparent;border:none;color:#94a3b8;font-size:14px;cursor:pointer;padding:0 4px" title="Remove">×</button>';
+      html += '</div>';
+      
+      var statusColor = ready ? '#10b981' : (fired > 0 ? '#f59e0b' : '#94a3b8');
+      var statusLabel = ready ? '🟢 ENTRY READY' : (fired > 0 ? '🟡 ' + fired + '/' + total + ' BUILDING' : '⏸ ' + fired + '/' + total + ' WAITING');
+      
+      if (sd.spot != null) {
+        html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">';
+        html += '<span style="font-size:13px;font-weight:700;color:#0f172a;font-family:\'IBM Plex Mono\',monospace">$' + fmt(sd.spot, 2) + '</span>';
+        if (sd.ret_1d_pct != null) {
+          var c1d = sd.ret_1d_pct > 0 ? '#10b981' : (sd.ret_1d_pct < 0 ? '#dc2626' : '#64748b');
+          html += '<span style="font-size:11px;font-weight:700;color:' + c1d + '">' + (sd.ret_1d_pct > 0 ? '+' : '') + fmt(sd.ret_1d_pct, 1) + '%</span>';
+        }
+        html += '</div>';
+      }
+      
+      html += '<div style="font-size:10px;font-weight:800;color:' + statusColor + ';letter-spacing:0.3px;margin-bottom:6px">' + statusLabel + '</div>';
+      
+      // r63.60: Regime shift block (highest priority — show first if present)
+      var rs = r.regime_shift || {};
+      if (rs.tier && rs.tier !== 'NONE') {
+        var rsTierConfig = {
+          'SOFT':       {bg: '#fffbeb', border: '#fde68a',  textColor: '#92400e', icon: '🟡', label: 'SOFT SHIFT'},
+          'STRONG':     {bg: '#fed7aa', border: '#fb923c',  textColor: '#9a3412', icon: '🟠', label: 'STRONG SHIFT'},
+          'CONVICTION': {bg: '#fecaca', border: '#dc2626',  textColor: '#7f1d1d', icon: '🔴', label: 'CONVICTION SHIFT'},
+        };
+        var cfg = rsTierConfig[rs.tier] || rsTierConfig['SOFT'];
+        var dirIcon = rs.direction === 'BULLISH' ? '⬆ BULLISH' : (rs.direction === 'BEARISH' ? '⬇ BEARISH' : '↔ MIXED');
+        var dirColor = rs.direction === 'BULLISH' ? '#059669' : (rs.direction === 'BEARISH' ? '#dc2626' : '#64748b');
+        
+        html += '<div style="background:' + cfg.bg + ';border:1px solid ' + cfg.border + ';border-radius:6px;padding:7px 9px;margin-bottom:6px">';
+        html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">';
+        html += '<span style="font-size:9px;font-weight:800;color:' + cfg.textColor + ';letter-spacing:0.5px">' + cfg.icon + ' ' + cfg.label + '</span>';
+        html += '<span style="font-size:9px;font-weight:700;color:' + dirColor + '">' + dirIcon + '</span>';
+        html += '</div>';
+        if (rs.layers_changed && rs.layers_changed.length > 0) {
+          rs.layers_changed.forEach(function(L) {
+            var ldIcon = L.delta > 0 ? '▲' : '▼';
+            var ldColor = L.delta > 0 ? '#059669' : '#dc2626';
+            var ldSign = L.delta > 0 ? '+' : '';
+            var layerNames = {L1: 'Liquidity', L2: 'Smart Money', L3: 'Risk', L4: 'Fundamentals', L5: 'Quant', L6: 'Probability'};
+            html += '<div style="font-size:9px;color:' + cfg.textColor + ';line-height:1.4;margin-bottom:1px">';
+            html += '<strong>' + escapeHtml(layerNames[L.layer] || L.layer) + ':</strong> ';
+            html += escapeHtml(L.state_baseline) + ' (' + L.baseline + ') → ' + escapeHtml(L.state_current) + ' (' + L.current + ') ';
+            html += '<span style="color:' + ldColor + ';font-weight:700">' + ldIcon + ' ' + ldSign + L.delta + '</span>';
+            html += '</div>';
+          });
+        }
+        if (rs.confidence) {
+          html += '<div style="font-size:9px;color:' + cfg.textColor + ';margin-top:3px;opacity:0.8">Confidence: ' + rs.confidence + '/10</div>';
+        }
+        html += '</div>';
+      } else if (rs.summary && rs.summary.indexOf('No baseline') >= 0) {
+        // Edge case: stock added before r63.60 (no baseline). Offer to capture now.
+        html += '<div style="font-size:9px;color:#64748b;font-style:italic;margin-bottom:6px">' + escapeHtml(rs.summary) + '</div>';
+      }
+      
+      if (r.triggers && r.triggers.length > 0) {
+        r.triggers.forEach(function(t) {
+          var icon = t.fired ? '✅' : '☐';
+          var tcol = t.fired ? '#0f172a' : '#64748b';
+          html += '<div style="font-size:10px;color:' + tcol + ';line-height:1.5;margin-bottom:2px">' + icon + ' ' + escapeHtml(t.description || t.type) + 
+                  (t.current_value ? ' <span style="color:#94a3b8">(' + escapeHtml(String(t.current_value)) + ')</span>' : '') + '</div>';
+        });
+      } else if (r.no_triggers_configured) {
+        html += '<div style="font-size:10px;color:#dc2626">⚠ No triggers configured. Click stock card to add.</div>';
+      }
+      
+      html += '</div>';
+    });
+    
+    html += '</div></div>';
+    container.innerHTML = html;
+  }
   
   async function load() {
     // r63.46: pull email from URL param as fallback if localStorage empty
@@ -37018,6 +37657,11 @@ window.celesysToday = (function() {
     }
     
     // Footer
+    html += '<div style="text-align:center;padding:12px 0 4px;margin-top:14px">';
+    html += '<button onclick="celesysToday.openTriggerPicker(\\'' + escapeHtml(sym) + '\\', \\'' + reg + '\\')" style="display:inline-block;padding:9px 18px;background:#fff;color:#1A3A78;border:2px solid #1A3A78;border-radius:8px;font-weight:700;font-size:12px;cursor:pointer">⏰ Add to Trigger Watchlist</button>';
+    html += '<div style="font-size:9px;color:#94a3b8;margin-top:4px">Get ENTRY READY alert when conditions align</div>';
+    html += '</div>';
+    
     html += '<div style="text-align:center;padding:16px 0 8px;border-top:1px solid #f1f5f9;margin-top:8px">';
     html += '<a href="/?sym=' + encodeURIComponent(sym) + '&region=' + reg + '&autoanalyze=1" style="display:inline-block;padding:10px 20px;background:linear-gradient(135deg,#1A3A78,#1e40af);color:#fff;text-decoration:none;border-radius:8px;font-weight:700;font-size:12px">Open full analysis in main app \u2192</a>';
     html += '<div style="font-size:10px;color:#94a3b8;margin-top:6px">Loads Decide tab with full institutional view</div>';
@@ -37072,12 +37716,95 @@ window.celesysToday = (function() {
         });
     },
     refresh: load,
+    loadWatchlist: loadWatchlist,
+    
+    // r63.59: Watchlist management
+    removeWatch(sym, region) {
+      removeFromWatchlist(sym, region);
+      loadWatchlist();
+    },
+    
+    async openTriggerPicker(sym, region) {
+      var url = '/api/watchlist-status?symbols=' + encodeURIComponent(sym) + 
+                '&regions=' + encodeURIComponent(region) + 
+                '&email=' + encodeURIComponent(userEmail) + 
+                '&triggers_json=' + encodeURIComponent('{}');
+      try {
+        var r = await fetch(url);
+        var d = await r.json();
+        if (!d.success || !d.results || !d.results[sym]) {
+          alert('Could not fetch suggested triggers.');
+          return;
+        }
+        var suggested = d.results[sym].suggested_triggers || [];
+        // r63.60: capture baseline L1-L6 snapshot for regime detection
+        var baselineLayers = d.results[sym].current_layers || null;
+        if (suggested.length === 0) { alert('No triggers could be generated.'); return; }
+        celesysToday.addToWatchlistFromModal(sym, region, suggested, baselineLayers);
+      } catch (e) {
+        alert('Error: ' + (e.message || e));
+      }
+    },
+    
+    addToWatchlistFromModal(sym, region, suggestedTriggers, baselineLayers) {
+      var pickerOverlay = document.createElement('div');
+      pickerOverlay.id = 'csTriggerPicker';
+      pickerOverlay.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,0.7);backdrop-filter:blur(4px);z-index:10000;display:flex;align-items:flex-start;justify-content:center;padding:24px;overflow-y:auto';
+      pickerOverlay.onclick = function(e) { if (e.target === pickerOverlay) pickerOverlay.remove(); };
+      
+      var card = document.createElement('div');
+      card.style.cssText = 'background:#fff;max-width:560px;width:100%;border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,0.3);padding:24px;margin:auto';
+      
+      var html = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">';
+      html += '<div style="font-size:14px;font-weight:800;color:#1A3A78">⏰ Add ' + escapeHtml(sym) + ' to Watchlist</div>';
+      html += '<button onclick="document.getElementById(\'csTriggerPicker\').remove()" style="background:#e2e8f0;border:none;width:28px;height:28px;border-radius:5px;cursor:pointer;font-size:16px;color:#475569">✕</button>';
+      html += '</div>';
+      html += '<div style="font-size:11px;color:#64748b;line-height:1.5;margin-bottom:14px">When ALL selected triggers are TRUE, you\'ll see a green ENTRY READY alert at the top of /today.</div>';
+      html += '<div id="trigList" style="margin-bottom:14px">';
+      
+      suggestedTriggers.forEach(function(t, i) {
+        html += '<label style="display:flex;align-items:center;padding:8px 10px;background:#f8fafc;border-radius:6px;border:1px solid #e2e8f0;margin-bottom:5px;cursor:pointer">';
+        html += '<input type="checkbox" data-i="' + i + '" checked style="margin-right:10px">';
+        html += '<span style="font-size:12px;color:#0f172a">' + escapeHtml(t.description) + '</span>';
+        html += '</label>';
+      });
+      
+      html += '</div>';
+      html += '<div style="display:flex;gap:8px">';
+      html += '<button id="trigCancel" style="flex:1;padding:10px;background:#e2e8f0;color:#475569;border:none;border-radius:6px;font-weight:700;cursor:pointer;font-size:12px">Cancel</button>';
+      html += '<button id="trigConfirm" style="flex:2;padding:10px;background:linear-gradient(135deg,#1A3A78,#1e40af);color:#fff;border:none;border-radius:6px;font-weight:700;cursor:pointer;font-size:12px">⏰ Add to Watchlist</button>';
+      html += '</div>';
+      
+      card.innerHTML = html;
+      pickerOverlay.appendChild(card);
+      document.body.appendChild(pickerOverlay);
+      
+      document.getElementById('trigCancel').onclick = function() { pickerOverlay.remove(); };
+      document.getElementById('trigConfirm').onclick = function() {
+        var checked = card.querySelectorAll('input[type="checkbox"]:checked');
+        var selected = [];
+        checked.forEach(function(cb) {
+          var i = parseInt(cb.getAttribute('data-i'));
+          if (suggestedTriggers[i]) selected.push(suggestedTriggers[i]);
+        });
+        if (selected.length === 0) { alert('Select at least 1 trigger.'); return; }
+        addToWatchlist(sym, region, selected, baselineLayers);  // r63.60: persist baseline
+        pickerOverlay.remove();
+        var im = document.getElementById('csInvestorModal');
+        if (im) im.remove();
+        loadWatchlist();
+        window.scrollTo({top: 0, behavior: 'smooth'});
+      };
+    },
   };
 })();
 
 celesysToday.refresh();
+celesysToday.loadWatchlist();
 // Auto-refresh every 5 min
 setInterval(celesysToday.refresh, 5 * 60 * 1000);
+// r63.59: refresh watchlist every 60s
+setInterval(celesysToday.loadWatchlist, 60 * 1000);
 </script>
 </body>
 </html>"""
