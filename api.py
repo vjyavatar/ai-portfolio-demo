@@ -1801,9 +1801,9 @@ def _safe_float(val, default=0.0):
         return default
 
 # ═══ Celesys version stamp (v4.61.10) ═══════════════════════════════
-APP_VERSION = "v4.63.47"
-APP_BUILD_TIME = 1778037691
-APP_BUILD_DATE = "2026-05-06 03:21:31 UTC"
+APP_VERSION = "v4.63.48"
+APP_BUILD_TIME = 1778039021
+APP_BUILD_DATE = "2026-05-06 03:43:41 UTC"
 APP_RELEASE_NOTES = (
     "v4.62.0: Micro-Cap Hunter scanner (Decide tab) + cumulative r61.x: Aladdin DD entry page (r61.8), "
     "stale-cache fallback (r61.8), multi-factor Bottom Line (r61.7), "
