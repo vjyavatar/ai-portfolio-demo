@@ -1801,9 +1801,9 @@ def _safe_float(val, default=0.0):
         return default
 
 # ═══ Celesys version stamp (v4.61.10) ═══════════════════════════════
-APP_VERSION = "v4.63.50"
-APP_BUILD_TIME = 1778040533
-APP_BUILD_DATE = "2026-05-06 04:08:53 UTC"
+APP_VERSION = "v4.63.53"
+APP_BUILD_TIME = 1778042231
+APP_BUILD_DATE = "2026-05-06 04:37:11 UTC"
 APP_RELEASE_NOTES = (
     "v4.62.0: Micro-Cap Hunter scanner (Decide tab) + cumulative r61.x: Aladdin DD entry page (r61.8), "
     "stale-cache fallback (r61.8), multi-factor Bottom Line (r61.7), "
@@ -31918,7 +31918,7 @@ async def earnings_this_week(region: str = "US", email: str = "", nocache: int =
         return {"success": False, "error": "Earnings calendar is a premium feature."}
     
     region = (region or "US").upper()
-    cache_key = f"earnings_3wk_v47_{region}"  # r63.47: bumped to invalidate cache with yfinance-fallback data  # r63.17: bumped to invalidate cache with old None-as-0 data
+    cache_key = f"earnings_3wk_v53_{region}"  # r63.47: bumped to invalidate cache with yfinance-fallback data  # r63.17: bumped to invalidate cache with old None-as-0 data
     
     if nocache != 1:
         cached = _smart_cache_get(cache_key)
@@ -32096,6 +32096,12 @@ async def earnings_this_week(region: str = "US", email: str = "", nocache: int =
     # Sort each bucket: tracked first, then by date
     def sort_key(e):
         return (not e["in_universe"], e["date"], e["symbol"])
+    
+    # r63.53: Enrich declared events with yfinance backfill + post-earnings reaction
+    try:
+        _r6353_enrich_declared_events(declared, tracked_set)
+    except Exception as _enr_e:
+        print(f"[earnings-3wk r63.53] enrichment failed: {_enr_e}")
     
     declared.sort(key=sort_key, reverse=False)
     declared.sort(key=lambda e: e["date"], reverse=True)  # most recent declared first
@@ -35982,6 +35988,170 @@ def _r6345_get_ticker_from_cache(sym, region):
     return None
 
 
+def _r6351_score_one_stock(sym, region, benchmark_history=None):
+    """r63.51: On-demand per-stock fetch with multi-timeframe data.
+    
+    One yfinance call → 1y history → derive 1d/5d/1m/3m/6m/1y returns,
+    vol ratio, distance from 52w high, simple score 0-100.
+    
+    Returns None on failure (caller filters out).
+    """
+    import datetime as _dt51
+    try:
+        _yahoo_rate_wait()
+        tk_sym = sym if region.upper() == "US" else f"{sym}.NS"
+        tk = yf.Ticker(tk_sym)
+        hist = tk.history(period="1y", interval="1d")
+        
+        if hist is None or len(hist) < 30:
+            return None
+        
+        closes = hist["Close"].values
+        volumes = hist["Volume"].values
+        highs = hist["High"].values
+        
+        spot = float(closes[-1])
+        if spot <= 0: return None
+        
+        # Multi-timeframe returns
+        def _ret_back(n):
+            if len(closes) <= n: return None
+            ref = float(closes[-(n+1)])
+            if ref <= 0: return None
+            return round((spot - ref) / ref * 100, 2)
+        
+        ret_1d  = _ret_back(1)
+        ret_5d  = _ret_back(5)
+        ret_1m  = _ret_back(21)   # ~21 trading days
+        ret_3m  = _ret_back(63)
+        ret_6m  = _ret_back(126)
+        ret_1y  = _ret_back(252)
+        
+        # Volume ratio
+        avg_vol_20 = float(volumes[-20:].mean()) if len(volumes) >= 20 else float(volumes.mean())
+        today_vol = float(volumes[-1])
+        vol_ratio = round(today_vol / max(avg_vol_20, 1), 2) if avg_vol_20 > 0 else 1.0
+        
+        # 52w high distance
+        hi52 = float(highs[-252:].max()) if len(highs) >= 30 else float(highs.max())
+        dist_52wh_pct = round((hi52 - spot) / max(hi52, 0.01) * 100, 2) if hi52 > 0 else None
+        
+        # Above 50d / 200d MA
+        sma50  = float(closes[-50:].mean())  if len(closes) >= 50  else float(closes.mean())
+        sma200 = float(closes[-200:].mean()) if len(closes) >= 200 else float(closes.mean())
+        above_50  = spot > sma50
+        above_200 = spot > sma200
+        
+        # Relative strength (1m return - benchmark 1m return)
+        rs_1m = None
+        if benchmark_history is not None and benchmark_history.get("ret_1m") is not None and ret_1m is not None:
+            rs_1m = round(ret_1m - benchmark_history["ret_1m"], 2)
+        
+        # SIMPLE SCORE 0-100 (lightweight, transparent — different from full _unified_score)
+        score = 0
+        # Trend (35 pts max)
+        if above_50:  score += 15
+        if above_200: score += 15
+        if ret_1m is not None and ret_1m > 0: score += 5
+        
+        # Momentum (25 pts max)
+        if ret_1d is not None and ret_1d > 0:  score += 5
+        if ret_5d is not None and ret_5d > 0:  score += 5
+        if ret_1m is not None and ret_1m > 5:  score += 8
+        if ret_3m is not None and ret_3m > 10: score += 7
+        
+        # Volume (15 pts max)
+        if vol_ratio >= 1.5: score += 15
+        elif vol_ratio >= 1.2: score += 10
+        elif vol_ratio >= 1.0: score += 5
+        
+        # Position in 52w range (15 pts max)
+        if dist_52wh_pct is not None:
+            if dist_52wh_pct <= 2:    score += 15
+            elif dist_52wh_pct <= 5:  score += 10
+            elif dist_52wh_pct <= 10: score += 5
+        
+        # Relative strength (10 pts max)
+        if rs_1m is not None:
+            if rs_1m >= 5:   score += 10
+            elif rs_1m >= 0: score += 5
+        
+        score = min(100, max(0, score))
+        
+        # Tier classification
+        if score >= 75:
+            tier = "READY"
+        elif score >= 60:
+            tier = "DEVELOPING"
+        elif score >= 40:
+            tier = "WATCH"
+        else:
+            tier = "WEAK"
+        
+        # Why-now plain English
+        why_parts = []
+        if dist_52wh_pct is not None and dist_52wh_pct <= 2:
+            why_parts.append("at 52w high (breakout zone)")
+        elif dist_52wh_pct is not None and dist_52wh_pct <= 5:
+            why_parts.append(f"{dist_52wh_pct:.1f}% below 52w high")
+        if vol_ratio >= 1.5:
+            why_parts.append(f"vol {vol_ratio:.1f}× normal")
+        if above_50 and above_200:
+            why_parts.append("above 50/200d MA")
+        if rs_1m is not None and rs_1m >= 5:
+            why_parts.append(f"+{rs_1m:.1f}% vs benchmark 1m")
+        why_now = " · ".join(why_parts[:3]) if why_parts else "score-based setup"
+        
+        return {
+            "sym":             sym,
+            "spot":            round(spot, 2),
+            "ret_1d_pct":      ret_1d,
+            "ret_5d_pct":      ret_5d,
+            "ret_1m_pct":      ret_1m,
+            "ret_3m_pct":      ret_3m,
+            "ret_6m_pct":      ret_6m,
+            "ret_1y_pct":      ret_1y,
+            "vol_ratio":       vol_ratio,
+            "dist_52wh_pct":   dist_52wh_pct,
+            "above_50d":       above_50,
+            "above_200d":      above_200,
+            "rs_vs_bench_1m":  rs_1m,
+            "score":           score,
+            "tier":            tier,
+            "why_now":         why_now,
+        }
+    except Exception:
+        return None
+
+
+def _r6351_score_sector_stocks(stocks_list, region, benchmark_data):
+    """Parallel-fetch all stocks in a sector. Returns list of stock dicts."""
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    results = []
+    
+    benchmark_history = None
+    if benchmark_data:
+        benchmark_history = {"ret_1m": benchmark_data.get("ret_1m_pct")}
+    
+    with ThreadPoolExecutor(max_workers=6) as executor:
+        futures = {executor.submit(_r6351_score_one_stock, sym, region, benchmark_history): sym for sym in stocks_list}
+        for future in as_completed(futures, timeout=45):
+            sym = futures[future]
+            try:
+                result = future.result()
+                if result:
+                    results.append(result)
+                else:
+                    # Failed fetch — show as UNCACHED with sym only
+                    results.append({"sym": sym, "tier": "UNCACHED", "why_now": "Data fetch failed — try refresh"})
+            except Exception:
+                results.append({"sym": sym, "tier": "UNCACHED", "why_now": "Data fetch timed out"})
+    
+    return results
+
+
+
+
 @app.get("/api/today-setups")
 async def today_setups(email: str = "", region: str = "BOTH"):
     """r63.45: Today's Setups dashboard.
@@ -36025,40 +36195,29 @@ async def today_setups(email: str = "", region: str = "BOTH"):
         sector_heat = _r6345_compute_sector_heat(reg)
         result["sector_heat"][reg] = sector_heat
         
-        # Layer 2: Top 5 hot sectors → pull their stocks from bottom-nav cache
+        # Layer 2 (r63.51): Top 5 hot sectors → on-demand multi-timeframe fetch for each stock
+        # No longer depends on _bottom_nav_cache being warm. Always shows real data.
         top_sectors = sector_heat[:5] if len(sector_heat) >= 5 else sector_heat
         hot_with_stocks = []
         scanned_syms = set()
         
+        # Get benchmark 1-month return for relative strength calc
+        bench_sym = _R6345_BENCHMARK.get(reg)
+        bench_data = _r6351_score_one_stock(bench_sym, reg) if bench_sym else None
+        
         for sec in top_sectors:
-            sec_stocks = []
-            for sym in sec["stocks"]:
-                scanned_syms.add(sym.upper())
-                t = _r6345_get_ticker_from_cache(sym, reg)
-                if t:
-                    tier = _r6345_classify_tier(t)
-                    sec_stocks.append({
-                        "sym":         sym,
-                        "spot":        t.get("spot"),
-                        "confidence":  t.get("confidence"),
-                        "state":       t.get("state"),
-                        "grade":       t.get("grade"),
-                        "tier":        tier,
-                        "why_now":     _r6345_extract_why(t),
-                        "_region":     reg,
-                    })
-                else:
-                    # Not in cache — bottom-nav-scan may not have this symbol yet
-                    sec_stocks.append({
-                        "sym":         sym,
-                        "tier":        "UNCACHED",
-                        "why_now":     "Not yet scored — bottom-nav scan in progress",
-                        "_region":     reg,
-                    })
+            # r63.51: parallel-fetch all stocks in this sector
+            stock_results = _r6351_score_sector_stocks(sec["stocks"], reg, bench_data)
             
-            # Sort: READY first, DEVELOPING next, WATCH/UNCACHED last
-            tier_rank = {"READY": 0, "DEVELOPING": 1, "WATCH": 2, "UNCACHED": 3}
-            sec_stocks.sort(key=lambda x: (tier_rank.get(x["tier"], 99), -(x.get("confidence") or 0)))
+            # Tag region + scanned set
+            for s in stock_results:
+                s["_region"] = reg
+                scanned_syms.add(s["sym"].upper())
+            
+            # Sort: READY first, DEVELOPING next, WATCH last, UNCACHED at bottom
+            tier_rank = {"READY": 0, "DEVELOPING": 1, "WATCH": 2, "WEAK": 3, "UNCACHED": 4}
+            stock_results.sort(key=lambda x: (tier_rank.get(x.get("tier", "UNCACHED"), 99), -(x.get("score") or 0)))
+            sec_stocks = stock_results
             
             hot_with_stocks.append({
                 "sector":          sec["name"],
@@ -36341,14 +36500,63 @@ window.celesysToday = (function() {
           (sec.stocks || []).forEach(t => {
             const tierClass = (t.tier || 'UNCACHED').toLowerCase();
             html += '<div class="stock-card ' + tierClass + '" onclick="celesysToday.openInvestorModal(\'' + escapeHtml(t.sym) + '\',\'' + reg + '\')">';
-            html += '<div style="display:flex;justify-content:space-between;align-items:center">';
+            
+            // Header: SYM + tier badge
+            html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">';
             html += '<span class="stock-sym">' + escapeHtml(t.sym) + '</span>';
             html += '<span class="tier-badge tier-' + (t.tier || 'UNCACHED') + '">' + (t.tier || 'UNCACHED') + '</span>';
             html += '</div>';
-            const conf = t.confidence != null ? 'Score ' + t.confidence : '';
-            const spot = t.spot != null ? '$' + fmt(t.spot, 2) : '';
-            html += '<div class="stock-meta">' + spot + (spot && conf ? ' · ' : '') + conf + '</div>';
-            if (t.why_now) html += '<div class="stock-meta">' + escapeHtml(t.why_now) + '</div>';
+            
+            // Handle UNCACHED gracefully
+            if (t.tier === 'UNCACHED') {
+              html += '<div class="stock-meta">' + escapeHtml(t.why_now || 'Data not available — try refresh') + '</div>';
+              html += '</div>';
+              return;
+            }
+            
+            // Stats row 1: spot + score + today's change
+            const spot = t.spot != null ? '$' + fmt(t.spot, 2) : '—';
+            const score = t.score;
+            const ret1d = t.ret_1d_pct;
+            html += '<div style="display:flex;justify-content:space-between;font-size:11px;color:#0f172a;font-family:\'IBM Plex Mono\',monospace;margin-bottom:6px">';
+            html += '<span><strong>' + spot + '</strong></span>';
+            if (score != null) {
+              const sCol = score >= 75 ? '#10b981' : (score >= 60 ? '#f59e0b' : '#94a3b8');
+              html += '<span style="color:' + sCol + ';font-weight:700">Score ' + score + '</span>';
+            }
+            if (ret1d != null) {
+              const cCol = ret1d > 0 ? '#10b981' : (ret1d < 0 ? '#dc2626' : '#64748b');
+              html += '<span style="color:' + cCol + ';font-weight:600">' + (ret1d > 0 ? '+' : '') + fmt(ret1d, 1) + '%</span>';
+            }
+            html += '</div>';
+            
+            // Multi-timeframe returns (NEW r63.51) — institutional density
+            const periods = [['1d', t.ret_1d_pct], ['5d', t.ret_5d_pct], ['1m', t.ret_1m_pct], ['3m', t.ret_3m_pct], ['6m', t.ret_6m_pct], ['1y', t.ret_1y_pct]];
+            html += '<div style="display:grid;grid-template-columns:repeat(6,1fr);gap:3px;margin-bottom:6px;font-size:9px;font-family:\'IBM Plex Mono\',monospace">';
+            periods.forEach(([label, val]) => {
+              const cellCol = val == null ? '#cbd5e1' : (val > 0 ? '#047857' : (val < 0 ? '#b91c1c' : '#64748b'));
+              const cellBg = val == null ? '#f8fafc' : (val > 0 ? '#ecfdf5' : (val < 0 ? '#fef2f2' : '#f8fafc'));
+              html += '<div style="text-align:center;background:' + cellBg + ';padding:3px 2px;border-radius:3px"><div style="color:#94a3b8;font-size:8px">' + label + '</div><div style="color:' + cellCol + ';font-weight:700">' + (val == null ? '—' : ((val > 0 ? '+' : '') + fmt(val, 1) + '%')) + '</div></div>';
+            });
+            html += '</div>';
+            
+            // Stats row 3: vol ratio + RS + 52w distance
+            const volR = t.vol_ratio;
+            const rsM = t.rs_vs_bench_1m;
+            const dist = t.dist_52wh_pct;
+            const statBits = [];
+            if (volR != null) statBits.push('Vol ' + fmt(volR, 1) + 'x');
+            if (rsM != null) statBits.push('RS ' + (rsM > 0 ? '+' : '') + fmt(rsM, 1) + '%');
+            if (dist != null) statBits.push(fmt(dist, 1) + '% from 52w hi');
+            if (statBits.length > 0) {
+              html += '<div style="font-size:10px;color:#64748b;margin-bottom:5px">' + statBits.join(' · ') + '</div>';
+            }
+            
+            // Why now
+            if (t.why_now) html += '<div class="stock-meta" style="font-size:10px;border-top:1px solid #f1f5f9;padding-top:4px">' + escapeHtml(t.why_now) + '</div>';
+            
+            // CTA hint  
+            html += '<div style="font-size:9px;color:#1A3A78;margin-top:5px;font-weight:600">Click for full analysis →</div>';
             html += '</div>';
           });
           html += '</div>';
@@ -36570,6 +36778,188 @@ setInterval(celesysToday.refresh, 5 * 60 * 1000);
 </body>
 </html>"""
     return HTMLResponse(content=html)
+
+
+
+
+def _r6353_backfill_eps_actual(symbol):
+    """Query yfinance.earnings_history for symbol's last 4 quarters of actuals.
+    Returns dict {quarter_date_str: {eps_actual, rev_actual}}."""
+    try:
+        _yahoo_rate_wait()
+        tk = yf.Ticker(symbol)
+        eh = tk.earnings_history if hasattr(tk, "earnings_history") else None
+        if eh is None or eh.empty:
+            return {}
+        result = {}
+        for idx, row in eh.tail(8).iterrows():
+            try:
+                date_str = str(idx)[:10]  # YYYY-MM-DD
+                act = row.get("epsActual") if hasattr(row, "get") else None
+                rev = row.get("revenue") if hasattr(row, "get") else None  # not always present
+                est = row.get("epsEstimate") if hasattr(row, "get") else None
+                
+                act_v = float(act) if act is not None and str(act) != "nan" else None
+                rev_v = float(rev) if rev is not None and str(rev) != "nan" else None
+                est_v = float(est) if est is not None and str(est) != "nan" else None
+                
+                result[date_str] = {
+                    "eps_actual":  round(act_v, 2) if act_v is not None else None,
+                    "rev_actual":  rev_v,
+                    "eps_estimate_yf": round(est_v, 2) if est_v is not None else None,
+                }
+            except Exception:
+                continue
+        return result
+    except Exception:
+        return {}
+
+
+def _r6353_compute_reaction(symbol, earnings_date_str):
+    """Compute 1-day post-earnings price reaction.
+    Returns dict {pre_close, post_close, pct_move} or None."""
+    import datetime as _dt53
+    try:
+        ed = _dt53.datetime.strptime(earnings_date_str, "%Y-%m-%d").date()
+        today = _dt53.date.today()
+        if ed > today:
+            return None  # future earnings — no reaction yet
+        
+        _yahoo_rate_wait()
+        tk = yf.Ticker(symbol)
+        # Pull 30 days around earnings to ensure we get pre+post closes
+        start = ed - _dt53.timedelta(days=10)
+        end = min(today, ed + _dt53.timedelta(days=5))
+        hist = tk.history(start=start.strftime("%Y-%m-%d"), end=(end + _dt53.timedelta(days=1)).strftime("%Y-%m-%d"), interval="1d")
+        if hist is None or len(hist) < 2:
+            return None
+        
+        # Find earnings_date_str position in hist index
+        hist_dates = [d.date() for d in hist.index]
+        # Earnings day OR next trading day if reported AMC
+        idx_after = None
+        for i, d in enumerate(hist_dates):
+            if d >= ed:
+                idx_after = i
+                break
+        
+        if idx_after is None or idx_after < 1 or idx_after >= len(hist):
+            return None
+        
+        pre_close  = float(hist["Close"].iloc[idx_after - 1])  # day before earnings (or earnings day if BMO)
+        post_close = float(hist["Close"].iloc[idx_after])      # day of (AMC) or day after (BMO)
+        
+        if pre_close <= 0:
+            return None
+        pct_move = (post_close - pre_close) / pre_close * 100
+        
+        return {
+            "pre_close":  round(pre_close, 2),
+            "post_close": round(post_close, 2),
+            "pct_move":   round(pct_move, 2),
+        }
+    except Exception:
+        return None
+
+
+def _r6353_enrich_declared_events(declared_events, tracked_set):
+    """Backfill epsActual + add 1-day reaction for tracked declared events.
+    Mutates events in place. Returns count of enriched."""
+    enriched_count = 0
+    cache_key_prefix = "r6353_enrich_"
+    
+    # Build per-symbol map for batched yfinance calls
+    # Only enrich tracked symbols (ones the user cares about + has yfinance access)
+    syms_to_enrich = list(set(
+        ev["symbol"] for ev in declared_events
+        if ev.get("symbol") and (ev["symbol"] in tracked_set) and 
+           (ev.get("eps_actual") is None or ev.get("_reaction") is None)
+    ))
+    
+    if not syms_to_enrich:
+        return 0
+    
+    # Cap to 25 to control yfinance call volume
+    syms_to_enrich = syms_to_enrich[:25]
+    
+    # Cache lookup per symbol
+    sym_data = {}  # symbol → {"eps_history": {date: {...}}, "reactions": {date: {...}}}
+    for sym in syms_to_enrich:
+        cached = _smart_cache_get(cache_key_prefix + sym, ttl=21600)  # 6h
+        if cached:
+            sym_data[sym] = cached
+        else:
+            eps_history = _r6353_backfill_eps_actual(sym)
+            sym_data[sym] = {"eps_history": eps_history, "reactions": {}}
+    
+    # Now for each event, fill in epsActual from yfinance + compute reaction
+    for ev in declared_events:
+        sym = ev.get("symbol", "")
+        if sym not in sym_data:
+            continue
+        date_str = ev.get("date", "")
+        
+        # Backfill epsActual
+        if ev.get("eps_actual") is None:
+            eh = sym_data[sym]["eps_history"]
+            # Try exact match first, then tolerance ±2 days (yfinance dates may be off)
+            if date_str in eh and eh[date_str].get("eps_actual") is not None:
+                ev["eps_actual"] = eh[date_str]["eps_actual"]
+                ev["_eps_source"] = "yfinance"
+                if eh[date_str].get("rev_actual"):
+                    ev["rev_actual"] = eh[date_str]["rev_actual"]
+            else:
+                # Tolerance match (yfinance sometimes uses fiscal quarter end vs report date)
+                import datetime as _dt53b
+                try:
+                    target_date = _dt53b.datetime.strptime(date_str, "%Y-%m-%d").date()
+                    for eh_date_str, eh_data in eh.items():
+                        try:
+                            eh_d = _dt53b.datetime.strptime(eh_date_str, "%Y-%m-%d").date()
+                            if abs((eh_d - target_date).days) <= 3 and eh_data.get("eps_actual") is not None:
+                                ev["eps_actual"] = eh_data["eps_actual"]
+                                ev["_eps_source"] = "yfinance_tolerance"
+                                if eh_data.get("rev_actual"):
+                                    ev["rev_actual"] = eh_data["rev_actual"]
+                                break
+                        except Exception:
+                            continue
+                except Exception:
+                    pass
+        
+        # Recompute outcome if we just backfilled
+        if ev.get("eps_actual") is not None and ev.get("eps_estimate") is not None:
+            try:
+                act = float(ev["eps_actual"])
+                est = float(ev["eps_estimate"])
+                if est != 0:
+                    ev["surprise_pct"] = round((act - est) / abs(est) * 100, 1)
+                    ev["outcome"] = "beat" if act >= est else "miss"
+                else:
+                    ev["outcome"] = "reported"
+            except Exception:
+                pass
+        
+        # Compute reaction (use cached if same date)
+        if ev.get("_reaction") is None and date_str:
+            reactions_cache = sym_data[sym]["reactions"]
+            if date_str in reactions_cache:
+                ev["_reaction"] = reactions_cache[date_str]
+            else:
+                react = _r6353_compute_reaction(sym, date_str)
+                if react:
+                    ev["_reaction"] = react
+                    sym_data[sym]["reactions"][date_str] = react
+        
+        if ev.get("_eps_source") or ev.get("_reaction"):
+            enriched_count += 1
+    
+    # Cache the per-symbol results
+    for sym, data in sym_data.items():
+        _smart_cache_set(cache_key_prefix + sym, data, ttl=21600)
+    
+    return enriched_count
+
 
 @app.get("/api/diag-fairvalue")
 async def diag_fairvalue(symbol: str = "", region: str = "US", email: str = ""):

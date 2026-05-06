@@ -1,9 +1,9 @@
 // ═══ Celesys version stamp ═══
-window.CELESYS_VERSION = "v4.63.50";
-window.CELESYS_BUILD_TIME = 1778040533;
-window.CELESYS_BUILD_DATE = "2026-05-06 04:08:53 UTC";
+window.CELESYS_VERSION = "v4.63.53";
+window.CELESYS_BUILD_TIME = 1778042231;
+window.CELESYS_BUILD_DATE = "2026-05-06 04:37:11 UTC";
 console.log("%c━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "color:#1A3A78");
-console.log("%c CELESYS v4.63.50 %c loaded · 2026-04-29 03:29:27 UTC",
+console.log("%c CELESYS v4.63.53 %c loaded · 2026-04-29 03:29:27 UTC",
   "background:#1A3A78;color:#fff;font-weight:900;padding:3px 8px;border-radius:3px;font-family:monospace",
   "color:#1A3A78;font-weight:700;font-family:monospace");
 console.log("%c━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "color:#1A3A78");
@@ -25289,6 +25289,8 @@ function _csEwRenderDeclared(events) {
            '<th style="padding:8px 10px;border-bottom:1px solid #e2e8f0;font-size:10px;color:#64748b;font-weight:700;letter-spacing:0.5px;text-transform:uppercase">EPS Est</th>' +
            '<th style="padding:8px 10px;border-bottom:1px solid #e2e8f0;font-size:10px;color:#64748b;font-weight:700;letter-spacing:0.5px;text-transform:uppercase">Surprise</th>' +
            '<th style="padding:8px 10px;border-bottom:1px solid #e2e8f0;font-size:10px;color:#64748b;font-weight:700;letter-spacing:0.5px;text-transform:uppercase">Outcome</th>' +
+           '<th style="padding:8px 10px;border-bottom:1px solid #e2e8f0;font-size:10px;color:#64748b;font-weight:700;letter-spacing:0.5px;text-transform:uppercase">Reaction</th>' +
+           '<th style="padding:8px 10px;border-bottom:1px solid #e2e8f0;font-size:10px;color:#64748b;font-weight:700;letter-spacing:0.5px;text-transform:uppercase">Revenue</th>' +
          '</tr>' +
          '</thead><tbody>';
     rows.forEach(function(e) {
@@ -25306,6 +25308,23 @@ function _csEwRenderDeclared(events) {
       t += '<td style="padding:8px 10px;color:#64748b">' + epsEstStr + '</td>';
       t += '<td style="padding:8px 10px;font-weight:600;color:' + beatColor + '">' + surpriseStr + '</td>';
       t += '<td style="padding:8px 10px;font-weight:700;color:' + beatColor + '">' + beatLabel + '</td>';
+      // r63.53: Reaction + Revenue
+      var reactionStr = '—';
+      var reactionColor = '#64748b';
+      if (e._reaction && e._reaction.pct_move != null) {
+        var pm = Number(e._reaction.pct_move);
+        reactionColor = pm > 0 ? '#059669' : (pm < 0 ? '#dc2626' : '#64748b');
+        reactionStr = (pm > 0 ? '+' : '') + pm.toFixed(2) + '%';
+      }
+      t += '<td style="padding:8px 10px;font-weight:700;color:' + reactionColor + ';font-family:\'IBM Plex Mono\',monospace">' + reactionStr + '</td>';
+      var revStr = '—';
+      if (e.rev_actual != null) {
+        var rv = Number(e.rev_actual);
+        if (rv >= 1e9)      revStr = '$' + (rv / 1e9).toFixed(2)  + 'B';
+        else if (rv >= 1e6) revStr = '$' + (rv / 1e6).toFixed(0)  + 'M';
+        else                revStr = '$' + rv.toLocaleString();
+      }
+      t += '<td style="padding:8px 10px;color:#475569;font-family:\'IBM Plex Mono\',monospace">' + revStr + '</td>';
       t += '</tr>';
     });
     t += '</tbody></table>';
@@ -27564,5 +27583,68 @@ window._csR6349UpdateTodayBtn = function() {
     document.addEventListener('DOMContentLoaded', window._csR6349UpdateTodayBtn);
   } else {
     setTimeout(window._csR6349UpdateTodayBtn, 100);
+  }
+})();
+
+// r63.52: URL param autoanalyze handler
+// Triggers full Decide → Investor view when user lands with ?sym=X&region=Y&autoanalyze=1
+// Used by /today modal footer link to navigate to main app analysis.
+(function() {
+  function _r6352HandleURLParams() {
+    try {
+      var params = new URLSearchParams(window.location.search);
+      var sym = (params.get('sym') || '').trim().toUpperCase();
+      var region = (params.get('region') || 'US').trim().toUpperCase();
+      var autoAnalyze = params.get('autoanalyze') === '1';
+      
+      if (!sym || !autoAnalyze) return;
+      
+      // Wait for the main app to fully boot — give it 1.5 sec for dependencies
+      setTimeout(function() {
+        try {
+          // Step 1: Activate Decide tab
+          var decideBtn = document.getElementById('tabBtnDecide');
+          if (decideBtn) {
+            decideBtn.click();
+          }
+          
+          // Step 2: Set investor mode (the default for Decide tab Analyze Stock)
+          window._deMode = 'investor';
+          window._deRegion = region;
+          
+          // Step 3: Pre-fill the search box if it exists
+          var searchInput = document.getElementById('deSym') || document.querySelector('input[placeholder*="ticker"]') || document.querySelector('input[placeholder*="stock"]');
+          if (searchInput) {
+            searchInput.value = sym;
+          }
+          
+          // Step 4: Call the analysis directly
+          if (typeof loadInvestorDE === 'function') {
+            // Wait a bit more to ensure Decide tab is fully rendered
+            setTimeout(function() {
+              try {
+                loadInvestorDE(sym);
+                console.log('[r63.52] Auto-analyzing ' + sym + ' (' + region + ')');
+              } catch (e) {
+                console.error('[r63.52] loadInvestorDE failed:', e);
+              }
+            }, 600);
+          } else {
+            console.warn('[r63.52] loadInvestorDE not yet defined; retrying in 2s');
+            setTimeout(function() {
+              if (typeof loadInvestorDE === 'function') loadInvestorDE(sym);
+            }, 2000);
+          }
+        } catch (e) {
+          console.error('[r63.52] URL param handler error:', e);
+        }
+      }, 1500);
+    } catch (e) { /* silent */ }
+  }
+  
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', _r6352HandleURLParams);
+  } else {
+    _r6352HandleURLParams();
   }
 })();
