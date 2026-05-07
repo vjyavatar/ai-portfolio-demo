@@ -1801,9 +1801,9 @@ def _safe_float(val, default=0.0):
         return default
 
 # ═══ Celesys version stamp (v4.61.10) ═══════════════════════════════
-APP_VERSION = "v4.63.64"
-APP_BUILD_TIME = 1778112709
-APP_BUILD_DATE = "2026-05-07 00:11:49 UTC"
+APP_VERSION = "v4.63.66"
+APP_BUILD_TIME = 1778186144
+APP_BUILD_DATE = "2026-05-07 20:35:44 UTC"
 APP_RELEASE_NOTES = (
     "v4.62.0: Micro-Cap Hunter scanner (Decide tab) + cumulative r61.x: Aladdin DD entry page (r61.8), "
     "stale-cache fallback (r61.8), multi-factor Bottom Line (r61.7), "
@@ -37021,6 +37021,11 @@ def _r6360_get_current_layers(sym, region):
 
 @app.get("/api/watchlist-status")
 async def watchlist_status(symbols: str = "", regions: str = "", email: str = "", triggers_json: str = "", baselines_json: str = ""):
+    """r63.66: Watchlist UI removed from /today. Endpoint kept for backward compat,
+    returns success=False so any stale frontend bails gracefully.
+    """
+    return {"success": False, "error": "Watchlist removed in r63.66 — feature deprecated."}
+    # Original body preserved below for reference only — never executes due to early return.
     """r63.59 + r63.60: Evaluate triggers + regime shifts.
     
     Args:
@@ -37205,7 +37210,6 @@ async def today_page(email: str = ""):
     <div class="region-tab" data-region="IN" onclick="celesysToday.setRegion('IN', this)">🇮🇳 India</div>
   </div>
   
-  <div id="watchlistAlerts" style="margin-bottom:18px"></div>
   <div id="content" class="loading">⏳ Scanning sectors...</div>
 </div>
 
@@ -37227,194 +37231,7 @@ window.celesysToday = (function() {
   function fmt(n, d) { d = d || 2; return (n != null) ? Number(n).toFixed(d) : '—'; }
   function pct(n) { if (n == null) return '—'; const sign = n >= 0 ? '+' : ''; return sign + fmt(n, 1) + '%'; }
   
-  // r63.59: Trigger Watchlist
-  function getWatchlist() {
-    try { var raw = localStorage.getItem('celesys_watchlist_v1'); return raw ? JSON.parse(raw) : []; } catch (e) { return []; }
-  }
-  function saveWatchlist(list) {
-    try { localStorage.setItem('celesys_watchlist_v1', JSON.stringify(list)); return true; } catch (e) { return false; }
-  }
-  function addToWatchlist(sym, region, triggers, baselineLayers) {
-    var list = getWatchlist();
-    list = list.filter(function(w) { return !(w.sym === sym && w.region === region); });
-    if (list.length >= 20) list = list.slice(-19);
-    list.push({
-      sym: sym,
-      region: region,
-      triggers: triggers || [],
-      baseline_layers: baselineLayers || null,  // r63.60: snapshot for regime detection
-      added_at: new Date().toISOString()
-    });
-    saveWatchlist(list);
-    return list;
-  }
-  function removeFromWatchlist(sym, region) {
-    var list = getWatchlist().filter(function(w) { return !(w.sym === sym && w.region === region); });
-    saveWatchlist(list);
-    return list;
-  }
-  
-  async function loadWatchlist() {
-    var list = getWatchlist();
-    var container = document.getElementById('watchlistAlerts');
-    if (!container) return;
-    if (list.length === 0) { container.innerHTML = ''; return; }
-    
-    container.innerHTML = '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px"><div style="font-size:11px;font-weight:800;color:#1A3A78;letter-spacing:1px;margin-bottom:8px">⏰ WATCHLIST ALERTS (' + list.length + ')</div><div style="font-size:11px;color:#94a3b8">Loading trigger status...</div></div>';
-    
-    var symList = list.map(function(w) { return w.sym; }).join(',');
-    var regList = list.map(function(w) { return w.region; }).join(',');
-    var triggersMap = {};
-    list.forEach(function(w) { triggersMap[w.sym] = w.triggers || []; });
-    var triggersJson = JSON.stringify(triggersMap);
-    
-    // r63.60: also send baseline layers for regime shift detection
-    var baselinesMap = {};
-    list.forEach(function(w) {
-      if (w.baseline_layers) baselinesMap[w.sym] = w.baseline_layers;
-    });
-    var baselinesJson = JSON.stringify(baselinesMap);
-    
-    var url = '/api/watchlist-status?symbols=' + encodeURIComponent(symList) + 
-              '&regions=' + encodeURIComponent(regList) + 
-              '&email=' + encodeURIComponent(userEmail) + 
-              '&triggers_json=' + encodeURIComponent(triggersJson) +
-              '&baselines_json=' + encodeURIComponent(baselinesJson);
-    
-    try {
-      var r = await fetch(url);
-      var d = await r.json();
-      if (!d.success) {
-        container.innerHTML = '<div style="padding:10px;background:#fef2f2;border-radius:8px;color:#7f1d1d;font-size:11px">⚠ Watchlist failed: ' + escapeHtml(d.error || 'Unknown') + '</div>';
-        return;
-      }
-      renderWatchlist(d.results, list);
-    } catch (e) {
-      container.innerHTML = '<div style="padding:10px;background:#fef2f2;border-radius:8px;color:#7f1d1d;font-size:11px">⚠ Watchlist error: ' + escapeHtml(e.message || e) + '</div>';
-    }
-  }
-  
-  function renderWatchlist(results, list) {
-    var container = document.getElementById('watchlistAlerts');
-    if (!container) return;
-    
-    var sorted = list.slice().sort(function(a, b) {
-      var ra = results[a.sym] || {}, rb = results[b.sym] || {};
-      var aReady = ra.ready ? 1 : 0, bReady = rb.ready ? 1 : 0;
-      if (aReady !== bReady) return bReady - aReady;
-      return (rb.fired || 0) - (ra.fired || 0);
-    });
-    
-    var readyCount = sorted.filter(function(w) { return (results[w.sym] || {}).ready; }).length;
-    
-    var html = '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px">';
-    html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">';
-    // r63.60: Count regime shifts for header summary
-    var shiftsTotal = sorted.filter(function(w) {
-      var rs = (results[w.sym] || {}).regime_shift || {};
-      return rs.tier && rs.tier !== 'NONE';
-    }).length;
-    html += '<div style="font-size:11px;font-weight:800;color:#1A3A78;letter-spacing:1px">⏰ WATCHLIST — REGIME MONITORING (' + list.length + ')</div>';
-    // r63.60: show shift count alongside ready count
-    var hdr = '';
-    if (readyCount > 0) hdr += '<div style="font-size:11px;font-weight:800;color:#10b981;margin-right:8px">🟢 ' + readyCount + ' READY</div>';
-    if (shiftsTotal > 0) hdr += '<div style="font-size:11px;font-weight:800;color:#dc2626;margin-right:0">🚨 ' + shiftsTotal + ' SHIFT' + (shiftsTotal>1?'S':'') + '</div>';
-    if (!hdr) hdr = '<div style="font-size:10px;color:#94a3b8">All layers stable</div>';
-    html += '<div style="display:flex">' + hdr + '</div>';
-    html += '</div>';
-    
-    html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:8px">';
-    
-    sorted.forEach(function(w) {
-      var r = results[w.sym] || {};
-      var sd = r.stock_data || {};
-      var fired = r.fired || 0, total = r.total || 0, ready = r.ready || false;
-      
-      var cardBg = ready ? '#ecfdf5' : (fired > 0 ? '#fffbeb' : '#f8fafc');
-      var cardBorder = ready ? '2px solid #10b981' : (fired > 0 ? '1px solid #fde68a' : '1px solid #e2e8f0');
-      var cardShadow = ready ? '0 4px 12px rgba(16,185,129,0.25)' : 'none';
-      
-      html += '<div style="background:' + cardBg + ';border:' + cardBorder + ';border-radius:8px;padding:10px;cursor:pointer;box-shadow:' + cardShadow + '" onclick="celesysToday.openInvestorModal(\'' + escapeHtml(w.sym) + '\',\'' + w.region + '\')">';
-      
-      html += '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:5px">';
-      html += '<div><span style="font-size:14px;font-weight:900;color:#0f172a">' + escapeHtml(w.sym) + '</span>';
-      html += '<span style="font-size:9px;color:#94a3b8;margin-left:5px">' + w.region + '</span></div>';
-      html += '<button onclick="event.stopPropagation();celesysToday.removeWatch(\'' + escapeHtml(w.sym) + '\',\'' + w.region + '\')" style="background:transparent;border:none;color:#94a3b8;font-size:14px;cursor:pointer;padding:0 4px" title="Remove">×</button>';
-      html += '</div>';
-      
-      var statusColor = ready ? '#10b981' : (fired > 0 ? '#f59e0b' : '#94a3b8');
-      var statusLabel = ready ? '🟢 ENTRY READY' : (fired > 0 ? '🟡 ' + fired + '/' + total + ' BUILDING' : '⏸ ' + fired + '/' + total + ' WAITING');
-      
-      if (sd.spot != null) {
-        html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">';
-        html += '<span style="font-size:13px;font-weight:700;color:#0f172a;font-family:\'IBM Plex Mono\',monospace">$' + fmt(sd.spot, 2) + '</span>';
-        if (sd.ret_1d_pct != null) {
-          var c1d = sd.ret_1d_pct > 0 ? '#10b981' : (sd.ret_1d_pct < 0 ? '#dc2626' : '#64748b');
-          html += '<span style="font-size:11px;font-weight:700;color:' + c1d + '">' + (sd.ret_1d_pct > 0 ? '+' : '') + fmt(sd.ret_1d_pct, 1) + '%</span>';
-        }
-        html += '</div>';
-      }
-      
-      html += '<div style="font-size:10px;font-weight:800;color:' + statusColor + ';letter-spacing:0.3px;margin-bottom:6px">' + statusLabel + '</div>';
-      
-      // r63.60: Regime shift block (highest priority — show first if present)
-      var rs = r.regime_shift || {};
-      if (rs.tier && rs.tier !== 'NONE') {
-        var rsTierConfig = {
-          'SOFT':       {bg: '#fffbeb', border: '#fde68a',  textColor: '#92400e', icon: '🟡', label: 'SOFT SHIFT'},
-          'STRONG':     {bg: '#fed7aa', border: '#fb923c',  textColor: '#9a3412', icon: '🟠', label: 'STRONG SHIFT'},
-          'CONVICTION': {bg: '#fecaca', border: '#dc2626',  textColor: '#7f1d1d', icon: '🔴', label: 'CONVICTION SHIFT'},
-        };
-        var cfg = rsTierConfig[rs.tier] || rsTierConfig['SOFT'];
-        var dirIcon = rs.direction === 'BULLISH' ? '⬆ BULLISH' : (rs.direction === 'BEARISH' ? '⬇ BEARISH' : '↔ MIXED');
-        var dirColor = rs.direction === 'BULLISH' ? '#059669' : (rs.direction === 'BEARISH' ? '#dc2626' : '#64748b');
-        
-        html += '<div style="background:' + cfg.bg + ';border:1px solid ' + cfg.border + ';border-radius:6px;padding:7px 9px;margin-bottom:6px">';
-        html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">';
-        html += '<span style="font-size:9px;font-weight:800;color:' + cfg.textColor + ';letter-spacing:0.5px">' + cfg.icon + ' ' + cfg.label + '</span>';
-        html += '<span style="font-size:9px;font-weight:700;color:' + dirColor + '">' + dirIcon + '</span>';
-        html += '</div>';
-        if (rs.layers_changed && rs.layers_changed.length > 0) {
-          rs.layers_changed.forEach(function(L) {
-            var ldIcon = L.delta > 0 ? '▲' : '▼';
-            var ldColor = L.delta > 0 ? '#059669' : '#dc2626';
-            var ldSign = L.delta > 0 ? '+' : '';
-            var layerNames = {L1: 'Liquidity', L2: 'Smart Money', L3: 'Risk', L4: 'Fundamentals', L5: 'Quant', L6: 'Probability'};
-            html += '<div style="font-size:9px;color:' + cfg.textColor + ';line-height:1.4;margin-bottom:1px">';
-            html += '<strong>' + escapeHtml(layerNames[L.layer] || L.layer) + ':</strong> ';
-            html += escapeHtml(L.state_baseline) + ' (' + L.baseline + ') → ' + escapeHtml(L.state_current) + ' (' + L.current + ') ';
-            html += '<span style="color:' + ldColor + ';font-weight:700">' + ldIcon + ' ' + ldSign + L.delta + '</span>';
-            html += '</div>';
-          });
-        }
-        if (rs.confidence) {
-          html += '<div style="font-size:9px;color:' + cfg.textColor + ';margin-top:3px;opacity:0.8">Confidence: ' + rs.confidence + '/10</div>';
-        }
-        html += '</div>';
-      } else if (rs.summary && rs.summary.indexOf('No baseline') >= 0) {
-        // Edge case: stock added before r63.60 (no baseline). Offer to capture now.
-        html += '<div style="font-size:9px;color:#64748b;font-style:italic;margin-bottom:6px">' + escapeHtml(rs.summary) + '</div>';
-      }
-      
-      if (r.triggers && r.triggers.length > 0) {
-        r.triggers.forEach(function(t) {
-          var icon = t.fired ? '✅' : '☐';
-          var tcol = t.fired ? '#0f172a' : '#64748b';
-          html += '<div style="font-size:10px;color:' + tcol + ';line-height:1.5;margin-bottom:2px">' + icon + ' ' + escapeHtml(t.description || t.type) + 
-                  (t.current_value ? ' <span style="color:#94a3b8">(' + escapeHtml(String(t.current_value)) + ')</span>' : '') + '</div>';
-        });
-      } else if (r.no_triggers_configured) {
-        html += '<div style="font-size:10px;color:#dc2626">⚠ No triggers configured. Click stock card to add.</div>';
-      }
-      
-      html += '</div>';
-    });
-    
-    html += '</div></div>';
-    container.innerHTML = html;
-  }
-  
-  async function load() {
+    async function load() {
     // r63.46: pull email from URL param as fallback if localStorage empty
     if (!userEmail) {
       const params = new URLSearchParams(window.location.search);
@@ -38011,11 +37828,6 @@ window.celesysToday = (function() {
     }
     
     // Footer
-    html += '<div style="text-align:center;padding:12px 0 4px;margin-top:14px">';
-    html += '<button onclick="celesysToday.openTriggerPicker(\\'' + escapeHtml(sym) + '\\', \\'' + reg + '\\')" style="display:inline-block;padding:9px 18px;background:#fff;color:#1A3A78;border:2px solid #1A3A78;border-radius:8px;font-weight:700;font-size:12px;cursor:pointer">⏰ Add to Trigger Watchlist</button>';
-    html += '<div style="font-size:9px;color:#94a3b8;margin-top:4px">Get ENTRY READY alert when conditions align</div>';
-    html += '</div>';
-    
     html += '<div style="text-align:center;padding:16px 0 8px;border-top:1px solid #f1f5f9;margin-top:8px">';
     html += '<a href="/?sym=' + encodeURIComponent(sym) + '&region=' + reg + '&autoanalyze=1" style="display:inline-block;padding:10px 20px;background:linear-gradient(135deg,#1A3A78,#1e40af);color:#fff;text-decoration:none;border-radius:8px;font-weight:700;font-size:12px">Open full analysis in main app \u2192</a>';
     html += '<div style="font-size:10px;color:#94a3b8;margin-top:6px">Loads Decide tab with full institutional view</div>';
@@ -38070,95 +37882,15 @@ window.celesysToday = (function() {
         });
     },
     refresh: load,
-    loadWatchlist: loadWatchlist,
     
-    // r63.59: Watchlist management
-    removeWatch(sym, region) {
-      removeFromWatchlist(sym, region);
-      loadWatchlist();
-    },
-    
-    async openTriggerPicker(sym, region) {
-      var url = '/api/watchlist-status?symbols=' + encodeURIComponent(sym) + 
-                '&regions=' + encodeURIComponent(region) + 
-                '&email=' + encodeURIComponent(userEmail) + 
-                '&triggers_json=' + encodeURIComponent('{}');
-      try {
-        var r = await fetch(url);
-        var d = await r.json();
-        if (!d.success || !d.results || !d.results[sym]) {
-          alert('Could not fetch suggested triggers.');
-          return;
-        }
-        var suggested = d.results[sym].suggested_triggers || [];
-        // r63.60: capture baseline L1-L6 snapshot for regime detection
-        var baselineLayers = d.results[sym].current_layers || null;
-        if (suggested.length === 0) { alert('No triggers could be generated.'); return; }
-        celesysToday.addToWatchlistFromModal(sym, region, suggested, baselineLayers);
-      } catch (e) {
-        alert('Error: ' + (e.message || e));
-      }
-    },
-    
-    addToWatchlistFromModal(sym, region, suggestedTriggers, baselineLayers) {
-      var pickerOverlay = document.createElement('div');
-      pickerOverlay.id = 'csTriggerPicker';
-      pickerOverlay.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,0.7);backdrop-filter:blur(4px);z-index:10000;display:flex;align-items:flex-start;justify-content:center;padding:24px;overflow-y:auto';
-      pickerOverlay.onclick = function(e) { if (e.target === pickerOverlay) pickerOverlay.remove(); };
-      
-      var card = document.createElement('div');
-      card.style.cssText = 'background:#fff;max-width:560px;width:100%;border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,0.3);padding:24px;margin:auto';
-      
-      var html = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">';
-      html += '<div style="font-size:14px;font-weight:800;color:#1A3A78">⏰ Add ' + escapeHtml(sym) + ' to Watchlist</div>';
-      html += '<button onclick="document.getElementById(\'csTriggerPicker\').remove()" style="background:#e2e8f0;border:none;width:28px;height:28px;border-radius:5px;cursor:pointer;font-size:16px;color:#475569">✕</button>';
-      html += '</div>';
-      html += '<div style="font-size:11px;color:#64748b;line-height:1.5;margin-bottom:14px">When ALL selected triggers are TRUE, you\'ll see a green ENTRY READY alert at the top of /today.</div>';
-      html += '<div id="trigList" style="margin-bottom:14px">';
-      
-      suggestedTriggers.forEach(function(t, i) {
-        html += '<label style="display:flex;align-items:center;padding:8px 10px;background:#f8fafc;border-radius:6px;border:1px solid #e2e8f0;margin-bottom:5px;cursor:pointer">';
-        html += '<input type="checkbox" data-i="' + i + '" checked style="margin-right:10px">';
-        html += '<span style="font-size:12px;color:#0f172a">' + escapeHtml(t.description) + '</span>';
-        html += '</label>';
-      });
-      
-      html += '</div>';
-      html += '<div style="display:flex;gap:8px">';
-      html += '<button id="trigCancel" style="flex:1;padding:10px;background:#e2e8f0;color:#475569;border:none;border-radius:6px;font-weight:700;cursor:pointer;font-size:12px">Cancel</button>';
-      html += '<button id="trigConfirm" style="flex:2;padding:10px;background:linear-gradient(135deg,#1A3A78,#1e40af);color:#fff;border:none;border-radius:6px;font-weight:700;cursor:pointer;font-size:12px">⏰ Add to Watchlist</button>';
-      html += '</div>';
-      
-      card.innerHTML = html;
-      pickerOverlay.appendChild(card);
-      document.body.appendChild(pickerOverlay);
-      
-      document.getElementById('trigCancel').onclick = function() { pickerOverlay.remove(); };
-      document.getElementById('trigConfirm').onclick = function() {
-        var checked = card.querySelectorAll('input[type="checkbox"]:checked');
-        var selected = [];
-        checked.forEach(function(cb) {
-          var i = parseInt(cb.getAttribute('data-i'));
-          if (suggestedTriggers[i]) selected.push(suggestedTriggers[i]);
-        });
-        if (selected.length === 0) { alert('Select at least 1 trigger.'); return; }
-        addToWatchlist(sym, region, selected, baselineLayers);  // r63.60: persist baseline
-        pickerOverlay.remove();
-        var im = document.getElementById('csInvestorModal');
-        if (im) im.remove();
-        loadWatchlist();
-        window.scrollTo({top: 0, behavior: 'smooth'});
-      };
+  };
     },
   };
 })();
 
 celesysToday.refresh();
-celesysToday.loadWatchlist();
 // Auto-refresh every 5 min
 setInterval(celesysToday.refresh, 5 * 60 * 1000);
-// r63.59: refresh watchlist every 60s
-setInterval(celesysToday.loadWatchlist, 60 * 1000);
 </script>
 </body>
 </html>"""
