@@ -1,9 +1,9 @@
 // ═══ Celesys version stamp ═══
-window.CELESYS_VERSION = "v4.63.66";
-window.CELESYS_BUILD_TIME = 1778186144;
-window.CELESYS_BUILD_DATE = "2026-05-07 20:35:44 UTC";
+window.CELESYS_VERSION = "v4.63.70";
+window.CELESYS_BUILD_TIME = 1778190986;
+window.CELESYS_BUILD_DATE = "2026-05-07 21:56:26 UTC";
 console.log("%c━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "color:#1A3A78");
-console.log("%c CELESYS v4.63.66 %c loaded · 2026-04-29 03:29:27 UTC",
+console.log("%c CELESYS v4.63.70 %c loaded · 2026-04-29 03:29:27 UTC",
   "background:#1A3A78;color:#fff;font-weight:900;padding:3px 8px;border-radius:3px;font-family:monospace",
   "color:#1A3A78;font-weight:700;font-family:monospace");
 console.log("%c━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "color:#1A3A78");
@@ -13071,14 +13071,21 @@ function _renderReportLegacy(d){
     var vd = d.valuation_detail;
     h += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:16px;margin-bottom:16px">';
     h += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">';
-    h += '<div style="font-size:14px;font-weight:900;color:var(--text);font-family:Sora,sans-serif">💰 Valuation — DCF Intrinsic Value</div>';
+    h += '<div style="font-size:14px;font-weight:900;color:var(--text);font-family:Sora,sans-serif;display:flex;align-items:center;gap:10px">';
+    h += '<span>💰 Valuation — DCF Intrinsic Value</span>';
+    h += '<button onclick="window._r6370OpenIndexCompare(\'' + (d.symbol || d.ticker || '') + '\', \'' + (d.region || 'US') + '\')" style="font-size:10px;padding:4px 10px;background:#1A3A78;color:#fff;border:none;border-radius:5px;cursor:pointer;font-weight:700;font-family:Inter,sans-serif">📊 Index Compare</button>';
+    h += '</div>';
     h += _renderLayman((d.valuation_detail||{}).layman);
     if (vd.data_quality === 'INCOMPLETE') {
       h += '<div style="font-size:8px;font-weight:800;color:#6b7280;background:#f3f4f6;padding:3px 8px;border-radius:6px;letter-spacing:0.5px">INCOMPLETE</div>';
     }
     h += '</div>';
 
-    if (vd.fair_value && vd.upside_pct !== null) {
+    // r63.70: Detect placeholder valuation (verdict says INSUFFICIENT DATA but a fake fair_value was set)
+    var _r6370_isPlaceholder = (vd.verdict === 'INSUFFICIENT DATA' || vd.data_quality === 'INCOMPLETE' || 
+                                 (vd.method && vd.method.indexOf('Insufficient') >= 0));
+    
+    if (vd.fair_value && vd.upside_pct !== null && !_r6370_isPlaceholder) {
       var fvColor = vd.upside_pct > 20 ? '#059669' : vd.upside_pct > 0 ? '#10b981' : vd.upside_pct > -20 ? '#d97706' : '#dc2626';
       h += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">';
       h += '<div style="padding:12px;background:#f8fafc;border-radius:8px;text-align:center">';
@@ -13093,6 +13100,25 @@ function _renderReportLegacy(d){
       h += '<div style="font-size:14px;font-weight:900;color:'+fvColor+';margin-top:8px;line-height:1.2">'+vd.verdict+'</div></div>';
       h += '</div>';
       h += '<div style="margin-top:10px;font-size:9px;color:var(--text3);font-style:italic">Method: '+vd.method+'</div>';
+    } else if (_r6370_isPlaceholder) {
+      // r63.70: Honest fallback when valuation can't be computed
+      h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:10px">';
+      h += '<div style="padding:12px;background:#f8fafc;border-radius:8px;text-align:center">';
+      h += '<div style="font-size:9px;font-weight:700;color:var(--text3);letter-spacing:0.5px">CURRENT PRICE</div>';
+      h += '<div style="font-size:22px;font-weight:900;font-family:var(--mono);color:var(--text);margin-top:4px">'+(vd.currency_symbol||'$')+(vd.spot||'—')+'</div></div>';
+      h += '<div style="padding:12px;background:#f3f4f6;border-radius:8px;text-align:center;border:1px dashed #cbd5e1">';
+      h += '<div style="font-size:9px;font-weight:700;color:#6b7280;letter-spacing:0.5px">FAIR VALUE</div>';
+      h += '<div style="font-size:14px;font-weight:700;color:#6b7280;margin-top:8px;line-height:1.3">Cannot compute</div>';
+      h += '<div style="font-size:9px;color:#9ca3af;margin-top:2px;font-style:italic">Insufficient inputs</div></div>';
+      h += '</div>';
+      h += '<div style="padding:12px;background:#fef3c7;border-radius:8px;border-left:3px solid #f59e0b;font-size:11px;line-height:1.6;color:#78350f">';
+      h += '<strong>📊 Why no valuation?</strong> Multi-method valuation requires cash flow history, peer ratios, and analyst estimates. ';
+      h += 'For recent IPOs, spinoffs, or stocks with limited public data, these inputs are not yet reliable.';
+      h += '<br><br><strong>What to do instead:</strong> ';
+      h += '<ul style="margin:4px 0 0 16px;padding:0;font-size:10px"><li>Check the <strong>Forward Value</strong> tab — uses forward-PE estimates</li>';
+      h += '<li>Use the <strong>Peers</strong> tab to compare against similar companies</li>';
+      h += '<li>Review <strong>Quarterly Earnings History</strong> below for growth trajectory</li></ul>';
+      h += '</div>';
     } else {
       h += '<div style="padding:12px;background:#f3f4f6;border-radius:8px;text-align:center;color:#6b7280">';
       h += '<div style="font-size:13px;font-weight:700">'+(vd.verdict || 'INSUFFICIENT DATA')+'</div>';
@@ -25284,6 +25310,8 @@ function _csEwRenderDeclared(events) {
     t += '<thead>' +
          '<tr style="background:#f8fafc;text-align:left">' +
            '<th style="padding:8px 10px;border-bottom:1px solid #e2e8f0;font-size:10px;color:#64748b;font-weight:700;letter-spacing:0.5px;text-transform:uppercase">Ticker</th>' +
+           '<th style="padding:8px 10px;border-bottom:1px solid #e2e8f0;font-size:10px;color:#64748b;font-weight:700;letter-spacing:0.5px;text-transform:uppercase">Company</th>' +
+           '<th style="padding:8px 10px;border-bottom:1px solid #e2e8f0;font-size:10px;color:#64748b;font-weight:700;letter-spacing:0.5px;text-transform:uppercase">Price</th>' +
            '<th style="padding:8px 10px;border-bottom:1px solid #e2e8f0;font-size:10px;color:#64748b;font-weight:700;letter-spacing:0.5px;text-transform:uppercase">Date</th>' +
            '<th style="padding:8px 10px;border-bottom:1px solid #e2e8f0;font-size:10px;color:#64748b;font-weight:700;letter-spacing:0.5px;text-transform:uppercase">EPS Actual</th>' +
            '<th style="padding:8px 10px;border-bottom:1px solid #e2e8f0;font-size:10px;color:#64748b;font-weight:700;letter-spacing:0.5px;text-transform:uppercase">EPS Est</th>' +
@@ -25303,6 +25331,12 @@ function _csEwRenderDeclared(events) {
       
       t += '<tr style="background:' + bg + ';border-bottom:1px solid #f1f5f9;cursor:pointer;transition:background 0.1s" onmouseenter="this.style.background=\'#fef3c7\'" onmouseleave="this.style.background=\'' + bg + '\'" onclick="window._csEarningsCalOpen(\'' + e.symbol + '\', \'US\')">';
       t += '<td style="padding:8px 10px;font-weight:800;color:#1A3A78;font-family:Sora,sans-serif">' + (isTracked ? '⭐ ' : '') + e.symbol + '</td>';
+      // r63.67: Company name (truncated, secondary)
+      var companyStr = e.company_name ? (e.company_name.length > 30 ? e.company_name.substring(0,28) + '…' : e.company_name) : '—';
+      t += '<td style="padding:8px 10px;color:#64748b;font-size:11px">' + companyStr + '</td>';
+      // r63.67: Current price
+      var priceStr = e.price != null ? '$' + Number(e.price).toFixed(2) : '—';
+      t += '<td style="padding:8px 10px;font-weight:700;color:#0f172a;font-family:\'IBM Plex Mono\',monospace">' + priceStr + '</td>';
       t += '<td style="padding:8px 10px;color:#475569">' + (e.date || '—') + '</td>';
       t += '<td style="padding:8px 10px;font-weight:700;color:#0f172a">' + epsActStr + '</td>';
       t += '<td style="padding:8px 10px;color:#64748b">' + epsEstStr + '</td>';
@@ -25527,6 +25561,7 @@ window._csR6322Inject = function(anchorInfo) {
         _csR6322Pill('scenarios', '📈', 'Scenarios', false) +
         _csR6322Pill('peers',     '🏛',  'Peers',     false) +
         _csR6322Pill('forward',   '💎', 'Forward Value', false) +
+        _csR6322Pill('conviction','🔥','Conviction', false) +     /* r63.69 */
         _csR6322Pill('execution', '📊', 'Execution',   false) +     /* r63.38 */
         _csR6322Pill('earnings',  '🚨', 'Earnings',    false) +     /* r63.44 */
         _csR6322Pill('exit',      '🚪', 'Exit Strategy', false) +
@@ -25593,6 +25628,7 @@ window._csR6322ShowTab = function(tabId) {
   if (tabId === 'scenarios') url = '/api/scenarios';
   if (tabId === 'peers')     url = '/api/competitor-benchmark';
   if (tabId === 'forward')   url = '/api/forward-value';      /* r63.25 */
+  if (tabId === 'conviction')url = '/api/conviction-stack';   /* r63.69 */
   if (tabId === 'execution') url = '/api/execution-score-v2'; /* r63.39 */
   if (tabId === 'earnings')  url = '/api/earnings-setup';      /* r63.44 */
   if (tabId === 'exit')      url = '/api/exit-strategy';      /* r63.25 */
@@ -25632,6 +25668,7 @@ function _csR6322Render(tabId, data) {
   if (tabId === 'scenarios') return _csR6322RenderScenarios(data);
   if (tabId === 'peers')     return _csR6322RenderPeers(data);
   if (tabId === 'forward')   return _csR6322RenderForward(data);   /* r63.25 */
+  if (tabId === 'conviction')return _csR6322RenderConviction(data);/* r63.69 */
   if (tabId === 'execution') return _csR6322RenderExecution(data); /* r63.38 */
   if (tabId === 'earnings')  return _csR6322RenderEarnings(data);  /* r63.44 */
   if (tabId === 'exit')      return _csR6322RenderExit(data);      /* r63.25 */
@@ -27648,3 +27685,331 @@ window._csR6349UpdateTodayBtn = function() {
     _r6352HandleURLParams();
   }
 })();
+
+
+/* r63.69: Render Conviction Stack panel — Smart Money + Insider + Institutional */
+function _csR6322RenderConviction(d) {
+  if (!d || !d.success) {
+    return '<div style="padding:14px;background:#fef2f2;border-radius:8px;color:#7f1d1d">⚠ ' + (d && d.error ? d.error : 'Failed to load conviction data') + '</div>';
+  }
+  
+  var sm = d.smart_money || {};
+  var ins = d.insider || {};
+  var inst = d.institutional || {};
+  var tier = d.tier || {};
+  
+  var html = '';
+  
+  // ─── Tier verdict header ───
+  if (tier.tier) {
+    html += '<div style="background:' + (tier.bg || '#f8fafc') + ';border:2px solid ' + (tier.border || '#e2e8f0') + ';border-radius:10px;padding:14px 18px;margin-bottom:14px">';
+    html += '<div style="font-size:18px;font-weight:900;color:' + tier.color + ';margin-bottom:6px">' + (tier.label || '') + '</div>';
+    if (tier.summary) {
+      html += '<div style="font-size:12px;color:#0f172a;line-height:1.5">' + tier.summary + '</div>';
+    }
+    html += '</div>';
+  } else {
+    html += '<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px 18px;margin-bottom:14px">';
+    html += '<div style="font-size:14px;font-weight:700;color:#64748b">No conviction signal — see details below</div>';
+    if (tier.label) {
+      html += '<div style="font-size:11px;color:#94a3b8;margin-top:4px">' + tier.label + '</div>';
+    }
+    html += '</div>';
+  }
+  
+  // Three sub-panels in grid
+  html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px;margin-bottom:12px">';
+  
+  // ─── 1. Smart Money panel ───
+  html += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px">';
+  html += '<div style="font-size:10px;font-weight:800;color:#1A3A78;letter-spacing:1px;margin-bottom:8px">💰 SMART MONEY FLOW</div>';
+  if (sm.score != null) {
+    var smColor = sm.score >= 70 ? '#10b981' : (sm.score >= 50 ? '#f59e0b' : '#dc2626');
+    var smLabel = sm.score >= 70 ? 'STRONG' : (sm.score >= 50 ? 'NEUTRAL' : (sm.score >= 30 ? 'BUILDING' : 'WEAK'));
+    html += '<div style="font-size:24px;font-weight:900;color:' + smColor + ';font-family:\'IBM Plex Mono\',monospace">' + sm.score + '<span style="font-size:13px;color:#94a3b8">/100</span></div>';
+    html += '<div style="font-size:11px;font-weight:700;color:' + smColor + ';margin-top:2px">' + smLabel + '</div>';
+    html += '<div style="font-size:10px;color:#64748b;margin-top:8px;line-height:1.5">Volume + Relative Strength + Above 50d MA position</div>';
+  } else {
+    html += '<div style="font-size:14px;color:#64748b;font-style:italic">' + (sm.error || 'Data unavailable') + '</div>';
+  }
+  html += '</div>';
+  
+  // ─── 2. Insider Activity panel ───
+  html += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px">';
+  html += '<div style="font-size:10px;font-weight:800;color:#1A3A78;letter-spacing:1px;margin-bottom:8px">👥 INSIDER ACTIVITY (90d)</div>';
+  if (ins.data_quality === 'FULL' || (ins.buy_count + ins.sell_count) > 0) {
+    var netUSD = ins.net_usd || 0;
+    var netColor = netUSD > 0 ? '#10b981' : (netUSD < 0 ? '#dc2626' : '#64748b');
+    var netStr = (netUSD > 0 ? '+' : '') + '$' + (Math.abs(netUSD) >= 1e6 ? (netUSD/1e6).toFixed(1) + 'M' : (netUSD/1e3).toFixed(0) + 'K');
+    html += '<div style="font-size:24px;font-weight:900;color:' + netColor + ';font-family:\'IBM Plex Mono\',monospace">' + netStr + '</div>';
+    html += '<div style="font-size:11px;color:#64748b;margin-top:2px">' + ins.buy_count + ' buys · ' + ins.sell_count + ' sells</div>';
+    if (ins.top_buys && ins.top_buys.length > 0) {
+      html += '<div style="margin-top:8px;font-size:10px;color:#475569;line-height:1.6">';
+      html += '<strong style="color:#1A3A78">Top buys:</strong><br>';
+      ins.top_buys.slice(0, 3).forEach(function(b) {
+        var v = b.value_usd || 0;
+        var vStr = '$' + (v >= 1e6 ? (v/1e6).toFixed(1) + 'M' : (v/1e3).toFixed(0) + 'K');
+        html += '• ' + escapeHtml(b.position || b.name || '?') + ': ' + vStr + '<br>';
+      });
+      html += '</div>';
+    }
+  } else {
+    html += '<div style="font-size:13px;color:#64748b;font-style:italic">' + (ins.note || 'No insider data') + '</div>';
+    html += '<div style="font-size:9px;color:#94a3b8;margin-top:6px">Quality: ' + (ins.data_quality || 'MISSING') + '</div>';
+  }
+  html += '</div>';
+  
+  // ─── 3. Institutional Ownership panel ───
+  html += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px">';
+  html += '<div style="font-size:10px;font-weight:800;color:#1A3A78;letter-spacing:1px;margin-bottom:8px">🏛️ INSTITUTIONAL OWN.</div>';
+  if (inst.total_pct != null && inst.total_pct > 0) {
+    var ipColor = inst.total_pct >= 70 ? '#10b981' : (inst.total_pct >= 40 ? '#f59e0b' : '#94a3b8');
+    html += '<div style="font-size:24px;font-weight:900;color:' + ipColor + ';font-family:\'IBM Plex Mono\',monospace">' + Number(inst.total_pct).toFixed(1) + '%</div>';
+    html += '<div style="font-size:11px;font-weight:700;color:' + ipColor + ';margin-top:2px">' + (inst.concentration || '') + '</div>';
+    if (inst.top_holders && inst.top_holders.length > 0) {
+      html += '<div style="margin-top:8px;font-size:10px;color:#475569;line-height:1.6">';
+      html += '<strong style="color:#1A3A78">Top holders:</strong><br>';
+      inst.top_holders.slice(0, 3).forEach(function(h) {
+        var pct = h.pct_outstanding != null ? Number(h.pct_outstanding).toFixed(1) + '%' : '?';
+        html += '• ' + escapeHtml((h.name || '').substring(0, 22)) + ': ' + pct + '<br>';
+      });
+      html += '</div>';
+    }
+    if (inst.data_quality === 'DERIVED') {
+      html += '<div style="font-size:9px;color:#f59e0b;margin-top:4px;font-style:italic">Estimated from top holders</div>';
+    }
+  } else {
+    html += '<div style="font-size:13px;color:#64748b;font-style:italic">' + (inst.data_note || 'Data unavailable') + '</div>';
+  }
+  html += '</div>';
+  
+  html += '</div>';  // end grid
+  
+  // Footer note
+  html += '<div style="font-size:10px;color:#94a3b8;text-align:center;padding:8px;font-style:italic;border-top:1px solid #f1f5f9;margin-top:8px">';
+  html += 'Triple Conviction = institutional-grade signal alignment · Updated on each refresh';
+  html += '</div>';
+  
+  return html;
+}
+
+
+
+/* r63.70: Index Compare modal — 5 semi-circle gauges */
+window._r6370OpenIndexCompare = function(symbol, region) {
+  if (!symbol) {
+    alert("Symbol missing — cannot open Index Compare");
+    return;
+  }
+  
+  var email = (window._verifiedEmail || window._authedEmail || (window.localStorage && window.localStorage.getItem('email')) || '').trim();
+  if (!email) {
+    alert("Not logged in — Index Compare is a premium feature");
+    return;
+  }
+  
+  // Build modal scaffold
+  var existing = document.getElementById('r6370IndexCompareModal');
+  if (existing) existing.remove();
+  
+  var modal = document.createElement('div');
+  modal.id = 'r6370IndexCompareModal';
+  modal.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(15,23,42,0.65);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px;font-family:Inter,sans-serif';
+  modal.innerHTML = 
+    '<div style="background:#fff;border-radius:14px;max-width:880px;width:100%;max-height:90vh;overflow-y:auto;box-shadow:0 25px 50px -12px rgba(0,0,0,0.4)">' +
+      '<div style="background:linear-gradient(135deg,#1A3A78,#2952A3);color:#fff;padding:18px 24px;border-radius:14px 14px 0 0;display:flex;justify-content:space-between;align-items:center">' +
+        '<div>' +
+          '<div style="font-size:18px;font-weight:900;font-family:Sora,sans-serif">📊 Index Comparison: ' + escapeHtml(symbol) + '</div>' +
+          '<div style="font-size:11px;opacity:0.85;margin-top:3px">Stock vs Sector vs Market — Relative Strength Gauges</div>' +
+        '</div>' +
+        '<button onclick="document.getElementById(\'r6370IndexCompareModal\').remove()" style="background:rgba(255,255,255,0.2);color:#fff;border:none;width:36px;height:36px;border-radius:8px;cursor:pointer;font-size:18px;font-weight:700">✕</button>' +
+      '</div>' +
+      '<div id="r6370ICBody" style="padding:24px"><div style="text-align:center;padding:40px;color:#64748b"><div style="font-size:14px;margin-bottom:8px">⏳ Computing index comparisons...</div><div style="font-size:11px">Fetching market + sector + stock data</div></div></div>' +
+    '</div>';
+  
+  document.body.appendChild(modal);
+  
+  // Click outside to close
+  modal.addEventListener('click', function(ev) {
+    if (ev.target === modal) modal.remove();
+  });
+  
+  // Fetch data
+  var url = '/api/index-compare?symbol=' + encodeURIComponent(symbol) + '&region=' + encodeURIComponent(region || 'US') + '&email=' + encodeURIComponent(email);
+  
+  fetch(url)
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      var body = document.getElementById('r6370ICBody');
+      if (!body) return;
+      
+      if (!d.success) {
+        body.innerHTML = '<div style="padding:30px;text-align:center;color:#dc2626"><strong>⚠ Failed to load</strong><br><span style="font-size:11px;color:#7f1d1d">' + escapeHtml(d.error || 'Unknown error') + '</span></div>';
+        return;
+      }
+      
+      body.innerHTML = _r6370RenderIndexCompare(d);
+    })
+    .catch(function(err) {
+      var body = document.getElementById('r6370ICBody');
+      if (body) {
+        body.innerHTML = '<div style="padding:30px;text-align:center;color:#dc2626"><strong>⚠ Network error</strong><br><span style="font-size:11px;color:#7f1d1d">' + escapeHtml(err.message || String(err)) + '</span></div>';
+      }
+    });
+};
+
+/* r63.70: Build a single semi-circle SVG gauge */
+function _r6370Gauge(label, value, sublabel, scale) {
+  // value is a percentage (e.g., +33.6 means 33.6% return)
+  // scale: 'absolute' (for index returns: -50% to +100%) or 'relative' (for RS: -50pp to +50pp)
+  
+  if (value == null || isNaN(value)) {
+    return '<div style="background:#f8fafc;border-radius:10px;padding:18px;text-align:center;border:1px solid #e2e8f0">' +
+           '<div style="font-size:10px;font-weight:800;color:#64748b;letter-spacing:0.5px;margin-bottom:8px">' + escapeHtml(label) + '</div>' +
+           '<div style="font-size:14px;color:#94a3b8;font-style:italic;padding:24px 0">Data unavailable</div>' +
+           '</div>';
+  }
+  
+  // Define scale ranges
+  var minVal, maxVal;
+  if (scale === 'relative') {
+    minVal = -50; maxVal = 50;  // ±50 percentage points for relative strength
+  } else {
+    minVal = -50; maxVal = 100;  // -50% to +100% for absolute returns
+  }
+  
+  // Clamp value into range
+  var clamped = Math.max(minVal, Math.min(maxVal, value));
+  
+  // Convert to angle: -90deg = leftmost, 0 = top, +90deg = rightmost
+  // Map [minVal, maxVal] → [-90, +90]
+  var pct = (clamped - minVal) / (maxVal - minVal);
+  var angle = -90 + pct * 180;
+  
+  // Color based on value
+  var color;
+  if (value > 20)      color = '#059669';  // strong green
+  else if (value > 5)  color = '#10b981';  // green
+  else if (value > -5) color = '#f59e0b';  // amber
+  else if (value > -20) color = '#ef4444';  // red
+  else                  color = '#dc2626';  // dark red
+  
+  // Build SVG
+  var cx = 110, cy = 100, r = 80;
+  var startAngle = -90, endAngle = 90;
+  
+  function polar(angleDeg, radius) {
+    var rad = (angleDeg - 90) * Math.PI / 180;
+    return { x: cx + radius * Math.cos(rad), y: cy + radius * Math.sin(rad) };
+  }
+  
+  // Background arc (gray)
+  var bgStart = polar(startAngle, r);
+  var bgEnd = polar(endAngle, r);
+  var bgPath = 'M ' + bgStart.x + ' ' + bgStart.y + ' A ' + r + ' ' + r + ' 0 0 1 ' + bgEnd.x + ' ' + bgEnd.y;
+  
+  // Filled arc (color, from start to current angle)
+  var fillEnd = polar(angle, r);
+  var fillFlag = (angle - startAngle) > 180 ? 1 : 0;
+  var fillPath = 'M ' + bgStart.x + ' ' + bgStart.y + ' A ' + r + ' ' + r + ' 0 ' + fillFlag + ' 1 ' + fillEnd.x + ' ' + fillEnd.y;
+  
+  // Needle from center to outer point
+  var needle = polar(angle, r - 5);
+  
+  // Center marker (zero) — top of arc
+  var zeroPos = polar(0, r);
+  
+  var svg = '<svg viewBox="0 0 220 130" style="width:100%;max-width:220px;display:block;margin:0 auto">';
+  // Background arc
+  svg += '<path d="' + bgPath + '" stroke="#e2e8f0" stroke-width="14" fill="none" stroke-linecap="round" />';
+  // Fill arc
+  svg += '<path d="' + fillPath + '" stroke="' + color + '" stroke-width="14" fill="none" stroke-linecap="round" />';
+  // Zero marker (small tick at top)
+  svg += '<circle cx="' + zeroPos.x + '" cy="' + zeroPos.y + '" r="3" fill="#1A3A78" />';
+  // Needle line
+  svg += '<line x1="' + cx + '" y1="' + cy + '" x2="' + needle.x + '" y2="' + needle.y + '" stroke="#0f172a" stroke-width="3" stroke-linecap="round" />';
+  // Center hub
+  svg += '<circle cx="' + cx + '" cy="' + cy + '" r="6" fill="#0f172a" />';
+  svg += '</svg>';
+  
+  // Display number
+  var displayVal = (value > 0 ? '+' : '') + value.toFixed(1) + '%';
+  
+  return '<div style="background:#fff;border-radius:10px;padding:14px;text-align:center;border:1px solid #e2e8f0">' +
+         '<div style="font-size:10px;font-weight:800;color:#1A3A78;letter-spacing:0.5px;margin-bottom:6px">' + escapeHtml(label) + '</div>' +
+         svg +
+         '<div style="font-size:22px;font-weight:900;color:' + color + ';font-family:\'IBM Plex Mono\',monospace;margin-top:4px">' + displayVal + '</div>' +
+         (sublabel ? '<div style="font-size:10px;color:#64748b;margin-top:2px">' + escapeHtml(sublabel) + '</div>' : '') +
+         '</div>';
+}
+
+/* r63.70: Render full Index Compare panel (5 gauges) */
+function _r6370RenderIndexCompare(d) {
+  var html = '';
+  
+  // Top row: 3 absolute returns
+  html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;margin-bottom:14px">';
+  
+  html += _r6370Gauge(
+    'STOCK: ' + (d.symbol || ''),
+    d.stock_return_pct,
+    '1-year return',
+    'absolute'
+  );
+  
+  html += _r6370Gauge(
+    'SECTOR: ' + ((d.sector_index && d.sector_index.label) || '—'),
+    d.sector_index ? d.sector_index.return_pct : null,
+    (d.sector_index && d.sector_index.ticker ? d.sector_index.ticker : '') + ' · 1y return',
+    'absolute'
+  );
+  
+  html += _r6370Gauge(
+    'MARKET: ' + ((d.market_index && d.market_index.label) || '—'),
+    d.market_index ? d.market_index.return_pct : null,
+    (d.market_index && d.market_index.ticker ? d.market_index.ticker : '') + ' · 1y return',
+    'absolute'
+  );
+  
+  html += '</div>';
+  
+  // Divider with label
+  html += '<div style="text-align:center;font-size:10px;font-weight:800;color:#64748b;letter-spacing:1.5px;margin:18px 0 10px">RELATIVE STRENGTH (PERCENTAGE POINTS)</div>';
+  
+  // Bottom row: 3 relatives (stock-vs-sector, stock-vs-market, sector-vs-market)
+  html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;margin-bottom:14px">';
+  
+  html += _r6370Gauge(
+    'STOCK vs SECTOR',
+    d.stock_vs_sector,
+    d.stock_vs_sector != null ? (d.stock_vs_sector > 5 ? 'Crushing sector' : (d.stock_vs_sector > 0 ? 'Outperforming' : (d.stock_vs_sector > -5 ? 'In line' : 'Lagging'))) : '',
+    'relative'
+  );
+  
+  html += _r6370Gauge(
+    'STOCK vs MARKET',
+    d.stock_vs_market,
+    d.stock_vs_market != null ? (d.stock_vs_market > 5 ? 'Beating market' : (d.stock_vs_market > 0 ? 'Outperforming' : (d.stock_vs_market > -5 ? 'In line' : 'Underperforming'))) : '',
+    'relative'
+  );
+  
+  html += _r6370Gauge(
+    'SECTOR vs MARKET',
+    d.sector_vs_market,
+    d.sector_vs_market != null ? (d.sector_vs_market > 5 ? 'Hot sector' : (d.sector_vs_market > 0 ? 'Strong rotation' : (d.sector_vs_market > -5 ? 'In line' : 'Out of favor'))) : '',
+    'relative'
+  );
+  
+  html += '</div>';
+  
+  // Footer
+  var dq = d._data_quality || 'PARTIAL';
+  var dqColor = dq === 'FULL' ? '#10b981' : '#f59e0b';
+  html += '<div style="margin-top:14px;padding:10px 14px;background:#f8fafc;border-radius:8px;font-size:10px;color:#64748b;line-height:1.6">';
+  html += '<div><strong style="color:#1A3A78">📐 How to read:</strong> Top row = absolute 1-year returns. Bottom row = relative strength in percentage points (e.g., +20pp means stock returned 20pp more than its sector).</div>';
+  html += '<div style="margin-top:6px"><strong>Lookback:</strong> ' + escapeHtml(d.lookback || '1 year') + ' · <strong>Data quality:</strong> <span style="color:' + dqColor + '">' + escapeHtml(dq) + '</span></div>';
+  html += '</div>';
+  
+  return html;
+}
+

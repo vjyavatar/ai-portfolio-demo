@@ -1801,9 +1801,9 @@ def _safe_float(val, default=0.0):
         return default
 
 # ═══ Celesys version stamp (v4.61.10) ═══════════════════════════════
-APP_VERSION = "v4.63.66"
-APP_BUILD_TIME = 1778186144
-APP_BUILD_DATE = "2026-05-07 20:35:44 UTC"
+APP_VERSION = "v4.63.70"
+APP_BUILD_TIME = 1778190986
+APP_BUILD_DATE = "2026-05-07 21:56:26 UTC"
 APP_RELEASE_NOTES = (
     "v4.62.0: Micro-Cap Hunter scanner (Decide tab) + cumulative r61.x: Aladdin DD entry page (r61.8), "
     "stale-cache fallback (r61.8), multi-factor Bottom Line (r61.7), "
@@ -31949,7 +31949,7 @@ async def earnings_this_week(region: str = "US", email: str = "", nocache: int =
         return {"success": False, "error": "Earnings calendar is a premium feature."}
     
     region = (region or "US").upper()
-    cache_key = f"earnings_3wk_v53_{region}"  # r63.47: bumped to invalidate cache with yfinance-fallback data  # r63.17: bumped to invalidate cache with old None-as-0 data
+    cache_key = f"earnings_3wk_v67_{region}"  # r63.67: bumped to invalidate old cache without price/name fields  # r63.47: bumped to invalidate cache with yfinance-fallback data  # r63.17: bumped to invalidate cache with old None-as-0 data
     
     if nocache != 1:
         cached = _smart_cache_get(cache_key)
@@ -32145,6 +32145,71 @@ async def earnings_this_week(region: str = "US", email: str = "", nocache: int =
     next_week_upcoming = next_week_upcoming[:80]
     
     tracked_count_total = sum(1 for e in (declared + this_week_upcoming + next_week_upcoming) if e["in_universe"])
+    
+    # r63.67: Enrich events with current price (batch fetch) + company name (cached)
+    try:
+        all_events = list(declared) + list(this_week_upcoming) + list(next_week_upcoming)
+        all_syms = list({ev.get("symbol", "") for ev in all_events if ev.get("symbol")})
+        
+        # ── Batch price fetch (one yf.download call for ALL symbols) ──
+        price_map = {}
+        if all_syms:
+            try:
+                _yahoo_rate_wait()
+                bdata = yf.download(
+                    all_syms[:150], period="5d", interval="1d",
+                    group_by="ticker", threads=True, progress=False, auto_adjust=True
+                )
+                for sym in all_syms[:150]:
+                    try:
+                        if hasattr(bdata.columns, "get_level_values") and sym in bdata.columns.get_level_values(0):
+                            df = bdata[sym]
+                        elif len(all_syms) == 1:
+                            df = bdata
+                        else:
+                            continue
+                        if df is None or df.empty:
+                            continue
+                        closes = df["Close"].dropna()
+                        if len(closes) > 0:
+                            price_map[sym] = round(float(closes.iloc[-1]), 2)
+                    except Exception:
+                        continue
+            except Exception as _r6367_pe:
+                print(f"[r63.67 price batch fail] {_r6367_pe}")
+        
+        # ── Company name fetch (cached, capped at 25 tracked names per request) ──
+        name_cache_key = "r6367_names_v1"
+        cached_names = _smart_cache_get(name_cache_key) or {}
+        name_map = dict(cached_names)
+        
+        tracked_syms_in_response = [
+            s for s in all_syms 
+            if s in tracked_set and s not in name_map
+        ][:25]
+        
+        for _sym67 in tracked_syms_in_response:
+            try:
+                _yahoo_rate_wait()
+                _tk67 = yf.Ticker(_sym67)
+                _info67 = _tk67.info or {}
+                _nm67 = _info67.get("shortName") or _info67.get("longName") or ""
+                if _nm67:
+                    name_map[_sym67] = _nm67[:60]
+            except Exception:
+                continue
+        
+        _smart_cache_set(name_cache_key, name_map, ttl=21600)
+        
+        for _bucket67 in [declared, this_week_upcoming, next_week_upcoming]:
+            for _ev67 in _bucket67:
+                _sym67b = _ev67.get("symbol", "")
+                if _sym67b in price_map:
+                    _ev67["price"] = price_map[_sym67b]
+                if _sym67b in name_map:
+                    _ev67["company_name"] = name_map[_sym67b]
+    except Exception as _r6367_e:
+        print(f"[r63.67 enrichment fail] {_r6367_e}")
     
     response = {
         "success":              True,
@@ -37103,6 +37168,350 @@ async def watchlist_status(symbols: str = "", regions: str = "", email: str = ""
     return {"success": True, "results": results}
 
 
+
+
+
+def _r6369_smart_money_score(sym, region):
+    """r63.69: Smart Money score 0-100 — uses _r6360 proxy from existing data.
+    
+    L2 layer in the institutional 6-layer model is "Flow / Smart Money" computed
+    from volume ratio + RS + above-MA-position. This re-uses that proxy.
+    """
+    try:
+        layers = _r6360_get_current_layers(sym, region)
+        if not layers:
+            return None, "Stock data unavailable"
+        sm = layers.get("L2")
+        if sm is None:
+            return None, "Smart money score not computable"
+        return int(sm), None
+    except Exception as e:
+        return None, f"Error: {str(e)[:60]}"
+
+
+def _r6369_insider_net_90d(sym, region="US"):
+    """r63.69: Net insider buying in USD over last 90 days.
+    
+    Uses yfinance tk.insider_transactions. Returns:
+      {net_usd, buy_count, sell_count, top_buys: [...], data_quality: 'FULL'/'PARTIAL'/'MISSING'}
+    
+    Indian stocks: yfinance has no NSE Form-4 equivalent → returns MISSING.
+    Recent IPOs/spinoffs: data may not yet be populated → MISSING.
+    """
+    if region.upper() != "US":
+        return {"net_usd": 0, "buy_count": 0, "sell_count": 0, "top_buys": [],
+                "data_quality": "MISSING", "note": "Indian Form-4 equivalent not available via yfinance"}
+    
+    try:
+        _yahoo_rate_wait()
+        tk = yf.Ticker(sym)
+        ins_df = None
+        try:
+            ins_df = tk.insider_transactions
+        except Exception:
+            pass
+        
+        if ins_df is None or ins_df.empty:
+            return {"net_usd": 0, "buy_count": 0, "sell_count": 0, "top_buys": [],
+                    "data_quality": "MISSING", "note": "No insider Form-4 data available"}
+        
+        # Filter last 90 days
+        from datetime import datetime, timedelta
+        cutoff = datetime.now() - timedelta(days=90)
+        
+        net_usd = 0.0
+        buy_count = 0
+        sell_count = 0
+        top_buys = []
+        
+        for _idx, row in ins_df.iterrows():
+            try:
+                dt = row.get("Start Date") if hasattr(row, "get") else None
+                if dt is None or hasattr(dt, "to_pydatetime") and dt.to_pydatetime() < cutoff:
+                    continue
+                
+                txn = str(row.get("Transaction") or "")
+                value = float(row.get("Value") or 0)
+                shares = float(row.get("Shares") or 0)
+                insider = str(row.get("Insider") or "")[:40]
+                position = str(row.get("Position") or "")[:30]
+                
+                if value <= 0:
+                    continue
+                
+                # Classify: "Purchase" / "Buy" → buy. "Sale" → sell.
+                txn_lower = txn.lower()
+                if "purchase" in txn_lower or "buy" in txn_lower:
+                    net_usd += value
+                    buy_count += 1
+                    top_buys.append({
+                        "name": insider, "position": position,
+                        "value_usd": int(value), "shares": int(shares),
+                    })
+                elif "sale" in txn_lower or "sell" in txn_lower:
+                    net_usd -= value
+                    sell_count += 1
+            except Exception:
+                continue
+        
+        # Sort top buys by value, keep top 5
+        top_buys.sort(key=lambda x: x["value_usd"], reverse=True)
+        top_buys = top_buys[:5]
+        
+        return {
+            "net_usd":      int(net_usd),
+            "buy_count":    buy_count,
+            "sell_count":   sell_count,
+            "top_buys":     top_buys,
+            "data_quality": "FULL" if (buy_count + sell_count) > 0 else "PARTIAL",
+            "note": None if (buy_count + sell_count) > 0 else "No transactions in last 90 days",
+        }
+    except Exception as e:
+        return {"net_usd": 0, "buy_count": 0, "sell_count": 0, "top_buys": [],
+                "data_quality": "MISSING", "note": f"Fetch error: {str(e)[:80]}"}
+
+
+def _r6369_classify_tier(sm_score, insider_net_usd, inst_pct):
+    """r63.69: Apply tier rules.
+    
+    Smart Money required + (Insider OR Institutional as bonus signals).
+    
+    🔥 TIER 1: SM ≥ 70 AND (insider_net > 500K OR inst_pct ≥ 70)
+    🟢 TIER 2: SM ≥ 50 AND (insider_net > 0 OR inst_pct ≥ 40)
+    🟡 TIER 3: SM ≥ 50 alone (no bonus required)
+    NONE: SM < 50
+    """
+    if sm_score is None or sm_score < 50:
+        return {"tier": None, "label": "Smart Money insufficient", "color": "#94a3b8"}
+    
+    has_insider_signal = insider_net_usd is not None and insider_net_usd > 500_000
+    has_inst_signal = inst_pct is not None and inst_pct >= 70
+    has_weak_insider = insider_net_usd is not None and insider_net_usd > 0
+    has_weak_inst = inst_pct is not None and inst_pct >= 40
+    
+    if sm_score >= 70 and (has_insider_signal or has_inst_signal):
+        return {"tier": 1, "label": "🔥 TIER 1 — Triple Conviction", "color": "#dc2626",
+                "bg": "#fef2f2", "border": "#fca5a5",
+                "summary": "All three signals align bullishly. Smart money + bonus signal confirmed."}
+    elif sm_score >= 50 and (has_weak_insider or has_weak_inst):
+        return {"tier": 2, "label": "🟢 TIER 2 — Strong", "color": "#059669",
+                "bg": "#ecfdf5", "border": "#a7f3d0",
+                "summary": "Smart money present + at least one bonus signal supportive."}
+    elif sm_score >= 50:
+        return {"tier": 3, "label": "🟡 TIER 3 — Building", "color": "#f59e0b",
+                "bg": "#fffbeb", "border": "#fde68a",
+                "summary": "Smart money active. Insider/institutional data not confirming or unavailable."}
+    else:
+        return {"tier": None, "label": "No conviction signal", "color": "#94a3b8"}
+
+
+@app.get("/api/conviction-stack")
+async def conviction_stack(symbol: str = "", region: str = "US", email: str = ""):
+    """r63.69: Conviction Stack — Smart Money + Insider + Institutional.
+    
+    Premium gated to dream tier (yrk@eml.com + vj@vnky.com).
+    """
+    email = (email or "").strip().lower()
+    _ok, email = check_premium_gate(email, "dream")
+    if not _ok:
+        return {"success": False, "error": "Premium tier required."}
+    
+    if not symbol:
+        return {"success": False, "error": "Missing symbol parameter."}
+    
+    sym = symbol.strip().upper()
+    region = (region or "US").strip().upper()
+    
+    # 1. Smart Money score
+    sm_score, sm_err = _r6369_smart_money_score(sym, region)
+    
+    # 2. Insider activity
+    insider = _r6369_insider_net_90d(sym, region)
+    
+    # 3. Institutional ownership — pull from existing investor-decide path
+    inst_pct = None
+    inst_top_holders = []
+    inst_data_quality = "MISSING"
+    inst_concentration = "UNKNOWN"
+    inst_data_note = None
+    try:
+        # Use cached call if available; the dd response has institutional info
+        dd_resp = await investor_due_diligence(email=email, symbol=sym, region=region)
+        if dd_resp.get("success"):
+            ih = (dd_resp.get("institutional") or {}).get("institutional_holders") or {}
+            inst_pct = ih.get("total_pct_outstanding")
+            inst_top_holders = ih.get("top_holders") or []
+            inst_concentration = ih.get("concentration") or "UNKNOWN"
+            inst_data_quality = ih.get("data_quality") or "MISSING"
+            inst_data_note = ih.get("_data_note")
+    except Exception as e:
+        inst_data_note = f"DD fetch error: {str(e)[:80]}"
+    
+    # 4. Classify tier
+    tier_info = _r6369_classify_tier(sm_score, insider.get("net_usd"), inst_pct)
+    
+    return {
+        "success": True,
+        "symbol": sym,
+        "region": region,
+        "smart_money": {
+            "score": sm_score,
+            "error": sm_err,
+        },
+        "insider": insider,
+        "institutional": {
+            "total_pct": inst_pct,
+            "concentration": inst_concentration,
+            "top_holders": inst_top_holders[:5],  # cap for response size
+            "data_quality": inst_data_quality,
+            "data_note": inst_data_note,
+        },
+        "tier": tier_info,
+    }
+
+
+
+
+def _r6370_compute_index_compare(symbol, region):
+    """r63.70: Compute 5 index comparison metrics for a stock.
+    
+    Returns:
+      market_index: {ticker, return_pct, label}
+      sector_index: {ticker, return_pct, label}  (uses _R6345_SECTOR_ETFS lookup)
+      stock_vs_sector_pct: relative strength
+      stock_vs_market_pct: relative strength  
+      sector_vs_market_pct: sector rotation strength
+      stock_return_pct: stock's own YTD return
+      lookback: descriptor
+    
+    Uses ONE yf.download batch call for all 3 tickers (stock, market, sector).
+    """
+    from datetime import datetime
+    
+    sym = symbol.strip().upper()
+    region = (region or "US").upper()
+    
+    # Determine market index
+    if region == "IN":
+        market_ticker = "^NSEI"
+        market_label = "NIFTY 50"
+    else:
+        market_ticker = "SPY"
+        market_label = "S&P 500"
+    
+    # Find sector ETF for this stock
+    sector_ticker = None
+    sector_name = None
+    try:
+        sector_map = _R6345_SECTOR_ETFS.get(region, {})
+        for sec_name, sec_info in sector_map.items():
+            if sym in (sec_info.get("stocks") or []):
+                sector_ticker = sec_info.get("etf")
+                sector_name = sec_name
+                break
+    except Exception:
+        pass
+    
+    # If we couldn't find a sector mapping, fall back to a broad market ETF
+    if not sector_ticker:
+        if region == "IN":
+            sector_ticker = "NIFTYBEES.NS"
+            sector_name = "NIFTY ETF (broad)"
+        else:
+            sector_ticker = "XLK"
+            sector_name = "Tech (broad)"
+    
+    # Adjust stock symbol for IN
+    yf_stock = sym
+    if region == "IN" and not sym.endswith(".NS") and not sym.endswith(".BO"):
+        yf_stock = f"{sym}.NS"
+    
+    tickers_to_fetch = list({yf_stock, market_ticker, sector_ticker})
+    
+    # Batch fetch — ONE yf.download call
+    return_map = {}
+    try:
+        _yahoo_rate_wait()
+        bdata = yf.download(
+            tickers_to_fetch, period="1y", interval="1d",
+            group_by="ticker", threads=True, progress=False, auto_adjust=True
+        )
+        
+        for tk in tickers_to_fetch:
+            try:
+                if hasattr(bdata.columns, "get_level_values") and tk in bdata.columns.get_level_values(0):
+                    df = bdata[tk]
+                elif len(tickers_to_fetch) == 1:
+                    df = bdata
+                else:
+                    continue
+                if df is None or df.empty:
+                    continue
+                closes = df["Close"].dropna().values
+                if len(closes) < 2:
+                    continue
+                
+                # YTD-style return: from start of available data
+                # For 1y data, this is approximately 1-year return
+                start_price = float(closes[0])
+                end_price = float(closes[-1])
+                if start_price > 0:
+                    ret_pct = round((end_price - start_price) / start_price * 100, 2)
+                    return_map[tk] = ret_pct
+            except Exception:
+                continue
+    except Exception as e:
+        return {"success": False, "error": f"Batch fetch failed: {str(e)[:100]}"}
+    
+    # Pull values
+    stock_return = return_map.get(yf_stock)
+    market_return = return_map.get(market_ticker)
+    sector_return = return_map.get(sector_ticker)
+    
+    # Compute relatives (all in percentage points)
+    stock_vs_sector = None
+    stock_vs_market = None
+    sector_vs_market = None
+    
+    if stock_return is not None and sector_return is not None:
+        stock_vs_sector = round(stock_return - sector_return, 2)
+    if stock_return is not None and market_return is not None:
+        stock_vs_market = round(stock_return - market_return, 2)
+    if sector_return is not None and market_return is not None:
+        sector_vs_market = round(sector_return - market_return, 2)
+    
+    return {
+        "success":            True,
+        "symbol":             sym,
+        "region":             region,
+        "lookback":           "1-year (252 trading days)",
+        "market_index":       {"ticker": market_ticker, "label": market_label, "return_pct": market_return},
+        "sector_index":       {"ticker": sector_ticker, "label": sector_name, "return_pct": sector_return},
+        "stock_return_pct":   stock_return,
+        "stock_vs_sector":    stock_vs_sector,
+        "stock_vs_market":    stock_vs_market,
+        "sector_vs_market":   sector_vs_market,
+        "_data_quality":      "FULL" if all(v is not None for v in [stock_return, market_return, sector_return]) else "PARTIAL",
+    }
+
+
+@app.get("/api/index-compare")
+async def index_compare(symbol: str = "", region: str = "US", email: str = ""):
+    """r63.70: Index Comparison — stock vs market vs sector with relative strength gauges.
+    
+    Premium gated to dream tier.
+    """
+    email = (email or "").strip().lower()
+    _ok, email = check_premium_gate(email, "dream")
+    if not _ok:
+        return {"success": False, "error": "Premium tier required."}
+    
+    if not symbol:
+        return {"success": False, "error": "Missing symbol parameter."}
+    
+    return _r6370_compute_index_compare(symbol, region)
+
+
 @app.get("/today")
 async def today_page(email: str = ""):
     """r63.45: Today's Setups discovery page (full HTML).
@@ -37252,28 +37661,111 @@ window.celesysToday = (function() {
     }
     
     const url = '/api/today-setups?region=' + currentRegion + '&email=' + encodeURIComponent(userEmail);
-    document.getElementById('content').innerHTML = 
-      '<div class="loading">⏳ Scanning sectors and grouping setups...<br>' +
-      '<span style="font-size:11px;color:#94a3b8">First scan can take 30-60 seconds. Subsequent loads are instant (cached).</span></div>';
+    
+    // r63.68: Loading timer + step-by-step status
+    const loadStartTime = Date.now();
+    let loadStep = 'Connecting to server';
+    
+    function updateLoadingUI() {
+      const elapsed = Math.round((Date.now() - loadStartTime) / 1000);
+      let statusHint = '';
+      if (elapsed < 5) statusHint = 'Should be instant if cached';
+      else if (elapsed < 15) statusHint = 'Fetching fresh sector data';
+      else if (elapsed < 30) statusHint = 'Server is processing — usually completes by 30s';
+      else if (elapsed < 60) statusHint = 'Taking longer than usual — server may be cold';
+      else statusHint = 'Should have completed by now — likely backend issue';
+      
+      const timerColor = elapsed < 30 ? '#1A3A78' : (elapsed < 60 ? '#f59e0b' : '#dc2626');
+      
+      document.getElementById('content').innerHTML = 
+        '<div class="loading" style="text-align:center;padding:60px 20px">' +
+        '<div style="font-size:32px;font-weight:900;color:' + timerColor + ';font-family:\'IBM Plex Mono\',monospace;margin-bottom:8px">' +
+        elapsed + 's</div>' +
+        '<div style="font-size:14px;color:#0f172a;font-weight:600;margin-bottom:6px">⏳ ' + escapeHtml(loadStep) + '</div>' +
+        '<div style="font-size:11px;color:#94a3b8">' + escapeHtml(statusHint) + '</div>' +
+        (elapsed > 60 ? '<div style="margin-top:14px"><button onclick="celesysToday.refresh()" style="background:#dc2626;color:#fff;border:none;padding:8px 18px;border-radius:6px;cursor:pointer;font-weight:600;font-size:12px">Retry</button></div>' : '') +
+        '</div>';
+    }
+    
+    updateLoadingUI();
+    const timerInterval = setInterval(updateLoadingUI, 1000);
+    
+    function clearTimer() { clearInterval(timerInterval); }
+    
+    function showFatalError(stage, errMsg, details) {
+      clearTimer();
+      console.error('[/today FAIL]', stage, errMsg, details || '');
+      const elapsed = Math.round((Date.now() - loadStartTime) / 1000);
+      document.getElementById('content').innerHTML = 
+        '<div class="error-banner" style="text-align:left">' +
+        '<strong>⚠ Failed at: ' + escapeHtml(stage) + '</strong><br>' +
+        '<span style="font-size:12px;color:#7f1d1d">After ' + elapsed + 's</span><br><br>' +
+        '<strong>Error:</strong> ' + escapeHtml(errMsg) + '<br><br>' +
+        (details ? '<details style="font-size:11px;color:#7f1d1d"><summary style="cursor:pointer">Show technical details</summary><pre style="background:#fff;padding:10px;border-radius:4px;font-size:10px;overflow-x:auto;margin-top:6px">' + escapeHtml(details) + '</pre></details><br>' : '') +
+        '<button onclick="celesysToday.refresh()" style="background:#dc2626;color:white;border:none;padding:8px 16px;border-radius:4px;cursor:pointer;font-weight:600">Retry</button>' +
+        '<br><br><div style="font-size:10px;color:#94a3b8">Open DevTools (F12) Console for full diagnostic logs.</div>' +
+        '</div>';
+    }
+    
+    console.log('[/today r63.68] load() starting. region=', currentRegion, 'email=', userEmail, 'url=', url);
     
     // r63.46: 90-second timeout with manual abort
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 90000);
+    const timeoutId = setTimeout(() => {
+      console.warn('[/today r63.68] aborting after 90s');
+      controller.abort();
+    }, 90000);
     
     try {
+      loadStep = 'Connecting to server';
+      const fetchStart = Date.now();
+      
       const r = await fetch(url, { signal: controller.signal });
+      const fetchMs = Date.now() - fetchStart;
       clearTimeout(timeoutId);
-      const d = await r.json();
-      render(d);
+      
+      console.log('[/today r63.68] fetch returned in', fetchMs, 'ms, status=', r.status, 'ok=', r.ok);
+      
+      if (!r.ok) {
+        const txt = await r.text();
+        showFatalError('HTTP ' + r.status, 'Server returned non-200 response', txt.substring(0, 500));
+        return;
+      }
+      
+      loadStep = 'Parsing response';
+      updateLoadingUI();
+      
+      let d;
+      try {
+        d = await r.json();
+        console.log('[/today r63.68] JSON parsed. success=', d.success, 'regions=', d.regions, 'sector_heat keys=', Object.keys(d.sector_heat || {}), 'hot_sectors keys=', Object.keys(d.hot_sectors_with_stocks || {}));
+      } catch (parseErr) {
+        showFatalError('JSON parse', parseErr.message || String(parseErr), '');
+        return;
+      }
+      
+      loadStep = 'Rendering';
+      updateLoadingUI();
+      
+      try {
+        const renderStart = Date.now();
+        render(d);
+        const renderMs = Date.now() - renderStart;
+        console.log('[/today r63.68] render() OK in', renderMs, 'ms. Total load:', Date.now()-loadStartTime, 'ms');
+        clearTimer();
+      } catch (renderErr) {
+        const stack = renderErr.stack || '';
+        showFatalError('render()', renderErr.message || String(renderErr), stack);
+        return;
+      }
+      
     } catch (e) {
       clearTimeout(timeoutId);
       let msg = e.message || String(e);
       if (e.name === 'AbortError') {
-        msg = 'Scan timed out after 90 seconds. The bottom-nav scanner may still be cold-starting. Try refreshing in 30 seconds.';
+        msg = 'Scan timed out after 90 seconds. The server is taking too long to respond.';
       }
-      document.getElementById('content').innerHTML = 
-        '<div class="error-banner">⚠ Failed to load setups: ' + escapeHtml(msg) + 
-        '<br><br><button onclick="celesysToday.refresh()" style="background:#dc2626;color:white;border:none;padding:8px 16px;border-radius:4px;cursor:pointer;font-weight:600">Retry</button></div>';
+      showFatalError('Network/fetch', msg, e.stack || '');
     }
   }
   
