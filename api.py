@@ -1801,9 +1801,9 @@ def _safe_float(val, default=0.0):
         return default
 
 # ═══ Celesys version stamp (v4.61.10) ═══════════════════════════════
-APP_VERSION = "v4.63.63"
-APP_BUILD_TIME = 1778110800
-APP_BUILD_DATE = "2026-05-06 23:40:00 UTC"
+APP_VERSION = "v4.63.64"
+APP_BUILD_TIME = 1778112709
+APP_BUILD_DATE = "2026-05-07 00:11:49 UTC"
 APP_RELEASE_NOTES = (
     "v4.62.0: Micro-Cap Hunter scanner (Decide tab) + cumulative r61.x: Aladdin DD entry page (r61.8), "
     "stale-cache fallback (r61.8), multi-factor Bottom Line (r61.7), "
@@ -35908,21 +35908,87 @@ def _r6345_compute_sector_heat(region):
     else:
         benchmark_for_rs = {"ret_20d": 0}
     
-    # Score sectors in parallel
-    from concurrent.futures import ThreadPoolExecutor, as_completed
-    with ThreadPoolExecutor(max_workers=4) as executor:
-        futures = {
-            executor.submit(_r6345_score_one_sector, info["etf"], benchmark_for_rs): name
-            for name, info in sectors.items()
-        }
-        for future in as_completed(futures, timeout=60):
-            name = futures[future]
+    # r63.64: BATCH yf.download for all ETFs at once (one HTTP call)
+    # Replaces 10 sequential yf.Ticker.history() calls (15s) with one batch (2s)
+    try:
+        import yfinance as yf
+        etf_to_name = {info["etf"]: name for name, info in sectors.items()}
+        all_etfs = list(etf_to_name.keys())
+        _yahoo_rate_wait()  # Rate-limit ONCE for the batch
+        batch_data = yf.download(
+            all_etfs, period="60d", interval="1d",
+            group_by="ticker", threads=True, progress=False, auto_adjust=True
+        )
+        
+        for etf, name in etf_to_name.items():
             try:
-                result = future.result()
-                if result and "error" not in result:
-                    sector_data[name] = result
+                if hasattr(batch_data.columns, "get_level_values") and etf in batch_data.columns.get_level_values(0):
+                    df = batch_data[etf]
+                elif len(all_etfs) == 1:
+                    df = batch_data
+                else:
+                    continue
+                if df is None or df.empty or len(df) < 25:
+                    continue
+                
+                closes = df["Close"].dropna().values
+                volumes = df["Volume"].dropna().values if "Volume" in df.columns else []
+                if len(closes) < 25:
+                    continue
+                
+                spot = float(closes[-1])
+                prev_close = float(closes[-2]) if len(closes) >= 2 else spot
+                close_5d_ago = float(closes[-6]) if len(closes) >= 6 else float(closes[0])
+                close_20d_ago = float(closes[-21]) if len(closes) >= 21 else float(closes[0])
+                
+                ret_1d_pct = round((spot - prev_close) / prev_close * 100, 2) if prev_close > 0 else 0
+                ret_5d_pct = round((spot - close_5d_ago) / close_5d_ago * 100, 2) if close_5d_ago > 0 else 0
+                ret_20d_pct = round((spot - close_20d_ago) / close_20d_ago * 100, 2) if close_20d_ago > 0 else 0
+                
+                # Volume ratio
+                vol_ratio = 1.0
+                if len(volumes) >= 20:
+                    vol_5d = sum(volumes[-5:]) / 5
+                    vol_20d = sum(volumes[-20:]) / 20
+                    if vol_20d > 0:
+                        vol_ratio = round(vol_5d / vol_20d, 2)
+                
+                # 50d MA
+                sma50 = float(sum(closes[-50:]) / 50) if len(closes) >= 50 else None
+                above_50d_ma = sma50 is not None and spot > sma50
+                
+                # RS vs benchmark
+                rs_vs_bench = round(ret_20d_pct - benchmark_for_rs.get("ret_20d", 0), 2)
+                
+                sector_data[name] = {
+                    "etf": etf,
+                    "spot": round(spot, 2),
+                    "ret_1d_pct": ret_1d_pct,
+                    "ret_5d_pct": ret_5d_pct,
+                    "ret_20d_pct": ret_20d_pct,
+                    "vol_ratio": vol_ratio,
+                    "above_50d_ma": above_50d_ma,
+                    "rs_vs_bench": rs_vs_bench,
+                }
             except Exception:
-                pass
+                continue
+    except Exception as e:
+        print(f"[r63.64 sector batch fail] {e}; falling back to sequential")
+        # Fallback to original
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        with ThreadPoolExecutor(max_workers=4) as executor:
+            futures = {
+                executor.submit(_r6345_score_one_sector, info["etf"], benchmark_for_rs): name
+                for name, info in sectors.items()
+            }
+            for future in as_completed(futures, timeout=60):
+                name = futures[future]
+                try:
+                    result = future.result()
+                    if result and "error" not in result:
+                        sector_data[name] = result
+                except Exception:
+                    pass
     
     if not sector_data:
         return []
@@ -36218,6 +36284,212 @@ def _r6351_score_sector_stocks(stocks_list, region, benchmark_data):
 
 
 
+
+
+def _r6364_batch_score_sector_stocks(stocks_list, region, benchmark_data=None):
+    """r63.64: Batch yfinance fetch — ONE yf.download() for all stocks in sector.
+    
+    Replaces per-stock _r6351_score_one_stock calls (which hit 1.5s rate limit each).
+    
+    Math:
+      Before: 12 stocks × 1.5s rate wait = 18 sec sequential
+      After:  1 yf.download(["MU","SNDK",...], period="1y") = 2-4 sec total
+    
+    Falls back to per-stock if batch fails (Yahoo intermittent).
+    """
+    import yfinance as yf
+    import pandas as pd
+    
+    if not stocks_list:
+        return []
+    
+    # Convert symbols to yf format (US uses bare, IN uses .NS)
+    yf_syms = []
+    sym_map = {}  # yf_sym → original sym
+    for sym in stocks_list:
+        if region.upper() == "IN":
+            yf_sym = sym if sym.endswith(".NS") or sym.endswith(".BO") else f"{sym}.NS"
+        else:
+            yf_sym = sym
+        yf_syms.append(yf_sym)
+        sym_map[yf_sym] = sym
+    
+    # ONE batch call for all tickers
+    try:
+        _yahoo_rate_wait()  # rate-limit ONCE for the batch
+        data = yf.download(
+            yf_syms, 
+            period="1y", 
+            interval="1d", 
+            group_by="ticker", 
+            threads=True, 
+            progress=False,
+            auto_adjust=True,
+        )
+    except Exception as e:
+        print(f"[r63.64 batch fail] {e}; falling back to per-stock")
+        # Fallback to original parallel per-stock
+        return _r6351_score_sector_stocks(stocks_list, region, benchmark_data)
+    
+    if data is None or len(data) == 0:
+        return []
+    
+    # Score each ticker from the batched dataframe
+    results = []
+    bench_close = None
+    if benchmark_data and benchmark_data.get("closes"):
+        bench_close = benchmark_data.get("closes")
+    
+    for yf_sym, orig_sym in sym_map.items():
+        try:
+            # Extract this ticker's df from multi-index
+            if hasattr(data.columns, "get_level_values") and yf_sym in data.columns.get_level_values(0):
+                df = data[yf_sym]
+            elif len(yf_syms) == 1:
+                df = data
+            else:
+                results.append({
+                    "sym": orig_sym, "tier": "UNCACHED", "score": 0,
+                    "why_now": "Batch download missing this ticker",
+                })
+                continue
+            
+            if df is None or df.empty or len(df) < 5:
+                results.append({
+                    "sym": orig_sym, "tier": "UNCACHED", "score": 0,
+                    "why_now": "Insufficient price history",
+                })
+                continue
+            
+            closes = df["Close"].dropna().values
+            volumes = df["Volume"].dropna().values if "Volume" in df.columns else []
+            highs = df["High"].dropna().values if "High" in df.columns else closes
+            
+            if len(closes) < 5:
+                continue
+            
+            spot = float(closes[-1])
+            
+            # Multi-timeframe returns
+            def _ret_back(n):
+                if len(closes) <= n: return None
+                ref = float(closes[-(n+1)])
+                if ref <= 0: return None
+                return round((spot - ref) / ref * 100, 2)
+            
+            def _ret_back_or_oldest(n):
+                if len(closes) > n:
+                    ref = float(closes[-(n+1)])
+                elif len(closes) >= 2:
+                    ref = float(closes[0])
+                else:
+                    return None
+                if ref <= 0: return None
+                return round((spot - ref) / ref * 100, 2)
+            
+            ret_1d = _ret_back(1)
+            ret_5d = _ret_back(5)
+            ret_1m = _ret_back(21)
+            ret_3m = _ret_back(63)
+            ret_6m = _ret_back(126)
+            ret_1y = _ret_back_or_oldest(252)
+            
+            # Volume ratio (last 5d avg vs last 20d avg)
+            vol_ratio = 1.0
+            if len(volumes) >= 20:
+                avg_vol_recent = sum(volumes[-5:]) / 5
+                avg_vol_20d = sum(volumes[-20:]) / 20
+                if avg_vol_20d > 0:
+                    vol_ratio = round(avg_vol_recent / avg_vol_20d, 2)
+            
+            # Distance from 52w high
+            hi52 = float(max(highs)) if len(highs) > 0 else spot
+            dist_52wh_pct = round(((hi52 - spot) / hi52) * 100, 2) if hi52 > 0 else 0
+            
+            # Moving averages
+            sma50 = float(sum(closes[-50:]) / 50) if len(closes) >= 50 else None
+            sma200 = float(sum(closes[-200:]) / 200) if len(closes) >= 200 else None
+            above_50d = sma50 is not None and spot > sma50
+            above_200d = sma200 is not None and spot > sma200
+            
+            # Relative strength vs benchmark (1m)
+            rs_vs_bench_1m = 0
+            if benchmark_data and benchmark_data.get("ret_1m_pct") is not None and ret_1m is not None:
+                rs_vs_bench_1m = round(ret_1m - benchmark_data["ret_1m_pct"], 2)
+            
+            # Score (same formula as _r6351)
+            trend = 0
+            if above_50d: trend += 20
+            if above_200d: trend += 15
+            
+            momentum = 0
+            if ret_1m and ret_1m > 0: momentum += 15
+            if ret_3m and ret_3m > 0: momentum += 10
+            
+            volume_score = 0
+            if vol_ratio > 1.5: volume_score = 15
+            elif vol_ratio > 1.2: volume_score = 10
+            elif vol_ratio > 1.0: volume_score = 5
+            
+            position = 0
+            if dist_52wh_pct < 5: position = 15
+            elif dist_52wh_pct < 10: position = 10
+            elif dist_52wh_pct < 20: position = 5
+            
+            rs = 0
+            if rs_vs_bench_1m > 5: rs = 10
+            elif rs_vs_bench_1m > 0: rs = 5
+            
+            score = trend + momentum + volume_score + position + rs
+            
+            # Tier
+            if score >= 80: tier = "READY"
+            elif score >= 65: tier = "DEVELOPING"
+            elif score >= 50: tier = "WATCH"
+            else: tier = "WEAK"
+            
+            # Why now
+            why_parts = []
+            if dist_52wh_pct < 1: why_parts.append("at 52w high (breakout zone)")
+            elif dist_52wh_pct < 5: why_parts.append(f"{dist_52wh_pct:.1f}% below 52w high")
+            if vol_ratio > 1.5: why_parts.append(f"vol {vol_ratio:.1f}× normal")
+            if above_50d and above_200d: why_parts.append("above 50/200d MA")
+            if rs_vs_bench_1m > 5: why_parts.append(f"+{rs_vs_bench_1m:.1f}% vs benchmark 1m")
+            why_now = " · ".join(why_parts) or "score-based setup"
+            
+            results.append({
+                "sym": orig_sym,
+                "spot": round(spot, 2),
+                "ret_1d_pct": ret_1d,
+                "ret_5d_pct": ret_5d,
+                "ret_1m_pct": ret_1m,
+                "ret_3m_pct": ret_3m,
+                "ret_6m_pct": ret_6m,
+                "ret_1y_pct": ret_1y,
+                "vol_ratio": vol_ratio,
+                "dist_52wh_pct": dist_52wh_pct,
+                "above_50d": above_50d,
+                "above_200d": above_200d,
+                "rs_vs_bench_1m": rs_vs_bench_1m,
+                "score": score,
+                "tier": tier,
+                "why_now": why_now,
+                "_batched": True,
+            })
+        except Exception as e:
+            results.append({
+                "sym": orig_sym, "tier": "UNCACHED", "score": 0,
+                "why_now": f"Score error: {str(e)[:50]}",
+            })
+    
+    # Sort: READY first
+    tier_rank = {"READY": 0, "DEVELOPING": 1, "WATCH": 2, "WEAK": 3, "UNCACHED": 4}
+    results.sort(key=lambda x: (tier_rank.get(x.get("tier", "UNCACHED"), 99), -(x.get("score") or 0)))
+    
+    return results
+
+
+
 @app.get("/api/today-setups")
 async def today_setups(email: str = "", region: str = "BOTH"):
     """r63.45: Today's Setups dashboard.
@@ -36307,8 +36579,11 @@ async def today_setups(email: str = "", region: str = "BOTH"):
         bench_data = _r6351_score_one_stock(bench_sym, reg) if bench_sym else None
         
         for sec in top_sectors:
-            # r63.51: parallel-fetch all stocks in this sector
-            stock_results = _r6351_score_sector_stocks(sec["stocks"], reg, bench_data)
+            # r63.64: Use bottom_nav_cache instead of on-demand yfinance.
+            # Background scanner populates cache. We READ it here. No new yfinance calls.
+            # Falls back to yfinance only if cache is completely empty (cold start).
+            # r63.64: BATCH yfinance call for all stocks in this sector (one HTTP request)
+            stock_results = _r6364_batch_score_sector_stocks(sec["stocks"], reg, bench_data)
             
             # Tag region + scanned set
             for s in stock_results:
