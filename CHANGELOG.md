@@ -4,6 +4,122 @@ Most recent at top. Sub-versions cumulative — each one builds on the previous.
 
 ---
 
+## r63.71 — Institutional Positioning Data Layer (foundation only)
+
+**Built:** 2026-05-07 · Cumulative on r63.70
+
+This release lays the persistence and ingestion foundation for the
+upcoming Institutional Positioning Scanner (Decide tab). No user-facing
+features ship in this revision — by design. The web service runs
+identically to r63.70 from a user's perspective. The only observable
+change is `/health` exposes a `positioning_db` field and startup logs
+print a "Positioning DB" line.
+
+**New: database layer (Neon Postgres)**
+- `db/schema.sql` — six tables: `filers`, `filings`, `holdings`,
+  `cusip_ticker_map`, `mapping_overrides`, `ingestion_log`. All idempotent
+  (`CREATE TABLE IF NOT EXISTS`, `CREATE INDEX IF NOT EXISTS`).
+- `db/migrations/001_initial.py` — applies schema once. Verifies all
+  tables present after run.
+- `db/connection.py` — lazy-init connection pool against
+  `NEON_DATABASE_URL`. Pool size 1–5, autocommit off, 5-min idle close
+  for Neon scale-to-zero compatibility. Fails closed if env not set.
+
+**New: SEC EDGAR ingestion**
+- `services/edgar_client.py` — rate-limited (8 req/s) EDGAR client with
+  retry/backoff. Lists 13F-HR filings per quarter from full-index;
+  fetches information table XMLs by accession number.
+- `services/holdings_parser.py` — lxml-based 13F parser tolerant of
+  namespace drift across filer software. Correctly multiplies filing
+  values × 1000 per SEC spec ("expressed in thousands").
+
+**New: CUSIP → ticker resolution**
+- `services/figi_resolver.py` — three-tier resolver:
+  1. `mapping_overrides` (manual corrections, highest priority)
+  2. `cusip_ticker_map` (cached prior resolutions)
+  3. OpenFIGI live API (batched 100/call, rate-limited 5 or 25 req/s
+     based on `OPENFIGI_API_KEY` presence)
+- Unresolved CUSIPs cached as `confidence='unresolved'` so they aren't
+  re-queried on every backfill run.
+
+**New: backfill orchestrator**
+- `tools/backfill_13f.py` — laptop-runnable, resumable. Re-running after
+  Ctrl-C skips already-ingested filings via `accession_no` UNIQUE
+  constraint. Logs job state to `ingestion_log` table for ops
+  visibility. Estimated 4–6 hours wall-time for 8-quarter SPX 500 scope.
+
+**Modified: api.py**
+- `/health` extended with `positioning_db` field surfacing connection
+  state. Lazy-imported; if the `db` module isn't installed or env var
+  isn't set, the endpoint still works and shows the reason.
+- Startup hook prints `🗄️  Positioning DB (Neon): ...` line at boot
+  showing connect status. Non-blocking — boot continues regardless.
+
+**Modified: requirements.txt**
+- Added `psycopg[binary,pool]>=3.1`, `httpx>=0.27`, `tenacity>=8.2`,
+  `lxml>=5.0`. All pure-Python or wheels-available; no compiler needed
+  on Render.
+
+**Required env vars on Render:**
+- `NEON_DATABASE_URL` — Neon pooled connection string with
+  `?sslmode=require`
+- `OPENFIGI_API_KEY` — OpenFIGI free-tier key (registered)
+- `SEC_USER_AGENT` (optional, defaults to `Celesys Research vjyavatar@gmail.com`)
+
+**Architecture decisions locked in this revision:**
+- Universe v1: SPX 500 → Russell 1000 mid-caps → selective Russell 2000
+- SEC scope v0: 13F-HR only. Form 4 + 13D/13G deferred to v1.5/v2.
+- Storage: Neon free tier (serverless Postgres, branching, decoupled
+  from Render app layer)
+- Backfill: 8 quarters (enables persistence-of-conviction analysis,
+  not just immediate Q-over-Q delta)
+- CUSIP mapping: OpenFIGI free + manual overrides table. No paid CUSIP
+  master file.
+- Modeling: heuristic thresholds with z-scores and percentile buckets.
+  No early backtest optimization.
+
+**Out of scope for r63.71:**
+- Scoring engine — comes in r63.72
+- Decide tab UI — comes in r63.73
+- Backtest harness scaffolding — comes in r63.74
+
+---
+
+## r63.70 — Forward Value: 5-Year Trajectory Chart Render Fix
+
+**Built:** 2026-05-07 · Cumulative on r63.69
+
+**Bug:** The 5-Year Intrinsic Value Trajectory chart (Forward Value pill,
+Decide → Analyze Stock) rendered with grossly oversized dollar labels
+crashing into oversized endpoint dots.
+
+**Root cause:** SVG used `viewBox="0 0 110 100"` with
+`preserveAspectRatio="none"` and `width:100%`. In a typical container
+width of ~700–1100px, the X axis got stretched ~7x while Y got stretched
+~1.6x. SVG `<text>` and `<circle>` don't get uniform stretching — text
+became massive, circles became wide ovals.
+
+**Fix in `static/app.js` and `static/app.min.js` (lines ~26235):**
+- New viewBox `0 0 800 220`, default aspect-ratio preserved
+- Real font sizes: 13px endpoints, 10px ticks (was font-size=3 in
+  distorted units)
+- Real circle radii: 4px endpoints, 4.5px outer + 2px inner white center
+  for spot marker (donut style)
+- Y-axis dollar tick labels drawn (5 levels) — actual price scale visible
+- X-axis year labels (Now / 1Y / … / 5Y) drawn inside the SVG with
+  `text-anchor="middle"`, removing the `padding-right:24%` flex-strip kludge
+- `spot` now included in Y-range calculation so overvalued cases (spot
+  above all paths) render correctly
+- Anti-collision: if Bull/Base/Bear endpoint values land within 14px of
+  each other on screen, labels stack with minimum spacing while dots
+  stay at true positions on the curves
+- Path strokes 2–2.5px with `stroke-linejoin="round"` for clean curves
+
+Verified across 4 cases: standard spread, tight cluster, overvalued
+spot, extreme range.
+
+---
+
 ## v4.61.10 — Production cumulative (current)
 
 **Built:** 2026-04-29 · Single-zip cumulative of all r61.x work

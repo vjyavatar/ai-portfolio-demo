@@ -1868,6 +1868,19 @@ async def startup_event():
     _algo_cache = {}
     _algo_cache_ts = {}
     print("🧹 Algo cache cleared — fresh data on first request")
+
+    # r63.71: Surface positioning DB status in startup logs
+    try:
+        from db.connection import health_check as _db_health
+        _dbh = _db_health()
+        if _dbh.get("ok"):
+            print("🗄️  Positioning DB (Neon): connected")
+        else:
+            print(f"🗄️  Positioning DB (Neon): NOT connected — {_dbh.get('reason')}")
+    except ImportError:
+        print("🗄️  Positioning DB: db module not present (skipping)")
+    except Exception as _e:
+        print(f"🗄️  Positioning DB: boot check error — {_e}")
     asyncio.create_task(_start_prefetch_loop())
     asyncio.create_task(_ws_broadcast_loop())
     print("🔌 WebSocket + background prefetch scheduled")
@@ -3787,6 +3800,16 @@ async def home():
 
 @app.get("/health")
 async def health():
+    # r63.71: Optional DB health (lazy-imported; safe if module/env missing)
+    db_status = {"ok": False, "reason": "not_checked"}
+    try:
+        from db.connection import health_check as _db_health
+        db_status = _db_health()
+    except ImportError:
+        db_status = {"ok": False, "reason": "db module not installed"}
+    except Exception as e:
+        db_status = {"ok": False, "reason": f"check error: {e}"}
+
     return {
         "status": "healthy",
         "reports_generated": report_counter["count"],
@@ -3798,7 +3821,8 @@ async def health():
         "stock_cache_entries": len(stock_data_cache),
         "ai_report_cache_entries": len(_ai_report_cache),
         "stock_cache_tickers": list(stock_data_cache.keys()),
-        "cache_expiry_minutes": CACHE_EXPIRY_MINUTES
+        "cache_expiry_minutes": CACHE_EXPIRY_MINUTES,
+        "positioning_db": db_status,        # r63.71
     }
 
 

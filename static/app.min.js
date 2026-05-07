@@ -26234,43 +26234,66 @@ function _csR6322RenderForward(d) {
   
   var bull = t.bull || []; var base = t.base || []; var bear = t.bear || [];
   if (bull.length === 6 && base.length === 6 && bear.length === 6) {
-    var allVals = bull.concat(base).concat(bear);
-    var minP = Math.min.apply(null, allVals) * 0.95;
-    var maxP = Math.max.apply(null, allVals) * 1.02;
+    /* r63.70: rebuilt SVG — proportioned viewBox, real font sizes, labels inside SVG */
+    var allVals = bull.concat(base).concat(bear).concat([spot]);
+    var minP = Math.min.apply(null, allVals) * 0.96;
+    var maxP = Math.max.apply(null, allVals) * 1.04;
     var rng = maxP - minP || 1;
-    function yPos(v) { return 80 - ((v - minP) / rng * 80); }
+    var CL = 60, CR = 690, CT = 20, CB = 180;        /* chart area: 60→690 (w=630) × 20→180 (h=160) */
+    var CW = CR - CL, CH = CB - CT;
+    function xPos(i) { return CL + (i / 5) * CW; }
+    function yPos(v) { return CB - ((v - minP) / rng) * CH; }
     function buildPath(arr) {
-      return arr.map(function(v, i) { return (i === 0 ? 'M' : 'L') + (i * 16) + ' ' + yPos(v).toFixed(1); }).join(' ');
+      return arr.map(function(v, i) { return (i === 0 ? 'M' : 'L') + xPos(i).toFixed(1) + ' ' + yPos(v).toFixed(1); }).join(' ');
     }
-    var bullPath = buildPath(bull);
-    var basePath = buildPath(base);
-    var bearPath = buildPath(bear);
+    /* Anti-collision: nudge endpoint labels apart if they would overlap (~14px min spacing) */
+    var endPts = [
+      {v: bull[5], y: yPos(bull[5]), c: '#10b981', l: 'Bull'},
+      {v: base[5], y: yPos(base[5]), c: '#1A3A78', l: 'Base'},
+      {v: bear[5], y: yPos(bear[5]), c: '#dc2626', l: 'Bear'}
+    ].sort(function(a, b) { return a.y - b.y; });
+    var MIN_SPACING = 14;
+    for (var li = 1; li < endPts.length; li++) {
+      if (endPts[li].y - endPts[li - 1].y < MIN_SPACING) {
+        endPts[li].y = endPts[li - 1].y + MIN_SPACING;
+      }
+    }
     
     html += '<div style="background:#f8fafc;border-radius:8px;padding:14px;margin-bottom:14px">';
-    html += '<svg viewBox="0 0 110 100" preserveAspectRatio="none" style="width:100%;height:160px;display:block">';
-    for (var i = 0; i <= 4; i++) {
-      var y = i * 20;
-      html += '<line x1="0" y1="' + y + '" x2="80" y2="' + y + '" stroke="#e2e8f0" stroke-width="0.2"/>';
+    html += '<svg viewBox="0 0 800 220" style="width:100%;height:220px;display:block;font-family:Inter,sans-serif">';
+    /* Y-axis grid + tick labels */
+    for (var gi = 0; gi <= 4; gi++) {
+      var gy = (CT + (gi / 4) * CH).toFixed(1);
+      var gv = maxP - (gi / 4) * rng;
+      html += '<line x1="' + CL + '" y1="' + gy + '" x2="' + CR + '" y2="' + gy + '" stroke="#e2e8f0" stroke-width="1"/>';
+      html += '<text x="' + (CL - 6) + '" y="' + (parseFloat(gy) + 3).toFixed(1) + '" text-anchor="end" font-size="10" fill="#94a3b8" font-family="IBM Plex Mono,monospace">$' + gv.toFixed(0) + '</text>';
     }
-    html += '<path d="' + bearPath + '" stroke="#dc2626" stroke-width="0.8" fill="none"/>';
-    html += '<path d="' + basePath + '" stroke="#1A3A78" stroke-width="1.0" fill="none"/>';
-    html += '<path d="' + bullPath + '" stroke="#10b981" stroke-width="0.8" fill="none"/>';
-    html += '<circle cx="80" cy="' + yPos(bull[5]).toFixed(1) + '" r="1.6" fill="#10b981"/>';
-    html += '<circle cx="80" cy="' + yPos(base[5]).toFixed(1) + '" r="1.6" fill="#1A3A78"/>';
-    html += '<circle cx="80" cy="' + yPos(bear[5]).toFixed(1) + '" r="1.6" fill="#dc2626"/>';
-    html += '<circle cx="0" cy="' + yPos(spot).toFixed(1) + '" r="1.8" fill="#0f172a"/>';
-    html += '<text x="82" y="' + (yPos(bull[5]) + 1).toFixed(1) + '" font-family="IBM Plex Mono,monospace" font-size="3" fill="#10b981" font-weight="700">$' + bull[5].toFixed(0) + '</text>';
-    html += '<text x="82" y="' + (yPos(base[5]) + 1).toFixed(1) + '" font-family="IBM Plex Mono,monospace" font-size="3" fill="#1A3A78" font-weight="700">$' + base[5].toFixed(0) + '</text>';
-    html += '<text x="82" y="' + (yPos(bear[5]) + 1).toFixed(1) + '" font-family="IBM Plex Mono,monospace" font-size="3" fill="#dc2626" font-weight="700">$' + bear[5].toFixed(0) + '</text>';
+    /* X-axis year labels */
+    ['Now','1Y','2Y','3Y','4Y','5Y'].forEach(function(lbl, i) {
+      html += '<text x="' + xPos(i).toFixed(1) + '" y="' + (CB + 16) + '" text-anchor="middle" font-size="10" fill="#94a3b8" font-family="IBM Plex Mono,monospace" letter-spacing="0.5">' + lbl + '</text>';
+    });
+    /* Trajectory paths */
+    html += '<path d="' + buildPath(bear) + '" stroke="#dc2626" stroke-width="2" fill="none" stroke-linejoin="round" stroke-linecap="round"/>';
+    html += '<path d="' + buildPath(base) + '" stroke="#1A3A78" stroke-width="2.5" fill="none" stroke-linejoin="round" stroke-linecap="round"/>';
+    html += '<path d="' + buildPath(bull) + '" stroke="#10b981" stroke-width="2" fill="none" stroke-linejoin="round" stroke-linecap="round"/>';
+    /* Spot marker (left) */
+    html += '<circle cx="' + CL + '" cy="' + yPos(spot).toFixed(1) + '" r="4.5" fill="#0f172a"/>';
+    html += '<circle cx="' + CL + '" cy="' + yPos(spot).toFixed(1) + '" r="2" fill="#fff"/>';
+    /* Endpoint markers (right) — drawn at true y, labels at adjusted y */
+    html += '<circle cx="' + CR + '" cy="' + yPos(bull[5]).toFixed(1) + '" r="4" fill="#10b981"/>';
+    html += '<circle cx="' + CR + '" cy="' + yPos(base[5]).toFixed(1) + '" r="4" fill="#1A3A78"/>';
+    html += '<circle cx="' + CR + '" cy="' + yPos(bear[5]).toFixed(1) + '" r="4" fill="#dc2626"/>';
+    /* Endpoint value labels with collision-adjusted y */
+    endPts.forEach(function(p) {
+      html += '<text x="' + (CR + 10) + '" y="' + (p.y + 4).toFixed(1) + '" font-size="13" fill="' + p.c + '" font-weight="700" font-family="IBM Plex Mono,monospace">$' + p.v.toFixed(0) + '</text>';
+    });
     html += '</svg>';
-    html += '<div style="display:flex;justify-content:space-between;font-family:\'IBM Plex Mono\',monospace;font-size:9px;color:#94a3b8;letter-spacing:0.5px;margin-top:6px;padding-right:24%">';
-    ['Now','1Y','2Y','3Y','4Y','5Y'].forEach(function(lbl) { html += '<span>' + lbl + '</span>'; });
-    html += '</div>';
-    html += '<div style="display:flex;gap:12px;justify-content:center;margin-top:8px;font-size:10px;color:#475569">';
-    html += '<span style="display:inline-flex;align-items:center;gap:4px"><span style="display:inline-block;width:18px;height:2px;background:#10b981"></span>Bull</span>';
-    html += '<span style="display:inline-flex;align-items:center;gap:4px"><span style="display:inline-block;width:18px;height:2px;background:#1A3A78"></span>Base</span>';
-    html += '<span style="display:inline-flex;align-items:center;gap:4px"><span style="display:inline-block;width:18px;height:2px;background:#dc2626"></span>Bear</span>';
-    html += '<span style="display:inline-flex;align-items:center;gap:4px"><span style="display:inline-block;width:8px;height:8px;background:#0f172a;border-radius:50%"></span>Spot $' + spot.toFixed(2) + '</span>';
+    /* Legend */
+    html += '<div style="display:flex;gap:14px;justify-content:center;margin-top:6px;font-size:11px;color:#475569;font-family:Inter,sans-serif;flex-wrap:wrap">';
+    html += '<span style="display:inline-flex;align-items:center;gap:5px"><span style="display:inline-block;width:18px;height:2px;background:#10b981"></span>Bull</span>';
+    html += '<span style="display:inline-flex;align-items:center;gap:5px"><span style="display:inline-block;width:18px;height:2px;background:#1A3A78"></span>Base</span>';
+    html += '<span style="display:inline-flex;align-items:center;gap:5px"><span style="display:inline-block;width:18px;height:2px;background:#dc2626"></span>Bear</span>';
+    html += '<span style="display:inline-flex;align-items:center;gap:5px"><span style="display:inline-block;width:8px;height:8px;background:#0f172a;border-radius:50%"></span>Spot $' + spot.toFixed(2) + '</span>';
     html += '</div>';
     html += '</div>';
   }
