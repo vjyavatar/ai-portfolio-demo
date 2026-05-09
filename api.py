@@ -3798,6 +3798,56 @@ async def home():
                 <p>HTML file not found.</p></body></html>"""
 
 
+# r63.72: Institutional Positioning Scanner
+@app.get("/api/positioning-scan")
+async def positioning_scan(
+    tier: int = -1,
+    limit: int = 50,
+    min_filer_count: int = 50,
+):
+    """
+    Returns ranked institutional positioning scores for the universe.
+
+    Query params:
+        tier            optional 1/2/3 filter (default -1 = no filter)
+        limit           max results (default 50)
+        min_filer_count minimum filer count to include (default 50 — drops
+                        thinly-held names that are noise)
+    """
+    try:
+        from db.connection import get_conn
+        from services.positioning_scoring import score_universe, score_to_dict
+    except ImportError as e:
+        return {"success": False, "error": f"positioning module not available: {e}"}
+
+    try:
+        with get_conn() as conn:
+            scores = score_universe(conn)
+    except Exception as e:
+        return {"success": False, "error": f"scoring failed: {e}"}
+
+    # Apply filters
+    filtered = [s for s in scores if s.latest_filer_count >= min_filer_count]
+    if tier in (1, 2, 3):
+        filtered = [s for s in filtered if s.tier == tier]
+    if limit > 0:
+        filtered = filtered[:limit]
+
+    # Tier counts (across all results, not just filtered)
+    tier_counts = {
+        "tier_1": sum(1 for s in scores if s.tier == 1),
+        "tier_2": sum(1 for s in scores if s.tier == 2),
+        "tier_3": sum(1 for s in scores if s.tier == 3),
+    }
+
+    return {
+        "success": True,
+        "universe_size": len(scores),
+        "tier_counts": tier_counts,
+        "results": [score_to_dict(s) for s in filtered],
+    }
+
+
 @app.get("/health")
 async def health():
     # r63.71: Optional DB health (lazy-imported; safe if module/env missing)

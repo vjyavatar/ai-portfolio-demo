@@ -23,6 +23,25 @@ _NS = {
 }
 
 
+def _local_name(elem) -> str:
+    """
+    r63.71.4: Safely extract the localname of an element's tag.
+
+    Returns "" for XML comments, processing instructions, and any
+    other non-element node where `tag` is not a string. This prevents
+    `etree.QName()` from raising "Invalid tag name '<cyfunction Comment ...>'"
+    when iterating a tree that contains comments embedded by filer
+    software.
+    """
+    tag = getattr(elem, "tag", None)
+    if not isinstance(tag, str):
+        return ""
+    try:
+        return etree.QName(tag).localname or ""
+    except (ValueError, TypeError):
+        return ""
+
+
 @dataclass
 class ParsedHolding:
     """One row from a 13F information table, normalized."""
@@ -50,7 +69,7 @@ def _txt(elem, tag: str) -> str:
         return found.text.strip()
     # Local-name-based fallback (handles unexpected namespaces)
     for child in elem.iter():
-        if etree.QName(child.tag).localname == tag and child.text:
+        if _local_name(child) == tag and child.text:
             return child.text.strip()
     return ""
 
@@ -70,13 +89,16 @@ def parse_information_table(xml_bytes: bytes) -> List[ParsedHolding]:
         root = etree.fromstring(xml_bytes, parser=parser)
     except Exception:
         return []
+    if root is None:
+        # r63.71.4: lxml's recover=True can return None for unparseable input
+        return []
 
     holdings: List[ParsedHolding] = []
 
     # Find all infoTable elements (any namespace)
     info_tables = []
     for elem in root.iter():
-        if etree.QName(elem.tag).localname == "infoTable":
+        if _local_name(elem) == "infoTable":
             info_tables.append(elem)
 
     for it in info_tables:
@@ -102,7 +124,7 @@ def parse_information_table(xml_bytes: bytes) -> List[ParsedHolding]:
             # Shares: nested under <shrsOrPrnAmt><sshPrnamt>
             shares_str = ""
             for child in it.iter():
-                if etree.QName(child.tag).localname == "sshPrnamt" and child.text:
+                if _local_name(child) == "sshPrnamt" and child.text:
                     shares_str = child.text.strip()
                     break
             shares = None
@@ -135,3 +157,44 @@ def total_value_and_count(holdings: List[ParsedHolding]) -> tuple:
     """Aggregate stats for filings table denormalization."""
     total = sum(h.value_usd for h in holdings)
     return total, len(holdings)
+
+
+def parse_period_of_report(primary_doc_xml: bytes):
+    """
+    r63.71.5: Extract the actual periodOfReport from a 13F cover page.
+
+    The cover page (primary_doc.xml) contains the authoritative
+    period date in <periodOfReport>YYYY-MM-DD</periodOfReport>. This
+    is the only reliable source — filing dates and form-type heuristics
+    miss amendments and late filings.
+
+    Returns a `datetime.date` or None if not parseable.
+    """
+    if not primary_doc_xml:
+        return None
+    try:
+        parser = etree.XMLParser(recover=True, huge_tree=True)
+        root = etree.fromstring(primary_doc_xml, parser=parser)
+    except Exception:
+        return None
+    if root is None:
+        return None
+
+    # Find <periodOfReport> regardless of namespace
+    raw = ""
+    for elem in root.iter():
+        if _local_name(elem) == "periodOfReport" and elem.text:
+            raw = elem.text.strip()
+            break
+    if not raw:
+        return None
+
+    # Format is typically "MM-DD-YYYY" in 13F cover pages — but some filers
+    # use "YYYY-MM-DD". Try both.
+    from datetime import datetime
+    for fmt in ("%m-%d-%Y", "%Y-%m-%d", "%m/%d/%Y", "%Y/%m/%d"):
+        try:
+            return datetime.strptime(raw, fmt).date()
+        except ValueError:
+            continue
+    return None

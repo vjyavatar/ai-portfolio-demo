@@ -53,7 +53,7 @@ CREATE TABLE IF NOT EXISTS holdings (
     id                  BIGSERIAL PRIMARY KEY,
     filing_id           BIGINT NOT NULL REFERENCES filings(id) ON DELETE CASCADE,
     cusip               VARCHAR(9) NOT NULL,           -- Always present in 13F
-    ticker              VARCHAR(10),                   -- NULL until resolved via FIGI / overrides
+    ticker              VARCHAR(20),                   -- NULL until resolved via FIGI / overrides
     issuer_name         TEXT,                          -- "nameOfIssuer" from filing
     title_of_class      TEXT,                          -- "COM", "CL A", "PUT", "CALL", etc.
     value_usd           BIGINT NOT NULL,               -- Position value in USD (already × 1000)
@@ -74,7 +74,7 @@ CREATE INDEX IF NOT EXISTS idx_holdings_filing ON holdings (filing_id);
 -- ═══════════════════════════════════════════════════════════════════════
 CREATE TABLE IF NOT EXISTS cusip_ticker_map (
     cusip           VARCHAR(9) PRIMARY KEY,
-    ticker          VARCHAR(10),                       -- NULL = no FIGI match (e.g. delisted, foreign)
+    ticker          VARCHAR(20),                       -- NULL = no FIGI match (e.g. delisted, foreign)
     figi            VARCHAR(12),                       -- Bloomberg FIGI identifier
     name            TEXT,
     exchange        VARCHAR(20),                       -- "US", "UN" (NYSE), "UW" (NASDAQ), etc.
@@ -93,7 +93,7 @@ CREATE INDEX IF NOT EXISTS idx_cusip_map_ticker ON cusip_ticker_map (ticker) WHE
 -- ═══════════════════════════════════════════════════════════════════════
 CREATE TABLE IF NOT EXISTS mapping_overrides (
     cusip           VARCHAR(9) PRIMARY KEY,
-    ticker          VARCHAR(10) NOT NULL,
+    ticker          VARCHAR(20) NOT NULL,
     notes           TEXT,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     created_by      TEXT

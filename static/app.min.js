@@ -2532,7 +2532,7 @@ try{if(window._stockData)createCharts(window._stockData)}catch(e){console.warn('
 var TAB_GROUPS = {
   overview: {tabs: ['quick'], labels: ['Summary'], default: 'quick'},
   research: {tabs: ['analysis','dcf','equity','compare'], labels: ['AI Analysis','DCF Valuation','Research','Compare'], default: 'analysis'},
-  decide:   {tabs: ['decision','toptrades','topinvest','deepdd','mchunter','intraday','proscan','reports','pms'], labels: ['Analyze Stock','Top Trades','Top Investments','🔬 Deep DD','🎯 Micro-Cap Hunter','⚡ Intraday Setups','🔬 Pro Scan','📊 Reports','📊 PMS'], default: 'decision'},
+  decide:   {tabs: ['decision','toptrades','topinvest','deepdd','mchunter','intraday','positioning','proscan','reports','pms'], labels: ['Analyze Stock','Top Trades','Top Investments','🔬 Deep DD','🎯 Micro-Cap Hunter','⚡ Intraday Setups','🔥 Positioning','🔬 Pro Scan','📊 Reports','📊 PMS'], default: 'decision'},
   dream:    {tabs: ['dreamportfolio','multibagger','momentumradar','highprob','optionspulse','tradeticket','microcap'], labels: ['🌟 Dream Portfolio','🔥 Multibagger Hunter','⚡ Momentum Radar','🎯 High-Prob Setups','⚡ Options Pulse','🎫 Trade Ticket','🏆 Micro-Cap Challenge'], default: 'dreamportfolio'},
   trading:  {tabs: ['trades','smarttrades','stockintel','scanner','valreport','backtest','journal','aiassist'], labels: ['Algo Trades','Smart Trades','Stock Intel','Scanner','Valuation','Backtest','Journal','AI Assistant'], default: 'trades'},
   markets:  {tabs: ['indices','daily','newsimpact','assets'], labels: ['Top Performers','Market Daily','📰 News Impact','Global Assets'], default: 'indices'},
@@ -2729,7 +2729,7 @@ if(_cc&&tab!=='quick')_cc.style.display='none';
 
 
 // btnMap
-const btnMap={quick:'tabBtnOverview',analysis:'tabBtnResearch',dcf:'tabBtnResearch',equity:'tabBtnResearch',compare:'tabBtnTools',indices:'tabBtnMarkets',finance:'tabBtnTools',daily:'tabBtnMarkets',assets:'tabBtnMarkets',decision:'tabBtnDecide',toptrades:'tabBtnDecide',topinvest:'tabBtnDecide',reports:'tabBtnDecide',proscan:'tabBtnDecide',pms:'tabBtnDecide',deepdd:'tabBtnDecide',mchunter:'tabBtnDecide',intraday:'tabBtnDecide',dreamportfolio:'tabBtnDream',multibagger:'tabBtnDream',momentumradar:'tabBtnDream',highprob:'tabBtnDream',optionspulse:'tabBtnDream',tradeticket:'tabBtnDream',microcap:'tabBtnDream',trades:'tabBtnTrading',stockintel:'tabBtnTrading',scanner:'tabBtnTrading',valreport:'tabBtnTrading',backtest:'tabBtnTrading',smarttrades:'tabBtnTrading',journal:'tabBtnTrading',aiassist:'tabBtnTrading',education:'tabBtnTools',gems:'tabBtnOverview',picks:'tabBtnOverview',funds:'tabBtnTools'};
+const btnMap={quick:'tabBtnOverview',analysis:'tabBtnResearch',dcf:'tabBtnResearch',equity:'tabBtnResearch',compare:'tabBtnTools',indices:'tabBtnMarkets',finance:'tabBtnTools',daily:'tabBtnMarkets',assets:'tabBtnMarkets',decision:'tabBtnDecide',toptrades:'tabBtnDecide',topinvest:'tabBtnDecide',reports:'tabBtnDecide',proscan:'tabBtnDecide',pms:'tabBtnDecide',deepdd:'tabBtnDecide',mchunter:'tabBtnDecide',intraday:'tabBtnDecide',positioning:'tabBtnDecide',dreamportfolio:'tabBtnDream',multibagger:'tabBtnDream',momentumradar:'tabBtnDream',highprob:'tabBtnDream',optionspulse:'tabBtnDream',tradeticket:'tabBtnDream',microcap:'tabBtnDream',trades:'tabBtnTrading',stockintel:'tabBtnTrading',scanner:'tabBtnTrading',valreport:'tabBtnTrading',backtest:'tabBtnTrading',smarttrades:'tabBtnTrading',journal:'tabBtnTrading',aiassist:'tabBtnTrading',education:'tabBtnTools',gems:'tabBtnOverview',picks:'tabBtnOverview',funds:'tabBtnTools'};
 
 // Hide all
 document.querySelectorAll('.sc[data-tab]').forEach(s=>{s.style.display='none';s.style.opacity='';s.style.transform='';s.style.animation=''});
@@ -2756,7 +2756,7 @@ b.style.background='var(--blue)';b.style.color='#fff';b.style.borderColor='var(-
 // 2) Show matching tab content (sections + inline data-tab elements)
 // dreamportfolio and multibagger render into the decision section's deResult
 var _showTab = tab;
-if(tab==='dreamportfolio'||tab==='multibagger'||tab==='momentumradar'||tab==='highprob'||tab==='optionspulse'||tab==='tradeticket'||tab==='microcap'||tab==='deepdd'||tab==='pms'||tab==='mchunter'||tab==='intraday') _showTab='decision';
+if(tab==='dreamportfolio'||tab==='multibagger'||tab==='momentumradar'||tab==='highprob'||tab==='optionspulse'||tab==='tradeticket'||tab==='microcap'||tab==='deepdd'||tab==='pms'||tab==='mchunter'||tab==='intraday'||tab==='positioning') _showTab='decision';
 // Show tab sections with animation
 document.querySelectorAll('.sc[data-tab="'+_showTab+'"]').forEach(function(s,idx){
 if(_showTab==='quick' && s.dataset.subtab) return;
@@ -3001,6 +3001,141 @@ if(typeof loadTradeTicket==='function')setTimeout(loadTradeTicket,100);
 // ═══════════════════════════════════════════════════════════════════
 window._activeMicroCapHunterTab = false;
 
+// r63.72: Institutional Positioning Scanner — loader
+window._positioningCache = null;
+window.loadPositioningScanner = function(forceTier) {
+  var deResult = document.getElementById('deResult');
+  if (!deResult) return;
+
+  var activeTier = (typeof forceTier === 'number') ? forceTier : (window._positioningTier || 0);
+  window._positioningTier = activeTier;
+
+  // Loading state
+  if (!window._positioningCache) {
+    deResult.innerHTML = '<div style="padding:60px 20px;text-align:center;font-family:Inter,sans-serif">' +
+      '<div style="font-size:32px;margin-bottom:14px">⏳</div>' +
+      '<div style="font-size:14px;font-weight:700;color:#0f172a">Computing institutional positioning scores...</div>' +
+      '<div style="font-size:11px;color:#94a3b8;margin-top:8px">Querying ' +
+      'all institutional holdings across the universe — typically 2–5 seconds.</div>' +
+      '</div>';
+  }
+
+  var url = '/api/positioning-scan?limit=50&min_filer_count=50';
+  if (activeTier > 0) url += '&tier=' + activeTier;
+
+  fetch(url)
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      if (!d.success) {
+        deResult.innerHTML = '<div style="padding:60px 20px;text-align:center;color:#dc2626;font-family:Inter,sans-serif">' +
+          '<div style="font-size:32px;margin-bottom:14px">⚠️</div>' +
+          '<div style="font-size:14px;font-weight:700">Scoring failed</div>' +
+          '<div style="font-size:11px;margin-top:8px;color:#94a3b8">' + (d.error || 'unknown') + '</div>' +
+          '</div>';
+        return;
+      }
+      window._positioningCache = d;
+      _renderPositioningPage(d, activeTier);
+    })
+    .catch(function(e) {
+      deResult.innerHTML = '<div style="padding:60px 20px;text-align:center;color:#dc2626;font-family:Inter,sans-serif">' +
+        '<div style="font-size:32px;margin-bottom:14px">⚠️</div>' +
+        '<div style="font-size:14px;font-weight:700">Network error</div>' +
+        '<div style="font-size:11px;margin-top:8px">' + e.message + '</div>' +
+        '</div>';
+    });
+};
+
+function _renderPositioningPage(d, activeTier) {
+  var deResult = document.getElementById('deResult');
+  if (!deResult) return;
+
+  var h = '';
+
+  // Header card
+  h += '<div style="background:linear-gradient(135deg,#1A3A78,#2563eb);color:#fff;padding:20px 24px;border-radius:12px;margin-bottom:16px;font-family:Inter,sans-serif">';
+  h += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">';
+  h += '<span style="font-size:24px">🔥</span>';
+  h += '<h2 style="margin:0;font-size:18px;font-weight:800;font-family:Sora,sans-serif;letter-spacing:-0.3px">Institutional Positioning Scanner</h2>';
+  h += '</div>';
+  h += '<div style="font-size:12px;opacity:0.9">Smart-money positioning intelligence derived from SEC 13F filings · ' +
+       d.universe_size + ' tickers scored · Tier 1: ' + d.tier_counts.tier_1 +
+       ' · Tier 2: ' + d.tier_counts.tier_2 + ' · Tier 3: ' + d.tier_counts.tier_3 + '</div>';
+  h += '</div>';
+
+  // Tier filter pills
+  h += '<div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">';
+  var tiers = [
+    {n: 0, label: 'All Tiers', count: d.universe_size},
+    {n: 1, label: '🥷 Stealth Accumulation', count: d.tier_counts.tier_1, color: '#10b981'},
+    {n: 2, label: '🔥 Early Positioning',    count: d.tier_counts.tier_2, color: '#3b82f6'},
+    {n: 3, label: '🟡 Building',              count: d.tier_counts.tier_3, color: '#f59e0b'}
+  ];
+  tiers.forEach(function(t) {
+    var isActive = activeTier === t.n;
+    var bg = isActive ? (t.color || '#1A3A78') : 'transparent';
+    var fg = isActive ? '#fff' : '#374151';
+    var bd = isActive ? (t.color || '#1A3A78') : '#cbd5e1';
+    h += '<button onclick="loadPositioningScanner(' + t.n + ')" style="padding:6px 14px;border-radius:18px;font-size:11px;font-weight:700;border:1px solid ' + bd + ';background:' + bg + ';color:' + fg + ';cursor:pointer;font-family:Inter,sans-serif">' +
+         t.label + ' (' + t.count + ')' + '</button>';
+  });
+  h += '</div>';
+
+  // Refresh button
+  h += '<div style="display:flex;justify-content:flex-end;margin-bottom:8px">';
+  h += '<button onclick="window._positioningCache=null;loadPositioningScanner(' + activeTier + ')" style="padding:5px 12px;border-radius:6px;background:#fff;border:1px solid #cbd5e1;font-size:10px;font-weight:700;color:#374151;cursor:pointer;font-family:Inter,sans-serif">↻ Refresh</button>';
+  h += '</div>';
+
+  // Results table
+  if (!d.results || d.results.length === 0) {
+    h += '<div style="padding:60px 20px;text-align:center;color:#94a3b8;font-family:Inter,sans-serif">' +
+         '<div style="font-size:32px;margin-bottom:14px">📊</div>' +
+         '<div style="font-size:13px">No tickers match the current filter.</div>' +
+         '</div>';
+  } else {
+    h += '<div style="background:#fff;border-radius:10px;overflow:hidden;border:1px solid #e2e8f0;font-family:Inter,sans-serif">';
+    h += '<table style="width:100%;border-collapse:collapse;font-size:11px">';
+    h += '<thead><tr style="background:#f8fafc;text-align:left;font-family:Sora,sans-serif">' +
+         '<th style="padding:10px 12px;font-size:9px;letter-spacing:0.6px;color:#64748b;font-weight:800">RANK</th>' +
+         '<th style="padding:10px 12px;font-size:9px;letter-spacing:0.6px;color:#64748b;font-weight:800">TIER</th>' +
+         '<th style="padding:10px 12px;font-size:9px;letter-spacing:0.6px;color:#64748b;font-weight:800">TICKER</th>' +
+         '<th style="padding:10px 12px;font-size:9px;letter-spacing:0.6px;color:#64748b;font-weight:800">ISSUER</th>' +
+         '<th style="padding:10px 12px;font-size:9px;letter-spacing:0.6px;color:#64748b;font-weight:800;text-align:right">SCORE</th>' +
+         '<th style="padding:10px 12px;font-size:9px;letter-spacing:0.6px;color:#64748b;font-weight:800;text-align:right">SHARE Δ</th>' +
+         '<th style="padding:10px 12px;font-size:9px;letter-spacing:0.6px;color:#64748b;font-weight:800;text-align:right">FILERS Δ</th>' +
+         '<th style="padding:10px 12px;font-size:9px;letter-spacing:0.6px;color:#64748b;font-weight:800;text-align:right">PERSIST</th>' +
+         '<th style="padding:10px 12px;font-size:9px;letter-spacing:0.6px;color:#64748b;font-weight:800">SIGNALS</th>' +
+         '</tr></thead><tbody>';
+    d.results.forEach(function(r, i) {
+      var tierColor = r.tier === 1 ? '#10b981' : (r.tier === 2 ? '#3b82f6' : (r.tier === 3 ? '#f59e0b' : '#94a3b8'));
+      var tierBadge = r.tier > 0 ? ('<span style="display:inline-block;padding:2px 7px;border-radius:10px;background:' + tierColor + ';color:#fff;font-size:9px;font-weight:800;font-family:Sora,sans-serif">T' + r.tier + '</span>') : '<span style="color:#cbd5e1">—</span>';
+      var shareColor = r.share_delta_pct > 0 ? '#10b981' : (r.share_delta_pct < 0 ? '#dc2626' : '#64748b');
+      var filerColor = r.filer_count_delta > 0 ? '#10b981' : (r.filer_count_delta < 0 ? '#dc2626' : '#64748b');
+      var sigStr = (r.top_signals || []).slice(0, 2).join(' · ');
+
+      h += '<tr style="border-top:1px solid #f1f5f9;cursor:pointer" onmouseover="this.style.background=\'#fafbfc\'" onmouseout="this.style.background=\'\'" onclick="document.getElementById(\'symbolInput\').value=\'' + r.ticker + '\';if(typeof onSubmit===\'function\')onSubmit(new Event(\'submit\'));switchTab(\'quick\');">';
+      h += '<td style="padding:10px 12px;color:#94a3b8;font-family:IBM Plex Mono,monospace">' + (i + 1) + '</td>';
+      h += '<td style="padding:10px 12px">' + tierBadge + '</td>';
+      h += '<td style="padding:10px 12px;font-weight:800;color:#0f172a;font-family:IBM Plex Mono,monospace">' + r.ticker + '</td>';
+      h += '<td style="padding:10px 12px;color:#475569;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + (r.issuer_name || '') + '</td>';
+      h += '<td style="padding:10px 12px;text-align:right;font-weight:800;color:' + tierColor + ';font-family:IBM Plex Mono,monospace">' + r.composite_score.toFixed(1) + '</td>';
+      h += '<td style="padding:10px 12px;text-align:right;color:' + shareColor + ';font-family:IBM Plex Mono,monospace;font-weight:700">' + (r.share_delta_pct >= 0 ? '+' : '') + r.share_delta_pct.toFixed(1) + '%</td>';
+      h += '<td style="padding:10px 12px;text-align:right;color:' + filerColor + ';font-family:IBM Plex Mono,monospace;font-weight:700">' + (r.filer_count_delta >= 0 ? '+' : '') + r.filer_count_delta + '</td>';
+      h += '<td style="padding:10px 12px;text-align:right;color:#475569;font-family:IBM Plex Mono,monospace">' + r.persistence_quarters + 'Q</td>';
+      h += '<td style="padding:10px 12px;color:#64748b;font-size:10px">' + sigStr + '</td>';
+      h += '</tr>';
+    });
+    h += '</tbody></table></div>';
+  }
+
+  // Footer
+  h += '<div style="padding:16px 4px;font-size:10px;color:#94a3b8;font-family:Inter,sans-serif;line-height:1.5">';
+  h += '<strong>How this works:</strong> Composite score combines Q-over-Q share-count delta (35%), value delta (20%), filer-count delta (25%), persistence (15%), and concentration (-5%). All metrics z-score normalized across the scored universe. Tier thresholds: Tier 1 ≥ 80th percentile, Tier 2 ≥ 60th, Tier 3 ≥ 40th. Click any row to deep-dive that ticker.';
+  h += '</div>';
+
+  deResult.innerHTML = h;
+}
+
 window.loadMicroCapHunter = function(forceReg) {
   if (!window._activeMicroCapHunterTab) return;
   var el = document.getElementById('deResult');
@@ -3216,6 +3351,12 @@ if(tab==='intraday'){
   if(!window._isDreamUser){var _is0=document.getElementById('deResult');if(_is0)_is0.innerHTML='<div style="padding:60px 20px;text-align:center"><div style="font-size:48px;margin-bottom:12px">🔒</div><div style="font-size:18px;font-weight:900;color:var(--text);font-family:Sora,sans-serif">Premium Feature</div><div style="font-size:12px;color:var(--text3);margin-top:8px">Intraday Setups is exclusive. Contact support for access.</div></div>';return;}
   window._activeIntradaySetupsTab=true;
   if(typeof loadIntradaySetups==='function')setTimeout(loadIntradaySetups,100);
+  return;
+}
+// r63.72: Institutional Positioning Scanner
+if(tab==='positioning'){
+  window._activePositioningTab=true;
+  if(typeof loadPositioningScanner==='function')setTimeout(loadPositioningScanner,100);
   return;
 }
 // r62.0: Micro-Cap Hunter tab

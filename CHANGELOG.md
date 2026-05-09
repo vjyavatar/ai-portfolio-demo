@@ -4,6 +4,491 @@ Most recent at top. Sub-versions cumulative — each one builds on the previous.
 
 ---
 
+## r63.72 — Institutional Positioning Scanner (data layer + UI ship)
+
+**Built:** 2026-05-09 · Cumulative on r63.71.5
+
+End-to-end shippable: targeted multi-quarter ingestion + scoring
+engine + Decide-tab UI + API endpoint. The full institutional
+positioning scanner ships in this revision.
+
+**New: targeted ingest via data.sec.gov submissions API
+(`tools/targeted_backfill.py`)**
+
+Replaces the calendar-quarter index crawl that kept breaking
+mid-overnight (DNS drops, period-snapping bugs). New approach:
+deterministic per-CIK fetch of `data.sec.gov/submissions/CIK{padded}.json`,
+which returns the filer's full filing history. We pick the last 8
+13F-HR filings per filer and ingest each. Bounded: top 100 filers ×
+≤8 quarters = ≤800 work units. Wall time ~1 hour.
+
+Why this works where the index crawl didn't:
+- `data.sec.gov` is a different host than `www.sec.gov` (separate
+  CDN; uncorrelated DNS failures)
+- Per-filer JSON includes `reportDate` directly — no fragile
+  cover-page fetch + heuristic snap
+- Bounded request count means predictable wall time and trivial
+  resume on partial failures
+
+**New: scoring engine (`services/positioning_scoring.py`)**
+
+Pure-Python read-only module. Queries `holdings`/`filings` live —
+no scoring snapshot tables, no caches. For each ticker:
+
+1. Build per-quarter aggregates (filer count, total value, total
+   shares, top-10 concentration)
+2. Compute Q-over-Q value delta, share delta (clean of price
+   effects), filer count delta
+3. Compute persistence (consecutive recent quarters of net
+   accumulation)
+4. Compute HHI on top-10 holders
+5. Z-score normalize each metric across the universe
+6. Composite score with weights: 35% share-delta, 20% value-delta,
+   25% filer-delta, 15% persistence, -5% concentration
+7. Percentile-rank composites → tier buckets (≥80th = Tier 1,
+   ≥60th = Tier 2, ≥40th = Tier 3)
+
+ETF and bond fund universe excluded (66 hardcoded tickers — SPY,
+AGG, QQQ, etc.) since they're parked-cash, not actionable
+positioning.
+
+**New: API endpoint `/api/positioning-scan`**
+
+`GET /api/positioning-scan?tier={1|2|3}&limit=50&min_filer_count=50`
+
+Returns JSON:
+```
+{
+  "success": true,
+  "universe_size": 320,
+  "tier_counts": {"tier_1": 28, "tier_2": 64, "tier_3": 96},
+  "results": [
+    {"ticker": "NVDA", "tier": 1, "composite_score": 87.5,
+     "share_delta_pct": 5.2, "filer_count_delta": 47, ...}
+  ]
+}
+```
+
+Lazy-imported — endpoint returns clean error if scoring module is
+missing rather than 500-ing.
+
+**New: Decide tab sub-tab `🔥 Positioning`**
+
+- Added to `decide.tabs` and `decide.labels` (between Intraday
+  Setups and Pro Scan)
+- New `loadPositioningScanner()` in `static/app.js` renders the
+  sub-tab into the existing `deResult` container
+- UI features:
+  - Tier filter pills (All / Tier 1 / Tier 2 / Tier 3) with live counts
+  - Ranked table: Rank, Tier badge, Ticker, Issuer, Score,
+    Share Δ%, Filers Δ, Persistence Qs, top 2 signals
+  - Click-to-deep-dive: clicking any row populates the symbol input
+    and switches to Stock tab for full analysis
+  - Loading + error states match the existing Decide-tab visual style
+- `app.min.js` mirrored from `app.js` (per existing build rule)
+
+**New: dryrun script (`tools/score_dryrun.py`)**
+
+Console-friendly local scoring runner. Use to validate ranking
+quality before relying on the UI:
+```
+python tools\\score_dryrun.py --top 25
+python tools\\score_dryrun.py --tier 1
+```
+
+**No DB schema changes. No new migrations.**
+
+**Files added:**
+- `services/positioning_scoring.py`
+- `tools/targeted_backfill.py`
+- `tools/score_dryrun.py`
+
+**Files modified:**
+- `api.py` — `/api/positioning-scan` endpoint added before `/health`
+- `static/app.js` — Decide sub-tab + `loadPositioningScanner()` loader
+- `static/app.min.js` — mirrored from app.js
+
+**Deploy sequence:**
+1. Push the zip to git → Render redeploys (3 min)
+2. Run targeted backfill once: `python tools\\targeted_backfill.py
+   --top-filers 100 --quarters 8` (1 hour)
+3. Verify: `python tools\\score_dryrun.py --top 25` shows
+   recognizable rankings
+4. Visit celesys.ai/ → Decide → 🔥 Positioning tab → see live data
+
+---
+
+## r63.71.5 — Storage cleanup + focused backfill (top 2,000 filers)
+
+**Built:** 2026-05-08 · Cumulative on r63.71.4
+
+The r63.71.4 backfill grew the DB to 482 MB / 512 MB Neon free-tier
+cap before stopping with `could not extend file because project size
+limit (512 MB) has been exceeded`. Worse, post-mortem revealed that
+the heuristic `_period_from_filing_date` snapped all 7,500+ filings
+to the same `2024-06-30` bucket — making Q-over-Q delta analysis
+impossible. Two issues, one revision.
+
+**Fix 1: Top-N-filers cleanup tool (`tools/cleanup_db.py`)**
+- Interactive script that identifies the top-N filers by aggregate
+  AUM from current `holdings` data, then deletes everything else
+- Default N = 2000 (covers ~95%+ of institutional capital, leaves
+  the long-tail noise of small RIAs out)
+- Pre-flight preview shows exact row counts that will be deleted
+  before asking for `y/N` confirmation
+- Runs deletion inside a transaction (rolls back on any error)
+- Trails with `VACUUM ANALYZE` so freed space starts releasing
+- Drops orphan CUSIPs from `cusip_ticker_map`
+
+**Fix 2: Real `periodOfReport` extraction**
+- New `fetch_primary_doc_xml()` in `services/edgar_client.py`
+  fetches the filing's cover page (the only place the authoritative
+  period date lives)
+- New `parse_period_of_report()` in `services/holdings_parser.py`
+  reads `<periodOfReport>` from the cover page; tolerant of namespace
+  variation, multiple date formats (`MM-DD-YYYY`, `YYYY-MM-DD`, slash
+  variants), and embedded XML comments
+- 7/7 unit tests pass: MM-DD-YYYY, YYYY-MM-DD, no period, garbage,
+  comments embedded, None, empty bytes
+- `tools/backfill_13f.py` now calls `fetch_primary_doc_xml +
+  parse_period_of_report` and falls back to the heuristic only if
+  the cover page is missing or unparseable (with a log warning so
+  these are visible)
+
+**Fix 3: `--top-filers N` flag in backfill**
+- New CLI argument; when set, loads the top-N CIKs by aggregate AUM
+  from the existing `holdings` table at startup
+- Filter is applied at the very top of the per-filing loop —
+  non-whitelisted filings are skipped before any DB or network work
+- This lets a re-run of the same 8-quarter plan touch only the ~2,000
+  filings per quarter that matter, instead of all ~8,000
+- Estimated wall time for full 8 quarters with `--top-filers 2000`:
+  ~2–4 hours (vs. >7 days for the unfiltered run)
+
+**No DB schema changes. No api.py changes. No frontend changes.**
+
+**New files:**
+- `tools/cleanup_db.py`
+- `docs/r63.71.5_DEPLOY.md`
+
+**Modified files:**
+- `services/edgar_client.py` — adds `fetch_primary_doc_xml()`
+- `services/holdings_parser.py` — adds `parse_period_of_report()`
+- `tools/backfill_13f.py` — `--top-filers` flag, real period extraction
+
+**Recovery sequence:**
+1. Run `python tools\cleanup_db.py --top-filers 2000` (~2 min, frees
+   ~70% of storage)
+2. Wait 15 minutes for Postgres autovacuum to reclaim space
+3. Run `python tools\backfill_13f.py --quarters 8 --top-filers 2000`
+   (overnight, 2–4 hours)
+4. Verify 8 distinct `period_of_report` dates exist
+5. Move to r63.72 (scoring engine)
+
+---
+
+## r63.71.4 — XML comment handling + parser hardening
+
+**Built:** 2026-05-08 · Cumulative on r63.71.3
+
+The resumed backfill (running r63.71.3 with all the Neon resilience
+work) crashed at filing 51 of 2024Q3 with:
+```
+FATAL: Invalid tag name '<cyfunction Comment at 0x00000260DB1076C0>'
+```
+
+**Root cause:** A 13F filing in 2024Q3 contains XML comments embedded
+inside the information table. When `lxml`'s `iter()` walks the
+element tree, it yields not just `Element` nodes but also `Comment`
+and `ProcessingInstruction` nodes. For comments, `child.tag` is the
+cyfunction `lxml.etree.Comment` (not a string), and
+`etree.QName(child.tag).localname` raises `ValueError: Invalid tag
+name '<cyfunction Comment at ...>'`. My parser walked into one and
+crashed.
+
+This is documented lxml behavior — common pattern when iterating
+with `iter()`. Some filer software inserts boilerplate comments like
+`<!-- Generated by FooFiler 1.2 -->` and our parser had three
+unguarded call sites.
+
+**Why it was FATAL instead of just skipping the filing:** the parse
+call in the backfill loop wasn't wrapped in try/except, so any
+parser exception bubbled up to the outer handler and killed the
+entire run. Structurally wrong — a parser bug on one filing should
+never halt a 24,000-filing backfill. Fixed alongside.
+
+**Fix 1: `services/holdings_parser.py`**
+- New `_local_name(elem)` helper that safely extracts the tag's
+  local name. Returns `""` for comments, processing instructions,
+  and any non-string `tag` attribute. Replaces all three crash sites:
+  `_txt()` fallback, `infoTable` discovery, and `sshPrnamt` lookup.
+- Defensive None check after `etree.fromstring(..., recover=True)`
+  — lxml's recover mode can return None for unparseable input
+  (e.g., `b'this is not xml'`). Previous code crashed on
+  `root.iter()` for None roots.
+
+**Fix 2: `tools/backfill_13f.py` — defense-in-depth**
+- Wrapped `parse_information_table()` in try/except. A parser
+  exception now logs `parse FAILED for {accession}` and skips to the
+  next filing, never FATALs the run.
+- Wrapped `resolve_cusips()` in try/except. A FIGI exception now
+  logs and continues with `resolved={}` — the filing still inserts,
+  just without ticker resolutions for those CUSIPs (they'll resolve
+  on the next quarter when re-encountered).
+
+**Regression test suite (5 cases, all pass):**
+- XML comments embedded in infoTable (the original bug) → 2 holdings parsed
+- Processing instructions inside XML → 1 holding parsed
+- Standard 13F XML (regression) → 1 holding parsed correctly
+- Garbage / empty / None input → returns [] gracefully
+- Stress test (nested comments at every level) → 1 holding parsed
+
+**No DB schema changes. No api.py changes. No frontend changes.**
+
+**Files changed:**
+- `services/holdings_parser.py` — `_local_name()` helper + None root guard
+- `tools/backfill_13f.py` — try/except around parse + resolve calls
+
+**The 51 filings already ingested in this run are safe.** The
+`accession_no` UNIQUE constraint means re-running picks up where
+this crashed.
+
+---
+
+## r63.71.3 — Neon scale-to-zero resilience (mid-backfill recovery)
+
+**Built:** 2026-05-07 · Cumulative on r63.71.2
+
+The 8-quarter backfill kicked off cleanly (preflight passed,
+authenticated FIGI mode, 364 filings ingested) but crashed at filing
+~365 with:
+```
+discarding closed connection: <psycopg.Connection [BAD] ...>
+FATAL: consuming input failed: server closed the connection unexpectedly
+```
+
+**Root cause:** Neon's documented scale-to-zero behavior. On the free
+tier, Neon suspends the compute after 5 minutes of database
+inactivity. Big filings (Vanguard with 5K holdings, BlackRock with
+3K+) take 1–2 minutes of pure OpenFIGI network I/O for CUSIP
+resolution, during which the DB sees zero activity. When several big
+filings stacked up, idle time crossed 5 minutes, Neon suspended, and
+the next DB call hit a stale connection.
+
+The previous pool config (`max_idle=300`) was actively hostile to
+Neon — it held connections through the exact suspend window. Fixed.
+
+**The 364 already-ingested filings are safe** — the `accession_no`
+UNIQUE constraint means re-running the backfill skips them
+automatically.
+
+**Fix 1: Neon-resilient connection pool (`db/connection.py`)**
+- `check=ConnectionPool.check_connection` — pre-ping every borrowed
+  connection with `SELECT 1`. Stale connections are transparently
+  replaced before the caller's query ever touches them. This is the
+  primary defense.
+- `max_idle=60` (was 300) — recycles idle connections aggressively,
+  well below Neon's 300s suspend threshold. Pool never holds a
+  connection through a suspend event.
+- `max_lifetime=600` — hard 10-min cap on any single connection so
+  long-running ones get periodically refreshed.
+- TCP keepalives at libpq level (`keepalives=1`,
+  `keepalives_idle=30`, `keepalives_interval=10`, `keepalives_count=3`)
+  — last line of defense if Neon closes mid-query.
+- New `close_pool()` exposed for clean shutdown + recovery.
+
+**Fix 2: Stale-connection retry in backfill (`tools/backfill_13f.py`)**
+- Three DB blocks (dedup-check, filer-upsert, filing+holdings insert)
+  now retry once on stale-connection error patterns
+  (`"server closed the connection unexpectedly"`,
+   `"consuming input failed"`, `"connection is closed"`,
+   `"ssl syscall"`, `"connection bad"`).
+- On stale detection, the pool is closed and re-initialized (lazy on
+  next call), then the operation retries after a 2s wait. This forces
+  a fresh connection that's guaranteed to hit a now-active Neon
+  compute.
+- Other errors (FK violations, parse errors) still fail-fast — only
+  stale-connection errors trigger retry.
+
+**Fix 3: Heartbeat thread**
+- Background daemon thread pings `SELECT 1` every 120 seconds during
+  the backfill. Prevents Neon from suspending during long FIGI
+  batches even if the main thread isn't talking to the DB.
+- Started after credential probes pass; stopped cleanly at exit.
+- Best-effort: heartbeat failures don't log noise or crash the run.
+
+**No DB schema changes. No api.py changes. No frontend changes.**
+
+**Files changed:**
+- `db/connection.py` — Neon-resilient pool + close_pool()
+- `tools/backfill_13f.py` — retry-on-stale + heartbeat thread
+
+---
+
+## r63.71.2 — OpenFIGI hardening (preflight + adaptive batching)
+
+**Built:** 2026-05-07 · Cumulative on r63.71.1
+
+The r63.71.1 smoke test exposed an OpenFIGI 413 (Payload Too Large)
+on a 100-CUSIP batch. Root cause: `OPENFIGI_API_KEY` env var was empty
+in the active PowerShell session, so requests hit the unauthenticated
+free-tier limit (5 jobs/req). The hardening below means future
+misconfigurations fail loud instead of grinding through 413s, and the
+resolver auto-recovers if OpenFIGI ever tightens limits server-side.
+
+**No DB migration needed for this release. No api.py or frontend
+changes. Code-only hotfix.**
+
+**Fix 1: Fail-loud preflight in `tools/backfill_13f.py`**
+- Hard-checks `OPENFIGI_API_KEY` is set before importing modules. If
+  missing, exits with PowerShell-specific instructions on how to set
+  it (and a reminder that env vars don't persist across windows).
+- Calls new `verify_credentials()` probe AFTER DB health check but
+  BEFORE the backfill loop. Probe sends one request for Apple's CUSIP
+  (037833100), validates the response is `AAPL`. Catches: invalid
+  keys (401), suspended accounts, network blocks, malformed
+  responses. Aborts cleanly if probe fails.
+
+**Fix 2: Adaptive batch sizing in `services/figi_resolver.py`**
+- Initial batch size dropped from 100 to 50 (keyed) / 5 (unkeyed) for
+  payload-byte headroom — OpenFIGI sometimes 413s under the documented
+  count limit when individual responses are large (foreign listings,
+  multi-share-class companies).
+- On 413, the request is split in half and retried recursively. The
+  global batch-size hint shrinks to whatever size finally worked, so
+  subsequent calls don't repeat the 413 dance.
+- Verified with mock OpenFIGI that 413s on >12 CUSIPs: 50→25→12 found,
+  13→6/7 found. All 50 results returned in correct order, zero data
+  loss.
+- Other HTTP errors (401, 429, 5xx) still bubble up — only 413 gets
+  the auto-split treatment.
+
+**Fix 3: Diagnostic mode logging in `services/figi_resolver.py`**
+- On first FIGI call, prints either:
+  `[figi] AUTHENTICATED mode — key=abcd...zy, batch=50, rps=25`
+  or
+  `[figi] UNAUTHENTICATED mode — no API key, batch=5, rps=5`
+  followed by a warning that backfill will be ~20× slower.
+- API key is masked in the log line (first 4 + last 2 chars only).
+- Subsequent 413 splits print `[figi] 413 received — adaptive batch
+  size now N` so progress is visible during a backfill.
+
+**Files changed:**
+- `services/figi_resolver.py` — adaptive batching, mode logging, probe
+- `tools/backfill_13f.py` — preflight key check + credential probe call
+
+**No DB schema changes. No new migrations.** Just unzip, replace your
+local copy, re-run the smoke test:
+
+```powershell
+$env:NEON_DATABASE_URL = "..."
+$env:OPENFIGI_API_KEY = "..."
+python tools\backfill_13f.py --quarters 1 --max-filings 5
+```
+
+You should see new diagnostic lines:
+```
+DB health: OK
+Verifying OpenFIGI credentials...
+OpenFIGI probe: OK (ticker=AAPL, mode=authenticated)
+
+=== Filing-quarter 2026Q2 ===
+[figi] AUTHENTICATED mode — key=abcd...zy, batch=50, rps=25
+  index: 4454 13F-HR entries
+  ...
+=== DONE (ok) ===
+```
+
+If you see `mode=unauthenticated`, your key isn't being read — check
+the env var.
+
+---
+
+## r63.71.1 — Backfill smoke-test bugfixes
+
+**Built:** 2026-05-07 · Cumulative on r63.71
+
+The r63.71 smoke test (5-filing dry run before overnight backfill)
+caught two real bugs and one cleanup item. All resolved.
+
+**Bug 1: Date parse fails on EDGAR `form.idx`**
+
+Symptom: `time data '2026-05' does not match format '%Y-%m-%d'`
+on every row of the 2026 Q2 index.
+
+Root cause: my fixed-width column parser used hardcoded slice
+boundaries (`line[86:98]` for date) that don't reliably match SEC's
+modern `form.idx` layout. Some lines had the date column truncated
+before reaching the day component.
+
+Fix: switched to `master.idx` (pipe-delimited), which is unambiguous.
+Five fields: `CIK|Company Name|Form Type|Date Filed|Filename`.
+Added strict regex validators for CIK (`^\d{1,10}$`), date
+(`^\d{4}-\d{2}-\d{2}$`), and accession number
+(`^\d{10}-\d{2}-\d{6}$`). Malformed rows are skipped silently rather
+than corrupting the DB. Validated against a mock master.idx covering
+6 happy-path filings, 4 malformed rows, and 1 non-13F row — all
+filtered/parsed correctly.
+
+**Bug 2: VARCHAR(10) overflow → FATAL halts backfill**
+
+Symptom: `value too long for type character varying(10)` on the
+4th filing, killing the entire run.
+
+Root cause #1: same form.idx parser — bad CIK extraction occasionally
+produced a string longer than 10 chars, which overflowed
+`filers.cik VARCHAR(10)` on insert. Fixed by master.idx + regex
+validation (above).
+
+Root cause #2 (latent): OpenFIGI sometimes returns ticker strings with
+exchange suffixes like `"BRK/B US"` or `"AAPL UN"` that exceed
+VARCHAR(10) for foreign cross-listings.
+
+Fix:
+- Added `_safe_ticker()` helper in `services/figi_resolver.py` that
+  strips whitespace, takes only the first whitespace-separated token
+  (drops exchange suffix), uppercases, and truncates to 20 chars.
+  Applied to all three code paths: live FIGI parse, cache reads,
+  manual override reads. Verified with 11 test cases.
+- New migration `db/migrations/002_widen_ticker.py` widens the
+  `ticker` column on `holdings`, `cusip_ticker_map`, and
+  `mapping_overrides` from `VARCHAR(10)` to `VARCHAR(20)`. Idempotent
+  via `information_schema` length check.
+- `db/schema.sql` updated so fresh deploys get VARCHAR(20) from the
+  start.
+
+**Bug 3 (cleanup): "couldn't stop thread" warnings at script exit**
+
+Symptom: 3 warnings printed after `=== DONE ===`:
+```
+couldn't stop thread 'pool-1-worker-N' within 5.0 seconds
+```
+
+Root cause: `psycopg_pool.ConnectionPool` keeps idle worker threads
+alive at process exit unless explicitly closed.
+
+Fix: `tools/backfill_13f.py` now calls `pool.close()` after the final
+status print, in a try/except so it never raises.
+
+**Defensive add: filer upsert isolated from main loop**
+
+The original code had the filer upsert OUTSIDE the per-filing
+try/except, so a single bad row could halt the entire backfill (which
+is exactly what bug 2 caused). Wrapped in its own try/except so any
+filer-level failure logs and continues to the next filing.
+
+**Files changed:**
+- `services/edgar_client.py` — rewrote with master.idx + regex validators
+- `services/figi_resolver.py` — added `_safe_ticker()`, applied to all paths
+- `tools/backfill_13f.py` — error-isolated filer upsert + pool cleanup
+- `db/schema.sql` — VARCHAR(20) for ticker columns
+- `db/migrations/002_widen_ticker.py` — NEW migration
+
+**No api.py or frontend changes.** The deployed web service is
+identical to r63.71. Only difference visible in production: nothing.
+
+---
+
 ## r63.71 — Institutional Positioning Data Layer (foundation only)
 
 **Built:** 2026-05-07 · Cumulative on r63.70

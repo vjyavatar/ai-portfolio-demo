@@ -1,18 +1,33 @@
 """
-r63.71 — Database connection pool for Celesys positioning data.
+r63.71.3 — Neon-resilient database connection pool for Celesys.
 
-Lazily initializes a psycopg connection pool against NEON_DATABASE_URL.
-Importing this module does NOT open connections — that happens on first
-get_pool() call. This keeps the existing Celesys boot path unaffected
-when the env var is missing (e.g. local dev without DB).
+Neon's free tier has scale-to-zero at 5 min inactivity. When the
+compute suspends, all open connections become invalid. The next
+query against a stale connection crashes with:
+    "server closed the connection unexpectedly"
 
-Usage:
+This pool defends against that with:
+
+  1. **Pre-ping** (configure check=ConnectionPool.check_connection): every
+     borrowed connection runs `SELECT 1` first; broken ones are
+     transparently replaced.
+
+  2. **Short max_idle** (60 seconds): connections are recycled long
+     before Neon's 5-minute suspend threshold, so the pool never
+     holds connections through a suspend event.
+
+  3. **max_lifetime** (10 min): hard cap so even a long-running
+     connection gets recycled periodically.
+
+  4. **Retries-friendly**: get_conn() is a context manager; if the
+     transaction inside fails on a stale connection, callers get a
+     clean exception they can retry once.
+
+Usage unchanged from r63.71.2:
     from db.connection import get_conn
-
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("SELECT 1")
-            result = cur.fetchone()
 """
 
 import os
@@ -33,15 +48,27 @@ def _init_pool():
         _pool_init_error = "NEON_DATABASE_URL not set"
         return
     try:
-        # Use psycopg_pool (separate package from psycopg)
         from psycopg_pool import ConnectionPool
         _pool = ConnectionPool(
             conninfo=db_url,
             min_size=1,
             max_size=5,
-            timeout=10,             # seconds to wait for a connection from pool
-            max_idle=300,           # close idle conns after 5 min (Neon scales-to-zero friendly)
-            kwargs={"autocommit": False},
+            timeout=30,                # 30s to wait for a pool slot (Neon cold-start can be 1-3s)
+            max_idle=60,               # r63.71.3: Recycle idle conns aggressively
+                                       #          — must be < Neon's 300s suspend timeout
+            max_lifetime=600,          # r63.71.3: Hard 10-min cap on any single conn
+            reconnect_timeout=30,      # If a conn fails to reconnect, wait up to 30s
+            check=ConnectionPool.check_connection,  # r63.71.3: Pre-ping every borrowed conn
+            kwargs={
+                "autocommit": False,
+                "connect_timeout": 30,
+                # libpq-level keepalives — last line of defense if Neon
+                # closes a connection mid-query
+                "keepalives": 1,
+                "keepalives_idle": 30,
+                "keepalives_interval": 10,
+                "keepalives_count": 3,
+            },
             open=True,
         )
     except ImportError:
@@ -85,3 +112,14 @@ def health_check() -> dict:
         return {"ok": True}
     except Exception as e:
         return {"ok": False, "reason": f"query failed: {e}"}
+
+
+def close_pool():
+    """Explicit shutdown. Called by tools at end of run."""
+    global _pool
+    if _pool is not None:
+        try:
+            _pool.close()
+        except Exception:
+            pass
+        _pool = None
