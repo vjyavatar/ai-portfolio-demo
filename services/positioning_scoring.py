@@ -119,6 +119,34 @@ class TickerScore:
     type_label: str = ""                         # "Structural Compounder" / "Flow Momentum" / etc.
     confidence: str = "none"                     # "high" / "medium" / "low" / "none"
 
+    # r63.72.10: Three-lens architecture (Phase A)
+    # Each lens has its own score + conviction band. Display surfaces only
+    # the active lens's primary metric at a time.
+    regime: str = "NEUTRAL"                      # ACCUMULATION / DISTRIBUTION / NEUTRAL
+    saturation_pct: Optional[float] = None       # institutional ownership saturation
+    ownership_velocity: Optional[float] = None   # Q-over-Q ownership change
+
+    # Lens 1 — Compounders
+    compounder_score: Optional[float] = None     # 0-100 quality score
+    compounder_conviction: str = "INSUFFICIENT DATA"
+    roic_median: Optional[float] = None
+    gross_margin_floor: Optional[float] = None
+    fcf_consistency: Optional[float] = None
+
+    # Lens 2 — Institutional Accumulation
+    accumulation_score: Optional[float] = None   # 0-100 flow score
+    accumulation_conviction: str = "INSUFFICIENT DATA"
+    buy_sell_dominance: Optional[float] = None
+    relative_strength: Optional[float] = None
+
+    # Lens 3 — Asymmetric Optionality
+    optionality_score_lens: Optional[float] = None
+    optionality_conviction: str = "INSUFFICIENT DATA"
+    rd_intensity: Optional[float] = None
+    cash_to_mcap: Optional[float] = None
+    revenue_acceleration: Optional[float] = None
+    survivability_months: Optional[float] = None
+
 
 def _percentile_rank(values: List[float], v: float) -> float:
     """Return v's percentile rank within values (0-100)."""
@@ -703,6 +731,42 @@ def score_universe(conn) -> List[TickerScore]:
                 r.confidence = mb.confidence
     except Exception as e:
         # Soft fail — multibagger enrichment is supplementary
+        pass
+
+    # r63.72.10: Three-lens enrichment (Phase A — primary scoring path)
+    # Reuses cached fundamentals from above; pure CPU work after that.
+    try:
+        from services.lens_scoring import enrich_with_lenses
+        lens_scores = enrich_with_lenses(results[:MB_ENRICH_TOP], parallel=8)
+        for r in results:
+            ls = lens_scores.get(r.ticker)
+            if ls is None:
+                continue
+            r.regime = ls.regime
+            r.saturation_pct = ls.saturation_pct
+            r.ownership_velocity = ls.ownership_change_pct
+
+            # Lens 1
+            r.compounder_score = ls.compounder.quality_score
+            r.compounder_conviction = ls.compounder.conviction
+            r.roic_median = ls.compounder.roic_median
+            r.gross_margin_floor = ls.compounder.gross_margin_floor
+            r.fcf_consistency = ls.compounder.fcf_consistency
+
+            # Lens 2
+            r.accumulation_score = ls.accumulation.flow_score
+            r.accumulation_conviction = ls.accumulation.conviction
+            r.buy_sell_dominance = ls.accumulation.buy_sell_dominance
+            r.relative_strength = ls.accumulation.relative_strength
+
+            # Lens 3
+            r.optionality_score_lens = ls.optionality.optionality_score
+            r.optionality_conviction = ls.optionality.conviction
+            r.rd_intensity = ls.optionality.rd_intensity
+            r.cash_to_mcap = ls.optionality.cash_to_mcap
+            r.revenue_acceleration = ls.optionality.revenue_acceleration
+            r.survivability_months = ls.optionality.survivability
+    except Exception:
         pass
 
     # r63.72.9: Re-rank star ratings + BEST BET using MULTIBAGGER score
