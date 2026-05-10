@@ -3094,47 +3094,114 @@ function _renderPositioningPage(d, activeTier) {
          '</div>';
   } else {
     h += '<div style="background:#fff;border-radius:10px;overflow:hidden;border:1px solid #e2e8f0;font-family:Inter,sans-serif">';
-    h += '<table style="width:100%;border-collapse:collapse;font-size:11px">';
+    h += '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:11px;min-width:1200px">';
     h += '<thead><tr style="background:#f8fafc;text-align:left;font-family:Sora,sans-serif">' +
-         '<th style="padding:10px 12px;font-size:9px;letter-spacing:0.6px;color:#64748b;font-weight:800">RANK</th>' +
-         '<th style="padding:10px 12px;font-size:9px;letter-spacing:0.6px;color:#64748b;font-weight:800">TIER</th>' +
-         '<th style="padding:10px 12px;font-size:9px;letter-spacing:0.6px;color:#64748b;font-weight:800">TICKER</th>' +
-         '<th style="padding:10px 12px;font-size:9px;letter-spacing:0.6px;color:#64748b;font-weight:800">ISSUER</th>' +
-         '<th style="padding:10px 12px;font-size:9px;letter-spacing:0.6px;color:#64748b;font-weight:800;text-align:right">SCORE</th>' +
-         '<th style="padding:10px 12px;font-size:9px;letter-spacing:0.6px;color:#64748b;font-weight:800;text-align:right">SHARE Δ</th>' +
-         '<th style="padding:10px 12px;font-size:9px;letter-spacing:0.6px;color:#64748b;font-weight:800;text-align:right">FILERS Δ</th>' +
-         '<th style="padding:10px 12px;font-size:9px;letter-spacing:0.6px;color:#64748b;font-weight:800;text-align:right">PERSIST</th>' +
-         '<th style="padding:10px 12px;font-size:9px;letter-spacing:0.6px;color:#64748b;font-weight:800">SIGNALS</th>' +
+         '<th style="padding:10px 10px;font-size:9px;letter-spacing:0.6px;color:#64748b;font-weight:800">RANK</th>' +
+         '<th style="padding:10px 10px;font-size:9px;letter-spacing:0.6px;color:#64748b;font-weight:800">TIER</th>' +
+         '<th style="padding:10px 10px;font-size:9px;letter-spacing:0.6px;color:#64748b;font-weight:800">TICKER</th>' +
+         '<th style="padding:10px 10px;font-size:9px;letter-spacing:0.6px;color:#64748b;font-weight:800">ISSUER</th>' +
+         '<th style="padding:10px 10px;font-size:9px;letter-spacing:0.6px;color:#64748b;font-weight:800;text-align:right">PRICE</th>' +
+         '<th style="padding:10px 10px;font-size:9px;letter-spacing:0.6px;color:#64748b;font-weight:800;text-align:right">MKT CAP</th>' +
+         '<th style="padding:10px 10px;font-size:9px;letter-spacing:0.6px;color:#64748b;font-weight:800;text-align:right">52W RANGE</th>' +
+         '<th style="padding:10px 10px;font-size:9px;letter-spacing:0.6px;color:#64748b;font-weight:800;text-align:right">SCORE</th>' +
+         '<th style="padding:10px 10px;font-size:9px;letter-spacing:0.6px;color:#64748b;font-weight:800;text-align:right">SHARE Δ</th>' +
+         '<th style="padding:10px 10px;font-size:9px;letter-spacing:0.6px;color:#64748b;font-weight:800;text-align:right">FILERS Δ</th>' +
+         '<th style="padding:10px 10px;font-size:9px;letter-spacing:0.6px;color:#64748b;font-weight:800;text-align:right">PERSIST</th>' +
+         '<th style="padding:10px 10px;font-size:9px;letter-spacing:0.6px;color:#64748b;font-weight:800;min-width:280px">WHY (PLAIN ENGLISH)</th>' +
          '</tr></thead><tbody>';
+
     d.results.forEach(function(r, i) {
       var tierColor = r.tier === 1 ? '#10b981' : (r.tier === 2 ? '#3b82f6' : (r.tier === 3 ? '#f59e0b' : '#94a3b8'));
       var tierBadge = r.tier > 0 ? ('<span style="display:inline-block;padding:2px 7px;border-radius:10px;background:' + tierColor + ';color:#fff;font-size:9px;font-weight:800;font-family:Sora,sans-serif">T' + r.tier + '</span>') : '<span style="color:#cbd5e1">—</span>';
       var shareColor = r.share_delta_pct > 0 ? '#10b981' : (r.share_delta_pct < 0 ? '#dc2626' : '#64748b');
       var filerColor = r.filer_count_delta > 0 ? '#10b981' : (r.filer_count_delta < 0 ? '#dc2626' : '#64748b');
-      var sigStr = (r.top_signals || []).slice(0, 2).join(' · ');
 
-      h += '<tr style="border-top:1px solid #f1f5f9;cursor:pointer" onmouseover="this.style.background=\'#fafbfc\'" onmouseout="this.style.background=\'\'" onclick="document.getElementById(\'symbolInput\').value=\'' + r.ticker + '\';if(typeof onSubmit===\'function\')onSubmit(new Event(\'submit\'));switchTab(\'quick\');">';
-      h += '<td style="padding:10px 12px;color:#94a3b8;font-family:IBM Plex Mono,monospace">' + (i + 1) + '</td>';
-      h += '<td style="padding:10px 12px">' + tierBadge + '</td>';
-      h += '<td style="padding:10px 12px;font-weight:800;color:#0f172a;font-family:IBM Plex Mono,monospace">' + r.ticker + '</td>';
-      h += '<td style="padding:10px 12px;color:#475569;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + (r.issuer_name || '') + '</td>';
-      h += '<td style="padding:10px 12px;text-align:right;font-weight:800;color:' + tierColor + ';font-family:IBM Plex Mono,monospace">' + r.composite_score.toFixed(1) + '</td>';
-      h += '<td style="padding:10px 12px;text-align:right;color:' + shareColor + ';font-family:IBM Plex Mono,monospace;font-weight:700">' + (r.share_delta_pct >= 0 ? '+' : '') + r.share_delta_pct.toFixed(1) + '%</td>';
-      h += '<td style="padding:10px 12px;text-align:right;color:' + filerColor + ';font-family:IBM Plex Mono,monospace;font-weight:700">' + (r.filer_count_delta >= 0 ? '+' : '') + r.filer_count_delta + '</td>';
-      h += '<td style="padding:10px 12px;text-align:right;color:#475569;font-family:IBM Plex Mono,monospace">' + r.persistence_quarters + 'Q</td>';
-      h += '<td style="padding:10px 12px;color:#64748b;font-size:10px">' + sigStr + '</td>';
+      // r63.72.5: Format price + market cap + 52W range cells
+      var priceStr = (r.price && r.price > 0) ? '$' + r.price.toFixed(2) : '—';
+      var changeStr = '';
+      if (r.price && r.price > 0 && r.change_pct !== undefined) {
+        var chCol = r.change_pct >= 0 ? '#10b981' : '#dc2626';
+        changeStr = '<div style="font-size:9px;color:' + chCol + ';margin-top:2px">' +
+                    (r.change_pct >= 0 ? '+' : '') + r.change_pct.toFixed(2) + '%</div>';
+      }
+      var mcapStr = '—';
+      if (r.market_cap && r.market_cap > 0) {
+        var mb = r.market_cap / 1e9;
+        if (mb >= 100) mcapStr = '$' + mb.toFixed(0) + 'B';
+        else if (mb >= 1) mcapStr = '$' + mb.toFixed(1) + 'B';
+        else mcapStr = '$' + (r.market_cap / 1e6).toFixed(0) + 'M';
+      }
+      // 52W range as a mini horizontal bar
+      var rangeStr = '—';
+      if (r.pct_in_range !== undefined && r.pct_in_range >= 0) {
+        var pos = Math.max(0, Math.min(100, r.pct_in_range));
+        var barColor = pos >= 75 ? '#10b981' : pos <= 25 ? '#dc2626' : '#3b82f6';
+        rangeStr = '<div style="position:relative;width:60px;height:14px;background:#f1f5f9;border-radius:3px;margin-left:auto">' +
+                   '<div style="position:absolute;left:' + pos + '%;top:0;width:3px;height:14px;background:' + barColor + ';transform:translateX(-50%)"></div>' +
+                   '</div>' +
+                   '<div style="font-size:8px;color:#94a3b8;text-align:right;margin-top:2px">' + pos.toFixed(0) + '% of range</div>';
+      }
+
+      // r63.72.5: SAFE click handler. Uses global helper that null-checks symbolInput.
+      // Previously called document.getElementById('symbolInput').value = ... directly
+      // which crashed when the element wasn't on the current page.
+      var clickAttr = 'onclick="window._positioningDeepDive(\'' + r.ticker.replace(/'/g, "\\'") + '\')"';
+
+      h += '<tr style="border-top:1px solid #f1f5f9;cursor:pointer" onmouseover="this.style.background=\'#fafbfc\'" onmouseout="this.style.background=\'\'" ' + clickAttr + '>';
+      h += '<td style="padding:10px 10px;color:#94a3b8;font-family:IBM Plex Mono,monospace">' + (i + 1) + '</td>';
+      h += '<td style="padding:10px 10px">' + tierBadge + '</td>';
+      h += '<td style="padding:10px 10px;font-weight:800;color:#0f172a;font-family:IBM Plex Mono,monospace">' + r.ticker + '</td>';
+      h += '<td style="padding:10px 10px;color:#475569;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + (r.issuer_name || '') + '</td>';
+      h += '<td style="padding:10px 10px;text-align:right;color:#0f172a;font-family:IBM Plex Mono,monospace;font-weight:700">' + priceStr + changeStr + '</td>';
+      h += '<td style="padding:10px 10px;text-align:right;color:#475569;font-family:IBM Plex Mono,monospace">' + mcapStr + '</td>';
+      h += '<td style="padding:10px 10px;text-align:right">' + rangeStr + '</td>';
+      h += '<td style="padding:10px 10px;text-align:right;font-weight:800;color:' + tierColor + ';font-family:IBM Plex Mono,monospace">' + r.composite_score.toFixed(1) + '</td>';
+      h += '<td style="padding:10px 10px;text-align:right;color:' + shareColor + ';font-family:IBM Plex Mono,monospace;font-weight:700">' + (r.share_delta_pct >= 0 ? '+' : '') + r.share_delta_pct.toFixed(1) + '%</td>';
+      h += '<td style="padding:10px 10px;text-align:right;color:' + filerColor + ';font-family:IBM Plex Mono,monospace;font-weight:700">' + (r.filer_count_delta >= 0 ? '+' : '') + r.filer_count_delta + '</td>';
+      h += '<td style="padding:10px 10px;text-align:right;color:#475569;font-family:IBM Plex Mono,monospace">' + r.persistence_quarters + 'Q</td>';
+      h += '<td style="padding:10px 10px;color:#334155;font-size:10.5px;line-height:1.45;min-width:280px">' + (r.reasoning || '') + '</td>';
       h += '</tr>';
     });
-    h += '</tbody></table></div>';
+    h += '</tbody></table></div></div>';
   }
 
   // Footer
   h += '<div style="padding:16px 4px;font-size:10px;color:#94a3b8;font-family:Inter,sans-serif;line-height:1.5">';
-  h += '<strong>How this works:</strong> Composite score combines Q-over-Q share-count delta (35%), value delta (20%), filer-count delta (25%), persistence (15%), and concentration (-5%). All metrics z-score normalized across the scored universe. Tier thresholds: Tier 1 ≥ 80th percentile, Tier 2 ≥ 60th, Tier 3 ≥ 40th. Click any row to deep-dive that ticker.';
+  h += '<strong>How this works:</strong> Composite score combines Q-over-Q share-count delta (25%), value delta (15%), filer-count delta (25%), persistence (30%), and concentration (-5%), with a log-scale boost for institutional position size. All metrics z-score normalized across the universe. Tier 1 ≥ 90th percentile, Tier 2 ≥ 80th, Tier 3 ≥ 70th. Prices are live; 13F data is filed quarterly with up to 45-day SEC delay. Click any row to deep-dive that ticker on the Stock tab.';
   h += '</div>';
 
   deResult.innerHTML = h;
 }
+
+// r63.72.5: Safe deep-dive handler — null-checks before populating.
+// Replaces inline onclick that crashed with "Cannot set properties of null".
+window._positioningDeepDive = function(ticker) {
+  if (!ticker) return;
+  try {
+    // Switch to Stock tab first so symbolInput exists.
+    if (typeof switchTabGroup === 'function') switchTabGroup('research');
+    if (typeof switchTab === 'function') switchTab('quick');
+
+    // Defer setting the symbol + submitting until DOM has rendered.
+    setTimeout(function() {
+      var input = document.getElementById('symbolInput');
+      if (input) {
+        input.value = ticker;
+        if (typeof onSubmit === 'function') {
+          try { onSubmit(new Event('submit')); }
+          catch (e) { /* form submit handler may throw — ignore, value is set */ }
+        }
+        // Fallback: try the form's submit button if onSubmit isn't defined.
+        var btn = document.getElementById('symbolBtn') || document.querySelector('form#searchForm button[type="submit"]');
+        if (btn && typeof onSubmit !== 'function') btn.click();
+      } else {
+        console.warn('[positioning] symbolInput not found; deep-dive skipped for', ticker);
+      }
+    }, 200);
+  } catch (e) {
+    console.error('[positioning] deep-dive failed:', e);
+  }
+};
 
 window.loadMicroCapHunter = function(forceReg) {
   if (!window._activeMicroCapHunterTab) return;

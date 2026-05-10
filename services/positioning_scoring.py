@@ -82,6 +82,16 @@ class TickerScore:
     # Top driving signals (human-readable)
     top_signals: List[str]
 
+    # r63.72.5: Live-quote enrichment
+    price: float = 0.0                   # current stock price
+    prev_close: float = 0.0
+    change_pct: float = 0.0              # today's % change
+    low_52w: float = 0.0
+    high_52w: float = 0.0
+    pct_in_range: float = -1.0           # 0-100 where price sits in 52W range; -1 if no data
+    market_cap: int = 0                  # current market cap in dollars
+    reasoning: str = ""                  # plain-English trader-speak narrative
+
 
 def _percentile_rank(values: List[float], v: float) -> float:
     """Return v's percentile rank within values (0-100)."""
@@ -409,6 +419,7 @@ def score_universe(conn) -> List[TickerScore]:
     # Percentile-rank composites
     composite_values = list(composites.values())
     results: List[TickerScore] = []
+    raw_for_reasoning: Dict[str, Dict] = {}  # keep raw metrics for reasoning gen
     for ticker, m in raw.items():
         composite = composites[ticker]
         pct = _percentile_rank(composite_values, composite)
@@ -427,6 +438,7 @@ def score_universe(conn) -> List[TickerScore]:
             tier, label = 0, ""
 
         signals = _build_signals(m)
+        raw_for_reasoning[ticker] = m
         results.append(TickerScore(
             ticker=ticker,
             issuer_name=m["issuer_name"],
@@ -450,6 +462,36 @@ def score_universe(conn) -> List[TickerScore]:
         ))
 
     results.sort(key=lambda r: r.composite_score, reverse=True)
+
+    # r63.72.5: Enrich top results with live quotes + plain-English reasoning.
+    # Only the top ~100 get live-quote enrichment to keep response fast.
+    # Beyond top 100, reasoning is generated from metrics alone.
+    try:
+        from services.positioning_quotes import enrich_with_quotes, build_plain_english_reasoning
+        ENRICH_TOP = 100  # top N rows get live price/52W/market cap
+        top_tickers = [r.ticker for r in results[:ENRICH_TOP]]
+        quotes = enrich_with_quotes(top_tickers)
+    except Exception:
+        # Graceful degradation — Yahoo is 401-blocked on Render etc.
+        # Reasoning still works without quotes; rows just lack price data.
+        quotes = {}
+        try:
+            from services.positioning_quotes import build_plain_english_reasoning
+        except Exception:
+            build_plain_english_reasoning = lambda m, q: ""
+
+    for r in results:
+        q = quotes.get(r.ticker, {}) or {}
+        if q:
+            r.price = float(q.get("price", 0.0))
+            r.prev_close = float(q.get("prev_close", 0.0))
+            r.change_pct = float(q.get("change_pct", 0.0))
+            r.low_52w = float(q.get("low_52w", 0.0))
+            r.high_52w = float(q.get("high_52w", 0.0))
+            r.pct_in_range = float(q.get("pct_in_range", -1.0))
+            r.market_cap = int(q.get("market_cap", 0))
+        r.reasoning = build_plain_english_reasoning(raw_for_reasoning[r.ticker], q)
+
     return results
 
 
