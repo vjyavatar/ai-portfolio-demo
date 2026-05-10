@@ -3093,6 +3093,24 @@ function _renderPositioningPage(d, activeTier) {
        'style="padding:8px 14px;border-radius:6px;background:#fff;border:1px solid #cbd5e1;font-size:10px;font-weight:700;color:#374151;cursor:pointer;font-family:Inter,sans-serif;white-space:nowrap">↻ Refresh</button></div>';
   h += '</div>';
 
+  // r63.72.9: Search bar — filter table by ticker or issuer name
+  var searchVal = window._positioningSearch || '';
+  h += '<div style="margin-bottom:14px;display:flex;gap:10px;align-items:center">';
+  h += '<div style="position:relative;flex:1;max-width:480px">';
+  h += '<span style="position:absolute;left:12px;top:50%;transform:translateY(-50%);font-size:14px;color:#94a3b8">🔍</span>';
+  h += '<input id="positioningSearchInput" type="text" placeholder="Search ticker or issuer (e.g. POET, MU, SNDK)..." ' +
+       'value="' + searchVal.replace(/"/g, '&quot;') + '" ' +
+       'oninput="window._positioningSearch=this.value;clearTimeout(window._posSearchT);window._posSearchT=setTimeout(function(){_renderPositioningPage(window._positioningCache);if(window._positioningSearch){var i=document.getElementById(\'positioningSearchInput\');if(i){i.focus();i.setSelectionRange(i.value.length,i.value.length);}}}, 150);" ' +
+       'style="width:100%;padding:10px 12px 10px 36px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px;font-family:Inter,sans-serif;color:#0f172a;outline:none" ' +
+       'onfocus="this.style.borderColor=\'#1A3A78\'" onblur="this.style.borderColor=\'#cbd5e1\'">';
+  if (searchVal) {
+    h += '<button onclick="window._positioningSearch=\'\';_renderPositioningPage(window._positioningCache);" ' +
+         'style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;font-size:14px;color:#94a3b8;cursor:pointer;padding:4px 8px">✕</button>';
+  }
+  h += '</div>';
+  h += '<div id="positioningMatchCount" style="font-size:11px;color:#64748b;font-family:Inter,sans-serif"></div>';
+  h += '</div>';
+
   // Filter results based on view mode
   var displayRows = (d.results || []).slice();
   if (viewMode === 'best') {
@@ -3100,28 +3118,31 @@ function _renderPositioningPage(d, activeTier) {
     displayRows.sort(function(a,b) { return (a.best_bet_rank||99) - (b.best_bet_rank||99); });
   } else if (viewMode === 'micro') {
     // r63.72.8: Micro-Cap Hunter — sub-$2B by market cap
-    // Note: only rows with quote enrichment have market_cap. Others have 0.
-    // For micro-cap mode we ALSO check latest_value_usd (institutional dollar
-    // size) as a proxy when market_cap is missing — sub-$1B institutional value
-    // is a reasonable micro-cap marker.
     displayRows = displayRows.filter(function(r) {
       var mcap = r.market_cap || 0;
       var instVal = r.latest_value_usd || 0;
       if (mcap > 0) {
-        return mcap >= 50e6 && mcap <= 2e9;  // $50M to $2B
+        return mcap >= 50e6 && mcap <= 2e9;
       }
-      // Fallback: institutional value < $1B suggests sub-$2B mcap
       return instVal > 50e6 && instVal < 1e9;
     });
-    // Sort by buy/sell ratio first (the strongest signal in micro-caps)
     displayRows.sort(function(a, b) {
       var aBuy = a.inst_buyers || 0, aSell = a.inst_sellers || 0;
       var bBuy = b.inst_buyers || 0, bSell = b.inst_sellers || 0;
       var aRatio = (aBuy + aSell) > 0 ? aBuy / (aBuy + aSell) : 0;
       var bRatio = (bBuy + bSell) > 0 ? bBuy / (bBuy + bSell) : 0;
-      // Tie-break by multibagger score
       if (Math.abs(aRatio - bRatio) > 0.05) return bRatio - aRatio;
       return (b.multibagger_score || 0) - (a.multibagger_score || 0);
+    });
+  }
+
+  // r63.72.9: Apply search filter
+  if (searchVal && searchVal.trim()) {
+    var q = searchVal.trim().toUpperCase();
+    displayRows = displayRows.filter(function(r) {
+      var t = (r.ticker || '').toUpperCase();
+      var i = (r.issuer_name || '').toUpperCase();
+      return t.indexOf(q) >= 0 || i.indexOf(q) >= 0;
     });
   }
 
@@ -3133,7 +3154,7 @@ function _renderPositioningPage(d, activeTier) {
          '</div>';
   } else {
     h += '<div style="background:#fff;border-radius:10px;overflow:hidden;border:1px solid #e2e8f0;font-family:Inter,sans-serif">';
-    h += '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:11px;min-width:1400px">';
+    h += '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:11px;min-width:1550px">';
 
     // Headers — Multibagger-first ordering
     h += '<thead><tr style="background:#f8fafc;text-align:left;font-family:Sora,sans-serif">';
@@ -3141,8 +3162,9 @@ function _renderPositioningPage(d, activeTier) {
       {label:'#',           align:'left',   width:'36px'},
       {label:'TICKER',      align:'left',   width:'auto'},
       {label:'ISSUER',      align:'left',   width:'auto'},
-      {label:'MB SCORE',    align:'right',  width:'72px',  tip:'Multibagger Score 0-100. (0.35×Moat + 0.25×Flow + 0.25×Growth + 0.15×Optionality) × (1 − Risk)'},
-      {label:'RATING',      align:'center', width:'90px',  tip:'1-5 stars based on MB Score percentile'},
+      {label:'MB SCORE',    align:'right',  width:'92px',  tip:'Multibagger Score 0-100. (0.35×Moat + 0.25×Flow + 0.25×Growth + 0.15×Optionality) × (1 − Risk). N/A when fundamentals unavailable. Dot color = confidence (green=high, yellow=medium, red=low, grey=none).'},
+      {label:'RATING',      align:'center', width:'90px',  tip:'1-5 stars based on MB Score percentile. Hidden when MB Score unavailable.'},
+      {label:'TYPE',        align:'left',   width:'130px', tip:'Strategy type — Structural Compounder, Flow Momentum, Deep Value, Hype Risk, etc.'},
       {label:'PHASE',       align:'left',   width:'90px',  tip:'Adoption phase: Pre-discovery / Early / Building / Mid / Crowded / Saturated'},
       {label:'M',           align:'right',  width:'42px',  tip:'Moat — durability of returns'},
       {label:'F',           align:'right',  width:'42px',  tip:'Institutional Flow — early-phase weighted'},
@@ -3156,7 +3178,6 @@ function _renderPositioningPage(d, activeTier) {
       {label:'INST SELL',   align:'right',  width:'62px',  tip:'Filers decreasing position Q/Q'},
       {label:'INSIDER',     align:'right',  width:'62px',  tip:'Form 4 insider net buys (coming soon)'},
       {label:'PERSIST',     align:'right',  width:'56px',  tip:'Consecutive Qs of net accumulation'},
-      {label:'PERSIST',    align:'right', width:'70px',  tip:'Consecutive Qs of net accumulation'},
       {label:'WHY (PLAIN ENGLISH)', align:'left', width:'320px'}
     ];
     heads.forEach(function(hh) {
@@ -3166,13 +3187,21 @@ function _renderPositioningPage(d, activeTier) {
     h += '</tr></thead><tbody>';
 
     displayRows.forEach(function(r, i) {
-      // r63.72.7: Color the multibagger score by its tier
-      var mbScore = r.multibagger_score || 0;
-      var mbCol = mbScore >= 70 ? '#10b981' : (mbScore >= 50 ? '#3b82f6' : (mbScore >= 30 ? '#f59e0b' : '#94a3b8'));
+      // r63.72.9: Null-safe Multibagger Score rendering — null = N/A, 0 = real zero
+      var mbScore = r.multibagger_score;  // can be null
+      var mbScoreStr, mbCol;
+      if (mbScore === null || mbScore === undefined) {
+        mbScoreStr = '<span style="color:#94a3b8;font-size:11px">N/A</span>';
+        mbCol = '#94a3b8';
+      } else {
+        mbCol = mbScore >= 70 ? '#10b981' : (mbScore >= 50 ? '#3b82f6' : (mbScore >= 30 ? '#f59e0b' : '#94a3b8'));
+        mbScoreStr = '<span style="color:' + mbCol + ';font-family:IBM Plex Mono,monospace;font-weight:800;font-size:13px">' + mbScore.toFixed(1) + '</span>';
+      }
 
-      // Star rating display
-      var starsStr = '<span style="color:#94a3b8">—</span>';
-      if (r.star_rating > 0) {
+      // r63.72.9: Star rating — only show if real MB score exists AND star_rating > 0
+      // Critical fix: was showing 5 stars for rows with null MB scores
+      var starsStr = '<span style="color:#cbd5e1">—</span>';
+      if (r.star_rating > 0 && mbScore !== null && mbScore !== undefined) {
         var filled = '★'.repeat(r.star_rating);
         var empty = '☆'.repeat(5 - r.star_rating);
         starsStr = '<span style="color:#f59e0b;font-size:14px;letter-spacing:1px">' + filled +
@@ -3185,22 +3214,42 @@ function _renderPositioningPage(d, activeTier) {
         bestBetBadge = '<div style="display:inline-block;margin-left:6px;padding:2px 6px;border-radius:8px;background:linear-gradient(135deg,#f59e0b,#dc2626);color:#fff;font-size:8px;font-weight:800;letter-spacing:0.5px;font-family:Sora,sans-serif">🏆 BEST BET #' + r.best_bet_rank + '</div>';
       }
 
-      // r63.72.7: Phase label badge with color
+      // r63.72.9: Phase label badge — colors updated for new phases
       var phaseLabel = r.phase_label || '';
       var phaseBg = '#94a3b8', phaseFg = '#fff';
-      if (phaseLabel === 'Pre-discovery') { phaseBg = '#a855f7'; }
-      else if (phaseLabel === 'Early discovery') { phaseBg = '#10b981'; }  // GREEN — most desirable
-      else if (phaseLabel === 'Building') { phaseBg = '#3b82f6'; }
-      else if (phaseLabel === 'Mid-cycle') { phaseBg = '#f59e0b'; }
-      else if (phaseLabel === 'Crowded') { phaseBg = '#dc2626'; phaseFg = '#fff'; }
-      else if (phaseLabel === 'Saturated') { phaseBg = '#94a3b8'; }
+      if (phaseLabel === 'Pre-discovery')      { phaseBg = '#a855f7'; }
+      else if (phaseLabel === 'Early discovery'){ phaseBg = '#10b981'; }
+      else if (phaseLabel === 'Building')       { phaseBg = '#3b82f6'; }
+      else if (phaseLabel === 'Mid-cycle')      { phaseBg = '#f59e0b'; }
+      else if (phaseLabel === 'Crowded')        { phaseBg = '#dc2626'; }
+      else if (phaseLabel === 'Saturated')      { phaseBg = '#64748b'; }
+      else if (phaseLabel === 'Under-covered')  { phaseBg = '#0891b2'; }
+      else if (phaseLabel === 'Illiquid')       { phaseBg = '#94a3b8'; }
       var phaseStr = phaseLabel
         ? '<span style="display:inline-block;padding:3px 7px;border-radius:6px;background:' + phaseBg + ';color:' + phaseFg + ';font-size:9px;font-weight:700;font-family:Sora,sans-serif;white-space:nowrap">' + phaseLabel + '</span>'
         : '<span style="color:#cbd5e1">—</span>';
 
-      // r63.72.7: Mini score for M/F/G/O — color-coded
+      // r63.72.9: Type label badge
+      var typeLabel = r.type_label || '';
+      var typeBg = '#e2e8f0', typeFg = '#475569';
+      if (typeLabel === 'Structural Compounder')   { typeBg = '#dcfce7'; typeFg = '#166534'; }
+      else if (typeLabel === 'Established Compounder'){ typeBg = '#dbeafe'; typeFg = '#1e40af'; }
+      else if (typeLabel === 'Flow Momentum')       { typeBg = '#fef3c7'; typeFg = '#92400e'; }
+      else if (typeLabel === 'Deep Value')          { typeBg = '#fce7f3'; typeFg = '#9f1239'; }
+      else if (typeLabel === 'Early Speculation')   { typeBg = '#ede9fe'; typeFg = '#5b21b6'; }
+      else if (typeLabel === 'Hype Risk')           { typeBg = '#fee2e2'; typeFg = '#991b1b'; }
+      else if (typeLabel === 'Insufficient Data')   { typeBg = '#f1f5f9'; typeFg = '#94a3b8'; }
+      else if (typeLabel === 'Mixed Signal')        { typeBg = '#f1f5f9'; typeFg = '#475569'; }
+      var typeStr = typeLabel
+        ? '<span style="display:inline-block;padding:3px 7px;border-radius:6px;background:' + typeBg + ';color:' + typeFg + ';font-size:9px;font-weight:700;font-family:Sora,sans-serif;white-space:nowrap">' + typeLabel + '</span>'
+        : '<span style="color:#cbd5e1">—</span>';
+
+      // r63.72.9: Mini score for M/F/G/O — proper null-vs-zero distinction
+      // null/undefined → N/A (greyed out); 0 → "0" (computed zero, distinct)
       function _miniScore(v) {
-        if (!v && v !== 0) return '<span style="color:#cbd5e1">—</span>';
+        if (v === null || v === undefined) {
+          return '<span style="color:#cbd5e1;font-size:9px">N/A</span>';
+        }
         var col = v >= 70 ? '#10b981' : (v >= 50 ? '#3b82f6' : (v >= 30 ? '#f59e0b' : '#dc2626'));
         return '<span style="color:' + col + ';font-weight:700;font-family:IBM Plex Mono,monospace">' + Math.round(v) + '</span>';
       }
@@ -3212,6 +3261,14 @@ function _renderPositioningPage(d, activeTier) {
         : (riskPct >= 25
           ? '<span style="color:#dc2626;font-weight:700">−' + riskPct.toFixed(0) + '%</span>'
           : '<span style="color:#f59e0b;font-weight:700">−' + riskPct.toFixed(0) + '%</span>');
+
+      // r63.72.9: Confidence indicator (next to MB score)
+      var confLabel = r.confidence || 'none';
+      var confDot = '';
+      if (confLabel === 'high')        confDot = '<span title="High confidence" style="color:#10b981;font-size:10px">●</span>';
+      else if (confLabel === 'medium') confDot = '<span title="Medium confidence" style="color:#f59e0b;font-size:10px">●</span>';
+      else if (confLabel === 'low')    confDot = '<span title="Low confidence" style="color:#dc2626;font-size:10px">●</span>';
+      else                              confDot = '<span title="No confidence — insufficient data" style="color:#cbd5e1;font-size:10px">○</span>';
 
       // Tier subtle badge after ticker
       var tierBadgeColor = r.tier === 1 ? '#10b981' : (r.tier === 2 ? '#3b82f6' : (r.tier === 3 ? '#f59e0b' : '#94a3b8'));
@@ -3271,9 +3328,11 @@ function _renderPositioningPage(d, activeTier) {
       h += '<tr style="border-top:1px solid #f1f5f9;cursor:pointer;' + rowBg + '" onmouseover="this.style.background=\'#fafbfc\'" onmouseout="this.style.background=\'' + (r.is_best_bet ? 'linear-gradient(90deg,#fffbeb 0%,#fff 80%)' : '') + '\'" ' + clickAttr + '>';
       h += '<td style="padding:10px 8px;color:#94a3b8;font-family:IBM Plex Mono,monospace">' + (i + 1) + '</td>';
       h += '<td style="padding:10px 8px"><span style="font-weight:800;color:#0f172a;font-family:IBM Plex Mono,monospace;font-size:12px">' + r.ticker + '</span>' + tierBadge + bestBetBadge + '</td>';
-      h += '<td style="padding:10px 8px;color:#475569;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + (r.issuer_name || '') + '</td>';
-      h += '<td style="padding:10px 8px;text-align:right;font-weight:800;color:' + mbCol + ';font-family:IBM Plex Mono,monospace;font-size:13px">' + mbScore.toFixed(1) + '</td>';
+      h += '<td style="padding:10px 8px;color:#475569;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + (r.issuer_name || '') + '</td>';
+      // r63.72.9: Null-safe MB score with confidence dot
+      h += '<td style="padding:10px 8px;text-align:right;white-space:nowrap">' + mbScoreStr + ' ' + confDot + '</td>';
       h += '<td style="padding:10px 8px;text-align:center">' + starsStr + '</td>';
+      h += '<td style="padding:10px 8px">' + typeStr + '</td>';
       h += '<td style="padding:10px 8px">' + phaseStr + '</td>';
       h += '<td style="padding:10px 8px;text-align:right">' + _miniScore(r.moat_score) + '</td>';
       h += '<td style="padding:10px 8px;text-align:right">' + _miniScore(r.flow_score) + '</td>';
@@ -3308,6 +3367,18 @@ function _renderPositioningPage(d, activeTier) {
   h += '</div>';
 
   deResult.innerHTML = h;
+
+  // r63.72.9: Update match counter after render
+  var counterEl = document.getElementById('positioningMatchCount');
+  if (counterEl) {
+    var total = (d.results || []).length;
+    var shown = displayRows.length;
+    if (searchVal && searchVal.trim()) {
+      counterEl.innerHTML = '<strong>' + shown + '</strong> match' + (shown === 1 ? '' : 'es') + ' · <span style="color:#94a3b8">of ' + total + ' total</span>';
+    } else {
+      counterEl.innerHTML = '<strong>' + shown + '</strong> rows';
+    }
+  }
 }
 
 // r63.72.5: Safe deep-dive handler — null-checks before populating.

@@ -232,19 +232,16 @@ def _fetch_fundamentals(ticker: str) -> FundamentalsSnapshot:
 
 def _score_moat(snap: FundamentalsSnapshot) -> tuple:
     """
-    Returns (score_0_100, components_dict, narrative).
+    Returns (score_or_None, components_dict, narrative).
+
+    Score is None when fundamentals are missing — caller should render N/A
+    rather than substituting a fake value. Per institutional integrity:
+    "no precision without evidence."
 
     Measures DURABILITY of excess returns under stress.
-    Key insight from user spec: moat = ability to sustain ROIC > cost-of-capital
-    across cycles while defending share. We approximate via:
-    - ROIC 5Y MEDIAN (not mean — robust to outliers, captures floor)
-    - ROIC stability (coefficient of variation, lower = better)
-    - Gross margin floor (worst year in 5Y = pricing power under stress)
-    - Operating margin trend
-    - FCF consistency
     """
     if not snap.has_data:
-        return 50.0, {}, "moat data unavailable"
+        return None, {"confidence": "none"}, "moat data unavailable"
 
     components = {}
 
@@ -364,7 +361,7 @@ def _score_moat(snap: FundamentalsSnapshot) -> tuple:
 # ───────────────────────────────────────────────────────────────────────────
 
 def _score_flow(positioning_metrics: dict, latest_filer_count: int,
-                inst_buyers: int, inst_sellers: int) -> tuple:
+                inst_buyers: int, inst_sellers: int, market_cap: int = 0) -> tuple:
     """
     Returns (score_0_100, components_dict, narrative).
 
@@ -380,6 +377,12 @@ def _score_flow(positioning_metrics: dict, latest_filer_count: int,
     - Hard veto: if sellers > 3× buyers AND active >= 20, F is capped at 30
       (prevents "great moat + bad flow" names like FICO from getting top scores)
     - Buy/sell weight increased to 35% (was 25%); phase reduced to 25% (was 35%)
+
+    r63.72.9 fixes:
+    - Phase logic NOW INCORPORATES MARKET CAP. A $200B name cannot be
+      "Early discovery" regardless of filer count. Large-cap names with low
+      filer counts are usually not multibagger setups — they're under-followed
+      mature names where the real signal is different.
     """
     components = {}
 
@@ -387,28 +390,109 @@ def _score_flow(positioning_metrics: dict, latest_filer_count: int,
     filer_delta = positioning_metrics.get("filer_count_delta", 0)
     concentration = positioning_metrics.get("concentration_hhi", 0.5)
 
-    # 1. Phase detector (existing — inverted U over filer count)
-    if latest_filer_count <= 30:
-        early_phase_score = 30
-        phase_label = "Pre-discovery"
-    elif latest_filer_count <= 150:
-        early_phase_score = 100
-        phase_label = "Early discovery"
-    elif latest_filer_count <= 400:
-        early_phase_score = 90
-        phase_label = "Building"
-    elif latest_filer_count <= 1000:
-        early_phase_score = 60
-        phase_label = "Mid-cycle"
-    elif latest_filer_count <= 2000:
-        early_phase_score = 35
-        phase_label = "Crowded"
+    # r63.72.9: Phase logic with market-cap awareness
+    # Large caps cannot be in early-phase, period. Mid-cap+ filer-count
+    # math has different meaning (under-coverage vs. discovery).
+    mcap_b = market_cap / 1e9 if market_cap > 0 else 0
+
+    if mcap_b >= 200:
+        # Mega-cap: Crowded/Saturated by virtue of size, regardless of filer count
+        if latest_filer_count >= 1500:
+            early_phase_score = 15
+            phase_label = "Saturated"
+        else:
+            early_phase_score = 35
+            phase_label = "Crowded"
+    elif mcap_b >= 50:
+        # Large-cap: Mid-cycle floor; can't be Early discovery
+        if latest_filer_count >= 2000:
+            early_phase_score = 15
+            phase_label = "Saturated"
+        elif latest_filer_count >= 1000:
+            early_phase_score = 35
+            phase_label = "Crowded"
+        elif latest_filer_count >= 400:
+            early_phase_score = 55
+            phase_label = "Mid-cycle"
+        else:
+            # Large-cap with low filer count = under-followed, not early discovery
+            early_phase_score = 50
+            phase_label = "Under-covered"
+    elif mcap_b >= 10:
+        # Mid-cap: standard inverted-U with caps
+        if latest_filer_count >= 2000:
+            early_phase_score = 15
+            phase_label = "Saturated"
+        elif latest_filer_count >= 1000:
+            early_phase_score = 35
+            phase_label = "Crowded"
+        elif latest_filer_count >= 400:
+            early_phase_score = 75
+            phase_label = "Building"
+        elif latest_filer_count >= 150:
+            early_phase_score = 90
+            phase_label = "Building"
+        elif latest_filer_count >= 50:
+            early_phase_score = 85
+            phase_label = "Early discovery"
+        else:
+            early_phase_score = 50
+            phase_label = "Under-covered"
+    elif mcap_b >= 1:
+        # Small-cap: standard early-phase logic applies
+        if latest_filer_count >= 1000:
+            early_phase_score = 40
+            phase_label = "Crowded"
+        elif latest_filer_count >= 400:
+            early_phase_score = 75
+            phase_label = "Building"
+        elif latest_filer_count >= 100:
+            early_phase_score = 95
+            phase_label = "Early discovery"
+        elif latest_filer_count >= 30:
+            early_phase_score = 80
+            phase_label = "Pre-discovery"
+        else:
+            early_phase_score = 40
+            phase_label = "Illiquid"
+    elif mcap_b > 0:
+        # Micro-cap: looser thresholds
+        if latest_filer_count >= 100:
+            early_phase_score = 90
+            phase_label = "Early discovery"
+        elif latest_filer_count >= 30:
+            early_phase_score = 95
+            phase_label = "Pre-discovery"
+        elif latest_filer_count >= 10:
+            early_phase_score = 70
+            phase_label = "Pre-discovery"
+        else:
+            early_phase_score = 30
+            phase_label = "Illiquid"
     else:
-        early_phase_score = 15
-        phase_label = "Saturated"
+        # No market cap data — fall back to filer-count-only logic
+        if latest_filer_count <= 30:
+            early_phase_score = 30
+            phase_label = "Pre-discovery"
+        elif latest_filer_count <= 150:
+            early_phase_score = 100
+            phase_label = "Early discovery"
+        elif latest_filer_count <= 400:
+            early_phase_score = 90
+            phase_label = "Building"
+        elif latest_filer_count <= 1000:
+            early_phase_score = 60
+            phase_label = "Mid-cycle"
+        elif latest_filer_count <= 2000:
+            early_phase_score = 35
+            phase_label = "Crowded"
+        else:
+            early_phase_score = 15
+            phase_label = "Saturated"
 
     components["phase_label"] = phase_label
     components["early_phase_score"] = early_phase_score
+    components["market_cap_b"] = mcap_b
 
     # 2. r63.72.8: SYMMETRIC buy/sell scoring (was floored at 0; now full ±range)
     total_active = inst_buyers + inst_sellers
@@ -495,14 +579,10 @@ def _score_flow(positioning_metrics: dict, latest_filer_count: int,
 
 def _score_growth(snap: FundamentalsSnapshot) -> tuple:
     """
-    Returns (score_0_100, components_dict, narrative).
-
-    "Momentum of fundamentals" — change in growth rate is more predictive of
-    multibagger setups than absolute level. NVDA's 100% YoY in 2023 mattered
-    less than the ACCELERATION from -20% in early-2023 to +200% by 4Q23.
+    Returns (score_or_None, components_dict, narrative). None when data missing.
     """
     if not snap.has_data:
-        return 50.0, {}, "growth data unavailable"
+        return None, {"confidence": "none"}, "growth data unavailable"
 
     components = {}
 
@@ -596,13 +676,17 @@ def _score_growth(snap: FundamentalsSnapshot) -> tuple:
 def _score_optionality(snap: FundamentalsSnapshot, pct_in_range: float,
                        market_cap: int) -> tuple:
     """
-    Returns (score_0_100, components_dict, narrative).
+    Returns (score_or_None, components_dict, narrative).
 
     Non-linear upside potential. Sector-aware:
     - Tech/Biotech: R&D intensity (innovation pipeline)
     - All sectors: Cash optionality (ability to fund growth without dilution)
     - Asymmetric upside via 52W positioning
     """
+    # If both fundamentals AND quote data are unavailable, can't score
+    if not snap.has_data and pct_in_range < 0:
+        return None, {"confidence": "none"}, "optionality data unavailable"
+
     components = {}
 
     # 1. R&D intensity (for tech/biotech especially)
@@ -753,30 +837,110 @@ def _compute_risk_penalty(snap: FundamentalsSnapshot, market_cap: int) -> tuple:
 
 @dataclass
 class MultibaggerScore:
-    """Output of multibagger scoring for one ticker."""
+    """Output of multibagger scoring for one ticker.
+    
+    r63.72.9: Component scores can now be None when data unavailable.
+    Frontend renders N/A — no fake precision.
+    """
     ticker: str
     has_fundamentals: bool
 
-    # Component scores (0-100 each)
-    moat_score: float
-    flow_score: float
-    growth_score: float
-    optionality_score: float
+    # Component scores (0-100 each, OR None if data unavailable)
+    moat_score: Optional[float]
+    flow_score: Optional[float]              # always available (uses 13F)
+    growth_score: Optional[float]
+    optionality_score: Optional[float]
     risk_penalty: float
 
-    # Composite
-    multibagger_score: float       # final 0-100, risk-adjusted
+    # Composite — None if M/G/O all missing (no fake composite)
+    multibagger_score: Optional[float]
 
     # Phase label (FROM flow component)
-    phase_label: str               # "Pre-discovery" / "Early discovery" / etc.
+    phase_label: str
+
+    # r63.72.9: Type classification — more useful than stars
+    type_label: str = ""                     # "Structural Compounder"/"Flow Momentum"/etc.
+    confidence: str = "low"                  # "high" / "medium" / "low" / "none"
 
     # Narratives
-    moat_narrative: str
-    flow_narrative: str
-    growth_narrative: str
-    optionality_narrative: str
-    risk_narrative: str
-    overall_narrative: str         # combined, for "WHY" column in UI
+    moat_narrative: str = ""
+    flow_narrative: str = ""
+    growth_narrative: str = ""
+    optionality_narrative: str = ""
+    risk_narrative: str = ""
+    overall_narrative: str = ""
+
+
+def _classify_type(moat: Optional[float], flow: Optional[float],
+                   growth: Optional[float], optionality: Optional[float],
+                   phase: str, inst_buyers: int, inst_sellers: int) -> str:
+    """
+    r63.72.9: Classify the ticker into a strategy type.
+    Returns one of:
+    - "Structural Compounder"  — High M + Low-to-Mid F (under-accumulated quality)
+    - "Established Compounder" — High M + Mid F (mature winner)
+    - "Flow Momentum"          — Low M + High F (buyers piling in but no moat)
+    - "Deep Value"             — High M + heavy distribution (institutions exiting quality)
+    - "Early Speculation"      — High G + High O + Low M (dream stock setup)
+    - "Hype Risk"              — Low M + Low G + High F (pump candidate)
+    - "Insufficient Data"      — when M/G/O missing
+    """
+    # Need at least M + G to classify — otherwise insufficient
+    if moat is None and growth is None:
+        return "Insufficient Data"
+
+    M = moat if moat is not None else 50      # use neutral only for type-classification logic
+    F = flow if flow is not None else 50
+    G = growth if growth is not None else 50
+    O = optionality if optionality is not None else 50
+
+    is_distributing = (inst_buyers + inst_sellers >= 20 and inst_sellers >= 3 * max(1, inst_buyers))
+
+    # Deep Value: quality being sold off
+    if M >= 65 and is_distributing:
+        return "Deep Value"
+
+    # Hype Risk: low quality + low growth but flow piling in
+    if M < 40 and G < 40 and F >= 70:
+        return "Hype Risk"
+
+    # Early Speculation: high G + high O but low M (no moat yet)
+    if G >= 70 and O >= 60 and M < 50:
+        return "Early Speculation"
+
+    # Flow Momentum: low/mid M but high F
+    if M < 55 and F >= 70:
+        return "Flow Momentum"
+
+    # Structural Compounder: high M + early-phase or under-covered F
+    if M >= 65 and phase in ("Early discovery", "Building", "Pre-discovery", "Under-covered"):
+        return "Structural Compounder"
+
+    # Established Compounder: high M + mid/crowded phase
+    if M >= 65 and phase in ("Mid-cycle", "Crowded", "Saturated"):
+        return "Established Compounder"
+
+    # Default
+    return "Mixed Signal"
+
+
+def _classify_confidence(has_fundamentals: bool, total_active_filers: int) -> str:
+    """
+    r63.72.9: Confidence label for the score.
+    - high:   fundamentals + 50+ active filers
+    - medium: fundamentals + 20-50 active filers, OR no fundamentals but 100+ filers
+    - low:    no fundamentals + low filer count
+    - none:   no data at all
+    """
+    if has_fundamentals and total_active_filers >= 50:
+        return "high"
+    if has_fundamentals and total_active_filers >= 20:
+        return "medium"
+    if not has_fundamentals and total_active_filers >= 100:
+        return "medium"
+    if total_active_filers >= 20:
+        return "low"
+    return "none"
 
 
 def compute_multibagger(
@@ -791,57 +955,93 @@ def compute_multibagger(
     """
     Top-level entry. Pulls fundamentals, computes M/F/G/O, applies risk
     adjustment, returns full MultibaggerScore.
+
+    r63.72.9: Returns None for component scores when data unavailable.
+    Composite multibagger_score is None unless we have at least M (or G).
+    F always computes (uses 13F data).
     """
     snap = _fetch_fundamentals(ticker)
 
     moat_score, moat_comp, moat_narr = _score_moat(snap)
     flow_score, flow_comp, flow_narr = _score_flow(
-        positioning_metrics, latest_filer_count, inst_buyers, inst_sellers
+        positioning_metrics, latest_filer_count, inst_buyers, inst_sellers, market_cap
     )
     growth_score, growth_comp, growth_narr = _score_growth(snap)
     opt_score, opt_comp, opt_narr = _score_optionality(snap, pct_in_range, market_cap)
     risk_penalty, risk_narr = _compute_risk_penalty(snap, market_cap)
 
-    # Composite: M(35) + F(25) + G(25) + O(15), risk-adjusted
-    base = 0.35 * moat_score + 0.25 * flow_score + 0.25 * growth_score + 0.15 * opt_score
-    final = base * (1.0 - risk_penalty)
-    final = max(0, min(100, final))
-
     phase = flow_comp.get("phase_label", "Unknown")
+    total_active = inst_buyers + inst_sellers
 
-    # Overall narrative — the lead one displayed in the UI WHY column
+    # r63.72.9: Composite ONLY when we have M or G (fundamentals).
+    # Without fundamentals, "Multibagger Score" is meaningless — show N/A.
+    final = None
+    if moat_score is not None or growth_score is not None:
+        # Use neutral 50 for missing components but only when at least one present
+        m = moat_score if moat_score is not None else 50.0
+        f = flow_score if flow_score is not None else 50.0
+        g = growth_score if growth_score is not None else 50.0
+        o = opt_score if opt_score is not None else 50.0
+        base = 0.35 * m + 0.25 * f + 0.25 * g + 0.15 * o
+        final = base * (1.0 - risk_penalty)
+        final = max(0, min(100, final))
+
+    # r63.72.9: Type classification and confidence
+    type_label = _classify_type(moat_score, flow_score, growth_score, opt_score,
+                                 phase, inst_buyers, inst_sellers)
+    confidence = _classify_confidence(snap.has_data, total_active)
+
+    # Overall narrative — only mention M/G/O when we have data
     overall_parts = []
-    if moat_score >= 70:
-        overall_parts.append(f"Strong moat: {moat_narr}")
-    elif moat_score >= 50:
-        overall_parts.append(f"Decent moat: {moat_narr}")
+    if moat_score is not None:
+        if moat_score >= 70:
+            overall_parts.append(f"Strong moat ({moat_narr})")
+        elif moat_score >= 50:
+            overall_parts.append(f"Decent moat ({moat_narr})")
+        else:
+            overall_parts.append(f"Weak moat ({moat_narr})")
     else:
-        overall_parts.append(f"Weak moat: {moat_narr}")
+        overall_parts.append("Moat: N/A (fundamentals unavailable)")
 
-    overall_parts.append(f"Flow phase: {phase}")
-    if growth_score >= 70:
+    overall_parts.append(f"Phase: {phase}")
+    overall_parts.append(f"Flow: {flow_narr}")
+
+    if growth_score is not None and growth_score >= 70:
         overall_parts.append(f"Growth: {growth_narr}")
+    elif growth_score is None:
+        overall_parts.append("Growth: N/A")
 
     if risk_penalty > 0.10:
         overall_parts.append(f"⚠️ Risk: {risk_narr}")
 
-    if final >= 75 and phase in ("Early discovery", "Building"):
+    if final is not None and final >= 75 and phase in ("Early discovery", "Building", "Pre-discovery"):
         overall_parts.append("👈 EMERGING multibagger candidate")
-    elif final >= 75 and phase == "Mid-cycle":
-        overall_parts.append("👈 Mid-cycle multibagger")
+    elif final is not None and final >= 70 and type_label == "Structural Compounder":
+        overall_parts.append("👈 Quality compounder")
+    elif final is not None and final >= 70 and type_label == "Deep Value":
+        overall_parts.append("👈 Value setup — institutions exiting quality")
+
+    # Append type+confidence at end
+    overall_parts.append(f"[Type: {type_label} · Confidence: {confidence}]")
 
     overall = ". ".join(overall_parts) + "."
+
+    # Round score values, preserving None
+    def _r(v):
+        return round(v, 1) if v is not None else None
 
     return MultibaggerScore(
         ticker=ticker,
         has_fundamentals=snap.has_data,
-        moat_score=round(moat_score, 1),
-        flow_score=round(flow_score, 1),
-        growth_score=round(growth_score, 1),
-        optionality_score=round(opt_score, 1),
+        moat_score=_r(moat_score),
+        flow_score=_r(flow_score),
+        growth_score=_r(growth_score),
+        optionality_score=_r(opt_score),
         risk_penalty=round(risk_penalty, 3),
-        multibagger_score=round(final, 1),
+        multibagger_score=_r(final),
         phase_label=phase,
+        type_label=type_label,
+        confidence=confidence,
         moat_narrative=moat_narr,
         flow_narrative=flow_narr,
         growth_narrative=growth_narr,

@@ -104,15 +104,20 @@ class TickerScore:
     has_insider_data: bool = False       # set True once Form 4 ingest exists
 
     # r63.72.7: Multibagger framework — M/F/G/O composite
-    multibagger_score: float = 0.0       # 0-100 final, risk-adjusted (now the PRIMARY ranking)
-    moat_score: float = 0.0              # 0-100 — durability of returns
-    flow_score: float = 0.0              # 0-100 — institutional flow with early-phase detector
-    growth_score: float = 0.0            # 0-100 — momentum of fundamentals
-    optionality_score: float = 0.0       # 0-100 — non-linear upside potential
-    risk_penalty: float = 0.0            # 0-1 — multiplicative penalty
-    phase_label: str = ""                # "Early discovery"/"Building"/"Mid-cycle"/"Crowded"/"Saturated"
-    has_fundamentals: bool = False       # True if Yahoo returned real income stmt data
-    multibagger_narrative: str = ""      # Combined plain-English narrative
+    # r63.72.9: Scores can now be None (rendered as N/A) — no fake precision
+    multibagger_score: Optional[float] = None    # 0-100 final, or None if M/G/O missing
+    moat_score: Optional[float] = None
+    flow_score: Optional[float] = None
+    growth_score: Optional[float] = None
+    optionality_score: Optional[float] = None
+    risk_penalty: float = 0.0
+    phase_label: str = ""
+    has_fundamentals: bool = False
+    multibagger_narrative: str = ""
+
+    # r63.72.9: Type + confidence — replace stars-only display
+    type_label: str = ""                         # "Structural Compounder" / "Flow Momentum" / etc.
+    confidence: str = "none"                     # "high" / "medium" / "low" / "none"
 
 
 def _percentile_rank(values: List[float], v: float) -> float:
@@ -673,64 +678,78 @@ def score_universe(conn) -> List[TickerScore]:
     # Re-sort by Promise Score temporarily (will resort by Multibagger below)
     results.sort(key=lambda r: r.promise_score, reverse=True)
 
-    # r63.72.7: Multibagger framework — M/F/G/O composite, risk-adjusted
-    # This is computationally heavier (per-ticker fundamentals fetch) so we
-    # only enrich the top ~50 by Promise. Beyond that, multibagger_score = 0
-    # which puts them at the bottom of multibagger ranking — desirable.
+    # r63.72.9: Multibagger framework — M/F/G/O composite, risk-adjusted
+    # Bumped from top 50 to top 150 — fundamentals fetch + 1hr cache means
+    # subsequent loads still fast. Trades 60-90 sec first load for honest data.
     try:
         from services.multibagger_scoring import enrich_with_multibagger
-        MB_ENRICH_TOP = 50  # 50 fundamentals fetches × 4-6 thread parallel ≈ 30-60 sec
+        MB_ENRICH_TOP = 150
         top_for_mb = results[:MB_ENRICH_TOP]
-        mb_scores = enrich_with_multibagger(top_for_mb, parallel=6)
+        mb_scores = enrich_with_multibagger(top_for_mb, parallel=8)
 
         for r in results:
             mb = mb_scores.get(r.ticker)
             if mb is not None:
-                r.multibagger_score = mb.multibagger_score
-                r.moat_score = mb.moat_score
+                r.multibagger_score = mb.multibagger_score        # may be None
+                r.moat_score = mb.moat_score                       # may be None
                 r.flow_score = mb.flow_score
-                r.growth_score = mb.growth_score
-                r.optionality_score = mb.optionality_score
+                r.growth_score = mb.growth_score                   # may be None
+                r.optionality_score = mb.optionality_score         # may be None
                 r.risk_penalty = mb.risk_penalty
                 r.phase_label = mb.phase_label
                 r.has_fundamentals = mb.has_fundamentals
                 r.multibagger_narrative = mb.overall_narrative
+                r.type_label = mb.type_label
+                r.confidence = mb.confidence
     except Exception as e:
         # Soft fail — multibagger enrichment is supplementary
-        # Scanner still works without it; just no M/F/G/O columns populated
         pass
 
-    # Re-rank star ratings + BEST BET using MULTIBAGGER score (the new primary)
-    # Names without multibagger_score (no fundamentals) stay at promise rank
-    # but don't get top BEST BET status if they lack fundamentals.
-    if any(r.multibagger_score > 0 for r in results):
-        # Rebuild star ratings: top 10% on multibagger = 5 stars, etc.
-        mb_values = [r.multibagger_score for r in results if r.multibagger_score > 0]
+    # r63.72.9: Re-rank star ratings + BEST BET using MULTIBAGGER score
+    # Critical fix: rows WITHOUT real multibagger_score get NO stars.
+    # Previously they kept Promise-Score-derived stars which was misleading.
+    has_any_mb = any(r.multibagger_score is not None for r in results)
+    if has_any_mb:
+        mb_values = [r.multibagger_score for r in results if r.multibagger_score is not None]
         if mb_values:
+            # First: zero out all stars/best-bet (clean slate)
             for r in results:
-                if r.multibagger_score > 0:
+                r.is_best_bet = False
+                r.best_bet_rank = 0
+                if r.multibagger_score is None:
+                    # No multibagger score → no stars (don't pretend)
+                    r.star_rating = 0
+
+            # Star rating: percentile-based on real MB scores
+            for r in results:
+                if r.multibagger_score is not None:
                     pct = _percentile_rank(mb_values, r.multibagger_score)
                     if pct >= 90:    r.star_rating = 5
                     elif pct >= 75:  r.star_rating = 4
                     elif pct >= 50:  r.star_rating = 3
                     elif pct >= 25:  r.star_rating = 2
                     else:            r.star_rating = 1
-                # else: star_rating stays from Promise Score path (degraded fallback)
 
-            # Re-curate BEST BET: top 10 by multibagger_score (with fundamentals)
-            for r in results:
-                r.is_best_bet = False
-                r.best_bet_rank = 0
+            # Re-curate BEST BET: top 10 by multibagger_score (with REAL fundamentals)
             ranked_by_mb = sorted(
-                [r for r in results if r.multibagger_score > 0 and r.has_fundamentals],
+                [r for r in results
+                 if r.multibagger_score is not None
+                 and r.has_fundamentals
+                 and r.confidence in ("medium", "high")],
                 key=lambda x: x.multibagger_score, reverse=True
             )
             for i, r in enumerate(ranked_by_mb[:10]):
                 r.is_best_bet = True
                 r.best_bet_rank = i + 1
 
-    # FINAL SORT: multibagger score primary, promise score tie-breaker
-    results.sort(key=lambda r: (r.multibagger_score, r.promise_score), reverse=True)
+    # FINAL SORT: multibagger score primary (None goes last), promise score tie-breaker
+    results.sort(
+        key=lambda r: (
+            r.multibagger_score if r.multibagger_score is not None else -1,
+            r.promise_score
+        ),
+        reverse=True
+    )
 
     return results
 
