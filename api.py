@@ -3802,8 +3802,8 @@ async def home():
 @app.get("/api/positioning-scan")
 async def positioning_scan(
     tier: int = -1,
-    limit: int = 50,
-    min_filer_count: int = 50,
+    limit: int = 200,
+    min_filer_count: int = 30,
 ):
     """
     Returns ranked institutional positioning scores for the universe.

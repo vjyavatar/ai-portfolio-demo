@@ -3003,27 +3003,26 @@ window._activeMicroCapHunterTab = false;
 
 // r63.72: Institutional Positioning Scanner — loader
 window._positioningCache = null;
-window.loadPositioningScanner = function(forceTier) {
+window.loadPositioningScanner = function() {
   var deResult = document.getElementById('deResult');
   if (!deResult) return;
 
-  var activeTier = (typeof forceTier === 'number') ? forceTier : (window._positioningTier || 0);
-  window._positioningTier = activeTier;
-
-  // Loading state
-  if (!window._positioningCache) {
-    deResult.innerHTML = '<div style="padding:60px 20px;text-align:center;font-family:Inter,sans-serif">' +
-      '<div style="font-size:32px;margin-bottom:14px">⏳</div>' +
-      '<div style="font-size:14px;font-weight:700;color:#0f172a">Computing institutional positioning scores...</div>' +
-      '<div style="font-size:11px;color:#94a3b8;margin-top:8px">Querying ' +
-      'all institutional holdings across the universe — typically 2–5 seconds.</div>' +
-      '</div>';
+  // r63.72.6: If we have cache, just re-render (view mode toggle is a re-render)
+  if (window._positioningCache) {
+    _renderPositioningPage(window._positioningCache);
+    return;
   }
 
-  var url = '/api/positioning-scan?limit=50&min_filer_count=50';
-  if (activeTier > 0) url += '&tier=' + activeTier;
+  // Loading state
+  deResult.innerHTML = '<div style="padding:60px 20px;text-align:center;font-family:Inter,sans-serif">' +
+    '<div style="font-size:32px;margin-bottom:14px">⏳</div>' +
+    '<div style="font-size:14px;font-weight:700;color:#0f172a">Computing institutional positioning + Promise scores...</div>' +
+    '<div style="font-size:11px;color:#94a3b8;margin-top:8px">Querying ' +
+    'all institutional holdings, computing buy/sell splits, fetching live prices — typically 5–15 seconds.</div>' +
+    '</div>';
 
-  fetch(url)
+  // r63.72.6: Always fetch full universe; client-side toggles between BEST BETS and ALL
+  fetch('/api/positioning-scan?limit=200&min_filer_count=30')
     .then(function(r) { return r.json(); })
     .then(function(d) {
       if (!d.success) {
@@ -3035,7 +3034,7 @@ window.loadPositioningScanner = function(forceTier) {
         return;
       }
       window._positioningCache = d;
-      _renderPositioningPage(d, activeTier);
+      _renderPositioningPage(d);
     })
     .catch(function(e) {
       deResult.innerHTML = '<div style="padding:60px 20px;text-align:center;color:#dc2626;font-family:Inter,sans-serif">' +
@@ -3050,124 +3049,231 @@ function _renderPositioningPage(d, activeTier) {
   var deResult = document.getElementById('deResult');
   if (!deResult) return;
 
+  // r63.72.6: View modes
+  // 'best' = top 10 BEST BET only (curated investment list)
+  // 'all'  = full ranked universe by Promise Score
+  var viewMode = window._positioningView || 'all';
+
   var h = '';
 
   // Header card
   h += '<div style="background:linear-gradient(135deg,#1A3A78,#2563eb);color:#fff;padding:20px 24px;border-radius:12px;margin-bottom:16px;font-family:Inter,sans-serif">';
   h += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">';
-  h += '<span style="font-size:24px">🔥</span>';
-  h += '<h2 style="margin:0;font-size:18px;font-weight:800;font-family:Sora,sans-serif;letter-spacing:-0.3px">Institutional Positioning Scanner</h2>';
+  h += '<span style="font-size:24px">🚀</span>';
+  h += '<h2 style="margin:0;font-size:18px;font-weight:800;font-family:Sora,sans-serif;letter-spacing:-0.3px">Multibagger Scanner</h2>';
   h += '</div>';
-  h += '<div style="font-size:12px;opacity:0.9">Smart-money positioning intelligence derived from SEC 13F filings · ' +
-       d.universe_size + ' tickers scored · Tier 1: ' + d.tier_counts.tier_1 +
-       ' · Tier 2: ' + d.tier_counts.tier_2 + ' · Tier 3: ' + d.tier_counts.tier_3 + '</div>';
+  h += '<div style="font-size:12px;opacity:0.9">Moat × Flow × Growth × Optionality, risk-adjusted · Catches names while still in early or building phase · ' +
+       d.universe_size + ' tickers scored from SEC 13F + fundamentals</div>';
   h += '</div>';
 
-  // Tier filter pills
-  h += '<div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">';
-  var tiers = [
-    {n: 0, label: 'All Tiers', count: d.universe_size},
-    {n: 1, label: '🥷 Stealth Accumulation', count: d.tier_counts.tier_1, color: '#10b981'},
-    {n: 2, label: '🔥 Early Positioning',    count: d.tier_counts.tier_2, color: '#3b82f6'},
-    {n: 3, label: '🟡 Building',              count: d.tier_counts.tier_3, color: '#f59e0b'}
+  // r63.72.7: View mode toggle (replaces tier pills)
+  h += '<div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;align-items:center">';
+  var viewModes = [
+    {id: 'best', label: '🏆 BEST BETS — Top 10 by Multibagger Score'},
+    {id: 'all',  label: '🌎 All Names — Ranked by Multibagger Score'}
   ];
-  tiers.forEach(function(t) {
-    var isActive = activeTier === t.n;
-    var bg = isActive ? (t.color || '#1A3A78') : 'transparent';
+  viewModes.forEach(function(v) {
+    var isActive = viewMode === v.id;
+    var bg = isActive ? '#1A3A78' : 'transparent';
     var fg = isActive ? '#fff' : '#374151';
-    var bd = isActive ? (t.color || '#1A3A78') : '#cbd5e1';
-    h += '<button onclick="loadPositioningScanner(' + t.n + ')" style="padding:6px 14px;border-radius:18px;font-size:11px;font-weight:700;border:1px solid ' + bd + ';background:' + bg + ';color:' + fg + ';cursor:pointer;font-family:Inter,sans-serif">' +
-         t.label + ' (' + t.count + ')' + '</button>';
+    var bd = isActive ? '#1A3A78' : '#cbd5e1';
+    h += '<button onclick="window._positioningView=\'' + v.id + '\';loadPositioningScanner();" ' +
+         'style="padding:8px 16px;border-radius:8px;font-size:11px;font-weight:700;border:1px solid ' + bd +
+         ';background:' + bg + ';color:' + fg + ';cursor:pointer;font-family:Inter,sans-serif">' +
+         v.label + '</button>';
   });
+  // Right-aligned refresh
+  h += '<div style="margin-left:auto"><button onclick="window._positioningCache=null;loadPositioningScanner();" ' +
+       'style="padding:6px 12px;border-radius:6px;background:#fff;border:1px solid #cbd5e1;font-size:10px;font-weight:700;color:#374151;cursor:pointer;font-family:Inter,sans-serif">↻ Refresh</button></div>';
   h += '</div>';
 
-  // Refresh button
-  h += '<div style="display:flex;justify-content:flex-end;margin-bottom:8px">';
-  h += '<button onclick="window._positioningCache=null;loadPositioningScanner(' + activeTier + ')" style="padding:5px 12px;border-radius:6px;background:#fff;border:1px solid #cbd5e1;font-size:10px;font-weight:700;color:#374151;cursor:pointer;font-family:Inter,sans-serif">↻ Refresh</button>';
-  h += '</div>';
+  // Filter results based on view mode
+  var displayRows = (d.results || []).slice();
+  if (viewMode === 'best') {
+    displayRows = displayRows.filter(function(r) { return r.is_best_bet; });
+    displayRows.sort(function(a,b) { return (a.best_bet_rank||99) - (b.best_bet_rank||99); });
+  }
 
   // Results table
-  if (!d.results || d.results.length === 0) {
+  if (!displayRows || displayRows.length === 0) {
     h += '<div style="padding:60px 20px;text-align:center;color:#94a3b8;font-family:Inter,sans-serif">' +
          '<div style="font-size:32px;margin-bottom:14px">📊</div>' +
-         '<div style="font-size:13px">No tickers match the current filter.</div>' +
+         '<div style="font-size:13px">No tickers match the current view.</div>' +
          '</div>';
   } else {
     h += '<div style="background:#fff;border-radius:10px;overflow:hidden;border:1px solid #e2e8f0;font-family:Inter,sans-serif">';
-    h += '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:11px;min-width:1200px">';
-    h += '<thead><tr style="background:#f8fafc;text-align:left;font-family:Sora,sans-serif">' +
-         '<th style="padding:10px 10px;font-size:9px;letter-spacing:0.6px;color:#64748b;font-weight:800">RANK</th>' +
-         '<th style="padding:10px 10px;font-size:9px;letter-spacing:0.6px;color:#64748b;font-weight:800">TIER</th>' +
-         '<th style="padding:10px 10px;font-size:9px;letter-spacing:0.6px;color:#64748b;font-weight:800">TICKER</th>' +
-         '<th style="padding:10px 10px;font-size:9px;letter-spacing:0.6px;color:#64748b;font-weight:800">ISSUER</th>' +
-         '<th style="padding:10px 10px;font-size:9px;letter-spacing:0.6px;color:#64748b;font-weight:800;text-align:right">PRICE</th>' +
-         '<th style="padding:10px 10px;font-size:9px;letter-spacing:0.6px;color:#64748b;font-weight:800;text-align:right">MKT CAP</th>' +
-         '<th style="padding:10px 10px;font-size:9px;letter-spacing:0.6px;color:#64748b;font-weight:800;text-align:right">52W RANGE</th>' +
-         '<th style="padding:10px 10px;font-size:9px;letter-spacing:0.6px;color:#64748b;font-weight:800;text-align:right">SCORE</th>' +
-         '<th style="padding:10px 10px;font-size:9px;letter-spacing:0.6px;color:#64748b;font-weight:800;text-align:right">SHARE Δ</th>' +
-         '<th style="padding:10px 10px;font-size:9px;letter-spacing:0.6px;color:#64748b;font-weight:800;text-align:right">FILERS Δ</th>' +
-         '<th style="padding:10px 10px;font-size:9px;letter-spacing:0.6px;color:#64748b;font-weight:800;text-align:right">PERSIST</th>' +
-         '<th style="padding:10px 10px;font-size:9px;letter-spacing:0.6px;color:#64748b;font-weight:800;min-width:280px">WHY (PLAIN ENGLISH)</th>' +
-         '</tr></thead><tbody>';
+    h += '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:11px;min-width:1400px">';
 
-    d.results.forEach(function(r, i) {
-      var tierColor = r.tier === 1 ? '#10b981' : (r.tier === 2 ? '#3b82f6' : (r.tier === 3 ? '#f59e0b' : '#94a3b8'));
-      var tierBadge = r.tier > 0 ? ('<span style="display:inline-block;padding:2px 7px;border-radius:10px;background:' + tierColor + ';color:#fff;font-size:9px;font-weight:800;font-family:Sora,sans-serif">T' + r.tier + '</span>') : '<span style="color:#cbd5e1">—</span>';
-      var shareColor = r.share_delta_pct > 0 ? '#10b981' : (r.share_delta_pct < 0 ? '#dc2626' : '#64748b');
-      var filerColor = r.filer_count_delta > 0 ? '#10b981' : (r.filer_count_delta < 0 ? '#dc2626' : '#64748b');
+    // Headers — Multibagger-first ordering
+    h += '<thead><tr style="background:#f8fafc;text-align:left;font-family:Sora,sans-serif">';
+    var heads = [
+      {label:'#',           align:'left',   width:'36px'},
+      {label:'TICKER',      align:'left',   width:'auto'},
+      {label:'ISSUER',      align:'left',   width:'auto'},
+      {label:'MB SCORE',    align:'right',  width:'72px',  tip:'Multibagger Score 0-100. (0.35×Moat + 0.25×Flow + 0.25×Growth + 0.15×Optionality) × (1 − Risk)'},
+      {label:'RATING',      align:'center', width:'90px',  tip:'1-5 stars based on MB Score percentile'},
+      {label:'PHASE',       align:'left',   width:'90px',  tip:'Adoption phase: Pre-discovery / Early / Building / Mid / Crowded / Saturated'},
+      {label:'M',           align:'right',  width:'42px',  tip:'Moat — durability of returns'},
+      {label:'F',           align:'right',  width:'42px',  tip:'Institutional Flow — early-phase weighted'},
+      {label:'G',           align:'right',  width:'42px',  tip:'Growth Inflection — momentum of fundamentals'},
+      {label:'O',           align:'right',  width:'42px',  tip:'Optionality — non-linear upside'},
+      {label:'RISK',        align:'right',  width:'46px',  tip:'Risk penalty applied (leverage / dilution / cash burn)'},
+      {label:'PRICE',       align:'right',  width:'78px'},
+      {label:'MKT CAP',     align:'right',  width:'76px'},
+      {label:'52W',         align:'right',  width:'76px',  tip:'Position in 52W range'},
+      {label:'INST BUY',    align:'right',  width:'62px',  tip:'Filers increasing position Q/Q'},
+      {label:'INST SELL',   align:'right',  width:'62px',  tip:'Filers decreasing position Q/Q'},
+      {label:'INSIDER',     align:'right',  width:'62px',  tip:'Form 4 insider net buys (coming soon)'},
+      {label:'PERSIST',     align:'right',  width:'56px',  tip:'Consecutive Qs of net accumulation'},
+      {label:'PERSIST',    align:'right', width:'70px',  tip:'Consecutive Qs of net accumulation'},
+      {label:'WHY (PLAIN ENGLISH)', align:'left', width:'320px'}
+    ];
+    heads.forEach(function(hh) {
+      var tipAttr = hh.tip ? ' title="' + hh.tip + '"' : '';
+      h += '<th' + tipAttr + ' style="padding:10px 8px;font-size:9px;letter-spacing:0.6px;color:#64748b;font-weight:800;text-align:' + hh.align + ';width:' + hh.width + '">' + hh.label + '</th>';
+    });
+    h += '</tr></thead><tbody>';
 
-      // r63.72.5: Format price + market cap + 52W range cells
-      var priceStr = (r.price && r.price > 0) ? '$' + r.price.toFixed(2) : '—';
+    displayRows.forEach(function(r, i) {
+      // r63.72.7: Color the multibagger score by its tier
+      var mbScore = r.multibagger_score || 0;
+      var mbCol = mbScore >= 70 ? '#10b981' : (mbScore >= 50 ? '#3b82f6' : (mbScore >= 30 ? '#f59e0b' : '#94a3b8'));
+
+      // Star rating display
+      var starsStr = '<span style="color:#94a3b8">—</span>';
+      if (r.star_rating > 0) {
+        var filled = '★'.repeat(r.star_rating);
+        var empty = '☆'.repeat(5 - r.star_rating);
+        starsStr = '<span style="color:#f59e0b;font-size:14px;letter-spacing:1px">' + filled +
+                   '<span style="color:#cbd5e1">' + empty + '</span></span>';
+      }
+
+      // BEST BET badge
+      var bestBetBadge = '';
+      if (r.is_best_bet) {
+        bestBetBadge = '<div style="display:inline-block;margin-left:6px;padding:2px 6px;border-radius:8px;background:linear-gradient(135deg,#f59e0b,#dc2626);color:#fff;font-size:8px;font-weight:800;letter-spacing:0.5px;font-family:Sora,sans-serif">🏆 BEST BET #' + r.best_bet_rank + '</div>';
+      }
+
+      // r63.72.7: Phase label badge with color
+      var phaseLabel = r.phase_label || '';
+      var phaseBg = '#94a3b8', phaseFg = '#fff';
+      if (phaseLabel === 'Pre-discovery') { phaseBg = '#a855f7'; }
+      else if (phaseLabel === 'Early discovery') { phaseBg = '#10b981'; }  // GREEN — most desirable
+      else if (phaseLabel === 'Building') { phaseBg = '#3b82f6'; }
+      else if (phaseLabel === 'Mid-cycle') { phaseBg = '#f59e0b'; }
+      else if (phaseLabel === 'Crowded') { phaseBg = '#dc2626'; phaseFg = '#fff'; }
+      else if (phaseLabel === 'Saturated') { phaseBg = '#94a3b8'; }
+      var phaseStr = phaseLabel
+        ? '<span style="display:inline-block;padding:3px 7px;border-radius:6px;background:' + phaseBg + ';color:' + phaseFg + ';font-size:9px;font-weight:700;font-family:Sora,sans-serif;white-space:nowrap">' + phaseLabel + '</span>'
+        : '<span style="color:#cbd5e1">—</span>';
+
+      // r63.72.7: Mini score for M/F/G/O — color-coded
+      function _miniScore(v) {
+        if (!v && v !== 0) return '<span style="color:#cbd5e1">—</span>';
+        var col = v >= 70 ? '#10b981' : (v >= 50 ? '#3b82f6' : (v >= 30 ? '#f59e0b' : '#dc2626'));
+        return '<span style="color:' + col + ';font-weight:700;font-family:IBM Plex Mono,monospace">' + Math.round(v) + '</span>';
+      }
+
+      // Risk penalty display
+      var riskPct = (r.risk_penalty || 0) * 100;
+      var riskStr = riskPct === 0
+        ? '<span style="color:#cbd5e1">—</span>'
+        : (riskPct >= 25
+          ? '<span style="color:#dc2626;font-weight:700">−' + riskPct.toFixed(0) + '%</span>'
+          : '<span style="color:#f59e0b;font-weight:700">−' + riskPct.toFixed(0) + '%</span>');
+
+      // Tier subtle badge after ticker
+      var tierBadgeColor = r.tier === 1 ? '#10b981' : (r.tier === 2 ? '#3b82f6' : (r.tier === 3 ? '#f59e0b' : '#94a3b8'));
+      var tierBadge = r.tier > 0
+        ? '<span style="display:inline-block;margin-left:6px;padding:1px 5px;border-radius:8px;background:' + tierBadgeColor + ';color:#fff;font-size:8px;font-weight:800;font-family:Sora,sans-serif">T' + r.tier + '</span>'
+        : '';
+
+      // Price + change
+      var priceStr = (r.price && r.price > 0) ? '$' + r.price.toFixed(2) : '<span style="color:#cbd5e1">—</span>';
       var changeStr = '';
-      if (r.price && r.price > 0 && r.change_pct !== undefined) {
+      if (r.price && r.price > 0 && r.change_pct !== undefined && r.change_pct !== null) {
         var chCol = r.change_pct >= 0 ? '#10b981' : '#dc2626';
         changeStr = '<div style="font-size:9px;color:' + chCol + ';margin-top:2px">' +
                     (r.change_pct >= 0 ? '+' : '') + r.change_pct.toFixed(2) + '%</div>';
       }
-      var mcapStr = '—';
+
+      // Market cap
+      var mcapStr = '<span style="color:#cbd5e1">—</span>';
       if (r.market_cap && r.market_cap > 0) {
         var mb = r.market_cap / 1e9;
         if (mb >= 100) mcapStr = '$' + mb.toFixed(0) + 'B';
         else if (mb >= 1) mcapStr = '$' + mb.toFixed(1) + 'B';
         else mcapStr = '$' + (r.market_cap / 1e6).toFixed(0) + 'M';
       }
-      // 52W range as a mini horizontal bar
-      var rangeStr = '—';
+
+      // 52W mini bar
+      var rangeStr = '<span style="color:#cbd5e1">—</span>';
       if (r.pct_in_range !== undefined && r.pct_in_range >= 0) {
         var pos = Math.max(0, Math.min(100, r.pct_in_range));
-        var barColor = pos >= 75 ? '#10b981' : pos <= 25 ? '#dc2626' : '#3b82f6';
-        rangeStr = '<div style="position:relative;width:60px;height:14px;background:#f1f5f9;border-radius:3px;margin-left:auto">' +
-                   '<div style="position:absolute;left:' + pos + '%;top:0;width:3px;height:14px;background:' + barColor + ';transform:translateX(-50%)"></div>' +
+        var barColor = pos <= 25 ? '#10b981' : (pos >= 75 ? '#dc2626' : '#3b82f6');
+        rangeStr = '<div style="position:relative;width:60px;height:10px;background:#f1f5f9;border-radius:3px;margin-left:auto">' +
+                   '<div style="position:absolute;left:' + pos + '%;top:0;width:3px;height:10px;background:' + barColor + ';transform:translateX(-50%)"></div>' +
                    '</div>' +
-                   '<div style="font-size:8px;color:#94a3b8;text-align:right;margin-top:2px">' + pos.toFixed(0) + '% of range</div>';
+                   '<div style="font-size:8px;color:#94a3b8;text-align:right;margin-top:2px">' + pos.toFixed(0) + '%</div>';
       }
 
-      // r63.72.5: SAFE click handler. Uses global helper that null-checks symbolInput.
-      // Previously called document.getElementById('symbolInput').value = ... directly
-      // which crashed when the element wasn't on the current page.
+      // Inst buy/sell columns — colored
+      var buyStr = (r.inst_buyers > 0)
+        ? '<span style="color:#10b981;font-weight:800">' + r.inst_buyers + '</span>'
+        : '<span style="color:#cbd5e1">0</span>';
+      var sellStr = (r.inst_sellers > 0)
+        ? '<span style="color:#dc2626;font-weight:800">' + r.inst_sellers + '</span>'
+        : '<span style="color:#cbd5e1">0</span>';
+
+      // Insider — placeholder
+      var insiderStr = '<span style="color:#cbd5e1;font-size:9px">soon</span>';
+
+      // r63.72.7: Use multibagger narrative if available, fallback to existing reasoning
+      var narrative = r.multibagger_narrative || r.reasoning || '';
+
+      // Click handler
       var clickAttr = 'onclick="window._positioningDeepDive(\'' + r.ticker.replace(/'/g, "\\'") + '\')"';
 
-      h += '<tr style="border-top:1px solid #f1f5f9;cursor:pointer" onmouseover="this.style.background=\'#fafbfc\'" onmouseout="this.style.background=\'\'" ' + clickAttr + '>';
-      h += '<td style="padding:10px 10px;color:#94a3b8;font-family:IBM Plex Mono,monospace">' + (i + 1) + '</td>';
-      h += '<td style="padding:10px 10px">' + tierBadge + '</td>';
-      h += '<td style="padding:10px 10px;font-weight:800;color:#0f172a;font-family:IBM Plex Mono,monospace">' + r.ticker + '</td>';
-      h += '<td style="padding:10px 10px;color:#475569;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + (r.issuer_name || '') + '</td>';
-      h += '<td style="padding:10px 10px;text-align:right;color:#0f172a;font-family:IBM Plex Mono,monospace;font-weight:700">' + priceStr + changeStr + '</td>';
-      h += '<td style="padding:10px 10px;text-align:right;color:#475569;font-family:IBM Plex Mono,monospace">' + mcapStr + '</td>';
-      h += '<td style="padding:10px 10px;text-align:right">' + rangeStr + '</td>';
-      h += '<td style="padding:10px 10px;text-align:right;font-weight:800;color:' + tierColor + ';font-family:IBM Plex Mono,monospace">' + r.composite_score.toFixed(1) + '</td>';
-      h += '<td style="padding:10px 10px;text-align:right;color:' + shareColor + ';font-family:IBM Plex Mono,monospace;font-weight:700">' + (r.share_delta_pct >= 0 ? '+' : '') + r.share_delta_pct.toFixed(1) + '%</td>';
-      h += '<td style="padding:10px 10px;text-align:right;color:' + filerColor + ';font-family:IBM Plex Mono,monospace;font-weight:700">' + (r.filer_count_delta >= 0 ? '+' : '') + r.filer_count_delta + '</td>';
-      h += '<td style="padding:10px 10px;text-align:right;color:#475569;font-family:IBM Plex Mono,monospace">' + r.persistence_quarters + 'Q</td>';
-      h += '<td style="padding:10px 10px;color:#334155;font-size:10.5px;line-height:1.45;min-width:280px">' + (r.reasoning || '') + '</td>';
+      // Background highlight for best bets
+      var rowBg = r.is_best_bet ? 'background:linear-gradient(90deg,#fffbeb 0%,#fff 80%)' : '';
+
+      h += '<tr style="border-top:1px solid #f1f5f9;cursor:pointer;' + rowBg + '" onmouseover="this.style.background=\'#fafbfc\'" onmouseout="this.style.background=\'' + (r.is_best_bet ? 'linear-gradient(90deg,#fffbeb 0%,#fff 80%)' : '') + '\'" ' + clickAttr + '>';
+      h += '<td style="padding:10px 8px;color:#94a3b8;font-family:IBM Plex Mono,monospace">' + (i + 1) + '</td>';
+      h += '<td style="padding:10px 8px"><span style="font-weight:800;color:#0f172a;font-family:IBM Plex Mono,monospace;font-size:12px">' + r.ticker + '</span>' + tierBadge + bestBetBadge + '</td>';
+      h += '<td style="padding:10px 8px;color:#475569;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + (r.issuer_name || '') + '</td>';
+      h += '<td style="padding:10px 8px;text-align:right;font-weight:800;color:' + mbCol + ';font-family:IBM Plex Mono,monospace;font-size:13px">' + mbScore.toFixed(1) + '</td>';
+      h += '<td style="padding:10px 8px;text-align:center">' + starsStr + '</td>';
+      h += '<td style="padding:10px 8px">' + phaseStr + '</td>';
+      h += '<td style="padding:10px 8px;text-align:right">' + _miniScore(r.moat_score) + '</td>';
+      h += '<td style="padding:10px 8px;text-align:right">' + _miniScore(r.flow_score) + '</td>';
+      h += '<td style="padding:10px 8px;text-align:right">' + _miniScore(r.growth_score) + '</td>';
+      h += '<td style="padding:10px 8px;text-align:right">' + _miniScore(r.optionality_score) + '</td>';
+      h += '<td style="padding:10px 8px;text-align:right">' + riskStr + '</td>';
+      h += '<td style="padding:10px 8px;text-align:right;color:#0f172a;font-family:IBM Plex Mono,monospace;font-weight:700">' + priceStr + changeStr + '</td>';
+      h += '<td style="padding:10px 8px;text-align:right;color:#475569;font-family:IBM Plex Mono,monospace">' + mcapStr + '</td>';
+      h += '<td style="padding:10px 8px;text-align:right">' + rangeStr + '</td>';
+      h += '<td style="padding:10px 8px;text-align:right;font-family:IBM Plex Mono,monospace">' + buyStr + '</td>';
+      h += '<td style="padding:10px 8px;text-align:right;font-family:IBM Plex Mono,monospace">' + sellStr + '</td>';
+      h += '<td style="padding:10px 8px;text-align:right;font-family:IBM Plex Mono,monospace">' + insiderStr + '</td>';
+      h += '<td style="padding:10px 8px;text-align:right;color:#475569;font-family:IBM Plex Mono,monospace;font-weight:700">' + (r.persistence_quarters || 0) + 'Q</td>';
+      h += '<td style="padding:10px 8px;color:#334155;font-size:10.5px;line-height:1.45;min-width:280px">' + narrative + '</td>';
       h += '</tr>';
     });
     h += '</tbody></table></div></div>';
   }
 
-  // Footer
+  // Footer — explain Multibagger framework
   h += '<div style="padding:16px 4px;font-size:10px;color:#94a3b8;font-family:Inter,sans-serif;line-height:1.5">';
-  h += '<strong>How this works:</strong> Composite score combines Q-over-Q share-count delta (25%), value delta (15%), filer-count delta (25%), persistence (30%), and concentration (-5%), with a log-scale boost for institutional position size. All metrics z-score normalized across the universe. Tier 1 ≥ 90th percentile, Tier 2 ≥ 80th, Tier 3 ≥ 70th. Prices are live; 13F data is filed quarterly with up to 45-day SEC delay. Click any row to deep-dive that ticker on the Stock tab.';
+  h += '<strong>Multibagger Score methodology:</strong> ';
+  h += '<strong>(0.35 × M + 0.25 × F + 0.25 × G + 0.15 × O) × (1 − Risk)</strong>. ';
+  h += '<strong>M (Moat 35%):</strong> 5-yr ROIC durability + gross margin floor + operating margin trend + FCF consistency. ';
+  h += '<strong>F (Flow 25%):</strong> Early-phase weighted (rewards Pre-discovery/Early/Building, penalizes Crowded/Saturated) + buy-side dominance + filer momentum. ';
+  h += '<strong>G (Growth 25%):</strong> Q-over-Q revenue acceleration + multi-year growth + margin expansion + EPS beat rate. ';
+  h += '<strong>O (Optionality 15%):</strong> R&amp;D intensity (sector-aware) + cash position + 52W positioning + capex intensity. ';
+  h += '<strong>Risk:</strong> Multiplicative penalty for high leverage (>4× EBITDA), dilution, cash burn (caps at 40%). ';
+  h += '<strong>BEST BET:</strong> Top 10 by Multibagger Score requiring real fundamentals data. ';
+  h += '<strong>PHASE:</strong> Adoption stage based on filer count. <em>Early discovery</em> + <em>Building</em> are the historical multibagger phases — rewarded most. ';
+  h += 'Yahoo Finance is required for fundamentals (M/G/O); when blocked, those scores fall back to neutral 50. 13F has up to 45-day SEC delay. Click any row to deep-dive.';
   h += '</div>';
 
   deResult.innerHTML = h;

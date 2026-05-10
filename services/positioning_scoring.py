@@ -92,6 +92,28 @@ class TickerScore:
     market_cap: int = 0                  # current market cap in dollars
     reasoning: str = ""                  # plain-English trader-speak narrative
 
+    # r63.72.6: Promise Score + investment-decision fields
+    promise_score: float = 0.0           # 0-100 forward-looking 1-year promise composite
+    star_rating: int = 0                 # 1-5 stars (0 = no rating)
+    is_best_bet: bool = False            # top 10 by promise score
+    best_bet_rank: int = 0               # 1-10 if best bet, else 0
+    inst_buyers: int = 0                 # # of filers who increased shares Q/Q (or new positions)
+    inst_sellers: int = 0                # # of filers who reduced shares Q/Q (or exited)
+    insider_net_buys: int = 0            # placeholder for Form 4 data (r63.73)
+    insider_net_sells: int = 0           # placeholder for Form 4 data (r63.73)
+    has_insider_data: bool = False       # set True once Form 4 ingest exists
+
+    # r63.72.7: Multibagger framework — M/F/G/O composite
+    multibagger_score: float = 0.0       # 0-100 final, risk-adjusted (now the PRIMARY ranking)
+    moat_score: float = 0.0              # 0-100 — durability of returns
+    flow_score: float = 0.0              # 0-100 — institutional flow with early-phase detector
+    growth_score: float = 0.0            # 0-100 — momentum of fundamentals
+    optionality_score: float = 0.0       # 0-100 — non-linear upside potential
+    risk_penalty: float = 0.0            # 0-1 — multiplicative penalty
+    phase_label: str = ""                # "Early discovery"/"Building"/"Mid-cycle"/"Crowded"/"Saturated"
+    has_fundamentals: bool = False       # True if Yahoo returned real income stmt data
+    multibagger_narrative: str = ""      # Combined plain-English narrative
+
 
 def _percentile_rank(values: List[float], v: float) -> float:
     """Return v's percentile rank within values (0-100)."""
@@ -232,6 +254,69 @@ def fetch_universe_snapshots(conn) -> Dict[str, List[TickerSnapshot]]:
                 s.top10_value_usd = top10_lookup.get((ticker, s.period), 0)
 
     return snapshots
+
+
+def fetch_buy_sell_filers(conn) -> Dict[str, dict]:
+    """
+    r63.72.6: For each ticker, count filers who INCREASED shares vs.
+    DECREASED shares between the two most recent quarters.
+
+    This is sharper than 'net new filers' because it captures EXISTING
+    holders adding/trimming, not just newcomers.
+
+    Returns: {ticker: {"inst_buyers": int, "inst_sellers": int}}
+    """
+    out: Dict[str, dict] = {}
+    with conn.cursor() as cur:
+        # First find the two most recent periods that have substantial data
+        cur.execute(
+            """
+            SELECT period_of_report
+            FROM filings
+            GROUP BY period_of_report
+            HAVING COUNT(*) >= 30
+            ORDER BY period_of_report DESC
+            LIMIT 2
+            """
+        )
+        periods = [r[0] for r in cur.fetchall()]
+        if len(periods) < 2:
+            return out
+        latest_period, prior_period = periods[0], periods[1]
+
+        # Per-(ticker, cik) shares in each of the two periods
+        cur.execute(
+            """
+            WITH per_filer_qtr AS (
+                SELECT ticker, cik, period_of_report,
+                       SUM(COALESCE(shares, 0)) AS shares
+                FROM holdings
+                WHERE ticker IS NOT NULL
+                  AND value_usd > 0
+                  AND period_of_report IN (%s, %s)
+                GROUP BY ticker, cik, period_of_report
+            ),
+            pivoted AS (
+                SELECT ticker, cik,
+                       MAX(CASE WHEN period_of_report = %s THEN shares ELSE 0 END) AS latest_shares,
+                       MAX(CASE WHEN period_of_report = %s THEN shares ELSE 0 END) AS prior_shares
+                FROM per_filer_qtr
+                GROUP BY ticker, cik
+            )
+            SELECT ticker,
+                   COUNT(*) FILTER (WHERE latest_shares > prior_shares) AS inst_buyers,
+                   COUNT(*) FILTER (WHERE latest_shares < prior_shares) AS inst_sellers
+            FROM pivoted
+            GROUP BY ticker
+            """,
+            (latest_period, prior_period, latest_period, prior_period),
+        )
+        for ticker, buyers, sellers in cur.fetchall():
+            out[ticker] = {
+                "inst_buyers": int(buyers or 0),
+                "inst_sellers": int(sellers or 0),
+            }
+    return out
 
 
 def _compute_metrics(snaps: List[TickerSnapshot]) -> Dict:
@@ -491,6 +576,161 @@ def score_universe(conn) -> List[TickerScore]:
             r.pct_in_range = float(q.get("pct_in_range", -1.0))
             r.market_cap = int(q.get("market_cap", 0))
         r.reasoning = build_plain_english_reasoning(raw_for_reasoning[r.ticker], q)
+
+    # r63.72.6: Buy/sell filer split — enriches existing filer_count_delta
+    # with INSIDE-existing-holders accumulation vs distribution
+    try:
+        buy_sell = fetch_buy_sell_filers(conn)
+        for r in results:
+            bs = buy_sell.get(r.ticker, {})
+            r.inst_buyers = bs.get("inst_buyers", 0)
+            r.inst_sellers = bs.get("inst_sellers", 0)
+    except Exception:
+        pass  # Soft fail — if query has issue, scanner still works
+
+    # r63.72.6: Promise Score — forward-looking 1-year composite.
+    # Different from composite_score (which is current accumulation pressure).
+    # Promise emphasizes: durable persistence, broad institutional support,
+    # asymmetric upside (price still suppressed), and conviction quality.
+    promise_raw: Dict[str, float] = {}
+    for r in results:
+        m = raw_for_reasoning.get(r.ticker, {})
+
+        # Component 1: Multi-quarter persistence (35%) — most important
+        # Heavily favor 4Q+ streaks; cap diminishing returns at 8Q
+        persist_score = min(8, r.persistence_quarters) / 8.0  # 0-1
+
+        # Component 2: Buy-side dominance (25%) — buyers > sellers ratio
+        total_active = r.inst_buyers + r.inst_sellers
+        if total_active >= 10:
+            buy_ratio = r.inst_buyers / total_active
+            buyer_dominance = max(0.0, (buy_ratio - 0.5) * 2)  # 0 if 50/50, 1 if all buyers
+        else:
+            buyer_dominance = 0.0  # too few active filers to be a signal
+
+        # Component 3: Asymmetric upside via 52W positioning (15%)
+        # Below 50% of range = upside potential; above 80% = limited upside
+        if r.pct_in_range >= 0:
+            if r.pct_in_range <= 30:
+                upside_factor = 1.0   # near 52W lows = great asymmetric upside
+            elif r.pct_in_range <= 50:
+                upside_factor = 0.7
+            elif r.pct_in_range <= 70:
+                upside_factor = 0.4
+            elif r.pct_in_range <= 85:
+                upside_factor = 0.2
+            else:
+                upside_factor = 0.0   # near 52W highs = limited upside
+        else:
+            upside_factor = 0.5       # neutral if no quote data
+
+        # Component 4: Institutional value scale (10%) — bigger = more conviction
+        val_b = max(0.1, r.latest_value_usd / 1e9)
+        scale_factor = min(1.0, math.log10(val_b + 1) / 3.0)  # 0-1, saturates at $1T
+
+        # Component 5: Filer breadth bonus (10%) — many filers = consensus
+        breadth_factor = min(1.0, r.latest_filer_count / 500.0)  # 0-1, saturates at 500
+
+        # Component 6: Concentration penalty (-5%) — fragility risk
+        # If concentrated in few hands, single-fund exit could crater the position
+        concentration_penalty = max(0.0, (r.concentration_hhi - 0.4))  # penalty above 40% top-10 share
+
+        promise = (
+            0.35 * persist_score
+            + 0.25 * buyer_dominance
+            + 0.15 * upside_factor
+            + 0.10 * scale_factor
+            + 0.10 * breadth_factor
+            - 0.05 * concentration_penalty
+        )
+        promise_raw[r.ticker] = promise
+
+    # Convert to 0-100 scale via min-max normalization
+    if promise_raw:
+        min_p = min(promise_raw.values())
+        max_p = max(promise_raw.values())
+        rng = max(1e-9, max_p - min_p)
+        for r in results:
+            normalized = 100.0 * (promise_raw[r.ticker] - min_p) / rng
+            r.promise_score = round(normalized, 1)
+
+        # Star rating: percentile-based
+        promise_values = list(promise_raw.values())
+        for r in results:
+            pct = _percentile_rank(promise_values, promise_raw[r.ticker])
+            if pct >= 90:    r.star_rating = 5
+            elif pct >= 75:  r.star_rating = 4
+            elif pct >= 50:  r.star_rating = 3
+            elif pct >= 25:  r.star_rating = 2
+            else:            r.star_rating = 1
+
+        # BEST BET: top 10 by promise score
+        ranked_by_promise = sorted(results, key=lambda x: x.promise_score, reverse=True)
+        for i, r in enumerate(ranked_by_promise[:10]):
+            r.is_best_bet = True
+            r.best_bet_rank = i + 1
+
+    # Re-sort by Promise Score temporarily (will resort by Multibagger below)
+    results.sort(key=lambda r: r.promise_score, reverse=True)
+
+    # r63.72.7: Multibagger framework — M/F/G/O composite, risk-adjusted
+    # This is computationally heavier (per-ticker fundamentals fetch) so we
+    # only enrich the top ~50 by Promise. Beyond that, multibagger_score = 0
+    # which puts them at the bottom of multibagger ranking — desirable.
+    try:
+        from services.multibagger_scoring import enrich_with_multibagger
+        MB_ENRICH_TOP = 50  # 50 fundamentals fetches × 4-6 thread parallel ≈ 30-60 sec
+        top_for_mb = results[:MB_ENRICH_TOP]
+        mb_scores = enrich_with_multibagger(top_for_mb, parallel=6)
+
+        for r in results:
+            mb = mb_scores.get(r.ticker)
+            if mb is not None:
+                r.multibagger_score = mb.multibagger_score
+                r.moat_score = mb.moat_score
+                r.flow_score = mb.flow_score
+                r.growth_score = mb.growth_score
+                r.optionality_score = mb.optionality_score
+                r.risk_penalty = mb.risk_penalty
+                r.phase_label = mb.phase_label
+                r.has_fundamentals = mb.has_fundamentals
+                r.multibagger_narrative = mb.overall_narrative
+    except Exception as e:
+        # Soft fail — multibagger enrichment is supplementary
+        # Scanner still works without it; just no M/F/G/O columns populated
+        pass
+
+    # Re-rank star ratings + BEST BET using MULTIBAGGER score (the new primary)
+    # Names without multibagger_score (no fundamentals) stay at promise rank
+    # but don't get top BEST BET status if they lack fundamentals.
+    if any(r.multibagger_score > 0 for r in results):
+        # Rebuild star ratings: top 10% on multibagger = 5 stars, etc.
+        mb_values = [r.multibagger_score for r in results if r.multibagger_score > 0]
+        if mb_values:
+            for r in results:
+                if r.multibagger_score > 0:
+                    pct = _percentile_rank(mb_values, r.multibagger_score)
+                    if pct >= 90:    r.star_rating = 5
+                    elif pct >= 75:  r.star_rating = 4
+                    elif pct >= 50:  r.star_rating = 3
+                    elif pct >= 25:  r.star_rating = 2
+                    else:            r.star_rating = 1
+                # else: star_rating stays from Promise Score path (degraded fallback)
+
+            # Re-curate BEST BET: top 10 by multibagger_score (with fundamentals)
+            for r in results:
+                r.is_best_bet = False
+                r.best_bet_rank = 0
+            ranked_by_mb = sorted(
+                [r for r in results if r.multibagger_score > 0 and r.has_fundamentals],
+                key=lambda x: x.multibagger_score, reverse=True
+            )
+            for i, r in enumerate(ranked_by_mb[:10]):
+                r.is_best_bet = True
+                r.best_bet_rank = i + 1
+
+    # FINAL SORT: multibagger score primary, promise score tie-breaker
+    results.sort(key=lambda r: (r.multibagger_score, r.promise_score), reverse=True)
 
     return results
 
