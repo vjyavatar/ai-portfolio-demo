@@ -1,13 +1,14 @@
 """
-r63.71 — 13F-HR information table XML parser.
+r63.72.4 — 13F-HR information table XML parser.
 
 The information table is structured XML with one <infoTable> element per
 holding. Schema reference:
 https://www.sec.gov/info/edgar/specifications/form13fxmltechspec.pdf
 
-Critical detail: 13F filings report VALUE in thousands of dollars.
-A holding with <value>100000</value> means $100,000,000 (not $100,000).
-We multiply by 1000 on parse and store raw USD.
+CRITICAL (corrected in r63.72.4): SEC changed 13F reporting on Jan 3, 2023.
+Values are now reported in DOLLARS, NOT thousands. A holding with
+<value>100000000</value> means $100,000,000.
+Our data window is 2023+ so we treat all values as dollars (no multiplier).
 """
 
 from dataclasses import dataclass
@@ -48,7 +49,8 @@ class ParsedHolding:
     cusip: str
     issuer_name: str
     title_of_class: str
-    value_usd: int           # filing value × 1000 (filings report in thousands)
+    value_usd: int           # r63.72.4: Stored as raw dollars (post-2023 SEC standard).
+                             # No × 1000 multiplier — older filings are out of scope.
     shares: Optional[int]
     put_call: Optional[str]  # "PUT" / "CALL" / None
     investment_discretion: Optional[str]  # "SOLE" / "DFND" / "OTR"
@@ -115,7 +117,7 @@ def parse_information_table(xml_bytes: bytes) -> List[ParsedHolding]:
             if not val_str:
                 continue
             try:
-                value_usd = int(float(val_str.replace(",", "")) * 1000)
+                value_usd = int(float(val_str.replace(",", "")))  # r63.72.4: raw dollars, no × 1000
             except ValueError:
                 continue
             if value_usd <= 0:

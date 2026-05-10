@@ -60,7 +60,10 @@ def _init_pool():
             reconnect_timeout=30,      # If a conn fails to reconnect, wait up to 30s
             check=ConnectionPool.check_connection,  # r63.71.3: Pre-ping every borrowed conn
             kwargs={
-                "autocommit": False,
+                # r63.72.2: autocommit=True — no COMMIT call needed, no failure
+                # window during commit (which is what crashed the dryrun on
+                # SSL drop). Read-heavy workloads don't need transactions.
+                "autocommit": True,
                 "connect_timeout": 30,
                 # libpq-level keepalives — last line of defense if Neon
                 # closes a connection mid-query
@@ -68,6 +71,9 @@ def _init_pool():
                 "keepalives_idle": 30,
                 "keepalives_interval": 10,
                 "keepalives_count": 3,
+                # r63.72.2: Per-statement timeout — fail loudly instead of
+                # hanging if a query exceeds 5 minutes (e.g. unindexed scan)
+                "options": "-c statement_timeout=300000",
             },
             open=True,
         )

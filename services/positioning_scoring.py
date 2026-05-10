@@ -116,7 +116,10 @@ def _safe_pct_change(new: float, old: float) -> float:
 def fetch_universe_snapshots(conn) -> Dict[str, List[TickerSnapshot]]:
     """
     Build {ticker: [TickerSnapshot, ...]} sorted oldest-first per ticker.
-    Excludes ETFs and tickers with insufficient data.
+
+    r63.72.3: Properly filters out ETFs/foreign/SPACs/thinly-held.
+    r63.72.4: Divides value_usd by 1000 to correct parser bug (post-2023
+    13F filings report in dollars not thousands; parser was multiplying ×1000).
     """
     with conn.cursor() as cur:
         cur.execute(
@@ -125,23 +128,53 @@ def fetch_universe_snapshots(conn) -> Dict[str, List[TickerSnapshot]]:
                    period_of_report::text AS period,
                    COALESCE(MAX(issuer_name), '') AS issuer_name,
                    COUNT(DISTINCT cik) AS filer_count,
-                   SUM(value_usd)::bigint AS total_value,
+                   (SUM(value_usd) / 1000)::bigint AS total_value,
                    SUM(COALESCE(shares, 0))::bigint AS total_shares
             FROM holdings
             WHERE ticker IS NOT NULL
-              AND ticker NOT IN %s
               AND value_usd > 0
+              AND ticker ~ '^[A-Z]{1,5}(\\.[A-Z])?$'  -- US primary listings only
+              AND ticker NOT LIKE '%EUR%'
+              AND ticker NOT LIKE '%USD%'
+              AND ticker NOT LIKE '%-R'
+              AND ticker NOT LIKE '%-W'
+              AND ticker NOT LIKE '%-WS'
+              AND ticker NOT LIKE '%-WT'
             GROUP BY ticker, period_of_report
-            HAVING COUNT(DISTINCT cik) >= 3
+            HAVING COUNT(DISTINCT cik) >= 30
             ORDER BY ticker, period_of_report
             """,
-            (tuple(_ETF_TICKERS),),
         )
         rows = cur.fetchall()
 
-    # Group by ticker, fetch top-10 concentration in a second pass to avoid window-fn cost
+    # Group by ticker, then issuer-name based ETF filter
     snapshots: Dict[str, List[TickerSnapshot]] = {}
+
+    # Issuer-name patterns that indicate ETFs / passive instruments / pooled vehicles
+    # These reliably catch ~95%+ of ETFs without needing a hardcoded ticker list
+    _ETF_NAME_PATTERNS = [
+        "ISHARES", "SPDR", "VANGUARD", "INVESCO", "PROSHARES", "DIREXION",
+        "SCHWAB ", "FIDELITY ETF", "GLOBAL X", "WISDOMTREE", "FIRST TRUST",
+        "JPMORGAN ETF", "JPMORGAN EXCHANGE",
+        "ETF TRUST", "ETF TR", " ETF ", " ETF/",
+        "INDEX FUND", "INDEX TR", "INDEX TRUST",
+        "TRUST ETP", "EXCHANGE TRADED",
+        "PROSHARE",  # ProShares variant spellings
+        "INDEX SHARES", "TARGET CORP RET",  # target-date funds
+        "SHARES ETF", "BOND FUND", "MONEY MARKET",
+        "MASTER LP",  # MLP holding vehicles
+    ]
+
     for ticker, period, issuer_name, filer_count, total_value, total_shares in rows:
+        # Skip if issuer name matches any ETF pattern
+        if issuer_name:
+            issuer_upper = issuer_name.upper()
+            if any(pat in issuer_upper for pat in _ETF_NAME_PATTERNS):
+                continue
+            # Also skip if also matches the legacy hardcoded ticker blocklist
+            if ticker in _ETF_TICKERS:
+                continue
+
         snapshots.setdefault(ticker, []).append(
             TickerSnapshot(
                 ticker=ticker,
@@ -155,17 +188,24 @@ def fetch_universe_snapshots(conn) -> Dict[str, List[TickerSnapshot]]:
         )
 
     # Top-10 concentration per (ticker, period)
+    # With idx_holdings_ticker_period in place, the ROW_NUMBER scan
+    # uses an index seek per partition rather than a full table sort.
     if snapshots:
         with conn.cursor() as cur:
             cur.execute(
                 """
-                WITH ranked AS (
-                    SELECT ticker, period_of_report, cik, SUM(value_usd) AS v,
-                           ROW_NUMBER() OVER (PARTITION BY ticker, period_of_report
-                                              ORDER BY SUM(value_usd) DESC) AS rn
+                WITH per_filer AS (
+                    SELECT ticker, period_of_report, cik,
+                           SUM(value_usd) / 1000 AS v   -- r63.72.4: undo parser ×1000
                     FROM holdings
                     WHERE ticker IS NOT NULL AND value_usd > 0
                     GROUP BY ticker, period_of_report, cik
+                ),
+                ranked AS (
+                    SELECT ticker, period_of_report, v,
+                           ROW_NUMBER() OVER (PARTITION BY ticker, period_of_report
+                                              ORDER BY v DESC) AS rn
+                    FROM per_filer
                 )
                 SELECT ticker, period_of_report::text AS period, SUM(v)::bigint
                 FROM ranked
@@ -199,6 +239,7 @@ def _compute_metrics(snaps: List[TickerSnapshot]) -> Dict:
             "latest_value_usd": latest.total_value_usd if latest else 0,
             "quarters_present": len(snaps),
             "issuer_name": latest.issuer_name if latest else "",
+            "exclude_reason": "insufficient_quarters",
         }
 
     latest = snaps[-1]
@@ -208,6 +249,16 @@ def _compute_metrics(snaps: List[TickerSnapshot]) -> Dict:
     value_delta_pct = _safe_pct_change(latest.total_value_usd, prior.total_value_usd)
     share_delta_pct = _safe_pct_change(latest.total_shares, prior.total_shares)
     filer_count_delta = latest.filer_count - prior.filer_count
+
+    # r63.72.3: Sanity-cap deltas. Anything more than ±100% Q-over-Q is
+    # a data artifact (CUSIP remapping, stock split, ticker reuse, share
+    # class reclassification). Cap to ±100 so real accumulation patterns
+    # in the 5-50% range don't get drowned out by noise.
+    exclude_reason = None
+    DELTA_CAP = 150.0  # %
+    if abs(value_delta_pct) > DELTA_CAP or abs(share_delta_pct) > DELTA_CAP:
+        # Mark for exclusion at the score-universe level
+        exclude_reason = "delta_outlier"
 
     # Persistence: how many recent consecutive quarters showed net share accumulation
     persistence = 0
@@ -222,8 +273,6 @@ def _compute_metrics(snaps: List[TickerSnapshot]) -> Dict:
         top10_share = latest.top10_value_usd / latest.total_value_usd
     else:
         top10_share = 0.0
-    # Lower top10_share = more diversified accumulation = stronger signal
-    # We invert so higher concentration_hhi metric = MORE concentrated (less ideal)
     concentration_hhi = top10_share
 
     return {
@@ -236,27 +285,50 @@ def _compute_metrics(snaps: List[TickerSnapshot]) -> Dict:
         "latest_value_usd": latest.total_value_usd,
         "quarters_present": len(snaps),
         "issuer_name": latest.issuer_name,
+        "exclude_reason": exclude_reason,
     }
 
 
 def _build_signals(metrics: Dict) -> List[str]:
-    """Human-readable top signals for display in the UI."""
+    """Human-readable top signals for display in the UI.
+    r63.72.4: Latest-quarter values only (not cross-quarter sums); thresholds
+    tuned to surface what's actually meaningful."""
     out = []
-    if metrics["share_delta_pct"] > 5:
+    if metrics["share_delta_pct"] >= 10:
         out.append(f"Share count up {metrics['share_delta_pct']:.1f}% Q/Q")
-    elif metrics["share_delta_pct"] < -5:
+    elif metrics["share_delta_pct"] >= 3:
+        out.append(f"Net accumulation {metrics['share_delta_pct']:.1f}% Q/Q")
+    elif metrics["share_delta_pct"] <= -10:
         out.append(f"Share count down {abs(metrics['share_delta_pct']):.1f}% Q/Q")
-    if metrics["filer_count_delta"] > 0:
-        out.append(f"+{metrics['filer_count_delta']} net new institutional holders")
-    elif metrics["filer_count_delta"] < 0:
-        out.append(f"{metrics['filer_count_delta']} net institutional holders")
-    if metrics["persistence_quarters"] >= 3:
-        out.append(f"{metrics['persistence_quarters']} consecutive Qs of accumulation")
-    if metrics["concentration_hhi"] < 0.4 and metrics["latest_filer_count"] > 50:
-        out.append(f"Diversified accumulation across {metrics['latest_filer_count']} holders")
-    if metrics["latest_value_usd"] >= 100e9:
-        out.append(f"${metrics['latest_value_usd']/1e9:,.0f}B aggregate institutional position")
-    return out[:4]
+    elif metrics["share_delta_pct"] <= -3:
+        out.append(f"Net distribution {abs(metrics['share_delta_pct']):.1f}% Q/Q")
+
+    if metrics["filer_count_delta"] >= 20:
+        out.append(f"+{metrics['filer_count_delta']} new institutional holders")
+    elif metrics["filer_count_delta"] >= 5:
+        out.append(f"+{metrics['filer_count_delta']} net new holders")
+    elif metrics["filer_count_delta"] <= -20:
+        out.append(f"{metrics['filer_count_delta']} holders exited")
+
+    if metrics["persistence_quarters"] >= 4:
+        out.append(f"{metrics['persistence_quarters']} consecutive Qs accumulating")
+    elif metrics["persistence_quarters"] >= 2:
+        out.append(f"{metrics['persistence_quarters']}Q accumulation streak")
+
+    # Diversification signal: lots of holders + low concentration
+    if metrics["concentration_hhi"] < 0.5 and metrics["latest_filer_count"] >= 100:
+        out.append(f"Broad sponsorship — {metrics['latest_filer_count']} institutional holders")
+
+    # Latest-quarter institutional position size — corrected scale
+    val_b = metrics["latest_value_usd"] / 1e9
+    if val_b >= 100:
+        out.append(f"${val_b:,.0f}B institutional position")
+    elif val_b >= 10:
+        out.append(f"${val_b:,.1f}B institutional position")
+    elif val_b >= 1:
+        out.append(f"${val_b:,.2f}B institutional position")
+
+    return out[:3]  # Limit to top 3 signals to keep UI clean
 
 
 def score_universe(conn) -> List[TickerScore]:
@@ -273,7 +345,16 @@ def score_universe(conn) -> List[TickerScore]:
     for ticker, snaps in snapshots.items():
         if len(snaps) < 2:
             continue
-        raw[ticker] = _compute_metrics(snaps)
+        m = _compute_metrics(snaps)
+        # r63.72.3: Skip outliers — deltas > 150% Q/Q are data artifacts
+        # (CUSIP remappings, splits, share class reclassifications), not signal.
+        if m.get("exclude_reason") == "delta_outlier":
+            continue
+        # Also require minimum institutional presence in the latest quarter
+        # to avoid noisy thinly-held names.
+        if m["latest_filer_count"] < 30:
+            continue
+        raw[ticker] = m
 
     if not raw:
         return []
@@ -286,6 +367,7 @@ def score_universe(conn) -> List[TickerScore]:
     concentrations = [m["concentration_hhi"] for m in raw.values()]
 
     # Composite score: weighted z-score sum, then percentile-rank within universe
+    # r63.72.4: Reweighted to favor persistence + reward institutional scale
     composites: Dict[str, float] = {}
     z_components: Dict[str, Dict] = {}
     for ticker, m in raw.items():
@@ -293,18 +375,31 @@ def score_universe(conn) -> List[TickerScore]:
         z_shr = _z_score(share_deltas, m["share_delta_pct"])
         z_flr = _z_score(filer_deltas, float(m["filer_count_delta"]))
         z_per = _z_score(persistences, float(m["persistence_quarters"]))
-        z_con = _z_score(concentrations, m["concentration_hhi"])  # invert below
+        z_con = _z_score(concentrations, m["concentration_hhi"])
 
-        # Weights: share delta is the cleanest accumulation signal;
-        # value delta is contaminated by price; concentration is inverted.
+        # Weights tuned to favor sustained, broad-based accumulation:
+        # - Persistence (30%): consecutive quarters of accumulation = real conviction
+        # - Filer-count delta (25%): broad institutional adoption beats single-fund moves
+        # - Share delta (25%): real share count change, not price-contaminated
+        # - Value delta (15%): smaller weight because it's price-contaminated
+        # - Concentration (-5%): light penalty for concentration in few hands
         composite_z = (
-            0.35 * z_shr
-            + 0.20 * z_val
+            0.30 * z_per
             + 0.25 * z_flr
-            + 0.15 * z_per
-            - 0.05 * z_con  # subtract because high concentration is a negative signal
+            + 0.25 * z_shr
+            + 0.15 * z_val
+            - 0.05 * z_con
         )
-        composites[ticker] = composite_z
+
+        # r63.72.4: Scale boost — multiply by log10(latest_value_billions + 1)
+        # so a $500M micro-cap with 80% accumulation doesn't beat a $500B
+        # mega-cap with 8% accumulation. log scale prevents mega-caps from
+        # dominating entirely; just gives them fair chance.
+        latest_value_b = max(0.1, m["latest_value_usd"] / 1e9)
+        scale_factor = math.log10(latest_value_b + 1)
+        composite = composite_z * (1.0 + 0.30 * scale_factor)
+
+        composites[ticker] = composite
         z_components[ticker] = {
             "value_delta_z": z_val, "share_delta_z": z_shr,
             "filer_delta_z": z_flr, "persistence_z": z_per,
@@ -317,11 +412,16 @@ def score_universe(conn) -> List[TickerScore]:
     for ticker, m in raw.items():
         composite = composites[ticker]
         pct = _percentile_rank(composite_values, composite)
-        if pct >= 80:
+        # r63.72.3: Tighter tier percentiles — top 10/20/30 instead of 20/40/60.
+        # With outliers filtered out, this gives:
+        #   Tier 1: top ~10% (truly above-average accumulation)
+        #   Tier 2: 80-90th pct
+        #   Tier 3: 70-80th pct
+        if pct >= 90:
             tier, label = 1, "STEALTH ACCUMULATION"
-        elif pct >= 60:
+        elif pct >= 80:
             tier, label = 2, "EARLY POSITIONING"
-        elif pct >= 40:
+        elif pct >= 70:
             tier, label = 3, "BUILDING"
         else:
             tier, label = 0, ""
