@@ -3066,25 +3066,31 @@ function _renderPositioningPage(d, activeTier) {
        d.universe_size + ' tickers scored from SEC 13F + fundamentals</div>';
   h += '</div>';
 
-  // r63.72.7: View mode toggle (replaces tier pills)
+  // r63.72.8: View mode toggle — fixed layout (white-space:nowrap, explicit widths)
+  // Plus new Micro-Cap Hunter mode
   h += '<div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;align-items:center">';
   var viewModes = [
-    {id: 'best', label: '🏆 BEST BETS — Top 10 by Multibagger Score'},
-    {id: 'all',  label: '🌎 All Names — Ranked by Multibagger Score'}
+    {id: 'best',  label: '🏆 BEST BETS',     sub: 'Top 10 by Multibagger',  color: '#dc2626'},
+    {id: 'all',   label: '🌎 ALL NAMES',     sub: 'Ranked by Multibagger',  color: '#1A3A78'},
+    {id: 'micro', label: '🎯 MICRO-CAP HUNTER', sub: 'Sub-$2B + Smart Money', color: '#7c3aed'}
   ];
   viewModes.forEach(function(v) {
     var isActive = viewMode === v.id;
-    var bg = isActive ? '#1A3A78' : 'transparent';
+    var bg = isActive ? v.color : '#fff';
     var fg = isActive ? '#fff' : '#374151';
-    var bd = isActive ? '#1A3A78' : '#cbd5e1';
+    var bd = isActive ? v.color : '#cbd5e1';
+    var subColor = isActive ? 'rgba(255,255,255,0.85)' : '#94a3b8';
     h += '<button onclick="window._positioningView=\'' + v.id + '\';loadPositioningScanner();" ' +
-         'style="padding:8px 16px;border-radius:8px;font-size:11px;font-weight:700;border:1px solid ' + bd +
-         ';background:' + bg + ';color:' + fg + ';cursor:pointer;font-family:Inter,sans-serif">' +
-         v.label + '</button>';
+         'style="padding:10px 18px;border-radius:10px;border:1px solid ' + bd +
+         ';background:' + bg + ';color:' + fg + ';cursor:pointer;font-family:Inter,sans-serif;' +
+         'white-space:nowrap;text-align:left;display:inline-flex;flex-direction:column;align-items:flex-start;gap:2px;min-width:170px">' +
+         '<span style="font-size:12px;font-weight:800;font-family:Sora,sans-serif">' + v.label + '</span>' +
+         '<span style="font-size:9px;color:' + subColor + ';font-weight:600">' + v.sub + '</span>' +
+         '</button>';
   });
   // Right-aligned refresh
   h += '<div style="margin-left:auto"><button onclick="window._positioningCache=null;loadPositioningScanner();" ' +
-       'style="padding:6px 12px;border-radius:6px;background:#fff;border:1px solid #cbd5e1;font-size:10px;font-weight:700;color:#374151;cursor:pointer;font-family:Inter,sans-serif">↻ Refresh</button></div>';
+       'style="padding:8px 14px;border-radius:6px;background:#fff;border:1px solid #cbd5e1;font-size:10px;font-weight:700;color:#374151;cursor:pointer;font-family:Inter,sans-serif;white-space:nowrap">↻ Refresh</button></div>';
   h += '</div>';
 
   // Filter results based on view mode
@@ -3092,6 +3098,31 @@ function _renderPositioningPage(d, activeTier) {
   if (viewMode === 'best') {
     displayRows = displayRows.filter(function(r) { return r.is_best_bet; });
     displayRows.sort(function(a,b) { return (a.best_bet_rank||99) - (b.best_bet_rank||99); });
+  } else if (viewMode === 'micro') {
+    // r63.72.8: Micro-Cap Hunter — sub-$2B by market cap
+    // Note: only rows with quote enrichment have market_cap. Others have 0.
+    // For micro-cap mode we ALSO check latest_value_usd (institutional dollar
+    // size) as a proxy when market_cap is missing — sub-$1B institutional value
+    // is a reasonable micro-cap marker.
+    displayRows = displayRows.filter(function(r) {
+      var mcap = r.market_cap || 0;
+      var instVal = r.latest_value_usd || 0;
+      if (mcap > 0) {
+        return mcap >= 50e6 && mcap <= 2e9;  // $50M to $2B
+      }
+      // Fallback: institutional value < $1B suggests sub-$2B mcap
+      return instVal > 50e6 && instVal < 1e9;
+    });
+    // Sort by buy/sell ratio first (the strongest signal in micro-caps)
+    displayRows.sort(function(a, b) {
+      var aBuy = a.inst_buyers || 0, aSell = a.inst_sellers || 0;
+      var bBuy = b.inst_buyers || 0, bSell = b.inst_sellers || 0;
+      var aRatio = (aBuy + aSell) > 0 ? aBuy / (aBuy + aSell) : 0;
+      var bRatio = (bBuy + bSell) > 0 ? bBuy / (bBuy + bSell) : 0;
+      // Tie-break by multibagger score
+      if (Math.abs(aRatio - bRatio) > 0.05) return bRatio - aRatio;
+      return (b.multibagger_score || 0) - (a.multibagger_score || 0);
+    });
   }
 
   // Results table

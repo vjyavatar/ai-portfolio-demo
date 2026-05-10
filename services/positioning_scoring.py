@@ -548,14 +548,14 @@ def score_universe(conn) -> List[TickerScore]:
 
     results.sort(key=lambda r: r.composite_score, reverse=True)
 
-    # r63.72.5: Enrich top results with live quotes + plain-English reasoning.
-    # Only the top ~100 get live-quote enrichment to keep response fast.
-    # Beyond top 100, reasoning is generated from metrics alone.
+    # r63.72.8: Enrich ALL results with quotes (was only top 100).
+    # Quote enrichment is fast — fast_info is single-call, parallelized 16-thread.
+    # 200 tickers × ~150ms with 16 threads ≈ 2-3 sec wall time, within page-load budget.
+    # The 5-min cache means subsequent loads/refreshes are instant.
     try:
         from services.positioning_quotes import enrich_with_quotes, build_plain_english_reasoning
-        ENRICH_TOP = 100  # top N rows get live price/52W/market cap
-        top_tickers = [r.ticker for r in results[:ENRICH_TOP]]
-        quotes = enrich_with_quotes(top_tickers)
+        all_tickers = [r.ticker for r in results]
+        quotes = enrich_with_quotes(all_tickers, parallel=16)
     except Exception:
         # Graceful degradation — Yahoo is 401-blocked on Render etc.
         # Reasoning still works without quotes; rows just lack price data.

@@ -33,12 +33,54 @@ def _safe_float(v) -> float:
         return 0.0
 
 
+def _fetch_one_quote_gf(ticker: str) -> Optional[dict]:
+    """
+    r63.72.8: Google Finance fallback for when yfinance is blocked (Render).
+    Returns price + prev_close + market_cap; 52W data not available from GF.
+    """
+    try:
+        # Reuse existing Google Finance scraper from data_sources
+        from data_sources import fetch_google_finance
+        info = fetch_google_finance(ticker)
+        if not info:
+            return None
+        price = _safe_float(info.get("currentPrice"))
+        if price <= 0:
+            return None
+        prev = _safe_float(info.get("previousClose")) or price
+        change_pct = 100.0 * (price - prev) / prev if prev > 0 else 0.0
+        market_cap = _safe_float(info.get("marketCap"))
+        return {
+            "price": round(price, 2),
+            "prev_close": round(prev, 2),
+            "change_pct": round(change_pct, 2),
+            "low_52w": 0.0,
+            "high_52w": 0.0,
+            "pct_in_range": -1.0,  # not available from GF
+            "market_cap": int(market_cap) if market_cap > 0 else 0,
+            "shares_outstanding": 0,
+            "_source": "gf",
+        }
+    except Exception:
+        return None
+
+
 def _fetch_one_quote(ticker: str) -> Optional[dict]:
     """
-    Single-ticker quote fetch. Uses yfinance fast_info first (cheap, fast),
-    falls back to .info if needed. Returns None on any failure — caller
-    should treat unenriched rows gracefully.
+    Single-ticker quote fetch. Uses yfinance fast_info first (cheap, fast).
+    r63.72.8: Falls back to Google Finance if yfinance returns no data
+    (handles Render Yahoo 401-block).
     """
+    # Try yfinance first
+    yf_result = _fetch_one_quote_yf(ticker)
+    if yf_result is not None:
+        return yf_result
+    # Fall back to Google Finance
+    return _fetch_one_quote_gf(ticker)
+
+
+def _fetch_one_quote_yf(ticker: str) -> Optional[dict]:
+    """yfinance-only fetch. Returns None on any failure (including Render block)."""
     try:
         import yfinance as yf
     except ImportError:
@@ -101,6 +143,7 @@ def _fetch_one_quote(ticker: str) -> Optional[dict]:
             "pct_in_range": round(pct_in_range, 1),
             "market_cap": int(market_cap) if market_cap > 0 else 0,
             "shares_outstanding": int(shares) if shares > 0 else 0,
+            "_source": "yf",
         }
     except Exception:
         return None

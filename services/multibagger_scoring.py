@@ -375,7 +375,11 @@ def _score_flow(positioning_metrics: dict, latest_filer_count: int,
     - 300-1500 filers + rising = mid phase (MEDIUM score)
     - 1500+ filers = saturated / crowded (LOW score)
 
-    Pre-multibagger NVDA had ~200 filers; today's NVDA has 3000+.
+    r63.72.8 fixes:
+    - Buy/sell scoring is now SYMMETRIC (heavy sellers get NEGATIVE score, not zero floor)
+    - Hard veto: if sellers > 3× buyers AND active >= 20, F is capped at 30
+      (prevents "great moat + bad flow" names like FICO from getting top scores)
+    - Buy/sell weight increased to 35% (was 25%); phase reduced to 25% (was 35%)
     """
     components = {}
 
@@ -383,54 +387,47 @@ def _score_flow(positioning_metrics: dict, latest_filer_count: int,
     filer_delta = positioning_metrics.get("filer_count_delta", 0)
     concentration = positioning_metrics.get("concentration_hhi", 0.5)
 
-    # 1. EARLY-PHASE DETECTOR (most important new piece)
-    # Inverted-U curve over filer count
+    # 1. Phase detector (existing — inverted U over filer count)
     if latest_filer_count <= 30:
-        # Too few filers — could be undiscovered or just illiquid
         early_phase_score = 30
         phase_label = "Pre-discovery"
     elif latest_filer_count <= 150:
-        # Early phase — institutional adoption JUST starting
         early_phase_score = 100
         phase_label = "Early discovery"
     elif latest_filer_count <= 400:
-        # Building momentum — multibagger phase often happens here
         early_phase_score = 90
         phase_label = "Building"
     elif latest_filer_count <= 1000:
-        # Mid phase — accumulation continues but less asymmetric
         early_phase_score = 60
         phase_label = "Mid-cycle"
     elif latest_filer_count <= 2000:
-        # Late phase — most institutions are aware
         early_phase_score = 35
         phase_label = "Crowded"
     else:
-        # Saturated — multibagger phase essentially over (e.g., NVDA today)
         early_phase_score = 15
         phase_label = "Saturated"
 
     components["phase_label"] = phase_label
     components["early_phase_score"] = early_phase_score
 
-    # 2. Buy-side dominance (inst_buyers vs inst_sellers)
+    # 2. r63.72.8: SYMMETRIC buy/sell scoring (was floored at 0; now full ±range)
     total_active = inst_buyers + inst_sellers
     if total_active >= 10:
         buy_ratio = inst_buyers / total_active
-        # 50/50 = 0, 80/20 = 60, all buyers = 100
-        buyer_dom_score = max(0, min(100, (buy_ratio - 0.5) * 200))
+        # 50/50 = 50, 80/20 = 90, all buyers = 100, all sellers = 0
+        buyer_dom_score = max(0, min(100, buy_ratio * 100))
     else:
         buyer_dom_score = 50
         buy_ratio = 0.5
     components["buyer_dominance"] = buyer_dom_score
+    components["buy_ratio"] = buy_ratio
 
-    # 3. Persistence — capped at 6Q (longer = potentially crowded already)
+    # 3. Persistence
     capped_persist = min(6, persistence_q)
     persistence_score = (capped_persist / 6.0) * 100
     components["persistence_capped"] = persistence_score
 
-    # 4. Filer-count momentum — net new filers in latest quarter
-    # Positive delta = institutional adoption rising
+    # 4. Filer-count momentum
     if filer_delta >= 50:
         flow_momentum_score = 100
     elif filer_delta >= 20:
@@ -445,7 +442,7 @@ def _score_flow(positioning_metrics: dict, latest_filer_count: int,
         flow_momentum_score = 5
     components["flow_momentum"] = flow_momentum_score
 
-    # 5. Concentration penalty (concentration_hhi > 0.5 = held by few funds = fragile)
+    # 5. Concentration penalty
     if concentration > 0.7:
         concentration_score = 20
     elif concentration > 0.5:
@@ -454,23 +451,40 @@ def _score_flow(positioning_metrics: dict, latest_filer_count: int,
         concentration_score = 80
     components["concentration_score"] = concentration_score
 
-    # Weighted composite within F
+    # r63.72.8: Reweighted — buy/sell ratio is now the PRIMARY signal
     flow_score = (
-        0.35 * early_phase_score      # the differentiator vs. naive "more filers = better"
-        + 0.25 * buyer_dom_score
+        0.35 * buyer_dom_score        # PRIMARY (was 25%)
+        + 0.25 * early_phase_score    # MODIFIER (was 35%)
         + 0.20 * flow_momentum_score
         + 0.10 * persistence_score
         + 0.10 * concentration_score
     )
 
+    # r63.72.8: HARD VETO for lopsided distribution
+    # If institutions are clearly EXITING en masse, no amount of "early phase"
+    # filer count math can rescue this. Cap F at 30.
+    veto_applied = False
+    if total_active >= 20 and inst_sellers >= 3 * max(1, inst_buyers):
+        flow_score = min(flow_score, 30)
+        veto_applied = True
+    components["distribution_veto"] = veto_applied
+
     # Narrative
-    narrative = f"{phase_label}"
-    if buy_ratio > 0.65 and total_active >= 10:
-        narrative += f", {inst_buyers}:{inst_sellers} buy/sell ratio"
+    narrative_parts = []
+    if veto_applied:
+        narrative_parts.append(f"⚠️ Institutional distribution ({inst_buyers}:{inst_sellers})")
+    elif buy_ratio > 0.70 and total_active >= 10:
+        narrative_parts.append(f"Strong inst accumulation ({inst_buyers}:{inst_sellers})")
+    elif buy_ratio > 0.55 and total_active >= 10:
+        narrative_parts.append(f"Net accumulation ({inst_buyers}:{inst_sellers})")
+    elif buy_ratio < 0.30 and total_active >= 10:
+        narrative_parts.append(f"Heavy distribution ({inst_buyers}:{inst_sellers})")
+    narrative_parts.append(phase_label)
     if filer_delta >= 20:
-        narrative += f", +{filer_delta} new filers"
+        narrative_parts.append(f"+{filer_delta} new filers")
     elif filer_delta <= -10:
-        narrative += f", {filer_delta} filers exiting"
+        narrative_parts.append(f"{filer_delta} filers exiting")
+    narrative = ", ".join(narrative_parts)
 
     return flow_score, components, narrative
 
