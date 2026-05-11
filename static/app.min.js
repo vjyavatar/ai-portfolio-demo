@@ -1,5 +1,5 @@
 // ═══ Celesys version stamp ═══
-window.CELESYS_VERSION = "r63.72.20";
+window.CELESYS_VERSION = "r63.72.21";
 window.CELESYS_BUILD_TIME = 1778525757;
 window.CELESYS_BUILD_DATE = "2026-05-11 18:14:10 UTC";
 window.CELESYS_FEATURES = {
@@ -9,7 +9,7 @@ window.CELESYS_FEATURES = {
   three_lens_scanner: true,
 };
 console.log("%c━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "color:#1A3A78");
-console.log("%c CELESYS r63.72.20 %c loaded · 2026-05-11 18:14:10 UTC",
+console.log("%c CELESYS r63.72.21 %c loaded · 2026-05-11 18:14:10 UTC",
   "background:#7c3aed;color:#fff;font-weight:900;padding:3px 8px;border-radius:3px;font-family:monospace",
   "color:#7c3aed;font-weight:700;font-family:monospace");
 console.log("%c Features: 360° Cycle Analysis · Diamond Hunter · Fund Analyzer · Three-Lens Scanner",
@@ -22,7 +22,7 @@ document.addEventListener('DOMContentLoaded', function() {
     var stamp = document.createElement('div');
     stamp.id = 'celesys-build-stamp';
     stamp.style.cssText = 'position:fixed;bottom:8px;left:8px;background:linear-gradient(135deg,#1A3A78,#7c3aed);color:#fff;padding:4px 10px;font-size:9px;font-weight:800;font-family:IBM Plex Mono,monospace;border-radius:4px;letter-spacing:0.5px;z-index:99999;box-shadow:0 2px 8px rgba(124,58,237,0.4);cursor:pointer;user-select:none';
-    stamp.textContent = '⚙ r63.72.20 · 2026-05-11';
+    stamp.textContent = '⚙ r63.72.21 · 2026-05-11';
     stamp.title = 'Click to verify backend version';
     stamp.onclick = function() {
       fetch('/api/build-version').then(function(r){return r.json();}).then(function(d){

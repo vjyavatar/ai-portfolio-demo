@@ -3948,13 +3948,14 @@ async def diamond_hunter(
         # Reuse existing universe scoring (already cached server-side)
         from services.positioning_scoring import score_universe
         from services.diamond_hunter import hunt_diamonds
+        from db.connection import get_conn
 
         # Bound inputs
         crash_pct = max(5, min(50, crash_pct))
         min_mcap = max(50_000_000, min_mcap)
         limit = max(10, min(200, limit))
 
-        # r63.72.19 FIX: score_universe takes a db connection, not tier/limit kwargs
+        # r63.72.21 FIX: get_conn now properly imported (was undefined in r63.72.20)
         with get_conn() as conn:
             all_scores = score_universe(conn)
 

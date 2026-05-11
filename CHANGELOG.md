@@ -1,3 +1,11 @@
+## r63.72.21 (2026-05-11) — DIAMOND HUNTER FIX
+
+Bug: r63.72.20 added 'with get_conn() as conn:' to /api/diamond-hunter without importing get_conn.
+Result: NameError: name 'get_conn' is not defined — visible to user as 'Scan failed' in UI.
+
+Fix: Added 'from db.connection import get_conn' to the imports inside diamond_hunter try block.
+This is the same import pattern used by /api/positioning-scan (line 3998).
+
 ## r63.72.20 (2026-05-11) — TWO BUG FIXES
 
 FIX 1 (BACKEND): /api/diamond-hunter was calling score_universe(tier=-1, limit=500, ...) but the actual function signature is score_universe(conn) — DB connection only. Diamond Hunter scan crashed with 'unexpected keyword argument tier'. Now calls correctly via get_conn() context manager.
