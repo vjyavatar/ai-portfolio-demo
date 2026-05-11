@@ -1,3 +1,21 @@
+## r63.72.17 (2026-05-11)
+- FIX: 360° Cycle Analysis button injected DIRECTLY into BOTTOM LINE card header
+  (impossible to miss — appears at top of every report, next to verdict badge)
+- FIX: Action-bar 360° button used safer JS template (Number(c.market_cap) || 0)
+- Cache-bust hash bumped (was preventing deploys from loading in browsers)
+
+## r63.72.16 (2026-05-11)
+- 💎 DIAMOND HUNTER — Post-crash quality scanner added under Decide → 💎 Diamond Hunter
+  - services/diamond_hunter.py: 5-component institutional Crash Opportunity Score
+    (30% Business + 25% Valuation@SimPrice + 20% Inst Flow + 15% Moat/Future + 10% Tech)
+  - Beta-adjusted simulated crash price per ticker (drawdown = market_drop × β, capped 60%)
+  - Configurable crash magnitude: −15% / −25% / −35% / −50%
+  - Configurable min market cap: $1B / $10B / $100B+
+  - Verdict bands: ELITE DIAMOND / STRONG DIAMOND / CANDIDATE / WATCH / AVOID
+  - /api/diamond-hunter endpoint, 15-min server cache, reuses universe scoring
+  - Click any row to open 360° Cycle Analysis on that ticker
+- Cache-bust hash bumped to 1778517886
+
 ## r63.72.15 (2026-05-11)
 - CRITICAL FIX: Bumped index.html cache-bust query strings on app.min.js and premium-override.js
   (was stuck at v=1778190986 since early March — all r63.72.10 through r63.72.14 changes were on the server but browsers were loading stale cached app.min.js)

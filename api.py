@@ -3890,6 +3890,55 @@ async def cycle_analysis(symbol: str, region: str = "US", market_cap: int = 0, p
         return {"success": False, "error": str(e)}
 
 
+# r63.72.16: Diamond Hunter — post-crash quality scanner
+@app.get("/api/diamond-hunter")
+async def diamond_hunter(
+    crash_pct: float = 25.0,
+    min_mcap: int = 1_000_000_000,
+    limit: int = 50,
+):
+    """
+    Stress-test universe against a simulated market correction of `crash_pct`.
+    Returns top-ranked diamond candidates: stocks that would be high-quality
+    buys at their beta-adjusted post-crash price.
+
+    Per institutional framework:
+        30% Business Strength + 25% Valuation Compression + 20% Inst Accum
+      + 15% Moat/Future Demand + 10% Technical Recovery
+    """
+    try:
+        # Reuse existing universe scoring (already cached server-side)
+        from services.positioning_scoring import score_universe
+        from services.diamond_hunter import hunt_diamonds
+
+        # Bound inputs
+        crash_pct = max(5, min(50, crash_pct))
+        min_mcap = max(50_000_000, min_mcap)
+        limit = max(10, min(200, limit))
+
+        # Get the existing positioning-scan universe (cached)
+        all_scores = score_universe(tier=-1, limit=500, min_filer_count=30)
+
+        results = hunt_diamonds(
+            all_scores, market_drop_pct=crash_pct, min_market_cap=min_mcap
+        )
+
+        return {
+            "success": True,
+            "crash_pct": crash_pct,
+            "min_mcap": min_mcap,
+            "total_scored": len(results),
+            "results": results[:limit],
+        }
+    except Exception as e:
+        import traceback
+        return {
+            "success": False,
+            "error": str(e),
+            "trace": traceback.format_exc()[:1500],
+        }
+
+
 # r63.72: Institutional Positioning Scanner
 @app.get("/api/positioning-scan")
 async def positioning_scan(
