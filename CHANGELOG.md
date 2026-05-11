@@ -1,3 +1,21 @@
+## r63.72.20 (2026-05-11) — TWO BUG FIXES
+
+FIX 1 (BACKEND): /api/diamond-hunter was calling score_universe(tier=-1, limit=500, ...) but the actual function signature is score_universe(conn) — DB connection only. Diamond Hunter scan crashed with 'unexpected keyword argument tier'. Now calls correctly via get_conn() context manager.
+
+FIX 2 (FRONTEND): All 5 instances of the '360° Cycle Analysis' button rebuilt with consistent simple framework.
+  - Replaced linear-gradient with solid background-color:#7c3aed
+  - Replaced 🔬 emoji (rendered as missing-character on some systems) with no icon
+  - Replaced ° Unicode character with &deg; HTML entity (reliable rendering)
+  - Inner <span> with color:#ffffff !important to defeat any CSS overrides
+  - Dropped class=cs-dd-actions__btn from one variant (was conflicting)
+  - Set min-height to prevent collapse if any flex-rule clips it
+
+## r63.72.19 (2026-05-11)
+- REMOVED: Floating 'Unlock Pro Features' CTA (left-bottom corner of pages)
+- REMOVED: '📔 Save to Journal' button from Analyst Insights card header
+- Cleaned: Journal empty-state instruction text (no longer references the removed button)
+- Build version stamp bumped + cache-bust hash refreshed
+
 ## r63.72.18 (2026-05-11)
 - ADDED: Visible build-version stamp at bottom-left of every page (purple pill)
   Click it to verify frontend vs backend version match

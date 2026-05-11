@@ -1,6 +1,6 @@
 // ═══ Celesys version stamp ═══
-window.CELESYS_VERSION = "r63.72.18";
-window.CELESYS_BUILD_TIME = 1778523250;
+window.CELESYS_VERSION = "r63.72.20";
+window.CELESYS_BUILD_TIME = 1778525757;
 window.CELESYS_BUILD_DATE = "2026-05-11 18:14:10 UTC";
 window.CELESYS_FEATURES = {
   cycle_analysis: true,
@@ -9,7 +9,7 @@ window.CELESYS_FEATURES = {
   three_lens_scanner: true,
 };
 console.log("%c━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "color:#1A3A78");
-console.log("%c CELESYS r63.72.18 %c loaded · 2026-05-11 18:14:10 UTC",
+console.log("%c CELESYS r63.72.20 %c loaded · 2026-05-11 18:14:10 UTC",
   "background:#7c3aed;color:#fff;font-weight:900;padding:3px 8px;border-radius:3px;font-family:monospace",
   "color:#7c3aed;font-weight:700;font-family:monospace");
 console.log("%c Features: 360° Cycle Analysis · Diamond Hunter · Fund Analyzer · Three-Lens Scanner",
@@ -22,7 +22,7 @@ document.addEventListener('DOMContentLoaded', function() {
     var stamp = document.createElement('div');
     stamp.id = 'celesys-build-stamp';
     stamp.style.cssText = 'position:fixed;bottom:8px;left:8px;background:linear-gradient(135deg,#1A3A78,#7c3aed);color:#fff;padding:4px 10px;font-size:9px;font-weight:800;font-family:IBM Plex Mono,monospace;border-radius:4px;letter-spacing:0.5px;z-index:99999;box-shadow:0 2px 8px rgba(124,58,237,0.4);cursor:pointer;user-select:none';
-    stamp.textContent = '⚙ r63.72.18 · 2026-05-11';
+    stamp.textContent = '⚙ r63.72.20 · 2026-05-11';
     stamp.title = 'Click to verify backend version';
     stamp.onclick = function() {
       fetch('/api/build-version').then(function(r){return r.json();}).then(function(d){
@@ -12575,9 +12575,9 @@ function renderForm(prefilled){
   // r63.72.13: Direct 360° Cycle Analysis entry — visible before submitting
   html += '<div style="display:flex;gap:8px;margin-bottom:14px;align-items:center">';
   html += '<button onclick="var s=document.getElementById(\'ddSymbol\').value.trim().toUpperCase();if(!s){document.getElementById(\'ddSymbol\').focus();return;}window._ddLastSymbol=s;window._loadCycleAnalysis(s, window._deRegion || \'US\', 0, 0);" '+
-          'style="flex:1;padding:10px 16px;background:linear-gradient(135deg,#1A3A78,#7c3aed);color:#fff;border:none;border-radius:6px;font-size:12px;font-weight:800;cursor:pointer;font-family:Sora,sans-serif;letter-spacing:0.5px;display:flex;align-items:center;justify-content:center;gap:8px">'+
-          '<span style="font-size:14px">🔬</span><span>360° CYCLE ANALYSIS</span>'+
-          '<span style="font-size:9px;opacity:0.8;font-weight:600;margin-left:4px">15 SECTIONS · NORMALIZED EPS · 17× P/E · STRESS TEST</span></button>';
+          'style="flex:1;padding:10px 16px;background-color:#7c3aed;background-image:none;color:#ffffff;border:0 solid #7c3aed;border-radius:6px;font-size:12px;font-weight:800;cursor:pointer;font-family:Sora,sans-serif;letter-spacing:0.5px;min-height:38px;box-shadow:0 2px 6px rgba(124,58,237,0.3)">'+
+          '<span style="color:#ffffff !important">360&deg; CYCLE ANALYSIS</span>'+
+          '<span style="font-size:9px;opacity:0.85;font-weight:600;margin-left:8px;color:#ffffff !important">15 SECTIONS</span></button>';
   html += '</div>';
 
   // Inline error block (for failed fetches)
@@ -12868,7 +12868,7 @@ function _renderReportShellAladdin(d){
   // Action bar
   h += '<div class="cs-dd-actions">';
   h += '<button class="cs-dd-actions__btn" onclick="loadDeepDD()">← New Ticker</button>';
-  h += '<button class="cs-dd-actions__btn" style="background:linear-gradient(135deg,#1A3A78,#7c3aed);color:#fff;border:none" onclick="window._loadCycleAnalysis(\'' + c.symbol + '\', window._deRegion || \'US\', (' + (c.market_cap || 0) + ' || 0), (' + (c.current_price || 0) + ' || 0))">🔬 360° Cycle Analysis</button>';
+  h += '<button style="padding:6px 14px;font-size:11px;font-weight:800;border-radius:4px;border:0 solid #7c3aed;background-color:#7c3aed;background-image:none;color:#ffffff;cursor:pointer;font-family:Sora,sans-serif;letter-spacing:0.3px" onclick="window._loadCycleAnalysis(\'' + c.symbol + '\', window._deRegion || \'US\', ' + (Number(c.market_cap) || 0) + ', ' + (Number(c.current_price) || 0) + ')"><span style="color:#ffffff !important">360&deg; CYCLE ANALYSIS</span></button>';
   h += '<button class="cs-dd-actions__btn cs-dd-actions__btn--primary" onclick="switchDEMode(\'investor\');loadDE(\'' + c.symbol + '\')">Full Celesys View →</button>';
   h += '</div>';
 
@@ -13079,7 +13079,7 @@ function _renderReportLegacy(d){
   // r63.72.16: 360° Cycle Analysis button — uses safe inline values, no broken template syntax
   var _mc = Number(c.market_cap) || 0;
   var _cp = Number(c.current_price) || 0;
-  h += '<button onclick="window._loadCycleAnalysis(\''+c.symbol+'\', window._deRegion || \'US\', '+_mc+', '+_cp+');return false;" title="15-section institutional cycle analysis: normalized EPS, 17x P/E target, margin of safety" style="padding:8px 16px;border:none;background:linear-gradient(135deg,#1A3A78,#7c3aed);color:#ffffff;border-radius:6px;font-size:11px;font-weight:800;cursor:pointer;font-family:Sora,sans-serif;display:inline-flex;align-items:center;gap:6px;box-shadow:0 2px 8px rgba(124,58,237,0.3)">🔬 360° Cycle Analysis</button>';
+  h += '<button onclick="window._loadCycleAnalysis(\''+c.symbol+'\', window._deRegion || \'US\', '+_mc+', '+_cp+');return false;" title="15-section institutional cycle analysis: normalized EPS, 17x P/E target, margin of safety" style="padding:8px 16px;border:0 solid #7c3aed;background-color:#7c3aed;background-image:none;color:#ffffff;border-radius:6px;font-size:11px;font-weight:800;cursor:pointer;font-family:Sora,sans-serif;letter-spacing:0.4px;box-shadow:0 2px 6px rgba(124,58,237,0.3);min-height:32px"><span style="color:#ffffff !important">360&deg; CYCLE ANALYSIS</span></button>';
   h += '<button onclick="switchDEMode(\'investor\');loadDE(\''+c.symbol+'\')" title="Open full Celesys analysis" style="padding:8px 14px;border:none;background:#1e40af;color:#ffffff;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;font-family:Sora,sans-serif">📊 Full Celesys View →</button>';
   h += '</div>';
   
@@ -13173,9 +13173,11 @@ function _renderReportLegacy(d){
     h += '<span style="font-size:20px">🎯</span>';
     h += '<span style="font-size:11px;font-weight:800;color:' + color + ';letter-spacing:1.5px;font-family:Inter,sans-serif">BOTTOM LINE</span>';
     h += '<span style="font-size:13px;font-weight:900;color:' + color + ';background:#fff;padding:4px 12px;border-radius:6px;border:1px solid ' + border + ';letter-spacing:0.5px">' + bl.verdict + '</span>';
-    // r63.72.16: 360° Cycle Analysis button — high-visibility, in BOTTOM LINE header
+    // r63.72.20: 360° Cycle Analysis button — explicit colors, no gradient (gradients getting overridden by global CSS)
     var _btnSym = (window._ddLastSymbol || '').replace(/'/g, "\\'");
-    h += '<button onclick="window._loadCycleAnalysis(\'' + _btnSym + '\', window._deRegion || \'US\', 0, 0);return false;" style="margin-left:auto;padding:8px 16px;border:none;background:linear-gradient(135deg,#1A3A78,#7c3aed);color:#ffffff;border-radius:8px;font-size:12px;font-weight:800;cursor:pointer;font-family:Sora,sans-serif;display:inline-flex;align-items:center;gap:6px;box-shadow:0 4px 12px rgba(124,58,237,0.35);letter-spacing:0.3px">🔬 360° CYCLE ANALYSIS</button>';
+    h += '<button type="button" data-cycle-btn="bottomline" onclick="window._loadCycleAnalysis(\'' + _btnSym + '\', window._deRegion || \'US\', 0, 0);return false;" ' +
+         'style="margin-left:auto;padding:8px 14px;border:0 solid #7c3aed;background-color:#7c3aed;background-image:none;color:#ffffff;border-radius:8px;font-size:11px;font-weight:800;cursor:pointer;font-family:Sora,sans-serif;letter-spacing:0.4px;box-shadow:0 2px 6px rgba(124,58,237,0.3);min-height:32px;line-height:1">' +
+         '<span style="color:#ffffff !important;display:inline-block">360&deg; CYCLE ANALYSIS</span></button>';
     h += '</div>';
     h += '<div style="font-size:14px;line-height:1.5;color:#0f172a;font-weight:500;margin-bottom:10px">' + bl.headline + '</div>';
     // r61.7: Composite score breakdown
@@ -25961,16 +25963,16 @@ window._csR6322Inject = function(anchorInfo) {
     'box-shadow:0 1px 3px rgba(15,23,42,0.06);overflow:hidden;font-family:Inter,sans-serif';
   
   card.innerHTML = 
-    // r63.30: Collapsible header with toggle + Save to Journal button
+    // r63.30: Collapsible header
     '<div id="cs-r6322-header" onclick="window._csR6322ToggleCollapse()" style="padding:14px 18px;cursor:pointer;display:flex;align-items:center;gap:10px;flex-wrap:wrap;user-select:none">' +
       '<div style="background:rgba(26,58,120,0.1);width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0">🧠</div>' +
       '<div style="flex:1;min-width:160px">' +
         '<div style="font-size:13px;font-weight:800;color:#1A3A78;font-family:Sora,sans-serif;letter-spacing:0.3px">Analyst Insights</div>' +
         '<div id="cs-r6322-summary" style="font-size:11px;color:#64748b;margin-top:2px">' + sym + ' · Click to expand full analysis</div>' +
       '</div>' +
-      // r63.72.14: 360° Cycle Analysis button (visible from any report — Analyze Stock or Deep DD)
-      '<button onclick="event.stopPropagation();window._ddLastSymbol=\'' + sym + '\';window._loadCycleAnalysis(\'' + sym + '\', window._deRegion || \'US\', 0, 0);" style="background:linear-gradient(135deg,#1A3A78,#7c3aed);color:#fff;border:none;border-radius:6px;padding:6px 12px;font-size:11px;font-weight:700;cursor:pointer;font-family:Sora,sans-serif;flex-shrink:0;display:inline-flex;align-items:center;gap:5px" title="15-section institutional cycle analysis: normalized EPS, 17x P/E target, margin of safety">🔬 360° Cycle Analysis</button>' +
-      '<button onclick="event.stopPropagation();window._csR6322OpenJournalModal()" style="background:#1A3A78;color:#fff;border:none;border-radius:6px;padding:6px 12px;font-size:11px;font-weight:700;cursor:pointer;font-family:Inter,sans-serif;flex-shrink:0">📔 Save to Journal</button>' +
+      // r63.72.14: 360° Cycle Analysis button (visible from any report)
+      '<button onclick="event.stopPropagation();window._ddLastSymbol=\'' + sym + '\';window._loadCycleAnalysis(\'' + sym + '\', window._deRegion || \'US\', 0, 0);" style="background-color:#7c3aed;background-image:none;color:#ffffff;border:0 solid #7c3aed;border-radius:6px;padding:6px 12px;font-size:11px;font-weight:800;cursor:pointer;font-family:Sora,sans-serif;flex-shrink:0;letter-spacing:0.3px;min-height:28px;box-shadow:0 2px 6px rgba(124,58,237,0.3)" title="15-section institutional cycle analysis"><span style="color:#ffffff !important">360&deg; CYCLE ANALYSIS</span></button>' +
+      // r63.72.18: 'Save to Journal' button removed per user request
       '<div id="cs-r6322-chevron" style="font-size:14px;color:#94a3b8;flex-shrink:0;transition:transform 0.2s">▼</div>' +
     '</div>' +
     // r63.30: Collapsible body wrapper
@@ -27854,7 +27856,7 @@ function _csR6322RenderJournal(d) {
     html += '<div style="text-align:center;padding:60px 20px">';
     html += '<div style="font-size:48px;margin-bottom:14px">📔</div>';
     html += '<div style="font-size:16px;font-weight:700;color:#0f172a;margin-bottom:6px;font-family:Sora,sans-serif">Your journal is empty</div>';
-    html += '<div style="font-size:13px;color:#64748b;line-height:1.6;max-width:380px;margin:0 auto">Run analysis on a stock and click <strong>📔 Save to Journal</strong> in the Analyst Insights card. We&apos;ll snapshot the analysis and track reality vs your plan.</div>';
+    html += '<div style="font-size:13px;color:#64748b;line-height:1.6;max-width:380px;margin:0 auto">Journal entries will appear here once added. Use the Trader → Journal tab to log trades manually.</div>';
     html += '</div>';
     return html;
   }

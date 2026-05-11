@@ -2004,22 +2004,14 @@ window._premiumUpgradeBanner=function(feature,plan){
     +'</div>';
 };
 
-// ─── FLOATING UPGRADE CTA (shows after scrolling past pricing) ───
+// ─── FLOATING UPGRADE CTA (REMOVED per r63.72.18 — user requested removal) ───
 function _initFloatingCTA(){
-  var shown=false;
-  var cta=document.createElement('div');
-  cta.id='floatingUpgradeCTA';
-  cta.style.cssText='position:fixed;bottom:20px;left:20px;z-index:998;padding:12px 20px;border-radius:12px;background:linear-gradient(135deg,#1A3A78,#1e40af);color:#fff;font-size:11px;font-weight:800;font-family:Sora,sans-serif;cursor:pointer;box-shadow:0 8px 32px rgba(26,58,120,.3);display:none;transition:all .3s;max-width:280px;line-height:1.4';
-  cta.innerHTML='<div style="display:flex;align-items:center;gap:10px"><span style="font-size:18px">⚡</span><div><div>Unlock Pro Features</div><div style="font-size:9px;font-weight:500;color:rgba(255,255,255,.7);margin-top:2px">7-day free trial — $29/mo</div></div><button onclick="event.stopPropagation();document.getElementById(\'floatingUpgradeCTA\').style.display=\'none\'" style="background:none;border:none;color:rgba(255,255,255,.5);cursor:pointer;font-size:14px;padding:0 0 0 8px">✕</button></div>';
-  cta.onclick=function(){_showPremiumCheckout('pro')};
-  document.body.appendChild(cta);
-  
-  window.addEventListener('scroll',function(){
-    if(window.scrollY>1200&&!shown&&!localStorage.getItem('celesys-premium-plan')){
-      cta.style.display='block';
-      shown=true;
-    }
-  },{passive:true});
+  // Disabled: floating "Unlock Pro Features" CTA no longer renders.
+  // Also clean up any existing CTA element from prior session (in case of cached state)
+  try {
+    var existing = document.getElementById('floatingUpgradeCTA');
+    if (existing) existing.remove();
+  } catch(e) {}
 }
 if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',_initFloatingCTA)}
 else{_initFloatingCTA()}

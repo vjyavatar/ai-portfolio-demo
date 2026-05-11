@@ -3954,8 +3954,9 @@ async def diamond_hunter(
         min_mcap = max(50_000_000, min_mcap)
         limit = max(10, min(200, limit))
 
-        # Get the existing positioning-scan universe (cached)
-        all_scores = score_universe(tier=-1, limit=500, min_filer_count=30)
+        # r63.72.19 FIX: score_universe takes a db connection, not tier/limit kwargs
+        with get_conn() as conn:
+            all_scores = score_universe(conn)
 
         results = hunt_diamonds(
             all_scores, market_drop_pct=crash_pct, min_market_cap=min_mcap
