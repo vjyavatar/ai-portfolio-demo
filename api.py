@@ -6,6 +6,24 @@ import sys
 print(f"[STARTUP] Python {sys.version}")
 print(f"[STARTUP] Loading imports...")
 
+# r63.72.18: Load build version metadata for deployment verification
+_BUILD_VERSION = "unknown"
+_BUILD_TIME = "unknown"
+_BUILD_HASH = "0"
+try:
+    import os as _os
+    _bv_path = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "build_version.txt")
+    if _os.path.exists(_bv_path):
+        with open(_bv_path, "r") as _bvf:
+            _bv_lines = [l.strip() for l in _bvf.readlines() if l.strip()]
+            if len(_bv_lines) >= 3:
+                _BUILD_VERSION = _bv_lines[0]
+                _BUILD_TIME = _bv_lines[1]
+                _BUILD_HASH = _bv_lines[2]
+    print(f"[STARTUP] ==== BUILD {_BUILD_VERSION} ({_BUILD_TIME}) hash={_BUILD_HASH} ====")
+except Exception as _be:
+    print(f"[STARTUP] Build version load failed: {_be}")
+
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Response, FileResponse
@@ -3798,9 +3816,27 @@ async def home():
                 <p>HTML file not found.</p></body></html>"""
 
 
+# r63.72.18: Build verification endpoint — hit this from browser to confirm deployment
+@app.get("/api/build-version")
+async def build_version():
+    """Returns deployed build metadata. Use to verify which version is live."""
+    return {
+        "build_version": _BUILD_VERSION,
+        "build_time": _BUILD_TIME,
+        "build_hash": _BUILD_HASH,
+        "features": {
+            "cycle_analysis": True,
+            "diamond_hunter": True,
+            "fund_analyzer": True,
+            "three_lens_scanner": True,
+        },
+    }
+
+
 # r63.72.11: Fund Analyzer (ETFs + MFs, US + India)
 @app.get("/api/fund-analyze")
 async def fund_analyze(ticker: str, region: str = "US"):
+    print(f"[{_BUILD_VERSION}] /api/fund-analyze ticker={ticker} region={region}")
     """
     Analyze an ETF or Mutual Fund. Returns None-ish if input is a stock
     (caller should fall back to regular DD).
@@ -3878,6 +3914,7 @@ async def fund_search(q: str, region: str = "IN", limit: int = 20):
 # r63.72.12: 360° Cycle Analysis (15-section deep DD analytical lens)
 @app.get("/api/cycle-analysis")
 async def cycle_analysis(symbol: str, region: str = "US", market_cap: int = 0, price: float = 0):
+    print(f"[{_BUILD_VERSION}] /api/cycle-analysis symbol={symbol} region={region} mcap={market_cap} price={price}")
     """
     Run 360-degree cycle analysis on a stock ticker. Returns 15 analytical
     sections with metrics + plain-English commentary + layman explanation.
@@ -3897,6 +3934,7 @@ async def diamond_hunter(
     min_mcap: int = 1_000_000_000,
     limit: int = 50,
 ):
+    print(f"[{_BUILD_VERSION}] /api/diamond-hunter crash={crash_pct}% min_mcap={min_mcap}")
     """
     Stress-test universe against a simulated market correction of `crash_pct`.
     Returns top-ranked diamond candidates: stocks that would be high-quality

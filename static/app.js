@@ -1,12 +1,37 @@
 // ═══ Celesys version stamp ═══
-window.CELESYS_VERSION = "v4.63.70";
-window.CELESYS_BUILD_TIME = 1778190986;
-window.CELESYS_BUILD_DATE = "2026-05-07 21:56:26 UTC";
+window.CELESYS_VERSION = "r63.72.18";
+window.CELESYS_BUILD_TIME = 1778523250;
+window.CELESYS_BUILD_DATE = "2026-05-11 18:14:10 UTC";
+window.CELESYS_FEATURES = {
+  cycle_analysis: true,
+  diamond_hunter: true,
+  fund_analyzer: true,
+  three_lens_scanner: true,
+};
 console.log("%c━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "color:#1A3A78");
-console.log("%c CELESYS v4.63.70 %c loaded · 2026-04-29 03:29:27 UTC",
-  "background:#1A3A78;color:#fff;font-weight:900;padding:3px 8px;border-radius:3px;font-family:monospace",
-  "color:#1A3A78;font-weight:700;font-family:monospace");
+console.log("%c CELESYS r63.72.18 %c loaded · 2026-05-11 18:14:10 UTC",
+  "background:#7c3aed;color:#fff;font-weight:900;padding:3px 8px;border-radius:3px;font-family:monospace",
+  "color:#7c3aed;font-weight:700;font-family:monospace");
+console.log("%c Features: 360° Cycle Analysis · Diamond Hunter · Fund Analyzer · Three-Lens Scanner",
+  "color:#10b981;font-weight:700;font-family:monospace");
 console.log("%c━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "color:#1A3A78");
+
+// r63.72.18: Visible version stamp in DOM — appears once DOM is ready
+document.addEventListener('DOMContentLoaded', function() {
+  try {
+    var stamp = document.createElement('div');
+    stamp.id = 'celesys-build-stamp';
+    stamp.style.cssText = 'position:fixed;bottom:8px;left:8px;background:linear-gradient(135deg,#1A3A78,#7c3aed);color:#fff;padding:4px 10px;font-size:9px;font-weight:800;font-family:IBM Plex Mono,monospace;border-radius:4px;letter-spacing:0.5px;z-index:99999;box-shadow:0 2px 8px rgba(124,58,237,0.4);cursor:pointer;user-select:none';
+    stamp.textContent = '⚙ r63.72.18 · 2026-05-11';
+    stamp.title = 'Click to verify backend version';
+    stamp.onclick = function() {
+      fetch('/api/build-version').then(function(r){return r.json();}).then(function(d){
+        alert('Frontend: r63.72.18\nBackend: ' + d.build_version + '\nBackend time: ' + d.build_time + '\nFeatures: ' + JSON.stringify(d.features, null, 2));
+      }).catch(function(e){ alert('Backend version check failed: ' + e.message); });
+    };
+    document.body.appendChild(stamp);
+  } catch(e) {}
+});
 // ═════════════════════════════════════
 
 // ═══════════════════════════════════════════════════════════════════

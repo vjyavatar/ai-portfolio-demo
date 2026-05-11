@@ -1,3 +1,12 @@
+## r63.72.18 (2026-05-11)
+- ADDED: Visible build-version stamp at bottom-left of every page (purple pill)
+  Click it to verify frontend vs backend version match
+- ADDED: /api/build-version endpoint — returns deployed build metadata
+- ADDED: Server-side logging on /api/cycle-analysis, /api/diamond-hunter, /api/fund-analyze
+  (logs print with [r63.72.18] prefix to Render console)
+- FIXED: app.js version stamp at top was stale (was v4.63.70 since early March)
+- FIXED: Cache-bust hash bumped in index.html (was preventing browsers from loading r63.72.10+)
+
 ## r63.72.17 (2026-05-11)
 - FIX: 360° Cycle Analysis button injected DIRECTLY into BOTTOM LINE card header
   (impossible to miss — appears at top of every report, next to verdict badge)
