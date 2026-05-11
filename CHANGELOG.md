@@ -1,3 +1,8 @@
+## r63.72.15 (2026-05-11)
+- CRITICAL FIX: Bumped index.html cache-bust query strings on app.min.js and premium-override.js
+  (was stuck at v=1778190986 since early March — all r63.72.10 through r63.72.14 changes were on the server but browsers were loading stale cached app.min.js)
+- This explains why the 360° button was 'invisible' despite multiple builds
+
 # Celesys v4 — Changelog
 
 Most recent at top. Sub-versions cumulative — each one builds on the previous.
