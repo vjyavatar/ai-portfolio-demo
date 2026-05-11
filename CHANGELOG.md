@@ -1748,3 +1748,30 @@ Bloomberg has alerts but $24K/year. Robinhood/Seeking Alpha/Yahoo don't connect 
 - Simple CSS only (no gradient edge cases)
 - Plain-language action triggers
 - Single feature, full discipline
+
+## r63.72.14 (2026-05-11)
+- 360° Cycle Analysis button injected into Analyst Insights card header
+  (visible from both Analyze Stock and Deep DD tabs)
+
+## r63.72.13 (2026-05-11)
+- 360° Cycle Analysis entry button added to Deep DD entry form
+  (gradient bar below GENERATE, accessible before submitting any ticker)
+
+## r63.72.12 (2026-05-11)
+- services/cycle_analyzer.py — 15-section institutional 360° cycle analyzer
+- /api/cycle-analysis endpoint
+- static/cycle_view.js — 15-card cycle analysis frontend view
+- Original button placement: Deep DD report action bars (legacy + new shell)
+
+## r63.72.11 (2026-05-10)
+- services/fund_analyzer.py — ETF + MF analyzer (US + India)
+- /api/fund-analyze, /api/fund-compare, /api/fund-search
+- static/fund_view.js — single fund + comparison renderer
+- Phase 2: Holdings overlap detector, lens-style scoring
+
+## r63.72.10 (2026-05-10)
+- Three-lens architecture: Compounders / Inst Accumulation / Optionality
+- 7-column institutional positioning layout
+- Conviction bands (HIGH/MEDIUM/LOW/AVOID) replace stars
+- Saturation field replaces Phase labels
+- JS error fix (window._renderPositioningPage scoping)

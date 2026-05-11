@@ -12541,7 +12541,7 @@ function renderForm(prefilled){
           'onmouseover="this.style.background=\'#142e5c\'" onmouseout="this.style.background=\'#1A3A78\'">GENERATE →</button>';
   html += '</div>';
 
-  // r63.72.12: Direct 360° Cycle Analysis entry — visible before submitting
+  // r63.72.13: Direct 360° Cycle Analysis entry — visible before submitting
   html += '<div style="display:flex;gap:8px;margin-bottom:14px;align-items:center">';
   html += '<button onclick="var s=document.getElementById(\'ddSymbol\').value.trim().toUpperCase();if(!s){document.getElementById(\'ddSymbol\').focus();return;}window._ddLastSymbol=s;window._loadCycleAnalysis(s, window._deRegion || \'US\', 0, 0);" '+
           'style="flex:1;padding:10px 16px;background:linear-gradient(135deg,#1A3A78,#7c3aed);color:#fff;border:none;border-radius:6px;font-size:12px;font-weight:800;cursor:pointer;font-family:Sora,sans-serif;letter-spacing:0.5px;display:flex;align-items:center;justify-content:center;gap:8px">'+
@@ -25931,6 +25931,8 @@ window._csR6322Inject = function(anchorInfo) {
         '<div style="font-size:13px;font-weight:800;color:#1A3A78;font-family:Sora,sans-serif;letter-spacing:0.3px">Analyst Insights</div>' +
         '<div id="cs-r6322-summary" style="font-size:11px;color:#64748b;margin-top:2px">' + sym + ' · Click to expand full analysis</div>' +
       '</div>' +
+      // r63.72.14: 360° Cycle Analysis button (visible from any report — Analyze Stock or Deep DD)
+      '<button onclick="event.stopPropagation();window._ddLastSymbol=\'' + sym + '\';window._loadCycleAnalysis(\'' + sym + '\', window._deRegion || \'US\', 0, 0);" style="background:linear-gradient(135deg,#1A3A78,#7c3aed);color:#fff;border:none;border-radius:6px;padding:6px 12px;font-size:11px;font-weight:700;cursor:pointer;font-family:Sora,sans-serif;flex-shrink:0;display:inline-flex;align-items:center;gap:5px" title="15-section institutional cycle analysis: normalized EPS, 17x P/E target, margin of safety">🔬 360° Cycle Analysis</button>' +
       '<button onclick="event.stopPropagation();window._csR6322OpenJournalModal()" style="background:#1A3A78;color:#fff;border:none;border-radius:6px;padding:6px 12px;font-size:11px;font-weight:700;cursor:pointer;font-family:Inter,sans-serif;flex-shrink:0">📔 Save to Journal</button>' +
       '<div id="cs-r6322-chevron" style="font-size:14px;color:#94a3b8;flex-shrink:0;transition:transform 0.2s">▼</div>' +
     '</div>' +
