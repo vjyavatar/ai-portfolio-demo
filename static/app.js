@@ -12541,6 +12541,14 @@ function renderForm(prefilled){
           'onmouseover="this.style.background=\'#142e5c\'" onmouseout="this.style.background=\'#1A3A78\'">GENERATE →</button>';
   html += '</div>';
 
+  // r63.72.12: Direct 360° Cycle Analysis entry — visible before submitting
+  html += '<div style="display:flex;gap:8px;margin-bottom:14px;align-items:center">';
+  html += '<button onclick="var s=document.getElementById(\'ddSymbol\').value.trim().toUpperCase();if(!s){document.getElementById(\'ddSymbol\').focus();return;}window._ddLastSymbol=s;window._loadCycleAnalysis(s, window._deRegion || \'US\', 0, 0);" '+
+          'style="flex:1;padding:10px 16px;background:linear-gradient(135deg,#1A3A78,#7c3aed);color:#fff;border:none;border-radius:6px;font-size:12px;font-weight:800;cursor:pointer;font-family:Sora,sans-serif;letter-spacing:0.5px;display:flex;align-items:center;justify-content:center;gap:8px">'+
+          '<span style="font-size:14px">🔬</span><span>360° CYCLE ANALYSIS</span>'+
+          '<span style="font-size:9px;opacity:0.8;font-weight:600;margin-left:4px">15 SECTIONS · NORMALIZED EPS · 17× P/E · STRESS TEST</span></button>';
+  html += '</div>';
+
   // Inline error block (for failed fetches)
   if (errMsg) {
     html += '<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:6px;padding:10px 12px;margin-bottom:14px;display:flex;gap:10px;align-items:flex-start">';
