@@ -3798,6 +3798,98 @@ async def home():
                 <p>HTML file not found.</p></body></html>"""
 
 
+# r63.72.11: Fund Analyzer (ETFs + MFs, US + India)
+@app.get("/api/fund-analyze")
+async def fund_analyze(ticker: str, region: str = "US"):
+    """
+    Analyze an ETF or Mutual Fund. Returns None-ish if input is a stock
+    (caller should fall back to regular DD).
+
+    Examples:
+        /api/fund-analyze?ticker=SPY&region=US
+        /api/fund-analyze?ticker=120586&region=IN     (India MF scheme code)
+        /api/fund-analyze?ticker=NIFTYBEES&region=IN  (India ETF)
+    """
+    try:
+        from services.fund_analyzer import analyze_fund, compute_fund_lens_score
+        result = analyze_fund(ticker, region)
+        if not result:
+            return {"success": False, "error": "not_a_fund", "is_stock": True}
+        # Add lens score
+        result["lens_score"] = compute_fund_lens_score(result)
+        return {"success": True, "fund": result}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+@app.get("/api/fund-compare")
+async def fund_compare(tickers: str, region: str = "US"):
+    """
+    Compare 2-3 funds side-by-side. Tickers comma-separated.
+    Returns: list of funds + pairwise holdings overlap matrix.
+    """
+    try:
+        from services.fund_analyzer import (
+            analyze_fund, compute_fund_lens_score, compute_holdings_overlap
+        )
+        ticker_list = [t.strip() for t in tickers.split(",") if t.strip()][:3]
+        if len(ticker_list) < 2:
+            return {"success": False, "error": "Need 2-3 tickers comma-separated"}
+
+        funds = []
+        for t in ticker_list:
+            f = analyze_fund(t, region)
+            if f:
+                f["lens_score"] = compute_fund_lens_score(f)
+                funds.append(f)
+
+        if len(funds) < 2:
+            return {"success": False, "error": "Could not load at least 2 funds"}
+
+        # Pairwise overlap
+        overlaps = []
+        for i in range(len(funds)):
+            for j in range(i + 1, len(funds)):
+                overlap = compute_holdings_overlap(funds[i], funds[j])
+                overlaps.append({
+                    "ticker_a": funds[i]["ticker"],
+                    "ticker_b": funds[j]["ticker"],
+                    **overlap,
+                })
+
+        return {"success": True, "funds": funds, "overlaps": overlaps}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+@app.get("/api/fund-search")
+async def fund_search(q: str, region: str = "IN", limit: int = 20):
+    """Search India MFs by name. Returns scheme_code + name + NAV."""
+    try:
+        from services.fund_analyzer import search_india_funds
+        if region != "IN":
+            return {"success": False, "error": "Search only supported for India MFs"}
+        results = search_india_funds(q, limit)
+        return {"success": True, "results": results}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+# r63.72.12: 360° Cycle Analysis (15-section deep DD analytical lens)
+@app.get("/api/cycle-analysis")
+async def cycle_analysis(symbol: str, region: str = "US", market_cap: int = 0, price: float = 0):
+    """
+    Run 360-degree cycle analysis on a stock ticker. Returns 15 analytical
+    sections with metrics + plain-English commentary + layman explanation.
+    """
+    try:
+        from services.cycle_analyzer import analyze_cycle
+        result = analyze_cycle(symbol, market_cap=market_cap, current_price=price)
+        return result
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
 # r63.72: Institutional Positioning Scanner
 @app.get("/api/positioning-scan")
 async def positioning_scan(

@@ -12703,6 +12703,27 @@ window._ddGenerate = function(){
     }
   }, 800);
   
+  // r63.72.11: Fund auto-detection — try /api/fund-analyze first.
+  // If response says it's a fund, render fund view. If not_a_fund, fall through
+  // to the regular stock DD flow.
+  fetch('/api/fund-analyze?ticker=' + encodeURIComponent(sym) + '&region=' + reg)
+    .then(function(r){ return r.json(); })
+    .then(function(fd){
+      if (fd && fd.success && fd.fund) {
+        // It's a fund — render fund view, stop here
+        clearInterval(_ddTimer); window._ddProg = 0;
+        window._renderFundView(fd.fund, reg);
+        return;
+      }
+      // Not a fund — continue with regular stock DD
+      _runStockDD();
+    })
+    .catch(function() {
+      // Fund detection failed — fall through to stock DD
+      _runStockDD();
+    });
+
+  function _runStockDD() {
   fetch('/api/investor-due-diligence?symbol='+encodeURIComponent(sym)+'&region='+reg+'&email='+encodeURIComponent(email))
     .then(function(r){return r.json();})
     .then(function(d){
@@ -12726,6 +12747,7 @@ window._ddGenerate = function(){
       clearInterval(_ddTimer);
       renderForm({symbol: sym, error: 'Network error: '+e.message+'. Check your connection and retry.'});  // r61.8
     });
+  }
 };
 
 function renderReport(d){
@@ -12807,6 +12829,7 @@ function _renderReportShellAladdin(d){
   // Action bar
   h += '<div class="cs-dd-actions">';
   h += '<button class="cs-dd-actions__btn" onclick="loadDeepDD()">← New Ticker</button>';
+  h += '<button class="cs-dd-actions__btn" style="background:linear-gradient(135deg,#1A3A78,#7c3aed);color:#fff;border:none" onclick="window._loadCycleAnalysis(\'' + c.symbol + '\', window._deRegion || \'US\', (' + (c.market_cap || 0) + ' || 0), (' + (c.current_price || 0) + ' || 0))">🔬 360° Cycle Analysis</button>';
   h += '<button class="cs-dd-actions__btn cs-dd-actions__btn--primary" onclick="switchDEMode(\'investor\');loadDE(\'' + c.symbol + '\')">Full Celesys View →</button>';
   h += '</div>';
 
@@ -13014,6 +13037,7 @@ function _renderReportLegacy(d){
   // Top action bar
   h += '<div style="display:flex;gap:8px;justify-content:flex-end;margin-bottom:10px">';
   h += '<button onclick="loadDeepDD()" title="New report" style="padding:6px 12px;border:1px solid #cbd5e1;background:#fff;border-radius:6px;font-size:10px;font-weight:700;cursor:pointer;font-family:Sora,sans-serif">← New Ticker</button>';
+  h += '<button onclick="window._loadCycleAnalysis(\''+c.symbol+'\', window._deRegion || \'US\', ('+(c.market_cap || 0)+' || 0), ('+(c.current_price || 0)+' || 0))" title="15-section cycle, normalized earnings, and margin-of-safety analysis" style="padding:6px 12px;border:none;background:linear-gradient(135deg,#1A3A78,#7c3aed);color:#fff;border-radius:6px;font-size:10px;font-weight:700;cursor:pointer;font-family:Sora,sans-serif">🔬 360° Cycle Analysis</button>';
   h += '<button onclick="switchDEMode(\'investor\');loadDE(\''+c.symbol+'\')" title="Open full Celesys analysis" style="padding:6px 12px;border:none;background:#1e40af;color:#fff;border-radius:6px;font-size:10px;font-weight:700;cursor:pointer;font-family:Sora,sans-serif">📊 Full Celesys View →</button>';
   h += '</div>';
   
@@ -28386,3 +28410,754 @@ function _r6370RenderIndexCompare(d) {
   return html;
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// r63.72.11 — Fund View (ETF / Mutual Fund) for Deep DD
+// Renders when Deep DD detects an ETF or MF instead of a stock.
+// Phase 1: single-fund analytics. Phase 2: comparison mode.
+// ═══════════════════════════════════════════════════════════════════════════
+
+window._renderFundView = function(fund, region) {
+  var el = document.getElementById('deResult');
+  if (!el) return;
+
+  var csym = (fund.currency === "INR" || region === "IN") ? "₹" : "$";
+  var isMF = fund.type === "us_mf" || fund.type === "india_mf";
+  var isIndiaMF = fund.type === "india_mf";
+  var typeLabel = fund.type === "us_etf" ? "ETF" :
+                  fund.type === "india_etf" ? "INDIA ETF" :
+                  fund.type === "us_mf" ? "MUTUAL FUND" :
+                  fund.type === "india_mf" ? "INDIA MUTUAL FUND" : "FUND";
+
+  function fmtPct(v, decimals) {
+    if (v === null || v === undefined) return '<span style="color:#cbd5e1">—</span>';
+    var d = decimals !== undefined ? decimals : 2;
+    var col = v >= 0 ? '#10b981' : '#dc2626';
+    return '<span style="color:' + col + ';font-weight:700;font-family:IBM Plex Mono,monospace">' +
+           (v >= 0 ? '+' : '') + v.toFixed(d) + '%</span>';
+  }
+  function fmtMoney(v) {
+    if (!v) return '<span style="color:#cbd5e1">—</span>';
+    if (Math.abs(v) >= 1e12) return csym + (v / 1e12).toFixed(2) + 'T';
+    if (Math.abs(v) >= 1e9) return csym + (v / 1e9).toFixed(2) + 'B';
+    if (Math.abs(v) >= 1e6) return csym + (v / 1e6).toFixed(2) + 'M';
+    if (Math.abs(v) >= 1e3) return csym + (v / 1e3).toFixed(2) + 'K';
+    return csym + v.toFixed(2);
+  }
+  function fmtNum(v, d) {
+    if (v === null || v === undefined) return '<span style="color:#cbd5e1">—</span>';
+    return v.toFixed(d !== undefined ? d : 2);
+  }
+
+  var h = '';
+
+  // Region toggle
+  if (typeof _renderRegionToggle === 'function') {
+    h += _renderRegionToggle('loadDeepDD', region);
+  }
+  h += '<div style="max-width:1200px;margin:0 auto;padding:0 8px;font-family:Inter,sans-serif">';
+
+  // ── Header card ────────────────────────────────────────────────────────
+  h += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:18px 22px;margin-bottom:14px">';
+  h += '<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">';
+  h += '<div style="width:48px;height:48px;background:linear-gradient(135deg,#7c3aed,#1A3A78);border-radius:8px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:18px;font-weight:900;font-family:Sora,sans-serif">' +
+       (fund.ticker || '??').substring(0, 3) + '</div>';
+  h += '<div style="flex:1;min-width:200px">';
+  h += '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">';
+  h += '<span style="font-size:16px;font-weight:900;color:#0f172a;font-family:Sora,sans-serif">' + (fund.ticker || '') + '</span>';
+  h += '<span style="padding:3px 8px;background:#ede9fe;color:#5b21b6;border-radius:6px;font-size:9px;font-weight:800;letter-spacing:0.5px;font-family:Sora,sans-serif">' + typeLabel + '</span>';
+  if (fund.family) {
+    h += '<span style="font-size:11px;color:#64748b">· ' + fund.family + '</span>';
+  }
+  h += '</div>';
+  h += '<div style="font-size:13px;color:#475569;margin-top:3px">' + (fund.name || '') + '</div>';
+  if (fund.category) {
+    h += '<div style="font-size:10px;color:#94a3b8;margin-top:2px">' + fund.category + '</div>';
+  }
+  h += '</div>';
+  // NAV
+  h += '<div style="text-align:right">';
+  h += '<div style="font-size:9px;color:#94a3b8;font-weight:700;letter-spacing:0.6px">NAV</div>';
+  h += '<div style="font-size:22px;font-weight:900;color:#0f172a;font-family:IBM Plex Mono,monospace">' + csym + (fund.nav ? fund.nav.toFixed(2) : '—') + '</div>';
+  if (fund.nav_date) {
+    h += '<div style="font-size:9px;color:#94a3b8">' + fund.nav_date + '</div>';
+  }
+  h += '</div>';
+  h += '</div>';
+
+  // Compare button + back button
+  h += '<div style="display:flex;gap:8px;margin-top:14px;border-top:1px solid #f1f5f9;padding-top:12px">';
+  h += '<button onclick="loadDeepDD()" style="padding:6px 12px;border:1px solid #cbd5e1;background:#fff;border-radius:6px;font-size:10px;font-weight:700;cursor:pointer;font-family:Sora,sans-serif">← New Ticker</button>';
+  h += '<button onclick="window._showFundCompareModal(\'' + (fund.ticker || '').replace(/'/g, "\\'") + '\', \'' + region + '\')" style="padding:6px 12px;border:1px solid #7c3aed;background:#7c3aed;color:#fff;border-radius:6px;font-size:10px;font-weight:700;cursor:pointer;font-family:Sora,sans-serif">⚖ Compare Funds</button>';
+  h += '</div>';
+  h += '</div>';
+
+  // ── Lens score card ────────────────────────────────────────────────────
+  var ls = fund.lens_score || {};
+  var verdictColor = ls.verdict === 'EXCELLENT' ? '#10b981' :
+                     ls.verdict === 'GOOD' ? '#3b82f6' :
+                     ls.verdict === 'FAIR' ? '#f59e0b' :
+                     ls.verdict === 'POOR' ? '#dc2626' : '#94a3b8';
+
+  h += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:18px 22px;margin-bottom:14px">';
+  h += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">';
+  h += '<div style="font-size:11px;font-weight:800;letter-spacing:0.6px;color:#64748b;font-family:Sora,sans-serif">FUND LENS SCORE</div>';
+  h += '<div style="padding:5px 12px;border-radius:6px;background:' + verdictColor + ';color:#fff;font-size:11px;font-weight:800;font-family:Sora,sans-serif">' + (ls.verdict || 'N/A') + (ls.composite !== null && ls.composite !== undefined ? ' · ' + ls.composite : '') + '</div>';
+  h += '</div>';
+
+  function _sub(label, val) {
+    var col = '#94a3b8';
+    var disp = 'N/A';
+    if (val !== null && val !== undefined) {
+      col = val >= 70 ? '#10b981' : val >= 50 ? '#3b82f6' : val >= 30 ? '#f59e0b' : '#dc2626';
+      disp = Math.round(val);
+    }
+    return '<div style="text-align:center;flex:1;min-width:90px">' +
+           '<div style="font-size:9px;color:#94a3b8;font-weight:700;letter-spacing:0.6px;margin-bottom:4px">' + label + '</div>' +
+           '<div style="font-size:20px;font-weight:900;color:' + col + ';font-family:IBM Plex Mono,monospace">' + disp + '</div>' +
+           '</div>';
+  }
+  h += '<div style="display:flex;gap:12px;flex-wrap:wrap">';
+  h += _sub('COST EFFICIENCY', ls.cost_efficiency);
+  h += _sub('RISK-ADJUSTED',    ls.risk_adjusted);
+  h += _sub('PERFORMANCE',      ls.performance);
+  h += _sub('SIZE / QUALITY',   ls.size_quality);
+  h += '</div>';
+  h += '<div style="margin-top:12px;font-size:10px;color:#94a3b8;line-height:1.4">' +
+       'Weighted composite: Cost (25%) + Risk-Adjusted (30%) + Performance (30%) + Size Quality (15%). ' +
+       'Verdict requires at least 2 input dimensions with real data.</div>';
+  h += '</div>';
+
+  // ── Key metrics row ────────────────────────────────────────────────────
+  h += '<div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(160px, 1fr));gap:10px;margin-bottom:14px">';
+
+  function _metricBox(label, value, sub) {
+    var html = '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:14px 16px">';
+    html += '<div style="font-size:9px;color:#94a3b8;font-weight:700;letter-spacing:0.6px">' + label + '</div>';
+    html += '<div style="font-size:15px;font-weight:800;color:#0f172a;font-family:IBM Plex Mono,monospace;margin-top:4px">' + value + '</div>';
+    if (sub) html += '<div style="font-size:9px;color:#94a3b8;margin-top:2px">' + sub + '</div>';
+    html += '</div>';
+    return html;
+  }
+
+  // Expense ratio
+  var er = fund.expense_ratio;
+  var erStr = er ? er.toFixed(2) + '%' : '<span style="color:#cbd5e1">—</span>';
+  h += _metricBox('EXPENSE RATIO', erStr, er ? (er <= 0.1 ? 'ultra-low' : er <= 0.5 ? 'low' : er <= 1 ? 'moderate' : 'high') : null);
+
+  // AUM
+  h += _metricBox('AUM', fmtMoney(fund.total_assets), 'total assets');
+
+  // Beta
+  if (fund.beta !== undefined && fund.beta !== null && fund.beta !== 0) {
+    h += _metricBox('BETA', fmtNum(fund.beta), 'vs. market');
+  }
+
+  // Sharpe ratio
+  if (fund.sharpe_ratio !== undefined && fund.sharpe_ratio !== null) {
+    h += _metricBox('SHARPE RATIO', fmtNum(fund.sharpe_ratio), 'risk-adjusted return');
+  }
+
+  // Volatility
+  if (fund.volatility_annual !== undefined) {
+    h += _metricBox('VOLATILITY', fmtNum(fund.volatility_annual, 1) + '%', 'annualized');
+  }
+
+  // Max drawdown
+  if (fund.max_drawdown !== undefined) {
+    h += _metricBox('MAX DRAWDOWN', fmtPct(fund.max_drawdown, 1), 'peak-to-trough');
+  }
+
+  // Yield
+  if (fund.yield_pct) {
+    h += _metricBox('YIELD', fmtNum(fund.yield_pct, 2) + '%', 'distribution');
+  }
+
+  // Morningstar rating
+  if (fund.morningstar_rating) {
+    var stars = '★'.repeat(fund.morningstar_rating) + '☆'.repeat(5 - fund.morningstar_rating);
+    h += _metricBox('MORNINGSTAR', stars, 'overall rating');
+  }
+  h += '</div>';
+
+  // ── Returns table ──────────────────────────────────────────────────────
+  h += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px 18px;margin-bottom:14px">';
+  h += '<div style="font-size:11px;font-weight:800;letter-spacing:0.6px;color:#64748b;font-family:Sora,sans-serif;margin-bottom:10px">TRAILING RETURNS</div>';
+  h += '<div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(110px, 1fr));gap:10px">';
+
+  var retCols = [
+    {label: '1M',  val: fund.one_month_return},
+    {label: '3M',  val: fund.three_month_return},
+    {label: '6M',  val: fund.six_month_return},
+    {label: 'YTD', val: fund.ytd_return},
+    {label: '1Y',  val: fund.one_year_return},
+    {label: '3Y',  val: fund.three_year_return},
+    {label: '5Y',  val: fund.five_year_return},
+  ];
+  retCols.forEach(function(rc) {
+    h += '<div style="text-align:center;padding:8px;background:#f8fafc;border-radius:6px">';
+    h += '<div style="font-size:9px;color:#94a3b8;font-weight:700;letter-spacing:0.6px;margin-bottom:4px">' + rc.label + '</div>';
+    h += '<div style="font-size:13px;font-weight:800;font-family:IBM Plex Mono,monospace">' + fmtPct(rc.val) + '</div>';
+    h += '</div>';
+  });
+  h += '</div></div>';
+
+  // ── Holdings + Sectors (side by side on wide screens) ──────────────────
+  h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">';
+
+  // Top holdings
+  h += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px 18px">';
+  h += '<div style="font-size:11px;font-weight:800;letter-spacing:0.6px;color:#64748b;font-family:Sora,sans-serif;margin-bottom:10px">TOP HOLDINGS</div>';
+  if (fund.top_holdings && fund.top_holdings.length) {
+    h += '<table style="width:100%;border-collapse:collapse;font-size:11px">';
+    fund.top_holdings.slice(0, 10).forEach(function(holding, i) {
+      var w = holding.weight || 0;
+      h += '<tr style="border-top:' + (i === 0 ? 'none' : '1px solid #f1f5f9') + '">';
+      h += '<td style="padding:6px 4px;color:#94a3b8;font-family:IBM Plex Mono,monospace;width:24px">' + (i + 1) + '</td>';
+      h += '<td style="padding:6px 4px;font-weight:700;color:#0f172a;font-family:IBM Plex Mono,monospace">' + holding.ticker + '</td>';
+      h += '<td style="padding:6px 4px;color:#475569;font-size:10px;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + (holding.name || '') + '</td>';
+      h += '<td style="padding:6px 4px;text-align:right;font-family:IBM Plex Mono,monospace;font-weight:700;color:#1A3A78">' + w.toFixed(2) + '%</td>';
+      h += '</tr>';
+      // Mini bar
+      h += '<tr><td colspan="4" style="padding:0 4px 4px"><div style="height:3px;background:#f1f5f9;border-radius:2px"><div style="height:3px;background:#7c3aed;width:' + Math.min(100, w * 5) + '%;border-radius:2px"></div></div></td></tr>';
+    });
+    h += '</table>';
+  } else {
+    h += '<div style="padding:30px 10px;text-align:center;color:#94a3b8;font-size:11px">Holdings data unavailable</div>';
+  }
+  h += '</div>';
+
+  // Sector allocation
+  h += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px 18px">';
+  h += '<div style="font-size:11px;font-weight:800;letter-spacing:0.6px;color:#64748b;font-family:Sora,sans-serif;margin-bottom:10px">SECTOR ALLOCATION</div>';
+  if (fund.sectors && fund.sectors.length) {
+    var sortedSectors = fund.sectors.slice().sort(function(a, b) { return b.weight - a.weight; });
+    sortedSectors.forEach(function(s) {
+      var w = s.weight || 0;
+      h += '<div style="margin-bottom:8px">';
+      h += '<div style="display:flex;justify-content:space-between;font-size:10px;margin-bottom:3px">';
+      h += '<span style="color:#475569;font-weight:600">' + s.sector + '</span>';
+      h += '<span style="font-family:IBM Plex Mono,monospace;color:#1A3A78;font-weight:700">' + w.toFixed(1) + '%</span>';
+      h += '</div>';
+      h += '<div style="height:6px;background:#f1f5f9;border-radius:3px"><div style="height:6px;background:linear-gradient(90deg,#1A3A78,#7c3aed);width:' + Math.min(100, w) + '%;border-radius:3px"></div></div>';
+      h += '</div>';
+    });
+  } else {
+    h += '<div style="padding:30px 10px;text-align:center;color:#94a3b8;font-size:11px">Sector data unavailable</div>';
+  }
+  h += '</div>';
+  h += '</div>';
+
+  // ── Footer note ────────────────────────────────────────────────────────
+  h += '<div style="padding:14px 4px;font-size:10px;color:#94a3b8;line-height:1.5">';
+  h += '<strong>Lens Score</strong> weights: Cost Efficiency (25%, lower expense ratio = better), Risk-Adjusted Return (30%, Sharpe ratio), Performance (30%, trailing returns), Size Quality (15%, AUM). ';
+  h += 'Verdict bands: EXCELLENT ≥75 · GOOD ≥60 · FAIR ≥40 · POOR <40. ';
+  if (isIndiaMF) {
+    h += 'India MF data sourced from AMFI (NAV) + MFAPI.in (history, scheme details). ';
+  } else if (fund.type === 'india_etf') {
+    h += 'India ETF data sourced from NSE. ';
+  } else {
+    h += 'US fund data sourced from Yahoo Finance. ';
+  }
+  h += 'Click <strong>Compare Funds</strong> to add 1-2 more tickers for side-by-side analysis with holdings overlap.';
+  h += '</div>';
+
+  h += '</div>';  // close max-width container
+  el.innerHTML = h;
+};
+
+// ── Compare modal ────────────────────────────────────────────────────────
+window._showFundCompareModal = function(currentTicker, region) {
+  var existing = document.getElementById('fundCompareModal');
+  if (existing) existing.remove();
+
+  var html = '<div id="fundCompareModal" style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(15,23,42,0.6);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;font-family:Inter,sans-serif" onclick="if(event.target===this)this.remove()">';
+  html += '<div style="background:#fff;border-radius:12px;padding:24px;max-width:560px;width:100%;max-height:90vh;overflow-y:auto" onclick="event.stopPropagation()">';
+  html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">';
+  html += '<h3 style="margin:0;font-size:16px;font-weight:900;color:#0f172a;font-family:Sora,sans-serif">⚖ Compare Funds</h3>';
+  html += '<button onclick="document.getElementById(\'fundCompareModal\').remove()" style="background:none;border:none;font-size:20px;color:#94a3b8;cursor:pointer">×</button>';
+  html += '</div>';
+  html += '<div style="font-size:11px;color:#64748b;margin-bottom:14px">Comparing <strong>' + currentTicker + '</strong> with up to 2 more funds. Enter their tickers below.</div>';
+
+  html += '<div style="margin-bottom:10px">';
+  html += '<label style="font-size:10px;font-weight:700;color:#64748b;letter-spacing:0.4px">FUND 2 TICKER</label>';
+  html += '<input id="cmpTicker2" type="text" placeholder="e.g. VOO, QQQ, NIFTYBEES" style="width:100%;padding:8px 10px;margin-top:4px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;font-family:IBM Plex Mono,monospace;text-transform:uppercase">';
+  html += '</div>';
+
+  html += '<div style="margin-bottom:14px">';
+  html += '<label style="font-size:10px;font-weight:700;color:#64748b;letter-spacing:0.4px">FUND 3 TICKER (optional)</label>';
+  html += '<input id="cmpTicker3" type="text" placeholder="e.g. VTI" style="width:100%;padding:8px 10px;margin-top:4px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;font-family:IBM Plex Mono,monospace;text-transform:uppercase">';
+  html += '</div>';
+
+  html += '<button onclick="window._runFundCompare(\'' + currentTicker + '\', \'' + region + '\')" style="width:100%;padding:10px;background:#7c3aed;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:800;cursor:pointer;font-family:Sora,sans-serif">Compare →</button>';
+
+  html += '</div></div>';
+  document.body.insertAdjacentHTML('beforeend', html);
+  setTimeout(function() { var i = document.getElementById('cmpTicker2'); if (i) i.focus(); }, 50);
+};
+
+window._runFundCompare = function(t1, region) {
+  var t2 = (document.getElementById('cmpTicker2').value || '').trim().toUpperCase();
+  var t3 = (document.getElementById('cmpTicker3').value || '').trim().toUpperCase();
+  if (!t2) {
+    document.getElementById('cmpTicker2').style.borderColor = '#dc2626';
+    return;
+  }
+  var tickers = [t1, t2];
+  if (t3) tickers.push(t3);
+  document.getElementById('fundCompareModal').remove();
+
+  var el = document.getElementById('deResult');
+  if (el) {
+    el.innerHTML = '<div style="padding:60px 20px;text-align:center;font-family:Inter,sans-serif">' +
+      '<div style="font-size:32px;margin-bottom:14px">⚖</div>' +
+      '<div style="font-size:14px;font-weight:700;color:#0f172a">Loading comparison for ' + tickers.join(', ') + '...</div>' +
+      '</div>';
+  }
+
+  fetch('/api/fund-compare?tickers=' + encodeURIComponent(tickers.join(',')) + '&region=' + region)
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      if (!d.success) {
+        if (el) {
+          el.innerHTML = '<div style="padding:60px 20px;text-align:center;color:#dc2626;font-family:Inter,sans-serif">' +
+            '<div style="font-size:32px;margin-bottom:14px">⚠️</div>' +
+            '<div style="font-size:14px;font-weight:700">Compare failed</div>' +
+            '<div style="font-size:11px;margin-top:8px;color:#94a3b8">' + (d.error || 'unknown') + '</div>' +
+            '<button onclick="loadDeepDD()" style="margin-top:14px;padding:6px 12px;border:1px solid #cbd5e1;background:#fff;border-radius:6px;font-size:11px;cursor:pointer">← Back</button>' +
+            '</div>';
+        }
+        return;
+      }
+      window._renderFundCompare(d.funds, d.overlaps, region);
+    });
+};
+
+window._renderFundCompare = function(funds, overlaps, region) {
+  var el = document.getElementById('deResult');
+  if (!el) return;
+
+  var csym = region === 'IN' ? '₹' : '$';
+  function fmtPct(v) {
+    if (v === null || v === undefined) return '<span style="color:#cbd5e1">—</span>';
+    var col = v >= 0 ? '#10b981' : '#dc2626';
+    return '<span style="color:' + col + ';font-weight:700;font-family:IBM Plex Mono,monospace">' +
+           (v >= 0 ? '+' : '') + v.toFixed(2) + '%</span>';
+  }
+  function fmtMoney(v) {
+    if (!v) return '—';
+    if (Math.abs(v) >= 1e12) return csym + (v / 1e12).toFixed(2) + 'T';
+    if (Math.abs(v) >= 1e9) return csym + (v / 1e9).toFixed(2) + 'B';
+    if (Math.abs(v) >= 1e6) return csym + (v / 1e6).toFixed(2) + 'M';
+    return csym + v.toFixed(2);
+  }
+
+  var h = '';
+  if (typeof _renderRegionToggle === 'function') h += _renderRegionToggle('loadDeepDD', region);
+  h += '<div style="max-width:1400px;margin:0 auto;padding:0 8px;font-family:Inter,sans-serif">';
+
+  // Header
+  h += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px 18px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center">';
+  h += '<div><h2 style="margin:0;font-size:17px;font-weight:900;color:#0f172a;font-family:Sora,sans-serif">⚖ Fund Comparison</h2>';
+  h += '<div style="font-size:11px;color:#64748b;margin-top:3px">Comparing ' + funds.length + ' funds: ' + funds.map(function(f){return f.ticker;}).join(' vs ') + '</div></div>';
+  h += '<button onclick="loadDeepDD()" style="padding:6px 12px;border:1px solid #cbd5e1;background:#fff;border-radius:6px;font-size:10px;font-weight:700;cursor:pointer;font-family:Sora,sans-serif">← Back</button>';
+  h += '</div>';
+
+  // Side-by-side comparison table
+  h += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px 18px;margin-bottom:14px;overflow-x:auto">';
+  h += '<table style="width:100%;border-collapse:collapse;font-size:11px;min-width:700px">';
+  h += '<thead><tr style="background:#f8fafc"><th style="padding:10px 8px;text-align:left;font-size:9px;letter-spacing:0.6px;color:#64748b;font-weight:800">METRIC</th>';
+  funds.forEach(function(f) {
+    h += '<th style="padding:10px 8px;text-align:right;font-size:9px;letter-spacing:0.6px;color:#64748b;font-weight:800">' + f.ticker + '</th>';
+  });
+  h += '</tr></thead><tbody>';
+
+  var rows = [
+    {label: 'Name', key: 'name'},
+    {label: 'Type', key: 'type'},
+    {label: 'Category', key: 'category'},
+    {label: 'NAV', key: 'nav', format: 'money'},
+    {label: 'AUM', key: 'total_assets', format: 'money'},
+    {label: 'Expense Ratio', key: 'expense_ratio', format: 'pct'},
+    {label: '1Y Return', key: 'one_year_return', format: 'pct_signed'},
+    {label: '3Y Return', key: 'three_year_return', format: 'pct_signed'},
+    {label: '5Y Return', key: 'five_year_return', format: 'pct_signed'},
+    {label: 'Beta', key: 'beta', format: 'num'},
+    {label: 'Sharpe Ratio', key: 'sharpe_ratio', format: 'num'},
+    {label: 'Max Drawdown', key: 'max_drawdown', format: 'pct_signed'},
+    {label: 'Volatility', key: 'volatility_annual', format: 'pct'},
+  ];
+
+  rows.forEach(function(row) {
+    h += '<tr style="border-top:1px solid #f1f5f9">';
+    h += '<td style="padding:8px;color:#475569;font-weight:600">' + row.label + '</td>';
+    funds.forEach(function(f) {
+      var v = f[row.key];
+      var disp = '—';
+      if (v !== null && v !== undefined && v !== '') {
+        if (row.format === 'money') disp = fmtMoney(v);
+        else if (row.format === 'pct_signed') disp = fmtPct(v);
+        else if (row.format === 'pct') disp = (typeof v === 'number' ? v.toFixed(2) + '%' : v);
+        else if (row.format === 'num') disp = (typeof v === 'number' ? v.toFixed(2) : v);
+        else disp = v;
+      }
+      h += '<td style="padding:8px;text-align:right;font-family:IBM Plex Mono,monospace">' + disp + '</td>';
+    });
+    h += '</tr>';
+  });
+
+  // Lens score row
+  h += '<tr style="border-top:2px solid #e2e8f0;background:#fafbfc">';
+  h += '<td style="padding:10px 8px;color:#0f172a;font-weight:800">LENS VERDICT</td>';
+  funds.forEach(function(f) {
+    var ls = f.lens_score || {};
+    var col = ls.verdict === 'EXCELLENT' ? '#10b981' :
+              ls.verdict === 'GOOD' ? '#3b82f6' :
+              ls.verdict === 'FAIR' ? '#f59e0b' :
+              ls.verdict === 'POOR' ? '#dc2626' : '#94a3b8';
+    h += '<td style="padding:10px 8px;text-align:right">' +
+         '<span style="padding:3px 8px;border-radius:6px;background:' + col + ';color:#fff;font-size:10px;font-weight:800;font-family:Sora,sans-serif">' +
+         (ls.verdict || 'N/A') + (ls.composite !== null && ls.composite !== undefined ? ' · ' + ls.composite : '') +
+         '</span></td>';
+  });
+  h += '</tr>';
+
+  h += '</tbody></table></div>';
+
+  // Holdings overlap
+  if (overlaps && overlaps.length) {
+    h += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px 18px;margin-bottom:14px">';
+    h += '<div style="font-size:11px;font-weight:800;letter-spacing:0.6px;color:#64748b;font-family:Sora,sans-serif;margin-bottom:10px">HOLDINGS OVERLAP</div>';
+    overlaps.forEach(function(o) {
+      h += '<div style="margin-bottom:14px">';
+      h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">';
+      h += '<span style="font-size:13px;font-weight:800;color:#0f172a;font-family:Sora,sans-serif">' + o.ticker_a + ' ⇄ ' + o.ticker_b + '</span>';
+      if (o.overlap_pct !== null && o.overlap_pct !== undefined) {
+        var col = o.overlap_pct >= 70 ? '#dc2626' : o.overlap_pct >= 40 ? '#f59e0b' : '#10b981';
+        var label = o.overlap_pct >= 70 ? 'HIGH OVERLAP — redundant pairing' :
+                    o.overlap_pct >= 40 ? 'MODERATE OVERLAP' :
+                    'LOW OVERLAP — complementary';
+        h += '<span style="padding:3px 8px;border-radius:6px;background:' + col + ';color:#fff;font-size:10px;font-weight:800;font-family:Sora,sans-serif">' + o.overlap_pct.toFixed(1) + '% · ' + label + '</span>';
+      } else {
+        h += '<span style="color:#94a3b8;font-size:11px">' + (o.note || 'Overlap data unavailable') + '</span>';
+      }
+      h += '</div>';
+      // Bar
+      if (o.overlap_pct !== null && o.overlap_pct !== undefined) {
+        h += '<div style="height:6px;background:#f1f5f9;border-radius:3px"><div style="height:6px;background:linear-gradient(90deg,#10b981,#f59e0b,#dc2626);width:' + Math.min(100, o.overlap_pct) + '%;border-radius:3px"></div></div>';
+      }
+      // Common tickers
+      if (o.common_tickers && o.common_tickers.length) {
+        h += '<div style="margin-top:8px;font-size:10px;color:#475569"><strong>Common:</strong> ';
+        h += o.common_tickers.slice(0, 8).map(function(c) {
+          return '<span style="display:inline-block;padding:2px 6px;background:#f1f5f9;border-radius:4px;margin:2px;font-family:IBM Plex Mono,monospace">' +
+                 c.ticker + ' (' + c.weight_a.toFixed(1) + '%/' + c.weight_b.toFixed(1) + '%)' + '</span>';
+        }).join('');
+        h += '</div>';
+      }
+      h += '</div>';
+    });
+    h += '</div>';
+  }
+
+  // Interpretation help
+  h += '<div style="padding:14px 4px;font-size:10px;color:#94a3b8;line-height:1.5">';
+  h += '<strong>Reading the comparison:</strong> When holdings overlap exceeds 70%, the funds are largely duplicative — owning both adds little diversification. ';
+  h += 'Overlap 40-70% means partial overlap (still meaningful diversification differences). Below 40% = complementary funds. ';
+  h += 'Lens verdicts compare quality-adjusted: pick the EXCELLENT/GOOD one if you must choose. Pair funds with LOW overlap for true diversification.';
+  h += '</div>';
+
+  h += '</div>';
+  el.innerHTML = h;
+};
+
+// r63.72.12: 360° Cycle Analysis View
+// ═══════════════════════════════════════════════════════════════════════════
+// r63.72.12 — 360° Cycle Analysis View
+// Renders 15 analytical sections from /api/cycle-analysis
+// ═══════════════════════════════════════════════════════════════════════════
+
+window._loadCycleAnalysis = function(ticker, region, marketCap, currentPrice) {
+  var el = document.getElementById('deResult');
+  if (!el) return;
+
+  ticker = (ticker || window._ddLastSymbol || '').toUpperCase();
+  region = region || window._deRegion || 'US';
+  marketCap = marketCap || 0;
+  currentPrice = currentPrice || 0;
+
+  // Loading state
+  el.innerHTML = '<div style="padding:60px 20px;text-align:center;font-family:Inter,sans-serif">' +
+    '<div style="font-size:32px;margin-bottom:14px">🔬</div>' +
+    '<div style="font-size:14px;font-weight:700;color:#0f172a">Running 360° Cycle Analysis on ' + ticker + '…</div>' +
+    '<div style="font-size:11px;color:#94a3b8;margin-top:8px">Computing 15 institutional-quality analytical sections.</div>' +
+    '</div>';
+
+  var url = '/api/cycle-analysis?symbol=' + encodeURIComponent(ticker) +
+            '&region=' + region +
+            '&market_cap=' + (marketCap || 0) +
+            '&price=' + (currentPrice || 0);
+
+  fetch(url)
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      if (!d.success) {
+        el.innerHTML = '<div style="padding:60px 20px;text-align:center;color:#dc2626;font-family:Inter,sans-serif">' +
+          '<div style="font-size:32px;margin-bottom:14px">⚠️</div>' +
+          '<div style="font-size:14px;font-weight:700">Cycle Analysis Failed</div>' +
+          '<div style="font-size:11px;margin-top:8px;color:#94a3b8">' + (d.error || 'unknown') + '</div>' +
+          '<button onclick="loadDeepDD()" style="margin-top:14px;padding:6px 12px;border:1px solid #cbd5e1;background:#fff;border-radius:6px;font-size:11px;cursor:pointer">← Back to Deep DD</button>' +
+          '</div>';
+        return;
+      }
+      window._renderCycleAnalysis(d);
+    })
+    .catch(function(e) {
+      el.innerHTML = '<div style="padding:60px 20px;text-align:center;color:#dc2626;font-family:Inter,sans-serif">' +
+        '<div style="font-size:32px;margin-bottom:14px">⚠️</div>' +
+        '<div style="font-size:14px;font-weight:700">Network Error</div>' +
+        '<div style="font-size:11px;margin-top:8px">' + e.message + '</div>' +
+        '</div>';
+    });
+};
+
+window._renderCycleAnalysis = function(d) {
+  var el = document.getElementById('deResult');
+  if (!el) return;
+
+  var ticker = d.ticker;
+  var sections = d.sections || [];
+  var synthesis = sections.find(function(s){ return s.section === 'synthesis'; }) || {};
+
+  // Confidence dot helper
+  function confDot(conf) {
+    var color = conf === 'high' ? '#10b981' :
+                conf === 'medium' ? '#f59e0b' :
+                conf === 'low' ? '#dc2626' : '#cbd5e1';
+    var label = conf === 'high' ? 'HIGH CONFIDENCE' :
+                conf === 'medium' ? 'MEDIUM CONFIDENCE' :
+                conf === 'low' ? 'LOW CONFIDENCE — data gaps' : 'NO DATA';
+    return '<span title="' + label + '" style="display:inline-block;width:8px;height:8px;border-radius:50%;background:' + color + ';margin-right:6px"></span>' +
+           '<span style="font-size:9px;color:#94a3b8;letter-spacing:0.4px;font-weight:600">' + label + '</span>';
+  }
+
+  // Badge helper
+  function badge(text, color) {
+    var bg, fg;
+    if (color === 'green') { bg = '#dcfce7'; fg = '#166534'; }
+    else if (color === 'blue') { bg = '#dbeafe'; fg = '#1e40af'; }
+    else if (color === 'yellow') { bg = '#fef3c7'; fg = '#92400e'; }
+    else if (color === 'red') { bg = '#fee2e2'; fg = '#991b1b'; }
+    else { bg = '#f1f5f9'; fg = '#475569'; }
+    return '<span style="display:inline-block;padding:3px 10px;border-radius:6px;background:' + bg + ';color:' + fg + ';font-size:10px;font-weight:800;letter-spacing:0.4px;font-family:Sora,sans-serif">' + text + '</span>';
+  }
+
+  var h = '';
+  if (typeof _renderRegionToggle === 'function') {
+    h += _renderRegionToggle('loadDeepDD', window._deRegion || 'US');
+  }
+  h += '<div style="max-width:1200px;margin:0 auto;padding:0 8px;font-family:Inter,sans-serif">';
+
+  // ── Header ─────────────────────────────────────────────────────────────
+  h += '<div style="background:linear-gradient(135deg,#1A3A78,#7c3aed);color:#fff;padding:20px 24px;border-radius:12px;margin-bottom:14px">';
+  h += '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">';
+  h += '<div>';
+  h += '<div style="font-size:11px;letter-spacing:0.8px;font-weight:700;opacity:0.85;font-family:Sora,sans-serif">🔬 360° CYCLE ANALYSIS</div>';
+  h += '<h2 style="margin:4px 0 0;font-size:22px;font-weight:900;font-family:Sora,sans-serif">' + ticker + (d.sector ? '  ·  ' + d.sector : '') + '</h2>';
+  h += '<div style="font-size:11px;opacity:0.85;margin-top:3px">15 analytical sections · margin cycles · normalized earnings · forward P/E · margin of safety</div>';
+  h += '</div>';
+
+  // Overall verdict pill
+  if (synthesis.verdict) {
+    var vColor = synthesis.verdict_color === 'green' ? '#10b981' :
+                 synthesis.verdict_color === 'yellow' ? '#f59e0b' :
+                 synthesis.verdict_color === 'red' ? '#dc2626' :
+                 '#3b82f6';
+    h += '<div style="text-align:right">';
+    h += '<div style="font-size:9px;letter-spacing:0.6px;opacity:0.8;font-weight:700">VERDICT</div>';
+    h += '<div style="margin-top:4px;padding:8px 14px;background:' + vColor + ';color:#fff;border-radius:8px;font-size:16px;font-weight:900;font-family:Sora,sans-serif">' + synthesis.verdict + '</div>';
+    if (synthesis.metrics && typeof synthesis.metrics.net_score === 'number') {
+      h += '<div style="font-size:10px;opacity:0.85;margin-top:3px;font-family:IBM Plex Mono,monospace">+' + synthesis.metrics.positive_signals + ' / −' + synthesis.metrics.negative_signals + ' · net ' + (synthesis.metrics.net_score >= 0 ? '+' : '') + synthesis.metrics.net_score + '</div>';
+    }
+    h += '</div>';
+  }
+  h += '</div>';
+
+  // Action buttons
+  h += '<div style="display:flex;gap:8px;margin-top:14px;border-top:1px solid rgba(255,255,255,0.2);padding-top:12px">';
+  h += '<button onclick="loadDeepDD()" style="padding:6px 12px;border:1px solid rgba(255,255,255,0.4);background:transparent;color:#fff;border-radius:6px;font-size:10px;font-weight:700;cursor:pointer;font-family:Sora,sans-serif">← Back to Deep DD</button>';
+  h += '<button onclick="window._ddLastSymbol=\'' + ticker + '\';if(window._ddGenerate)window._ddGenerate();" style="padding:6px 12px;border:1px solid rgba(255,255,255,0.4);background:transparent;color:#fff;border-radius:6px;font-size:10px;font-weight:700;cursor:pointer;font-family:Sora,sans-serif">Standard DD Report</button>';
+  h += '</div>';
+  h += '</div>';
+
+  // ── Synthesis summary at top ───────────────────────────────────────────
+  if (synthesis.layman) {
+    h += '<div style="background:#fef9c3;border:1px solid #fde68a;border-radius:10px;padding:14px 18px;margin-bottom:14px">';
+    h += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">';
+    h += '<span style="font-size:14px">💡</span>';
+    h += '<span style="font-size:11px;letter-spacing:0.6px;font-weight:800;color:#92400e;font-family:Sora,sans-serif">LAYMAN SUMMARY</span>';
+    h += '</div>';
+    h += '<div style="font-size:13px;color:#451a03;line-height:1.6">' + synthesis.layman + '</div>';
+    h += '</div>';
+  }
+
+  // ── 14 sections (excluding synthesis which is shown above) ─────────────
+  sections.forEach(function(sec) {
+    if (sec.section === 'synthesis') return;
+
+    h += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:16px 20px;margin-bottom:12px">';
+
+    // Title row
+    h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">';
+    h += '<div style="font-size:14px;font-weight:900;color:#0f172a;font-family:Sora,sans-serif">' + (sec.title || sec.section) + '</div>';
+    h += '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">';
+
+    // Section-specific status badge
+    if (sec.phase) h += badge(sec.phase, sec.phase_color || 'blue');
+    if (sec.grade) h += badge(sec.grade, sec.grade_color || 'blue');
+    if (sec.discipline) h += badge(sec.discipline, sec.discipline_color || 'blue');
+    if (sec.visibility) h += badge(sec.visibility + ' VISIBILITY', sec.visibility === 'HIGH' ? 'green' : sec.visibility === 'LOW' ? 'red' : 'blue');
+    if (sec.visibility_label && !sec.visibility) h += badge(sec.visibility_label, sec.visibility_label === 'HIGH' || sec.visibility_label === 'VERY HIGH' ? 'green' : sec.visibility_label === 'LOW' ? 'red' : 'blue');
+    if (sec.cycle_position) h += badge(sec.cycle_position, sec.cycle_position === 'AT PEAK' ? 'red' : sec.cycle_position === 'AT TROUGH' ? 'green' : 'blue');
+    if (sec.stickiness) h += badge(sec.stickiness + ' STICKINESS', sec.stickiness === 'VERY HIGH' || sec.stickiness === 'HIGH' ? 'green' : sec.stickiness === 'LOW' ? 'red' : 'blue');
+    if (sec.ttm_band) h += badge(sec.ttm_band, sec.ttm_band === 'DEEP VALUE' || sec.ttm_band === 'REASONABLE' ? 'green' : sec.ttm_band === 'EXPENSIVE' ? 'red' : 'yellow');
+    if (sec.risk_band) h += badge(sec.risk_band, sec.risk_color || 'yellow');
+    if (sec.verdict && sec.section !== 'synthesis') {
+      var vc = sec.verdict.indexOf('OVERVALUED') >= 0 ? 'red' :
+               sec.verdict.indexOf('EXPLOSIVE') >= 0 || sec.verdict.indexOf('UPSIDE') >= 0 ? 'green' : 'blue';
+      h += badge(sec.verdict, vc);
+    }
+    h += confDot(sec.confidence);
+    h += '</div>';
+    h += '</div>';
+
+    // Narrative
+    if (sec.narrative) {
+      h += '<div style="font-size:12px;color:#475569;line-height:1.6;margin-bottom:10px">' + sec.narrative + '</div>';
+    }
+
+    // Layman section
+    if (sec.layman) {
+      h += '<div style="background:#f8fafc;border-left:3px solid #7c3aed;padding:10px 14px;border-radius:0 6px 6px 0">';
+      h += '<div style="font-size:9px;letter-spacing:0.6px;color:#7c3aed;font-weight:800;margin-bottom:4px;font-family:Sora,sans-serif">PLAIN ENGLISH</div>';
+      h += '<div style="font-size:12px;color:#334155;line-height:1.6">' + sec.layman + '</div>';
+      h += '</div>';
+    }
+
+    // Render selected metrics as a small grid
+    if (sec.metrics && Object.keys(sec.metrics).length > 0) {
+      h += _renderMetricsGrid(sec.section, sec.metrics);
+    }
+
+    h += '</div>';
+  });
+
+  // ── Footer disclaimer ──────────────────────────────────────────────────
+  h += '<div style="padding:14px 4px;font-size:10px;color:#94a3b8;line-height:1.5">';
+  h += '<strong>Methodology:</strong> All 14 sections compute deterministically from structured financial data (income statement, balance sheet, cash flow). ';
+  h += 'No LLM hallucination. When data is missing, sections are flagged "LOW CONFIDENCE" rather than fabricated. ';
+  h += '<strong>Section 15 (Synthesis)</strong> aggregates signals as a net score; it is one input, not a sole basis for investment decisions. ';
+  h += '<strong>Qualitative factors</strong> (management quality, competitive disruption, regulatory shifts, themes like AI demand sustainability) are NOT captured by this analyzer — you must add them in your own judgment.';
+  h += '</div>';
+
+  h += '</div>';
+  el.innerHTML = h;
+};
+
+// ── Metrics grid helper — render key metrics per section ─────────────────
+function _renderMetricsGrid(sectionId, m) {
+  function fmt(v, decimals) {
+    if (v === null || v === undefined) return '—';
+    if (typeof v === 'number') {
+      var d = decimals !== undefined ? decimals : 2;
+      return v.toFixed(d);
+    }
+    return v;
+  }
+  function fmtPct(v, decimals) {
+    if (v === null || v === undefined) return '—';
+    var col = v >= 0 ? '#10b981' : '#dc2626';
+    var d = decimals !== undefined ? decimals : 1;
+    return '<span style="color:' + col + '">' + (v >= 0 ? '+' : '') + v.toFixed(d) + '%</span>';
+  }
+  function fmtMoney(v) {
+    if (!v && v !== 0) return '—';
+    if (Math.abs(v) >= 1e12) return '$' + (v / 1e12).toFixed(1) + 'T';
+    if (Math.abs(v) >= 1e9) return '$' + (v / 1e9).toFixed(1) + 'B';
+    if (Math.abs(v) >= 1e6) return '$' + (v / 1e6).toFixed(1) + 'M';
+    return '$' + Math.round(v).toLocaleString();
+  }
+
+  function _box(label, value, sub) {
+    var html = '<div style="background:#f8fafc;border-radius:6px;padding:8px 10px;min-width:110px;flex:1">';
+    html += '<div style="font-size:8px;color:#94a3b8;font-weight:700;letter-spacing:0.5px;text-transform:uppercase">' + label + '</div>';
+    html += '<div style="font-size:13px;font-weight:800;color:#0f172a;font-family:IBM Plex Mono,monospace;margin-top:3px">' + value + '</div>';
+    if (sub) html += '<div style="font-size:9px;color:#94a3b8;margin-top:1px">' + sub + '</div>';
+    html += '</div>';
+    return html;
+  }
+
+  var boxes = '';
+
+  if (sectionId === 'profit_margins') {
+    boxes += _box('Current OM', fmt(m.current_operating_margin) + '%', '5Y range: ' + fmt(m.trough_operating_margin) + '–' + fmt(m.peak_operating_margin) + '%');
+    boxes += _box('Cycle Pos', fmt(m.cycle_position_pct, 0) + '%', 'of 5Y range');
+    boxes += _box('Below Peak', fmt(m.pct_below_peak, 1) + '%', '');
+    boxes += _box('Gross Margin', fmt(m.current_gross_margin) + '%', 'peak ' + fmt(m.peak_gross_margin) + '%');
+  } else if (sectionId === 'normalized_earnings') {
+    boxes += _box('TTM EPS', '$' + fmt(m.current_eps), '');
+    boxes += _box('Normalized EPS', '$' + fmt(m.normalized_eps), 'trimmed-mean');
+    boxes += _box('Over/Under', fmtPct(m.over_under_pct), 'vs normalized');
+    boxes += _box('P/E (TTM)', fmt(m.pe_on_current, 1) + '×', '');
+    boxes += _box('P/E Normalized', fmt(m.pe_on_normalized, 1) + '×', 'cycle-adj');
+  } else if (sectionId === 'balance_sheet') {
+    boxes += _box('Total Debt', fmtMoney(m.total_debt), '');
+    boxes += _box('Cash', fmtMoney(m.cash), '');
+    boxes += _box('Net Debt', fmtMoney(m.net_debt), '');
+    if (m.debt_to_equity_pct !== null) boxes += _box('D/E', fmt(m.debt_to_equity_pct, 0) + '%', '');
+    if (m.net_debt_to_ebitda !== null) boxes += _box('ND/EBITDA', fmt(m.net_debt_to_ebitda, 2) + '×', '');
+  } else if (sectionId === 'revenue_visibility') {
+    boxes += _box('5Y Avg Growth', fmtPct(m.avg_5y_growth_pct, 1), '');
+    boxes += _box('Growth Std', fmt(m.growth_std_pp, 1) + 'pp', '');
+    boxes += _box('Consistency', m.consistency, '');
+  } else if (sectionId === 'supply_discipline') {
+    boxes += _box('Current Capex/Rev', fmt(m.current_capex_pct_revenue, 1) + '%', '');
+    boxes += _box('5Y Avg', fmt(m.avg_5y_capex_pct, 1) + '%', '');
+    boxes += _box('Peak', fmt(m.peak_capex_pct, 1) + '%', '');
+    boxes += _box('vs Avg', fmt(m.vs_average_pp, 1) + 'pp', '');
+  } else if (sectionId === 'forward_pe') {
+    boxes += _box('Price', '$' + fmt(m.current_price), '');
+    boxes += _box('P/E TTM', fmt(m.pe_ttm, 1) + '×', '');
+    if (m.pe_on_normalized !== null) boxes += _box('P/E Normalized', fmt(m.pe_on_normalized, 1) + '×', 'cycle-adj');
+    boxes += _box('TTM EPS', '$' + fmt(m.current_eps), '');
+  } else if (sectionId === 'revenue_estimation') {
+    boxes += _box('Current Rev', fmtMoney(m.current_revenue), '');
+    boxes += _box('1Y Base', fmtMoney(m.rev_1y_base), fmtPct(m.base_growth_pct, 1));
+    boxes += _box('1Y Bull', fmtMoney(m.rev_1y_bull), fmtPct(m.bull_growth_pct, 1));
+    boxes += _box('1Y Bear', fmtMoney(m.rev_1y_bear), fmtPct(m.bear_growth_pct, 1));
+    boxes += _box('3Y Base', fmtMoney(m.rev_3y_base), '');
+  } else if (sectionId === 'operating_profit_walk') {
+    boxes += _box('Prior OP', fmtMoney(m.operating_profit_prior), 'OM ' + fmt(m.operating_margin_prior) + '%');
+    boxes += _box('Current OP', fmtMoney(m.operating_profit_current), 'OM ' + fmt(m.operating_margin_current) + '%');
+    boxes += _box('Volume Δ', fmtMoney(m.volume_contribution), fmt(m.volume_pct, 0) + '%');
+    boxes += _box('Margin Δ', fmtMoney(m.margin_contribution), fmt(m.margin_pct_contribution, 0) + '%');
+  } else if (sectionId === 'normalized_target') {
+    boxes += _box('Bull EPS', '$' + fmt(m.bull_eps), 'peak');
+    boxes += _box('Normalized EPS', '$' + fmt(m.normalized_eps), 'trimmed mean');
+    boxes += _box('Bear EPS', '$' + fmt(m.bear_eps), 'trough');
+    boxes += _box('17× Bull', '$' + fmt(m.bull_target_17x, 0), fmtPct(m.upside_bull_pct, 0));
+    boxes += _box('17× Base', '$' + fmt(m.base_target_17x, 0), fmtPct(m.upside_base_pct, 0));
+    boxes += _box('17× Bear', '$' + fmt(m.bear_target_17x, 0), fmtPct(m.downside_bear_pct, 0));
+  } else if (sectionId === 'margin_of_safety') {
+    boxes += _box('Trough EPS', '$' + fmt(m.trough_eps), '');
+    boxes += _box('10× Trough', '$' + fmt(m.stress_target_10x, 0), fmtPct(m.downside_10x_pct, 0));
+    boxes += _box('12× Trough', '$' + fmt(m.stress_target_12x, 0), fmtPct(m.downside_12x_pct, 0));
+    boxes += _box('15× Trough', '$' + fmt(m.stress_target_15x, 0), fmtPct(m.downside_15x_pct, 0));
+  } else if (sectionId === 'customer_stickiness') {
+    boxes += _box('GM Avg', fmt(m.gross_margin_avg_pct, 1) + '%', '');
+    boxes += _box('GM Std', fmt(m.gross_margin_std_pp, 2) + 'pp', '');
+    boxes += _box('GM CV', fmt(m.gross_margin_cv, 3), 'lower = more stable');
+  }
+
+  if (!boxes) return '';
+  return '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">' + boxes + '</div>';
+}
