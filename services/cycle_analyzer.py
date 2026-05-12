@@ -48,6 +48,42 @@ def _pct_change(current: float, prior: float) -> Optional[float]:
     return ((current - prior) / abs(prior)) * 100
 
 
+# r63.72.23: defensive formatter — never crashes on None/non-numeric
+def _f(v, spec=".1f", placeholder="N/A") -> str:
+    """Safe number formatter. Returns placeholder if value is None/non-numeric."""
+    if v is None:
+        return placeholder
+    try:
+        return format(v, spec)
+    except (TypeError, ValueError):
+        return placeholder
+
+
+# r63.72.23: section-level guard — failing section returns degraded result,
+# does not crash the entire analysis
+def _safe_section(name: str, title: str, fn, *args, **kwargs) -> dict:
+    """Run a section function. If it raises, return a low-confidence stub instead of crashing."""
+    try:
+        result = fn(*args, **kwargs)
+        if result is None:
+            return {
+                "section": name, "title": title, "confidence": "low",
+                "narrative": "Section unavailable.", "layman": "Section unavailable.",
+                "metrics": {},
+            }
+        return result
+    except Exception as e:
+        import traceback
+        print(f"[cycle_analyzer] Section '{name}' failed: {e}")
+        print(traceback.format_exc())
+        return {
+            "section": name, "title": title, "confidence": "low",
+            "narrative": f"Section failed: {str(e)[:120]}",
+            "layman": "Section error — try refreshing.",
+            "metrics": {}, "error": str(e)[:200],
+        }
+
+
 # ═════════════════════════════════════════════════════════════════════════
 # SECTION 1 — PROFIT MARGIN ANALYSIS (where are we vs. cycle peak)
 # ═════════════════════════════════════════════════════════════════════════
@@ -238,8 +274,8 @@ def _section_normalized_earnings(snap: FundamentalsSnapshot, market_cap: int) ->
     if over_under > 75:
         layman += (
             f"That's WAY above its long-term average ({over_under:.0f}% above). "
-            f"The P/E ratio you see on Yahoo Finance ({pe_on_current:.0f}× if shown) looks cheap, but it's based on peak earnings. "
-            f"When normalized, the P/E is actually {pe_on_normalized:.0f}× — a much truer picture of what you're paying."
+            f"The P/E ratio you see on Yahoo Finance ({_f(pe_on_current, '.0f')}× if shown) looks cheap, but it's based on peak earnings. "
+            f"When normalized, the P/E is actually {_f(pe_on_normalized, '.0f')}× — a much truer picture of what you're paying."
         )
     elif over_under < -50:
         layman += "That's well below average — could mean earnings are about to recover, but it also means the current P/E looks expensive."
@@ -1573,22 +1609,23 @@ def analyze_cycle(ticker: str, market_cap: int = 0, current_price: float = 0) ->
     snap = _fetch_fundamentals(t)
     sector = snap.sector if snap.has_data else ""
 
+    # r63.72.23: each section wrapped — one failure no longer kills the whole analysis
     sections = []
-    sections.append(_section_profit_margins(snap))
-    sections.append(_section_normalized_earnings(snap, market_cap))
-    sections.append(_section_balance_sheet(snap))
-    sections.append(_section_revenue_visibility(snap, sector))
-    sections.append(_section_supply_discipline(snap))
-    sections.append(_section_locked_demand(snap, sector))
-    sections.append(_section_counter_argument(snap, sector))
-    sections.append(_section_forward_pe(snap, market_cap, current_price))
-    sections.append(_section_revenue_estimation(snap))
-    sections.append(_section_operating_profit_walk(snap))
-    sections.append(_section_normalized_target(snap, market_cap, current_price))
-    sections.append(_section_margin_of_safety(snap, current_price, market_cap))
-    sections.append(_section_segment_cycle(snap, sector))
-    sections.append(_section_customer_stickiness(snap, sector))
-    sections.append(_section_synthesis(sections, t))
+    sections.append(_safe_section("profit_margins",        "1. Profit Margins — Where in the Cycle?",         _section_profit_margins, snap))
+    sections.append(_safe_section("normalized_earnings",   "2. Normalized Earnings (Cycle-Adjusted)",          _section_normalized_earnings, snap, market_cap))
+    sections.append(_safe_section("balance_sheet",         "3. Balance Sheet Strength",                        _section_balance_sheet, snap))
+    sections.append(_safe_section("revenue_visibility",    "4. Revenue Visibility & Customer Lock-in",         _section_revenue_visibility, snap, sector))
+    sections.append(_safe_section("supply_discipline",     "5. Supply Discipline (Capex Behavior)",            _section_supply_discipline, snap))
+    sections.append(_safe_section("locked_demand",         "6. Demand Lock-in & Forward Visibility",           _section_locked_demand, snap, sector))
+    sections.append(_safe_section("counter_argument",      "7. Counter-Argument: Is This Cycle Different?",    _section_counter_argument, snap, sector))
+    sections.append(_safe_section("forward_pe",            "8. Forward P/E vs Historical",                     _section_forward_pe, snap, market_cap, current_price))
+    sections.append(_safe_section("revenue_estimation",    "9. Revenue Estimation — 3 Scenarios",              _section_revenue_estimation, snap))
+    sections.append(_safe_section("operating_profit_walk", "10. Operating Profit Walk (YoY Decomposition)",    _section_operating_profit_walk, snap))
+    sections.append(_safe_section("normalized_target",     "11. Normalized P/E Target (Full-Cycle Fair Value)", _section_normalized_target, snap, market_cap, current_price))
+    sections.append(_safe_section("margin_of_safety",      "12. Margin of Safety (Downside Stress Test)",      _section_margin_of_safety, snap, current_price, market_cap))
+    sections.append(_safe_section("segment_cycle",         "13. Cycle Analysis (Sector Pattern)",              _section_segment_cycle, snap, sector))
+    sections.append(_safe_section("customer_stickiness",   "14. Customer Stickiness (Pricing Power Proxy)",    _section_customer_stickiness, snap, sector))
+    sections.append(_safe_section("synthesis",             "15. Overall Synthesis — Layman Verdict",           _section_synthesis, sections, t))
 
     result = {
         "success": True,

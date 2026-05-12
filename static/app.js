@@ -1,5 +1,5 @@
 // ═══ Celesys version stamp ═══
-window.CELESYS_VERSION = "r63.72.21";
+window.CELESYS_VERSION = "r63.72.23";
 window.CELESYS_BUILD_TIME = 1778525757;
 window.CELESYS_BUILD_DATE = "2026-05-11 18:14:10 UTC";
 window.CELESYS_FEATURES = {
@@ -9,7 +9,7 @@ window.CELESYS_FEATURES = {
   three_lens_scanner: true,
 };
 console.log("%c━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "color:#1A3A78");
-console.log("%c CELESYS r63.72.21 %c loaded · 2026-05-11 18:14:10 UTC",
+console.log("%c CELESYS r63.72.23 %c loaded · 2026-05-11 18:14:10 UTC",
   "background:#7c3aed;color:#fff;font-weight:900;padding:3px 8px;border-radius:3px;font-family:monospace",
   "color:#7c3aed;font-weight:700;font-family:monospace");
 console.log("%c Features: 360° Cycle Analysis · Diamond Hunter · Fund Analyzer · Three-Lens Scanner",
@@ -22,7 +22,7 @@ document.addEventListener('DOMContentLoaded', function() {
     var stamp = document.createElement('div');
     stamp.id = 'celesys-build-stamp';
     stamp.style.cssText = 'position:fixed;bottom:8px;left:8px;background:linear-gradient(135deg,#1A3A78,#7c3aed);color:#fff;padding:4px 10px;font-size:9px;font-weight:800;font-family:IBM Plex Mono,monospace;border-radius:4px;letter-spacing:0.5px;z-index:99999;box-shadow:0 2px 8px rgba(124,58,237,0.4);cursor:pointer;user-select:none';
-    stamp.textContent = '⚙ r63.72.21 · 2026-05-11';
+    stamp.textContent = '⚙ r63.72.23 · 2026-05-11';
     stamp.title = 'Click to verify backend version';
     stamp.onclick = function() {
       fetch('/api/build-version').then(function(r){return r.json();}).then(function(d){
@@ -12572,13 +12572,7 @@ function renderForm(prefilled){
           'onmouseover="this.style.background=\'#142e5c\'" onmouseout="this.style.background=\'#1A3A78\'">GENERATE →</button>';
   html += '</div>';
 
-  // r63.72.13: Direct 360° Cycle Analysis entry — visible before submitting
-  html += '<div style="display:flex;gap:8px;margin-bottom:14px;align-items:center">';
-  html += '<button onclick="var s=document.getElementById(\'ddSymbol\').value.trim().toUpperCase();if(!s){document.getElementById(\'ddSymbol\').focus();return;}window._ddLastSymbol=s;window._loadCycleAnalysis(s, window._deRegion || \'US\', 0, 0);" '+
-          'style="flex:1;padding:10px 16px;background-color:#7c3aed;background-image:none;color:#ffffff;border:0 solid #7c3aed;border-radius:6px;font-size:12px;font-weight:800;cursor:pointer;font-family:Sora,sans-serif;letter-spacing:0.5px;min-height:38px;box-shadow:0 2px 6px rgba(124,58,237,0.3)">'+
-          '<span style="color:#ffffff !important">360&deg; CYCLE ANALYSIS</span>'+
-          '<span style="font-size:9px;opacity:0.85;font-weight:600;margin-left:8px;color:#ffffff !important">15 SECTIONS</span></button>';
-  html += '</div>';
+  // r63.72.22: Removed redundant 360° Cycle Analysis entry button — single button retained in BOTTOM LINE card.
 
   // Inline error block (for failed fetches)
   if (errMsg) {
@@ -12868,7 +12862,7 @@ function _renderReportShellAladdin(d){
   // Action bar
   h += '<div class="cs-dd-actions">';
   h += '<button class="cs-dd-actions__btn" onclick="loadDeepDD()">← New Ticker</button>';
-  h += '<button style="padding:6px 14px;font-size:11px;font-weight:800;border-radius:4px;border:0 solid #7c3aed;background-color:#7c3aed;background-image:none;color:#ffffff;cursor:pointer;font-family:Sora,sans-serif;letter-spacing:0.3px" onclick="window._loadCycleAnalysis(\'' + c.symbol + '\', window._deRegion || \'US\', ' + (Number(c.market_cap) || 0) + ', ' + (Number(c.current_price) || 0) + ')"><span style="color:#ffffff !important">360&deg; CYCLE ANALYSIS</span></button>';
+  // r63.72.22: 360° Cycle Analysis button removed here — single entry retained in BOTTOM LINE card.
   h += '<button class="cs-dd-actions__btn cs-dd-actions__btn--primary" onclick="switchDEMode(\'investor\');loadDE(\'' + c.symbol + '\')">Full Celesys View →</button>';
   h += '</div>';
 
@@ -13076,10 +13070,7 @@ function _renderReportLegacy(d){
   // Top action bar
   h += '<div style="display:flex;gap:8px;justify-content:flex-end;margin-bottom:10px;flex-wrap:wrap">';
   h += '<button onclick="loadDeepDD()" title="New report" style="padding:8px 14px;border:1px solid #cbd5e1;background:#fff;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;font-family:Sora,sans-serif;color:#374151">← New Ticker</button>';
-  // r63.72.16: 360° Cycle Analysis button — uses safe inline values, no broken template syntax
-  var _mc = Number(c.market_cap) || 0;
-  var _cp = Number(c.current_price) || 0;
-  h += '<button onclick="window._loadCycleAnalysis(\''+c.symbol+'\', window._deRegion || \'US\', '+_mc+', '+_cp+');return false;" title="15-section institutional cycle analysis: normalized EPS, 17x P/E target, margin of safety" style="padding:8px 16px;border:0 solid #7c3aed;background-color:#7c3aed;background-image:none;color:#ffffff;border-radius:6px;font-size:11px;font-weight:800;cursor:pointer;font-family:Sora,sans-serif;letter-spacing:0.4px;box-shadow:0 2px 6px rgba(124,58,237,0.3);min-height:32px"><span style="color:#ffffff !important">360&deg; CYCLE ANALYSIS</span></button>';
+  // r63.72.22: Removed duplicate 360° button here — single button retained in BOTTOM LINE card above.
   h += '<button onclick="switchDEMode(\'investor\');loadDE(\''+c.symbol+'\')" title="Open full Celesys analysis" style="padding:8px 14px;border:none;background:#1e40af;color:#ffffff;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;font-family:Sora,sans-serif">📊 Full Celesys View →</button>';
   h += '</div>';
   
@@ -25970,9 +25961,7 @@ window._csR6322Inject = function(anchorInfo) {
         '<div style="font-size:13px;font-weight:800;color:#1A3A78;font-family:Sora,sans-serif;letter-spacing:0.3px">Analyst Insights</div>' +
         '<div id="cs-r6322-summary" style="font-size:11px;color:#64748b;margin-top:2px">' + sym + ' · Click to expand full analysis</div>' +
       '</div>' +
-      // r63.72.14: 360° Cycle Analysis button (visible from any report)
-      '<button onclick="event.stopPropagation();window._ddLastSymbol=\'' + sym + '\';window._loadCycleAnalysis(\'' + sym + '\', window._deRegion || \'US\', 0, 0);" style="background-color:#7c3aed;background-image:none;color:#ffffff;border:0 solid #7c3aed;border-radius:6px;padding:6px 12px;font-size:11px;font-weight:800;cursor:pointer;font-family:Sora,sans-serif;flex-shrink:0;letter-spacing:0.3px;min-height:28px;box-shadow:0 2px 6px rgba(124,58,237,0.3)" title="15-section institutional cycle analysis"><span style="color:#ffffff !important">360&deg; CYCLE ANALYSIS</span></button>' +
-      // r63.72.18: 'Save to Journal' button removed per user request
+      // r63.72.22: 360° button removed — single retained in BOTTOM LINE card.
       '<div id="cs-r6322-chevron" style="font-size:14px;color:#94a3b8;flex-shrink:0;transition:transform 0.2s">▼</div>' +
     '</div>' +
     // r63.30: Collapsible body wrapper

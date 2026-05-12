@@ -51,7 +51,11 @@ def _safe_float(v, default=0.0) -> float:
 
 
 def _conviction_band(score: Optional[float], components_present: int) -> str:
-    """5 bands. Requires ≥3 of 5 components to register confidence."""
+    """
+    5 bands. Requires ≥3 components for confidence.
+    Top bands (ELITE/STRONG) require 4+ components — only achievable with fundamentals data.
+    In fast_mode (no fundamentals) the best achievable is DIAMOND CANDIDATE.
+    """
     if score is None or components_present < 3:
         return "INSUFFICIENT DATA"
     if score >= 80 and components_present >= 4:
@@ -526,19 +530,38 @@ def compute_diamond_score(
     inst_buyers: int,
     inst_sellers: int,
     pct_in_range: float,
+    fast_mode: bool = True,  # r63.72.22: skip Yahoo fundamentals fetch (blocked on Render)
+    sector_hint: str = "",
 ) -> DiamondScore:
-    """Compute full diamond score for one ticker. Single fundamentals fetch."""
-    snap = _fetch_fundamentals(ticker)
-    sector = snap.sector if snap.has_data else ""
+    """
+    Compute full diamond score for one ticker.
+
+    fast_mode=True (default for scanner): SKIP _fetch_fundamentals entirely.
+        Score using only 13F flow + technical + sector-based moat heuristic.
+        Returns in <50ms per ticker instead of seconds.
+        Components that need fundamentals (business_strength, valuation_compression)
+        will be marked None; conviction band uses what's available.
+
+    fast_mode=False: full per-ticker analysis with fundamentals fetch.
+        Use this for the per-ticker 360° view, not for universe scans.
+    """
+    # r63.72.22: Skip fundamentals entirely in fast_mode — that's the bottleneck
+    if fast_mode:
+        from services.multibagger_scoring import FundamentalsSnapshot
+        snap = FundamentalsSnapshot(ticker=ticker, has_data=False)
+        sector = sector_hint or ""
+    else:
+        snap = _fetch_fundamentals(ticker)
+        sector = snap.sector if snap.has_data else sector_hint
 
     # Crash simulation
     sim_price, implied_dd = _simulate_crash_price(current_price, beta, market_drop_pct)
 
-    # Compute all 5 components
+    # Compute components — fundamentals-dependent ones gracefully return None when has_data=False
     bs = _score_business_strength(snap)
     vc = _score_valuation_compression(snap, current_price, sim_price, market_cap)
     ia = _score_institutional_accumulation(positioning_metrics, inst_buyers, inst_sellers, market_cap)
-    mf = _score_moat_future(snap, sector)
+    mf = _score_moat_future(snap, sector)  # sector-based heuristic works without fundamentals
     tr = _score_technical_recovery(pct_in_range, current_price, sim_price)
 
     # Composite (per document weights: 30/25/20/15/10)
@@ -615,8 +638,9 @@ def hunt_diamonds(scores: list, market_drop_pct: float = 25,
         if cached and (now - cached[0]) < _CACHE_TTL:
             return cached[1]
 
-    # Pre-filter by market cap
+    # Pre-filter by market cap + sort largest first (top-100 by size)
     eligible = [s for s in scores if getattr(s, "market_cap", 0) >= min_market_cap]
+    eligible.sort(key=lambda s: getattr(s, "market_cap", 0), reverse=True)
 
     def _one(ts):
         try:
@@ -637,13 +661,16 @@ def hunt_diamonds(scores: list, market_drop_pct: float = 25,
                 inst_buyers=getattr(ts, "inst_buyers", 0),
                 inst_sellers=getattr(ts, "inst_sellers", 0),
                 pct_in_range=getattr(ts, "pct_in_range", -1),
+                fast_mode=True,  # r63.72.22: scanner uses fast mode (no Yahoo)
+                sector_hint=getattr(ts, "sector", "") or "",
             )
         except Exception:
             return None
 
     results = []
+    # r63.72.22: cap to 100 names — more than enough for a shopping list; keeps response <5s
     with ThreadPoolExecutor(max_workers=min(max_workers, max(1, len(eligible)))) as ex:
-        futures = {ex.submit(_one, ts): ts for ts in eligible[:200]}  # cap at 200 for speed
+        futures = {ex.submit(_one, ts): ts for ts in eligible[:100]}
         for fut in as_completed(futures):
             try:
                 ds = fut.result(timeout=60)
