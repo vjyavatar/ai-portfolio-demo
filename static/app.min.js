@@ -8396,6 +8396,20 @@ window._embedDeepDDIntoInvestor = function(symbol, region, targetEl) {
   var sym = String(symbol).toUpperCase();
   region = region || window._deRegion || 'US';
 
+  // r63.75.0: Self-bootstrap — if the legacy renderer wasn't exposed at app init (loadDeepDD
+  // was never invoked), call it now. After r63.74.0's refactor, loadDeepDD's closure setup
+  // and helper exposure run BEFORE the early-return guards, so this triggers exposure
+  // without any DOM side effects.
+  if (typeof window._renderDeepDDLegacyInto !== 'function') {
+    try {
+      if (typeof loadDeepDD === 'function') {
+        loadDeepDD();  // hits the closure setup + helper exposure, then returns early (no DOM writes)
+      }
+    } catch (e) {
+      console.warn('[DD-EMBED] loadDeepDD bootstrap failed:', e);
+    }
+  }
+
   // Loading state
   targetEl.innerHTML = '' +
     '<div style="margin:24px 0 14px;padding:14px 18px;background:linear-gradient(135deg,#1A3A78,#2563eb);color:#fff;border-radius:12px;font-family:Sora,sans-serif">' +

@@ -1,3 +1,38 @@
+## r63.75.1 (2026-05-13) — DD HELPER BOOTSTRAP + STRIP VDE HEADER
+
+Two surgical fixes for issues reported on r63.75.0 production:
+
+### 1. "Deep DD render helper not initialized" yellow banner
+
+Cause: `window._renderDeepDDLegacyInto` is exposed inside `loadDeepDD`, which only runs when the app's init code calls it. On the production build, that init call wasn't firing before investor mode tried to embed Deep DD — so the helper was missing and `_embedDeepDDIntoInvestor` showed the fallback warning.
+
+Fix: Self-bootstrap inside `_embedDeepDDIntoInvestor` (static/app.js line 8399). At function entry, before any fetch, check whether `_renderDeepDDLegacyInto` is a function. If not, call `loadDeepDD()` directly — after r63.74.0's refactor, loadDeepDD's closure setup and helper exposure both run BEFORE the early-return guards, so calling it without `_activeDeepDDTab=true` triggers exposure without any DOM side effects. By the time the fetch resolves, the helper is guaranteed available.
+
+### 2. "Visual Decision Engine" title — wasted vertical space
+
+Cause: The section header at index.html line 1680 (`<div class="sh" id="deHeader">` containing the target icon + title) sits above the new one-bar chrome from r63.73.0. After the chrome was consolidated, this header became redundant — the bar itself is self-explanatory.
+
+Fix: Emptied the inner content of `#deHeader` and hard-hid it with inline `display:none`. The element wrapper is preserved because 10+ JS sites (Dream / PMS / TopTrades / MicroCap / DeepDD / etc.) target `#deHeader` via `getElementById('deHeader')` to toggle it. Those code paths still work — the element is just always-empty and always-hidden now.
+
+### Files changed
+
+- `index.html` line 1680: `<div class="sh" id="deHeader" style="display:none"></div>`
+- `static/app.js` line ~8399: 8-line self-bootstrap block at top of `_embedDeepDDIntoInvestor`
+- `static/app.min.js`: synced from app.js (md5 identical)
+- `build_version.txt`: bumped to `r63.75.1`
+
+### Regression checks
+
+- [ ] Decide → Research → analyze any stock → no "render helper not initialized" warning anywhere on page.
+- [ ] "📌 Deep Due Diligence" banner appears within ~200ms of investor stack, followed by Sections I–VI populating.
+- [ ] "Visual Decision Engine" title is gone above the dense control bar.
+- [ ] Switching to Dream / PMS / MicroCap / TopTrades / DeepDD sub-tabs still works (those code paths toggle `#deHeader` which now exists as a hidden empty wrapper — no JS errors).
+- [ ] Console clean — no `[DD-EMBED] loadDeepDD bootstrap failed` warnings.
+
+### Still pending
+
+- N/A and "Cannot Compute" values in DD content (backend `/api/investor-due-diligence` returning incomplete fields). User handling api.py side per earlier decision.
+
 ## r63.75.0 (2026-05-13) — RETURNS SNAPSHOT (Multi-Timeframe Thought-Check)
 
 Context: User requested 15D / 1M / 3M / 6M / 1Y / 5Y / 10Y return percentages added to Section IV (Signals) of Deep DD as a quick "thought check" — at a glance, does short-term momentum align with long-term trend?
