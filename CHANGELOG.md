@@ -1,3 +1,190 @@
+## r63.79.0 (2026-05-13) — READABILITY OVERHAUL (Premium Intel + AI widget)
+
+User feedback: "colors are dominating.. its not readable.. ensure the whole page and all sections colors are light and can able to read .. it should not be eye straining". Premium Intelligence Group was rendering like a debug dashboard — bright amber gradient banner, saturated amber card headers, and red ⚠ NEEDS_BACKEND boxes were the loudest things on the page (per the screenshot).
+
+Fixed the three culprits and applied the same calm palette to the new AI Q&A widget.
+
+### Changes — Premium Intelligence Group
+
+**1. Outer wrapper (the biggest offender)**
+- Before: `border:2px solid rgba(217,119,6,.25)` + header `linear-gradient(135deg,#92400e,#d97706)` + bright amber sub-banner `#FEF3C7` with "Red ⚠ tags mark backend fields..." dev message
+- After: `border:1px solid #e2e8f0` + flat `#fafafa` header with `#92400e` accent on "PREMIUM INTELLIGENCE" word only. Dev message removed from main view.
+
+**2. Per-card headers**
+- Before: `linear-gradient(135deg,#fffbeb,#fef3c7)` background with `#92400e` 900-weight title + saturated amber `linear-gradient(135deg,#d97706,#f59e0b)` PREMIUM badge
+- After: Flat `#fcfcfa` background with neutral `#374151` 800-weight title + tiny subtle `#fef3c780` PRO badge with `#92400e` text
+
+**3. Empty-state blocks (the worst offender)**
+- Before: Each missing section rendered `<div style="background:#fef2f2;border:1px solid #fecaca">⚠ ... Expected shape: ... Per-period fields: ...</div>` — three lines of red-on-pink dev specs dominating every card
+- After: Single subtle italic line: "Data pending — analyst estimates not yet returned by backend." + a tiny gray monospace field path `d.analyst_estimates` for reference. Inline gap tags became subtle `—` (gray, with hover tooltip showing field name).
+
+**4. Developer notes — moved to ONE collapsed footer**
+- All missing field paths accumulate in `window._piGapTracker` during render
+- A single `<details>` at the bottom of the group shows: "🛠 Developer notes · N backend fields not yet wired" (collapsed by default)
+- When expanded: a row of clickable code chips (click to copy each field path)
+- This replaces the dozens of red boxes scattered through cards. Same dev info, 100x less visual noise.
+
+### Changes — AI Q&A widget (r63.78.0)
+
+Same calm palette applied for consistency:
+- Header background: navy gradient → flat `#fafafa` with `#1A3A78` accent text
+- Avatar circle: `rgba(255,255,255,.12)` on dark → `#1A3A7810` (10% navy tint) on white
+- BETA badge: bright orange gradient → subtle `#fef3c780` with `#92400e` text (matches Premium Intel "PRO" pill)
+- Container box-shadow removed; border simplified from `2px solid #1A3A7820` to `1px solid #e2e8f0`
+
+### What the rest of the page looks like now
+
+All recently-added sections now follow the same restrained palette:
+- Group banners (r63.77.0): tinted background, color-text — already soft
+- Premium Intelligence (this fix): flat white cards, soft gray accents, dev info hidden
+- AI Q&A widget (this fix): flat header, subtle accents
+- PDF appendix (r63.77.0): already uses card pattern, consistent with the above
+
+### Files changed
+
+- `static/app.js`:
+  - `window._piGap` (line ~8506) — returns subtle gray `—` instead of red box; tracks gaps in `window._piGapTracker`
+  - `window._piResetGapTracker` (line ~8503) — clears tracker on each render
+  - `_piCard` helper (line ~8542) — flat white card replaces amber gradient
+  - 4 empty-state replacements in Fiscal Period / Estimate Revisions / Earnings Surprises / Dividend Quality sections
+  - Outer `<details>` wrapper rewritten (no gradient header, no bright sub-banner, no "Red ⚠ tags" dev message in main view)
+  - New collapsed dev-notes footer at the bottom of the group with click-to-copy field paths
+  - AI Q&A widget header rewritten (lines ~8920, ~8911) — flat palette
+- `static/app.min.js`: synced (md5 verified)
+- `build_version.txt`: bumped to `r63.79.0`
+
+### Regression checks
+
+- [ ] Decide → Research → analyze MU → scroll to "💎 PREMIUM INTELLIGENCE" group → confirm cards are clean white with subtle gray headers, NO bright amber blocks.
+- [ ] Each section that's missing data shows ONE subtle "Data pending — ... not yet returned" line, not the 3-line red dev spec.
+- [ ] Scroll to bottom of Premium Intelligence group → click "🛠 Developer notes · N backend fields not yet wired" → expanded panel shows clickable code chips. Click a chip → copies field path to clipboard.
+- [ ] Forward Multiples Stack section → table cells with missing data show subtle gray `—` (with hover tooltip "forward_pe — not yet returned by /api/investor-decide"), no red boxes.
+- [ ] Scroll further to "💬 ASK CELESYS AI" widget → header is now flat soft gray, no dark navy gradient, BETA badge is small subtle amber.
+- [ ] Overall feel: page is readable, calm, institutional. Premium Intelligence no longer feels like a staging environment.
+
+### Followups noted but not yet fixed
+
+Other places in the page that could benefit from the same softening pass (low priority — not flagged by user):
+- 360° Cycle Analysis button in Bottom Line (saturated purple gradient)
+- Cross-Market Scanner / Similar Stocks buttons (navy gradient, but acceptable as brand color)
+- Run Wealth Pro / Run Market Pulse buttons (navy gradient, same)
+
+Will tackle on user request — current change addresses the screenshot specifically.
+
+## r63.78.0 (2026-05-13) — CELESYS AI (Conversational Q&A on the Report)
+
+The highest-leverage feature in the platform's history. Users can now ASK questions about any stock report in plain English — bear case, bull case, scenarios, peer comparisons — instead of scrolling through the dense report looking for answers. This is the differentiator Seeking Alpha / Yahoo Finance / Bloomberg haven't shipped yet on retail.
+
+### What got built
+
+A clean inline chat widget at the bottom of every investor view. Components:
+
+- **Navy gradient header** with "Ask Celesys AI" branding and BETA badge
+- **8 suggested-question chips** (Bear case, Bull case, Catalysts ahead, Compare to peers, What would change the verdict, Why might the verdict be wrong, Worst-case downside, Buy now or wait) — single-click submits
+- **Message history area** — user messages right-aligned navy bubbles, AI responses left-aligned slate bubbles with a "C" avatar
+- **Text input** with Enter-to-send + Send button
+- **Loading indicator** during AI response
+- **Inline minimal markdown rendering** — `**bold**`, bulleted lists, line breaks
+- **Footer disclaimer** — clarifies AI ≠ financial advice
+- **Graceful fallback** if the backend endpoint isn't wired yet (shows clear "🛠 Backend Not Wired Yet — see r63.78.0 reference impl" message)
+
+### Files changed
+
+- `static/app.js`:
+  - New top-level helpers at line ~8903: `_renderCelesysAI`, `_celesysAIBuildContext`, `_celesysAIAsk` (~150 lines)
+  - Call site at line ~17207: inserted after the Full Deep DD mount (so it appears at the very bottom of investor view)
+- `static/app.min.js`: synced (md5 verified)
+- `build_version.txt`: bumped to `r63.78.0`
+- **`CELESYS_AI_BACKEND_REFERENCE.py`** (NEW): drop-in implementation for `api.py`. Includes:
+  - Anthropic Claude Haiku 3.5 reference (~$0.001/question, recommended)
+  - OpenAI gpt-4o-mini alternative path (commented)
+  - Pre-tuned 800-token system prompt calibrating the AI as a buy-side analyst (cite numbers, take positions, no hedging, structured responses)
+  - Pydantic request/response models
+  - Deployment checklist (env vars, pip, rate limiting, caching)
+  - Cost estimates (1000 questions/day ≈ $108/month)
+
+### Architecture
+
+```
+USER TYPES QUESTION
+        ↓
+window._celesysAIAsk(symbol, region, question)
+        ↓
+window._celesysAIBuildContext(window._lastInvestorData)
+   ← compact JSON: symbol, verdict, score, price, P/E, F-Score,
+     moat, ROE, beta, DCF, Monte Carlo, Buffett, sector context,
+     bottom_line, explain
+        ↓
+POST /api/celesys-ai-qa
+   { symbol, region, question, context }
+        ↓
+[ Backend: api.py ]
+   1. Validate inputs
+   2. Build user_message = context JSON + question
+   3. anthropic.messages.create(
+        model="claude-3-5-haiku-20241022",
+        system=CELESYS_AI_SYSTEM_PROMPT,
+        messages=[{role:"user", content: user_message}],
+        max_tokens=800
+      )
+   4. Return { success, answer, tokens_used }
+        ↓
+Frontend renders left-aligned message bubble with minimal markdown
+```
+
+### Tunable parameters
+
+In `CELESYS_AI_BACKEND_REFERENCE.py`:
+
+- **Model choice**: Haiku 3.5 (default, ~$0.001/q) → Sonnet 3.5 (~$0.01/q, deeper reasoning) → Opus (~$0.075/q, overkill for this)
+- **max_tokens**: 800 (concise) → 1500 (more detail) → 3000 (essays)
+- **System prompt**: pre-tuned for institutional analyst voice. Tweak the CALIBRATION block to change verdict thresholds.
+- **Context size**: `_celesysAIBuildContext` picks 20 high-signal fields. Add more fields to expand AI context (each adds ~50 tokens).
+
+### Cost discipline
+
+- 1000 active users × 3 questions/day × Haiku → ~$108/month
+- 100 active users × 3 questions/day × Haiku → ~$11/month
+- Recommend setting $50/month spending cap in Anthropic console initially
+- Optional: Redis caching for repeat questions (same symbol + same question within 1hr) — drops effective cost by 60-80%
+- Optional: Per-user rate limit (30 questions/hour) — prevents abuse
+
+### Deployment steps
+
+1. Open `CELESYS_AI_BACKEND_REFERENCE.py` (in this zip)
+2. Copy the Pydantic models, system prompt, and endpoint handler into `api.py`
+3. Add to `requirements.txt`: `anthropic==0.40.0`
+4. In Render dashboard → Settings → Environment, add:
+   - Key: `ANTHROPIC_API_KEY`
+   - Value: `sk-ant-api03-...` (from https://console.anthropic.com/settings/keys)
+5. Set $50/month spending limit on Anthropic console (Settings → Limits)
+6. Deploy. The chat widget on investor view is already calling `/api/celesys-ai-qa` — once your backend responds, users see real answers.
+
+### Regression checks
+
+- [ ] Decide → Research → analyze any stock → scroll to the very bottom → "ASK CELESYS AI" widget renders with 8 suggested chips, text input, send button.
+- [ ] Click a suggested chip BEFORE wiring backend → graceful "🛠 Backend Not Wired Yet" message appears. No crashes.
+- [ ] After wiring backend → click "What's the bear case?" → AI responds within 3-5 seconds with structured analysis citing report numbers.
+- [ ] Type a custom question → press Enter → AI responds.
+- [ ] Multiple turns in same session → history persists, scrolls correctly.
+- [ ] Switch to a different stock → chat resets cleanly (re-renders with new symbol).
+- [ ] AI markdown: `**bold**` renders bold, `- bullets` render as bullets, line breaks preserved.
+- [ ] Mobile: widget responsive, suggested chips wrap to multiple rows, scroll works.
+
+### Why this matters strategically
+
+Every other stock research platform makes you SCROLL to find the answer to "what's the bear case for X?" — even if all the data is on the page. Celesys AI inverts this: ask the question, get the answer, cite the data. It's the same data the user already has, but in a 10x faster interface.
+
+The marginal cost per question is ~$0.001. The marginal value to a paying user is probably $1-5 per useful answer (vs. paying $239/yr for Seeking Alpha Pro to manually scan articles). The conversion ROI on this feature is asymmetric.
+
+### Next-round candidates (still on the menu)
+
+- **Insider Form 4 cluster detector** — 3+ insider buys within 30d = forward-alpha signal (academic-backed)
+- **13F change tracker** — quarterly SEC data showing top institutions' net share changes
+- **Catalyst calendar** — 90-day visual timeline with implied-vol-weighted event flags
+- **Earnings transcript NLP** — track management confidence over last 4 quarters from call transcripts
+- **Celesys verdict track record** — backtest STRONG BUY / BUY / HOLD / SELL accuracy over time, publish the win rate
+
 ## r63.77.0 (2026-05-13) — SOFTENED GROUP BANNERS + PDF APPENDIX
 
 Two user requests addressed in one ship:

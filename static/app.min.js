@@ -8502,9 +8502,17 @@ window._piPick = function(obj, paths, fallback) {
   return fallback;
 };
 
-// Helper: red NEEDS_BACKEND gap flag (so api.py side knows what to add)
+// r63.79.0: Gap tracker — accumulates missing field paths so we can show ONE
+// collapsed "Developer notes" footer at the bottom of Premium Intelligence
+// instead of dozens of loud red boxes scattered through the user view.
+window._piGapTracker = window._piGapTracker || {};
+window._piResetGapTracker = function() { window._piGapTracker = {}; };
+
+// Helper: subtle gray dash placeholder for missing fields (was: loud red box)
+// Tooltip shows the field path so dev can hover to see what's missing.
 window._piGap = function(fieldName, note) {
-  return '<span style="display:inline-block;background:#dc2626;color:#fff;padding:2px 6px;border-radius:3px;font-size:8px;font-weight:800;letter-spacing:0.3px;font-family:JetBrains Mono,monospace;white-space:nowrap" title="Backend field not yet exposed in /api/investor-decide">⚠ ' + fieldName + '</span>';
+  window._piGapTracker[fieldName] = (window._piGapTracker[fieldName] || 0) + 1;
+  return '<span style="color:#cbd5e1;font-family:JetBrains Mono,monospace;font-size:11px" title="' + fieldName + (note ? ' (' + note + ')' : '') + ' — not yet returned by /api/investor-decide">—</span>';
 };
 
 // Helper: signed % with color
@@ -8534,22 +8542,26 @@ window._renderPremiumIntelligence = function(d, S, reg) {
   if (!d) return '';
   S = S || (reg === 'US' ? '$' : '₹');
 
+  // Reset gap tracker for THIS render — accumulates missing field paths for
+  // the dev-notes footer at the bottom of the group
+  window._piResetGapTracker();
+
   var pick = window._piPick;
   var gap = window._piGap;
   var pct = window._piPct;
   var ccy = window._piCcy;
 
-  // Per-section card wrapper — amber theme to signal premium tier
+  // Per-section card wrapper — clean white with subtle amber accent (was: loud amber gradient)
   function _piCard(icon, title, sub, body) {
-    return '<div style="border:1px solid #e2e8f0;border-radius:14px;background:#fff;margin-bottom:14px;overflow:hidden">' +
-      '<div style="padding:12px 16px;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;justify-content:space-between;gap:12px;background:linear-gradient(135deg,#fffbeb,#fef3c7)">' +
+    return '<div style="border:1px solid #f1f5f9;border-radius:10px;background:#fff;margin-bottom:10px;overflow:hidden">' +
+      '<div style="padding:10px 14px;border-bottom:1px solid #f8fafc;display:flex;align-items:center;justify-content:space-between;gap:12px;background:#fcfcfa">' +
         '<div style="min-width:0">' +
-          '<div style="font-size:12px;font-weight:900;color:#92400e;font-family:Sora,sans-serif;display:flex;align-items:center;gap:6px"><span>' + icon + '</span>' + title + '</div>' +
-          '<div style="font-size:9px;color:#92400e;opacity:0.75;margin-top:2px;letter-spacing:0.2px">' + sub + '</div>' +
+          '<div style="font-size:12px;font-weight:800;color:#374151;font-family:Sora,sans-serif;display:flex;align-items:center;gap:6px"><span style="opacity:0.75">' + icon + '</span>' + title + '</div>' +
+          '<div style="font-size:10px;color:#94a3b8;margin-top:1px;letter-spacing:0.2px">' + sub + '</div>' +
         '</div>' +
-        '<div style="font-size:8px;font-weight:800;color:#fff;background:linear-gradient(135deg,#d97706,#f59e0b);padding:3px 9px;border-radius:5px;letter-spacing:0.5px;box-shadow:0 1px 3px rgba(217,119,6,.25);flex-shrink:0">PREMIUM</div>' +
+        '<div style="font-size:8px;font-weight:700;color:#92400e;background:#fef3c780;padding:2px 7px;border-radius:4px;letter-spacing:0.4px;flex-shrink:0">PRO</div>' +
       '</div>' +
-      '<div style="padding:14px 16px">' + body + '</div>' +
+      '<div style="padding:12px 14px">' + body + '</div>' +
     '</div>';
   }
 
@@ -8563,11 +8575,11 @@ window._renderPremiumIntelligence = function(d, S, reg) {
 
   var fpeBody = '';
   if (!est || (!estCY && !estNY && !estNY2)) {
-    fpeBody = '<div style="padding:12px 14px;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;font-size:10px;color:#7f1d1d;line-height:1.6">' +
-      '<div style="margin-bottom:6px">' + gap('d.analyst_estimates') + '</div>' +
-      '<div><strong>Expected shape:</strong> <code style="background:#fff;padding:2px 6px;border-radius:3px;font-size:9px">d.analyst_estimates = { current_year: {...}, next_year: {...}, two_years_out: {...} }</code></div>' +
-      '<div style="margin-top:4px"><strong>Per-period fields:</strong> <code style="background:#fff;padding:2px 6px;border-radius:3px;font-size:9px">{ fiscal_period_end, revenue_estimate, eps_estimate, num_analysts, low, high, revenue_yoy, eps_yoy, revision_30d_pct }</code></div>' +
+    fpeBody = '<div style="padding:18px 14px;text-align:center;color:#94a3b8;font-size:11px;font-style:italic">' +
+      'Data pending — analyst estimates not yet returned by backend.' +
+      '<div style="margin-top:4px;font-size:9px;color:#cbd5e1;font-family:JetBrains Mono,monospace;font-style:normal" title="Expected: d.analyst_estimates with current_year/next_year/two_years_out objects">d.analyst_estimates</div>' +
     '</div>';
+    window._piGapTracker['d.analyst_estimates'] = 1;
   } else {
     var price = parseFloat(d.price) || 0;
     fpeBody = '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:11px;font-family:Inter,sans-serif">' +
@@ -8635,11 +8647,11 @@ window._renderPremiumIntelligence = function(d, S, reg) {
 
   var revBody = '';
   if (!rev || (!rev7d && !rev30d && !rev60d && !rev90d)) {
-    revBody = '<div style="padding:12px 14px;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;font-size:10px;color:#7f1d1d;line-height:1.6">' +
-      '<div style="margin-bottom:6px">' + gap('d.estimate_revisions') + '</div>' +
-      '<div><strong>Expected shape:</strong> <code style="background:#fff;padding:2px 6px;border-radius:3px;font-size:9px">d.estimate_revisions = { "7d": {...}, "30d": {...}, "60d": {...}, "90d": {...} }</code></div>' +
-      '<div style="margin-top:4px"><strong>Per-window fields:</strong> <code style="background:#fff;padding:2px 6px;border-radius:3px;font-size:9px">{ eps_revision_pct, revenue_revision_pct, upward_count, downward_count }</code></div>' +
+    revBody = '<div style="padding:18px 14px;text-align:center;color:#94a3b8;font-size:11px;font-style:italic">' +
+      'Data pending — estimate revision history not yet returned.' +
+      '<div style="margin-top:4px;font-size:9px;color:#cbd5e1;font-family:JetBrains Mono,monospace;font-style:normal" title="Expected: d.estimate_revisions with 7d/30d/60d/90d windows">d.estimate_revisions</div>' +
     '</div>';
+    window._piGapTracker['d.estimate_revisions'] = 1;
   } else {
     var revHeatCell = function(value, fieldPath) {
       if (value == null) return '<div style="padding:10px 4px;text-align:center;background:#f8fafc;border-radius:6px">' + gap(fieldPath) + '</div>';
@@ -8691,11 +8703,11 @@ window._renderPremiumIntelligence = function(d, S, reg) {
   var surprises = pick(d, ['earnings_surprises', 'earnings_history']) || (d.earnings ? pick(d.earnings, ['history', 'surprises']) : null);
   var surBody = '';
   if (!surprises || !Array.isArray(surprises) || surprises.length === 0) {
-    surBody = '<div style="padding:12px 14px;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;font-size:10px;color:#7f1d1d;line-height:1.6">' +
-      '<div style="margin-bottom:6px">' + gap('d.earnings_surprises') + '</div>' +
-      '<div><strong>Expected shape:</strong> <code style="background:#fff;padding:2px 6px;border-radius:3px;font-size:9px">d.earnings_surprises = [ {...}, {...}, ... ]</code> (8 most-recent quarters, newest first)</div>' +
-      '<div style="margin-top:4px"><strong>Per-row fields:</strong> <code style="background:#fff;padding:2px 6px;border-radius:3px;font-size:9px">{ fiscal_period, report_date, eps_estimate, eps_actual, surprise_pct, next_day_reaction_pct, post_earnings_5d_pct }</code></div>' +
+    surBody = '<div style="padding:18px 14px;text-align:center;color:#94a3b8;font-size:11px;font-style:italic">' +
+      'Data pending — earnings history not yet returned.' +
+      '<div style="margin-top:4px;font-size:9px;color:#cbd5e1;font-family:JetBrains Mono,monospace;font-style:normal" title="Expected: d.earnings_surprises array of 8 quarters">d.earnings_surprises</div>' +
     '</div>';
+    window._piGapTracker['d.earnings_surprises'] = 1;
   } else {
     surBody = '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:10px;font-family:Inter,sans-serif">' +
       '<thead><tr style="background:#fafbfc">' +
@@ -8809,10 +8821,11 @@ window._renderPremiumIntelligence = function(d, S, reg) {
   var divYieldNum = divYield != null ? parseFloat(divYield) : null;
 
   if (divYield == null) {
-    var divBody = '<div style="padding:14px;text-align:center;color:#7f1d1d;font-size:11px;background:#fef2f2;border:1px solid #fecaca;border-radius:8px">' +
-      gap('dividend_yield') + ' — cannot determine if dividend payer.' +
-      '<div style="margin-top:6px;font-size:10px;color:#64748b">Backend should return 0 for non-payers, decimal % for payers.</div>' +
-      '</div>';
+    var divBody = '<div style="padding:18px 14px;text-align:center;color:#94a3b8;font-size:11px;font-style:italic">' +
+      'Data pending — dividend yield not yet returned.' +
+      '<div style="margin-top:4px;font-size:9px;color:#cbd5e1;font-family:JetBrains Mono,monospace;font-style:normal" title="Backend should return 0 for non-payers, decimal % for payers">d.dividend_yield</div>' +
+    '</div>';
+    window._piGapTracker['d.dividend_yield'] = 1;
     groupBody += _piCard('💵', 'Dividend Quality Score', 'Data unavailable', divBody);
   } else if (divYieldNum === 0 || isNaN(divYieldNum)) {
     var divBody = '<div style="padding:14px;text-align:center;color:#64748b;font-size:11px;font-style:italic">' +
@@ -8870,20 +8883,253 @@ window._renderPremiumIntelligence = function(d, S, reg) {
     groupBody += _piCard('💵', 'Dividend Quality Score', 'Payout · FCF coverage · 5Y CAGR · growth streak · next ex-date', divBody);
   }
 
-  // ═══ COLLAPSIBLE OUTER GROUP — amber theme to distinguish from navy Institutional stack below ═══
-  var outer = '<details open style="margin:14px 0;border-radius:16px;border:2px solid rgba(217,119,6,.25);background:#fff;overflow:hidden;box-shadow:0 4px 16px rgba(217,119,6,.08)">' +
-    '<summary style="padding:16px 20px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;font-size:14px;font-weight:900;color:#fff;font-family:Sora,sans-serif;list-style:none;background:linear-gradient(135deg,#92400e,#d97706);border-radius:14px 14px 0 0">' +
-      '<span>💎 Premium Intelligence — Consensus · Revisions · Surprises · Multiples · Dividends</span>' +
-      '<span style="font-size:9px;color:rgba(255,255,255,.6);font-weight:500">▾</span>' +
+  // ═══ SOFT COLLAPSIBLE OUTER GROUP (was: saturated amber gradient banner) ═══
+  // Light, restrained, institutional. Dev-facing detail moved to footer below.
+  var outer = '<details open style="margin:14px 0;border-radius:14px;border:1px solid #e2e8f0;background:#fff;overflow:hidden">' +
+    '<summary style="padding:11px 18px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;font-size:11px;font-weight:800;font-family:Sora,sans-serif;list-style:none;background:#fafafa;border-bottom:1px solid #f1f5f9;letter-spacing:0.3px">' +
+      '<span style="color:#475569">💎 <span style="color:#92400e">PREMIUM INTELLIGENCE</span> · Consensus · Revisions · Surprises · Multiples · Dividends</span>' +
+      '<span style="font-size:10px;color:#94a3b8;font-weight:500">▾</span>' +
     '</summary>' +
-    '<div style="padding:10px 18px;font-size:9px;color:#78350f;line-height:1.6;background:#FEF3C7;border-bottom:1px solid #fde68a">' +
-      '💎 <strong>What this adds:</strong> Wall Street-grade forward consensus — analyst expectations by fiscal period, estimate revision velocity, 8-quarter beat/miss history with price reaction, forward multiples vs 5Y own-history, dividend quality. ' +
-      '<strong style="color:#dc2626">Red ⚠ tags mark backend fields not yet exposed in /api/investor-decide — wire them in api.py to populate.</strong>' +
+    '<div style="padding:14px 18px;background:#fff">' + groupBody + '</div>';
+
+  // ═══ DEVELOPER NOTES FOOTER ═══
+  // ONE collapsed details with all the missing field paths — replaces the
+  // dozens of red NEEDS_BACKEND boxes that were dominating the user view.
+  var gapKeys = Object.keys(window._piGapTracker || {});
+  if (gapKeys.length > 0) {
+    outer += '<details style="border-top:1px solid #f1f5f9;background:#fafbfc">' +
+      '<summary style="padding:9px 18px;cursor:pointer;font-size:10px;color:#64748b;font-family:Inter,sans-serif;list-style:none;display:flex;align-items:center;justify-content:space-between">' +
+        '<span>🛠 <span style="color:#475569;font-weight:600">Developer notes</span> · ' + gapKeys.length + ' backend field' + (gapKeys.length === 1 ? '' : 's') + ' not yet wired</span>' +
+        '<span style="color:#cbd5e1;font-size:11px">▸</span>' +
+      '</summary>' +
+      '<div style="padding:12px 18px 14px;font-size:10px;color:#475569;line-height:1.7;font-family:Inter,sans-serif;background:#fafbfc">' +
+        '<div style="margin-bottom:8px;color:#64748b">Wire the following fields in <code style="background:#f1f5f9;padding:1px 5px;border-radius:3px;font-size:10px;color:#1A3A78">/api/investor-decide</code> to populate this section. Click to copy each path.</div>' +
+        '<div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:10px">';
+    gapKeys.sort().forEach(function(k) {
+      outer += '<code onclick="navigator.clipboard&&navigator.clipboard.writeText(\'' + k.replace(/'/g, "\\'") + '\')" style="background:#fff;border:1px solid #e2e8f0;padding:3px 8px;border-radius:4px;font-size:10px;color:#475569;cursor:pointer;transition:all .1s" onmouseover="this.style.background=\'#1A3A78\';this.style.color=\'#fff\';this.style.borderColor=\'#1A3A78\'" onmouseout="this.style.background=\'#fff\';this.style.color=\'#475569\';this.style.borderColor=\'#e2e8f0\'" title="Click to copy">' + k + '</code>';
+    });
+    outer += '</div>' +
+      '<div style="margin-top:8px;font-size:9px;color:#94a3b8">Reference schemas: see CHANGELOG.md r63.76.0 entry for the full expected JSON shape per section.</div>' +
     '</div>' +
-    '<div style="padding:16px 18px;background:#fefefe">' + groupBody + '</div>' +
-  '</details>';
+    '</details>';
+  }
+
+  outer += '</details>';
 
   return outer;
+};
+
+// ═════════════════════════════════════════════════════════════════════════
+// r63.78.0: Celesys AI — contextual Q&A on the investor report
+//
+// Conversational chat widget at the bottom of investor view. User asks
+// questions in plain English; the AI answers based on the report context.
+// Suggested-question chips for quick-start. Session-scoped history per symbol.
+//
+// Backend: requires /api/celesys-ai-qa POST endpoint in api.py.
+// Reference implementation in changelog. Until wired, the chat shows a
+// graceful "AI Assistant unavailable" state with setup instructions.
+// ═════════════════════════════════════════════════════════════════════════
+
+window._celesysAIHistory = window._celesysAIHistory || {};
+
+window._renderCelesysAI = function(d, S, reg) {
+  if (!d || !d.symbol) return '';
+  var sym = String(d.symbol).toUpperCase();
+  var name = d.companyName || d.name || sym;
+  var safeSym = sym.replace(/[^A-Z0-9]/g, '');  // for DOM id usage
+
+  var h = '';
+  h += '<div id="celesysAIChat_' + safeSym + '" style="margin-top:32px;border:1px solid #e2e8f0;border-radius:14px;overflow:hidden;background:#fff">';
+
+  // ── Header (soft, restrained — was: dark navy gradient with bright orange BETA) ──
+  h += '<div style="padding:14px 18px;background:#fafafa;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;gap:12px">';
+  h += '<div style="width:38px;height:38px;border-radius:10px;background:#1A3A7810;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0">💬</div>';
+  h += '<div style="flex:1;min-width:0">';
+  h += '<div style="font-size:10px;letter-spacing:1px;font-weight:800;color:#1A3A78;font-family:Sora,sans-serif">ASK CELESYS AI</div>';
+  h += '<div style="font-size:14px;font-weight:800;color:#0f172a;margin-top:1px;font-family:Sora,sans-serif">Conversational research on ' + sym + '</div>';
+  h += '<div style="font-size:10px;margin-top:2px;color:#94a3b8;line-height:1.4">Bear case · bull case · scenarios · peer comparison · what would change the verdict.</div>';
+  h += '</div>';
+  h += '<div style="font-size:8px;font-weight:700;color:#92400e;background:#fef3c780;padding:2px 7px;border-radius:4px;letter-spacing:0.4px;flex-shrink:0">BETA</div>';
+  h += '</div>';
+
+  // ── Suggested questions ──
+  var suggested = [
+    "What's the bear case?",
+    "What's the bull case?",
+    "What catalysts are coming up?",
+    "Compare to top peers",
+    "What would change the verdict?",
+    "Why might the verdict be wrong?",
+    "What's the worst-case downside?",
+    "Buy now or wait?"
+  ];
+  h += '<div style="padding:14px 22px;background:#f8fafc;border-bottom:1px solid #e2e8f0">';
+  h += '<div style="font-size:9px;color:#64748b;font-weight:800;letter-spacing:0.5px;margin-bottom:8px;text-transform:uppercase">Suggested questions</div>';
+  h += '<div style="display:flex;gap:6px;flex-wrap:wrap">';
+  suggested.forEach(function(q){
+    var qEsc = q.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+    h += '<button onclick="window._celesysAIAsk(\'' + safeSym + '\', \'' + reg + '\', \'' + qEsc + '\')" ';
+    h += 'style="padding:6px 12px;border-radius:18px;background:#fff;border:1px solid #cbd5e1;font-size:10px;font-weight:700;color:#1A3A78;cursor:pointer;font-family:Inter,sans-serif;transition:all .15s" ';
+    h += 'onmouseover="this.style.background=\'#1A3A78\';this.style.color=\'#fff\';this.style.borderColor=\'#1A3A78\'" ';
+    h += 'onmouseout="this.style.background=\'#fff\';this.style.color=\'#1A3A78\';this.style.borderColor=\'#cbd5e1\'">';
+    h += q + '</button>';
+  });
+  h += '</div></div>';
+
+  // ── Chat history area ──
+  h += '<div id="celesysAIHistory_' + safeSym + '" style="padding:18px 22px;min-height:140px;max-height:520px;overflow-y:auto;background:#fff">';
+  h += '<div id="celesysAIPlaceholder_' + safeSym + '" style="text-align:center;padding:32px 20px;color:#94a3b8;font-size:11px;font-style:italic">';
+  h += '<div style="font-size:28px;margin-bottom:8px;opacity:0.4">💭</div>';
+  h += 'Ask a question above, or type your own below.';
+  h += '</div>';
+  h += '</div>';
+
+  // ── Input area ──
+  h += '<div style="padding:14px 22px;border-top:1px solid #e2e8f0;background:#fafbfc;display:flex;gap:8px;align-items:center">';
+  h += '<input type="text" id="celesysAIInput_' + safeSym + '" placeholder="Ask anything about ' + sym + '..." ';
+  h += 'style="flex:1;padding:11px 14px;border-radius:8px;border:1px solid #cbd5e1;background:#fff;font-size:12px;font-family:Inter,sans-serif;color:#0f172a;outline:none;transition:border-color .1s" ';
+  h += 'onfocus="this.style.borderColor=\'#1A3A78\'" onblur="this.style.borderColor=\'#cbd5e1\'" ';
+  h += 'onkeypress="if(event.key===\'Enter\'){var v=this.value.trim();if(v){window._celesysAIAsk(\'' + safeSym + '\',\'' + reg + '\',v);this.value=\'\'}}">';
+  h += '<button onclick="var inp=document.getElementById(\'celesysAIInput_' + safeSym + '\');var v=inp.value.trim();if(v){window._celesysAIAsk(\'' + safeSym + '\',\'' + reg + '\',v);inp.value=\'\'}" ';
+  h += 'style="padding:11px 18px;border-radius:8px;background:linear-gradient(135deg,#1A3A78,#1e40af);color:#fff;border:none;cursor:pointer;font-size:11px;font-weight:800;font-family:Sora,sans-serif;white-space:nowrap">Send →</button>';
+  h += '</div>';
+
+  // ── Footer disclaimer ──
+  h += '<div style="padding:8px 22px;background:#f8fafc;border-top:1px solid #e2e8f0;font-size:9px;color:#64748b;text-align:center;line-height:1.4">';
+  h += '⚠ AI responses are educational analysis, not financial advice. The AI references only the data on this page — always verify before acting.';
+  h += '</div>';
+
+  h += '</div>';
+  return h;
+};
+
+// Builds a compact context string from the investor data — what the AI sees
+window._celesysAIBuildContext = function(d) {
+  if (!d) return '{}';
+  // Pick the highest-signal fields to keep context size sane
+  var ctx = {
+    symbol: d.symbol,
+    company: d.companyName || d.name,
+    sector: d.sector,
+    industry: d.industry,
+    price: d.price,
+    market_cap: d.market_cap || d.marketCap,
+    verdict: d.decision,
+    investability_score: d.confidence || d.investability_score,
+    upside_pct: d.upside,
+    forward_pe: d.pe || d.forward_pe,
+    peg: d.peg || d.pegRatio,
+    f_score: d.fScore || (d.business && d.business.fScore),
+    moat_score: d.moatScore || (d.moat && d.moat.score),
+    roe: d.roe,
+    rev_growth: d.revGrowth,
+    beta: d.beta,
+    rsi: d.rsi || (d.technicals && d.technicals.rsi),
+    sma200: d.sma200 || (d.technicals && d.technicals.sma200),
+    dcf_fair_value: (d.intrinsic_value && d.intrinsic_value.fair_value) || d.dcf_fair_value,
+    monte_carlo: d.monteCarlo ? {p10: d.monteCarlo.p10, p50: d.monteCarlo.p50, p90: d.monteCarlo.p90, prob_undervalued: d.monteCarlo.probUndervalued} : null,
+    buffett: d.buffett ? {score: d.buffett.score, verdict: d.buffett.verdict} : null,
+    sector_rotation: d.sectorRotation && d.sectorRotation.phase,
+    risk_level: d.riskLevel,
+    bottom_line: d.bottomLine || d.bottom_line,
+    explain: d.explain,
+  };
+  // Strip undefined/null for token efficiency
+  Object.keys(ctx).forEach(function(k){ if (ctx[k] === undefined || ctx[k] === null) delete ctx[k]; });
+  return JSON.stringify(ctx);
+};
+
+window._celesysAIAsk = async function(safeSym, region, question) {
+  var historyEl = document.getElementById('celesysAIHistory_' + safeSym);
+  var placeholder = document.getElementById('celesysAIPlaceholder_' + safeSym);
+  if (!historyEl) return;
+  if (placeholder) placeholder.remove();
+
+  // Append user message (right-aligned navy bubble)
+  var userMsg = document.createElement('div');
+  userMsg.style.cssText = 'margin-bottom:14px;display:flex;justify-content:flex-end';
+  userMsg.innerHTML = '<div style="background:#1A3A78;color:#fff;padding:10px 14px;border-radius:14px 14px 4px 14px;max-width:78%;font-size:12px;line-height:1.5;font-family:Inter,sans-serif;word-wrap:break-word">' + question.replace(/</g, '&lt;') + '</div>';
+  historyEl.appendChild(userMsg);
+
+  // Append loading bubble (left-aligned, with spinner)
+  var loadingId = 'celesysLoad_' + Date.now();
+  var loadMsg = document.createElement('div');
+  loadMsg.id = loadingId;
+  loadMsg.style.cssText = 'margin-bottom:14px;display:flex;align-items:flex-start;gap:8px';
+  loadMsg.innerHTML = '<div style="width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,#0A1628,#1A3A78);color:#fff;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:900;font-family:Sora,sans-serif;flex-shrink:0">C</div>' +
+    '<div style="background:#f1f5f9;padding:12px 16px;border-radius:14px 14px 14px 4px;font-size:11px;color:#64748b;display:flex;align-items:center;gap:8px">' +
+    '<div style="display:inline-block;width:12px;height:12px;border:2px solid #1A3A78;border-top-color:transparent;border-radius:50%;animation:spin .5s linear infinite"></div>' +
+    '<span>Thinking…</span></div>';
+  historyEl.appendChild(loadMsg);
+  historyEl.scrollTop = historyEl.scrollHeight;
+
+  // Build context from window._lastInvestorData (set by loadInvestorDE)
+  var context = window._celesysAIBuildContext(window._lastInvestorData || {});
+
+  try {
+    var r = await fetch('/api/celesys-ai-qa', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        symbol: safeSym,
+        region: region,
+        question: question,
+        context: context,
+      }),
+    });
+
+    var d = null;
+    try { d = await r.json(); } catch(_) {}
+
+    // Remove loading bubble
+    var ld = document.getElementById(loadingId);
+    if (ld) ld.remove();
+
+    if (r.ok && d && d.success && d.answer) {
+      // Render answer (left-aligned, slate bubble)
+      var aiMsg = document.createElement('div');
+      aiMsg.style.cssText = 'margin-bottom:14px;display:flex;align-items:flex-start;gap:8px';
+      // Minimal markdown: bold, line breaks, bullet lists
+      var formatted = String(d.answer)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+        .replace(/\n- /g, '<br>• ')
+        .replace(/\n\d+\. /g, function(m){return '<br>' + m.trim();})
+        .replace(/\n\n/g, '<br><br>')
+        .replace(/\n/g, '<br>');
+      aiMsg.innerHTML = '<div style="width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,#0A1628,#1A3A78);color:#fff;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:900;font-family:Sora,sans-serif;flex-shrink:0">C</div>' +
+        '<div style="background:#f1f5f9;color:#0f172a;padding:12px 16px;border-radius:14px 14px 14px 4px;max-width:78%;font-size:12px;line-height:1.65;font-family:Inter,sans-serif">' + formatted + '</div>';
+      historyEl.appendChild(aiMsg);
+    } else {
+      // Graceful fallback — show setup hint if endpoint missing
+      var errCode = r.status;
+      var errMsg = (d && d.error) || 'Server returned ' + errCode;
+      var isUnwired = errCode === 404 || errCode === 501 || (errMsg.toLowerCase().indexOf('not found') >= 0) || (errMsg.toLowerCase().indexOf('not implemented') >= 0);
+      var fb = document.createElement('div');
+      fb.style.cssText = 'margin-bottom:14px';
+      if (isUnwired) {
+        fb.innerHTML = '<div style="padding:14px;background:#fef9c3;border:1px solid #fde68a;border-radius:10px;font-size:11px;color:#78350f;line-height:1.6">' +
+          '<div style="font-weight:800;margin-bottom:6px;color:#92400e">🛠 AI Assistant — Backend Not Wired Yet</div>' +
+          'The /api/celesys-ai-qa endpoint is not yet implemented in your api.py. See the r63.78.0 changelog for the reference implementation (Anthropic Haiku ≈ $0.001 per question, ~3-second response time).' +
+          '</div>';
+      } else {
+        fb.innerHTML = '<div style="padding:14px;background:#fef2f2;border:1px solid #fecaca;border-radius:10px;font-size:11px;color:#7f1d1d;line-height:1.6">' +
+          '<strong>⚠ AI request failed:</strong> ' + errMsg + '</div>';
+      }
+      historyEl.appendChild(fb);
+    }
+  } catch (e) {
+    var ld2 = document.getElementById(loadingId);
+    if (ld2) ld2.remove();
+    var ne = document.createElement('div');
+    ne.style.cssText = 'margin-bottom:14px';
+    ne.innerHTML = '<div style="padding:14px;background:#fef2f2;border:1px solid #fecaca;border-radius:10px;font-size:11px;color:#7f1d1d">' +
+      '<strong>⚠ Network error:</strong> ' + (e.message || 'fetch failed') + '</div>';
+    historyEl.appendChild(ne);
+  }
+
+  historyEl.scrollTop = historyEl.scrollHeight;
 };
 
 window._setPersona = function(persona) {
@@ -17202,6 +17448,12 @@ h+='</div>';
 // Catalysts, Earnings History, Insider Activity, Institutional Ownership, Analyst Targets.
 // Now the investor page is the single unified place for everything.
 h += '<div id="invFullDeepDDMount" style="margin-top:24px;min-height:120px"></div>';
+
+// r63.78.0: Celesys AI — contextual Q&A chat at the bottom of investor view
+if (typeof window._renderCelesysAI === 'function') {
+  try { h += window._renderCelesysAI(d, S, reg); }
+  catch(e) { console.error('[CELESYS-AI] render failed:', e); }
+}
 
 el.innerHTML=h;
 
