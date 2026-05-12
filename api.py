@@ -3816,6 +3816,98 @@ async def home():
                 <p>HTML file not found.</p></body></html>"""
 
 
+# r63.72.26: DD Forward View — three new sections (demand curve, ownership, volume profile)
+@app.get("/api/dd-demand-curve")
+async def dd_demand_curve(symbol: str = "", region: str = "US"):
+    print(f"[{_BUILD_VERSION}] /api/dd-demand-curve symbol={symbol} region={region}")
+    try:
+        from services.dd_forward_view import get_demand_curve_cached
+        if not symbol:
+            return {"success": False, "error": "symbol required"}
+        return get_demand_curve_cached(symbol, region)
+    except Exception as e:
+        import traceback
+        return {"success": False, "error": str(e)[:200], "trace": traceback.format_exc()[:1500]}
+
+
+@app.get("/api/dd-ownership-activity")
+async def dd_ownership_activity(symbol: str = "", region: str = "US"):
+    print(f"[{_BUILD_VERSION}] /api/dd-ownership-activity symbol={symbol} region={region}")
+    try:
+        from services.dd_forward_view import get_ownership_activity_cached
+        if not symbol:
+            return {"success": False, "error": "symbol required"}
+        return get_ownership_activity_cached(symbol, region)
+    except Exception as e:
+        import traceback
+        return {"success": False, "error": str(e)[:200], "trace": traceback.format_exc()[:1500]}
+
+
+@app.get("/api/dd-volume-profile")
+async def dd_volume_profile(symbol: str = "", region: str = "US"):
+    print(f"[{_BUILD_VERSION}] /api/dd-volume-profile symbol={symbol} region={region}")
+    try:
+        from services.dd_forward_view import get_volume_profile_cached
+        if not symbol:
+            return {"success": False, "error": "symbol required"}
+        return get_volume_profile_cached(symbol, region)
+    except Exception as e:
+        import traceback
+        return {"success": False, "error": str(e)[:200], "trace": traceback.format_exc()[:1500]}
+
+
+# r63.72.27: Woodshed Signal — capitulation/punishment detection
+@app.get("/api/dd-woodshed-signal")
+async def dd_woodshed_signal(symbol: str = "", region: str = "US"):
+    print(f"[{_BUILD_VERSION}] /api/dd-woodshed-signal symbol={symbol} region={region}")
+    try:
+        from services.woodshed_signal import get_woodshed_signal
+        if not symbol:
+            return {"success": False, "error": "symbol required"}
+        return get_woodshed_signal(symbol, region)
+    except Exception as e:
+        import traceback
+        return {"success": False, "error": str(e)[:200], "trace": traceback.format_exc()[:1500]}
+
+
+# r63.72.28: Mood Gauges — Market vs Sector vs Stock semi-circle gauges
+@app.get("/api/dd-mood-gauges")
+async def dd_mood_gauges(symbol: str = "", sector: str = "", region: str = "US"):
+    print(f"[{_BUILD_VERSION}] /api/dd-mood-gauges symbol={symbol} sector={sector} region={region}")
+    try:
+        from services.mood_gauges import get_mood_gauges
+        if not symbol:
+            return {"success": False, "error": "symbol required"}
+        return get_mood_gauges(symbol, sector, region)
+    except Exception as e:
+        import traceback
+        return {"success": False, "error": str(e)[:200], "trace": traceback.format_exc()[:1500]}
+
+
+# r63.72.25: Stock Commentary & Day-to-Day Tracker
+@app.get("/api/stock-commentary")
+async def stock_commentary(symbol: str = "", region: str = "US"):
+    """
+    Get day-to-day commentary for a stock: today's move classification,
+    5-day trend, news sentiment alignment, upcoming earnings, recent events.
+    All external fetches have hard timeouts (5s each) — never hangs.
+    """
+    print(f"[{_BUILD_VERSION}] /api/stock-commentary symbol={symbol} region={region}")
+    try:
+        from services.stock_commentary import get_stock_commentary
+        if not symbol:
+            return {"success": False, "error": "symbol required"}
+        result = get_stock_commentary(symbol, region)
+        return result
+    except Exception as e:
+        import traceback
+        return {
+            "success": False,
+            "error": str(e)[:200],
+            "trace": traceback.format_exc()[:1500],
+        }
+
+
 # r63.72.18: Build verification endpoint — hit this from browser to confirm deployment
 @app.get("/api/build-version")
 async def build_version():
@@ -32162,6 +32254,39 @@ async def earnings_calendar(symbol: str = "", region: str = "US", email: str = "
         except Exception as e:
             print(f"[earnings-cal] upcoming fetch failed for {symbol}: {e}")
     
+        # r63.72.24: yfinance fallback if Finnhub returned nothing forward
+        # (free tier is unreliable for non-mega-caps like CSCO, IBM, ACN, etc.)
+        if not upcoming:
+            try:
+                import datetime as _dtR72_24
+                _yahoo_rate_wait()
+                tk_fb = yf.Ticker(symbol)
+                info_fb = tk_fb.info or {}
+                ts_fb = info_fb.get("earningsTimestamp") or info_fb.get("earningsTimestampStart")
+                if ts_fb:
+                    ed_fb = _dtR72_24.datetime.fromtimestamp(ts_fb)
+                    hr_fb = ed_fb.hour
+                    if hr_fb < 9 or (hr_fb == 9 and ed_fb.minute < 30):
+                        hour_str_fb = "bmo"
+                    elif hr_fb >= 16:
+                        hour_str_fb = "amc"
+                    else:
+                        hour_str_fb = "dmh"
+                    upcoming.append({
+                        "date":         ed_fb.strftime("%Y-%m-%d"),
+                        "eps_estimate": info_fb.get("trailingEps"),
+                        "rev_estimate": None,
+                        "hour":         hour_str_fb,
+                        "quarter":      None,
+                        "year":         ed_fb.year,
+                        "_source":      "yfinance_fallback",
+                    })
+                    print(f"[earnings-cal r63.72.24] yfinance fallback succeeded for {symbol}")
+                else:
+                    print(f"[earnings-cal r63.72.24] yfinance fallback: no earnings timestamp for {symbol}")
+            except Exception as e:
+                print(f"[earnings-cal r63.72.24] yfinance fallback failed for {symbol}: {e}")
+    
     response = {
         "success":      True,
         "symbol":       symbol,
@@ -32264,25 +32389,35 @@ async def earnings_this_week(region: str = "US", email: str = "", nocache: int =
     if missing_from_finnhub:
         import datetime as _dtR47
         injected_count = 0
-        max_inject = 30  # cap yfinance calls to avoid hammering rate limits
-        
-        # Limit to most-likely-to-have-imminent-earnings (just check first N tracked names)
-        # Tier A names (mega-caps) are at the start of _momentum_universe_us
-        priority_check = [s for s in _momentum_universe_us if s in missing_from_finnhub][:max_inject]
+        attempted_count = 0
+        max_inject = 60  # r63.72.24: bumped from 30, full universe needs more headroom
+
+        # r63.72.24 FIX: previously iterated only _momentum_universe_us (~100 names),
+        # which missed dozens of tracked names like CSCO, IBM, ACN, etc. Now iterates
+        # the FULL tracked universe (_FIND_SIMILAR_US_UNIVERSE, 500+ names) and
+        # checks all of them up to max_inject. Users were rightly complaining about
+        # missing names — this was the bug.
+        priority_check = [s for s in (_FIND_SIMILAR_US_UNIVERSE or []) if s in missing_from_finnhub][:max_inject]
+        print(f"[earnings-calendar r63.72.24] Finnhub missing {len(missing_from_finnhub)} tracked names; attempting yfinance fallback on {len(priority_check)} (max={max_inject})")
         
         for sym in priority_check:
+            attempted_count += 1
             try:
                 _yahoo_rate_wait()
                 tk_check = yf.Ticker(sym)
                 info_check = tk_check.info or {}
                 ts_check = info_check.get("earningsTimestamp") or info_check.get("earningsTimestampStart")
                 if not ts_check:
+                    if sym in ("CSCO", "IBM", "ACN", "ADBE"):  # log key complaints
+                        print(f"[earnings-calendar r63.72.24] yfinance no earnings timestamp for {sym}")
                     continue
                 
                 ed_check = _dtR47.datetime.fromtimestamp(ts_check).date()
                 
                 # Check if in our window [today-7, next_week_end]
                 if ed_check < (today - _td3(days=7)) or ed_check > next_week_end:
+                    if sym in ("CSCO", "IBM", "ACN", "ADBE"):
+                        print(f"[earnings-calendar r63.72.24] {sym} earnings on {ed_check} outside window {today-_td3(days=7)} to {next_week_end}")
                     continue
                 
                 # Determine BMO/AMC from timestamp hour
@@ -32313,8 +32448,9 @@ async def earnings_this_week(region: str = "US", email: str = "", nocache: int =
             except Exception:
                 continue
         
+        print(f"[earnings-calendar r63.72.24] yfinance fallback summary: attempted={attempted_count}, injected={injected_count}")
         if injected_count > 0:
-            print(f"[earnings-calendar r63.47] Injected {injected_count} tracked symbols from yfinance (Finnhub gaps)")
+            print(f"[earnings-calendar r63.72.24] Injected {injected_count} tracked symbols from yfinance (Finnhub gaps)")
     
     # Bucketize all events
     declared = []
@@ -36813,13 +36949,60 @@ def _r6364_batch_score_sector_stocks(stocks_list, region, benchmark_data=None):
 @app.get("/api/today-setups")
 async def today_setups(email: str = "", region: str = "BOTH"):
     """r63.45: Today's Setups dashboard.
-    
-    Returns:
-      sector_heat: ranked sectors per region
-      hot_sectors_with_stocks: top 5 sectors with their stocks classified into tiers
-      hidden_setups: cold-sector stocks that scored ≥80 (rare exceptions)
-      meta: cache freshness, scan timestamps
+
+    r63.72.25: Hard 30s timeout wrapper. If the underlying scan hangs (Yahoo
+    rate-limit, network slowness, etc.), return whatever data we have so far
+    with a clear partial_data=true flag instead of leaving the user stuck on
+    'Scanning sectors...' forever.
     """
+    import asyncio as _aio_r72_25
+
+    async def _run_scan():
+        return await _today_setups_impl(email, region)
+
+    try:
+        return await _aio_r72_25.wait_for(_run_scan(), timeout=30.0)
+    except _aio_r72_25.TimeoutError:
+        print(f"[today-setups r63.72.25] TIMEOUT after 30s for region={region}, returning partial/cached data")
+        # Return whatever's in cache, with timeout flag
+        us_entry = _R6345_CACHE.get("US", {}) or {}
+        in_entry = _R6345_CACHE.get("IN", {}) or {}
+        return {
+            "success": True,
+            "region": region,
+            "partial_data": True,
+            "timeout": True,
+            "sector_heat": {
+                **((us_entry.get("data") or {}).get("sector_heat") or {}),
+                **((in_entry.get("data") or {}).get("sector_heat") or {}),
+            },
+            "hot_sectors_with_stocks": {
+                **((us_entry.get("data") or {}).get("hot_sectors_with_stocks") or {}),
+                **((in_entry.get("data") or {}).get("hot_sectors_with_stocks") or {}),
+            },
+            "hidden_setups": {
+                **((us_entry.get("data") or {}).get("hidden_setups") or {}),
+                **((in_entry.get("data") or {}).get("hidden_setups") or {}),
+            },
+            "meta": {
+                **((us_entry.get("data") or {}).get("meta") or {}),
+                **((in_entry.get("data") or {}).get("meta") or {}),
+            },
+            "data_note": "Scan timed out after 30s — showing last cached data. Data sources are rate-limited; try again in a few minutes.",
+            "_timeout_at": time.time(),
+        }
+    except Exception as _e_r72_25:
+        print(f"[today-setups r63.72.25] EXCEPTION: {_e_r72_25}")
+        return {
+            "success": False,
+            "error": str(_e_r72_25)[:200],
+            "region": region,
+            "data_note": "Scan failed unexpectedly. Check Render logs.",
+        }
+
+
+async def _today_setups_impl(email: str = "", region: str = "BOTH"):
+    """The original today_setups body — now wrapped with timeout above."""
     email = (email or "").strip().lower()
     _ok, email = check_premium_gate(email, "dream")
     if not _ok:
@@ -38031,6 +38214,15 @@ window.celesysToday = (function() {
     }
     
     let html = '';
+    
+    // r63.72.25: show partial-data banner if scan timed out
+    if (d.partial_data || d.timeout) {
+      html += '<div style="background:#fef3c7;border:1px solid #fde68a;border-left:4px solid #f59e0b;border-radius:6px;padding:12px 16px;margin-bottom:16px;font-family:Inter,sans-serif">' +
+        '<div style="font-weight:800;color:#92400e;font-size:13px;margin-bottom:4px">⚠ Showing cached data — live scan timed out</div>' +
+        '<div style="font-size:11px;color:#78350f;line-height:1.5">' +
+        (d.data_note ? escapeHtml(d.data_note) : 'Data sources are temporarily rate-limited. Try again in a few minutes.') +
+        '</div></div>';
+    }
     const regions = d.regions || ['US', 'IN'];
     
     regions.forEach(reg => {
