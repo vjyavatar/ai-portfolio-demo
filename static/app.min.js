@@ -8474,6 +8474,418 @@ window._embedDeepDDIntoInvestor = function(symbol, region, targetEl) {
     });
 };
 
+// ═════════════════════════════════════════════════════════════════════════
+// r63.76.0: Premium Intelligence Group — 5 institutional sections
+//   1. Fiscal Period Ending — Analysts Expect (consensus by FY)
+//   2. Estimate Revisions Heatmap (7d / 30d / 60d / 90d trend)
+//   3. Earnings Surprise History (8Q beat/miss + price reaction)
+//   4. Forward Multiples Stack (Fwd PE / PEG / EV-EBITDA / P-S / P-FCF vs 5Y median)
+//   5. Dividend Quality Score (skipped for non-payers)
+//
+// Defensive field access — tries multiple common path variants per field.
+// Missing fields render as red ⚠ NEEDS_BACKEND tags so api.py side knows
+// what to expose. Wire one field at a time and the red tags disappear.
+// ═════════════════════════════════════════════════════════════════════════
+
+// Helper: deep-pick with fallback paths (returns first non-empty value)
+window._piPick = function(obj, paths, fallback) {
+  if (!obj) return fallback;
+  for (var i = 0; i < paths.length; i++) {
+    var parts = paths[i].split('.');
+    var v = obj;
+    for (var j = 0; j < parts.length; j++) {
+      if (v == null) { v = undefined; break; }
+      v = v[parts[j]];
+    }
+    if (v !== undefined && v !== null && v !== '') return v;
+  }
+  return fallback;
+};
+
+// Helper: red NEEDS_BACKEND gap flag (so api.py side knows what to add)
+window._piGap = function(fieldName, note) {
+  return '<span style="display:inline-block;background:#dc2626;color:#fff;padding:2px 6px;border-radius:3px;font-size:8px;font-weight:800;letter-spacing:0.3px;font-family:JetBrains Mono,monospace;white-space:nowrap" title="Backend field not yet exposed in /api/investor-decide">⚠ ' + fieldName + '</span>';
+};
+
+// Helper: signed % with color
+window._piPct = function(value, fieldName, decimals) {
+  if (value === undefined || value === null || value === '') return window._piGap(fieldName);
+  var n = parseFloat(value);
+  if (isNaN(n)) return window._piGap(fieldName, 'NaN');
+  var c = n > 0 ? '#059669' : n < 0 ? '#dc2626' : '#64748b';
+  var sign = n > 0 ? '+' : '';
+  return '<span style="color:' + c + ';font-weight:800">' + sign + n.toFixed(decimals != null ? decimals : 1) + '%</span>';
+};
+
+// Helper: format currency with B/M/T suffix
+window._piCcy = function(value, fieldName, S) {
+  S = S || '$';
+  if (value === undefined || value === null || value === '') return window._piGap(fieldName);
+  var n = parseFloat(value);
+  if (isNaN(n)) return window._piGap(fieldName, 'NaN');
+  if (Math.abs(n) >= 1e12) return S + (n/1e12).toFixed(2) + 'T';
+  if (Math.abs(n) >= 1e9) return S + (n/1e9).toFixed(2) + 'B';
+  if (Math.abs(n) >= 1e6) return S + (n/1e6).toFixed(2) + 'M';
+  return S + n.toLocaleString('en-US', {maximumFractionDigits: 2});
+};
+
+// Main render function — returns HTML string for entire collapsible group
+window._renderPremiumIntelligence = function(d, S, reg) {
+  if (!d) return '';
+  S = S || (reg === 'US' ? '$' : '₹');
+
+  var pick = window._piPick;
+  var gap = window._piGap;
+  var pct = window._piPct;
+  var ccy = window._piCcy;
+
+  // Per-section card wrapper — amber theme to signal premium tier
+  function _piCard(icon, title, sub, body) {
+    return '<div style="border:1px solid #e2e8f0;border-radius:14px;background:#fff;margin-bottom:14px;overflow:hidden">' +
+      '<div style="padding:12px 16px;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;justify-content:space-between;gap:12px;background:linear-gradient(135deg,#fffbeb,#fef3c7)">' +
+        '<div style="min-width:0">' +
+          '<div style="font-size:12px;font-weight:900;color:#92400e;font-family:Sora,sans-serif;display:flex;align-items:center;gap:6px"><span>' + icon + '</span>' + title + '</div>' +
+          '<div style="font-size:9px;color:#92400e;opacity:0.75;margin-top:2px;letter-spacing:0.2px">' + sub + '</div>' +
+        '</div>' +
+        '<div style="font-size:8px;font-weight:800;color:#fff;background:linear-gradient(135deg,#d97706,#f59e0b);padding:3px 9px;border-radius:5px;letter-spacing:0.5px;box-shadow:0 1px 3px rgba(217,119,6,.25);flex-shrink:0">PREMIUM</div>' +
+      '</div>' +
+      '<div style="padding:14px 16px">' + body + '</div>' +
+    '</div>';
+  }
+
+  var groupBody = '';
+
+  // ═══ 1. FISCAL PERIOD ENDING — ANALYSTS EXPECT ═══
+  var est = pick(d, ['analyst_estimates', 'estimates', 'consensus_estimates']);
+  var estCY = est ? pick(est, ['current_year', 'fy0', 'fy_current']) : null;
+  var estNY = est ? pick(est, ['next_year', 'fy1', 'fy_next']) : null;
+  var estNY2 = est ? pick(est, ['two_years_out', 'fy2', 'fy_plus_2']) : null;
+
+  var fpeBody = '';
+  if (!est || (!estCY && !estNY && !estNY2)) {
+    fpeBody = '<div style="padding:12px 14px;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;font-size:10px;color:#7f1d1d;line-height:1.6">' +
+      '<div style="margin-bottom:6px">' + gap('d.analyst_estimates') + '</div>' +
+      '<div><strong>Expected shape:</strong> <code style="background:#fff;padding:2px 6px;border-radius:3px;font-size:9px">d.analyst_estimates = { current_year: {...}, next_year: {...}, two_years_out: {...} }</code></div>' +
+      '<div style="margin-top:4px"><strong>Per-period fields:</strong> <code style="background:#fff;padding:2px 6px;border-radius:3px;font-size:9px">{ fiscal_period_end, revenue_estimate, eps_estimate, num_analysts, low, high, revenue_yoy, eps_yoy, revision_30d_pct }</code></div>' +
+    '</div>';
+  } else {
+    var price = parseFloat(d.price) || 0;
+    fpeBody = '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:11px;font-family:Inter,sans-serif">' +
+      '<thead><tr style="background:#fafbfc"><th style="padding:8px 10px;text-align:left;font-size:9px;color:#64748b;font-weight:800;letter-spacing:0.4px;border-bottom:1px solid #e2e8f0">METRIC</th>';
+    var periods = [
+      {label:'FY0 (current)', obj:estCY},
+      {label:'FY1 (next)', obj:estNY},
+      {label:'FY2', obj:estNY2}
+    ];
+    periods.forEach(function(p){
+      var fpe = p.obj ? pick(p.obj, ['fiscal_period_end', 'period_end', 'fye']) : null;
+      var hdr = p.label + (fpe ? ' · ' + fpe : '');
+      fpeBody += '<th style="padding:8px 10px;text-align:right;font-size:9px;color:#64748b;font-weight:800;letter-spacing:0.4px;border-bottom:1px solid #e2e8f0">' + hdr + '</th>';
+    });
+    fpeBody += '</tr></thead><tbody>';
+
+    var rowDef = [
+      {label: 'Revenue (cons.)', render: function(p){ var v = pick(p, ['revenue_estimate', 'rev_estimate']); return v != null ? ccy(v, 'revenue_estimate', S) : gap('revenue_estimate'); }},
+      {label: 'vs prior year', render: function(p){ var v = pick(p, ['revenue_yoy', 'rev_yoy']); return pct(v, 'revenue_yoy'); }},
+      {label: 'EPS (diluted)', render: function(p){ var v = pick(p, ['eps_estimate', 'eps']); return v != null ? S + parseFloat(v).toFixed(2) : gap('eps_estimate'); }},
+      {label: 'vs prior year', render: function(p){ var v = pick(p, ['eps_yoy']); return pct(v, 'eps_yoy'); }},
+      {label: 'Forward P/E @ ' + S + (price ? price.toFixed(2) : '?'), render: function(p){
+        var eps = pick(p, ['eps_estimate', 'eps']);
+        if (eps == null || !price || price <= 0) return gap('eps_estimate');
+        var fpe = price / parseFloat(eps);
+        if (fpe < 0) return '<span style="color:#dc2626;font-weight:800">NM</span>';
+        return '<span style="color:#1A3A78;font-weight:900;font-size:13px">' + fpe.toFixed(1) + 'x</span>';
+      }},
+      {label: '# analysts', render: function(p){ var v = pick(p, ['num_analysts', 'analyst_count']); return v != null ? v : gap('num_analysts'); }},
+      {label: 'Estimate range', render: function(p){
+        var lo = pick(p, ['low', 'eps_low']);
+        var hi = pick(p, ['high', 'eps_high']);
+        if (lo == null && hi == null) return gap('low/high');
+        if (lo == null) return gap('low') + '–' + S + parseFloat(hi).toFixed(2);
+        if (hi == null) return S + parseFloat(lo).toFixed(2) + '–' + gap('high');
+        return S + parseFloat(lo).toFixed(2) + '–' + parseFloat(hi).toFixed(2);
+      }},
+      {label: '30-day EPS revision', render: function(p){ var v = pick(p, ['revision_30d_pct', 'eps_revision_30d']); return pct(v, 'revision_30d_pct'); }},
+    ];
+
+    rowDef.forEach(function(r, i){
+      var bg = i % 2 === 0 ? '#fff' : '#fafbfc';
+      fpeBody += '<tr style="background:' + bg + '"><td style="padding:7px 10px;color:#475569;font-weight:600">' + r.label + '</td>';
+      periods.forEach(function(p){
+        fpeBody += '<td style="padding:7px 10px;text-align:right;color:#0f172a;font-family:JetBrains Mono,monospace;font-weight:700">';
+        if (!p.obj) {
+          fpeBody += '<span style="color:#cbd5e1">—</span>';
+        } else {
+          fpeBody += r.render(p.obj);
+        }
+        fpeBody += '</td>';
+      });
+      fpeBody += '</tr>';
+    });
+    fpeBody += '</tbody></table></div>';
+  }
+  groupBody += _piCard('📅', 'Fiscal Period Ending — Analysts Expect', 'Consensus revenue / EPS / forward P/E by fiscal year', fpeBody);
+
+  // ═══ 2. ESTIMATE REVISIONS HEATMAP ═══
+  var rev = pick(d, ['estimate_revisions', 'revisions', 'consensus_revisions']);
+  var rev7d = rev ? pick(rev, ['7d', 'd7', 'last_7_days']) : null;
+  var rev30d = rev ? pick(rev, ['30d', 'd30', 'last_30_days']) : null;
+  var rev60d = rev ? pick(rev, ['60d', 'd60', 'last_60_days']) : null;
+  var rev90d = rev ? pick(rev, ['90d', 'd90', 'last_90_days']) : null;
+
+  var revBody = '';
+  if (!rev || (!rev7d && !rev30d && !rev60d && !rev90d)) {
+    revBody = '<div style="padding:12px 14px;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;font-size:10px;color:#7f1d1d;line-height:1.6">' +
+      '<div style="margin-bottom:6px">' + gap('d.estimate_revisions') + '</div>' +
+      '<div><strong>Expected shape:</strong> <code style="background:#fff;padding:2px 6px;border-radius:3px;font-size:9px">d.estimate_revisions = { "7d": {...}, "30d": {...}, "60d": {...}, "90d": {...} }</code></div>' +
+      '<div style="margin-top:4px"><strong>Per-window fields:</strong> <code style="background:#fff;padding:2px 6px;border-radius:3px;font-size:9px">{ eps_revision_pct, revenue_revision_pct, upward_count, downward_count }</code></div>' +
+    '</div>';
+  } else {
+    var revHeatCell = function(value, fieldPath) {
+      if (value == null) return '<div style="padding:10px 4px;text-align:center;background:#f8fafc;border-radius:6px">' + gap(fieldPath) + '</div>';
+      var n = parseFloat(value);
+      if (isNaN(n)) return '<div style="padding:10px 4px;text-align:center;background:#f8fafc;border-radius:6px">' + gap(fieldPath, 'NaN') + '</div>';
+      var bg, fg;
+      if (n > 2) { bg = '#059669'; fg = '#fff'; }
+      else if (n > 0.5) { bg = '#34d399'; fg = '#064e3b'; }
+      else if (n > -0.5) { bg = '#fef3c7'; fg = '#78350f'; }
+      else if (n > -2) { bg = '#fca5a5'; fg = '#7f1d1d'; }
+      else { bg = '#dc2626'; fg = '#fff'; }
+      var sign = n > 0 ? '+' : '';
+      return '<div style="padding:12px 6px;text-align:center;background:' + bg + ';color:' + fg + ';border-radius:6px;font-family:JetBrains Mono,monospace;font-weight:800;font-size:13px">' + sign + n.toFixed(1) + '%</div>';
+    };
+
+    revBody = '<div style="font-size:9px;color:#64748b;margin-bottom:10px;letter-spacing:0.3px">Consensus EPS & revenue revision % across rolling windows. Green = upgrades, red = downgrades, yellow = neutral.</div>';
+    revBody += '<div style="display:grid;grid-template-columns:90px repeat(4,1fr);gap:6px;align-items:center;font-size:10px">';
+    revBody += '<div></div>';
+    ['7-DAY','30-DAY','60-DAY','90-DAY'].forEach(function(lbl){
+      revBody += '<div style="text-align:center;font-weight:800;color:#64748b;font-size:9px;letter-spacing:0.5px">' + lbl + '</div>';
+    });
+
+    var revRowDef = [
+      {label: 'EPS', key: 'eps_revision_pct'},
+      {label: 'Revenue', key: 'revenue_revision_pct'},
+    ];
+    revRowDef.forEach(function(rr){
+      revBody += '<div style="font-weight:700;color:#475569;font-size:11px">' + rr.label + '</div>';
+      [['7d',rev7d],['30d',rev30d],['60d',rev60d],['90d',rev90d]].forEach(function(w){
+        var val = w[1] ? pick(w[1], [rr.key]) : null;
+        revBody += revHeatCell(val, rr.key + '.' + w[0]);
+      });
+    });
+    revBody += '</div>';
+
+    // Up/down analyst count from 30d window (the most-watched)
+    var upCount = rev30d ? pick(rev30d, ['upward_count', 'up_count', 'up']) : null;
+    var downCount = rev30d ? pick(rev30d, ['downward_count', 'down_count', 'down']) : null;
+    if (upCount != null || downCount != null) {
+      revBody += '<div style="margin-top:14px;padding:10px 14px;background:#f8fafc;border-radius:8px;display:flex;justify-content:space-around;gap:12px;font-size:10px">';
+      revBody += '<div style="text-align:center"><div style="color:#64748b;font-size:8px;font-weight:800;letter-spacing:0.5px">30-DAY UPWARD</div><div style="font-size:20px;font-weight:900;color:#059669;font-family:JetBrains Mono,monospace">' + (upCount != null ? upCount : gap('upward_count')) + '</div></div>';
+      revBody += '<div style="text-align:center"><div style="color:#64748b;font-size:8px;font-weight:800;letter-spacing:0.5px">30-DAY DOWNWARD</div><div style="font-size:20px;font-weight:900;color:#dc2626;font-family:JetBrains Mono,monospace">' + (downCount != null ? downCount : gap('downward_count')) + '</div></div>';
+      revBody += '</div>';
+    }
+  }
+  groupBody += _piCard('📈', 'Estimate Revisions Heatmap', '7d / 30d / 60d / 90d consensus shifts — green = upgrades, red = downgrades', revBody);
+
+  // ═══ 3. EARNINGS SURPRISE HISTORY (8Q) ═══
+  var surprises = pick(d, ['earnings_surprises', 'earnings_history']) || (d.earnings ? pick(d.earnings, ['history', 'surprises']) : null);
+  var surBody = '';
+  if (!surprises || !Array.isArray(surprises) || surprises.length === 0) {
+    surBody = '<div style="padding:12px 14px;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;font-size:10px;color:#7f1d1d;line-height:1.6">' +
+      '<div style="margin-bottom:6px">' + gap('d.earnings_surprises') + '</div>' +
+      '<div><strong>Expected shape:</strong> <code style="background:#fff;padding:2px 6px;border-radius:3px;font-size:9px">d.earnings_surprises = [ {...}, {...}, ... ]</code> (8 most-recent quarters, newest first)</div>' +
+      '<div style="margin-top:4px"><strong>Per-row fields:</strong> <code style="background:#fff;padding:2px 6px;border-radius:3px;font-size:9px">{ fiscal_period, report_date, eps_estimate, eps_actual, surprise_pct, next_day_reaction_pct, post_earnings_5d_pct }</code></div>' +
+    '</div>';
+  } else {
+    surBody = '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:10px;font-family:Inter,sans-serif">' +
+      '<thead><tr style="background:#fafbfc">' +
+      '<th style="padding:7px 8px;text-align:left;font-size:8px;color:#64748b;font-weight:800;letter-spacing:0.4px;border-bottom:1px solid #e2e8f0">PERIOD</th>' +
+      '<th style="padding:7px 8px;text-align:right;font-size:8px;color:#64748b;font-weight:800;letter-spacing:0.4px;border-bottom:1px solid #e2e8f0">EST</th>' +
+      '<th style="padding:7px 8px;text-align:right;font-size:8px;color:#64748b;font-weight:800;letter-spacing:0.4px;border-bottom:1px solid #e2e8f0">ACT</th>' +
+      '<th style="padding:7px 8px;text-align:right;font-size:8px;color:#64748b;font-weight:800;letter-spacing:0.4px;border-bottom:1px solid #e2e8f0">SURPRISE</th>' +
+      '<th style="padding:7px 8px;text-align:right;font-size:8px;color:#64748b;font-weight:800;letter-spacing:0.4px;border-bottom:1px solid #e2e8f0">NEXT-DAY</th>' +
+      '<th style="padding:7px 8px;text-align:right;font-size:8px;color:#64748b;font-weight:800;letter-spacing:0.4px;border-bottom:1px solid #e2e8f0">5D DRIFT</th>' +
+      '</tr></thead><tbody>';
+
+    var beats = 0, misses = 0;
+    surprises.slice(0, 8).forEach(function(q, i){
+      var period = pick(q, ['fiscal_period', 'period', 'quarter']) || '—';
+      var est_v = pick(q, ['eps_estimate', 'estimate']);
+      var act_v = pick(q, ['eps_actual', 'actual']);
+      var sur = pick(q, ['surprise_pct', 'eps_surprise_pct', 'surprise']);
+      var rxn = pick(q, ['next_day_reaction_pct', 'next_day_pct', 'day1_reaction']);
+      var drift = pick(q, ['post_earnings_5d_pct', 'drift_5d']);
+
+      if (sur != null) {
+        var s = parseFloat(sur);
+        if (s > 0) beats++; else if (s < 0) misses++;
+      }
+
+      var bg = i % 2 === 0 ? '#fff' : '#fafbfc';
+      surBody += '<tr style="background:' + bg + '">' +
+        '<td style="padding:6px 8px;font-weight:700;color:#0f172a;font-family:JetBrains Mono,monospace">' + period + '</td>' +
+        '<td style="padding:6px 8px;text-align:right;color:#475569;font-family:JetBrains Mono,monospace">' + (est_v != null ? S + parseFloat(est_v).toFixed(2) : gap('eps_estimate')) + '</td>' +
+        '<td style="padding:6px 8px;text-align:right;color:#0f172a;font-weight:700;font-family:JetBrains Mono,monospace">' + (act_v != null ? S + parseFloat(act_v).toFixed(2) : gap('eps_actual')) + '</td>' +
+        '<td style="padding:6px 8px;text-align:right;font-family:JetBrains Mono,monospace">' + pct(sur, 'surprise_pct') + '</td>' +
+        '<td style="padding:6px 8px;text-align:right;font-family:JetBrains Mono,monospace">' + pct(rxn, 'next_day_reaction_pct') + '</td>' +
+        '<td style="padding:6px 8px;text-align:right;font-family:JetBrains Mono,monospace">' + pct(drift, 'post_earnings_5d_pct') + '</td>' +
+        '</tr>';
+    });
+    surBody += '</tbody></table></div>';
+
+    if (beats + misses > 0) {
+      var beatRate = Math.round(beats / (beats + misses) * 100);
+      var verdict = beats >= misses * 3 && beats >= 5 ? 'CONSISTENT BEATER' : beats > misses ? 'OFTEN BEATS' : beats === misses ? 'MIXED' : 'OFTEN MISSES';
+      var vC = beats >= misses * 3 && beats >= 5 ? '#059669' : beats > misses ? '#10b981' : beats === misses ? '#d97706' : '#dc2626';
+      surBody += '<div style="margin-top:10px;padding:10px 14px;background:linear-gradient(135deg,' + vC + '12,' + vC + '04);border-left:3px solid ' + vC + ';border-radius:0 8px 8px 0;font-size:11px">';
+      surBody += '<span style="font-weight:900;color:' + vC + ';letter-spacing:0.3px">' + verdict + '</span> · ';
+      surBody += beats + ' beats / ' + misses + ' misses · ' + beatRate + '% beat rate over last ' + (beats + misses) + ' quarters';
+      surBody += '</div>';
+    }
+  }
+  groupBody += _piCard('🎯', 'Earnings Surprise History', 'Last 8 quarters · estimate vs actual · next-day price reaction · 5d drift', surBody);
+
+  // ═══ 4. FORWARD MULTIPLES STACK ═══
+  var fwd = pick(d, ['forward_multiples', 'fwd_multiples', 'multiples']);
+  var fwdPE = pick(d, ['forward_pe', 'fwd_pe', 'forwardPE']) || (fwd ? pick(fwd, ['pe', 'fwd_pe']) : null);
+  var fwdPEG = pick(d, ['forward_peg', 'pegRatio']) || (fwd ? pick(fwd, ['peg', 'fwd_peg']) : null);
+  var fwdEV = pick(d, ['forward_ev_ebitda', 'fwd_ev_ebitda']) || (fwd ? pick(fwd, ['ev_ebitda', 'fwd_ev_ebitda']) : null);
+  var fwdPS = pick(d, ['forward_p_s', 'forward_ps', 'fwd_ps']) || (fwd ? pick(fwd, ['ps', 'fwd_ps']) : null);
+  var fwdPFCF = pick(d, ['forward_p_fcf', 'fwd_p_fcf']) || (fwd ? pick(fwd, ['p_fcf', 'fwd_p_fcf']) : null);
+
+  var medPE = pick(d, ['median_5y_pe', 'pe_5y_median']) || (fwd ? pick(fwd, ['pe_5y_median']) : null);
+  var medPEG = pick(d, ['median_5y_peg']) || (fwd ? pick(fwd, ['peg_5y_median']) : null);
+  var medEV = pick(d, ['median_5y_ev_ebitda']) || (fwd ? pick(fwd, ['ev_ebitda_5y_median']) : null);
+  var medPS = pick(d, ['median_5y_ps']) || (fwd ? pick(fwd, ['ps_5y_median']) : null);
+  var medPFCF = pick(d, ['median_5y_p_fcf']) || (fwd ? pick(fwd, ['p_fcf_5y_median']) : null);
+
+  var multBody = '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:11px;font-family:Inter,sans-serif">' +
+    '<thead><tr style="background:#fafbfc">' +
+    '<th style="padding:8px 10px;text-align:left;font-size:9px;color:#64748b;font-weight:800;letter-spacing:0.4px;border-bottom:1px solid #e2e8f0">MULTIPLE</th>' +
+    '<th style="padding:8px 10px;text-align:right;font-size:9px;color:#64748b;font-weight:800;letter-spacing:0.4px;border-bottom:1px solid #e2e8f0">FORWARD</th>' +
+    '<th style="padding:8px 10px;text-align:right;font-size:9px;color:#64748b;font-weight:800;letter-spacing:0.4px;border-bottom:1px solid #e2e8f0">5Y MEDIAN</th>' +
+    '<th style="padding:8px 10px;text-align:right;font-size:9px;color:#64748b;font-weight:800;letter-spacing:0.4px;border-bottom:1px solid #e2e8f0">vs MEDIAN</th>' +
+    '<th style="padding:8px 10px;text-align:left;font-size:9px;color:#64748b;font-weight:800;letter-spacing:0.4px;border-bottom:1px solid #e2e8f0">SIGNAL</th>' +
+    '</tr></thead><tbody>';
+
+  var multRows = [
+    {label: 'Forward P/E', fwd: fwdPE, med: medPE, fwdField: 'forward_pe', medField: 'median_5y_pe'},
+    {label: 'Forward PEG', fwd: fwdPEG, med: medPEG, fwdField: 'forward_peg', medField: 'median_5y_peg'},
+    {label: 'Forward EV/EBITDA', fwd: fwdEV, med: medEV, fwdField: 'forward_ev_ebitda', medField: 'median_5y_ev_ebitda'},
+    {label: 'Forward P/S', fwd: fwdPS, med: medPS, fwdField: 'forward_p_s', medField: 'median_5y_ps'},
+    {label: 'Forward P/FCF', fwd: fwdPFCF, med: medPFCF, fwdField: 'forward_p_fcf', medField: 'median_5y_p_fcf'},
+  ];
+
+  multRows.forEach(function(r, i){
+    var bg = i % 2 === 0 ? '#fff' : '#fafbfc';
+    var fwdN = r.fwd != null ? parseFloat(r.fwd) : null;
+    var medN = r.med != null ? parseFloat(r.med) : null;
+    var fwdStr = fwdN != null && !isNaN(fwdN) ? fwdN.toFixed(1) + 'x' : gap(r.fwdField);
+    var medStr = medN != null && !isNaN(medN) ? medN.toFixed(1) + 'x' : gap(r.medField);
+    var diff = (fwdN != null && medN != null && medN > 0 && !isNaN(fwdN) && !isNaN(medN)) ? ((fwdN - medN) / medN * 100) : null;
+    var diffStr = diff != null ? pct(diff, 'computed') : '<span style="color:#cbd5e1">—</span>';
+    var sigStr = '';
+    if (diff != null) {
+      if (diff < -20) sigStr = '<span style="font-size:9px;font-weight:800;color:#fff;background:#059669;padding:3px 8px;border-radius:4px">CHEAP vs OWN HIST</span>';
+      else if (diff < -5) sigStr = '<span style="font-size:9px;font-weight:800;color:#065f46;background:#d1fae5;padding:3px 8px;border-radius:4px">FAIR-CHEAP</span>';
+      else if (diff < 5) sigStr = '<span style="font-size:9px;font-weight:800;color:#78350f;background:#fef3c7;padding:3px 8px;border-radius:4px">AT MEDIAN</span>';
+      else if (diff < 20) sigStr = '<span style="font-size:9px;font-weight:800;color:#7f1d1d;background:#fee2e2;padding:3px 8px;border-radius:4px">PREMIUM</span>';
+      else sigStr = '<span style="font-size:9px;font-weight:800;color:#fff;background:#dc2626;padding:3px 8px;border-radius:4px">RICH vs OWN HIST</span>';
+    }
+    multBody += '<tr style="background:' + bg + '">' +
+      '<td style="padding:8px 10px;color:#475569;font-weight:700">' + r.label + '</td>' +
+      '<td style="padding:8px 10px;text-align:right;color:#1A3A78;font-weight:900;font-family:JetBrains Mono,monospace">' + fwdStr + '</td>' +
+      '<td style="padding:8px 10px;text-align:right;color:#475569;font-family:JetBrains Mono,monospace">' + medStr + '</td>' +
+      '<td style="padding:8px 10px;text-align:right;font-family:JetBrains Mono,monospace">' + diffStr + '</td>' +
+      '<td style="padding:8px 10px">' + sigStr + '</td>' +
+      '</tr>';
+  });
+  multBody += '</tbody></table></div>';
+  groupBody += _piCard('📊', 'Forward Multiples Stack', 'Forward P/E · PEG · EV/EBITDA · P/S · P/FCF vs own 5Y median — cheap or rich vs history?', multBody);
+
+  // ═══ 5. DIVIDEND QUALITY (skip non-payers) ═══
+  var divObj = pick(d, ['dividend', 'dividend_quality', 'div']);
+  var divYield = pick(d, ['dividend_yield', 'div_yield']) || (divObj ? pick(divObj, ['yield', 'div_yield']) : null);
+  var divYieldNum = divYield != null ? parseFloat(divYield) : null;
+
+  if (divYield == null) {
+    var divBody = '<div style="padding:14px;text-align:center;color:#7f1d1d;font-size:11px;background:#fef2f2;border:1px solid #fecaca;border-radius:8px">' +
+      gap('dividend_yield') + ' — cannot determine if dividend payer.' +
+      '<div style="margin-top:6px;font-size:10px;color:#64748b">Backend should return 0 for non-payers, decimal % for payers.</div>' +
+      '</div>';
+    groupBody += _piCard('💵', 'Dividend Quality Score', 'Data unavailable', divBody);
+  } else if (divYieldNum === 0 || isNaN(divYieldNum)) {
+    var divBody = '<div style="padding:14px;text-align:center;color:#64748b;font-size:11px;font-style:italic">' +
+      '<span style="font-size:24px;display:block;margin-bottom:6px;opacity:0.4">💵</span>' +
+      (d.symbol || 'This company') + ' does not currently pay a dividend. Section skipped.' +
+      '</div>';
+    groupBody += _piCard('💵', 'Dividend Quality Score', 'Non-dividend payer — skipped', divBody);
+  } else {
+    var payoutRatio = pick(d, ['payout_ratio']) || (divObj ? pick(divObj, ['payout_ratio', 'payout']) : null);
+    var fcfCoverage = pick(d, ['fcf_coverage', 'dividend_fcf_coverage']) || (divObj ? pick(divObj, ['fcf_coverage']) : null);
+    var divCAGR = pick(d, ['div_5y_cagr', 'dividend_5y_cagr']) || (divObj ? pick(divObj, ['5y_cagr', 'cagr_5y']) : null);
+    var consecYears = pick(d, ['div_consecutive_growth_years']) || (divObj ? pick(divObj, ['consecutive_growth_years', 'streak_years']) : null);
+    var nextExDate = pick(d, ['next_ex_dividend_date']) || (divObj ? pick(divObj, ['next_ex_date', 'ex_date']) : null);
+
+    var divBody = '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(115px,1fr));gap:8px;margin-bottom:12px">';
+    var divMetric = function(label, value, unit, fieldName, goodIf) {
+      var displayVal, color = '#1A3A78';
+      if (value == null) {
+        displayVal = gap(fieldName);
+      } else {
+        var n = parseFloat(value);
+        if (isNaN(n) && typeof value === 'string') {
+          displayVal = value;  // ex-div date is a string
+        } else {
+          displayVal = n.toFixed(unit === '%' ? 1 : (unit === 'y' ? 0 : 2)) + (unit || '');
+          if (goodIf) color = goodIf(n) ? '#059669' : '#d97706';
+        }
+      }
+      return '<div style="padding:10px 8px;border-radius:8px;background:#fffbeb;border:1px solid #fef3c7;text-align:center">' +
+        '<div style="font-size:8px;color:#92400e;font-weight:800;letter-spacing:0.4px;text-transform:uppercase">' + label + '</div>' +
+        '<div style="font-family:JetBrains Mono,monospace;font-size:13px;font-weight:900;color:' + color + ';margin-top:4px;word-break:break-word">' + displayVal + '</div>' +
+        '</div>';
+    };
+    divBody += divMetric('Yield', divYield, '%', 'dividend_yield');
+    divBody += divMetric('Payout', payoutRatio, '%', 'payout_ratio', function(v){return v < 60;});
+    divBody += divMetric('FCF Cover', fcfCoverage, 'x', 'fcf_coverage', function(v){return v > 1.5;});
+    divBody += divMetric('5Y CAGR', divCAGR, '%', 'div_5y_cagr', function(v){return v > 5;});
+    divBody += divMetric('Streak', consecYears, 'y', 'div_consecutive_growth_years', function(v){return v > 5;});
+    divBody += divMetric('Next Ex-Date', nextExDate, '', 'next_ex_dividend_date');
+    divBody += '</div>';
+
+    var divScore = 0, divChecks = 0;
+    if (payoutRatio != null && !isNaN(parseFloat(payoutRatio))) { divChecks++; if (parseFloat(payoutRatio) < 60) divScore++; }
+    if (fcfCoverage != null && !isNaN(parseFloat(fcfCoverage))) { divChecks++; if (parseFloat(fcfCoverage) > 1.5) divScore++; }
+    if (divCAGR != null && !isNaN(parseFloat(divCAGR))) { divChecks++; if (parseFloat(divCAGR) > 5) divScore++; }
+    if (consecYears != null && !isNaN(parseFloat(consecYears))) { divChecks++; if (parseFloat(consecYears) > 5) divScore++; }
+    if (divChecks > 0) {
+      var ratio = divScore / divChecks;
+      var dvVerdict = ratio >= 0.75 ? 'HIGH QUALITY' : ratio >= 0.5 ? 'ADEQUATE' : 'AT RISK';
+      var dvC = ratio >= 0.75 ? '#059669' : ratio >= 0.5 ? '#d97706' : '#dc2626';
+      divBody += '<div style="padding:10px 14px;background:linear-gradient(135deg,' + dvC + '12,' + dvC + '04);border-left:3px solid ' + dvC + ';border-radius:0 8px 8px 0;font-size:11px">';
+      divBody += '<span style="font-weight:900;color:' + dvC + '">DIVIDEND QUALITY: ' + dvVerdict + '</span> · ' + divScore + '/' + divChecks + ' health checks pass';
+      divBody += '</div>';
+    }
+    groupBody += _piCard('💵', 'Dividend Quality Score', 'Payout · FCF coverage · 5Y CAGR · growth streak · next ex-date', divBody);
+  }
+
+  // ═══ COLLAPSIBLE OUTER GROUP — amber theme to distinguish from navy Institutional stack below ═══
+  var outer = '<details open style="margin:14px 0;border-radius:16px;border:2px solid rgba(217,119,6,.25);background:#fff;overflow:hidden;box-shadow:0 4px 16px rgba(217,119,6,.08)">' +
+    '<summary style="padding:16px 20px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;font-size:14px;font-weight:900;color:#fff;font-family:Sora,sans-serif;list-style:none;background:linear-gradient(135deg,#92400e,#d97706);border-radius:14px 14px 0 0">' +
+      '<span>💎 Premium Intelligence — Consensus · Revisions · Surprises · Multiples · Dividends</span>' +
+      '<span style="font-size:9px;color:rgba(255,255,255,.6);font-weight:500">▾</span>' +
+    '</summary>' +
+    '<div style="padding:10px 18px;font-size:9px;color:#78350f;line-height:1.6;background:#FEF3C7;border-bottom:1px solid #fde68a">' +
+      '💎 <strong>What this adds:</strong> Wall Street-grade forward consensus — analyst expectations by fiscal period, estimate revision velocity, 8-quarter beat/miss history with price reaction, forward multiples vs 5Y own-history, dividend quality. ' +
+      '<strong style="color:#dc2626">Red ⚠ tags mark backend fields not yet exposed in /api/investor-decide — wire them in api.py to populate.</strong>' +
+    '</div>' +
+    '<div style="padding:16px 18px;background:#fefefe">' + groupBody + '</div>' +
+  '</details>';
+
+  return outer;
+};
+
 window._setPersona = function(persona) {
   try {
     window._dePersona = persona;
@@ -16639,6 +17051,14 @@ h+='<button onclick="_openProScan(\''+d.symbol+'\',\''+reg+'\')" style="flex:1;m
 h+='<button onclick="_runV3Context(\''+d.symbol+'\',\''+reg+'\')" style="flex:1;min-width:180px;padding:16px 20px;border-radius:14px;background:linear-gradient(135deg,#1A3A78,#1e40af);color:#fff;border:none;cursor:pointer;font-family:Sora,sans-serif;text-align:left;box-shadow:0 4px 16px rgba(26,58,120,.25);transition:all .2s" onmouseover="this.style.transform=\'translateY(-2px)\'" onmouseout="this.style.transform=\'none\'"><div style="font-size:12px;font-weight:900;margin-bottom:4px">🌊 Run Market Pulse</div><div style="font-size:9px;color:rgba(255,255,255,.65);line-height:1.5">Sector Rotation · Momentum · Trend · Analyst Revisions</div></button>';
 h+='</div>';
 
+// r63.76.0: Premium Intelligence Group — sits between Group 1 (Fundamentals) and Groups 2-12 (Institutional Stack)
+// 5 sub-sections: Fiscal Period Ending, Estimate Revisions, Earnings Surprise History, Forward Multiples, Dividend Quality
+// Defensive — missing backend fields render as red ⚠ NEEDS_BACKEND tags so api.py side knows what to wire next.
+if (typeof window._renderPremiumIntelligence === 'function') {
+  try { h += window._renderPremiumIntelligence(d, S, reg); }
+  catch(e) { console.error('[PREMIUM-INTEL] render failed:', e); }
+}
+
 // ═══ CROSS-SECTOR SIMILARITY + SAME REGION PEERS ═══
 
 // ═══ INSTITUTIONAL CHARTS — inside Investor DE ═══
@@ -16847,11 +17267,13 @@ setTimeout(function(){
       var _gn=grpNum||'';
       // Outer container: colored left border + tinted background so each group is visually distinct
       var out='<div id="'+id+'" style="margin:22px 0 0;scroll-margin-top:52px;border-radius:16px;overflow:hidden;border:1.5px solid '+color+'30;border-left:5px solid '+color+';background:'+color+'05;box-shadow:0 2px 12px '+color+'08">';
-      // Group number banner — full-width colored strip at top
+      // r63.77.0: Softened group banner — tinted background with darker text replaces
+      // saturated gradient with white text. Same color identity per group, far easier on eyes.
+      // (Bloomberg/institutional style — muted bgs, subtle accents, no harsh contrast.)
       if(_gn){
-        out+='<div style="padding:6px 18px;background:linear-gradient(135deg,'+color+','+color+'cc);display:flex;align-items:center;justify-content:space-between">';
-        out+='<div style="font-size:10px;font-weight:900;color:#fff;font-family:Sora,sans-serif;letter-spacing:1.5px;text-transform:uppercase">GROUP '+_gn+': '+label+'</div>';
-        out+='<div style="font-size:8px;font-weight:700;color:rgba(255,255,255,.7);letter-spacing:1px">'+emoji+'</div>';
+        out+='<div style="padding:9px 18px;background:'+color+'14;border-bottom:2px solid '+color+'40;display:flex;align-items:center;justify-content:space-between">';
+        out+='<div style="font-size:10px;font-weight:900;color:'+color+';font-family:Sora,sans-serif;letter-spacing:1.5px;text-transform:uppercase">GROUP '+_gn+': '+label+'</div>';
+        out+='<div style="font-size:13px;color:'+color+';line-height:1">'+emoji+'</div>';
         out+='</div>';
       }
       // Header bar: gradient background, clickable to toggle
@@ -25197,6 +25619,168 @@ window._csInjectDDToolbar = function() {
 // ═══════════════════════════════════════════════════════════════════
 // PDF EXPORT — uses jsPDF + html2canvas (loaded from CDN in index.html)
 // ═══════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════
+// r63.77.0: PDF APPENDIX BUILDER — captures Wealth Pro, Market Pulse,
+// Cross-Market Scanner, Similar Stocks, 360° Cycle Analysis as a PDF
+// appendix so they appear in the exported document.
+// These buttons normally open modals/replace the page, so their output
+// is invisible to html2canvas which captures #deResult only. The
+// appendix pre-fetches each endpoint, builds compact summary cards,
+// appends to #deResult right before PDF capture, then cleans up.
+// ═══════════════════════════════════════════════════════════════════
+
+window._csBuildPDFAppendix = async function(sym, reg) {
+  sym = (sym || window._ddLastSymbol || '').toUpperCase();
+  reg = reg || window._deRegion || 'US';
+  var S = reg === 'US' ? '$' : '₹';
+
+  // Helper: safe numeric formatter
+  var fNum = function(v, dec) { if (v == null || v === '') return '—'; var n = parseFloat(v); return isNaN(n) ? '—' : n.toFixed(dec != null ? dec : 1); };
+  var fPct = function(v, dec) { if (v == null || v === '') return '—'; var n = parseFloat(v); if (isNaN(n)) return '—'; var c = n > 0 ? '#059669' : n < 0 ? '#dc2626' : '#64748b'; return '<span style="color:' + c + ';font-weight:700">' + (n > 0 ? '+' : '') + n.toFixed(dec != null ? dec : 1) + '%</span>'; };
+
+  // Run all 5 fetches in parallel
+  var endpoints = [
+    fetch('/api/pro-scan?symbol=' + encodeURIComponent(sym) + '&region=' + reg).then(function(r){return r.json();}).catch(function(e){return {success:false,error:e.message};}),
+    fetch('/api/market-context?symbol=' + encodeURIComponent(sym) + '&region=' + reg).then(function(r){return r.json();}).catch(function(e){return {success:false,error:e.message};}),
+    fetch('/api/cross-market-match?symbol=' + encodeURIComponent(sym) + '&region=' + reg + '&mode=cross').then(function(r){return r.json();}).catch(function(e){return {success:false,error:e.message};}),
+    fetch('/api/cross-market-match?symbol=' + encodeURIComponent(sym) + '&region=' + reg + '&mode=same').then(function(r){return r.json();}).catch(function(e){return {success:false,error:e.message};}),
+    fetch('/api/cycle-analysis?symbol=' + encodeURIComponent(sym) + '&region=' + reg).then(function(r){return r.json();}).catch(function(e){return {success:false,error:e.message};}),
+  ];
+  var results = await Promise.all(endpoints);
+  var ps = results[0], mp = results[1], xmCross = results[2], xmSame = results[3], cy = results[4];
+
+  // ─── Appendix wrapper ───
+  var h = '<div id="csPdfAppendix" style="margin-top:32px;page-break-before:always">';
+
+  // Section divider
+  h += '<div style="padding:18px 22px;background:linear-gradient(135deg,#0A1628,#1A3A78);color:#fff;border-radius:14px 14px 0 0;display:flex;align-items:center;justify-content:space-between">';
+  h += '<div><div style="font-size:11px;letter-spacing:1.5px;font-weight:800;opacity:0.85;font-family:Sora,sans-serif">PDF APPENDIX</div>';
+  h += '<div style="font-size:18px;font-weight:900;margin-top:2px;font-family:Sora,sans-serif">📎 Deep Scan Outputs</div>';
+  h += '<div style="font-size:10px;margin-top:4px;opacity:0.75">Auto-captured · Wealth Pro · Market Pulse · Cross-Market · Similar Stocks · 360° Cycle</div></div>';
+  h += '<div style="font-size:9px;opacity:0.7;font-family:JetBrains Mono,monospace">' + sym + ' · ' + reg + '</div>';
+  h += '</div>';
+
+  // ═══ 1. WEALTH PRO ═══ (use existing top-level _renderProScan)
+  h += '<div style="margin:18px 0;border:1px solid #e2e8f0;border-radius:14px;background:#fff;overflow:hidden">';
+  h += '<div style="padding:12px 18px;background:#1A3A7810;border-bottom:2px solid #1A3A7840"><div style="font-size:13px;font-weight:900;color:#1A3A78;font-family:Sora,sans-serif">🔬 Wealth Pro Scan — ROIC · Reverse DCF · Monte Carlo · Legend Match</div></div>';
+  if (ps && ps.success && typeof window._renderProScan === 'function') {
+    try { h += '<div style="padding:14px 18px">' + window._renderProScan(ps) + '</div>'; }
+    catch(e) { h += '<div style="padding:14px 18px;font-size:11px;color:#7f1d1d">⚠ Render error: ' + e.message + '</div>'; }
+  } else {
+    h += '<div style="padding:14px 18px;font-size:11px;color:#7f1d1d">⚠ ' + ((ps && ps.error) || 'Wealth Pro endpoint unavailable') + '</div>';
+  }
+  h += '</div>';
+
+  // ═══ 2. MARKET PULSE ═══ (summary card from JSON since render is inline)
+  h += '<div style="margin:18px 0;border:1px solid #e2e8f0;border-radius:14px;background:#fff;overflow:hidden">';
+  h += '<div style="padding:12px 18px;background:#0d948814;border-bottom:2px solid #0d948840"><div style="font-size:13px;font-weight:900;color:#0d9488;font-family:Sora,sans-serif">🌊 Market Pulse — Sector Rotation · Momentum · Trend · Analyst Revisions</div></div>';
+  if (mp && mp.success) {
+    var ctxV = mp.contextVerdict || mp.verdict || 'NEUTRAL';
+    var ctxC = ctxV === 'TAILWIND' ? '#059669' : ctxV === 'HEADWIND' ? '#dc2626' : '#d97706';
+    h += '<div style="padding:14px 18px">';
+    h += '<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:12px">';
+    h += '<div style="padding:6px 14px;border-radius:6px;background:' + ctxC + '15;border:1px solid ' + ctxC + '40;font-size:11px;font-weight:900;color:' + ctxC + '">' + ctxV + '</div>';
+    if (mp.contextScore != null) h += '<div style="font-size:11px;color:#64748b">Context Score: <strong style="color:#0f172a;font-family:JetBrains Mono,monospace">' + fNum(mp.contextScore, 0) + '/100</strong></div>';
+    h += '</div>';
+    h += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;margin-bottom:10px">';
+    var mpFields = [
+      ['Trend', mp.trend || mp.trendVerdict],
+      ['Momentum', mp.momentum || mp.momentumVerdict],
+      ['Sector Flow', mp.sectorFlow || mp.sectorVerdict],
+      ['Volatility Regime', mp.volatilityRegime || mp.volRegime],
+      ['Analyst Revisions', mp.analystRevisions || mp.revisions],
+      ['Price-Earnings Gap', mp.peGap],
+    ];
+    mpFields.forEach(function(f) {
+      if (f[1] != null) {
+        h += '<div style="padding:8px 10px;border-radius:6px;background:#f8fafc;border:1px solid #e2e8f0"><div style="font-size:8px;color:#64748b;font-weight:800;letter-spacing:0.4px;text-transform:uppercase">' + f[0] + '</div><div style="font-size:11px;font-weight:700;color:#0f172a;margin-top:2px">' + f[1] + '</div></div>';
+      }
+    });
+    h += '</div>';
+    if (mp.summary || mp.commentary) h += '<div style="margin-top:10px;padding:10px 12px;background:#f0fdfa;border-left:3px solid #0d9488;border-radius:0 6px 6px 0;font-size:11px;color:#0f172a;line-height:1.5">' + (mp.summary || mp.commentary) + '</div>';
+    h += '</div>';
+  } else {
+    h += '<div style="padding:14px 18px;font-size:11px;color:#7f1d1d">⚠ ' + ((mp && mp.error) || 'Market Pulse endpoint unavailable') + '</div>';
+  }
+  h += '</div>';
+
+  // ═══ 3 & 4. CROSS-MARKET + SIMILAR STOCKS ═══ (table of peers)
+  var _renderXM = function(data, title, icon, color, region_label) {
+    var card = '<div style="margin:18px 0;border:1px solid #e2e8f0;border-radius:14px;background:#fff;overflow:hidden">';
+    card += '<div style="padding:12px 18px;background:' + color + '14;border-bottom:2px solid ' + color + '40"><div style="font-size:13px;font-weight:900;color:' + color + ';font-family:Sora,sans-serif">' + icon + ' ' + title + ' — ' + region_label + '</div></div>';
+    if (data && data.success && (data.results || data.matches || data.peers)) {
+      var rows = data.results || data.matches || data.peers || [];
+      if (rows.length === 0) {
+        card += '<div style="padding:14px 18px;font-size:11px;color:#64748b">No similar stocks found.</div>';
+      } else {
+        card += '<div style="padding:14px 18px"><table style="width:100%;border-collapse:collapse;font-size:10px;font-family:Inter,sans-serif">';
+        card += '<thead><tr style="background:#fafbfc"><th style="padding:7px 8px;text-align:left;font-size:9px;color:#64748b;font-weight:800">SYMBOL</th><th style="padding:7px 8px;text-align:left;font-size:9px;color:#64748b;font-weight:800">NAME</th><th style="padding:7px 8px;text-align:right;font-size:9px;color:#64748b;font-weight:800">PRICE</th><th style="padding:7px 8px;text-align:right;font-size:9px;color:#64748b;font-weight:800">SCORE</th><th style="padding:7px 8px;text-align:right;font-size:9px;color:#64748b;font-weight:800">UPSIDE</th><th style="padding:7px 8px;text-align:center;font-size:9px;color:#64748b;font-weight:800">VERDICT</th></tr></thead><tbody>';
+        rows.slice(0, 8).forEach(function(r, i) {
+          var rowBg = i % 2 === 0 ? '#fff' : '#fafbfc';
+          var sym2 = r.symbol || r.ticker || '—';
+          var name = (r.name || r.companyName || '').substring(0, 28);
+          var price = r.price || r.spot;
+          var score = r.score || r.investability_score || r.match_score;
+          var upside = r.upside || r.upside_pct;
+          var verdict = r.verdict || r.decision || r.signal || '—';
+          var vC = String(verdict).indexOf('BUY') >= 0 ? '#059669' : String(verdict).indexOf('SELL') >= 0 ? '#dc2626' : '#d97706';
+          card += '<tr style="background:' + rowBg + '">';
+          card += '<td style="padding:6px 8px;font-family:JetBrains Mono,monospace;font-weight:700;color:#1A3A78">' + sym2 + '</td>';
+          card += '<td style="padding:6px 8px;color:#475569">' + name + '</td>';
+          card += '<td style="padding:6px 8px;text-align:right;font-family:JetBrains Mono,monospace">' + (price != null ? S + fNum(price, 2) : '—') + '</td>';
+          card += '<td style="padding:6px 8px;text-align:right;font-family:JetBrains Mono,monospace;font-weight:700">' + (score != null ? fNum(score, 0) : '—') + '</td>';
+          card += '<td style="padding:6px 8px;text-align:right;font-family:JetBrains Mono,monospace">' + fPct(upside, 1) + '</td>';
+          card += '<td style="padding:6px 8px;text-align:center;font-weight:800;color:' + vC + ';font-size:9px">' + verdict + '</td>';
+          card += '</tr>';
+        });
+        card += '</tbody></table>';
+        if (rows.length > 8) card += '<div style="margin-top:6px;font-size:9px;color:#94a3b8;text-align:center">Showing top 8 of ' + rows.length + ' matches.</div>';
+        card += '</div>';
+      }
+    } else {
+      card += '<div style="padding:14px 18px;font-size:11px;color:#7f1d1d">⚠ ' + ((data && data.error) || 'Endpoint unavailable') + '</div>';
+    }
+    card += '</div>';
+    return card;
+  };
+  h += _renderXM(xmCross, 'Cross-Market Scanner', '🌐', '#2563eb', reg === 'US' ? 'Indian market' : 'US market');
+  h += _renderXM(xmSame, 'Similar Stocks — Same Region', '🔍', '#1A3A78', reg === 'US' ? 'US market peers' : 'Indian market peers');
+
+  // ═══ 5. 360° CYCLE ANALYSIS ═══ (concise summary card)
+  h += '<div style="margin:18px 0;border:1px solid #e2e8f0;border-radius:14px;background:#fff;overflow:hidden">';
+  h += '<div style="padding:12px 18px;background:#7c3aed14;border-bottom:2px solid #7c3aed40"><div style="font-size:13px;font-weight:900;color:#7c3aed;font-family:Sora,sans-serif">🔄 360° Cycle Analysis — Phase · Position · Recommendation</div></div>';
+  if (cy && cy.success) {
+    h += '<div style="padding:14px 18px">';
+    h += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:10px">';
+    var cyFields = [
+      ['Current Phase', cy.current_phase || cy.phase || cy.cycle_phase],
+      ['Cycle Position', cy.cycle_position || cy.position],
+      ['Bottom Line Verdict', cy.bottom_line || cy.verdict],
+      ['Composite Score', cy.composite_score != null ? fNum(cy.composite_score, 1) + '/100' : null],
+      ['Risk Level', cy.risk_level || cy.risk],
+      ['Investability', cy.investability_score != null ? fNum(cy.investability_score, 0) + '/100' : null],
+    ];
+    cyFields.forEach(function(f) {
+      if (f[1] != null) {
+        h += '<div style="padding:8px 10px;border-radius:6px;background:#f5f3ff;border:1px solid #e9d5ff"><div style="font-size:8px;color:#7c3aed;font-weight:800;letter-spacing:0.4px;text-transform:uppercase">' + f[0] + '</div><div style="font-size:11px;font-weight:700;color:#0f172a;margin-top:2px">' + f[1] + '</div></div>';
+      }
+    });
+    h += '</div>';
+    if (cy.recommendation || cy.action) {
+      h += '<div style="margin-top:10px;padding:10px 12px;background:#f5f3ff;border-left:3px solid #7c3aed;border-radius:0 6px 6px 0;font-size:11px;color:#0f172a;line-height:1.5"><strong style="color:#7c3aed">RECOMMENDATION:</strong> ' + (cy.recommendation || cy.action) + '</div>';
+    }
+    h += '</div>';
+  } else {
+    h += '<div style="padding:14px 18px;font-size:11px;color:#7f1d1d">⚠ ' + ((cy && cy.error) || '360° Cycle endpoint unavailable') + '</div>';
+  }
+  h += '</div>';
+
+  h += '<div style="margin-top:16px;padding:10px 14px;background:#f8fafc;border-radius:8px;font-size:9px;color:#64748b;text-align:center;font-family:JetBrains Mono,monospace">END OF APPENDIX · Generated ' + new Date().toISOString() + '</div>';
+  h += '</div>'; // close #csPdfAppendix
+
+  return h;
+};
+
 window._csExportPDF = async function() {
   var btn = event && event.currentTarget;
 
@@ -25231,6 +25815,34 @@ window._csExportPDF = async function() {
     var tbDisplay = tb ? tb.style.display : '';
     if (tb) tb.style.display = 'none';
 
+    // r63.77.0: Build PDF appendix (Wealth Pro, Market Pulse, Cross-Market x2, 360° Cycle)
+    // Update button text to show progress
+    if (btn) {
+      btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg><span style="font-size:10px;font-weight:700">running scans…</span>';
+    }
+    var appendixHtml = '';
+    try {
+      if (typeof window._csBuildPDFAppendix === 'function') {
+        appendixHtml = await window._csBuildPDFAppendix(ticker, window._deRegion || 'US');
+      }
+    } catch (apxErr) {
+      console.warn('[PDF] Appendix build failed (continuing without it):', apxErr);
+      appendixHtml = '<div style="margin-top:24px;padding:12px;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;font-size:11px;color:#7f1d1d">⚠ PDF appendix unavailable: ' + (apxErr.message || apxErr) + '</div>';
+    }
+
+    // Inject appendix into #deResult so html2canvas captures it
+    var appendixContainer = null;
+    if (appendixHtml) {
+      appendixContainer = document.createElement('div');
+      appendixContainer.id = 'csPdfAppendixWrapper';
+      appendixContainer.innerHTML = appendixHtml;
+      reportEl.appendChild(appendixContainer);
+    }
+
+    if (btn) {
+      btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg><span style="font-size:10px;font-weight:700">rendering…</span>';
+    }
+
     // Capture report as canvas (whole content, ignore CSS scaling for accuracy)
     var canvas = await window.html2canvas(reportEl, {
       scale: 1.5,                    // higher resolution
@@ -25241,6 +25853,11 @@ window._csExportPDF = async function() {
       windowWidth: reportEl.scrollWidth,
       windowHeight: reportEl.scrollHeight,
     });
+
+    // Remove appendix from DOM (user's view returns to normal)
+    if (appendixContainer && appendixContainer.parentNode) {
+      appendixContainer.parentNode.removeChild(appendixContainer);
+    }
 
     // Restore toolbar
     if (tb) tb.style.display = tbDisplay;

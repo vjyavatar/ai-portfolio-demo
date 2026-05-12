@@ -1,3 +1,171 @@
+## r63.77.0 (2026-05-13) — SOFTENED GROUP BANNERS + PDF APPENDIX
+
+Two user requests addressed in one ship:
+
+### 1. Softened all group banners — eye comfort fix
+
+Cause: All Groups 2-12 used a saturated full-color gradient banner (`background:linear-gradient(135deg, color, color+'cc')`) with white text. User specifically flagged the dark purple (Group 5 Factor & Alpha) and dark orange (Group 6 Risk Engine) as disturbing to eyes — but the same harsh-contrast pattern affected all 11 groups.
+
+Fix: One-line change in `_groupWrap` (static/app.js line ~17270). Same color identity per group, but rendered as a soft tinted background (`color + '14'` ≈ 8% opacity) with the original color used for text and a subtle 2px border-bottom accent (`color + '40'` ≈ 25% opacity). Bloomberg/institutional aesthetic — muted backgrounds, subtle accents, no high-contrast harshness.
+
+Groups affected (all 11 — same change covers everything):
+- Group 2 (Valuation): blue `#3b82f6`
+- Group 3 (Technical): amber `#d97706`
+- Group 4 (Institutional Flows): red `#dc2626`
+- Group 5 (Factor & Alpha): purple `#7c3aed` ← user-flagged
+- Group 6 (Risk Engine): dark orange `#ea580c` ← user-flagged
+- Group 7 (Macro & Regime): near-black `#374151`
+- Group 8 (Scenario & Probability): dark brown `#92400e`
+- Group 9 (Portfolio & Capital): gray `#6b7280`
+- Group 10+11 (Decision Intelligence): navy `#1A3A78`
+- Group 12 (Narrative & Sentiment): cyan `#0891b2`
+
+### 2. PDF appendix — Wealth Pro, Market Pulse, Cross-Market, Similar Stocks, 360° Cycle now included
+
+Cause: These 5 button outputs (Wealth Pro Scan, Market Pulse, Cross-Market Scanner, Similar Stocks Same Region, 360° Cycle Analysis) all open as modals (`_openDeepModal`, `#xmModal`) or full-page takeovers — they're not inside `#deResult`. The PDF export captures `#deResult.innerHTML` via html2canvas, so the modal outputs were invisible to the PDF.
+
+Fix: New async helper `window._csBuildPDFAppendix(sym, reg)` (static/app.js line ~25623) fires all 5 endpoints in parallel and builds a "PDF APPENDIX" section as HTML. `_csExportPDF` calls this BEFORE html2canvas, appends the appendix to `#deResult` so it's captured, then removes it after capture (user's on-screen view returns to normal — the appendix is PDF-only).
+
+Endpoints fetched in parallel:
+- `/api/pro-scan?symbol=X&region=Y` → Wealth Pro Scan (full `_renderProScan(d)` since that's a top-level reusable function — same quality as the modal)
+- `/api/market-context?symbol=X&region=Y` → Market Pulse (compact summary card: context verdict + score + 6 sub-fields like Trend / Momentum / Sector Flow / Volatility Regime / Analyst Revisions / Price-Earnings Gap + commentary)
+- `/api/cross-market-match?symbol=X&region=Y&mode=cross` → Cross-Market Scanner (top 8 peers table: symbol · name · price · score · upside · verdict)
+- `/api/cross-market-match?symbol=X&region=Y&mode=same` → Similar Stocks Same Region (same table format)
+- `/api/cycle-analysis?symbol=X&region=Y` → 360° Cycle Analysis (compact: current phase, cycle position, bottom line, composite score, risk level, investability + recommendation block)
+
+Defensive — for each endpoint:
+- If the fetch fails or success=false, the section renders a red ⚠ error block with the API error message but the rest of the appendix still works.
+- For Market Pulse / Cycle / Cross-Market, field names try multiple variants (e.g., `cy.current_phase` OR `cy.phase` OR `cy.cycle_phase`) so the renderer matches whatever shape your backend returns. Missing fields are silently skipped.
+
+UX during PDF generation:
+1. User clicks PDF icon in toolbar
+2. Button text updates: "running scans…" (~3-8 seconds while 5 fetches run in parallel)
+3. Button text updates: "rendering…" (html2canvas captures the unified page including appendix)
+4. PDF downloads as `Celesys_DD_<TICKER>_<DATE>.pdf` — now includes 5 extra sections at the end
+
+### Files changed
+
+- `static/app.js`:
+  - Line 17270: 7-line `_groupWrap` banner refactor (softer rendering)
+  - Line 25623: new ~180-line `window._csBuildPDFAppendix` helper
+  - Line 25818: `_csExportPDF` modified to call the appendix builder, inject into `#deResult` before capture, remove after
+- `static/app.min.js`: synced from app.js (md5 verified identical)
+- `build_version.txt`: bumped to `r63.77.0`
+
+### Regression checks (after deploy)
+
+- [ ] Decide → Research → analyze MU → scroll to "PART 2: Institutional Analysis & Timing" → confirm Groups 5 (purple) and 6 (orange) banners are now soft-tinted with colored text instead of saturated white-on-purple/orange. Same for Groups 7, 8 which were also dark.
+- [ ] Click the PDF icon in the Deep DD toolbar → button shows "running scans…" → then "rendering…" → PDF downloads.
+- [ ] Open the PDF. Confirm last ~3-5 pages contain the new "📎 PDF APPENDIX — Deep Scan Outputs" section with all 5 cards: Wealth Pro, Market Pulse, Cross-Market Scanner, Similar Stocks Same Region, 360° Cycle Analysis.
+- [ ] After PDF generation, user's on-screen view is unchanged (appendix removed after capture).
+- [ ] If any endpoint fails (e.g., `/api/cycle-analysis` returns 500), the rest of the appendix still renders and only that section shows a red ⚠ error block. PDF still works.
+- [ ] No JS console errors during the PDF flow.
+
+### Known followups (per user's earlier "next round" decision)
+
+- N/A and "Cannot Compute" values in DD content reflect `/api/investor-due-diligence` returning incomplete fields. Backend audit pending — user handling api.py side.
+- Premium Intelligence Group's red ⚠ NEEDS_BACKEND tags will populate as you wire `/api/investor-decide` to return the analyst_estimates / forward_multiples / earnings_surprises / etc. fields per the schema docs in r63.76.0 changelog.
+
+## r63.76.0 (2026-05-13) — PREMIUM INTELLIGENCE GROUP (5 institutional sections)
+
+User asked for fiscal-period analyst expectations + brainstorm of premium features. Built all 5 Tier A sections in one collapsible group sitting between Group 1 (Fundamentals) and Groups 2-12 (Institutional Stack) in the unified investor view.
+
+### What got built
+
+A new amber-themed collapsible `<details>` group titled "💎 Premium Intelligence — Consensus · Revisions · Surprises · Multiples · Dividends" containing 5 cards:
+
+1. **Fiscal Period Ending — Analysts Expect** (`📅`)
+   - 3-column table: FY0 (current) · FY1 (next) · FY2
+   - Rows: Revenue (cons.), Revenue YoY, EPS, EPS YoY, **Forward P/E @ current price**, # analysts, estimate range (low–high), 30-day EPS revision
+   - Forward P/E auto-computed = price / eps_estimate
+
+2. **Estimate Revisions Heatmap** (`📈`)
+   - 2×4 grid: EPS / Revenue rows × 7d / 30d / 60d / 90d columns
+   - Color buckets: >+2% dark green, >+0.5% light green, ±0.5% yellow, >-2% light red, ≤-2% dark red
+   - Below: 30-day upward vs downward analyst count tile pair
+
+3. **Earnings Surprise History** (`🎯`)
+   - 8-quarter table: Period · Est · Act · Surprise % · **Next-day reaction** · **5d post-earnings drift**
+   - Auto-computed beat/miss verdict ("CONSISTENT BEATER" / "OFTEN BEATS" / "MIXED" / "OFTEN MISSES") with beat rate %
+
+4. **Forward Multiples Stack** (`📊`)
+   - 5-row table: Forward P/E · PEG · EV/EBITDA · P/S · P/FCF
+   - Columns: Forward · 5Y Median · vs Median (%) · Signal
+   - Signal buckets: CHEAP vs OWN HIST (<-20%) / FAIR-CHEAP (-20 to -5) / AT MEDIAN (-5 to +5) / PREMIUM (+5 to +20) / RICH vs OWN HIST (+20+)
+
+5. **Dividend Quality Score** (`💵`)
+   - Auto-skips for non-payers (yield === 0 or null) with a clean "skipped" card
+   - For payers: 6 metric tiles (Yield, Payout, FCF Cover, 5Y CAGR, Streak, Next Ex-Date)
+   - Aggregate verdict: HIGH QUALITY (≥75% pass) / ADEQUATE (≥50%) / AT RISK (<50%)
+
+### Defensive field access — red gap flags
+
+Every field is fetched via `window._piPick(obj, [paths], fallback)` which tries multiple common path variants per field (e.g., `forward_pe`, `fwd_pe`, `forwardPE`). When a field is missing/null/empty, instead of breaking or rendering "—", the renderer inserts a small **red `⚠ field_name` tag** so the api.py side knows exactly what to wire next. Tags use the actual expected backend key name verbatim — no guessing.
+
+Each section card also includes an inline schema comment showing the expected JSON shape for that section's data, so wiring api.py is mechanical:
+
+```
+d.analyst_estimates = { current_year: {...}, next_year: {...}, two_years_out: {...} }
+  per period: { fiscal_period_end, revenue_estimate, eps_estimate, num_analysts, low, high, revenue_yoy, eps_yoy, revision_30d_pct }
+
+d.estimate_revisions = { "7d": {...}, "30d": {...}, "60d": {...}, "90d": {...} }
+  per window: { eps_revision_pct, revenue_revision_pct, upward_count, downward_count }
+
+d.earnings_surprises = [ {fiscal_period, eps_estimate, eps_actual, surprise_pct, next_day_reaction_pct, post_earnings_5d_pct}, ... ]
+  (8 most-recent quarters, newest first)
+
+d.forward_pe, d.forward_peg, d.forward_ev_ebitda, d.forward_p_s, d.forward_p_fcf  (scalar)
+d.median_5y_pe, d.median_5y_peg, d.median_5y_ev_ebitda, d.median_5y_ps, d.median_5y_p_fcf  (scalar)
+OR nest under d.forward_multiples = { pe, peg, ev_ebitda, ps, p_fcf, pe_5y_median, peg_5y_median, ... }
+
+d.dividend_yield (scalar; 0 = non-payer)
+d.payout_ratio, d.fcf_coverage, d.div_5y_cagr, d.div_consecutive_growth_years, d.next_ex_dividend_date  (scalar)
+OR nest under d.dividend = { yield, payout_ratio, fcf_coverage, 5y_cagr, consecutive_growth_years, next_ex_date }
+```
+
+### Files changed
+
+- `static/app.js`:
+  - New top-level helpers near line 8478: `window._piPick`, `window._piGap`, `window._piPct`, `window._piCcy`, `window._renderPremiumIntelligence` (~400 lines)
+  - Call site at line 17054: inserted between Group 1 closing (`h+='</div>';` after deep-scan buttons) and Groups 2-12 banner (`// ═══ CROSS-SECTOR SIMILARITY`)
+- `static/app.min.js`: synced (md5 verified)
+- `build_version.txt`: bumped to `r63.76.0`
+
+### Placement
+
+```
+[ Investor mode top — verdict, MDO, valuation, F-Score, DCF, Monte Carlo,
+  Buffett, Sector Rotation, Returns/Kelly, position calc, deep-scan buttons ]
+  ↓
+[ 💎 PREMIUM INTELLIGENCE GROUP ← NEW ]
+  ↓
+[ Groups 2-12: Institutional Analysis Stack + Legacy Matrix + CDS v2.0 + LO Scanner ]
+  ↓
+[ Cross-Market Scanner + Similar Stocks buttons ]
+  ↓
+[ Full Deep DD embed (Sections I-VI) ]
+```
+
+### Regression checks
+
+- [ ] Decide → Research → analyze MU/AAPL/NVDA → "💎 Premium Intelligence" collapsible appears right after the deep-scan buttons, before "PART 2: Institutional Analysis & Timing" banner.
+- [ ] Card 1 (Fiscal Period): Forward P/E row shows computed `price / eps_estimate` in navy bold.
+- [ ] Card 5 (Dividend): for non-payers (NVDA, TSLA, MU), shows the "non-payer skipped" message. For payers (AAPL, JPM), shows full 6-metric grid + verdict.
+- [ ] Any field your `/api/investor-decide` doesn't return shows as a small red `⚠ field_name` tag — those are your TODO list for api.py.
+- [ ] Console clean — no `[PREMIUM-INTEL] render failed` errors.
+- [ ] Collapsing/expanding the outer `<details>` works.
+- [ ] Mobile: tables horizontal-scroll cleanly (wrapped in `overflow-x:auto`).
+
+### Backend wiring guide (for next round)
+
+The frontend gracefully degrades to red gap tags for any missing field. To eliminate them, wire `/api/investor-decide` to return the keys listed in the schemas above. Recommend doing it section-by-section:
+
+1. Easiest first: `forward_pe`, `forward_peg` — Yahoo Finance returns these natively in `info` dict (yfinance: `info['forwardPE']`, `info['pegRatio']`)
+2. Next: `analyst_estimates` object — Yahoo Finance has `Ticker.earnings_dates` and `Ticker.analyst_price_targets` for partial coverage
+3. Next: `earnings_surprises` array — Yahoo Finance `Ticker.earnings_history` returns 4Q; Finnhub has 8Q+ via `/stock/earnings`
+4. Hardest: `estimate_revisions` with 7d/30d/60d/90d windows — needs historical estimate snapshots; Finnhub `/stock/recommendation` is the closest free option (consensus rating over time)
+5. Dividend fields — all from Yahoo Finance `info` + `Ticker.dividends` series for CAGR and streak computation
+
 ## r63.75.1 (2026-05-13) — DD HELPER BOOTSTRAP + STRIP VDE HEADER
 
 Two surgical fixes for issues reported on r63.75.0 production:
