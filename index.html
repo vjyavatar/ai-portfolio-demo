@@ -1681,18 +1681,30 @@ window._fillAlgoSelect=fillSelect;
 <div class="sbody">
 <!-- Analyze Stock controls — hidden when Dream/PMS/TopTrades active -->
 <div id="deControls">
-<!-- Mode + Region row -->
+<!-- r63.72.34: Persona toggle row - Research vs Trading -->
 <div style="display:flex;gap:10px;align-items:center;margin-bottom:12px;flex-wrap:wrap">
-<div style="display:flex;gap:0;border:2px solid var(--border);border-radius:10px;overflow:hidden">
-<button id="deModeTrader" onclick="switchDEMode('trader')" style="padding:8px 20px;font-size:11px;font-weight:800;border:none;cursor:pointer;font-family:Sora,sans-serif;background:#f1f5f9;color:#374151;transition:all .2s">⚡ Trader</button>
-<button id="deModeInvestor" onclick="switchDEMode('investor')" style="padding:8px 20px;font-size:11px;font-weight:800;border:none;cursor:pointer;font-family:Sora,sans-serif;background:linear-gradient(135deg,#1A3A78,#1e40af);color:#fff;transition:all .2s">📊 Investor</button>
-<button id="deModeOptions" onclick="switchDEMode('options')" style="display:none;padding:8px 20px;font-size:11px;font-weight:800;border:none;cursor:pointer;font-family:Sora,sans-serif;background:#f1f5f9;color:#374151;transition:all .2s">🎯 Options</button><button id="deModeActiveTrading" onclick="switchDEMode('activetrading')" style="padding:8px 20px;font-size:11px;font-weight:800;border:none;cursor:pointer;font-family:Sora,sans-serif;background:#f1f5f9;color:#374151;transition:all .2s">🎯 Active Trading</button>
+<div id="dePersonaToggle" style="display:flex;gap:0;border:2px solid var(--border);border-radius:10px;overflow:hidden">
+<button id="dePersonaResearch" onclick="window._setPersona('research')" style="padding:8px 22px;font-size:11px;font-weight:800;border:none;cursor:pointer;font-family:Sora,sans-serif;background:linear-gradient(135deg,#1A3A78,#1e40af);color:#fff;transition:all .2s">🔬 Research</button>
+<button id="dePersonaTrading" onclick="window._setPersona('trading')" style="padding:8px 22px;font-size:11px;font-weight:800;border:none;cursor:pointer;font-family:Sora,sans-serif;background:#f1f5f9;color:#374151;transition:all .2s">⚡ Trading</button>
 </div>
 <div style="display:flex;gap:0;border:1px solid var(--border);border-radius:8px;overflow:hidden">
 <button id="deRegIN" onclick="switchDERegion('IN')" style="padding:6px 14px;font-size:10px;font-weight:800;border:none;cursor:pointer;font-family:Sora,sans-serif;background:linear-gradient(135deg,#1A3A78,#1e40af);color:#fff;box-shadow:0 2px 8px rgba(26,58,120,.2)">IN India</button>
 <button id="deRegUS" onclick="switchDERegion('US')" style="padding:6px 14px;font-size:10px;font-weight:800;border:none;cursor:pointer;font-family:Sora,sans-serif;background:#f1f5f9;color:#374151">US USA</button>
 </div>
 </div>
+
+<!-- r63.72.34: Trading sub-row (shown only when persona=trading) -->
+<div id="deTradingSubRow" style="display:none;margin-bottom:12px;padding:10px 12px;background:#fafbfc;border:1px solid var(--border);border-radius:8px">
+<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+<span style="font-size:9px;color:var(--text3);font-weight:800;letter-spacing:0.5px;font-family:Sora,sans-serif">TRADING MODE:</span>
+<button id="deModeTrader" onclick="switchDEMode('trader')" style="padding:6px 14px;font-size:10px;font-weight:800;border-radius:6px;border:1px solid var(--border);cursor:pointer;font-family:Sora,sans-serif;background:#f1f5f9;color:#374151;transition:all .2s">⚡ Trader</button>
+<button id="deModeOptions" onclick="switchDEMode('options')" style="padding:6px 14px;font-size:10px;font-weight:800;border-radius:6px;border:1px solid var(--border);cursor:pointer;font-family:Sora,sans-serif;background:#f1f5f9;color:#374151;transition:all .2s">🎯 Options</button>
+<button id="deModeActiveTrading" onclick="switchDEMode('activetrading')" style="padding:6px 14px;font-size:10px;font-weight:800;border-radius:6px;border:1px solid var(--border);cursor:pointer;font-family:Sora,sans-serif;background:#f1f5f9;color:#374151;transition:all .2s">🎯 Active Trading</button>
+</div>
+</div>
+
+<!-- r63.72.34: Hidden legacy investor button kept for backward compat with code that targets #deModeInvestor by id -->
+<button id="deModeInvestor" onclick="switchDEMode('investor')" style="display:none">Investor</button>
 <!-- Quick pick buttons -->
 <div style="margin-bottom:12px">
 <div id="deStocksIN" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
@@ -2251,9 +2263,9 @@ Think of this as your <strong>daily briefing from a fund manager's desk</strong>
 <!-- BACK TO TOP -->
 <button class="btt" id="bttBtn" onclick="window.scrollTo({top:0,behavior:'smooth'})" aria-label="Back to top">&#8593; Top</button>
 
-<script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.9/purify.min.js" defer></script><script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script><link rel="stylesheet" href="/static/celesys-ds.css?v=1778611098">
-<script src="/static/app.min.js?v=1778611098"></script>
-<script src="/static/premium-override.js?v=1778611098" defer></script>
+<script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.9/purify.min.js" defer></script><script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script><link rel="stylesheet" href="/static/celesys-ds.css?v=1778612666">
+<script src="/static/app.min.js?v=1778612666"></script>
+<script src="/static/premium-override.js?v=1778612666" defer></script>
 <script src="/static/options-engine.js?v=1775711038" defer></script>
 <script src="/static/active-trading.js?v=53" defer></script>
 
