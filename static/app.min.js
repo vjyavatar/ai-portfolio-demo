@@ -1,5 +1,5 @@
 // ═══ Celesys version stamp ═══
-window.CELESYS_VERSION = "r63.72.31";
+window.CELESYS_VERSION = "r63.72.32";
 window.CELESYS_BUILD_TIME = 1778525757;
 window.CELESYS_BUILD_DATE = "2026-05-11 18:14:10 UTC";
 window.CELESYS_FEATURES = {
@@ -9,7 +9,7 @@ window.CELESYS_FEATURES = {
   three_lens_scanner: true,
 };
 console.log("%c━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "color:#1A3A78");
-console.log("%c CELESYS r63.72.31 %c loaded · 2026-05-11 18:14:10 UTC",
+console.log("%c CELESYS r63.72.32 %c loaded · 2026-05-11 18:14:10 UTC",
   "background:#7c3aed;color:#fff;font-weight:900;padding:3px 8px;border-radius:3px;font-family:monospace",
   "color:#7c3aed;font-weight:700;font-family:monospace");
 console.log("%c Features: 360° Cycle Analysis · Diamond Hunter · Fund Analyzer · Three-Lens Scanner",
@@ -22,7 +22,7 @@ document.addEventListener('DOMContentLoaded', function() {
     var stamp = document.createElement('div');
     stamp.id = 'celesys-build-stamp';
     stamp.style.cssText = 'position:fixed;bottom:8px;left:8px;background:linear-gradient(135deg,#1A3A78,#7c3aed);color:#fff;padding:4px 10px;font-size:9px;font-weight:800;font-family:IBM Plex Mono,monospace;border-radius:4px;letter-spacing:0.5px;z-index:99999;box-shadow:0 2px 8px rgba(124,58,237,0.4);cursor:pointer;user-select:none';
-    stamp.textContent = '⚙ r63.72.31 · 2026-05-11';
+    stamp.textContent = '⚙ r63.72.32 · 2026-05-11';
     stamp.title = 'Click to verify backend version';
     stamp.onclick = function() {
       fetch('/api/build-version').then(function(r){return r.json();}).then(function(d){
@@ -14029,12 +14029,121 @@ function _renderReportLegacy(d){
   h += '</div>'; // close max-width
   el.innerHTML = h;
 
-  // r63.72.31: Install design-system hooks (scroll-spy + card normalizer)
+  // r63.72.31/32: Install design-system hooks (scroll-spy + card normalizer)
   try {
     if (typeof window._csddInstallScrollSpy === 'function') window._csddInstallScrollSpy();
     if (typeof window._csddObserveAndNormalize === 'function') window._csddObserveAndNormalize();
   } catch (e) { console.warn('DD shell hooks failed:', e); }
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// r63.72.32 — DD Shell helpers (FIXED: functions exposed on window, no IIFE)
+// Previous r63.72.31 wrapped these in an IIFE which hid them from inline
+// onclick handlers. This version defines them directly on window so the
+// sticky-nav onclick="_csddJumpTo(...)" calls actually resolve.
+// ═══════════════════════════════════════════════════════════════════════════
+
+window._csddSections = [
+  {id: 'verdict',  roman: 'I',   label: 'Verdict'},
+  {id: 'context',  roman: 'II',  label: 'Context'},
+  {id: 'analysis', roman: 'III', label: 'Analysis'},
+  {id: 'signals',  roman: 'IV',  label: 'Signals'},
+  {id: 'external', roman: 'V',   label: 'External View'},
+];
+
+window._csddJumpTo = function(sectionId) {
+  try {
+    var s = window._csddSections.find(function(x){ return x.id === sectionId; });
+    if (!s) return;
+    var target = document.querySelector('[data-csdd-section="' + s.roman + '"]');
+    if (target) target.scrollIntoView({behavior: 'smooth', block: 'start'});
+    document.querySelectorAll('.csdd-stickynav__item').forEach(function(b) {
+      b.classList.toggle('csdd-stickynav__item--active',
+        b.getAttribute('data-csdd-nav') === sectionId);
+    });
+  } catch (e) { console.warn('csddJumpTo failed:', e); }
+};
+
+window._csddInstallScrollSpy = function() {
+  if (window._csddScrollSpyInstalled) return;
+  window._csddScrollSpyInstalled = true;
+  window.addEventListener('scroll', function() {
+    if (window._csddScrollSpyTimer) return;
+    window._csddScrollSpyTimer = setTimeout(function() {
+      window._csddScrollSpyTimer = null;
+      try {
+        var sections = document.querySelectorAll('[data-csdd-section]');
+        var winMid = window.scrollY + 150;
+        var currentId = null;
+        sections.forEach(function(sec) {
+          var top = sec.getBoundingClientRect().top + window.scrollY;
+          if (top <= winMid) {
+            var roman = sec.getAttribute('data-csdd-section');
+            var match = window._csddSections.find(function(x){ return x.roman === roman; });
+            if (match) currentId = match.id;
+          }
+        });
+        if (currentId) {
+          document.querySelectorAll('.csdd-stickynav__item').forEach(function(b) {
+            b.classList.toggle('csdd-stickynav__item--active',
+              b.getAttribute('data-csdd-nav') === currentId);
+          });
+        }
+      } catch (e) {}
+    }, 100);
+  }, {passive: true});
+};
+
+window._csddNormalizeCard = function(containerId, opts) {
+  opts = opts || {};
+  try {
+    var el = document.getElementById(containerId);
+    if (!el) return;
+    var inner = el.querySelector(':scope > div');
+    if (!inner) return;
+    // Skip cards that use linear-gradient (hero / verdict-banner style)
+    var bg = inner.style.background || '';
+    if (bg.indexOf('linear-gradient') >= 0) return;
+    if (!inner.classList.contains('csdd-card')) {
+      inner.classList.add('csdd-card');
+      if (opts.compact) inner.classList.add('csdd-card--compact');
+      // Strip inline overrides so CSS variables drive look
+      inner.style.background = '';
+      inner.style.border = '';
+      inner.style.borderRadius = '';
+      inner.style.padding = '';
+      inner.style.marginBottom = '';
+      inner.style.fontFamily = '';
+    }
+  } catch (e) {}
+};
+
+window._csddObserveAndNormalize = function() {
+  if (window._csddObsInstalled) return;
+  window._csddObsInstalled = true;
+  var targetIds = [
+    'ddMarketRegimeCard', 'ddSectorFlowCard', 'ddStock4DCard',
+    'stockCommentaryCard',
+    'ddDemandCurveCard', 'ddOwnershipCard', 'ddVolumeProfileCard',
+    'ddWoodshedCard',
+    'ddAnalystCoverageCard',
+  ];
+  try {
+    var observer = new MutationObserver(function(mutations) {
+      mutations.forEach(function(m) {
+        var id = m.target && m.target.id;
+        if (targetIds.indexOf(id) >= 0) {
+          var compact = (id === 'ddMarketRegimeCard' || id === 'ddSectorFlowCard');
+          window._csddNormalizeCard(id, {compact: compact});
+        }
+      });
+    });
+    targetIds.forEach(function(id) {
+      var el = document.getElementById(id);
+      if (el) observer.observe(el, {childList: true, subtree: false});
+    });
+  } catch (e) {}
+};
 
 // Initial render
 renderForm();
