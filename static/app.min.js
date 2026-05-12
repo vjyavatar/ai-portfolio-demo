@@ -8311,8 +8311,9 @@ window._buildEmbeddedDDSections = function(symbol, sector, region) {
   h += '<div class="csdd-section__head">';
   h += '<span class="csdd-section__roman">DD · III</span>';
   h += '<span class="csdd-section__title">Signals</span>';
-  h += '<span class="csdd-section__sub">Commentary · Demand · Ownership · Volume · Woodshed</span>';
+  h += '<span class="csdd-section__sub">Returns · Commentary · Demand · Ownership · Volume · Woodshed</span>';
   h += '</div>';
+  h += '<div id="ddReturnsSnapshotCard"></div>';
   h += '<div id="stockCommentaryCard"></div>';
   h += '<div id="ddDemandCurveCard"></div>';
   h += '<div id="ddOwnershipCard"></div>';
@@ -8372,6 +8373,13 @@ window._fireEmbeddedDDLoaders = function(symbol, sector, region) {
       window._loadAnalystCoverageTicker(sym, region);
     }
   } catch(e) { console.warn('AnalystCoverage load failed:', e); }
+
+  // r63.75.0: Returns Snapshot — multi-timeframe momentum thought-check
+  try {
+    if (typeof window._loadReturnsSnapshot === 'function') {
+      window._loadReturnsSnapshot(sym, region);
+    }
+  } catch(e) { console.warn('ReturnsSnapshot load failed:', e); }
 };
 
 // ═════════════════════════════════════════════════════════════════════════
@@ -8439,6 +8447,10 @@ window._embedDeepDDIntoInvestor = function(symbol, region, targetEl) {
           }
           if (typeof window._loadAnalystCoverageTicker === 'function') {
             window._loadAnalystCoverageTicker(sym, region);
+          }
+          // r63.75.0: Returns Snapshot — multi-timeframe thought-check
+          if (typeof window._loadReturnsSnapshot === 'function') {
+            window._loadReturnsSnapshot(sym, region);
           }
         } catch (e) { console.warn('Embedded full-DD loaders failed:', e); }
       }, 120);
@@ -13102,6 +13114,10 @@ window._ddGenerate = function(){
           if (typeof window._loadWoodshedSignal === 'function') {
             window._loadWoodshedSignal(_sym, window._deRegion || 'US');
           }
+          // r63.75.0: Returns Snapshot — multi-timeframe thought-check
+          if (typeof window._loadReturnsSnapshot === 'function') {
+            window._loadReturnsSnapshot(_sym, window._deRegion || 'US');
+          }
         }, 100);
       } catch(e) { console.warn('Commentary/Forward-view auto-load failed:', e); }
     })
@@ -13437,8 +13453,9 @@ function _renderReportLegacy(d){
   h += '<div class="csdd-section__head">';
   h += '<span class="csdd-section__roman">SECTION IV</span>';
   h += '<span class="csdd-section__title">Signals</span>';
-  h += '<span class="csdd-section__sub">Commentary · Demand · Ownership · Volume · Woodshed</span>';
+  h += '<span class="csdd-section__sub">Returns · Commentary · Demand · Ownership · Volume · Woodshed</span>';
   h += '</div>';
+  h += '<div id="ddReturnsSnapshotCard"></div>';
   h += '<div id="stockCommentaryCard"></div>';
   h += '<div id="ddDemandCurveCard"></div>';
   h += '<div id="ddOwnershipCard"></div>';
@@ -30176,6 +30193,239 @@ window._loadDDForwardView = function(symbol, region) {
     .then(function(r){return r.json();}).then(function(d){ window._renderVolumeProfile(d); })
     .catch(function(e){ _ddRenderError('ddVolumeProfileCard', 'Volume Profile', e.message); });
 };
+
+// ═══════════════════════════════════════════════════════════════════════════
+// r63.75.0 — Returns Snapshot — multi-timeframe momentum thought-check
+// ═══════════════════════════════════════════════════════════════════════════
+// Shows 15d / 1m / 3m / 6m / 1y / 5y / 10y returns vs current price.
+// Designed as a quick "thought check" — the user can see at a glance whether
+// short-term momentum aligns with long-term trend.
+//
+// Data path:
+//   1. Try backend endpoint /api/dd-returns-snapshot?symbol=X&region=Y
+//      (PENDING — needs api.py implementation. See changelog for spec.)
+//   2. If backend 404s or returns failure, attempt direct Yahoo Finance v8
+//      chart endpoint with CORS — works in browser when Yahoo permits.
+//   3. If both fail, show graceful fallback with retry button.
+// ═══════════════════════════════════════════════════════════════════════════
+
+window._loadReturnsSnapshot = function(symbol, region) {
+  symbol = (symbol || window._ddLastSymbol || '').toUpperCase();
+  region = region || window._deRegion || 'US';
+  if (!symbol) return;
+
+  var containerId = 'ddReturnsSnapshotCard';
+  var el = document.getElementById(containerId);
+  if (!el) return;
+
+  // Loading state
+  el.innerHTML = '<div style="padding:14px 18px;background:#fff;border:1px solid #e2e8f0;border-radius:10px;margin:14px 0;font-family:Inter,sans-serif">' +
+    '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">' +
+      '<span style="font-size:16px">📈</span>' +
+      '<span style="font-size:13px;font-weight:800;color:#1A3A78;font-family:Sora,sans-serif">Returns Snapshot — ' + symbol + '</span>' +
+    '</div>' +
+    '<div style="font-size:10px;color:#94a3b8">Calculating multi-timeframe returns…</div>' +
+    '</div>';
+
+  // Try backend endpoint first (preferred path — handles Yahoo 401 / NSE fallback / Google Finance scrape on backend)
+  fetch('/api/dd-returns-snapshot?symbol=' + encodeURIComponent(symbol) + '&region=' + encodeURIComponent(region))
+    .then(function(r) {
+      if (!r.ok) throw new Error('backend 404');
+      return r.json();
+    })
+    .then(function(d) {
+      if (!d || !d.success || !d.returns) throw new Error('backend returned no data');
+      _renderReturnsSnapshotCard(symbol, region, d);
+    })
+    .catch(function() {
+      // Fallback: try Yahoo Finance directly from browser (works when CORS permits)
+      _fetchYahooReturnsSnapshot(symbol, region).then(function(snapshot) {
+        if (snapshot && snapshot.returns) {
+          _renderReturnsSnapshotCard(symbol, region, snapshot);
+        } else {
+          _renderReturnsSnapshotFallback(symbol, region, 'Backend endpoint /api/dd-returns-snapshot not implemented yet, and direct Yahoo fetch was blocked.');
+        }
+      }).catch(function(e) {
+        _renderReturnsSnapshotFallback(symbol, region, 'Returns data temporarily unavailable. Backend endpoint /api/dd-returns-snapshot pending implementation.');
+      });
+    });
+};
+
+// Direct Yahoo Finance v8 chart fetch — browser-side. May fail due to CORS.
+function _fetchYahooReturnsSnapshot(symbol, region) {
+  return new Promise(function(resolve, reject) {
+    var yfSym = symbol;
+    if (region === 'IN' && !symbol.indexOf('.') >= 0) yfSym = symbol + '.NS';
+
+    var url = 'https://query1.finance.yahoo.com/v8/finance/chart/' + encodeURIComponent(yfSym) + '?range=10y&interval=1d';
+    fetch(url, {mode: 'cors'})
+      .then(function(r) {
+        if (!r.ok) throw new Error('yahoo http ' + r.status);
+        return r.json();
+      })
+      .then(function(d) {
+        var chart = d && d.chart && d.chart.result && d.chart.result[0];
+        if (!chart) return resolve(null);
+        var ts = chart.timestamp || [];
+        var quotes = chart.indicators && chart.indicators.quote && chart.indicators.quote[0];
+        var closes = (quotes && quotes.close) || [];
+
+        var data = [];
+        for (var i = 0; i < ts.length; i++) {
+          if (closes[i] !== null && closes[i] !== undefined && !isNaN(closes[i])) {
+            data.push({t: ts[i], c: closes[i]});
+          }
+        }
+        if (data.length < 2) return resolve(null);
+
+        var current = data[data.length - 1].c;
+        var nowTs = data[data.length - 1].t;
+        var DAY = 86400;
+        var periods = [
+          {key: '15d', days: 15},
+          {key: '1m',  days: 30},
+          {key: '3m',  days: 90},
+          {key: '6m',  days: 180},
+          {key: '1y',  days: 365},
+          {key: '5y',  days: 365 * 5},
+          {key: '10y', days: 365 * 10}
+        ];
+        var returns = {};
+        periods.forEach(function(p) {
+          var targetTs = nowTs - (p.days * DAY);
+          var found = null;
+          for (var k = data.length - 1; k >= 0; k--) {
+            if (data[k].t <= targetTs) { found = data[k].c; break; }
+          }
+          returns[p.key] = (found && found > 0) ? ((current - found) / found) * 100 : null;
+        });
+        resolve({success: true, returns: returns, current_price: current, source: 'yahoo-direct'});
+      })
+      .catch(function(e) { resolve(null); });
+  });
+}
+
+function _renderReturnsSnapshotCard(symbol, region, snapshot) {
+  var el = document.getElementById('ddReturnsSnapshotCard');
+  if (!el) return;
+  var returns = snapshot.returns || {};
+  var ccy = region === 'IN' ? '₹' : '$';
+  var price = snapshot.current_price;
+
+  var periods = [
+    {key: '15d', label: '15D'},
+    {key: '1m',  label: '1M'},
+    {key: '3m',  label: '3M'},
+    {key: '6m',  label: '6M'},
+    {key: '1y',  label: '1Y'},
+    {key: '5y',  label: '5Y'},
+    {key: '10y', label: '10Y'}
+  ];
+
+  var h = '<div style="padding:14px 18px;background:#fff;border:1px solid #e2e8f0;border-radius:10px;margin:14px 0;font-family:Inter,sans-serif">';
+
+  // Header
+  h += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap">';
+  h += '<span style="font-size:18px">📈</span>';
+  h += '<span style="font-size:13px;font-weight:800;color:#1A3A78;letter-spacing:0.3px;font-family:Sora,sans-serif">Returns Snapshot — Thought Check</span>';
+  if (snapshot.source) {
+    h += '<span style="font-size:8px;color:#94a3b8;font-family:IBM Plex Mono,monospace;letter-spacing:0.4px">src: ' + snapshot.source + '</span>';
+  }
+  if (price) {
+    h += '<span style="margin-left:auto;font-size:10px;color:#64748b;font-family:IBM Plex Mono,monospace">' + symbol + ' · ' + ccy + Number(price).toFixed(2) + '</span>';
+  }
+  h += '</div>';
+
+  // 7-column grid
+  h += '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-bottom:12px">';
+  periods.forEach(function(p) {
+    var pct = returns[p.key];
+    if (pct === null || pct === undefined || isNaN(pct)) {
+      h += '<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:9px 6px;text-align:center">' +
+           '<div style="font-size:9px;color:#94a3b8;font-weight:700;letter-spacing:0.5px;font-family:Sora,sans-serif">' + p.label + '</div>' +
+           '<div style="font-size:13px;font-weight:900;color:#94a3b8;font-family:JetBrains Mono,monospace;margin-top:3px">N/A</div>' +
+           '</div>';
+    } else {
+      var col = pct >= 0 ? '#059669' : '#dc2626';
+      var bg  = pct >= 0 ? 'rgba(16,185,129,0.06)' : 'rgba(220,38,38,0.06)';
+      var bd  = pct >= 0 ? 'rgba(16,185,129,0.25)' : 'rgba(220,38,38,0.25)';
+      var sign = pct >= 0 ? '+' : '';
+      h += '<div style="background:' + bg + ';border:1px solid ' + bd + ';border-radius:6px;padding:9px 6px;text-align:center">' +
+           '<div style="font-size:9px;color:#64748b;font-weight:700;letter-spacing:0.5px;font-family:Sora,sans-serif">' + p.label + '</div>' +
+           '<div style="font-size:13px;font-weight:900;color:' + col + ';font-family:JetBrains Mono,monospace;margin-top:3px">' + sign + pct.toFixed(1) + '%</div>' +
+           '</div>';
+    }
+  });
+  h += '</div>';
+
+  // Thought-check interpretation
+  var short = returns['1m'];
+  var med = returns['1y'];
+  var long = returns['5y'];
+  var interpretation = '';
+  if (typeof short === 'number' && typeof long === 'number') {
+    if (short > 0 && long > 0) {
+      interpretation = '<strong style="color:#059669">Aligned uptrend</strong> — both short-term and long-term positive. Consistent compounder behavior; momentum supports the thesis.';
+    } else if (short < 0 && long > 0) {
+      interpretation = '<strong style="color:#d97706">Mean-revert candidate</strong> — long-term up, short-term weakness. Potential entry on dip if fundamentals hold.';
+    } else if (short > 0 && long < 0) {
+      interpretation = '<strong style="color:#d97706">Possible turnaround</strong> — long-term underperformance with short-term bounce. Verify if the regime change is real (catalyst, management, sector tailwind) before sizing up.';
+    } else {
+      interpretation = '<strong style="color:#dc2626">Aligned downtrend</strong> — both timeframes negative. Wait for stabilization (volume capitulation, base formation) before entry.';
+    }
+  } else {
+    interpretation = 'Partial data — interpretation requires both short-term (1M) and long-term (5Y) returns.';
+  }
+
+  // Best/worst period callouts
+  var best = null, worst = null;
+  Object.keys(returns).forEach(function(k) {
+    var v = returns[k];
+    if (typeof v !== 'number') return;
+    if (best === null || v > best.v) best = {k: k, v: v};
+    if (worst === null || v < worst.v) worst = {k: k, v: v};
+  });
+
+  h += '<div style="background:#f8fafc;border-left:3px solid #1A3A78;padding:10px 14px;border-radius:0 6px 6px 0">';
+  h += '<div style="font-size:9px;letter-spacing:0.5px;color:#1A3A78;font-weight:800;margin-bottom:4px;font-family:Sora,sans-serif">THOUGHT CHECK</div>';
+  if (best && worst && best.k !== worst.k) {
+    h += '<div style="font-size:10px;color:#64748b;margin-bottom:6px;font-family:IBM Plex Mono,monospace;letter-spacing:0.3px">';
+    h += 'Best: <strong style="color:' + (best.v >= 0 ? '#059669' : '#dc2626') + '">' + best.k.toUpperCase() + ' ' + (best.v >= 0 ? '+' : '') + best.v.toFixed(1) + '%</strong>';
+    h += ' · Worst: <strong style="color:' + (worst.v >= 0 ? '#059669' : '#dc2626') + '">' + worst.k.toUpperCase() + ' ' + (worst.v >= 0 ? '+' : '') + worst.v.toFixed(1) + '%</strong>';
+    h += '</div>';
+  }
+  h += '<div style="font-size:11px;color:#334155;line-height:1.6">' + interpretation + '</div>';
+  h += '</div>';
+
+  h += '</div>';
+  el.innerHTML = h;
+}
+
+function _renderReturnsSnapshotFallback(symbol, region, msg) {
+  var el = document.getElementById('ddReturnsSnapshotCard');
+  if (!el) return;
+  var h = '<div style="padding:14px 18px;background:#fff;border:1px solid #e2e8f0;border-radius:10px;margin:14px 0;font-family:Inter,sans-serif">';
+  h += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap">';
+  h += '<span style="font-size:16px">📈</span>';
+  h += '<span style="font-size:13px;font-weight:800;color:#1A3A78;font-family:Sora,sans-serif">Returns Snapshot — ' + symbol + '</span>';
+  h += '<span style="margin-left:auto;font-size:9px;color:#94a3b8;font-family:IBM Plex Mono,monospace;letter-spacing:0.4px">DATA PENDING</span>';
+  h += '</div>';
+  h += '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-bottom:10px">';
+  ['15D', '1M', '3M', '6M', '1Y', '5Y', '10Y'].forEach(function(label) {
+    h += '<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:9px 6px;text-align:center">' +
+         '<div style="font-size:9px;color:#94a3b8;font-weight:700;letter-spacing:0.5px;font-family:Sora,sans-serif">' + label + '</div>' +
+         '<div style="font-size:13px;font-weight:900;color:#cbd5e1;font-family:JetBrains Mono,monospace;margin-top:3px">—</div>' +
+         '</div>';
+  });
+  h += '</div>';
+  h += '<div style="background:#fef9c3;border:1px solid #fde68a;border-left:3px solid #d97706;padding:8px 12px;border-radius:0 6px 6px 0;font-size:10px;color:#78350f;line-height:1.6;font-family:Inter,sans-serif">';
+  h += '<strong>⚠ ' + msg + '</strong><br>';
+  h += 'See changelog r63.75.0 for backend endpoint spec.';
+  h += '</div>';
+  h += '</div>';
+  el.innerHTML = h;
+}
+
 
 function _ddRenderError(containerId, sectionName, msg) {
   var el = document.getElementById(containerId);

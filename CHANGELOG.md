@@ -1,3 +1,85 @@
+## r63.75.0 (2026-05-13) — RETURNS SNAPSHOT (Multi-Timeframe Thought-Check)
+
+Context: User requested 15D / 1M / 3M / 6M / 1Y / 5Y / 10Y return percentages added to Section IV (Signals) of Deep DD as a quick "thought check" — at a glance, does short-term momentum align with long-term trend?
+
+Frontend changes:
+
+1. **New helper `window._loadReturnsSnapshot(symbol, region)`** (line ~30182):
+   - Tries backend endpoint `/api/dd-returns-snapshot?symbol=X&region=Y` first.
+   - If backend 404s or returns no data, falls back to direct Yahoo Finance v8 chart endpoint (`query1.finance.yahoo.com/v8/finance/chart/{SYMBOL}?range=10y&interval=1d`) — may succeed if Yahoo's current CORS policy permits browser fetches.
+   - If both fail, renders a graceful "data pending" card with all 7 placeholder cells dashed out and a yellow status banner pointing to this changelog for the backend spec.
+
+2. **`_renderReturnsSnapshotCard(symbol, region, snapshot)`** — renders the result:
+   - 7-column grid showing 15D · 1M · 3M · 6M · 1Y · 5Y · 10Y returns as colored pills (green positive / red negative / gray N/A).
+   - "Thought Check" block below interprets the short-vs-long alignment:
+     - Short positive + long positive → "Aligned uptrend — consistent compounder."
+     - Short negative + long positive → "Mean-revert candidate — entry on dip if fundamentals hold."
+     - Short positive + long negative → "Possible turnaround — verify regime change before sizing up."
+     - Both negative → "Aligned downtrend — wait for stabilization."
+   - Best/worst period callout above the interpretation.
+
+3. **Section IV container added in three render paths**:
+   - `_renderReportLegacy` (line ~13442) — standalone Deep DD page (`Decide → Deep DD sub-tab`).
+   - `_buildEmbeddedDDSections` (line ~8316) — legacy embed path (kept for backup, no longer wired into investor mode after r63.74.0).
+   - All update Section IV subtitle from "Commentary · Demand · Ownership · Volume · Woodshed" → "Returns · Commentary · Demand · Ownership · Volume · Woodshed".
+
+4. **Loader fired in three trigger paths**:
+   - `_fireEmbeddedDDLoaders` (line ~8377) — DD-I→DD-IV legacy path.
+   - `_embedDeepDDIntoInvestor` (line ~8448) — investor mode unified embed.
+   - `_ddGenerate` (line ~13113) — standalone Deep DD page generate.
+
+5. **`static/app.min.js`** — synced (md5 verified).
+6. **`build_version.txt`** — bumped to `r63.75.0`.
+
+## ⚠ BACKEND ENDPOINT SPEC (TO IMPLEMENT NEXT ROUND)
+
+Endpoint: `GET /api/dd-returns-snapshot?symbol=<SYMBOL>&region=<US|IN>`
+
+Response shape (success):
+```json
+{
+  "success": true,
+  "symbol": "MU",
+  "region": "US",
+  "current_price": 747.59,
+  "source": "yfinance" | "nse" | "google-finance",
+  "returns": {
+    "15d": -5.93,
+    "1m":  16.87,
+    "3m":  -8.10,
+    "6m":  -3.20,
+    "1y":  91.40,
+    "5y":  1280.50,
+    "10y": null
+  },
+  "as_of": "2026-05-13T02:00:00Z"
+}
+```
+
+Response shape (failure):
+```json
+{
+  "success": false,
+  "error": "yfinance 401 blocked",
+  "symbol": "MU"
+}
+```
+
+Implementation notes:
+- For US stocks: yfinance is 401-blocked from Render IP (per existing memory). Use Google Finance scrape fallback like other working endpoints. Alternative: cache nightly returns in db/ and serve from there.
+- For Indian stocks (`region=IN`): NSE has daily price history; can compute returns server-side.
+- For periods where data is unavailable (e.g., stock IPO'd < 10y ago): return `null` for that key, frontend handles N/A display.
+- Cache TTL: 1 hour recommended — returns don't change intra-day for most use cases.
+
+## Diagnostic note for the "still not seeing DD institutional" complaint
+
+The user's r63.74.0 screenshots actually show the embed IS working: Insider & Institutional Activity, Volume Profile, Woodshed Signal, Analyst Coverage, Commentary & Day-to-Day, Demand Curve — all from the Deep DD Section II–V embedded into investor mode. What's not yet confirmed: whether **Section VI** (Investment Thesis, Financial Health, Porter's Five Forces, SWOT, Risk Matrix, Catalysts, Earnings History, Insider Activity with Form 4 names, Institutional Ownership detail, Analyst Targets, DCF) renders BELOW Analyst Coverage. Action: user to scroll past Analyst Coverage and report whether the page ends there (Section VI missing — bug) or continues (just scroll past, all working).
+
+If Section VI is genuinely missing, suspect either:
+- `/api/investor-due-diligence` response missing the `competitive`, `sector_context`, `risk_matrix`, `swot`, `porter` fields when called from investor mode (try with different `email` param or no email).
+- `_renderReportLegacy` throwing mid-render — should appear in console as `DD embed render failed: ...`.
+- DOM normalizer `_csddObserveAndNormalize` stripping Section VI cards — unlikely but check console.
+
 ## r63.74.0 (2026-05-13) — UNIFIED INVESTOR PAGE (Full Deep DD embed)
 
 Context: User reported that the standalone Deep DD page only renders Section VI fundamentals (Investment Thesis, Financial Health, Porter's Five Forces, SWOT, Risk Matrix, Catalysts, DCF) but is missing the full institutional analysis stack visible in the PDF export (MDO, Monte Carlo, Buffett, CDS v2.0, 8 Decision Charts, etc.). Root cause: two separate render paths.
