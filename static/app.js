@@ -1,5 +1,5 @@
 // ═══ Celesys version stamp ═══
-window.CELESYS_VERSION = "r63.72.29";
+window.CELESYS_VERSION = "r63.72.31";
 window.CELESYS_BUILD_TIME = 1778525757;
 window.CELESYS_BUILD_DATE = "2026-05-11 18:14:10 UTC";
 window.CELESYS_FEATURES = {
@@ -9,7 +9,7 @@ window.CELESYS_FEATURES = {
   three_lens_scanner: true,
 };
 console.log("%c━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "color:#1A3A78");
-console.log("%c CELESYS r63.72.29 %c loaded · 2026-05-11 18:14:10 UTC",
+console.log("%c CELESYS r63.72.31 %c loaded · 2026-05-11 18:14:10 UTC",
   "background:#7c3aed;color:#fff;font-weight:900;padding:3px 8px;border-radius:3px;font-family:monospace",
   "color:#7c3aed;font-weight:700;font-family:monospace");
 console.log("%c Features: 360° Cycle Analysis · Diamond Hunter · Fund Analyzer · Three-Lens Scanner",
@@ -22,7 +22,7 @@ document.addEventListener('DOMContentLoaded', function() {
     var stamp = document.createElement('div');
     stamp.id = 'celesys-build-stamp';
     stamp.style.cssText = 'position:fixed;bottom:8px;left:8px;background:linear-gradient(135deg,#1A3A78,#7c3aed);color:#fff;padding:4px 10px;font-size:9px;font-weight:800;font-family:IBM Plex Mono,monospace;border-radius:4px;letter-spacing:0.5px;z-index:99999;box-shadow:0 2px 8px rgba(124,58,237,0.4);cursor:pointer;user-select:none';
-    stamp.textContent = '⚙ r63.72.29 · 2026-05-11';
+    stamp.textContent = '⚙ r63.72.31 · 2026-05-11';
     stamp.title = 'Click to verify backend version';
     stamp.onclick = function() {
       fetch('/api/build-version').then(function(r){return r.json();}).then(function(d){
@@ -2557,7 +2557,7 @@ try{if(window._stockData)createCharts(window._stockData)}catch(e){console.warn('
 var TAB_GROUPS = {
   overview: {tabs: ['quick'], labels: ['Summary'], default: 'quick'},
   research: {tabs: ['analysis','dcf','equity','compare'], labels: ['AI Analysis','DCF Valuation','Research','Compare'], default: 'analysis'},
-  decide:   {tabs: ['decision','toptrades','topinvest','deepdd','mchunter','intraday','positioning','diamond','proscan','reports','pms'], labels: ['Analyze Stock','Top Trades','Top Investments','🔬 Deep DD','🎯 Micro-Cap Hunter','⚡ Intraday Setups','🔥 Positioning','💎 Diamond Hunter','🔬 Pro Scan','📊 Reports','📊 PMS'], default: 'decision'},
+  decide:   {tabs: ['decision','toptrades','topinvest','deepdd','mchunter','intraday','positioning','diamond','analyst','proscan','reports','pms'], labels: ['Analyze Stock','Top Trades','Top Investments','🔬 Deep DD','🎯 Micro-Cap Hunter','⚡ Intraday Setups','🔥 Positioning','💎 Diamond Hunter','📊 Analyst Coverage','🔬 Pro Scan','📊 Reports','📊 PMS'], default: 'decision'},
   dream:    {tabs: ['dreamportfolio','multibagger','momentumradar','highprob','optionspulse','tradeticket','microcap'], labels: ['🌟 Dream Portfolio','🔥 Multibagger Hunter','⚡ Momentum Radar','🎯 High-Prob Setups','⚡ Options Pulse','🎫 Trade Ticket','🏆 Micro-Cap Challenge'], default: 'dreamportfolio'},
   trading:  {tabs: ['trades','smarttrades','stockintel','scanner','valreport','backtest','journal','aiassist'], labels: ['Algo Trades','Smart Trades','Stock Intel','Scanner','Valuation','Backtest','Journal','AI Assistant'], default: 'trades'},
   markets:  {tabs: ['indices','daily','newsimpact','assets'], labels: ['Top Performers','Market Daily','📰 News Impact','Global Assets'], default: 'indices'},
@@ -3597,6 +3597,12 @@ if(tab==='positioning'){
 if(tab==='diamond'){
   window._activeDiamondTab=true;
   if(typeof loadDiamondHunter==='function')setTimeout(loadDiamondHunter,100);
+  return;
+}
+// r63.72.30: Analyst Coverage Explorer
+if(tab==='analyst'){
+  window._activeAnalystTab=true;
+  if(typeof loadAnalystCoverage==='function')setTimeout(loadAnalystCoverage,100);
   return;
 }
 // r62.0: Micro-Cap Hunter tab
@@ -12788,6 +12794,10 @@ window._ddGenerate = function(){
           if (typeof window._loadStockCommentary === 'function') {
             window._loadStockCommentary(_sym, window._deRegion || 'US', 'stockCommentaryCard');
           }
+          // r63.72.30: Analyst Coverage panel (per-ticker, embedded in DD)
+          if (typeof window._loadAnalystCoverageTicker === 'function') {
+            window._loadAnalystCoverageTicker(_sym, window._deRegion || 'US');
+          }
           // r63.72.26: Also auto-load the three DD forward-view cards
           if (typeof window._loadDDForwardView === 'function') {
             window._loadDDForwardView(_sym, window._deRegion || 'US');
@@ -13076,7 +13086,17 @@ function _renderReportLegacy(d){
   var ddCsym = d.currency_symbol || csym;
   
   var h = _ddRegBar;
-  h += '<div style="max-width:900px;margin:0 auto">';
+  h += '<div class="csdd-root">';
+
+  // r63.72.31: Sticky section nav
+  h += '<nav class="csdd-stickynav"><div class="csdd-stickynav__inner">';
+  h += '<button class="csdd-stickynav__item csdd-stickynav__item--active" data-csdd-nav="verdict" onclick="_csddJumpTo(\'verdict\')">I · VERDICT</button>';
+  h += '<button class="csdd-stickynav__item" data-csdd-nav="context" onclick="_csddJumpTo(\'context\')">II · CONTEXT</button>';
+  h += '<button class="csdd-stickynav__item" data-csdd-nav="analysis" onclick="_csddJumpTo(\'analysis\')">III · ANALYSIS</button>';
+  h += '<button class="csdd-stickynav__item" data-csdd-nav="signals" onclick="_csddJumpTo(\'signals\')">IV · SIGNALS</button>';
+  h += '<button class="csdd-stickynav__item" data-csdd-nav="external" onclick="_csddJumpTo(\'external\')">V · EXTERNAL VIEW</button>';
+  h += '</div></nav>';
+
   // r61.8: Stale-data banner
   if (d._stale) {
     h += '<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:10px 14px;margin-bottom:14px;display:flex;gap:10px;align-items:center">';
@@ -13088,23 +13108,68 @@ function _renderReportLegacy(d){
     h += '<span>📦</span><span>CACHED · ' + Math.floor((d._cache_age_sec || 0) / 60) + ' MIN AGO</span>';
     h += '</div>';
   }
-  h += _renderBottomLine(d.bottom_line);  // r61.1
 
-  // r63.72.29: Positioning Intelligence (replaces single Mood Gauges)
-  //   Three cards: Market Regime · Sector Flow · Stock 4D + Synthesis
+  // ─── SECTION I: VERDICT ────────────────────────────────────────────────
+  h += '<section class="csdd-section" data-csdd-section="I">';
+  h += '<div class="csdd-section__head">';
+  h += '<span class="csdd-section__roman">SECTION I</span>';
+  h += '<span class="csdd-section__title">Verdict</span>';
+  h += '<span class="csdd-section__sub">Bottom line + cycle analysis</span>';
+  h += '</div>';
+  h += _renderBottomLine(d.bottom_line);
+  h += '</section>';
+
+  // ─── SECTION II: CONTEXT (Market + Sector side-by-side) ────────────────
+  h += '<section class="csdd-section" data-csdd-section="II">';
+  h += '<div class="csdd-section__head">';
+  h += '<span class="csdd-section__roman">SECTION II</span>';
+  h += '<span class="csdd-section__title">Context</span>';
+  h += '<span class="csdd-section__sub">What\'s the macro & sector environment?</span>';
+  h += '</div>';
+  h += '<div class="csdd-row-2col">';
   h += '<div id="ddMarketRegimeCard"></div>';
   h += '<div id="ddSectorFlowCard"></div>';
+  h += '</div>';
+  h += '</section>';
+
+  // ─── SECTION III: ANALYSIS (4D Stock Positioning + Synthesis) ──────────
+  h += '<section class="csdd-section" data-csdd-section="III">';
+  h += '<div class="csdd-section__head">';
+  h += '<span class="csdd-section__roman">SECTION III</span>';
+  h += '<span class="csdd-section__title">Analysis</span>';
+  h += '<span class="csdd-section__sub">4D institutional positioning · the core decision matrix</span>';
+  h += '</div>';
   h += '<div id="ddStock4DCard"></div>';
+  h += '</section>';
 
-  // r63.72.25: Commentary & Day-to-Day card container — auto-loaded after render
+  // ─── SECTION IV: SIGNALS ───────────────────────────────────────────────
+  h += '<section class="csdd-section" data-csdd-section="IV">';
+  h += '<div class="csdd-section__head">';
+  h += '<span class="csdd-section__roman">SECTION IV</span>';
+  h += '<span class="csdd-section__title">Signals</span>';
+  h += '<span class="csdd-section__sub">Commentary · Demand · Ownership · Volume · Woodshed</span>';
+  h += '</div>';
   h += '<div id="stockCommentaryCard"></div>';
-
-  // r63.72.26: DD Forward View — three new cards (Demand Curve, Ownership, Volume Profile)
   h += '<div id="ddDemandCurveCard"></div>';
   h += '<div id="ddOwnershipCard"></div>';
   h += '<div id="ddVolumeProfileCard"></div>';
-  // r63.72.27: Woodshed Signal (capitulation detector) — 5th DD card
   h += '<div id="ddWoodshedCard"></div>';
+  h += '</section>';
+
+  // ─── SECTION V: EXTERNAL VIEW (Analyst Coverage — LAST) ────────────────
+  h += '<section class="csdd-section" data-csdd-section="V">';
+  h += '<div class="csdd-section__head">';
+  h += '<span class="csdd-section__roman">SECTION V</span>';
+  h += '<span class="csdd-section__title">External View</span>';
+  h += '<span class="csdd-section__sub">Wall Street consensus &amp; recent rating actions</span>';
+  h += '</div>';
+  h += '<div id="ddAnalystCoverageCard"></div>';
+  h += '</section>';
+
+  h += '</div>'; // .csdd-root
+
+  // Wrap in legacy max-width container for any subsequent legacy content
+  h += '<div style="max-width:900px;margin:0 auto">';
   
   // Top action bar
   h += '<div style="display:flex;gap:8px;justify-content:flex-end;margin-bottom:10px;flex-wrap:wrap">';
@@ -13963,6 +14028,12 @@ function _renderReportLegacy(d){
   
   h += '</div>'; // close max-width
   el.innerHTML = h;
+
+  // r63.72.31: Install design-system hooks (scroll-spy + card normalizer)
+  try {
+    if (typeof window._csddInstallScrollSpy === 'function') window._csddInstallScrollSpy();
+    if (typeof window._csddObserveAndNormalize === 'function') window._csddObserveAndNormalize();
+  } catch (e) { console.warn('DD shell hooks failed:', e); }
 }
 
 // Initial render

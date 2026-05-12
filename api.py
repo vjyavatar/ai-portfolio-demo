@@ -3898,6 +3898,64 @@ async def dd_positioning_intelligence(symbol: str = "", sector: str = "", region
         return {"success": False, "error": str(e)[:200], "trace": traceback.format_exc()[:1500]}
 
 
+# r63.72.30: Analyst Coverage feed (filterable) + per-ticker view
+@app.get("/api/analyst-coverage")
+async def analyst_coverage(
+    region: str = "US",
+    days_back: int = 30,
+    action_filter: str = "all",
+    sector_filter: str = "",
+    ticker_filter: str = "",
+    firm_filter: str = "",
+    sort_by: str = "date_desc",
+    limit: int = 200,
+):
+    print(f"[{_BUILD_VERSION}] /api/analyst-coverage region={region} days={days_back} action={action_filter} sector={sector_filter} ticker={ticker_filter}")
+    try:
+        from services.analyst_coverage import get_analyst_coverage
+        universe = _momentum_universe_us if region.upper() == "US" else _momentum_universe_in
+        return get_analyst_coverage(
+            region=region,
+            universe=list(universe or []),
+            days_back=max(1, min(365, days_back)),
+            action_filter=action_filter,
+            sector_filter=sector_filter,
+            ticker_filter=ticker_filter,
+            firm_filter=firm_filter,
+            sort_by=sort_by,
+            limit=max(1, min(500, limit)),
+        )
+    except Exception as e:
+        import traceback
+        return {"success": False, "error": str(e)[:200], "trace": traceback.format_exc()[:1500]}
+
+
+@app.get("/api/analyst-coverage-ticker")
+async def analyst_coverage_ticker(symbol: str = "", region: str = "US"):
+    print(f"[{_BUILD_VERSION}] /api/analyst-coverage-ticker symbol={symbol} region={region}")
+    try:
+        from services.analyst_coverage import get_ticker_coverage
+        if not symbol:
+            return {"success": False, "error": "symbol required"}
+        return get_ticker_coverage(symbol, region)
+    except Exception as e:
+        import traceback
+        return {"success": False, "error": str(e)[:200], "trace": traceback.format_exc()[:1500]}
+
+
+@app.post("/api/analyst-coverage-refresh")
+async def analyst_coverage_refresh(region: str = "US"):
+    """Manual force-refresh of the analyst coverage store. Blocks until complete (slow!)."""
+    print(f"[{_BUILD_VERSION}] /api/analyst-coverage-refresh region={region}")
+    try:
+        from services.analyst_coverage import force_refresh
+        universe = _momentum_universe_us if region.upper() == "US" else _momentum_universe_in
+        return {"success": True, "result": force_refresh(region, list(universe or []))}
+    except Exception as e:
+        import traceback
+        return {"success": False, "error": str(e)[:200], "trace": traceback.format_exc()[:1500]}
+
+
 # r63.72.25: Stock Commentary & Day-to-Day Tracker
 @app.get("/api/stock-commentary")
 async def stock_commentary(symbol: str = "", region: str = "US"):

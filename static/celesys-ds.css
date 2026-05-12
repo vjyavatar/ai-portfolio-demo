@@ -862,3 +862,213 @@
 /* When new layout is active, hide the OLD verdict header that comes from renderReport */
 .cs-dd-shell-active [data-legacy-verdict] { display: none !important; }
 .cs-dd-shell-active [data-legacy-action-bar] { display: none !important; }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * r63.72.31 — Deep DD Report Design System
+ * Modern institutional B2B finance — shadcn/ui + Refactoring UI principles
+ * Used to unify all DD report cards under one shell
+ * ═════════════════════════════════════════════════════════════════════════ */
+
+/* Design tokens (DD-scoped) */
+:root {
+  --csdd-radius:        12px;
+  --csdd-radius-sm:     8px;
+  --csdd-radius-pill:   999px;
+  --csdd-pad:           18px 22px;
+  --csdd-pad-sm:        14px 16px;
+  --csdd-gap:           14px;
+  --csdd-shadow:        0 1px 2px 0 rgba(15, 23, 42, 0.05);
+  --csdd-surface:       #ffffff;
+  --csdd-surface-2:     #f8fafc;
+  --csdd-surface-3:     #f1f5f9;
+  --csdd-border:        #e2e8f0;
+  --csdd-text:          #0f172a;
+  --csdd-text-2:        #334155;
+  --csdd-text-3:        #64748b;
+  --csdd-text-4:        #94a3b8;
+  --csdd-text-5:        #cbd5e1;
+  --csdd-accent:        #1a3a78;
+  --csdd-accent-2:      #2563eb;
+  --csdd-accent-bg:     #eff6ff;
+  --csdd-success:       #059669;
+  --csdd-success-bg:    #ecfdf5;
+  --csdd-warn:          #d97706;
+  --csdd-warn-bg:       #fffbeb;
+  --csdd-danger:        #dc2626;
+  --csdd-danger-bg:     #fef2f2;
+  --csdd-font-display:  'Sora', 'Inter', system-ui, sans-serif;
+  --csdd-font-mono:     'IBM Plex Mono', 'JetBrains Mono', monospace;
+}
+
+/* Container */
+.csdd-root {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 0 4px;
+  font-family: 'Inter', system-ui, sans-serif;
+  color: var(--csdd-text);
+}
+
+/* Sticky section nav */
+.csdd-stickynav {
+  position: sticky; top: 0; z-index: 50;
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--csdd-border);
+  margin: 0 -4px 18px -4px;
+  padding: 10px 8px;
+}
+.csdd-stickynav__inner {
+  display: flex; gap: 4px; overflow-x: auto;
+  scrollbar-width: none; -ms-overflow-style: none;
+}
+.csdd-stickynav__inner::-webkit-scrollbar { display: none; }
+.csdd-stickynav__item {
+  padding: 6px 12px; font-size: 10px; font-weight: 700;
+  letter-spacing: 0.5px; color: var(--csdd-text-3);
+  text-transform: uppercase; font-family: var(--csdd-font-display);
+  border-radius: 6px; cursor: pointer; border: none;
+  background: transparent; white-space: nowrap; transition: all 0.15s;
+}
+.csdd-stickynav__item:hover { background: var(--csdd-surface-2); color: var(--csdd-text); }
+.csdd-stickynav__item--active { background: var(--csdd-accent); color: #fff; }
+
+/* Section header */
+.csdd-section { padding: 14px 0 4px 0; scroll-margin-top: 70px; }
+.csdd-section__head {
+  display: flex; align-items: baseline; gap: 12px;
+  margin-bottom: 12px; padding-bottom: 6px;
+  border-bottom: 1px solid var(--csdd-border);
+}
+.csdd-section__roman {
+  font-family: var(--csdd-font-display);
+  font-size: 9px; font-weight: 800; letter-spacing: 1.2px;
+  color: var(--csdd-text-4);
+}
+.csdd-section__title {
+  font-family: var(--csdd-font-display);
+  font-size: 13px; font-weight: 800;
+  color: var(--csdd-text); letter-spacing: 0.3px;
+}
+.csdd-section__sub {
+  font-size: 11px; color: var(--csdd-text-3);
+  margin-left: auto; font-style: italic;
+}
+
+/* Card */
+.csdd-card {
+  background: var(--csdd-surface);
+  border: 1px solid var(--csdd-border);
+  border-radius: var(--csdd-radius);
+  padding: var(--csdd-pad);
+  margin-bottom: var(--csdd-gap);
+  box-shadow: var(--csdd-shadow);
+}
+.csdd-card--compact { padding: var(--csdd-pad-sm); }
+.csdd-card--hero {
+  background: linear-gradient(135deg, var(--csdd-accent) 0%, var(--csdd-accent-2) 100%);
+  border: none; color: #fff;
+}
+.csdd-card--hero .csdd-card__title,
+.csdd-card--hero .csdd-card__eyebrow { color: rgba(255,255,255,0.95); }
+
+.csdd-card__head {
+  display: flex; align-items: baseline; gap: 10px;
+  margin-bottom: 12px; flex-wrap: wrap;
+}
+.csdd-card__eyebrow {
+  font-family: var(--csdd-font-display);
+  font-size: 9px; font-weight: 800; letter-spacing: 1px;
+  color: var(--csdd-text-4); text-transform: uppercase;
+}
+.csdd-card__title {
+  font-family: var(--csdd-font-display);
+  font-size: 14px; font-weight: 700;
+  color: var(--csdd-text); letter-spacing: 0.2px;
+}
+.csdd-card__meta { margin-left: auto; display: flex; gap: 6px; align-items: center; }
+
+/* Badges */
+.csdd-badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 2px 8px; border-radius: var(--csdd-radius-pill);
+  font-size: 9px; font-weight: 800; letter-spacing: 0.6px;
+  font-family: var(--csdd-font-display);
+  text-transform: uppercase; white-space: nowrap;
+}
+.csdd-badge--solid   { color: #fff; }
+.csdd-badge--ghost   { background: var(--csdd-surface-3); color: var(--csdd-text-3); }
+.csdd-badge--success { background: var(--csdd-success-bg); color: var(--csdd-success); }
+.csdd-badge--warn    { background: var(--csdd-warn-bg);    color: var(--csdd-warn);    }
+.csdd-badge--danger  { background: var(--csdd-danger-bg);  color: var(--csdd-danger);  }
+.csdd-badge--info    { background: var(--csdd-accent-bg);  color: var(--csdd-accent);  }
+.csdd-badge__dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; display: inline-block; }
+
+/* Layman 360° box */
+.csdd-layman {
+  background: var(--csdd-surface-2);
+  border-left: 3px solid var(--csdd-accent);
+  border-radius: 0 6px 6px 0;
+  padding: 10px 14px; margin-top: 12px;
+}
+.csdd-layman__label {
+  font-family: var(--csdd-font-display);
+  font-size: 9px; font-weight: 800; letter-spacing: 0.8px;
+  color: var(--csdd-accent); text-transform: uppercase; margin-bottom: 4px;
+}
+.csdd-layman__body { font-size: 12px; color: var(--csdd-text-2); line-height: 1.6; }
+.csdd-layman__target { font-size: 10px; color: var(--csdd-text-3); margin-top: 8px; font-family: var(--csdd-font-mono); }
+.csdd-layman__target strong { color: var(--csdd-accent); }
+
+/* Metric tiles */
+.csdd-metric-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 10px;
+}
+.csdd-metric {
+  background: var(--csdd-surface-2);
+  border: 1px solid var(--csdd-border);
+  border-radius: 8px; padding: 10px 12px;
+}
+.csdd-metric__label {
+  font-family: var(--csdd-font-display);
+  font-size: 9px; font-weight: 800; letter-spacing: 0.5px;
+  color: var(--csdd-text-3); text-transform: uppercase; margin-bottom: 4px;
+}
+.csdd-metric__value {
+  font-family: var(--csdd-font-mono);
+  font-size: 22px; font-weight: 800; color: var(--csdd-text); line-height: 1.1;
+}
+.csdd-metric__sub { font-size: 10px; color: var(--csdd-text-3); margin-top: 3px; }
+
+/* Score bar */
+.csdd-scorebar { height: 5px; background: var(--csdd-border); border-radius: 3px; overflow: hidden; margin-top: 6px; }
+.csdd-scorebar__fill { height: 100%; border-radius: 3px; transition: width 0.4s; }
+
+/* 2-col row */
+.csdd-row-2col { display: grid; grid-template-columns: 1fr 1fr; gap: var(--csdd-gap); margin-bottom: var(--csdd-gap); }
+@media (max-width: 768px) { .csdd-row-2col { grid-template-columns: 1fr; } }
+
+/* Methodology footnote */
+.csdd-footnote {
+  font-size: 10px; color: var(--csdd-text-4); line-height: 1.5;
+  font-style: italic; margin-top: 10px; padding-top: 10px;
+  border-top: 1px solid var(--csdd-border);
+}
+
+/* Loading state */
+.csdd-loading { padding: 28px 20px; text-align: center; color: var(--csdd-text-4); font-size: 11px; }
+
+/* Table */
+.csdd-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+.csdd-table thead { background: var(--csdd-surface-2); border-bottom: 1px solid var(--csdd-border); }
+.csdd-table th {
+  padding: 9px 12px; text-align: left;
+  font-family: var(--csdd-font-display); font-size: 9px; font-weight: 800;
+  letter-spacing: 0.6px; color: var(--csdd-text-3);
+  text-transform: uppercase; white-space: nowrap;
+}
+.csdd-table tbody tr { border-bottom: 1px solid #f1f5f9; transition: background 0.1s; }
+.csdd-table tbody tr:hover { background: var(--csdd-accent-bg); }
+.csdd-table td { padding: 8px 12px; vertical-align: middle; color: var(--csdd-text-2); }
