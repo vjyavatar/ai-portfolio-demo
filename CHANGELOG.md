@@ -1,3 +1,168 @@
+## r63.81.0 (2026-05-13) — PDF APPENDIX BUG FIXES
+
+User reported 3 issues from a printed report:
+1. **Wealth Pro section bodies were blank** — only headers visible, no Reverse DCF / Monte Carlo / Alpha Signals / Cash Quality / Buffett / Growth Map / Earnings content captured (image 2)
+2. **Market Pulse showed `[object Object]`** for Momentum and Sector Flow fields (image 3)
+3. **Cross-Market Scanner and Similar Stocks both said "Endpoint unavailable"** even though those endpoints work fine when called from the live modal (image 3)
+4. **360° Cycle Analysis had a header but empty body** (image 3)
+
+Root causes — all in `window._csBuildPDFAppendix` (the function that builds the PDF appendix injected into `#deResult` before html2canvas captures):
+
+### Bug 1: Wealth Pro collapsed in print
+`_renderProScan()` wraps each section in `_proAccordion()` which produces `<details>` with only ROIC having `open` set. html2canvas captures the DOM as rendered — collapsed `<details>` bodies are hidden, so only the headers got into the PDF.
+
+**Fix:** Added a `fOpen()` post-processor that runs the rendered HTML through a regex adding `open` to any `<details>` that doesn't already have it. Applied before injecting Wealth Pro into the appendix. All 10 institutional sections now expand for the PDF.
+
+### Bug 2: `[object Object]` in Market Pulse
+The backend returns `mp.momentum` and `mp.sectorFlow` as objects like `{verdict: "STRONG", score: 75}`, not strings. My appendix code did naïve string interpolation, which JavaScript converts to `[object Object]`.
+
+**Fix:** Added a defensive `fStr()` serializer that:
+- Returns string/number values as-is
+- For objects, tries `.verdict || .label || .value || .signal || .status || .text || .summary || .description || .name` in priority order
+- Falls back to `.score` for purely numeric objects
+- Last resort: 80-char `JSON.stringify` slice
+- Returns null for empty values (so the field cell is omitted)
+
+Applied to every field that could be a backend object: `contextVerdict`, all `mpFields` values, `summary`, cycle `verdict`, cycle `layman`, sub-section labels.
+
+### Bug 3: Cross-Market / Similar Stocks "Endpoint unavailable"
+My appendix code checked `data.results || data.matches || data.peers` — none of those exist in the actual `/api/cross-market-match` response. The real shape is **bucketed**: `{success, sourceProfile, totalScanned, investNow, exactMatch, wait, avoid, csym, ...}`. So my condition was false → fell through to the "Endpoint unavailable" error branch, even though the endpoint was returning a full 200 OK response.
+
+**Fix:**
+- Separated `data.success` check from the rows check (so a bad response and an empty response show different messages)
+- When standard arrays aren't found, flatten the buckets: `exactMatch → investNow → wait → avoid → candidates`, tagging each row with its source bucket (`r._bucket`)
+- Added a source-profile summary row at the top showing match confidence, F-Score, moat score, total scanned
+- Changed last column from "VERDICT" → "BUCKET" with color-coded labels (INVEST NOW = green, AVOID = red, WAIT = amber)
+- Increased from top 8 → top 10 to give the PDF more peer context
+- Used `data.csym` if returned (handles currency for the matched market correctly)
+
+### Bug 4: 360° Cycle Analysis empty body
+The endpoint `/api/cycle-analysis` returns `{success, ticker, sections: [{section: 'synthesis', verdict, verdict_color, layman, metrics: {net_score, positive_signals, negative_signals}}, ...]}` — an array of named sections, not a flat object. My code was looking for `cy.current_phase || cy.phase || cy.cycle_position`, none of which exist.
+
+**Fix:** Use the real shape:
+- Find `synthesis` section: `cy.sections.find(s => s.section === 'synthesis')`
+- Show synthesis verdict as colored pill using `verdict_color` mapping (green/yellow/red/default → #10b981/#f59e0b/#dc2626/#7c3aed)
+- Show `metrics.net_score` with positive/negative signal counts
+- Show `layman` plain-English summary in a left-bordered card
+- Below synthesis, grid of up to 6 sub-sections (filtered to those with `verdict || phase || summary`) — each as a small card with `verdict_color` left-border + 80-char truncated summary
+- Also passes `price` and `market_cap` to the endpoint URL (was missing — endpoint may have been returning sparse data without them)
+
+### Files changed
+
+- `static/app.js`:
+  - `window._csBuildPDFAppendix` (line ~25877) — full rewrite of all 5 sections + new `fStr()` and `fOpen()` helpers
+- `static/app.min.js`: synced (md5 verified identical)
+- `build_version.txt`: bumped to `r63.81.0`
+
+### Regression checks
+
+Deploy then run the "📄 Export PDF" button on a stock report. Verify the appendix shows:
+
+- [ ] **Wealth Pro section**: every accordion is EXPANDED — ROIC vs WACC, Reverse DCF, Monte Carlo, Alpha Signals, Cash Conversion, Buffett/Legends, Growth Map, Earnings Consistency, Debt Cycle, Exit Rules. All content visible, no collapsed headers.
+- [ ] **Market Pulse**: no `[object Object]` anywhere. Trend/Momentum/Sector Flow/Volatility/Revisions show string verdicts. Summary text appears below.
+- [ ] **Cross-Market Scanner**: source profile row at top (confidence/F-Score/moat/total scanned). Table of up to 10 peers with bucket column (INVEST NOW / EXACT MATCH / WAIT / AVOID).
+- [ ] **Similar Stocks**: same table format for same-region peers.
+- [ ] **360° Cycle Analysis**: verdict pill + signal count + plain-English summary + up to 6 sub-section cards.
+- [ ] If a specific endpoint is genuinely down, that section shows the real error (not the generic "Endpoint unavailable").
+
+### About Premium Intelligence (image 1)
+
+The "Data pending — analyst estimates not yet returned" lines you saw are CORRECT — those sections show empty states because `/api/investor-decide` doesn't return `d.analyst_estimates`, `d.estimate_revisions`, `d.earnings_surprises`, `d.forward_pe`, `d.median_5y_pe`, etc. yet. This is a backend wiring task, not a frontend bug. The 14 missing field paths are listed in the "🛠 Developer notes" collapsed footer at the bottom of the Premium Intelligence group (click to expand and copy each path).
+
+## r63.80.0 (2026-05-13) — VERTICAL DENSITY PASS
+
+User feedback (on the new r63.79.0 build): "you can still save lot of space". Screenshot showed the sticky jump-nav + first Group's chrome eating most of the viewport before any actual content appeared. This release tightens vertical padding/margin across every chrome surface added or modified in recent rounds.
+
+### What got squeezed
+
+**1. Sticky group jump-nav (the thin purple bar at the top)**
+- padding `8px 10px` → `5px 10px`
+- margin-bottom `16px` → `8px`
+- button radius `20px` → `14px`, padding `5px 12px` → `4px 10px`, border `1.5px` → `1px`
+- Removed hover box-shadow (no layout impact, less visual noise)
+- Net: ~14px saved
+
+**2. `_groupWrap` — the biggest win** (applies to all 11 groups, 2–12)
+- Outer margin `22px 0 0` → `10px 0 0` (saves 12px between every group × 11 groups)
+- Outer border `1.5px solid` → `1px solid`; border-radius `16px` → `12px`; removed box-shadow
+- Banner padding `9px 18px` → `5px 14px`
+- Banner emoji font-size `13px` → `12px`
+- Header bar padding `12px 18px` → `7px 14px`
+- Icon box `34×34` `1.5px border` → `26×26` `1px border`
+- Answer pill padding `5px 14px` → `4px 12px`; removed box-shadow
+- Toggle arrow `16px wide×18` → `14px wide×16`
+- Content area padding `8px 12px 14px` → `6px 10px 10px`
+- Net: ~28px saved per group × 11 = **~308px** for the institutional analysis section
+
+**3. Premium Intelligence Group**
+- Outer wrapper margin `14px 0` → `10px 0`; border-radius `14px` → `12px`
+- Summary padding `11px 18px` → `7px 14px`
+- Body padding `14px 18px` → `8px 12px`
+- `_piCard` margin-bottom `10px` → `6px`; border-radius `10px` → `8px`
+- `_piCard` header padding `10px 14px` → `7px 12px`; title font `12px` → `11px`
+- `_piCard` body padding `12px 14px` → `8px 12px`
+- All 4 empty-state blocks: padding `18px 14px` → `10px 12px`
+- Net: ~80px saved across the group
+
+**4. AI Q&A widget**
+- margin-top `32px` → `18px`
+- Container border-radius `14px` → `12px`
+- Header padding `14px 18px` → `9px 14px`; avatar `38×38` → `32×32`
+- Removed the verbose subtitle line ("Bear case · bull case · scenarios...") from the header (chips below already convey this)
+- Suggested chips area padding `14px 22px` → `9px 14px`; chip radius `18px` → `14px`
+- Chat history padding `18px 22px` → `12px 14px`; min-height `140px` → `80px`; max-height `520px` → `480px`
+- Removed the giant `💭` icon from the placeholder, padding `32px 20px` → `14px`
+- Input area padding `14px 22px` → `9px 14px`; input padding `11px 14px` → `8px 12px`
+- Send button: gradient `linear-gradient(135deg,#1A3A78,#1e40af)` → flat `#1A3A78`; padding `11px 18px` → `8px 14px`
+- Footer padding `8px 22px` → `5px 14px`; shortened disclaimer text
+- Net: ~60px saved
+
+**5. PART 2 banner (Groups 2-12 divider)**
+- Was a huge stacked banner: margin `28px 0 14px` + box-shadow + two layers (`8px 24px` header + `14px 24px` body) with PART 2 label, big title, subtitle, and 3 chip badges
+- Replaced with a single thin 6px-padded line: `📊 GROUPS 2–12 · INSTITUTIONAL ANALYSIS & TIMING · 10 groups · 36 charts`
+- Net: ~90px saved
+
+### Total reclaimed: ~550px
+
+That's roughly one full viewport-height of scrolling removed from the investor view on a typical 13" laptop.
+
+### Files changed
+
+- `static/app.js`:
+  - Sticky `celesys-group-nav` block (line ~17503) — tighter padding + smaller pills
+  - `_groupWrap` function (line ~17510) — every layer compacted
+  - `_piCard` helper (line ~8542) — tighter padding + smaller card chrome
+  - Premium Intel outer wrapper (line ~8888) — tighter
+  - Premium Intel empty states (4 occurrences) — sed-replaced to compact padding
+  - AI Q&A widget renderer (line ~8903) — full compaction pass
+  - PART 2 divider (line ~17326) — replaced bloated banner with thin one-liner
+- `static/app.min.js`: synced (md5 verified identical)
+- `build_version.txt`: bumped to `r63.80.0`
+
+### Regression checks
+
+- [ ] Decide → Research → analyze MU → confirm sticky jump-nav at top is thinner (no more 32px vertical eat)
+- [ ] Scroll through Groups 2–12 → each group feels tighter; banner + header + content sit closer together
+- [ ] Sticky toggle bar still works on click (collapses/expands group content)
+- [ ] PART 2 divider is now a single slim line instead of a multi-row banner
+- [ ] Premium Intelligence cards are tighter; empty-state "Data pending" lines are compact
+- [ ] AI Q&A widget feels less imposing; suggested chips wrap to one or two tight rows
+- [ ] Mobile (375px): chip-row wraps cleanly; toggle tap targets still ≥30px (acceptable for high-information density)
+- [ ] No layout breakage: all answer pills, scores, charts still render correctly with the smaller chrome
+
+### What this does NOT touch
+
+The Group 1 (Verdict) area, Position Calculator, Deep Scan buttons, and Bottom Line block are unchanged — they were already reasonably dense. Compacting those further would start hurting readability of the headline numbers.
+
+### Followups still on the menu
+
+If you want even more density:
+- Group 1 (Verdict) — could compress the 4-row metric stack to 3 rows
+- Bottom Line / Cycle Analysis area — purple button + summary could share a row
+- Footer disclaimer at bottom — could be shorter
+
+But the screenshot you sent specifically called out the top chrome → that's now ~46px tighter, which is what was bothering you most.
+
 ## r63.79.0 (2026-05-13) — READABILITY OVERHAUL (Premium Intel + AI widget)
 
 User feedback: "colors are dominating.. its not readable.. ensure the whole page and all sections colors are light and can able to read .. it should not be eye straining". Premium Intelligence Group was rendering like a debug dashboard — bright amber gradient banner, saturated amber card headers, and red ⚠ NEEDS_BACKEND boxes were the loudest things on the page (per the screenshot).

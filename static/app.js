@@ -8552,16 +8552,17 @@ window._renderPremiumIntelligence = function(d, S, reg) {
   var ccy = window._piCcy;
 
   // Per-section card wrapper — clean white with subtle amber accent (was: loud amber gradient)
+  // r63.80.0: Tighter padding to reduce vertical bleed
   function _piCard(icon, title, sub, body) {
-    return '<div style="border:1px solid #f1f5f9;border-radius:10px;background:#fff;margin-bottom:10px;overflow:hidden">' +
-      '<div style="padding:10px 14px;border-bottom:1px solid #f8fafc;display:flex;align-items:center;justify-content:space-between;gap:12px;background:#fcfcfa">' +
+    return '<div style="border:1px solid #f1f5f9;border-radius:8px;background:#fff;margin-bottom:6px;overflow:hidden">' +
+      '<div style="padding:7px 12px;border-bottom:1px solid #f8fafc;display:flex;align-items:center;justify-content:space-between;gap:12px;background:#fcfcfa">' +
         '<div style="min-width:0">' +
-          '<div style="font-size:12px;font-weight:800;color:#374151;font-family:Sora,sans-serif;display:flex;align-items:center;gap:6px"><span style="opacity:0.75">' + icon + '</span>' + title + '</div>' +
+          '<div style="font-size:11px;font-weight:800;color:#374151;font-family:Sora,sans-serif;display:flex;align-items:center;gap:6px"><span style="opacity:0.75">' + icon + '</span>' + title + '</div>' +
           '<div style="font-size:10px;color:#94a3b8;margin-top:1px;letter-spacing:0.2px">' + sub + '</div>' +
         '</div>' +
         '<div style="font-size:8px;font-weight:700;color:#92400e;background:#fef3c780;padding:2px 7px;border-radius:4px;letter-spacing:0.4px;flex-shrink:0">PRO</div>' +
       '</div>' +
-      '<div style="padding:12px 14px">' + body + '</div>' +
+      '<div style="padding:8px 12px">' + body + '</div>' +
     '</div>';
   }
 
@@ -8575,7 +8576,7 @@ window._renderPremiumIntelligence = function(d, S, reg) {
 
   var fpeBody = '';
   if (!est || (!estCY && !estNY && !estNY2)) {
-    fpeBody = '<div style="padding:18px 14px;text-align:center;color:#94a3b8;font-size:11px;font-style:italic">' +
+    fpeBody = '<div style="padding:10px 12px;text-align:center;color:#94a3b8;font-size:11px;font-style:italic">' +
       'Data pending — analyst estimates not yet returned by backend.' +
       '<div style="margin-top:4px;font-size:9px;color:#cbd5e1;font-family:JetBrains Mono,monospace;font-style:normal" title="Expected: d.analyst_estimates with current_year/next_year/two_years_out objects">d.analyst_estimates</div>' +
     '</div>';
@@ -8647,7 +8648,7 @@ window._renderPremiumIntelligence = function(d, S, reg) {
 
   var revBody = '';
   if (!rev || (!rev7d && !rev30d && !rev60d && !rev90d)) {
-    revBody = '<div style="padding:18px 14px;text-align:center;color:#94a3b8;font-size:11px;font-style:italic">' +
+    revBody = '<div style="padding:10px 12px;text-align:center;color:#94a3b8;font-size:11px;font-style:italic">' +
       'Data pending — estimate revision history not yet returned.' +
       '<div style="margin-top:4px;font-size:9px;color:#cbd5e1;font-family:JetBrains Mono,monospace;font-style:normal" title="Expected: d.estimate_revisions with 7d/30d/60d/90d windows">d.estimate_revisions</div>' +
     '</div>';
@@ -8703,7 +8704,7 @@ window._renderPremiumIntelligence = function(d, S, reg) {
   var surprises = pick(d, ['earnings_surprises', 'earnings_history']) || (d.earnings ? pick(d.earnings, ['history', 'surprises']) : null);
   var surBody = '';
   if (!surprises || !Array.isArray(surprises) || surprises.length === 0) {
-    surBody = '<div style="padding:18px 14px;text-align:center;color:#94a3b8;font-size:11px;font-style:italic">' +
+    surBody = '<div style="padding:10px 12px;text-align:center;color:#94a3b8;font-size:11px;font-style:italic">' +
       'Data pending — earnings history not yet returned.' +
       '<div style="margin-top:4px;font-size:9px;color:#cbd5e1;font-family:JetBrains Mono,monospace;font-style:normal" title="Expected: d.earnings_surprises array of 8 quarters">d.earnings_surprises</div>' +
     '</div>';
@@ -8821,7 +8822,7 @@ window._renderPremiumIntelligence = function(d, S, reg) {
   var divYieldNum = divYield != null ? parseFloat(divYield) : null;
 
   if (divYield == null) {
-    var divBody = '<div style="padding:18px 14px;text-align:center;color:#94a3b8;font-size:11px;font-style:italic">' +
+    var divBody = '<div style="padding:10px 12px;text-align:center;color:#94a3b8;font-size:11px;font-style:italic">' +
       'Data pending — dividend yield not yet returned.' +
       '<div style="margin-top:4px;font-size:9px;color:#cbd5e1;font-family:JetBrains Mono,monospace;font-style:normal" title="Backend should return 0 for non-payers, decimal % for payers">d.dividend_yield</div>' +
     '</div>';
@@ -8885,12 +8886,13 @@ window._renderPremiumIntelligence = function(d, S, reg) {
 
   // ═══ SOFT COLLAPSIBLE OUTER GROUP (was: saturated amber gradient banner) ═══
   // Light, restrained, institutional. Dev-facing detail moved to footer below.
-  var outer = '<details open style="margin:14px 0;border-radius:14px;border:1px solid #e2e8f0;background:#fff;overflow:hidden">' +
-    '<summary style="padding:11px 18px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;font-size:11px;font-weight:800;font-family:Sora,sans-serif;list-style:none;background:#fafafa;border-bottom:1px solid #f1f5f9;letter-spacing:0.3px">' +
+  // r63.80.0: Reduced outer margins/padding to save vertical real estate
+  var outer = '<details open style="margin:10px 0;border-radius:12px;border:1px solid #e2e8f0;background:#fff;overflow:hidden">' +
+    '<summary style="padding:7px 14px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;font-size:11px;font-weight:800;font-family:Sora,sans-serif;list-style:none;background:#fafafa;border-bottom:1px solid #f1f5f9;letter-spacing:0.3px">' +
       '<span style="color:#475569">💎 <span style="color:#92400e">PREMIUM INTELLIGENCE</span> · Consensus · Revisions · Surprises · Multiples · Dividends</span>' +
       '<span style="font-size:10px;color:#94a3b8;font-weight:500">▾</span>' +
     '</summary>' +
-    '<div style="padding:14px 18px;background:#fff">' + groupBody + '</div>';
+    '<div style="padding:8px 12px;background:#fff">' + groupBody + '</div>';
 
   // ═══ DEVELOPER NOTES FOOTER ═══
   // ONE collapsed details with all the missing field paths — replaces the
@@ -8940,15 +8942,15 @@ window._renderCelesysAI = function(d, S, reg) {
   var safeSym = sym.replace(/[^A-Z0-9]/g, '');  // for DOM id usage
 
   var h = '';
-  h += '<div id="celesysAIChat_' + safeSym + '" style="margin-top:32px;border:1px solid #e2e8f0;border-radius:14px;overflow:hidden;background:#fff">';
+  h += '<div id="celesysAIChat_' + safeSym + '" style="margin-top:18px;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;background:#fff">';
 
   // ── Header (soft, restrained — was: dark navy gradient with bright orange BETA) ──
-  h += '<div style="padding:14px 18px;background:#fafafa;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;gap:12px">';
-  h += '<div style="width:38px;height:38px;border-radius:10px;background:#1A3A7810;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0">💬</div>';
+  // r63.80.0: Compacted vertical padding 14→9, gap tightened
+  h += '<div style="padding:9px 14px;background:#fafafa;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;gap:10px">';
+  h += '<div style="width:32px;height:32px;border-radius:8px;background:#1A3A7810;display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0">💬</div>';
   h += '<div style="flex:1;min-width:0">';
   h += '<div style="font-size:10px;letter-spacing:1px;font-weight:800;color:#1A3A78;font-family:Sora,sans-serif">ASK CELESYS AI</div>';
-  h += '<div style="font-size:14px;font-weight:800;color:#0f172a;margin-top:1px;font-family:Sora,sans-serif">Conversational research on ' + sym + '</div>';
-  h += '<div style="font-size:10px;margin-top:2px;color:#94a3b8;line-height:1.4">Bear case · bull case · scenarios · peer comparison · what would change the verdict.</div>';
+  h += '<div style="font-size:13px;font-weight:800;color:#0f172a;margin-top:0;font-family:Sora,sans-serif">Conversational research on ' + sym + '</div>';
   h += '</div>';
   h += '<div style="font-size:8px;font-weight:700;color:#92400e;background:#fef3c780;padding:2px 7px;border-radius:4px;letter-spacing:0.4px;flex-shrink:0">BETA</div>';
   h += '</div>';
@@ -8964,13 +8966,13 @@ window._renderCelesysAI = function(d, S, reg) {
     "What's the worst-case downside?",
     "Buy now or wait?"
   ];
-  h += '<div style="padding:14px 22px;background:#f8fafc;border-bottom:1px solid #e2e8f0">';
-  h += '<div style="font-size:9px;color:#64748b;font-weight:800;letter-spacing:0.5px;margin-bottom:8px;text-transform:uppercase">Suggested questions</div>';
-  h += '<div style="display:flex;gap:6px;flex-wrap:wrap">';
+  h += '<div style="padding:9px 14px;background:#f8fafc;border-bottom:1px solid #e2e8f0">';
+  h += '<div style="font-size:9px;color:#64748b;font-weight:800;letter-spacing:0.5px;margin-bottom:6px;text-transform:uppercase">Suggested questions</div>';
+  h += '<div style="display:flex;gap:5px;flex-wrap:wrap">';
   suggested.forEach(function(q){
     var qEsc = q.replace(/'/g, "\\'").replace(/"/g, '&quot;');
     h += '<button onclick="window._celesysAIAsk(\'' + safeSym + '\', \'' + reg + '\', \'' + qEsc + '\')" ';
-    h += 'style="padding:6px 12px;border-radius:18px;background:#fff;border:1px solid #cbd5e1;font-size:10px;font-weight:700;color:#1A3A78;cursor:pointer;font-family:Inter,sans-serif;transition:all .15s" ';
+    h += 'style="padding:5px 11px;border-radius:14px;background:#fff;border:1px solid #cbd5e1;font-size:10px;font-weight:700;color:#1A3A78;cursor:pointer;font-family:Inter,sans-serif;transition:all .15s" ';
     h += 'onmouseover="this.style.background=\'#1A3A78\';this.style.color=\'#fff\';this.style.borderColor=\'#1A3A78\'" ';
     h += 'onmouseout="this.style.background=\'#fff\';this.style.color=\'#1A3A78\';this.style.borderColor=\'#cbd5e1\'">';
     h += q + '</button>';
@@ -8978,26 +8980,25 @@ window._renderCelesysAI = function(d, S, reg) {
   h += '</div></div>';
 
   // ── Chat history area ──
-  h += '<div id="celesysAIHistory_' + safeSym + '" style="padding:18px 22px;min-height:140px;max-height:520px;overflow-y:auto;background:#fff">';
-  h += '<div id="celesysAIPlaceholder_' + safeSym + '" style="text-align:center;padding:32px 20px;color:#94a3b8;font-size:11px;font-style:italic">';
-  h += '<div style="font-size:28px;margin-bottom:8px;opacity:0.4">💭</div>';
+  h += '<div id="celesysAIHistory_' + safeSym + '" style="padding:12px 14px;min-height:80px;max-height:480px;overflow-y:auto;background:#fff">';
+  h += '<div id="celesysAIPlaceholder_' + safeSym + '" style="text-align:center;padding:14px;color:#94a3b8;font-size:11px;font-style:italic">';
   h += 'Ask a question above, or type your own below.';
   h += '</div>';
   h += '</div>';
 
   // ── Input area ──
-  h += '<div style="padding:14px 22px;border-top:1px solid #e2e8f0;background:#fafbfc;display:flex;gap:8px;align-items:center">';
+  h += '<div style="padding:9px 14px;border-top:1px solid #e2e8f0;background:#fafbfc;display:flex;gap:6px;align-items:center">';
   h += '<input type="text" id="celesysAIInput_' + safeSym + '" placeholder="Ask anything about ' + sym + '..." ';
-  h += 'style="flex:1;padding:11px 14px;border-radius:8px;border:1px solid #cbd5e1;background:#fff;font-size:12px;font-family:Inter,sans-serif;color:#0f172a;outline:none;transition:border-color .1s" ';
+  h += 'style="flex:1;padding:8px 12px;border-radius:7px;border:1px solid #cbd5e1;background:#fff;font-size:12px;font-family:Inter,sans-serif;color:#0f172a;outline:none;transition:border-color .1s" ';
   h += 'onfocus="this.style.borderColor=\'#1A3A78\'" onblur="this.style.borderColor=\'#cbd5e1\'" ';
   h += 'onkeypress="if(event.key===\'Enter\'){var v=this.value.trim();if(v){window._celesysAIAsk(\'' + safeSym + '\',\'' + reg + '\',v);this.value=\'\'}}">';
   h += '<button onclick="var inp=document.getElementById(\'celesysAIInput_' + safeSym + '\');var v=inp.value.trim();if(v){window._celesysAIAsk(\'' + safeSym + '\',\'' + reg + '\',v);inp.value=\'\'}" ';
-  h += 'style="padding:11px 18px;border-radius:8px;background:linear-gradient(135deg,#1A3A78,#1e40af);color:#fff;border:none;cursor:pointer;font-size:11px;font-weight:800;font-family:Sora,sans-serif;white-space:nowrap">Send →</button>';
+  h += 'style="padding:8px 14px;border-radius:7px;background:#1A3A78;color:#fff;border:none;cursor:pointer;font-size:11px;font-weight:800;font-family:Sora,sans-serif;white-space:nowrap">Send →</button>';
   h += '</div>';
 
   // ── Footer disclaimer ──
-  h += '<div style="padding:8px 22px;background:#f8fafc;border-top:1px solid #e2e8f0;font-size:9px;color:#64748b;text-align:center;line-height:1.4">';
-  h += '⚠ AI responses are educational analysis, not financial advice. The AI references only the data on this page — always verify before acting.';
+  h += '<div style="padding:5px 14px;background:#f8fafc;border-top:1px solid #e2e8f0;font-size:9px;color:#94a3b8;text-align:center">';
+  h += '⚠ AI responses are educational analysis, not financial advice.';
   h += '</div>';
 
   h += '</div>';
@@ -17308,19 +17309,13 @@ if (typeof window._renderPremiumIntelligence === 'function') {
 // ═══ CROSS-SECTOR SIMILARITY + SAME REGION PEERS ═══
 
 // ═══ INSTITUTIONAL CHARTS — inside Investor DE ═══
-// Section divider — separates fundamental analysis from institutional/technical analysis
-h+='<div style="margin:28px 0 14px;border-radius:16px;overflow:hidden;box-shadow:0 4px 16px rgba(26,58,120,.25)">';
-h+='<div style="padding:8px 24px;background:linear-gradient(135deg,#0A1628,#0A1628cc);font-size:10px;font-weight:900;color:#fff;font-family:Sora,sans-serif;letter-spacing:1.5px">GROUPS 2–12: INSTITUTIONAL ANALYSIS & TIMING</div>';
-h+='<div style="padding:14px 24px;background:linear-gradient(135deg,#1A3A78,#0A1628);text-align:center;border-left:6px solid #1e40af">';
-h+='<div style="font-size:10px;font-weight:800;color:rgba(255,255,255,.6);letter-spacing:3px;margin-bottom:6px">PART 2</div>';
-h+='<div style="font-size:16px;font-weight:900;color:#fff;font-family:Sora,sans-serif">Institutional Analysis & Timing</div>';
-h+='<div style="font-size:10px;color:rgba(255,255,255,.6);margin-top:6px">Technical signals, risk structure, momentum, and portfolio-level decision scoring</div>';
-h+='<div style="display:flex;justify-content:center;gap:6px;margin-top:10px;flex-wrap:wrap">';
-h+='<span style="padding:3px 10px;border-radius:12px;font-size:8px;font-weight:700;background:rgba(255,255,255,.12);color:rgba(255,255,255,.7)">10 Analysis Groups</span>';
-h+='<span style="padding:3px 10px;border-radius:12px;font-size:8px;font-weight:700;background:rgba(255,255,255,.12);color:rgba(255,255,255,.7)">36 Charts</span>';
-h+='<span style="padding:3px 10px;border-radius:12px;font-size:8px;font-weight:700;background:rgba(255,255,255,.12);color:rgba(255,255,255,.7)">Color-coded by group</span>';
+// r63.80.0: Compacted the PART 2 divider — was 28px margin + 14px+8px padding stacking
+h+='<div style="margin:14px 0 8px;border-radius:12px;overflow:hidden">';
+h+='<div style="padding:6px 18px;background:linear-gradient(135deg,#0A1628,#0A1628cc);font-size:10px;font-weight:900;color:#fff;font-family:Sora,sans-serif;letter-spacing:1.3px;display:flex;align-items:center;justify-content:space-between">';
+h+='<span>📊 GROUPS 2–12 · INSTITUTIONAL ANALYSIS & TIMING</span>';
+h+='<span style="font-size:9px;opacity:0.6">10 groups · 36 charts</span>';
 h+='</div>';
-h+='</div></div>';
+h+='</div>';
 // 1. Institutional Analysis Stack (charts) — FIRST
 h+='<details open style="margin:14px 0;border-radius:16px;border:2px solid #1A3A7830;background:#fff;overflow:hidden"><summary style="padding:16px 20px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;font-size:14px;font-weight:900;color:#fff;font-family:Sora,sans-serif;list-style:none;background:linear-gradient(135deg,#0A1628,#1A3A78);border-radius:14px 14px 0 0"><span>📊 Institutional Analysis Stack — 8 Decision Charts</span><span style="font-size:9px;color:rgba(255,255,255,.6);font-weight:500">▾</span></summary><div style="padding:10px 18px 0;font-size:9px;color:#5E6F8E;line-height:1.6;background:#F0F4FF;border-bottom:1px solid #E2E8F0">🏛️ <strong>What this section does:</strong> The MDO (Master Decision Orchestration) score is a <strong>technical + risk timing engine</strong>. It uses 6 layers — Liquidity, Flow, Volatility, Fundamentals, Quant, and Probability — to answer: <em>"Is NOW the right time to enter?"</em> A strong business (STRONG BUY above) can still score NEUTRAL or AVOID here if the timing, momentum, or risk profile is unfavorable. <strong>Use the verdict above for WHAT to buy. Use this section for WHEN to buy.</strong></div><div id="investorInstCharts" style="padding:4px 16px 16px"><div style="text-align:center;padding:20px;color:#4a6fa5;font-size:10px">Loading institutional charts...</div></div></details>';
 
@@ -17505,9 +17500,9 @@ setTimeout(function(){
       {id:'grp-dec',e:'🧩',s:'10 · Decision',c:'#1A3A78'},
       {id:'grp-sent',e:'🧠',s:'12 · Sentiment',c:'#0891b2'}
     ];
-    ch+='<div id="celesys-group-nav" style="position:sticky;top:0;z-index:100;background:rgba(255,255,255,0.97);backdrop-filter:blur(8px);border-bottom:1px solid #e2e8f0;padding:8px 10px;margin:0 0 16px;overflow-x:auto;display:flex;gap:5px;scrollbar-width:none">';
+    ch+='<div id="celesys-group-nav" style="position:sticky;top:0;z-index:100;background:rgba(255,255,255,0.97);backdrop-filter:blur(8px);border-bottom:1px solid #e2e8f0;padding:5px 10px;margin:0 0 8px;overflow-x:auto;display:flex;gap:4px;scrollbar-width:none">';
     _navGroups.forEach(function(g){
-      ch+='<button onclick="(function(){var el=document.getElementById(\''+g.id+'\');if(el)el.scrollIntoView({behavior:\'smooth\',block:\'start\'});})()" style="flex-shrink:0;padding:5px 12px;border-radius:20px;border:1.5px solid '+g.c+'40;background:'+g.c+'10;font-size:9px;font-weight:800;color:'+g.c+';cursor:pointer;white-space:nowrap;font-family:Sora,sans-serif;transition:all .2s;letter-spacing:.3px" onmouseover="this.style.background=\''+g.c+'\';this.style.color=\'#fff\';this.style.borderColor=\''+g.c+'\';this.style.boxShadow=\'0 2px 8px '+g.c+'40\'" onmouseout="this.style.background=\''+g.c+'10\';this.style.color=\''+g.c+'\';this.style.borderColor=\''+g.c+'40\';this.style.boxShadow=\'none\'">'+g.e+' '+g.s+'</button>';
+      ch+='<button onclick="(function(){var el=document.getElementById(\''+g.id+'\');if(el)el.scrollIntoView({behavior:\'smooth\',block:\'start\'});})()" style="flex-shrink:0;padding:4px 10px;border-radius:14px;border:1px solid '+g.c+'40;background:'+g.c+'10;font-size:9px;font-weight:800;color:'+g.c+';cursor:pointer;white-space:nowrap;font-family:Sora,sans-serif;transition:all .2s;letter-spacing:.3px" onmouseover="this.style.background=\''+g.c+'\';this.style.color=\'#fff\';this.style.borderColor=\''+g.c+'\'" onmouseout="this.style.background=\''+g.c+'10\';this.style.color=\''+g.c+'\';this.style.borderColor=\''+g.c+'40\'">'+g.e+' '+g.s+'</button>';
     });
     ch+='</div>';
 
@@ -17517,30 +17512,28 @@ setTimeout(function(){
       if(!_inner)return'';
       var _uid='cg'+Math.random().toString(36).substr(2,5);
       var _gn=grpNum||'';
-      // Outer container: colored left border + tinted background so each group is visually distinct
-      var out='<div id="'+id+'" style="margin:22px 0 0;scroll-margin-top:52px;border-radius:16px;overflow:hidden;border:1.5px solid '+color+'30;border-left:5px solid '+color+';background:'+color+'05;box-shadow:0 2px 12px '+color+'08">';
-      // r63.77.0: Softened group banner — tinted background with darker text replaces
-      // saturated gradient with white text. Same color identity per group, far easier on eyes.
-      // (Bloomberg/institutional style — muted bgs, subtle accents, no harsh contrast.)
+      // r63.80.0: Compacted vertical chrome — margin 22→10, padding tightened across all 3 layers
+      // Saves ~14px per group × 11 groups ≈ 150px reclaimed.
+      var out='<div id="'+id+'" style="margin:10px 0 0;scroll-margin-top:52px;border-radius:12px;overflow:hidden;border:1px solid '+color+'30;border-left:4px solid '+color+';background:'+color+'05">';
+      // r63.77.0: Softened group banner (tinted bg, color text — no white-on-saturated)
+      // r63.80.0: Tightened padding 9px→5px to reduce dead chrome
       if(_gn){
-        out+='<div style="padding:9px 18px;background:'+color+'14;border-bottom:2px solid '+color+'40;display:flex;align-items:center;justify-content:space-between">';
-        out+='<div style="font-size:10px;font-weight:900;color:'+color+';font-family:Sora,sans-serif;letter-spacing:1.5px;text-transform:uppercase">GROUP '+_gn+': '+label+'</div>';
-        out+='<div style="font-size:13px;color:'+color+';line-height:1">'+emoji+'</div>';
+        out+='<div style="padding:5px 14px;background:'+color+'14;border-bottom:1.5px solid '+color+'40;display:flex;align-items:center;justify-content:space-between">';
+        out+='<div style="font-size:10px;font-weight:900;color:'+color+';font-family:Sora,sans-serif;letter-spacing:1.3px;text-transform:uppercase">GROUP '+_gn+': '+label+'</div>';
+        out+='<div style="font-size:12px;color:'+color+';line-height:1">'+emoji+'</div>';
         out+='</div>';
       }
-      // Header bar: gradient background, clickable to toggle
-      out+='<div onclick="(function(){var b=document.getElementById(\'b_'+_uid+'\');var a=document.getElementById(\'a_'+_uid+'\');if(b){var op=b.style.display!==\'none\';b.style.display=op?\'none\':\'block\';a.textContent=op?\'▸\':\'▾\';}})()" style="cursor:pointer;position:sticky;top:40px;z-index:90;padding:12px 18px;background:linear-gradient(135deg,'+color+'15,'+color+'06);border-bottom:1.5px solid '+color+'20;display:flex;align-items:center;justify-content:space-between;user-select:none;-webkit-user-select:none">';
-      // Left side: question
-      out+='<div style="display:flex;align-items:center;gap:10px">';
-      out+='<div style="width:34px;height:34px;border-radius:8px;background:'+color+'18;border:1.5px solid '+color+'30;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">'+emoji+'</div>';
-      out+='<div style="font-size:10px;color:#5E6F8E;font-style:italic">"'+question+'"</div></div>';
-      // Right side: answer pill + toggle
-      out+='<div style="display:flex;align-items:center;gap:8px">';
-      out+='<div style="font-size:10px;font-weight:800;color:#fff;background:'+(ansC||color)+';padding:5px 14px;border-radius:20px;max-width:220px;text-align:right;line-height:1.3;box-shadow:0 2px 6px '+(ansC||color)+'30">'+answer+'</div>';
-      out+='<span id="a_'+_uid+'" style="font-size:16px;color:'+color+';font-weight:900;transition:all .2s;width:18px;text-align:center">▾</span>';
+      // Header bar: clickable to toggle. r63.80.0: padding 12→7, icon 34→26
+      out+='<div onclick="(function(){var b=document.getElementById(\'b_'+_uid+'\');var a=document.getElementById(\'a_'+_uid+'\');if(b){var op=b.style.display!==\'none\';b.style.display=op?\'none\':\'block\';a.textContent=op?\'▸\':\'▾\';}})()" style="cursor:pointer;position:sticky;top:40px;z-index:90;padding:7px 14px;background:linear-gradient(135deg,'+color+'12,'+color+'05);border-bottom:1px solid '+color+'20;display:flex;align-items:center;justify-content:space-between;user-select:none;-webkit-user-select:none">';
+      out+='<div style="display:flex;align-items:center;gap:8px;min-width:0">';
+      out+='<div style="width:26px;height:26px;border-radius:7px;background:'+color+'18;border:1px solid '+color+'30;display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0">'+emoji+'</div>';
+      out+='<div style="font-size:10px;color:#5E6F8E;font-style:italic;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">"'+question+'"</div></div>';
+      out+='<div style="display:flex;align-items:center;gap:8px;flex-shrink:0">';
+      out+='<div style="font-size:10px;font-weight:800;color:#fff;background:'+(ansC||color)+';padding:4px 12px;border-radius:18px;max-width:220px;text-align:right;line-height:1.3">'+answer+'</div>';
+      out+='<span id="a_'+_uid+'" style="font-size:14px;color:'+color+';font-weight:900;transition:all .2s;width:16px;text-align:center">▾</span>';
       out+='</div></div>';
-      // Content area
-      out+='<div id="b_'+_uid+'" style="padding:8px 12px 14px;background:linear-gradient(180deg,'+color+'03,#ffffff)">'+_inner+'</div>';
+      // Content area — r63.80.0: padding 8/14 → 6/10
+      out+='<div id="b_'+_uid+'" style="padding:6px 10px 10px;background:linear-gradient(180deg,'+color+'03,#ffffff)">'+_inner+'</div>';
       out+='</div>';
       return out;
     }
@@ -25890,13 +25883,35 @@ window._csBuildPDFAppendix = async function(sym, reg) {
   var fNum = function(v, dec) { if (v == null || v === '') return '—'; var n = parseFloat(v); return isNaN(n) ? '—' : n.toFixed(dec != null ? dec : 1); };
   var fPct = function(v, dec) { if (v == null || v === '') return '—'; var n = parseFloat(v); if (isNaN(n)) return '—'; var c = n > 0 ? '#059669' : n < 0 ? '#dc2626' : '#64748b'; return '<span style="color:' + c + ';font-weight:700">' + (n > 0 ? '+' : '') + n.toFixed(dec != null ? dec : 1) + '%</span>'; };
 
+  // r63.81.0 fix: serialize objects/arrays defensively (was rendering "[object Object]" in PDF)
+  var fStr = function(v) {
+    if (v == null) return null;
+    if (typeof v === 'string') return v.trim() === '' ? null : v;
+    if (typeof v === 'number' || typeof v === 'boolean') return String(v);
+    if (typeof v === 'object') {
+      var picked = v.verdict || v.label || v.value || v.signal || v.status ||
+                   v.text || v.summary || v.description || v.name;
+      if (picked != null) return String(picked);
+      if (typeof v.score === 'number') return String(v.score);
+      try { return JSON.stringify(v).slice(0, 80); } catch(_) { return null; }
+    }
+    return String(v);
+  };
+
+  // r63.81.0 fix: force-open all <details> so html2canvas captures section bodies
+  // (otherwise Wealth Pro appendix prints with only headers visible, bodies hidden)
+  var fOpen = function(html) {
+    if (!html) return html;
+    return html.replace(/<details(?!\s+open)(\s[^>]*)?>/g, '<details open$1>');
+  };
+
   // Run all 5 fetches in parallel
   var endpoints = [
     fetch('/api/pro-scan?symbol=' + encodeURIComponent(sym) + '&region=' + reg).then(function(r){return r.json();}).catch(function(e){return {success:false,error:e.message};}),
     fetch('/api/market-context?symbol=' + encodeURIComponent(sym) + '&region=' + reg).then(function(r){return r.json();}).catch(function(e){return {success:false,error:e.message};}),
     fetch('/api/cross-market-match?symbol=' + encodeURIComponent(sym) + '&region=' + reg + '&mode=cross').then(function(r){return r.json();}).catch(function(e){return {success:false,error:e.message};}),
     fetch('/api/cross-market-match?symbol=' + encodeURIComponent(sym) + '&region=' + reg + '&mode=same').then(function(r){return r.json();}).catch(function(e){return {success:false,error:e.message};}),
-    fetch('/api/cycle-analysis?symbol=' + encodeURIComponent(sym) + '&region=' + reg).then(function(r){return r.json();}).catch(function(e){return {success:false,error:e.message};}),
+    fetch('/api/cycle-analysis?symbol=' + encodeURIComponent(sym) + '&region=' + reg + '&price=' + (window._lastInvestorData && window._lastInvestorData.price || 0) + '&market_cap=' + (window._lastInvestorData && window._lastInvestorData.market_cap || 0)).then(function(r){return r.json();}).catch(function(e){return {success:false,error:e.message};}),
   ];
   var results = await Promise.all(endpoints);
   var ps = results[0], mp = results[1], xmCross = results[2], xmSame = results[3], cy = results[4];
@@ -25912,22 +25927,22 @@ window._csBuildPDFAppendix = async function(sym, reg) {
   h += '<div style="font-size:9px;opacity:0.7;font-family:JetBrains Mono,monospace">' + sym + ' · ' + reg + '</div>';
   h += '</div>';
 
-  // ═══ 1. WEALTH PRO ═══ (use existing top-level _renderProScan)
+  // ═══ 1. WEALTH PRO — force all <details open> for print capture ═══
   h += '<div style="margin:18px 0;border:1px solid #e2e8f0;border-radius:14px;background:#fff;overflow:hidden">';
   h += '<div style="padding:12px 18px;background:#1A3A7810;border-bottom:2px solid #1A3A7840"><div style="font-size:13px;font-weight:900;color:#1A3A78;font-family:Sora,sans-serif">🔬 Wealth Pro Scan — ROIC · Reverse DCF · Monte Carlo · Legend Match</div></div>';
   if (ps && ps.success && typeof window._renderProScan === 'function') {
-    try { h += '<div style="padding:14px 18px">' + window._renderProScan(ps) + '</div>'; }
+    try { h += '<div style="padding:14px 18px">' + fOpen(window._renderProScan(ps)) + '</div>'; }
     catch(e) { h += '<div style="padding:14px 18px;font-size:11px;color:#7f1d1d">⚠ Render error: ' + e.message + '</div>'; }
   } else {
     h += '<div style="padding:14px 18px;font-size:11px;color:#7f1d1d">⚠ ' + ((ps && ps.error) || 'Wealth Pro endpoint unavailable') + '</div>';
   }
   h += '</div>';
 
-  // ═══ 2. MARKET PULSE ═══ (summary card from JSON since render is inline)
+  // ═══ 2. MARKET PULSE — defensive object serializer for verdict/momentum/sectorFlow ═══
   h += '<div style="margin:18px 0;border:1px solid #e2e8f0;border-radius:14px;background:#fff;overflow:hidden">';
   h += '<div style="padding:12px 18px;background:#0d948814;border-bottom:2px solid #0d948840"><div style="font-size:13px;font-weight:900;color:#0d9488;font-family:Sora,sans-serif">🌊 Market Pulse — Sector Rotation · Momentum · Trend · Analyst Revisions</div></div>';
   if (mp && mp.success) {
-    var ctxV = mp.contextVerdict || mp.verdict || 'NEUTRAL';
+    var ctxV = fStr(mp.contextVerdict || mp.verdict) || 'NEUTRAL';
     var ctxC = ctxV === 'TAILWIND' ? '#059669' : ctxV === 'HEADWIND' ? '#dc2626' : '#d97706';
     h += '<div style="padding:14px 18px">';
     h += '<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:12px">';
@@ -25944,82 +25959,129 @@ window._csBuildPDFAppendix = async function(sym, reg) {
       ['Price-Earnings Gap', mp.peGap],
     ];
     mpFields.forEach(function(f) {
-      if (f[1] != null) {
-        h += '<div style="padding:8px 10px;border-radius:6px;background:#f8fafc;border:1px solid #e2e8f0"><div style="font-size:8px;color:#64748b;font-weight:800;letter-spacing:0.4px;text-transform:uppercase">' + f[0] + '</div><div style="font-size:11px;font-weight:700;color:#0f172a;margin-top:2px">' + f[1] + '</div></div>';
+      var val = fStr(f[1]);
+      if (val != null) {
+        h += '<div style="padding:8px 10px;border-radius:6px;background:#f8fafc;border:1px solid #e2e8f0"><div style="font-size:8px;color:#64748b;font-weight:800;letter-spacing:0.4px;text-transform:uppercase">' + f[0] + '</div><div style="font-size:11px;font-weight:700;color:#0f172a;margin-top:2px">' + val + '</div></div>';
       }
     });
     h += '</div>';
-    if (mp.summary || mp.commentary) h += '<div style="margin-top:10px;padding:10px 12px;background:#f0fdfa;border-left:3px solid #0d9488;border-radius:0 6px 6px 0;font-size:11px;color:#0f172a;line-height:1.5">' + (mp.summary || mp.commentary) + '</div>';
+    var mpSummary = fStr(mp.summary || mp.commentary || mp.explain);
+    if (mpSummary) h += '<div style="margin-top:10px;padding:10px 12px;background:#f0fdfa;border-left:3px solid #0d9488;border-radius:0 6px 6px 0;font-size:11px;color:#0f172a;line-height:1.5">' + mpSummary + '</div>';
     h += '</div>';
   } else {
     h += '<div style="padding:14px 18px;font-size:11px;color:#7f1d1d">⚠ ' + ((mp && mp.error) || 'Market Pulse endpoint unavailable') + '</div>';
   }
   h += '</div>';
 
-  // ═══ 3 & 4. CROSS-MARKET + SIMILAR STOCKS ═══ (table of peers)
+  // ═══ 3 & 4. CROSS-MARKET + SIMILAR STOCKS — handle bucketed response (investNow/exactMatch/wait/avoid) ═══
   var _renderXM = function(data, title, icon, color, region_label) {
     var card = '<div style="margin:18px 0;border:1px solid #e2e8f0;border-radius:14px;background:#fff;overflow:hidden">';
     card += '<div style="padding:12px 18px;background:' + color + '14;border-bottom:2px solid ' + color + '40"><div style="font-size:13px;font-weight:900;color:' + color + ';font-family:Sora,sans-serif">' + icon + ' ' + title + ' — ' + region_label + '</div></div>';
-    if (data && data.success && (data.results || data.matches || data.peers)) {
-      var rows = data.results || data.matches || data.peers || [];
-      if (rows.length === 0) {
-        card += '<div style="padding:14px 18px;font-size:11px;color:#64748b">No similar stocks found.</div>';
-      } else {
-        card += '<div style="padding:14px 18px"><table style="width:100%;border-collapse:collapse;font-size:10px;font-family:Inter,sans-serif">';
-        card += '<thead><tr style="background:#fafbfc"><th style="padding:7px 8px;text-align:left;font-size:9px;color:#64748b;font-weight:800">SYMBOL</th><th style="padding:7px 8px;text-align:left;font-size:9px;color:#64748b;font-weight:800">NAME</th><th style="padding:7px 8px;text-align:right;font-size:9px;color:#64748b;font-weight:800">PRICE</th><th style="padding:7px 8px;text-align:right;font-size:9px;color:#64748b;font-weight:800">SCORE</th><th style="padding:7px 8px;text-align:right;font-size:9px;color:#64748b;font-weight:800">UPSIDE</th><th style="padding:7px 8px;text-align:center;font-size:9px;color:#64748b;font-weight:800">VERDICT</th></tr></thead><tbody>';
-        rows.slice(0, 8).forEach(function(r, i) {
-          var rowBg = i % 2 === 0 ? '#fff' : '#fafbfc';
-          var sym2 = r.symbol || r.ticker || '—';
-          var name = (r.name || r.companyName || '').substring(0, 28);
-          var price = r.price || r.spot;
-          var score = r.score || r.investability_score || r.match_score;
-          var upside = r.upside || r.upside_pct;
-          var verdict = r.verdict || r.decision || r.signal || '—';
-          var vC = String(verdict).indexOf('BUY') >= 0 ? '#059669' : String(verdict).indexOf('SELL') >= 0 ? '#dc2626' : '#d97706';
-          card += '<tr style="background:' + rowBg + '">';
-          card += '<td style="padding:6px 8px;font-family:JetBrains Mono,monospace;font-weight:700;color:#1A3A78">' + sym2 + '</td>';
-          card += '<td style="padding:6px 8px;color:#475569">' + name + '</td>';
-          card += '<td style="padding:6px 8px;text-align:right;font-family:JetBrains Mono,monospace">' + (price != null ? S + fNum(price, 2) : '—') + '</td>';
-          card += '<td style="padding:6px 8px;text-align:right;font-family:JetBrains Mono,monospace;font-weight:700">' + (score != null ? fNum(score, 0) : '—') + '</td>';
-          card += '<td style="padding:6px 8px;text-align:right;font-family:JetBrains Mono,monospace">' + fPct(upside, 1) + '</td>';
-          card += '<td style="padding:6px 8px;text-align:center;font-weight:800;color:' + vC + ';font-size:9px">' + verdict + '</td>';
-          card += '</tr>';
-        });
-        card += '</tbody></table>';
-        if (rows.length > 8) card += '<div style="margin-top:6px;font-size:9px;color:#94a3b8;text-align:center">Showing top 8 of ' + rows.length + ' matches.</div>';
-        card += '</div>';
-      }
-    } else {
+
+    if (!data || !data.success) {
       card += '<div style="padding:14px 18px;font-size:11px;color:#7f1d1d">⚠ ' + ((data && data.error) || 'Endpoint unavailable') + '</div>';
+      card += '</div>';
+      return card;
     }
-    card += '</div>';
+
+    // r63.81.0 fix: backend returns BUCKETED categories (investNow / exactMatch / wait / avoid)
+    // Flatten them in priority order so the table shows best matches first.
+    var rows = [];
+    if (Array.isArray(data.results)) rows = data.results;
+    else if (Array.isArray(data.matches)) rows = data.matches;
+    else if (Array.isArray(data.peers)) rows = data.peers;
+    else {
+      ['exactMatch','investNow','wait','avoid','candidates'].forEach(function(k){
+        if (Array.isArray(data[k])) rows = rows.concat(data[k].map(function(r){ r._bucket = k; return r; }));
+      });
+    }
+
+    if (rows.length === 0) {
+      card += '<div style="padding:14px 18px;font-size:11px;color:#64748b;font-style:italic">No similar stocks returned by the scanner.</div>';
+      card += '</div>';
+      return card;
+    }
+
+    // Show source profile summary if present
+    var sp = data.sourceProfile || {};
+    if (sp.confidence != null || sp.fScore != null) {
+      card += '<div style="padding:10px 18px;background:#fafbfc;border-bottom:1px solid #f1f5f9;display:flex;gap:14px;flex-wrap:wrap;font-size:10px;color:#475569">';
+      if (sp.confidence != null) card += '<span>Match confidence: <strong style="color:#0f172a;font-family:JetBrains Mono,monospace">' + fNum(sp.confidence, 0) + '</strong></span>';
+      if (sp.fScore != null) card += '<span>Source F-Score: <strong style="color:#0f172a;font-family:JetBrains Mono,monospace">' + sp.fScore + '/9</strong></span>';
+      if (sp.moatScore != null) card += '<span>Source moat: <strong style="color:#0f172a;font-family:JetBrains Mono,monospace">' + sp.moatScore + '</strong></span>';
+      if (data.totalScanned) card += '<span style="margin-left:auto">Scanned <strong>' + data.totalScanned + '</strong> stocks</span>';
+      card += '</div>';
+    }
+
+    card += '<div style="padding:14px 18px"><table style="width:100%;border-collapse:collapse;font-size:10px;font-family:Inter,sans-serif">';
+    card += '<thead><tr style="background:#fafbfc"><th style="padding:7px 8px;text-align:left;font-size:9px;color:#64748b;font-weight:800">SYMBOL</th><th style="padding:7px 8px;text-align:left;font-size:9px;color:#64748b;font-weight:800">NAME</th><th style="padding:7px 8px;text-align:right;font-size:9px;color:#64748b;font-weight:800">PRICE</th><th style="padding:7px 8px;text-align:right;font-size:9px;color:#64748b;font-weight:800">SCORE</th><th style="padding:7px 8px;text-align:right;font-size:9px;color:#64748b;font-weight:800">UPSIDE</th><th style="padding:7px 8px;text-align:center;font-size:9px;color:#64748b;font-weight:800">BUCKET</th></tr></thead><tbody>';
+    rows.slice(0, 10).forEach(function(r, i) {
+      var rowBg = i % 2 === 0 ? '#fff' : '#fafbfc';
+      var sym2 = r.symbol || r.ticker || '—';
+      var name = String(r.companyName || r.name || '').substring(0, 32);
+      var price = r.price || r.spot;
+      var score = r.score || r.investability_score || r.match_score || r.confidence;
+      var upside = r.upside || r.upside_pct;
+      var bucket = (r._bucket || r.verdict || r.decision || r.signal || '—').toString().toUpperCase();
+      var vC = bucket.indexOf('INVEST') >= 0 || bucket.indexOf('BUY') >= 0 || bucket.indexOf('EXACT') >= 0 ? '#059669' :
+               bucket.indexOf('AVOID') >= 0 || bucket.indexOf('SELL') >= 0 ? '#dc2626' :
+               bucket.indexOf('WAIT') >= 0 || bucket.indexOf('HOLD') >= 0 ? '#d97706' : '#64748b';
+      var bucketLabel = bucket === 'INVESTNOW' ? 'INVEST NOW' : bucket === 'EXACTMATCH' ? 'EXACT MATCH' : bucket;
+      card += '<tr style="background:' + rowBg + '">';
+      card += '<td style="padding:6px 8px;font-family:JetBrains Mono,monospace;font-weight:700;color:#1A3A78">' + sym2 + '</td>';
+      card += '<td style="padding:6px 8px;color:#475569">' + name + '</td>';
+      card += '<td style="padding:6px 8px;text-align:right;font-family:JetBrains Mono,monospace">' + (price != null ? (data.csym || S) + fNum(price, 2) : '—') + '</td>';
+      card += '<td style="padding:6px 8px;text-align:right;font-family:JetBrains Mono,monospace;font-weight:700">' + (score != null ? fNum(score, 0) : '—') + '</td>';
+      card += '<td style="padding:6px 8px;text-align:right;font-family:JetBrains Mono,monospace">' + fPct(upside, 1) + '</td>';
+      card += '<td style="padding:6px 8px;text-align:center;font-weight:800;color:' + vC + ';font-size:9px">' + bucketLabel + '</td>';
+      card += '</tr>';
+    });
+    card += '</tbody></table>';
+    if (rows.length > 10) card += '<div style="margin-top:6px;font-size:9px;color:#94a3b8;text-align:center">Showing top 10 of ' + rows.length + ' matches.</div>';
+    card += '</div></div>';
     return card;
   };
   h += _renderXM(xmCross, 'Cross-Market Scanner', '🌐', '#2563eb', reg === 'US' ? 'Indian market' : 'US market');
   h += _renderXM(xmSame, 'Similar Stocks — Same Region', '🔍', '#1A3A78', reg === 'US' ? 'US market peers' : 'Indian market peers');
 
-  // ═══ 5. 360° CYCLE ANALYSIS ═══ (concise summary card)
+  // ═══ 5. 360° CYCLE ANALYSIS — backend returns {sections:[{section:'synthesis',verdict,layman,metrics}, ...]} ═══
   h += '<div style="margin:18px 0;border:1px solid #e2e8f0;border-radius:14px;background:#fff;overflow:hidden">';
   h += '<div style="padding:12px 18px;background:#7c3aed14;border-bottom:2px solid #7c3aed40"><div style="font-size:13px;font-weight:900;color:#7c3aed;font-family:Sora,sans-serif">🔄 360° Cycle Analysis — Phase · Position · Recommendation</div></div>';
-  if (cy && cy.success) {
+  if (cy && cy.success && Array.isArray(cy.sections) && cy.sections.length > 0) {
+    var syn = cy.sections.find(function(s){return s.section === 'synthesis';}) || {};
+    var synColor = syn.verdict_color === 'green' ? '#10b981' : syn.verdict_color === 'yellow' ? '#f59e0b' : syn.verdict_color === 'red' ? '#dc2626' : '#7c3aed';
+
     h += '<div style="padding:14px 18px">';
-    h += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:10px">';
-    var cyFields = [
-      ['Current Phase', cy.current_phase || cy.phase || cy.cycle_phase],
-      ['Cycle Position', cy.cycle_position || cy.position],
-      ['Bottom Line Verdict', cy.bottom_line || cy.verdict],
-      ['Composite Score', cy.composite_score != null ? fNum(cy.composite_score, 1) + '/100' : null],
-      ['Risk Level', cy.risk_level || cy.risk],
-      ['Investability', cy.investability_score != null ? fNum(cy.investability_score, 0) + '/100' : null],
-    ];
-    cyFields.forEach(function(f) {
-      if (f[1] != null) {
-        h += '<div style="padding:8px 10px;border-radius:6px;background:#f5f3ff;border:1px solid #e9d5ff"><div style="font-size:8px;color:#7c3aed;font-weight:800;letter-spacing:0.4px;text-transform:uppercase">' + f[0] + '</div><div style="font-size:11px;font-weight:700;color:#0f172a;margin-top:2px">' + f[1] + '</div></div>';
+
+    // Synthesis verdict pill + score line
+    if (syn.verdict) {
+      h += '<div style="margin-bottom:12px;display:flex;align-items:center;gap:14px;flex-wrap:wrap">';
+      h += '<div style="padding:8px 16px;background:' + synColor + ';color:#fff;border-radius:8px;font-size:14px;font-weight:900;font-family:Sora,sans-serif">' + fStr(syn.verdict) + '</div>';
+      if (syn.metrics && typeof syn.metrics.net_score === 'number') {
+        h += '<div style="font-size:11px;color:#64748b">+' + syn.metrics.positive_signals + ' / −' + syn.metrics.negative_signals + ' · net <strong style="color:#0f172a;font-family:JetBrains Mono,monospace">' + (syn.metrics.net_score >= 0 ? '+' : '') + syn.metrics.net_score + '</strong></div>';
       }
-    });
-    h += '</div>';
-    if (cy.recommendation || cy.action) {
-      h += '<div style="margin-top:10px;padding:10px 12px;background:#f5f3ff;border-left:3px solid #7c3aed;border-radius:0 6px 6px 0;font-size:11px;color:#0f172a;line-height:1.5"><strong style="color:#7c3aed">RECOMMENDATION:</strong> ' + (cy.recommendation || cy.action) + '</div>';
+      h += '</div>';
+    }
+
+    // Plain-English summary
+    if (syn.layman) {
+      h += '<div style="padding:12px 14px;background:#faf5ff;border-left:3px solid #7c3aed;border-radius:0 6px 6px 0;font-size:11px;color:#0f172a;line-height:1.6;margin-bottom:12px">' + fStr(syn.layman) + '</div>';
+    }
+
+    // Sub-sections summary (top 6, excluding synthesis itself)
+    var others = cy.sections.filter(function(s){return s.section !== 'synthesis' && (s.verdict || s.phase || s.summary);}).slice(0, 6);
+    if (others.length > 0) {
+      h += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px">';
+      others.forEach(function(sec) {
+        var secColor = sec.verdict_color === 'green' ? '#10b981' : sec.verdict_color === 'red' ? '#dc2626' : sec.verdict_color === 'yellow' ? '#f59e0b' : '#7c3aed';
+        var label = (sec.title || sec.section || '').toString().replace(/_/g,' ').replace(/\b\w/g, function(c){return c.toUpperCase();});
+        h += '<div style="padding:9px 11px;border-radius:7px;background:#fafbfc;border:1px solid #e2e8f0;border-left:3px solid ' + secColor + '">';
+        h += '<div style="font-size:9px;color:#64748b;font-weight:800;letter-spacing:0.3px;text-transform:uppercase">' + label + '</div>';
+        var secVal = fStr(sec.verdict || sec.phase || sec.summary);
+        if (secVal) h += '<div style="font-size:11px;font-weight:700;color:#0f172a;margin-top:3px;line-height:1.4">' + secVal.substring(0, 80) + '</div>';
+        h += '</div>';
+      });
+      h += '</div>';
     }
     h += '</div>';
   } else {
