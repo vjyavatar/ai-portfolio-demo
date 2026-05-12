@@ -8374,6 +8374,80 @@ window._fireEmbeddedDDLoaders = function(symbol, sector, region) {
   } catch(e) { console.warn('AnalystCoverage load failed:', e); }
 };
 
+// ═════════════════════════════════════════════════════════════════════════
+// r63.74.0: Embed FULL Deep DD (all 6 sections incl. Section VI Full Institutional Detail)
+// into investor view via /api/investor-due-diligence. Replaces the slim
+// _buildEmbeddedDDSections embed (which only gave DD-I through DD-IV).
+//
+// Relies on window._renderDeepDDLegacyInto which is exposed by loadDeepDD.
+// loadDeepDD is called once at app init (lines 3556, 3629) so the helper is
+// available by the time investor mode renders.
+// ═════════════════════════════════════════════════════════════════════════
+window._embedDeepDDIntoInvestor = function(symbol, region, targetEl) {
+  if (!symbol || !targetEl) return;
+  var sym = String(symbol).toUpperCase();
+  region = region || window._deRegion || 'US';
+
+  // Loading state
+  targetEl.innerHTML = '' +
+    '<div style="margin:24px 0 14px;padding:14px 18px;background:linear-gradient(135deg,#1A3A78,#2563eb);color:#fff;border-radius:12px;font-family:Sora,sans-serif">' +
+      '<div style="font-size:10px;letter-spacing:1px;font-weight:800;opacity:0.85">DEEP DUE DILIGENCE</div>' +
+      '<div style="font-size:15px;font-weight:900;margin-top:2px">📌 Full institutional report — loading…</div>' +
+      '<div style="font-size:10px;margin-top:4px;opacity:0.85">Fetching multi-factor analysis, Porter, SWOT, Risk Matrix, Catalysts, Ownership, Earnings…</div>' +
+    '</div>' +
+    '<div style="padding:30px;text-align:center;color:#94a3b8;font-size:11px;font-family:Inter,sans-serif">' +
+      '<div style="display:inline-block;width:18px;height:18px;border:2.5px solid #1A3A78;border-top-color:transparent;border-radius:50%;animation:spin .5s linear infinite;vertical-align:middle"></div>' +
+      '<span style="margin-left:10px">Running Deep DD on <strong>' + sym + '</strong>…</span>' +
+    '</div>';
+
+  var _eml = document.getElementById('email');
+  var emailParam = window._verifiedEmail || (_eml ? (_eml.dataset.real || _eml.value || '') : '').trim().toLowerCase();
+
+  fetch('/api/investor-due-diligence?symbol=' + encodeURIComponent(sym) + '&region=' + encodeURIComponent(region) + '&email=' + encodeURIComponent(emailParam))
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      if (!d || !d.success) {
+        var msg = (d && d.error) || 'Unknown error';
+        targetEl.innerHTML = '<div style="margin:24px 0;padding:14px;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;font-size:11px;color:#7f1d1d;font-family:Inter,sans-serif">⚠ Full Deep DD unavailable for ' + sym + ': ' + msg + '</div>';
+        return;
+      }
+      window._ddLastSymbol = sym;
+      window._ddLastSector = (d.company && d.company.sector) || '';
+
+      if (typeof window._renderDeepDDLegacyInto !== 'function') {
+        targetEl.innerHTML = '<div style="margin:24px 0;padding:14px;background:#fef9c3;border:1px solid #fde68a;border-radius:8px;font-size:11px;color:#78350f;font-family:Inter,sans-serif">⚠ Deep DD render helper not initialized — please refresh the page.</div>';
+        return;
+      }
+
+      // Render full Deep DD (Sections I–VI) into the target container
+      window._renderDeepDDLegacyInto(d, targetEl);
+
+      // Fire all DD card loaders — same set _ddGenerate would fire
+      setTimeout(function() {
+        try {
+          if (typeof window._loadPositioningIntel === 'function') {
+            window._loadPositioningIntel(sym, window._ddLastSector, region);
+          }
+          if (typeof window._loadStockCommentary === 'function') {
+            window._loadStockCommentary(sym, region, 'stockCommentaryCard');
+          }
+          if (typeof window._loadDDForwardView === 'function') {
+            window._loadDDForwardView(sym, region);
+          }
+          if (typeof window._loadWoodshedSignal === 'function') {
+            window._loadWoodshedSignal(sym, region);
+          }
+          if (typeof window._loadAnalystCoverageTicker === 'function') {
+            window._loadAnalystCoverageTicker(sym, region);
+          }
+        } catch (e) { console.warn('Embedded full-DD loaders failed:', e); }
+      }, 120);
+    })
+    .catch(function(e) {
+      targetEl.innerHTML = '<div style="margin:24px 0;padding:14px;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;font-size:11px;color:#7f1d1d;font-family:Inter,sans-serif">⚠ Full Deep DD network error: ' + (e.message || e) + '</div>';
+    });
+};
+
 window._setPersona = function(persona) {
   try {
     window._dePersona = persona;
@@ -12707,8 +12781,10 @@ function renderChallenge(d){
 // Risk Matrix, SWOT, Porter's Five Forces.
 // ═══════════════════════════════════════════════════════════════════════
 function loadDeepDD(forceReg){
-if(!window._activeDeepDDTab)return;
-var el=document.getElementById('deResult');if(!el)return;
+// r63.74.0: Closure setup MUST run before any early-return so the cross-embed helper below
+// captures fully-initialized closure variables. Without this, calling _renderDeepDDLegacyInto
+// from investor mode before the user ever visits the Deep DD tab would render with undefined deps.
+var el=document.getElementById('deResult');
 var reg = forceReg || window._deRegion || 'US';
 window._deRegion = reg;
 var csym = reg==='US' ? '$' : '₹';
@@ -12721,7 +12797,33 @@ var fmtBn = function(n){
   return csym+fmt(n);
 };
 
-var _ddRegBar = _renderRegionToggle('loadDeepDD', reg);
+var _ddRegBar = (typeof _renderRegionToggle === 'function') ? _renderRegionToggle('loadDeepDD', reg) : '';
+
+// r63.74.0: Expose internal DD renderer for cross-page embedding (called by investor view).
+// The closure here captures `el`, `_ddRegBar`, `csym`, `fmt`, `fmtBn` and the nested
+// _renderReportLegacy function declaration (which is hoisted to the top of loadDeepDD).
+// We swap `el` to the caller's target container, render, then restore.
+window._renderDeepDDLegacyInto = function(d, targetEl) {
+  if (!d || !targetEl) return;
+  var _savedEl = el;
+  var _savedRegBar = _ddRegBar;
+  el = targetEl;
+  _ddRegBar = '';  // suppress region toggle inside embedded view — investor page has its own
+  try { _renderReportLegacy(d); }
+  catch(e) {
+    console.error('DD embed render failed:', e);
+    try { targetEl.innerHTML = '<div style="padding:14px;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;font-size:11px;color:#7f1d1d;font-family:Inter,sans-serif">⚠ Deep DD render error: ' + (e.message || e) + '</div>'; } catch(_){}
+  }
+  finally {
+    el = _savedEl;
+    _ddRegBar = _savedRegBar;
+  }
+};
+
+// Original early-return guards — kept here AFTER helper exposure so the helper is always available
+if(!window._activeDeepDDTab)return;
+if(!el)return;
+
 
 // r61.8: Aladdin-grade entry page — dense, navy/white, institutional
 function renderForm(prefilled){
@@ -16643,21 +16745,25 @@ h+='<button id="xmScanBtn" onclick="runCrossMarketScan(\''+d.symbol+'\',\''+reg+
 h+='<button id="xmSameScanBtn" onclick="runCrossMarketScan(\''+d.symbol+'\',\''+reg+'\',\'same\')" style="flex:1;min-width:180px;padding:14px 18px;border-radius:14px;background:linear-gradient(135deg,#1A3A78,#1e40af);color:#fff;border:none;cursor:pointer;font-family:Sora,sans-serif;text-align:left;box-shadow:0 4px 16px rgba(26,58,120,.2);transition:all .2s" onmouseover="this.style.transform=\'translateY(-2px)\'" onmouseout="this.style.transform=\'none\'"><div style="font-size:12px;font-weight:900;margin-bottom:4px">🔍 Similar Stocks — Same Region</div><div style="font-size:9px;color:rgba(255,255,255,.65);line-height:1.5">Peers by F-Score, Moat & Valuation in '+(reg==='US'?'US':'Indian')+' market</div></button>';
 h+='</div>';
 
-// r63.72.35: Embed Deep DD institutional cards inline at the bottom of Research report
-// All cards self-load via their endpoints — container divs + section dividers added here.
-if (typeof window._buildEmbeddedDDSections === 'function') {
-  try { h += window._buildEmbeddedDDSections(d.symbol || sym, d.sector || '', reg); } catch(e) { console.warn('DD embed failed:', e); }
-}
+// r63.74.0: Embed FULL Deep DD (all 6 sections incl. Section VI Full Institutional Detail)
+// at the bottom of the investor view. Replaces the slim DD-I→DD-IV embed which was
+// missing Investment Thesis, Financial Health, Porter's Five Forces, SWOT, Risk Matrix,
+// Catalysts, Earnings History, Insider Activity, Institutional Ownership, Analyst Targets.
+// Now the investor page is the single unified place for everything.
+h += '<div id="invFullDeepDDMount" style="margin-top:24px;min-height:120px"></div>';
 
 el.innerHTML=h;
 
-// r63.72.35: Fire DD card loaders after Investor result paints
+// Fetch /api/investor-due-diligence and render full Deep DD into the mount
 setTimeout(function() {
   try {
-    if (typeof window._fireEmbeddedDDLoaders === 'function') {
-      window._fireEmbeddedDDLoaders(d.symbol || sym, d.sector || '', reg);
+    if (typeof window._embedDeepDDIntoInvestor === 'function') {
+      var _mount = document.getElementById('invFullDeepDDMount');
+      if (_mount) window._embedDeepDDIntoInvestor(d.symbol || sym, reg, _mount);
+    } else {
+      console.warn('[DD-EMBED] _embedDeepDDIntoInvestor not available — Deep DD section will not render.');
     }
-  } catch (e) { console.warn('DD loaders failed:', e); }
+  } catch (e) { console.warn('Full DD embed failed:', e); }
 }, 100);
 // Populate institutional charts after render
 setTimeout(function(){

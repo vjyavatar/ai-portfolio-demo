@@ -1,3 +1,78 @@
+## r63.74.0 (2026-05-13) — UNIFIED INVESTOR PAGE (Full Deep DD embed)
+
+Context: User reported that the standalone Deep DD page only renders Section VI fundamentals (Investment Thesis, Financial Health, Porter's Five Forces, SWOT, Risk Matrix, Catalysts, DCF) but is missing the full institutional analysis stack visible in the PDF export (MDO, Monte Carlo, Buffett, CDS v2.0, 8 Decision Charts, etc.). Root cause: two separate render paths.
+
+Architecture before:
+- `loadDE` → investor mode (fetches `/api/investor-decide`) renders the full institutional stack (~3000 lines starting line 15700+: MDO, Monte Carlo, Buffett, Institutional Analysis Stack 8 charts, Legacy Scoring Matrix, CDS v2.0, LO Smart Scanner). At the bottom it embedded only the slim DD-I→DD-IV cards via `_buildEmbeddedDDSections`.
+- `loadDeepDD` → standalone Deep DD page (fetches `/api/investor-due-diligence`) renders 6 sections via `_renderReportLegacy`. Section VI here is the rich fundamental detail (Investment Thesis, Financial Health, Porter, SWOT, Risk Matrix, Catalysts, Earnings, Insider, Institutional, Analyst Targets, DCF).
+- The PDF was generated from investor mode (it captures `#deResult.innerHTML`), so the PDF appeared "complete." The standalone DD page appeared "incomplete." But it was actually the reverse — DD page had Section VI fundamentals that investor mode never showed.
+
+User decision: unify everything onto the investor page so it's the single source of truth.
+
+Changes:
+
+1. **`loadDeepDD` (line 12783)** — restructured the top:
+   - Moved closure-variable initialization (`el`, `reg`, `csym`, `fmt`, `fmtBn`, `_ddRegBar`) to BEFORE the early-return guards. This ensures the cross-embed helper below captures fully-initialized closure state regardless of whether the user has visited the Deep DD tab.
+   - `_ddRegBar` now uses `typeof _renderRegionToggle === 'function'` guard so it works at app init before all modules are wired.
+   - Added `window._renderDeepDDLegacyInto = function(d, targetEl)` exposure — swaps the closure `el` to the caller's container, calls `_renderReportLegacy(d)`, then restores. Also temporarily empties `_ddRegBar` so the embedded view doesn't show a duplicate region toggle (investor page already has one).
+
+2. **New helper `window._embedDeepDDIntoInvestor(symbol, region, targetEl)` (line 8386)** — placed adjacent to the existing `_buildEmbeddedDDSections` and `_fireEmbeddedDDLoaders` helpers. Fetches `/api/investor-due-diligence?symbol=X&region=Y`, then:
+   - On success → calls `window._renderDeepDDLegacyInto(d, targetEl)` which renders all 6 Deep DD sections (Verdict, Context, Analysis, Signals, External View, Full Institutional Detail) into the target container.
+   - Fires all 5 DD card loaders (`_loadPositioningIntel`, `_loadStockCommentary`, `_loadDDForwardView`, `_loadWoodshedSignal`, `_loadAnalystCoverageTicker`) at +120ms so the Market Regime / Sector Flow / 4D / Demand Curve / Ownership / Volume Profile / Woodshed / Analyst cards populate.
+   - On API failure → shows inline error block (red), preserving the rest of the investor page.
+
+3. **Investor mode render (line 16748)** — replaced the slim embed block:
+   - Removed call to `_buildEmbeddedDDSections` (which only emitted DD-I→DD-IV containers).
+   - Removed call to `_fireEmbeddedDDLoaders` (subsumed by the new helper).
+   - Added single container `<div id="invFullDeepDDMount" style="margin-top:24px;min-height:120px"></div>` at the bottom of investor `h`.
+   - After `el.innerHTML=h`, scheduled a setTimeout(+100ms) that calls `window._embedDeepDDIntoInvestor(d.symbol||sym, reg, _mount)`.
+   - `_buildEmbeddedDDSections` and `_fireEmbeddedDDLoaders` are kept defined but unused — backup paths in case any other code calls them.
+
+4. **`static/app.min.js`** — synced from `static/app.js` (md5 verified identical).
+
+5. **`build_version.txt`** — bumped to `r63.74.0`.
+
+What the user will see now (in investor mode for any stock, e.g., Decide → Research persona → analyze MU):
+
+  ┌─ Investor mode native render ────────────────────────┐
+  │  Verdict card with MDO                                │
+  │  Group 1: Fundamentals & Business Quality             │
+  │  (Valuation, Business Quality, DCF, Monte Carlo,      │
+  │   Returns, Sector Rotation, Buffett, System Status)   │
+  │  Groups 2–12: Institutional Analysis Stack            │
+  │  (8 Decision Charts, Valuation Intel, Technical,      │
+  │   Inst Flows, Factor/Alpha, Risk, Macro, Scenario,    │
+  │   Portfolio, Decision Intelligence, Narrative)        │
+  │  Legacy Scoring Matrix + CDS v2.0                     │
+  │  LO Smart Scanner + All Systems Go                    │
+  │  Cross-Market Scanner + Similar Stocks (buttons)      │
+  ├─ NEW: Full Deep DD embed ─────────────────────────────┤
+  │  📌 DEEP DUE DILIGENCE banner                          │
+  │  SECTION I:  Verdict (Bottom Line + cycle)            │
+  │  SECTION II: Context (Market Regime + Sector Flow)    │
+  │  SECTION III: Analysis (4D Positioning)               │
+  │  SECTION IV: Signals (Commentary + Demand + Ownership │
+  │              + Volume Profile + Woodshed)             │
+  │  SECTION V:  External View (Analyst Coverage)         │
+  │  SECTION VI: Full Institutional Detail                │
+  │              (Inv Thesis, Financial Health, Porter's, │
+  │               SWOT, Risk Matrix, Catalysts, Earnings, │
+  │               Insider, Institutional Ownership,       │
+  │               Analyst Targets, DCF)                   │
+  └───────────────────────────────────────────────────────┘
+
+Regression checks in production:
+- [ ] Decide → Research → analyze MU (US) → page renders investor stack first, then "DEEP DUE DILIGENCE" banner ~100ms later, then full Section I–VI below.
+- [ ] No duplicate region toggle inside the embedded Deep DD section.
+- [ ] No JS console errors about `_renderDeepDDLegacyInto not initialized`. If you see this, loadDeepDD never ran at init — check that `setTimeout(loadDeepDD,100)` at line 3629 still fires.
+- [ ] Card containers (Market Regime, Sector Flow, 4D, Demand, Ownership, Volume, Woodshed, Analyst Coverage) populate within ~3 seconds of the embed banner appearing.
+- [ ] Deep DD standalone page (Decide → Deep DD sub-tab) still works independently — unchanged user flow.
+- [ ] PDF export (admin only) captures the full unified page including the embedded DD sections.
+- [ ] Switch from MU to NVDA → embed re-renders with NVDA data; no stale MU content visible.
+
+Known follow-ups (per user, next round):
+- N/A and "Cannot Compute" values in the DD content reflect `/api/investor-due-diligence` returning incomplete fields. Backend audit needed for missing ROE, Beta, EV/EBITDA, DCF secondary computation, Catalysts (showing 0.06%). User will handle the api.py side.
+
 ## r63.73.0 (2026-05-13) — ONE-BAR CHROME (Bloomberg Density)
 
 Context: Decide tab had 5 stacked rows of chrome (Persona / Region / Trading Mode / orphan Investor button / Stock selectors). Looked like a fresher design — wasted ~200px vertical, broke institutional aesthetic.
