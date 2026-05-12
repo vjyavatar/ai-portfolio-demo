@@ -1,5 +1,5 @@
 // ═══ Celesys version stamp ═══
-window.CELESYS_VERSION = "r63.72.32";
+window.CELESYS_VERSION = "r63.72.33";
 window.CELESYS_BUILD_TIME = 1778525757;
 window.CELESYS_BUILD_DATE = "2026-05-11 18:14:10 UTC";
 window.CELESYS_FEATURES = {
@@ -9,7 +9,7 @@ window.CELESYS_FEATURES = {
   three_lens_scanner: true,
 };
 console.log("%c━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "color:#1A3A78");
-console.log("%c CELESYS r63.72.32 %c loaded · 2026-05-11 18:14:10 UTC",
+console.log("%c CELESYS r63.72.33 %c loaded · 2026-05-11 18:14:10 UTC",
   "background:#7c3aed;color:#fff;font-weight:900;padding:3px 8px;border-radius:3px;font-family:monospace",
   "color:#7c3aed;font-weight:700;font-family:monospace");
 console.log("%c Features: 360° Cycle Analysis · Diamond Hunter · Fund Analyzer · Three-Lens Scanner",
@@ -22,7 +22,7 @@ document.addEventListener('DOMContentLoaded', function() {
     var stamp = document.createElement('div');
     stamp.id = 'celesys-build-stamp';
     stamp.style.cssText = 'position:fixed;bottom:8px;left:8px;background:linear-gradient(135deg,#1A3A78,#7c3aed);color:#fff;padding:4px 10px;font-size:9px;font-weight:800;font-family:IBM Plex Mono,monospace;border-radius:4px;letter-spacing:0.5px;z-index:99999;box-shadow:0 2px 8px rgba(124,58,237,0.4);cursor:pointer;user-select:none';
-    stamp.textContent = '⚙ r63.72.32 · 2026-05-11';
+    stamp.textContent = '⚙ r63.72.33 · 2026-05-11';
     stamp.title = 'Click to verify backend version';
     stamp.onclick = function() {
       fetch('/api/build-version').then(function(r){return r.json();}).then(function(d){
@@ -13088,14 +13088,8 @@ function _renderReportLegacy(d){
   var h = _ddRegBar;
   h += '<div class="csdd-root">';
 
-  // r63.72.31: Sticky section nav
-  h += '<nav class="csdd-stickynav"><div class="csdd-stickynav__inner">';
-  h += '<button class="csdd-stickynav__item csdd-stickynav__item--active" data-csdd-nav="verdict" onclick="_csddJumpTo(\'verdict\')">I · VERDICT</button>';
-  h += '<button class="csdd-stickynav__item" data-csdd-nav="context" onclick="_csddJumpTo(\'context\')">II · CONTEXT</button>';
-  h += '<button class="csdd-stickynav__item" data-csdd-nav="analysis" onclick="_csddJumpTo(\'analysis\')">III · ANALYSIS</button>';
-  h += '<button class="csdd-stickynav__item" data-csdd-nav="signals" onclick="_csddJumpTo(\'signals\')">IV · SIGNALS</button>';
-  h += '<button class="csdd-stickynav__item" data-csdd-nav="external" onclick="_csddJumpTo(\'external\')">V · EXTERNAL VIEW</button>';
-  h += '</div></nav>';
+  // r63.72.33: Removed sticky section nav (per user request).
+  // Section dividers below still organize content into clear groups.
 
   // r61.8: Stale-data banner
   if (d._stale) {
@@ -13166,6 +13160,21 @@ function _renderReportLegacy(d){
   h += '<div id="ddAnalystCoverageCard"></div>';
   h += '</section>';
 
+  h += '</div>'; // .csdd-root
+
+  // r63.72.33: Section VI wrapper for all legacy DD content.
+  // This ensures Investment Thesis, Financial Health, Porter's 5 Forces,
+  // SWOT, Sector Context, Risk Matrix, Catalysts, Earnings History,
+  // Insider Activity, Institutional Ownership, Analyst Targets — none of it
+  // is orphaned. All rendered below with the same design-system framing.
+  h += '<div class="csdd-root">';
+  h += '<section class="csdd-section" data-csdd-section="VI">';
+  h += '<div class="csdd-section__head">';
+  h += '<span class="csdd-section__roman">SECTION VI</span>';
+  h += '<span class="csdd-section__title">Full Institutional Detail</span>';
+  h += '<span class="csdd-section__sub">Thesis · Fundamentals · Risks · Catalysts · Ownership · History</span>';
+  h += '</div>';
+  h += '</section>';
   h += '</div>'; // .csdd-root
 
   // Wrap in legacy max-width container for any subsequent legacy content
