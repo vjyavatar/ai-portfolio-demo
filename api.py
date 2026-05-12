@@ -3884,6 +3884,20 @@ async def dd_mood_gauges(symbol: str = "", sector: str = "", region: str = "US")
         return {"success": False, "error": str(e)[:200], "trace": traceback.format_exc()[:1500]}
 
 
+# r63.72.29: Positioning Intelligence — replaces simple Mood with 4D institutional framework
+@app.get("/api/dd-positioning-intelligence")
+async def dd_positioning_intelligence(symbol: str = "", sector: str = "", region: str = "US"):
+    print(f"[{_BUILD_VERSION}] /api/dd-positioning-intelligence symbol={symbol} sector={sector} region={region}")
+    try:
+        from services.positioning_intelligence import get_positioning_intelligence
+        if not symbol:
+            return {"success": False, "error": "symbol required"}
+        return get_positioning_intelligence(symbol, sector, region)
+    except Exception as e:
+        import traceback
+        return {"success": False, "error": str(e)[:200], "trace": traceback.format_exc()[:1500]}
+
+
 # r63.72.25: Stock Commentary & Day-to-Day Tracker
 @app.get("/api/stock-commentary")
 async def stock_commentary(symbol: str = "", region: str = "US"):
