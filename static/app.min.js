@@ -8214,8 +8214,8 @@ window._pmsRegion='IN';
 function switchDERegion(reg){
 window._deRegion=reg;
 var inBtn=document.getElementById('deRegIN');var usBtn=document.getElementById('deRegUS');
-if(inBtn){inBtn.style.background=reg==='IN'?'linear-gradient(135deg,#1A3A78,#1e40af)':'#f1f5f9';inBtn.style.color=reg==='IN'?'#fff':'#374151';inBtn.style.border=reg==='IN'?'none':'1px solid #e2e5ea';}
-if(usBtn){usBtn.style.background=reg==='US'?'linear-gradient(135deg,#1A3A78,#1e40af)':'#f1f5f9';usBtn.style.color=reg==='US'?'#fff':'#374151';usBtn.style.border=reg==='US'?'none':'1px solid #e2e5ea';}
+if(inBtn){inBtn.style.background=reg==='IN'?'linear-gradient(135deg,#1A3A78,#1e40af)':'#fff';inBtn.style.color=reg==='IN'?'#fff':'#374151';}
+if(usBtn){usBtn.style.background=reg==='US'?'linear-gradient(135deg,#1A3A78,#1e40af)':'#fff';usBtn.style.color=reg==='US'?'#fff':'#374151';}
 var ins=document.getElementById('deStocksIN');var uss=document.getElementById('deStocksUS');
 // Only show index quick-buttons in TRADER mode
 if(window._deMode==='investor'){
@@ -8382,7 +8382,7 @@ window._setPersona = function(persona) {
     var subRow = document.getElementById('deTradingSubRow');
 
     var activeStyle = 'linear-gradient(135deg,#1A3A78,#1e40af)';
-    var inactiveBg = '#f1f5f9';
+    var inactiveBg = '#fff';
     if (rBtn) {
       rBtn.style.background = persona === 'research' ? activeStyle : inactiveBg;
       rBtn.style.color = persona === 'research' ? '#fff' : '#374151';
@@ -8391,7 +8391,7 @@ window._setPersona = function(persona) {
       tBtn.style.background = persona === 'trading' ? activeStyle : inactiveBg;
       tBtn.style.color = persona === 'trading' ? '#fff' : '#374151';
     }
-    if (subRow) subRow.style.display = persona === 'trading' ? 'block' : 'none';
+    if (subRow) subRow.style.display = persona === 'trading' ? 'flex' : 'none';
 
     if (persona === 'research') {
       // Research = investor mode (unified fundamental research)
@@ -8426,67 +8426,55 @@ try {
     var subRow = document.getElementById('deTradingSubRow');
     var activeStyle = 'linear-gradient(135deg,#1A3A78,#1e40af)';
     if (rBtn) {
-      rBtn.style.background = newPersona === 'research' ? activeStyle : '#f1f5f9';
+      rBtn.style.background = newPersona === 'research' ? activeStyle : '#fff';
       rBtn.style.color = newPersona === 'research' ? '#fff' : '#374151';
     }
     if (tBtn) {
-      tBtn.style.background = newPersona === 'trading' ? activeStyle : '#f1f5f9';
+      tBtn.style.background = newPersona === 'trading' ? activeStyle : '#fff';
       tBtn.style.color = newPersona === 'trading' ? '#fff' : '#374151';
     }
-    if (subRow) subRow.style.display = newPersona === 'trading' ? 'block' : 'none';
+    if (subRow) subRow.style.display = newPersona === 'trading' ? 'flex' : 'none';
   } else if (newPersona === 'trading') {
     // Persona already trading — just ensure sub-row visible
     var subRow2 = document.getElementById('deTradingSubRow');
-    if (subRow2) subRow2.style.display = 'block';
+    if (subRow2) subRow2.style.display = 'flex';
   }
 } catch(e) {}
 var tb=document.getElementById('deModeTrader');var ib=document.getElementById('deModeInvestor');var pb=document.getElementById('deModePortfolio');var ob=document.getElementById('deModeOptions');var atb=document.getElementById('deModeActiveTrading');
-if(tb){tb.style.background=mode==='trader'?'linear-gradient(135deg,#1A3A78,#1e40af)':'#f1f5f9';tb.style.color=mode==='trader'?'#fff':'#374151';tb.style.border=mode==='trader'?'none':'1px solid #e2e5ea'}
-if(ib){ib.style.background=mode==='investor'?'linear-gradient(135deg,#1A3A78,#1e40af)':'#f1f5f9';ib.style.color=mode==='investor'?'#fff':'#374151';ib.style.border=mode==='investor'?'none':'1px solid #e2e5ea'}
-if(ob){ob.style.background=mode==='options'?'linear-gradient(135deg,#7c3aed,#a855f7)':'#f1f5f9';ob.style.color=mode==='options'?'#fff':'#374151';ob.style.border=mode==='options'?'none':'1px solid #e2e5ea'}
-if(atb){atb.style.background=mode==='activetrading'?'linear-gradient(135deg,#0f172a,#1e293b)':'#f1f5f9';atb.style.color=mode==='activetrading'?'#fff':'#374151';atb.style.border=mode==='activetrading'?'none':'1px solid #e2e5ea'}
-if(pb){pb.style.background=mode==='portfolio'?'linear-gradient(135deg,#1A3A78,#1e40af)':'#f1f5f9';pb.style.color=mode==='portfolio'?'#fff':'#374151'}
+if(tb){tb.style.background=mode==='trader'?'linear-gradient(135deg,#1A3A78,#1e40af)':'#fff';tb.style.color=mode==='trader'?'#fff':'#374151';}
+if(ib){ib.style.background=mode==='investor'?'linear-gradient(135deg,#1A3A78,#1e40af)':'#fff';ib.style.color=mode==='investor'?'#fff':'#374151';}
+if(ob){ob.style.background=mode==='options'?'linear-gradient(135deg,#7c3aed,#a855f7)':'#fff';ob.style.color=mode==='options'?'#fff':'#374151';}
+if(atb){atb.style.background=mode==='activetrading'?'linear-gradient(135deg,#0f172a,#1e293b)':'#fff';atb.style.color=mode==='activetrading'?'#fff':'#374151';}
+if(pb){pb.style.background=mode==='portfolio'?'linear-gradient(135deg,#1A3A78,#1e40af)':'#fff';pb.style.color=mode==='portfolio'?'#fff':'#374151'}
 
-// Hide/show index quick-buttons
+// r63.73.0: Show/hide bar groups using named IDs (replaces parent-traversal logic)
 var inIdx=document.getElementById('deStocksIN');var usIdx=document.getElementById('deStocksUS');
-var deRegRow=document.getElementById('deRegIN');
-if(deRegRow)deRegRow=deRegRow.parentElement; // get the row containing region buttons
+var pGrp=document.getElementById('dePersonaGroup');
+var rGrp=document.getElementById('deRegGroup');
+var sGrp=document.getElementById('deStockGroup');
+var curReg=window._deRegion||'IN';
 
 if(mode==='options'||mode==='activetrading'){
-  // HIDE everything: INDICES row, region buttons, stock dropdown, custom input
+  // Lock to instrument-fixed flow: hide PERSONA, MARKET, STOCK, INDICES — only MODE pills remain
+  if(pGrp)pGrp.style.display='none';
+  if(rGrp)rGrp.style.display='none';
+  if(sGrp)sGrp.style.display='none';
   if(inIdx)inIdx.style.display='none';
   if(usIdx)usIdx.style.display='none';
-  if(deRegRow)deRegRow.style.display='none';
 }else if(mode==='investor'||mode==='portfolio'){
-  if(inIdx)inIdx.style.display='none';if(usIdx)usIdx.style.display='none';
-}else{
-  if(inIdx)inIdx.style.display='flex';
+  // Research/Investor: show selectors, hide INDICES quick-picks
+  if(pGrp)pGrp.style.display='flex';
+  if(rGrp)rGrp.style.display='flex';
+  if(sGrp)sGrp.style.display='flex';
+  if(inIdx)inIdx.style.display='none';
   if(usIdx)usIdx.style.display='none';
-}
-
-// Hide stock dropdown/region/analyze in Options mode
-var deCtrl=document.getElementById('deControls');
-if(deCtrl){
-  if(mode==='options'||mode==='activetrading'){
-    // Hide ALL children except the mode buttons row
-    var allChildren=deCtrl.children;
-    for(var ci=0;ci<allChildren.length;ci++){
-      var child=allChildren[ci];
-      // Keep only the row that has mode buttons (deModeTrader)
-      var hasModeBtn=child.querySelector&&child.querySelector('#deModeTrader');
-      if(!hasModeBtn){
-        child.style.display='none';
-      }
-    }
-  }else{
-    // Restore visibility for other modes
-    var allChildren2=deCtrl.children;
-    for(var ci2=0;ci2<allChildren2.length;ci2++){
-      allChildren2[ci2].style.display='';
-    }
-    // Re-show region row
-    if(deRegRow)deRegRow.style.display='';
-  }
+}else{
+  // Trader: show everything; INDICES row reflects current region
+  if(pGrp)pGrp.style.display='flex';
+  if(rGrp)rGrp.style.display='flex';
+  if(sGrp)sGrp.style.display='flex';
+  if(inIdx)inIdx.style.display=(curReg==='IN')?'flex':'none';
+  if(usIdx)usIdx.style.display=(curReg==='US')?'flex':'none';
 }
 
 var r=document.getElementById('deResult');
@@ -24841,7 +24829,8 @@ console.log('[TRADING] ✅ EMA 9/21 + RSI trading tab loaded');
       // tabBtnTools → everyone
       
       // Decision Engine mode buttons
-      {sel:'#deModeInvestor', roles:['admin','full']},
+      // r63.73.0: #deModeInvestor rule removed — button is now permanently hidden (display:none !important in HTML).
+      // Investor mode is reached via persona=Research toggle, not a visible button.
       {sel:'#deModeOptions', roles:['admin','full']},
       {sel:'#deModeTrader', roles:['admin','full','trading']},
       

@@ -1,3 +1,39 @@
+## r63.73.0 (2026-05-13) — ONE-BAR CHROME (Bloomberg Density)
+
+Context: Decide tab had 5 stacked rows of chrome (Persona / Region / Trading Mode / orphan Investor button / Stock selectors). Looked like a fresher design — wasted ~200px vertical, broke institutional aesthetic.
+
+Root causes identified:
+1. Each selector group rendered in its own bordered card → cards-within-cards visual weight.
+2. `#deModeInvestor` had inline `style="display:none"` but the role enforcer at line 24844 (`{sel:'#deModeInvestor', roles:['admin','full']}`) ran `el.style.display=''` on every page load for admin/full users — wiping the inline hide and exposing the lonely "Investor" button as row 4.
+
+Changes:
+- index.html: replaced the entire `#deControls` chrome (lines 1683–1735) with a single dense terminal-style control bar (`#deControlsBar`). PERSONA / MARKET / MODE / STOCK groups now sit inline with thin vertical separators between groups. ~44px total height vs ~240px before. Pills are 5×13px padding, 10px font, joined within each group via a single rounded wrapper with inner `border-left` dividers.
+- index.html: `#deModeInvestor` legacy button now has `display:none !important` (belt) and is moved out of the bar.
+- static/app.js (line 24832): REMOVED the `{sel:'#deModeInvestor', roles:['admin','full']}` role rule (suspenders). Investor mode is reached via the Research persona toggle now, not a visible button.
+- static/app.js `switchDERegion` (line 8214): removed `.style.border=` overrides since region buttons now live inside a wrapper that owns the border.
+- static/app.js `_setPersona` (line 8394) and `switchDEMode` (lines 8436, 8440): `deTradingSubRow.style.display` changed from `'block'` to `'flex'` — it's now an inline-flex group inside the bar.
+- static/app.js `switchDEMode` (lines 8444–8447): removed `.style.border=` overrides on mode pills.
+- static/app.js `switchDEMode` (lines 8451–8489): replaced the parent-element traversal logic with named-group selectors (`#dePersonaGroup`, `#deRegGroup`, `#deStockGroup`, `#deTradingSubRow`). In options/activetrading mode → only MODE pills shown. In investor/portfolio → all selectors shown, INDICES hidden. In trader → everything shown, INDICES reflects current region.
+- static/app.min.js: synced from static/app.js (mandatory per deploy rule).
+
+Layout (desktop, persona=Trading):
+```
+[ PERSONA Research|Trading │ MARKET IN|US │ MODE Trader|Options|Active     STOCK [▼Select] [symbol] [⚡ANALYZE] ]
+```
+
+In persona=Research mode the MODE group collapses out, leaving PERSONA · MARKET · STOCK.
+
+On <768px viewport the bar wraps gracefully (`flex-wrap:wrap`, `row-gap:8px`).
+
+Regression checks needed in production:
+- [ ] Decide tab loads with persona=Research highlighted, single bar visible, no orphan Investor button.
+- [ ] Click Trading persona → MODE group reveals inline (not as a new stacked row).
+- [ ] Click Trader → INDICES strip appears below the bar with NIFTY/BANKNIFTY/SENSEX/FINNIFTY/MIDCPNIFTY.
+- [ ] Switch region IN → US → INDICES strip swaps to SPY/QQQ/IWM.
+- [ ] Click Options or Active → PERSONA, MARKET, STOCK, INDICES all hide; only MODE pills remain visible.
+- [ ] Switch back to Research → persona-research highlights, MODE hides, STOCK reappears, investor mode loads.
+- [ ] `switchDEMode('investor')` still works from all the trade-card click handlers (no visible button needed).
+
 ## r63.72.21 (2026-05-11) — DIAMOND HUNTER FIX
 
 Bug: r63.72.20 added 'with get_conn() as conn:' to /api/diamond-hunter without importing get_conn.
