@@ -44824,7 +44824,7 @@ def smart_money_scanner(region: str = "US", mcap: str = "large", email: str = ""
     universe = umap.get(mcap, [])
     if not universe:
         return {"success": False, "results": [], "universe_size": 0, "scan_time_sec": 0, "error": f"{mcap} cap for {region} not populated"}
-    ck = f"smi:{region}:{mcap}"
+    ck = f"smi:v2:{region}:{mcap}"
     if ck in _smi_cache and _smi_time.time() - _smi_cache[ck]["t"] < 4*3600:
         return {**_smi_cache[ck]["data"], "_cached": True}
     t0 = _smi_time.time()
@@ -44987,7 +44987,7 @@ def smart_money_scanner(region: str = "US", mcap: str = "large", email: str = ""
     if not universe:
         return {"success": False, "results": [], "universe_size": 0, "scan_time_sec": 0, "error": f"{mcap} cap for {region} not populated"}
 
-    ck = f"smi:{region}:{mcap}"
+     ck = f"smi-v2:{region}:{mcap}"
     if ck in _smi_cache and _smi_time.time() - _smi_cache[ck]["t"] < 4*3600:
         return {**_smi_cache[ck]["data"], "_cached": True}
 
