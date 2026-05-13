@@ -26949,7 +26949,6 @@ async def intraday_setups(
     email: str = "",
     region: str = "US",
     timeframe: str = "all",  # all | intraday | swing
-    mcap: str = "large",  # large | mid | small | micro
     limit: int = 30,
 ):
     """r62.2: Scan liquid universe for ORB / VWAP-reclaim / Inside-day setups."""
@@ -26968,7 +26967,7 @@ async def intraday_setups(
 
     # 5-min cache for intraday data, longer for swing-only
     cache_ttl = 300 if timeframe in ("all", "intraday") else 1800
-   _cache_key = f"intra_setups_v2:{region}:{mcap}:{timeframe}:{limit}"
+    _cache_key = f"intra_setups_v1:{region}:{timeframe}:{limit}"
     cached = _smart_cache_get(_cache_key)
     if cached:
         cached = dict(cached)
@@ -26976,14 +26975,7 @@ async def intraday_setups(
         cached["_cache_age_sec"] = int(time.time() - cached.get("_cached_at", time.time()))
         return cached
 
-    _master = _intraday_universe_us if region == "US" else _intraday_universe_in
-_n = len(_master)
-if mcap == "large": universe = _master[:max(15, _n // 4)]
-elif mcap == "mid": universe = _master[_n // 4 : _n // 2]
-elif mcap == "small": universe = _master[_n // 2 : 3 * _n // 4]
-elif mcap == "micro": universe = _master[3 * _n // 4 :]
-else: universe = _master[:25]
-if not universe: universe = _master[:25]
+    universe = _intraday_universe_us if region == "US" else _intraday_universe_in
     suffix = "" if region == "US" else ".NS"
     csym = "$" if region == "US" else "₹"
 
@@ -44789,18 +44781,10 @@ _smi_cache = {}
 
 def _smi_compute(ticker):
     try:
-        import time as _t2
-        	for _attempt in range(3):
-            	try:
-                	yt = _smi_yf.Ticker(ticker)
-                	info = yt.info or {}
-                	if info.get("currentPrice") or info.get("regularMarketPrice"):
-                    		break
-            	except Exception:
-                		pass
-            	_t2.sleep(1.5 * (_attempt + 1))
-        	else:
-            			return None
+        yt = _smi_yf.Ticker(ticker)
+        info = yt.info or {}
+        if not info.get("currentPrice") and not info.get("regularMarketPrice"):
+            return None
         df = yt.history(period="2y", interval="1d", auto_adjust=False)
         vols = _smi_dd(list)
         if df is not None and not df.empty:
