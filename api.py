@@ -44752,3 +44752,89 @@ async def swing_analysis(symbol: str = "RELIANCE", region: str = "IN"):
         print(f"[SWING] ❌ Error for {symbol}: {e}")
         import traceback; traceback.print_exc()
         return {"success": False, "error": str(e)}
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Smart Money Scanner — added manually 2026-05-13
+# ═══════════════════════════════════════════════════════════════════════════
+import yfinance as _smi_yf
+import time as _smi_time
+from concurrent.futures import ThreadPoolExecutor as _SmiPool, as_completed as _smi_done
+from collections import defaultdict as _smi_dd
+from datetime import datetime as _smi_dt, timedelta as _smi_td
+
+_SMI_UNIVERSES_US = {
+    "large": ["AAPL","MSFT","NVDA","GOOGL","AMZN","META","TSLA","AVGO","JPM","WMT","XOM","V","UNH","MA","PG","JNJ","HD","COST","ORCL","BAC","NFLX","KO","CRM","CVX","MRK","TMO","AMD","PEP","ADBE","LIN","CSCO","ACN","MCD","WFC","ABT","DHR","GE","TXN","VZ","DIS","NOW","INTU","AMGN","IBM","QCOM","CAT","GS","UBER","BKNG","AXP","RTX","BLK","PFE","TJX","C","LOW","DE","HON","REGN","MS","BMY","MDT","MU","LRCX","MDLZ","ADI","GILD","TMUS","PANW","KLAC","BA","SO","ICE","NKE"],
+    "mid": ["MORN","WST","TDY","MANH","DECK","FIX","LII","WSO","SAIA","RPM","EME","FAF","UTHR","ATR","LSTR","CHE","CHRW","WEX","KNX","JBL","SNX","HUBB","DOX","CSL","BRX","MAT","AYI","MUSA","ELS","REG","TXRH","AAON","MTH","RYAN","JEF","BLD","WMS","CASY","BURL","KBR","FND","ENS","UGI"],
+    "small": ["SXT","UFPI","ESE","WERN","HALO","MGY","PI","HCC","RXO","ASGN","SPSC","HASI","UNFI","SHEN","CALM","STEP","CRC","KLG","OII","WAFD","KFRC","TBBK","TILE","JBSS","UPBD","CSGS","HCKT","HSII","CAKE","NUS","BANC","TRMK","NWN","ABM","ARLO","SHAK","BANR","HPP","DLX","NABL","FOR"],
+    "micro": ["TPC","NVEE","ESSA","HVT","ATLC","PFIS","UFPT","CTKB","PEBK","TBNK","CCB","PFBC","FBNC","HBNC","SRCE","FBP","BCBP","BMRC","BSRR","WTBA","CFFI","FCBC","SBT","SMBC","NICK","WMK","BHB","CARV","AROW","LARK","FNLC","ESQ","FCAP","UVSP","SPFI","CCBG"],
+}
+
+_SMI_UNIVERSES_IN = {
+    "large": ["RELIANCE.NS","TCS.NS","HDFCBANK.NS","BHARTIARTL.NS","ICICIBANK.NS","INFY.NS","SBIN.NS","LT.NS","ITC.NS","HINDUNILVR.NS","BAJFINANCE.NS","MARUTI.NS","AXISBANK.NS","KOTAKBANK.NS","HCLTECH.NS","SUNPHARMA.NS","TITAN.NS","ASIANPAINT.NS","ULTRACEMCO.NS","TATAMOTORS.NS","NESTLEIND.NS","WIPRO.NS","POWERGRID.NS","ONGC.NS","NTPC.NS","TATASTEEL.NS","HDFCLIFE.NS","ADANIPORTS.NS","COALINDIA.NS","CIPLA.NS","BAJAJFINSV.NS","JSWSTEEL.NS","INDUSINDBK.NS","TECHM.NS","HINDALCO.NS","ADANIENT.NS","GRASIM.NS","DRREDDY.NS","SBILIFE.NS","BAJAJ-AUTO.NS","BRITANNIA.NS","EICHERMOT.NS","TATACONSUM.NS","DIVISLAB.NS","HEROMOTOCO.NS","APOLLOHOSP.NS","BPCL.NS","SHRIRAMFIN.NS","TRENT.NS"],
+    "mid": ["PERSISTENT.NS","POLYCAB.NS","BHARATFORG.NS","CUMMINSIND.NS","TVSMOTOR.NS","COFORGE.NS","MPHASIS.NS","LTIM.NS","DLF.NS","INDHOTEL.NS","ABFRL.NS","TATAPOWER.NS","MOTHERSON.NS","TATACOMM.NS","BERGEPAINT.NS","HAVELLS.NS","COLPAL.NS","DABUR.NS","GODREJCP.NS","MARICO.NS","PIDILITIND.NS","UPL.NS","CHOLAFIN.NS","BANKBARODA.NS","CANBK.NS","PNB.NS","FEDERALBNK.NS","BANDHANBNK.NS","IDFCFIRSTB.NS","RECLTD.NS","JINDALSTEL.NS","SAIL.NS","VEDL.NS","ADANIGREEN.NS","ADANIPOWER.NS","NMDC.NS","BHEL.NS","CONCOR.NS","IRCTC.NS","GAIL.NS","IOC.NS","HPCL.NS","PETRONET.NS","TORNTPHARM.NS","LUPIN.NS","AUROPHARMA.NS","ZYDUSLIFE.NS"],
+    "small": ["KPITTECH.NS","HBLPOWER.NS","AAVAS.NS","CDSL.NS","CAMS.NS","INTELLECT.NS","ZENSARTECH.NS","BLUESTARCO.NS","KAJARIACER.NS","CROMPTON.NS","WHIRLPOOL.NS","VOLTAS.NS","JUBLFOOD.NS","BATAINDIA.NS","RELAXO.NS","CESC.NS","TATAELXSI.NS","SUNDARMFIN.NS","LICHSGFIN.NS","MFSL.NS","CHAMBLFERT.NS","DEEPAKNTR.NS","RAYMOND.NS","ESCORTS.NS","RAMCOCEM.NS","JKCEMENT.NS","BIRLACORPN.NS","HEIDELBERG.NS","JKTYRE.NS","CEATLTD.NS","BALKRISIND.NS","APOLLOTYRE.NS","MRF.NS","ASTRAL.NS","FINPIPE.NS","SUPREMEIND.NS","KEI.NS","RADICO.NS","UNITDSPR.NS","JUBLPHARMA.NS","BIOCON.NS","GLAND.NS","NATCOPHARM.NS","AJANTPHARM.NS","ALKEM.NS","ABBOTINDIA.NS"],
+    "micro": ["HCG.NS","KAYNES.NS","SYRMA.NS","DODLA.NS","CAPLIPOINT.NS","FINCABLES.NS","GREENPLY.NS","BORORENEW.NS","SUNTECK.NS","TIMETECHNO.NS","STARHEALTH.NS","RAINBOW.NS","FIVESTAR.NS","KRSNAA.NS","GLENMARK.NS","PRINCEPIPE.NS","TIMKEN.NS","INDIAMART.NS","NUVOCO.NS","DEEPAKFERT.NS","COROMANDEL.NS","TATACHEM.NS","IGL.NS","MGL.NS","TANLA.NS","ROUTE.NS","MAPMYINDIA.NS","HAPPSTMNDS.NS","CYIENT.NS","BSOFT.NS","RAILTEL.NS","RVNL.NS","IRCON.NS","KIOCL.NS","NATIONALUM.NS","HINDCOPPER.NS","NLCINDIA.NS","MOIL.NS","SOBHA.NS","PRESTIGE.NS","BRIGADE.NS","OBEROIRLTY.NS"],
+}
+
+_smi_cache = {}
+
+def _smi_compute(ticker):
+    try:
+        yt = _smi_yf.Ticker(ticker)
+        info = yt.info or {}
+        if not info.get("currentPrice") and not info.get("regularMarketPrice"):
+            return None
+        df = yt.history(period="2y", interval="1d", auto_adjust=False)
+        vols = _smi_dd(list)
+        if df is not None and not df.empty:
+            for idx, v in zip(df.index, df["Volume"].values):
+                vols[f"Q{(idx.month-1)//3+1} {idx.year}"].append(int(v) if v>0 else 0)
+        vol_q = [{"quarter":q,"avg_daily_volume":int(sum(vs)/max(1,len(vs)))} for q,vs in sorted(vols.items(), key=lambda x:(int(x[0].split()[-1]),int(x[0][1:2])))[-5:]]
+        ins_q = _smi_dd(lambda: {"n_buys":0,"n_sells":0,"buy_value_usd":0,"sell_value_usd":0})
+        try:
+            ins = yt.insider_transactions
+            if ins is not None and not ins.empty:
+                cutoff = _smi_dt.now() - _smi_td(days=370)
+                for _, row in ins.iterrows():
+                    dt = row.get("Start Date")
+                    if dt is None: continue
+                    if hasattr(dt,"to_pydatetime"): dt = dt.to_pydatetime()
+                    if dt < cutoff: continue
+                    qk = f"Q{(dt.month-1)//3+1} {dt.year}"
+                    txn = str(row.get("Transaction","")).lower()
+                    val = float(row.get("Value") or 0)
+                    if "purchase" in txn or "buy" in txn: ins_q[qk]["n_buys"]+=1; ins_q[qk]["buy_value_usd"]+=val
+                    elif "sale" in txn or "sell" in txn: ins_q[qk]["n_sells"]+=1; ins_q[qk]["sell_value_usd"]+=val
+        except Exception: pass
+        ins_h = [{"quarter":q,"n_buys":d["n_buys"],"n_sells":d["n_sells"],"buy_value_usd":d["buy_value_usd"],"sell_value_usd":d["sell_value_usd"],"net_flow_usd":d["buy_value_usd"]-d["sell_value_usd"]} for q,d in sorted(ins_q.items(), key=lambda x:(int(x[0].split()[-1]),int(x[0][1:2])))[-4:]]
+        recent = sum(q["buy_value_usd"] for q in ins_h[-2:]); prior = sum(q["buy_value_usd"] for q in ins_h[-4:-2]) if len(ins_h)>=4 else 0
+        trend = "NONE" if (recent==0 and prior==0) else "ACCELERATING" if (prior==0 or recent>prior*1.5) else "DECELERATING" if recent<prior*0.5 else "STEADY"
+        px = info.get("currentPrice") or info.get("regularMarketPrice") or 0
+        pc = info.get("previousClose") or px
+        return {"ticker":ticker,"issuer_name":info.get("longName") or ticker,"price":round(px,2),"change_pct":round(((px-pc)/pc*100) if pc else 0,2),"smi_verdict":"INSUFFICIENT","smi_score":50+(15 if trend=="ACCELERATING" else -15 if trend=="DECELERATING" else 0),"ownership_history":[],"ownership_delta_8q":None,"volume_quarterly_history":vol_q,"insider_quarterly_history":ins_h,"top_holders_delta":[],"top_holders_action":None,"insider_trend":trend}
+    except Exception:
+        return None
+
+@app.get("/api/smart-money-scanner")
+def smart_money_scanner(region: str = "US", mcap: str = "large", email: str = "", limit: int = 50):
+    if mcap not in ("large", "mid", "small", "micro"):
+        mcap = "large"
+    umap = _SMI_UNIVERSES_US if region == "US" else _SMI_UNIVERSES_IN
+    universe = umap.get(mcap, [])
+    if not universe:
+        return {"success": False, "results": [], "universe_size": 0, "scan_time_sec": 0, "error": f"{mcap} cap for {region} not populated"}
+    ck = f"smi:{region}:{mcap}"
+    if ck in _smi_cache and _smi_time.time() - _smi_cache[ck]["t"] < 4*3600:
+        return {**_smi_cache[ck]["data"], "_cached": True}
+    t0 = _smi_time.time()
+    results = []
+    with _SmiPool(max_workers=8) as ex:
+        for f in _smi_done({ex.submit(_smi_compute, t): t for t in universe[:limit]}):
+            try:
+                r = f.result(timeout=45)
+                if r: results.append(r)
+            except Exception: pass
+    payload = {"success": True, "universe_size": len(universe), "results": results, "scan_time_sec": round(_smi_time.time()-t0,1), "region": region, "mcap": mcap}
+    _smi_cache[ck] = {"t": _smi_time.time(), "data": payload}
+    return payload
