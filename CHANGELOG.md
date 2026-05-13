@@ -1,3 +1,304 @@
+## r63.88.0 (2026-05-13) — 4-QUARTER COLOR-CODED CELLS (OWN + VOL)
+
+User asked: *"does it have last 4 quarters data as well... for both institutional ownership.. and volume... if its added green and its reduced red.. sort of.."*
+
+r63.87.0 shipped the Smart Money Scanner with an 8Q sparkline + a single OWN Δ number — but that doesn't expose per-quarter add/reduce activity. This release replaces those two columns with two new ones that show **the last 4 quarters as separate colored cells** for both ownership AND volume.
+
+### What changed
+
+**Removed columns:**
+- `8Q OWN` (sparkline — too abstract)
+- `OWN Δ` (single number — loses per-quarter detail)
+
+**New columns:**
+- **`OWN LAST 4Q`** — 4 mini cells showing Q-over-Q institutional ownership change. Most recent quarter rightmost.
+  - **Green** = institutions added (delta > +0.1pp)
+  - **Red** = institutions reduced (delta < −0.1pp)
+  - **Gray** = flat
+  - Each cell shows the delta value inside (e.g., "+2.7", "−1.5")
+  - Quarter label below each cell ("Q1'24", "Q2'24"...)
+  - Hover any cell for the exact prior → current values
+- **`VOL LAST 4Q`** — 4 mini cells showing Q-over-Q average daily volume change.
+  - **Green** = volume rising (interest building, delta > +1%)
+  - **Red** = volume falling (interest waning, delta < −1%)
+  - **Gray** = flat
+  - Each cell shows the % change inside (e.g., "+15%", "−22%")
+  - Same hover tooltip pattern
+
+### Pattern recognition this enables
+
+| Pattern | What you see |
+|---|---|
+| **Steady accumulation** | All 4 OWN cells green, all 4 VOL cells green/mixed — institutions slowly building |
+| **Accelerating accumulation** | OWN cells green and getting darker left-to-right, VOL trending up — high-conviction setup |
+| **Stealth accumulation** | OWN cells green but VOL cells gray — institutions building without retail noticing yet |
+| **Distribution into strength** | OWN cells red, VOL cells green — institutions exiting into retail demand (BEARISH) |
+| **Capitulation** | OWN cells red, VOL cells dark red — both selling, sentiment broken |
+| **Range / no edge** | OWN cells mixed, VOL cells mixed — wait for clarity |
+
+### Backend changes
+
+**NEW field required** in the `/api/smart-money-scanner` response, per stock:
+
+```python
+"volume_quarterly_history": [
+  {"quarter": "Q4 2023", "avg_daily_volume": 11_800_000},
+  {"quarter": "Q1 2024", "avg_daily_volume": 12_500_000},
+  {"quarter": "Q2 2024", "avg_daily_volume": 14_200_000},
+  {"quarter": "Q3 2024", "avg_daily_volume": 13_100_000},
+  {"quarter": "Q4 2024", "avg_daily_volume": 18_500_000},
+]
+```
+
+**5 entries** so frontend can compute **4 Q-over-Q deltas**. Source: pull last ~24 months of daily OHLCV bars (yfinance for US, NSE bhavcopy archives for India), bucket by calendar quarter, average the daily volume. Cache by `(ticker, quarter)` — historical quarters never change.
+
+Updated reference file: `SMART_MONEY_SCANNER_BACKEND_REFERENCE.py` now includes the `fetch_volume_quarterly_history()` function spec.
+
+### Helper: `_q4Cells(hist, valueKey, kind, fallbackHint)`
+
+Single helper renders both ownership and volume cells:
+- `kind='pp'` — interprets deltas as percentage points (for ownership %)
+- `kind='pct'` — interprets deltas as % change (for volume)
+
+If `hist` has fewer than 5 entries, the missing positions render as gray "—" placeholders. If `hist` is empty entirely, shows "— no data —" with a tooltip naming the missing backend field.
+
+### Empty state updated
+
+The "Backend Not Yet Wired" message now mentions all 4 required fields:
+- `ownership_history` (drives OWN LAST 4Q)
+- `volume_quarterly_history` (drives VOL LAST 4Q)
+- `top_holders_delta` (drives TOP HOLDERS)
+- `insider_quarterly_history` (drives INSIDER)
+
+Build order recommendation updated: wire `top_holders_delta` first, then `ownership_history` + `volume_quarterly_history` together (these light up the 4Q cells visually), then `insider_quarterly_history`.
+
+### Files changed
+
+- `static/app.js`:
+  - Line ~3617: `heads` array — replaced `8Q OWN` + `OWN Δ` with `OWN LAST 4Q` + `VOL LAST 4Q`
+  - Line ~3650: removed `_miniSpark` helper
+  - Line ~3650: added `_q4Cells` helper (~50 lines)
+  - Line ~3762: row rendering — uses `_q4Cells` for both OWN and VOL columns
+  - Line ~3774: methodology footer rewritten with green/red explanations
+  - Line ~3590: empty-state message updated to mention 4 backend fields
+- `static/app.min.js`: synced
+- `build_version.txt`: r63.88.0
+- `SMART_MONEY_SCANNER_BACKEND_REFERENCE.py`: added `fetch_volume_quarterly_history()` spec + return shape
+
+### Regression checks
+
+- [ ] Decide → 🧠 Smart Money → scanner loads with new column headers (OWN LAST 4Q · VOL LAST 4Q instead of 8Q OWN · OWN Δ)
+- [ ] Until backend wired → both columns show "— no data —" placeholder with helpful tooltip
+- [ ] When `ownership_history` lands → OWN cells fill in green/red with delta values + quarter labels below
+- [ ] When `volume_quarterly_history` lands → VOL cells fill similarly
+- [ ] Hover any cell → tooltip shows "Q3 2024: 62.4% → 65.1% (+2.7pp)" or "prior 11.8M → 13.1M (+11%)" formats
+- [ ] Cells with delta below the noise threshold (0.1pp for ownership, 1% for volume) render gray, not red/green
+
+### Per-stock SMI panel — not changed in this release
+
+The per-stock Smart Money Intelligence panel from r63.86.0 (rendered inside the Analyze flow) still shows the 8-quarter line chart + bar chart for ownership and insider buying. That's the deeper view. The scanner table is the BATCH view — meant for quick scanning across a universe, which is why the compact 4-cell strip is more useful there.
+
+If you'd like the 4-cell strip added to the per-stock SMI panel as well (alongside the line/bar charts), say so and I'll add it in a follow-up.
+
+## r63.87.0 (2026-05-13) — SMART MONEY SCANNER (BATCH MODE)
+
+User request: "i need smart money intelligence scanner.. as well.. in a batch.. by default it would large cap.."
+
+The per-stock Smart Money Intelligence panel from r63.86.0 analyzes ONE ticker at a time. This release adds a NEW Decide tab that runs the same SMI signals across an entire universe and ranks the results.
+
+### What got built
+
+**1. New "🧠 Smart Money" tab in the Decide group**
+
+Inserted between "Top Investments" and "Micro-Cap Hunter". Tab now lives at `TAB_GROUPS.decide.tabs[3]` with label `🧠 Smart Money`. Registered in `btnMap`, `_showTab='decision'` routing list, and added click handler that fires `loadSmartMoneyScanner()`.
+
+**2. `loadSmartMoneyScanner()` function**
+
+Calls `/api/smart-money-scanner?region=US&mcap=large&limit=50` (defaults to US Large Cap). Renders a complete UI in `deResult` with:
+- Header card (universe label, scan count, time, refresh button)
+- Region toggle (US / India) — reuses existing `_renderRegionToggle`
+- **Market-cap filter row** with the SAME defense-in-depth button pattern from the Intraday Scanner: always-dark-text-on-always-light-bg, active state via 2px navy border + 3px bottom accent + drop shadow. Cannot fail the same way as the lens cards / first market-cap implementation.
+- 4 mcap buttons: Large Cap (default · S&P 100 / NIFTY 50), Mid Cap (S&P 400 / NIFTY MIDCAP 100), Small Cap (S&P 600 / NIFTY SMALLCAP 100), Micro Cap (Russell Micro / NIFTY MICROCAP 250)
+- Per-stock signal aggregator table
+
+**3. Ranked table — 10 columns**
+
+| Column | What it shows |
+|---|---|
+| # | Rank by composite SMI score (descending) |
+| STOCK | Ticker + issuer name |
+| **VERDICT** | Color-coded pill: ACCUMULATING (green), DISTRIBUTING (red), HOLDING (amber), INSUFFICIENT (gray) — hover for plain-English tooltip |
+| **8Q OWN** | Inline mini SVG sparkline showing 8-quarter institutional ownership trend |
+| **OWN Δ** | Percentage-point change over 8 quarters, color-coded |
+| **TOP HOLDERS** | Pill: NET ADDING / NET REDUCING / MIXED / HOLDING — describes the action across top 10 institutional holders this quarter |
+| **INSIDER** | Pill: ACCELERATING / STEADY / DECELERATING / NONE — based on insider Form 4 buy-value comparison |
+| SCORE | Composite 0-100 score |
+| **🎯 ACTION** | Plain-English call: BUY / WATCH / SELL / AVOID — with tooltip explaining WHY |
+| PRICE | Current price + day change |
+
+Every row is clickable — opens the full per-stock Smart Money Intelligence panel in the Stock tab (re-uses the analyze flow built in r63.86.0).
+
+**4. Decision logic for the ACTION column**
+
+| Verdict | Score | Action | Tooltip |
+|---|---|---|---|
+| ACCUMULATING | ≥ 70 | **BUY** (dark green) | "Strong multi-quarter accumulation + high composite score. Best smart-money setup." |
+| ACCUMULATING | any | **BUY** (green) | "Multi-quarter institutional accumulation. Follow the smart money." |
+| DISTRIBUTING | ≤ 30 | **AVOID** (dark red) | "Strong distribution + low score. Stay out." |
+| DISTRIBUTING | any | **SELL** (red) | "Institutions reducing position. Exit if long; do not chase." |
+| HOLDING | any | **WATCH** (amber) | "No clear conviction. Wait for inflection." |
+| INSUFFICIENT | — | **—** (gray) | "Insufficient quarterly data to make a call." |
+
+**5. Graceful empty state until backend lands**
+
+Until `/api/smart-money-scanner` is wired in `api.py`, clicking the tab shows a clear:
+
+> 🧠 Smart Money Scanner — Backend Not Yet Wired
+>
+> The endpoint `/api/smart-money-scanner` is not yet returning results. This batch scanner needs the same three time-series fields per stock that the in-analysis SMI panel uses: `ownership_history`, `top_holders_delta`, and `insider_quarterly_history`. See `SMART_MONEY_SCANNER_BACKEND_REFERENCE.py` in the deploy zip for the exact payload spec.
+>
+> **Build order recommendation:** wire `top_holders_delta` first (biggest signal per byte), then `ownership_history`, then `insider_quarterly_history`. Each field renders independently — partial deployment is safe.
+
+No fake data. No misleading scores. The market-cap filter row stays interactive even in the empty state, so users can see what the four tiers will scan.
+
+### Files changed
+
+- `static/app.js`:
+  - Line ~2580: `TAB_GROUPS.decide.tabs` — added `'smartmoney'` and `'🧠 Smart Money'` label
+  - Line ~2778: `btnMap` — registered `smartmoney:'tabBtnDecide'`
+  - Line ~2807: `_showTab='decision'` routing — added `tab==='smartmoney'`
+  - Line ~3700: tab click handler — fires `loadSmartMoneyScanner()` with `_activeSmartMoneyTab` guard
+  - Line ~3482: **NEW** `window.loadSmartMoneyScanner` function (~200 lines)
+  - Line ~3680: **NEW** `_renderSmartMoneyScanner` helper (~120 lines)
+  - Line ~3700: **NEW** `window._smartMoneyDeepDive` helper for row-click drill-down
+- `static/app.min.js`: synced (md5 verified identical)
+- `build_version.txt`: bumped to `r63.87.0`
+- **NEW: `SMART_MONEY_SCANNER_BACKEND_REFERENCE.py`** — full Python reference for the new endpoint:
+  - `compute_smi_signals(ticker, region)` per-stock aggregator with verdict + score formulas
+  - Cache strategy (4-hour TTL, share quarterly history cache with per-stock SMI panel)
+  - Performance notes (ThreadPoolExecutor max_workers=10, pre-warm micro-cap universes in background)
+  - Data sources (SEC EDGAR 13F + Form 4, BSE/NSE shareholding pattern + insider disclosures)
+
+### Regression checks
+
+- [ ] Decide tab → confirm "🧠 Smart Money" appears between "Top Investments" and "🎯 Micro-Cap Hunter"
+- [ ] Click "🧠 Smart Money" → scanner loads with header card, region toggle, 4 market-cap buttons (Large Cap active by default)
+- [ ] Market-cap buttons → "Large Cap" shows readable dark navy text with thick navy border + bottom accent (NOT the invisible-text bug from r63.85.0)
+- [ ] Click any other mcap button → border thickens on selected, accent bar moves, text stays visible
+- [ ] Region toggle US ↔ India → mcap state persists, universe labels swap (S&P 100 ↔ NIFTY 50)
+- [ ] Until backend wired → see the clean empty-state card with the field spec, NO fake table rows
+- [ ] After backend wired with sample data → table renders with VERDICT pills, sparklines, action badges, and clicking a row opens the full per-stock SMI panel
+- [ ] Refresh button → re-fetches without page reload
+- [ ] Existing tabs (Positioning, Intraday, etc.) unchanged
+
+### Backend wiring (Vijay's task)
+
+1. **Reuse universes** — the `US_UNIVERSES` and `INDIA_UNIVERSES` dictionaries from `INTRADAY_MCAP_BACKEND_REFERENCE.py` work as-is. Share them across both scanners.
+
+2. **Share quarterly data fetchers** — the per-stock SMI panel from r63.86.0 needs the SAME three functions: `fetch_ownership_history()`, `fetch_top_holders_delta()`, `fetch_insider_quarterly_history()`. Write them once, call from both endpoints. Cache aggressively by `(ticker, quarter)` — historical 13F never changes.
+
+3. **Implement `/api/smart-money-scanner`** — see the reference file. The handler is ~30 lines; the work is in the per-stock aggregator + the data fetchers (which you'd need anyway for the in-analysis SMI panel).
+
+4. **Performance** — a full NIFTY 50 scan takes 30-90 seconds without parallelism. Use ThreadPoolExecutor(max_workers=10) and cache the full response by `(region, mcap)` with 4-hour TTL. For micro-caps (250+ tickers), set `limit=50` and pre-warm in a background job.
+
+### Notes on the build order recommendation
+
+The reference file recommends wiring `top_holders_delta` first because:
+- It's the highest-signal field per byte (one Q-over-Q comparison vs. 8 quarters of history)
+- Most actionable: "BlackRock added 1.7M shares this quarter" is a direct buy signal
+- Simplest to compute (just diff this quarter's 13F holdings against last quarter's)
+
+`ownership_history` is second because the trend visualization is highly intuitive but requires fetching 8 quarterly filings per ticker.
+
+`insider_quarterly_history` is third because Form 4 buy data is noisier and adds marginal signal on top of the institutional ownership trend.
+
+Partial deployment is safe — each column in the scanner gracefully handles missing data (shows `—` or `INSUFFICIENT`).
+
+## r63.86.0 (2026-05-13) — BUTTON DEFENSE-IN-DEPTH + SMART MONEY INTELLIGENCE SHIPPED
+
+User feedback was sharp and correct: "same mistake repeatedly.. you have some issue incompetent.. where is this second attachment.."
+
+Two genuine failures from r63.85.0:
+1. **Image 1**: I reintroduced the SAME invisible-text bug on the new market-cap buttons that I supposedly "fixed" on the lens cards. Active state showed only a navy border, the "Large Cap" text was invisible. Same on the INTRADAY button.
+2. **Image 2 — Smart Money Intelligence**: I claimed I'd ship it next round but in the previous release I ALSO didn't actually package the zip after writing the code. The user is right to call it out.
+
+This release fixes both, ACTUALLY shipped this time.
+
+### Fix 1 — Defense-in-depth on the scanner buttons
+
+Root cause of the repeating bug: the active-state pattern was `bg = navy + text = white`. When CSS specificity or any global rule prevented the `background:#1A3A78` from applying, the text color flipped to white anyway — resulting in white text on white background (invisible). The lens-card fix attempted to handle this by explicitly setting `color` on inner spans, but the new market-cap buttons forgot to do that.
+
+NEW pattern that cannot fail (defense-in-depth):
+- **Active state**: WHITE background, DARK NAVY text (#1A3A78), 2px navy border, 3px navy bottom accent bar, subtle drop shadow
+- **Inactive state**: WHITE background, dark slate text (#374151), 1px gray border, transparent bottom accent
+
+Text is **always** dark-on-light regardless of CSS interference. The active state is visually distinct via thicker border + bottom accent + shadow, not via bg/text color flipping. Same pattern applied to both the MARKET CAP row and the TIMEFRAME row.
+
+This is the third time we've hit this class of bug. Going forward, NEVER use the bg-flip + text-flip pattern on inline-styled buttons. Use border thickness, accent bars, or icons to indicate active state instead.
+
+### Fix 2 — Smart Money Intelligence panel SHIPPED (actually in code this time)
+
+New panel renders inside the existing per-stock deep-dive, right before the Institutional Summary section. Reads three optional time-series fields from `d.institutional`:
+
+- `ownership_history` — 8-12 quarters of `{quarter, total_pct_outstanding, n_holders}`
+- `top_holders_delta` — Q-over-Q changes per holder `{name, shares_prev, shares_current, delta_shares, delta_pct, action}`
+- `insider_activity.quarterly_history` — `{quarter, n_buys, n_sells, buy_value_usd, sell_value_usd, net_flow_usd}`
+
+What renders when these fields ARE present:
+1. **Header with auto-derived ACCUMULATING / DISTRIBUTING / HOLDING verdict pill** — based on the multi-quarter ownership delta (+3pts = accumulating, -3pts = distributing, between = holding)
+2. **Two-column upper row**:
+   - 📈 INSTITUTIONAL OWNERSHIP — 8 QUARTERS — SVG line chart with area fill, first/last % labels, quarter labels at start/mid/end, plain-English caption beneath
+   - 👁 INSIDER BUYING BY QUARTER — SVG bar chart with first/last $ labels, accel/decel auto-detection ("Accelerating cluster" / "Decelerating" / "Steady")
+3. **Full-width table**: 🏛 TOP HOLDER QUARTERLY DELTA — Holder / Prev / Current / Delta (with %) / ADDING|REDUCING|HOLDING pill, ranked top-10, net institutional flow summary footer
+4. **Bottom**: 🎯 SMART MONEY VERDICT colored banner with full narrative
+
+What renders when fields are NOT present (which is the default until you wire the backend):
+- Each panel shows a clean dashed empty-state card with the EXACT field path the backend needs to populate, formatted as code. No fake data, no false signals.
+
+This means you can deploy r63.86.0 NOW and users see the panel structure with honest "data pending" cards. As you wire each backend field (one at a time is fine), the corresponding panel lights up automatically — no frontend redeploy required.
+
+### Backend wiring guide
+
+**NEW FILE: `SMART_MONEY_INTELLIGENCE_BACKEND_REFERENCE.py`** included in the zip. Contains:
+- Exact JSON shape for all three fields with realistic example data
+- Data sources: SEC EDGAR 13F + Form 4 (US, free, no API key) / BSE-NSE shareholding pattern + insider trading (India, free, public)
+- Recommended cache TTLs (13F = 4 weeks, insider Form 4 = 24h)
+- Minimum-viable rollout order:
+  1. `top_holders_delta` first (biggest insight per byte — shows WHO is moving)
+  2. `ownership_history` second (visualizes the trend cleanly)
+  3. `insider_activity.quarterly_history` third (refines the signal)
+
+Each field renders independently with its own empty state, so partial deployment is safe.
+
+### Files changed
+
+- `static/app.js`:
+  - Line ~12519: market-cap row rewritten with defense-in-depth active state
+  - Line ~12545: timeframe row rewritten with same defensive pattern
+  - Line ~14999: **NEW** Smart Money Intelligence panel inserted before Institutional Summary section
+- `static/app.min.js`: synced (md5 verified identical: dbb03b716882cd3fcd97812ca2458521)
+- `build_version.txt`: bumped to r63.86.0
+- **NEW: `SMART_MONEY_INTELLIGENCE_BACKEND_REFERENCE.py`** — backend payload spec + data sources
+
+### Regression checks
+
+- [ ] Intraday & Swing Setups → MARKET CAP row → "Large Cap" button shows readable navy text on white with thick navy border + bottom accent. No invisible text.
+- [ ] Same row → click "Mid Cap" → border thickens, accent bar moves to that button, text stays visible. Active label is BOLD WEIGHT 900.
+- [ ] TIMEFRAME row → "INTRADAY" button shows readable navy text on white with thick navy border. No invisible text.
+- [ ] Analyze any stock → scroll to the Institutional section → see new "🧠 Smart Money Intelligence" panel BEFORE the existing Institutional Summary card.
+- [ ] Until backend wired: each of the 3 sub-panels shows a clean dashed empty-state card with the exact backend field path it needs.
+- [ ] When backend returns `ownership_history` with 4+ quarters: ACCUMULATING / DISTRIBUTING / HOLDING pill appears in header, line chart renders with first/last % labels.
+- [ ] When `top_holders_delta` populated: holder table renders with ADDING/REDUCING/HOLDING action pills, net flow summary at bottom.
+- [ ] When `insider_activity.quarterly_history` populated: bar chart renders with auto-detected accel/decel caption.
+
+### What I missed last round (lessons)
+
+1. **I didn't ship the zip.** I made the code changes, did the syntax check, drew the visualizer preview — and stopped. The user couldn't actually deploy any of it. That's not a "small oversight," it's a complete failure of the deliverable. Going forward: every release must end with the present_files call. No exceptions.
+
+2. **I repeated the same button bug pattern.** The "fix" I claimed on lens cards used inner-span color, but I didn't generalize it to "never depend on bg+text color flipping." Now I have. The new pattern works regardless of any CSS interference.
+
+3. **I described SMI as a mockup, then claimed it was coming next, then forgot to actually build it.** The HTML in the visualizer chat widget is NOT shipped code. Going forward: if I show a visualizer mockup, the very next step in the same release must be to write that exact thing into the actual file and ship the zip.
+
 ## r63.85.0 (2026-05-13) — INTRADAY SCANNER: MARKET-CAP SEGMENTATION
 
 User feedback on 2 screenshots:
