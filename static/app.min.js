@@ -3616,19 +3616,19 @@ function _renderSmartMoneyScanner(el, d, regBar, reg, mcap, univLabel) {
   };
 
   h += '<div style="background:#fff;border-radius:10px;overflow:hidden;border:1px solid #e2e8f0;font-family:Inter,sans-serif;margin-bottom:14px">';
-  h += '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:11px;min-width:1340px">';
+  h += '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:11px;min-width:1080px">';
   h += '<thead><tr style="background:#f8fafc;text-align:left;font-family:Sora,sans-serif">';
   var heads = [
-    {l:'#',           a:'left',   w:'36px'},
-    {l:'STOCK',       a:'left',   w:'auto'},
-    {l:'VERDICT',     a:'left',   w:'130px', tip:'Smart-money verdict from 8-quarter ownership delta'},
-    {l:'OWN LAST 4Q', a:'center', w:'140px', tip:'Institutional ownership % change for each of the last 4 quarters. Green = institutions added · Red = institutions reduced.'},
-    {l:'VOL LAST 4Q', a:'center', w:'140px', tip:'Average daily trading volume change for each of the last 4 quarters vs prior quarter. Green = volume rising (interest building) · Red = volume falling (interest waning).'},
-    {l:'INSIDER 4Q',  a:'center', w:'140px', tip:'Insider net flow per quarter — buys minus sells in dollar terms. Green = insiders net buying · Red = insiders net selling · cell shows the dollar amount or buy/sell count.'},
-    {l:'TOP HOLDERS', a:'left',   w:'130px', tip:'Net action across top 10 institutional holders this quarter'},
-    {l:'SCORE',       a:'right',  w:'60px',  tip:'Composite 0-100. Combines ownership trend + holder action + insider acceleration'},
-    {l:'🎯 ACTION',   a:'center', w:'90px',  tip:'Plain-English buy/sell call combining all signals'},
-    {l:'PRICE',       a:'right',  w:'80px'},
+    {l:'#',           a:'left',   w:'30px'},
+    {l:'STOCK',       a:'left',   w:'140px'},
+    {l:'VERDICT',     a:'left',   w:'100px', tip:'Smart-money verdict from 8-quarter ownership delta'},
+    {l:'OWN LAST 4Q', a:'center', w:'130px', tip:'Institutional ownership % change for each of the last 4 quarters. Green = institutions added · Red = institutions reduced. Requires SEC EDGAR 13F integration.'},
+    {l:'VOL LAST 4Q', a:'center', w:'130px', tip:'Average daily trading volume change for each of the last 4 quarters vs prior quarter. Green = volume rising · Red = volume falling.'},
+    {l:'INSIDER 4Q',  a:'center', w:'130px', tip:'Insider net flow per quarter — buys minus sells in dollar terms. Green = net buying · Red = net selling.'},
+    {l:'TOP HOLDERS', a:'left',   w:'110px', tip:'Net action across top 10 institutional holders this quarter. Requires SEC EDGAR 13F.'},
+    {l:'SCORE',       a:'right',  w:'55px',  tip:'Composite 0-100. Combines ownership trend + holder action + insider acceleration.'},
+    {l:'🎯 ACTION',   a:'center', w:'80px',  tip:'Plain-English buy/sell call combining all signals.'},
+    {l:'PRICE',       a:'right',  w:'75px'},
   ];
   heads.forEach(function(hh){
     var tipAttr = hh.tip ? ' title="' + hh.tip.replace(/"/g,'&quot;') + '"' : '';
@@ -3663,7 +3663,7 @@ function _renderSmartMoneyScanner(el, d, regBar, reg, mcap, univLabel) {
   // for usd uses LAST 4 entries directly (already per-quarter values).
   function _q4Cells(hist, valueKey, kind, fallbackHint) {
     if (!hist || hist.length < 2) {
-      return '<span title="' + fallbackHint + '" style="color:#cbd5e1;font-size:10px;font-family:IBM Plex Mono,monospace;cursor:help">— no data —</span>';
+      return '<span title="' + fallbackHint + '" style="color:#cbd5e1;font-size:9px;font-family:IBM Plex Mono,monospace;cursor:help">— pending —</span>';
     }
     var deltas = [];
     if (kind === 'usd') {
