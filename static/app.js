@@ -2573,12 +2573,12 @@ var TAB_GROUPS = {
   overview: {tabs: ['quick'], labels: ['Summary'], default: 'quick'},
   research: {tabs: ['analysis','dcf','equity','compare'], labels: ['AI Analysis','DCF Valuation','Research','Compare'], default: 'analysis'},
   // r63.84.0: Removed standalone 'deepdd' from visible Decide tabs.
-  // Analyze Stock already produces the full deep-DD report — the separate Deep DD
-  // tab was duplicative and confusing. The 'deepdd' panel ID and loadDeepDD()
-  // function remain wired so internal callers (Diamond Hunter, etc.) still work.
-  // r63.87.0: Added 'smartmoney' — batch SMI scanner. Same per-stock signals as
-  // the in-analysis Smart Money Intelligence panel, ranked across a universe.
-  decide:   {tabs: ['decision','toptrades','topinvest','smartmoney','mchunter','intraday','positioning','diamond','analyst','proscan','reports','pms'], labels: ['Analyze Stock','Top Trades','Top Investments','🧠 Smart Money','🎯 Micro-Cap Hunter','⚡ Intraday Setups','🔥 Positioning','💎 Diamond Hunter','📊 Analyst Coverage','🔬 Pro Scan','📊 Reports','📊 PMS'], default: 'decision'},
+  // r63.87.0: Added 'smartmoney' — batch SMI scanner.
+  // r63.89.0: Cleaned up eye-straining bright emojis from labels. Bloomberg/Refinitiv
+  // institutional terminals are text-first; saturated emojis (🧠 pink, 🎯 red,
+  // ⚡ yellow, 🔥 orange, 💎 cyan, 📊 blue) make the nav visually noisy. Removing
+  // them. The tab content already self-identifies via its own header.
+  decide:   {tabs: ['decision','toptrades','topinvest','smartmoney','mchunter','intraday','positioning','diamond','analyst','proscan','reports','pms'], labels: ['Analyze Stock','Top Trades','Top Investments','Smart Money','Micro-Cap Hunter','Intraday Setups','Positioning','Diamond Hunter','Analyst Coverage','Pro Scan','Reports','PMS'], default: 'decision'},
   dream:    {tabs: ['dreamportfolio','multibagger','momentumradar','highprob','optionspulse','tradeticket','microcap'], labels: ['🌟 Dream Portfolio','🔥 Multibagger Hunter','⚡ Momentum Radar','🎯 High-Prob Setups','⚡ Options Pulse','🎫 Trade Ticket','🏆 Micro-Cap Challenge'], default: 'dreamportfolio'},
   trading:  {tabs: ['trades','smarttrades','stockintel','scanner','valreport','backtest','journal','aiassist'], labels: ['Algo Trades','Smart Trades','Stock Intel','Scanner','Valuation','Backtest','Journal','AI Assistant'], default: 'trades'},
   markets:  {tabs: ['indices','daily','newsimpact','assets'], labels: ['Top Performers','Market Daily','📰 News Impact','Global Assets'], default: 'indices'},
@@ -3616,7 +3616,7 @@ function _renderSmartMoneyScanner(el, d, regBar, reg, mcap, univLabel) {
   };
 
   h += '<div style="background:#fff;border-radius:10px;overflow:hidden;border:1px solid #e2e8f0;font-family:Inter,sans-serif;margin-bottom:14px">';
-  h += '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:11px;min-width:1200px">';
+  h += '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:11px;min-width:1340px">';
   h += '<thead><tr style="background:#f8fafc;text-align:left;font-family:Sora,sans-serif">';
   var heads = [
     {l:'#',           a:'left',   w:'36px'},
@@ -3624,8 +3624,8 @@ function _renderSmartMoneyScanner(el, d, regBar, reg, mcap, univLabel) {
     {l:'VERDICT',     a:'left',   w:'130px', tip:'Smart-money verdict from 8-quarter ownership delta'},
     {l:'OWN LAST 4Q', a:'center', w:'140px', tip:'Institutional ownership % change for each of the last 4 quarters. Green = institutions added · Red = institutions reduced.'},
     {l:'VOL LAST 4Q', a:'center', w:'140px', tip:'Average daily trading volume change for each of the last 4 quarters vs prior quarter. Green = volume rising (interest building) · Red = volume falling (interest waning).'},
+    {l:'INSIDER 4Q',  a:'center', w:'140px', tip:'Insider net flow per quarter — buys minus sells in dollar terms. Green = insiders net buying · Red = insiders net selling · cell shows the dollar amount or buy/sell count.'},
     {l:'TOP HOLDERS', a:'left',   w:'130px', tip:'Net action across top 10 institutional holders this quarter'},
-    {l:'INSIDER',     a:'left',   w:'130px', tip:'Insider buying trend — accelerating, steady, or decelerating'},
     {l:'SCORE',       a:'right',  w:'60px',  tip:'Composite 0-100. Combines ownership trend + holder action + insider acceleration'},
     {l:'🎯 ACTION',   a:'center', w:'90px',  tip:'Plain-English buy/sell call combining all signals'},
     {l:'PRICE',       a:'right',  w:'80px'},
@@ -3648,28 +3648,51 @@ function _renderSmartMoneyScanner(el, d, regBar, reg, mcap, univLabel) {
 
   // Helper: render 4 colored cells showing Q-over-Q deltas with quarter labels.
   // r63.88.0: User asked for "last 4 quarters... green if added, red if reduced".
+  // r63.90.0: Added kind='usd' for insider net-flow dollar amounts (signed, K/M/B
+  // formatted, ±$50K threshold). Each cell shows the net flow for that quarter,
+  // not the delta vs prior — because insider activity is intrinsically per-quarter.
   // Each cell shows the per-quarter delta vs the prior quarter, color-coded.
   //   - kind='pp'  → delta in percentage points (institutional ownership %)
   //   - kind='pct' → delta as % change (trading volume Q-over-Q)
-  // Pulls from `hist` array — uses the LAST 5 entries to compute 4 deltas.
+  //   - kind='usd' → absolute signed dollar net flow (insider buys − sells, no Q/Q diff)
+  // Pulls from `hist` array — for pp/pct uses LAST 5 entries to compute 4 deltas,
+  // for usd uses LAST 4 entries directly (already per-quarter values).
   function _q4Cells(hist, valueKey, kind, fallbackHint) {
     if (!hist || hist.length < 2) {
       return '<span title="' + fallbackHint + '" style="color:#cbd5e1;font-size:10px;font-family:IBM Plex Mono,monospace;cursor:help">— no data —</span>';
     }
-    // Take the last 5 entries so we can compute 4 Q-over-Q deltas
-    var slice = hist.slice(-5);
     var deltas = [];
-    for (var i = 1; i < slice.length; i++) {
-      var curr = slice[i][valueKey] || 0;
-      var prev = slice[i-1][valueKey] || 0;
-      var d = (kind === 'pp') ? (curr - prev) : (prev > 0 ? ((curr - prev) / prev) * 100 : 0);
-      deltas.push({delta: d, quarter: slice[i].quarter || ('Q' + i), curr: curr, prev: prev});
+    if (kind === 'usd') {
+      // Insider net flow — already per-quarter, no Q/Q diff needed
+      var sliceU = hist.slice(-4);
+      sliceU.forEach(function(q){
+        var v = q[valueKey] || 0;
+        deltas.push({delta: v, quarter: q.quarter || '?', curr: v, prev: null,
+                     n_buys: q.n_buys || 0, n_sells: q.n_sells || 0});
+      });
+    } else {
+      // ownership pp / volume pct — compute Q-over-Q deltas
+      var slice = hist.slice(-5);
+      for (var i = 1; i < slice.length; i++) {
+        var curr = slice[i][valueKey] || 0;
+        var prev = slice[i-1][valueKey] || 0;
+        var d = (kind === 'pp') ? (curr - prev) : (prev > 0 ? ((curr - prev) / prev) * 100 : 0);
+        deltas.push({delta: d, quarter: slice[i].quarter || ('Q' + i), curr: curr, prev: prev});
+      }
     }
     // Pad with nulls if we have fewer than 4 quarters
     while (deltas.length < 4) deltas.unshift(null);
 
+    // Format helper: signed dollar amount with K/M/B
+    function _fmtUsd(v) {
+      var ab = Math.abs(v); var sign = v >= 0 ? '+' : '−';
+      if (ab >= 1e9) return sign + '$' + (ab/1e9).toFixed(1) + 'B';
+      if (ab >= 1e6) return sign + '$' + (ab/1e6).toFixed(1) + 'M';
+      if (ab >= 1e3) return sign + '$' + (ab/1e3).toFixed(0) + 'K';
+      return sign + '$' + ab.toFixed(0);
+    }
+
     var cellsHtml = '<div style="display:inline-flex;flex-direction:column;gap:1px;align-items:center">';
-    // Top row: 4 colored cells with the delta value inside
     cellsHtml += '<div style="display:flex;gap:2px">';
     deltas.forEach(function(d){
       if (!d) {
@@ -3677,26 +3700,44 @@ function _renderSmartMoneyScanner(el, d, regBar, reg, mcap, univLabel) {
         return;
       }
       var col, txtCol;
-      var threshold = (kind === 'pp') ? 0.1 : 1.0;  // ignore tiny noise
+      var threshold = (kind === 'pp') ? 0.1 : (kind === 'pct' ? 1.0 : 50000);  // $50K threshold for insider
       if (d.delta > threshold)       { col = '#059669'; txtCol = '#fff'; }   // ADDED — green
       else if (d.delta < -threshold) { col = '#dc2626'; txtCol = '#fff'; }   // REDUCED — red
       else                            { col = '#e2e8f0'; txtCol = '#475569'; } // FLAT — gray
-      var sign = d.delta > 0 ? '+' : (d.delta < 0 ? '' : '');
-      var displayVal = (kind === 'pp') ? (sign + d.delta.toFixed(1)) : (sign + d.delta.toFixed(0) + '%');
-      var tip = d.quarter + ': ' + (kind === 'pp'
-        ? d.prev.toFixed(1) + '% → ' + d.curr.toFixed(1) + '% (' + sign + d.delta.toFixed(2) + 'pp)'
-        : 'prior ' + (d.prev/1e6).toFixed(1) + 'M → ' + (d.curr/1e6).toFixed(1) + 'M (' + sign + d.delta.toFixed(1) + '%)');
+      var displayVal, tip;
+      if (kind === 'pp') {
+        var sign = d.delta > 0 ? '+' : (d.delta < 0 ? '' : '');
+        displayVal = sign + d.delta.toFixed(1);
+        tip = d.quarter + ': ' + d.prev.toFixed(1) + '% → ' + d.curr.toFixed(1) + '% (' + sign + d.delta.toFixed(2) + 'pp)';
+      } else if (kind === 'pct') {
+        var s2 = d.delta > 0 ? '+' : (d.delta < 0 ? '' : '');
+        displayVal = s2 + d.delta.toFixed(0) + '%';
+        tip = d.quarter + ': prior ' + (d.prev/1e6).toFixed(1) + 'M → ' + (d.curr/1e6).toFixed(1) + 'M (' + s2 + d.delta.toFixed(1) + '%)';
+      } else {  // usd
+        displayVal = _fmtUsd(d.delta);
+        var ab2 = Math.abs(d.delta);
+        var compact = ab2 >= 1e6 ? (ab2/1e6).toFixed(1)+'M' : ab2 >= 1e3 ? (ab2/1e3).toFixed(0)+'K' : ab2.toFixed(0);
+        if (ab2 < 10000) {
+          // For small dollar amounts, prefer showing buy/sell counts
+          displayVal = (d.n_buys || 0) + 'B/' + (d.n_sells || 0) + 'S';
+        } else if (ab2 < 1e6) {
+          displayVal = (d.delta >= 0 ? '+' : '−') + '$' + (ab2/1e3).toFixed(0) + 'K';
+        } else {
+          displayVal = (d.delta >= 0 ? '+' : '−') + '$' + (ab2/1e6).toFixed(1) + 'M';
+        }
+        tip = d.quarter + ': ' + (d.n_buys || 0) + ' insider buy' + ((d.n_buys||0)===1?'':'s') + ' · ' +
+              (d.n_sells || 0) + ' sell' + ((d.n_sells||0)===1?'':'s') + ' · net ' + _fmtUsd(d.delta);
+      }
       cellsHtml += '<div title="' + tip + '" style="width:30px;height:18px;border-radius:3px;background:' + col + ';color:' + txtCol + ';font-size:9px;font-weight:800;font-family:IBM Plex Mono,monospace;display:flex;align-items:center;justify-content:center;cursor:help">' + displayVal + '</div>';
     });
     cellsHtml += '</div>';
-    // Bottom row: quarter labels (most recent rightmost)
     cellsHtml += '<div style="display:flex;gap:2px">';
     deltas.forEach(function(d){
-      var label = d ? (d.quarter.length > 5 ? d.quarter.replace(/^Q(\d) (\d{4})$/, 'Q$1\'$2'.slice(-3)) : d.quarter).slice(-5) : '—';
-      // Compact label: 'Q3'25' etc.
+      var label = '—';
       if (d && d.quarter) {
         var m = /^Q(\d)\s*(\d{2,4})$/.exec(d.quarter);
         if (m) label = 'Q' + m[1] + "'" + m[2].slice(-2);
+        else label = d.quarter.slice(-5);
       }
       cellsHtml += '<div style="width:30px;text-align:center;font-size:7px;color:#94a3b8;font-family:IBM Plex Mono,monospace">' + label + '</div>';
     });
@@ -3759,8 +3800,9 @@ function _renderSmartMoneyScanner(el, d, regBar, reg, mcap, univLabel) {
     h += '<td style="padding:10px 8px;text-align:center">' + _q4Cells(r.ownership_history, 'total_pct_outstanding', 'pp', 'ownership_history not yet returned') + '</td>';
     // r63.88.0: 4 quarter cells for trading volume Q-over-Q (green = volume rising, red = falling)
     h += '<td style="padding:10px 8px;text-align:center">' + _q4Cells(r.volume_quarterly_history, 'avg_daily_volume', 'pct', 'volume_quarterly_history not yet returned') + '</td>';
+    // r63.90.0: 4 quarter cells for insider net flow per quarter (green = net buying, red = net selling)
+    h += '<td style="padding:10px 8px;text-align:center">' + _q4Cells(r.insider_quarterly_history, 'net_flow_usd', 'usd', 'insider_quarterly_history not yet returned') + '</td>';
     h += '<td style="padding:10px 8px">' + _holderBadge(r.top_holders_action) + '</td>';
-    h += '<td style="padding:10px 8px">' + _insiderBadge(r.insider_trend) + '</td>';
     h += '<td style="padding:10px 8px;text-align:right">' + scoreStr + '</td>';
     h += '<td style="padding:10px 8px;text-align:center"><span title="' + act.tip + '" style="padding:4px 10px;border-radius:6px;background:' + act.color + ';color:#fff;font-size:10px;font-weight:800;font-family:Sora,sans-serif;cursor:help">' + act.label + '</span></td>';
     h += '<td style="padding:10px 8px;text-align:right;color:#0f172a;font-family:IBM Plex Mono,monospace;font-weight:700">' + priceStr + chgStr + '</td>';
@@ -3773,8 +3815,8 @@ function _renderSmartMoneyScanner(el, d, regBar, reg, mcap, univLabel) {
   h += '<strong style="color:#475569">Smart Money Scanner methodology:</strong> For each stock in the ' + univLabel + ' universe, the scanner aggregates four time-series signals from SEC 13F + Form 4 (US) / BSE-NSE shareholding pattern + insider disclosures (India):';
   h += '<br>• <strong>OWN LAST 4Q</strong> — institutional ownership % change quarter-over-quarter. <span style="color:#059669;font-weight:700">Green</span> = institutions added that quarter, <span style="color:#dc2626;font-weight:700">red</span> = institutions reduced, gray = flat (under 0.1pp change). 4 cells = last 4 Q-over-Q deltas. Most recent quarter rightmost.';
   h += '<br>• <strong>VOL LAST 4Q</strong> — average daily trading volume change Q-over-Q. <span style="color:#059669;font-weight:700">Green</span> = volume up (interest building), <span style="color:#dc2626;font-weight:700">red</span> = volume down (interest waning), gray = flat (under 1% change). 4 cells = last 4 Q-over-Q deltas.';
+  h += '<br>• <strong>INSIDER 4Q</strong> — insider net flow (buys $ minus sells $) for each of the last 4 quarters. <span style="color:#059669;font-weight:700">Green</span> = insiders net buying that quarter (bullish), <span style="color:#dc2626;font-weight:700">red</span> = insiders net selling (bearish), gray = quiet (under $50K). Small amounts shown as buy/sell counts (e.g., "5B/1S"); larger as $ amount (e.g., "+$2.1M").';
   h += '<br>• <strong>TOP HOLDERS</strong> — direction across top 10 institutional holders this quarter (NET ADDING if &gt;60% increasing, NET REDUCING if &gt;60% reducing, MIXED otherwise).';
-  h += '<br>• <strong>INSIDER</strong> — Form 4 / SEBI disclosures. ACCELERATING if last-2Q buy $ &gt; prior-2Q buy $ × 1.5, DECELERATING if &lt; 0.5×, STEADY otherwise.';
   h += '<br><br><strong style="color:#475569">VERDICT</strong>: ACCUMULATING (8Q delta ≥ +3pp), DISTRIBUTING (≤ −3pp), HOLDING (between), INSUFFICIENT (fewer than 4 quarters).';
   h += '<br><strong style="color:#475569">🎯 ACTION</strong>: BUY (ACCUMULATING), TRIM/SELL (DISTRIBUTING), WATCH (HOLDING), AVOID (DISTRIBUTING + score &lt; 30).';
   h += '<br><br><strong style="color:#475569">Hover any green/red cell</strong> for the exact prior → current values. <strong>Click any row</strong> to open the full per-stock SMI panel with charts, holder delta table, and quarterly insider history.';
@@ -15339,11 +15381,13 @@ function _renderReportLegacy(d){
   //   - d.institutional.ownership_history       (8-12 quarters of total %)
   //   - d.institutional.top_holders_delta       (Q-over-Q changes per holder)
   //   - d.institutional.insider_activity.quarterly_history (insider buys per Q)
-  // Each sub-panel renders an honest empty-state card if the backend hasn't been
-  // wired yet, so the UI is fully in place before backend work catches up.
+  // r63.89.0: REMOVED outer `if (d.institutional)` guard. Previously, if the
+  // backend returned no `institutional` object at all, the entire panel was
+  // skipped — user saw nothing. Now the panel ALWAYS renders, with each
+  // sub-section falling through to its own empty state.
   // ═══════════════════════════════════════════════════════════════════════════
-  if (d.institutional) {
-    var _instData = d.institutional;
+  {
+    var _instData = d.institutional || {};
     var _ownHist  = Array.isArray(_instData.ownership_history) ? _instData.ownership_history : [];
     var _holDelta = Array.isArray(_instData.top_holders_delta) ? _instData.top_holders_delta : [];
     var _insQHist = Array.isArray(_instData.insider_activity && _instData.insider_activity.quarterly_history)
@@ -18038,6 +18082,150 @@ h+='</div>';
 h+='</div>';
 // 1. Institutional Analysis Stack (charts) — FIRST
 h+='<details open style="margin:14px 0;border-radius:16px;border:2px solid #1A3A7830;background:#fff;overflow:hidden"><summary style="padding:16px 20px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;font-size:14px;font-weight:900;color:#fff;font-family:Sora,sans-serif;list-style:none;background:linear-gradient(135deg,#0A1628,#1A3A78);border-radius:14px 14px 0 0"><span>📊 Institutional Analysis Stack — 8 Decision Charts</span><span style="font-size:9px;color:rgba(255,255,255,.6);font-weight:500">▾</span></summary><div style="padding:10px 18px 0;font-size:9px;color:#5E6F8E;line-height:1.6;background:#F0F4FF;border-bottom:1px solid #E2E8F0">🏛️ <strong>What this section does:</strong> The MDO (Master Decision Orchestration) score is a <strong>technical + risk timing engine</strong>. It uses 6 layers — Liquidity, Flow, Volatility, Fundamentals, Quant, and Probability — to answer: <em>"Is NOW the right time to enter?"</em> A strong business (STRONG BUY above) can still score NEUTRAL or AVOID here if the timing, momentum, or risk profile is unfavorable. <strong>Use the verdict above for WHAT to buy. Use this section for WHEN to buy.</strong></div><div id="investorInstCharts" style="padding:4px 16px 16px"><div style="text-align:center;padding:20px;color:#4a6fa5;font-size:10px">Loading institutional charts...</div></div></details>';
+
+// ═══ r63.89.0: SMART MONEY INTELLIGENCE PANEL — mounted directly in investor view ═══
+// Previously only rendered inside _renderReportLegacy (Deep DD path), so users who
+// didn't scroll down to the Deep DD embed never saw it. Now renders inline here
+// with 4-quarter color-coded cells for OWN + VOL (user's specific ask).
+h += (function(){
+  var _inst = d.institutional || {};
+  var _ownH = Array.isArray(_inst.ownership_history) ? _inst.ownership_history : [];
+  var _volH = Array.isArray(_inst.volume_quarterly_history) ? _inst.volume_quarterly_history : [];
+  var _holD = Array.isArray(_inst.top_holders_delta) ? _inst.top_holders_delta : [];
+  // r63.90.0: insider_quarterly_history — same time-series shape as the scanner uses
+  var _insH = Array.isArray(_inst.insider_activity && _inst.insider_activity.quarterly_history)
+              ? _inst.insider_activity.quarterly_history
+              : (Array.isArray(_inst.insider_quarterly_history) ? _inst.insider_quarterly_history : []);
+
+  // Derive verdict from ownership delta
+  var verdict = 'INSUFFICIENT DATA', vColor = '#6b7280';
+  if (_ownH.length >= 4) {
+    var last = (_ownH[_ownH.length-1].total_pct_outstanding || _ownH[_ownH.length-1].total_pct || 0);
+    var firstW = (_ownH[Math.max(0,_ownH.length-4)].total_pct_outstanding || _ownH[Math.max(0,_ownH.length-4)].total_pct || 0);
+    var delta = last - firstW;
+    if (delta >= 3)      { verdict = 'ACCUMULATING'; vColor = '#059669'; }
+    else if (delta <= -3){ verdict = 'DISTRIBUTING'; vColor = '#dc2626'; }
+    else                  { verdict = 'HOLDING';     vColor = '#d97706'; }
+  }
+
+  // Render 4Q cells helper — supports 'pp' (ownership), 'pct' (volume), 'usd' (insider net flow)
+  function _q4(hist, valueKey, kind, missingField) {
+    if (!hist || hist.length < 2) {
+      return '<div style="padding:18px 14px;text-align:center;background:#fafbfc;border-radius:8px;border:1px dashed #cbd5e1">' +
+             '<div style="font-size:11px;font-weight:700;color:#475569;margin-bottom:3px">No quarterly data yet</div>' +
+             '<div style="font-size:9px;color:#94a3b8;line-height:1.5">Backend needs <code style="background:#f1f5f9;padding:1px 4px;border-radius:3px;font-family:IBM Plex Mono,monospace;color:#1A3A78;font-size:9px">' + missingField + '</code></div></div>';
+    }
+    var deltas = [];
+    if (kind === 'usd') {
+      // Insider net flow — already per-quarter
+      hist.slice(-4).forEach(function(q){
+        var v = q[valueKey] || 0;
+        deltas.push({delta: v, quarter: q.quarter || '?', curr: v, prev: null,
+                     n_buys: q.n_buys || 0, n_sells: q.n_sells || 0});
+      });
+    } else {
+      var slice = hist.slice(-5);
+      for (var i = 1; i < slice.length; i++) {
+        var curr = slice[i][valueKey] || 0, prev = slice[i-1][valueKey] || 0;
+        var dd = (kind === 'pp') ? (curr - prev) : (prev > 0 ? ((curr - prev)/prev) * 100 : 0);
+        deltas.push({delta: dd, quarter: slice[i].quarter || ('Q'+i), curr: curr, prev: prev});
+      }
+    }
+    while (deltas.length < 4) deltas.unshift(null);
+
+    var html = '<div style="display:flex;gap:3px;justify-content:center">';
+    deltas.forEach(function(dq){
+      if (!dq) { html += '<div style="width:46px;height:30px;border-radius:5px;background:#f1f5f9;color:#cbd5e1;font-size:10px;font-weight:700;font-family:IBM Plex Mono,monospace;display:flex;align-items:center;justify-content:center">—</div>'; return; }
+      var col, txt;
+      var threshold = (kind === 'pp') ? 0.1 : (kind === 'pct' ? 1.0 : 50000);
+      if (dq.delta > threshold)        { col = '#059669'; txt = '#fff'; }
+      else if (dq.delta < -threshold)  { col = '#dc2626'; txt = '#fff'; }
+      else                              { col = '#e2e8f0'; txt = '#475569'; }
+      var disp, tip;
+      if (kind === 'pp') {
+        var sign = dq.delta > 0 ? '+' : (dq.delta < 0 ? '' : '');
+        disp = sign + dq.delta.toFixed(1);
+        tip = dq.quarter + ': ' + dq.prev.toFixed(1) + '% → ' + dq.curr.toFixed(1) + '% (' + sign + dq.delta.toFixed(2) + 'pp)';
+      } else if (kind === 'pct') {
+        var s2 = dq.delta > 0 ? '+' : (dq.delta < 0 ? '' : '');
+        disp = s2 + dq.delta.toFixed(0) + '%';
+        tip = dq.quarter + ': prior ' + (dq.prev/1e6).toFixed(1) + 'M → ' + (dq.curr/1e6).toFixed(1) + 'M (' + s2 + dq.delta.toFixed(1) + '%)';
+      } else {  // usd
+        var ab = Math.abs(dq.delta);
+        if (ab < 10000) {
+          disp = (dq.n_buys || 0) + 'B/' + (dq.n_sells || 0) + 'S';
+        } else if (ab < 1e6) {
+          disp = (dq.delta >= 0 ? '+' : '−') + '$' + (ab/1e3).toFixed(0) + 'K';
+        } else if (ab < 1e9) {
+          disp = (dq.delta >= 0 ? '+' : '−') + '$' + (ab/1e6).toFixed(1) + 'M';
+        } else {
+          disp = (dq.delta >= 0 ? '+' : '−') + '$' + (ab/1e9).toFixed(1) + 'B';
+        }
+        var _f = function(v){var a=Math.abs(v),s=v>=0?'+':'−'; if(a>=1e9)return s+'$'+(a/1e9).toFixed(1)+'B'; if(a>=1e6)return s+'$'+(a/1e6).toFixed(1)+'M'; if(a>=1e3)return s+'$'+(a/1e3).toFixed(0)+'K'; return s+'$'+a.toFixed(0);};
+        tip = dq.quarter + ': ' + (dq.n_buys || 0) + ' buy' + ((dq.n_buys||0)===1?'':'s') + ' · ' +
+              (dq.n_sells || 0) + ' sell' + ((dq.n_sells||0)===1?'':'s') + ' · net ' + _f(dq.delta);
+      }
+      html += '<div title="' + tip + '" style="width:46px;height:30px;border-radius:5px;background:' + col + ';color:' + txt + ';font-size:10px;font-weight:800;font-family:IBM Plex Mono,monospace;display:flex;align-items:center;justify-content:center;cursor:help">' + disp + '</div>';
+    });
+    html += '</div>';
+    html += '<div style="display:flex;gap:3px;justify-content:center;margin-top:3px">';
+    deltas.forEach(function(dq){
+      var lbl = '—';
+      if (dq && dq.quarter) {
+        var m = /^Q(\d)\s*(\d{2,4})$/.exec(dq.quarter);
+        lbl = m ? ("Q" + m[1] + "'" + m[2].slice(-2)) : dq.quarter.slice(-5);
+      }
+      html += '<div style="width:46px;text-align:center;font-size:8px;color:#94a3b8;font-family:IBM Plex Mono,monospace">' + lbl + '</div>';
+    });
+    html += '</div>';
+    return html;
+  }
+
+  var p = '<div style="background:#fff;border:2px solid ' + vColor + '20;border-radius:14px;padding:16px;margin:14px 0;box-shadow:0 2px 12px rgba(0,0,0,0.04)">';
+  // Header
+  p += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">';
+  p += '<div style="width:34px;height:34px;border-radius:9px;background:' + vColor + '14;display:flex;align-items:center;justify-content:center;font-size:18px">🧠</div>';
+  p += '<div style="flex:1"><div style="font-size:15px;font-weight:900;color:#0f172a;font-family:Sora,sans-serif">Smart Money Intelligence</div>';
+  p += '<div style="font-size:10px;color:#5E6F8E">Last 4 quarters · institutional ownership · trading volume · insider net flow · green = bought, red = sold</div></div>';
+  p += '<div style="padding:5px 12px;border-radius:6px;background:' + vColor + ';color:#fff;font-size:11px;font-weight:800;font-family:Sora,sans-serif;white-space:nowrap">' + verdict + '</div>';
+  p += '</div>';
+
+  // r63.90.0: Three-column body — OWN 4Q + VOL 4Q + INSIDER 4Q
+  p += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:12px">';
+  p += '<div style="padding:12px;border:1px solid #e2e8f0;border-radius:10px">';
+  p += '<div style="font-size:10px;font-weight:800;color:#64748b;letter-spacing:0.5px;margin-bottom:10px;font-family:Sora,sans-serif">📈 INSTITUTIONAL OWNERSHIP</div>';
+  p += _q4(_ownH, 'total_pct_outstanding', 'pp', 'd.institutional.ownership_history');
+  p += '<div style="margin-top:10px;font-size:9px;color:#5E6F8E;line-height:1.5;text-align:center">Each cell = one quarter\'s Q/Q change in %. Hover for exact prior → current.</div>';
+  p += '</div>';
+  p += '<div style="padding:12px;border:1px solid #e2e8f0;border-radius:10px">';
+  p += '<div style="font-size:10px;font-weight:800;color:#64748b;letter-spacing:0.5px;margin-bottom:10px;font-family:Sora,sans-serif">📊 TRADING VOLUME</div>';
+  p += _q4(_volH, 'avg_daily_volume', 'pct', 'd.institutional.volume_quarterly_history');
+  p += '<div style="margin-top:10px;font-size:9px;color:#5E6F8E;line-height:1.5;text-align:center">Average daily volume Q/Q. Rising = interest building. Falling = waning.</div>';
+  p += '</div>';
+  p += '<div style="padding:12px;border:1px solid #e2e8f0;border-radius:10px">';
+  p += '<div style="font-size:10px;font-weight:800;color:#64748b;letter-spacing:0.5px;margin-bottom:10px;font-family:Sora,sans-serif">👁 INSIDER NET FLOW</div>';
+  p += _q4(_insH, 'net_flow_usd', 'usd', 'd.institutional.insider_activity.quarterly_history');
+  p += '<div style="margin-top:10px;font-size:9px;color:#5E6F8E;line-height:1.5;text-align:center">Insider buys $ − sells $ per quarter. Small amounts shown as B/S counts. Hover for breakdown.</div>';
+  p += '</div>';
+  p += '</div>';
+
+  // Top holders mini summary
+  if (_holD.length > 0) {
+    var adders = _holD.filter(function(h2){return (h2.action || (h2.delta_pct > 5 ? 'ADDING' : '')) === 'ADDING';}).length;
+    var reducers = _holD.filter(function(h2){return (h2.action || (h2.delta_pct < -5 ? 'REDUCING' : '')) === 'REDUCING';}).length;
+    p += '<div style="padding:10px 14px;border-radius:8px;background:#f8fafc;border:1px solid #e2e8f0;display:flex;align-items:center;gap:14px;font-size:11px">';
+    p += '<div style="font-size:11px;font-weight:700;color:#0f172a;font-family:Sora,sans-serif">🏛 TOP HOLDERS</div>';
+    p += '<div style="color:#475569">' + _holD.length + ' tracked · <strong style="color:#059669">' + adders + ' adding</strong> · <strong style="color:#dc2626">' + reducers + ' reducing</strong> · <strong style="color:#6b7280">' + (_holD.length - adders - reducers) + ' holding</strong></div>';
+    p += '<div style="margin-left:auto;font-size:9px;color:#94a3b8;font-style:italic">↓ Full per-holder breakdown in Deep DD below</div>';
+    p += '</div>';
+  } else {
+    p += '<div style="padding:10px 14px;border-radius:8px;background:#fafbfc;border:1px dashed #cbd5e1;font-size:10px;color:#5E6F8E;text-align:center">';
+    p += '🏛 Per-holder Q/Q delta not yet returned. Backend needs <code style="background:#f1f5f9;padding:1px 5px;border-radius:3px;font-family:IBM Plex Mono,monospace;color:#1A3A78;font-size:9px">d.institutional.top_holders_delta</code></div>';
+  }
+
+  p += '</div>';
+  return p;
+})();
 
 // 2. Legacy Scoring Matrix + CDS v2.0 — AFTER charts
 if(window._institutionalDashboard){try{h+=window._institutionalDashboard(d,d.csym||'$')}catch(e){console.error('Dashboard:',e)}}

@@ -1,3 +1,170 @@
+## r63.90.0 (2026-05-13) — INSIDER 4Q COLUMN (SYMMETRY ACROSS ALL THREE SIGNALS)
+
+User asked: *"also add insider activity for last 4 quarters in separate column as well.. what do you say? hope you are considering that logic as well"*
+
+Yes — that was the obvious next move. Now all three smart-money signals (ownership / volume / insider) use the same 4-quarter colored-cell pattern. Symmetric across the scanner AND the per-stock SMI panel.
+
+### Scanner table (Decide → Smart Money)
+
+**Before**: 4 cells for OWN + 4 cells for VOL + single ACCELERATING/STEADY/DECELERATING badge for INSIDER.
+**After**: 4 cells for OWN + 4 cells for VOL + **4 cells for INSIDER** (replaced the badge). Same color logic — green = bought, red = sold, gray = flat.
+
+Each insider cell:
+- For larger net flows: shows the dollar amount with K/M/B (e.g., `+$2.1M`, `−$450K`, `+$15M`)
+- For small amounts under $10K: shows the raw buy/sell count (e.g., `2B/1S` = 2 buys, 1 sell that quarter) — more honest than rounding to "$0M"
+- Below the cells: quarter labels (Q1'24, Q2'24...)
+- Hover any cell: tooltip shows "Q3'24: 5 buys / 1 sell · net +$2.1M"
+
+### Per-stock SMI panel (Analyze Stock → middle of page)
+
+**Before**: 2-column grid (OWN + VOL).
+**After**: **3-column grid** (OWN + VOL + INSIDER). Same `_q4` helper, three sub-panels of equal width with their own header / cells / explanatory caption.
+
+### `_q4Cells` helper extended
+
+Added a third `kind` parameter: `'usd'`. Handles dollar amounts differently from percentages:
+- Reads from `net_flow_usd` per quarter (no Q/Q delta computation — insider activity is already per-quarter)
+- $50K threshold (anything between ±$50K is gray "flat")
+- Smart formatting: B/S count for small, K for medium, M for large, B for huge
+
+```js
+_q4Cells(hist, valueKey, kind, fallbackHint)
+//  kind='pp'   → percentage points (ownership)
+//  kind='pct'  → percent change (volume)
+//  kind='usd'  → absolute signed dollar net flow (insider)   ← NEW
+```
+
+### Pattern recognition this enables
+
+Now you can read a full row across all three columns and identify smart-money setups in one glance:
+
+| Pattern across the 12 cells (4 OWN + 4 VOL + 4 INSIDER) | Interpretation |
+|---|---|
+| All 12 green / mostly green | **Triple confirmation** — institutions, retail interest, AND insiders are all aligned bullish. Highest-conviction setup. |
+| OWN green + VOL green + INSIDER gray | **Stealth institutional accumulation** — funds are loading, retail is interested, but insiders aren't trading either way (legal lockup, blackout, or just no signal). Bullish but no insider confirmation. |
+| OWN green + INSIDER green + VOL gray | **Smart money setup before retail wakes up** — institutions and insiders both buying, but volume hasn't picked up yet. Often the BEST risk/reward zone. |
+| OWN red + INSIDER red + VOL green | **Distribution into strength** — institutions AND insiders are exiting into retail demand. Strongest bearish signal. |
+| OWN green + INSIDER red | **Conflict** — institutions buying but insiders selling. Could be insider personal liquidity needs (not always bearish). Look at scale: small insider sells + large institutional adds = still bullish. |
+| All gray | **No edge** — wait for clarity. |
+
+### Backend wiring
+
+`SMART_MONEY_SCANNER_BACKEND_REFERENCE.py` already specifies `insider_quarterly_history` with the right shape. The per-stock panel reads from EITHER `d.institutional.insider_activity.quarterly_history` (the structure from r63.86.0 SMI reference) OR `d.institutional.insider_quarterly_history` (flat alternative). No backend change required — your existing endpoint with either field shape works.
+
+Required JSON shape:
+```python
+"insider_quarterly_history": [  # or under insider_activity.quarterly_history
+  {"quarter": "Q1 2024", "n_buys": 2, "n_sells": 1,
+   "buy_value_usd": 0.4e6, "sell_value_usd": 0.1e6,
+   "net_flow_usd": 0.3e6},
+  # ... 4 entries (one per quarter)
+]
+```
+
+### Files changed
+
+- `static/app.js`:
+  - Line ~3655: `_q4Cells` helper extended with `kind='usd'` branch (~50 LOC)
+  - Line ~3625: scanner column header — replaced "INSIDER" badge column with "INSIDER 4Q" cells column
+  - Line ~3765: scanner row rendering — replaced `_insiderBadge` cell with `_q4Cells(.., 'net_flow_usd', 'usd', ..)`
+  - Line ~3617: table `min-width` bumped from 1200px to 1340px to accommodate the wider INSIDER column
+  - Line ~3782: methodology footer — added INSIDER 4Q explanation paragraph
+  - Line ~18044: per-stock SMI panel — changed grid from 2-column to 3-column, added INSIDER NET FLOW sub-panel with its own `_q4()` call
+  - Line ~18055: per-stock `_q4()` helper extended with `kind='usd'` branch matching the scanner's logic
+- `static/app.min.js`: synced
+- `build_version.txt`: r63.90.0
+
+### Regression checks
+
+- [ ] Decide → Smart Money scanner → confirm column header now shows "INSIDER 4Q" (not the old single ACCELERATING/STEADY badge)
+- [ ] Until backend wired → INSIDER cells show "— no data —" with tooltip pointing to `insider_quarterly_history`
+- [ ] When backend returns sample data → 4 cells render: small flows show as "2B/1S" / "5B/0S" format, large flows as "+$1M" / "−$450K" / "+$8.2M"
+- [ ] Hover any insider cell → tooltip shows "Q3'24: 5 buys / 1 sell · net +$2.1M"
+- [ ] Cell colors: green for >+$50K net, red for <−$50K, gray for between
+- [ ] Analyze any stock → middle of page → SMI panel now shows 3 columns (OWN · VOL · INSIDER) instead of 2
+- [ ] Each of the 3 sub-panels has its own dashed empty-state when the backend field isn't returned
+- [ ] Scanner table is wider (1340px min) — horizontal scroll on smaller viewports works correctly
+
+## r63.89.0 (2026-05-13) — SMI PANEL INLINE IN ANALYZE FLOW + NAV CLEANUP
+
+User reported: *"i dont see smart money intelligence panel"* + *"make colors readable not eye straining"*
+
+### Bug — SMI panel was mounted in the WRONG render path
+
+In r63.86.0 I inserted the SMI panel inside `_renderReportLegacy`. That function only runs when:
+1. User visits the standalone Deep DD tab (which I removed in r63.84.0), OR
+2. The Deep DD embed (`_embedDeepDDIntoInvestor`) successfully fetches `/api/investor-due-diligence` AND that endpoint returns a `d.institutional` object.
+
+When user clicks **Analyze Stock**, the flow goes through `loadInvestorDE` (calls `/api/investor-decide`) — a completely separate render path. The Deep DD embed mount at the bottom may or may not fire, and even when it does, the `if (d.institutional)` guard on the SMI panel silently skipped rendering when the endpoint didn't return that field at all.
+
+Net result: user could analyze any stock and never see the SMI panel.
+
+### Fix 1 — Inline SMI panel directly in `loadInvestorDE`
+
+Mounted a complete SMI panel directly inside `loadInvestorDE`, right after the "Institutional Analysis Stack — 8 Decision Charts" section. The panel is built inline (no dependency on Deep DD embed or any external function) and ALWAYS renders. Components:
+
+- **Header**: 🧠 icon + "Smart Money Intelligence" title + ACCUMULATING / DISTRIBUTING / HOLDING / INSUFFICIENT DATA pill (auto-derived from ownership_history if present)
+- **Two-column body**:
+  - **📈 INSTITUTIONAL OWNERSHIP — LAST 4 QUARTERS**: 4 color-coded cells (46×30px each) with delta value inside (e.g., `+2.7`, `−1.5`) + quarter labels below (`Q1'24`, `Q2'24`...)
+  - **📊 TRADING VOLUME — LAST 4 QUARTERS**: same pattern with % change values (e.g., `+15%`, `−22%`)
+  - **Green** = added (institutions buying / volume rising)
+  - **Red** = reduced (institutions selling / volume falling)
+  - **Gray** = flat (under 0.1pp / 1% noise threshold)
+  - Hover any cell → tooltip with exact prior → current values
+- **🏛 TOP HOLDERS strip**: live summary with adders / reducers / holders count when `top_holders_delta` is populated, or dashed empty-state when not
+
+When the backend hasn't returned any field yet, each sub-panel shows a clean dashed card naming the exact backend field path needed (`d.institutional.ownership_history`, `d.institutional.volume_quarterly_history`, `d.institutional.top_holders_delta`). No fake data, no false signals.
+
+### Fix 2 — Also removed the outer `if (d.institutional)` guard in `_renderReportLegacy`
+
+The legacy Deep DD panel also had the same skip-everything bug. Changed `if (d.institutional)` to an always-true block with `_instData = d.institutional || {}` fallback, so the panel renders empty-states for missing data instead of vanishing entirely.
+
+### Fix 3 — Cleaned up eye-straining nav emojis
+
+User: *"make colors readable not eye straining"*
+
+The Decide tabs were rendered with bright saturated unicode emojis:
+- 🧠 (pink/magenta brain)
+- 🎯 (red bullseye)
+- ⚡ (yellow lightning)
+- 🔥 (orange flame)
+- 💎 (cyan diamond)
+- 📊 (blue bar chart)
+
+Stacked in a row, they read as visual noise — Vijay's reference standard is Bloomberg / Refinitiv, which is text-first. Removed all emojis from `TAB_GROUPS.decide.labels`:
+
+Before: `'🧠 Smart Money'`, `'🎯 Micro-Cap Hunter'`, `'⚡ Intraday Setups'`, `'🔥 Positioning'`, `'💎 Diamond Hunter'`, `'📊 Analyst Coverage'`, `'🔬 Pro Scan'`, `'📊 Reports'`, `'📊 PMS'`
+
+After: `'Smart Money'`, `'Micro-Cap Hunter'`, `'Intraday Setups'`, `'Positioning'`, `'Diamond Hunter'`, `'Analyst Coverage'`, `'Pro Scan'`, `'Reports'`, `'PMS'`
+
+Each tab content already self-identifies via its own page header (with icon) — the nav doesn't need to repeat it. Cleaner, faster to scan, professional look.
+
+### Files changed
+
+- `static/app.js`:
+  - Line ~2580: `TAB_GROUPS.decide.labels` — all emojis stripped
+  - Line ~15345: `_renderReportLegacy` SMI panel — removed `if (d.institutional)` guard, use `_instData = d.institutional || {}`
+  - Line ~18043: `loadInvestorDE` — **NEW** inline SMI panel rendered between Institutional Analysis Stack and Decision Summary (~100 lines, self-contained IIFE)
+- `static/app.min.js`: synced
+- `build_version.txt`: r63.89.0
+
+### Regression checks
+
+- [ ] Decide tab → confirm nav labels are clean text (no emojis): "Analyze Stock · Top Trades · Top Investments · Smart Money · Micro-Cap Hunter · Intraday Setups · Positioning · Diamond Hunter · Analyst Coverage · Pro Scan · Reports · PMS"
+- [ ] Analyze any stock → scroll past the "Institutional Analysis Stack — 8 Decision Charts" details element → see the new "🧠 Smart Money Intelligence" panel with two 4-quarter cell grids (OWN + VOL)
+- [ ] Until backend wired → both columns show "No quarterly data yet" with the exact backend field path
+- [ ] When `ownership_history` lands → 4 OWN cells fill in green/red with delta values + quarter labels
+- [ ] When `volume_quarterly_history` lands → 4 VOL cells fill similarly
+- [ ] When `top_holders_delta` lands → TOP HOLDERS strip shows live adder/reducer/holder counts
+- [ ] ACCUMULATING / DISTRIBUTING / HOLDING pill in header reflects the actual 4-quarter ownership delta
+- [ ] Hover any cell → tooltip shows "Q3'24: 62.4% → 65.1% (+2.7pp)" or similar
+- [ ] Existing Deep DD embed at the bottom of the page still renders the FULL SMI panel (line chart + bar chart + top-holder table) — the inline panel is a focused summary, the bottom panel is the deep view
+- [ ] Decide nav doesn't include any emojis; existing functionality unchanged
+
+### Lessons
+
+This is the third "where did it go" issue (after the FII/DII honesty card and the broken middle-card). The pattern: I assume a render path is being executed without verifying it actually fires under the user's flow. Going forward, when adding any feature that depends on a render path, I'll trace from the user-facing entry point (e.g., "click Analyze Stock") to the exact `el.innerHTML = h` line, instead of inserting code into the first function that mentions the relevant data and hoping it's the right one.
+
 ## r63.88.0 (2026-05-13) — 4-QUARTER COLOR-CODED CELLS (OWN + VOL)
 
 User asked: *"does it have last 4 quarters data as well... for both institutional ownership.. and volume... if its added green and its reduced red.. sort of.."*
