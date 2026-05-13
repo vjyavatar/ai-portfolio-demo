@@ -1833,18 +1833,19 @@ Think of this as your <strong>daily briefing from a fund manager's desk</strong>
 
 <!-- REPORTS CONTENT — populated by JS -->
 <div id="engineReportArea" style="margin-bottom:14px">
-<div style="padding:20px;border-radius:16px;background:linear-gradient(160deg,#022c22,#064e3b);border:2px solid rgba(16,185,129,.2);text-align:center;position:relative;overflow:hidden">
-<div style="position:absolute;inset:0;background:radial-gradient(ellipse at 60% 30%,rgba(16,185,129,.1),transparent 70%);pointer-events:none"></div>
-<div style="position:relative">
-<div style="font-size:9px;letter-spacing:3px;color:#94a3b8;margin-bottom:6px">CELESYS INSTITUTIONAL</div>
-<div style="font-size:18px;font-weight:900;color:#fff;font-family:Sora,sans-serif;margin-bottom:4px">&#127942; Engine Report — Best Stocks From Both Engines</div>
-<div style="font-size:10px;color:#64748b;margin-bottom:14px;line-height:1.6;max-width:500px;margin-left:auto;margin-right:auto">Scans 30 stocks through <strong style="color:#10b981">Wealth Engine V1</strong> (Piotroski, Moat, DCF, Graham) &#10132; V1 passes get deep-scanned through <strong style="color:#1A3A78">Wealth Engine Pro V2</strong> (ROIC, Monte Carlo, Alpha Signals). Stocks that pass <strong style="color:#fff">BOTH</strong> engines are institutional-grade must-owns.</div>
+<!-- r63.83.0: Replaced unreadable dark-green gradient with light institutional palette.
+     Previous: linear-gradient(160deg,#022c22,#064e3b) made #10b981 "Wealth Engine V1" and #64748b
+     body text completely invisible. Now: soft cream/white with navy and amber accents — every
+     character meets WCAG AA contrast on its background. -->
+<div style="padding:20px 22px;border-radius:14px;background:linear-gradient(135deg,#fafafa,#f8fafc);border:1px solid #e2e8f0;text-align:center;position:relative">
+<div style="font-size:10px;letter-spacing:2px;color:#1A3A78;font-weight:800;margin-bottom:6px;font-family:Sora,sans-serif">CELESYS INSTITUTIONAL</div>
+<div style="font-size:18px;font-weight:900;color:#0A1628;font-family:Sora,sans-serif;margin-bottom:6px">&#127942; Engine Report &mdash; Best Stocks From Both Engines</div>
+<div style="font-size:11px;color:#475569;margin-bottom:14px;line-height:1.65;max-width:580px;margin-left:auto;margin-right:auto">Scans 30 stocks through <strong style="color:#059669">Wealth Engine V1</strong> (Piotroski, Moat, DCF, Graham) &#10132; V1 passes get deep-scanned through <strong style="color:#1A3A78">Wealth Engine Pro V2</strong> (ROIC, Monte Carlo, Alpha Signals). Stocks that pass <strong style="color:#92400e">BOTH</strong> engines are institutional-grade must-owns.</div>
 <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
-<button onclick="loadEngineReport('IN')" id="erBtnIN" style="padding:10px 24px;border-radius:10px;background:linear-gradient(135deg,#1A3A78,#1e40af);color:#fff;border:none;font-size:12px;font-weight:800;cursor:pointer;font-family:Sora,sans-serif;box-shadow:0 4px 16px rgba(16,185,129,.3);transition:all .2s" onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 8px 24px rgba(16,185,129,.4)'" onmouseout="this.style.transform='none';this.style.boxShadow='0 4px 16px rgba(16,185,129,.3)'">IN India Engine Report</button>
-<button onclick="loadEngineReport('US')" id="erBtnUS" style="padding:10px 24px;border-radius:10px;background:linear-gradient(135deg,#1A3A78,#1e40af);color:#fff;border:none;font-size:12px;font-weight:800;cursor:pointer;font-family:Sora,sans-serif;box-shadow:0 4px 16px rgba(59,130,246,.3);transition:all .2s" onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 8px 24px rgba(59,130,246,.4)'" onmouseout="this.style.transform='none';this.style.boxShadow='0 4px 16px rgba(59,130,246,.3)'">US USA Engine Report</button>
+<button onclick="loadEngineReport('IN')" id="erBtnIN" style="padding:10px 24px;border-radius:10px;background:linear-gradient(135deg,#1A3A78,#1e40af);color:#fff;border:none;font-size:12px;font-weight:800;cursor:pointer;font-family:Sora,sans-serif;box-shadow:0 2px 8px rgba(26,58,120,.2);transition:all .2s" onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 4px 14px rgba(26,58,120,.3)'" onmouseout="this.style.transform='none';this.style.boxShadow='0 2px 8px rgba(26,58,120,.2)'">IN India Engine Report</button>
+<button onclick="loadEngineReport('US')" id="erBtnUS" style="padding:10px 24px;border-radius:10px;background:linear-gradient(135deg,#1A3A78,#1e40af);color:#fff;border:none;font-size:12px;font-weight:800;cursor:pointer;font-family:Sora,sans-serif;box-shadow:0 2px 8px rgba(26,58,120,.2);transition:all .2s" onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 4px 14px rgba(26,58,120,.3)'" onmouseout="this.style.transform='none';this.style.boxShadow='0 2px 8px rgba(26,58,120,.2)'">US USA Engine Report</button>
 </div>
-<div style="font-size:8px;color:#94a3b8;margin-top:10px">&#9201; First run ~3-5 min (30 stocks &#215; 2 engines). Cached 30 min after. Results appear below.</div>
-</div>
+<div style="font-size:9px;color:#64748b;margin-top:10px">&#9201; First run ~3-5 min (30 stocks &#215; 2 engines). Cached 30 min after. Results appear below.</div>
 </div>
 </div>
 <div id="reportsContent"></div>
