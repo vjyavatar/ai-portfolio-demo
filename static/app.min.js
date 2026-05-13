@@ -3643,7 +3643,11 @@ function _renderSmartMoneyScanner(el, d, regBar, reg, mcap, univLabel) {
     if (verdict === 'DISTRIBUTING' && score <= 30)  return {label:'AVOID', color:'#991b1b', tip:'Strong distribution + low score. Institutions are unwinding — stay out.'};
     if (verdict === 'DISTRIBUTING')                 return {label:'SELL',  color:'#dc2626', tip:'Institutions reducing position. Exit if long; do not chase.'};
     if (verdict === 'HOLDING')                      return {label:'WATCH', color:'#d97706', tip:'No clear conviction. Wait for inflection before committing.'};
-    return {label:'—', color:'#cbd5e1', tip:'Insufficient quarterly data to make a call.'};
+    // r63.91.0: When verdict is INSUFFICIENT (ownership_history not wired yet) but we
+    // have insider data driving the score, give a meaningful partial signal:
+    if (verdict === 'INSUFFICIENT' && score >= 65)  return {label:'WATCH+', color:'#10b981', tip:'Insider data leans bullish (' + score + ' score) — full verdict pending ownership_history wiring.'};
+    if (verdict === 'INSUFFICIENT' && score <= 35)  return {label:'WATCH−', color:'#dc2626', tip:'Insider data leans bearish (' + score + ' score) — full verdict pending ownership_history wiring.'};
+    return {label:'—', color:'#cbd5e1', tip:'Insufficient quarterly data to make a call yet. Backend needs ownership_history + top_holders_delta wired.'};
   }
 
   // Helper: render 4 colored cells showing Q-over-Q deltas with quarter labels.
