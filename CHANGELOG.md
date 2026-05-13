@@ -1,3 +1,400 @@
+## r63.85.0 (2026-05-13) — INTRADAY SCANNER: MARKET-CAP SEGMENTATION
+
+User feedback on 2 screenshots:
+1. **Smart Money Intelligence mockup acknowledged** — user wants this built, but prioritized the scanner fix below first. Smart Money Intelligence will ship in the next focused release.
+2. **Intraday & Swing Setups scanner** needs:
+   - Market-cap segmentation (Large / Mid / Small / Micro) with **Large Cap as default**
+   - Remove the "ALL" timeframe button — default to **INTRADAY**
+
+### What got built
+
+**1. Default timeframe changed to INTRADAY, ALL button removed**
+
+Was: 3 buttons (ALL / INTRADAY / SWING), default = ALL.
+Now: 2 buttons (INTRADAY / SWING), default = INTRADAY.
+
+Migration: any user with `window._intradayTimeframe === 'all'` cached in their localStorage state gets silently migrated to `'intraday'` on first load — no broken UI.
+
+**2. NEW market-cap filter row above the timeframe row**
+
+Four buttons with universe captions visible at all times:
+
+| Button | Region | Universe |
+|---|---|---|
+| **Large Cap** (default) | US | S&P 100 |
+| | India | NIFTY 50 |
+| **Mid Cap** | US | S&P 400 |
+| | India | NIFTY MIDCAP 100 |
+| **Small Cap** | US | S&P 600 |
+| | India | NIFTY SMALLCAP 100 |
+| **Micro Cap** | US | Russell Micro-Cap |
+| | India | NIFTY MICROCAP 250 |
+
+Each button is a two-line pill: bold label on top (e.g., "Large Cap"), tiny monospace caption underneath (e.g., "S&P 100") so users always know exactly which universe is being scanned. Active state uses Celesys navy with a subtle drop-shadow for clear selection.
+
+**3. Frontend → backend contract**
+
+The scanner now passes `mcap=large|mid|small|micro` to `/api/intraday-setups` in addition to `region` and `timeframe`. The backend needs a one-time wiring change to swap the scan universe based on `mcap`. **Reference Python implementation included in zip:** `INTRADAY_MCAP_BACKEND_REFERENCE.py` — drop-in `US_UNIVERSES` and `INDIA_UNIVERSES` dictionaries + handler update + cache-key change + ticker-list source URLs.
+
+**4. Graceful empty-state when backend not yet wired**
+
+If a user clicks "Mid Cap" before the backend has the universe populated, instead of saying "No setups detected" (which would imply the market is dead), the scanner shows:
+
+> S&P 400 (mid) scan returned no setups. This may mean the backend doesn't yet have mid-cap universe wired in /api/intraday-setups — or the scan ran but found no qualifying candidates. [↺ back to Large Cap]
+
+The "back to Large Cap" button lets users one-click return to the working tier.
+
+### Files changed
+
+- `static/app.js`:
+  - Line ~12434: `loadIntradaySetups` now takes `forceMcap` param, defaults to `'intraday'` + `'large'`, migrates legacy `'all'` state
+  - Line ~12454: loader subtitle now includes the universe label + cap tier
+  - Line ~12470: fetch URL adds `&mcap=` parameter
+  - Line ~12501: `_renderIntradaySetups` signature updated; renders MARKET CAP row above TIMEFRAME row; TIMEFRAME row now has 2 buttons not 3
+  - Line ~12533: context-aware empty state with "back to Large Cap" fallback
+- `static/app.min.js`: synced (md5 verified)
+- `build_version.txt`: bumped to `r63.85.0`
+- **NEW: `INTRADAY_MCAP_BACKEND_REFERENCE.py`** — drop-in `api.py` reference with:
+  - `US_UNIVERSES` + `INDIA_UNIVERSES` skeleton dictionaries
+  - Endpoint handler update preserving existing scan logic
+  - Cache-key update (include mcap)
+  - Source URLs for refreshing ticker lists each quarter
+  - Recommended liquidity filter for micro caps (avoids surfacing untradable names)
+
+### Regression checks
+
+- [ ] Decide → ⚡ Intraday Setups → confirm MARKET CAP row appears above TIMEFRAME row
+- [ ] MARKET CAP row defaults to "Large Cap" (navy filled), other 3 cards outlined
+- [ ] TIMEFRAME row now shows only INTRADAY (default, navy filled) + SWING — no ALL button
+- [ ] Click "Mid Cap" → URL fetch includes `mcap=mid` → if backend supports → mid-cap setups render → if not → friendly empty state with "back to Large Cap" button
+- [ ] Click "SWING" → re-fetches with same mcap; switching cap re-fetches with same timeframe (filters compose)
+- [ ] Switch region IN/US → mcap state persists, universe label updates (S&P 400 → NIFTY MIDCAP 100)
+- [ ] Refresh button preserves both filters
+- [ ] Existing setup cards, R:R display, methodology footer unchanged
+
+### Backend wiring (Vijay's task)
+
+1. Open `INTRADAY_MCAP_BACKEND_REFERENCE.py` from this zip
+2. Copy `US_UNIVERSES` and `INDIA_UNIVERSES` skeleton into `api.py`
+3. Populate ticker lists (sources documented in the reference file):
+   - **NIFTY 50** is already in your existing universe — copy it into the `large` key
+   - **NIFTY MIDCAP 100** + **NIFTY SMALLCAP 100** lists: download from niftyindices.com
+   - **NIFTY MICROCAP 250**: niftyindices.com → Thematic → MICROCAP 250
+   - US lists: S&P 100/400/600 from spglobal.com or Wikipedia
+4. Update the handler to read `mcap` query param and select universe
+5. Update cache key to include mcap
+6. Set a calendar reminder to refresh ticker lists every quarter (NSE rebalances Jan/Apr/Jul/Oct)
+
+### Note on Smart Money Intelligence (Image 1 from your message)
+
+You acknowledged the SMI mockup — that's the next focused release (r63.86.0). It needs the backend payload extension I described last turn (`d.institutional.ownership_history`, `top_holders_delta`, `quarterly_history`). I'll ship the frontend with empty-state cards everywhere when you say go, so the UI is in place before your backend work catches up.
+
+## r63.84.0 (2026-05-13) — POSITIONING SCANNER: LAYMAN-FRIENDLY + ACTION COLUMN
+
+User feedback on 3 screenshots:
+1. **Image 1+2**: "WHAT DOES DISTRIBUTION meant by?" — the regime pill in the table showed bare jargon ("DISTRIBUTION") with no explanation. Hard to read for a layman.
+2. **Image 3**: The middle lens-toggle card (`💰 INST. ACCUMULATION`) rendered with the emoji but NO label and NO subtitle — looked broken.
+3. User directive: "since all deep dd is already include stock analyze.. we can remove DEEP DD"
+4. User directive: "i need clearly... market trends and check insider activity clearly, institutional ownership during various time frames, volume, and final verdict.. like can buy or sell stuff like that"
+
+Four fixes shipped:
+
+### Fix 1 — Removed standalone Deep DD tab (preserves internal function)
+
+The Decide group had 12 visible tabs including a separate `🔬 Deep DD` button. But every "Analyze Stock" run already produces the full deep-DD report at the bottom of the investor view — the standalone tab was duplicative noise.
+
+Removed `'deepdd'` from `TAB_GROUPS.decide.tabs`. The underlying `loadDeepDD()` function, the `deepdd` panel ID, and all routing in `switchTab` / `_sharedTabs` arrays are PRESERVED — only the visible nav button is hidden. Anything that internally routes to deep-dd (Diamond Hunter, Multibagger Hunter, ticker-click from various scanners) continues to work.
+
+Net result: cleaner nav (11 tabs instead of 12), no duplicated UX.
+
+### Fix 2 — Lens-toggle cards bulletproofed (Image 3 broken middle card)
+
+The middle card `💰 INST. ACCUMULATION` was rendering with only the emoji visible — no "INST. ACCUMULATION" label, no "Smart-money flow + velocity" subtitle. Cause was a fragile interaction between the active-state CSS and inline label rendering.
+
+Rewrite:
+- Added `title=` tooltips on each card explaining what the lens does in plain English (Compounders = "Buffett-style", Accumulation = "follow the smart money", Optionality = "VC-style asymmetric bets")
+- Made label `color` explicitly inherit from the active state instead of relying on parent button text color
+- Stiffened border from `1px solid` to `1.5px solid` for sharper active state
+- Added subtle box-shadow on active card for clearer selection signal
+- Bumped sub-text opacity from `0.85` to `0.92` for readability when active
+
+### Fix 3 — Wyckoff regime explainer (Images 1, 2)
+
+Every regime pill (`DISTRIBUTION`, `ACCUMULATION`, `MARKUP`, `MARKDOWN`, `RANGING`, `NEUTRAL`) now has:
+
+**(a) A hover tooltip** with the layman explanation:
+- ACCUMULATION → "Smart money is QUIETLY BUYING — price looks weak but institutions are loading up. Bullish setup."
+- DISTRIBUTION → "Smart money is QUIETLY SELLING to retail — price looks strong but institutions are exiting. Bearish setup — avoid new buys."
+- MARKUP / MARKDOWN / RANGING → similar one-line explanations
+- Cursor changes to `help` on hover so users know to look
+
+**(b) A collapsible legend above the table** — `📖 What do these labels mean?` block that expands to show every regime as a colored pill + 1-2 sentence plain-English meaning + "How to use" row explaining how to combine REGIME + QUALITY + OPTIONALITY into a buy/sell call.
+
+**(c) Updated REGIME column tooltip** in the header from "Accumulation / Distribution / Neutral — derived from buy/sell + velocity" to the full Wyckoff hint.
+
+Previously only ACCUMULATION + DISTRIBUTION had distinct colors; MARKUP / MARKDOWN / RANGING / NEUTRAL all fell through to a gray default. Now all 6 have semantically meaningful colors (green / blue / red / dark-red / gray / gray).
+
+### Fix 4 — NEW 🎯 ACTION column (user's main ask)
+
+User asked for a single signal they can act on — buy/sell/wait — rather than reading regime + verdict + saturation separately. Added a new ACTION column between VERDICT and PRICE.
+
+New `_actionBadge(regime, verdict, saturation)` helper derives one of 6 plain-English calls:
+
+| Combination | Action | Color | Tooltip |
+|---|---|---|---|
+| Verdict AVOID or regime MARKDOWN | **AVOID** | red-dark | "Sellers in control. Bottom not in yet — capital preservation > opportunity." |
+| Regime DISTRIBUTION + HIGH/MEDIUM verdict | **SELL** | red | "Smart money is selling to retail. Price may look strong but institutions are exiting. Exit existing; do not chase." |
+| Regime DISTRIBUTION + LOW verdict | **AVOID** | red-dark | (same explanation, weaker reason) |
+| Regime ACCUMULATION + HIGH/MEDIUM + not saturated | **BUY** | green-dark | "ACCUMULATION + HIGH verdict + under-owned. Institutions are quietly loading. Best buying setup." |
+| Regime MARKUP + HIGH/MEDIUM + not saturated | **BUY** | green | "MARKUP + verdict confirmed. Trend strong. Buy dips, ride momentum." |
+| Regime MARKUP + HIGH/MEDIUM + saturated (≥75) | **TRIM** | amber | "MARKUP + saturated ownership. Trend intact but late — trim to lock gains; new buys only on dips." |
+| Regime RANGING | **WATCH** | gray | "No directional conviction. Wait for breakout (ideally into ACCUMULATION) before deploying capital." |
+| Verdict LOW (catch-all) | **WATCH** | amber | "Low conviction. Re-check after next earnings or 13F refresh." |
+| Verdict INSUFFICIENT DATA | **—** | light-gray | "Insufficient data — fewer than 2 of the required input metrics returned." |
+
+Each cell is a `title=`-tooltipped pill, so hovering reveals the WHY. The methodology footer at the bottom of the table now explicitly documents the ACTION decision table and reminds users that clicking any row opens the full deep-dive (insider trades, institutional ownership over time, volume, institutional verdict).
+
+### Why the ACTION column matters
+
+Users were being asked to read 4 scores (FLOW, QUALITY, OPTIONALITY, SATURATION), 1 regime label, AND a VERDICT band — then mentally combine them into a buy/sell decision. The ACTION column does that math for them. It's the same signal Vijay would derive manually in 30 seconds, surfaced in 1 second.
+
+This complements (rather than replaces) the existing columns: the scores show WHY the action is what it is. Users who want to dig in still can. Users who just want to act now have a clear pill.
+
+### Files changed
+
+- `static/app.js`:
+  - Line ~2575: removed `'deepdd'` from `TAB_GROUPS.decide.tabs` (kept all internal routing)
+  - Line ~3110: lens-toggle cards rewrite with tooltips + sharper active state
+  - Line ~3214: legend `<details>` block added above the positioning table
+  - Line ~3220: heads array — added `🎯 ACTION` column with rich tooltip
+  - Line ~3249: `_regimeBadge()` rewrite — 6-regime color map + per-regime tooltip
+  - Line ~3296: `_actionBadge()` new helper — 9-case decision logic
+  - Line ~3360: `<td>` for ACTION cell inserted into each row
+  - Line ~3380: methodology footer updated to explain the ACTION column
+- `static/app.min.js`: synced (md5 verified identical)
+- `build_version.txt`: bumped to `r63.84.0`
+
+### Regression checks
+
+- [ ] Decide tab → confirm "🔬 Deep DD" tab is GONE from the nav. Diamond Hunter / Multibagger / etc. that internally route to deep-dd still work.
+- [ ] Decide → 🔥 Positioning → confirm three lens cards all show full label + subtitle in both active and inactive states. Hover each → see plain-English tooltip.
+- [ ] Above the table → `📖 What do these labels mean?` block. Click to expand → see 5 regime explanations + "How to use" amber footer.
+- [ ] Table → REGIME column → hover any pill (DISTRIBUTION, ACCUMULATION, etc.) → see plain-English tooltip with cursor changing to help.
+- [ ] Table → new 🎯 ACTION column between VERDICT and PRICE → confirm pill colors match regime: red SELL for DISTRIBUTION rows, green BUY for ACCUMULATION + HIGH rows, amber TRIM for MARKUP + saturated rows, gray WATCH for RANGING rows.
+- [ ] Hover any ACTION pill → see the WHY (e.g., "ACCUMULATION + HIGH verdict + under-owned. Best buying setup.").
+- [ ] Click any row → still opens the full Analyze Stock deep-dive as before.
+- [ ] Methodology footer at bottom mentions ACTION column with the decision table.
+
+### What's still on the table
+
+User specifically asked for "**market trends, insider activity, institutional ownership during various time frames, volume**" — much of this exists in the per-stock deep-dive (clicking a row), but is scattered across multiple sections. Possible next-round: build a unified "🧠 Smart Money Intelligence" panel that surfaces 4 boxes on one screen:
+1. Insider Form 4 cluster (last 90 days, buy vs sell, dollar value)
+2. Institutional ownership delta (Q-over-Q, top 10 holders)
+3. Volume profile (vs 50-day average, accumulation days vs distribution days)
+4. Institutional verdict (combined signal)
+
+This would be a substantial new module. Flag when ready and I'll build it in one focused round.
+
+## r63.83.0 (2026-05-13) — READABILITY + FII/DII HONESTY
+
+User feedback on 2 screenshots:
+1. **Engine Report banner unreadable** (Image 1) — dark green background with body text in light slate/gray and engine names in green-on-green. "Wealth Engine V1" was effectively invisible.
+2. **FII/DII Capital Flow showing fake zeros** (Image 2) — `₹0Cr / NEUTRAL / 0.00x` rendered as if real data, when actually means "NSE didn't publish today's data".
+
+User's directive: "absolutely not readable and few are missing and showing wrong bar with value.. need to show right value"
+
+### Fix 1 — Engine Report banner rewritten with light palette
+
+Was: `linear-gradient(160deg,#022c22,#064e3b)` — deep forest green. Body text colors `#94a3b8` (light slate) and `#64748b` (medium slate) failed contrast against dark green. "Wealth Engine V1" used `#10b981` (bright green) — same family as background, invisible.
+
+Now: `linear-gradient(135deg,#fafafa,#f8fafc)` — clean institutional cream/white card.
+- Title: `#0A1628` (near-black) — strong contrast
+- Sub-text: `#475569` (dark slate) — WCAG AA on light bg
+- "Wealth Engine V1": `#059669` (forest green) — readable on cream
+- "Wealth Engine Pro V2": `#1A3A78` (Celesys navy) — brand color
+- "BOTH": `#92400e` (amber) — accent color
+- Buttons unchanged (navy gradient, already readable)
+
+### Fix 2 — FII/DII Capital Flow empty-state detection
+
+When `/api/macro-pulse` doesn't return FII/DII figures (weekends, holidays, before 6 PM IST, or NSE feed down), the frontend was rendering:
+- `INSTITUTIONAL FLOW VERDICT: NEUTRAL` (bogus — it's not "neutral", it's "no data")
+- `FII/FPI: ₹0Cr` with red color (zero treated as "selling")
+- `DII: ₹0Cr` with red color
+- `COMBINED: +₹0Cr` with green color (zero treated as "buying")
+- `DII/FII Ratio: 0.00x`
+
+Plus `f.ratio.toFixed(2)` would throw if `ratio` was undefined.
+
+Now: detects no-data state via `_hasFlow = any nonzero net/buy/sell OR history.length > 0`. If false → renders:
+
+> 💰 **FII/DII flow data unavailable today**
+> NSE typically publishes provisional FII/DII figures after 6:00 PM IST on trading days. If you're viewing this before market close, weekend, or on an exchange holiday, fresh data won't exist yet. If well past 6 PM on a trading day, the NSE feed may be temporarily down — retry in 10-15 minutes.
+> Source: nsearchives.nseindia.com (provisional cash-segment figures)
+
+Layman explainers (Fund Manager's Lens at top + "What this means / Your action" + 💡 footer) preserved regardless. Also hardened all numeric formatters with `(x||0).toLocaleString()` and `Number(f.ratio).toFixed(2)` so a partially-missing response can't crash the renderer.
+
+### Files changed
+
+- `index.html` (line ~1835): Engine Report banner rewritten from dark-green to light-cream palette
+- `static/app.js` (line ~3801): `_rptFlows` rewritten with no-data detection + defensive number formatting
+- `static/app.min.js`: synced (md5 verified identical to app.js)
+- `build_version.txt`: bumped to `r63.83.0`
+
+### Regression checks
+
+- [ ] Go to Reports tab → "Engine Report — Best Stocks From Both Engines" banner → every word readable on white/cream background. "Wealth Engine V1" is now dark green (not light green on dark green). "Wealth Engine Pro V2" is Celesys navy. "BOTH" is amber.
+- [ ] Buttons "IN India Engine Report" and "US USA Engine Report" still navy gradient, fully readable, with hover lift.
+- [ ] Macro Pulse → "Capital Flow & Liquidity — FII/DII Live" section on a weekend/holiday OR before 6 PM IST → see dashed empty-state card with NSE-feed explanation. No `₹0Cr` cards, no fake "NEUTRAL" verdict.
+- [ ] Same section on a trading day after 6 PM IST → see real FII/DII figures with verdict pill + 3 metric cards + history table.
+- [ ] If backend returns partial data (just FII, no DII) → still renders the 3 cards, no `f.ratio.toFixed` crash.
+
+### Pattern: this is the third instance of "fake zeros" we've cleaned up
+
+- r63.79.0: Premium Intelligence (analyst_estimates, forward_pe, etc.) — fake red ⚠ boxes
+- r63.82.0: Cash Conversion (`0.0x / Quality Score: 0 / POOR`)
+- r63.82.0: Reverse DCF (`+754.7% UNDERPRICED`)
+- r63.82.0: Exit Criteria (`undefined triggers detected`)
+- **r63.83.0: FII/DII Capital Flow (`₹0Cr / NEUTRAL / 0.00x`)**
+
+The recurring root cause: backend responses that return success=true with zero/null payload, and frontend treats zero as a valid signal. Going forward, every renderer that displays computed numbers should detect "all-zero / all-null" payloads and prefer an honest empty state. The general principle: **a frontend should refuse to lie on behalf of the backend**.
+
+### Suggested next-round audit
+
+Other `_rpt*` functions in the same file likely have the same issue. Candidates to audit:
+- `_rptCurrency` (line ~3866)
+- `_rptSectors` (line ~3907)
+- `_rptEmDm` (line ~3943)
+- `_rptGeo` (line ~3981)
+
+Will run a sweep if user requests, or fix opportunistically when each surfaces in a screenshot.
+
+## r63.82.0 (2026-05-13) — DATA HONESTY + LAYMAN AUDIT
+
+User feedback after reviewing 7 screenshots of a live report:
+1. **Conviction tab broken**: "Network error: escapeHtml is not defined" (Image 1) — entire tab unusable
+2. **Cash Conversion showing fake zeros**: `0.0x / 0.0x / 0% / Quality Score: 0 / POOR` — looks like real-but-terrible data, actually means "no data" (Image 2)
+3. **Reverse DCF showing 754.7% growth**: nonsensical, destroys credibility (Image 4)
+4. **Debt cycle data looks weird**, Pricing Power shows "Insufficient quarterly data" (Image 5) — acceptable as-is, no fix needed
+5. **Exit Criteria empty body** below the header, just the radar chart visible (Image 6)
+6. **Dynamic Asset Allocation needs a layman explainer** — currently only has the regime-specific action (Image 7)
+7. **Institutional Factor Radar has no explainer** — chart sits there with no context (Image 6)
+
+User's directive: "work on missing data... make sure data appears.. and also add in layman language what each section meant... explain wherever is necessary from laymans perspective. verify again"
+
+### Fix 1 — Global `escapeHtml` helper (Image 1, CRITICAL)
+
+The function was called from 9 sites in app.js (Conviction tab, Index Comparison, insider/13F renderers, error displays) but never defined. Result: any of those features threw `ReferenceError: escapeHtml is not defined`.
+
+Added at the top of `app.js` (line ~12):
+```js
+if (typeof window.escapeHtml !== 'function') {
+  window.escapeHtml = function(s) {
+    if (s == null) return '';
+    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  };
+}
+var escapeHtml = window.escapeHtml;
+```
+
+Defined as `window.escapeHtml` + local alias so both `escapeHtml(x)` and `window.escapeHtml(x)` call sites resolve.
+
+### Fix 2 — Cash Conversion honest empty state (Image 2)
+
+Rather than rendering `cc.cfoPAT.toFixed(1) + 'x'` when backend returns 0/missing (which displays as `0.0x` with a red "Cash < Profit ⚠️" warning, looking like real-but-terrible data), now:
+
+1. Detect: `_ccHasData = (cc.cfoPAT > 0) || (cc.fcfPAT > 0) || (cc.fcfRevenue > 0) || (cc.score > 0)`
+2. If no real data → render a dashed-border empty-state card: "💰 Cash conversion data not available. Backend did not return cash flow figures for this stock — typically Yahoo Finance throttling or limited quarterly history. Retry in 2-3 minutes."
+3. If real data → render the 4-metric grid as before, but now with safe `(cc.cfoPAT||0).toFixed(1)` guards
+4. "💡 In simple terms" layman explainer kept regardless of data state
+
+### Fix 3 — Reverse DCF sanity guard (Image 4)
+
+754.7% annual revenue growth is impossible for any real corporation. Either the backend math is wrong or there's a unit mismatch (likely returning `7.547` meaning `754.7%`, or a recent IPO with a degenerate prior-period base).
+
+Added a plausibility check: actual growth must be in `[-50%, +60%]` and implied growth in `[-10%, +60%]`. If either falls outside the band, instead of rendering the misleading gap pill (`+754.7% UNDERPRICED`), now shows:
+
+> ⚠️ **Reverse DCF unreliable for this stock**
+> Backend returned growth values outside the plausible band (actual=754.7%, implied=0.0%). This usually means the financial-statement data is sparse (newly listed, SPAC, M&A activity) or Yahoo returned a unit mismatch. The DCF result should be ignored — use the Monte Carlo and Cash Conversion sections for valuation instead.
+
+Layman explainer preserved below regardless.
+
+### Fix 4 — Exit Criteria honest empty state (Image 6)
+
+When backend doesn't return exit-criteria data, the section was rendering:
+- "EXIT VERDICT: undefined"
+- "undefined triggers detected · undefined high severity"
+- empty body below
+
+Now detects no-data state and renders:
+> 🚪 **Exit criteria not computed for this stock**
+> Exit signals require multi-quarter historical comparisons (ROIC trend, debt change, cash conversion deterioration). Insufficient quarterly data was returned to run these checks — usually means the ticker has <4 quarters of public filings or Yahoo throttled the request.
+
+Verdict pill and trigger list only render if the data is actually there. Layman explainer preserved.
+
+### Fix 5 — Dynamic Asset Allocation layman explainer (Image 7)
+
+The section previously had:
+> 💡 **Bull Market Regime:** GO HEAVY on equity (80%). Market is trending up...
+
+That's the action recommendation, but no concept explainer for what "asset allocation" means or why it shifts with regime.
+
+Added a separate "In simple terms" block below:
+> 💡 **In simple terms:** Your total money should NOT all be in stocks all the time. The mix shifts with the market regime. **Bull market:** 80% stocks (catch upside). **Normal:** 65% stocks (steady compounding). **Volatile:** 50% stocks + 20% gold (sleep at night). **Bear/Crisis:** 30% stocks + 25% cash (preserve capital, buy the bottom). Hedge funds like Bridgewater use exactly this framework — they call it "All Weather." Most retail investors stay 100% in stocks always, which is why they panic-sell at the bottom.
+
+### Fix 6 — Institutional Factor Radar layman explainer (Image 6)
+
+The radar chart at the bottom of Wealth Pro was rendering with no context. Added below it:
+> 💡 **In simple terms:** Each spoke is one of the 8 quality lenses we already analyzed. The further a spoke reaches toward the edge, the stronger the stock scores on that dimension. **An ideal stock looks like a near-perfect octagon** — strong on every factor. **A spike on one or two spokes** = the stock is great in narrow ways but weak overall (risky one-trick pony). **A small concentrated shape near the center** = weak across the board — avoid.
+
+### Verified — sections that already have layman explainers
+
+Audited every major analytical block:
+
+- ROIC vs WACC ✓ "💡 In simple terms"
+- Reverse DCF ✓ "💡 In simple terms"
+- Monte Carlo ✓ "💡 In simple terms"
+- Alpha Signals ✓ "💡 In simple terms"
+- Cash Conversion ✓ "💡 In simple terms"
+- Legends ✓ "💡 In simple terms"
+- Growth vs Valuation Map ✓ "💡 In simple terms"
+- Earnings Consistency ✓ "💡 In simple terms"
+- Debt Cycle + Pricing Power ✓ "💡 In simple terms"
+- Exit Criteria ✓ "💡 In simple terms"
+- Factor Radar ✓ (newly added in this release)
+- M9 Drawdown Recovery ✓ "💡 The Recovery Math" + "What this means" + "Your action"
+- M10 Macro Stress Test ✓ "💡 Beta" + "What this means" + "Your action"
+- M11 Capital Rotation ✓ "💡 Currently: Expansion phase" + "What this means" + "Your action"
+- M12 Dynamic Asset Allocation ✓ (newly added in this release)
+- M13 Factor-Based Portfolio ✓ "💡 Why Factor Investing?"
+
+### Files changed
+
+- `static/app.js`:
+  - Top of file (line ~12): added `window.escapeHtml` + local alias
+  - Reverse DCF block (line ~22044): plausibility check + data-quality warning UI
+  - Cash Conversion block (line ~22125): all-zero detection + dashed empty-state card + safe `(cc.x||0).toFixed()` guards
+  - Exit Criteria block (line ~22288): no-data detection + dashed empty-state card
+  - Dynamic Asset Allocation (line ~15414): added "In simple terms" block
+  - Institutional Factor Radar (line ~22367): added "In simple terms" block
+- `static/app.min.js`: synced (md5 verified identical)
+- `build_version.txt`: bumped to `r63.82.0`
+
+### Regression checks
+
+- [ ] Click the Conviction tab → no more "Network error: escapeHtml is not defined" → loads normally
+- [ ] On a stock where Yahoo throttled cash flow data → Cash Conversion shows the dashed empty-state card with retry hint (not `0.0x / Quality Score: 0 / POOR`)
+- [ ] On a stock with sparse financial history (newly listed, SPAC) → Reverse DCF shows the data-quality warning instead of `+754.7% UNDERPRICED`
+- [ ] On a stock with <4 quarters of data → Exit Criteria shows the dashed empty-state card instead of "undefined triggers"
+- [ ] Scroll to Dynamic Asset Allocation in Market Pulse → see BOTH the regime-specific action ("GO HEAVY on equity") AND the "In simple terms" Bridgewater explainer below
+- [ ] Scroll to the Institutional Factor Radar at the bottom of Wealth Pro → see the "In simple terms" explainer below the chart explaining the octagon shape rule
+
+### Outstanding (deferred)
+
+- Image 5 Debt Cycle: D/E values look weird ("0.7% → 1.7% → 4.6% → 0.8%") but the math could be real if there was a recent equity raise diluting the debt ratio. Not flagged loudly enough to add another guard — will revisit if user confirms it's wrong.
+- Backend wiring of Premium Intelligence fields (analyst_estimates, forward_pe, etc.) — same as r63.79.0, still pending in api.py.
+
 ## r63.81.0 (2026-05-13) — PDF APPENDIX BUG FIXES
 
 User reported 3 issues from a printed report:

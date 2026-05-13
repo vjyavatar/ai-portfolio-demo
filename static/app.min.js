@@ -8,6 +8,21 @@ window.CELESYS_FEATURES = {
   fund_analyzer: true,
   three_lens_scanner: true,
 };
+
+// r63.82.0: Global escapeHtml helper — fixes Conviction tab crash ("escapeHtml is not defined")
+// Used by Conviction tab, Index Comparison, insider/13F renderers — needs to be available globally.
+if (typeof window.escapeHtml !== 'function') {
+  window.escapeHtml = function(s) {
+    if (s == null) return '';
+    return String(s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  };
+}
+var escapeHtml = window.escapeHtml;  // local alias for legacy callers
 console.log("%c━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "color:#1A3A78");
 console.log("%c CELESYS r63.72.35 %c loaded · 2026-05-11 18:14:10 UTC",
   "background:#7c3aed;color:#fff;font-weight:900;padding:3px 8px;border-radius:3px;font-family:monospace",
@@ -2557,7 +2572,11 @@ try{if(window._stockData)createCharts(window._stockData)}catch(e){console.warn('
 var TAB_GROUPS = {
   overview: {tabs: ['quick'], labels: ['Summary'], default: 'quick'},
   research: {tabs: ['analysis','dcf','equity','compare'], labels: ['AI Analysis','DCF Valuation','Research','Compare'], default: 'analysis'},
-  decide:   {tabs: ['decision','toptrades','topinvest','deepdd','mchunter','intraday','positioning','diamond','analyst','proscan','reports','pms'], labels: ['Analyze Stock','Top Trades','Top Investments','🔬 Deep DD','🎯 Micro-Cap Hunter','⚡ Intraday Setups','🔥 Positioning','💎 Diamond Hunter','📊 Analyst Coverage','🔬 Pro Scan','📊 Reports','📊 PMS'], default: 'decision'},
+  // r63.84.0: Removed standalone 'deepdd' from visible Decide tabs.
+  // Analyze Stock already produces the full deep-DD report — the separate Deep DD
+  // tab was duplicative and confusing. The 'deepdd' panel ID and loadDeepDD()
+  // function remain wired so internal callers (Diamond Hunter, etc.) still work.
+  decide:   {tabs: ['decision','toptrades','topinvest','mchunter','intraday','positioning','diamond','analyst','proscan','reports','pms'], labels: ['Analyze Stock','Top Trades','Top Investments','🎯 Micro-Cap Hunter','⚡ Intraday Setups','🔥 Positioning','💎 Diamond Hunter','📊 Analyst Coverage','🔬 Pro Scan','📊 Reports','📊 PMS'], default: 'decision'},
   dream:    {tabs: ['dreamportfolio','multibagger','momentumradar','highprob','optionspulse','tradeticket','microcap'], labels: ['🌟 Dream Portfolio','🔥 Multibagger Hunter','⚡ Momentum Radar','🎯 High-Prob Setups','⚡ Options Pulse','🎫 Trade Ticket','🏆 Micro-Cap Challenge'], default: 'dreamportfolio'},
   trading:  {tabs: ['trades','smarttrades','stockintel','scanner','valreport','backtest','journal','aiassist'], labels: ['Algo Trades','Smart Trades','Stock Intel','Scanner','Valuation','Backtest','Journal','AI Assistant'], default: 'trades'},
   markets:  {tabs: ['indices','daily','newsimpact','assets'], labels: ['Top Performers','Market Daily','📰 News Impact','Global Assets'], default: 'indices'},
@@ -3091,23 +3110,32 @@ window._renderPositioningPage = function(d, activeLens) {
   h += '</div>';
 
   // r63.72.10: Three-lens toggle (replaces best/all/micro)
+  // r63.84.0: Added title attribute tooltips with layman explanations + ensured label
+  // and subtitle are visible in BOTH active and inactive states (previous render had
+  // visible bug where the active middle card lost its text — see Image 3).
   h += '<div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;align-items:center">';
   var lenses = [
-    {id:'compounder',  label:'🏛️ COMPOUNDERS',           sub:'Quality + ROIC durability',   color:'#10b981'},
-    {id:'accumulation',label:'💰 INST. ACCUMULATION',    sub:'Smart-money flow + velocity', color:'#1A3A78'},
-    {id:'optionality', label:'🚀 ASYMMETRIC OPTIONALITY',sub:'Tech inflection + survival',  color:'#7c3aed'}
+    {id:'compounder',  label:'🏛️ COMPOUNDERS',           sub:'Quality + ROIC durability',   color:'#10b981',
+      tip:'Compounders — companies with durable Return on Invested Capital and stable margins. The "buy and hold for decades" lens — Buffett, Munger, Asian Paints, HDFC Bank, Nestle India.'},
+    {id:'accumulation',label:'💰 INST. ACCUMULATION',    sub:'Smart-money flow + velocity', color:'#1A3A78',
+      tip:'Institutional Accumulation — ranks stocks where mutual funds, FIIs, and big institutions are QUIETLY BUYING. Follows the smart money before retail catches on.'},
+    {id:'optionality', label:'🚀 ASYMMETRIC OPTIONALITY',sub:'Tech inflection + survival',  color:'#7c3aed',
+      tip:'Asymmetric Optionality — small/mid stocks with massive upside if their tech bet works, but enough cash to survive failure. Win 10x, lose 1x. The venture-capital-style lens.'}
   ];
   lenses.forEach(function(L) {
     var isActive = (lens === L.id);
     var bg = isActive ? L.color : '#fff';
     var fg = isActive ? '#fff' : '#374151';
     var bd = isActive ? L.color : '#cbd5e1';
-    var subColor = isActive ? 'rgba(255,255,255,0.85)' : '#94a3b8';
+    var subColor = isActive ? 'rgba(255,255,255,0.92)' : '#94a3b8';
     h += '<button onclick="window._positioningLens=\'' + L.id + '\';window._renderPositioningPage(window._positioningCache);" ' +
-         'style="padding:10px 16px;border-radius:10px;border:1px solid ' + bd +
+         'title="' + L.tip.replace(/"/g, '&quot;') + '" ' +
+         'style="padding:10px 16px;border-radius:10px;border:1.5px solid ' + bd +
          ';background:' + bg + ';color:' + fg + ';cursor:pointer;font-family:Inter,sans-serif;' +
-         'white-space:nowrap;text-align:left;display:inline-flex;flex-direction:column;align-items:flex-start;gap:2px;min-width:200px">' +
-         '<span style="font-size:12px;font-weight:800;font-family:Sora,sans-serif">' + L.label + '</span>' +
+         'white-space:nowrap;text-align:left;display:inline-flex;flex-direction:column;align-items:flex-start;gap:2px;min-width:200px;' +
+         (isActive ? 'box-shadow:0 2px 8px ' + L.color + '40;' : '') +
+         '">' +
+         '<span style="font-size:12px;font-weight:800;font-family:Sora,sans-serif;color:' + fg + '">' + L.label + '</span>' +
          '<span style="font-size:9px;color:' + subColor + ';font-weight:600">' + L.sub + '</span>' +
          '</button>';
   });
@@ -3193,6 +3221,31 @@ window._renderPositioningPage = function(d, activeLens) {
           'Try Refresh — server may be enriching the universe.') +
          '</div></div>';
   } else {
+    // r63.84.0: Wyckoff-regime legend so users don't have to guess what DISTRIBUTION means.
+    // Hover any pill in the REGIME column for a one-line layman explanation; the legend
+    // below the table gives the full glossary.
+    h += '<details style="margin-bottom:10px;background:#fafbfc;border:1px solid #e2e8f0;border-radius:10px;padding:0;font-family:Inter,sans-serif">';
+    h += '<summary style="padding:9px 14px;cursor:pointer;font-size:11px;font-weight:700;color:#1A3A78;list-style:none;display:flex;align-items:center;justify-content:space-between">';
+    h += '<span>📖 <strong>What do these labels mean?</strong> <span style="color:#64748b;font-weight:500">— Wyckoff smart-money phases · click to read</span></span>';
+    h += '<span style="font-size:12px;color:#94a3b8">▾</span>';
+    h += '</summary>';
+    h += '<div style="padding:10px 14px 14px;border-top:1px solid #f1f5f9;display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;font-size:11px">';
+    var _legend = [
+      {tag:'ACCUMULATION', bg:'#10b981', txt:'Smart money is QUIETLY BUYING. Price looks weak/boring but institutions are loading up. <strong>Bullish setup — best buying zone.</strong>'},
+      {tag:'MARKUP',       bg:'#3b82f6', txt:'Uptrend confirmed — price making higher highs. <strong>Ride the trend, buy dips.</strong>'},
+      {tag:'DISTRIBUTION', bg:'#dc2626', txt:'Smart money is QUIETLY SELLING to retail. Price looks strong but institutions are exiting. <strong>Bearish — do NOT chase, take profits if holding.</strong>'},
+      {tag:'MARKDOWN',     bg:'#7f1d1d', txt:'Downtrend confirmed — sellers in control. <strong>Cash is the safest position. Wait for accumulation to return.</strong>'},
+      {tag:'RANGING',      bg:'#e2e8f0', fg:'#475569', txt:'No clear phase — price drifting sideways with no conviction either way. <strong>Wait for a break before committing capital.</strong>'},
+    ];
+    _legend.forEach(function(L) {
+      h += '<div style="display:flex;gap:10px;align-items:flex-start">';
+      h += '<span style="flex-shrink:0;padding:3px 8px;border-radius:6px;background:' + L.bg + ';color:' + (L.fg || '#fff') + ';font-size:9px;font-weight:700;font-family:Sora,sans-serif;white-space:nowrap;line-height:1.4">' + L.tag + '</span>';
+      h += '<div style="font-size:11px;color:#475569;line-height:1.6">' + L.txt + '</div>';
+      h += '</div>';
+    });
+    h += '<div style="grid-column:1/-1;margin-top:6px;padding:8px 12px;background:#fef3c780;border-radius:6px;font-size:10px;color:#78350f;line-height:1.6"><strong>How to use:</strong> ACCUMULATION + high QUALITY + high OPTIONALITY = strongest BUY signal. DISTRIBUTION + low QUALITY = strongest SELL signal. Verdict column (HIGH / MEDIUM / LOW / AVOID) is the combined conviction.</div>';
+    h += '</div></details>';
+
     h += '<div style="background:#fff;border-radius:10px;overflow:hidden;border:1px solid #e2e8f0;font-family:Inter,sans-serif">';
     h += '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:11px;min-width:1200px">';
 
@@ -3201,12 +3254,13 @@ window._renderPositioningPage = function(d, activeLens) {
     var heads = [
       {label:'#',          align:'left',  width:'36px'},
       {label:'STOCK',      align:'left',  width:'auto'},
-      {label:'REGIME',     align:'left',  width:'120px', tip:'Accumulation / Distribution / Neutral — derived from buy/sell + velocity'},
+      {label:'REGIME',     align:'left',  width:'120px', tip:'Wyckoff phase — ACCUMULATION (smart money buying), MARKUP (uptrend), DISTRIBUTION (smart money selling), MARKDOWN (downtrend), RANGING (sideways). Hover any pill for the plain-English meaning.'},
       {label:'FLOW',       align:'right', width:'70px',  tip:'Institutional flow score — buy/sell dominance + ownership velocity'},
       {label:'QUALITY',    align:'right', width:'70px',  tip:'Business durability — ROIC stability, margin floor, FCF consistency'},
       {label:'OPTIONALITY',align:'right', width:'80px',  tip:'Asymmetric upside — R&D intensity, cash, revenue acceleration'},
       {label:'SATURATION', align:'right', width:'80px',  tip:'Institutional crowding — actual filers vs. expected for market cap'},
       {label:'VERDICT',    align:'left',  width:'120px', tip:'Conviction band based on the active lens'},
+      {label:'🎯 ACTION',  align:'center',width:'100px', tip:'Plain-English call combining regime + verdict + saturation. BUY = strong setup. WATCH = wait for confirmation. HOLD/TRIM = take some profits. SELL = exit. AVOID = stay away.'},
       {label:'PRICE',      align:'right', width:'82px'},
       {label:'MKT CAP',    align:'right', width:'76px'},
       {label:'52W',        align:'right', width:'70px'},
@@ -3227,13 +3281,20 @@ window._renderPositioningPage = function(d, activeLens) {
       return '<span style="color:' + col + ';font-weight:700;font-family:IBM Plex Mono,monospace;font-size:12px">' + Math.round(v) + '</span>';
     }
 
-    // Helper: regime badge
+    // Helper: regime badge with layman-friendly tooltip explaining the Wyckoff phase
+    // r63.84.0: previously only ACCUMULATION/DISTRIBUTION were styled and bare label rendered.
+    // Now every phase has a clear color + hover tooltip in plain English.
     function _regimeBadge(reg) {
-      var bg = '#94a3b8', fg = '#fff';
-      if (reg === 'ACCUMULATION') { bg = '#10b981'; }
-      else if (reg === 'DISTRIBUTION') { bg = '#dc2626'; }
-      else { bg = '#e2e8f0'; fg = '#475569'; }
-      return '<span style="display:inline-block;padding:3px 8px;border-radius:6px;background:' + bg + ';color:' + fg + ';font-size:9px;font-weight:700;font-family:Sora,sans-serif;white-space:nowrap">' + reg + '</span>';
+      var meta = {
+        'ACCUMULATION':  {bg:'#10b981', fg:'#fff',     tip:'Smart money is QUIETLY BUYING — price looks weak but institutions are loading up. Bullish setup.'},
+        'MARKUP':        {bg:'#3b82f6', fg:'#fff',     tip:'Uptrend confirmed — price is making higher highs. Ride the trend, buy dips.'},
+        'DISTRIBUTION':  {bg:'#dc2626', fg:'#fff',     tip:'Smart money is QUIETLY SELLING to retail — price looks strong but institutions are exiting. Bearish setup — avoid new buys.'},
+        'MARKDOWN':      {bg:'#7f1d1d', fg:'#fff',     tip:'Downtrend confirmed — sellers in control. Cash is the safest position.'},
+        'RANGING':       {bg:'#e2e8f0', fg:'#475569',  tip:'No clear phase — price drifting sideways. Wait for a break before committing capital.'},
+        'NEUTRAL':       {bg:'#e2e8f0', fg:'#475569',  tip:'Indeterminate — insufficient signal strength to call a phase.'},
+      };
+      var m = meta[reg] || {bg:'#94a3b8', fg:'#fff', tip:reg};
+      return '<span title="' + m.tip + '" style="display:inline-block;padding:3px 8px;border-radius:6px;background:' + m.bg + ';color:' + m.fg + ';font-size:9px;font-weight:700;font-family:Sora,sans-serif;white-space:nowrap;cursor:help">' + reg + '</span>';
     }
 
     // Helper: verdict band
@@ -3244,6 +3305,48 @@ window._renderPositioningPage = function(d, activeLens) {
       else if (conv === 'LOW') { bg = '#fef3c7'; fg = '#92400e'; }
       else if (conv === 'AVOID') { bg = '#fee2e2'; fg = '#991b1b'; }
       return '<span style="display:inline-block;padding:3px 8px;border-radius:6px;background:' + bg + ';color:' + fg + ';font-size:9px;font-weight:800;font-family:Sora,sans-serif;white-space:nowrap">' + conv + '</span>';
+    }
+
+    // r63.84.0: Plain-English ACTION badge derived from regime + verdict + saturation
+    // User asked for "clearly... market trends and check insider activity clearly,
+    // institutional ownership during various time frames, volume, and final verdict.
+    // like can buy or sell stuff like that". This translates the combined signal
+    // into a single buy/wait/sell call the user can act on without learning Wyckoff.
+    function _actionBadge(reg, verdict, sat) {
+      var action = 'WATCH', color = '#6b7280', tip = 'Mixed signals — wait for clearer setup before acting.';
+      var crowded = (sat != null && sat >= 75);   // saturated / over-owned
+      var early   = (sat != null && sat <= 30);   // still under-owned
+
+      if (verdict === 'AVOID' || reg === 'MARKDOWN') {
+        action = 'AVOID'; color = '#991b1b';
+        tip = (reg === 'MARKDOWN')
+          ? 'MARKDOWN phase: sellers in control. Bottom not in yet — capital preservation > opportunity.'
+          : 'Verdict AVOID — fundamentals fail the active lens. Do not commit capital.';
+      } else if (reg === 'DISTRIBUTION') {
+        action = (verdict === 'HIGH' || verdict === 'MEDIUM') ? 'SELL' : 'AVOID';
+        color = '#dc2626';
+        tip = 'DISTRIBUTION: smart money is selling to retail. Price may look strong but institutions are exiting. Exit existing positions; do not chase.';
+      } else if (reg === 'ACCUMULATION' && (verdict === 'HIGH' || verdict === 'MEDIUM') && !crowded) {
+        action = 'BUY'; color = '#059669';
+        tip = 'ACCUMULATION + ' + verdict + ' verdict' + (early ? ' + under-owned' : '') + '. Institutions are quietly loading. Best buying setup.';
+      } else if (reg === 'MARKUP' && (verdict === 'HIGH' || verdict === 'MEDIUM')) {
+        action = crowded ? 'TRIM' : 'BUY';
+        color = crowded ? '#d97706' : '#10b981';
+        tip = crowded
+          ? 'MARKUP + saturated ownership. Trend intact but late — trim to lock gains; new buys only on dips.'
+          : 'MARKUP + ' + verdict + ' verdict. Trend confirmed. Buy dips, ride momentum.';
+      } else if (reg === 'RANGING') {
+        action = 'WATCH'; color = '#6b7280';
+        tip = 'RANGING: no directional conviction. Wait for breakout (ideally into ACCUMULATION) before deploying capital.';
+      } else if (verdict === 'LOW') {
+        action = 'WATCH'; color = '#92400e';
+        tip = 'Low conviction across the active lens. Re-check after next earnings or 13F refresh.';
+      } else if (verdict === 'INSUFFICIENT DATA') {
+        action = '—'; color = '#cbd5e1';
+        tip = 'Insufficient data to make a call — fewer than 2 of the required input metrics returned.';
+      }
+
+      return '<span title="' + tip.replace(/"/g, '&quot;') + '" style="display:inline-block;padding:4px 10px;border-radius:6px;background:' + color + ';color:#fff;font-size:10px;font-weight:800;font-family:Sora,sans-serif;white-space:nowrap;letter-spacing:0.4px;cursor:help">' + action + '</span>';
     }
 
     displayRows.forEach(function(r, i) {
@@ -3298,6 +3401,7 @@ window._renderPositioningPage = function(d, activeLens) {
       h += '<td style="padding:10px 8px;text-align:right">' + _scoreCell(r.optionality_score_lens) + '</td>';
       h += '<td style="padding:10px 8px;text-align:right">' + _scoreCell(r.saturation_pct) + '</td>';
       h += '<td style="padding:10px 8px">' + _verdictBadge(verdict) + '</td>';
+      h += '<td style="padding:10px 8px;text-align:center">' + _actionBadge(r.regime || 'NEUTRAL', verdict, r.saturation_pct) + '</td>';
       h += '<td style="padding:10px 8px;text-align:right;color:#0f172a;font-family:IBM Plex Mono,monospace;font-weight:700">' + priceStr + changeStr + '</td>';
       h += '<td style="padding:10px 8px;text-align:right;color:#475569;font-family:IBM Plex Mono,monospace">' + mcapStr + '</td>';
       h += '<td style="padding:10px 8px;text-align:right">' + rangeStr + '</td>';
@@ -3318,6 +3422,7 @@ window._renderPositioningPage = function(d, activeLens) {
   }
   h += '<br><br><strong>SATURATION</strong> = filer count vs. expected for market cap. A $200B name with 200 filers shows saturation ≈ 5 (deeply under-covered, NOT early discovery). A $200B name with 2500 filers shows saturation ≈ 70 (typical large-cap crowding). Saturation is meaningful only relative to market cap.';
   h += '<br><br><strong>VERDICT</strong> bands: HIGH = top decile of active lens (≥75 score, ≥4 input metrics). MEDIUM = ≥50 score with ≥3 inputs. LOW = ≥30 score. AVOID = <30. INSUFFICIENT DATA = fewer than 2 inputs available.';
+  h += '<br><br><strong>🎯 ACTION</strong> is the plain-English call combining regime + verdict + saturation: <strong style="color:#059669">BUY</strong> (accumulation phase + strong verdict + not over-owned), <strong style="color:#10b981">BUY</strong> (markup confirmed + strong verdict), <strong style="color:#d97706">TRIM</strong> (markup but ownership saturated — late entry risk), <strong style="color:#6b7280">WATCH</strong> (ranging / wait for breakout), <strong style="color:#dc2626">SELL / AVOID</strong> (distribution or markdown — institutions exiting). <strong>Click any row to open the full deep-dive analysis</strong> with insider trades, institutional ownership over time, volume, and the institutional verdict.';
   h += '</div>';
 
   deResult.innerHTML = h;
@@ -3787,46 +3892,60 @@ function _rptFlows(d){
 var f=d.flows||{};var fii=f.fii||{};var dii=f.dii||{};
 var vc={'STRONG_BUY':'#059669','BUY':'#10b981','NEUTRAL':'#f59e0b','CAUTIOUS':'#d97706','SELL':'#ef4444'}[f.verdict]||'#6b7280';
 var h='<div style="padding:10px 14px;border-radius:8px;background:rgba(5,150,105,.03);border-left:3px solid #059669;margin-bottom:14px;font-size:10px;color:var(--text2);line-height:1.7"><strong style="color:#059669">🧠 Fund Manager\'s Lens:</strong> This is arguably <strong>the most important report for Indian market investors</strong>. FII (Foreign Institutional Investors like BlackRock, Vanguard, GIC) collectively control the direction of Indian markets. When they buy, markets go up — when they sell, markets fall. DII (domestic mutual funds, LIC, pension) act as the safety net. <strong>The analogy:</strong> Think of the stock market as a swimming pool. FII flows are like turning the tap ON (buying = water fills up, prices rise) or OFF (selling = water drains, prices fall). DII is like a pump that recirculates water from the deep end — it can\'t fill the pool alone, but it prevents it from draining completely. <strong>When both FII + DII buy together, that\'s like turning on every tap — markets surge.</strong></div>';
-// VERDICT BADGE
-h+='<div style="text-align:center;padding:14px;border-radius:12px;background:'+vc+'08;border:2px solid '+vc+'30;margin-bottom:14px">';
-h+='<div style="font-size:10px;color:var(--text3);font-weight:700;letter-spacing:1px;margin-bottom:4px">INSTITUTIONAL FLOW VERDICT</div>';
-h+='<div style="font-size:22px;font-weight:900;color:'+vc+';font-family:Sora,sans-serif">'+((f.verdict||'').replace('_',' '))+'</div>';
-h+='<div style="font-size:11px;color:var(--text2);margin-top:4px">'+f.signal+'</div>';
-h+='</div>';
-// FII vs DII CARDS
-h+='<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:14px">';
-var fc=fii.net>=0?'#10b981':'#ef4444';
-h+='<div style="padding:14px;border-radius:12px;background:'+fc+'06;border:1px solid '+fc+'20;text-align:center">';
-h+='<div style="font-size:8px;color:var(--text3);font-weight:700">🌍 FII/FPI</div>';
-h+='<div style="font-size:22px;font-weight:900;color:'+fc+';font-family:var(--mono);margin:4px 0">'+(fii.net>=0?'+':'')+'₹'+(fii.net||0).toLocaleString()+'Cr</div>';
-h+='<div style="font-size:8px;color:var(--text3)">Buy: ₹'+(fii.buy||0).toLocaleString()+'Cr · Sell: ₹'+(fii.sell||0).toLocaleString()+'Cr</div>';
-h+='<div style="font-size:8px;color:var(--text3);margin-top:2px">'+(fii.date||'')+'</div></div>';
-var dc=dii.net>=0?'#10b981':'#ef4444';
-h+='<div style="padding:14px;border-radius:12px;background:'+dc+'06;border:1px solid '+dc+'20;text-align:center">';
-h+='<div style="font-size:8px;color:var(--text3);font-weight:700">🏦 DII (MF/Insurance)</div>';
-h+='<div style="font-size:22px;font-weight:900;color:'+dc+';font-family:var(--mono);margin:4px 0">'+(dii.net>=0?'+':'')+'₹'+(dii.net||0).toLocaleString()+'Cr</div>';
-h+='<div style="font-size:8px;color:var(--text3)">Buy: ₹'+(dii.buy||0).toLocaleString()+'Cr · Sell: ₹'+(dii.sell||0).toLocaleString()+'Cr</div>';
-h+='<div style="font-size:8px;color:var(--text3);margin-top:2px">'+(dii.date||'')+'</div></div>';
-var cc=f.combined>=0?'#10b981':'#ef4444';
-h+='<div style="padding:14px;border-radius:12px;background:'+cc+'06;border:1px solid '+cc+'20;text-align:center">';
-h+='<div style="font-size:8px;color:var(--text3);font-weight:700">🤝 COMBINED</div>';
-h+='<div style="font-size:22px;font-weight:900;color:'+cc+';font-family:var(--mono);margin:4px 0">'+(f.combined>=0?'+':'')+'₹'+(f.combined||0).toLocaleString()+'Cr</div>';
-h+='<div style="font-size:8px;color:var(--text3)">DII/FII Ratio: '+f.ratio.toFixed(2)+'x</div>';
-h+='</div></div>';
-// HISTORY TABLE
-var hist=f.history||[];
-if(hist.length>0){
-h+='<div style="font-size:11px;font-weight:700;color:var(--text);margin-bottom:6px">📊 Last '+hist.length+' Trading Days</div>';
-h+='<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:9px">';
-h+='<tr style="background:#f1f5f9"><th style="padding:6px 8px;text-align:left;color:var(--text3);border-bottom:1px solid var(--border)">Date</th><th style="padding:6px;text-align:right;color:#1a56db;border-bottom:1px solid var(--border)">FII Net</th><th style="padding:6px;text-align:right;color:#1A3A78;border-bottom:1px solid var(--border)">DII Net</th><th style="padding:6px;text-align:right;font-weight:800;border-bottom:1px solid var(--border)">Combined</th></tr>';
-hist.slice().reverse().forEach(function(r){
-var fn=r.fii_net||0;var dn=r.dii_net||0;var cm=r.combined||0;
-h+='<tr style="border-bottom:1px solid var(--border)"><td style="padding:5px 8px;color:var(--text2)">'+r.date+'</td>';
-h+='<td style="padding:5px;text-align:right;font-weight:700;color:'+(fn>=0?'#10b981':'#ef4444')+';font-family:var(--mono)">'+(fn>=0?'+':'')+'₹'+fn.toLocaleString()+'</td>';
-h+='<td style="padding:5px;text-align:right;font-weight:700;color:'+(dn>=0?'#10b981':'#ef4444')+';font-family:var(--mono)">'+(dn>=0?'+':'')+'₹'+dn.toLocaleString()+'</td>';
-h+='<td style="padding:5px;text-align:right;font-weight:800;color:'+(cm>=0?'#10b981':'#ef4444')+';font-family:var(--mono)">'+(cm>=0?'+':'')+'₹'+cm.toLocaleString()+'</td></tr>';
-});
-h+='</table></div>';
+
+// r63.83.0: Detect missing flow data (was rendering "+₹0Cr / NEUTRAL / 0.00x" as if real)
+var _hasFlow = (fii.net && fii.net !== 0) || (fii.buy && fii.buy !== 0) || (fii.sell && fii.sell !== 0) ||
+               (dii.net && dii.net !== 0) || (dii.buy && dii.buy !== 0) || (dii.sell && dii.sell !== 0) ||
+               (f.history && f.history.length > 0);
+if (!_hasFlow) {
+  h += '<div style="padding:24px 18px;text-align:center;background:#fafbfc;border-radius:10px;border:1px dashed #cbd5e1;margin-bottom:14px">';
+  h += '<div style="font-size:30px;opacity:0.4;margin-bottom:8px">💰</div>';
+  h += '<div style="font-size:13px;font-weight:800;color:#1A3A78;margin-bottom:6px">FII/DII flow data unavailable today</div>';
+  h += '<div style="font-size:10px;color:#64748b;line-height:1.7;max-width:520px;margin:0 auto">NSE typically publishes provisional FII/DII figures after 6:00 PM IST on trading days. If you\'re viewing this before market close, weekend, or on an exchange holiday, fresh data won\'t exist yet. If it\'s well past 6 PM on a trading day, the NSE feed may be temporarily down — retry in 10-15 minutes.</div>';
+  h += '<div style="margin-top:10px;font-size:9px;color:#94a3b8;font-family:JetBrains Mono,monospace">Source: nsearchives.nseindia.com (provisional cash-segment figures)</div>';
+  h += '</div>';
+} else {
+  // VERDICT BADGE
+  h+='<div style="text-align:center;padding:14px;border-radius:12px;background:'+vc+'08;border:2px solid '+vc+'30;margin-bottom:14px">';
+  h+='<div style="font-size:10px;color:var(--text3);font-weight:700;letter-spacing:1px;margin-bottom:4px">INSTITUTIONAL FLOW VERDICT</div>';
+  h+='<div style="font-size:22px;font-weight:900;color:'+vc+';font-family:Sora,sans-serif">'+((f.verdict||'').replace('_',' '))+'</div>';
+  h+='<div style="font-size:11px;color:var(--text2);margin-top:4px">'+(f.signal||'')+'</div>';
+  h+='</div>';
+  // FII vs DII CARDS
+  h+='<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:14px">';
+  var fc=(fii.net||0)>=0?'#10b981':'#ef4444';
+  h+='<div style="padding:14px;border-radius:12px;background:'+fc+'06;border:1px solid '+fc+'20;text-align:center">';
+  h+='<div style="font-size:8px;color:var(--text3);font-weight:700">🌍 FII/FPI</div>';
+  h+='<div style="font-size:22px;font-weight:900;color:'+fc+';font-family:var(--mono);margin:4px 0">'+((fii.net||0)>=0?'+':'')+'₹'+(fii.net||0).toLocaleString()+'Cr</div>';
+  h+='<div style="font-size:8px;color:var(--text3)">Buy: ₹'+(fii.buy||0).toLocaleString()+'Cr · Sell: ₹'+(fii.sell||0).toLocaleString()+'Cr</div>';
+  h+='<div style="font-size:8px;color:var(--text3);margin-top:2px">'+(fii.date||'')+'</div></div>';
+  var dc=(dii.net||0)>=0?'#10b981':'#ef4444';
+  h+='<div style="padding:14px;border-radius:12px;background:'+dc+'06;border:1px solid '+dc+'20;text-align:center">';
+  h+='<div style="font-size:8px;color:var(--text3);font-weight:700">🏦 DII (MF/Insurance)</div>';
+  h+='<div style="font-size:22px;font-weight:900;color:'+dc+';font-family:var(--mono);margin:4px 0">'+((dii.net||0)>=0?'+':'')+'₹'+(dii.net||0).toLocaleString()+'Cr</div>';
+  h+='<div style="font-size:8px;color:var(--text3)">Buy: ₹'+(dii.buy||0).toLocaleString()+'Cr · Sell: ₹'+(dii.sell||0).toLocaleString()+'Cr</div>';
+  h+='<div style="font-size:8px;color:var(--text3);margin-top:2px">'+(dii.date||'')+'</div></div>';
+  var cmbC=(f.combined||0)>=0?'#10b981':'#ef4444';
+  h+='<div style="padding:14px;border-radius:12px;background:'+cmbC+'06;border:1px solid '+cmbC+'20;text-align:center">';
+  h+='<div style="font-size:8px;color:var(--text3);font-weight:700">🤝 COMBINED</div>';
+  h+='<div style="font-size:22px;font-weight:900;color:'+cmbC+';font-family:var(--mono);margin:4px 0">'+((f.combined||0)>=0?'+':'')+'₹'+(f.combined||0).toLocaleString()+'Cr</div>';
+  h+='<div style="font-size:8px;color:var(--text3)">DII/FII Ratio: '+(f.ratio!=null?Number(f.ratio).toFixed(2):'—')+'x</div>';
+  h+='</div></div>';
+  // HISTORY TABLE
+  var hist=f.history||[];
+  if(hist.length>0){
+  h+='<div style="font-size:11px;font-weight:700;color:var(--text);margin-bottom:6px">📊 Last '+hist.length+' Trading Days</div>';
+  h+='<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:9px">';
+  h+='<tr style="background:#f1f5f9"><th style="padding:6px 8px;text-align:left;color:var(--text3);border-bottom:1px solid var(--border)">Date</th><th style="padding:6px;text-align:right;color:#1a56db;border-bottom:1px solid var(--border)">FII Net</th><th style="padding:6px;text-align:right;color:#1A3A78;border-bottom:1px solid var(--border)">DII Net</th><th style="padding:6px;text-align:right;font-weight:800;border-bottom:1px solid var(--border)">Combined</th></tr>';
+  hist.slice().reverse().forEach(function(r){
+  var fn=r.fii_net||0;var dn=r.dii_net||0;var cm=r.combined||0;
+  h+='<tr style="border-bottom:1px solid var(--border)"><td style="padding:5px 8px;color:var(--text2)">'+r.date+'</td>';
+  h+='<td style="padding:5px;text-align:right;font-weight:700;color:'+(fn>=0?'#10b981':'#ef4444')+';font-family:var(--mono)">'+(fn>=0?'+':'')+'₹'+fn.toLocaleString()+'</td>';
+  h+='<td style="padding:5px;text-align:right;font-weight:700;color:'+(dn>=0?'#10b981':'#ef4444')+';font-family:var(--mono)">'+(dn>=0?'+':'')+'₹'+dn.toLocaleString()+'</td>';
+  h+='<td style="padding:5px;text-align:right;font-weight:800;color:'+(cm>=0?'#10b981':'#ef4444')+';font-family:var(--mono)">'+(cm>=0?'+':'')+'₹'+cm.toLocaleString()+'</td></tr>';
+  });
+  h+='</table></div>';
+  }
 }
 h+='<div style="margin-top:8px;padding:8px 12px;border-radius:8px;background:#3b82f608;border-left:3px solid #3b82f6;font-size:9px;color:var(--text2);line-height:1.7"><strong style="color:#3b82f6">What this means:</strong> FII (Foreign like BlackRock) and DII (Indian mutual funds) control market direction. Both buying = strong rally. Both selling = sharp fall. FII selling + DII buying = range-bound.<br><strong style="color:#3b82f6">Your action:</strong> If FII is buying >2000 Cr → markets will likely go up, safe to buy stocks. If FII selling >2000 Cr → wait before deploying fresh capital. DII buying provides floor but cannot push markets alone.</div>';
 h+='<div style="margin-top:10px;padding:8px 12px;border-radius:8px;background:rgba(99,102,241,.04);border-left:3px solid #6366f1;font-size:9px;color:var(--text2);line-height:1.7"><strong style="color:#6366f1">💡</strong> FII = Foreign Institutional Investors (global funds like BlackRock, Vanguard). DII = Domestic Institutional Investors (Indian mutual funds, LIC, pension). When both buy together, markets rally hard. When both sell, expect sharp corrections.</div>';
@@ -12312,15 +12431,30 @@ el.innerHTML=_mrRegBar+_mrCatBar+h;
 // ═══════════════════════════════════════════════════════════════════
 window._activeIntradaySetupsTab = false;
 
-window.loadIntradaySetups = function(forceReg, forceTimeframe) {
+window.loadIntradaySetups = function(forceReg, forceTimeframe, forceMcap) {
   if (!window._activeIntradaySetupsTab) return;
   var el = document.getElementById('deResult');
   if (!el) return;
   var reg = forceReg || window._deRegion || 'US';
   window._deRegion = reg;
-  var tf = forceTimeframe || window._intradayTimeframe || 'all';
+  // r63.85.0: Default timeframe changed from 'all' to 'intraday' per user request.
+  // 'all' option removed entirely.
+  var tf = forceTimeframe || window._intradayTimeframe || 'intraday';
+  if (tf === 'all') tf = 'intraday';  // legacy state migration
   window._intradayTimeframe = tf;
+  // r63.85.0: Market-cap filter — defaults to large cap. Scanner now segments by mcap
+  // so users can drill into mid/small/micro names that the S&P 100 / NIFTY 50 universes miss.
+  var mcap = forceMcap || window._intradayMcap || 'large';
+  window._intradayMcap = mcap;
   var csym = reg === 'US' ? '$' : '₹';
+
+  // Universe label mapping — shows the user exactly what's being scanned
+  var _univLabel = (function(){
+    if (reg === 'US') {
+      return ({large:'S&P 100', mid:'S&P 400 (mid)', small:'S&P 600 (small)', micro:'Russell Micro-Cap'})[mcap] || 'S&P 100';
+    }
+    return ({large:'NIFTY 50', mid:'NIFTY MIDCAP 100', small:'NIFTY SMALLCAP 100', micro:'NIFTY MICROCAP 250'})[mcap] || 'NIFTY 50';
+  })();
 
   var _eml = document.getElementById('email');
   var email = window._verifiedEmail || (_eml ? (_eml.dataset.real || _eml.value) : '').trim().toLowerCase();
@@ -12332,7 +12466,7 @@ window.loadIntradaySetups = function(forceReg, forceTimeframe) {
   // r62.3: Production-grade loading state
   var _intradayLoader = _csLoader({
     title: "Intraday & Swing Setups",
-    subtitle: "SCANNING " + (reg === 'US' ? 'S&P 100' : 'NIFTY 50') + " · " + tf.toUpperCase(),
+    subtitle: "SCANNING " + _univLabel + " · " + tf.toUpperCase() + " · " + mcap.toUpperCase() + " CAP",
     statusInitial: "Pulling 5-min bars + daily history for liquid names...",
     estimatedSec: 45,
     onAbort: function(){ window._activeIntradaySetupsTab = false; },
@@ -12342,13 +12476,13 @@ window.loadIntradaySetups = function(forceReg, forceTimeframe) {
       '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:14px 18px;margin-bottom:14px;display:flex;align-items:center;gap:14px">' +
         '<div style="width:40px;height:40px;background:#1A3A78;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:14px;font-weight:900;font-family:Sora,sans-serif">⚡</div>' +
         '<div style="flex:1"><div style="font-size:16px;font-weight:900;color:#0f172a;font-family:Sora,sans-serif">Intraday & Swing Setups</div>' +
-        '<div style="font-size:10px;color:#64748b;font-family:\'IBM Plex Mono\',monospace;letter-spacing:0.5px;margin-top:2px">SCANNING ' + (reg === 'US' ? 'S&P 100' : 'NIFTY 50') + ' · ' + tf.toUpperCase() + '</div></div>' +
+        '<div style="font-size:10px;color:#64748b;font-family:\'IBM Plex Mono\',monospace;letter-spacing:0.5px;margin-top:2px">SCANNING ' + _univLabel + ' · ' + tf.toUpperCase() + ' · ' + mcap.toUpperCase() + ' CAP</div></div>' +
       '</div>' +
       _intradayLoader.html +
     '</div>';
   _intradayLoader.start(el);
 
-  _csFetchWithTimeout('/api/intraday-setups?region=' + reg + '&timeframe=' + tf + '&email=' + encodeURIComponent(email) + '&limit=30', null, 120000)
+  _csFetchWithTimeout('/api/intraday-setups?region=' + reg + '&timeframe=' + tf + '&mcap=' + mcap + '&email=' + encodeURIComponent(email) + '&limit=30', null, 120000)
     .then(function(r){return r.json();})
     .then(function(d){
       _intradayLoader.stop();
@@ -12363,7 +12497,7 @@ window.loadIntradaySetups = function(forceReg, forceTimeframe) {
           '</div>';
         return;
       }
-      _renderIntradaySetups(el, d, _regBar, reg, tf);
+      _renderIntradaySetups(el, d, _regBar, reg, tf, mcap, _univLabel);
     })
     .catch(function(e){
       _intradayLoader.stop();
@@ -12379,9 +12513,11 @@ window.loadIntradaySetups = function(forceReg, forceTimeframe) {
     });
 };
 
-function _renderIntradaySetups(el, d, regBar, reg, tf) {
+function _renderIntradaySetups(el, d, regBar, reg, tf, mcap, univLabel) {
   var csym = d.currency_symbol || '$';
   var fmt = function(v, dec) { return v == null ? '—' : (typeof v === 'number' ? v.toFixed(dec || 2) : v); };
+  mcap = mcap || 'large';
+  univLabel = univLabel || (reg === 'US' ? 'S&P 100' : 'NIFTY 50');
 
   var h = regBar;
   h += '<div style="max-width:1280px;margin:0 auto;padding:0 8px">';
@@ -12390,16 +12526,40 @@ function _renderIntradaySetups(el, d, regBar, reg, tf) {
   h += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:14px 18px;margin-bottom:14px;display:flex;align-items:center;gap:14px">';
   h += '<div style="width:40px;height:40px;background:#1A3A78;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:14px;font-weight:900;font-family:Sora,sans-serif">⚡</div>';
   h += '<div style="flex:1"><div style="font-size:16px;font-weight:900;color:#0f172a;font-family:Sora,sans-serif">Intraday & Swing Setups</div>';
-  h += '<div style="font-size:10px;color:#64748b;font-family:\'IBM Plex Mono\',monospace;letter-spacing:0.5px;margin-top:2px">' + (reg === 'US' ? 'S&P 100' : 'NIFTY 50') + ' · ' + d.universe_size + ' SCANNED · ' + d.candidates.length + ' SETUPS · ' + d.scan_time_sec + 's</div></div>';
+  h += '<div style="font-size:10px;color:#64748b;font-family:\'IBM Plex Mono\',monospace;letter-spacing:0.5px;margin-top:2px">' + univLabel + ' · ' + (d.universe_size || 0) + ' SCANNED · ' + (d.candidates||[]).length + ' SETUPS · ' + (d.scan_time_sec || 0) + 's</div></div>';
   if (d._cached) h += '<div style="font-size:9px;color:#1A3A78;font-weight:700;background:#eef2f9;padding:5px 10px;border-radius:4px;font-family:\'IBM Plex Mono\',monospace">CACHED ' + Math.floor((d._cache_age_sec||0)/60) + ' MIN</div>';
   h += '<button onclick="loadIntradaySetups()" style="margin-left:8px;padding:6px 12px;border:1px solid #cbd5e1;background:#fff;border-radius:6px;font-size:10px;font-weight:700;cursor:pointer">↻ REFRESH</button>';
   h += '</div>';
 
-  // Timeframe toggle
-  h += '<div style="display:flex;gap:6px;margin-bottom:14px">';
-  ['all','intraday','swing'].forEach(function(t){
+  // r63.85.0: Market-cap filter row — Large (default) · Mid · Small · Micro
+  // Each button changes the universe being scanned, not just a client-side filter.
+  h += '<div style="display:flex;gap:12px;margin-bottom:10px;flex-wrap:wrap;align-items:center">';
+  h += '<div style="font-size:9px;font-weight:800;color:#64748b;letter-spacing:1px;font-family:\'IBM Plex Mono\',monospace;margin-right:4px">MARKET CAP</div>';
+  var _mcapBtns = [
+    {id:'large', label:'Large Cap', sub: (reg==='US'?'S&P 100':'NIFTY 50')},
+    {id:'mid',   label:'Mid Cap',   sub: (reg==='US'?'S&P 400':'MIDCAP 100')},
+    {id:'small', label:'Small Cap', sub: (reg==='US'?'S&P 600':'SMALLCAP 100')},
+    {id:'micro', label:'Micro Cap', sub: (reg==='US'?'Russell Micro':'MICROCAP 250')},
+  ];
+  _mcapBtns.forEach(function(b){
+    var active = (mcap === b.id);
+    h += '<button onclick="loadIntradaySetups(\'' + reg + '\',\'' + tf + '\',\'' + b.id + '\')" ' +
+         'style="padding:7px 14px;border:1.5px solid ' + (active?'#1A3A78':'#cbd5e1') + ';background:' + (active?'#1A3A78':'#fff') + ';' +
+         'color:' + (active?'#fff':'#475569') + ';border-radius:7px;cursor:pointer;font-family:Inter,sans-serif;' +
+         'display:inline-flex;flex-direction:column;align-items:flex-start;line-height:1.2;' +
+         (active ? 'box-shadow:0 2px 6px rgba(26,58,120,0.25);' : '') + '">' +
+         '<span style="font-size:11px;font-weight:800;font-family:Sora,sans-serif">' + b.label + '</span>' +
+         '<span style="font-size:8px;font-weight:600;color:' + (active?'rgba(255,255,255,0.85)':'#94a3b8') + ';margin-top:1px;font-family:\'IBM Plex Mono\',monospace">' + b.sub + '</span>' +
+         '</button>';
+  });
+  h += '</div>';
+
+  // r63.85.0: Timeframe toggle — removed 'all' option, defaults to 'intraday'
+  h += '<div style="display:flex;gap:6px;margin-bottom:14px;align-items:center">';
+  h += '<div style="font-size:9px;font-weight:800;color:#64748b;letter-spacing:1px;font-family:\'IBM Plex Mono\',monospace;margin-right:4px">TIMEFRAME</div>';
+  ['intraday','swing'].forEach(function(t){
     var active = (tf === t);
-    h += '<button onclick="loadIntradaySetups(\'' + reg + '\',\'' + t + '\')" style="padding:6px 14px;border:1px solid ' + (active?'#1A3A78':'#cbd5e1') + ';background:' + (active?'#1A3A78':'#fff') + ';color:' + (active?'#fff':'#475569') + ';border-radius:6px;font-size:10px;font-weight:700;cursor:pointer;font-family:Inter,sans-serif;letter-spacing:0.5px;text-transform:uppercase">' + t + '</button>';
+    h += '<button onclick="loadIntradaySetups(\'' + reg + '\',\'' + t + '\',\'' + mcap + '\')" style="padding:6px 14px;border:1px solid ' + (active?'#1A3A78':'#cbd5e1') + ';background:' + (active?'#1A3A78':'#fff') + ';color:' + (active?'#fff':'#475569') + ';border-radius:6px;font-size:10px;font-weight:700;cursor:pointer;font-family:Inter,sans-serif;letter-spacing:0.5px;text-transform:uppercase">' + t + '</button>';
   });
   h += '</div>';
 
@@ -12410,7 +12570,16 @@ function _renderIntradaySetups(el, d, regBar, reg, tf) {
   h += '</div>';
 
   if (!d.candidates || !d.candidates.length) {
-    h += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:40px;text-align:center;color:#64748b;font-size:13px">No setups detected right now. Markets may be choppy or outside trading hours. Try again later — or switch timeframe to "swing" if it\'s after-hours.</div>';
+    // r63.85.0: Context-aware empty state. If backend hasn't been wired for the
+    // selected mcap tier yet, tell the user instead of pretending markets are quiet.
+    var emptyMsg = 'No setups detected right now. Markets may be choppy or outside trading hours. Try the other timeframe or another market cap.';
+    if (mcap !== 'large') {
+      emptyMsg = '<strong>' + univLabel + '</strong> scan returned no setups. ' +
+                 'This may mean the backend doesn\'t yet have ' + mcap + '-cap universe wired in /api/intraday-setups — ' +
+                 'or the scan ran but found no qualifying candidates. ' +
+                 '<button onclick="loadIntradaySetups(\'' + reg + '\',\'' + tf + '\',\'large\')" style="margin-left:8px;padding:4px 10px;border:1px solid #cbd5e1;background:#fff;border-radius:5px;font-size:10px;font-weight:700;cursor:pointer">↺ back to Large Cap</button>';
+    }
+    h += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:32px 24px;text-align:center;color:#64748b;font-size:13px;line-height:1.6;font-family:Inter,sans-serif">' + emptyMsg + '</div>';
     h += '</div>';
     el.innerHTML = h;
     return;
@@ -15412,6 +15581,8 @@ h+='<div style="width:'+_curAlloc.gld+'%;background:#f59e0b;display:flex;align-i
 h+='<div style="width:'+_curAlloc.csh+'%;background:#10b981;display:flex;align-items:center;justify-content:center;font-size:7px;font-weight:800;color:#fff">Cash '+_curAlloc.csh+'%</div>';
 h+='</div>';
 h+='<div style="padding:10px 14px;border-radius:8px;border-left:3px solid #06b6d4;background:rgba(6,182,212,.06);font-size:10px;font-weight:600;color:var(--text2);line-height:1.8">💡 <strong style="color:#06b6d4">'+_curAlloc.r+' Regime:</strong> '+(_curAlloc.eq>=70?'<strong style="color:#10b981">GO HEAVY on equity ('+_curAlloc.eq+'%).</strong> Market is trending up. Maximize exposure. Keep '+_curAlloc.csh+'% cash only for dip-buying.':_curAlloc.eq>=50?'<strong style="color:#f59e0b">BALANCED allocation.</strong> Market uncertain. '+_curAlloc.eq+'% equity + '+_curAlloc.gld+'% gold hedge. <strong>Gold protects during volatility spikes.</strong>':'<strong style="color:#ef4444">DEFENSIVE mode.</strong> Only '+_curAlloc.eq+'% equity. Hold '+_curAlloc.csh+'% cash + '+_curAlloc.gld+'% gold. <strong>Preserve capital first. Opportunities come after the storm.</strong>')+'</div>';
+// r63.82.0: Added layman explainer for Dynamic Asset Allocation (section had action-only, no concept explainer)
+h+='<div style="margin-top:8px;padding:8px 14px;border-radius:8px;background:rgba(99,102,241,.04);border-left:3px solid #6366f1;font-size:9px;color:var(--text2);line-height:1.7"><strong style="color:#6366f1">💡 In simple terms:</strong> Your total money should NOT all be in stocks all the time. The mix shifts with the market regime. <strong>Bull market:</strong> 80% stocks (catch the upside). <strong>Normal:</strong> 65% stocks (steady compounding). <strong>Volatile:</strong> 50% stocks + 20% gold (sleep at night). <strong>Bear/Crisis:</strong> 30% stocks + 25% cash (preserve capital, buy the bottom). Hedge funds like Bridgewater use exactly this framework — they call it "All Weather." Most retail investors stay 100% in stocks always, which is why they panic-sell at the bottom.</div>';
 h+='</div>';
 
 // ═══ M13: Factor-Based Portfolio Construction ═══
@@ -22042,13 +22213,36 @@ h+=_proAccordion('roic','🏛️ ROIC vs WACC — Is the Company Creating Value?
 
 // ═══ SECTION 2: REVERSE DCF ═══
 var rd=d.reverseDCF||{};
-var rdH='<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:14px">';
-rdH+='<div style="padding:14px;border-radius:12px;background:#f1f5f9;text-align:center"><div style="font-size:8px;color:#2d4373;font-weight:700">MARKET PRICES IN</div><div style="font-size:24px;font-weight:900;color:var(--text);font-family:var(--mono)">'+rd.impliedGrowth+'%</div><div style="font-size:9px;color:#2d4373">annual growth</div></div>';
-rdH+='<div style="padding:14px;border-radius:12px;background:'+rd.color+'08;text-align:center"><div style="font-size:8px;color:#2d4373;font-weight:700">ACTUAL GROWTH</div><div style="font-size:24px;font-weight:900;color:'+rd.color+';font-family:var(--mono)">'+rd.actualGrowth+'%</div><div style="font-size:9px;color:#2d4373">real performance</div></div>';
-var gapC=rd.growthGap>0?'#10b981':rd.growthGap<-5?'#ef4444':'#f59e0b';
-rdH+='<div style="padding:14px;border-radius:12px;background:'+gapC+'08;border:2px solid '+gapC+'25;text-align:center"><div style="font-size:8px;color:#2d4373;font-weight:700">GAP</div><div style="font-size:24px;font-weight:900;color:'+gapC+';font-family:var(--mono)">'+(rd.growthGap>0?'+':'')+rd.growthGap+'%</div><div style="font-size:9px;font-weight:700;color:'+rd.color+'">'+rd.verdict+'</div></div>';
-rdH+='</div>';
-rdH+='<div style="padding:10px 14px;border-radius:8px;background:'+rd.color+'06;border-left:3px solid '+rd.color+';font-size:10px;color:var(--text2);line-height:1.7">'+rd.explain+'</div>';
+// r63.82.0: sanity-check growth values — real corporate growth is bounded
+// (was rendering 754.7% on screen, which destroys credibility)
+// If implied or actual growth is outside the plausible -50% to +60% band,
+// flag as unreliable and skip the misleading "gap" calculation.
+var _rdActual = parseFloat(rd.actualGrowth);
+var _rdImplied = parseFloat(rd.impliedGrowth);
+var _rdGap = parseFloat(rd.growthGap);
+var _rdReliable = !isNaN(_rdActual) && !isNaN(_rdImplied) &&
+                  _rdActual >= -50 && _rdActual <= 60 &&
+                  _rdImplied >= -10 && _rdImplied <= 60;
+var rdH = '';
+if (!_rdReliable && (isNaN(_rdActual) || Math.abs(_rdActual) > 60 || isNaN(_rdImplied))) {
+  // Show honest data-quality warning instead of a fake "+754% UNDERPRICED" pill
+  rdH += '<div style="padding:14px 16px;background:#fffbeb;border:1px solid #fde68a;border-radius:10px;margin-bottom:12px">';
+  rdH += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><span style="font-size:18px">⚠️</span><div style="font-size:12px;font-weight:800;color:#92400e">Reverse DCF unreliable for this stock</div></div>';
+  rdH += '<div style="font-size:10px;color:#78350f;line-height:1.6">Backend returned growth values outside the plausible band (' +
+         (!isNaN(_rdActual) ? 'actual=' + _rdActual.toFixed(1) + '%' : 'actual=N/A') + ', ' +
+         (!isNaN(_rdImplied) ? 'implied=' + _rdImplied.toFixed(1) + '%' : 'implied=N/A') + '). ' +
+         'This usually means the financial-statement data is sparse (newly listed, SPAC, M&A activity) or Yahoo returned a unit mismatch. ' +
+         'The DCF result should be ignored — use the Monte Carlo and Cash Conversion sections for valuation instead.</div>';
+  rdH += '</div>';
+} else {
+  rdH+='<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:14px">';
+  rdH+='<div style="padding:14px;border-radius:12px;background:#f1f5f9;text-align:center"><div style="font-size:8px;color:#2d4373;font-weight:700">MARKET PRICES IN</div><div style="font-size:24px;font-weight:900;color:var(--text);font-family:var(--mono)">'+_rdImplied.toFixed(1)+'%</div><div style="font-size:9px;color:#2d4373">annual growth</div></div>';
+  rdH+='<div style="padding:14px;border-radius:12px;background:'+rd.color+'08;text-align:center"><div style="font-size:8px;color:#2d4373;font-weight:700">ACTUAL GROWTH</div><div style="font-size:24px;font-weight:900;color:'+rd.color+';font-family:var(--mono)">'+_rdActual.toFixed(1)+'%</div><div style="font-size:9px;color:#2d4373">real performance</div></div>';
+  var gapC=_rdGap>0?'#10b981':_rdGap<-5?'#ef4444':'#f59e0b';
+  rdH+='<div style="padding:14px;border-radius:12px;background:'+gapC+'08;border:2px solid '+gapC+'25;text-align:center"><div style="font-size:8px;color:#2d4373;font-weight:700">GAP</div><div style="font-size:24px;font-weight:900;color:'+gapC+';font-family:var(--mono)">'+(_rdGap>0?'+':'')+_rdGap.toFixed(1)+'%</div><div style="font-size:9px;font-weight:700;color:'+rd.color+'">'+rd.verdict+'</div></div>';
+  rdH+='</div>';
+  if (rd.explain) rdH+='<div style="padding:10px 14px;border-radius:8px;background:'+rd.color+'06;border-left:3px solid '+rd.color+';font-size:10px;color:var(--text2);line-height:1.7">'+rd.explain+'</div>';
+}
 rdH+='<div style="margin-top:10px;padding:8px 14px;border-radius:8px;background:rgba(99,102,241,.04);border-left:3px solid #6366f1;font-size:9px;color:var(--text2);line-height:1.7"><strong style="color:#6366f1">💡 In simple terms:</strong> Reverse DCF answers: "What growth rate must this company achieve to justify TODAY\'s stock price?" If the market expects 12% but the company is actually growing at 18%, the stock is underpriced — the market hasn\'t caught up. If the market expects 20% but growth is only 8%, the stock is overpriced — disappointment ahead.</div>';
 h+=_proAccordion('rdcf','📐 Reverse DCF — What Growth Is the Market Pricing In?','Implied growth rate vs actual growth',false,rdH);
 
@@ -22122,13 +22316,25 @@ h+=_proAccordion('alpha','🔍 Alpha Signals — Hidden Institutional Patterns',
 
 // ═══ SECTION 5: CASH CONVERSION QUALITY ═══
 var cc=d.cashConversion||{};
-var ccH='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin-bottom:14px">';
-ccH+='<div style="padding:12px;border-radius:10px;background:'+cc.color+'06;border:2px solid '+cc.color+'25;text-align:center"><div style="font-size:8px;color:#2d4373;font-weight:700">CFO / NET INCOME</div><div style="font-size:26px;font-weight:900;color:'+cc.color+';font-family:var(--mono)">'+cc.cfoPAT.toFixed(1)+'x</div><div style="font-size:8px;color:#2d4373">'+(cc.cfoPAT>=1?'Cash > Profit ✅':'Cash < Profit ⚠️')+'</div></div>';
-ccH+='<div style="padding:12px;border-radius:10px;background:#f1f5f9;text-align:center"><div style="font-size:8px;color:#2d4373;font-weight:700">FCF / NET INCOME</div><div style="font-size:26px;font-weight:900;color:var(--text);font-family:var(--mono)">'+cc.fcfPAT.toFixed(1)+'x</div><div style="font-size:8px;color:#2d4373">Free cash conversion</div></div>';
-ccH+='<div style="padding:12px;border-radius:10px;background:#f1f5f9;text-align:center"><div style="font-size:8px;color:#2d4373;font-weight:700">FCF MARGIN</div><div style="font-size:26px;font-weight:900;color:var(--text);font-family:var(--mono)">'+(cc.fcfRevenue||0)+'%</div><div style="font-size:8px;color:#2d4373">% of revenue → free cash</div></div>';
-ccH+='<div style="padding:12px;border-radius:10px;background:'+cc.color+'08;border:1px solid '+cc.color+'20;text-align:center"><div style="font-size:8px;color:#2d4373;font-weight:700">QUALITY SCORE</div><div style="font-size:26px;font-weight:900;color:'+cc.color+';font-family:var(--mono)">'+cc.score+'</div><div style="font-size:9px;font-weight:700;color:'+cc.color+'">'+cc.verdict+'</div></div>';
-ccH+='</div>';
-ccH+='<div style="padding:10px 14px;border-radius:8px;background:'+cc.color+'06;border-left:3px solid '+cc.color+';font-size:10px;color:var(--text2);line-height:1.7">'+cc.explain+'</div>';
+// r63.82.0: detect "all zeros / no real data" and show honest empty state
+// (was rendering 0.0x / 0% / 0 score as if real, which looked like a working scan)
+var _ccHasData = (cc.cfoPAT && cc.cfoPAT > 0) || (cc.fcfPAT && cc.fcfPAT > 0) || (cc.fcfRevenue && cc.fcfRevenue > 0) || (cc.score && cc.score > 0);
+var ccH = '';
+if (!_ccHasData) {
+  ccH += '<div style="padding:24px 18px;text-align:center;background:#fafbfc;border-radius:10px;border:1px dashed #cbd5e1;margin-bottom:12px">';
+  ccH += '<div style="font-size:28px;opacity:0.4;margin-bottom:8px">💰</div>';
+  ccH += '<div style="font-size:12px;font-weight:700;color:#475569;margin-bottom:4px">Cash conversion data not available</div>';
+  ccH += '<div style="font-size:10px;color:#94a3b8;line-height:1.6;max-width:480px;margin:0 auto">The backend did not return cash flow figures for this stock — typically because the data provider (Yahoo Finance) is throttling or this ticker has limited quarterly history. Retry in 2-3 minutes.</div>';
+  ccH += '</div>';
+} else {
+  ccH += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin-bottom:14px">';
+  ccH+='<div style="padding:12px;border-radius:10px;background:'+cc.color+'06;border:2px solid '+cc.color+'25;text-align:center"><div style="font-size:8px;color:#2d4373;font-weight:700">CFO / NET INCOME</div><div style="font-size:26px;font-weight:900;color:'+cc.color+';font-family:var(--mono)">'+(cc.cfoPAT||0).toFixed(1)+'x</div><div style="font-size:8px;color:#2d4373">'+((cc.cfoPAT||0)>=1?'Cash > Profit ✅':'Cash < Profit ⚠️')+'</div></div>';
+  ccH+='<div style="padding:12px;border-radius:10px;background:#f1f5f9;text-align:center"><div style="font-size:8px;color:#2d4373;font-weight:700">FCF / NET INCOME</div><div style="font-size:26px;font-weight:900;color:var(--text);font-family:var(--mono)">'+(cc.fcfPAT||0).toFixed(1)+'x</div><div style="font-size:8px;color:#2d4373">Free cash conversion</div></div>';
+  ccH+='<div style="padding:12px;border-radius:10px;background:#f1f5f9;text-align:center"><div style="font-size:8px;color:#2d4373;font-weight:700">FCF MARGIN</div><div style="font-size:26px;font-weight:900;color:var(--text);font-family:var(--mono)">'+(cc.fcfRevenue||0)+'%</div><div style="font-size:8px;color:#2d4373">% of revenue → free cash</div></div>';
+  ccH+='<div style="padding:12px;border-radius:10px;background:'+cc.color+'08;border:1px solid '+cc.color+'20;text-align:center"><div style="font-size:8px;color:#2d4373;font-weight:700">QUALITY SCORE</div><div style="font-size:26px;font-weight:900;color:'+cc.color+';font-family:var(--mono)">'+(cc.score||0)+'</div><div style="font-size:9px;font-weight:700;color:'+cc.color+'">'+(cc.verdict||'N/A')+'</div></div>';
+  ccH+='</div>';
+  if (cc.explain) ccH+='<div style="padding:10px 14px;border-radius:8px;background:'+cc.color+'06;border-left:3px solid '+cc.color+';font-size:10px;color:var(--text2);line-height:1.7">'+cc.explain+'</div>';
+}
 ccH+='<div style="margin-top:10px;padding:8px 14px;border-radius:8px;background:rgba(99,102,241,.04);border-left:3px solid #6366f1;font-size:9px;color:var(--text2);line-height:1.7"><strong style="color:#6366f1">💡 In simple terms:</strong> Profits can be faked through accounting. Cash cannot. If a company reports ₹100 profit but only ₹60 shows up as cash (CFO/PAT = 0.6x), something is suspicious — maybe aggressive revenue recognition, or receivables piling up. Above 1.0x means the company collects MORE cash than it reports as profit — that\'s the gold standard. Satyam, Wirecard, and Enron all had CFO/PAT below 0.5x before their frauds were exposed.</div>';
 h+=_proAccordion('ccq','💰 Cash Conversion Quality — Are Earnings Real?','CFO vs Net Income ratio, FCF margin, earnings quality score',false,ccH);
 
@@ -22260,26 +22466,37 @@ h+=_proAccordion('debtpp','📉 Debt Cycle + 🏷️ Pricing Power','Balance she
 
 // ═══ SECTION 10: EXIT CRITERIA ═══
 var ex=d.exitCriteria||{};
-var exH='<div style="padding:14px;border-radius:12px;background:'+ex.overallColor+'08;border:2px solid '+ex.overallColor+'25;text-align:center;margin-bottom:14px">';
-exH+='<div style="font-size:10px;color:var(--text3);font-weight:700;letter-spacing:1px">EXIT VERDICT</div>';
-exH+='<div style="font-size:20px;font-weight:900;color:'+ex.overallColor+';font-family:Sora,sans-serif;margin-top:4px">'+ex.overallVerdict+'</div>';
-exH+='<div style="font-size:10px;color:var(--text3);margin-top:4px">'+ex.triggerCount+' triggers detected · '+ex.highSeverity+' high severity</div></div>';
+// r63.82.0: handle no-data state (was rendering "undefined triggers detected · undefined high severity")
+var _exHasData = ex.overallVerdict || ex.triggerCount != null || (ex.triggers && ex.triggers.length) || (ex.safe && ex.safe.length);
+var exH = '';
+if (!_exHasData) {
+  exH += '<div style="padding:24px 18px;text-align:center;background:#fafbfc;border-radius:10px;border:1px dashed #cbd5e1;margin-bottom:12px">';
+  exH += '<div style="font-size:28px;opacity:0.4;margin-bottom:8px">🚪</div>';
+  exH += '<div style="font-size:12px;font-weight:700;color:#475569;margin-bottom:4px">Exit criteria not computed for this stock</div>';
+  exH += '<div style="font-size:10px;color:#94a3b8;line-height:1.6;max-width:480px;margin:0 auto">Exit signals require multi-quarter historical comparisons (ROIC trend, debt change, cash conversion deterioration). Insufficient quarterly data was returned to run these checks — usually means the ticker has &lt;4 quarters of public filings or Yahoo throttled the request.</div>';
+  exH += '</div>';
+} else {
+  exH+='<div style="padding:14px;border-radius:12px;background:'+(ex.overallColor||'#64748b')+'08;border:2px solid '+(ex.overallColor||'#64748b')+'25;text-align:center;margin-bottom:14px">';
+  exH+='<div style="font-size:10px;color:var(--text3);font-weight:700;letter-spacing:1px">EXIT VERDICT</div>';
+  exH+='<div style="font-size:20px;font-weight:900;color:'+(ex.overallColor||'#64748b')+';font-family:Sora,sans-serif;margin-top:4px">'+(ex.overallVerdict||'NO DATA')+'</div>';
+  exH+='<div style="font-size:10px;color:var(--text3);margin-top:4px">'+(ex.triggerCount||0)+' triggers detected · '+(ex.highSeverity||0)+' high severity</div></div>';
 
-if(ex.triggers&&ex.triggers.length>0){
-exH+='<div style="font-size:11px;font-weight:700;color:#ef4444;margin-bottom:6px">⚠️ Active exit triggers:</div>';
-ex.triggers.forEach(function(t){
-exH+='<div style="padding:8px 12px;border-radius:8px;background:'+t.color+'06;border-left:4px solid '+t.color+';margin-bottom:6px">';
-exH+='<div style="display:flex;justify-content:space-between;align-items:center">';
-exH+='<span style="font-size:11px;font-weight:800;color:'+t.color+'">'+t.trigger+'</span>';
-exH+='<span style="font-size:8px;padding:2px 8px;border-radius:100px;background:'+t.color+'15;color:'+t.color+';font-weight:800">'+t.severity+'</span></div>';
-exH+='<div style="font-size:10px;color:var(--text2);margin-top:4px;line-height:1.6">'+t.detail+'</div></div>';
-});
-}
-if(ex.safe&&ex.safe.length>0){
-exH+='<div style="font-size:11px;font-weight:700;color:#10b981;margin:10px 0 6px">✅ Clear checks:</div>';
-ex.safe.forEach(function(s){
-exH+='<div style="font-size:10px;color:var(--text2);padding:3px 0">✅ '+s.check+' — '+s.detail+'</div>';
-});
+  if(ex.triggers&&ex.triggers.length>0){
+  exH+='<div style="font-size:11px;font-weight:700;color:#ef4444;margin-bottom:6px">⚠️ Active exit triggers:</div>';
+  ex.triggers.forEach(function(t){
+  exH+='<div style="padding:8px 12px;border-radius:8px;background:'+t.color+'06;border-left:4px solid '+t.color+';margin-bottom:6px">';
+  exH+='<div style="display:flex;justify-content:space-between;align-items:center">';
+  exH+='<span style="font-size:11px;font-weight:800;color:'+t.color+'">'+t.trigger+'</span>';
+  exH+='<span style="font-size:8px;padding:2px 8px;border-radius:100px;background:'+t.color+'15;color:'+t.color+';font-weight:800">'+t.severity+'</span></div>';
+  exH+='<div style="font-size:10px;color:var(--text2);margin-top:4px;line-height:1.6">'+t.detail+'</div></div>';
+  });
+  }
+  if(ex.safe&&ex.safe.length>0){
+  exH+='<div style="font-size:11px;font-weight:700;color:#10b981;margin:10px 0 6px">✅ Clear checks:</div>';
+  ex.safe.forEach(function(s){
+  exH+='<div style="font-size:10px;color:var(--text2);padding:3px 0">✅ '+s.check+' — '+s.detail+'</div>';
+  });
+  }
 }
 exH+='<div style="margin-top:10px;padding:8px 14px;border-radius:8px;background:rgba(99,102,241,.04);border-left:3px solid #6366f1;font-size:9px;color:var(--text2);line-height:1.7"><strong style="color:#6366f1">💡 In simple terms:</strong> Even great stocks should be sold when fundamentals break. The triggers above are rules-based: if ROIC drops below cost of capital, if growth disappoints vs market expectations, if cash quality deteriorates, or if debt spikes. Having ZERO triggers is the ideal — it means the stock still deserves your money. 2+ high-severity triggers = consider exiting.</div>';
 h+=_proAccordion('exit','🚪 Exit Criteria — When Should You Sell?','Rules-based sell triggers monitoring 7 key deterioration signals',false,exH);
@@ -22301,7 +22518,9 @@ var _psFactors=[
   {label:'Earnings',value:Math.min(100,Math.max(0,Math.round((ec2.score||0))))},
   {label:'Debt',value:Math.max(0,Math.min(100,100-Math.round((dp2.debtToEquity||0)*20)))}
 ];
-h+='<div style="margin:14px 0;padding:20px;border-radius:14px;background:#fff;border:1px solid #e2e5ea;text-align:center"><div style="font-size:9px;font-weight:800;color:#4a6fa5;letter-spacing:1.5px;margin-bottom:10px">INSTITUTIONAL FACTOR RADAR</div>'+_radarChart(_psFactors,200)+'</div>';
+h+='<div style="margin:14px 0;padding:20px;border-radius:14px;background:#fff;border:1px solid #e2e5ea;text-align:center"><div style="font-size:9px;font-weight:800;color:#4a6fa5;letter-spacing:1.5px;margin-bottom:10px">INSTITUTIONAL FACTOR RADAR</div>'+_radarChart(_psFactors,200)+
+'<div style="margin-top:14px;padding:10px 14px;border-radius:8px;background:rgba(99,102,241,.04);border-left:3px solid #6366f1;font-size:10px;color:var(--text2);line-height:1.7;text-align:left"><strong style="color:#6366f1">💡 In simple terms:</strong> Each spoke is one of the 8 quality lenses we already analyzed. The further a spoke reaches toward the edge, the stronger the stock scores on that dimension. <strong>An ideal stock looks like a near-perfect octagon</strong> — strong on every factor. <strong>A spike on one or two spokes</strong> = the stock is great in narrow ways but weak overall (risky one-trick pony). <strong>A small concentrated shape near the center</strong> = weak across the board — avoid. This is the institutional equivalent of asking "would I bet on this stock if I could only see 8 numbers?"</div>'+
+'</div>';
 }}catch(e){console.warn('Radar error:',e)}
 // ═══ COMBINED V1 + V2 FINAL INFERENCE ═══
 var _v2Pass=d.instScore>=55&&(d.exitCriteria||{}).highSeverity===0;
