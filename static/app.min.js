@@ -33894,6 +33894,60 @@ function _renderSmv3(el, d, reg, mcap) {
     return;
   }
 
+  // Layman explainer + table
+  // ─── Layman explainer panel (collapsible) ────────────────────────
+  var _smv3SeenHelp = false; try { _smv3SeenHelp = localStorage.getItem('smv3_help_seen') === '1'; } catch(e) {} if(!_smv3SeenHelp){try{localStorage.setItem('smv3_help_seen','1');}catch(e){}}
+  h += '<details ' + (_smv3SeenHelp ? '' : 'open') + ' style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px 18px;margin-bottom:14px;font-family:Inter,sans-serif;color:#1e293b">';
+  h += '<summary style="cursor:pointer;font-weight:800;color:#0f172a;font-size:13px;font-family:Sora,sans-serif;display:flex;align-items:center;gap:10px">';
+  h += '<span style="font-size:18px">📖</span> How to read this scanner <span style="font-size:10px;color:#64748b;font-weight:500;margin-left:auto">click to expand</span>';
+  h += '</summary>';
+  h += '<div style="margin-top:14px;display:grid;grid-template-columns:1fr 1fr;gap:16px;font-size:11px;line-height:1.6">';
+
+  // Left column — what each column means
+  h += '<div>';
+  h += '<div style="font-weight:800;color:#1A3A78;font-size:12px;margin-bottom:8px;font-family:Sora,sans-serif">📊 What each column means</div>';
+  h += '<div style="padding:6px 0;border-bottom:1px solid #f1f5f9"><b>SM SCORE</b> (0–100) — overall verdict. Higher = better. ≥75 is a STRONG BUY signal, ≥60 BUY, ≤30 AVOID.</div>';
+  h += '<div style="padding:6px 0;border-bottom:1px solid #f1f5f9"><b>WoW Δ</b> — how much the score moved vs last week. <span style="color:#059669">+ means improving</span>. <span style="color:#dc2626">− means worsening</span>. Empty = no baseline yet.</div>';
+  h += '<div style="padding:6px 0;border-bottom:1px solid #f1f5f9"><b>ACCUM</b> — institutional accumulation strength.<br/>• <b>Aggressive</b> = big money is piling in hard<br/>• <b>Moderate</b> = steady buying<br/>• <b>Weak</b> = no clear institutional interest</div>';
+  h += '<div style="padding:6px 0;border-bottom:1px solid #f1f5f9"><b>STAGE</b> — where the stock is in its run.<br/>• <b>Early</b> = forming a base, room to run<br/>• <b>Expansion</b> = trending up, sweet spot<br/>• <b>Crowded</b> = near highs, late-stage, careful</div>';
+  h += '<div style="padding:6px 0;border-bottom:1px solid #f1f5f9"><b>BOTTLENECK</b> — the supply-constraint story (e.g. HBM Memory, AI GPUs). Stocks with bottlenecks have <em>pricing power</em>. Higher severity (SEV) = stronger story.</div>';
+  h += '<div style="padding:6px 0;border-bottom:1px solid #f1f5f9"><b>CONV</b> — conviction. 1–5 stars based on how strong all the signals together are. 5★ = highest confidence.</div>';
+  h += '<div style="padding:6px 0;border-bottom:1px solid #f1f5f9"><b>BREAKOUT</b> — early-warning emoji chips:<br/>🚀 mentions hyperscalers (AWS/Azure/GCP) in business<br/>🏛 has government / DoD contracts<br/>🤖 strong AI exposure<br/>📉 shorts covering (squeezable)<br/>🏗 expanding capacity (capex outflow)</div>';
+  h += '<div style="padding:6px 0;border-bottom:1px solid #f1f5f9"><b>RVOL</b> — relative volume vs 3-month average. Above <b>1.3x</b> = unusual interest (something is happening).</div>';
+  h += '<div style="padding:6px 0;border-bottom:1px solid #f1f5f9"><b>WHY NOW</b> — one-line plain-English thesis. <em>The reason this stock is on the radar right now.</em></div>';
+  h += '<div style="padding:6px 0"><b>ACTION</b> — the simple verdict: STRONG BUY / BUY / HOLD / TRIM / AVOID.</div>';
+  h += '</div>';
+
+  // Right column — how the BUY decision is made
+  h += '<div>';
+  h += '<div style="font-weight:800;color:#1A3A78;font-size:12px;margin-bottom:8px;font-family:Sora,sans-serif">🎯 How the BUY decision is made</div>';
+  h += '<div style="padding:8px;background:#f8fafc;border-radius:6px;margin-bottom:10px">';
+  h += '<div style="font-weight:700;color:#0f172a;margin-bottom:4px">The SM SCORE adds up 5 things, weighted:</div>';
+  h += '<div style="font-family:IBM Plex Mono,monospace;font-size:10px;line-height:1.9">';
+  h += '<div><span style="display:inline-block;width:42px;color:#059669;font-weight:800">30%</span> <b>Accumulation</b> — are insiders + institutions buying?</div>';
+  h += '<div><span style="display:inline-block;width:42px;color:#1A3A78;font-weight:800">25%</span> <b>Bottleneck</b> — does it have pricing power?</div>';
+  h += '<div><span style="display:inline-block;width:42px;color:#7c3aed;font-weight:800">20%</span> <b>Inflection</b> — is revenue/margin turning up?</div>';
+  h += '<div><span style="display:inline-block;width:42px;color:#d97706;font-weight:800">15%</span> <b>Strength</b> — is it outperforming (above 200-day MA)?</div>';
+  h += '<div><span style="display:inline-block;width:42px;color:#64748b;font-weight:800">10%</span> <b>Narrative</b> — does it have a story (AI, gov, theme)?</div>';
+  h += '</div></div>';
+
+  h += '<div style="font-weight:700;color:#0f172a;margin-bottom:6px">The verdict thresholds:</div>';
+  h += '<div style="display:grid;grid-template-columns:auto 1fr;gap:6px 10px;align-items:center;font-size:10px">';
+  h += '<span style="padding:3px 8px;background:#059669;color:#fff;border-radius:4px;font-weight:800;text-align:center;font-family:Sora,sans-serif">STRONG BUY</span><span>Score ≥ 75 — best signals lined up. Bottleneck + accumulation + momentum.</span>';
+  h += '<span style="padding:3px 8px;background:#10b981;color:#fff;border-radius:4px;font-weight:800;text-align:center;font-family:Sora,sans-serif">BUY</span><span>Score ≥ 60 — most signals positive. Worth a starter position.</span>';
+  h += '<span style="padding:3px 8px;background:#f1f5f9;color:#475569;border-radius:4px;font-weight:800;text-align:center;font-family:Sora,sans-serif">HOLD</span><span>Score 45–59 — mixed signals. If you own it, keep it. Don\'t add.</span>';
+  h += '<span style="padding:3px 8px;background:#f97316;color:#fff;border-radius:4px;font-weight:800;text-align:center;font-family:Sora,sans-serif">TRIM</span><span>Score 30–44 — signals weakening. Consider reducing position.</span>';
+  h += '<span style="padding:3px 8px;background:#dc2626;color:#fff;border-radius:4px;font-weight:800;text-align:center;font-family:Sora,sans-serif">AVOID</span><span>Score &lt; 30 — major red flags. Stay away.</span>';
+  h += '</div>';
+
+  h += '<div style="margin-top:12px;padding:8px;background:#fef9c3;border-left:3px solid #f59e0b;border-radius:4px;font-size:10px;color:#78350f">';
+  h += '<b>⚠ Honest caveat:</b> This is a <em>screening tool</em>, not financial advice. It uses public data (Yahoo Finance) + curated bottleneck themes. It does NOT have access to dark-pool flows or SEC 13F holder changes. Always do your own due diligence before buying.';
+  h += '</div>';
+  h += '</div>';
+
+  h += '</div>'; // grid
+  h += '</details>';
+
   // Table
   h += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden">';
   h += '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:11px;min-width:1440px;font-family:Inter,sans-serif">';
@@ -33950,6 +34004,14 @@ function _renderSmv3(el, d, reg, mcap) {
     else if (act === 'HOLD')   { actBg = '#f1f5f9'; actTxt = '#475569'; }
     else if (act === 'TRIM')   { actBg = '#f97316'; actTxt = '#fff'; }
     else                        { actBg = '#dc2626'; actTxt = '#fff'; }
+    // LAYMAN_LABELS_APPLIED
+    var actExplain = {
+      'STRONG BUY': 'all signals aligned',
+      'BUY': 'worth a starter',
+      'HOLD': 'mixed signals',
+      'TRIM': 'signals weakening',
+      'AVOID': 'major red flags'
+    }[act] || '';
 
     var chg = r.change_pct || 0;
     var chgCol = chg >= 0 ? '#059669' : '#dc2626';
@@ -33986,13 +34048,24 @@ function _renderSmv3(el, d, reg, mcap) {
     h += '<td style="padding:11px 8px"><div style="font-weight:900;color:#0f172a;font-family:IBM Plex Mono,monospace;font-size:12px">' + r.ticker + '</div>';
     h += '<div style="color:#94a3b8;font-size:10px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + (r.issuer_name||'') + '</div></td>';
 
-    h += '<td style="padding:11px 8px;text-align:center"><div title="Signals: ' + signalsTip.replace(/"/g,'&quot;') + '" style="display:inline-block;padding:6px 12px;background:' + scBg + ';color:' + scCol + ';border-radius:6px;font-weight:900;font-family:IBM Plex Mono,monospace;font-size:14px;cursor:help">' + sc + '</div></td>';
+    var scTier = sc >= 75 ? 'top tier' : sc >= 60 ? 'solid' : sc >= 45 ? 'neutral' : sc >= 30 ? 'weak' : 'avoid';
+    h += '<td style="padding:11px 8px;text-align:center"><div title="Signals: ' + signalsTip.replace(/"/g,'&quot;') + '" style="display:inline-block;padding:6px 12px;background:' + scBg + ';color:' + scCol + ';border-radius:6px;font-weight:900;font-family:IBM Plex Mono,monospace;font-size:14px;cursor:help">' + sc + '</div><div style="font-size:9px;color:#94a3b8;margin-top:3px;font-style:italic">' + scTier + '</div></td>';
 
     h += '<td title="' + changedTip.replace(/"/g,'&quot;') + '" style="padding:11px 8px;text-align:center;' + (changedTip?'cursor:help':'') + '">' + wowHtml + '</td>';
 
-    h += '<td style="padding:11px 8px;text-align:center"><span style="color:' + accumCol + ';font-weight:800;font-size:10px;letter-spacing:0.5px;font-family:Sora,sans-serif">' + accum.toUpperCase() + '</span></td>';
+    var accumExplain = {
+      'Aggressive': 'heavy buying',
+      'Moderate': 'steady interest',
+      'Weak': 'no clear signal'
+    }[accum] || '';
+    h += '<td style="padding:11px 8px;text-align:center"><div style="color:' + accumCol + ';font-weight:800;font-size:10px;letter-spacing:0.5px;font-family:Sora,sans-serif">' + accum.toUpperCase() + '</div><div style="font-size:9px;color:#94a3b8;margin-top:2px;font-style:italic">' + accumExplain + '</div></td>';
 
-    h += '<td style="padding:11px 8px;text-align:center"><span style="padding:3px 10px;border-radius:5px;background:' + stageCol + '15;color:' + stageCol + ';font-size:9px;font-weight:800;letter-spacing:0.5px;font-family:Sora,sans-serif">' + stage.toUpperCase() + '</span></td>';
+    var stageExplain = {
+      'Early': 'room to run',
+      'Expansion': 'trending up',
+      'Crowded': 'near highs, careful'
+    }[stage] || '';
+    h += '<td style="padding:11px 8px;text-align:center"><div style="display:inline-block;padding:3px 10px;border-radius:5px;background:' + stageCol + '15;color:' + stageCol + ';font-size:9px;font-weight:800;letter-spacing:0.5px;font-family:Sora,sans-serif">' + stage.toUpperCase() + '</div><div style="font-size:9px;color:#94a3b8;margin-top:3px;font-style:italic">' + stageExplain + '</div></td>';
 
     if (r.bottleneck) {
       h += '<td style="padding:11px 8px"><div style="font-size:11px;font-weight:700;color:#0f172a">' + r.bottleneck + '</div>';
@@ -34009,7 +34082,7 @@ function _renderSmv3(el, d, reg, mcap) {
 
     h += '<td style="padding:11px 8px"><div style="font-size:11px;color:#1A3A78;line-height:1.4;max-width:340px">' + (r.why_now||'') + '</div></td>';
 
-    h += '<td style="padding:11px 8px;text-align:center"><span style="padding:5px 10px;border-radius:6px;background:' + actBg + ';color:' + actTxt + ';font-size:10px;font-weight:900;font-family:Sora,sans-serif;letter-spacing:0.5px">' + act + '</span></td>';
+    h += '<td style="padding:11px 8px;text-align:center"><div style="display:inline-block;padding:5px 10px;border-radius:6px;background:' + actBg + ';color:' + actTxt + ';font-size:10px;font-weight:900;font-family:Sora,sans-serif;letter-spacing:0.5px">' + act + '</div><div style="font-size:9px;color:#94a3b8;margin-top:3px;font-style:italic">' + actExplain + '</div></td>';
 
     h += '<td style="padding:11px 8px;text-align:right">';
     h += '<div style="color:#0f172a;font-family:IBM Plex Mono,monospace;font-weight:800;font-size:11px">' + csym + (r.price||0) + '</div>';
