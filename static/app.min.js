@@ -2578,7 +2578,7 @@ var TAB_GROUPS = {
   // institutional terminals are text-first; saturated emojis (🧠 pink, 🎯 red,
   // ⚡ yellow, 🔥 orange, 💎 cyan, 📊 blue) make the nav visually noisy. Removing
   // them. The tab content already self-identifies via its own header.
-  decide:   {tabs: ['decision','toptrades','topinvest','smartmoney','mchunter','intraday','positioning','diamond','analyst','proscan','reports','pms'], labels: ['Analyze Stock','Top Trades','Top Investments','Smart Money','Micro-Cap Hunter','Intraday Setups','Positioning','Diamond Hunter','Analyst Coverage','Pro Scan','Reports','PMS'], default: 'decision'},
+  decide:   {tabs: ['decision','toptrades','topinvest','smv3','smartmoney','mchunter','intraday','positioning','diamond','analyst','proscan','reports','pms'], labels: ['Analyze Stock','Top Trades','Top Investments','🧠 Smart Money v3','Smart Money','Micro-Cap Hunter','Intraday Setups','Positioning','Diamond Hunter','Analyst Coverage','Pro Scan','Reports','PMS'], default: 'decision'},
   dream:    {tabs: ['dreamportfolio','multibagger','momentumradar','highprob','optionspulse','tradeticket','microcap'], labels: ['🌟 Dream Portfolio','🔥 Multibagger Hunter','⚡ Momentum Radar','🎯 High-Prob Setups','⚡ Options Pulse','🎫 Trade Ticket','🏆 Micro-Cap Challenge'], default: 'dreamportfolio'},
   trading:  {tabs: ['trades','smarttrades','stockintel','scanner','valreport','backtest','journal','aiassist'], labels: ['Algo Trades','Smart Trades','Stock Intel','Scanner','Valuation','Backtest','Journal','AI Assistant'], default: 'trades'},
   markets:  {tabs: ['indices','daily','newsimpact','assets'], labels: ['Top Performers','Market Daily','📰 News Impact','Global Assets'], default: 'indices'},
@@ -2775,7 +2775,7 @@ if(_cc&&tab!=='quick')_cc.style.display='none';
 
 
 // btnMap
-const btnMap={quick:'tabBtnOverview',analysis:'tabBtnResearch',dcf:'tabBtnResearch',equity:'tabBtnResearch',compare:'tabBtnTools',indices:'tabBtnMarkets',finance:'tabBtnTools',daily:'tabBtnMarkets',assets:'tabBtnMarkets',decision:'tabBtnDecide',toptrades:'tabBtnDecide',topinvest:'tabBtnDecide',reports:'tabBtnDecide',proscan:'tabBtnDecide',pms:'tabBtnDecide',deepdd:'tabBtnDecide',mchunter:'tabBtnDecide',intraday:'tabBtnDecide',positioning:'tabBtnDecide',smartmoney:'tabBtnDecide',dreamportfolio:'tabBtnDream',multibagger:'tabBtnDream',momentumradar:'tabBtnDream',highprob:'tabBtnDream',optionspulse:'tabBtnDream',tradeticket:'tabBtnDream',microcap:'tabBtnDream',trades:'tabBtnTrading',stockintel:'tabBtnTrading',scanner:'tabBtnTrading',valreport:'tabBtnTrading',backtest:'tabBtnTrading',smarttrades:'tabBtnTrading',journal:'tabBtnTrading',aiassist:'tabBtnTrading',education:'tabBtnTools',gems:'tabBtnOverview',picks:'tabBtnOverview',funds:'tabBtnTools'};
+const btnMap={quick:'tabBtnOverview',analysis:'tabBtnResearch',dcf:'tabBtnResearch',equity:'tabBtnResearch',compare:'tabBtnTools',indices:'tabBtnMarkets',finance:'tabBtnTools',daily:'tabBtnMarkets',assets:'tabBtnMarkets',decision:'tabBtnDecide',toptrades:'tabBtnDecide',topinvest:'tabBtnDecide',reports:'tabBtnDecide',proscan:'tabBtnDecide',pms:'tabBtnDecide',deepdd:'tabBtnDecide',mchunter:'tabBtnDecide',intraday:'tabBtnDecide',positioning:'tabBtnDecide',smartmoney:'tabBtnDecide',smv3:'tabBtnDecide',dreamportfolio:'tabBtnDream',multibagger:'tabBtnDream',momentumradar:'tabBtnDream',highprob:'tabBtnDream',optionspulse:'tabBtnDream',tradeticket:'tabBtnDream',microcap:'tabBtnDream',trades:'tabBtnTrading',stockintel:'tabBtnTrading',scanner:'tabBtnTrading',valreport:'tabBtnTrading',backtest:'tabBtnTrading',smarttrades:'tabBtnTrading',journal:'tabBtnTrading',aiassist:'tabBtnTrading',education:'tabBtnTools',gems:'tabBtnOverview',picks:'tabBtnOverview',funds:'tabBtnTools'};
 
 // Hide all
 document.querySelectorAll('.sc[data-tab]').forEach(s=>{s.style.display='none';s.style.opacity='';s.style.transform='';s.style.animation=''});
@@ -2802,7 +2802,7 @@ b.style.background='var(--blue)';b.style.color='#fff';b.style.borderColor='var(-
 // 2) Show matching tab content (sections + inline data-tab elements)
 // dreamportfolio and multibagger render into the decision section's deResult
 var _showTab = tab;
-if(tab==='dreamportfolio'||tab==='multibagger'||tab==='momentumradar'||tab==='highprob'||tab==='optionspulse'||tab==='tradeticket'||tab==='microcap'||tab==='deepdd'||tab==='pms'||tab==='mchunter'||tab==='intraday'||tab==='positioning'||tab==='diamond'||tab==='smartmoney') _showTab='decision';
+if(tab==='dreamportfolio'||tab==='multibagger'||tab==='momentumradar'||tab==='highprob'||tab==='optionspulse'||tab==='tradeticket'||tab==='microcap'||tab==='deepdd'||tab==='pms'||tab==='mchunter'||tab==='intraday'||tab==='positioning'||tab==='diamond'||tab==='smartmoney'||tab==='smv3') _showTab='decision';
 // Show tab sections with animation
 document.querySelectorAll('.sc[data-tab="'+_showTab+'"]').forEach(function(s,idx){
 if(_showTab==='quick' && s.dataset.subtab) return;
@@ -4076,6 +4076,10 @@ if(tab==='positioning'){
   return;
 }
 // r63.87.0: Smart Money Scanner — batch SMI signals across a universe
+if(tab==='smv3'){
+  window._activeSmv3 = true;
+  if(typeof loadSmartMoneyV3==='function')setTimeout(loadSmartMoneyV3,100);
+} else { window._activeSmv3 = false; }
 if(tab==='smartmoney'){
   window._activeSmartMoneyTab=true;
   if(typeof loadSmartMoneyScanner==='function')setTimeout(loadSmartMoneyScanner,100);
@@ -33782,3 +33786,236 @@ function _renderAnalystCoverageTicker(d) {
   h += '</div>';
   el.innerHTML = h;
 }
+
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SMART MONEY V3 — institutional spec implementation
+// Calls /api/smv3 and renders the 5-column simplified view:
+//   Smart Money Score · Accumulation · Stage · Bottleneck · Conviction
+//   + WHY NOW one-line synthesis
+// ═══════════════════════════════════════════════════════════════════════════
+window._activeSmv3 = false;
+window._smv3State = { region: 'US', mcap: 'large' };
+
+window.loadSmartMoneyV3 = function(forceReg, forceMcap) {
+  if (!window._activeSmv3) return;
+  var el = document.getElementById('deResult');
+  if (!el) return;
+  var reg = forceReg || window._smv3State.region || 'US';
+  var mcap = forceMcap || window._smv3State.mcap || 'large';
+  window._smv3State.region = reg;
+  window._smv3State.mcap = mcap;
+
+  el.innerHTML = '<div style="text-align:center;padding:80px 20px;color:#5E6F8E;font-family:Inter,sans-serif">' +
+    '<div style="font-size:32px;margin-bottom:14px">🧠</div>' +
+    '<div style="font-size:14px;font-weight:700;color:#0f172a">Smart Money v3 — Scanning…</div>' +
+    '<div style="font-size:11px;margin-top:8px;color:#94a3b8">First scan takes 60–120 seconds (Yahoo Finance + bottleneck engine). Subsequent loads instant.</div>' +
+    '</div>';
+
+  var email = (document.getElementById('email') && document.getElementById('email').value) || '';
+  var url = '/api/smv3?region=' + encodeURIComponent(reg) + '&mcap=' + encodeURIComponent(mcap) + '&email=' + encodeURIComponent(email) + '&limit=75';
+
+  fetch(url).then(function(r){ return r.json(); }).then(function(d){
+    _renderSmv3(el, d, reg, mcap);
+  }).catch(function(e){
+    _renderSmv3(el, {success:false, error: (e && e.message) || 'fetch failed'}, reg, mcap);
+  });
+};
+
+function _renderSmv3(el, d, reg, mcap) {
+  var csym = reg === 'US' ? '$' : '₹';
+  var h = '';
+
+  // ─── Region + mcap toggle bar ───
+  h += '<div style="max-width:1320px;margin:0 auto;padding:0 8px">';
+
+  // Region buttons (US / IN)
+  h += '<div style="display:flex;gap:8px;margin-bottom:14px;justify-content:center">';
+  ['US','IN'].forEach(function(r){
+    var active = r === reg;
+    h += '<button onclick="loadSmartMoneyV3(\'' + r + '\',\'' + mcap + '\')" style="' +
+         'padding:8px 20px;border:2px solid ' + (active?'#1A3A78':'#cbd5e1') + ';' +
+         'background:#fff;color:' + (active?'#1A3A78':'#64748b') + ';' +
+         'border-radius:8px;font-size:12px;font-weight:' + (active?'800':'500') + ';' +
+         'cursor:pointer;font-family:Sora,sans-serif;letter-spacing:0.5px">' +
+         (r === 'US' ? '🇺🇸 USA' : '🇮🇳 INDIA') + '</button>';
+  });
+  h += '</div>';
+
+  // Header card with stats
+  h += '<div style="background:linear-gradient(135deg,#0A1628,#1A3A78);border-radius:12px;padding:18px 22px;margin-bottom:14px;color:#fff;display:flex;align-items:center;gap:18px">';
+  h += '<div style="width:44px;height:44px;background:rgba(255,255,255,0.12);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:22px">🧠</div>';
+  h += '<div style="flex:1">';
+  h += '<div style="font-size:16px;font-weight:900;font-family:Sora,sans-serif">Smart Money Scanner — Institutional Edition</div>';
+  h += '<div style="font-size:10px;color:rgba(255,255,255,0.7);margin-top:2px">5-layer scoring · supply-constraint engine · WHY NOW synthesis · sorted by conviction</div>';
+  h += '</div>';
+  if (d.success) {
+    h += '<div style="text-align:right">';
+    h += '<div style="font-size:24px;font-weight:900;font-family:IBM Plex Mono,monospace">' + (d.scanned_count || 0) + '<span style="color:rgba(255,255,255,0.5);font-size:14px;font-weight:600">/' + (d.universe_size || 0) + '</span></div>';
+    h += '<div style="font-size:9px;color:rgba(255,255,255,0.6);letter-spacing:0.5px">SCANNED</div>';
+    h += '</div>';
+    h += '<div style="text-align:right;margin-left:14px">';
+    h += '<div style="font-size:24px;font-weight:900;font-family:IBM Plex Mono,monospace">' + (d.scan_time_sec || 0) + '<span style="color:rgba(255,255,255,0.5);font-size:14px;font-weight:600">s</span></div>';
+    h += '<div style="font-size:9px;color:rgba(255,255,255,0.6);letter-spacing:0.5px">' + (d._cached ? 'CACHED' : 'LIVE') + '</div>';
+    h += '</div>';
+  }
+  h += '<button onclick="window._smv3CacheBust=Date.now();loadSmartMoneyV3()" style="margin-left:14px;padding:8px 14px;background:rgba(255,255,255,0.15);color:#fff;border:1px solid rgba(255,255,255,0.3);border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;font-family:Sora,sans-serif">↻ REFRESH</button>';
+  h += '</div>';
+
+  // Market cap row
+  h += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;padding:6px 4px">';
+  h += '<div style="font-size:10px;color:#64748b;font-weight:700;letter-spacing:1px;font-family:Sora,sans-serif;width:80px">MARKET CAP</div>';
+  var caps = [
+    {id:'large', label:'Large Cap',  sub: reg==='US' ? 'S&P 100' : 'NIFTY 50'},
+    {id:'mid',   label:'Mid Cap',    sub: reg==='US' ? 'S&P 400' : 'NIFTY Midcap'},
+    {id:'small', label:'Small Cap',  sub: reg==='US' ? 'S&P 600' : 'NIFTY Smallcap'},
+    {id:'micro', label:'Micro Cap',  sub: reg==='US' ? 'Russell Micro' : 'NIFTY Microcap'},
+  ];
+  caps.forEach(function(c){
+    var active = c.id === mcap;
+    h += '<button onclick="loadSmartMoneyV3(\'' + reg + '\',\'' + c.id + '\')" style="' +
+         'flex:1;padding:10px 12px;background:#fff;color:#0f172a;' +
+         'border:' + (active?'2px solid #1A3A78':'1px solid #e2e8f0') + ';' +
+         'border-radius:8px;cursor:pointer;font-family:Sora,sans-serif;text-align:left">' +
+         '<div style="font-size:13px;font-weight:' + (active?'900':'700') + ';color:#0f172a">' + c.label + '</div>' +
+         '<div style="font-size:9px;color:#94a3b8;font-family:IBM Plex Mono,monospace;margin-top:2px">' + c.sub + '</div>' +
+         '</button>';
+  });
+  h += '</div>';
+
+  // ─── Body ───
+  if (!d.success) {
+    h += '<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:30px;text-align:center;color:#991b1b">';
+    h += '<div style="font-size:14px;font-weight:800;margin-bottom:8px">Scanner Error</div>';
+    h += '<div style="font-size:11px">' + (d.error || 'Unknown error') + '</div>';
+    h += '</div></div>';
+    el.innerHTML = h;
+    return;
+  }
+
+  if (!d.results || d.results.length === 0) {
+    h += '<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:40px 20px;text-align:center;color:#78350f">';
+    h += '<div style="font-size:14px;font-weight:800;margin-bottom:8px">⏳ Yahoo Finance Rate-Limited</div>';
+    h += '<div style="font-size:11px;line-height:1.6">Scan completed but all ' + (d.universe_size||0) + ' yfinance calls failed (likely temporary rate-limit on the server IP). ';
+    h += 'Wait 5-15 minutes and click <strong>↻ REFRESH</strong>. The scanner does NOT cache empty results, so next attempt will retry fresh.</div>';
+    h += '</div></div>';
+    el.innerHTML = h;
+    return;
+  }
+
+  // Table
+  h += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden">';
+  h += '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:11px;min-width:1200px;font-family:Inter,sans-serif">';
+  h += '<thead><tr style="background:linear-gradient(180deg,#f8fafc,#f1f5f9);text-align:left;font-family:Sora,sans-serif;border-bottom:2px solid #e2e8f0">';
+  var heads = [
+    {l:'#',         a:'left',   w:'34px'},
+    {l:'STOCK',     a:'left',   w:'auto'},
+    {l:'SM SCORE',  a:'center', w:'85px',  tip:'Smart Money Score 0-100. Weighted: 30% accumulation + 25% bottleneck + 20% inflection + 15% relative strength + 10% narrative'},
+    {l:'ACCUM',     a:'center', w:'90px',  tip:'Institutional accumulation: Weak / Moderate / Aggressive'},
+    {l:'STAGE',     a:'center', w:'95px',  tip:'Early = forming base · Expansion = trending · Crowded = late-stage near highs'},
+    {l:'BOTTLENECK',a:'left',   w:'200px', tip:'Supply-constraint theme — the source of pricing power'},
+    {l:'CONV',      a:'center', w:'70px',  tip:'Conviction rating 1-5 stars based on composite score'},
+    {l:'WHY NOW',   a:'left',   w:'auto',  tip:'One-line thesis synthesis'},
+    {l:'ACTION',    a:'center', w:'95px'},
+    {l:'PRICE',     a:'right',  w:'80px'},
+  ];
+  heads.forEach(function(c){
+    h += '<th title="' + (c.tip||'') + '" style="padding:11px 8px;font-size:9px;font-weight:800;color:#64748b;letter-spacing:0.6px;text-align:' + c.a + ';width:' + c.w + (c.tip?';cursor:help':'') + '">' + c.l + '</th>';
+  });
+  h += '</tr></thead><tbody>';
+
+  d.results.forEach(function(r, i){
+    // Score color
+    var sc = r.smart_money_score || 0;
+    var scCol, scBg;
+    if (sc >= 75)      { scCol = '#fff'; scBg = '#059669'; }
+    else if (sc >= 60) { scCol = '#fff'; scBg = '#10b981'; }
+    else if (sc >= 45) { scCol = '#fff'; scBg = '#d97706'; }
+    else if (sc >= 30) { scCol = '#fff'; scBg = '#f97316'; }
+    else                { scCol = '#fff'; scBg = '#dc2626'; }
+
+    // Accumulation badge
+    var accum = r.accumulation || 'Weak';
+    var accumCol = accum === 'Aggressive' ? '#059669' : accum === 'Moderate' ? '#d97706' : '#64748b';
+
+    // Stage badge
+    var stage = r.stage || 'Expansion';
+    var stageCol = stage === 'Early' ? '#1A3A78' : stage === 'Expansion' ? '#059669' : '#d97706';
+
+    // Conviction stars
+    var stars = '';
+    for (var s = 0; s < 5; s++) {
+      stars += s < (r.conviction || 0) ? '★' : '<span style="opacity:0.25">★</span>';
+    }
+
+    // Action badge
+    var act = r.action || 'HOLD';
+    var actBg, actTxt;
+    if (act === 'STRONG BUY')  { actBg = '#059669'; actTxt = '#fff'; }
+    else if (act === 'BUY')    { actBg = '#10b981'; actTxt = '#fff'; }
+    else if (act === 'HOLD')   { actBg = '#f1f5f9'; actTxt = '#475569'; }
+    else if (act === 'TRIM')   { actBg = '#f97316'; actTxt = '#fff'; }
+    else                        { actBg = '#dc2626'; actTxt = '#fff'; }
+
+    // Price change color
+    var chg = r.change_pct || 0;
+    var chgCol = chg >= 0 ? '#059669' : '#dc2626';
+
+    // Row
+    var clickAttr = 'onclick="if(typeof loadInvestorDE===\'function\')loadInvestorDE(\'' + (r.ticker||'').replace(/'/g,'\\\'') + '\')"';
+    h += '<tr style="border-top:1px solid #f1f5f9;cursor:pointer;transition:background 0.1s" onmouseover="this.style.background=\'#fafbfc\'" onmouseout="this.style.background=\'\'" ' + clickAttr + '>';
+
+    // #
+    h += '<td style="padding:11px 8px;color:#94a3b8;font-family:IBM Plex Mono,monospace;font-size:10px">' + (i+1) + '</td>';
+    // STOCK
+    h += '<td style="padding:11px 8px"><div style="font-weight:900;color:#0f172a;font-family:IBM Plex Mono,monospace;font-size:12px">' + r.ticker + '</div>';
+    h += '<div style="color:#94a3b8;font-size:10px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + (r.issuer_name||'') + '</div></td>';
+    // SM SCORE
+    h += '<td style="padding:11px 8px;text-align:center">';
+    h += '<div title="' + JSON.stringify(r.score_components||{}).replace(/"/g,'&quot;') + '" style="display:inline-block;padding:6px 12px;background:' + scBg + ';color:' + scCol + ';border-radius:6px;font-weight:900;font-family:IBM Plex Mono,monospace;font-size:14px;cursor:help">' + sc + '</div>';
+    h += '</td>';
+    // ACCUM
+    h += '<td style="padding:11px 8px;text-align:center"><span style="color:' + accumCol + ';font-weight:800;font-size:10px;letter-spacing:0.5px;font-family:Sora,sans-serif">' + accum.toUpperCase() + '</span></td>';
+    // STAGE
+    h += '<td style="padding:11px 8px;text-align:center"><span style="padding:3px 10px;border-radius:5px;background:' + stageCol + '15;color:' + stageCol + ';font-size:9px;font-weight:800;letter-spacing:0.5px;font-family:Sora,sans-serif">' + stage.toUpperCase() + '</span></td>';
+    // BOTTLENECK
+    if (r.bottleneck) {
+      h += '<td style="padding:11px 8px"><div style="font-size:11px;font-weight:700;color:#0f172a">' + r.bottleneck + '</div>';
+      h += '<div style="font-size:9px;color:#94a3b8;font-family:IBM Plex Mono,monospace">SEV ' + (r.bottleneck_severity||0) + '/100</div></td>';
+    } else {
+      h += '<td style="padding:11px 8px;color:#cbd5e1;font-size:10px;font-style:italic">—</td>';
+    }
+    // CONV
+    h += '<td style="padding:11px 8px;text-align:center"><div style="color:#f59e0b;font-size:13px;letter-spacing:1px">' + stars + '</div></td>';
+    // WHY NOW
+    h += '<td style="padding:11px 8px"><div style="font-size:11px;color:#1A3A78;line-height:1.4;max-width:380px">' + (r.why_now||'') + '</div></td>';
+    // ACTION
+    h += '<td style="padding:11px 8px;text-align:center"><span style="padding:5px 10px;border-radius:6px;background:' + actBg + ';color:' + actTxt + ';font-size:10px;font-weight:900;font-family:Sora,sans-serif;letter-spacing:0.5px">' + act + '</span></td>';
+    // PRICE
+    h += '<td style="padding:11px 8px;text-align:right">';
+    h += '<div style="color:#0f172a;font-family:IBM Plex Mono,monospace;font-weight:800;font-size:11px">' + csym + (r.price||0) + '</div>';
+    h += '<div style="color:' + chgCol + ';font-family:IBM Plex Mono,monospace;font-weight:700;font-size:9px">' + (chg>=0?'+':'') + chg.toFixed(2) + '%</div>';
+    h += '</td>';
+
+    h += '</tr>';
+  });
+
+  h += '</tbody></table></div></div>';
+
+  // Methodology footer
+  h += '<div style="margin-top:14px;padding:14px 18px;background:#f8fafc;border-radius:8px;font-size:10px;color:#475569;line-height:1.7;font-family:Inter,sans-serif">';
+  h += '<strong style="color:#0f172a;font-family:Sora,sans-serif">Scoring formula:</strong> ';
+  h += '<span style="color:#059669;font-weight:700">30% Institutional Accumulation</span> · ';
+  h += '<span style="color:#1A3A78;font-weight:700">25% Bottleneck Severity</span> · ';
+  h += '<span style="color:#7c3aed;font-weight:700">20% Revenue/Margin Inflection</span> · ';
+  h += '<span style="color:#d97706;font-weight:700">15% Relative Strength</span> · ';
+  h += '<span style="color:#64748b;font-weight:700">10% Narrative</span>';
+  h += '<br><br><strong style="color:#0f172a">Hover the SM SCORE</strong> to see the per-component breakdown. ';
+  h += '<strong style="color:#0f172a">Click any row</strong> to open the full institutional research report.';
+  h += '<br><br><em style="color:#94a3b8">Data sources: yfinance (price, fundamentals, insider transactions, analyst ratings) + curated bottleneck catalog. Bottleneck themes are hand-curated supply-constraint mappings reflecting the source of pricing power. Edit smart_money_v3.py to add/modify themes.</em>';
+  h += '</div>';
+
+  h += '</div>';
+  el.innerHTML = h;
+}
+

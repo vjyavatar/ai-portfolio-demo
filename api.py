@@ -1831,6 +1831,15 @@ APP_RELEASE_NOTES = (
 )
 
 app = FastAPI(title="Celesys AI - Verified Live Data", default_response_class=SafeJSONResponse)
+
+# v3 Smart Money Scanner — institutional-grade spec implementation
+try:
+    from smart_money_v3 import attach as _attach_smv3
+    _attach_smv3(app)
+    print('[STARTUP] smart_money_v3 attached — /api/smv3 endpoint live')
+except Exception as _smv3_err:
+    print(f'[STARTUP] smart_money_v3 attach failed: {_smv3_err}')
+
 print("[STARTUP] ✅ FastAPI app created successfully")
 
 # ═══ GLOBAL ERROR HANDLER — prevents ALL 500 HTML errors ═══
