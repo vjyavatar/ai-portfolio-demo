@@ -33789,10 +33789,14 @@ function _renderAnalystCoverageTicker(d) {
 
 
 // ═══════════════════════════════════════════════════════════════════════════
-// SMART MONEY V3 — institutional spec implementation
-// Calls /api/smv3 and renders the 5-column simplified view:
-//   Smart Money Score · Accumulation · Stage · Bottleneck · Conviction
-//   + WHY NOW one-line synthesis
+// SMART MONEY V3.1 EXPANDED — institutional spec, all achievable layers
+// Calls /api/smv3 and renders:
+//  - 5-column simplified view: SM SCORE · ACCUM · STAGE · BOTTLENECK · CONV
+//  - WHY NOW one-line synthesis
+//  - WoW Δ when snapshot baseline exists
+//  - Breakout chips: 🚀 hyperscaler · 🏛 government · 🤖 AI exposure
+//  - Signals fired (hover SM SCORE to see)
+//  - RVOL indicator, short-cover flag
 // ═══════════════════════════════════════════════════════════════════════════
 window._activeSmv3 = false;
 window._smv3State = { region: 'US', mcap: 'large' };
@@ -33808,28 +33812,25 @@ window.loadSmartMoneyV3 = function(forceReg, forceMcap) {
 
   el.innerHTML = '<div style="text-align:center;padding:80px 20px;color:#5E6F8E;font-family:Inter,sans-serif">' +
     '<div style="font-size:32px;margin-bottom:14px">🧠</div>' +
-    '<div style="font-size:14px;font-weight:700;color:#0f172a">Smart Money v3 — Scanning…</div>' +
-    '<div style="font-size:11px;margin-top:8px;color:#94a3b8">First scan takes 60–120 seconds (Yahoo Finance + bottleneck engine). Subsequent loads instant.</div>' +
+    '<div style="font-size:14px;font-weight:700;color:#0f172a">Smart Money v3 — Scanning</div>' +
+    '<div style="font-size:11px;margin-top:8px;color:#94a3b8">First scan takes 60-120 seconds. Subsequent loads instant.</div>' +
     '</div>';
 
   var email = (document.getElementById('email') && document.getElementById('email').value) || '';
   var url = '/api/smv3?region=' + encodeURIComponent(reg) + '&mcap=' + encodeURIComponent(mcap) + '&email=' + encodeURIComponent(email) + '&limit=75';
 
-  fetch(url).then(function(r){ return r.json(); }).then(function(d){
+  fetch(url).then(function(r){return r.json();}).then(function(d){
     _renderSmv3(el, d, reg, mcap);
   }).catch(function(e){
-    _renderSmv3(el, {success:false, error: (e && e.message) || 'fetch failed'}, reg, mcap);
+    _renderSmv3(el, {success:false, error:(e&&e.message)||'fetch failed'}, reg, mcap);
   });
 };
 
 function _renderSmv3(el, d, reg, mcap) {
   var csym = reg === 'US' ? '$' : '₹';
-  var h = '';
+  var h = '<div style="max-width:1480px;margin:0 auto;padding:0 8px">';
 
-  // ─── Region + mcap toggle bar ───
-  h += '<div style="max-width:1320px;margin:0 auto;padding:0 8px">';
-
-  // Region buttons (US / IN)
+  // Region toggle
   h += '<div style="display:flex;gap:8px;margin-bottom:14px;justify-content:center">';
   ['US','IN'].forEach(function(r){
     var active = r === reg;
@@ -33842,48 +33843,40 @@ function _renderSmv3(el, d, reg, mcap) {
   });
   h += '</div>';
 
-  // Header card with stats
+  // Header card
   h += '<div style="background:linear-gradient(135deg,#0A1628,#1A3A78);border-radius:12px;padding:18px 22px;margin-bottom:14px;color:#fff;display:flex;align-items:center;gap:18px">';
   h += '<div style="width:44px;height:44px;background:rgba(255,255,255,0.12);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:22px">🧠</div>';
   h += '<div style="flex:1">';
-  h += '<div style="font-size:16px;font-weight:900;font-family:Sora,sans-serif">Smart Money Scanner — Institutional Edition</div>';
-  h += '<div style="font-size:10px;color:rgba(255,255,255,0.7);margin-top:2px">5-layer scoring · supply-constraint engine · WHY NOW synthesis · sorted by conviction</div>';
+  h += '<div style="font-size:16px;font-weight:900;font-family:Sora,sans-serif">Smart Money v3.1 — Expanded Edition</div>';
+  h += '<div style="font-size:10px;color:rgba(255,255,255,0.7);margin-top:2px">3-layer detection · WHY NOW · WoW deltas · breakout signals · bottleneck engine</div>';
   h += '</div>';
   if (d.success) {
-    h += '<div style="text-align:right">';
-    h += '<div style="font-size:24px;font-weight:900;font-family:IBM Plex Mono,monospace">' + (d.scanned_count || 0) + '<span style="color:rgba(255,255,255,0.5);font-size:14px;font-weight:600">/' + (d.universe_size || 0) + '</span></div>';
-    h += '<div style="font-size:9px;color:rgba(255,255,255,0.6);letter-spacing:0.5px">SCANNED</div>';
-    h += '</div>';
-    h += '<div style="text-align:right;margin-left:14px">';
-    h += '<div style="font-size:24px;font-weight:900;font-family:IBM Plex Mono,monospace">' + (d.scan_time_sec || 0) + '<span style="color:rgba(255,255,255,0.5);font-size:14px;font-weight:600">s</span></div>';
-    h += '<div style="font-size:9px;color:rgba(255,255,255,0.6);letter-spacing:0.5px">' + (d._cached ? 'CACHED' : 'LIVE') + '</div>';
-    h += '</div>';
+    h += '<div style="text-align:right"><div style="font-size:24px;font-weight:900;font-family:IBM Plex Mono,monospace">' + (d.scanned_count||0) + '<span style="color:rgba(255,255,255,0.5);font-size:14px">/' + (d.universe_size||0) + '</span></div><div style="font-size:9px;color:rgba(255,255,255,0.6);letter-spacing:0.5px">SCANNED</div></div>';
+    h += '<div style="text-align:right;margin-left:14px"><div style="font-size:24px;font-weight:900;font-family:IBM Plex Mono,monospace">' + (d.scan_time_sec||0) + '<span style="color:rgba(255,255,255,0.5);font-size:14px">s</span></div><div style="font-size:9px;color:rgba(255,255,255,0.6);letter-spacing:0.5px">' + (d._cached?'CACHED':'LIVE') + '</div></div>';
+    if (d.has_snapshot_baseline) {
+      h += '<div style="text-align:right;margin-left:14px;padding:4px 10px;background:rgba(76,159,55,0.25);border-radius:5px"><div style="font-size:10px;font-weight:800;color:#4ade80">WoW Δ</div><div style="font-size:8px;color:rgba(255,255,255,0.6)">vs last snap</div></div>';
+    }
   }
-  h += '<button onclick="window._smv3CacheBust=Date.now();loadSmartMoneyV3()" style="margin-left:14px;padding:8px 14px;background:rgba(255,255,255,0.15);color:#fff;border:1px solid rgba(255,255,255,0.3);border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;font-family:Sora,sans-serif">↻ REFRESH</button>';
+  h += '<button onclick="loadSmartMoneyV3()" style="margin-left:14px;padding:8px 14px;background:rgba(255,255,255,0.15);color:#fff;border:1px solid rgba(255,255,255,0.3);border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;font-family:Sora,sans-serif">↻ REFRESH</button>';
   h += '</div>';
 
-  // Market cap row
+  // Mcap row
   h += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;padding:6px 4px">';
   h += '<div style="font-size:10px;color:#64748b;font-weight:700;letter-spacing:1px;font-family:Sora,sans-serif;width:80px">MARKET CAP</div>';
   var caps = [
-    {id:'large', label:'Large Cap',  sub: reg==='US' ? 'S&P 100' : 'NIFTY 50'},
-    {id:'mid',   label:'Mid Cap',    sub: reg==='US' ? 'S&P 400' : 'NIFTY Midcap'},
-    {id:'small', label:'Small Cap',  sub: reg==='US' ? 'S&P 600' : 'NIFTY Smallcap'},
-    {id:'micro', label:'Micro Cap',  sub: reg==='US' ? 'Russell Micro' : 'NIFTY Microcap'},
+    {id:'large', label:'Large Cap',  sub: reg==='US'?'S&P 100':'NIFTY 50'},
+    {id:'mid',   label:'Mid Cap',    sub: reg==='US'?'S&P 400':'NIFTY Midcap'},
+    {id:'small', label:'Small Cap',  sub: reg==='US'?'S&P 600':'NIFTY Smallcap'},
+    {id:'micro', label:'Micro Cap',  sub: reg==='US'?'Russell Micro':'NIFTY Microcap'},
   ];
   caps.forEach(function(c){
     var active = c.id === mcap;
-    h += '<button onclick="loadSmartMoneyV3(\'' + reg + '\',\'' + c.id + '\')" style="' +
-         'flex:1;padding:10px 12px;background:#fff;color:#0f172a;' +
-         'border:' + (active?'2px solid #1A3A78':'1px solid #e2e8f0') + ';' +
-         'border-radius:8px;cursor:pointer;font-family:Sora,sans-serif;text-align:left">' +
+    h += '<button onclick="loadSmartMoneyV3(\'' + reg + '\',\'' + c.id + '\')" style="flex:1;padding:10px 12px;background:#fff;color:#0f172a;border:' + (active?'2px solid #1A3A78':'1px solid #e2e8f0') + ';border-radius:8px;cursor:pointer;font-family:Sora,sans-serif;text-align:left">' +
          '<div style="font-size:13px;font-weight:' + (active?'900':'700') + ';color:#0f172a">' + c.label + '</div>' +
-         '<div style="font-size:9px;color:#94a3b8;font-family:IBM Plex Mono,monospace;margin-top:2px">' + c.sub + '</div>' +
-         '</button>';
+         '<div style="font-size:9px;color:#94a3b8;font-family:IBM Plex Mono,monospace;margin-top:2px">' + c.sub + '</div></button>';
   });
   h += '</div>';
 
-  // ─── Body ───
   if (!d.success) {
     h += '<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:30px;text-align:center;color:#991b1b">';
     h += '<div style="font-size:14px;font-weight:800;margin-bottom:8px">Scanner Error</div>';
@@ -33892,12 +33885,10 @@ function _renderSmv3(el, d, reg, mcap) {
     el.innerHTML = h;
     return;
   }
-
   if (!d.results || d.results.length === 0) {
     h += '<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:40px 20px;text-align:center;color:#78350f">';
     h += '<div style="font-size:14px;font-weight:800;margin-bottom:8px">⏳ Yahoo Finance Rate-Limited</div>';
-    h += '<div style="font-size:11px;line-height:1.6">Scan completed but all ' + (d.universe_size||0) + ' yfinance calls failed (likely temporary rate-limit on the server IP). ';
-    h += 'Wait 5-15 minutes and click <strong>↻ REFRESH</strong>. The scanner does NOT cache empty results, so next attempt will retry fresh.</div>';
+    h += '<div style="font-size:11px;line-height:1.6">Scan completed but all ' + (d.universe_size||0) + ' yfinance calls failed. Wait 5-15 minutes and click <strong>↻ REFRESH</strong>. The scanner does NOT cache empty results.</div>';
     h += '</div></div>';
     el.innerHTML = h;
     return;
@@ -33905,16 +33896,19 @@ function _renderSmv3(el, d, reg, mcap) {
 
   // Table
   h += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden">';
-  h += '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:11px;min-width:1200px;font-family:Inter,sans-serif">';
+  h += '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:11px;min-width:1440px;font-family:Inter,sans-serif">';
   h += '<thead><tr style="background:linear-gradient(180deg,#f8fafc,#f1f5f9);text-align:left;font-family:Sora,sans-serif;border-bottom:2px solid #e2e8f0">';
   var heads = [
     {l:'#',         a:'left',   w:'34px'},
     {l:'STOCK',     a:'left',   w:'auto'},
-    {l:'SM SCORE',  a:'center', w:'85px',  tip:'Smart Money Score 0-100. Weighted: 30% accumulation + 25% bottleneck + 20% inflection + 15% relative strength + 10% narrative'},
-    {l:'ACCUM',     a:'center', w:'90px',  tip:'Institutional accumulation: Weak / Moderate / Aggressive'},
-    {l:'STAGE',     a:'center', w:'95px',  tip:'Early = forming base · Expansion = trending · Crowded = late-stage near highs'},
-    {l:'BOTTLENECK',a:'left',   w:'200px', tip:'Supply-constraint theme — the source of pricing power'},
-    {l:'CONV',      a:'center', w:'70px',  tip:'Conviction rating 1-5 stars based on composite score'},
+    {l:'SM SCORE',  a:'center', w:'95px',  tip:'Composite 0-100. Hover any row to see component breakdown + signals fired.'},
+    {l:'WoW Δ',     a:'center', w:'60px',  tip:'Week-over-week score change vs last snapshot. Empty = no baseline yet.'},
+    {l:'ACCUM',     a:'center', w:'80px',  tip:'Institutional accumulation strength: Weak / Moderate / Aggressive'},
+    {l:'STAGE',     a:'center', w:'85px',  tip:'Early = forming base · Expansion = trending · Crowded = late-stage'},
+    {l:'BOTTLENECK',a:'left',   w:'180px', tip:'Supply-constraint theme. Severity = source of pricing power.'},
+    {l:'CONV',      a:'center', w:'65px',  tip:'1-5 stars based on composite score'},
+    {l:'BREAKOUT',  a:'center', w:'95px',  tip:'🚀 hyperscaler · 🏛 government · 🤖 AI mentions in business summary'},
+    {l:'RVOL',      a:'center', w:'55px',  tip:'10-day avg volume / 3-month avg volume. >1.3 = unusual.'},
     {l:'WHY NOW',   a:'left',   w:'auto',  tip:'One-line thesis synthesis'},
     {l:'ACTION',    a:'center', w:'95px'},
     {l:'PRICE',     a:'right',  w:'80px'},
@@ -33925,30 +33919,30 @@ function _renderSmv3(el, d, reg, mcap) {
   h += '</tr></thead><tbody>';
 
   d.results.forEach(function(r, i){
-    // Score color
     var sc = r.smart_money_score || 0;
-    var scCol, scBg;
-    if (sc >= 75)      { scCol = '#fff'; scBg = '#059669'; }
-    else if (sc >= 60) { scCol = '#fff'; scBg = '#10b981'; }
-    else if (sc >= 45) { scCol = '#fff'; scBg = '#d97706'; }
-    else if (sc >= 30) { scCol = '#fff'; scBg = '#f97316'; }
-    else                { scCol = '#fff'; scBg = '#dc2626'; }
+    var scCol = '#fff';
+    var scBg = sc>=75?'#059669':sc>=60?'#10b981':sc>=45?'#d97706':sc>=30?'#f97316':'#dc2626';
 
-    // Accumulation badge
+    // WoW delta
+    var wow = r.week_delta;
+    var wowHtml = '<span style="color:#cbd5e1">—</span>';
+    if (wow !== null && wow !== undefined) {
+      var wowCol = wow > 0 ? '#059669' : wow < 0 ? '#dc2626' : '#64748b';
+      var wowSign = wow > 0 ? '+' : '';
+      wowHtml = '<span style="color:' + wowCol + ';font-weight:800;font-family:IBM Plex Mono,monospace;font-size:10px">' + wowSign + wow + '</span>';
+    }
+
     var accum = r.accumulation || 'Weak';
     var accumCol = accum === 'Aggressive' ? '#059669' : accum === 'Moderate' ? '#d97706' : '#64748b';
 
-    // Stage badge
     var stage = r.stage || 'Expansion';
     var stageCol = stage === 'Early' ? '#1A3A78' : stage === 'Expansion' ? '#059669' : '#d97706';
 
-    // Conviction stars
     var stars = '';
     for (var s = 0; s < 5; s++) {
       stars += s < (r.conviction || 0) ? '★' : '<span style="opacity:0.25">★</span>';
     }
 
-    // Action badge
     var act = r.action || 'HOLD';
     var actBg, actTxt;
     if (act === 'STRONG BUY')  { actBg = '#059669'; actTxt = '#fff'; }
@@ -33957,41 +33951,66 @@ function _renderSmv3(el, d, reg, mcap) {
     else if (act === 'TRIM')   { actBg = '#f97316'; actTxt = '#fff'; }
     else                        { actBg = '#dc2626'; actTxt = '#fff'; }
 
-    // Price change color
     var chg = r.change_pct || 0;
     var chgCol = chg >= 0 ? '#059669' : '#dc2626';
 
-    // Row
-    var clickAttr = 'onclick="if(typeof loadInvestorDE===\'function\')loadInvestorDE(\'' + (r.ticker||'').replace(/'/g,'\\\'') + '\')"';
+    // Breakout chips
+    var bs = r.breakout_signals || {};
+    var bChips = '';
+    if (bs.hyperscaler_exposure >= 1) bChips += '<span title="Mentions hyperscaler (AWS/Azure/GCP)" style="display:inline-block;padding:2px 5px;margin:1px;background:#dbeafe;color:#1e40af;border-radius:3px;font-size:9px;font-weight:700;cursor:help">🚀</span>';
+    if (bs.government_exposure >= 1) bChips += '<span title="Mentions government/DoD contracts" style="display:inline-block;padding:2px 5px;margin:1px;background:#fef3c7;color:#854d0e;border-radius:3px;font-size:9px;font-weight:700;cursor:help">🏛</span>';
+    if (bs.ai_exposure >= 2) bChips += '<span title="AI/ML keywords in business summary" style="display:inline-block;padding:2px 5px;margin:1px;background:#ede9fe;color:#6d28d9;border-radius:3px;font-size:9px;font-weight:700;cursor:help">🤖</span>';
+    if (bs.shorts_covering) bChips += '<span title="Short interest dropped >10% MoM" style="display:inline-block;padding:2px 5px;margin:1px;background:#fce7f3;color:#9d174d;border-radius:3px;font-size:9px;font-weight:700;cursor:help">📉</span>';
+    if (bs.capacity_expansion) bChips += '<span title="Heavy capex = capacity expansion" style="display:inline-block;padding:2px 5px;margin:1px;background:#d1fae5;color:#065f46;border-radius:3px;font-size:9px;font-weight:700;cursor:help">🏗</span>';
+    if (!bChips) bChips = '<span style="color:#cbd5e1;font-size:10px">—</span>';
+
+    // RVOL
+    var rvol = bs.rvol || 1.0;
+    var rvolCol = rvol > 1.5 ? '#059669' : rvol > 1.3 ? '#10b981' : rvol > 0.7 ? '#64748b' : '#dc2626';
+    var rvolHtml = '<span style="color:' + rvolCol + ';font-weight:800;font-family:IBM Plex Mono,monospace;font-size:11px">' + rvol.toFixed(2) + 'x</span>';
+
+    // What changed tooltip
+    var changedTip = '';
+    if (r.what_changed && r.what_changed.length > 0) {
+      changedTip = 'What changed this week: ' + r.what_changed.join(', ');
+    }
+
+    // Signals fired tooltip
+    var signalsTip = (r.signals_fired || []).join(' · ');
+
+    var clickAttr = 'onclick="if(typeof loadInvestorDE===\'function\')loadInvestorDE(\'' + (r.ticker||'').replace(/\'/g,'\\\'') + '\')"';
     h += '<tr style="border-top:1px solid #f1f5f9;cursor:pointer;transition:background 0.1s" onmouseover="this.style.background=\'#fafbfc\'" onmouseout="this.style.background=\'\'" ' + clickAttr + '>';
 
-    // #
     h += '<td style="padding:11px 8px;color:#94a3b8;font-family:IBM Plex Mono,monospace;font-size:10px">' + (i+1) + '</td>';
-    // STOCK
+
     h += '<td style="padding:11px 8px"><div style="font-weight:900;color:#0f172a;font-family:IBM Plex Mono,monospace;font-size:12px">' + r.ticker + '</div>';
     h += '<div style="color:#94a3b8;font-size:10px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + (r.issuer_name||'') + '</div></td>';
-    // SM SCORE
-    h += '<td style="padding:11px 8px;text-align:center">';
-    h += '<div title="' + JSON.stringify(r.score_components||{}).replace(/"/g,'&quot;') + '" style="display:inline-block;padding:6px 12px;background:' + scBg + ';color:' + scCol + ';border-radius:6px;font-weight:900;font-family:IBM Plex Mono,monospace;font-size:14px;cursor:help">' + sc + '</div>';
-    h += '</td>';
-    // ACCUM
+
+    h += '<td style="padding:11px 8px;text-align:center"><div title="Signals: ' + signalsTip.replace(/"/g,'&quot;') + '" style="display:inline-block;padding:6px 12px;background:' + scBg + ';color:' + scCol + ';border-radius:6px;font-weight:900;font-family:IBM Plex Mono,monospace;font-size:14px;cursor:help">' + sc + '</div></td>';
+
+    h += '<td title="' + changedTip.replace(/"/g,'&quot;') + '" style="padding:11px 8px;text-align:center;' + (changedTip?'cursor:help':'') + '">' + wowHtml + '</td>';
+
     h += '<td style="padding:11px 8px;text-align:center"><span style="color:' + accumCol + ';font-weight:800;font-size:10px;letter-spacing:0.5px;font-family:Sora,sans-serif">' + accum.toUpperCase() + '</span></td>';
-    // STAGE
+
     h += '<td style="padding:11px 8px;text-align:center"><span style="padding:3px 10px;border-radius:5px;background:' + stageCol + '15;color:' + stageCol + ';font-size:9px;font-weight:800;letter-spacing:0.5px;font-family:Sora,sans-serif">' + stage.toUpperCase() + '</span></td>';
-    // BOTTLENECK
+
     if (r.bottleneck) {
       h += '<td style="padding:11px 8px"><div style="font-size:11px;font-weight:700;color:#0f172a">' + r.bottleneck + '</div>';
       h += '<div style="font-size:9px;color:#94a3b8;font-family:IBM Plex Mono,monospace">SEV ' + (r.bottleneck_severity||0) + '/100</div></td>';
     } else {
       h += '<td style="padding:11px 8px;color:#cbd5e1;font-size:10px;font-style:italic">—</td>';
     }
-    // CONV
+
     h += '<td style="padding:11px 8px;text-align:center"><div style="color:#f59e0b;font-size:13px;letter-spacing:1px">' + stars + '</div></td>';
-    // WHY NOW
-    h += '<td style="padding:11px 8px"><div style="font-size:11px;color:#1A3A78;line-height:1.4;max-width:380px">' + (r.why_now||'') + '</div></td>';
-    // ACTION
+
+    h += '<td style="padding:11px 8px;text-align:center;line-height:1.4">' + bChips + '</td>';
+
+    h += '<td style="padding:11px 8px;text-align:center">' + rvolHtml + '</td>';
+
+    h += '<td style="padding:11px 8px"><div style="font-size:11px;color:#1A3A78;line-height:1.4;max-width:340px">' + (r.why_now||'') + '</div></td>';
+
     h += '<td style="padding:11px 8px;text-align:center"><span style="padding:5px 10px;border-radius:6px;background:' + actBg + ';color:' + actTxt + ';font-size:10px;font-weight:900;font-family:Sora,sans-serif;letter-spacing:0.5px">' + act + '</span></td>';
-    // PRICE
+
     h += '<td style="padding:11px 8px;text-align:right">';
     h += '<div style="color:#0f172a;font-family:IBM Plex Mono,monospace;font-weight:800;font-size:11px">' + csym + (r.price||0) + '</div>';
     h += '<div style="color:' + chgCol + ';font-family:IBM Plex Mono,monospace;font-weight:700;font-size:9px">' + (chg>=0?'+':'') + chg.toFixed(2) + '%</div>';
@@ -34004,18 +34023,18 @@ function _renderSmv3(el, d, reg, mcap) {
 
   // Methodology footer
   h += '<div style="margin-top:14px;padding:14px 18px;background:#f8fafc;border-radius:8px;font-size:10px;color:#475569;line-height:1.7;font-family:Inter,sans-serif">';
-  h += '<strong style="color:#0f172a;font-family:Sora,sans-serif">Scoring formula:</strong> ';
-  h += '<span style="color:#059669;font-weight:700">30% Institutional Accumulation</span> · ';
-  h += '<span style="color:#1A3A78;font-weight:700">25% Bottleneck Severity</span> · ';
-  h += '<span style="color:#7c3aed;font-weight:700">20% Revenue/Margin Inflection</span> · ';
+  h += '<strong style="color:#0f172a;font-family:Sora,sans-serif">Scoring (per spec):</strong> ';
+  h += '<span style="color:#059669;font-weight:700">30% Accumulation</span> · ';
+  h += '<span style="color:#1A3A78;font-weight:700">25% Bottleneck</span> · ';
+  h += '<span style="color:#7c3aed;font-weight:700">20% Inflection</span> · ';
   h += '<span style="color:#d97706;font-weight:700">15% Relative Strength</span> · ';
   h += '<span style="color:#64748b;font-weight:700">10% Narrative</span>';
-  h += '<br><br><strong style="color:#0f172a">Hover the SM SCORE</strong> to see the per-component breakdown. ';
-  h += '<strong style="color:#0f172a">Click any row</strong> to open the full institutional research report.';
-  h += '<br><br><em style="color:#94a3b8">Data sources: yfinance (price, fundamentals, insider transactions, analyst ratings) + curated bottleneck catalog. Bottleneck themes are hand-curated supply-constraint mappings reflecting the source of pricing power. Edit smart_money_v3.py to add/modify themes.</em>';
-  h += '</div>';
-
-  h += '</div>';
+  h += '<br><br><strong style="color:#0f172a">Breakout chips:</strong> 🚀 hyperscaler · 🏛 government · 🤖 AI · 📉 shorts covering · 🏗 capacity expansion';
+  h += '<br><strong style="color:#0f172a">RVOL:</strong> 10-day avg volume ÷ 3-month avg. Above 1.3 = unusual interest. ';
+  h += '<strong style="color:#0f172a">WoW Δ:</strong> week-over-week score change (requires snapshot baseline from /api/smv3/snapshot).';
+  h += '<br><strong style="color:#0f172a">Hover the SM SCORE</strong> to see signals fired. <strong>Hover the WoW Δ</strong> to see what changed. <strong>Click any row</strong> for full report.';
+  h += '<br><br><em style="color:#94a3b8">Data: yfinance (price, fundamentals, insiders, analysts) + curated bottleneck catalog (54 stocks across 28 themes) + business-summary keyword scan for hyperscaler/government/AI exposure.</em>';
+  h += '</div></div>';
   el.innerHTML = h;
 }
 
