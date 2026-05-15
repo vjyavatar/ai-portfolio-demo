@@ -2582,6 +2582,9 @@ var TAB_GROUPS = {
   dream:    {tabs: ['dreamportfolio','multibagger','momentumradar','highprob','optionspulse','tradeticket','microcap'], labels: ['🌟 Dream Portfolio','🔥 Multibagger Hunter','⚡ Momentum Radar','🎯 High-Prob Setups','⚡ Options Pulse','🎫 Trade Ticket','🏆 Micro-Cap Challenge'], default: 'dreamportfolio'},
   trading:  {tabs: ['trades','smarttrades','stockintel','scanner','valreport','backtest','journal','aiassist'], labels: ['Algo Trades','Smart Trades','Stock Intel','Scanner','Valuation','Backtest','Journal','AI Assistant'], default: 'trades'},
   markets:  {tabs: ['indices','daily','newsimpact','assets'], labels: ['Top Performers','Market Daily','📰 News Impact','Global Assets'], default: 'indices'},
+  // r63.92.0: MOVERS — Top 5 gainers + losers per region across 1D / 1W / 1M / 3M / 1Y.
+  // Single sub-tab; the timeframe pills and region toggle live inside the card itself.
+  movers:   {tabs: ['movers'], labels: ['Top Movers'], default: 'movers'},
   tools:    {tabs: ['finance','education','compare'], labels: ['Finance Tools','Education','Compare Stocks'], default: 'finance'},
 };
 window._activeGroup = 'overview';
@@ -7134,6 +7137,155 @@ h+='<div style="font-size:8px;color:var(--text3);margin-top:6px">Scanned '+data.
 el.innerHTML=h;
 }).catch(function(e){el.innerHTML='<div style="color:var(--red);font-size:11px;padding:12px">Error: '+e.message+'. <button onclick="loadIdxYTD(\''+preset+'\',null)" style="color:var(--blue);background:none;border:none;cursor:pointer;text-decoration:underline">Retry</button></div>'});
 }
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// r63.92.0: TOP MOVERS — 5 timeframes × top-5 gainers/losers, IN/US.
+// Wires into the new `movers` group in TAB_GROUPS and the `<div data-tab="movers">`
+// card. Backend endpoint: GET /api/movers?region=IN|US — returns all 5 windows
+// in one response, so flipping the timeframe pill is instant client-side.
+// ═══════════════════════════════════════════════════════════════════════════════
+window._moversState = window._moversState || { region: 'IN', window: '1D', data: null };
+
+window._openMovers = function() {
+  try {
+    var bar = document.getElementById('mainTabBar');
+    if (bar) { bar.classList.remove('tab-bar-hidden'); bar.style.display = 'flex'; }
+    var tca = document.getElementById('tabContentArea');
+    if (tca) tca.style.display = '';
+  } catch(e){}
+  try { if (typeof switchTabGroup === 'function') switchTabGroup('movers'); } catch(e){}
+  var st = window._moversState || { region: 'IN', window: '1D' };
+  window.loadMovers(st.region || 'IN', false);
+  setTimeout(function(){
+    var card = document.querySelector('.sc[data-tab="movers"]');
+    if (card) try { card.scrollIntoView({ behavior:'smooth', block:'start' }); } catch(e){}
+  }, 80);
+};
+
+window._setMoversRegion = function(reg) {
+  var st = window._moversState || (window._moversState = {region:'IN', window:'1D'});
+  st.region = reg;
+  ['IN','US'].forEach(function(r){
+    var b = document.getElementById('moversReg' + r);
+    if (!b) return;
+    if (r === reg) { b.style.background = 'linear-gradient(135deg,#7c3aed,#1e40af)'; b.style.color = '#fff'; }
+    else { b.style.background = '#fff'; b.style.color = '#374151'; }
+  });
+  window.loadMovers(reg, false);
+};
+
+window._setMoversWindow = function(win) {
+  var st = window._moversState || (window._moversState = {region:'IN', window:'1D'});
+  st.window = win;
+  document.querySelectorAll('.moversWin').forEach(function(b){
+    if (b.getAttribute('data-win') === win) {
+      b.style.background = '#7c3aed'; b.style.color = '#fff'; b.style.borderColor = '#7c3aed';
+    } else {
+      b.style.background = '#fff'; b.style.color = '#374151'; b.style.borderColor = 'var(--border)';
+    }
+  });
+  if (st.data) window._renderMovers(st.data);
+};
+
+window.loadMovers = function(region, forceRefresh) {
+  region = (region || 'IN').toUpperCase();
+  var st = window._moversState || (window._moversState = {region:'IN', window:'1D'});
+  st.region = region;
+  var resEl = document.getElementById('moversResult');
+  var stEl  = document.getElementById('moversStatus');
+  if (!resEl) return;
+  window._setMoversRegion(region);
+  if (stEl) stEl.textContent = 'Loading ' + region + ' top movers…';
+  resEl.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text3);font-size:11px"><div style="display:inline-block;width:14px;height:14px;border:2px solid #7c3aed;border-top-color:transparent;border-radius:50%;animation:spin .5s linear infinite;vertical-align:middle;margin-right:8px"></div>Scanning ' + region + ' universe…</div>';
+  var url = '/api/movers?region=' + encodeURIComponent(region) + (forceRefresh ? '&_=' + Date.now() : '');
+  fetch(url).then(function(r){ if(!r.ok) throw new Error('API '+r.status); return r.json(); }).then(function(d){
+    if (!d || d.success === false) {
+      resEl.innerHTML = '<div style="color:var(--red);padding:16px;font-size:11px">Error: ' + ((d && d.error) || 'unknown') + '</div>';
+      return;
+    }
+    if (d._loading || !d.windows || Object.keys(d.windows).length === 0) {
+      if (stEl) stEl.textContent = 'First scan running on backend… (typical 15–25s for ' + region + ')';
+      resEl.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text3);font-size:11px"><div style="display:inline-block;width:14px;height:14px;border:2px solid #7c3aed;border-top-color:transparent;border-radius:50%;animation:spin .5s linear infinite;vertical-align:middle;margin-right:8px"></div>Backend computing first snapshot. Re-checking in 3s…</div>';
+      var tries = (window._moversState._coldPollTries || 0) + 1;
+      window._moversState._coldPollTries = tries;
+      if (tries <= 20) { setTimeout(function(){ window.loadMovers(region, false); }, 3000); }
+      else { if (stEl) stEl.textContent = 'Backend slow — try Refresh in a minute.'; }
+      return;
+    }
+    window._moversState._coldPollTries = 0;
+    st.data = d;
+    window._renderMovers(d);
+  }).catch(function(e){
+    resEl.innerHTML = '<div style="color:var(--red);padding:16px;font-size:11px">Error: ' + e.message + '. <button onclick="window.loadMovers(\'' + region + '\',true)" style="color:var(--blue);background:none;border:none;cursor:pointer;text-decoration:underline">Retry</button></div>';
+  });
+};
+
+window._renderMovers = function(d) {
+  var st  = window._moversState || {region:'IN', window:'1D'};
+  var win = st.window || '1D';
+  var resEl = document.getElementById('moversResult');
+  var stEl  = document.getElementById('moversStatus');
+  if (!resEl) return;
+  var W = (d.windows || {})[win];
+  if (!W) {
+    var minDays = ({"1D":2,"1W":6,"1M":22,"3M":64,"1Y":253})[win] || 2;
+    resEl.innerHTML = '<div style="padding:20px;color:var(--text3);font-size:11px;text-align:center">No data for ' + win + ' window (need ≥ ' + minDays + ' trading days of history per ticker).</div>';
+    return;
+  }
+  var currency = (d.region === 'IN') ? '₹' : '$';
+  if (stEl) {
+    var ageSec = Number(d._cache_age_sec || 0);
+    var ageStr = ageSec < 60 ? (ageSec + 's ago') : (Math.floor(ageSec/60) + 'm ago');
+    var staleBadge = d._stale ? ' · <span style="color:#d97706">refreshing in background</span>' : '';
+    var emptyBadge = d._last_scan_empty ? ' · <span style="color:#d97706">last scan empty; showing prior snapshot</span>' : '';
+    stEl.innerHTML = d.region + ' · ' + (d.count || 0) + '/' + (d.universe_size || 0) + ' tickers · window ' + win + ' · coverage ' + (W.coverage || 0) + ' · snapshot ' + ageStr + (d.scan_time_sec ? ' · scan ' + d.scan_time_sec + 's' : '') + staleBadge + emptyBadge;
+  }
+  function rowsHtml(rows, isGainer) {
+    if (!rows || !rows.length) {
+      return '<div style="padding:18px;text-align:center;color:var(--text3);font-size:10px;background:#fafbfc;border-radius:8px">No data</div>';
+    }
+    var h = '';
+    rows.forEach(function(r, i){
+      var pctColor = r.pct >= 0 ? '#059669' : '#dc2626';
+      var pctBg    = r.pct >= 0 ? 'rgba(5,150,105,.08)' : 'rgba(220,38,38,.08)';
+      var sign     = r.pct >= 0 ? '+' : '';
+      h += '<div onclick="(function(){try{var v=\'' + r.symbol + '\';var inp=document.getElementById(\'deCustom\');if(inp)inp.value=v;if(typeof loadDE===\'function\')loadDE(v);}catch(e){}})();" style="display:flex;align-items:center;gap:10px;padding:9px 12px;border:1px solid var(--border);border-radius:8px;margin-bottom:6px;background:#fff;cursor:pointer;transition:background .12s" onmouseover="this.style.background=\'#fafbfc\'" onmouseout="this.style.background=\'#fff\'">';
+      h += '<div style="width:22px;height:22px;border-radius:6px;background:' + (isGainer ? 'rgba(5,150,105,.1)' : 'rgba(220,38,38,.1)') + ';color:' + pctColor + ';display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;font-family:\'JetBrains Mono\',monospace">' + (i+1) + '</div>';
+      h += '<div style="flex:1;min-width:0">';
+      h += '<div style="font-size:12px;font-weight:800;color:var(--text);font-family:Sora,sans-serif;letter-spacing:0.2px">' + r.symbol + '</div>';
+      h += '<div style="font-size:9px;color:var(--text3);font-family:\'JetBrains Mono\',monospace">' + currency + (r.last || 0).toLocaleString(undefined,{maximumFractionDigits:2}) + '</div>';
+      h += '</div>';
+      h += '<div style="padding:4px 10px;border-radius:6px;background:' + pctBg + ';color:' + pctColor + ';font-size:11px;font-weight:800;font-family:\'JetBrains Mono\',monospace;min-width:70px;text-align:right">' + sign + (r.pct || 0).toFixed(2) + '%</div>';
+      h += '</div>';
+    });
+    return h;
+  }
+  var html = '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">';
+  html += '<div>';
+  html += '<div style="display:flex;align-items:center;gap:8px;padding:8px 10px;margin-bottom:8px;background:rgba(5,150,105,.08);border:1px solid rgba(5,150,105,.2);border-radius:8px">';
+  html += '<div style="font-size:14px">📈</div>';
+  html += '<div style="font-size:11px;font-weight:900;color:#059669;font-family:Sora,sans-serif;letter-spacing:0.4px">TOP 5 GAINERS · ' + win + '</div>';
+  html += '</div>';
+  html += rowsHtml(W.gainers, true);
+  html += '</div>';
+  html += '<div>';
+  html += '<div style="display:flex;align-items:center;gap:8px;padding:8px 10px;margin-bottom:8px;background:rgba(220,38,38,.08);border:1px solid rgba(220,38,38,.2);border-radius:8px">';
+  html += '<div style="font-size:14px">📉</div>';
+  html += '<div style="font-size:11px;font-weight:900;color:#dc2626;font-family:Sora,sans-serif;letter-spacing:0.4px">TOP 5 LOSERS · ' + win + '</div>';
+  html += '</div>';
+  html += rowsHtml(W.losers, false);
+  html += '</div>';
+  html += '</div>';
+  resEl.innerHTML = html;
+  document.querySelectorAll('.moversWin').forEach(function(b){
+    if (b.getAttribute('data-win') === win) {
+      b.style.background = '#7c3aed'; b.style.color = '#fff'; b.style.borderColor = '#7c3aed';
+    } else {
+      b.style.background = '#fff'; b.style.color = '#374151'; b.style.borderColor = 'var(--border)';
+    }
+  });
+};
 
 
 
@@ -18128,6 +18280,11 @@ h+='<details open style="margin:14px 0;border-radius:16px;border:2px solid #1A3A
 // with 4-quarter color-coded cells for OWN + VOL (user's specific ask).
 h += (function(){
   var _inst = d.institutional || {};
+  // r63.91.0 HOTFIX: PLAIN_INFERENCE_INJECTED code below (lines 18244-18280) was copied
+  // from _renderReportLegacy where the variable is `_instData`, but in this IIFE the
+  // variable is `_inst`. Without this alias, every Research → Analyze call crashed
+  // with "ReferenceError: _instData is not defined" and showed the Retry UI.
+  var _instData = _inst;
   var _ownH = Array.isArray(_inst.ownership_history) ? _inst.ownership_history : [];
   var _volH = Array.isArray(_inst.volume_quarterly_history) ? _inst.volume_quarterly_history : [];
   var _holD = Array.isArray(_inst.top_holders_delta) ? _inst.top_holders_delta : [];

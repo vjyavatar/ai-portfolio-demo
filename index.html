@@ -1379,6 +1379,7 @@ details.grp>summary{font-size:13px !important;font-weight:800 !important}
 <button class="tab-btn" onclick="switchTabGroup('dream')" id="tabBtnDream" data-color="yellow" title="Dream Portfolio &amp; Multibagger Hunter" style="display:none"><span class="tab-icon">&#127775;</span> Dream</button>
 <button class="tab-btn" onclick="switchTabGroup('trading')" id="tabBtnTrading" data-color="red" title="Execution Engine — Entry, SL, Targets, Charts"><span class="tab-icon">&#9889;</span> Trader</button>
 <button class="tab-btn" onclick="switchTabGroup('markets')" id="tabBtnMarkets" data-color="cyan" title="Market Intelligence &amp; Rankings"><span class="tab-icon">&#128200;</span> Markets</button>
+<button class="tab-btn" onclick="switchTabGroup('movers')" id="tabBtnMovers" data-color="purple" title="Top 5 gainers &amp; losers across 1D / 1W / 1M / 3M / 1Y"><span class="tab-icon">&#128640;</span> Movers</button>
 <button class="tab-btn" onclick="switchTabGroup('tools')" id="tabBtnTools" data-color="emerald" title="Calculators, Education &amp; Comparison"><span class="tab-icon">&#128176;</span> Tools</button>
 </div>
 <div id="groupSubNav" style="display:none;padding:6px 16px;background:#fff;border-bottom:1px solid #e2e5ea;position:sticky;top:calc(var(--ticker-h,0px) + var(--nav-h,54px) + var(--rh-h,36px) + var(--tab-h,38px));z-index:190;gap:8px;box-shadow:0 1px 3px rgba(0,0,0,.04)"></div>
@@ -1589,6 +1590,47 @@ window._fillAlgoSelect=fillSelect;
 <!-- JS-GENERATED ANALYSIS SECTIONS -->
 <div id="analysisContainer"></div>
 
+<!-- ═══ TAB: MOVERS — r63.92.0: Top 5 gainers + losers across 1D/1W/1M/3M/1Y ═══ -->
+<div class="sc" data-tab="movers" style="border-left:3px solid #7c3aed;display:none">
+<div class="sh"><div class="si" style="background:rgba(124,58,237,.1)">&#128640;</div><div class="st" style="color:#7c3aed" id="sec-movers">Top Movers — 1D &middot; 1W &middot; 1M &middot; 3M &middot; 1Y</div></div>
+<div class="sbody">
+<!-- Control row: region + timeframe + refresh -->
+<div style="display:flex;flex-wrap:wrap;align-items:center;gap:12px;margin-bottom:14px;padding:10px 12px;background:linear-gradient(180deg,#fafbfc,#f4f6f8);border:1px solid var(--border);border-radius:10px">
+  <!-- Region -->
+  <div style="display:flex;align-items:center;gap:6px">
+    <span style="font-size:8px;font-weight:800;color:var(--text3);letter-spacing:0.7px">MARKET</span>
+    <div style="display:flex;border:1px solid var(--border);border-radius:6px;overflow:hidden;background:#fff">
+      <button id="moversRegIN" onclick="window._setMoversRegion('IN')" style="padding:5px 13px;font-size:10px;font-weight:700;border:none;cursor:pointer;font-family:Sora,sans-serif;background:linear-gradient(135deg,#7c3aed,#1e40af);color:#fff">IN</button>
+      <button id="moversRegUS" onclick="window._setMoversRegion('US')" style="padding:5px 13px;font-size:10px;font-weight:700;border:none;border-left:1px solid var(--border);cursor:pointer;font-family:Sora,sans-serif;background:#fff;color:#374151">US</button>
+    </div>
+  </div>
+  <!-- Separator -->
+  <div style="width:1px;height:18px;background:var(--border)"></div>
+  <!-- Timeframe pills -->
+  <div style="display:flex;align-items:center;gap:6px">
+    <span style="font-size:8px;font-weight:800;color:var(--text3);letter-spacing:0.7px">WINDOW</span>
+    <div style="display:flex;gap:4px;flex-wrap:wrap">
+      <button class="moversWin" data-win="1D" onclick="window._setMoversWindow('1D')" style="padding:5px 11px;font-size:10px;font-weight:700;border-radius:6px;border:1px solid #7c3aed;background:#7c3aed;color:#fff;cursor:pointer;font-family:Sora,sans-serif">1D</button>
+      <button class="moversWin" data-win="1W" onclick="window._setMoversWindow('1W')" style="padding:5px 11px;font-size:10px;font-weight:700;border-radius:6px;border:1px solid var(--border);background:#fff;color:#374151;cursor:pointer;font-family:Sora,sans-serif">1W</button>
+      <button class="moversWin" data-win="1M" onclick="window._setMoversWindow('1M')" style="padding:5px 11px;font-size:10px;font-weight:700;border-radius:6px;border:1px solid var(--border);background:#fff;color:#374151;cursor:pointer;font-family:Sora,sans-serif">1M</button>
+      <button class="moversWin" data-win="3M" onclick="window._setMoversWindow('3M')" style="padding:5px 11px;font-size:10px;font-weight:700;border-radius:6px;border:1px solid var(--border);background:#fff;color:#374151;cursor:pointer;font-family:Sora,sans-serif">3M</button>
+      <button class="moversWin" data-win="1Y" onclick="window._setMoversWindow('1Y')" style="padding:5px 11px;font-size:10px;font-weight:700;border-radius:6px;border:1px solid var(--border);background:#fff;color:#374151;cursor:pointer;font-family:Sora,sans-serif">1Y</button>
+    </div>
+  </div>
+  <!-- Spacer + refresh -->
+  <div style="flex:1;min-width:8px"></div>
+  <button onclick="window.loadMovers(window._moversState&&window._moversState.region||'IN',true)" style="padding:5px 12px;font-size:10px;font-weight:700;border-radius:6px;border:1px solid var(--border);background:#fff;color:#374151;cursor:pointer;font-family:Sora,sans-serif">&#128260; Refresh</button>
+</div>
+<!-- Status / freshness line -->
+<div id="moversStatus" style="font-size:9px;color:var(--text3);margin-bottom:10px;font-family:'JetBrains Mono','SF Mono',monospace"></div>
+<!-- Result grid: two columns (gainers / losers) -->
+<div id="moversResult" style="min-height:240px"><div style="text-align:center;padding:40px;color:var(--text3);font-size:11px">Loading top movers...</div></div>
+<!-- Footnote -->
+<div style="margin-top:10px;padding:8px 12px;border-radius:6px;background:#f8fafc;border:1px solid var(--border);font-size:9px;color:var(--text3);line-height:1.5">
+  Universe: LARGE-cap + ETF (~100&ndash;140 tickers per region). 5-minute cached snapshot. Click any row to deep-dive that ticker.
+</div>
+</div></div>
+
 <!-- ═══ TAB: INDEX RESEARCH ═══ -->
 <div class="sc" data-tab="indices" style="border-left:3px solid #06b6d4;display:none"><div class="sh"><div class="si" style="background:rgba(6,182,212,.1)">&#128200;</div><div class="st" style="color:#06b6d4" id="sec-indices">Market Intelligence — Live Data</div></div>
 <div class="sbody">
@@ -1677,8 +1719,7 @@ window._fillAlgoSelect=fillSelect;
 
 <!-- ═══ TAB: VISUAL DECISION ENGINE ═══ -->
 <div class="sc" data-tab="decision" style="border-left:3px solid #ea580c;display:none">
-<!-- r63.75.0: Header content removed (user request). Element kept for JS show/hide targeting in other modes. -->
-<div class="sh" id="deHeader" style="display:none"></div>
+<div class="sh" id="deHeader"><div class="si" style="background:rgba(26,58,120,.1)">&#127919;</div><div class="st" style="color:#1A3A78">Visual Decision Engine</div></div>
 <div class="sbody">
 <!-- Analyze Stock controls — r63.73.0: ONE-BAR DENSE CHROME (Bloomberg-style) -->
 <div id="deControls">
@@ -1728,6 +1769,7 @@ window._fillAlgoSelect=fillSelect;
 </select>
 <input id="deCustom" type="text" placeholder="symbol" maxlength="20" style="width:96px;padding:5px 10px;border-radius:6px;border:1px solid var(--border);font-size:10px;background:#fff;color:var(--text);font-family:'JetBrains Mono','SF Mono',monospace;text-transform:uppercase;letter-spacing:0.4px" onkeydown="if(event.key==='Enter'){var v=this.value.trim().toUpperCase();if(v)loadDE(v)}">
 <button onclick="var v=document.getElementById('deCustom').value.trim().toUpperCase();if(v)loadDE(v)" style="padding:5px 14px;border-radius:6px;background:linear-gradient(135deg,#1A3A78,#1e40af);color:#fff;border:none;font-size:10px;font-weight:800;cursor:pointer;white-space:nowrap;font-family:Sora,sans-serif;letter-spacing:0.4px;box-shadow:0 1px 3px rgba(26,58,120,.25)">&#9889; ANALYZE</button>
+<button onclick="window._openMovers&&window._openMovers()" title="Top 5 gainers &amp; losers across 1D / 1W / 1M / 3M / 1Y" style="padding:5px 12px;border-radius:6px;background:linear-gradient(135deg,#7c3aed,#5b21b6);color:#fff;border:none;font-size:10px;font-weight:800;cursor:pointer;white-space:nowrap;font-family:Sora,sans-serif;letter-spacing:0.4px;box-shadow:0 1px 3px rgba(124,58,237,.25);margin-left:6px">&#128640; MOVERS</button>
 </div>
 
 </div><!-- end deControlsBar -->
@@ -1833,19 +1875,18 @@ Think of this as your <strong>daily briefing from a fund manager's desk</strong>
 
 <!-- REPORTS CONTENT — populated by JS -->
 <div id="engineReportArea" style="margin-bottom:14px">
-<!-- r63.83.0: Replaced unreadable dark-green gradient with light institutional palette.
-     Previous: linear-gradient(160deg,#022c22,#064e3b) made #10b981 "Wealth Engine V1" and #64748b
-     body text completely invisible. Now: soft cream/white with navy and amber accents — every
-     character meets WCAG AA contrast on its background. -->
-<div style="padding:20px 22px;border-radius:14px;background:linear-gradient(135deg,#fafafa,#f8fafc);border:1px solid #e2e8f0;text-align:center;position:relative">
-<div style="font-size:10px;letter-spacing:2px;color:#1A3A78;font-weight:800;margin-bottom:6px;font-family:Sora,sans-serif">CELESYS INSTITUTIONAL</div>
-<div style="font-size:18px;font-weight:900;color:#0A1628;font-family:Sora,sans-serif;margin-bottom:6px">&#127942; Engine Report &mdash; Best Stocks From Both Engines</div>
-<div style="font-size:11px;color:#475569;margin-bottom:14px;line-height:1.65;max-width:580px;margin-left:auto;margin-right:auto">Scans 30 stocks through <strong style="color:#059669">Wealth Engine V1</strong> (Piotroski, Moat, DCF, Graham) &#10132; V1 passes get deep-scanned through <strong style="color:#1A3A78">Wealth Engine Pro V2</strong> (ROIC, Monte Carlo, Alpha Signals). Stocks that pass <strong style="color:#92400e">BOTH</strong> engines are institutional-grade must-owns.</div>
+<div style="padding:20px;border-radius:16px;background:linear-gradient(160deg,#022c22,#064e3b);border:2px solid rgba(16,185,129,.2);text-align:center;position:relative;overflow:hidden">
+<div style="position:absolute;inset:0;background:radial-gradient(ellipse at 60% 30%,rgba(16,185,129,.1),transparent 70%);pointer-events:none"></div>
+<div style="position:relative">
+<div style="font-size:9px;letter-spacing:3px;color:#94a3b8;margin-bottom:6px">CELESYS INSTITUTIONAL</div>
+<div style="font-size:18px;font-weight:900;color:#fff;font-family:Sora,sans-serif;margin-bottom:4px">&#127942; Engine Report — Best Stocks From Both Engines</div>
+<div style="font-size:10px;color:#64748b;margin-bottom:14px;line-height:1.6;max-width:500px;margin-left:auto;margin-right:auto">Scans 30 stocks through <strong style="color:#10b981">Wealth Engine V1</strong> (Piotroski, Moat, DCF, Graham) &#10132; V1 passes get deep-scanned through <strong style="color:#1A3A78">Wealth Engine Pro V2</strong> (ROIC, Monte Carlo, Alpha Signals). Stocks that pass <strong style="color:#fff">BOTH</strong> engines are institutional-grade must-owns.</div>
 <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
-<button onclick="loadEngineReport('IN')" id="erBtnIN" style="padding:10px 24px;border-radius:10px;background:linear-gradient(135deg,#1A3A78,#1e40af);color:#fff;border:none;font-size:12px;font-weight:800;cursor:pointer;font-family:Sora,sans-serif;box-shadow:0 2px 8px rgba(26,58,120,.2);transition:all .2s" onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 4px 14px rgba(26,58,120,.3)'" onmouseout="this.style.transform='none';this.style.boxShadow='0 2px 8px rgba(26,58,120,.2)'">IN India Engine Report</button>
-<button onclick="loadEngineReport('US')" id="erBtnUS" style="padding:10px 24px;border-radius:10px;background:linear-gradient(135deg,#1A3A78,#1e40af);color:#fff;border:none;font-size:12px;font-weight:800;cursor:pointer;font-family:Sora,sans-serif;box-shadow:0 2px 8px rgba(26,58,120,.2);transition:all .2s" onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 4px 14px rgba(26,58,120,.3)'" onmouseout="this.style.transform='none';this.style.boxShadow='0 2px 8px rgba(26,58,120,.2)'">US USA Engine Report</button>
+<button onclick="loadEngineReport('IN')" id="erBtnIN" style="padding:10px 24px;border-radius:10px;background:linear-gradient(135deg,#1A3A78,#1e40af);color:#fff;border:none;font-size:12px;font-weight:800;cursor:pointer;font-family:Sora,sans-serif;box-shadow:0 4px 16px rgba(16,185,129,.3);transition:all .2s" onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 8px 24px rgba(16,185,129,.4)'" onmouseout="this.style.transform='none';this.style.boxShadow='0 4px 16px rgba(16,185,129,.3)'">IN India Engine Report</button>
+<button onclick="loadEngineReport('US')" id="erBtnUS" style="padding:10px 24px;border-radius:10px;background:linear-gradient(135deg,#1A3A78,#1e40af);color:#fff;border:none;font-size:12px;font-weight:800;cursor:pointer;font-family:Sora,sans-serif;box-shadow:0 4px 16px rgba(59,130,246,.3);transition:all .2s" onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 8px 24px rgba(59,130,246,.4)'" onmouseout="this.style.transform='none';this.style.boxShadow='0 4px 16px rgba(59,130,246,.3)'">US USA Engine Report</button>
 </div>
-<div style="font-size:9px;color:#64748b;margin-top:10px">&#9201; First run ~3-5 min (30 stocks &#215; 2 engines). Cached 30 min after. Results appear below.</div>
+<div style="font-size:8px;color:#94a3b8;margin-top:10px">&#9201; First run ~3-5 min (30 stocks &#215; 2 engines). Cached 30 min after. Results appear below.</div>
+</div>
 </div>
 </div>
 <div id="reportsContent"></div>

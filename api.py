@@ -6131,6 +6131,20 @@ _CACHE_TTL_IN = 300          # India: NSE is reliable, refresh every 5min.
 _CACHE_TTL_US = 300          # US: 5min matches IN, gives Yahoo breathing room (was 180s).
 
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# r63.92.0: MOVERS — Top 5 gainers + losers across 5 timeframes (1D/1W/1M/3M/1Y)
+# Scans LARGE-cap + ETF universe once per region per 5 minutes, computes pct
+# change for each window from the existing data_sources price-history fallback
+# chain (finnhub→yfinance→google_finance for US; yfinance→nse_chart→google for
+# IN). Stale-while-revalidate cache, keep-last-good on empty scans.
+# ═══════════════════════════════════════════════════════════════════════════════
+_movers_cache = {"IN": {"data": None, "time": 0}, "US": {"data": None, "time": 0}}
+_movers_busy = set()
+_movers_busy_since = {}
+_MOVERS_CACHE_TTL = 300                                              # 5 min — matches bottom-nav
+_MOVERS_WINDOWS_DAYS = {"1D": 1, "1W": 5, "1M": 21, "3M": 63, "1Y": 252}   # trading-day offsets
+
+
 # ═══════════════════════════════════════════════════════════════════════
 # CIRCUIT BREAKER (r23)
 #
@@ -7484,6 +7498,188 @@ async def bottom_nav_scan(region: str = "IN"):
         import threading
         threading.Thread(target=_run_bottom_nav_scan, args=(reg,), daemon=True).start()
     return {"success": True, "region": reg, "count": 0, "tickers": [], "ts": 0}
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# r63.92.0: MOVERS HELPERS + ENDPOINT
+# Returns top-5 gainers + top-5 losers per region across 1D / 1W / 1M / 3M / 1Y.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def _movers_compute_one_ticker(symbol, region):
+    """Fetch ~1Y of daily closes for one ticker; compute pct change for each window.
+
+    Returns: {symbol, last, windows: {'1D': pct, '1W': pct, ...}, src} or None on failure.
+    Uses data_sources.get_price_history which already has region-aware fallback
+    (finnhub→yfinance→google for US; yfinance→nse_chart→google for IN) and 5-min
+    in-process caching, so calling it 200x in one scan is cheap on repeat runs.
+    """
+    try:
+        ph = data_sources.get_price_history(symbol, region)
+        if not ph or not ph.get("closes"):
+            return None
+        closes = ph["closes"]
+        if not isinstance(closes, dict) or len(closes) < 2:
+            return None
+        # Sort dates desc; prices[0] = most recent close.
+        sorted_dates = sorted(closes.keys(), reverse=True)
+        prices = [closes[d] for d in sorted_dates if closes[d] and closes[d] > 0]
+        if len(prices) < 2:
+            return None
+        last = prices[0]
+        windows = {}
+        for win_label, days_back in _MOVERS_WINDOWS_DAYS.items():
+            # Cap to available history. Skip a window we don't have enough data for.
+            if days_back >= len(prices):
+                continue
+            prior = prices[days_back]
+            if prior <= 0:
+                continue
+            pct = (last - prior) / prior * 100.0
+            # Sanity clamp — anything >500% in 1D is almost certainly a corporate-action
+            # artifact (split/bonus not yet adjusted in the source). Drop the window.
+            if win_label == "1D" and abs(pct) > 50:
+                continue
+            windows[win_label] = round(pct, 2)
+        if not windows:
+            return None
+        return {
+            "symbol": symbol,
+            "last":   round(last, 2),
+            "windows": windows,
+            "src":    ph.get("_source", "?"),
+        }
+    except Exception:
+        return None
+
+
+def _run_movers_scan(region):
+    """Background thread target: scan universe, bucket per-window gainers/losers, cache."""
+    reg = (region or "").upper()
+    if reg not in ("IN", "US"):
+        return
+    if reg in _movers_busy:
+        return
+    _movers_busy.add(reg)
+    _movers_busy_since[reg] = time.time()
+    try:
+        from universe_classifier import UC
+        # LARGE + ETF — high liquidity, reliable data sources, manageable count.
+        # IN:  ~101 LARGE + ~11 ETF = ~112
+        # US:  ~102 LARGE + ~35 ETF = ~137
+        universe = list(dict.fromkeys(UC.get(reg, "LARGE") + UC.get(reg, "ETF")))
+        print(f"[MOVERS] {reg}: scanning {len(universe)} tickers (LARGE+ETF)…")
+        t0 = time.time()
+        results = []
+        n_workers = 6 if reg == "IN" else 4   # US Yahoo rate-limits tighter
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        with ThreadPoolExecutor(max_workers=n_workers) as executor:
+            futures = {executor.submit(_movers_compute_one_ticker, s, reg): s for s in universe}
+            for fut in as_completed(futures, timeout=180):
+                try:
+                    r = fut.result()
+                    if r:
+                        results.append(r)
+                except Exception:
+                    pass
+        scan_time = time.time() - t0
+        print(f"[MOVERS] {reg}: {len(results)}/{len(universe)} returned data in {scan_time:.1f}s")
+
+        # KEEP-LAST-GOOD: if this scan returned nothing, preserve prior snapshot.
+        prev = _movers_cache.get(reg, {})
+        prev_data = prev.get("data") or {}
+        if not results:
+            if prev_data.get("windows"):
+                prev_data["_last_scan_empty"] = True
+                prev_data["_last_scan_attempt"] = time.time()
+                _movers_cache[reg] = {"data": prev_data, "time": prev.get("time", time.time())}
+                print(f"[MOVERS] {reg}: empty scan, preserved previous snapshot")
+            else:
+                _movers_cache[reg] = {
+                    "data": {"success": True, "region": reg, "ts": time.time(),
+                             "count": 0, "universe_size": len(universe),
+                             "windows": {}, "_last_scan_empty": True},
+                    "time": time.time(),
+                }
+            return
+
+        # Bucket per window: top-5 gainers (sorted desc) + top-5 losers (sorted asc).
+        windows_out = {}
+        for win in _MOVERS_WINDOWS_DAYS.keys():
+            rows = [r for r in results if win in r.get("windows", {})]
+            rows.sort(key=lambda x: x["windows"][win], reverse=True)
+            gainers = [{"symbol": r["symbol"], "last": r["last"],
+                        "pct": r["windows"][win], "src": r.get("src", "?")}
+                       for r in rows[:5]]
+            losers  = [{"symbol": r["symbol"], "last": r["last"],
+                        "pct": r["windows"][win], "src": r.get("src", "?")}
+                       for r in rows[-5:][::-1]]
+            windows_out[win] = {
+                "gainers": gainers,
+                "losers":  losers,
+                "coverage": len(rows),   # how many tickers had data for this window
+            }
+
+        _movers_cache[reg] = {
+            "data": {
+                "success":        True,
+                "region":         reg,
+                "ts":             time.time(),
+                "scan_time_sec":  round(scan_time, 1),
+                "count":          len(results),
+                "universe_size": len(universe),
+                "windows":        windows_out,
+            },
+            "time": time.time(),
+        }
+    except Exception as e:
+        print(f"[MOVERS] {reg}: scan crashed: {e}")
+        import traceback; traceback.print_exc()
+    finally:
+        _movers_busy.discard(reg)
+        _movers_busy_since.pop(reg, None)
+
+
+@app.get("/api/movers")
+async def movers(region: str = "IN"):
+    """Top 5 gainers + losers per region across 1D / 1W / 1M / 3M / 1Y.
+
+    Contract:
+      - 5-min TTL, stale-while-revalidate: returns cached snapshot instantly,
+        kicks off a background refresh when age > TTL.
+      - `_loading=True` on cold cache (no data yet) — frontend should show skeleton.
+      - `_stale=True` when cache is past TTL but bg refresh hasn't yet completed.
+      - Keep-last-good: an empty scan does NOT overwrite a working snapshot.
+      - `ts` = epoch seconds of the snapshot.
+      - `windows` = { "1D": {gainers:[...], losers:[...], coverage:N}, "1W": ..., ... }
+    """
+    reg = (region or "IN").upper()
+    if reg not in ("IN", "US"):
+        return {"success": False, "error": "region must be IN or US"}
+
+    cache = _movers_cache.get(reg, {"data": None, "time": 0})
+
+    # Stuck-flag defense (same pattern as bottom-nav).
+    busy_since = _movers_busy_since.get(reg)
+    if reg in _movers_busy and busy_since and (time.time() - busy_since) > 240:
+        print(f"[MOVERS] ⚠️ {reg}: busy flag stuck for {int(time.time()-busy_since)}s — force-clearing")
+        _movers_busy.discard(reg)
+        _movers_busy_since.pop(reg, None)
+
+    if cache["data"]:
+        age = time.time() - cache["time"]
+        if age > _MOVERS_CACHE_TTL and reg not in _movers_busy:
+            import threading
+            threading.Thread(target=_run_movers_scan, args=(reg,), daemon=True).start()
+        resp = dict(cache["data"])
+        resp["_stale"] = bool(age > _MOVERS_CACHE_TTL)
+        resp["_cache_age_sec"] = int(age)
+        return resp
+
+    # Cold cache — kick off first scan, return loading state.
+    if reg not in _movers_busy:
+        import threading
+        threading.Thread(target=_run_movers_scan, args=(reg,), daemon=True).start()
+    return {"success": True, "region": reg, "windows": {}, "ts": 0, "_loading": True}
 
 
 @app.get("/api/alert-test")
@@ -17319,6 +17515,14 @@ This is for educational analysis only, not investment advice. The 20-factor quan
         _t4 = _time.time()
         print(f"⏱️ TOTAL: {_t4-_t0:.1f}s (data={_t2-_t1:.1f}s + prompt={_t3-_t2:.1f}s + AI={_t4-_t3:.1f}s) model={ai_model_used}")
         
+        # ─── Stock Intelligence panels (Smart Money + Premium Intelligence) ───
+        try:
+            from stock_intelligence import build_intel as _smi_build_intel
+            _intel = _smi_build_intel(live_data.get("ticker", company))
+        except Exception as _intel_err:
+            print(f"[intel] build failed: {_intel_err}")
+            _intel = {}
+
         response = {
             "success": True,
             "report": report,
@@ -17336,6 +17540,10 @@ This is for educational analysis only, not investment advice. The 20-factor quan
             }
         }
         
+        # Merge intelligence panels into the response (Smart Money + Premium Intelligence)
+        if _intel:
+            response.update(_intel)
+
         # ═══ CACHE the report — next user searching same stock gets instant response ═══
         _set_cached_report(_cache_key, response)
         print(f"💾 Cached report for {_cache_key} (30min TTL, {len(_ai_report_cache)} reports cached)")
