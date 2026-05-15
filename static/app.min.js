@@ -2470,7 +2470,7 @@ window._serverValidateSession=function(){
       }
     })
     .catch(function(e){
-      // Network error — don't kick user (might be temporary)
+      // Network error — don\'t kick user (might be temporary)
       console.log('[SERVER AUTH] Network error, skipping check');
     });
 };
@@ -3223,7 +3223,7 @@ window._renderPositioningPage = function(d, activeLens) {
           'Try Refresh — server may be enriching the universe.') +
          '</div></div>';
   } else {
-    // r63.84.0: Wyckoff-regime legend so users don't have to guess what DISTRIBUTION means.
+    // r63.84.0: Wyckoff-regime legend so users don\'t have to guess what DISTRIBUTION means.
     // Hover any pill in the REGIME column for a one-line layman explanation; the legend
     // below the table gives the full glossary.
     h += '<details style="margin-bottom:10px;background:#fafbfc;border:1px solid #e2e8f0;border-radius:10px;padding:0;font-family:Inter,sans-serif">';
@@ -3465,7 +3465,7 @@ window._positioningDeepDive = function(ticker) {
           try { onSubmit(new Event('submit')); }
           catch (e) { /* form submit handler may throw — ignore, value is set */ }
         }
-        // Fallback: try the form's submit button if onSubmit isn't defined.
+        // Fallback: try the form's submit button if onSubmit isn\'t defined.
         var btn = document.getElementById('symbolBtn') || document.querySelector('form#searchForm button[type="submit"]');
         if (btn && typeof onSubmit !== 'function') btn.click();
       } else {
@@ -6223,17 +6223,17 @@ return `<div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;padd
 ${marginOfSafety>=15?
 `Our DCF model says ${name} is worth <strong style="color:#10b981">${sym}${intrinsicPrice.toFixed(0)}</strong> per share, but the market is selling it at <strong>${sym}${price.toFixed(0)}</strong> — that's a <strong style="color:#10b981">${marginOfSafety.toFixed(0)}% discount</strong> to fair value. Think of it like buying a ₹100 note for ₹${(100-marginOfSafety).toFixed(0)}. The company generates ${_fn(baseFCF)} in free cash annually, growing at ~${(blendedGrowth*100).toFixed(0)}%. If this growth continues, the stock has significant room to appreciate.`
 :marginOfSafety>=0?
-`${name} appears <strong style="color:#22d3ee">fairly valued to slightly undervalued</strong>. Our model estimates fair value at ${sym}${intrinsicPrice.toFixed(0)} vs current price of ${sym}${price.toFixed(0)}. There's a modest ${marginOfSafety.toFixed(0)}% buffer. The company generates ${_fn(baseFCF)} in free cash flow. Not a screaming bargain, but you're not overpaying either.`
+`${name} appears <strong style="color:#22d3ee">fairly valued to slightly undervalued</strong>. Our model estimates fair value at ${sym}${intrinsicPrice.toFixed(0)} vs current price of ${sym}${price.toFixed(0)}. There's a modest ${marginOfSafety.toFixed(0)}% buffer. The company generates ${_fn(baseFCF)} in free cash flow. Not a screaming bargain, but you\'re not overpaying either.`
 :marginOfSafety>=-15?
 `At ${sym}${price.toFixed(0)}, the stock is <strong style="color:var(--amber)">slightly above our estimated fair value</strong> of ${sym}${intrinsicPrice.toFixed(0)}. You're paying a ${Math.abs(marginOfSafety).toFixed(0)}% premium. This could be justified if growth accelerates, but there's limited margin of safety at this price.`
-:`The stock appears <strong style="color:var(--red)">significantly overvalued</strong> at ${sym}${price.toFixed(0)} — our model estimates fair value at just ${sym}${intrinsicPrice.toFixed(0)} (${Math.abs(marginOfSafety).toFixed(0)}% premium). Either the market is pricing in growth that hasn't materialized yet, or expectations are too high. Be cautious.`}
+:`The stock appears <strong style="color:var(--red)">significantly overvalued</strong> at ${sym}${price.toFixed(0)} — our model estimates fair value at just ${sym}${intrinsicPrice.toFixed(0)} (${Math.abs(marginOfSafety).toFixed(0)}% premium). Either the market is pricing in growth that hasn\'t materialized yet, or expectations are too high. Be cautious.`}
 </p>
 </div>
 
 <!-- ═══ SECTION 2: WACC BREAKDOWN ═══ -->
 <div style="margin-bottom:20px;padding:18px;border-radius:12px;background:rgba(0,47,108,.03);border:1px solid var(--border)">
 <div style="font-family:'Sora',sans-serif;font-size:13px;font-weight:700;color:var(--text);margin-bottom:6px">⚙️ Cost of Capital (WACC) — How Much Returns Must the Company Generate?</div>
-<p style="font-size:10px;color:var(--text3);margin:0 0 14px 0;line-height:1.6">WACC is the minimum return a company must earn on its assets. Think of it as the "hurdle rate" — if the company can't beat this number, it's destroying value. Lower WACC = easier to create value.</p>
+<p style="font-size:10px;color:var(--text3);margin:0 0 14px 0;line-height:1.6">WACC is the minimum return a company must earn on its assets. Think of it as the "hurdle rate" — if the company can\'t beat this number, it\'s destroying value. Lower WACC = easier to create value.</p>
 <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px">
 ${[
 {l:'Risk-Free Rate',v:(riskFree*100).toFixed(1)+'%',tip:'10Y govt bond yield — the "zero risk" baseline',c:'var(--blue)'},
@@ -6259,7 +6259,7 @@ ${[
 <!-- ═══ SECTION 3: FCF ANALYSIS ═══ -->
 <div style="margin-bottom:20px;padding:18px;border-radius:12px;background:rgba(59,130,246,.03);border:1px solid var(--border)">
 <div style="font-family:'Sora',sans-serif;font-size:13px;font-weight:700;color:var(--text);margin-bottom:6px">💰 Free Cash Flow Analysis — The Cash the Company Actually Generates</div>
-<p style="font-size:10px;color:var(--text3);margin:0 0 14px 0;line-height:1.6">Free Cash Flow (FCF) is the cash left after all expenses and investments. This is the real money available to pay dividends, buy back shares, reduce debt, or reinvest. FCF is more reliable than reported earnings because it's harder to manipulate.</p>
+<p style="font-size:10px;color:var(--text3);margin:0 0 14px 0;line-height:1.6">Free Cash Flow (FCF) is the cash left after all expenses and investments. This is the real money available to pay dividends, buy back shares, reduce debt, or reinvest. FCF is more reliable than reported earnings because it\'s harder to manipulate.</p>
 <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px">
 ${[
 {l:'Free Cash Flow',v:_fn(baseFCF),sub:reportedFCF?'Reported':'Estimated from operations',c:'#10b981'},
@@ -6284,7 +6284,7 @@ ${[
 <!-- ═══ SECTION 4: GROWTH ASSUMPTIONS ═══ -->
 <div style="margin-bottom:20px;padding:18px;border-radius:12px;background:rgba(245,158,11,.03);border:1px solid var(--border)">
 <div style="font-family:'Sora',sans-serif;font-size:13px;font-weight:700;color:var(--text);margin-bottom:6px">📈 Growth Rate Analysis — How Fast Can the Company Grow?</div>
-<p style="font-size:10px;color:var(--text3);margin:0 0 14px 0;line-height:1.6">We blend three different growth estimates to get a balanced projection. Historical growth shows what happened. Sustainable growth shows what's theoretically possible. The final blended rate fades toward GDP growth over 10 years (companies can't grow faster than the economy forever).</p>
+<p style="font-size:10px;color:var(--text3);margin:0 0 14px 0;line-height:1.6">We blend three different growth estimates to get a balanced projection. Historical growth shows what happened. Sustainable growth shows what's theoretically possible. The final blended rate fades toward GDP growth over 10 years (companies can\'t grow faster than the economy forever).</p>
 <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px">
 <div style="padding:14px;border-radius:10px;background:rgba(59,130,246,.04);border:1px solid rgba(59,130,246,.15)"><div style="font-size:10px;color:#2d4373;margin-bottom:4px">📊 Historical Growth (40% weight)</div><div style="font-size:20px;font-weight:800;color:var(--blue)">${_pct(histGrowth*100)}</div><div style="font-size:9px;color:#2d4373;margin-top:4px">Revenue: ${_pct(rg)} · Earnings: ${_pct(eg)} · Quarterly: ${_pct(eqg)}</div></div>
 <div style="padding:14px;border-radius:10px;background:rgba(139,92,246,.04);border:1px solid rgba(139,92,246,.15)"><div style="font-size:10px;color:#2d4373;margin-bottom:4px">🔄 Sustainable Growth (30% weight)</div><div style="font-size:20px;font-weight:800;color:var(--purple)">${_pct(sustainGrowth*100)}</div><div style="font-size:9px;color:#2d4373;margin-top:4px">ROE × (1 - Payout Ratio) = ${roe.toFixed(1)}% × ${(100-payout).toFixed(0)}%</div></div>
@@ -6300,7 +6300,7 @@ ${[
 <!-- ═══ SECTION 5: 10-YEAR PROJECTION TABLE ═══ -->
 <div style="margin-bottom:20px">
 <div style="font-family:'Sora',sans-serif;font-size:13px;font-weight:700;color:var(--text);margin-bottom:6px">📅 ${projYears}-Year FCF Projections</div>
-<p style="font-size:10px;color:var(--text3);margin:0 0 10px 0">Growth rate fades from ${(blendedGrowth*100).toFixed(1)}% to ${(terminalGrowth*100).toFixed(1)}% after Year 5 (companies can't grow faster than GDP forever)</p>
+<p style="font-size:10px;color:var(--text3);margin:0 0 10px 0">Growth rate fades from ${(blendedGrowth*100).toFixed(1)}% to ${(terminalGrowth*100).toFixed(1)}% after Year 5 (companies can\'t grow faster than GDP forever)</p>
 <div style="overflow-x:auto"><table class="pick-tbl">
 <tr><th>Year</th><th>Growth Rate</th><th>Projected FCF</th><th>Discount Factor</th><th>Present Value</th><th>Cumulative PV</th></tr>
 <tr style="background:rgba(59,130,246,.04)"><td style="font-weight:700;color:var(--text3)">Base (Today)</td><td>—</td><td style="font-weight:700">${_fn(baseFCF)}</td><td>1.000</td><td style="font-weight:700;color:#10b981">${_fn(baseFCF)}</td><td>—</td></tr>`;
@@ -6336,7 +6336,7 @@ h+=`<tr style="background:rgba(139,92,246,.06);border-top:2px solid var(--purple
 </div>
 <div style="padding:12px;border-radius:8px;background:rgba(16,185,129,.04);border-left:3px solid #10b981;margin-top:10px">
 <div style="font-size:11px;font-weight:700;color:#10b981">💡 In Simple Terms:</div>
-<div style="font-size:10px;color:var(--text2);margin-top:4px;line-height:1.7">Think of Enterprise Value as the total price tag of the entire business. But you don't want the debt — so we subtract it. And the cash on hand is a bonus — so we add it. What's left is the Equity Value — the true worth belonging to shareholders. Divided by the number of shares, that's YOUR fair price per share: <strong style="color:#10b981">${sym}${intrinsicPrice.toFixed(2)}</strong>. ${marginOfSafety>=15?'Since the market is charging only '+sym+price.toFixed(0)+', you\'re getting a bargain.':marginOfSafety>=-5?'The market price of '+sym+price.toFixed(0)+' is close to this — fair deal.':'The market is charging '+sym+price.toFixed(0)+' which is MORE than our calculated value — you\'d be overpaying.'}</div>
+<div style="font-size:10px;color:var(--text2);margin-top:4px;line-height:1.7">Think of Enterprise Value as the total price tag of the entire business. But you don\'t want the debt — so we subtract it. And the cash on hand is a bonus — so we add it. What's left is the Equity Value — the true worth belonging to shareholders. Divided by the number of shares, that's YOUR fair price per share: <strong style="color:#10b981">${sym}${intrinsicPrice.toFixed(2)}</strong>. ${marginOfSafety>=15?'Since the market is charging only '+sym+price.toFixed(0)+', you\'re getting a bargain.':marginOfSafety>=-5?'The market price of '+sym+price.toFixed(0)+' is close to this — fair deal.':'The market is charging '+sym+price.toFixed(0)+' which is MORE than our calculated value — you\'d be overpaying.'}</div>
 </div>
 
 <!-- ═══ SECTION 7: SENSITIVITY ANALYSIS ═══ -->
@@ -6350,7 +6350,7 @@ ${sensRows}
 <div style="font-size:9px;color:var(--text3);margin-top:6px">★ = current base case assumption. CMP: ${sym}${price.toFixed(0)}</div>
 <div style="padding:12px;border-radius:8px;background:rgba(139,92,246,.04);border-left:3px solid var(--purple);margin-top:10px">
 <div style="font-size:11px;font-weight:700;color:var(--purple)">💡 How to Read This:</div>
-<div style="font-size:10px;color:var(--text2);margin-top:4px;line-height:1.7">This table answers: "What if I'm wrong?" Each cell shows the fair value under different assumptions. The ★ cell is our base case. <strong>If most cells are GREEN (above current price)</strong>, the stock looks undervalued even with pessimistic assumptions — that's a strong signal. <strong>If most cells are RED</strong>, you need very optimistic assumptions to justify the price — that's risky. The wider the range of green cells, the higher your margin of safety.</div>
+<div style="font-size:10px;color:var(--text2);margin-top:4px;line-height:1.7">This table answers: "What if I\'m wrong?" Each cell shows the fair value under different assumptions. The ★ cell is our base case. <strong>If most cells are GREEN (above current price)</strong>, the stock looks undervalued even with pessimistic assumptions — that's a strong signal. <strong>If most cells are RED</strong>, you need very optimistic assumptions to justify the price — that's risky. The wider the range of green cells, the higher your margin of safety.</div>
 </div>
 </div>
 
@@ -6599,7 +6599,7 @@ We rate ${name} <strong style="color:${ratingColor}">${rating}</strong> with a 1
 <div><span style="color:#ef4444;font-weight:700">● RED numbers</span> = Weak/Warning — the metric is below acceptable levels. Like scoring below 40% — needs attention before investing.</div>
 <div><span style="color:var(--cyan);font-weight:700">● CYAN numbers</span> = Informational — neutral metrics shown for context, like market cap or current price.</div>
 <div><span style="font-weight:700">Grade A</span> = Excellent (top 20%) · <span style="font-weight:700">B</span> = Good (top 40%) · <span style="font-weight:700">C</span> = Average · <span style="font-weight:700">D</span> = Poor (bottom 30%)</div>
-<div><span style="font-weight:700">✅ = Pass</span> (meets the criteria) · <span style="font-weight:700">❌ = Fail</span> (doesn't meet) — used in the Investment Checklist section</div>
+<div><span style="font-weight:700">✅ = Pass</span> (meets the criteria) · <span style="font-weight:700">❌ = Fail</span> (doesn\'t meet) — used in the Investment Checklist section</div>
 </div>
 </div>
 
@@ -6724,7 +6724,7 @@ ${peerRows}
 
 <div style="padding:12px;border-radius:8px;background:rgba(139,92,246,.04);border-left:3px solid var(--purple);margin:10px 0 16px">
 <div style="font-size:11px;font-weight:700;color:var(--purple)">💡 Why Peer Comparison Matters:</div>
-<div style="font-size:10px;color:var(--text2);margin-top:4px;line-height:1.8">Comparing a company to its peers is like comparing athletes in the same sport — you can only judge performance against similar competition. A P/E of 30x might seem expensive, but if every competitor trades at 40x, it could actually be cheap. Look for companies with <strong>higher margins AND lower P/E</strong> than peers — that combination signals the market hasn't recognized their quality yet. Conversely, if a stock has the lowest margins but highest P/E in its peer group, it's likely overvalued.</div>
+<div style="font-size:10px;color:var(--text2);margin-top:4px;line-height:1.8">Comparing a company to its peers is like comparing athletes in the same sport — you can only judge performance against similar competition. A P/E of 30x might seem expensive, but if every competitor trades at 40x, it could actually be cheap. Look for companies with <strong>higher margins AND lower P/E</strong> than peers — that combination signals the market hasn\'t recognized their quality yet. Conversely, if a stock has the lowest margins but highest P/E in its peer group, it\'s likely overvalued.</div>
 </div>
 
 <!-- RISK MATRIX -->
@@ -6740,7 +6740,7 @@ ${[
 </div>
 <div style="padding:10px;border-radius:8px;background:rgba(239,68,68,.04);border-left:3px solid var(--red);margin-top:12px">
 <div style="font-size:11px;font-weight:700;color:var(--red)">💡 Understanding Your Risk:</div>
-<div style="font-size:10px;color:var(--text2);margin-top:4px;line-height:1.7">Think of risk like weather warnings: LOW = clear skies, you can invest with confidence. MODERATE = some clouds, normal caution. HIGH = storm approaching, smaller position sizes recommended. The most dangerous risks are the ones you don't see — ${de>150?'HIGH DEBT is the biggest concern here. In a recession, heavily indebted companies can go bankrupt while low-debt competitors survive and thrive.':beta>1.5?'HIGH VOLATILITY means this stock swings much more than the market. A 10% market drop could mean 15-20% here. Only invest money you won\'t need for 3+ years.':'the risk profile looks manageable for this stock.'}</div>
+<div style="font-size:10px;color:var(--text2);margin-top:4px;line-height:1.7">Think of risk like weather warnings: LOW = clear skies, you can invest with confidence. MODERATE = some clouds, normal caution. HIGH = storm approaching, smaller position sizes recommended. The most dangerous risks are the ones you don\'t see — ${de>150?'HIGH DEBT is the biggest concern here. In a recession, heavily indebted companies can go bankrupt while low-debt competitors survive and thrive.':beta>1.5?'HIGH VOLATILITY means this stock swings much more than the market. A 10% market drop could mean 15-20% here. Only invest money you won\'t need for 3+ years.':'the risk profile looks manageable for this stock.'}</div>
 </div>
 
 <!-- RISK SCENARIO BOX -->
@@ -6795,7 +6795,7 @@ ${[
 
 <div style="padding:12px;border-radius:8px;background:rgba(16,185,129,.04);border-left:3px solid #10b981;margin:10px 0 16px">
 <div style="font-size:11px;font-weight:700;color:#10b981">💡 Cash Flow — The Real Measure of Health:</div>
-<div style="font-size:10px;color:var(--text2);margin-top:4px;line-height:1.8">Profits can be manipulated through accounting tricks, but <strong>cash flow cannot be faked</strong>. Operating Cash Flow (OCF) shows how much actual cash the business generates from selling its products. Free Cash Flow (FCF) is what's left after reinvesting in the business — this is the money available for dividends, buybacks, or debt repayment. <strong>The golden rule:</strong> If a company reports high profits but low/negative cash flow, something is wrong (possibly aggressive accounting). If cash flow is HIGHER than reported profits, that's a quality signal — the business is generating more cash than the income statement shows. FCF Yield above 5% means the company generates 5% of its market value in cash every year — like a dividend you don't have to pay tax on.</div>
+<div style="font-size:10px;color:var(--text2);margin-top:4px;line-height:1.8">Profits can be manipulated through accounting tricks, but <strong>cash flow cannot be faked</strong>. Operating Cash Flow (OCF) shows how much actual cash the business generates from selling its products. Free Cash Flow (FCF) is what's left after reinvesting in the business — this is the money available for dividends, buybacks, or debt repayment. <strong>The golden rule:</strong> If a company reports high profits but low/negative cash flow, something is wrong (possibly aggressive accounting). If cash flow is HIGHER than reported profits, that's a quality signal — the business is generating more cash than the income statement shows. FCF Yield above 5% means the company generates 5% of its market value in cash every year — like a dividend you don\'t have to pay tax on.</div>
 </div>
 <div style="padding:10px;border-radius:8px;background:rgba(59,130,246,.04);border-left:3px solid var(--blue);margin:0 0 16px">
 <div style="font-size:10px;font-weight:700;color:var(--blue)">📖 Salary Analogy — Understanding Cash Flow</div>
@@ -6828,7 +6828,7 @@ return`<div style="padding:12px;border-radius:8px;background:rgba(0,47,108,.02);
 
 <div style="padding:12px;border-radius:8px;background:rgba(59,130,246,.04);border-left:3px solid var(--blue);margin:10px 0 16px">
 <div style="font-size:11px;font-weight:700;color:var(--blue)">💡 Balance Sheet — Can the Company Survive a Storm?</div>
-<div style="font-size:10px;color:var(--text2);margin-top:4px;line-height:1.8">The balance sheet tells you if the company can weather a downturn. <strong>Debt-to-Equity (D/E):</strong> Below 50% = conservative (like a family with small mortgage), 50-100% = moderate, above 150% = aggressive (like being heavily leveraged). High D/E companies fail first in recessions. <strong>Current Ratio:</strong> Above 1.5 means the company can pay all short-term bills 1.5x over — it won't run out of cash. Below 1.0 is a red flag — the company may struggle to pay immediate debts. <strong>Book Value:</strong> Think of it as the "fire sale" price — if you liquidated everything and paid all debts, what's left per share? If stock price is below book value, you're paying less than the assets are worth (potentially a deep value opportunity).</div>
+<div style="font-size:10px;color:var(--text2);margin-top:4px;line-height:1.8">The balance sheet tells you if the company can weather a downturn. <strong>Debt-to-Equity (D/E):</strong> Below 50% = conservative (like a family with small mortgage), 50-100% = moderate, above 150% = aggressive (like being heavily leveraged). High D/E companies fail first in recessions. <strong>Current Ratio:</strong> Above 1.5 means the company can pay all short-term bills 1.5x over — it won\'t run out of cash. Below 1.0 is a red flag — the company may struggle to pay immediate debts. <strong>Book Value:</strong> Think of it as the "fire sale" price — if you liquidated everything and paid all debts, what's left per share? If stock price is below book value, you\'re paying less than the assets are worth (potentially a deep value opportunity).</div>
 </div>
 <div style="padding:10px;border-radius:8px;background:rgba(139,92,246,.04);border-left:3px solid var(--purple);margin:0 0 16px">
 <div style="font-size:10px;font-weight:700;color:var(--purple)">📖 Home Loan Analogy — Understanding Debt</div>
@@ -6843,7 +6843,7 @@ return`<div style="padding:12px;border-radius:8px;background:rgba(0,47,108,.02);
 <!-- GROWTH DEEP DIVE -->
 <div style="margin-bottom:20px;padding:18px;border-radius:12px;background:rgba(139,92,246,.03);border:1px solid var(--border)">
 <div style="font-family:'Sora',sans-serif;font-size:13px;font-weight:700;color:var(--text);margin-bottom:6px">🚀 Growth Metrics Deep Dive</div>
-<p style="font-size:10px;color:var(--text3);margin:0 0 12px 0;line-height:1.6">Growth is what creates long-term wealth. Revenue growth shows the company is gaining market share. Earnings growth shows it's becoming more profitable. The PEG ratio tells you if you're overpaying for that growth.</p>
+<p style="font-size:10px;color:var(--text3);margin:0 0 12px 0;line-height:1.6">Growth is what creates long-term wealth. Revenue growth shows the company is gaining market share. Earnings growth shows it\'s becoming more profitable. The PEG ratio tells you if you\'re overpaying for that growth.</p>
 <div style="overflow-x:auto"><table class="pick-tbl">
 <tr><th>Metric</th><th>Value</th><th>Grade</th><th>What It Means</th></tr>
 ${[
@@ -6982,7 +6982,7 @@ ${beta>1.3?'• Market downturns amplified by high beta<br>':''}
 
 <div style="padding:12px;border-radius:8px;background:rgba(139,92,246,.04);border-left:3px solid var(--purple);margin:10px 0 16px">
 <div style="font-size:11px;font-weight:700;color:var(--purple)">💡 Understanding Price Targets:</div>
-<div style="font-size:10px;color:var(--text2);margin-top:4px;line-height:1.8">We use THREE different methods to calculate a target price because no single method is reliable alone. <strong>P/E Method</strong> assumes the stock will trade at the sector average P/E — if it's currently below, it should rise. <strong>Mean Reversion</strong> assumes the stock will move toward its 52-week average — extreme highs/lows tend to correct. <strong>Book Value + Premium</strong> estimates value from assets plus a quality premium based on ROE. When all 3 agree on direction, that's a high-confidence signal. When they disagree, treat the range between the lowest and highest as the "uncertainty zone." Never bet everything on one price target — use them as guideposts, not guarantees.</div>
+<div style="font-size:10px;color:var(--text2);margin-top:4px;line-height:1.8">We use THREE different methods to calculate a target price because no single method is reliable alone. <strong>P/E Method</strong> assumes the stock will trade at the sector average P/E — if it\'s currently below, it should rise. <strong>Mean Reversion</strong> assumes the stock will move toward its 52-week average — extreme highs/lows tend to correct. <strong>Book Value + Premium</strong> estimates value from assets plus a quality premium based on ROE. When all 3 agree on direction, that's a high-confidence signal. When they disagree, treat the range between the lowest and highest as the "uncertainty zone." Never bet everything on one price target — use them as guideposts, not guarantees.</div>
 </div>
 
 <!-- INVESTMENT RECOMMENDATION -->
@@ -7037,7 +7037,7 @@ ${rating==='BUY'?'Strong conviction → Start with 3-5% of your portfolio. Add m
 </div>
 <div style="padding:10px;border-radius:8px;background:rgba(16,185,129,.04);border-left:3px solid #10b981">
 <div style="font-weight:700;color:#10b981;margin-bottom:3px">Step 6: Set Alerts & Review</div>
-Set a price alert at the target price (${sym}${target12m.toFixed(0)}). Review this analysis again after the next quarterly earnings. If fundamentals deteriorate, don't fall in love with the stock — cut losses early.
+Set a price alert at the target price (${sym}${target12m.toFixed(0)}). Review this analysis again after the next quarterly earnings. If fundamentals deteriorate, don\'t fall in love with the stock — cut losses early.
 </div>
 </div>
 </div>
@@ -7656,7 +7656,7 @@ if(!_userStock){var _sc=document.getElementById('stickyCompany');if(_sc&&_sc.tex
 if(!_userStock&&location.hash){var _uh=location.hash.replace('#','').toUpperCase();if(_uh.length>=2&&_uh.length<=10)_userStock=_uh}
 // Clean up: remove .NS .BO suffixes
 _userStock=(_userStock||'').replace('.NS','').replace('.BO','').replace('^','');
-// Add stock FIRST if it's not an index
+// Add stock FIRST if it\'s not an index
 if(_userStock&&_userStock.length>=2&&indices.indexOf(_userStock)<0){symbols.push(_userStock)}
 // Then add indices
 symbols=symbols.concat(indices);
@@ -8902,7 +8902,7 @@ window._embedDeepDDIntoInvestor = function(symbol, region, targetEl) {
   var sym = String(symbol).toUpperCase();
   region = region || window._deRegion || 'US';
 
-  // r63.75.0: Self-bootstrap — if the legacy renderer wasn't exposed at app init (loadDeepDD
+  // r63.75.0: Self-bootstrap — if the legacy renderer wasn\'t exposed at app init (loadDeepDD
   // was never invoked), call it now. After r63.74.0's refactor, loadDeepDD's closure setup
   // and helper exposure run BEFORE the early-return guards, so this triggers exposure
   // without any DOM side effects.
@@ -9143,7 +9143,11 @@ window._renderPremiumIntelligence = function(d, S, reg) {
     });
     fpeBody += '</tbody></table></div>';
   }
+  if (est && est.plain_english) {
+    fpeBody += '<div style="margin:10px 0 0 0;padding:8px 12px;background:#eef2ff;border-left:3px solid #6366f1;border-radius:4px;font-size:10px;line-height:1.5;color:#312e81"><strong style="font-size:9px;color:#4338ca">PLAIN ENGLISH:</strong> ' + est.plain_english + '</div>';
+  }
   groupBody += _piCard('📅', 'Fiscal Period Ending — Analysts Expect', 'Consensus revenue / EPS / forward P/E by fiscal year', fpeBody);
+  // PI_PLAIN_INJECTED_v1
 
   // ═══ 2. ESTIMATE REVISIONS HEATMAP ═══
   var rev = pick(d, ['estimate_revisions', 'revisions', 'consensus_revisions']);
@@ -9204,6 +9208,10 @@ window._renderPremiumIntelligence = function(d, S, reg) {
       revBody += '</div>';
     }
   }
+  var _erObj = pick(d, ['estimate_revisions']);
+  if (_erObj && _erObj.plain_english) {
+    revBody += '<div style="margin:10px 0 0 0;padding:8px 12px;background:#eef2ff;border-left:3px solid #6366f1;border-radius:4px;font-size:10px;line-height:1.5;color:#312e81"><strong style="font-size:9px;color:#4338ca">PLAIN ENGLISH:</strong> ' + _erObj.plain_english + '</div>';
+  }
   groupBody += _piCard('📈', 'Estimate Revisions Heatmap', '7d / 30d / 60d / 90d consensus shifts — green = upgrades, red = downgrades', revBody);
 
   // ═══ 3. EARNINGS SURPRISE HISTORY (8Q) ═══
@@ -9261,6 +9269,9 @@ window._renderPremiumIntelligence = function(d, S, reg) {
       surBody += beats + ' beats / ' + misses + ' misses · ' + beatRate + '% beat rate over last ' + (beats + misses) + ' quarters';
       surBody += '</div>';
     }
+  }
+  if (d.earnings_surprises_plain_english) {
+    surBody += '<div style="margin:10px 0 0 0;padding:8px 12px;background:#eef2ff;border-left:3px solid #6366f1;border-radius:4px;font-size:10px;line-height:1.5;color:#312e81"><strong style="font-size:9px;color:#4338ca">PLAIN ENGLISH:</strong> ' + d.earnings_surprises_plain_english + '</div>';
   }
   groupBody += _piCard('🎯', 'Earnings Surprise History', 'Last 8 quarters · estimate vs actual · next-day price reaction · 5d drift', surBody);
 
@@ -9320,6 +9331,9 @@ window._renderPremiumIntelligence = function(d, S, reg) {
       '</tr>';
   });
   multBody += '</tbody></table></div>';
+  if (d.forward_multiples_plain_english) {
+    multBody += '<div style="margin:10px 0 0 0;padding:8px 12px;background:#eef2ff;border-left:3px solid #6366f1;border-radius:4px;font-size:10px;line-height:1.5;color:#312e81"><strong style="font-size:9px;color:#4338ca">PLAIN ENGLISH:</strong> ' + d.forward_multiples_plain_english + '</div>';
+  }
   groupBody += _piCard('📊', 'Forward Multiples Stack', 'Forward P/E · PEG · EV/EBITDA · P/S · P/FCF vs own 5Y median — cheap or rich vs history?', multBody);
 
   // ═══ 5. DIVIDEND QUALITY (skip non-payers) ═══
@@ -9387,18 +9401,35 @@ window._renderPremiumIntelligence = function(d, S, reg) {
       divBody += '<span style="font-weight:900;color:' + dvC + '">DIVIDEND QUALITY: ' + dvVerdict + '</span> · ' + divScore + '/' + divChecks + ' health checks pass';
       divBody += '</div>';
     }
+    var _dqObj = pick(d, ['dividend_quality', 'dividend', 'div']);
+    if (_dqObj && _dqObj.plain_english) {
+      divBody += '<div style="margin:10px 0 0 0;padding:8px 12px;background:#eef2ff;border-left:3px solid #6366f1;border-radius:4px;font-size:10px;line-height:1.5;color:#312e81"><strong style="font-size:9px;color:#4338ca">PLAIN ENGLISH:</strong> ' + _dqObj.plain_english + '</div>';
+    }
     groupBody += _piCard('💵', 'Dividend Quality Score', 'Payout · FCF coverage · 5Y CAGR · growth streak · next ex-date', divBody);
   }
 
   // ═══ SOFT COLLAPSIBLE OUTER GROUP (was: saturated amber gradient banner) ═══
   // Light, restrained, institutional. Dev-facing detail moved to footer below.
   // r63.80.0: Reduced outer margins/padding to save vertical real estate
+  // PI_SUMMARY_HEADER_v1
+  // Top-of-panel synthesis card — same pattern as Smart Money Intelligence layman card
+  var _piSummary = '';
+  if (d.premium_summary) {
+    _piSummary = '<div style="margin:8px 12px 0;padding:12px 14px;background:linear-gradient(135deg,#fffbeb,#fef3c7);border:1px solid #fcd34d;border-radius:10px">' +
+      '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">' +
+        '<span style="font-size:14px">💡</span>' +
+        '<span style="font-size:10px;font-weight:800;color:#78350f;letter-spacing:1px;font-family:Sora,sans-serif">PREMIUM INTELLIGENCE — LAYMAN SUMMARY</span>' +
+      '</div>' +
+      '<div style="font-size:11px;line-height:1.6;color:#78350f;font-family:Inter,sans-serif">' + d.premium_summary + '</div>' +
+    '</div>';
+  }
+
   var outer = '<details open style="margin:10px 0;border-radius:12px;border:1px solid #e2e8f0;background:#fff;overflow:hidden">' +
     '<summary style="padding:7px 14px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;font-size:11px;font-weight:800;font-family:Sora,sans-serif;list-style:none;background:#fafafa;border-bottom:1px solid #f1f5f9;letter-spacing:0.3px">' +
       '<span style="color:#475569">💎 <span style="color:#92400e">PREMIUM INTELLIGENCE</span> · Consensus · Revisions · Surprises · Multiples · Dividends</span>' +
       '<span style="font-size:10px;color:#94a3b8;font-weight:500">▾</span>' +
     '</summary>' +
-    '<div style="padding:8px 12px;background:#fff">' + groupBody + '</div>';
+    '<div style="padding:8px 12px;background:#fff">' + _piSummary + groupBody + '</div>';
 
   // ═══ DEVELOPER NOTES FOOTER ═══
   // ONE collapsed details with all the missing field paths — replaces the
@@ -12601,7 +12632,7 @@ console.log('⚡ Momentum Radar: sending email='+email+' region='+reg+' category
 var _mrRegBar=_renderRegionToggle('loadMomentumRadar',reg);
 var _mrCatBar=_renderMomentumCategoryBar(reg,cat);
 
-// Fetch category list if we don't have it yet (one-time per region per session)
+// Fetch category list if we don\'t have it yet (one-time per region per session)
 if (!window._mrCategoriesCache[reg]) {
   fetch('/api/early-momentum-radar/categories?region='+reg).then(function(r){return r.json()}).then(function(cd){
     if (cd.success && cd.categories) {
@@ -12977,7 +13008,7 @@ function _renderIntradaySetups(el, d, regBar, reg, tf, mcap, univLabel) {
   h += '</div>';
 
   if (!d.candidates || !d.candidates.length) {
-    // r63.85.0: Context-aware empty state. If backend hasn't been wired for the
+    // r63.85.0: Context-aware empty state. If backend hasn\'t been wired for the
     // selected mcap tier yet, tell the user instead of pretending markets are quiet.
     var emptyMsg = 'No setups detected right now. Markets may be choppy or outside trading hours. Try the other timeframe or another market cap.';
     if (mcap !== 'large') {
@@ -14300,7 +14331,7 @@ window._ddGenerate = function(){
   }, 800);
   
   // r63.72.11: Fund auto-detection — try /api/fund-analyze first.
-  // If response says it's a fund, render fund view. If not_a_fund, fall through
+  // If response says it\'s a fund, render fund view. If not_a_fund, fall through
   // to the regular stock DD flow.
   fetch('/api/fund-analyze?ticker=' + encodeURIComponent(sym) + '&region=' + reg)
     .then(function(r){ return r.json(); })
@@ -14509,7 +14540,7 @@ function _renderReportShellAladdin(d){
   setTimeout(_csDdInitScrollSpy, 100);
 
   // Inject section-anchor IDs into the legacy content. We do this AFTER
-  // mount because the legacy renderer doesn't know about our IDs.
+  // mount because the legacy renderer doesn\'t know about our IDs.
   setTimeout(_csDdInjectAnchors, 50);
 }
 
@@ -14528,7 +14559,7 @@ function _legacyReportBodyHtml(d) {
     el = origEl;
   }
 
-  // Strip the legacy chrome (region toggle, hero card, bottom line — they're
+  // Strip the legacy chrome (region toggle, hero card, bottom line — they\'re
   // duplicated in the new shell). We keep only the section panels.
   var html = temp.innerHTML;
 
@@ -14578,7 +14609,7 @@ function _csDdInjectAnchors() {
       if (titleText.indexOf(k) !== -1) {
         card.id = titleToId[k];
         card.classList.add('cs-dd-section-anchor');
-        // Add scroll margin so sticky nav doesn't cover the title
+        // Add scroll margin so sticky nav doesn\'t cover the title
         card.style.scrollMarginTop = '90px';
         break;
       }
@@ -15188,7 +15219,7 @@ function _renderReportLegacy(d){
       h += '</div>';
       h += '<div style="margin-top:10px;font-size:9px;color:var(--text3);font-style:italic">Method: '+vd.method+'</div>';
     } else if (_r6370_isPlaceholder) {
-      // r63.70: Honest fallback when valuation can't be computed
+      // r63.70: Honest fallback when valuation can\'t be computed
       h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:10px">';
       h += '<div style="padding:12px;background:#f8fafc;border-radius:8px;text-align:center">';
       h += '<div style="font-size:9px;font-weight:700;color:var(--text3);letter-spacing:0.5px">CURRENT PRICE</div>';
@@ -18209,11 +18240,19 @@ h += (function(){
   p += '<div style="font-size:10px;font-weight:800;color:#64748b;letter-spacing:0.5px;margin-bottom:10px;font-family:Sora,sans-serif">📊 TRADING VOLUME</div>';
   p += _q4(_volH, 'avg_daily_volume', 'pct', 'd.institutional.volume_quarterly_history');
   p += '<div style="margin-top:10px;font-size:9px;color:#5E6F8E;line-height:1.5;text-align:center">Average daily volume Q/Q. Rising = interest building. Falling = waning.</div>';
+  // PLAIN_INFERENCE_INJECTED
+  if (_instData.volume_plain_english) {
+    p += '<div style="margin-top:8px;padding:8px 10px;background:#eef2ff;border-left:3px solid #6366f1;border-radius:4px;font-size:10px;line-height:1.5;color:#312e81"><strong style="font-size:9px;color:#4338ca">PLAIN ENGLISH:</strong> ' + _instData.volume_plain_english + '</div>';
+  }
   p += '</div>';
   p += '<div style="padding:12px;border:1px solid #e2e8f0;border-radius:10px">';
   p += '<div style="font-size:10px;font-weight:800;color:#64748b;letter-spacing:0.5px;margin-bottom:10px;font-family:Sora,sans-serif">👁 INSIDER NET FLOW</div>';
   p += _q4(_insH, 'net_flow_usd', 'usd', 'd.institutional.insider_activity.quarterly_history');
   p += '<div style="margin-top:10px;font-size:9px;color:#5E6F8E;line-height:1.5;text-align:center">Insider buys $ − sells $ per quarter. Small amounts shown as B/S counts. Hover for breakdown.</div>';
+  var _insPlain = (_instData.insider_activity && _instData.insider_activity.plain_english) ? _instData.insider_activity.plain_english : '';
+  if (_insPlain) {
+    p += '<div style="margin-top:8px;padding:8px 10px;background:#eef2ff;border-left:3px solid #6366f1;border-radius:4px;font-size:10px;line-height:1.5;color:#312e81"><strong style="font-size:9px;color:#4338ca">PLAIN ENGLISH:</strong> ' + _insPlain + '</div>';
+  }
   p += '</div>';
   p += '</div>';
 
@@ -18226,9 +18265,59 @@ h += (function(){
     p += '<div style="color:#475569">' + _holD.length + ' tracked · <strong style="color:#059669">' + adders + ' adding</strong> · <strong style="color:#dc2626">' + reducers + ' reducing</strong> · <strong style="color:#6b7280">' + (_holD.length - adders - reducers) + ' holding</strong></div>';
     p += '<div style="margin-left:auto;font-size:9px;color:#94a3b8;font-style:italic">↓ Full per-holder breakdown in Deep DD below</div>';
     p += '</div>';
+    if (_instData.top_holders_plain_english) {
+      p += '<div style="margin-top:8px;padding:8px 12px;background:#eef2ff;border-left:3px solid #6366f1;border-radius:4px;font-size:10px;line-height:1.5;color:#312e81"><strong style="font-size:9px;color:#4338ca">PLAIN ENGLISH:</strong> ' + _instData.top_holders_plain_english + '</div>';
+    }
   } else {
     p += '<div style="padding:10px 14px;border-radius:8px;background:#fafbfc;border:1px dashed #cbd5e1;font-size:10px;color:#5E6F8E;text-align:center">';
     p += '🏛 Per-holder Q/Q delta not yet returned. Backend needs <code style="background:#f1f5f9;padding:1px 5px;border-radius:3px;font-family:IBM Plex Mono,monospace;color:#1A3A78;font-size:9px">d.institutional.top_holders_delta</code></div>';
+  }
+
+  // SMI_CHARTS_v1 — Visual timeline + bar chart + ownership donut
+  var _dailyTxns = (_instData.insider_activity && _instData.insider_activity.daily_transactions) || [];
+  var _quartHist = _insQHist || [];
+  var _ownSnap = _instData.ownership_snapshot || null;
+
+  if (_dailyTxns.length > 0 || _quartHist.length > 0 || _ownSnap) {
+    p += '<div style="margin-top:14px;padding:14px;border:1px solid #e2e8f0;border-radius:10px;background:#fff">';
+    p += '<div style="font-size:11px;font-weight:800;color:#0f172a;letter-spacing:0.5px;margin-bottom:10px;font-family:Sora,sans-serif">📈 INSIDER & OWNERSHIP — VISUAL TIMELINE</div>';
+
+    // Row 1: Daily insider scatter (full width)
+    if (_dailyTxns.length > 0) {
+      p += '<div style="margin-bottom:14px">';
+      p += '<div style="font-size:10px;font-weight:700;color:#475569;margin-bottom:6px;font-family:Sora,sans-serif">Insider Activity Timeline — Last 12 Months</div>';
+      p += window._smiRenderInsiderTimeline(_dailyTxns);
+      p += '<div style="margin-top:6px;font-size:9px;color:#94a3b8;font-style:italic">Each dot = one Form 4 filing. Position = date, size = $ value. Hover for details.</div>';
+      p += '</div>';
+    }
+
+    // Row 2: side-by-side: Q/Q bars + ownership donut
+    p += '<div style="display:grid;grid-template-columns:1.5fr 1fr;gap:12px">';
+
+    // Q/Q insider bars
+    p += '<div>';
+    p += '<div style="font-size:10px;font-weight:700;color:#475569;margin-bottom:6px;font-family:Sora,sans-serif">Insider Net Flow — Quarter by Quarter</div>';
+    if (_quartHist.length > 0) {
+      p += window._smiRenderQuarterlyBars(_quartHist);
+      p += '<div style="margin-top:6px;font-size:9px;color:#94a3b8;font-style:italic">Green = buy $ above zero · Red = sell $ below zero · Number above bar = net flow</div>';
+    } else {
+      p += '<div style="padding:18px;text-align:center;color:#94a3b8;font-size:10px;font-style:italic">No quarterly insider history</div>';
+    }
+    p += '</div>';
+
+    // Ownership donut
+    p += '<div>';
+    p += '<div style="font-size:10px;font-weight:700;color:#475569;margin-bottom:6px;font-family:Sora,sans-serif">Ownership Breakdown — Current Snapshot</div>';
+    if (_ownSnap) {
+      p += window._smiRenderOwnershipDonut(_ownSnap);
+      p += '<div style="margin-top:6px;font-size:9px;color:#94a3b8;font-style:italic">' + (_ownSnap.note || 'Q/Q evolution requires SEC 13F') + '</div>';
+    } else {
+      p += '<div style="padding:18px;text-align:center;color:#94a3b8;font-size:10px;font-style:italic">Ownership data unavailable</div>';
+    }
+    p += '</div>';
+
+    p += '</div>';  // grid end
+    p += '</div>';  // chart panel end
   }
 
   p += '</div>';
@@ -18316,17 +18405,141 @@ h+='<div style="padding:8px 10px;border-radius:8px;background:#fff;border:1px so
 h+='<div style="padding:8px 10px;border-radius:8px;background:#fff;border:1px solid #E2E8F0;font-size:8px;line-height:1.5;color:#2d4373"><strong style="color:'+(_mdoC||'#6b7280')+'">② Timing (MDO/CDS)</strong><br>Trend, RSI, volume, volatility, flow<br><em style="color:#4a6fa5">= Is NOW a good time to enter?</em></div>';
 h+='<div style="padding:8px 10px;border-radius:8px;background:#fff;border:1px solid #E2E8F0;font-size:8px;line-height:1.5;color:#2d4373"><strong style="color:'+_techC2+'">③ Consensus (9 Charts)</strong><br>Aggregates all chart decisions<br><em style="color:#4a6fa5">= Do the signals agree?</em></div>';
 h+='</div></div>';
-// Action cards - If you hold / If you don't hold
+// Action cards - If you hold / If you don\'t hold
 h+='<div style="padding:16px 24px">';
 h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">';
 // Already holding
 h+='<div style="padding:14px 16px;border-radius:12px;background:#F0FDF4;border:1px solid #BBF7D0">';
 h+='<div style="font-size:9px;font-weight:800;color:#059669;letter-spacing:1px;margin-bottom:6px">📗 IF YOU ALREADY HOLD</div>';
-h+='<div style="font-size:10px;color:#2d4373;line-height:1.7">'+_holdAdvice+'</div></div>';
+h+='<div style="font-size:10px;color:#2d4373;line-height:1.7">'+_holdAdvice+'</div>';
+// DEEPER_DECISION: IF YOU ALREADY HOLD
+(function(){
+  var _curr = _sumPrice || 0;
+  var _stop = lv.sl || _curr * 0.90;
+  var _target = lv.target1 || _sumFV * 0.95;
+  var _sma50 = _sumSMA50 || 0;
+  var _sma200 = _sumSMA200 || 0;
+  var _fv = _sumFV || 0;
+  var _upsidePct = _fv > 0 && _curr > 0 ? ((_fv - _curr) / _curr * 100) : 0;
+  var _downsidePct = _curr > 0 ? ((_stop - _curr) / _curr * 100) : 0;
+  var _rr = (_downsidePct !== 0) ? Math.abs(_upsidePct / _downsidePct) : 0;
+  var _tone = (_scenario === 'ALIGNED_BULL') ? 'positive'
+             : (_scenario === 'ALIGNED_BEAR') ? 'negative'
+             : (_scenario === 'WEAK_MOMENTUM') ? 'mixed' : 'neutral';
+
+  var _seeing = [
+    'Current price <strong>' + S + Math.round(_curr).toLocaleString() + '</strong> · Fair value estimate <strong>' + S + Math.round(_fv).toLocaleString() + '</strong> · Implied upside <strong>' + (_upsidePct >= 0 ? '+' : '') + _upsidePct.toFixed(1) + '%</strong>.',
+    'Your stop is at <strong>' + S + Math.round(_stop).toLocaleString() + '</strong> (a ' + Math.abs(_downsidePct).toFixed(1) + '% drawdown from here).',
+    'Risk-reward ratio <strong>' + _rr.toFixed(2) + ' : 1</strong> — ' + (_rr >= 2.5 ? 'favorable, you risk $1 to make $' + _rr.toFixed(1) : _rr >= 1.5 ? 'acceptable but not great' : 'unfavorable — reward doesn\'t justify the risk') + '.',
+    'The three systems say: Quality <strong>' + _sumDecision + '</strong> · Timing <strong>' + _mdoLabel + '</strong> · Trend <strong>' + _techLabel2 + '</strong>.'
+  ];
+  var _matters = (_scenario === 'ALIGNED_BULL') ? [
+    'All three independent systems agree — this is the highest-conviction scenario. False signals are rare when fundamentals and technicals align.',
+    'You\'re holding a winner. The risk now is <em>not letting it compound</em> — most retail investors sell too early after a 20-30% gain and miss the 5-10× move.',
+    'The biggest mistake here: trimming on a normal 10-15% pullback and never getting back in.'
+  ] : (_scenario === 'ALIGNED_BEAR') ? [
+    'Both quality and technicals point lower. This is the highest-confidence sell signal — fighting it usually costs another 20-40% before bottoming.',
+    'Holding through a bear scenario is the #1 destroyer of retail returns. The math is brutal: a 50% loss requires a 100% gain to break even.',
+    'Even if you\'re right long-term, the opportunity cost of dead capital tied up in falling stocks compounds against you.'
+  ] : (_scenario === 'WEAK_MOMENTUM') ? [
+    'Momentum is fine but the underlying business is weak — this is a <em>trade</em>, not an investment.',
+    'These setups can rally further but they typically reverse fast when the trend breaks. No fundamental floor to catch you.',
+    'Avoid the trap of "it\'s up so it must be a good company" — momentum can mask deteriorating fundamentals for quarters.'
+  ] : [
+    'Mixed signals mean the systems disagree — typical in transition periods (early in a turnaround, late in a cycle, post-earnings volatility).',
+    'Adding here is taking a leveraged bet on which signal resolves first. Selling everything risks missing the resolution if it\'s bullish.',
+    'The institutional playbook in mixed scenarios is <em>position-sized waiting</em> — hold what you have, no aggressive moves either way.'
+  ];
+  var _decision = (_scenario === 'ALIGNED_BULL') ? [
+    '<strong>Hold core position.</strong> Do not trim on normal 10-15% pullbacks — those are buying opportunities, not sell signals.',
+    'Add on dips to SMA50 (<strong>' + S + Math.round(_sma50).toLocaleString() + '</strong>) — momentum corrections in compounders are gifts.',
+    '<strong>Reduce only if:</strong> Quality verdict downgrades · price breaks SMA200 (<strong>' + S + Math.round(_sma200).toLocaleString() + '</strong>) on volume · F-Score drops 2 points.',
+    'Trailing stop at SMA200 protects capital while letting winners run.'
+  ] : (_scenario === 'ALIGNED_BEAR') ? [
+    '<strong>Reduce position aggressively now.</strong> Don\'t wait for a "bounce to sell into" — it usually doesn\'t come.',
+    'Sell 75-100%. If keeping a watch position, max 1-2% with hard stop at <strong>' + S + Math.round(_stop).toLocaleString() + '</strong>.',
+    'Redeploy freed capital to high-conviction names (see CDS Scanner). Dead money is the most expensive money you own.',
+    '<strong>Re-entry requires:</strong> F-Score above 5 · price above SMA200 · 2 consecutive quarters of revenue acceleration.'
+  ] : (_scenario === 'WEAK_MOMENTUM') ? [
+    '<strong>Book 50% of profits now</strong> while momentum lasts. Trim while you can sell into strength.',
+    'Keep remaining 50% with a <em>tight</em> stop at SMA50 (<strong>' + S + Math.round(_sma50).toLocaleString() + '</strong>) — break that level, exit fully.',
+    'Do <strong>NOT add</strong> to this position. Ride existing profits, don\'t increase exposure.',
+    'If price rejects SMA50, that\'s your final exit signal.'
+  ] : [
+    '<strong>Maintain current position.</strong> Don\'t add capital and don\'t panic-sell into mixed signals.',
+    'Set price alerts at <strong>' + S + Math.round(_sma50).toLocaleString() + '</strong> (add trigger if 2/3 systems turn bullish) and <strong>' + S + Math.round(_stop).toLocaleString() + '</strong> (exit if any system turns bearish on volume).',
+    'Review weekly. The signal resolves within 4-8 weeks typically — be patient.',
+    'If position is more than 5% of portfolio, trim to ' + _cdsAlloc + '% (the Half-Kelly figure) to manage concentration risk.'
+  ];
+  h += window._deeperDecisionCard('Your Holding Position', _seeing, _matters, _decision, _tone);
+})();
+h += '</div>';
 // Not holding
 h+='<div style="padding:14px 16px;border-radius:12px;background:#EFF6FF;border:1px solid #BFDBFE">';
 h+='<div style="font-size:9px;font-weight:800;color:#2563EB;letter-spacing:1px;margin-bottom:6px">📘 IF YOU DON\'T HOLD</div>';
-h+='<div style="font-size:10px;color:#2d4373;line-height:1.7">'+_noHoldAdvice+'</div></div>';
+h+='<div style="font-size:10px;color:#2d4373;line-height:1.7">'+_noHoldAdvice+'</div>';
+// DEEPER_DECISION: IF YOU DON'T HOLD
+(function(){
+  var _curr = _sumPrice || 0;
+  var _stop = lv.sl || _curr * 0.90;
+  var _target = lv.target1 || _sumFV * 0.95;
+  var _sma50 = _sumSMA50 || 0;
+  var _sma200 = _sumSMA200 || 0;
+  var _fv = _sumFV || 0;
+  var _upsidePct = _fv > 0 && _curr > 0 ? ((_fv - _curr) / _curr * 100) : 0;
+  var _downsidePct = _curr > 0 ? ((_stop - _curr) / _curr * 100) : 0;
+  var _rr = (_downsidePct !== 0) ? Math.abs(_upsidePct / _downsidePct) : 0;
+  var _tone = (_scenario === 'ALIGNED_BULL') ? 'positive'
+             : (_scenario === 'ALIGNED_BEAR') ? 'negative'
+             : (_scenario === 'QUALITY_BAD_TIMING' || _scenario === 'QUALITY_WAIT') ? 'mixed' : 'neutral';
+
+  var _seeing = [
+    'Entry price would be <strong>' + S + Math.round(_curr).toLocaleString() + '</strong> with a stop at <strong>' + S + Math.round(_stop).toLocaleString() + '</strong> (risk: ' + Math.abs(_downsidePct).toFixed(1) + '% of capital deployed).',
+    'Implied upside to fair value: <strong>' + (_upsidePct >= 0 ? '+' : '') + _upsidePct.toFixed(1) + '%</strong> · Risk-reward <strong>' + _rr.toFixed(2) + ' : 1</strong>.',
+    'Suggested position size from Half-Kelly: <strong>' + _cdsAlloc + '% of portfolio</strong> (this already accounts for the win-probability of this setup).',
+    'Three systems: Quality <strong>' + _sumDecision + '</strong> · Timing <strong>' + _mdoLabel + '</strong> · Trend <strong>' + _techLabel2 + '</strong>.'
+  ];
+  var _matters = (_scenario === 'ALIGNED_BULL') ? [
+    'This is a high-conviction setup — all three systems point the same direction. The hardest part isn\'t the analysis, it\'s the discipline to actually deploy capital when everything lines up.',
+    'Most retail investors miss these setups by demanding "one more confirmation" — by the time confirmation arrives, the 30% has already happened.',
+    'You\'ll never enter at the perfect bottom. The right question isn\'t "is this the lowest price?" but "is the risk-reward attractive?"'
+  ] : (_scenario === 'ALIGNED_BEAR') ? [
+    'When all three systems point down, the historical evidence is overwhelming: <em>do not buy</em>. Catching falling knives is the most expensive hobby in investing.',
+    'The temptation to "buy the dip" is strongest at exactly the wrong moment. Real bottoms require capitulation + base-building + breakout — usually months.',
+    'Patience here is a position. You don\'t need to be invested in every stock — you need to be invested in the right ones.'
+  ] : (_scenario === 'QUALITY_BAD_TIMING' || _scenario === 'QUALITY_WAIT') ? [
+    'You\'ve found a quality business in a bad technical moment — this is actually one of the best risk-adjusted setups available, but it requires patience.',
+    'Buying quality during technical weakness is how value investors generate alpha. The mistake is buying too fast — let the price come to you.',
+    'The opposite mistake (waiting forever for the "perfect" entry) means you miss it entirely. Use a staged approach.'
+  ] : [
+    'Mixed signals tell you the market itself hasn\'t decided. Entering with conviction now is essentially flipping a coin with extra steps.',
+    'A small "tracking position" preserves your psychological skin-in-the-game without major capital risk while you wait for signal resolution.',
+    'The cost of waiting is small (you might miss 5-10% if it rallies). The cost of being wrong is bigger (15-25% drawdown to your stop).'
+  ];
+  var _decision = (_scenario === 'ALIGNED_BULL') ? [
+    '<strong>Enter ' + _cdsAlloc + '% position (Half-Kelly sized).</strong> Deploy 60-70% on initial entry, hold back 30-40% for adds on first pullback to SMA50.',
+    'Hard stop at <strong>' + S + Math.round(_stop).toLocaleString() + '</strong>. Take partial profits at <strong>' + S + Math.round(_target).toLocaleString() + '</strong> (book 25%, let the rest run with trailing stop).',
+    'Review the thesis quarterly — exit immediately if Quality verdict downgrades or earnings disappoint twice in a row.',
+    'Don\'t over-think the entry — the timing edge is small compared to the trend edge over 12-24 months.'
+  ] : (_scenario === 'ALIGNED_BEAR') ? [
+    '<strong>Do not enter.</strong> No exception, no "I have a feeling," no "but it\'s already down 30%". The math is against you.',
+    'Add to watchlist with alerts. Re-evaluate <em>only when</em>: F-Score crosses above 5 · price reclaims SMA200 · 2 consecutive quarters of revenue beat.',
+    'Use freed capital on high-conviction names — see CDS Scanner for current best ideas.',
+    'A great company at a fair price beats a falling company at any price.'
+  ] : (_scenario === 'QUALITY_BAD_TIMING' || _scenario === 'QUALITY_WAIT') ? [
+    '<strong>Staged entry recommended.</strong> Deploy 1/3 of intended ' + _cdsAlloc + '% allocation NOW as a starter.',
+    'Add 1/3 when price reclaims SMA50 (<strong>' + S + Math.round(_sma50).toLocaleString() + '</strong>) on rising volume.',
+    'Add final 1/3 when RSI crosses above 50 from below (momentum confirmation).',
+    'Stop on the full position at <strong>' + S + Math.round(_stop).toLocaleString() + '</strong> — quality + technical reversal = high-probability setup.'
+  ] : [
+    '<strong>Don\'t commit major capital yet.</strong> Take a <em>1% tracking position</em> to stay engaged with the stock\'s rhythm.',
+    'Set price alerts at SMA50 (<strong>' + S + Math.round(_sma50).toLocaleString() + '</strong>) and at the stop (<strong>' + S + Math.round(_stop).toLocaleString() + '</strong>).',
+    '<strong>Full entry trigger:</strong> at least 2 of 3 systems flip bullish. Then enter ' + _cdsAlloc + '% sized.',
+    'Review weekly. If signals stay mixed for 8+ weeks, demote to watchlist and redeploy capital elsewhere.'
+  ];
+  h += window._deeperDecisionCard('Your Entry Decision', _seeing, _matters, _decision, _tone);
+})();
+h += '</div>';
 h+='</div>';
 // Key levels reference
 h+='<div style="margin-top:12px;padding:10px 14px;border-radius:8px;background:#F8FAFC;border:1px solid #E2E8F0;font-size:9px;color:#5E6F8E;line-height:1.8">';
@@ -22948,6 +23161,48 @@ rwH+='<div style="text-align:center;padding:14px;border-radius:12px;background:#
 rwH+='</div>';
 rwH+='<div style="padding:10px 14px;border-radius:8px;background:'+rw.color+'08;border-left:3px solid '+rw.color+'"><div style="font-size:12px;font-weight:800;color:'+rw.color+';margin-bottom:4px">'+rw.verdict+'</div><div style="font-size:10px;color:var(--text2);line-height:1.7">'+rw.explain+'</div></div>';
 rwH+='<div style="margin-top:10px;padding:8px 14px;border-radius:8px;background:rgba(99,102,241,.04);border-left:3px solid #6366f1;font-size:9px;color:var(--text2);line-height:1.7"><strong style="color:#6366f1">💡 In simple terms:</strong> ROIC is what the company earns on money it invests. WACC is what it costs to get that money (debt interest + shareholder expectations). If ROIC > WACC, every rupee the company invests creates MORE than a rupee of value — that\'s a compounder. If ROIC < WACC, the company is destroying value — avoid.</div>';
+// DEEPER_DECISION: ROIC vs WACC
+(function(){
+  var _roic = parseFloat(rw.roic) || 0;
+  var _wacc = parseFloat(rw.wacc) || 0;
+  var _spread = parseFloat(rw.spread) || (_roic - _wacc);
+  var _tone = _spread >= 5 ? 'positive' : _spread >= 0 ? 'mixed' : 'negative';
+  var _seeing = [
+    'This company earns <strong>' + _roic.toFixed(1) + '%</strong> on every dollar of capital it deploys (ROIC).',
+    'It costs <strong>' + _wacc.toFixed(1) + '%</strong> to fund that capital — a blend of what lenders charge in interest and what shareholders expect in returns (WACC).',
+    'The <strong>spread is ' + (_spread >= 0 ? '+' : '') + _spread.toFixed(1) + ' percentage points</strong>. ' + (_spread >= 5 ? 'Each retained dollar reinvested at this spread compounds shareholder wealth.' : _spread >= 0 ? 'Each dollar barely covers its cost — neutral compounding.' : 'Each dollar invested destroys roughly ' + Math.abs(_spread).toFixed(1) + ' cents of value.')
+  ];
+  var _matters = _spread >= 5 ? [
+    '<strong>This is the kind of business Buffett looks for</strong> — high ROIC over many years is the single strongest predictor of long-term shareholder returns.',
+    'Companies with persistent ROIC > WACC can fund their own growth without diluting shareholders or piling on debt.',
+    'However, no spread lasts forever. Watch competitive intensity, capital intensity, and pricing power — these are what keep the spread wide.'
+  ] : _spread >= 0 ? [
+    'The business is treading water — earning roughly what its capital costs. Not destroying value but not creating much either.',
+    'These businesses are vulnerable to ROIC compression (margin pressure, capex cycles, rising rates). One bad year flips the sign.',
+    'In a portfolio, hold only if other factors (high dividend, near-term catalyst, sector tailwind) compensate for weak compounding.'
+  ] : [
+    'A negative spread means <strong>shareholders would be richer if the company paid out all its capital instead of reinvesting</strong>.',
+    'Common in mature/declining industries, over-leveraged businesses, or companies that just made bad acquisitions.',
+    'Recovery requires either ROIC improvement (margins, efficiency) or WACC reduction (deleveraging, lower beta) — both take 2-4 years typically.'
+  ];
+  var _decision = _spread >= 5 ? [
+    '<strong>Bull case is structurally supported.</strong> The compounding math works in your favor — time is on your side.',
+    'Suitable for <strong>core long-term position</strong>. Position sizing can be larger than typical.',
+    '<strong>Monitor these warning signs:</strong> ROIC trending down 2 quarters in a row · capital intensity rising · new competitors with pricing power · debt creeping up faster than EBITDA.',
+    'Re-evaluate if spread narrows below 5pp for 2 consecutive quarters.'
+  ] : _spread >= 0 ? [
+    'Treat as <strong>tactical, not strategic</strong>. Smaller position size than a true compounder.',
+    'Demand a catalyst — turnaround story, cost-cutting program, business-mix shift, or sector tailwind.',
+    '<strong>Exit triggers:</strong> ROIC drops below WACC for 2 quarters · debt-to-EBITDA rises above 3x · margin guidance cut.',
+    'Use stops aggressively — these businesses don\'t bail you out via compounding.'
+  ] : [
+    '<strong>Default stance: avoid as a core holding.</strong> The math is working against you every day.',
+    'Only consider as a turnaround bet if there\'s a credible catalyst (new CEO with track record, asset divestiture, deleveraging plan).',
+    '<strong>Required evidence before entering:</strong> 2 consecutive quarters of ROIC improvement · explicit margin expansion in guidance · debt reduction.',
+    'If holding: size <em>small</em>, use tight stops, and require visible spread improvement within 4 quarters or exit.'
+  ];
+  rwH += window._deeperDecisionCard('ROIC vs WACC — Capital Efficiency', _seeing, _matters, _decision, _tone);
+})();
 h+='<div style="margin:10px 0;padding:10px 14px;border-radius:10px;background:#f1f5f9;border:1px solid var(--border)">';
 h+='<div style="font-size:10px;font-weight:700;color:var(--text);font-family:Sora,sans-serif;margin-bottom:6px">📖 Institutional Analysis — tap any section to expand</div>';
 h+='<div style="display:flex;flex-wrap:wrap;gap:4px">';
@@ -23324,7 +23579,7 @@ function _fmtPMS(val, sym) {
 }
 function _openPMSChartsModal(){
 try{
-// Data quality: show warning but don't block
+// Data quality: show warning but don\'t block
 if(window._dataQuality==='LOW'||window._dataQuality==='NONE'){console.warn('Data quality: '+window._dataQuality+' — rendering with fallbacks')}
 
 if(!window._pmsData){alert('Run a portfolio scan first');return}
@@ -23860,7 +24115,7 @@ body.innerHTML=h;
 }catch(pmsErr){console.error('PMS modal error:',pmsErr);alert('PMS analytics error: '+pmsErr.message)}
 }
 function _openInvestorChartsModal(d){
-// Data quality: show warning but don't block
+// Data quality: show warning but don\'t block
 if(window._dataQuality==='LOW'||window._dataQuality==='NONE'){console.warn('Data quality: '+window._dataQuality+' — rendering with fallbacks')}
 try{
 if(!d)d=window._lastInvestorData;
@@ -24548,7 +24803,7 @@ return h;
 
 function _openV2Modal(){
 try{
-// Data quality: show warning but don't block
+// Data quality: show warning but don\'t block
 if(window._dataQuality==='LOW'||window._dataQuality==='NONE'){console.warn('Data quality: '+window._dataQuality+' — rendering with fallbacks')}
 var d=window._v2ChartData;if(!d){alert('No chart data. Run Decide Engine first.');return}
 var _dk=false;
@@ -24569,7 +24824,7 @@ var atr=Number(d.atr||_tech2.atr14||_tech2.atr||ms.atr)||(price*0.015);
 var ema9=Number(typeof d.ema9==='number'?d.ema9:(Array.isArray(d.ema9)&&d.ema9.length?d.ema9[d.ema9.length-1]:0))||Number(_tech2.ema9||ms.ema9)||0;
 var ema21=Number(typeof d.ema21==='number'?d.ema21:(Array.isArray(d.ema21)&&d.ema21.length?d.ema21[d.ema21.length-1]:0))||Number(_tech2.ema21||ms.ema21)||0;
 var vwap=Number(d.vwap||_tech2.vwap||ms.vwap)||0;
-// Compute from price history when API doesn't return indicators
+// Compute from price history when API doesn\'t return indicators
 if(closes.length>=14){
 if(!rsi){var _g2=0,_l2=0;for(var _ri=1;_ri<Math.min(15,closes.length);_ri++){var _df=closes[_ri]-closes[_ri-1];if(_df>0)_g2+=_df;else _l2-=_df;}rsi=Math.round(100-100/(1+_g2/((_l2||1)/14*14)));}
 if(!macd_h){var _e12=closes.slice(-12).reduce(function(a,v){return a+v},0)/12;var _e26=closes.slice(-Math.min(26,closes.length)).reduce(function(a,v){return a+v},0)/Math.min(26,closes.length);macd_h=Number((_e12-_e26).toFixed(2));}
@@ -25540,7 +25795,7 @@ clone.querySelectorAll('details').forEach(function(det){det.setAttribute('open',
 
 // Remove interactive elements (buttons, inputs) but keep content
 clone.querySelectorAll('button,input,select,textarea').forEach(function(el){
-  // Keep the text content if it's informational
+  // Keep the text content if it\'s informational
   if(el.tagName==='BUTTON'&&el.textContent.length>20){
     var span=document.createElement('span');
     span.textContent=el.textContent;
@@ -26121,7 +26376,7 @@ function _makeCollapsible(containerId, defaultOpen) {
   headers.forEach(function(h, idx) {
     // Skip if already inside a <details> element
     if (h.closest('details')) return;
-    // Skip if it's inside a table or small element
+    // Skip if it\'s inside a table or small element
     if (h.closest('table') || h.closest('tr')) return;
     
     // Find the parent card
@@ -26166,7 +26421,7 @@ document.addEventListener('click', function(e) {
   if (!sh) return;
   var sc = sh.closest('.sc');
   if (!sc) return;
-  // Don't collapse if it's a link or button click
+  // Don't collapse if it\'s a link or button click
   if (e.target.closest('a') || e.target.closest('button')) return;
   sc.classList.toggle('collapsed');
 });
@@ -26635,7 +26890,7 @@ console.log('[TRADING] ✅ EMA 9/21 + RSI trading tab loaded');
       var _hideRestrictedContent=function(){
         // Valuation, Technical, Activity, Risk sub-tabs
         document.querySelectorAll('[onclick*="valuation"],[onclick*="technical"],[onclick*="activity"],[onclick*="risk"]').forEach(function(el3){el3.style.display='none'});
-        // Report sections that shouldn't be visible
+        // Report sections that shouldn\'t be visible
         document.querySelectorAll('#researchSection,#decideSection,#dreamSection,.investor-only,.premium-only').forEach(function(el3){el3.style.display='none'});
       };
       _hideRestrictedContent();
@@ -27610,7 +27865,7 @@ window._csInjectFindSimilarButton = function() {
     '<span style="font-size:10px;font-weight:700;letter-spacing:0.4px">SIMILAR</span>';
   btn.onclick = function() { window._csFindSimilarOpen(); };
   
-  // Insert as first button so it's prominent
+  // Insert as first button so it\'s prominent
   bar.insertBefore(btn, bar.firstChild);
 };
 
@@ -28001,7 +28256,7 @@ window._csInjectR638Buttons = function() {
 // ═══════════════════════════════════════════════════════════════════
 // Previous design (r63.1, r63.6, r63.8): three independent setInterval polls,
 // each with a 10-minute setTimeout that clears them. After 10 min, polls stop;
-// re-rendering the report doesn't re-add buttons. User reported this bug.
+// re-rendering the report doesn\'t re-add buttons. User reported this bug.
 //
 // New design: monkey-patch renderReport(). After every render, call this
 // coordinator which (re-)injects every toolbar button. Idempotent — safe to
@@ -29743,7 +29998,7 @@ function _csR6322RenderExit(d) {
   var spot = d.spot;
   
   // r63.26: CRITICAL — detect overvalued vs undervalued
-  // If bull target (best case) is BELOW current price → stock is overvalued, "exit strategy" doesn't apply normally
+  // If bull target (best case) is BELOW current price → stock is overvalued, "exit strategy" doesn\'t apply normally
   var bullTarget = l.exit_full ? l.exit_full.price : null;
   var baseTarget = l.trim_2 ? l.trim_2.price : null;
   var isOvervalued = bullTarget != null && bullTarget < spot;
@@ -29839,7 +30094,7 @@ function _csR6322RenderExit(d) {
     var spreadPct = vr_v.spread_pct || 0;
     var kellyFull = ps_v.kelly_full_pct;
     
-    // Detect contradiction: position is 0 BUT score is decent (so it's NOT a fundamentals problem)
+    // Detect contradiction: position is 0 BUT score is decent (so it\'s NOT a fundamentals problem)
     var positionMathOverride = (posPct != null && posPct === 0 && score >= 60);
     
     if (positionMathOverride) {
@@ -33632,7 +33887,7 @@ function _renderAnalystCoverageResults(d) {
     }
     h += '</td>';
 
-    // Target (current consensus, not the per-action target since yfinance doesn't reliably expose that)
+    // Target (current consensus, not the per-action target since yfinance doesn\'t reliably expose that)
     h += '<td style="padding:7px 10px;font-family:IBM Plex Mono,monospace;color:#0f172a;white-space:nowrap">';
     h += a.target_mean != null ? '$' + Number(a.target_mean).toFixed(2) : '<span style="color:#cbd5e1">—</span>';
     h += '</td>';
@@ -34110,4 +34365,279 @@ function _renderSmv3(el, d, reg, mcap) {
   h += '</div></div>';
   el.innerHTML = h;
 }
+
+// SMI_CHARTS_v1
+
+// DEEPER_DECISION_v1
+// Reusable 3-layer decision card: What You're Seeing -> Why It Matters -> What To Do
+// Renders as an expandable <details> block so it doesn\'t add visual clutter when collapsed.
+// title: short heading shown next to the icon
+// seeing: array of plain-english bullets explaining the data point
+// matters: array of plain-english bullets explaining business/portfolio implications
+// decision: array of plain-english bullets with concrete actions / triggers / watch-outs
+// tone: 'positive' | 'negative' | 'neutral' | 'mixed'
+window._deeperDecisionCard = function(title, seeing, matters, decision, tone) {
+  tone = tone || 'neutral';
+  var palette = {
+    positive: { bar: '#059669', tint: '#ecfdf5', accent: '#065f46', bg: '#f0fdf4' },
+    negative: { bar: '#dc2626', tint: '#fef2f2', accent: '#991b1b', bg: '#fef2f2' },
+    neutral:  { bar: '#6366f1', tint: '#eef2ff', accent: '#4338ca', bg: '#f5f3ff' },
+    mixed:    { bar: '#d97706', tint: '#fffbeb', accent: '#92400e', bg: '#fffbeb' },
+  };
+  var p = palette[tone] || palette.neutral;
+  function bullets(arr) {
+    if (!Array.isArray(arr) || !arr.length) return '<em style="color:#94a3b8">No data</em>';
+    return '<ul style="margin:4px 0 0;padding-left:18px;line-height:1.7">' +
+      arr.map(function(b){ return '<li style="margin-bottom:4px">' + b + '</li>'; }).join('') +
+    '</ul>';
+  }
+  var html = '';
+  html += '<details open style="margin-top:10px;border:1px solid ' + p.bar + '30;border-left:3px solid ' + p.bar + ';border-radius:8px;background:' + p.bg + ';overflow:hidden">';
+  html += '<summary style="cursor:pointer;padding:10px 14px;font-size:11px;font-weight:800;color:' + p.accent + ';letter-spacing:0.4px;font-family:Sora,sans-serif;display:flex;align-items:center;gap:8px;list-style:none">';
+  html += '<span style="font-size:14px">📋</span>';
+  html += '<span style="flex:1">WHAT THIS MEANS FOR YOUR DECISION — ' + title + '</span>';
+  html += '<span style="font-size:9px;color:#94a3b8;font-weight:500">tap to collapse ▾</span>';
+  html += '</summary>';
+  html += '<div style="padding:12px 16px 14px;background:#ffffff;border-top:1px solid ' + p.bar + '20;font-size:10.5px;color:#1e293b;font-family:Inter,sans-serif">';
+  // Layer 1
+  html += '<div style="margin-bottom:10px"><div style="font-size:9px;font-weight:800;color:' + p.accent + ';letter-spacing:1px;margin-bottom:3px">① WHAT YOU\'RE SEEING</div>';
+  html += bullets(seeing) + '</div>';
+  // Layer 2
+  html += '<div style="margin-bottom:10px"><div style="font-size:9px;font-weight:800;color:' + p.accent + ';letter-spacing:1px;margin-bottom:3px">② WHY IT MATTERS</div>';
+  html += bullets(matters) + '</div>';
+  // Layer 3
+  html += '<div><div style="font-size:9px;font-weight:800;color:' + p.accent + ';letter-spacing:1px;margin-bottom:3px">③ WHAT TO DO</div>';
+  html += bullets(decision) + '</div>';
+  html += '</div></details>';
+  return html;
+};
+
+// Helpers for Smart Money Intelligence panel: insider timeline, insider Q/Q bars, ownership donut
+window._smiRenderInsiderTimeline = function(daily_txns) {
+  if (!Array.isArray(daily_txns) || daily_txns.length === 0) {
+    return '<div style="padding:18px;text-align:center;color:#94a3b8;font-size:10px;font-style:italic">No insider transactions in the last 12 months</div>';
+  }
+
+  // Chart dimensions
+  var W = 720, H = 220;
+  var padL = 56, padR = 16, padT = 18, padB = 38;
+  var plotW = W - padL - padR;
+  var plotH = H - padT - padB;
+
+  // Find min/max date and max value
+  var now = Date.now();
+  var oneYearAgo = now - 365 * 24 * 3600 * 1000;
+  var maxVal = 0;
+  daily_txns.forEach(function(t) { if (t.value_usd > maxVal) maxVal = t.value_usd; });
+  if (maxVal === 0) maxVal = 1;
+  // log scale for radius
+  var maxRadius = 14, minRadius = 3;
+
+  // X scale: oneYearAgo → now mapped to padL → padL+plotW
+  function xScale(dateStr) {
+    var t = new Date(dateStr).getTime();
+    var pct = (t - oneYearAgo) / (now - oneYearAgo);
+    return padL + Math.max(0, Math.min(1, pct)) * plotW;
+  }
+  // Y scale: 0 → maxVal mapped to padT+plotH → padT
+  function yScale(val) {
+    return padT + plotH - (val / maxVal) * plotH;
+  }
+  // Radius from value
+  function rScale(val) {
+    var pct = Math.sqrt(val / maxVal);  // sqrt for visual balance
+    return minRadius + pct * (maxRadius - minRadius);
+  }
+
+  var svg = '<svg viewBox="0 0 ' + W + ' ' + H + '" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;font-family:Inter,sans-serif;font-size:9px">';
+
+  // Background
+  svg += '<rect x="0" y="0" width="' + W + '" height="' + H + '" fill="#fafbfc" rx="6"/>';
+
+  // Y-axis grid lines + labels
+  var yTicks = [0, 0.25, 0.5, 0.75, 1.0];
+  yTicks.forEach(function(p) {
+    var y = padT + plotH - p * plotH;
+    var val = maxVal * p;
+    svg += '<line x1="' + padL + '" y1="' + y + '" x2="' + (padL+plotW) + '" y2="' + y + '" stroke="#e2e8f0" stroke-width="1" stroke-dasharray="2,3"/>';
+    var lbl = val >= 1e6 ? '$' + (val/1e6).toFixed(1) + 'M' : val >= 1e3 ? '$' + (val/1e3).toFixed(0) + 'K' : '$' + val.toFixed(0);
+    svg += '<text x="' + (padL - 5) + '" y="' + (y + 3) + '" text-anchor="end" fill="#94a3b8">' + lbl + '</text>';
+  });
+
+  // X-axis: month labels every 2 months
+  var d = new Date(oneYearAgo);
+  for (var i = 0; i < 7; i++) {
+    var t = oneYearAgo + (i / 6) * (now - oneYearAgo);
+    var x = padL + (i / 6) * plotW;
+    var dt = new Date(t);
+    var monthLbl = dt.toLocaleString('default', { month: 'short' }) + ' ' + (dt.getFullYear() + '').slice(-2);
+    svg += '<text x="' + x + '" y="' + (H - 12) + '" text-anchor="middle" fill="#64748b" font-size="9">' + monthLbl + '</text>';
+  }
+
+  // Plot transactions
+  daily_txns.forEach(function(t) {
+    var cx = xScale(t.date);
+    var cy = yScale(t.value_usd);
+    var r  = rScale(t.value_usd);
+    var color = t.kind === 'buy' ? '#059669' : '#dc2626';
+    var stroke = t.kind === 'buy' ? '#047857' : '#b91c1c';
+    var title = (t.kind === 'buy' ? 'BUY' : 'SELL') + ' · ' + t.date + ' · $' + (t.value_usd >= 1e6 ? (t.value_usd/1e6).toFixed(2)+'M' : (t.value_usd/1e3).toFixed(0)+'K');
+    if (t.insider) title += ' · ' + t.insider;
+    svg += '<circle cx="' + cx + '" cy="' + cy + '" r="' + r + '" fill="' + color + '" fill-opacity="0.55" stroke="' + stroke + '" stroke-width="1"><title>' + title + '</title></circle>';
+  });
+
+  // Legend
+  svg += '<g transform="translate(' + (padL + 8) + ', ' + (padT + 4) + ')">';
+  svg += '<circle cx="6" cy="6" r="5" fill="#059669" fill-opacity="0.55" stroke="#047857"/>';
+  svg += '<text x="16" y="9" fill="#475569" font-size="9" font-weight="600">BUY</text>';
+  svg += '<circle cx="50" cy="6" r="5" fill="#dc2626" fill-opacity="0.55" stroke="#b91c1c"/>';
+  svg += '<text x="60" y="9" fill="#475569" font-size="9" font-weight="600">SELL</text>';
+  svg += '<text x="100" y="9" fill="#94a3b8" font-size="8">bubble size = $ value · hover for details</text>';
+  svg += '</g>';
+
+  svg += '</svg>';
+  return svg;
+};
+
+window._smiRenderQuarterlyBars = function(quarterly_history) {
+  if (!Array.isArray(quarterly_history) || quarterly_history.length === 0) {
+    return '<div style="padding:18px;text-align:center;color:#94a3b8;font-size:10px;font-style:italic">No quarterly insider history</div>';
+  }
+  var W = 520, H = 200;
+  var padL = 60, padR = 16, padT = 16, padB = 38;
+  var plotW = W - padL - padR;
+  var plotH = H - padT - padB;
+  var n = quarterly_history.length;
+  var barW = (plotW / n) * 0.55;
+  var gap  = (plotW / n) - barW;
+
+  // Y scale: find max abs of buy / sell
+  var maxAbs = 0;
+  quarterly_history.forEach(function(q) {
+    if (q.buy_value_usd > maxAbs) maxAbs = q.buy_value_usd;
+    if (q.sell_value_usd > maxAbs) maxAbs = q.sell_value_usd;
+  });
+  if (maxAbs === 0) maxAbs = 1;
+  var midY = padT + plotH / 2;
+
+  function yPos(val) {
+    return midY - (val / maxAbs) * (plotH / 2);
+  }
+
+  var svg = '<svg viewBox="0 0 ' + W + ' ' + H + '" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;font-family:Inter,sans-serif;font-size:9px">';
+  svg += '<rect x="0" y="0" width="' + W + '" height="' + H + '" fill="#fafbfc" rx="6"/>';
+
+  // Zero line
+  svg += '<line x1="' + padL + '" y1="' + midY + '" x2="' + (padL+plotW) + '" y2="' + midY + '" stroke="#94a3b8" stroke-width="1"/>';
+
+  // Y labels (top = max buy, bottom = max sell)
+  function fmtUsd(v) {
+    var a = Math.abs(v);
+    return a >= 1e6 ? '$' + (a/1e6).toFixed(1) + 'M' : a >= 1e3 ? '$' + (a/1e3).toFixed(0) + 'K' : '$' + a;
+  }
+  svg += '<text x="' + (padL - 5) + '" y="' + (padT + 10) + '" text-anchor="end" fill="#059669" font-size="9" font-weight="700">' + fmtUsd(maxAbs) + '</text>';
+  svg += '<text x="' + (padL - 5) + '" y="' + (midY + 3) + '" text-anchor="end" fill="#64748b" font-size="9">$0</text>';
+  svg += '<text x="' + (padL - 5) + '" y="' + (padT + plotH) + '" text-anchor="end" fill="#dc2626" font-size="9" font-weight="700">−' + fmtUsd(maxAbs) + '</text>';
+
+  // Bars
+  quarterly_history.forEach(function(q, i) {
+    var xCenter = padL + (i + 0.5) * (plotW / n);
+    var xLeft = xCenter - barW / 2;
+
+    // Buy bar (above zero, green)
+    if (q.buy_value_usd > 0) {
+      var topY = yPos(q.buy_value_usd);
+      var barH = midY - topY;
+      svg += '<rect x="' + xLeft + '" y="' + topY + '" width="' + barW + '" height="' + barH + '" fill="#10b981" rx="2"><title>' + q.quarter + ' BUY $' + fmtUsd(q.buy_value_usd) + '</title></rect>';
+    }
+    // Sell bar (below zero, red)
+    if (q.sell_value_usd > 0) {
+      var botY = yPos(-q.sell_value_usd);
+      var barH2 = botY - midY;
+      svg += '<rect x="' + xLeft + '" y="' + midY + '" width="' + barW + '" height="' + barH2 + '" fill="#ef4444" rx="2"><title>' + q.quarter + ' SELL $' + fmtUsd(q.sell_value_usd) + '</title></rect>';
+    }
+
+    // Net flow label above/below bars
+    var net = q.net_flow_usd || (q.buy_value_usd - q.sell_value_usd);
+    var netCol = net >= 0 ? '#059669' : '#dc2626';
+    var netLbl = (net >= 0 ? '+' : '−') + fmtUsd(net);
+    var netY = net >= 0 ? yPos(q.buy_value_usd) - 4 : yPos(-q.sell_value_usd) + 12;
+    svg += '<text x="' + xCenter + '" y="' + netY + '" text-anchor="middle" fill="' + netCol + '" font-size="9" font-weight="700">' + netLbl + '</text>';
+
+    // Quarter label
+    svg += '<text x="' + xCenter + '" y="' + (H - 12) + '" text-anchor="middle" fill="#475569" font-size="9" font-weight="600">' + q.quarter + '</text>';
+  });
+
+  // Legend
+  svg += '<g transform="translate(' + (padL + 8) + ', ' + (padT + 2) + ')">';
+  svg += '<rect x="0" y="0" width="10" height="10" fill="#10b981" rx="2"/>';
+  svg += '<text x="14" y="9" fill="#475569" font-size="9" font-weight="600">BUYS</text>';
+  svg += '<rect x="50" y="0" width="10" height="10" fill="#ef4444" rx="2"/>';
+  svg += '<text x="64" y="9" fill="#475569" font-size="9" font-weight="600">SELLS</text>';
+  svg += '</g>';
+
+  svg += '</svg>';
+  return svg;
+};
+
+window._smiRenderOwnershipDonut = function(snapshot) {
+  if (!snapshot) {
+    return '<div style="padding:18px;text-align:center;color:#94a3b8;font-size:10px;font-style:italic">Ownership snapshot unavailable</div>';
+  }
+  var inst = +snapshot.institutional_pct || 0;
+  var insider = +snapshot.insider_pct || 0;
+  var retail = +snapshot.retail_pct || 0;
+  var total = inst + insider + retail;
+  if (total === 0) {
+    return '<div style="padding:18px;text-align:center;color:#94a3b8;font-size:10px;font-style:italic">No ownership data</div>';
+  }
+
+  var W = 320, H = 200;
+  var cx = 110, cy = 100;
+  var R = 70, r = 42;
+
+  // Helper to build an arc path
+  function arc(startPct, endPct) {
+    var s = (startPct / 100) * Math.PI * 2 - Math.PI / 2;
+    var e = (endPct / 100) * Math.PI * 2 - Math.PI / 2;
+    var large = (endPct - startPct) > 50 ? 1 : 0;
+    var x1 = cx + R * Math.cos(s), y1 = cy + R * Math.sin(s);
+    var x2 = cx + R * Math.cos(e), y2 = cy + R * Math.sin(e);
+    var x3 = cx + r * Math.cos(e), y3 = cy + r * Math.sin(e);
+    var x4 = cx + r * Math.cos(s), y4 = cy + r * Math.sin(s);
+    return 'M ' + x1 + ' ' + y1 +
+           ' A ' + R + ' ' + R + ' 0 ' + large + ' 1 ' + x2 + ' ' + y2 +
+           ' L ' + x3 + ' ' + y3 +
+           ' A ' + r + ' ' + r + ' 0 ' + large + ' 0 ' + x4 + ' ' + y4 + ' Z';
+  }
+
+  var instEnd = (inst / total) * 100;
+  var insiderEnd = instEnd + (insider / total) * 100;
+
+  var svg = '<svg viewBox="0 0 ' + W + ' ' + H + '" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;font-family:Inter,sans-serif;font-size:9px">';
+  svg += '<rect x="0" y="0" width="' + W + '" height="' + H + '" fill="#fafbfc" rx="6"/>';
+  svg += '<path d="' + arc(0, instEnd) + '" fill="#1A3A78"><title>Institutional ' + inst.toFixed(1) + '%</title></path>';
+  svg += '<path d="' + arc(instEnd, insiderEnd) + '" fill="#f59e0b"><title>Insider ' + insider.toFixed(1) + '%</title></path>';
+  svg += '<path d="' + arc(insiderEnd, 100) + '" fill="#cbd5e1"><title>Retail ' + retail.toFixed(1) + '%</title></path>';
+
+  // Center label
+  svg += '<text x="' + cx + '" y="' + (cy - 4) + '" text-anchor="middle" fill="#0f172a" font-size="11" font-weight="800">' + inst.toFixed(0) + '%</text>';
+  svg += '<text x="' + cx + '" y="' + (cy + 10) + '" text-anchor="middle" fill="#64748b" font-size="8">institutional</text>';
+
+  // Legend
+  var lx = 200, ly = 36, dy = 24;
+  var rows = [
+    { col: "#1A3A78", lbl: "Institutional", val: inst },
+    { col: "#f59e0b", lbl: "Insider",       val: insider },
+    { col: "#cbd5e1", lbl: "Retail",         val: retail },
+  ];
+  rows.forEach(function(row, i) {
+    var y = ly + i * dy;
+    svg += '<rect x="' + lx + '" y="' + y + '" width="12" height="12" fill="' + row.col + '" rx="2"/>';
+    svg += '<text x="' + (lx + 18) + '" y="' + (y + 6) + '" fill="#0f172a" font-size="10" font-weight="700">' + row.lbl + '</text>';
+    svg += '<text x="' + (lx + 18) + '" y="' + (y + 18) + '" fill="#64748b" font-size="9" font-family="IBM Plex Mono,monospace">' + row.val.toFixed(1) + '%</text>';
+  });
+  svg += '</svg>';
+  return svg;
+};
 
