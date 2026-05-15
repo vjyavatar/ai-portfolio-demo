@@ -7313,13 +7313,22 @@ window._openMovers = function() {
 window._setMoversRegion = function(reg) {
   var st = window._moversState || (window._moversState = {region:'IN', window:'1D'});
   st.region = reg;
+  // r63.95.1 FIX: this function now ONLY updates pill visuals — the previous
+  // version also called loadMovers(reg), which in turn calls _setMoversRegion(reg)
+  // at its top, creating infinite recursion → "Maximum call stack size exceeded"
+  // at line ~7316. Bug shipped in r63.92.0; broke Movers in production until now.
+  // To trigger a fetch, callers must explicitly call window.loadMovers(reg).
+  window._moversUpdateRegionPills(reg);
+};
+
+// Pure-visual helper: only updates the IN/US pill backgrounds. NO fetch, NO recursion.
+window._moversUpdateRegionPills = function(reg) {
   ['IN','US'].forEach(function(r){
     var b = document.getElementById('moversReg' + r);
     if (!b) return;
     if (r === reg) { b.style.background = 'linear-gradient(135deg,#7c3aed,#1e40af)'; b.style.color = '#fff'; }
     else { b.style.background = '#fff'; b.style.color = '#374151'; }
   });
-  window.loadMovers(reg, false);
 };
 
 window._setMoversWindow = function(win) {
@@ -7342,7 +7351,9 @@ window.loadMovers = function(region, forceRefresh) {
   var resEl = document.getElementById('moversResult');
   var stEl  = document.getElementById('moversStatus');
   if (!resEl) return;
-  window._setMoversRegion(region);
+  // r63.95.1 FIX: was window._setMoversRegion(region) — that called back loadMovers,
+  // creating infinite recursion. Now call the pure-visual helper directly.
+  window._moversUpdateRegionPills(region);
   if (stEl) stEl.textContent = 'Loading ' + region + ' top movers…';
   resEl.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text3);font-size:11px"><div style="display:inline-block;width:14px;height:14px;border:2px solid #7c3aed;border-top-color:transparent;border-radius:50%;animation:spin .5s linear infinite;vertical-align:middle;margin-right:8px"></div>Scanning ' + region + ' universe…</div>';
   var url = '/api/movers?region=' + encodeURIComponent(region) + (forceRefresh ? '&_=' + Date.now() : '');

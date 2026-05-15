@@ -1,3 +1,41 @@
+## r63.95.1 (2026-05-15) — HOTFIX: Movers infinite recursion (shipped in r63.92.0, finally caught)
+
+**Symptom (Vijay screenshot, console error):** `Uncaught RangeError: Maximum call stack size exceeded` at app.js line ~7316. Movers tab stuck on "Loading top movers…" — never completes.
+
+**Root cause:** Mutual-recursion bug I introduced in r63.92.0 when building the Movers tab.
+
+```
+loadMovers(reg)
+  → window._setMoversRegion(reg)        // line 7345 — updates pill visuals
+      → window.loadMovers(reg, false)   // line 7322 — END OF _setMoversRegion ← THE BUG
+          → window._setMoversRegion(reg)
+              → window.loadMovers(reg, false)
+                  → ...stack overflow
+```
+
+Each function legitimately needed to update the pill visuals, so I put the pill-update logic in `_setMoversRegion` and called it from `loadMovers`. But `_setMoversRegion` *also* called `loadMovers` at the end to trigger the fetch — so the two functions called each other forever.
+
+**Why this wasn't caught earlier:**
+- Parse-check passes: it's a semantic bug, not a syntax bug.
+- The shape of bugs my smoke tests catch: missing endpoints, undefined references, malformed responses. They did NOT cover "callable chain doesn't recurse." Adding that to the regression battery for r63.96.0+.
+- The Movers tab worked for me when I built it because the cold-cache path returned early before triggering region change.
+
+**The fix:** Split `_setMoversRegion` into two functions:
+- `_moversUpdateRegionPills(reg)` — PURE visual: just updates IN/US button backgrounds. NO fetch, NO side effects.
+- `_setMoversRegion(reg)` — public API: updates state + calls the pure helper. Does NOT fetch. Callers who want a fetch must explicitly call `window.loadMovers(reg)`.
+
+Then inside `loadMovers`, replaced `window._setMoversRegion(region)` (which called back into loadMovers) with `window._moversUpdateRegionPills(region)` (which can't).
+
+**Verified by an actual recursion smoke test** (`/tmp/recursion_test.js`): both `_setMoversRegion('IN')` and `loadMovers('US', false)` now complete without `RangeError`. Adding `node`-based call-chain tests to the regression suite — should have been there from r63.92.0.
+
+**Audit of similar patterns:** Checked `_setMoatRegion` (Moat tab) and `_setScsRegion` (Structural tab). Both are defensive copies that DON'T call their respective load functions — no recursion. Only Movers was bitten.
+
+**Files changed:** `static/app.js`, `static/app.min.js` (synced), `build_version.txt` (→ r63.95.1), `CHANGELOG.md`.
+
+**Apologies for the regression.** This blocked Movers from working since r63.92.0. The "all parse checks pass" claim was true but insufficient — parse-pass doesn't mean runtime-pass.
+
+---
+
 ## r63.95.0 (2026-05-15) — SCS-SMI INTEGRATION: surface Structural Change Signal in Smart Money Scanner
 
 **Context (per the spec audit Vijay requested):** The biggest single gap in r63.94.0 was that SCS was built as a standalone tab and never integrated with the Smart Money Scanner. The original spec called for "Add a new panel: STRUCTURAL INFLECTION DETECTOR" with outputs surfaced *inside* the scanner — verdict, "what changed" tags, institutional relevance, lead indicator strength. r63.95.0 closes that gap.
