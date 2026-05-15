@@ -1,3 +1,56 @@
+## r63.92.1 (2026-05-15) — HOTFIX: `_insQHist is not defined` — completing the r63.91.0 alias shim
+
+**Symptom (Vijay report + screenshot):** After deploying r63.92.0, Research → Analyze on US/MU now throws `Error: _insQHist is not defined` with the same red+Retry card. r63.91.0 fixed `_instData` but the IIFE has more orphan references.
+
+**Mea culpa:** r63.91.0 was a partial fix. I aliased one variable (`_instData`) but didn't audit the rest of the IIFE for other legacy-path variable names that got copy-pasted. The standing rule about thorough pre-deploy regression exists exactly to prevent this — I failed it.
+
+**Comprehensive audit this time:**
+
+`_renderReportLegacy` declares four variables in its institutional block:
+- `_instData` (line 15581)
+- `_ownHist`  (line 15582)
+- `_holDelta` (line 15583)
+- `_insQHist` (line 15584)
+
+The SMI IIFE inside `loadInvestorDE` declares them under different names:
+- `_inst`, `_ownH`, `_volH`, `_holD`, `_insH`
+
+Code copy-pasted from the legacy path into the IIFE references the legacy names. Confirmed orphans inside the IIFE (lines 18281-18482):
+- `_instData` — 5 references (r63.91.0 caught this)
+- `_insQHist` — 1 reference at line 18435 (`var _quartHist = _insQHist || [];`) ← **this crash**
+- `_ownHist`, `_holDelta` — 0 references currently, but defensively aliased anyway
+
+**Fix:** Defensive alias shim covering ALL four legacy names, placed AFTER the source declarations (not before):
+
+```js
+h += (function(){
+  var _inst = d.institutional || {};
+  var _ownH = ...; var _volH = ...; var _holD = ...; var _insH = ...;
+  // Defensive shim — all four legacy names point to their IIFE-scope equivalents.
+  var _instData = _inst;
+  var _ownHist  = _ownH;
+  var _holDelta = _holD;
+  var _insQHist = _insH;
+  // ... rest of IIFE references either name safely
+})();
+```
+
+**Ordering matters — and r63.91.0 nearly got this wrong:** my first attempt at this build placed the aliases at the TOP of the IIFE (before the source decls). Because `var` hoists declarations but not initializers, that would have left `_insQHist = _insH` as `_insQHist = undefined` until the actual `var _insH = ...` line ran. The `|| []` fallback at the consumer would have masked the bug — no ReferenceError, but `_quartHist` would be permanently empty and the insider charts would silently fail to render when data IS present. Moved the aliases to after the source declarations and added a CRITICAL comment explaining why.
+
+**Pre-deploy regression — comprehensive this time:**
+
+- [x] `python3 ast.parse(api.py)` → PARSE OK
+- [x] `node --check app.js` and `app.min.js` → PARSE OK, byte-identical
+- [x] Every name referenced inside the IIFE (`_instData`, `_ownHist`, `_holDelta`, `_insQHist`, `_inst`, `_ownH`, `_volH`, `_holD`, `_insH`) has exactly one `var X = ...` declaration in the same scope. Verified by awk loop over lines 18281-18482.
+- [x] Alias decls placed AFTER source decls — no `var`-hoist-undefined trap.
+- [x] r63.91.0 hotfix and r63.92.0 Movers feature both preserved in this build.
+
+**Honest open question:** I cannot rule out the possibility of orphan references INSIDE other untouched copy-pasted code paths in app.js (this 34,000-line file has had a lot of copy-paste over time). If a *third* orphan surfaces after this deploy, the right next step isn't another hotfix — it's a one-time grep across the file for "variable referenced but never declared in the enclosing function" using a JS static-analysis tool (eslint with `no-undef` would catch all of these in one pass). Flagging this for a future session if you want to go bulletproof.
+
+**Files changed:** `static/app.js`, `static/app.min.js` (synced copy), `build_version.txt` (→ r63.92.1), `CHANGELOG.md`.
+
+---
+
 ## r63.92.0 (2026-05-15) — TOP MOVERS: 5-timeframe gainers + losers, IN/US
 
 **Context (Vijay request):** "Top 5 biggest movers on daily basis, weekly basis, monthly basis, quarter wise, yearly wise as well." Scoping answers locked in: both markets with IN/US toggle, gainers + losers side-by-side, new top-level tab in the main nav, freshness left to Claude (chose 5-min cached with stale-while-revalidate).

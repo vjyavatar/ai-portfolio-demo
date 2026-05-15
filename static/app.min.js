@@ -18280,11 +18280,6 @@ h+='<details open style="margin:14px 0;border-radius:16px;border:2px solid #1A3A
 // with 4-quarter color-coded cells for OWN + VOL (user's specific ask).
 h += (function(){
   var _inst = d.institutional || {};
-  // r63.91.0 HOTFIX: PLAIN_INFERENCE_INJECTED code below (lines 18244-18280) was copied
-  // from _renderReportLegacy where the variable is `_instData`, but in this IIFE the
-  // variable is `_inst`. Without this alias, every Research → Analyze call crashed
-  // with "ReferenceError: _instData is not defined" and showed the Retry UI.
-  var _instData = _inst;
   var _ownH = Array.isArray(_inst.ownership_history) ? _inst.ownership_history : [];
   var _volH = Array.isArray(_inst.volume_quarterly_history) ? _inst.volume_quarterly_history : [];
   var _holD = Array.isArray(_inst.top_holders_delta) ? _inst.top_holders_delta : [];
@@ -18292,6 +18287,22 @@ h += (function(){
   var _insH = Array.isArray(_inst.insider_activity && _inst.insider_activity.quarterly_history)
               ? _inst.insider_activity.quarterly_history
               : (Array.isArray(_inst.insider_quarterly_history) ? _inst.insider_quarterly_history : []);
+  // r63.91.0 + r63.92.1 HOTFIX: The PLAIN_INFERENCE / SMI_CHARTS code below was
+  // copy-pasted from _renderReportLegacy where variables are named differently:
+  //   legacy `_instData`  ←→ IIFE `_inst`
+  //   legacy `_ownHist`   ←→ IIFE `_ownH`
+  //   legacy `_holDelta`  ←→ IIFE `_holD`
+  //   legacy `_insQHist`  ←→ IIFE `_insH`
+  // Without these aliases, the IIFE throws ReferenceError on the first orphan it
+  // hits (r63.91.0 caught `_instData`, r63.92.1 caught `_insQHist`) and the .catch
+  // at the end of loadInvestorDE shows the user the red error+Retry card.
+  // CRITICAL: aliases MUST come AFTER the _inst/_ownH/_holD/_insH declarations —
+  // `var` hoists declarations but not initializers, so aliasing before the source
+  // would leave the alias permanently `undefined` and silently break the data flow.
+  var _instData = _inst;
+  var _ownHist  = _ownH;
+  var _holDelta = _holD;
+  var _insQHist = _insH;
 
   // Derive verdict from ownership delta
   var verdict = 'INSUFFICIENT DATA', vColor = '#6b7280';
