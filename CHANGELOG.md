@@ -1,3 +1,299 @@
+## r63.95.0 (2026-05-15) — SCS-SMI INTEGRATION: surface Structural Change Signal in Smart Money Scanner
+
+**Context (per the spec audit Vijay requested):** The biggest single gap in r63.94.0 was that SCS was built as a standalone tab and never integrated with the Smart Money Scanner. The original spec called for "Add a new panel: STRUCTURAL INFLECTION DETECTOR" with outputs surfaced *inside* the scanner — verdict, "what changed" tags, institutional relevance, lead indicator strength. r63.95.0 closes that gap.
+
+**Design choice: hybrid (cache-only enrichment + opt-in batch warmup).** I rejected the obvious "fan out 50 SCS calls per scanner request" approach because the scanner already runs heavy (50 tickers × per-ticker yfinance pulls) and adding 50 more yfinance fan-outs per scan would blow past Render's 30s request timeout regularly. The hybrid:
+
+1. **Scanner reads the existing `_scs_cache` for each result row** (cache hits only, zero new yfinance calls during scan). Adds `scs_status`, `scs_score`, `scs_verdict`, `scs_top_tags`, `scs_quiet_accumulation`, `scs_lead_strength`, `scs_cache_age_sec` to each row.
+2. **New `/api/scs-batch?symbols=A,B,C&region=US` endpoint** accepts up to 25 symbols, fans them out at 4 workers in parallel, persists each result to `_scs_cache`, returns a compact summary (breakouts, transitions, quiet-accumulation count).
+3. **New `⚡ COMPUTE SCS` button** in the scanner header triggers the batch endpoint for the visible tickers, then auto-refreshes the scanner so the SCS column populates.
+
+This means: SCS is **surfaced when available** in the scanner without any performance hit. Users can populate it explicitly when they want it — opt-in rather than forced.
+
+### Backend changes (`api.py`)
+
+1. **Scanner enrichment loop** (after sort, before payload return) — reads `_scs_cache` per ticker, attaches `scs_*` fields if a fresh (within 30min) cache entry exists, else marks `scs_status="not_computed"`. Wrapped in try/except so SCS failures cannot break the scanner. Also emits `scs_enrichment.cached_hits` so the frontend can show a hit-count badge.
+
+2. **`_scs_batch_compute_one(symbol, region)`** — single-ticker SCS computer that bypasses the cache TTL check (fresh compute even if cached), runs all 5 categories, persists result to `_scs_cache`, returns a compact summary dict for the batch response.
+
+3. **`GET /api/scs-batch`** — accepts comma-separated symbols (max 25), region (US/IN), and `max_workers` (capped at 6). Uses `ThreadPoolExecutor` with `as_completed`. Busy-key registry prevents duplicate concurrent batches for the same symbol set. Returns:
+   - `requested` / `computed` / `scored` counts
+   - `breakouts` / `transitions` / `quiet_accumulation_count`
+   - `elapsed_sec`
+   - `per_symbol` array for debugging
+
+### Frontend changes (`static/app.js`)
+
+1. **`_smiScsCellHtml(r)`** — new helper rendering the per-row SCS cell. Three states:
+   - `not_computed` → muted "not yet" pill with tooltip explaining how to populate
+   - `cached` with verdict → color-coded pill (🟢 BREAKOUT / 🟡 TRANSITION / 🔴 NO CHANGE / 🟡 INSUFFICIENT) + score/100 + tag count or 👁 QUIET badge. Click drills into the full Structural tab for that ticker (sets `#scsSym`, switches tab, fires `loadStructural`).
+   - Hover tooltip surfaces full verdict label, score, lead strength, top tags, cache age.
+
+2. **`window._smiBatchComputeScs(reg, mcap)`** — scrapes ticker symbols from the rendered table (up to 25), confirms with the user (shows expected runtime), disables the button with a progress label, POSTs to `/api/scs-batch`, on completion shows summary (breakouts / transitions / quiet count) and auto-refreshes the scanner.
+
+3. **Scanner table updates:**
+   - New `🏗 SCS` column header (110px) between TOP HOLDERS and SCORE
+   - SCS cell rendered per row using `_smiScsCellHtml(r)`
+   - `⚡ COMPUTE SCS` button + `🏗 SCS N/M` cache-hit badge in scanner header
+   - Methodology footer expanded with SCS section explaining the 25/25/20/15/15 weighting, the 3 verdict states, and the 👁 QUIET early-detection trigger
+
+### Pre-deploy testing
+
+- [x] `python3 ast.parse(api.py)` → PARSE OK
+- [x] `node --check app.js / app.min.js` → PARSE OK, byte-identical
+- [x] **13-point integration smoke test** covering: cache initialization, enrichment block writes all expected keys, batch endpoint cap enforced, enrichment wrapped in try/except (won't break scanner), batch helper persists to cache, JS helpers present, scanner column wired, button wired, all 3 verdict states handled, click-to-drill-into-Structural works, methodology footer updated, TTL respected, worker count capped. All 13 substantive checks pass.
+- [x] **String-concat bug caught + fixed pre-ship** — first iteration of the COMPUTE SCS button broke the HTML string across an unquoted line (raw `<button>` outside a JS string). Caught by `node --check` immediately. Would have produced silent render failure in production.
+- [x] r63.91.0 + r63.92.1 alias shim preserved
+- [x] r63.92.0 Movers, r63.93.0 Premium+SMI+Moat, r63.94.0 SCS all preserved
+
+### Honest limitations
+
+1. **Cache-only enrichment means no SCS on first scanner load** — until the user clicks `⚡ COMPUTE SCS` or has previously analyzed those tickers in the Structural tab, the column shows `not yet` pills. This is **deliberate**, not a bug. The alternative (fan out 50 yfinance calls per scan) would brick the scanner. If you want background warmup on scan-load, that's r63.96.0 territory (needs a worker queue, not a sync endpoint).
+
+2. **Batch is bounded to 25 tickers per call** — to stay safely under Render's request timeout. The scanner shows up to 50 rows; if the user wants SCS on all 50, they'd need to click `⚡ COMPUTE SCS` twice (the visible-tickers scrape currently grabs the first 25). Documented but not auto-paginated; flagging for v2.
+
+3. **Ticker scraping from DOM is brittle** — `_smiBatchComputeScs` walks the table looking for cells with `font-family:IBM Plex Mono` and ticker-pattern text. If the table HTML structure changes, this breaks. A cleaner approach: stash the ticker list in `window._lastSmiScanTickers` on render. Trading off a quick build today vs slightly better resilience — happy to refactor on request.
+
+4. **No batch progress UI beyond a static button label** — for 25 tickers at ~3–6s each across 4 workers, total runtime is 20–40s. The button shows `⏳ COMPUTING (N tickers)…` but no per-ticker progress. A real progress bar would need either server-sent events or polling — both possible but out of scope here.
+
+5. **Confirm dialog uses native `alert`/`confirm`** — works fine but not styled. Replacing with a proper modal is cosmetic; deferred.
+
+### Files changed
+
+`api.py` (+~140 lines for enrichment loop + batch endpoint), `static/app.js` (+~150 lines for cell renderer + batch handler + scanner integration), `static/app.min.js` (synced), `build_version.txt` (→ r63.95.0), `CHANGELOG.md`.
+
+### Smoke test paths post-deploy
+
+1. Open Smart Money Scanner (whichever tab houses it). Confirm new `🏗 SCS` column appears in the table between TOP HOLDERS and SCORE. Confirm `⚡ COMPUTE SCS` and `🏗 SCS N/M` badge appear in the header card.
+2. All rows should initially show `not yet` pills (purple/muted).
+3. Click `⚡ COMPUTE SCS`. Confirm dialog appears with ticker count and expected runtime. Click OK. Button changes to `⏳ COMPUTING (N tickers)…`. After ~20–40s, an alert summarizes results and the scanner auto-refreshes.
+4. After refresh, SCS column should show colored pills for tickers where Yahoo returned data. Hover any pill to see the tooltip with verdict label, score, lead strength, top tags. Click any pill to drill into the full Structural tab for that ticker.
+5. Open the Structural tab and analyze one of the tickers from the scanner. Return to the scanner — without clicking COMPUTE SCS, that ticker's row should now show its cached SCS verdict because both pages share `_scs_cache`.
+6. If any SCS computation fails on Render (Yahoo 401), the corresponding row remains `not yet`. The scanner does not break.
+
+---
+
+## r63.94.0 (2026-05-15) — STRUCTURAL CHANGE SIGNAL (SCS) + Volume Profile inline guide
+
+**Context (Vijay spec):** Add an institutional-grade structural transformation detector — distinct from valuation, momentum, or moat. The question it answers: "Is this the same company it was 12-24 months ago?" If the answer is NO, valuation models become secondary. Built per the buy-side framework Vijay laid out: 5 weighted categories with explicit ✅/⚠️/❌ data-status badges per sub-signal so users can always distinguish "real measurement" from "unavailable in free tier."
+
+**Scope decision (v1, per Vijay):** Ship with 9 fully-buildable + 6 partial signals, mark the 9 unavailable signals as "missing" with explicit notes pointing to the unavailable data source (SEC EDGAR, segment-level revenue, qualitative filings parsing). No vaporware.
+
+---
+
+### Backend (`api.py`)
+
+New endpoint `GET /api/scs?symbol=&region=` with five category helpers:
+
+**Category A — Capital Structure (25% weight)**
+- ✅ shares_outstanding_change_pct — from `tk.get_shares_full()` resampled quarterly, 8-quarter trend
+- ✅ buyback_intensity — `Repurchase Of Capital Stock` line / market cap from cashflow
+- ✅ debt_total_change_pct — `Total Debt` 8-quarter trajectory from balance sheet
+- ❌ convertibles_warrants — needs SEC EDGAR (out of scope)
+- ⚠️ spinoff_carveout — Finnhub partial corporate-action coverage
+
+**Category B — Business Model Reconfiguration (25% weight)**
+- ✅ gross_margin_trajectory — gross profit / revenue, percentage-point delta
+- ✅ operating_margin_trend — operating income / revenue, percentage-point delta
+- ✅ revenue_growth_acceleration — YoY rate comparison (recent vs prior periods)
+- ❌ segment_revenue_mix, saas_transition, vertical_integration — segment data not in free Yahoo
+
+**Category C — Ownership & Control (20% weight)**
+- ✅ insider_buying_net — `tk.insider_purchases`, net shares + concentrated-buy detection
+- ✅ institutional_ownership_pct — `heldPercentInstitutions` from info
+- ✅ top_holder_concentration — top 5 holders' aggregate % from `tk.institutional_holders`
+- ⚠️ activist_presence — name-matching against curated list of known activists (Elliott, Starboard, Icahn, Pershing Square, Third Point, Trian, ValueAct, Jana, Engine No.1, etc.)
+- ❌ lockup_expirations, sovereign_participation — not in free data
+
+**Category D — Strategic Pivot (15% weight)**
+- ✅ rd_intensity_trend — R&D / Revenue ratio, 8-quarter delta in percentage points
+- ✅ capex_intensity_trend — abs(CapEx) / Revenue, 8-quarter delta
+- ⚠️ ma_activity — cashflow "Acquisitions" line / market cap (cashflow gives totals, not deal-by-deal)
+- ❌ theme_exposure, legacy_exit — qualitative, needs NLP/filings
+
+**Category E — Balance Sheet Reset (15% weight)**
+- ✅ net_debt_transition — Cash − Total Debt over time; **special-case bullish-strong score for levered → cash-rich crossover** (per Vijay's "hidden alpha source")
+- ✅ interest_coverage — EBIT / abs(Interest Expense) trajectory; inflection trigger
+- ✅ current_ratio_trend — Current Assets / Current Liabilities delta
+- ⚠️ asset_monetization — cashflow line partial coverage
+
+**Composite scoring:** weighted average of category scores using the 25/25/20/15/15 weighting from the spec. Categories without any scoreable sub-signals are excluded from the denominator (don't penalize for unavailable data).
+
+**Verdict thresholds:**
+- ≥65 → 🟢 STRUCTURAL_BREAKOUT_CANDIDATE
+- 45–64 → 🟡 TRANSITION_PHASE
+- <45 → 🔴 NO_STRUCTURAL_CHANGE
+
+**Auto-tags (machine-readable transformation signals):**
+- Bullish: `AGGRESSIVE_BUYBACK`, `DEBT_REDUCTION`, `AGGRESSIVE_DEBT_REDUCTION`, `GROSS_MARGIN_EXPANSION`, `STRUCTURAL_MARGIN_LIFT`, `OPERATING_LEVERAGE`, `GROWTH_ACCELERATION`, `INSIDER_CONCENTRATED_BUYING`, `ACTIVIST_PRESENT`, `MULTIPLE_ACTIVISTS`, `RD_INTENSITY_SPIKE`, `CAPEX_RAMP`, `MAJOR_ACQUISITION`, `LEVERED_TO_CASH_TRANSITION`, `INTEREST_COVERAGE_INFLECTION`
+- Bearish: `EQUITY_DILUTION`, `DEBT_BUILDUP`, `MARGIN_COMPRESSION`, `GROWTH_DECELERATION`, `INSIDER_NET_SELLING`, `RD_CUTBACK`, `CAPEX_CUT`, `CASH_TO_LEVERED`, `DISTRESS_RISK`
+
+**Early-detection trigger — "QUIET_ACCUMULATION":** Per Vijay's spec, fires when ≥2 categories show score >60 AND institutional ownership >50% AND price in consolidation band (20-60% of 52w range). This is the "pre-breakout setup institutions look for" tag.
+
+**Lead Indicator Strength:** Heuristic HIGH/MODERATE/LOW based on coverage % and signal extremity. Helps users gauge how much weight to give the verdict.
+
+**Cache:** 30-min TTL per `{symbol}_{region}` key.
+
+---
+
+### Frontend (`static/app.js` + `index.html`)
+
+New top-level `🏗 Structural` tab in `mainTabBar` (between Moat and Tools).
+
+**Renderer (`_renderStructural`)** produces:
+
+1. **Verdict header card** — emoji+label+detail with color-graded composite score (large numeric display, /100 + lookback quarters).
+2. **Quiet Accumulation banner** — only renders when the trigger fires; lists the three signals that fired.
+3. **3-column metric row** — Data Coverage %, Lead Indicator Strength, Tags Detected count.
+4. **"What Changed" tag cloud** — auto-color-coded bullish (green) / bearish (red) / neutral (gray).
+5. **Five category cards** — each shows category icon, label, weight%, tag count, score (color-coded), and per-sub-signal trace with:
+   - ✅ AVAILABLE / ⚠️ PARTIAL / ❌ MISSING status badge (the institutional transparency layer)
+   - Signal pill (BULLISH_STRONG / BEARISH / STABLE / etc.) with color coding
+   - Numeric value (smart-formatted: $9.5B, $250M, +12.3%, decimals)
+   - Methodology note for missing signals (e.g. "Requires SEC EDGAR scraping — not in free data")
+   - Weight column showing sub-signal weight within its category
+6. **Methodology footer** — explains the 25/25/20/15/15 weights, verdict thresholds, and the ✅/⚠️/❌ semantics.
+
+`TAB_GROUPS.structural = {tabs:['structural'], labels:['Structural Change'], default:'structural'}`.
+
+---
+
+### Volume Profile inline guide (bonus per Vijay's first ask)
+
+Added an **expandable institutional-grade explainer card** under the Volume Profile DD section (`_renderVolumeProfile`). Open by default, collapsible. Contains:
+
+1. **What the bar chart means** — bar length = % of 90-day volume at each price level
+2. **The three zones** — POC (heaviest volume), Value Area (70% containing band), Outside Value Area (thin zones)
+3. **Three concrete trader actions** —
+   - Gravity-pull risk (price far above POC = mean-reversion warning)
+   - Support test plan (Nearest Support is the first watch level on a drop)
+   - Breakout judgment ("None above" sounds bullish but means no recent buyer cluster)
+4. **Clarification on the "% Fair Value" badge** — it's one input, not a target
+
+This addresses the "guide each section what this means and what user has to do out of this" ask. Same pattern can be replicated to other DD cards in a future build if useful.
+
+---
+
+### Pre-deploy testing (the substantive kind)
+
+- [x] `python3 ast.parse(api.py)` → PARSE OK
+- [x] `node --check app.js / app.min.js` → PARSE OK, byte-identical
+- [x] **Mocked-data scoring math test** — built a synthetic "bullish structural breakout" company (declining shares, aggressive debt reduction, 38%→47% gross margin expansion, R&D 6.6%→9%, levered-to-cash transition with net debt going from −$18B to +$5B, Elliott Investment Management in top 5 holders, concentrated insider buying). Result: 5/5 categories scored, composite ≈65 (Structural Breakout Candidate), tags fired correctly: `AGGRESSIVE_DEBT_REDUCTION`, `GROSS_MARGIN_EXPANSION`, `STRUCTURAL_MARGIN_LIFT`, `OPERATING_LEVERAGE`, `INSIDER_CONCENTRATED_BUYING`, `ACTIVIST_PRESENT`, `RD_INTENSITY_SPIKE`, `LEVERED_TO_CASH_TRANSITION`, `INTEREST_COVERAGE_INFLECTION`. Math validated.
+- [x] **Sandboxed real-yfinance call** against AAPL/MU/NVDA/MSFT — Yahoo 403 blocked in test environment (same Render constraint pattern). All 5 categories returned `score=None` cleanly, all sub-signals marked `❌ missing`, no crashes. Graceful-degradation path verified.
+- [x] r63.91.0 + r63.92.1 alias shim preserved
+- [x] Movers (r63.92.0), Premium Intelligence + SMI stitch + Moat (r63.93.0) all preserved
+
+### Files changed
+
+`api.py` (+~720 lines for SCS endpoint + 5 category helpers + scoring), `static/app.js` (Structural tab JS + Volume Profile inline guide), `static/app.min.js` (synced), `index.html` (Structural button + card), `build_version.txt` (→ r63.94.0), `CHANGELOG.md`.
+
+### Smoke test paths post-deploy
+
+1. Click `🏗 Structural` in main nav → enter AAPL → US → ANALYZE STRUCTURAL CHANGE. Expect: verdict banner + 5 category cards with ✅ badges on most US-large-cap sub-signals. Look for any tags fired in the "What Changed" row.
+2. Try a US ticker with known recent transformation — e.g., MU (memory cycle), DIS (streaming pivot), TSLA — should produce more bullish or transition tags than a steady-state ticker like KO.
+3. Try RELIANCE on IN — Yahoo coverage thinner for IN; expect more ⚠️/❌ badges but framework still renders. Categories that DO populate will score normally.
+4. Open Decide → Analyze NVDA → scroll to "Volume Profile · Order Book Proxy" card → the new "📖 HOW TO READ THIS · WHAT TO ACT ON" expandable block should be visible right under the LAYMAN — 360° VIEW box.
+
+### Honest limitations
+
+1. **9 of 24 spec items not in v1** — flagged in spec docs and shown as `❌ MISSING` with explicit note in the UI. These need SEC EDGAR scraping, paid segment data, or NLP/LLM on filings. The frontend transparency means users always know what's available vs unavailable.
+2. **Yahoo data dependency** — if Yahoo 401s on a given ticker (intermittent on Render), SCS will return mostly empty. The graceful path renders "Insufficient Data" verdict rather than crashing.
+3. **Activist detection is name-matching against a curated list** — won't catch new activist funds or one-off campaigns. Conservative by design; false positives are rare but false negatives possible.
+4. **8-quarter lookback fixed** — per Vijay's spec. Configurable-per-signal lookback was offered as option D in the scoping question; deferred for v2 if it proves needed.
+
+---
+
+## r63.93.0 (2026-05-15) — PREMIUM INTELLIGENCE + SMI WIRING + MOAT TAB
+
+**Context:** Three asks from Vijay in one push: (1) PREMIUM INTELLIGENCE section shows "Data pending" cards — fix it; (2) SMART MONEY INTELLIGENCE shows "INSUFFICIENT DATA" with all subpanels empty — fix it; (3) add a separate MOAT Analysis tab.
+
+**Root cause analysis (the honest version):**
+
+When the user reported Premium and SMI showing "Data pending" cards, my first instinct was to assume my recent edits broke them. They didn't. The "Data pending" cards are the frontend's **own intentional fallback message** for when specific backend keys are missing — and a backend grep showed those keys were **never populated** by `/api/investor-decide`:
+
+- `analyst_estimates`: 0 references in api.py
+- `estimate_revisions`: 0 references
+- `earnings_surprises`: 0 references
+- `forward_multiples`: 0 references
+- `dividend_quality`: 0 references
+- `institutional.ownership_history`: only in `/api/smart-money-scanner` (different endpoint) — not in `investor-decide`
+- `institutional.top_holders_delta`: same — only in scanner
+- `institutional.insider_activity.quarterly_history`: only in `/api/investor-due-diligence`
+
+The rich `institutional` block (ownership history, insider history, top holders delta) DOES exist on `/api/investor-due-diligence`. The frontend was calling the wrong endpoint to populate the SMI panel. This is a longstanding architectural gap, not a recent regression.
+
+**Strategy chosen — parallel sidecar fetches:** Rather than merge two large endpoints (risky big-bang refactor), `loadInvestorDE` now fires three parallel requests:
+
+1. `/api/investor-decide` (primary — Decide score, factors, basic data) — UNCHANGED
+2. `/api/investor-due-diligence` (sidecar — institutional block, porter, competitive, swot)
+3. `/api/premium-intel` (NEW sidecar — analyst estimates, revisions, multiples, dividends, earnings surprises)
+
+The two sidecars are wrapped in `.catch(function(e){return null})` so any failure there NEVER blocks the main Analyze render — degrades gracefully with the "Data pending" message frontend already shows for missing keys.
+
+**Backend changes (`api.py`):**
+
+New endpoint `GET /api/premium-intel?symbol=&region=`:
+
+- `_premium_yf_block()` — pulls yfinance `info` + `upgrades_downgrades` + `dividends`. Returns `analyst_estimates` (target prices, recommendation, forward EPS/PE), `estimate_revisions` (upgrade/downgrade counts in 7d/30d/60d/90d buckets), `forward_multiples` (P/E, PEG, EV/EBITDA, P/S, P/B), `dividend_quality` (yield, payout, growth streak, A-F grade).
+- `_premium_finnhub_surprises()` — pulls `_fh.get_earnings_history()` for last 8 quarters of estimate-vs-actual with beat rate (US only — Finnhub doesn't cover India).
+- 30-min in-process cache per symbol+region.
+- Every yfinance call wrapped in try/except — partial responses are normal and expected when Yahoo rate-limits.
+- New helper `_safe_num()` for defensive None/NaN coercion.
+
+**Frontend changes (`static/app.js`):**
+
+1. `loadInvestorDE` converted from single `_cachedFetch` to `Promise.all([primary, dd, premium])`. Sidecar results stitched onto the primary `d` object before render. No-overwrite policy: if primary already has a key with a non-null value, sidecar value is ignored. This means the SMI panel, Premium Intelligence section, AND the new Moat tab can all consume their data from the same render pipeline.
+
+2. New top-level `🏘 Moat` button in `mainTabBar` between Movers and Tools. Independent tab with its own symbol+region input — pulls `/api/investor-due-diligence` directly and renders:
+   - Moat verdict header (WIDE / NARROW / TRACE / NO MOAT) with 0-100 score derived from Porter severities
+   - Porter's Five Forces grid (Buyer Power, Supplier Power, Competitive Rivalry, Threat of New Entrants, Substitution Risk) with severity badges
+   - Competitive positioning (moat drivers + peer comparisons)
+   - SWOT-derived moat strengths + threats (two-column)
+3. `TAB_GROUPS.moat = {tabs:['moat'], labels:['Moat Analysis'], default:'moat'}`.
+
+**Pre-deploy testing (the comprehensive version this time):**
+
+- [x] `python3 ast.parse(api.py)` → PARSE OK
+- [x] `node --check app.js` and `app.min.js` → PARSE OK, byte-identical
+- [x] **End-to-end smoke test against real yfinance** (sandboxed — Yahoo blocked, but failure mode verified clean: no crash, `_yf_info_error` populated, graceful degradation)
+- [x] **Stitch logic unit tested** with 6 scenarios:
+  - Happy path (both sidecars return) → all fields populated
+  - Both sidecars null → primary intact, no errors
+  - DD null, premium ok → premium fields populated, SMI absent (graceful)
+  - Sidecars return `success: false` → treated as failure, primary intact
+  - No-overwrite policy → primary values preserved, only new keys added
+  - Malformed DD (institutional is a string) → primary intact, no crash
+- [x] **IIFE orphan re-audit** — every `_X` reference in the SMI IIFE either has an in-scope `var _X` declaration, is an external function (verified exists), or is a property suffix on an object access. No new `_X is not defined` lurking from these edits.
+- [x] r63.91.0 + r63.92.1 alias shim preserved (all 4 legacy variable aliases intact)
+- [x] Dividend yield normalization edge cases (Yahoo decimal 0.025 → 2.5%, already-percent passthrough, zero, None, tiny dividends) — all 5 cases pass
+- [x] Movers feature (r63.92.0) preserved
+
+**Honest limitations of this build:**
+
+1. **yfinance availability:** Premium Intelligence depends on yfinance reaching Yahoo. On Render, Yahoo sometimes 401s on `info` (known issue). When Yahoo fails, `/api/premium-intel` returns a clean response with `_yf_info_error` populated and the frontend shows "Data pending" cleanly. **It will not always populate** — that's a data-source limitation, not a code bug.
+
+2. **5Y median multiples not available:** Free Yahoo data only gives current multiples, not 5Y medians. The frontend table shows current values with "—" for "5Y MEDIAN" and "VS MEDIAN" columns. Wiring Finnhub historical multiples or another paid source would close this gap (not in scope here).
+
+3. **Earnings surprises are US-only:** Finnhub free tier doesn't cover Indian equities. IN tickers will show "Data pending" for the surprise card. Yahoo's `earnings_history` field is available as a fallback path (not wired in this build — flagging for follow-up).
+
+4. **Moat tab depends on Porter data from DD endpoint:** If DD has no porter data for a ticker (some smaller/foreign stocks), Moat will show all forces as "UNKNOWN" with score 50. This is expected — flagging "Data quality varies by ticker" in the footer card.
+
+**Files changed:** `api.py` (+~300 lines for premium-intel endpoint), `static/app.js` (Promise.all + Moat JS), `static/app.min.js` (synced), `index.html` (Moat tab button + card), `build_version.txt` (→ r63.93.0), `CHANGELOG.md`.
+
+**Smoke test paths post-deploy:**
+
+1. Analyze NVDA (US) → check console: should see two extra fetches to `/api/investor-due-diligence` and `/api/premium-intel`. If both 200, Premium Intelligence and SMI panels should populate. If either fails, those panels show "Data pending" but main Decide card renders fine.
+2. Click `🏘 Moat` in main nav → enter AAPL → US → ANALYZE MOAT → should see Wide/Narrow/Trace/No Moat verdict + 5 Porter force cards + competitive section.
+3. Repeat for an IN ticker (RELIANCE) — Moat should populate; Premium Intelligence will be partial (no earnings surprises for IN).
+
+**What still needs follow-up after this build (NOT in scope):**
+
+- Wire Yahoo `tk.earnings_history` for IN earnings surprises (Finnhub doesn't cover India).
+- Add 5Y median multiples (needs paid data source or quarterly history aggregation).
+- Mobile breakpoint on Moat tab (Porter grid will stack on narrow screens already due to auto-fit, but Strengths/Threats two-column needs a media query).
+
+---
+
 ## r63.92.1 (2026-05-15) — HOTFIX: `_insQHist is not defined` — completing the r63.91.0 alias shim
 
 **Symptom (Vijay report + screenshot):** After deploying r63.92.0, Research → Analyze on US/MU now throws `Error: _insQHist is not defined` with the same red+Retry card. r63.91.0 fixed `_instData` but the IIFE has more orphan references.

@@ -7682,6 +7682,1333 @@ async def movers(region: str = "IN"):
     return {"success": True, "region": reg, "windows": {}, "ts": 0, "_loading": True}
 
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# r63.93.0: PREMIUM INTELLIGENCE — analyst consensus, revisions, surprises,
+# forward multiples, dividend quality. Multi-source: yfinance info+recommendations
+# (free baseline) + finnhub get_earnings_history for surprise actuals (US only).
+# Frontend reads d.analyst_estimates, d.estimate_revisions, d.earnings_surprises,
+# d.forward_multiples, d.dividend_quality. This endpoint is fired in parallel
+# with /api/investor-decide by loadInvestorDE and stitched into the same response.
+# ═══════════════════════════════════════════════════════════════════════════════
+_premium_intel_cache = {}   # key: f"{symbol}_{region}" → {"data": {...}, "ts": epoch}
+_PREMIUM_TTL = 1800         # 30 min — analyst data doesn't change intraday
+
+
+def _safe_num(v, default=None):
+    """Coerce to float, swallow None/NaN/strings — used pervasively for yfinance fields."""
+    try:
+        if v is None: return default
+        f = float(v)
+        if f != f: return default   # NaN
+        return f
+    except Exception:
+        return default
+
+
+def _premium_yf_block(symbol, region):
+    """Pull yfinance info + recommendations + dividends — wrapped in try/except so
+    a single missing field never tanks the whole response.
+
+    Returns a dict with as many of these keys as we could populate:
+      analyst_estimates, estimate_revisions, forward_multiples, dividend_quality
+    """
+    out = {
+        "analyst_estimates":   None,
+        "estimate_revisions":  None,
+        "forward_multiples":   None,
+        "dividend_quality":    None,
+    }
+    try:
+        import yfinance as yf
+    except Exception as e:
+        out["_yf_error"] = f"yfinance import failed: {e}"
+        return out
+
+    try:
+        yf_sym = symbol if region == "US" else f"{symbol}.NS"
+        try:
+            _yahoo_rate_wait()
+        except Exception:
+            pass
+        tk = yf.Ticker(yf_sym)
+        info = {}
+        try:
+            info = tk.info or {}
+        except Exception as e:
+            out["_yf_info_error"] = str(e)[:100]
+            info = {}
+
+        # ─── ANALYST ESTIMATES (consensus revenue/EPS, forward P/E by fiscal year) ───
+        try:
+            tp_high = _safe_num(info.get("targetHighPrice"))
+            tp_low  = _safe_num(info.get("targetLowPrice"))
+            tp_mean = _safe_num(info.get("targetMeanPrice"))
+            tp_med  = _safe_num(info.get("targetMedianPrice"))
+            n_anal  = _safe_num(info.get("numberOfAnalystOpinions"))
+            rec_mean = _safe_num(info.get("recommendationMean"))   # 1=Strong Buy, 5=Strong Sell
+            rec_key  = info.get("recommendationKey", "")           # "buy", "hold", etc.
+            # Forward estimates
+            fwd_eps  = _safe_num(info.get("forwardEps"))
+            fwd_pe   = _safe_num(info.get("forwardPE"))
+            trail_eps = _safe_num(info.get("trailingEps"))
+            rev_growth = _safe_num(info.get("revenueGrowth"))      # YoY revenue growth, decimal
+            earn_growth = _safe_num(info.get("earningsGrowth"))
+            # Build consensus block — only emit if we have at least one analyst-related field
+            if any(v is not None for v in [tp_mean, tp_med, n_anal, fwd_eps, fwd_pe, rec_mean]):
+                out["analyst_estimates"] = {
+                    "analyst_count":      int(n_anal) if n_anal else None,
+                    "target_mean":        tp_mean,
+                    "target_median":      tp_med,
+                    "target_high":        tp_high,
+                    "target_low":         tp_low,
+                    "recommendation_mean": rec_mean,  # lower = more bullish
+                    "recommendation":      rec_key,
+                    "forward_eps":         fwd_eps,
+                    "forward_pe":          fwd_pe,
+                    "trailing_eps":        trail_eps,
+                    "revenue_growth_yoy":  rev_growth,
+                    "earnings_growth_yoy": earn_growth,
+                    "source":              "yfinance.info",
+                }
+        except Exception as e:
+            out["_analyst_estimates_error"] = str(e)[:100]
+
+        # ─── ESTIMATE REVISIONS (7d/30d/60d/90d consensus shifts) ───
+        # yfinance exposes upgrades_downgrades — a DataFrame of analyst actions
+        try:
+            try:
+                ud = tk.upgrades_downgrades
+            except Exception:
+                ud = None
+            if ud is not None and hasattr(ud, "empty") and not ud.empty:
+                import pandas as pd
+                # Bucket by recency
+                now_ts = pd.Timestamp.now(tz="UTC")
+                buckets = {"7d": 7, "30d": 30, "60d": 60, "90d": 90}
+                revisions = {}
+                # Index is GradeDate; reset for safety
+                ud_local = ud.reset_index() if "GradeDate" not in ud.columns else ud
+                # Normalize column names
+                date_col = "GradeDate" if "GradeDate" in ud_local.columns else ud_local.columns[0]
+                action_col = "Action" if "Action" in ud_local.columns else None
+                from_col   = "FromGrade" if "FromGrade" in ud_local.columns else None
+                to_col     = "ToGrade"   if "ToGrade"   in ud_local.columns else None
+                for label, days in buckets.items():
+                    cutoff = now_ts - pd.Timedelta(days=days)
+                    try:
+                        # Try to convert date column to tz-aware
+                        dates = pd.to_datetime(ud_local[date_col], errors="coerce", utc=True)
+                        recent = ud_local[dates >= cutoff]
+                    except Exception:
+                        recent = ud_local.head(0)
+                    upgrades = 0; downgrades = 0; reiterated = 0
+                    if action_col and action_col in recent.columns:
+                        for a in recent[action_col].fillna("").astype(str):
+                            al = a.lower()
+                            if "up" in al: upgrades += 1
+                            elif "down" in al: downgrades += 1
+                            elif "main" in al or "reit" in al or "init" in al: reiterated += 1
+                    revisions[label] = {
+                        "upgrades":   upgrades,
+                        "downgrades": downgrades,
+                        "reiterated": reiterated,
+                        "total":      int(len(recent)),
+                    }
+                out["estimate_revisions"] = {
+                    "windows": revisions,
+                    "total_actions_returned": int(len(ud_local)),
+                    "source": "yfinance.upgrades_downgrades",
+                }
+        except Exception as e:
+            out["_estimate_revisions_error"] = str(e)[:100]
+
+        # ─── FORWARD MULTIPLES STACK (P/E, PEG, EV/EBITDA, P/S, P/FCF + 5Y medians) ───
+        try:
+            fwd_pe2  = _safe_num(info.get("forwardPE"))
+            peg      = _safe_num(info.get("pegRatio"))
+            trail_pe = _safe_num(info.get("trailingPE"))
+            ev_ebitda = _safe_num(info.get("enterpriseToEbitda"))
+            ev_rev    = _safe_num(info.get("enterpriseToRevenue"))
+            ps        = _safe_num(info.get("priceToSalesTrailing12Months"))
+            pb        = _safe_num(info.get("priceToBook"))
+            # yfinance doesn't expose 5Y median multiples directly. Mark as None
+            # so frontend shows "—" rather than fabricating a baseline.
+            if any(v is not None for v in [fwd_pe2, peg, ev_ebitda, ev_rev, ps, pb]):
+                out["forward_multiples"] = {
+                    "forward_pe":   {"current": fwd_pe2,  "median_5y": None, "signal": None},
+                    "peg":          {"current": peg,      "median_5y": None, "signal": None},
+                    "trailing_pe":  {"current": trail_pe, "median_5y": None, "signal": None},
+                    "ev_ebitda":    {"current": ev_ebitda,"median_5y": None, "signal": None},
+                    "ev_revenue":   {"current": ev_rev,   "median_5y": None, "signal": None},
+                    "price_sales":  {"current": ps,       "median_5y": None, "signal": None},
+                    "price_book":   {"current": pb,       "median_5y": None, "signal": None},
+                    "source":       "yfinance.info",
+                    "note":         "5Y medians not available from free sources; comparison vs sector recommended",
+                }
+        except Exception as e:
+            out["_forward_multiples_error"] = str(e)[:100]
+
+        # ─── DIVIDEND QUALITY (yield, payout ratio, growth streak, coverage) ───
+        try:
+            div_yield = _safe_num(info.get("dividendYield"))
+            # yfinance returns dividendYield as decimal (0.025 = 2.5%) but sometimes
+            # as percent already. If >1 we treat as already-percent.
+            if div_yield is not None and div_yield > 1:
+                div_yield = div_yield  # already percent
+            elif div_yield is not None:
+                div_yield = div_yield * 100  # convert decimal → percent
+            payout = _safe_num(info.get("payoutRatio"))
+            if payout is not None and payout <= 1.5:
+                payout = payout * 100   # decimal → percent
+            div_rate = _safe_num(info.get("dividendRate"))
+            five_y_avg_yield = _safe_num(info.get("fiveYearAvgDividendYield"))
+            ex_date = info.get("exDividendDate")
+            # Growth streak via historical dividends
+            growth_streak_years = None
+            try:
+                divs = tk.dividends
+                if divs is not None and not divs.empty:
+                    import pandas as pd
+                    # Group by year, take last payment of each year
+                    yearly = divs.groupby(divs.index.year).sum().sort_index()
+                    if len(yearly) >= 2:
+                        # Count consecutive YoY increases ending in the latest year
+                        streak = 0
+                        years = yearly.index.tolist()
+                        for i in range(len(years) - 1, 0, -1):
+                            if yearly.iloc[i] > yearly.iloc[i - 1]:
+                                streak += 1
+                            else:
+                                break
+                        growth_streak_years = streak
+            except Exception:
+                pass
+            # Only emit the block if there's an actual dividend
+            if div_yield and div_yield > 0:
+                # Score: 0-100 composite
+                score = 50
+                if div_yield > 5: score += 15
+                elif div_yield > 3: score += 10
+                elif div_yield > 1: score += 5
+                if payout is not None:
+                    if payout < 40: score += 15
+                    elif payout < 60: score += 8
+                    elif payout > 90: score -= 15
+                if growth_streak_years is not None:
+                    if growth_streak_years >= 10: score += 20
+                    elif growth_streak_years >= 5: score += 12
+                    elif growth_streak_years >= 2: score += 5
+                    elif growth_streak_years == 0: score -= 8
+                score = max(0, min(100, score))
+                if score >= 75: grade = "A"
+                elif score >= 60: grade = "B"
+                elif score >= 45: grade = "C"
+                elif score >= 30: grade = "D"
+                else: grade = "F"
+                out["dividend_quality"] = {
+                    "yield_pct":           round(div_yield, 2) if div_yield is not None else None,
+                    "payout_ratio_pct":    round(payout, 1) if payout is not None else None,
+                    "annual_rate":         div_rate,
+                    "five_year_avg_yield": five_y_avg_yield,
+                    "growth_streak_years": growth_streak_years,
+                    "score":               round(score, 1),
+                    "grade":               grade,
+                    "source":              "yfinance.info+dividends",
+                }
+            else:
+                out["dividend_quality"] = {"yield_pct": 0, "grade": "N/A", "note": "No dividend"}
+        except Exception as e:
+            out["_dividend_quality_error"] = str(e)[:100]
+
+    except Exception as e:
+        out["_yf_block_error"] = f"{type(e).__name__}: {str(e)[:120]}"
+
+    return out
+
+
+def _premium_finnhub_surprises(symbol, region):
+    """Earnings surprise history — last 8 quarters with estimate vs actual.
+    US only (Finnhub doesn't cover Indian equities in the free tier).
+    """
+    if region != "US":
+        return None
+    try:
+        eh = _fh.get_earnings_history(symbol, region="US")
+        if not eh:
+            return None
+        # _fh.get_earnings_history returns a list of dicts with quarter info.
+        # Shape varies; normalize defensively.
+        quarters = []
+        for q in (eh if isinstance(eh, list) else (eh.get("quarters", []) if isinstance(eh, dict) else [])):
+            if not isinstance(q, dict): continue
+            est = _safe_num(q.get("eps_estimate") or q.get("estimate") or q.get("epsEstimate"))
+            act = _safe_num(q.get("eps_actual") or q.get("actual") or q.get("epsActual"))
+            qlabel = q.get("quarter") or q.get("period") or q.get("date") or ""
+            surprise_pct = None
+            beat = None
+            if est is not None and act is not None and est != 0:
+                surprise_pct = round((act - est) / abs(est) * 100, 1)
+                beat = act > est
+            quarters.append({
+                "quarter":      str(qlabel),
+                "eps_estimate": est,
+                "eps_actual":   act,
+                "surprise_pct": surprise_pct,
+                "beat":         beat,
+            })
+        # Limit to last 8
+        if quarters:
+            quarters = quarters[:8]
+            # Beat rate
+            beats = sum(1 for q in quarters if q.get("beat") is True)
+            total_with_data = sum(1 for q in quarters if q.get("beat") is not None)
+            return {
+                "quarters":  quarters,
+                "beat_rate": round(beats / total_with_data * 100, 1) if total_with_data else None,
+                "total_quarters": len(quarters),
+                "source":    "finnhub.get_earnings_history",
+            }
+    except Exception as e:
+        return {"_error": f"{type(e).__name__}: {str(e)[:120]}"}
+    return None
+
+
+@app.get("/api/premium-intel")
+async def premium_intel(symbol: str = "", region: str = "US", nocache: int = 0):
+    """Premium intelligence sidecar: analyst estimates, revisions, surprises,
+    forward multiples, dividend quality.
+
+    Fired in parallel with /api/investor-decide by the frontend; the response is
+    stitched into the main render object. Standalone — never modifies or blocks
+    investor-decide. Cached 30 min per symbol+region.
+    """
+    sym = (symbol or "").strip().upper()
+    reg = (region or "US").upper()
+    if not sym:
+        return {"success": False, "error": "symbol required"}
+    if reg not in ("US", "IN"):
+        return {"success": False, "error": "region must be US or IN"}
+
+    cache_key = f"{sym}_{reg}"
+    if not nocache:
+        cached = _premium_intel_cache.get(cache_key)
+        if cached and (time.time() - cached["ts"]) < _PREMIUM_TTL:
+            resp = dict(cached["data"])
+            resp["_cached"] = True
+            resp["_cache_age_sec"] = int(time.time() - cached["ts"])
+            return resp
+
+    t0 = time.time()
+    result = {"success": True, "symbol": sym, "region": reg, "ts": time.time()}
+    # Pull yfinance block (synchronous in this thread, but the route is async so
+    # FastAPI will run our blocking work in the threadpool by default).
+    yf_block = _premium_yf_block(sym, reg)
+    result.update(yf_block)
+    # Earnings surprises — Finnhub for US, skip for IN
+    surprises = _premium_finnhub_surprises(sym, reg)
+    if surprises is not None:
+        result["earnings_surprises"] = surprises
+    result["_elapsed_sec"] = round(time.time() - t0, 2)
+    # Cache
+    _premium_intel_cache[cache_key] = {"data": result, "ts": time.time()}
+    return result
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# r63.94.0: STRUCTURAL CHANGE SIGNAL (SCS)
+#
+# Institutional-grade structural transformation detector. Distinct from valuation /
+# momentum / moat — answers the question "Is this the same company it was 12-24
+# months ago?" Built per Vijay's spec (institutional buy-side framework).
+#
+# Categories + weights:
+#   A. Capital Structure Events       25%  (dilution, buybacks, debt restructuring)
+#   B. Business Model Reconfiguration 25%  (revenue mix, margin expansion)
+#   C. Ownership & Control Shifts     20%  (insider buying, activist entry)
+#   D. Strategic Pivot Signals        15%  (R&D intensity, CapEx reallocation)
+#   E. Balance Sheet Reset            15%  (debt reduction, net cash transition)
+#
+# Lookback: 8 quarters (per Vijay's spec — medium-term structural shifts)
+#
+# Verdict thresholds:
+#   ≥65 → 🟢 STRUCTURAL BREAKOUT CANDIDATE
+#   45-64 → 🟡 TRANSITION PHASE
+#   <45  → 🔴 NO STRUCTURAL CHANGE DETECTED
+#
+# Early-detection rule (per spec):
+#   ≥2 categories show +ve change in <3 quarters
+#   AND ownership trend rising
+#   AND price still in consolidation
+#   → flag "QUIET_ACCUMULATION"
+#
+# Each individual sub-signal carries a data_status: "available" | "partial" |
+# "missing" so the frontend can render ✅/⚠️/❌ badges — transparency on what's
+# real data vs heuristic vs unavailable.
+# ═══════════════════════════════════════════════════════════════════════════════
+_scs_cache = {}                 # key: f"{symbol}_{region}" → {"data": {...}, "ts": epoch}
+_SCS_TTL = 1800                 # 30 min — structural data doesn't change intraday
+_SCS_LOOKBACK_QUARTERS = 8      # 2 years per Vijay's spec
+
+# Known activist investor names — used to flag 13F entries that historically
+# correlate with corporate transformations. Not exhaustive; conservative list.
+# Source: public filings history; matches done case-insensitively + substring.
+_KNOWN_ACTIVISTS = [
+    "elliott", "starboard", "carl icahn", "icahn", "pershing square",
+    "ackman", "third point", "loeb", "trian", "nelson peltz",
+    "engine no", "engine 1", "valueact", "jana partners", "jana ",
+    "blue harbour", "blue orca", "muddy waters", "hindenburg",
+    "kirkoswald", "land & buildings",
+]
+
+
+def _scs_safe_float(v, default=None):
+    try:
+        if v is None: return default
+        f = float(v)
+        if f != f: return default
+        return f
+    except Exception:
+        return default
+
+
+def _scs_trend_pct(series, default=None):
+    """% change from first to last non-null value in an ordered iterable.
+    Returns None if we can't make a meaningful comparison."""
+    try:
+        clean = [_scs_safe_float(x) for x in series]
+        clean = [x for x in clean if x is not None]
+        if len(clean) < 2:
+            return default
+        first, last = clean[0], clean[-1]
+        if first == 0 or first is None:
+            return default
+        return round((last - first) / abs(first) * 100, 1)
+    except Exception:
+        return default
+
+
+def _scs_capital_structure(tk, info):
+    """A. CAPITAL STRUCTURE EVENTS (25% weight)
+    Detects: equity dilution, buybacks, debt restructuring.
+    Returns: dict with sub-signals + category score 0-100 + tags."""
+    sub = {
+        "shares_outstanding_change_pct": {"value": None, "status": "missing", "signal": None, "weight": 0.30},
+        "buyback_intensity":             {"value": None, "status": "missing", "signal": None, "weight": 0.30},
+        "debt_total_change_pct":         {"value": None, "status": "missing", "signal": None, "weight": 0.25},
+        "convertibles_warrants":         {"value": None, "status": "missing", "signal": None, "weight": 0.10, "note": "Requires SEC EDGAR — not in free data"},
+        "spinoff_carveout":              {"value": None, "status": "missing", "signal": None, "weight": 0.05, "note": "Corporate actions partial coverage"},
+    }
+    tags = []
+    try:
+        # Shares outstanding trajectory — 8-quarter
+        try:
+            shares_hist = tk.get_shares_full() if hasattr(tk, "get_shares_full") else None
+            if shares_hist is not None and len(shares_hist) > 0:
+                import pandas as pd
+                # Reduce to one point per quarter (last value)
+                if hasattr(shares_hist, "resample"):
+                    q_series = shares_hist.resample("Q").last().dropna()
+                    if len(q_series) >= 2:
+                        recent = q_series[-_SCS_LOOKBACK_QUARTERS:] if len(q_series) >= _SCS_LOOKBACK_QUARTERS else q_series
+                        pct = _scs_trend_pct(recent.values)
+                        if pct is not None:
+                            sub["shares_outstanding_change_pct"]["value"]  = pct
+                            sub["shares_outstanding_change_pct"]["status"] = "available"
+                            # Signal: dilution > 5% bearish, buyback (reduction) > 2% bullish
+                            if pct > 5:
+                                sub["shares_outstanding_change_pct"]["signal"] = "BEARISH_DILUTION"
+                                tags.append("EQUITY_DILUTION")
+                            elif pct < -2:
+                                sub["shares_outstanding_change_pct"]["signal"] = "BULLISH_BUYBACK"
+                                tags.append("BUYBACK_ACTIVE")
+                                if pct < -5:
+                                    tags.append("AGGRESSIVE_BUYBACK")
+                            else:
+                                sub["shares_outstanding_change_pct"]["signal"] = "NEUTRAL"
+        except Exception:
+            pass
+
+        # Buyback intensity from cashflow
+        try:
+            cf = tk.cashflow if hasattr(tk, "cashflow") else None
+            if cf is not None and not cf.empty:
+                # yfinance returns columns as dates, rows as line items
+                # Look for "Repurchase Of Capital Stock" or "Repurchase Of Stock"
+                buyback_total = 0
+                buyback_quarters = 0
+                for row_label in cf.index:
+                    label_lower = str(row_label).lower()
+                    if "repurchase" in label_lower and "stock" in label_lower:
+                        vals = cf.loc[row_label].dropna()
+                        for v in vals:
+                            v_num = _scs_safe_float(v)
+                            if v_num is not None and v_num < 0:  # repurchases are negative cashflow
+                                buyback_total += abs(v_num)
+                                buyback_quarters += 1
+                        break
+                # Compare to market cap
+                mcap = _scs_safe_float(info.get("marketCap"))
+                if mcap and mcap > 0 and buyback_total > 0:
+                    intensity_pct = round(buyback_total / mcap * 100, 2)
+                    sub["buyback_intensity"]["value"] = intensity_pct
+                    sub["buyback_intensity"]["status"] = "available"
+                    if intensity_pct > 5:
+                        sub["buyback_intensity"]["signal"] = "BULLISH_AGGRESSIVE"
+                        tags.append("AGGRESSIVE_BUYBACK")
+                    elif intensity_pct > 2:
+                        sub["buyback_intensity"]["signal"] = "BULLISH_MODERATE"
+                    else:
+                        sub["buyback_intensity"]["signal"] = "MILD"
+                elif buyback_quarters > 0:
+                    sub["buyback_intensity"]["status"] = "partial"
+                    sub["buyback_intensity"]["value"] = 0
+        except Exception:
+            pass
+
+        # Debt trajectory
+        try:
+            bs = tk.balance_sheet if hasattr(tk, "balance_sheet") else None
+            if bs is not None and not bs.empty:
+                debt_series = []
+                for row_label in bs.index:
+                    label_lower = str(row_label).lower()
+                    if "total debt" in label_lower:
+                        debt_series = bs.loc[row_label].dropna().values.tolist()
+                        debt_series = list(reversed(debt_series))  # chronological
+                        break
+                if debt_series and len(debt_series) >= 2:
+                    pct = _scs_trend_pct(debt_series)
+                    if pct is not None:
+                        sub["debt_total_change_pct"]["value"] = pct
+                        sub["debt_total_change_pct"]["status"] = "available"
+                        if pct < -15:
+                            sub["debt_total_change_pct"]["signal"] = "BULLISH_DELEVERAGING"
+                            tags.append("AGGRESSIVE_DEBT_REDUCTION")
+                        elif pct < -5:
+                            sub["debt_total_change_pct"]["signal"] = "BULLISH_MODERATE_DELEVERAGE"
+                            tags.append("DEBT_REDUCTION")
+                        elif pct > 25:
+                            sub["debt_total_change_pct"]["signal"] = "BEARISH_LEVERAGE_UP"
+                            tags.append("DEBT_BUILDUP")
+                        else:
+                            sub["debt_total_change_pct"]["signal"] = "NEUTRAL"
+        except Exception:
+            pass
+    except Exception as e:
+        sub["_category_error"] = f"{type(e).__name__}: {str(e)[:100]}"
+
+    # Category score — weighted blend of sub-signals
+    score = _scs_category_score(sub)
+    return {"sub": sub, "score": score, "tags": tags, "weight": 0.25}
+
+
+def _scs_business_model(tk, info):
+    """B. BUSINESS MODEL RECONFIGURATION (25% weight)
+    Quantitative proxies only — qualitative items need filings parsing."""
+    sub = {
+        "gross_margin_trajectory":   {"value": None, "status": "missing", "signal": None, "weight": 0.40},
+        "operating_margin_trend":    {"value": None, "status": "missing", "signal": None, "weight": 0.30},
+        "revenue_growth_acceleration":{"value": None, "status": "missing", "signal": None, "weight": 0.30},
+        "segment_revenue_mix":       {"value": None, "status": "missing", "signal": None, "weight": 0.00,
+                                       "note": "Segment data rarely exposed by Yahoo — needs paid source"},
+        "saas_transition":           {"value": None, "status": "missing", "signal": None, "weight": 0.00,
+                                       "note": "Requires 10-K MD&A parsing — qualitative"},
+        "vertical_integration":      {"value": None, "status": "missing", "signal": None, "weight": 0.00,
+                                       "note": "Qualitative — filings only"},
+    }
+    tags = []
+    try:
+        income = tk.income_stmt if hasattr(tk, "income_stmt") else None
+        if income is not None and not income.empty:
+            # Gross margin trajectory
+            try:
+                rev_row = None
+                gp_row = None
+                op_row = None
+                for label in income.index:
+                    ll = str(label).lower()
+                    if ll == "total revenue" or ll == "revenue": rev_row = label
+                    if "gross profit" in ll: gp_row = label
+                    if ll == "operating income" or ll == "operating revenue": op_row = label
+                if rev_row and gp_row:
+                    revs = list(reversed(income.loc[rev_row].dropna().values.tolist()))
+                    gps  = list(reversed(income.loc[gp_row].dropna().values.tolist()))
+                    if revs and gps and len(revs) == len(gps) and len(revs) >= 2:
+                        gm_series = []
+                        for r, gp in zip(revs, gps):
+                            rn, gn = _scs_safe_float(r), _scs_safe_float(gp)
+                            if rn and rn > 0 and gn is not None:
+                                gm_series.append(gn / rn * 100)
+                        if len(gm_series) >= 2:
+                            delta_pp = round(gm_series[-1] - gm_series[0], 1)   # percentage points
+                            sub["gross_margin_trajectory"]["value"] = delta_pp
+                            sub["gross_margin_trajectory"]["status"] = "available"
+                            if delta_pp > 3:
+                                sub["gross_margin_trajectory"]["signal"] = "BULLISH_EXPANSION"
+                                tags.append("GROSS_MARGIN_EXPANSION")
+                                if delta_pp > 6: tags.append("STRUCTURAL_MARGIN_LIFT")
+                            elif delta_pp < -3:
+                                sub["gross_margin_trajectory"]["signal"] = "BEARISH_COMPRESSION"
+                                tags.append("MARGIN_COMPRESSION")
+                            else:
+                                sub["gross_margin_trajectory"]["signal"] = "STABLE"
+                # Operating margin
+                if rev_row and op_row:
+                    revs2 = list(reversed(income.loc[rev_row].dropna().values.tolist()))
+                    ops  = list(reversed(income.loc[op_row].dropna().values.tolist()))
+                    if revs2 and ops and len(revs2) == len(ops) and len(revs2) >= 2:
+                        om_series = []
+                        for r, op in zip(revs2, ops):
+                            rn, on = _scs_safe_float(r), _scs_safe_float(op)
+                            if rn and rn > 0 and on is not None:
+                                om_series.append(on / rn * 100)
+                        if len(om_series) >= 2:
+                            delta_pp = round(om_series[-1] - om_series[0], 1)
+                            sub["operating_margin_trend"]["value"] = delta_pp
+                            sub["operating_margin_trend"]["status"] = "available"
+                            if delta_pp > 4:
+                                sub["operating_margin_trend"]["signal"] = "BULLISH_LEVERAGE"
+                                tags.append("OPERATING_LEVERAGE")
+                            elif delta_pp < -4:
+                                sub["operating_margin_trend"]["signal"] = "BEARISH_DELEVERAGE"
+                            else:
+                                sub["operating_margin_trend"]["signal"] = "STABLE"
+                # Revenue growth acceleration — compare last 2y avg to prior 2y
+                if rev_row:
+                    revs3 = list(reversed(income.loc[rev_row].dropna().values.tolist()))
+                    revs3 = [_scs_safe_float(r) for r in revs3]
+                    revs3 = [r for r in revs3 if r is not None]
+                    if len(revs3) >= 3:
+                        # Year-over-year growth rates
+                        yoy = []
+                        for i in range(1, len(revs3)):
+                            if revs3[i-1] and revs3[i-1] > 0:
+                                yoy.append((revs3[i] - revs3[i-1]) / revs3[i-1] * 100)
+                        if len(yoy) >= 2:
+                            recent_growth = yoy[-1]
+                            avg_prior = sum(yoy[:-1]) / len(yoy[:-1])
+                            accel = round(recent_growth - avg_prior, 1)
+                            sub["revenue_growth_acceleration"]["value"] = accel
+                            sub["revenue_growth_acceleration"]["status"] = "available"
+                            if accel > 10:
+                                sub["revenue_growth_acceleration"]["signal"] = "BULLISH_ACCELERATION"
+                                tags.append("GROWTH_ACCELERATION")
+                            elif accel < -10:
+                                sub["revenue_growth_acceleration"]["signal"] = "BEARISH_DECELERATION"
+                                tags.append("GROWTH_DECELERATION")
+                            else:
+                                sub["revenue_growth_acceleration"]["signal"] = "STABLE"
+            except Exception:
+                pass
+    except Exception as e:
+        sub["_category_error"] = f"{type(e).__name__}: {str(e)[:100]}"
+    score = _scs_category_score(sub)
+    return {"sub": sub, "score": score, "tags": tags, "weight": 0.25}
+
+
+def _scs_ownership(tk, info):
+    """C. OWNERSHIP & CONTROL SHIFTS (20% weight)
+    Insider buying, institutional ownership trend, activist detection."""
+    sub = {
+        "insider_buying_net":        {"value": None, "status": "missing", "signal": None, "weight": 0.40},
+        "institutional_ownership_pct":{"value": None, "status": "missing", "signal": None, "weight": 0.25},
+        "top_holder_concentration":  {"value": None, "status": "missing", "signal": None, "weight": 0.15},
+        "activist_presence":         {"value": None, "status": "missing", "signal": None, "weight": 0.20},
+        "lockup_expirations":        {"value": None, "status": "missing", "signal": None, "weight": 0.00,
+                                       "note": "IPO lockup calendars not in free data"},
+        "sovereign_participation":   {"value": None, "status": "missing", "signal": None, "weight": 0.00,
+                                       "note": "Manual identification required"},
+    }
+    tags = []
+    try:
+        # Insider buying — last 6 months net
+        try:
+            ip = tk.insider_purchases if hasattr(tk, "insider_purchases") else None
+            if ip is not None and not ip.empty:
+                # ip is a DF with rows like 'Purchases', 'Sales', 'Net Shares Purchased (Sold)', etc.
+                first_col = ip.columns[0] if len(ip.columns) > 0 else None
+                if first_col:
+                    ip_dict = {}
+                    for _i, _r in ip.iterrows():
+                        label = str(_r[first_col]).strip()
+                        shares = _scs_safe_float(_r.get("Shares")) if "Shares" in ip.columns else None
+                        ip_dict[label] = shares
+                    net_shares = ip_dict.get("Net Shares Purchased (Sold)") or 0
+                    buys = ip_dict.get("Purchases") or 0
+                    sells = ip_dict.get("Sales") or 0
+                    sub["insider_buying_net"]["value"] = {"net_shares": net_shares, "buys": buys, "sells": sells}
+                    sub["insider_buying_net"]["status"] = "available"
+                    if net_shares > 0:
+                        if buys and sells and buys > sells * 3:
+                            sub["insider_buying_net"]["signal"] = "BULLISH_STRONG"
+                            tags.append("INSIDER_CONCENTRATED_BUYING")
+                        else:
+                            sub["insider_buying_net"]["signal"] = "BULLISH_MODERATE"
+                            tags.append("INSIDER_NET_BUYING")
+                    elif net_shares < 0 and sells > buys * 2:
+                        sub["insider_buying_net"]["signal"] = "BEARISH_NET_SELLING"
+                        tags.append("INSIDER_NET_SELLING")
+                    else:
+                        sub["insider_buying_net"]["signal"] = "NEUTRAL"
+        except Exception:
+            pass
+
+        # Institutional ownership %
+        try:
+            inst_pct = _scs_safe_float(info.get("heldPercentInstitutions"))
+            if inst_pct is not None:
+                if inst_pct <= 1: inst_pct *= 100   # decimal → %
+                sub["institutional_ownership_pct"]["value"] = round(inst_pct, 1)
+                sub["institutional_ownership_pct"]["status"] = "available"
+                if inst_pct > 75:
+                    sub["institutional_ownership_pct"]["signal"] = "BULLISH_HEAVY_INST"
+                elif inst_pct > 50:
+                    sub["institutional_ownership_pct"]["signal"] = "MODERATE"
+                else:
+                    sub["institutional_ownership_pct"]["signal"] = "LOW_INST"
+        except Exception:
+            pass
+
+        # Activist & concentration via institutional_holders
+        try:
+            ih = tk.institutional_holders if hasattr(tk, "institutional_holders") else None
+            if ih is not None and not ih.empty:
+                activist_hits = []
+                for _i, row in ih.iterrows():
+                    holder = str(row.get("Holder", "")).lower() if "Holder" in ih.columns else ""
+                    for a in _KNOWN_ACTIVISTS:
+                        if a in holder:
+                            activist_hits.append({"name": str(row.get("Holder", "")),
+                                                  "pct": _scs_safe_float(row.get("pctHeld") or row.get("% Out"))})
+                            break
+                if activist_hits:
+                    sub["activist_presence"]["value"] = activist_hits[:3]
+                    sub["activist_presence"]["status"] = "partial"
+                    sub["activist_presence"]["signal"] = "BULLISH_ACTIVIST"
+                    tags.append("ACTIVIST_PRESENT")
+                    if len(activist_hits) >= 2:
+                        tags.append("MULTIPLE_ACTIVISTS")
+                else:
+                    sub["activist_presence"]["value"] = []
+                    sub["activist_presence"]["status"] = "partial"
+                    sub["activist_presence"]["signal"] = "NONE_DETECTED"
+                # Top holder concentration
+                try:
+                    pct_col = "pctHeld" if "pctHeld" in ih.columns else ("% Out" if "% Out" in ih.columns else None)
+                    if pct_col:
+                        top5 = ih.head(5)[pct_col].dropna()
+                        top5_pcts = [_scs_safe_float(v) for v in top5.values]
+                        top5_pcts = [v for v in top5_pcts if v is not None]
+                        if top5_pcts:
+                            # Normalize: some sources give decimal, some percent
+                            avg_val = sum(top5_pcts) / len(top5_pcts)
+                            if avg_val < 1:  # decimal
+                                top5_pcts = [v * 100 for v in top5_pcts]
+                            concentration = round(sum(top5_pcts), 1)
+                            sub["top_holder_concentration"]["value"] = concentration
+                            sub["top_holder_concentration"]["status"] = "available"
+                            if concentration > 40:
+                                sub["top_holder_concentration"]["signal"] = "HIGH_CONCENTRATION"
+                            elif concentration > 20:
+                                sub["top_holder_concentration"]["signal"] = "MODERATE"
+                            else:
+                                sub["top_holder_concentration"]["signal"] = "DIFFUSE"
+                except Exception:
+                    pass
+        except Exception:
+            pass
+    except Exception as e:
+        sub["_category_error"] = f"{type(e).__name__}: {str(e)[:100]}"
+    score = _scs_category_score(sub)
+    return {"sub": sub, "score": score, "tags": tags, "weight": 0.20}
+
+
+def _scs_strategic_pivot(tk, info):
+    """D. STRATEGIC PIVOT SIGNALS (15% weight)
+    R&D intensity, CapEx reallocation, M&A activity."""
+    sub = {
+        "rd_intensity_trend":     {"value": None, "status": "missing", "signal": None, "weight": 0.40},
+        "capex_intensity_trend":  {"value": None, "status": "missing", "signal": None, "weight": 0.30},
+        "ma_activity":            {"value": None, "status": "missing", "signal": None, "weight": 0.30},
+        "theme_exposure":         {"value": None, "status": "missing", "signal": None, "weight": 0.00,
+                                    "note": "Requires NLP on business description — out of scope"},
+        "legacy_exit":            {"value": None, "status": "missing", "signal": None, "weight": 0.00,
+                                    "note": "Requires 10-K segment parsing"},
+    }
+    tags = []
+    try:
+        income = tk.income_stmt if hasattr(tk, "income_stmt") else None
+        if income is not None and not income.empty:
+            rev_row = None; rd_row = None
+            for label in income.index:
+                ll = str(label).lower()
+                if ll == "total revenue" or ll == "revenue": rev_row = label
+                if "research" in ll and "development" in ll: rd_row = label
+            if rev_row and rd_row:
+                revs = list(reversed(income.loc[rev_row].dropna().values.tolist()))
+                rds  = list(reversed(income.loc[rd_row].dropna().values.tolist()))
+                if revs and rds and len(revs) == len(rds) and len(revs) >= 2:
+                    rd_intens = []
+                    for r, rd in zip(revs, rds):
+                        rn, rdn = _scs_safe_float(r), _scs_safe_float(rd)
+                        if rn and rn > 0 and rdn is not None:
+                            rd_intens.append(rdn / rn * 100)
+                    if len(rd_intens) >= 2:
+                        delta_pp = round(rd_intens[-1] - rd_intens[0], 1)
+                        sub["rd_intensity_trend"]["value"] = {"delta_pp": delta_pp,
+                                                              "current_pct": round(rd_intens[-1], 1),
+                                                              "first_pct": round(rd_intens[0], 1)}
+                        sub["rd_intensity_trend"]["status"] = "available"
+                        if delta_pp > 1.5:
+                            sub["rd_intensity_trend"]["signal"] = "BULLISH_INNOVATION"
+                            tags.append("RD_INTENSITY_SPIKE")
+                        elif delta_pp < -1.5:
+                            sub["rd_intensity_trend"]["signal"] = "BEARISH_HARVEST"
+                            tags.append("RD_CUTBACK")
+                        else:
+                            sub["rd_intensity_trend"]["signal"] = "STABLE"
+
+        # CapEx intensity from cashflow
+        cf = tk.cashflow if hasattr(tk, "cashflow") else None
+        if cf is not None and not cf.empty:
+            capex_row = None
+            for label in cf.index:
+                ll = str(label).lower()
+                if "capital expenditure" in ll: capex_row = label; break
+            if capex_row and rev_row and income is not None and not income.empty:
+                capex_vals = list(reversed(cf.loc[capex_row].dropna().values.tolist()))
+                rev_vals   = list(reversed(income.loc[rev_row].dropna().values.tolist()))
+                # CapEx is reported negative; abs it
+                n = min(len(capex_vals), len(rev_vals))
+                if n >= 2:
+                    capex_intens = []
+                    for r, c in zip(rev_vals[:n], capex_vals[:n]):
+                        rn, cn = _scs_safe_float(r), _scs_safe_float(c)
+                        if rn and rn > 0 and cn is not None:
+                            capex_intens.append(abs(cn) / rn * 100)
+                    if len(capex_intens) >= 2:
+                        delta_pp = round(capex_intens[-1] - capex_intens[0], 1)
+                        sub["capex_intensity_trend"]["value"] = {"delta_pp": delta_pp,
+                                                                  "current_pct": round(capex_intens[-1], 1)}
+                        sub["capex_intensity_trend"]["status"] = "available"
+                        if delta_pp > 2:
+                            sub["capex_intensity_trend"]["signal"] = "BULLISH_INVESTMENT"
+                            tags.append("CAPEX_RAMP")
+                        elif delta_pp < -2:
+                            sub["capex_intensity_trend"]["signal"] = "BEARISH_PULLBACK"
+                            tags.append("CAPEX_CUT")
+                        else:
+                            sub["capex_intensity_trend"]["signal"] = "STABLE"
+            # M&A activity from cashflow "Acquisitions" line
+            try:
+                acq_total = 0
+                for label in cf.index:
+                    ll = str(label).lower()
+                    if "acquisition" in ll or "purchase of busin" in ll:
+                        vals = cf.loc[label].dropna()
+                        for v in vals:
+                            vn = _scs_safe_float(v)
+                            if vn is not None and vn < 0:  # acquisitions are negative cashflow
+                                acq_total += abs(vn)
+                        break
+                mcap = _scs_safe_float(info.get("marketCap"))
+                if acq_total > 0:
+                    sub["ma_activity"]["status"] = "partial"
+                    if mcap and mcap > 0:
+                        intensity = round(acq_total / mcap * 100, 2)
+                        sub["ma_activity"]["value"] = {"total": acq_total, "intensity_pct": intensity}
+                        if intensity > 10:
+                            sub["ma_activity"]["signal"] = "AGGRESSIVE_ACQUIRER"
+                            tags.append("MAJOR_ACQUISITION")
+                        elif intensity > 2:
+                            sub["ma_activity"]["signal"] = "ACTIVE_ACQUIRER"
+                            tags.append("M_AND_A_ACTIVE")
+                        else:
+                            sub["ma_activity"]["signal"] = "MINOR"
+                    else:
+                        sub["ma_activity"]["value"] = {"total": acq_total}
+                        sub["ma_activity"]["signal"] = "ACTIVITY_DETECTED"
+            except Exception:
+                pass
+    except Exception as e:
+        sub["_category_error"] = f"{type(e).__name__}: {str(e)[:100]}"
+    score = _scs_category_score(sub)
+    return {"sub": sub, "score": score, "tags": tags, "weight": 0.15}
+
+
+def _scs_balance_sheet_reset(tk, info):
+    """E. BALANCE SHEET RESET (15% weight)
+    Debt reduction, net cash transition, interest coverage."""
+    sub = {
+        "net_debt_transition":   {"value": None, "status": "missing", "signal": None, "weight": 0.40},
+        "interest_coverage":     {"value": None, "status": "missing", "signal": None, "weight": 0.30},
+        "current_ratio_trend":   {"value": None, "status": "missing", "signal": None, "weight": 0.20},
+        "asset_monetization":    {"value": None, "status": "missing", "signal": None, "weight": 0.10},
+    }
+    tags = []
+    try:
+        bs = tk.balance_sheet if hasattr(tk, "balance_sheet") else None
+        if bs is not None and not bs.empty:
+            cash_row = None; debt_row = None; ca_row = None; cl_row = None
+            for label in bs.index:
+                ll = str(label).lower()
+                if "cash and cash equivalents" in ll: cash_row = label
+                elif "cash" in ll and cash_row is None: cash_row = label
+                if "total debt" in ll: debt_row = label
+                if "current assets" in ll and ca_row is None: ca_row = label
+                if "current liabilities" in ll and cl_row is None: cl_row = label
+            # Net debt transition
+            if cash_row and debt_row:
+                cash_vals = list(reversed(bs.loc[cash_row].dropna().values.tolist()))
+                debt_vals = list(reversed(bs.loc[debt_row].dropna().values.tolist()))
+                n = min(len(cash_vals), len(debt_vals))
+                if n >= 2:
+                    net_series = []
+                    for c, d in zip(cash_vals[:n], debt_vals[:n]):
+                        cn, dn = _scs_safe_float(c), _scs_safe_float(d)
+                        if cn is not None and dn is not None:
+                            net_series.append(cn - dn)
+                    if len(net_series) >= 2:
+                        start, end = net_series[0], net_series[-1]
+                        sub["net_debt_transition"]["value"] = {"start": round(start, 0),
+                                                                "end": round(end, 0),
+                                                                "delta": round(end - start, 0)}
+                        sub["net_debt_transition"]["status"] = "available"
+                        # Sign change: levered → cash-rich is the strongest signal
+                        if start < 0 and end > 0:
+                            sub["net_debt_transition"]["signal"] = "BULLISH_LEVERED_TO_CASH"
+                            tags.append("LEVERED_TO_CASH_TRANSITION")
+                        elif start < 0 and end > start * 0.5:   # halved debt
+                            sub["net_debt_transition"]["signal"] = "BULLISH_DELEVERAGING"
+                            tags.append("AGGRESSIVE_DEBT_REDUCTION")
+                        elif end > start * 1.5 and end > 0:
+                            sub["net_debt_transition"]["signal"] = "BULLISH_CASH_BUILDING"
+                        elif start > 0 and end < 0:
+                            sub["net_debt_transition"]["signal"] = "BEARISH_CASH_TO_LEVERED"
+                            tags.append("CASH_TO_LEVERED")
+                        else:
+                            sub["net_debt_transition"]["signal"] = "NEUTRAL"
+            # Current ratio trend
+            if ca_row and cl_row:
+                ca_vals = list(reversed(bs.loc[ca_row].dropna().values.tolist()))
+                cl_vals = list(reversed(bs.loc[cl_row].dropna().values.tolist()))
+                n2 = min(len(ca_vals), len(cl_vals))
+                if n2 >= 2:
+                    ratios = []
+                    for a, l in zip(ca_vals[:n2], cl_vals[:n2]):
+                        an, ln = _scs_safe_float(a), _scs_safe_float(l)
+                        if ln and ln > 0 and an is not None:
+                            ratios.append(an / ln)
+                    if len(ratios) >= 2:
+                        delta = round(ratios[-1] - ratios[0], 2)
+                        sub["current_ratio_trend"]["value"] = {"current": round(ratios[-1], 2),
+                                                                "start": round(ratios[0], 2),
+                                                                "delta": delta}
+                        sub["current_ratio_trend"]["status"] = "available"
+                        if delta > 0.3:
+                            sub["current_ratio_trend"]["signal"] = "BULLISH_STRENGTHENING"
+                        elif delta < -0.3:
+                            sub["current_ratio_trend"]["signal"] = "BEARISH_WEAKENING"
+                        else:
+                            sub["current_ratio_trend"]["signal"] = "STABLE"
+
+        # Interest coverage from income statement
+        income = tk.income_stmt if hasattr(tk, "income_stmt") else None
+        if income is not None and not income.empty:
+            ebit_row = None; int_row = None
+            for label in income.index:
+                ll = str(label).lower()
+                if ll == "ebit" or "operating income" in ll: ebit_row = label
+                if "interest expense" in ll: int_row = label
+            if ebit_row and int_row:
+                ebit_vals = list(reversed(income.loc[ebit_row].dropna().values.tolist()))
+                int_vals  = list(reversed(income.loc[int_row].dropna().values.tolist()))
+                n3 = min(len(ebit_vals), len(int_vals))
+                if n3 >= 2:
+                    covers = []
+                    for e, i in zip(ebit_vals[:n3], int_vals[:n3]):
+                        en, inn = _scs_safe_float(e), _scs_safe_float(i)
+                        if inn and abs(inn) > 0 and en is not None:
+                            covers.append(en / abs(inn))
+                    if len(covers) >= 2:
+                        delta = round(covers[-1] - covers[0], 1)
+                        sub["interest_coverage"]["value"] = {"current": round(covers[-1], 1),
+                                                              "start": round(covers[0], 1),
+                                                              "delta": delta}
+                        sub["interest_coverage"]["status"] = "available"
+                        if delta > 3 and covers[-1] > 5:
+                            sub["interest_coverage"]["signal"] = "BULLISH_INFLECTION"
+                            tags.append("INTEREST_COVERAGE_INFLECTION")
+                        elif covers[-1] < 1.5:
+                            sub["interest_coverage"]["signal"] = "BEARISH_DISTRESS_RISK"
+                            tags.append("DISTRESS_RISK")
+                        else:
+                            sub["interest_coverage"]["signal"] = "STABLE"
+    except Exception as e:
+        sub["_category_error"] = f"{type(e).__name__}: {str(e)[:100]}"
+    score = _scs_category_score(sub)
+    return {"sub": sub, "score": score, "tags": tags, "weight": 0.15}
+
+
+def _scs_category_score(sub_signals):
+    """Compute 0-100 score for a category given its sub-signals.
+    Each sub-signal contributes based on its weight. Signals with status='missing'
+    or weight=0 don't drag the score down — they just don't contribute (neutral 50).
+
+    Signal-to-points mapping:
+      BULLISH_STRONG / AGGRESSIVE         → 90
+      BULLISH_MODERATE / BULLISH_*        → 70
+      STABLE / NEUTRAL                    → 50
+      BEARISH_MODERATE / BEARISH_*        → 30
+      BEARISH_STRONG / DISTRESS / SEVERE  → 10
+    Unscored (missing data) → not counted in weight pool.
+    """
+    def sig_to_pts(sig):
+        if not sig: return None
+        s = str(sig).upper()
+        if "BULLISH_STRONG" in s or "AGGRESSIVE_BUYBACK" in s or "INFLECTION" in s or "LEVERED_TO_CASH" in s: return 90
+        if "BULLISH" in s: return 70
+        if "BEARISH_STRONG" in s or "DISTRESS" in s or "SEVERE" in s: return 10
+        if "BEARISH" in s: return 30
+        if "STABLE" in s or "NEUTRAL" in s or "MODERATE" in s or "LOW_INST" in s or "HEAVY_INST" in s: return 50
+        if "ACTIVE" in s or "PRESENT" in s or "MAJOR" in s: return 70
+        return 50
+    weighted_sum = 0.0
+    weight_total = 0.0
+    for key, signal_dict in sub_signals.items():
+        if key.startswith("_"): continue
+        w = signal_dict.get("weight", 0) or 0
+        if w <= 0: continue
+        pts = sig_to_pts(signal_dict.get("signal"))
+        if pts is None:
+            continue   # missing data — don't penalize, just exclude
+        weighted_sum += pts * w
+        weight_total += w
+    if weight_total == 0:
+        return None   # no data in this category
+    return round(weighted_sum / weight_total, 1)
+
+
+@app.get("/api/scs")
+async def structural_change_signal(symbol: str = "", region: str = "US", nocache: int = 0):
+    """Structural Change Signal (SCS) — institutional-grade corporate
+    transformation detector. Returns 5 category scores (A-E), composite
+    score, verdict, auto-tags, and individual sub-signal trace with
+    data_status badges for transparency.
+    """
+    sym = (symbol or "").strip().upper()
+    reg = (region or "US").upper()
+    if not sym:
+        return {"success": False, "error": "symbol required"}
+    if reg not in ("US", "IN"):
+        return {"success": False, "error": "region must be US or IN"}
+
+    cache_key = f"{sym}_{reg}"
+    if not nocache:
+        cached = _scs_cache.get(cache_key)
+        if cached and (time.time() - cached["ts"]) < _SCS_TTL:
+            resp = dict(cached["data"])
+            resp["_cached"] = True
+            resp["_cache_age_sec"] = int(time.time() - cached["ts"])
+            return resp
+
+    t0 = time.time()
+    try:
+        import yfinance as yf
+    except Exception as e:
+        return {"success": False, "error": f"yfinance unavailable: {e}", "symbol": sym, "region": reg}
+
+    yf_sym = sym if reg == "US" else f"{sym}.NS"
+    try:
+        try: _yahoo_rate_wait()
+        except Exception: pass
+        tk = yf.Ticker(yf_sym)
+        info = {}
+        try:
+            info = tk.info or {}
+        except Exception as _e:
+            info = {}
+    except Exception as e:
+        return {"success": False, "error": f"yfinance.Ticker failed: {type(e).__name__}: {str(e)[:120]}", "symbol": sym, "region": reg}
+
+    # Compute all 5 categories
+    A = _scs_capital_structure(tk, info)
+    B = _scs_business_model(tk, info)
+    C = _scs_ownership(tk, info)
+    D = _scs_strategic_pivot(tk, info)
+    E = _scs_balance_sheet_reset(tk, info)
+
+    categories = {
+        "A_capital_structure":   A,
+        "B_business_model":      B,
+        "C_ownership":           C,
+        "D_strategic_pivot":     D,
+        "E_balance_sheet_reset": E,
+    }
+    # Composite score — weighted by category weights, excluding null categories
+    composite_sum = 0.0
+    composite_w = 0.0
+    for k, cat in categories.items():
+        s = cat.get("score")
+        w = cat.get("weight", 0)
+        if s is not None and w > 0:
+            composite_sum += s * w
+            composite_w += w
+    composite = round(composite_sum / composite_w, 1) if composite_w > 0 else None
+
+    # Verdict
+    if composite is None:
+        verdict = "INSUFFICIENT_DATA"
+        verdict_label = "🟡 Insufficient Data"
+        verdict_detail = "Not enough financial data returned for this ticker to compute a meaningful structural score."
+    elif composite >= 65:
+        verdict = "STRUCTURAL_BREAKOUT_CANDIDATE"
+        verdict_label = "🟢 Structural Breakout Candidate"
+        verdict_detail = "Multiple categories signal positive structural transformation. Institutional-grade rerating setup."
+    elif composite >= 45:
+        verdict = "TRANSITION_PHASE"
+        verdict_label = "🟡 Transition Phase"
+        verdict_detail = "Some structural signals emerging but not yet definitive. Worth monitoring for confirmation."
+    else:
+        verdict = "NO_STRUCTURAL_CHANGE"
+        verdict_label = "🔴 No Structural Change Detected"
+        verdict_detail = "Current data shows minimal structural transformation. Company appears in steady-state or declining phase."
+
+    # Aggregate tags
+    all_tags = []
+    for k, cat in categories.items():
+        all_tags.extend(cat.get("tags", []))
+    all_tags = list(dict.fromkeys(all_tags))   # dedup, preserve order
+
+    # EARLY DETECTION: "Quiet Accumulation" trigger
+    # ≥2 categories show positive change (score >60) AND ownership rising AND consolidation
+    quiet_accumulation = False
+    quiet_signals = []
+    try:
+        positive_cats = sum(1 for k, cat in categories.items() if (cat.get("score") or 0) > 60)
+        inst_pct_val = (C.get("sub", {}).get("institutional_ownership_pct", {}) or {}).get("value") or 0
+        # Consolidation check — approximate via 52w range position
+        hi52 = _scs_safe_float(info.get("fiftyTwoWeekHigh"))
+        lo52 = _scs_safe_float(info.get("fiftyTwoWeekLow"))
+        px = _scs_safe_float(info.get("currentPrice") or info.get("regularMarketPrice"))
+        range_pos_pct = None
+        if hi52 and lo52 and px and hi52 > lo52:
+            range_pos_pct = (px - lo52) / (hi52 - lo52) * 100
+        consolidating = (range_pos_pct is not None and 20 <= range_pos_pct <= 60)
+        if positive_cats >= 2 and (inst_pct_val or 0) > 50 and consolidating:
+            quiet_accumulation = True
+            quiet_signals = [f"{positive_cats} categories with positive structural change",
+                             f"Institutional ownership at {inst_pct_val:.1f}% (>50%)",
+                             f"Price in consolidation band ({range_pos_pct:.0f}% of 52w range)"]
+            all_tags.append("QUIET_ACCUMULATION")
+    except Exception:
+        pass
+
+    # Lead Indicator Strength — heuristic combining category coverage + signal intensity
+    available_cats = sum(1 for k, cat in categories.items() if cat.get("score") is not None)
+    coverage_pct = round(available_cats / 5 * 100, 0)
+    if coverage_pct >= 80 and composite is not None and (composite >= 65 or composite <= 35):
+        lead_strength = "HIGH"
+        lead_detail = "Strong signal across multiple categories with high data coverage."
+    elif coverage_pct >= 60 and composite is not None:
+        lead_strength = "MODERATE"
+        lead_detail = "Partial coverage; signal direction reasonably confident but some categories missing data."
+    else:
+        lead_strength = "LOW"
+        lead_detail = "Sparse data coverage. Treat verdict as preliminary."
+
+    elapsed = round(time.time() - t0, 2)
+    result = {
+        "success":            True,
+        "symbol":             sym,
+        "region":             reg,
+        "ts":                 time.time(),
+        "lookback_quarters":  _SCS_LOOKBACK_QUARTERS,
+        "composite_score":    composite,
+        "verdict":            verdict,
+        "verdict_label":      verdict_label,
+        "verdict_detail":     verdict_detail,
+        "categories":         categories,
+        "what_changed_tags":  all_tags,
+        "quiet_accumulation": quiet_accumulation,
+        "quiet_accumulation_signals": quiet_signals,
+        "lead_indicator_strength": lead_strength,
+        "lead_indicator_detail":    lead_detail,
+        "data_coverage_pct":  coverage_pct,
+        "_elapsed_sec":       elapsed,
+        "_data_quality_note": (
+            "✅ available = directly measured from real financials. "
+            "⚠️ partial = derived heuristic or limited data window. "
+            "❌ missing = data source not in free tier (e.g. SEC EDGAR scraping, "
+            "segment-level revenue, qualitative filings parsing). Frontend renders "
+            "explicit badges per sub-signal so users see what's real vs unavailable."
+        ),
+    }
+    _scs_cache[cache_key] = {"data": result, "ts": time.time()}
+    return result
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# r63.95.0: SCS BATCH WARMUP — compute SCS for a list of tickers in parallel,
+# populating the _scs_cache so the Smart Money Scanner can surface SCS verdicts
+# inline. Used by the "Compute SCS for all visible rows" frontend button.
+# Bounded to 25 tickers per call to avoid Render request-timeout (~30s default).
+# ═══════════════════════════════════════════════════════════════════════════════
+_scs_batch_busy = set()
+_scs_batch_busy_since = {}
+
+
+def _scs_batch_compute_one(symbol, region):
+    """Run SCS for a single ticker — same path as the public endpoint but without
+    cache check (warmup forces a compute). Stores result in _scs_cache regardless
+    of success/failure so the scanner sees a definitive outcome."""
+    try:
+        try:
+            import yfinance as yf
+        except Exception:
+            return None
+        yf_sym = symbol if region == "US" else f"{symbol}.NS"
+        try: _yahoo_rate_wait()
+        except Exception: pass
+        try:
+            tk = yf.Ticker(yf_sym)
+            info = {}
+            try: info = tk.info or {}
+            except Exception: info = {}
+        except Exception:
+            return None
+        A = _scs_capital_structure(tk, info)
+        B = _scs_business_model(tk, info)
+        C = _scs_ownership(tk, info)
+        D = _scs_strategic_pivot(tk, info)
+        E = _scs_balance_sheet_reset(tk, info)
+        categories = {
+            "A_capital_structure":   A,
+            "B_business_model":      B,
+            "C_ownership":           C,
+            "D_strategic_pivot":     D,
+            "E_balance_sheet_reset": E,
+        }
+        composite_sum = 0.0; composite_w = 0.0
+        for k, cat in categories.items():
+            s = cat.get("score"); w = cat.get("weight", 0)
+            if s is not None and w > 0:
+                composite_sum += s * w
+                composite_w += w
+        composite = round(composite_sum / composite_w, 1) if composite_w > 0 else None
+        if composite is None:
+            verdict, vlabel = "INSUFFICIENT_DATA", "🟡 Insufficient Data"
+        elif composite >= 65:
+            verdict, vlabel = "STRUCTURAL_BREAKOUT_CANDIDATE", "🟢 Structural Breakout Candidate"
+        elif composite >= 45:
+            verdict, vlabel = "TRANSITION_PHASE", "🟡 Transition Phase"
+        else:
+            verdict, vlabel = "NO_STRUCTURAL_CHANGE", "🔴 No Structural Change Detected"
+        all_tags = []
+        for k, cat in categories.items():
+            all_tags.extend(cat.get("tags", []))
+        all_tags = list(dict.fromkeys(all_tags))
+        # Quiet accumulation
+        quiet = False
+        try:
+            positive_cats = sum(1 for k, cat in categories.items() if (cat.get("score") or 0) > 60)
+            inst_pct_val = (C.get("sub", {}).get("institutional_ownership_pct", {}) or {}).get("value") or 0
+            hi52 = _scs_safe_float(info.get("fiftyTwoWeekHigh"))
+            lo52 = _scs_safe_float(info.get("fiftyTwoWeekLow"))
+            px   = _scs_safe_float(info.get("currentPrice") or info.get("regularMarketPrice"))
+            range_pos_pct = None
+            if hi52 and lo52 and px and hi52 > lo52:
+                range_pos_pct = (px - lo52) / (hi52 - lo52) * 100
+            if positive_cats >= 2 and (inst_pct_val or 0) > 50 and range_pos_pct is not None and 20 <= range_pos_pct <= 60:
+                quiet = True
+                all_tags.append("QUIET_ACCUMULATION")
+        except Exception:
+            pass
+        avail_cats = sum(1 for k, cat in categories.items() if cat.get("score") is not None)
+        coverage_pct = round(avail_cats / 5 * 100, 0)
+        if coverage_pct >= 80 and composite is not None and (composite >= 65 or composite <= 35):
+            lead = "HIGH"
+        elif coverage_pct >= 60 and composite is not None:
+            lead = "MODERATE"
+        else:
+            lead = "LOW"
+        result = {
+            "success": True, "symbol": symbol, "region": region, "ts": time.time(),
+            "lookback_quarters": _SCS_LOOKBACK_QUARTERS,
+            "composite_score": composite, "verdict": verdict, "verdict_label": vlabel,
+            "categories": categories, "what_changed_tags": all_tags,
+            "quiet_accumulation": quiet,
+            "lead_indicator_strength": lead, "data_coverage_pct": coverage_pct,
+        }
+        _scs_cache[f"{symbol}_{region}"] = {"data": result, "ts": time.time()}
+        return {"symbol": symbol, "composite": composite, "verdict": verdict,
+                "tag_count": len(all_tags), "quiet": quiet, "coverage": coverage_pct}
+    except Exception as e:
+        return {"symbol": symbol, "error": f"{type(e).__name__}: {str(e)[:80]}"}
+
+
+@app.get("/api/scs-batch")
+async def scs_batch(symbols: str = "", region: str = "US", max_workers: int = 4):
+    """Compute SCS for a comma-separated list of symbols in parallel and warm
+    the SCS cache. Returns a compact summary per ticker. Bounded to 25 symbols
+    per call to fit within typical Render request-timeout windows.
+
+    Frontend uses this when the user clicks "Compute SCS for all rows" on the
+    Smart Money Scanner. After completion, refreshing the scanner will surface
+    the SCS verdicts inline because they're now cached.
+    """
+    syms = [s.strip().upper() for s in (symbols or "").split(",") if s.strip()]
+    if not syms:
+        return {"success": False, "error": "symbols required (comma-separated)"}
+    if len(syms) > 25:
+        return {"success": False, "error": f"max 25 symbols per call; got {len(syms)}"}
+    reg = (region or "US").upper()
+    if reg not in ("US", "IN"):
+        return {"success": False, "error": "region must be US or IN"}
+
+    busy_key = f"{reg}:{','.join(sorted(syms))}"
+    if busy_key in _scs_batch_busy:
+        return {"success": False, "error": "this batch is already running", "_busy": True}
+    _scs_batch_busy.add(busy_key)
+    _scs_batch_busy_since[busy_key] = time.time()
+    try:
+        t0 = time.time()
+        # Cap workers
+        workers = max(1, min(int(max_workers or 4), 6))
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        results = []
+        with ThreadPoolExecutor(max_workers=workers) as ex:
+            futures = {ex.submit(_scs_batch_compute_one, s, reg): s for s in syms}
+            for fut in as_completed(futures, timeout=180):
+                try:
+                    r = fut.result(timeout=60)
+                    if r: results.append(r)
+                except Exception as fe:
+                    results.append({"symbol": futures[fut], "error": f"future timeout: {fe}"})
+        # Summary stats
+        scored = [r for r in results if r.get("composite") is not None]
+        breakouts = [r for r in scored if (r.get("composite") or 0) >= 65]
+        transitions = [r for r in scored if 45 <= (r.get("composite") or 0) < 65]
+        quiet_accum = [r for r in results if r.get("quiet")]
+        return {
+            "success":         True,
+            "region":          reg,
+            "requested":       len(syms),
+            "computed":        len(results),
+            "scored":          len(scored),
+            "breakouts":       len(breakouts),
+            "transitions":     len(transitions),
+            "quiet_accumulation_count": len(quiet_accum),
+            "elapsed_sec":     round(time.time() - t0, 1),
+            "per_symbol":      results,
+            "_cache_warmed":   True,
+            "_note":           "Refresh the Smart Money Scanner to see SCS verdicts inline.",
+        }
+    finally:
+        _scs_batch_busy.discard(busy_key)
+        _scs_batch_busy_since.pop(busy_key, None)
+
+
 @app.get("/api/alert-test")
 async def alert_test():
     """Diagnostic: sends a test WhatsApp message to verify Meta Cloud API
@@ -45255,8 +46582,43 @@ def smart_money_scanner(region: str = "US", mcap: str = "large", email: str = ""
     # ─── SORT BY SCORE DESC (BUY at top, SELL at bottom) ───
     results.sort(key=lambda r: r.get("smi_score", 50), reverse=True)
 
+    # r63.95.0: Enrich each scanner row with cached SCS data (cache-only — no fresh
+    # yfinance pulls here, to avoid blowing up scan time). If SCS for this ticker
+    # was computed in the last 30min (e.g. user previously analyzed it on the
+    # Structural tab, or a batch warmup ran), we surface verdict + score + top tags
+    # inline. Otherwise scs_status='not_computed' and the frontend offers a
+    # "Compute SCS" button per row.
+    try:
+        scs_hits = 0
+        for r in results:
+            sym = r.get("ticker", "")
+            ck_scs = f"{sym}_{region}"
+            cached = _scs_cache.get(ck_scs) if "_scs_cache" in globals() else None
+            if cached and (_smi_time.time() - cached["ts"]) < _SCS_TTL:
+                cd = cached["data"]
+                r["scs_score"]   = cd.get("composite_score")
+                r["scs_verdict"] = cd.get("verdict")
+                r["scs_verdict_label"] = cd.get("verdict_label")
+                # Top 5 tags only — keep payload size sane
+                r["scs_top_tags"] = (cd.get("what_changed_tags") or [])[:5]
+                r["scs_quiet_accumulation"] = cd.get("quiet_accumulation", False)
+                r["scs_lead_strength"] = cd.get("lead_indicator_strength")
+                r["scs_status"] = "cached"
+                r["scs_cache_age_sec"] = int(_smi_time.time() - cached["ts"])
+                scs_hits += 1
+            else:
+                r["scs_status"] = "not_computed"
+                r["scs_score"] = None
+                r["scs_verdict"] = None
+                r["scs_top_tags"] = []
+    except Exception as _scs_e:
+        # Never let SCS enrichment break the scanner.
+        print(f"[SMI-scanner] SCS enrichment skipped: {type(_scs_e).__name__}: {_scs_e}")
+        scs_hits = 0
+
     payload = {"success": True, "universe_size": len(universe), "results": results,
-               "scan_time_sec": round(_smi_time.time()-t0, 1), "region": region, "mcap": mcap}
+               "scan_time_sec": round(_smi_time.time()-t0, 1), "region": region, "mcap": mcap,
+               "scs_enrichment": {"cached_hits": scs_hits, "total_rows": len(results)}}
     # r63.x: don't cache empty results — rate-limit + cache = "stuck empty forever"
     if results:
         _smi_cache[ck] = {"t": _smi_time.time(), "data": payload}

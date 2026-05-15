@@ -2585,6 +2585,12 @@ var TAB_GROUPS = {
   // r63.92.0: MOVERS — Top 5 gainers + losers per region across 1D / 1W / 1M / 3M / 1Y.
   // Single sub-tab; the timeframe pills and region toggle live inside the card itself.
   movers:   {tabs: ['movers'], labels: ['Top Movers'], default: 'movers'},
+  // r63.93.0: MOAT — Standalone competitive moat tab. Pulls /api/investor-due-diligence
+  // and renders porter + competitive + moat-relevant SWOT items. Independent of Decide.
+  moat:     {tabs: ['moat'], labels: ['Moat Analysis'], default: 'moat'},
+  // r63.94.0: STRUCTURAL — Structural Change Signal (SCS). Institutional-grade
+  // corporate transformation detector across 5 categories. Independent tab.
+  structural: {tabs: ['structural'], labels: ['Structural Change'], default: 'structural'},
   tools:    {tabs: ['finance','education','compare'], labels: ['Finance Tools','Education','Compare Stocks'], default: 'finance'},
 };
 window._activeGroup = 'overview';
@@ -3544,6 +3550,134 @@ window.loadSmartMoneyScanner = function(forceReg, forceMcap) {
     });
 };
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// r63.95.0: SCS integration into Smart Money Scanner
+//   _smiScsCellHtml(r)            → renders the per-row SCS cell (verdict pill + score)
+//   window._smiBatchComputeScs()  → fires /api/scs-batch for all visible tickers,
+//                                   shows progress, refreshes scanner on completion
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function _smiScsCellHtml(r) {
+  // Three states: not_computed (button), cached (verdict pill + score), error.
+  if (!r || r.scs_status === 'not_computed' || !r.scs_status) {
+    return '<span title="SCS not yet computed for this ticker. Click ⚡ COMPUTE SCS above to populate, or open the 🏗 Structural tab and analyze this symbol directly." style="display:inline-block;padding:3px 8px;border-radius:4px;background:#f5f3ff;color:#7c3aed;font-size:9px;font-weight:700;font-family:\'IBM Plex Mono\',monospace;cursor:help">not yet</span>';
+  }
+  if (r.scs_status === 'cached') {
+    var v = (r.scs_verdict || '').toString();
+    var score = r.scs_score;
+    var tags = r.scs_top_tags || [];
+    var quiet = r.scs_quiet_accumulation;
+    var bg, fg, label;
+    if (v.indexOf('STRUCTURAL_BREAKOUT') >= 0) { bg = '#dcfce7'; fg = '#166534'; label = '🟢 BREAKOUT'; }
+    else if (v.indexOf('TRANSITION') >= 0)     { bg = '#fef3c7'; fg = '#92400e'; label = '🟡 TRANSITION'; }
+    else if (v.indexOf('NO_STRUCTURAL') >= 0)  { bg = '#fee2e2'; fg = '#991b1b'; label = '🔴 NO CHANGE'; }
+    else                                        { bg = '#f1f5f9'; fg = '#64748b'; label = '🟡 INSUFFICIENT'; }
+    // Build hover tip with top tags
+    var tipText = 'SCS Verdict: ' + (r.scs_verdict_label || v).replace(/[🟢🟡🔴]/g, '').trim();
+    if (score !== null && score !== undefined) tipText += ' · Score ' + score + '/100';
+    if (r.scs_lead_strength) tipText += ' · Lead strength: ' + r.scs_lead_strength;
+    if (tags.length) tipText += '\nTags: ' + tags.join(', ');
+    if (r.scs_cache_age_sec !== undefined) tipText += '\nCached ' + Math.floor((r.scs_cache_age_sec||0)/60) + ' min ago';
+    tipText += '\n\nClick to open full Structural Change analysis →';
+    var clickHandler = 'event.stopPropagation();' +
+      'try{var inp=document.getElementById(\'scsSym\');if(inp){inp.value=\'' + (r.ticker||'').replace(/'/g,'\\\'') + '\';}' +
+      'if(window._scsState){window._scsState.region=\'' + (r.region || 'US').replace(/'/g,'\\\'') + '\';}' +
+      'if(typeof window._openStructural===\'function\')window._openStructural();' +
+      'if(typeof window.loadStructural===\'function\')setTimeout(window.loadStructural,200);}catch(e){}';
+    var html = '<div onclick="' + clickHandler + '" title="' + tipText.replace(/"/g,'&quot;') + '" style="display:inline-flex;flex-direction:column;align-items:center;gap:2px;cursor:pointer;padding:2px">';
+    html += '<span style="padding:2px 7px;border-radius:4px;background:' + bg + ';color:' + fg + ';font-size:9px;font-weight:800;font-family:Sora,sans-serif;letter-spacing:0.3px;white-space:nowrap">' + label + '</span>';
+    if (score !== null && score !== undefined) {
+      html += '<span style="font-size:9px;color:' + fg + ';font-family:\'IBM Plex Mono\',monospace;font-weight:700">' + score + '/100</span>';
+    }
+    if (quiet) {
+      html += '<span title="QUIET ACCUMULATION — early structural breakout setup" style="font-size:8px;color:#f59e0b;font-weight:800;font-family:Sora,sans-serif;letter-spacing:0.3px">👁 QUIET</span>';
+    } else if (tags.length > 0) {
+      html += '<span style="font-size:8px;color:#9ca3af;font-family:\'IBM Plex Mono\',monospace">+' + tags.length + ' tags</span>';
+    }
+    html += '</div>';
+    return html;
+  }
+  return '<span style="color:#cbd5e1;font-size:9px">—</span>';
+}
+
+window._smiBatchComputeScs = function(reg, mcap) {
+  // Pull tickers from the currently rendered scanner table — the simplest, most reliable
+  // source. Scrape ticker cells. We bound to first 25 to match the backend's per-call cap.
+  reg = (reg || 'US').toUpperCase();
+  var tickerCells = document.querySelectorAll('table td div[style*="font-family:IBM Plex Mono"]');
+  var seen = {};
+  var tickers = [];
+  for (var i = 0; i < tickerCells.length && tickers.length < 25; i++) {
+    var t = (tickerCells[i].textContent || '').trim();
+    // Filter to plausible ticker symbols (uppercase, alphanumeric, dash/dot OK)
+    if (t && /^[A-Z][A-Z0-9.\-]{0,9}$/.test(t) && !seen[t]) {
+      seen[t] = 1;
+      tickers.push(t);
+    }
+  }
+  if (tickers.length === 0) {
+    alert('No tickers found in the table to compute. Make sure the scanner has loaded first.');
+    return;
+  }
+  // Confirm with user since this triggers up to 25 fresh yfinance fan-out scans
+  if (!confirm('Compute Structural Change Signal for ' + tickers.length + ' visible tickers?\n\n' +
+               'This fans out up to ' + tickers.length + ' yfinance calls in parallel (4 workers).\n' +
+               'Expected time: ' + Math.ceil(tickers.length / 4 * 3) + '–' + Math.ceil(tickers.length / 4 * 6) + ' seconds.\n\n' +
+               'Results will be cached for 30 minutes. After completion, the scanner will auto-refresh to surface SCS verdicts inline.')) {
+    return;
+  }
+
+  // Find the COMPUTE SCS button and update its label to a progress indicator
+  var btn = document.querySelector('button[onclick*="_smiBatchComputeScs"]');
+  var originalHtml = btn ? btn.innerHTML : null;
+  if (btn) {
+    btn.disabled = true;
+    btn.style.opacity = '0.6';
+    btn.style.cursor = 'wait';
+    btn.innerHTML = '⏳ COMPUTING (' + tickers.length + ' tickers)…';
+  }
+
+  var t0 = Date.now();
+  fetch('/api/scs-batch?symbols=' + encodeURIComponent(tickers.join(',')) + '&region=' + encodeURIComponent(reg) + '&max_workers=4', {cache:'no-store'})
+    .then(function(r){ if (!r.ok) throw new Error('API ' + r.status); return r.json(); })
+    .then(function(d){
+      var elapsed = Math.round((Date.now() - t0) / 1000);
+      if (!d || d.success === false) {
+        if (btn) {
+          btn.disabled = false;
+          btn.style.opacity = '1';
+          btn.style.cursor = 'pointer';
+          btn.innerHTML = originalHtml || '⚡ COMPUTE SCS';
+        }
+        alert('SCS batch failed: ' + ((d && d.error) || 'unknown error'));
+        return;
+      }
+      // Show summary toast/alert
+      var msg = '🏗 SCS batch complete (' + elapsed + 's)\n\n';
+      msg += d.scored + ' / ' + d.requested + ' scored successfully\n';
+      if (d.breakouts > 0) msg += '🟢 ' + d.breakouts + ' Structural Breakout Candidate' + (d.breakouts === 1 ? '' : 's') + '\n';
+      if (d.transitions > 0) msg += '🟡 ' + d.transitions + ' in Transition Phase\n';
+      if (d.quiet_accumulation_count > 0) msg += '👁 ' + d.quiet_accumulation_count + ' QUIET ACCUMULATION setup' + (d.quiet_accumulation_count === 1 ? '' : 's') + ' detected\n';
+      msg += '\nRefreshing scanner to show SCS column…';
+      // Use a non-blocking notification if possible, fallback to alert
+      try {
+        if (window._showToast) window._showToast(msg);
+        else console.log(msg);
+      } catch(_e) {}
+      // Auto-refresh the scanner so SCS column populates
+      setTimeout(function(){ if (typeof loadSmartMoneyScanner === 'function') loadSmartMoneyScanner(reg, mcap); }, 300);
+    })
+    .catch(function(e){
+      if (btn) {
+        btn.disabled = false;
+        btn.style.opacity = '1';
+        btn.style.cursor = 'pointer';
+        btn.innerHTML = originalHtml || '⚡ COMPUTE SCS';
+      }
+      alert('SCS batch error: ' + e.message);
+    });
+};
+
 function _renderSmartMoneyScanner(el, d, regBar, reg, mcap, univLabel) {
   var csym = reg === 'US' ? '$' : '₹';
   var h = regBar;
@@ -3555,6 +3689,15 @@ function _renderSmartMoneyScanner(el, d, regBar, reg, mcap, univLabel) {
   h += '<div style="flex:1"><div style="font-size:16px;font-weight:900;color:#0f172a;font-family:Sora,sans-serif">Smart Money Scanner</div>';
   h += '<div style="font-size:10px;color:#64748b;font-family:\'IBM Plex Mono\',monospace;letter-spacing:0.5px;margin-top:2px">' + univLabel + ' · ' + ((d && d.universe_size) || 0) + ' SCANNED · ' + ((d && d.results && d.results.length) || 0) + ' RANKED · ' + ((d && d.scan_time_sec) || 0) + 's</div></div>';
   if (d && d._cached) h += '<div style="font-size:9px;color:#1A3A78;font-weight:700;background:#eef2f9;padding:5px 10px;border-radius:4px;font-family:\'IBM Plex Mono\',monospace">CACHED ' + Math.floor((d._cache_age_sec||0)/60) + ' MIN</div>';
+  // r63.95.0: SCS cache-hit indicator + batch compute button
+  if (d && d.scs_enrichment) {
+    var _scsHits = d.scs_enrichment.cached_hits || 0;
+    var _scsTotal = d.scs_enrichment.total_rows || 0;
+    var _scsBg = _scsHits > 0 ? '#f5f3ff' : '#fef3c7';
+    var _scsFg = _scsHits > 0 ? '#4f46e5' : '#92400e';
+    h += '<div style="font-size:9px;color:' + _scsFg + ';font-weight:700;background:' + _scsBg + ';padding:5px 10px;border-radius:4px;font-family:\'IBM Plex Mono\',monospace">🏗 SCS ' + _scsHits + '/' + _scsTotal + '</div>';
+  }
+  h += '<button onclick="window._smiBatchComputeScs(\'' + reg + '\',\'' + mcap + '\')" title="Compute Structural Change Signal for all visible rows in parallel (25 at a time, ~30s per batch). Warmed results then appear in the SCS column on next refresh." style="margin-left:6px;padding:6px 10px;border:1px solid #c7d2fe;background:linear-gradient(135deg,#f5f3ff,#ede9fe);color:#4f46e5;border-radius:6px;font-size:10px;font-weight:800;cursor:pointer;font-family:Sora,sans-serif;letter-spacing:0.3px">⚡ COMPUTE SCS</button>';
   h += '<button onclick="loadSmartMoneyScanner()" style="margin-left:8px;padding:6px 12px;border:1px solid #cbd5e1;background:#fff;border-radius:6px;font-size:10px;font-weight:700;cursor:pointer">↻ REFRESH</button>';
   h += '</div>';
 
@@ -3629,6 +3772,7 @@ function _renderSmartMoneyScanner(el, d, regBar, reg, mcap, univLabel) {
     {l:'VOL LAST 4Q', a:'center', w:'130px', tip:'Average daily trading volume change for each of the last 4 quarters vs prior quarter. Green = volume rising · Red = volume falling.'},
     {l:'INSIDER 4Q',  a:'center', w:'130px', tip:'Insider net flow per quarter — buys minus sells in dollar terms. Green = net buying · Red = net selling.'},
     {l:'TOP HOLDERS', a:'left',   w:'110px', tip:'Net action across top 10 institutional holders this quarter. Requires SEC EDGAR 13F.'},
+    {l:'🏗 SCS',       a:'center', w:'110px', tip:'Structural Change Signal — corporate transformation verdict (cached from prior Structural tab analysis or batch warmup). Click "⚡ COMPUTE SCS" above the table to populate all rows.'},
     {l:'SCORE',       a:'right',  w:'55px',  tip:'Composite 0-100. Combines ownership trend + holder action + insider acceleration.'},
     {l:'🎯 ACTION',   a:'center', w:'80px',  tip:'Plain-English buy/sell call combining all signals.'},
     {l:'PRICE',       a:'right',  w:'75px'},
@@ -3810,6 +3954,8 @@ function _renderSmartMoneyScanner(el, d, regBar, reg, mcap, univLabel) {
     // r63.90.0: 4 quarter cells for insider net flow per quarter (green = net buying, red = net selling)
     h += '<td style="padding:10px 8px;text-align:center">' + _q4Cells(r.insider_quarterly_history, 'net_flow_usd', 'usd', 'insider_quarterly_history not yet returned') + '</td>';
     h += '<td style="padding:10px 8px">' + _holderBadge(r.top_holders_action) + '</td>';
+    // r63.95.0: SCS cell — surfaces cached Structural Change Signal verdict if available
+    h += '<td style="padding:10px 8px;text-align:center">' + _smiScsCellHtml(r) + '</td>';
     h += '<td style="padding:10px 8px;text-align:right">' + scoreStr + '</td>';
     h += '<td style="padding:10px 8px;text-align:center"><span title="' + act.tip + '" style="padding:4px 10px;border-radius:6px;background:' + act.color + ';color:#fff;font-size:10px;font-weight:800;font-family:Sora,sans-serif;cursor:help">' + act.label + '</span></td>';
     h += '<td style="padding:10px 8px;text-align:right;color:#0f172a;font-family:IBM Plex Mono,monospace;font-weight:700">' + priceStr + chgStr + '</td>';
@@ -3826,7 +3972,8 @@ function _renderSmartMoneyScanner(el, d, regBar, reg, mcap, univLabel) {
   h += '<br>• <strong>TOP HOLDERS</strong> — direction across top 10 institutional holders this quarter (NET ADDING if &gt;60% increasing, NET REDUCING if &gt;60% reducing, MIXED otherwise).';
   h += '<br><br><strong style="color:#475569">VERDICT</strong>: ACCUMULATING (8Q delta ≥ +3pp), DISTRIBUTING (≤ −3pp), HOLDING (between), INSUFFICIENT (fewer than 4 quarters).';
   h += '<br><strong style="color:#475569">🎯 ACTION</strong>: BUY (ACCUMULATING), TRIM/SELL (DISTRIBUTING), WATCH (HOLDING), AVOID (DISTRIBUTING + score &lt; 30).';
-  h += '<br><br><strong style="color:#475569">Hover any green/red cell</strong> for the exact prior → current values. <strong>Click any row</strong> to open the full per-stock SMI panel with charts, holder delta table, and quarterly insider history.';
+  h += '<br><br><strong style="color:#4f46e5">🏗 SCS (Structural Change Signal)</strong> — corporate transformation verdict across 5 categories (Capital Structure 25%, Business Model 25%, Ownership 20%, Strategic Pivot 15%, Balance Sheet Reset 15%). Surfaces cached results from the Structural tab; click <strong>⚡ COMPUTE SCS</strong> above the table to fan out a 25-ticker batch warmup. Verdict pill colors: 🟢 STRUCTURAL_BREAKOUT_CANDIDATE (score ≥65) · 🟡 TRANSITION_PHASE (45–64) · 🔴 NO_STRUCTURAL_CHANGE (&lt;45). The <strong>👁 QUIET</strong> badge flags the early-detection trigger: ≥2 categories positive + institutional ownership rising + price in consolidation — the "pre-breakout setup" institutions look for.';
+  h += '<br><br><strong style="color:#475569">Hover any green/red cell</strong> for the exact prior → current values. <strong>Click any row</strong> to open the full per-stock SMI panel with charts, holder delta table, and quarterly insider history. <strong>Click the SCS pill</strong> to open the full Structural Change analysis for that ticker.';
   h += '</div>';
 
   h += '</div>';
@@ -7285,6 +7432,439 @@ window._renderMovers = function(d) {
       b.style.background = '#fff'; b.style.color = '#374151'; b.style.borderColor = 'var(--border)';
     }
   });
+};
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// r63.93.0: MOAT ANALYSIS — Standalone tab. Pulls /api/investor-due-diligence
+// for the chosen symbol+region and renders porter + competitive + moat-relevant
+// items. Independent from the main Decide flow.
+// ═══════════════════════════════════════════════════════════════════════════════
+window._moatState = window._moatState || { region: 'US', symbol: '' };
+
+window._setMoatRegion = function(reg) {
+  var st = window._moatState || (window._moatState = {region:'US', symbol:''});
+  st.region = reg;
+  ['IN','US'].forEach(function(r){
+    var b = document.getElementById('moatReg' + r);
+    if (!b) return;
+    if (r === reg) { b.style.background = 'linear-gradient(135deg,#d97706,#92400e)'; b.style.color = '#fff'; }
+    else { b.style.background = '#fff'; b.style.color = '#92400e'; }
+  });
+};
+
+window._openMoat = function() {
+  try {
+    var bar = document.getElementById('mainTabBar');
+    if (bar) { bar.classList.remove('tab-bar-hidden'); bar.style.display = 'flex'; }
+    var tca = document.getElementById('tabContentArea');
+    if (tca) tca.style.display = '';
+  } catch(e){}
+  try { if (typeof switchTabGroup === 'function') switchTabGroup('moat'); } catch(e){}
+  setTimeout(function(){
+    var card = document.querySelector('.sc[data-tab="moat"]');
+    if (card) try { card.scrollIntoView({behavior:'smooth',block:'start'}); } catch(e){}
+  }, 80);
+};
+
+window.loadMoat = function() {
+  var inp = document.getElementById('moatSym');
+  var sym = (inp && inp.value || '').trim().toUpperCase();
+  if (!sym) {
+    var resEl0 = document.getElementById('moatResult');
+    if (resEl0) resEl0.innerHTML = '<div style="padding:20px;color:#92400e;font-size:11px;text-align:center;background:#fffbeb;border:1px solid #fde68a;border-radius:8px">Please enter a symbol first.</div>';
+    return;
+  }
+  var st = window._moatState || (window._moatState = {region:'US', symbol:''});
+  st.symbol = sym;
+  var reg = st.region || 'US';
+  var resEl = document.getElementById('moatResult');
+  var stEl  = document.getElementById('moatStatus');
+  if (!resEl) return;
+  if (stEl) stEl.textContent = 'Loading moat analysis for ' + sym + ' (' + reg + ')…';
+  resEl.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text3);font-size:11px"><div style="display:inline-block;width:14px;height:14px;border:2px solid #d97706;border-top-color:transparent;border-radius:50%;animation:spin .5s linear infinite;vertical-align:middle;margin-right:8px"></div>Computing competitive moat for ' + sym + '…</div>';
+  var url = '/api/investor-due-diligence?symbol=' + encodeURIComponent(sym) + '&region=' + encodeURIComponent(reg);
+  fetch(url).then(function(r){ if(!r.ok) throw new Error('API '+r.status); return r.json(); }).then(function(d){
+    if (!d || d.success === false) {
+      resEl.innerHTML = '<div style="color:var(--red);padding:16px;font-size:11px">Error: ' + ((d && d.error) || 'unknown') + '</div>';
+      if (stEl) stEl.textContent = '';
+      return;
+    }
+    window._renderMoat(d, sym, reg);
+  }).catch(function(e){
+    resEl.innerHTML = '<div style="color:var(--red);padding:16px;font-size:11px">Error: ' + e.message + '. <button onclick="window.loadMoat()" style="color:var(--blue);background:none;border:none;cursor:pointer;text-decoration:underline">Retry</button></div>';
+    if (stEl) stEl.textContent = '';
+  });
+};
+
+window._renderMoat = function(d, sym, reg) {
+  var resEl = document.getElementById('moatResult');
+  var stEl  = document.getElementById('moatStatus');
+  if (!resEl) return;
+  var porter = d.porter || {};
+  var competitive = d.competitive || {};
+  var swot = d.swot || {};
+  var companyName = (d.company && d.company.name) || sym;
+  var forces = [
+    { key: 'buyer_power',         label: 'Buyer Power',         data: porter.buyer_power },
+    { key: 'supplier_power',      label: 'Supplier Power',      data: porter.supplier_power },
+    { key: 'competitive_rivalry', label: 'Competitive Rivalry', data: porter.competitive_rivalry },
+    { key: 'threat_new_entrants', label: 'Threat of New Entrants', data: porter.threat_new_entrants },
+    { key: 'substitution_risk',   label: 'Substitution Risk',   data: porter.substitution_risk },
+  ];
+  var severityScore = function(s) {
+    s = (s || '').toString().toUpperCase();
+    if (s.indexOf('LOW') >= 0)  return 10;
+    if (s.indexOf('HIGH') >= 0) return 90;
+    if (s.indexOf('MED') >= 0)  return 50;
+    return 50;
+  };
+  var severityColor = function(s) {
+    s = (s || '').toString().toUpperCase();
+    if (s.indexOf('LOW') >= 0)  return { bg: 'rgba(5,150,105,.10)', fg: '#059669', label: 'LOW THREAT' };
+    if (s.indexOf('HIGH') >= 0) return { bg: 'rgba(220,38,38,.10)', fg: '#dc2626', label: 'HIGH THREAT' };
+    if (s.indexOf('MED') >= 0)  return { bg: 'rgba(217,119,6,.10)', fg: '#d97706', label: 'MED THREAT' };
+    return { bg: '#f1f5f9', fg: '#64748b', label: 'UNKNOWN' };
+  };
+  var scores = forces.map(function(f){ return severityScore(f.data && f.data.severity); });
+  var avgThreat = scores.reduce(function(a,b){return a+b},0) / (scores.length || 1);
+  var moatScore = Math.round(100 - avgThreat);
+  var moatGrade, moatColor, moatLabel;
+  if (moatScore >= 75)      { moatGrade='WIDE MOAT';   moatColor='#059669'; moatLabel='Durable competitive advantage'; }
+  else if (moatScore >= 55) { moatGrade='NARROW MOAT'; moatColor='#10b981'; moatLabel='Moderate competitive edge'; }
+  else if (moatScore >= 40) { moatGrade='TRACE MOAT';  moatColor='#d97706'; moatLabel='Limited differentiation'; }
+  else                      { moatGrade='NO MOAT';     moatColor='#dc2626'; moatLabel='Highly competitive market'; }
+
+  var html = '';
+  html += '<div style="display:flex;align-items:center;gap:16px;padding:14px 16px;margin-bottom:14px;background:linear-gradient(135deg,#fffbeb,#fef3c7);border:1px solid #fde68a;border-radius:10px">';
+  html += '<div style="flex:1">';
+  html += '<div style="font-size:9px;font-weight:800;color:#92400e;letter-spacing:0.7px">MOAT VERDICT</div>';
+  html += '<div style="font-size:18px;font-weight:900;color:' + moatColor + ';font-family:Sora,sans-serif;margin-top:2px">' + moatGrade + '</div>';
+  html += '<div style="font-size:10px;color:#78350f;margin-top:2px">' + moatLabel + ' &middot; ' + companyName + ' (' + reg + ')</div>';
+  html += '</div>';
+  html += '<div style="text-align:right">';
+  html += '<div style="font-size:9px;font-weight:800;color:#92400e;letter-spacing:0.7px">SCORE</div>';
+  html += '<div style="font-size:28px;font-weight:900;color:' + moatColor + ';font-family:\'JetBrains Mono\',monospace;line-height:1">' + moatScore + '</div>';
+  html += '<div style="font-size:8px;color:#78350f">/ 100</div>';
+  html += '</div>';
+  html += '</div>';
+
+  html += '<div style="font-size:11px;font-weight:900;color:#0f172a;margin:14px 0 8px;font-family:Sora,sans-serif;letter-spacing:0.4px">PORTER&apos;S FIVE FORCES</div>';
+  html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:10px;margin-bottom:14px">';
+  forces.forEach(function(f){
+    var sev = f.data && f.data.severity || 'UNKNOWN';
+    var c = severityColor(sev);
+    var desc = (f.data && (f.data.analysis || f.data.detail || f.data.description)) || 'No detailed analysis available.';
+    html += '<div style="padding:11px 13px;border:1px solid var(--border);border-radius:8px;background:#fff">';
+    html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px">';
+    html += '<div style="font-size:11px;font-weight:800;color:#0f172a;font-family:Sora,sans-serif">' + f.label + '</div>';
+    html += '<div style="font-size:9px;font-weight:800;padding:2px 8px;border-radius:4px;background:' + c.bg + ';color:' + c.fg + ';font-family:Sora,sans-serif;letter-spacing:0.3px">' + c.label + '</div>';
+    html += '</div>';
+    html += '<div style="font-size:10px;color:#475569;line-height:1.5">' + desc + '</div>';
+    html += '</div>';
+  });
+  html += '</div>';
+
+  if (competitive && (competitive.peer_metrics || competitive.market_share || competitive.moat_factors)) {
+    html += '<div style="font-size:11px;font-weight:900;color:#0f172a;margin:14px 0 8px;font-family:Sora,sans-serif;letter-spacing:0.4px">COMPETITIVE POSITIONING</div>';
+    html += '<div style="padding:11px 13px;border:1px solid var(--border);border-radius:8px;background:#fff;margin-bottom:14px">';
+    if (competitive.moat_factors && Array.isArray(competitive.moat_factors) && competitive.moat_factors.length > 0) {
+      html += '<div style="font-size:10px;font-weight:700;color:#0f172a;margin-bottom:6px">Moat Drivers</div>';
+      competitive.moat_factors.forEach(function(mf){
+        var name = (typeof mf === 'string') ? mf : (mf.name || mf.factor || '');
+        var verdict = (typeof mf === 'object' && (mf.verdict || mf.signal)) || '';
+        html += '<div style="font-size:10px;color:#475569;margin:3px 0;padding-left:10px;border-left:2px solid #d97706">' + name + (verdict ? ' &mdash; <span style="color:#d97706;font-weight:700">' + verdict + '</span>' : '') + '</div>';
+      });
+    }
+    if (competitive.peer_metrics && typeof competitive.peer_metrics === 'object') {
+      html += '<div style="font-size:10px;font-weight:700;color:#0f172a;margin:10px 0 6px">vs Peers</div>';
+      var pm = competitive.peer_metrics;
+      ['gross_margin_vs_peers','roe_vs_peers','revenue_growth_vs_peers'].forEach(function(k){
+        if (pm[k] !== undefined && pm[k] !== null) {
+          var val = pm[k];
+          var s = (typeof val === 'number') ? (val >= 0 ? '+' : '') + val.toFixed(1) + ' pp vs peer median' : String(val);
+          html += '<div style="font-size:10px;color:#475569;margin:3px 0">' + k.replace(/_/g,' ') + ': ' + s + '</div>';
+        }
+      });
+    }
+    html += '</div>';
+  }
+
+  if (swot && (swot.strengths || swot.threats)) {
+    html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">';
+    if (Array.isArray(swot.strengths) && swot.strengths.length > 0) {
+      html += '<div style="padding:11px 13px;border:1px solid rgba(5,150,105,.3);border-radius:8px;background:rgba(5,150,105,.04)">';
+      html += '<div style="font-size:10px;font-weight:800;color:#059669;margin-bottom:6px;font-family:Sora,sans-serif;letter-spacing:0.4px">MOAT STRENGTHS</div>';
+      swot.strengths.slice(0,5).forEach(function(s){
+        var txt = (typeof s === 'string') ? s : (s.text || s.title || s.factor || JSON.stringify(s));
+        html += '<div style="font-size:10px;color:#065f46;margin:3px 0;padding-left:8px;border-left:2px solid #059669">' + txt + '</div>';
+      });
+      html += '</div>';
+    }
+    if (Array.isArray(swot.threats) && swot.threats.length > 0) {
+      html += '<div style="padding:11px 13px;border:1px solid rgba(220,38,38,.3);border-radius:8px;background:rgba(220,38,38,.04)">';
+      html += '<div style="font-size:10px;font-weight:800;color:#dc2626;margin-bottom:6px;font-family:Sora,sans-serif;letter-spacing:0.4px">MOAT THREATS</div>';
+      swot.threats.slice(0,5).forEach(function(t){
+        var txt = (typeof t === 'string') ? t : (t.text || t.title || t.factor || JSON.stringify(t));
+        html += '<div style="font-size:10px;color:#991b1b;margin:3px 0;padding-left:8px;border-left:2px solid #dc2626">' + txt + '</div>';
+      });
+      html += '</div>';
+    }
+    html += '</div>';
+  }
+
+  resEl.innerHTML = html;
+  if (stEl) stEl.innerHTML = 'Moat for ' + sym + ' (' + reg + ') &middot; score ' + moatScore + '/100 &middot; grade ' + moatGrade;
+};
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// r63.94.0: STRUCTURAL CHANGE SIGNAL (SCS) — Institutional-grade corporate
+// transformation detector. 5 categories: A Capital Structure, B Business Model,
+// C Ownership, D Strategic Pivot, E Balance Sheet Reset. Each sub-signal carries
+// ✅/⚠️/❌ data-status badge so users always see what's real vs unavailable.
+// ═══════════════════════════════════════════════════════════════════════════════
+window._scsState = window._scsState || { region: 'US', symbol: '' };
+
+window._setScsRegion = function(reg) {
+  var st = window._scsState || (window._scsState = {region:'US', symbol:''});
+  st.region = reg;
+  ['IN','US'].forEach(function(r){
+    var b = document.getElementById('scsReg' + r);
+    if (!b) return;
+    if (r === reg) { b.style.background = 'linear-gradient(135deg,#4f46e5,#3730a3)'; b.style.color = '#fff'; }
+    else { b.style.background = '#fff'; b.style.color = '#3730a3'; }
+  });
+};
+
+window._openStructural = function() {
+  try {
+    var bar = document.getElementById('mainTabBar');
+    if (bar) { bar.classList.remove('tab-bar-hidden'); bar.style.display = 'flex'; }
+    var tca = document.getElementById('tabContentArea');
+    if (tca) tca.style.display = '';
+  } catch(e){}
+  try { if (typeof switchTabGroup === 'function') switchTabGroup('structural'); } catch(e){}
+  setTimeout(function(){
+    var card = document.querySelector('.sc[data-tab="structural"]');
+    if (card) try { card.scrollIntoView({behavior:'smooth',block:'start'}); } catch(e){}
+  }, 80);
+};
+
+window.loadStructural = function() {
+  var inp = document.getElementById('scsSym');
+  var sym = (inp && inp.value || '').trim().toUpperCase();
+  if (!sym) {
+    var resEl0 = document.getElementById('scsResult');
+    if (resEl0) resEl0.innerHTML = '<div style="padding:20px;color:#3730a3;font-size:11px;text-align:center;background:#f5f3ff;border:1px solid #c7d2fe;border-radius:8px">Please enter a symbol first.</div>';
+    return;
+  }
+  var st = window._scsState || (window._scsState = {region:'US', symbol:''});
+  st.symbol = sym;
+  var reg = st.region || 'US';
+  var resEl = document.getElementById('scsResult');
+  var stEl  = document.getElementById('scsStatus');
+  if (!resEl) return;
+  if (stEl) stEl.textContent = 'Computing structural change for ' + sym + ' (' + reg + ') across 8 quarters…';
+  resEl.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text3);font-size:11px"><div style="display:inline-block;width:14px;height:14px;border:2px solid #4f46e5;border-top-color:transparent;border-radius:50%;animation:spin .5s linear infinite;vertical-align:middle;margin-right:8px"></div>Scanning 5 categories &middot; 30+ sub-signals &middot; analyzing 8 quarters of financials for ' + sym + '…</div>';
+  var url = '/api/scs?symbol=' + encodeURIComponent(sym) + '&region=' + encodeURIComponent(reg);
+  fetch(url).then(function(r){ if(!r.ok) throw new Error('API '+r.status); return r.json(); }).then(function(d){
+    if (!d || d.success === false) {
+      resEl.innerHTML = '<div style="color:var(--red);padding:16px;font-size:11px">Error: ' + ((d && d.error) || 'unknown') + '</div>';
+      if (stEl) stEl.textContent = '';
+      return;
+    }
+    window._renderStructural(d, sym, reg);
+  }).catch(function(e){
+    resEl.innerHTML = '<div style="color:var(--red);padding:16px;font-size:11px">Error: ' + e.message + '. <button onclick="window.loadStructural()" style="color:var(--blue);background:none;border:none;cursor:pointer;text-decoration:underline">Retry</button></div>';
+    if (stEl) stEl.textContent = '';
+  });
+};
+
+// Status-badge renderer (✅ available / ⚠️ partial / ❌ missing) per sub-signal.
+window._scsStatusBadge = function(status) {
+  if (status === 'available') return '<span style="display:inline-block;padding:1px 6px;border-radius:3px;background:rgba(5,150,105,.12);color:#059669;font-size:8px;font-weight:800;letter-spacing:0.3px;font-family:Sora,sans-serif">&#9989; AVAILABLE</span>';
+  if (status === 'partial')   return '<span style="display:inline-block;padding:1px 6px;border-radius:3px;background:rgba(217,119,6,.12);color:#d97706;font-size:8px;font-weight:800;letter-spacing:0.3px;font-family:Sora,sans-serif">&#9888;&#65039; PARTIAL</span>';
+  return '<span style="display:inline-block;padding:1px 6px;border-radius:3px;background:#f1f5f9;color:#64748b;font-size:8px;font-weight:800;letter-spacing:0.3px;font-family:Sora,sans-serif">&#10060; MISSING</span>';
+};
+
+// Signal-to-color mapping for the per-signal pill.
+window._scsSignalPill = function(signal) {
+  if (!signal) return '';
+  var s = String(signal).toUpperCase();
+  var bg, fg, label = signal;
+  if (s.indexOf('BULLISH') >= 0 || s.indexOf('LEVERED_TO_CASH') >= 0 || s.indexOf('INFLECTION') >= 0) {
+    bg = 'rgba(5,150,105,.12)'; fg = '#059669';
+  } else if (s.indexOf('BEARISH') >= 0 || s.indexOf('DISTRESS') >= 0) {
+    bg = 'rgba(220,38,38,.12)'; fg = '#dc2626';
+  } else if (s.indexOf('STABLE') >= 0 || s.indexOf('NEUTRAL') >= 0 || s.indexOf('MILD') >= 0 || s.indexOf('MODERATE') >= 0) {
+    bg = '#f1f5f9'; fg = '#64748b';
+  } else {
+    bg = 'rgba(79,70,229,.12)'; fg = '#4f46e5';
+  }
+  return '<span style="display:inline-block;padding:1px 7px;border-radius:3px;background:' + bg + ';color:' + fg + ';font-size:9px;font-weight:800;letter-spacing:0.3px;font-family:Sora,sans-serif">' + label + '</span>';
+};
+
+window._scsFmtVal = function(v) {
+  if (v === null || v === undefined) return '<span style="color:#9ca3af">—</span>';
+  if (typeof v === 'number') {
+    if (Math.abs(v) >= 1e9) return (v >= 0 ? '+' : '') + (v / 1e9).toFixed(2) + 'B';
+    if (Math.abs(v) >= 1e6) return (v >= 0 ? '+' : '') + (v / 1e6).toFixed(2) + 'M';
+    if (Math.abs(v) >= 100)  return (v >= 0 ? '+' : '') + v.toFixed(0);
+    return (v >= 0 ? '+' : '') + v.toFixed(2);
+  }
+  if (typeof v === 'object') {
+    try { return '<code style="font-size:9px;color:#475569;background:#f8fafc;padding:1px 5px;border-radius:3px">' + JSON.stringify(v) + '</code>'; }
+    catch(_e){ return String(v); }
+  }
+  return String(v);
+};
+
+window._renderStructural = function(d, sym, reg) {
+  var resEl = document.getElementById('scsResult');
+  var stEl  = document.getElementById('scsStatus');
+  if (!resEl) return;
+  var composite = d.composite_score;
+  var verdict   = d.verdict || 'INSUFFICIENT_DATA';
+  var verdictLabel = d.verdict_label || verdict;
+  var verdictDetail = d.verdict_detail || '';
+  var coverage = d.data_coverage_pct || 0;
+  var leadStr  = d.lead_indicator_strength || 'LOW';
+  var leadDet  = d.lead_indicator_detail || '';
+  var tags = d.what_changed_tags || [];
+  var quiet = d.quiet_accumulation;
+  var quietSignals = d.quiet_accumulation_signals || [];
+  var verdictColor, verdictBg;
+  if (verdict.indexOf('STRUCTURAL_BREAKOUT') >= 0) { verdictColor = '#059669'; verdictBg = 'linear-gradient(135deg,#ecfdf5,#d1fae5)'; }
+  else if (verdict.indexOf('TRANSITION') >= 0)     { verdictColor = '#d97706'; verdictBg = 'linear-gradient(135deg,#fffbeb,#fef3c7)'; }
+  else if (verdict.indexOf('NO_STRUCTURAL') >= 0)  { verdictColor = '#dc2626'; verdictBg = 'linear-gradient(135deg,#fef2f2,#fee2e2)'; }
+  else                                              { verdictColor = '#64748b'; verdictBg = '#f1f5f9'; }
+
+  var html = '';
+  // ─── Verdict header ───
+  html += '<div style="display:flex;align-items:center;gap:16px;padding:14px 16px;margin-bottom:14px;background:' + verdictBg + ';border:1px solid rgba(0,0,0,.06);border-radius:10px">';
+  html += '<div style="flex:1">';
+  html += '<div style="font-size:9px;font-weight:800;color:' + verdictColor + ';letter-spacing:0.7px">SCS VERDICT</div>';
+  html += '<div style="font-size:17px;font-weight:900;color:' + verdictColor + ';font-family:Sora,sans-serif;margin-top:2px">' + verdictLabel + '</div>';
+  html += '<div style="font-size:10px;color:#475569;margin-top:2px">' + verdictDetail + '</div>';
+  html += '</div>';
+  html += '<div style="text-align:right">';
+  html += '<div style="font-size:9px;font-weight:800;color:' + verdictColor + ';letter-spacing:0.7px">SCORE</div>';
+  html += '<div style="font-size:30px;font-weight:900;color:' + verdictColor + ';font-family:\'JetBrains Mono\',monospace;line-height:1">' + (composite !== null && composite !== undefined ? composite : '—') + '</div>';
+  html += '<div style="font-size:8px;color:#64748b">/ 100 &middot; ' + d.lookback_quarters + 'Q lookback</div>';
+  html += '</div>';
+  html += '</div>';
+
+  // ─── Quiet Accumulation banner (if triggered) ───
+  if (quiet) {
+    html += '<div style="padding:11px 14px;margin-bottom:14px;background:linear-gradient(135deg,#fef3c7,#fde68a);border:1px solid #f59e0b;border-radius:10px">';
+    html += '<div style="font-size:11px;font-weight:900;color:#78350f;font-family:Sora,sans-serif;letter-spacing:0.4px;margin-bottom:4px">&#128064; QUIET ACCUMULATION DETECTED</div>';
+    html += '<div style="font-size:10px;color:#78350f;margin-bottom:6px">Multiple structural categories positive AND institutional ownership rising AND price still in consolidation. This is the pre-breakout setup institutions look for.</div>';
+    quietSignals.forEach(function(s){
+      html += '<div style="font-size:10px;color:#92400e;margin:2px 0;padding-left:10px;border-left:2px solid #f59e0b">' + s + '</div>';
+    });
+    html += '</div>';
+  }
+
+  // ─── Coverage + Lead Strength row ───
+  html += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:14px">';
+  html += '<div style="padding:9px 12px;border:1px solid var(--border);border-radius:8px;background:#fff">';
+  html += '<div style="font-size:8px;font-weight:800;color:#64748b;letter-spacing:0.5px">DATA COVERAGE</div>';
+  html += '<div style="font-size:18px;font-weight:900;color:#0f172a;font-family:\'JetBrains Mono\',monospace">' + coverage + '%</div>';
+  html += '<div style="font-size:9px;color:#64748b;margin-top:2px">of 5 categories returned scoreable data</div>';
+  html += '</div>';
+  html += '<div style="padding:9px 12px;border:1px solid var(--border);border-radius:8px;background:#fff">';
+  html += '<div style="font-size:8px;font-weight:800;color:#64748b;letter-spacing:0.5px">LEAD INDICATOR STRENGTH</div>';
+  var lcolor = leadStr === 'HIGH' ? '#059669' : leadStr === 'MODERATE' ? '#d97706' : '#64748b';
+  html += '<div style="font-size:18px;font-weight:900;color:' + lcolor + ';font-family:\'JetBrains Mono\',monospace">' + leadStr + '</div>';
+  html += '<div style="font-size:9px;color:#64748b;margin-top:2px">' + leadDet + '</div>';
+  html += '</div>';
+  html += '<div style="padding:9px 12px;border:1px solid var(--border);border-radius:8px;background:#fff">';
+  html += '<div style="font-size:8px;font-weight:800;color:#64748b;letter-spacing:0.5px">TAGS DETECTED</div>';
+  html += '<div style="font-size:18px;font-weight:900;color:#4f46e5;font-family:\'JetBrains Mono\',monospace">' + tags.length + '</div>';
+  html += '<div style="font-size:9px;color:#64748b;margin-top:2px">structural transformation signals fired</div>';
+  html += '</div>';
+  html += '</div>';
+
+  // ─── What Changed (auto-tags) ───
+  if (tags.length > 0) {
+    html += '<div style="margin-bottom:14px;padding:11px 14px;border:1px solid var(--border);border-radius:8px;background:#fafbfc">';
+    html += '<div style="font-size:10px;font-weight:800;color:#0f172a;margin-bottom:8px;font-family:Sora,sans-serif;letter-spacing:0.4px">&#128293; WHAT CHANGED &middot; auto-detected structural signals</div>';
+    html += '<div style="display:flex;flex-wrap:wrap;gap:6px">';
+    tags.forEach(function(t){
+      var bullish = ['BUYBACK_ACTIVE','AGGRESSIVE_BUYBACK','DEBT_REDUCTION','AGGRESSIVE_DEBT_REDUCTION','GROSS_MARGIN_EXPANSION','STRUCTURAL_MARGIN_LIFT','OPERATING_LEVERAGE','GROWTH_ACCELERATION','INSIDER_NET_BUYING','INSIDER_CONCENTRATED_BUYING','ACTIVIST_PRESENT','MULTIPLE_ACTIVISTS','RD_INTENSITY_SPIKE','CAPEX_RAMP','M_AND_A_ACTIVE','MAJOR_ACQUISITION','LEVERED_TO_CASH_TRANSITION','INTEREST_COVERAGE_INFLECTION','QUIET_ACCUMULATION'];
+      var bearish = ['EQUITY_DILUTION','DEBT_BUILDUP','MARGIN_COMPRESSION','GROWTH_DECELERATION','INSIDER_NET_SELLING','RD_CUTBACK','CAPEX_CUT','CASH_TO_LEVERED','DISTRESS_RISK'];
+      var bg = '#f1f5f9', fg = '#64748b';
+      if (bullish.indexOf(t) >= 0) { bg = 'rgba(5,150,105,.12)'; fg = '#059669'; }
+      else if (bearish.indexOf(t) >= 0) { bg = 'rgba(220,38,38,.12)'; fg = '#dc2626'; }
+      html += '<span style="padding:3px 9px;border-radius:4px;background:' + bg + ';color:' + fg + ';font-size:9px;font-weight:800;font-family:\'JetBrains Mono\',monospace;letter-spacing:0.3px">' + t + '</span>';
+    });
+    html += '</div></div>';
+  }
+
+  // ─── 5 Category Cards ───
+  var categories = d.categories || {};
+  var catMeta = [
+    { key: 'A_capital_structure',   label: 'A. Capital Structure',         weight: 25, icon: '&#128184;' },
+    { key: 'B_business_model',      label: 'B. Business Model',            weight: 25, icon: '&#128202;' },
+    { key: 'C_ownership',           label: 'C. Ownership &amp; Control',   weight: 20, icon: '&#128737;' },
+    { key: 'D_strategic_pivot',     label: 'D. Strategic Pivot',           weight: 15, icon: '&#127919;' },
+    { key: 'E_balance_sheet_reset', label: 'E. Balance Sheet Reset',       weight: 15, icon: '&#127974;' },
+  ];
+  catMeta.forEach(function(cm){
+    var cat = categories[cm.key] || {};
+    var sub = cat.sub || {};
+    var score = cat.score;
+    var scoreColor = (score === null || score === undefined) ? '#9ca3af' : score >= 65 ? '#059669' : score >= 45 ? '#d97706' : '#dc2626';
+    html += '<div style="margin-bottom:14px;border:1px solid var(--border);border-radius:10px;background:#fff;overflow:hidden">';
+    // Category header
+    html += '<div style="padding:10px 14px;background:linear-gradient(180deg,#fafbfc,#f4f6f8);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px">';
+    html += '<div style="font-size:18px">' + cm.icon + '</div>';
+    html += '<div style="flex:1">';
+    html += '<div style="font-size:11px;font-weight:900;color:#0f172a;font-family:Sora,sans-serif;letter-spacing:0.3px">' + cm.label + '</div>';
+    html += '<div style="font-size:8px;color:#64748b;letter-spacing:0.4px;margin-top:1px">WEIGHT: ' + cm.weight + '% &middot; ' + (cat.tags && cat.tags.length || 0) + ' tag' + ((cat.tags && cat.tags.length === 1) ? '' : 's') + ' fired</div>';
+    html += '</div>';
+    html += '<div style="text-align:right">';
+    html += '<div style="font-size:8px;color:#64748b;letter-spacing:0.4px">SCORE</div>';
+    html += '<div style="font-size:20px;font-weight:900;color:' + scoreColor + ';font-family:\'JetBrains Mono\',monospace;line-height:1">' + (score === null || score === undefined ? '—' : score) + '</div>';
+    html += '</div>';
+    html += '</div>';
+    // Sub-signals
+    html += '<div style="padding:8px 14px">';
+    var subKeys = Object.keys(sub).filter(function(k){ return !k.startsWith('_'); });
+    if (subKeys.length === 0) {
+      html += '<div style="padding:12px;color:#9ca3af;font-size:10px;text-align:center">No sub-signals returned.</div>';
+    } else {
+      subKeys.forEach(function(sk){
+        var ss = sub[sk] || {};
+        var label = sk.replace(/_/g, ' ').replace(/\b\w/g, function(c){ return c.toUpperCase(); });
+        html += '<div style="display:flex;align-items:flex-start;gap:10px;padding:7px 0;border-bottom:1px solid #f1f5f9">';
+        html += '<div style="flex:1">';
+        html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:2px">';
+        html += '<span style="font-size:10px;font-weight:700;color:#1e293b">' + label + '</span>';
+        html += window._scsStatusBadge(ss.status);
+        if (ss.signal) html += window._scsSignalPill(ss.signal);
+        html += '</div>';
+        if (ss.value !== null && ss.value !== undefined) {
+          html += '<div style="font-size:9px;color:#475569;font-family:\'JetBrains Mono\',monospace">value: ' + window._scsFmtVal(ss.value) + '</div>';
+        }
+        if (ss.note) {
+          html += '<div style="font-size:9px;color:#94a3b8;font-style:italic;margin-top:2px">' + ss.note + '</div>';
+        }
+        html += '</div>';
+        // Weight column
+        var w = ss.weight !== undefined && ss.weight !== null ? Math.round(ss.weight * 100) + '%' : '—';
+        html += '<div style="font-size:9px;color:#94a3b8;font-family:\'JetBrains Mono\',monospace;text-align:right;min-width:40px">w: ' + w + '</div>';
+        html += '</div>';
+      });
+    }
+    html += '</div>';
+    html += '</div>';
+  });
+
+  // ─── Final status ───
+  resEl.innerHTML = html;
+  if (stEl) stEl.innerHTML = sym + ' (' + reg + ') &middot; composite ' + (composite !== null ? composite : '—') + '/100 &middot; ' + verdictLabel + ' &middot; coverage ' + coverage + '% &middot; ' + tags.length + ' tags &middot; lead strength ' + leadStr;
 };
 
 
@@ -17830,9 +18410,44 @@ el.innerHTML='<div style="padding:30px;text-align:center"><div style="font-size:
 return;}
 var reg=window._deRegion||'IN';var S=reg==='US'?'$':'₹';
 el.innerHTML='<div style="padding:24px;text-align:center"><div style="display:inline-block;width:16px;height:16px;border:2px solid #1A3A78;border-top-color:transparent;border-radius:50%;animation:spin .5s linear infinite;vertical-align:middle;margin-right:8px"></div><span style="font-size:11px;color:#5E6F8E">Running institutional analysis on <strong>'+sym+'</strong>...</span></div>';
-_cachedFetch('/api/investor-decide?symbol='+encodeURIComponent(sym)+'&region='+reg,300).then(function(d){
+// r63.93.0: Parallel fetch — investor-decide is the primary, /api/investor-due-diligence
+// supplies institutional.* (ownership_history, insider_quarterly_history, top_holders_delta)
+// and /api/premium-intel supplies analyst_estimates, estimate_revisions, earnings_surprises,
+// forward_multiples, dividend_quality. The two sidecars are wrapped in .catch so any
+// failure there NEVER blocks the main Analyze render.
+var _primaryFetch = _cachedFetch('/api/investor-decide?symbol='+encodeURIComponent(sym)+'&region='+reg,300);
+var _ddFetch = _cachedFetch('/api/investor-due-diligence?symbol='+encodeURIComponent(sym)+'&region='+reg,300).catch(function(e){console.warn('DD sidecar failed (non-fatal):',e);return null});
+var _premiumFetch = _cachedFetch('/api/premium-intel?symbol='+encodeURIComponent(sym)+'&region='+reg,300).catch(function(e){console.warn('Premium sidecar failed (non-fatal):',e);return null});
+Promise.all([_primaryFetch,_ddFetch,_premiumFetch]).then(function(_results){
+var d=_results[0]; var _dd=_results[1]; var _pi=_results[2];
 if(!d||typeof d!=='object'){el.innerHTML='<div style="color:#DC2626;padding:16px;font-size:11px">Server returned invalid response. Please retry.</div>';return}
 if(!d.success){el.innerHTML='<div style="color:#DC2626;padding:16px;font-size:11px">'+(d.error||'Analysis failed')+'<br><button onclick="loadInvestorDE(\''+sym+'\')" style="margin-top:8px;padding:6px 16px;border-radius:6px;background:#1A3A78;color:#fff;border:none;cursor:pointer;font-size:10px">Retry</button></div>';return}
+// ─── Stitch sidecar data into the primary response object ───
+// SMI: copy d.institutional from /api/investor-due-diligence (if it returned)
+try {
+  if (_dd && _dd.success && _dd.institutional && typeof _dd.institutional === 'object') {
+    // Merge — preserve any institutional fields already on d (e.g. institutionalOwnership %)
+    d.institutional = d.institutional || {};
+    Object.keys(_dd.institutional).forEach(function(k){
+      // Don't overwrite if primary already has a non-null value for this key
+      if (d.institutional[k] === undefined || d.institutional[k] === null) {
+        d.institutional[k] = _dd.institutional[k];
+      }
+    });
+    // Also expose DD's porter + competitive + swot for the MOAT tab to consume.
+    if (_dd.porter && !d.porter) d.porter = _dd.porter;
+    if (_dd.competitive && !d.competitive) d.competitive = _dd.competitive;
+    if (_dd.swot && !d.swot) d.swot = _dd.swot;
+  }
+} catch(_e){ console.warn('SMI stitch error:',_e); }
+// PREMIUM: copy analyst_estimates, estimate_revisions, earnings_surprises, forward_multiples, dividend_quality
+try {
+  if (_pi && _pi.success) {
+    ['analyst_estimates','estimate_revisions','earnings_surprises','forward_multiples','dividend_quality'].forEach(function(k){
+      if (_pi[k] && (d[k] === undefined || d[k] === null)) d[k] = _pi[k];
+    });
+  }
+} catch(_e){ console.warn('Premium stitch error:',_e); }
 // Safety defaults
 d.price=d.price||0;d.symbol=d.symbol||sym;d.companyName=d.companyName||sym;
 d.confidence=d.confidence||0;d.fScore=d.fScore||(d.business?d.business.fScore:0)||0;
@@ -33077,6 +33692,25 @@ window._renderVolumeProfile = function(d) {
   h += '</div>';
 
   h += _ddCardLayman(d.layman, d.price_implication);
+  // r63.94.0: "How to read this · What to act on" institutional explainer for volume profile.
+  h += '<details open style="margin-top:10px;border:1px solid #c7d2fe;border-radius:8px;background:#f5f3ff;padding:0">';
+  h += '<summary style="padding:9px 13px;font-size:10px;font-weight:800;color:#3730a3;font-family:Sora,sans-serif;letter-spacing:0.4px;cursor:pointer;list-style:none">&#128214; HOW TO READ THIS &middot; WHAT TO ACT ON</summary>';
+  h += '<div style="padding:0 13px 12px;font-size:10.5px;color:#3730a3;line-height:1.65">';
+  h += '<div style="margin-bottom:8px"><strong>Bar chart (top):</strong> each row is a price level; bar length = % of last 90 days&apos; trading volume that occurred at that price. Long bar = lots of shares changed hands here. Short bar = price moved through quickly.</div>';
+  h += '<div style="margin-bottom:6px"><strong>The three zones:</strong></div>';
+  h += '<ul style="margin:0 0 8px 16px;padding:0">';
+  h += '<li style="margin-bottom:4px"><strong>Dark navy bar = Point of Control (POC).</strong> The single price level with the heaviest volume. Market memory anchors here.</li>';
+  h += '<li style="margin-bottom:4px"><strong>Purple bars = Value Area.</strong> The tightest band of prices containing 70% of all volume. Statistically where the market considers the stock &ldquo;fair.&rdquo;</li>';
+  h += '<li style="margin-bottom:4px"><strong>Gray bars = Outside Value Area.</strong> Thin-volume zones. Price moves through these quickly because there are no anchors.</li>';
+  h += '</ul>';
+  h += '<div style="margin-bottom:6px"><strong>What to act on &mdash; three concrete trader actions:</strong></div>';
+  h += '<ol style="margin:0 0 8px 16px;padding:0">';
+  h += '<li style="margin-bottom:4px"><strong>Gravity-pull risk.</strong> If current price is far above POC, mean-reversion risk is elevated. If you&apos;re long, this is a warning. If you&apos;re flat, this is NOT a buy &mdash; wait for it to come back to value.</li>';
+  h += '<li style="margin-bottom:4px"><strong>Support test plan.</strong> If price drops, your first watch is the Nearest Support level above. A clean bounce there = institutional buyers stepped in at &ldquo;fair value.&rdquo; A break through = serious; next anchor is POC.</li>';
+  h += '<li style="margin-bottom:4px"><strong>Breakout judgment.</strong> &ldquo;None above current price&rdquo; for resistance sounds bullish but means no recent buyer cluster to fall back on &mdash; if price falls back into the value area, it can fall fast because there&apos;s no friction.</li>';
+  h += '</ol>';
+  h += '<div style="font-size:9.5px;color:#6366f1;font-style:italic">The &ldquo;% Fair Value&rdquo; badge at the top is this signal&apos;s own quantitative contribution to the composite verdict &mdash; one input, not a target.</div>';
+  h += '</div></details>';
   h += '</div>';
   el.innerHTML = h;
 };
