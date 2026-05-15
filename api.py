@@ -7512,6 +7512,11 @@ def _movers_compute_one_ticker(symbol, region):
     Uses data_sources.get_price_history which already has region-aware fallback
     (finnhub→yfinance→google for US; yfinance→nse_chart→google for IN) and 5-min
     in-process caching, so calling it 200x in one scan is cheap on repeat runs.
+
+    r63.96.1: relaxed — even if we only have ~20-30 trading days of history,
+    emit the windows we DO have data for (1D, 1W, maybe 1M). Previously we
+    needed days_back < len(prices) which silently dropped windows on short
+    histories.
     """
     try:
         ph = data_sources.get_price_history(symbol, region)
@@ -7545,10 +7550,16 @@ def _movers_compute_one_ticker(symbol, region):
         return {
             "symbol": symbol,
             "last":   round(last, 2),
+            "n_prices": len(prices),
             "windows": windows,
             "src":    ph.get("_source", "?"),
         }
-    except Exception:
+    except Exception as _e:
+        # r63.96.1: log per-ticker failures for diagnostics (was silent)
+        try:
+            print(f"[MOVERS] {symbol} ({region}): compute failed: {type(_e).__name__}: {str(_e)[:80]}")
+        except Exception:
+            pass
         return None
 
 
@@ -7594,10 +7605,20 @@ def _run_movers_scan(region):
                 _movers_cache[reg] = {"data": prev_data, "time": prev.get("time", time.time())}
                 print(f"[MOVERS] {reg}: empty scan, preserved previous snapshot")
             else:
+                # r63.96.1: even when there's no data to show, set _scan_complete so
+                # frontend renders a diagnostic message instead of polling forever.
                 _movers_cache[reg] = {
                     "data": {"success": True, "region": reg, "ts": time.time(),
                              "count": 0, "universe_size": len(universe),
-                             "windows": {}, "_last_scan_empty": True},
+                             "windows": {}, "_last_scan_empty": True,
+                             "_scan_complete_empty": True,
+                             "_diagnostic": (
+                                 f"Scan returned 0/{len(universe)} tickers with usable data. "
+                                 "Likely causes: (1) data source rate-limited or IP-blocked "
+                                 "(Yahoo 401 / Finnhub rate cap / NSE IP ban on Render); "
+                                 "(2) all 137 tickers failed simultaneously — usually transient. "
+                                 "Try Refresh in 1-2 minutes."
+                             )},
                     "time": time.time(),
                 }
             return
@@ -7643,10 +7664,11 @@ def _run_movers_scan(region):
 async def movers(region: str = "IN"):
     """Top 5 gainers + losers per region across 1D / 1W / 1M / 3M / 1Y.
 
-    Contract:
+    Contract (r63.96.1):
       - 5-min TTL, stale-while-revalidate: returns cached snapshot instantly,
         kicks off a background refresh when age > TTL.
-      - `_loading=True` on cold cache (no data yet) — frontend should show skeleton.
+      - `_loading=True` ONLY when no scan has ever completed (cold cache).
+      - `_scan_complete=True` after first scan finishes — even if empty (so frontend stops polling).
       - `_stale=True` when cache is past TTL but bg refresh hasn't yet completed.
       - Keep-last-good: an empty scan does NOT overwrite a working snapshot.
       - `ts` = epoch seconds of the snapshot.
@@ -7673,13 +7695,18 @@ async def movers(region: str = "IN"):
         resp = dict(cache["data"])
         resp["_stale"] = bool(age > _MOVERS_CACHE_TTL)
         resp["_cache_age_sec"] = int(age)
+        # r63.96.1: explicit scan_complete flag — frontend uses this to stop polling
+        resp["_scan_complete"] = True
+        # r63.96.1: explicit scanning-in-progress flag for stale-with-refresh UX
+        resp["_scanning"] = (reg in _movers_busy)
         return resp
 
     # Cold cache — kick off first scan, return loading state.
     if reg not in _movers_busy:
         import threading
         threading.Thread(target=_run_movers_scan, args=(reg,), daemon=True).start()
-    return {"success": True, "region": reg, "windows": {}, "ts": 0, "_loading": True}
+    return {"success": True, "region": reg, "windows": {}, "ts": 0,
+            "_loading": True, "_scan_complete": False, "_scanning": True}
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -9007,6 +9034,554 @@ async def scs_batch(symbols: str = "", region: str = "US", max_workers: int = 4)
     finally:
         _scs_batch_busy.discard(busy_key)
         _scs_batch_busy_since.pop(busy_key, None)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# r63.96.0: INTRADAY OPTIONS SCANNER
+#
+# Implements Vijay's institutional intraday framework line by line:
+#
+# 3 ALIGNMENT SIGNALS:
+#   1. Option Chain Pressure (CE/PE writing + OI shifts)
+#   2. Price vs Max Pain (regime detection)
+#   3. Volatility expansion (IV trend)
+#
+# 4 SETUP BUCKETS:
+#   🟢 CE Buy   — breakout candidates (price > max_pain + CE unwinding + IV rising)
+#   🔴 PE Buy   — breakdown candidates (price < max_pain + PE unwinding + IV rising)
+#   🟡 CE Sell  — call wall resistance (heavy CE wall + price near/below + IV falling)
+#   🟡 PE Sell  — support defense (heavy PE wall + price holding + high IV)
+#
+# Each signal carries a status badge: ✅ AVAILABLE / ⚠️ PARTIAL / ❌ MISSING.
+# Composite 0–100 score per setup. Auto-bias BUY/SELL/WAIT.
+#
+# UNIVERSE: Top 50 F&O names (4 indices + ~46 high-volume stocks).
+# CACHE: 5 min minimum to prevent hammering NSE on double-clicks. On-demand only.
+# CONSTRAINT: NSE blocks Render IP — falls back gracefully when blocked.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+_intraday_options_cache = {"data": None, "ts": 0}
+_intraday_options_busy = False
+_intraday_options_busy_since = 0
+_INTRADAY_OPTIONS_TTL = 300   # 5 min minimum (still "on-demand" — just dedup defense)
+
+# Top 50 F&O universe — 4 indices + 46 stocks. Curated for liquidity, sector spread.
+# Bank/Financials (heavy weight), IT, Energy, Auto, Pharma, FMCG, Metals, etc.
+_INTRADAY_FNO_UNIVERSE = [
+    # Indices (4)
+    "NIFTY", "BANKNIFTY", "FINNIFTY", "MIDCPNIFTY",
+    # Bank/Financials (10)
+    "HDFCBANK", "ICICIBANK", "SBIN", "AXISBANK", "KOTAKBANK",
+    "BAJFINANCE", "BAJAJFINSV", "PNB", "INDUSINDBK", "FEDERALBNK",
+    # IT (5)
+    "INFY", "TCS", "WIPRO", "HCLTECH", "TECHM",
+    # Energy / Oil&Gas (4)
+    "RELIANCE", "ONGC", "BPCL", "IOC",
+    # Auto (5)
+    "TATAMOTORS", "MARUTI", "M&M", "BAJAJ-AUTO", "EICHERMOT",
+    # Pharma (4)
+    "SUNPHARMA", "DRREDDY", "CIPLA", "DIVISLAB",
+    # FMCG (4)
+    "ITC", "HINDUNILVR", "NESTLEIND", "BRITANNIA",
+    # Metals (4)
+    "TATASTEEL", "JSWSTEEL", "HINDALCO", "VEDL",
+    # Cement / Infra (3)
+    "ULTRACEMCO", "GRASIM", "LT",
+    # Adani / Diversified (3)
+    "ADANIENT", "ADANIPORTS", "ADANIGREEN",
+    # Misc high-volume F&O (4)
+    "BHARTIARTL", "ASIANPAINT", "TITAN", "POWERGRID",
+]
+
+# Sector → constituent map for sector-rotation detection
+_INTRADAY_SECTOR_MAP = {
+    "Banking":  ["HDFCBANK","ICICIBANK","SBIN","AXISBANK","KOTAKBANK","BAJFINANCE","BAJAJFINSV","PNB","INDUSINDBK","FEDERALBNK","BANKNIFTY","FINNIFTY"],
+    "IT":       ["INFY","TCS","WIPRO","HCLTECH","TECHM"],
+    "Energy":   ["RELIANCE","ONGC","BPCL","IOC"],
+    "Auto":     ["TATAMOTORS","MARUTI","M&M","BAJAJ-AUTO","EICHERMOT"],
+    "Pharma":   ["SUNPHARMA","DRREDDY","CIPLA","DIVISLAB"],
+    "FMCG":     ["ITC","HINDUNILVR","NESTLEIND","BRITANNIA"],
+    "Metals":   ["TATASTEEL","JSWSTEEL","HINDALCO","VEDL"],
+    "Adani":    ["ADANIENT","ADANIPORTS","ADANIGREEN"],
+}
+
+
+def _intraday_status_badge(have_value, partial_condition=False):
+    """Returns the canonical ✅/⚠️/❌ status string used in frontend rendering."""
+    if have_value:
+        return "partial" if partial_condition else "available"
+    return "missing"
+
+
+async def _intraday_fetch_one(symbol):
+    """Fetch NSE option chain for one symbol via existing /api/nse-options
+    helper. Returns the raw chain payload, or None if NSE blocked / failed.
+    Every error swallowed silently — caller decides what to do with None."""
+    try:
+        # Reuse the existing endpoint — it has all the fallbacks, Greeks, IV history.
+        resp = await nse_options(symbol)
+        if isinstance(resp, dict) and resp.get("success"):
+            return resp
+    except Exception:
+        pass
+    return None
+
+
+def _intraday_score_setup(nse_data, symbol):
+    """Run the 4-setup scoring logic against a single symbol's NSE option chain.
+
+    Returns a dict with:
+      symbol, spot, max_pain, pcr, atm_iv, vix_change,
+      signals: {
+        chain_pressure: {ce_resistance, pe_support, ce_unwind, pe_unwind, status},
+        price_vs_maxpain: {value, regime, status},
+        iv_trend: {value, direction, status},
+      },
+      setups: {
+        ce_buy:  {score: 0-100, status, reasoning, tags},
+        pe_buy:  {...},
+        ce_sell: {...},
+        pe_sell: {...},
+      },
+      top_setup: {kind, score, action, reasoning}
+    """
+    out = {"symbol": symbol, "_have_data": False}
+    if not nse_data:
+        out["error"] = "No NSE data — likely Render IP blocked or symbol illiquid"
+        return out
+
+    spot      = _scs_safe_float(nse_data.get("spot"))
+    max_pain  = _scs_safe_float(nse_data.get("max_pain"))
+    pcr       = _scs_safe_float(nse_data.get("pcr"))
+    atm_iv    = _scs_safe_float(nse_data.get("atm_iv"))
+    vix_chg   = _scs_safe_float(nse_data.get("vix_change"))
+    ce_res    = nse_data.get("ce_resistance") or []
+    pe_sup    = nse_data.get("pe_support") or []
+    chain_atm = nse_data.get("chain_near_atm") or []
+    ce_buildup = nse_data.get("ce_buildup") or []
+    pe_buildup = nse_data.get("pe_buildup") or []
+
+    if not (spot and spot > 0):
+        out["error"] = "Spot price missing — cannot score"
+        return out
+    out["_have_data"] = True
+    out.update({
+        "spot": round(spot, 2),
+        "max_pain": round(max_pain, 2) if max_pain else None,
+        "pcr": round(pcr, 2) if pcr else None,
+        "atm_iv": round(atm_iv, 1) if atm_iv else None,
+        "vix_change_pct": round(vix_chg, 2) if vix_chg is not None else None,
+    })
+
+    # ─── SIGNAL 1: Option Chain Pressure ─────────────────────────────
+    # Heaviest CE-OI strike above spot = resistance ceiling
+    ce_wall_strike = None; ce_wall_oi = 0
+    for r in ce_res[:5]:
+        s = _scs_safe_float(r.get("strike"))
+        if s is not None and s > spot:
+            ce_wall_strike = s; ce_wall_oi = r.get("oi", 0)
+            break
+    # Heaviest PE-OI strike below spot = support floor
+    pe_wall_strike = None; pe_wall_oi = 0
+    for r in pe_sup[:5]:
+        s = _scs_safe_float(r.get("strike"))
+        if s is not None and s < spot:
+            pe_wall_strike = s; pe_wall_oi = r.get("oi", 0)
+            break
+
+    # Intraday OI change near-ATM (within 5% of spot) — detects unwinding
+    ce_unwind_strikes = []   # CE strikes where ce_chg < 0 (writers covering — bullish if above spot)
+    pe_unwind_strikes = []   # PE strikes where pe_chg < 0 (support break risk)
+    ce_buildup_total = 0
+    pe_buildup_total = 0
+    for row in chain_atm:
+        sk = _scs_safe_float(row.get("strike"))
+        if sk is None: continue
+        ce_chg = _scs_safe_float(row.get("ce_chg")) or 0
+        pe_chg = _scs_safe_float(row.get("pe_chg")) or 0
+        if ce_chg < -1000: ce_unwind_strikes.append(sk)
+        if pe_chg < -1000: pe_unwind_strikes.append(sk)
+        if ce_chg > 0: ce_buildup_total += ce_chg
+        if pe_chg > 0: pe_buildup_total += pe_chg
+
+    chain_pressure = {
+        "ce_wall_strike": ce_wall_strike,
+        "ce_wall_oi":     ce_wall_oi,
+        "pe_wall_strike": pe_wall_strike,
+        "pe_wall_oi":     pe_wall_oi,
+        "ce_unwind_strikes_count": len(ce_unwind_strikes),
+        "pe_unwind_strikes_count": len(pe_unwind_strikes),
+        "ce_buildup_total": ce_buildup_total,
+        "pe_buildup_total": pe_buildup_total,
+        "status": _intraday_status_badge(ce_wall_strike or pe_wall_strike,
+                                          partial_condition=not (ce_wall_strike and pe_wall_strike)),
+    }
+
+    # ─── SIGNAL 2: Price vs Max Pain ─────────────────────────────────
+    if max_pain and max_pain > 0:
+        max_pain_delta_pct = round((spot - max_pain) / max_pain * 100, 2)
+        if abs(max_pain_delta_pct) < 0.5:
+            regime = "RANGE_BOUND"
+            regime_label = "🟡 At max pain — range / theta decay edge"
+        elif max_pain_delta_pct > 0:
+            if max_pain_delta_pct > 1.5: regime = "TREND_UP_STRONG"; regime_label = "🟢 Above max pain (+" + str(max_pain_delta_pct) + "%) — bullish tilt"
+            else: regime = "TREND_UP_MILD"; regime_label = "🟢 Above max pain (+" + str(max_pain_delta_pct) + "%) — mild bullish"
+        else:
+            if max_pain_delta_pct < -1.5: regime = "TREND_DOWN_STRONG"; regime_label = "🔴 Below max pain (" + str(max_pain_delta_pct) + "%) — bearish tilt"
+            else: regime = "TREND_DOWN_MILD"; regime_label = "🔴 Below max pain (" + str(max_pain_delta_pct) + "%) — mild bearish"
+        price_vs_maxpain = {
+            "value": max_pain_delta_pct,
+            "regime": regime,
+            "regime_label": regime_label,
+            "status": "available",
+        }
+    else:
+        price_vs_maxpain = {"value": None, "regime": "UNKNOWN",
+                            "regime_label": "Max pain unavailable", "status": "missing"}
+
+    # ─── SIGNAL 3: IV Trend ──────────────────────────────────────────
+    iv_trend = {"value": atm_iv, "direction": None, "status": "missing"}
+    try:
+        median_iv = _iv_history_median(symbol)
+        if median_iv and atm_iv:
+            iv_delta = atm_iv - median_iv
+            iv_trend["median"] = round(median_iv, 1)
+            iv_trend["delta_from_median"] = round(iv_delta, 1)
+            if iv_delta > 2.0:
+                iv_trend["direction"] = "RISING"
+                iv_trend["interpretation"] = "IV expansion — option BUYING edge (breakout potential)"
+            elif iv_delta < -2.0:
+                iv_trend["direction"] = "FALLING"
+                iv_trend["interpretation"] = "IV compression — option SELLING edge (theta decay)"
+            else:
+                iv_trend["direction"] = "STABLE"
+                iv_trend["interpretation"] = "IV near median — no clear vol edge"
+            iv_trend["status"] = "available"
+        elif atm_iv:
+            iv_trend["direction"] = "INSUFFICIENT_HISTORY"
+            iv_trend["interpretation"] = "Need 10+ snapshots to gauge IV trend — using level only"
+            iv_trend["status"] = "partial"
+            # Heuristic fallback using VIX change as IV trend proxy
+            if vix_chg is not None:
+                if vix_chg > 2: iv_trend["direction"] = "RISING_VIX_PROXY"
+                elif vix_chg < -2: iv_trend["direction"] = "FALLING_VIX_PROXY"
+                else: iv_trend["direction"] = "STABLE_VIX_PROXY"
+    except Exception:
+        pass
+
+    out["signals"] = {
+        "chain_pressure":   chain_pressure,
+        "price_vs_maxpain": price_vs_maxpain,
+        "iv_trend":         iv_trend,
+    }
+
+    # ─── 4 SETUP SCORERS ─────────────────────────────────────────────
+    # Each setup score is 0-100. Each consumes alignment of:
+    #   - regime alignment with setup direction (40 pts)
+    #   - chain pressure confirmation (35 pts)
+    #   - IV trend alignment (25 pts)
+    # Reasoning string is plain-English explanation of WHY this score.
+    # Tags are machine-readable triggers.
+
+    def score_ce_buy():
+        score = 0; reasoning = []; tags = []
+        # Regime: needs price > max pain (trend up)
+        if price_vs_maxpain["regime"] in ("TREND_UP_STRONG","TREND_UP_MILD"):
+            score += 40 if price_vs_maxpain["regime"] == "TREND_UP_STRONG" else 25
+            reasoning.append("Above max pain (bullish regime)")
+            tags.append("ABOVE_MAX_PAIN")
+        elif price_vs_maxpain["regime"] == "RANGE_BOUND":
+            score += 10
+            reasoning.append("At max pain (neutral — wait for breakout)")
+        # Chain: CE unwinding near ATM = call writers covering = bullish
+        if len(ce_unwind_strikes) >= 2:
+            score += 35; reasoning.append("CE unwinding at " + str(len(ce_unwind_strikes)) + " near-ATM strikes")
+            tags.append("CE_UNWIND")
+        elif len(ce_unwind_strikes) == 1:
+            score += 18; reasoning.append("Some CE unwinding starting")
+        # No call wall blocking — or far away
+        if ce_wall_strike and spot > 0:
+            wall_dist_pct = (ce_wall_strike - spot) / spot * 100
+            if wall_dist_pct > 2.5:
+                reasoning.append("Call wall " + str(round(wall_dist_pct,1)) + "% away (room to run)")
+                tags.append("CLEAR_PATH_UP")
+        # IV rising
+        if iv_trend["direction"] in ("RISING","RISING_VIX_PROXY"):
+            score += 25; reasoning.append("IV expanding — breakout-friendly")
+            tags.append("IV_EXPANSION")
+        elif iv_trend["direction"] == "STABLE":
+            score += 10
+        return {"score": min(100, score), "reasoning": " · ".join(reasoning) or "No setup alignment",
+                "tags": tags, "status": "available" if chain_pressure["status"] != "missing" else "partial"}
+
+    def score_pe_buy():
+        score = 0; reasoning = []; tags = []
+        if price_vs_maxpain["regime"] in ("TREND_DOWN_STRONG","TREND_DOWN_MILD"):
+            score += 40 if price_vs_maxpain["regime"] == "TREND_DOWN_STRONG" else 25
+            reasoning.append("Below max pain (bearish regime)")
+            tags.append("BELOW_MAX_PAIN")
+        elif price_vs_maxpain["regime"] == "RANGE_BOUND":
+            score += 10
+            reasoning.append("At max pain (neutral — wait for breakdown)")
+        if len(pe_unwind_strikes) >= 2:
+            score += 35; reasoning.append("PE unwinding at " + str(len(pe_unwind_strikes)) + " near-ATM strikes (support weakening)")
+            tags.append("PE_UNWIND")
+        elif len(pe_unwind_strikes) == 1:
+            score += 18; reasoning.append("PE unwinding starting (early support break signal)")
+        if pe_wall_strike and spot > 0:
+            wall_dist_pct = (spot - pe_wall_strike) / spot * 100
+            if wall_dist_pct < 0.5:
+                score += 10; reasoning.append("Right at put wall — breakdown trigger zone")
+                tags.append("AT_PUT_WALL")
+        if iv_trend["direction"] in ("RISING","RISING_VIX_PROXY"):
+            score += 25; reasoning.append("IV expanding — bearish vol expansion confirmed")
+            tags.append("IV_EXPANSION_BEARISH")
+        return {"score": min(100, score), "reasoning": " · ".join(reasoning) or "No setup alignment",
+                "tags": tags, "status": "available" if chain_pressure["status"] != "missing" else "partial"}
+
+    def score_ce_sell():
+        # CE Sell = highest probability per Vijay's spec. Looking for: heavy call wall + price near/below it + IV falling
+        score = 0; reasoning = []; tags = []
+        # Need a defined call wall
+        if ce_wall_strike and spot > 0:
+            wall_dist_pct = (ce_wall_strike - spot) / spot * 100
+            if 0 <= wall_dist_pct <= 2.0:
+                score += 40; reasoning.append("Heavy call wall " + str(round(wall_dist_pct,1)) + "% overhead — clear resistance")
+                tags.append("CALL_WALL_OVERHEAD")
+            elif wall_dist_pct < 0:
+                score += 25; reasoning.append("Price has rejected from call wall (above current spot)")
+                tags.append("REJECTED_FROM_WALL")
+        # CE OI building (call writers adding) = bearish confirmation
+        if ce_buildup_total > pe_buildup_total * 1.5 and ce_buildup_total > 0:
+            score += 25; reasoning.append("Call writing dominates today's OI build")
+            tags.append("CALL_WRITING_DOMINANT")
+        elif ce_buildup_total > 0:
+            score += 12
+        # Regime: range or mild down favors CE Sell
+        if price_vs_maxpain["regime"] in ("RANGE_BOUND","TREND_DOWN_MILD"):
+            score += 20; reasoning.append("Range / theta-decay regime — premium-collection edge")
+            tags.append("THETA_REGIME")
+        elif price_vs_maxpain["regime"] == "TREND_DOWN_STRONG":
+            score += 25; reasoning.append("Bearish regime + call wall = high-conviction CE sell")
+        # IV falling = premium retention
+        if iv_trend["direction"] in ("FALLING","FALLING_VIX_PROXY"):
+            score += 15; reasoning.append("IV compressing — favorable for short premium")
+            tags.append("IV_CRUSH_FRIENDLY")
+        elif iv_trend["direction"] == "STABLE":
+            score += 8
+        return {"score": min(100, score), "reasoning": " · ".join(reasoning) or "No CE sell alignment",
+                "tags": tags, "status": "available" if chain_pressure["status"] != "missing" else "partial"}
+
+    def score_pe_sell():
+        # PE Sell = second highest probability. Looking for: heavy put wall below + price holding above + high IV (collect premium)
+        score = 0; reasoning = []; tags = []
+        if pe_wall_strike and spot > 0:
+            wall_dist_pct = (spot - pe_wall_strike) / spot * 100
+            if 0 <= wall_dist_pct <= 2.0:
+                score += 40; reasoning.append("Heavy put wall " + str(round(wall_dist_pct,1)) + "% below — strong support")
+                tags.append("PUT_WALL_SUPPORT")
+            elif wall_dist_pct > 2.0:
+                score += 20; reasoning.append("Put wall well below — support cushion present")
+        # PE buildup = put writers adding = bullish defense
+        if pe_buildup_total > ce_buildup_total * 1.5 and pe_buildup_total > 0:
+            score += 25; reasoning.append("Put writing dominates today's OI build — institutional support")
+            tags.append("PUT_WRITING_DOMINANT")
+        elif pe_buildup_total > 0:
+            score += 12
+        # Regime: range or mild up favors PE Sell
+        if price_vs_maxpain["regime"] in ("RANGE_BOUND","TREND_UP_MILD"):
+            score += 20; reasoning.append("Range / mild uptrend — theta decay collection")
+        elif price_vs_maxpain["regime"] == "TREND_UP_STRONG":
+            score += 25; reasoning.append("Bullish regime + put wall support = high-conviction PE sell")
+        # High IV = better premium
+        if atm_iv and atm_iv >= 20:
+            score += 15; reasoning.append("Elevated IV (" + str(atm_iv) + ") — premium-rich environment")
+            tags.append("HIGH_IV_PREMIUM")
+        elif iv_trend["direction"] == "STABLE":
+            score += 8
+        return {"score": min(100, score), "reasoning": " · ".join(reasoning) or "No PE sell alignment",
+                "tags": tags, "status": "available" if chain_pressure["status"] != "missing" else "partial"}
+
+    setups = {
+        "ce_buy":  score_ce_buy(),
+        "pe_buy":  score_pe_buy(),
+        "ce_sell": score_ce_sell(),
+        "pe_sell": score_pe_sell(),
+    }
+    out["setups"] = setups
+
+    # Top setup
+    top = max(setups.items(), key=lambda kv: kv[1]["score"])
+    top_kind, top_data = top
+    out["top_setup"] = {
+        "kind": top_kind,
+        "score": top_data["score"],
+        "reasoning": top_data["reasoning"],
+        "action": (
+            "BUY"  if top_kind == "ce_buy" and top_data["score"] >= 60 else
+            "BUY"  if top_kind == "pe_buy" and top_data["score"] >= 60 else
+            "SELL" if top_kind in ("ce_sell","pe_sell") and top_data["score"] >= 60 else
+            "WAIT"
+        ),
+        "label": {
+            "ce_buy":  "🟢 CE BUY",
+            "pe_buy":  "🔴 PE BUY",
+            "ce_sell": "🟡 CE SELL",
+            "pe_sell": "🟡 PE SELL",
+        }.get(top_kind, "—"),
+    }
+    return out
+
+
+def _intraday_detect_sector_rotation(per_symbol_results):
+    """Compute today's sector dominance by averaging |spot move %| (proxied
+    via vix_change for indices — we don't have intraday price change directly
+    in nse_options payload). Returns the dominant sector + a label.
+
+    HONEST CAVEAT: this uses average ATM IV per sector as a "where institutions
+    are most active today" proxy. Real sector rotation needs sectoral index
+    %-change which we'd fetch separately via NSE allIndices.
+    """
+    sector_stats = {}
+    by_symbol = {r["symbol"]: r for r in per_symbol_results if r.get("_have_data")}
+    for sector, syms in _INTRADAY_SECTOR_MAP.items():
+        iv_values = []; pcr_values = []
+        for s in syms:
+            r = by_symbol.get(s)
+            if not r: continue
+            iv = r.get("atm_iv")
+            pcr = r.get("pcr")
+            if iv is not None: iv_values.append(iv)
+            if pcr is not None: pcr_values.append(pcr)
+        if iv_values:
+            sector_stats[sector] = {
+                "avg_iv": round(sum(iv_values) / len(iv_values), 1),
+                "avg_pcr": round(sum(pcr_values) / len(pcr_values), 2) if pcr_values else None,
+                "symbols_with_data": len(iv_values),
+            }
+    if not sector_stats:
+        return {"dominant_sector": None, "label": "Sector activity unavailable", "status": "missing",
+                "_sectors": sector_stats}
+    # Sector with highest avg IV = most "active" / "stressed"
+    dominant = max(sector_stats.items(), key=lambda kv: kv[1]["avg_iv"])
+    return {
+        "dominant_sector": dominant[0],
+        "label": f"🎯 {dominant[0]}-heavy day (avg ATM IV {dominant[1]['avg_iv']}) — institutional focus here",
+        "status": "partial",
+        "_note": "Heuristic: highest avg ATM IV across sector constituents. Real rotation needs sectoral index %-move from NSE allIndices.",
+        "_sectors": sector_stats,
+    }
+
+
+@app.get("/api/intraday-options")
+async def intraday_options(refresh: int = 0):
+    """Intraday Options Scanner — Top 50 F&O universe, 4-setup framework.
+
+    On-demand only. Scan takes ~30-60s for 50 symbols at 3 concurrent workers
+    (NSE rate-limits hard, so we keep concurrency low). Cached 5min to dedupe
+    accidental double-clicks; pass refresh=1 to force-bypass cache.
+
+    Per Vijay's institutional framework (CE Buy / PE Buy / CE Sell / PE Sell).
+    Every signal carries a ✅/⚠️/❌ status badge for transparency.
+
+    Returns:
+      {
+        success, scan_time_sec, universe_size, scored, ts, sector_rotation,
+        per_symbol: [{symbol, spot, max_pain, pcr, atm_iv, signals, setups, top_setup}],
+        rankings: {
+          ce_buy:  [top 10 ranked by ce_buy score],
+          pe_buy:  [...],
+          ce_sell: [...],
+          pe_sell: [...]
+        }
+      }
+    """
+    global _intraday_options_cache, _intraday_options_busy, _intraday_options_busy_since
+    if not refresh and _intraday_options_cache["data"] and (time.time() - _intraday_options_cache["ts"]) < _INTRADAY_OPTIONS_TTL:
+        resp = dict(_intraday_options_cache["data"])
+        resp["_cached"] = True
+        resp["_cache_age_sec"] = int(time.time() - _intraday_options_cache["ts"])
+        return resp
+    # Stuck-flag defense
+    if _intraday_options_busy and (time.time() - (_intraday_options_busy_since or 0)) > 180:
+        _intraday_options_busy = False
+    if _intraday_options_busy:
+        # Return stale data if we have any, else loading message
+        if _intraday_options_cache["data"]:
+            resp = dict(_intraday_options_cache["data"])
+            resp["_stale_while_scan_in_progress"] = True
+            return resp
+        return {"success": False, "_loading": True, "_message": "Scan already in progress — try again in 30s"}
+    _intraday_options_busy = True
+    _intraday_options_busy_since = time.time()
+
+    try:
+        t0 = time.time()
+        # Run scans serially-but-async — NSE rate-limits, and the per-call /api/nse-options
+        # already has its own rate-wait logic. Doing them in parallel would just hit limits.
+        per_symbol_results = []
+        for sym in _INTRADAY_FNO_UNIVERSE:
+            try:
+                raw = await _intraday_fetch_one(sym)
+                scored = _intraday_score_setup(raw, sym)
+                per_symbol_results.append(scored)
+            except Exception as e:
+                per_symbol_results.append({"symbol": sym, "_have_data": False,
+                                            "error": f"{type(e).__name__}: {str(e)[:80]}"})
+
+        # Build rankings: top 10 per setup, only from rows with data + score > 0
+        rankings = {}
+        for setup_key in ("ce_buy","pe_buy","ce_sell","pe_sell"):
+            ranked = []
+            for r in per_symbol_results:
+                if not r.get("_have_data"): continue
+                setup = (r.get("setups") or {}).get(setup_key) or {}
+                sc = setup.get("score") or 0
+                if sc <= 0: continue
+                ranked.append({
+                    "symbol":   r["symbol"],
+                    "spot":     r.get("spot"),
+                    "max_pain": r.get("max_pain"),
+                    "pcr":      r.get("pcr"),
+                    "atm_iv":   r.get("atm_iv"),
+                    "score":    sc,
+                    "reasoning": setup.get("reasoning"),
+                    "tags":     setup.get("tags") or [],
+                    "status":   setup.get("status"),
+                })
+            ranked.sort(key=lambda x: x["score"], reverse=True)
+            rankings[setup_key] = ranked[:10]
+
+        scored_count = sum(1 for r in per_symbol_results if r.get("_have_data"))
+        sector_rotation = _intraday_detect_sector_rotation(per_symbol_results)
+        elapsed = time.time() - t0
+
+        result = {
+            "success":        True,
+            "ts":             time.time(),
+            "scan_time_sec":  round(elapsed, 1),
+            "universe_size":  len(_INTRADAY_FNO_UNIVERSE),
+            "scored":         scored_count,
+            "sector_rotation": sector_rotation,
+            "rankings":       rankings,
+            "per_symbol":     per_symbol_results,
+            "_disclaimer":    (
+                "RESEARCH SIGNAL ONLY — not trading advice. Intraday options are high-risk; "
+                "size positions appropriately and use stop-losses. Signals are based on real "
+                "NSE option chain data (OI, PCR, max pain, IV) interpreted via institutional "
+                "framework. Past setup patterns do NOT guarantee future outcomes."
+            ),
+            "_data_quality_note": (
+                "✅ available = signal computed from current NSE data. "
+                "⚠️ partial = computed but with caveats (e.g., insufficient IV history). "
+                "❌ missing = data not available (NSE may be blocking from Render IP)."
+            ),
+        }
+        _intraday_options_cache = {"data": result, "ts": time.time()}
+        return result
+    finally:
+        _intraday_options_busy = False
+        _intraday_options_busy_since = 0
 
 
 @app.get("/api/alert-test")

@@ -1,3 +1,171 @@
+## r63.96.1 (2026-05-15) — HOTFIX: Movers stuck on "Loading top movers..." (backend-frontend contract bug)
+
+**Symptom (Vijay screenshot, US/1M selected):** Movers tab stuck on "Loading top movers…" — never completes, no error visible. r63.95.1 fixed the infinite-recursion bug but Movers still didn't work. Vijay rightly pushed back.
+
+**Root cause:** Contract mismatch between backend `_run_movers_scan` and frontend `loadMovers` polling loop. When the scan returned **zero results** (all tickers in the LARGE+ETF universe failed simultaneously — typical when Yahoo 401s + Finnhub rate-caps + NSE IP-blocks all stack), the backend wrote this to cache:
+
+```python
+"data": {"success": True, "windows": {}, "_last_scan_empty": True},
+```
+
+The frontend at `static/app.js:7369` checked:
+
+```javascript
+if (d._loading || !d.windows || Object.keys(d.windows).length === 0) {
+  // treat as "still loading", poll again in 3s
+```
+
+So `windows: {}` (empty scan complete) was indistinguishable from cold-cache (scan still running). The frontend polled forever. The 20-try cap (60s) DID exist, but after exhausting it the code only updated `stEl.textContent` without changing `resEl.innerHTML` — so the spinning loader stayed visible forever.
+
+**Backend fix:**
+- `/api/movers` route now explicitly sets `_scan_complete=True` on completed scans + `_scanning=True` when a bg refresh is in progress.
+- Cold-cache branch sets `_loading=True, _scan_complete=False, _scanning=True` explicitly (instead of leaving fields unset).
+- Empty-scan path (when no prior data exists) sets `_scan_complete_empty=True` and includes a `_diagnostic` field with a plain-English explanation: "Scan returned 0/N tickers with usable data. Likely causes: data source rate-limited (Yahoo 401 / Finnhub rate cap / NSE IP ban on Render); all N tickers failed simultaneously — usually transient. Try Refresh in 1-2 minutes."
+- `_movers_compute_one_ticker` hardened: per-ticker exceptions now log instead of silently swallowing. Adds `n_prices` to return shape for debugging.
+
+**Frontend fix:**
+- `loadMovers` now checks `hasWindows = d.windows && Object.keys(d.windows).length > 0; scanComplete = !!d._scan_complete; scanEmpty = !!d._scan_complete_empty`.
+- If `!hasWindows && scanComplete` → **STOP polling**, replace `resEl.innerHTML` with an orange diagnostic card showing the backend's diagnostic message + a 🔄 Retry Scan button.
+- Cold-cache path still polls up to 20 tries (60s) but on exhaustion now replaces the spinner with a diagnostic card (instead of leaving the spinner visible).
+
+**Smoke test (the comprehensive kind, per the r63.95.1 commitment):**
+6 backend tests against mocked data sources, ALL PASS:
+1. Happy path 5 tickers full 1Y history → all 5 windows populated, NVDA correctly ranked #1 for 1Y ✓
+2. Partial failures (2 fail) → 5 remaining scored ✓
+3. Total failure → `_scan_complete_empty=True` + diagnostic message ✓ (THE BUG FIX)
+4. Short 30-day history → only 1D/1W/1M windows emitted (3M/1Y correctly skipped) ✓
+5. Route handler returns `_scan_complete=True` on data, no false `_loading` ✓
+6. Cold-cache returns `_loading=True, _scan_complete=False` ✓
+
+Additionally a recursion-and-polling smoke test verified the completed-empty branch makes **zero `setTimeout` calls** (polling truly stops). All 8 frontend entrypoints (`_setMoversRegion`, `_setMoversWindow`, `loadMovers`, `_moversUpdateRegionPills`, `_openMovers`) execute without recursion.
+
+**About the "remove structural from movers" ask:** Movers code in both api.py and app.js was already 100% clean of any structural/SCS references — verified with grep. The Structural Change Signal lives ONLY in (a) the dedicated `🏗 Structural` top-level tab and (b) the SCS column inside the Smart Money Scanner (r63.95.0). It does NOT appear anywhere inside Movers. No code changes needed for this ask — the tabs are already cleanly separated.
+
+**Files changed:** `api.py` (route handler + empty-scan branch + per-ticker error logging), `static/app.js` (loadMovers polling logic), `static/app.min.js` (synced), `build_version.txt` (→ r63.96.1), `CHANGELOG.md`.
+
+**Apologies.** Two consecutive Movers regressions (r63.92.0 recursion → r63.95.1, r63.96.0 stuck-loading → r63.96.1) is not acceptable. The unit tests now in place — `/home/claude/smoke_movers.py` and `/tmp/recursion_movers_v2.js` — are the regression battery I should have had from r63.92.0. Going forward, these run before every Movers-touching ship.
+
+---
+
+## r63.96.0 (2026-05-15) — INTRADAY OPTIONS SCANNER · Vijay's institutional F&O framework, line by line
+
+**Context:** Vijay's spec — high-conviction intraday options watchlist framework based on 3 alignment signals + 4 setup buckets. Built explicitly NOT as "static top 5 stocks" (per his own warning) but as a daily-rotating ranking across a top-50 F&O universe, with every signal carrying ✅/⚠️/❌ data-status badges for transparency.
+
+### Scoping decisions (per Vijay)
+
+1. **Where:** new top-level `🎯 Intraday` tab alongside Movers/Moat/Structural
+2. **Universe:** Top 50 F&O — 4 indices + 46 high-liquidity stocks across 9 sectors (Bank/Financials, IT, Energy, Auto, Pharma, FMCG, Metals, Cement/Infra, Adani/Diversified, plus 4 misc high-volume names)
+3. **Refresh cadence:** on-demand only — user clicks 🚀 SCAN NOW
+
+### Spec audit (line-by-line)
+
+**3 Alignment Signals (institutional logic):**
+| Spec line | Status | Implementation |
+|---|---|---|
+| Heavy Call Writing = resistance | ✅ | `ce_resistance[0]` strike above spot, OI weight |
+| Heavy Put Writing = support | ✅ | `pe_support[0]` strike below spot, OI weight |
+| Rising OI = conviction | ⚠️ Partial | Intraday `ce_chg`/`pe_chg` only — no multi-day OI history |
+| Unwinding OI = breakout starting | ⚠️ Partial | Same — intraday `ce_chg < -1000` detects 2+ near-ATM strikes unwinding |
+| Price above max pain → bullish | ✅ | `(spot - max_pain) / max_pain * 100` → 4 regimes |
+| Price below max pain → bearish | ✅ | Same |
+| At max pain → range/theta | ✅ | `|delta| < 0.5%` |
+| IV rising = breakout | ✅ | `_iv_history_median` comparison; VIX-change proxy fallback when insufficient history |
+| IV falling = selling edge | ✅ | Same |
+
+**4 Setup Buckets (full scoring logic):**
+| Setup | Status | Components scored (out of 100) |
+|---|---|---|
+| 🟢 CE Buy | ✅ | Regime alignment (40) + CE unwind near ATM (35) + IV rising (25). Tags: `ABOVE_MAX_PAIN`, `CE_UNWIND`, `CLEAR_PATH_UP`, `IV_EXPANSION` |
+| 🔴 PE Buy | ✅ | Regime down (40) + PE unwind (35) + IV expansion (25). Tags: `BELOW_MAX_PAIN`, `PE_UNWIND`, `AT_PUT_WALL`, `IV_EXPANSION_BEARISH` |
+| 🟡 CE Sell | ✅ | Call wall overhead (40) + call writing dominant (25) + range/down regime (20-25) + IV falling (15). Tags: `CALL_WALL_OVERHEAD`, `REJECTED_FROM_WALL`, `CALL_WRITING_DOMINANT`, `THETA_REGIME`, `IV_CRUSH_FRIENDLY` |
+| 🟡 PE Sell | ✅ | Put wall support (40) + put writing dominant (25) + range/up regime (20-25) + high IV (15). Tags: `PUT_WALL_SUPPORT`, `PUT_WRITING_DOMINANT`, `HIGH_IV_PREMIUM` |
+
+**Universe rotation:**
+| Spec | Status | Note |
+|---|---|---|
+| Detect Bank-heavy vs IT-heavy vs Energy-heavy day | ⚠️ Partial | Heuristic: sector with highest avg ATM IV across constituents = "in play". Real sectoral %-move requires a separate NSE allIndices fetch — flagging for v2. |
+
+**Decision Engine:**
+| Spec | Status | Note |
+|---|---|---|
+| Regime identification (range/up/down) | ✅ | Price vs max pain → 5 regimes (range, mild up, strong up, mild down, strong down) |
+| OI buildup confirmation | ✅ | `ce_buildup_total` vs `pe_buildup_total` ratio |
+| Trade only aligned direction | ✅ | `top_setup` picker requires score ≥60 for BUY/SELL action, else WAIT |
+
+**Outputs spec:**
+| Output | Status |
+|---|---|
+| Real-time CE/PE signals | ✅ |
+| Stock ranking (top 10 live) | ✅ — separate ranking per setup bucket, top 10 each |
+| OI shift detection | ⚠️ Intraday only — multi-day history would need new snapshot store |
+| Breakout probability score 0-100 | ✅ |
+| Auto trade bias BUY/SELL/WAIT | ✅ |
+
+### Backend (`api.py` +~470 lines)
+
+- `GET /api/intraday-options?refresh=1` — on-demand scanner endpoint
+- `_INTRADAY_FNO_UNIVERSE` — top 50 curated F&O names
+- `_INTRADAY_SECTOR_MAP` — sector → constituent mapping for rotation detection
+- `_intraday_fetch_one(symbol)` — async wrapper around existing `/api/nse-options` (reuses its IP-ban fallbacks, Greeks enrichment, IV history)
+- `_intraday_score_setup(nse_data, symbol)` — runs 4-setup scoring per symbol
+- `_intraday_detect_sector_rotation(...)` — heuristic sector dominance via avg ATM IV
+- 5-min minimum TTL (dedup against accidental double-clicks; not auto-refresh)
+- Stuck-flag defense (180s) like other scanners
+- Sequential NSE fetches (parallel would just hit rate limits — NSE is brittle)
+
+### Frontend (`static/app.js` +~200 lines, `index.html` +Tab + card)
+
+- New top-level `🎯 Intraday` button in mainTabBar
+- New `<div data-tab="intraday">` card with:
+  - 🚀 SCAN NOW button + live status line
+  - Sector rotation banner (when detected)
+  - 4-column setup grid: CE Buy / PE Buy / CE Sell / PE Sell, each showing top-10 ranked candidates with score, reasoning, tags, ✅/⚠️/❌ status badge
+  - All-scanned-symbols table with per-row regime, top setup, score, status
+  - Methodology footer explaining the 3 signals + 4 setups
+  - **Prominent SEBI disclaimer** — "research signal only, not trading advice"
+- `TAB_GROUPS.intraday`, `window._openIntraday`, `window.loadIntraday`, `window._renderIntraday`, `window._intradayStatusBadge`
+
+### Pre-deploy testing (THIS time the comprehensive kind)
+
+- [x] `python3 ast.parse(api.py)` → PARSE OK
+- [x] `node --check app.js / app.min.js` → PARSE OK, byte-identical
+- [x] **6-scenario scoring math test** with synthetic NSE option chain data:
+  - Strong CE Buy setup → ce_buy=100, top picker selects ce_buy ✓
+  - Strong PE Buy setup → pe_buy=100, top picker selects pe_buy ✓
+  - Strong CE Sell setup → ce_sell=100, top picker selects ce_sell ✓
+  - Strong PE Sell setup → pe_sell=100, top picker selects pe_sell ✓
+  - NSE blocked (None input) → `_have_data: False`, graceful ✓
+  - Bad data (spot=0) → `_have_data: False` ✓
+- [x] **Recursion smoke test** (the regression battery promise from r63.95.1) — extracted intraday block, executed in isolated Node sandbox, called `_openIntraday()`, `loadIntraday(true)`, `_renderIntraday(empty)`. No `RangeError: Maximum call stack size exceeded`. Pattern-checked: no mutual-recursion paths between `loadIntraday` and any pill-update / state-mutation helpers.
+- [x] r63.95.1 Movers recursion fix preserved
+- [x] All prior tabs preserved (Movers, Moat, Structural, SCS scanner integration)
+
+### Honest limitations
+
+1. **NSE IP ban on Render is the elephant in the room.** The whole scanner depends on `/api/nse-options` which depends on NSE responding. Per the project memory, Render outbound IP 72.180.65.28 is banned by NSE direct API. The existing endpoint has fallbacks (Google Finance, Yahoo for indices), but the **option chain itself comes only from NSE**. On Render today, this scanner may return mostly empty rows with `❌ MISSING` badges. The framework still renders correctly with the disclaimer — but it can't synthesize option chain data from nothing.
+
+2. **Sector rotation is a heuristic, not real %-move.** I use avg ATM IV per sector as a proxy for "where the action is today." Real sectoral index %-change requires a separate NSE allIndices fetch — flagging for v2.
+
+3. **No multi-day OI history.** "Rising OI = conviction" and "unwinding OI = breakout" use intraday `ce_chg`/`pe_chg` only (today's change vs yesterday's close — which IS in the NSE payload). True multi-session OI trend would need a snapshot-store cron — separate build.
+
+4. **50 symbols × NSE rate-limit = 30-60s scans.** Acceptable for on-demand. Auto-refresh would hit NSE rate limits constantly.
+
+5. **Mobile layout** — 4-column setup grid uses `auto-fit minmax(290px,1fr)` so it stacks on narrow screens, but the all-scanned-symbols table is `min-width:760px` and scrolls horizontally on mobile. Acceptable but flagging.
+
+### Files changed
+
+`api.py` (+~470 lines), `static/app.js` (+~210 lines for tab + JS), `static/app.min.js` (synced), `index.html` (Intraday button + card), `build_version.txt` (→ r63.96.0), `CHANGELOG.md`.
+
+### Smoke test paths post-deploy
+
+1. Click `🎯 Intraday` in main nav. Tab card appears with empty state ("No scan yet").
+2. Click `🚀 SCAN NOW`. Button shows `⏳ SCANNING…` for ~30-60s.
+3. **If NSE responds:** 4 setup columns populate with ranked candidates. Sector rotation banner shows dominant sector. All-scanned-symbols table at bottom shows per-row regime + top setup + status badges.
+4. **If NSE doesn't respond on Render:** result shows "No symbols returned data" with explanation about IP block. Framework still renders correctly; just no data. Not a code bug — a data-source reality.
+5. Hover any row to see reasoning text. Color-coded tags show what triggered each signal.
+
+---
+
 ## r63.95.1 (2026-05-15) — HOTFIX: Movers infinite recursion (shipped in r63.92.0, finally caught)
 
 **Symptom (Vijay screenshot, console error):** `Uncaught RangeError: Maximum call stack size exceeded` at app.js line ~7316. Movers tab stuck on "Loading top movers…" — never completes.

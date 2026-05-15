@@ -2591,6 +2591,10 @@ var TAB_GROUPS = {
   // r63.94.0: STRUCTURAL — Structural Change Signal (SCS). Institutional-grade
   // corporate transformation detector across 5 categories. Independent tab.
   structural: {tabs: ['structural'], labels: ['Structural Change'], default: 'structural'},
+  // r63.96.0: INTRADAY OPTIONS SCANNER — Vijay's institutional F&O framework.
+  // Top 50 F&O universe, 4 setup buckets (CE Buy / PE Buy / CE Sell / PE Sell),
+  // on-demand only. NSE option chain → signal alignment scoring.
+  intraday: {tabs: ['intraday'], labels: ['Intraday Options'], default: 'intraday'},
   tools:    {tabs: ['finance','education','compare'], labels: ['Finance Tools','Education','Compare Stocks'], default: 'finance'},
 };
 window._activeGroup = 'overview';
@@ -7362,13 +7366,42 @@ window.loadMovers = function(region, forceRefresh) {
       resEl.innerHTML = '<div style="color:var(--red);padding:16px;font-size:11px">Error: ' + ((d && d.error) || 'unknown') + '</div>';
       return;
     }
-    if (d._loading || !d.windows || Object.keys(d.windows).length === 0) {
+    // r63.96.1: completed-but-empty branch — stop polling, show diagnostic.
+    // Previously, an empty windows dict was indistinguishable from cold-cache,
+    // so frontend polled forever. The new _scan_complete flag breaks the loop.
+    var hasWindows = d.windows && Object.keys(d.windows).length > 0;
+    var scanComplete = !!d._scan_complete;
+    var scanEmpty    = !!d._scan_complete_empty;
+    if (!hasWindows && scanComplete) {
+      // Scan finished but returned nothing. Show the diagnostic, don't poll.
+      window._moversState._coldPollTries = 0;
+      var diag = d._diagnostic || ('Scan returned 0/' + (d.universe_size || 0) + ' tickers with usable data. Data sources may be rate-limited or blocked. Try Refresh in 1-2 minutes.');
+      resEl.innerHTML = '<div style="padding:20px;background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;color:#9a3412;font-size:11px;line-height:1.6">' +
+        '<div style="font-weight:800;margin-bottom:6px">⚠️ Scan completed with no data</div>' +
+        '<div style="margin-bottom:8px">' + diag + '</div>' +
+        '<button onclick="window.loadMovers(\'' + region + '\',true)" style="padding:6px 14px;border-radius:6px;background:#7c3aed;color:#fff;border:none;font-size:10px;font-weight:700;cursor:pointer">🔄 Retry Scan</button>' +
+        '</div>';
+      if (stEl) stEl.textContent = region + ' scan complete · 0 tickers returned data · ' + new Date((d.ts||0)*1000).toLocaleTimeString();
+      return;
+    }
+    // Still loading (cold cache, backend scan in progress).
+    if (!hasWindows) {
       if (stEl) stEl.textContent = 'First scan running on backend… (typical 15–25s for ' + region + ')';
       resEl.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text3);font-size:11px"><div style="display:inline-block;width:14px;height:14px;border:2px solid #7c3aed;border-top-color:transparent;border-radius:50%;animation:spin .5s linear infinite;vertical-align:middle;margin-right:8px"></div>Backend computing first snapshot. Re-checking in 3s…</div>';
       var tries = (window._moversState._coldPollTries || 0) + 1;
       window._moversState._coldPollTries = tries;
       if (tries <= 20) { setTimeout(function(){ window.loadMovers(region, false); }, 3000); }
-      else { if (stEl) stEl.textContent = 'Backend slow — try Refresh in a minute.'; }
+      else {
+        // r63.96.1: after 60s of polling cold cache, give up and show diagnostic
+        // — previously this silently stopped polling without telling the user.
+        window._moversState._coldPollTries = 0;
+        resEl.innerHTML = '<div style="padding:20px;background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;color:#9a3412;font-size:11px;line-height:1.6">' +
+          '<div style="font-weight:800;margin-bottom:6px">⚠️ Scan taking longer than expected</div>' +
+          '<div style="margin-bottom:8px">Backend has been computing for over a minute without completing. This usually means the data sources (Yahoo / Finnhub / NSE) are rate-limited or blocked. The scan may still finish — try Refresh in another minute.</div>' +
+          '<button onclick="window.loadMovers(\'' + region + '\',true)" style="padding:6px 14px;border-radius:6px;background:#7c3aed;color:#fff;border:none;font-size:10px;font-weight:700;cursor:pointer">🔄 Retry</button>' +
+          '</div>';
+        if (stEl) stEl.textContent = 'Backend slow — polling stopped after 60s.';
+      }
       return;
     }
     window._moversState._coldPollTries = 0;
@@ -7876,6 +7909,229 @@ window._renderStructural = function(d, sym, reg) {
   // ─── Final status ───
   resEl.innerHTML = html;
   if (stEl) stEl.innerHTML = sym + ' (' + reg + ') &middot; composite ' + (composite !== null ? composite : '—') + '/100 &middot; ' + verdictLabel + ' &middot; coverage ' + coverage + '% &middot; ' + tags.length + ' tags &middot; lead strength ' + leadStr;
+};
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// r63.96.0: INTRADAY OPTIONS SCANNER — Vijay's institutional F&O framework.
+//
+// Pulls /api/intraday-options, renders:
+//   - Sector rotation banner (which sector is "in play" today)
+//   - Top 4 setup ranking columns (CE Buy / PE Buy / CE Sell / PE Sell)
+//   - Per-row: symbol, spot, max pain, PCR, ATM IV, score, reasoning, status badge
+//   - SEBI disclaimer prominent in footer
+// ═══════════════════════════════════════════════════════════════════════════════
+
+window._openIntraday = function() {
+  try {
+    var bar = document.getElementById('mainTabBar');
+    if (bar) { bar.classList.remove('tab-bar-hidden'); bar.style.display = 'flex'; }
+    var tca = document.getElementById('tabContentArea');
+    if (tca) tca.style.display = '';
+  } catch(e){}
+  try { if (typeof switchTabGroup === 'function') switchTabGroup('intraday'); } catch(e){}
+  setTimeout(function(){
+    var card = document.querySelector('.sc[data-tab="intraday"]');
+    if (card) try { card.scrollIntoView({behavior:'smooth',block:'start'}); } catch(e){}
+  }, 80);
+};
+
+window.loadIntraday = function(forceRefresh) {
+  var resEl = document.getElementById('intradayResult');
+  var stEl  = document.getElementById('intradayStatus');
+  var btn   = document.getElementById('intradayScanBtn');
+  if (!resEl) return;
+  if (btn) {
+    btn.disabled = true;
+    btn.style.opacity = '0.65';
+    btn.style.cursor = 'wait';
+    btn.innerHTML = '⏳ SCANNING…';
+  }
+  if (stEl) stEl.textContent = 'Scanning 50 F&O symbols via NSE… typical 30–60s. NSE rate-limits hard — do not refresh repeatedly.';
+  resEl.innerHTML = '<div style="text-align:center;padding:50px;color:var(--text3);font-size:11px"><div style="display:inline-block;width:14px;height:14px;border:2px solid #e11d48;border-top-color:transparent;border-radius:50%;animation:spin .5s linear infinite;vertical-align:middle;margin-right:8px"></div>Fetching option chains for 50 F&O symbols sequentially (NSE rate-safe)…</div>';
+  var url = '/api/intraday-options' + (forceRefresh ? '?refresh=1' : '');
+  var t0 = Date.now();
+  fetch(url, {cache:'no-store'}).then(function(r){ if(!r.ok) throw new Error('API '+r.status); return r.json(); }).then(function(d){
+    if (btn) {
+      btn.disabled = false;
+      btn.style.opacity = '1';
+      btn.style.cursor = 'pointer';
+      btn.innerHTML = '🚀 SCAN NOW';
+    }
+    if (!d || d.success === false) {
+      resEl.innerHTML = '<div style="color:var(--red);padding:18px;font-size:11px;background:#fef2f2;border:1px solid #fecaca;border-radius:8px">Error: ' + ((d && d.error) || (d && d._message) || 'unknown') + '</div>';
+      if (stEl) stEl.textContent = '';
+      return;
+    }
+    var elapsed = Math.round((Date.now() - t0) / 1000);
+    window._renderIntraday(d, elapsed);
+  }).catch(function(e){
+    if (btn) {
+      btn.disabled = false;
+      btn.style.opacity = '1';
+      btn.style.cursor = 'pointer';
+      btn.innerHTML = '🚀 SCAN NOW';
+    }
+    resEl.innerHTML = '<div style="color:var(--red);padding:18px;font-size:11px;background:#fef2f2;border:1px solid #fecaca;border-radius:8px">Network error: ' + e.message + '. Retry in a moment.</div>';
+    if (stEl) stEl.textContent = '';
+  });
+};
+
+window._intradayStatusBadge = function(status) {
+  if (status === 'available') return '<span style="display:inline-block;padding:1px 6px;border-radius:3px;background:rgba(5,150,105,.12);color:#059669;font-size:8px;font-weight:800;letter-spacing:0.3px;font-family:Sora,sans-serif">✅</span>';
+  if (status === 'partial')   return '<span style="display:inline-block;padding:1px 6px;border-radius:3px;background:rgba(217,119,6,.12);color:#d97706;font-size:8px;font-weight:800;letter-spacing:0.3px;font-family:Sora,sans-serif">⚠️</span>';
+  return '<span style="display:inline-block;padding:1px 6px;border-radius:3px;background:#f1f5f9;color:#64748b;font-size:8px;font-weight:800;letter-spacing:0.3px;font-family:Sora,sans-serif">❌</span>';
+};
+
+window._renderIntraday = function(d, elapsedSec) {
+  var resEl = document.getElementById('intradayResult');
+  var stEl  = document.getElementById('intradayStatus');
+  if (!resEl) return;
+
+  var html = '';
+
+  // ─── Top status line ───
+  if (stEl) {
+    var ageStr = '';
+    if (d._cached) ageStr = ' · 🟡 cached ' + Math.floor((d._cache_age_sec||0)/60) + 'm ago — click SCAN NOW to refresh';
+    stEl.innerHTML = 'Scanned ' + d.scored + '/' + d.universe_size + ' F&O symbols in ' + d.scan_time_sec + 's' + ageStr;
+  }
+
+  // ─── Sector rotation banner ───
+  var sect = d.sector_rotation || {};
+  if (sect.dominant_sector) {
+    html += '<div style="padding:11px 14px;margin-bottom:14px;background:linear-gradient(135deg,#fff1f2,#ffe4e6);border:1px solid #fda4af;border-radius:8px">';
+    html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">';
+    html += '<span style="font-size:11px;font-weight:900;color:#9f1239;font-family:Sora,sans-serif;letter-spacing:0.3px">' + sect.label + '</span>';
+    html += window._intradayStatusBadge(sect.status);
+    html += '</div>';
+    if (sect._note) html += '<div style="font-size:9px;color:#881337;font-style:italic">' + sect._note + '</div>';
+    html += '</div>';
+  } else {
+    html += '<div style="padding:9px 12px;margin-bottom:14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;font-size:10px;color:#64748b">Sector rotation detection unavailable for this scan.</div>';
+  }
+
+  // ─── 4 Setup Columns ───
+  var setupMeta = [
+    {key:'ce_buy',   label:'🟢 CE BUY',   color:'#059669', bg:'rgba(5,150,105,.06)', border:'rgba(5,150,105,.3)',  caption:'Breakout candidates'},
+    {key:'pe_buy',   label:'🔴 PE BUY',   color:'#dc2626', bg:'rgba(220,38,38,.06)', border:'rgba(220,38,38,.3)',  caption:'Breakdown candidates'},
+    {key:'ce_sell',  label:'🟡 CE SELL',  color:'#d97706', bg:'rgba(217,119,6,.06)', border:'rgba(217,119,6,.3)',  caption:'Call wall resistance · highest win-rate'},
+    {key:'pe_sell',  label:'🟡 PE SELL',  color:'#d97706', bg:'rgba(217,119,6,.06)', border:'rgba(217,119,6,.3)',  caption:'Support defense'},
+  ];
+
+  html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));gap:12px;margin-bottom:14px">';
+  setupMeta.forEach(function(meta){
+    var ranked = (d.rankings || {})[meta.key] || [];
+    html += '<div style="border:1px solid ' + meta.border + ';border-radius:10px;background:#fff;overflow:hidden">';
+    // Header
+    html += '<div style="padding:10px 13px;background:' + meta.bg + ';border-bottom:1px solid ' + meta.border + '">';
+    html += '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px">';
+    html += '<div style="font-size:12px;font-weight:900;color:' + meta.color + ';font-family:Sora,sans-serif;letter-spacing:0.4px">' + meta.label + '</div>';
+    html += '<div style="font-size:9px;color:' + meta.color + ';font-weight:800;font-family:\'JetBrains Mono\',monospace">' + ranked.length + ' candidate' + (ranked.length === 1 ? '' : 's') + '</div>';
+    html += '</div>';
+    html += '<div style="font-size:9px;color:#64748b;margin-top:2px">' + meta.caption + '</div>';
+    html += '</div>';
+    // Rows
+    html += '<div style="padding:6px 0">';
+    if (ranked.length === 0) {
+      html += '<div style="padding:14px;text-align:center;color:#9ca3af;font-size:10px">No setups passing threshold</div>';
+    } else {
+      ranked.forEach(function(row, i){
+        var sCol = row.score >= 75 ? meta.color : row.score >= 50 ? '#475569' : '#9ca3af';
+        html += '<div style="padding:7px 13px;border-bottom:1px solid #f1f5f9;display:flex;align-items:flex-start;gap:8px;cursor:pointer" onmouseover="this.style.background=\'#fafbfc\'" onmouseout="this.style.background=\'\'">';
+        html += '<div style="width:18px;font-size:9px;color:#9ca3af;font-family:\'JetBrains Mono\',monospace;font-weight:700;text-align:right">' + (i+1) + '</div>';
+        html += '<div style="flex:1;min-width:0">';
+        html += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:2px">';
+        html += '<span style="font-size:11px;font-weight:800;color:#0f172a;font-family:Sora,sans-serif">' + row.symbol + '</span>';
+        html += window._intradayStatusBadge(row.status);
+        if (row.spot) html += '<span style="font-size:9px;color:#64748b;font-family:\'JetBrains Mono\',monospace">₹' + row.spot.toLocaleString(undefined,{maximumFractionDigits:2}) + '</span>';
+        html += '</div>';
+        // Metrics row
+        html += '<div style="font-size:8.5px;color:#64748b;font-family:\'JetBrains Mono\',monospace;margin-bottom:3px">';
+        var metrics = [];
+        if (row.max_pain) metrics.push('MP ₹' + row.max_pain.toLocaleString(undefined,{maximumFractionDigits:0}));
+        if (row.pcr) metrics.push('PCR ' + row.pcr);
+        if (row.atm_iv) metrics.push('IV ' + row.atm_iv);
+        html += metrics.join(' · ') || '—';
+        html += '</div>';
+        // Reasoning
+        if (row.reasoning) {
+          html += '<div style="font-size:9px;color:#475569;line-height:1.4">' + row.reasoning + '</div>';
+        }
+        // Tags
+        if (row.tags && row.tags.length > 0) {
+          html += '<div style="display:flex;flex-wrap:wrap;gap:3px;margin-top:4px">';
+          row.tags.forEach(function(t){
+            html += '<span style="padding:1px 6px;border-radius:3px;background:#f1f5f9;color:#475569;font-size:8px;font-family:\'JetBrains Mono\',monospace;letter-spacing:0.2px">' + t + '</span>';
+          });
+          html += '</div>';
+        }
+        html += '</div>';
+        // Score
+        html += '<div style="text-align:right;min-width:40px">';
+        html += '<div style="font-size:14px;font-weight:900;color:' + sCol + ';font-family:\'JetBrains Mono\',monospace;line-height:1">' + row.score + '</div>';
+        html += '<div style="font-size:8px;color:#9ca3af;font-family:\'JetBrains Mono\',monospace">/100</div>';
+        html += '</div>';
+        html += '</div>';
+      });
+    }
+    html += '</div>';
+    html += '</div>';
+  });
+  html += '</div>';
+
+  // ─── Detail per-symbol table (compact) ───
+  var withData = (d.per_symbol || []).filter(function(r){ return r._have_data; });
+  if (withData.length > 0) {
+    html += '<div style="margin-top:6px;border:1px solid var(--border);border-radius:10px;background:#fff;overflow:hidden">';
+    html += '<div style="padding:9px 13px;background:#fafbfc;border-bottom:1px solid var(--border);font-size:10px;font-weight:800;color:#0f172a;font-family:Sora,sans-serif;letter-spacing:0.3px">📊 All Scanned Symbols — Top Setup Per Row (' + withData.length + ' with data)</div>';
+    html += '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:10px;min-width:760px">';
+    html += '<thead><tr style="background:#fafbfc;text-align:left">';
+    var heads = [
+      {l:'SYMBOL',     w:'80px'},
+      {l:'SPOT',       w:'70px'},
+      {l:'MAX PAIN',   w:'70px'},
+      {l:'PCR',        w:'45px'},
+      {l:'ATM IV',     w:'50px'},
+      {l:'REGIME',     w:'130px'},
+      {l:'TOP SETUP',  w:'90px'},
+      {l:'SCORE',      w:'50px'},
+      {l:'STATUS',     w:'50px'},
+    ];
+    heads.forEach(function(hh){
+      html += '<th style="padding:7px 10px;font-size:8.5px;letter-spacing:0.5px;color:#64748b;font-weight:800;width:' + hh.w + '">' + hh.l + '</th>';
+    });
+    html += '</tr></thead><tbody>';
+    withData.forEach(function(r){
+      var ts = r.top_setup || {};
+      var regime = ((r.signals || {}).price_vs_maxpain || {}).regime_label || '—';
+      // Strip emoji from regime for table compactness — keep word only
+      var regimeShort = regime.replace(/^[🟢🟡🔴]\s*/, '');
+      html += '<tr style="border-top:1px solid #f1f5f9">';
+      html += '<td style="padding:7px 10px;font-weight:800;color:#0f172a;font-family:\'JetBrains Mono\',monospace">' + r.symbol + '</td>';
+      html += '<td style="padding:7px 10px;color:#475569;font-family:\'JetBrains Mono\',monospace">' + (r.spot ? '₹' + r.spot.toLocaleString(undefined,{maximumFractionDigits:0}) : '—') + '</td>';
+      html += '<td style="padding:7px 10px;color:#475569;font-family:\'JetBrains Mono\',monospace">' + (r.max_pain ? '₹' + r.max_pain.toLocaleString(undefined,{maximumFractionDigits:0}) : '—') + '</td>';
+      html += '<td style="padding:7px 10px;color:#475569;font-family:\'JetBrains Mono\',monospace">' + (r.pcr || '—') + '</td>';
+      html += '<td style="padding:7px 10px;color:#475569;font-family:\'JetBrains Mono\',monospace">' + (r.atm_iv || '—') + '</td>';
+      html += '<td style="padding:7px 10px;font-size:9.5px;color:#475569">' + regimeShort + '</td>';
+      html += '<td style="padding:7px 10px;font-size:10px;font-weight:700">' + (ts.label || '—') + '</td>';
+      var tsCol = (ts.score >= 75) ? '#059669' : (ts.score >= 50) ? '#d97706' : '#9ca3af';
+      html += '<td style="padding:7px 10px;text-align:right;color:' + tsCol + ';font-family:\'JetBrains Mono\',monospace;font-weight:800">' + (ts.score || 0) + '</td>';
+      html += '<td style="padding:7px 10px;text-align:center">' + window._intradayStatusBadge(((r.signals || {}).chain_pressure || {}).status || 'missing') + '</td>';
+      html += '</tr>';
+    });
+    html += '</tbody></table></div>';
+    html += '</div>';
+  } else {
+    html += '<div style="padding:18px;text-align:center;color:#9ca3af;font-size:10px;background:#fafbfc;border-radius:8px">No symbols returned data. NSE may be blocking the Render IP — falls back to other tabs that don\'t depend on NSE.</div>';
+  }
+
+  // ─── Disclaimer ───
+  html += '<div style="margin-top:14px;padding:10px 13px;background:#fef2f2;border:1px solid #fca5a5;border-radius:8px;font-size:9.5px;color:#7f1d1d;line-height:1.6">';
+  html += '<strong>⚠ ' + (d._disclaimer || 'Research signal only. Not trading advice.') + '</strong>';
+  html += '</div>';
+
+  resEl.innerHTML = html;
 };
 
 
