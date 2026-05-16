@@ -1,3 +1,75 @@
+## r63.97.0 (2026-05-16) — Decide-Investor enrichment: Structural Changes inline + multi-window insider activity
+
+**Context (Vijay):** "Where are structural changes... where are daily, weekly, monthly, quarterly wise insider activity and institutional ownership.. lot many things are not visible.. in decide investor. Please display list of structural changes and also add separate section for decide investor as well."
+
+Both asks addressed.
+
+### 1. Insider Activity Breakdown — daily/weekly/monthly/quarterly/yearly buckets
+
+**Backend** (`api.py` — inside `/api/investor-due-diligence`):
+- New `institutional.insider_activity_buckets` field, populated from `tk.insider_transactions` (yfinance).
+- 5 recency windows: daily (1d), weekly (7d), monthly (30d), quarterly (90d), yearly (365d).
+- Each bucket carries: `buys`, `sells`, `buy_value_usd`, `sell_value_usd`, `net_flow_usd`, `net_txn_count`, `sentiment` (`STRONG_BUYING` / `BUYING` / `NEUTRAL` / `SELLING` / `STRONG_SELLING` / `NONE`).
+- Sentiment thresholds: STRONG = 3x dominance + ≥2 txns; BUYING/SELLING = simple value comparison.
+- Captures up to 50 individual transactions (date, days_ago, insider, kind, shares, value) for the expandable transaction table.
+
+**Frontend** (`static/app.js` — inside `_renderReportLegacy`):
+- New "📊 Insider Activity Breakdown" panel renders 5 bucket cards (auto-fit grid).
+- Each card shows: window label, net flow $ (color-coded green/red), buys/sells count, sentiment tag.
+- Expandable "📋 RECENT TRANSACTIONS" table with last 20 individual transactions.
+- Gracefully degrades to a single-line notice when yfinance returns no insider data (common for non-US tickers).
+
+**Tested with synthetic data** (`/home/claude/smoke_insider_buckets.py`):
+- 8 transactions spanning today → 400 days ago.
+- All 5 window boundaries verified (daily/weekly/monthly/quarterly/yearly).
+- 400-day-old transaction correctly excluded from yearly bucket.
+- Sentiment classification verified across 5 patterns: BUYING, STRONG_BUYING (≥2 buys with 3x dominance), and NONE (empty buckets).
+- All assertions pass.
+
+### 2. Structural Changes inline panel inside Decide-Investor
+
+**Frontend** (`static/app.js`):
+- New 4th sidecar fetch in `loadInvestorDE`: `/api/scs?symbol=&region=` (uses existing SCS endpoint, 1800s cache).
+- Stitched onto primary response as `d.structural_change`.
+- New "🏗 Structural Changes" panel renders inline:
+  - Verdict header (🟢 Structural Breakout / 🟡 Transition / 🔴 No Change / 🟡 Insufficient) + 0–100 score
+  - 👁 QUIET ACCUMULATION banner (when early-detection trigger fires)
+  - Compact 5-category grid (A Cap Structure / B Biz Model / C Ownership / D Strategic Pivot / E BS Reset) with weight-pct and per-category score
+  - "🔥 WHAT CHANGED" tag cloud (bullish green / bearish red / neutral gray, auto-colored against curated tag list)
+  - Data coverage %, lead strength, lookback quarters
+  - "📂 Open Full Structural Tab →" button drills into the dedicated 🏗 Structural tab with the same symbol pre-filled
+- Renders error-state message when SCS sidecar fails (Yahoo blocked, etc.) — links to the dedicated tab for retry.
+
+### 3. Bonus: top_holders_delta + ownership_history snapshots
+
+Previously these came back as empty arrays. Now populated with current-snapshot data from `tk.institutional_holders` and `info.heldPercentInstitutions`. Explicit `data_quality: "snapshot_only"` flag + `note` field documenting that Q/Q delta requires historical 13F (SEC EDGAR — not free). The existing SMI panel that previously showed "Quarterly ownership history not yet returned" now shows the current snapshot with the honest caveat instead of an empty state.
+
+### What the user will see post-deploy
+
+Open Decide → Investor → analyze any US large-cap (e.g., AAPL). After the existing sections (Smart Money Intelligence, Insider Activity timeline), TWO new panels appear:
+
+1. **📊 Insider Activity Breakdown** — 5-column grid showing the same insider data across daily/weekly/monthly/quarterly/yearly windows side-by-side. Expandable transaction table.
+
+2. **🏗 Structural Changes** — compact SCS view with verdict, score, all 5 category scores, what-changed tags, and a button to open the full dedicated Structural tab.
+
+### Honest limitations (unchanged from prior builds, restated)
+
+- Insider activity coverage is whatever yfinance indexes from SEC Form 4. India coverage is sparse.
+- Structural Change Signal needs Yahoo financial statements (income_stmt, cashflow, balance_sheet, institutional_holders, insider_purchases). When Yahoo blocks Render IP, SCS shows mostly missing badges — by design, not a bug.
+- `top_holders_delta` is current-snapshot only (no Q/Q delta) until SEC EDGAR is wired. Frontend renders it with explicit "snapshot_only" labeling.
+
+### Regression battery — all green
+
+- **Movers 6-test suite** (`smoke_movers.py`): all 6 PASS — recursion fix + stuck-loading fix preserved.
+- **Insider bucketing 8-scenario test** (`smoke_insider_buckets.py`): all assertions PASS.
+- **Parse checks**: `api.py` PARSE OK, `app.js` PARSE OK, `app.min.js` byte-identical.
+
+### Files changed
+
+`api.py` (+~115 lines: insider_activity_buckets + ownership_history snapshot + top_holders_delta snapshot inside `/api/investor-due-diligence`), `static/app.js` (+~165 lines: SCS sidecar fetch + 2 new render panels in `_renderReportLegacy`), `static/app.min.js` (synced), `build_version.txt` (→ r63.97.0), `CHANGELOG.md`.
+
+---
+
 ## r63.96.1 (2026-05-15) — HOTFIX: Movers stuck on "Loading top movers..." (backend-frontend contract bug)
 
 **Symptom (Vijay screenshot, US/1M selected):** Movers tab stuck on "Loading top movers…" — never completes, no error visible. r63.95.1 fixed the infinite-recursion bug but Movers still didn't work. Vijay rightly pushed back.

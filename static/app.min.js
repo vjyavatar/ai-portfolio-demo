@@ -16668,6 +16668,198 @@ function _renderReportLegacy(d){
     h += '</div>';
   }
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // r63.97.0: Section B2 — INSIDER ACTIVITY BREAKDOWN (daily/weekly/monthly/quarterly)
+  // Surfaces the new institutional.insider_activity_buckets returned by
+  // /api/investor-due-diligence enrichment. User explicitly asked for this view.
+  // ═══════════════════════════════════════════════════════════════════════════
+  try {
+    var _iab = (d.institutional && d.institutional.insider_activity_buckets) || null;
+    if (_iab && _iab.buckets) {
+      var _iabBuckets = _iab.buckets;
+      var _iabOrder = ['daily', 'weekly', 'monthly', 'quarterly', 'yearly'];
+      var _iabLabel = {daily: 'DAILY (1d)', weekly: 'WEEKLY (7d)', monthly: 'MONTHLY (30d)', quarterly: 'QUARTERLY (90d)', yearly: 'YEARLY (365d)'};
+      var _iabTotalTxn = _iab.total_txn_count_365d || 0;
+      h += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:16px;margin-bottom:16px">';
+      h += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">';
+      h += '<div style="font-size:14px;font-weight:900;color:#0f172a;font-family:Sora,sans-serif">📊 Insider Activity Breakdown — Daily / Weekly / Monthly / Quarterly</div>';
+      h += '<div style="font-size:10px;color:#64748b;font-family:\'IBM Plex Mono\',monospace">' + _iabTotalTxn + ' txns · 365d</div>';
+      h += '</div>';
+      h += '<div style="font-size:11px;color:#475569;margin-bottom:12px;line-height:1.5">Insider transactions bucketed by recency window. Each bucket shows buys, sells, and net dollar flow over that time period. Source: yfinance insider_transactions.</div>';
+      h += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-bottom:12px">';
+      _iabOrder.forEach(function(bk){
+        var b = _iabBuckets[bk];
+        if (!b) return;
+        var _net = b.net_flow_usd || 0;
+        var _netColor = _net > 0 ? '#059669' : _net < 0 ? '#dc2626' : '#64748b';
+        var _bg = _net > 0 ? '#ecfdf5' : _net < 0 ? '#fef2f2' : '#f8fafc';
+        var _border = _net > 0 ? '#a7f3d0' : _net < 0 ? '#fecaca' : '#e2e8f0';
+        var _sentColor = b.sentiment && b.sentiment.indexOf('STRONG_BUYING') >= 0 ? '#047857' :
+                         b.sentiment && b.sentiment.indexOf('BUYING') >= 0 ? '#059669' :
+                         b.sentiment && b.sentiment.indexOf('STRONG_SELLING') >= 0 ? '#991b1b' :
+                         b.sentiment && b.sentiment.indexOf('SELLING') >= 0 ? '#dc2626' :
+                         '#64748b';
+        var _netFmt;
+        var _absNet = Math.abs(_net);
+        if (_absNet >= 1e9)      _netFmt = (_net >= 0 ? '+' : '−') + '$' + (_absNet/1e9).toFixed(2) + 'B';
+        else if (_absNet >= 1e6) _netFmt = (_net >= 0 ? '+' : '−') + '$' + (_absNet/1e6).toFixed(2) + 'M';
+        else if (_absNet >= 1e3) _netFmt = (_net >= 0 ? '+' : '−') + '$' + (_absNet/1e3).toFixed(0) + 'K';
+        else                      _netFmt = (_net >= 0 ? '+' : '−') + '$' + _absNet.toFixed(0);
+        h += '<div style="padding:10px;background:' + _bg + ';border:1px solid ' + _border + ';border-radius:8px">';
+        h += '<div style="font-size:9px;font-weight:800;color:#64748b;letter-spacing:0.5px;margin-bottom:6px;font-family:Sora,sans-serif">' + _iabLabel[bk] + '</div>';
+        h += '<div style="display:flex;align-items:baseline;gap:6px;margin-bottom:4px">';
+        h += '<div style="font-size:14px;font-weight:900;color:' + _netColor + ';font-family:\'IBM Plex Mono\',monospace">' + (b.buys === 0 && b.sells === 0 ? '—' : _netFmt) + '</div>';
+        h += '<div style="font-size:9px;color:#64748b;font-family:Inter,sans-serif">net flow</div>';
+        h += '</div>';
+        h += '<div style="display:flex;gap:8px;font-size:10px;color:#475569;font-family:\'IBM Plex Mono\',monospace">';
+        h += '<span style="color:#059669;font-weight:700">' + b.buys + '<span style="font-weight:400">B</span></span>';
+        h += '<span style="color:#dc2626;font-weight:700">' + b.sells + '<span style="font-weight:400">S</span></span>';
+        h += '</div>';
+        if (b.sentiment && b.sentiment !== 'NONE' && b.sentiment !== 'NEUTRAL') {
+          h += '<div style="margin-top:6px;font-size:8.5px;color:' + _sentColor + ';font-weight:800;letter-spacing:0.4px;font-family:Sora,sans-serif">' + b.sentiment.replace(/_/g, ' ') + '</div>';
+        }
+        h += '</div>';
+      });
+      h += '</div>';
+      // Transaction table (compact, last 10)
+      if (_iab.transactions && _iab.transactions.length > 0) {
+        h += '<details style="margin-top:10px;border:1px solid #e2e8f0;border-radius:8px;background:#fafbfc">';
+        h += '<summary style="padding:9px 13px;font-size:10px;font-weight:800;color:#0f172a;font-family:Sora,sans-serif;letter-spacing:0.3px;cursor:pointer;list-style:none">📋 RECENT TRANSACTIONS (' + _iab.transactions.length + ' shown · click to expand)</summary>';
+        h += '<div style="padding:0 13px 10px"><div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:10px;min-width:480px">';
+        h += '<thead><tr style="background:#f1f5f9;text-align:left">';
+        ['DATE', 'DAYS AGO', 'INSIDER', 'KIND', 'SHARES', 'VALUE'].forEach(function(hd){
+          h += '<th style="padding:6px 8px;font-size:9px;color:#64748b;font-weight:800;letter-spacing:0.4px">' + hd + '</th>';
+        });
+        h += '</tr></thead><tbody>';
+        _iab.transactions.slice(0, 20).forEach(function(t){
+          var _kindCol = t.kind === 'BUY' ? '#059669' : t.kind === 'SELL' ? '#dc2626' : '#64748b';
+          var _valFmt = '—';
+          if (t.value_usd > 0) {
+            if (t.value_usd >= 1e6) _valFmt = '$' + (t.value_usd/1e6).toFixed(2) + 'M';
+            else if (t.value_usd >= 1e3) _valFmt = '$' + (t.value_usd/1e3).toFixed(0) + 'K';
+            else _valFmt = '$' + t.value_usd.toFixed(0);
+          }
+          h += '<tr style="border-top:1px solid #f1f5f9">';
+          h += '<td style="padding:6px 8px;font-family:\'IBM Plex Mono\',monospace;color:#475569">' + t.date + '</td>';
+          h += '<td style="padding:6px 8px;font-family:\'IBM Plex Mono\',monospace;color:#94a3b8">' + t.days_ago + 'd</td>';
+          h += '<td style="padding:6px 8px;color:#0f172a">' + (t.insider || '—') + '</td>';
+          h += '<td style="padding:6px 8px;font-weight:800;color:' + _kindCol + '">' + t.kind + '</td>';
+          h += '<td style="padding:6px 8px;font-family:\'IBM Plex Mono\',monospace;color:#475569">' + (t.shares ? t.shares.toLocaleString() : '—') + '</td>';
+          h += '<td style="padding:6px 8px;font-family:\'IBM Plex Mono\',monospace;color:#475569">' + _valFmt + '</td>';
+          h += '</tr>';
+        });
+        h += '</tbody></table></div></div></details>';
+      }
+      h += '<div style="margin-top:8px;font-size:9px;color:#94a3b8;font-style:italic">Note: Yahoo Finance insider transactions may not be exhaustive — only what they index from SEC Form 4 filings. India coverage limited.</div>';
+      h += '</div>';
+    } else if (_iab && _iab.data_quality === 'missing') {
+      // Missing — show small acknowledgement, don't pretend
+      h += '<div style="padding:10px 14px;margin-bottom:14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;font-size:11px;color:#64748b">';
+      h += '<strong>📊 Insider Activity Breakdown:</strong> not available for this ticker (yfinance returned no insider transactions). ';
+      h += 'Common for non-US tickers or low-coverage names.';
+      h += '</div>';
+    }
+  } catch (_iabErr) { console.warn('Insider buckets render failed:', _iabErr); }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // r63.97.0: Section B3 — STRUCTURAL CHANGES (inline SCS panel inside Decide-Investor)
+  // Renders the SCS sidecar result. Compact view: verdict + score + key categories
+  // + top tags + button to open full Structural tab. User asked to surface this
+  // inside Decide-Investor instead of forcing a tab switch.
+  // ═══════════════════════════════════════════════════════════════════════════
+  try {
+    var _sc = d.structural_change || null;
+    if (_sc && _sc.success) {
+      var _scVerdict = _sc.verdict || 'INSUFFICIENT_DATA';
+      var _scLabel = _sc.verdict_label || _scVerdict;
+      var _scScore = _sc.composite_score;
+      var _scTags = _sc.what_changed_tags || [];
+      var _scCats = _sc.categories || {};
+      var _scQuiet = _sc.quiet_accumulation;
+      var _scLead = _sc.lead_indicator_strength;
+      var _scCoverage = _sc.data_coverage_pct;
+      var _scColor, _scBg;
+      if (_scVerdict.indexOf('STRUCTURAL_BREAKOUT') >= 0)      { _scColor = '#059669'; _scBg = 'linear-gradient(135deg,#ecfdf5,#d1fae5)'; }
+      else if (_scVerdict.indexOf('TRANSITION') >= 0)          { _scColor = '#d97706'; _scBg = 'linear-gradient(135deg,#fffbeb,#fef3c7)'; }
+      else if (_scVerdict.indexOf('NO_STRUCTURAL') >= 0)       { _scColor = '#dc2626'; _scBg = 'linear-gradient(135deg,#fef2f2,#fee2e2)'; }
+      else                                                       { _scColor = '#64748b'; _scBg = '#f1f5f9'; }
+      h += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:16px;margin-bottom:16px">';
+      h += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">';
+      h += '<div style="font-size:14px;font-weight:900;color:#0f172a;font-family:Sora,sans-serif">🏗 Structural Changes — corporate transformation signals</div>';
+      h += '<button onclick="window._openStructural&amp;&amp;window._openStructural();var inp=document.getElementById(\'scsSym\');if(inp)inp.value=\'' + (d.symbol || sym).replace(/\x27/g, '\\\x27') + '\';if(window._scsState)window._scsState.region=\'' + (window._deRegion || 'US') + '\';setTimeout(function(){window.loadStructural&amp;&amp;window.loadStructural()},150);" style="padding:5px 12px;border-radius:6px;background:#f5f3ff;color:#4f46e5;border:1px solid #c7d2fe;font-size:10px;font-weight:800;cursor:pointer;font-family:Sora,sans-serif">📂 Open Full Structural Tab →</button>';
+      h += '</div>';
+      // Verdict + score banner
+      h += '<div style="display:flex;align-items:center;gap:14px;padding:12px 14px;background:' + _scBg + ';border:1px solid rgba(0,0,0,0.06);border-radius:8px;margin-bottom:12px;flex-wrap:wrap">';
+      h += '<div style="flex:1;min-width:220px">';
+      h += '<div style="font-size:9px;font-weight:800;color:' + _scColor + ';letter-spacing:0.6px">VERDICT</div>';
+      h += '<div style="font-size:14px;font-weight:900;color:' + _scColor + ';font-family:Sora,sans-serif;margin-top:1px">' + _scLabel + '</div>';
+      h += '</div>';
+      if (_scScore !== null && _scScore !== undefined) {
+        h += '<div style="text-align:right">';
+        h += '<div style="font-size:9px;font-weight:800;color:' + _scColor + ';letter-spacing:0.6px">SCORE</div>';
+        h += '<div style="font-size:24px;font-weight:900;color:' + _scColor + ';font-family:\'IBM Plex Mono\',monospace;line-height:1">' + _scScore + '<span style="font-size:11px;color:#94a3b8">/100</span></div>';
+        h += '</div>';
+      }
+      h += '</div>';
+      // Quiet accumulation banner (early-detection)
+      if (_scQuiet) {
+        h += '<div style="padding:9px 12px;margin-bottom:12px;background:#fef3c7;border:1px solid #f59e0b;border-radius:6px;font-size:11px;color:#78350f">';
+        h += '<strong>👁 QUIET ACCUMULATION DETECTED</strong> — multiple structural signals positive + institutional ownership rising + price still consolidating. Pre-breakout setup.';
+        h += '</div>';
+      }
+      // Categories row (compact)
+      var _catMeta = [
+        {key: 'A_capital_structure',   label: 'A. Cap Structure',  icon: '💸', weight: 25},
+        {key: 'B_business_model',      label: 'B. Biz Model',      icon: '📊', weight: 25},
+        {key: 'C_ownership',           label: 'C. Ownership',       icon: '🛡', weight: 20},
+        {key: 'D_strategic_pivot',     label: 'D. Strategic Pivot', icon: '🎯', weight: 15},
+        {key: 'E_balance_sheet_reset', label: 'E. BS Reset',        icon: '🏎', weight: 15},
+      ];
+      h += '<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin-bottom:12px">';
+      _catMeta.forEach(function(cm){
+        var _cat = _scCats[cm.key] || {};
+        var _cs = _cat.score;
+        var _csCol = (_cs === null || _cs === undefined) ? '#9ca3af' : _cs >= 65 ? '#059669' : _cs >= 45 ? '#d97706' : '#dc2626';
+        h += '<div style="padding:7px 8px;border:1px solid #e2e8f0;border-radius:6px;background:#fafbfc;text-align:center">';
+        h += '<div style="font-size:14px;margin-bottom:2px">' + cm.icon + '</div>';
+        h += '<div style="font-size:8px;font-weight:800;color:#64748b;letter-spacing:0.3px;margin-bottom:3px;line-height:1.2">' + cm.label + '</div>';
+        h += '<div style="font-size:14px;font-weight:900;color:' + _csCol + ';font-family:\'IBM Plex Mono\',monospace;line-height:1">' + (_cs === null || _cs === undefined ? '—' : _cs) + '</div>';
+        h += '<div style="font-size:7.5px;color:#94a3b8;font-family:\'IBM Plex Mono\',monospace;margin-top:2px">w' + cm.weight + '%</div>';
+        h += '</div>';
+      });
+      h += '</div>';
+      // What Changed tags
+      if (_scTags.length > 0) {
+        h += '<div style="margin-top:8px"><div style="font-size:9px;font-weight:800;color:#64748b;letter-spacing:0.5px;margin-bottom:6px;font-family:Sora,sans-serif">🔥 WHAT CHANGED · ' + _scTags.length + ' SIGNAL' + (_scTags.length === 1 ? '' : 'S') + '</div>';
+        h += '<div style="display:flex;flex-wrap:wrap;gap:5px">';
+        var _bullishTags = ['BUYBACK_ACTIVE','AGGRESSIVE_BUYBACK','DEBT_REDUCTION','AGGRESSIVE_DEBT_REDUCTION','GROSS_MARGIN_EXPANSION','STRUCTURAL_MARGIN_LIFT','OPERATING_LEVERAGE','GROWTH_ACCELERATION','INSIDER_NET_BUYING','INSIDER_CONCENTRATED_BUYING','ACTIVIST_PRESENT','MULTIPLE_ACTIVISTS','RD_INTENSITY_SPIKE','CAPEX_RAMP','M_AND_A_ACTIVE','MAJOR_ACQUISITION','LEVERED_TO_CASH_TRANSITION','INTEREST_COVERAGE_INFLECTION','QUIET_ACCUMULATION'];
+        var _bearishTags = ['EQUITY_DILUTION','DEBT_BUILDUP','MARGIN_COMPRESSION','GROWTH_DECELERATION','INSIDER_NET_SELLING','RD_CUTBACK','CAPEX_CUT','CASH_TO_LEVERED','DISTRESS_RISK'];
+        _scTags.forEach(function(t){
+          var _tagBg = '#f1f5f9', _tagFg = '#64748b';
+          if (_bullishTags.indexOf(t) >= 0) { _tagBg = 'rgba(5,150,105,0.12)'; _tagFg = '#059669'; }
+          else if (_bearishTags.indexOf(t) >= 0) { _tagBg = 'rgba(220,38,38,0.12)'; _tagFg = '#dc2626'; }
+          h += '<span style="padding:3px 8px;border-radius:4px;background:' + _tagBg + ';color:' + _tagFg + ';font-size:9px;font-weight:800;font-family:\'IBM Plex Mono\',monospace;letter-spacing:0.3px">' + t + '</span>';
+        });
+        h += '</div></div>';
+      }
+      // Metadata row
+      h += '<div style="margin-top:12px;display:flex;gap:14px;flex-wrap:wrap;font-size:9px;color:#94a3b8;font-family:\'IBM Plex Mono\',monospace">';
+      if (_scCoverage !== undefined && _scCoverage !== null) h += '<span>Data coverage: <strong style="color:#64748b">' + _scCoverage + '%</strong> of 5 categories</span>';
+      if (_scLead) h += '<span>Lead strength: <strong style="color:#64748b">' + _scLead + '</strong></span>';
+      if (_sc.lookback_quarters) h += '<span>Lookback: <strong style="color:#64748b">' + _sc.lookback_quarters + 'Q</strong></span>';
+      h += '</div>';
+      h += '<div style="margin-top:8px;font-size:9px;color:#94a3b8;font-style:italic;line-height:1.5">Composite weighted: A 25% · B 25% · C 20% · D 15% · E 15%. Verdict thresholds: ≥65 Structural Breakout · 45–64 Transition · &lt;45 No Change. Each sub-signal carries ✅ available / ⚠️ partial / ❌ missing badge — click "Open Full Structural Tab" above for the trace.</div>';
+      h += '</div>';
+    } else if (_sc && _sc.success === false) {
+      // SCS endpoint returned an error (e.g. yfinance blocked)
+      h += '<div style="padding:10px 14px;margin-bottom:14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;font-size:11px;color:#64748b">';
+      h += '<strong>🏗 Structural Changes:</strong> not computed for this ticker. ';
+      h += 'Reason: ' + ((_sc && _sc.error) || 'data source unavailable') + '. ';
+      h += 'Try the dedicated <a href="javascript:window._openStructural&amp;&amp;window._openStructural();" style="color:#4f46e5;text-decoration:underline">🏗 Structural tab</a> for full analysis with retry.';
+      h += '</div>';
+    }
+  } catch (_scErr) { console.warn('Structural changes render failed:', _scErr); }
+
   // Section C: Institutional Holders (top 10)
   if (d.institutional && d.institutional.institutional_holders) {
     var ih = d.institutional.institutional_holders;
@@ -18685,8 +18877,10 @@ el.innerHTML='<div style="padding:24px;text-align:center"><div style="display:in
 var _primaryFetch = _cachedFetch('/api/investor-decide?symbol='+encodeURIComponent(sym)+'&region='+reg,300);
 var _ddFetch = _cachedFetch('/api/investor-due-diligence?symbol='+encodeURIComponent(sym)+'&region='+reg,300).catch(function(e){console.warn('DD sidecar failed (non-fatal):',e);return null});
 var _premiumFetch = _cachedFetch('/api/premium-intel?symbol='+encodeURIComponent(sym)+'&region='+reg,300).catch(function(e){console.warn('Premium sidecar failed (non-fatal):',e);return null});
-Promise.all([_primaryFetch,_ddFetch,_premiumFetch]).then(function(_results){
-var d=_results[0]; var _dd=_results[1]; var _pi=_results[2];
+// r63.97.0: SCS sidecar — Structural Change Signal for inline rendering inside Decide-Investor
+var _scsFetch = _cachedFetch('/api/scs?symbol='+encodeURIComponent(sym)+'&region='+reg,1800).catch(function(e){console.warn('SCS sidecar failed (non-fatal):',e);return null});
+Promise.all([_primaryFetch,_ddFetch,_premiumFetch,_scsFetch]).then(function(_results){
+var d=_results[0]; var _dd=_results[1]; var _pi=_results[2]; var _scs=_results[3];
 if(!d||typeof d!=='object'){el.innerHTML='<div style="color:#DC2626;padding:16px;font-size:11px">Server returned invalid response. Please retry.</div>';return}
 if(!d.success){el.innerHTML='<div style="color:#DC2626;padding:16px;font-size:11px">'+(d.error||'Analysis failed')+'<br><button onclick="loadInvestorDE(\''+sym+'\')" style="margin-top:8px;padding:6px 16px;border-radius:6px;background:#1A3A78;color:#fff;border:none;cursor:pointer;font-size:10px">Retry</button></div>';return}
 // ─── Stitch sidecar data into the primary response object ───
@@ -18715,6 +18909,12 @@ try {
     });
   }
 } catch(_e){ console.warn('Premium stitch error:',_e); }
+// r63.97.0: SCS — stitch the full SCS payload onto d.structural_change for renderer
+try {
+  if (_scs && _scs.success) {
+    d.structural_change = _scs;
+  }
+} catch(_e){ console.warn('SCS stitch error:',_e); }
 // Safety defaults
 d.price=d.price||0;d.symbol=d.symbol||sym;d.companyName=d.companyName||sym;
 d.confidence=d.confidence||0;d.fScore=d.fScore||(d.business?d.business.fScore:0)||0;

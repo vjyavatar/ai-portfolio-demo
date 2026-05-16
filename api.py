@@ -33636,6 +33636,144 @@ async def investor_due_diligence(email: str = "", symbol: str = "", region: str 
         elapsed = round(time.time() - t0, 1)
         try: diag_log("DD", "investor_dd_completed", {"symbol": symbol, "region": region, "score": score, "elapsed_sec": elapsed})
         except Exception: pass
+
+        # ═══ r63.97.0: Enrich institutional dict with what yfinance actually provides ═══
+        # The frontend SMI panel (Smart Money Intelligence) renders empty states because
+        # ownership_history, top_holders_delta, and insider_quarterly_history aren't
+        # populated. We can fill the first two with CURRENT-SNAPSHOT data (no Q/Q delta
+        # since we'd need historical 13F filings), and the third with proper
+        # multi-bucket insider activity (daily/weekly/monthly/quarterly).
+        try:
+            if tk is not None and region == "US":
+                # ─── top_holders_delta: current snapshot of top 10 institutional holders ───
+                # Without historical 13F access, "delta" is current-snapshot only.
+                # Frontend renders this as "current quarter snapshot" rather than Q/Q change.
+                try:
+                    _ih_df = tk.institutional_holders
+                    if _ih_df is not None and not _ih_df.empty:
+                        _holders_now = []
+                        for _i, _row in _ih_df.head(10).iterrows():
+                            _hname = str(_row.get("Holder", "")).strip()
+                            _pct_held = _safe_float(_row.get("pctHeld") or _row.get("% Out"))
+                            _shares = _safe_float(_row.get("Shares") or _row.get("Position"))
+                            _value = _safe_float(_row.get("Value"))
+                            if _pct_held is not None and _pct_held <= 1:
+                                _pct_held *= 100   # decimal → %
+                            _holders_now.append({
+                                "name":          _hname,
+                                "shares_current": _shares,
+                                "shares_prev":    None,   # no history
+                                "delta_shares":   None,
+                                "delta_pct":      None,
+                                "pct_held_now":   round(_pct_held, 2) if _pct_held else None,
+                                "value_usd":      _value,
+                                "action":         "SNAPSHOT",   # explicit — not a delta
+                            })
+                        if _holders_now:
+                            institutional["top_holders_delta"] = _holders_now
+                            institutional["top_holders_delta_meta"] = {
+                                "data_quality":  "snapshot_only",
+                                "note":          "Current-quarter snapshot from yfinance institutional_holders. Q/Q delta requires historical 13F filings (SEC EDGAR) — not available on free tier.",
+                                "as_of":         _dt.utcnow().strftime("%Y-%m-%d"),
+                                "holders_count": len(_holders_now),
+                            }
+                except Exception as _ihe:
+                    print(f"[DD r63.97] institutional_holders fetch failed for {symbol}: {type(_ihe).__name__}")
+
+                # ─── ownership_history: derive a 1-point series from current snapshot ───
+                # Same caveat — we have NOW, not 8 quarters of history. But surfacing
+                # the current total inst % is more useful than an empty array.
+                try:
+                    _inst_pct_now = _safe_float(info.get("heldPercentInstitutions"))
+                    if _inst_pct_now is not None:
+                        if _inst_pct_now <= 1: _inst_pct_now *= 100
+                        institutional["ownership_history"] = [{
+                            "quarter": _dt.utcnow().strftime("Q%q %Y").replace("Q%q", f"Q{(_dt.utcnow().month-1)//3 + 1}"),
+                            "total_pct_outstanding": round(_inst_pct_now, 2),
+                            "data_quality": "snapshot_only",
+                        }]
+                        institutional["ownership_history_meta"] = {
+                            "data_quality": "snapshot_only",
+                            "note":         "Current snapshot only. 8-quarter history requires SEC EDGAR 13F filings — not in free data tier.",
+                        }
+                except Exception:
+                    pass
+
+                # ─── insider_activity_buckets: daily / weekly / monthly / quarterly ───
+                # Pulls from tk.insider_transactions and buckets by transaction date.
+                # This is THE thing user asked for: "daily, weekly, monthly, quarterly insider activity".
+                try:
+                    _it_df = tk.insider_transactions
+                    if _it_df is not None and not _it_df.empty:
+                        from datetime import timedelta as _td2
+                        _now = _dt.utcnow()
+                        _buckets = {
+                            "daily":     {"buys": 0, "sells": 0, "buy_value_usd": 0, "sell_value_usd": 0, "window_days": 1},
+                            "weekly":    {"buys": 0, "sells": 0, "buy_value_usd": 0, "sell_value_usd": 0, "window_days": 7},
+                            "monthly":   {"buys": 0, "sells": 0, "buy_value_usd": 0, "sell_value_usd": 0, "window_days": 30},
+                            "quarterly": {"buys": 0, "sells": 0, "buy_value_usd": 0, "sell_value_usd": 0, "window_days": 90},
+                            "yearly":    {"buys": 0, "sells": 0, "buy_value_usd": 0, "sell_value_usd": 0, "window_days": 365},
+                        }
+                        _txn_list = []   # individual transactions for table view
+                        for _i, _row in _it_df.iterrows():
+                            _dt_raw = _row.get("Start Date")
+                            if _dt_raw is None: continue
+                            _dt_val = _dt_raw.to_pydatetime() if hasattr(_dt_raw, "to_pydatetime") else _dt_raw
+                            _days_ago = (_now - _dt_val).days
+                            _txn = str(_row.get("Transaction", "")).lower()
+                            _val = _safe_float(_row.get("Value")) or 0
+                            _insider = str(_row.get("Insider", "")).strip()
+                            _shares = _safe_float(_row.get("Shares")) or 0
+                            _is_buy = "purchase" in _txn or "buy" in _txn
+                            _is_sell = "sale" in _txn or "sell" in _txn or "disposit" in _txn
+                            # Add to applicable buckets
+                            for _bk, _bd in _buckets.items():
+                                if _days_ago <= _bd["window_days"]:
+                                    if _is_buy:
+                                        _bd["buys"] += 1
+                                        _bd["buy_value_usd"] += _val
+                                    elif _is_sell:
+                                        _bd["sells"] += 1
+                                        _bd["sell_value_usd"] += _val
+                            # Capture txn for table (only last 365 days)
+                            if _days_ago <= 365:
+                                _txn_list.append({
+                                    "date":     _dt_val.strftime("%Y-%m-%d"),
+                                    "days_ago": _days_ago,
+                                    "insider":  _insider,
+                                    "kind":     ("BUY" if _is_buy else ("SELL" if _is_sell else "OTHER")),
+                                    "shares":   int(_shares),
+                                    "value_usd": _val,
+                                })
+                        # Compute net flow per bucket
+                        for _bd in _buckets.values():
+                            _bd["net_flow_usd"]  = _bd["buy_value_usd"] - _bd["sell_value_usd"]
+                            _bd["net_txn_count"] = _bd["buys"] - _bd["sells"]
+                            _bd["sentiment"] = (
+                                "STRONG_BUYING"  if _bd["buy_value_usd"] > _bd["sell_value_usd"] * 3 and _bd["buys"] >= 2 else
+                                "BUYING"         if _bd["buy_value_usd"] > _bd["sell_value_usd"] else
+                                "STRONG_SELLING" if _bd["sell_value_usd"] > _bd["buy_value_usd"] * 3 and _bd["sells"] >= 2 else
+                                "SELLING"        if _bd["sell_value_usd"] > _bd["buy_value_usd"] else
+                                "NEUTRAL"        if _bd["buys"] + _bd["sells"] > 0 else
+                                "NONE"
+                            )
+                        # Sort transactions newest first, cap at 50
+                        _txn_list.sort(key=lambda x: x["days_ago"])
+                        institutional["insider_activity_buckets"] = {
+                            "buckets":      _buckets,
+                            "transactions": _txn_list[:50],
+                            "total_txn_count_365d": len(_txn_list),
+                            "data_quality": "available",
+                            "source":       "yfinance.insider_transactions",
+                        }
+                except Exception as _ibe:
+                    print(f"[DD r63.97] insider_transactions bucketing failed for {symbol}: {type(_ibe).__name__}")
+                    institutional["insider_activity_buckets"] = {
+                        "data_quality": "missing",
+                        "error":        f"{type(_ibe).__name__}: {str(_ibe)[:80]}",
+                    }
+        except Exception as _enrich_e:
+            print(f"[DD r63.97] institutional enrichment outer error for {symbol}: {type(_enrich_e).__name__}")
         
         # r61.3: Build response, cache it for 30 min, then return
         _dd_response = {
