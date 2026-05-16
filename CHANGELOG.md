@@ -1,3 +1,185 @@
+## r63.99.3 (2026-05-16) — 4 new SVG charts: insider activity + institutional ownership visualizations
+
+**Vijay\'s ask:** "I don\'t see insider activity graphs day wise.. quarterwise.. and institutional ownership graphs as well."
+
+The previous builds (r63.97.0 → r63.99.2) added the **data** for insider activity buckets and institutional ownership, but rendered it only as cards and tables. No actual charts. Vijay rightly pointed out — at a glance you can\'t see trends from a table.
+
+### Four new charts added
+
+All four are **pure inline SVG** — no library dependency. They render even if Chart.js fails to load.
+
+**1. 📊 Insider Activity by Window — stacked bar chart**
+
+5 bars (daily/weekly/monthly/quarterly/yearly), each stacked with:
+- 🟢 Open-Market BUYS (green)
+- 🔴 Open-Market SELLS (red)
+- 🟣 Stock Awards (purple)
+- 🟦 Option Exercises (cyan)
+- ⚪ Other (gray)
+
+Y-axis auto-scales to fit the largest bucket. Each segment has a hover-tooltip (`<title>`) showing the exact count. X-axis labels show window name + days. Sits right after the bucket cards in the Insider Activity Breakdown panel.
+
+**2. 📈 Monthly Net Insider Flow — last 12 months timeline**
+
+Signed bar chart, zero line in the middle of the plot area. Each bar represents one month\'s net flow (buy $ minus sell $). Green bars above zero = net buying month, red bars below = net selling. Hover-tooltip on each bar shows: month label, net flow, buy count + $, sell count + $.
+
+If there have been NO open-market buys or sells in 12 months (only RSU vests / exercises), the chart shows a clear "No open-market buys or sells in the last 12 months" message instead of an empty plot.
+
+Y-axis uses smart USD formatting (`$1.5M`, `$250K`, `$2.3B`) and a `_niceCap()` rounding function so the scale lands on clean numbers.
+
+**3. 🏛 Top 10 Holders — horizontal bar chart**
+
+10 horizontal bars sorted by % outstanding (largest first). Vibrant blue→purple palette for the top holders, fading to gray for smaller positions. Holder name on the left (truncated to 28 chars), bar in the middle (length proportional to % of largest holder), exact percentage on the right. Hover-tooltip shows full holder name + % + $ value if known.
+
+Sits after the existing holders table — keeps the precise numbers there, adds the visual scan-ability.
+
+**4. 🥯 Ownership Donut + Concentration Verdict**
+
+Three-segment donut showing the float breakdown:
+- 🔵 Top 10 Holders (sum of % outstanding)
+- 🟣 Other Institutional (`heldPercentInstitutions - top10`)
+- 🟡 Retail / Insider / Other (`100% - heldPercentInstitutions`)
+
+Center shows total institutional %. Right side has a legend with exact percentages and a **Concentration Verdict** based on top10 sum:
+- ≥50% → "HIGHLY CONCENTRATED — top 10 control half the float. Stock moves with their decisions." (red)
+- 35–49% → "CONCENTRATED — large block trades can move the stock." (amber)
+- 20–34% → "MODERATELY HELD — diversified institutional base." (green)
+- <20% → "WIDELY HELD — no single institution dominates." (green)
+
+### Implementation details
+
+- **Pure SVG, no library**: every chart is a single inline `<svg>` element with `viewBox` for responsive scaling. CSS limits `max-height` so charts don\'t blow up on wide screens.
+- **Defensive edge cases**: division-by-zero guards, missing-data fallback messages, 359.99° max angle in donut paths to avoid the SVG "full circle = no arc" rendering bug.
+- **Accessibility**: every bar/slice has a `<title>` child providing hover-tooltip text for screen readers and mouse users.
+- **No Chart.js race**: previously rendering would silently fail if `<script src="chart.js">` hadn\'t finished loading by the time the report rendered. Pure SVG has no such race.
+
+### Testing
+
+**New smoke test** `/tmp/test_insider_charts.js` — 25 assertions covering:
+- All 4 chart sections present in app.js
+- `_arcPath()` produces valid SVG path strings (no NaN, no malformed coordinates)
+- Edge cases: near-full circle (359.99°), tiny 1% slices
+- USD formatter handles 1.5M, 5M, 250K, 0, negative, billion ranges
+- `_niceCap()` rounds to sensible numbers
+- Color palette has 10 entries (one per top holder)
+- 4 concentration-verdict thresholds match expectations
+- Every chart has `<title>` tooltips
+
+**All 6 regression suites green:**
+- 6/6 Movers · 8/8 Insider buckets · 38/38 Insider classifier · 11/11 Intradayopt routing · 7/7 Returns snapshot · **25/25 Insider charts (new)**
+
+### Files changed
+
+`static/app.js` (+~245 lines: 4 SVG chart blocks, version bumped to r63.99.3).
+`static/app.min.js` (synced, byte-identical).
+`build_version.txt` (→ r63.99.3).
+`CHANGELOG.md`.
+
+### What you\'ll see post-deploy
+
+Pull up any US large-cap (e.g. MSFT, AAPL, NVDA) in Decide-Investor. Scroll to **Insider Activity Breakdown** — below the bucket cards and 365D summary, you\'ll see the new **stacked bar chart** showing all 5 windows, and below that the **monthly net-flow timeline** for the last 12 months. Further down at **Institutional Ownership**, after the holders table, you\'ll see the **horizontal bar chart** of top 10 holders and the **donut chart** with concentration verdict.
+
+For tickers where Yahoo blocks Render (some MU/lower-coverage names), the charts gracefully say "No open-market activity in last 12 months" or are simply absent rather than crashing.
+
+---
+
+## r63.99.2 (2026-05-16) — Four real issues found from Vijay\'s screenshots
+
+**Context:** Vijay sent 4 screenshots showing the deployed app still misbehaving — and crucially, the version badge in the bottom-left showed `r63.72.35`, a version that was current on **2026-05-11**, 27 releases ago. Investigating turned up four separate root causes.
+
+### Issue 1: Frontend version badge had been lying for 27 builds
+
+**Symptom:** Badge bottom-left of every screenshot shows `r63.72.35 · 2026-05-11`. The deployed app.js IS actually newer (we know this because the screenshot in Image 2 shows the yellow callout that was added in r63.99.0) — but the badge was reading from three hardcoded constants at the top of `app.js` (lines 2, 27, 40) that hadn\'t been updated since r63.72.35 was the actual version. So every changelog entry since r63.72.36 was on a stamp that lied.
+
+**Fix:**
+- `window.CELESYS_VERSION = "r63.99.2"` (was hardcoded `r63.72.35`)
+- Console log and `stamp.textContent` now derive from `window.CELESYS_VERSION` constant rather than inlined strings, so future bumps only need to change one line
+- **Badge now async-fetches `/api/build-version` on every page load** and compares against the frontend constant. If they differ, the badge turns RED (`linear-gradient(135deg,#dc2626,#7f1d1d)`) and shows `⚠ FE:r63.99.2 ≠ BE:r63.85.x` — deploy drift is now visually unmistakable.
+- If backend is unreachable, badge turns amber-brown with "backend unreachable" tooltip.
+
+This is the most important fix in this build. From now on, when Vijay sends a screenshot, the version badge tells the truth about which version is deployed.
+
+### Issue 2: `/api/dd-returns-snapshot` endpoint was missing (Image 1)
+
+**Symptom:** "Returns Snapshot — MU" panel shows yellow warning: *"⚠ Backend endpoint /api/dd-returns-snapshot not implemented yet, and direct Yahoo fetch was blocked."* All 7 timeframe boxes (15D · 1M · 3M · 6M · 1Y · 5Y · 10Y) show `—`.
+
+**Root cause:** The frontend has been calling `/api/dd-returns-snapshot` since r63.75.0 (~3 weeks ago). The backend endpoint was never implemented. The fallback path (direct Yahoo Finance v8 chart endpoint from browser) is CORS-blocked when Render serves the page over HTTPS. So users get the yellow warning forever.
+
+**Fix:** Implemented the endpoint in `api.py` with a 3-path fallback chain:
+- Path 1: `yfinance.Ticker(sym).history(period="10y", interval="1d")` — full daily history
+- Path 2: `yfinance.Ticker(sym).history(period="10y", interval="1mo")` — monthly fallback when daily doesn\'t reach back far enough for 5y/10y windows
+- Path 3: `data_sources.get_price_history()` — Finnhub/etc fallback for when Yahoo blocks
+- 10-minute cache (`_dd_returns_cache`, 600s TTL)
+- Returns `{success, current_price, source, returns: {15d, 1m, 3m, 6m, 1y, 5y, 10y}, ts, n_closes}`
+- Each window\'s % is rounded to 2 decimals; missing windows return `None` instead of crashing.
+
+**Tested with 7-scenario smoke test** (`/home/claude/smoke_returns_snapshot.py`) — all PASS:
+1. ✓ 10y daily → all 7 windows populated with correct %
+2. ✓ Only 1y of data → 5y/10y correctly return None
+3. ✓ Monthly fallback works when daily history is short
+4. ✓ Total failure returns `{success: false, error: ...}`
+5. ✓ Cache hit on 2nd call
+6. ✓ Invalid region rejected
+7. ✓ Empty symbol rejected
+
+### Issue 3: Structural Changes stuck on "LOADING…" forever (Image 4)
+
+**Symptom:** The `🏗 Structural Changes — corporate transformation signals` panel shows `LOADING…` indefinitely. No data ever arrives.
+
+**Root cause:** The SCS sidecar fetch in `loadInvestorDE` has no timeout. `_cachedFetch('/api/scs?...', 1800).catch(...)` swallowed errors and returned `null`. Then the r63.99.1 panel code rendered the LOADING state, which has no timeout — so it stayed LOADING forever even when the fetch had given up.
+
+**Fix:** Wrapped `_scsFetch` with `Promise.race()` against a 45-second timeout:
+
+```javascript
+var _scsTimeout = new Promise(function(resolve){
+  setTimeout(function(){ resolve({success:false, error:'request timeout (45s)...'}); }, 45000);
+});
+var _scsFetch = Promise.race([_scsRealFetch, _scsTimeout]);
+```
+
+After 45s (well past yfinance\'s typical 30-40s tail latency), the timeout resolves with an explicit `{success: false, error: 'request timeout (45s)...'}` shape that triggers the **DATA UNAVAILABLE** rendering branch (yellow box with retry link to the dedicated Structural tab) instead of falling through to LOADING.
+
+### Issue 4: Insider transactions still showing KIND=OTHER and TYPE=— (Image 3)
+
+**Symptom:** Recent Transactions table shows KIND=OTHER and TYPE=— for every row, despite r63.99.0 shipping the comprehensive SEC Form 4 classifier.
+
+**Root cause analysis:** This is a deploy drift issue. If r63.99.2 frontend is deployed but the backend is older than r63.99.0, the backend doesn\'t send the `kind_label` field — only `kind`. The frontend then displayed `t.kind_label || \'—\'` which renders `—` for every row. The fixed backend WAS shipped in r63.99.0 — but Render may have been serving stale `api.py`. The new badge (Issue 1) will reveal this.
+
+**Defensive frontend fix:** Even when backend is old, render SOMETHING useful:
+
+```javascript
+var _typeDisplay = t.kind_label || t.raw || (t.kind === 'OTHER' ? '(unknown — old backend?)' : t.kind);
+```
+
+So now:
+- New backend (r63.99.0+) → shows `kind_label` like "Open Mkt Buy", "Stock Award", "Option Exercise"
+- Old backend with `raw` field → shows raw transaction string
+- Ancient backend with neither → shows `(unknown — old backend?)` — explicit hint to update the deployment
+
+This won\'t fix the underlying classifier — but it stops the table from looking broken.
+
+### Regression battery — all green
+
+- 6/6 Movers tests PASS
+- 8/8 Insider bucket assertions PASS
+- 38/38 Insider classifier scenarios PASS
+- 11/11 Intradayopt routing checks PASS
+- **7/7 Returns snapshot scenarios PASS** (new)
+
+### Files changed
+
+`api.py` (+~120 lines: new `/api/dd-returns-snapshot` endpoint with 3-path fallback chain + 10-min cache).
+`static/app.js` (4 surgical edits: version constants + badge async-probe with drift detection, SCS sidecar 45s timeout wrapper, KIND_LABEL fallback chain in transaction table).
+`static/app.min.js` (synced).
+`build_version.txt` (→ r63.99.2).
+`CHANGELOG.md`.
+
+### Critical advice for Vijay
+
+After deploying r63.99.2, **the bottom-left badge will tell the truth.** If you see `⚠ FE:r63.99.2 ≠ BE:something_older` in red, Render is serving stale `api.py` — most likely it deployed `static/` but not Python. Force a fresh Render deploy and the badge will turn purple again.
+
+---
+
 ## r63.99.1 (2026-05-16) — Plain-English overlay for Risk Heatmap + always-visible Structural Changes panel
 
 **Vijay\'s question:** "Is this [Risk Structure Heatmap screenshot] structural changes... if not then I don\'t see structural changes at all in the report. The attached screenshot needs to be more in layman\'s language — users are not understanding."

@@ -1,7 +1,12 @@
 // ═══ Celesys version stamp ═══
-window.CELESYS_VERSION = "r63.72.35";
-window.CELESYS_BUILD_TIME = 1778525757;
-window.CELESYS_BUILD_DATE = "2026-05-11 18:14:10 UTC";
+// r63.99.2: bumped from r63.72.35 — frontend version had been stale for 27 versions,
+// causing the badge to misreport the deployed version. Now also fetches the BACKEND
+// version asynchronously and updates the badge — so deploy drift becomes visible.
+// r63.99.3: 4 new SVG charts (insider activity by window + monthly net flow +
+// top 10 holders horizontal bar + ownership donut). Pure SVG — no library dependency.
+window.CELESYS_VERSION = "r63.99.3";
+window.CELESYS_BUILD_TIME = 1778898600;
+window.CELESYS_BUILD_DATE = "2026-05-16 02:30:00 UTC";
 window.CELESYS_FEATURES = {
   cycle_analysis: true,
   diamond_hunter: true,
@@ -24,27 +29,49 @@ if (typeof window.escapeHtml !== 'function') {
 }
 var escapeHtml = window.escapeHtml;  // local alias for legacy callers
 console.log("%c━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "color:#1A3A78");
-console.log("%c CELESYS r63.72.35 %c loaded · 2026-05-11 18:14:10 UTC",
+console.log("%c CELESYS " + window.CELESYS_VERSION + " %c loaded · " + window.CELESYS_BUILD_DATE,
   "background:#7c3aed;color:#fff;font-weight:900;padding:3px 8px;border-radius:3px;font-family:monospace",
   "color:#7c3aed;font-weight:700;font-family:monospace");
 console.log("%c Features: 360° Cycle Analysis · Diamond Hunter · Fund Analyzer · Three-Lens Scanner",
   "color:#10b981;font-weight:700;font-family:monospace");
 console.log("%c━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "color:#1A3A78");
 
-// r63.72.18: Visible version stamp in DOM — appears once DOM is ready
+// r63.72.18 → r63.99.2: Visible version stamp in DOM — appears once DOM is ready.
+// Now dynamically reconciles frontend ↔ backend versions and changes color if drift detected.
 document.addEventListener('DOMContentLoaded', function() {
   try {
     var stamp = document.createElement('div');
     stamp.id = 'celesys-build-stamp';
     stamp.style.cssText = 'position:fixed;bottom:8px;left:8px;background:linear-gradient(135deg,#1A3A78,#7c3aed);color:#fff;padding:4px 10px;font-size:9px;font-weight:800;font-family:IBM Plex Mono,monospace;border-radius:4px;letter-spacing:0.5px;z-index:99999;box-shadow:0 2px 8px rgba(124,58,237,0.4);cursor:pointer;user-select:none';
-    stamp.textContent = '⚙ r63.72.35 · 2026-05-11';
+    stamp.textContent = '⚙ ' + window.CELESYS_VERSION + ' · checking backend…';
     stamp.title = 'Click to verify backend version';
     stamp.onclick = function() {
       fetch('/api/build-version').then(function(r){return r.json();}).then(function(d){
-        alert('Frontend: r63.72.18\nBackend: ' + d.build_version + '\nBackend time: ' + d.build_time + '\nFeatures: ' + JSON.stringify(d.features, null, 2));
+        alert('Frontend: ' + window.CELESYS_VERSION + '\nBackend: ' + d.build_version + '\nBackend time: ' + d.build_time + '\nFeatures: ' + JSON.stringify(d.features, null, 2));
       }).catch(function(e){ alert('Backend version check failed: ' + e.message); });
     };
     document.body.appendChild(stamp);
+    // Async backend version probe — reveals deploy drift on the badge itself.
+    fetch('/api/build-version', {cache: 'no-store'}).then(function(r){return r.json();}).then(function(d){
+      var backendVer = d.build_version || '?';
+      var dateStr    = (d.build_time || '').substring(0, 10);
+      if (backendVer === window.CELESYS_VERSION) {
+        // Versions match — keep purple gradient
+        stamp.textContent = '⚙ ' + window.CELESYS_VERSION + ' · ' + dateStr;
+        stamp.title = 'Frontend and backend in sync. Click for details.';
+      } else {
+        // DRIFT — make it RED so deploy issue is immediately visible
+        stamp.style.background = 'linear-gradient(135deg,#dc2626,#7f1d1d)';
+        stamp.style.boxShadow = '0 2px 8px rgba(220,38,38,0.5)';
+        stamp.textContent = '⚠ FE:' + window.CELESYS_VERSION + ' ≠ BE:' + backendVer;
+        stamp.title = 'DEPLOY DRIFT — frontend and backend versions differ. Click for details.';
+        console.error('[CELESYS] ⚠️ Frontend/backend version drift:', window.CELESYS_VERSION, 'vs', backendVer);
+      }
+    }).catch(function(e){
+      stamp.style.background = 'linear-gradient(135deg,#92400e,#451a03)';
+      stamp.textContent = '⚙ ' + window.CELESYS_VERSION + ' · backend unreachable';
+      stamp.title = 'Backend version probe failed: ' + e.message;
+    });
   } catch(e) {}
 });
 // ═════════════════════════════════════
@@ -16800,6 +16827,211 @@ function _renderReportLegacy(d){
         h += '</div>';
       });
       h += '</div>';
+
+      // ═══ r63.99.3: INSIDER ACTIVITY GRAPHS — Vijay\'s ask ═══
+      // Pure SVG (no Chart.js dependency to avoid load-order issues).
+      // CHART A: Stacked bar — buys/sells/awards across 5 windows (daily→yearly)
+      // CHART B: Monthly net-flow timeline — last 12 months of insider net $ flow
+      try {
+        var _chartW = 700;   // viewBox width — scales with CSS to container
+        var _chartH = 200;
+
+        // ─── CHART A: BUCKET STACKED BAR ─────────────────────────────
+        var _chartABuckets = [];
+        _iabOrder.forEach(function(bk){
+          var b = _iabBuckets[bk];
+          if (!b) return;
+          _chartABuckets.push({
+            key: bk, label: _iabLabel[bk],
+            buys: b.buys || 0, sells: b.sells || 0,
+            awards: b.awards || 0, exercises: b.exercises || 0,
+            other: b.other || 0,
+          });
+        });
+        if (_chartABuckets.length > 0) {
+          // Find max count for y-axis scale
+          var _maxA = 1;
+          _chartABuckets.forEach(function(b){
+            var total = b.buys + b.sells + b.awards + b.exercises + b.other;
+            if (total > _maxA) _maxA = total;
+          });
+          // Round up to nice number
+          var _yMaxA = Math.max(5, Math.ceil(_maxA / 5) * 5);
+
+          var _padL = 38, _padR = 14, _padT = 18, _padB = 38;
+          var _plotW = _chartW - _padL - _padR;
+          var _plotH = _chartH - _padT - _padB;
+          var _bw = Math.floor(_plotW / _chartABuckets.length);
+          var _barW = Math.floor(_bw * 0.62);
+          var _barOff = Math.floor((_bw - _barW) / 2);
+
+          h += '<div style="margin-top:14px;padding:14px;background:#fff;border:1px solid #e2e8f0;border-radius:10px">';
+          h += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;flex-wrap:wrap;gap:6px">';
+          h += '<div style="font-size:12px;font-weight:900;color:#0f172a;font-family:Sora,sans-serif">📊 Insider Activity by Window</div>';
+          h += '<div style="font-size:9px;color:#64748b;font-family:Inter,sans-serif">Stacked by transaction kind. Hover bars for details.</div>';
+          h += '</div>';
+          // Legend
+          h += '<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px;font-size:9.5px;font-family:Sora,sans-serif">';
+          [
+            ['Open-Mkt BUYS', '#059669'], ['Open-Mkt SELLS', '#dc2626'],
+            ['Stock Awards', '#7c3aed'], ['Option Exercises', '#0891b2'],
+            ['Other', '#94a3b8']
+          ].forEach(function(lg){
+            h += '<span style="display:inline-flex;align-items:center;gap:4px"><span style="display:inline-block;width:10px;height:10px;background:' + lg[1] + ';border-radius:2px"></span><span style="color:#475569;font-weight:700">' + lg[0] + '</span></span>';
+          });
+          h += '</div>';
+
+          h += '<svg viewBox="0 0 ' + _chartW + ' ' + _chartH + '" preserveAspectRatio="xMidYMid meet" style="width:100%;height:auto;display:block;max-height:240px" xmlns="http://www.w3.org/2000/svg">';
+          // Y-axis gridlines + labels
+          for (var _g = 0; _g <= 4; _g++) {
+            var _gy = _padT + (_plotH * _g / 4);
+            var _gv = Math.round(_yMaxA * (4 - _g) / 4);
+            h += '<line x1="' + _padL + '" y1="' + _gy + '" x2="' + (_chartW - _padR) + '" y2="' + _gy + '" stroke="#e2e8f0" stroke-width="0.5"/>';
+            h += '<text x="' + (_padL - 6) + '" y="' + (_gy + 3) + '" text-anchor="end" font-size="8.5" fill="#94a3b8" font-family="IBM Plex Mono,monospace">' + _gv + '</text>';
+          }
+          // Y-axis label
+          h += '<text x="' + (_padL - 26) + '" y="' + (_padT + _plotH / 2) + '" text-anchor="middle" font-size="8" fill="#64748b" font-family="Sora,sans-serif" transform="rotate(-90 ' + (_padL - 26) + ' ' + (_padT + _plotH / 2) + ')">txn count</text>';
+
+          _chartABuckets.forEach(function(b, _i){
+            var _x = _padL + _i * _bw + _barOff;
+            var _stackY = _padT + _plotH;
+            // Stack order (bottom→top): SELL (red), BUY (green), Awards (purple), Exercises (cyan), Other (gray)
+            var _segs = [
+              ['SELL', b.sells, '#dc2626'],
+              ['BUY', b.buys, '#059669'],
+              ['Awards', b.awards, '#7c3aed'],
+              ['Exercises', b.exercises, '#0891b2'],
+              ['Other', b.other, '#94a3b8'],
+            ];
+            _segs.forEach(function(seg){
+              var _name = seg[0], _val = seg[1], _col = seg[2];
+              if (_val <= 0) return;
+              var _segH = (_val / _yMaxA) * _plotH;
+              _stackY -= _segH;
+              h += '<rect x="' + _x + '" y="' + _stackY + '" width="' + _barW + '" height="' + _segH + '" fill="' + _col + '" opacity="0.88"><title>' + b.label + ' · ' + _name + ': ' + _val + '</title></rect>';
+            });
+            // X-axis label
+            h += '<text x="' + (_x + _barW / 2) + '" y="' + (_chartH - _padB + 14) + '" text-anchor="middle" font-size="9" fill="#475569" font-family="Sora,sans-serif" font-weight="700">' + b.key.toUpperCase() + '</text>';
+            h += '<text x="' + (_x + _barW / 2) + '" y="' + (_chartH - _padB + 25) + '" text-anchor="middle" font-size="7.5" fill="#94a3b8" font-family="IBM Plex Mono,monospace">' + b.window_days + 'd</text>';
+          });
+          // X-axis line
+          h += '<line x1="' + _padL + '" y1="' + (_padT + _plotH) + '" x2="' + (_chartW - _padR) + '" y2="' + (_padT + _plotH) + '" stroke="#64748b" stroke-width="0.8"/>';
+          h += '</svg>';
+          h += '</div>';
+        }
+
+        // ─── CHART B: MONTHLY NET-FLOW TIMELINE ──────────────────────
+        // Bin individual transactions by month for the last 12 months
+        if (_iab.transactions && _iab.transactions.length > 0) {
+          var _now = new Date();
+          var _months = [];   // last 12 months, oldest → newest
+          for (var _mi = 11; _mi >= 0; _mi--) {
+            var _md = new Date(_now.getFullYear(), _now.getMonth() - _mi, 1);
+            _months.push({
+              year: _md.getFullYear(), month: _md.getMonth(),
+              label: _md.toLocaleString('default', {month:'short'}) + " '" + String(_md.getFullYear() % 100).padStart(2,'0'),
+              buy_value_usd: 0, sell_value_usd: 0, net_value_usd: 0,
+              buy_count: 0, sell_count: 0,
+            });
+          }
+          _iab.transactions.forEach(function(t){
+            if (!t.date) return;
+            var _td = new Date(t.date);
+            if (isNaN(_td.getTime())) return;
+            // Find matching bin
+            for (var _bi = 0; _bi < _months.length; _bi++) {
+              if (_months[_bi].year === _td.getFullYear() && _months[_bi].month === _td.getMonth()) {
+                if (t.kind === 'BUY' && t.value_usd > 0) {
+                  _months[_bi].buy_value_usd += t.value_usd;
+                  _months[_bi].buy_count++;
+                } else if (t.kind === 'SELL' && t.value_usd > 0) {
+                  _months[_bi].sell_value_usd += t.value_usd;
+                  _months[_bi].sell_count++;
+                }
+                break;
+              }
+            }
+          });
+          _months.forEach(function(m){ m.net_value_usd = m.buy_value_usd - m.sell_value_usd; });
+          // Find max absolute net for y-scale
+          var _maxAbs = 1;
+          _months.forEach(function(m){
+            var _a = Math.abs(m.net_value_usd);
+            if (_a > _maxAbs) _maxAbs = _a;
+          });
+          // Round up to a nice number
+          function _niceCap(x) {
+            if (x >= 1e9) return Math.ceil(x / 1e9) * 1e9;
+            if (x >= 1e8) return Math.ceil(x / 1e8) * 1e8;
+            if (x >= 1e7) return Math.ceil(x / 1e7) * 1e7;
+            if (x >= 1e6) return Math.ceil(x / 1e6) * 1e6;
+            if (x >= 1e5) return Math.ceil(x / 1e5) * 1e5;
+            if (x >= 1e4) return Math.ceil(x / 1e4) * 1e4;
+            return Math.max(1000, Math.ceil(x / 1e3) * 1e3);
+          }
+          var _yCap = _niceCap(_maxAbs);
+          function _fmtUSD(v) {
+            var s = v >= 0 ? '+' : '−';
+            var a = Math.abs(v);
+            if (a >= 1e9) return s + '$' + (a/1e9).toFixed(1) + 'B';
+            if (a >= 1e6) return s + '$' + (a/1e6).toFixed(1) + 'M';
+            if (a >= 1e3) return s + '$' + (a/1e3).toFixed(0) + 'K';
+            if (a >= 1)   return s + '$' + a.toFixed(0);
+            return '$0';
+          }
+
+          var _hasAnyFlow = _months.some(function(m){ return m.net_value_usd !== 0; });
+
+          h += '<div style="margin-top:12px;padding:14px;background:#fff;border:1px solid #e2e8f0;border-radius:10px">';
+          h += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:6px">';
+          h += '<div style="font-size:12px;font-weight:900;color:#0f172a;font-family:Sora,sans-serif">📈 Monthly Net Insider Flow — last 12 months</div>';
+          h += '<div style="font-size:9px;color:#64748b;font-family:Inter,sans-serif">Buy $ minus Sell $ per month. Green = net buying, red = net selling.</div>';
+          h += '</div>';
+
+          if (!_hasAnyFlow) {
+            h += '<div style="padding:30px 16px;text-align:center;color:#94a3b8;font-size:11px;font-style:italic">No open-market buys or sells in the last 12 months. Only compensation events (RSU vests, option exercises) — those don\'t count as insider conviction signals.</div>';
+          } else {
+            var _bPadL = 50, _bPadR = 14, _bPadT = 18, _bPadB = 36;
+            var _bPlotW = _chartW - _bPadL - _bPadR;
+            var _bPlotH = _chartH - _bPadT - _bPadB;
+            var _zeroY = _bPadT + _bPlotH / 2;   // zero line in the middle
+            var _bbw = _bPlotW / _months.length;
+            var _bbarW = _bbw * 0.62;
+            var _bbarOff = (_bbw - _bbarW) / 2;
+
+            h += '<svg viewBox="0 0 ' + _chartW + ' ' + _chartH + '" preserveAspectRatio="xMidYMid meet" style="width:100%;height:auto;display:block;max-height:240px" xmlns="http://www.w3.org/2000/svg">';
+            // Y-axis gridlines (4 above, 4 below zero)
+            for (var _gi = -2; _gi <= 2; _gi++) {
+              var _gy2 = _zeroY - (_gi * (_bPlotH / 4));
+              var _gv2 = (_yCap * _gi / 2);
+              var _lineStroke = _gi === 0 ? '#64748b' : '#e2e8f0';
+              var _lineW = _gi === 0 ? 0.8 : 0.5;
+              h += '<line x1="' + _bPadL + '" y1="' + _gy2 + '" x2="' + (_chartW - _bPadR) + '" y2="' + _gy2 + '" stroke="' + _lineStroke + '" stroke-width="' + _lineW + '"/>';
+              h += '<text x="' + (_bPadL - 6) + '" y="' + (_gy2 + 3) + '" text-anchor="end" font-size="8.5" fill="#94a3b8" font-family="IBM Plex Mono,monospace">' + _fmtUSD(_gv2) + '</text>';
+            }
+            // Y-axis label
+            h += '<text x="' + (_bPadL - 38) + '" y="' + (_bPadT + _bPlotH / 2) + '" text-anchor="middle" font-size="8" fill="#64748b" font-family="Sora,sans-serif" transform="rotate(-90 ' + (_bPadL - 38) + ' ' + (_bPadT + _bPlotH / 2) + ')">net $ flow</text>';
+
+            _months.forEach(function(m, _i){
+              var _x = _bPadL + _i * _bbw + _bbarOff;
+              var _h = Math.abs(m.net_value_usd / _yCap) * (_bPlotH / 2);
+              var _col = m.net_value_usd >= 0 ? '#059669' : '#dc2626';
+              if (m.net_value_usd !== 0) {
+                var _y = m.net_value_usd >= 0 ? (_zeroY - _h) : _zeroY;
+                h += '<rect x="' + _x + '" y="' + _y + '" width="' + _bbarW + '" height="' + _h + '" fill="' + _col + '" opacity="0.85"><title>' + m.label + '\nNet: ' + _fmtUSD(m.net_value_usd) + '\nBuys: ' + m.buy_count + ' ($' + (m.buy_value_usd/1e6).toFixed(2) + 'M)\nSells: ' + m.sell_count + ' ($' + (m.sell_value_usd/1e6).toFixed(2) + 'M)</title></rect>';
+              }
+              // X-axis label every other month if 12 to avoid crowding
+              if (_i % 2 === 0) {
+                h += '<text x="' + (_x + _bbarW / 2) + '" y="' + (_chartH - _bPadB + 14) + '" text-anchor="middle" font-size="9" fill="#475569" font-family="Sora,sans-serif">' + m.label + '</text>';
+              }
+            });
+            h += '</svg>';
+          }
+          h += '</div>';
+        }
+      } catch (_chartErr) { console.warn('Insider charts render failed:', _chartErr); }
+      // ═══ END r63.99.3 CHARTS ═══
+
       // Transaction table (compact, last 20)
       if (_iab.transactions && _iab.transactions.length > 0) {
         h += '<details style="margin-top:10px;border:1px solid #e2e8f0;border-radius:8px;background:#fafbfc">';
@@ -16833,7 +17065,11 @@ function _renderReportLegacy(d){
           h += '<td style="padding:6px 8px;font-family:\'IBM Plex Mono\',monospace;color:#94a3b8">' + t.days_ago + 'd</td>';
           h += '<td style="padding:6px 8px;color:#0f172a">' + (t.insider || '—') + '</td>';
           h += '<td style="padding:6px 8px"><span title="' + (t.raw || t.kind_label || t.kind) + '" style="padding:2px 7px;border-radius:4px;background:' + _km.bg + ';color:' + _km.fg + ';font-weight:800;font-size:9px;font-family:Sora,sans-serif;letter-spacing:0.3px;cursor:help">' + t.kind + '</span></td>';
-          h += '<td style="padding:6px 8px;font-size:9.5px;color:#475569;font-family:Inter,sans-serif">' + (t.kind_label || '—') + '</td>';
+          // r63.99.2: kind_label fallback chain — older backends don\'t send kind_label,
+          // so TYPE column showed "—" for every row. Now fall through to raw, then to
+          // a friendlier "(see KIND)" so users at least know to look at the KIND pill.
+          var _typeDisplay = t.kind_label || t.raw || (t.kind === 'OTHER' ? '(unknown — old backend?)' : t.kind);
+          h += '<td style="padding:6px 8px;font-size:9.5px;color:#475569;font-family:Inter,sans-serif">' + _typeDisplay + '</td>';
           h += '<td style="padding:6px 8px;font-family:\'IBM Plex Mono\',monospace;color:#475569">' + (t.shares ? t.shares.toLocaleString() : '—') + '</td>';
           h += '<td style="padding:6px 8px;font-family:\'IBM Plex Mono\',monospace;color:#475569">' + _valFmt + '</td>';
           h += '</tr>';
@@ -17005,6 +17241,128 @@ function _renderReportLegacy(d){
         h += '</tr>';
       });
       h += '</tbody></table></div>';
+
+      // ═══ r63.99.3: INSTITUTIONAL OWNERSHIP GRAPHS — Vijay\'s ask ═══
+      // Pure SVG, no library dependency.
+      // CHART C1: Horizontal bar chart — top 10 holders by % outstanding (clearer than table at a glance)
+      // CHART C2: Donut chart — top 10 vs rest of float (concentration visualization)
+      try {
+        var _holders = ih.top_holders.filter(function(hd){ return hd.pct_outstanding && hd.pct_outstanding > 0; });
+        if (_holders.length > 0) {
+          // Sort descending
+          _holders.sort(function(a,b){ return b.pct_outstanding - a.pct_outstanding; });
+          var _maxPct = _holders[0].pct_outstanding;
+
+          h += '<div style="margin-top:16px;padding:14px;background:#fff;border:1px solid #e2e8f0;border-radius:10px">';
+          h += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">';
+          h += '<div style="font-size:12px;font-weight:900;color:#0f172a;font-family:Sora,sans-serif">🏛 Top 10 Holders — % of Shares Outstanding</div>';
+          h += '<div style="font-size:9px;color:#64748b;font-family:Inter,sans-serif">Visual: who really controls the float</div>';
+          h += '</div>';
+
+          // Horizontal bar chart (SVG)
+          var _hChartW = 700;
+          var _rowH = 28;
+          var _hChartH = _holders.length * _rowH + 20;
+          var _hPadL = 200;   // space for holder names
+          var _hPadR = 60;    // space for % labels
+          var _hPadT = 6;
+          var _hPlotW = _hChartW - _hPadL - _hPadR;
+
+          h += '<svg viewBox="0 0 ' + _hChartW + ' ' + _hChartH + '" preserveAspectRatio="xMidYMid meet" style="width:100%;height:auto;display:block" xmlns="http://www.w3.org/2000/svg">';
+
+          _holders.forEach(function(hd, _i){
+            var _y = _hPadT + _i * _rowH + 4;
+            var _barH = _rowH - 10;
+            var _barW2 = (hd.pct_outstanding / _maxPct) * _hPlotW;
+            // Color scale — vibrant for top holders, muted for smaller ones
+            var _palette = ['#1e40af', '#2563eb', '#3b82f6', '#60a5fa', '#7c3aed', '#a855f7', '#c084fc', '#94a3b8', '#cbd5e1', '#e2e8f0'];
+            var _col = _palette[_i] || '#94a3b8';
+            // Holder name (truncated)
+            var _name = hd.name.length > 28 ? hd.name.substring(0,26) + '…' : hd.name;
+            h += '<text x="' + (_hPadL - 8) + '" y="' + (_y + _barH/2 + 4) + '" text-anchor="end" font-size="10" fill="#475569" font-family="Inter,sans-serif" font-weight="600">' + _name + '</text>';
+            // Bar
+            h += '<rect x="' + _hPadL + '" y="' + _y + '" width="' + _barW2 + '" height="' + _barH + '" fill="' + _col + '" opacity="0.85" rx="2"><title>' + hd.name + ': ' + hd.pct_outstanding.toFixed(2) + '% of shares outstanding' + (hd.value_usd ? ' · $' + (hd.value_usd/1e9).toFixed(2) + 'B' : '') + '</title></rect>';
+            // % label at end of bar
+            h += '<text x="' + (_hPadL + _barW2 + 6) + '" y="' + (_y + _barH/2 + 4) + '" font-size="10" fill="#0f172a" font-family="IBM Plex Mono,monospace" font-weight="800">' + hd.pct_outstanding.toFixed(2) + '%</text>';
+          });
+          h += '</svg>';
+
+          // ─── CHART C2: Donut — total inst vs retail/insider/other ───
+          var _totalInst = (ih.total_pct_outstanding || 0);
+          var _top10Sum = _holders.reduce(function(s,hd){ return s + hd.pct_outstanding; }, 0);
+          var _otherInst = Math.max(0, _totalInst - _top10Sum);
+          var _nonInst = Math.max(0, 100 - _totalInst);
+          // Build donut SVG
+          var _dSize = 200;
+          var _dCx = 100, _dCy = 100, _rOuter = 80, _rInner = 50;
+          var _segments = [];
+          if (_top10Sum > 0)   _segments.push({label:'Top 10 Holders', value: _top10Sum, color: '#3b82f6'});
+          if (_otherInst > 0)  _segments.push({label:'Other Institutional', value: _otherInst, color: '#a78bfa'});
+          if (_nonInst > 0)    _segments.push({label:'Retail / Insider / Other', value: _nonInst, color: '#fbbf24'});
+
+          function _arcPath(cx, cy, rOuter, rInner, startAngle, endAngle) {
+            var _startRad = (startAngle - 90) * Math.PI / 180;
+            var _endRad = (endAngle - 90) * Math.PI / 180;
+            var _x1 = cx + rOuter * Math.cos(_startRad);
+            var _y1 = cy + rOuter * Math.sin(_startRad);
+            var _x2 = cx + rOuter * Math.cos(_endRad);
+            var _y2 = cy + rOuter * Math.sin(_endRad);
+            var _x3 = cx + rInner * Math.cos(_endRad);
+            var _y3 = cy + rInner * Math.sin(_endRad);
+            var _x4 = cx + rInner * Math.cos(_startRad);
+            var _y4 = cy + rInner * Math.sin(_startRad);
+            var _largeArc = (endAngle - startAngle) > 180 ? 1 : 0;
+            return 'M ' + _x1 + ' ' + _y1 +
+                   ' A ' + rOuter + ' ' + rOuter + ' 0 ' + _largeArc + ' 1 ' + _x2 + ' ' + _y2 +
+                   ' L ' + _x3 + ' ' + _y3 +
+                   ' A ' + rInner + ' ' + rInner + ' 0 ' + _largeArc + ' 0 ' + _x4 + ' ' + _y4 + ' Z';
+          }
+
+          if (_segments.length > 0) {
+            h += '<div style="margin-top:16px;display:flex;gap:14px;flex-wrap:wrap;align-items:center">';
+            h += '<div style="flex:0 0 200px">';
+            h += '<svg viewBox="0 0 200 200" style="width:100%;max-width:200px;height:auto" xmlns="http://www.w3.org/2000/svg">';
+            var _angleAcc = 0;
+            _segments.forEach(function(seg){
+              if (seg.value <= 0) return;
+              var _slice = (seg.value / 100) * 360;
+              if (_slice >= 360) _slice = 359.99;   // avoid full-circle path bug
+              var _pathD = _arcPath(_dCx, _dCy, _rOuter, _rInner, _angleAcc, _angleAcc + _slice);
+              h += '<path d="' + _pathD + '" fill="' + seg.color + '" opacity="0.9" stroke="#fff" stroke-width="1.5"><title>' + seg.label + ': ' + seg.value.toFixed(1) + '%</title></path>';
+              _angleAcc += _slice;
+            });
+            // Center label
+            h += '<text x="100" y="92" text-anchor="middle" font-size="11" fill="#475569" font-family="Sora,sans-serif" font-weight="700">Inst Total</text>';
+            h += '<text x="100" y="112" text-anchor="middle" font-size="20" fill="#0f172a" font-family="IBM Plex Mono,monospace" font-weight="900">' + _totalInst.toFixed(1) + '%</text>';
+            h += '</svg>';
+            h += '</div>';
+            // Legend on right
+            h += '<div style="flex:1;min-width:180px">';
+            h += '<div style="font-size:11px;font-weight:800;color:#0f172a;margin-bottom:8px;font-family:Sora,sans-serif">Ownership Breakdown</div>';
+            _segments.forEach(function(seg){
+              h += '<div style="display:flex;align-items:center;gap:8px;padding:5px 0;font-size:11px;font-family:Inter,sans-serif">';
+              h += '<span style="display:inline-block;width:12px;height:12px;background:' + seg.color + ';border-radius:3px;flex-shrink:0"></span>';
+              h += '<span style="flex:1;color:#475569">' + seg.label + '</span>';
+              h += '<span style="font-weight:800;color:#0f172a;font-family:\'IBM Plex Mono\',monospace">' + seg.value.toFixed(1) + '%</span>';
+              h += '</div>';
+            });
+            // Concentration verdict
+            var _cVerdict, _cVerdictColor;
+            if (_top10Sum >= 50) { _cVerdict = 'HIGHLY CONCENTRATED — top 10 control half the float. Stock moves with their decisions.'; _cVerdictColor = '#dc2626'; }
+            else if (_top10Sum >= 35) { _cVerdict = 'CONCENTRATED — top 10 own a third+ of float. Large block trades can move the stock.'; _cVerdictColor = '#d97706'; }
+            else if (_top10Sum >= 20) { _cVerdict = 'MODERATELY HELD — diversified institutional base.'; _cVerdictColor = '#059669'; }
+            else                       { _cVerdict = 'WIDELY HELD — no single institution dominates the float.'; _cVerdictColor = '#059669'; }
+            h += '<div style="margin-top:8px;padding:7px 9px;background:#f8fafc;border-left:3px solid ' + _cVerdictColor + ';border-radius:4px;font-size:10px;color:#475569;line-height:1.4">';
+            h += '<strong style="color:' + _cVerdictColor + '">Concentration:</strong> ' + _cVerdict;
+            h += '</div>';
+            h += '</div>';
+            h += '</div>';
+          }
+
+          h += '</div>';   // close the chart card
+        }
+      } catch (_iohErr) { console.warn('Institutional ownership charts render failed:', _iohErr); }
+      // ═══ END r63.99.3 INSTITUTIONAL CHARTS ═══
     }
     h += '</div>';
   }
@@ -18992,7 +19350,19 @@ var _primaryFetch = _cachedFetch('/api/investor-decide?symbol='+encodeURICompone
 var _ddFetch = _cachedFetch('/api/investor-due-diligence?symbol='+encodeURIComponent(sym)+'&region='+reg,300).catch(function(e){console.warn('DD sidecar failed (non-fatal):',e);return null});
 var _premiumFetch = _cachedFetch('/api/premium-intel?symbol='+encodeURIComponent(sym)+'&region='+reg,300).catch(function(e){console.warn('Premium sidecar failed (non-fatal):',e);return null});
 // r63.97.0: SCS sidecar — Structural Change Signal for inline rendering inside Decide-Investor
-var _scsFetch = _cachedFetch('/api/scs?symbol='+encodeURIComponent(sym)+'&region='+reg,1800).catch(function(e){console.warn('SCS sidecar failed (non-fatal):',e);return null});
+// r63.99.2: SCS sidecar — wrap with 45s timeout so we never hang in LOADING state.
+// Previously, if /api/scs took >30s (yfinance slow path), the .catch swallowed the
+// hung promise and frontend showed "LOADING…" forever. Now timeout → explicit error
+// shape so the frontend renders the DATA UNAVAILABLE panel with a retry link.
+var _scsTimeout = new Promise(function(resolve){
+  setTimeout(function(){ resolve({success:false, error:'request timeout (45s) — yfinance likely rate-limited; click the Structural tab for full retry'}); }, 45000);
+});
+var _scsRealFetch = _cachedFetch('/api/scs?symbol='+encodeURIComponent(sym)+'&region='+reg,1800)
+  .catch(function(e){
+    console.warn('SCS sidecar failed (non-fatal):',e);
+    return {success:false, error:'fetch failed: '+(e&&e.message?e.message:'unknown')};
+  });
+var _scsFetch = Promise.race([_scsRealFetch, _scsTimeout]);
 Promise.all([_primaryFetch,_ddFetch,_premiumFetch,_scsFetch]).then(function(_results){
 var d=_results[0]; var _dd=_results[1]; var _pi=_results[2]; var _scs=_results[3];
 if(!d||typeof d!=='object'){el.innerHTML='<div style="color:#DC2626;padding:16px;font-size:11px">Server returned invalid response. Please retry.</div>';return}
