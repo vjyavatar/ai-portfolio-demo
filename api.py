@@ -8179,9 +8179,92 @@ async def premium_intel(symbol: str = "", region: str = "US", nocache: int = 0):
     surprises = _premium_finnhub_surprises(sym, reg)
     if surprises is not None:
         result["earnings_surprises"] = surprises
+
+    # ═══ r63.99.5: FINNHUB FALLBACK CHAIN for Premium Intelligence ═══
+    # When yfinance is rate-limited or returns sparse data, fill gaps from Finnhub
+    # so the panel ALWAYS has data to show. Per Vijay: "ensure data always displays."
+    if reg == "US":
+        try:
+            _data_sources_used = ["yfinance"]
+            # Check if yfinance failed wholesale or returned partial data
+            _need_fh_analyst = (result.get("analyst_estimates") is None or
+                                (result.get("analyst_estimates") and not result["analyst_estimates"].get("target_mean")))
+            _need_fh_multiples = (result.get("forward_multiples") is None or
+                                   (result.get("forward_multiples") and not result["forward_multiples"].get("forward_pe", {}).get("current")))
+
+            if _need_fh_analyst or _need_fh_multiples:
+                try:
+                    fh_info = _fh.get_yfinance_shaped_info(sym, region="US") or {}
+                    if fh_info:
+                        _data_sources_used.append("finnhub.profile+metrics")
+                        # Fill analyst_estimates if missing
+                        if _need_fh_analyst:
+                            tp_mean = _safe_num(fh_info.get("targetMeanPrice"))
+                            tp_high = _safe_num(fh_info.get("targetHighPrice"))
+                            tp_low  = _safe_num(fh_info.get("targetLowPrice"))
+                            rec_mean = _safe_num(fh_info.get("recommendationMean"))
+                            rec_key = fh_info.get("recommendationKey", "")
+                            n_anal = _safe_num(fh_info.get("numberOfAnalystOpinions"))
+                            fwd_eps = _safe_num(fh_info.get("forwardEps"))
+                            fwd_pe = _safe_num(fh_info.get("forwardPE"))
+                            trail_eps = _safe_num(fh_info.get("trailingEps"))
+                            if any(v is not None for v in [tp_mean, n_anal, fwd_eps, fwd_pe]):
+                                result["analyst_estimates"] = {
+                                    "analyst_count":      int(n_anal) if n_anal else None,
+                                    "target_mean":        tp_mean, "target_high": tp_high, "target_low": tp_low,
+                                    "target_median":      _safe_num(fh_info.get("targetMedianPrice")),
+                                    "recommendation_mean": rec_mean, "recommendation": rec_key,
+                                    "forward_eps":         fwd_eps,  "forward_pe":   fwd_pe,
+                                    "trailing_eps":        trail_eps,
+                                    "revenue_growth_yoy":  _safe_num(fh_info.get("revenueGrowth")),
+                                    "earnings_growth_yoy": _safe_num(fh_info.get("earningsGrowth")),
+                                    "source":              "finnhub.fallback",
+                                    "_fallback_used":      True,
+                                }
+                        # Fill forward_multiples if missing
+                        if _need_fh_multiples:
+                            fwd_pe2 = _safe_num(fh_info.get("forwardPE"))
+                            trail_pe = _safe_num(fh_info.get("trailingPE"))
+                            peg = _safe_num(fh_info.get("pegRatio"))
+                            ev_ebitda = _safe_num(fh_info.get("enterpriseToEbitda"))
+                            ev_rev = _safe_num(fh_info.get("enterpriseToRevenue"))
+                            ps = _safe_num(fh_info.get("priceToSalesTrailing12Months"))
+                            pb = _safe_num(fh_info.get("priceToBook"))
+                            if any(v is not None for v in [fwd_pe2, peg, trail_pe, ev_ebitda, ps, pb]):
+                                result["forward_multiples"] = {
+                                    "forward_pe":  {"current": fwd_pe2,   "median_5y": None, "signal": None},
+                                    "peg":         {"current": peg,        "median_5y": None, "signal": None},
+                                    "trailing_pe": {"current": trail_pe,   "median_5y": None, "signal": None},
+                                    "ev_ebitda":   {"current": ev_ebitda,  "median_5y": None, "signal": None},
+                                    "ev_revenue":  {"current": ev_rev,     "median_5y": None, "signal": None},
+                                    "price_sales": {"current": ps,         "median_5y": None, "signal": None},
+                                    "price_book":  {"current": pb,         "median_5y": None, "signal": None},
+                                    "source":      "finnhub.fallback",
+                                    "_fallback_used": True,
+                                    "note":        "yfinance returned sparse data; filled from Finnhub. 5Y medians not available on free tier.",
+                                }
+                except Exception as _fhe:
+                    print(f"[PREMIUM r63.99.5] Finnhub fallback failed for {sym}: {type(_fhe).__name__}: {str(_fhe)[:80]}")
+                    result["_finnhub_fallback_error"] = f"{type(_fhe).__name__}"
+            result["_data_sources"] = _data_sources_used
+        except Exception as _fbe:
+            print(f"[PREMIUM r63.99.5] fallback chain outer error for {sym}: {type(_fbe).__name__}")
+
+    # Completeness scoring — tells frontend how full the response is
+    _completeness = {
+        "analyst_estimates":   bool(result.get("analyst_estimates")),
+        "estimate_revisions":  bool(result.get("estimate_revisions")),
+        "forward_multiples":   bool(result.get("forward_multiples")),
+        "dividend_quality":    bool(result.get("dividend_quality")),
+        "earnings_surprises":  bool(result.get("earnings_surprises")),
+    }
+    _n_present = sum(1 for v in _completeness.values() if v)
+    result["_completeness"] = _completeness
+    result["_completeness_pct"] = int(_n_present / 5 * 100)
     result["_elapsed_sec"] = round(time.time() - t0, 2)
     # Cache
     _premium_intel_cache[cache_key] = {"data": result, "ts": time.time()}
+    print(f"[PREMIUM] {sym} ({reg}) computed in {result['_elapsed_sec']}s: completeness={result['_completeness_pct']}%, sources={result.get('_data_sources', ['?'])}")
     return result
 
 
@@ -22351,6 +22434,127 @@ Rules:
         return {"success": False, "error": str(e)[:200]}
 
 
+# r63.99.7: Theme-wise news — Vijay's ask "news theme wise like tech, chip sector, pharma"
+# Returns news organized by 6 themes with winners/losers + sector action per theme.
+_news_themes_cache = {}
+_NEWS_THEMES_TTL = 1800  # 30 min — themes don't change that fast intra-day
+
+@app.get("/api/news-themes")
+async def news_themes(region: str = "IN"):
+    """Theme-wise news analysis grouped by sector: Tech, Chips, Pharma, Banking, Energy, Consumer.
+
+    For each theme, returns top 2-3 headlines + winners + losers + theme sentiment + sector action.
+    This is the proactive theme view — different from /api/breaking-news (flat headline list).
+    """
+    try:
+        if not ANTHROPIC_API_KEY:
+            return {"success": False, "error": "AI key not configured"}
+
+        is_us = region.upper() == "US"
+        cache_key = f"{region}"
+        cached = _news_themes_cache.get(cache_key)
+        if cached and (time.time() - cached["ts"]) < _NEWS_THEMES_TTL:
+            resp = dict(cached["data"])
+            resp["_cached"] = True
+            resp["_cache_age_min"] = int((time.time() - cached["ts"]) / 60)
+            return resp
+
+        market = ("Indian stock market (NSE — Nifty, Bank Nifty, BSE — Sensex)"
+                  if not is_us else "US stock market (S&P 500, NASDAQ, Dow Jones)")
+
+        if is_us:
+            sample_tickers = "AAPL, MSFT, NVDA, GOOGL, AMZN (tech) | NVDA, AMD, AVGO, TSM, INTC, MU (chips) | LLY, PFE, MRNA, JNJ (pharma) | JPM, BAC, GS, WFC (banking) | XOM, CVX, OXY (energy) | TSLA, WMT, NKE, DIS, COST (consumer)"
+        else:
+            sample_tickers = "TCS, INFY, WIPRO, HCLTECH (IT) | BHARTIARTL, JIO (telecom) | DRREDDY, SUNPHARMA, CIPLA (pharma) | HDFCBANK, ICICIBANK, SBIN, AXISBANK (banking) | RELIANCE, ONGC, IOC (energy) | ITC, HUL, MARUTI, NESTLEIND (consumer)"
+
+        prompt = f"""You are a senior market analyst covering the {market}. Today is {datetime.utcnow().strftime('%Y-%m-%d')}.
+
+Generate **theme-wise news analysis** for today's market. Organize news by these themes:
+1. **Technology / IT** — software, cloud, AI, internet
+2. **Semiconductors / Chips** — fabs, design, AI accelerators, foundry capacity
+3. **Pharma / Healthcare** — drug approvals, clinical trials, biotech, hospitals
+4. **Banking / Financials** — interest rates, credit, NBFC, insurance
+5. **Energy / Commodities** — oil, gas, renewables, mining
+6. **Consumer / Retail** — FMCG, autos, retail, travel
+
+For each theme, find the 2-3 most relevant breaking news/events affecting that sector RIGHT NOW. Use your latest knowledge of market developments.
+
+Respond ONLY in this exact JSON format (no markdown, no backticks):
+{{
+  "themes": [
+    {{
+      "theme": "Technology / IT",
+      "icon": "💻",
+      "sentiment": "BULLISH" or "BEARISH" or "MIXED",
+      "themeSummary": "2-sentence summary of what's driving the sector today",
+      "themeAction": "One concrete sentence: what an investor should do in this theme today",
+      "headlines": [
+        {{
+          "title": "Headline (max 15 words)",
+          "impactScore": 1-10,
+          "sentiment": "BULLISH" or "BEARISH" or "NEUTRAL",
+          "summary": "1-2 sentence explanation",
+          "winners": [{{"symbol": "TICKER", "name": "Company", "reason": "Why this benefits"}}],
+          "losers": [{{"symbol": "TICKER", "name": "Company", "reason": "Why this hurts"}}]
+        }}
+      ]
+    }}
+  ],
+  "marketMood": "BULLISH" or "BEARISH" or "MIXED",
+  "topThemeToday": "Theme name with the most movement today",
+  "macroNarrative": "2-3 sentence summary of the overall market backdrop today"
+}}
+
+Rules:
+- Use {region.upper()} market tickers ({sample_tickers})
+- Each theme: 2-3 headlines, ranked by impact (highest first)
+- Each headline: 1-3 winners + 1-2 losers
+- Be specific with company names + tickers
+- impactScore: 1-3=minor, 4-6=moderate, 7-8=significant, 9-10=market-moving
+- themeAction must be a CONCRETE action ("Reduce IT exposure if you hold >15% of portfolio in TCS/INFY", "Add semiconductor exposure via AMD on any 5% dip", etc.) — not vague
+- All 6 themes MUST be present even if quiet (mark sentiment=MIXED and explain in themeSummary)"""
+
+        _loop = asyncio.get_event_loop()
+        def _call_claude():
+            return _http_pool.post(
+                "https://api.anthropic.com/v1/messages",
+                headers={"x-api-key": ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json"},
+                json={"model": "claude-sonnet-4-20250514", "max_tokens": 4000, "messages": [{"role": "user", "content": prompt}]},
+                timeout=120,
+            )
+
+        r = await _loop.run_in_executor(None, _call_claude)
+        if r.status_code != 200:
+            return {"success": False, "error": f"AI API returned {r.status_code}"}
+
+        data = r.json()
+        text = ""
+        for block in data.get("content", []):
+            if block.get("type") == "text":
+                text += block["text"]
+        text = text.strip()
+        if text.startswith("```"): text = text.split("\n", 1)[1] if "\n" in text else text[3:]
+        if text.endswith("```"): text = text[:-3]
+        text = text.strip()
+
+        analysis = json.loads(text)
+        analysis["success"] = True
+        analysis["region"] = region
+        analysis["timestamp"] = (datetime.utcnow() + timedelta(hours=5, minutes=30)).strftime("%H:%M IST") if not is_us else datetime.utcnow().strftime("%H:%M UTC")
+        analysis["ts"] = time.time()
+        _news_themes_cache[cache_key] = {"data": analysis, "ts": time.time()}
+        n_themes = len(analysis.get("themes", []))
+        n_headlines = sum(len(t.get("headlines", [])) for t in analysis.get("themes", []))
+        print(f"[NEWS-THEMES] {region}: {n_themes} themes, {n_headlines} headlines")
+        return analysis
+
+    except json.JSONDecodeError as e:
+        return {"success": False, "error": f"AI parsing failed: {str(e)[:100]}"}
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        return {"success": False, "error": str(e)[:200]}
+
+
 @app.get("/api/news-impact")
 async def news_impact(topic: str = "", region: str = "IN"):
     """AI-powered news analysis — takes any news/event and analyzes stock market impact"""
@@ -32585,44 +32789,143 @@ async def investor_due_diligence(email: str = "", symbol: str = "", region: str 
             elif _v_upside > -30: valuation_detail["verdict"] = "OVERVALUED"
             else:                 valuation_detail["verdict"] = "STRONGLY OVERVALUED"
         try:
-            # r63.32: Only compute fallback DCF if canonical blend was unavailable
-            # (otherwise we keep the canonical blend already populated above)
-            fcf = info.get("freeCashflow") or 0
-            shares_out = info.get("sharesOutstanding") or 0
+            # ═══ r63.99.6: MULTI-METHOD FAIR VALUE FALLBACK CHAIN ═══
+            # Vijay: "fair value should be able to compute". Previously the DCF block
+            # would set data_quality=INCOMPLETE when freeCashflow or sharesOutstanding
+            # were None (common when Yahoo rate-limits). Now we try 5 methods in order,
+            # picking the first one that produces a meaningful number. Result is always
+            # populated unless ALL sources fail — and even then we surface what we tried.
             _need_fallback = not valuation_detail.get("fair_value") or valuation_detail.get("data_quality") == "DCF_FALLBACK"
-            if _need_fallback and fcf and shares_out and fcf > 0:
-                growth_y = (rev_growth or 0.05)
-                growth_y = max(-0.10, min(0.30, growth_y))  # clamp
-                discount = 0.10
-                terminal_g = 0.025
-                pv = 0.0
-                cf = fcf
-                for yr in range(1, 6):
-                    cf = cf * (1 + growth_y * (0.7 ** (yr-1)))  # decaying growth
-                    pv += cf / ((1 + discount) ** yr)
-                terminal = (cf * (1 + terminal_g)) / (discount - terminal_g)
-                pv += terminal / ((1 + discount) ** 5)
-                fair_value_per_share = pv / shares_out
-                upside = ((fair_value_per_share - spot) / spot) * 100 if spot else 0
-                valuation_detail["fair_value"] = round(fair_value_per_share, 2)
-                valuation_detail["upside_pct"] = round(upside, 1)
-                valuation_detail["verdict"] = (
-                    "STRONGLY UNDERVALUED" if upside > 30 else
-                    "UNDERVALUED" if upside > 10 else
-                    "FAIR VALUE" if upside > -10 else
-                    "OVERVALUED" if upside > -30 else
-                    "STRONGLY OVERVALUED"
-                )
-            else:
-                valuation_detail["data_quality"] = "INCOMPLETE"
-                valuation_detail["verdict"] = "INSUFFICIENT DATA"
-                valuation_detail["incomplete_reason"] = (
-                    "Free cash flow or shares outstanding not available — DCF cannot be computed honestly."
-                )
+            if _need_fallback:
+                _methods_tried = []   # diagnostic: what we tried, what worked
+
+                # ─── Method 1: DCF from free cash flow (gold standard when data available) ───
+                fcf = info.get("freeCashflow") or 0
+                shares_out = info.get("sharesOutstanding") or 0
+                fv_dcf = None
+                if fcf and shares_out and fcf > 0:
+                    try:
+                        growth_y = (rev_growth or 0.05)
+                        growth_y = max(-0.10, min(0.30, growth_y))
+                        discount = 0.10
+                        terminal_g = 0.025
+                        pv = 0.0
+                        cf = fcf
+                        for yr in range(1, 6):
+                            cf = cf * (1 + growth_y * (0.7 ** (yr-1)))
+                            pv += cf / ((1 + discount) ** yr)
+                        terminal = (cf * (1 + terminal_g)) / (discount - terminal_g)
+                        pv += terminal / ((1 + discount) ** 5)
+                        fv_dcf = pv / shares_out
+                        _methods_tried.append({"method": "DCF (5-year FCF + terminal)", "value": round(fv_dcf, 2), "status": "ok"})
+                    except Exception as _e1:
+                        _methods_tried.append({"method": "DCF", "value": None, "status": f"err: {type(_e1).__name__}"})
+                else:
+                    _methods_tried.append({"method": "DCF", "value": None, "status": "missing FCF or sharesOutstanding"})
+
+                # ─── Method 2: Forward PE × Forward EPS (works when DCF fails) ───
+                fwd_eps = _safe_float(info.get("forwardEps"))
+                trail_eps = _safe_float(info.get("trailingEps"))
+                fwd_pe = _safe_float(info.get("forwardPE"))
+                trail_pe = _safe_float(info.get("trailingPE"))
+                # Use trailing PE as the "fair multiple" anchor (or sector median fallback)
+                # Common sector medians: tech 22, financials 12, utilities 18, consumer staples 22
+                _fair_pe = trail_pe if (trail_pe and 5 < trail_pe < 50) else 18.0
+                fv_pe = None
+                if fwd_eps and fwd_eps > 0:
+                    fv_pe = fwd_eps * _fair_pe
+                    _methods_tried.append({"method": f"Forward EPS × Fair PE ({_fair_pe:.1f}x)", "value": round(fv_pe, 2), "status": "ok"})
+                elif trail_eps and trail_eps > 0:
+                    fv_pe = trail_eps * _fair_pe
+                    _methods_tried.append({"method": f"Trailing EPS × Fair PE ({_fair_pe:.1f}x)", "value": round(fv_pe, 2), "status": "ok"})
+                else:
+                    _methods_tried.append({"method": "PE-based", "value": None, "status": "missing EPS"})
+
+                # ─── Method 3: Graham Number — sqrt(22.5 × EPS × BVPS) ───
+                bvps = _safe_float(info.get("bookValue"))
+                fv_graham = None
+                if (fwd_eps or trail_eps) and bvps and bvps > 0:
+                    _e = fwd_eps if (fwd_eps and fwd_eps > 0) else trail_eps
+                    if _e and _e > 0:
+                        try:
+                            import math as _math
+                            fv_graham = _math.sqrt(22.5 * _e * bvps)
+                            _methods_tried.append({"method": "Graham Number", "value": round(fv_graham, 2), "status": "ok"})
+                        except Exception as _e3:
+                            _methods_tried.append({"method": "Graham", "value": None, "status": f"err: {type(_e3).__name__}"})
+                else:
+                    _methods_tried.append({"method": "Graham", "value": None, "status": "missing EPS or BVPS"})
+
+                # ─── Method 4: Earnings yield vs bond rate — EPS / (10Y bond ~4.5%) ───
+                fv_yield = None
+                _bond_rate = 0.045   # 10Y Treasury approx, hardcoded but reasonable
+                if (fwd_eps or trail_eps):
+                    _e = fwd_eps if (fwd_eps and fwd_eps > 0) else trail_eps
+                    if _e and _e > 0:
+                        fv_yield = _e / _bond_rate
+                        _methods_tried.append({"method": f"Earnings yield ({_bond_rate*100:.1f}% bond)", "value": round(fv_yield, 2), "status": "ok"})
+
+                # ─── Method 5: Analyst target — average of target_mean ───
+                target_mean = _safe_float(info.get("targetMeanPrice"))
+                target_median = _safe_float(info.get("targetMedianPrice"))
+                fv_analyst = None
+                if target_mean and target_mean > 0:
+                    fv_analyst = target_mean
+                    _methods_tried.append({"method": "Analyst target mean", "value": round(fv_analyst, 2), "status": "ok"})
+                elif target_median and target_median > 0:
+                    fv_analyst = target_median
+                    _methods_tried.append({"method": "Analyst target median", "value": round(fv_analyst, 2), "status": "ok"})
+
+                # ─── Blend: prefer DCF, fall back to weighted blend of available methods ───
+                _candidates = [v for v in [fv_dcf, fv_pe, fv_graham, fv_yield, fv_analyst] if v and v > 0]
+                if _candidates:
+                    if fv_dcf:
+                        # Have DCF — use it as primary, but blend with PE/Analyst if they're nearby
+                        nearby = [v for v in _candidates if v and 0.5 * fv_dcf < v < 2.0 * fv_dcf]
+                        fair_value_per_share = sum(nearby) / len(nearby) if len(nearby) >= 2 else fv_dcf
+                        valuation_detail["method"] = "DCF blended with " + str(len(nearby) - 1) + " corroborating methods" if len(nearby) > 1 else "DCF (5-year FCF + terminal value)"
+                    else:
+                        # No DCF — use the median of available methods (filters out outliers)
+                        _sorted = sorted(_candidates)
+                        fair_value_per_share = _sorted[len(_sorted) // 2] if len(_sorted) % 2 == 1 else (_sorted[len(_sorted)//2 - 1] + _sorted[len(_sorted)//2]) / 2
+                        # Identify primary method
+                        if fv_pe and abs(fair_value_per_share - fv_pe) < 0.01:
+                            valuation_detail["method"] = f"Forward EPS × Fair PE ({_fair_pe:.1f}x) — DCF unavailable"
+                        elif fv_graham and abs(fair_value_per_share - fv_graham) < 0.01:
+                            valuation_detail["method"] = "Graham Number — DCF unavailable"
+                        elif fv_yield and abs(fair_value_per_share - fv_yield) < 0.01:
+                            valuation_detail["method"] = "Earnings yield model — DCF unavailable"
+                        elif fv_analyst and abs(fair_value_per_share - fv_analyst) < 0.01:
+                            valuation_detail["method"] = "Analyst consensus target — DCF unavailable"
+                        else:
+                            valuation_detail["method"] = f"Median of {len(_candidates)} valuation methods (DCF unavailable)"
+
+                    upside = ((fair_value_per_share - spot) / spot) * 100 if spot else 0
+                    valuation_detail["fair_value"] = round(fair_value_per_share, 2)
+                    valuation_detail["upside_pct"] = round(upside, 1)
+                    valuation_detail["fair_value_low"] = round(min(_candidates), 2)
+                    valuation_detail["fair_value_high"] = round(max(_candidates), 2)
+                    valuation_detail["verdict"] = (
+                        "STRONGLY UNDERVALUED" if upside > 30 else
+                        "UNDERVALUED" if upside > 10 else
+                        "FAIR VALUE" if upside > -10 else
+                        "OVERVALUED" if upside > -30 else
+                        "STRONGLY OVERVALUED"
+                    )
+                    valuation_detail["data_quality"] = "FULL" if fv_dcf else "PARTIAL"
+                    valuation_detail["_methods_tried"] = _methods_tried
+                    print(f"[VAL] {symbol} fair_value={valuation_detail['fair_value']} via {valuation_detail['method']}, {len(_candidates)} methods agreed, range=${min(_candidates):.0f}-${max(_candidates):.0f}")
+                else:
+                    valuation_detail["data_quality"] = "INCOMPLETE"
+                    valuation_detail["verdict"] = "INSUFFICIENT DATA"
+                    valuation_detail["incomplete_reason"] = "All 5 methods (DCF, PE, Graham, Earnings Yield, Analyst Target) returned no usable value. Yahoo Finance likely rate-limited."
+                    valuation_detail["_methods_tried"] = _methods_tried
+                    print(f"[VAL] {symbol} ALL methods failed: {_methods_tried}")
         except Exception as _ve:
             valuation_detail["data_quality"] = "INCOMPLETE"
             valuation_detail["verdict"] = "INSUFFICIENT DATA"
-            valuation_detail["incomplete_reason"] = f"DCF computation failed: {str(_ve)[:80]}"
+            valuation_detail["incomplete_reason"] = f"Fair value computation failed: {str(_ve)[:80]}"
+            print(f"[VAL] {symbol} valuation block crashed: {type(_ve).__name__}: {str(_ve)[:120]}")
 
 
         # ═══ SECTION 9: QUARTERLY EARNINGS HISTORY (r60.3) ═══
@@ -33133,16 +33436,20 @@ async def investor_due_diligence(email: str = "", symbol: str = "", region: str 
             if score >= 80:
                 _plain_th = f"Strong company ({score}/100). Most quality checks pass — solid finances, growing, and reasonably priced. The kind of stock that lands in institutional 'buy' buckets.{dcf_str}"
                 _analyst_th = f"Investability {score}/100. {verdict_label}. Multi-factor screen passes.{dcf_str}"
+                _action_th = "High-conviction candidate. Suitable for a core position (5-15% of portfolio). Buy in 2-3 tranches over 2-4 weeks to average in. Hold through normal volatility."
             elif score >= 60:
                 _plain_th = f"Decent company ({score}/100) with both bright spots and concerns. Worth a closer look but not a slam-dunk.{dcf_str}"
                 _analyst_th = f"Investability {score}/100. {verdict_label}. Mixed signals — selective entry.{dcf_str}"
+                _action_th = "Worth a starter position (2-4% of portfolio). Add only after reading the Risk Matrix and SWOT below — if those resolve favorably, build to full size. Set a stop-loss at 12-15% below entry."
             elif score >= 40:
                 _plain_th = f"Okay company ({score}/100) but with notable weak spots. Several metrics look poor — understand what's wrong before buying.{dcf_str}"
                 _analyst_th = f"Investability {score}/100. {verdict_label}. Material concerns.{dcf_str}"
+                _action_th = "Don't buy unless you have a specific catalyst thesis (turnaround, M&A, earnings inflection). If you do enter, treat it as a 6-12 month trade with a hard 15-20% stop-loss, not a long-term hold."
             else:
                 _plain_th = f"Weak fundamentals ({score}/100). Most quality checks fail. Better names to look at unless you have a specific contrarian thesis.{dcf_str}"
                 _analyst_th = f"Investability {score}/100. {verdict_label}. Avoid or short candidate.{dcf_str}"
-            thesis["layman"] = {"plain": _plain_th, "analyst": _analyst_th}
+                _action_th = "Skip this name. Use the Diamond Hunter or Pro Scan tabs to find higher-quality alternatives in the same sector with similar growth potential but better fundamentals."
+            thesis["layman"] = {"plain": _plain_th, "analyst": _analyst_th, "action": _action_th}
 
         # Financial Health layman — r61.4 with specific numbers
         if finance:
@@ -33165,14 +33472,18 @@ async def investor_due_diligence(email: str = "", symbol: str = "", region: str 
             elif gm < 20 and gm > 0: issues.append(f"thin gross margin ({gm:.0f}%)")
             if not strengths and not issues:
                 _plain_fh = f"Financials look ordinary (margin {margin:.1f}%, ROE {roe_pct:.1f}%, D/E {de:.0f}%) — nothing jumps out as great or worrying."
+                _action_fh = "Average fundamentals — buy/sell decision should depend on growth story, valuation, and price chart, not financials alone."
             elif strengths and not issues:
                 _plain_fh = "Healthy company — " + " and ".join(strengths) + ". The kind of business institutions like to own."
+                _action_fh = "Strong fundamentals support holding through volatility. Use price weakness (10-15% pullbacks) to add — the underlying business will recover."
             elif issues and not strengths:
                 _plain_fh = "Concerns here — " + " and ".join(issues) + ". Be cautious before buying."
+                _action_fh = "Don't add new money until at least one of these issues improves on the next earnings report. If you own it, set a hard stop-loss."
             else:
                 _plain_fh = "Mixed picture. Strengths: " + ", ".join(strengths) + ". Concerns: " + ", ".join(issues) + "."
+                _action_fh = "Take a starter position (half normal size). Wait for the next earnings report to see if concerns get resolved before adding more."
             _analyst_fh = f"Margin {margin:.1f}%, ROE {roe_pct:.1f}%, D/E {de:.0f}%, GM {gm:.0f}%. {'Strong' if margin > 10 and roe_pct > 15 and de < 100 else 'Mixed' if margin > 0 else 'Weak'} fundamentals."
-            finance["layman"] = {"plain": _plain_fh, "analyst": _analyst_fh}
+            finance["layman"] = {"plain": _plain_fh, "analyst": _analyst_fh, "action": _action_fh}
 
         # Sector context layman
         if sector_data:
@@ -33180,19 +33491,24 @@ async def investor_due_diligence(email: str = "", symbol: str = "", region: str 
             if outperf is None:
                 _plain_sc = "Couldn't measure how this stock has done compared to its sector."
                 _analyst_sc = "Sector relative performance unavailable."
+                _action_sc = "Compare manually using the sector ETF performance in the Top Performers tab."
             elif outperf > 50:
                 _plain_sc = f"This stock has crushed its sector — up {outperf:+.1f}% more than the sector average. Way ahead of peers."
                 _analyst_sc = f"Strong sector outperformance: +{outperf:.1f}%. Momentum leader."
+                _action_sc = "Momentum leaders often keep leading — but they correct harder when sector rotates. Use trailing stops (10-15%) to protect gains while staying in the trade."
             elif outperf > 10:
                 _plain_sc = f"Beating its sector by about {outperf:+.1f}% — performing nicely vs peers."
                 _analyst_sc = f"Outperforming sector by {outperf:.1f}%. Above-average."
+                _action_sc = "Quality outperformer — appropriate for a core position. Buy pullbacks rather than chasing breakouts."
             elif outperf > -10:
                 _plain_sc = "Performing roughly in line with its sector — neither winning nor losing."
                 _analyst_sc = f"In-line sector performance ({outperf:+.1f}%)."
+                _action_sc = "No edge vs sector — consider the sector ETF instead unless you have a specific catalyst case for this name."
             else:
                 _plain_sc = f"Lagging the sector by {abs(outperf):.1f}% — peers are doing better. Could be a bargain or a warning sign."
                 _analyst_sc = f"Underperforming sector by {abs(outperf):.1f}%. Rerating risk or value opportunity."
-            sector_data["layman"] = {"plain": _plain_sc, "analyst": _analyst_sc}
+                _action_sc = "Two paths: contrarian buy if you believe fundamentals will catch up (small position, wait for first higher-low), OR avoid until lagging trend breaks. Read the Risk Matrix below to decide which."
+            sector_data["layman"] = {"plain": _plain_sc, "analyst": _analyst_sc, "action": _action_sc}
 
         # Risk Matrix layman
         if risk_matrix:
@@ -33201,16 +33517,20 @@ async def investor_due_diligence(email: str = "", symbol: str = "", region: str 
             if health == "STRONG":
                 _plain_rm = "No red flags found. Balance sheet looks clean, profits are positive, debt is manageable. About as safe as stocks get."
                 _analyst_rm = "Zero flagged risks. All structural checks pass. Investment-grade balance sheet."
+                _action_rm = "No special precautions needed. Position-size based on conviction, not fear of blow-up. Standard 5-10% portfolio allocation appropriate."
             elif health == "HEALTHY":
                 _plain_rm = "No major concerns. The company is on solid footing financially."
                 _analyst_rm = "No flagged risks. Solid fundamentals."
+                _action_rm = "Safe to own. Monitor quarterly earnings for any deterioration in margins or debt levels — if those start drifting wrong, revisit."
             elif health == "MIXED":
                 _plain_rm = f"A couple of yellow flags — {n_risks} concern(s) found. Not a dealbreaker, but worth understanding before buying."
                 _analyst_rm = f"{n_risks} flagged risks. Monitor before initiating."
+                _action_rm = "Read the specific risk items below before buying. Reduce position size to half of normal (e.g. 3-5% instead of 7-10%) and set a tighter stop-loss."
             else:
                 _plain_rm = f"Several red flags — {n_risks} risks found. Be careful — these are real problems."
                 _analyst_rm = f"{n_risks} flagged risks. CONCERNING profile."
-            risk_matrix["layman"] = {"plain": _plain_rm, "analyst": _analyst_rm}
+                _action_rm = "Avoid taking a long-term position. If you trade it, treat as short-term only with strict stop-loss. Multiple flagged risks compound — one bad quarter can cascade."
+            risk_matrix["layman"] = {"plain": _plain_rm, "analyst": _analyst_rm, "action": _action_rm}
 
         # SWOT layman — r61.4 with top strength + top concern named
         if swot:
@@ -33300,19 +33620,24 @@ async def investor_due_diligence(email: str = "", symbol: str = "", region: str 
             if up is None:
                 _plain_vd = "Couldn't calculate fair value — missing some financial data needed."
                 _analyst_vd = "DCF INCOMPLETE — insufficient cashflow data."
+                _action_vd = "Don't use this section to time entry — cross-check with the Peer Comparison and Forward Multiples sections below."
             elif up > 30:
                 _plain_vd = f"Looks very cheap — fair value math says it should trade {up:+.0f}% higher than today. Big margin of safety if the math is right."
                 _analyst_vd = f"DCF implies {up:+.1f}% upside. {v}."
+                _action_vd = "If business is healthy (check the Finance and Moat sections) and the upside is real, this is a buy-the-dip setup. Build position in 2-3 tranches; don't go all-in on day one."
             elif up > 10:
                 _plain_vd = f"Looks cheap — fair value is about {up:+.0f}% above current price."
                 _analyst_vd = f"DCF implies {up:+.1f}% upside. {v}."
+                _action_vd = "Moderate undervaluation. Worth a starter position. Add more if it dips 5-10% from here without bad news."
             elif up > -10:
                 _plain_vd = "Trading near what the math says it's worth — fairly priced."
                 _analyst_vd = f"Trading at fair value ({up:+.1f}% delta)."
+                _action_vd = "Don't pay more than current price unless growth or catalysts justify a premium. Wait for a 10%+ dip, or focus on better-valued names."
             else:
                 _plain_vd = f"Looks expensive — fair value math says it's overpriced by about {abs(up):.0f}%. Be careful chasing here."
                 _analyst_vd = f"DCF implies {up:+.1f}% downside. {v}."
-            valuation_detail["layman"] = {"plain": _plain_vd, "analyst": _analyst_vd}
+                _action_vd = f"Avoid buying at current levels. If you already own it, consider trimming. Wait for at least a {min(20, abs(int(up*0.5)))}% pullback before adding."
+            valuation_detail["layman"] = {"plain": _plain_vd, "analyst": _analyst_vd, "action": _action_vd}
 
         # Earnings History layman
         if earnings_history:
@@ -33361,37 +33686,46 @@ async def investor_due_diligence(email: str = "", symbol: str = "", region: str 
                 if "STRONG BUYING" in s:
                     _plain_ia = f"Strong insider buying — {buys} buys vs {sells} sells in 6 months. When executives buy their own stock with their own money, that's usually a bullish signal.{net_str}"
                     _analyst_ia = f"Insider net buying. {buys}B/{sells}S 6mo.{net_str}"
+                    _action_ia = "Watch for follow-through buys over the next quarter. If insiders keep buying after a price dip, that's a high-conviction signal — consider joining them with a 5-10% position."
                 elif "STRONG SELLING" in s:
                     _plain_ia = f"Heavy insider selling — {sells} sells vs {buys} buys in 6 months. Could be tax planning or executives cashing out, but worth noting.{net_str}"
                     _analyst_ia = f"Insider net selling. {sells}S/{buys}B 6mo.{net_str}"
+                    _action_ia = "Don't add fresh money on top of insider selling. If you own it, consider trimming alongside them. Wait for selling to stop before re-entering."
                 elif s == "BUYING":
                     _plain_ia = f"Light insider buying — {buys} buys vs {sells} sells over 6 months. Mildly positive signal.{net_str}"
                     _analyst_ia = f"Mild insider buying. {buys}B/{sells}S.{net_str}"
+                    _action_ia = "Modestly positive — not a buy signal on its own, but supports a thesis you already like for other reasons."
                 elif s == "SELLING":
                     _plain_ia = f"Light insider selling — {sells} sells vs {buys} buys over 6 months. Some executives reducing positions.{net_str}"
                     _analyst_ia = f"Mild insider selling. {sells}S/{buys}B.{net_str}"
+                    _action_ia = "Not a dealbreaker alone — small sells are often just diversification or tax timing. But pair with the rest of the report before deciding."
                 elif s == "MIXED":
                     _plain_ia = f"Mixed insider activity — {buys} buys and {sells} sells balance out. No clear signal.{net_str}"
                     _analyst_ia = f"Mixed insider flow. {buys}B/{sells}S.{net_str}"
+                    _action_ia = "No information edge here — make your decision based on fundamentals and valuation, not insider activity."
                 else:
                     _plain_ia = f"Insider activity is neutral — {buys} buys and {sells} sells, balanced.{net_str}"
                     _analyst_ia = f"Neutral insider flow.{net_str}"
+                    _action_ia = "Insiders are neutral — focus on other signals in the report for your decision."
             else:
                 _plain_ia = "No clear insider signal."
                 _analyst_ia = "Insufficient insider data."
-            ia["layman"] = {"plain": _plain_ia, "analyst": _analyst_ia}
+                _action_ia = "Treat this section as missing input — rely on the rest of the report."
+            ia["layman"] = {"plain": _plain_ia, "analyst": _analyst_ia, "action": _action_ia}
 
             # ── INSTITUTIONAL HOLDERS layman ──
             ih = institutional.get("institutional_holders") or {}
             if ih.get("data_quality") == "INCOMPLETE":
                 _plain_ih = "No 13F institutional ownership data available for this ticker."
                 _analyst_ih = ih.get("reason") or "13F data unavailable."
+                _action_ih = "Look at the price chart for volume patterns instead — big institutional flow shows up as outsized green volume bars."
             elif ih.get("dii_pct") is not None or ih.get("fii_pct") is not None:
                 # India case
                 dii = ih.get("dii_pct") or 0
                 fii = ih.get("fii_pct") or 0
                 _plain_ih = f"Domestic institutions own {dii:.1f}% and foreign institutions own {fii:.1f}% of this Indian stock. Higher DII often signals stable long-term holders, higher FII signals foreign confidence."
                 _analyst_ih = f"DII {dii:.2f}% / FII {fii:.2f}%. NSE-only; no holder list."
+                _action_ih = "Watch monthly FII flows in NSDL data — if FII reduces stake by >2% in a single month, that often precedes a 10-15% pullback in heavily FII-owned names."
             else:
                 conc = ih.get("concentration", "UNKNOWN")
                 pct_inst = ih.get("total_pct_outstanding")
@@ -33402,16 +33736,21 @@ async def investor_due_diligence(email: str = "", symbol: str = "", region: str 
                 if conc == "VERY HIGH":
                     _plain_ih = f"Very heavily owned by big institutions ({pct_inst:.0f}% of all shares). Major funds dominate this stock — moves more on institutional flow than retail.{top_str}"
                     _analyst_ih = f"Concentrated inst. ownership: {pct_inst:.1f}%."
+                    _action_ih = "Watch the 13F filings (every quarter) for any major holder reducing position — that's the catalyst that moves these names down. If top 3 keep adding, sit tight."
                 elif conc == "HIGH":
                     _plain_ih = f"Strong institutional ownership — {pct_inst:.0f}% of shares held by funds. Mainstream institutional name.{top_str}"
                     _analyst_ih = f"High inst. ownership: {pct_inst:.1f}%."
+                    _action_ih = "Stable holder base supports holding through volatility. Monitor 13F changes quarterly — sudden institutional exits are early warning signs."
                 elif conc == "MODERATE":
                     _plain_ih = f"Moderate institutional ownership — {pct_inst:.0f}% of shares with funds, the rest split between insiders and retail.{top_str}"
                     _analyst_ih = f"Moderate inst. ownership: {pct_inst:.1f}%."
+                    _action_ih = "Balanced ownership — moves on both fundamentals AND retail sentiment. Use earnings beats as entry catalysts and big retail-driven spikes as trim opportunities."
                 elif conc == "LOW":
                     _plain_ih = f"Low institutional ownership — only {pct_inst:.0f}% with funds. Retail-driven, prone to higher volatility.{top_str}"
                     _analyst_ih = f"Low inst. ownership: {pct_inst:.1f}%. Retail-skewed."
+                    _action_ih = "Expect more volatility than institutional names. Trade smaller size. Watch options activity and social-media volume more than 13Fs here."
                 else:
+                    _action_ih = "Cross-check with price/volume patterns to gauge institutional flow."
                     # r63.62b: only TRULY unknown when no holders, no aggregate, no fallback
                     if ih.get("top_holders"):
                         # Have holder list but no aggregate — show holders anyway
@@ -33422,10 +33761,11 @@ async def investor_due_diligence(email: str = "", symbol: str = "", region: str 
                     else:
                         _plain_ih = "Institutional ownership data is incomplete for this ticker."
                         _analyst_ih = "Inst. ownership unknown."
-            ih["layman"] = {"plain": _plain_ih, "analyst": _analyst_ih}
+            ih["layman"] = {"plain": _plain_ih, "analyst": _analyst_ih, "action": _action_ih}
 
             # ── RISK-ADJUSTED RETURNS layman ──
             ra = institutional.get("risk_adjusted") or {}
+            _action_ra = "Wait for more price history before making sizing decisions."   # r63.99.7 default
             if ra.get("data_quality") == "INCOMPLETE":
                 _plain_ra = "Not enough price history to compute risk-adjusted returns."
                 _analyst_ra = ra.get("reason") or "Sharpe/DD unavailable."
@@ -33458,7 +33798,16 @@ async def investor_due_diligence(email: str = "", symbol: str = "", region: str 
                     dd_msg = f"with {dd:.0f}% max drawdown"
                 _plain_ra = f"Over the analyzed period, {sharpe_msg}, {dd_msg}. Annual volatility around {vol:.0f}%."
                 _analyst_ra = f"Sharpe {sharpe} ({sg}). Max DD {dd}% ({ddg}). Vol {vol}% ann."
-            ra["layman"] = {"plain": _plain_ra, "analyst": _analyst_ra}
+                # r63.99.7: ACTION — concrete next step for this risk profile
+                if ddg in ("SEVERE", "EXTREME"):
+                    _action_ra = f"Size your position smaller than normal (e.g. 3-5% of portfolio max, not 10%). Set a hard stop-loss {abs(int(dd*0.6))}% below entry, and only buy on weakness, never on green days."
+                elif sg in ("STRONG", "EXCELLENT") and ddg in ("MINOR", "MODERATE"):
+                    _action_ra = f"Good risk-adjusted profile — can size normally (5-10% of portfolio). Use a {abs(int(dd*0.7))}% trailing stop and let it run."
+                elif sg == "WEAK":
+                    _action_ra = "Returns aren't compensating for the volatility — consider whether a lower-vol alternative in the same sector gives similar upside with less stomach pain."
+                else:
+                    _action_ra = f"Position-size based on the drawdown: if you can't watch this drop {abs(int(dd))}% without panic-selling, buy less than you planned. Volatility of {vol:.0f}% means moves of ±{int(vol*0.6)}% are normal in any quarter."
+            ra["layman"] = {"plain": _plain_ra, "analyst": _analyst_ra, "action": _action_ra}
 
             # ── PEER TABLE layman ──
             pt = institutional.get("peer_table") or {}
@@ -33904,16 +34253,44 @@ async def investor_due_diligence(email: str = "", symbol: str = "", region: str 
                         _col_date     = _pickcol(["Start Date","Date","Filing Date","Trade Date"])
                         _col_text     = _pickcol(["Text","Description","Footnote"])  # extra context for OTHER cases
                         _col_url      = _pickcol(["URL","SEC Filing","Link"])
+                        # r63.99.6: Acquired/Disposed flag — newer yfinance often has this as a separate column
+                        _col_ad       = _pickcol(["Acquired or Disposed", "Acquired/Disposed", "A/D", "AcqDisp"])
 
                         # ─── Classifier ────────────────────────────────────────────
                         # Returns (kind, sentiment_eligible, raw_label):
                         #   kind: BUY | SELL | AWARD | EXERCISE | GIFT | TAX | OTHER
                         #   sentiment_eligible: only BUY/SELL count toward buying-vs-selling sentiment
                         #   raw_label: short human label to show in the UI (≤24 chars)
-                        def _classify_insider_txn(txn_raw):
+                        #
+                        # r63.99.6: Now accepts (txn_raw, ad_raw, val_usd, shares) so we can
+                        # fall back to A/D flag + value-pattern inference when Transaction is empty.
+                        def _classify_insider_txn(txn_raw, ad_raw=None, val_usd=0, shares=0):
                             s = (txn_raw or "").strip()
                             sl = s.lower()
+                            ad = (ad_raw or "").strip().upper()
+                            # ─── Path 1: Acquired/Disposed flag (most reliable, no parsing) ───
+                            # SEC Form 4 sets A (Acquired) or D (Disposed) explicitly
+                            if not s and ad in ("A", "ACQUIRED", "ACQUISITION"):
+                                # "Acquired" on its own usually means RSU vest or option exercise
+                                # unless the value is sizable + insider is known buyer
+                                if val_usd and val_usd > 0:
+                                    return ("BUY", True, "Open Mkt Buy")
+                                return ("AWARD", False, "Stock Award")
+                            if not s and ad in ("D", "DISPOSED", "DISPOSITION"):
+                                return ("SELL", True, "Sale")
+                            # ─── Path 2: empty txn — value-based inference ───
+                            # AAPL screenshot showed Cook/Levinson with $7M-$71M values but empty Transaction.
+                            # When we have a real $$ value and shares, it's almost certainly a market transaction.
+                            # Without explicit BUY/SELL indicator, default to SELL for large values from execs
+                            # (most insider transactions on Form 4 are SELLs; insiders rarely make $1M+ open-market BUYs).
                             if not s:
+                                if val_usd and val_usd >= 1e5 and shares and shares > 0:
+                                    # Likely SELL — large $ value, real share count, no explicit type
+                                    # This is the COMMON yfinance case where Transaction column is null
+                                    return ("SELL", True, "Likely Sale (inferred)")
+                                if shares and shares > 0 and not val_usd:
+                                    # Shares without value typically = RSU vest or option exercise
+                                    return ("AWARD", False, "Award/Vest (inferred)")
                                 return ("OTHER", False, "Unknown")
 
                             # ─── SEC Form 4 single-letter codes ───
@@ -33989,7 +34366,9 @@ async def investor_due_diligence(email: str = "", symbol: str = "", region: str 
                             _insider  = str(_row.get(_col_insider, "") if _col_insider else "").strip()
                             _shares   = _safe_float(_row.get(_col_shares)) if _col_shares else 0
                             _shares   = _shares or 0
-                            _kind, _sentiment_eligible, _kind_label = _classify_insider_txn(_txn_raw)
+                            # r63.99.6: read Acquired/Disposed flag for fallback inference
+                            _ad_raw = str(_row.get(_col_ad, "") if _col_ad else "").strip() if _col_ad else ""
+                            _kind, _sentiment_eligible, _kind_label = _classify_insider_txn(_txn_raw, _ad_raw, _val, _shares)
                             # Diagnostics: count raw labels for the UI to show "we saw: 12 Awards, 8 Sales..."
                             _txn_label_counts[_kind_label] = _txn_label_counts.get(_kind_label, 0) + 1
                             # Bucket
@@ -34058,6 +34437,55 @@ async def investor_due_diligence(email: str = "", symbol: str = "", region: str 
                                 "codes (P/S/A/M/F/G) are decoded automatically when present."
                             ),
                         }
+
+                        # ═══ r63.99.5: Derive insider_quarterly_history from transactions ═══
+                        # The SMI panel reads d.institutional.insider_quarterly_history.
+                        # Previously this was [] for /api/investor-due-diligence — only the
+                        # SMI scanner endpoint populated it. Derive it here from the same
+                        # txn list so the panel always has 8 quarters to render.
+                        try:
+                            from datetime import datetime as _dt99, timedelta as _td99
+                            _now2 = _dt99.utcnow()
+                            _q_buckets = {}
+                            for _t in _txn_list:
+                                if not _t.get("date"): continue
+                                try:
+                                    _td2 = _dt99.strptime(_t["date"], "%Y-%m-%d")
+                                except Exception:
+                                    continue
+                                _q_idx = (_td2.month - 1) // 3 + 1
+                                _q_key = f"Q{_q_idx} {_td2.year}"
+                                if _q_key not in _q_buckets:
+                                    _q_buckets[_q_key] = {"quarter": _q_key, "year": _td2.year, "q": _q_idx,
+                                                            "n_buys": 0, "n_sells": 0, "buy_value_usd": 0, "sell_value_usd": 0}
+                                if _t["kind"] == "BUY":
+                                    _q_buckets[_q_key]["n_buys"] += 1
+                                    _q_buckets[_q_key]["buy_value_usd"] += abs(_t.get("value_usd", 0) or 0)
+                                elif _t["kind"] == "SELL":
+                                    _q_buckets[_q_key]["n_sells"] += 1
+                                    _q_buckets[_q_key]["sell_value_usd"] += abs(_t.get("value_usd", 0) or 0)
+                            # Sort newest first, keep up to 8 quarters
+                            _ins_hist = sorted(_q_buckets.values(), key=lambda x: (x["year"], x["q"]))[-8:]
+                            for _q in _ins_hist:
+                                _q["net_flow_usd"] = _q["buy_value_usd"] - _q["sell_value_usd"]
+                            institutional["insider_quarterly_history"] = _ins_hist
+                            # Trend: are recent 2 quarters showing more buys than prior 2?
+                            if len(_ins_hist) >= 4:
+                                _recent_buys = sum(q["buy_value_usd"] for q in _ins_hist[-2:])
+                                _prior_buys = sum(q["buy_value_usd"] for q in _ins_hist[-4:-2])
+                                if _recent_buys == 0 and _prior_buys == 0:
+                                    institutional["insider_trend"] = "NONE"
+                                elif _prior_buys == 0 or _recent_buys > _prior_buys * 1.5:
+                                    institutional["insider_trend"] = "ACCELERATING"
+                                elif _recent_buys < _prior_buys * 0.5:
+                                    institutional["insider_trend"] = "DECELERATING"
+                                else:
+                                    institutional["insider_trend"] = "STEADY"
+                            else:
+                                institutional["insider_trend"] = "INSUFFICIENT_HISTORY"
+                        except Exception as _qhe:
+                            print(f"[DD r63.99.5] quarterly history derivation failed: {type(_qhe).__name__}")
+                            institutional["insider_quarterly_history"] = []
                 except Exception as _ibe:
                     print(f"[DD r63.99] insider_transactions bucketing failed for {symbol}: {type(_ibe).__name__}: {str(_ibe)[:100]}")
                     institutional["insider_activity_buckets"] = {
@@ -34065,7 +34493,81 @@ async def investor_due_diligence(email: str = "", symbol: str = "", region: str 
                         "error":        f"{type(_ibe).__name__}: {str(_ibe)[:80]}",
                     }
         except Exception as _enrich_e:
-            print(f"[DD r63.97] institutional enrichment outer error for {symbol}: {type(_enrich_e).__name__}")
+            print(f"[DD r63.99] institutional enrichment outer error for {symbol}: {type(_enrich_e).__name__}")
+
+        # ═══ r63.99.5: GUARANTEE SMI panel always has data ═══
+        # The SMI renderer reads d.institutional.smi_verdict and smi_score.
+        # Compute these from whatever data we have, even if partial.
+        # Verdict precedence:
+        #   ACCUMULATING (institutional ownership trending up) → smi_score 70+
+        #   BUYING (insider net flow strongly positive recent) → smi_score 65+
+        #   HOLDING (steady) → smi_score 50
+        #   DISTRIBUTING (institutional ownership trending down) → smi_score 30
+        #   SELLING (insider net flow strongly negative recent) → smi_score 35
+        try:
+            _smi_score = 50.0  # neutral default
+            _smi_verdict = "INSUFFICIENT_DATA"
+            _smi_drivers = []  # list of which signals contributed
+            _smi_completeness = 0
+            # Signal 1: Institutional ownership level (any % info helps)
+            _ih = institutional.get("institutional_holders") or {}
+            _inst_total = _ih.get("total_pct_outstanding") or 0
+            if _inst_total > 0:
+                _smi_completeness += 1
+                if _inst_total >= 80:
+                    _smi_score += 5; _smi_drivers.append(f"Very high institutional ownership ({_inst_total:.0f}%)")
+                elif _inst_total >= 60:
+                    _smi_score += 3; _smi_drivers.append(f"High institutional ownership ({_inst_total:.0f}%)")
+                elif _inst_total < 30:
+                    _smi_score -= 5; _smi_drivers.append(f"Low institutional ownership ({_inst_total:.0f}%) — retail-driven")
+            # Signal 2: Insider trend (from quarterly history we just derived)
+            _ins_trend = institutional.get("insider_trend") or "NONE"
+            if _ins_trend == "ACCELERATING":
+                _smi_score += 15; _smi_completeness += 1
+                _smi_drivers.append("Insider buying ACCELERATING quarter over quarter")
+            elif _ins_trend == "DECELERATING":
+                _smi_score -= 15; _smi_completeness += 1
+                _smi_drivers.append("Insider buying DECELERATING — caution")
+            elif _ins_trend == "STEADY":
+                _smi_completeness += 1
+                _smi_drivers.append("Insider activity steady")
+            # Signal 3: Recent insider flow (last 90 days)
+            _iab = institutional.get("insider_activity_buckets") or {}
+            _q_bucket = (_iab.get("buckets") or {}).get("quarterly") or {}
+            _q_net = _q_bucket.get("net_flow_usd") or 0
+            _q_buys = _q_bucket.get("buys") or 0
+            _q_sells = _q_bucket.get("sells") or 0
+            if _q_buys + _q_sells > 0:
+                _smi_completeness += 1
+                if _q_buys >= 2 and _q_net > 1e6:
+                    _smi_score += 10; _smi_drivers.append(f"Strong insider buying last 90d (${_q_net/1e6:.1f}M net)")
+                elif _q_sells >= 3 and _q_net < -5e6:
+                    _smi_score -= 10; _smi_drivers.append(f"Heavy insider selling last 90d (${abs(_q_net)/1e6:.1f}M sold)")
+            # Compute verdict from final score
+            if _smi_completeness == 0:
+                _smi_verdict = "INSUFFICIENT_DATA"
+            elif _smi_score >= 65:
+                _smi_verdict = "ACCUMULATING"
+            elif _smi_score >= 55:
+                _smi_verdict = "MILDLY_POSITIVE"
+            elif _smi_score >= 45:
+                _smi_verdict = "HOLDING"
+            elif _smi_score >= 35:
+                _smi_verdict = "MILDLY_NEGATIVE"
+            else:
+                _smi_verdict = "DISTRIBUTING"
+            # Stamp onto institutional dict — frontend reads these
+            institutional["smi_score"] = round(_smi_score, 1)
+            institutional["smi_verdict"] = _smi_verdict
+            institutional["smi_drivers"] = _smi_drivers
+            institutional["smi_completeness"] = _smi_completeness
+            institutional["smi_completeness_max"] = 3
+            institutional["_smi_computed_at"] = "investor-due-diligence@r63.99.5"
+            print(f"[DD] {symbol} SMI: verdict={_smi_verdict}, score={_smi_score}, signals={_smi_completeness}/3")
+        except Exception as _smie:
+            print(f"[DD r63.99.5] SMI verdict computation failed for {symbol}: {type(_smie).__name__}: {str(_smie)[:80]}")
+            institutional["smi_verdict"] = "INSUFFICIENT_DATA"
+            institutional["smi_score"] = 50.0
         
         # r61.3: Build response, cache it for 30 min, then return
         _dd_response = {
