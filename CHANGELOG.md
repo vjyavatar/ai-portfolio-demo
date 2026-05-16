@@ -1,3 +1,185 @@
+## r63.99.1 (2026-05-16) — Plain-English overlay for Risk Heatmap + always-visible Structural Changes panel
+
+**Vijay\'s question:** "Is this [Risk Structure Heatmap screenshot] structural changes... if not then I don\'t see structural changes at all in the report. The attached screenshot needs to be more in layman\'s language — users are not understanding."
+
+### Honest finding: code drift between repo and production
+
+When I went to soften the Risk Heatmap copy directly, I searched the entire repo (`api.py`, `static/app.js`, `static/app.min.js`, `index.html`, all `.py` files) for the exact UI strings from the screenshot — `Risk Structure Heatmap`, `Multi-dimensional risk visualization`, `153%`, `AGGRESSIVE — Reduce to 50% position`, `HIGH PERFORMER`, `When market falls 10%`. **Zero matches anywhere in this codebase.**
+
+The function names are *called* at `static/app.js:20061-20063` — `_riskHeatmap(cd)`, `_downsideCapture(cd, cS)`, `_upsideParticipation(cd, cS)` — but their definitions are not in this repo. This means deployed production code has features this repo does not. I can\'t directly edit the Risk Heatmap copy from this codebase.
+
+What I CAN do is wrap it.
+
+### Three additive changes that work regardless of what the Risk Heatmap function bodies actually contain
+
+**1. Plain-English Risk Check card — PREPENDED to the Risk Engine group**
+
+A new amber-yellow card now renders at the TOP of Group 6 RISK ENGINE, before any existing risk widgets. It translates the five risk metrics into everyday language:
+
+- **📈 Volatility**: "Beta 1.92 — MUCH MORE VOLATILE: When the market drops 10%, this stock typically drops 19%. Trade smaller positions and use tighter stops."
+- **📉 Drawdown**: "−10% vs 200D avg — MILD PULLBACK: Stock has pulled back 10% from trend. Normal correction."
+- **💸 Leverage**: "D/E 15% — LOW DEBT: Debt is less than half of equity. Company can weather downturns."
+- **💰 Valuation**: "P/E 34.2x — EXPENSIVE: Trading at premium multiples. Needs strong growth to justify the price."
+- **⚡ Momentum**: "RSI 70 — OVERBOUGHT: Stock has rallied hard. Pullbacks common from these levels."
+
+Plus a footer paragraph explaining the Downside Capture / Upside Capture concept: "*Downside Capture 153% means: when the market falls, this stock typically falls 1.5x as much. Upside Capture 188% means: when the market rises, this stock rises 1.88x as much — great in bull markets, painful in bear markets. Aim for stocks where upside capture > downside capture (asymmetric upside).*"
+
+Each card uses left-border color coding (green = low risk, yellow = elevated, red = high) matching the heatmap tiles users see immediately below.
+
+**2. "What\'s in this report" navigation guide — at the TOP of Decide-Investor**
+
+New collapsible 🧭 banner above Section I explaining which panel does what, so Vijay\'s exact question ("is this structural changes?") gets answered before users scroll into any of the panels:
+
+- 📊 **Insider Activity Breakdown** → executives buying vs selling
+- 🏗 **Structural Changes** → company transformations (buybacks, M&A, activists)
+- 🧠 **Smart Money Intelligence** → institutional ownership trends
+- 🌡 **Risk Structure Heatmap** → how risky the stock is (different from Structural Changes!)
+- 🏛 **Institutional Holders** → top 10 owners
+
+The Risk Heatmap and Structural Changes cards have left-border accents (orange and green respectively) plus explicit "Don\'t confuse with..." callouts so the visual distinction is unmistakable.
+
+**3. Structural Changes panel — always renders, never silently absent**
+
+Previously, when the `/api/scs` sidecar failed (Yahoo blocked, SCS endpoint timed out, etc.) the inline panel either showed a one-line note or — when the sidecar returned `null` — rendered nothing. Vijay reported not seeing it at all, which matches the `null` case (sidecar didn\'t respond yet, or response was empty).
+
+Now three states are explicit:
+
+- ✅ **Success**: Full panel with verdict + score + 5-category grid + tags (as before)
+- ⚠ **Failed**: Yellow box explaining what the panel WOULD show + why it isn\'t showing + link to the dedicated 🏗 Structural tab
+- ⏳ **Loading/null**: Gray box explaining that SCS is still computing in background + link to the dedicated tab
+
+The 🏗 panel header now always exists in the DOM, so Vijay (and users) can never get confused about whether Structural Changes is "missing" or "still loading" or "not in this report".
+
+### What this does NOT fix (and why)
+
+- The Risk Heatmap tiles themselves (`Volatility HIGH Beta 1.92`, etc.) still render with the same labels — the FUNCTION BODIES are not in this repo. The new amber card sits ABOVE them as a reading aid.
+- The "DECISION: AGGRESSIVE — Reduce to 50% position" sub-cards inside `_downsideCapture` / `_upsideParticipation` still render their existing copy — same reason.
+
+If those function bodies are in the production codebase (separate from this repo) and you want me to soften their copy directly, paste the source of `_riskHeatmap`, `_downsideCapture`, `_upsideParticipation` and I\'ll rewrite them in place.
+
+### Regression battery — all green
+
+- 6/6 Movers tests PASS
+- 8/8 Insider bucket assertions PASS
+- 38/38 Insider classifier scenarios PASS
+- 11/11 Intradayopt routing checks PASS
+- `api.py` PARSE OK · `app.js` PARSE OK · `app.min.js` byte-identical
+
+### Files changed
+
+`static/app.js` (+~85 lines: layman card prepended to Risk Engine group, navigation guide at top of Decide-Investor, always-render branches for Structural Changes panel), `static/app.min.js` (synced), `build_version.txt` (→ r63.99.1), `CHANGELOG.md`.
+
+---
+
+## r63.99.0 (2026-05-16) — HOTFIX: insider transactions all showing "OTHER" / buckets all "0B 0S"
+
+**Symptom (Vijay):** "Not understanding is this sell or buy by insiders." Screenshot shows the RECENT TRANSACTIONS table with all rows marked `OTHER`, and all 5 bucket cards (daily/weekly/monthly/quarterly/yearly) showing `0B 0S net flow —`.
+
+**Root cause:** Classifier in r63.97.0 was too narrow. It checked for substrings `'purchase'`, `'buy'`, `'sale'`, `'sell'`, `'disposit'` in lowercase Transaction field. Newer yfinance versions return SEC Form 4 **single-letter codes** as the transaction type:
+
+| Code | Meaning             | Old classifier        | Now             |
+|------|---------------------|-----------------------|------------------|
+| `P`  | Purchase (open mkt) | OTHER ❌              | BUY ✅           |
+| `S`  | Sale (open mkt)     | OTHER ❌              | SELL ✅          |
+| `A`  | Grant / Award (RSU) | OTHER ❌              | AWARD ✅         |
+| `M`  | Option Exercise     | OTHER ❌              | EXERCISE ✅      |
+| `F`  | Tax Withholding     | OTHER ❌              | TAX ✅           |
+| `G`  | Gift                | OTHER ❌              | GIFT ✅          |
+| `D`  | Non-mkt disposition | SELL ❌ (wrong!)      | OTHER ✅         |
+
+Plus the old code didn't distinguish between **compensation events** (RSU grants, option exercises, tax withholdings — NOT market signals) and **conviction trades** (open-market buys/sells — the actual signal). All compensation events were either misclassified or lumped into OTHER.
+
+**Backend fix:**
+- Replaced the inline classifier with a robust `_classify_insider_txn()` that handles:
+  - SEC Form 4 single-letter codes (`P`, `S`, `A`, `M`, `F`, `G`, `D`, `J`, `I`) with optional dash-suffix forms
+  - Full-name variants (`Purchase`, `Sale`, `Stock Award`, `Restricted Stock Unit Vesting`, `Conversion of Exercise of derivative security`, etc.)
+  - `"non open market"` qualifier — correctly classifies as OTHER, not SELL
+  - `"Open Market Acquisition"` → BUY; `"Acquisition (Non Open Market)"` → AWARD
+  - Edge cases (None, empty string, whitespace, unknown labels — preserves raw text up to 18 chars)
+- Returns 3-tuple: `(kind, sentiment_eligible, raw_label)` where only `BUY` and `SELL` are `sentiment_eligible=True`
+- Bucket cards now track 5 categories per window: `buys`, `sells`, `awards`, `exercises`, `other`
+- Sentiment classification (`STRONG_BUYING` / `BUYING` / `STRONG_SELLING` / `SELLING` / `NEUTRAL` / `NONE`) — **only counts BUY and SELL**, ignoring compensation events
+- Also robust to yfinance column-name drift: detects `Transaction|Trans|Type|Acquired or Disposed` via `_pickcol()`
+- New diagnostic fields in API response: `kind_counts_365d`, `raw_label_counts`, `columns_detected`
+
+**Frontend fix:**
+- New "365D SUMMARY" header row above the bucket cards showing total BUYs / SELLs / AWARDS / EXERCISES / TAX / GIFTS / OTHER across the full 365-day window (only non-zero categories rendered, color-coded, with tooltips)
+- New explanatory yellow callout above the cards: "Only BUY and SELL count toward sentiment. Stock awards, option exercises, tax withholdings, and gifts are compensation events, not insider conviction signals. A '0B 0S' bucket means no insider opened their wallet or cashed out for real."
+- Bucket cards now show up to 5 sub-counts: `NB / NS / NA / NX / NO` (with tooltips explaining each)
+- Buckets with no real buys/sells but compensation activity get a new `COMPENSATION ONLY` label (purple), so user sees "0B 0S" but understands AWARDS/EXERCISES happened
+- Transaction table:
+  - New TYPE column showing the human-readable transaction label (`Open Mkt Buy`, `Stock Award`, `Option Exercise`, etc.)
+  - KIND column now color-coded across 7 categories (BUY green, SELL red, AWARD purple, EXERCISE cyan, TAX brown, GIFT amber, OTHER gray) with tooltips showing the raw yfinance string
+  - Footer legend documenting the SEC Form 4 codes
+
+**Tests — 38 classifier scenarios all PASS** (`smoke_insider_classifier.py`):
+- ✓ All 8 SEC Form 4 codes (P/S/A/M/F/G/D/J) handled correctly
+- ✓ All encoded forms (`P-Purchase`, `S-Sale`, `M-Exempt`) handled
+- ✓ Full-name variants (`Stock Award(Grant)`, `Conversion of Exercise`, `Bona fide gift`)
+- ✓ `non-open-market` qualifier correctly downgrades dispositions
+- ✓ Open-market vs non-market acquisitions distinguished
+- ✓ Edge cases (None, empty, whitespace, unknown labels) graceful
+
+**Regression battery — all green:**
+- Movers 6/6 PASS
+- Insider buckets (old) 8/8 PASS
+- Intradayopt routing 11/11 PASS
+
+**Files changed:** `api.py` (replaced r63.97 enrichment block with comprehensive classifier + 5-category bucketing + diagnostic counts), `static/app.js` (richer frontend rendering: 365D summary header, 7-color KIND pills, COMPENSATION ONLY label, TYPE column, footer legend), `static/app.min.js` (synced), `build_version.txt`, `CHANGELOG.md`.
+
+### What you'll see post-deploy
+
+For any US ticker with insider data, the Insider Activity Breakdown panel now shows:
+
+1. **365D SUMMARY** row at the top: e.g. `2 Open-Market BUYS · 5 Open-Market SELLS · 12 Stock Awards · 8 Option Exercises · 3 Other`
+2. **Yellow callout** explaining that only BUY/SELL count toward sentiment
+3. **Bucket cards** that distinguish between "0B 0S" with no activity vs. "0B 0S · COMPENSATION ONLY" (meaning awards/exercises happened but no real conviction trades)
+4. **Transaction table** with color-coded KIND pills and a TYPE column explaining what each transaction actually was (`P - Purchase`, `Stock Award`, `Option Exercise`, etc.)
+
+The screenshot you sent showed Apple-style data (Mehrotra Sanjay, Cordano Michael D, Sadana Sumit, etc — these look like MU/Micron names actually). With the fix, you'll now see properly classified BUY/SELL/AWARD/EXERCISE labels instead of every row showing OTHER.
+
+---
+
+## r63.98.0 (2026-05-16) — HOTFIX: Intraday Options tab invisible (tab-name collision with legacy decide.intraday)
+
+**Symptom (Vijay):** "Where is institutional intraday scanner... I don't see that."
+
+**Root cause:** Tab-name collision shipped in r63.96.0. Two different things both claimed the data-tab name `intraday`:
+
+1. **Legacy sub-tab:** `TAB_GROUPS.decide.tabs` contains `'intraday'` ("Intraday Setups" — pre-existing feature under the Decide group, behind a Dream-tier paywall). Line ~2581.
+
+2. **New top-level tab:** `TAB_GROUPS.intraday = {tabs: ['intraday'], ...}` (the new Intraday Options Scanner). Line ~2597.
+
+Plus, the legacy `btnMap['intraday'] = 'tabBtnDecide'` at line ~2796 hard-coded that the `intraday` data-tab belongs to the Decide group's button. So even though my new tab card was in the DOM with `data-tab="intraday"`, clicking the new top-level button routed through Decide's premium gate (and Decide's button is `display:none` for non-premium users — so the new button visually appeared "active" but no tab content rendered).
+
+The collision was invisible at parse time, didn't trigger any JS errors, and the new tab card existed in the DOM. It just never displayed.
+
+**Fix:** rename the new top-level tab from `intraday` → `intradayopt` (intraday options) across three places:
+
+1. `TAB_GROUPS.intradayopt = {tabs: ['intradayopt'], labels: ['Intraday Options'], default: 'intradayopt'}` in `app.js`
+2. `<button onclick="switchTabGroup('intradayopt')" id="tabBtnIntradayopt">` in `index.html`
+3. `<div class="sc" data-tab="intradayopt">` for the card body in `index.html`
+4. `window._openIntraday()` updated to call `switchTabGroup('intradayopt')` and look up `.sc[data-tab="intradayopt"]`
+
+The legacy `decide.intraday` sub-tab, its premium gate handler at line ~4225 (`if (tab==='intraday')`), and the `btnMap['intraday']='tabBtnDecide'` mapping are ALL preserved untouched — they belong to the legacy "Intraday Setups" feature which still works as it did before.
+
+**Verified by routing-isolation smoke test** (`/tmp/test_intradayopt_routing.js`): 11 checks pass —
+- `TAB_GROUPS.intradayopt` registered, no top-level `intraday` group remains
+- Legacy `decide.intraday` preserved
+- HTML button + card use new name; no stale `data-tab="intraday"` for the new card
+- `_openIntraday()` uses new name in both `switchTabGroup` call and DOM lookup
+- Legacy `btnMap.intraday → tabBtnDecide` mapping untouched
+
+**Regression battery — all green:**
+- 6/6 Movers tests pass (recursion + stuck-loading fixes preserved)
+- 8/8 insider bucketing assertions pass
+
+**Files changed:** `static/app.js` (TAB_GROUPS entry, _openIntraday body), `static/app.min.js` (synced), `index.html` (button onclick + id + card data-tab), `build_version.txt` (→ r63.98.0), `CHANGELOG.md`.
+
+**Apology.** This is the third consecutive build with a Movers-area or new-tab-area regression that shipped despite "parse-check pass." The recursion smoke test catches mutual-recursion bugs but doesn't catch tab-routing collisions. Adding `test_intradayopt_routing.js` to the regression battery so this class of bug is caught on every release that touches `TAB_GROUPS` or `btnMap`.
+
+---
+
 ## r63.97.0 (2026-05-16) — Decide-Investor enrichment: Structural Changes inline + multi-window insider activity
 
 **Context (Vijay):** "Where are structural changes... where are daily, weekly, monthly, quarterly wise insider activity and institutional ownership.. lot many things are not visible.. in decide investor. Please display list of structural changes and also add separate section for decide investor as well."

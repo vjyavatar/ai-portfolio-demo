@@ -2594,7 +2594,12 @@ var TAB_GROUPS = {
   // r63.96.0: INTRADAY OPTIONS SCANNER — Vijay's institutional F&O framework.
   // Top 50 F&O universe, 4 setup buckets (CE Buy / PE Buy / CE Sell / PE Sell),
   // on-demand only. NSE option chain → signal alignment scoring.
-  intraday: {tabs: ['intraday'], labels: ['Intraday Options'], default: 'intraday'},
+  // r63.98.0: data-tab renamed 'intraday' → 'intradayopt' to avoid collision with
+  // the LEGACY 'decide.intraday' sub-tab (which maps to tabBtnDecide via btnMap).
+  // The collision caused switchTab('intraday') to highlight the hidden Decide button
+  // and the new top-level Intraday tab content not to render. The HTML data-tab and
+  // the TAB_GROUPS key now both use 'intradayopt'.
+  intradayopt: {tabs: ['intradayopt'], labels: ['Intraday Options'], default: 'intradayopt'},
   tools:    {tabs: ['finance','education','compare'], labels: ['Finance Tools','Education','Compare Stocks'], default: 'finance'},
 };
 window._activeGroup = 'overview';
@@ -7929,9 +7934,9 @@ window._openIntraday = function() {
     var tca = document.getElementById('tabContentArea');
     if (tca) tca.style.display = '';
   } catch(e){}
-  try { if (typeof switchTabGroup === 'function') switchTabGroup('intraday'); } catch(e){}
+  try { if (typeof switchTabGroup === 'function') switchTabGroup('intradayopt'); } catch(e){}
   setTimeout(function(){
-    var card = document.querySelector('.sc[data-tab="intraday"]');
+    var card = document.querySelector('.sc[data-tab="intradayopt"]');
     if (card) try { card.scrollIntoView({behavior:'smooth',block:'start'}); } catch(e){}
   }, 80);
 };
@@ -15694,6 +15699,38 @@ function _renderReportLegacy(d){
     h += '</div>';
   }
 
+  // r63.99.1: "What\'s What" navigation guide — answers Vijay\'s question
+  // "is this structural changes?" by clearly explaining which panels in this
+  // report contain WHICH analyses, so users don\'t confuse Risk Heatmap (which
+  // measures market-vs-stock volatility) with Structural Changes (which measures
+  // corporate transformation activity like buybacks, M&A, activist investors).
+  h += '<details style="background:#f5f3ff;border:1px solid #c7d2fe;border-radius:10px;margin-bottom:14px;padding:0">';
+  h += '<summary style="padding:11px 14px;font-size:12px;font-weight:800;color:#4338ca;cursor:pointer;list-style:none;display:flex;align-items:center;gap:8px;font-family:Sora,sans-serif">';
+  h += '<span style="font-size:14px">🧭</span>';
+  h += '<span>What\'s in this report — and where to find it</span>';
+  h += '<span style="margin-left:auto;font-size:9px;color:#7c3aed;font-weight:700;background:#fff;padding:2px 7px;border-radius:4px">CLICK TO EXPAND</span>';
+  h += '</summary>';
+  h += '<div style="padding:0 14px 12px;font-size:11px;color:#4338ca;line-height:1.65;font-family:Inter,sans-serif">';
+  h += '<div style="background:#fff;padding:10px 12px;border-radius:6px;margin-bottom:8px">';
+  h += '<strong style="color:#1e1b4b;font-family:Sora,sans-serif">📊 Insider Activity Breakdown</strong> (below) — daily/weekly/monthly/quarterly/yearly buckets of insider buys vs sells. Shows whether company executives are putting their own money in (BUY) or cashing out (SELL).';
+  h += '</div>';
+  h += '<div style="background:#fff;padding:10px 12px;border-radius:6px;margin-bottom:8px">';
+  h += '<strong style="color:#1e1b4b;font-family:Sora,sans-serif">🏗 Structural Changes</strong> (below, after Insider Activity) — Is this company UNDERGOING A TRANSFORMATION? Buybacks, debt paydown, margin expansion, M&A activity, activist investors. 0–100 score across 5 categories. ';
+  h += '<em>This is a DIFFERENT thing from the Risk Heatmap.</em>';
+  h += '</div>';
+  h += '<div style="background:#fff;padding:10px 12px;border-radius:6px;margin-bottom:8px">';
+  h += '<strong style="color:#1e1b4b;font-family:Sora,sans-serif">🧠 Smart Money Intelligence</strong> (below) — Which institutional investors (BlackRock, Vanguard, etc.) own this stock and whether they\'re accumulating or distributing.';
+  h += '</div>';
+  h += '<div style="background:#fff;padding:10px 12px;border-radius:6px;margin-bottom:8px;border-left:3px solid #f59e0b">';
+  h += '<strong style="color:#1e1b4b;font-family:Sora,sans-serif">🌡 Risk Structure Heatmap</strong> (further down, in the institutional charts pane) — Volatility, drawdown, leverage, valuation, momentum, liquidity tiles + downside/upside capture vs benchmark. ';
+  h += '<em>This measures HOW RISKY THE STOCK IS to hold, not whether the company is transforming. Don\'t confuse with Structural Changes above.</em>';
+  h += '</div>';
+  h += '<div style="background:#fff;padding:10px 12px;border-radius:6px;border-left:3px solid #059669">';
+  h += '<strong style="color:#1e1b4b;font-family:Sora,sans-serif">🏛 Institutional Holders</strong> (below) — Top 10 institutional owners and their position sizes.';
+  h += '</div>';
+  h += '</div>';
+  h += '</details>';
+
   // ─── SECTION I: VERDICT ────────────────────────────────────────────────
   h += '<section class="csdd-section" data-csdd-section="I">';
   h += '<div class="csdd-section__head">';
@@ -16680,13 +16717,49 @@ function _renderReportLegacy(d){
       var _iabOrder = ['daily', 'weekly', 'monthly', 'quarterly', 'yearly'];
       var _iabLabel = {daily: 'DAILY (1d)', weekly: 'WEEKLY (7d)', monthly: 'MONTHLY (30d)', quarterly: 'QUARTERLY (90d)', yearly: 'YEARLY (365d)'};
       var _iabTotalTxn = _iab.total_txn_count_365d || 0;
+      var _kindCounts = _iab.kind_counts_365d || {};
       h += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:16px;margin-bottom:16px">';
-      h += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">';
+      h += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">';
       h += '<div style="font-size:14px;font-weight:900;color:#0f172a;font-family:Sora,sans-serif">📊 Insider Activity Breakdown — Daily / Weekly / Monthly / Quarterly</div>';
       h += '<div style="font-size:10px;color:#64748b;font-family:\'IBM Plex Mono\',monospace">' + _iabTotalTxn + ' txns · 365d</div>';
       h += '</div>';
-      h += '<div style="font-size:11px;color:#475569;margin-bottom:12px;line-height:1.5">Insider transactions bucketed by recency window. Each bucket shows buys, sells, and net dollar flow over that time period. Source: yfinance insider_transactions.</div>';
-      h += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-bottom:12px">';
+      // r63.99.0: KIND-counts header — surfaces what categories of insider activity
+      // we saw, so user understands at a glance whether transactions were genuine
+      // open-market buys/sells vs RSU vests vs option exercises vs gifts.
+      var _kc_html_parts = [];
+      var _kc_meta = [
+        {key:'BUY',      label:'Open-Market BUYS',  color:'#059669', bg:'rgba(5,150,105,0.10)',  desc:'Insider opened wallet — bullish conviction'},
+        {key:'SELL',     label:'Open-Market SELLS', color:'#dc2626', bg:'rgba(220,38,38,0.10)',  desc:'Insider sold for cash — bearish or just diversification'},
+        {key:'AWARD',    label:'Stock Awards',       color:'#7c3aed', bg:'rgba(124,58,237,0.10)', desc:'RSUs / grants — compensation, NOT a market signal'},
+        {key:'EXERCISE', label:'Option Exercises',   color:'#0891b2', bg:'rgba(8,145,178,0.10)',  desc:'Insider exercised options — NOT a buy signal'},
+        {key:'TAX',      label:'Tax Withholdings',   color:'#92400e', bg:'rgba(146,64,14,0.10)',  desc:'Shares withheld for taxes — administrative'},
+        {key:'GIFT',     label:'Gifts',              color:'#a16207', bg:'rgba(161,98,7,0.10)',   desc:'Bona fide gifts — neutral'},
+        {key:'OTHER',    label:'Other / Unclassified', color:'#64748b', bg:'#f1f5f9',             desc:'Non-market dispositions, form filings, etc.'},
+      ];
+      _kc_meta.forEach(function(km){
+        var _n = _kindCounts[km.key] || 0;
+        if (_n === 0) return;
+        _kc_html_parts.push(
+          '<div title="' + km.desc + '" style="padding:5px 9px;background:' + km.bg + ';border-radius:5px;display:inline-flex;align-items:center;gap:6px;cursor:help">' +
+          '<span style="font-size:14px;font-weight:900;color:' + km.color + ';font-family:\'IBM Plex Mono\',monospace">' + _n + '</span>' +
+          '<span style="font-size:10px;color:' + km.color + ';font-weight:700;font-family:Sora,sans-serif">' + km.label + '</span>' +
+          '</div>'
+        );
+      });
+      if (_kc_html_parts.length > 0) {
+        h += '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px;padding:10px;background:#fafbfc;border:1px solid #e2e8f0;border-radius:8px">';
+        h += '<div style="font-size:10px;font-weight:800;color:#475569;letter-spacing:0.4px;margin-right:8px;align-self:center;font-family:Sora,sans-serif">365D SUMMARY:</div>';
+        h += _kc_html_parts.join('');
+        h += '</div>';
+      }
+      h += '<div style="font-size:11px;color:#475569;margin-bottom:12px;line-height:1.6;padding:8px 11px;background:#fef9c3;border:1px solid #fde047;border-radius:6px">';
+      h += '<strong style="color:#854d0e">⚠ Reading this correctly:</strong> ';
+      h += 'Only <span style="color:#059669;font-weight:700">BUY</span> and <span style="color:#dc2626;font-weight:700">SELL</span> count toward the buying-vs-selling sentiment shown in the cards below. ';
+      h += 'Stock awards (RSUs), option exercises, tax withholdings, and gifts are tracked separately — they are <strong>compensation events, not insider conviction signals.</strong> ';
+      h += 'A "0B 0S" bucket means no insider <em>opened their wallet</em> or <em>cashed out for real</em> in that window — even if there were awards/grants.';
+      h += '</div>';
+      // ─── Bucket cards ───
+      h += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-bottom:12px">';
       _iabOrder.forEach(function(bk){
         var b = _iabBuckets[bk];
         if (!b) return;
@@ -16708,31 +16781,47 @@ function _renderReportLegacy(d){
         h += '<div style="padding:10px;background:' + _bg + ';border:1px solid ' + _border + ';border-radius:8px">';
         h += '<div style="font-size:9px;font-weight:800;color:#64748b;letter-spacing:0.5px;margin-bottom:6px;font-family:Sora,sans-serif">' + _iabLabel[bk] + '</div>';
         h += '<div style="display:flex;align-items:baseline;gap:6px;margin-bottom:4px">';
-        h += '<div style="font-size:14px;font-weight:900;color:' + _netColor + ';font-family:\'IBM Plex Mono\',monospace">' + (b.buys === 0 && b.sells === 0 ? '—' : _netFmt) + '</div>';
+        h += '<div title="Open-market buys minus open-market sells. RSU awards / option exercises / gifts NOT counted." style="font-size:14px;font-weight:900;color:' + _netColor + ';font-family:\'IBM Plex Mono\',monospace;cursor:help">' + (b.buys === 0 && b.sells === 0 ? '—' : _netFmt) + '</div>';
         h += '<div style="font-size:9px;color:#64748b;font-family:Inter,sans-serif">net flow</div>';
         h += '</div>';
-        h += '<div style="display:flex;gap:8px;font-size:10px;color:#475569;font-family:\'IBM Plex Mono\',monospace">';
-        h += '<span style="color:#059669;font-weight:700">' + b.buys + '<span style="font-weight:400">B</span></span>';
-        h += '<span style="color:#dc2626;font-weight:700">' + b.sells + '<span style="font-weight:400">S</span></span>';
+        // r63.99.0: 4-bucket breakdown (B / S / awards / other) instead of just 2.
+        h += '<div style="display:flex;flex-wrap:wrap;gap:6px;font-size:10px;font-family:\'IBM Plex Mono\',monospace">';
+        h += '<span title="Open-market buys — bullish" style="color:#059669;font-weight:700;cursor:help">' + b.buys + '<span style="font-weight:400">B</span></span>';
+        h += '<span title="Open-market sells — bearish" style="color:#dc2626;font-weight:700;cursor:help">' + b.sells + '<span style="font-weight:400">S</span></span>';
+        if ((b.awards || 0) > 0)    h += '<span title="Stock awards / RSU grants — compensation, NOT a signal" style="color:#7c3aed;font-weight:700;cursor:help">' + b.awards + '<span style="font-weight:400">A</span></span>';
+        if ((b.exercises || 0) > 0) h += '<span title="Option exercises — NOT a buy signal" style="color:#0891b2;font-weight:700;cursor:help">' + b.exercises + '<span style="font-weight:400">X</span></span>';
+        if ((b.other || 0) > 0)     h += '<span title="Other (gifts, non-market dispositions, form filings)" style="color:#64748b;font-weight:700;cursor:help">' + b.other + '<span style="font-weight:400">O</span></span>';
         h += '</div>';
         if (b.sentiment && b.sentiment !== 'NONE' && b.sentiment !== 'NEUTRAL') {
           h += '<div style="margin-top:6px;font-size:8.5px;color:' + _sentColor + ';font-weight:800;letter-spacing:0.4px;font-family:Sora,sans-serif">' + b.sentiment.replace(/_/g, ' ') + '</div>';
+        } else if (b.buys === 0 && b.sells === 0 && ((b.awards||0) + (b.exercises||0) + (b.other||0)) > 0) {
+          h += '<div style="margin-top:6px;font-size:8.5px;color:#7c3aed;font-weight:800;letter-spacing:0.4px;font-family:Sora,sans-serif">COMPENSATION ONLY</div>';
         }
         h += '</div>';
       });
       h += '</div>';
-      // Transaction table (compact, last 10)
+      // Transaction table (compact, last 20)
       if (_iab.transactions && _iab.transactions.length > 0) {
         h += '<details style="margin-top:10px;border:1px solid #e2e8f0;border-radius:8px;background:#fafbfc">';
         h += '<summary style="padding:9px 13px;font-size:10px;font-weight:800;color:#0f172a;font-family:Sora,sans-serif;letter-spacing:0.3px;cursor:pointer;list-style:none">📋 RECENT TRANSACTIONS (' + _iab.transactions.length + ' shown · click to expand)</summary>';
-        h += '<div style="padding:0 13px 10px"><div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:10px;min-width:480px">';
+        h += '<div style="padding:0 13px 10px"><div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:10px;min-width:560px">';
         h += '<thead><tr style="background:#f1f5f9;text-align:left">';
-        ['DATE', 'DAYS AGO', 'INSIDER', 'KIND', 'SHARES', 'VALUE'].forEach(function(hd){
+        ['DATE', 'DAYS AGO', 'INSIDER', 'KIND', 'TYPE', 'SHARES', 'VALUE'].forEach(function(hd){
           h += '<th style="padding:6px 8px;font-size:9px;color:#64748b;font-weight:800;letter-spacing:0.4px">' + hd + '</th>';
         });
         h += '</tr></thead><tbody>';
-        _iab.transactions.slice(0, 20).forEach(function(t){
-          var _kindCol = t.kind === 'BUY' ? '#059669' : t.kind === 'SELL' ? '#dc2626' : '#64748b';
+        // r63.99.0: KIND now color-coded across 7 categories
+        var _kindColorMap = {
+          'BUY':      {bg:'rgba(5,150,105,0.12)',  fg:'#059669'},
+          'SELL':     {bg:'rgba(220,38,38,0.12)',  fg:'#dc2626'},
+          'AWARD':    {bg:'rgba(124,58,237,0.12)', fg:'#7c3aed'},
+          'EXERCISE': {bg:'rgba(8,145,178,0.12)',  fg:'#0891b2'},
+          'TAX':      {bg:'rgba(146,64,14,0.12)',  fg:'#92400e'},
+          'GIFT':     {bg:'rgba(161,98,7,0.12)',   fg:'#a16207'},
+          'OTHER':    {bg:'#f1f5f9',                fg:'#64748b'},
+        };
+        _iab.transactions.slice(0, 30).forEach(function(t){
+          var _km = _kindColorMap[t.kind] || _kindColorMap['OTHER'];
           var _valFmt = '—';
           if (t.value_usd > 0) {
             if (t.value_usd >= 1e6) _valFmt = '$' + (t.value_usd/1e6).toFixed(2) + 'M';
@@ -16743,14 +16832,19 @@ function _renderReportLegacy(d){
           h += '<td style="padding:6px 8px;font-family:\'IBM Plex Mono\',monospace;color:#475569">' + t.date + '</td>';
           h += '<td style="padding:6px 8px;font-family:\'IBM Plex Mono\',monospace;color:#94a3b8">' + t.days_ago + 'd</td>';
           h += '<td style="padding:6px 8px;color:#0f172a">' + (t.insider || '—') + '</td>';
-          h += '<td style="padding:6px 8px;font-weight:800;color:' + _kindCol + '">' + t.kind + '</td>';
+          h += '<td style="padding:6px 8px"><span title="' + (t.raw || t.kind_label || t.kind) + '" style="padding:2px 7px;border-radius:4px;background:' + _km.bg + ';color:' + _km.fg + ';font-weight:800;font-size:9px;font-family:Sora,sans-serif;letter-spacing:0.3px;cursor:help">' + t.kind + '</span></td>';
+          h += '<td style="padding:6px 8px;font-size:9.5px;color:#475569;font-family:Inter,sans-serif">' + (t.kind_label || '—') + '</td>';
           h += '<td style="padding:6px 8px;font-family:\'IBM Plex Mono\',monospace;color:#475569">' + (t.shares ? t.shares.toLocaleString() : '—') + '</td>';
           h += '<td style="padding:6px 8px;font-family:\'IBM Plex Mono\',monospace;color:#475569">' + _valFmt + '</td>';
           h += '</tr>';
         });
         h += '</tbody></table></div></div></details>';
       }
-      h += '<div style="margin-top:8px;font-size:9px;color:#94a3b8;font-style:italic">Note: Yahoo Finance insider transactions may not be exhaustive — only what they index from SEC Form 4 filings. India coverage limited.</div>';
+      h += '<div style="margin-top:8px;font-size:9px;color:#94a3b8;font-style:italic;line-height:1.5">';
+      h += 'Note: Yahoo Finance insider transactions may not be exhaustive — only what they index from SEC Form 4 filings. India coverage limited. ';
+      h += 'SEC Form 4 transaction codes are decoded automatically: ';
+      h += '<strong>P</strong>=Purchase (BUY) · <strong>S</strong>=Sale (SELL) · <strong>A</strong>=Grant (AWARD) · <strong>M</strong>=Exercise · <strong>F</strong>=Tax · <strong>G</strong>=Gift · <strong>D</strong>=Non-market disposition.';
+      h += '</div>';
       h += '</div>';
     } else if (_iab && _iab.data_quality === 'missing') {
       // Missing — show small acknowledgement, don't pretend
@@ -16852,10 +16946,30 @@ function _renderReportLegacy(d){
       h += '</div>';
     } else if (_sc && _sc.success === false) {
       // SCS endpoint returned an error (e.g. yfinance blocked)
-      h += '<div style="padding:10px 14px;margin-bottom:14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;font-size:11px;color:#64748b">';
-      h += '<strong>🏗 Structural Changes:</strong> not computed for this ticker. ';
-      h += 'Reason: ' + ((_sc && _sc.error) || 'data source unavailable') + '. ';
-      h += 'Try the dedicated <a href="javascript:window._openStructural&amp;&amp;window._openStructural();" style="color:#4f46e5;text-decoration:underline">🏗 Structural tab</a> for full analysis with retry.';
+      h += '<div style="background:#fff;border:1px solid #fde047;border-radius:12px;padding:16px;margin-bottom:16px">';
+      h += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">';
+      h += '<div style="font-size:14px;font-weight:900;color:#0f172a;font-family:Sora,sans-serif">🏗 Structural Changes — corporate transformation signals</div>';
+      h += '<div style="padding:3px 10px;border-radius:6px;background:#fef3c7;color:#854d0e;font-size:10px;font-weight:800;font-family:Sora,sans-serif">DATA UNAVAILABLE</div>';
+      h += '</div>';
+      h += '<div style="padding:11px 13px;background:#fefce8;border:1px solid #fde047;border-radius:8px;font-size:11px;color:#78350f;line-height:1.6">';
+      h += '<strong>What this panel shows when working:</strong> Whether this company is undergoing a major transformation — buybacks, debt reduction, margin expansion, activist investors, M&A activity, or strategic pivots. The kind of corporate changes that lead to step-changes in stock price (think Apple shifting to services, or Microsoft pivoting to cloud).<br><br>';
+      h += '<strong>Why no data right now:</strong> ' + ((_sc && _sc.error) || 'the data source is unavailable') + '. The Structural Change Signal needs 8 quarters of financial statements (income, cashflow, balance sheet) + institutional holdings + insider data — typically from Yahoo Finance. Yahoo intermittently blocks our server\'s IP, in which case some sub-signals come back empty.<br><br>';
+      h += '<strong>What you can do:</strong> Try the dedicated <a href="javascript:window._openStructural&amp;&amp;window._openStructural();" style="color:#4f46e5;text-decoration:underline;font-weight:700">🏗 Structural tab</a> in the main nav for the full analysis with a retry button — that tab waits for fresh data and shows which sub-signals are available vs missing.';
+      h += '</div>';
+      h += '</div>';
+    } else {
+      // r63.99.1: SCS sidecar didn\'t even respond (null/timeout). Still show the panel
+      // header so user knows where Structural Changes WOULD appear, and isn\'t left
+      // wondering "is this the structural changes panel?" when seeing other widgets.
+      h += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:16px;margin-bottom:16px">';
+      h += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">';
+      h += '<div style="font-size:14px;font-weight:900;color:#0f172a;font-family:Sora,sans-serif">🏗 Structural Changes — corporate transformation signals</div>';
+      h += '<div style="padding:3px 10px;border-radius:6px;background:#f1f5f9;color:#64748b;font-size:10px;font-weight:800;font-family:Sora,sans-serif">LOADING…</div>';
+      h += '</div>';
+      h += '<div style="padding:11px 13px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;font-size:11px;color:#475569;line-height:1.6">';
+      h += 'Structural Change Signal is being computed in the background. This panel detects <strong>corporate transformations</strong> — buybacks, debt reduction, margin expansion, activist investors, M&A, strategic pivots — across 5 categories scored 0–100. ';
+      h += 'If you don\'t see results here in a few seconds, open the dedicated <a href="javascript:window._openStructural&amp;&amp;window._openStructural();" style="color:#4f46e5;text-decoration:underline;font-weight:700">🏗 Structural tab</a> in the main nav for a full retry with detailed sub-signal breakdown.';
+      h += '</div>';
       h += '</div>';
     }
   } catch (_scErr) { console.warn('Structural changes render failed:', _scErr); }
@@ -19976,6 +20090,94 @@ setTimeout(function(){
     var _riskAns=_betaV<1.2?'Low risk — defensive positioning':_betaV<1.8?'Moderate risk (Beta '+_betaV.toFixed(2)+') — standard sizing':'High risk (Beta '+_betaV.toFixed(2)+') — reduce exposure';
     ch+=_groupWrap('grp-risk','🟠','#ea580c','RISK ENGINE','What can go wrong, and how severe?',_riskAns,_betaV<1.3?'#059669':_betaV<1.8?'#d97706':'#dc2626',function(){
       var _b='';
+      // r63.99.1: PLAIN-ENGLISH context card at the TOP of the Risk Engine group.
+      // The existing _riskHeatmap / _downsideCapture / _upsideParticipation panels
+      // use institutional jargon (Beta, Drawdown, D/E, Capture %) — Vijay reported
+      // users don\'t understand. This card sits ABOVE those panels and translates
+      // each metric to plain English so users can read the heatmap correctly.
+      try {
+        var _layBeta = _betaV || 1;
+        var _layRsi  = _rsiV  || 50;
+        var _layPx   = cd.price || 0;
+        var _laySma  = _sma200V || _layPx;
+        var _layDrawdown = (_layPx && _laySma) ? ((_layPx - _laySma) / _laySma * 100) : 0;
+        var _layPE   = cd.pe || (cd.valuation ? cd.valuation.pe : 0) || 0;
+        var _layDE   = cd.debtToEquity || (cd.finance ? cd.finance.debtToEquity : 0) || 0;
+        if (_layDE > 1) _layDE = _layDE * 100;   // some sources return ratio, some %
+
+        // Translate each metric into plain English
+        function _layVerdict(metric, value) {
+          if (metric === 'beta') {
+            if (value < 0.8)  return {label: 'CALMER than the market', tip: 'When the market moves 10%, this stock moves less than 10%. Lower risk, but also lower reward.', color: '#059669'};
+            if (value < 1.2)  return {label: 'MOVES WITH the market',   tip: 'When the market moves 10%, this stock moves about the same. Standard risk profile.', color: '#059669'};
+            if (value < 1.8)  return {label: 'MORE VOLATILE than market', tip: 'When the market moves 10%, this stock typically moves ' + (value * 10).toFixed(0) + '%. Bigger swings — both up and down.', color: '#d97706'};
+            return                  {label: 'MUCH MORE VOLATILE',       tip: 'When the market drops 10%, this stock typically drops ' + (value * 10).toFixed(0) + '%. Trade smaller positions and use tighter stops.', color: '#dc2626'};
+          }
+          if (metric === 'drawdown') {
+            // negative = below SMA200 (drawdown), positive = above
+            if (value > 10)   return {label: 'TRENDING UP',  tip: 'Stock is ' + value.toFixed(0) + '% above its 200-day average — strong uptrend.', color: '#059669'};
+            if (value > -5)   return {label: 'NEAR RECENT HIGHS', tip: 'Stock is hovering near its long-term average. Not stretched, not falling.', color: '#059669'};
+            if (value > -15)  return {label: 'MILD PULLBACK', tip: 'Stock has pulled back ' + Math.abs(value).toFixed(0) + '% from trend. Normal correction.', color: '#d97706'};
+            return                  {label: 'DEEP DRAWDOWN',  tip: 'Stock is down ' + Math.abs(value).toFixed(0) + '% from its 200-day average. Caution.', color: '#dc2626'};
+          }
+          if (metric === 'leverage') {
+            if (value < 50)   return {label: 'LOW DEBT',         tip: 'Debt is less than half of equity. Company can weather downturns.', color: '#059669'};
+            if (value < 150)  return {label: 'MODERATE DEBT',    tip: 'Manageable debt level. Watch interest coverage if rates rise.', color: '#d97706'};
+            return                  {label: 'HIGH DEBT',         tip: 'Debt exceeds 1.5x equity. Sensitive to interest rate changes and revenue drops.', color: '#dc2626'};
+          }
+          if (metric === 'valuation') {
+            if (value <= 0)   return {label: 'NOT PROFITABLE',   tip: 'Company has no earnings or losses — P/E meaningless. Higher risk if growth slows.', color: '#d97706'};
+            if (value < 15)   return {label: 'CHEAP',             tip: 'Trading at less than 15x earnings — could be a value play or a value trap. Check fundamentals.', color: '#059669'};
+            if (value < 25)   return {label: 'FAIRLY VALUED',     tip: 'Trading at average market multiples. Priced for normal growth.', color: '#059669'};
+            if (value < 40)   return {label: 'EXPENSIVE',         tip: 'Trading at premium multiples. Needs strong growth to justify the price.', color: '#d97706'};
+            return                  {label: 'VERY EXPENSIVE',     tip: 'Trading at high premium — any growth miss could trigger a steep correction.', color: '#dc2626'};
+          }
+          if (metric === 'momentum') {
+            if (value > 70)   return {label: 'OVERBOUGHT',       tip: 'RSI ' + value.toFixed(0) + ' — stock has rallied hard. Pullbacks common from these levels.', color: '#dc2626'};
+            if (value > 55)   return {label: 'BULLISH MOMENTUM', tip: 'RSI ' + value.toFixed(0) + ' — healthy uptrend, not yet stretched.', color: '#059669'};
+            if (value > 45)   return {label: 'NEUTRAL',           tip: 'RSI ' + value.toFixed(0) + ' — no strong directional bias.', color: '#64748b'};
+            if (value > 30)   return {label: 'WEAK MOMENTUM',     tip: 'RSI ' + value.toFixed(0) + ' — stock is under pressure but not extreme.', color: '#d97706'};
+            return                  {label: 'OVERSOLD',           tip: 'RSI ' + value.toFixed(0) + ' — stock has been hammered. Bounces common from these levels but trend may continue down.', color: '#059669'};
+          }
+          return {label: '—', tip: '', color: '#64748b'};
+        }
+        var _vBeta = _layVerdict('beta', _layBeta);
+        var _vDD   = _layVerdict('drawdown', _layDrawdown);
+        var _vLev  = _layVerdict('leverage', _layDE);
+        var _vVal  = _layVerdict('valuation', _layPE);
+        var _vMom  = _layVerdict('momentum', _layRsi);
+
+        _b += '<div style="background:linear-gradient(135deg,#fffbeb,#fef3c7);border:1px solid #fde68a;border-radius:12px;padding:16px;margin-bottom:14px">';
+        _b += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">';
+        _b += '<div style="font-size:18px">📖</div>';
+        _b += '<div style="font-size:13px;font-weight:900;color:#78350f;font-family:Sora,sans-serif">Plain English Risk Check — what the Risk Heatmap below is telling you</div>';
+        _b += '</div>';
+        _b += '<div style="font-size:11px;color:#78350f;margin-bottom:12px;line-height:1.6">Each tile in the heatmap below scores one type of risk. Here\'s what each means in everyday terms — no jargon:</div>';
+        _b += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:8px">';
+
+        function _layCard(icon, label, valueDisplay, verdict) {
+          var s = '<div style="padding:10px 12px;background:#fff;border:1px solid ' + verdict.color + '40;border-left:3px solid ' + verdict.color + ';border-radius:8px">';
+          s += '<div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:4px">';
+          s += '<div style="font-size:11px;font-weight:800;color:#0f172a;font-family:Sora,sans-serif">' + icon + ' ' + label + '</div>';
+          s += '<div style="font-size:10px;font-weight:800;color:' + verdict.color + ';font-family:Sora,sans-serif;letter-spacing:0.3px">' + verdict.label + '</div>';
+          s += '</div>';
+          s += '<div style="font-size:9.5px;color:#64748b;margin-bottom:5px;font-family:\'IBM Plex Mono\',monospace">' + valueDisplay + '</div>';
+          s += '<div style="font-size:10.5px;color:#475569;line-height:1.5">' + verdict.tip + '</div>';
+          s += '</div>';
+          return s;
+        }
+        _b += _layCard('📈', 'Volatility',  'Beta ' + _layBeta.toFixed(2),                                        _vBeta);
+        _b += _layCard('📉', 'Drawdown',    (_layDrawdown >= 0 ? '+' : '') + _layDrawdown.toFixed(1) + '% vs 200D avg', _vDD);
+        _b += _layCard('💸', 'Leverage',    'D/E ' + _layDE.toFixed(0) + '%',                                      _vLev);
+        _b += _layCard('💰', 'Valuation',   _layPE > 0 ? ('P/E ' + _layPE.toFixed(1) + 'x') : 'No earnings',       _vVal);
+        _b += _layCard('⚡', 'Momentum',    'RSI ' + _layRsi.toFixed(0),                                            _vMom);
+        _b += '</div>';
+        _b += '<div style="margin-top:10px;padding:9px 12px;background:#fef3c7;border:1px solid #fde047;border-radius:6px;font-size:10.5px;color:#78350f;line-height:1.5">';
+        _b += '<strong>💡 How to read the Risk Heatmap below:</strong> Green = lower risk in that area. Yellow/Orange = elevated. Red = high. <strong>"Downside Capture 153%"</strong> means: when the market falls, this stock typically falls 1.5x as much. <strong>"Upside Capture 188%"</strong> means: when the market rises, this stock rises 1.88x as much — great in bull markets, painful in bear markets. Aim for stocks where upside capture &gt; downside capture (asymmetric upside).';
+        _b += '</div>';
+        _b += '</div>';
+      } catch (_layErr) { console.warn('Risk plain-English card render failed:', _layErr); }
+      // ─── Existing risk widgets (may or may not be defined in deployed build) ───
       if(typeof _riskHeatmap==='function')_b+=_riskHeatmap(cd);
       if(typeof _downsideCapture==='function')_b+=_downsideCapture(cd,cS);
       if(typeof _upsideParticipation==='function')_b+=_upsideParticipation(cd,cS);
