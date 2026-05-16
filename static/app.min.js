@@ -4,9 +4,10 @@
 // version asynchronously and updates the badge — so deploy drift becomes visible.
 // r63.99.3: 4 new SVG charts (insider activity by window + monthly net flow +
 // top 10 holders horizontal bar + ownership donut). Pure SVG — no library dependency.
-window.CELESYS_VERSION = "r63.99.3";
-window.CELESYS_BUILD_TIME = 1778898600;
-window.CELESYS_BUILD_DATE = "2026-05-16 02:30:00 UTC";
+// r63.99.4: window_days copy bug fix + SCS stitch handles ALL response types.
+window.CELESYS_VERSION = "r63.99.4";
+window.CELESYS_BUILD_TIME = 1778900400;
+window.CELESYS_BUILD_DATE = "2026-05-16 03:00:00 UTC";
 window.CELESYS_FEATURES = {
   cycle_analysis: true,
   diamond_hunter: true,
@@ -16846,6 +16847,7 @@ function _renderReportLegacy(d){
             buys: b.buys || 0, sells: b.sells || 0,
             awards: b.awards || 0, exercises: b.exercises || 0,
             other: b.other || 0,
+            window_days: b.window_days || 0,   // r63.99.4: was missing — caused "undefinedd" in x-axis labels
           });
         });
         if (_chartABuckets.length > 0) {
@@ -16912,7 +16914,7 @@ function _renderReportLegacy(d){
             });
             // X-axis label
             h += '<text x="' + (_x + _barW / 2) + '" y="' + (_chartH - _padB + 14) + '" text-anchor="middle" font-size="9" fill="#475569" font-family="Sora,sans-serif" font-weight="700">' + b.key.toUpperCase() + '</text>';
-            h += '<text x="' + (_x + _barW / 2) + '" y="' + (_chartH - _padB + 25) + '" text-anchor="middle" font-size="7.5" fill="#94a3b8" font-family="IBM Plex Mono,monospace">' + b.window_days + 'd</text>';
+            h += '<text x="' + (_x + _barW / 2) + '" y="' + (_chartH - _padB + 25) + '" text-anchor="middle" font-size="7.5" fill="#94a3b8" font-family="IBM Plex Mono,monospace">' + (b.window_days ? b.window_days + 'd' : '') + '</text>';
           });
           // X-axis line
           h += '<line x1="' + _padL + '" y1="' + (_padT + _plotH) + '" x2="' + (_chartW - _padR) + '" y2="' + (_padT + _plotH) + '" stroke="#64748b" stroke-width="0.8"/>';
@@ -19393,10 +19395,24 @@ try {
     });
   }
 } catch(_e){ console.warn('Premium stitch error:',_e); }
-// r63.97.0: SCS — stitch the full SCS payload onto d.structural_change for renderer
+// r63.97.0: SCS — stitch the full SCS payload onto d.structural_change for renderer.
+// r63.99.4 FIX: previously only stitched on success — failure responses (timeout,
+// 500 error, success:false) were dropped, so renderer fell through to LOADING state
+// forever. Now stitch ALL responses (including {success:false, error:...}) so the
+// DATA UNAVAILABLE branch in the renderer can show the actual error.
 try {
-  if (_scs && _scs.success) {
+  if (_scs && typeof _scs === 'object') {
     d.structural_change = _scs;
+    if (_scs.success === false) {
+      console.warn('SCS sidecar returned error for ' + sym + ':', _scs.error || '(no error message)');
+    } else if (_scs.success) {
+      console.log('SCS sidecar success for ' + sym + ': verdict=' + (_scs.verdict || '?') + ' score=' + (_scs.composite_score || '?'));
+    }
+  } else {
+    // Sidecar returned null (.catch fired) or wrong type — synthesize an explicit error shape
+    // so the renderer renders the DATA UNAVAILABLE branch instead of LOADING.
+    d.structural_change = {success: false, error: 'SCS sidecar returned no response (network error or fetch threw)', symbol: sym, region: reg};
+    console.warn('SCS sidecar returned null/invalid for ' + sym);
   }
 } catch(_e){ console.warn('SCS stitch error:',_e); }
 // Safety defaults

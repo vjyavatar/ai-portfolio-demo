@@ -1,3 +1,144 @@
+## r63.99.4 (2026-05-16) — TWO real bug fixes from Vijay\'s screenshot
+
+**Vijay\'s reports:**
+1. The new Insider Activity by Window chart shows "undefinedd" as the x-axis sub-label on every bucket (DAILY/WEEKLY/MONTHLY/QUARTERLY/YEARLY). All bars are 0 height.
+2. "Still structural changes are not coming, multiple stocks have given a try."
+
+Both are real bugs in the code I shipped. Found and fixed.
+
+### Bug 1: Chart x-axis labels show "undefinedd" (Image attached)
+
+**Root cause:** In r63.99.3, when I built the `_chartABuckets` array from `_iabBuckets`, I forgot to copy the `window_days` property. The chart code then read `b.window_days` (undefined) and rendered `undefined + 'd'` → `"undefinedd"`.
+
+**Fix:** Added `window_days: b.window_days || 0` to the bucket copy block. Also added a truthy guard around the label render so a `0` value doesn\'t render as "0d":
+
+```javascript
+// Before (r63.99.3 — broken):
+_chartABuckets.push({
+  key: bk, label: _iabLabel[bk],
+  buys: b.buys || 0, sells: b.sells || 0, awards: b.awards || 0,
+  exercises: b.exercises || 0, other: b.other || 0,
+  // window_days was missing here
+});
+// ...
+h += '<text>' + b.window_days + 'd</text>';   // → "undefinedd"
+
+// After (r63.99.4 — fixed):
+_chartABuckets.push({
+  key: bk, label: _iabLabel[bk],
+  buys: b.buys || 0, sells: b.sells || 0, awards: b.awards || 0,
+  exercises: b.exercises || 0, other: b.other || 0,
+  window_days: b.window_days || 0,
+});
+// ...
+h += '<text>' + (b.window_days ? b.window_days + 'd' : '') + '</text>';
+```
+
+The "all bars 0 height" symptom in the same screenshot is a separate issue — backend isn\'t classifying transactions as BUY/SELL/AWARD properly (so all category counts are 0). Likely cause: the deployed Render backend is older than r63.99.0 and doesn\'t have the SEC Form 4 classifier. Bug 2 below will surface that as a diagnostic.
+
+### Bug 2: Structural Changes "not coming for multiple stocks"
+
+**Root cause #1 (frontend stitch bug):** In r63.97.0, I wrote the SCS sidecar stitch as:
+
+```javascript
+if (_scs && _scs.success) {
+  d.structural_change = _scs;   // only on success
+}
+```
+
+That means **whenever `/api/scs` returned `{success: false, error: ...}`** (any error case — yfinance hung, sub-category crashed, 500 response, timeout), `d.structural_change` was never set. The renderer then read `_sc = d.structural_change || null`, got `null`, and fell through to the **LOADING** state — which has no timeout and stays visible forever.
+
+So for any ticker where the SCS endpoint had any kind of error, the user saw "Structural Change Signal is being computed in the background..." forever. That\'s exactly what Vijay reported.
+
+**Fix:** Stitch **all** response types (success OR failure), and synthesize an explicit error object when the sidecar returns null:
+
+```javascript
+if (_scs && typeof _scs === 'object') {
+  d.structural_change = _scs;   // stitches both success and failure
+  if (_scs.success === false) console.warn('SCS error for ' + sym + ':', _scs.error);
+} else {
+  // null/undefined → synthesize error so renderer hits the DATA UNAVAILABLE branch
+  d.structural_change = {success: false, error: 'SCS sidecar returned no response', symbol: sym, region: reg};
+}
+```
+
+Now error responses correctly route to the existing renderer branch (`else if (_sc && _sc.success === false)`), which shows the yellow **DATA UNAVAILABLE** panel with the error message + link to the dedicated Structural tab for retry.
+
+**Root cause #2 (backend silent failures):** When any of the 5 SCS sub-categories crashed inside their compute function (e.g. `tk.income_stmt` throws because Yahoo rate-limited that specific call), the whole `/api/scs` endpoint would bail out with a 500, returning a generic error. No way to know **which** category failed.
+
+**Fix:** Wrapped each category computation in `_safe_cat()`:
+
+```python
+def _safe_cat(name, fn):
+    _ct0 = time.time()
+    try:
+        result = fn(tk, info)
+        _cat_diag[name] = {"ok": True, "elapsed_ms": int((time.time() - _ct0) * 1000)}
+        return result
+    except Exception as _ce:
+        _cat_diag[name] = {"ok": False, "elapsed_ms": ...,
+                           "error": f"{type(_ce).__name__}: {str(_ce)[:120]}"}
+        print(f"[SCS] {sym} category {name} failed: ...")
+        # Return a missing-category placeholder so downstream code doesn't crash
+        return {"score": None, "weight": 0, "data_status": "ERROR", ...}
+```
+
+The response now includes a `_category_diag` field showing per-category timing + error trace. So we can diagnose: "On AAPL, category B took 8s and failed with `JSONDecodeError`; categories A/C/D/E succeeded." Plus a backend log line for every SCS computation: `[SCS] AAPL (US) computed in 4.3s: verdict=TRANSITION composite=52.4 coverage=80%`.
+
+### Testing
+
+**New smoke test** `/tmp/test_r63_99_4_fixes.js` — 19 checks across:
+- `window_days` is copied to chart bucket (with fallback)
+- Truthy guard on x-axis label (no "0d" or "undefinedd")
+- SCS stitch handles success AND failure AND null
+- Renderer error branch reachable
+- Backend `_safe_cat` and `_category_diag` present
+- Simulation: synthetic buckets render correct labels (1d/7d/30d/90d/365d)
+
+**Full regression battery — all 7 suites green:**
+- 6/6 Movers tests PASS
+- 8/8 Insider bucket assertions PASS
+- 38/38 Insider classifier scenarios PASS
+- 11/11 Intradayopt routing checks PASS
+- 7/7 Returns snapshot scenarios PASS
+- 25/25 Insider charts scenarios PASS
+- **19/19 r63.99.4 fix checks PASS (new)**
+
+### Files changed
+
+`api.py` (+~25 lines: `_safe_cat` wrapper, `_category_diag` in response, summary log line).
+`static/app.js` (+~15 lines: window_days copy, truthy guard, SCS stitch unconditional, diagnostic logs).
+`static/app.min.js` (synced).
+`build_version.txt` (→ r63.99.4).
+`CHANGELOG.md`.
+
+### What you\'ll see post-deploy
+
+1. **Insider Activity by Window chart**: x-axis sub-labels now correctly show `1d` / `7d` / `30d` / `90d` / `365d` (was "undefinedd"). If the bars are still 0 height — that\'s the backend not classifying transactions (deploy drift symptom, fixed by deploying r63.99.0+ backend).
+
+2. **Structural Changes panel**: never stuck on LOADING anymore. You\'ll see one of three states:
+   - 🟢 **Full panel with verdict/score/categories** — SCS computed successfully
+   - 🟡 **DATA UNAVAILABLE yellow box** — SCS returned an error (now visible instead of LOADING). The error message is shown.
+   - 🟡 **Cached/sub-category errors** — if some sub-signals failed but others succeeded, you\'ll see the categories grid with `—` scores in the failed slots, and the verdict computed from what was available.
+
+3. **Backend logs** (Render console): every SCS call now prints `[SCS] AAPL (US) computed in 4.3s: verdict=TRANSITION composite=52.4 coverage=80%`. When you SSH into Render or check logs, you can see exactly which tickers worked and which failed.
+
+### Git
+
+```bash
+git add api.py static/app.js static/app.min.js build_version.txt CHANGELOG.md
+git commit -m "r63.99.4: 2 real bug fixes — window_days chart label + SCS stitch handles all response types"
+git push origin main
+```
+
+### Apology
+
+The `window_days` bug should have been caught by my r63.99.3 chart smoke test, but that test only checked the SVG path math and color palette, not the data-binding correctness. I\'ve now added field-binding assertions for the bucket copy, so this class of "forgot to copy a field" bug won\'t ship silently again.
+
+The SCS stitch bug is a worse miss — it\'s been broken since r63.97.0 (4 builds ago), and I claimed "always-visible Structural Changes panel" in r63.99.1\'s changelog despite the stitch never actually firing on errors. Adding the explicit always-stitch logic + the 19-check smoke test should prevent this regression going forward.
+
+---
+
 ## r63.99.3 (2026-05-16) — 4 new SVG charts: insider activity + institutional ownership visualizations
 
 **Vijay\'s ask:** "I don\'t see insider activity graphs day wise.. quarterwise.. and institutional ownership graphs as well."

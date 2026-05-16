@@ -4006,6 +4006,150 @@ async def build_version():
     }
 
 
+# r63.99.2: Returns Snapshot — frontend has been calling /api/dd-returns-snapshot
+# since r63.75.0 but the backend endpoint never shipped. The frontend then fell
+# through to direct Yahoo fetch (CORS-blocked from Render), showing a yellow
+# "Backend endpoint not implemented yet" error to the user. This implements it.
+_dd_returns_cache = {}
+_DD_RETURNS_TTL = 600  # 10 min
+
+@app.get("/api/dd-returns-snapshot")
+async def dd_returns_snapshot(symbol: str = "", region: str = "US"):
+    """Multi-timeframe returns snapshot for a single ticker.
+
+    Returns: {success, current_price, source, ts, returns: {15d, 1m, 3m, 6m, 1y, 5y, 10y}}
+    Each return is a % change. Missing windows return None.
+
+    Implementation: yfinance for both regions (period="10y" interval="1d" caps at
+    Yahoo's max history; falls through to monthly for older history if available).
+    Uses data_sources fallback chain for resilience on Yahoo 401 / NSE IP blocks.
+    """
+    sym = (symbol or "").strip().upper()
+    reg = (region or "US").upper()
+    if not sym:
+        return {"success": False, "error": "symbol required"}
+    if reg not in ("US", "IN"):
+        return {"success": False, "error": "region must be US or IN"}
+
+    cache_key = f"{sym}_{reg}"
+    cached = _dd_returns_cache.get(cache_key)
+    if cached and (time.time() - cached["ts"]) < _DD_RETURNS_TTL:
+        resp = dict(cached["data"])
+        resp["_cached"] = True
+        resp["_cache_age_sec"] = int(time.time() - cached["ts"])
+        return resp
+
+    # Trading-day windows (approximate). 252 = 1y. Lookups use closest available date.
+    windows = {
+        "15d": 11,    # ~15 calendar days = ~11 trading days
+        "1m":  21,
+        "3m":  63,
+        "6m":  126,
+        "1y":  252,
+        "5y":  1260,
+        "10y": 2520,
+    }
+
+    closes = None
+    source = "?"
+    current_price = None
+
+    # Path 1: yfinance period="10y" interval="1d" — works for most US large/mid caps
+    try:
+        import yfinance as yf
+        yf_sym = sym if reg == "US" else f"{sym}.NS"
+        try: _yahoo_rate_wait()
+        except Exception: pass
+        tk = yf.Ticker(yf_sym)
+        hist = tk.history(period="10y", interval="1d", auto_adjust=True)
+        if hist is not None and not hist.empty:
+            closes_list = list(hist["Close"].dropna())
+            if len(closes_list) >= 2:
+                closes = closes_list
+                current_price = float(closes[-1])
+                source = "yfinance.10y_daily"
+    except Exception as _e:
+        print(f"[DD-RET] yfinance 10y_daily failed for {sym}: {type(_e).__name__}")
+
+    # Path 2: monthly fallback for 5y/10y if daily didn't reach back far enough
+    monthly_closes = None
+    if closes is None or len(closes) < 2520:
+        try:
+            import yfinance as yf
+            yf_sym = sym if reg == "US" else f"{sym}.NS"
+            try: _yahoo_rate_wait()
+            except Exception: pass
+            tk2 = yf.Ticker(yf_sym)
+            mhist = tk2.history(period="10y", interval="1mo", auto_adjust=True)
+            if mhist is not None and not mhist.empty:
+                monthly_closes = list(mhist["Close"].dropna())
+                if closes is None and len(monthly_closes) >= 2:
+                    closes = []
+                    current_price = float(monthly_closes[-1])
+                    source = "yfinance.10y_monthly"
+        except Exception as _e:
+            print(f"[DD-RET] yfinance 10y_monthly fallback failed for {sym}: {type(_e).__name__}")
+
+    # Path 3: data_sources chain (Finnhub for US, etc) — last resort, only 2y of data typically
+    if closes is None:
+        try:
+            ph = data_sources.get_price_history(sym, reg)
+            if ph and ph.get("closes"):
+                sorted_dates = sorted(ph["closes"].keys())
+                closes = [ph["closes"][d] for d in sorted_dates if ph["closes"][d] and ph["closes"][d] > 0]
+                if closes:
+                    current_price = float(closes[-1])
+                    source = ph.get("_source", "data_sources")
+        except Exception as _e:
+            print(f"[DD-RET] data_sources fallback failed for {sym}: {type(_e).__name__}")
+
+    if not closes or current_price is None:
+        return {
+            "success": False,
+            "error": "All data sources returned no price history. Yahoo may be rate-limiting our IP — try again in a few minutes.",
+            "symbol": sym, "region": reg,
+        }
+
+    # Compute returns per window
+    returns = {}
+    n = len(closes)
+    for label, days_back in windows.items():
+        if days_back < n:
+            prior = closes[-(days_back + 1)]
+            if prior and prior > 0:
+                pct = (current_price - prior) / prior * 100.0
+                returns[label] = round(pct, 2)
+            else:
+                returns[label] = None
+        elif monthly_closes:
+            # For 5y/10y windows, supplement with monthly fallback
+            months_back = days_back // 21  # ~21 trading days per month
+            if months_back < len(monthly_closes):
+                prior = monthly_closes[-(months_back + 1)]
+                if prior and prior > 0:
+                    pct = (current_price - prior) / prior * 100.0
+                    returns[label] = round(pct, 2)
+                else:
+                    returns[label] = None
+            else:
+                returns[label] = None
+        else:
+            returns[label] = None
+
+    response = {
+        "success":       True,
+        "symbol":        sym,
+        "region":        reg,
+        "current_price": round(current_price, 2),
+        "source":        source,
+        "returns":       returns,
+        "ts":            time.time(),
+        "n_closes":      n,
+    }
+    _dd_returns_cache[cache_key] = {"data": response, "ts": time.time()}
+    return response
+
+
 # r63.72.11: Fund Analyzer (ETFs + MFs, US + India)
 @app.get("/api/fund-analyze")
 async def fund_analyze(ticker: str, region: str = "US"):
@@ -8759,11 +8903,28 @@ async def structural_change_signal(symbol: str = "", region: str = "US", nocache
         return {"success": False, "error": f"yfinance.Ticker failed: {type(e).__name__}: {str(e)[:120]}", "symbol": sym, "region": reg}
 
     # Compute all 5 categories
-    A = _scs_capital_structure(tk, info)
-    B = _scs_business_model(tk, info)
-    C = _scs_ownership(tk, info)
-    D = _scs_strategic_pivot(tk, info)
-    E = _scs_balance_sheet_reset(tk, info)
+    # r63.99.4: per-category timing + exception capture, so we can diagnose
+    # which sub-signal is failing for a given ticker (typical cause: yfinance
+    # rate-limit on tk.income_stmt / cashflow / balance_sheet / institutional_holders).
+    _cat_diag = {}
+    def _safe_cat(name, fn):
+        _ct0 = time.time()
+        try:
+            result = fn(tk, info)
+            _cat_diag[name] = {"ok": True, "elapsed_ms": int((time.time() - _ct0) * 1000)}
+            return result
+        except Exception as _ce:
+            _cat_diag[name] = {"ok": False, "elapsed_ms": int((time.time() - _ct0) * 1000),
+                               "error": f"{type(_ce).__name__}: {str(_ce)[:120]}"}
+            print(f"[SCS] {sym} category {name} failed: {type(_ce).__name__}: {str(_ce)[:80]}")
+            # Return a "missing" category so downstream code doesn't crash
+            return {"score": None, "weight": 0, "signals": [],
+                    "data_status": "ERROR", "error": f"{type(_ce).__name__}"}
+    A = _safe_cat("A", _scs_capital_structure)
+    B = _safe_cat("B", _scs_business_model)
+    C = _safe_cat("C", _scs_ownership)
+    D = _safe_cat("D", _scs_strategic_pivot)
+    E = _safe_cat("E", _scs_balance_sheet_reset)
 
     categories = {
         "A_capital_structure":   A,
@@ -8863,6 +9024,7 @@ async def structural_change_signal(symbol: str = "", region: str = "US", nocache
         "lead_indicator_detail":    lead_detail,
         "data_coverage_pct":  coverage_pct,
         "_elapsed_sec":       elapsed,
+        "_category_diag":     _cat_diag,   # r63.99.4: per-category timing/error trace
         "_data_quality_note": (
             "✅ available = directly measured from real financials. "
             "⚠️ partial = derived heuristic or limited data window. "
@@ -8872,6 +9034,7 @@ async def structural_change_signal(symbol: str = "", region: str = "US", nocache
         ),
     }
     _scs_cache[cache_key] = {"data": result, "ts": time.time()}
+    print(f"[SCS] {sym} ({reg}) computed in {elapsed}s: verdict={verdict} composite={composite} coverage={coverage_pct}%")
     return result
 
 
@@ -33702,50 +33865,162 @@ async def investor_due_diligence(email: str = "", symbol: str = "", region: str 
                 # ─── insider_activity_buckets: daily / weekly / monthly / quarterly ───
                 # Pulls from tk.insider_transactions and buckets by transaction date.
                 # This is THE thing user asked for: "daily, weekly, monthly, quarterly insider activity".
+                # r63.99.0: Robust classification — handles yfinance schema variants:
+                #   - Full names: "Purchase", "Sale", "Stock Award", "Gift", etc.
+                #   - SEC Form 4 codes: P (purchase), S (sale), A (grant), M (exercise),
+                #     F (tax withhold), G (gift), D (disposition), J (other), I (discretionary)
+                #   - Encoded forms: "P-Purchase", "S-Sale", "M-Exempt"
+                # Also picks the right column name across yfinance versions
+                # ("Transaction" | "Trans" | "Type" | "Acquired or Disposed").
                 try:
                     _it_df = tk.insider_transactions
                     if _it_df is not None and not _it_df.empty:
                         from datetime import timedelta as _td2
                         _now = _dt.utcnow()
                         _buckets = {
-                            "daily":     {"buys": 0, "sells": 0, "buy_value_usd": 0, "sell_value_usd": 0, "window_days": 1},
-                            "weekly":    {"buys": 0, "sells": 0, "buy_value_usd": 0, "sell_value_usd": 0, "window_days": 7},
-                            "monthly":   {"buys": 0, "sells": 0, "buy_value_usd": 0, "sell_value_usd": 0, "window_days": 30},
-                            "quarterly": {"buys": 0, "sells": 0, "buy_value_usd": 0, "sell_value_usd": 0, "window_days": 90},
-                            "yearly":    {"buys": 0, "sells": 0, "buy_value_usd": 0, "sell_value_usd": 0, "window_days": 365},
+                            "daily":     {"buys": 0, "sells": 0, "buy_value_usd": 0, "sell_value_usd": 0,
+                                          "awards": 0, "exercises": 0, "other": 0, "window_days": 1},
+                            "weekly":    {"buys": 0, "sells": 0, "buy_value_usd": 0, "sell_value_usd": 0,
+                                          "awards": 0, "exercises": 0, "other": 0, "window_days": 7},
+                            "monthly":   {"buys": 0, "sells": 0, "buy_value_usd": 0, "sell_value_usd": 0,
+                                          "awards": 0, "exercises": 0, "other": 0, "window_days": 30},
+                            "quarterly": {"buys": 0, "sells": 0, "buy_value_usd": 0, "sell_value_usd": 0,
+                                          "awards": 0, "exercises": 0, "other": 0, "window_days": 90},
+                            "yearly":    {"buys": 0, "sells": 0, "buy_value_usd": 0, "sell_value_usd": 0,
+                                          "awards": 0, "exercises": 0, "other": 0, "window_days": 365},
                         }
-                        _txn_list = []   # individual transactions for table view
+                        # Detect column names (yfinance has shifted schemas across versions)
+                        _it_cols = list(_it_df.columns)
+                        def _pickcol(cands):
+                            for c in cands:
+                                for col in _it_cols:
+                                    if col.strip().lower() == c.lower():
+                                        return col
+                            return None
+                        _col_txn      = _pickcol(["Transaction","Trans","Type","Acquired or Disposed"])
+                        _col_shares   = _pickcol(["Shares","Shares Traded","Quantity"])
+                        _col_value    = _pickcol(["Value","Total Value","Trade Value"])
+                        _col_insider  = _pickcol(["Insider","Name","Reporting Name"])
+                        _col_date     = _pickcol(["Start Date","Date","Filing Date","Trade Date"])
+                        _col_text     = _pickcol(["Text","Description","Footnote"])  # extra context for OTHER cases
+                        _col_url      = _pickcol(["URL","SEC Filing","Link"])
+
+                        # ─── Classifier ────────────────────────────────────────────
+                        # Returns (kind, sentiment_eligible, raw_label):
+                        #   kind: BUY | SELL | AWARD | EXERCISE | GIFT | TAX | OTHER
+                        #   sentiment_eligible: only BUY/SELL count toward buying-vs-selling sentiment
+                        #   raw_label: short human label to show in the UI (≤24 chars)
+                        def _classify_insider_txn(txn_raw):
+                            s = (txn_raw or "").strip()
+                            sl = s.lower()
+                            if not s:
+                                return ("OTHER", False, "Unknown")
+
+                            # ─── SEC Form 4 single-letter codes ───
+                            # Format: "P", "P-Purchase", "P - Open Market Purchase"
+                            #   P = Purchase (open market buy) — BULLISH
+                            #   S = Sale (open market sell) — BEARISH
+                            #   A = Grant/Award (RSU/stock award) — NEUTRAL (not a market signal)
+                            #   M = Exempt (option exercise) — NEUTRAL
+                            #   F = Payment of exercise price / tax via shares — NEUTRAL
+                            #   G = Bona fide gift — NEUTRAL
+                            #   D = Disposition (non-open-market) — NEUTRAL
+                            #   J = Other (catch-all) — OTHER
+                            #   I = Discretionary — context-dependent, treat as OTHER
+                            _first_token = s.split()[0].split("-")[0].strip().upper()
+                            if _first_token == "P":  return ("BUY",      True,  "P - Purchase")
+                            if _first_token == "S":  return ("SELL",     True,  "S - Sale")
+                            if _first_token == "A":  return ("AWARD",    False, "A - Grant")
+                            if _first_token == "M":  return ("EXERCISE", False, "M - Exercise")
+                            if _first_token == "F":  return ("TAX",      False, "F - Tax W/H")
+                            if _first_token == "G":  return ("GIFT",     False, "G - Gift")
+                            if _first_token == "D":  return ("OTHER",    False, "D - Disposit (non-mkt)")
+                            if _first_token == "J":  return ("OTHER",    False, "J - Other")
+
+                            # ─── Full-text classification (handle order: gift/award BEFORE generic buy/sell) ──
+                            if "gift"      in sl:                                        return ("GIFT",     False, "Gift")
+                            if "award"     in sl or "grant" in sl or "rsu" in sl or "restricted" in sl:
+                                                                                          return ("AWARD",    False, "Stock Award")
+                            if "exercis"   in sl or "conversion" in sl or "exempt" in sl: return ("EXERCISE", False, "Option Exercise")
+                            if "tax"       in sl and ("withhold" in sl or "payment" in sl):
+                                                                                          return ("TAX",      False, "Tax Withholding")
+                            # "Open Market Purchase" → BUY (must check before generic "non-open-market disposition")
+                            if "purchase"  in sl:
+                                if "open market" in sl or "private purchase" in sl:
+                                    return ("BUY", True, "Open Mkt Buy")
+                                if "non" in sl and ("open market" in sl or "open-market" in sl):
+                                    return ("OTHER", False, "Non-Mkt Purchase")
+                                return ("BUY", True, "Purchase")
+                            if "buy"       in sl:                                        return ("BUY",      True,  "Buy")
+                            if "sale"      in sl:
+                                if "non" in sl and ("open market" in sl or "open-market" in sl):
+                                    return ("OTHER", False, "Non-Mkt Sale")
+                                return ("SELL", True, "Sale")
+                            if "sell"      in sl:                                        return ("SELL",     True,  "Sell")
+                            # "Disposition" can be sale OR non-market — if explicitly non-open-market, neutral
+                            if "disposit"  in sl:
+                                if "open market" in sl and "non" not in sl:
+                                    return ("SELL", True, "Disposition")
+                                return ("OTHER", False, "Disposit (non-mkt)")
+                            if "acqui"     in sl:
+                                if "open market" in sl and "non" not in sl:
+                                    return ("BUY",  True,  "Acquisition")
+                                return ("AWARD", False, "Acquisition (non-mkt)")
+                            if "statement" in sl:                                        return ("OTHER",    False, "Form 3/4 Filing")
+                            # Unknown — surface first 18 chars verbatim so user can see WHAT it is
+                            return ("OTHER", False, (s[:18] + "…") if len(s) > 18 else s)
+                        # ─── End classifier ──────────────────────────────────────────
+
+                        _txn_list = []
+                        _txn_label_counts = {}   # diagnostics: what raw labels did we see?
                         for _i, _row in _it_df.iterrows():
-                            _dt_raw = _row.get("Start Date")
+                            # Date: prefer explicit column, fall back to index
+                            _dt_raw = _row.get(_col_date) if _col_date else None
+                            if _dt_raw is None:
+                                # Some yfinance versions put date in the index
+                                if _i is not None and hasattr(_i, "to_pydatetime"):
+                                    _dt_raw = _i
                             if _dt_raw is None: continue
                             _dt_val = _dt_raw.to_pydatetime() if hasattr(_dt_raw, "to_pydatetime") else _dt_raw
                             _days_ago = (_now - _dt_val).days
-                            _txn = str(_row.get("Transaction", "")).lower()
-                            _val = _safe_float(_row.get("Value")) or 0
-                            _insider = str(_row.get("Insider", "")).strip()
-                            _shares = _safe_float(_row.get("Shares")) or 0
-                            _is_buy = "purchase" in _txn or "buy" in _txn
-                            _is_sell = "sale" in _txn or "sell" in _txn or "disposit" in _txn
-                            # Add to applicable buckets
+                            _txn_raw  = str(_row.get(_col_txn, "") if _col_txn else "")
+                            _val      = _safe_float(_row.get(_col_value)) if _col_value else None
+                            if _val is None: _val = 0
+                            _insider  = str(_row.get(_col_insider, "") if _col_insider else "").strip()
+                            _shares   = _safe_float(_row.get(_col_shares)) if _col_shares else 0
+                            _shares   = _shares or 0
+                            _kind, _sentiment_eligible, _kind_label = _classify_insider_txn(_txn_raw)
+                            # Diagnostics: count raw labels for the UI to show "we saw: 12 Awards, 8 Sales..."
+                            _txn_label_counts[_kind_label] = _txn_label_counts.get(_kind_label, 0) + 1
+                            # Bucket
                             for _bk, _bd in _buckets.items():
                                 if _days_ago <= _bd["window_days"]:
-                                    if _is_buy:
+                                    if _kind == "BUY":
                                         _bd["buys"] += 1
-                                        _bd["buy_value_usd"] += _val
-                                    elif _is_sell:
+                                        if _val > 0: _bd["buy_value_usd"] += abs(_val)
+                                    elif _kind == "SELL":
                                         _bd["sells"] += 1
-                                        _bd["sell_value_usd"] += _val
-                            # Capture txn for table (only last 365 days)
+                                        if _val > 0: _bd["sell_value_usd"] += abs(_val)
+                                    elif _kind == "AWARD":
+                                        _bd["awards"] += 1
+                                    elif _kind == "EXERCISE":
+                                        _bd["exercises"] += 1
+                                    else:
+                                        _bd["other"] += 1
+                            # Transaction list (last 365d)
                             if _days_ago <= 365:
                                 _txn_list.append({
-                                    "date":     _dt_val.strftime("%Y-%m-%d"),
-                                    "days_ago": _days_ago,
-                                    "insider":  _insider,
-                                    "kind":     ("BUY" if _is_buy else ("SELL" if _is_sell else "OTHER")),
-                                    "shares":   int(_shares),
-                                    "value_usd": _val,
+                                    "date":       _dt_val.strftime("%Y-%m-%d"),
+                                    "days_ago":   _days_ago,
+                                    "insider":    _insider,
+                                    "kind":       _kind,
+                                    "kind_label": _kind_label,  # human-readable
+                                    "raw":        _txn_raw[:32],  # raw for debugging
+                                    "shares":     int(_shares) if _shares else 0,
+                                    "value_usd":  _val,
+                                    "sentiment_eligible": _sentiment_eligible,
                                 })
-                        # Compute net flow per bucket
+                        # Compute net flow + sentiment per bucket — ONLY BUY/SELL count
                         for _bd in _buckets.values():
                             _bd["net_flow_usd"]  = _bd["buy_value_usd"] - _bd["sell_value_usd"]
                             _bd["net_txn_count"] = _bd["buys"] - _bd["sells"]
@@ -33759,15 +34034,32 @@ async def investor_due_diligence(email: str = "", symbol: str = "", region: str 
                             )
                         # Sort transactions newest first, cap at 50
                         _txn_list.sort(key=lambda x: x["days_ago"])
+                        # Summary count of what KINDS we found across the 365d window
+                        _kind_counts = {"BUY": 0, "SELL": 0, "AWARD": 0, "EXERCISE": 0, "GIFT": 0, "TAX": 0, "OTHER": 0}
+                        for _t in _txn_list:
+                            _kind_counts[_t["kind"]] = _kind_counts.get(_t["kind"], 0) + 1
                         institutional["insider_activity_buckets"] = {
                             "buckets":      _buckets,
                             "transactions": _txn_list[:50],
                             "total_txn_count_365d": len(_txn_list),
+                            "kind_counts_365d": _kind_counts,
+                            "raw_label_counts": dict(sorted(_txn_label_counts.items(), key=lambda x: -x[1])[:15]),
                             "data_quality": "available",
                             "source":       "yfinance.insider_transactions",
+                            "columns_detected": {
+                                "transaction": _col_txn, "shares": _col_shares,
+                                "value":       _col_value, "insider": _col_insider, "date": _col_date,
+                            },
+                            "_note": (
+                                "Only BUY (open-market purchase) and SELL (open-market sale) count toward "
+                                "the buying/selling sentiment shown in the bucket cards. AWARD (RSU/grant), "
+                                "EXERCISE (option exercise), TAX (tax withholding), and GIFT are tracked "
+                                "separately — they are NOT market signals about insider conviction. SEC Form 4 "
+                                "codes (P/S/A/M/F/G) are decoded automatically when present."
+                            ),
                         }
                 except Exception as _ibe:
-                    print(f"[DD r63.97] insider_transactions bucketing failed for {symbol}: {type(_ibe).__name__}")
+                    print(f"[DD r63.99] insider_transactions bucketing failed for {symbol}: {type(_ibe).__name__}: {str(_ibe)[:100]}")
                     institutional["insider_activity_buckets"] = {
                         "data_quality": "missing",
                         "error":        f"{type(_ibe).__name__}: {str(_ibe)[:80]}",
