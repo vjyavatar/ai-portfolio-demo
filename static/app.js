@@ -10,9 +10,17 @@
 // empty Transaction fields (AAPL-style transactions now correctly identified as SELL).
 // r63.99.7: ACTION layer on 8 Decide-Investor panels + theme-wise news endpoint
 // (Tech / Chips / Pharma / Banking / Energy / Consumer).
-window.CELESYS_VERSION = "r63.99.7";
-window.CELESYS_BUILD_TIME = 1778988000;
-window.CELESYS_BUILD_DATE = "2026-05-17 03:00:00 UTC";
+// r63.99.8: SMI 3-column verdict bug — was ignoring backend smi_verdict.
+// Now reads it AND falls through to insider quarterly data when ownership empty.
+// Plus: Ownership Breakdown synthesizes from institutional_holders;
+// Premium Intel renders flat analyst_estimates (target_mean, forward_eps,
+// recommendation_mean); SCS LOADING gets a self-healing retry button.
+// r63.99.9: Theme-wise news expanded from 2-3 headlines per theme to 10+
+// headlines per theme. Added stats summary (bullish/bearish/high-impact counts)
+// and pagination (first 5 visible, Show N more button for rest).
+window.CELESYS_VERSION = "r63.99.9";
+window.CELESYS_BUILD_TIME = 1779010800;
+window.CELESYS_BUILD_DATE = "2026-05-17 09:00:00 UTC";
 window.CELESYS_FEATURES = {
   cycle_analysis: true,
   diamond_hunter: true,
@@ -10144,11 +10152,83 @@ window._renderPremiumIntelligence = function(d, S, reg) {
 
   var fpeBody = '';
   if (!est || (!estCY && !estNY && !estNY2)) {
-    fpeBody = '<div style="padding:10px 12px;text-align:center;color:#94a3b8;font-size:11px;font-style:italic">' +
-      'Data pending — analyst estimates not yet returned by backend.' +
-      '<div style="margin-top:4px;font-size:9px;color:#cbd5e1;font-family:JetBrains Mono,monospace;font-style:normal" title="Expected: d.analyst_estimates with current_year/next_year/two_years_out objects">d.analyst_estimates</div>' +
-    '</div>';
-    window._piGapTracker['d.analyst_estimates'] = 1;
+    // r63.99.8: Backend returns FLAT analyst_estimates (target_mean, forward_eps, target_high/low,
+    // analyst_count, recommendation_mean) — not the period-bucketed structure this section
+    // originally expected. If flat structure is populated, render it directly instead of "Data pending".
+    if (est && (est.target_mean || est.forward_eps || est.analyst_count || est.target_high || est.recommendation)) {
+      var price = parseFloat(d.price) || 0;
+      var fwdPE_flat = (est.forward_eps && price > 0) ? (price / est.forward_eps) : null;
+      var targetUpside = (est.target_mean && price > 0) ? ((est.target_mean - price) / price * 100) : null;
+      var _recKey = (est.recommendation || '').toString().toLowerCase();
+      var _recColor = _recKey.indexOf('strong') >= 0 && _recKey.indexOf('buy') >= 0 ? '#059669' :
+                      _recKey.indexOf('buy') >= 0 ? '#10b981' :
+                      _recKey.indexOf('sell') >= 0 ? '#dc2626' :
+                      '#d97706';
+      var _recDisp = est.recommendation || (est.recommendation_mean ?
+                       (est.recommendation_mean <= 1.5 ? 'STRONG BUY' :
+                        est.recommendation_mean <= 2.5 ? 'BUY' :
+                        est.recommendation_mean <= 3.5 ? 'HOLD' :
+                        est.recommendation_mean <= 4.5 ? 'SELL' : 'STRONG SELL') : '—');
+      fpeBody = '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px">';
+      // Card: Target price
+      if (est.target_mean) {
+        var _tCol = targetUpside > 10 ? '#059669' : targetUpside > -10 ? '#d97706' : '#dc2626';
+        fpeBody += '<div style="padding:10px;background:' + _tCol + '08;border:1px solid ' + _tCol + '20;border-radius:8px">';
+        fpeBody += '<div style="font-size:9px;color:#64748b;font-weight:700;letter-spacing:0.4px">CONSENSUS TARGET</div>';
+        fpeBody += '<div style="font-size:18px;font-weight:900;color:' + _tCol + ';font-family:IBM Plex Mono,monospace;margin-top:2px">' + S + est.target_mean.toFixed(2) + '</div>';
+        if (targetUpside != null) {
+          fpeBody += '<div style="font-size:10px;color:' + _tCol + ';font-weight:700">' + (targetUpside >= 0 ? '+' : '') + targetUpside.toFixed(1) + '% upside</div>';
+        }
+        if (est.target_high && est.target_low) {
+          fpeBody += '<div style="font-size:8px;color:#94a3b8;margin-top:4px">range ' + S + est.target_low.toFixed(0) + ' — ' + S + est.target_high.toFixed(0) + '</div>';
+        }
+        fpeBody += '</div>';
+      }
+      // Card: Forward EPS / PE
+      if (est.forward_eps) {
+        fpeBody += '<div style="padding:10px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px">';
+        fpeBody += '<div style="font-size:9px;color:#64748b;font-weight:700;letter-spacing:0.4px">FORWARD EPS</div>';
+        fpeBody += '<div style="font-size:18px;font-weight:900;color:#0f172a;font-family:IBM Plex Mono,monospace;margin-top:2px">' + S + est.forward_eps.toFixed(2) + '</div>';
+        if (fwdPE_flat && fwdPE_flat > 0 && fwdPE_flat < 200) {
+          fpeBody += '<div style="font-size:10px;color:#475569">Fwd P/E: <strong>' + fwdPE_flat.toFixed(1) + 'x</strong></div>';
+        }
+        if (est.earnings_growth_yoy != null) {
+          var _eg = est.earnings_growth_yoy * (Math.abs(est.earnings_growth_yoy) < 1 ? 100 : 1);
+          var _egCol = _eg > 10 ? '#059669' : _eg > 0 ? '#10b981' : '#dc2626';
+          fpeBody += '<div style="font-size:9px;color:' + _egCol + ';margin-top:4px">EPS growth YoY: ' + (_eg >= 0 ? '+' : '') + _eg.toFixed(1) + '%</div>';
+        }
+        fpeBody += '</div>';
+      }
+      // Card: Recommendation
+      fpeBody += '<div style="padding:10px;background:' + _recColor + '08;border:1px solid ' + _recColor + '20;border-radius:8px">';
+      fpeBody += '<div style="font-size:9px;color:#64748b;font-weight:700;letter-spacing:0.4px">CONSENSUS</div>';
+      fpeBody += '<div style="font-size:14px;font-weight:900;color:' + _recColor + ';margin-top:2px;text-transform:uppercase">' + _recDisp + '</div>';
+      if (est.analyst_count) {
+        fpeBody += '<div style="font-size:10px;color:#475569;margin-top:2px">' + est.analyst_count + ' analysts</div>';
+      }
+      if (est.recommendation_mean) {
+        fpeBody += '<div style="font-size:8px;color:#94a3b8;margin-top:2px;font-family:IBM Plex Mono,monospace">mean ' + est.recommendation_mean.toFixed(2) + ' (1=Strong Buy, 5=Strong Sell)</div>';
+      }
+      fpeBody += '</div>';
+      // Card: Revenue growth
+      if (est.revenue_growth_yoy != null) {
+        var _rg = est.revenue_growth_yoy * (Math.abs(est.revenue_growth_yoy) < 1 ? 100 : 1);
+        var _rgCol = _rg > 15 ? '#059669' : _rg > 0 ? '#10b981' : '#dc2626';
+        fpeBody += '<div style="padding:10px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px">';
+        fpeBody += '<div style="font-size:9px;color:#64748b;font-weight:700;letter-spacing:0.4px">REVENUE GROWTH</div>';
+        fpeBody += '<div style="font-size:18px;font-weight:900;color:' + _rgCol + ';margin-top:2px">' + (_rg >= 0 ? '+' : '') + _rg.toFixed(1) + '%</div>';
+        fpeBody += '<div style="font-size:9px;color:#94a3b8;margin-top:2px">YoY (latest)</div>';
+        fpeBody += '</div>';
+      }
+      fpeBody += '</div>';
+      fpeBody += '<div style="margin-top:8px;font-size:9px;color:#94a3b8;font-style:italic">Source: ' + (est.source || 'yfinance.info') + (est._fallback_used ? ' (Finnhub fallback)' : '') + '</div>';
+    } else {
+      fpeBody = '<div style="padding:10px 12px;text-align:center;color:#94a3b8;font-size:11px;font-style:italic">' +
+        'Data pending — analyst estimates not yet returned by backend.' +
+        '<div style="margin-top:4px;font-size:9px;color:#cbd5e1;font-family:JetBrains Mono,monospace;font-style:normal" title="Expected: d.analyst_estimates with current_year/next_year/two_years_out objects">d.analyst_estimates</div>' +
+      '</div>';
+      window._piGapTracker['d.analyst_estimates'] = 1;
+    }
   } else {
     var price = parseFloat(d.price) || 0;
     fpeBody = '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:11px;font-family:Inter,sans-serif">' +
@@ -13066,7 +13146,7 @@ function loadNewsThemes(region) {
   var themeWrap = document.createElement('div');
   themeWrap.id = 'newsThemesWrap';
   themeWrap.style.cssText = 'margin-top:20px';
-  themeWrap.innerHTML = '<div style="padding:20px;text-align:center;border-radius:14px;background:linear-gradient(135deg,#fef3c708,#fef3c704);border:1px solid #fde68a40"><div style="display:inline-block;width:16px;height:16px;border:2px solid #d97706;border-top-color:transparent;border-radius:50%;animation:spin .5s linear infinite;vertical-align:middle;margin-right:8px"></div><span style="font-size:11px;color:#92400e;font-weight:700">Loading theme-wise news (Tech / Chips / Pharma / Banking / Energy / Consumer)...</span></div>';
+  themeWrap.innerHTML = '<div style="padding:20px;text-align:center;border-radius:14px;background:linear-gradient(135deg,#fef3c708,#fef3c704);border:1px solid #fde68a40"><div style="display:inline-block;width:16px;height:16px;border:2px solid #d97706;border-top-color:transparent;border-radius:50%;animation:spin .5s linear infinite;vertical-align:middle;margin-right:8px"></div><span style="font-size:11px;color:#92400e;font-weight:700">Loading theme-wise news — 10+ headlines per theme across Tech / Chips / Pharma / Banking / Energy / Consumer... (30-60s, cached 30min)</span></div>';
   el.appendChild(themeWrap);
 
   fetch('/api/news-themes?region=' + region).then(function(r){return r.json();}).then(function(d){
@@ -13110,12 +13190,34 @@ function loadNewsThemes(region) {
       if (t.themeAction) {
         h += '<div style="padding:9px 12px;border-radius:8px;background:#fef3c7;border-left:3px solid #d97706;font-size:11px;color:#78350f;line-height:1.5;margin-bottom:12px"><strong>🎯 ACTION:</strong> ' + t.themeAction + '</div>';
       }
-      // Headlines
-      (t.headlines || []).forEach(function(n){
+      // r63.99.9: Headline stats summary — quick scan when there are 10+ headlines
+      var _headlines = t.headlines || [];
+      if (_headlines.length >= 5) {
+        var _nBull = _headlines.filter(function(n){return n.sentiment === 'BULLISH';}).length;
+        var _nBear = _headlines.filter(function(n){return n.sentiment === 'BEARISH';}).length;
+        var _nNeut = _headlines.length - _nBull - _nBear;
+        var _highImpact = _headlines.filter(function(n){return (n.impactScore||0) >= 7;}).length;
+        h += '<div style="padding:8px 12px;border-radius:6px;background:#f8fafc;border:1px solid #e2e8f0;margin-bottom:10px;display:flex;gap:14px;flex-wrap:wrap;font-size:10px;color:var(--text2)">';
+        h += '<span><strong style="color:#10b981">' + _nBull + '</strong> bullish</span>';
+        h += '<span><strong style="color:#ef4444">' + _nBear + '</strong> bearish</span>';
+        h += '<span><strong style="color:#f59e0b">' + _nNeut + '</strong> neutral</span>';
+        h += '<span style="margin-left:auto"><strong style="color:#dc2626">' + _highImpact + '</strong> high-impact (≥7/10)</span>';
+        h += '</div>';
+      }
+      // Headlines — show first 5 directly, rest behind a "show more" toggle
+      // r63.99.9: With 10+ headlines per theme, paginate for usability
+      var _themeIdx = ti;
+      var _initialCount = 5;
+      _headlines.forEach(function(n, ni){
         var nC = n.sentiment === 'BULLISH' ? '#10b981' : n.sentiment === 'BEARISH' ? '#ef4444' : '#f59e0b';
         var iC = (n.impactScore||0) >= 7 ? '#ef4444' : (n.impactScore||0) >= 4 ? '#f59e0b' : '#10b981';
+        var _hiddenStart = (ni === _initialCount && _headlines.length > _initialCount);
+        if (_hiddenStart) {
+          h += '<div id="theme-' + _themeIdx + '-more" style="display:none">';
+        }
         h += '<div style="border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:8px;background:#fafbfc">';
         h += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;flex-wrap:wrap">';
+        h += '<span style="font-size:9px;font-weight:700;color:var(--text3);min-width:18px">#' + (ni+1) + '</span>';
         h += '<span style="padding:2px 7px;border-radius:5px;background:' + nC + '15;color:' + nC + ';font-size:8px;font-weight:800">' + (n.sentiment || 'NEUTRAL') + '</span>';
         h += '<span style="padding:2px 7px;border-radius:5px;background:' + iC + '15;color:' + iC + ';font-size:8px;font-weight:800">Impact: ' + (n.impactScore||0) + '/10</span>';
         h += '</div>';
@@ -13142,6 +13244,15 @@ function loadNewsThemes(region) {
         }
         h += '</div>';
       });
+      // Close hidden wrapper if it was opened
+      if (_headlines.length > _initialCount) {
+        h += '</div>';   // close #theme-N-more
+        var _hiddenN = _headlines.length - _initialCount;
+        h += '<div style="text-align:center;margin-top:6px">';
+        h += '<button onclick="(function(b){var box=document.getElementById(\'theme-' + _themeIdx + '-more\');if(!box)return;var open=box.style.display!==\'none\';box.style.display=open?\'none\':\'block\';b.textContent=open?\'▼ Show ' + _hiddenN + ' more\':\'▲ Show less\';})(this)" ';
+        h += 'style="padding:6px 16px;border-radius:8px;background:#fff;border:1px solid var(--border);color:var(--text);font-size:10px;font-weight:700;cursor:pointer;font-family:Sora,sans-serif">▼ Show ' + _hiddenN + ' more</button>';
+        h += '</div>';
+      }
       h += '</div></details>';
     });
 
@@ -17369,14 +17480,21 @@ function _renderReportLegacy(d){
       // r63.99.1: SCS sidecar didn\'t even respond (null/timeout). Still show the panel
       // header so user knows where Structural Changes WOULD appear, and isn\'t left
       // wondering "is this the structural changes panel?" when seeing other widgets.
+      // r63.99.8: With r63.99.4+ stitch fix, this branch should never fire (stitch always
+      // sets d.structural_change to either real data or {success:false}). If user STILL
+      // sees this, it means their cached frontend is older than r63.99.4 — add a retry
+      // button that bypasses cache and refetches SCS directly so they can self-heal.
+      var _scsSymForRetry = (d.symbol || sym || '').toString().replace(/\x27/g, '\\\x27');
+      var _scsRegForRetry = (window._deRegion || 'US').toString();
       h += '<div style="background:#fff;border:1px solid #e2e8f0;border-radius:12px;padding:16px;margin-bottom:16px">';
       h += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">';
       h += '<div style="font-size:14px;font-weight:900;color:#0f172a;font-family:Sora,sans-serif">🏗 Structural Changes — corporate transformation signals</div>';
-      h += '<div style="padding:3px 10px;border-radius:6px;background:#f1f5f9;color:#64748b;font-size:10px;font-weight:800;font-family:Sora,sans-serif">LOADING…</div>';
+      h += '<div style="padding:3px 10px;border-radius:6px;background:#f1f5f9;color:#64748b;font-size:10px;font-weight:800;font-family:Sora,sans-serif">PENDING</div>';
       h += '</div>';
       h += '<div style="padding:11px 13px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;font-size:11px;color:#475569;line-height:1.6">';
       h += 'Structural Change Signal is being computed in the background. This panel detects <strong>corporate transformations</strong> — buybacks, debt reduction, margin expansion, activist investors, M&A, strategic pivots — across 5 categories scored 0–100. ';
-      h += 'If you don\'t see results here in a few seconds, open the dedicated <a href="javascript:window._openStructural&amp;&amp;window._openStructural();" style="color:#4f46e5;text-decoration:underline;font-weight:700">🏗 Structural tab</a> in the main nav for a full retry with detailed sub-signal breakdown.';
+      h += 'If you don\'t see results here in a few seconds, click <strong>↻ Retry</strong> below or open the dedicated <a href="javascript:window._openStructural&amp;&amp;window._openStructural();" style="color:#4f46e5;text-decoration:underline;font-weight:700">🏗 Structural tab</a> for a full retry with detailed sub-signal breakdown.';
+      h += '<div style="margin-top:10px"><button onclick="(function(){var t=this||event.target;t.disabled=true;t.innerText=\'fetching...\';fetch(\'/api/scs?symbol=' + _scsSymForRetry + '&amp;region=' + _scsRegForRetry + '\').then(function(r){return r.json();}).then(function(s){var box=t.closest(\'.scs-pending-box\')||t.parentElement;if(s&amp;&amp;s.success){box.innerHTML=\'<div style=\\\'padding:9px 12px;border-radius:8px;background:#ecfdf5;border:1px solid #10b98140;color:#065f46;font-size:11px\\\'>✓ SCS computed — verdict <strong>\'+(s.verdict_label||s.verdict||\'?\')+\'</strong>, score <strong>\'+(s.composite_score||\'?\')+\'/100</strong>. Refresh the page to see the full panel.</div>\';}else{box.innerHTML=\'<div style=\\\'padding:9px 12px;border-radius:8px;background:#fef2f2;border:1px solid #dc262640;color:#991b1b;font-size:11px\\\'>✗ \'+((s&amp;&amp;s.error)||\'fetch failed\')+\'</div>\';}}).catch(function(e){t.disabled=false;t.innerText=\'↻ Retry SCS\';alert(\'SCS retry failed: \'+e.message);});}).call(this);" style="padding:5px 12px;border-radius:6px;background:#1A3A78;color:#fff;border:none;font-size:10px;font-weight:700;cursor:pointer;font-family:Sora,sans-serif">↻ Retry SCS fetch</button></div>';
       h += '</div>';
       h += '</div>';
     }
@@ -20057,14 +20175,45 @@ h += (function(){
   var _insQHist = _insH;
 
   // Derive verdict from ownership delta
+  // r63.99.8: PREFER backend-computed smi_verdict when available (uses 3-signal model
+  // including insider data); fall through to insider_quarterly_history-based derivation
+  // when ownership history is empty but insider data shows clear directional bias.
   var verdict = 'INSUFFICIENT DATA', vColor = '#6b7280';
-  if (_ownH.length >= 4) {
+  var _backendVerdictMap = {
+    'ACCUMULATING':    {label: 'ACCUMULATING',     color: '#059669'},
+    'MILDLY_POSITIVE': {label: 'MILDLY POSITIVE',  color: '#10b981'},
+    'HOLDING':         {label: 'HOLDING',          color: '#d97706'},
+    'MILDLY_NEGATIVE': {label: 'MILDLY NEGATIVE',  color: '#ea580c'},
+    'DISTRIBUTING':    {label: 'DISTRIBUTING',     color: '#dc2626'},
+  };
+  var _beVerdict = _inst.smi_verdict;
+  if (_beVerdict && _backendVerdictMap[_beVerdict]) {
+    verdict = _backendVerdictMap[_beVerdict].label;
+    vColor = _backendVerdictMap[_beVerdict].color;
+  } else if (_ownH.length >= 4) {
     var last = (_ownH[_ownH.length-1].total_pct_outstanding || _ownH[_ownH.length-1].total_pct || 0);
     var firstW = (_ownH[Math.max(0,_ownH.length-4)].total_pct_outstanding || _ownH[Math.max(0,_ownH.length-4)].total_pct || 0);
     var delta = last - firstW;
     if (delta >= 3)      { verdict = 'ACCUMULATING'; vColor = '#059669'; }
     else if (delta <= -3){ verdict = 'DISTRIBUTING'; vColor = '#dc2626'; }
     else                  { verdict = 'HOLDING';     vColor = '#d97706'; }
+  } else if (_insH.length >= 2) {
+    // r63.99.8: FALLBACK — derive verdict from insider quarterly history when ownership history empty.
+    // Sum net_flow_usd across last 4 quarters; classify as DISTRIBUTING / ACCUMULATING / HOLDING.
+    var _insSum = 0, _insAbsSum = 0;
+    _insH.slice(-4).forEach(function(q){
+      var nf = q.net_flow_usd || ((q.buy_value_usd || 0) - (q.sell_value_usd || 0));
+      _insSum += nf;
+      _insAbsSum += Math.abs(nf);
+    });
+    // Only commit to a directional verdict if the signal is sizable (>$10M cumulative net)
+    if (_insAbsSum > 1e7) {
+      if (_insSum >  1e7) { verdict = 'ACCUMULATING'; vColor = '#059669'; }
+      else if (_insSum < -1e7) { verdict = 'DISTRIBUTING'; vColor = '#dc2626'; }
+      else                { verdict = 'HOLDING';     vColor = '#d97706'; }
+    } else if (_insAbsSum > 0) {
+      verdict = 'HOLDING'; vColor = '#d97706';   // small activity, mostly noise
+    }
   }
 
   // Render 4Q cells helper — supports 'pp' (ownership), 'pct' (volume), 'usd' (insider net flow)
@@ -20228,9 +20377,34 @@ h += (function(){
     // Ownership donut
     p += '<div>';
     p += '<div style="font-size:10px;font-weight:700;color:#475569;margin-bottom:6px;font-family:Sora,sans-serif">Ownership Breakdown — Current Snapshot</div>';
-    if (_ownSnap) {
-      p += window._smiRenderOwnershipDonut(_ownSnap);
-      p += '<div style="margin-top:6px;font-size:9px;color:#94a3b8;font-style:italic">' + (_ownSnap.note || 'Q/Q evolution requires SEC 13F') + '</div>';
+    // r63.99.8: Synthesize ownership_snapshot from institutional_holders when the dedicated
+    // ownership_snapshot field isn't present. Most tickers have institutional_holders data
+    // (total_pct_outstanding + top_holders); we can derive the donut from that.
+    var _ownSnap2 = _ownSnap;
+    if (!_ownSnap2) {
+      var _ihData = _instData.institutional_holders;
+      if (_ihData && _ihData.total_pct_outstanding) {
+        var _totalInst = _ihData.total_pct_outstanding;
+        var _top10Sum = (_ihData.top_holders || []).reduce(function(s, h){ return s + (h.pct_outstanding || 0); }, 0);
+        _ownSnap2 = {
+          institutional_pct: _totalInst,
+          top_10_pct: Math.min(_top10Sum, _totalInst),
+          retail_insider_pct: Math.max(0, 100 - _totalInst),
+          note: 'Synthesized from current snapshot. Q/Q evolution requires SEC 13F.',
+          _synthesized: true,
+        };
+      }
+    }
+    if (_ownSnap2 && window._smiRenderOwnershipDonut) {
+      p += window._smiRenderOwnershipDonut(_ownSnap2);
+      p += '<div style="margin-top:6px;font-size:9px;color:#94a3b8;font-style:italic">' + (_ownSnap2.note || 'Q/Q evolution requires SEC 13F') + '</div>';
+    } else if (_ownSnap2) {
+      // Donut renderer absent — show numbers as text instead
+      p += '<div style="padding:14px;background:#f8fafc;border-radius:8px;text-align:center">';
+      p += '<div style="font-size:22px;font-weight:900;color:#0f172a;font-family:IBM Plex Mono,monospace">' + (_ownSnap2.institutional_pct||0).toFixed(1) + '%</div>';
+      p += '<div style="font-size:10px;color:#64748b;margin-top:4px">institutional ownership</div>';
+      p += '<div style="font-size:9px;color:#94a3b8;margin-top:8px;line-height:1.5">' + (_ownSnap2.note || '') + '</div>';
+      p += '</div>';
     } else {
       p += '<div style="padding:18px;text-align:center;color:#94a3b8;font-size:10px;font-style:italic">Ownership data unavailable</div>';
     }

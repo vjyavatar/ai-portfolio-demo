@@ -22497,6 +22497,7 @@ Respond ONLY in this exact JSON format (no markdown, no backticks):
           "winners": [{{"symbol": "TICKER", "name": "Company", "reason": "Why this benefits"}}],
           "losers": [{{"symbol": "TICKER", "name": "Company", "reason": "Why this hurts"}}]
         }}
+        // ...AT LEAST 10 headlines per theme, ranked by impact
       ]
     }}
   ],
@@ -22507,20 +22508,23 @@ Respond ONLY in this exact JSON format (no markdown, no backticks):
 
 Rules:
 - Use {region.upper()} market tickers ({sample_tickers})
-- Each theme: 2-3 headlines, ranked by impact (highest first)
+- Each theme: **AT LEAST 10 headlines**, ranked by impact (highest first). Aim for 10-12 headlines per theme.
 - Each headline: 1-3 winners + 1-2 losers
 - Be specific with company names + tickers
 - impactScore: 1-3=minor, 4-6=moderate, 7-8=significant, 9-10=market-moving
 - themeAction must be a CONCRETE action ("Reduce IT exposure if you hold >15% of portfolio in TCS/INFY", "Add semiconductor exposure via AMD on any 5% dip", etc.) — not vague
-- All 6 themes MUST be present even if quiet (mark sentiment=MIXED and explain in themeSummary)"""
+- All 6 themes MUST be present even if quiet (mark sentiment=MIXED and explain in themeSummary)
+- For quiet themes with less activity, still produce 10 headlines by including: earnings updates, analyst rating changes, product launches, partnership announcements, regulatory news, M&A rumors, macro spillovers, peer comparisons, supply chain developments, and ESG/governance items
+- Vary impactScores across the 10 headlines (mix of 4-9) so the user sees both major and minor catalysts
+- Use the most current news from your knowledge — today is {datetime.utcnow().strftime('%Y-%m-%d')}"""
 
         _loop = asyncio.get_event_loop()
         def _call_claude():
             return _http_pool.post(
                 "https://api.anthropic.com/v1/messages",
                 headers={"x-api-key": ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json"},
-                json={"model": "claude-sonnet-4-20250514", "max_tokens": 4000, "messages": [{"role": "user", "content": prompt}]},
-                timeout=120,
+                json={"model": "claude-sonnet-4-20250514", "max_tokens": 12000, "messages": [{"role": "user", "content": prompt}]},
+                timeout=180,
             )
 
         r = await _loop.run_in_executor(None, _call_claude)
