@@ -25,9 +25,16 @@
 // r63.99.11: STALE INDEX.HTML self-heal — detects when Moat/Structural/Intraday
 // nav buttons are missing from the DOM (stale Render static cache), injects
 // them at runtime with amber border + flags the badge so user knows to clear cache.
-window.CELESYS_VERSION = "r63.99.11";
-window.CELESYS_BUILD_TIME = 1779046800;
-window.CELESYS_BUILD_DATE = "2026-05-17 18:00:00 UTC";
+// r63.99.12: Institutional 360° Undervalued Stock Scanner — Vijay's 10-category
+// framework with ✓/✗ per line. Early Opportunity Score weighted 30/25/20/10/10/5.
+// Inserted right after Investment Thesis in Decide-Investor view.
+// r63.99.13: 360° scanner now ALSO a standalone top-level menu item (🎯 360°).
+// Extracted into reusable window._render360Scanner. New tab has ticker input,
+// region toggle, and SCAN button — works on any ticker without going through
+// full Decide-Investor analysis first.
+window.CELESYS_VERSION = "r63.99.13";
+window.CELESYS_BUILD_TIME = 1779080400;
+window.CELESYS_BUILD_DATE = "2026-05-18 03:00:00 UTC";
 window.CELESYS_FEATURES = {
   cycle_analysis: true,
   diamond_hunter: true,
@@ -109,6 +116,8 @@ document.addEventListener('DOMContentLoaded', function() {
            title: 'Structural Change Signal — Capital Structure, Business Model, Ownership, Strategic Pivot, Balance Sheet Reset'},
           {id: 'tabBtnIntradayopt', group: 'intradayopt', icon: '🎯', label: 'Intraday',   color: '#e11d48',
            title: 'Intraday Options Scanner — CE/PE Buy/Sell setups for top 50 F&O names. Institutional 3-signal framework.'},
+          {id: 'tabBtnScanner360',  group: 'scanner360',  icon: '🎯', label: '360°',       color: '#059669',
+           title: 'Institutional 360° Undervalued Stock Scanner — 10-category framework with ✓/✗ per line.'},
         ];
         var _missing = _expectedButtons.filter(function(b){ return !document.getElementById(b.id); });
         if (_missing.length === 0) {
@@ -2714,6 +2723,7 @@ var TAB_GROUPS = {
   // and the new top-level Intraday tab content not to render. The HTML data-tab and
   // the TAB_GROUPS key now both use 'intradayopt'.
   intradayopt: {tabs: ['intradayopt'], labels: ['Intraday Options'], default: 'intradayopt'},
+  scanner360: {tabs: ['scanner360'], labels: ['🎯 360° Scanner'], default: 'scanner360'},
   tools:    {tabs: ['finance','education','compare'], labels: ['Finance Tools','Education','Compare Stocks'], default: 'finance'},
 };
 window._activeGroup = 'overview';
@@ -10161,6 +10171,271 @@ window._piCcy = function(value, fieldName, S) {
   return S + n.toLocaleString('en-US', {maximumFractionDigits: 2});
 };
 
+// ═══════════════════════════════════════════════════════════════════════════
+// r63.99.12 + r63.99.13: INSTITUTIONAL 360° UNDERVALUED STOCK SCANNER
+// Per Vijay's 10-category framework. Each line gets ✓/✗/~/—.
+// Score = 30% Financial + 25% Revenue + 20% Smart Money + 10% Valuation
+//         + 10% Industry + 5% Technical (categories 7-10 diagnostic only).
+// Called both inline in Decide-Investor AND as a standalone top-level tab.
+// ═══════════════════════════════════════════════════════════════════════════
+window._render360Scanner = function(d) {
+  if (!d) return '<div style="padding:20px;color:#94a3b8;font-size:11px">No data — analyze a stock first.</div>';
+  var _f0 = d.fundamental || {};
+  var _b0 = d.business || {};
+  var _i0 = d.institutional || {};
+  var _vd0 = d.valuation_detail || {};
+  var _t0 = d.thesis || {};
+  var _sc0 = d.sector_context || {};
+
+  function _chk(passCond, failCond, value, label) {
+    if (value === null || value === undefined || (typeof value === 'number' && isNaN(value))) {
+      return {status: 'unknown', label: label, value: '—'};
+    }
+    if (passCond) return {status: 'pass', label: label, value: value};
+    if (failCond) return {status: 'fail', label: label, value: value};
+    return {status: 'neutral', label: label, value: value};
+  }
+  function _icon(s) {
+    if (s === 'pass') return '<span style="color:#059669;font-weight:900;font-size:13px">✓</span>';
+    if (s === 'fail') return '<span style="color:#dc2626;font-weight:900;font-size:13px">✗</span>';
+    if (s === 'neutral') return '<span style="color:#d97706;font-weight:900;font-size:13px">~</span>';
+    return '<span style="color:#cbd5e1;font-weight:900;font-size:13px">—</span>';
+  }
+
+  var _price = parseFloat(d.price) || 0;
+  var _cash = parseFloat(_f0.totalCash || _b0.cash || 0);
+  var _debt = parseFloat(_f0.totalDebt || _b0.debt || 0);
+  var _currentRatio = parseFloat(_f0.currentRatio || _b0.currentRatio || 0);
+  var _ocf = parseFloat(_f0.operatingCashflow || _f0.ocf || _b0.ocf || 0);
+  var _grossMargin = parseFloat(_f0.grossMargin || _b0.grossMargin || 0);
+  var _profitMargin = parseFloat(_f0.profitMargin || _b0.profitMargin || 0);
+  var _revGrowth = parseFloat(_f0.revGrowth || _b0.revGrowth || 0);
+  var _earnGrowth = parseFloat(_f0.earnGrowth || _b0.earnGrowth || 0);
+  var _roe = parseFloat(_f0.roe || _b0.roe || 0);
+  var _debtEq = parseFloat(_f0.debtEquity || _b0.debtEquity || 0);
+  var _fwdPe = parseFloat(_f0.forwardPE || d.forward_pe || d.forwardPE || 0);
+  var _peg = parseFloat(_f0.pegRatio || d.pegRatio || 0);
+  if (!_peg && _fwdPe > 0 && _revGrowth > 0) _peg = _fwdPe / _revGrowth;
+  var _ps = parseFloat(_f0.priceToSalesTrailing12Months || _f0.priceToSales || 0);
+  var _instPct = parseFloat((_i0.institutional_holders||{}).total_pct_outstanding || _i0.institutional_pct || _f0.institutionalOwnership || 0);
+  if (_instPct > 0 && _instPct < 1) _instPct = _instPct * 100;
+  var _insiderPct = parseFloat(_f0.insiderOwnership || _i0.insider_pct || 0);
+  if (_insiderPct > 0 && _insiderPct < 1) _insiderPct = _insiderPct * 100;
+  var _insQ = _i0.insider_quarterly_history || ((_i0.insider_activity||{}).quarterly_history) || [];
+  var _insNetSum = 0;
+  _insQ.slice(-4).forEach(function(q){ _insNetSum += (q.net_flow_usd || ((q.buy_value_usd||0) - (q.sell_value_usd||0))); });
+  var _dcfUpside = parseFloat(_vd0.upside_pct || _t0.fair_value_upside_pct || d.upside || 0);
+  var _rsi = parseFloat(d.rsi || _f0.rsi || 0);
+  var _price50sma = parseFloat(d.sma50 || d.sma_50 || 0);
+  var _price200sma = parseFloat(d.sma200 || d.sma_200 || 0);
+  var _beta = parseFloat(_f0.beta || d.beta || 0);
+  var _sector = ((d.company||{}).sector || _sc0.sector || '').toLowerCase();
+  var _industry = ((d.company||{}).industry || '').toLowerCase();
+  var _hotSectors = ['semiconductor','chip','technology','software','artificial','data center','photonic','memory','defense','aerospace','cybersecurity','automation','robotics','cloud','networking','power semicon','quantum'];
+  var _isHotSector = _hotSectors.some(function(s){ return _sector.indexOf(s) >= 0 || _industry.indexOf(s) >= 0; });
+  var _mcap = parseFloat(d.marketCap || _f0.marketCap || 0);
+  var _analystCount = parseFloat((d.analyst_estimates||{}).analyst_count || _f0.numberOfAnalystOpinions || 0);
+
+  var c1 = [
+    _chk(_cash > _debt && _cash > 0, _cash <= _debt && _debt > 0, (_cash && _debt) ? '$' + (_cash/1e6).toFixed(0) + 'M cash vs $' + (_debt/1e6).toFixed(0) + 'M debt' : '—', 'Cash > Debt'),
+    _chk(_currentRatio >= 1.5, _currentRatio > 0 && _currentRatio < 1.0, _currentRatio > 0 ? _currentRatio.toFixed(2) : '—', 'Current Ratio ≥ 1.5'),
+    _chk(_ocf > 0, _ocf < 0, _ocf ? '$' + (_ocf/1e6).toFixed(0) + 'M' : '—', 'Positive Operating Cash Flow'),
+    _chk(_grossMargin >= 30, _grossMargin > 0 && _grossMargin < 15, _grossMargin > 0 ? _grossMargin.toFixed(1) + '%' : '—', 'Gross Margin Healthy (>30%)'),
+    _chk(_debtEq > 0 && _debtEq < 100, _debtEq > 200, _debtEq > 0 ? _debtEq.toFixed(0) + '%' : '—', 'Debt/Equity < 100%'),
+  ];
+  var c2 = [
+    _chk(_revGrowth > 20, _revGrowth < 5 && _revGrowth !== 0, _revGrowth ? _revGrowth.toFixed(1) + '%' : '—', 'Revenue Growth > 20%'),
+    _chk(_earnGrowth > 15, _earnGrowth < 0, _earnGrowth ? _earnGrowth.toFixed(1) + '%' : '—', 'Earnings Growth > 15%'),
+    _chk(_grossMargin >= 35, false, _grossMargin > 0 ? _grossMargin.toFixed(1) + '%' : '—', 'Margin Expansion Signal (GM ≥ 35%)'),
+    _chk(_profitMargin > 10, _profitMargin < 0, _profitMargin ? _profitMargin.toFixed(1) + '%' : '—', 'Profit Margin > 10%'),
+  ];
+  var c3 = [
+    _chk(_instPct >= 60, _instPct > 0 && _instPct < 30, _instPct > 0 ? _instPct.toFixed(1) + '%' : '—', 'Institutional Ownership ≥ 60%'),
+    _chk(_insNetSum > 1e7, _insNetSum < -1e7, _insNetSum ? (_insNetSum >= 0 ? '+' : '−') + '$' + (Math.abs(_insNetSum)/1e6).toFixed(1) + 'M' : '—', 'Insider Net Buying (last 4Q)'),
+    _chk(_insiderPct >= 1, false, _insiderPct > 0 ? _insiderPct.toFixed(2) + '%' : '—', 'Meaningful Insider Stake (≥1%)'),
+    _chk((_i0.smi_verdict || '').indexOf('ACCUMULATING') >= 0 || (_i0.smi_verdict || '').indexOf('POSITIVE') >= 0, (_i0.smi_verdict || '').indexOf('DISTRIBUTING') >= 0, _i0.smi_verdict || '—', 'Smart Money Verdict'),
+  ];
+  var c4 = [
+    _chk(_dcfUpside > 20, _dcfUpside < -10, _dcfUpside ? (_dcfUpside >= 0 ? '+' : '') + _dcfUpside.toFixed(1) + '%' : '—', 'DCF Fair Value Upside > 20%'),
+    _chk(_peg > 0 && _peg < 1.0, _peg > 2.5, _peg > 0 ? _peg.toFixed(2) : '—', 'PEG Ratio < 1.0 (growth at value)'),
+    _chk(_fwdPe > 0 && _fwdPe < 20, _fwdPe > 50, _fwdPe > 0 ? _fwdPe.toFixed(1) + 'x' : '—', 'Forward P/E < 20'),
+    _chk(_ps > 0 && _ps < 5, _ps > 15, _ps > 0 ? _ps.toFixed(1) + 'x' : '—', 'Price/Sales < 5'),
+  ];
+  var c5 = [
+    _chk(_isHotSector, false, _sector ? _sector.slice(0,40) : '—', '2026 Megatrend Sector (AI/Chips/Defense/etc.)'),
+    _chk((_sc0.outperformance_pct || 0) > 10, (_sc0.outperformance_pct || 0) < -10, (_sc0.outperformance_pct) ? (_sc0.outperformance_pct >= 0 ? '+' : '') + _sc0.outperformance_pct.toFixed(1) + '%' : '—', 'Outperforming Sector'),
+  ];
+  var _aboveSMA50 = _price > 0 && _price50sma > 0 ? ((_price - _price50sma) / _price50sma * 100) : null;
+  var _aboveSMA200 = _price > 0 && _price200sma > 0 ? ((_price - _price200sma) / _price200sma * 100) : null;
+  var c6 = [
+    _chk(_aboveSMA200 !== null && _aboveSMA200 > 0 && _aboveSMA200 < 30, _aboveSMA200 !== null && _aboveSMA200 > 50, _aboveSMA200 !== null ? (_aboveSMA200 >= 0 ? '+' : '') + _aboveSMA200.toFixed(1) + '%' : '—', 'Above 200SMA (not parabolic)'),
+    _chk(_rsi > 40 && _rsi < 65, _rsi > 75, _rsi ? _rsi.toFixed(0) : '—', 'RSI in 40-65 (not overbought)'),
+    _chk(_beta > 0 && _beta < 1.5, _beta > 2.5, _beta > 0 ? _beta.toFixed(2) : '—', 'Beta < 1.5 (not too volatile)'),
+  ];
+  var c7 = [
+    _chk(_roe >= 15, _roe > 0 && _roe < 5, _roe ? _roe.toFixed(1) + '%' : '—', 'ROE ≥ 15% (capital efficient)'),
+    _chk(_profitMargin > 10, _profitMargin < 0, _profitMargin ? _profitMargin.toFixed(1) + '%' : '—', 'Net Margin > 10% (execution)'),
+    _chk(_insiderPct >= 1, false, _insiderPct > 0 ? _insiderPct.toFixed(2) + '%' : '—', 'Insider Skin in Game (≥1%)'),
+  ];
+  var c8 = [
+    _chk(_grossMargin >= 40, _grossMargin > 0 && _grossMargin < 25, _grossMargin > 0 ? _grossMargin.toFixed(1) + '%' : '—', 'Gross Margin ≥ 40% (pricing power)'),
+    _chk(_roe >= 20, _roe > 0 && _roe < 10, _roe ? _roe.toFixed(1) + '%' : '—', 'ROE ≥ 20% (sustainable moat)'),
+    _chk(_profitMargin > 15, _profitMargin > 0 && _profitMargin < 5, _profitMargin ? _profitMargin.toFixed(1) + '%' : '—', 'Net Margin > 15% (defensible)'),
+  ];
+  var c9 = [
+    _chk(_analystCount > 0 && _analystCount < 15, _analystCount > 30, _analystCount > 0 ? _analystCount.toFixed(0) + ' analysts' : '—', 'Low Analyst Coverage (<15)'),
+    _chk(_mcap > 0 && _mcap < 1e10, _mcap > 5e11, _mcap > 0 ? '$' + (_mcap/1e9).toFixed(1) + 'B' : '—', 'Mid/Small-Cap (<$10B mcap)'),
+  ];
+  var c10 = [
+    _chk(_rsi > 35 && _rsi < 55, _rsi > 70, _rsi ? _rsi.toFixed(0) : '—', 'RSI in Accumulation Zone (35-55)'),
+    _chk(_aboveSMA50 !== null && _aboveSMA50 > -10 && _aboveSMA50 < 10, _aboveSMA50 !== null && _aboveSMA50 > 25, _aboveSMA50 !== null ? (_aboveSMA50 >= 0 ? '+' : '') + _aboveSMA50.toFixed(1) + '%' : '—', 'Near 50SMA (within ±10%)'),
+    _chk(_dcfUpside > 15, _dcfUpside < 0, _dcfUpside ? (_dcfUpside >= 0 ? '+' : '') + _dcfUpside.toFixed(1) + '%' : '—', 'Asymmetric Upside (>15%)'),
+  ];
+
+  function _catPassRate(checks) {
+    var passed = checks.filter(function(c){return c.status === 'pass';}).length;
+    var known = checks.filter(function(c){return c.status !== 'unknown';}).length;
+    return known === 0 ? 0 : (passed / known);
+  }
+  var _s1 = _catPassRate(c1), _s2 = _catPassRate(c2), _s3 = _catPassRate(c3);
+  var _s4 = _catPassRate(c4), _s5 = _catPassRate(c5), _s6 = _catPassRate(c6);
+  var _earlyScore = Math.round((0.30 * _s1 + 0.25 * _s2 + 0.20 * _s3 + 0.10 * _s4 + 0.10 * _s5 + 0.05 * _s6) * 100);
+  var _verdictColor, _verdictLabel, _verdictAction;
+  if (_earlyScore >= 80) {
+    _verdictColor = '#059669'; _verdictLabel = '🚀 STRONG INSTITUTIONAL SETUP';
+    _verdictAction = 'All key boxes checked. This profile matches early-stage 5-10x setups. Build position in 2-3 tranches over 2-4 weeks.';
+  } else if (_earlyScore >= 65) {
+    _verdictColor = '#10b981'; _verdictLabel = '✨ EARLY OPPORTUNITY';
+    _verdictAction = 'Strong setup with a few gaps. Starter position OK; verify the failing checks before going full size.';
+  } else if (_earlyScore >= 50) {
+    _verdictColor = '#d97706'; _verdictLabel = '👀 WATCHLIST CANDIDATE';
+    _verdictAction = 'Mixed signals. Wait for 2-3 more checks to flip green before initiating. Set price alerts and monitor quarterly results.';
+  } else if (_earlyScore >= 30) {
+    _verdictColor = '#ea580c'; _verdictLabel = '⚠ MARGINAL';
+    _verdictAction = 'Doesn\'t meet the institutional 360° threshold. Better opportunities likely exist in the same sector.';
+  } else {
+    _verdictColor = '#dc2626'; _verdictLabel = '❌ AVOID — VALUE TRAP RISK';
+    _verdictAction = 'Multiple structural concerns. Skip this name unless you have a specific contrarian thesis.';
+  }
+
+  var _sym = (d.company||{}).symbol || d.symbol || d.ticker || '';
+  var h = '<div style="background:#fff;border:2px solid ' + _verdictColor + '40;border-radius:12px;padding:18px 20px;margin-bottom:16px;box-shadow:0 4px 16px ' + _verdictColor + '15">';
+  h += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;gap:12px;flex-wrap:wrap">';
+  h += '<div style="display:flex;align-items:center;gap:10px">';
+  h += '<div style="width:38px;height:38px;border-radius:10px;background:' + _verdictColor + '15;display:flex;align-items:center;justify-content:center;font-size:20px">🎯</div>';
+  h += '<div><div style="font-size:14px;font-weight:900;color:#0f172a;font-family:Sora,sans-serif">Institutional 360° Undervalued Scanner' + (_sym ? ' — ' + _sym : '') + '</div>';
+  h += '<div style="font-size:10px;color:#64748b;margin-top:1px">10-category framework — every line checked</div></div>';
+  h += '</div>';
+  h += '<div style="text-align:right">';
+  h += '<div style="font-size:9px;font-weight:800;color:' + _verdictColor + ';letter-spacing:0.5px">EARLY OPPORTUNITY SCORE</div>';
+  h += '<div style="font-size:28px;font-weight:900;color:' + _verdictColor + ';font-family:\'IBM Plex Mono\',monospace;line-height:1">' + _earlyScore + '<span style="font-size:13px;color:#94a3b8">/100</span></div>';
+  h += '</div></div>';
+  h += '<div style="padding:11px 14px;background:' + _verdictColor + '08;border:1px solid ' + _verdictColor + '30;border-left:4px solid ' + _verdictColor + ';border-radius:8px;margin-bottom:14px">';
+  h += '<div style="font-size:13px;font-weight:900;color:' + _verdictColor + ';font-family:Sora,sans-serif;margin-bottom:4px">' + _verdictLabel + '</div>';
+  h += '<div style="font-size:11px;color:#475569;line-height:1.55">' + _verdictAction + '</div>';
+  h += '</div>';
+  h += '<div style="display:grid;grid-template-columns:repeat(6,1fr);gap:5px;margin-bottom:14px">';
+  [{l:'Financial',w:30,s:_s1},{l:'Revenue',w:25,s:_s2},{l:'Smart Money',w:20,s:_s3},{l:'Valuation',w:10,s:_s4},{l:'Industry',w:10,s:_s5},{l:'Technical',w:5,s:_s6}].forEach(function(cat){
+    var cc = cat.s >= 0.7 ? '#059669' : cat.s >= 0.4 ? '#d97706' : '#dc2626';
+    h += '<div style="padding:7px 6px;border:1px solid ' + cc + '30;border-radius:6px;background:' + cc + '06;text-align:center">';
+    h += '<div style="font-size:8px;font-weight:800;color:#64748b;letter-spacing:0.3px">' + cat.l + '</div>';
+    h += '<div style="font-size:14px;font-weight:900;color:' + cc + ';font-family:\'IBM Plex Mono\',monospace;margin-top:2px">' + Math.round(cat.s * 100) + '%</div>';
+    h += '<div style="font-size:7.5px;color:#94a3b8;font-family:\'IBM Plex Mono\',monospace;margin-top:1px">w' + cat.w + '%</div>';
+    h += '</div>';
+  });
+  h += '</div>';
+  var _categories = [
+    {n:'01', icon:'💰', title:'Financial Survival', sub:'Cash, runway, balance sheet', checks: c1},
+    {n:'02', icon:'📈', title:'Revenue Inflection', sub:'Growth acceleration & margin expansion', checks: c2},
+    {n:'03', icon:'🏛', title:'Institutional Accumulation', sub:'Smart money quietly buying', checks: c3},
+    {n:'04', icon:'💎', title:'Valuation Disconnect', sub:'Cheap vs intrinsic value & peers', checks: c4},
+    {n:'05', icon:'🌊', title:'Industry Tailwind', sub:'2026 megatrend exposure', checks: c5},
+    {n:'06', icon:'📊', title:'Technical Structure', sub:'Healthy chart pattern', checks: c6},
+    {n:'07', icon:'👔', title:'Management Quality', sub:'Capital efficiency & alignment', checks: c7},
+    {n:'08', icon:'🛡', title:'Moat Indicators', sub:'Pricing power & defensibility', checks: c8},
+    {n:'09', icon:'🔍', title:'Retail Attention Gap', sub:'Underfollowed before mass discovery', checks: c9},
+    {n:'10', icon:'⏰', title:'Timing & Entry', sub:'Setup not yet extended', checks: c10},
+  ];
+  _categories.forEach(function(cat, idx){
+    var passed = cat.checks.filter(function(c){return c.status === 'pass';}).length;
+    var failed = cat.checks.filter(function(c){return c.status === 'fail';}).length;
+    var unknown = cat.checks.filter(function(c){return c.status === 'unknown';}).length;
+    var total = cat.checks.length;
+    var catRate = total > 0 ? (passed / Math.max(1, total - unknown)) : 0;
+    var catColor = catRate >= 0.7 ? '#059669' : catRate >= 0.4 ? '#d97706' : '#dc2626';
+    h += '<details ' + (idx < 5 ? 'open' : '') + ' style="margin-bottom:6px;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;background:#fff">';
+    h += '<summary style="padding:10px 14px;cursor:pointer;list-style:none;display:flex;align-items:center;gap:10px;background:linear-gradient(135deg,' + catColor + '05,transparent);user-select:none">';
+    h += '<span style="font-size:9px;font-weight:800;color:#94a3b8;font-family:\'IBM Plex Mono\',monospace;letter-spacing:0.5px">' + cat.n + '</span>';
+    h += '<span style="font-size:16px">' + cat.icon + '</span>';
+    h += '<div style="flex:1;min-width:0">';
+    h += '<div style="font-size:12px;font-weight:900;color:#0f172a;font-family:Sora,sans-serif">' + cat.title + '</div>';
+    h += '<div style="font-size:10px;color:#64748b;margin-top:1px">' + cat.sub + '</div>';
+    h += '</div>';
+    h += '<div style="display:flex;gap:8px;align-items:center;font-size:9px;font-family:\'IBM Plex Mono\',monospace;flex-shrink:0">';
+    h += '<span style="color:#059669;font-weight:800">' + passed + '✓</span>';
+    if (failed > 0) h += '<span style="color:#dc2626;font-weight:800">' + failed + '✗</span>';
+    if (unknown > 0) h += '<span style="color:#94a3b8">' + unknown + '—</span>';
+    h += '<span style="color:' + catColor + ';font-weight:900;font-size:12px;margin-left:6px">' + Math.round(catRate * 100) + '%</span>';
+    h += '</div>';
+    h += '<span style="font-size:13px;color:#cbd5e1;flex-shrink:0;margin-left:4px">▾</span>';
+    h += '</summary>';
+    h += '<div style="padding:6px 14px 12px 14px;border-top:1px solid #f1f5f9">';
+    cat.checks.forEach(function(c){
+      h += '<div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid #f8fafc">';
+      h += '<div style="width:20px;flex-shrink:0;text-align:center">' + _icon(c.status) + '</div>';
+      h += '<div style="flex:1;font-size:11px;color:#334155;font-weight:600">' + c.label + '</div>';
+      h += '<div style="font-size:10px;color:#64748b;font-family:\'IBM Plex Mono\',monospace;font-weight:700">' + c.value + '</div>';
+      h += '</div>';
+    });
+    h += '</div></details>';
+  });
+  h += '<div style="margin-top:14px;padding:10px 12px;background:#f8fafc;border-radius:6px;font-size:9.5px;color:#64748b;line-height:1.6">';
+  h += '<strong style="color:#475569">Early Opportunity Score = 30% Financial + 25% Revenue + 20% Smart Money + 10% Valuation + 10% Industry + 5% Technical.</strong> ';
+  h += 'Categories 7-10 are diagnostic (don\'t weight the score). Legend: <span style="color:#059669;font-weight:900">✓</span> pass · <span style="color:#dc2626;font-weight:900">✗</span> fail · <span style="color:#d97706;font-weight:900">~</span> neutral · <span style="color:#cbd5e1;font-weight:900">—</span> data unavailable. ';
+  h += 'Best multibagger setups score 80+.';
+  h += '</div>';
+  h += '</div>';
+  return h;
+};
+
+// r63.99.13: Standalone scanner loader — fetches investor-decide for a ticker
+// then renders the 360 scanner full-page in the dedicated tab.
+window.load360Scanner = function(sym, reg) {
+  var inp = document.getElementById('scan360Input');
+  var regSel = document.getElementById('scan360Region');
+  sym = (sym || (inp ? inp.value : '') || '').toString().trim().toUpperCase();
+  reg = (reg || (regSel ? regSel.value : 'US') || 'US').toUpperCase();
+  var el = document.getElementById('scan360Result');
+  if (!el) return;
+  if (!sym) {
+    el.innerHTML = '<div style="padding:30px;text-align:center;color:#94a3b8;font-size:11px">Enter a ticker above and click <strong>Scan</strong>.</div>';
+    return;
+  }
+  el.innerHTML = '<div style="padding:30px;text-align:center"><div style="display:inline-block;width:16px;height:16px;border:2px solid #1A3A78;border-top-color:transparent;border-radius:50%;animation:spin .5s linear infinite;vertical-align:middle;margin-right:8px"></div><span style="font-size:11px;color:#5E6F8E">Running 360° scan on <strong>' + sym + '</strong>...</span></div>';
+  fetch('/api/investor-decide?symbol=' + encodeURIComponent(sym) + '&region=' + reg).then(function(r){return r.json();}).then(function(d){
+    if (!d || !d.success) {
+      el.innerHTML = '<div style="padding:20px;color:#dc2626;font-size:11px">Scan failed: ' + ((d && d.error) || 'unknown error') + '<br><button onclick="load360Scanner()" style="margin-top:8px;padding:6px 14px;border-radius:6px;background:#1A3A78;color:#fff;border:none;cursor:pointer;font-size:10px">↻ Retry</button></div>';
+      return;
+    }
+    // Optionally enrich with DD sidecar so SMI verdict + insider history populates
+    fetch('/api/investor-due-diligence?symbol=' + encodeURIComponent(sym) + '&region=' + reg).then(function(r){return r.json();}).then(function(dd){
+      if (dd && dd.success && dd.institutional) {
+        d.institutional = d.institutional || {};
+        Object.keys(dd.institutional).forEach(function(k){
+          if (d.institutional[k] === undefined || d.institutional[k] === null) d.institutional[k] = dd.institutional[k];
+        });
+      }
+      el.innerHTML = window._render360Scanner(d);
+    }).catch(function(){
+      // Render anyway with primary data
+      el.innerHTML = window._render360Scanner(d);
+    });
+  }).catch(function(e){
+    el.innerHTML = '<div style="padding:20px;color:#dc2626;font-size:11px">Network error: ' + e.message + '</div>';
+  });
+};
+
+
 // Main render function — returns HTML string for entire collapsible group
 window._renderPremiumIntelligence = function(d, S, reg) {
   if (!d) return '';
@@ -16280,7 +16555,13 @@ function _renderReportLegacy(d){
     });
   }
   h += '</div></div>';
-  
+
+  // r63.99.13: 360° scanner moved to reusable window._render360Scanner — same
+  // logic, also reachable via the dedicated top-level "🎯 Scanner" menu item.
+  try {
+    if (window._render360Scanner) h += window._render360Scanner(d);
+  } catch (_360err) { console.warn('360 framework render failed:', _360err); }
+
   // ═══ LAYMAN BLOCK — r61.1 ═══════════════════════════════════════
   // Renders 2 lines of plain-English + analyst-note summary at the
   // top of any section. Call: _renderLayman(sectionData.layman)

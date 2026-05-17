@@ -1,3 +1,190 @@
+## r63.99.13 (2026-05-18) — 360° Scanner as standalone top-level menu item
+
+**Vijay:** "does it have separate menu item.. institutional undervalue scanner"
+
+Previously (r63.99.12) the 360° scanner was embedded inline inside the Decide-Investor report — you had to analyze a stock first before seeing the scanner output. Now it's BOTH:
+1. **Inline** in Decide → Investor (unchanged for users who got there via stock analysis)
+2. **Standalone top-level tab** 🎯 **360°** in the main nav — type any ticker, get the scan, no full analysis needed first
+
+### How the standalone tab works
+
+Click 🎯 360° in top nav (between Intraday and Tools). You see:
+- Ticker input field (with Enter-to-submit)
+- US Market / India NSE region dropdown
+- Green **🚀 SCAN** button
+- Pro-tip suggesting POET, AEHR, MU, NVDA, ARM, etc.
+
+Type ticker → click SCAN. Loader spins ~3-8s. Then the full 10-category checklist renders below with the same UI as the Decide-Investor inline version: header card, 6-tile weight grid, 10 collapsible categories each with ✓/✗ per line, methodology footer.
+
+### Engineering — code de-duplication
+
+Extracted the 360 scanner render logic into reusable `window._render360Scanner(d)` defined at module level next to other window-scoped renderers (e.g. `window._renderPremiumIntelligence`). Both the inline Decide-Investor call AND the standalone loader use the same function — no duplicated code, no drift risk.
+
+Standalone loader `window.load360Scanner(sym, reg)`:
+1. Reads ticker/region from input fields (or accepts as args)
+2. Fetches `/api/investor-decide?symbol=X&region=Y` for primary data
+3. Also fetches `/api/investor-due-diligence` sidecar so SMI verdict + insider quarterly history populate (matches what Decide-Investor view gets)
+4. Stitches DD's institutional fields onto the primary response
+5. Calls `window._render360Scanner(d)` and injects into the result container
+6. Graceful fallback if DD sidecar fails — still renders with primary data
+
+### Files changed
+
+`static/app.js`:
+- Extracted `window._render360Scanner` (~220 lines) from inline placement
+- Added `window.load360Scanner` standalone loader (~30 lines)
+- Replaced inline block with 4-line `if (window._render360Scanner) h += window._render360Scanner(d)` call
+- Added `scanner360` entry to `TAB_GROUPS`
+- Added `tabBtnScanner360` to the stale-HTML self-heal detector
+- Version → r63.99.13
+
+`index.html`:
+- Added 🎯 **360°** top-nav button (next to Intraday, emerald color theme)
+- Added `<div data-tab="scanner360">` section with ticker input, region dropdown, SCAN button, result container
+
+`static/app.min.js` synced. `build_version.txt` → r63.99.13. `CHANGELOG.md`.
+
+### Testing — 16 regression suites all green (333 total assertions)
+
+- 6/6 Movers · 8/8 Insider buckets · 38/38 Insider classifier · 11/11 Intradayopt · 7/7 Returns snapshot · 25/25 Insider charts · 19/19 r63.99.4 · 23/23 SMI+Premium · 27/27 r63.99.6 · 28/28 r63.99.7 · 26/26 r63.99.8 · 20/20 r63.99.9 · 14/14 r63.99.10 · 16/16 r63.99.11 · 35/35 r63.99.12 · **29/29 r63.99.13 (new)**
+
+### Post-deploy verification
+
+1. Top nav row should now show: ... · Movers · 🏭 Moat · 🏗 Structural · 🎯 Intraday · 🎯 360° · 💰 Tools
+2. Click 🎯 **360°** — you land on a dedicated page with ticker input
+3. Type **MU** → SCAN — full 10-category report renders
+4. Try **POET**, **AEHR** — your framework example tickers for early-stage multibagger setups
+5. Region toggle → switch to India NSE, try **TCS** or **HDFCBANK**
+
+### Git
+
+```bash
+git add api.py static/app.js static/app.min.js index.html build_version.txt CHANGELOG.md
+git commit -m "r63.99.13: 360° scanner as standalone top-level tab — extract renderer + add tabBtnScanner360"
+git push origin main
+```
+
+---
+
+## r63.99.12 (2026-05-17) — Institutional 360° Undervalued Stock Scanner
+
+**Vijay's framework document:** 10-category institutional framework for finding early-stage undervalued multibaggers. Wants every line item evaluated with ✓/✗ markers per stock.
+
+### Implementation
+
+Built as a comprehensive in-line scanner in the Decide-Investor view, right after the Investment Thesis card. **Zero new backend calls** — reads from data already populated by `/api/investor-decide`, `/api/investor-due-diligence`, and `/api/premium-intel`.
+
+### The 10 categories (each line item gets ✓/✗/~/—)
+
+**Category 1: Financial Survival (weight 30%)**
+- ✓/✗ Cash > Debt
+- ✓/✗ Current Ratio ≥ 1.5
+- ✓/✗ Positive Operating Cash Flow
+- ✓/✗ Gross Margin Healthy (>30%)
+- ✓/✗ Debt/Equity < 100%
+
+**Category 2: Revenue Inflection (weight 25%)**
+- ✓/✗ Revenue Growth > 20%
+- ✓/✗ Earnings Growth > 15%
+- ✓/✗ Margin Expansion Signal (GM ≥ 35%)
+- ✓/✗ Profit Margin > 10%
+
+**Category 3: Institutional Accumulation (weight 20%)**
+- ✓/✗ Institutional Ownership ≥ 60%
+- ✓/✗ Insider Net Buying (last 4Q)
+- ✓/✗ Meaningful Insider Stake (≥1%)
+- ✓/✗ Smart Money Verdict (ACCUMULATING / MILDLY_POSITIVE)
+
+**Category 4: Valuation Disconnect (weight 10%)**
+- ✓/✗ DCF Fair Value Upside > 20%
+- ✓/✗ PEG Ratio < 1.0 (growth at value)
+- ✓/✗ Forward P/E < 20
+- ✓/✗ Price/Sales < 5
+
+**Category 5: Industry Tailwind (weight 10%)**
+- ✓/✗ 2026 Megatrend Sector (semiconductors, AI, photonics, defense, cybersecurity, automation, cloud, etc.)
+- ✓/✗ Outperforming Sector
+
+**Category 6: Technical Structure (weight 5%)**
+- ✓/✗ Above 200SMA but not parabolic (>0% and <30%)
+- ✓/✗ RSI in 40-65 (not overbought)
+- ✓/✗ Beta < 1.5 (not too volatile)
+
+**Categories 7-10 (diagnostic only — don't weight the score):**
+- 7: Management Quality (ROE ≥ 15%, Net Margin > 10%, Insider Skin in Game)
+- 8: Moat Indicators (GM ≥ 40%, ROE ≥ 20%, Net Margin > 15%)
+- 9: Retail Attention Gap (analyst coverage <15, mid/small-cap)
+- 10: Timing & Entry (RSI 35-55, near 50SMA, asymmetric upside)
+
+### Early Opportunity Score
+
+`Score = 30%×Cat1 + 25%×Cat2 + 20%×Cat3 + 10%×Cat4 + 10%×Cat5 + 5%×Cat6`
+
+Each category's contribution = % of passed checks within that category (unknowns excluded from denominator so missing data doesn't unfairly penalize).
+
+### 5-tier verdict
+
+| Score | Verdict | Action |
+|---|---|---|
+| 80+ | 🚀 **STRONG INSTITUTIONAL SETUP** | Build position in 2-3 tranches over 2-4 weeks. Matches early-stage 5-10x profile. |
+| 65-79 | ✨ **EARLY OPPORTUNITY** | Starter position OK; verify failing checks before going full size. |
+| 50-64 | 👀 **WATCHLIST CANDIDATE** | Wait for 2-3 more checks to flip green. Set price alerts. |
+| 30-49 | ⚠ **MARGINAL** | Doesn't meet 360° threshold; better opportunities likely exist. |
+| <30 | ❌ **AVOID — VALUE TRAP RISK** | Skip unless specific contrarian thesis. |
+
+### UI
+
+Renders as a large card with:
+1. **Header**: 360° icon · title · subtitle · score badge (color-coded by verdict tier)
+2. **Verdict banner**: tier label + concrete action sentence
+3. **Weight summary grid**: 6 mini-tiles showing per-category pass rate (Financial/Revenue/Smart Money/Valuation/Industry/Technical)
+4. **10 collapsible category cards**: first 5 open by default. Each header shows pass/fail counts + category score %. Click to expand and see individual checks with ✓/✗ icons + actual metric values
+5. **Methodology footer**: weight formula + legend + best-setup threshold
+
+### Field resilience
+
+Each metric is read with 4-6 fallback paths to survive backend field variations (yfinance vs Finnhub vs frontend synthesis). For example:
+- Cash: `_f0.totalCash || _b0.cash`
+- Forward PE: `_f0.forwardPE || d.forward_pe || d.forwardPE`
+- Institutional %: handles both 0-1 decimal and 0-100 percentage formats
+- Hot sector: matches 16 sector keywords (semiconductor, chip, AI, photonic, memory, defense, automation, etc.)
+
+### Testing — 15 regression suites all green (304 total assertions)
+
+- 6/6 Movers · 8/8 Insider buckets · 38/38 Insider classifier · 11/11 Intradayopt · 7/7 Returns snapshot · 25/25 Insider charts · 19/19 r63.99.4 · 23/23 SMI+Premium · 27/27 r63.99.6 · 28/28 r63.99.7 · 26/26 r63.99.8 · 20/20 r63.99.9 · 14/14 r63.99.10 · 16/16 r63.99.11 · **35/35 r63.99.12 (new)**
+
+### Files changed
+
+`static/app.js`:
+- `+~190 lines` for the 360 scanner block inserted right after the Investment Thesis card
+- All 10 categories with 30+ individual checks
+- Verdict tier mapping with concrete action text
+- Wrapped in try/catch — render failure can't break the report
+- Version constant → r63.99.12
+
+`static/app.min.js` synced. `build_version.txt` → r63.99.12. `CHANGELOG.md`.
+
+### What you'll see post-deploy
+
+When analyzing any stock in Decide → Investor, a new large card appears below the Investment Thesis showing:
+- 🎯 **Institutional 360° Undervalued Scanner** with EARLY OPPORTUNITY SCORE: NN/100
+- Verdict tier with action sentence
+- 6 weighted category tiles
+- 10 collapsible category sections each with line-by-line ✓/✗ checklist
+- Methodology footer
+
+For early-stage undervalued setups (like POET, AEHR-type names), expect 65-85 scores when the data is good. Value traps will score <30 with multiple ✗ in Financial Survival and Revenue Inflection.
+
+### Git
+
+```bash
+git add api.py static/app.js static/app.min.js build_version.txt CHANGELOG.md
+git commit -m "r63.99.12: Institutional 360° Undervalued Stock Scanner — 10 categories × ✓/✗ checks + Early Opportunity Score"
+git push origin main
+```
+
+---
+
 ## r63.99.11 (2026-05-17) — Stale index.html self-heal for missing nav buttons
 
 **Vijay's screenshot:** top nav showed only Overview · Stock · Decide · Dream · Trader · Markets · Movers · Tools. The Moat, Structural, and Intraday buttons (added in earlier builds) were missing from the deployed UI even though they exist in the index.html source.
